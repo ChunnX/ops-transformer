@@ -318,17 +318,20 @@ __aicore__ inline void EngramFetchArch35::RemoteFetchRank(uint32_t ownerRank, ui
         GM_ADDR dst = fetchedGM_ + globalTokenIdx * hiddenBytes;
         GM_ADDR remoteSrcAddr = (GM_ADDR)commBufferLocal(ownerRank)
                                 + static_cast<uint64_t>(localEntryIdx) * hiddenBytes;
-        hcomm_.ReadNbi<false>(hcommHandleLocal(ownerRank), dst, remoteSrcAddr, hiddenBytes);
+        int32_t ret = hcomm_.ReadNbi<false>(hcommHandleLocal(ownerRank), dst, remoteSrcAddr, hiddenBytes);
+        ascendc_assert(ret == 0, "ReadNbi failed, ret=%d, ownerRank=%u", ret, ownerRank);
         pendingReadCount++;
         if (pendingReadCount >= threshold) {
-            hcomm_.Commit(hcommHandleLocal(ownerRank));
+            ret = hcomm_.Commit(hcommHandleLocal(ownerRank));
+            ascendc_assert(ret == 0, "Commit failed, ret=%d, ownerRank=%u", ret, ownerRank);
             pendingReadCount = 0;
             threshold = READ_COMMIT_THRESHOLD;
         }
     }
 
     if (pendingReadCount > 0) {
-        hcomm_.Commit(hcommHandleLocal(ownerRank));
+        int32_t ret = hcomm_.Commit(hcommHandleLocal(ownerRank));
+        ascendc_assert(ret == 0, "Commit failed, ret=%d, ownerRank=%u", ret, ownerRank);
     }
 }
 
