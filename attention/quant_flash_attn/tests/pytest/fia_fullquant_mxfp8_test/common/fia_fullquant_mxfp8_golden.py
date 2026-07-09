@@ -1049,9 +1049,9 @@ def npu_mxfp8_fa(q_fp8, k_fp8, v_fp8,
         accum_seq_q = make_accum_seq(actual_seq_q)
         accum_seq_kv = make_accum_seq(actual_seq_kv)
 
-        # PA layout 映射: BnNBsD → PA_ND, PA_NZ → PA_Nz
-        _pa_layout_kv_map = {"BnNBsD": "PA_ND", "PA_NZ": "PA_Nz"}
-        pa_layout_kv = _pa_layout_kv_map.get(KV_CACHE_LAYOUT, "PA_ND")
+        # PA layout 映射: BnNBsD → PA_BNBD, PA_NZ → PA_NZ
+        _pa_layout_kv_map = {"BnNBsD": "PA_BNBD", "PA_NZ": "PA_NZ"}
+        pa_layout_kv = _pa_layout_kv_map.get(KV_CACHE_LAYOUT, "PA_BNBD")
 
         logger.info("[NPU] 调用 PA 模式...")
         atten_out, lse_out = mxfp8_fa_torch_npu(
