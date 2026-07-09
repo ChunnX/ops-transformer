@@ -43,9 +43,13 @@ def test_liv2_process(filepath, device_id=0):
     if params[10] == 'FP16':
         if 'blockFusion' in test_data and test_data['blockFusion'] is not None:
  	        blockFusion = test_data['blockFusion'].to(dtype=torch.float16).npu()
+        else:
+            pass
     elif params[10] == 'BF16':
         if 'blockFusion' in test_data and test_data['blockFusion'] is not None:
  	        blockFusion = test_data['blockFusion'].to(dtype=torch.bfloat16).npu()
+        else:
+            pass
     topk = params[19]
     mask_mode = params[20]
     return_value = params[25]
