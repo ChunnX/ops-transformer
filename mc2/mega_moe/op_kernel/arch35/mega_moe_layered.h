@@ -514,6 +514,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ResetFlagList()
     int32_t flagNum = static_cast<int32_t>(expertPerRank_) *
         (static_cast<int32_t>(INT_CACHELINE) + dispatchFlagSlotsPerExpert_ +
         static_cast<int32_t>(INT_CACHELINE) * static_cast<int32_t>(aicNum_)); // 64 * (16 + 256 + 28 * 16) = 45K(46080)
+    PRINTF("===dispatchFlagSlotsPerExpert_, aicNum_===:%u, %u", dispatchFlagSlotsPerExpert_, aicNum_);
     PRINTF("===flagNum===:%u", flagNum);
     int32_t coreLen, coreOffset;
     TilingByCore(flagNum, coreLen, coreOffset, 1);
