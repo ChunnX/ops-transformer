@@ -559,10 +559,7 @@ static inline bool CheckFormat(
     return formatValid;
 }
 
-static aclnnStatus AnalysisInput(const aclTensor *query, const aclTensor *key, const aclTensor *value,
-                                 char *inputLayout, int64_t headNum, FaShapeInfo &shapeInfo,
-                                 const aclIntArray *actualSeqQLenOptional = nullptr,
-                                 const aclIntArray *actualSeqKvLenOptional = nullptr)
+static aclnnStatus ShapeCheck(const aclTensor *query, const aclTensor *key, char *inputLayout)
 {
     NpuArch npuArch = GetCurrentPlatformInfo().GetCurNpuArch();
     if (npuArch == NpuArch::DAV_2201) {
@@ -572,7 +569,15 @@ static aclnnStatus AnalysisInput(const aclTensor *query, const aclTensor *key, c
             return ACLNN_ERR_PARAM_INVALID;
         }
     }
-    
+    return ACLNN_SUCCESS;
+}
+
+
+static aclnnStatus AnalysisInput(const aclTensor *query, const aclTensor *key, const aclTensor *value,
+                                 char *inputLayout, int64_t headNum, FaShapeInfo &shapeInfo,
+                                 const aclIntArray *actualSeqQLenOptional = nullptr,
+                                 const aclIntArray *actualSeqKvLenOptional = nullptr)
+{
     if (headNum <= 0) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
             "FlashAttentionScore", "headNum", std::to_string(headNum), "The value of headNum must be greater than 0");
@@ -1346,6 +1351,11 @@ aclnnStatus aclnnFlashAttentionScoreV2GetWorkspaceSize(
     CHECK_RET(InputDtypeCheck(query, key, value, attentionOutOut, realShiftOptional, pseType, nullptr) == ACLNN_SUCCESS,
               ACLNN_ERR_PARAM_INVALID);
     FaShapeInfo shapeInfo;
+    NpuArch npuArch = GetCurrentPlatformInfo().GetCurNpuArch();
+    if (npuArch == NpuArch::DAV_2201) {
+        CHECK_RET(InputOutputDtypeCheck(query, attentionOutOut) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
+    }
+    CHECK_RET(ShapeCheck(query, key, attentionOutOut) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
     CHECK_RET(AnalysisInput(query, key, value, inputLayout, headNum, shapeInfo) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
 
     aclOpExecutor *l0Executor = uniqueExecutor.get();
