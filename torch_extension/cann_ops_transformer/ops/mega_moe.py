@@ -137,7 +137,7 @@ class SymmBuffer:
         self.dispatch_quant_out_dtype = dispatch_quant_out_dtype
         self.combine_quant_mode = combine_quant_mode
         self.comm_alg = comm_alg
-        self.topo_type = 0
+        self.topo_type = self._ctx_manager.topo_type
         self.rank_num_per_server = self._ctx_manager.rank_num_per_server
 
     def destroy(self):
@@ -167,7 +167,6 @@ def _get_mega_moe_ccl_buffer_size(
     torch._check(((num_topk >= 1) and (num_topk <= 16)),
         lambda: (f"num_topk only support in [1, 16], but got {num_topk=}."))
     local_moe_expert_num = moe_expert_num // ep_world_size
-    bs = num_max_tokens_per_rank // ep_world_size
     align_32 = 32
     align_256 = 256
     align_512 = 512
@@ -176,7 +175,7 @@ def _get_mega_moe_ccl_buffer_size(
     # 全卡软同步使用 60M
     peermem_data_offset = 60 * 1024
     # mask_recv_size 
-    compare_count = inline_align(bs * num_topk * 4, align_256) // 4 # 4 = sizeof(int32)
+    compare_count = inline_align(num_max_tokens_per_rank * num_topk * 4, align_256) // 4 # 4 = sizeof(int32)
     mask_align_size = inline_align(compare_count // 8, align_32) # 8 = align_32 / sizeof(int32)
     mask_slot_size = mask_align_size + align_32 # 后32字节存count数
     mask_recv_size = inline_align(local_moe_expert_num * ep_world_size * mask_slot_size, align_512)
@@ -184,9 +183,9 @@ def _get_mega_moe_ccl_buffer_size(
     mx_scale_num = (hidden + align_32 - 1) // align_32
     data_bytes = inline_align(hidden, align_256) # 单token 256字节对齐，当前量化为mxfp8
     token_bytes = inline_align(data_bytes + mx_scale_num, align_32) # token拼接scale长度
-    quant_token_scale_size = inline_align(bs * token_bytes, align_512)
+    quant_token_scale_size = inline_align(num_max_tokens_per_rank * token_bytes, align_512)
     # combine_send_size
-    combine_out = inline_align(bs * hidden * num_topk * y_out_dtype_size, align_512)
+    combine_out = inline_align(num_max_tokens_per_rank * hidden * num_topk * y_out_dtype_size, align_512)
     # 所需总大小
     ccl_buffer_size = peermem_data_offset + mask_recv_size + quant_token_scale_size + combine_out
     ccl_buffer_size = inline_align(ccl_buffer_size, mb_conversion)
