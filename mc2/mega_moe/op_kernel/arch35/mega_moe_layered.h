@@ -601,19 +601,18 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::SendMaskCal()
                 DataCopyExtParams roundLoadParams{1U, static_cast<uint32_t>(roundLen * sizeof(int32_t)), 0U, 0U, 0U};
                 DataCopyPadExtParams<int32_t> roundLoadPad{false, 0U, 0U, 0U};
                 DataCopyPad(topkIdsTensor_, roundSrcGlobal, roundLoadParams, roundLoadPad);
-                DumpTensor(topkIdsTensor_, 1, roundCompareCount_);
                 SyncFuncStatic<AscendC::HardEvent::MTE2_V, SYNC_EVENT_ID1>();
 
                 // Phase 2: CompareScalar → 本轮部分 mask + GatherMask 累加 count
-                LocalTensor<uint8_t> maskBuf = sendMaskTensor_[roundIdx % DOUBLE_BUFFER];
-                LocalTensor<uint32_t> maskBufU32 = maskBuf.template ReinterpretCast<uint32_t>();
+                LocalTensor<uint8_t> maskBuf = sendMaskTensor_[roundIdx % DOUBLE_BUFFER]; // 2K + 32B 
+                LocalTensor<uint32_t> maskBufU32 = maskBuf.template ReinterpretCast<uint32_t>(); // 2K + 32B
                 CompareScalar(maskBuf, topkIdsTensor_, curExpertId, AscendC::CMPMODE::EQ, curRoundCompareCount);
                 uint64_t roundSendCnt = 0;
                 GatherMask(sendGatherOutTensor_, topkIdsTensor_, maskBufU32, true,
                     static_cast<uint32_t>(roundLen), {1, 1, 0, 0}, roundSendCnt);
                 totalSendCnt += roundSendCnt;
-                //DumpTensor(sendGatherOutTensor_, 2, 8);
-                //PRINTF("========totalSendCnt=========:%u\n", totalSendCnt);
+                DumpTensor(sendGatherOutTensor_, 4 , 16);
+                PRINTF("========totalSendCnt=========:%u\n", totalSendCnt);
                 SyncFuncStatic<AscendC::HardEvent::V_S, SYNC_EVENT_ID2>();
                 SyncFuncStatic<AscendC::HardEvent::S_MTE3, SYNC_EVENT_ID3>();
 
