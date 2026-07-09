@@ -333,7 +333,6 @@ __aicore__ inline void BSAVecSmService<BSAT>::OnlineSoftmaxFirstPassChunk(
     AscendC::PipeBarrier<PIPE_V>();
 
     SubBroadcast(scoreUb, scoreUb, globalMaxBroc, actualQExcuteRow, kChunkSizeAlign);
-    AscendC::PipeBarrier<PIPE_V>();
 
     AscendC::Exp(scoreUb, scoreUb, actualQExcuteRow * kChunkSizeAlign);
     AscendC::PipeBarrier<PIPE_V>();
@@ -416,13 +415,11 @@ __aicore__ inline void BSAVecSmService<BSAT>::SoftmaxSecondPassAndCast(
     AscendC::PipeBarrier<PIPE_V>();
 
     SubBroadcast(scoreUb, scoreUb, globalMaxBroc, actualQExcuteRow, kChunkSizeAlign16);
-    AscendC::PipeBarrier<PIPE_V>();
 
     AscendC::Exp(scoreUb, scoreUb, actualQExcuteRow * kChunkSizeAlign16);
     AscendC::PipeBarrier<PIPE_V>();
 
     DivBroadcast(scoreUb, scoreUb, globalSumBroc, actualQExcuteRow, kChunkSizeAlign16);
-    AscendC::PipeBarrier<PIPE_V>();
 
     AscendC::Cast(scoreFp16Ub, scoreUb, AscendC::RoundMode::CAST_ROUND, actualQExcuteRow * kChunkSizeAlign16);
     AscendC::PipeBarrier<PIPE_V>();
