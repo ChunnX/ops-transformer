@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file moe_distribute_combine_a5.cpp
+ * \file moe_distribute_combine_apt.cpp
  * \brief A5 (arch35) kernel entry for MoeDistributeCombine.
  */
 #if ASC_DEVKIT_MAJOR >= 9
@@ -18,7 +18,7 @@
 #include "kernel_operator.h"
 #endif
 #include "lib/matmul_intf.h"
-#include "moe_distribute_combine_a5_tiling_key.h"
+#include "moe_distribute_combine_apt_tiling_key.h"
 #include "../moe_distribute_combine.h"
 using namespace MoeDistributeCombineImpl;
 using namespace Mc2Tiling;

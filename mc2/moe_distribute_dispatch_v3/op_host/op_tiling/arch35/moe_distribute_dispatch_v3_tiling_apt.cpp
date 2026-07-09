@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file moe_distribute_dispatch_v3_tiling_a5.cpp
+ * \file moe_distribute_dispatch_v3_tiling_apt.cpp
  * \brief
  */
 

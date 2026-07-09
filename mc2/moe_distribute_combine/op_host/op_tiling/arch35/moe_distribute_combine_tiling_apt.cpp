@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file moe_distribute_combine_tiling_a5.cpp
+ * \file moe_distribute_combine_tiling_apt.cpp
  * \brief
  */
 
