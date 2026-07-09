@@ -254,6 +254,37 @@ public:
             {false, 0, 0, 0});
         SetFlag<HardEvent::MTE2_S>(EVENT_ID0);
         WaitFlag<HardEvent::MTE2_S>(EVENT_ID0);
+
+        FillZeroForEmptyBatch(varlenLocal);
+    }
+
+    __aicore__ inline void FillZeroForEmptyBatch(LocalTensor<int32_t>& varlenLocal)
+    {
+        if (task_id_ != 0) return;
+
+        LocalTensor<bfloat16_t> qflatLocal = outQueueQflat_.AllocTensor<bfloat16_t>();
+        Duplicate(qflatLocal, bfloat16_t(0), qflat_dim_);
+        SetFlag<HardEvent::V_MTE3>(EVENT_ID0);
+        WaitFlag<HardEvent::V_MTE3>(EVENT_ID0);
+
+        for (uint32_t b = 0; b < tiling_->batch_size; b++) {
+            uint32_t q_len_b = static_cast<uint32_t>(varlenLocal.GetValue(b));
+            if (q_len_b > 0) continue;
+
+            for (uint32_t h = 0; h < num_q_heads_; h++) {
+                uint32_t baseOffset = b * (num_q_heads_ * tiling_->max_Qb * qflat_dim_)
+                                    + h * (tiling_->max_Qb * qflat_dim_);
+                for (uint32_t qb = 0; qb < tiling_->max_Qb; qb++) {
+                    uint32_t outOffset = baseOffset + qb * qflat_dim_;
+                    qflatGm_.SetGlobalBuffer(
+                        (__gm__ bfloat16_t*)qflatBase_ + outOffset, qflat_dim_);
+                    DataCopyPad(qflatGm_, qflatLocal,
+                        {1, static_cast<uint16_t>(qflat_dim_ * sizeof(bfloat16_t)), 0, 0});
+                }
+            }
+        }
+        SetFlag<HardEvent::V_MTE3>(EVENT_ID1);
+        WaitFlag<HardEvent::V_MTE3>(EVENT_ID1);
     }
 
     __aicore__ inline void Process()

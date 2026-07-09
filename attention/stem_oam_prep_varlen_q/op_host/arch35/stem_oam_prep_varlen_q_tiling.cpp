@@ -130,11 +130,16 @@ static ge::graphStatus ValidateInputs(gert::TilingContext* context,
     }
 
     batch = qSeqLensShape->GetStorageShape().GetDim(0);
-    if (batch <= 0 || batch > MAX_BATCH_SIZE || numQHeads <= 0) {
+    if (batch < 0 || batch > MAX_BATCH_SIZE || numQHeads <= 0) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "batch/numQHeads", 
             ("batch=" + std::to_string(batch) + ", numQHeads=" + std::to_string(numQHeads)).c_str(),
-            ("batch must be in (0, " + std::to_string(MAX_BATCH_SIZE) + "], numQHeads must be > 0").c_str());
+            ("batch must be in [0, " + std::to_string(MAX_BATCH_SIZE) + "], numQHeads must be > 0").c_str());
         return ge::GRAPH_FAILED;
+    }
+
+    if (batch == 0) {
+        OP_LOGI(nodeName, "Empty input: batch=0, skip computation");
+        return ge::GRAPH_SUCCESS;
     }
 
     return ge::GRAPH_SUCCESS;
