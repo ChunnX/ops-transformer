@@ -8,7 +8,7 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-/* !
+/*!
  * \file moe_distribute_combine_v2_apt_tiling_key.h
  * \brief A5 (arch35) tiling key selections. Shared macros/DECL live in the outer
  *        moe_distribute_combine_v2_tiling_key_decl.h.
@@ -28,7 +28,7 @@ ASCENDC_TPL_SEL(
     ),
     ASCENDC_TPL_ARGS_SEL(
         ASCENDC_TPL_UINT_SEL(TILINGKEY_QUANT_MODE, ASCENDC_TPL_UI_LIST,
-                            TILINGKEY_NO_QUANT, TILINGKEY_INT8_QUANT, 
+                            TILINGKEY_NO_QUANT, TILINGKEY_INT8_QUANT,
                             TILINGKEY_MXFP8_E5M2_QUANT, TILINGKEY_MXFP8_E4M3_QUANT),
         ASCENDC_TPL_UINT_SEL(TILINGKEY_LAYERED_MODE, ASCENDC_TPL_UI_LIST, TILINGKEY_TPL_MTE),
         ASCENDC_TPL_UINT_SEL(ARCH_TAG, ASCENDC_TPL_UI_LIST, TILINGKEY_TPL_A5),

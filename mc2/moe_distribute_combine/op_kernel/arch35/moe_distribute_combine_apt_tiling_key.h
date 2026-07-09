@@ -8,7 +8,7 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-/* !
+/*!
  * \file moe_distribute_combine_apt_tiling_key.h
  * \brief A5 (arch35) tiling key selections. Shared macros/DECL live in the outer
  *        moe_distribute_combine_tiling_key_decl.h.
