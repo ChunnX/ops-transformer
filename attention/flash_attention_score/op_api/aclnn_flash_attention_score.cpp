@@ -561,13 +561,10 @@ static inline bool CheckFormat(
 
 static aclnnStatus ShapeCheck(const aclTensor *query, const aclTensor *key, char *inputLayout)
 {
-    NpuArch npuArch = GetCurrentPlatformInfo().GetCurNpuArch();
-    if (npuArch == NpuArch::DAV_2201) {
-        size_t layoutLen = strlen(inputLayout);
-        if (query->GetViewShape().GetDimNum() != layoutLen || key->GetViewShape().GetDimNum() != layoutLen) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "FlashAttentionScore query or key Invalid layout");
-            return ACLNN_ERR_PARAM_INVALID;
-        }
+    size_t layoutLen = strlen(inputLayout);
+    if (query->GetViewShape().GetDimNum() != layoutLen || key->GetViewShape().GetDimNum() != layoutLen) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "FlashAttentionScore query or key Invalid layout");
+        return ACLNN_ERR_PARAM_INVALID;
     }
     return ACLNN_SUCCESS;
 }
@@ -1353,8 +1350,8 @@ aclnnStatus aclnnFlashAttentionScoreV2GetWorkspaceSize(
     NpuArch npuArch = GetCurrentPlatformInfo().GetCurNpuArch();
     if (npuArch == NpuArch::DAV_2201) {
         CHECK_RET(InputOutputDtypeCheck(query, attentionOutOut) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
+        CHECK_RET(ShapeCheck(query, key, inputLayout) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
     }
-    CHECK_RET(ShapeCheck(query, key, attentionOutOut) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
     CHECK_RET(AnalysisInput(query, key, value, inputLayout, headNum, shapeInfo) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
 
     aclOpExecutor *l0Executor = uniqueExecutor.get();
