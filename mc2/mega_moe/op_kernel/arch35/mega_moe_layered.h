@@ -249,7 +249,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Init(
     maxOutputSize_ = tilingData->maxOutputSize;
     // 与 WorkspaceInfo 构造里 flagDispatchToGmm1Ptr 的分配公式保持一致。
 
-    PRINTF("==maxOutputSize_==:%u", maxOutputSize_);
+    //PRINTF("==maxOutputSize_==:%u", maxOutputSize_);
     maxWavesPerExpert_ = static_cast<int32_t>(Ops::Base::CeilDiv(
         static_cast<int64_t>(maxOutputSize_), DISPATCH_WAVE_TILE_M));// 64K / 256 = 256
     dispatchFlagSlotsPerExpert_ = static_cast<int32_t>(Ops::Base::CeilAlign(
@@ -303,10 +303,10 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Init(
     // maskAlignSize_ 必与 PeermemInfo 中 maskAlignSize 公式数值一致。
     compareCount_ = Ops::Base::CeilAlign(static_cast<int64_t>(sendTotalNum_ * sizeof(int32_t)), // sendTotalNum_ = 2k*16 = 32K
         static_cast<int64_t>(ALIGN_256)) / sizeof(int32_t); // 128K 256对齐后/4 = 32K
-    PRINTF("==compareCount_==:%u\n", compareCount_); // 32K
+    //PRINTF("==compareCount_==:%u\n", compareCount_); // 32K
     maskAlignSize_ = Ops::Base::CeilAlign(static_cast<int64_t>(compareCount_) / 8, static_cast<int64_t>(ALIGN_32)); // 4K 32对齐
     // 每个 win 槽位再追加 32B 存 count(源卡 SendMaskCal 同步算好), 须与 PeermemInfo 的 maskSlotSize 一致。
-    PRINTF("==maskAlignSize_==:%u\n", maskAlignSize_);
+    //PRINTF("==maskAlignSize_==:%u\n", maskAlignSize_);
     maskSlotSize_ = maskAlignSize_ + static_cast<uint32_t>(ALIGN_32); // 4K + 32B
     mxQuantScaleNumAlignPerToken_ = Ops::Base::CeilDiv(k_, static_cast<uint32_t>(ALIGN_32));
     mxQuantTokenAlignBytes_ = Ops::Base::CeilAlign(static_cast<uint32_t>(k_ / A_ELEMS_PER_BYTE),
@@ -438,11 +438,11 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::SendAndQuantBuff
         totalFlagInt32 = (static_cast<int64_t>(totalFlagInt32) > tokenGroupResetSize)
                          ? static_cast<int64_t>(totalFlagInt32) : tokenGroupResetSize;
     }
-    PRINTF("==blockAivNum_==:%u", blockAivNum_); // 56
+    //PRINTF("==blockAivNum_==:%u", blockAivNum_); // 56
     uint32_t resetNumPerCore = Ops::Base::CeilDiv(totalFlagInt32, static_cast<uint64_t>(blockAivNum_)); // 823
     uint32_t resetTensorSize = Ops::Base::CeilAlign(static_cast<uint64_t>(resetNumPerCore),
         static_cast<uint64_t>(INT32_PER_256B)) * sizeof(int32_t); // resetNumPerCore 8B对齐 后*4 = 3296
-    PRINTF("==resetTensorSize==:%u", resetTensorSize);
+    //PRINTF("==resetTensorSize==:%u", resetTensorSize);
 
     // 分轮次参数计算：UB 预算扣除固定开销后，求解最大 roundSendTotalNum_
     // round 张量: topkIds(R*4) + 2*maskSlot(CeilAlign(R/8,32)+32) + gatherOut(R*4)
@@ -471,7 +471,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::SendAndQuantBuff
     roundMaskSlotSize_ = roundMaskAlignSize_ + static_cast<uint32_t>(ALIGN_32); // 2K + 32B
     totalRounds_ = static_cast<uint32_t>(Ops::Base::CeilDiv(
         static_cast<int64_t>(sendTotalNum_), static_cast<int64_t>(roundSendTotalNum_))); // 32K / 16K = 2
-    PRINTF("=============totalRounds_=============:%u\n", totalRounds_);
+    //PRINTF("=============totalRounds_=============:%u\n", totalRounds_);
 
     // Tensor用处：SendMaskCal 每轮搬运本卡 topkIds 的一个子段；
     // Tensor大小：roundCompareCount_ 个 int32（256B 对齐）；
@@ -572,8 +572,8 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::SendMaskCal()
     int32_t totalExperts = static_cast<int32_t>(worldSize_);
     for (uint32_t curRankId = aivCoreIdx_; curRankId < static_cast<uint32_t>(totalExperts);
          curRankId += blockAivNum_) { // 按卡处理,只用前worldsize个核
-        PRINTF("====aivCoreIdx_====:%u", aivCoreIdx_);
-        PRINTF("====blockAivNum_====:%u", blockAivNum_);
+        //PRINTF("====aivCoreIdx_====:%u", aivCoreIdx_);
+        //PRINTF("====blockAivNum_====:%u", blockAivNum_);
         for (uint32_t expertIdIndex = 0; expertIdIndex < expertPerRank_; ++expertIdIndex) { // 按专家处理
             int32_t curExpertId = static_cast<int32_t>(curRankId * expertPerRank_ + expertIdIndex);
             uint64_t srcOffset = static_cast<uint64_t>(expertIdIndex * static_cast<int32_t>(worldSize_) +
@@ -606,7 +606,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::SendMaskCal()
                 DataCopyExtParams roundLoadParams{1U, static_cast<uint32_t>(roundLen * sizeof(int32_t)), 0U, 0U, 0U};
                 DataCopyPadExtParams<int32_t> roundLoadPad{false, 0U, 0U, 0U};
                 DataCopyPad(topkIdsTensor_, roundSrcGlobal, roundLoadParams, roundLoadPad);
-                DumpTensor(topkIdsTensor_, 1, 8);
+                DumpTensor(topkIdsTensor_, 1, 16);
                 SyncFuncStatic<AscendC::HardEvent::MTE2_V, SYNC_EVENT_ID1>();
 
                 // Phase 2: CompareScalar → 本轮部分 mask + GatherMask 累加 count
@@ -617,8 +617,8 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::SendMaskCal()
                 GatherMask(sendGatherOutTensor_, topkIdsTensor_, maskBufU32, true,
                     static_cast<uint32_t>(roundLen), {1, 1, 0, 0}, roundSendCnt);
                 totalSendCnt += roundSendCnt;
-                DumpTensor(sendGatherOutTensor_, 1, 8);
-                PRINTF("========totalSendCnt=========:%u\n", totalSendCnt);
+                DumpTensor(sendGatherOutTensor_, 2, 16);
+                PRINTF("========totalSendCnt, round=========:%u, %u\n", totalSendCnt, roundIdx);
                 SyncFuncStatic<AscendC::HardEvent::V_S, SYNC_EVENT_ID2>();
                 SyncFuncStatic<AscendC::HardEvent::S_MTE3, SYNC_EVENT_ID3>();
 
