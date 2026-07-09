@@ -4,7 +4,7 @@
 
 | 产品                                        | 是否支持 |
 | :------------------------------------------ | :------: |
-| <term>Ascend 950PR/Ascend 950DT</term>               |    √     |
+| <term>Ascend 950DT</term>               |    √     |
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  |    ×     |
 | <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>  |    ×     |
 | <term>Atlas 200I/500 A2 推理产品</term>                   |    ×     |
@@ -19,21 +19,21 @@
 假设通信域中的总卡数为epWorldSize，每张卡上通信后路由专家个数为e，每张卡分组矩阵乘只负责本卡专家的计算。对于每张卡的计算公式如下：
   - 本卡共享专家分组矩阵乘计算
 
-    ```
-    mm_y=(mm_x × mm_x_scale) @ (mm_weight × mm_weight_scale)
-    ```
+    $$
+    mm\_y=(mm\_x × mm\_x\_scale) @ (mm\_weight × mm\_weight\_scale)
+    $$
 
   - Alltoallv通信和permute
 
-    ```
-    permute_out=Alltoallv(gmm_x)
-    ```
+    $$
+    permute\_out=Alltoallv(gmm\_x)
+    $$
 
   - 本卡路由专家按专家维度分组矩阵乘计算
 
-    ```
-    gmm_y=(permute_out × gmm_x_scale) @ (gmm_weight × gmm_weight_scale)
-    ```
+    $$
+    gmm\_y=(permute\_out × gmm\_x\_scale) @ (gmm\_weight × gmm\_weight\_scale)
+    $$
 
 ## 参数说明
 
@@ -232,7 +232,7 @@
 
 ## 约束说明
 
-- 通信引擎约束：仅支持CCU通信。
+- 通信引擎约束：支持CCU通信和AI_CPU通信，CCU仅支持单机UB域内互联，AI_CPU可支持跨机UB域内互联。
 
 - 确定性计算：
   - `aclnnAlltoAllvQuantGroupedMatMul`默认确定性实现。
@@ -247,7 +247,7 @@
   - BS：batch sequence size。
   - K：表示选取TopK个专家，K的范围[2, 8]。
   - A：本卡收到的token数，是recvCounts参数累加之和。
-  - ep通信域内所有卡的 A 参数的累加和等于所有卡上的 BSK 参数的累加和。
+  - ep通信域内所有卡的A参数的累加和等于所有卡上的BSK参数的累加和。
   - mx量化且gmmX与gmmWeight为FLOAT4_E2M1时，H1和H2必须为偶数且不能为2，同时transGmmWeight和transMmWeight为false情况下，N1和N2必须为偶数。
   - gmmWeight和gmmWeightScale的转置状态必须保持一致：同时转置或同时不转置。mmWeight和mmWeightScale同样需要保持转置状态一致。
   - groupSize: 

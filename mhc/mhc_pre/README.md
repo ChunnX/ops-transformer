@@ -29,6 +29,14 @@ h_{in} &=\vec{x^{'}_{l}}H^{pre}_l
 \end{aligned}
 $$
 
+- **注**：
+
+$$
+\begin{aligned}
+RMSNorm(\vec{x}) = \frac{\vec{x}}{\sqrt{\frac{1}{d} \sum_{\dim=-2,\text{keepdim}=\text{True}} x_i^2 + \epsilon}}
+\end{aligned}
+$$
+
 ## 参数说明
 
   <table style="table-layout: auto; width: 100%">
@@ -80,7 +88,7 @@ $$
       <tr>
         <td>out_flag</td>
         <td>可选输入</td>
-        <td>表示是否输出inv_rms/h_mix/h_pre, 默认为0表示不输出，为1表示全输出。</td>
+        <td>表示是否输出inv_rms/h_mix/h_pre,默认为0表示不输出，为1表示全输出。</td>
         <td>DOUBLE</td>
         <td>-</td>
       </tr>

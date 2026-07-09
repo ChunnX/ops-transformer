@@ -32,6 +32,7 @@ constexpr int64_t MAX_PRE_NEXT_TOKENS = 0x7FFFFFFF;
     int64_t s2LoopEndIdx;          /* S2方向的循环控制信息 souter层确定 */ \
     int64_t s2LineStartIdx = 0;    /* S2方向按行的起始位置 */ \
     int64_t s2LineOriEndIdx;          /* S2方向按行的结束位置 */ \
+    int64_t s2CmpLineStartIdx = 0; \
     int64_t s2CmpLineEndIdx; \
     int64_t s2LineCmpEndIdx; \
     /* cube视角的sOuter，在SAMEAB场景中cubeSOuterSize为两倍的 halfS1RealSize souter层确定 */ \
@@ -69,6 +70,10 @@ struct RunParamStr {  // 分核与切块需要使用到参数
     int64_t qSNumInOneBlock;
     int64_t oriKvLoopEndIdx;
     int64_t cmpKvLoopEndIdx;
+    int64_t firstFdDataWorkspaceIdx = 0;
+    bool isS2Split = false;
+    int64_t s2SplitIdx = 0;
+    bool isFirstS2SplitCore = true;
 };
 
 #define COMMON_RUN_INFO \
@@ -110,6 +115,9 @@ struct RunParamStr {  // 分核与切块需要使用到参数
     int64_t sOuterOffset; \
     int64_t mOuterOffset; \
     bool    isCmp; \
+    bool    isS2Split = false; \
+    int64_t s2SplitIdx = 0; \
+    bool    isFirstS2SplitCore = true; \
 
 struct RunInfo {
     COMMON_RUN_INFO;
@@ -120,6 +128,7 @@ struct RunInfo {
     int64_t qSNumInOneBlock;
     int64_t oriKvLoopEndIdx;
     int64_t cmpKvLoopEndIdx;
+    int64_t firstFdDataWorkspaceIdx = 0;
 };
 
 #define COMMON_CONST_INFO \
@@ -130,7 +139,7 @@ struct RunInfo {
     uint32_t s2BaseSize; \
     int64_t dSize; /* query d 512 */ \
     int64_t dSizeV; /* key d 512 */ \
-    int64_t dSizeVInput; /* key inpue d 640 = rope + nope + scale + pad */ \
+    int64_t dSizeVInput; /* key input Dsize 608 = rope + nope + scale + pad */ \
     int64_t dSizeNope; /* key nope d 448 */ \
     int64_t dSizeRope; /* key rope d 64 */ \
     int64_t tileSize; /* 64 */ \
@@ -139,6 +148,7 @@ struct RunInfo {
     int64_t n2Size; \
     int64_t s1Size; /* s1总大小 */ \
     int64_t s2Size; /* s2总大小 */ \
+    int64_t cmpS2Size; \
     /* 轴的乘积 */ \
     int64_t s1D; \
     int64_t gS1D; \

@@ -26,8 +26,8 @@
 #endif
 #include "adv_api/reduce/sum.h"
 #include "../moe_distribute_dispatch_v2_tiling.h"
-#if __has_include("../../common/op_kernel/mc2_kernel_utils.h")
-#include "../../common/op_kernel/mc2_kernel_utils.h"
+#if __has_include("../../common/mc2_kernel_utils.h")
+#include "../../common/mc2_kernel_utils.h"
 #else
 #include "../../../common/op_kernel/mc2_kernel_utils.h"
 #endif
@@ -58,8 +58,8 @@ constexpr uint32_t MX_QUANT = 4;
 
 
 #define TemplateMoeDistributeDispatchA5TypeClass \
-    typename XType, typename ExpandXOutType, int32_t QuantMode, bool IsSmoothScaleExist, bool IsNeedAllgather
-#define TemplateMoeDistributeDispatchA5TypeFunc XType, ExpandXOutType, QuantMode, IsSmoothScaleExist, IsNeedAllgather
+    typename XType, typename ExpandXOutType, int32_t QuantMode, bool IsSmoothScaleExist
+#define TemplateMoeDistributeDispatchA5TypeFunc XType, ExpandXOutType, QuantMode, IsSmoothScaleExist
 
 using namespace AscendC;
 template <TemplateMoeDistributeDispatchA5TypeClass>
@@ -68,7 +68,7 @@ public:
     __aicore__ inline MoeDistributeDispatchA5(){};
     __aicore__ inline void Init(GM_ADDR x, GM_ADDR expertIds, GM_ADDR scales, GM_ADDR expandXOut, GM_ADDR xActiveMask,
                                 GM_ADDR dynamicScalesOut, GM_ADDR expandIdxOut, GM_ADDR expertTokenNumsOut,
-                                GM_ADDR sendCountsOut, GM_ADDR tpSendCountsOut, GM_ADDR workspaceGM, TPipe* pipe,
+                                GM_ADDR sendCountsOut, GM_ADDR workspaceGM, TPipe* pipe,
                                 const MoeDistributeDispatchV2TilingData* tilingData);
     __aicore__ inline void Process();
 
@@ -371,7 +371,7 @@ __aicore__ inline void MoeDistributeDispatchA5<TemplateMoeDistributeDispatchA5Ty
 template <TemplateMoeDistributeDispatchA5TypeClass>
 __aicore__ inline void MoeDistributeDispatchA5<TemplateMoeDistributeDispatchA5TypeFunc>::Init(
     GM_ADDR x, GM_ADDR expertIds, GM_ADDR scales, GM_ADDR xActiveMask, GM_ADDR expandXOut, GM_ADDR dynamicScalesOut,
-    GM_ADDR expandIdxOut, GM_ADDR expertTokenNumsOut, GM_ADDR sendCountsOut, GM_ADDR tpSendCountsOut,
+    GM_ADDR expandIdxOut, GM_ADDR expertTokenNumsOut, GM_ADDR sendCountsOut,
     GM_ADDR workspaceGM, TPipe *pipe, const MoeDistributeDispatchV2TilingData *tilingData)
 {
     AscendC::SetCtrlSpr<FLOAT_OVERFLOW_MODE_CTRL, FLOAT_OVERFLOW_MODE_CTRL>(0);
@@ -510,7 +510,7 @@ __aicore__ inline void MoeDistributeDispatchA5<TemplateMoeDistributeDispatchA5Ty
         __ubuf__ int8_t* outLocalAddr = (__ubuf__ int8_t*)outLocal.GetPhyAddr();
         __ubuf__ float* scaleOutLocalAddr = (__ubuf__ float*)outLocal[Align128<uint32_t>(axisH_)].GetPhyAddr();
 
-        quant::ComputePerTileDynamic<XType, ExpandXOutType, AscendC::RoundMode::CAST_RINT, IsSmoothScaleExist>(srcAddr,
+        Quant::ComputePerTileDynamic<XType, ExpandXOutType, AscendC::RoundMode::CAST_RINT, IsSmoothScaleExist>(srcAddr,
             smoothLocalAddr, scaleOutLocalAddr, outLocalAddr, axisH_);
     }
 }
@@ -528,9 +528,9 @@ __aicore__ inline void MoeDistributeDispatchA5<TemplateMoeDistributeDispatchA5Ty
         __ubuf__ int8_t* outLocalAddr = (__ubuf__ int8_t*)outLocal.GetPhyAddr();
         __ubuf__ uint16_t* mxScaleLocalAddr = (__ubuf__ uint16_t*)outLocal[Align256<uint32_t>(axisH_)].GetPhyAddr();
 
-        quant::ComputeMaxExp(srcAddr, maxExpAddr, axisH_);
-        quant::ComputeScale<ExpandXOutType>(maxExpAddr, mxScaleLocalAddr, halfScaleLocalAddr, mxScaleNum);
-        quant::ComputeFp8Data<XType, ExpandXOutType, AscendC::RoundMode::CAST_TRUNC, AscendC::RoundMode::CAST_RINT>(
+        Quant::ComputeMaxExp(srcAddr, maxExpAddr, axisH_);
+        Quant::ComputeScale<ExpandXOutType>(maxExpAddr, mxScaleLocalAddr, halfScaleLocalAddr, mxScaleNum);
+        Quant::ComputeFp8Data<XType, ExpandXOutType, AscendC::RoundMode::CAST_TRUNC, AscendC::RoundMode::CAST_RINT>(
             srcAddr, halfScaleLocalAddr, outLocalAddr, axisH_);
     }
 }

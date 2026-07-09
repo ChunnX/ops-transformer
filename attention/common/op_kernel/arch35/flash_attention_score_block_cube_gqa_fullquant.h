@@ -728,7 +728,6 @@ __aicore__ inline void FABlockCubeGqaFullquant<TEMPLATE_ARGS>::IterateBmm1Nz(
     mm1A.Wait<HardEvent::MTE2_MTE1>(); // 等待L1A
     mm1B.Wait<HardEvent::MTE2_MTE1>(); // 等待L1B
 
-
     float deScaleValueTile1 = 1.0f;
     float deScaleValueTile2 = 1.0f;
     if constexpr (isFp8) {
@@ -782,7 +781,6 @@ __aicore__ inline void FABlockCubeGqaFullquant<TEMPLATE_ARGS>::IterateBmm1Nz(
             }
             mm1B.Set<HardEvent::MTE1_MTE2>(); // 释放L1B
         }
-
 
         mm1ResL0C.Set<HardEvent::M_FIX>(); // 通知
         mm1ResL0C.Wait<HardEvent::M_FIX>(); //等待L0C

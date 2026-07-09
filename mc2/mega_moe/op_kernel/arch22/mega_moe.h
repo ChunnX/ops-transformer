@@ -29,9 +29,17 @@
 
 using namespace AscendC;
 
+#if ASC_DEVKIT_MAJOR >= 9
+#include "basic_api/kernel_basic_intf.h"
+#else
 #include "kernel_operator.h"
+#endif
 
+#if __has_include("../../common/moe_distribute_base.h")
+#include "../../common/moe_distribute_base.h"
+#else
 #include "../../../common/op_kernel/moe_distribute_base.h"
+#endif
 
 #include "mega_moe_tiling_a2a3.h"
 #include "moe_init_routing_v2/moe_init_routing_v2_tiling.h"
@@ -56,14 +64,14 @@ using namespace AscendC;
 #include "mc2_moe_context.h"
 #include "utils/block_epilogue_pertoken_v2.hpp"
 #include "mega_moe_kernel_a3.hpp"
-// #include "mega_moe_kernel_a2.hpp"
 #include "moe_init_routing_quant_v2/moe_init_routing_quant_v2_tiling.h"
 
-using namespace Catlass;
+namespace MegaMoeImpl {
+using namespace AscendC;
 using namespace AscendC::HcclContextDef;
+using namespace Catlass;
 using namespace Mc2Tiling;
 
-namespace MegaMoeImpl {
 // Template parameter pack used by the unified MegaMoe class.
 //   AType_ : input X element type (DTYPE_X)
 //   BType_ : weight element type   (DTYPE_WEIGHT1)
@@ -75,7 +83,6 @@ namespace MegaMoeImpl {
 #define MegaMoeClass typename AType_, typename BType_, typename CType_, bool TB1_, bool TB2_, bool Nz_, bool IS_A2_
 #define MegaMoeFunc AType_, BType_, CType_, TB1_, TB2_, Nz_, IS_A2_
 
-using namespace AscendC;
 template <MegaMoeClass>
 class MegaMoe {
 public:
@@ -118,7 +125,7 @@ private:
     int32_t n;
     int32_t topK;
     int32_t expertPerRank;
-    int32_t maxOutputSize;
+    uint64_t maxOutputSize;
     int32_t EP;
     int32_t listLen;
     float activationClamp;
@@ -156,7 +163,6 @@ __aicore__ inline void MegaMoe<MegaMoeFunc>::Init(GM_ADDR contextGM, GM_ADDR xGM
     workspaceGM_ = workspaceGM;
 
     if constexpr (kRoutingIsQuant) {
-        auto tiling = (__gm__ MegaMoeTilingDataQuant *)tilingGM;
         GET_TILING_DATA_WITH_STRUCT(MegaMoeTilingDataQuant, tilingData, tilingGM);
 
         aivNum = tilingData.common.aivNum;
@@ -174,7 +180,6 @@ __aicore__ inline void MegaMoe<MegaMoeFunc>::Init(GM_ADDR contextGM, GM_ADDR xGM
         moeInitRoutingQuantV2TilingData = tilingData.moeInitRoutingQuantV2TilingData;
         initRoutingQuantTilingKey = tilingData.common.initRoutingQuantTilingKey;
     } else {
-        auto tiling = (__gm__ MegaMoeTilingDataNonQuant *)tilingGM;
         GET_TILING_DATA_WITH_STRUCT(MegaMoeTilingDataNonQuant, tilingData, tilingGM);
 
         aivNum = tilingData.common.aivNum;
@@ -234,14 +239,8 @@ __aicore__ inline void MegaMoe<MegaMoeFunc>::Process()
     constexpr uint32_t l0BStages = 2;
     constexpr uint32_t l0CStages = 1;
 
-    // Single dispatch-policy alias: the W4A4-vs-Fixpipe choice is encapsulated
-    // inside `MmadDispatchPolicyFor_t` (dispatch_policy_custom.hpp) and is driven
-    // purely by the weight element type. The caller now spells one name only,
-    // and there's no `MmadAtlasA2W4A4MatmulPerChannelDequant` branch visible
-    // here -- isolation between W4A4 and Fixpipe is achieved through the
-    // `BType_` data type alone.
-    using DispatchPolicy = Gemm::MmadDispatchPolicyFor_t<BElement, preloadStages, l1Stages, l0AStages, l0BStages,
-                                                         l0CStages, enableUnitFlag, enableShuffleK>;
+    using DispatchPolicy = Gemm::MmadDispatchPolicyFor_t<BElement, IS_A2_, preloadStages, l1Stages, l0AStages,
+                                                         l0BStages, l0CStages, enableUnitFlag, enableShuffleK>;
 
     using AType = Gemm::GemmType<AElement, layout::RowMajor>;
     using BType = Gemm::GemmType<BElement, LayoutB>;
@@ -288,18 +287,7 @@ __aicore__ inline void MegaMoe<MegaMoeFunc>::Process()
 
     using BlockScheduler = typename Gemm::Block::GemmIdentityBlockSwizzle<9, 1>;
     using ElementGroupList = int64_t;
-    // FIXME: A2 path temporarily disabled until mega_moe_kernel_a2.hpp is ready.
-    // Select the correct kernel implementation at compile time based on the
-    // platform: A2 (910B) uses MegaMoeKernelA2 with push-based
-    // SendTokensV3/RecvTokensV3; A3 (910_93) uses MegaMoeKernel
-    // with pull-based direct peer-memory access.
-    // using MatmulKernel = std::conditional_t<
-    //     IS_A2_,
-    //     Gemm::Kernel::MegaMoeKernelA2<BlockMmad, BlockScheduler, ElementGroupList,
-    //                                               BlockEpilogue1, BlockEpilogue3>,
-    //     Gemm::Kernel::MegaMoeKernel<BlockMmad, BlockScheduler, ElementGroupList,
-    //                                             BlockEpilogue1, BlockEpilogue2, BlockEpilogue3>
-    // >;
+
     using MatmulKernel = Gemm::Kernel::MegaMoeKernel<BlockMmad, BlockScheduler, ElementGroupList, BlockEpilogue1,
                                                      BlockEpilogue2, BlockEpilogue3>;
 
@@ -312,24 +300,19 @@ __aicore__ inline void MegaMoe<MegaMoeFunc>::Process()
 
     GemmCoord problemShape{static_cast<uint32_t>(m), static_cast<uint32_t>(n), static_cast<uint32_t>(k)};
 
-    // Epilogue scheduling depends on the data-type path, matching the
-    // historic per-path tuning carried over from the three legacy kernels:
-    //   - W4A8 : `epilogueCoreNum = aivNum`, no granularity throttle.
-    //   - INT8 : `epilogueCoreNum = aivNum / 2`, granularity = expertPerRank - 1.
-    //   - BF16 : `epilogueCoreNum = aivNum`,    granularity = expertPerRank - 2.
     uint32_t epilogueCoreNum;
     uint32_t epilogueGranularity;
     if constexpr (isW4A8) {
         epilogueCoreNum = static_cast<uint32_t>(aivNum);
         epilogueGranularity = 0U;
     } else if constexpr (isInt8) {
-        epilogueCoreNum = static_cast<uint32_t>(aivNum);
+        epilogueCoreNum = static_cast<uint32_t>(aivNum); // INT8：所有 AIV 参与
         epilogueGranularity = (expertPerRank > 4) ? static_cast<uint32_t>(expertPerRank - 3) :
-                              (expertPerRank > 0) ? static_cast<uint32_t>(expertPerRank - 1) :
-                                                    0U;
+                              (expertPerRank > 1) ? static_cast<uint32_t>(expertPerRank - 1) :
+                                                    1u;
     } else {
-        epilogueCoreNum = static_cast<uint32_t>(aivNum);
-        epilogueGranularity = (expertPerRank > 1) ? static_cast<uint32_t>(expertPerRank - 2) : 0U;
+        epilogueCoreNum = static_cast<uint32_t>(aivNum); // BF16/FP16：所有 AIV 参与
+        epilogueGranularity = (expertPerRank > 2) ? static_cast<uint32_t>(expertPerRank - 2) : 1u;
     }
 
     constexpr bool kRoutingIsQuant =
@@ -337,12 +320,11 @@ __aicore__ inline void MegaMoe<MegaMoeFunc>::Process()
 
     typename MatmulKernel::Params params;
     if constexpr (kRoutingIsQuant) {
-        // 缺少bias
         params = typename MatmulKernel::Params{problemShape,
                                                static_cast<uint32_t>(EP),
                                                static_cast<uint32_t>(listLen),
                                                static_cast<uint32_t>(expertPerRank),
-                                               static_cast<uint32_t>(maxOutputSize),
+                                               static_cast<uint64_t>(maxOutputSize),
                                                static_cast<uint32_t>(topK),
                                                initRoutingQuantTilingKey,
                                                epilogueCoreNum,
@@ -380,7 +362,7 @@ __aicore__ inline void MegaMoe<MegaMoeFunc>::Process()
                                                static_cast<uint32_t>(EP),
                                                static_cast<uint32_t>(listLen),
                                                static_cast<uint32_t>(expertPerRank),
-                                               static_cast<uint32_t>(maxOutputSize),
+                                               static_cast<uint64_t>(maxOutputSize),
                                                static_cast<uint32_t>(topK),
                                                initRoutingQuantTilingKey,
                                                epilogueCoreNum,

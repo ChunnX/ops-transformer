@@ -44,6 +44,12 @@ namespace {
 const gert::Shape defaultShape = gert::Shape();
 gert::StorageShape defaultStorageShape = gert::StorageShape();
 } // namespace
+
+bool QuantMatmulAllReduceTilingA5::IsPerTensorDequantScale(const gert::Shape& dequantShape) const
+{
+    return dequantShape.GetDimNum() > 0 && dequantShape.GetDim(dequantShape.GetDimNum() - 1) == 1;
+}
+
 bool QuantMatmulAllReduceTilingA5::IsCapable()
 {
     if (isA8W8_ || (scenario_ == AllReduceScenario::FP8HIF8) || (scenario_ == AllReduceScenario::MXFP4) ||
@@ -69,7 +75,7 @@ ge::graphStatus QuantMatmulAllReduceTilingA5::SetMc2HcommAllReduce(const char* g
     if (commMode == Mc2Comm::COMM_MODE_AICPU) {
         mc2CcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_AICPU);
     } else if (commMode == Mc2Comm::COMM_MODE_CCU) {
-        mc2CcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_CCU);
+        mc2CcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_CCU_SCHED);
     }
     OP_TILING_CHECK(
         mc2CcTilingConfig.GetTiling(quantMatmulAllReduceTilingData_.mc2InitTiling),
@@ -98,7 +104,7 @@ ge::graphStatus QuantMatmulAllReduceTilingA5::SetMc2HcommTwoShot(const char* gro
     if (commMode == Mc2Comm::COMM_MODE_AICPU) {
         mc2CcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_AICPU);
     } else if (commMode == Mc2Comm::COMM_MODE_CCU) {
-        mc2CcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_CCU);
+        mc2CcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_CCU_SCHED);
     }
     OP_TILING_CHECK(
         mc2CcTilingConfig.GetTiling(quantMatmulAllReduceTilingData_.mc2InitTiling),
@@ -136,7 +142,7 @@ ge::graphStatus QuantMatmulAllReduceTilingA5::SetMc2HcommRSAG(const char* groupN
     if (commMode == Mc2Comm::COMM_MODE_AICPU) {
         mc2CcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_AICPU);
     } else if (commMode == Mc2Comm::COMM_MODE_CCU) {
-        mc2CcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_CCU);
+        mc2CcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_CCU_SCHED);
     }
     OP_TILING_CHECK(
         mc2CcTilingConfig.GetTiling(quantMatmulAllReduceTilingData_.mc2InitTiling),
@@ -162,9 +168,11 @@ ge::graphStatus QuantMatmulAllReduceTilingA5::SetMc2Hcomm()
     bool isUseA2APath = mc2tiling::IsUseA2APath(args_.rankDim, npuArch_);
     OP_TILING_CHECK(
         mc2tiling::ConvertGeTypeToHcclType(opName_, args_.geCType) == mc2tiling::HcclDataType::HCCL_DATA_TYPE_RESERVED,
-        OP_LOGE(opName_, "cannot find HcclDataType according to ge datatype = %d.", static_cast<int32_t>(args_.geCType)),
+        OP_LOGE_FOR_INVALID_DTYPE(opName_, "y",
+            Ops::Base::ToString(args_.geCType).c_str(),
+            "FLOAT16, BF16, FLOAT or INT8"),
         return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(context_->GetAttrs() == nullptr, OP_LOGE(opName_, "failed to get attrs."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(context_->GetAttrs() == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "comm_mode"), return ge::GRAPH_FAILED);
     const char* groupName = context_->GetAttrs()->GetAttrPointer<char>(static_cast<int>(0));
     const uint32_t reduceType = HcclReduceOp::HCCL_REDUCE_SUM;
     if (isUseA2APath && !MutableRCSTilingData().isInputCommQuantScale) {
@@ -175,9 +183,10 @@ ge::graphStatus QuantMatmulAllReduceTilingA5::SetMc2Hcomm()
             return ge::GRAPH_FAILED);
     } else {
         if (MutableRCSTilingData().isInputCommQuantScale == 1) {
+            uint8_t dataType = static_cast<uint8_t>(mc2tiling::ConvertGeTypeToHcclType(opName_, ge::DataType::DT_INT8));
             OP_TILING_CHECK(
-                SetMc2HcommRSAG(groupName, reduceType) != ge::GRAPH_SUCCESS,
-                OP_LOGE(opName_, "set Mc2Hcomm config By SetMc2HcommRSAG failed."),
+                SetMc2HcommTwoShot(groupName, reduceType, dataType) != ge::GRAPH_SUCCESS,
+                OP_LOGE(opName_, "set Mc2Hcomm config By SetMc2HcommTwoShot failed."),
                 return ge::GRAPH_FAILED);
         } else if (MutableRCSTilingData().isInputCommQuantScale == QUANT_MODE_FP8) {
             uint8_t dataType = static_cast<uint8_t>(mc2tiling::ConvertGeTypeToHcclType(opName_, args_.geAType));
@@ -453,7 +462,7 @@ ge::graphStatus QuantMatmulAllReduceTilingA5::GetWorkspaceSizeOfCommQuantScaleOr
         myWorkSpaceSize_ = myWorkSpaceSize_ + PERTILE_FP8_WORKSPACE_CNT * commInt8WorkSpace +
                         commInt8WorkSpace / args_.rankDim + PERTILE_FP32_WORKSPACE_CNT * commFp32WorkSpace;
     } else {
-        myWorkSpaceSize_ = myWorkSpaceSize_ + gmcFloat + INT8_WORKSPACE_CNT * commInt8WorkSpace + commFp32WorkSpace;
+        myWorkSpaceSize_ = myWorkSpaceSize_ + gmcFloat + INT8_WORKSPACE_CNT * commInt8WorkSpace;
     }
     return ge::GRAPH_SUCCESS;
 }

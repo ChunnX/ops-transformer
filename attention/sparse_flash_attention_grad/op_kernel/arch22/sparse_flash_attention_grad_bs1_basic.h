@@ -31,6 +31,7 @@ class SelectedAttentionGradBasic {
     static constexpr bool HAS_ROPE = SFAGT::has_rope;
     static constexpr bool IS_BSND = SFAGT::is_bsnd;
     static constexpr bool IS_DETERMINISTIC = SFAGT::is_deterministic;
+    static constexpr bool KV_MERGE = SFAGT::kv_merge;
 
 public:
     __aicore__ inline SelectedAttentionGradBasic(){};
@@ -117,10 +118,10 @@ private:
 
     int32_t lastblkCntOffset;
     // workspace
-    uint32_t selectedKWorkspaceLen;
-    uint32_t selectedVWorkspaceLen;
-    uint32_t mm12WorkspaceLen;
-    uint32_t mm345WorkspaceLen;
+    uint64_t selectedKWorkspaceLen;
+    uint64_t selectedVWorkspaceLen;
+    uint64_t mm12WorkspaceLen;
+    uint64_t mm345WorkspaceLen;
     // Index
     int64_t bIndex{0};
     int64_t s1Index{0};
@@ -236,7 +237,6 @@ __aicore__ inline void SelectedAttentionGradBasic<SFAGT>::Process(
     topkIndicesGm.SetGlobalBuffer((__gm__ int32_t *)topk_indices);
     if constexpr (IS_BSND == false) {
         validT1 = ((__gm__ int32_t *)actual_seq_qlen)[dimB - 1];
-        totalS1 = validT1;
     }
 
     if constexpr (IS_DETERMINISTIC) {
@@ -257,6 +257,10 @@ __aicore__ inline void SelectedAttentionGradBasic<SFAGT>::ProcessNonDeterministi
     GM_ADDR query_rope, GM_ADDR key_rope, GM_ADDR dq, GM_ADDR dk, GM_ADDR dv, GM_ADDR dq_rope, GM_ADDR dk_rope,
     GM_ADDR workspace, const TILING_CLASS *__restrict tilingData)
 {
+    if constexpr (IS_BSND == false) {
+        totalS1 = validT1;
+    }
+
     // AIC Process
     if ASCEND_IS_AIC {
         TPipe pipeCube;
@@ -266,8 +270,9 @@ __aicore__ inline void SelectedAttentionGradBasic<SFAGT>::ProcessNonDeterministi
         AllocEventID();
         int64_t task = 0;
         bool changeS1 = false;
+        uint64_t scatterBufferNum = enableOptimizedScatter ? SCATTER_BUFFER_NUM : PING_PONG_BUFFER;
         for (int32_t i = 0; i < processBS1ByCore; i++) {
-            scatterTaskId = i % SCATTER_BUFFER_NUM;
+            scatterTaskId = i % scatterBufferNum;
             int32_t t1Index = cubeBlockIdx + usedCoreNum * i;
             if (!IS_BSND && t1Index >= validT1) {
                 break;
@@ -334,8 +339,9 @@ __aicore__ inline void SelectedAttentionGradBasic<SFAGT>::ProcessNonDeterministi
         SET_FLAG(V, MTE2, scatterTmpKMte2WaitVPong);
         SET_FLAG(V, MTE2, scatterTmpVMte2WaitVPong);
 
+        uint64_t scatterBufferNum = enableOptimizedScatter ? SCATTER_BUFFER_NUM : PING_PONG_BUFFER;
         for (int32_t i = 0; i < processBS1ByCore; i++) {
-            scatterTaskId = i % SCATTER_BUFFER_NUM;
+            scatterTaskId = i % scatterBufferNum;
             int32_t t1Index = cubeBlockIdx + usedCoreNum * i;
             if (!IS_BSND && t1Index >= validT1) {
                 break;
@@ -403,9 +409,15 @@ __aicore__ inline void SelectedAttentionGradBasic<SFAGT>::ProcessNonDeterministi
         pipeVec.Destroy();
 
         TPipe pipeCast;
-        SparseFlashAttentionGradPost<T1, TILING_CLASS, true, 3, 0, HAS_ROPE> opCast;
-        opCast.Init(dq, dk, dv, actual_seq_qlen, actual_seq_kvlen, dq_rope, dk_rope, workspace, tilingData, &pipeCast);
-        opCast.Process();
+        if constexpr (KV_MERGE) {
+            SparseFlashAttentionGradPost<T1, TILING_CLASS, false, 3, 0, HAS_ROPE> opCast;
+            opCast.Init(dq, dk, dv, actual_seq_qlen, actual_seq_kvlen, dq_rope, dk_rope, workspace, tilingData, &pipeCast);
+            opCast.Process();
+        } else {
+            SparseFlashAttentionGradPost<T1, TILING_CLASS, true, 3, 0, HAS_ROPE> opCast;
+            opCast.Init(dq, dk, dv, actual_seq_qlen, actual_seq_kvlen, dq_rope, dk_rope, workspace, tilingData, &pipeCast);
+            opCast.Process();
+        }
     }
 }
 
@@ -426,7 +438,7 @@ __aicore__ inline void SelectedAttentionGradBasic<SFAGT>::ProcessDeterministic(
         int64_t task = 0;
         bool changeS1 = false;
         for (int32_t i = 0; i < processBS1ByCore; i++) {
-            scatterTaskId = i % SCATTER_BUFFER_NUM;
+            scatterTaskId = i % PING_PONG_BUFFER;
             int32_t t1Index = cubeBlockIdx + usedCoreNum * i;
             if (!IS_BSND && t1Index >= validT1) {
                 break;
@@ -500,26 +512,8 @@ __aicore__ inline void SelectedAttentionGradBasic<SFAGT>::ProcessDeterministic(
         scatterRunInfo.changeS1 = false;
         int64_t task = 0;
 
-        gatherMte2WaitMte3 = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::MTE3_MTE2>());
-        gatherMte2WaitMte3Pong = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::MTE3_MTE2>());
-        scatterVWaitMte3 = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>());
-        scatterVWaitMte3Pong = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>());
-        scatterTmpKMte2WaitV = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::V_MTE2>());
-        scatterTmpVMte2WaitV = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::V_MTE2>());
-        scatterTmpKMte2WaitVPong = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::V_MTE2>());
-        scatterTmpVMte2WaitVPong = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::V_MTE2>());
-
-        SET_FLAG(MTE3, MTE2, gatherMte2WaitMte3);
-        SET_FLAG(MTE3, MTE2, gatherMte2WaitMte3Pong);
-        SET_FLAG(MTE3, V, scatterVWaitMte3);
-        SET_FLAG(MTE3, V, scatterVWaitMte3Pong);
-        SET_FLAG(V, MTE2, scatterTmpKMte2WaitV);
-        SET_FLAG(V, MTE2, scatterTmpVMte2WaitV);
-        SET_FLAG(V, MTE2, scatterTmpKMte2WaitVPong);
-        SET_FLAG(V, MTE2, scatterTmpVMte2WaitVPong);
-
         for (int32_t i = 0; i < processBS1ByCore; i++) {
-            scatterTaskId = i % SCATTER_BUFFER_NUM;
+            scatterTaskId = i % PING_PONG_BUFFER;
             int32_t t1Index = cubeBlockIdx + usedCoreNum * i;
             if (!IS_BSND && t1Index >= validT1) {
                 break;
@@ -601,21 +595,19 @@ __aicore__ inline void SelectedAttentionGradBasic<SFAGT>::ProcessDeterministic(
                 CrossCoreWaitFlag<0, PIPE_MTE3>(SCATTER_VECTOR_SYNC_FLAG);
             }
         }
-        WAIT_FLAG(MTE3, MTE2, gatherMte2WaitMte3);
-        WAIT_FLAG(MTE3, MTE2, gatherMte2WaitMte3Pong);
-        WAIT_FLAG(MTE3, V, scatterVWaitMte3);
-        WAIT_FLAG(MTE3, V, scatterVWaitMte3Pong);
-        WAIT_FLAG(V, MTE2, scatterTmpKMte2WaitV);
-        WAIT_FLAG(V, MTE2, scatterTmpVMte2WaitV);
-        WAIT_FLAG(V, MTE2, scatterTmpKMte2WaitVPong);
-        WAIT_FLAG(V, MTE2, scatterTmpVMte2WaitVPong);
         SyncAll();
         pipeVec.Destroy();
 
         TPipe pipeCast;
-        SparseFlashAttentionGradPost<T1, TILING_CLASS, true, 3, 0, HAS_ROPE> opCast;
-        opCast.Init(dq, dk, dv, actual_seq_qlen, actual_seq_kvlen, dq_rope, dk_rope, workspace, tilingData, &pipeCast);
-        opCast.Process();
+        if constexpr (KV_MERGE) {
+            SparseFlashAttentionGradPost<T1, TILING_CLASS, false, 3, 0, HAS_ROPE> opCast;
+            opCast.Init(dq, dk, dv, actual_seq_qlen, actual_seq_kvlen, dq_rope, dk_rope, workspace, tilingData, &pipeCast);
+            opCast.Process();
+        } else {
+            SparseFlashAttentionGradPost<T1, TILING_CLASS, true, 3, 0, HAS_ROPE> opCast;
+            opCast.Init(dq, dk, dv, actual_seq_qlen, actual_seq_kvlen, dq_rope, dk_rope, workspace, tilingData, &pipeCast);
+            opCast.Process();
+        }
     }
 }
 
@@ -676,6 +668,10 @@ __aicore__ inline void SelectedAttentionGradBasic<SFAGT>::ScatterAddByS1(VecOp<S
             }
         }
     } else {
+        if (!enableOptimizedScatter) {
+            vecOp.ScatterAdd(scatterRunInfo);
+            return;
+        }
         int64_t t1ScatterIndex = scatterRunInfo.s1Begin + cubeBlockIdx;
         if (t1ScatterIndex >= scatterRunInfo.s1End) {
             return;
@@ -694,33 +690,6 @@ __aicore__ inline void SelectedAttentionGradBasic<SFAGT>::ScatterAddByS1(VecOp<S
         event_t savedScatterTmpVMte2WaitVPong = scatterRunInfo.scatterTmpVMte2WaitVPong;
 
         GetTndSeqLenScatter(actual_seq_qlen, actual_seq_kvlen, t1ScatterIndex, bIndexScatterIndex);
-        if (!enableOptimizedScatter) {
-            for (n2IndexScatter = 0; n2IndexScatter < dimN2; n2IndexScatter++) {
-                isLastBlockSelectedScatter = false;
-                GetActualSelCountScatter(t1ScatterIndex, n2IndexScatter, actualSelectedBlockCountScatter);
-                for (int32_t scatterBlkCntOffset = 0; scatterBlkCntOffset < actualSelectedBlockCountScatter;
-                    scatterBlkCntOffset += selectedCountOffset) {
-                    blkCntOffset = scatterBlkCntOffset;
-                    UpdateScatterInfo(t1ScatterIndex);
-                    scatterRunInfo.isLastBasicBlock =
-                        (scatterBlkCntOffset + selectedCountOffset >= actualSelectedBlockCountScatter);
-                    scatterRunInfo.scatterTaskId = savedScatterTaskId;
-                    scatterRunInfo.scatterVWaitMte3 = savedScatterVWaitMte3;
-                    scatterRunInfo.scatterVWaitMte3Pong = savedScatterVWaitMte3Pong;
-                    scatterRunInfo.scatterTmpKMte2WaitV = savedScatterTmpKMte2WaitV;
-                    scatterRunInfo.scatterTmpVMte2WaitV = savedScatterTmpVMte2WaitV;
-                    scatterRunInfo.scatterTmpKMte2WaitVPong = savedScatterTmpKMte2WaitVPong;
-                    scatterRunInfo.scatterTmpVMte2WaitVPong = savedScatterTmpVMte2WaitVPong;
-                    vecOp.ScatterAddUnDeter(scatterRunInfo);
-                }
-            }
-            blkCntOffset = savedCurBlkCntOffset;
-            n2IndexScatter = savedN2IndexScatter;
-            actualSelectedBlockCountScatter = savedActualSelectedBlockCountScatter;
-            isLastBlockSelectedScatter = savedIsLastBlockSelectedScatter;
-            scatterRunInfo.blkCntOffset = savedBlkCntOffset;
-            return;
-        }
         n2IndexScatter = (scatterRunInfo.indicesGmOffset / selectedBlockCount) % dimN2;
         isLastBlockSelectedScatter = false;
         GetActualSelCountScatter(t1ScatterIndex, n2IndexScatter, actualSelectedBlockCountScatter);
@@ -884,7 +853,11 @@ __aicore__ inline void SelectedAttentionGradBasic<SFAGT>::UpdateGmOffset(int64_t
     mm12GmOffset = mmPingPongIdx * mm12WorkspaceLen;
     mm345GmOffset = mmPingPongIdx * mm345WorkspaceLen;
     selectedKGmOffset = selectdKPPPidx * selectedKWspOffset;
-    selectedVGmOffset = mmPingPongIdx * selectedVWspOffset;
+    if (enableOptimizedScatter) {
+        selectedVGmOffset = mmPingPongIdx * selectedVWspOffset;
+    } else {
+        selectedVGmOffset = selectedKGmOffset;
+    }
 
     curMaxS2 = ATTEN_ENABLE ? (s1Index + curS2 - curS1 + 1) : curS2;
     
@@ -912,6 +885,10 @@ __aicore__ inline void SelectedAttentionGradBasic<SFAGT>::UpdateGmOffset(int64_t
     runInfo[mmPingPongIdx].gatherMte2WaitMte3Pong = gatherMte2WaitMte3Pong;
     runInfo[mmPingPongIdx].scatterVWaitMte3 = scatterVWaitMte3;
     runInfo[mmPingPongIdx].scatterVWaitMte3Pong = scatterVWaitMte3Pong;
+    runInfo[mmPingPongIdx].scatterTmpKMte2WaitV = scatterTmpKMte2WaitV;
+    runInfo[mmPingPongIdx].scatterTmpVMte2WaitV = scatterTmpVMte2WaitV;
+    runInfo[mmPingPongIdx].scatterTmpKMte2WaitVPong = scatterTmpKMte2WaitVPong;
+    runInfo[mmPingPongIdx].scatterTmpVMte2WaitVPong = scatterTmpVMte2WaitVPong;
 
     if (runInfo[mmPingPongIdx].s1End > totalS1) {
         runInfo[mmPingPongIdx].s1End = totalS1;
@@ -953,8 +930,10 @@ __aicore__ inline void SelectedAttentionGradBasic<SFAGT>::GetTndSeqLenScatter(co
         } else {
             t1OffsetScatterIndex = ((__gm__ int32_t *)actual_seq_qlen_addr)[bIndexScatterIndex - 1];
             t2OffsetScatterIndex = ((__gm__ int32_t *)actual_seq_kvlen_addr)[bIndexScatterIndex - 1];
-            curS1Scatter = ((__gm__ int32_t *)actual_seq_qlen_addr)[bIndexScatterIndex] - ((__gm__ int32_t *)actual_seq_qlen_addr)[bIndexScatterIndex - 1];
-            curS2Scatter = ((__gm__ int32_t *)actual_seq_kvlen_addr)[bIndexScatterIndex] - ((__gm__ int32_t *)actual_seq_kvlen_addr)[bIndexScatterIndex - 1];
+            curS1Scatter = ((__gm__ int32_t *)actual_seq_qlen_addr)[bIndexScatterIndex] -
+                ((__gm__ int32_t *)actual_seq_qlen_addr)[bIndexScatterIndex - 1];
+            curS2Scatter = ((__gm__ int32_t *)actual_seq_kvlen_addr)[bIndexScatterIndex] -
+                ((__gm__ int32_t *)actual_seq_kvlen_addr)[bIndexScatterIndex - 1];
         }
 
         s1IndexScatterIndex = t1Idx - t1OffsetScatterIndex;
@@ -985,8 +964,10 @@ __aicore__ inline void SelectedAttentionGradBasic<SFAGT>::GetTndSeqLen(const GM_
         } else {
             t1Offset = ((__gm__ int32_t *)actual_seq_qlen_addr)[bIndex - 1];
             t2Offset = ((__gm__ int32_t *)actual_seq_kvlen_addr)[bIndex - 1];
-            curS1 = ((__gm__ int32_t *)actual_seq_qlen_addr)[bIndex] - ((__gm__ int32_t *)actual_seq_qlen_addr)[bIndex - 1];
-            curS2 = ((__gm__ int32_t *)actual_seq_kvlen_addr)[bIndex] - ((__gm__ int32_t *)actual_seq_kvlen_addr)[bIndex - 1];
+            curS1 = ((__gm__ int32_t *)actual_seq_qlen_addr)[bIndex] -
+                ((__gm__ int32_t *)actual_seq_qlen_addr)[bIndex - 1];
+            curS2 = ((__gm__ int32_t *)actual_seq_kvlen_addr)[bIndex] -
+                ((__gm__ int32_t *)actual_seq_kvlen_addr)[bIndex - 1];
         }
 
         s1Index = t1Idx - t1Offset;

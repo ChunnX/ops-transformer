@@ -181,11 +181,11 @@ void FiaTilingNonQuantMla::GenTilingKey()
         {ge::DT_FLOAT16, 0U}, {ge::DT_BF16, 2U}, {ge::DT_INT8, 3U}, {ge::DT_INT4, 4U},
     };
 
-    if (kvLayoutMap.find(fiaInfo_->inputKvLayout) != kvLayoutMap.end()) {
-        kvLayoutVal = kvLayoutMap.at(fiaInfo_->inputKvLayout);
-    }
     if (qLayoutMap.find(fiaInfo_->inputLayout) != qLayoutMap.end()) {
         layoutVal = qLayoutMap.at(fiaInfo_->inputLayout);
+    }
+    if (kvLayoutMap.find(fiaInfo_->inputKvLayout) != kvLayoutMap.end()) {
+        kvLayoutVal = kvLayoutMap.at(fiaInfo_->inputKvLayout);
     }
     if (typeMap.find(fiaInfo_->inputQType) != typeMap.end()) {
         inputQVal = typeMap.at(fiaInfo_->inputQType);
@@ -328,7 +328,7 @@ void FiaTilingNonQuantMla::CreateSplitInput(BaseInfo &baseInfo, SplitParam &spli
     baseInfo.s2Size = static_cast<uint32_t>(fiaInfo_->s2Size);
     baseInfo.s1Size = fiaInfo_->s1Size;
     baseInfo.actualLenQDims = fiaInfo_->actualLenQDims;
-    baseInfo.actualLenKvDims = fiaInfo_->actualLenDims;
+    baseInfo.actualLenKvDims = fiaInfo_->actualLenKvDims;
     baseInfo.preToken = fiaInfo_->preToken;
     baseInfo.nextToken = fiaInfo_->nextToken;
     baseInfo.isS1G = fiaInfo_->inputLayout == TilingKeyLayout::TND ||
@@ -368,8 +368,8 @@ void FiaTilingNonQuantMla::SetSplitOutput(SplitResult &res)
     uint32_t *s2SplitStartIdxOfCore = tilingData_.fdParams.get_s2SplitStartIdxOfCore();
     uint32_t *gS1SplitNumOfFdHead = tilingData_.fdParams.get_gS1SplitNumOfFdHead();
     uint32_t *gS1LastPartSizeOfFdHead = tilingData_.fdParams.get_gS1LastPartSizeOfFdHead();
-    uint32_t *gS1IdxEndOfFdHead = tilingData_.fdParams.get_gS1IdxEndOfFdHead();
     uint32_t *gS1IdxEndOfFdHeadSplit = tilingData_.fdParams.get_gS1IdxEndOfFdHeadSplit();
+    uint32_t *gS1IdxEndOfFdHead = tilingData_.fdParams.get_gS1IdxEndOfFdHead();
 
     for (uint32_t i = 0; i < res.usedCoreNum; ++i) {
         bN2EndPtr[i] = res.bN2End[i];
@@ -434,7 +434,7 @@ void FiaTilingNonQuantMla::FillTilingBaseParams()
     tilingData_.baseParams.set_gSize(fiaInfo_->n1Size / fiaInfo_->n2Size);
     tilingData_.baseParams.set_batchContinuous((fiaInfo_->kvStorageMode == KvStorageMode::TENSOR_LIST) ? 0 : 1);
     tilingData_.baseParams.set_actualSeqS1Dims(fiaInfo_->actualLenQDims);
-    tilingData_.baseParams.set_actualSeqS2Dims(fiaInfo_->actualLenDims);
+    tilingData_.baseParams.set_actualSeqS2Dims(fiaInfo_->actualLenKvDims);
     tilingData_.baseParams.set_accumQSeqFlag(fiaInfo_->isAccumQSeq ? 1 : 0);
     tilingData_.baseParams.set_accumKVSeqFlag(fiaInfo_->isAccumKVSeq ? 1 : 0);
     tilingData_.baseParams.set_outputLayout(static_cast<uint32_t>(fiaInfo_->outputLayout));
@@ -583,8 +583,7 @@ ge::graphStatus FiaTilingNonQuantMla::DoOpTiling()
         GenTilingKey();
     }
 
-    if ((SetNumBlocks(numBlocks_) != ge::GRAPH_SUCCESS) ||
-        (SetTilingKey(tilingKey_) != ge::GRAPH_SUCCESS) ||
+    if ((SetNumBlocks(numBlocks_) != ge::GRAPH_SUCCESS) || (SetTilingKey(tilingKey_) != ge::GRAPH_SUCCESS) ||
         (SetWorkspaceSize(workspaceSize_) != ge::GRAPH_SUCCESS) ||
         (SetTilingData(tilingData_) != ge::GRAPH_SUCCESS) ||
         (SetScheduleMode(scheduleMode_) != ge::GRAPH_SUCCESS)) {

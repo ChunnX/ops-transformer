@@ -16,6 +16,7 @@
 #include "common/utils/op_mc2_def.h"
 #include "aclnn_kernels/common/op_error_check.h"
 #include "opdev/op_log.h"
+#include "mc2_log_compat.h"
 #include "opdev/platform.h"
 #include "opdev/common_types.h"
 #include "opdev/format_utils.h"
@@ -26,13 +27,6 @@
 #include "opdev/make_op_executor.h"
 #include "aclnn_allto_allv_quant_grouped_mat_mul_v2.h"
 
-#ifdef BUILD_OPEN_PROJECT
-#include "version/hcomm_version.h"
-#define HCCL_CHANNEL_SUPPORT_VERSION 89999700
-#if HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
-#include "common/op_api/mc2_context.h"
-#endif
-#endif
 namespace {
 using namespace op;
 
@@ -118,7 +112,12 @@ static bool CheckGmmWeightValid(const aclTensor *gmmWeight)
         OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "In AlltoAllvQuantGroupedMatmul, input gmmWeight should not be null.");
         return false;
     }
-    OP_CHECK_WRONG_DIMENSION(gmmWeight, THREE_DIMS, return false);
+    if (gmmWeight->GetViewShape().GetDimNum() != THREE_DIMS) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("aclnnAlltoAllvQuantGroupedMatMulV2GetWorkspaceSize", "gmmWeight",
+            (std::to_string(gmmWeight->GetViewShape().GetDimNum()) + "D").c_str(),
+            "The shape of gmmWeight must be 3D.");
+        return false;
+    }
     return true;
 }
 
@@ -127,7 +126,12 @@ static bool CheckMmWeightValid(const aclTensor *mmWeightOptional)
     if (mmWeightOptional == nullptr) {
         return false;
     }
-    OP_CHECK_WRONG_DIMENSION(mmWeightOptional, TWO_DIMS, return false);
+    if (mmWeightOptional->GetViewShape().GetDimNum() != TWO_DIMS) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("aclnnAlltoAllvQuantGroupedMatMulV2GetWorkspaceSize", "mmWeightOptional",
+            (std::to_string(mmWeightOptional->GetViewShape().GetDimNum()) + "D").c_str(),
+            "The shape of mmWeightOptional must be 2D.");
+        return false;
+    }
     return true;
 }
 
@@ -407,27 +411,16 @@ extern "C" void *NnopbaseGetUserHandle(void *executor);
 
 static aclnnStatus CheckAndHandleCommMode(const char *group, const char *commModeStr, uint8_t &commModeEnum)
 {
-    // 获取卡数
-    uint32_t rankSize = 0;
-#if defined(BUILD_OPEN_PROJECT) && HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
-    auto getRankSizeRet = Mc2Aclnn::Mc2Context::GetMc2RankSize(group, rankSize);
-    CHECK_RET(getRankSizeRet == ACLNN_SUCCESS, getRankSizeRet);
-#endif
-    const size_t maxLength = 6UL;
+    const size_t maxLength = 7UL;
     // 获取通信引擎参数
     if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
         if (strncmp(commModeStr, "ai_cpu", maxLength) == 0) {
             commModeEnum = Mc2Comm::COMM_MODE_AICPU;
         } else if (strncmp(commModeStr, "ccu", maxLength) == 0) {
             commModeEnum = Mc2Comm::COMM_MODE_CCU;
-        } else if (strncmp(commModeStr, "", maxLength) == 0) {
-            if (rankSize <= RANK_DIM_BOUNDARY) {
-                commModeEnum = Mc2Comm::COMM_MODE_CCU;
-            } else {
-                commModeEnum = Mc2Comm::COMM_MODE_AICPU;
-            }
         } else {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "commMode only support '', 'ccu', 'ai_cpu'.");
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "Currently, commMode only support 'ccu', 'ai_cpu', but got %s.", commModeStr);
             return ACLNN_ERR_PARAM_INVALID;
         }
     }

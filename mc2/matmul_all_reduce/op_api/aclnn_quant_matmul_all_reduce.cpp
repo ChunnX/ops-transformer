@@ -18,7 +18,7 @@
 #include "matmul_all_reduce_util.h"
 #include "common/utils/hccl_util.h"
 #include "mc2_comm_utils.h"
-#include "log/log.h"
+#include "mc2_log_compat.h"
 
 using namespace op;
 
@@ -64,7 +64,7 @@ aclnnStatus aclnnQuantMatmulAllReduce(
     uint64_t timeStamp = NnopbaseMsprofSysTime();
     if (NnopbaseSetHcclServerType) {
         if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-            NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
+            NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
         }
     }
     aclnnStatus ret = aclnnInnerMatmulAllReduce(workspace, workspaceSize, executor, stream);

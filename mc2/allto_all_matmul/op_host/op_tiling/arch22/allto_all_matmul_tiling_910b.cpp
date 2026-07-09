@@ -857,11 +857,17 @@ ge::graphStatus AlltoAllMatmulTiling910b::CheckAndSetAttrsInfo(AlltoAllMatmulInf
     OP_TILING_CHECK(attrs == nullptr, OP_LOGE(opName_, "Failed to get attrs."), return ge::GRAPH_FAILED);
 
     const char *group = attrs->GetAttrPointer<char>(ATTR_GROUP_INDEX);
-
+    const char *commMode = attrs->GetAttrPointer<char>(ALLTOALLMATMUL_ATTR_COMM_MODE_INDEX);
     // 判断为空或者空字符串
     OP_TILING_CHECK(group == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "group"),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(group[0] == '\0', OP_LOGE_FOR_INVALID_VALUE(opName_, "group", "\"\"", "non-empty string"),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(commMode == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "comm_mode"),
+                    return ge::GRAPH_FAILED);
+    const size_t maxLength = 4UL;
+    OP_TILING_CHECK((strncmp(commMode, "aiv", maxLength) != 0),
+                    OP_LOGE_WITH_INVALID_ATTR(opName_, "comm_mode", commMode, "aiv"),
                     return ge::GRAPH_FAILED);
     info.rankSize = mc2tiling::MatmulFormulaicTiling::GetRankSize(group);
     rankSize = info.rankSize;
@@ -1138,10 +1144,9 @@ ge::graphStatus AlltoAllMatmulTiling910b::CheckShapeInfo(AlltoAllMatmulInfo &inf
             uint64_t x1ScaleShapeDimNum = x1ScaleShape->GetStorageShape().GetDimNum();
             uint64_t x1ScaleDim0 = x1ScaleShape->GetStorageShape().GetDim(0);
             OP_TILING_CHECK((x1ScaleDim0 != tokenSize),
-                            OP_LOGE(opName_,
-                                    "The x1Scale dim0 should be %u (x1's second dim multiplied by world_size), "
-                                    "but actual value is %lu.",
-                                    tokenSize, x1ScaleDim0),
+                            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "x1Scale",
+                                Ops::Base::ToString(x1ScaleShape->GetStorageShape()).c_str(),
+                                "The dim0 of x1Scale should be " + std::to_string(tokenSize)),
                             return ge::GRAPH_FAILED);
         }
         const gert::StorageShape *x2ScaleShape = context_->GetOptionalInputShape(INPUT_X2_SCALE_INDEX);

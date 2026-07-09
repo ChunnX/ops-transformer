@@ -51,7 +51,7 @@
         \frac{\partial L}{\partial x} = \frac{\partial L}{\partial y} \cdot \text{cos} + Half({\frac{\partial L}{\partial y} \cdot \text{sin}}) \odot  \text{negMask}
     $$
 
-    - **其中，Interleave()表示headDim维度奇数与偶数位置交替重组，Half()表示headDim维度后半和前一半元素交替重组，例如x = [0,1,2,3,4,5,6,7], 则Interleave(x) = [1,0,3,2,5,4,7,6]，Half(x)=[4,0,5,1,6,2,7,3]；negMask为headDim长度，偶数位为1， 奇数位为-1，即(1, -1, 1, -1, 1, ...)**
+    - **其中，Interleave()表示headDim维度奇数与偶数位置交替重组，Half()表示headDim维度后半和前一半元素交替重组，例如x = [0,1,2,3,4,5,6,7],则Interleave(x) = [1,0,3,2,5,4,7,6]，Half(x)=[4,0,5,1,6,2,7,3]；negMask为headDim长度，偶数位为1，奇数位为-1，即(1, -1, 1, -1, 1, ...)**
 
 ## 函数原型
 
@@ -267,7 +267,7 @@ aclnnStatus aclnnNormRopeConcatBackward(
           <td>√</td>
       </tr>
       <tr>
-          <td>normAddQueryWeight</td>
+          <td>normAddedQueryWeight</td>
           <td>可选输入</td>
           <td>正向encoderQuery进行归一化操作的权重值，对应公式中的γ。</td>
           <td>当文本Query、Key进行带仿射LayerNorm归一化操作时传入，数据类型与参数gradQueryOutput保持一致。</td>
@@ -277,7 +277,7 @@ aclnnStatus aclnnNormRopeConcatBackward(
           <td>√</td>
       </tr>
       <tr>
-          <td>normAddQueryMean</td>
+          <td>normAddedQueryMean</td>
           <td>可选输入</td>
           <td>正向encoderQuery进行归一化操作时输出的均值，对应公式中的μ。</td>
           <td>当文本Query、Key进行归一化操作时传入。</td>
@@ -287,7 +287,7 @@ aclnnStatus aclnnNormRopeConcatBackward(
           <td>√</td>
       </tr>
       <tr>
-          <td>normAddQueryRstd</td>
+          <td>normAddedQueryRstd</td>
           <td>可选输入</td>
           <td>正向encoderQuery进行归一化操作时输出的方差相关项，对应公式中的rstd。</td>
           <td>当文本Query、Key进行归一化操作时传入。</td>
@@ -297,7 +297,7 @@ aclnnStatus aclnnNormRopeConcatBackward(
           <td>√</td>
       </tr>
       <tr>
-          <td>normAddKeyWeight</td>
+          <td>normAddedKeyWeight</td>
           <td>可选输入</td>
           <td>正向encoderKey进行归一化操作的权重值，对应公式中的γ。</td>
           <td>当文本Query、Key进行带仿射LayerNorm归一化操作时传入，数据类型与参数gradQueryOutput保持一致。</td>
@@ -307,7 +307,7 @@ aclnnStatus aclnnNormRopeConcatBackward(
           <td>√</td>
       </tr>
       <tr>
-          <td>normAddKeyMean</td>
+          <td>normAddedKeyMean</td>
           <td>可选输入</td>
           <td>正向encoderKey进行归一化操作时输出的均值，对应公式中的μ。</td>
           <td>当文本Query、Key进行归一化操作时传入。</td>
@@ -317,7 +317,7 @@ aclnnStatus aclnnNormRopeConcatBackward(
           <td>√</td>
       </tr>
       <tr>
-          <td>normAddKeyRstd</td>
+          <td>normAddedKeyRstd</td>
           <td>可选输入</td>
           <td>正向encoderKey进行归一化操作时输出的方差相关项，对应公式中的rstd。</td>
           <td>当文本Query、Key进行归一化操作时传入。</td>
@@ -752,7 +752,7 @@ aclnnStatus aclnnNormRopeConcatBackward(
     }
 
     int main() {
-        // 1. （固定写法）device/context/stream初始化，参考acl对外接口列表
+        // 1.（固定写法）device/context/stream初始化，参考acl对外接口列表
         // 根据自己的实际device填写deviceId
         int32_t deviceId = 0;
         aclrtContext context;
@@ -1016,7 +1016,7 @@ aclnnStatus aclnnNormRopeConcatBackward(
         ret = aclnnNormRopeConcatBackward(workspaceAddr, workspaceSize, executor, stream);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnNormRopeConcatBackward failed. ERROR: %d\n", ret); return ret);
 
-        // 4. （固定写法）同步等待任务执行结束
+        // 4.（固定写法）同步等待任务执行结束
         ret = aclrtSynchronizeStream(stream);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
 

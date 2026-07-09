@@ -755,25 +755,12 @@ public:
                                const AscendC::GlobalTensor<BiasType> &biasGlobal,
                                const AscendC::GlobalTensor<CType> &cGlobal, const BlockShape &singleShape)
     {
-        TileL1L0Param tileL1L0Param;
-        tileL1L0Param.curM = Get<IDX_M_TILE_IDX>(singleShape);
-        tileL1L0Param.curN = Get<IDX_N_TILE_IDX>(singleShape);
-        GetAlignMN(tileL1L0Param);
-        AscendC::MmadParams mmadParams;
-        mmadParams.m = tileL1L0Param.curM;
-        mmadParams.n = tileL1L0Param.curN;
-        mmadParams.disableGemv = true;
-        uint64_t l0cOffset = (l0cPingPong_ & 1) * HALF_L0C_SIZE;
-        if (orderAL1BL1_) {
-            IterAL1BL1(tileL1L0Param, mmadParams, l0cOffset, aGlobal, bGlobal, scaleAGlobal, scaleBGlobal, biasGlobal);
-        } else {
-            IterBL1AL1(tileL1L0Param, mmadParams, l0cOffset, aGlobal, bGlobal, scaleAGlobal, scaleBGlobal, biasGlobal);
-        }
+        AscendC::MmadParams mmParams;
+        uint64_t l0cOffset = 0;
+        RunMmadLoop(aGlobal, bGlobal, scaleAGlobal, scaleBGlobal, biasGlobal, singleShape, mmParams, l0cOffset);
         // Copy out to GM
-        CopyOut(cGlobal, c1Local_[l0cOffset], mmadParams.m, mmadParams.n);
-        if (enableL0cPingPong_) {
-            l0cPingPong_++;
-        }
+        CopyOut(cGlobal, c1Local_[l0cOffset], mmParams.m, mmParams.n);
+        UpdateL0cPingPong();
     }
 
     __aicore__ inline void run(const AscendC::GlobalTensor<AType> &aGlobal, const AscendC::GlobalTensor<BType> &bGlobal,
@@ -782,25 +769,12 @@ public:
                                const AscendC::GlobalTensor<BiasType> &biasGlobal,
                                const AscendC::LocalTensor<CType> &cLocal, const BlockShape &singleShape)
     {
-        TileL1L0Param tileL1L0Param;
-        tileL1L0Param.curM = Get<IDX_M_TILE_IDX>(singleShape);
-        tileL1L0Param.curN = Get<IDX_N_TILE_IDX>(singleShape);
-        GetAlignMN(tileL1L0Param);
         AscendC::MmadParams mmParams;
-        mmParams.m = tileL1L0Param.curM;
-        mmParams.n = tileL1L0Param.curN;
-        mmParams.disableGemv = true;
-        uint64_t l0cOffset = (l0cPingPong_ & 1) * HALF_L0C_SIZE;
-        if (orderAL1BL1_) {
-            IterAL1BL1(tileL1L0Param, mmParams, l0cOffset, aGlobal, bGlobal, scaleAGlobal, scaleBGlobal, biasGlobal);
-        } else {
-            IterBL1AL1(tileL1L0Param, mmParams, l0cOffset, aGlobal, bGlobal, scaleAGlobal, scaleBGlobal, biasGlobal);
-        }
+        uint64_t l0cOffset = 0;
+        RunMmadLoop(aGlobal, bGlobal, scaleAGlobal, scaleBGlobal, biasGlobal, singleShape, mmParams, l0cOffset);
         AscendC::LocalTensor<float> c1Local = c1Local_[l0cOffset];
         CopyOut(cLocal, c1Local, mmParams.m, mmParams.n);
-        if (enableL0cPingPong_) {
-            l0cPingPong_++;
-        }
+        UpdateL0cPingPong();
     }
 
     __aicore__ inline void operator()(const AscendC::GlobalTensor<AType> &aGlobal,
@@ -847,6 +821,36 @@ private:
     __aicore__ inline bool NeedBias(uint64_t kL0Offset)
     {
         return isBias_ && kL0Offset == 0;
+    }
+
+    __aicore__ inline void RunMmadLoop(const AscendC::GlobalTensor<AType> &aGlobal,
+                                       const AscendC::GlobalTensor<BType> &bGlobal,
+                                       const AscendC::GlobalTensor<fp8_e8m0_t> &scaleAGlobal,
+                                       const AscendC::GlobalTensor<fp8_e8m0_t> &scaleBGlobal,
+                                       const AscendC::GlobalTensor<BiasType> &biasGlobal,
+                                       const BlockShape &singleShape, AscendC::MmadParams &mmParams,
+                                       uint64_t &l0cOffset)
+    {
+        TileL1L0Param tileL1L0Param;
+        tileL1L0Param.curM = Get<IDX_M_TILE_IDX>(singleShape);
+        tileL1L0Param.curN = Get<IDX_N_TILE_IDX>(singleShape);
+        GetAlignMN(tileL1L0Param);
+        mmParams.m = tileL1L0Param.curM;
+        mmParams.n = tileL1L0Param.curN;
+        mmParams.disableGemv = true;
+        l0cOffset = (l0cPingPong_ & 1) * HALF_L0C_SIZE;
+        if (orderAL1BL1_) {
+            IterAL1BL1(tileL1L0Param, mmParams, l0cOffset, aGlobal, bGlobal, scaleAGlobal, scaleBGlobal, biasGlobal);
+        } else {
+            IterBL1AL1(tileL1L0Param, mmParams, l0cOffset, aGlobal, bGlobal, scaleAGlobal, scaleBGlobal, biasGlobal);
+        }
+    }
+
+    __aicore__ inline void UpdateL0cPingPong()
+    {
+        if (enableL0cPingPong_) {
+            l0cPingPong_++;
+        }
     }
 
     __aicore__ inline void Mmad(AscendC::MmadParams &mmadParams, uint64_t l0cOffset, uint64_t l0abOffset,

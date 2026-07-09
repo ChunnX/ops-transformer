@@ -5,10 +5,10 @@
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
 | <term>Ascend 950PR/Ascend 950DT</term>                             |    √     |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √    |
+| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>       |    √    |
 | <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √     |
 | <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
-| <term>Atlas 推理系列产品</term>                             |    ×     |
+| <term>Atlas 推理系列产品</term>                               |    ×     |
 | <term>Atlas 训练系列产品</term>                              |    ×     |
 
 ## 功能说明
@@ -24,7 +24,7 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用 “aclnnMatmulAlltoAllGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMatmulAlltoAll”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnMatmulAlltoAllGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMatmulAlltoAll”接口执行计算。
 
 ```cpp
 aclnnStatus aclnnMatmulAlltoAllGetWorkspaceSize(
@@ -290,7 +290,7 @@ aclnnStatus aclnnMatmulAlltoAll(
 * x1、x2计算输入的数据类型要和output计算输出的数据类型一致，传入的x1、x2与output均不为空指针。
 * biasOptional的数据类型根据不同设备型号有不同的限制：
   - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：output计算输出的数据类型为FLOAT16时，biasOptional计算输入的数据类型支持FLOAT16；output计算输出的数据类型为BFLOAT16时，biasOptional计算输入的数据类型支持FLOAT32。
-  - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：x1/x2计算输入的数据类型为FLOAT16时，biasOptional计算输入的数据类型支持FLOAT16；x1/x2计算输入的数据类型为BFLOAT16时，biasOptional计算输入的数据类型支持FLOAT32。
+  - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  ：x1/x2计算输入的数据类型为FLOAT16时，biasOptional计算输入的数据类型支持FLOAT16；x1/x2计算输入的数据类型为BFLOAT16时，biasOptional计算输入的数据类型支持FLOAT32。
   - <term>Ascend 950PR/Ascend 950DT</term>：x1/x2计算输入的数据类型为FLOAT16时，biasOptional计算输入的数据类型支持FLOAT16和FLOAT32；x1/x2计算输入的数据类型为BFLOAT16时，biasOptional计算输入的数据类型支持BFLOAT16和FLOAT32。
 * 通算融合算子不支持并发调用，不同的通算融合算子也不支持并发调用。
 * 不支持跨超节点通信，只支持超节点内。
@@ -405,7 +405,7 @@ aclnnStatus aclnnMatmulAlltoAll(
         std::vector<op::fp16_t> x2HostData(x2ShapeSize, 1);
         std::vector<op::fp16_t> biasHostData(biasShapeSize, 1);
         std::vector<op::fp16_t> outHostData(outShapeSize, 0);
-        // 创建 tensor
+        // 创建tensor
         ret = CreateAclTensor(x1HostData, x1Shape, &x1DeviceAddr, aclDataType::ACL_FLOAT16, &x1);
         CHECK_RET(ret == ACL_SUCCESS, return ret);
         ret = CreateAclTensor(x2HostData, x2Shape, &x2DeviceAddr, aclDataType::ACL_FLOAT16, &x2);
@@ -611,7 +611,7 @@ aclnnStatus aclnnMatmulAlltoAll(
         std::vector<int16_t> x2HostData(x2ShapeSize, 1);
         std::vector<int16_t> biasHostData(biasShapeSize, 1);
         std::vector<int16_t> outHostData(outShapeSize, 0);
-        // 创建 tensor
+        // 创建tensor
         ret = CreateAclTensor(x1HostData, x1Shape, &x1DeviceAddr, aclDataType::ACL_FLOAT16, &x1);
         CHECK_RET(ret == ACL_SUCCESS, return ret);
         ret = CreateAclTensor(x2HostData, x2Shape, &x2DeviceAddr, aclDataType::ACL_FLOAT16, &x2);

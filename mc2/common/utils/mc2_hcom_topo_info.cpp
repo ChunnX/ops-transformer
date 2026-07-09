@@ -16,7 +16,7 @@
 #include <cstdlib>
 #include <string>
 #include <dlfcn.h>
-#include "log/log.h"
+#include "mc2_log_compat.h"
 #include "mc2_hcom_topo_info.h"
 #include "ops_legacy/op_tiling/hcom_topo_info.h"
 #include "mc2_tiling_utils.h"
@@ -95,6 +95,8 @@ MC2HcomTopology::MC2HcomTopology(const char *libPath)
 #ifdef BUILD_OPEN_PROJECT
     if (getCommHandle_ == nullptr || getRankSize_ == nullptr || getTopoTypeByLayer_ == nullptr ||
         getHcclBuffer_ == nullptr) {
+        dlclose(handle_); // Release dlopen handle to prevent resource leak
+        handle_ = nullptr;
         OP_LOGE("", "Lib load new topo functions failed.");
         getCommHandle_ = nullptr;
         getRankSize_ = nullptr;
@@ -105,6 +107,8 @@ MC2HcomTopology::MC2HcomTopology(const char *libPath)
 #else
     if (getCommHandle_ == nullptr || getNetLayers_ == nullptr || getTopoTypeByLayer_ == nullptr
         || getInstSize_ == nullptr || getHcclBuffer_ == nullptr) {
+        dlclose(handle_); // Release dlopen handle to prevent resource leak
+        handle_ = nullptr;
         OP_LOGE("", "Lib load new topo functions failed.");
         getCommHandle_ = nullptr;
         getNetLayers_ = nullptr;

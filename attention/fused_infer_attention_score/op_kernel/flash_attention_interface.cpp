@@ -61,7 +61,6 @@ namespace SplitFuse {
         using LayoutP = layout::RowMajor;
         using ElementO = InputDtypeQ;
         using LayoutO = layout::RowMajor;
-        using ElementLse = float;
         using LayoutLse = layout::RowMajor;
         using ElementMask = int8_t;
         using LayoutMask = layout::RowMajor;
@@ -69,6 +68,7 @@ namespace SplitFuse {
         using LayoutOTmp = layout::RowMajor;
         using ElementUpdate = IntermCalcPrec;
         using LayoutUpdate = layout::RowMajor;
+        using ElementLse = float;
 
         using L1TileShapeQK = GemmShape<Q_TILE_CEIL, 128, 128>;
         using L0TileShapeQK = GemmShape<128, 128, 128>;
@@ -145,7 +145,6 @@ namespace SplitFuse {
         GM_ADDR tiling,
         GM_ADDR sink)
     {
-        using ArchTag = Arch::AtlasA2;
         using ElementQ = InputDtypeQ;
         using LayoutQ = layout::RowMajor;
         using ElementK = InputDtypeKv;
@@ -168,6 +167,7 @@ namespace SplitFuse {
         using LayoutOTmp = layout::RowMajor;
         using ElementUpdate = IntermCalcPrec;
         using LayoutUpdate = layout::RowMajor;
+        using ArchTag = Arch::AtlasA2;
 
         using L1TileShapeQK = GemmShape<Q_TILE_CEIL, 128, 128>;
         using L0TileShapeQK = GemmShape<128, 128, 128>;
@@ -176,12 +176,12 @@ namespace SplitFuse {
         using QType = Gemm::GemmType<ElementQ, LayoutQ>;
         using KType = Gemm::GemmType<ElementK, LayoutK>;
         using SType = Gemm::GemmType<ElementS, LayoutS>;
+        using PType = Gemm::GemmType<ElementP, LayoutP>;
         using SinkType = Gemm::GemmType<ElementSink, LayoutSink>;
         using BlockMmadQK = Gemm::Block::BlockMmad<DispatchPolicyQK, L1TileShapeQK, L0TileShapeQK,
                                                 QType, KType, SType>;
 
         using DispatchPolicyOnlineSoftmax = Epilogue::EpilogueAtlasA2OnlineSoftmax<lseMode, sinkMode, static_cast<Epilogue::MaskMode>(maskCategory), IntermCalcPrec>;
-        using PType = Gemm::GemmType<ElementP, LayoutP>;
         using maskType = Gemm::GemmType<ElementMask, LayoutMask>;
         using pseShiftType = Gemm::GemmType<ElementQ, LayoutQ>;
         using EpilogueOnlineSoftmax =
@@ -192,12 +192,12 @@ namespace SplitFuse {
         // Use MmadAtlasA2FAIPVDecode dispatch policy for decoding scenario
         using DispatchPolicyPV = Gemm::MmadAtlasA2FAIPVDecode<PagedCacheFlag, false>;
         using VType = Gemm::GemmType<ElementV, LayoutV>;
+        using OType = Gemm::GemmType<ElementO, LayoutO>;
         using OTmpType = Gemm::GemmType<ElementOTmp, LayoutOTmp>;
         using BlockMmadPV = Gemm::Block::BlockMmad<DispatchPolicyPV, L1TileShapePV, L0TileShapePV,
                                                 PType, VType, OTmpType>;
 
         using DispatchPolicyRescaleO = Epilogue::EpilogueAtlasA2RescaleO<lseMode, IntermCalcPrec>;
-        using OType = Gemm::GemmType<ElementO, LayoutO>;
         using OUpdateType = Gemm::GemmType<ElementUpdate, LayoutUpdate>;
         using LseType = Gemm::GemmType<ElementLse, LayoutLse>;
         using EpilogueRescaleO =

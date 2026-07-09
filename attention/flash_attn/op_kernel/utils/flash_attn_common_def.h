@@ -163,14 +163,33 @@ struct ConfigParams {
 //   config=0: sOuter=64,sInner=128 → S1=128,S2=128
 //   config=1: sOuter=32,sInner=256 → S1=64,S2=256
 static constexpr ConfigParams ConfigValue[] = {
+    // D=64 configurations
+    {inferS1TemplateType::Aligned128, inferS2TemplateType::Aligned128, inferDTemplateType::Aligned64,
+     inferDTemplateType::Aligned64}, // config=0
+    {inferS1TemplateType::Aligned64, inferS2TemplateType::Aligned256, inferDTemplateType::Aligned64,
+     inferDTemplateType::Aligned64}, // config=1
+
+    // D=128 configurations
     {inferS1TemplateType::Aligned128, inferS2TemplateType::Aligned128, inferDTemplateType::Aligned128,
-     inferDTemplateType::Aligned128}, // config=0
+     inferDTemplateType::Aligned128}, // config=2
     {inferS1TemplateType::Aligned64, inferS2TemplateType::Aligned256, inferDTemplateType::Aligned128,
-     inferDTemplateType::Aligned128}, // config=1
+     inferDTemplateType::Aligned128}, // config=3
+
+    // D=256 configurations
+    {inferS1TemplateType::Aligned64, inferS2TemplateType::Aligned256, inferDTemplateType::Aligned256,
+     inferDTemplateType::Aligned256}, // config=4
 };
 
-#define Config_S1Aligned128_S2Aligned128_DAligned128_DVAligned128 0
-#define Config_S1Aligned64_S2Aligned256_DAligned128_DVAligned128 1
+// Config macro definitions for D=64
+#define Config_S1Aligned128_S2Aligned128_DAligned64_DVAligned64 0
+#define Config_S1Aligned64_S2Aligned256_DAligned64_DVAligned64 1
+
+// Config macro definitions for D=128
+#define Config_S1Aligned128_S2Aligned128_DAligned128_DVAligned128 2
+#define Config_S1Aligned64_S2Aligned256_DAligned128_DVAligned128 3
+
+// Config macro definitions for D=256
+#define Config_S1Aligned64_S2Aligned256_DAligned256_DVAligned256 4
 
 
 // PseMode

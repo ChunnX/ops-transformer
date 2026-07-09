@@ -175,12 +175,6 @@ protected:
     uint32_t prevBN2Idx;
     uint32_t prevGS1Idx;
     // ===============================Util functions================================
-    template <typename T>
-    __aicore__ inline T Align(T num, T rnd)
-    {
-        return (((rnd) == 0) ? 0 : (((num) + (rnd)-1) / (rnd) * (rnd)));
-    }
-
     template <typename T1, typename T2>
     __aicore__ inline T1 Min(T1 a, T2 b)
     {
@@ -265,7 +259,7 @@ __aicore__ inline void FiaKernelNonQuant<FIAT, CubeBlockType, VecBlockType, FdBl
 
     constInfo.headDim = tilingData->baseParams.headDim;
     constInfo.headDimRope = tilingData->baseParams.headDimRope;
-    constInfo.headDimAlign = Align(constInfo.headDim, (uint64_t)AttentionCommon::BYTE_BLOCK);
+    constInfo.headDimAlign = AttentionCommon::Align(constInfo.headDim, (uint64_t)AttentionCommon::BYTE_BLOCK);
 
     constInfo.mmResUbSize = tilingData->workspaceParams.mm1ResSize;
     constInfo.bmm2ResUbSize = tilingData->workspaceParams.mm2ResSize;
@@ -620,7 +614,7 @@ __aicore__ inline void FiaKernelNonQuant<FIAT, CubeBlockType, VecBlockType, FdBl
         info.actualSingleProcessSInnerSize = info.actS2Size - s2Cur * constInfo.s2BaseSize;
     }
     info.actualSingleProcessSInnerSizeAlign =
-        Align((uint32_t)info.actualSingleProcessSInnerSize, (uint32_t)AttentionCommon::BYTE_BLOCK);
+        AttentionCommon::Align((uint32_t)info.actualSingleProcessSInnerSize, (uint32_t)AttentionCommon::BYTE_BLOCK);
 
     if (constInfo.isQHasLeftPadding) {
         info.qPaddingBeginOffset = constInfo.qSeqSize - actSeqLensQ - constInfo.qLeftPaddingSize;
@@ -1028,19 +1022,16 @@ __aicore__ inline void FiaKernelNonQuant<FIAT, CubeBlockType, VecBlockType, FdBl
     }
     // get valid range
     s2FirstToken = ClipSInnerToken(s2FirstToken, 0, static_cast<int64_t>(actSeqLensKv - 1));
-    s2LastToken = ClipSInnerToken(s2LastToken, 0, static_cast<int64_t>(actSeqLensKv - 1));
-
     s2StartWithSparse = static_cast<uint32_t>(s2FirstToken) / constInfo.s2BaseSize;
-    s2EndWithSparse = static_cast<uint32_t>(s2LastToken) / constInfo.s2BaseSize + 1U;
-
-    // 4. Calc curS2Start, curS2End
     curS2Start = s2StartWithSparse;
-    curS2End = s2EndWithSparse;
-    
     if (bN2Cur == constInfo.bN2Start && gS1Cur == constInfo.gS1Start) { // first line
         constInfo.headS2Split = constInfo.s2Start > s2StartWithSparse ? true : false;
         curS2Start = Max(s2StartWithSparse, constInfo.s2Start);
     }
+
+    s2LastToken = ClipSInnerToken(s2LastToken, 0, static_cast<int64_t>(actSeqLensKv - 1));
+    s2EndWithSparse = static_cast<uint32_t>(s2LastToken) / constInfo.s2BaseSize + 1U;
+    curS2End = s2EndWithSparse;
     if (bN2Cur == constInfo.bN2End && gS1Cur == constInfo.gS1End) {  // last line
         constInfo.tailS2Split = constInfo.s2End > 0U ? true : false;
         curS2End = constInfo.s2End > 0U ? Min(s2EndWithSparse, constInfo.s2End) : s2EndWithSparse;

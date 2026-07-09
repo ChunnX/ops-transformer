@@ -532,10 +532,10 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV3(
     <tr>
       <td rowspan="2">ACLNN_ERR_PARAM_INVALID</td>
       <td rowspan="2">161002</td>
-      <td>query、queryRope、keyIn、keyInRope、value、dy、pseShiftOptional、dropMaskOptional、paddingMaskOptional、attenMaskOptional、softmaxMaxOptional、softmaxSumOptional、softmaxInOptional、attentionInOptional、dqOut、dkOut、dvOut 的数据类型不在支持的范围内。</td>
+      <td>query、queryRope、keyIn、keyInRope、value、dy、pseShiftOptional、dropMaskOptional、paddingMaskOptional、attenMaskOptional、softmaxMaxOptional、softmaxSumOptional、softmaxInOptional、attentionInOptional、dqOut、dkOut、dvOut的数据类型不在支持的范围内。</td>
     </tr>
     <tr>
-      <td>query、queryRope、keyIn、keyInRope、value、dy、pseShiftOptional、dropMaskOptional、paddingMaskOptional、attenMaskOptional、softmaxMaxOptional、softmaxSumOptional、softmaxInOptional、attentionInOptional、dqOut、dkOut、dvOut 的数据格式不在支持的范围内。</td>
+      <td>query、queryRope、keyIn、keyInRope、value、dy、pseShiftOptional、dropMaskOptional、paddingMaskOptional、attenMaskOptional、softmaxMaxOptional、softmaxSumOptional、softmaxInOptional、attentionInOptional、dqOut、dkOut、dvOut的数据格式不在支持的范围内。</td>
     </tr>
   </tbody>
   </table>
@@ -599,6 +599,7 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV3(
     - D：取值范围为1\~768。
     - KeepProb：取值范围为1。
 - query、key、value数据排布格式仅支持TND，T是B和S合轴紧密排列的数据（每个batch的SeqLenQ和SeqLenKV），其中B（Batch）表示输入样本批量大小、S（Seq-Length）表示输入样本序列长度、H（Head-Size）表示隐藏层的大小、N（Head-Num）表示多头数、D（Head-Dim）表示隐藏层最小的单元尺寸，且满足D=H/N。
+- TND格式下，支持尾部部分Batch不参与计算，此时actual_seq_qlen和actual_seq_kv_len尾部传入对应个数个0即可。假设真实的S长度为[2, 3, 4, 5, 6]，此时后两个Batch不参与计算，则传入的actual_seq_qlen为[2, 5, 9, 0, 0]。
 - sparseMode的约束如下:
   - 当所有的attenMaskOptional的shape小于2048且相同的时候，建议使用default模式，来减少内存使用量；
   - 配置为1、2、3时，用户配置的preTokens、nextTokens不会生效；
@@ -692,7 +693,7 @@ int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& 
 }
 
 int main() {
-  // 1. （固定写法）device/stream初始化，参考acl API手册
+  // 1.（固定写法）device/stream初始化，参考acl API手册
   // 根据自己的实际device填写deviceId
   int32_t deviceId = 0;
   aclrtStream stream;
@@ -843,7 +844,7 @@ int main() {
   ret = aclnnFlashAttentionUnpaddingScoreGradV3(workspaceAddr, workspaceSize, executor, stream);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnFlashAttentionUnpaddingScoreGradV3 failed. ERROR: %d\n", ret); return ret);
 
-  // 4. （固定写法）同步等待任务执行结束
+  // 4.（固定写法）同步等待任务执行结束
   ret = aclrtSynchronizeStream(stream);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
 

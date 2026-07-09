@@ -18,13 +18,13 @@
 
 #include "lib/hccl/hccl.h"
 #include "../common_def.h"
-#include "../../common/op_kernel/mc2_common_def.h"
-#include "../../3rd/quant_batch_matmul_v3/op_kernel/arch35/qbmm_mix_perblock.h"
-#include "../../3rd/quant_batch_matmul_v3/op_kernel/arch35/qbmm_cube_on_the_fly.h"
-#include "../../common/op_kernel/mc2_quant_batch_matmul.h"
-#include "../../common/op_kernel/qbmm_mix_perblock_noncontiguous.h"
-#include "matmul_reduce_scatter_v2_c_tiling.h"
-#include "../../common/op_kernel/reduce_sum_cast_fp32.h"
+#include "../../../common/op_kernel/mc2_common_def.h"
+#include "../../../3rd/quant_batch_matmul_v3/op_kernel/arch35/qbmm_mix_perblock.h"
+#include "../../../3rd/quant_batch_matmul_v3/op_kernel/arch35/qbmm_cube_on_the_fly.h"
+#include "../../../common/op_kernel/mc2_quant_batch_matmul.h"
+#include "../../../common/op_kernel/qbmm_mix_perblock_noncontiguous.h"
+#include "../matmul_reduce_scatter_v2_c_tiling.h"
+#include "../../../common/op_kernel/reduce_sum_cast_fp32.h"
 
 #define TEMPLATE_CLASS_PARAMS template <typename AType, typename BType, typename CType, typename ScaleType, \
                                         class MMClass, bool IsPerBlock, bool ATrans, bool BTrans, int TPL_COMM_MODE>
@@ -165,7 +165,12 @@ __aicore__ inline void QuantBmmA2AVecReduceFP8HiF8<TEMPLATE_FUNC_PARAMS>::PostPr
         GM_ADDR curOutPtr = cGM_;       // reduceSum 输出地址, 即 output 地址
 
         // 主轮每轮数据量与偏移
-        const uint64_t tileElemCount     = static_cast<uint64_t>(tiling.M) * static_cast<uint64_t>(tiling.N);
+        const bool isSerial = (tiling.M == cfg.rankM);
+        const uint64_t tileElemCount     = isSerial
+            ? static_cast<uint64_t>(tiling.M / cfg.rankDim) * static_cast<uint64_t>(tiling.N)
+            : static_cast<uint64_t>(tiling.M) * static_cast<uint64_t>(tiling.N);
+
+
         const uint64_t tileByteSize      = tileElemCount * sizeof(CType);
         const uint64_t tileStrideBytes   = tileByteSize * cfg.rankDim; // 输入指针步长 (连续，rankDim 份数据)
         

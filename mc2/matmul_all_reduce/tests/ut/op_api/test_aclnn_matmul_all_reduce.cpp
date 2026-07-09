@@ -11,9 +11,41 @@
 #include <gtest/gtest.h>
 #include "matmul_all_reduce_api_ut_param.h"
 #include "op_api_ut_common/op_api_ut.h"
+#include "op_api_ut_common/tensor_desc.h"
 #include "../../../op_api/aclnn_matmul_all_reduce.h"
 
 namespace MatmulAllReduceUT {
+
+namespace {
+
+void RunMatmulAllReduceUt(
+    op::SocVersion soc, const TensorDesc& x1, const TensorDesc& x2, const aclTensor* bias, const TensorDesc& output,
+    aclnnStatus expectResult)
+{
+    op::SetPlatformSocVersion(soc);
+    const char* group = "group";
+    const char* reduceOp = "sum";
+    int64_t commTurn = 0;
+    int64_t streamMode = 1;
+    uint64_t workspace_size = 0;
+    aclOpExecutor* executor = nullptr;
+    auto ut = OP_API_UT(
+        aclnnMatmulAllReduce,
+        INPUT(x1, x2, bias, group, reduceOp, commTurn, streamMode),
+        OUTPUT(output)
+    );
+    auto aclnnRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor);
+    if (expectResult == ACLNN_SUCCESS) {
+        EXPECT_NE(ACLNN_ERR_PARAM_INVALID, aclnnRet);
+        if (aclnnRet != ACLNN_ERR_PARAM_NULLPTR && executor != nullptr) {
+            aclnnMatmulAllReduce(nullptr, workspace_size, executor, nullptr);
+        }
+    } else {
+        EXPECT_EQ(expectResult, aclnnRet);
+    }
+}
+
+} // namespace
 
 class AclnnMatmulAllReduceTest : public testing::TestWithParam<MatmulAllReduceApiUtParam> {
 protected:
@@ -44,7 +76,7 @@ TEST_P(AclnnMatmulAllReduceTest, param)
     auto aclnnRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor);
     if (param.expectResult == ACLNN_SUCCESS) {
         EXPECT_NE(ACLNN_ERR_PARAM_INVALID, aclnnRet);
-        if (aclnnRet == ACLNN_SUCCESS) {
+        if (aclnnRet != ACLNN_ERR_PARAM_NULLPTR && executor != nullptr) {
             aclnnMatmulAllReduce(nullptr, workspace_size, executor, nullptr);
         }
     } else {
@@ -58,5 +90,44 @@ INSTANTIATE_TEST_SUITE_P(
     testing::ValuesIn(GetCasesFromCsv<MatmulAllReduceApiUtParam>(ReplaceFileExtension2Csv(__FILE__))),
     PrintCaseInfoString<MatmulAllReduceApiUtParam>
 );
+
+class AclnnMatmulAllReduceExtraTest : public testing::Test {};
+
+TEST_F(AclnnMatmulAllReduceExtraTest, TransposedX2)
+{
+    TensorDesc x1 = {{16, 32}, ACL_FLOAT16, ACL_FORMAT_ND};
+    TensorDesc x2 = {{32, 16}, ACL_FLOAT16, ACL_FORMAT_ND, {1, 32}};
+    TensorDesc output = {{16, 16}, ACL_FLOAT16, ACL_FORMAT_ND};
+    RunMatmulAllReduceUt(op::SocVersion::ASCEND910B, x1, x2, nullptr, output, ACLNN_SUCCESS);
+}
+
+TEST_F(AclnnMatmulAllReduceExtraTest, Ascend950GetWorkspaceSize)
+{
+    TensorDesc x1 = {{16, 32}, ACL_FLOAT16, ACL_FORMAT_ND};
+    TensorDesc x2 = {{32, 16}, ACL_FLOAT16, ACL_FORMAT_ND};
+    TensorDesc output = {{16, 16}, ACL_FLOAT16, ACL_FORMAT_ND};
+    RunMatmulAllReduceUt(op::SocVersion::ASCEND950, x1, x2, nullptr, output, ACLNN_SUCCESS);
+}
+
+TEST_F(AclnnMatmulAllReduceExtraTest, Bf16WithBias)
+{
+    TensorDesc x1 = {{16, 32}, ACL_BF16, ACL_FORMAT_ND};
+    TensorDesc x2 = {{32, 16}, ACL_BF16, ACL_FORMAT_ND};
+    TensorDesc bias = {{16}, ACL_BF16, ACL_FORMAT_ND};
+    TensorDesc output = {{16, 16}, ACL_BF16, ACL_FORMAT_ND};
+    RunMatmulAllReduceUt(
+        op::SocVersion::ASCEND910B, x1, x2, bias.ToAclTypeRawPtr(), output, ACLNN_SUCCESS);
+}
+
+TEST_F(AclnnMatmulAllReduceExtraTest, LaunchApiCoverage)
+{
+    (void)aclnnMatmulAllReduce(nullptr, 0, nullptr, nullptr);
+}
+
+TEST_F(AclnnMatmulAllReduceExtraTest, Ascend950LaunchCcuCommMode)
+{
+    op::SetPlatformSocVersion(op::SocVersion::ASCEND950);
+    (void)aclnnMatmulAllReduce(nullptr, 0, nullptr, nullptr);
+}
 
 } // namespace MatmulAllReduceUT

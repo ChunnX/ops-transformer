@@ -84,7 +84,7 @@ Ascend 950支持的算子分类和算子列表如下：
     <td>✓</td>
     <td>✓</td>
     <td>AI Core</td>
-    <td>对序列执行因果一维卷积，沿序列维度使用缓存数据（长度为卷积核宽减1）对各序列头部进行padding，确保输出依赖当前及历史输入；卷积完成后，将当前序列部分数据更新到缓存；在因果一维卷积输出的基础上，将原始输入加到输出上以实现残差连接。支持 APC（Automatic Prefix Caching）、MTP（投机解码）、残差连接等特性。</td>
+    <td>对序列执行因果一维卷积，沿序列维度使用缓存数据（长度为卷积核宽减1）对各序列头部进行padding，确保输出依赖当前及历史输入；卷积完成后，将当前序列部分数据更新到缓存；在因果一维卷积输出的基础上，将原始输入加到输出上以实现残差连接。支持APC（Automatic Prefix Caching）、MTP（投机解码）、残差连接等特性。</td>
   </tr>
   <tr>
     <td>attention</td>
@@ -114,7 +114,7 @@ Ascend 950支持的算子分类和算子列表如下：
     <td>✓</td>
     <td>✓</td>
     <td>AI Core</td>
-    <td>对序列执行因果一维卷积，沿序列维度使用缓存数据（长度为卷积核宽减1）对各序列头部进行padding，确保输出依赖当前及历史输入；卷积完成后，将当前序列部分数据更新到缓存；在因果一维卷积输出的基础上，将原始输入加到输出上以实现残差连接。支持 APC（Automatic Prefix Caching）、MTP（投机解码）、残差连接、原地更新等特性。</td>
+    <td>对序列执行因果一维卷积，沿序列维度使用缓存数据（长度为卷积核宽减1）对各序列头部进行padding，确保输出依赖当前及历史输入；卷积完成后，将当前序列部分数据更新到缓存；在因果一维卷积输出的基础上，将原始输入加到输出上以实现残差连接。支持APC（Automatic Prefix Caching）、MTP（投机解码）、残差连接、原地更新等特性。</td>
   </tr>
   <tr>
     <td>attention</td>
@@ -265,6 +265,16 @@ Ascend 950支持的算子分类和算子列表如下：
     <td>✗</td>
     <td>AI Core</td>
     <td>SparselightningIndexerGradKlLoss算子是LightningIndexer的反向算子，再额外融合了Loss计算功能输出。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
+    <td><a href="../../attention/compressor/README.md">compressor</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>AI Core</td>
+    <td>推理场景下SMLA和QLI的前处理算子，用于将每4或128个token的KV cache压缩成一个，然后每个token与这些压缩的KV cache进行DSA计算。</td>
   </tr>
   <tr>
     <td>gmm</td>
@@ -875,6 +885,16 @@ Ascend 950支持的算子分类和算子列表如下：
     <td>✓</td>
     <td>AI Core</td>
     <td>执行旋转位置编码计算，推理网络为了提升性能，将query和key两路算子融合成一路。</td>
+  </tr>
+  <tr>
+    <td>posembedding</td>
+    <td><a href="../../posembedding/inplace_partial_rotary_mul_grad/README.md">inplace_partial_rotary_mul_grad</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>AI Core</td>
+    <td>执行局部旋转位置编码InplacePartialRotaryMul的反向计算，对输入dy的D维度上切片[start, end)区域执行旋转位置编码梯度计算，结果inplace写回dy。</td>
   </tr>
   <tr>
     <td>posembedding</td>

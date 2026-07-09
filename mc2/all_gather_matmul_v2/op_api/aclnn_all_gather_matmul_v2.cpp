@@ -19,21 +19,13 @@
 #include "opdev/op_dfx.h"
 #include "opdev/op_executor.h"
 #include "opdev/op_log.h"
-#include "log/log.h"
+#include "mc2_log_compat.h"
 #include "opdev/platform.h"
 #include "common/op_host/op_api/mc2_3rd_matmul_util.h"
 #include "common/utils/hccl_util.h"
 #include "common/op_api/mc2_aclnn_util.h"
 #include "aclnnInner_all_gather_matmul_v2.h"
 #include "mc2_comm_utils.h"
-
-#ifdef BUILD_OPEN_PROJECT
-#include "version/hcomm_version.h"
-#define HCCL_CHANNEL_SUPPORT_VERSION 89999300
-#if HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
-#include "common/op_api/mc2_context.h"
-#endif
-#endif
 
 using namespace op;
 using namespace Ops::Transformer;
@@ -47,10 +39,8 @@ static constexpr int64_t SCALAR = 1;
 static constexpr int64_t TWO_DIMS = 2;
 static constexpr int64_t KVALUE_MIN = 256;
 static constexpr int64_t KVALUE_MAX = 65535;
-static constexpr int64_t CCU_LEN = 3;
-static constexpr int64_t AI_CPU_LEN = 5;
-static constexpr int64_t EMPTY_LEN = 1;
 static constexpr int64_t COMM_MODE_RANKSIZE = 8;
+static constexpr int64_t CMP_MAX_LEN = 7;
 
 typedef struct {
     uint32_t id;
@@ -82,14 +72,17 @@ static bool CheckNotNull(const aclTensor *x1, const aclTensor *x2, const aclTens
 }
 
 // 根据API定义，需要列出所能支持的所有dtype
-static const std::initializer_list<op::DataType> DTYPE_SUPPORT_LIST = { op::DataType::DT_FLOAT16, op::DataType::DT_BF16,
-    op::DataType::DT_FLOAT8_E4M3FN, op::DataType::DT_FLOAT8_E5M2, op::DataType::DT_HIFLOAT8 };
+static const std::initializer_list<op::DataType> DTYPE_SUPPORT_LIST = {
+    op::DataType::DT_FLOAT16,     op::DataType::DT_BF16,     op::DataType::DT_FLOAT8_E4M3FN,
+    op::DataType::DT_FLOAT8_E5M2, op::DataType::DT_HIFLOAT8, op::DataType::DT_FLOAT4_E2M1};
 
 static const std::initializer_list<op::DataType> BIAS_DTYPE_SUPPORT_LIST = { op::DataType::DT_FLOAT16,
     op::DataType::DT_BF16, op::DataType::DT_FLOAT };
 
 static const std::initializer_list<op::DataType> FP8_DTYPE_SUPPORT_LIST = { op::DataType::DT_FLOAT8_E4M3FN,
     op::DataType::DT_FLOAT8_E5M2, op::DataType::DT_HIFLOAT8 };
+
+static const std::initializer_list<op::DataType> FP4_DTYPE_SUPPORT_LIST = { op::DataType::DT_FLOAT4_E2M1 };
 
 static const std::initializer_list<op::DataType> OUT_DTYPE_SUPPORT_LIST = BIAS_DTYPE_SUPPORT_LIST;
 
@@ -122,9 +115,12 @@ static bool CheckDataTypeFp16Valid(const aclTensor *x1, const aclTensor *x2, con
     return true;
 }
 
-static bool CheckDataTypeFp8Valid(const aclTensor *x1, const aclTensor *x2, const aclTensor *bias)
+static bool CheckDataTypeFp8Fp4Valid(const aclTensor *x1, const aclTensor *x2, const aclTensor *bias)
 {
     if (x1->GetDataType() == op::DataType::DT_HIFLOAT8) {
+        OP_CHECK_DTYPE_NOT_SAME(x1, x2, return false);
+    }
+    if (x1->GetDataType() == op::DataType::DT_FLOAT4_E2M1) {
         OP_CHECK_DTYPE_NOT_SAME(x1, x2, return false);
     }
     if (bias != nullptr) {
@@ -155,8 +151,8 @@ static bool CheckDtypeValid(const aclTensor *x1, const aclTensor *x2, const aclT
 
     if (IsFp16orBf16Input(x1)) {
         return CheckDataTypeFp16Valid(x1, x2, bias, output);
-    } else if (CheckSupportDtype(x1, FP8_DTYPE_SUPPORT_LIST)) {
-        return CheckDataTypeFp8Valid(x1, x2, bias);
+    } else if (CheckSupportDtype(x1, FP8_DTYPE_SUPPORT_LIST) || CheckSupportDtype(x1, FP4_DTYPE_SUPPORT_LIST)) {
+        return CheckDataTypeFp8Fp4Valid(x1, x2, bias);
     }
     return true;
 }
@@ -179,6 +175,43 @@ static bool CheckAttr(int64_t streamMode)
     return true;
 }
 
+static bool CheckFormat(const aclTensor *x1, const aclTensor *x2, const aclTensor *output,
+    const aclTensor *bias, aclTensor *gatherOut, aclTensor *amaxOut)
+{
+    if (x1->GetStorageFormat() != op::Format::FORMAT_ND) {
+        OP_LOGE_FOR_INVALID_FORMATS_WITH_REASON("aclnnAllGatherMatmulV2", "x1",
+            op::ToString(x1->GetStorageFormat()).GetString(), "Only ND format is supported");
+        return false;
+    }
+    if (x2->GetStorageFormat() != op::Format::FORMAT_ND) {
+        OP_LOGE_FOR_INVALID_FORMATS_WITH_REASON("aclnnAllGatherMatmulV2", "x2",
+            op::ToString(x2->GetStorageFormat()).GetString(), "Only ND format is supported");
+        return false;
+    }
+    if (output->GetStorageFormat() != op::Format::FORMAT_ND) {
+        OP_LOGE_FOR_INVALID_FORMATS_WITH_REASON("aclnnAllGatherMatmulV2", "output",
+            op::ToString(output->GetStorageFormat()).GetString(), "Only ND format is supported");
+        return false;
+    }
+
+    if (bias != nullptr && bias->GetStorageFormat() != op::Format::FORMAT_ND) {
+        OP_LOGE_FOR_INVALID_FORMATS_WITH_REASON("aclnnAllGatherMatmulV2", "bias",
+            op::ToString(bias->GetStorageFormat()).GetString(), "Only ND format is supported");
+        return false;
+    }
+    if (gatherOut != nullptr && gatherOut->GetStorageFormat() != op::Format::FORMAT_ND) {
+        OP_LOGE_FOR_INVALID_FORMATS_WITH_REASON("aclnnAllGatherMatmulV2", "gatherOut",
+            op::ToString(gatherOut->GetStorageFormat()).GetString(), "Only ND format is supported");
+        return false;
+    }
+    if (amaxOut != nullptr && amaxOut->GetStorageFormat() != op::Format::FORMAT_ND) {
+        OP_LOGE_FOR_INVALID_FORMATS_WITH_REASON("aclnnAllGatherMatmulV2", "amaxOut",
+            op::ToString(amaxOut->GetStorageFormat()).GetString(), "Only ND format is supported");
+        return false;
+    }
+    return true;
+}
+
 static bool IsGatherOut(const aclTensor *gatherOut)
 {
     OP_CHECK_NULL(gatherOut, return false);
@@ -192,8 +225,18 @@ static bool IsGatherOut(const aclTensor *gatherOut)
 static bool CheckShape(const aclTensor *x1, const aclTensor *x2, const aclTensor *output, const aclTensor *gatherOut,
     bool isTransA)
 {
-    OP_CHECK_WRONG_DIMENSION(x1, TWO_DIMS, return false);
-    OP_CHECK_WRONG_DIMENSION(x2, TWO_DIMS, return false);
+    if (x1->GetViewShape().GetDimNum() != TWO_DIMS) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("aclnnAllGatherMatmulV2", "x1",
+            (std::to_string(x1->GetViewShape().GetDimNum()) + "D").c_str(),
+            "The shape of x1 must be 2D.");
+        return false;
+    }
+    if (x2->GetViewShape().GetDimNum() != TWO_DIMS) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("aclnnAllGatherMatmulV2", "x2",
+            (std::to_string(x2->GetViewShape().GetDimNum()) + "D").c_str(),
+            "The shape of x2 must be 2D.");
+        return false;
+    }
     // A矩阵不能转置
     if (isTransA) {
         OP_LOGE_FOR_INVALID_VALUE("aclnnAllGatherMatmulV2", "x1",
@@ -231,13 +274,15 @@ static bool CheckShape(const aclTensor *x1, const aclTensor *x2, const aclTensor
 
 // 分别对输入类型为fp8/hif8和fp16/bf16数据类型进行分别校验
 static aclnnStatus CheckParams(const aclTensor *x1, const aclTensor *x2, const aclTensor *bias, int64_t streamMode,
-    const aclTensor *output)
+    const aclTensor *output, aclTensor *gatherOut, aclTensor *amaxOut)
 {
     CHECK_RET(CheckNotNull(x1, x2, output), ACLNN_ERR_PARAM_NULLPTR);
 
     CHECK_RET(CheckDtypeValid(x1, x2, bias, output), ACLNN_ERR_PARAM_INVALID);
 
     CHECK_RET(CheckAttr(streamMode), ACLNN_ERR_PARAM_INVALID);
+
+    CHECK_RET(CheckFormat(x1, x2, output, bias, gatherOut, amaxOut), ACLNN_ERR_PARAM_INVALID);
 
     return ACLNN_SUCCESS;
 }
@@ -251,8 +296,18 @@ static aclnnStatus CheckParamsAndShapeForAIVMode(const aclTensor *x1, const aclT
 
     CHECK_RET(CheckAttr(streamMode), ACLNN_ERR_PARAM_INVALID);
 
-    OP_CHECK_WRONG_DIMENSION(x1, TWO_DIMS, return ACLNN_ERR_PARAM_INVALID);
-    OP_CHECK_WRONG_DIMENSION(x2, TWO_DIMS, return ACLNN_ERR_PARAM_INVALID);
+    if (x1->GetViewShape().GetDimNum() != TWO_DIMS) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("aclnnAllGatherMatmulV2", "x1",
+            (std::to_string(x1->GetViewShape().GetDimNum()) + "D").c_str(),
+            "The shape of x1 must be 2D.");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    if (x2->GetViewShape().GetDimNum() != TWO_DIMS) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("aclnnAllGatherMatmulV2", "x2",
+            (std::to_string(x2->GetViewShape().GetDimNum()) + "D").c_str(),
+            "The shape of x2 must be 2D.");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
     // A矩阵不能转置
     if (isTransA) {
         OP_LOGE_FOR_INVALID_VALUE("aclnnAllGatherMatmulV2", "x1",
@@ -308,6 +363,18 @@ static aclnnStatus CheckScale(const aclTensor *x1Scale, const aclTensor *x2Scale
         OP_LOGE_WITH_INVALID_INPUT("aclnnAllGatherMatmulV2", "x2Scale");
         return ACLNN_ERR_PARAM_INVALID;
     }
+    if (x1Scale->GetStorageFormat() != op::Format::FORMAT_ND &&
+        x1Scale->GetStorageFormat() != op::Format::FORMAT_NCL) {
+        OP_LOGE_FOR_INVALID_FORMATS_WITH_REASON("aclnnAllGatherMatmulV2", "x1Scale",
+            op::ToString(x1Scale->GetStorageFormat()).GetString(), "Only ND/NCL format is supported");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    if (x2Scale->GetStorageFormat() != op::Format::FORMAT_ND &&
+        x2Scale->GetStorageFormat() != op::Format::FORMAT_NCL) {
+        OP_LOGE_FOR_INVALID_FORMATS_WITH_REASON("aclnnAllGatherMatmulV2", "x2Scale",
+            op::ToString(x2Scale->GetStorageFormat()).GetString(), "Only ND/NCL format is supported");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
     // 如果scaleInV1 和 scaleInV2都不为空指针则为scalar类型数据
     auto x1ScaleLen = x1Scale->GetViewShape().GetDim(0);
     auto x2ScaleLen = x2Scale->GetViewShape().GetDim(0);
@@ -316,7 +383,17 @@ static aclnnStatus CheckScale(const aclTensor *x1Scale, const aclTensor *x2Scale
 
     // scale不为空指针为则scalar类型
     if (quantScale != nullptr) {
-        OP_CHECK_WRONG_DIMENSION(quantScale, ONE_DIMS, return ACLNN_ERR_PARAM_INVALID);
+        if (quantScale->GetStorageFormat() != op::Format::FORMAT_ND) {
+            OP_LOGE_FOR_INVALID_FORMATS_WITH_REASON("aclnnAllGatherMatmulV2", "quantScale",
+                op::ToString(quantScale->GetStorageFormat()).GetString(), "Only ND format is supported");
+            return ACLNN_ERR_PARAM_INVALID;
+        }
+        if (quantScale->GetViewShape().GetDimNum() != ONE_DIMS) {
+            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("aclnnAllGatherMatmulV2", "quantScale",
+                (std::to_string(quantScale->GetViewShape().GetDimNum()) + "D").c_str(),
+                "The shape of quantScale must be 1D.");
+            return ACLNN_ERR_PARAM_INVALID;
+        }
         auto scaleLen = quantScale->GetViewShape().GetDim(0);
         OP_LOGD("AllGatherMatmulV2, scaleLen is %ld.", scaleLen);
         if (scaleLen != SCALAR) {
@@ -352,7 +429,12 @@ static bool CheckAMaxOutVaild(const aclTensor *x1, const aclTensor *amaxOut)
         }
     }
     if (IsAMaxOut(amaxOut)) {
-        OP_CHECK_WRONG_DIMENSION(amaxOut, ONE_DIMS, return false);
+        if (amaxOut->GetViewShape().GetDimNum() != ONE_DIMS) {
+            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("aclnnAllGatherMatmulV2", "amaxOut",
+                (std::to_string(amaxOut->GetViewShape().GetDimNum()) + "D").c_str(),
+                "The shape of amaxOut must be 1D.");
+            return false;
+        }
         auto amaxOutLen = amaxOut->GetViewShape().GetDim(0);
         if (amaxOutLen != SCALAR) {
             return false;
@@ -422,22 +504,14 @@ static bool checkX1InputEmptyTensor(const aclTensor *x1, const aclTensor *x2)
 
 static aclnnStatus CheckAndHandleCommMode(const char *group, const char *commMode, uint8_t &commModeEnum)
 {
-    uint32_t rankSize = 0;
     // 获取通信引擎参数
-    if (std::strncmp(commMode, "ai_cpu", AI_CPU_LEN) == 0) {
+    if (std::strncmp(commMode, "ai_cpu", CMP_MAX_LEN) == 0) {
         commModeEnum = Mc2Comm::COMM_MODE_AICPU;
-    } else if (std::strncmp(commMode, "ccu", CCU_LEN) == 0) {
+    } else if (std::strncmp(commMode, "ccu", CMP_MAX_LEN) == 0) {
         commModeEnum = Mc2Comm::COMM_MODE_CCU;
-    } else if (std::strncmp(commMode, "", EMPTY_LEN) == 0) {
-        // 获取卡数
-#if defined(BUILD_OPEN_PROJECT) && HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
-        auto getRankSizeRet = Mc2Aclnn::Mc2Context::GetMc2RankSize(group, rankSize);
-        CHECK_RET(getRankSizeRet == ACLNN_SUCCESS, getRankSizeRet);
-#endif
-        commModeEnum = (rankSize <= COMM_MODE_RANKSIZE) ? Mc2Comm::COMM_MODE_CCU : Mc2Comm::COMM_MODE_AICPU;
     } else {
         OP_LOGE_WITH_INVALID_ATTR("aclnnAllGatherMatmulV2", "commMode",
-            commMode, "empty string, 'ccu' or 'ai_cpu'");
+            commMode, "'ccu' or 'ai_cpu'");
         return ACLNN_ERR_PARAM_INVALID;
     }
 
@@ -451,7 +525,7 @@ aclnnStatus allGatherMatmulV2GetWorkspaceSizeCCUMode(const aclTensor *x1, const 
     aclOpExecutor **executor)
 {
     uint64_t timeStamp = NnopbaseMsprofSysTime();
-    auto retParam = CheckParams(x1, x2, bias, streamMode, output);
+    auto retParam = CheckParams(x1, x2, bias, streamMode, output, gatherOut, amaxOut);
     CHECK_RET(retParam == ACLNN_SUCCESS, retParam);
     // 处理空tensor 如果x1不为空 x2为空 需要进行gatherOut
     if (checkX1InputEmptyTensor(x1, x2)) {
@@ -461,7 +535,7 @@ aclnnStatus allGatherMatmulV2GetWorkspaceSizeCCUMode(const aclTensor *x1, const 
     OP_LOGD("X1 is %s.", x1->ToString().GetString());
     OP_LOGD("X2 is %s.", x2->ToString().GetString());
 
-    if (CheckSupportDtype(x1, FP8_DTYPE_SUPPORT_LIST)) {
+    if (CheckSupportDtype(x1, FP8_DTYPE_SUPPORT_LIST) || CheckSupportDtype(x1, FP4_DTYPE_SUPPORT_LIST)) {
         auto retScaleChk = CheckScale(x1Scale, x2Scale, quantScale);
         CHECK_RET(retScaleChk == ACLNN_SUCCESS, retScaleChk);
     }
@@ -525,6 +599,11 @@ aclnnStatus allGatherMatmulV2GetWorkspaceSizeAIVMode(const aclTensor *x1, const 
     aclOpExecutor **executor)
 {
     OP_LOGD("allGatherMatmulV2GetWorkspaceSizeAIVMode start");
+    // 校验comm_mode取值
+    if (std::strncmp(commMode, "aiv", CMP_MAX_LEN) != 0) {
+        OP_LOGE_WITH_INVALID_ATTR("aclnnAllGatherMatmulV2", "commMode", commMode, "'aiv'");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
     bool transposeX1 = IsTransposeLastTwoDims(x1);
     bool viewTransposeX2 = IsViewTransposeX2(x1, x2, transposeX1);
     bool transposeX2 = viewTransposeX2 || IsTransposeLastTwoDims(x2);

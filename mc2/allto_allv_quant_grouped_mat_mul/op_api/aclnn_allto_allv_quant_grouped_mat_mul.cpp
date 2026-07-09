@@ -16,7 +16,7 @@
 #include "common/utils/op_mc2_def.h"
 #include "aclnn_kernels/common/op_error_check.h"
 #include "opdev/op_log.h"
-#include "log/log.h"
+#include "mc2_log_compat.h"
 #include "opdev/platform.h"
 #include "opdev/common_types.h"
 #include "opdev/format_utils.h"
@@ -111,7 +111,12 @@ static bool CheckGmmWeightValid(const aclTensor *gmmWeight) {
         OP_LOGE_WITH_INVALID_INPUT("aclnnAlltoAllvQuantGroupedMatMulGetWorkspaceSize", "gmmWeight");
         return false;
     }
-    OP_CHECK_WRONG_DIMENSION(gmmWeight, THREE_DIMS, return false);
+    if (gmmWeight->GetViewShape().GetDimNum() != THREE_DIMS) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("aclnnAlltoAllvQuantGroupedMatMulGetWorkspaceSize", "gmmWeight",
+            (std::to_string(gmmWeight->GetViewShape().GetDimNum()) + "D").c_str(),
+            "The shape of gmmWeight must be 3D.");
+        return false;
+    }
     return true;
 }
 
@@ -119,7 +124,12 @@ static bool CheckMmWeightValid(const aclTensor *mmWeightOptional) {
     if (mmWeightOptional == nullptr) {
         return false;
     }
-    OP_CHECK_WRONG_DIMENSION(mmWeightOptional, TWO_DIMS, return false);
+    if (mmWeightOptional->GetViewShape().GetDimNum() != TWO_DIMS) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("aclnnAlltoAllvQuantGroupedMatMulGetWorkspaceSize", "mmWeightOptional",
+            (std::to_string(mmWeightOptional->GetViewShape().GetDimNum()) + "D").c_str(),
+            "The shape of mmWeightOptional must be 2D.");
+        return false;
+    }
     return true;
 }
 
@@ -407,7 +417,7 @@ extern "C" aclnnStatus InnerAlltoAllvQuantGroupedMatMulGetWorkspaceSize(
     int64_t mmXQuantMode, int64_t mmWeightQuantMode, int64_t groupSize, aclTensor *gmmY, aclTensor *mmYOptional,
     aclTensor *permuteOutOptional, uint64_t *workspaceSize, aclOpExecutor **executor)
 {
-    const char *commMode = "ccu";
+    const char *commMode = "ai_cpu";
     char *str_commMode = const_cast<char *>(commMode);
     int64_t yDtype = gmmY->GetDataType();
     int64_t mmDtype = mmYOptional == nullptr ? 0 : mmYOptional->GetDataType();
@@ -418,7 +428,7 @@ extern "C" aclnnStatus InnerAlltoAllvQuantGroupedMatMulGetWorkspaceSize(
         mmXQuantMode, mmWeightQuantMode, groupSize, yDtype, mmDtype, str_commMode, gmmY, mmYOptional,
         permuteOutOptional, workspaceSize, executor);
     if (*executor != nullptr) {
-        void *args = reinterpret_cast<void *>(static_cast<uint8_t>(Mc2Comm::COMM_MODE_CCU));
+        void *args = reinterpret_cast<void *>(static_cast<uint8_t>(Mc2Comm::COMM_MODE_AICPU));
         NnopbaseSetUserHandle(*executor, args);
     }
     OP_LOGD("AlltoAllvQuantGroupedMatmul, aclnnInnerAlltoAllvQuantGroupedMatMulGetWorkspaceSize ret %d.", ret);

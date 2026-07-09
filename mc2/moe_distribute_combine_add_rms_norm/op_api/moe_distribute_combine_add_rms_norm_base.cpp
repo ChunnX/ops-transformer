@@ -20,7 +20,7 @@
 #include "opdev/op_log.h"
 #include "opdev/common_types.h"
 #include "aclnn_moe_distribute_combine_add_rms_norm_v2.h"
-#include "log/log.h"
+#include "mc2_log_compat.h"
 #include "moe_distribute_combine_add_rms_norm_base.h"
 #include "common/op_host/op_api/mc2_3rd_matmul_util.h"
 #include "aclnnInner_moe_distribute_combine_add_rms_norm.h"
@@ -64,9 +64,13 @@ aclnnStatus CombineArnCheckParams(const aclTensor* expandX, const aclTensor* exp
                             const aclTensor* expertScales, const char* groupEp, const char* groupTp,
                             aclTensor* x, bool is910B)
 {
-    CHECK_RET(CombineArnCheckNotNull(expandX, expertIds, expandIdx, epSendCounts, tpSendCounts, expertScales, groupEp, 
-                                     groupTp, x), 
+    CHECK_RET(CombineArnCheckNotNull(expandX, expertIds, expandIdx, epSendCounts, tpSendCounts, expertScales, groupEp,
+                                     groupTp, x),
               ACLNN_ERR_PARAM_NULLPTR);
+    // groupTp为预留参数(当前版本不支持TP域通信)，nullptr视同空串，避免后续strnlen空指针解引用
+    if (groupTp == nullptr) {
+        groupTp = "";
+    }
 
     if (is910B) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnMoeDistributeCombineAddRmsNorm", "platform",

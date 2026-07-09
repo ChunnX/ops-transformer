@@ -23,8 +23,8 @@ std::string LayoutToSerialString(FaLayout layout)
 {
     const std::map<FaLayout, std::string> layout2Str = {{FaLayout::BSND, "BSND"},       {FaLayout::BNSD, "BNSD"},
                                                         {FaLayout::TND, "TND"},         {FaLayout::PA_BBND, "PA_BBND"},
-                                                        {FaLayout::PA_BNBD, "PA_BNBD"}, {FaLayout::LSE_BNS, "LSE_BNS"},
-                                                        {FaLayout::LSE_NT, "LSE_NT"}};
+                                                        {FaLayout::PA_BNBD, "PA_BNBD"}, {FaLayout::PA_NZ, "PA_NZ"},
+                                                        {FaLayout::LSE_BNS, "LSE_BNS"}, {FaLayout::LSE_NT, "LSE_NT"}};
 
     if (layout2Str.find(layout) != layout2Str.end()) {
         return layout2Str.at(layout);
@@ -32,38 +32,15 @@ std::string LayoutToSerialString(FaLayout layout)
     return "UNKNOWN";
 }
 
+static const std::string AXIS_SERIAL_STRINGS[] = {
+    "B", "S", "N", "D", "H", "T", "D1", "D0", "S1", "S2", "Bn", "Bs", "CONST"
+};
+
 std::string AxisToSerialString(FaAxis axis)
 {
-    switch (axis) {
-        case FaAxis::B:
-            return "B";
-        case FaAxis::S:
-            return "S";
-        case FaAxis::N:
-            return "N";
-        case FaAxis::D:
-            return "D";
-        case FaAxis::H:
-            return "H";
-        case FaAxis::T:
-            return "T";
-        case FaAxis::D1:
-            return "D1";
-        case FaAxis::D0:
-            return "D0";
-        case FaAxis::S1:
-            return "S1";
-        case FaAxis::S2:
-            return "S2";
-        case FaAxis::Bn:
-            return "Bn";
-        case FaAxis::Bs:
-            return "Bs";
-        case FaAxis::CONST:
-            return "CONST";
-        default:
-            return "UNKNOWN";
-    }
+    uint32_t idx = static_cast<uint32_t>(axis);
+    return (idx < sizeof(AXIS_SERIAL_STRINGS) / sizeof(AXIS_SERIAL_STRINGS[0]))
+        ? AXIS_SERIAL_STRINGS[idx] : "UNKNOWN";
 }
 
 } // namespace flash_attn

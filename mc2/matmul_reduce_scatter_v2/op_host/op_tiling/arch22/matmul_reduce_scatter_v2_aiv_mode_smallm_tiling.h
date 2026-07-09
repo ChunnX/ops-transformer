@@ -16,8 +16,9 @@
 #ifndef DECISION_RULES_H
 #define DECISION_RULES_H
 
-#include <cstddef>
 #include <cstdint>
+
+#include "register/op_def_registry.h"
 
 namespace Tiling_Small_M {
 enum class FeatureType {

@@ -43,6 +43,8 @@ public:
     __aicore__ inline void InitLocalBuffer();
     __aicore__ inline void CopyToL1Nd2Nz(const LocalTensor<Q_T> &l1Tensor, const GlobalTensor<Q_T> &gmTensor, 
         uint32_t ndNum, uint32_t nValue, uint32_t dValue, uint32_t srcNdMatrixStride, uint32_t srcDValue, uint32_t dstNzC0Stride, uint32_t dstNzMatrixStride);
+    __aicore__ inline void PrepareMm1Input(Buffer<BufferType::L1> &mm1A, RunInfo<isInfer> &runInfo,
+        RunParamStr<isInfer> &runParam, ConstInfo<isInfer, hasRope> &constInfo);
     __aicore__ inline void IterateBmm1(RunInfo<isInfer> &runInfo, RunParamStr<isInfer> &runParam, const int64_t &subTaskId,
         Buffer<BufferType::L1> &mm1B, LocalTensor<T> &outputTensor, ConstInfo<isInfer, hasRope> &constInfo);
     __aicore__ inline void IterateBmm2(const int64_t &subTaskId, const RunInfo<isInfer> &runInfo, Buffer<BufferType::L1> &inputBufA,
@@ -87,12 +89,12 @@ ANTIQUANT_TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void FABlockCubeAntiquant<ANTIQUANT_TEMPLATE_ARGS>::InitLocalBuffer()
 {
     mm1AL1Buffers.Init((*l1BufferManagerPtr), mm1LeftSize);
-    l0aBufferManager.Init(this->tPipe, 65536); // 初始化l0a的总内存为64K
-    l0bBufferManager.Init(this->tPipe, 65536); // 初始化l0b的总内存为64K
-    l0cBufferManager.Init(this->tPipe, 262144); // 初始化l0c的总内存为256K
-    mmL0ABuffers.Init(l0aBufferManager, 32 * 1024);  // 双缓冲 l0a内存大小为32K
-    mmL0BBuffers.Init(l0bBufferManager, 32 * 1024);  // 双缓冲 l0b内存大小32K
-    mmL0CBuffers.Init(l0cBufferManager, 128 * 1024); // 双缓冲 l0c内存大小128K
+    l0aBufferManager.Init(this->tPipe, L0A_SIZE * KB_TO_BYTES); // 初始化l0a的总内存为64K
+    l0bBufferManager.Init(this->tPipe, L0B_SIZE * KB_TO_BYTES); // 初始化l0b的总内存为64K
+    l0cBufferManager.Init(this->tPipe, L0C_SIZE * KB_TO_BYTES); // 初始化l0c的总内存为256K
+    mmL0ABuffers.Init(l0aBufferManager, (L0A_SIZE / DOUBLE_BUFFER_NUM) * KB_TO_BYTES);  // 双缓冲 l0a内存大小为32K
+    mmL0BBuffers.Init(l0bBufferManager, (L0B_SIZE / DOUBLE_BUFFER_NUM) * KB_TO_BYTES);  // 双缓冲 l0b内存大小32K
+    mmL0CBuffers.Init(l0cBufferManager, (L0C_SIZE / DOUBLE_BUFFER_NUM) * KB_TO_BYTES); // 双缓冲 l0c内存大小128K
 }
 
 ANTIQUANT_TEMPLATES_DEF_NO_DEFAULT
@@ -115,25 +117,29 @@ __aicore__ inline void FABlockCubeAntiquant<ANTIQUANT_TEMPLATE_ARGS>::CopyToL1Nd
 }
 
 ANTIQUANT_TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void FABlockCubeAntiquant<ANTIQUANT_TEMPLATE_ARGS>::IterateBmm1(
-        RunInfo<isInfer> &runInfo, RunParamStr<isInfer> &runParam, const int64_t &subTaskId,
-        Buffer<BufferType::L1> &mm1B, LocalTensor<T> &outputTensor, ConstInfo<isInfer, hasRope> &constInfo)
+__aicore__ inline void FABlockCubeAntiquant<ANTIQUANT_TEMPLATE_ARGS>::PrepareMm1Input(
+    Buffer<BufferType::L1> &mm1A, RunInfo<isInfer> &runInfo,
+    RunParamStr<isInfer> &runParam, ConstInfo<isInfer, hasRope> &constInfo)
 {
-    Buffer<BufferType::L1> mm1A;
     if (unlikely(runInfo.s2LoopCount == 0)) {
         mm1A = mm1AL1Buffers.Get();
         mm1A.Wait<HardEvent::MTE1_MTE2>(); // 占用
         LocalTensor<Q_T> mm1ATensor = mm1A.GetTensor<Q_T>();
 
         if constexpr (isInfer) {
-            if ((constInfo.layoutType == static_cast<uint8_t>(LayOutTypeEnum::LAYOUT_BSH) || constInfo.layoutType == static_cast<uint8_t>(LayOutTypeEnum::LAYOUT_TND)) && constInfo.isPfaGS1Merge) {
-                CopyToL1Nd2Nz(mm1ATensor, this->queryGm[runParam.tensorQOffset], constInfo.s1Size, constInfo.gSize, constInfo.dSize, 
-                    constInfo.n2Size * constInfo.gSize * constInfo.dSize, constInfo.dSize, runInfo.s1RealSize, constInfo.gSize * 32 / sizeof(Q_T));
+            if ((constInfo.layoutType == static_cast<uint8_t>(LayOutTypeEnum::LAYOUT_BSH) ||
+                constInfo.layoutType == static_cast<uint8_t>(LayOutTypeEnum::LAYOUT_TND)) &&
+                constInfo.isPfaGS1Merge) {
+                CopyToL1Nd2Nz(mm1ATensor, this->queryGm[runParam.tensorQOffset], constInfo.s1Size,
+                    constInfo.gSize, constInfo.dSize, constInfo.n2Size * constInfo.gSize * constInfo.dSize,
+                    constInfo.dSize, runInfo.s1RealSize, constInfo.gSize * 32 / sizeof(Q_T));
             } else {
-                CopyToL1Nd2Nz(mm1ATensor, this->queryGm[runParam.tensorQOffset], 1, runInfo.s1RealSize, constInfo.dSize, 0, constInfo.mm1Ka, runInfo.s1RealSize, 0);
+                CopyToL1Nd2Nz(mm1ATensor, this->queryGm[runParam.tensorQOffset], 1,
+                    runInfo.s1RealSize, constInfo.dSize, 0, constInfo.mm1Ka, runInfo.s1RealSize, 0);
             }
         } else {
-            CopyToL1Nd2Nz(mm1ATensor, this->queryGm[runParam.tensorQOffset], 1, runInfo.s1RealSize, constInfo.dSize, 0, constInfo.mm1Ka, runInfo.s1RealSize, 0);
+            CopyToL1Nd2Nz(mm1ATensor, this->queryGm[runParam.tensorQOffset], 1,
+                runInfo.s1RealSize, constInfo.dSize, 0, constInfo.mm1Ka, runInfo.s1RealSize, 0);
         }
         
         mm1A.Set<HardEvent::MTE2_MTE1>(); // 通知
@@ -141,6 +147,15 @@ __aicore__ inline void FABlockCubeAntiquant<ANTIQUANT_TEMPLATE_ARGS>::IterateBmm
         mm1A = mm1AL1Buffers.GetPre();
         mm1A.Set<HardEvent::MTE2_MTE1>();
     }
+}
+
+ANTIQUANT_TEMPLATES_DEF_NO_DEFAULT
+__aicore__ inline void FABlockCubeAntiquant<ANTIQUANT_TEMPLATE_ARGS>::IterateBmm1(
+        RunInfo<isInfer> &runInfo, RunParamStr<isInfer> &runParam, const int64_t &subTaskId,
+        Buffer<BufferType::L1> &mm1B, LocalTensor<T> &outputTensor, ConstInfo<isInfer, hasRope> &constInfo)
+{
+    Buffer<BufferType::L1> mm1A;
+    PrepareMm1Input(mm1A, runInfo, runParam, constInfo);
     CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE1>(VC_L1_EVENT[subTaskId % 2]); // 2 is double buffer
     CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE1>(16 + VC_L1_EVENT[subTaskId % 2]); // 16 is Vec num, 2 is double buffer
 
@@ -268,7 +283,7 @@ struct CubeBlockTraitsAntiquant;
     struct CubeBlockTraitsAntiquant<CUBE_BLOCK_CLASS_ANTIQUANT<ANTIQUANT_TEMPLATE_ARGS>> { \
         ANTIQUANT_CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_TRAIT_TYPE_ANTIQUANT) \
         ANTIQUANT_CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_TRAIT_CONST_ANTIQAUNT) \
-    };
+    }
 
 DEFINE_CUBE_BLOCK_TRAITS_ANTIQUANT(FABlockCubeAntiquant);
 DEFINE_CUBE_BLOCK_TRAITS_ANTIQUANT(FABlockCubeAntiquantDummy);

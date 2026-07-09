@@ -28,6 +28,7 @@ static const int32_t FRACTAL_NUM = 16L;
 static constexpr size_t WORK_SPACE_RESERVE_SIZE = 16 * 1024 * 1024;
 static constexpr size_t SIZE_1 = 1;
 static constexpr size_t SIZE_128 = 128;
+static constexpr size_t SIZE_256 = 256;
 static const uint64_t DIM_NUM_0 = 0;
 static const uint64_t DIM_NUM_1 = 1;
 static const uint64_t DIM_NUM_2 = 2;
@@ -372,8 +373,8 @@ bool SparseLightningIndexerGradKLLossTilingBaseRegbase::AnalyzeDimLayout(const g
             s2Size = keyShape.GetDim(1);
             n2Size = keyShape.GetDim(2);
             OP_CHECK_IF(
-                bSize < SIZE_1 || bSize > SIZE_128,
-                OP_LOGE(opName, "Inputshape B Size should be range in 1~128, but got %ld.", bSize),
+                bSize < SIZE_1 || bSize > SIZE_256,
+                OP_LOGE(opName, "Inputshape B Size should be range in 1~256, but got %ld.", bSize),
                 return false);
             OP_CHECK_IF(
                 s1Size > s2Size,
@@ -791,7 +792,7 @@ int64_t SparseLightningIndexerGradKLLossTilingBaseRegbase::GetS2RealSize(int32_t
             s2RealSize = static_cast<int64_t>(s2Size);
         }
     }
-    s2RealSize = AlignUp(s2RealSize, 512L);
+    s2RealSize = AlignUp(s2RealSize, 128L);
     return std::min(s2RealSize, (int64_t)sliGradkllossBaseParams_->get_kSize());
 }
 
@@ -940,67 +941,57 @@ bool SparseLightningIndexerGradKLLossTilingBaseRegbase::SetSparseStartIdx(const 
 
     OP_CHECK_IF(totalSize <= 0, OPS_REPORT_VECTOR_INNER_ERR(opName, "totalSize should be larger than 0."),
                    return false);
-    if (tilingKeyLayout == LayoutTypeRegbase::LAYOUT_TND) {
-        // initLoad: 使用均分策略, 保证后续不会比均分差
-        std::vector<int64_t> localSparseStartIdx(aicNum, totalSize);
-        for (int64_t idx = 0; idx < static_cast<int64_t>(aicNum); ++idx) {
-            localSparseStartIdx[idx] = std::min((idx * splitFactorSize), totalSize);
-        }
-        std::vector<int64_t> localValue(validAicNum, 0);
-        //得到了每个核需要计算的S2数量，在T方向平均分配，但是有于有Sparse的存在，localValue中的数值，每个核之间应该差距很大
-        InitLoadValue(sparseValidArray, validAicNum, totalSize, localSparseStartIdx, localValue); 
+    // initLoad: 使用均分策略, 保证后续不会比均分差
+    std::vector<int64_t> localSparseStartIdx(aicNum, totalSize);
+    for (int64_t idx = 0; idx < static_cast<int64_t>(aicNum); ++idx) {
+        localSparseStartIdx[idx] = std::min((idx * splitFactorSize), totalSize);
+    }
+    std::vector<int64_t> localValue(validAicNum, 0);
+    // 得到了每个核需要计算的S2数量，在T方向平均分配，但是有于有Sparse的存在，localValue中的数值，每个核之间应该差距很大
+    InitLoadValue(sparseValidArray, validAicNum, totalSize, localSparseStartIdx, localValue);
 
-        // 负载均衡粗调
-        std::vector<int64_t> tmpLocalValue(validAicNum, 0);
-        std::vector<int64_t> tmpsparseStartIdx(aicNum, totalSize);
-        int64_t sparseArraySum = std::accumulate(sparseValidArray.begin(), sparseValidArray.end(), 0LL); // 得到所有T上的S2的总数量
-        int64_t avgVal = CeilDivision(sparseArraySum, validAicNum); // 平均每个核需要处理的S2的总数量
+    // 负载均衡粗调
+    std::vector<int64_t> tmpLocalValue(validAicNum, 0);
+    std::vector<int64_t> tmpsparseStartIdx(aicNum, totalSize);
+    int64_t sparseArraySum = std::accumulate(sparseValidArray.begin(), sparseValidArray.end(), 0LL); // 得到所有T上的S2的总数量
+    int64_t avgVal = CeilDivision(sparseArraySum, validAicNum); // 平均每个核需要处理的S2的总数量
 
-        tmpsparseStartIdx[0] = 0;
-        for (int64_t idx = 1; idx < static_cast<int64_t>(aicNum); ++idx) {
-            int64_t start = tmpsparseStartIdx[idx - 1];
-            int64_t singleLoadValue = 0;
-            tmpsparseStartIdx[idx] = start;
-            while (singleLoadValue < avgVal && tmpsparseStartIdx[idx] < totalSize) {
-                singleLoadValue += sparseValidArray[tmpsparseStartIdx[idx]];
-                tmpsparseStartIdx[idx] += 1;
-            }
-
-            if ((start + 1) < tmpsparseStartIdx[idx]) {
-                int64_t redoSingleLoadValue = singleLoadValue - sparseValidArray[tmpsparseStartIdx[idx] - 1];
-                tmpsparseStartIdx[idx] = ((singleLoadValue - avgVal) > (avgVal - redoSingleLoadValue)) ?
-                                            (tmpsparseStartIdx[idx] - 1) : (tmpsparseStartIdx[idx]);
-                singleLoadValue = ((singleLoadValue - avgVal) > (avgVal - redoSingleLoadValue)) ? redoSingleLoadValue :
-                                                                                                    singleLoadValue;
-                sparseArraySum -= singleLoadValue;
-                avgVal = CeilDivision(sparseArraySum, (validAicNum - idx));
-            }
+    tmpsparseStartIdx[0] = 0;
+    for (int64_t idx = 1; idx < static_cast<int64_t>(aicNum); ++idx) {
+        int64_t start = tmpsparseStartIdx[idx - 1];
+        int64_t singleLoadValue = 0;
+        tmpsparseStartIdx[idx] = start;
+        while (singleLoadValue < avgVal && tmpsparseStartIdx[idx] < totalSize) {
+            singleLoadValue += sparseValidArray[tmpsparseStartIdx[idx]];
+            tmpsparseStartIdx[idx] += 1;
         }
 
-        InitLoadValue(sparseValidArray, validAicNum, totalSize, tmpsparseStartIdx, tmpLocalValue);
+        if ((start + 1) < tmpsparseStartIdx[idx]) {
+            int64_t redoSingleLoadValue = singleLoadValue - sparseValidArray[tmpsparseStartIdx[idx] - 1];
+            tmpsparseStartIdx[idx] = ((singleLoadValue - avgVal) > (avgVal - redoSingleLoadValue)) ?
+                                        (tmpsparseStartIdx[idx] - 1) : (tmpsparseStartIdx[idx]);
+            singleLoadValue = ((singleLoadValue - avgVal) > (avgVal - redoSingleLoadValue)) ? redoSingleLoadValue :
+                                                                                                singleLoadValue;
+            sparseArraySum -= singleLoadValue;
+            avgVal = CeilDivision(sparseArraySum, (validAicNum - idx));
+        }
+    }
 
-        // 负载均衡精调
-        while (BalanceLoad(sparseValidArray, tmpLocalValue, tmpsparseStartIdx)) {
-            // 根据负载均衡是否能得到更好预测结果决定是否结束循环
-        }
+    InitLoadValue(sparseValidArray, validAicNum, totalSize, tmpsparseStartIdx, tmpLocalValue);
 
-        // exchange initLoad and 负载均衡
-        if ((*std::max_element(localValue.begin(), localValue.end())) >
-            (*std::max_element(tmpLocalValue.begin(), tmpLocalValue.end()))) {
-            localSparseStartIdx.swap(tmpsparseStartIdx);
-            localValue.swap(tmpLocalValue);
-        }
-        for (int64_t idx = 0; idx < static_cast<int64_t>(aicNum); ++idx) {
-            sparseStartIdx[idx] = localSparseStartIdx[idx];
-        }
-    } else if (tilingKeyLayout == LayoutTypeRegbase::LAYOUT_BSND) {
-        int64_t sparseArraySum = std::accumulate(sparseValidArray.begin(), sparseValidArray.end(), 0LL); // 得到所有BS上的S2的总数量
-        int64_t balanceNum = CeilDivision(sparseArraySum, validAicNum);
-        std::vector<int64_t> tmpSparseValue(validAicNum, 0);
-        Balance4DLoad(tmpSparseValue, sparseValidArray, balanceNum);
-        for (int64_t idx = 0; idx < static_cast<int64_t>(validAicNum); ++idx) {
-            sparseStartIdx[idx] = tmpSparseValue[idx];
-        }
+    // 负载均衡精调
+    while (BalanceLoad(sparseValidArray, tmpLocalValue, tmpsparseStartIdx)) {
+        // 根据负载均衡是否能得到更好预测结果决定是否结束循环
+    }
+
+    // exchange initLoad and 负载均衡
+    if ((*std::max_element(localValue.begin(), localValue.end())) >
+        (*std::max_element(tmpLocalValue.begin(), tmpLocalValue.end()))) {
+        localSparseStartIdx.swap(tmpsparseStartIdx);
+        localValue.swap(tmpLocalValue);
+    }
+    for (int64_t idx = 0; idx < static_cast<int64_t>(aicNum); ++idx) {
+        sparseStartIdx[idx] = localSparseStartIdx[idx];
     }
 
     for (int64_t idx = 1; idx < static_cast<int64_t>(MAX_CORE_NUM_REGBASE); ++idx) {

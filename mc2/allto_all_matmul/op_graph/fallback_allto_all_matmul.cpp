@@ -146,7 +146,7 @@ static ge::graphStatus GetAttrPara(const gert::OpExecuteContext *host_api_ctx, c
     para.group = attrs->GetStr(INDEX_ATTR_GROUP);
     OPS_CHECK(para.group == nullptr, OP_LOGE_WITH_INVALID_INPUT(host_api_ctx->GetNodeName(), "group"), return ge::GRAPH_FAILED);
     para.commMode = attrs->GetStr(INDEX_ATTR_COMM_MODE);
-    OPS_CHECK(para.commMode == nullptr, OP_LOGE(host_api_ctx->GetNodeName(), "commMode is null."),
+    OPS_CHECK(para.commMode == nullptr, OP_LOGE_WITH_INVALID_INPUT(host_api_ctx->GetNodeName(), "commMode"),
               return ge::GRAPH_FAILED);
 
     const bool *transX2Ptr = attrs->GetBool(INDEX_ATTR_TRANS_X2);

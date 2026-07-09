@@ -16,7 +16,7 @@
 #include "op_mc2.h"
 #include "mc2_log.h"
 #include "mx_quant_grouped_mat_mul_allto_allv_tiling.h"
-#include "quant_grouped_mat_mul_allto_allv_tiling_adapter.h"
+#include "../quant_grouped_mat_mul_allto_allv_tiling_adapter.h"
 #include "op_host/op_tiling/mc2_tiling_utils.h"
 #include <tiling/tiling_api.h>
 #include "mc2_comm_utils.h"
@@ -465,7 +465,7 @@ ge::graphStatus MxQuantGroupedMatmulAllToAllvTiling::CheckMxQuantGmmScaleShapes(
 {
     bool TransGmmWeightFlag = false;
     const gert::RuntimeAttrs *attrs = context_->GetAttrs();
-    OP_TILING_CHECK(attrs == nullptr, OP_LOGE(opName_, "The context Attrs is nullptr."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(attrs == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "attrs"), return ge::GRAPH_FAILED);
     const bool *isTransGmmWeight = attrs->GetAttrPointer<bool>(ATTR_TRANS_GMM_WEIGHT_INDEX);
     if (isTransGmmWeight) {
         TransGmmWeightFlag = *isTransGmmWeight;

@@ -3458,14 +3458,17 @@ ge::graphStatus IFATiling::GenTilingKey() const
         cvRatioVal = (cvRatio_ == 1) ? 1 : 0; // CV1:1场景为1，其他场景为0
     }
 
+    // sparseMode == 9（tree mask）场景通过IFA_GET_TILINGKEY追加第11位做模板隔离
+    uint8_t enableTreeVal = (sparseMode_ == 9U) ? 1U : 0U;
+
     uint64_t baseOffset =
         modeVal * IFA_TILINGKEYOFFSET + (static_cast<uint64_t>(perfMode_)) * IFA_PERF_MODE_TILINGKEYOFFSET;
     if (antiquantMode_ == PER_TOKEN_MODE || antiquantMode_ == PER_CHANNEL_MODE){
         ifaContext_->tilingKey = baseOffset + IFA_GET_TILINGKEY(layoutVal, inputQVal, inputKvVal, outputVal, originVal,
-            (paVal + splitKvVal + antiquantModeVal), 0, kvLayoutInfo.kvLayoutVal, kvLayoutInfo.amlaMode, balanceMode, cvRatioVal);
+            (paVal + splitKvVal + antiquantModeVal), 0, kvLayoutInfo.kvLayoutVal, kvLayoutInfo.amlaMode, balanceMode, cvRatioVal, enableTreeVal);
     } else {
         ifaContext_->tilingKey = baseOffset + IFA_GET_TILINGKEY(layoutVal, inputQVal, inputKvVal, outputVal, originVal,
-            (paVal + splitKvVal), antiquantMode_, kvLayoutInfo.kvLayoutVal, kvLayoutInfo.amlaMode, balanceMode, cvRatioVal);
+            (paVal + splitKvVal), antiquantMode_, kvLayoutInfo.kvLayoutVal, kvLayoutInfo.amlaMode, balanceMode, cvRatioVal, enableTreeVal);
     }
 
     OP_LOGI(ifaContext_->opName, "IFA tilingKey: %lu.", ifaContext_->tilingKey);

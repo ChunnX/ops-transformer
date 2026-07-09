@@ -21,7 +21,7 @@
 #include "opdev/op_executor.h"
 #include "opdev/op_log.h"
 #include "opdev/platform.h"
-#include "log/log.h"
+#include "mc2_log_compat.h"
 #include "common/op_host/op_api/mc2_3rd_matmul_util.h"
 #include "common/utils/hccl_util.h"
 #include "common/op_api/mc2_aclnn_util.h"
@@ -97,8 +97,18 @@ static bool IsGatherOut(const aclTensor *gatherOut) {
 
 static bool CheckShape(const aclTensor *x1, const aclTensor *x2, const aclTensor *output, const aclTensor *gatherOut,
   bool isTransA) {
-  OP_CHECK_WRONG_DIMENSION(x1, TWO_DIMS, return false);
-  OP_CHECK_WRONG_DIMENSION(x2, TWO_DIMS, return false);
+  if (x1->GetViewShape().GetDimNum() != TWO_DIMS) {
+    OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("aclnnAllGatherMatmulGetWorkspaceSize", "x1",
+        (std::to_string(x1->GetViewShape().GetDimNum()) + "D").c_str(),
+        "The shape of x1 must be 2D.");
+    return false;
+  }
+  if (x2->GetViewShape().GetDimNum() != TWO_DIMS) {
+    OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("aclnnAllGatherMatmulGetWorkspaceSize", "x2",
+        (std::to_string(x2->GetViewShape().GetDimNum()) + "D").c_str(),
+        "The shape of x2 must be 2D.");
+    return false;
+  }
   OP_API_CHECK(isTransA, {
     OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnAllGatherMatmulGetWorkspaceSize", "x1", "transposed",
         "The value of x1 must not be transposed.");
@@ -204,7 +214,7 @@ aclnnStatus aclnnAllGatherMatmulGetWorkspaceSize(const aclTensor *x1, const aclT
   }
   bool isGatherOut = IsGatherOut(gatherOut);
   if (IsAscend910A5()) {
-    const char *commMode = "ccu";
+    const char *commMode = "ai_cpu";
     return aclnnAllGatherMatmulV2GetWorkspaceSize(x1, x2, bias, nullptr, nullptr, nullptr, 0, group, gatherIndex,
                                                   commTurn, streamMode, 0, commMode, const_cast<aclTensor *>(output),
                                                   const_cast<aclTensor *>(gatherOut), nullptr, workspaceSize, executor);

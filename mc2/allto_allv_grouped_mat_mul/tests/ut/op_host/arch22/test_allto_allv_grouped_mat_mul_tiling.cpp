@@ -182,7 +182,8 @@ std::vector<std::pair<std::string, Ops::Transformer::AnyValue>> CreateAttrs(
         {"recvCounts", Ops::Transformer::AnyValue::CreateFrom<vector<int64_t>>(tilingParams.recvCounts)},
         {"transGmmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
         {"transMmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
-        {"permuteOutFlag", Ops::Transformer::AnyValue::CreateFrom<bool>(tilingParams.permuteOutFlag)}
+        {"permuteOutFlag", Ops::Transformer::AnyValue::CreateFrom<bool>(tilingParams.permuteOutFlag)},
+        {"commMode", Ops::Transformer::AnyValue::CreateFrom<std::string>("ai_cpu")}
     };
 }
 
@@ -246,7 +247,8 @@ TEST_P(AlltoAllvGroupedMatMulArch22TilingTest, ShapeSize)
             {"recvCounts", Ops::Transformer::AnyValue::CreateFrom<vector<int64_t>>(tilingParams.recvCounts)},
             {"transGmmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
             {"transMmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
-            {"permuteOutFlag", Ops::Transformer::AnyValue::CreateFrom<bool>(tilingParams.permuteOutFlag)}
+            {"permuteOutFlag", Ops::Transformer::AnyValue::CreateFrom<bool>(tilingParams.permuteOutFlag)},
+            {"commMode", Ops::Transformer::AnyValue::CreateFrom<std::string>("ai_cpu")}
         },
         &compileInfo, socVersion, coreNum, ubSize, tilingDataSize
     );
@@ -347,6 +349,7 @@ TEST_F(AlltoAllvGroupedMatMulArch22TilingTest, H4)
         {"transGmmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
         {"transMmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
         {"permuteOutFlag", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+        {"commMode", Ops::Transformer::AnyValue::CreateFrom<std::string>("ai_cpu")},
     },
     &compileInfo, socVersion, coreNum, ubSize, tilingDataSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
@@ -384,6 +387,7 @@ TEST_F(AlltoAllvGroupedMatMulArch22TilingTest, A1)
         {"transGmmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
         {"transMmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
         {"permuteOutFlag", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+        {"commMode", Ops::Transformer::AnyValue::CreateFrom<std::string>("ai_cpu")},
     },
     &compileInfo, socVersion, coreNum, ubSize, tilingDataSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
@@ -420,6 +424,7 @@ TEST_F(AlltoAllvGroupedMatMulArch22TilingTest, BS1)
         {"transGmmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
         {"transMmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
         {"permuteOutFlag", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+        {"commMode", Ops::Transformer::AnyValue::CreateFrom<std::string>("ai_cpu")},
     },
     &compileInfo, socVersion, coreNum, ubSize, tilingDataSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
@@ -457,6 +462,7 @@ TEST_F(AlltoAllvGroupedMatMulArch22TilingTest, Dim1)
         {"transGmmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
         {"transMmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
         {"permuteOutFlag", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+        {"commMode", Ops::Transformer::AnyValue::CreateFrom<std::string>("ai_cpu")},
     },
     &compileInfo, socVersion, coreNum, ubSize, tilingDataSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
@@ -494,6 +500,7 @@ TEST_F(AlltoAllvGroupedMatMulArch22TilingTest, Dim2)
         {"transGmmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
         {"transMmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
         {"permuteOutFlag", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+        {"commMode", Ops::Transformer::AnyValue::CreateFrom<std::string>("ai_cpu")},
     },
     &compileInfo, socVersion, coreNum, ubSize, tilingDataSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
@@ -530,6 +537,7 @@ TEST_F(AlltoAllvGroupedMatMulArch22TilingTest, Dim3)
         {"transGmmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
         {"transMmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
         {"permuteOutFlag", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+        {"commMode", Ops::Transformer::AnyValue::CreateFrom<std::string>("ai_cpu")},
     },
     &compileInfo, socVersion, coreNum, ubSize, tilingDataSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
@@ -566,6 +574,7 @@ TEST_F(AlltoAllvGroupedMatMulArch22TilingTest, Dim5)
         {"transGmmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
         {"transMmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
         {"permuteOutFlag", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+        {"commMode", Ops::Transformer::AnyValue::CreateFrom<std::string>("ai_cpu")},
     },
     &compileInfo, socVersion, coreNum, ubSize, tilingDataSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
@@ -602,6 +611,7 @@ TEST_F(AlltoAllvGroupedMatMulArch22TilingTest, Dim6)
         {"transGmmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
         {"transMmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
         {"permuteOutFlag", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+        {"commMode", Ops::Transformer::AnyValue::CreateFrom<std::string>("ai_cpu")},
     },
     &compileInfo, socVersion, coreNum, ubSize, tilingDataSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
@@ -638,6 +648,7 @@ TEST_F(AlltoAllvGroupedMatMulArch22TilingTest, Dim7)
         {"transGmmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
         {"transMmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
         {"permuteOutFlag", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+        {"commMode", Ops::Transformer::AnyValue::CreateFrom<std::string>("ai_cpu")},
     },
     &compileInfo, socVersion, coreNum, ubSize, tilingDataSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
@@ -675,6 +686,609 @@ TEST_F(AlltoAllvGroupedMatMulArch22TilingTest, Dim10)
         {"transGmmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
         {"transMmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
         {"permuteOutFlag", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+        {"commMode", Ops::Transformer::AnyValue::CreateFrom<std::string>("ai_cpu")},
+    },
+    &compileInfo, socVersion, coreNum, ubSize, tilingDataSize);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
+}
+
+// 无 MM 时 BSK 触顶（permuteOutFlag=false，避免 K 校验抢先失败）
+TEST_F(AlltoAllvGroupedMatMulArch22TilingTest, CheckShapeSizeBskMaxNoMm)
+{
+    struct AlltoAllvGroupedMatMulCompileInfo {};
+    AlltoAllvGroupedMatMulCompileInfo compileInfo;
+    std::string socVersion = "Ascend910_93";
+    uint64_t coreNum = 20;
+    uint64_t ubSize = 196608;
+    uint64_t tilingDataSize = 8192;
+    gert::TilingContextPara tilingContextPara("AlltoAllvGroupedMatMul",
+    {
+        {{{52428800, 7168}, {52428800, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        {{{4, 7168, 4096}, {4, 7168, 4096}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        {{}, ge::DT_INT32, ge::FORMAT_ND},
+        {{}, ge::DT_INT32, ge::FORMAT_ND},
+        {{}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        {{}, ge::DT_FLOAT16, ge::FORMAT_ND},
+    },
+    {
+        {{{4096, 4096}, {4096, 4096}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        {{}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        {{}, ge::DT_FLOAT16, ge::FORMAT_ND},
+    },
+    {
+        {"group", Ops::Transformer::AnyValue::CreateFrom<std::string>("group")},
+        {"epWorldSize", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
+        {"sendCounts", Ops::Transformer::AnyValue::CreateFrom<vector<int64_t>>(sendCounts)},
+        {"recvCounts", Ops::Transformer::AnyValue::CreateFrom<vector<int64_t>>(recvCounts)},
+        {"transGmmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+        {"transMmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+        {"permuteOutFlag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+        {"commMode", Ops::Transformer::AnyValue::CreateFrom<std::string>("ai_cpu")},
+    },
+    &compileInfo, socVersion, coreNum, ubSize, tilingDataSize);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
+}
+
+TEST_F(AlltoAllvGroupedMatMulArch22TilingTest, PermuteOutGmmXH1Mismatch)
+{
+    struct AlltoAllvGroupedMatMulCompileInfo {};
+    AlltoAllvGroupedMatMulCompileInfo compileInfo;
+    std::string socVersion = "Ascend910_93";
+    uint64_t coreNum = 20;
+    uint64_t ubSize = 196608;
+    uint64_t tilingDataSize = 8192;
+    gert::TilingContextPara tilingContextPara("AlltoAllvGroupedMatMul",
+    {
+        {{{4096, 7168}, {4096, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        {{{4, 7168, 4096}, {4, 7168, 4096}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        {{}, ge::DT_INT32, ge::FORMAT_ND},
+        {{}, ge::DT_INT32, ge::FORMAT_ND},
+        {{{2048, 7168}, {2048, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        {{{7168, 64}, {7168, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+    },
+    {
+        {{{4096, 4096}, {4096, 4096}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        {{{2048, 64}, {2048, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        {{{4096, 7169}, {4096, 7169}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+    },
+    {
+        {"group", Ops::Transformer::AnyValue::CreateFrom<std::string>("group")},
+        {"epWorldSize", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
+        {"sendCounts", Ops::Transformer::AnyValue::CreateFrom<vector<int64_t>>(sendCounts)},
+        {"recvCounts", Ops::Transformer::AnyValue::CreateFrom<vector<int64_t>>(recvCounts)},
+        {"transGmmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+        {"transMmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+        {"permuteOutFlag", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+        {"commMode", Ops::Transformer::AnyValue::CreateFrom<std::string>("ai_cpu")},
+    },
+    &compileInfo, socVersion, coreNum, ubSize, tilingDataSize);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
+}
+
+TEST_F(AlltoAllvGroupedMatMulArch22TilingTest, MmYAndMmWeightN2Mismatch)
+{
+    struct AlltoAllvGroupedMatMulCompileInfo {};
+    AlltoAllvGroupedMatMulCompileInfo compileInfo;
+    std::string socVersion = "Ascend910_93";
+    uint64_t coreNum = 20;
+    uint64_t ubSize = 196608;
+    uint64_t tilingDataSize = 8192;
+    gert::TilingContextPara tilingContextPara("AlltoAllvGroupedMatMul",
+    {
+        {{{4096, 7168}, {4096, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        {{{4, 7168, 4096}, {4, 7168, 4096}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        {{}, ge::DT_INT32, ge::FORMAT_ND},
+        {{}, ge::DT_INT32, ge::FORMAT_ND},
+        {{{2048, 7168}, {2048, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        {{{7168, 64}, {7168, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+    },
+    {
+        {{{4096, 4096}, {4096, 4096}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        {{{2048, 63}, {2048, 63}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        {{{4096, 7168}, {4096, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+    },
+    {
+        {"group", Ops::Transformer::AnyValue::CreateFrom<std::string>("group")},
+        {"epWorldSize", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
+        {"sendCounts", Ops::Transformer::AnyValue::CreateFrom<vector<int64_t>>(sendCounts)},
+        {"recvCounts", Ops::Transformer::AnyValue::CreateFrom<vector<int64_t>>(recvCounts)},
+        {"transGmmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+        {"transMmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+        {"permuteOutFlag", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+        {"commMode", Ops::Transformer::AnyValue::CreateFrom<std::string>("ai_cpu")},
+    },
+    &compileInfo, socVersion, coreNum, ubSize, tilingDataSize);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
+}
+
+TEST_F(AlltoAllvGroupedMatMulArch22TilingTest, CheckDTypeMmMismatch)
+{
+    struct AlltoAllvGroupedMatMulCompileInfo {};
+    AlltoAllvGroupedMatMulCompileInfo compileInfo;
+    std::string socVersion = "Ascend910_93";
+    uint64_t coreNum = 20;
+    uint64_t ubSize = 196608;
+    uint64_t tilingDataSize = 8192;
+    gert::TilingContextPara tilingContextPara("AlltoAllvGroupedMatMul",
+    {
+        {{{4096, 7168}, {4096, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        {{{4, 7168, 4096}, {4, 7168, 4096}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        {{}, ge::DT_INT32, ge::FORMAT_ND},
+        {{}, ge::DT_INT32, ge::FORMAT_ND},
+        {{{2048, 7168}, {2048, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        {{{7168, 64}, {7168, 64}}, ge::DT_BF16, ge::FORMAT_ND},
+    },
+    {
+        {{{4096, 4096}, {4096, 4096}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        {{{2048, 64}, {2048, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        {{{4096, 7168}, {4096, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+    },
+    {
+        {"group", Ops::Transformer::AnyValue::CreateFrom<std::string>("group")},
+        {"epWorldSize", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
+        {"sendCounts", Ops::Transformer::AnyValue::CreateFrom<vector<int64_t>>(sendCounts)},
+        {"recvCounts", Ops::Transformer::AnyValue::CreateFrom<vector<int64_t>>(recvCounts)},
+        {"transGmmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+        {"transMmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+        {"permuteOutFlag", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+        {"commMode", Ops::Transformer::AnyValue::CreateFrom<std::string>("ai_cpu")},
+    },
+    &compileInfo, socVersion, coreNum, ubSize, tilingDataSize);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
+}
+
+// gmmX/gmmWeight 非法 dtype（无 MM，触达 CheckDType gmmX 分支）
+TEST_F(AlltoAllvGroupedMatMulArch22TilingTest, CheckDTypeGmmXInvalidNoMm)
+{
+    struct AlltoAllvGroupedMatMulCompileInfo {};
+    AlltoAllvGroupedMatMulCompileInfo compileInfo;
+    std::string socVersion = "Ascend910_93";
+    uint64_t coreNum = 20;
+    uint64_t ubSize = 196608;
+    uint64_t tilingDataSize = 8192;
+    gert::TilingContextPara tilingContextPara("AlltoAllvGroupedMatMul",
+    {
+        {{{4096, 7168}, {4096, 7168}}, ge::DT_FLOAT, ge::FORMAT_ND},
+        {{{4, 7168, 4096}, {4, 7168, 4096}}, ge::DT_FLOAT, ge::FORMAT_ND},
+        {{}, ge::DT_INT32, ge::FORMAT_ND},
+        {{}, ge::DT_INT32, ge::FORMAT_ND},
+        {{}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        {{}, ge::DT_FLOAT16, ge::FORMAT_ND},
+    },
+    {
+        {{{4096, 4096}, {4096, 4096}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        {{}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        {{}, ge::DT_FLOAT16, ge::FORMAT_ND},
+    },
+    {
+        {"group", Ops::Transformer::AnyValue::CreateFrom<std::string>("group")},
+        {"epWorldSize", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
+        {"sendCounts", Ops::Transformer::AnyValue::CreateFrom<vector<int64_t>>(sendCounts)},
+        {"recvCounts", Ops::Transformer::AnyValue::CreateFrom<vector<int64_t>>(recvCounts)},
+        {"transGmmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+        {"transMmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+        {"permuteOutFlag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+        {"commMode", Ops::Transformer::AnyValue::CreateFrom<std::string>("ai_cpu")},
+    },
+    &compileInfo, socVersion, coreNum, ubSize, tilingDataSize);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
+}
+
+// mmX/mmWeight 同为非法 dtype（非 FP16/BF16），触达 CheckDType mmX 分支
+TEST_F(AlltoAllvGroupedMatMulArch22TilingTest, CheckDTypeMmXInvalidDtype)
+{
+    struct AlltoAllvGroupedMatMulCompileInfo {};
+    AlltoAllvGroupedMatMulCompileInfo compileInfo;
+    std::string socVersion = "Ascend910_93";
+    uint64_t coreNum = 20;
+    uint64_t ubSize = 196608;
+    uint64_t tilingDataSize = 8192;
+    gert::TilingContextPara tilingContextPara("AlltoAllvGroupedMatMul",
+    {
+        {{{4096, 7168}, {4096, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        {{{4, 7168, 4096}, {4, 7168, 4096}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        {{}, ge::DT_INT32, ge::FORMAT_ND},
+        {{}, ge::DT_INT32, ge::FORMAT_ND},
+        {{{2048, 7168}, {2048, 7168}}, ge::DT_FLOAT, ge::FORMAT_ND},
+        {{{7168, 64}, {7168, 64}}, ge::DT_FLOAT, ge::FORMAT_ND},
+    },
+    {
+        {{{4096, 4096}, {4096, 4096}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        {{{2048, 64}, {2048, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        {{}, ge::DT_FLOAT16, ge::FORMAT_ND},
+    },
+    {
+        {"group", Ops::Transformer::AnyValue::CreateFrom<std::string>("group")},
+        {"epWorldSize", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
+        {"sendCounts", Ops::Transformer::AnyValue::CreateFrom<vector<int64_t>>(sendCounts)},
+        {"recvCounts", Ops::Transformer::AnyValue::CreateFrom<vector<int64_t>>(recvCounts)},
+        {"transGmmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+        {"transMmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+        {"permuteOutFlag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+        {"commMode", Ops::Transformer::AnyValue::CreateFrom<std::string>("ai_cpu")},
+    },
+    &compileInfo, socVersion, coreNum, ubSize, tilingDataSize);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
+}
+
+// gmmX 与 mmX dtype 不一致（均为合法 FP16/BF16）
+TEST_F(AlltoAllvGroupedMatMulArch22TilingTest, CheckDTypeGmmXMmXDtypeMismatch)
+{
+    struct AlltoAllvGroupedMatMulCompileInfo {};
+    AlltoAllvGroupedMatMulCompileInfo compileInfo;
+    std::string socVersion = "Ascend910_93";
+    uint64_t coreNum = 20;
+    uint64_t ubSize = 196608;
+    uint64_t tilingDataSize = 8192;
+    gert::TilingContextPara tilingContextPara("AlltoAllvGroupedMatMul",
+    {
+        {{{4096, 7168}, {4096, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        {{{4, 7168, 4096}, {4, 7168, 4096}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        {{}, ge::DT_INT32, ge::FORMAT_ND},
+        {{}, ge::DT_INT32, ge::FORMAT_ND},
+        {{{2048, 7168}, {2048, 7168}}, ge::DT_BF16, ge::FORMAT_ND},
+        {{{7168, 64}, {7168, 64}}, ge::DT_BF16, ge::FORMAT_ND},
+    },
+    {
+        {{{4096, 4096}, {4096, 4096}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        {{{2048, 64}, {2048, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        {{}, ge::DT_FLOAT16, ge::FORMAT_ND},
+    },
+    {
+        {"group", Ops::Transformer::AnyValue::CreateFrom<std::string>("group")},
+        {"epWorldSize", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
+        {"sendCounts", Ops::Transformer::AnyValue::CreateFrom<vector<int64_t>>(sendCounts)},
+        {"recvCounts", Ops::Transformer::AnyValue::CreateFrom<vector<int64_t>>(recvCounts)},
+        {"transGmmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+        {"transMmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+        {"permuteOutFlag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+        {"commMode", Ops::Transformer::AnyValue::CreateFrom<std::string>("ai_cpu")},
+    },
+    &compileInfo, socVersion, coreNum, ubSize, tilingDataSize);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
+}
+
+// 无 MM、permuteOutFlag=false，BSK=0 触达 CheckShapeSize BSK 下界
+TEST_F(AlltoAllvGroupedMatMulArch22TilingTest, CheckShapeSizeBskZeroNoMm)
+{
+    struct AlltoAllvGroupedMatMulCompileInfo {};
+    AlltoAllvGroupedMatMulCompileInfo compileInfo;
+    std::string socVersion = "Ascend910_93";
+    uint64_t coreNum = 20;
+    uint64_t ubSize = 196608;
+    uint64_t tilingDataSize = 8192;
+    gert::TilingContextPara tilingContextPara("AlltoAllvGroupedMatMul",
+    {
+        {{{0, 7168}, {0, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        {{{4, 7168, 4096}, {4, 7168, 4096}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        {{}, ge::DT_INT32, ge::FORMAT_ND},
+        {{}, ge::DT_INT32, ge::FORMAT_ND},
+        {{}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        {{}, ge::DT_FLOAT16, ge::FORMAT_ND},
+    },
+    {
+        {{{4096, 4096}, {4096, 4096}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        {{}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        {{}, ge::DT_FLOAT16, ge::FORMAT_ND},
+    },
+    {
+        {"group", Ops::Transformer::AnyValue::CreateFrom<std::string>("group")},
+        {"epWorldSize", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
+        {"sendCounts", Ops::Transformer::AnyValue::CreateFrom<vector<int64_t>>(sendCounts)},
+        {"recvCounts", Ops::Transformer::AnyValue::CreateFrom<vector<int64_t>>(recvCounts)},
+        {"transGmmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+        {"transMmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+        {"permuteOutFlag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+        {"commMode", Ops::Transformer::AnyValue::CreateFrom<std::string>("ai_cpu")},
+    },
+    &compileInfo, socVersion, coreNum, ubSize, tilingDataSize);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
+}
+
+// 带 MM 的完整 shape 路径，用于触达 CheckShapeSize / CheckShapeRelation 深分支
+TEST_F(AlltoAllvGroupedMatMulArch22TilingTest, CheckShapeSizeBskMaxWithMm)
+{
+    struct AlltoAllvGroupedMatMulCompileInfo {};
+    AlltoAllvGroupedMatMulCompileInfo compileInfo;
+    std::string socVersion = "Ascend910_93";
+    uint64_t coreNum = 20;
+    uint64_t ubSize = 196608;
+    uint64_t tilingDataSize = 8192;
+    gert::TilingContextPara tilingContextPara("AlltoAllvGroupedMatMul",
+    {
+        {{{52428800, 7168}, {52428800, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        {{{4, 7168, 4096}, {4, 7168, 4096}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        {{}, ge::DT_INT32, ge::FORMAT_ND},
+        {{}, ge::DT_INT32, ge::FORMAT_ND},
+        {{{2048, 7168}, {2048, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        {{{7168, 64}, {7168, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+    },
+    {
+        {{{4096, 4096}, {4096, 4096}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        {{{2048, 64}, {2048, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        {{{4096, 7168}, {4096, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+    },
+    {
+        {"group", Ops::Transformer::AnyValue::CreateFrom<std::string>("group")},
+        {"epWorldSize", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
+        {"sendCounts", Ops::Transformer::AnyValue::CreateFrom<vector<int64_t>>(sendCounts)},
+        {"recvCounts", Ops::Transformer::AnyValue::CreateFrom<vector<int64_t>>(recvCounts)},
+        {"transGmmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+        {"transMmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+        {"permuteOutFlag", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+        {"commMode", Ops::Transformer::AnyValue::CreateFrom<std::string>("ai_cpu")},
+    },
+    &compileInfo, socVersion, coreNum, ubSize, tilingDataSize);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
+}
+
+TEST_F(AlltoAllvGroupedMatMulArch22TilingTest, CheckShapeSizeH1MaxWithMm)
+{
+    struct AlltoAllvGroupedMatMulCompileInfo {};
+    AlltoAllvGroupedMatMulCompileInfo compileInfo;
+    std::string socVersion = "Ascend910_93";
+    uint64_t coreNum = 20;
+    uint64_t ubSize = 196608;
+    uint64_t tilingDataSize = 8192;
+    gert::TilingContextPara tilingContextPara("AlltoAllvGroupedMatMul",
+    {
+        {{{4096, 65536}, {4096, 65536}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        {{{4, 65536, 4096}, {4, 65536, 4096}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        {{}, ge::DT_INT32, ge::FORMAT_ND},
+        {{}, ge::DT_INT32, ge::FORMAT_ND},
+        {{{2048, 65536}, {2048, 65536}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        {{{65536, 64}, {65536, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+    },
+    {
+        {{{4096, 4096}, {4096, 4096}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        {{{2048, 64}, {2048, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        {{{4096, 65536}, {4096, 65536}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+    },
+    {
+        {"group", Ops::Transformer::AnyValue::CreateFrom<std::string>("group")},
+        {"epWorldSize", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
+        {"sendCounts", Ops::Transformer::AnyValue::CreateFrom<vector<int64_t>>(sendCounts)},
+        {"recvCounts", Ops::Transformer::AnyValue::CreateFrom<vector<int64_t>>(recvCounts)},
+        {"transGmmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+        {"transMmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+        {"permuteOutFlag", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+        {"commMode", Ops::Transformer::AnyValue::CreateFrom<std::string>("ai_cpu")},
+    },
+    &compileInfo, socVersion, coreNum, ubSize, tilingDataSize);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
+}
+
+TEST_F(AlltoAllvGroupedMatMulArch22TilingTest, PermuteOutFlagFalseWithMmOutput)
+{
+    struct AlltoAllvGroupedMatMulCompileInfo {};
+    AlltoAllvGroupedMatMulCompileInfo compileInfo;
+    std::string socVersion = "Ascend910_93";
+    uint64_t coreNum = 20;
+    uint64_t ubSize = 196608;
+    uint64_t tilingDataSize = 8192;
+    gert::TilingContextPara tilingContextPara("AlltoAllvGroupedMatMul",
+    {
+        {{{4096, 7168}, {4096, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        {{{4, 7168, 4096}, {4, 7168, 4096}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        {{}, ge::DT_INT32, ge::FORMAT_ND},
+        {{}, ge::DT_INT32, ge::FORMAT_ND},
+        {{{2048, 7168}, {2048, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        {{{7168, 64}, {7168, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+    },
+    {
+        {{{4096, 4096}, {4096, 4096}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        {{{2048, 64}, {2048, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        {{{4096, 7168}, {4096, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+    },
+    {
+        {"group", Ops::Transformer::AnyValue::CreateFrom<std::string>("group")},
+        {"epWorldSize", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
+        {"sendCounts", Ops::Transformer::AnyValue::CreateFrom<vector<int64_t>>(sendCounts)},
+        {"recvCounts", Ops::Transformer::AnyValue::CreateFrom<vector<int64_t>>(recvCounts)},
+        {"transGmmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+        {"transMmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+        {"permuteOutFlag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+        {"commMode", Ops::Transformer::AnyValue::CreateFrom<std::string>("ai_cpu")},
+    },
+    &compileInfo, socVersion, coreNum, ubSize, tilingDataSize);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
+}
+
+TEST_F(AlltoAllvGroupedMatMulArch22TilingTest, PermuteOutGmmYAMismatch)
+{
+    struct AlltoAllvGroupedMatMulCompileInfo {};
+    AlltoAllvGroupedMatMulCompileInfo compileInfo;
+    std::string socVersion = "Ascend910_93";
+    uint64_t coreNum = 20;
+    uint64_t ubSize = 196608;
+    uint64_t tilingDataSize = 8192;
+    gert::TilingContextPara tilingContextPara("AlltoAllvGroupedMatMul",
+    {
+        {{{4096, 7168}, {4096, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        {{{4, 7168, 4096}, {4, 7168, 4096}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        {{}, ge::DT_INT32, ge::FORMAT_ND},
+        {{}, ge::DT_INT32, ge::FORMAT_ND},
+        {{{2048, 7168}, {2048, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        {{{7168, 64}, {7168, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+    },
+    {
+        {{{4096, 4096}, {4096, 4096}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        {{{2048, 64}, {2048, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        {{{4097, 7168}, {4097, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+    },
+    {
+        {"group", Ops::Transformer::AnyValue::CreateFrom<std::string>("group")},
+        {"epWorldSize", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
+        {"sendCounts", Ops::Transformer::AnyValue::CreateFrom<vector<int64_t>>(sendCounts)},
+        {"recvCounts", Ops::Transformer::AnyValue::CreateFrom<vector<int64_t>>(recvCounts)},
+        {"transGmmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+        {"transMmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+        {"permuteOutFlag", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+        {"commMode", Ops::Transformer::AnyValue::CreateFrom<std::string>("ai_cpu")},
+    },
+    &compileInfo, socVersion, coreNum, ubSize, tilingDataSize);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
+}
+
+TEST_F(AlltoAllvGroupedMatMulArch22TilingTest, CheckShapeRelationKOutOfRange)
+{
+    struct AlltoAllvGroupedMatMulCompileInfo {};
+    AlltoAllvGroupedMatMulCompileInfo compileInfo;
+    std::string socVersion = "Ascend910_93";
+    uint64_t coreNum = 20;
+    uint64_t ubSize = 196608;
+    uint64_t tilingDataSize = 8192;
+    gert::TilingContextPara tilingContextPara("AlltoAllvGroupedMatMul",
+    {
+        {{{2048, 7168}, {2048, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        {{{4, 7168, 4096}, {4, 7168, 4096}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        {{}, ge::DT_INT32, ge::FORMAT_ND},
+        {{}, ge::DT_INT32, ge::FORMAT_ND},
+        {{{2048, 7168}, {2048, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        {{{7168, 64}, {7168, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+    },
+    {
+        {{{4096, 4096}, {4096, 4096}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        {{{2048, 64}, {2048, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        {{{4096, 7168}, {4096, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+    },
+    {
+        {"group", Ops::Transformer::AnyValue::CreateFrom<std::string>("group")},
+        {"epWorldSize", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
+        {"sendCounts", Ops::Transformer::AnyValue::CreateFrom<vector<int64_t>>(sendCounts)},
+        {"recvCounts", Ops::Transformer::AnyValue::CreateFrom<vector<int64_t>>(recvCounts)},
+        {"transGmmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+        {"transMmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+        {"permuteOutFlag", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+        {"commMode", Ops::Transformer::AnyValue::CreateFrom<std::string>("ai_cpu")},
+    },
+    &compileInfo, socVersion, coreNum, ubSize, tilingDataSize);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
+}
+
+TEST_F(AlltoAllvGroupedMatMulArch22TilingTest, CheckDTypeGmmMismatch)
+{
+    struct AlltoAllvGroupedMatMulCompileInfo {};
+    AlltoAllvGroupedMatMulCompileInfo compileInfo;
+    std::string socVersion = "Ascend910_93";
+    uint64_t coreNum = 20;
+    uint64_t ubSize = 196608;
+    uint64_t tilingDataSize = 8192;
+    gert::TilingContextPara tilingContextPara("AlltoAllvGroupedMatMul",
+    {
+        {{{4096, 7168}, {4096, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        {{{4, 7168, 4096}, {4, 7168, 4096}}, ge::DT_BF16, ge::FORMAT_ND},
+        {{}, ge::DT_INT32, ge::FORMAT_ND},
+        {{}, ge::DT_INT32, ge::FORMAT_ND},
+        {{{2048, 7168}, {2048, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        {{{7168, 64}, {7168, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+    },
+    {
+        {{{4096, 4096}, {4096, 4096}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        {{{2048, 64}, {2048, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        {{{4096, 7168}, {4096, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+    },
+    {
+        {"group", Ops::Transformer::AnyValue::CreateFrom<std::string>("group")},
+        {"epWorldSize", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
+        {"sendCounts", Ops::Transformer::AnyValue::CreateFrom<vector<int64_t>>(sendCounts)},
+        {"recvCounts", Ops::Transformer::AnyValue::CreateFrom<vector<int64_t>>(recvCounts)},
+        {"transGmmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+        {"transMmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+        {"permuteOutFlag", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+        {"commMode", Ops::Transformer::AnyValue::CreateFrom<std::string>("ai_cpu")},
+    },
+    &compileInfo, socVersion, coreNum, ubSize, tilingDataSize);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
+}
+
+TEST_F(AlltoAllvGroupedMatMulArch22TilingTest, CheckAttrsNegativeSendCount)
+{
+    struct AlltoAllvGroupedMatMulCompileInfo {};
+    AlltoAllvGroupedMatMulCompileInfo compileInfo;
+    std::string socVersion = "Ascend910_93";
+    uint64_t coreNum = 20;
+    uint64_t ubSize = 196608;
+    uint64_t tilingDataSize = 8192;
+    std::vector<int64_t> sendCountsNeg = sendCounts;
+    sendCountsNeg[0] = -1;
+    gert::TilingContextPara tilingContextPara("AlltoAllvGroupedMatMul",
+    {
+        {{{4096, 7168}, {4096, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        {{{4, 7168, 4096}, {4, 7168, 4096}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        {{}, ge::DT_INT32, ge::FORMAT_ND},
+        {{}, ge::DT_INT32, ge::FORMAT_ND},
+        {{{2048, 7168}, {2048, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        {{{7168, 64}, {7168, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+    },
+    {
+        {{{4096, 4096}, {4096, 4096}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        {{{2048, 64}, {2048, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        {{{4096, 7168}, {4096, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+    },
+    {
+        {"group", Ops::Transformer::AnyValue::CreateFrom<std::string>("group")},
+        {"epWorldSize", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
+        {"sendCounts", Ops::Transformer::AnyValue::CreateFrom<vector<int64_t>>(sendCountsNeg)},
+        {"recvCounts", Ops::Transformer::AnyValue::CreateFrom<vector<int64_t>>(recvCounts)},
+        {"transGmmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+        {"transMmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+        {"permuteOutFlag", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+        {"commMode", Ops::Transformer::AnyValue::CreateFrom<std::string>("ai_cpu")},
+    },
+    &compileInfo, socVersion, coreNum, ubSize, tilingDataSize);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
+}
+
+// CheckAttrsShapeSize：sendCounts / recvCounts 长度不一致
+TEST_F(AlltoAllvGroupedMatMulArch22TilingTest, SendRecvCountsSizeMismatch)
+{
+    struct AlltoAllvGroupedMatMulCompileInfo {};
+    AlltoAllvGroupedMatMulCompileInfo compileInfo;
+    std::string socVersion = "Ascend910_93";
+    uint64_t coreNum = 20;
+    uint64_t ubSize = 196608;
+    uint64_t tilingDataSize = 8192;
+    std::vector<int64_t> recvCountsShort(recvCounts.begin(), recvCounts.begin() + 31);
+    gert::TilingContextPara tilingContextPara("AlltoAllvGroupedMatMul",
+    {
+        {{{4096, 7168}, {4096, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        {{{4, 7168, 4096}, {4, 7168, 4096}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        {{}, ge::DT_INT32, ge::FORMAT_ND},
+        {{}, ge::DT_INT32, ge::FORMAT_ND},
+        {{{2048, 7168}, {2048, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        {{{7168, 64}, {7168, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+    },
+    {
+        {{{4096, 4096}, {4096, 4096}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        {{{2048, 64}, {2048, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        {{{4096, 7168}, {4096, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+    },
+    {
+        {"group", Ops::Transformer::AnyValue::CreateFrom<std::string>("group")},
+        {"epWorldSize", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
+        {"sendCounts", Ops::Transformer::AnyValue::CreateFrom<vector<int64_t>>(sendCounts)},
+        {"recvCounts", Ops::Transformer::AnyValue::CreateFrom<vector<int64_t>>(recvCountsShort)},
+        {"transGmmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+        {"transMmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+        {"permuteOutFlag", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+        {"commMode", Ops::Transformer::AnyValue::CreateFrom<std::string>("ai_cpu")},
     },
     &compileInfo, socVersion, coreNum, ubSize, tilingDataSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
@@ -711,6 +1325,7 @@ TEST_F(AlltoAllvGroupedMatMulArch22TilingTest, TransMmWeight1)
         {"transGmmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
         {"transMmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
         {"permuteOutFlag", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+        {"commMode", Ops::Transformer::AnyValue::CreateFrom<std::string>("ai_cpu")},
     },
     &compileInfo, socVersion, coreNum, ubSize, tilingDataSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};

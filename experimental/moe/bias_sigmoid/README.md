@@ -8,20 +8,20 @@
 
 ## 功能说明
 
-- 算子功能：对输入张量进行 Sigmoid 激活计算，并叠加偏置（Bias）。该算子同时输出两个结果：一个是纯粹的 Sigmoid 激活结果，另一个是 Sigmoid 叠加 Bias 后的结果。
+- 算子功能：对输入张量进行Sigmoid激活计算，并叠加偏置（Bias）。该算子同时输出两个结果：一个是纯粹的Sigmoid激活结果，另一个是Sigmoid叠加Bias后的结果。
 
 - 该算子对输入张量 $expertX$ 执行以下操作：
 
-1. **Sigmoid 激活计算**：
+1. **Sigmoid激活计算**：
    $$\text{sigmoidOut} = \sigma(expertX)$$
 
-2. **叠加 Bias 计算**：
+2. **叠加Bias计算**：
    $$\text{biasOut} = \text{sigmoidOut} + \text{bias}$$
     其中：
     - $expertX$ 是输入张量
-    - $\sigma$ 表示 Sigmoid 激活函数
+    - $\sigma$ 表示Sigmoid激活函数
     - $\text{bias}$ 是偏置项
-    - 输出包含两个张量：纯粹的 Sigmoid 结果和叠加 Bias 后的结果
+    - 输出包含两个张量：纯粹的Sigmoid结果和叠加Bias后的结果
 
 ## 参数说明
 
@@ -51,28 +51,28 @@
 	<tr>
       <td>expertX</td>
       <td>输入</td>
-      <td>输入张量（Router logits），shape 为 (rows, expert_num)</td>
+      <td>输入张量（Router logits），shape为(rows, expert_num)</td>
       <td>BFLOAT16/HALF</td>
       <td>ND</td>
     </tr>
 	<tr>
       <td>bias</td>
       <td>输入</td>
-      <td>偏置张量，shape 为 (expert_num,)，将被广播加到每一行</td>
+      <td>偏置张量，shape为(expert_num,)，将被广播加到每一行</td>
       <td>BFLOAT16/HALF</td>
       <td>ND</td>
     </tr>
 	<tr>
       <td>sigmoidOut</td>
       <td>输出</td>
-      <td>Sigmoid 激活后的输出张量，shape 同输入X</td>
+      <td>Sigmoid激活后的输出张量，shape同输入X</td>
       <td>BFLOAT16/HALF</td>
       <td>ND</td>
     </tr>
 	<tr>
       <td>biasOut</td>
       <td>输出</td>
-      <td>Sigmoid 叠加 Bias 后的输出张量，shape 同输入X</td>
+      <td>Sigmoid叠加Bias后的输出张量，shape同输入X</td>
       <td>BFLOAT16/HALF</td>
       <td>ND</td>
     </tr>

@@ -60,6 +60,8 @@ public:
                                         uint64_t cvLoopIdx, const BasicBlockOffsetParam &param);
     __aicore__ inline void WaitMTE1ToMTE2(uint64_t kaGmOffset, const BasicBlockOffsetParam &offsetParam);
     __aicore__ inline void SetMTE1ToMTE2(uint64_t kaGmOffset, const BasicBlockOffsetParam &offsetParam);
+    __aicore__ inline void WaitWeightMTE1ToMTE2();
+    __aicore__ inline void SetWeightMTE1ToMTE2();
     __aicore__ inline void WaitScaleMTE1ToMTE2(uint64_t kbGmOffset);
     __aicore__ inline void SetScaleMTE1ToMTE2(uint64_t kbGmOffset, const BasicBlockOffsetParam &offsetParam);
     __aicore__ inline void CopyAAndBiasGmToL1(const BasicBlockOffsetParam &param, int64_t kaGmOffset,
@@ -87,6 +89,7 @@ private:
     int8_t aL1DbNum_;
     static constexpr uint32_t KB_UNIT = GetKBUnit<xType>();
     static constexpr uint64_t MX_SCALE_L1_SIZE = 32 * GetKBUnit<xType>() * sizeof(xType); // scaleA/B单块分配空间
+    static constexpr uint32_t EVENT_ID_WEIGHT_MTE1_TO_MTE2 = 1;
     static constexpr uint32_t EVENT_ID_MTE1_TO_MTE2 = 3;
     static constexpr uint32_t EVENT_ID_SCALE_MTE1_TO_MTE2 = 5;
     static constexpr uint32_t EVENT_ID_M_TO_MTE1 = 3;
@@ -96,6 +99,7 @@ private:
     uint64_t aL1MaxHalfCount_ = 0;
     uint64_t mxScaleBufIdx_ = 0;
     uint64_t aL1BufIdx_ = 0;
+    uint64_t weightL1BufIdx_ = 0;
 
     AscendC::TEventID cubeEventIdsMxScaleMte1ToMte2_[DOUBLE_BUFFER_NUM];
     AscendC::TEventID cubeEventIdsMte1ToMte2_[DOUBLE_BUFFER_NUM];
@@ -159,6 +163,7 @@ __aicore__ inline void GMM_FR_WEIGHT_QUANT_CUBE_COMPUTE_CLASS::MxA8W4Init(uint64
     aL1DbOffset_ = l1RemainSize >> 1; // 最后剩余空间全部给AL1开DB
 
     for (uint64_t i = 0; i < DOUBLE_BUFFER_NUM; i++) {
+        SetFlag<HardEvent::MTE1_MTE2>(EVENT_ID_WEIGHT_MTE1_TO_MTE2 + i);
         SetFlag<HardEvent::MTE1_MTE2>(EVENT_ID_MTE1_TO_MTE2 + i);
         SetFlag<HardEvent::MTE1_MTE2>(EVENT_ID_SCALE_MTE1_TO_MTE2 + i);
         SetFlag<HardEvent::M_MTE1>(EVENT_ID_M_TO_MTE1 + i);
@@ -209,6 +214,19 @@ __aicore__ inline void GMM_FR_WEIGHT_QUANT_CUBE_COMPUTE_CLASS::WaitMTE1ToMTE2(ui
     if (aL1DbNum_ > SINGLE_BUFFER_NUM && kaGmOffset % offsetParam.kaL1Size == 0) {
         WaitFlag<HardEvent::MTE1_MTE2>(EVENT_ID_MTE1_TO_MTE2 + (aL1BufIdx_ & 1));
     }
+}
+
+GMM_FR_WEIGHT_QUANT_CUBE_COMPUTE_TEMPLATE_PARAM
+__aicore__ inline void GMM_FR_WEIGHT_QUANT_CUBE_COMPUTE_CLASS::WaitWeightMTE1ToMTE2()
+{
+    WaitFlag<HardEvent::MTE1_MTE2>(EVENT_ID_WEIGHT_MTE1_TO_MTE2 + (weightL1BufIdx_ & 1));
+}
+
+GMM_FR_WEIGHT_QUANT_CUBE_COMPUTE_TEMPLATE_PARAM
+__aicore__ inline void GMM_FR_WEIGHT_QUANT_CUBE_COMPUTE_CLASS::SetWeightMTE1ToMTE2()
+{
+    SetFlag<HardEvent::MTE1_MTE2>(EVENT_ID_WEIGHT_MTE1_TO_MTE2 + (weightL1BufIdx_ & 1));
+    weightL1BufIdx_++;
 }
 
 GMM_FR_WEIGHT_QUANT_CUBE_COMPUTE_TEMPLATE_PARAM
@@ -394,6 +412,7 @@ GMM_FR_WEIGHT_QUANT_CUBE_COMPUTE_TEMPLATE_PARAM
 __aicore__ inline void GMM_FR_WEIGHT_QUANT_CUBE_COMPUTE_CLASS::EndSync()
 {
     for (uint64_t i = 0; i < DOUBLE_BUFFER_NUM; i++) {
+        WaitFlag<HardEvent::MTE1_MTE2>(EVENT_ID_WEIGHT_MTE1_TO_MTE2 + i);
         WaitFlag<HardEvent::MTE1_MTE2>(EVENT_ID_SCALE_MTE1_TO_MTE2 + i);
         WaitFlag<HardEvent::MTE1_MTE2>(EVENT_ID_MTE1_TO_MTE2 + i);
         WaitFlag<HardEvent::M_MTE1>(EVENT_ID_M_TO_MTE1 + i);

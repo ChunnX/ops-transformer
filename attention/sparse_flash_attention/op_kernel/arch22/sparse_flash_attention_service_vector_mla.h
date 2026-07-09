@@ -53,9 +53,9 @@ public:
                                                 GlobalTensor<T> softmaxMaxGm, GlobalTensor<T> softmaxSumGm);
     __aicore__ inline void InitVec2GlobalTensor(GlobalTensor<T> accumOutGm, GlobalTensor<UPDATE_T> vec2ResGm,
                                                 GlobalTensor<MM2_OUT_T> mm2ResGm, GlobalTensor<OUT_T> attentionOutGm);
+    __aicore__ inline void InitSoftmaxDefaultBuffer();
     __aicore__ inline void AllocEventID();
     __aicore__ inline void FreeEventID();
-    __aicore__ inline void InitSoftmaxDefaultBuffer();
     // ================================Base Vector==========================================
     __aicore__ inline void RowDivs(LocalTensor<float> dstUb, LocalTensor<float> src0Ub, LocalTensor<float> src1Ub,
                                    uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount);
@@ -71,12 +71,12 @@ public:
                                     int64_t realS2Idx2, const RunInfo &runInfo);
     __aicore__ inline void CopyOutMrgeResult(int64_t mte2Size, int64_t mte3Size, int64_t s2StartGmOffset,
                                              int64_t mergeMte3Idx, const RunInfo &runInfo);
+    __aicore__ inline void CopyInSingleKv(int64_t &mte2Size, int64_t mte3Size, int64_t mergeMte3Idx, int64_t realS2Idx,
+                                          int64_t keyBNBOffset,int64_t s2IdLimit, const RunInfo &runInfo);
     __aicore__ inline void SetInfInBlk(const LocalTensor<T> &mmResUb, uint32_t dealRowCount, uint32_t columnCount,
                                        uint64_t startId, uint64_t endId);
     __aicore__ inline void SetMidInf(const LocalTensor<T> &mmResUb, uint32_t dealRowCount, uint32_t columnCount,
                                      uint64_t startId, uint64_t endId);
-    __aicore__ inline void CopyInSingleKv(int64_t &mte2Size, int64_t mte3Size, int64_t mergeMte3Idx, int64_t realS2Idx,
-                                          int64_t keyBNBOffset,int64_t s2IdLimit, const RunInfo &runInfo);
     // ================================Vector1==========================================
     __aicore__ inline void ProcessVec1SingleBuf(const RunInfo &info, const MSplitInfo &mSplitInfo);
     __aicore__ inline void DealBmm1ResBaseBlock(const RunInfo &info, const MSplitInfo &mSplitInfo, uint32_t startRow,
@@ -1154,9 +1154,9 @@ template <typename SFAT> __aicore__ inline void SFAVectorService<SFAT>::ProcessV
         mSplitInfo.nBufferStartM = i * constInfo.nBufferMBaseSize;
         mSplitInfo.nBufferDealM = (i + 1 != nBufferLoopTimes) ? constInfo.nBufferMBaseSize : nBufferTail;
 
+        mSplitInfo.vecStartM = 0;
         mSplitInfo.vecDealM = (mSplitInfo.nBufferDealM <= 16) ? mSplitInfo.nBufferDealM :
                                                                 (((mSplitInfo.nBufferDealM + 15) / 16 + 1) / 2 * 16);
-        mSplitInfo.vecStartM = 0;
         if (GetBlockIdx() % 2 == 1) {
             mSplitInfo.vecStartM = mSplitInfo.vecDealM;
             mSplitInfo.vecDealM = mSplitInfo.nBufferDealM - mSplitInfo.vecDealM;
@@ -1230,8 +1230,8 @@ SFAVectorService<SFAT>::Bmm2FDDataCopyOut(const RunInfo &info, LocalTensor<T> &b
         DataCopyExtParams dataCopyParams;
         dataCopyParams.blockCount = dealRowCount;
         dataCopyParams.blockLen = actualColumnCount * sizeof(T);
-        dataCopyParams.srcStride = (columnCount - actualColumnCount) / (BYTE_BLOCK / sizeof(T));
         dataCopyParams.dstStride = 0;
+        dataCopyParams.srcStride = (columnCount - actualColumnCount) / (BYTE_BLOCK / sizeof(T));
         DataCopyPad(dst, tmp, dataCopyParams);
     } else {
         matmul::InitOutput<T>(dst, dealRowCount * actualColumnCount, ConstInfo::FLOAT_ZERO);
@@ -1361,9 +1361,9 @@ SFAVectorService<SFAT>::RowDivs(LocalTensor<float> dstUb, LocalTensor<float> src
         }
     } else {
         BinaryRepeatParams columnRepeatParams;
+        columnRepeatParams.dstBlkStride = 1;
         columnRepeatParams.src0BlkStride = 1;
         columnRepeatParams.src1BlkStride = 0;
-        columnRepeatParams.dstBlkStride = 1;
         columnRepeatParams.src0RepStride = 8; // 列方向上两次repeat起始地址间隔dtypeMask=64个元素，即8个block
         columnRepeatParams.src1RepStride = 0;
         columnRepeatParams.dstRepStride = 8;  // 列方向上两次repeat起始地址间隔dtypeMask=64个元素，即8个block
@@ -1400,33 +1400,34 @@ SFAVectorService<SFAT>::RowMuls(LocalTensor<T> dstUb, LocalTensor<T> src0Ub, Loc
 
     // 每次只能连续读取256B的数据进行计算，故每次只能处理256B/sizeof(dType)=
     // 列方向分dLoop次，每次处理8列数据
-    uint32_t dLoop = actualColumnCount / repeatElementNum;
     uint32_t dRemain = actualColumnCount % repeatElementNum;
+    uint32_t dLoop = actualColumnCount / repeatElementNum;
     // REPEATE_STRIDE_UP_BOUND=256， 此限制由于src0RepStride数据类型为uint8之多256个datablock间距
     if (columnCount < REPEATE_STRIDE_UP_BOUND * blockElementNum) {
         BinaryRepeatParams repeatParams;
+        repeatParams.dstBlkStride = 1;
         repeatParams.src0BlkStride = 1;
         repeatParams.src1BlkStride = 0;
-        repeatParams.dstBlkStride = 1;
+        repeatParams.dstRepStride = columnCount / blockElementNum;
         repeatParams.src0RepStride = columnCount / blockElementNum;
         repeatParams.src1RepStride = 1;
-        repeatParams.dstRepStride = columnCount / blockElementNum;
 
         // 如果以列为repeat所处理的次数小于行处理次数，则以列方式处理。反之则以行进行repeat处理
         if (dLoop <= dealRowCount) {
             uint32_t offset = 0;
             for (uint32_t i = 0; i < dLoop; i++) {
-                Mul(dstUb[offset], src0Ub[offset], src1Ub, repeatElementNum, dealRowCount, repeatParams);
+                Mul(dstUb[offset], src0Ub[offset], src1Ub, repeatElementNum,
+                    dealRowCount, repeatParams);
                 offset += repeatElementNum;
             }
         } else {
             BinaryRepeatParams columnRepeatParams;
+            columnRepeatParams.dstBlkStride = 1;
             columnRepeatParams.src0BlkStride = 1;
             columnRepeatParams.src1BlkStride = 0;
-            columnRepeatParams.dstBlkStride = 1;
+            columnRepeatParams.dstRepStride = 8;  // 列方向上两次repeat起始地址间隔dtypeMask=64个元素，即8个block
             columnRepeatParams.src0RepStride = 8; // 列方向上两次repeat起始地址间隔dtypeMask=64个元素，即8个block
             columnRepeatParams.src1RepStride = 0;
-            columnRepeatParams.dstRepStride = 8;  // 列方向上两次repeat起始地址间隔dtypeMask=64个元素，即8个block
             for (uint32_t i = 0; i < dealRowCount; i++) {
                 Mul(dstUb[i * columnCount], src0Ub[i * columnCount], src1Ub[i * blockElementNum], repeatElementNum,
                     dLoop, columnRepeatParams);
@@ -1435,27 +1436,27 @@ SFAVectorService<SFAT>::RowMuls(LocalTensor<T> dstUb, LocalTensor<T> src0Ub, Loc
 
         // 最后一次完成[dealRowCount, dRemain] * [dealRowCount, blockElementNum] 只计算有效部分
         if (dRemain > 0) {
-            Mul(dstUb[dLoop * repeatElementNum], src0Ub[dLoop * repeatElementNum], src1Ub, dRemain, dealRowCount,
-                repeatParams);
+            Mul(dstUb[dLoop * repeatElementNum], src0Ub[dLoop * repeatElementNum],
+                src1Ub, dRemain, dealRowCount, repeatParams);
         }
     } else {
         BinaryRepeatParams repeatParams;
+        repeatParams.dstRepStride = 8;
         repeatParams.src0RepStride = 8; // 每个repeat为256B数据，正好8个datablock
         repeatParams.src0BlkStride = 1;
+        repeatParams.dstBlkStride = 1;
         repeatParams.src1RepStride = 0;
         repeatParams.src1BlkStride = 0;
-        repeatParams.dstRepStride = 8;
-        repeatParams.dstBlkStride = 1;
         // 每次计算一行，共计算dealRowCount行
         for (uint32_t i = 0; i < dealRowCount; i++) {
             // 计算一行中的dLoop个repeat, 每个repeat计算256/block_size 个data_block
-            Mul(dstUb[i * columnCount], src0Ub[i * columnCount], src1Ub[i * blockElementNum], repeatElementNum, dLoop,
-                repeatParams);
+            Mul(dstUb[i * columnCount], src0Ub[i * columnCount], src1Ub[i * blockElementNum],
+                repeatElementNum, dLoop, repeatParams);
             //  计算一行中的尾块
             if (dRemain > 0) {
                 Mul(dstUb[i * columnCount + dLoop * repeatElementNum],
-                    src0Ub[i * columnCount + dLoop * repeatElementNum], src1Ub[i * blockElementNum], dRemain, 1,
-                    repeatParams);
+                    src0Ub[i * columnCount + dLoop * repeatElementNum],
+                    src1Ub[i * blockElementNum], dRemain, 1, repeatParams);
             }
         }
     }

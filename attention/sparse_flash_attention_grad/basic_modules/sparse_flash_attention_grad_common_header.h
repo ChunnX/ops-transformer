@@ -24,6 +24,7 @@ namespace SFAG_BASIC {
 
 constexpr static uint64_t MAX_CORE_NUM = 24;
 constexpr static uint64_t PER_LOOP_BLOCK_SIZE = 128;
+constexpr static uint64_t PING_PONG_BUFFER = 2;
 constexpr static uint64_t SCATTER_BUFFER_NUM = 3;
 
 #define SET_FLAG(trigger, waiter, e) AscendC::SetFlag<AscendC::HardEvent::trigger##_##waiter>((e))
@@ -36,6 +37,7 @@ constexpr static uint64_t SCATTER_BUFFER_NUM = 3;
 
 template <class TILING_CLASS, typename T1, const uint32_t INPUT_LAYOUT = 0, const uint32_t ATTEN_ENABLE = 1,
           const bool HAS_ROPE = false, const bool IS_BSND = false, const bool IS_DETERMINISTIC = false,
+          const bool KV_MERGE = false,
           typename... Args>
 struct SFAG_TYPE {
     using tiling_class = TILING_CLASS;
@@ -44,6 +46,7 @@ struct SFAG_TYPE {
     static constexpr bool has_rope = HAS_ROPE;
     static constexpr bool is_bsnd = IS_BSND;
     static constexpr bool is_deterministic = IS_DETERMINISTIC;
+    static constexpr bool kv_merge = KV_MERGE;
 };
 
 struct RunInfo {

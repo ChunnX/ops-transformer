@@ -24,6 +24,7 @@
 #include "arch35/moe_v2_src_to_dst_op_simt.h"
 #include "arch35/moe_v2_src_to_dst_with_capacity_simt.h"
 #include "arch35/moe_v2_gather_out_for_simt.h"
+#include "arch35/moe_v2_scatter_out_batch_row.h"
 #else
 #include "moe_v2_mrgsort_out.h"
 #include "moe_v2_mrgsort.h"
@@ -44,7 +45,7 @@ extern "C" __global__ __aicore__ void moe_init_routing_v2(GM_ADDR x, GM_ADDR exp
                                                           GM_ADDR expertTokensBeforeCapacity, GM_ADDR workspace,
                                                           GM_ADDR tiling)
 {
-    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIV_1_0); 
+    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIV_1_0);
     if (g_coreType == AIC) {
         return;
     }
@@ -116,20 +117,38 @@ extern "C" __global__ __aicore__ void moe_init_routing_v2(GM_ADDR x, GM_ADDR exp
         expertTokenOutPipe.Destroy();
     }
 
-    if (TILING_KEY_IS(10001) || TILING_KEY_IS(11001) || TILING_KEY_IS(10002) || TILING_KEY_IS(11002)) {
+    TPipe gatherPipe;
+    bool isDroplessMode = TILING_KEY_IS(10001) || TILING_KEY_IS(11001) || TILING_KEY_IS(10002) || TILING_KEY_IS(11002);
+    bool canParallel = t->gatherOutComputeParamsOp.scatterMode == 1;
+
+    if (isDroplessMode) {
         MoeV2SrcToDstOpSimt srcToDstOpSimt;
         srcToDstOpSimt.Init<MoeInitRoutingV2TilingData>(expandedRowIdx, userWS, t);
-        srcToDstOpSimt.Process();
+        if (canParallel) {
+            srcToDstOpSimt.ProcessWithoutSync();
+        } else {
+            srcToDstOpSimt.Process();
+        }
     } else {
         MoeV2SrcToDstWithCapacitySimt<DTYPE_X, MoeInitRoutingV2TilingData> srcToDstWithCapacityOpSimt;
         srcToDstWithCapacityOpSimt.Init(expandedRowIdx, expandedX, userWS, t);
-        srcToDstWithCapacityOpSimt.Process();
+        if (canParallel) {
+            srcToDstWithCapacityOpSimt.ProcessWithoutSync();
+        } else {
+            srcToDstWithCapacityOpSimt.Process();
+        }
     }
 
-    TPipe gatherPipe;
-    MoeV2GatherOutSimt<DTYPE_X> gatherOpSimt;
-    gatherOpSimt.Init(x, expandedRowIdx, expandedX, userWS, t, &gatherPipe);
-    gatherOpSimt.Process();
+    if (canParallel) {
+        MoeV2ScatterOutBatchRow<DTYPE_X> scatterOpBatchRow;
+        scatterOpBatchRow.Init(x, expandedRowIdx, expandedX, userWS, t, &gatherPipe);
+        scatterOpBatchRow.Process();
+        AscendC::SyncAll();
+    } else {
+        MoeV2GatherOutSimt<DTYPE_X> gatherOpSimt;
+        gatherOpSimt.Init(x, expandedRowIdx, expandedX, userWS, t, &gatherPipe);
+        gatherOpSimt.Process();
+    }
     gatherPipe.Destroy();
 #elif defined(__CCE_AICORE__) && __CCE_AICORE__ == 200
     if (TILING_KEY_IS(20000)) {

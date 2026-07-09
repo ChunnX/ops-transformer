@@ -91,8 +91,10 @@ ge::graphStatus FiaTilingFullQuantMxArch35::DoOpTiling()
             singleCoreSize = AlignUp(singleCoreSize, uint32_t(2));
         }
         tilingData_.baseTiling.fiaEmptyTensorParams.singleCoreSize = singleCoreSize;
-        tilingData_.baseTiling.fiaEmptyTensorParams.totalOutputSize = outSize;
-        tilingData_.baseTiling.fiaEmptyTensorParams.totalSoftMaxLseOutputSize = lseSize;
+        tilingData_.baseTiling.fiaEmptyTensorParams.totalOutputSize =
+            static_cast<uint64_t>(std::max(outSize, static_cast<int64_t>(0)));
+        tilingData_.baseTiling.fiaEmptyTensorParams.totalSoftMaxLseOutputSize =
+            static_cast<uint64_t>(std::max(lseSize, static_cast<int64_t>(0)));
         tilingData_.baseTiling.fiaEmptyTensorParams.needInit = 1;
 
         tilingKeyInfo_.emptyTensor = true;
@@ -179,9 +181,12 @@ void FiaTilingFullQuantMxArch35::InitImplParam()
         actualSeqLenQFlag_ = false;
         actualSeqLenKVFlag_ = false;
     } else {
-        actSeqLenQDims = (actSeqLenQ != nullptr) ? actSeqLenQ->GetShapeSize() : 0;
-        actSeqLenKVDims = (actSeqLenKV != nullptr) ? actSeqLenKV->GetShapeSize() : 0;
-        actSharedPrefixLenDims = (actSharedPrefixLen != nullptr) ? actSharedPrefixLen->GetShapeSize() : 0;
+        actSeqLenQDims = (actSeqLenQ != nullptr && actSeqLenQ->GetShapeSize() > 0)
+                            ? static_cast<uint32_t>(actSeqLenQ->GetShapeSize()) : 0U;
+        actSeqLenKVDims = (actSeqLenKV != nullptr && actSeqLenKV->GetShapeSize() > 0)
+                            ? static_cast<uint32_t>(actSeqLenKV->GetShapeSize()) : 0U;
+        actSharedPrefixLenDims = (actSharedPrefixLen != nullptr && actSharedPrefixLen->GetShapeSize() > 0)
+                                    ? static_cast<uint32_t>(actSharedPrefixLen->GetShapeSize()) : 0U;
         actualSeqLenQFlag_ =
             !((actSeqLenQDims == 0) || (actSeqLenQ == nullptr) || (actSeqLenQ->GetData<int64_t>() == nullptr));
         actualSeqLenKVFlag_ =
@@ -379,7 +384,7 @@ void FiaTilingFullQuantMxArch35::CreateSplitInput(split_core_v2::BaseInfo &baseI
     baseInfo.s1Size = fiaInfo_->s1Size;
     baseInfo.s2Size = fiaInfo_->s2Size;
     baseInfo.actualLenQDims = fiaInfo_->actualLenQDims;
-    baseInfo.actualLenKvDims = fiaInfo_->actualLenDims;
+    baseInfo.actualLenKvDims = fiaInfo_->actualLenKvDims;
     baseInfo.preToken = fiaInfo_->preToken;
     baseInfo.nextToken = fiaInfo_->nextToken;
     baseInfo.isS1G = (fiaInfo_->qLayout == FiaLayout::BSH) || (fiaInfo_->qLayout == FiaLayout::BSND) ||
@@ -480,8 +485,19 @@ void FiaTilingFullQuantMxArch35::SplitPolicy()
         CalcNumBlocks(result.usedCoreNum);
         flashDecodeFlag_ = (result.fdRes.fdNum > 0);
     }
+    fiaInfo_->isExistRowInvalid = (fiaInfo_->needInit || IsExistRowInvalid(baseInfo) ||
+                                   IsActualSeqLengthsKVHasZero(baseInfo));
+}
 
-    fiaInfo_->isExistRowInvalid = IsExistRowInvalid(baseInfo);
+bool FiaTilingFullQuantMxArch35::IsActualSeqLengthsKVHasZero(const split_core_v2::BaseInfo &baseInfo)
+{
+    for (uint32_t bIdx = 0; bIdx < baseInfo.bSize; bIdx++) {
+        uint32_t s2Size = split_core_v2::GetS2SeqSize(bIdx, baseInfo);
+        if (s2Size == 0) {
+            return true;
+        }
+    }
+    return false;
 }
 
 bool FiaTilingFullQuantMxArch35::IsExistRowInvalid(const split_core_v2::BaseInfo &baseInfo)
@@ -755,10 +771,14 @@ void FiaTilingFullQuantMxArch35::ComputeTilingData()
             maskBatch = fiaInfo_->opParamInfo.attenMask.tensor->GetStorageShape().GetDim(0);
         }
         tilingData_.baseTiling.fiaAttenMaskParams.attenMaskBatch = maskBatch;
-        maskS2Size = fiaInfo_->opParamInfo.attenMask.tensor->GetStorageShape().GetDim(maskDimNum - 1);
-        maskS1Size = fiaInfo_->opParamInfo.attenMask.tensor->GetStorageShape().GetDim(maskDimNum - 2);
-        tilingData_.baseTiling.fiaAttenMaskParams.attenMaskS1Size = maskS1Size;
-        tilingData_.baseTiling.fiaAttenMaskParams.attenMaskS2Size = maskS2Size;
+        maskS2Size = static_cast<uint64_t>(
+            std::max(fiaInfo_->opParamInfo.attenMask.tensor->GetStorageShape().GetDim(maskDimNum - 1),
+                     static_cast<int64_t>(0)));
+        maskS1Size = static_cast<uint64_t>(
+            std::max(fiaInfo_->opParamInfo.attenMask.tensor->GetStorageShape().GetDim(maskDimNum - 2),
+                     static_cast<int64_t>(0)));
+        tilingData_.baseTiling.fiaAttenMaskParams.attenMaskS1Size = static_cast<uint32_t>(maskS1Size);
+        tilingData_.baseTiling.fiaAttenMaskParams.attenMaskS2Size = static_cast<uint32_t>(maskS2Size);
     } else {
         tilingData_.baseTiling.fiaAttenMaskParams.attenMaskS1Size = 0;
         tilingData_.baseTiling.fiaAttenMaskParams.attenMaskS2Size = 0;
@@ -791,12 +811,26 @@ void FiaTilingFullQuantMxArch35::SetFATilingData()
     tilingData_.baseTiling.fiaBaseParams.dSizeRope = fiaInfo_->ropeHeadDim;
     tilingData_.baseTiling.fiaBaseParams.scaleValue = fiaInfo_->scaleValue;
     tilingData_.baseTiling.fiaBaseParams.actualSeqLengthsQSize = fiaInfo_->actualLenQDims;
-    tilingData_.baseTiling.fiaBaseParams.actualSeqLengthsKVSize = fiaInfo_->actualLenDims;
+    tilingData_.baseTiling.fiaBaseParams.actualSeqLengthsKVSize = fiaInfo_->actualLenKvDims;
     tilingData_.baseTiling.fiaBaseParams.isKvContinuous = fiaInfo_->kvStorageMode != KvStorageMode::TENSOR_LIST;
     tilingData_.baseTiling.fiaBaseParams.isSoftMaxLseEnable = fiaInfo_->softmaxLseFlag;
     tilingData_.baseTiling.fiaBaseParams.coreNum = numBlocks_;
     tilingData_.baseTiling.fiaBaseParams.outputLayout = static_cast<uint32_t>(fiaInfo_->outputLayout);
-
+    if (!fiaInfo_->isTensorV1) { // 只有tensorv2才会包含strides信息
+        // fiaBaseParams增加strides参数，从fiaInfo获取strides值
+        tilingData_.baseTiling.fiaBaseParams.keyStrides.bnStride = fiaInfo_->keyStrides->GetStride(0);
+        tilingData_.baseTiling.fiaBaseParams.keyStrides.n2Stride = fiaInfo_->keyStrides->GetStride(1);
+        tilingData_.baseTiling.fiaBaseParams.valueStrides.bnStride = fiaInfo_->valueStrides->GetStride(0);
+        tilingData_.baseTiling.fiaBaseParams.valueStrides.n2Stride = fiaInfo_->valueStrides->GetStride(1);
+        if (fiaInfo_->ropeHeadDim != 0) {  // 传入了rope才赋值
+            tilingData_.baseTiling.fiaBaseParams.kRopeStrides.bnStride = fiaInfo_->kRopeStrides->GetStride(0);
+            tilingData_.baseTiling.fiaBaseParams.kRopeStrides.n2Stride = fiaInfo_->kRopeStrides->GetStride(1);
+        }
+        tilingData_.baseTiling.fiaBaseParams.kScaleStrides.bnStride = fiaInfo_->kScaleStrides->GetStride(0);
+        tilingData_.baseTiling.fiaBaseParams.kScaleStrides.n2Stride = fiaInfo_->kScaleStrides->GetStride(1);
+        tilingData_.baseTiling.fiaBaseParams.vScaleStrides.bnStride = fiaInfo_->vScaleStrides->GetStride(0);
+        tilingData_.baseTiling.fiaBaseParams.vScaleStrides.n2Stride = fiaInfo_->vScaleStrides->GetStride(1);
+    }
     tilingData_.baseTiling.fiaAttenMaskParams.preTokens = fiaInfo_->preToken;
     tilingData_.baseTiling.fiaAttenMaskParams.nextTokens = fiaInfo_->nextToken;
     tilingData_.baseTiling.fiaAttenMaskParams.isRowInvalidOpen = (fiaInfo_->innerPrecise >> 1) & 1;

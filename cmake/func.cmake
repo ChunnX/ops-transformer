@@ -73,6 +73,19 @@ function(op_add_subdirectory OP_LIST OP_DIR_LIST)
     set(_OP_LIST)
     set(_OP_DIR_LIST)
 
+    function(should_add_module MODULE_NAME RESULT)
+        if(DEFINED ASCEND_MODULE_NAME AND NOT "${ASCEND_MODULE_NAME}" STREQUAL "" AND NOT "${ASCEND_MODULE_NAME}" STREQUAL "all" AND NOT "${ASCEND_MODULE_NAME}" STREQUAL "ALL")
+            string(REPLACE "," ";" MODULE_LIST "${ASCEND_MODULE_NAME}")
+            if(${MODULE_NAME} IN_LIST MODULE_LIST)
+                set(${RESULT} TRUE PARENT_SCOPE)
+            else()
+                set(${RESULT} FALSE PARENT_SCOPE)
+            endif()
+        else()
+            set(${RESULT} TRUE PARENT_SCOPE)
+        endif()
+    endfunction()
+
     if(ENABLE_EXPERIMENTAL)
         message(STATUS "Build experimental module")
         file(GLOB OP_HOST_CMAKE_FILES
@@ -90,28 +103,55 @@ function(op_add_subdirectory OP_LIST OP_DIR_LIST)
             List(APPEND OP_HOST_CMAKE_FILES ${MC2_OP_HOST_CMAKE_FILES})
         endif()
     else()
-        file(GLOB OP_HOST_CMAKE_FILES
-        "${CMAKE_CURRENT_SOURCE_DIR}/gmm/**/op_host/CMakeLists.txt"
-        "${CMAKE_CURRENT_SOURCE_DIR}/gmm/**/CMakeLists.txt"
-        )
+        set(OP_HOST_CMAKE_FILES)
+        should_add_module("gmm" ADD_GMM)
+        if(ADD_GMM)
+            file(GLOB GMM_OP_HOST_CMAKE_FILES
+            "${CMAKE_CURRENT_SOURCE_DIR}/gmm/**/op_host/CMakeLists.txt"
+            "${CMAKE_CURRENT_SOURCE_DIR}/gmm/**/CMakeLists.txt"
+            )
+            list(APPEND OP_HOST_CMAKE_FILES ${GMM_OP_HOST_CMAKE_FILES})
+        endif()
         if(BUILD_OPEN_PROJECT AND (NOT BUILD_OPS_RTY_KERNEL))
-            file(GLOB CANNDEV_OPS_HOST_CMAKE_FILES
+            file(GLOB POSEMBEDDING_CANNDEV_OPS_HOST_CMAKE_FILES
                 "${CMAKE_CURRENT_SOURCE_DIR}/posembedding/**/op_host/CMakeLists.txt"
-                "${CMAKE_CURRENT_SOURCE_DIR}/moe/**/op_host/CMakeLists.txt"
-                "${CMAKE_CURRENT_SOURCE_DIR}/ffn/**/op_host/CMakeLists.txt"
                 "${CMAKE_CURRENT_SOURCE_DIR}/posembedding/**/framework/CMakeLists.txt"
+            )
+            should_add_module("posembedding" ADD_CANNDEV_POSEMBEDDING)
+            if(ADD_CANNDEV_POSEMBEDDING)
+                List(APPEND CANNDEV_OPS_HOST_CMAKE_FILES ${POSEMBEDDING_CANNDEV_OPS_HOST_CMAKE_FILES})
+            endif()
+            file(GLOB MOE_CANNDEV_OPS_HOST_CMAKE_FILES
+                "${CMAKE_CURRENT_SOURCE_DIR}/moe/**/op_host/CMakeLists.txt"
                 "${CMAKE_CURRENT_SOURCE_DIR}/moe/**/framework/CMakeLists.txt"
+            )
+            should_add_module("moe" ADD_CANNDEV_MOE)
+            if(ADD_CANNDEV_MOE)
+                List(APPEND CANNDEV_OPS_HOST_CMAKE_FILES ${MOE_CANNDEV_OPS_HOST_CMAKE_FILES})
+            endif()
+            file(GLOB FFN_CANNDEV_OPS_HOST_CMAKE_FILES
+                "${CMAKE_CURRENT_SOURCE_DIR}/ffn/**/op_host/CMakeLists.txt"
                 "${CMAKE_CURRENT_SOURCE_DIR}/ffn/**/framework/CMakeLists.txt"
             )
+            should_add_module("ffn" ADD_CANNDEV_FFN)
+            if(ADD_CANNDEV_FFN)
+                List(APPEND CANNDEV_OPS_HOST_CMAKE_FILES ${FFN_CANNDEV_OPS_HOST_CMAKE_FILES})
+            endif()
             if(NOT (ASCEND_COMPUTE_UNIT STREQUAL "kirinx90" OR 
                 ASCEND_COMPUTE_UNIT STREQUAL "kirin9030" OR 
                 ASCEND_COMPUTE_UNIT STREQUAL "mc62"))
                 file(GLOB MC2_CANNDEV_OPS_HOST_CMAKE_FILES
                 "${CMAKE_CURRENT_SOURCE_DIR}/mc2/**/op_host/CMakeLists.txt"
                 "${CMAKE_CURRENT_SOURCE_DIR}/mc2/**/framework/CMakeLists.txt"
+                "${CMAKE_CURRENT_SOURCE_DIR}/mc2/tools/**/op_host/CMakeLists.txt"
+                "${CMAKE_CURRENT_SOURCE_DIR}/mc2/tools/**/framework/CMakeLists.txt"
                 )
-                List(APPEND CANNDEV_OPS_HOST_CMAKE_FILES ${MC2_CANNDEV_OPS_HOST_CMAKE_FILES})
+                should_add_module("mc2" ADD_CANNDEV_MC2)
+                if(ADD_CANNDEV_MC2)
+                    List(APPEND CANNDEV_OPS_HOST_CMAKE_FILES ${MC2_CANNDEV_OPS_HOST_CMAKE_FILES})
+                endif()
             endif()
+
             List(APPEND OP_HOST_CMAKE_FILES ${CANNDEV_OPS_HOST_CMAKE_FILES})
         endif()
     endif()
@@ -425,47 +465,6 @@ function(add_ops_src_copy)
         endif ()
     endif ()
 
-    set(MC2_OPS_LIST "matmul_reduce_scatter;"
-        "matmul_reduce_scatter_v2;"
-        "grouped_mat_mul_allto_allv;"
-        "quant_grouped_mat_mul_allto_allv;"
-        "grouped_mat_mul_all_reduce;"
-        "batch_mat_mul_reduce_scatter_allto_all;"
-        "allto_allv_grouped_mat_mul;"
-        "allto_allv_quant_grouped_mat_mul;"
-        "allto_all_all_gather_batch_mat_mul;"
-        "distribute_barrier;"
-        "distribute_barrier_extend;"
-        "moe_distribute_combine_add_rms_norm;"
-        "moe_distribute_dispatch;"
-        "moe_distribute_combine;"
-        "moe_distribute_dispatch_v2;"
-        "moe_distribute_combine_v2;"
-        "moe_distribute_dispatch_v3;"
-        "moe_distribute_combine_v3;"
-        "moe_update_expert;"
-        "all_gather_matmul;"
-        "all_gather_matmul_v2;"
-        "matmul_all_reduce;"
-        "matmul_all_reduce_apt;"
-        "matmul_all_reduce_add_rms_norm;"
-        "inplace_matmul_all_reduce_add_rms_norm;"
-        "quant_all_reduce;"
-        "quant_reduce_scatter;"
-        "quant_reduce_scatter_v2;"
-        "allto_all_matmul;"
-        "matmul_allto_all;"
-        "attention_to_ffn;"
-        "ffn_to_attention;"
-    ) # mc2算子列表
-
-    get_filename_component(FOLDER_NAME "${SRC_COPY_DST}" NAME_WE)
-    list(FIND MC2_OPS_LIST "${FOLDER_NAME}" INDEX)
-    set(BELONG_MC2_OPS FALSE)
-    if(NOT INDEX EQUAL -1)
-        set(BELONG_MC2_OPS TRUE)
-    endif()
-
     file(GLOB_RECURSE CONFIGURE_DEPENDS SRC_FILES ${SRC_COPY_SRC}/*)
     list(FILTER SRC_FILES EXCLUDE REGEX "op_host")
 
@@ -484,12 +483,6 @@ function(add_ops_src_copy)
             COMMAND ${CMAKE_COMMAND} -E make_directory ${SRC_COPY_DST}
             COMMAND ${CMAKE_COMMAND} -E copy_directory ${SRC_COPY_SRC} ${SRC_COPY_DST}
         )
-        if (BELONG_MC2_OPS)
-            list(APPEND SYNC_COMMANDS
-                COMMAND ${CMAKE_COMMAND} -E copy_directory "${SRC_COPY_SRC}/op_kernel" "${SRC_COPY_DST}"
-                COMMAND ${CMAKE_COMMAND} -E remove_directory "${SRC_COPY_DST}/op_kernel"
-            )
-        endif()
         list(APPEND SYNC_COMMANDS COMMAND ${CMAKE_COMMAND} -E touch ${_BUILD_FLAG})
         add_custom_command(
             OUTPUT ${_BUILD_FLAG}
@@ -599,7 +592,7 @@ function(add_bin_compile_target)
                             COMPUTE_UNIT
                             ${BINARY_COMPUTE_UNIT}
                             BE_RELIED
-                            ${OP_TARGET_NAME}_src_copy
+                             ${OP_TARGET_NAME}_src_copy
                     )
                 endforeach()
             endif ()

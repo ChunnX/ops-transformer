@@ -4,19 +4,18 @@
 
 | 产品                                              | 是否支持 |
 |:------------------------------------------------| :------: |
-| <term>Ascend 950PR/Ascend 950DT</term>          |    ×     |
+| <term>Ascend 950PR/Ascend 950DT</term>          |    √     |
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>    |    √     |
 | <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>    |    √     |
 | <term>Atlas 200I/500 A2 推理产品</term>             |    ×     |
 | <term>Atlas 推理系列产品</term>                       |    ×     |
 | <term>Atlas 训练系列产品</term>                       |    ×     |
 
-
 ## 功能说明
 
--   **接口功能**：计算`SparseFlashMla`训练场景下注意力的反向输出，支持Sliding Window Attention、Compressed Attention以及Sparse Compressed Attention。
+- **接口功能**：计算`SparseFlashMla`训练场景下注意力的反向输出，支持Sliding Window Attention、Compressed Attention以及Sparse Compressed Attention。
 
--   **计算公式**：
+- **计算公式**：
 
     阶段一：根据不同cmp_ratio场景，对输入ori_kv与cmp_kv进行选择
 
@@ -66,11 +65,10 @@
     dSinks = ReduceSum(-P \text{ }\times\text{ } dP \text{ }\times\text{ } SimpleSoftmax(sinks, lse), dim=-1)
     $$
 
-
-
 ## 函数原型
 
 每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnSparseFlashMlaGradGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnSparseFlashMlaGrad”接口执行计算。
+
 ```c++
 aclnnStatus aclnnSparseFlashMlaGradGetWorkspaceSize(
     const aclTensor   *query,
@@ -109,6 +107,7 @@ aclnnStatus aclnnSparseFlashMlaGradGetWorkspaceSize(
     uint64_t          *workspaceSize,
     aclOpExecutor    **executor);
 ```
+
 ```c++
 aclnnStatus aclnnSparseFlashMlaGrad(
     void             *workspace,
@@ -313,7 +312,7 @@ aclnnStatus aclnnSparseFlashMlaGrad(
             <td>输入</td>
             <td>表示不同batch中query实际参与运算的token数。</td>
             <td>
-            该参数暂不支持。
+            长度为B。
             </td>
             <td>INT32</td>
             <td>ND</td>
@@ -326,7 +325,7 @@ aclnnStatus aclnnSparseFlashMlaGrad(
             <td>输入</td>
             <td>表示不同batch中oriKvOptional实际参与运算的token数。</td>
             <td>
-            该参数暂不支持。
+            长度为B。
             </td>
             <td>INT32</td>
             <td>ND</td>
@@ -339,7 +338,7 @@ aclnnStatus aclnnSparseFlashMlaGrad(
             <td>输入</td>
             <td>表示不同batch中cmpKvOptional实际参与运算的token数。</td>
             <td>
-            该参数暂不支持。
+            长度为B。
             </td>
             <td>INT32</td>
             <td>ND</td>
@@ -365,7 +364,7 @@ aclnnStatus aclnnSparseFlashMlaGrad(
             <td>输入</td>
             <td>表示每行query对应的oriKvOptional实际可选的topk长度。</td>
             <td>
-            该参数暂不支持。
+            oriMaskMode=0且oriSparseIndicesOptional不为空时需要传，且必须为准确值。
             </td>
             <td>INT32</td>
             <td>ND</td>
@@ -378,7 +377,7 @@ aclnnStatus aclnnSparseFlashMlaGrad(
             <td>输入</td>
             <td>表示每行query对应的cmpKvOptional实际可选的topk长度。</td>
             <td>
-            该参数暂不支持。
+            cmpMaskMode=0且cmpSparseIndicesOptional不为空时需要传，且必须为准确值。
             </td>
             <td>INT32</td>
             <td>ND</td>
@@ -405,7 +404,7 @@ aclnnStatus aclnnSparseFlashMlaGrad(
             <td>输入</td>
             <td>表示tiling下沉的aicpu算子输出结果。</td>
             <td>
-            目前暂不支持tiling下沉，故设置此参数无效。
+            -
             </td>
             <td>INT32</td>
             <td>ND</td>
@@ -418,7 +417,7 @@ aclnnStatus aclnnSparseFlashMlaGrad(
             <td>输入</td>
             <td>缩放系数。</td>
             <td>
-            建议值：公式中d开根号的倒数。</li>
+            建议值：公式中d开根号的倒数。
             </td>
             <td>FLOAT32</td>
             <td>N/A</td>
@@ -444,7 +443,6 @@ aclnnStatus aclnnSparseFlashMlaGrad(
         <td>
               <ul>
                 <li>表示sparse的模式。sparse不同模式的详细说明请参见<a href="#约束说明">约束说明</a>。</li>
-                <li>仅支持模式4。</li>
               </ul>
         </td>
         <td>INT64</td>
@@ -459,7 +457,6 @@ aclnnStatus aclnnSparseFlashMlaGrad(
         <td>
               <ul>
                 <li>表示sparse的模式。sparse不同模式的详细说明请参见<a href="#约束说明">约束说明</a>。</li>
-                <li>仅支持模式3。</li>
               </ul>
         </td>
         <td>INT64</td>
@@ -576,7 +573,7 @@ aclnnStatus aclnnSparseFlashMlaGrad(
             <td>输出</td>
             <td>表示query与oriKvOptional计算得出的softmax L1Norm结果，公式为reduceG(softmax)/G。</td>
             <td>
-            该参数暂不支持。
+            若存在oriSparseIndicesOptional，则该输出不为空；其他场景下该参数输出为空。
             </td>
             <td>FLOAT32</td>
             <td>ND</td>
@@ -589,7 +586,7 @@ aclnnStatus aclnnSparseFlashMlaGrad(
             <td>输出</td>
             <td>表示query与cmpKvOptional计算得出的softmax L1Norm结果，公式为reduceG(softmax)/G。</td>
             <td>
-            在SCFA场景下，该输出不为空；其他场景下该参数输出为空。
+            若存在cmpSparseIndicesOptional，则该输出不为空；其他场景下该参数输出为空。
             </td>
             <td>FLOAT32</td>
             <td>ND</td>
@@ -602,7 +599,7 @@ aclnnStatus aclnnSparseFlashMlaGrad(
 
 - **返回值：**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
 
@@ -632,9 +629,13 @@ aclnnStatus aclnnSparseFlashMlaGrad(
                 <td>361001</td>
                 <td>API内存调用npu runtime的接口异常。</td>
             </tr>
+            <tr>
+                <td>ACLNN_ERR_INNER_TILING_ERROR</td>
+                <td>561002</td>
+                <td>输入参数（如layout、maskMode）的取值超出支持范围，或输入Tensor的shape维度不符合约束要求。</td>
+            </tr>
         </tbody>
     </table>
-
 
 ## aclnnSparseFlashMlaGrad
 
@@ -679,12 +680,12 @@ aclnnStatus aclnnSparseFlashMlaGrad(
 
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
-
 ## 约束说明
 
 - 确定性计算：
-  
-  - aclnnSparseFlashMlaGrad默认非确定性实现，暂不支持通过aclrtCtxSetSysParamOpt开启确定性。
+    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：aclnnSparseFlashMlaGrad默认非确定性实现，不支持通过aclrtCtxSetSysParamOpt开启确定性。
+
+    - <term>Ascend 950PR/Ascend 950DT</term>：aclnnSparseFlashMlaGrad默认非确定性实现，支持通过aclrtCtxSetSysParamOpt开启确定性。
 - 公共约束
     - 入参为空的场景处理：
         - query为空Tensor：直接返回。
@@ -706,20 +707,21 @@ aclnnStatus aclnnSparseFlashMlaGrad(
         <tr>
             <td>0</td>
             <td>不做mask操作</td>
-            <td>当前不支持</td>
+            <td>支持</td>
         </tr>
         <tr>
             <td>3</td>
             <td>rightDownCausal模式的mask，对应以右顶点为划分的下三角场景。</td>
-            <td>当前cmp部分支持</td>
+            <td>支持</td>
         </tr>
         <tr>
             <td>4</td>
             <td>band模式的mask，滑窗范围由oriWinLeft、oriWinRight控制，参数起点为右下角。</td>
-            <td>当前ori部分支持</td>
+            <td>ori支持</td>
         </tr>
         </tbody>
     </table>
+
 - 规格约束
     <table style="undefined;table-layout: fixed; width: 942px"><colgroup>
         <col style="width: 100px">
@@ -767,9 +769,19 @@ aclnnStatus aclnnSparseFlashMlaGrad(
         </tbody>
     </table>
 
+  - 参数cmpMaskMode的支持情况:
+
+    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：cmpMaskMode支持3。
+    - <term>Ascend 950PR/Ascend 950DT</term>：cmpMaskMode支持0、3。
+
+  - 参数oriMaskMode的支持情况:
+
+    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：oriMaskMode支持4。
+    - <term>Ascend 950PR/Ascend 950DT</term>：oriMaskMode支持0、3、4。
+
 ## 调用示例
 
-调用示例代码如下（以<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>为例），仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+调用示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
 ```c++
 #include <iostream>
@@ -848,7 +860,7 @@ int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& 
 }
 
 int main() {
-  // 1. （固定写法）device/context/stream初始化，参考AscendCL对外接口列表
+  // 1.（固定写法）device/context/stream初始化，参考AscendCL对外接口列表
   // 根据自己的实际device填写deviceId
   int32_t deviceId = 0;
   aclrtContext context;
@@ -983,7 +995,7 @@ int main() {
   ret = aclnnSparseFlashMlaGrad(workspaceAddr, workspaceSize, executor, stream);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnSparseFlashMlaGrad failed. ERROR: %d\n", ret); return ret);
   
-  // 4. （固定写法）同步等待任务执行结束
+  // 4.（固定写法）同步等待任务执行结束
   ret = aclrtSynchronizeStream(stream);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
   

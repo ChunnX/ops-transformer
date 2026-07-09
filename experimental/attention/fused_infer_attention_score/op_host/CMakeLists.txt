@@ -37,7 +37,7 @@ endif()
 if(NOT BUILD_OPS_RTY_KERNEL)
     add_modules_sources_with_soc(
         # 该变量用于判断op_api目录是否从op_host移出
-        OP_API_INDEPENDENT OFF
+        OP_API_INDEPENDENT ON
         # op_api新的地址
         OP_API_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../op_api
         OPTYPE fused_infer_attention_score ACLNNTYPE aclnn_inner)

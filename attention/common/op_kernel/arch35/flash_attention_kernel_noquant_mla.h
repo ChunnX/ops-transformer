@@ -294,8 +294,8 @@ __aicore__ inline void FAKernelNoquantMla<CubeBlockType, VecBlockType>::ComputeC
     }
     constInfo.layoutType = inputParamsRegbase.layoutType;
     constInfo.scaleValue = static_cast<float>(inputParamsRegbase.scaleValue);
-    if constexpr (layout == LayOutTypeEnum::LAYOUT_TND) {
-        // (BS)ND
+    if constexpr (layout == LayOutTypeEnum::LAYOUT_TND || layout == LayOutTypeEnum::LAYOUT_BSH) {
+        // BSH/BSNGD
         constInfo.s1BaseN2GD = s1BaseSize * constInfo.n2GD;
         constInfo.s1BaseN2GDv = s1BaseSize * constInfo.n2GDv;
         if constexpr (hasRope) {
@@ -309,39 +309,22 @@ __aicore__ inline void FAKernelNoquantMla<CubeBlockType, VecBlockType>::ComputeC
         constInfo.mm1Kb /= inputParamsRegbase.headNumRatio;
         constInfo.mm2Kb /= inputParamsRegbase.headNumRatio;
         constInfo.attentionOutStride = 0;
-    } else {
-        if constexpr (layout == LayOutTypeEnum::LAYOUT_BSH) {
-            // BSH/BSNGD
-            constInfo.s1BaseN2GD = s1BaseSize * constInfo.n2GD;
-            constInfo.s1BaseN2GDv = s1BaseSize * constInfo.n2GDv;
-            if constexpr (hasRope) {
-                constInfo.s1BaseDR = s1BaseSize * constInfo.dSizeRope;
-                constInfo.mm1RopeKa = constInfo.dSizeRope;
-                constInfo.mm1RopeKb = constInfo.n2DR;
-            }
-            constInfo.mm1Ka = constInfo.dSize;
-            constInfo.mm1Kb = constInfo.n2D;
-            constInfo.mm2Kb = constInfo.n2Dv;
-            constInfo.mm1Kb /= inputParamsRegbase.headNumRatio;
-            constInfo.mm2Kb /= inputParamsRegbase.headNumRatio;
-            constInfo.attentionOutStride = 0;
-        } else if constexpr (layout == LayOutTypeEnum::LAYOUT_BNSD) {
-            // BNSD
-            constInfo.s1BaseD = s1BaseSize * constInfo.dSize;
-            constInfo.s2BaseD = s2BaseSize * constInfo.dSize;
-            constInfo.s1BaseDv = s1BaseSize * constInfo.dSizeV;
-            constInfo.s2BaseDv = s2BaseSize * constInfo.dSizeV;
-            if constexpr (hasRope) {
-                constInfo.s1BaseDR = s1BaseSize * constInfo.dSizeRope;
-                constInfo.s2BaseDR = s2BaseSize * constInfo.dSizeRope;
-                constInfo.mm1RopeKa = constInfo.dSizeRope;
-                constInfo.mm1RopeKb = constInfo.dSizeRope;
-            }
-            constInfo.mm1Ka = constInfo.dSize;
-            constInfo.mm1Kb = constInfo.dSize;
-            constInfo.mm2Kb = constInfo.dSizeV;
-            constInfo.attentionOutStride = 0;
+    } else if constexpr (layout == LayOutTypeEnum::LAYOUT_BNSD) {
+        // BNSD
+        constInfo.s1BaseD = s1BaseSize * constInfo.dSize;
+        constInfo.s2BaseD = s2BaseSize * constInfo.dSize;
+        constInfo.s1BaseDv = s1BaseSize * constInfo.dSizeV;
+        constInfo.s2BaseDv = s2BaseSize * constInfo.dSizeV;
+        if constexpr (hasRope) {
+            constInfo.s1BaseDR = s1BaseSize * constInfo.dSizeRope;
+            constInfo.s2BaseDR = s2BaseSize * constInfo.dSizeRope;
+            constInfo.mm1RopeKa = constInfo.dSizeRope;
+            constInfo.mm1RopeKb = constInfo.dSizeRope;
         }
+        constInfo.mm1Ka = constInfo.dSize;
+        constInfo.mm1Kb = constInfo.dSize;
+        constInfo.mm2Kb = constInfo.dSizeV;
+        constInfo.attentionOutStride = 0;
     }
 
     if constexpr (hasAtten) {
@@ -373,6 +356,12 @@ __aicore__ inline void FAKernelNoquantMla<CubeBlockType, VecBlockType>::ComputeC
     constInfo.blockSize = inputParamsRegbase.blockSize;
     constInfo.paLayoutType = inputParamsRegbase.paLayoutType;
     constInfo.paBlockNumSum = inputParamsRegbase.paBlockNumSum;
+    constInfo.keyBnStride = inputParamsRegbase.keyStrides.bnStride;
+    constInfo.keyN2Stride = inputParamsRegbase.keyStrides.n2Stride;
+    constInfo.valueBnStride = inputParamsRegbase.valueStrides.bnStride;
+    constInfo.valueN2Stride = inputParamsRegbase.valueStrides.n2Stride;
+    constInfo.keyRopeBnStride = inputParamsRegbase.kRopeStrides.bnStride;
+    constInfo.keyRopeN2Stride = inputParamsRegbase.kRopeStrides.n2Stride;
 
     // service vector2
     constInfo.transposeLayout = inputParamsRegbase.transposeLayout;
@@ -458,6 +447,7 @@ __aicore__ inline void FAKernelNoquantMla<CubeBlockType, VecBlockType>::Process(
             if (((s1NoNeedCalc || s2NoNeedCalc) && !lastLoopThisCore) || lastBnNoNeedCalc) {
                 continue;
             }
+            multiCoreInnerIdx++;
             // s2轴循环计数，支持sparse和非sparse场景
             s2LoopLimit = runParam.s2LoopEndIdx - 1;
             if (lastLoopThisCore) {
@@ -516,7 +506,6 @@ __aicore__ inline void FAKernelNoquantMla<CubeBlockType, VecBlockType>::ComputeA
     }
     runParam.goIdx = gS1Index / constInfo.s1OuterSize;
     runParam.s1oIdx = gS1Index % constInfo.s1OuterSize;
-    multiCoreInnerIdx++;
 }
 
 template <typename CubeBlockType, typename VecBlockType>

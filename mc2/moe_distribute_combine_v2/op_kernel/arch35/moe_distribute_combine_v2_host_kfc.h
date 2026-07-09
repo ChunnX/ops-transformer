@@ -21,14 +21,13 @@
 #include "kernel_operator.h"
 #endif
 #include "adv_api/reduce/sum.h"
-#include "kernel_tiling/kernel_tiling.h"
 #include "../moe_distribute_combine_v2_tiling.h"
-#if __has_include("../../moe_distribute_dispatch_v2/check_winsize.h")
-#include "../../common/inc/kernel/moe_distribute_base.h"
+#if __has_include("../../common/moe_distribute_base.h")
+#include "../../common/moe_distribute_base.h"
 #include "../../moe_distribute_dispatch_v2/check_winsize.h"
 #include "../../moe_distribute_dispatch_v2/moe_distribute_v2_base.h"
 #else
-#include "../../../common/inc/kernel/moe_distribute_base.h"
+#include "../../../common/op_kernel/moe_distribute_base.h"
 #include "../../../moe_distribute_dispatch_v2/op_kernel/check_winsize.h"
 #include "../../../moe_distribute_dispatch_v2/op_kernel/moe_distribute_v2_base.h"
 #endif
@@ -39,7 +38,6 @@ constexpr uint32_t STATE_OFFSET = 32U;                 // 状态空间偏移地�
 constexpr uint32_t STATE_SIZE = 1024UL * 1024UL;       // 1M
 constexpr uint32_t COMBINE_STATE_OFFSET = 64U * 1024U; // 本卡状态空间偏移地址，前面的地址给dispatch用
 constexpr uint8_t EP_DOMAIN = 0;
-constexpr uint8_t TP_DOMAIN = 1;
 constexpr uint32_t UB_ALIGN = 32U; // UB按32字节对齐
 constexpr uint32_t FLOAT_PER_UB_ALIGN = 8U;
 constexpr uint64_t WIN_STATE_OFFSET = 500UL * 1024UL;
@@ -84,8 +82,8 @@ constexpr uint32_t MIN_AVAIL_UB_SIZE = 8192U; // 单位字节
 constexpr uint32_t SCALE_FACTOR_CONSTANT = 4U; // 单位字节
 
 #define CombineV2HostTypeClass                                                                                         \
-    typename ExpandXType, typename XType, typename ExpandIdxType, bool IsNeedReduceScatter, bool IsInt8Quant
-#define CombineV2HostTypeFunc ExpandXType, XType, ExpandIdxType, IsNeedReduceScatter, IsInt8Quant
+    typename ExpandXType, typename XType, typename ExpandIdxType, bool IsInt8Quant
+#define CombineV2HostTypeFunc ExpandXType, XType, ExpandIdxType, IsInt8Quant
 
 using namespace MoeDistributeV2Base;
 using namespace AscendC;
@@ -95,7 +93,7 @@ class MoeDistributeCombineV2HostKfc {
 public:
     __aicore__ inline MoeDistributeCombineV2HostKfc(){};
     __aicore__ inline void Init(GM_ADDR expandX, GM_ADDR expertIds, GM_ADDR expandIdx, GM_ADDR epSendCount,
-                                GM_ADDR tpSendCount, GM_ADDR expertScales, GM_ADDR expandScales, GM_ADDR xActiveMask,
+                                GM_ADDR expertScales, GM_ADDR expandScales, GM_ADDR xActiveMask,
                                 GM_ADDR sharedExpertX, GM_ADDR elasticInfo, GM_ADDR oriX, GM_ADDR constExpertAlpha1,
                                 GM_ADDR constExpertAlpha2, GM_ADDR constExpertV, GM_ADDR XOut, GM_ADDR workspaceGM,
                                 TPipe *pipe, const MoeDistributeCombineV2TilingData *tilingData);
@@ -148,22 +146,9 @@ private:
         return GetBaseWindAddrByRankId(epWinContext_, rankId, epRankIdOriginal_) + winDataSizeOffsetEp_;
     }
 
-    __aicore__ GM_ADDR GetWinAddrByRankId(const int32_t rankId, const uint8_t domain)
+    __aicore__ GM_ADDR GetWinStateAddrByRankId(const int32_t rankId)
     {
-        if (domain == EP_DOMAIN) {
-            return GetBaseWindAddrByRankId(epWinContext_, rankId, epRankIdOriginal_) + winDataSizeOffsetEp_;
-        } else {
-            return GetBaseWindAddrByRankId(tpWinContext_, rankId, tpRankId_) + winDataSizeOffsetTp_;
-        }
-    }
-
-    __aicore__ GM_ADDR GetWinStateAddrByRankId(const int32_t rankId, const uint8_t domain)
-    {
-        if (domain == EP_DOMAIN) {
-            return GetBaseWindStateAddrByRankId(epWinContext_, rankId, epRankIdOriginal_) + winStatusOffset_;
-        } else {
-            return GetBaseWindStateAddrByRankId(tpWinContext_, rankId, tpRankId_) + winStatusOffset_;
-        }
+        return GetBaseWindStateAddrByRankId(epWinContext_, rankId, epRankIdOriginal_) + winStatusOffset_;
     }
 
     TPipe *tpipe_{nullptr};
@@ -172,14 +157,12 @@ private:
     GlobalTensor<int32_t> expertIdsGM_;
     GlobalTensor<ExpandIdxType> expandIdxGM_;
     GlobalTensor<ExpandIdxType> epSendCountGM_;
-    GlobalTensor<ExpandIdxType> tpSendCountGM_;
     GlobalTensor<ExpandIdxType> elasticInfoGM_;
     GlobalTensor<float> expertScalesGM_;
     GlobalTensor<float> expandScalesGM_;
     GlobalTensor<XType> sharedExpertXGM_;
     GlobalTensor<XType> expandOutGlobal_;
     GlobalTensor<XType> rankWindow_; // 用于存对端window的变量
-    GlobalTensor<XType> tpRankWindow_;
     GlobalTensor<XType> rowTmpGlobal_;
     GlobalTensor<ExpandXType> oriXGM_;
     GlobalTensor<ExpandXType> constExpertAlpha1GM_;
@@ -188,15 +171,10 @@ private:
     GlobalTensor<uint32_t> selfDataStatusGMTensor_;
 
     GM_ADDR epWindowGM_;
-    GM_ADDR tpWindowGM_;
     GM_ADDR stateGM_;
     GM_ADDR maskCalcWorkspaceGM_;
     GM_ADDR statusDataSpaceGm_;
 
-    LocalTensor<XType> winTpSendCountTensor_;
-    LocalTensor<ExpandXType> gmTpSendCountTensor_;
-    LocalTensor<float> winTpSendCountFloatTensor_;
-    LocalTensor<float> gmTpSendCountFloatTensor_;
     LocalTensor<int32_t> elasticInfoTensor_;
     LocalTensor<bool> maskStrideTensor_;
     LocalTensor<bool> maskGenerateTensor_;
@@ -210,10 +188,8 @@ private:
     uint32_t aivNum_{0};
     uint32_t epWorldSize_{0};
     uint32_t epWorldSizeOriginal_{0};
-    uint32_t tpWorldSize_{0};
     uint32_t epRankId_{0};
     uint32_t epRankIdOriginal_{0};
-    uint32_t tpRankId_{0};
     uint32_t coreIdx_{0}; // aiv id
     uint32_t sharedExpertNum_{0};
     uint32_t moeExpertPerRankNum_{0}; // 每张卡部署的moe专家数
@@ -225,8 +201,6 @@ private:
     uint32_t moeExpertNum_{0};
 
     __gm__ HcclOpParam *epWinContext_{nullptr};
-    __gm__ HcclOpParam *tpWinContext_{nullptr};
-    uint32_t tpStateOffsetOnWin_{0};
     uint32_t bsKNum_{0};
     uint32_t startTokenId_{0};
     uint32_t endTokenId_{0};
@@ -237,11 +211,8 @@ private:
     uint64_t activeMaskBsCnt_{0};
     uint64_t winStatusOffset_{0};
     uint64_t totalWinSizeEp_{0};
-    uint64_t totalWinSizeTp_{0};
     uint64_t winDataSizeOffsetEp_{0};
-    uint64_t winDataSizeOffsetTp_{0};
     uint32_t selfSendCnt_{0};
-    uint32_t tpRemoteSendCnt_{0};
     uint32_t activeMaskAlignSize_{0};
     uint32_t hExpandXTypeSize_{0};
     uint32_t hAlign32Size_{0};
@@ -258,14 +229,10 @@ private:
 
     TQueBind<QuePosition::VECIN, QuePosition::VECOUT, 1> moeQueue_;
 
-    TQue<QuePosition::VECIN, 1> gmTpSendCountInQueue_;
-    TQue<QuePosition::VECIN, 1> winTpSendCountInQueue_;
     TQue<QuePosition::VECOUT, 1> xOutQueue_;
     TBuf<> expertScalesBuf_;
     TBuf<> sumFloatBuf_;
     TBuf<> indexCountsBuf_;
-    TBuf<> winTpSendCountFloatBuf_;
-    TBuf<> gmTpSendCountFloatBuf_;
     TBuf<> xActMaskTBuf_;
     TBuf<> xActMaskCastTBuf_;
     TBuf<> tokenTargetTBuf_;
@@ -441,7 +408,7 @@ private:
 
 template <CombineV2HostTypeClass>
 __aicore__ inline void MoeDistributeCombineV2HostKfc<CombineV2HostTypeFunc>::Init(
-    GM_ADDR expandX, GM_ADDR expertIds, GM_ADDR expandIdx, GM_ADDR epSendCount, GM_ADDR tpSendCount,
+    GM_ADDR expandX, GM_ADDR expertIds, GM_ADDR expandIdx, GM_ADDR epSendCount,
     GM_ADDR expertScales, GM_ADDR expandScales, GM_ADDR xActiveMask, GM_ADDR sharedExpertX, GM_ADDR elasticInfo,
     GM_ADDR oriX, GM_ADDR constExpertAlpha1, GM_ADDR constExpertAlpha2, GM_ADDR constExpertV, GM_ADDR XOut,
     GM_ADDR workspaceGM, TPipe *pipe, const MoeDistributeCombineV2TilingData *tilingData)
@@ -468,8 +435,8 @@ __aicore__ inline void MoeDistributeCombineV2HostKfc<CombineV2HostTypeFunc>::Ini
 
 #if defined(ASCENDC_OOM) && ASCENDC_OOM == 1
     for (int tempepRankId = 0; tempepRankId < epWorldSize_; tempepRankId++) {
-        OOMCheckAddrRange<XType>((__gm__ XType *)(GetWinAddrByRankId(tempepRankId, EP_DOMAIN)), totalWinSizeEp_);
-        OOMCheckAddrRange<float>((__gm__ float *)(GetWinStateAddrByRankId(tempepRankId, EP_DOMAIN)), STATE_SIZE);
+        OOMCheckAddrRange<XType>((__gm__ XType *)(GetWinAddrByRankId(tempepRankId)), totalWinSizeEp_);
+        OOMCheckAddrRange<float>((__gm__ float *)(GetWinStateAddrByRankId(tempepRankId)), STATE_SIZE);
     }
 #endif
     if (isShareExpertRankFlag_) {
@@ -580,10 +547,7 @@ MoeDistributeCombineV2HostKfc<CombineV2HostTypeFunc>::InitTilingAttrs(
     epRankIdOriginal_ = tilingData->moeDistributeCombineV2Info.epRankId;
     epWorldSize_ = tilingData->moeDistributeCombineV2Info.epWorldSize;
     moeExpertPerRankNum_ = tilingData->moeDistributeCombineV2Info.moeExpertPerRankNum;
-    tpWorldSize_ = tilingData->moeDistributeCombineV2Info.tpWorldSize;
-    tpRankId_ = tilingData->moeDistributeCombineV2Info.tpRankId;
     totalWinSizeEp_ = tilingData->moeDistributeCombineV2Info.totalWinSizeEp;
-    totalWinSizeTp_ = tilingData->moeDistributeCombineV2Info.totalWinSizeTp;
     isInputTokenMaskFlag_ = tilingData->moeDistributeCombineV2Info.isTokenMask;
     isInputExpertMaskFlag_ = tilingData->moeDistributeCombineV2Info.isExpertMask;
     hasSharedExpertX_ = tilingData->moeDistributeCombineV2Info.hasSharedExpertX;

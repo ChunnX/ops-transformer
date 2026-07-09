@@ -121,10 +121,6 @@ public:
             AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(eventxLowMTE3VList[i]);
         }
 
-#ifdef W4A8_DEBUG
-        AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID5);
-#endif
-
         ubCFp32 = resource.ubBuf.template GetBufferByByte<float>(ubOffset);
         ubCFp32ChunkNAbs = resource.ubBuf.template GetBufferByByte<float>(ubOffset);
         ubQuantS32 = ubCFp32ChunkNAbs.template ReinterpretCast<int32_t>();
@@ -153,9 +149,6 @@ public:
             AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(eventxHighMTE3VList[i]);
             AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(eventxLowMTE3VList[i]);
         }
-#ifdef W4A8_DEBUG
-        AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID5);
-#endif
     }
     CATLASS_DEVICE
     ~BlockEpilogue()
@@ -174,9 +167,9 @@ public:
                     AscendC::GlobalTensor<ElementPerTokenScale> const &gmPerTokenScale1, __gm__ float *gmWeightAux,
                     AscendC::GlobalTensor<ElementD> const &gmD, AscendC::GlobalTensor<int32_t> const &cumsumMM,
                     uint32_t MOffset, AscendC::GlobalTensor<ElementPerTokenScale> const &gmPerTokenScale2,
-                    uint32_t expertPerRank, uint32_t EP, AscendC::GlobalTensor<float> const &gmGMM1, int32_t rank,
-                    int32_t listLen, Arch::Resource<ArchTag> const &resource, uint32_t epilogueCoreNum = 40,
-                    float swigluLimit = 0.0f, Callback &&callback = Callback{})
+                    uint32_t expertPerRank, uint32_t EP, int32_t rank, int32_t listLen,
+                    Arch::Resource<ArchTag> const &resource, uint32_t epilogueCoreNum = 40, float swigluLimit = 0.0f,
+                    uint32_t gmmOutPreRowStride = 1, Callback &&callback = Callback{})
     {
         callback();
         uint32_t blockM = shapeC.row();
@@ -211,7 +204,7 @@ public:
 
         constexpr float DEFAULT_MUL_SCALE = 16.0f;
         for (uint32_t loopIdx = loopStartIdx; loopIdx < loopStartIdx + tasksForIdx; ++loopIdx) {
-            auto gmTileC = gmC[loopIdx * blockN * 2];
+            auto gmTileC = gmC[loopIdx * gmmOutPreRowStride * 2];
 
             auto &ubC = ubCList[ubListId];
             auto &ubweighAux = ubweighAuxList[ubListId];
@@ -228,14 +221,12 @@ public:
             auto &sharedUbTmpBuffer = ubReduceMax;
 
             auto gmTileD = gmD[loopIdx * ChunkTileLen];
-#ifdef W4A8_DEBUG
-            auto gmTileGMM1 = gmGMM1[loopIdx * blockN];
-#endif
             LayoutC layoutUbC{2, blockN};
+            LayoutC layoutGmC{2, blockN, gmmOutPreRowStride};
 
             // Copy data from GM workspace to UB
             AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(eventUbCVMTE2List[ubListId]);
-            copyGmToUbC(ubC, gmTileC, layoutUbC, layoutUbC);
+            copyGmToUbC(ubC, gmTileC, layoutUbC, layoutGmC);
             AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(eventUbCMTE2VList[ubListId]);
 
             AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(eventUbWAVMTE2List[ubListId]);
@@ -278,9 +269,6 @@ public:
 
             // Cast C to FP32 in UB
             AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(eventUbCMTE2VList[ubListId]);
-#ifdef W4A8_DEBUG
-            AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID5);
-#endif
             AscendC::Cast(ubCFp32, ubC, AscendC::RoundMode::CAST_NONE, blockN * 2);
             AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(eventUbCVMTE2List[ubListId]);
             PipeBarrier<PIPE_V>();
@@ -311,13 +299,6 @@ public:
                 AscendC::ClampMin(ubCFp32[ChunkTileLen], ubCFp32[ChunkTileLen], sharedTmpBuffer, -1.0f * swigluLimit,
                                   ChunkTileLen);
             }
-
-#ifdef W4A8_DEBUG
-            AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID5);
-            AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID5);
-            DataCopy(gmTileGMM1, ubCFp32, blockN);
-            AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID5);
-#endif
 
             // SwiGLU computation process
             AscendC::PipeBarrier<PIPE_V>();

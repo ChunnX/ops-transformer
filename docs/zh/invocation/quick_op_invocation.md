@@ -70,7 +70,7 @@
 
         ops-transformer静态库依赖于ops-legacy静态库和ops-math静态库，将上述静态库准备好，解压并将所有lib64、include目录移动至统一目录\$\{static_lib_path\}下。
 
-        > 说明：ops-legacy静态库`cann-${soc_name}-ops-legacy-static_${cann_version}_linux-${arch}.tar.gz`需单击[下载链接](https://ascend.devcloud.huaweicloud.com/artifactory/cann-run-release/software/master)获取， ops-transformer静态库、[ops-math](https://gitcode.com/cann/ops-math)静态库暂未提供软件包，请通过本地编译生成。
+        > 说明：ops-legacy静态库`cann-${soc_name}-ops-legacy-static_${cann_version}_linux-${arch}.tar.gz`需单击[下载链接](https://ascend.devcloud.huaweicloud.com/artifactory/cann-run-mirror/dependency/master/)获取， ops-transformer静态库、[ops-math](https://gitcode.com/cann/ops-math)静态库暂未提供软件包，请通过本地编译生成。
 
     2. **创建run.sh**
 
@@ -226,7 +226,7 @@ int aclnnAddExampleTest(int32_t deviceId, aclrtStream& stream)
     ret = aclnnAddExample(workspaceAddr, workspaceSize, executor, stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnAddExample failed. ERROR: %d\n", ret); return ret);
 
-    // 6. （固定写法）同步等待任务执行结束
+    // 6.（固定写法）同步等待任务执行结束
     ret = aclrtSynchronizeStream(stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
 
@@ -398,7 +398,7 @@ int main()
    bash run.sh
    ```
 
-    默认在当前执行路径 `/build/bin`下生成可执行文件${test_aclnn_op_name}。运行结果以test_aclnn_add_example为例：
+    默认在当前执行路径`/build/bin`下生成可执行文件${test_aclnn_op_name}。运行结果以test_aclnn_add_example为例：
 
    ```
    mean result[2046] is 2.000000
@@ -548,7 +548,7 @@ int main()
     bash run.sh
     ```
    
-    默认在当前执行路径 `/build/bin`下生成可执行文件${test_geir_op_name}，运行结果如下：
+    默认在当前执行路径`/build/bin`下生成可执行文件${test_geir_op_name}，运行结果如下：
    
     ```
     INFO - [XIR]: Finalize ir graph session success

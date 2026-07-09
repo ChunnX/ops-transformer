@@ -7,7 +7,7 @@
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
 | <term>Ascend 950PR/Ascend 950DT</term>                             |    √     |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    ×     |
+| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>       |    ×     |
 | <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √     |
 | <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
 | <term>Atlas 推理系列产品</term>                             |    ×     |
@@ -66,11 +66,12 @@
 
 - 新增`commMode`参数，用户根据该参数指定芯片使用的通信引擎。
 
-  - <term>Ascend 950PR/Ascend 950DT</term>：支持空字符串`""`、`ai_cpu`和`ccu`。指定空字符串时，根据卡数调用通信引擎：卡数小于等于8时调用CCU引擎，否则调用AI\_CPU引擎。
+  - <term>Ascend 950PR/Ascend 950DT</term>：`commMode`支持`ai_cpu`和`ccu`。
+  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：无新增特性，`commMode`仅支持`aiv`。
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用 “aclnnAlltoAllQuantMatmulV2GetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnAlltoAllQuantMatmulV2”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnAlltoAllQuantMatmulV2GetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnAlltoAllQuantMatmulV2”接口执行计算。
 
 ```cpp
 aclnnStatus aclnnAlltoAllQuantMatmulV2GetWorkspaceSize(
@@ -186,7 +187,7 @@ aclnnStatus aclnnAlltoAllQuantMatmulV2(
     <tr>
     <td>commScaleOptional</td>
     <td>输入</td>
-    <td>可选输入, 低比特通信的量化系数。</td>
+    <td>可选输入，低比特通信的量化系数。</td>
     <td>预留参数，暂不支持低比特通信。</td>
     <td>-</td>
     <td>-</td>
@@ -277,7 +278,7 @@ aclnnStatus aclnnAlltoAllQuantMatmulV2(
     <td>commQuantDtype</td>
     <td>输入</td>
     <td>低比特通信的量化类型。</td>
-    <td>预留参数，当前仅支持配置为-1, 表示ACL_DT_UNDEFINED。</td>
+    <td>预留参数，当前仅支持配置为-1,表示ACL_DT_UNDEFINED。</td>
     <td>-</td>
     <td>-</td>
     <td>-</td>
@@ -325,7 +326,7 @@ aclnnStatus aclnnAlltoAllQuantMatmulV2(
     </tr>
     <tr>
     <td>output</td>
-    <td>输入</td>
+    <td>输出</td>
     <td>最终的计算结果。</td>
     <td>根据设备型号对数据类型有不同限制，详细参见<a href="#约束说明">约束说明</a>。</td>
     <td>FLOAT16、BFLOAT16、FLOAT32</td>
@@ -591,18 +592,21 @@ aclnnStatus aclnnAlltoAllQuantMatmulV2(
       * mx量化场景下，x2必须转置，shape为(H*rankSize, N)，transposeX2为True。
 * 通算融合算子不支持并发调用，不同的通算融合算子也不支持并发调用。
 * 不支持跨超节点通信，只支持超节点内。
+* 通信引擎参数commMode根据不同设备型号有不同的限制：
+   - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：仅支持输入`aiv`。
+   - <term>Ascend 950PR/Ascend 950DT</term>：支持输入`ai_cpu`和`ccu`。
 * 通信引擎约束：
    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持MTE通信。
    - <term>Ascend 950PR/Ascend 950DT</term>：
-      - 支持CCU通信和AI\_CPU通信。
-      - CCU通信不支持跨机场景。
+      - 支持CCU通信和AI_CPU通信。
+      - CCU通信仅支持单机UB域内互联，AI_CPU可支持跨机UB域内互联。
       - 通信域约束：同一个通信域内只能使用同一种通信方式。
 
 ## 调用示例
 
 示例代码如下，仅供参考，具体编译和执行过程请参考编译与运行样例。
 
-说明：本示例代码调用了部分HCCL集合通信库接口：HcclGetCommName、HcclCommInitAll、HcclCommDestroy, 请参考[ 《HCCL API (C)》](https://hiascend.com/document/redirect/CannCommunityHcclCppApi)。
+说明：本示例代码调用了部分HCCL集合通信库接口：HcclGetCommName、HcclCommInitAll、HcclCommDestroy,请参考[《HCCL API (C)》](https://hiascend.com/document/redirect/CannCommunityHcclCppApi)。
 
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
 
@@ -726,7 +730,7 @@ aclnnStatus aclnnAlltoAllQuantMatmulV2(
         std::vector<op::fp16_t> outHostData(outShapeSize, 0);
         std::vector<op::fp16_t> allToAllOutHostData(allToAllOutShapeSize, 0);
 
-        // 创建 tensor
+        // 创建tensor
         ret = CreateAclTensor(x1HostData, x1Shape, &x1DeviceAddr, aclDataType::ACL_FLOAT16, &x1);
         CHECK_RET(ret == ACL_SUCCESS, return ret);
         ret = CreateAclTensor(x2HostData, x2Shape, &x2DeviceAddr, aclDataType::ACL_INT8, &x2);
@@ -964,7 +968,7 @@ aclnnStatus aclnnAlltoAllQuantMatmulV2(
         std::vector<int16_t> x2ScaleHostData(x2ScaleShapeSize, 1);
         std::vector<int16_t> outHostData(outShapeSize, 0);
         std::vector<int16_t> allToAllOutHostData(allToAllOutShapeSize, 0);
-        // 创建 tensor
+        // 创建tensor
         ret = CreateAclTensor(x1HostData, x1Shape, &x1DeviceAddr, aclDataType::ACL_FLOAT16, &x1);
         CHECK_RET(ret == ACL_SUCCESS, return ret);
         ret = CreateAclTensor(x2HostData, x2Shape, &x2DeviceAddr, aclDataType::ACL_FLOAT8_E5M2, &x2);

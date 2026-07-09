@@ -105,8 +105,10 @@ __aicore__ inline void GMMA8W4PreProcessNZ::Init(GM_ADDR x, GM_ADDR x_out, GM_AD
     pipe->InitBuffer(vecInQueueX, BUFFER_NUM_TWO, vectorBaseSize * sizeof(int8_t));
     pipe->InitBuffer(vecOutQueue, BUFFER_NUM_TWO, vectorBaseSize * sizeof(int4b_t) * 2);
 
-    pipe->InitBuffer(groupListBuff, groupNum * sizeof(int64_t));
-    pipe->InitBuffer(groupListFloatBuff, groupNum * sizeof(float));
+    pipe->InitBuffer(groupListBuff,
+        Ceil(static_cast<uint32_t>(groupNum * sizeof(int64_t)), DATA_BLOCK_SIZE_32_NZ) * DATA_BLOCK_SIZE_32_NZ);
+    pipe->InitBuffer(groupListFloatBuff,
+        Ceil(static_cast<uint32_t>(groupNum * sizeof(float)), DATA_BLOCK_SIZE_32_NZ) * DATA_BLOCK_SIZE_32_NZ);
     pipe->InitBuffer(reduceSumWorkSpace, BUFFER_SIZE_256B * sizeof(float));
 
     pipe->InitBuffer(xHighHalfBuff, A8W4PRE_VECTOR_BASE_M * A8W4PRE_VECTOR_BASE_K * sizeof(half));

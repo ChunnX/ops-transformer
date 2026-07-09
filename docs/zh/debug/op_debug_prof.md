@@ -5,7 +5,7 @@
 
 算子运行过程中，如果出现算子执行失败、精度异常等问题，可以打印各阶段信息，如Kernel中间结果，进行问题分析和定位。
 
-### 1、Host侧日志获取方式
+### 1. Host侧日志获取方式
 
 * **plog获取**
 
@@ -37,7 +37,7 @@
    [PID:646612] 2026-01-24-11:53:44.671.727 AclNN_Parameter_Error(EZ1001): Expected a proper Tensor but got null for argument addmmTennsor.self.
    ```
 
-### 2、Kernel调试
+### 2. Kernel调试
 
 常见调试方法如下：
 
@@ -123,7 +123,7 @@
       cannsim record ./test_aclnn_add_example -s Ascend950 --gen-report
       ```
 
-      仿真结果在本项目`examples/add_example/examples/build/bin/cannsim_*`目录，流水相关文件为：
+      仿真结果在本项目`examples/add_example/examples/build/bin/cannsim_*/report/results/kernel_*/core_*`目录，流水相关文件为：
 
       ```
       trace_core0.json

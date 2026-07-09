@@ -16,7 +16,7 @@
 #ifndef ATTENMASK_GS1_H
 #define ATTENMASK_GS1_H
 
-enum LAYOUT_Q {
+enum MaskFormat {
     GS,
     SG,
     S1_EQUAL1,
@@ -56,7 +56,7 @@ struct MaskInfo {
     uint32_t attenMaskS1Stride; // 这个变量名与A3 代码不一致，统一整改
     uint32_t attenMaskDstStride = 0;
 
-    LAYOUT_Q layout;
+    MaskFormat maskFormat;
     MaskDataType attenMaskType;
     SparseMode sparseMode;
     uint32_t maskValue;
@@ -178,7 +178,7 @@ __aicore__ inline uint64_t ComputeAttenMaskOffsetCompress(MaskInfo &info, uint32
     }
     uint64_t offset = 0;
     int64_t delta = nextToken + s1StartIdx - info.s2StartIdx;
-    uint32_t attenMaskSizeAlign = Align(info.s2dealNum, 32U);
+    uint32_t attenMaskSizeAlign = AttentionCommon::Align(info.s2dealNum, 32U);
     if (delta < 0) {
         offset = (-delta) < static_cast<int64_t>(info.gs1dealNum) ? (-delta) : info.gs1dealNum; // min (-delta, s1Size)
     } else {
@@ -194,7 +194,7 @@ __aicore__ inline uint64_t ComputeAttenMaskOffsetCompressPre(MaskInfo &info, uin
                        static_cast<int64_t>(info.s2Size); // 统一以左上角为原点计算token
     int64_t delta = -preToken + static_cast<int64_t>(s1StartIdx) - static_cast<int64_t>(info.s2StartIdx) - 1;
     uint64_t offset = 0;
-    uint32_t attenMaskSizeAlign = Align(info.s2dealNum, 32U);
+    uint32_t attenMaskSizeAlign = AttentionCommon::Align(info.s2dealNum, 32U);
     if (delta < 0) {
         offset = (-delta) < static_cast<int64_t>(info.gs1dealNum) ? (-delta) : info.gs1dealNum; // min (-delta, s1Size)
     } else {
@@ -223,15 +223,16 @@ __aicore__ inline bool IsSkipAttentionmaskForPre(MaskInfo &info)
         return true;
     }
 
-    int32_t s1StartIdx = info.layout == GS ? info.gs1StartIdx % info.s1Size : info.gs1StartIdx / info.gSize;
-    if (info.layout == GS && s1StartIdx + info.gs1dealNum > info.s1Size) { // 当跨多个s1时，不再支持跳过计算
+    int32_t s1StartIdx = info.maskFormat == MaskFormat::GS ?
+        info.gs1StartIdx % info.s1Size : info.gs1StartIdx / info.gSize;
+    if (info.maskFormat == MaskFormat::GS && s1StartIdx + info.gs1dealNum > info.s1Size) { // 当跨多个s1时，不再支持跳过计算
         return false;
     }
 
     int64_t preToken = info.preToken + static_cast<int64_t>(info.s1Size) -
                        static_cast<int64_t>(info.s2Size); // 统一以左上角为原点计算Token
-    int32_t s1EndIdx =
-        info.layout == GS ? s1StartIdx + info.gs1dealNum : (info.gs1StartIdx + info.gs1dealNum) / info.gSize;
+    int32_t s1EndIdx = info.maskFormat == MaskFormat::GS ?
+        s1StartIdx + info.gs1dealNum : (info.gs1StartIdx + info.gs1dealNum) / info.gSize;
 
     if (static_cast<int64_t>(info.s2StartIdx) + preToken >= static_cast<int64_t>(s1EndIdx)) {
         return true;
@@ -245,8 +246,9 @@ __aicore__ inline bool IsSkipAttentionmask(MaskInfo &info)
         return false;
     }
 
-    int32_t s1StartIdx = info.layout == GS ? info.gs1StartIdx % info.s1Size : info.gs1StartIdx / info.gSize;
-    if (info.layout == GS && s1StartIdx + info.gs1dealNum > info.s1Size) { // 当跨多个s1时，不再支持跳过计算
+    int32_t s1StartIdx = info.maskFormat == MaskFormat::GS ?
+        info.gs1StartIdx % info.s1Size : info.gs1StartIdx / info.gSize;
+    if (info.maskFormat == MaskFormat::GS && s1StartIdx + info.gs1dealNum > info.s1Size) { // 当跨多个s1时，不再支持跳过计算
         return false;
     }
 
@@ -268,7 +270,7 @@ template <typename T>
 __aicore__ inline void AttentionmaskDataCopy(LocalTensor<T> &attenMaskUb, GlobalTensor<T> &srcGmAddr, MaskInfo &info,
                                              uint32_t s1StartIdx, uint32_t s1EndIdx, bool isPre = false)
 {
-    uint32_t attenMaskSizeAlign = Align(info.s2dealNum, 32U);
+    uint32_t attenMaskSizeAlign = AttentionCommon::Align(info.s2dealNum, 32U);
     uint64_t maskOffset = ComputeAttenMaskOffset(info, s1StartIdx, isPre);
     DataCopyExtParams dataCopyParams;
     dataCopyParams.blockCount = s1EndIdx - s1StartIdx;
@@ -285,7 +287,7 @@ __aicore__ inline void AttentionmaskCopyInForGsLayout(LocalTensor<T> &attenMaskU
 {
     int32_t s1StartIdx = info.gs1StartIdx % info.s1Size;
     int32_t s1EndIdx = (info.gs1StartIdx + info.gs1dealNum - 1) % info.s1Size + 1;
-    uint32_t attenMaskS2Stride = Align(info.s2dealNum, 32U) + 32 * info.attenMaskDstStride;
+    uint32_t attenMaskS2Stride = AttentionCommon::Align(info.s2dealNum, 32U) + 32 * info.attenMaskDstStride;
     if (info.gs1dealNum <= info.s1Size) {
         if (s1StartIdx + info.gs1dealNum > info.s1Size) {
             AttentionmaskDataCopy(attenMaskUb, srcGmAddr, info, s1StartIdx, info.s1Size, isPre);
@@ -340,7 +342,7 @@ __aicore__ inline void AttentionmaskCopyInForSgLayout(LocalTensor<T> &attenMaskU
     uint32_t remainRowCount = info.gs1dealNum - headGSize;
     uint32_t midS1Count = remainRowCount / info.gSize;
     uint32_t tailGSize = remainRowCount % info.gSize;
-    uint32_t attenMaskSizeAlign = Align(info.s2dealNum, 32U);
+    uint32_t attenMaskSizeAlign = AttentionCommon::Align(info.s2dealNum, 32U);
     uint32_t attenMaskS2Stride = attenMaskSizeAlign + 32 * info.attenMaskDstStride;
 
     // ub-head
@@ -373,20 +375,20 @@ template <typename T, bool isReconstructTemp, uint32_t s2BaseSize>
 __aicore__ inline void AttentionmaskCopyGS1(LocalTensor<T> &attenMaskUb, GlobalTensor<T> &srcGmAddr, MaskInfo &info,
                                             bool isPre = false)
 {
-    if (info.layout == LAYOUT_Q::GS) {
+    if (info.maskFormat == MaskFormat::GS) {
         AttentionmaskCopyInForGsLayout<T, isReconstructTemp, s2BaseSize>(attenMaskUb, srcGmAddr, info, isPre);
-    } else if (info.layout == LAYOUT_Q::SG) {
+    } else if (info.maskFormat == MaskFormat::SG) {
         AttentionmaskCopyInForSgLayout<T, isReconstructTemp, s2BaseSize>(attenMaskUb, srcGmAddr, info, isPre);
     }
 }
 
-template <typename T, LAYOUT_Q layoutQ, bool isReconstructTemp, uint32_t s2BaseSize>
+template <typename T, MaskFormat maskFormat, bool isReconstructTemp, uint32_t s2BaseSize>
 __aicore__ inline void AttentionmaskCopyIn(LocalTensor<T> &attenMaskUb, GlobalTensor<T> &srcGmAddr, MaskInfo &info,
                                            bool isPre = false)
 {
-    if constexpr (layoutQ == LAYOUT_Q::GS) {
+    if constexpr (maskFormat == MaskFormat::GS) {
         AttentionmaskCopyInForGsLayout<T, isReconstructTemp, s2BaseSize>(attenMaskUb, srcGmAddr, info, isPre);
-    } else if constexpr (layoutQ == LAYOUT_Q::SG) {
+    } else if constexpr (maskFormat == MaskFormat::SG) {
         AttentionmaskCopyInForSgLayout<T, isReconstructTemp, s2BaseSize>(attenMaskUb, srcGmAddr, info, isPre);
     }
 }

@@ -11,7 +11,7 @@
 #include "allto_all_quant_matmul_base.h"
 
 #include "acl/acl.h"
-#include "log/log.h"
+#include "mc2_log_compat.h"
 #include "aclnnInner_allto_all_matmul.h"
 #include "aclnn_kernels/common/op_error_check.h"
 #include "aclnn_kernels/transdata.h"
@@ -131,7 +131,12 @@ static bool CheckNotEmptyTensor(const aclTensor *x1, const aclTensor *x2, bool t
 // 校验Scale为1D时的shape（KC动态量化）
 static bool Check1DScaleShape(const aclTensor *x2, const aclTensor *x2Scale, bool transposeX2)
 {
-    OP_CHECK_WRONG_DIMENSION_WITH_SCENARIO("aclnnAlltoAllQuantMatmul", x2Scale, ONE_DIM, KCDYN_SCENE, return false);
+    if (x2Scale->GetViewShape().GetDimNum() != ONE_DIM) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("aclnnAlltoAllQuantMatmul", "x2Scale",
+            (std::to_string(x2Scale->GetViewShape().GetDimNum()) + "D").c_str(),
+            "The shape of x2Scale must be 1D.");
+        return false;
+    }
     auto nVal = transposeX2 ? x2->GetViewShape().GetDim(0) : x2->GetViewShape().GetDim(1);
     auto x2ScaleDim = x2Scale->GetViewShape().GetDim(0);
     if (x2ScaleDim != nVal) {
@@ -146,8 +151,18 @@ static bool Check1DScaleShape(const aclTensor *x2, const aclTensor *x2Scale, boo
 // 校验Scale为3D时的shape（MX量化）
 static bool Check3DScaleShape(const aclTensor *x2, const aclTensor *x1Scale, const aclTensor *x2Scale, bool transposeX2)
 {
-    OP_CHECK_WRONG_DIMENSION_WITH_SCENARIO("aclnnAlltoAllQuantMatmul", x1Scale, THREE_DIMS, MX_SCENE, return false);
-    OP_CHECK_WRONG_DIMENSION_WITH_SCENARIO("aclnnAlltoAllQuantMatmul", x2Scale, THREE_DIMS, MX_SCENE, return false);
+    if (x1Scale->GetViewShape().GetDimNum() != THREE_DIMS) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("aclnnAlltoAllQuantMatmul", "x1Scale",
+            (std::to_string(x1Scale->GetViewShape().GetDimNum()) + "D").c_str(),
+            "The shape of x1Scale must be 3D.");
+        return false;
+    }
+    if (x2Scale->GetViewShape().GetDimNum() != THREE_DIMS) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("aclnnAlltoAllQuantMatmul", "x2Scale",
+            (std::to_string(x2Scale->GetViewShape().GetDimNum()) + "D").c_str(),
+            "The shape of x2Scale must be 3D.");
+        return false;
+    }
     auto nVal = transposeX2 ? x2->GetViewShape().GetDim(0) : x2->GetViewShape().GetDim(1);
     auto x2ScaleNVal = transposeX2 ? x2Scale->GetViewShape().GetDim(0) : x2Scale->GetViewShape().GetDim(1);
     auto x1ScaleLastDim = x1Scale->GetViewShape().GetDim(2);
@@ -325,10 +340,10 @@ static bool CheckDtypesValid(const aclTensor *x1, const aclTensor *x2, const acl
         isAllDtypesValid =
             CheckMXQuantDtypesValidA5(x1, x2, biasOptional, x1ScaleOptional, x2Scale, output, alltoAllOutOptional);
     } else {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "The input x1QuantMode %ld and x2QuantMode %ld do not match any currently supported quantization mode "
-                "scenarios.",
-                x1QuantMode, x2QuantMode);
+        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON("aclnnAlltoAllQuantMatmul",
+            "x1QuantMode/x2QuantMode",
+            (std::to_string(x1QuantMode) + "/" + std::to_string(x2QuantMode)).c_str(),
+            "The value of x1QuantMode and x2QuantMode must be within the supported range.");
     }
     return isAllDtypesValid;
 }
@@ -340,46 +355,43 @@ static bool CheckFormat(const aclTensor *x1, const aclTensor *x2, const aclTenso
 {
     // 输入格式不支持私有格式
     if (IsPrivateFormat(x1->GetStorageFormat())) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "aclnnAlltoAllQuantMatmul, x1 format %s does not support private format.",
-                op::ToString(x1->GetStorageFormat()).GetString());
+        OP_LOGE_WITH_INVALID_INPUT_FORMAT("aclnnAlltoAllQuantMatmul", "x1",
+            op::ToString(x1->GetStorageFormat()).GetString(), "ND");
         return false;
     }
     if (IsPrivateFormat(x2->GetStorageFormat())) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "aclnnAlltoAllQuantMatmul, x2 format %s does not support private format.",
-                op::ToString(x2->GetStorageFormat()).GetString());
+        OP_LOGE_WITH_INVALID_INPUT_FORMAT("aclnnAlltoAllQuantMatmul", "x2",
+            op::ToString(x2->GetStorageFormat()).GetString(), "ND");
         return false;
     }
     if (biasOptional != nullptr) {
         if (IsPrivateFormat(biasOptional->GetStorageFormat())) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                    "aclnnAlltoAllQuantMatmul, biasOptional format %s does not support private format.",
-                    op::ToString(biasOptional->GetStorageFormat()).GetString());
+            OP_LOGE_WITH_INVALID_INPUT_FORMAT("aclnnAlltoAllQuantMatmul", "bias",
+                op::ToString(biasOptional->GetStorageFormat()).GetString(), "ND");
             return false;
         }
     }
     if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510 && x1ScaleOptional != nullptr) {
         if (IsPrivateFormat(x1ScaleOptional->GetStorageFormat())) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                    "aclnnAlltoAllQuantMatmul, x2Scale format %s does not support private format.",
-                    op::ToString(x1ScaleOptional->GetStorageFormat()).GetString());
+            OP_LOGE_WITH_INVALID_INPUT_FORMAT("aclnnAlltoAllQuantMatmul", "x1Scale",
+                op::ToString(x1ScaleOptional->GetStorageFormat()).GetString(), "ND");
             return false;
         }
     }
     if (IsPrivateFormat(x2Scale->GetStorageFormat())) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "aclnnAlltoAllQuantMatmul, x2Scale format %s does not support private format.",
-                op::ToString(x2Scale->GetStorageFormat()).GetString());
+        OP_LOGE_WITH_INVALID_INPUT_FORMAT("aclnnAlltoAllQuantMatmul", "x2Scale",
+            op::ToString(x2Scale->GetStorageFormat()).GetString(), "ND");
         return false;
     }
     if (IsPrivateFormat(output->GetStorageFormat())) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "aclnnAlltoAllQuantMatmul, output format %s does not support private format.",
-                op::ToString(output->GetStorageFormat()).GetString());
+        OP_LOGE_WITH_INVALID_INPUT_FORMAT("aclnnAlltoAllQuantMatmul", "output",
+            op::ToString(output->GetStorageFormat()).GetString(), "ND");
         return false;
     }
     if (alltoAllOutOptional != nullptr) {
         if (IsPrivateFormat(alltoAllOutOptional->GetStorageFormat())) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                    "aclnnAlltoAllQuantMatmul, alltoAllOutOptional format %s does not support private format.",
-                    op::ToString(alltoAllOutOptional->GetStorageFormat()).GetString());
+            OP_LOGE_WITH_INVALID_INPUT_FORMAT("aclnnAlltoAllQuantMatmul", "alltoAllOut",
+                op::ToString(alltoAllOutOptional->GetStorageFormat()).GetString(), "ND");
             return false;
         }
     }

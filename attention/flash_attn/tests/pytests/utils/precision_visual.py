@@ -180,6 +180,7 @@ def plot_precision_heatmaps(rel_err: np.ndarray, fail_mask: np.ndarray,
     返回所有生成的文件路径列表。
     """
     os.makedirs(out_dir, exist_ok=True)
+    case_name = case_name.replace("/", "_")
     panels_err,  labels = split_to_panels(rel_err)
     panels_fail, _      = split_to_panels(fail_mask)
 

@@ -259,3 +259,65 @@ TEST_F(MoeInitRoutingV2GradInferShape, moe_init_routing_v2_grad_infer_shape_11)
                                       64, 0, 0};
     ExeTestCase(ioInfoT, ge::GRAPH_FAILED);
 }
+
+TEST_F(MoeInitRoutingV2GradInferShape, moe_init_routing_v2_grad_infer_shape_invalid_1d_grad_expanded_x_12)
+{
+    gert::StorageShape gradExpandedXShape = {{16}, {16}};
+    gert::StorageShape expandedRowIdxShape = {{16}, {16}};
+    std::vector<int64_t> expectOutShape = {};
+    MoeInitRoutingV2GradInfo ioInfoT = {gradExpandedXShape,
+                                      expandedRowIdxShape,
+                                      expectOutShape,
+                                      ge::DT_BF16,
+                                      ge::DT_INT32,
+                                      ge::DT_BF16,
+                                      8, 0, 0};
+    ExeTestCase(ioInfoT, ge::GRAPH_FAILED);
+}
+
+TEST_F(MoeInitRoutingV2GradInferShape, moe_init_routing_v2_grad_infer_datatype_bf16_13)
+{
+    ge::DataType inputDtype = ge::DT_BF16;
+    ge::DataType outputDtype = ge::DT_UNDEFINED;
+
+    auto contextHolder = gert::InferDataTypeContextFaker()
+                             .NodeIoNum(2, 1)
+                             .NodeInputTd(0, ge::DT_BF16, ge::FORMAT_ND, ge::FORMAT_ND)
+                             .NodeInputTd(1, ge::DT_INT32, ge::FORMAT_ND, ge::FORMAT_ND)
+                             .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
+                             .InputDataTypes({&inputDtype, &inputDtype})
+                             .OutputDataTypes({&outputDtype})
+                             .Build();
+
+    auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
+    ASSERT_NE(spaceRegistry, nullptr);
+    auto inferDtypeFunc = spaceRegistry->GetOpImpl("MoeInitRoutingV2Grad")->infer_datatype;
+    ASSERT_NE(inferDtypeFunc, nullptr);
+
+    auto context = contextHolder.GetContext<gert::InferDataTypeContext>();
+    EXPECT_EQ(inferDtypeFunc(context), ge::GRAPH_SUCCESS);
+    EXPECT_EQ(context->GetOutputDataType(0), ge::DT_BF16);
+}
+
+TEST_F(MoeInitRoutingV2GradInferShape, moe_init_routing_v2_grad_infer_datatype_fp32_14)
+{
+    ge::DataType inputDtype = ge::DT_FLOAT;
+    ge::DataType outputDtype = ge::DT_UNDEFINED;
+
+    auto contextHolder = gert::InferDataTypeContextFaker()
+                             .NodeIoNum(2, 1)
+                             .NodeInputTd(0, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
+                             .NodeInputTd(1, ge::DT_INT32, ge::FORMAT_ND, ge::FORMAT_ND)
+                             .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
+                             .InputDataTypes({&inputDtype, &inputDtype})
+                             .OutputDataTypes({&outputDtype})
+                             .Build();
+
+    auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
+    auto inferDtypeFunc = spaceRegistry->GetOpImpl("MoeInitRoutingV2Grad")->infer_datatype;
+    ASSERT_NE(inferDtypeFunc, nullptr);
+
+    auto context = contextHolder.GetContext<gert::InferDataTypeContext>();
+    EXPECT_EQ(inferDtypeFunc(context), ge::GRAPH_SUCCESS);
+    EXPECT_EQ(context->GetOutputDataType(0), ge::DT_FLOAT);
+}

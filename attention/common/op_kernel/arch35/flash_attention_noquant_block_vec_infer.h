@@ -90,7 +90,8 @@ public:
     __aicore__ inline void CopyOutAttentionOut(RunInfo<isInfer> &runInfo, ConstInfo<isInfer, hasRope> &constInfo, LocalTensor<VEC2_RES_T> &vec2ResUb,
                                                int64_t vec2S1Idx, int64_t vec2CalcSize);
     __aicore__ inline void InitFDBuffers(ConstInfo<isInfer, hasRope> &constInfo);
-    __aicore__ inline void FlashDecodeCompute(ConstInfo<isInfer, hasRope> &constInfo, GlobalTensor<INPUT_T> &keyGm, __gm__ int64_t *actualSeqKvlenAddr);
+    __aicore__ inline void FlashDecodeCompute(ConstInfo<isInfer, hasRope> &constInfo, GlobalTensor<INPUT_T> &keyGm,
+                                              __gm__ int64_t *actualSeqQlenAddr, __gm__ int64_t *actualSeqKvlenAddr);
 
     template <typename VEC2_RES_T>
     __aicore__ inline void PostQuant(ConstInfo<isInfer, hasRope> &constInfo, RunInfo<isInfer> &runInfo, LocalTensor<OUTPUT_T> &attenOut, LocalTensor<VEC2_RES_T> &vec2ResUb, int64_t vec2S1Idx, int64_t dSizeAligned64);
@@ -105,12 +106,14 @@ public:
 private:
     __aicore__ inline void InitOutputSingleCore(ConstInfo<isInfer, hasRope> &constInfo);
     __aicore__ inline void InitLseOutputSingleCore(ConstInfo<isInfer, hasRope> &constInfo);
+    __aicore__ inline void GetActualSeqLenQ(ConstInfo<isInfer, hasRope> &constInfo, __gm__ int64_t *actualSeqQlenAddr,
+                                            int64_t boIdx, int64_t &actualSeqLenQ);
     __aicore__ inline void GetActualSeqLenKV(ConstInfo<isInfer, hasRope> &constInfo, GlobalTensor<INPUT_T> &keyGm, 
         __gm__ int64_t *actualSeqKvlenAddr, int64_t boIdx, int64_t &actualSeqKvLen);
     __aicore__ inline void MlaBnsdWithActqLseCopyOut(LocalTensor<float> &lseUb, RunInfo<isInfer> &runInfo, ConstInfo<isInfer, hasRope> &constInfo, DataCopyExtParams &intriParams1);
     __aicore__ inline void SoftmaxLseCopyOut(LocalTensor<float> &softmaxSumTmp, LocalTensor<float> &softmaxMaxTmp,
                                              RunInfo<isInfer> &runInfo, ConstInfo<isInfer, hasRope> &constInfo);
-    __aicore__ inline void CombineSplitKVRes(ConstInfo<isInfer, hasRope> &constInfo, uint64_t attenOutOffset, uint32_t bIdx, uint32_t n2Idx);
+    __aicore__ inline void CombineSplitKVRes(ConstInfo<isInfer, hasRope> &constInfo, uint64_t attenOutOffset, uint32_t bIdx, uint32_t n2Idx, uint64_t lseBatchOffset);
 
     __aicore__ inline void ComputeScaleValue(LocalTensor<T> lseMaxUb, LocalTensor<T> lseSumUb, 
         ConstInfo<isInfer, hasRope> &constInfo, uint32_t splitSize, uint64_t lseOffset, uint64_t sinkOffset);
@@ -202,6 +205,12 @@ __aicore__ inline void FANoQuantBlockVecInfer<TEMPLATE_ARGS>::InitCubeVecSharedP
         sharedParams.blockSize = inputParamsRegbase.blockSize;
         sharedParams.paLayoutType = inputParamsRegbase.paLayoutType;
         sharedParams.paBlockNumSum = inputParamsRegbase.paBlockNumSum;
+        sharedParams.keyBnStride = inputParamsRegbase.keyStrides.bnStride;
+        sharedParams.keyN2Stride = inputParamsRegbase.keyStrides.n2Stride;
+        sharedParams.valueBnStride = inputParamsRegbase.valueStrides.bnStride;
+        sharedParams.valueN2Stride = inputParamsRegbase.valueStrides.n2Stride;
+        sharedParams.keyRopeBnStride = inputParamsRegbase.kRopeStrides.bnStride;
+        sharedParams.keyRopeN2Stride = inputParamsRegbase.kRopeStrides.n2Stride;
     }
     // prefix
     if constexpr (enableKVPrefix) {
@@ -388,7 +397,7 @@ __aicore__ inline void FANoQuantBlockVecInfer<TEMPLATE_ARGS>::InitFDBuffers(Cons
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void FANoQuantBlockVecInfer<TEMPLATE_ARGS>::FlashDecodeCompute(ConstInfo<isInfer, hasRope> &constInfo,
-    GlobalTensor<INPUT_T> &keyGm, __gm__ int64_t *actualSeqKvlenAddr)
+    GlobalTensor<INPUT_T> &keyGm, __gm__ int64_t *actualSeqQlenAddr, __gm__ int64_t *actualSeqKvlenAddr)
 {
     int64_t bIdx = constInfo.aivIdx / constInfo.n2Size;
     int64_t n2Idx = constInfo.aivIdx % constInfo.n2Size;
@@ -396,14 +405,22 @@ __aicore__ inline void FANoQuantBlockVecInfer<TEMPLATE_ARGS>::FlashDecodeCompute
     if (constInfo.aivIdx >= batchSize * constInfo.n2Size) {
         return;
     }
-    int64_t actualSeqLen;
-    GetActualSeqLenKV(constInfo, keyGm, actualSeqKvlenAddr, bIdx, actualSeqLen);
-    if (actualSeqLen == 0) {
+    int64_t actualSeqLenQ, actualSeqLenKv;
+    GetActualSeqLenQ(constInfo, actualSeqQlenAddr, bIdx, actualSeqLenQ);
+    GetActualSeqLenKV(constInfo, keyGm, actualSeqKvlenAddr, bIdx, actualSeqLenKv);
+    if (actualSeqLenQ == 0 || actualSeqLenKv == 0) {
         return;
     }
     uint64_t attenOutOffset = (uint64_t)bIdx * constInfo.n2GDv + n2Idx * constInfo.gDv;
-    constInfo.actualCombineLoopSize = (actualSeqLen + constInfo.sInnerLoopSize - 1) / constInfo.sInnerLoopSize;
-    CombineSplitKVRes(constInfo, attenOutOffset, bIdx, n2Idx);
+    uint64_t lseBatchOffset = (uint64_t)bIdx;
+    if constexpr ((layout == LayOutTypeEnum::LAYOUT_TND || layout == LayOutTypeEnum::LAYOUT_NTD)) {
+        if (bIdx > 0) {
+            attenOutOffset = (uint64_t)actualSeqQlenAddr[bIdx - 1] * constInfo.n2GDv + n2Idx * constInfo.gDv;
+            lseBatchOffset = (uint64_t)actualSeqQlenAddr[bIdx - 1];
+        }
+    }
+    constInfo.actualCombineLoopSize = (actualSeqLenKv + constInfo.sInnerLoopSize - 1) / constInfo.sInnerLoopSize;
+    CombineSplitKVRes(constInfo, attenOutOffset, bIdx, n2Idx, lseBatchOffset);
 }
 
 TEMPLATES_DEF_NO_DEFAULT
@@ -511,6 +528,30 @@ __aicore__ inline void FANoQuantBlockVecInfer<TEMPLATE_ARGS>::CopyOutAttentionOu
         Bmm2FDOut(vec2ResUb, runInfo, constInfo, vec2S1Idx, vec2CalcSize);
     } else {
         this->Bmm2DataCopyOut(runInfo, constInfo, vec2ResUb, vec2S1Idx, vec2CalcSize);
+    }
+}
+
+TEMPLATES_DEF_NO_DEFAULT
+__aicore__ inline void FANoQuantBlockVecInfer<TEMPLATE_ARGS>::GetActualSeqLenQ(ConstInfo<isInfer, hasRope> &constInfo,
+                                                                               __gm__ int64_t *actualSeqQlenAddr,
+                                                                               int64_t boIdx, int64_t &actualSeqLenQ)
+{
+    int64_t s1InCurrentBatch = constInfo.s1Size;
+    if (constInfo.isActualLenDimsNull) {
+        actualSeqLenQ = s1InCurrentBatch;
+    } else {
+        actualSeqLenQ = (constInfo.actualSeqLenSize == 1) ? actualSeqQlenAddr[0] : actualSeqQlenAddr[boIdx];
+        if constexpr ((layout == LayOutTypeEnum::LAYOUT_TND || layout == LayOutTypeEnum::LAYOUT_NTD)) {
+            if (boIdx > 0) {
+                actualSeqLenQ -= actualSeqQlenAddr[boIdx - 1];
+            }
+        }
+    }
+    if (constInfo.isQHasLeftPadding) {
+        int64_t qLeftPaddingSize = constInfo.s1Size - actualSeqLenQ - constInfo.queryRightPaddingSize;
+        if (qLeftPaddingSize < 0) {
+            actualSeqLenQ = 0;
+        }
     }
 }
 
@@ -653,10 +694,16 @@ __aicore__ inline void FANoQuantBlockVecInfer<TEMPLATE_ARGS>::SoftmaxLseCopyOut(
             if (constInfo.isPfaGS1Merge && (layout == LayOutTypeEnum::LAYOUT_BSH ||
                 layout == LayOutTypeEnum::LAYOUT_TND)) {
                 for (int64_t i = 0; i < runInfo.halfS1RealSize / constInfo.gSize; i++) {
-                    int64_t lseGmOffset = i * constInfo.gSize * constInfo.n2Size;
+                    int64_t lseGmOffset = 0;
+                    if constexpr (layout == LayOutTypeEnum::LAYOUT_TND) {
+                        lseGmOffset = i * constInfo.gSize * constInfo.n2Size;
+                        intriParams1.dstStride = 0;
+                    } else {
+                        lseGmOffset = i;
+                        intriParams1.dstStride = sizeof(float) * (constInfo.s1Size - 1);
+                    }
                     int64_t lseUboffset = i * constInfo.gSize * 8; // 8：fp32对齐
                     intriParams1.blockCount = constInfo.gSize;
-                    intriParams1.dstStride = 0;
                     DataCopyPad(this->softmaxLseGm[runInfo.softmaxLseOffset + lseGmOffset],
                         lseUb[lseUboffset], intriParams1);
                 }
@@ -699,7 +746,7 @@ __aicore__ inline void FANoQuantBlockVecInfer<TEMPLATE_ARGS>::InitLseOutputSingl
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void FANoQuantBlockVecInfer<TEMPLATE_ARGS>::CombineSplitKVRes(
-    ConstInfo<isInfer, hasRope> &constInfo, uint64_t attenOutOffset, uint32_t bIdx, uint32_t n2Idx)
+    ConstInfo<isInfer, hasRope> &constInfo, uint64_t attenOutOffset, uint32_t bIdx, uint32_t n2Idx, uint64_t lseBatchOffset)
 {
     uint32_t gSplitSizeLse =
         bufferSizeByte32K / (FA_BYTE_BLOCK * constInfo.splitKVNum); // 32K / (splitKVNum * 32B)
@@ -730,7 +777,7 @@ __aicore__ inline void FANoQuantBlockVecInfer<TEMPLATE_ARGS>::CombineSplitKVRes(
         // 内存复用，同时作为输出 scale 值
         LocalTensor<T> softmaxSumLocal = softmaxSumInputQue.DeQue<T>();
 
-        lseOffset = (bIdx * constInfo.n2Size + n2Idx) * constInfo.gSize + i * gSplitSize;
+        lseOffset = (lseBatchOffset * constInfo.n2Size + n2Idx) * constInfo.gSize + i * gSplitSize;
         sinkOffset = n2Idx * constInfo.gSize + i * gSplitSize;
         ComputeScaleValue(softmaxMaxLocal, softmaxSumLocal, constInfo, gSplitSize, lseOffset, sinkOffset);
 
@@ -749,7 +796,7 @@ __aicore__ inline void FANoQuantBlockVecInfer<TEMPLATE_ARGS>::CombineSplitKVRes(
         // 内存复用，同时作为输出 scale 值
         LocalTensor<T> softmaxSumLocal = softmaxSumInputQue.DeQue<T>();
 
-        lseOffset = (bIdx * constInfo.n2Size + n2Idx) * constInfo.gSize + (loopCount - 1) * gSplitSize;
+        lseOffset = (lseBatchOffset * constInfo.n2Size + n2Idx) * constInfo.gSize + (loopCount - 1) * gSplitSize;
         sinkOffset = n2Idx * constInfo.gSize + (loopCount - 1) * gSplitSize;
         ComputeScaleValue(softmaxMaxLocal, softmaxSumLocal, constInfo, tailSplitSize, lseOffset, sinkOffset);
 

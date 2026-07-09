@@ -21,12 +21,12 @@ namespace LIV2Common {
 enum class LI_V2_LAYOUT {
     BSND = 0,
     TND = 1,
-    PA_BSND = 2
+    PA_BBND = 2
 };
 
 template <typename Q_T, typename K_T, typename OUT_T, typename QK_T, typename SCORE_T,
           const bool PAGE_ATTENTION = false, LI_V2_LAYOUT LAYOUT_T = LI_V2_LAYOUT::BSND,
-          LI_V2_LAYOUT K_LAYOUT_T = LI_V2_LAYOUT::PA_BSND, bool DT_W_FLAG = false, typename... Args>
+          LI_V2_LAYOUT K_LAYOUT_T = LI_V2_LAYOUT::PA_BBND, bool DT_W_FLAG = false, typename... Args>
 struct LIV2Type {
     static constexpr bool weightsTypeFlag = DT_W_FLAG;   // weight的dtype是否为FP32
     using queryType = Q_T;
@@ -53,6 +53,10 @@ struct RunInfo {
     uint32_t actMBaseSize;
     uint32_t actualSingleProcessSInnerSize;
     uint32_t actualSingleProcessSInnerSizeAlign;
+    uint32_t curCuSeqlensQ = 0;
+    uint32_t curCuSeqlensK = 0;
+    uint32_t curSequsedQ = 0;
+    uint32_t curSequsedK = 0;
 
     uint64_t tensorQueryOffset;
     uint64_t tensorKeyOffset;
@@ -66,6 +70,7 @@ struct RunInfo {
     bool isLastS2InnerLoop;
     bool isAllLoopEnd = false;
     bool isValid = false;
+    bool needTndPadding = false;
 };
 
 struct ConstInfo {
@@ -88,6 +93,8 @@ struct ConstInfo {
     static constexpr uint32_t BUFFER_SIZE_BYTE_32K = 32768;
     // 无效索引
     static constexpr int INVALID_IDX = -1;
+    // float负无穷
+    static constexpr uint32_t NEG_INF_FLOAT = 0xFF800000;
     // CUBE和VEC的核间同步EventID
     uint32_t syncC1V1 = 0U;
     uint32_t syncC1V0 = 2U;
@@ -117,6 +124,7 @@ struct ConstInfo {
     int64_t cmpRatio = 1;
     int64_t cmpResidualK = 0;
     bool batchSupperFlag = false;  // Qactual_seq长度是否为B+1
+    uint32_t keyStride0 = 0;
     bool returnValue = false;
 
     uint32_t actualLenQDims = 0U; // query的actualSeqLength 的维度

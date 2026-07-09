@@ -87,6 +87,9 @@ static constexpr size_t GROUP_LIST_SPARSE_DIM_NUM = 2UL;
 static constexpr int ANTIQUANT_SCALE_3D_DIMS = 3;
 static constexpr int ANTIQUANT_SCALE_4D_DIMS = 4;
 static constexpr int SCALE_TENSOR_EXPECTED_DIMS = 2;
+
+static constexpr int64_t MULTI_WEIGHT_DIM = 2L;
+
 static bool IsFormatNZWithC0(const aclTensor *tensor)
 {
     return ge::GetPrimaryFormat(tensor->GetStorageFormat()) == op::Format::FORMAT_FRACTAL_NZ_C0_2 ||
@@ -635,6 +638,15 @@ static aclnnStatus CheckGroupListSplitM(const gmm::GroupedMatmulParams &gmmParam
     }
   }
   return ACLNN_SUCCESS;
+}
+
+static bool IsMultiTensorWeight(const gmm::GroupedMatmulParams &gmmParams);
+
+static bool IsWeightNzMultiTensorCase(const gmm::GroupedMatmulParams &gmmParams)
+{
+    return gmmParams.apiVersion == gmm::GMMApiVersion::WeightNz && gmmParams.groupType == gmm::SPLIT_M &&
+           gmmParams.x->Size() == 1 && gmmParams.y->Size() == 1 && gmmParams.biasOptional == nullptr &&
+           IsMultiTensorWeight(gmmParams);
 }
 
 static uint64_t GetGroupSize(const gmm::GroupedMatmulParams &gmmParams) {
@@ -1349,25 +1361,53 @@ bool isActivationAllowed(int64_t act_type)
            act_type == GMMActType::GMM_ACT_TYPE_SILU;
 }
 
+const char *GetAclnnGetWorkspaceSizeOpName(gmm::GMMApiVersion apiVersion)
+{
+    switch (apiVersion) {
+        case gmm::GMMApiVersion::V1:
+            return "aclnnGroupedMatmulGetWorkspaceSize";
+        case gmm::GMMApiVersion::V2:
+            return "aclnnGroupedMatmulV2GetWorkspaceSize";
+        case gmm::GMMApiVersion::V3:
+            return "aclnnGroupedMatmulV3GetWorkspaceSize";
+        case gmm::GMMApiVersion::V4:
+            return "aclnnGroupedMatmulV4GetWorkspaceSize";
+        case gmm::GMMApiVersion::V5:
+            return "aclnnGroupedMatmulV5GetWorkspaceSize";
+        case gmm::GMMApiVersion::WeightNz:
+            return "aclnnGroupedMatmulWeightNzGetWorkspaceSize";
+        default:
+            return "aclnnGroupedMatmulGetWorkspaceSize";
+    }
+}
+
 bool CheckScaleForInt8Quant(const gmm::GroupedMatmulParams &gmmParams) {
+    const char *aclnnOpName = GetAclnnGetWorkspaceSizeOpName(gmmParams.apiVersion);
     if (gmmParams.scaleOptional == nullptr || gmmParams.scaleOptional->Size() == 0 ||
         (*gmmParams.scaleOptional)[0] == nullptr) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnGroupedMatmulGetWorkspaceSize", "scaleOptional",
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(aclnnOpName, "scaleOptional",
             "nullptr", "When the activation function is enabled, scaleOptional cannot be nullptr");
         return false;
     }
     const op::Shape &scaleShape = (*gmmParams.scaleOptional)[0]->GetViewShape();
     DataType scaleDtype = (*gmmParams.scaleOptional)[0]->GetDataType();
-    if (scaleDtype != DataType::DT_FLOAT && scaleDtype != DataType::DT_BF16) {
+    DataType yDtype = (*gmmParams.y)[0]->GetDataType();
+    if (yDtype == DataType::DT_BF16 && scaleDtype != DataType::DT_FLOAT && scaleDtype != DataType::DT_BF16) {
         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
-            "aclnnGroupedMatmulGetWorkspaceSize", "scaleOptional", gmm::dTypeToString(scaleDtype),
-            "When the activation function is enabled, the dtype of scaleOptional must be float32 or bfloat16");
+            aclnnOpName, "scaleOptional", gmm::dTypeToString(scaleDtype),
+            "When the dtype of y is bfloat16, the dtype of scaleOptional must be bfloat16 or float32");
+        return false;
+    }
+    if (yDtype == DataType::DT_FLOAT16 && scaleDtype != DataType::DT_FLOAT) {
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
+            aclnnOpName, "scaleOptional", gmm::dTypeToString(scaleDtype),
+            "When the dtype of y is float16, the dtype of scaleOptional must be float32");
         return false;
     }
     size_t scaleDimNum = scaleShape.GetDimNum();
     if (scaleDimNum != SCALE_TENSOR_EXPECTED_DIMS) {
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
-            "aclnnGroupedMatmulGetWorkspaceSize", "scaleOptional", std::to_string(scaleDimNum),
+            aclnnOpName, "scaleOptional", std::to_string(scaleDimNum),
             "When the activation function is enabled, the shape dim of scaleOptional must be 2 for perchannel");
         return false;
     }
@@ -1379,7 +1419,7 @@ bool CheckScaleForInt8Quant(const gmm::GroupedMatmulParams &gmmParams) {
     int64_t scaleGroupNum = scaleShape.GetDim(0);
     if (scaleNSize != weightNSize || scaleGroupNum != weightGroupNum) {
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-            "aclnnGroupedMatmulGetWorkspaceSize", "scaleOptional",
+            aclnnOpName, "scaleOptional",
             "[" + std::to_string(scaleGroupNum) + ", " + std::to_string(scaleNSize) + "]",
             "When the activation function is enabled, the shape of scaleOptional must be "
             "[" + std::to_string(weightGroupNum) + ", " + std::to_string(weightNSize) + "]");
@@ -1400,11 +1440,12 @@ bool CheckInt8DynamicKCQuant(const gmm::GroupedMatmulParams &gmmParams) {
         (*gmmParams.perTokenScaleOptional)[0] == nullptr) {
         return false;
     }
+    const char *aclnnOpName = GetAclnnGetWorkspaceSizeOpName(gmmParams.apiVersion);
     const op::Shape &perTokenScaleShape = (*gmmParams.perTokenScaleOptional)[0]->GetViewShape();
     DataType perTokenScaleDtype = (*gmmParams.perTokenScaleOptional)[0]->GetDataType();
     if (perTokenScaleDtype != DataType::DT_FLOAT) {
         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
-            "aclnnGroupedMatmulGetWorkspaceSize", "perTokenScaleOptional", gmm::dTypeToString(perTokenScaleDtype),
+            aclnnOpName, "perTokenScaleOptional", gmm::dTypeToString(perTokenScaleDtype),
             "When the activation function is enabled, the dtype of perTokenScaleOptional must be float32");
         return false;
     }
@@ -1414,13 +1455,13 @@ bool CheckInt8DynamicKCQuant(const gmm::GroupedMatmulParams &gmmParams) {
     int64_t perTokenScaleMSize = perTokenScaleShape.GetDim(perTokenScaleDim - 1);
     if (perTokenScaleDim != 1) {
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
-            "aclnnGroupedMatmulGetWorkspaceSize", "perTokenScaleOptional", std::to_string(perTokenScaleDim),
+            aclnnOpName, "perTokenScaleOptional", std::to_string(perTokenScaleDim),
             "When the activation function is enabled, the shape dim of perTokenScaleOptional must be 1");
         return false;
     }
     if (perTokenScaleMSize != mSize) {
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-            "aclnnGroupedMatmulGetWorkspaceSize", "perTokenScaleOptional",
+            aclnnOpName, "perTokenScaleOptional",
             "[" + std::to_string(perTokenScaleMSize) + ",]",
             "When the activation function is enabled and the shape dim of perTokenScaleOptional is 1, the shape of "
             "perTokenScaleOptional must be [" + std::to_string(mSize) + ",]");
@@ -1446,6 +1487,32 @@ bool CheckIsEnabledActive(const gmm::GroupedMatmulParams &gmmParams) {
     bool allowActOnDavid =
         isInt8Input && (isInt8StaticTCQuant || isInt8DynamicKCQuant) && isActivationAllowed(gmmParams.activeType);
     return allowActOnDavid;
+}
+
+// 非Ascend 950量化场景保留兼容行为：当前只对算子实现未支持的激活组合打印warning，不做参数拦截。
+// A8W8的FP16/BF16输出通路在kernel中实际消费activeType，其余量化组合暂按不支持激活处理。
+bool IsQuantActivationSupportedByKernel(const gmm::GroupedMatmulParams &gmmParams, DataType weightDtype)
+{
+    if (!isActivationAllowed(gmmParams.activeType)) {
+        return false;
+    }
+    if (gmmParams.xDtype != DataType::DT_INT8 || weightDtype != DataType::DT_INT8) {
+        return false;
+    }
+    DataType yDtype = (*gmmParams.y)[0]->GetDataType();
+    return yDtype == DataType::DT_FLOAT16 || yDtype == DataType::DT_BF16;
+}
+
+void LogUnsupportedQuantActivationWarning(const gmm::GroupedMatmulParams &gmmParams, DataType weightDtype,
+                                          const char *opName)
+{
+    if (!isActivationAllowed(gmmParams.activeType) || IsQuantActivationSupportedByKernel(gmmParams, weightDtype)) {
+        return;
+    }
+    OP_LOGW("In op [%s], actType[%ld] is not supported in this quant scenario by the operator implementation. "
+            "It is not intercepted currently for compatibility. Set actType to 0 to avoid unsupported activation "
+            "behavior.",
+            opName, gmmParams.activeType);
 }
 
 static aclnnStatus CheckFunctionParams(const gmm::GroupedMatmulParams &gmmParams, const char *opName)
@@ -1478,11 +1545,15 @@ static aclnnStatus CheckFunctionParams(const gmm::GroupedMatmulParams &gmmParams
         }
     }
     if (gmmParams.xDtype == DataType::DT_INT8 && weightDtype == DataType::DT_INT4) {
+        // A8W4量化kernel未实现actType激活分支，先提示用户但保持兼容不拦截。
+        LogUnsupportedQuantActivationWarning(gmmParams, weightDtype, opName);
         CHECK_COND(CheckA8W4QuantParams(gmmParams, opName) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
                    "In op [%s], when A8W4 weight quant, parameter check failed.", opName);
         return ACLNN_SUCCESS;
     }
     if (gmmParams.xDtype == DataType::DT_INT4 && weightDtype == DataType::DT_INT4) {
+        // A4W4量化kernel未实现actType激活分支，先提示用户但保持兼容不拦截。
+        LogUnsupportedQuantActivationWarning(gmmParams, weightDtype, opName);
         CHECK_COND(CheckA4W4QuantParams(gmmParams, opName) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
                    "In op [%s], when A4W4 quant, parameter check failed.", opName);
         return ACLNN_SUCCESS;
@@ -1508,11 +1579,10 @@ static aclnnStatus CheckFunctionParams(const gmm::GroupedMatmulParams &gmmParams
     if (gmmParams.xDtype == DataType::DT_INT8 && weightDtype == DataType::DT_INT8) {
         // quant
         DataType yDtype = (*gmmParams.y)[0]->GetDataType();
-        CHECK_COND(isNoActivation || yDtype != DataType::DT_INT8 || yDtype != DataType::DT_INT32,
-                   ACLNN_ERR_PARAM_INVALID,
-                   "In op [%s], when A8W8 quant with y dtype int8 or int32, [%s] is not supported, got [%ld]. "
-                   "Constraint:[activation is not supported].",
-                   opName, "activeType", gmmParams.activeType);
+        if (!isNoActivation && (yDtype == DataType::DT_INT8 || yDtype == DataType::DT_INT32)) {
+            // A8W8的INT8/INT32输出量化通路不走激活计算，仅提示用户但保持兼容不拦截。
+            LogUnsupportedQuantActivationWarning(gmmParams, weightDtype, opName);
+        }
         CHECK_COND(CheckFunctionQuantParams(gmmParams, opName) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
                    "In op [%s], when A8W8 quant, function parameter check failed.", opName);
         return ACLNN_SUCCESS;
@@ -1821,6 +1891,13 @@ static aclnnStatus CheckCaseSplitM(const gmm::GroupedMatmulParams &gmmParams, co
     bool apiVersionFlag =
         gmmParams.apiVersion == gmm::GMMApiVersion::WeightNz || gmmParams.apiVersion == gmm::GMMApiVersion::V5 ||
         gmmParams.apiVersion == gmm::GMMApiVersion::V4 || gmmParams.apiVersion == gmm::GMMApiVersion::V3;
+    if (IsWeightNzMultiTensorCase(gmmParams)) {
+        CHECK_COND(SplitMSingleXSeparatedWeightSingleY(gmmParams, opName) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
+                   "In op [%s], when groupType == 0(split-M) with single x, separated weight and single y, parameter "
+                   "check failed.",
+                   opName);
+        return ACLNN_SUCCESS;
+    }
     if (xSize == 1UL && weightSize == 1UL && ySize == 1UL) {
         CHECK_COND(SplitMSingleXSingleWeightSingleY(gmmParams, opName) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
                    "In op [%s], when groupType == 0(split-M) with single x, single weight and single y, parameter "
@@ -2017,42 +2094,13 @@ static aclnnStatus CheckCaseNoSplit(const gmm::GroupedMatmulParams &gmmParams, c
     return ACLNN_SUCCESS;
 }
 
-static aclnnStatus CheckParamDifferentGroupType(const gmm::GroupedMatmulParams &gmmParams, const char *opName)
+static bool IsMultiTensorWeight(const gmm::GroupedMatmulParams &gmmParams)
 {
-    CHECK_COND(!(gmmParams.transposeX && gmmParams.transposeWeight), ACLNN_ERR_PARAM_INVALID,
-               "In op [%s], [%s] is not supported. Constraint:[x and weight cannot be transposed at the same time].",
-               opName, "transposeX and transposeWeight");
-    CHECK_COND(
-        (gmmParams.groupListOptional == nullptr || gmmParams.groupListOptional->Size() >= 1) &&
-            (gmmParams.groupTensorOptional == nullptr || gmmParams.groupTensorOptional->GetViewShape().GetDim(0) >= 1),
-        ACLNN_ERR_PARAM_INVALID,
-        "In op [%s], [%s] is invalid. Constraint:[size of groupList cannot be 0; if expected group num is 1, "
-        "groupList should be nullptr].",
-        opName, "groupList");
-    if (GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND310P && gmmParams.transposeWeight) {
-        CHECK_COND(gmmParams.groupType == gmm::SPLIT_M && gmmParams.x->Size() == 1 && gmmParams.weight->Size() == 1 &&
-                       gmmParams.y->Size() == 1,
-                   ACLNN_ERR_PARAM_INVALID,
-                   "In op [%s], when ASCEND310P platform and weight is transposed, only groupType == 0(split-M) with "
-                   "single x, single weight and single y is supported.",
-                   opName);
-    }
+    return (*gmmParams.weight)[0]->GetViewShape().GetDimNum() == MULTI_WEIGHT_DIM;
+}
 
-    DataType weightDtype = (*gmmParams.weight)[0]->GetDataType();
-    if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510 &&
-        IsWeightQuant(gmmParams.xDtype, weightDtype)) {
-        // 伪量化场景DAV_3510除了单单单的GroupList，其他校验在AclnnGroupedMatmulWeightQuantDAV3510Checker均已完成，下方校验跳过
-        if (gmmParams.groupType == gmm::SPLIT_M) {
-            // check groupList
-            size_t batchSizeWeight = (*gmmParams.weight)[0]->GetViewShape().GetDim(0);
-            CHECK_COND(CheckGroupListSplitM(gmmParams, true, false, false, batchSizeWeight, opName) == ACLNN_SUCCESS,
-                       ACLNN_ERR_PARAM_INVALID,
-                       "In op [%s], when DAV_3510 weight quant and groupType == 0(split-M), [%s] check failed.", opName,
-                       "groupList");
-        }
-        return ACLNN_SUCCESS;
-    }
-
+static aclnnStatus CheckParamsByGroupType(const gmm::GroupedMatmulParams &gmmParams, const char *opName)
+{
     if (gmmParams.groupType == gmm::NO_SPLIT) {
         CHECK_COND(!gmmParams.transposeX, ACLNN_ERR_PARAM_INVALID,
                    "In op [%s], when groupType == -1(no split) and x, weight and y are all separated, [%s] is not "
@@ -2080,6 +2128,49 @@ static aclnnStatus CheckParamDifferentGroupType(const gmm::GroupedMatmulParams &
         CHECK_COND(CheckCaseSplitK(gmmParams, opName) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
                    "In op [%s], when groupType == 2(split-K), parameter check failed.", opName);
     }
+    return ACLNN_SUCCESS;
+}
+
+static aclnnStatus CheckParamDifferentGroupType(const gmm::GroupedMatmulParams &gmmParams, const char *opName)
+{
+    CHECK_COND(!(gmmParams.transposeX && gmmParams.transposeWeight), ACLNN_ERR_PARAM_INVALID,
+               "In op [%s], [%s] is not supported. Constraint:[x and weight cannot be transposed at the same time].",
+               opName, "transposeX and transposeWeight");
+    CHECK_COND(
+        (gmmParams.groupListOptional == nullptr || gmmParams.groupListOptional->Size() >= 1) &&
+            (gmmParams.groupTensorOptional == nullptr || gmmParams.groupTensorOptional->GetViewShape().GetDim(0) >= 1),
+        ACLNN_ERR_PARAM_INVALID,
+        "In op [%s], [%s] is invalid. Constraint:[size of groupList cannot be 0; if expected group num is 1, "
+        "groupList should be nullptr].",
+        opName, "groupList");
+    if (GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND310P && gmmParams.transposeWeight) {
+        CHECK_COND(gmmParams.groupType == gmm::SPLIT_M && gmmParams.x->Size() == 1 && gmmParams.weight->Size() == 1 &&
+                       gmmParams.y->Size() == 1,
+                   ACLNN_ERR_PARAM_INVALID,
+                   "In op [%s], when ASCEND310P platform and weight is transposed, only groupType == 0(split-M) with "
+                   "single x, single weight and single y is supported.",
+                   opName);
+    }
+
+    DataType weightDtype = (*gmmParams.weight)[0]->GetDataType();
+    if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510 &&
+        IsWeightQuant(gmmParams.xDtype, weightDtype)) {
+        // 伪量化场景DAV_3510除了单单单/单多单的GroupList，其他校验在AclnnGroupedMatmulWeightQuantDAV3510Checker均已完成，下方校验跳过
+        if (gmmParams.groupType == gmm::SPLIT_M) {
+            size_t batchSizeWeight = (*gmmParams.weight)[0]->GetViewShape().GetDim(0);
+            if (IsMultiTensorWeight(gmmParams)) {
+                batchSizeWeight = gmmParams.weight->Size();
+            }
+            CHECK_COND(CheckGroupListSplitM(gmmParams, true, false, false, batchSizeWeight, opName) == ACLNN_SUCCESS,
+                       ACLNN_ERR_PARAM_INVALID,
+                       "In op [%s], when DAV_3510 weight quant and groupType == 0(split-M), [%s] check failed.", opName,
+                       "groupList");
+        }
+        return ACLNN_SUCCESS;
+    }
+
+    CHECK_COND(CheckParamsByGroupType(gmmParams, opName) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
+               "In op [%s], groupType specific parameter check failed.", opName);
     if (gmmParams.biasOptional != nullptr) {
         CHECK_COND(CheckOptionalTensorList(gmmParams, gmmParams.biasOptional, "bias") == ACLNN_SUCCESS,
                    ACLNN_ERR_PARAM_INVALID, "In op [%s], [%s] check failed.", opName, "bias");
@@ -2526,14 +2617,19 @@ static void SetTransposedTensorListContiguous(gmm::GroupedMatmulParams &params, 
   }
   if (params.transposeWeight) {
     std::vector<aclTensor *> weightTensorList;
-    auto nZShape = (*params.weight)[0]->GetStorageShape();
+    std::vector<op::Shape> nZShapes;
+    for (uint64_t idx = 0; idx < (*params.weight).Size(); idx++) {
+        nZShapes.push_back((*params.weight)[idx]->GetStorageShape());
+    }
     gmm::CreateContiguousTensorList(params.weight, weightTensorList, executorPtr);
     params.weight = executorPtr->AllocTensorList(weightTensorList.data(), weightTensorList.size());
     if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510 &&
         ((IsQuant(params.xDtype, weightDtype) &&
           (*params.weight)[0]->GetStorageFormat() == op::Format::FORMAT_FRACTAL_NZ) ||
          (params.apiVersion == gmm::GMMApiVersion::WeightNz && IsWeightQuant(params.xDtype, weightDtype)))) {
-        (*params.weight)[0]->SetStorageShape(nZShape);
+        for (uint64_t idx = 0; idx < (*params.weight).Size(); idx++) {
+            (*params.weight)[idx]->SetStorageShape(nZShapes[idx]);
+        }
     }
     SetTransposedScaleTensorListContiguous(params, executorPtr, isPerTileQuantMode);
   }
@@ -2687,14 +2783,20 @@ static const aclTensor *SetTensorToNZFormat(const aclTensor *input, op::Shape &s
     return formatTensor;
 }
 
-static aclnnStatus SetStorageShape(gmm::GroupedMatmulParams &params, op::Shape wqbmmNzShape)
+static aclnnStatus SetStorageShape(gmm::GroupedMatmulParams &params, const std::vector<op::Shape> &wqbmmNzShapes)
 {
     DataType xDtype = (*params.x)[0]->GetDataType();
     DataType weightDtype = (*params.weight)[0]->GetDataType();
     if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510 &&
         ((IsQuant(xDtype, weightDtype) && (*params.weight)[0]->GetStorageFormat() == op::Format::FORMAT_FRACTAL_NZ) ||
          (params.apiVersion == gmm::GMMApiVersion::WeightNz && IsWeightQuant(xDtype, weightDtype)))) {
-        (*params.weight)[0]->SetStorageShape(wqbmmNzShape);
+        CHECK_COND(wqbmmNzShapes.size() == (*params.weight).Size(), ACLNN_ERR_PARAM_INVALID,
+                   "wqbmmNzShapes size[%zu] must be equal to weight size[%lu].", wqbmmNzShapes.size(),
+                   (*params.weight).Size());
+
+        for (uint64_t idx = 0; idx < (*params.weight).Size(); idx++) {
+            (*params.weight)[idx]->SetStorageShape(wqbmmNzShapes[idx]);
+        }
     }
     return ACLNN_SUCCESS;
 }
@@ -2726,7 +2828,10 @@ static aclnnStatus GetGMMResultByL0Api(gmm::GroupedMatmulParams &params, uint64_
         }
     }
 
-    op::Shape nzShape = (*params.weight)[0]->GetStorageShape();
+    std::vector<op::Shape> nzShapes;
+    for (uint64_t idx = 0; idx < (*params.weight).Size(); idx++) {
+        nzShapes.push_back((*params.weight)[idx]->GetStorageShape());
+    }
     if (params.apiVersion == gmm::GMMApiVersion::WeightNz ||
         (*params.weight)[0]->GetStorageFormat() == op::Format::FORMAT_FRACTAL_NZ) {
         CHECK_COND(ParamsWeightNzDtype(params, opName) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
@@ -2739,7 +2844,7 @@ static aclnnStatus GetGMMResultByL0Api(gmm::GroupedMatmulParams &params, uint64_
             tensorsVec.push_back(tensor);
         }
         params.weight = executorPtr->AllocTensorList(tensorsVec.data(), tensorsVec.size());
-        SetStorageShape(params, nzShape);
+        SetStorageShape(params, nzShapes);
     }
     CHECK_COND(TransWeightToNz(params, executorPtr) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
                "TransWeightToNz failed.");

@@ -1,23 +1,24 @@
-# aclnnBlockSparseAttentionGrad
+# BlockSparseAttentionGrad
 
 ## 产品支持情况
 
 |产品      | 是否支持 |
 |:----------------------------|:-----------:|
-|<term>Ascend 950PR/Ascend 950DT</term>|      ×     |
+|<term>Ascend 950PR/Ascend 950DT</term>|      √     |
 |<term>Atlas A3 训练系列产品</term>|      √     |
 |<term>Atlas A3 推理系列产品</term>|      ×     |
 |<term>Atlas A2 训练系列产品</term>|      √     |
 |<term>Atlas A2 推理系列产品</term>|      ×     |
-|<term>Atlas 200I/500 A2 推理产品</term>                                         |    ×    |
-|<term>Atlas 推理系列产品</term>                                                 |    ×    |
-|<term>Atlas 训练系列产品</term>                                                 |    ×    |
+|<term> Atlas 200I/500 A2 推理产品</term>                                         |    ×    |
+|<term> Atlas 推理系列产品</term>                                                 |    ×    |
+|<term> Atlas 训练系列产品</term>                                                 |    ×    |
 
 ## 功能说明
 
-* ​接口功能​：aclnnBlockSparseAttention稀疏注意力反向计算，支持灵活的块级稀疏模式，通过BlockSparseMask指定每个Q块选择的KV块，实现高效的稀疏注意力计算。
+* ​算子功能​：aclnnBlockSparseAttention稀疏注意力反向计算，支持灵活的块级稀疏模式，通过BlockSparseMask指定每个Q块选择的KV块，实现高效的稀疏注意力计算。
 * ​计算公式​：
-稀疏块大小：$blockShapeX×blockShapeY$，BlockSparseMask指定稀疏模式。
+
+  稀疏块大小：$blockShapeX×blockShapeY$，BlockSparseMask指定稀疏模式。
   
   已知正向计算公式为：
   
@@ -69,7 +70,7 @@
   dK=(dS^T*Q)*scale
   $$
 
-BlockSparseAttentionGrad输入dout、 query、key、value, attentionOut的数据排布格式支持从多种维度排布解读，可通过qInputLayout和kvInputLayout传入。为了方便理解后续支持的具体排布格式（如 BNSD、TND 等），此处先对排布格式中各缩写字母所代表的维度含义进行统一说明：
+BlockSparseAttentionGrad输入dout、query、key、value, attentionOut的数据排布格式支持从多种维度排布解读，可通过qInputLayout和kvInputLayout传入。为了方便理解后续支持的具体排布格式（如 BNSD、TND 等），此处先对排布格式中各缩写字母所代表的维度含义进行统一说明：
 
 * B：表示输入样本批量大小（Batch）
 * T：B和S合轴紧密排列的长度（Total tokens）
@@ -80,8 +81,13 @@ BlockSparseAttentionGrad输入dout、 query、key、value, attentionOut的数据
 
 当前支持的布局：
 
-* qInputLayout: "TND" "BNSD"
-* kvInputLayout: "TND" "BNSD"
+* qInputLayout: "TND" "BNSD" "BSND"
+* kvInputLayout: "TND" "BNSD" "BSND"
+
+- <term>Atlas A2 训练产品</term>、<term>Atlas A3 训练产品</term>:
+不支持"BSND"。
+</ul>
+
 
 ## 函数原型
 
@@ -123,10 +129,10 @@ aclnnStatus aclnnBlockSparseAttentionGrad(
 ```
 
 ## aclnnBlockSparseAttentionGradGetWorkspaceSize
+## 参数说明
 
-* **参数说明：**
-
-  <table style="undefined;table-layout: fixed; width: 1550px"><colgroup>
+<table style="undefined;table-layout: fixed; width: 1550px">
+<colgroup>
     <col style="width: 170px">
     <col style="width: 120px">
     <col style="width: 271px">
@@ -135,8 +141,8 @@ aclnnStatus aclnnBlockSparseAttentionGrad(
     <col style="width: 101px">
     <col style="width: 190px">
     <col style="width: 145px">
-  </colgroup>
-  <thead>
+</colgroup>
+<thead>
     <tr>
     <th>参数名</th>
     <th>输入/输出</th>
@@ -147,13 +153,13 @@ aclnnStatus aclnnBlockSparseAttentionGrad(
     <th>维度(shape)</th>
     <th>非连续Tensor</th>
     </tr>
-  </thead>
-  <tbody>
+</thead>
+<tbody>
     <tr>
     <td>dout（aclTensor*）</td>
     <td>输入</td>
     <td>反向输出梯度，代表最终输出对当前算子的梯度信息。</td>
-    <td>不支持空Tensor。<br>支持的shape为：<ul><li>TND: [totalQTokens, headNum, headDim]。</li><li>BNSD: [batch, headNum, maxQSeqLength, headDim]。</li></ul></td>
+    <td>不支持空Tensor。<br>支持的shape为：<ul><li>TND: [totalQTokens, headNum, headDim]。</li><li>BNSD: [batch, headNum, maxQSeqLength, headDim]。</li><li>BSND: [batch, maxQSeqLength, headNum, headDim]。</li></ul></td>
     <td>FLOAT16、BFLOAT16</td>
     <td>ND</td>
     <td>3-4</td>
@@ -163,7 +169,7 @@ aclnnStatus aclnnBlockSparseAttentionGrad(
     <td>query（aclTensor*）</td>
     <td>输入</td>
     <td>注意力计算中的查询向量，即公式中的query。</td>
-    <td>不支持空Tensor。<br>支持的shape为：<ul><li>TND: [totalQTokens, headNum, headDim]。</li><li>BNSD: [batch, headNum, maxQSeqLength, headDim]。</li></ul></td>
+    <td>不支持空Tensor。<br>支持的shape为：<ul><li>TND: [totalQTokens, headNum, headDim]。</li><li>BNSD: [batch, headNum, maxQSeqLength, headDim]。</li><li>BSND: [batch, maxQSeqLength, headNum, headDim]。</li></ul></td>
     <td>FLOAT16、BFLOAT16</td>
     <td>ND</td>
     <td>3-4</td>
@@ -173,7 +179,7 @@ aclnnStatus aclnnBlockSparseAttentionGrad(
     <td>key（aclTensor*）</td>
     <td>输入</td>
     <td>注意力计算中的键向量，即公式中的key。</td>
-    <td>不支持空Tensor。<br>支持的shape为：<ul><li>TND: [totalKTokens, numKeyValueHeads, headDim]。</li><li>BNSD: [batch, numKeyValueHeads, maxKvSeqLength, headDim]。</li></ul></td>
+    <td>不支持空Tensor。<br>支持的shape为：<ul><li>TND: [totalKTokens, numKeyValueHeads, headDim]。</li><li>BNSD: [batch, numKeyValueHeads, maxKvSeqLength, headDim]。</li><li>BSND: [batch, maxKvSeqLength, numKeyValueHeads, headDim]。</li></ul></td>
     <td>FLOAT16、BFLOAT16</td>
     <td>ND</td>
     <td>3-4</td>
@@ -183,7 +189,7 @@ aclnnStatus aclnnBlockSparseAttentionGrad(
     <td>value（aclTensor*）</td>
     <td>输入</td>
     <td>注意力计算中的值向量，即公式中的value。</td>
-    <td>不支持空Tensor。<br>支持的shape为：<ul><li>TND: [totalVTokens, numKeyValueHeads, headDim]。</li><li>BNSD: [batch, numKeyValueHeads, maxKvSeqLength, headDim]。</li></ul></td>
+    <td>不支持空Tensor。<br>支持的shape为：<ul><li>TND: [totalVTokens, numKeyValueHeads, headDim]。</li><li>BNSD: [batch, numKeyValueHeads, maxKvSeqLength, headDim]。</li><li>BSND: [batch, maxKvSeqLength, numKeyValueHeads, headDim]。</li></ul></td>
     <td>FLOAT16、BFLOAT16</td>
     <td>ND</td>
     <td>3-4</td>
@@ -193,7 +199,7 @@ aclnnStatus aclnnBlockSparseAttentionGrad(
     <td>attentionOut（aclTensor*）</td>
     <td>输入</td>
     <td>正向 BlockSparseAttention 计算的输出结果，即公式中的attentionOut。</td>
-    <td>不支持空Tensor。<br>支持的shape为：<ul><li>TND: [totalQTokens, headNum, headDim]。</li><li>BNSD: [batch, headNum, maxQSeqLength, headDim]。</li></ul></td>
+    <td>不支持空Tensor。<br>支持的shape为：<ul><li>TND: [totalQTokens, headNum, headDim]。</li><li>BNSD: [batch, headNum, maxQSeqLength, headDim]。</li><li>BSND: [batch, maxQSeqLength, headNum, headDim]。</li></ul></td>
     <td>FLOAT16、BFLOAT16</td>
     <td>ND</td>
     <td>3-4</td>
@@ -203,7 +209,7 @@ aclnnStatus aclnnBlockSparseAttentionGrad(
     <td>softmaxLse（aclTensor*）</td>
     <td>输入</td>
     <td>Softmax计算的log-sum-exp中间结果。用于反向计算梯度的对数和指数逆推。</td>
-    <td>不支持空Tensor。<br>支持的shape为：<ul><li>TND: [totalQTokens, headNum, 1]。</li><li>BNSD: [batch, headNum, maxQSeqLength, 1]。</li></ul></td>
+    <td>不支持空Tensor。<br>支持的shape为：<ul><li>TND: [totalQTokens, headNum, 1]。</li><li>BNSD: [batch, headNum, maxQSeqLength, 1]。</li><li>BNS1: [batch, maxQSeqLength, headNum, 1]。</li></ul></td>
     <td>FLOAT</td>
     <td>ND</td>
     <td>3-4</td>
@@ -246,36 +252,30 @@ aclnnStatus aclnnBlockSparseAttentionGrad(
     <td>当配置此输入时的元素要求：<ul><li>必须包含至少两个元素 [blockShapeX, blockShapeY]。</li><li>blockShapeX: Q方向块大小，值必须大于0。</li><li>blockShapeY: KV方向块大小，值必须大于0。</li></ul></td>
     </tr>
     <tr>
-    <td rowspan="2">actualSeqLengthsOptional（aclIntArray*）</td>
-    <td rowspan="2">输入</td>
-    <td rowspan="2">query的实际序列长度数组。<br>用于描述变长序列场景下（即含有 Padding 填充数据的场景），每个 Batch 中实际有效的 query token 数量。</td>
+    <td>actualSeqLengthsOptional（aclIntArray*）</td>
+    <td>输入</td>
+    <td>query的实际序列长度数组。<br>用于描述变长序列场景下（即含有 Padding 填充数据的场景），每个 Batch 中实际有效的 query token 数量。</td>
     <td> 变长序列场景（当 qInputLayout 为 "TND" 时）：该项输入必须配置。因为 TND 格式为一维连续排布，算子需要依赖该数组来准确切分界定各个序列的真实边界。</td>
-    <td rowspan="2">INT64</td>
-    <td rowspan="2">-</td>
-    <td rowspan="2">1</td>
-    <td rowspan="2">-</td>
+    <td>INT64</td>
+    <td>-</td>
+    <td>1</td>
+    <td>-</td>
     </tr>
     <tr>
-    <td>定长/变长场景（当 qInputLayout 为 "BNSD" 时）：<ul><li>如配置该项，算子会按指定的有效长度处理，忽略 Padding 部分的数据，提升性能；</li><li>如不配置（传 nullptr），算子将默认把 query shape 中的 S 维度作为有效长度进行全量处理。</li></ul></td>
-    </tr>
-    <tr>
-    <td rowspan="2">actualSeqLengthsKvOptional（aclIntArray*）</td>
-    <td rowspan="2">输入</td>
-    <td rowspan="2">key/value的实际序列长度数组。<br>用于描述变长序列场景下（即含有 Padding 填充数据的场景），每个 Batch 中实际有效的 key/value token 数量。</td>
+    <td>actualSeqLengthsKvOptional（aclIntArray*）</td>
+    <td>输入</td>
+    <td>key/value的实际序列长度数组。<br>用于描述变长序列场景下（即含有 Padding 填充数据的场景），每个 Batch 中实际有效的 key/value token 数量。</td>
     <td> 变长序列场景（当 kvInputLayout 为 "TND" 时）：该项输入必须配置。因为 TND 格式为一维连续排布，算子需要依赖该数组来准确切分界定各个序列的真实边界。</td>
-    <td rowspan="2">INT64</td>
-    <td rowspan="2">-</td>
-    <td rowspan="2">1</td>
-    <td rowspan="2">-</td>
-    </tr>
-    <tr>
-    <td> 定长/变长场景（当 kvInputLayout 为 "BNSD" 时）：<ul><li>如配置该项，算子会按指定的有效长度处理，忽略 Padding 部分的数据，提升性能；</li><li>如不配置（传 nullptr），算子将默认把 key/value shape 中的 S 维度作为有效长度进行全量处理。</li></ul></td>
+    <td>INT64</td>
+    <td>-</td>
+    <td>1</td>
+    <td>-</td>
     </tr>
     <tr>
     <td>qInputLayout（char*）</td>
     <td>输入</td>
     <td>query的数据排布格式。指示输入张量在内存中的具体排布（如连续或合轴排列）。</td>
-    <td>当前仅支持"TND"、"BNSD"，qInputLayout与kvInputLayout需要保持一致。</td>
+    <td>当前仅支持"TND"、"BNSD"、"BSND"，qInputLayout与kvInputLayout需要保持一致。</td>
     <td>-</td>
     <td>-</td>
     <td>-</td>
@@ -285,7 +285,7 @@ aclnnStatus aclnnBlockSparseAttentionGrad(
     <td>kvInputLayout（char*）</td>
     <td>输入</td>
     <td>key和value的数据排布格式。指示输入张量在内存中的具体排布。</td>
-    <td>当前仅支持"TND"、"BNSD"，qInputLayout与kvInputLayout需要保持一致。</td>
+    <td>当前仅支持"TND"、"BNSD"、"BSND"，qInputLayout与kvInputLayout需要保持一致。</td>
     <td>-</td>
     <td>-</td>
     <td>-</td>
@@ -391,8 +391,8 @@ aclnnStatus aclnnBlockSparseAttentionGrad(
     <td>-</td>
     <td>-</td>
     </tr>
-  </tbody>
-  </table>
+</tbody>
+</table>
 
 * **返回值**：
 
@@ -427,7 +427,7 @@ aclnnStatus aclnnBlockSparseAttentionGrad(
     <tr>
       <td rowspan="2">ACLNN_ERR_PARAM_INVALID</td>
       <td rowspan="2">161002</td>
-      <td>dout，query，key，value 数据类型不在支持的范围之内。</td>
+      <td>dout，query，key，value数据类型不在支持的范围之内。</td>
     </tr>
     <tr>
       <td>qInputLayout或kvInputLayout输入不合法，参数有效性校验失败。</td>
@@ -481,8 +481,19 @@ aclnnStatus aclnnBlockSparseAttentionGrad(
 
 * 该接口与PyTorch配合使用时，需要保证CANN相关包与PyTorch相关包的版本匹配。
 * actualSeqLengthsOptional在qInputLayout为“TND”时必选；actualSeqLengthsKvOptional在kvInputLayout为“TND”时必选。
-* 根据算子支持的输入 Layout，query 张量 Shape 中对应的 head 维度大小记为 N1，key 和 value 张量 Shape 中对应的 head 维度大小记为 N2。必须满足 N1 >= N2 且 N1 % N2 == 0。(例如：在 BNSD 布局下，N1 对应 query 的第 2 维，N2 对应 key/value 的第 2 维)
-* headdim=128。
+* softmaxLse的layout需要与query的layout保持一致。如果query的layout为"BSND"时，softmaxLse的layout应传入"BNS1"。
+* HeadDim必须等于128。
+* 根据算子支持的输入 Layout，query 张量 Shape 中对应的 head 维度大小记为 N1，key 和 value 张量 Shape 中对应的 head 维度大小记为 N2。必须满足N1 % N2 == 0。
+  - <term>Atlas A2 训练产品</term>、<term>Atlas A3 训练产品</term>：当前只支持MHA，即N1等于N2。
+  - <term>Ascend 950PR/Ascend 950DT</term>：支持MQA、MHA、GQA场景。
+* actualSeqLengthsOptional与actualSeqLengthsKvOptional相关约束：
+
+  - <term>Atlas A2 训练产品</term>、<term>Atlas A3 训练产品</term>：当 qInputLayout或kvInputLayout 为 "BNSD" 时，如配置该项，算子会按指定的有效长度处理，忽略 Padding 部分的数据，提升性能；如不配置（传 nullptr），算子将默认把 query shape 中的 S 维度作为有效长度进行全量处理。
+
+  - <term>Ascend 950PR/Ascend 950DT</term>：当qInputLayout或kvInputLayout 为 非"TND"时，会忽略这两个入参。
+</ul>
+
+* 不支持确定性计算场景。
 
 ## 调用示例
 
@@ -589,7 +600,7 @@ int main() {
     auto ret = Init(deviceId, &stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Init acl failed. ERROR: %d\n", ret); return ret);
 
-    // 2. 设置核心参数 (以 BNSD Layout 为例)
+    // 2. 设置核心参数(以BNSD Layout为例)
     int32_t batch = 1;
     int32_t numHeads = 1;
     int32_t numKvHeads = 1;
@@ -603,17 +614,17 @@ int main() {
     int32_t ceilQ = (qSeqlen + blockShapeX - 1) / blockShapeX;
     int32_t ceilKv = (kvSeqlen + blockShapeY - 1) / blockShapeY;
 
-    // 3. 构建张量 Shape
+    // 3. 构建张量Shape
     std::vector<int64_t> qShape = {batch, numHeads, qSeqlen, headDim};
     std::vector<int64_t> kvShape = {batch, numKvHeads, kvSeqlen, headDim};
-    std::vector<int64_t> lseShape = {batch, numHeads, qSeqlen}; // LSE 通常没有尾部 1 维，防止 GE squeeze
+    std::vector<int64_t> lseShape = {batch, numHeads, qSeqlen}; // LSE通常没有尾部1维，防止GE squeeze
     std::vector<int64_t> maskShape = {batch, numHeads, ceilQ, ceilKv};
 
-    // 4. 分配并初始化 Host 数据
+    // 4. 分配并初始化Host数据
     int64_t qSize = GetShapeSize(qShape);
     int64_t kvSize = GetShapeSize(kvShape);
 
-    // 将 Q, K, V 初始化为 0.1f 等较小的数
+    // 将Q, K, V初始化为0.1f等较小的数
     std::vector<op::fp16_t> qData(qSize, 0.1f);
     std::vector<op::fp16_t> kData(kvSize, 0.1f);
     std::vector<op::fp16_t> vData(kvSize, 0.1f);
@@ -622,11 +633,11 @@ int main() {
     std::vector<op::fp16_t> doutData(qSize, 0.01f);
     std::vector<op::fp16_t> outData(qSize, 0.1f);
     
-    // LSE 给一个合理的正数，比如 5.0f，这样 exp(S - LSE) 就是一个非常安全的负指数，绝对不会溢出
+    // LSE给一个合理的正数，比如5.0f，这样exp(S - LSE)就是一个非常安全的负指数，绝对不会溢出
     std::vector<float> lseData(GetShapeSize(lseShape), 5.0f);
     std::vector<uint8_t> maskData(GetShapeSize(maskShape), 1);
 
-    // 创建所有的前向输入/输出 aclTensor
+    // 创建所有的前向输入/输出aclTensor
     void *qAddr = nullptr, *kAddr = nullptr, *vAddr = nullptr;
     void *doutAddr = nullptr, *outAddr = nullptr;
     void *lseAddr = nullptr, *maskAddr = nullptr;
@@ -641,10 +652,10 @@ int main() {
     CreateAclTensor(doutData, qShape, &doutAddr, aclDataType::ACL_FLOAT16, &doutTensor);
     CreateAclTensor(outData, qShape, &outAddr, aclDataType::ACL_FLOAT16, &outTensor);
     
-    CreateAclTensor(lseData, lseShape, &lseAddr, aclDataType::ACL_FLOAT, &lseTensor);     // 严格使用 FP32
-    CreateAclTensor(maskData, maskShape, &maskAddr, aclDataType::ACL_UINT8, &maskTensor); // 严格使用 UINT8
+    CreateAclTensor(lseData, lseShape, &lseAddr, aclDataType::ACL_FLOAT, &lseTensor);     // 严格使用FP32
+    CreateAclTensor(maskData, maskShape, &maskAddr, aclDataType::ACL_UINT8, &maskTensor); // 严格使用UINT8
 
-    // 5. 创建反向输出梯度 (dq, dk, dv)
+    // 5. 创建反向输出梯度(dq, dk, dv)
     std::vector<op::fp16_t> dqData(qSize, 0.0f);
     std::vector<op::fp16_t> dkData(kvSize, 0.0f);
     std::vector<op::fp16_t> dvData(kvSize, 0.0f);
@@ -656,7 +667,7 @@ int main() {
     CreateAclTensor(dkData, kvShape, &dkAddr, aclDataType::ACL_FLOAT16, &dkTensor);
     CreateAclTensor(dvData, kvShape, &dvAddr, aclDataType::ACL_FLOAT16, &dvTensor);
 
-    // 6. 创建 aclIntArray 属性参数 (BlockShape & ActualSeqLengths)
+    // 6. 创建aclIntArray属性参数(BlockShape & ActualSeqLengths)
     std::vector<int64_t> blockShapeVec = {blockShapeX, blockShapeY};
     aclIntArray *blockShapeArr = aclCreateIntArray(blockShapeVec.data(), blockShapeVec.size());
     
@@ -687,7 +698,7 @@ int main() {
         outTensor, 
         lseTensor, 
         maskTensor,                 // blockSparseMaskOptional
-        nullptr,                    // attenMaskOptional 必须为空
+        nullptr,                    // attenMaskOptional必须为空
         blockShapeArr, 
         qSeqLenArr, 
         kvSeqLenArr, 
@@ -709,7 +720,7 @@ int main() {
     CHECK_RET(executor != nullptr, LOG_PRINT("executor is null after GetWorkspaceSize\n"); return -1);
     LOG_PRINT("Workspace size required: %lu bytes\n", workspaceSize);
 
-    // 9. 分配 workspace
+    // 9. 分配workspace
     void* workspaceAddr = nullptr;
     if (workspaceSize > 0) {
         ret = aclrtMalloc(&workspaceAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
@@ -721,11 +732,11 @@ int main() {
     ret = aclnnBlockSparseAttentionGrad(workspaceAddr, workspaceSize, executor, stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnBlockSparseAttentionGrad failed. ERROR: %d\n", ret); return ret);
 
-    // 11. 同步 Stream，等待任务执行结束
+    // 11. 同步Stream，等待任务执行结束
     ret = aclrtSynchronizeStream(stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
 
-    // 12. 将结果拷贝回 Host 侧打印
+    // 12. 将结果拷贝回Host侧打印
     ret = aclrtMemcpy(dqData.data(), qSize * sizeof(op::fp16_t), dqAddr, qSize * sizeof(op::fp16_t), ACL_MEMCPY_DEVICE_TO_HOST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed.\n"); return ret);
 

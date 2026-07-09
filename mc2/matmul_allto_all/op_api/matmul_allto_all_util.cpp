@@ -19,18 +19,10 @@
 #include "opdev/op_dfx.h"
 #include "opdev/op_executor.h"
 #include "opdev/op_log.h"
-#include "log/log.h"
+#include "mc2_log_compat.h"
 #include "opdev/platform.h"
 #include "common/utils/hccl_util.h"
 #include "mc2_comm_utils.h"
-
-#ifdef BUILD_OPEN_PROJECT
-#include "version/hcomm_version.h"
-#define HCCL_CHANNEL_SUPPORT_VERSION 89999700
-#if HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
-#include "common/op_api/mc2_context.h"
-#endif
-#endif
 
 // 量化与非量化共用的方法和常量、枚举值
 namespace matmul_allto_all_check {
@@ -109,11 +101,31 @@ bool CheckGroupLength(const char *group)
 bool CheckInputDimensions(const aclTensor* x1, const aclTensor* x2, const aclTensor* output,
                           const aclTensor* alltoAllOutOptional = nullptr)
 {
-    OP_CHECK_WRONG_DIMENSION(x1, TWO_DIMS, return false);
-    OP_CHECK_WRONG_DIMENSION(x2, TWO_DIMS, return false);
-    OP_CHECK_WRONG_DIMENSION(output, TWO_DIMS, return false);
+    if (x1->GetViewShape().GetDimNum() != TWO_DIMS) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("matmul_allto_all", "x1",
+            (std::to_string(x1->GetViewShape().GetDimNum()) + "D").c_str(),
+            "The shape of x1 must be 2D.");
+        return false;
+    }
+    if (x2->GetViewShape().GetDimNum() != TWO_DIMS) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("matmul_allto_all", "x2",
+            (std::to_string(x2->GetViewShape().GetDimNum()) + "D").c_str(),
+            "The shape of x2 must be 2D.");
+        return false;
+    }
+    if (output->GetViewShape().GetDimNum() != TWO_DIMS) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("matmul_allto_all", "output",
+            (std::to_string(output->GetViewShape().GetDimNum()) + "D").c_str(),
+            "The shape of output must be 2D.");
+        return false;
+    }
     if (alltoAllOutOptional != nullptr) {
-        OP_CHECK_WRONG_DIMENSION(alltoAllOutOptional, TWO_DIMS, return false);
+        if (alltoAllOutOptional->GetViewShape().GetDimNum() != TWO_DIMS) {
+            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("matmul_allto_all", "alltoAllOutOptional",
+                (std::to_string(alltoAllOutOptional->GetViewShape().GetDimNum()) + "D").c_str(),
+                "The shape of alltoAllOutOptional must be 2D.");
+            return false;
+        }
     }
     return true;
 }
@@ -122,7 +134,12 @@ bool CheckInputDimensions(const aclTensor* x1, const aclTensor* x2, const aclTen
 bool CheckBiasShape(const aclTensor* biasOptional, int64_t nVal)
 {
     if (biasOptional != nullptr) {
-        OP_CHECK_WRONG_DIMENSION(biasOptional, ONE_DIM, return false);
+        if (biasOptional->GetViewShape().GetDimNum() != ONE_DIM) {
+            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("matmul_allto_all", "biasOptional",
+                (std::to_string(biasOptional->GetViewShape().GetDimNum()) + "D").c_str(),
+                "The shape of biasOptional must be 1D.");
+            return false;
+        }
         auto biasDim = biasOptional->GetViewShape().GetDim(0);
         if (biasDim != nVal) {
             OP_LOGE_FOR_INVALID_VALUE("matmul_allto_all", "group.length()",
@@ -206,38 +223,39 @@ aclnnStatus CheckX2Valid(const aclTensor* x2) {
     	OP_LOGE_FOR_INVALID_VALUE("matmul_allto_all", "x2", "empty tensor", "non-empty tensor");
     	return ACLNN_ERR_PARAM_INVALID;
   	}
-    OP_CHECK_WRONG_DIMENSION(x2, TWO_DIMS, return ACLNN_ERR_PARAM_INVALID);
+    if (x2->GetViewShape().GetDimNum() != TWO_DIMS) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("matmul_allto_all", "x2",
+            (std::to_string(x2->GetViewShape().GetDimNum()) + "D").c_str(),
+            "The shape of x2 must be 2D.");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
     return ACLNN_SUCCESS;
 }
 
 // 检查commMode参数是否合法，并获取commMode对应枚举值
 aclnnStatus CheckAndHandleCommMode(const char *group, const char *commModeStr, uint8_t &commModeEnum)
 {
-    const size_t maxLength = 6UL;
+    const size_t maxLength = 7UL;
     // 获取通信引擎参数
     if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
         if (strncmp(commModeStr, "ai_cpu", maxLength) == 0) {
             commModeEnum = Mc2Comm::COMM_MODE_AICPU;
         } else if (strncmp(commModeStr, "ccu", maxLength) == 0) {
             commModeEnum = Mc2Comm::COMM_MODE_CCU;
-        } else if (strncmp(commModeStr, "", maxLength) == 0) {
-            // default：小于等于8P走CCU，否则走AICPU
-            // 获取卡数
-            uint32_t rankSize = 0;
-#if defined(BUILD_OPEN_PROJECT) && HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
-            auto getRankSizeRet = Mc2Aclnn::Mc2Context::GetMc2RankSize(group, rankSize);
-            CHECK_RET(getRankSizeRet == ACLNN_SUCCESS, getRankSizeRet);
-#endif
-            commModeEnum = (rankSize <= MAX_CCU_RANKSIZE) ? Mc2Comm::COMM_MODE_CCU : Mc2Comm::COMM_MODE_AICPU;
         } else {
-            OP_LOGE_FOR_INVALID_VALUE("matmul_allto_all", "commMode", commModeStr, "\"\" or \"ccu\" or \"ai_cpu\"");
+            OP_LOGE_FOR_INVALID_VALUE("matmul_allto_all", "commMode", commModeStr, "\"ccu\" or \"ai_cpu\"");
             return ACLNN_ERR_PARAM_INVALID;
         }
         OP_LOGD("The commMode is [%s].", commModeStr);
-    } else {
-        // 910B和910_93只支持默认通信引擎
-        if (strncmp(commModeStr, "", maxLength) != 0) {
-            OP_LOGI("The commMode is illegal, will use default communication engine.");
+    } else if (GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910_93) {
+        if (strncmp(commModeStr, "ai_cpu", maxLength) != 0) {
+            OP_LOGE_FOR_INVALID_VALUE("matmul_allto_all", "commMode", commModeStr, "\"ai_cpu\"");
+            return ACLNN_ERR_PARAM_INVALID;
+        }
+    } else if (GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910B) {
+        if (strncmp(commModeStr, "aiv", maxLength) != 0) {
+            OP_LOGE_FOR_INVALID_VALUE("matmul_allto_all", "commMode", commModeStr, "\"aiv\"");
+            return ACLNN_ERR_PARAM_INVALID;
         }
     }
 
