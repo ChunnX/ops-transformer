@@ -263,6 +263,15 @@ __simd_callee__ inline void BroadcastLane(AscendC::MicroAPI::RegTensor<float>& d
     AscendC::MicroAPI::Gather(dst, src, brcGatherIndex);
 }
 
+__simd_callee__ inline void BroadcastLane(AscendC::MicroAPI::RegTensor<bfloat16_t>& dst,
+                                          AscendC::MicroAPI::RegTensor<bfloat16_t>& src,
+                                          uint16_t laneIdx)
+{
+    AscendC::MicroAPI::RegTensor<uint16_t> brcGatherIndex;
+    AscendC::MicroAPI::Duplicate(brcGatherIndex, laneIdx);
+    AscendC::MicroAPI::Gather(dst, src, brcGatherIndex);
+}
+
 __simd_callee__ inline void BroadcastLane(AscendC::MicroAPI::RegTensor<float>& dst,
                                           __local_mem__ float* src,
                                           uint16_t laneIdx)
