@@ -1472,14 +1472,7 @@ private:
         int64_t offsetPeerPerTokenScale;
         int64_t offsetPeerTokenPerExpert;
         int64_t offsetD;
-        // Dispatch Flag 区（SendTokensV3 / RecvTokensV3 用）：固定 1 MB
-        //   slotIdx = sender_rank * expertPerRank + groupIdx
-        //   每槽独占 64B cache line（kFlagSlotI32 = 16 个 int32），避免 false sharing 与 gm_dcci 误清
         int64_t offsetFlag;
-        // Allgather Flag 区（V2 allgather 用）：固定 1 MB
-        //   slotIdx = srcRank
-        //   每槽独占 64B cache line
-        int64_t offsetAllgatherFlag;
 
         // 每个 flag 槽占 16 个 int32（= 64B = 1 个 cache line），与 CrossRankSync 同款
         static constexpr int64_t kFlagSlotI32 = 16;
