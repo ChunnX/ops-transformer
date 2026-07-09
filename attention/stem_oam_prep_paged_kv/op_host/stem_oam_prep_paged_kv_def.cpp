@@ -44,7 +44,7 @@ public:
             .UnknownShapeFormat({ge::FORMAT_ND});
         this->Output("kFlat")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_BFLOAT16})
+            .DataType({ge::DT_BF16})
             .Format({ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND});
         this->Output("vBias")
