@@ -119,7 +119,7 @@ class SymmBuffer:
             self.group_name,
             self.ep_world_size,
             backend="channel",
-            commAlg="urma",
+            commAlg="ub-mem",
             opName="mega_moe",
             customCclBufferSize=required_ccl_buffer_size,
         )
@@ -135,7 +135,7 @@ class SymmBuffer:
         self.dispatch_quant_out_dtype = dispatch_quant_out_dtype
         self.combine_quant_mode = combine_quant_mode
         self.comm_alg = comm_alg
-        self.topo_type = self._ctx_manager.topo_type
+        self.topo_type = 0
         self.rank_num_per_server = self._ctx_manager.rank_num_per_server
 
     def destroy(self):
