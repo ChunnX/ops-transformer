@@ -254,7 +254,7 @@ def trans_tnd_actseq(list):
 
 def check_result(expect, result, topk_value, output_idx_offset, params):
     batch_size, q_seq, k_seq, q_t_size, k_t_size, q_head_num, k_head_num, head_dim, block_size, \
-    block_num, qk_dtype, dequant_dtype, actual_seq_dtype, cu_seqlens_q, cu_seqlens_k, seqused_q, \
+    block_num, qk_dtype, weight_dtype, dequant_dtype, actual_seq_dtype, cu_seqlens_q, cu_seqlens_k, seqused_q, \
     seqused_k, cmp_residual_k, max_seqlen_q, quant_mode, layout_query, layout_key, sparse_count, \
     sparse_mode, query_datarange, key_datarange, weights_datarange, q_scale_datarange, \
     k_scale_datarange, cmp_ratio, return_value, _ = params
@@ -458,8 +458,8 @@ def check_result(expect, result, topk_value, output_idx_offset, params):
 
 def check_result_return_value(expect, result, params):
     batch_size, q_seq, k_seq, q_t_size, k_t_size, q_head_num, k_head_num, head_dim, block_size, \
-    block_num, qk_dtype, dequant_dtype, actual_seq_dtype, cu_seqlens_q, cu_seqlens_k, seqused_q, \
-    seqused_k, cmp_residual_k, output_idx_offset, quant_mode, layout_query, layout_key, sparse_count, \
+    block_num, qk_dtype, weight_dtype, dequant_dtype, actual_seq_dtype, cu_seqlens_q, cu_seqlens_k, seqused_q, \
+    seqused_k, cmp_residual_k, max_seqlen_q, quant_mode, layout_query, layout_key, sparse_count, \
     sparse_mode, query_datarange, key_datarange, weights_datarange, q_scale_datarange, \
     k_scale_datarange, cmp_ratio, return_value, output_idx_offset = params
 
@@ -552,11 +552,10 @@ def check_result_return_value(expect, result, params):
             npu_pass = False
     end_time = time()
     print(f"耗时：{end_time - start_time:.6f} 秒")
-    topk_precision = not diff_npu and not diff_cpu
-    if topk_precision:
-        print(f'[success]TopK精度通过, idx不同的地方的value误差在阈值之内')
+    if npu_pass:
+        print(f'[success]sparse value精度通过')
     else:
-        print(f'[fail]TopK精度失败')
+        print(f'[fail]sparse value精度失败')
     print(f"npu_pass is {npu_pass}")
     if real_data.size == 0 and real_data.size == data_compe.size:
         print_log(
@@ -582,7 +581,7 @@ def check_result_return_value(expect, result, params):
                         float(split_count) * 100.0
     display_output_np_isclose(real_data, data_compe, start, end)
     pct_thd = (1 - pct_thd) * 100.0
-    result = "Pass" if (npu_pass or topk_precision) else "Failed"
+    result = "Pass" if npu_pass else "Failed"
     print_log(
         '---------------------------------------------------------------------------------------')
     print_log('Rtol   \t Atol   \t PctThd   \t PctRlt   \t Result')
