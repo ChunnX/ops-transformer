@@ -115,6 +115,17 @@ static ge::graphStatus ValidateInputs(gert::TilingContext* context,
             std::to_string(static_cast<int>(qDesc->GetDataType())).c_str(), "DT_FLOAT8_E4M3FN");
         return ge::GRAPH_FAILED;
     }
+
+    auto qScaleDesc = context->GetOptionalInputDesc(0);
+    if (qScaleDesc == nullptr) {
+        OP_LOGE_WITH_INVALID_INPUT(nodeName, "qScale is required for FP8 input");
+        return ge::GRAPH_FAILED;
+    }
+    if (qScaleDesc->GetDataType() != ge::DT_FLOAT) {
+        OP_LOGE_WITH_INVALID_INPUT_DTYPE(nodeName, "qScale",
+            std::to_string(static_cast<int>(qScaleDesc->GetDataType())).c_str(), "DT_FLOAT");
+        return ge::GRAPH_FAILED;
+    }
     if (qSeqLensDesc->GetDataType() != ge::DT_INT32) {
         OP_LOGE_WITH_INVALID_INPUT_DTYPE(nodeName, "qSeqLens", 
             std::to_string(static_cast<int>(qSeqLensDesc->GetDataType())).c_str(), "DT_INT32");
@@ -166,17 +177,32 @@ static ge::graphStatus CalcSequenceInfo(gert::TilingContext* context,
         qSeqLensTensor->GetData<int32_t>() : nullptr;
 
     if (qSeqLensData != nullptr) {
+        auto cuSeqLensTensor = context->GetInputTensor(2);
+        const int32_t *cuSeqLensData = (cuSeqLensTensor != nullptr) ?
+            cuSeqLensTensor->GetData<int32_t>() : nullptr;
+
+        if (cuSeqLensData != nullptr) {
+            if (cuSeqLensData[0] != 0) {
+                OP_LOGE_WITH_INVALID_INPUT(nodeName, "cuSeqLensQ[0] must be 0");
+                return ge::GRAPH_FAILED;
+            }
+            for (uint32_t b = 0; b < batchU32; b++) {
+                if (cuSeqLensData[b + 1] - cuSeqLensData[b] != qSeqLensData[b]) {
+                    OP_LOGE(nodeName, "cuSeqLensQ prefix sum mismatch at batch %u", b);
+                    return ge::GRAPH_FAILED;
+                }
+            }
+        }
+
         uint32_t max_Qb = 0;
-        totalBlocks = 0;
         for (uint32_t b = 0; b < batchU32; b++) {
             uint32_t q_len_b = static_cast<uint32_t>(qSeqLensData[b]);
             uint32_t q_padded_b = ((q_len_b + B - 1) / B) * B;
             uint32_t num_Qb_b = q_padded_b / B;
             max_Qb = std::max(max_Qb, num_Qb_b);
-            totalBlocks += num_Qb_b;
         }
         tiling->max_Qb = max_Qb;
-        totalBlocks *= H_q;
+        totalBlocks = H_q * max_Qb * batchU32;
     } else {
         uint32_t totalTokens = static_cast<uint32_t>(qShape->GetStorageShape().GetDim(0));
         uint32_t max_q_len = totalTokens / batchU32;
