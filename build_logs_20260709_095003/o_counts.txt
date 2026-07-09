@@ -1,0 +1,7 @@
+# op soc o_count
+distribute_barrier  ascend950  36
+distribute_barrier  ascend910_93  18
+distribute_barrier  ascend910b  -
+distribute_barrier_extend  ascend950  18
+distribute_barrier_extend  ascend910_93  -
+distribute_barrier_extend  ascend910b  -

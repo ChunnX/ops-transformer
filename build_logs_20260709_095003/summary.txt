@@ -1,0 +1,11 @@
+========== 编译汇总 Thu Jul  9 09:50:03 AM CST 2026 ==========
+
+  ✅ PASS  distribute_barrier  ascend950
+  ✅ PASS  distribute_barrier  ascend910_93
+  ⏭️  SKIP  distribute_barrier  ascend910b  (def 中未配置)
+  ✅ PASS  distribute_barrier_extend  ascend950
+  ⏭️  SKIP  distribute_barrier_extend  ascend910_93  (def 中未配置)
+  ⏭️  SKIP  distribute_barrier_extend  ascend910b  (def 中未配置)
+==============================================
+累计: 6  通过: 3  失败: 0  跳过: 3
+日志目录: build_logs_20260709_095003
