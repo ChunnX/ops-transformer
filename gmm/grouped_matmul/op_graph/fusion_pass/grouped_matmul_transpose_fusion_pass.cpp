@@ -20,6 +20,7 @@
 #include <cstdint>
 #include <string>
 #include <vector>
+#include <iostream>
 
 #include "ge/fusion/pass/pattern_fusion_pass.h"
 #include "acl/acl_rt.h"
@@ -27,6 +28,7 @@
 #include "log/log.h"
 #include "platform/platform_info.h"
 
+using namespace std;
 using namespace ge;
 using namespace ge::fusion;
 
@@ -729,6 +731,7 @@ Status Fusion(GraphPtr& graph, GNode& groupedMatmulNode)
 
 Status RunGroupedMatmulTransposeFusion(GraphPtr& graph, CustomPassContext& passContext)
 {
+    cout<<"***RunGroupedMatmulTransposeFusion begin"<<endl;
     OP_LOGD(kPassName, "Enter GroupedMatmul transpose fusion pass.");
     if (!IsGraphFusionRuntimeSupported()) {
         OP_LOGD(kPassName, "Skip GroupedMatmul transpose fusion pass because graph fusion runtime is unsupported.");
@@ -754,10 +757,12 @@ Status RunGroupedMatmulTransposeFusion(GraphPtr& graph, CustomPassContext& passC
     for (auto& groupedMatmulNode : groupedMatmulNodes) {
         auto status = Fusion(graph, groupedMatmulNode);
         if (status == SUCCESS) {
+            cout<<"***status == SUCCESS"<<endl;
             changed = true;
             continue;
         }
         if (status != GRAPH_NOT_CHANGED) {
+            cout<<"***status != GRAPH_NOT_CHANGED"<<endl;
             return status;
         }
     }
@@ -768,6 +773,7 @@ Status RunGroupedMatmulTransposeFusion(GraphPtr& graph, CustomPassContext& passC
 Status GroupedMatmulTransposeFusionPass::Run(GraphPtr& graph, CustomPassContext& passContext)
 {
     OP_LOGI(kPassName, "[GMM_TRANSPOSE_REBUILD_PASS_ENTER] Enter newly rebuilt GroupedMatmul transpose fusion pass.");
+    cout<<"***GroupedMatmulTransposeFusionPass::Run"<<endl;
     return RunGroupedMatmulTransposeFusion(graph, passContext);
 }
 
