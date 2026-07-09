@@ -35,7 +35,7 @@ public:
     {
         hcclContext_ = (__gm__ HcclA2CombineOpParam *)hcclContext;
     }
-    
+
     __aicore__ inline GM_ADDR GetWindowsInAddr(uint32_t rankId) const
     {
         if (hcclContext_->multiFlag == 0U) {
@@ -76,7 +76,7 @@ inline __aicore__ T RoundUp(const T val, const T align)
     return (val + align - 1) / align * align;
 }
 
-/* 
+/*
 HCCL_BUFF结构如下：
 W = HCCL_BUFFSIZE
 A1 = (epWorldSize / 8) * 512B
@@ -132,7 +132,7 @@ COMBINE_TOKENFLAG_SIZE = align32((maxBs + (aivNum / (epWorldSize / 8) + 1)) * si
 | (Ping Or Pong) RDMA | (Ping Or Pong) RDMA Data-DstServer 0   | (2 or (W/2 + 2))MB                       | A2 = RDMA_DATA_SIZE / (epWorldSize / 8)   | GetLocalSendBuffDataAddr |
 | (Ping Or Pong) RDMA | (Ping Or Pong) RDMA Data-DstServer x   | (2 or (W/2 + 2))MB + A2 * x              | A2                                        | GetLocalSendBuffDataAddr |
 | (Ping Or Pong) RDMA | (Ping Or Pong) RDMA Data-DstServer n-1 | (2 or (W/2 + 2))MB + A2 * (n - 1)        | A2                                        | GetLocalSendBuffDataAddr |
-*/
+ */
 class MoeDistributeA2AddrInfo {
 protected:
     constexpr static uint32_t BUFFER_NUM = 2U;                     // 多buf
