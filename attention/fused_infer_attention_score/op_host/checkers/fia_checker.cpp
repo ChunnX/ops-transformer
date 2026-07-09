@@ -19,6 +19,7 @@
 #include "log/log.h"
 #include "log/error_code.h"
 #include "register/op_def_registry.h"
+#include "../fia_tiling_timer.h"
 #include "fia_checker.h"
 
 namespace optiling {
@@ -57,166 +58,118 @@ ge::graphStatus FIAChecker::Init(const FiaTilingInfo &fiaInfo)
 
 ge::graphStatus FIAChecker::CheckSinglePara(const FiaTilingInfo &fiaInfo)
 {
-    if (ge::GRAPH_SUCCESS != commonChecker_->CheckSinglePara(fiaInfo)) {
-        return ge::GRAPH_FAILED;
-    }
-    if (ge::GRAPH_SUCCESS != maskChecker_->CheckSinglePara(fiaInfo)) {
-        return ge::GRAPH_FAILED;
-    }
-    if (ge::GRAPH_SUCCESS != actualSeqLenChecker_->CheckSinglePara(fiaInfo)) {
-        return ge::GRAPH_FAILED;
-    }
-    if (ge::GRAPH_SUCCESS != pagedAttentionChecker_->CheckSinglePara(fiaInfo)) {
-        return ge::GRAPH_FAILED;
-    }
-    if (ge::GRAPH_SUCCESS != postQuantChecker_->CheckSinglePara(fiaInfo)) {
-        return ge::GRAPH_FAILED;
-    }
-    if (ge::GRAPH_SUCCESS != ropeChecker_->CheckSinglePara(fiaInfo)) {
-        return ge::GRAPH_FAILED;
-    }
-    if (ge::GRAPH_SUCCESS != pseChecker_->CheckSinglePara(fiaInfo)) {
-        return ge::GRAPH_FAILED;
-    }
-    if (ge::GRAPH_SUCCESS != leftPaddingChecker_->CheckSinglePara(fiaInfo)) {
-        return ge::GRAPH_FAILED;
-    }
-    if (ge::GRAPH_SUCCESS != systemPrefixChecker_->CheckSinglePara(fiaInfo)) {
-        return ge::GRAPH_FAILED;
-    }
-    if (ge::GRAPH_SUCCESS != softmaxLSEChecker_->CheckSinglePara(fiaInfo)) {
-        return ge::GRAPH_FAILED;
-    }
-    if (ge::GRAPH_SUCCESS != learnableSinkChecker_->CheckSinglePara(fiaInfo)) {
-        return ge::GRAPH_FAILED;
-    }
-    if (ge::GRAPH_SUCCESS != dequantChecker_->CheckSinglePara(fiaInfo)) {
-        return ge::GRAPH_FAILED;
-    }
+    { FIA_TIMING_SCOPE("Common.CheckSinglePara");
+      if (ge::GRAPH_SUCCESS != commonChecker_->CheckSinglePara(fiaInfo)) { return ge::GRAPH_FAILED; } }
+    { FIA_TIMING_SCOPE("Mask.CheckSinglePara");
+      if (ge::GRAPH_SUCCESS != maskChecker_->CheckSinglePara(fiaInfo)) { return ge::GRAPH_FAILED; } }
+    { FIA_TIMING_SCOPE("ActualSeqLen.CheckSinglePara");
+      if (ge::GRAPH_SUCCESS != actualSeqLenChecker_->CheckSinglePara(fiaInfo)) { return ge::GRAPH_FAILED; } }
+    { FIA_TIMING_SCOPE("PagedAttention.CheckSinglePara");
+      if (ge::GRAPH_SUCCESS != pagedAttentionChecker_->CheckSinglePara(fiaInfo)) { return ge::GRAPH_FAILED; } }
+    { FIA_TIMING_SCOPE("PostQuant.CheckSinglePara");
+      if (ge::GRAPH_SUCCESS != postQuantChecker_->CheckSinglePara(fiaInfo)) { return ge::GRAPH_FAILED; } }
+    { FIA_TIMING_SCOPE("Rope.CheckSinglePara");
+      if (ge::GRAPH_SUCCESS != ropeChecker_->CheckSinglePara(fiaInfo)) { return ge::GRAPH_FAILED; } }
+    { FIA_TIMING_SCOPE("Pse.CheckSinglePara");
+      if (ge::GRAPH_SUCCESS != pseChecker_->CheckSinglePara(fiaInfo)) { return ge::GRAPH_FAILED; } }
+    { FIA_TIMING_SCOPE("LeftPadding.CheckSinglePara");
+      if (ge::GRAPH_SUCCESS != leftPaddingChecker_->CheckSinglePara(fiaInfo)) { return ge::GRAPH_FAILED; } }
+    { FIA_TIMING_SCOPE("SystemPrefix.CheckSinglePara");
+      if (ge::GRAPH_SUCCESS != systemPrefixChecker_->CheckSinglePara(fiaInfo)) { return ge::GRAPH_FAILED; } }
+    { FIA_TIMING_SCOPE("SoftmaxLSE.CheckSinglePara");
+      if (ge::GRAPH_SUCCESS != softmaxLSEChecker_->CheckSinglePara(fiaInfo)) { return ge::GRAPH_FAILED; } }
+    { FIA_TIMING_SCOPE("LearnableSink.CheckSinglePara");
+      if (ge::GRAPH_SUCCESS != learnableSinkChecker_->CheckSinglePara(fiaInfo)) { return ge::GRAPH_FAILED; } }
+    { FIA_TIMING_SCOPE("Dequant.CheckSinglePara");
+      if (ge::GRAPH_SUCCESS != dequantChecker_->CheckSinglePara(fiaInfo)) { return ge::GRAPH_FAILED; } }
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus FIAChecker::CheckParaExistence(const FiaTilingInfo &fiaInfo)
 {
-    if (ge::GRAPH_SUCCESS != commonChecker_->CheckParaExistence(fiaInfo)) {
-        return ge::GRAPH_FAILED;
-    }
-    if (ge::GRAPH_SUCCESS != maskChecker_->CheckParaExistence(fiaInfo)) {
-        return ge::GRAPH_FAILED;
-    }
-    if (ge::GRAPH_SUCCESS != actualSeqLenChecker_->CheckParaExistence(fiaInfo)) {
-        return ge::GRAPH_FAILED;
-    }
-    if (ge::GRAPH_SUCCESS != pagedAttentionChecker_->CheckParaExistence(fiaInfo)) {
-        return ge::GRAPH_FAILED;
-    }
-    if (ge::GRAPH_SUCCESS != postQuantChecker_->CheckParaExistence(fiaInfo)) {
-        return ge::GRAPH_FAILED;
-    }
-    if (ge::GRAPH_SUCCESS != ropeChecker_->CheckParaExistence(fiaInfo)) {
-        return ge::GRAPH_FAILED;
-    }
-    if (ge::GRAPH_SUCCESS != pseChecker_->CheckParaExistence(fiaInfo)) {
-        return ge::GRAPH_FAILED;
-    }
-    if (ge::GRAPH_SUCCESS != leftPaddingChecker_->CheckParaExistence(fiaInfo)) {
-        return ge::GRAPH_FAILED;
-    }
-    if (ge::GRAPH_SUCCESS != systemPrefixChecker_->CheckParaExistence(fiaInfo)) {
-        return ge::GRAPH_FAILED;
-    }
-    if (ge::GRAPH_SUCCESS != softmaxLSEChecker_->CheckParaExistence(fiaInfo)) {
-        return ge::GRAPH_FAILED;
-    }
-    if (ge::GRAPH_SUCCESS != learnableSinkChecker_->CheckParaExistence(fiaInfo)) {
-        return ge::GRAPH_FAILED;
-    }
-    if (ge::GRAPH_SUCCESS != dequantChecker_->CheckParaExistence(fiaInfo)) {
-        return ge::GRAPH_FAILED;
-    }
+    { FIA_TIMING_SCOPE("Common.CheckParaExistence");
+      if (ge::GRAPH_SUCCESS != commonChecker_->CheckParaExistence(fiaInfo)) { return ge::GRAPH_FAILED; } }
+    { FIA_TIMING_SCOPE("Mask.CheckParaExistence");
+      if (ge::GRAPH_SUCCESS != maskChecker_->CheckParaExistence(fiaInfo)) { return ge::GRAPH_FAILED; } }
+    { FIA_TIMING_SCOPE("ActualSeqLen.CheckParaExistence");
+      if (ge::GRAPH_SUCCESS != actualSeqLenChecker_->CheckParaExistence(fiaInfo)) { return ge::GRAPH_FAILED; } }
+    { FIA_TIMING_SCOPE("PagedAttention.CheckParaExistence");
+      if (ge::GRAPH_SUCCESS != pagedAttentionChecker_->CheckParaExistence(fiaInfo)) { return ge::GRAPH_FAILED; } }
+    { FIA_TIMING_SCOPE("PostQuant.CheckParaExistence");
+      if (ge::GRAPH_SUCCESS != postQuantChecker_->CheckParaExistence(fiaInfo)) { return ge::GRAPH_FAILED; } }
+    { FIA_TIMING_SCOPE("Rope.CheckParaExistence");
+      if (ge::GRAPH_SUCCESS != ropeChecker_->CheckParaExistence(fiaInfo)) { return ge::GRAPH_FAILED; } }
+    { FIA_TIMING_SCOPE("Pse.CheckParaExistence");
+      if (ge::GRAPH_SUCCESS != pseChecker_->CheckParaExistence(fiaInfo)) { return ge::GRAPH_FAILED; } }
+    { FIA_TIMING_SCOPE("LeftPadding.CheckParaExistence");
+      if (ge::GRAPH_SUCCESS != leftPaddingChecker_->CheckParaExistence(fiaInfo)) { return ge::GRAPH_FAILED; } }
+    { FIA_TIMING_SCOPE("SystemPrefix.CheckParaExistence");
+      if (ge::GRAPH_SUCCESS != systemPrefixChecker_->CheckParaExistence(fiaInfo)) { return ge::GRAPH_FAILED; } }
+    { FIA_TIMING_SCOPE("SoftmaxLSE.CheckParaExistence");
+      if (ge::GRAPH_SUCCESS != softmaxLSEChecker_->CheckParaExistence(fiaInfo)) { return ge::GRAPH_FAILED; } }
+    { FIA_TIMING_SCOPE("LearnableSink.CheckParaExistence");
+      if (ge::GRAPH_SUCCESS != learnableSinkChecker_->CheckParaExistence(fiaInfo)) { return ge::GRAPH_FAILED; } }
+    { FIA_TIMING_SCOPE("Dequant.CheckParaExistence");
+      if (ge::GRAPH_SUCCESS != dequantChecker_->CheckParaExistence(fiaInfo)) { return ge::GRAPH_FAILED; } }
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus FIAChecker::CheckCrossFeature(const FiaTilingInfo &fiaInfo)
 {
-    if (ge::GRAPH_SUCCESS != commonChecker_->CheckCrossFeature(fiaInfo)) {
-        return ge::GRAPH_FAILED;
-    }
-    if (ge::GRAPH_SUCCESS != maskChecker_->CheckCrossFeature(fiaInfo)) {
-        return ge::GRAPH_FAILED;
-    }
-    if (ge::GRAPH_SUCCESS != actualSeqLenChecker_->CheckCrossFeature(fiaInfo)) {
-        return ge::GRAPH_FAILED;
-    }
-    if (ge::GRAPH_SUCCESS != pagedAttentionChecker_->CheckCrossFeature(fiaInfo)) {
-        return ge::GRAPH_FAILED;
-    }
-    if (ge::GRAPH_SUCCESS != postQuantChecker_->CheckCrossFeature(fiaInfo)) {
-        return ge::GRAPH_FAILED;
-    }
-    if (ge::GRAPH_SUCCESS != ropeChecker_->CheckCrossFeature(fiaInfo)) {
-        return ge::GRAPH_FAILED;
-    }
-    if (ge::GRAPH_SUCCESS != pseChecker_->CheckCrossFeature(fiaInfo)) {
-        return ge::GRAPH_FAILED;
-    }
-    if (ge::GRAPH_SUCCESS != leftPaddingChecker_->CheckCrossFeature(fiaInfo)) {
-        return ge::GRAPH_FAILED;
-    }
-    if (ge::GRAPH_SUCCESS != systemPrefixChecker_->CheckCrossFeature(fiaInfo)) {
-        return ge::GRAPH_FAILED;
-    }
-    if (ge::GRAPH_SUCCESS != softmaxLSEChecker_->CheckCrossFeature(fiaInfo)) {
-        return ge::GRAPH_FAILED;
-    }
-    if (ge::GRAPH_SUCCESS != learnableSinkChecker_->CheckCrossFeature(fiaInfo)) {
-        return ge::GRAPH_FAILED;
-    }
-    if (ge::GRAPH_SUCCESS != dequantChecker_->CheckCrossFeature(fiaInfo)) {
-        return ge::GRAPH_FAILED;
-    }
+    { FIA_TIMING_SCOPE("Common.CheckCrossFeature");
+      if (ge::GRAPH_SUCCESS != commonChecker_->CheckCrossFeature(fiaInfo)) { return ge::GRAPH_FAILED; } }
+    { FIA_TIMING_SCOPE("Mask.CheckCrossFeature");
+      if (ge::GRAPH_SUCCESS != maskChecker_->CheckCrossFeature(fiaInfo)) { return ge::GRAPH_FAILED; } }
+    { FIA_TIMING_SCOPE("ActualSeqLen.CheckCrossFeature");
+      if (ge::GRAPH_SUCCESS != actualSeqLenChecker_->CheckCrossFeature(fiaInfo)) { return ge::GRAPH_FAILED; } }
+    { FIA_TIMING_SCOPE("PagedAttention.CheckCrossFeature");
+      if (ge::GRAPH_SUCCESS != pagedAttentionChecker_->CheckCrossFeature(fiaInfo)) { return ge::GRAPH_FAILED; } }
+    { FIA_TIMING_SCOPE("PostQuant.CheckCrossFeature");
+      if (ge::GRAPH_SUCCESS != postQuantChecker_->CheckCrossFeature(fiaInfo)) { return ge::GRAPH_FAILED; } }
+    { FIA_TIMING_SCOPE("Rope.CheckCrossFeature");
+      if (ge::GRAPH_SUCCESS != ropeChecker_->CheckCrossFeature(fiaInfo)) { return ge::GRAPH_FAILED; } }
+    { FIA_TIMING_SCOPE("Pse.CheckCrossFeature");
+      if (ge::GRAPH_SUCCESS != pseChecker_->CheckCrossFeature(fiaInfo)) { return ge::GRAPH_FAILED; } }
+    { FIA_TIMING_SCOPE("LeftPadding.CheckCrossFeature");
+      if (ge::GRAPH_SUCCESS != leftPaddingChecker_->CheckCrossFeature(fiaInfo)) { return ge::GRAPH_FAILED; } }
+    { FIA_TIMING_SCOPE("SystemPrefix.CheckCrossFeature");
+      if (ge::GRAPH_SUCCESS != systemPrefixChecker_->CheckCrossFeature(fiaInfo)) { return ge::GRAPH_FAILED; } }
+    { FIA_TIMING_SCOPE("SoftmaxLSE.CheckCrossFeature");
+      if (ge::GRAPH_SUCCESS != softmaxLSEChecker_->CheckCrossFeature(fiaInfo)) { return ge::GRAPH_FAILED; } }
+    { FIA_TIMING_SCOPE("LearnableSink.CheckCrossFeature");
+      if (ge::GRAPH_SUCCESS != learnableSinkChecker_->CheckCrossFeature(fiaInfo)) { return ge::GRAPH_FAILED; } }
+    { FIA_TIMING_SCOPE("Dequant.CheckCrossFeature");
+      if (ge::GRAPH_SUCCESS != dequantChecker_->CheckCrossFeature(fiaInfo)) { return ge::GRAPH_FAILED; } }
 
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus FIAChecker::CheckMultiParaConsistency(const FiaTilingInfo &fiaInfo)
 {
-    if (ge::GRAPH_SUCCESS != commonChecker_->CheckMultiParaConsistency(fiaInfo)) {
-        return ge::GRAPH_FAILED;
-    }
-    if (ge::GRAPH_SUCCESS != maskChecker_->CheckMultiParaConsistency(fiaInfo)) {
-        return ge::GRAPH_FAILED;
-    }
-    if (ge::GRAPH_SUCCESS != actualSeqLenChecker_->CheckMultiParaConsistency(fiaInfo)) {
-        return ge::GRAPH_FAILED;
-    }
-    if (ge::GRAPH_SUCCESS != pagedAttentionChecker_->CheckMultiParaConsistency(fiaInfo)) {
-        return ge::GRAPH_FAILED;
-    }
-    if (ge::GRAPH_SUCCESS != postQuantChecker_->CheckMultiParaConsistency(fiaInfo)) {
-        return ge::GRAPH_FAILED;
-    }
-    if (ge::GRAPH_SUCCESS != ropeChecker_->CheckMultiParaConsistency(fiaInfo)) {
-        return ge::GRAPH_FAILED;
-    }
-    if (ge::GRAPH_SUCCESS != pseChecker_->CheckMultiParaConsistency(fiaInfo)) {
-        return ge::GRAPH_FAILED;
-    }
-    if (ge::GRAPH_SUCCESS != leftPaddingChecker_->CheckMultiParaConsistency(fiaInfo)) {
-        return ge::GRAPH_FAILED;
-    }
-    if (ge::GRAPH_SUCCESS != systemPrefixChecker_->CheckMultiParaConsistency(fiaInfo)) {
-        return ge::GRAPH_FAILED;
-    }
-    if (ge::GRAPH_SUCCESS != softmaxLSEChecker_->CheckMultiParaConsistency(fiaInfo)) {
-        return ge::GRAPH_FAILED;
-    }
-    if (ge::GRAPH_SUCCESS != learnableSinkChecker_->CheckMultiParaConsistency(fiaInfo)) {
-        return ge::GRAPH_FAILED;
-    }
-    if (ge::GRAPH_SUCCESS != dequantChecker_->CheckMultiParaConsistency(fiaInfo)) {
-        return ge::GRAPH_FAILED;
-    }
+    { FIA_TIMING_SCOPE("Common.CheckMultiParaConsistency");
+      if (ge::GRAPH_SUCCESS != commonChecker_->CheckMultiParaConsistency(fiaInfo)) { return ge::GRAPH_FAILED; } }
+    { FIA_TIMING_SCOPE("Mask.CheckMultiParaConsistency");
+      if (ge::GRAPH_SUCCESS != maskChecker_->CheckMultiParaConsistency(fiaInfo)) { return ge::GRAPH_FAILED; } }
+    { FIA_TIMING_SCOPE("ActualSeqLen.CheckMultiParaConsistency");
+      if (ge::GRAPH_SUCCESS != actualSeqLenChecker_->CheckMultiParaConsistency(fiaInfo)) { return ge::GRAPH_FAILED; } }
+    { FIA_TIMING_SCOPE("PagedAttention.CheckMultiParaConsistency");
+      if (ge::GRAPH_SUCCESS != pagedAttentionChecker_->CheckMultiParaConsistency(fiaInfo)) { return ge::GRAPH_FAILED; } }
+    { FIA_TIMING_SCOPE("PostQuant.CheckMultiParaConsistency");
+      if (ge::GRAPH_SUCCESS != postQuantChecker_->CheckMultiParaConsistency(fiaInfo)) { return ge::GRAPH_FAILED; } }
+    { FIA_TIMING_SCOPE("Rope.CheckMultiParaConsistency");
+      if (ge::GRAPH_SUCCESS != ropeChecker_->CheckMultiParaConsistency(fiaInfo)) { return ge::GRAPH_FAILED; } }
+    { FIA_TIMING_SCOPE("Pse.CheckMultiParaConsistency");
+      if (ge::GRAPH_SUCCESS != pseChecker_->CheckMultiParaConsistency(fiaInfo)) { return ge::GRAPH_FAILED; } }
+    { FIA_TIMING_SCOPE("LeftPadding.CheckMultiParaConsistency");
+      if (ge::GRAPH_SUCCESS != leftPaddingChecker_->CheckMultiParaConsistency(fiaInfo)) { return ge::GRAPH_FAILED; } }
+    { FIA_TIMING_SCOPE("SystemPrefix.CheckMultiParaConsistency");
+      if (ge::GRAPH_SUCCESS != systemPrefixChecker_->CheckMultiParaConsistency(fiaInfo)) { return ge::GRAPH_FAILED; } }
+    { FIA_TIMING_SCOPE("SoftmaxLSE.CheckMultiParaConsistency");
+      if (ge::GRAPH_SUCCESS != softmaxLSEChecker_->CheckMultiParaConsistency(fiaInfo)) { return ge::GRAPH_FAILED; } }
+    { FIA_TIMING_SCOPE("LearnableSink.CheckMultiParaConsistency");
+      if (ge::GRAPH_SUCCESS != learnableSinkChecker_->CheckMultiParaConsistency(fiaInfo)) { return ge::GRAPH_FAILED; } }
+    { FIA_TIMING_SCOPE("Dequant.CheckMultiParaConsistency");
+      if (ge::GRAPH_SUCCESS != dequantChecker_->CheckMultiParaConsistency(fiaInfo)) { return ge::GRAPH_FAILED; } }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -225,18 +178,14 @@ ge::graphStatus FIAChecker::Process(const FiaTilingInfo &fiaInfo)
     if (fiaInfo.emptyTensorFlag) {
         return ge::GRAPH_SUCCESS;
     }
-    if (ge::GRAPH_SUCCESS != CheckSinglePara(fiaInfo)) {
-        return ge::GRAPH_FAILED;
-    }
-    if (ge::GRAPH_SUCCESS != CheckParaExistence(fiaInfo)) {
-        return ge::GRAPH_FAILED;
-    }
-    if (ge::GRAPH_SUCCESS != CheckCrossFeature(fiaInfo)) {
-        return ge::GRAPH_FAILED;
-    }
-    if (ge::GRAPH_SUCCESS != CheckMultiParaConsistency(fiaInfo)) {
-        return ge::GRAPH_FAILED;
-    }
+    { FIA_TIMING_SCOPE("Check_CheckSinglePara");
+      if (ge::GRAPH_SUCCESS != CheckSinglePara(fiaInfo)) { return ge::GRAPH_FAILED; } }
+    { FIA_TIMING_SCOPE("Check_CheckParaExistence");
+      if (ge::GRAPH_SUCCESS != CheckParaExistence(fiaInfo)) { return ge::GRAPH_FAILED; } }
+    { FIA_TIMING_SCOPE("Check_CheckCrossFeature");
+      if (ge::GRAPH_SUCCESS != CheckCrossFeature(fiaInfo)) { return ge::GRAPH_FAILED; } }
+    { FIA_TIMING_SCOPE("Check_CheckMultiParaConsistency");
+      if (ge::GRAPH_SUCCESS != CheckMultiParaConsistency(fiaInfo)) { return ge::GRAPH_FAILED; } }
 
     return ge::GRAPH_SUCCESS;
 }

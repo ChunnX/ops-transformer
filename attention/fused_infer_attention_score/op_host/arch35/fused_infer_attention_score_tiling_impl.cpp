@@ -14,6 +14,7 @@
  */
 
 #include "fused_infer_attention_score_tiling_impl.h"
+#include "../fia_tiling_timer.h"
 #include "../fused_infer_attention_score_tiling_info_parser.h"
 
 #include "log/log.h"
@@ -2155,19 +2156,22 @@ void FusedInferAttentionScoreTilingImpl::PrintInputParams(const FiaTilingInfo &f
 ge::graphStatus FusedInferAttentionScoreTilingImpl::DoOpTiling(gert::TilingContext *context,
                                                                const FiaTilingInfo &fiaInfo)
 {
-    OP_CHECK_IF(SetPlatMemoryInfo(context, fiaInfo) != ge::GRAPH_SUCCESS,
-                OP_LOGE(fiaInfo.opName, "Set plat memory info fail."), return ge::GRAPH_FAILED);
+    { FIA_TIMING_SCOPE("DoOpTiling_SetPlatMemoryInfo");
+      OP_CHECK_IF(SetPlatMemoryInfo(context, fiaInfo) != ge::GRAPH_SUCCESS,
+                  OP_LOGE(fiaInfo.opName, "Set plat memory info fail."), return ge::GRAPH_FAILED); }
 
     if (fiaInfo.emptyTensorFlag) {
-        OP_CHECK_IF(SetEmptyTensor(context, fiaInfo) != ge::GRAPH_SUCCESS,
-                    OP_LOGE(fiaInfo.opName, "Set emptyt ensor fail."), return ge::GRAPH_FAILED);
+        { FIA_TIMING_SCOPE("DoOpTiling_SetEmptyTensor");
+          OP_CHECK_IF(SetEmptyTensor(context, fiaInfo) != ge::GRAPH_SUCCESS,
+                      OP_LOGE(fiaInfo.opName, "Set emptyt ensor fail."), return ge::GRAPH_FAILED); }
         return ge::GRAPH_SUCCESS;
     }
 
-    InitImplParam(fiaInfo);
+    { FIA_TIMING_SCOPE("DoOpTiling_InitImplParam"); InitImplParam(fiaInfo); }
 
-    OP_CHECK_IF(SplitPolicy(context, fiaInfo) != ge::GRAPH_SUCCESS,
-                OP_LOGE(fiaInfo.opName, "Excute split policy fail."), return ge::GRAPH_FAILED);
+    { FIA_TIMING_SCOPE("DoOpTiling_SplitPolicy");
+      OP_CHECK_IF(SplitPolicy(context, fiaInfo) != ge::GRAPH_SUCCESS,
+                  OP_LOGE(fiaInfo.opName, "Excute split policy fail."), return ge::GRAPH_FAILED); }
 
     if (fiaInfo.quantMode == FiaQuantMode::NO_QUANT && fiaInfo.mlaMode != MlaMode::ROPE_SPLIT_D512 &&
         gsMergeFlag_ && !dnFlag_ && (((fiaInfo.s1Size * fiaInfo.gSize + 1) / 2) + fiaInfo.gSize - 1) /
@@ -2176,22 +2180,23 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::DoOpTiling(gert::TilingConte
         gsMergeFlag_ = false;
     }
 
-    OP_CHECK_IF(ComputeTilingData(fiaInfo) != ge::GRAPH_SUCCESS, OP_LOGE(fiaInfo.opName, "Compute tilingData fail."),
-                return ge::GRAPH_FAILED);
+    { FIA_TIMING_SCOPE("DoOpTiling_ComputeTilingData");
+      OP_CHECK_IF(ComputeTilingData(fiaInfo) != ge::GRAPH_SUCCESS, OP_LOGE(fiaInfo.opName, "Compute tilingData fail."),
+                  return ge::GRAPH_FAILED); }
 
-    OP_CHECK_IF(GenTilingKey(context, fiaInfo) != ge::GRAPH_SUCCESS,
-                OP_LOGE(fiaInfo.opName, "Generate tilingKey fail."), return ge::GRAPH_FAILED);
-
-    OP_CHECK_IF(SetBlockDim(context, fiaInfo) != ge::GRAPH_SUCCESS, OP_LOGE(fiaInfo.opName, "Set blockDim fail."),
-                return ge::GRAPH_FAILED);
-
-    OP_CHECK_IF(GetWorkspace(context, fiaInfo) != ge::GRAPH_SUCCESS, OP_LOGE(fiaInfo.opName, "Get workspace fail."),
-                return ge::GRAPH_FAILED);
+    { FIA_TIMING_SCOPE("DoOpTiling_GenKey_BlockDim_Workspace");
+      OP_CHECK_IF(GenTilingKey(context, fiaInfo) != ge::GRAPH_SUCCESS,
+                  OP_LOGE(fiaInfo.opName, "Generate tilingKey fail."), return ge::GRAPH_FAILED);
+      OP_CHECK_IF(SetBlockDim(context, fiaInfo) != ge::GRAPH_SUCCESS, OP_LOGE(fiaInfo.opName, "Set blockDim fail."),
+                  return ge::GRAPH_FAILED);
+      OP_CHECK_IF(GetWorkspace(context, fiaInfo) != ge::GRAPH_SUCCESS, OP_LOGE(fiaInfo.opName, "Get workspace fail."),
+                  return ge::GRAPH_FAILED); }
     // 使用SyncAll，需要设置为batchmode模式，所有核同时启动，否则多流方式下执行可能会卡死
     constexpr uint32_t BATCH_MODE_SCHEDULE = 1;
     context->SetScheduleMode(BATCH_MODE_SCHEDULE);
-    OP_CHECK_IF(SetTilingData(context, fiaInfo) != ge::GRAPH_SUCCESS, OP_LOGE(fiaInfo.opName, "Set tiling data fail."),
-                return ge::GRAPH_FAILED);
+    { FIA_TIMING_SCOPE("DoOpTiling_SetTilingData");
+      OP_CHECK_IF(SetTilingData(context, fiaInfo) != ge::GRAPH_SUCCESS, OP_LOGE(fiaInfo.opName, "Set tiling data fail."),
+                  return ge::GRAPH_FAILED); }
 
     return ge::GRAPH_SUCCESS;
 }
