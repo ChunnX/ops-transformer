@@ -69,10 +69,6 @@ struct BatchWriteItem {
     typename XType, typename YOutType, int32_t QuantMode, bool IsSmoothScaleExist
 #define TemplateMC2TypeFunc XType, YOutType, QuantMode, IsSmoothScaleExist
 
-// 下述两个开关：定义时开启，注释时关闭
-//#define DETECTION_TIME    // 统计时延开关
-//#define IDENTIFICATION    // 识别热卡开关
-
 using namespace AscendC;
 using namespace Mc2Aclnn;
 
@@ -244,8 +240,6 @@ private:
     LocalTensor<uint8_t> hcommTensor_;
 
     constexpr static uint64_t HCOMM_INIT_SIZE = 512UL;
-    constexpr static uint32_t MAX_UB_SIZE = 170U * 1024U;
-    constexpr static uint8_t BUFFER_SINGLE = 1;
 
     AscendC::Hcomm<COMM_PROTOCOL_UBC_CTP> hcomm_; // 通信上下文
     __gm__ Mc2MoeContext* mc2Context_{nullptr};
