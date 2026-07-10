@@ -1281,10 +1281,8 @@ private:
         CombineV2(params, blockEpilogue2);
 
         AscendC::SyncAll<true>();
-#ifndef __CROSSRANKSYNCANDALLGATHERV1__
         ResetTokenPerExpert(params, params.EP * AlignUp(params.EP * params.expertPerRank, 128));
         AscendC::SyncAll<true>();
-#endif
         // shmem.InitStatusTargetSum();
         {
             // 3 * UB_ALIGN scratch: payload + rdma doorbell + rdma head.
@@ -1476,10 +1474,6 @@ private:
         //   slotIdx = sender_rank * expertPerRank + groupIdx
         //   每槽独占 64B cache line（kFlagSlotI32 = 16 个 int32），避免 false sharing 与 gm_dcci 误清
         int64_t offsetFlag;
-        // Allgather Flag 区（V2 allgather 用）：固定 1 MB
-        //   slotIdx = srcRank
-        //   每槽独占 64B cache line
-        int64_t offsetAllgatherFlag;
 
         // 每个 flag 槽占 16 个 int32（= 64B = 1 个 cache line），与 CrossRankSync 同款
         static constexpr int64_t kFlagSlotI32 = 16;
