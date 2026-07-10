@@ -18,13 +18,9 @@
 
 #include <cstdint>
 #include <register/tilingdata_base.h>
-#include <tiling/tiling_api.h>s
+#include <tiling/tiling_api.h>
 
 namespace optiling {
-struct StemOamPrepPagedKvCompileInfo {
-    uint32_t aicNum;
-    uint32_t aivNum;
-};
 } // namespace optiling
 
 #endif // STEM_OAM_PREP_PAGED_KV_TILING_H_

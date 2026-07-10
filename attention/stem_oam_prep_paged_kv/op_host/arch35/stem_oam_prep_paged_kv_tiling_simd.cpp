@@ -50,19 +50,14 @@ ge::graphStatus StemPrepKvTiling::GetInputStrides(gert::Shape &shape, gert::Stri
 
 ge::graphStatus StemPrepKvTiling::GetPlatformInfo()
 {
+    OP_LOGD("StemOamPrepPagedKv", "StemPrepKvTiling GetPlatformInfo");
     auto platformInfo = context_->GetPlatformInfo();
-    if (platformInfo == nullptr) {
-        auto compileInfoPtr = reinterpret_cast<const StemPrepKvCompileInfo *>(context_->GetCompileInfo());
-        OP_CHECK_IF(compileInfoPtr == nullptr, OP_LOGE(context_, "compile info is null"), return ge::GRAPH_FAILED);
-        totalCoreNum_ = compileInfoPtr->coreNum;
-    } else {
-        auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
-        totalCoreNum_ = static_cast<uint64_t>(ascendcPlatform.GetCoreNumAiv());
-        if (totalCoreNum_ == 0UL) {
-            OP_LOGE(context_->GetNodeName(), "coreNum is 0");
-            return ge::GRAPH_FAILED;
-        }
-    }
+    OP_CHECK_IF(platformInfo == nullptr, OP_LOGE("StemOamPrepPagedKv", "fail to get platform info"), return ge::GRAPH_FAILED);
+    auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
+    auto coreNumAiv = ascendcPlatform.GetCoreNumAiv();
+    OP_CHECK_IF((coreNumAiv <= 0), OP_LOGE("StemOamPrepPagedKv", "ScatterNdUpdateTiling fail to get coreNumAiv."),
+                return ge::GRAPH_FAILED);
+    totalCoreNum_ = coreNumAiv;
     return ge::GRAPH_SUCCESS;
 }
 
@@ -72,7 +67,7 @@ ge::graphStatus StemPrepKvTiling::GetShapeAttrsInfo()
     auto attrs = context_->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context_, attrs);
 
-    tilingData_ = context_->GetTilingData<StemPrepKvTilingData>();
+    tilingData_ = context_->GetTilingData<StemOamPrepPagedKvTilingData>();
     OP_CHECK_NULL_WITH_CONTEXT(context_, tilingData_);
 
     lambdaMag_ = attrs->GetAttrValue<float>("lambdaMag");

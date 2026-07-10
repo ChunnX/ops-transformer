@@ -25,7 +25,7 @@ namespace optiling {
 
 constexpr uint64_t MAX_Kv_PADDED = 262144;
 
-struct StemPrepKvCompileInfo {
+struct StemOamPrepPagedKvCompileInfo {
     uint32_t coreNum = 0;
     uint64_t ubSize = 0;
 };
@@ -67,7 +67,7 @@ private:
     gert::Stride vCacheStride_;
     gert::Stride kScaleCacheStride_;
 
-    StemPrepKvTilingData* tilingData_;
+    StemOamPrepPagedKvTilingData* tilingData_;
 };
 
 } // namespace optiling
