@@ -441,7 +441,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::DispatchBuffInit
     ubBufferUsedAddr_ = expertTokenNumsOutTensorAddr + expertTokenNumsOutTensorSize;
     Duplicate<int32_t>(cumsumInfoTensor_, 0, (cumsumInfoTensorSize / sizeof(int32_t)));
     PipeBarrier<PIPE_ALL>();
-    PRINTF("DispatchBuffInit success!\n");
+    //PRINTF("DispatchBuffInit success!\n");
 }
 
 // ======================================================================================
@@ -545,12 +545,12 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ResetFlagList()
     int32_t flagNum = static_cast<int32_t>(expertPerRank_) *
         (static_cast<int32_t>(INT_CACHELINE) + dispatchFlagSlotsPerExpert_ +
         static_cast<int32_t>(INT_CACHELINE) * static_cast<int32_t>(aicNum_)); // 64 * (16 + 256 + 28 * 16) = 45K(46080)
-    PRINTF("===dispatchFlagSlotsPerExpert_, aicNum_===:%u, %u", dispatchFlagSlotsPerExpert_, aicNum_);
-    PRINTF("===flagNum===:%u", flagNum);
+    //PRINTF("===dispatchFlagSlotsPerExpert_, aicNum_===:%u, %u", dispatchFlagSlotsPerExpert_, aicNum_);
+    //PRINTF("===flagNum===:%u", flagNum);
     int32_t coreLen, coreOffset;
     TilingByCore(flagNum, coreLen, coreOffset, 1);
-    PRINTF("===coreLen===:%u", coreLen);
-    PRINTF("===coreOffset===:%u", coreOffset);
+    //PRINTF("===coreLen===:%u", coreLen);
+    //PRINTF("===coreOffset===:%u", coreOffset);
     DataCopyExtParams rankSyncCopyParams{1U, static_cast<uint32_t>(coreLen * sizeof(int32_t)), 0U, 0U, 0U};
     SyncFuncStatic<AscendC::HardEvent::V_MTE3, SYNC_EVENT_ID2>();
     if (coreLen != 0) {
@@ -653,7 +653,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::SendMaskCal()
                     static_cast<uint32_t>(roundLen), {1, 1, 0, 0}, roundSendCnt);
                 totalSendCnt += roundSendCnt;
                 DumpTensor(sendGatherOutTensor_, 2, 16);
-                PRINTF("========totalSendCnt, round=========:%u, %u\n", totalSendCnt, roundIdx);
+                //PRINTF("========totalSendCnt, round=========:%u, %u\n", totalSendCnt, roundIdx);
                 SyncFuncStatic<AscendC::HardEvent::V_S, SYNC_EVENT_ID2>();
                 SyncFuncStatic<AscendC::HardEvent::S_MTE3, SYNC_EVENT_ID3>();
 
@@ -703,7 +703,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::SendMaskCal()
             hcomm_.Drain(GetUrmaCommHandle(mc2Context_, curRankId, rankId_));
         }
     }
-    PRINTF("SendMaskCal success!\n");
+    //PRINTF("SendMaskCal success!\n");
 }
 
 template <TemplateMegaMoeTypeClass>
@@ -864,7 +864,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::DispatchComputeK
     }
     __gm__ int32_t* donePtr = reinterpret_cast<__gm__ int32_t*>(params_.workspaceInfo.dispatchDonePtr);
     WriteGmByPassDCache(donePtr + computeIdx, roundTag);
-    PRINTF("DispatchComputeKernel success!");
+    //PRINTF("DispatchComputeKernel success!");
 }
 
 template <TemplateMegaMoeTypeClass>
@@ -967,7 +967,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::DispatchSendKern
             }
         }
     }
-    PRINTF("DispatchSendKernel success!");
+    //PRINTF("DispatchSendKernel success!");
 }
 
 template <TemplateMegaMoeTypeClass>
