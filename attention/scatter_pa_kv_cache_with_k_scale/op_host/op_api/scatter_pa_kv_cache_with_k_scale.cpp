@@ -20,9 +20,10 @@ using namespace op;
 namespace l0op {
 OP_TYPE_REGISTER(ScatterPaKvCacheWithKScale);
 
-std::tuple<const aclTensor *, const aclTensor *, const aclTensor *> ScatterPaKvCacheWithKScale(const aclTensor *key,
-    const aclTensor *value, aclTensor *keyCacheRef, aclTensor *valueCacheRef, const aclTensor *slotMapping,
-    aclTensor *keyScale, aclTensor *keyScaleCacheRef, char *cacheLayoutOptional, aclOpExecutor *executor)
+std::tuple<const aclTensor *, const aclTensor *, const aclTensor *>
+ScatterPaKvCacheWithKScale(const aclTensor *key, const aclTensor *value, aclTensor *keyCacheRef,
+                           aclTensor *valueCacheRef, const aclTensor *slotMapping, aclTensor *keyScale,
+                           aclTensor *keyScaleCacheRef, char *cacheLayoutOptional, aclOpExecutor *executor)
 {
     L0_DFX(ScatterPaKvCacheWithKScale, key, value, keyCacheRef, valueCacheRef, slotMapping, keyScale, keyScaleCacheRef,
            cacheLayoutOptional);

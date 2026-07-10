@@ -34,8 +34,8 @@
     keyRef_shape: [8931, 16, 144]
     valueRef_shape: [8931, 16, 128]
     seqOffset_shape: [16]
-    out1_shape: [8931, 16, 144]  
-    out2_shape: [8931, 16, 128]        
+    out1_shape: [8931, 16, 144]
+    out2_shape: [8931, 16, 128]
   ```
 
 ## 函数原型
@@ -44,24 +44,24 @@
 
 ```Cpp
 aclnnStatus aclnnGatherPaKvCacheGetWorkspaceSize(
-  const aclTensor *keyCache, 
-  const aclTensor *valueCache, 
-  const aclTensor *blockTables, 
-  const aclTensor *seqLens, 
-  aclTensor       *keyRef, 
-  aclTensor       *valueRef, 
-  const aclTensor *seqOffsetOptional, 
-  char*            cacheMode, 
-  bool             isSeqLensCumsum, 
-  uint64_t        *workspaceSize, 
+  const aclTensor *keyCache,
+  const aclTensor *valueCache,
+  const aclTensor *blockTables,
+  const aclTensor *seqLens,
+  aclTensor       *keyRef,
+  aclTensor       *valueRef,
+  const aclTensor *seqOffsetOptional,
+  char*            cacheMode,
+  bool             isSeqLensCumsum,
+  uint64_t        *workspaceSize,
   aclOpExecutor  **executor)
 ```
 
 ```Cpp
 aclnnStatus aclnnGatherPaKvCache(
-  void          *workspace, 
-  uint64_t       workspaceSize, 
-  aclOpExecutor *executor, 
+  void          *workspace,
+  uint64_t       workspaceSize,
+  aclOpExecutor *executor,
   aclrtStream    stream)
 ```
 

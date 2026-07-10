@@ -203,10 +203,11 @@ __aicore__ inline void CompressorBlockVectorFullLoad<COMP>::InitParams(const Con
 }
 
 template <typename COMP>
-__aicore__ inline void CompressorBlockVectorFullLoad<COMP>::Init(
-    __gm__ uint8_t *x, __gm__ uint8_t *wKv, __gm__ uint8_t *wGate, __gm__ uint8_t *stateCache, __gm__ uint8_t *ape,
-    __gm__ uint8_t *stateBlockTable, __gm__ uint8_t *cuSeqlens, __gm__ uint8_t *seqUsed,
-    __gm__ uint8_t *startPos, __gm__ uint8_t *cmpKvOut)
+__aicore__ inline void CompressorBlockVectorFullLoad<COMP>::Init(__gm__ uint8_t *x, __gm__ uint8_t *wKv,
+                                                                 __gm__ uint8_t *wGate, __gm__ uint8_t *stateCache,
+                                                                 __gm__ uint8_t *ape, __gm__ uint8_t *stateBlockTable,
+                                                                 __gm__ uint8_t *cuSeqlens, __gm__ uint8_t *seqUsed,
+                                                                 __gm__ uint8_t *startPos, __gm__ uint8_t *cmpKvOut)
 {
     stateBlockTableGm_.SetGlobalBuffer((__gm__ int32_t *)stateBlockTable);
     stateCacheGm_.SetGlobalBuffer((__gm__ T *)stateCache);
@@ -741,9 +742,9 @@ __aicore__ inline void CompressorBlockVectorFullLoad<COMP>::ReadState(
             uint64_t startSeqIdx = sliceInfo.bStartPos < cmpRatio_ ?
                                        0 :
                                        Trunc(sliceInfo.bStartPos + sliceInfo.sIdx, (uint64_t)cmpRatio_) - cmpRatio_;
-            uint64_t endSeqIdx =
-                min(Trunc(sliceInfo.bStartPos + sliceInfo.sIdx + sliceInfo.validSeqCnt, (uint64_t)cmpRatio_) -
-                cmpRatio_, sliceInfo.bStartPos);
+            uint64_t endSeqIdx = min(
+                Trunc(sliceInfo.bStartPos + sliceInfo.sIdx + sliceInfo.validSeqCnt, (uint64_t)cmpRatio_) - cmpRatio_,
+                sliceInfo.bStartPos);
             uint64_t dstBaseOffset = sliceInfo.compressoredScCnt * cmpRatio_ * coff_ * dDealSize;
             if (isFirst) {
                 dstBaseOffset += cmpRatio_ * coff_ * dDealSize;
@@ -795,8 +796,8 @@ CompressorBlockVectorFullLoad<COMP>::SaveToWorkSpace(const LocalTensor<T> &srcLo
     uint64_t srcLocalOffset =
         (sliceInfo.dealedSeqCnt + sliceInfo.validSeqCnt - min(sliceInfo.validSeqCnt, cmpRatio_)) * srcSingleRowElemNum;
     DataCopyWithOutputQue(cacheTcGm[dStartIdx], srcLocal[srcLocalOffset],
-                          curSeqLen - max((uint64_t)(curSeqLen - cmpRatio_), sliceInfo.bStartPos),
-                          dDealSize, coff_ * dDealSize, constInfo_.headDim);
+                          curSeqLen - max((uint64_t)(curSeqLen - cmpRatio_), sliceInfo.bStartPos), dDealSize,
+                          coff_ * dDealSize, constInfo_.headDim);
 }
 
 template <typename COMP>
@@ -904,7 +905,8 @@ CompressorBlockVectorFullLoad<COMP>::KvMulReduceScore(const LocalTensor<T> &kvLo
 }
 
 template <typename COMP>
-__aicore__ inline void CompressorBlockVectorFullLoad<COMP>::CopyOutVec1ResToOutput(const LocalTensor<T> &comperssoredUb,
+__aicore__ inline void
+CompressorBlockVectorFullLoad<COMP>::CopyOutVec1ResToOutput(const LocalTensor<T> &comperssoredUb,
                                                             const Vec1SliceInfo &sliceInfo, uint32_t compressTcSize,
                                                             uint32_t dStartIdx, uint32_t dDealSize)
 {
@@ -925,8 +927,8 @@ __aicore__ inline void CompressorBlockVectorFullLoad<COMP>::CopyOutVec1ResToOutp
                 uint32_t curScSize = min(compressTcSize, (totalScSize - preScSize));
                 uint64_t padScIdx = bIdx * bOutputScLen + preScSize - (bStartPos / cmpRatio_);
                 uint64_t outGmOffset = padScIdx * constInfo_.headDim + dStartIdx;
-                DataCopyAlignUbToGm(cmpKvOutGm_[outGmOffset], outputUb[ubOffset], curScSize, dDealSize,
-                                    dDealSize, constInfo_.headDim);
+                DataCopyAlignUbToGm(cmpKvOutGm_[outGmOffset], outputUb[ubOffset], curScSize, dDealSize, dDealSize,
+                                    constInfo_.headDim);
                 compressTcSize -= curScSize;
                 ubOffset += curScSize * dDealSize;
             }
@@ -934,7 +936,6 @@ __aicore__ inline void CompressorBlockVectorFullLoad<COMP>::CopyOutVec1ResToOutp
             sIdx = 0;
         }
     } else {
-
         uint64_t outGmOffset = compressedCnt_ * constInfo_.headDim + dStartIdx;
         DataCopyAlignUbToGm(cmpKvOutGm_[outGmOffset], outputUb, compressTcSize, dDealSize, dDealSize,
                             constInfo_.headDim);

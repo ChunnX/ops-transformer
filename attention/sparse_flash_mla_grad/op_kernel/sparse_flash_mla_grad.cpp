@@ -50,29 +50,28 @@ sparse_flash_mla_grad(__gm__ uint8_t *query, __gm__ uint8_t *d_out, __gm__ uint8
 }
 
 #else
-#define INVOKE_SMLAG_BASIC_IMPL(templateClass, ...)                                                  \
-    do {                                                                                            \
-        __gm__ uint8_t *user = GetUserWorkspace(workspace);                                         \
-        GET_TILING_DATA_WITH_STRUCT(SparseFlashMlaGradTilingData, tiling_data_in, tiling_data); \
-        const SparseFlashMlaGradTilingData *__restrict tilingData = &tiling_data_in;            \
-        templateClass<SMLAG_BASIC::SMLAG_TYPE<SparseFlashMlaGradTilingData, __VA_ARGS__>> op;     \
-        op.Process(query, ori_kv, cmp_kv, out, d_out, lse, cmp_sparse_indices,                      \
-                   cu_seqlens_q, cu_seqlens_ori_kv, cu_seqlens_cmp_kv, cmp_residual_kv,             \
-                   sinks, d_query, d_ori_kv, d_cmp_kv, d_sinks, cmp_softmax_l1_norm, user, tilingData);\
+#define INVOKE_SMLAG_BASIC_IMPL(templateClass, ...)                                                                    \
+    do {                                                                                                               \
+        __gm__ uint8_t *user = GetUserWorkspace(workspace);                                                            \
+        GET_TILING_DATA_WITH_STRUCT(SparseFlashMlaGradTilingData, tiling_data_in, tiling_data);                        \
+        const SparseFlashMlaGradTilingData *__restrict tilingData = &tiling_data_in;                                   \
+        templateClass<SMLAG_BASIC::SMLAG_TYPE<SparseFlashMlaGradTilingData, __VA_ARGS__>> op;                          \
+        op.Process(query, ori_kv, cmp_kv, out, d_out, lse, cmp_sparse_indices, cu_seqlens_q, cu_seqlens_ori_kv,        \
+                   cu_seqlens_cmp_kv, cmp_residual_kv, sinks, d_query, d_ori_kv, d_cmp_kv, d_sinks,                    \
+                   cmp_softmax_l1_norm, user, tilingData);                                                             \
     } while (0)
 
-template<int LAYOUT, int MODE>
+template <int LAYOUT, int MODE>
 __global__ __aicore__ void
-sparse_flash_mla_grad(__gm__ uint8_t *query, __gm__ uint8_t *d_out, __gm__ uint8_t *out, __gm__ uint8_t *lse, 
-                            __gm__ uint8_t *ori_kv, __gm__ uint8_t *cmp_kv,
-                            __gm__ uint8_t *ori_sparse_indices, __gm__ uint8_t *cmp_sparse_indices, 
-                            __gm__ uint8_t *cu_seqlens_q, __gm__ uint8_t *cu_seqlens_ori_kv, __gm__ uint8_t *cu_seqlens_cmp_kv, 
-                            __gm__ uint8_t *seqused_q, __gm__ uint8_t *seqused_ori_kv, __gm__ uint8_t *seqused_cmp_kv,
-                            __gm__ uint8_t *cmp_residual_kv, __gm__ uint8_t *ori_topk_length, __gm__ uint8_t *cmp_topk_length,
-                            __gm__ uint8_t *sinks, __gm__ uint8_t *metadata, 
-                            __gm__ uint8_t *d_query, __gm__ uint8_t *d_ori_kv, __gm__ uint8_t *d_cmp_kv,
-                            __gm__ uint8_t *d_sinks, __gm__ uint8_t *ori_softmax_l1_norm, __gm__ uint8_t *cmp_softmax_l1_norm,
-                            __gm__ uint8_t *workspace, __gm__ uint8_t *tiling_data)
+sparse_flash_mla_grad(__gm__ uint8_t *query, __gm__ uint8_t *d_out, __gm__ uint8_t *out, __gm__ uint8_t *lse,
+                      __gm__ uint8_t *ori_kv, __gm__ uint8_t *cmp_kv, __gm__ uint8_t *ori_sparse_indices,
+                      __gm__ uint8_t *cmp_sparse_indices, __gm__ uint8_t *cu_seqlens_q,
+                      __gm__ uint8_t *cu_seqlens_ori_kv, __gm__ uint8_t *cu_seqlens_cmp_kv, __gm__ uint8_t *seqused_q,
+                      __gm__ uint8_t *seqused_ori_kv, __gm__ uint8_t *seqused_cmp_kv, __gm__ uint8_t *cmp_residual_kv,
+                      __gm__ uint8_t *ori_topk_length, __gm__ uint8_t *cmp_topk_length, __gm__ uint8_t *sinks,
+                      __gm__ uint8_t *metadata, __gm__ uint8_t *d_query, __gm__ uint8_t *d_ori_kv,
+                      __gm__ uint8_t *d_cmp_kv, __gm__ uint8_t *d_sinks, __gm__ uint8_t *ori_softmax_l1_norm,
+                      __gm__ uint8_t *cmp_softmax_l1_norm, __gm__ uint8_t *workspace, __gm__ uint8_t *tiling_data)
 {
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
 
@@ -108,4 +107,3 @@ sparse_flash_mla_grad(__gm__ uint8_t *query, __gm__ uint8_t *d_out, __gm__ uint8
     }
 }
 #endif
-

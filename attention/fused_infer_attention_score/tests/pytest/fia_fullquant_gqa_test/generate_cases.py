@@ -31,20 +31,20 @@ ENABLE_LSE_VALUES = [True, False]
 
 # Sequence length ranges: (label, min, max, weight)
 SEQ_Q_RANGES = [
-    ("TINY",   1,    128,   0.10),
-    ("SHORT",  129,  512,   0.20),
-    ("MEDIUM", 513,  2048,  0.30),
-    ("LONG",   2049, 4096,  0.25),
-    ("VLONG",  4097, 8192,  0.15),
+    ("TINY", 1, 128, 0.10),
+    ("SHORT", 129, 512, 0.20),
+    ("MEDIUM", 513, 2048, 0.30),
+    ("LONG", 2049, 4096, 0.25),
+    ("VLONG", 4097, 8192, 0.15),
 ]
 
 SEQ_KV_RANGES = [
-    ("ZERO",   0,    0,     0.03),
-    ("TINY",   1,    128,   0.10),
-    ("SHORT",  129,  512,   0.17),
-    ("MEDIUM", 513,  2048,  0.25),
-    ("LONG",   2049, 4096,  0.25),
-    ("VLONG",  4097, 16384, 0.20),
+    ("ZERO", 0, 0, 0.03),
+    ("TINY", 1, 128, 0.10),
+    ("SHORT", 129, 512, 0.17),
+    ("MEDIUM", 513, 2048, 0.25),
+    ("LONG", 2049, 4096, 0.25),
+    ("VLONG", 4097, 16384, 0.20),
 ]
 
 
@@ -52,14 +52,7 @@ def _make_name(b, nq, nkv, d, sq, skv, sm, lse):
     g = nq // nkv
     max_sq = max(sq)
     max_skv = max(skv)
-    return (
-        f"B{b}_G{g}_Nq{nq}_Nkv{nkv}_D{d}_"
-        f"SM{sm}_LSE{int(lse)}_"
-        f"Q{max_sq}_KV{max_skv}"
-    )
-
-
-
+    return f"B{b}_G{g}_Nq{nq}_Nkv{nkv}_D{d}_SM{sm}_LSE{int(lse)}_Q{max_sq}_KV{max_skv}"
 
 
 def _noisy_seq_len(lo, hi):
@@ -87,7 +80,7 @@ def _noisy_seq_len(lo, hi):
 def _make_seq_list_random(b, range_pool, weights, allow_zero=False):
     chosen = random.choices(range_pool, weights=weights, k=b)
     result = []
-    for (_label, lo, hi) in chosen:
+    for _label, lo, hi in chosen:
         if hi == 0:
             result.append(0)
         else:
@@ -158,6 +151,7 @@ def generate_normal_cases(count=1000):
 # Exception Case Construction
 # ==============================================================================
 
+
 def _valid_case_base():
     nkv = random.choice([3, 5, 7, 8])
     return {
@@ -190,41 +184,35 @@ def generate_exception_cases(count=200):
         ("D_WRONG_256", 0.05, lambda c: {**c, "D": 256}),
         ("D_WRONG_32", 0.03, lambda c: {**c, "D": 32}),
         ("D_WRONG_512", 0.02, lambda c: {**c, "D": 512}),
-
         ("PA_FALSE", 0.05, lambda c: {**c, "enable_pa": False}),
-        ("PA_FALSE_LSE_TRUE", 0.03, lambda c: {**c, "enable_pa": False, "enable_lse": True}),
-
+        (
+            "PA_FALSE_LSE_TRUE",
+            0.03,
+            lambda c: {**c, "enable_pa": False, "enable_lse": True},
+        ),
         ("BLOCK_64", 0.05, lambda c: {**c, "block_size": 64}),
         ("BLOCK_256", 0.05, lambda c: {**c, "block_size": 256}),
         ("BLOCK_32", 0.02, lambda c: {**c, "block_size": 32}),
         ("BLOCK_512", 0.02, lambda c: {**c, "block_size": 512}),
-
         ("SM_1", 0.04, lambda c: {**c, "sparse_mode": 1}),
         ("SM_2", 0.04, lambda c: {**c, "sparse_mode": 2}),
         ("SM_4", 0.03, lambda c: {**c, "sparse_mode": 4}),
         ("SM_5", 0.03, lambda c: {**c, "sparse_mode": 5}),
         ("SM_NEG1", 0.02, lambda c: {**c, "sparse_mode": -1}),
-
         ("LAYOUT_BNSD", 0.04, lambda c: {**c, "input_layout": "BNSD"}),
         ("LAYOUT_BSND", 0.03, lambda c: {**c, "input_layout": "BSND"}),
         ("LAYOUT_TND", 0.03, lambda c: {**c, "input_layout": "TND"}),
-
         ("QSCALE_TN", 0.04, lambda c: {**c, "q_scale_layout": "TN"}),
         ("QSCALE_BNSD", 0.03, lambda c: {**c, "q_scale_layout": "BNSD"}),
-
         ("KVCACHE_DEFAULT", 0.04, lambda c: {**c, "kv_cache_layout": "default"}),
         ("KVCACHE_BSH", 0.03, lambda c: {**c, "kv_cache_layout": "BSH"}),
-
         ("GQA_RATIO_128", 0.03, lambda c: gen_high_gqa(128, c, SM=0)),
         ("GQA_RATIO_256", 0.02, lambda c: gen_high_gqa(256, c, SM=0)),
         ("GQA_RATIO_65", 0.03, lambda c: gen_high_gqa(65, c, SM=3)),
-
         ("QSEQ_OVER_64K", 0.04, lambda c: {**c, "actual_seq_q": [70000]}),
         ("QSEQ_OVER_128K", 0.02, lambda c: {**c, "actual_seq_q": [131072]}),
-
         ("KVSEQ_OVER_256K", 0.04, lambda c: {**c, "actual_seq_kv": [300000]}),
         ("KVSEQ_OVER_500K", 0.02, lambda c: {**c, "actual_seq_kv": [524288]}),
-
         ("COMBINED_PARAM_ERR", 0.05, lambda c: combined_error(c)),
     ]
 
@@ -235,7 +223,9 @@ def generate_exception_cases(count=200):
             g_ratio = case["N_q"] // case["N_kv"] if case["N_kv"] != 0 else 999
             max_q = max(case["actual_seq_q"])
             max_kv = max(case["actual_seq_kv"])
-            case["name"] = f"EXCEPTION_{label}_{i:03d}_G{g_ratio}_Nq{case['N_q']}_Q{max_q}_KV{max_kv}"
+            case["name"] = (
+                f"EXCEPTION_{label}_{i:03d}_G{g_ratio}_Nq{case['N_q']}_Q{max_q}_KV{max_kv}"
+            )
             if case["name"] in name_set:
                 case["name"] = f"EXCEPTION_{label}_{i:03d}_v2_G{g_ratio}"
             if case["name"] in name_set:
@@ -250,7 +240,9 @@ def generate_exception_cases(count=200):
         g_ratio = case["N_q"] // case["N_kv"] if case["N_kv"] != 0 else 999
         max_q = max(case["actual_seq_q"])
         max_kv = max(case["actual_seq_kv"])
-        case["name"] = f"EXCEPTION_{label}_{len(cases):03d}_G{g_ratio}_Nq{case['N_q']}_Q{max_q}_KV{max_kv}"
+        case["name"] = (
+            f"EXCEPTION_{label}_{len(cases):03d}_G{g_ratio}_Nq{case['N_q']}_Q{max_q}_KV{max_kv}"
+        )
         if case["name"] in name_set:
             continue
         name_set.add(case["name"])
@@ -316,10 +308,21 @@ def main():
     normal_nkv = {}
     normal_sm = {}
     normal_lse = {True: 0, False: 0}
-    normal_q_seq_ranges = {"tiny(1-128)": 0, "short(129-512)": 0, "medium(513-2048)": 0,
-                           "long(2049-4096)": 0, "vlong(4097-8192)": 0}
-    normal_kv_seq_ranges = {"zero": 0, "tiny(1-128)": 0, "short(129-512)": 0, "medium(513-2048)": 0,
-                            "long(2049-4096)": 0, "vlong(4097-16384)": 0}
+    normal_q_seq_ranges = {
+        "tiny(1-128)": 0,
+        "short(129-512)": 0,
+        "medium(513-2048)": 0,
+        "long(2049-4096)": 0,
+        "vlong(4097-8192)": 0,
+    }
+    normal_kv_seq_ranges = {
+        "zero": 0,
+        "tiny(1-128)": 0,
+        "short(129-512)": 0,
+        "medium(513-2048)": 0,
+        "long(2049-4096)": 0,
+        "vlong(4097-16384)": 0,
+    }
 
     for c in normal_cases:
         normal_b_values[c["B"]] = normal_b_values.get(c["B"], 0) + 1
@@ -366,7 +369,7 @@ def main():
     print(f"  LSE: {normal_lse}")
     print(f"  Q seq ranges: {normal_q_seq_ranges}")
     print(f"  KV seq ranges: {normal_kv_seq_ranges}")
-    print(f"\n[Exception Case Distribution]")
+    print("\n[Exception Case Distribution]")
     for k, v in sorted(exception_labels.items()):
         print(f"  {k}: {v}")
 

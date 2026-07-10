@@ -20,7 +20,8 @@
 #include "tests/utils/log.h"
 
 namespace {
-template <class T> bool InitAclIntArray(aclIntArray **intArray, std::vector<T> &hostData)
+template <class T>
+bool InitAclIntArray(aclIntArray **intArray, std::vector<T> &hostData)
 {
     if (intArray == nullptr) {
         LOG_ERR("intArray nil.");

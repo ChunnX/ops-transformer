@@ -34,31 +34,27 @@ public:
     static constexpr BSALayout LAYOUT_Q = BSAT::layoutQ;
     static constexpr BSALayout LAYOUT_KV = BSAT::layoutKV;
 
-    __aicore__ inline BSAVectorService() {};
+    __aicore__ inline BSAVectorService(){};
     __aicore__ inline void InitParams(const BSAConstInfo &constInfo,
                                       const optiling::BSASelectBlockMaskTilingData *__restrict tilingData);
     __aicore__ inline void InitBuffers(TPipe *pipe);
     __aicore__ inline void InitGM(GlobalTensor<POOL_OUT_T> &qCmpGm, GlobalTensor<POOL_OUT_T> &kCmpGm,
-                                   GlobalTensor<half> &attnScorFp16eGm, GlobalTensor<T> &ScoreFp32Gm,
-                                   GlobalTensor<IN_T> &queryGm, GlobalTensor<IN_T> &keyGm,
-                                   GlobalTensor<int64_t> &actualBlockLenQGm,
-                                   GlobalTensor<int64_t> &actualBlockLenKVGm);
+                                  GlobalTensor<half> &attnScorFp16eGm, GlobalTensor<T> &ScoreFp32Gm,
+                                  GlobalTensor<IN_T> &queryGm, GlobalTensor<IN_T> &keyGm,
+                                  GlobalTensor<int64_t> &actualBlockLenQGm, GlobalTensor<int64_t> &actualBlockLenKVGm);
     __aicore__ inline void AllocEventID();
     __aicore__ inline void FreeEventID();
 
     __aicore__ inline void PoolingSingleQBlock(uint32_t batchIdx, uint32_t headIdx, uint32_t qBlockIdx,
-                                                GlobalTensor<IN_T> &queryGm,
-                                                GlobalTensor<int64_t> &actualBlockLenQGm,
-                                                GlobalTensor<POOL_OUT_T> &qCmpGm);
+                                               GlobalTensor<IN_T> &queryGm, GlobalTensor<int64_t> &actualBlockLenQGm,
+                                               GlobalTensor<POOL_OUT_T> &qCmpGm);
     __aicore__ inline void PoolingSingleKBlock(uint32_t batchIdx, uint32_t headIdx, uint32_t kBlockIdx,
-                                                GlobalTensor<IN_T> &keyGm,
-                                                GlobalTensor<int64_t> &actualBlockLenKVGm,
-                                                GlobalTensor<POOL_OUT_T> &kCmpGm);
-    __aicore__ inline void OnlineSoftmaxFirstPassChunk(uint32_t qChunkStart, uint32_t qChunkSize,
-                                                        uint32_t kChunkStart, uint32_t kChunkSize);
-    __aicore__ inline void SoftmaxSecondPassAndCast(uint32_t qChunkStart, uint32_t qChunkSize,
-                                                    uint32_t kChunkStart, uint32_t kChunkSize,
-                                                    uint32_t batchIdx, uint32_t headIdx);
+                                               GlobalTensor<IN_T> &keyGm, GlobalTensor<int64_t> &actualBlockLenKVGm,
+                                               GlobalTensor<POOL_OUT_T> &kCmpGm);
+    __aicore__ inline void OnlineSoftmaxFirstPassChunk(uint32_t qChunkStart, uint32_t qChunkSize, uint32_t kChunkStart,
+                                                       uint32_t kChunkSize);
+    __aicore__ inline void SoftmaxSecondPassAndCast(uint32_t qChunkStart, uint32_t qChunkSize, uint32_t kChunkStart,
+                                                    uint32_t kChunkSize, uint32_t batchIdx, uint32_t headIdx);
 
 private:
     BSAConstInfo constInfo;
@@ -72,8 +68,9 @@ private:
 };
 
 template <typename BSAT>
-__aicore__ inline void BSAVectorService<BSAT>::InitParams(const BSAConstInfo &constInfo,
-    const optiling::BSASelectBlockMaskTilingData *__restrict tilingData)
+__aicore__ inline void
+BSAVectorService<BSAT>::InitParams(const BSAConstInfo &constInfo,
+                                   const optiling::BSASelectBlockMaskTilingData *__restrict tilingData)
 {
     poolOP.InitParams(constInfo, tilingData);
     softmaxOP.InitParams(constInfo, tilingData);
@@ -88,11 +85,11 @@ __aicore__ inline void BSAVectorService<BSAT>::InitBuffers(TPipe *pipe)
 }
 
 template <typename BSAT>
-__aicore__ inline void BSAVectorService<BSAT>::InitGM(
-    GlobalTensor<POOL_OUT_T> &qCmpGm, GlobalTensor<POOL_OUT_T> &kCmpGm,
-    GlobalTensor<half> &attnScorFp16eGm, GlobalTensor<T> &ScoreFp32Gm,
-    GlobalTensor<IN_T> &queryGm, GlobalTensor<IN_T> &keyGm,
-    GlobalTensor<int64_t> &actualBlockLenQGm, GlobalTensor<int64_t> &actualBlockLenKVGm)
+__aicore__ inline void
+BSAVectorService<BSAT>::InitGM(GlobalTensor<POOL_OUT_T> &qCmpGm, GlobalTensor<POOL_OUT_T> &kCmpGm,
+                               GlobalTensor<half> &attnScorFp16eGm, GlobalTensor<T> &ScoreFp32Gm,
+                               GlobalTensor<IN_T> &queryGm, GlobalTensor<IN_T> &keyGm,
+                               GlobalTensor<int64_t> &actualBlockLenQGm, GlobalTensor<int64_t> &actualBlockLenKVGm)
 {
     poolOP.InitGM(qCmpGm, kCmpGm, queryGm, keyGm, actualBlockLenQGm, actualBlockLenKVGm);
     softmaxOP.InitGM(ScoreFp32Gm, attnScorFp16eGm);
@@ -111,37 +108,34 @@ __aicore__ inline void BSAVectorService<BSAT>::FreeEventID()
 }
 
 template <typename BSAT>
-__aicore__ inline void BSAVectorService<BSAT>::PoolingSingleQBlock(
-    uint32_t batchIdx, uint32_t headIdx, uint32_t qBlockIdx,
-    GlobalTensor<IN_T> &queryGm,
-    GlobalTensor<int64_t> &actualBlockLenQGm,
-    GlobalTensor<POOL_OUT_T> &qCmpGm)
+__aicore__ inline void BSAVectorService<BSAT>::PoolingSingleQBlock(uint32_t batchIdx, uint32_t headIdx,
+                                                                   uint32_t qBlockIdx, GlobalTensor<IN_T> &queryGm,
+                                                                   GlobalTensor<int64_t> &actualBlockLenQGm,
+                                                                   GlobalTensor<POOL_OUT_T> &qCmpGm)
 {
     poolOP.PoolingSingleQBlock(batchIdx, headIdx, qBlockIdx, queryGm, actualBlockLenQGm, qCmpGm);
 }
 
 template <typename BSAT>
-__aicore__ inline void BSAVectorService<BSAT>::PoolingSingleKBlock(
-    uint32_t batchIdx, uint32_t headIdx, uint32_t kBlockIdx,
-    GlobalTensor<IN_T> &keyGm,
-    GlobalTensor<int64_t> &actualBlockLenKVGm,
-    GlobalTensor<POOL_OUT_T> &kCmpGm)
+__aicore__ inline void BSAVectorService<BSAT>::PoolingSingleKBlock(uint32_t batchIdx, uint32_t headIdx,
+                                                                   uint32_t kBlockIdx, GlobalTensor<IN_T> &keyGm,
+                                                                   GlobalTensor<int64_t> &actualBlockLenKVGm,
+                                                                   GlobalTensor<POOL_OUT_T> &kCmpGm)
 {
     poolOP.PoolingSingleKBlock(batchIdx, headIdx, kBlockIdx, keyGm, actualBlockLenKVGm, kCmpGm);
 }
 
 template <typename BSAT>
-__aicore__ inline void BSAVectorService<BSAT>::OnlineSoftmaxFirstPassChunk(
-    uint32_t qChunkStart, uint32_t qChunkSize,
-    uint32_t kChunkStart, uint32_t kChunkSize)
+__aicore__ inline void BSAVectorService<BSAT>::OnlineSoftmaxFirstPassChunk(uint32_t qChunkStart, uint32_t qChunkSize,
+                                                                           uint32_t kChunkStart, uint32_t kChunkSize)
 {
     softmaxOP.OnlineSoftmaxFirstPassChunk(qChunkStart, qChunkSize, kChunkStart, kChunkSize);
 }
 
 template <typename BSAT>
-__aicore__ inline void BSAVectorService<BSAT>::SoftmaxSecondPassAndCast(
-    uint32_t qChunkStart, uint32_t qChunkSize, uint32_t kChunkStart,
-    uint32_t kChunkSize, uint32_t batchIdx, uint32_t headIdx)
+__aicore__ inline void BSAVectorService<BSAT>::SoftmaxSecondPassAndCast(uint32_t qChunkStart, uint32_t qChunkSize,
+                                                                        uint32_t kChunkStart, uint32_t kChunkSize,
+                                                                        uint32_t batchIdx, uint32_t headIdx)
 {
     softmaxOP.SoftmaxSecondPassAndCast(qChunkStart, qChunkSize, kChunkStart, kChunkSize, batchIdx, headIdx);
 }

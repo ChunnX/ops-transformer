@@ -16,9 +16,9 @@
 - 接口功能：
 
   `aclnnMixedQuantSparseFlashMla`算子实现基于共享KV（Key=Value）的稀疏注意力计算，支持SWA（Sliding Window Attention）、CSA（Compressed Sparse Attention）、HCA（Heavily Compressed Attention）三类Attention计算场景。与`SparseFlashMla`的区别在于，本算子支持KV的per-token-group量化输入。该算子适用于大语言模型推理场景，通过滑动窗口和KV压缩机制大幅降低长序列注意力计算的开销。调用时需要使用`aclnnMixedQuantSparseFlashMlaMetadata`生成的任务列表`metadata`。
-  
+
   **该算子不建议单独使用，建议与aclnnMixedQuantSparseFlashMlaMetadata算子配合使用，形成完整的工作流。**
-  
+
   典型调用流程如下：
 
   1. 准备`q`、`ori_kv`、`cmp_kv`、序列长度、`block table`、`sinks`等输入。

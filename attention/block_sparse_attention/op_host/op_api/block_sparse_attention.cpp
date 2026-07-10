@@ -25,9 +25,7 @@ namespace l0op {
 
 OP_TYPE_REGISTER(BlockSparseAttention);
 
-static const aclTensor *ConvertIntArrayToTensor(const aclIntArray *intArray,
-                                                aclOpExecutor *executor,
-                                                DataType dtype)
+static const aclTensor *ConvertIntArrayToTensor(const aclIntArray *intArray, aclOpExecutor *executor, DataType dtype)
 {
     if (intArray != nullptr) {
         const aclTensor *tensor = executor->ConvertToTensor(intArray, dtype);
@@ -40,38 +38,23 @@ static const aclTensor *ConvertIntArrayToTensor(const aclIntArray *intArray,
     return executor->AllocTensor(dtype, Format::FORMAT_ND, Format::FORMAT_ND);
 }
 
-const std::array<const aclTensor *, 2> BlockSparseAttention(
-    const aclTensor *query,
-    const aclTensor *key,
-    const aclTensor *value,
-    const aclTensor *blockSparseMaskOptional,
-    const aclTensor *attenMaskOptional,
-    const aclIntArray *blockShapeOptional,
-    const aclIntArray *actualSeqLengthsOptional,
-    const aclIntArray *actualSeqLengthsKvOptional,
-    const aclTensor *blockTableOptional,
-    const aclTensor *qDequantScaleOptional,
-    const aclTensor *kDequantScaleOptional,
-    const aclTensor *vDequantScaleOptional,
-    const char *qInputLayout,
-    const char *kvInputLayout,
-    int64_t numKeyValueHeads,
-    int64_t maskType,
-    double scaleValue,
-    int64_t innerPrecise,
-    int64_t blockSize,
-    int64_t preTokens,
-    int64_t nextTokens,
-    int64_t softmaxLseFlag,
-    const aclTensor *attentionOut,
-    aclOpExecutor *executor)
+const std::array<const aclTensor *, 2>
+BlockSparseAttention(const aclTensor *query, const aclTensor *key, const aclTensor *value,
+                     const aclTensor *blockSparseMaskOptional, const aclTensor *attenMaskOptional,
+                     const aclIntArray *blockShapeOptional, const aclIntArray *actualSeqLengthsOptional,
+                     const aclIntArray *actualSeqLengthsKvOptional, const aclTensor *blockTableOptional,
+                     const aclTensor *qDequantScaleOptional, const aclTensor *kDequantScaleOptional,
+                     const aclTensor *vDequantScaleOptional, const char *qInputLayout, const char *kvInputLayout,
+                     int64_t numKeyValueHeads, int64_t maskType, double scaleValue, int64_t innerPrecise,
+                     int64_t blockSize, int64_t preTokens, int64_t nextTokens, int64_t softmaxLseFlag,
+                     const aclTensor *attentionOut, aclOpExecutor *executor)
 {
     const char *safeKvInputLayout = (kvInputLayout != nullptr) ? kvInputLayout : qInputLayout;
 
     L0_DFX(BlockSparseAttention, query, key, value, blockSparseMaskOptional, attenMaskOptional, blockShapeOptional,
            actualSeqLengthsOptional, actualSeqLengthsKvOptional, blockTableOptional, qDequantScaleOptional,
-           kDequantScaleOptional, vDequantScaleOptional, qInputLayout, safeKvInputLayout, numKeyValueHeads,
-           maskType, scaleValue, innerPrecise, blockSize, preTokens, nextTokens, softmaxLseFlag);
+           kDequantScaleOptional, vDequantScaleOptional, qInputLayout, safeKvInputLayout, numKeyValueHeads, maskType,
+           scaleValue, innerPrecise, blockSize, preTokens, nextTokens, softmaxLseFlag);
 
     const aclTensor *blockShapeOptionalTensor = nullptr;
     if (blockShapeOptional) {
@@ -119,5 +102,3 @@ const std::array<const aclTensor *, 2> BlockSparseAttention(
     return {attentionOutTensor, softmaxLseTensor};
 }
 } // namespace l0op
-
-

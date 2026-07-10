@@ -309,8 +309,8 @@ void FiaTilingFullQuantGqaArch35::SplitPolicy()
     CalcNumBlocks(result.usedCoreNum);
     flashDecodeFlag_ = (result.fdRes.fdNum > 0);
 
-    fiaInfo_->isExistRowInvalid = (fiaInfo_->needInit || IsExistRowInvalid(baseInfo) ||
-                                   IsActualSeqLengthsKVHasZero(baseInfo));
+    fiaInfo_->isExistRowInvalid =
+        (fiaInfo_->needInit || IsExistRowInvalid(baseInfo) || IsActualSeqLengthsKVHasZero(baseInfo));
 }
 
 bool FiaTilingFullQuantGqaArch35::IsActualSeqLengthsKVHasZero(const split_core_v2::BaseInfo &baseInfo)
@@ -566,7 +566,7 @@ void FiaTilingFullQuantGqaArch35::SetFATilingData()
         tilingData_.baseTiling.fiaBaseParams.keyStrides.n2Stride = fiaInfo_->keyStrides->GetStride(1);
         tilingData_.baseTiling.fiaBaseParams.valueStrides.bnStride = fiaInfo_->valueStrides->GetStride(0);
         tilingData_.baseTiling.fiaBaseParams.valueStrides.n2Stride = fiaInfo_->valueStrides->GetStride(1);
-        if (fiaInfo_->ropeHeadDim != 0) {  // 传入了rope才赋值
+        if (fiaInfo_->ropeHeadDim != 0) { // 传入了rope才赋值
             tilingData_.baseTiling.fiaBaseParams.kRopeStrides.bnStride = fiaInfo_->kRopeStrides->GetStride(0);
             tilingData_.baseTiling.fiaBaseParams.kRopeStrides.n2Stride = fiaInfo_->kRopeStrides->GetStride(1);
         }
@@ -684,8 +684,6 @@ void FiaTilingFullQuantGqaArch35::PrintAllTilingData()
 // 1. 百位代表非量化、伪量化、全量化等场景, 即: 0xx-非量化，1xx-伪量化, 2xx-全量化
 // 2. 十位表示gqa、mla、泛化，即: x0x-mla, x1x-gpa, x2x-泛化
 // 3. 个位代表特化模板到泛化模板的优先级排序
-REGISTER_TILING_TEMPLATE_FIA(
-    FusedInferAttentionScore, FiaTilingFullQuantGqaArch35,
-    std::vector<int32_t>({static_cast<int32_t>(NpuArch::DAV_3510)}),
-    211);
+REGISTER_TILING_TEMPLATE_FIA(FusedInferAttentionScore, FiaTilingFullQuantGqaArch35,
+                             std::vector<int32_t>({static_cast<int32_t>(NpuArch::DAV_3510)}), 211);
 } // namespace optiling

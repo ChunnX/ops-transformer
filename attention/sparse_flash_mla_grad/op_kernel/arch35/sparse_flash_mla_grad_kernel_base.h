@@ -448,8 +448,7 @@ __aicore__ inline void SparseFlashMlaGradKernelBase<ChildClass, CubeBlockType, V
 }
 
 template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void
-SparseFlashMlaGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::GetSeqQlenKvlenByBidx(
+__aicore__ inline void SparseFlashMlaGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::GetSeqQlenKvlenByBidx(
     int64_t bIdx, int64_t &actualSeqQlen, int64_t &actualSeqKvlen)
 {
     if (unlikely(bIdx == 0)) {
@@ -634,8 +633,7 @@ __aicore__ inline void SparseFlashMlaGradKernelBase<ChildClass, CubeBlockType, V
 
 template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void
-SparseFlashMlaGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::GetTndSeqLen(const int64_t t1Idx,
-                                                                                         int64_t &bIdx)
+SparseFlashMlaGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::GetTndSeqLen(const int64_t t1Idx, int64_t &bIdx)
 {
     int64_t t1Offset = 0;
     int64_t t2Offset = 0;

@@ -69,9 +69,7 @@ enum class BSASparseMode {
     BottomK = 1
 };
 
-template <typename InputT, typename OutputT,
-          BSALayout LayoutQ = BSALayout::BNSD,
-          BSALayout LayoutKV = BSALayout::BNSD,
+template <typename InputT, typename OutputT, BSALayout LayoutQ = BSALayout::BNSD, BSALayout LayoutKV = BSALayout::BNSD,
           typename... Args>
 struct BSAType {
     using inputT = InputT;
@@ -103,7 +101,7 @@ struct BSAConstInfo {
     uint32_t aivNum;
     uint32_t aicNum;
     uint32_t activeYVecCoreNum;
-    
+
     uint32_t batchSize;
     uint32_t numHeads;
     uint32_t maxQSeqlen;
@@ -148,7 +146,7 @@ struct BSARunInfo {
 template <typename T>
 __aicore__ inline T BSACeilDiv(T num, T rnd)
 {
-    return (((rnd) == 0) ? 0 : (((num) + (rnd) - 1) / (rnd)));
+    return (((rnd) == 0) ? 0 : (((num) + (rnd)-1) / (rnd)));
 }
 
 template <typename T1, typename T2>

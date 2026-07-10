@@ -19,7 +19,7 @@
 namespace ops {
 class KvCompressEpilog : public OpDef {
 public:
-    explicit KvCompressEpilog(const char* name) : OpDef(name)
+    explicit KvCompressEpilog(const char *name) : OpDef(name)
     {
         this->Input("cache")
             .ParamType(REQUIRED)
@@ -52,4 +52,4 @@ public:
 };
 
 OP_ADD(KvCompressEpilog);
-}  // namespace ops
+} // namespace ops

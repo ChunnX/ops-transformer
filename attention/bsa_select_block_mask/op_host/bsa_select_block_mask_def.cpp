@@ -15,24 +15,14 @@
 
 namespace ops {
 
-static const std::vector<ge::DataType> qkDtype = {
-    ge::DT_FLOAT16, ge::DT_BF16
-};
+static const std::vector<ge::DataType> qkDtype = {ge::DT_FLOAT16, ge::DT_BF16};
 
 class BSASelectBlockMask : public OpDef {
 public:
-    explicit BSASelectBlockMask(const char* name) : OpDef(name)
+    explicit BSASelectBlockMask(const char *name) : OpDef(name)
     {
-        this->Input("query")
-            .ParamType(REQUIRED)
-            .DataType(qkDtype)
-            .FormatList({ge::FORMAT_ND})
-            .AutoContiguous();
-        this->Input("key")
-            .ParamType(REQUIRED)
-            .DataType(qkDtype)
-            .FormatList({ge::FORMAT_ND})
-            .AutoContiguous();
+        this->Input("query").ParamType(REQUIRED).DataType(qkDtype).FormatList({ge::FORMAT_ND}).AutoContiguous();
+        this->Input("key").ParamType(REQUIRED).DataType(qkDtype).FormatList({ge::FORMAT_ND}).AutoContiguous();
         this->Input("block_shape")
             .ParamType(OPTIONAL)
             .DataTypeList({ge::DT_INT64})

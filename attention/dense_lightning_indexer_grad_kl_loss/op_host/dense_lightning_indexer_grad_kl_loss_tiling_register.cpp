@@ -24,20 +24,19 @@
 namespace optiling {
 
 // tiling 分发入口
-static ge::graphStatus DenseLightningIndexerGradKLLossTilingFunc(gert::TilingContext* context)
+static ge::graphStatus DenseLightningIndexerGradKLLossTilingFunc(gert::TilingContext *context)
 {
     DenseLightningIndexerGradKLLossTilingBase dligKLLossTiling(context);
     dligKLLossTiling.DoTiling();
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus TilingParseForDenseLightningIndexerGradKLLoss([[maybe_unused]] gert::TilingParseContext* context)
+static ge::graphStatus TilingParseForDenseLightningIndexerGradKLLoss([[maybe_unused]] gert::TilingParseContext *context)
 {
     OP_LOGD(context->GetNodeName(), "Start parsing tiling for DenseLightningIndexerGradKLLoss.");
     auto compileInfoPtr = context->GetCompiledInfo<DenseLightningIndexerGradKLLossCompileInfo>();
-    OP_CHECK_IF(compileInfoPtr == nullptr,
-        OP_LOGE(context->GetNodeName(), "compileInfoPtr is null"),
-        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(compileInfoPtr == nullptr, OP_LOGE(context->GetNodeName(), "compileInfoPtr is null"),
+                return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }

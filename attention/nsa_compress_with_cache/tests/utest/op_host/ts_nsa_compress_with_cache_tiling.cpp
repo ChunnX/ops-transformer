@@ -220,7 +220,7 @@ const auto Tc_NsaCompressWithCache_Tiling_Case = ::testing::Values(
                                                48)),                          /* ExpectTilingBlockDim */
                              NsaCompressWithCacheParam(4, 66, 16,             /* batchSize, headNum, headDim */
                                                        ge::DataType::DT_BF16, /* Dtype */
-                                                       {144, 192, 1, 1},  /* ActualSeqLenList */
+                                                       {144, 192, 1, 1},      /* ActualSeqLenList */
                                                        LayoutType::TND,       /* Layout */
                                                        32,                    /*CompressBlockSize*/
                                                        16,                    /*CompressStride*/

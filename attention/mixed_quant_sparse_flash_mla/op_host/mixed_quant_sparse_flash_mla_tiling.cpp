@@ -605,7 +605,7 @@ ge::graphStatus MixedQuantSparseFlashMlaTiling::DoOpTiling(QSMLATilingInfo *tili
 
     // -------------set workspacesize-----------------
     constexpr uint32_t TRIPLE_BUFFER_NUM = 3;
-    constexpr uint32_t S2_BASE_SIZE = 128;            // S2轴基本块大小
+    constexpr uint32_t S2_BASE_SIZE = 128; // S2轴基本块大小
     constexpr uint32_t D_SIZE = 512;
     constexpr uint32_t VEC_RES_ELEM_SIZE = 2; // 2: fp16/bf16字节数
     constexpr uint32_t TOPK_MAX_SIZE = 2048;  // TopK选取个数

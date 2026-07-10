@@ -14,9 +14,16 @@ from utils.data import trans_bnsd_to_layout
 
 # ─── Golden 持久化 ───────────────────────────────────────────────────────────
 
-def save_golden_case(case_name: str, inputs: dict,
-                     golden_out: dict, params: dict, golden_dir: str,
-                     primary_out: dict = None, primary_name: str = None):
+
+def save_golden_case(
+    case_name: str,
+    inputs: dict,
+    golden_out: dict,
+    params: dict,
+    golden_dir: str,
+    primary_out: dict = None,
+    primary_name: str = None,
+):
     safe_name = case_name.replace("/", "_")
     case_dir = Path(golden_dir) / safe_name
     case_dir.mkdir(parents=True, exist_ok=True)
@@ -66,18 +73,21 @@ def load_golden_case(case_name: str, golden_dir: str):
 
 # ─── 核心运行逻辑 ────────────────────────────────────────────────────────────
 
-def run_case(params: dict,
-             primary: Backend,
-             golden: Backend,
-             spec: InputSpec = None,
-             comparators: List[Backend] = None,
-             golden_dir: str = None,
-             case_name: str = None,
-             verbose_diff: bool = False,
-             visualize: bool = False,
-             viz_dir: str = "./viz_output",
-             fail_analysis: bool = False,
-             compare_dir: str = None) -> dict:
+
+def run_case(
+    params: dict,
+    primary: Backend,
+    golden: Backend,
+    spec: InputSpec = None,
+    comparators: List[Backend] = None,
+    golden_dir: str = None,
+    case_name: str = None,
+    verbose_diff: bool = False,
+    visualize: bool = False,
+    viz_dir: str = "./viz_output",
+    fail_analysis: bool = False,
+    compare_dir: str = None,
+) -> dict:
     spec = spec or flash_attn_inputs
     comparators = comparators or []
     layout = params.get("input_layout", params.get("layout_q", "BNSD"))
@@ -90,8 +100,12 @@ def run_case(params: dict,
         case_dir = Path(compare_dir) / safe_name
         if case_dir.exists():
             print(f"  [load] 从 {case_dir} 加载 inputs 和 golden...")
-            raw = torch.load(case_dir / "inputs.pt", map_location="cpu", weights_only=False)
-            golden_out = torch.load(case_dir / "golden.pt", map_location="cpu", weights_only=False)
+            raw = torch.load(
+                case_dir / "inputs.pt", map_location="cpu", weights_only=False
+            )
+            golden_out = torch.load(
+                case_dir / "golden.pt", map_location="cpu", weights_only=False
+            )
             cpu_inputs = {}
             for k, v in raw.items():
                 if isinstance(v, torch.Tensor):
@@ -103,22 +117,30 @@ def run_case(params: dict,
             compare_dir = None
 
     if not (compare_dir and case_name):
-        cpu_inputs = spec.generate(params, device=torch.device("cpu"), layout=layout,
-                                   layout_kv=params.get("layout_kv", layout))
+        cpu_inputs = spec.generate(
+            params,
+            device=torch.device("cpu"),
+            layout=layout,
+            layout_kv=params.get("layout_kv", layout),
+        )
         if str(params.get("layout_kv", "")).startswith("PA_"):
             cpu_inputs["block_table"] = params["block_table"]
         elif "block_table" in params and params["block_table"] is not None:
             cpu_inputs["block_table"] = params["block_table"]
 
-        print(f"  [golden] CPU 参考计算...")
+        print("  [golden] CPU 参考计算...")
         golden_out = golden.compute(cpu_inputs, params)
 
     print(f"  [primary] {primary.name} 计算...")
-    dev_inputs = {k: v.to(primary.device) if isinstance(v, torch.Tensor) else v
-                  for k, v in cpu_inputs.items()}
+    dev_inputs = {
+        k: v.to(primary.device) if isinstance(v, torch.Tensor) else v
+        for k, v in cpu_inputs.items()
+    }
     primary_out_raw = primary.compute(dev_inputs, params)
-    primary_out = {k: v.cpu() if isinstance(v, torch.Tensor) else v
-                   for k, v in primary_out_raw.items()}
+    primary_out = {
+        k: v.cpu() if isinstance(v, torch.Tensor) else v
+        for k, v in primary_out_raw.items()
+    }
     del dev_inputs, primary_out_raw
     primary.clear_cache()
 
@@ -126,8 +148,11 @@ def run_case(params: dict,
     dev_out = dev_raw
 
     cpu_raw = golden_out["out"]
-    cpu_out = (trans_bnsd_to_layout(cpu_raw, out_layout, **params)
-               if out_layout != "BNSD" else cpu_raw).float()
+    cpu_out = (
+        trans_bnsd_to_layout(cpu_raw, out_layout, **params)
+        if out_layout != "BNSD"
+        else cpu_raw
+    ).float()
 
     if compare_dir and case_name:
         other_name = "gpu" if primary.name == "npu" else "npu"
@@ -135,6 +160,7 @@ def run_case(params: dict,
         other_path = Path(compare_dir) / safe_name / f"{other_name}_out.pt"
         if other_path.exists():
             from utils.compare import data_compare_benchmark_new
+
             other_out = torch.load(other_path, map_location="cpu", weights_only=False)
             other_raw = other_out["out"].float()
             output_dtype = params.get("Dtype", "fp16")
@@ -149,47 +175,90 @@ def run_case(params: dict,
                     "bf16": "0.001/0.002/0.005/0.01",
                 },
                 "bm_cmp_std": {
-                    "fp32": {"max_re_rtol": 10.0, "avg_re_rtol": 2.0, "rmse_rtol": 2.0,
-                             "small_value": 1e-06, "small_value_atol": 0.0},
-                    "fp16": {"max_re_rtol": 10.0, "avg_re_rtol": 2.0, "rmse_rtol": 2.0,
-                             "small_value": 0.001, "small_value_atol": 0.001},
-                    "bf16": {"max_re_rtol": 10.0, "avg_re_rtol": 2.0, "rmse_rtol": 2.0,
-                             "small_value": 1e-07, "small_value_atol": 0.004},
+                    "fp32": {
+                        "max_re_rtol": 10.0,
+                        "avg_re_rtol": 2.0,
+                        "rmse_rtol": 2.0,
+                        "small_value": 1e-06,
+                        "small_value_atol": 0.0,
+                    },
+                    "fp16": {
+                        "max_re_rtol": 10.0,
+                        "avg_re_rtol": 2.0,
+                        "rmse_rtol": 2.0,
+                        "small_value": 0.001,
+                        "small_value_atol": 0.001,
+                    },
+                    "bf16": {
+                        "max_re_rtol": 10.0,
+                        "avg_re_rtol": 2.0,
+                        "rmse_rtol": 2.0,
+                        "small_value": 1e-07,
+                        "small_value_atol": 0.004,
+                    },
                 },
             }
-            print(f"\n{'='*40} 三方对比模式（详细精度统计） {'='*40}")
+            print(f"\n{'=' * 40} 三方对比模式（详细精度统计） {'=' * 40}")
             str1, str2, data = data_compare_benchmark_new(
                 cmp_params,
                 dev_out.float().numpy(),
                 other_raw.numpy(),
                 cpu_out.numpy(),
-                output_dtype, 0)
-            print(f"\n====== 三方对比结果 ======")
+                output_dtype,
+                0,
+            )
+            print("\n====== 三方对比结果 ======")
             print(f"状态: {str1}, 原因: {str2}")
-            passed = (str1 == "Pass" or str1 == "warning")
-            attn_result = {"passed": passed, "max_abs": 0.0, "mean_abs": 0.0,
-                           "fail_cnt": 0 if passed else 1, "total": 1,
-                           "fail_ratio": 0.0 if passed else 1.0,
-                           "verdict_npu": str1, "verdict_gpu": str2}
+            passed = str1 == "Pass" or str1 == "warning"
+            attn_result = {
+                "passed": passed,
+                "max_abs": 0.0,
+                "mean_abs": 0.0,
+                "fail_cnt": 0 if passed else 1,
+                "total": 1,
+                "fail_ratio": 0.0 if passed else 1.0,
+                "verdict_npu": str1,
+                "verdict_gpu": str2,
+            }
         else:
             print(f"  [warn] {other_path} 不存在，退回 CPU 对比")
             print(f"  [compare] CPU vs {primary.name}")
-            attn_result = check_result(f"CPU_vs_{primary.name}",
-                                        cpu_out, dev_out.float(),
-                                        except_label="CPU", comp_label=primary.name,
-                                        verbose_diff=verbose_diff,
-                                        atol=atol, rtol=rtol)
+            attn_result = check_result(
+                f"CPU_vs_{primary.name}",
+                cpu_out,
+                dev_out.float(),
+                except_label="CPU",
+                comp_label=primary.name,
+                verbose_diff=verbose_diff,
+                atol=atol,
+                rtol=rtol,
+            )
     else:
         print(f"  [compare] CPU vs {primary.name}")
-        attn_result = check_result(f"CPU_vs_{primary.name}",
-                                    cpu_out, dev_out.float(),
-                                    except_label="CPU", comp_label=primary.name,
-                                    verbose_diff=verbose_diff,
-                                    atol=atol, rtol=rtol)
+        attn_result = check_result(
+            f"CPU_vs_{primary.name}",
+            cpu_out,
+            dev_out.float(),
+            except_label="CPU",
+            comp_label=primary.name,
+            verbose_diff=verbose_diff,
+            atol=atol,
+            rtol=rtol,
+        )
 
-    lse_result = {"passed": True, "max_abs": 0.0, "mean_abs": 0.0,
-                  "fail_cnt": 0, "total": 0, "fail_ratio": 0.0}
-    if params.get("return_softmax_lse", False) and "lse" in primary_out and "lse" in golden_out:
+    lse_result = {
+        "passed": True,
+        "max_abs": 0.0,
+        "mean_abs": 0.0,
+        "fail_cnt": 0,
+        "total": 0,
+        "fail_ratio": 0.0,
+    }
+    if (
+        params.get("return_softmax_lse", False)
+        and "lse" in primary_out
+        and "lse" in golden_out
+    ):
         dev_lse = primary_out["lse"]
         if isinstance(dev_lse, torch.Tensor):
             dev_lse = dev_lse.cpu().float()
@@ -198,35 +267,59 @@ def run_case(params: dict,
                 cpu_lse = cpu_lse.float()
                 cpu_lse = cpu_lse.clone()
                 dev_lse = dev_lse.clone()
-                cpu_lse[cpu_lse.isinf() & (cpu_lse > 0)] = float('-inf')
-                dev_lse[dev_lse.isinf() & (dev_lse > 0)] = float('-inf')
-                print(f"  [compare] LSE check")
-                lse_result = check_result("LSE", cpu_lse, dev_lse,
-                                          except_label="CPU_lse", comp_label=f"{primary.name}_lse",
-                                          verbose_diff=verbose_diff,
-                                          atol=atol, rtol=rtol)
+                cpu_lse[cpu_lse.isinf() & (cpu_lse > 0)] = float("-inf")
+                dev_lse[dev_lse.isinf() & (dev_lse > 0)] = float("-inf")
+                print("  [compare] LSE check")
+                lse_result = check_result(
+                    "LSE",
+                    cpu_lse,
+                    dev_lse,
+                    except_label="CPU_lse",
+                    comp_label=f"{primary.name}_lse",
+                    verbose_diff=verbose_diff,
+                    atol=atol,
+                    rtol=rtol,
+                )
 
     for comp in comparators:
-        comp_inputs = {k: v.to(comp.device) if isinstance(v, torch.Tensor) else v for k, v in cpu_inputs.items()}
+        comp_inputs = {
+            k: v.to(comp.device) if isinstance(v, torch.Tensor) else v
+            for k, v in cpu_inputs.items()
+        }
         comp_out = comp.compute(comp_inputs, params)
         comp_cpu = comp_out["out"].cpu()
         print(f"  [compare] {primary.name} vs {comp.name}")
-        _ = check_result(f"{primary.name}_vs_{comp.name}",
-                         dev_out.float(), comp_cpu.float(),
-                         except_label=primary.name, comp_label=comp.name,
-                         atol=atol, rtol=rtol)
+        _ = check_result(
+            f"{primary.name}_vs_{comp.name}",
+            dev_out.float(),
+            comp_cpu.float(),
+            except_label=primary.name,
+            comp_label=comp.name,
+            atol=atol,
+            rtol=rtol,
+        )
 
     ret = {"attn": _to_stats(attn_result), "lse": _to_stats(lse_result)}
 
     if golden_dir and case_name:
-        save_golden_case(case_name, cpu_inputs, golden_out, params, golden_dir,
-                         primary_out=primary_out, primary_name=primary.name)
+        save_golden_case(
+            case_name,
+            cpu_inputs,
+            golden_out,
+            params,
+            golden_dir,
+            primary_out=primary_out,
+            primary_name=primary.name,
+        )
 
-    attn_passed = ret["attn"].get("passed", True) if isinstance(ret["attn"], dict) else True
+    attn_passed = (
+        ret["attn"].get("passed", True) if isinstance(ret["attn"], dict) else True
+    )
     if not attn_passed:
         if fail_analysis:
             try:
                 from utils.compare import analyze_fail_distribution
+
                 analyze_fail_distribution(
                     test_name=case_name or "unknown",
                     expect=cpu_out.float(),
@@ -235,11 +328,13 @@ def run_case(params: dict,
                 )
             except Exception as e:
                 import traceback
+
                 print(f"  [warn] fail_analysis 异常: {e}")
                 traceback.print_exc()
         if visualize:
             try:
                 from utils.precision_visual import visualize_from_tensors
+
                 visualize_from_tensors(
                     cpu_out.float().numpy(),
                     dev_out.float().numpy(),
@@ -248,6 +343,7 @@ def run_case(params: dict,
                 )
             except Exception as e:
                 import traceback
+
                 print(f"  [warn] visualize 异常: {e}")
                 traceback.print_exc()
 
@@ -258,55 +354,90 @@ def run_case(params: dict,
     return ret
 
 
-def run_case_load(case_name: str, golden_dir: str, primary: Backend,
-                  device_id: int = 0, timeout: int = 300,
-                  verbose_diff: bool = False,
-                  visualize: bool = False,
-                  viz_dir: str = "./viz_output",
-                  fail_analysis: bool = False) -> dict:
+def run_case_load(
+    case_name: str,
+    golden_dir: str,
+    primary: Backend,
+    device_id: int = 0,
+    timeout: int = 300,
+    verbose_diff: bool = False,
+    visualize: bool = False,
+    viz_dir: str = "./viz_output",
+    fail_analysis: bool = False,
+) -> dict:
     inputs, golden_data, params = load_golden_case(case_name, golden_dir)
     output_dtype = params.get("Dtype", "fp16")
     atol, rtol = get_tolerance(output_dtype)
 
     dev_inputs = {k: v.to(primary.device) for k, v in inputs.items()}
     npu_out_raw = primary.compute(dev_inputs, params)
-    npu_out = {k: v.cpu() if isinstance(v, torch.Tensor) else v
-               for k, v in npu_out_raw.items()}
+    npu_out = {
+        k: v.cpu() if isinstance(v, torch.Tensor) else v for k, v in npu_out_raw.items()
+    }
 
     out_layout = params.get("layout_out", params.get("layout_q", "BNSD"))
 
     cpu_raw = golden_data["out"]
     dev_raw = npu_out["out"]
 
-    cpu_out = trans_bnsd_to_layout(cpu_raw, out_layout, **params) if out_layout != "BNSD" else cpu_raw
+    cpu_out = (
+        trans_bnsd_to_layout(cpu_raw, out_layout, **params)
+        if out_layout != "BNSD"
+        else cpu_raw
+    )
 
-    attn_result = check_result("CPU_vs_NPU", cpu_out.float(), dev_raw.float(),
-                               except_label="CPU", comp_label=primary.name,
-                               verbose_diff=verbose_diff,
-                               atol=atol, rtol=rtol)
+    attn_result = check_result(
+        "CPU_vs_NPU",
+        cpu_out.float(),
+        dev_raw.float(),
+        except_label="CPU",
+        comp_label=primary.name,
+        verbose_diff=verbose_diff,
+        atol=atol,
+        rtol=rtol,
+    )
 
-    lse_result = {"passed": True, "max_abs": 0.0, "mean_abs": 0.0,
-                  "fail_cnt": 0, "total": 0, "fail_ratio": 0.0}
-    if params.get("return_softmax_lse", False) and "lse" in golden_data and "lse" in npu_out:
+    lse_result = {
+        "passed": True,
+        "max_abs": 0.0,
+        "mean_abs": 0.0,
+        "fail_cnt": 0,
+        "total": 0,
+        "fail_ratio": 0.0,
+    }
+    if (
+        params.get("return_softmax_lse", False)
+        and "lse" in golden_data
+        and "lse" in npu_out
+    ):
         dev_lse = npu_out["lse"]
         cpu_lse = golden_data["lse"]
         if isinstance(dev_lse, torch.Tensor) and isinstance(cpu_lse, torch.Tensor):
             cpu_lse = cpu_lse.float().clone()
             dev_lse = dev_lse.float().clone()
-            cpu_lse[cpu_lse.isinf() & (cpu_lse > 0)] = float('-inf')
-            dev_lse[dev_lse.isinf() & (dev_lse > 0)] = float('-inf')
-            lse_result = check_result("LSE", cpu_lse, dev_lse,
-                                      except_label="CPU_lse", comp_label=f"{primary.name}_lse",
-                                      verbose_diff=verbose_diff,
-                                      atol=atol, rtol=rtol)
+            cpu_lse[cpu_lse.isinf() & (cpu_lse > 0)] = float("-inf")
+            dev_lse[dev_lse.isinf() & (dev_lse > 0)] = float("-inf")
+            lse_result = check_result(
+                "LSE",
+                cpu_lse,
+                dev_lse,
+                except_label="CPU_lse",
+                comp_label=f"{primary.name}_lse",
+                verbose_diff=verbose_diff,
+                atol=atol,
+                rtol=rtol,
+            )
 
     ret = {"attn": _to_stats(attn_result), "lse": _to_stats(lse_result)}
 
-    attn_passed = ret["attn"].get("passed", True) if isinstance(ret["attn"], dict) else True
+    attn_passed = (
+        ret["attn"].get("passed", True) if isinstance(ret["attn"], dict) else True
+    )
     if not attn_passed:
         if fail_analysis:
             try:
                 from utils.compare import analyze_fail_distribution
+
                 analyze_fail_distribution(
                     test_name=case_name,
                     expect=cpu_out.float(),
@@ -315,11 +446,13 @@ def run_case_load(case_name: str, golden_dir: str, primary: Backend,
                 )
             except Exception as e:
                 import traceback
+
                 print(f"  [warn] fail_analysis 异常: {e}")
                 traceback.print_exc()
         if visualize:
             try:
                 from utils.precision_visual import visualize_from_tensors
+
                 visualize_from_tensors(
                     cpu_out.float().numpy(),
                     dev_raw.float().numpy(),
@@ -328,6 +461,7 @@ def run_case_load(case_name: str, golden_dir: str, primary: Backend,
                 )
             except Exception as e:
                 import traceback
+
                 print(f"  [warn] visualize 异常: {e}")
                 traceback.print_exc()
 
@@ -343,7 +477,19 @@ def _to_stats(val) -> dict:
     if isinstance(val, dict):
         return val
     if val:
-        return {"passed": True, "max_abs": 0.0, "mean_abs": 0.0,
-                "fail_cnt": 0, "total": 0, "fail_ratio": 0.0}
-    return {"passed": False, "max_abs": float('nan'), "mean_abs": float('nan'),
-            "fail_cnt": -1, "total": -1, "fail_ratio": float('nan')}
+        return {
+            "passed": True,
+            "max_abs": 0.0,
+            "mean_abs": 0.0,
+            "fail_cnt": 0,
+            "total": 0,
+            "fail_ratio": 0.0,
+        }
+    return {
+        "passed": False,
+        "max_abs": float("nan"),
+        "mean_abs": float("nan"),
+        "fail_cnt": -1,
+        "total": -1,
+        "fail_ratio": float("nan"),
+    }

@@ -41,7 +41,7 @@
     $$
     RmsNormQuant(x) = ({RmsNorm}(x) + bias) * deqScale
     $$
-  
+
     Query计算公式，包括W^{DQKV}矩阵乘、W^{UK}矩阵乘、RmsNormQuant和ROPE旋转位置编码处理
 
     $$
@@ -68,56 +68,56 @@
 
 ```cpp
 aclnnStatus aclnnMlaPreprocessGetWorkspaceSize(
-  const aclTensor *input, 
-  const aclTensor *gamma0, 
-  const aclTensor *beta0, 
-  const aclTensor *quantScale0, 
+  const aclTensor *input,
+  const aclTensor *gamma0,
+  const aclTensor *beta0,
+  const aclTensor *quantScale0,
   const aclTensor *quantOffset0,
-  const aclTensor *wdqkv, 
-  const aclTensor *deScale0, 
-  const aclTensor *bias0, 
-  const aclTensor *gamma1, 
-  const aclTensor *beta1, 
-  const aclTensor *quantScale1, 
-  const aclTensor *quantOffset1, 
-  const aclTensor *wuq, 
-  const aclTensor *deScale1, 
-  const aclTensor *bias1, 
-  const aclTensor *gamma2, 
-  const aclTensor *cos, 
-  const aclTensor *sin, 
-  const aclTensor *wuk, 
-  const aclTensor *kvCache, 
-  const aclTensor *kvCacheRope, 
-  const aclTensor *slotMapping, 
-  const aclTensor *ctkvScale, 
-  const aclTensor *qNopeScale, 
-  int64_t          wdqDim, 
-  int64_t          qRopeDim, 
-  int64_t          kRopeDim, 
-  double           epsilon, 
-  int64_t          qRotaryCoeff, 
-  int64_t          kRotaryCoeff, 
-  bool             transposeWdq, 
-  bool             transposeWuq, 
-  bool             transposeWuk, 
-  int64_t          cacheMode, 
-  int64_t          quantMode, 
-  bool             doRmsNorm, 
-  int64_t          wdkvSplitCount, 
-  const aclTensor  *qOut, 
-  const aclTensor  *kvCacheOut, 
-  const aclTensor  *qRopeOut, 
-  const aclTensor  *krCacheOut, 
-  uint64_t        *workspaceSize, 
+  const aclTensor *wdqkv,
+  const aclTensor *deScale0,
+  const aclTensor *bias0,
+  const aclTensor *gamma1,
+  const aclTensor *beta1,
+  const aclTensor *quantScale1,
+  const aclTensor *quantOffset1,
+  const aclTensor *wuq,
+  const aclTensor *deScale1,
+  const aclTensor *bias1,
+  const aclTensor *gamma2,
+  const aclTensor *cos,
+  const aclTensor *sin,
+  const aclTensor *wuk,
+  const aclTensor *kvCache,
+  const aclTensor *kvCacheRope,
+  const aclTensor *slotMapping,
+  const aclTensor *ctkvScale,
+  const aclTensor *qNopeScale,
+  int64_t          wdqDim,
+  int64_t          qRopeDim,
+  int64_t          kRopeDim,
+  double           epsilon,
+  int64_t          qRotaryCoeff,
+  int64_t          kRotaryCoeff,
+  bool             transposeWdq,
+  bool             transposeWuq,
+  bool             transposeWuk,
+  int64_t          cacheMode,
+  int64_t          quantMode,
+  bool             doRmsNorm,
+  int64_t          wdkvSplitCount,
+  const aclTensor  *qOut,
+  const aclTensor  *kvCacheOut,
+  const aclTensor  *qRopeOut,
+  const aclTensor  *krCacheOut,
+  uint64_t        *workspaceSize,
   aclOpExecutor   **executor)
 ```
 
 ```cpp
 aclnnStatus aclnnMlaPreprocess(
-  void          *workspace, 
-  uint64_t       workspaceSize, 
-  aclOpExecutor *executor, 
+  void          *workspace,
+  uint64_t       workspaceSize,
+  aclOpExecutor *executor,
   aclrtStream    stream)
 ```
 
@@ -771,7 +771,7 @@ bool ReadFile(const std::string &filePath, std::vector<int64_t> shape, std::vect
 {
     size_t fileSize = 1;
     for (int64_t i : shape){
-        fileSize *= i; 
+        fileSize *= i;
     }
     std::ifstream file(filePath, std::ios::binary);
     if (!file.is_open()) {
@@ -946,7 +946,7 @@ int main() {
   int64_t blockSize = 128;
 
   int64_t wdqDim = 128;
-  int64_t qRopeDim = 0; 
+  int64_t qRopeDim = 0;
   int64_t kRopeDim = 0;
   double epsilon = 1e-05;
   int64_t qRotaryCoeff = 2;

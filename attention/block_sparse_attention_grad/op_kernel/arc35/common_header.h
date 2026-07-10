@@ -42,11 +42,11 @@ struct ConstInfo {
 
 struct RunTimeInfo {
     int32_t taskId{0};
-    int32_t bIdx{0};       // 当前计算的batch的idx
-    int32_t n1Idx{0};      // 当前计算的q_head的idx
-    int32_t n2Idx{0};      // 当前计算的kv_head的idx
-    int32_t s1Idx{0};      // 当前计算的q_seq的起始idx
-    int32_t s2Idx{0};      // 当前计算的kv_seq的起始idx
+    int32_t bIdx{0};  // 当前计算的batch的idx
+    int32_t n1Idx{0}; // 当前计算的q_head的idx
+    int32_t n2Idx{0}; // 当前计算的kv_head的idx
+    int32_t s1Idx{0}; // 当前计算的q_seq的起始idx
+    int32_t s2Idx{0}; // 当前计算的kv_seq的起始idx
     int32_t last_q_seq_sum{0};
     int32_t last_kv_seq_sum{0};
     int32_t cur_q_seq_len{0};
@@ -55,10 +55,10 @@ struct RunTimeInfo {
     int32_t need_copy_kv{0};     // 是否需要copy kv
     int32_t kv_ping_pong_idx{0}; // kv的ping pong idx
     int32_t is_singlekv_last{0};
-    int64_t s1Len{0};      // 当前计算的q_seq的长度
-    int64_t s2Len{0};      // 当前计算的kv_seq的长度
-    int64_t s1LenAlign{0}; // 当前计算的q_seq的16对齐的长度
-    int64_t s2LenAlign{0}; // 当前计算的kv_seq的16对齐的长度
+    int64_t s1Len{0};         // 当前计算的q_seq的长度
+    int64_t s2Len{0};         // 当前计算的kv_seq的长度
+    int64_t s1LenAlign{0};    // 当前计算的q_seq的16对齐的长度
+    int64_t s2LenAlign{0};    // 当前计算的kv_seq的16对齐的长度
     int64_t queryGmOffset{0}; // query gm offset
     int64_t keyGmOffset{0};   // key gm offset
     int64_t lseGmOffset{0};   // lse gm offset
@@ -148,8 +148,8 @@ __aicore__ inline bool IsValidBlock(const ConstInfo &const_info, const int64_t b
 
 {
     int64_t offset = batch_idx * (const_info.q_head_num * const_info.q_block_num * const_info.kv_block_num) +
-                      n1_idx * (const_info.q_block_num * const_info.kv_block_num) +
-                      kv_block_idx * const_info.q_block_num + q_block_idx;
+                     n1_idx * (const_info.q_block_num * const_info.kv_block_num) +
+                     kv_block_idx * const_info.q_block_num + q_block_idx;
     bool is_valid = block_sparse_mask[offset];
     return is_valid;
 }

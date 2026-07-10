@@ -26,8 +26,8 @@
 
 
 #define NSA_COMPRESS_WITH_CACHE_KERNEL_PARAM                                                                           \
-    (uint8_t *input, uint8_t *weight, uint8_t *slotMapping, uint8_t *output_cache, uint8_t *act_seq_len,               \
-     uint8_t *block_table, uint8_t *output_cache_ref, uint8_t *workspace, uint8_t *tiling)
+    (uint8_t * input, uint8_t * weight, uint8_t * slotMapping, uint8_t * output_cache, uint8_t * act_seq_len,          \
+     uint8_t * block_table, uint8_t * output_cache_ref, uint8_t * workspace, uint8_t * tiling)
 
 namespace ops::adv::tests::NsaCompressWithCache {
 class NsaCompressWithCacheCase : public ops::adv::tests::utils::Case {

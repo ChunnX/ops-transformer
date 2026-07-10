@@ -31,21 +31,21 @@
    $$
 
    其中，$p$是target distribution，通过对main attention score进行所有的head的求和，然后把求和结果沿着上下文方向进行L1正则化得到。$D_{KL}$为KL散度，其表达式为：
-   
+
    $$
    D_{KL}(a||b){=}\sum_ia_i\mathrm{log}{\left(\frac{a_i}{b_i}\right)}
    $$
 
    通过求导可得Loss的梯度表达式：
-   
+
    $$
-   dI\mathop{{}}\nolimits_{{t,:}}=Softmax \left( I\mathop{{}}\nolimits_{{t,:}} \left) -p\mathop{{}}\nolimits_{{t,:}}\right. \right. 
+   dI\mathop{{}}\nolimits_{{t,:}}=Softmax \left( I\mathop{{}}\nolimits_{{t,:}} \left) -p\mathop{{}}\nolimits_{{t,:}}\right. \right.
    $$
 
    利用链式法则可以进行weights，query和key矩阵的梯度计算：
-   
+
    $$
-   dW\mathop{{}}\nolimits_{{t,:}}=dI\mathop{{}}\nolimits_{{t,:}}\text{@} \left( ReLU \left( S\mathop{{}}\nolimits_{{t,:}} \left)  \left) \mathop{{}}\nolimits^{{T}}\right. \right. \right. \right. 
+   dW\mathop{{}}\nolimits_{{t,:}}=dI\mathop{{}}\nolimits_{{t,:}}\text{@} \left( ReLU \left( S\mathop{{}}\nolimits_{{t,:}} \left)  \left) \mathop{{}}\nolimits^{{T}}\right. \right. \right. \right.
    $$
 
    $$
@@ -53,7 +53,7 @@
    $$
 
    $$
-   dK\mathop{{}}\nolimits_{{:t,:}}= \left( dS\mathop{{}}\nolimits_{{t,:}} \left) \mathop{{}}\nolimits^{{T}}@q\mathop{{}}\nolimits_{{:t,:}}\right. \right. 
+   dK\mathop{{}}\nolimits_{{:t,:}}= \left( dS\mathop{{}}\nolimits_{{t,:}} \left) \mathop{{}}\nolimits^{{T}}@q\mathop{{}}\nolimits_{{:t,:}}\right. \right.
    $$
 
    其中，S为QK矩阵softmax的结果。
@@ -96,23 +96,23 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLossGetWorkspaceSize(
 
 ```c++
 aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
-    void             *workspace, 
-    uint64_t          workspaceSize, 
-    aclOpExecutor    *executor, 
+    void             *workspace,
+    uint64_t          workspaceSize,
+    aclOpExecutor    *executor,
     aclrtStream stream)
 ```
 
 ## aclnnSparseLightningIndexerGradKLLossGetWorkspaceSize
 
 - **参数说明:**
-  
+
     <table style="undefined;table-layout: fixed; width: 1550px">
         <colgroup>
             <col style="width: 220px">
             <col style="width: 120px">
-            <col style="width: 300px">  
-            <col style="width: 400px">  
-            <col style="width: 212px">  
+            <col style="width: 300px">
+            <col style="width: 400px">
+            <col style="width: 212px">
             <col style="width: 100px">
             <col style="width: 190px">
             <col style="width: 145px">
@@ -258,7 +258,7 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
             <td>ND</td>
             <td>(B,S2,N2,DRope)、(T2,N2,DRope)</td>
             <td>√</td>
-        </tr>    
+        </tr>
         <tr>
             <td>actualSeqLengthsQuery</td>
             <td>输入</td>
@@ -726,7 +726,7 @@ int main() {
   void* sparseIndicesDeviceAddr = nullptr;
   void* softmaxMaxDeviceAddr = nullptr;
   void* softmaxSumDeviceAddr = nullptr;
-  
+
   void* dQIndexDeviceAddr = nullptr;
   void* dKIndexDeviceAddr = nullptr;
   void* dWeightDeviceAddr = nullptr;
@@ -817,28 +817,28 @@ int main() {
             &workspaceSize, &executor);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnSparseLightningIndexerGradKLLossGetWorkspaceSize failed. ERROR: %d\n", ret);
             return ret);
-  
+
   // 根据第一段接口计算出的workspaceSize申请device内存
   void* workspaceAddr = nullptr;
   if (workspaceSize > 0) {
     ret = aclrtMalloc(&workspaceAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("allocate workspace failed. ERROR: %d\n", ret); return ret);
   }
-  
+
   // 调用aclnnSparseLightningIndexerGradKLLoss第二段接口
   ret = aclnnSparseLightningIndexerGradKLLoss(workspaceAddr, workspaceSize, executor, stream);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnSparseLightningIndexerGradKLLoss failed. ERROR: %d\n", ret); return ret);
-  
+
   // 4.（固定写法）同步等待任务执行结束
   ret = aclrtSynchronizeStream(stream);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
-  
+
   // 5. 获取输出的值，将device侧内存上的结果拷贝至host侧，需要根据具体API的接口定义修改
   PrintOutResult(dQIndexShape, &dQIndexDeviceAddr);
   PrintOutResult(dKIndexShape, &dKIndexDeviceAddr);
   PrintOutResult(dWeightShape, &dWeightDeviceAddr);
   PrintOutResult(lossShape, &lossDeviceAddr);
-  
+
   // 6. 释放aclTensor和aclScalar，需要根据具体API的接口定义修改
   aclDestroyTensor(q);
   aclDestroyTensor(k);
@@ -855,7 +855,7 @@ int main() {
   aclDestroyTensor(dKIndex);
   aclDestroyTensor(dWeight);
   aclDestroyTensor(loss);
-  
+
   // 7. 释放device资源
   aclrtFree(qDeviceAddr);
   aclrtFree(kDeviceAddr);
@@ -879,7 +879,7 @@ int main() {
   aclrtDestroyContext(context);
   aclrtResetDevice(deviceId);
   aclFinalize();
-  
+
   return 0;
 }
 ```

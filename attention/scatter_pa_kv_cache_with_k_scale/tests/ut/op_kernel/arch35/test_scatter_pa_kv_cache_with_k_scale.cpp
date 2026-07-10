@@ -21,15 +21,14 @@
 
 using namespace std;
 
-extern "C" __global__ __aicore__ void scatter_pa_kv_cache_with_k_scale(
-    GM_ADDR key, GM_ADDR value,
-    GM_ADDR key_cache, GM_ADDR value_cache,
-    GM_ADDR slot_mapping, GM_ADDR key_scale, GM_ADDR key_scale_cache,
-    GM_ADDR key_cache_out, GM_ADDR value_cache_out, GM_ADDR key_scale_cache_out,
-    GM_ADDR workspace, GM_ADDR tiling);
+extern "C" __global__ __aicore__ void scatter_pa_kv_cache_with_k_scale(GM_ADDR key, GM_ADDR value, GM_ADDR key_cache,
+                                                                       GM_ADDR value_cache, GM_ADDR slot_mapping,
+                                                                       GM_ADDR key_scale, GM_ADDR key_scale_cache,
+                                                                       GM_ADDR key_cache_out, GM_ADDR value_cache_out,
+                                                                       GM_ADDR key_scale_cache_out, GM_ADDR workspace,
+                                                                       GM_ADDR tiling);
 
-class scatter_pa_kv_cache_with_k_scale_test : public testing::Test
-{
+class scatter_pa_kv_cache_with_k_scale_test : public testing::Test {
 protected:
     static void SetUpTestCase()
     {
@@ -59,18 +58,18 @@ TEST_F(scatter_pa_kv_cache_with_k_scale_test, test_case_specialized_fp8_e4m3_int
     size_t keyScaleSize = numTokens * numHead * sizeof(float);
     size_t keyScaleCacheSize = numBlocks * blockSize * numHead * sizeof(float);
 
-    uint8_t* key = (uint8_t*)AscendC::GmAlloc(keySize);
-    uint8_t* value = (uint8_t*)AscendC::GmAlloc(valueSize);
-    uint8_t* keyCache = (uint8_t*)AscendC::GmAlloc(keyCacheSize);
-    uint8_t* valueCache = (uint8_t*)AscendC::GmAlloc(valueCacheSize);
-    uint8_t* slotMapping = (uint8_t*)AscendC::GmAlloc(slotMappingSize);
-    uint8_t* keyScale = (uint8_t*)AscendC::GmAlloc(keyScaleSize);
-    uint8_t* keyScaleCache = (uint8_t*)AscendC::GmAlloc(keyScaleCacheSize);
+    uint8_t *key = (uint8_t *)AscendC::GmAlloc(keySize);
+    uint8_t *value = (uint8_t *)AscendC::GmAlloc(valueSize);
+    uint8_t *keyCache = (uint8_t *)AscendC::GmAlloc(keyCacheSize);
+    uint8_t *valueCache = (uint8_t *)AscendC::GmAlloc(valueCacheSize);
+    uint8_t *slotMapping = (uint8_t *)AscendC::GmAlloc(slotMappingSize);
+    uint8_t *keyScale = (uint8_t *)AscendC::GmAlloc(keyScaleSize);
+    uint8_t *keyScaleCache = (uint8_t *)AscendC::GmAlloc(keyScaleCacheSize);
 
-    uint8_t* workspace = (uint8_t*)AscendC::GmAlloc(1024 * 1024);
-    uint8_t* tiling = (uint8_t*)AscendC::GmAlloc(sizeof(ScatterPaKvCacheWithKScaleTilingData));
+    uint8_t *workspace = (uint8_t *)AscendC::GmAlloc(1024 * 1024);
+    uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(sizeof(ScatterPaKvCacheWithKScaleTilingData));
 
-    ScatterPaKvCacheWithKScaleTilingData* tilingData = reinterpret_cast<ScatterPaKvCacheWithKScaleTilingData*>(tiling);
+    ScatterPaKvCacheWithKScaleTilingData *tilingData = reinterpret_cast<ScatterPaKvCacheWithKScaleTilingData *>(tiling);
     tilingData->needCoreNum = 1;
     tilingData->numTokens = numTokens;
     tilingData->numHead = numHead;
@@ -113,36 +112,34 @@ TEST_F(scatter_pa_kv_cache_with_k_scale_test, test_case_specialized_fp8_e4m3_int
     for (size_t i = 0; i < valueCacheSize; ++i) {
         valueCache[i] = 0;
     }
-    int32_t* slotMappingData = reinterpret_cast<int32_t*>(slotMapping);
+    int32_t *slotMappingData = reinterpret_cast<int32_t *>(slotMapping);
     slotMappingData[0] = 0;
     slotMappingData[1] = 16;
     slotMappingData[2] = 1;
     slotMappingData[3] = 17;
 
-    float* keyScaleData = reinterpret_cast<float*>(keyScale);
+    float *keyScaleData = reinterpret_cast<float *>(keyScale);
     for (int64_t i = 0; i < numTokens * numHead; ++i) {
         keyScaleData[i] = 1.0f + static_cast<float>(i) * 0.1f;
     }
-    float* keyScaleCacheData = reinterpret_cast<float*>(keyScaleCache);
+    float *keyScaleCacheData = reinterpret_cast<float *>(keyScaleCache);
     for (int64_t i = 0; i < numBlocks * blockSize * numHead; ++i) {
         keyScaleCacheData[i] = 0.0f;
     }
 
     ICPU_SET_TILING_KEY(1000001);
-    
-    auto scatterPaKvCacheWithKScaleWrapper = [] (GM_ADDR key, GM_ADDR value,
-        GM_ADDR key_cache, GM_ADDR value_cache, GM_ADDR slot_mapping,
-        GM_ADDR key_scale, GM_ADDR key_scale_cache,
-        GM_ADDR key_cache_out, GM_ADDR value_cache_out, GM_ADDR key_scale_cache_out,
-        GM_ADDR workspace, GM_ADDR tiling) {
+
+    auto scatterPaKvCacheWithKScaleWrapper = [](GM_ADDR key, GM_ADDR value, GM_ADDR key_cache, GM_ADDR value_cache,
+                                                GM_ADDR slot_mapping, GM_ADDR key_scale, GM_ADDR key_scale_cache,
+                                                GM_ADDR key_cache_out, GM_ADDR value_cache_out,
+                                                GM_ADDR key_scale_cache_out, GM_ADDR workspace, GM_ADDR tiling) {
         scatter_pa_kv_cache_with_k_scale<SCATTER_KV_CACHE_SCENE_SPECIALIZED>(
-            key, value, key_cache, value_cache, slot_mapping, key_scale, key_scale_cache,
-            key_cache_out, value_cache_out, key_scale_cache_out, workspace, tiling);
+            key, value, key_cache, value_cache, slot_mapping, key_scale, key_scale_cache, key_cache_out,
+            value_cache_out, key_scale_cache_out, workspace, tiling);
     };
-    
-    ICPU_RUN_KF(scatterPaKvCacheWithKScaleWrapper, 1,
-        key, value, keyCache, valueCache, slotMapping, keyScale, keyScaleCache,
-        keyCache, valueCache, keyScaleCache, workspace, tiling);
+
+    ICPU_RUN_KF(scatterPaKvCacheWithKScaleWrapper, 1, key, value, keyCache, valueCache, slotMapping, keyScale,
+                keyScaleCache, keyCache, valueCache, keyScaleCache, workspace, tiling);
 
     AscendC::GmFree(key);
     AscendC::GmFree(value);
@@ -173,18 +170,18 @@ TEST_F(scatter_pa_kv_cache_with_k_scale_test, test_case_generalized_fp8_e4m3_int
     size_t keyScaleSize = numTokens * numHead * sizeof(float);
     size_t keyScaleCacheSize = numBlocks * blockSize * numHead * sizeof(float);
 
-    uint8_t* key = (uint8_t*)AscendC::GmAlloc(keySize);
-    uint8_t* value = (uint8_t*)AscendC::GmAlloc(valueSize);
-    uint8_t* keyCache = (uint8_t*)AscendC::GmAlloc(keyCacheSize);
-    uint8_t* valueCache = (uint8_t*)AscendC::GmAlloc(valueCacheSize);
-    uint8_t* slotMapping = (uint8_t*)AscendC::GmAlloc(slotMappingSize);
-    uint8_t* keyScale = (uint8_t*)AscendC::GmAlloc(keyScaleSize);
-    uint8_t* keyScaleCache = (uint8_t*)AscendC::GmAlloc(keyScaleCacheSize);
+    uint8_t *key = (uint8_t *)AscendC::GmAlloc(keySize);
+    uint8_t *value = (uint8_t *)AscendC::GmAlloc(valueSize);
+    uint8_t *keyCache = (uint8_t *)AscendC::GmAlloc(keyCacheSize);
+    uint8_t *valueCache = (uint8_t *)AscendC::GmAlloc(valueCacheSize);
+    uint8_t *slotMapping = (uint8_t *)AscendC::GmAlloc(slotMappingSize);
+    uint8_t *keyScale = (uint8_t *)AscendC::GmAlloc(keyScaleSize);
+    uint8_t *keyScaleCache = (uint8_t *)AscendC::GmAlloc(keyScaleCacheSize);
 
-    uint8_t* workspace = (uint8_t*)AscendC::GmAlloc(1024 * 1024);
-    uint8_t* tiling = (uint8_t*)AscendC::GmAlloc(sizeof(ScatterPaKvCacheWithKScaleTilingData));
+    uint8_t *workspace = (uint8_t *)AscendC::GmAlloc(1024 * 1024);
+    uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(sizeof(ScatterPaKvCacheWithKScaleTilingData));
 
-    ScatterPaKvCacheWithKScaleTilingData* tilingData = reinterpret_cast<ScatterPaKvCacheWithKScaleTilingData*>(tiling);
+    ScatterPaKvCacheWithKScaleTilingData *tilingData = reinterpret_cast<ScatterPaKvCacheWithKScaleTilingData *>(tiling);
     tilingData->needCoreNum = 1;
     tilingData->numTokens = numTokens;
     tilingData->numHead = numHead;
@@ -227,36 +224,34 @@ TEST_F(scatter_pa_kv_cache_with_k_scale_test, test_case_generalized_fp8_e4m3_int
     for (size_t i = 0; i < valueCacheSize; ++i) {
         valueCache[i] = 0;
     }
-    int32_t* slotMappingData = reinterpret_cast<int32_t*>(slotMapping);
+    int32_t *slotMappingData = reinterpret_cast<int32_t *>(slotMapping);
     slotMappingData[0] = 0;
     slotMappingData[1] = 16;
     slotMappingData[2] = 1;
     slotMappingData[3] = 17;
 
-    float* keyScaleData = reinterpret_cast<float*>(keyScale);
+    float *keyScaleData = reinterpret_cast<float *>(keyScale);
     for (int64_t i = 0; i < numTokens * numHead; ++i) {
         keyScaleData[i] = 1.0f + static_cast<float>(i) * 0.1f;
     }
-    float* keyScaleCacheData = reinterpret_cast<float*>(keyScaleCache);
+    float *keyScaleCacheData = reinterpret_cast<float *>(keyScaleCache);
     for (int64_t i = 0; i < numBlocks * blockSize * numHead; ++i) {
         keyScaleCacheData[i] = 0.0f;
-}
+    }
 
     ICPU_SET_TILING_KEY(1000001);
-    
-    auto scatterPaKvCacheWithKScaleWrapper = [] (GM_ADDR key, GM_ADDR value,
-        GM_ADDR key_cache, GM_ADDR value_cache, GM_ADDR slot_mapping,
-        GM_ADDR key_scale, GM_ADDR key_scale_cache,
-        GM_ADDR key_cache_out, GM_ADDR value_cache_out, GM_ADDR key_scale_cache_out,
-        GM_ADDR workspace, GM_ADDR tiling) {
+
+    auto scatterPaKvCacheWithKScaleWrapper = [](GM_ADDR key, GM_ADDR value, GM_ADDR key_cache, GM_ADDR value_cache,
+                                                GM_ADDR slot_mapping, GM_ADDR key_scale, GM_ADDR key_scale_cache,
+                                                GM_ADDR key_cache_out, GM_ADDR value_cache_out,
+                                                GM_ADDR key_scale_cache_out, GM_ADDR workspace, GM_ADDR tiling) {
         scatter_pa_kv_cache_with_k_scale<SCATTER_KV_CACHE_SCENE_GENERALIZED>(
-            key, value, key_cache, value_cache, slot_mapping, key_scale, key_scale_cache,
-            key_cache_out, value_cache_out, key_scale_cache_out, workspace, tiling);
+            key, value, key_cache, value_cache, slot_mapping, key_scale, key_scale_cache, key_cache_out,
+            value_cache_out, key_scale_cache_out, workspace, tiling);
     };
-    
-    ICPU_RUN_KF(scatterPaKvCacheWithKScaleWrapper, 1,
-        key, value, keyCache, valueCache, slotMapping, keyScale, keyScaleCache,
-        keyCache, valueCache, keyScaleCache, workspace, tiling);
+
+    ICPU_RUN_KF(scatterPaKvCacheWithKScaleWrapper, 1, key, value, keyCache, valueCache, slotMapping, keyScale,
+                keyScaleCache, keyCache, valueCache, keyScaleCache, workspace, tiling);
 
     AscendC::GmFree(key);
     AscendC::GmFree(value);
@@ -287,18 +282,18 @@ TEST_F(scatter_pa_kv_cache_with_k_scale_test, test_case_specialized_fp8_e5m2_int
     size_t keyScaleSize = numTokens * numHead * sizeof(float);
     size_t keyScaleCacheSize = numBlocks * blockSize * numHead * sizeof(float);
 
-    uint8_t* key = (uint8_t*)AscendC::GmAlloc(keySize);
-    uint8_t* value = (uint8_t*)AscendC::GmAlloc(valueSize);
-    uint8_t* keyCache = (uint8_t*)AscendC::GmAlloc(keyCacheSize);
-    uint8_t* valueCache = (uint8_t*)AscendC::GmAlloc(valueCacheSize);
-    uint8_t* slotMapping = (uint8_t*)AscendC::GmAlloc(slotMappingSize);
-    uint8_t* keyScale = (uint8_t*)AscendC::GmAlloc(keyScaleSize);
-    uint8_t* keyScaleCache = (uint8_t*)AscendC::GmAlloc(keyScaleCacheSize);
+    uint8_t *key = (uint8_t *)AscendC::GmAlloc(keySize);
+    uint8_t *value = (uint8_t *)AscendC::GmAlloc(valueSize);
+    uint8_t *keyCache = (uint8_t *)AscendC::GmAlloc(keyCacheSize);
+    uint8_t *valueCache = (uint8_t *)AscendC::GmAlloc(valueCacheSize);
+    uint8_t *slotMapping = (uint8_t *)AscendC::GmAlloc(slotMappingSize);
+    uint8_t *keyScale = (uint8_t *)AscendC::GmAlloc(keyScaleSize);
+    uint8_t *keyScaleCache = (uint8_t *)AscendC::GmAlloc(keyScaleCacheSize);
 
-    uint8_t* workspace = (uint8_t*)AscendC::GmAlloc(1024 * 1024);
-    uint8_t* tiling = (uint8_t*)AscendC::GmAlloc(sizeof(ScatterPaKvCacheWithKScaleTilingData));
+    uint8_t *workspace = (uint8_t *)AscendC::GmAlloc(1024 * 1024);
+    uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(sizeof(ScatterPaKvCacheWithKScaleTilingData));
 
-    ScatterPaKvCacheWithKScaleTilingData* tilingData = reinterpret_cast<ScatterPaKvCacheWithKScaleTilingData*>(tiling);
+    ScatterPaKvCacheWithKScaleTilingData *tilingData = reinterpret_cast<ScatterPaKvCacheWithKScaleTilingData *>(tiling);
     tilingData->needCoreNum = 1;
     tilingData->numTokens = numTokens;
     tilingData->numHead = numHead;
@@ -341,35 +336,33 @@ TEST_F(scatter_pa_kv_cache_with_k_scale_test, test_case_specialized_fp8_e5m2_int
     for (size_t i = 0; i < valueCacheSize; ++i) {
         valueCache[i] = 0;
     }
-    int32_t* slotMappingData = reinterpret_cast<int32_t*>(slotMapping);
+    int32_t *slotMappingData = reinterpret_cast<int32_t *>(slotMapping);
     for (int64_t i = 0; i < numTokens; ++i) {
         slotMappingData[i] = static_cast<int32_t>(i % maxSlot);
     }
 
-    float* keyScaleData = reinterpret_cast<float*>(keyScale);
+    float *keyScaleData = reinterpret_cast<float *>(keyScale);
     for (int64_t i = 0; i < numTokens * numHead; ++i) {
         keyScaleData[i] = 1.0f + static_cast<float>(i) * 0.05f;
     }
-    float* keyScaleCacheData = reinterpret_cast<float*>(keyScaleCache);
+    float *keyScaleCacheData = reinterpret_cast<float *>(keyScaleCache);
     for (int64_t i = 0; i < numBlocks * blockSize * numHead; ++i) {
         keyScaleCacheData[i] = 0.0f;
     }
 
     ICPU_SET_TILING_KEY(1000001);
-    
-    auto scatterPaKvCacheWithKScaleWrapper = [] (GM_ADDR key, GM_ADDR value,
-        GM_ADDR key_cache, GM_ADDR value_cache, GM_ADDR slot_mapping,
-        GM_ADDR key_scale, GM_ADDR key_scale_cache,
-        GM_ADDR key_cache_out, GM_ADDR value_cache_out, GM_ADDR key_scale_cache_out,
-        GM_ADDR workspace, GM_ADDR tiling) {
+
+    auto scatterPaKvCacheWithKScaleWrapper = [](GM_ADDR key, GM_ADDR value, GM_ADDR key_cache, GM_ADDR value_cache,
+                                                GM_ADDR slot_mapping, GM_ADDR key_scale, GM_ADDR key_scale_cache,
+                                                GM_ADDR key_cache_out, GM_ADDR value_cache_out,
+                                                GM_ADDR key_scale_cache_out, GM_ADDR workspace, GM_ADDR tiling) {
         scatter_pa_kv_cache_with_k_scale<SCATTER_KV_CACHE_SCENE_SPECIALIZED>(
-            key, value, key_cache, value_cache, slot_mapping, key_scale, key_scale_cache,
-            key_cache_out, value_cache_out, key_scale_cache_out, workspace, tiling);
+            key, value, key_cache, value_cache, slot_mapping, key_scale, key_scale_cache, key_cache_out,
+            value_cache_out, key_scale_cache_out, workspace, tiling);
     };
-    
-    ICPU_RUN_KF(scatterPaKvCacheWithKScaleWrapper, 1,
-        key, value, keyCache, valueCache, slotMapping, keyScale, keyScaleCache,
-        keyCache, valueCache, keyScaleCache, workspace, tiling);
+
+    ICPU_RUN_KF(scatterPaKvCacheWithKScaleWrapper, 1, key, value, keyCache, valueCache, slotMapping, keyScale,
+                keyScaleCache, keyCache, valueCache, keyScaleCache, workspace, tiling);
 
     AscendC::GmFree(key);
     AscendC::GmFree(value);
@@ -400,18 +393,18 @@ TEST_F(scatter_pa_kv_cache_with_k_scale_test, test_case_invalid_slot_int32)
     size_t keyScaleSize = numTokens * numHead * sizeof(float);
     size_t keyScaleCacheSize = numBlocks * blockSize * numHead * sizeof(float);
 
-    uint8_t* key = (uint8_t*)AscendC::GmAlloc(keySize);
-    uint8_t* value = (uint8_t*)AscendC::GmAlloc(valueSize);
-    uint8_t* keyCache = (uint8_t*)AscendC::GmAlloc(keyCacheSize);
-    uint8_t* valueCache = (uint8_t*)AscendC::GmAlloc(valueCacheSize);
-    uint8_t* slotMapping = (uint8_t*)AscendC::GmAlloc(slotMappingSize);
-    uint8_t* keyScale = (uint8_t*)AscendC::GmAlloc(keyScaleSize);
-    uint8_t* keyScaleCache = (uint8_t*)AscendC::GmAlloc(keyScaleCacheSize);
+    uint8_t *key = (uint8_t *)AscendC::GmAlloc(keySize);
+    uint8_t *value = (uint8_t *)AscendC::GmAlloc(valueSize);
+    uint8_t *keyCache = (uint8_t *)AscendC::GmAlloc(keyCacheSize);
+    uint8_t *valueCache = (uint8_t *)AscendC::GmAlloc(valueCacheSize);
+    uint8_t *slotMapping = (uint8_t *)AscendC::GmAlloc(slotMappingSize);
+    uint8_t *keyScale = (uint8_t *)AscendC::GmAlloc(keyScaleSize);
+    uint8_t *keyScaleCache = (uint8_t *)AscendC::GmAlloc(keyScaleCacheSize);
 
-    uint8_t* workspace = (uint8_t*)AscendC::GmAlloc(1024 * 1024);
-    uint8_t* tiling = (uint8_t*)AscendC::GmAlloc(sizeof(ScatterPaKvCacheWithKScaleTilingData));
+    uint8_t *workspace = (uint8_t *)AscendC::GmAlloc(1024 * 1024);
+    uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(sizeof(ScatterPaKvCacheWithKScaleTilingData));
 
-    ScatterPaKvCacheWithKScaleTilingData* tilingData = reinterpret_cast<ScatterPaKvCacheWithKScaleTilingData*>(tiling);
+    ScatterPaKvCacheWithKScaleTilingData *tilingData = reinterpret_cast<ScatterPaKvCacheWithKScaleTilingData *>(tiling);
     tilingData->needCoreNum = 1;
     tilingData->numTokens = numTokens;
     tilingData->numHead = numHead;
@@ -448,32 +441,30 @@ TEST_F(scatter_pa_kv_cache_with_k_scale_test, test_case_invalid_slot_int32)
     for (size_t i = 0; i < valueCacheSize; ++i) {
         valueCache[i] = 0;
     }
-    int32_t* slotMappingData = reinterpret_cast<int32_t*>(slotMapping);
+    int32_t *slotMappingData = reinterpret_cast<int32_t *>(slotMapping);
     slotMappingData[0] = 0;
     slotMappingData[1] = -1;
     slotMappingData[2] = maxSlot + 10;
     slotMappingData[3] = 5;
 
-    float* keyScaleCacheData = reinterpret_cast<float*>(keyScaleCache);
+    float *keyScaleCacheData = reinterpret_cast<float *>(keyScaleCache);
     for (int64_t i = 0; i < numBlocks * blockSize * numHead; ++i) {
         keyScaleCacheData[i] = 0.0f;
     }
 
     ICPU_SET_TILING_KEY(1000001);
-    
-    auto scatterPaKvCacheWithKScaleWrapper = [] (GM_ADDR key, GM_ADDR value,
-        GM_ADDR key_cache, GM_ADDR value_cache, GM_ADDR slot_mapping,
-        GM_ADDR key_scale, GM_ADDR key_scale_cache,
-        GM_ADDR key_cache_out, GM_ADDR value_cache_out, GM_ADDR key_scale_cache_out,
-        GM_ADDR workspace, GM_ADDR tiling) {
+
+    auto scatterPaKvCacheWithKScaleWrapper = [](GM_ADDR key, GM_ADDR value, GM_ADDR key_cache, GM_ADDR value_cache,
+                                                GM_ADDR slot_mapping, GM_ADDR key_scale, GM_ADDR key_scale_cache,
+                                                GM_ADDR key_cache_out, GM_ADDR value_cache_out,
+                                                GM_ADDR key_scale_cache_out, GM_ADDR workspace, GM_ADDR tiling) {
         scatter_pa_kv_cache_with_k_scale<SCATTER_KV_CACHE_SCENE_SPECIALIZED>(
-            key, value, key_cache, value_cache, slot_mapping, key_scale, key_scale_cache,
-            key_cache_out, value_cache_out, key_scale_cache_out, workspace, tiling);
+            key, value, key_cache, value_cache, slot_mapping, key_scale, key_scale_cache, key_cache_out,
+            value_cache_out, key_scale_cache_out, workspace, tiling);
     };
-    
-    ICPU_RUN_KF(scatterPaKvCacheWithKScaleWrapper, 1,
-        key, value, keyCache, valueCache, slotMapping, keyScale, keyScaleCache,
-        keyCache, valueCache, keyScaleCache, workspace, tiling);
+
+    ICPU_RUN_KF(scatterPaKvCacheWithKScaleWrapper, 1, key, value, keyCache, valueCache, slotMapping, keyScale,
+                keyScaleCache, keyCache, valueCache, keyScaleCache, workspace, tiling);
 
     AscendC::GmFree(key);
     AscendC::GmFree(value);

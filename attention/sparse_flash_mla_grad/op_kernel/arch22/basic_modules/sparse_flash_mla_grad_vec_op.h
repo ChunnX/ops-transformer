@@ -35,27 +35,30 @@ public:
     static constexpr uint32_t MODE = SMLAGT::mode;
 
     __aicore__ inline VecOp(){};
-    __aicore__ inline void Init(GM_ADDR ori_kv, GM_ADDR cmp_kv, GM_ADDR attention_out,
-                                GM_ADDR attention_out_grad, GM_ADDR lse, GM_ADDR topk_indices, GM_ADDR sinks, GM_ADDR dsinks,
-                                GM_ADDR cu_seqlens_q, GM_ADDR cu_seqlens_ori_kv, GM_ADDR cu_seqlens_cmp_kv, GM_ADDR cmp_softmax_l1_norm,
+    __aicore__ inline void Init(GM_ADDR ori_kv, GM_ADDR cmp_kv, GM_ADDR attention_out, GM_ADDR attention_out_grad,
+                                GM_ADDR lse, GM_ADDR topk_indices, GM_ADDR sinks, GM_ADDR dsinks, GM_ADDR cu_seqlens_q,
+                                GM_ADDR cu_seqlens_ori_kv, GM_ADDR cu_seqlens_cmp_kv, GM_ADDR cmp_softmax_l1_norm,
                                 GM_ADDR workspace, const TILING_CLASS *__restrict ordTilingData, TPipe *pipe);
     __aicore__ inline void Process(const RunInfo &runInfo);
     __aicore__ inline void GatherKV(const int64_t n2Index, uint64_t currentS1Offset, const RunInfo &runInfo);
     __aicore__ inline void ScatterAdd(const RunInfo &runInfo);
     __aicore__ inline void CopyOutDsinks();
+
 protected:
     __aicore__ inline void InitParams(const TILING_CLASS *__restrict ordTilingData);
-    __aicore__ inline void InitGMBuffer(GM_ADDR ori_kv, GM_ADDR cmp_kv, GM_ADDR attention_out, GM_ADDR attention_out_grad, GM_ADDR lse,
-                                        GM_ADDR topk_indices, GM_ADDR sinks, GM_ADDR dsinks, GM_ADDR cmp_softmax_l1_norm, GM_ADDR workspace);
+    __aicore__ inline void InitGMBuffer(GM_ADDR ori_kv, GM_ADDR cmp_kv, GM_ADDR attention_out,
+                                        GM_ADDR attention_out_grad, GM_ADDR lse, GM_ADDR topk_indices, GM_ADDR sinks,
+                                        GM_ADDR dsinks, GM_ADDR cmp_softmax_l1_norm, GM_ADDR workspace);
     __aicore__ inline void InitUB(TPipe *pipe);
     __aicore__ inline void AtomicClean();
     __aicore__ inline void DumpGmZero(GlobalTensor<float> &gm, int64_t num);
-    __aicore__ inline void CalRowsumAndSftCopyIn(const int64_t dyGmOffset, const int64_t lseGmOffset, const int32_t processM);
+    __aicore__ inline void CalRowsumAndSftCopyIn(const int64_t dyGmOffset, const int64_t lseGmOffset,
+                                                 const int32_t processM);
     __aicore__ inline void CalAttenMsk(const int32_t processM, const RunInfo &runInfo, const float maskVal);
-    __aicore__ inline void CalSoftmax(const int32_t processM, const int64_t mm12Addr,
-                                      const int64_t mm345Addr, const RunInfo &runInfo, const int32_t mOffset, const int64_t s1Index);
-    __aicore__ inline void CalSoftmaxGrad(const int32_t processM, const int64_t mm12Addr,
-                                          const int64_t mm345Addr, const RunInfo &runInfo);
+    __aicore__ inline void CalSoftmax(const int32_t processM, const int64_t mm12Addr, const int64_t mm345Addr,
+                                      const RunInfo &runInfo, const int32_t mOffset, const int64_t s1Index);
+    __aicore__ inline void CalSoftmaxGrad(const int32_t processM, const int64_t mm12Addr, const int64_t mm345Addr,
+                                          const RunInfo &runInfo);
     __aicore__ inline void CalSub(LocalTensor<float> &dstTensor, LocalTensor<float> &srcTensor, int32_t baseM,
                                   int32_t baseN);
     __aicore__ inline void CalDsinks(const int32_t processM, const RunInfo &runInfo, const int32_t mOffset);
@@ -193,12 +196,14 @@ protected:
 
 template <typename SMLAGT>
 __aicore__ inline void VecOp<SMLAGT>::Init(GM_ADDR ori_kv, GM_ADDR cmp_kv, GM_ADDR attention_out,
-                                          GM_ADDR attention_out_grad, GM_ADDR lse, GM_ADDR topk_indices, GM_ADDR sinks, GM_ADDR dsinks,
-                                          GM_ADDR cu_seqlens_q, GM_ADDR cu_seqlens_ori_kv, GM_ADDR cu_seqlens_cmp_kv, GM_ADDR cmp_softmax_l1_norm,
-                                          GM_ADDR workspace, const TILING_CLASS *__restrict ordTilingData, TPipe *pipe)
+                                           GM_ADDR attention_out_grad, GM_ADDR lse, GM_ADDR topk_indices, GM_ADDR sinks,
+                                           GM_ADDR dsinks, GM_ADDR cu_seqlens_q, GM_ADDR cu_seqlens_ori_kv,
+                                           GM_ADDR cu_seqlens_cmp_kv, GM_ADDR cmp_softmax_l1_norm, GM_ADDR workspace,
+                                           const TILING_CLASS *__restrict ordTilingData, TPipe *pipe)
 {
     InitParams(ordTilingData);
-    InitGMBuffer(ori_kv, cmp_kv, attention_out, attention_out_grad, lse, topk_indices, sinks, dsinks, cmp_softmax_l1_norm, workspace);
+    InitGMBuffer(ori_kv, cmp_kv, attention_out, attention_out_grad, lse, topk_indices, sinks, dsinks,
+                 cmp_softmax_l1_norm, workspace);
     InitUB(pipe);
     AtomicClean();
 }
@@ -246,7 +251,8 @@ __aicore__ inline void VecOp<SMLAGT>::InitParams(const TILING_CLASS *__restrict 
 
     selectedS2 = selectedBlockCount * selectedBlockSize;
     selectedCountOffset = tilingData->splitCoreParams.singleN;
-    if (tilingData->opInfo.selectedBlockSize * tilingData->opInfo.selectedBlockCount <= tilingData->splitCoreParams.singleN) {
+    if (tilingData->opInfo.selectedBlockSize * tilingData->opInfo.selectedBlockCount <=
+        tilingData->splitCoreParams.singleN) {
         selectedCountOffset = tilingData->opInfo.selectedBlockCount;
     }
 
@@ -275,9 +281,10 @@ __aicore__ inline void VecOp<SMLAGT>::InitParams(const TILING_CLASS *__restrict 
 }
 
 template <typename SMLAGT>
-__aicore__ inline void VecOp<SMLAGT>::InitGMBuffer(GM_ADDR ori_kv, GM_ADDR cmp_kv, GM_ADDR attention_out, GM_ADDR attention_out_grad,
-                                                  GM_ADDR lse, GM_ADDR topk_indices, GM_ADDR sinks, GM_ADDR dsinks, 
-                                                  GM_ADDR cmp_softmax_l1_norm, GM_ADDR workspace)
+__aicore__ inline void VecOp<SMLAGT>::InitGMBuffer(GM_ADDR ori_kv, GM_ADDR cmp_kv, GM_ADDR attention_out,
+                                                   GM_ADDR attention_out_grad, GM_ADDR lse, GM_ADDR topk_indices,
+                                                   GM_ADDR sinks, GM_ADDR dsinks, GM_ADDR cmp_softmax_l1_norm,
+                                                   GM_ADDR workspace)
 {
     /*
      * 初始化输入
@@ -318,7 +325,8 @@ __aicore__ inline void VecOp<SMLAGT>::InitGMBuffer(GM_ADDR ori_kv, GM_ADDR cmp_k
     // scatter add
     int64_t mm4ResAddr = (usedWorkspaceLen + additionalWorkspaceLen) / sizeof(float);
     int64_t mm5ResAddr = mm4ResAddr + MAX_CORE_NUM * selectedBlockCount * dimDAlign * 2;
-    usedWorkspaceLen += additionalWorkspaceLen + MAX_CORE_NUM * selectedBlockCount * (dimDAlign + dimDAlign) * 2 * sizeof(float);
+    usedWorkspaceLen +=
+        additionalWorkspaceLen + MAX_CORE_NUM * selectedBlockCount * (dimDAlign + dimDAlign) * 2 * sizeof(float);
 
     mm1WorkspaceGm.SetGlobalBuffer((__gm__ float *)workspace + mm1Addr);
     mm2WorkspaceGm.SetGlobalBuffer((__gm__ float *)workspace + mm2Addr);
@@ -362,7 +370,8 @@ __aicore__ inline void VecOp<SMLAGT>::InitUB(TPipe *pipe)
     ubOffset += maxTmpSize * sizeof(float);
     rowsumUbOffset = ubOffset;
 
-    helpTensor = vecQue.GetWithOffset<uint8_t>((params.sftBaseM * dimDv * sizeof(T1)) / sizeof(uint8_t), rowsumUbOffset);
+    helpTensor =
+        vecQue.GetWithOffset<uint8_t>((params.sftBaseM * dimDv * sizeof(T1)) / sizeof(uint8_t), rowsumUbOffset);
 
     // rowsum cal
     attentionGradT1Tensor = vecQue.GetWithOffset<T1>(params.sftBaseM * dimDv, ubOffset);
@@ -473,8 +482,8 @@ __aicore__ inline void VecOp<SMLAGT>::DumpGmZero(GlobalTensor<float> &gm, int64_
 }
 
 template <typename SMLAGT>
-__aicore__ inline void VecOp<SMLAGT>::CalSub(LocalTensor<float> &dstTensor, LocalTensor<float> &srcTensor, int32_t baseM,
-                                            int32_t baseN)
+__aicore__ inline void VecOp<SMLAGT>::CalSub(LocalTensor<float> &dstTensor, LocalTensor<float> &srcTensor,
+                                             int32_t baseM, int32_t baseN)
 {
     constexpr static int32_t subMsk = 64;
     int8_t s2Repeat = baseN / subMsk;
@@ -494,7 +503,8 @@ __aicore__ inline void VecOp<SMLAGT>::CalSub(LocalTensor<float> &dstTensor, Loca
 }
 
 template <typename SMLAGT>
-__aicore__ inline void VecOp<SMLAGT>::CalRowsumAndSftCopyIn(const int64_t dyGmOffset, const int64_t lseGmOffset, const int32_t processM)
+__aicore__ inline void VecOp<SMLAGT>::CalRowsumAndSftCopyIn(const int64_t dyGmOffset, const int64_t lseGmOffset,
+                                                            const int32_t processM)
 {
     uint32_t dataSize = processM * dimDv;
     DataCopyExtParams copyParams{1, static_cast<uint32_t>(processM * dimDv * sizeof(T1)), 0, 0, 0};
@@ -516,7 +526,7 @@ __aicore__ inline void VecOp<SMLAGT>::CalRowsumAndSftCopyIn(const int64_t dyGmOf
     // [N2, T1, G] or [B, N2, S1, G] --> [sftBaseM, 1] --> [sftBaseM, 8]
     DataCopyPad(lseTmp, lseGm[lseGmOffset], copyParams2, padParams2);
     SET_FLAG(MTE2, V, vWaitMte2);
-    
+
     WAIT_FLAG(MTE2, V, vWaitMte2);
     Brcb(lseTensor, lseTmp, CeilDiv(params.sftBaseM, BLOCK_FP32), {1, 8});
     PIPE_BARRIER(PIPE_V);
@@ -546,11 +556,13 @@ __aicore__ inline void VecOp<SMLAGT>::CalAttenMsk(const int32_t processM, const 
             if (loop == 0) {
                 uint64_t maskEnd = (attenMskEnd == 64) ? UINT64_MAX : (1ULL << attenMskEnd) - 1;
                 uint64_t maskRsv = (attenMskRsv == 64) ? UINT64_MAX : (1ULL << attenMskRsv) - 1;
-                uint64_t mask[1] = { maskEnd & ~maskRsv };
-                Duplicate(pTensor[loop * 64 + rightStartOffset], maskVal, mask, processM, 1, (actualSelS2Align * sizeof(float)) / BLOCK);
+                uint64_t mask[1] = {maskEnd & ~maskRsv};
+                Duplicate(pTensor[loop * 64 + rightStartOffset], maskVal, mask, processM, 1,
+                          (actualSelS2Align * sizeof(float)) / BLOCK);
             } else {
                 uint64_t maskLen = (loop == rightLoop - 1) ? remain : 64;
-                Duplicate(pTensor[loop * 64 + rightStartOffset], maskVal, maskLen, processM, 1, (actualSelS2Align * sizeof(float)) / BLOCK);
+                Duplicate(pTensor[loop * 64 + rightStartOffset], maskVal, maskLen, processM, 1,
+                          (actualSelS2Align * sizeof(float)) / BLOCK);
             }
         }
     }
@@ -558,8 +570,8 @@ __aicore__ inline void VecOp<SMLAGT>::CalAttenMsk(const int32_t processM, const 
 
 template <typename SMLAGT>
 __aicore__ inline void VecOp<SMLAGT>::CalSoftmax(const int32_t processM, const int64_t mm12Addr,
-                                                const int64_t mm345Addr, const RunInfo &runInfo, 
-                                                const int32_t mOffset, const int64_t s1Index)
+                                                 const int64_t mm345Addr, const RunInfo &runInfo, const int32_t mOffset,
+                                                 const int64_t s1Index)
 {
     WAIT_FLAG(MTE3, MTE2, mte2WaitMte3);
     if constexpr (MODE != SMLAG_SCFA_MODE) {
@@ -567,7 +579,8 @@ __aicore__ inline void VecOp<SMLAGT>::CalSoftmax(const int32_t processM, const i
             int64_t curOriWinStart = Max(s1Index - oriWinLeft + runInfo.oriWinDiagOffset, 0);
             int64_t curOriWinEnd = Min(s1Index + oriWinRight + 1 + runInfo.oriWinDiagOffset, runInfo.curS2);
             int64_t blkStart = runInfo.oriWinStart + runInfo.blkCntOffset;
-            curActualRight = Min(runInfo.oriWinStart + runInfo.blkCntOffset + runInfo.actualSelCntOffset, curOriWinEnd) - blkStart;
+            curActualRight =
+                Min(runInfo.oriWinStart + runInfo.blkCntOffset + runInfo.actualSelCntOffset, curOriWinEnd) - blkStart;
             curActualLeft = Max(runInfo.oriWinStart + runInfo.blkCntOffset, curOriWinStart) - blkStart;
             curActualRight = Max(curActualRight, curActualLeft);
         } else {
@@ -580,10 +593,12 @@ __aicore__ inline void VecOp<SMLAGT>::CalSoftmax(const int32_t processM, const i
     int64_t dataSize = processM * actualSelS2Align;
 
     WAIT_FLAG(V, MTE2, mte2WaitV); // wait sinkTmp
-    DataCopyPad(pTensor, mm1WorkspaceGm[mm12Addr], 
-                {static_cast<uint16_t>(processM), static_cast<uint32_t>(actualSelS2 * sizeof(float)), static_cast<uint32_t>((params.sftBaseN - actualSelS2) * sizeof(float)), 0, 0},
+    DataCopyPad(pTensor, mm1WorkspaceGm[mm12Addr],
+                {static_cast<uint16_t>(processM), static_cast<uint32_t>(actualSelS2 * sizeof(float)),
+                 static_cast<uint32_t>((params.sftBaseN - actualSelS2) * sizeof(float)), 0, 0},
                 {false, 0, 0, 0});
-    DataCopyPad(sinkTmp, sinksGm[mOffset], {1, static_cast<uint32_t>(processM * sizeof(float)), 0, 0, 0}, {false, 0, 0, 0});
+    DataCopyPad(sinkTmp, sinksGm[mOffset], {1, static_cast<uint32_t>(processM * sizeof(float)), 0, 0, 0},
+                {false, 0, 0, 0});
     SET_FLAG(MTE2, V, vWaitMte2);
     WAIT_FLAG(MTE2, V, vWaitMte2);
 
@@ -609,13 +624,16 @@ __aicore__ inline void VecOp<SMLAGT>::CalSoftmax(const int32_t processM, const i
         auto offset = outerLoop * actualSelS2Align;
         for (int i = 0; i < castS2Loop; ++i) {
             uint64_t mask = i == (castS2Loop - 1) ? actualSelS2Align - (i * 64) : 64;
-            Sub(pTensor[offset + i * 64], pTensor[offset + i * 64], lseTensor[outerLoop * 8], mask, repeatTime, {1, 1, 0, repeatStrideFp32, repeatStrideFp32, 1});
+            Sub(pTensor[offset + i * 64], pTensor[offset + i * 64], lseTensor[outerLoop * 8], mask, repeatTime,
+                {1, 1, 0, repeatStrideFp32, repeatStrideFp32, 1});
             PIPE_BARRIER(PIPE_V);
 
-            Exp(pTensor[offset + i * 64], pTensor[offset + i * 64], mask, repeatTime, {1, 1, repeatStrideFp32, repeatStrideFp32});
+            Exp(pTensor[offset + i * 64], pTensor[offset + i * 64], mask, repeatTime,
+                {1, 1, repeatStrideFp32, repeatStrideFp32});
             PIPE_BARRIER(PIPE_V);
 
-            Cast(sftOutT1Tensor[offset + i * 64], pTensor[offset + i * 64], RoundMode::CAST_ROUND, mask, repeatTime, {1, 1, repeatStrideT1, repeatStrideFp32});
+            Cast(sftOutT1Tensor[offset + i * 64], pTensor[offset + i * 64], RoundMode::CAST_ROUND, mask, repeatTime,
+                 {1, 1, repeatStrideT1, repeatStrideFp32});
         }
     }
     SET_FLAG(V, MTE3, mte3WaitV);
@@ -637,19 +655,21 @@ __aicore__ inline void VecOp<SMLAGT>::CalSoftmax(const int32_t processM, const i
     Exp(sinkTensor, sinkTensor, processM * 8);
     PIPE_BARRIER(PIPE_V);
 
-    DataCopyPad(pWorkspaceGm[mm345Addr], sftOutT1Tensor, 
-                {static_cast<uint16_t>(processM), static_cast<uint32_t>(actualSelS2 * sizeof(T1)), 0, static_cast<uint32_t>((params.sftBaseN - actualSelS2) * sizeof(T1)), 0});
+    DataCopyPad(pWorkspaceGm[mm345Addr], sftOutT1Tensor,
+                {static_cast<uint16_t>(processM), static_cast<uint32_t>(actualSelS2 * sizeof(T1)), 0,
+                 static_cast<uint32_t>((params.sftBaseN - actualSelS2) * sizeof(T1)), 0});
     SET_FLAG(MTE3, MTE2, mte2WaitMte3);
     WAIT_FLAG(MTE3, MTE2, mte2WaitMte3);
 }
 
 template <typename SMLAGT>
-__aicore__ inline void VecOp<SMLAGT>::CalSoftmaxGrad(const int32_t processM,
-                                                    const int64_t mm12Addr, const int64_t mm345Addr, const RunInfo &runInfo)
+__aicore__ inline void VecOp<SMLAGT>::CalSoftmaxGrad(const int32_t processM, const int64_t mm12Addr,
+                                                     const int64_t mm345Addr, const RunInfo &runInfo)
 {
     int64_t dataSize = processM * actualSelS2Align;
-    DataCopyPad(dPTensor, mm2WorkspaceGm[mm12Addr], 
-                {static_cast<uint16_t>(processM), static_cast<uint32_t>(actualSelS2 * sizeof(float)), static_cast<uint32_t>((params.sftBaseN - actualSelS2) * sizeof(float)), 0, 0},
+    DataCopyPad(dPTensor, mm2WorkspaceGm[mm12Addr],
+                {static_cast<uint16_t>(processM), static_cast<uint32_t>(actualSelS2 * sizeof(float)),
+                 static_cast<uint32_t>((params.sftBaseN - actualSelS2) * sizeof(float)), 0, 0},
                 {false, 0, 0, 0});
     SET_FLAG(MTE2, V, vWaitMte2);
     WAIT_FLAG(MTE2, V, vWaitMte2);
@@ -677,14 +697,16 @@ __aicore__ inline void VecOp<SMLAGT>::CalSoftmaxGrad(const int32_t processM,
         auto offset = outerLoop * actualSelS2Align;
         for (int i = 0; i < castS2Loop; ++i) {
             uint64_t mask = i == (castS2Loop - 1) ? actualSelS2Align - (i * 64) : 64;
-            Cast(sftgOutT1Tensor[offset + i * 64], pTensor[offset + i * 64], RoundMode::CAST_ROUND, mask, repeatTime, {1, 1, repeatStrideT1, repeatStrideFp32});
+            Cast(sftgOutT1Tensor[offset + i * 64], pTensor[offset + i * 64], RoundMode::CAST_ROUND, mask, repeatTime,
+                 {1, 1, repeatStrideT1, repeatStrideFp32});
         }
     }
     SET_FLAG(V, MTE3, mte3WaitV);
     WAIT_FLAG(V, MTE3, mte3WaitV);
 
-    DataCopyPad(dsWorkspaceGm[mm345Addr], sftgOutT1Tensor, 
-                {static_cast<uint16_t>(processM), static_cast<uint32_t>(actualSelS2 * sizeof(T1)), 0, static_cast<uint32_t>((params.sftBaseN - actualSelS2) * sizeof(T1)), 0});
+    DataCopyPad(dsWorkspaceGm[mm345Addr], sftgOutT1Tensor,
+                {static_cast<uint16_t>(processM), static_cast<uint32_t>(actualSelS2 * sizeof(T1)), 0,
+                 static_cast<uint32_t>((params.sftBaseN - actualSelS2) * sizeof(T1)), 0});
     SET_FLAG(MTE3, MTE2, mte2WaitMte3);
     WAIT_FLAG(MTE3, MTE2, mte2WaitMte3);
 }
@@ -700,15 +722,18 @@ __aicore__ inline void VecOp<SMLAGT>::CalDsinks(const int32_t processM, const Ru
         uint64_t totalLoop = CeilDiv(actualSelS2Align, 64);
         for (int32_t loop = 0; loop < totalLoop; ++loop) {
             uint64_t mask = loop == totalLoop - 1 ? tailS2 : 64;
-            Mul(dSinkSumTensor[i * actualSelS2Align + loop * 64], dSinkSumTensor[i * actualSelS2Align + loop * 64], sinkTensor[i * 8], mask, 1, {1, 1, 0, 0, 0, 0});
+            Mul(dSinkSumTensor[i * actualSelS2Align + loop * 64], dSinkSumTensor[i * actualSelS2Align + loop * 64],
+                sinkTensor[i * 8], mask, 1, {1, 1, 0, 0, 0, 0});
         }
         PIPE_BARRIER(PIPE_V);
 
         // ReduceSum
         if constexpr (MODE != SMLAG_SCFA_MODE) {
-            ReduceSum(dSinkSumTensor[i * actualSelS2Align], dSinkSumTensor[i * actualSelS2Align], sinkTmpBuf, curActualRight);
+            ReduceSum(dSinkSumTensor[i * actualSelS2Align], dSinkSumTensor[i * actualSelS2Align], sinkTmpBuf,
+                      curActualRight);
         } else {
-            ReduceSum(dSinkSumTensor[i * actualSelS2Align], dSinkSumTensor[i * actualSelS2Align], sinkTmpBuf, actualSelS2);
+            ReduceSum(dSinkSumTensor[i * actualSelS2Align], dSinkSumTensor[i * actualSelS2Align], sinkTmpBuf,
+                      actualSelS2);
         }
         PIPE_BARRIER(PIPE_V);
 
@@ -780,11 +805,14 @@ __aicore__ inline void VecOp<SMLAGT>::GatherKV(const int64_t n2Index, uint64_t c
         int64_t curOffset = curGatherCount * dimDqk;
         if (keyOffset2 <= keyOffset1 || isActualLast) {
             intriParamsKey.blockCount = 1;
-            DataCopyPad(gatherTensor[curOffset], cmpKvGm[runInfo.cmpKeyGmOffset + keyOffset1 * dimN2 * dimDqk], intriParamsKey, padParams);
+            DataCopyPad(gatherTensor[curOffset], cmpKvGm[runInfo.cmpKeyGmOffset + keyOffset1 * dimN2 * dimDqk],
+                        intriParamsKey, padParams);
             intriParamsKey.blockLen = dimDqk * sizeof(T1);
-            DataCopyPad(gatherTensor[curOffset + dimDqk], cmpKvGm[runInfo.cmpKeyGmOffset + keyOffset2 * dimN2 * dimDqk], intriParamsKey, padParams);
+            DataCopyPad(gatherTensor[curOffset + dimDqk], cmpKvGm[runInfo.cmpKeyGmOffset + keyOffset2 * dimN2 * dimDqk],
+                        intriParamsKey, padParams);
         } else {
-            DataCopyPad(gatherTensor[curOffset], cmpKvGm[runInfo.cmpKeyGmOffset + keyOffset1 * dimN2 * dimDqk], intriParamsKey, padParams);
+            DataCopyPad(gatherTensor[curOffset], cmpKvGm[runInfo.cmpKeyGmOffset + keyOffset1 * dimN2 * dimDqk],
+                        intriParamsKey, padParams);
         }
 
         curGatherCount += maxSelCnt;
@@ -820,7 +848,8 @@ __aicore__ inline void VecOp<SMLAGT>::GatherKV(const int64_t n2Index, uint64_t c
         if (i == runInfo.actualSelCntOffset - 1 && isLast) {
             intriParamsKey.blockLen = runInfo.lastBlockSize * dimDqk * sizeof(T1);
         }
-        DataCopyPad(gatherTensor[curGatherCount * dimDqk], cmpKvGm[runInfo.cmpKeyGmOffset + keyOffset1 * dimN2 * dimDqk], intriParamsKey, padParams);
+        DataCopyPad(gatherTensor[curGatherCount * dimDqk],
+                    cmpKvGm[runInfo.cmpKeyGmOffset + keyOffset1 * dimN2 * dimDqk], intriParamsKey, padParams);
 
         curGatherCount += 1;
     }
@@ -875,7 +904,7 @@ __aicore__ inline void VecOp<SMLAGT>::Process(const RunInfo &runInfo)
         mOffset = curLine % dimG;
         processM = mOffset + params.sftBaseM > dimG ? dimG - mOffset : params.sftBaseM;
         processM = curLine + processM > curCoreEnd ? curCoreEnd - curLine : processM;
-        
+
         dataSize = processM * params.sftBaseN;
         CalRowsumAndSftCopyIn(dyGmOffset, lseGmOffset, processM);
         dyGmOffset += (processM * dimDv);
@@ -893,11 +922,12 @@ __aicore__ inline void VecOp<SMLAGT>::Process(const RunInfo &runInfo)
     }
     if constexpr (MODE == SMLAG_SCFA_MODE) {
         if (!runInfo.isOri) {
-            Muls(cmpL1NormTensor, cmpL1NormTensor, 1.0f/(float)dimG, actualSelS2);
+            Muls(cmpL1NormTensor, cmpL1NormTensor, 1.0f / (float)dimG, actualSelS2);
             SET_FLAG(V, MTE3, mte3WaitV);
             WAIT_FLAG(V, MTE3, mte3WaitV);
             SetAtomicAdd<float>();
-            DataCopyPad(cmpSoftmaxL1Gm[runInfo.indicesGmOffset + runInfo.blkCntOffset], cmpL1NormTensor, {1, (uint32_t)(actualSelS2 * sizeof(float)), 0, 0, 0});
+            DataCopyPad(cmpSoftmaxL1Gm[runInfo.indicesGmOffset + runInfo.blkCntOffset], cmpL1NormTensor,
+                        {1, (uint32_t)(actualSelS2 * sizeof(float)), 0, 0, 0});
             SetAtomicNone();
             SET_FLAG(MTE3, V, runInfo.vWaitMte3Proc);
         }
@@ -931,8 +961,12 @@ __aicore__ inline void VecOp<SMLAGT>::ScatterAdd(const RunInfo &runInfo)
     int64_t maxLoops = CeilDiv(currentCoreKSize, UB_ROW_SIZE);
     int64_t tailRows = currentCoreKSize - (maxLoops - 1) * UB_ROW_SIZE;
 
-    int64_t currentDkSrcOffset = runInfo.scatterTaskId * MAX_CORE_NUM * selectedBlockCount * dimDAlign + cubeBlockIdx * selectedBlockCount * dimDAlign + subBlockIdx * firstCoreKSize * dimDAlign;
-    int64_t currentDvSrcOffset = runInfo.scatterTaskId * MAX_CORE_NUM * selectedBlockCount * dimD2Align + cubeBlockIdx * selectedBlockCount * dimD2Align + subBlockIdx * firstCoreKSize * dimD2Align;
+    int64_t currentDkSrcOffset = runInfo.scatterTaskId * MAX_CORE_NUM * selectedBlockCount * dimDAlign +
+                                 cubeBlockIdx * selectedBlockCount * dimDAlign +
+                                 subBlockIdx * firstCoreKSize * dimDAlign;
+    int64_t currentDvSrcOffset = runInfo.scatterTaskId * MAX_CORE_NUM * selectedBlockCount * dimD2Align +
+                                 cubeBlockIdx * selectedBlockCount * dimD2Align +
+                                 subBlockIdx * firstCoreKSize * dimD2Align;
     GlobalTensor<float> dkSrcGm = mm4ResWorkspaceGm[currentDkSrcOffset];
     GlobalTensor<float> dvSrcGm = mm5ResWorkspaceGm[currentDvSrcOffset];
     GlobalTensor<int32_t> indicesGm = topkIndicesGm[runInfo.indicesGmOffset];
@@ -940,12 +974,12 @@ __aicore__ inline void VecOp<SMLAGT>::ScatterAdd(const RunInfo &runInfo)
     SetFlag<AscendC::HardEvent::MTE3_MTE2>(mte2WaitMte3);
     SetFlag<AscendC::HardEvent::MTE3_MTE2>(mte2WaitMte3Pong);
     for (int64_t loop = 0; loop < maxLoops - 1; loop++) {
-        event_t backEvent = pingPongIdx == 0 ? mte2WaitMte3: mte2WaitMte3Pong;
+        event_t backEvent = pingPongIdx == 0 ? mte2WaitMte3 : mte2WaitMte3Pong;
         WaitFlag<AscendC::HardEvent::MTE3_MTE2>(backEvent);
         dkInUb = scatterAddTensorK[pingPongIdx * (UB_ROW_SIZE * dimDAlign)];
         dvInUb = scatterAddTensorV[pingPongIdx * (UB_ROW_SIZE * dimD2Align)];
         DataCopy(dkInUb, dkSrcGm[loop * UB_ROW_SIZE * dimDAlign], UB_ROW_SIZE * dimDAlign);
-        event_t event = pingPongIdx == 0 ? vWaitMte2: vWaitMte2Pong;
+        event_t event = pingPongIdx == 0 ? vWaitMte2 : vWaitMte2Pong;
         SetFlag<AscendC::HardEvent::MTE2_V>(event);
         WaitFlag<AscendC::HardEvent::MTE2_V>(event);
         Muls(dkInUb, dkInUb, (float)tilingData->opInfo.scaleValue, UB_ROW_SIZE * dimDAlign);
@@ -966,12 +1000,12 @@ __aicore__ inline void VecOp<SMLAGT>::ScatterAdd(const RunInfo &runInfo)
         SetFlag<AscendC::HardEvent::MTE3_MTE2>(backEvent);
         pingPongIdx = 1 - pingPongIdx;
     }
-    event_t backEvent = pingPongIdx == 0 ? mte2WaitMte3: mte2WaitMte3Pong;
+    event_t backEvent = pingPongIdx == 0 ? mte2WaitMte3 : mte2WaitMte3Pong;
     WaitFlag<AscendC::HardEvent::MTE3_MTE2>(backEvent);
     dkInUb = scatterAddTensorK[pingPongIdx * (UB_ROW_SIZE * dimDAlign)];
     dvInUb = scatterAddTensorV[pingPongIdx * (UB_ROW_SIZE * dimD2Align)];
     DataCopy(dkInUb, dkSrcGm[(maxLoops - 1) * UB_ROW_SIZE * dimDAlign], tailRows * dimDAlign);
-    event_t event = pingPongIdx == 0 ? vWaitMte2: vWaitMte2Pong;
+    event_t event = pingPongIdx == 0 ? vWaitMte2 : vWaitMte2Pong;
     SetFlag<AscendC::HardEvent::MTE2_V>(event);
     WaitFlag<AscendC::HardEvent::MTE2_V>(event);
     Muls(dkInUb, dkInUb, (float)tilingData->opInfo.scaleValue, tailRows * dimDAlign);

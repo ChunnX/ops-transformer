@@ -19,12 +19,11 @@
  * 输出参数添加 _out 后缀。
  */
 template <uint32_t schMode>
-__global__ __aicore__ void scatter_pa_kv_cache_with_k_scale(
-    GM_ADDR key, GM_ADDR value,
-    GM_ADDR key_cache, GM_ADDR value_cache,
-    GM_ADDR slot_mapping, GM_ADDR key_scale, GM_ADDR key_scale_cache,
-    GM_ADDR key_cache_out, GM_ADDR value_cache_out, GM_ADDR key_scale_cache_out,
-    GM_ADDR workspace, GM_ADDR tiling)
+__global__ __aicore__ void
+scatter_pa_kv_cache_with_k_scale(GM_ADDR key, GM_ADDR value, GM_ADDR key_cache, GM_ADDR value_cache,
+                                 GM_ADDR slot_mapping, GM_ADDR key_scale, GM_ADDR key_scale_cache,
+                                 GM_ADDR key_cache_out, GM_ADDR value_cache_out, GM_ADDR key_scale_cache_out,
+                                 GM_ADDR workspace, GM_ADDR tiling)
 {
     REGISTER_TILING_DEFAULT(ScatterPaKvCacheWithKScaleTilingData);
     GET_TILING_DATA_WITH_STRUCT(ScatterPaKvCacheWithKScaleTilingData, tilingData, tiling);
@@ -32,7 +31,5 @@ __global__ __aicore__ void scatter_pa_kv_cache_with_k_scale(
     // 两种场景模式（特化/泛化）使用统一的 Process 函数
     // dtype 由 DTYPE_KEY / DTYPE_SLOT_MAPPING 宏自动实例化
     NsScatterPaKvCacheWithKScale::Process<DTYPE_KEY, DTYPE_SLOT_MAPPING, schMode>(
-        key, value, key_cache_out, value_cache_out,
-        slot_mapping, key_scale, key_scale_cache_out,
-        &tilingData);
+        key, value, key_cache_out, value_cache_out, slot_mapping, key_scale, key_scale_cache_out, &tilingData);
 }

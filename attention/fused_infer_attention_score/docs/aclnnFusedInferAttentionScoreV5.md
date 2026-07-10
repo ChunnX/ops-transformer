@@ -20,7 +20,7 @@
   相比于FusedInferAttentionScoreV4，本接口新增qStartIdxOptional、kvStartIdxOptional、pseType参数。
 
   **说明：**
-  
+
   decode场景下特有KV Cache：KV Cache是大模型推理性能优化的一个常用技术。采样时，Transformer模型会以给定的prompt/context作为初始输入进行推理（可以并行处理），随后逐一生成额外的token来继续完善生成的序列（体现了模型的自回归性质）。在采样过程中，Transformer会执行自注意力操作，为此需要给当前序列中的每个项目（无论是prompt/context还是生成的token）提取键值（KV）向量。这些向量存储在一个矩阵中，通常被称为kv缓存（KV Cache）。
 - 计算公式：
 
@@ -68,46 +68,46 @@ aclnnStatus aclnnFusedInferAttentionScoreV5GetWorkspaceSize(
     const aclTensor     *blockTableOptional,
     const aclTensor     *queryPaddingSizeOptional,
     const aclTensor     *kvPaddingSizeOptional,
-    const aclTensor     *keyAntiquantScaleOptional, 
-    const aclTensor     *keyAntiquantOffsetOptional, 
-    const aclTensor     *valueAntiquantScaleOptional, 
-    const aclTensor     *valueAntiquantOffsetOptional, 
-    const aclTensor     *keySharedPrefixOptional, 
-    const aclTensor     *valueSharedPrefixOptional, 
-    const aclIntArray   *actualSharedPrefixLenOptional, 
-    const aclTensor     *queryRopeOptional, 
-    const aclTensor     *keyRopeOptional, 
-    const aclTensor     *keyRopeAntiquantScaleOptional, 
-    const aclTensor     *dequantScaleQueryOptional, 
-    const aclTensor     *learnableSinkOptional, 
-    const aclIntArray   *qStartIdxOptional, 
-    const aclIntArray   *kvStartIdxOptional, 
-    int64_t             numHeads, 
-    double              scaleValue, 
-    int64_t             preTokens, 
-    int64_t             nextTokens, 
-    char                *inputLayout, 
-    int64_t             numKeyValueHeads, 
-    int64_t             sparseMode, 
-    int64_t             innerPrecise, 
-    int64_t             blockSize, 
-    int64_t             antiquantMode, 
-    bool                softmaxLseFlag, 
-    int64_t             keyAntiquantMode, 
-    int64_t             valueAntiquantMode, 
-    int64_t             queryQuantMode, 
-    int64_t             pseType, 
-    const aclTensor     *attentionOut, 
-    const aclTensor     *softmaxLse, 
-    uint64_t            *workspaceSize, 
+    const aclTensor     *keyAntiquantScaleOptional,
+    const aclTensor     *keyAntiquantOffsetOptional,
+    const aclTensor     *valueAntiquantScaleOptional,
+    const aclTensor     *valueAntiquantOffsetOptional,
+    const aclTensor     *keySharedPrefixOptional,
+    const aclTensor     *valueSharedPrefixOptional,
+    const aclIntArray   *actualSharedPrefixLenOptional,
+    const aclTensor     *queryRopeOptional,
+    const aclTensor     *keyRopeOptional,
+    const aclTensor     *keyRopeAntiquantScaleOptional,
+    const aclTensor     *dequantScaleQueryOptional,
+    const aclTensor     *learnableSinkOptional,
+    const aclIntArray   *qStartIdxOptional,
+    const aclIntArray   *kvStartIdxOptional,
+    int64_t             numHeads,
+    double              scaleValue,
+    int64_t             preTokens,
+    int64_t             nextTokens,
+    char                *inputLayout,
+    int64_t             numKeyValueHeads,
+    int64_t             sparseMode,
+    int64_t             innerPrecise,
+    int64_t             blockSize,
+    int64_t             antiquantMode,
+    bool                softmaxLseFlag,
+    int64_t             keyAntiquantMode,
+    int64_t             valueAntiquantMode,
+    int64_t             queryQuantMode,
+    int64_t             pseType,
+    const aclTensor     *attentionOut,
+    const aclTensor     *softmaxLse,
+    uint64_t            *workspaceSize,
     aclOpExecutor       **executor)
 ```
 
 ```c++
 aclnnStatus aclnnFusedInferAttentionScoreV5(
-    void                *workspace, 
-    uint64_t            workspaceSize, 
-    aclOpExecutor       *executor, 
+    void                *workspace,
+    uint64_t            workspaceSize,
+    aclOpExecutor       *executor,
     const aclrtStream   stream)
 ```
 
@@ -350,7 +350,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         <td>-</td>
         <td>-</td>
         <td>-</td>
-    </tr> 
+    </tr>
     <tr>
         <td>blockTableOptional</td>
         <td>输入</td>
@@ -366,7 +366,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         <td>第一维长度需等于B，第二维长度不能小于maxBlockNumPerSeq（maxBlockNumPerSeq为不同batch中最大actualSeqLengthsKv对应的block数量）</td>
         <td>-</td>
     </tr>
-    <tr> 
+    <tr>
         <td>queryPaddingSizeOptional</td>
         <td>输入</td>
         <td>表示Query中每个batch的数据是否右对齐，且右对齐的个数是多少。</td>
@@ -382,7 +382,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         <td>（1）</td>
         <td>-</td>
     </tr>
-    <tr> 
+    <tr>
         <td>kvPaddingSizeOptional</td>
         <td>输入</td>
         <td>表示key/value中每个batch的数据是否右对齐，且右对齐的个数是多少。</td>
@@ -397,7 +397,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         <td>（1）</td>
         <td>-</td>
     </tr>
-    <tr> 
+    <tr>
         <td>keyAntiquantScaleOptional</td>
         <td>输入</td>
         <td>表示key的反量化因子，用于KV伪量化参数分离场景。</td>
@@ -417,7 +417,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         <td>见<a href="#约束说明">约束说明</a></td>
         <td>-</td>
     </tr>
-    <tr> 
+    <tr>
         <td>keyAntiquantOffsetOptional</td>
         <td>输入</td>
         <td>KV伪量化参数分离时表示key的反量化偏移。</td>
@@ -435,7 +435,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         <td>见<a href="#约束说明">约束说明</a></td>
         <td>-</td>
     </tr>
-    <tr> 
+    <tr>
         <td>valueAntiquantScaleOptional</td>
         <td>输入</td>
         <td>表示value的反量化因子，用于KV伪量化参数分离场景。</td>
@@ -453,7 +453,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         <td>见<a href="#约束说明">约束说明</a></td>
         <td>-</td>
     </tr>
-    <tr> 
+    <tr>
         <td>valueAntiquantOffsetOptional</td>
         <td>输入</td>
         <td>KV伪量化参数分离时表示value的反量化因子。</td>
@@ -470,8 +470,8 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         <td>ND</td>
         <td>见<a href="#约束说明">约束说明</a></td>
         <td>-</td>
-    </tr>  
-    <tr> 
+    </tr>
+    <tr>
         <td>keySharedPrefixOptional</td>
         <td>输入</td>
         <td>attention结构中Key的系统前缀部分的参数。</td>
@@ -493,7 +493,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         </td>
         <td>×</td>
     </tr>
-    <tr> 
+    <tr>
         <td>valueSharedPrefixOptional</td>
         <td>输入</td>
         <td>attention结构中Value的系统前缀部分的输入。</td>
@@ -515,7 +515,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         </td>
         <td>×</td>
     </tr>
-    <tr> 
+    <tr>
         <td>actualSharedPrefixLenOptional</td>
         <td>输入</td>
         <td>keySharedPrefix/valueSharedPrefix的有效Sequence Length。</td>
@@ -576,8 +576,8 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         <td>-</td>
         <td>-</td>
         <td>-</td>
-    </tr>  
-    <tr> 
+    </tr>
+    <tr>
         <td>dequantScaleQueryOptional</td>
         <td>输入</td>
         <td>对query进行反量化的因子。</td>
@@ -609,7 +609,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         <td>(Q_N)</td>
         <td>×</td>
     </tr>
-    <tr> 
+    <tr>
         <td>qStartIdxOptional</td>
         <td>输入</td>
         <td>代表外切场景，当前分块的query的sequence在全局中的起始索引。</td>
@@ -624,7 +624,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         <td>见<a href="#约束说明">约束说明</a></td>
         <td>-</td>
     </tr>
-    <tr> 
+    <tr>
         <td>kvStartIdxOptional</td>
         <td>输入</td>
         <td>代表外切场景，当前分块的key和value的sequence在全局中的起始索引。</td>
@@ -677,7 +677,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         <td>-</td>
         <td>-</td>
         <td>-</td>
-    </tr>  
+    </tr>
     <tr>
         <td>nextTokens</td>
         <td>输入</td>
@@ -802,7 +802,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         <td>-</td>
         <td>-</td>
         <td>-</td>
-    </tr>  
+    </tr>
     <tr>
         <td>keyAntiquantMode</td>
         <td>输入</td>
@@ -843,7 +843,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         <td>-</td>
         <td>-</td>
         <td>-</td>
-    </tr>  
+    </tr>
     <tr>
         <td>queryQuantMode</td>
         <td>输入</td>
@@ -1569,7 +1569,7 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
         - 维度为2时，不支持sparseMode为0/1模式
       - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
         - sparseMode为0/1模式时，若传入query_rope和key_rope，或者query与key的D不等于value的D，则不支持attenMask输入维度为2
-        - sparseMode为0/1模式时，若attenMask输入维度为2，则layout仅支持为BSH、BSND、BNSD、BNSD_BSND 
+        - sparseMode为0/1模式时，若attenMask输入维度为2，则layout仅支持为BSH、BSND、BNSD、BNSD_BSND
     - 入参sparseMode为0/1模式时，attenMask矩阵的shape应满足 [batchSize/1，>=Q_S，>=KV_S + actualSharedPrefixLen]
     - 入参sparseMode为2/3/4模式时，attenMask矩阵的shape最后两维应等于2048，即支持传入(2048,2048)或(1,2048,2048)或(1,1,2048,2048)
     - 非伪量化或Q_S大于1时，preTokens与nextTokens应满足nextTokens * (-1) <= preTokens，以确保具有有效数据

@@ -22,11 +22,11 @@
     $$
     weights = Softmax(attenMask + scale*(einsum(query, key1^T) + einsum(query, key2^T)))
     $$
-    
+
     $$
     attention\_out = einsum(weights, value1) + einsum(weights, value2)
     $$
-    
+
 ## 参数说明
 
 <table style="undefined;table-layout: fixed; width: 1576px"><colgroup>

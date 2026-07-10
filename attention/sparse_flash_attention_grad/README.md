@@ -60,7 +60,7 @@
   $$
 
   $$
-   dK \left[ u \left] \mathop{{}}\nolimits_{{:t,:}}=dS\mathop{{}}\nolimits_{{t,:t}}\mathop{{}}\nolimits^{{T}}\text{@}Q/\sqrt{{d\mathop{{}}\nolimits_{{t,:}}}}\right. \right. 
+   dK \left[ u \left] \mathop{{}}\nolimits_{{:t,:}}=dS\mathop{{}}\nolimits_{{t,:t}}\mathop{{}}\nolimits^{{T}}\text{@}Q/\sqrt{{d\mathop{{}}\nolimits_{{t,:}}}}\right. \right.
   $$
 
 ## 参数说明
@@ -70,7 +70,7 @@
         <col style="width: 170px">
         <col style="width: 120px">
         <col style="width: 300px">
-        <col style="width: 212px">  
+        <col style="width: 212px">
         <col style="width: 100px">
         </colgroup>
     <thead>
@@ -230,7 +230,7 @@
         <td>BFLOAT16、FLOAT16</td>
         <td>ND</td>
     </tr>
-    <tr>  
+    <tr>
         <td>dValue</td>
         <td>输出</td>
         <td>表示value的梯度。</td>

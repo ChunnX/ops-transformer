@@ -28,8 +28,8 @@ public:
     __aicore__ inline ScatterPaKvCacheNormalNzNotFullyLoad(TPipe *pipe,
                                                            const ScatterPaKvCacheTilingData *__restrict tiling)
         : pipe_(pipe), tilingData_(tiling){};
-    __aicore__ inline void Init(GM_ADDR key, GM_ADDR slot_mapping, GM_ADDR value,
-                                GM_ADDR key_cache_out, GM_ADDR value_cache_out);
+    __aicore__ inline void Init(GM_ADDR key, GM_ADDR slot_mapping, GM_ADDR value, GM_ADDR key_cache_out,
+                                GM_ADDR value_cache_out);
     __aicore__ inline void Process();
 
 private:
@@ -63,8 +63,9 @@ private:
 };
 
 template <typename T1, typename T2, typename IndexDtype>
-__aicore__ inline void ScatterPaKvCacheNormalNzNotFullyLoad<T1, T2, IndexDtype>::Init(
-    GM_ADDR key, GM_ADDR slot_mapping, GM_ADDR value, GM_ADDR key_cache_out, GM_ADDR value_cache_out)
+__aicore__ inline void
+ScatterPaKvCacheNormalNzNotFullyLoad<T1, T2, IndexDtype>::Init(GM_ADDR key, GM_ADDR slot_mapping, GM_ADDR value,
+                                                               GM_ADDR key_cache_out, GM_ADDR value_cache_out)
 {
     blockIdx_ = GetBlockIdx();
     blockSize_ = tilingData_->blockSize;

@@ -23,15 +23,18 @@
 namespace AscendC {
 namespace Impl {
 namespace Detail {
-template <typename IMPL, typename A_TYPE, typename B_TYPE, typename C_TYPE, typename BIAS_TYPE, const auto& MM_CFG, typename MM_CB>
-class IFAMatmulPolicyNormal : public MatmulPolicy<MM_CFG,IMPL, A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE> {
- public:
-  using UserDefDataType = IFAFlagData;
-  using CubeInBufferA = AscendC::Impl::Detail::IFACubeInBuffer<IMPL, MatmulInputAType<A_TYPE, typename A_TYPE::T>, MM_CFG>;
-  using CopyCubeInA = AscendC::Impl::Detail::IFACopyCubeIn<IMPL, MatmulInputAType<A_TYPE, typename A_TYPE::T>, MM_CFG>;
+template <typename IMPL, typename A_TYPE, typename B_TYPE, typename C_TYPE, typename BIAS_TYPE, const auto &MM_CFG,
+          typename MM_CB>
+class IFAMatmulPolicyNormal : public MatmulPolicy<MM_CFG, IMPL, A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE> {
+public:
+    using UserDefDataType = IFAFlagData;
+    using CubeInBufferA =
+        AscendC::Impl::Detail::IFACubeInBuffer<IMPL, MatmulInputAType<A_TYPE, typename A_TYPE::T>, MM_CFG>;
+    using CopyCubeInA =
+        AscendC::Impl::Detail::IFACopyCubeIn<IMPL, MatmulInputAType<A_TYPE, typename A_TYPE::T>, MM_CFG>;
 };
 
 } // namespace Detail
 } // namespace Impl
 } // namespace AscendC
-#endif  // IFA_MATMUL_POLICY_H
+#endif // IFA_MATMUL_POLICY_H

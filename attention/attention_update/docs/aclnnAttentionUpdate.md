@@ -38,12 +38,12 @@ $$
 
 ```c++
 aclnnStatus aclnnAttentionUpdateGetWorkspaceSize(
-   const aclTensorList  *lse, 
-   const aclTensorList  *localOut, 
-   int64_t              updateType, 
-   aclTensor            *out, 
-   aclTensor            *lseOut, 
-   uint64_t             *workspaceSize, 
+   const aclTensorList  *lse,
+   const aclTensorList  *localOut,
+   int64_t              updateType,
+   aclTensor            *out,
+   aclTensor            *lseOut,
+   uint64_t             *workspaceSize,
    aclOpExecutor        **executor)
 ```
 
@@ -58,7 +58,7 @@ aclnnStatus aclnnAttentionUpdate(
 ## aclnnAttentionUpdateGetWorkspaceSize
 
 - **参数说明**
-  
+
   <table style="undefined; table-layout: fixed; width: 1567px">
     <colgroup>
       <col style="width: 170px"> <!-- 参数名 -->
@@ -118,7 +118,7 @@ aclnnStatus aclnnAttentionUpdate(
         <td>输出</td>
         <td>输出的tensor。</td>
         <td>
-          - 
+          -
         </td>
         <td>与localOut一致</td>
         <td>ND</td>
@@ -159,11 +159,11 @@ aclnnStatus aclnnAttentionUpdate(
   </table>
 
 - **返回值**
-  
+
   aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
-  
+
   第一段接口完成入参校验，出现以下场景时报错：
-  
+
   <div style="overflow-x: auto;">
     <table style="table-layout: fixed; width: 1100px">
       <colgroup>
@@ -209,7 +209,7 @@ aclnnStatus aclnnAttentionUpdate(
 ## aclnnAttentionUpdate
 
 - **参数说明**
-  
+
   <table><thead>
     <tr>
       <th>参数名</th>
@@ -239,9 +239,9 @@ aclnnStatus aclnnAttentionUpdate(
     </tr>
   </tbody>
   </table>
-  
+
 - **返回值**
-  
+
   aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
 ## 约束说明

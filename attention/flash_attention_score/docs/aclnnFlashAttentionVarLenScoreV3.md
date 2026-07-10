@@ -384,8 +384,8 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV3(
         <td>-</td>
       </tr>
     </tbody>
-  </table>  
-  
+  </table>
+
 - **返回值**
 
   aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
@@ -476,10 +476,10 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV3(
     - N：取值范围为1\~256。
     - D：取值范围为1\~768。
     - 数据shape必须为TND。
-    - KeepProb必须为1。  
+    - KeepProb必须为1。
 - query、key、value数据排布格式仅支持TND，T是B和S合轴紧密排列的数据（每个batch的SeqLenQ和SeqLenKV），其中B（Batch）表示输入样本批量大小、S（Seq-Length）表示输入样本序列长度、H（Head-Size）表示隐藏层的大小、N（Head-Num）表示多头数、D（Head-Dim）表示隐藏层最小的单元尺寸，且满足D=H/N。
 - innerPrecise：当前0、1为保留配置值，2为开启无效行计算，其功能是避免在计算过程中存在整行mask进而导致精度有损失，但是该配置会导致性能下降。如果算子可判断出存在无效行场景，会自动开启无效行计算，例如sparseMode为3，Sq > Skv场景。
-- sparseMode的约束如下: 
+- sparseMode的约束如下:
   - 当所有的attenMaskOptional的shape小于2048且相同的时候，建议使用default模式，来减少内存使用量；
   - 配置为1、2、3时，用户配置的preTokens、nextTokens不会生效；
   - 配置为0、4时，须保证attenMaskOptional与preTokens、nextTokens的范围一致。

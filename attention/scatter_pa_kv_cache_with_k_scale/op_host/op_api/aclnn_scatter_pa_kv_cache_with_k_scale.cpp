@@ -110,8 +110,8 @@ static aclnnStatus CheckDtypeValid(const aclTensor *key, const aclTensor *value,
 }
 
 static aclnnStatus CheckShape(const aclTensor *key, const aclTensor *value, const aclTensor *keyCacheRef,
-    const aclTensor *valueCacheRef, const aclTensor *slotMapping, const aclTensor *keyScale,
-    const aclTensor *keyScaleCacheRef)
+                              const aclTensor *valueCacheRef, const aclTensor *slotMapping, const aclTensor *keyScale,
+                              const aclTensor *keyScaleCacheRef)
 {
     auto keyDimNum = key->GetViewShape().GetDimNum();
     auto valueDimNum = value->GetViewShape().GetDimNum();
@@ -319,8 +319,10 @@ static aclnnStatus ProcessContiguous(const aclTensor *key, const aclTensor *valu
 } // namespace
 
 aclnnStatus aclnnScatterPaKvCacheWithKScaleGetWorkspaceSize(const aclTensor *key, const aclTensor *value,
-    aclTensor *keyCacheRef, aclTensor *valueCacheRef, const aclTensor *slotMapping, aclTensor *keyScale,
-    aclTensor *keyScaleCacheRef, char *cacheLayoutOptional, uint64_t *workspaceSize, aclOpExecutor **executor)
+                                                            aclTensor *keyCacheRef, aclTensor *valueCacheRef,
+                                                            const aclTensor *slotMapping, aclTensor *keyScale,
+                                                            aclTensor *keyScaleCacheRef, char *cacheLayoutOptional,
+                                                            uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     L2_DFX_PHASE_1(
         aclnnScatterPaKvCacheWithKScale,
@@ -346,13 +348,13 @@ aclnnStatus aclnnScatterPaKvCacheWithKScaleGetWorkspaceSize(const aclTensor *key
         return ACLNN_SUCCESS;
     }
 
-    CHECK_RET(
-        CheckShape(key, value, keyCacheRef, valueCacheRef, slotMapping, keyScale, keyScaleCacheRef) == ACLNN_SUCCESS,
-        ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(CheckShape(key, value, keyCacheRef, valueCacheRef, slotMapping, keyScale, keyScaleCacheRef) ==
+                  ACLNN_SUCCESS,
+              ACLNN_ERR_PARAM_INVALID);
 
     CHECK_RET(CheckDtypeValid(key, value, keyCacheRef, valueCacheRef, slotMapping, keyScale, keyScaleCacheRef) ==
                   ACLNN_SUCCESS,
-        ACLNN_ERR_PARAM_INVALID);
+              ACLNN_ERR_PARAM_INVALID);
 
     auto uniqueExecutor = CREATE_EXECUTOR();
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
@@ -367,8 +369,8 @@ aclnnStatus aclnnScatterPaKvCacheWithKScaleGetWorkspaceSize(const aclTensor *key
                              cacheLayoutOptional, workspaceSize, executor, uniqueExecutor);
 }
 
-aclnnStatus aclnnScatterPaKvCacheWithKScale(
-    void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream)
+aclnnStatus aclnnScatterPaKvCacheWithKScale(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
+                                            aclrtStream stream)
 {
     L2_DFX_PHASE_2(aclnnScatterPaKvCacheWithKScale);
     CHECK_COND(CommonOpExecutorRun(workspace, workspaceSize, executor, stream) == ACLNN_SUCCESS, ACLNN_ERR_INNER,

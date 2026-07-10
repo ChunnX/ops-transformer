@@ -16,7 +16,7 @@
 ## 功能说明
 
 + 算子功能：用于Native-Sparse-Attention推理阶段的KV压缩，每次推理每个batch会产生一个新的token，每当某个batch的token数量凑满一个compress\_block时，该算子会将该batch的后compress\_block个token压缩成一个compress\_token，算法流程如下：
-  
+
   1. 检查act\_seq\_lens是否有满足$s \ge compressBlockSize$ 且 $(s - compressBlockSize) \% stride ==0$的序列长度；
   2. 找到满足序列长度的batchIdx，根据block\_table找到该batch的后compress\_block\_size个token压缩；
   3. 执行压缩算法；
@@ -24,7 +24,7 @@
 + 计算公式：
 
 $$
-compressIdx=(s-compressBlockSize)/stride\\ 
+compressIdx=(s-compressBlockSize)/stride\\
 outputCacheRef[slotMapping[i]] = input[compressIdx*stride : compressIdx*stride+compressBlockSize]*weight[:]
 $$
 

@@ -37,8 +37,8 @@ struct GatherPaKvCacheTilingDataTest {
     CONVERT_TILING_DATA(tilingStruct, tilingDataPointer, tilingPointer);
 
 #define GET_TILING_DATA(tilingData, tilingPointer)                                                                     \
-    GatherPaKvCacheTilingDataTest tilingData;                                                                              \
-    INIT_TILING_DATA(GatherPaKvCacheTilingDataTest, tilingDataPointer, tilingPointer);                                     \
+    GatherPaKvCacheTilingDataTest tilingData;                                                                          \
+    INIT_TILING_DATA(GatherPaKvCacheTilingDataTest, tilingDataPointer, tilingPointer);                                 \
     (tilingData).blockSize = tilingDataPointer->blockSize;                                                             \
     (tilingData).numTokens = tilingDataPointer->numTokens;                                                             \
     (tilingData).numblkTabCol = tilingDataPointer->numblkTabCol;                                                       \

@@ -14,7 +14,7 @@
 #include "opdev/op_executor.h"
 
 namespace l0op {
-const aclTensor* MixedQuantSparseFlashMlaMetadata(
+const aclTensor *MixedQuantSparseFlashMlaMetadata(
     const aclTensor *cuSeqlensQOptional, const aclTensor *cuSeqlensOriKvOptional,
     const aclTensor *cuSeqlensCmpKvOptional, const aclTensor *sequsedQOptional, const aclTensor *sequsedOriKvOptional,
     const aclTensor *sequsedCmpKvOptional, const aclTensor *cmpResidualKvOptional,

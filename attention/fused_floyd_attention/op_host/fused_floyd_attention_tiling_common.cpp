@@ -88,10 +88,10 @@ ge::graphStatus CheckInputShapeValid(gert::TilingContext *context, int64_t b, in
     return ge::GRAPH_SUCCESS;
 }
 
-bool CheckSameShape(const gert::StorageShape *aShape, const gert::StorageShape *bShape) {
+bool CheckSameShape(const gert::StorageShape *aShape, const gert::StorageShape *bShape)
+{
     OP_CHECK_IF((aShape == nullptr) || (bShape == nullptr),
-               OP_LOGW("fused_floyd_attention_tiling_common", "aShape or bShape is nullptr."),
-               return false);
+                OP_LOGW("fused_floyd_attention_tiling_common", "aShape or bShape is nullptr."), return false);
     uint32_t dimSizeA = aShape->GetStorageShape().GetDimNum();
     uint32_t dimSizeB = bShape->GetStorageShape().GetDimNum();
     if (dimSizeA != SUPPORT_DIM_NUM || dimSizeA != dimSizeB) {

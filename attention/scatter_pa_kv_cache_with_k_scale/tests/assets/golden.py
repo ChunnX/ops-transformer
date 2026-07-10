@@ -34,11 +34,11 @@ def scatter_kv_cache_with_k_scale_golden(
  	 ):
  	"""
  	Kernel golden for scatter_kv_cache_with_k_scale.
- 	
+
  	Pure memory-access operator: scatter key/value tensors into KV cache
  	according to slot_mapping indices, and write key_scale values into
  	key_scale_cache. Inplace operator.
- 	
+
  	Parameters follow SE document definition order:
  	- key:             [num_tokens, num_head, k_head_size]         FP8 (uint8 storage)
  	- value:           [num_tokens, num_head, v_head_size]         FP8 (uint8 storage)
@@ -48,7 +48,7 @@ def scatter_kv_cache_with_k_scale_golden(
  	- key_scale:       [num_tokens, num_head]                      float32
  	- key_scale_cache: [num_blocks, num_head, block_size, 1]       float32 (inplace)
  	- cache_layout:    str, default "BNBD"
- 	
+
  	Returns:
  	    tuple: (key_cache, value_cache, key_scale_cache) - inplace-modified inputs
  	"""
@@ -58,7 +58,7 @@ def scatter_kv_cache_with_k_scale_golden(
  	v_head_size = value.shape[2]
  	num_blocks = key_cache.shape[0]
  	block_size = key_cache.shape[2]
- 	
+
  	# Input shape validation (defensive)
  	assert key.shape == (num_tokens, num_head, k_head_size), \
  	    f"key shape mismatch: expected ({num_tokens}, {num_head}, {k_head_size}), got {key.shape}"
@@ -74,7 +74,7 @@ def scatter_kv_cache_with_k_scale_golden(
  	    f"key_scale shape mismatch: expected ({num_tokens}, {num_head}), got {key_scale.shape}"
  	assert key_scale_cache.shape == (num_blocks, num_head, block_size, 1), \
  	    f"key_scale_cache shape mismatch: expected ({num_blocks}, {num_head}, {block_size}, 1), got {key_scale_cache.shape}"
- 	
+
  	max_slot = num_blocks * block_size
  	for i in range(num_tokens):
  	    slot = int(slot_mapping[i])

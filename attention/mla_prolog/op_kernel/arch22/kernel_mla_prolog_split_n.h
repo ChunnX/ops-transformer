@@ -364,7 +364,7 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::MmCqParamInit()
         mmCqParam_.n = baseParams_->mm1SingleCoreN; // 1536 / 24 = 64
     }
     mmCqParam_.m = baseParams_->stepBatchSize; // 32
-    mmCqParam_.k = baseParams_->headSizeX; // 7168
+    mmCqParam_.k = baseParams_->headSizeX;     // 7168
     mmCqParam_.needSetOrgShape = 1;
     mmCqParam_.orgKb = mmCqParam_.k;
     mmCqParam_.orgKa = mmCqParam_.k;
@@ -391,7 +391,7 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::MmCkvKrParamInit()
         mmCkvKrParam_.n = baseParams_->mm2SingleCoreN;
     }
     mmCkvKrParam_.m = baseParams_->stepBatchSize; // 32
-    mmCkvKrParam_.k = baseParams_->headSizeX; // 7168
+    mmCkvKrParam_.k = baseParams_->headSizeX;     // 7168
     mmCkvKrParam_.needSetOrgShape = 1;
     mmCkvKrParam_.orgKb = mmCkvKrParam_.k;
     mmCkvKrParam_.orgKa = mmCkvKrParam_.k;
@@ -1726,7 +1726,7 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::RopeQr(int64_t ropeQrOffset, 
     }
     uint64_t stride = static_cast<uint64_t>(baseParams_->dimHeadSizeQc + baseParams_->dimHeadRope);
 
-    
+
     LocalTensor<ropeOutputType> outputLocal;
     LocalTensor<float> channelDeqScaleLocal = shareBuffer_.Get<float>();
 

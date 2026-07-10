@@ -38,30 +38,30 @@ public:
                                                                        const int64_t dyGmOffset,
                                                                        const int64_t valueGmOffset,
                                                                        const int64_t indicesGmOffset,
-                                                                       const int64_t mm12GmOffset, 
+                                                                       const int64_t mm12GmOffset,
                                                                        const int32_t blkCntOffset,
                                                                        const int32_t mmPingPongIdx);
 
-    __aicore__ inline __attribute__((always_inline)) void cube345Process(const int64_t queryGmOffset, 
-                                                                         const int64_t keyGmOffset, 
+    __aicore__ inline __attribute__((always_inline)) void cube345Process(const int64_t queryGmOffset,
+                                                                         const int64_t keyGmOffset,
                                                                          const int64_t dyGmOffset,
-                                                                         const int64_t valueGmOffset, 
-                                                                         const int64_t indicesGmOffset, 
+                                                                         const int64_t valueGmOffset,
+                                                                         const int64_t indicesGmOffset,
                                                                          const int64_t mm345GmOffset,
-                                                                         const int32_t blkCntOffset, 
+                                                                         const int32_t blkCntOffset,
                                                                          const int32_t mmPingPongIdx);
-private:                                                              
+private:
     __aicore__ inline __attribute__((always_inline)) void cube1Process(const int64_t queryGmOffset,
                                                                        const int64_t keyGmOffset,
                                                                        const int64_t indicesGmOffset,
-                                                                       const int64_t outGmOffset, 
+                                                                       const int64_t outGmOffset,
                                                                        const int32_t blkCntOffset,
                                                                        const int32_t mmPingPongIdx);
 
     __aicore__ inline __attribute__((always_inline)) void cube2Process(const int64_t dyGmOffset,
                                                                        const int64_t valueGmOffset,
                                                                        const int64_t indicesGmOffset,
-                                                                       const int64_t outGmOffset, 
+                                                                       const int64_t outGmOffset,
                                                                        const int32_t blkCntOffset,
                                                                        const int32_t mmPingPongIdx);
 
@@ -82,10 +82,10 @@ private:
     __aicore__ inline __attribute__((always_inline)) void cube5Process(const int64_t pGmOffset,
                                                                        const int64_t dyGmOffset,
                                                                        const int64_t indicesGmOffset,
-                                                                       const int64_t outGmOffset, 
+                                                                       const int64_t outGmOffset,
                                                                        const int32_t blkCntOffset,
                                                                        const int32_t mmPingPongIdx);
-    __aicore__ inline __attribute__((always_inline)) void LoadBData(const int64_t dsGmOffset, 
+    __aicore__ inline __attribute__((always_inline)) void LoadBData(const int64_t dsGmOffset,
                                                                     const int64_t keyGmOffset,
                                                                     const int64_t indicesGmOffset,
                                                                     const int64_t outGmOffset,

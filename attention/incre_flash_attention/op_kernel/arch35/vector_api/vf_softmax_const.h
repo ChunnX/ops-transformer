@@ -20,15 +20,15 @@
 
 namespace AscendC {
 
-using MicroAPI::MaskMergeMode;
-using MicroAPI::LoadDist;
-using MicroAPI::StoreDist;
-using MicroAPI::RegLayout;
-using MicroAPI::PostLiteral;
-using MicroAPI::MaskPattern;
-using MicroAPI::MaskDist;
 using MicroAPI::HighLowPart;
+using MicroAPI::LoadDist;
+using MicroAPI::MaskDist;
+using MicroAPI::MaskMergeMode;
+using MicroAPI::MaskPattern;
+using MicroAPI::PostLiteral;
+using MicroAPI::RegLayout;
 using MicroAPI::SatMode;
+using MicroAPI::StoreDist;
 
 const float maskMinValue = SOFTMAX_MIN_NUM;
 const float maskMinValue2 = -3e38;
@@ -45,30 +45,30 @@ const float maskMinValue2 = -3e38;
  * @param [in] tmpExpSumUb, current expsum ub phyaddr
  * @param [in] srcRows
  */
-#define UPDATE_EXPSUM_MAX(expSumUb, maxUb, expMaxUb, inExpSumUb, inMaxUb, tmpExpSumUb, tmpMaxUb, srcRows)        \
-    do {                                                                                                         \
-        MicroAPI::RegTensor<T> vregInMax;                                                                        \
-        MicroAPI::RegTensor<T> vregMax;                                                                          \
-        MicroAPI::RegTensor<T> vregExpMax;                                                                       \
-        MicroAPI::RegTensor<T> vregInExpSum;                                                                     \
-        MicroAPI::RegTensor<T> vregExpSumUpdate;                                                                 \
-        const uint32_t vlT = 256 / sizeof(T);                                                                    \
-        const uint32_t dealRows = 8;                                                                             \
-        uint16_t updateLoops = ((srcRows) + (dealRows - 1)) / dealRows;                                          \
-        MicroAPI::MaskReg pregAll = MicroAPI::CreateMask<T, MaskPattern::ALL>();                                 \
-                                                                                                                 \
-        for (uint16_t i = 0; i < updateLoops; ++i) {                                                             \
-            MicroAPI::DataCopy<T, LoadDist::DIST_E2B_B32>(vregMax, (tmpMaxUb) + (i * dealRows));                 \
-            MicroAPI::DataCopy<T, LoadDist::DIST_NORM>(vregInMax, (inMaxUb) + (i * vlT));                        \
-            MicroAPI::FusedExpSub<T, T, RegLayout::ONE, MaskMergeMode::ZEROING>(vregExpMax, vregInMax, vregMax,  \
-                                                                                pregAll);                        \
-            MicroAPI::DataCopy<T, StoreDist::DIST_NORM_B32>((expMaxUb) + (i * vlT), vregExpMax, pregAll);        \
-            MicroAPI::DataCopy<T, StoreDist::DIST_NORM_B32>((maxUb) + (i * vlT), vregMax, pregAll);              \
-            MicroAPI::DataCopy<T, LoadDist::DIST_NORM>(vregInExpSum, (inExpSumUb) + (i * vlT));                  \
-            MicroAPI::DataCopy<T, LoadDist::DIST_E2B_B32>(vregExpSumUpdate, (tmpExpSumUb) + (i * dealRows));     \
-            MicroAPI::MulAddDst<T, MaskMergeMode::ZEROING>(vregExpSumUpdate, vregInExpSum, vregExpMax, pregAll); \
-            MicroAPI::DataCopy<T, StoreDist::DIST_NORM_B32>((expSumUb) + (i * vlT), vregExpSumUpdate, pregAll);  \
-        }                                                                                                        \
+#define UPDATE_EXPSUM_MAX(expSumUb, maxUb, expMaxUb, inExpSumUb, inMaxUb, tmpExpSumUb, tmpMaxUb, srcRows)              \
+    do {                                                                                                               \
+        MicroAPI::RegTensor<T> vregInMax;                                                                              \
+        MicroAPI::RegTensor<T> vregMax;                                                                                \
+        MicroAPI::RegTensor<T> vregExpMax;                                                                             \
+        MicroAPI::RegTensor<T> vregInExpSum;                                                                           \
+        MicroAPI::RegTensor<T> vregExpSumUpdate;                                                                       \
+        const uint32_t vlT = 256 / sizeof(T);                                                                          \
+        const uint32_t dealRows = 8;                                                                                   \
+        uint16_t updateLoops = ((srcRows) + (dealRows - 1)) / dealRows;                                                \
+        MicroAPI::MaskReg pregAll = MicroAPI::CreateMask<T, MaskPattern::ALL>();                                       \
+                                                                                                                       \
+        for (uint16_t i = 0; i < updateLoops; ++i) {                                                                   \
+            MicroAPI::DataCopy<T, LoadDist::DIST_E2B_B32>(vregMax, (tmpMaxUb) + (i * dealRows));                       \
+            MicroAPI::DataCopy<T, LoadDist::DIST_NORM>(vregInMax, (inMaxUb) + (i * vlT));                              \
+            MicroAPI::FusedExpSub<T, T, RegLayout::ONE, MaskMergeMode::ZEROING>(vregExpMax, vregInMax, vregMax,        \
+                                                                                pregAll);                              \
+            MicroAPI::DataCopy<T, StoreDist::DIST_NORM_B32>((expMaxUb) + (i * vlT), vregExpMax, pregAll);              \
+            MicroAPI::DataCopy<T, StoreDist::DIST_NORM_B32>((maxUb) + (i * vlT), vregMax, pregAll);                    \
+            MicroAPI::DataCopy<T, LoadDist::DIST_NORM>(vregInExpSum, (inExpSumUb) + (i * vlT));                        \
+            MicroAPI::DataCopy<T, LoadDist::DIST_E2B_B32>(vregExpSumUpdate, (tmpExpSumUb) + (i * dealRows));           \
+            MicroAPI::MulAddDst<T, MaskMergeMode::ZEROING>(vregExpSumUpdate, vregInExpSum, vregExpMax, pregAll);       \
+            MicroAPI::DataCopy<T, StoreDist::DIST_NORM_B32>((expSumUb) + (i * vlT), vregExpSumUpdate, pregAll);        \
+        }                                                                                                              \
     } while (0)
 
 /* **************************************************************************************************
@@ -95,41 +95,42 @@ const float maskMinValue2 = -3e38;
 // 本函数IFA S方向泛化长度为(0, 64]
 template <typename T, typename T1, typename PSE_SHIFT_T, bool withPseShift = false, bool isUpdate = false,
           bool withAttenMask = false, bool isBasicBlock = false, bool isBand = false, bool isDataFormatNZ = false>
-__aicore__ inline void SoftmaxFlashV2_base64_update(
-    const LocalTensor<T1>& dstTensor, const LocalTensor<T>& expSumTensor, const LocalTensor<T>& maxTensor,
-    const LocalTensor<T>& srcTensor, const LocalTensor<T>& expMaxTensor, const LocalTensor<T>& inExpSumTensor,
-    const LocalTensor<T>& inMaxTensor, const LocalTensor<uint8_t>& sharedTmpBuffer, const T scale,
-    const uint32_t maskSizeAlignPFA, const LocalTensor<uint8_t>& maskTensor, const LocalTensor<PSE_SHIFT_T>& pseTensor,
-    const SoftMaxShapeInfo& softmaxShapeInfo = {})
+__aicore__ inline void
+SoftmaxFlashV2_base64_update(const LocalTensor<T1> &dstTensor, const LocalTensor<T> &expSumTensor,
+                             const LocalTensor<T> &maxTensor, const LocalTensor<T> &srcTensor,
+                             const LocalTensor<T> &expMaxTensor, const LocalTensor<T> &inExpSumTensor,
+                             const LocalTensor<T> &inMaxTensor, const LocalTensor<uint8_t> &sharedTmpBuffer,
+                             const T scale, const uint32_t maskSizeAlignPFA, const LocalTensor<uint8_t> &maskTensor,
+                             const LocalTensor<PSE_SHIFT_T> &pseTensor, const SoftMaxShapeInfo &softmaxShapeInfo = {})
 {
-    const uint32_t originN = softmaxShapeInfo.oriSrcK;  // N轴实际数据长度，为SInnerLoop切块的 S/act_seq_len
+    const uint32_t originN = softmaxShapeInfo.oriSrcK; // N轴实际数据长度，为SInnerLoop切块的 S/act_seq_len
     const uint32_t fixSrcN = 64;
-    const uint32_t floatRepSize = 64;         // 寄存器一次可以加载64个元素（fp32类型，对应256B）
-    const uint32_t reduceN = 32 / sizeof(T);  // m每行的结果存为8个重复元素（32B对齐）
-    const uint16_t rows = static_cast<uint16_t>(softmaxShapeInfo.srcM);  // 总行数
+    const uint32_t floatRepSize = 64;        // 寄存器一次可以加载64个元素（fp32类型，对应256B）
+    const uint32_t reduceN = 32 / sizeof(T); // m每行的结果存为8个重复元素（32B对齐）
+    const uint16_t rows = static_cast<uint16_t>(softmaxShapeInfo.srcM); // 总行数
 
     __VEC_SCOPE__
     {
-        __ubuf__ T1* expUb = (__ubuf__ T1*)dstTensor.GetPhyAddr();
-        __ubuf__ float* expSumUb = (__ubuf__ T*)expSumTensor.GetPhyAddr();
-        __ubuf__ float* maxUb = (__ubuf__ T*)maxTensor.GetPhyAddr();
-        __ubuf__ float* srcUb = (__ubuf__ T*)srcTensor.GetPhyAddr();
-        __ubuf__ float* expMaxUb = (__ubuf__ T*)expMaxTensor.GetPhyAddr();
-        __ubuf__ float* inExpSumUb = (__ubuf__ T*)inExpSumTensor.GetPhyAddr();
-        __ubuf__ float* inMaxUb = (__ubuf__ T*)inMaxTensor.GetPhyAddr();
-        __ubuf__ float* tmpExpSumUb = (__ubuf__ T*)sharedTmpBuffer.GetPhyAddr();
-        __ubuf__ float* tmpMaxUb = tmpExpSumUb + 16;  // 16 x sum + 16 x max
-        __ubuf__ float* tmpExpSumUb2 = tmpExpSumUb;
-        __ubuf__ float* tmpMaxUb2 = tmpMaxUb;
-        __ubuf__ uint8_t* maskUb = (__ubuf__ uint8_t*)maskTensor.GetPhyAddr();
-        __ubuf__ uint8_t* maskBandUb;
+        __ubuf__ T1 *expUb = (__ubuf__ T1 *)dstTensor.GetPhyAddr();
+        __ubuf__ float *expSumUb = (__ubuf__ T *)expSumTensor.GetPhyAddr();
+        __ubuf__ float *maxUb = (__ubuf__ T *)maxTensor.GetPhyAddr();
+        __ubuf__ float *srcUb = (__ubuf__ T *)srcTensor.GetPhyAddr();
+        __ubuf__ float *expMaxUb = (__ubuf__ T *)expMaxTensor.GetPhyAddr();
+        __ubuf__ float *inExpSumUb = (__ubuf__ T *)inExpSumTensor.GetPhyAddr();
+        __ubuf__ float *inMaxUb = (__ubuf__ T *)inMaxTensor.GetPhyAddr();
+        __ubuf__ float *tmpExpSumUb = (__ubuf__ T *)sharedTmpBuffer.GetPhyAddr();
+        __ubuf__ float *tmpMaxUb = tmpExpSumUb + 16; // 16 x sum + 16 x max
+        __ubuf__ float *tmpExpSumUb2 = tmpExpSumUb;
+        __ubuf__ float *tmpMaxUb2 = tmpMaxUb;
+        __ubuf__ uint8_t *maskUb = (__ubuf__ uint8_t *)maskTensor.GetPhyAddr();
+        __ubuf__ uint8_t *maskBandUb;
         if constexpr (isBand) {
-            maskBandUb = (__ubuf__ uint8_t*)maskTensor[rows * maskSizeAlignPFA].GetPhyAddr();
+            maskBandUb = (__ubuf__ uint8_t *)maskTensor[rows * maskSizeAlignPFA].GetPhyAddr();
         }
-        __ubuf__ PSE_SHIFT_T* pseUb = (__ubuf__ PSE_SHIFT_T*)pseTensor.GetPhyAddr();
+        __ubuf__ PSE_SHIFT_T *pseUb = (__ubuf__ PSE_SHIFT_T *)pseTensor.GetPhyAddr();
 
-        uint16_t blockStride = 16 + 1;  // 加1是为了解写写ub bank冲突
-        uint16_t repeatStride = 1;      //  每次nd2nz写完之后ub往后偏移1个block
+        uint16_t blockStride = 16 + 1; // 加1是为了解写写ub bank冲突
+        uint16_t repeatStride = 1;     //  每次nd2nz写完之后ub往后偏移1个block
 
         MicroAPI::UnalignReg uregMax;
         MicroAPI::UnalignReg uregExpSum;
@@ -144,20 +145,21 @@ __aicore__ inline void SoftmaxFlashV2_base64_update(
             MicroAPI::RegTensor<T> vregMax;
 
             MicroAPI::DataCopy<T, LoadDist::DIST_NORM>(vregX0, srcUb + i * fixSrcN);
-            MicroAPI::Muls<T, T, MaskMergeMode::ZEROING>(vregX0, vregX0, scale, PregNb32);  // Muls(scale)
+            MicroAPI::Muls<T, T, MaskMergeMode::ZEROING>(vregX0, vregX0, scale, PregNb32); // Muls(scale)
 
             if constexpr (withPseShift) {
                 MicroAPI::RegTensor<PSE_SHIFT_T> vregPseShift0;
                 MicroAPI::RegTensor<T> vregPseShiftCast0;
                 MicroAPI::DataCopy<PSE_SHIFT_T, LoadDist::DIST_UNPACK_B16>(vregPseShift0, pseUb + i * fixSrcN);
 
-                static constexpr MicroAPI::CastTrait castTraitfp16_fp32 = {MicroAPI::RegLayout::ZERO, MicroAPI::SatMode::UNKNOWN,
-                                                   MicroAPI::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
+                static constexpr MicroAPI::CastTrait castTraitfp16_fp32 = {
+                    MicroAPI::RegLayout::ZERO, MicroAPI::SatMode::UNKNOWN, MicroAPI::MaskMergeMode::ZEROING,
+                    RoundMode::UNKNOWN};
                 MicroAPI::Cast<T, PSE_SHIFT_T, castTraitfp16_fp32>(vregPseShiftCast0, vregPseShift0, PregNb32);
                 MicroAPI::Add<T, MaskMergeMode::ZEROING>(vregX0, vregX0, vregPseShiftCast0, PregNb32);
             }
 
-            if constexpr (withAttenMask) {  // mask
+            if constexpr (withAttenMask) { // mask
                 MicroAPI::RegTensor<T> vregMin;
                 MicroAPI::MaskReg pregMask0;
                 MicroAPI::Duplicate<float, float>(vregMin, maskMinValue);
@@ -166,12 +168,13 @@ __aicore__ inline void SoftmaxFlashV2_base64_update(
 
                 if constexpr (isBand) {
                     MicroAPI::MaskReg pregBandMask0;
-                    MicroAPI::DataCopy<uint8_t, MaskDist::DIST_DS>(pregBandMask0, maskUb + i * maskSizeAlignPFA + rows * maskSizeAlignPFA);
+                    MicroAPI::DataCopy<uint8_t, MaskDist::DIST_DS>(pregBandMask0, maskUb + i * maskSizeAlignPFA +
+                                                                                      rows * maskSizeAlignPFA);
                     MicroAPI::Select<T>(vregX0, vregX0, vregMin, pregBandMask0);
                 }
             }
 
-            {  // x_max
+            { // x_max
                 MicroAPI::RegTensor<T> vregInMax;
                 MicroAPI::ReduceMax<T, MaskMergeMode::ZEROING>(vregMax, vregX0, PregNb32);
                 MicroAPI::Duplicate<T, HighLowPart::LOWEST, MaskMergeMode::ZEROING>(vregMax, vregMax, PregNb32);
@@ -181,19 +184,19 @@ __aicore__ inline void SoftmaxFlashV2_base64_update(
                 MicroAPI::DataCopyUnAlign<T, PostLiteral::POST_MODE_UPDATE>(tmpMaxUb, vregMax, uregMax, 1);
             }
 
-            {  // exp
+            { // exp
                 MicroAPI::FusedExpSub<T, T, RegLayout::ONE, MaskMergeMode::ZEROING>(vregX0, vregX0, vregMax, PregNb32);
                 MicroAPI::RegTensor<T1> vregExp0;
                 static constexpr MicroAPI::CastTrait castTrait0 = {RegLayout::ZERO, SatMode::NO_SAT,
                                                                    MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
                 MicroAPI::Cast<T1, T, castTrait0>(vregExp0, vregX0, PregNb32);
-                MicroAPI::Pack<uint16_t, uint32_t, HighLowPart::LOWEST>((MicroAPI::RegTensor<uint16_t>&)vregExp0,
-                                                                        (MicroAPI::RegTensor<uint32_t>&)vregExp0);
+                MicroAPI::Pack<uint16_t, uint32_t, HighLowPart::LOWEST>((MicroAPI::RegTensor<uint16_t> &)vregExp0,
+                                                                        (MicroAPI::RegTensor<uint32_t> &)vregExp0);
                 MicroAPI::DataCopy<T1, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, PostLiteral::POST_MODE_UPDATE>(
                     expUb, vregExp0, blockStride, repeatStride, pregNb16);
             }
 
-            {  // x_sum
+            { // x_sum
                 MicroAPI::RegTensor<T> vregExpSum;
                 MicroAPI::ReduceSum<T, T, MaskMergeMode::ZEROING>(vregExpSum, vregX0, PregNb32);
                 MicroAPI::DataCopyUnAlign<T, PostLiteral::POST_MODE_UPDATE>(tmpExpSumUb, vregExpSum, uregExpSum, 1);
@@ -212,41 +215,42 @@ __aicore__ inline void SoftmaxFlashV2_base64_update(
 // 本函数N方向泛化长度为(64, 128]
 template <typename T, typename T1, typename PSE_SHIFT_T, bool withPseShift = false, bool isUpdate = false,
           bool withAttenMask = false, bool isBasicBlock = false, bool isBand = false, bool isDataFormatNZ = false>
-__aicore__ inline void SoftmaxFlashV2_base128_update(
-    const LocalTensor<T1>& dstTensor, const LocalTensor<T>& expSumTensor, const LocalTensor<T>& maxTensor,
-    const LocalTensor<T>& srcTensor, const LocalTensor<T>& expMaxTensor, const LocalTensor<T>& inExpSumTensor,
-    const LocalTensor<T>& inMaxTensor, const LocalTensor<uint8_t>& sharedTmpBuffer, const T scale,
-    const uint32_t maskSizeAlignPFA, const LocalTensor<uint8_t>& maskTensor, const LocalTensor<PSE_SHIFT_T>& pseTensor,
-    const SoftMaxShapeInfo& softmaxShapeInfo = {})
+__aicore__ inline void
+SoftmaxFlashV2_base128_update(const LocalTensor<T1> &dstTensor, const LocalTensor<T> &expSumTensor,
+                              const LocalTensor<T> &maxTensor, const LocalTensor<T> &srcTensor,
+                              const LocalTensor<T> &expMaxTensor, const LocalTensor<T> &inExpSumTensor,
+                              const LocalTensor<T> &inMaxTensor, const LocalTensor<uint8_t> &sharedTmpBuffer,
+                              const T scale, const uint32_t maskSizeAlignPFA, const LocalTensor<uint8_t> &maskTensor,
+                              const LocalTensor<PSE_SHIFT_T> &pseTensor, const SoftMaxShapeInfo &softmaxShapeInfo = {})
 {
-    const uint32_t originN = softmaxShapeInfo.oriSrcK;  // N轴实际数据长度，为SInnerLoop切块的 S/act_seq_len
+    const uint32_t originN = softmaxShapeInfo.oriSrcK; // N轴实际数据长度，为SInnerLoop切块的 S/act_seq_len
     const uint32_t fixSrcN = 128;
-    const uint32_t floatRepSize = 64;         // 寄存器一次可以加载64个元素（fp32类型，对应256B）
-    const uint32_t reduceN = 32 / sizeof(T);  // m每行的结果存为8个重复元素（32B对齐）
-    const uint16_t rows = static_cast<uint16_t>(softmaxShapeInfo.srcM);  // 总行数
+    const uint32_t floatRepSize = 64;        // 寄存器一次可以加载64个元素（fp32类型，对应256B）
+    const uint32_t reduceN = 32 / sizeof(T); // m每行的结果存为8个重复元素（32B对齐）
+    const uint16_t rows = static_cast<uint16_t>(softmaxShapeInfo.srcM); // 总行数
 
     __VEC_SCOPE__
     {
-        __ubuf__ T1* expUb = (__ubuf__ T1*)dstTensor.GetPhyAddr();
-        __ubuf__ float* expSumUb = (__ubuf__ T*)expSumTensor.GetPhyAddr();
-        __ubuf__ float* maxUb = (__ubuf__ T*)maxTensor.GetPhyAddr();
-        __ubuf__ float* srcUb = (__ubuf__ T*)srcTensor.GetPhyAddr();
-        __ubuf__ float* expMaxUb = (__ubuf__ T*)expMaxTensor.GetPhyAddr();
-        __ubuf__ float* inExpSumUb = (__ubuf__ T*)inExpSumTensor.GetPhyAddr();
-        __ubuf__ float* inMaxUb = (__ubuf__ T*)inMaxTensor.GetPhyAddr();
-        __ubuf__ float* tmpExpSumUb = (__ubuf__ T*)sharedTmpBuffer.GetPhyAddr();
-        __ubuf__ float* tmpMaxUb = tmpExpSumUb + 16; // 16 x sum + 16 x max
-        __ubuf__ float* tmpExpSumUb2 = tmpExpSumUb;
-        __ubuf__ float* tmpMaxUb2 = tmpMaxUb;
-        __ubuf__ uint8_t* maskUb = (__ubuf__ uint8_t*)maskTensor.GetPhyAddr();
-        __ubuf__ uint8_t* maskBandUb;
+        __ubuf__ T1 *expUb = (__ubuf__ T1 *)dstTensor.GetPhyAddr();
+        __ubuf__ float *expSumUb = (__ubuf__ T *)expSumTensor.GetPhyAddr();
+        __ubuf__ float *maxUb = (__ubuf__ T *)maxTensor.GetPhyAddr();
+        __ubuf__ float *srcUb = (__ubuf__ T *)srcTensor.GetPhyAddr();
+        __ubuf__ float *expMaxUb = (__ubuf__ T *)expMaxTensor.GetPhyAddr();
+        __ubuf__ float *inExpSumUb = (__ubuf__ T *)inExpSumTensor.GetPhyAddr();
+        __ubuf__ float *inMaxUb = (__ubuf__ T *)inMaxTensor.GetPhyAddr();
+        __ubuf__ float *tmpExpSumUb = (__ubuf__ T *)sharedTmpBuffer.GetPhyAddr();
+        __ubuf__ float *tmpMaxUb = tmpExpSumUb + 16; // 16 x sum + 16 x max
+        __ubuf__ float *tmpExpSumUb2 = tmpExpSumUb;
+        __ubuf__ float *tmpMaxUb2 = tmpMaxUb;
+        __ubuf__ uint8_t *maskUb = (__ubuf__ uint8_t *)maskTensor.GetPhyAddr();
+        __ubuf__ uint8_t *maskBandUb;
         if constexpr (isBand) {
-            maskBandUb = (__ubuf__ uint8_t*)maskTensor[rows * maskSizeAlignPFA].GetPhyAddr();
+            maskBandUb = (__ubuf__ uint8_t *)maskTensor[rows * maskSizeAlignPFA].GetPhyAddr();
         }
-        __ubuf__ PSE_SHIFT_T* pseUb = (__ubuf__ PSE_SHIFT_T*)pseTensor.GetPhyAddr();
+        __ubuf__ PSE_SHIFT_T *pseUb = (__ubuf__ PSE_SHIFT_T *)pseTensor.GetPhyAddr();
 
-        uint16_t blockStride = 16 + 1;  // 加1是为了解写写ub bank冲突
-        uint16_t repeatStride = 1;      //  每次nd2nz写完之后ub往后偏移1个block
+        uint16_t blockStride = 16 + 1; // 加1是为了解写写ub bank冲突
+        uint16_t repeatStride = 1;     //  每次nd2nz写完之后ub往后偏移1个block
 
         MicroAPI::MaskReg pregAll = MicroAPI::CreateMask<T1, MaskPattern::ALL>();
         MicroAPI::RegTensor<T> vregMin;
@@ -268,7 +272,7 @@ __aicore__ inline void SoftmaxFlashV2_base128_update(
             MicroAPI::DataCopy<T, LoadDist::DIST_NORM>(vregX0, srcUb + i * fixSrcN);
             MicroAPI::DataCopy<T, LoadDist::DIST_NORM>(vregX1, srcUb + 64 + i * fixSrcN);
 
-            MicroAPI::Muls<T, T, MaskMergeMode::ZEROING>(vregX0, vregX0, scale, pregAll);  // Muls(scale)
+            MicroAPI::Muls<T, T, MaskMergeMode::ZEROING>(vregX0, vregX0, scale, pregAll); // Muls(scale)
             MicroAPI::Muls<T, T, MaskMergeMode::ZEROING>(vregX1, vregX1, scale, pregAll);
 
             if constexpr (withPseShift) {
@@ -279,8 +283,9 @@ __aicore__ inline void SoftmaxFlashV2_base128_update(
                 MicroAPI::DataCopy<PSE_SHIFT_T, LoadDist::DIST_UNPACK_B16>(vregPseShift0, pseUb + i * fixSrcN);
                 MicroAPI::DataCopy<PSE_SHIFT_T, LoadDist::DIST_UNPACK_B16>(vregPseShift1, pseUb + 64 + i * fixSrcN);
 
-                static constexpr MicroAPI::CastTrait castTraitfp16_fp32 = {MicroAPI::RegLayout::ZERO, MicroAPI::SatMode::UNKNOWN,
-                                                   MicroAPI::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
+                static constexpr MicroAPI::CastTrait castTraitfp16_fp32 = {
+                    MicroAPI::RegLayout::ZERO, MicroAPI::SatMode::UNKNOWN, MicroAPI::MaskMergeMode::ZEROING,
+                    RoundMode::UNKNOWN};
                 MicroAPI::Cast<T, PSE_SHIFT_T, castTraitfp16_fp32>(vregPseShiftCast0, vregPseShift0, pregAll);
                 MicroAPI::Cast<T, PSE_SHIFT_T, castTraitfp16_fp32>(vregPseShiftCast1, vregPseShift1, pregAll);
                 MicroAPI::Add<T, MaskMergeMode::ZEROING>(vregX0, vregX0, vregPseShiftCast0, pregAll);
@@ -298,8 +303,10 @@ __aicore__ inline void SoftmaxFlashV2_base128_update(
                 if constexpr (isBand) {
                     MicroAPI::MaskReg pregBandMask0;
                     MicroAPI::MaskReg pregBandMask1;
-                    MicroAPI::DataCopy<uint8_t, MaskDist::DIST_DS>(pregBandMask0, maskUb + i * maskSizeAlignPFA + rows * maskSizeAlignPFA);
-                    MicroAPI::DataCopy<uint8_t, MaskDist::DIST_DS>(pregBandMask1, maskUb + 64 + i * maskSizeAlignPFA + rows * maskSizeAlignPFA);
+                    MicroAPI::DataCopy<uint8_t, MaskDist::DIST_DS>(pregBandMask0, maskUb + i * maskSizeAlignPFA +
+                                                                                      rows * maskSizeAlignPFA);
+                    MicroAPI::DataCopy<uint8_t, MaskDist::DIST_DS>(pregBandMask1, maskUb + 64 + i * maskSizeAlignPFA +
+                                                                                      rows * maskSizeAlignPFA);
                     MicroAPI::Select<T>(vregX0, vregX0, vregMin, pregBandMask0);
                     MicroAPI::Select<T>(vregX1, vregX1, vregMin, pregBandMask1);
                 }
@@ -334,15 +341,15 @@ __aicore__ inline void SoftmaxFlashV2_base128_update(
                 static constexpr MicroAPI::CastTrait castTrait1 = {RegLayout::ONE, SatMode::NO_SAT,
                                                                    MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
 
-                MicroAPI::Cast<T1, T, castTrait0>((MicroAPI::RegTensor<T1>&)vregExpEven0, vregExpEven0, pregAll);
-                MicroAPI::Cast<T1, T, castTrait1>((MicroAPI::RegTensor<T1>&)vregExpOdd0, vregExpOdd0, pregAll);
+                MicroAPI::Cast<T1, T, castTrait0>((MicroAPI::RegTensor<T1> &)vregExpEven0, vregExpEven0, pregAll);
+                MicroAPI::Cast<T1, T, castTrait1>((MicroAPI::RegTensor<T1> &)vregExpOdd0, vregExpOdd0, pregAll);
 
-                MicroAPI::Or<uint16_t, MaskMergeMode::ZEROING>((MicroAPI::RegTensor<uint16_t>&)vregExpEven0,
-                                                               (MicroAPI::RegTensor<uint16_t>&)vregExpEven0,
-                                                               (MicroAPI::RegTensor<uint16_t>&)vregExpOdd0, pregAll);
+                MicroAPI::Or<uint16_t, MaskMergeMode::ZEROING>((MicroAPI::RegTensor<uint16_t> &)vregExpEven0,
+                                                               (MicroAPI::RegTensor<uint16_t> &)vregExpEven0,
+                                                               (MicroAPI::RegTensor<uint16_t> &)vregExpOdd0, pregAll);
 
                 MicroAPI::DataCopy<T1, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, PostLiteral::POST_MODE_UPDATE>(
-                    expUb, (MicroAPI::RegTensor<T1>&)vregExpEven0, blockStride, repeatStride, pregAll);
+                    expUb, (MicroAPI::RegTensor<T1> &)vregExpEven0, blockStride, repeatStride, pregAll);
             }
 
             { // x_sum
@@ -364,43 +371,44 @@ __aicore__ inline void SoftmaxFlashV2_base128_update(
 // 本函数N方向泛化长度为(128, 256]
 template <typename T, typename T1, typename PSE_SHIFT_T, bool withPseShift = false, bool isUpdate = false,
           bool withAttenMask = false, bool isBasicBlock = false, bool isBand = false, bool isDataFormatNZ = false>
-__aicore__ inline void SoftmaxFlashV2_base256_update(
-    const LocalTensor<T1>& dstTensor, const LocalTensor<T>& expSumTensor, const LocalTensor<T>& maxTensor,
-    const LocalTensor<T>& srcTensor, const LocalTensor<T>& expMaxTensor, const LocalTensor<T>& inExpSumTensor,
-    const LocalTensor<T>& inMaxTensor, const LocalTensor<uint8_t>& sharedTmpBuffer, const T scale,
-    const uint32_t maskSizeAlignPFA, const LocalTensor<uint8_t>& maskTensor, const LocalTensor<PSE_SHIFT_T>& pseTensor,
-    const SoftMaxShapeInfo& softmaxShapeInfo = {})
+__aicore__ inline void
+SoftmaxFlashV2_base256_update(const LocalTensor<T1> &dstTensor, const LocalTensor<T> &expSumTensor,
+                              const LocalTensor<T> &maxTensor, const LocalTensor<T> &srcTensor,
+                              const LocalTensor<T> &expMaxTensor, const LocalTensor<T> &inExpSumTensor,
+                              const LocalTensor<T> &inMaxTensor, const LocalTensor<uint8_t> &sharedTmpBuffer,
+                              const T scale, const uint32_t maskSizeAlignPFA, const LocalTensor<uint8_t> &maskTensor,
+                              const LocalTensor<PSE_SHIFT_T> &pseTensor, const SoftMaxShapeInfo &softmaxShapeInfo = {})
 {
-    const uint32_t originN = softmaxShapeInfo.oriSrcK;  // N轴实际数据长度，为SInnerLoop切块的 S/act_seq_len
+    const uint32_t originN = softmaxShapeInfo.oriSrcK; // N轴实际数据长度，为SInnerLoop切块的 S/act_seq_len
     const uint32_t fixSrcN = 256;
-    const uint32_t floatRepSize = 64;         // 寄存器一次可以加载64个元素（fp32类型，对应256B）
-    const uint32_t reduceN = 32 / sizeof(T);  // m每行的结果存为8个重复元素（32B对齐）
-    const uint16_t rows = static_cast<uint16_t>(softmaxShapeInfo.srcM);  // 总行数
+    const uint32_t floatRepSize = 64;        // 寄存器一次可以加载64个元素（fp32类型，对应256B）
+    const uint32_t reduceN = 32 / sizeof(T); // m每行的结果存为8个重复元素（32B对齐）
+    const uint16_t rows = static_cast<uint16_t>(softmaxShapeInfo.srcM); // 总行数
 
     __VEC_SCOPE__
     {
-        __ubuf__ float* expSumUb = (__ubuf__ T*)expSumTensor.GetPhyAddr();
-        __ubuf__ float* maxUb = (__ubuf__ T*)maxTensor.GetPhyAddr();
-        __ubuf__ float* srcUb = (__ubuf__ T*)srcTensor.GetPhyAddr();
-        __ubuf__ float* expMaxUb = (__ubuf__ T*)expMaxTensor.GetPhyAddr();
-        __ubuf__ float* inExpSumUb = (__ubuf__ T*)inExpSumTensor.GetPhyAddr();
-        __ubuf__ float* inMaxUb = (__ubuf__ T*)inMaxTensor.GetPhyAddr();
-        __ubuf__ float* tmpExpSumUb = (__ubuf__ T*)sharedTmpBuffer.GetPhyAddr();
-        __ubuf__ float* tmpMaxUb = tmpExpSumUb + 16; // 16 x sum + 16 x max
-        __ubuf__ float* tmpExpSumUb2 = tmpExpSumUb;
-        __ubuf__ float* tmpMaxUb2 = tmpMaxUb;
-        __ubuf__ T1* expUb = (__ubuf__ T1*)dstTensor.GetPhyAddr();
-        __ubuf__ T1* expUb1 = expUb + (16 + 1) * 128; // 第二大块NZ的偏移是(16 + 1) * 128
+        __ubuf__ float *expSumUb = (__ubuf__ T *)expSumTensor.GetPhyAddr();
+        __ubuf__ float *maxUb = (__ubuf__ T *)maxTensor.GetPhyAddr();
+        __ubuf__ float *srcUb = (__ubuf__ T *)srcTensor.GetPhyAddr();
+        __ubuf__ float *expMaxUb = (__ubuf__ T *)expMaxTensor.GetPhyAddr();
+        __ubuf__ float *inExpSumUb = (__ubuf__ T *)inExpSumTensor.GetPhyAddr();
+        __ubuf__ float *inMaxUb = (__ubuf__ T *)inMaxTensor.GetPhyAddr();
+        __ubuf__ float *tmpExpSumUb = (__ubuf__ T *)sharedTmpBuffer.GetPhyAddr();
+        __ubuf__ float *tmpMaxUb = tmpExpSumUb + 16; // 16 x sum + 16 x max
+        __ubuf__ float *tmpExpSumUb2 = tmpExpSumUb;
+        __ubuf__ float *tmpMaxUb2 = tmpMaxUb;
+        __ubuf__ T1 *expUb = (__ubuf__ T1 *)dstTensor.GetPhyAddr();
+        __ubuf__ T1 *expUb1 = expUb + (16 + 1) * 128; // 第二大块NZ的偏移是(16 + 1) * 128
 
-        __ubuf__ uint8_t* maskUb = (__ubuf__ uint8_t*)maskTensor.GetPhyAddr();
-        __ubuf__ uint8_t* maskBandUb;
+        __ubuf__ uint8_t *maskUb = (__ubuf__ uint8_t *)maskTensor.GetPhyAddr();
+        __ubuf__ uint8_t *maskBandUb;
         if constexpr (isBand) {
-            maskBandUb = (__ubuf__ uint8_t*)maskTensor[rows * maskSizeAlignPFA].GetPhyAddr();
+            maskBandUb = (__ubuf__ uint8_t *)maskTensor[rows * maskSizeAlignPFA].GetPhyAddr();
         }
-        __ubuf__ PSE_SHIFT_T* pseUb = (__ubuf__ PSE_SHIFT_T*)pseTensor.GetPhyAddr();
+        __ubuf__ PSE_SHIFT_T *pseUb = (__ubuf__ PSE_SHIFT_T *)pseTensor.GetPhyAddr();
 
-        uint16_t blockStride = 16 + 1;  // 加1是为了解写写ub bank冲突
-        uint16_t repeatStride = 1;      //  每次nd2nz写完之后ub往后偏移1个block
+        uint16_t blockStride = 16 + 1; // 加1是为了解写写ub bank冲突
+        uint16_t repeatStride = 1;     //  每次nd2nz写完之后ub往后偏移1个block
 
         MicroAPI::MaskReg pregAll = MicroAPI::CreateMask<T1, MaskPattern::ALL>();
         MicroAPI::RegTensor<T> vregMin;
@@ -429,7 +437,7 @@ __aicore__ inline void SoftmaxFlashV2_base256_update(
             MicroAPI::DataCopy<T, LoadDist::DIST_NORM>(vregX2, srcUb + 128 + i * fixSrcN);
             MicroAPI::DataCopy<T, LoadDist::DIST_NORM>(vregX3, srcUb + 192 + i * fixSrcN);
 
-            MicroAPI::Muls<T, T, MaskMergeMode::ZEROING>(vregX0, vregX0, scale, pregAll);  // Muls(scale)
+            MicroAPI::Muls<T, T, MaskMergeMode::ZEROING>(vregX0, vregX0, scale, pregAll); // Muls(scale)
             MicroAPI::Muls<T, T, MaskMergeMode::ZEROING>(vregX1, vregX1, scale, pregAll);
             MicroAPI::Muls<T, T, MaskMergeMode::ZEROING>(vregX2, vregX2, scale, pregAll);
             MicroAPI::Muls<T, T, MaskMergeMode::ZEROING>(vregX3, vregX3, scale, pregAll);
@@ -448,8 +456,9 @@ __aicore__ inline void SoftmaxFlashV2_base256_update(
                 MicroAPI::DataCopy<PSE_SHIFT_T, LoadDist::DIST_UNPACK_B16>(vregPseShift2, pseUb + 128 + i * fixSrcN);
                 MicroAPI::DataCopy<PSE_SHIFT_T, LoadDist::DIST_UNPACK_B16>(vregPseShift3, pseUb + 192 + i * fixSrcN);
 
-                static constexpr MicroAPI::CastTrait castTraitfp16_fp32 = {MicroAPI::RegLayout::ZERO, MicroAPI::SatMode::UNKNOWN,
-                                                   MicroAPI::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
+                static constexpr MicroAPI::CastTrait castTraitfp16_fp32 = {
+                    MicroAPI::RegLayout::ZERO, MicroAPI::SatMode::UNKNOWN, MicroAPI::MaskMergeMode::ZEROING,
+                    RoundMode::UNKNOWN};
                 MicroAPI::Cast<T, PSE_SHIFT_T, castTraitfp16_fp32>(vregPseShiftCast0, vregPseShift0, pregAll);
                 MicroAPI::Cast<T, PSE_SHIFT_T, castTraitfp16_fp32>(vregPseShiftCast1, vregPseShift1, pregAll);
                 MicroAPI::Cast<T, PSE_SHIFT_T, castTraitfp16_fp32>(vregPseShiftCast2, vregPseShift2, pregAll);
@@ -479,10 +488,14 @@ __aicore__ inline void SoftmaxFlashV2_base256_update(
                     MicroAPI::MaskReg pregBandMask1;
                     MicroAPI::MaskReg pregBandMask2;
                     MicroAPI::MaskReg pregBandMask3;
-                    MicroAPI::DataCopy<uint8_t, MaskDist::DIST_DS>(pregBandMask0, maskUb + i * maskSizeAlignPFA + rows * maskSizeAlignPFA);
-                    MicroAPI::DataCopy<uint8_t, MaskDist::DIST_DS>(pregBandMask1, maskUb + 64 + i * maskSizeAlignPFA + rows * maskSizeAlignPFA);
-                    MicroAPI::DataCopy<uint8_t, MaskDist::DIST_DS>(pregBandMask2, maskUb + 128 + i * maskSizeAlignPFA + rows * maskSizeAlignPFA);
-                    MicroAPI::DataCopy<uint8_t, MaskDist::DIST_DS>(pregBandMask3, maskUb + 192 + i * maskSizeAlignPFA + rows * maskSizeAlignPFA);
+                    MicroAPI::DataCopy<uint8_t, MaskDist::DIST_DS>(pregBandMask0, maskUb + i * maskSizeAlignPFA +
+                                                                                      rows * maskSizeAlignPFA);
+                    MicroAPI::DataCopy<uint8_t, MaskDist::DIST_DS>(pregBandMask1, maskUb + 64 + i * maskSizeAlignPFA +
+                                                                                      rows * maskSizeAlignPFA);
+                    MicroAPI::DataCopy<uint8_t, MaskDist::DIST_DS>(pregBandMask2, maskUb + 128 + i * maskSizeAlignPFA +
+                                                                                      rows * maskSizeAlignPFA);
+                    MicroAPI::DataCopy<uint8_t, MaskDist::DIST_DS>(pregBandMask3, maskUb + 192 + i * maskSizeAlignPFA +
+                                                                                      rows * maskSizeAlignPFA);
                     MicroAPI::Select<T>(vregX0, vregX0, vregMin, pregBandMask0);
                     MicroAPI::Select<T>(vregX1, vregX1, vregMin, pregBandMask1);
                     MicroAPI::Select<T>(vregX2, vregX2, vregMin, pregBandMask2);
@@ -512,7 +525,7 @@ __aicore__ inline void SoftmaxFlashV2_base256_update(
                 MicroAPI::DataCopyUnAlign<T, PostLiteral::POST_MODE_UPDATE>(tmpMaxUb, vregMax, uregMax, 1);
             }
 
-            {  // exp
+            { // exp
                 MicroAPI::FusedExpSub<T, T, RegLayout::ONE, MaskMergeMode::ZEROING>(vregX0, vregX0, vregMax, pregAll);
                 MicroAPI::FusedExpSub<T, T, RegLayout::ONE, MaskMergeMode::ZEROING>(vregX1, vregX1, vregMax, pregAll);
                 MicroAPI::FusedExpSub<T, T, RegLayout::ONE, MaskMergeMode::ZEROING>(vregX2, vregX2, vregMax, pregAll);
@@ -530,22 +543,22 @@ __aicore__ inline void SoftmaxFlashV2_base256_update(
                 static constexpr MicroAPI::CastTrait castTrait1 = {RegLayout::ONE, SatMode::NO_SAT,
                                                                    MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
 
-                MicroAPI::Cast<T1, T, castTrait0>((MicroAPI::RegTensor<T1>&)vregExpEven0, vregExpEven0, pregAll);
-                MicroAPI::Cast<T1, T, castTrait1>((MicroAPI::RegTensor<T1>&)vregExpOdd0, vregExpOdd0, pregAll);
-                MicroAPI::Cast<T1, T, castTrait0>((MicroAPI::RegTensor<T1>&)vregExpEven1, vregExpEven1, pregAll);
-                MicroAPI::Cast<T1, T, castTrait1>((MicroAPI::RegTensor<T1>&)vregExpOdd1, vregExpOdd1, pregAll);
+                MicroAPI::Cast<T1, T, castTrait0>((MicroAPI::RegTensor<T1> &)vregExpEven0, vregExpEven0, pregAll);
+                MicroAPI::Cast<T1, T, castTrait1>((MicroAPI::RegTensor<T1> &)vregExpOdd0, vregExpOdd0, pregAll);
+                MicroAPI::Cast<T1, T, castTrait0>((MicroAPI::RegTensor<T1> &)vregExpEven1, vregExpEven1, pregAll);
+                MicroAPI::Cast<T1, T, castTrait1>((MicroAPI::RegTensor<T1> &)vregExpOdd1, vregExpOdd1, pregAll);
 
-                MicroAPI::Or<uint16_t, MaskMergeMode::ZEROING>((MicroAPI::RegTensor<uint16_t>&)vregExpEven0,
-                                                               (MicroAPI::RegTensor<uint16_t>&)vregExpEven0,
-                                                               (MicroAPI::RegTensor<uint16_t>&)vregExpOdd0, pregAll);
-                MicroAPI::Or<uint16_t, MaskMergeMode::ZEROING>((MicroAPI::RegTensor<uint16_t>&)vregExpEven1,
-                                                               (MicroAPI::RegTensor<uint16_t>&)vregExpEven1,
-                                                               (MicroAPI::RegTensor<uint16_t>&)vregExpOdd1, pregAll);
+                MicroAPI::Or<uint16_t, MaskMergeMode::ZEROING>((MicroAPI::RegTensor<uint16_t> &)vregExpEven0,
+                                                               (MicroAPI::RegTensor<uint16_t> &)vregExpEven0,
+                                                               (MicroAPI::RegTensor<uint16_t> &)vregExpOdd0, pregAll);
+                MicroAPI::Or<uint16_t, MaskMergeMode::ZEROING>((MicroAPI::RegTensor<uint16_t> &)vregExpEven1,
+                                                               (MicroAPI::RegTensor<uint16_t> &)vregExpEven1,
+                                                               (MicroAPI::RegTensor<uint16_t> &)vregExpOdd1, pregAll);
 
                 MicroAPI::DataCopy<T1, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, PostLiteral::POST_MODE_UPDATE>(
-                    expUb, (MicroAPI::RegTensor<T1>&)vregExpEven0, blockStride, repeatStride, pregAll);
+                    expUb, (MicroAPI::RegTensor<T1> &)vregExpEven0, blockStride, repeatStride, pregAll);
                 MicroAPI::DataCopy<T1, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, PostLiteral::POST_MODE_UPDATE>(
-                    expUb1, (MicroAPI::RegTensor<T1>&)vregExpEven1, blockStride, repeatStride, pregAll);
+                    expUb1, (MicroAPI::RegTensor<T1> &)vregExpEven1, blockStride, repeatStride, pregAll);
             }
 
             { // x_sum
@@ -573,45 +586,45 @@ __aicore__ inline void SoftmaxFlashV2_base256_update(
 template <typename T, typename T1, typename PSE_SHIFT_T, bool withPseShift = false, bool isUpdate = false,
           bool withAttenMask = false, bool isBasicBlock = false, bool isBand = false, bool isDataFormatNZ = false>
 __aicore__ inline void SoftmaxFlashV2_base512_update(
-    const LocalTensor<T1>& dstTensor, const LocalTensor<T>& expSumTensor, const LocalTensor<T>& maxTensor,
-    const LocalTensor<T>& srcTensor, const LocalTensor<T>& expMaxTensor, const LocalTensor<T>& inExpSumTensor,
-    const LocalTensor<T>& inMaxTensor, const LocalTensor<uint8_t>& sharedTmpBuffer, const T scale,
-    const uint32_t maskSizeAlignPFA, const LocalTensor<uint8_t>& maskTensor, const LocalTensor<PSE_SHIFT_T>& pseTensor,
-    const uint32_t& profileG, const SoftMaxShapeInfo& softmaxShapeInfo = {})
+    const LocalTensor<T1> &dstTensor, const LocalTensor<T> &expSumTensor, const LocalTensor<T> &maxTensor,
+    const LocalTensor<T> &srcTensor, const LocalTensor<T> &expMaxTensor, const LocalTensor<T> &inExpSumTensor,
+    const LocalTensor<T> &inMaxTensor, const LocalTensor<uint8_t> &sharedTmpBuffer, const T scale,
+    const uint32_t maskSizeAlignPFA, const LocalTensor<uint8_t> &maskTensor, const LocalTensor<PSE_SHIFT_T> &pseTensor,
+    const uint32_t &profileG, const SoftMaxShapeInfo &softmaxShapeInfo = {})
 {
-    const uint32_t originN = softmaxShapeInfo.oriSrcK;  // N轴实际数据长度，为SInnerLoop切块的 S/act_seq_len
+    const uint32_t originN = softmaxShapeInfo.oriSrcK; // N轴实际数据长度，为SInnerLoop切块的 S/act_seq_len
     const uint32_t fixSrcN = 512;
-    const uint32_t floatRepSize = 64;         // 寄存器一次可以加载64个元素（fp32类型，对应256B）
-    const uint32_t reduceN = 32 / sizeof(T);  // m每行的结果存为8个重复元素（32B对齐）
-    const uint16_t rows = static_cast<uint16_t>(softmaxShapeInfo.srcM);  // 总行数
+    const uint32_t floatRepSize = 64;        // 寄存器一次可以加载64个元素（fp32类型，对应256B）
+    const uint32_t reduceN = 32 / sizeof(T); // m每行的结果存为8个重复元素（32B对齐）
+    const uint16_t rows = static_cast<uint16_t>(softmaxShapeInfo.srcM); // 总行数
     const uint32_t fixSrcG = profileG;
 
     __VEC_SCOPE__
     {
-        __ubuf__ float* expSumUb = (__ubuf__ T*)expSumTensor.GetPhyAddr();
-        __ubuf__ float* maxUb = (__ubuf__ T*)maxTensor.GetPhyAddr();
-        __ubuf__ float* srcUb = (__ubuf__ T*)srcTensor.GetPhyAddr();
-        __ubuf__ float* expMaxUb = (__ubuf__ T*)expMaxTensor.GetPhyAddr();
-        __ubuf__ float* inExpSumUb = (__ubuf__ T*)inExpSumTensor.GetPhyAddr();
-        __ubuf__ float* inMaxUb = (__ubuf__ T*)inMaxTensor.GetPhyAddr();
-        __ubuf__ float* tmpExpSumUb = (__ubuf__ T*)sharedTmpBuffer.GetPhyAddr();
-        __ubuf__ float* tmpMaxUb = tmpExpSumUb + 16; // 16 x sum + 16 x max
-        __ubuf__ float* tmpExpSumUb2 = tmpExpSumUb;
-        __ubuf__ float* tmpMaxUb2 = tmpMaxUb;
-        __ubuf__ uint8_t* maskUb = (__ubuf__ uint8_t*)maskTensor.GetPhyAddr();
-        __ubuf__ uint8_t* maskBandUb;
+        __ubuf__ float *expSumUb = (__ubuf__ T *)expSumTensor.GetPhyAddr();
+        __ubuf__ float *maxUb = (__ubuf__ T *)maxTensor.GetPhyAddr();
+        __ubuf__ float *srcUb = (__ubuf__ T *)srcTensor.GetPhyAddr();
+        __ubuf__ float *expMaxUb = (__ubuf__ T *)expMaxTensor.GetPhyAddr();
+        __ubuf__ float *inExpSumUb = (__ubuf__ T *)inExpSumTensor.GetPhyAddr();
+        __ubuf__ float *inMaxUb = (__ubuf__ T *)inMaxTensor.GetPhyAddr();
+        __ubuf__ float *tmpExpSumUb = (__ubuf__ T *)sharedTmpBuffer.GetPhyAddr();
+        __ubuf__ float *tmpMaxUb = tmpExpSumUb + 16; // 16 x sum + 16 x max
+        __ubuf__ float *tmpExpSumUb2 = tmpExpSumUb;
+        __ubuf__ float *tmpMaxUb2 = tmpMaxUb;
+        __ubuf__ uint8_t *maskUb = (__ubuf__ uint8_t *)maskTensor.GetPhyAddr();
+        __ubuf__ uint8_t *maskBandUb;
         if constexpr (isBand) {
-            maskBandUb = (__ubuf__ uint8_t*)maskTensor[rows * maskSizeAlignPFA].GetPhyAddr();
+            maskBandUb = (__ubuf__ uint8_t *)maskTensor[rows * maskSizeAlignPFA].GetPhyAddr();
         }
-        __ubuf__ PSE_SHIFT_T* pseUb = (__ubuf__ PSE_SHIFT_T*)pseTensor.GetPhyAddr();
+        __ubuf__ PSE_SHIFT_T *pseUb = (__ubuf__ PSE_SHIFT_T *)pseTensor.GetPhyAddr();
 
-        __ubuf__ T1* expUb = (__ubuf__ T1*)dstTensor.GetPhyAddr();
-        __ubuf__ T1* expUb1 = expUb + (fixSrcG + 1) * 128;     // 第二大块NZ的偏移是(profileG + 1) * 128
-        __ubuf__ T1* expUb2 = expUb + 2 * (fixSrcG + 1) * 128; // 第三大块NZ的偏移是2 * (profileG + 1) * 128
-        __ubuf__ T1* expUb3 = expUb + 3 * (fixSrcG + 1) * 128; // 第四大块NZ的偏移是3 * (profileG + 1) * 128
+        __ubuf__ T1 *expUb = (__ubuf__ T1 *)dstTensor.GetPhyAddr();
+        __ubuf__ T1 *expUb1 = expUb + (fixSrcG + 1) * 128;     // 第二大块NZ的偏移是(profileG + 1) * 128
+        __ubuf__ T1 *expUb2 = expUb + 2 * (fixSrcG + 1) * 128; // 第三大块NZ的偏移是2 * (profileG + 1) * 128
+        __ubuf__ T1 *expUb3 = expUb + 3 * (fixSrcG + 1) * 128; // 第四大块NZ的偏移是3 * (profileG + 1) * 128
 
-        uint16_t blockStride = fixSrcG + 1;  // 加1是为了解写写ub bank冲突
-        uint16_t repeatStride = 1;      //  每次nd2nz写完之后ub往后偏移1个block
+        uint16_t blockStride = fixSrcG + 1; // 加1是为了解写写ub bank冲突
+        uint16_t repeatStride = 1;          //  每次nd2nz写完之后ub往后偏移1个block
 
         MicroAPI::MaskReg pregAll = MicroAPI::CreateMask<T1, MaskPattern::ALL>();
         MicroAPI::RegTensor<T> vregMin;
@@ -652,7 +665,7 @@ __aicore__ inline void SoftmaxFlashV2_base512_update(
             MicroAPI::DataCopy<T, LoadDist::DIST_NORM>(vregX6, srcUb + 384 + i * fixSrcN);
             MicroAPI::DataCopy<T, LoadDist::DIST_NORM>(vregX7, srcUb + 448 + i * fixSrcN);
 
-            MicroAPI::Muls<T, T, MaskMergeMode::ZEROING>(vregX0, vregX0, scale, pregAll);  // Muls(scale)
+            MicroAPI::Muls<T, T, MaskMergeMode::ZEROING>(vregX0, vregX0, scale, pregAll); // Muls(scale)
             MicroAPI::Muls<T, T, MaskMergeMode::ZEROING>(vregX1, vregX1, scale, pregAll);
             MicroAPI::Muls<T, T, MaskMergeMode::ZEROING>(vregX2, vregX2, scale, pregAll);
             MicroAPI::Muls<T, T, MaskMergeMode::ZEROING>(vregX3, vregX3, scale, pregAll);
@@ -687,8 +700,9 @@ __aicore__ inline void SoftmaxFlashV2_base512_update(
                 MicroAPI::DataCopy<PSE_SHIFT_T, LoadDist::DIST_UNPACK_B16>(vregPseShift6, pseUb + 384 + i * fixSrcN);
                 MicroAPI::DataCopy<PSE_SHIFT_T, LoadDist::DIST_UNPACK_B16>(vregPseShift7, pseUb + 448 + i * fixSrcN);
 
-                static constexpr MicroAPI::CastTrait castTraitfp16_fp32 = {MicroAPI::RegLayout::ZERO, MicroAPI::SatMode::UNKNOWN,
-                                                   MicroAPI::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
+                static constexpr MicroAPI::CastTrait castTraitfp16_fp32 = {
+                    MicroAPI::RegLayout::ZERO, MicroAPI::SatMode::UNKNOWN, MicroAPI::MaskMergeMode::ZEROING,
+                    RoundMode::UNKNOWN};
                 MicroAPI::Cast<T, PSE_SHIFT_T, castTraitfp16_fp32>(vregPseShiftCast0, vregPseShift0, pregAll);
                 MicroAPI::Cast<T, PSE_SHIFT_T, castTraitfp16_fp32>(vregPseShiftCast1, vregPseShift1, pregAll);
                 MicroAPI::Cast<T, PSE_SHIFT_T, castTraitfp16_fp32>(vregPseShiftCast2, vregPseShift2, pregAll);
@@ -742,14 +756,22 @@ __aicore__ inline void SoftmaxFlashV2_base512_update(
                     MicroAPI::MaskReg pregBandMask5;
                     MicroAPI::MaskReg pregBandMask6;
                     MicroAPI::MaskReg pregBandMask7;
-                    MicroAPI::DataCopy<uint8_t, MaskDist::DIST_DS>(pregBandMask0, maskUb + i * maskSizeAlignPFA + rows * maskSizeAlignPFA);
-                    MicroAPI::DataCopy<uint8_t, MaskDist::DIST_DS>(pregBandMask1, maskUb + 64 + i * maskSizeAlignPFA + rows * maskSizeAlignPFA);
-                    MicroAPI::DataCopy<uint8_t, MaskDist::DIST_DS>(pregBandMask2, maskUb + 128 + i * maskSizeAlignPFA + rows * maskSizeAlignPFA);
-                    MicroAPI::DataCopy<uint8_t, MaskDist::DIST_DS>(pregBandMask3, maskUb + 192 + i * maskSizeAlignPFA + rows * maskSizeAlignPFA);
-                    MicroAPI::DataCopy<uint8_t, MaskDist::DIST_DS>(pregBandMask4, maskUb + 256 + i * maskSizeAlignPFA + rows * maskSizeAlignPFA);
-                    MicroAPI::DataCopy<uint8_t, MaskDist::DIST_DS>(pregBandMask5, maskUb + 320 + i * maskSizeAlignPFA + rows * maskSizeAlignPFA);
-                    MicroAPI::DataCopy<uint8_t, MaskDist::DIST_DS>(pregBandMask6, maskUb + 384 + i * maskSizeAlignPFA + rows * maskSizeAlignPFA);
-                    MicroAPI::DataCopy<uint8_t, MaskDist::DIST_DS>(pregBandMask7, maskUb + 448 + i * maskSizeAlignPFA + rows * maskSizeAlignPFA);
+                    MicroAPI::DataCopy<uint8_t, MaskDist::DIST_DS>(pregBandMask0, maskUb + i * maskSizeAlignPFA +
+                                                                                      rows * maskSizeAlignPFA);
+                    MicroAPI::DataCopy<uint8_t, MaskDist::DIST_DS>(pregBandMask1, maskUb + 64 + i * maskSizeAlignPFA +
+                                                                                      rows * maskSizeAlignPFA);
+                    MicroAPI::DataCopy<uint8_t, MaskDist::DIST_DS>(pregBandMask2, maskUb + 128 + i * maskSizeAlignPFA +
+                                                                                      rows * maskSizeAlignPFA);
+                    MicroAPI::DataCopy<uint8_t, MaskDist::DIST_DS>(pregBandMask3, maskUb + 192 + i * maskSizeAlignPFA +
+                                                                                      rows * maskSizeAlignPFA);
+                    MicroAPI::DataCopy<uint8_t, MaskDist::DIST_DS>(pregBandMask4, maskUb + 256 + i * maskSizeAlignPFA +
+                                                                                      rows * maskSizeAlignPFA);
+                    MicroAPI::DataCopy<uint8_t, MaskDist::DIST_DS>(pregBandMask5, maskUb + 320 + i * maskSizeAlignPFA +
+                                                                                      rows * maskSizeAlignPFA);
+                    MicroAPI::DataCopy<uint8_t, MaskDist::DIST_DS>(pregBandMask6, maskUb + 384 + i * maskSizeAlignPFA +
+                                                                                      rows * maskSizeAlignPFA);
+                    MicroAPI::DataCopy<uint8_t, MaskDist::DIST_DS>(pregBandMask7, maskUb + 448 + i * maskSizeAlignPFA +
+                                                                                      rows * maskSizeAlignPFA);
                     MicroAPI::Select<T>(vregX0, vregX0, vregMin, pregBandMask0);
                     MicroAPI::Select<T>(vregX1, vregX1, vregMin, pregBandMask1);
                     MicroAPI::Select<T>(vregX2, vregX2, vregMin, pregBandMask2);
@@ -821,36 +843,36 @@ __aicore__ inline void SoftmaxFlashV2_base512_update(
                 static constexpr MicroAPI::CastTrait castTrait1 = {RegLayout::ONE, SatMode::NO_SAT,
                                                                    MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
 
-                MicroAPI::Cast<T1, T, castTrait0>((MicroAPI::RegTensor<T1>&)vregExpEven0, vregExpEven0, pregAll);
-                MicroAPI::Cast<T1, T, castTrait1>((MicroAPI::RegTensor<T1>&)vregExpOdd0, vregExpOdd0, pregAll);
-                MicroAPI::Cast<T1, T, castTrait0>((MicroAPI::RegTensor<T1>&)vregExpEven1, vregExpEven1, pregAll);
-                MicroAPI::Cast<T1, T, castTrait1>((MicroAPI::RegTensor<T1>&)vregExpOdd1, vregExpOdd1, pregAll);
-                MicroAPI::Cast<T1, T, castTrait0>((MicroAPI::RegTensor<T1>&)vregExpEven2, vregExpEven2, pregAll);
-                MicroAPI::Cast<T1, T, castTrait1>((MicroAPI::RegTensor<T1>&)vregExpOdd2, vregExpOdd2, pregAll);
-                MicroAPI::Cast<T1, T, castTrait0>((MicroAPI::RegTensor<T1>&)vregExpEven3, vregExpEven3, pregAll);
-                MicroAPI::Cast<T1, T, castTrait1>((MicroAPI::RegTensor<T1>&)vregExpOdd3, vregExpOdd3, pregAll);
+                MicroAPI::Cast<T1, T, castTrait0>((MicroAPI::RegTensor<T1> &)vregExpEven0, vregExpEven0, pregAll);
+                MicroAPI::Cast<T1, T, castTrait1>((MicroAPI::RegTensor<T1> &)vregExpOdd0, vregExpOdd0, pregAll);
+                MicroAPI::Cast<T1, T, castTrait0>((MicroAPI::RegTensor<T1> &)vregExpEven1, vregExpEven1, pregAll);
+                MicroAPI::Cast<T1, T, castTrait1>((MicroAPI::RegTensor<T1> &)vregExpOdd1, vregExpOdd1, pregAll);
+                MicroAPI::Cast<T1, T, castTrait0>((MicroAPI::RegTensor<T1> &)vregExpEven2, vregExpEven2, pregAll);
+                MicroAPI::Cast<T1, T, castTrait1>((MicroAPI::RegTensor<T1> &)vregExpOdd2, vregExpOdd2, pregAll);
+                MicroAPI::Cast<T1, T, castTrait0>((MicroAPI::RegTensor<T1> &)vregExpEven3, vregExpEven3, pregAll);
+                MicroAPI::Cast<T1, T, castTrait1>((MicroAPI::RegTensor<T1> &)vregExpOdd3, vregExpOdd3, pregAll);
 
-                MicroAPI::Or<uint16_t, MaskMergeMode::ZEROING>((MicroAPI::RegTensor<uint16_t>&)vregExpEven0,
-                                                               (MicroAPI::RegTensor<uint16_t>&)vregExpEven0,
-                                                               (MicroAPI::RegTensor<uint16_t>&)vregExpOdd0, pregAll);
-                MicroAPI::Or<uint16_t, MaskMergeMode::ZEROING>((MicroAPI::RegTensor<uint16_t>&)vregExpEven1,
-                                                               (MicroAPI::RegTensor<uint16_t>&)vregExpEven1,
-                                                               (MicroAPI::RegTensor<uint16_t>&)vregExpOdd1, pregAll);
-                MicroAPI::Or<uint16_t, MaskMergeMode::ZEROING>((MicroAPI::RegTensor<uint16_t>&)vregExpEven2,
-                                                               (MicroAPI::RegTensor<uint16_t>&)vregExpEven2,
-                                                               (MicroAPI::RegTensor<uint16_t>&)vregExpOdd2, pregAll);
-                MicroAPI::Or<uint16_t, MaskMergeMode::ZEROING>((MicroAPI::RegTensor<uint16_t>&)vregExpEven3,
-                                                               (MicroAPI::RegTensor<uint16_t>&)vregExpEven3,
-                                                               (MicroAPI::RegTensor<uint16_t>&)vregExpOdd3, pregAll);
+                MicroAPI::Or<uint16_t, MaskMergeMode::ZEROING>((MicroAPI::RegTensor<uint16_t> &)vregExpEven0,
+                                                               (MicroAPI::RegTensor<uint16_t> &)vregExpEven0,
+                                                               (MicroAPI::RegTensor<uint16_t> &)vregExpOdd0, pregAll);
+                MicroAPI::Or<uint16_t, MaskMergeMode::ZEROING>((MicroAPI::RegTensor<uint16_t> &)vregExpEven1,
+                                                               (MicroAPI::RegTensor<uint16_t> &)vregExpEven1,
+                                                               (MicroAPI::RegTensor<uint16_t> &)vregExpOdd1, pregAll);
+                MicroAPI::Or<uint16_t, MaskMergeMode::ZEROING>((MicroAPI::RegTensor<uint16_t> &)vregExpEven2,
+                                                               (MicroAPI::RegTensor<uint16_t> &)vregExpEven2,
+                                                               (MicroAPI::RegTensor<uint16_t> &)vregExpOdd2, pregAll);
+                MicroAPI::Or<uint16_t, MaskMergeMode::ZEROING>((MicroAPI::RegTensor<uint16_t> &)vregExpEven3,
+                                                               (MicroAPI::RegTensor<uint16_t> &)vregExpEven3,
+                                                               (MicroAPI::RegTensor<uint16_t> &)vregExpOdd3, pregAll);
 
                 MicroAPI::DataCopy<T1, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, PostLiteral::POST_MODE_UPDATE>(
-                    expUb, (MicroAPI::RegTensor<T1>&)vregExpEven0, blockStride, repeatStride, pregAll);
+                    expUb, (MicroAPI::RegTensor<T1> &)vregExpEven0, blockStride, repeatStride, pregAll);
                 MicroAPI::DataCopy<T1, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, PostLiteral::POST_MODE_UPDATE>(
-                    expUb1, (MicroAPI::RegTensor<T1>&)vregExpEven1, blockStride, repeatStride, pregAll);
+                    expUb1, (MicroAPI::RegTensor<T1> &)vregExpEven1, blockStride, repeatStride, pregAll);
                 MicroAPI::DataCopy<T1, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, PostLiteral::POST_MODE_UPDATE>(
-                    expUb2, (MicroAPI::RegTensor<T1>&)vregExpEven2, blockStride, repeatStride, pregAll);
+                    expUb2, (MicroAPI::RegTensor<T1> &)vregExpEven2, blockStride, repeatStride, pregAll);
                 MicroAPI::DataCopy<T1, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, PostLiteral::POST_MODE_UPDATE>(
-                    expUb3, (MicroAPI::RegTensor<T1>&)vregExpEven3, blockStride, repeatStride, pregAll);
+                    expUb3, (MicroAPI::RegTensor<T1> &)vregExpEven3, blockStride, repeatStride, pregAll);
             }
 
             { // x_sum
@@ -883,35 +905,37 @@ __aicore__ inline void SoftmaxFlashV2_base512_update(
 
 template <typename T, typename T1, typename PSE_SHIFT_T, bool withPseShift = false, bool withAttenMask = false,
           uint32_t originN = 0, bool isBand = false, bool isPFA = false>
-__aicore__ inline void SoftmaxFlashV2_VF(const LocalTensor<T1>& dstTensor, const LocalTensor<T>& expSumTensor,
-    const LocalTensor<T>& maxTensor, const LocalTensor<T>& srcTensor, const LocalTensor<T>& expMaxTensor,
-    const LocalTensor<T>& inExpSumTensor, const LocalTensor<T>& inMaxTensor,
-    const LocalTensor<uint8_t>& sharedTmpBuffer, const T scale, const LocalTensor<uint8_t>& maskTensor,
-    const LocalTensor<PSE_SHIFT_T>& pseTensor, const uint32_t& profileG, const SoftMaxShapeInfo& softmaxShapeInfo = {})
+__aicore__ inline void SoftmaxFlashV2_VF(const LocalTensor<T1> &dstTensor, const LocalTensor<T> &expSumTensor,
+                                         const LocalTensor<T> &maxTensor, const LocalTensor<T> &srcTensor,
+                                         const LocalTensor<T> &expMaxTensor, const LocalTensor<T> &inExpSumTensor,
+                                         const LocalTensor<T> &inMaxTensor, const LocalTensor<uint8_t> &sharedTmpBuffer,
+                                         const T scale, const LocalTensor<uint8_t> &maskTensor,
+                                         const LocalTensor<PSE_SHIFT_T> &pseTensor, const uint32_t &profileG,
+                                         const SoftMaxShapeInfo &softmaxShapeInfo = {})
 {
     uint32_t maskSizeAlignPFA = 0; // 非pfa场景无需偏移
     if constexpr (isPFA) {
         maskSizeAlignPFA = softmaxShapeInfo.srcK;
     }
     if constexpr (originN == 64) {
-        SoftmaxFlashV2_base64_update<T, T1, PSE_SHIFT_T, withPseShift, true, withAttenMask, true, isBand> (dstTensor,
-            expSumTensor, maxTensor, srcTensor, expMaxTensor, inExpSumTensor, inMaxTensor, sharedTmpBuffer,
+        SoftmaxFlashV2_base64_update<T, T1, PSE_SHIFT_T, withPseShift, true, withAttenMask, true, isBand>(
+            dstTensor, expSumTensor, maxTensor, srcTensor, expMaxTensor, inExpSumTensor, inMaxTensor, sharedTmpBuffer,
             scale, maskSizeAlignPFA, maskTensor, pseTensor, softmaxShapeInfo);
     } else if constexpr (originN == 128) {
-        SoftmaxFlashV2_base128_update<T, T1, PSE_SHIFT_T, withPseShift, true, withAttenMask, true, isBand> (dstTensor,
-            expSumTensor, maxTensor, srcTensor, expMaxTensor, inExpSumTensor, inMaxTensor, sharedTmpBuffer,
+        SoftmaxFlashV2_base128_update<T, T1, PSE_SHIFT_T, withPseShift, true, withAttenMask, true, isBand>(
+            dstTensor, expSumTensor, maxTensor, srcTensor, expMaxTensor, inExpSumTensor, inMaxTensor, sharedTmpBuffer,
             scale, maskSizeAlignPFA, maskTensor, pseTensor, softmaxShapeInfo);
     } else if constexpr (originN == 256) {
-        SoftmaxFlashV2_base256_update<T, T1, PSE_SHIFT_T, withPseShift, true, withAttenMask, true, isBand> (dstTensor,
-            expSumTensor, maxTensor, srcTensor, expMaxTensor, inExpSumTensor, inMaxTensor, sharedTmpBuffer,
+        SoftmaxFlashV2_base256_update<T, T1, PSE_SHIFT_T, withPseShift, true, withAttenMask, true, isBand>(
+            dstTensor, expSumTensor, maxTensor, srcTensor, expMaxTensor, inExpSumTensor, inMaxTensor, sharedTmpBuffer,
             scale, maskSizeAlignPFA, maskTensor, pseTensor, softmaxShapeInfo);
     } else if constexpr (originN == 512) {
-        SoftmaxFlashV2_base512_update<T, T1, PSE_SHIFT_T, withPseShift, true, withAttenMask, true, isBand> (dstTensor,
-            expSumTensor, maxTensor, srcTensor, expMaxTensor, inExpSumTensor, inMaxTensor, sharedTmpBuffer,
+        SoftmaxFlashV2_base512_update<T, T1, PSE_SHIFT_T, withPseShift, true, withAttenMask, true, isBand>(
+            dstTensor, expSumTensor, maxTensor, srcTensor, expMaxTensor, inExpSumTensor, inMaxTensor, sharedTmpBuffer,
             scale, maskSizeAlignPFA, maskTensor, pseTensor, profileG, softmaxShapeInfo);
     }
 }
 
-} // namespace
+} // namespace AscendC
 
 #endif // SOFTMAX_FLASH_V2_ND2NZ_CONST_H

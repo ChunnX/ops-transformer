@@ -50,8 +50,7 @@ struct Vec1TaskParam {
 };
 
 template <typename IFAT>
-class Vec1Processor
-{
+class Vec1Processor {
 public:
     using T = float;
     using Q_T = typename IFAT::queryType;
@@ -65,52 +64,60 @@ public:
     static constexpr bool PSE_SHIFT = IFAT::pseShift;
 
     __aicore__ inline Vec1Processor(){};
-    __aicore__ inline void Process(TQue<QuePosition::VECOUT, 1>& vec1ResOutUb, TSCM<TPosition::VECIN, 1>& mm2AScm,
-                              LocalTensor<T>& softmaxMaxOutUb, LocalTensor<T>& softmaxSumOutUb,
-                              LocalTensor<T>& softmaxExpUb, LocalTensor<MM_OUT_T>& mm1ResUb,
-                              LocalTensor<T>& softmaxMaxInUb, LocalTensor<T>& softmaxSumInUb,
-                              LocalTensor<uint8_t>& softmaxTmpUb, GlobalTensor<uint8_t>& attenMaskGm,
-                              TQue<QuePosition::VECIN, 1>& maskInputQue, GlobalTensor<PSE_SHIFT_T>& pseShiftGm,
-                              TQue<QuePosition::VECIN, 1>& pseInputQue, TQue<QuePosition::VECOUT, 1>& softmaxLseOutputQue,
-                              GlobalTensor<T>& softmaxLseGm, const Vec1TaskParam& taskParam, GlobalTensor<T>& softmaxMaxGm, 
-                              GlobalTensor<T>& softmaxSumGm);
+    __aicore__ inline void Process(TQue<QuePosition::VECOUT, 1> &vec1ResOutUb, TSCM<TPosition::VECIN, 1> &mm2AScm,
+                                   LocalTensor<T> &softmaxMaxOutUb, LocalTensor<T> &softmaxSumOutUb,
+                                   LocalTensor<T> &softmaxExpUb, LocalTensor<MM_OUT_T> &mm1ResUb,
+                                   LocalTensor<T> &softmaxMaxInUb, LocalTensor<T> &softmaxSumInUb,
+                                   LocalTensor<uint8_t> &softmaxTmpUb, GlobalTensor<uint8_t> &attenMaskGm,
+                                   TQue<QuePosition::VECIN, 1> &maskInputQue, GlobalTensor<PSE_SHIFT_T> &pseShiftGm,
+                                   TQue<QuePosition::VECIN, 1> &pseInputQue,
+                                   TQue<QuePosition::VECOUT, 1> &softmaxLseOutputQue, GlobalTensor<T> &softmaxLseGm,
+                                   const Vec1TaskParam &taskParam, GlobalTensor<T> &softmaxMaxGm,
+                                   GlobalTensor<T> &softmaxSumGm);
+
 private:
-    __aicore__ inline void Softmax(TQue<QuePosition::VECOUT, 1>& vec1ResOutUb, TSCM<TPosition::VECIN, 1>& mm2AScm,
-                              LocalTensor<T>& softmaxMaxOutUb, LocalTensor<T>& softmaxSumOutUb,
-                              LocalTensor<T>& softmaxExpUb, LocalTensor<MM_OUT_T>& mm1ResUb,
-                              LocalTensor<T>& softmaxMaxInUb, LocalTensor<T>& softmaxSumInUb,
-                              LocalTensor<uint8_t>& softmaxTmpUb, GlobalTensor<uint8_t>& attenMaskGm,
-                              TQue<QuePosition::VECIN, 1>& maskInputQue, GlobalTensor<PSE_SHIFT_T>& pseShiftGm,
-                              TQue<QuePosition::VECIN, 1>& pseInputQue, const Vec1TaskParam& taskParam);
-    __aicore__ inline void AttenMaskCopyIn(GlobalTensor<uint8_t>& attenMaskGm,
-                                           TQue<QuePosition::VECIN, 1>& maskInputQue, const Vec1TaskParam& taskParam);
-    __aicore__ inline void AttenMaskCopyInPFA(GlobalTensor<uint8_t>& attenMaskGm,
-                                              TQue<QuePosition::VECIN, 1>& maskInputQue, const Vec1TaskParam& taskParam);
-    __aicore__ inline void PseShiftCopyIn(GlobalTensor<PSE_SHIFT_T>& pseShiftGm,
-                                          TQue<QuePosition::VECIN, 1>& pseInputQue, const Vec1TaskParam& taskParam);
-    __aicore__ inline void Vec1CopyIn(GlobalTensor<uint8_t>& attenMaskGm, TQue<QuePosition::VECIN, 1>& maskInputQue,
-                                      GlobalTensor<PSE_SHIFT_T>& pseShiftGm, TQue<QuePosition::VECIN, 1>& pseInputQue,
-                                      const Vec1TaskParam& taskParam);
-    __aicore__ inline void Vec1Compute(LocalTensor<Q_T>& bmm2InResUb, LocalTensor<T>& softmaxMaxOutUb,
-                                      LocalTensor<T>& softmaxSumOutUb, LocalTensor<T>& softmaxExpUb,
-                                      LocalTensor<MM_OUT_T>& mm1ResUb, LocalTensor<T>& softmaxMaxInUb,
-                                      LocalTensor<T>& softmaxSumInUb,LocalTensor<uint8_t>& softmaxTmpUb, TQue<QuePosition::VECIN, 1>& maskInputQue,
-                                      TQue<QuePosition::VECIN, 1>& pseInputQue, const Vec1TaskParam& taskParam);
-    __aicore__ inline void Vec1CopyResToL1(TSCM<TPosition::VECIN, 1>& mm2AScm, LocalTensor<Q_T>& bmm2InResUb,
-                                           const Vec1TaskParam& taskParam);
-    __aicore__ inline void ComputeLogSumExpAndCopyToGm(TQue<QuePosition::VECOUT, 1>& softmaxLseOutputQue,
-                                                       LocalTensor<T>& softmaxMaxOutUb, LocalTensor<T>& softmaxSumOutUb,
-                                                       const Vec1TaskParam& taskParam, GlobalTensor<T>& softmaxMaxGm, GlobalTensor<T>& softmaxSumGm);
-    __aicore__ inline void CopyFixedUbToGm(TQue<QuePosition::VECOUT, 1>& softmaxLseOutputQue, const GlobalTensor<T> &dst,
-                                           const LocalTensor<T>& src, size_t size);
-    __aicore__ inline void SoftmaxLseCopyOut(GlobalTensor<T>& softmaxLseGm, TQue<QuePosition::VECOUT, 1>& softmaxLseOutputQue,
-                                             LocalTensor<T>& softmaxMaxOutUb, LocalTensor<T>& softmaxSumOutUb, const Vec1TaskParam& taskParam);
+    __aicore__ inline void Softmax(TQue<QuePosition::VECOUT, 1> &vec1ResOutUb, TSCM<TPosition::VECIN, 1> &mm2AScm,
+                                   LocalTensor<T> &softmaxMaxOutUb, LocalTensor<T> &softmaxSumOutUb,
+                                   LocalTensor<T> &softmaxExpUb, LocalTensor<MM_OUT_T> &mm1ResUb,
+                                   LocalTensor<T> &softmaxMaxInUb, LocalTensor<T> &softmaxSumInUb,
+                                   LocalTensor<uint8_t> &softmaxTmpUb, GlobalTensor<uint8_t> &attenMaskGm,
+                                   TQue<QuePosition::VECIN, 1> &maskInputQue, GlobalTensor<PSE_SHIFT_T> &pseShiftGm,
+                                   TQue<QuePosition::VECIN, 1> &pseInputQue, const Vec1TaskParam &taskParam);
+    __aicore__ inline void AttenMaskCopyIn(GlobalTensor<uint8_t> &attenMaskGm,
+                                           TQue<QuePosition::VECIN, 1> &maskInputQue, const Vec1TaskParam &taskParam);
+    __aicore__ inline void AttenMaskCopyInPFA(GlobalTensor<uint8_t> &attenMaskGm,
+                                              TQue<QuePosition::VECIN, 1> &maskInputQue,
+                                              const Vec1TaskParam &taskParam);
+    __aicore__ inline void PseShiftCopyIn(GlobalTensor<PSE_SHIFT_T> &pseShiftGm,
+                                          TQue<QuePosition::VECIN, 1> &pseInputQue, const Vec1TaskParam &taskParam);
+    __aicore__ inline void Vec1CopyIn(GlobalTensor<uint8_t> &attenMaskGm, TQue<QuePosition::VECIN, 1> &maskInputQue,
+                                      GlobalTensor<PSE_SHIFT_T> &pseShiftGm, TQue<QuePosition::VECIN, 1> &pseInputQue,
+                                      const Vec1TaskParam &taskParam);
+    __aicore__ inline void Vec1Compute(LocalTensor<Q_T> &bmm2InResUb, LocalTensor<T> &softmaxMaxOutUb,
+                                       LocalTensor<T> &softmaxSumOutUb, LocalTensor<T> &softmaxExpUb,
+                                       LocalTensor<MM_OUT_T> &mm1ResUb, LocalTensor<T> &softmaxMaxInUb,
+                                       LocalTensor<T> &softmaxSumInUb, LocalTensor<uint8_t> &softmaxTmpUb,
+                                       TQue<QuePosition::VECIN, 1> &maskInputQue,
+                                       TQue<QuePosition::VECIN, 1> &pseInputQue, const Vec1TaskParam &taskParam);
+    __aicore__ inline void Vec1CopyResToL1(TSCM<TPosition::VECIN, 1> &mm2AScm, LocalTensor<Q_T> &bmm2InResUb,
+                                           const Vec1TaskParam &taskParam);
+    __aicore__ inline void ComputeLogSumExpAndCopyToGm(TQue<QuePosition::VECOUT, 1> &softmaxLseOutputQue,
+                                                       LocalTensor<T> &softmaxMaxOutUb, LocalTensor<T> &softmaxSumOutUb,
+                                                       const Vec1TaskParam &taskParam, GlobalTensor<T> &softmaxMaxGm,
+                                                       GlobalTensor<T> &softmaxSumGm);
+    __aicore__ inline void CopyFixedUbToGm(TQue<QuePosition::VECOUT, 1> &softmaxLseOutputQue,
+                                           const GlobalTensor<T> &dst, const LocalTensor<T> &src, size_t size);
+    __aicore__ inline void SoftmaxLseCopyOut(GlobalTensor<T> &softmaxLseGm,
+                                             TQue<QuePosition::VECOUT, 1> &softmaxLseOutputQue,
+                                             LocalTensor<T> &softmaxMaxOutUb, LocalTensor<T> &softmaxSumOutUb,
+                                             const Vec1TaskParam &taskParam);
 };
 
 template <typename IFAT>
-__aicore__ inline void Vec1Processor<IFAT>::SoftmaxLseCopyOut(
-    GlobalTensor<T>& softmaxLseGm, TQue<QuePosition::VECOUT, 1>& softmaxLseOutputQue, LocalTensor<T>& softmaxMaxOutUb,
-    LocalTensor<T>& softmaxSumOutUb, const Vec1TaskParam& taskParam)
+__aicore__ inline void
+Vec1Processor<IFAT>::SoftmaxLseCopyOut(GlobalTensor<T> &softmaxLseGm, TQue<QuePosition::VECOUT, 1> &softmaxLseOutputQue,
+                                       LocalTensor<T> &softmaxMaxOutUb, LocalTensor<T> &softmaxSumOutUb,
+                                       const Vec1TaskParam &taskParam)
 {
     LocalTensor<T> lseUb = softmaxLseOutputQue.template AllocTensor<T>();
     FaVectorApi::ComputeLogSumExp_VF(lseUb, softmaxSumOutUb, softmaxMaxOutUb, taskParam.dealRowCount);
@@ -121,32 +128,32 @@ __aicore__ inline void Vec1Processor<IFAT>::SoftmaxLseCopyOut(
     intriParams1.blockCount = taskParam.dealRowCount;
     intriParams1.srcStride = 0;
     intriParams1.dstStride = 0;
-    DataCopyPad(softmaxLseGm[(taskParam.bIdx * taskParam.qHeadNum + taskParam.n2Idx * taskParam.gSize) *
-                taskParam.qSeqSize + taskParam.gIdx * PROFILE.G + taskParam.qPaddingBeginOffset], lseUb, intriParams1);
+    DataCopyPad(
+        softmaxLseGm[(taskParam.bIdx * taskParam.qHeadNum + taskParam.n2Idx * taskParam.gSize) * taskParam.qSeqSize +
+                     taskParam.gIdx * PROFILE.G + taskParam.qPaddingBeginOffset],
+        lseUb, intriParams1);
     softmaxLseOutputQue.FreeTensor(lseUb);
 }
 
 template <typename IFAT>
 __aicore__ inline void Vec1Processor<IFAT>::ComputeLogSumExpAndCopyToGm(
-    TQue<QuePosition::VECOUT, 1>& softmaxLseOutputQue, LocalTensor<T>& softmaxMaxOutUb, LocalTensor<T>& softmaxSumOutUb,
-    const Vec1TaskParam& taskParam, GlobalTensor<T>& softmaxMaxGm, GlobalTensor<T>& softmaxSumGm)
+    TQue<QuePosition::VECOUT, 1> &softmaxLseOutputQue, LocalTensor<T> &softmaxMaxOutUb, LocalTensor<T> &softmaxSumOutUb,
+    const Vec1TaskParam &taskParam, GlobalTensor<T> &softmaxMaxGm, GlobalTensor<T> &softmaxSumGm)
 {
     size_t size = taskParam.dealRowCount * FP32_ONE_BLOCK_SIZE;
-    size_t offset =
-        taskParam.bIdx * taskParam.qHeadNum * taskParam.splitKVNum * FP32_ONE_BLOCK_SIZE +
-        taskParam.n2Idx * taskParam.splitKVNum * taskParam.gSize * FP32_ONE_BLOCK_SIZE +
-        taskParam.gIdx * PROFILE.G * FP32_ONE_BLOCK_SIZE +
-        taskParam.flashDecodeS2Idx * taskParam.gSize *
-            FP32_ONE_BLOCK_SIZE; // logSumExp在gm上的shape(B, N1, splitKVNum, FP32_ONE_BLOCK_SIZE)
+    size_t offset = taskParam.bIdx * taskParam.qHeadNum * taskParam.splitKVNum * FP32_ONE_BLOCK_SIZE +
+                    taskParam.n2Idx * taskParam.splitKVNum * taskParam.gSize * FP32_ONE_BLOCK_SIZE +
+                    taskParam.gIdx * PROFILE.G * FP32_ONE_BLOCK_SIZE +
+                    taskParam.flashDecodeS2Idx * taskParam.gSize *
+                        FP32_ONE_BLOCK_SIZE; // logSumExp在gm上的shape(B, N1, splitKVNum, FP32_ONE_BLOCK_SIZE)
 
     CopyFixedUbToGm(softmaxLseOutputQue, softmaxMaxGm[offset], softmaxMaxOutUb, size);
     CopyFixedUbToGm(softmaxLseOutputQue, softmaxSumGm[offset], softmaxSumOutUb, size);
 }
 
 template <typename IFAT>
-__aicore__ inline void Vec1Processor<IFAT>::CopyFixedUbToGm(TQue<QuePosition::VECOUT, 1>& softmaxLseOutputQue, 
-                                                            const GlobalTensor<T> &dst,
-                                                            const LocalTensor<T>& src, 
+__aicore__ inline void Vec1Processor<IFAT>::CopyFixedUbToGm(TQue<QuePosition::VECOUT, 1> &softmaxLseOutputQue,
+                                                            const GlobalTensor<T> &dst, const LocalTensor<T> &src,
                                                             size_t size)
 {
     LocalTensor<T> tmp = softmaxLseOutputQue.AllocTensor<T>();
@@ -159,9 +166,9 @@ __aicore__ inline void Vec1Processor<IFAT>::CopyFixedUbToGm(TQue<QuePosition::VE
 }
 
 template <typename IFAT>
-__aicore__ inline void Vec1Processor<IFAT>::AttenMaskCopyIn(GlobalTensor<uint8_t>& attenMaskGm,
-                                                            TQue<QuePosition::VECIN, 1>& maskInputQue,
-                                                            const Vec1TaskParam& taskParam)
+__aicore__ inline void Vec1Processor<IFAT>::AttenMaskCopyIn(GlobalTensor<uint8_t> &attenMaskGm,
+                                                            TQue<QuePosition::VECIN, 1> &maskInputQue,
+                                                            const Vec1TaskParam &taskParam)
 {
     LocalTensor<uint8_t> maskUb = maskInputQue.AllocTensor<uint8_t>(); // david datacopy暂不支持bool，改为uint8_t
     maskUb.SetSize(taskParam.columnCount);
@@ -170,12 +177,12 @@ __aicore__ inline void Vec1Processor<IFAT>::AttenMaskCopyIn(GlobalTensor<uint8_t
 }
 
 template <typename IFAT>
-__aicore__ inline void Vec1Processor<IFAT>::AttenMaskCopyInPFA(GlobalTensor<uint8_t>& attenMaskGm,
-                                                              TQue<QuePosition::VECIN, 1>& maskInputQue,
-                                                              const Vec1TaskParam& taskParam)
+__aicore__ inline void Vec1Processor<IFAT>::AttenMaskCopyInPFA(GlobalTensor<uint8_t> &attenMaskGm,
+                                                               TQue<QuePosition::VECIN, 1> &maskInputQue,
+                                                               const Vec1TaskParam &taskParam)
 {
     LocalTensor<uint8_t> maskUb = maskInputQue.AllocTensor<uint8_t>();
-    if (taskParam.sparseMode == 4) { // 4:sparse band模式
+    if (taskParam.sparseMode == 4) {                                        // 4:sparse band模式
         maskUb.SetSize(taskParam.columnCount * taskParam.dealRowCount * 2); // 2: band模式需要两块mask ub
     } else {
         maskUb.SetSize(taskParam.columnCount * taskParam.dealRowCount);
@@ -188,7 +195,8 @@ __aicore__ inline void Vec1Processor<IFAT>::AttenMaskCopyInPFA(GlobalTensor<uint
     intriParams.srcStride = (static_cast<int64_t>(taskParam.attenMaskKVSize) - taskParam.columnCount) * lenOfType;
     if (taskParam.actualColumnCount < taskParam.columnCount) {
         intriParams.blockLen = taskParam.actualColumnCount * lenOfType;
-        intriParams.srcStride = (static_cast<int64_t>(taskParam.attenMaskKVSize) - taskParam.actualColumnCount) * lenOfType;
+        intriParams.srcStride =
+            (static_cast<int64_t>(taskParam.attenMaskKVSize) - taskParam.actualColumnCount) * lenOfType;
     }
     intriParams.dstStride = 0;
 
@@ -199,16 +207,16 @@ __aicore__ inline void Vec1Processor<IFAT>::AttenMaskCopyInPFA(GlobalTensor<uint
     padParams.rightPadding = 0; // 伪量化场景仅支持bool/int8/uint8, KV方向尾块按mask类型对齐后长度不变
     DataCopyPad(maskUb, attenMaskGm[taskParam.attenMaskOffset], intriParams, padParams);
     if (taskParam.sparseMode == 4) { // 4:sparse band模式
-        DataCopyPad(maskUb[taskParam.columnCount * taskParam.dealRowCount],
-                    attenMaskGm[taskParam.attenMaskOffsetPre], intriParams, padParams);
+        DataCopyPad(maskUb[taskParam.columnCount * taskParam.dealRowCount], attenMaskGm[taskParam.attenMaskOffsetPre],
+                    intriParams, padParams);
     }
     maskInputQue.template EnQue(maskUb);
 }
 
 template <typename IFAT>
-__aicore__ inline void Vec1Processor<IFAT>::PseShiftCopyIn(GlobalTensor<PSE_SHIFT_T>& pseShiftGm,
-                                                           TQue<QuePosition::VECIN, 1>& pseInputQue,
-                                                           const Vec1TaskParam& taskParam)
+__aicore__ inline void Vec1Processor<IFAT>::PseShiftCopyIn(GlobalTensor<PSE_SHIFT_T> &pseShiftGm,
+                                                           TQue<QuePosition::VECIN, 1> &pseInputQue,
+                                                           const Vec1TaskParam &taskParam)
 {
     LocalTensor<PSE_SHIFT_T> pseShiftUb = pseInputQue.AllocTensor<PSE_SHIFT_T>();
     uint32_t pseShiftSizeAlign = ALIGN(taskParam.actualColumnCount, 16U);
@@ -226,16 +234,15 @@ __aicore__ inline void Vec1Processor<IFAT>::PseShiftCopyIn(GlobalTensor<PSE_SHIF
     copyInPadParams.paddingValue = 0;
 
     DataCopyPad(pseShiftUb, pseShiftGm[taskParam.pseShiftOffset + taskParam.gIdx * PROFILE.G * taskParam.pseShiftS],
-             copyInParams, copyInPadParams);
+                copyInParams, copyInPadParams);
     pseInputQue.EnQue(pseShiftUb);
 }
 
 template <typename IFAT>
-__aicore__ inline void Vec1Processor<IFAT>::Vec1CopyIn(GlobalTensor<uint8_t>& attenMaskGm,
-                                                       TQue<QuePosition::VECIN, 1>& maskInputQue,
-                                                       GlobalTensor<PSE_SHIFT_T>& pseShiftGm,
-                                                       TQue<QuePosition::VECIN, 1>& pseInputQue,
-                                                       const Vec1TaskParam& taskParam)
+__aicore__ inline void
+Vec1Processor<IFAT>::Vec1CopyIn(GlobalTensor<uint8_t> &attenMaskGm, TQue<QuePosition::VECIN, 1> &maskInputQue,
+                                GlobalTensor<PSE_SHIFT_T> &pseShiftGm, TQue<QuePosition::VECIN, 1> &pseInputQue,
+                                const Vec1TaskParam &taskParam)
 {
     if constexpr (ATTEN_MASK) {
         if (taskParam.qSeqSize > 1) {
@@ -251,10 +258,10 @@ __aicore__ inline void Vec1Processor<IFAT>::Vec1CopyIn(GlobalTensor<uint8_t>& at
 
 template <typename IFAT>
 __aicore__ inline void Vec1Processor<IFAT>::Vec1Compute(
-    LocalTensor<Q_T>& bmm2InResUb, LocalTensor<T>& softmaxMaxOutUb, LocalTensor<T>& softmaxSumOutUb,
-    LocalTensor<T>& softmaxExpUb, LocalTensor<MM_OUT_T>& mm1ResUb, LocalTensor<T>& softmaxMaxInUb,
-    LocalTensor<T>& softmaxSumInUb, LocalTensor<uint8_t>& softmaxTmpUb, TQue<QuePosition::VECIN, 1>& maskInputQue,
-    TQue<QuePosition::VECIN, 1>& pseInputQue, const Vec1TaskParam& taskParam)
+    LocalTensor<Q_T> &bmm2InResUb, LocalTensor<T> &softmaxMaxOutUb, LocalTensor<T> &softmaxSumOutUb,
+    LocalTensor<T> &softmaxExpUb, LocalTensor<MM_OUT_T> &mm1ResUb, LocalTensor<T> &softmaxMaxInUb,
+    LocalTensor<T> &softmaxSumInUb, LocalTensor<uint8_t> &softmaxTmpUb, TQue<QuePosition::VECIN, 1> &maskInputQue,
+    TQue<QuePosition::VECIN, 1> &pseInputQue, const Vec1TaskParam &taskParam)
 {
     LocalTensor<uint8_t> attenMaskUb;
     LocalTensor<PSE_SHIFT_T> pseUb;
@@ -268,25 +275,21 @@ __aicore__ inline void Vec1Processor<IFAT>::Vec1Compute(
                                  taskParam.actualColumnCount};
     if constexpr (FLASH_DECODE) {
         SoftmaxFlashV2_VF<T, MM_IN_T, PSE_SHIFT_T, PSE_SHIFT, ATTEN_MASK, PROFILE.S, false, false>(
-            bmm2InResUb, softmaxSumOutUb, softmaxMaxOutUb, mm1ResUb, softmaxExpUb,
-            softmaxSumInUb, softmaxMaxInUb, softmaxTmpUb, taskParam.scaleValue, attenMaskUb,
-            pseUb, PROFILE.G, srcShape);
+            bmm2InResUb, softmaxSumOutUb, softmaxMaxOutUb, mm1ResUb, softmaxExpUb, softmaxSumInUb, softmaxMaxInUb,
+            softmaxTmpUb, taskParam.scaleValue, attenMaskUb, pseUb, PROFILE.G, srcShape);
     } else {
         if (taskParam.qSeqSize == 1) {
             SoftmaxFlashV2_VF<T, MM_IN_T, PSE_SHIFT_T, PSE_SHIFT, ATTEN_MASK, PROFILE.S, false, false>(
-                bmm2InResUb, softmaxSumOutUb, softmaxMaxOutUb, mm1ResUb, softmaxExpUb,
-                softmaxSumInUb, softmaxMaxInUb, softmaxTmpUb, taskParam.scaleValue, attenMaskUb,
-                pseUb, PROFILE.G, srcShape);
+                bmm2InResUb, softmaxSumOutUb, softmaxMaxOutUb, mm1ResUb, softmaxExpUb, softmaxSumInUb, softmaxMaxInUb,
+                softmaxTmpUb, taskParam.scaleValue, attenMaskUb, pseUb, PROFILE.G, srcShape);
         } else if (taskParam.sparseMode == 4) { // 4:sparse band模式
             SoftmaxFlashV2_VF<T, MM_IN_T, PSE_SHIFT_T, PSE_SHIFT, ATTEN_MASK, PROFILE.S, true, true>(
-                bmm2InResUb, softmaxSumOutUb, softmaxMaxOutUb, mm1ResUb, softmaxExpUb,
-                softmaxSumInUb, softmaxMaxInUb, softmaxTmpUb, taskParam.scaleValue, attenMaskUb,
-                pseUb, PROFILE.G, srcShape);
+                bmm2InResUb, softmaxSumOutUb, softmaxMaxOutUb, mm1ResUb, softmaxExpUb, softmaxSumInUb, softmaxMaxInUb,
+                softmaxTmpUb, taskParam.scaleValue, attenMaskUb, pseUb, PROFILE.G, srcShape);
         } else {
             SoftmaxFlashV2_VF<T, MM_IN_T, PSE_SHIFT_T, PSE_SHIFT, ATTEN_MASK, PROFILE.S, false, true>(
-                bmm2InResUb, softmaxSumOutUb, softmaxMaxOutUb, mm1ResUb, softmaxExpUb,
-                softmaxSumInUb, softmaxMaxInUb, softmaxTmpUb, taskParam.scaleValue, attenMaskUb,
-                pseUb, PROFILE.G, srcShape);
+                bmm2InResUb, softmaxSumOutUb, softmaxMaxOutUb, mm1ResUb, softmaxExpUb, softmaxSumInUb, softmaxMaxInUb,
+                softmaxTmpUb, taskParam.scaleValue, attenMaskUb, pseUb, PROFILE.G, srcShape);
         }
     }
     if constexpr (ATTEN_MASK) {
@@ -298,21 +301,21 @@ __aicore__ inline void Vec1Processor<IFAT>::Vec1Compute(
 }
 
 template <typename IFAT>
-__aicore__ inline void Vec1Processor<IFAT>::Vec1CopyResToL1(TSCM<TPosition::VECIN, 1>& mm2AScm,
-                                                            LocalTensor<Q_T>& bmm2InResUb,
-                                                            const Vec1TaskParam& taskParam)
+__aicore__ inline void Vec1Processor<IFAT>::Vec1CopyResToL1(TSCM<TPosition::VECIN, 1> &mm2AScm,
+                                                            LocalTensor<Q_T> &bmm2InResUb,
+                                                            const Vec1TaskParam &taskParam)
 {
     LocalTensor<Q_T> bmm2LeftScmTensor = mm2AScm.template AllocTensor<Q_T>();
     uint16_t elementTypeSize = ONE_BLK_SIZE / sizeof(Q_T);
     uint16_t lenBurst = taskParam.dealRowCount;
-    uint16_t nBurst = PROFILE.S / elementTypeSize;  // 注意要整块G*PROFILE.S都拷到L1
+    uint16_t nBurst = PROFILE.S / elementTypeSize; // 注意要整块G*PROFILE.S都拷到L1
     uint16_t srcStride =
-        ALIGN((uint16_t)taskParam.dealRowCount, (uint16_t)PROFILE.G) - taskParam.dealRowCount + 1;  // 解写写ub的bank冲突
+        ALIGN((uint16_t)taskParam.dealRowCount, (uint16_t)PROFILE.G) - taskParam.dealRowCount + 1; // 解写写ub的bank冲突
     uint16_t dstStride = ALIGN((uint16_t)taskParam.dealRowCount, (uint16_t)16) - taskParam.dealRowCount;
     DataCopyParams intriParamsTemp;
     intriParamsTemp.blockCount = nBurst;
     intriParamsTemp.blockLen = lenBurst;
-    intriParamsTemp.dstStride = dstStride; 
+    intriParamsTemp.dstStride = dstStride;
     intriParamsTemp.srcStride = srcStride;
     DataCopy(bmm2LeftScmTensor, bmm2InResUb, intriParamsTemp);
 
@@ -321,11 +324,11 @@ __aicore__ inline void Vec1Processor<IFAT>::Vec1CopyResToL1(TSCM<TPosition::VECI
 
 template <typename IFAT>
 __aicore__ inline void Vec1Processor<IFAT>::Softmax(
-    TQue<QuePosition::VECOUT, 1>& vec1ResOutUb, TSCM<TPosition::VECIN, 1>& mm2AScm, LocalTensor<T>& softmaxMaxOutUb,
-    LocalTensor<T>& softmaxSumOutUb, LocalTensor<T>& softmaxExpUb, LocalTensor<MM_OUT_T>& mm1ResUb,
-    LocalTensor<T>& softmaxMaxInUb, LocalTensor<T>& softmaxSumInUb, LocalTensor<uint8_t>& softmaxTmpUb,
-    GlobalTensor<uint8_t>& attenMaskGm, TQue<QuePosition::VECIN, 1>& maskInputQue,
-    GlobalTensor<PSE_SHIFT_T>& pseShiftGm, TQue<QuePosition::VECIN, 1>& pseInputQue, const Vec1TaskParam& taskParam)
+    TQue<QuePosition::VECOUT, 1> &vec1ResOutUb, TSCM<TPosition::VECIN, 1> &mm2AScm, LocalTensor<T> &softmaxMaxOutUb,
+    LocalTensor<T> &softmaxSumOutUb, LocalTensor<T> &softmaxExpUb, LocalTensor<MM_OUT_T> &mm1ResUb,
+    LocalTensor<T> &softmaxMaxInUb, LocalTensor<T> &softmaxSumInUb, LocalTensor<uint8_t> &softmaxTmpUb,
+    GlobalTensor<uint8_t> &attenMaskGm, TQue<QuePosition::VECIN, 1> &maskInputQue,
+    GlobalTensor<PSE_SHIFT_T> &pseShiftGm, TQue<QuePosition::VECIN, 1> &pseInputQue, const Vec1TaskParam &taskParam)
 {
     if (taskParam.isFirstSInnerLoop) {
         Duplicate(softmaxMaxInUb, SOFTMAX_MIN_NUM, taskParam.dealRowCount * 32 / sizeof(T));
@@ -343,20 +346,20 @@ __aicore__ inline void Vec1Processor<IFAT>::Softmax(
 
 template <typename IFAT>
 __aicore__ inline void Vec1Processor<IFAT>::Process(
-    TQue<QuePosition::VECOUT, 1>& vec1ResOutUb, TSCM<TPosition::VECIN, 1>& mm2AScm, LocalTensor<T>& softmaxMaxOutUb,
-    LocalTensor<T>& softmaxSumOutUb, LocalTensor<T>& softmaxExpUb, LocalTensor<MM_OUT_T>& mm1ResUb,
-    LocalTensor<T>& softmaxMaxInUb, LocalTensor<T>& softmaxSumInUb, LocalTensor<uint8_t>& softmaxTmpUb,
-    GlobalTensor<uint8_t>& attenMaskGm, TQue<QuePosition::VECIN, 1>& maskInputQue,
-    GlobalTensor<PSE_SHIFT_T>& pseShiftGm, TQue<QuePosition::VECIN, 1>& pseInputQue,
-    TQue<QuePosition::VECOUT, 1>& softmaxLseOutputQue, GlobalTensor<T>& softmaxLseGm, const Vec1TaskParam& taskParam,
-    GlobalTensor<T>& softmaxMaxGm, GlobalTensor<T>& softmaxSumGm)
+    TQue<QuePosition::VECOUT, 1> &vec1ResOutUb, TSCM<TPosition::VECIN, 1> &mm2AScm, LocalTensor<T> &softmaxMaxOutUb,
+    LocalTensor<T> &softmaxSumOutUb, LocalTensor<T> &softmaxExpUb, LocalTensor<MM_OUT_T> &mm1ResUb,
+    LocalTensor<T> &softmaxMaxInUb, LocalTensor<T> &softmaxSumInUb, LocalTensor<uint8_t> &softmaxTmpUb,
+    GlobalTensor<uint8_t> &attenMaskGm, TQue<QuePosition::VECIN, 1> &maskInputQue,
+    GlobalTensor<PSE_SHIFT_T> &pseShiftGm, TQue<QuePosition::VECIN, 1> &pseInputQue,
+    TQue<QuePosition::VECOUT, 1> &softmaxLseOutputQue, GlobalTensor<T> &softmaxLseGm, const Vec1TaskParam &taskParam,
+    GlobalTensor<T> &softmaxMaxGm, GlobalTensor<T> &softmaxSumGm)
 {
-    Softmax(vec1ResOutUb,mm2AScm, softmaxMaxOutUb, softmaxSumOutUb, softmaxExpUb, mm1ResUb, softmaxMaxInUb, softmaxSumInUb,
-            softmaxTmpUb, attenMaskGm, maskInputQue, pseShiftGm, pseInputQue, taskParam);
+    Softmax(vec1ResOutUb, mm2AScm, softmaxMaxOutUb, softmaxSumOutUb, softmaxExpUb, mm1ResUb, softmaxMaxInUb,
+            softmaxSumInUb, softmaxTmpUb, attenMaskGm, maskInputQue, pseShiftGm, pseInputQue, taskParam);
     if constexpr (FLASH_DECODE) {
         if (unlikely(taskParam.isLastSInnerLoop == true)) {
-            ComputeLogSumExpAndCopyToGm(softmaxLseOutputQue, softmaxMaxOutUb, softmaxSumOutUb, taskParam,
-                                        softmaxMaxGm, softmaxSumGm);
+            ComputeLogSumExpAndCopyToGm(softmaxLseOutputQue, softmaxMaxOutUb, softmaxSumOutUb, taskParam, softmaxMaxGm,
+                                        softmaxSumGm);
         }
         return;
     }

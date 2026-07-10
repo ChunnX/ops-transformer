@@ -58,7 +58,7 @@ aclnnStatus aclnnQuantLightningIndexer(
 ```
 
 ## aclnnQuantLightningIndexerGetWorkspaceSize
- 	 
+
 - **参数说明：**
 
 > [!NOTE]
@@ -430,7 +430,7 @@ aclnnStatus aclnnQuantLightningIndexer(
     aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
  ## 约束说明
- 	 
+
 - 确定性说明：aclnnQuantLightningIndexer默认确定性实现。
 - 参数query中的N支持小于等于64/32/24/16，key的N支持1。
 - headdim支持128。

@@ -19,7 +19,7 @@
 namespace ops {
 class NsaSelectedAttention : public OpDef {
 public:
-    explicit NsaSelectedAttention(const char* name) : OpDef(name)
+    explicit NsaSelectedAttention(const char *name) : OpDef(name)
     {
         this->Input("query")
             .ParamType(REQUIRED)
@@ -39,7 +39,7 @@ public:
             .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
-        this->Input("topk_indices") 
+        this->Input("topk_indices")
             .ParamType(REQUIRED)
             .DataType({ge::DT_INT32, ge::DT_INT32, ge::DT_INT32, ge::DT_INT32})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
@@ -91,4 +91,4 @@ public:
 };
 
 OP_ADD(NsaSelectedAttention);
-}
+} // namespace ops

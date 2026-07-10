@@ -48,25 +48,25 @@ using namespace AscendC;
         COPY_TILING_DATA(tiling);                                                                                      \
         templateClass<__VA_ARGS__> op;                                                                                 \
         REGIST_MATMUL_OBJ(&tPipe, GetSysWorkSpacePtr(), op.bmm1, bmm1tiling, op.bmm2, bmm2tiling);                     \
-        op.Init(query, key, value, topkIndices, attenMask, actualSeqQLen,                                              \
-    actualSeqKvLen, softmaxMax, softmaxSum, attentionOut, workspace, tilingData, &tPipe);                              \
+        op.Init(query, key, value, topkIndices, attenMask, actualSeqQLen, actualSeqKvLen, softmaxMax, softmaxSum,      \
+                attentionOut, workspace, tilingData, &tPipe);                                                          \
         op.Process();                                                                                                  \
     } while (0)
 
 #endif
 
-extern "C" __global__ __aicore__ void nsa_selected_attention(
-    GM_ADDR query, GM_ADDR key, GM_ADDR value, GM_ADDR topkIndices,
-    GM_ADDR attenMask, GM_ADDR actualSeqQLen, GM_ADDR actualSeqKvLen,
-    GM_ADDR softmaxMax, GM_ADDR softmaxSum, GM_ADDR attentionOut, GM_ADDR workspace,
-    GM_ADDR tiling)
+extern "C" __global__ __aicore__ void nsa_selected_attention(GM_ADDR query, GM_ADDR key, GM_ADDR value,
+                                                             GM_ADDR topkIndices, GM_ADDR attenMask,
+                                                             GM_ADDR actualSeqQLen, GM_ADDR actualSeqKvLen,
+                                                             GM_ADDR softmaxMax, GM_ADDR softmaxSum,
+                                                             GM_ADDR attentionOut, GM_ADDR workspace, GM_ADDR tiling)
 {
     TPipe tPipe;
 #if (ORIG_DTYPE_QUERY == DT_FLOAT16)
     if (TILING_KEY_IS(0)) {
         INVOKE_NSA_SELECTED_ATTENTION_GENERAL_OP_IMPL(NsaSelectedAttention, half);
         return;
-    } else if (TILING_KEY_IS(1)) {  // enable mask
+    } else if (TILING_KEY_IS(1)) { // enable mask
         INVOKE_NSA_SELECTED_ATTENTION_GENERAL_OP_IMPL(NsaSelectedAttention, half, true);
         return;
     }
@@ -75,7 +75,7 @@ extern "C" __global__ __aicore__ void nsa_selected_attention(
     if (TILING_KEY_IS(0)) {
         INVOKE_NSA_SELECTED_ATTENTION_GENERAL_OP_IMPL(NsaSelectedAttention, bfloat16_t);
         return;
-    } else if (TILING_KEY_IS(1)) {  // enable mask
+    } else if (TILING_KEY_IS(1)) { // enable mask
         INVOKE_NSA_SELECTED_ATTENTION_GENERAL_OP_IMPL(NsaSelectedAttention, bfloat16_t, true);
         return;
     }

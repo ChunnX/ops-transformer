@@ -976,7 +976,7 @@ aclnnStatus aclnnMlaPrologV3WeightNz(
       <td colspan="2">非量化</td>
       <td>
           weight_quant_mode=0，kv_cache_quant_mode=0，query_quant_mode=0<br>
-          入参：所有入参皆为非量化数据 <br> 
+          入参：所有入参皆为非量化数据 <br>
           出参：所有出参皆为非量化数据
       </td>
     </tr>

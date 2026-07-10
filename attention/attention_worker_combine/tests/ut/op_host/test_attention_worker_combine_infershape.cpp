@@ -14,8 +14,7 @@
 #include "infer_shape_case_executor.h"
 #include "base/registry/op_impl_space_registry_v2.h"
 
-class AttentionWorkerCombineInfershapeTest : public testing::Test
-{
+class AttentionWorkerCombineInfershapeTest : public testing::Test {
 protected:
     static void SetUpTestCase()
     {
@@ -36,19 +35,15 @@ TEST_F(AttentionWorkerCombineInfershapeTest, AttentionWorkerCombine_infershape_t
     gert::InfershapeContextPara infershapeContextPara(
         "AttentionWorkerCombine",
         {// input
-            {schedule_context_shape, ge::DT_INT8, ge::FORMAT_ND},
-            {expert_scales_shape, ge::DT_FLOAT, ge::FORMAT_ND},
-            {layer_id_shape, ge::DT_INT32, ge::FORMAT_ND}
-        },
+         {schedule_context_shape, ge::DT_INT8, ge::FORMAT_ND},
+         {expert_scales_shape, ge::DT_FLOAT, ge::FORMAT_ND},
+         {layer_id_shape, ge::DT_INT32, ge::FORMAT_ND}},
         {// output
-            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND}
-        },
-        {
-            {"hidden_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(7168)},
-            {"token_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"need_schedule", Ops::Transformer::AnyValue::CreateFrom<int64_t>(15)}
-        });
+         {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND}},
+        {{"hidden_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(7168)},
+         {"token_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+         {"need_schedule", Ops::Transformer::AnyValue::CreateFrom<int64_t>(15)}});
     std::vector<std::vector<int64_t>> expectOutputShape = {{32, 7168}, {1}};
     ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape);
 }

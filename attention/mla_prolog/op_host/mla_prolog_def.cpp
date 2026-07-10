@@ -141,24 +141,27 @@ public:
             .DynamicShapeSupportFlag(true)
             .NeedCheckSupportFlag(false)
             .PrecisionReduceFlag(true)
-            .ExtendCfgInfo("aclnnSupport.value", "support_aclnn");   // set value of aclnn support
+            .ExtendCfgInfo("aclnnSupport.value", "support_aclnn"); // set value of aclnn support
         this->AICore().AddConfig("ascend910b", aicore_config);
         this->AICore().AddConfig("ascend910_93", aicore_config);
-        
+
         OpAICoreConfig aicore_config_95;
         aicore_config_95.Input("token_x")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_BF16, ge::DT_BF16, ge::DT_BF16, ge::DT_INT8, ge::DT_INT8, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN})
+            .DataType({ge::DT_BF16, ge::DT_BF16, ge::DT_BF16, ge::DT_INT8, ge::DT_INT8, ge::DT_FLOAT8_E4M3FN,
+                       ge::DT_FLOAT8_E4M3FN})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         aicore_config_95.Input("weight_dq")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_BF16, ge::DT_BF16, ge::DT_BF16, ge::DT_INT8, ge::DT_INT8, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN})
+            .DataType({ge::DT_BF16, ge::DT_BF16, ge::DT_BF16, ge::DT_INT8, ge::DT_INT8, ge::DT_FLOAT8_E4M3FN,
+                       ge::DT_FLOAT8_E4M3FN})
             .FormatList({ge::FORMAT_FRACTAL_NZ})
             .AutoContiguous();
         aicore_config_95.Input("weight_uq_qr")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_BF16, ge::DT_INT8, ge::DT_INT8, ge::DT_INT8, ge::DT_INT8, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN})
+            .DataType({ge::DT_BF16, ge::DT_INT8, ge::DT_INT8, ge::DT_INT8, ge::DT_INT8, ge::DT_FLOAT8_E4M3FN,
+                       ge::DT_FLOAT8_E4M3FN})
             .FormatList({ge::FORMAT_FRACTAL_NZ})
             .AutoContiguous();
         aicore_config_95.Input("weight_uk")
@@ -168,7 +171,8 @@ public:
             .AutoContiguous();
         aicore_config_95.Input("weight_dkv_kr")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_BF16, ge::DT_BF16, ge::DT_BF16, ge::DT_INT8, ge::DT_INT8, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN})
+            .DataType({ge::DT_BF16, ge::DT_BF16, ge::DT_BF16, ge::DT_INT8, ge::DT_INT8, ge::DT_FLOAT8_E4M3FN,
+                       ge::DT_FLOAT8_E4M3FN})
             .FormatList({ge::FORMAT_FRACTAL_NZ})
             .AutoContiguous();
         aicore_config_95.Input("rmsnorm_gamma_cq")
@@ -198,12 +202,14 @@ public:
             .AutoContiguous();
         aicore_config_95.Input("kv_cache")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_BF16, ge::DT_INT8, ge::DT_BF16, ge::DT_INT8, ge::DT_BF16, ge::DT_FLOAT8_E4M3FN, ge::DT_BF16})
+            .DataType(
+                {ge::DT_BF16, ge::DT_INT8, ge::DT_BF16, ge::DT_INT8, ge::DT_BF16, ge::DT_FLOAT8_E4M3FN, ge::DT_BF16})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         aicore_config_95.Input("kr_cache")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_BF16, ge::DT_INT8, ge::DT_BF16, ge::DT_INT8, ge::DT_BF16, ge::DT_FLOAT8_E4M3FN, ge::DT_BF16})
+            .DataType(
+                {ge::DT_BF16, ge::DT_INT8, ge::DT_BF16, ge::DT_INT8, ge::DT_BF16, ge::DT_FLOAT8_E4M3FN, ge::DT_BF16})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         aicore_config_95.Input("dequant_scale_x")
@@ -251,11 +257,13 @@ public:
             .FormatList({ge::FORMAT_ND});
         aicore_config_95.Output("kv_cache")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_BF16, ge::DT_INT8, ge::DT_BF16, ge::DT_INT8, ge::DT_BF16, ge::DT_FLOAT8_E4M3FN, ge::DT_BF16})
+            .DataType(
+                {ge::DT_BF16, ge::DT_INT8, ge::DT_BF16, ge::DT_INT8, ge::DT_BF16, ge::DT_FLOAT8_E4M3FN, ge::DT_BF16})
             .FormatList({ge::FORMAT_ND});
         aicore_config_95.Output("kr_cache")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_BF16, ge::DT_INT8, ge::DT_BF16, ge::DT_INT8, ge::DT_BF16, ge::DT_FLOAT8_E4M3FN, ge::DT_BF16})
+            .DataType(
+                {ge::DT_BF16, ge::DT_INT8, ge::DT_BF16, ge::DT_INT8, ge::DT_BF16, ge::DT_FLOAT8_E4M3FN, ge::DT_BF16})
             .FormatList({ge::FORMAT_ND});
         aicore_config_95.DynamicCompileStaticFlag(true)
             .DynamicFormatFlag(true)

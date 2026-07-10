@@ -7,7 +7,7 @@
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
- /*!
+/*!
  * \file test_bsa_select_block_mask.cpp
  * \brief BSASelectBlockMask 算子 ST 测试，调用 aclnn API 在 NPU 上执行并验证 mask 输出
  */
@@ -43,7 +43,7 @@ struct TestConfig {
     int64_t qSeqlen;
     int64_t kvSeqlen;
     int64_t numHeads;
-    int64_t numKvHeads;  // BSA 当前仅支持 MHA，numKvHeads == numHeads
+    int64_t numKvHeads; // BSA 当前仅支持 MHA，numKvHeads == numHeads
     int64_t headDim;
     int64_t blockShapeX;
     int64_t blockShapeY;
@@ -59,11 +59,9 @@ static TestStats g_stats;
 TestResult RunTest(const TestConfig &config)
 {
     std::cout << "\n--- Test: " << config.testName << " ---" << std::endl;
-    std::cout << "Config: batch=" << config.batch
-              << ", qSeq=" << config.qSeqlen
-              << ", kvSeq=" << config.kvSeqlen
-              << ", heads=" << config.numHeads
-              << ", blockShape=[" << config.blockShapeX << "," << config.blockShapeY << "]"
+    std::cout << "Config: batch=" << config.batch << ", qSeq=" << config.qSeqlen << ", kvSeq=" << config.kvSeqlen
+              << ", heads=" << config.numHeads << ", blockShape=[" << config.blockShapeX << "," << config.blockShapeY
+              << "]"
               << ", sparsity=" << config.sparsity << std::endl;
 
     int64_t totalQTokens = config.batch * config.qSeqlen;
@@ -107,12 +105,12 @@ TestResult RunTest(const TestConfig &config)
         std::vector<int64_t> kShape = {config.batch, config.numKvHeads, config.kvSeqlen, config.headDim};
         std::vector<int64_t> maskShape = {config.batch, config.numHeads, qBlockNum, kvBlockNum};
 
-        qTensor = aclCreateTensor(qShape.data(), qShape.size(), ACL_FLOAT16, nullptr, 0, ACL_FORMAT_ND,
-                                   qShape.data(), qShape.size(), qDev);
-        kTensor = aclCreateTensor(kShape.data(), kShape.size(), ACL_FLOAT16, nullptr, 0, ACL_FORMAT_ND,
-                                   kShape.data(), kShape.size(), kDev);
+        qTensor = aclCreateTensor(qShape.data(), qShape.size(), ACL_FLOAT16, nullptr, 0, ACL_FORMAT_ND, qShape.data(),
+                                  qShape.size(), qDev);
+        kTensor = aclCreateTensor(kShape.data(), kShape.size(), ACL_FLOAT16, nullptr, 0, ACL_FORMAT_ND, kShape.data(),
+                                  kShape.size(), kDev);
         maskTensor = aclCreateTensor(maskShape.data(), maskShape.size(), ACL_INT8, nullptr, 0, ACL_FORMAT_ND,
-                                      maskShape.data(), maskShape.size(), maskDev);
+                                     maskShape.data(), maskShape.size(), maskDev);
 
         // 3. 构造 aclIntArray 属性参数
         int64_t blockShapeData[2] = {config.blockShapeX, config.blockShapeY};
@@ -135,23 +133,17 @@ TestResult RunTest(const TestConfig &config)
         double sparsity = config.sparsity;
 
         // --- 精确对位的算子调用 ---
-        aclnnStatus ret = aclnnBSASelectBlockMaskGetWorkspaceSize(
-            qTensor,
-            kTensor,
-            blockShapeArray,      // blockShapeOptional
-            nullptr,              // postBlockShapeOptional (当前不支持，必须传 nullptr)
-            qSeqLenArray,         // actualSeqLengthsOptional
-            kvSeqLenArray,        // actualSeqLengthsKvOptional
-            nullptr,              // actualBlockLenQueryOptional (完整压缩)
-            nullptr,              // actualBlockLenKeyOptional (完整压缩)
-            qLayout,
-            kvLayout,
-            numKvHeads,
-            scale,
-            sparsity,
-            maskTensor,           // blockSparseMaskOut
-            &workspaceSize,
-            &executor);
+        aclnnStatus ret =
+            aclnnBSASelectBlockMaskGetWorkspaceSize(qTensor, kTensor,
+                                                    blockShapeArray, // blockShapeOptional
+                                                    nullptr, // postBlockShapeOptional (当前不支持，必须传 nullptr)
+                                                    qSeqLenArray,  // actualSeqLengthsOptional
+                                                    kvSeqLenArray, // actualSeqLengthsKvOptional
+                                                    nullptr,       // actualBlockLenQueryOptional (完整压缩)
+                                                    nullptr,       // actualBlockLenKeyOptional (完整压缩)
+                                                    qLayout, kvLayout, numKvHeads, scale, sparsity,
+                                                    maskTensor, // blockSparseMaskOut
+                                                    &workspaceSize, &executor);
 
         if (ret != ACL_SUCCESS) {
             throw std::runtime_error("GetWorkspaceSize failed with code: " + std::to_string(ret));
@@ -183,8 +175,7 @@ TestResult RunTest(const TestConfig &config)
             }
         }
         double actualSparsity = static_cast<double>(selectedCount) / totalElements;
-        std::cout << "--> Mask Output: total=" << totalElements
-                  << ", selected=" << selectedCount
+        std::cout << "--> Mask Output: total=" << totalElements << ", selected=" << selectedCount
                   << ", actual_sparsity=" << actualSparsity << std::endl;
         std::cout << "--> Mask Output (First 20 values): ";
         int32_t displayCount = std::min(20, totalElements);
@@ -213,7 +204,8 @@ TestResult RunTest(const TestConfig &config)
         std::cout << "Result: PASS" << std::endl;
 
         // 6. 成功后的资源清理
-        if (workspace) aclrtFree(workspace);
+        if (workspace)
+            aclrtFree(workspace);
         aclDestroyTensor(qTensor);
         aclDestroyTensor(kTensor);
         aclDestroyTensor(maskTensor);
@@ -231,17 +223,27 @@ TestResult RunTest(const TestConfig &config)
         std::cerr << "Result: FAIL - " << e.what() << std::endl;
 
         // 异常情况下的资源清理 (防止显存泄漏)
-        if (workspace) aclrtFree(workspace);
-        if (qTensor) aclDestroyTensor(qTensor);
-        if (kTensor) aclDestroyTensor(kTensor);
-        if (maskTensor) aclDestroyTensor(maskTensor);
-        if (blockShapeArray) aclDestroyIntArray(blockShapeArray);
-        if (qSeqLenArray) aclDestroyIntArray(qSeqLenArray);
-        if (kvSeqLenArray) aclDestroyIntArray(kvSeqLenArray);
+        if (workspace)
+            aclrtFree(workspace);
+        if (qTensor)
+            aclDestroyTensor(qTensor);
+        if (kTensor)
+            aclDestroyTensor(kTensor);
+        if (maskTensor)
+            aclDestroyTensor(maskTensor);
+        if (blockShapeArray)
+            aclDestroyIntArray(blockShapeArray);
+        if (qSeqLenArray)
+            aclDestroyIntArray(qSeqLenArray);
+        if (kvSeqLenArray)
+            aclDestroyIntArray(kvSeqLenArray);
 
-        if (qDev) aclrtFree(qDev);
-        if (kDev) aclrtFree(kDev);
-        if (maskDev) aclrtFree(maskDev);
+        if (qDev)
+            aclrtFree(qDev);
+        if (kDev)
+            aclrtFree(kDev);
+        if (maskDev)
+            aclrtFree(maskDev);
 
         return TEST_FAIL;
     }

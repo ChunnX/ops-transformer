@@ -172,16 +172,16 @@ struct FagConstInfo {
 
 // fp8反量化因子
 struct QuantScaleInfo {
-	float deqScaleQValue = 1.0f;
-	float deqScaleKValue = 1.0f;
-	float deqScaleVValue = 1.0f;
-	float deqScaleDyValue = 1.0f;
-	float deqScaleOValue = 1.0f;
+    float deqScaleQValue = 1.0f;
+    float deqScaleKValue = 1.0f;
+    float deqScaleVValue = 1.0f;
+    float deqScaleDyValue = 1.0f;
+    float deqScaleOValue = 1.0f;
 };
 
 struct FagRunInfo {
     RunInfo<false> commonRunInfo{0};
-	QuantScaleInfo quantScaleInfo;
+    QuantScaleInfo quantScaleInfo;
     int64_t s2oIdx;
     int64_t s2CvBegin;
     int64_t s2CvEnd;
@@ -192,12 +192,13 @@ struct FagRunInfo {
     int32_t s2RealSizeAlign2;
     int64_t dAlign16;
     int32_t halfS2RealSize; // vector侧实际的s2基本块大小，如果Cube基本块=128，那么halfS2RealSize=64
-    int32_t firstHalfS2RealSize; // 当s2RealSize不是2的整数倍时，v0比v1少计算一行，计算subblock偏移的时候需要使用v0的s2 size
+    int32_t
+        firstHalfS2RealSize; // 当s2RealSize不是2的整数倍时，v0比v1少计算一行，计算subblock偏移的时候需要使用v0的s2 size
     uint8_t qDxPingPongIdx;
-    uint8_t isS2IdxNoChange; // s2Idx是否变化
+    uint8_t isS2IdxNoChange;     // s2Idx是否变化
     uint8_t isNextS2IdxNoChange; // 下一个基本块的s2Idx是否变化（是否切换了列）
     // BN2模板使用
-    bool isLastS1Outer = false; // 标记BN2扩展模板中是否是S1轴要处理的最后一个s1outer
+    bool isLastS1Outer = false;  // 标记BN2扩展模板中是否是S1轴要处理的最后一个s1outer
     bool isFirstS1Outer = false; // 标记BN2扩展模板中是否是S1轴要处理的第一个s1outer
 
     // TND需要记录上一次的基本块的信息，用于优化scalar
@@ -235,8 +236,8 @@ struct FagRunInfo {
     // Deter 使用
     int64_t sTaskId = 0;
     int64_t sTaskIdMod2 = 0;
-    
-    bool isS1IdxNoChange; // s1Idx是否变化
+
+    bool isS1IdxNoChange;     // s1Idx是否变化
     bool isNextS1IdxNoChange; // 下一个基本块的s1Idx是否变化（是否切换了行）
 
     int8_t taskStep = TASK_INIT;
@@ -250,7 +251,13 @@ __aicore__ inline uint32_t AlignTo(uint32_t num1, uint32_t num2)
     return (num1 + num2 - 1) / num2 * num2;
 }
 
-__aicore__ inline int64_t AlignTo16(int64_t num) { return (num + 15) >> 4 << 4; }
-
-__aicore__ inline int64_t AlignTo32(int64_t num) { return (num + 31) >> 5 << 5; }
+__aicore__ inline int64_t AlignTo16(int64_t num)
+{
+    return (num + 15) >> 4 << 4;
 }
+
+__aicore__ inline int64_t AlignTo32(int64_t num)
+{
+    return (num + 31) >> 5 << 5;
+}
+} // namespace commondef

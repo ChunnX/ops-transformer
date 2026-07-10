@@ -34,7 +34,7 @@ TEST_PARAMS = {
         "return_softmax_lse": [False],
         "ori_mask_mode": [4],
         "ori_win_left": [127],
-        "ori_win_right": [0]
+        "ori_win_right": [0],
     },
     "test_swa_decode_pa": {
         "testcase_name": ["test_swa_decode_pa"],
@@ -56,7 +56,7 @@ TEST_PARAMS = {
         "return_softmax_lse": [False],
         "ori_mask_mode": [4],
         "ori_win_left": [127],
-        "ori_win_right": [0]
+        "ori_win_right": [0],
     },
     "hca_tnd": {
         "testcase_name": ["hca_tnd"],
@@ -84,9 +84,9 @@ TEST_PARAMS = {
         "ori_mask_mode": [4],
         "cmp_mask_mode": [3],
         "ori_win_left": [127],
-        "ori_win_right": [0]
+        "ori_win_right": [0],
     },
-    "csa_decode":{
+    "csa_decode": {
         "testcase_name": ["csa_decode"],
         "layout_q": ["TND"],
         "layout_kv": ["TND"],
@@ -112,9 +112,9 @@ TEST_PARAMS = {
         "ori_mask_mode": [4],
         "cmp_mask_mode": [3],
         "ori_win_left": [127],
-        "ori_win_right": [0]
+        "ori_win_right": [0],
     },
-    "csa_decode_pa":{
+    "csa_decode_pa": {
         "testcase_name": ["csa_decode_pa"],
         "layout_q": ["TND"],
         "layout_kv": ["PA_BBND"],
@@ -143,9 +143,9 @@ TEST_PARAMS = {
         "ori_mask_mode": [4],
         "cmp_mask_mode": [3],
         "ori_win_left": [127],
-        "ori_win_right": [0]
+        "ori_win_right": [0],
     },
-    "csa_g128_test_decode":{
+    "csa_g128_test_decode": {
         "testcase_name": ["csa_g128_test_decode"],
         "layout_q": ["TND"],
         "layout_kv": ["PA_BBND"],
@@ -176,9 +176,9 @@ TEST_PARAMS = {
         "ori_mask_mode": [4],
         "cmp_mask_mode": [3],
         "ori_win_left": [127],
-        "ori_win_right": [0]
+        "ori_win_right": [0],
     },
-    "csa_g128_test_decode_B1":{
+    "csa_g128_test_decode_B1": {
         "testcase_name": ["csa_g128_test_decode_B1"],
         "layout_q": ["TND"],
         "layout_kv": ["PA_BBND"],
@@ -209,7 +209,7 @@ TEST_PARAMS = {
         "ori_mask_mode": [4],
         "cmp_mask_mode": [3],
         "ori_win_left": [127],
-        "ori_win_right": [0]
+        "ori_win_right": [0],
     },
     "csa_g128_test_decode_B16": {
         "testcase_name": ["csa_g128_test_decode_B16"],
@@ -231,9 +231,30 @@ TEST_PARAMS = {
         "block_size1": [128],
         "block_size2": [128],
         "cu_seqlens_q": [[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]],
-        "seqused_ori_kv": [[128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128]],
-        "seqused_cmp_kv": [[32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32]],
-        "cmp_residual_kv": [[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]], # 残差
+        "seqused_ori_kv": [
+            [
+                128,
+                128,
+                128,
+                128,
+                128,
+                128,
+                128,
+                128,
+                128,
+                128,
+                128,
+                128,
+                128,
+                128,
+                128,
+                128,
+            ]
+        ],
+        "seqused_cmp_kv": [
+            [32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32]
+        ],
+        "cmp_residual_kv": [[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]],  # 残差
         "softmax_scale": [0.04419417],
         "cmp_ratio": [4],
         "return_softmax_lse": [False],
@@ -242,7 +263,7 @@ TEST_PARAMS = {
         "ori_win_left": [127],
         "ori_win_right": [0],
     },
-    "csa_g64_test_prefill":{
+    "csa_g64_test_prefill": {
         "testcase_name": ["csa_g64_test_prefill"],
         "layout_q": ["TND"],
         "layout_kv": ["PA_BBND"],
@@ -256,7 +277,7 @@ TEST_PARAMS = {
         "N1": [64],
         "N2": [1],
         "D": [512],
-        "K": [512], # cmp_topk
+        "K": [512],  # cmp_topk
         "block_num1": [65],
         "block_num2": [17],
         "block_size1": [128],
@@ -266,16 +287,16 @@ TEST_PARAMS = {
         "cu_seqlens_cmp_kv": [[0, 512]],
         "seqused_ori_kv": [[2050]],
         "seqused_cmp_kv": [[512]],
-        "cmp_residual_kv": [[2]], # 残差 cmp_residual_kv
+        "cmp_residual_kv": [[2]],  # 残差 cmp_residual_kv
         "softmax_scale": [0.04419417],
-        "cmp_ratio": [4], # != 1
+        "cmp_ratio": [4],  # != 1
         "return_softmax_lse": [False],
         "ori_mask_mode": [4],
-        "cmp_mask_mode": [3], # == 3
+        "cmp_mask_mode": [3],  # == 3
         "ori_win_left": [127],
-        "ori_win_right": [0]
+        "ori_win_right": [0],
     },
-    "csa_g128_test_prefill":{
+    "csa_g128_test_prefill": {
         "testcase_name": ["csa_g128_test_prefill"],
         "layout_q": ["TND"],
         "layout_kv": ["PA_BBND"],
@@ -299,7 +320,7 @@ TEST_PARAMS = {
         "cu_seqlens_cmp_kv": [[0, 160]],
         "seqused_ori_kv": [[640]],
         "seqused_cmp_kv": [[160]],
-        "cmp_residual_kv": [[0]], # 残差
+        "cmp_residual_kv": [[0]],  # 残差
         "softmax_scale": [0.04419417],
         "cmp_ratio": [4],
         "return_softmax_lse": [False],
@@ -308,7 +329,7 @@ TEST_PARAMS = {
         "ori_win_left": [127],
         "ori_win_right": [0],
     },
-    "csa_g128_test_prefill_padding":{
+    "csa_g128_test_prefill_padding": {
         "testcase_name": ["csa_g128_test_prefill_padding"],
         "layout_q": ["TND"],
         "layout_kv": ["TND"],
@@ -330,7 +351,7 @@ TEST_PARAMS = {
         "seqused_q": [[10]],
         "seqused_ori_kv": [[22]],
         "seqused_cmp_kv": [[5]],
-        "cmp_residual_kv": [[2]], # 残差
+        "cmp_residual_kv": [[2]],  # 残差
         "softmax_scale": [0.04419417],
         "cmp_ratio": [4],
         "return_softmax_lse": [False],
@@ -339,7 +360,7 @@ TEST_PARAMS = {
         "ori_win_left": [127],
         "ori_win_right": [0],
     },
-    "csa_g128_test_prefill_TND":{
+    "csa_g128_test_prefill_TND": {
         "testcase_name": ["csa_g128_test_prefill_TND"],
         "layout_q": ["TND"],
         "layout_kv": ["TND"],
@@ -351,7 +372,7 @@ TEST_PARAMS = {
         "S2": [40],
         "T1": [16],
         "T2": [38],
-        "T3": [9], # TND且cmp
+        "T3": [9],  # TND且cmp
         "N1": [128],
         "N2": [1],
         "D": [512],
@@ -368,7 +389,7 @@ TEST_PARAMS = {
         "ori_win_left": [127],
         "ori_win_right": [0],
     },
-    "cmp_csa_g64_test_prefill":{
+    "cmp_csa_g64_test_prefill": {
         "testcase_name": ["cmp_csa_g64_test_prefill"],
         "layout_q": ["BSND"],
         "layout_kv": ["BSND"],
@@ -395,8 +416,10 @@ TEST_PARAMS = {
         "cmp_mask_mode": [3],
         "ori_win_left": [127],
         "ori_win_right": [0],
-    }
+    },
 }
 
 # 按需选择要启用的测试参数（例如默认启用所有）
-ENABLED_PARAMS = [{**TEST_PARAMS[key], "testcase_name": [key]} for key in TEST_PARAMS.keys()]
+ENABLED_PARAMS = [
+    {**TEST_PARAMS[key], "testcase_name": [key]} for key in TEST_PARAMS.keys()
+]

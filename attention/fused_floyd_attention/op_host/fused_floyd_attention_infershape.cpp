@@ -46,7 +46,7 @@ ge::graphStatus InferShapeFusedFloydAttention(gert::InferShapeContext *context)
     shapeB = queryShape->GetDim(0);
     shapeH = queryShape->GetDim(1);
     auto headNum = queryShape->GetDim(2); // 2: BHNSD中的N
-    shapeS = queryShape->GetDim(3); // 3: BHNSD中的S
+    shapeS = queryShape->GetDim(3);       // 3: BHNSD中的S
 
     // softmaxMax, fp32: (B, H, N, S, 8)
     gert::Shape *softmaxMaxShape = context->GetOutputShape(0);

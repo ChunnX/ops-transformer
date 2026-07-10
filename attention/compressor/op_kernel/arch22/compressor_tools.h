@@ -34,8 +34,7 @@ public:
     {
     }
 
-    __aicore__ inline void Init(__gm__ uint8_t *startPos, __gm__ uint8_t *seqUsed,
-                                __gm__ uint8_t *cuSeqlens);
+    __aicore__ inline void Init(__gm__ uint8_t *startPos, __gm__ uint8_t *seqUsed, __gm__ uint8_t *cuSeqlens);
 
     __aicore__ inline uint32_t GetSeqUsed(uint32_t bIdx);
     __aicore__ inline uint64_t GetStartPos(uint32_t bIdx);
@@ -653,11 +652,11 @@ __aicore__ inline void CompressorVec1SliceIterator<COMP>::IteratorSlice()
         do {
             uint32_t seqLength = tools_.GetSeqLength(sliceInfo_.bIdx);
             if (sliceInfo_.bSeqUsed < seqLength) {
-                uint64_t nextAlignSIdx = Align(sliceInfo_.bStartPos + sliceInfo_.sIdx, (uint64_t)cmpRatio) -
-                    sliceInfo_.bStartPos;
+                uint64_t nextAlignSIdx =
+                    Align(sliceInfo_.bStartPos + sliceInfo_.sIdx, (uint64_t)cmpRatio) - sliceInfo_.bStartPos;
                 sliceInfo_.dealedSeqCnt += nextAlignSIdx - sliceInfo_.sIdx;
-                uint32_t tcGap = CeilDivT(static_cast<int32_t>(seqLength - nextAlignSIdx),
-                                    static_cast<int32_t>(cmpRatio));
+                uint32_t tcGap =
+                    CeilDivT(static_cast<int32_t>(seqLength - nextAlignSIdx), static_cast<int32_t>(cmpRatio));
                 if (sliceInfo_.bSeqUsed == 0 && nextAlignSIdx > sliceInfo_.sIdx) {
                     // 此时bseqused所在压缩块未被纳入计算
                     tcGap++;

@@ -31,11 +31,11 @@ namespace MlaProlog {
  */
 template <typename O, typename C>
 __aicore__ inline void RotaryPosEmb(const LocalTensor<O> &outputLocal, const LocalTensor<C> &inputLocal,
-                                    const LocalTensor<C> &cosLocal, const LocalTensor<C> &sinLocal,
-                                    uint64_t row, uint64_t col, uint8_t sinCosRepStride)
+                                    const LocalTensor<C> &cosLocal, const LocalTensor<C> &sinLocal, uint64_t row,
+                                    uint64_t col, uint8_t sinCosRepStride)
 {
-    RotaryPosEmbVF<O, C>(outputLocal, inputLocal, cosLocal, sinLocal,
-                         static_cast<uint32_t>(row), col, col, static_cast<uint64_t>(sinCosRepStride));
+    RotaryPosEmbVF<O, C>(outputLocal, inputLocal, cosLocal, sinLocal, static_cast<uint32_t>(row), col, col,
+                         static_cast<uint64_t>(sinCosRepStride));
 }
 } // namespace MlaProlog
 #endif

@@ -59,4 +59,4 @@ public:
 };
 
 OP_ADD(AttentionWorkerCombine);
-}  // namespace ops
+} // namespace ops

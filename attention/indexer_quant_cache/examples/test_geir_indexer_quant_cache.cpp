@@ -182,7 +182,7 @@ int CreateOppInGraph(DataType inDtype, std::vector<ge::Tensor> &input, std::vect
     const int64_t tokenNum = 1024;
     const int64_t d = 128;
     const int64_t blockNum = 128;
-    const int64_t blockSizeDim = 16;   // num_slots = 128*16 = 2048
+    const int64_t blockSizeDim = 16; // num_slots = 128*16 = 2048
     std::vector<int64_t> cacheShape = {blockNum, blockSizeDim, 1, d};
     std::vector<int64_t> cacheScaleShape = {blockNum, blockSizeDim, 1, 1};
     std::vector<int64_t> xShape = {tokenNum, d};

@@ -34,11 +34,11 @@ NsaCompressWithCacheParam::NsaCompressWithCacheParam(int64_t batchSize, int64_t 
     mBlockNumPerbatch = maxSeqLen / mPageBlockSize;
     mTotolBlockNum = mBlockNumPerbatch * mBatchSize;
     mSlotMappingList.resize(batchSize);
-    for(int i = 0; i < batchSize; i++) {
+    for (int i = 0; i < batchSize; i++) {
         mSlotMappingList[i] = i;
     }
     mBlockTableList.resize(mTotolBlockNum);
-    for(int i = 0; i < mTotolBlockNum; i++) {
+    for (int i = 0; i < mTotolBlockNum; i++) {
         mBlockTableList[i] = i;
     }
 }
@@ -63,7 +63,7 @@ bool NsaCompressWithCacheParam::Init()
             mLayoutOptional = "TND";
             break;
         default:
-            mLayoutOptional= "UNKOWN";
+            mLayoutOptional = "UNKOWN";
     }
 
     mInput = Tensor("input", {mTotolBlockNum, mPageBlockSize, mHeadNum, mHeadDim}, mLayoutOptional.c_str(), mDtype,
@@ -92,8 +92,7 @@ bool NsaCompressWithCacheParam::Init()
                                                                                       mActSeqLenList)) {
         return false;
     }
-    if (!ops::adv::tests::NsaCompressWithCache::NsaCompressWithCacheParam::InitTensor(mSlotMapping,
-                                                                                      mSlotMappingList)) {
+    if (!ops::adv::tests::NsaCompressWithCache::NsaCompressWithCacheParam::InitTensor(mSlotMapping, mSlotMappingList)) {
         return false;
     }
     if (!ops::adv::tests::NsaCompressWithCache::NsaCompressWithCacheParam::InitTensor(mBlockTableOptional,

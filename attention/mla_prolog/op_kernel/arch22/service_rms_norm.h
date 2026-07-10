@@ -42,8 +42,8 @@ template <typename T, typename GammaType, typename C, typename O, typename U>
 __aicore__ inline void RmsNormNormal(const LocalTensor<O> &outputLocal, const GlobalTensor<T> &inputGm,
                                      const LocalTensor<GammaType> &gammaLocal,
                                      const LocalTensor<U> &dequantScaleWDqLocal,
-                                     const LocalTensor<U> &dequantScaleXLocal,
-                                     const LocalTensor<uint8_t> &shareTmpUb, RmsNormParam &rmsNormParams)
+                                     const LocalTensor<U> &dequantScaleXLocal, const LocalTensor<uint8_t> &shareTmpUb,
+                                     RmsNormParam &rmsNormParams)
 {
     int64_t cnt = rmsNormParams.row * rmsNormParams.col;
     LocalTensor<C> xFp32Local = shareTmpUb.ReinterpretCast<C>();

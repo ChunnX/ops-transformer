@@ -13,13 +13,27 @@
 import itertools
 
 PARAM_NAMES = [
-    "B", "N_q", "N_kv", "D",
-    "actual_seq_q", "actual_seq_kv",
-    "enable_pa", "kv_cache_layout", "block_size",
-    "sparse_mode", "q_scale_layout", "p_scale",
-    "data_range_q", "data_range_k", "data_range_v",
-    "enable_lse", "enable_rope", "D_rope",
-    "graph_path", "device_id", "is_contiguous",
+    "B",
+    "N_q",
+    "N_kv",
+    "D",
+    "actual_seq_q",
+    "actual_seq_kv",
+    "enable_pa",
+    "kv_cache_layout",
+    "block_size",
+    "sparse_mode",
+    "q_scale_layout",
+    "p_scale",
+    "data_range_q",
+    "data_range_k",
+    "data_range_v",
+    "enable_lse",
+    "enable_rope",
+    "D_rope",
+    "graph_path",
+    "device_id",
+    "is_contiguous",
 ]
 
 TEST_PARAMS_DEFAULTS = {

@@ -32,8 +32,8 @@
     keyRef_shape: [8931, 16, 144]
     valueRef_shape: [8931, 16, 128]
     seqOffset_shape: [16]
-    out1_shape: [8931, 16, 144]  
-    out2_shape: [8931, 16, 128]        
+    out1_shape: [8931, 16, 144]
+    out2_shape: [8931, 16, 128]
   ```
 
 ## 参数说明

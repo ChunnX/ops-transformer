@@ -146,13 +146,14 @@ public:
 
         if ASCEND_IS_AIV {
             vecFaBlock.InitVecBlock(tPipe, pse, actualSeqLengths, actualSeqLengthsKv, postQuantScale, postQuantOffset,
-                attenMask, learnableSink, softmaxLse, attentionOut, workspace);
+                                    attenMask, learnableSink, softmaxLse, attentionOut, workspace);
             vecFaBlock.ClearOutput();
         }
 
         if ASCEND_IS_AIC {
             cubeBlock.InitCubeBlock(tPipe, &l1BufferManager, query, key, value, blockTable, queryRope, keyRope,
-                actualSeqLengths, actualSeqLengthsKv, keySharedPrefix, valueSharedPrefix, actualSharedPrefixLen);
+                                    actualSeqLengths, actualSeqLengthsKv, keySharedPrefix, valueSharedPrefix,
+                                    actualSharedPrefixLen);
         }
 
         if constexpr (FLASH_DECODE) {
@@ -209,12 +210,12 @@ public:
             constInfo.subBlockIdx = GetSubBlockIdx();
         }
 
-        const auto& fiaBaseParams = this->tilingData->fiaBaseParams;
-        const auto& fiaAttenMaskParams = this->tilingData->fiaAttenMaskParams;
-        const auto& fiaPageAttentionParams = this->tilingData->fiaPageAttentionParams;
-        const auto& fiaWorkspaceParams = this->tilingData->fiaWorkspaceParams;
-        const auto& fiaS1OuterSplitCoreParams = this->tilingData->fiaS1OuterSplitCoreParams;
-        const auto& fiaEmptyTensorParams = this->tilingData->fiaEmptyTensorParams;
+        const auto &fiaBaseParams = this->tilingData->fiaBaseParams;
+        const auto &fiaAttenMaskParams = this->tilingData->fiaAttenMaskParams;
+        const auto &fiaPageAttentionParams = this->tilingData->fiaPageAttentionParams;
+        const auto &fiaWorkspaceParams = this->tilingData->fiaWorkspaceParams;
+        const auto &fiaS1OuterSplitCoreParams = this->tilingData->fiaS1OuterSplitCoreParams;
+        const auto &fiaEmptyTensorParams = this->tilingData->fiaEmptyTensorParams;
 
         constInfo.bSize = fiaBaseParams.bSize;
         constInfo.t1Size = fiaBaseParams.t1Size;
@@ -300,7 +301,8 @@ public:
     __aicore__ inline void CalcS1OutSplitLoopTimes()
     {
         int64_t varlenCycleCoreNums = constInfo.coreNum * 2;
-        int64_t varlenCalcLoops = constInfo.totalSize / varlenCycleCoreNums; // 需要进行计算的循环次数(正序+倒序为一次循环)
+        int64_t varlenCalcLoops =
+            constInfo.totalSize / varlenCycleCoreNums; // 需要进行计算的循环次数(正序+倒序为一次循环)
         int64_t varlenCalcLoopsRemain = constInfo.totalSize % varlenCycleCoreNums; // 一次循环正序+倒序为两倍核数
         varlenCalcTimes = varlenCalcLoops * 2;
         if (varlenCalcLoopsRemain >= constInfo.aicIdx + 1) {
@@ -504,12 +506,13 @@ public:
         int64_t nextTokenLeftUp = 0;
         int64_t s1FirstToken = 0;
         int64_t s1LastToken = 0;
-        
+
         // 2. calc index of s2FirstToken, s2LastToken by index of s1GFirstToken, s1GLastToken
         int64_t s1GFirstToken = static_cast<int64_t>(gS1Cur) * static_cast<int64_t>(mBaseSize);
-        int64_t s1GLastToken = AttentionCommon::Min(s1GFirstToken + static_cast<int64_t>(mBaseSize),
-                                   static_cast<int64_t>(actSeqLensQ) * static_cast<int64_t>(constInfo.gSize)) -
-                               1;
+        int64_t s1GLastToken =
+            AttentionCommon::Min(s1GFirstToken + static_cast<int64_t>(mBaseSize),
+                                 static_cast<int64_t>(actSeqLensQ) * static_cast<int64_t>(constInfo.gSize)) -
+            1;
 
         if constexpr (GetOutUbFormat<LAYOUT_Q>() == UbFormat::S1G) {
             s1FirstToken = static_cast<int64_t>(s1GFirstToken / constInfo.gSize);
@@ -530,8 +533,7 @@ public:
         int64_t s2FirstToken = s1FirstToken - preTokenLeftUp;
         int64_t s2LastToken = s1LastToken + nextTokenLeftUp;
         // no valid token
-        if (s2FirstToken >= static_cast<int64_t>(actSeqLensKv)
-            || s2LastToken < 0 || s2LastToken < s2FirstToken) {
+        if (s2FirstToken >= static_cast<int64_t>(actSeqLensKv) || s2LastToken < 0 || s2LastToken < s2FirstToken) {
             curS2Start = 0U;
             curS2End = 0U;
             return;
@@ -634,8 +636,7 @@ public:
         info.bIdx = bN2Cur / constInfo.n2Size;
         info.n2Idx = bN2Cur % constInfo.n2Size;
         info.gS1Idx = gS1Cur * mBaseSize;
-        if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_BSH ||
-                      LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
+        if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_BSH || LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
             // S1G layout
             info.s1Idx = info.gS1Idx / constInfo.gSize;
         } else {
@@ -694,8 +695,7 @@ public:
             if (headS2Split && (bN2Cur == constInfo.bN2Start) && (gS1Cur == constInfo.gS1OStart)) {
                 // 当前任务属于第一个S1G, 并且第一个S1G的S2被切分了
                 info.isS2SplitCore = true;
-            } else if (tailS2Split && (bN2Cur == constInfo.bN2End) &&
-                       (gS1Cur == constInfo.gS1OEnd)) {
+            } else if (tailS2Split && (bN2Cur == constInfo.bN2End) && (gS1Cur == constInfo.gS1OEnd)) {
                 // 当前任务属于最后一个S1G, 并且最后一个S1G的S2被切分了
                 info.isS2SplitCore = true;
                 info.faTmpOutWsPos = headS2Split ? (info.faTmpOutWsPos + 1) : info.faTmpOutWsPos;

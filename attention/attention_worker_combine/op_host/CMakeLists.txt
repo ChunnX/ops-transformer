@@ -9,7 +9,7 @@
 # -----------------------------------------------------------------------------------------------------------
 
 add_op_to_compiled_list()
- 	 
+
 if (BUILD_OPEN_PROJECT)
     target_sources(op_host_aclnn PRIVATE
         attention_worker_combine_def.cpp
@@ -25,5 +25,5 @@ if (BUILD_OPEN_PROJECT)
         add_modules_sources(OPTYPE attention_worker_combine ACLNNTYPE aclnn)
     endif()
 else() # 回黄host
-    add_modules_sources(OPTYPE attention_worker_combine ACLNNTYPE aclnn)  
+    add_modules_sources(OPTYPE attention_worker_combine ACLNNTYPE aclnn)
 endif()

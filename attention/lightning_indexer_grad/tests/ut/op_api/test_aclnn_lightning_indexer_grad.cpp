@@ -66,9 +66,8 @@ TEST_F(LightningIndexerGradOpapiUt, A1_bsnd_fp16_success)
     aclOpExecutor *executor = nullptr;
 
     aclnnStatus aclRet = aclnnLightningIndexerGradGetWorkspaceSize(
-        query.get(), key.get(), dy.get(), sparseIndices.get(), weights.get(),
-        nullptr, nullptr, 64, inputLayout, 3, 65536, 65536, false,
-        dqOut.get(), dkOut.get(), dweightsOut.get(), &workspaceSize, &executor);
+        query.get(), key.get(), dy.get(), sparseIndices.get(), weights.get(), nullptr, nullptr, 64, inputLayout, 3,
+        65536, 65536, false, dqOut.get(), dkOut.get(), dweightsOut.get(), &workspaceSize, &executor);
 
     EXPECT_EQ(aclRet, ACLNN_SUCCESS);
     EXPECT_NE(executor, nullptr);
@@ -92,9 +91,8 @@ TEST_F(LightningIndexerGradOpapiUt, A2_tnd_bf16_success)
     aclOpExecutor *executor = nullptr;
 
     aclnnStatus aclRet = aclnnLightningIndexerGradGetWorkspaceSize(
-        query.get(), key.get(), dy.get(), sparseIndices.get(), weights.get(),
-        actualSeqQ.get(), actualSeqK.get(), 64, inputLayout, 3, 65536, 65536, false,
-        dqOut.get(), dkOut.get(), dweightsOut.get(), &workspaceSize, &executor);
+        query.get(), key.get(), dy.get(), sparseIndices.get(), weights.get(), actualSeqQ.get(), actualSeqK.get(), 64,
+        inputLayout, 3, 65536, 65536, false, dqOut.get(), dkOut.get(), dweightsOut.get(), &workspaceSize, &executor);
 
     EXPECT_EQ(aclRet, ACLNN_SUCCESS);
     EXPECT_NE(executor, nullptr);
@@ -115,9 +113,8 @@ TEST_F(LightningIndexerGradOpapiUt, E1_null_query_failed)
     aclOpExecutor *executor = nullptr;
 
     aclnnStatus aclRet = aclnnLightningIndexerGradGetWorkspaceSize(
-        nullptr, key.get(), dy.get(), sparseIndices.get(), weights.get(),
-        nullptr, nullptr, 64, inputLayout, 3, 65536, 65536, false,
-        dqOut.get(), dkOut.get(), dweightsOut.get(), &workspaceSize, &executor);
+        nullptr, key.get(), dy.get(), sparseIndices.get(), weights.get(), nullptr, nullptr, 64, inputLayout, 3, 65536,
+        65536, false, dqOut.get(), dkOut.get(), dweightsOut.get(), &workspaceSize, &executor);
 
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_NULLPTR);
     EXPECT_EQ(executor, nullptr);
@@ -139,9 +136,8 @@ TEST_F(LightningIndexerGradOpapiUt, E2_dtype_mismatch_failed)
     aclOpExecutor *executor = nullptr;
 
     aclnnStatus aclRet = aclnnLightningIndexerGradGetWorkspaceSize(
-        query.get(), key.get(), dy.get(), sparseIndices.get(), weights.get(),
-        nullptr, nullptr, 64, inputLayout, 3, 65536, 65536, false,
-        dqOut.get(), dkOut.get(), dweightsOut.get(), &workspaceSize, &executor);
+        query.get(), key.get(), dy.get(), sparseIndices.get(), weights.get(), nullptr, nullptr, 64, inputLayout, 3,
+        65536, 65536, false, dqOut.get(), dkOut.get(), dweightsOut.get(), &workspaceSize, &executor);
 
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
     EXPECT_EQ(executor, nullptr);
@@ -162,9 +158,8 @@ TEST_F(LightningIndexerGradOpapiUt, E3_null_dq_output_failed)
     aclOpExecutor *executor = nullptr;
 
     aclnnStatus aclRet = aclnnLightningIndexerGradGetWorkspaceSize(
-        query.get(), key.get(), dy.get(), sparseIndices.get(), weights.get(),
-        nullptr, nullptr, 64, inputLayout, 3, 65536, 65536, false,
-        nullptr, dkOut.get(), dweightsOut.get(), &workspaceSize, &executor);
+        query.get(), key.get(), dy.get(), sparseIndices.get(), weights.get(), nullptr, nullptr, 64, inputLayout, 3,
+        65536, 65536, false, nullptr, dkOut.get(), dweightsOut.get(), &workspaceSize, &executor);
 
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_NULLPTR);
     EXPECT_EQ(executor, nullptr);

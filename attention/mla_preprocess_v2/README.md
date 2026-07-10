@@ -36,7 +36,7 @@
     $$
     RmsNormQuant(x) = ({RmsNorm}(x) + bias) * deqScale
     $$
-  
+
     Query计算公式，包括W^{DQKV}矩阵乘、W^{UK}矩阵乘、RmsNormQuant和ROPE旋转位置编码处理
 
     $$
