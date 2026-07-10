@@ -8,6 +8,8 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 # GE Converter for Graph Mode
+from collections import namedtuple
+
 try:
     import torch
     import torch_npu
@@ -34,6 +36,20 @@ except ImportError:
     _TORCHAIR_AVAILABLE = False
 
 if _TORCHAIR_AVAILABLE:
+    DispatchOutputs = namedtuple(
+        "DispatchOutputs",
+        [
+            "expand_x",
+            "dynamic_scales",
+            "expand_idx",
+            "expert_token_nums",
+            "ep_recv_count",
+            "tp_recv_count",
+            "expand_scales",
+        ],
+    )
+
+
     @auto_convert_to_tensor([False, False, False, False, False, False, False, False],
         [False, False, False, True, True, True, True, True])
     def MoeDistributeDispatch(context: Tensor, x: Tensor, expert_ids: Tensor, scales: Optional[Tensor],
@@ -168,6 +184,99 @@ if _TORCHAIR_AVAILABLE:
             .output("expand_scales", "DT_FLOAT")
         )
 
+    def _convert_dispatch_x(x: Tensor, x_dtype: Optional[int]):
+        if x_dtype is None:
+            return x
+        if x_dtype == 296 or x_dtype == 297:
+            const_x = ge.Const([1] * (x.rank - 1) + [2])
+            shape_x = ge.Mul(ge.Shape(x), const_x)
+            x = ge.Reshape(ge.Bitcast(x, type=torch_dtype_value_to_ge_type(x_dtype)), shape_x)
+        else:
+            x = ge.Bitcast(x, type=torch_dtype_value_to_ge_type(x_dtype))
+        x.desc.dtype = torch_dtype_value_to_ge_proto_type(x_dtype)
+        return x
+
+
+    def _convert_dispatch_scales(scales: Optional[Tensor], x_smooth_scales_dtype: Optional[int]):
+        if x_smooth_scales_dtype is None or scales is None:
+            return scales
+        scales = ge.Bitcast(scales, type=torch_dtype_value_to_ge_type(x_smooth_scales_dtype))
+        scales.desc.dtype = torch_dtype_value_to_ge_proto_type(x_smooth_scales_dtype)
+        return scales
+
+
+    def _get_expand_x_dtype(x: Tensor, quant_mode: int, y_dtype: Optional[int]):
+        if y_dtype is not None:
+            return torch_dtype_value_to_ge_type(y_dtype)
+        if quant_mode == 0:
+            return x.dtype
+        return DataType.DT_INT8
+
+
+    def _make_dispatch_attrs(ep_world_size, ep_rank_id, moe_expert_num, ccl_buffer_size, tp_world_size, tp_rank_id,
+                             expert_shard_type, shared_expert_num, shared_expert_rank_num, quant_mode, global_bs,
+                             expert_token_nums_type, comm_alg, zero_expert_num, copy_expert_num, const_expert_num):
+        return {
+            "ep_world_size": ep_world_size,
+            "ep_rank_id": ep_rank_id,
+            "moe_expert_num": moe_expert_num,
+            "ccl_buffer_size": ccl_buffer_size,
+            "tp_world_size": tp_world_size,
+            "tp_rank_id": tp_rank_id,
+            "expert_shard_type": expert_shard_type,
+            "shared_expert_num": shared_expert_num,
+            "shared_expert_rank_num": shared_expert_rank_num,
+            "quant_mode": quant_mode,
+            "global_bs": global_bs,
+            "expert_token_nums_type": expert_token_nums_type,
+            "comm_alg": comm_alg,
+            "zero_expert_num": zero_expert_num,
+            "copy_expert_num": copy_expert_num,
+            "const_expert_num": const_expert_num,
+        }
+
+
+    def _call_moe_distribute_dispatch(context, x, expert_ids, scales, x_active_mask, expert_scales,
+                                      elastic_info, performance_info, attrs, expand_x_dtype):
+        return DispatchOutputs(*MoeDistributeDispatch(
+            context=context,
+            x=x,
+            expert_ids=expert_ids,
+            scales=scales,
+            x_active_mask=x_active_mask,
+            expert_scales=expert_scales,
+            elastic_info=elastic_info,
+            performance_info=performance_info,
+            y_dtype=expand_x_dtype,
+            **attrs,
+        ))
+
+
+    def _format_expand_x(expand_x: Tensor, expand_x_dtype, y_dtype: Optional[int]):
+        if y_dtype == 296 or y_dtype == 297:
+            div_x2 = ge.Cast(ge.Const([1] + [2]), dst_type=DataType.DT_INT32)
+            y_shape_int4 = ge.Shape(expand_x)
+            y_shape_uint8 = ge.Div(y_shape_int4, div_x2)
+            y_shape_int4_2bit = ge.ConcatV2(
+                [y_shape_uint8, ge.Cast(ge.Const([2]), dst_type=DataType.DT_INT32)],
+                concat_dim=0,
+                N=2,
+            )
+            expand_x = ge.Bitcast(ge.Reshape(expand_x, y_shape_int4_2bit), type=DataType.DT_UINT8)
+            return ge.Reshape(expand_x, y_shape_uint8)
+        expand_x.desc.dtype = ge_dtype_to_ge_proto_dtype(expand_x_dtype)
+        return expand_x
+
+
+    def _set_dynamic_scales_dtype(dynamic_scales: Tensor, x: Tensor, scales: Optional[Tensor], quant_mode: int):
+        if quant_mode == 0 and x.dtype not in (DataType.DT_FLOAT16, DataType.DT_BF16) and scales is not None:
+            dynamic_scales.desc.dtype = scales.desc.dtype
+            return dynamic_scales
+        dynamic_scales_dtype = DataType.DT_FLOAT8_E8M0 if quant_mode in (4, 5) else DataType.DT_FLOAT
+        dynamic_scales.desc.dtype = ge_dtype_to_ge_proto_dtype(dynamic_scales_dtype)
+        return dynamic_scales
+
+
     @register_fx_node_ge_converter(torch.ops.cann_ops_transformer.npu_moe_distribute_dispatch.default)
     def converter_moe_distribute_dispatch(
         context: Tensor,
@@ -199,77 +308,16 @@ if _TORCHAIR_AVAILABLE:
         x_dtype: Optional[int] = None,
         x_smooth_scales_dtype: Optional[int] = None,
         meta_outputs: TensorSpec = None):
-        from torchair.ge._ge_graph import DataType
-
-        if x_dtype is not None:
-            if x_dtype == 296 or x_dtype == 297:
-                const_x = ge.Const([1] * (x.rank - 1) + [2])
-                shape_x = ge.Shape(x)
-                shape_x = ge.Mul(shape_x, const_x)
-                x = ge.Bitcast(x, type=torch_dtype_value_to_ge_type(x_dtype))
-                x = ge.Reshape(x, shape_x)
-            else:
-                x = ge.Bitcast(x, type=torch_dtype_value_to_ge_type(x_dtype))
-            x.desc.dtype = torch_dtype_value_to_ge_proto_type(x_dtype)
-
-        if x_smooth_scales_dtype is not None and scales is not None:
-            scales = ge.Bitcast(scales, type=torch_dtype_value_to_ge_type(x_smooth_scales_dtype))
-            scales.desc.dtype = torch_dtype_value_to_ge_proto_type(x_smooth_scales_dtype)
-
-        expand_x_dtype = DataType.DT_INT8
-        if quant_mode == 0:
-            expand_x_dtype = x.dtype
-        if y_dtype is not None:
-            expand_x_dtype = torch_dtype_value_to_ge_type(y_dtype)
-
-        (
-            expand_x, dynamic_scales, expand_idx, expert_token_nums,
-            ep_recv_count, tp_recv_count, expand_scales
-        ) = MoeDistributeDispatch(context=context,
-                                    x=x,
-                                    expert_ids=expert_ids,
-                                    scales=scales,
-                                    x_active_mask=x_active_mask,
-                                    expert_scales=expert_scales,
-                                    elastic_info=elastic_info,
-                                    performance_info=performance_info,
-                                    ep_world_size=ep_world_size,
-                                    ep_rank_id=ep_rank_id,
-                                    moe_expert_num=moe_expert_num,
-                                    ccl_buffer_size=ccl_buffer_size,
-                                    tp_world_size=tp_world_size,
-                                    tp_rank_id=tp_rank_id,
-                                    expert_shard_type=expert_shard_type,
-                                    shared_expert_num=shared_expert_num,
-                                    shared_expert_rank_num=shared_expert_rank_num,
-                                    quant_mode=quant_mode,
-                                    global_bs=global_bs,
-                                    expert_token_nums_type=expert_token_nums_type,
-                                    comm_alg=comm_alg,
-                                    zero_expert_num=zero_expert_num,
-                                    copy_expert_num=copy_expert_num,
-                                    const_expert_num=const_expert_num,
-                                    y_dtype=expand_x_dtype)
-
-        if y_dtype == 296 or y_dtype == 297:
-            div_x2 = ge.Cast(ge.Const([1] + [2]), dst_type=DataType.DT_INT32)
-            y_shape_int4 = ge.Shape(expand_x)
-            y_shape_uint8 = ge.Div(y_shape_int4, div_x2)
-            y_shape_int4_2bit = ge.ConcatV2([y_shape_uint8, ge.Cast(ge.Const([2]), dst_type=DataType.DT_INT32)],
-                                            concat_dim=0, N=2)
-            expand_x = ge.Bitcast(ge.Reshape(expand_x, y_shape_int4_2bit), type=DataType.DT_UINT8)
-            expand_x = ge.Reshape(expand_x, y_shape_uint8)
-        else:
-            expand_x.desc.dtype = ge_dtype_to_ge_proto_dtype(expand_x_dtype)
-
-        if quant_mode == 0 and x.dtype not in (DataType.DT_FLOAT16, DataType.DT_BF16) and scales is not None:
-            dynamic_scales.desc.dtype = scales.desc.dtype
-        elif quant_mode == 4 or quant_mode == 5:
-            dynamic_scales_dtype = DataType.DT_FLOAT8_E8M0
-            dynamic_scales.desc.dtype = ge_dtype_to_ge_proto_dtype(dynamic_scales_dtype)
-        else:
-            dynamic_scales_dtype = DataType.DT_FLOAT
-            dynamic_scales.desc.dtype = ge_dtype_to_ge_proto_dtype(dynamic_scales_dtype)
-
-        return (expand_x, dynamic_scales, expand_idx, expert_token_nums,
-                ep_recv_count, tp_recv_count, expand_scales)
+        x = _convert_dispatch_x(x, x_dtype)
+        scales = _convert_dispatch_scales(scales, x_smooth_scales_dtype)
+        expand_x_dtype = _get_expand_x_dtype(x, quant_mode, y_dtype)
+        attrs = _make_dispatch_attrs(
+            ep_world_size, ep_rank_id, moe_expert_num, ccl_buffer_size, tp_world_size, tp_rank_id,
+            expert_shard_type, shared_expert_num, shared_expert_rank_num, quant_mode, global_bs,
+            expert_token_nums_type, comm_alg, zero_expert_num, copy_expert_num, const_expert_num)
+        outputs = _call_moe_distribute_dispatch(
+            context, x, expert_ids, scales, x_active_mask, expert_scales,
+            elastic_info, performance_info, attrs, expand_x_dtype)
+        expand_x = _format_expand_x(outputs.expand_x, expand_x_dtype, y_dtype)
+        dynamic_scales = _set_dynamic_scales_dtype(outputs.dynamic_scales, x, scales, quant_mode)
+        return outputs._replace(expand_x=expand_x, dynamic_scales=dynamic_scales)
