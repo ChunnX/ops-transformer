@@ -29,6 +29,11 @@ TILING_DATA_FIELD_DEF(int64_t, sq)
 TILING_DATA_FIELD_DEF(int64_t, sk)
 TILING_DATA_FIELD_DEF(int64_t, g)
 TILING_DATA_FIELD_DEF(int64_t, d)
+TILING_DATA_FIELD_DEF(int64_t, totalNum)
+TILING_DATA_FIELD_DEF(int64_t, formerCoreProcessNum)
+TILING_DATA_FIELD_DEF(int64_t, remainCoreProcessNum)
+TILING_DATA_FIELD_DEF(int64_t, remainCoreNum)
+TILING_DATA_FIELD_DEF(int64_t, totalCoreNum)
 END_TILING_DATA_DEF
 REGISTER_TILING_DATA_CLASS(SparseFlashMlaSoftmaxL1Norm, SmlaSoftmaxL1NormTilingData)
 
