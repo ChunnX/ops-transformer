@@ -163,13 +163,13 @@ struct PerLoopParams {
     int64_t perLoopMaxIndicesElements = 0;
 };
 
-class MoeInitRoutingV3Arch35TilingClass : public TilingBaseClass {
+class MoeInitRoutingV3TilingArch35 : public TilingBaseClass {
 public:
-    explicit MoeInitRoutingV3Arch35TilingClass(gert::TilingContext *context) : TilingBaseClass(context)
+    explicit MoeInitRoutingV3TilingArch35(gert::TilingContext *context) : TilingBaseClass(context)
     {
         Reset();
     }
-    ~MoeInitRoutingV3Arch35TilingClass() override = default;
+    ~MoeInitRoutingV3TilingArch35() override = default;
 
     void Reset(gert::TilingContext *context) override
     {
@@ -181,7 +181,7 @@ protected:
     // 1、获取INPUT/OUTPUT/ATTR信息：DelayedGetShapeAttrsInfo()，延后到DoOpTiling内执行，以便先检查IsCapable()
     ge::graphStatus GetShapeAttrsInfo() override
     {
-        OP_LOGD(context_, "Entered MoeInitRoutingV3Arch35TilingClass::GetShapeAttrsInfo()");
+        OP_LOGD(context_, "Entered MoeInitRoutingV3TilingArch35::GetShapeAttrsInfo()");
         return ge::GRAPH_SUCCESS;
     }
     // 2、获取平台信息比如CoreNum、UB/L1/L0C资源大小
@@ -189,7 +189,7 @@ protected:
     // 3、判断此Tiling模板是否适配当前SOC
     bool IsCapable() override
     {
-        OP_LOGD(context_, "Entered MoeInitRoutingV3Arch35TilingClass::IsCapable()");
+        OP_LOGD(context_, "Entered MoeInitRoutingV3TilingArch35::IsCapable()");
         return Ops::Transformer::OpTiling::IsRegbaseSocVersion(context_);
     }
     // 4、计算数据切分TilingData
@@ -197,7 +197,7 @@ protected:
     // 5、计算高阶API的TilingData
     ge::graphStatus DoLibApiTiling() override
     {
-        OP_LOGD(context_, "Entered MoeInitRoutingV3Arch35TilingClass::DoLibApiTiling()");
+        OP_LOGD(context_, "Entered MoeInitRoutingV3TilingArch35::DoLibApiTiling()");
         return ge::GRAPH_SUCCESS;
     }
     // 6、计算TilingKey
@@ -212,144 +212,16 @@ protected:
         opName = nullptr;
     };
 
-private:
-    // 校验并设置必要的平台信息（把GetPlatformInfo内，校验和计算的逻辑延后至DoOpTiling处理）
-    ge::graphStatus CheckSetPlatformInfo();
-    // 获取输入输出ShapeAttrs信息（把GetShapeAttrsInfo的逻辑延后至DoOpTiling处理）
-    ge::graphStatus DoGetShapeAttrsInfo();
-    // 校验输入Attrs
-    ge::graphStatus CheckSetAttrs();
-    ge::graphStatus CheckSetListAttrs();
-    ge::graphStatus ValidateExpertTokensNumType();
-    ge::graphStatus ValidateExpertNum();
-    ge::graphStatus ValidateDropPadMode();
-    ge::graphStatus ValidateExpertCapacity();
-    ge::graphStatus ValidateQuantMode();
-    ge::graphStatus ValidateRowIdxType();
-    // 校验输入Tensor的Shape、Dtype
-    ge::graphStatus CheckSetInputs();
-    // 空tensor场景判定与相关tiling字段设置（含activeNum校验）
-    ge::graphStatus CheckSetEmptyTensor();
-    // 校验输出Tensor的Shape、Dtype
-    ge::graphStatus CheckOutputs();
-    // 空tensor场景的workspace大小计算
-    ge::graphStatus GetEmptyTensorWorkspaceSize();
-
-protected:
     // DoGetShapeAttrsInfo使用的子函数（V4 需覆盖）
     virtual ge::graphStatus GetInputTensorsInfo();
     virtual ge::graphStatus GetOutputTensorsInfo();
     virtual ge::graphStatus GetInputAttrsInfo();
 
-private:
-    // CheckInputShape使用的子函数
-    ge::graphStatus CheckInputX();
-    ge::graphStatus CheckInputExpertIdx();
-    ge::graphStatus CheckInputScale();
-    ge::graphStatus CheckStaticQuantScale();
-    struct ScaleShapeCheckInfo {
-        int64_t rank = -1;
-        int64_t dim0 = -1;
-        int64_t dim1 = -1;
-        int64_t dim2 = -1;
-    };
-    ScaleShapeCheckInfo GetExpectedInputScaleShape() const;
-    ge::graphStatus CheckInputScaleShape(const ScaleShapeCheckInfo &expected);
-    ge::graphStatus CheckInputScaleDtype();
-    ge::graphStatus CheckInputOffset();
-    ge::graphStatus CheckInputTopkWeight();
-    ge::graphStatus CheckTopkWeightConsistency();
-    // CheckOutShape使用的子函数
-    ge::graphStatus CheckOutputExpandedX();
-    ge::graphStatus CheckOutputExpandedRowIdx();
-    ge::graphStatus CheckOutputExpertTokensCountOrCumsum();
-    ge::graphStatus CheckOutputExpandedScale();
-    ge::graphStatus CheckOutputExpandedTopkWeight();
-    ge::graphStatus ValidateExpandedXShapeDropPad();
-    ge::graphStatus ValidateExpandedXShapeDropless();
-    ge::graphStatus ValidateExpandedXDtype();
-    void CalculateExpectedScaleShape(int64_t &expectedRank, int64_t &expectedDim0, int64_t &expectedDim1,
-                                     int64_t &expectedDim2);
-    ge::graphStatus ValidateScaleShape(int64_t expectedRank, int64_t expectedDim0, int64_t expectedDim1,
-                                       int64_t expectedDim2);
-
-    // 各阶段TilingData计算函数
-    MultipleParams GetMultipleParams();
-    PerLoopParams GetPerLoopParams(MultipleParams &multipleParams, int64_t perCoreIndicesElements);
-    void AlignInt4DynamicQuantPerLoopCols(PerLoopParams &perLoopParams) const;
-    void SetPerLoopParams4NoQuantDropPad(const MultipleParams &multipleParams, PerLoopParams &perLoopParams,
-                                         const int64_t perCoreIndicesElements);
-    int64_t GetXBufferNum(const int additionalBufferNum);
-    void SetPerLoopParams4NoQuantDropLess(PerLoopParams &perLoopParams,
-                                          const int64_t perCoreIndicesElements);
-    void Tiling4GatherOutCompute();
-    void Tiling4GatherOutMxQuant();
-    void Tiling4GatherOutFP8Quant();
-    void Tiling4SortOutCompute();
-    void Tiling4VMSMiddleCompute();
-    void Tiling4VBSCompute();
-    void Tiling4ExpertTokensCountCompute();
-    void Tiling4VBSOneCoreCompute(MoeV3Arch35VBSComputeTilingData *vbsTiling);
-    void Tiling4VBSMultiCoreCompute(MoeV3Arch35VBSComputeTilingData *vbsTiling);
-    int64_t CalcMaxRowIdxPerLoopMxQuant(int64_t perLoopCols);
-    int64_t CalcMaxRowIdxPerLoopFP8Quant(int64_t perLoopCols);
-    bool IsFullLoad();
-    void SetIndicesLoopParams4GatherOut(int64_t perLoopMaxIndicesElements, int64_t perCoreIndicesElements,
-                                        int64_t lastCoreIndicesElements);
-    void SetLastCoreIndicesTiling(MoeV3Arch35GatherOutComputeTilingData *gatherOutTiling,
-                                   int64_t lastCoreIndicesElements, int64_t perLoopMaxIndicesElements);
-
-    // DropPad模式Tiling计算函数
-    void SetCoreSplitParams4SrcToDstDropPad(int64_t &needCoreNum, int64_t &perCoreRows, int64_t &lastCoreRows);
-    void SetLoopParams4SrcToDstDropPad(int64_t perCoreRows, int64_t lastCoreRows);
-    void Tiling4SrcToDstDropPadCompute();
-    void Tiling4GatherOutDropPadCompute();
-    bool UseCompactGatherOutDropPad(int64_t outputRows) const;
-    void SetGatherOutDropPadCoreSplitParams(int64_t &needCoreNum, int64_t &perCoreIndicesElements,
-                                            int64_t &lastCoreIndicesElements);
-    void SetGatherOutDropPadLoopParams(int64_t perCoreIndicesElements, int64_t lastCoreIndicesElements);
-
-    // LogTilingData
-    void LogBaseTilingData();
-    void LogVbsTilingData();
-    void LogVmsMiddleTilingData();
-    void LogSortOutTilingData();
-    void LogExpertTokensCountTilingData();
-    void LogGatherOutTilingData();
-
-    bool isMXFPXNoQuantCase(int64_t quantMode, ge::DataType xDtype) const
-    {
-        return quantMode == QUANT_MODE_UNQUANT && (xDtype == ge::DataType::DT_FLOAT8_E5M2 ||
-               xDtype == ge::DataType::DT_FLOAT8_E4M3FN || xDtype == ge::DataType::DT_FLOAT4_E2M1);
-    }
-
-    bool IsSupportFullloadQuantMode() const
-    {
-        return (quantMode_ == QUANT_MODE_UNQUANT && !isMXFPXNoQuantCase(quantMode_, xDtype_)) ||
-                (quantMode_ == QUANT_MODE_STATIC) || IsAnyDynamicQuantCase();
-    }
-
-    bool IsInt8DynamicQuantCase() const
-    {
-        return quantMode_ == QUANT_MODE_DYNAMIC;
-    }
-
-    bool IsInt4DynamicQuantCase() const
-    {
-        return quantMode_ == QUANT_MODE_INT4_DYNAMIC;
-    }
-
-    bool IsAnyDynamicQuantCase() const
-    {
-        return IsInt8DynamicQuantCase() || IsInt4DynamicQuantCase();
-    }
-
-protected:
     // 辅助工具函数（V4 子类需要使用）
     template <bool IS_INPUT_TENSOR = true, bool IS_OPTIONAL_INPUT = false>
     ge::graphStatus GetTensorShapeDtype(gert::Shape &shape, ge::DataType &dtype, int64_t index)
     {
-        OP_LOGD(context_, "Entered MoeInitRoutingV3Arch35TilingClass::GetTensorShapeDtype(...)");
+        OP_LOGD(context_, "Entered MoeInitRoutingV3TilingArch35::GetTensorShapeDtype(...)");
         const gert::StorageShape *shapePtr{nullptr};
         const gert::CompileTimeTensorDesc *descPtr{nullptr};
         if constexpr (IS_INPUT_TENSOR) {
@@ -372,7 +244,7 @@ protected:
     }
     ge::graphStatus GetOptionalInputShapeDtype(gert::Shape &shape, ge::DataType &dtype, int64_t &marker, int64_t index)
     {
-        OP_LOGD(context_, "Entered MoeInitRoutingV3Arch35TilingClass::GetOptionalInputShapeDtype(...)");
+        OP_LOGD(context_, "Entered MoeInitRoutingV3TilingArch35::GetOptionalInputShapeDtype(...)");
         if (context_->GetOptionalInputShape(index) != nullptr) {
             marker = 1;
             return GetTensorShapeDtype<true, true>(shape, dtype, index);
@@ -385,7 +257,7 @@ protected:
     template <typename ATTR_T>
     ge::graphStatus GetInputAttr(ATTR_T &attr, const gert::RuntimeAttrs *attrsPtr, int64_t index)
     {
-        OP_LOGD(context_, "Entered MoeInitRoutingV3Arch35TilingClass::GetInputAttr(...)");
+        OP_LOGD(context_, "Entered MoeInitRoutingV3TilingArch35::GetInputAttr(...)");
         const auto *attrPtr = attrsPtr->GetAttrPointer<ATTR_T>(index);
         OP_CHECK_NULL_WITH_CONTEXT(context_, attrPtr);
         attr = *attrPtr;
@@ -458,6 +330,132 @@ protected:
     ge::DataType expertTokensCountOrCumsumDtype_;
     ge::DataType expandedScaleDtype_;
     ge::DataType expandedTopkWeightDtype_;
+
+private:
+    // 校验并设置必要的平台信息（把GetPlatformInfo内，校验和计算的逻辑延后至DoOpTiling处理）
+    ge::graphStatus CheckSetPlatformInfo();
+    // 获取输入输出ShapeAttrs信息（把GetShapeAttrsInfo的逻辑延后至DoOpTiling处理）
+    ge::graphStatus DoGetShapeAttrsInfo();
+    // 校验输入Attrs
+    ge::graphStatus CheckSetAttrs();
+    ge::graphStatus CheckSetListAttrs();
+    ge::graphStatus ValidateExpertTokensNumType();
+    ge::graphStatus ValidateExpertNum();
+    ge::graphStatus ValidateDropPadMode();
+    ge::graphStatus ValidateExpertCapacity();
+    ge::graphStatus ValidateQuantMode();
+    ge::graphStatus ValidateRowIdxType();
+    // 校验输入Tensor的Shape、Dtype
+    ge::graphStatus CheckSetInputs();
+    // 空tensor场景判定与相关tiling字段设置（含activeNum校验）
+    ge::graphStatus CheckSetEmptyTensor();
+    // 校验输出Tensor的Shape、Dtype
+    ge::graphStatus CheckOutputs();
+    // 空tensor场景的workspace大小计算
+    ge::graphStatus GetEmptyTensorWorkspaceSize();
+
+    // CheckInputShape使用的子函数
+    ge::graphStatus CheckInputX();
+    ge::graphStatus CheckInputExpertIdx();
+    ge::graphStatus CheckInputScale();
+    ge::graphStatus CheckStaticQuantScale();
+    struct ScaleShapeCheckInfo {
+        int64_t rank = -1;
+        int64_t dim0 = -1;
+        int64_t dim1 = -1;
+        int64_t dim2 = -1;
+    };
+    ScaleShapeCheckInfo GetExpectedInputScaleShape() const;
+    ge::graphStatus CheckInputScaleShape(const ScaleShapeCheckInfo &expected);
+    ge::graphStatus CheckInputScaleDtype();
+    ge::graphStatus CheckInputOffset();
+    ge::graphStatus CheckInputTopkWeight();
+    ge::graphStatus CheckTopkWeightConsistency();
+    // CheckOutShape使用的子函数
+    ge::graphStatus CheckOutputExpandedX();
+    ge::graphStatus CheckOutputExpandedRowIdx();
+    ge::graphStatus CheckOutputExpertTokensCountOrCumsum();
+    ge::graphStatus CheckOutputExpandedScale();
+    ge::graphStatus CheckOutputExpandedTopkWeight();
+    ge::graphStatus ValidateExpandedXShapeDropPad();
+    ge::graphStatus ValidateExpandedXShapeDropless();
+    ge::graphStatus ValidateExpandedXDtype();
+    void CalculateExpectedScaleShape(int64_t &expectedRank, int64_t &expectedDim0, int64_t &expectedDim1,
+                                     int64_t &expectedDim2);
+    ge::graphStatus ValidateScaleShape(int64_t expectedRank, int64_t expectedDim0, int64_t expectedDim1,
+                                       int64_t expectedDim2);
+
+    // 各阶段TilingData计算函数
+    MultipleParams GetMultipleParams();
+    PerLoopParams GetPerLoopParams(MultipleParams &multipleParams, int64_t perCoreIndicesElements);
+    void AlignInt4DynamicQuantPerLoopCols(PerLoopParams &perLoopParams) const;
+    void SetPerLoopParams4NoQuantDropPad(const MultipleParams &multipleParams, PerLoopParams &perLoopParams,
+                                         const int64_t perCoreIndicesElements);
+    int64_t GetXBufferNum(const int additionalBufferNum);
+    void SetPerLoopParams4NoQuantDropLess(PerLoopParams &perLoopParams,
+                                          const int64_t perCoreIndicesElements);
+    void Tiling4GatherOutCompute();
+    void Tiling4GatherOutMxFP8NoQuantCompute();
+    void Tiling4GatherOutMxQuant();
+    void Tiling4GatherOutFP8Quant();
+    void Tiling4SortOutCompute();
+    void Tiling4VMSMiddleCompute();
+    void Tiling4VBSCompute();
+    void Tiling4ExpertTokensCountCompute();
+    void Tiling4VBSOneCoreCompute(MoeV3Arch35VBSComputeTilingData *vbsTiling);
+    void Tiling4VBSMultiCoreCompute(MoeV3Arch35VBSComputeTilingData *vbsTiling);
+    int64_t CalcMaxRowIdxPerLoopMxQuant(int64_t perLoopCols);
+    int64_t CalcMaxRowIdxPerLoopFP8Quant(int64_t perLoopCols);
+    bool IsFullLoad();
+    void SetIndicesLoopParams4GatherOut(int64_t perLoopMaxIndicesElements, int64_t perCoreIndicesElements,
+                                        int64_t lastCoreIndicesElements);
+    void SetLastCoreIndicesTiling(MoeV3Arch35GatherOutComputeTilingData *gatherOutTiling,
+                                   int64_t lastCoreIndicesElements, int64_t perLoopMaxIndicesElements);
+
+    // DropPad模式Tiling计算函数
+    void SetCoreSplitParams4SrcToDstDropPad(int64_t &needCoreNum, int64_t &perCoreRows, int64_t &lastCoreRows);
+    void SetLoopParams4SrcToDstDropPad(int64_t perCoreRows, int64_t lastCoreRows);
+    void Tiling4SrcToDstDropPadCompute();
+    void Tiling4GatherOutDropPadCompute();
+    bool UseCompactGatherOutDropPad(int64_t outputRows) const;
+    void SetGatherOutDropPadCoreSplitParams(int64_t &needCoreNum, int64_t &perCoreIndicesElements,
+                                            int64_t &lastCoreIndicesElements);
+    void SetGatherOutDropPadLoopParams(int64_t perCoreIndicesElements, int64_t lastCoreIndicesElements);
+
+    // LogTilingData
+    void LogBaseTilingData();
+    void LogVbsTilingData();
+    void LogVmsMiddleTilingData();
+    void LogSortOutTilingData();
+    void LogExpertTokensCountTilingData();
+    void LogGatherOutTilingData();
+
+    bool isMXFPXNoQuantCase(int64_t quantMode, ge::DataType xDtype) const
+    {
+        return quantMode == QUANT_MODE_UNQUANT && (xDtype == ge::DataType::DT_FLOAT8_E5M2 ||
+               xDtype == ge::DataType::DT_FLOAT8_E4M3FN || xDtype == ge::DataType::DT_FLOAT4_E2M1);
+    }
+
+    bool IsSupportFullloadQuantMode() const
+    {
+        return (quantMode_ == QUANT_MODE_UNQUANT && !isMXFPXNoQuantCase(quantMode_, xDtype_)) ||
+                (quantMode_ == QUANT_MODE_STATIC) || IsAnyDynamicQuantCase();
+    }
+
+    bool IsInt8DynamicQuantCase() const
+    {
+        return quantMode_ == QUANT_MODE_DYNAMIC;
+    }
+
+    bool IsInt4DynamicQuantCase() const
+    {
+        return quantMode_ == QUANT_MODE_INT4_DYNAMIC;
+    }
+
+    bool IsAnyDynamicQuantCase() const
+    {
+        return IsInt8DynamicQuantCase() || IsInt4DynamicQuantCase();
+    }
 };
 
 } // namespace optiling
