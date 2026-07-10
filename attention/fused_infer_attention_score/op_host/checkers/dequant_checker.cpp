@@ -1673,15 +1673,15 @@ ge::graphStatus DequantChecker::CheckStrideFP8GQAFullquant(const FiaTilingInfo &
     // key_antiquant_scale BnNBs: 只校验BS轴 stride[2]==1
     OP_CHECK_IF(fiaInfo.kScaleStrides == nullptr,
                 OP_LOGE(fiaInfo.opName,
-                        "In FP8 GQA fullquant scenario, key_antiquant_scale stride is nullptr"),
+                        "In FP8 GQA fullquant scenario, dequant_scale_key stride is nullptr"),
                 return ge::GRAPH_FAILED);
     if (fiaInfo.kScaleStrides->GetDimNum() >= 2) {
         if (fiaInfo.kScaleStrides->GetStride(2) != 1) {
             std::string expStr = "(..., ..., 1)";
             std::string actStr = "(..., ..., " +
                 std::to_string(fiaInfo.kScaleStrides->GetStride(2)) + ")";
-            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "key_antiquant_scale",
-                ("stride is " + actStr + ", Bs axis should be " + expStr).c_str());
+            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "dequant_scale_key",
+                "dequant_scale_key stride is %s, expected %s", actStr.c_str(), expStr.c_str());
             return ge::GRAPH_FAILED;
         }
     }
@@ -1700,7 +1700,7 @@ ge::graphStatus DequantChecker::CheckStrideFP8GQAFullquant(const FiaTilingInfo &
                 std::to_string(fiaInfo.keyStrides->GetStride(2)) + ", " +
                 std::to_string(fiaInfo.keyStrides->GetStride(3)) + ")";
             OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "key",
-                ("stride is " + actStr + ", expected " + expStr).c_str());
+                ("key stride is " + actStr + ", expected " + expStr).c_str());
             return ge::GRAPH_FAILED;
         }
     }
@@ -1719,7 +1719,7 @@ ge::graphStatus DequantChecker::CheckStrideFP8GQAFullquant(const FiaTilingInfo &
                 std::to_string(fiaInfo.valueStrides->GetStride(2)) + ", " +
                 std::to_string(fiaInfo.valueStrides->GetStride(3)) + ")";
             OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "value",
-                ("stride is " + actStr + ", expected " + expStr).c_str());
+                ("value stride is " + actStr + ", expected " + expStr).c_str());
             return ge::GRAPH_FAILED;
         }
     }
