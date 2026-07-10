@@ -129,35 +129,23 @@ struct MxRunInfo {
     // 用途：cube 拷贝 K/V/KScale/VScale 时逐块拼接到同一个 L1 tile。
     uint32_t sparseBlockCount = 0U;
     // 当前 task 内每个 sparse block 的逻辑 block id。
-    // 来源：sparseIndicesGm[sparseBase + sparseBlockStartIdx + i]。
+    // 来源：sparseIndicesGm[sparseBase + sparseBlockStartIdx + i]，随后沿用 FP8 规则在 task 内
+    // 按有效 block id 升序排列，负 index 放到末尾。
     int64_t sparseBlockIdx[BSA_MX_MAX_SPARSE_BLOCK_PER_TASK] = {};
     // 当前 task 内每个 sparse block 在逻辑 KV token 维度上的起始 offset。
     // 来源：sparseBlockIdx[i] * kvSparseBlockSize。
     int64_t sparseBlockTokenOffset[BSA_MX_MAX_SPARSE_BLOCK_PER_TASK] = {};
+    // 当前 sparse block 在拼接后的 512-token logical tile 中的起始列。
+    // 来源：前面所有有效 sparse block 的 sparseBlockRealSize 累加值。
+    // 用途：K/KScale/V/VScale 和 attenMask 共用该偏移，保证数据与 mask 采用完全相同的拼接顺序。
+    uint32_t sparseBlockTileOffset[BSA_MX_MAX_SPARSE_BLOCK_PER_TASK] = {};
     // 当前 task 内每个 sparse block 的真实有效 token 数。
     // 来源：min(kvSparseBlockSize, actS2Size - sparseBlockTokenOffset[i])。
     uint32_t sparseBlockRealSize[BSA_MX_MAX_SPARSE_BLOCK_PER_TASK] = {};
-    // 当前 tile 第一个 sparse block 在逻辑 KV token 维度上的起始 offset。
-    // 来源：sparseBlockTokenOffset[0]。
-    // 用途：计算 S2 tail 长度，并参与 causal partial-mask 判断。
-    int64_t sparseS2TokenOffset = 0;
-    // 当前 tile 第一个 sparseIndices 读出的逻辑 KV block id。保留该字段是为了复用
-    // 现有 partial-mask/debug 语义；真正的拼接拷贝使用 sparseBlockIdx 数组。
-    // 来源：sparseIndicesGm[sparseBase + s2LoopIdx]。
-    // 用途：参与 causal partial-mask 判断。
-    int64_t sparseBlkIdx1 = -1;
-    // 当前 tile 第一个逻辑 KV block 的真实有效 token 数。
-    // 来源：sparseBlockRealSize[0]。
-    // 用途：保留原字段语义，主流程改用 actSingleLoopS2Size。
-    uint32_t s2SparseBlk1RealSize = 0U;
-    // 当前 tile 的有效 token 数向上 64 对齐后的长度。
-    // 来源：AlignUp(actSingleLoopS2Size, 64)。
-    // 用途：保留原字段语义，主流程改用 actSingleLoopS2SizeAlign。
-    uint32_t s2SparseBlk1RealAlignedSize = 0U;
-    // 当前 sparse block 是否与 causal mask 边界相交。
-    // 来源：AttentionMaskFullProcessingOrRequired。
-    // 用途：当前 MX vector 尚未接入 attenMask，但保留该标志用于后续 mask 分支。
-    bool sparseBlk1PartialMask = false;
+    // 当前 sparse block 是否需要 causal mask。语义与 FP8 的
+    // sparseBlk1PartialMask/sparseBlk2PartialMask 一致：false 表示整块可见，可直接填 1；
+    // true 同时覆盖跨 causal 边界和整块不可见两种情况，需要从压缩 mask 搬运。
+    bool sparseBlockPartialMask[BSA_MX_MAX_SPARSE_BLOCK_PER_TASK] = {};
 
     // 当前 batch 在 TND query/output 中的 token 基址。
     // 来源：cuSeqlensQ[bIdx]。
