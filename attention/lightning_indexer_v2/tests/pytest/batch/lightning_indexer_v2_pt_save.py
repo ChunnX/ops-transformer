@@ -64,6 +64,7 @@ def load_excel_test_cases(excel_file_path: str, sheetname: str):
         if missing_cols:
             pytest.skip(f"Missing required columns in Excel: {missing_cols}", allow_module_level=True)
 
+        df["block_size"] = df["block_size"].fillna(0).astype(int)
         # 构建测试用例列表
         test_cases = []
         for _, row in df.iterrows():

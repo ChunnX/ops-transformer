@@ -65,8 +65,9 @@ static constexpr uint64_t A_L1_MAX_SIZE_WITH_BIAS_QUANT = 240UL * 1024UL;
 static constexpr uint64_t MX_BIAS_SINGLE_VECTOR_SIZE = 128;
 static constexpr uint64_t MX_SCALE_K_L1_SIZE = 4096;
 static constexpr uint64_t PREFETCH_A_MAX_M_SIZE = 512;
-static constexpr uint64_t MX_A8W4_L1_PREFETCH_SIZE_KB = 88;
 static constexpr uint64_t GMM_CACHE_LINE_SIZE = 128;
+static constexpr uint64_t GMM_CACHE_LINE_4BIT_SIZE =
+    GMM_CACHE_LINE_SIZE * 2; // 4bit类型2个元素共享1字节，缓存行元素数翻倍
 static constexpr uint64_t MX_A8W4_A_L1_RESERVED_KB = 80;
 static constexpr uint64_t A_B_BALANCE_FACTOR = 2;
 static constexpr uint64_t MX_SCALE_L1_SIZE_KB = 32;
@@ -102,8 +103,7 @@ static constexpr uint64_t FLAG_ID_MAX = 16;
 template <typename T>
 __aicore__ inline T CeilAlign(T a, T b)
 {
-    ASCENDC_ASSERT(a <= (std::numeric_limits<T>::max() - b),
-                   { KERNEL_LOG(KERNEL_ERROR, "CeilAlign over limit."); });
+    ASCENDC_ASSERT(a <= (std::numeric_limits<T>::max() - b), { KERNEL_LOG(KERNEL_ERROR, "CeilAlign over limit."); });
     ASCENDC_ASSERT(b != 0, { KERNEL_LOG(KERNEL_ERROR, "Division by zero error!"); });
     return (a + b - 1) / b * b;
 }
@@ -191,5 +191,5 @@ template <TPosition POSITION, CubeFormat FORMAT, typename TYPE, bool ISTRANS = f
 struct MatmulL1GmType : MatmulType<POSITION, FORMAT, TYPE, ISTRANS, LAYOUT, IBSHARE> {
     constexpr static TPosition srcPos = TPosition::GM;
 };
-}  // namespace WeightQuantBatchMatmulV2::Arch35
+} // namespace WeightQuantBatchMatmulV2::Arch35
 #endif

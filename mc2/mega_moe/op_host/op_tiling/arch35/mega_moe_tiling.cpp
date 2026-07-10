@@ -51,7 +51,7 @@ const static int64_t MAX_TOPK = 16LL;
 const static int64_t MIN_BS = 1LL;
 const static int64_t NUM_8 = 8LL;
 const static int64_t NUM_64 = 64LL;
-const static int64_t USED_BUUFER_SIZE = 48 * 1024LL;
+const static int64_t USED_BUFFER_SIZE = 48 * 1024LL;
 const static int64_t MIN_EXPERT_PER_RANK = 1LL;
 const static int64_t MAX_EXPERT_PER_RANK = 1024LL;
 const static int64_t H_BASE = 1024LL;
@@ -354,7 +354,7 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, MegaM
 
     auto commAlgPtr = attrs->GetAttrPointer<char>(static_cast<int>(config.attrCommAlgIndex));
     OP_TILING_CHECK(std::strcmp(commAlgPtr, "") != 0,
-                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "commAlg", commAlgPtr, "empty string"),
+                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "commAlg", commAlgPtr, "not support, need empty string"),
                     return ge::GRAPH_FAILED);
 
     auto numMaxTokensPerRankPtr = attrs->GetAttrPointer<int64_t>((config.attrNumMaxTokensPerRankIndex));
@@ -966,7 +966,7 @@ static ge::graphStatus CheckInputParam(const gert::TilingContext *context, MegaM
     auto epWorldSizePtr = attrs->GetAttrPointer<int64_t>((config.attrEpWorldSizeIndex));
     int64_t worldSize = static_cast<int64_t>(*epWorldSizePtr);
     // 当前最大bs根据ub剩余空间反算得来，bsMax = (8*(UB_SIZE-48K))/(topK*(64+worldSize))
-    int64_t maxBs = NUM_8 * (ubSize - USED_BUUFER_SIZE) / (topkIdsDim1 * (NUM_64 + worldSize));
+    int64_t maxBs = NUM_8 * (ubSize - USED_BUFFER_SIZE) / (topkIdsDim1 * (NUM_64 + worldSize));
     OP_TILING_CHECK(
         xDim0 < MIN_BS || xDim0 > maxBs,
         OP_LOGE_FOR_INVALID_VALUE(nodeName, "BS", std::to_string(xDim0).c_str(),
