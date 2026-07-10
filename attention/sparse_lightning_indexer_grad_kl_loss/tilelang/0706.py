@@ -479,15 +479,11 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.set_flag("mte2", "v", 7)
                     T.wait_flag("mte2", "v", 7)
                     T.tile.cast(weight_all_ub, weight_all_half_ub, "CAST_NONE", Nidx1)
-                    # WAR: p_reduced_tmp 复用（前面已 mte3 drain 到 PReduced），fill 前等 mte3 读完
-                    T.set_flag("mte3", "v", 0)
-                    T.wait_flag("mte3", "v", 0)
-                    T.tile.fill(p_reduced_tmp_ub, 1.0)  # reuse as broadcast seed
-                    # weight 广播：暂保留标量循环（64 PIPE_ALL）——下轮再用 row_expand 处理
+                    # weight 广播：row_expand_mul 替代标量循环（消除 Nidx1×PIPE_ALL）
+                    # weight_2d[k,:] = 1.0 * weight_all_ub[k] → 单次 brcb+mask 全并行
                     # weight_2d 需物化（dWeight 循环 (b) 直接读整行 weight_2d[idx,:] 作向量）
-                    for k in range(Nidx1):
-                        T.pipe_barrier("v")
-                        T.tile.mul(weight_2d_ub[k, :], p_reduced_tmp_ub, weight_all_ub[k])
+                    T.tile.fill(weight_2d_ub, 1.0)
+                    T.tile.row_expand_mul_experiment(weight_2d_ub, weight_2d_ub, weight_all_ub, re_tmp_ub)
                     # ReduceSumY + GlobalSoftmaxI max: fused K-block pass
                     # rsy_all_ub holds all ReduceSumY blocks (avoid GM re-reads)
                     T.tile.fill(rsy_max_ub, -T.infinity(calc_dtype))
@@ -546,7 +542,11 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.wait_flag("v", "mte2", 0)
                     T.wait_flag("v", "mte2", 1)
 
-                    # Broadcast rsy_max to vector once (softmax_i_chunk_ub free, p_reduced_tmp still has 1.0)
+                    # Broadcast rsy_max to vector once (softmax_i_chunk_ub free, p_reduced_tmp refill 1.0)
+                    # WAR: p_reduced_tmp 前面被 reduce_sum 覆盖，refill 前等 mte3 drain 完成
+                    T.set_flag("mte3", "v", 0)
+                    T.wait_flag("mte3", "v", 0)
+                    T.tile.fill(p_reduced_tmp_ub, 1.0)
                     T.pipe_barrier("v")
                     T.tile.mul(softmax_i_chunk_ub, p_reduced_tmp_ub, rsy_max_ub[0])
 
@@ -624,24 +624,26 @@ def tilelang_grad_kl_loss_single_kernel(
                         T.wait_flag("mte3", "mte2", 2)
                         T.copy(bmm2Res[bz, s1_id, g_start:g_start + vector_baseg, n_idx_k * n_block:(n_idx_k + 1) * n_block], dw_chunk_ub)
 
-                        # Per-row 1D vector ops: all pure VEC, no UB-scalar, no UB range slicing
+                        # RAW: dw_chunk 由 mte2 载入全 chunk，flag 只设一次（消除 per-row 重发）
+                        T.set_flag("mte2", "v", 7)
+                        T.wait_flag("mte2", "v", 7)
+
+                        # Mask 计算：全 2D (vector_baseg, n_block) — 替代 per-row 1D 循环
+                        # mask = 1 - exp(dw_chunk * (-10000))
+                        T.pipe_barrier("v")
+                        T.tile.mul(rsy_tmp_ub, dw_chunk_ub, -10000.0)
+                        T.pipe_barrier("v")
+                        T.tile.exp(rsy_tmp_ub, rsy_tmp_ub)
+                        T.pipe_barrier("v")
+                        T.tile.sub(rsy_tmp_ub, ones_2d_ub, rsy_tmp_ub)
+                        T.pipe_barrier("v")
+
+                        # Per-row dWeight/reluGrad：weight_2d 逐行不同，保持 per-row
+                        # （rg_chunk[i,:] = weight_2d[idx,:] * diff * mask_i → dw[i,:] = dw[i,:] * diff）
                         for i in range(vector_baseg):
                             idx = g_start + i
-                            # RAW: dw_chunk 由 mte2 载入，vector 读前等（CPP 每行重发，保守保留）
-                            T.set_flag("mte2", "v", 7)
-                            T.wait_flag("mte2", "v", 7)
-                            T.pipe_barrier("v")
-                            # mask_i = 1 - exp(bmm2_row * (-10000))
-                            T.tile.mul(rsy_tmp_ub[i, :], dw_chunk_ub[i, :], -10000.0)
-                            T.pipe_barrier("v")
-                            T.tile.exp(rsy_tmp_ub[i, :], rsy_tmp_ub[i, :])
-                            T.pipe_barrier("v")
-                            T.tile.sub(rsy_tmp_ub[i, :], ones_2d_ub[i, :], rsy_tmp_ub[i, :])
-                            # rg_i = weight_2d_row * diff * mask_i  (read weight_2d_ub directly)
                             T.tile.mul(rg_chunk_ub[i, :], weight_2d_ub[idx, :], diff_ub)
-                            T.pipe_barrier("v")
                             T.tile.mul(rg_chunk_ub[i, :], rg_chunk_ub[i, :], rsy_tmp_ub[i, :])
-                            # dw_i = bmm2_row * diff (overwrite dw_chunk_ub row)
                             T.tile.mul(dw_chunk_ub[i, :], dw_chunk_ub[i, :], diff_ub)
 
                         T.pipe_barrier("v")
