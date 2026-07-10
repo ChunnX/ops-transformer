@@ -244,7 +244,9 @@ cann_ops_transformer.sparse_flash_mla_grad(
 
 ### sparse_flash_mla_grad_metadata
 
-- **metadata**（`Tensor`）：暂不支持，输出固定为None。
+| 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 维度(shape) |
+|--------|----------|-----------|------|----------|-------------|
+| metadata | Tensor | 必选 | 每个cube核上FlashAttention计算任务的Batch、Head、以及 Q 和 K 的分块的索引，以及每个vector核上FlashDecode的规约任务索引。数据格式为ND，不支持非连续的Tensor。 | int32 | (1024, ) |
 
 ## 约束说明
 
