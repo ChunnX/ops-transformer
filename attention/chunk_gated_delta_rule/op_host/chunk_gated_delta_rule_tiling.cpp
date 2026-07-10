@@ -129,15 +129,17 @@ ge::graphStatus ChunkGatedDeltaRuleTiling::DoOpTiling()
     tilingData_.interWorkspaceSz += sizeHigh * nv * s;                                   // gCumExp (FP32)
     tilingData_.interWorkspaceSz += sizeLow * nv * s * dk;                               // kCumDecay (BF16)
     if (tilingData_.stateIsFp32) {
-        tilingData_.interWorkspaceSz += sizeHigh * nv * s * dv;                           // vInnerFp32 (FP32, for FP32 state path)
+        tilingData_.interWorkspaceSz += sizeHigh * nv * s * dv;                           // vInner (FP32, primary)
+        tilingData_.interWorkspaceSz += sizeLow * nv * s * dv;                            // vInnerBf16 (BF16 temp)
+    } else {
+        tilingData_.interWorkspaceSz += sizeLow * nv * s * dv;                            // vInner (BF16)
     }
-    tilingData_.interWorkspaceSz += sizeLow * nv * s * dv;                               // vInner (BF16, temp for FP32 state path)
     tilingData_.interWorkspaceSz += sizeLow * nv * s * dk;                               // qPrime (BF16)
     tilingData_.interWorkspaceSz += sizeLow * nv * s * dv;                               // attnInter (BF16, arch22 compat)
     tilingData_.interWorkspaceSz += sizeLow * nv * s * dk;                               // kg (BF16)
     tilingData_.interWorkspaceSz += sizeLow * nv * s * c;                                // qkt (BF16)
     if (tilingData_.stateIsFp32) {
-        tilingData_.interWorkspaceSz += sizeHigh * nv * dv * dk;                         // highState (FP32, arch35: reused as stateBf16Wk_ + stateDeltaWk_)
+        tilingData_.interWorkspaceSz += sizeLow * nv * dv * dk;                           // stateBf16Wk (BF16, arch35)
     } else if (socVersion_ != platform_ascendc::SocVersion::ASCEND950) {
         tilingData_.interWorkspaceSz += sizeHigh * tilingData_.b * nv * dv * dk;         // highState_ (arch22: kernel unconditionally advances offset)
     }

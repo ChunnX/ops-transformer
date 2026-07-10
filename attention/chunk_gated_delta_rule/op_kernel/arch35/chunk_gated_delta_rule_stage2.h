@@ -30,19 +30,21 @@ using StageTwoMTT = matmul::MatmulImpl<aT2, bT2, MatmulType<TPosition::GM, CubeF
 using StageTwoMT = StageTwoMTT<bfloat16_t>;
 using StageTwoMTFp32C = StageTwoMTT<float>;
 
+template <typename stateType>
 struct StageTwoParams {
-    GlobalTensor<bfloat16_t> qPrime;    // (Nv, Sp, Dk)
-    GlobalTensor<bfloat16_t> vInner;    // (Nv, Sp, Dv) BF16 vInner (temp for FP32 state path)
-    GlobalTensor<float> vInnerFp32;     // (Nv, Sp, Dv) FP32 vInner (for FP32 state path)
-    GlobalTensor<float> gCum;   // (Nv, Sp)
-    GlobalTensor<bfloat16_t> kCumdecay; // (Nv, Sp, Dk)
-    GlobalTensor<bfloat16_t> curState;  // (Nv, Dv, Dk)  BF16: stateIn, FP32: stateBf16In
-    GlobalTensor<bfloat16_t> finalState;  // (Nv, Dv, Dk)  BF16: stateOut, FP32: unused (delta goes to stateFp32Out)
+    GlobalTensor<bfloat16_t> qPrime;        // (Nv, Sp, Dk)
+    GlobalTensor<stateType> vInner;         // (Nv, Sp, Dv) primary vInner
+    GlobalTensor<bfloat16_t> vInnerBf16;    // (Nv, Sp, Dv) BF16 vInner temp (FP32 path only)
+    GlobalTensor<float> gCum;               // (Nv, Sp)
+    GlobalTensor<bfloat16_t> kCumdecay;     // (Nv, Sp, Dk)
+    GlobalTensor<bfloat16_t> curStateBf16;  // (Nv, Dv, Dk) BF16 state for AIC
+    GlobalTensor<stateType> stateIn;        // (Nv, Dv, Dk) state input
+    GlobalTensor<stateType> stateOut;       // (Nv, Dv, Dk) state output
     GlobalTensor<bfloat16_t> kg;
     GlobalTensor<bfloat16_t> out;
     GM_ADDR ws;
     StageTwoMT *mm1;
-    StageTwoMTFp32C *mm1Fp32C;          // FP32 C matmul (for FP32 state path)
+    StageTwoMTFp32C *mm1Fp32C;
     TPipe *pipe;
     ChunkGroup *cg;
     int64_t Nv;
@@ -51,9 +53,6 @@ struct StageTwoParams {
     int64_t Dk;
     bool gOptional;
     bool isFirstGroup;
-    // FP32-specific fields (valid only when Stage2<float>)
-    GlobalTensor<float> stateFp32In;
-    GlobalTensor<float> stateFp32Out;
 };
 
 template <typename stateType = bfloat16_t>
@@ -61,7 +60,7 @@ class Stage2 {
 public:
     static constexpr bool kIsFp32 = std::is_same_v<stateType, float>;
 
-    __aicore__ inline void Init(StageTwoParams *initParams, int32_t coreNum)
+    __aicore__ inline void Init(StageTwoParams<stateType> *initParams, int32_t coreNum)
     {
         sTP_ = initParams;
         pipe_ = sTP_->pipe;
@@ -136,9 +135,9 @@ public:
                     if constexpr (kIsFp32) {
                         if (GetSubBlockIdx() == 0) {
                             if (isFirstGroup_ && cId == 0) {
-                                CopyIn<float>(sTP_->stateFp32In[nvId * Dv_ * Dk_], Dv_, Dk_);
+                                CopyIn<float>(sTP_->stateIn[nvId * Dv_ * Dk_], Dv_, Dk_);
                             } else {
-                                CopyIn<float>(sTP_->stateFp32Out[nvId * Dv_ * Dk_], Dv_, Dk_);
+                                CopyIn<float>(sTP_->stateOut[nvId * Dv_ * Dk_], Dv_, Dk_);
                             }
                             auto stateIn = inQueue_.DeQue<float>();
                             DataCopy(stateFp32Ub_, stateIn, Dv_ * curDk_);
@@ -148,7 +147,7 @@ public:
                                     auto bf16Init = outQueue_.AllocTensor<bfloat16_t>();
                                     Cast(bf16Init, stateFp32Ub_, RoundMode::CAST_RINT, Dv_ * curDk_);
                                     outQueue_.EnQue(bf16Init);
-                                    CopyOut<bfloat16_t>(sTP_->curState[nvId * Dv_ * Dk_], Dv_, Dk_, false, curDk_);
+                                    CopyOut<bfloat16_t>(sTP_->curStateBf16[nvId * Dv_ * Dk_], Dv_, Dk_, false, curDk_);
                                 }
                             }
                         }
@@ -161,22 +160,23 @@ public:
                             auto fp32Local = outQueue_.AllocTensor<float>();
                             DataCopy(fp32Local, stateFp32Ub_, Dv_ * curDk_);
                             outQueue_.EnQue(fp32Local);
-                            CopyOut<float>(sTP_->stateFp32Out[nvId * Dv_ * Dk_], Dv_, Dk_, false, curDk_);
+                            CopyOut<float>(sTP_->stateOut[nvId * Dv_ * Dk_], Dv_, Dk_, false, curDk_);
                             PipeBarrier<PIPE_MTE3>();
                             auto bf16Accum = outQueue_.AllocTensor<bfloat16_t>();
                             Cast(bf16Accum, stateFp32Ub_, RoundMode::CAST_RINT, Dv_ * curDk_);
                             outQueue_.EnQue(bf16Accum);
-                            CopyOut<bfloat16_t>(sTP_->curState[nvId * Dv_ * Dk_], Dv_, Dk_, false, curDk_);
+                            CopyOut<bfloat16_t>(sTP_->curStateBf16[nvId * Dv_ * Dk_], Dv_, Dk_, false, curDk_);
                             uint64_t mm_offset1 = nvId * Sp_ * Dv_ + length * Dv_;
-                            CastGmToGm<float, bfloat16_t>(sTP_->vInnerFp32[mm_offset1],
-                                                          sTP_->vInner[mm_offset1],
+                            CastGmToGm<float, bfloat16_t>(sTP_->vInner[mm_offset1],
+                                                          sTP_->vInnerBf16[mm_offset1],
                                                           curChunkSize_ * Dv_);
                         }
                         CrossCoreSetFlag<0x2, PIPE_MTE3>(0x5);
                         CrossCoreWaitFlag(0x4);
                     } else {
-                        auto curState = (cId == 0) ? sTP_->curState[nvId * Dv_ * Dk_] : sTP_->finalState[nvId * Dv_ * Dk_];
-                        auto finalState = sTP_->finalState[nvId * Dv_ * Dk_];
+                        auto curState = (cId == 0) ? sTP_->curStateBf16[nvId * Dv_ * Dk_]
+                                                   : sTP_->stateOut[nvId * Dv_ * Dk_];
+                        auto finalState = sTP_->stateOut[nvId * Dv_ * Dk_];
                         if (GetSubBlockIdx() == 0) {
                             CopyIn(curState, Dv_, Dk_);
                             CalGCumExp(sTP_->gCum[nvId * Sp_ + length]);
@@ -193,23 +193,24 @@ public:
                     if constexpr (kIsFp32) {
                         uint64_t mm_offset0 = nvId * Sp_ * Dk_ + length * Dk_;
                         uint64_t mm_offset1 = nvId * Sp_ * Dv_ + length * Dv_;
-                        auto bf16In = sTP_->curState[nvId * Dv_ * Dk_];
-                        auto stateOut = sTP_->stateFp32Out[nvId * Dv_ * Dk_];
+                        auto bf16In = sTP_->curStateBf16[nvId * Dv_ * Dk_];
+                        auto stateOut = sTP_->stateOut[nvId * Dv_ * Dk_];
                         if (cId == 0) {
                             CrossCoreWaitFlag(0x3);
                         }
-                        CalVPrime(sTP_->kCumdecay[mm_offset0], bf16In, sTP_->vInnerFp32[mm_offset1]);
+                        CalVPrime(sTP_->kCumdecay[mm_offset0], bf16In, sTP_->vInner[mm_offset1]);
                         CalAttnInter(sTP_->qPrime[mm_offset0], bf16In,
                                      sTP_->out[nvId * Dv_ + cId * chunkSize_ * Nv_ * Dv_]);
                         CrossCoreSetFlag<0x2, PIPE_FIX>(0x2);
                         CrossCoreWaitFlag(0x5);
-                        CalStateNew(sTP_->vInner[mm_offset1], sTP_->kg[mm_offset0], stateOut);
+                        CalStateNew(sTP_->vInnerBf16[mm_offset1], sTP_->kg[mm_offset0], stateOut);
                         SetFlag<HardEvent::FIX_MTE2>(FIX_MTE2_EVENT);
                         WaitFlag<HardEvent::FIX_MTE2>(FIX_MTE2_EVENT);
                         CrossCoreSetFlag<0x2, PIPE_FIX>(0x4);
                     } else {
-                        auto curState = (cId == 0) ? sTP_->curState[nvId * Dv_ * Dk_] : sTP_->finalState[nvId * Dv_ * Dk_];
-                        auto finalState = sTP_->finalState[nvId * Dv_ * Dk_];
+                        auto curState = (cId == 0) ? sTP_->curStateBf16[nvId * Dv_ * Dk_]
+                                                   : sTP_->stateOut[nvId * Dv_ * Dk_];
+                        auto finalState = sTP_->stateOut[nvId * Dv_ * Dk_];
                         uint64_t mm_offset0 = nvId * Sp_ * Dk_ + length * Dk_;
                         uint64_t mm_offset1 = nvId * Sp_ * Dv_ + length * Dv_;
                         CalVPrime(sTP_->kCumdecay[mm_offset0], curState, sTP_->vInner[mm_offset1]);
@@ -414,7 +415,7 @@ public:
     }
 
 private:
-    StageTwoParams *sTP_;
+    StageTwoParams<stateType> *sTP_;
     TPipe *pipe_;
     TQue<QuePosition::VECIN, BUFFER_NUM_ONE> inQueue_;
     TQue<QuePosition::VECOUT, BUFFER_NUM_ONE> outQueue_;

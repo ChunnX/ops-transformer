@@ -47,6 +47,7 @@ struct MatmulShapeParams {
     uint64_t sk;   // 单次计算 K 维度
 };
 
+template <typename vInnerType>
 struct GDRStageOneInitParams {
     // input
     GlobalTensor<bfloat16_t> query;     // (T, Nk, Dk)
@@ -57,8 +58,7 @@ struct GDRStageOneInitParams {
     // ouput
     GlobalTensor<float> gCumExp;        // (Nv, cg_len)
     GlobalTensor<bfloat16_t> kCumdecay;      // (Nv, cg_len, Dk)
-    GlobalTensor<bfloat16_t> vInner;         // (Nv, cg_len, Dv) BF16 vInner (temp for FP32 state path)
-    GlobalTensor<float> vInnerFp32;          // (Nv, cg_len, Dv) FP32 vInner (for FP32 state path)
+    GlobalTensor<vInnerType> vInner;         // (Nv, cg_len, Dv)
     GlobalTensor<bfloat16_t> qPrime;         // (Nv, cg_len, Dk)
     GlobalTensor<bfloat16_t> kG;             // (Nv, cg_len, Dk)
     GlobalTensor<bfloat16_t> qK;             // (Nv, cg_len, C)
@@ -72,8 +72,9 @@ struct GDRStageOneInitParams {
 template <bool kStateIsFp32 = false>
 class Stage1 {
 public:
+    using vInnerType = std::conditional_t<kStateIsFp32, float, bfloat16_t>;
     __aicore__ inline Stage1(StageOneMT &mm, StageOneMTFp32C &mmFp32C) : mm(mm), mmFp32C(mmFp32C) {}
-    __aicore__ inline void SetGlobalTensors(const GDRStageOneInitParams &initParams)
+    __aicore__ inline void SetGlobalTensors(const GDRStageOneInitParams<vInnerType> &initParams)
     {
         queryGm_ = initParams.query;
         keyGm_ = initParams.key;
@@ -83,7 +84,6 @@ public:
         outGCumExpGm_ = initParams.gCumExp;
         outKCumdecayGm_ = initParams.kCumdecay;
         outVInnerGm_ = initParams.vInner;
-        outVInnerFp32Gm_ = initParams.vInnerFp32;
         outQPrimeGm_ = initParams.qPrime;
         outKgBaseGm_ = initParams.kG;
         outQkGm_ = initParams.qK;
@@ -198,7 +198,7 @@ public:
         WaitFlag<HardEvent::S_V>(eventID);
     }
 
-    __aicore__ inline void Init(const GDRStageOneInitParams &initParams, TPipe *pipe,
+    __aicore__ inline void Init(const GDRStageOneInitParams<vInnerType> &initParams, TPipe *pipe,
                                 const ChunkGatedDeltaRuleTilingData *tilingData)
     {
         pipe_ = pipe;
@@ -334,7 +334,7 @@ private:
         for (uint32_t i = 0; i < curParaNum; ++i) {
             if constexpr (kStateIsFp32) {
                 AICProcess(mmFp32C, attnWsGm_[i * ccOffset_], vBetaWsGm_[i * cvOffset_],
-                           outVInnerFp32Gm_[chunkRowBase_[i] * dv_],
+                           outVInnerGm_[chunkRowBase_[i] * dv_],
                            {chunkSize_, dv_, chunkSize_, chunkSize_, dv_, chunkSize_});
             } else {
                 AICProcess(mm, attnWsGm_[i * ccOffset_], vBetaWsGm_[i * cvOffset_],
@@ -881,8 +881,7 @@ private:
     GlobalTensor<float> gGm_;
     GlobalTensor<float> outGCumExpGm_;
     GlobalTensor<bfloat16_t> outKCumdecayGm_;
-    GlobalTensor<bfloat16_t> outVInnerGm_;
-    GlobalTensor<float> outVInnerFp32Gm_;
+    GlobalTensor<vInnerType> outVInnerGm_;
     GlobalTensor<bfloat16_t> outQPrimeGm_;
     GlobalTensor<bfloat16_t> outKgBaseGm_;
     GlobalTensor<bfloat16_t> outKgGm_;

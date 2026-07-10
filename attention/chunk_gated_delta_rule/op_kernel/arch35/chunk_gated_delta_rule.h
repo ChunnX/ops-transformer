@@ -45,6 +45,7 @@ template <typename lowType, typename highType, typename stateType = lowType>
 class CGDR {
 public:
     static constexpr bool kStateIsFp32 = std::is_same_v<stateType, float>;
+    using vInnerType = std::conditional_t<kStateIsFp32, float, lowType>;
     __aicore__ inline CGDR(TPipe *pipe, const ChunkGatedDeltaRuleTilingData *tilingData)
         : stageOneOp_(stage1MT_, stage1MTFp32C_)
     {
@@ -129,12 +130,12 @@ public:
         kCumDecay_.SetGlobalBuffer(reinterpret_cast<__gm__ lowType *>(user + offset));
         offset += sizeof(lowType) * tiling_->nv * tiling_->maxGroupLength * tiling_->dk;
 
-        vInner_.SetGlobalBuffer(reinterpret_cast<__gm__ lowType *>(user + offset));
-        offset += sizeof(lowType) * tiling_->nv * tiling_->maxGroupLength * tiling_->dv;
+        vInner_.SetGlobalBuffer(reinterpret_cast<__gm__ vInnerType *>(user + offset));
+        offset += sizeof(vInnerType) * tiling_->nv * tiling_->maxGroupLength * tiling_->dv;
 
         if constexpr (kStateIsFp32) {
-            vInnerFp32_.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(user + offset));
-            offset += sizeof(float) * tiling_->nv * tiling_->maxGroupLength * tiling_->dv;
+            vInnerBf16_.SetGlobalBuffer(reinterpret_cast<__gm__ lowType *>(user + offset));
+            offset += sizeof(lowType) * tiling_->nv * tiling_->maxGroupLength * tiling_->dv;
         }
 
         qPrime_.SetGlobalBuffer(reinterpret_cast<__gm__ lowType *>(user + offset));
@@ -150,13 +151,9 @@ public:
         offset += sizeof(lowType) * tiling_->nv * tiling_->maxGroupLength * tiling_->chunkSize;
 
         if constexpr (kStateIsFp32) {
-            highStateAddr_ = user + offset;
-            offset += sizeof(highType) * tiling_->nv * tiling_->dv * tiling_->dk;
-
             uint64_t stateWkElemCnt = tiling_->nv * tiling_->dv * tiling_->dk;
-            stateBf16Wk_.SetGlobalBuffer(reinterpret_cast<__gm__ lowType *>(highStateAddr_), stateWkElemCnt);
-            stateDeltaWk_.SetGlobalBuffer(reinterpret_cast<__gm__ lowType *>(highStateAddr_) + stateWkElemCnt,
-                                          stateWkElemCnt);
+            stateBf16Wk_.SetGlobalBuffer(reinterpret_cast<__gm__ lowType *>(user + offset), stateWkElemCnt);
+            offset += sizeof(lowType) * stateWkElemCnt;
         }
 
         stageOneMask_.SetGlobalBuffer(reinterpret_cast<__gm__ highType *>(user + offset));
@@ -210,8 +207,8 @@ public:
 private:
     __aicore__ inline void RunStage1(const ChunkGroup& cg)
     {
-        GDRStageOneInitParams initStageOneParams {query_, key_, value_, beta_, g_,
-                                                gCum_, kCumDecay_, vInner_, vInnerFp32_, qPrime_, kg_, qkt_,
+        GDRStageOneInitParams<vInnerType> initStageOneParams {query_, key_, value_, beta_, g_,
+                                                gCum_, kCumDecay_, vInner_, qPrime_, kg_, qkt_,
                                                 stageWsAddr_, stageOneMask_, cg, gFlag_};
         stageOneOp_.Init(initStageOneParams, pipe_, tiling_);
         stageOneOp_.Process();
@@ -223,10 +220,12 @@ private:
                                      GlobalTensor<sType> stateOut, bool isFirstGroup)
     {
         Stage2<sType> stageTwoOp;
-        StageTwoParams initStageTwoParams;
+        StageTwoParams<sType> initStageTwoParams;
         initStageTwoParams.qPrime = qPrime_;
         initStageTwoParams.vInner = vInner_;
-        initStageTwoParams.vInnerFp32 = vInnerFp32_;
+        if constexpr (kStateIsFp32) {
+            initStageTwoParams.vInnerBf16 = vInnerBf16_;
+        }
         initStageTwoParams.gCum = gCum_;
         initStageTwoParams.kCumdecay = kCumDecay_;
         initStageTwoParams.kg = kg_;
@@ -242,25 +241,32 @@ private:
         initStageTwoParams.Dk = tiling_->dk;
         initStageTwoParams.gOptional = gFlag_;
         initStageTwoParams.isFirstGroup = isFirstGroup;
+        initStageTwoParams.stateIn = stateIn;
+        initStageTwoParams.stateOut = stateOut;
         if constexpr (std::is_same_v<sType, float>) {
-            initStageTwoParams.curState = stateBf16Wk_;
-            initStageTwoParams.finalState = stateDeltaWk_;
-            initStageTwoParams.stateFp32In = stateIn;
-            initStageTwoParams.stateFp32Out = stateOut;
+            initStageTwoParams.curStateBf16 = stateBf16Wk_;
         } else {
-            initStageTwoParams.curState = stateIn;
-            initStageTwoParams.finalState = stateOut;
+            initStageTwoParams.curStateBf16 = stateIn;
         }
         stageTwoOp.Init(&initStageTwoParams, tiling_->aiCoreNum);
         stageTwoOp.Process();
         pipe_->Reset();
     }
 
+    __aicore__ inline GlobalTensor<lowType> GetVInnerBf16()
+    {
+        if constexpr (kStateIsFp32) {
+            return vInnerBf16_;
+        } else {
+            return vInner_;
+        }
+    }
+
     __aicore__ inline void RunStage3(ChunkGroup& cg)
     {
         Stage3 stageThreeOp;
         StageThreeParams initStageThreeParams{
-            qkt_, gCum_, vInner_,
+            qkt_, gCum_, GetVInnerBf16(),
             stageThreeMask_[int(GetBlockIdx() / 2) * tiling_->chunkSize * tiling_->chunkSize],
             stageWsAddr_, out_[cg.startPos * tiling_->nv * tiling_->dv],
             &stage3MT_, pipe_, &cg, tiling_->scale,
@@ -285,13 +291,11 @@ private:
     GlobalTensor<int32_t> actualSeqLens_;
 
     GlobalTensor<lowType> stateBf16Wk_;
-    GlobalTensor<lowType> stateDeltaWk_;
-    GM_ADDR highStateAddr_;
 
     GlobalTensor<highType> gCum_;      // (Nv, maxGroupLength)
     GlobalTensor<lowType> kCumDecay_;     // (Nv, maxGroupLength, Dk)
-    GlobalTensor<lowType> vInner_;       // (Nv, maxGroupLength, Dv) BF16 (temp for FP32 state path)
-    GlobalTensor<float> vInnerFp32_;     // (Nv, maxGroupLength, Dv) FP32 (for FP32 state path)
+    GlobalTensor<vInnerType> vInner_;     // (Nv, maxGroupLength, Dv) primary vInner
+    GlobalTensor<lowType> vInnerBf16_;    // (Nv, maxGroupLength, Dv) BF16 temp (FP32 path only)
     GlobalTensor<lowType> qPrime_;        // (Nv, maxGroupLength, Dk)
     GlobalTensor<lowType> attnInter_;    // (Nv, maxGroupLength, Dv)
     GlobalTensor<lowType> kg_;           // (Nv, maxGroupLength, Dk)
