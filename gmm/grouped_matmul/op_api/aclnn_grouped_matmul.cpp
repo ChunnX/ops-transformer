@@ -2598,7 +2598,8 @@ static aclnnStatus SetTransposedScaleTensorListContiguous(gmm::GroupedMatmulPara
         std::vector<aclTensor *> antiSTensorList;
         if ((*params.antiquantScaleOptional)[0]->GetDataType() == DataType::DT_FLOAT8_E8M0) { // Mx场景处理
             CHECK_RET(gmm::CreateContiguousTensorListForMXTypeMScale(params.antiquantScaleOptional, antiSTensorList,
-                                                                     executorPtr), ACLNN_ERR_INNER_NULLPTR);
+                                                                     executorPtr),
+                      ACLNN_ERR_INNER_NULLPTR);
         } else {
             CHECK_RET(gmm::CreateContiguousTensorList(params.antiquantScaleOptional, antiSTensorList, executorPtr),
                       ACLNN_ERR_INNER_NULLPTR);
@@ -2622,11 +2623,12 @@ static aclnnStatus SetTransposedTensorListContiguous(gmm::GroupedMatmulParams &p
         ((*params.perTokenScaleOptional)[0]->GetDataType() == DataType::DT_FLOAT8_E8M0 || isPerTileQuantMode)) {
       std::vector<aclTensor*> perTokenScaleTensorList;
       if (isPerTileQuantMode) {
-        CHECK_RET(gmm::CreateContiguousTensorList(params.perTokenScaleOptional, perTokenScaleTensorList, executorPtr),
-                  ACLNN_ERR_INNER_NULLPTR);
+          CHECK_RET(gmm::CreateContiguousTensorList(params.perTokenScaleOptional, perTokenScaleTensorList, executorPtr),
+                    ACLNN_ERR_INNER_NULLPTR);
       } else {
-        CHECK_RET(gmm::CreateContiguousTensorListForPertoken(params.perTokenScaleOptional, perTokenScaleTensorList,
-                                                             executorPtr), ACLNN_ERR_INNER_NULLPTR);
+          CHECK_RET(gmm::CreateContiguousTensorListForPertoken(params.perTokenScaleOptional, perTokenScaleTensorList,
+                                                               executorPtr),
+                    ACLNN_ERR_INNER_NULLPTR);
       }
       params.perTokenScaleOptional = executorPtr->AllocTensorList(perTokenScaleTensorList.data(), perTokenScaleTensorList.size());
       CHECK_RET(params.perTokenScaleOptional != nullptr, ACLNN_ERR_INNER_NULLPTR);
