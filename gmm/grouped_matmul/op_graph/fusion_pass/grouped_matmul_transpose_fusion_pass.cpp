@@ -91,11 +91,6 @@ bool IsGraphFusionRuntimeSupported()
     return version >= GROUPED_MATMUL_GRAPH_FUSION_SUPPORT_VERSION;
 }
 
-CustomPassStage GetGroupedMatmulTransposeFusionPassStage()
-{
-    return IsGraphFusionRuntimeSupported() ? CustomPassStage::kCompatibleInherited : CustomPassStage::kAfterInferShape;
-}
-
 bool IsType(const GNodePtr& node, const char* type)
 {
     if (node == nullptr) {
@@ -777,6 +772,6 @@ Status GroupedMatmulTransposeFusionPass::Run(GraphPtr& graph, CustomPassContext&
     return RunGroupedMatmulTransposeFusion(graph, passContext);
 }
 
-REG_FUSION_PASS(GroupedMatmulTransposeFusionPass).Stage(GetGroupedMatmulTransposeFusionPassStage());
+REG_FUSION_PASS(GroupedMatmulTransposeFusionPass).Stage(CustomPassStage::kCompatibleInherited);
 } // namespace ops
 #endif // CANN_VERSION_NUM >= GROUPED_MATMUL_GRAPH_FUSION_SUPPORT_VERSION
