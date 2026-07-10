@@ -704,12 +704,12 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::CopyGMToGMPerToken(
         int32_t topkIndex = validTopkIndexTensor_.GetValue(copyStartIdx + primeIdx);
         int32_t tokenIndex = topkIndex / topK_;
         TEventID eventId = kBufEvents[primeIdx];
+        uint64_t remoteCopyOffset = static_cast<uint64_t>(tokenIndex) * static_cast<uint64_t>(copyInNum);
+        DataCopy(copyTmpTensors_[primeIdx], remoteRankGlobalTensor[remoteCopyOffset], copyInNum);
         tripleTensor_[primeIdx * INT32_PER_256B].SetValue(RANK_ID, remoteRankIdx);
         tripleTensor_[primeIdx * INT32_PER_256B].SetValue(TOKEN_ID, tokenIndex);
         tripleTensor_[primeIdx * INT32_PER_256B].SetValue(TOPK_INDEX, topkIndex % topK_);
         SetFlag<AscendC::HardEvent::S_MTE3>(eventId);
-        uint64_t remoteCopyOffset = static_cast<uint64_t>(tokenIndex) * static_cast<uint64_t>(copyInNum);
-        DataCopy(copyTmpTensors_[primeIdx], remoteRankGlobalTensor[remoteCopyOffset], copyInNum);
         SetFlag<AscendC::HardEvent::MTE2_MTE3>(eventId);
     }
     // Phase 2 steady: MTE3(token + scale + triple) → 组装下条 triple → issueMTE2
@@ -734,18 +734,18 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::CopyGMToGMPerToken(
         // 发下一个槽的 MTE2 (copyIdx + BufferNum, 复用 outIdx 槽)
         int32_t nextIdx = copyIdx + BufferNum;
         if (nextIdx < copyNum) {
-            // 组装下条 triple（WaitFlag<MTE3_S> 等 MTE3 读完，SetFlag<S_MTE3> 通知 MTE3 可读）
+            // 组装下条 triple：先发 MTE2(慢) → 再写 triple(快)，MTE2 在后台与 S 重叠
             int32_t nextTopkIndex = validTopkIndexTensor_.GetValue(copyStartIdx + nextIdx);
             int32_t nextTokenIndex = nextTopkIndex / topK_;
+            uint64_t remoteCopyOffset = static_cast<uint64_t>(nextTokenIndex) * static_cast<uint64_t>(copyInNum);
+            WaitFlag<AscendC::HardEvent::MTE3_MTE2>(eventId);
+            DataCopy(copyTmpTensors_[outIdx], remoteRankGlobalTensor[remoteCopyOffset], copyInNum);
+            SetFlag<AscendC::HardEvent::MTE2_MTE3>(eventId);
             WaitFlag<AscendC::HardEvent::MTE3_S>(eventId);
             tripleTensor_[outIdx * INT32_PER_256B].SetValue(RANK_ID, remoteRankIdx);
             tripleTensor_[outIdx * INT32_PER_256B].SetValue(TOKEN_ID, nextTokenIndex);
             tripleTensor_[outIdx * INT32_PER_256B].SetValue(TOPK_INDEX, nextTopkIndex % topK_);
             SetFlag<AscendC::HardEvent::S_MTE3>(eventId);
-            uint64_t remoteCopyOffset = static_cast<uint64_t>(nextTokenIndex) * static_cast<uint64_t>(copyInNum);
-            WaitFlag<AscendC::HardEvent::MTE3_MTE2>(eventId);
-            DataCopy(copyTmpTensors_[outIdx], remoteRankGlobalTensor[remoteCopyOffset], copyInNum);
-            SetFlag<AscendC::HardEvent::MTE2_MTE3>(eventId);
         }
     }
     // Phase 2 drain: 只等实际 prime 过的槽位，避免 copyNum < BufferNum 时死等未使用的槽
