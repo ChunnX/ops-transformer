@@ -153,14 +153,16 @@ public:
     }
 
     __aicore__ inline
-    void getKVOffset(AscendC::GlobalTensor<int32_t> &gBlockTable, uint32_t &kOffset, uint32_t nowNIdx, uint32_t nL1Idx,
+    void getKVOffset(AscendC::GlobalTensor<int32_t> &gBlockTable, uint64_t &kOffset, uint32_t nowNIdx, uint32_t nL1Idx,
         uint32_t strideKV, uint32_t blockSize)
     {
         if constexpr (PAGED_CACHE_FLAG_) {
             uint32_t blockTableId = gBlockTable.GetValue(nowNIdx);
-            kOffset = blockTableId * blockSize * strideKV + nL1Idx * l1NDynamic * strideKV;
+            kOffset = static_cast<uint64_t>(blockTableId) * blockSize * strideKV
+                    + static_cast<uint64_t>(nL1Idx) * l1NDynamic * strideKV;
         } else {
-            kOffset = nowNIdx * blockSize * strideKV + nL1Idx * l1NDynamic * strideKV;
+            kOffset = static_cast<uint64_t>(nowNIdx) * blockSize * strideKV
+                    + static_cast<uint64_t>(nL1Idx) * l1NDynamic * strideKV;
         }
     }
 

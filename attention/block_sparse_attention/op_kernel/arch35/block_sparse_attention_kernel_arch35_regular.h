@@ -101,7 +101,7 @@ public:
         InitSyncFlags<4, 4, 4>();
 #ifdef __DAV_VEC__
         EpilogueMask2Idx epilogueMask2Idx(resource);
-        uint32_t totalRowNumBlockMask = batch_ * qHeads_ * xBlockNumAligned_;
+        uint64_t totalRowNumBlockMask = static_cast<uint64_t>(batch_) * qHeads_ * xBlockNumAligned_;
         epilogueMask2Idx(
             gBlockSparseMask, gSparseIdx, gSparseCount,
             totalRowNumBlockMask, yBlockNumAligned_, avgRowPerSubCore_, preActiveSubCoreNum_);
@@ -135,33 +135,33 @@ public:
         int64_t strideLseN = 0;
         int64_t strideLseS = 0;
         if constexpr (qFormat == Format::TND) {
-            strideQO = qHeads_ * embed_;
+            strideQO = static_cast<int64_t>(qHeads_) * embed_;
             strideLse = qHeads_;
         } else if constexpr (qFormat == Format::BNSD) {
-            strideQOB = qHeads_ * qSeqlenAligned_ * embed_;  // batch_ stride
-            strideQON = qSeqlenAligned_ * embed_;  // head stride
+            strideQOB = static_cast<int64_t>(qHeads_) * qSeqlenAligned_ * embed_;  // batch_ stride
+            strideQON = static_cast<int64_t>(qSeqlenAligned_) * embed_;  // head stride
             strideQOS = embed_;  // seq stride
-            strideLseB = qHeads_ * qSeqlenAligned_;
+            strideLseB = static_cast<int64_t>(qHeads_) * qSeqlenAligned_;
             strideLseN = qSeqlenAligned_;
             strideLseS = 1;
         } else if constexpr (qFormat == Format::BSND) {
-            strideQOB = qSeqlenAligned_ * qHeads_ * embed_; // batch_ stride
-            strideQOS = qHeads_ * embed_;                   // seq stride
+            strideQOB = static_cast<int64_t>(qSeqlenAligned_) * qHeads_ * embed_; // batch_ stride
+            strideQOS = static_cast<int64_t>(qHeads_) * embed_;                   // seq stride
             strideQON = embed_;                             // head stride
-            strideLseB = qSeqlenAligned_ * qHeads_;
+            strideLseB = static_cast<int64_t>(qSeqlenAligned_) * qHeads_;
             strideLseS = qHeads_;
             strideLseN = 1;
         }
 
         if constexpr (kvFormat == Format::TND) {
-            strideKV = kvHeads_ * embed_;
+            strideKV = static_cast<int64_t>(kvHeads_) * embed_;
         } else if constexpr (kvFormat == Format::BNSD) {
-            strideKVB = kvHeads_ * kvSeqlenAligned_ * embed_; // batch_ stride
-            strideKVN = kvSeqlenAligned_ * embed_;            // head stride
+            strideKVB = static_cast<int64_t>(kvHeads_) * kvSeqlenAligned_ * embed_; // batch_ stride
+            strideKVN = static_cast<int64_t>(kvSeqlenAligned_) * embed_;            // head stride
             strideKVS = embed_;                               // seq stride
         } else if constexpr (kvFormat == Format::BSND) {
-            strideKVB = kvSeqlenAligned_ * kvHeads_ * embed_; // batch_ stride
-            strideKVS = kvHeads_ * embed_;                    // seq stride
+            strideKVB = static_cast<int64_t>(kvSeqlenAligned_) * kvHeads_ * embed_; // batch_ stride
+            strideKVS = static_cast<int64_t>(kvHeads_) * embed_;                    // seq stride
             strideKVN = embed_;                               // head stride
         }
 
@@ -208,9 +208,11 @@ public:
             // corresponding head index of cur task
             // corresponding blockSparseMask gm offset of cur task
             // gmBlockSparseMask has the shape [B, qN, xBlockNumAligned, yBlockNumAligned]
-            int64_t sparseMaskBOffset = curBatch * qHeads_ * xBlockNumAligned_ * yBlockNumAligned_;
-            int64_t sparseMaskNOffset = qHeadIdx * xBlockNumAligned_ * yBlockNumAligned_;
-            int64_t sparseMaskXOffset = xBlockIdx * yBlockNumAligned_;
+            int64_t sparseMaskBOffset =
+                static_cast<int64_t>(curBatch) * qHeads_ * xBlockNumAligned_ * yBlockNumAligned_;
+            int64_t sparseMaskNOffset =
+                static_cast<int64_t>(qHeadIdx) * xBlockNumAligned_ * yBlockNumAligned_;
+            int64_t sparseMaskXOffset = static_cast<int64_t>(xBlockIdx) * yBlockNumAligned_;
             int64_t gmOffsetSparseMask = sparseMaskBOffset + sparseMaskNOffset + sparseMaskXOffset;
             // corresponding Q/K/V/O/Lse gm offset of cur task
             int64_t gmOffsetQ = 0;
@@ -218,41 +220,41 @@ public:
             int64_t gmOffsetV = 0;
             int64_t gmOffsetO = 0;
             int64_t gmOffsetLse = 0;
-            int64_t qSOffset = xBlockIdx * blockShapeX_ + qSTileIdxCurXBlock * qBaseTile_;
+            int64_t qSOffset = static_cast<int64_t>(xBlockIdx) * blockShapeX_ + qSTileIdxCurXBlock * qBaseTile_;
 
             if constexpr (qFormat == Format::TND) {
                 gmOffsetQ = qBOffset + qSOffset * strideQO + qHeadIdx * embed_;
                 gmOffsetO = oBOffset + qSOffset * strideQO + qHeadIdx * embed_;
                 gmOffsetLse = lseBOffset + qSOffset * strideLse + qHeadIdx;
             } else if constexpr (qFormat == Format::BNSD) {
-                qBOffset = curBatch * strideQOB;
-                oBOffset = curBatch * strideQOB;
-                lseBOffset = curBatch * strideLseB;
+                qBOffset = static_cast<int64_t>(curBatch) * strideQOB;
+                oBOffset = static_cast<int64_t>(curBatch) * strideQOB;
+                lseBOffset = static_cast<int64_t>(curBatch) * strideLseB;
                 gmOffsetQ = qBOffset + qHeadIdx * strideQON + qSOffset * strideQOS;
                 gmOffsetO = oBOffset + qHeadIdx * strideQON + qSOffset * strideQOS;
                 gmOffsetLse = lseBOffset + qHeadIdx * strideLseN + qSOffset * strideLseS;
             } else if constexpr (qFormat == Format::BSND) {
-                qBOffset = curBatch * strideQOB;
-                oBOffset = curBatch * strideQOB;
-                lseBOffset = curBatch * strideLseB;
+                qBOffset = static_cast<int64_t>(curBatch) * strideQOB;
+                oBOffset = static_cast<int64_t>(curBatch) * strideQOB;
+                lseBOffset = static_cast<int64_t>(curBatch) * strideLseB;
                 gmOffsetQ = qBOffset + qSOffset * strideQOS + qHeadIdx * strideQON;
                 gmOffsetO = oBOffset + qSOffset * strideQOS + qHeadIdx * strideQON;
                 gmOffsetLse = lseBOffset + qSOffset * strideLseS + qHeadIdx * strideLseN;
             }
 
             if constexpr (kvFormat == Format::TND) {
-                gmOffsetK = kBOffset + kvHeadIdx * embed_;
-                gmOffsetV = vBOffset + kvHeadIdx * embed_;
+                gmOffsetK = kBOffset + static_cast<int64_t>(kvHeadIdx) * embed_;
+                gmOffsetV = vBOffset + static_cast<int64_t>(kvHeadIdx) * embed_;
             } else if constexpr (kvFormat == Format::BNSD) {
-                kBOffset = curBatch * strideKVB;
-                vBOffset = curBatch * strideKVB;
-                gmOffsetK = kBOffset + kvHeadIdx * strideKVN;
-                gmOffsetV = vBOffset + kvHeadIdx * strideKVN;
+                kBOffset = static_cast<int64_t>(curBatch) * strideKVB;
+                vBOffset = static_cast<int64_t>(curBatch) * strideKVB;
+                gmOffsetK = kBOffset + static_cast<int64_t>(kvHeadIdx) * strideKVN;
+                gmOffsetV = vBOffset + static_cast<int64_t>(kvHeadIdx) * strideKVN;
             } else if constexpr (kvFormat == Format::BSND) {
-                kBOffset = curBatch * strideKVB;
-                vBOffset = curBatch * strideKVB;
-                gmOffsetK = kBOffset + kvHeadIdx * strideKVN;
-                gmOffsetV = vBOffset + kvHeadIdx * strideKVN;
+                kBOffset = static_cast<int64_t>(curBatch) * strideKVB;
+                vBOffset = static_cast<int64_t>(curBatch) * strideKVB;
+                gmOffsetK = kBOffset + static_cast<int64_t>(kvHeadIdx) * strideKVN;
+                gmOffsetV = vBOffset + static_cast<int64_t>(kvHeadIdx) * strideKVN;
             }
 
             // the actual x block num of cur batch_, calc by actual qseqlen

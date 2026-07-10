@@ -156,7 +156,7 @@ public:
                     AscendC::GlobalTensor<int32_t> gBlockTable,
                     AscendC::GlobalTensor<int32_t> gSelectIdx,
                     LayoutA layoutA, LayoutB layoutB, LayoutC layoutC, GemmCoord actualOriShape,
-                    uint32_t &nIdx, uint32_t &nLoop, uint32_t &blockSize, uint32_t strideKV, 
+                    uint32_t &nIdx, uint32_t &nLoop, uint32_t &blockSize, uint64_t strideKV,
                     uint32_t &y, uint32_t &selectNum, uint32_t &kvYBlockNum, uint32_t &kvSeqlen)
     {
         uint32_t rowNum = actualOriShape[0];
