@@ -268,8 +268,8 @@ ge::graphStatus PostQuantChecker::CheckFeatureRowValid(const FiaTilingInfo &fiaI
             uint32_t actualLenDimsKV = (tempDataKV != nullptr) ? tempDataKV->GetShapeSize() : 0;
             for (uint32_t i = 0; i < fiaInfo.bSize; i++) {
                 if (ge::GRAPH_SUCCESS != CheckRowValidForSingleBatch(fiaInfo, tempData, tempDataKV,
-                        actualLenDims, actualLenDimsKV, checkPostQuantOffset, preTokens, nextTokens,
-                        actualSeqLengths, actualSeqLengthsKV, i)) {
+                    actualLenDims, actualLenDimsKV, checkPostQuantOffset, preTokens, nextTokens,
+                    actualSeqLengths, actualSeqLengthsKV, i)) {
                     return ge::GRAPH_FAILED;
                 }
             }
