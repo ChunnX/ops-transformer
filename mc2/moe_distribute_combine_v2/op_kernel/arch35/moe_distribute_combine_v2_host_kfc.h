@@ -316,7 +316,7 @@ private:
     __aicore__ inline void AccumulateTokenFromServer(GM_ADDR winInTkAddr, uint32_t hitIdx,
                                                     LocalTensor<float>& sumLocal);
     __aicore__ inline void ProcessSharedExpertAndOutput(uint32_t tokenId, LocalTensor<float>& sumLocal);
-                                                                                
+
 private:
     uint32_t globalBs_{0};
     uint32_t serverTokenBs_{0};
@@ -910,7 +910,7 @@ template <CombineV2HostTypeClass>
 __aicore__ inline void
 MoeDistributeCombineV2HostKfc<CombineV2HostTypeFunc>::ProcessOneServer(uint32_t toServerId,
     LocalTensor<float> sumTileUb, LocalTensor<uint32_t> existFlagUb)
-    
+
 {
     GM_ADDR winOutSliceBase = windowOutGM_ + (toServerId * winOutSliceBytes_);
     GlobalTensor<uint64_t> winOutHeaderGm;

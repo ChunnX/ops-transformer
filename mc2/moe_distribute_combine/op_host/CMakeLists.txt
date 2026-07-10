@@ -20,6 +20,9 @@ if (BUILD_OPEN_PROJECT)  # custom
     set(SUB_MC2_COMPILE TRUE PARENT_SCOPE)
     set(MC2_OPT ON PARENT_SCOPE)
     set(moe_distribute_combine_depends mc2/common mc2/3rd mc2/moe_distribute_dispatch_v2 mc2/moe_distribute_combine_v2 mc2/moe_distribute_dispatch_v3 mc2/moe_distribute_combine_v3 PARENT_SCOPE)
+    set(moe_distribute_combine_a2_depends mc2/common mc2/3rd mc2/moe_distribute_dispatch_v2 mc2/moe_distribute_combine_v2 mc2/moe_distribute_dispatch_v3 mc2/moe_distribute_combine_v3 PARENT_SCOPE)
+    set(moe_distribute_combine_a3_depends mc2/common mc2/3rd mc2/moe_distribute_dispatch_v2 mc2/moe_distribute_combine_v2 mc2/moe_distribute_dispatch_v3 mc2/moe_distribute_combine_v3 PARENT_SCOPE)
+    set(moe_distribute_combine_apt_depends mc2/common mc2/3rd mc2/moe_distribute_dispatch_v2 mc2/moe_distribute_combine_v2 mc2/moe_distribute_dispatch_v3 mc2/moe_distribute_combine_v3 PARENT_SCOPE)
 
     # --cce-auto-sync=off：指定CCE编译器是否自动执行线程间或模块间的同步操作
     # -mllvm -cce-aicore-dcci-before-kernel-end=false：禁用在kernel函数结束前插入DCCI指令

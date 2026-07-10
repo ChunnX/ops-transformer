@@ -49,8 +49,9 @@ public:
         this->Attr("group").AttrType(REQUIRED).String();
         this->Attr("world_size").AttrType(REQUIRED).Int();
 
-        OpAICoreConfig aicore_config;
-        aicore_config.DynamicCompileStaticFlag(true)
+        // _a3 entry (arch22/distribute_barrier_a3.cpp).
+        OpAICoreConfig aicore_config_a3;
+        aicore_config_a3.DynamicCompileStaticFlag(true)
             .DynamicFormatFlag(true)
             .DynamicRankSupportFlag(true)
             .DynamicShapeSupportFlag(true)
@@ -58,10 +59,24 @@ public:
             .PrecisionReduceFlag(true)
             .ExtendCfgInfo("aclnnSupport.value", "support_aclnn")
             .ExtendCfgInfo("jitCompile.flag", "static_true")
-            .ExtendCfgInfo("multiKernelSupportDynamicGraph.value", "multi_kernel");
+            .ExtendCfgInfo("multiKernelSupportDynamicGraph.value", "multi_kernel")
+            .ExtendCfgInfo("opFile.value", "distribute_barrier_a3");
 
-        this->AICore().AddConfig("ascend950", aicore_config);
-        this->AICore().AddConfig("ascend910_93", aicore_config);
+        // _apt entry (arch35/distribute_barrier_apt.cpp).
+        OpAICoreConfig aicore_config_apt;
+        aicore_config_apt.DynamicCompileStaticFlag(true)
+            .DynamicFormatFlag(true)
+            .DynamicRankSupportFlag(true)
+            .DynamicShapeSupportFlag(true)
+            .NeedCheckSupportFlag(false)
+            .PrecisionReduceFlag(true)
+            .ExtendCfgInfo("aclnnSupport.value", "support_aclnn")
+            .ExtendCfgInfo("jitCompile.flag", "static_true")
+            .ExtendCfgInfo("multiKernelSupportDynamicGraph.value", "multi_kernel")
+            .ExtendCfgInfo("opFile.value", "distribute_barrier_apt");
+
+        this->AICore().AddConfig("ascend910_93", aicore_config_a3);
+        this->AICore().AddConfig("ascend950", aicore_config_apt);
         this->MC2().HcclGroup({"group"});
     }
 };

@@ -17,6 +17,7 @@
 #define MOE_DISTRIBUTE_COMBINE_V2_TILING_BASE_H
 
 #include "moe_distribute_combine_tiling_helper.h"
+#include "../../op_kernel/moe_distribute_combine_v2_tiling_key_decl.h"
 
 namespace optiling {
 class MoeDistributeCombineV2TilingFuncBase {

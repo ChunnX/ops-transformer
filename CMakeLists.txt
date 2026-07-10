@@ -604,12 +604,14 @@ if (BUILD_OPS_RTY_KERNEL)
                 OPTIONAL
         )
 
-        if(EXISTS ${ASCEND_IMPL_OUT_DIR}/dynamic/${_op_name}_apt.py)
-            install(FILES ${ASCEND_IMPL_OUT_DIR}/dynamic/${_op_name}_apt.py
-                DESTINATION ${IMPL_DYNAMIC_INSTALL_DIR}
-                OPTIONAL
-            )
-        endif()
+        foreach (_suffix a2 a3 apt)
+            if(EXISTS ${ASCEND_IMPL_OUT_DIR}/dynamic/${_op_name}_${_suffix}.py)
+                install(FILES ${ASCEND_IMPL_OUT_DIR}/dynamic/${_op_name}_${_suffix}.py
+                    DESTINATION ${IMPL_DYNAMIC_INSTALL_DIR}
+                    OPTIONAL
+                )
+            endif()
+        endforeach()
     endforeach ()
 
     install(DIRECTORY ${OPS_ADV_UTILS_KERNEL_INC}/

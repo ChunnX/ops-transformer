@@ -107,8 +107,9 @@ public:
     this->Attr("comm_quant_mode").AttrType(OPTIONAL).Int(0);
     this->Attr("group_list_type").AttrType(OPTIONAL).Int(0);
 
-    OpAICoreConfig aicore_config_A2;
-    aicore_config_A2.DynamicCompileStaticFlag(true)
+    // A2 (arch22): _a2 entry (opFile -> arch22/..._a2.cpp).
+    OpAICoreConfig aicore_config_a2;
+    aicore_config_a2.DynamicCompileStaticFlag(true)
         .DynamicFormatFlag(true)
         .DynamicRankSupportFlag(true)
         .DynamicShapeSupportFlag(true)
@@ -117,10 +118,12 @@ public:
         .ExtendCfgInfo("aclnnSupport.value", "support_aclnn")
         .ExtendCfgInfo("prebuildPattern.value", "Opaque")
         .ExtendCfgInfo("jitCompile.flag", "static_false")
-        .ExtendCfgInfo("multiKernelSupportDynamicGraph.value", "multi_kernel");
+        .ExtendCfgInfo("multiKernelSupportDynamicGraph.value", "multi_kernel")
+        .ExtendCfgInfo("opFile.value", "moe_distribute_combine_a2");
 
-    OpAICoreConfig aicore_config;
-    aicore_config.DynamicCompileStaticFlag(true)
+    // A3 (arch22): _a3 entry (opFile -> arch22/..._a3.cpp).
+    OpAICoreConfig aicore_config_a3;
+    aicore_config_a3.DynamicCompileStaticFlag(true)
         .DynamicFormatFlag(true)
         .DynamicRankSupportFlag(true)
         .DynamicShapeSupportFlag(true)
@@ -129,11 +132,26 @@ public:
         .ExtendCfgInfo("aclnnSupport.value", "support_aclnn")
         .ExtendCfgInfo("prebuildPattern.value", "Opaque")
         .ExtendCfgInfo("jitCompile.flag", "static_true")
-        .ExtendCfgInfo("multiKernelSupportDynamicGraph.value", "multi_kernel");
+        .ExtendCfgInfo("multiKernelSupportDynamicGraph.value", "multi_kernel")
+        .ExtendCfgInfo("opFile.value", "moe_distribute_combine_a3");
 
-    this->AICore().AddConfig("ascend950", aicore_config);
-    this->AICore().AddConfig("ascend910_93", aicore_config);
-    this->AICore().AddConfig("ascend910b", aicore_config_A2);
+    // A5 (arch35): _apt entry (opFile -> arch35/..._apt.cpp).
+    OpAICoreConfig aicore_config_apt;
+    aicore_config_apt.DynamicCompileStaticFlag(true)
+        .DynamicFormatFlag(true)
+        .DynamicRankSupportFlag(true)
+        .DynamicShapeSupportFlag(true)
+        .NeedCheckSupportFlag(false)
+        .PrecisionReduceFlag(true)
+        .ExtendCfgInfo("aclnnSupport.value", "support_aclnn")
+        .ExtendCfgInfo("prebuildPattern.value", "Opaque")
+        .ExtendCfgInfo("jitCompile.flag", "static_true")
+        .ExtendCfgInfo("multiKernelSupportDynamicGraph.value", "multi_kernel")
+        .ExtendCfgInfo("opFile.value", "moe_distribute_combine_apt");
+
+    this->AICore().AddConfig("ascend910b", aicore_config_a2);
+    this->AICore().AddConfig("ascend910_93", aicore_config_a3);
+    this->AICore().AddConfig("ascend950", aicore_config_apt);
     this->MC2().HcclGroup({"group_ep", "group_tp"});
   }
 };

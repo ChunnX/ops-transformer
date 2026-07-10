@@ -981,6 +981,14 @@ if (NOT ENABLE_AICPU_KERNEL)
                 DESTINATION ${IMPL_DYNAMIC_INSTALL_DIR}
                 OPTIONAL
         )
+        install(FILES ${ASCEND_IMPL_OUT_DIR}/dynamic/${_op_name}_a2.py
+                DESTINATION ${IMPL_DYNAMIC_INSTALL_DIR}
+                OPTIONAL
+        )
+        install(FILES ${ASCEND_IMPL_OUT_DIR}/dynamic/${_op_name}_a3.py
+                DESTINATION ${IMPL_DYNAMIC_INSTALL_DIR}
+                OPTIONAL
+        )
         install(FILES ${ASCEND_IMPL_OUT_DIR}/dynamic/${_op_name}_apt.py
             DESTINATION ${IMPL_DYNAMIC_INSTALL_DIR}
             OPTIONAL
@@ -1061,6 +1069,32 @@ endforeach(    )
                         OPTIONAL
                 )
             endif ()
+            if (ENABLE_OPS_KERNEL AND ${_op_depened_name} STREQUAL "common")
+                set(COMMON_SRC_DIR "")
+                if (ENABLE_EXPERIMENTAL)
+                    get_filename_component(COMMON_SRC_DIR "${OPS_TRANSFORMER_DIR}/experimental/${op_depend_dir}" REALPATH)
+                else()
+                    get_filename_component(COMMON_SRC_DIR "${OPS_TRANSFORMER_DIR}/${op_depend_dir}" REALPATH)
+                endif()
+                list(APPEND ALL_COMMON_SRC_DIRS "${COMMON_SRC_DIR}")
+            endif()
+        endforeach ()
+        foreach (op_depend_dir ${${_op_name}_a2_depends})
+            get_filename_component(_op_depened_name "${op_depend_dir}" NAME)
+            get_filename_component(_op_parent_name "${op_depend_dir}" DIRECTORY)
+            if (ENABLE_OPS_KERNEL AND ${_op_depened_name} STREQUAL "common")
+                set(COMMON_SRC_DIR "")
+                if (ENABLE_EXPERIMENTAL)
+                    get_filename_component(COMMON_SRC_DIR "${OPS_TRANSFORMER_DIR}/experimental/${op_depend_dir}" REALPATH)
+                else()
+                    get_filename_component(COMMON_SRC_DIR "${OPS_TRANSFORMER_DIR}/${op_depend_dir}" REALPATH)
+                endif()
+                list(APPEND ALL_COMMON_SRC_DIRS "${COMMON_SRC_DIR}")
+            endif()
+        endforeach ()
+        foreach (op_depend_dir ${${_op_name}_a3_depends})
+            get_filename_component(_op_depened_name "${op_depend_dir}" NAME)
+            get_filename_component(_op_parent_name "${op_depend_dir}" DIRECTORY)
             if (ENABLE_OPS_KERNEL AND ${_op_depened_name} STREQUAL "common")
                 set(COMMON_SRC_DIR "")
                 if (ENABLE_EXPERIMENTAL)
