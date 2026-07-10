@@ -506,6 +506,47 @@ function(add_ops_src_copy)
 
 endfunction()
 
+# ------------------------------------------------------------------------------------------------------------
+# enable_pypto_kernel(<op_file>)
+#   Mark an operator whose kernel is written in PyPTO. Call ONCE from the op's op_host/CMakeLists.txt,
+#   and BEFORE add_modules_sources_with_soc(...) (so the tiling logic can read PYPTO_GEN_DIR).
+#   It runs pypto codegen at configure time into a pypto-exclusive dir, exposes PYPTO_GEN_DIR to the
+#   caller scope (for the host tiling -I), and records cache flags consumed by add_bin_compile_target
+#   to install the generated artifacts into the kernel staging dir.
+# ------------------------------------------------------------------------------------------------------------
+function(enable_pypto_kernel op_file)
+    set(_gen ${ASCEND_BINARY_OUT_DIR}/${ASCEND_COMPUTE_UNIT}/${op_file}_pypto_gen)
+    set(_py  ${CMAKE_CURRENT_SOURCE_DIR}/../op_kernel/${op_file}.py)
+
+    if (NOT EXISTS ${_py})
+        message(FATAL_ERROR "enable_pypto_kernel: kernel python file not found: ${_py}")
+    endif ()
+
+    message(STATUS "pypto codegen: ${op_file} -> ${_gen}")
+    execute_process(
+        COMMAND ${HI_PYTHON} ${CMAKE_SOURCE_DIR}/cmake/scripts/pypto_codegen.py
+                --py-file ${_py} --out-dir ${_gen}
+                --op-file ${op_file} --soc ${ASCEND_COMPUTE_UNIT}
+        RESULT_VARIABLE _rc
+    )
+    if (NOT _rc EQUAL 0)
+        message(FATAL_ERROR "pypto codegen failed for ${op_file} (exit ${_rc})")
+    endif ()
+
+    # Re-run configure (hence codegen) when the kernel python source changes.
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${_py})
+
+    # Read by add_modules_sources_with_soc (a macro, runs in this caller scope) to add the host tiling -I.
+    set(PYPTO_GEN_DIR ${_gen} PARENT_SCOPE)
+    # Read by add_bin_compile_target (separate scope) to install artifacts into kernel staging.
+    set(${op_file}_pypto_enabled TRUE    CACHE INTERNAL "pypto-enabled kernel ${op_file}")
+    set(${op_file}_pypto_gen_dir ${_gen} CACHE INTERNAL "pypto gen dir for ${op_file}")
+    # Collected by custom_build.cmake and passed to ascendc_impl_build.py as --pypto-ops so those ops get
+    # the pypto wrapper variant (its flash_attention_score() calls pypto_compile_op and locates the DSL
+    # .py next to itself). Keyed by op_file (matches op_desc.op_file).
+    set_property(GLOBAL APPEND PROPERTY PYPTO_ENABLED_OPS ${op_file})
+endfunction()
+
 function(add_bin_compile_target)
     cmake_parse_arguments(BINARY "" "COMPUTE_UNIT" "OP_INFO" ${ARGN})
 
@@ -597,6 +638,19 @@ function(add_bin_compile_target)
                              ${OP_TARGET_NAME}_src_copy
                     )
                 endforeach()
+            endif ()
+
+            if (${op_file}_pypto_enabled)
+                set(_pypto_install_stamp ${OP_SRC_OUT_DIR}/op_kernel/.pypto_install.done)
+                add_custom_command(OUTPUT ${_pypto_install_stamp}
+                        COMMAND ${CMAKE_COMMAND} -E copy_directory ${${op_file}_pypto_gen_dir} ${OP_SRC_OUT_DIR}/op_kernel
+                        COMMAND ${CMAKE_COMMAND} -E touch ${_pypto_install_stamp}
+                        DEPENDS ${OP_TARGET_NAME}_src_copy
+                        VERBATIM
+                )
+                add_custom_target(${OP_TARGET_NAME}_pypto_install
+                        DEPENDS ${_pypto_install_stamp}
+                )
             endif ()
 
             set(DYNAMIC_PY_FILE ${OP_SRC_OUT_DIR}/${op_type}.py)
@@ -708,6 +762,9 @@ function(add_bin_compile_target)
                 add_dependencies(${OP_TARGET_NAME}_${op_index} optiling_compat generate_ops_info)
             endif ()
             add_dependencies(${OP_TARGET_NAME}_${op_index} ${OP_TARGET_NAME}_src_copy ${OP_TARGET_NAME}_py_copy ${OP_TARGET_NAME}_mkdir)
+            if (${op_file}_pypto_enabled)
+                add_dependencies(${OP_TARGET_NAME}_${op_index} ${OP_TARGET_NAME}_pypto_install)
+            endif ()
             add_dependencies(${OP_TARGET_NAME}_${op_index} generate_compile_cmd)
             if(TARGET common_src_copy)
                 add_dependencies(${OP_TARGET_NAME}_${op_index} common_src_copy)

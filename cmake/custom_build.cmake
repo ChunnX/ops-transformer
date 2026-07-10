@@ -961,6 +961,16 @@ if (NOT ENABLE_AICPU_KERNEL)
     # and add matching install(DIRECTORY ...) if they need the same dedup treatment.
     set(OPS_TRANSFORMER_SHARED_KERNEL_INSTALL_DEPS mc2/common)
 
+    # pypto-pro ops (marked by enable_pypto_kernel, global property PYPTO_ENABLED_OPS keyed by op_file):
+    # forward so ascendc_impl_build.py emits the pypto wrapper variant (calls pypto_compile_op).
+    # Comma-joined so it stays a single argv token.
+    get_property(_pypto_adapt_ops GLOBAL PROPERTY PYPTO_ENABLED_OPS)
+    set(PYPTO_ADAPT_OPS_OPTION "")
+    if (_pypto_adapt_ops)
+        list(JOIN _pypto_adapt_ops "," _pypto_adapt_ops_str)
+        set(PYPTO_ADAPT_OPS_OPTION --pypto-ops ${_pypto_adapt_ops_str})
+    endif ()
+
     add_custom_target(generate_transformer_adapt_py
             COMMAND ${HI_PYTHON} ${CMAKE_CURRENT_SOURCE_DIR}/cmake/scripts/util/ascendc_impl_build.py
             \"\"
@@ -972,6 +982,7 @@ if (NOT ENABLE_AICPU_KERNEL)
             --opsinfo-dir ${base_aclnn_binary_dir} ${base_aclnn_binary_dir}/inner ${base_aclnn_binary_dir}/exc
             --compute-unit ${ASCEND_COMPUTE_UNIT}
             --enable-experimental ${ENABLE_EXPERIMENTAL}
+            ${PYPTO_ADAPT_OPS_OPTION}
     )
 
     add_dependencies(generate_transformer_adapt_py opbuild_gen_default opbuild_gen_inner opbuild_gen_exc)

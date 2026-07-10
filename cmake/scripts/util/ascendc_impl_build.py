@@ -16,7 +16,7 @@ import sys
 import os
 import re
 import datetime
-from typing import List
+from typing import List, Set
 from dataclasses import dataclass
 import json
 from pathlib import Path
@@ -316,6 +316,32 @@ COMPILE_OP_API_BUILT_IN = '''
     else:
         raise RuntimeError("built-in opp compile, ascendc_impl.dat file path does not exist: %s" %(dat_path))
 '''
+
+# pypto-pro variant of COMPILE_OP_API: same OpInfo construction, but the kernel source is the pypto DSL
+# .py co-located with this wrapper (op_kernel/<op_file>.py, copied there by the src-copy step), no
+# get_code_channel precompile (that expects a .cpp), and the leaf call is pypto_compile_op instead of
+# compile_op. Deriving src from __file__ keeps the wrapper self-contained: the standard asc_opc flow
+# (op-store, SingleOpCompile build_config/op_context, SingleOpPostCompile) drives it unchanged; only this
+# leaf differs. pypto_compile_op does per-tilingkey codegen + reuses the asc_op_compiler backend.
+PYPTO_COMPILE_OP_API = '''
+    msg = "start compile pypto Operator {}, kernel name is " + kernel_name
+    CommonUtility.print_compile_log("", msg, AscendCLogLevel.LOG_INFO)
+    op_type = "{}"
+    src = os.path.join(os.path.dirname(os.path.abspath(__file__)), "op_kernel", "{}.py")
+    if not os.path.exists(src):
+        raise RuntimeError("pypto DSL kernel not found next to wrapper: " + src)
+    code_channel = -1
+    op_info = OpInfo(kernel_name = kernel_name, op_type = op_type, inputs = __inputs__, outputs = __outputs__,\\
+        attrs = __attrs__ {}, origin_inputs=[{}], origin_outputs = [{}],\\
+                param_type_dynamic = {}, mc2_ctx = {}, param_type_list = {}, init_value_list = {},\\
+                output_shape_depend_on_compute = {})
+    pypto_compile_op(src, origin_func_name, op_info, options, code_channel, '{}', {})
+'''
+
+# Extra import appended to the wrapper head for pypto ops (kept out of the default head so non-pypto
+# builds / environments without pypto_pro are unaffected).
+PYPTO_IMPORT_HEADER = "from pypto_pro.runtime.opc.pypto_compile import pypto_compile_op\n"
+
 SUP_API = '''
 def {}({}{}):
     __inputs__, __outputs__, __attrs__ = _build_args({})
@@ -381,6 +407,9 @@ class AdpBuilder(opdesc_parser.OpDesc):
     def __init__(self: any, op_type: str):
         self.argsdefv = []
         self.op_compile_option:str = '{}'
+        # pypto-pro binary-delivery op: emit a wrapper that calls pypto_compile_op (src = the DSL .py
+        # co-located at op_kernel/<op_file>.py) instead of the template compile_op. Set from --pypto-ops.
+        self.is_pypto = False
         super().__init__(op_type)
 
 
@@ -392,7 +421,9 @@ class AdpBuilder(opdesc_parser.OpDesc):
             if ini_soc not in compute_unit:
                 return
         self._build_paradefault()
-        if os.environ.get('BUILD_BUILTIN_OPP') != '1' and impl_path != "":
+        # pypto ops have a DSL .py kernel (op_kernel/<op_file>.py), not a <op_file>.cpp — skip the
+        # template .cpp existence check; the wrapper locates that DSL .py relative to itself.
+        if os.environ.get('BUILD_BUILTIN_OPP') != '1' and impl_path != "" and not self.is_pypto:
             src_file = os.path.join(impl_path, self.op_file + '.cpp')
             if not os.path.exists(src_file):
                 print(f"[ERROR]: operator: {self.op_file} source file: {src_file} does not found, please check.")
@@ -557,7 +588,8 @@ class AdpBuilder(opdesc_parser.OpDesc):
         now = datetime.datetime.now()
         curr_year = now.year
         former_year = curr_year - 1
-        fd.write(IMPL_HEAD.format(former_year, curr_year, IMPORT_HEADER, self.input_ori_name, self.output_ori_name))
+        import_header = IMPORT_HEADER + (PYPTO_IMPORT_HEADER if self.is_pypto else "")
+        fd.write(IMPL_HEAD.format(former_year, curr_year, import_header, self.input_ori_name, self.output_ori_name))
 
     def _write_argparse(self: any, fd: object):
         args = self._build_paralist(False)
@@ -702,6 +734,14 @@ class AdpBuilder(opdesc_parser.OpDesc):
         if self.op_replay_flag:
             fd.write(REPLAY_OP_API.format(self.op_type, kern_name, self.op_file,\
                 self.op_type, self.op_file, self.param_type_dynamic, self.op_compile_option))
+        elif self.is_pypto:
+            value_depend_obj = {key: value for key, value in self.input_value_depend.items()}
+            extend_opt = {"valueDepend": value_depend_obj}
+            fd.write(PYPTO_COMPILE_OP_API.format(self.op_type,
+                self.op_type, self.op_file, self.impl_mode_op_info, ', '.join(self.input_name), \
+                    ', '.join(self.output_name), self.param_type_dynamic, self._build_mc2_ctx(),\
+                    self.input_type + self.output_type, self.output_init_value, self.output_shape_depend_on_compute,\
+                    self.op_compile_option, repr(extend_opt)))
         else:
             value_depend_obj = {key: value for key, value in self.input_value_depend.items()}
             extend_opt = {"valueDepend": value_depend_obj}
@@ -743,12 +783,15 @@ class AdpBuilder(opdesc_parser.OpDesc):
 class CompileOptions:
     op_compile_option: list = None
     compute_unit: list = None
+    pypto_ops: Set[str] = None
 
 
 def write_scripts(cfgfile: str, cfgs: dict, dirs: dict, ops: list = None,
                   compile_options: CompileOptions = None):
     batch_lists = cfgs.get(const_var.REPLAY_BATCH).split(';')
     iterator_lists = cfgs.get(const_var.REPLAY_ITERATE).split(';')
+    pypto_ops = compile_options.pypto_ops if compile_options else None
+    pypto_ops = pypto_ops or set()
     file_map = {}
     
     # extract SOC from ini filename: aic-ascend910b-ops-info.ini -> ascend910b
@@ -763,6 +806,9 @@ def write_scripts(cfgfile: str, cfgs: dict, dirs: dict, ops: list = None,
     _op_compile_option = compile_options.op_compile_option if compile_options else None
     _compute_unit = compile_options.compute_unit if compile_options else None
     for op_desc in op_descs:
+        # pypto-pro binary-delivery ops (from --pypto-ops, matched by op_file): emit the pypto wrapper
+        # variant (calls pypto_compile_op). Non-pypto ops keep the template compile_op wrapper.
+        op_desc.is_pypto = op_desc.op_file in pypto_ops
         op_desc.write_adapt(
             dirs.get(const_var.CFG_IMPL_DIR), dirs.get(const_var.CFG_OUT_DIR),
             _op_compile_option, ini_soc, _compute_unit)
@@ -791,6 +837,7 @@ def parse_args(argv):
     parser.add_argument('--opsinfo-dir', nargs='*', default=None)
     parser.add_argument('--compute-unit', nargs='*', default=['ascend910b'])
     parser.add_argument('--enable-experimental', default="OFF")
+    parser.add_argument('--pypto-ops', nargs='?', const='', default='')
     return parser.parse_args(argv)
 
 
@@ -818,6 +865,7 @@ if __name__ == '__main__':
         ops_infos.append(args.argv[1])
     COMPUTE_UNIT = args.compute_unit
     ENABLE_EXPERIMENTAL = args.enable_experimental
+    pypto_ops = {o for o in args.pypto_ops.replace(';', ',').split(',') if o}
     for ops_info in ops_infos:
-        compile_opts = CompileOptions(compute_unit=args.compute_unit)
+        compile_opts = CompileOptions(compute_unit=args.compute_unit, pypto_ops=pypto_ops)
         write_scripts(cfgfile=ops_info, cfgs=rep_cfg, dirs=cfg_dir, compile_options=compile_opts)
