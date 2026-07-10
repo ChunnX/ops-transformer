@@ -45,14 +45,14 @@ __aicore__ inline void RmsNorm(const LocalTensor<float> &dstLocal, const LocalTe
     // temp1Local = srcLocal ^ 2
     Mul(temp1Local, srcLocal, srcLocal, cnt);
     PipeBarrier<PIPE_V>();
-    
+
     MatRpeatParam repeatParams = {
-        rmsNormParams.row,                                // row
-        rmsNormParams.col,                                // col
-        FP32_REPEAT_ELEMENT_NUM,                          // dtypeMask
-        rmsNormParams.col / FP32_REPEAT_ELEMENT_NUM,                    // loopTimes
-        rmsNormParams.col % FP32_REPEAT_ELEMENT_NUM,                    // colsRemain
-        static_cast<uint8_t>(rmsNormParams.col / FP32_BLOCK_ELEMENT_NUM),       // repeatStride
+        rmsNormParams.row,                                                // row
+        rmsNormParams.col,                                                // col
+        FP32_REPEAT_ELEMENT_NUM,                                          // dtypeMask
+        rmsNormParams.col / FP32_REPEAT_ELEMENT_NUM,                      // loopTimes
+        rmsNormParams.col % FP32_REPEAT_ELEMENT_NUM,                      // colsRemain
+        static_cast<uint8_t>(rmsNormParams.col / FP32_BLOCK_ELEMENT_NUM), // repeatStride
     };
 
     // temp2Local[row] = Sum(temp1Local)
@@ -73,7 +73,7 @@ __aicore__ inline void RmsNorm(const LocalTensor<float> &dstLocal, const LocalTe
     PipeBarrier<PIPE_V>();
 
     // temp1Local[row, 8] = brc(temp2Local[row, 1])
-    Brcb(temp1Local, temp2Local, CeilDivT(rmsNormParams.row, BRCB_NUM), {1, 8});   
+    Brcb(temp1Local, temp2Local, CeilDivT(rmsNormParams.row, BRCB_NUM), {1, 8});
     PipeBarrier<PIPE_V>();
 
     // dstLocal = srcLocal / temp1Local(sum)

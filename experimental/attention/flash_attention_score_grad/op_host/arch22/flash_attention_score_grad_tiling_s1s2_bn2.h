@@ -62,7 +62,8 @@ struct TempParamsS1s2Bn2 {
 
 class FlashAttentionScoreGradTilingS1s2Bn2 : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
-    explicit FlashAttentionScoreGradTilingS1s2Bn2(gert::TilingContext *context) : Ops::Transformer::OpTiling::TilingBaseClass(context)
+    explicit FlashAttentionScoreGradTilingS1s2Bn2(gert::TilingContext *context)
+        : Ops::Transformer::OpTiling::TilingBaseClass(context)
     {
         td_->reset();
     }

@@ -47,8 +47,8 @@ constexpr bool IsMatmulLayoutTypeV = IsMatmulLayoutType<T>::value;
 
 template <class LayoutT>
 struct ToMatmulType {
-    using Type = AscendC::MatmulType<LayoutT::pos, TagToFormat<typename LayoutT::layout>::format,
-            typename LayoutT::T, TagToTrans<typename LayoutT::layout>::value>;
+    using Type = AscendC::MatmulType<LayoutT::pos, TagToFormat<typename LayoutT::layout>::format, typename LayoutT::T,
+                                     TagToTrans<typename LayoutT::layout>::value>;
 };
 
 template <class LayoutT>

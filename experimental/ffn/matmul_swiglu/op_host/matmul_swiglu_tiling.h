@@ -24,11 +24,11 @@
 namespace optiling {
 
 BEGIN_TILING_DATA_DEF(MatmulSwigluTilingData)
-    TILING_DATA_FIELD_DEF(uint32_t, hasBias);       // 是否带 bias
-    TILING_DATA_FIELD_DEF(uint32_t, tileN);         // 向量 SwiGLU 行内分块列数 (满足 UB 预算)
-    TILING_DATA_FIELD_DEF_STRUCT(TCubeTiling, mmTiling);  // 完整 [M, 2N, K] 的 cube tiling
-    // 注: m/k/2N 直接从 mmTiling 派生(m=mmTiling.M, k=mmTiling.Ka, 2N=mmTiling.N), 不再重复存储;
-    //     transpose_weight 经 TilingKey 传递(不占 TilingData), kernel 侧作编译期模板参数
+TILING_DATA_FIELD_DEF(uint32_t, hasBias);            // 是否带 bias
+TILING_DATA_FIELD_DEF(uint32_t, tileN);              // 向量 SwiGLU 行内分块列数 (满足 UB 预算)
+TILING_DATA_FIELD_DEF_STRUCT(TCubeTiling, mmTiling); // 完整 [M, 2N, K] 的 cube tiling
+// 注: m/k/2N 直接从 mmTiling 派生(m=mmTiling.M, k=mmTiling.Ka, 2N=mmTiling.N), 不再重复存储;
+//     transpose_weight 经 TilingKey 传递(不占 TilingData), kernel 侧作编译期模板参数
 END_TILING_DATA_DEF;
 
 REGISTER_TILING_DATA_CLASS(MatmulSwiglu, MatmulSwigluTilingData)
@@ -40,5 +40,5 @@ struct MatmulSwigluCompileInfo {
     uint64_t l0cSize = 0;
 };
 
-}  // namespace optiling
-#endif  // OPS_OP_HOST_MATMUL_SWIGLU_TILING_H_
+} // namespace optiling
+#endif // OPS_OP_HOST_MATMUL_SWIGLU_TILING_H_

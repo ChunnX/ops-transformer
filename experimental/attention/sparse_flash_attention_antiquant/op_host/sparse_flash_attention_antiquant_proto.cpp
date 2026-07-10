@@ -53,12 +53,12 @@ ge::graphStatus InferShapeSparseFlashAttentionAntiquant(gert::InferShapeContext 
         attentionOutShape->SetDim(0, queryShape->GetDim(0));
         attentionOutShape->SetDim(1, queryShape->GetDim(1));
         attentionOutShape->SetDim(2, queryShape->GetDim(2)); // 2:dim2
-        int64_t outHeadDim = (attentionMode == 0)? queryShape->GetDim(3) : queryShape->GetDim(3) - ropeHeadDim;
+        int64_t outHeadDim = (attentionMode == 0) ? queryShape->GetDim(3) : queryShape->GetDim(3) - ropeHeadDim;
         attentionOutShape->SetDim(3, outHeadDim); // 3:dim3
-    } else { // TND
+    } else {                                      // TND
         attentionOutShape->SetDim(0, queryShape->GetDim(0));
         attentionOutShape->SetDim(1, queryShape->GetDim(1));
-        int64_t outHeadDim = (attentionMode == 0)? queryShape->GetDim(2) : queryShape->GetDim(2) - ropeHeadDim;
+        int64_t outHeadDim = (attentionMode == 0) ? queryShape->GetDim(2) : queryShape->GetDim(2) - ropeHeadDim;
         attentionOutShape->SetDim(2, outHeadDim); // 2:dim2
     }
     return GRAPH_SUCCESS;
@@ -77,4 +77,3 @@ IMPL_OP(SparseFlashAttentionAntiquant)
     .InferShape(InferShapeSparseFlashAttentionAntiquant)
     .InferDataType(InferDataTypeSparseFlashAttentionAntiquant);
 } // namespace ops
-  

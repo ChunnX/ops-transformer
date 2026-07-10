@@ -232,7 +232,8 @@ ge::graphStatus CompressorTiling::SetInnerSplitInfo()
                     baseParams_->splitCoreParam[i].kEnd = baseParams_->splitCoreParam[i].kStart + dealKSize;
                 } else {
                     uint32_t dealKSize = kStartIdx < baseParams_->coreGroupNum ?
-                                        baseParams_->hiddenSize - kStartIdx * baseParams_->kBaseSize : 0;
+                                             baseParams_->hiddenSize - kStartIdx * baseParams_->kBaseSize :
+                                             0;
                     baseParams_->splitCoreParam[i].kStart = kStartIdx * baseParams_->kBaseSize;
                     baseParams_->splitCoreParam[i].kEnd = baseParams_->splitCoreParam[i].kStart + dealKSize;
                 }
@@ -312,22 +313,20 @@ ge::graphStatus CompressorTiling::RunBigKernelTiling(CompressorTilingData *tilin
     this->innerSplitParams_ = &tilingData->innerSplitParams;
     this->workspaceParams_ = &tilingData->workspaceParams;
     using StatusFunction = std::function<ge::graphStatus()>;
-    std::vector<StatusFunction> requiredTilingFuncs {
-        std::bind(&CompressorTiling::GetNpuInfo, this),
-        std::bind(&CompressorTiling::CheckRequiredParaExistence, this),
-        std::bind(&CompressorTiling::CheckEmptyTensor, this),
-        std::bind(&CompressorTiling::CheckSinglePara, this),
-        std::bind(&CompressorTiling::SetBaseInfo, this),
-        std::bind(&CompressorTiling::SetPageAttentionInfo, this),
-        std::bind(&CompressorTiling::CheckFeature, this),
-        std::bind(&CompressorTiling::CheckMultiParaConsistency, this),
-        std::bind(&CompressorTiling::CheckBlockDimConstrain, this),
-        std::bind(&CompressorTiling::SetTemplateId, this),
-        std::bind(&CompressorTiling::SetInnerSplitInfo, this),
-        std::bind(&CompressorTiling::SetWorkSpaceInfo, this),
-        std::bind(&CompressorTiling::SetScenarioInfo, this)
-    };
-    for (const auto &func: requiredTilingFuncs) {
+    std::vector<StatusFunction> requiredTilingFuncs{std::bind(&CompressorTiling::GetNpuInfo, this),
+                                                    std::bind(&CompressorTiling::CheckRequiredParaExistence, this),
+                                                    std::bind(&CompressorTiling::CheckEmptyTensor, this),
+                                                    std::bind(&CompressorTiling::CheckSinglePara, this),
+                                                    std::bind(&CompressorTiling::SetBaseInfo, this),
+                                                    std::bind(&CompressorTiling::SetPageAttentionInfo, this),
+                                                    std::bind(&CompressorTiling::CheckFeature, this),
+                                                    std::bind(&CompressorTiling::CheckMultiParaConsistency, this),
+                                                    std::bind(&CompressorTiling::CheckBlockDimConstrain, this),
+                                                    std::bind(&CompressorTiling::SetTemplateId, this),
+                                                    std::bind(&CompressorTiling::SetInnerSplitInfo, this),
+                                                    std::bind(&CompressorTiling::SetWorkSpaceInfo, this),
+                                                    std::bind(&CompressorTiling::SetScenarioInfo, this)};
+    for (const auto &func : requiredTilingFuncs) {
         if (func() != ge::GRAPH_SUCCESS) {
             return ge::GRAPH_FAILED;
         }
@@ -342,10 +341,8 @@ ge::graphStatus CompressorTiling::RunBigKernelTiling(CompressorTilingData *tilin
         context_->blockDim = 1U;
         return ge::GRAPH_SUCCESS;
     }
-    std::vector<StatusFunction> optionalTilingFuncs {
-        std::bind(&CompressorTiling::CalcWorkSpace, this),
-        std::bind(&CompressorTiling::GenTilingKey, this)
-    };
+    std::vector<StatusFunction> optionalTilingFuncs{std::bind(&CompressorTiling::CalcWorkSpace, this),
+                                                    std::bind(&CompressorTiling::GenTilingKey, this)};
     for (const auto &func : optionalTilingFuncs) {
         if (func() != ge::GRAPH_SUCCESS) {
             return ge::GRAPH_FAILED;
@@ -382,14 +379,7 @@ ge::graphStatus CompressorTiling::GenTilingKey() const
         layout = 1;
     }
 
-    context_->tilingKey = GET_TPL_TILING_KEY(
-        layout,
-        dtype,
-        coff,
-        rotaryMode,
-        cacheMode,
-        templateId
-    );
+    context_->tilingKey = GET_TPL_TILING_KEY(layout, dtype, coff, rotaryMode, cacheMode, templateId);
     OP_LOGI(context_->opName,
             "Compressor dtype:%hhu layout:%hhu  coff:%hhu rotary_mode:%hhu, cacheMode: %u, template_id:%hhu", dtype,
             layout, coff, rotaryMode, cacheMode, templateId);
@@ -400,24 +390,15 @@ ge::graphStatus CompressorTiling::GenTilingKey() const
 
 ge::graphStatus CompressorTiling::CheckSinglePara() const
 {
-    if (ge::GRAPH_SUCCESS != CheckSingleParaX() ||
-        ge::GRAPH_SUCCESS != CheckSingleParaWkv() ||
-        ge::GRAPH_SUCCESS != CheckSingleParaWgate() ||
-        ge::GRAPH_SUCCESS != CheckSingleParaStateCache() ||
-        ge::GRAPH_SUCCESS != CheckSingleParaApe() ||
-        ge::GRAPH_SUCCESS != CheckSingleParaNormWeight() ||
-        ge::GRAPH_SUCCESS != CheckSingleParaRopeSin() ||
-        ge::GRAPH_SUCCESS != CheckSingleParaRopeCos() ||
-        ge::GRAPH_SUCCESS != CheckSingleParaStateBlockTable() ||
-        ge::GRAPH_SUCCESS != CheckSingleParaCuSeqlens() ||
-        ge::GRAPH_SUCCESS != CheckSingleParaSeqused() ||
-        ge::GRAPH_SUCCESS != CheckSingleParaStartPos() ||
-        ge::GRAPH_SUCCESS != CheckSingleParaCmpKv() ||
-        ge::GRAPH_SUCCESS != CheckSingleParaRopeHeadDim() ||
-        ge::GRAPH_SUCCESS != CheckSingleParaCmpRatio() ||
-        ge::GRAPH_SUCCESS != CheckSingleParaCoff() ||
-        ge::GRAPH_SUCCESS != CheckSingleParaNormEps() ||
-        ge::GRAPH_SUCCESS != CheckSingleParaRotaryMode() ||
+    if (ge::GRAPH_SUCCESS != CheckSingleParaX() || ge::GRAPH_SUCCESS != CheckSingleParaWkv() ||
+        ge::GRAPH_SUCCESS != CheckSingleParaWgate() || ge::GRAPH_SUCCESS != CheckSingleParaStateCache() ||
+        ge::GRAPH_SUCCESS != CheckSingleParaApe() || ge::GRAPH_SUCCESS != CheckSingleParaNormWeight() ||
+        ge::GRAPH_SUCCESS != CheckSingleParaRopeSin() || ge::GRAPH_SUCCESS != CheckSingleParaRopeCos() ||
+        ge::GRAPH_SUCCESS != CheckSingleParaStateBlockTable() || ge::GRAPH_SUCCESS != CheckSingleParaCuSeqlens() ||
+        ge::GRAPH_SUCCESS != CheckSingleParaSeqused() || ge::GRAPH_SUCCESS != CheckSingleParaStartPos() ||
+        ge::GRAPH_SUCCESS != CheckSingleParaCmpKv() || ge::GRAPH_SUCCESS != CheckSingleParaRopeHeadDim() ||
+        ge::GRAPH_SUCCESS != CheckSingleParaCmpRatio() || ge::GRAPH_SUCCESS != CheckSingleParaCoff() ||
+        ge::GRAPH_SUCCESS != CheckSingleParaNormEps() || ge::GRAPH_SUCCESS != CheckSingleParaRotaryMode() ||
         ge::GRAPH_SUCCESS != CheckSingleParaCacheMode()) {
         return ge::GRAPH_FAILED;
     }
@@ -843,14 +824,18 @@ ge::graphStatus CompressorTiling::CheckFeature() const
                             pageAttentionParams_->blockNum),
                     return ge::GRAPH_FAILED);
         OP_CHECK_IF(context_->stateBlockTable.shape->GetStorageShape().GetDimNum() != COMPRESSOR_DIM_NUM_1,
-            OP_LOGE(context_->opName, "when cacheMode is %u, stateBlockTable dim num should be equal to %u, but got %u",
-            static_cast<uint8_t>(CACHE_MODE::CYCLE), COMPRESSOR_DIM_NUM_1,
-            context_->stateBlockTable.shape->GetStorageShape().GetDimNum()), return ge::GRAPH_FAILED);
+                    OP_LOGE(context_->opName,
+                            "when cacheMode is %u, stateBlockTable dim num should be equal to %u, but got %u",
+                            static_cast<uint8_t>(CACHE_MODE::CYCLE), COMPRESSOR_DIM_NUM_1,
+                            context_->stateBlockTable.shape->GetStorageShape().GetDimNum()),
+                    return ge::GRAPH_FAILED);
     } else {
         OP_CHECK_IF(context_->stateBlockTable.shape->GetStorageShape().GetDimNum() != COMPRESSOR_DIM_NUM_2,
-            OP_LOGE(context_->opName, "when cacheMode is %u, stateBlockTable dim num should be equal to %u, but got %u",
-            static_cast<uint8_t>(CACHE_MODE::CONTINUOUS), COMPRESSOR_DIM_NUM_2,
-            context_->stateBlockTable.shape->GetStorageShape().GetDimNum()), return ge::GRAPH_FAILED);
+                    OP_LOGE(context_->opName,
+                            "when cacheMode is %u, stateBlockTable dim num should be equal to %u, but got %u",
+                            static_cast<uint8_t>(CACHE_MODE::CONTINUOUS), COMPRESSOR_DIM_NUM_2,
+                            context_->stateBlockTable.shape->GetStorageShape().GetDimNum()),
+                    return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -999,7 +984,8 @@ ge::graphStatus CompressorTiling::CheckScenarioConsistency() const
     OP_CHECK_IF(std::find(allowdScenarios.begin(), allowdScenarios.end(), curScenario) == allowdScenarios.end(),
                 OP_LOGE(context_->opName,
                         "Cmpratio Coff Headdim should be equal to {4, 2, 512}, {4, 2, 128}, {128, 1, 512}, \
-                        but now cmpratio=%u, coff=%u, headdim=%u", curCmpratio, curCoff, curHeaddim),
+                        but now cmpratio=%u, coff=%u, headdim=%u",
+                        curCmpratio, curCoff, curHeaddim),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -1060,7 +1046,5 @@ ge::graphStatus TilingPrepareForCompressor(gert::TilingParseContext *context)
     return ge::GRAPH_SUCCESS;
 }
 
-IMPL_OP_OPTILING(Compressor)
-    .Tiling(TilingCompressor)
-    .TilingParse<CompressorCompileInfo>(TilingPrepareForCompressor);
+IMPL_OP_OPTILING(Compressor).Tiling(TilingCompressor).TilingParse<CompressorCompileInfo>(TilingPrepareForCompressor);
 } // namespace optiling

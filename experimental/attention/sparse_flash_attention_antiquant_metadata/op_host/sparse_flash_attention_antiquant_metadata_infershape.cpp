@@ -20,9 +20,9 @@
 using namespace ge;
 
 namespace ops {
-static ge::graphStatus InferShapeSparseFlashAttentionAntiquantMetaData(gert::InferShapeContext* context)
+static ge::graphStatus InferShapeSparseFlashAttentionAntiquantMetaData(gert::InferShapeContext *context)
 {
-    gert::Shape* oShape = context->GetOutputShape(0);
+    gert::Shape *oShape = context->GetOutputShape(0);
     OPS_LOG_E_IF_NULL(context, oShape, return ge::GRAPH_FAILED);
     // output shape (SFA_META_SIZE, )
     oShape->SetDimNum(1);
@@ -30,7 +30,7 @@ static ge::graphStatus InferShapeSparseFlashAttentionAntiquantMetaData(gert::Inf
     return GRAPH_SUCCESS;
 }
 
-static ge::graphStatus InferDtypeSparseFlashAttentionAntiquantMetaData(gert::InferDataTypeContext* context)
+static ge::graphStatus InferDtypeSparseFlashAttentionAntiquantMetaData(gert::InferDataTypeContext *context)
 {
     context->SetOutputDataType(0, DT_INT32);
     return GRAPH_SUCCESS;

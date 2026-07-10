@@ -44,8 +44,9 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::GetShapeAttrsInfo()
         std::string qrShape = hasQueryRope ? Ops::Base::ToString(*queryRopeShape) : "null";
         std::string krShape = hasKeyRope ? Ops::Base::ToString(*keyRopeShape) : "null";
         std::string shapeMsg = "{" + qrShape + ", " + krShape + "}";
-        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("FlashAttentionScoreGrad", "queryRopeOptional, keyRopeOptional",
-            shapeMsg.c_str(), "queryRopeOptional, keyRopeOptional cannot be empty tensors, if queryRopeOptional is an "
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
+            "FlashAttentionScoreGrad", "queryRopeOptional, keyRopeOptional", shapeMsg.c_str(),
+            "queryRopeOptional, keyRopeOptional cannot be empty tensors, if queryRopeOptional is an "
             "empty tensor, keyRopeOptional must also be an empty tensor");
         return ge::GRAPH_PARAM_INVALID;
     }
@@ -113,8 +114,8 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::GetShapeAttrsInfo()
         const size_t kvSeqShapeSize = actualSeqKvlenTensor->GetShapeSize();
         if (seqQShapeSize != kvSeqShapeSize) {
             std::string shapeSizeMsg = std::to_string(seqQShapeSize) + ", " + std::to_string(kvSeqShapeSize);
-            OP_LOGE_FOR_INVALID_SHAPESIZES_WITH_REASON("FlashAttentionScoreGrad",
-                "actualSeqQLenOptional, actualSeqKvLenOptional", shapeSizeMsg.c_str(),
+            OP_LOGE_FOR_INVALID_SHAPESIZES_WITH_REASON(
+                "FlashAttentionScoreGrad", "actualSeqQLenOptional, actualSeqKvLenOptional", shapeSizeMsg.c_str(),
                 "The shape sizes of actualSeqQLenOptional and actualSeqKvLenOptional must be same");
             return ge::GRAPH_PARAM_INVALID;
         }
@@ -153,8 +154,8 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::GetShapeAttrsInfo()
                     fBaseParams.sValueZeroUnderTND = true;
                 } else if (isEOD && (qValue[i] != 0 || kvValue[i] != 0)) {
                     std::string valuesMsg = "{" + std::to_string(qValue[i]) + ", " + std::to_string(kvValue[i]) + "}";
-                    OP_LOGE_FOR_INVALID_VALUES_WITH_REASON("FlashAttentionScoreGrad",
-                        "actualSeqQlenOptional, actualSeqKvlenOptional", valuesMsg.c_str(),
+                    OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(
+                        "FlashAttentionScoreGrad", "actualSeqQlenOptional, actualSeqKvlenOptional", valuesMsg.c_str(),
                         "When inputLayout is TND EOD, the values of last several actualSeqQlenOptional and "
                         "actualSeqKvlenOptional must be 0");
                     return ge::GRAPH_PARAM_INVALID;
@@ -202,7 +203,8 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::GetShapeAttrsInfo()
         if (qRopeD != kRopeD || qRopeD != ROPE_D_64) {
             std::string shapesMsg = Ops::Base::ToString(*queryRopeShape) + ", " + Ops::Base::ToString(*keyRopeShape);
             OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("FlashAttentionScoreGrad", "queryRopeOptional, keyRopeOptional",
-                shapesMsg.c_str(), "D of queryRopeOptional and keyRopeOptional must be equal to 64");
+                                                   shapesMsg.c_str(),
+                                                   "D of queryRopeOptional and keyRopeOptional must be equal to 64");
             return ge::GRAPH_PARAM_INVALID;
         }
     }
@@ -1030,9 +1032,8 @@ void FlashAttentionScoreGradTilingNormalRegbase::DoPreTiling()
     if (fBaseParams.sinkOptional == NORMAL_TENSOR) {
         fBaseParams.s1SinkOuter = fBaseParams.s1Outer * AICV_RATIO_DEFAULT;
         fBaseParams.s2SinkOuter = fBaseParams.s2Outer;
-        fBaseParams.sinkSize =
-            (fBaseParams.b - fBaseParams.tailZeroCount) * fBaseParams.n2 *
-            fBaseParams.g * fBaseParams.s1SinkOuter * fBaseParams.s2SinkOuter;
+        fBaseParams.sinkSize = (fBaseParams.b - fBaseParams.tailZeroCount) * fBaseParams.n2 * fBaseParams.g *
+                               fBaseParams.s1SinkOuter * fBaseParams.s2SinkOuter;
         uint64_t sinkWorkSpaceSize = (fBaseParams.sinkSize + GM_ALIGN) / GM_ALIGN * GM_ALIGN;
         uint64_t sinkPreBlockFactor = (sinkWorkSpaceSize + maskUsedCoreNum - 1) / maskUsedCoreNum;
         uint64_t sinkPreBlockTotal = (sinkWorkSpaceSize + sinkPreBlockFactor - 1) / sinkPreBlockFactor;
@@ -1725,7 +1726,7 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::SaveToTilingData()
         baseDeterParam_->set_noNeedDeter(fBaseParams.noNeedDeter);
         baseDeterParam_->set_deterMaxRound(fBaseParams.deterMaxRound);
         if ((fBaseParams.deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_BAND) ||
-            fBaseParams.deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_DENSE)) &&
+             fBaseParams.deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_DENSE)) &&
             fBaseParams.layoutType == INPUT_FORMAT_TND) {
             baseDeterParam_->set_dqIsNeedDeter(fBaseParams.startNeedSyncRound);
             baseDeterParam_->set_dkDvIsNeedDeter(fBaseParams.endNeedSyncRound);

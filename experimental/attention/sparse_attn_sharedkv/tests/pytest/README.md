@@ -15,7 +15,7 @@
 
 ### 环境配置
 #### 前置要求
-1、 确认torch_npu为最新版本  
+1、 确认torch_npu为最新版本
 2、 参考[Attention融合算子Experimental使用说明](../../../Attention融合算子Experimental使用说明.md)激活CANN包和自定义算子包
 #### custom包调用
 支持custom包调用
@@ -42,13 +42,13 @@
 
 ### 运行测试用例
 #### 单用例调测
-1、手动配置sparse_attn_sharedkv_paramset.py的参数  
+1、手动配置sparse_attn_sharedkv_paramset.py的参数
 2、执行指令：
 ```bash
 bash test_run.sh single
 ```
 #### 用例的批量生成与测试
-1、excel路径下存放用例excel表格  
+1、excel路径下存放用例excel表格
 2、执行指令批量生成：
 ``` bash
 bash test_run.sh save # 默认路径执行用例生成

@@ -77,7 +77,6 @@ class FlashAttentionScoreGraTilingMla : public Ops::Transformer::OpTiling::Tilin
 public:
     explicit FlashAttentionScoreGraTilingMla(gert::TilingContext *context) : TilingBaseClass(context)
     {
-        
     }
     FlashAttentionGradMlaTilingData *tilingData = context_->GetTilingData<FlashAttentionGradMlaTilingData>();
 

@@ -50,10 +50,10 @@ template <class ArchTag>
 struct TileCopy<ArchTag, CopyWithParams> {
     using CopyPolicy = CopyWithParams;
 
-    template <class InputType, const auto& COPY_CFG>
+    template <class InputType, const auto &COPY_CFG>
     using CopyGmToA1 = Copy<ArchTag, CopyPolicy, void, void, InputType, void, COPY_CFG>;
 
-    template <class InputType, const auto& COPY_CFG>
+    template <class InputType, const auto &COPY_CFG>
     using CopyGmToB1 = Copy<ArchTag, CopyPolicy, void, void, InputType, void, COPY_CFG>;
 
     template <class InputType, class OutputType, typename T = void>
@@ -151,10 +151,10 @@ struct TileCopy<Arch::Ascend910_95, CopyInAndCopyOutSplitMWithParams> {
     using ArchTag = Arch::Ascend910_95;
     using CopyPolicy = CopyWithParams;
 
-    template <class InputType, const auto& COPY_CFG>
+    template <class InputType, const auto &COPY_CFG>
     using CopyGmToA1 = Copy<ArchTag, CopyPolicy, void, void, InputType, void, COPY_CFG>;
 
-    template <class InputType, const auto& COPY_CFG>
+    template <class InputType, const auto &COPY_CFG>
     using CopyGmToB1 = Copy<ArchTag, CopyPolicy, void, void, InputType, void, COPY_CFG>;
 
     template <class InputType, class OutputType, typename T = void>

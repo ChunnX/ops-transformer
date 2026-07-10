@@ -505,9 +505,10 @@ public:
 
         // 2. calc index of s2FirstToken, s2LastToken by index of s1GFirstToken, s1GLastToken
         int64_t s1GFirstToken = static_cast<int64_t>(gS1Cur) * static_cast<int64_t>(mBaseSize);
-        int64_t s1GLastToken = AttentionCommon::Min(s1GFirstToken + static_cast<int64_t>(mBaseSize),
-                                   static_cast<int64_t>(actSeqLensQ) * static_cast<int64_t>(constInfo.realGSize)) -
-                               1;
+        int64_t s1GLastToken =
+            AttentionCommon::Min(s1GFirstToken + static_cast<int64_t>(mBaseSize),
+                                 static_cast<int64_t>(actSeqLensQ) * static_cast<int64_t>(constInfo.realGSize)) -
+            1;
 
         int64_t s1FirstToken = 0;
         int64_t s1LastToken = 0;
@@ -568,7 +569,8 @@ public:
         }
         if (bN2Cur == constInfo.bN2End && gS1Cur == constInfo.gS1OEnd) { // last line
             tailS2Split = constInfo.s2OEnd > 0U ? true : false;
-            curS2End = constInfo.s2OEnd > 0U ? AttentionCommon::Min(s2EndWithSparse, constInfo.s2OEnd) : s2EndWithSparse;
+            curS2End =
+                constInfo.s2OEnd > 0U ? AttentionCommon::Min(s2EndWithSparse, constInfo.s2OEnd) : s2EndWithSparse;
         }
         return;
     }
@@ -682,8 +684,7 @@ public:
             if (loop == 0) { // 第一个有效任务才需要重置KV的tensor
                 info.isChangeBatch = true;
             } else {
-                bool isFirstS2Loop = IsSpecialBandSparse() ? s2Cur == 0U :
-                                                             (s2Cur == curS2Start);
+                bool isFirstS2Loop = IsSpecialBandSparse() ? s2Cur == 0U : (s2Cur == curS2Start);
                 info.isChangeBatch = (info.n2Idx == 0 && isFirstS2Loop);
             }
         }
@@ -730,8 +731,7 @@ public:
             if (headS2Split && (bN2Cur == constInfo.bN2Start) && (gS1Cur == constInfo.gS1OStart)) {
                 // 当前任务属于第一个S1G, 并且第一个S1G的S2被切分了
                 info.isS2SplitCore = true;
-            } else if (tailS2Split && (bN2Cur == constInfo.bN2End) &&
-                       (gS1Cur == constInfo.gS1OEnd)) {
+            } else if (tailS2Split && (bN2Cur == constInfo.bN2End) && (gS1Cur == constInfo.gS1OEnd)) {
                 // 当前任务属于最后一个S1G, 并且最后一个S1G的S2被切分了
                 info.isS2SplitCore = true;
                 info.faTmpOutWsPos = headS2Split ? (info.faTmpOutWsPos + 1) : info.faTmpOutWsPos;

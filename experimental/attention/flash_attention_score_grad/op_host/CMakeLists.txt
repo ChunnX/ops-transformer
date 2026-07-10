@@ -46,7 +46,7 @@ else()
         OP_API_INDEPENDENT ON
         # op_api新的地址
         OP_API_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../op_api
-        OPTYPE flash_attention_score_grad 
+        OPTYPE flash_attention_score_grad
         ACLNNTYPE aclnn_inner
     )
 endif()

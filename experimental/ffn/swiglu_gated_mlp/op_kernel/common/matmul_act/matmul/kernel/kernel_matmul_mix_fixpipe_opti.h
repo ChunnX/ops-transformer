@@ -46,23 +46,24 @@ template <class ProblemShape, class BlockMmadBuilder, class BlockEpilogue, class
 class KernelMatmulMixFixpipeOpti;
 
 template <class ProblemShape_, class BlockMmadBuilder_, class BlockEpilogue_, class BlockScheduler_>
-class KernelMatmulMixFixpipeOpti<ProblemShape_, BlockMmadBuilder_, BlockEpilogue_, BlockScheduler_,
+class KernelMatmulMixFixpipeOpti<
+    ProblemShape_, BlockMmadBuilder_, BlockEpilogue_, BlockScheduler_,
     AscendC::Std::enable_if_t<!AscendC::Std::is_same_v<BlockEpilogue_, Block::BlockEpilogueEmpty>>> {
 public:
     __aicore__ inline KernelMatmulMixFixpipeOpti()
     {
         if ASCEND_IS_AIV {
-            CrossCoreSetFlag<AIC_SYNC_AIV_MODE_4, PIPE_MTE3>(AIV_SYNC_AIC_FLAG);      // ping
-            CrossCoreSetFlag<AIC_SYNC_AIV_MODE_4, PIPE_MTE3>(AIV_SYNC_AIC_FLAG + 1);  // pong
+            CrossCoreSetFlag<AIC_SYNC_AIV_MODE_4, PIPE_MTE3>(AIV_SYNC_AIC_FLAG);     // ping
+            CrossCoreSetFlag<AIC_SYNC_AIV_MODE_4, PIPE_MTE3>(AIV_SYNC_AIC_FLAG + 1); // pong
         }
     }
     __aicore__ inline ~KernelMatmulMixFixpipeOpti()
     {
         if ASCEND_IS_AIC {
-            CrossCoreWaitFlag<AIC_SYNC_AIV_MODE_4, PIPE_FIX>(AIV_SYNC_AIC_FLAG);                    // ping
-            CrossCoreWaitFlag<AIC_SYNC_AIV_MODE_4, PIPE_FIX>(AIV_SYNC_AIC_FLAG + FLAG_ID_MAX);      // ping
-            CrossCoreWaitFlag<AIC_SYNC_AIV_MODE_4, PIPE_FIX>(AIV_SYNC_AIC_FLAG + 1);                // pong
-            CrossCoreWaitFlag<AIC_SYNC_AIV_MODE_4, PIPE_FIX>(AIV_SYNC_AIC_FLAG + 1 + FLAG_ID_MAX);  // pong
+            CrossCoreWaitFlag<AIC_SYNC_AIV_MODE_4, PIPE_FIX>(AIV_SYNC_AIC_FLAG);                   // ping
+            CrossCoreWaitFlag<AIC_SYNC_AIV_MODE_4, PIPE_FIX>(AIV_SYNC_AIC_FLAG + FLAG_ID_MAX);     // ping
+            CrossCoreWaitFlag<AIC_SYNC_AIV_MODE_4, PIPE_FIX>(AIV_SYNC_AIC_FLAG + 1);               // pong
+            CrossCoreWaitFlag<AIC_SYNC_AIV_MODE_4, PIPE_FIX>(AIV_SYNC_AIC_FLAG + 1 + FLAG_ID_MAX); // pong
         }
     }
 
@@ -76,7 +77,8 @@ public:
     // schedulerOp
     using BlockSchedulerOp =
         typename Block::BlockSchedulerSelector<ProblemShape, typename BlockMmadBuilder::L1TileShape,
-            typename BlockMmadBuilder::L0TileShape, BlockScheduler, transA, transB>::SchedulerOp;
+                                               typename BlockMmadBuilder::L0TileShape, BlockScheduler, transA,
+                                               transB>::SchedulerOp;
     // mmadOp
     using BlockMmadOp = typename BlockMmadBuilder::BlockMmadOp;
     using BlockMmadArguments = typename BlockMmadBuilder::Arguments;
@@ -200,16 +202,9 @@ public:
                 for (uint64_t nOffset = 0; nOffset < curNL1; nOffset += Get<1>(tileL0)) {
                     TupleL1L0Shape blockShape = bs.GetBlockShape(tileIdx, mOffset, nOffset);
                     auto blockCoord = bs.GetBlockCoord(tileIdx);
-                    auto blockOffset = GetOffsetWithoutLayout(blockCoord,
-                        problemShape_,
-                        aGlobal_,
-                        bGlobal_,
-                        cGlobal_,
-                        transA,
-                        transB,
-                        isBias_,
-                        bs.GetSliceParams(),
-                        Get<MNK_M>(blockShape));
+                    auto blockOffset =
+                        GetOffsetWithoutLayout(blockCoord, problemShape_, aGlobal_, bGlobal_, cGlobal_, transA, transB,
+                                               isBias_, bs.GetSliceParams(), Get<MNK_M>(blockShape));
                     // calculate block-level offset
                     if (Get<0>(blockShape) <= 0 || Get<1>(blockShape) <= 0) {
                         if (isHf32) {
@@ -228,20 +223,15 @@ public:
                     if ASCEND_IS_AIC {
                         CrossCoreWaitFlag<AIC_SYNC_AIV_MODE_4, PIPE_FIX>(AIV_SYNC_AIC_FLAG + (pingPongIdx));
                         if (enable2UB) {
-                            CrossCoreWaitFlag<AIC_SYNC_AIV_MODE_4, PIPE_FIX>(
-                                AIV_SYNC_AIC_FLAG + (pingPongIdx) + FLAG_ID_MAX);
+                            CrossCoreWaitFlag<AIC_SYNC_AIV_MODE_4, PIPE_FIX>(AIV_SYNC_AIC_FLAG + (pingPongIdx) +
+                                                                             FLAG_ID_MAX);
                         }
-                        blockMmadOp(cLocal,
-                            aGlobal_[offsetA],
-                            bGlobal_[offsetB],
-                            biasGlobal_[offsetBias],
-                            blockShape,
-                            mOffset,
-                            nOffset);
+                        blockMmadOp(cLocal, aGlobal_[offsetA], bGlobal_[offsetB], biasGlobal_[offsetBias], blockShape,
+                                    mOffset, nOffset);
                         CrossCoreSetFlag<AIC_SYNC_AIV_MODE_4, PIPE_FIX>(AIC_SYNC_AIV_FLAG + (pingPongIdx));
                         if (enable2UB) {
-                            CrossCoreSetFlag<AIC_SYNC_AIV_MODE_4, PIPE_FIX>(
-                                AIC_SYNC_AIV_FLAG + (pingPongIdx) + FLAG_ID_MAX);
+                            CrossCoreSetFlag<AIC_SYNC_AIV_MODE_4, PIPE_FIX>(AIC_SYNC_AIV_FLAG + (pingPongIdx) +
+                                                                            FLAG_ID_MAX);
                         }
                     }
                     if ASCEND_IS_AIV {
@@ -275,18 +265,18 @@ public:
             return Status::mnkErrorExceedsLimit;
         }
         // Check matrix size exceeds limit
-        if (!transA && k > MATRIX_INNER_DIM_LIMIT_SIZE) {  // mk matrix k limit
+        if (!transA && k > MATRIX_INNER_DIM_LIMIT_SIZE) { // mk matrix k limit
             return Status::mkErrorMatrixExceedsLimit;
         }
 
-        if (transA && m > MATRIX_INNER_DIM_LIMIT_SIZE) {  // km matrix m limit
+        if (transA && m > MATRIX_INNER_DIM_LIMIT_SIZE) { // km matrix m limit
             return Status::kmErrorMatrixExceedsLimit;
         }
-        if (!transB && n > MATRIX_INNER_DIM_LIMIT_SIZE) {  // kn matrix n limit
+        if (!transB && n > MATRIX_INNER_DIM_LIMIT_SIZE) { // kn matrix n limit
             return Status::knErrorMatrixExceedsLimit;
         }
 
-        if (transB && k > MATRIX_INNER_DIM_LIMIT_SIZE) {  // nk matrix k limit
+        if (transB && k > MATRIX_INNER_DIM_LIMIT_SIZE) { // nk matrix k limit
             return Status::nkErrorMatrixExceedsLimit;
         }
         return Status::success;
@@ -325,7 +315,7 @@ public:
     }
 };
 
-}  // namespace Kernel
-}  // namespace Gemm
-}  // namespace Act
+} // namespace Kernel
+} // namespace Gemm
+} // namespace Act
 #endif

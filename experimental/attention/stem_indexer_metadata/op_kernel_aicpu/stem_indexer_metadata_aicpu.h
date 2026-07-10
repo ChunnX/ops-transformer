@@ -53,7 +53,7 @@ public:
     }
 
 public:
-    int64_t tailSize { 0 };
+    int64_t tailSize{0};
 };
 
 class StemIndexerMetadataCpuKernel : public CpuKernel {
@@ -91,6 +91,7 @@ private:
     std::string socVersion_ = "";
     int32_t aicCoreNum_ = 36U;
     int32_t aivCoreNum_ = 72U;
+
 private:
     enum class ParamId : uint32_t {
         // input

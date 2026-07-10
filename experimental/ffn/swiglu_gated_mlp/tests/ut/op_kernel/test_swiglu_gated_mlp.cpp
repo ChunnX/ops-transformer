@@ -48,15 +48,10 @@ PlatformAscendC *PlatformAscendCManager::PlatformAscendCManagerInit(const char *
     (void)customSocVersion;
     return nullptr;
 }
-}  // namespace platform_ascendc
+} // namespace platform_ascendc
 
-extern "C" __global__ __aicore__ void swiglu_gated_mlp(
-    GM_ADDR xGm,
-    GM_ADDR gateUpWeightGm,
-    GM_ADDR downWeightGm,
-    GM_ADDR yGm,
-    GM_ADDR workspace,
-    GM_ADDR tiling);
+extern "C" __global__ __aicore__ void swiglu_gated_mlp(GM_ADDR xGm, GM_ADDR gateUpWeightGm, GM_ADDR downWeightGm,
+                                                       GM_ADDR yGm, GM_ADDR workspace, GM_ADDR tiling);
 
 class swiglu_gated_mlp_test : public testing::Test {
 protected:
@@ -219,8 +214,7 @@ void RunSwigluGatedMlpKernelCase(uint64_t tilingKey)
     } else {
         cout << "Comparison failed for " << outputName << endl;
         for (uint64_t idx = firstMismatch; idx < totalRows * intermediateSize && idx < firstMismatch + 5U; ++idx) {
-            cout << "index:" << idx << ",output:" << ToFloat<T>(hiddenData[idx])
-                 << ", golden:" << golden[idx] << endl;
+            cout << "index:" << idx << ",output:" << ToFloat<T>(hiddenData[idx]) << ", golden:" << golden[idx] << endl;
         }
     }
     cout.unsetf(std::ios::floatfield);

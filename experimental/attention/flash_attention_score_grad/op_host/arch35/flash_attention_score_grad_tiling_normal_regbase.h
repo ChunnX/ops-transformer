@@ -26,29 +26,29 @@ namespace fag {
 
 #define TND_TILING_DATA_COMMON_ASSIGN(tilingData)                                                                      \
     do {                                                                                                               \
-        if (tilingData == nullptr) { \
-            OP_LOGE("InitTilingData", "InitTilingData failed."); \
-            return ge::GRAPH_FAILED; \
-        } \
-        s1s2BNGS1S2BaseParams_ = &tilingData->s1s2BNGS1S2BaseParams; \
-        s1s2BNGS1S2SplitCoreParams_ = &tilingData->s1s2BNGS1S2SplitCoreParams; \
-        s1s2BNGS1S2BlockNumList_ = &tilingData->s1s2BNGS1S2BlockNumList; \
-        preTilingData_ = &tilingData->preTilingData; \
-        postTilingData_ = &tilingData->postTilingData; \
-        tndParam_ = &tilingData->tndParam; \
+        if (tilingData == nullptr) {                                                                                   \
+            OP_LOGE("InitTilingData", "InitTilingData failed.");                                                       \
+            return ge::GRAPH_FAILED;                                                                                   \
+        }                                                                                                              \
+        s1s2BNGS1S2BaseParams_ = &tilingData->s1s2BNGS1S2BaseParams;                                                   \
+        s1s2BNGS1S2SplitCoreParams_ = &tilingData->s1s2BNGS1S2SplitCoreParams;                                         \
+        s1s2BNGS1S2BlockNumList_ = &tilingData->s1s2BNGS1S2BlockNumList;                                               \
+        preTilingData_ = &tilingData->preTilingData;                                                                   \
+        postTilingData_ = &tilingData->postTilingData;                                                                 \
+        tndParam_ = &tilingData->tndParam;                                                                             \
     } while (0)
 
 #define BASE_TILING_DATA_COMMON_ASSIGN(tilingData)                                                                     \
     do {                                                                                                               \
-        if (tilingData == nullptr) { \
-            OP_LOGE("InitTilingData", "InitTilingData failed."); \
-            return ge::GRAPH_FAILED; \
-        } \
-        s1s2BNGS1S2BaseParams_ = &tilingData->s1s2BNGS1S2BaseParams; \
-        s1s2BNGS1S2SplitCoreParams_ = &tilingData->s1s2BNGS1S2SplitCoreParams; \
-        s1s2BNGS1S2BlockNumList_ = &tilingData->s1s2BNGS1S2BlockNumList; \
-        preTilingData_ = &tilingData->preTilingData; \
-        postTilingData_ = &tilingData->postTilingData; \
+        if (tilingData == nullptr) {                                                                                   \
+            OP_LOGE("InitTilingData", "InitTilingData failed.");                                                       \
+            return ge::GRAPH_FAILED;                                                                                   \
+        }                                                                                                              \
+        s1s2BNGS1S2BaseParams_ = &tilingData->s1s2BNGS1S2BaseParams;                                                   \
+        s1s2BNGS1S2SplitCoreParams_ = &tilingData->s1s2BNGS1S2SplitCoreParams;                                         \
+        s1s2BNGS1S2BlockNumList_ = &tilingData->s1s2BNGS1S2BlockNumList;                                               \
+        preTilingData_ = &tilingData->preTilingData;                                                                   \
+        postTilingData_ = &tilingData->postTilingData;                                                                 \
     } while (0)
 
 class FlashAttentionScoreGradTilingNormalRegbase : public TilingBaseClass {
@@ -85,8 +85,8 @@ protected:
     uint32_t GetDeterSparseTilingKey();
     uint8_t GetSparseType();
     void CalcleDeterParam();
-    virtual void CalcleTNDDeterParam(){};
-    virtual void CalcTNDSwizzleParam(){};
+    virtual void CalcleTNDDeterParam() {};
+    virtual void CalcTNDSwizzleParam() {};
 
     void GetWorkspaceSize4Deter(size_t &workspaceSize);
     void GetIsDeterArr();
@@ -99,17 +99,18 @@ protected:
     void DoPostTiling();
     ge::graphStatus SaveToTilingData();
     ge::graphStatus GetSparsePrefixBlockInfo();
-    virtual ge::graphStatus GetSparseUnpadBlockInfo(){};
-    virtual bool GetBlockInfoOfBNS4TND(){};
+    virtual ge::graphStatus GetSparseUnpadBlockInfo() {};
+    virtual bool GetBlockInfoOfBNS4TND() {};
     void FillBlockInfoLoadBalance(std::vector<std::vector<int64_t>> &totalBlockInfo,
                                   std::vector<std::vector<float>> &acturalBlockInfo);
     void GetParseS1S2OuterInfo(int64_t (*parseInfo)[ARRAY_LENGTH]);
     bool CheckSparseLeftAndRight(int64_t s1oDimIdx, int64_t s2IdxLeft, int64_t s2IdxRight, int64_t bIdx = 0,
                                  int64_t blockIdx = 0);
-    virtual bool CheckUnpadSparseLeftAndRight(int64_t s1oDimIdx, int64_t s2IdxLeft, int64_t s2IdxRight, int64_t bIdx){};
-    virtual bool IsValidUnpad(int64_t blockIdx){};
+    virtual bool CheckUnpadSparseLeftAndRight(int64_t s1oDimIdx, int64_t s2IdxLeft, int64_t s2IdxRight, int64_t bIdx) {
+    };
+    virtual bool IsValidUnpad(int64_t blockIdx) {};
     ge::graphStatus DoBn2MultiBlkSparse();
-    virtual ge::graphStatus GetBlockInfoOfTNDForBn2(){};
+    virtual ge::graphStatus GetBlockInfoOfTNDForBn2() {};
     ge::graphStatus GetSparseBlockInfoBn2();
     FuzzyBaseInfoParamsRegbase fBaseParams;
     platform_ascendc::SocVersion socVersion;
