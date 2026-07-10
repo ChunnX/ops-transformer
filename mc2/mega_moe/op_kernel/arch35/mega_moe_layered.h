@@ -1659,6 +1659,8 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Unpermute()
                     WaitFlag<AscendC::HardEvent::MTE2_V>(event);
                     using Fp8Type = typename std::conditional<CombineQuantMode == MXFP8_E4M3_COMM_QUANT,
                         fp8_e4m3fn_t, fp8_e5m2_t>::type;
+                    SetFlag<AscendC::HardEvent::S_V>(event);
+                    WaitFlag<AscendC::HardEvent::S_V>(event);
                     MegaMoeCombineImpl::DeQuantMxFp8<Fp8Type, bfloat16_t>(dataInBf16, dataInFp32,
                         bf16ScaleTensor_, fp32ScaleTensor_, nScale, k_);
                 }
