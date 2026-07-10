@@ -312,22 +312,24 @@ def tilelang_grad_kl_loss_single_kernel(
             with T.Scope("C"):
                 T.wait_cross_flag(10)
 
-                Q_L1_db = T.alloc_L1((2, N1, k_block), input_dtype)
-                GK_L1_db = T.alloc_L1((2, n_block, k_block), input_dtype)
+                Q_L1_0 = T.alloc_L1((N1, k_block), input_dtype)
+                Q_L1_1 = T.alloc_L1((N1, k_block), input_dtype)
+                GK_L1_0 = T.alloc_L1((n_block, k_block), input_dtype)
+                GK_L1_1 = T.alloc_L1((n_block, k_block), input_dtype)
                 C_L0C = T.alloc_L0C((N1, n_block), calc_dtype)
 
                 for s1_row in T.serial(s1_start, s1_end):
                     # Double-buffer Matmul1 K-loop: overlap copy[d_idx+1] ∥ gemm[d_idx]
-                    # WAR-safe ping-pong (same pattern as V0 gather)
+                    # WAR-safe ping-pong, slot 0→{Q_L1_0,GK_L1_0}, slot 1→{Q_L1_1,GK_L1_1}
                     # MTE2_M{0,1}: RAW (slot loaded → gemm can read)
                     # M_MTE2{0,1}: WAR (gemm done → slot safe to refill)
                     T.set_flag("m", "mte2", 0)
                     T.set_flag("m", "mte2", 1)
 
-                    # Prologue: load d_idx=0 → slot 0 (d_idx=0 always < d_num_query for DQuery>0)
+                    # Prologue: load d_idx=0 → slot 0
                     T.wait_flag("m", "mte2", 0)
-                    T.copy(Query[bz, s1_row, 0:N1, 0:k_block], Q_L1_db[0])
-                    T.copy(GatherKey_ws[bz, s1_row, k_start:k_end, 0:k_block], GK_L1_db[0])
+                    T.copy(Query[bz, s1_row, 0:N1, 0:k_block], Q_L1_0)
+                    T.copy(GatherKey_ws[bz, s1_row, k_start:k_end, 0:k_block], GK_L1_0)
                     T.set_flag("mte2", "m", 0)
 
                     for d_idx in T.serial(d_num_total):
@@ -336,7 +338,10 @@ def tilelang_grad_kl_loss_single_kernel(
 
                         # Compute current slot
                         T.wait_flag("mte2", "m", cur)
-                        T.gemm_v0(Q_L1_db[cur], GK_L1_db[cur], C_L0C, transpose_B=True, init=(d_idx == 0))
+                        if cur == 0:
+                            T.gemm_v0(Q_L1_0, GK_L1_0, C_L0C, transpose_B=True, init=(d_idx == 0))
+                        if cur == 1:
+                            T.gemm_v0(Q_L1_1, GK_L1_1, C_L0C, transpose_B=True, init=(d_idx == 0))
                         T.set_flag("m", "mte2", cur)
 
                         # Prefetch next iteration (MTE2 load ∥ cube gemm of current)
@@ -344,15 +349,27 @@ def tilelang_grad_kl_loss_single_kernel(
                             next_d = d_idx + 1
                             T.wait_flag("m", "mte2", nxt)
                             if next_d < d_num_query:
-                                T.copy(Query[bz, s1_row, 0:N1, next_d * k_block:(next_d + 1) * k_block], Q_L1_db[nxt])
+                                if nxt == 0:
+                                    T.copy(Query[bz, s1_row, 0:N1, next_d * k_block:(next_d + 1) * k_block], Q_L1_0)
+                                if nxt == 1:
+                                    T.copy(Query[bz, s1_row, 0:N1, next_d * k_block:(next_d + 1) * k_block], Q_L1_1)
                             else:
                                 rope_d = next_d - d_num_query
-                                T.copy(QueryRope[bz, s1_row, 0:N1, rope_d * k_block:(rope_d + 1) * k_block], Q_L1_db[nxt])
+                                if nxt == 0:
+                                    T.copy(QueryRope[bz, s1_row, 0:N1, rope_d * k_block:(rope_d + 1) * k_block], Q_L1_0)
+                                if nxt == 1:
+                                    T.copy(QueryRope[bz, s1_row, 0:N1, rope_d * k_block:(rope_d + 1) * k_block], Q_L1_1)
                             if next_d < d_num_query:
-                                T.copy(GatherKey_ws[bz, s1_row, k_start:k_end, next_d * k_block:(next_d + 1) * k_block], GK_L1_db[nxt])
+                                if nxt == 0:
+                                    T.copy(GatherKey_ws[bz, s1_row, k_start:k_end, next_d * k_block:(next_d + 1) * k_block], GK_L1_0)
+                                if nxt == 1:
+                                    T.copy(GatherKey_ws[bz, s1_row, k_start:k_end, next_d * k_block:(next_d + 1) * k_block], GK_L1_1)
                             else:
                                 rope_d = next_d - d_num_query
-                                T.copy(GatherKeyRope_ws[bz, s1_row, k_start:k_end, rope_d * k_block:(rope_d + 1) * k_block], GK_L1_db[nxt])
+                                if nxt == 0:
+                                    T.copy(GatherKeyRope_ws[bz, s1_row, k_start:k_end, rope_d * k_block:(rope_d + 1) * k_block], GK_L1_0)
+                                if nxt == 1:
+                                    T.copy(GatherKeyRope_ws[bz, s1_row, k_start:k_end, rope_d * k_block:(rope_d + 1) * k_block], GK_L1_1)
                             T.set_flag("mte2", "m", nxt)
 
                     # Clear: drain remaining WAR events
@@ -395,7 +412,8 @@ def tilelang_grad_kl_loss_single_kernel(
                 T.wait_cross_flag(1)
 
                 bmm1_ub = T.alloc_ub((N1, n_block), calc_dtype)
-                bmm2_db = T.alloc_ub((2, Nidx1, n_block), calc_dtype)
+                bmm2_0 = T.alloc_ub((Nidx1, n_block), calc_dtype)
+                bmm2_1 = T.alloc_ub((Nidx1, n_block), calc_dtype)
                 weight_ub = T.alloc_ub(vector_baseg, calc_dtype)
                 weight_all_ub = T.alloc_ub(Nidx1, calc_dtype)
                 weight_all_half_ub = T.alloc_ub(Nidx1, input_dtype)
@@ -474,13 +492,14 @@ def tilelang_grad_kl_loss_single_kernel(
                     # rsy_all_ub holds all ReduceSumY blocks (avoid GM re-reads)
                     T.tile.fill(rsy_max_ub, -T.infinity(calc_dtype))
                     # Double-buffer ReduceSumY loop: overlap copy[n_rsy+1] ∥ compute[n_rsy]
-                    # WAR-safe ping-pong, events MTE2_V{0,1} (RAW) / V_MTE2{0,1} (WAR)
+                    # WAR-safe ping-pong, slot 0→bmm2_0, slot 1→bmm2_1
+                    # MTE2_V{0,1} (RAW) / V_MTE2{0,1} (WAR)
                     T.set_flag("v", "mte2", 0)
                     T.set_flag("v", "mte2", 1)
 
                     # Prologue: load n_rsy=0 → slot 0
                     T.wait_flag("v", "mte2", 0)
-                    T.copy(bmm2Res[bz, s1_id, 0:Nidx1, 0:n_block], bmm2_db[0])
+                    T.copy(bmm2Res[bz, s1_id, 0:Nidx1, 0:n_block], bmm2_0)
                     T.set_flag("mte2", "v", 0)
 
                     for n_rsy in T.serial(n_num):
@@ -490,9 +509,15 @@ def tilelang_grad_kl_loss_single_kernel(
                         # Compute current slot
                         T.wait_flag("mte2", "v", cur)
                         T.pipe_barrier("v")
-                        T.tile.mul(bmm2_db[cur], bmm2_db[cur], weight_2d_ub)
+                        if cur == 0:
+                            T.tile.mul(bmm2_0, bmm2_0, weight_2d_ub)
+                        if cur == 1:
+                            T.tile.mul(bmm2_1, bmm2_1, weight_2d_ub)
                         T.pipe_barrier("v")
-                        T.reduce_sum(bmm2_db[cur], rsy_reduce_ub, 0)
+                        if cur == 0:
+                            T.reduce_sum(bmm2_0, rsy_reduce_ub, 0)
+                        if cur == 1:
+                            T.reduce_sum(bmm2_1, rsy_reduce_ub, 0)
                         T.pipe_barrier("v")
                         # Save to UB (for sum) + write to GM (for workspace)
                         T.copy(rsy_reduce_ub, rsy_all_ub[n_rsy, :])
@@ -511,7 +536,10 @@ def tilelang_grad_kl_loss_single_kernel(
                         if n_rsy + 1 < n_num:
                             next_n = n_rsy + 1
                             T.wait_flag("v", "mte2", nxt)
-                            T.copy(bmm2Res[bz, s1_id, 0:Nidx1, next_n * n_block:(next_n + 1) * n_block], bmm2_db[nxt])
+                            if nxt == 0:
+                                T.copy(bmm2Res[bz, s1_id, 0:Nidx1, next_n * n_block:(next_n + 1) * n_block], bmm2_0)
+                            if nxt == 1:
+                                T.copy(bmm2Res[bz, s1_id, 0:Nidx1, next_n * n_block:(next_n + 1) * n_block], bmm2_1)
                             T.set_flag("mte2", "v", nxt)
 
                     # Clear: drain remaining WAR events
