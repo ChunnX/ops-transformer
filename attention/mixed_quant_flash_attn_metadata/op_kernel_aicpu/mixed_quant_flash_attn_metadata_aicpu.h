@@ -86,8 +86,8 @@ private:
     int32_t winLeft_ = -1;
     int32_t winRight_ = -1;
     std::string layoutQ_ = "BSND";
-    std::string layoutKv_ = "PA_BNBD";
-    std::string layoutOut_ = "BSND";
+    std::string layoutKv_ = "PA_BBND";
+    std::string layoutAttnOut_ = "BSND";
     std::string socVersion_ = "";
     int32_t aicCoreNum_ = 36U;
     int32_t aivCoreNum_ = 72U;

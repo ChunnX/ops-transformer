@@ -30,13 +30,13 @@ const aclTensor *MixedQuantFlashAttnMetadata(const aclTensor *cuSeqlensQOptional
                                    const aclTensor *sequsedQOptional, const aclTensor *sequsedKvOptional,
                                    int64_t batchSize, int64_t maxSeqlenQ, int64_t maxSeqlenKv, int64_t numHeadsQ,
                                    int64_t numHeadsKv, int64_t headDim, int64_t quantMode, int64_t maskMode, int64_t winLeft,
-                                   int64_t winRight, const char *layoutQ, const char *layoutKv, const char *layoutOut,
+                                   int64_t winRight, const char *layoutQ, const char *layoutKv, const char *layoutAttnOut,
                                    const char *socVersion, int64_t aicCoreNum, int64_t aivCoreNum,
                                    const aclTensor *metaData, aclOpExecutor *executor)
 {
     L0_DFX(MixedQuantFlashAttnMetadata, cuSeqlensQOptional, cuSeqlensKvOptional, sequsedQOptional, sequsedKvOptional, batchSize,
            maxSeqlenQ, maxSeqlenKv, numHeadsQ, numHeadsKv, headDim, quantMode, maskMode, winLeft, winRight, layoutQ, layoutKv,
-           layoutOut, socVersion, aicCoreNum, aivCoreNum, metaData);
+           layoutAttnOut, socVersion, aicCoreNum, aivCoreNum, metaData);
 
     static internal::AicpuTaskSpace space("MixedQuantFlashAttnMetadata");
 
@@ -48,7 +48,7 @@ const aclTensor *MixedQuantFlashAttnMetadata(const aclTensor *cuSeqlensQOptional
         OP_INPUT(cuSeqlensQOptional, cuSeqlensKvOptional, sequsedQOptional, sequsedKvOptional),
         OP_OUTPUT(metaData),
         OP_ATTR(batchSize, maxSeqlenQ, maxSeqlenKv, numHeadsQ, numHeadsKv, headDim, quantMode, maskMode, winLeft, winRight,
-                layoutQ, layoutKv, layoutOut, socVersion, aicCoreNum, aivCoreNum));
+                layoutQ, layoutKv, layoutAttnOut, socVersion, aicCoreNum, aivCoreNum));
     OP_CHECK(ret == ACL_SUCCESS,
              OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "MixedQuantFlashAttnMetadata"
                                               " ADD_TO_LAUNCHER_LIST_AICPU failed."),

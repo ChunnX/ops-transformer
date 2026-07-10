@@ -15,6 +15,8 @@ from torch.library import impl
 from cann_ops_transformer.op_builder.builder import OpBuilder
 from cann_ops_transformer.op_builder.builder import AS_LIBRARY
 
+FA_METADATA_OP_NAME = "mixed_quant_flash_attn_metadata"
+
 class _MaskMode(IntEnum):
     ALL = 0
     CAUSAL = 3
@@ -22,6 +24,37 @@ class _MaskMode(IntEnum):
 
 class _QuantMode(IntEnum):
     A16C4_MXFP4 = 1
+
+_npu_core_cache = None
+def get_npu_core_count():
+    global _npu_core_cache
+    if _npu_core_cache is not None:
+        return _npu_core_cache
+    try:
+        device_id = torch.npu.current_device()
+        limits = torch.npu.get_device_limit(device_id)
+        _npu_core_cache = (limits["cube_core_num"], limits["vector_core_num"])
+    except Exception:
+        props = torch.npu.get_device_properties()
+        _npu_core_cache = (props.cube_core_num, props.vector_core_num)
+    return _npu_core_cache
+
+def _calculate_batch_size(batch_size, cu_seqlens_q, seqused_q):
+    batchSize = 0
+    if batch_size is not None:
+        batchSize = batch_size
+    elif cu_seqlens_q is not None and cu_seqlens_q.size(0) > 0:
+        batchSize = cu_seqlens_q.size(0) - 1
+    elif seqused_q is not None:
+        batchSize = seqused_q.size(0)
+    return batchSize
+
+def _calculate_metadata_size(batch_size, num_heads_kv):
+    """计算 metadata tensor 的对齐后大小"""
+    aicNum, aivNum = get_npu_core_count()
+    metadataSize = ((aicNum + aivNum) * batch_size * num_heads_kv + 1) * 16
+    alignedSize = ((metadataSize + 4095) // 4096) * 4096
+    return alignedSize
 
 class MixedQuantFlashAttenOpBuilder(OpBuilder):
     def __init__(self):
@@ -33,7 +66,14 @@ class MixedQuantFlashAttenOpBuilder(OpBuilder):
 
     def schema(self) -> str:
         """PyTorch operator signature."""
-        return "mixed_quant_flash_attn(Tensor q, Tensor k, Tensor v, Tensor k_descale, Tensor v_descale," \
+        return [
+            "mixed_quant_flash_attn_metadata( int num_heads_q, int num_heads_kv, int head_dim, int quant_mode, *, " \
+            "Tensor? cu_seqlens_q=None, Tensor? cu_seqlens_kv=None, Tensor? seqused_q=None, Tensor? seqused_kv=None," \
+            "int? batch_size=None, int? max_seqlen_q=-1, int? max_seqlen_kv=-1, " \
+            "int? mask_mode=0, int? win_left=-1, int? win_right=-1, " \
+            "str? layout_q=\"BSND\", str? layout_kv=\"PA_BBND\", str? layout_attn_out=\"BSND\") -> Tensor",
+
+            "mixed_quant_flash_attn(Tensor q, Tensor k, Tensor v, Tensor k_descale, Tensor v_descale," \
             "Tensor?block_table=None, Tensor?cu_seqlens_q=None," \
             "Tensor?seqused_q=None," \
             "Tensor?seqused_kv=None, Tensor?sinks=None, Tensor?attn_mask=None, Tensor?metadata=None," \
@@ -41,26 +81,40 @@ class MixedQuantFlashAttenOpBuilder(OpBuilder):
             "int max_seqlen_q=-1, int max_seqlen_kv=-1," \
             "str layout_q=\"BSND\", str layout_kv=\"PA_BBND\", str layout_attn_out=\"BSND\", " \
             "bool return_softmax_lse=False)->(Tensor, Tensor)"
+        ]
 
     def register_meta(self):
         """
         Registers the Meta implementation (Shape/Dtype inference).
         Essential for Autograd and FakeTensor support.
         """
+        @torch.library.register_fake("cann_ops_transformer::" + FA_METADATA_OP_NAME)
+        def mixed_quant_flash_attn_metadata_meta(num_heads_q: int, num_heads_kv: int, head_dim: int, quant_mode: _QuantMode,
+                                    cu_seqlens_q: Optional[torch.Tensor] = None, cu_seqlens_kv: Optional[torch.Tensor] = None,
+                                    seqused_q: Optional[torch.Tensor] = None, seqused_kv: Optional[torch.Tensor] = None,
+                                    batch_size: Optional[int] = None, max_seqlen_q: Optional[int] = -1,
+                                    max_seqlen_kv: Optional[int] = -1,
+                                    mask_mode: _MaskMode = _MaskMode.ALL, win_left: Optional[int] = -1,
+                                    win_right: Optional[int] = -1, layout_q: Optional[str] = "BSND",
+                                    layout_kv: Optional[str] = "PA_BBND", layout_attn_out: Optional[str] = "BSND") -> torch.Tensor:
+            batch_size = _calculate_batch_size(batch_size, cu_seqlens_q, seqused_q) if batch_size is None else batch_size
+            metadataSize = _calculate_metadata_size(batch_size, num_heads_kv)
+            return torch.empty((metadataSize,), dtype=torch.int32, device="npu")
+
         @impl(AS_LIBRARY, self.name, "Meta")
         def mixed_quant_flash_attn_meta(
-            q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, k_descale: torch.Tensor, v_descale: torch.Tensor, 
-            block_table: Optional[torch.Tensor] = None, 
+            q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, k_descale: torch.Tensor, v_descale: torch.Tensor,
+            block_table: Optional[torch.Tensor] = None,
             cu_seqlens_q: Optional[torch.Tensor] = None,
-            seqused_q: Optional[torch.Tensor] = None, seqused_kv: Optional[torch.Tensor] = None, 
-            sinks: Optional[torch.Tensor] = None, 
-            attn_mask: Optional[torch.Tensor] = None, 
+            seqused_q: Optional[torch.Tensor] = None, seqused_kv: Optional[torch.Tensor] = None,
+            sinks: Optional[torch.Tensor] = None,
+            attn_mask: Optional[torch.Tensor] = None,
             metadata: Optional[torch.Tensor] = None,
-            quant_mode: _QuantMode = _QuantMode.A16C4_MXFP4, 
-            softmax_scale: Optional[float] = 1.0, 
+            quant_mode: _QuantMode = _QuantMode.A16C4_MXFP4,
+            softmax_scale: Optional[float] = 1.0,
             mask_mode: Optional[_MaskMode] = _MaskMode.ALL, win_left: Optional[int] = -1, win_right: Optional[int] = -1,
             max_seqlen_q: Optional[int] = -1, max_seqlen_kv: Optional[int] = -1,
-            layout_q: Optional[str] = "BSND", layout_kv: Optional[str] = "PA_BBND", layout_attn_out: Optional[str] = "BSND", 
+            layout_q: Optional[str] = "BSND", layout_kv: Optional[str] = "PA_BBND", layout_attn_out: Optional[str] = "BSND",
             return_softmax_lse: Optional[bool] = False
         ):
             if layout_q == "TND":
@@ -100,7 +154,7 @@ class MixedQuantFlashAttenOpBuilder(OpBuilder):
                 )
                 attentionOutSize = (bSize, sSize, nSize, dSize)
 
-            
+
             return (
  	                 torch.empty(attentionOutSize, dtype=q.dtype, device='meta'),
  	                 torch.empty(softmaxOutSize, dtype=q.dtype, device='meta')
@@ -111,21 +165,46 @@ class MixedQuantFlashAttenOpBuilder(OpBuilder):
 mixed_quant_flash_attn_op_builder = MixedQuantFlashAttenOpBuilder()
 op_module = mixed_quant_flash_attn_op_builder.load()  # Compiles/loads the .so file
 
+@impl(AS_LIBRARY, FA_METADATA_OP_NAME, "PrivateUse1")
+def mixed_quant_flash_attn_metadata(num_heads_q: int, num_heads_kv: int, head_dim: int, quant_mode: _QuantMode,
+                            cu_seqlens_q: Optional[torch.Tensor] = None, cu_seqlens_kv: Optional[torch.Tensor] = None,
+                            seqused_q: Optional[torch.Tensor] = None, seqused_kv: Optional[torch.Tensor] = None,
+                            batch_size: Optional[int] = None, max_seqlen_q: Optional[int] = -1,
+                            max_seqlen_kv: Optional[int] = -1,
+                            mask_mode: _MaskMode = _MaskMode.ALL, win_left: Optional[int] = -1,
+                            win_right: Optional[int] = -1, layout_q: Optional[str] = "BSND",
+                            layout_kv: Optional[str] = "PA_BBND", layout_attn_out: Optional[str] = "BSND") -> torch.Tensor:
+    """
+    Dispatcher implementation: NPU.
+    'PrivateUse1' is dispatch key for custom NPU backends.
+    """
+    batch_size = _calculate_batch_size(batch_size, cu_seqlens_q, seqused_q) if batch_size is None else batch_size
+    metadataSize = _calculate_metadata_size(batch_size, num_heads_kv)
+    output = torch.empty((metadataSize,), dtype=torch.int32, device="npu")
+
+    return op_module.mixed_quant_flash_attn_metadata(cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv,
+                                              num_heads_q, num_heads_kv, head_dim, quant_mode,
+                                              batch_size, max_seqlen_q, max_seqlen_kv,
+                                              mask_mode, win_left, win_right, layout_q, layout_kv, layout_attn_out, output)
+
+mixed_quant_flash_attn_metadata.MaskMode = _MaskMode
+mixed_quant_flash_attn_metadata.QuantMode = _QuantMode
+
 
 @impl(AS_LIBRARY, mixed_quant_flash_attn_op_builder.name, "PrivateUse1")
 def mixed_quant_flash_attn(
-            q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, k_descale: torch.Tensor, v_descale: torch.Tensor, 
-            block_table: Optional[torch.Tensor] = None, 
+            q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, k_descale: torch.Tensor, v_descale: torch.Tensor,
+            block_table: Optional[torch.Tensor] = None,
             cu_seqlens_q: Optional[torch.Tensor] = None,
-            seqused_q: Optional[torch.Tensor] = None, seqused_kv: Optional[torch.Tensor] = None, 
-            sinks: Optional[torch.Tensor] = None, 
-            attn_mask: Optional[torch.Tensor] = None, 
+            seqused_q: Optional[torch.Tensor] = None, seqused_kv: Optional[torch.Tensor] = None,
+            sinks: Optional[torch.Tensor] = None,
+            attn_mask: Optional[torch.Tensor] = None,
             metadata: Optional[torch.Tensor] = None,
-            quant_mode: _QuantMode = _QuantMode.A16C4_MXFP4, 
-            softmax_scale: Optional[float] = 1.0, 
+            quant_mode: _QuantMode = _QuantMode.A16C4_MXFP4,
+            softmax_scale: Optional[float] = 1.0,
             mask_mode: Optional[_MaskMode] = _MaskMode.ALL, win_left: Optional[int] = -1, win_right: Optional[int] = -1,
             max_seqlen_q: Optional[int] = -1, max_seqlen_kv: Optional[int] = -1,
-            layout_q: Optional[str] = "BSND", layout_kv: Optional[str] = "PA_BBND", layout_attn_out: Optional[str] = "BSND", 
+            layout_q: Optional[str] = "BSND", layout_kv: Optional[str] = "PA_BBND", layout_attn_out: Optional[str] = "BSND",
             return_softmax_lse: Optional[bool] = False
 ):
     """

@@ -21,6 +21,21 @@ const int64_t DIM_ONE = 1;
 const int64_t DIM_TWO = 2;
 const int64_t DIM_THREE = 3;
 const int64_t MAX_DIM_SIZE = 8;
+
+at::Tensor mixed_quant_flash_attn_metadata(const c10::optional<at::Tensor> &cu_seqlens_q,
+                                   const c10::optional<at::Tensor> &cu_seqlens_kv,
+                                   const c10::optional<at::Tensor> &seqused_q,
+                                   const c10::optional<at::Tensor> &seqused_kv, int64_t num_heads_q,
+                                   int64_t num_heads_kv, int64_t head_dim, int64_t quant_mode, int64_t batch_size, int64_t max_seqlen_q,
+                                   int64_t max_seqlen_kv, int64_t mask_mode, int64_t win_left, int64_t win_right,
+                                   std::string layout_q, std::string layout_kv, std::string layout_attn_out, const at::Tensor &output)
+{
+    ACLNN_CMD(aclnnMixedQuantFlashAttnMetadata, cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv, batch_size, max_seqlen_q,
+              max_seqlen_kv, num_heads_q, num_heads_kv, head_dim, quant_mode, mask_mode, win_left, win_right, layout_q, layout_kv,
+              layout_attn_out, output);
+    return output;
+}
+
 std::tuple<at::Tensor, at::Tensor>
 mixed_quant_flash_attn(const at::Tensor &q, const at::Tensor &k, const at::Tensor &v, const at::Tensor &k_descale, const at::Tensor &v_descale,
                const c10::optional<at::Tensor> &block_table, const c10::optional<at::Tensor> &cu_seqlens_q,
@@ -106,6 +121,7 @@ mixed_quant_flash_attn(const at::Tensor &q, const at::Tensor &k, const at::Tenso
 // Bind the C++ function to Python module
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
+    m.def("mixed_quant_flash_attn_metadata", &mixed_quant_flash_attn_metadata, "mixed_quant_flash_attn_metadata");
     m.def("mixed_quant_flash_attn", &mixed_quant_flash_attn, "mixed_quant_flash_attn");
 }
 } // namespace op_api

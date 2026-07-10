@@ -17,7 +17,7 @@ from .mega_moe import (
     get_mega_moe_ccl_buffer_size
 )
 from .deep_ep import MoeDistributeBuffer
-from .flash_attn import flash_attn, flash_attn_metadata
+from .flash_attn import flash_attn, flash_attn_metadata, mixed_quant_flash_attn_metadata
 from .mixed_quant_flash_attn import mixed_quant_flash_attn
 from .mixed_quant_sparse_flash_mla import mixed_quant_sparse_flash_mla, mixed_quant_sparse_flash_mla_metadata
 from .scatter_pa_kv_cache_with_k_scale import scatter_pa_kv_cache_with_k_scale
@@ -44,5 +44,3 @@ from .qkv_rms_norm_rope_cache_with_k_scale import (
 )
 from .elastic_buffer import ElasticBuffer, EPHandle
 from .grouped_matmul_activation_quant import grouped_matmul_activation_quant
-
-from .mixed_quant_flash_attn_metadata import mixed_quant_flash_attn_metadata

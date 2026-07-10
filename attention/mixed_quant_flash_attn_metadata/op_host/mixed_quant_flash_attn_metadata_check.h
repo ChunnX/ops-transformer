@@ -26,7 +26,7 @@ static aclnnStatus ParamsCheck(const aclTensor *cuSeqlensQOptional, const aclTen
                                const aclTensor *sequsedQOptional, const aclTensor *sequsedKvOptional, int64_t batchSize,
                                int64_t maxSeqlenQ, int64_t maxSeqlenKv, int64_t numHeadsQ, int64_t numHeadsKv,
                                int64_t headDim, int64_t quantMode, int64_t maskMode, int64_t winLeft, int64_t winRight,
-                               const char *layoutQ, const char *layoutKv, const char *layoutOut,
+                               const char *layoutQ, const char *layoutKv, const char *layoutAttnOut,
                                const aclTensor *metaData)
 {
     // TODO: 魔鬼数字
@@ -66,10 +66,10 @@ static aclnnStatus ParamsCheck(const aclTensor *cuSeqlensQOptional, const aclTen
         return ACLNN_ERR_PARAM_INVALID;
     }
 
-    bool layoutOutValid =
-        (strcmp(layoutOut, "BSND") == 0 || strcmp(layoutOut, "TND") == 0 || strcmp(layoutOut, "BNSD") == 0);
-    if (!layoutOutValid) {
-        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "layoutOut only supports BSND, TND, BNSD, but got %s", layoutOut);
+    bool layoutAttnOutValid =
+        (strcmp(layoutAttnOut, "BSND") == 0 || strcmp(layoutAttnOut, "TND") == 0 || strcmp(layoutAttnOut, "BNSD") == 0);
+    if (!layoutAttnOutValid) {
+        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "layoutAttnOut only supports BSND, TND, BNSD, but got %s", layoutAttnOut);
         return ACLNN_ERR_PARAM_INVALID;
     }
 
