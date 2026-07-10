@@ -21,11 +21,14 @@ __golden__ = {
 def _mhc_post_golden_impl(x_f32, h_res_f32, h_out_f32, h_post_f32):
     h_post_term = h_post_f32.unsqueeze(-1) * h_out_f32.unsqueeze(-2)
 
-    h_comb_term = h_post_term
-    for i in range(h_res_f32.size(-2)):
-        a = h_res_f32[..., i, :].unsqueeze(-1)
-        b = x_f32[..., i, :].unsqueeze(-2)
-        h_comb_term = torch.addcmul(h_comb_term, a, b, value=1.0)
+    if h_res_f32 is None:
+        h_comb_term = x_f32 + h_post_term
+    else:
+        h_comb_term = h_post_term
+        for i in range(h_res_f32.size(-2)):
+            a = h_res_f32[..., i, :].unsqueeze(-1)
+            b = x_f32[..., i, :].unsqueeze(-2)
+            h_comb_term = torch.addcmul(h_comb_term, a, b, value=1.0)
 
     return h_comb_term
 
@@ -34,7 +37,7 @@ def mhc_post_golden(x, h_res, h_out, h_post, **kwargs):
     dtype = x.dtype
 
     x_f32 = torch.from_numpy(x.astype(np.float32))
-    h_res_f32 = torch.from_numpy(h_res.astype(np.float32))
+    h_res_f32 = torch.from_numpy(h_res.astype(np.float32)) if h_res is not None else None
     h_out_f32 = torch.from_numpy(h_out.astype(np.float32))
     h_post_f32 = torch.from_numpy(h_post.astype(np.float32))
 
@@ -65,7 +68,7 @@ def aclnn_mhc_post_golden(x, hRes, hOut, hPost, out, **kwargs):
         return t
 
     x_np = _to_numpy(x)
-    hRes_np = _to_numpy(hRes)
+    hRes_np = _to_numpy(hRes) if hRes is not None else None
     hOut_np = _to_numpy(hOut)
     hPost_np = _to_numpy(hPost)
 
