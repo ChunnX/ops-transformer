@@ -43,3 +43,4 @@ from .qkv_rms_norm_rope_cache_with_k_scale import (
 )
 from .elastic_buffer import ElasticBuffer, EPHandle
 from .grouped_matmul_activation_quant import grouped_matmul_activation_quant
+from .quant_reduce_scatter import quant_reduce_scatter
