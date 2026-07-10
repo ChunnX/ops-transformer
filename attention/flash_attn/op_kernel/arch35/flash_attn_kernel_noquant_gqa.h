@@ -16,14 +16,22 @@
 #ifndef FLASH_ATTN_KERNEL_NOQUANT_GQA_H_
 #define FLASH_ATTN_KERNEL_NOQUANT_GQA_H_
 
+#if __has_include("../../../common/op_kernel/fia_public_define.h")
 #include "../../../common/op_kernel/fia_public_define.h"
+#else
+#include "../../common/fia_public_define.h"
+#endif
 #include "kernel_operator_list_tensor_intf.h" // TensorDesc
 #include "../utils/flash_attn_common_def.h"
 #include "../utils/flash_attn_utils.h"
 
 #include "flash_attn_block_cube_noquant_gqa.h"
 #include "flash_attn_block_vec_noquant_gqa.h"
+#if __has_include("../../../common/op_kernel/memory_copy_arch35.h")
 #include "../../../common/op_kernel/memory_copy_arch35.h"
+#else
+#include "../../common/memory_copy_arch35.h"
+#endif
 #include "flash_attn_block_vec_noquant_flashdecode.h"
 
 #if ASC_DEVKIT_MAJOR >= 9
