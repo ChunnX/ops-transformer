@@ -27,8 +27,6 @@ using aT1 = MatmulType<TPosition::GM, CubeFormat::ND, bfloat16_t>;
 using bT1 = MatmulType<TPosition::GM, CubeFormat::ND, bfloat16_t>;
 template <typename cType>
 using StageOneMTT = matmul::MatmulImpl<aT1, bT1, MatmulType<TPosition::GM, CubeFormat::ND, cType>>;
-using StageOneMT = StageOneMTT<bfloat16_t>;
-using StageOneMTFp32C = StageOneMTT<float>;
 
 constexpr uint64_t UB_REST_BYTES = 140 * 1024;  // 140KB
 constexpr uint64_t INVERSE_SHAPE = 32;          // 对角块边长
@@ -73,7 +71,9 @@ template <bool kStateIsFp32 = false>
 class Stage1 {
 public:
     using vInnerType = std::conditional_t<kStateIsFp32, float, bfloat16_t>;
-    __aicore__ inline Stage1(StageOneMT &mm, StageOneMTFp32C &mmFp32C) : mm(mm), mmFp32C(mmFp32C) {}
+    using MMBf16 = StageOneMTT<bfloat16_t>;
+    using MM = StageOneMTT<vInnerType>;
+    __aicore__ inline Stage1(MMBf16 &mmBf16, MM &mm) : mmBf16_(mmBf16), mm(mm) {}
     __aicore__ inline void SetGlobalTensors(const GDRStageOneInitParams<vInnerType> &initParams)
     {
         queryGm_ = initParams.query;
@@ -303,14 +303,14 @@ private:
         AscendC::CrossCoreWaitFlag(0x9); // 同步0
         // key @ key.transpose(-1,-2)
         for (uint32_t i = 0; i < curParaNum; ++i) {
-            AICProcess(mm, keyConGm_[i * ckOffset_], keyConGm_[i * ckOffset_], kkWsGm_[i * ccOffset_],
+            AICProcess(mmBf16_, keyConGm_[i * ckOffset_], keyConGm_[i * ckOffset_], kkWsGm_[i * ccOffset_],
                        {chunkSize_, chunkSize_, dk_, chunkSize_, chunkSize_, dk_}, true);
         }
         AscendC::CrossCoreSetFlag<0x2, PIPE_FIX>(0x8); // 同步1
 
         // query @ key.transpose(-1,-2)   stage1 out
         for (uint32_t i = 0; i < curParaNum; ++i) {
-            AICProcess(mm, queryConGm_[i * ckOffset_], keyConGm_[i * ckOffset_], outQkGm_[chunkRowBase_[i] * chunkSize_],
+            AICProcess(mmBf16_, queryConGm_[i * ckOffset_], keyConGm_[i * ckOffset_], outQkGm_[chunkRowBase_[i] * chunkSize_],
                        {validLenBatch_[i], validLenBatch_[i], dk_, validLenBatch_[i], validLenBatch_[i], dk_},
                        true);
         }
@@ -325,22 +325,16 @@ private:
 
         // attn @ k_cumdecay
         for (uint32_t i = 0; i < curParaNum; ++i) {
-            AICProcess(mm, attnWsGm_[i * ccOffset_], gBKWsGm_[i * ckOffset_], outKCumdecayGm_[chunkRowBase_[i] * dk_],
+            AICProcess(mmBf16_, attnWsGm_[i * ccOffset_], gBKWsGm_[i * ckOffset_], outKCumdecayGm_[chunkRowBase_[i] * dk_],
                        {chunkSize_, dk_, chunkSize_, chunkSize_, dk_, chunkSize_});
         }
         AscendC::CrossCoreWaitFlag(0x5); // 同步4
 
         // attn @ v_beta    stage1 out
         for (uint32_t i = 0; i < curParaNum; ++i) {
-            if constexpr (kStateIsFp32) {
-                AICProcess(mmFp32C, attnWsGm_[i * ccOffset_], vBetaWsGm_[i * cvOffset_],
-                           outVInnerGm_[chunkRowBase_[i] * dv_],
-                           {chunkSize_, dv_, chunkSize_, chunkSize_, dv_, chunkSize_});
-            } else {
-                AICProcess(mm, attnWsGm_[i * ccOffset_], vBetaWsGm_[i * cvOffset_],
-                           outVInnerGm_[chunkRowBase_[i] * dv_],
-                           {chunkSize_, dv_, chunkSize_, chunkSize_, dv_, chunkSize_});
-            }
+            AICProcess(mm, attnWsGm_[i * ccOffset_], vBetaWsGm_[i * cvOffset_],
+                       outVInnerGm_[chunkRowBase_[i] * dv_],
+                       {chunkSize_, dv_, chunkSize_, chunkSize_, dv_, chunkSize_});
         }
     }
 
@@ -832,17 +826,17 @@ private:
     __aicore__ inline void InverseAICProcess(GlobalTensor<bfloat16_t> x, GlobalTensor<bfloat16_t> y,
                                              GlobalTensor<bfloat16_t> z)
     {
-        mm.SetOrgShape(chunkSize_, chunkSize_, chunkSize_);
-        mm.SetSingleShape(INVERSE_SHAPE, INVERSE_SHAPE, INVERSE_SHAPE);
-        mm.SetTensorA(x);
-        mm.SetTensorB(y);
-        mm.IterateAll(z);
+        mmBf16_.SetOrgShape(chunkSize_, chunkSize_, chunkSize_);
+        mmBf16_.SetSingleShape(INVERSE_SHAPE, INVERSE_SHAPE, INVERSE_SHAPE);
+        mmBf16_.SetTensorA(x);
+        mmBf16_.SetTensorB(y);
+        mmBf16_.IterateAll(z);
         mm.End();
     }
     
     TPipe *pipe_;
-    StageOneMT &mm;
-    StageOneMTFp32C &mmFp32C;
+    MMBf16 &mmBf16_;
+    MM &mm;
     const ChunkGatedDeltaRuleTilingData *tiling_;
     ChunkGroup cg_;
     uint32_t nk_;

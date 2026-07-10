@@ -33,8 +33,7 @@ using StageTwoMTFp32C = StageTwoMTT<float>;
 template <typename stateType>
 struct StageTwoParams {
     GlobalTensor<bfloat16_t> qPrime;        // (Nv, Sp, Dk)
-    GlobalTensor<stateType> vInner;         // (Nv, Sp, Dv) primary vInner
-    GlobalTensor<bfloat16_t> vInnerBf16;    // (Nv, Sp, Dv) BF16 vInner temp (FP32 path only)
+    GlobalTensor<stateType> vInner;         // (Nv, Sp, Dv)
     GlobalTensor<float> gCum;               // (Nv, Sp)
     GlobalTensor<bfloat16_t> kCumdecay;     // (Nv, Sp, Dk)
     GlobalTensor<bfloat16_t> curStateBf16;  // (Nv, Dv, Dk) BF16 state for AIC
@@ -168,7 +167,7 @@ public:
                             CopyOut<bfloat16_t>(sTP_->curStateBf16[nvId * Dv_ * Dk_], Dv_, Dk_, false, curDk_);
                             uint64_t mm_offset1 = nvId * Sp_ * Dv_ + length * Dv_;
                             CastGmToGm<float, bfloat16_t>(sTP_->vInner[mm_offset1],
-                                                          sTP_->vInnerBf16[mm_offset1],
+                                                          sTP_->vInner[mm_offset1].template ReinterpretCast<bfloat16_t>(),
                                                           curChunkSize_ * Dv_);
                         }
                         CrossCoreSetFlag<0x2, PIPE_MTE3>(0x5);
@@ -190,40 +189,33 @@ public:
                     }
                 }
                 if ASCEND_IS_AIC {
+                    uint64_t mm_offset0 = nvId * Sp_ * Dk_ + length * Dk_;
+                    uint64_t mm_offset1 = nvId * Sp_ * Dv_ + length * Dv_;
+                    auto stateForAic = sTP_->curStateBf16[nvId * Dv_ * Dk_];
+                    auto stateOut = sTP_->stateOut[nvId * Dv_ * Dk_];
                     if constexpr (kIsFp32) {
-                        uint64_t mm_offset0 = nvId * Sp_ * Dk_ + length * Dk_;
-                        uint64_t mm_offset1 = nvId * Sp_ * Dv_ + length * Dv_;
-                        auto bf16In = sTP_->curStateBf16[nvId * Dv_ * Dk_];
-                        auto stateOut = sTP_->stateOut[nvId * Dv_ * Dk_];
                         if (cId == 0) {
                             CrossCoreWaitFlag(0x3);
                         }
-                        CalVPrime(sTP_->kCumdecay[mm_offset0], bf16In, sTP_->vInner[mm_offset1]);
-                        CalAttnInter(sTP_->qPrime[mm_offset0], bf16In,
-                                     sTP_->out[nvId * Dv_ + cId * chunkSize_ * Nv_ * Dv_]);
-                        CrossCoreSetFlag<0x2, PIPE_FIX>(0x2);
-                        CrossCoreWaitFlag(0x5);
-                        CalStateNew(sTP_->vInnerBf16[mm_offset1], sTP_->kg[mm_offset0], stateOut,
-                                    sTP_->curStateBf16[nvId * Dv_ * Dk_]);
-                        SetFlag<HardEvent::FIX_MTE2>(FIX_MTE2_EVENT);
-                        WaitFlag<HardEvent::FIX_MTE2>(FIX_MTE2_EVENT);
-                        CrossCoreSetFlag<0x2, PIPE_FIX>(0x4);
                     } else {
-                        auto curState = (cId == 0) ? sTP_->curStateBf16[nvId * Dv_ * Dk_]
-                                                   : sTP_->stateOut[nvId * Dv_ * Dk_];
-                        auto finalState = sTP_->stateOut[nvId * Dv_ * Dk_];
-                        uint64_t mm_offset0 = nvId * Sp_ * Dk_ + length * Dk_;
-                        uint64_t mm_offset1 = nvId * Sp_ * Dv_ + length * Dv_;
-                        CalVPrime(sTP_->kCumdecay[mm_offset0], curState, sTP_->vInner[mm_offset1]);
-                        CalAttnInter(sTP_->qPrime[mm_offset0], curState,
-                                     sTP_->out[nvId * Dv_ + cId * chunkSize_ * Nv_ * Dv_]);
-                        CrossCoreSetFlag<0x2, PIPE_FIX>(0x2);   // 读完之前AIV不能写
-                        CrossCoreWaitFlag(0x5);
-                        CalStateNew(sTP_->vInner[mm_offset1], sTP_->kg[mm_offset0], finalState);
-                        SetFlag<HardEvent::FIX_MTE2>(FIX_MTE2_EVENT);
-                        WaitFlag<HardEvent::FIX_MTE2>(FIX_MTE2_EVENT);
-                        CrossCoreSetFlag<0x2, PIPE_FIX>(0x4);
+                        stateForAic = (cId == 0) ? sTP_->curStateBf16[nvId * Dv_ * Dk_]
+                                                 : sTP_->stateOut[nvId * Dv_ * Dk_];
                     }
+                    CalVPrime(sTP_->kCumdecay[mm_offset0], stateForAic, sTP_->vInner[mm_offset1]);
+                    CalAttnInter(sTP_->qPrime[mm_offset0], stateForAic,
+                                 sTP_->out[nvId * Dv_ + cId * chunkSize_ * Nv_ * Dv_]);
+                    CrossCoreSetFlag<0x2, PIPE_FIX>(0x2);
+                    CrossCoreWaitFlag(0x5);
+                    if constexpr (kIsFp32) {
+                        CalStateNew(sTP_->vInner[mm_offset1].template ReinterpretCast<bfloat16_t>(),
+                                    sTP_->kg[mm_offset0], stateOut,
+                                    sTP_->curStateBf16[nvId * Dv_ * Dk_]);
+                    } else {
+                        CalStateNew(sTP_->vInner[mm_offset1], sTP_->kg[mm_offset0], stateOut);
+                    }
+                    SetFlag<HardEvent::FIX_MTE2>(FIX_MTE2_EVENT);
+                    WaitFlag<HardEvent::FIX_MTE2>(FIX_MTE2_EVENT);
+                    CrossCoreSetFlag<0x2, PIPE_FIX>(0x4);
                 }
             }
         }
