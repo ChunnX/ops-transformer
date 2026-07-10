@@ -24,6 +24,9 @@ namespace Compressor {
 
 struct ToolsParams {
     uint32_t seqSize = 0U;
+    // Nonzero only for grouped decode x_cache reads.  It is the logical number
+    // of X rows the compressor consumes after composing cache history and current x.
+    uint32_t xCacheReadSize = 0U;
     uint32_t cmpRatio = 0U;
 };
 
@@ -32,7 +35,7 @@ class CompressorTools {
 public:
     __aicore__ inline CompressorTools() {}
 
-    __aicore__ inline void Init(__gm__ uint8_t *cuSeqlens, __gm__ uint8_t *seqUsed, __gm__ uint8_t *startPos);
+    __aicore__ inline void Init(__gm__ uint8_t *startPos, __gm__ uint8_t *seqUsed, __gm__ uint8_t *cuSeqlens);
 
     __aicore__ inline uint32_t GetSeqUsed(uint32_t bIdx);
     __aicore__ inline uint32_t GetStartPos(uint32_t bIdx);
@@ -44,6 +47,10 @@ public:
     bool isExistSeqUsed_ = false;
 
 private:
+    __aicore__ inline bool IsGroupedDecodeActive(uint32_t bIdx);
+    __aicore__ inline uint32_t GetRawSeqUsed(uint32_t bIdx);
+    __aicore__ inline uint32_t GetRawStartPos(uint32_t bIdx);
+
     bool isExistStartPos_ = false;
     GlobalTensor<int32_t> cuSeqlensGm_;
     GlobalTensor<int32_t> sequsedGm_;
@@ -70,7 +77,7 @@ __aicore__ inline void CompressorTools<COMP>::Init(__gm__ uint8_t *startPos, __g
 }
 
 template <typename COMP>
-__aicore__ inline uint32_t CompressorTools<COMP>::GetSeqUsed(uint32_t bIdx)
+__aicore__ inline uint32_t CompressorTools<COMP>::GetRawSeqUsed(uint32_t bIdx)
 {
     if (isExistSeqUsed_) {
         return (uint32_t)sequsedGm_.GetValue(bIdx);
@@ -84,7 +91,7 @@ __aicore__ inline uint32_t CompressorTools<COMP>::GetSeqUsed(uint32_t bIdx)
 }
 
 template <typename COMP>
-__aicore__ inline uint32_t CompressorTools<COMP>::GetStartPos(uint32_t bIdx)
+__aicore__ inline uint32_t CompressorTools<COMP>::GetRawStartPos(uint32_t bIdx)
 {
     if (isExistStartPos_) {
         return (uint32_t)startPosGm_.GetValue(bIdx);
@@ -94,11 +101,56 @@ __aicore__ inline uint32_t CompressorTools<COMP>::GetStartPos(uint32_t bIdx)
 }
 
 template <typename COMP>
+__aicore__ inline bool CompressorTools<COMP>::IsGroupedDecodeActive(uint32_t bIdx)
+{
+    if (toolParams_.xCacheReadSize == 0 || toolParams_.cmpRatio == 0 || !isExistStartPos_ || !isExistSeqUsed_) {
+        return false;
+    }
+    // Each batch may sit at a different decode position.  A batch is active only
+    // when raw [start_pos, start_pos + seq_used) crosses a compression boundary.
+    uint32_t rawStartPos = GetRawStartPos(bIdx);
+    uint32_t rawSeqUsed = GetRawSeqUsed(bIdx);
+    uint32_t cmpRatio = toolParams_.cmpRatio;
+    return ((rawStartPos + rawSeqUsed) / cmpRatio) > (rawStartPos / cmpRatio);
+}
+
+template <typename COMP>
+__aicore__ inline uint32_t CompressorTools<COMP>::GetSeqUsed(uint32_t bIdx)
+{
+    if (toolParams_.xCacheReadSize > 0 && toolParams_.cmpRatio > 0 && isExistStartPos_ && isExistSeqUsed_) {
+        // Inactive grouped decode batches must skip projection entirely; active
+        // batches consume one complete x_cache window.
+        return IsGroupedDecodeActive(bIdx) ? toolParams_.xCacheReadSize : 0;
+    }
+    return GetRawSeqUsed(bIdx);
+}
+
+template <typename COMP>
+__aicore__ inline uint32_t CompressorTools<COMP>::GetStartPos(uint32_t bIdx)
+{
+    if (toolParams_.xCacheReadSize > 0 && toolParams_.cmpRatio > 0 && isExistStartPos_ && isExistSeqUsed_) {
+        if (!IsGroupedDecodeActive(bIdx)) {
+            return GetRawStartPos(bIdx);
+        }
+        uint32_t completeGroupEnd = ((GetRawStartPos(bIdx) + GetRawSeqUsed(bIdx)) / toolParams_.cmpRatio) *
+                                    toolParams_.cmpRatio;
+        // Align the composed window to the complete group that just became available.
+        return completeGroupEnd - toolParams_.xCacheReadSize;
+    }
+    return GetRawStartPos(bIdx);
+}
+
+template <typename COMP>
 __aicore__ inline uint32_t CompressorTools<COMP>::GetSeqLength(uint32_t bIdx)
 {
     if constexpr (COMP::xLayout == X_LAYOUT::TH) {
         return cuSeqlensGm_.GetValue(bIdx + 1) - cuSeqlensGm_.GetValue(bIdx);
     } else {
+        if (toolParams_.xCacheReadSize > 0) {
+            // BSH grouped decode logically runs over the composed x_cache window,
+            // not just the one-token x tensor passed by the caller.
+            return toolParams_.xCacheReadSize;
+        }
         return toolParams_.seqSize;
     }
 }
