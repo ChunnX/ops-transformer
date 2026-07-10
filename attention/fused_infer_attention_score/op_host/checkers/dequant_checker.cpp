@@ -1681,7 +1681,7 @@ ge::graphStatus DequantChecker::CheckStrideFP8GQAFullquant(const FiaTilingInfo &
             std::string actStr = "(..., ..., " +
                 std::to_string(fiaInfo.kScaleStrides->GetStride(2)) + ")";
             OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "key_antiquant_scale",
-                ("stride is " + actStr + ", Bs axis should be " + expStr).c_str());
+                ("key_antiquant_scale stride is " + actStr + ", expected " + expStr).c_str());
             return ge::GRAPH_FAILED;
         }
     }
@@ -1700,7 +1700,7 @@ ge::graphStatus DequantChecker::CheckStrideFP8GQAFullquant(const FiaTilingInfo &
                 std::to_string(fiaInfo.keyStrides->GetStride(2)) + ", " +
                 std::to_string(fiaInfo.keyStrides->GetStride(3)) + ")";
             OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "key",
-                ("stride is " + actStr + ", expected " + expStr).c_str());
+                ("key stride is " + actStr + ", expected " + expStr).c_str());
             return ge::GRAPH_FAILED;
         }
     }
@@ -1719,7 +1719,7 @@ ge::graphStatus DequantChecker::CheckStrideFP8GQAFullquant(const FiaTilingInfo &
                 std::to_string(fiaInfo.valueStrides->GetStride(2)) + ", " +
                 std::to_string(fiaInfo.valueStrides->GetStride(3)) + ")";
             OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "value",
-                ("stride is " + actStr + ", expected " + expStr).c_str());
+                ("value stride is " + actStr + ", expected " + expStr).c_str());
             return ge::GRAPH_FAILED;
         }
     }
