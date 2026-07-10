@@ -35,15 +35,3 @@ def get_tolerance(dtype) -> dict:
     return DEFAULT_TOLERANCE.get(dtype, {"atol": 1e-3, "rtol": 1e-3})
 
 
-def forward(inputs: dict, device: str = "npu", **kwargs) -> dict:
-    from core.gen_data import GenDataBackend
-    from core.cpu import CpuBackend
-    from core.npu import NpuBackend
-    if device == "cpu":
-        return CpuBackend().cpu_compute(inputs)
-    elif device == "npu":
-        return NpuBackend().npu_compute(inputs, **kwargs)
-    elif device == "gpu":
-        from core.gpu import GpuBackend
-        return GpuBackend().gpu_compute(inputs)
-    raise ValueError(f"Unsupported device: {device}")
