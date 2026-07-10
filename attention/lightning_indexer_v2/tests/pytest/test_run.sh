@@ -29,9 +29,9 @@ run_single() {
     python3 -m pytest -rA -s $TEST_LIV2_SINGLE_SCRIPT -v -m ci -W ignore::UserWarning -W ignore::DeprecationWarning
 }
 
-# 用例批量生成调试
+# 用例批量生成调试 (eager模式)
 run_batch() {
-    echo "===== 执行用例批量生成测试 ====="
+    echo "===== 执行用例批量生成测试 (eager模式) ====="
 
     echo -e "\n===== 第一步：执行lightning_indexer_v2_pt_save.py ====="
     python3 $LIV2_PT_SAVE_SCRIPT $PATH1 $PATH2
@@ -59,22 +59,54 @@ run_batch() {
     echo -e "\n=====执行完成！====="
 }
 
+# 用例批量生成调试 (acl_graph模式)
+run_batch_acl() {
+    echo "===== 执行用例批量生成测试 (acl_graph模式) ====="
+
+    echo -e "\n===== 第一步：执行lightning_indexer_v2_pt_save.py ====="
+    python3 $LIV2_PT_SAVE_SCRIPT $PATH1 $PATH2
+    if [ $? -ne 0 ]; then
+        echo "lightning_indexer_v2_pt_save.py 执行失败，退出"
+        exit 1
+    fi
+
+    echo -e "\n===== 第二步：替换test_lightning_indexer_v2_batch.py中的路径 ====="
+    python3 $REPLACE_PATH_SCRIPT $TEST_LIV2_BATCH_SCRIPT $PATH2
+    if [ $? -ne 0 ]; then
+        echo "替换路径失败，退出"
+        exit 1
+    fi
+
+    echo -e "\n===== 第三步：执行pytest命令 (LIV2_ACL_GRAPH=1) ====="
+    LIV2_ACL_GRAPH=1 python3 -m pytest -rA -s $TEST_LIV2_BATCH_SCRIPT -v -m ci
+    if [ $? -ne 0 ]; then
+        echo "pytest执行失败"
+        exit 1
+    fi
+
+    cp test_lightning_indexer_v2_batch.py.bak test_lightning_indexer_v2_batch.py
+
+    echo -e "\n=====执行完成！====="
+}
+
 # 显示帮助信息
 show_help() {
     echo "用法: $0 [参数]"
     echo "参数说明："
     echo "  single    执行单算子用例调测"
-    echo "  batch     执行用例批量生成调试"
+    echo "  batch     执行用例批量生成调试 (eager模式)"
+    echo "  batch_acl 执行用例批量生成调试 (acl_graph模式)"
     echo "  help      显示本帮助信息"
     echo "示例："
-    echo "  $0 single  # 执行single模式"
-    echo "  $0 batch   # 执行batch模式"
+    echo "  $0 single     # 执行single模式"
+    echo "  $0 batch      # 执行batch模式 (eager)"
+    echo "  $0 batch_acl  # 执行batch模式 (acl_graph)"
 }
 
 # ====================== 主逻辑 ======================
 # 检查传入的参数数量
 if [ $# -ne 1 ]; then
-    echo "错误：必须传入且仅传入一个参数（single/batch/help）"
+    echo "错误：必须传入且仅传入一个参数（single/batch/batch_acl/help）"
     show_help
     exit 1
 fi
@@ -87,11 +119,14 @@ case "$1" in
     batch)
         run_batch
         ;;
+    batch_acl)
+        run_batch_acl
+        ;;
     help)
         show_help
         ;;
     *)
-        echo "错误：未知参数 '$1'，仅支持 single/batch/help"
+        echo "错误：未知参数 '$1'，仅支持 single/batch/batch_acl/help"
         show_help
         exit 1
         ;;

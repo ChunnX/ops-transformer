@@ -14,6 +14,7 @@ import itertools
 import torch
 import result_compare_method
 from batch import lightning_indexer_v2_pt_loadprocess
+import lightning_indexer_v2_acl_graph
 import pytest
 import random
 import pandas as pd
@@ -43,7 +44,16 @@ else:
     print(f"错误: 输出目录不存在: {pt_dir}")
 
 def liv2(testcase_files):   # 初始化参数和tensor
-    cpu_result, npu_result, topk_value, cpu_topk_value, npu_topk_value, output_idx_offset, params = lightning_indexer_v2_pt_loadprocess.test_liv2_process(testcase_files, device_id=0)
+    use_acl_graph = os.environ.get('LIV2_ACL_GRAPH', '0') == '1'
+
+    if use_acl_graph:
+        test_data = torch.load(testcase_files, map_location="cpu")
+        params = test_data['params']
+        cpu_result, npu_result, topk_value, cpu_topk_value, npu_topk_value = lightning_indexer_v2_acl_graph.liv2_output_acl_graph(params)
+        output_idx_offset = params[16]
+    else:
+        cpu_result, npu_result, topk_value, cpu_topk_value, npu_topk_value, output_idx_offset, params = lightning_indexer_v2_pt_loadprocess.test_liv2_process(testcase_files, device_id=0)
+
     if npu_result != None:
         result, fulfill_percent = result_compare_method.check_result(cpu_result, npu_result, topk_value, output_idx_offset, params)
     else:
