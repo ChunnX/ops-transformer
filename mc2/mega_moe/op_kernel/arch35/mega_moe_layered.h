@@ -1789,28 +1789,28 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Process()
         }
     }
 
-    // for (int localExpertId = 0; localExpertId < expertPerRank_; localExpertId++) {
-    //     curSendCnt = nextSendCnt;  // forward: dispatch(e) → GMM1(e)
+    for (int localExpertId = 0; localExpertId < expertPerRank_; localExpertId++) {
+        curSendCnt = nextSendCnt;  // forward: dispatch(e) → GMM1(e)
 
-    //     // Prefetch dispatch expert e+1，与当前 GMM1 consumer expert e 并发。
-    //     if constexpr(g_coreType == AIV) {
-    //         if (subBlockIdx_ == 1 && localExpertId + 1 < expertPerRank_) {
-    //             DispatchTokenToRmtServer(localExpertId + 1);
-    //             SendCntCal(localExpertId + 1, nextSendCnt);
-    //             if (UpdateGroupParams<AddrUpdateMode::kGmm1>(dispatchState, localExpertId + 1, nextSendCnt)) {
-    //                 UpdateGlobalBuffer<AddrUpdateMode::kGmm1>(dispatchAddrInfo, dispatchState);
-    //                 TripleInfoCalAndDispatch(dispatchAddrInfo, localExpertId + 1);
-    //             }
-    //         }
-    //     }
+        // Prefetch dispatch expert e+1，与当前 GMM1 consumer expert e 并发。
+        if constexpr(g_coreType == AIV) {
+            if (subBlockIdx_ == 1 && localExpertId + 1 < expertPerRank_) {
+                DispatchTokenToRmtServer(localExpertId + 1);
+                SendCntCal(localExpertId + 1, nextSendCnt);
+                // if (UpdateGroupParams<AddrUpdateMode::kGmm1>(dispatchState, localExpertId + 1, nextSendCnt)) {
+                //     UpdateGlobalBuffer<AddrUpdateMode::kGmm1>(dispatchAddrInfo, dispatchState);
+                //     TripleInfoCalAndDispatch(dispatchAddrInfo, localExpertId + 1);
+                // }
+            }
+        }
 
-    //     // GMM1 consumer 消费 expert e。
-    //     if (!UpdateGroupParams<AddrUpdateMode::kGmm1>(gmm1State, localExpertId, curSendCnt)) {
-    //         continue;
-    //     }
-    //     UpdateGlobalBuffer<AddrUpdateMode::kGmm1>(gmm1AddrInfo, gmm1State);
-    //     GroupMatmulWithSwigluQuant(gmm1AddrInfo, gmm1State);
-    // }
+        // // GMM1 consumer 消费 expert e。
+        // if (!UpdateGroupParams<AddrUpdateMode::kGmm1>(gmm1State, localExpertId, curSendCnt)) {
+        //     continue;
+        // }
+        // UpdateGlobalBuffer<AddrUpdateMode::kGmm1>(gmm1AddrInfo, gmm1State);
+        // GroupMatmulWithSwigluQuant(gmm1AddrInfo, gmm1State);
+    }
     // EndSync(vecSetSyncCom_);
     // if constexpr(g_coreType == AIV) {
     //     if (subBlockIdx_ == 1) {
