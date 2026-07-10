@@ -399,6 +399,7 @@ private:
         // VScale 与 V 同序拼接，offset 单位为 64-token group。
         const uint32_t tileStart = kIdx * S2_SPLIT;
         const uint32_t tileEnd = tileStart + realK;
+        const uint32_t totalGroupCount = AlignUp64(realK) / MX_TOKEN_GROUP;
         const uint32_t scaleBlockSize = constInfo.kvSparseBlockSize / MX_TOKEN_GROUP;
         constexpr uint32_t blockElementCnt = 32U / sizeof(SCALE_T);
         uint32_t copiedGroupCount = 0U;
@@ -432,7 +433,7 @@ private:
             shape.actHeadDim = constInfo.valueScaleDSize;
             shape.maxblockNumPerBatch = constInfo.maxBlockNumPerBatch;
             shape.copyRowNum = copyGroupNum;
-            shape.copyRowNumAlign = copyGroupNum;
+            shape.copyRowNumAlign = totalGroupCount;
             shape.pageStride = scaleBlockSize * constInfo.valueScaleN2D;
             shape.rowStride = constInfo.valueScaleN2D;
             LocalTensor<SCALE_T> valueScaleDstTensor = dstTensor[copiedGroupCount * blockElementCnt];
