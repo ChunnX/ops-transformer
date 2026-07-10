@@ -171,7 +171,7 @@ def _exec_or_load(stages: set, stage_name: str, compute_fn, case_set: str,
 
 # ============ Engine ============
 def run_case(stages: set, params: dict, reporter: Reporter, *,
-             max_retries: int = 0, load_pt: str = None, graph_path: int = 0,
+             max_retries: int = 0, load_network_pt: str = None, graph_path: int = 0,
              chunk_size: int = 0, num_workers: int = 0, verbose_diff: bool = False,
              fail_analysis: bool = True) -> dict:
     case_set = params.get("case_set", "")
@@ -184,15 +184,15 @@ def run_case(stages: set, params: dict, reporter: Reporter, *,
         cpu = CpuBackend()
         npu = NpuBackend()
 
-        if "gen" in stages:
-            if load_pt:
-                logger.info("[gen]  load  | %s", load_pt)
-                inputs = gen.load_inputs(load_pt)
-            else:
-                logger.info("[gen]  start | %s", _params_summary(params))
-                t0 = time.perf_counter()
-                inputs = gen.gen_inputs(gen.normalize_params(params))
-                logger.info("[gen]  done  | %.2fs | %s", time.perf_counter() - t0, _shapes_summary(inputs))
+        if load_network_pt:
+            logger.info("[gen]  load-network-pt | %s", load_network_pt)
+            inputs = gen.load_inputs(load_network_pt)
+            _save_pt(inputs, _pt_path(case_set, case_id, "input"))
+        elif "gen" in stages:
+            logger.info("[gen]  start | %s", _params_summary(params))
+            t0 = time.perf_counter()
+            inputs = gen.gen_inputs(gen.normalize_params(params))
+            logger.info("[gen]  done  | %.2fs | %s", time.perf_counter() - t0, _shapes_summary(inputs))
             _save_pt(inputs, _pt_path(case_set, case_id, "input"))
         else:
             logger.info("[gen]  skip  | loading from pt")

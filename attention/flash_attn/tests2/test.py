@@ -81,7 +81,7 @@ def _setup_hookwrapper(_pytest_terminal):
 def test_op(params, stages, reporter, request):
     result = run_case(stages, params, reporter,
                       max_retries=request.config.getoption("--max-retries"),
-                      load_pt=request.config.getoption("--load-pt"),
+                      load_network_pt=request.config.getoption("--load-network-pt"),
                       graph_path=request.config.getoption("--graph-path"),
                       chunk_size=request.config.getoption("--chunk-size"),
                       num_workers=request.config.getoption("--num-workers"),
@@ -101,7 +101,7 @@ def main():
     parser.add_argument("--verbose-diff", action="store_true", help="打印全部失败元素")
     parser.add_argument("--fail-analysis", action="store_true", default=True, help="失败分析报告")
     parser.add_argument("--report-interval", default=20, type=int, help="中间报告间隔")
-    parser.add_argument("--load-pt", default=None, help="从pt加载inputs")
+    parser.add_argument("--load-network-pt", default=None, help="从整网推理产出的pt加载inputs")
     parser.add_argument("--chunk-size", default=0, type=int, help="比对分块大小")
     parser.add_argument("--num-workers", default=0, type=int, help="比对并行worker数")
     parser.add_argument("--max-retries", default=0, type=int, help="NPU最大重试次数")
@@ -129,7 +129,7 @@ def main():
         try:
             run_case(stages, params, reporter,
                      max_retries=args.max_retries,
-                     load_pt=args.load_pt,
+                     load_network_pt=args.load_network_pt,
                      graph_path=args.graph_path,
                      chunk_size=args.chunk_size,
                      num_workers=args.num_workers,

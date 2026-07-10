@@ -27,7 +27,7 @@ python test.py --stages gen,cpu,npu,compare --case-set ci --log-level WARNING
 |------|------|---------|
 | 流程任意组合 | gen→cpu→npu→gpu→compare按固定顺序执行，`--stages`选子集 | `--stages gen,cpu,compare` |
 | 断点续跑 | 跳过的阶段自动从pt加载 | `--stages cpu,compare` |
-| 外部pt导入 | 从整网pt加载inputs替代gen | `--load-pt path/to/input.pt` |
+| 外部pt导入 | 从整网pt加载inputs替代gen | `--load-network-pt path/to/input.pt` |
 | pt中间产物 | 每阶段产出存pt，默认保留 | `--keep-pt` |
 | 崩溃隔离 | npu_compute用ThreadPoolExecutor隔离，单case崩溃不中断批跑 | `--max-retries 3` |
 | 大case并行 | compare阶段支持torch.multiprocessing分块并行 | `--chunk-size 1000000 --num-workers 4` |
