@@ -152,8 +152,59 @@ CASE_SETS = {
             "q_range": (-10, 10), "k_range": (-10, 10), "v_range": (-10, 10),
         },
     },
+    "perf_rdv": {
+        "Perf_Decode_FP16_BNSD_8_32_32_1_4096_000000": {
+            "B": [8], "N1": [32], "N2": [32], "S1": [1], "S2": [4096],
+            "D": [128], "DV": [128],
+            "layout_q": ["BNSD"], "layout_kv": ["BNSD"], "layout_out": ["BNSD"],
+            "dtype": ["fp16"], "mask_mode": [0], "return_softmax_lse": [False],
+            "scale": SCALE_DEFAULT,
+            "seqused_q": [1], "seqused_kv": [4096],
+        },
+        "Perf_Decode_BF16_BNSD_8_32_32_1_4096_000001": {
+            "B": [8], "N1": [32], "N2": [32], "S1": [1], "S2": [4096],
+            "D": [128], "DV": [128],
+            "layout_q": ["BNSD"], "layout_kv": ["BNSD"], "layout_out": ["BNSD"],
+            "dtype": ["bf16"], "mask_mode": [0], "return_softmax_lse": [False],
+            "scale": SCALE_DEFAULT,
+            "seqused_q": [1], "seqused_kv": [4096],
+        },
+        "Perf_Prefill_FP16_BNSD_4_16_16_2048_2048_000002": {
+            "B": [4], "N1": [16], "N2": [16], "S1": [2048], "S2": [2048],
+            "D": [128], "DV": [128],
+            "layout_q": ["BNSD"], "layout_kv": ["BNSD"], "layout_out": ["BNSD"],
+            "dtype": ["fp16"], "mask_mode": [0], "return_softmax_lse": [False],
+            "scale": SCALE_DEFAULT,
+        },
+        "Perf_Prefill_BF16_BNSD_4_16_16_2048_2048_000003": {
+            "B": [4], "N1": [16], "N2": [16], "S1": [2048], "S2": [2048],
+            "D": [128], "DV": [128],
+            "layout_q": ["BNSD"], "layout_kv": ["BNSD"], "layout_out": ["BNSD"],
+            "dtype": ["bf16"], "mask_mode": [0], "return_softmax_lse": [False],
+            "scale": SCALE_DEFAULT,
+        },
+        "Perf_Decode_FP16_PA_BBND_4_32_1_1_8192_000004": {
+            "B": [4], "N1": [32], "N2": [1], "S1": [1], "S2": [8192],
+            "D": [128], "DV": [128],
+            "layout_q": ["BNSD"], "layout_kv": ["PA_BBND"], "layout_out": ["BNSD"],
+            "dtype": ["fp16"], "mask_mode": [3], "return_softmax_lse": [False],
+            "scale": SCALE_DEFAULT,
+            "seqused_q": [1], "seqused_kv": [8192],
+            "block_size": 16, "block_table_shape": [4, 512],
+        },
+        "Perf_Prefill_FP16_PA_BNBD_4_16_1_4096_4096_000005": {
+            "B": [4], "N1": [16], "N2": [1], "S1": [4096], "S2": [4096],
+            "D": [128], "DV": [128],
+            "layout_q": ["BNSD"], "layout_kv": ["PA_BNBD"], "layout_out": ["BNSD"],
+            "dtype": ["fp16"], "mask_mode": [3], "return_softmax_lse": [False],
+            "scale": SCALE_DEFAULT,
+            "seqused_q": [4096], "seqused_kv": [4096],
+            "block_size": 32, "block_table_shape": [4, 128],
+        },
+    },
 }
 
 SKIP_CASES = {
     "func_rdv": set(),
+    "perf_rdv": set(),
 }

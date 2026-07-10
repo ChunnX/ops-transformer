@@ -5,6 +5,7 @@ _CASE_SET_TO_PREFIX = {
     "ci": "stc",
     "debug": "stc",
     "func_rdv": "rdv",
+    "perf_rdv": "rdv",
 }
 
 
