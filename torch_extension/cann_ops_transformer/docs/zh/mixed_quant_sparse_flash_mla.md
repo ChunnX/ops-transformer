@@ -128,7 +128,7 @@ cann_ops_transformer.ops.mixed_quant_sparse_flash_mla(
 | num_heads_q | int | 必选 | Query head数 | int32 | - | - | - |
 | num_heads_kv | int | 必选 | Key/Value head数 | int32 | - | - | - |
 | head_dim | int | 必选 | 每个注意力头的维度 | int32 | - | - | - |
-| quant_mode | int | 必选 | 表示量化模式。量化模式1表示K、V nope为per-token-group量化，K、V依次由rope（64，bfloat16）、nope（448，FLOAT8_E4M3FN）、scale（7，bfloat16）、pad（18B）拼接而成；量化模式2表示K、V nope为per-token-group量化，K、V依次由nope（448，FLOAT8_E4M3FN）、rope（64，bfloat16）、scale（7，FLOAT8_E8M0）、pad（1B）拼接而成。当前仅支持1和2 | int32 | - | - | - |
+| quant_mode | int | 必选 | 表示量化模式，当前仅支持1和2 | int32 | - | - | - |
 | cu_seqlens_q | Tensor | 可选 | 累积序列长度，用于处理变长序列，第一个元素必须为0 | int32 | ND | (B+1,) | × |
 | cu_seqlens_ori_kv | Tensor | 可选 | 累积序列长度，用于处理变长序列，第一个元素必须为0 | int32 | ND | (B+1,) | × |
 | cu_seqlens_cmp_kv | Tensor | 可选 | 累积序列长度，用于处理变长序列，第一个元素必须为0 | int32 | ND | (B+1,) | × |
@@ -203,7 +203,7 @@ cann_ops_transformer.ops.mixed_quant_sparse_flash_mla(
 | 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 数据格式 | 维度 | 非连续Tensor |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | attention_out | Tensor | 必选 | mixed_quant_sparse_flash_mla的计算输出 | bfloat16 | ND | <ul><li>(B, Q_N, Q_S, D)</li><li>(Q_T, Q_N, D)</li></ul> | × |
-| softmax_lse | Tensor | 可选 | softmax的LSE结果 | float32 | ND | <ul><li>(B, KV_N, Q_S, Q_N/KV_N)</li><li>(KV_N, Q_T, Q_N/KV_N)</li></ul> | × |
+| softmax_lse | Tensor | 可选 | softmax的lse结果 | float32 | ND | <ul><li>(B, KV_N, Q_S, Q_N/KV_N)</li><li>(KV_N, Q_T, Q_N/KV_N)</li></ul> | × |
 
 **说明**
 -   attention_out：Tensor类型，公式中的输出，数据类型支持bfloat16。数据格式支持ND。限制：该输出参数的shape与入参q的shape保持一致，dtype与q一致。
@@ -249,8 +249,8 @@ cann_ops_transformer.ops.mixed_quant_sparse_flash_mla(
 | Paged Attention参数组 |      ori_block_table      |      INPUT(OPTIONAL)      |   Tensor   |
 |                      |      cmp_block_table      |      INPUT(OPTIONAL)      |   Tensor   |
 |   Sinks参数组   |      sinks      |      INPUT(OPTIONAL)      |   Tensor   |
-|   SoftmaxLSE参数组   |      return_softmax_lse      |      ATTR(OPTIONAL)      |    bool    |
-|                      |      softmax_lse      |      OUTPUT      |   Tensor   |
+|   SoftmaxLse参数组   |      return_softmax_lse      |      ATTR(OPTIONAL)      |    bool    |
+|                      |      softmax_lse      |      OUTPUT(OPTIONAL)      |   Tensor   |
 
 ### 基准信息说明
 
@@ -265,7 +265,8 @@ cann_ops_transformer.ops.mixed_quant_sparse_flash_mla(
 |    KV_S    |  输入ori_kv/cmp_kv tensor的序列长度，对应ori_kv shape中的S  |
 |     Q_T     |          输入q tensor所有batch序列长度的累加和          |
 |     KV_T    |          输入ori_kv/cmp_kv tensor所有batch序列长度的累加和          |
-|      K      |           cmp_sparse_indices中TopK选出的token个数         |
+|      K1      |           ori_sparse_indices中TopK选出的token个数         |
+|      K2      |           cmp_sparse_indices中TopK选出的token个数         |
 |      Q_D      |          输入q tensor以及输出attention_out隐藏层最小的单元尺寸headdim         |
 |      KV_D      |          输入ori_kv/cmp_kv tensor隐藏层最小的单元尺寸headdim         |
 
@@ -480,7 +481,6 @@ metadata校验
             </td>
             <td>可选参数</td>
             <td>当layout_kv为PA_BBND时，该参数必传。</td>
-            <td>Paged Attention开启</td>
             <td>
                 <ul>
                     <li>ori_block_table存在时，必须传入seqused_ori_kv</li>
