@@ -35,14 +35,14 @@ extern "C" {
 #endif
 
 aclnnStatus aclnnMixedQuantFlashAttnMetadataGetWorkspaceSize(
-    const aclTensor *cuSeqlensQOptional, const aclTensor *cuSeqlensKvOptional, const aclTensor *sequsedQOptional,
-    const aclTensor *sequsedKvOptional, int64_t batchSize, int64_t maxSeqlenQ, int64_t maxSeqlenKv, int64_t numHeadsQ,
+    const aclTensor *cuSeqlensQOptional, const aclTensor *sequsedQOptional, const aclTensor *sequsedKvOptional,
+    int64_t batchSize, int64_t maxSeqlenQ, int64_t maxSeqlenKv, int64_t numHeadsQ,
     int64_t numHeadsKv, int64_t headDim, int64_t quantMode, int64_t maskMode, int64_t winLeft, int64_t winRight, const char *layoutQ,
     const char *layoutKv, const char *layoutAttnOut, const aclTensor *metaData, uint64_t *workspaceSize,
     aclOpExecutor **executor)
 {
     L2_DFX_PHASE_1(aclnnMixedQuantFlashAttnMetadata,
-                   DFX_IN(cuSeqlensQOptional, cuSeqlensKvOptional, sequsedQOptional, sequsedKvOptional, batchSize,
+                   DFX_IN(cuSeqlensQOptional, sequsedQOptional, sequsedKvOptional, batchSize,
                           maxSeqlenQ, maxSeqlenKv, numHeadsQ, numHeadsKv, headDim, quantMode, maskMode, winLeft, winRight, layoutQ,
                           layoutKv, layoutAttnOut),
                    DFX_OUT(metaData));
@@ -50,7 +50,7 @@ aclnnStatus aclnnMixedQuantFlashAttnMetadataGetWorkspaceSize(
     auto uniqueExecutor = CREATE_EXECUTOR();
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
 
-    auto ret = ParamsCheck(cuSeqlensQOptional, cuSeqlensKvOptional, sequsedQOptional, sequsedKvOptional, batchSize,
+    auto ret = ParamsCheck(cuSeqlensQOptional, sequsedQOptional, sequsedKvOptional, batchSize,
                            maxSeqlenQ, maxSeqlenKv, numHeadsQ, numHeadsKv, headDim, quantMode, maskMode, winLeft, winRight,
                            layoutQ, layoutKv, layoutAttnOut, metaData);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
@@ -61,7 +61,7 @@ aclnnStatus aclnnMixedQuantFlashAttnMetadataGetWorkspaceSize(
     const std::string socVersionStr = npuInfo.GetSocLongVersion();
     const char *socVersion = socVersionStr.c_str();
 
-    auto output = l0op::MixedQuantFlashAttnMetadata(cuSeqlensQOptional, cuSeqlensKvOptional, sequsedQOptional, sequsedKvOptional,
+    auto output = l0op::MixedQuantFlashAttnMetadata(cuSeqlensQOptional, sequsedQOptional, sequsedKvOptional,
                                           batchSize, maxSeqlenQ, maxSeqlenKv, numHeadsQ, numHeadsKv, headDim, quantMode, maskMode,
                                           winLeft, winRight, layoutQ, layoutKv, layoutAttnOut, socVersion, aicCoreNum,
                                           aivCoreNum, metaData, uniqueExecutor.get());

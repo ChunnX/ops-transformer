@@ -68,7 +68,7 @@ class MixedQuantFlashAttenOpBuilder(OpBuilder):
         """PyTorch operator signature."""
         return [
             "mixed_quant_flash_attn_metadata( int num_heads_q, int num_heads_kv, int head_dim, int quant_mode, *, " \
-            "Tensor? cu_seqlens_q=None, Tensor? cu_seqlens_kv=None, Tensor? seqused_q=None, Tensor? seqused_kv=None," \
+            "Tensor? cu_seqlens_q=None, Tensor? seqused_q=None, Tensor? seqused_kv=None," \
             "int? batch_size=None, int? max_seqlen_q=-1, int? max_seqlen_kv=-1, " \
             "int? mask_mode=0, int? win_left=-1, int? win_right=-1, " \
             "str? layout_q=\"BSND\", str? layout_kv=\"PA_BBND\", str? layout_attn_out=\"BSND\") -> Tensor",
@@ -90,8 +90,8 @@ class MixedQuantFlashAttenOpBuilder(OpBuilder):
         """
         @torch.library.register_fake("cann_ops_transformer::" + FA_METADATA_OP_NAME)
         def mixed_quant_flash_attn_metadata_meta(num_heads_q: int, num_heads_kv: int, head_dim: int, quant_mode: _QuantMode,
-                                    cu_seqlens_q: Optional[torch.Tensor] = None, cu_seqlens_kv: Optional[torch.Tensor] = None,
-                                    seqused_q: Optional[torch.Tensor] = None, seqused_kv: Optional[torch.Tensor] = None,
+                                    cu_seqlens_q: Optional[torch.Tensor] = None, seqused_q: Optional[torch.Tensor] = None,
+                                    seqused_kv: Optional[torch.Tensor] = None,
                                     batch_size: Optional[int] = None, max_seqlen_q: Optional[int] = -1,
                                     max_seqlen_kv: Optional[int] = -1,
                                     mask_mode: _MaskMode = _MaskMode.ALL, win_left: Optional[int] = -1,
@@ -167,7 +167,7 @@ op_module = mixed_quant_flash_attn_op_builder.load()  # Compiles/loads the .so f
 
 @impl(AS_LIBRARY, FA_METADATA_OP_NAME, "PrivateUse1")
 def mixed_quant_flash_attn_metadata(num_heads_q: int, num_heads_kv: int, head_dim: int, quant_mode: _QuantMode,
-                            cu_seqlens_q: Optional[torch.Tensor] = None, cu_seqlens_kv: Optional[torch.Tensor] = None,
+                            cu_seqlens_q: Optional[torch.Tensor] = None,
                             seqused_q: Optional[torch.Tensor] = None, seqused_kv: Optional[torch.Tensor] = None,
                             batch_size: Optional[int] = None, max_seqlen_q: Optional[int] = -1,
                             max_seqlen_kv: Optional[int] = -1,
@@ -182,7 +182,7 @@ def mixed_quant_flash_attn_metadata(num_heads_q: int, num_heads_kv: int, head_di
     metadataSize = _calculate_metadata_size(batch_size, num_heads_kv)
     output = torch.empty((metadataSize,), dtype=torch.int32, device="npu")
 
-    return op_module.mixed_quant_flash_attn_metadata(cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv,
+    return op_module.mixed_quant_flash_attn_metadata(cu_seqlens_q, seqused_q, seqused_kv,
                                               num_heads_q, num_heads_kv, head_dim, quant_mode,
                                               batch_size, max_seqlen_q, max_seqlen_kv,
                                               mask_mode, win_left, win_right, layout_q, layout_kv, layout_attn_out, output)

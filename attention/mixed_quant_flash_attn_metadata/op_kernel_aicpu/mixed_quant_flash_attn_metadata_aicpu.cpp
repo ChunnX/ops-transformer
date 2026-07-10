@@ -38,7 +38,6 @@ bool MixedQuantFlashAttnMetadataCpuKernel::Prepare(CpuKernelContext &ctx)
 {
     // input
     cuSeqlensQ_ = ctx.Input(static_cast<uint32_t>(ParamId::cuSeqlensQ));
-    cuSeqlensKv_ = ctx.Input(static_cast<uint32_t>(ParamId::cuSeqlensKv));
     sequsedQ_ = ctx.Input(static_cast<uint32_t>(ParamId::sequsedQ));
     sequsedKv_ = ctx.Input(static_cast<uint32_t>(ParamId::sequsedKv));
     // output
@@ -199,15 +198,6 @@ bool MixedQuantFlashAttnMetadataCpuKernel::ParamsInit()
                 baseInfo.actualQuerySeqSize[i] += baseInfo.actualQuerySeqSize[i - 1];
             }
             maxSeqlenQ_ = std::max(static_cast<int64_t>(maxSeqlenQ_), sequsedQ[i]);
-        }
-    }
-    if (baseInfo.isCumulativeKvSeq && cuSeqlensKv_ != nullptr && cuSeqlensKv_->GetData() != nullptr) {
-        batchSize_ = cuSeqlensKv_->GetTensorShape()->GetDimSize(0) - 1;
-        auto cuSeqlensKv = GetTensorDataAsInt64(cuSeqlensKv_, batchSize_ + 1);
-        baseInfo.actualKvSeqSize.resize(batchSize_, maxSeqlenKv_);
-        for (uint32_t i = 0; i < batchSize_; ++i) {
-            baseInfo.actualKvSeqSize[i] = cuSeqlensKv[i + 1];
-            maxSeqlenKv_ = std::max(static_cast<int64_t>(maxSeqlenKv_), cuSeqlensKv[i + 1] - cuSeqlensKv[i]);
         }
     }
     if (sequsedKv_ != nullptr && sequsedKv_->GetData() != nullptr) {

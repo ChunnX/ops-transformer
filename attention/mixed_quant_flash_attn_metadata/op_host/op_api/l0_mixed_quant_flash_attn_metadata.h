@@ -16,7 +16,6 @@
 namespace l0op {
 const aclTensor* MixedQuantFlashAttnMetadata(
     const aclTensor* cuSeqlensQOptional,
-    const aclTensor* cuSeqlensKvOptional,
     const aclTensor* sequsedQOptional,
     const aclTensor* sequsedKvOptional,
     int64_t batchSize,

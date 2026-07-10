@@ -68,7 +68,6 @@ private:
     CpuKernelContext *context_ = nullptr;
     // input tensor
     Tensor *cuSeqlensQ_ = nullptr;
-    Tensor *cuSeqlensKv_ = nullptr;
     Tensor *sequsedQ_ = nullptr;
     Tensor *sequsedKv_ = nullptr;
     // output tensor
@@ -104,9 +103,8 @@ private:
     enum class ParamId : uint32_t {
         // input
         cuSeqlensQ = 0,
-        cuSeqlensKv = 1,
-        sequsedQ = 2,
-        sequsedKv = 3,
+        sequsedQ = 1,
+        sequsedKv = 2,
         // output
         metaData = 0,
     };
