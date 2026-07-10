@@ -30,7 +30,7 @@ static ge::graphStatus Tiling4StemOamPrepPagedKv(gert::TilingContext* context)
 
     if (Ops::Transformer::OpTiling::IsRegbaseSocVersion(context)) {
         OP_LOGD(context->GetNodeName(), "Using arch35 tiling for RegbaseSocVersion");
-        return TilingRegistry::GetInstance().DoTilingImpl(context);
+        return Ops::Transformer::OpTiling::TilingRegistry::GetInstance().DoTilingImpl(context);
     }
 
     OP_LOGD(context->GetNodeName(), "StemOamPrepPagedKv Only Support RegbaseSocVersion.");
@@ -41,10 +41,6 @@ static ge::graphStatus TilingPrepare4StemOamPrepPagedKv(gert::TilingParseContext
 {
     return ge::GRAPH_SUCCESS;
 }
-
-IMPL_OP_OPTILING(MhcPreSinkhornBackward)
-    .Tiling(Tiling4MhcPreSinkhornBackward)
-    .TilingParse<MhcPreSinkhornBackwardCompileInfo>(TilingPrepare4MhcPreSinkhornBackward);
 
 IMPL_OP_OPTILING(StemOamPrepPagedKv)
     .Tiling(Tiling4StemOamPrepPagedKv)

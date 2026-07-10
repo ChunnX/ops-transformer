@@ -22,7 +22,7 @@ bool StemPrepKvTiling::IsCapable()
     return true;
 }
 
-void StemPrepKvTiling::ContinuousStridesCompute(gert::Shape &shape, gert::Stride &inputStride, size_t idx)
+void StemPrepKvTiling::ContinuousStridesCompute(gert::Shape &shape, gert::Stride &stride, size_t idx)
 {
     auto xStorageShape = context_->GetInputShape(idx);
     OP_CHECK_NULL_WITH_CONTEXT(context_, xStorageShape);
@@ -43,12 +43,12 @@ ge::graphStatus StemPrepKvTiling::GetTensorInfo(gert::Shape &shape, gert::Stride
     if (context_->InputIsView(idx)) {
         auto *strides = context_->GetInputStride(idx);
         if (strides == nullptr || strides->GetDimNum() == 0) {
-            ContinuousStridesCompute(shape, inputStride);
+            ContinuousStridesCompute(shape, inputStride, idx);
         } else {
             inputStride = *strides;
         }
     } else {
-        ContinuousStridesCompute(shape, inputStride);
+        ContinuousStridesCompute(shape, inputStride, idx);
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -96,7 +96,7 @@ ge::graphStatus StemPrepKvTiling::GetShapeAttrsInfo()
     } else {
         numKvHeads_ = kcacheShape_.GetDim(1);
     }
-    dimQk_ = kcacheShape_GetDim(3);
+    dimQk_ = kcacheShape_.GetDim(3);
 
     const gert::StorageShape *kvIndicesShape = context_->GetInputShape(2);
     OP_CHECK_NULL_WITH_CONTEXT(context_, kvIndicesShape);
