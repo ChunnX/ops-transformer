@@ -110,6 +110,7 @@ class SymmBuffer:
             num_max_tokens_per_rank,
             num_topk,
             hidden,
+            max_recv_token_num,
             dispatch_quant_mode,
             dispatch_quant_out_dtype,
             combine_quant_mode,
