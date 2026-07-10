@@ -60,13 +60,17 @@ public:
         __gm__ uint8_t *cuSeqlens,
         __gm__ uint8_t *seqUsed,
         __gm__ uint8_t *startPos,
+        __gm__ uint8_t *xCache,
+        __gm__ uint8_t *xCacheSlotMapping,
         __gm__ uint8_t *cmpKvOut);
     // =================================资源管理=================================
+    __aicore__ inline void InitXCacheUpdateBuffers(TPipe *pipe);
     __aicore__ inline void InitBuffers(TPipe *pipe);
     __aicore__ inline void AllocEventID();
     __aicore__ inline void FreeEventID();
     // =================================执行计算=================================
     __aicore__ inline void ComputeVec1(const Vec1RunInfo &info);
+    __aicore__ inline void UpdateXCache();
     __aicore__ inline void InitVec1GlobalTensor(GlobalTensor<T> kvMm1ResGm, GlobalTensor<T> scoreMm1ResGm,
                                                 GlobalTensor<T> kvCacheTcGm, GlobalTensor<T> scoreCacheTcGm,
                                                 GlobalTensor<T> vec1ResGm, GlobalTensor<T> vec2InputGm);
@@ -197,12 +201,16 @@ private:
     GlobalTensor<int32_t> cuSeqlensGm_;
     GlobalTensor<int32_t> sequsedGm_;
     GlobalTensor<int32_t> stateBlockTableGm_;
+    GlobalTensor<int32_t> xCacheSlotMappingGm_;
     GlobalTensor<T> stateCacheGm_;
+    GlobalTensor<X_T> xGm_;
+    GlobalTensor<X_T> xCacheGm_;
     GlobalTensor<T> apeGm_;
     GlobalTensor<T> normWeightGm_;
     GlobalTensor<T> ropeSinGm_;
     GlobalTensor<T> ropeCosGm_;
     GlobalTensor<X_T> cmpKvOutGm_;
+    bool isExistXCache_ = false;
 
     // ================================Local Buffer区====================================
     // TBuf<TPosition::VECIN> mm1ResUb;
@@ -213,6 +221,7 @@ private:
     TBuf<TPosition::VECCALC> tmpBuff2;
     TBuf<TPosition::VECCALC> apeBuf;
     TBuf<TPosition::VECCALC> normWeightBuf;
+    TBuf<TPosition::VECCALC> xCacheUpdateBuf;
     // in queue
     TQue<QuePosition::VECIN, 1> inputQue1;
     TQue<QuePosition::VECIN, 1> inputQue2;
@@ -239,8 +248,15 @@ __aicore__ inline void CompressorBlockVector<COMP>::Init(__gm__ uint8_t *x, __gm
                                                          __gm__ uint8_t *normWeight, __gm__ uint8_t *ropeSin,
                                                          __gm__ uint8_t *ropeCos, __gm__ uint8_t *stateBlockTable,
                                                          __gm__ uint8_t *cuSeqlens, __gm__ uint8_t *seqUsed,
-                                                         __gm__ uint8_t *startPos, __gm__ uint8_t *cmpKvOut)
+                                                         __gm__ uint8_t *startPos, __gm__ uint8_t *xCache,
+                                                         __gm__ uint8_t *xCacheSlotMapping, __gm__ uint8_t *cmpKvOut)
 {
+    xGm_.SetGlobalBuffer((__gm__ X_T *)x);
+    isExistXCache_ = (xCache != nullptr);
+    if (isExistXCache_) {
+        xCacheGm_.SetGlobalBuffer((__gm__ X_T *)xCache);
+        xCacheSlotMappingGm_.SetGlobalBuffer((__gm__ int32_t *)xCacheSlotMapping);
+    }
     stateBlockTableGm_.SetGlobalBuffer((__gm__ int32_t *)stateBlockTable);
     stateCacheGm_.SetGlobalBuffer((__gm__ T *)stateCache);
     apeGm_.SetGlobalBuffer((__gm__ T *)ape);
@@ -259,6 +275,55 @@ __aicore__ inline void CompressorBlockVector<COMP>::Init(__gm__ uint8_t *x, __gm
     if (isExistStartPos_) {
         startPosGm_.SetGlobalBuffer((__gm__ int32_t *)startPos);
     }
+}
+
+template <typename COMP>
+__aicore__ inline void CompressorBlockVector<COMP>::UpdateXCache()
+{
+    if (!isExistXCache_) {
+        return;
+    }
+    // Write the current decode token into x_cache before any grouped-window read.
+    // Work is split by (batch, hidden block) so update-only rounds can run on AIV
+    // without launching cube projection work.
+    constexpr uint32_t COPY_BASE = BUFFER_SIZE_BYTE_32K / sizeof(X_T);
+    uint32_t hBlockNum = CeilDivT(constInfo_.hSize, COPY_BASE);
+    uint32_t totalTaskNum = constInfo_.xCacheUpdateBatchSize * hBlockNum;
+    uint32_t aivCoreIdx = constInfo_.aiCoreIdx;
+    uint32_t aivCoreNum = constInfo_.usedCoreNum;
+    if ASCEND_IS_AIV {
+        uint32_t subBlockNum = static_cast<uint32_t>(GetSubBlockNum());
+        uint32_t subBlockIdx = static_cast<uint32_t>(GetSubBlockIdx());
+        aivCoreIdx = constInfo_.aiCoreIdx * subBlockNum + subBlockIdx;
+        aivCoreNum = constInfo_.usedCoreNum * subBlockNum;
+    }
+    for (uint32_t taskIdx = aivCoreIdx; taskIdx < totalTaskNum; taskIdx += aivCoreNum) {
+        uint32_t bIdx = taskIdx / hBlockNum;
+        uint32_t hBlockIdx = taskIdx % hBlockNum;
+        uint32_t hStart = hBlockIdx * COPY_BASE;
+        uint32_t hDealSize = min(COPY_BASE, constInfo_.hSize - hStart);
+        uint32_t slot = xCacheSlotMappingGm_.GetValue(bIdx);
+        uint64_t srcOffset = static_cast<uint64_t>(bIdx) * constInfo_.hSize + hStart;
+        uint64_t dstOffset = static_cast<uint64_t>(slot) * constInfo_.hSize + hStart;
+        LocalTensor<X_T> inputUb =
+            constInfo_.batchSize > 0 ? tmpBuff1.Get<X_T>() : xCacheUpdateBuf.Get<X_T>();
+        DataCopy(inputUb, xGm_[srcOffset], hDealSize);
+        event_t eventMte2ToMte3 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_MTE3));
+        SetFlag<HardEvent::MTE2_MTE3>(eventMte2ToMte3);
+        WaitFlag<HardEvent::MTE2_MTE3>(eventMte2ToMte3);
+        DataCopy(xCacheGm_[dstOffset], inputUb, hDealSize);
+        event_t eventMte3ToMte2 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_MTE2));
+        SetFlag<HardEvent::MTE3_MTE2>(eventMte3ToMte2);
+        WaitFlag<HardEvent::MTE3_MTE2>(eventMte3ToMte2);
+    }
+}
+
+template <typename COMP>
+__aicore__ inline void CompressorBlockVector<COMP>::InitXCacheUpdateBuffers(TPipe *pipe)
+{
+    // Used when every batch is inactive: only x_cache update executes, so the
+    // normal vector queues are not initialized.
+    pipe->InitBuffer(xCacheUpdateBuf, BUFFER_SIZE_BYTE_32K);
 }
 
 template <typename COMP>
@@ -311,34 +376,19 @@ CompressorBlockVector<COMP>::InitVec1GlobalTensor(GlobalTensor<T> kvMm1ResGm, Gl
 template <typename COMP>
 __aicore__ inline uint32_t CompressorBlockVector<COMP>::GetSeqUsed(uint32_t bIdx)
 {
-    if (isExistSeqUsed_) {
-        return (uint32_t)sequsedGm_.GetValue(bIdx);
-    } else {
-        if constexpr (COMP::xLayout == X_LAYOUT::TH) {
-            return (uint32_t)(cuSeqlensGm_.GetValue(bIdx + 1) - cuSeqlensGm_.GetValue(bIdx));
-        } else {
-            return constInfo_.sSize;
-        }
-    }
+    return tools_.GetSeqUsed(bIdx);
 }
 
 template <typename COMP>
 __aicore__ inline uint32_t CompressorBlockVector<COMP>::GetStartPos(uint32_t bIdx)
 {
-    if (isExistStartPos_) {
-        return startPosGm_.GetValue(bIdx);
-    }
-    return 0;
+    return tools_.GetStartPos(bIdx);
 }
 
 template <typename COMP>
 __aicore__ inline uint32_t CompressorBlockVector<COMP>::GetSeqLength(uint32_t bIdx)
 {
-    if (COMP::xLayout == X_LAYOUT::TH) {
-        return cuSeqlensGm_.GetValue(bIdx + 1) - cuSeqlensGm_.GetValue(bIdx);
-    } else {
-        return constInfo_.sSize;
-    }
+    return tools_.GetSeqLength(bIdx);
 }
 
 template <typename COMP>
@@ -745,7 +795,6 @@ CompressorBlockVector<COMP>::ReadFromCacheState(const LocalTensor<T> &output, co
             uint64_t stateOffset = idInBlockTable * constInfo_.stateCacheStrideDim0 +
                                    remainRowCnt * 2 * coff_ * constInfo_.headDim +
                                    stateIdx * coff_ * constInfo_.headDim + dStartIdx;
-
             DataCopyWithInputQue(output[copyFinishRowCnt * coff_ * dDealSize], state[stateOffset], copyRowCount,
                                  dDealSize, coff_ * constInfo_.headDim * 2, coff_ * dDealSize);
             copyFinishRowCnt += copyRowCount;
@@ -837,7 +886,6 @@ CompressorBlockVector<COMP>::SaveState(const LocalTensor<T> &srcLocal, const Glo
     uint32_t startSeqIdx = sliceInfo.bStartPos + sliceInfo.sIdx;
     uint32_t endSeqIdx = startSeqIdx + sliceInfo.validSeqCnt;
     uint64_t srcBaseOffset = sliceInfo.dealedSeqCnt * coff_ * dDealSize;
-
     if constexpr (COMP::cacheMode == CACHE_MODE::CYCLE) {
         uint32_t compressSeqIdx = Trunc(sliceInfo.bStartPos + sliceInfo.bSeqUsed, cmpRatio_);
         uint32_t writeSeqStartIdx = compressSeqIdx > (coff_ - 1) * cmpRatio_ ?

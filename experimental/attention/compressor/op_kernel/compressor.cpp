@@ -24,13 +24,23 @@
  
 using namespace Compressor;
 
+#if (__CCE_AICORE__ == 220)
 #define INVOKE_COMPRESSOR_GENERAL_OP_IMPL(templateClass, ...)                                                          \
     do {                                                                                                               \
         templateClass<COMPType<__VA_ARGS__>> op(&pipe, tilingData);                                                    \
-        op.Init(x, wKv, wGate, stateCache, ape, normWeight, ropeSin, ropeCos, stateBlockTable,  \
+        op.Init(x, wKv, wGate, stateCache, ape, normWeight, ropeSin, ropeCos, stateBlockTable,                         \
                 cuSeqlens, seqUsed, startPos, cmpKvOut, workspace);                                                    \
         op.Process();                                                                                                  \
     } while (0)
+#else
+#define INVOKE_COMPRESSOR_GENERAL_OP_IMPL(templateClass, ...)                                                          \
+    do {                                                                                                               \
+        templateClass<COMPType<__VA_ARGS__>> op(&pipe, tilingData);                                                    \
+        op.Init(x, wKv, wGate, stateCache, ape, normWeight, ropeSin, ropeCos, stateBlockTable,                         \
+                cuSeqlens, seqUsed, startPos, xCache, xCacheSlotMapping, cmpKvOut, workspace);                        \
+        op.Process();                                                                                                  \
+    } while (0)
+#endif
 
 template<uint8_t XLayout, uint8_t XDType, uint8_t Coff, uint8_t RotaryMode, uint8_t CacheMode, uint8_t TemplateId>
 __global__ __aicore__ void compressor(
@@ -46,6 +56,8 @@ __global__ __aicore__ void compressor(
     __gm__ uint8_t *cuSeqlens,
     __gm__ uint8_t *seqUsed,
     __gm__ uint8_t *startPos,
+    __gm__ uint8_t *xCache,
+    __gm__ uint8_t *xCacheSlotMapping,
     __gm__ uint8_t *cmpKvOut,
     __gm__ uint8_t *stateCacheOut,
     __gm__ uint8_t *workspace,
@@ -56,6 +68,8 @@ __global__ __aicore__ void compressor(
     if constexpr (static_cast<TEMPLATE_ID>(TemplateId) == TEMPLATE_ID::EMPTY_X) {
         return;
     }
+    // xCache/xCacheSlotMapping are optional kernel args.  Null keeps the legacy
+    // direct-x path; non-null enables grouped decode composition in arch35 kernels.
     const optiling::CompressorTilingData *__restrict tilingData = &tilingDataIn;
     TPipe pipe;
     constexpr auto xLayout = static_cast<X_LAYOUT>(XLayout);
