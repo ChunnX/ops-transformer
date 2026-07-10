@@ -782,8 +782,8 @@ public:
                 tPipe->InitBuffer(stage1OutQue[1], 1, 33024);
             } else { // mBaseSize = 64 s2BaseSize = 256
                 SoftmaxInitBuffer();
-                tPipe->InitBuffer(commonTBuf, 512); // 实际上只需要512Bytes
                 tPipe->InitBuffer(stage2OutBuf, 32 * dTemplateAlign64 * sizeof(T));
+                tPipe->InitBuffer(commonTBuf, 512); // 实际上只需要512Bytes
                 tPipe->InitBuffer(stage1OutQue[0], 1, 16896);
                 tPipe->InitBuffer(stage1OutQue[1], 1, 16896);
                 if constexpr (hasAtten) {
