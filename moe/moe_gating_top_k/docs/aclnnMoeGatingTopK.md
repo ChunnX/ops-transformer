@@ -427,6 +427,7 @@ aclnnStatus aclnnMoeGatingTopK(
     * normType取值0和1，0表示使用Softmax函数，1表示使用Sigmoid函数。
     * normType取值为1时，renorm参数无效；normType取值为0时，renorm参数生效，renorm取值为0和1，0表示不做renorm，1表示做renorm。
     * outFlag取值true和false，true表示输出，false表示不输出。
+    * 输入不支持空Tensor，不支持标量Tensor。
 
 ## 调用示例
 
