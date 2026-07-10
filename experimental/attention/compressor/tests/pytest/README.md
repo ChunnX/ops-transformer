@@ -35,6 +35,7 @@
 - test_compressor_single.py                 # 测试单用例运行主程序
 - compressor_operator_single.py             # CPU侧算子逻辑实现获取golden与npu算子直调
 - test_compressor_paramset.py               # 单用例入参配置
+- test_compressor_grouped_decode_xcache.py  # grouped decode x_cache单算子板上用例
 
 批量用例测试:
 - test_compressor_batch.py                  # 用例批量测试主程序并生成excel文件保存结果
@@ -53,6 +54,29 @@
 ``` bash
 bash test_run.sh single
 ```
+
+#### grouped decode x_cache单独调测
+非压缩轮次只执行x_cache update-only：
+``` bash
+bash run_grouped_decode_update_only.sh
+```
+
+压缩轮次执行x_cache read，并与legacy full-x路径对比输出和state_cache：
+``` bash
+bash run_grouped_decode_compress.sh
+```
+
+#### 调试完成备份点
+
+2026-07-09，`feature/compressor-grouped-decode-op-xcache` 调试阶段完成后，算子仓已创建本地只读备份分支：
+
+```bash
+backup/feature-compressor-grouped-decode-op-xcache-debug-complete-20260709
+```
+
+该分支指向 `c8ae29172 test: add compressor aclnn workspace cases`，用于 code review 前回退/对照；
+后续检视继续在当前开发分支查看 `experimental/attention/compressor/` 的算子、ACLNN 直调和 pytest 变更。
+
 #### 用例的批量生成与测试
 1、excel路径下存放用例excel表格
 

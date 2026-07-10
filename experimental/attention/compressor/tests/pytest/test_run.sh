@@ -10,13 +10,14 @@ Compressor_PT_SAVE_SCRIPT="./batch/compressor_pt_save.py"
 TEST_Compressor_BATCH_SCRIPT="test_compressor_batch.py"
 REPLACE_PATH_SCRIPT="./batch/replace_path.py"
 TEST_Compressor_SINGLE_SCRIPT="test_compressor_single.py"
+TEST_Compressor_GROUPED_XCACHE_SCRIPT="test_compressor_grouped_decode_xcache.py"
 
 # ====================== 执行区======================
 
 # 单用例算子调测
 run_single() {
     echo "===== 执行单用例算子调测 ====="
-    python3 -m pytest -rA -s $TEST_Compressor_SINGLE_SCRIPT -v -m ci -W ignore::UserWarning -W ignore::DeprecationWarning
+    python3 -m pytest -rA -s $TEST_Compressor_SINGLE_SCRIPT $TEST_Compressor_GROUPED_XCACHE_SCRIPT -v -m ci -W ignore::UserWarning -W ignore::DeprecationWarning
 }
 
 # 用例批量生成调试
