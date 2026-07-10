@@ -11,6 +11,8 @@ from .sparse_flash_mla_grad import sparse_flash_mla_grad, sparse_flash_mla_grad_
 from .moe_finalize_routing import moe_finalize_routing
 from .moe_token_permute import moe_token_permute
 from .mega_moe import get_symm_buffer_for_mega_moe, mega_moe
+from .quant_reduce_scatter import quant_reduce_scatter
+from .quant_all_reduce import quant_all_reduce
 from .deep_ep import MoeDistributeBuffer
 from .flash_attn import flash_attn, flash_attn_metadata
 from .quant_flash_attn import quant_flash_attn, quant_flash_attn_metadata
