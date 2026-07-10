@@ -77,10 +77,6 @@ def test_liv2_process(filepath, device_id=0):
         block_table = test_data['block_table'].npu()
     else:
         block_table = None
-    if test_data['metadata'] is not None:
-        metadata = test_data['metadata'].npu()
-    else:
-        metadata = None
     layout_query = test_data['layout_query']
     layout_key = test_data['layout_key']
     cmp_ratio = test_data['cmp_ratio']
