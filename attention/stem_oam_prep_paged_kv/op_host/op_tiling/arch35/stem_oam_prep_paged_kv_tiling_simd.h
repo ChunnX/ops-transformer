@@ -49,7 +49,7 @@ protected:
     void DumpTilingInfo() override;
 
     void ContinuousStridesCompute(gert::Shape &shape, gert::Stride &inputStride);
-    ge::graphStatus GetInputStrides(gert::Shape &shape, gert::Stride &inputStride, size_t idx)
+    ge::graphStatus GetInputStrides(gert::Shape &shape, gert::Stride &inputStride, size_t idx);
 private:
     uint64_t totalCoreNum_ = 0;
 
@@ -69,6 +69,9 @@ private:
     gert::Stride kCacheStride_;
     gert::Stride vCacheStride_;
     gert::Stride kScaleCacheStride_;
+    gert::Shape kcacheShape_;
+    gert::Shape vcacheShape_;
+    gert::Shape kScaleCacheShape_;
 
     StemOamPrepPagedKvTilingData* tilingData_ = nullptr;
 };

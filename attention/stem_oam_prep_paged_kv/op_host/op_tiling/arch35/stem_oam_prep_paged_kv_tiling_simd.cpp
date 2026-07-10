@@ -22,18 +22,23 @@ bool StemPrepKvTiling::IsCapable()
     return true;
 }
 
-void StemPrepKvTiling::ContinuousStridesCompute(gert::Shape &shape, gert::Stride &inputStride)
+void StemPrepKvTiling::ContinuousStridesCompute(gert::Shape &shape, gert::Stride &inputStride, size_t idx)
 {
-    inputStride.SetDimNum(shape.GetDimNum());
+    auto xStorageShape = context_->GetInputShape(idx);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, xStorageShape);
+    if (shape.GetDimNum() == 0) {
+        shape = xStorageShape->GetStorageShape();
+    }
+    stride.SetDimNum(shape.GetDimNum());
     int32_t maxDim = static_cast<int32_t>(shape.GetDimNum()) - 1;
-    int64_t tmpStride = 1;
+    int64_t xStride = 1;
     for (int32_t j = maxDim; j >= 0; --j) {
-        inputStride.SetStride(j, tmpStride);
-        tmpStride *= shape.GetDim(j);
+        stride.SetStride(j, xStride);
+        xStride *= shape.GetDim(j);
     }
 }
 
-ge::graphStatus StemPrepKvTiling::GetInputStrides(gert::Shape &shape, gert::Stride &inputStride, size_t idx)
+ge::graphStatus StemPrepKvTiling::GetTensorInfo(gert::Shape &shape, gert::Stride &inputStride, size_t idx)
 {
     if (context_->InputIsView(idx)) {
         auto *strides = context_->GetInputStride(idx);
@@ -45,7 +50,7 @@ ge::graphStatus StemPrepKvTiling::GetInputStrides(gert::Shape &shape, gert::Stri
     } else {
         ContinuousStridesCompute(shape, inputStride);
     }
-    return ge::GRAPH_SUCCESS
+    return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus StemPrepKvTiling::GetPlatformInfo()
@@ -82,28 +87,23 @@ ge::graphStatus StemPrepKvTiling::GetShapeAttrsInfo()
     OP_CHECK_NULL_WITH_CONTEXT(context_, kvSeqLensShape);
     batchSize_ = kvSeqLensShape->GetStorageShape().GetDim(0);
 
-    const gert::StorageShape *kcacheShape = context_->GetInputShape(0);
-    const gert::StorageShape *vcacheShape = context_->GetInputShape(1);
-    OP_CHECK_NULL_WITH_CONTEXT(context_, kcacheShape);
+    GetTensorInfo(kcacheShape_, kCacheStride_, 0);
+    GetTensorInfo(vcacheShape_, vCacheStride_, 1);
+    GetTensorInfo(kScaleCacheShape_, kScaleCacheStride_, 4);
+
     if (kvLayout_ == 0) {
-        numKvHeads_ = kcacheShape->GetStorageShape().GetDim(2);
+        numKvHeads_ = kcacheShape_.GetDim(2);
     } else {
-        numKvHeads_ = kcacheShape->GetStorageShape().GetDim(1);
+        numKvHeads_ = kcacheShape_.GetDim(1);
     }
-    dimQk_ = kcacheShape->GetStorageShape().GetDim(kcacheShape->GetStorageShape().GetDimNum() - 1);
+    dimQk_ = kcacheShape_GetDim(3);
 
     const gert::StorageShape *kvIndicesShape = context_->GetInputShape(2);
     OP_CHECK_NULL_WITH_CONTEXT(context_, kvIndicesShape);
     maxKvBlockSize_ = kvIndicesShape->GetStorageShape().GetDim(1);
-    const gert::StorageShape *kScaleCacheShape = context_->GetInputShape(4);
-    OP_CHECK_NULL_WITH_CONTEXT(context_, kScaleCacheShape);
     const gert::StorageShape *kFlatOutShape = context_->GetOutputShape(0);
     maxKb_ = kFlatOutShape->GetStorageShape().GetDim(0);
     kflatDim_ = kFlatOutShape->GetStorageShape().GetDim(3);
-
-    GetInputStrides(kcacheShape, kCacheStride_, 0);
-    GetInputStrides(vcacheShape, vCacheStride_, 1);
-    GetInputStrides(kScaleCacheShape, kScaleCacheStride_, 4);
 
     return ge::GRAPH_SUCCESS;
 }
