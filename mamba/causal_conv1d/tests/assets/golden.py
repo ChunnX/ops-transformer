@@ -23,7 +23,7 @@ import ml_dtypes
 
 def CausalConv1d_input(*input_arrays, **kwargs):
     """Custom input generator for causal_conv1d.
-    
+
     Generates proper query_start_loc values (monotonically increasing sequence)
     instead of random values.
     """
@@ -47,12 +47,13 @@ def CausalConv1d_input(*input_arrays, **kwargs):
                 total_tokens = x.shape[0] * x.shape[1]
 
             # Calculate sequence length from test case name if available
-            testcase_name = kwargs.get('testcase_name', '')
+            testcase_name = kwargs.get("testcase_name", "")
             seq_len = None
-            if '_s' in testcase_name:
+            if "_s" in testcase_name:
                 # Extract seq_len from testcase name like "fn_varlen_b16_s16_d4096_w4_bias_act0_qsl"
                 import re
-                match = re.search(r'_s(\d+)_', testcase_name)
+
+                match = re.search(r"_s(\d+)_", testcase_name)
                 if match:
                     seq_len = int(match.group(1))
 
@@ -80,7 +81,6 @@ def _to_torch(arr):
 
 def _silu(x: torch.Tensor) -> torch.Tensor:
     return x * torch.sigmoid(x)
-
 
 
 def CausalConv1d(
@@ -139,7 +139,7 @@ def CausalConv1d(
     cache_indices_t = _to_torch(cache_indices)
     init_state_mode_t = _to_torch(initial_state_mode)
 
-    activation = (activation_mode == "silu")
+    activation = activation_mode == "silu"
     kernel_size = weight_t.shape[0]
     dtype = orig_dtype
     device = x_t.device
@@ -152,11 +152,21 @@ def CausalConv1d(
     else:
         query_starts = query_start_loc_t.to(torch.int64)
         batch_size = query_starts.shape[0] - 1
-        seq_list = [x_t[query_starts[i]:query_starts[i + 1]] for i in range(batch_size)]
+        seq_list = [
+            x_t[query_starts[i] : query_starts[i + 1]] for i in range(batch_size)
+        ]
         is_3d = False
 
-    cache_indices_list = cache_indices_t.tolist() if cache_indices_t is not None else list(range(batch_size))
-    init_state_modes = init_state_mode_t.tolist() if init_state_mode_t is not None else [0] * batch_size
+    cache_indices_list = (
+        cache_indices_t.tolist()
+        if cache_indices_t is not None
+        else list(range(batch_size))
+    )
+    init_state_modes = (
+        init_state_mode_t.tolist()
+        if init_state_mode_t is not None
+        else [0] * batch_size
+    )
     accepted_tokens_t = _to_torch(num_accepted_tokens)
     state_len = conv_states_t.shape[1]
     conv_states_out = conv_states_t.clone()
@@ -168,10 +178,10 @@ def CausalConv1d(
         if cache_indices_t is not None and cache_idx == null_block_id:
             cur_seq_len = x_t.shape[1] if is_3d else seq_list[i].shape[0]
             output_list.append(
-                torch.zeros(cur_seq_len,
-                            x_t.shape[-1],
-                            dtype=torch.float32,
-                            device=device))
+                torch.zeros(
+                    cur_seq_len, x_t.shape[-1], dtype=torch.float32, device=device
+                )
+            )
             continue
 
         seq_input = seq_list[i]
@@ -180,22 +190,29 @@ def CausalConv1d(
             state_offset = 0
             if accepted_tokens_t is not None:
                 state_offset = max(int(accepted_tokens_t[i]) - 1, 0)
-            history = conv_states_t[cache_idx][state_offset:state_offset + kernel_size - 1].to(torch.float32)
+            history = conv_states_t[cache_idx][
+                state_offset : state_offset + kernel_size - 1
+            ].to(torch.float32)
         else:
-            history = torch.zeros(kernel_size - 1,
-                                  seq_input.shape[-1],
-                                  dtype=torch.float32,
-                                  device=device)
+            history = torch.zeros(
+                kernel_size - 1, seq_input.shape[-1], dtype=torch.float32, device=device
+            )
 
         # Step 4: causal conv1d via F.conv1d(groups=dim)
         padded = torch.cat([history, seq_input], dim=0)
         weight_view = weight_t.T.unsqueeze(1)
-        result = F.conv1d(padded.T.unsqueeze(0),
-                          weight_view,
-                          bias=bias_t,
-                          stride=1,
-                          padding=0,
-                          groups=seq_input.shape[-1]).squeeze(0).T
+        result = (
+            F.conv1d(
+                padded.T.unsqueeze(0),
+                weight_view,
+                bias=bias_t,
+                stride=1,
+                padding=0,
+                groups=seq_input.shape[-1],
+            )
+            .squeeze(0)
+            .T
+        )
 
         # Step 5: activation
         if activation:
@@ -204,8 +221,13 @@ def CausalConv1d(
         output_list.append(result.to(dtype))
 
         # Step 7: write back conv_states
-        write_history = history if has_init else torch.zeros(
-            kernel_size - 1, seq_input.shape[-1], dtype=torch.float32, device=device)
+        write_history = (
+            history
+            if has_init
+            else torch.zeros(
+                kernel_size - 1, seq_input.shape[-1], dtype=torch.float32, device=device
+            )
+        )
         write_padded = torch.cat([write_history, seq_input], dim=0)
         conv_states_out[cache_idx][0:state_len] = write_padded[-state_len:].to(dtype)
 
@@ -214,7 +236,9 @@ def CausalConv1d(
     conv_states_out = conv_states_out.detach().cpu()
     output = output.detach().cpu()
     if conv_states_out.dtype == torch.bfloat16:
-        conv_states_out = conv_states_out.view(torch.uint16).numpy().view(ml_dtypes.bfloat16)
+        conv_states_out = (
+            conv_states_out.view(torch.uint16).numpy().view(ml_dtypes.bfloat16)
+        )
     else:
         conv_states_out = conv_states_out.numpy()
     if output.dtype == torch.bfloat16:
@@ -222,4 +246,3 @@ def CausalConv1d(
     else:
         output = output.numpy()
     return conv_states_out, output
-

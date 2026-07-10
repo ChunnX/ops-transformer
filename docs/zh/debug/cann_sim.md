@@ -160,7 +160,7 @@ cannsim report [options]
 
     ```bash
     在当前目录下生成性能分析报告（默认仅分析核0）
-    cannsim report -e /path/to/cannsim_{timestamp}_${user_app} 
+    cannsim report -e /path/to/cannsim_{timestamp}_${user_app}
 
     在指定目录下生成核0、核1、核11、核12的性能分析报告
     cannsim report -e /path/to/cannsim_{timestamp}_${user_app} -o /path/to/report -n '0-1, 11-12'
@@ -211,11 +211,11 @@ cannsim --help
 ```bash
 cannsim record --help
 ```
-  
+
 查询工具report子命令的帮助信息：
 
  ```bash
- cannsim report --help 
+ cannsim report --help
  ```
 
 ## 参数说明
