@@ -186,6 +186,64 @@ ge::graphStatus PostQuantChecker::CheckFeaturePrefix(const FiaTilingInfo &fiaInf
     return ge::GRAPH_SUCCESS;
 }
 
+ge::graphStatus PostQuantChecker::CheckRowValidForSingleBatch(const FiaTilingInfo &fiaInfo,
+    const gert::Tensor *tempData, const gert::Tensor *tempDataKV,
+    uint32_t actualLenDims, uint32_t actualLenDimsKV,
+    bool checkPostQuantOffset, int64_t preTokens, int64_t nextTokens,
+    std::vector<int64_t> &actualSeqLengths, std::vector<int64_t> &actualSeqLengthsKV,
+    uint32_t i) const
+{
+    if ((actualLenDims == 0) || (tempData == nullptr) || (tempData->GetData<int64_t>() == nullptr)) {
+        actualSeqLengths[i] = fiaInfo.s1Size;
+    } else {
+        actualSeqLengths[i] = (actualLenDims > 1) ? static_cast<uint32_t>(tempData->GetData<int64_t>()[i]) :
+                                                    static_cast<uint32_t>(tempData->GetData<int64_t>()[0]);
+    }
+    if ((actualLenDimsKV == 0) || (tempDataKV == nullptr) ||
+        (tempDataKV->GetData<int64_t>() == nullptr)) { // The user did not input act_seq_kv
+        if (fiaInfo.kvStorageMode == KvStorageMode::BATCH_CONTINUOUS) {
+            actualSeqLengthsKV[i] = fiaInfo.s2Size;
+        } else {
+            actualSeqLengthsKV[i] = fiaInfo.kvListSeqLens[i];
+        }
+    } else {
+        actualSeqLengthsKV[i] = (actualLenDimsKV > 1) ?
+                                    static_cast<uint32_t>(tempDataKV->GetData<int64_t>()[i]) :
+                                    static_cast<uint32_t>(tempDataKV->GetData<int64_t>()[0]);
+    }
+    int64_t preTokensPerbatch = 0;
+    int64_t nextTokensPerbatch = 0;
+    if (fiaInfo.sparseMode == SPARSE_MODE_RIGHT_DOWN) {
+        preTokensPerbatch = static_cast<int64_t>(SPARSE_MODE_INT_MAX);
+        nextTokensPerbatch =
+            actualSeqLengthsKV[i] + static_cast<int64_t>(fiaInfo.systemPrefixLen) - actualSeqLengths[i];
+    } else if (fiaInfo.sparseMode == SPARSE_MODE_BAND) {
+        preTokensPerbatch = fiaInfo.preToken - actualSeqLengthsKV[i] -
+                            static_cast<int64_t>(fiaInfo.systemPrefixLen) + actualSeqLengths[i];
+        nextTokensPerbatch = fiaInfo.nextToken + actualSeqLengthsKV[i] +
+                             static_cast<int64_t>(fiaInfo.systemPrefixLen) - actualSeqLengths[i];
+    } else {
+        preTokensPerbatch = fiaInfo.preToken;
+        nextTokensPerbatch = fiaInfo.nextToken;
+    }
+    OP_CHECK_IF((checkPostQuantOffset &&
+                 ((preTokensPerbatch + actualSeqLengthsKV[i] +
+                       static_cast<int64_t>(fiaInfo.systemPrefixLen) - actualSeqLengths[i] <
+                   0) ||
+                  (nextTokensPerbatch < 0))),
+                OPS_REPORT_VECTOR_INNER_ERR(
+                    fiaInfo.opName,
+                    "When sparse mode = %d, output dtype is int8, the output's dequant offset "
+                    "is not null or empty tensor, "
+                    "preTokens = %ld and nextTokens = %ld, some rows of the matrix do not "
+                    "participate in the calculation, "
+                    "the accuracy of the final result will be incorrect. Please see the "
+                    "documentation for more details.",
+                    fiaInfo.sparseMode, preTokens, nextTokens),
+                return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus PostQuantChecker::CheckFeatureRowValid(const FiaTilingInfo &fiaInfo) const
 {
     if (!fiaInfo.isOutQuantEnable) {
@@ -209,54 +267,11 @@ ge::graphStatus PostQuantChecker::CheckFeatureRowValid(const FiaTilingInfo &fiaI
             uint32_t actualLenDims = (tempData != nullptr) ? tempData->GetShapeSize() : 0;
             uint32_t actualLenDimsKV = (tempDataKV != nullptr) ? tempDataKV->GetShapeSize() : 0;
             for (uint32_t i = 0; i < fiaInfo.bSize; i++) {
-                if ((actualLenDims == 0) || (tempData == nullptr) || (tempData->GetData<int64_t>() == nullptr)) {
-                    actualSeqLengths[i] = fiaInfo.s1Size;
-                } else {
-                    actualSeqLengths[i] = (actualLenDims > 1) ? static_cast<uint32_t>(tempData->GetData<int64_t>()[i]) :
-                                                                static_cast<uint32_t>(tempData->GetData<int64_t>()[0]);
+                if (ge::GRAPH_SUCCESS != CheckRowValidForSingleBatch(fiaInfo, tempData, tempDataKV,
+                    actualLenDims, actualLenDimsKV, checkPostQuantOffset, preTokens, nextTokens,
+                    actualSeqLengths, actualSeqLengthsKV, i)) {
+                    return ge::GRAPH_FAILED;
                 }
-                if ((actualLenDimsKV == 0) || (tempDataKV == nullptr) ||
-                    (tempDataKV->GetData<int64_t>() == nullptr)) { // The user did not input act_seq_kv
-                    if (fiaInfo.kvStorageMode == KvStorageMode::BATCH_CONTINUOUS) {
-                        actualSeqLengthsKV[i] = fiaInfo.s2Size;
-                    } else {
-                        actualSeqLengthsKV[i] = fiaInfo.kvListSeqLens[i];
-                    }
-                } else {
-                    actualSeqLengthsKV[i] = (actualLenDimsKV > 1) ?
-                                                static_cast<uint32_t>(tempDataKV->GetData<int64_t>()[i]) :
-                                                static_cast<uint32_t>(tempDataKV->GetData<int64_t>()[0]);
-                }
-                int64_t preTokensPerbatch = 0;
-                int64_t nextTokensPerbatch = 0;
-                if (fiaInfo.sparseMode == SPARSE_MODE_RIGHT_DOWN) {
-                    preTokensPerbatch = static_cast<int64_t>(SPARSE_MODE_INT_MAX);
-                    nextTokensPerbatch =
-                        actualSeqLengthsKV[i] + static_cast<int64_t>(fiaInfo.systemPrefixLen) - actualSeqLengths[i];
-                } else if (fiaInfo.sparseMode == SPARSE_MODE_BAND) {
-                    preTokensPerbatch = fiaInfo.preToken - actualSeqLengthsKV[i] -
-                                        static_cast<int64_t>(fiaInfo.systemPrefixLen) + actualSeqLengths[i];
-                    nextTokensPerbatch = fiaInfo.nextToken + actualSeqLengthsKV[i] +
-                                         static_cast<int64_t>(fiaInfo.systemPrefixLen) - actualSeqLengths[i];
-                } else {
-                    preTokensPerbatch = fiaInfo.preToken;
-                    nextTokensPerbatch = fiaInfo.nextToken;
-                }
-                OP_CHECK_IF((checkPostQuantOffset &&
-                             ((preTokensPerbatch + actualSeqLengthsKV[i] +
-                                   static_cast<int64_t>(fiaInfo.systemPrefixLen) - actualSeqLengths[i] <
-                               0) ||
-                              (nextTokensPerbatch < 0))),
-                            OPS_REPORT_VECTOR_INNER_ERR(
-                                fiaInfo.opName,
-                                "When sparse mode = %d, output dtype is int8, the output's dequant offset "
-                                "is not null or empty tensor, "
-                                "preTokens = %ld and nextTokens = %ld, some rows of the matrix do not "
-                                "participate in the calculation, "
-                                "the accuracy of the final result will be incorrect. Please see the "
-                                "documentation for more details.",
-                                fiaInfo.sparseMode, preTokens, nextTokens),
-                            return ge::GRAPH_FAILED);
             }
         }
     }

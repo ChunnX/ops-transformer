@@ -42,6 +42,12 @@ private:
     ge::graphStatus CheckFeatureOutputEqual(const FiaTilingInfo &fiaInfo) const;
     ge::graphStatus CheckFeaturePrefix(const FiaTilingInfo &fiaInfo) const;
     ge::graphStatus CheckFeatureRowValid(const FiaTilingInfo &fiaInfo) const;
+    ge::graphStatus CheckRowValidForSingleBatch(const FiaTilingInfo &fiaInfo,
+        const gert::Tensor *tempData, const gert::Tensor *tempDataKV,
+        uint32_t actualLenDims, uint32_t actualLenDimsKV,
+        bool checkPostQuantOffset, int64_t preTokens, int64_t nextTokens,
+        std::vector<int64_t> &actualSeqLengths, std::vector<int64_t> &actualSeqLengthsKV,
+        uint32_t i) const;
     ge::graphStatus CheckAntiquantNotSupport(const FiaTilingInfo &fiaInfo) const;
     ge::graphStatus CheckMultiParaQuantOffset2(const FiaTilingInfo &fiaInfo) const;
 private:

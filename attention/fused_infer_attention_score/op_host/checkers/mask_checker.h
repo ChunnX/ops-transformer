@@ -52,7 +52,7 @@ private:
     ge::graphStatus CheckFeatureSparseMode(const FiaTilingInfo &fiaInfo) const;
     ge::graphStatus CheckPretokenAndNexttoken(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckIFADimAndShape(const FiaTilingInfo &fiaInfo) const;
-        ge::graphStatus CheckIFAMask2DShape(const FiaTilingInfo &fiaInfo, const std::string &layoutStr) const;
+    ge::graphStatus CheckIFAMask2DShape(const FiaTilingInfo &fiaInfo, const std::string &layoutStr) const;
     ge::graphStatus CheckIFAMask3DShape(const FiaTilingInfo &fiaInfo, const gert::Tensor *maskShape,
         uint32_t minAttenMaskSize) const;
     ge::graphStatus CheckIFAMask4DShape(const FiaTilingInfo &fiaInfo, const gert::Tensor *maskShape,
