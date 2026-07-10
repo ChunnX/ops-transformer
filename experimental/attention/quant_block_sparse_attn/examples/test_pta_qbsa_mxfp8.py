@@ -137,7 +137,7 @@ def main():
 
     # 当前 MXFP8 入口要求 mask_mode=3。全一 uint8 mask 作为最小 smoke case，
     # 若需要严格因果语义，可替换为 tril/triu 形式。
-    atten_mask = torch.triu(torch.ones((2048, 2048), dtype=torch.uint8), diagonal=1).npu()
+    atten_mask = torch.triu(torch.ones((2048, 2048), dtype=torch.uint8)).npu()
 
     metadata = torch.ops.custom.npu_quant_block_sparse_attn_metadata(
         sparse_seq_len,
