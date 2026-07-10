@@ -48,21 +48,23 @@ protected:
     ge::graphStatus PostTiling() override;
     void DumpTilingInfo() override;
 
+    void ContinuousStridesCompute(gert::Shape &shape, gert::Stride &inputStride);
+    ge::graphStatus GetInputStrides(gert::Shape &shape, gert::Stride &inputStride, size_t idx)
 private:
     uint64_t totalCoreNum_ = 0;
 
-    uint32_t batchSize_ = 0;
-    uint32_t numKvHeads_ = 0;
-    uint32_t kvLayout_ = 0;
-    uint32_t kvBlockSize_ = 64;
-    uint32_t stemBlockSize_ = 128;
+    int64_t batchSize_ = 0;
+    int64_t numKvHeads_ = 0;
+    int64_t kvLayout_ = 0;
+    int64_t kvBlockSize_ = 64;
+    int64_t stemBlocks_ = 128;
     uint32_t stemStride_ = 16;
     float lambdaMag_ = 0.3f;
-    uint32_t maxKvBlockSize_ = 0;
-    uint32_t dimQk_ = 128;
-    uint32_t maxKb_ = 0;
-    uint32_t kflatDim_ = 0;
-    uint32_t rVal_ = 0;
+    int64_t maxKvBlockSize_ = 0;
+    int64_t dimQk_ = 128;
+    int64_t maxKb_ = 0;
+    int64_t kflatDim_ = 0;
+    int64_t rVal_ = 0;
 
     gert::Stride kCacheStride_;
     gert::Stride vCacheStride_;

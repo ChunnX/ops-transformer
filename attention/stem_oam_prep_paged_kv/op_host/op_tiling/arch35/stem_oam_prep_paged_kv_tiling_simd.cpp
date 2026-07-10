@@ -70,13 +70,13 @@ ge::graphStatus StemPrepKvTiling::GetShapeAttrsInfo()
     tilingData_ = context_->GetTilingData<StemOamPrepPagedKvTilingData>();
     OP_CHECK_NULL_WITH_CONTEXT(context_, tilingData_);
 
-    lambdaMag_ = attrs->GetAttrValue<float>("lambdaMag");
-    kvLayout_ = static_cast<uint32_t>(attrs->GetAttrValue<int64_t>("cacheLayout"));
-    kvBlockSize_ = static_cast<uint32_t>(attrs->GetAttrValue<int64_t>("kvBlockSize"));
-    stemBlockSize_ = static_cast<uint32_t>(attrs->GetAttrValue<int64_t>("stemBlockSize"));
-    stemStride_ = static_cast<uint32_t>(attrs->GetAttrValue<int64_t>("stemStride"));
+    lambdaMag_ = *attrs->GetAttrPointer<float>(0);
+    kvLayout_ = *attrs->GetAttrPointer<int64_t>(1);
+    kvBlockSize_ = *attrs->GetAttrPointer<int64_t>(2);
+    stemBlocks_ = *attrs->GetAttrPointer<int64_t>(3);
+    stemStride_ = *attrs->GetAttrPointer<int64_t>(4);
 
-    rVal_ = stemBlockSize_ / stemStride_;
+    rVal_ = stemBlocks_ / stemStride_;
 
     const gert::StorageShape *kvSeqLensShape = context_->GetInputShape(3);
     OP_CHECK_NULL_WITH_CONTEXT(context_, kvSeqLensShape);
@@ -160,7 +160,7 @@ ge::graphStatus StemPrepKvTiling::PostTiling()
     tilingData_->dimQk = dimQk_;
     tilingData_->dimV = dimQk_;
     tilingData_->maxKvBlocks = maxKvBlockSize_;
-    tilingData_->stemBlockSize = stemBlockSize_;
+    tilingData_->stemBlockSize = stemBlocks_;
     tilingData_->stemStride = stemStride_;
     tilingData_->lambdaMag = lambdaMag_;
     tilingData_->kvLayout = kvLayout_;
@@ -176,13 +176,13 @@ void StemPrepKvTiling::DumpTilingInfo()
     info << "kvLayout: " << kvLayout_ << std::endl;
     info << "kvBlockSize: " << kvBlockSize_ << std::endl;
     info << "numKvHeads: " << numKvHeads_ << std::endl;
-    info << "maxKvBlocks: " << maxKvBlocks_ << std::endl;
+    info << "maxKvBlocks: " << maxKvBlockSize_ << std::endl;
     info << "dimQk: " << dimQk_ << std::endl;
-    info << "dimV: " << dimV_ << std::endl;
+    info << "dimV: " << dimQk_ << std::endl;
     info << "maxKb: " << maxKb_ << std::endl;
     info << "kflatDim: " << kflatDim_ << std::endl;
     info << "batchSize: " << batchSize_ << std::endl;
-    info << "stemBlockSize: " << stemBlockSize_ << std::endl;
+    info << "stemBlockSize: " << stemBlocks_ << std::endl;
     info << "stemStride: " << stemStride_ << std::endl;
     info << "lambdaMag: " << lambdaMag_ << std::endl;
     info << "rVal: " << rVal_ << std::endl;
