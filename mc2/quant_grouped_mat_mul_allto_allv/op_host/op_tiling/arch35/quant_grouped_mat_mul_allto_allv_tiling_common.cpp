@@ -840,19 +840,10 @@ ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::SetTilingCommonInfo()
     gmmQTilingCommonInfoPtr->N2 = localParams_.N2;
     gmmQTilingCommonInfoPtr->epWorldSize = localParams_.epWorldSize;
     gmmQTilingCommonInfoPtr->e = localParams_.ep;
-    gmmQTilingCommonInfoPtr->aivCoreNum = static_cast<uint64_t>(localParams_.aivCoreNum);
-    gmmQTilingCommonInfoPtr->aicCoreNum = static_cast<uint64_t>(localParams_.aicCoreNum);
 
-    OP_TILING_CHECK(expertNum_ == 0,
-        OP_LOGE_FOR_INVALID_VALUE(opName_, "expertNum_",
-            std::to_string(expertNum_).c_str(), "positive value"),
-        return ge::GRAPH_FAILED);
-    gmmQTilingCommonInfoPtr->expertNum = expertNum_;
-    gmmQTilingCommonInfoPtr->mainLoopExpertNum = expertNum_;
-    gmmQTilingCommonInfoPtr->tailLoopExpertNum =
-        (localParams_.ep % expertNum_ == 0) ? 0 : static_cast<uint32_t>(localParams_.ep % expertNum_);
-    gmmQTilingCommonInfoPtr->totalLoopCount =
-        static_cast<uint32_t>(Ops::Base::CeilDiv(localParams_.ep, static_cast<uint64_t>(expertNum_)));
+    gmmQTilingCommonInfoPtr->mainLoopExpertNum = 1;
+    gmmQTilingCommonInfoPtr->tailLoopExpertNum = 1;
+    gmmQTilingCommonInfoPtr->totalLoopCount = localParams_.ep;
 
     return ge::GRAPH_SUCCESS;
 }
@@ -860,29 +851,18 @@ ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::SetTilingCommonInfo()
 ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::SetGmmA2avWorkspaceInfo()
 {
     constexpr uint64_t alignAddrLen = 512;
-    constexpr uint64_t tensorListSize = 512;
     auto gmmYDtypeSize = mc2tiling::GetDataTypeSize(opName_, localParams_.gmmYDtype);
     inferredInfo_.gmmResultLen = mc2tiling::AlignUp(localParams_.A * localParams_.N1 * gmmYDtypeSize, alignAddrLen);
     localTilingData_.workspaceInfo.wsGmmOutputSize = inferredInfo_.gmmResultLen;
-    // GmmComputeOp workspace 内部布局:
-    //   [groupList (ep * epWorldSize * 8B)] [cGroupOffsetTable (ep * epWorldSize * 8B)]
-    //   [ptrTable (tensorListSize=512)] [TT scale repeat (sizeof(float) * ep * 2)]
-    uint64_t groupListSize = localParams_.ep * localParams_.epWorldSize * sizeof(int64_t);
-    uint64_t cGroupOffsetTableSize = localParams_.ep * localParams_.epWorldSize * sizeof(uint64_t);
-    uint64_t ttScaleRepeatSize = sizeof(float) * localParams_.ep * 2;
-    uint64_t gmmComputeWsSize = groupListSize + cGroupOffsetTableSize + tensorListSize + ttScaleRepeatSize;
+    // GmmComputeOp workspace 内部布局: groupList (ep * 8B) + tensorList (512B) + pertensorScaleRepeat (float * 2)
+    constexpr uint64_t tensorListSize = 512;
+    constexpr uint64_t pertensorScaleRepeatSize = sizeof(float) * 2;
+    uint64_t gmmComputeWsSize = localParams_.ep * sizeof(int64_t) + tensorListSize + pertensorScaleRepeatSize;
     localTilingData_.workspaceInfo.wsGmmComputeWorkspaceSize = mc2tiling::AlignUp(gmmComputeWsSize, alignAddrLen);
-    uint64_t sharedTtScaleRepeatSize = sizeof(float) * localParams_.ep * 2;
-    uint64_t sharedGmmComputeWsSize = localParams_.ep * sizeof(int64_t) + tensorListSize + sharedTtScaleRepeatSize;
-    localTilingData_.workspaceInfo.wsSharedGmmComputeWorkspaceSize =
-        mc2tiling::AlignUp(sharedGmmComputeWsSize, alignAddrLen);
-    // PermuteSend 已消除: GMM 直接输出 rank-first 布局, 无需重排空间
-    localTilingData_.workspaceInfo.wsPermuteOutSize = 0;
-
+    localTilingData_.workspaceInfo.wsSharedGmmComputeWorkspaceSize = mc2tiling::AlignUp(gmmComputeWsSize, alignAddrLen);
     workSpaceSize_ = libApiWorkSpaceSize_ + inferredInfo_.gmmResultLen +
                      localTilingData_.workspaceInfo.wsGmmComputeWorkspaceSize +
-                     localTilingData_.workspaceInfo.wsSharedGmmComputeWorkspaceSize +
-                     localTilingData_.workspaceInfo.wsPermuteOutSize;
+                     localTilingData_.workspaceInfo.wsSharedGmmComputeWorkspaceSize;
 
     return ge::GRAPH_SUCCESS;
 }
@@ -902,15 +882,7 @@ ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::DoQuantGMMTiling()
         }
         mMaxSize = std::max(mSize, mMaxSize);
     }
-    // check expertNum
-    OP_TILING_CHECK(expertNum_ == 0,
-        OP_LOGE_FOR_INVALID_VALUE(opName_, "expertNum_",
-            std::to_string(expertNum_).c_str(), "positive value"),
-        return ge::GRAPH_FAILED);
-    expertNum_ = Ops::Base::CeilDiv(localParams_.ep, expertNum_) > MAX_HCCL_HANDLE_NUM ?
-        Ops::Base::CeilDiv(localParams_.ep, static_cast<uint64_t>(MAX_HCCL_HANDLE_NUM)) : expertNum_;
-    MC2_CHECK_LOG_RET(opName_, gmmTile.SetGroupExpertInputParameters(localParams_, mMaxSize,
-        expertNum_));
+    MC2_CHECK_LOG_RET(opName_, gmmTile.SetGroupExpertInputParameters(localParams_, mMaxSize));
     MC2_CHECK_LOG_RET(opName_, gmmTile.Process());
     localTilingData_.gmmBaseTiling = gmmTile.GetGmmQuantTilingAdapterData();
 

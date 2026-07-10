@@ -61,7 +61,7 @@ struct TaskTilingInfo {
     uint64_t aicCoreNum;    // AIC 核数量
 
     // 循环调度参数
-    uint32_t expertNum;          // 每次GMM计算合并的专家数量（计算批大小）
+    uint32_t expertNum = 1U;          // 每次GMM计算合并的专家数量（计算批大小）
     uint32_t mainLoopExpertNum;  // 主循环每次处理的expert数量（=expertNum）
     uint32_t tailLoopExpertNum;  // 尾循环处理的expert数量（=e%expertNum的余数）
     uint32_t totalLoopCount;     // 总循环次数（=CeilDiv(e,expertNum))
