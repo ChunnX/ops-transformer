@@ -163,13 +163,13 @@ struct PerLoopParams {
     int64_t perLoopMaxIndicesElements = 0;
 };
 
-class MoeInitRoutingV3Arch35TilingClass : public TilingBaseClass {
+class MoeInitRoutingV3TilingArch35 : public TilingBaseClass {
 public:
-    explicit MoeInitRoutingV3Arch35TilingClass(gert::TilingContext *context) : TilingBaseClass(context)
+    explicit MoeInitRoutingV3TilingArch35(gert::TilingContext *context) : TilingBaseClass(context)
     {
         Reset();
     }
-    ~MoeInitRoutingV3Arch35TilingClass() override = default;
+    ~MoeInitRoutingV3TilingArch35() override = default;
 
     void Reset(gert::TilingContext *context) override
     {
@@ -181,7 +181,7 @@ protected:
     // 1、获取INPUT/OUTPUT/ATTR信息：DelayedGetShapeAttrsInfo()，延后到DoOpTiling内执行，以便先检查IsCapable()
     ge::graphStatus GetShapeAttrsInfo() override
     {
-        OP_LOGD(context_, "Entered MoeInitRoutingV3Arch35TilingClass::GetShapeAttrsInfo()");
+        OP_LOGD(context_, "Entered MoeInitRoutingV3TilingArch35::GetShapeAttrsInfo()");
         return ge::GRAPH_SUCCESS;
     }
     // 2、获取平台信息比如CoreNum、UB/L1/L0C资源大小
@@ -189,7 +189,7 @@ protected:
     // 3、判断此Tiling模板是否适配当前SOC
     bool IsCapable() override
     {
-        OP_LOGD(context_, "Entered MoeInitRoutingV3Arch35TilingClass::IsCapable()");
+        OP_LOGD(context_, "Entered MoeInitRoutingV3TilingArch35::IsCapable()");
         return Ops::Transformer::OpTiling::IsRegbaseSocVersion(context_);
     }
     // 4、计算数据切分TilingData
@@ -197,7 +197,7 @@ protected:
     // 5、计算高阶API的TilingData
     ge::graphStatus DoLibApiTiling() override
     {
-        OP_LOGD(context_, "Entered MoeInitRoutingV3Arch35TilingClass::DoLibApiTiling()");
+        OP_LOGD(context_, "Entered MoeInitRoutingV3TilingArch35::DoLibApiTiling()");
         return ge::GRAPH_SUCCESS;
     }
     // 6、计算TilingKey
@@ -211,6 +211,125 @@ protected:
     {
         opName = nullptr;
     };
+
+    // DoGetShapeAttrsInfo使用的子函数（V4 需覆盖）
+    virtual ge::graphStatus GetInputTensorsInfo();
+    virtual ge::graphStatus GetOutputTensorsInfo();
+    virtual ge::graphStatus GetInputAttrsInfo();
+
+    // 辅助工具函数（V4 子类需要使用）
+    template <bool IS_INPUT_TENSOR = true, bool IS_OPTIONAL_INPUT = false>
+    ge::graphStatus GetTensorShapeDtype(gert::Shape &shape, ge::DataType &dtype, int64_t index)
+    {
+        OP_LOGD(context_, "Entered MoeInitRoutingV3TilingArch35::GetTensorShapeDtype(...)");
+        const gert::StorageShape *shapePtr{nullptr};
+        const gert::CompileTimeTensorDesc *descPtr{nullptr};
+        if constexpr (IS_INPUT_TENSOR) {
+            if constexpr (IS_OPTIONAL_INPUT) {
+                shapePtr = context_->GetOptionalInputShape(index);
+                descPtr = context_->GetOptionalInputDesc(index);
+            } else {
+                shapePtr = context_->GetInputShape(index);
+                descPtr = context_->GetInputDesc(index);
+            }
+        } else {
+            shapePtr = context_->GetOutputShape(index);
+            descPtr = context_->GetOutputDesc(index);
+        }
+        OP_CHECK_NULL_WITH_CONTEXT(context_, shapePtr);
+        shape = shapePtr->GetStorageShape();
+        OP_CHECK_NULL_WITH_CONTEXT(context_, descPtr);
+        dtype = descPtr->GetDataType();
+        return ge::GRAPH_SUCCESS;
+    }
+    ge::graphStatus GetOptionalInputShapeDtype(gert::Shape &shape, ge::DataType &dtype, int64_t &marker, int64_t index)
+    {
+        OP_LOGD(context_, "Entered MoeInitRoutingV3TilingArch35::GetOptionalInputShapeDtype(...)");
+        if (context_->GetOptionalInputShape(index) != nullptr) {
+            marker = 1;
+            return GetTensorShapeDtype<true, true>(shape, dtype, index);
+        } else {
+            // 该Tensor没有输入
+            marker = 0;
+            return ge::GRAPH_SUCCESS;
+        }
+    }
+    template <typename ATTR_T>
+    ge::graphStatus GetInputAttr(ATTR_T &attr, const gert::RuntimeAttrs *attrsPtr, int64_t index)
+    {
+        OP_LOGD(context_, "Entered MoeInitRoutingV3TilingArch35::GetInputAttr(...)");
+        const auto *attrPtr = attrsPtr->GetAttrPointer<ATTR_T>(index);
+        OP_CHECK_NULL_WITH_CONTEXT(context_, attrPtr);
+        attr = *attrPtr;
+        return ge::GRAPH_SUCCESS;
+    }
+
+    // op variables
+    const char *opName = "";
+    MoeInitRoutingV3Arch35TilingData *tilingDataPtr_{nullptr};
+
+    // platform infos
+    int64_t aivCoreNum_ = 0LL;
+    int64_t totalUbSize_ = 0LL;
+    int64_t availUbSize_ = 0LL;
+    platform_ascendc::SocVersion socVersion_ = platform_ascendc::SocVersion::ASCEND910B;
+
+    // important values
+    int64_t sortLoopMaxElement_ = 0LL;
+    int64_t totalLength_ = 0LL;
+    int64_t n_ = 0LL;
+    int64_t k_ = 0LL;
+    int64_t cols_ = 0LL;
+    int64_t inputXDtypeSize_ = 0LL;
+    int64_t inputScaleDTypeSize_ = 0LL;
+    int64_t isInputScale_ = 0LL;
+    int64_t isInputOffset_ = 0LL;
+    int64_t isInputTopkWeight_ = 0LL;
+    int64_t isOutputExpandedTopkWeight_ = 0LL;
+    int64_t sortMode_ = 0LL;
+
+    // full load flag
+    bool isFullload_ = false;
+    bool isEmptyTensor_ = false;
+    int64_t ep_ = 0LL;
+
+    // input attrs
+    int64_t activeNum_ = -1LL;
+    int64_t expertCapacity_ = -1LL;
+    int64_t expertNum_ = -1LL;
+    int64_t dropPadMode_ = -1LL;
+    int64_t expertTokensNumType_ = -1LL;
+    bool expertTokensNumFlag_ = false;
+    int64_t quantMode_ = -1LL;
+    int64_t expertStart_ = -1LL;
+    int64_t expertEnd_ = -1LL;
+    int64_t rowIdxType_ = -1LL;
+
+    // input tensors shape
+    gert::Shape xShape_;
+    gert::Shape expertIdxShape_;
+    gert::Shape scaleShape_;
+    gert::Shape offsetShape_;
+    gert::Shape topkWeightShape_;
+    // output tensors shape
+    gert::Shape expandedXShape_;
+    gert::Shape expandedRowIdxShape_;
+    gert::Shape expertTokensCountOrCumsumShape_;
+    gert::Shape expandedScaleShape_;
+    gert::Shape expandedTopkWeightShape_;
+
+    // input tensors dtype
+    ge::DataType xDtype_;
+    ge::DataType expertIdxDtype_;
+    ge::DataType scaleDtype_;
+    ge::DataType offsetDtype_;
+    ge::DataType topkWeightDtype_;
+    // output tensors dtype
+    ge::DataType expandedXDtype_;
+    ge::DataType expandedRowIdxDtype_;
+    ge::DataType expertTokensCountOrCumsumDtype_;
+    ge::DataType expandedScaleDtype_;
+    ge::DataType expandedTopkWeightDtype_;
 
 private:
     // 校验并设置必要的平台信息（把GetPlatformInfo内，校验和计算的逻辑延后至DoOpTiling处理）
@@ -235,13 +354,6 @@ private:
     // 空tensor场景的workspace大小计算
     ge::graphStatus GetEmptyTensorWorkspaceSize();
 
-protected:
-    // DoGetShapeAttrsInfo使用的子函数（V4 需覆盖）
-    virtual ge::graphStatus GetInputTensorsInfo();
-    virtual ge::graphStatus GetOutputTensorsInfo();
-    virtual ge::graphStatus GetInputAttrsInfo();
-
-private:
     // CheckInputShape使用的子函数
     ge::graphStatus CheckInputX();
     ge::graphStatus CheckInputExpertIdx();
@@ -343,121 +455,6 @@ private:
     {
         return IsInt8DynamicQuantCase() || IsInt4DynamicQuantCase();
     }
-
-protected:
-    // 辅助工具函数（V4 子类需要使用）
-    template <bool IS_INPUT_TENSOR = true, bool IS_OPTIONAL_INPUT = false>
-    ge::graphStatus GetTensorShapeDtype(gert::Shape &shape, ge::DataType &dtype, int64_t index)
-    {
-        OP_LOGD(context_, "Entered MoeInitRoutingV3Arch35TilingClass::GetTensorShapeDtype(...)");
-        const gert::StorageShape *shapePtr{nullptr};
-        const gert::CompileTimeTensorDesc *descPtr{nullptr};
-        if constexpr (IS_INPUT_TENSOR) {
-            if constexpr (IS_OPTIONAL_INPUT) {
-                shapePtr = context_->GetOptionalInputShape(index);
-                descPtr = context_->GetOptionalInputDesc(index);
-            } else {
-                shapePtr = context_->GetInputShape(index);
-                descPtr = context_->GetInputDesc(index);
-            }
-        } else {
-            shapePtr = context_->GetOutputShape(index);
-            descPtr = context_->GetOutputDesc(index);
-        }
-        OP_CHECK_NULL_WITH_CONTEXT(context_, shapePtr);
-        shape = shapePtr->GetStorageShape();
-        OP_CHECK_NULL_WITH_CONTEXT(context_, descPtr);
-        dtype = descPtr->GetDataType();
-        return ge::GRAPH_SUCCESS;
-    }
-    ge::graphStatus GetOptionalInputShapeDtype(gert::Shape &shape, ge::DataType &dtype, int64_t &marker, int64_t index)
-    {
-        OP_LOGD(context_, "Entered MoeInitRoutingV3Arch35TilingClass::GetOptionalInputShapeDtype(...)");
-        if (context_->GetOptionalInputShape(index) != nullptr) {
-            marker = 1;
-            return GetTensorShapeDtype<true, true>(shape, dtype, index);
-        } else {
-            // 该Tensor没有输入
-            marker = 0;
-            return ge::GRAPH_SUCCESS;
-        }
-    }
-    template <typename ATTR_T>
-    ge::graphStatus GetInputAttr(ATTR_T &attr, const gert::RuntimeAttrs *attrsPtr, int64_t index)
-    {
-        OP_LOGD(context_, "Entered MoeInitRoutingV3Arch35TilingClass::GetInputAttr(...)");
-        const auto *attrPtr = attrsPtr->GetAttrPointer<ATTR_T>(index);
-        OP_CHECK_NULL_WITH_CONTEXT(context_, attrPtr);
-        attr = *attrPtr;
-        return ge::GRAPH_SUCCESS;
-    }
-
-    // op variables
-    const char *opName = "";
-    MoeInitRoutingV3Arch35TilingData *tilingDataPtr_{nullptr};
-
-    // platform infos
-    int64_t aivCoreNum_ = 0LL;
-    int64_t totalUbSize_ = 0LL;
-    int64_t availUbSize_ = 0LL;
-    platform_ascendc::SocVersion socVersion_ = platform_ascendc::SocVersion::ASCEND910B;
-
-    // important values
-    int64_t sortLoopMaxElement_ = 0LL;
-    int64_t totalLength_ = 0LL;
-    int64_t n_ = 0LL;
-    int64_t k_ = 0LL;
-    int64_t cols_ = 0LL;
-    int64_t inputXDtypeSize_ = 0LL;
-    int64_t inputScaleDTypeSize_ = 0LL;
-    int64_t isInputScale_ = 0LL;
-    int64_t isInputOffset_ = 0LL;
-    int64_t isInputTopkWeight_ = 0LL;
-    int64_t isOutputExpandedTopkWeight_ = 0LL;
-    int64_t sortMode_ = 0LL;
-
-    // full load flag
-    bool isFullload_ = false;
-    bool isEmptyTensor_ = false;
-    int64_t ep_ = 0LL;
-
-    // input attrs
-    int64_t activeNum_ = -1LL;
-    int64_t expertCapacity_ = -1LL;
-    int64_t expertNum_ = -1LL;
-    int64_t dropPadMode_ = -1LL;
-    int64_t expertTokensNumType_ = -1LL;
-    bool expertTokensNumFlag_ = false;
-    int64_t quantMode_ = -1LL;
-    int64_t expertStart_ = -1LL;
-    int64_t expertEnd_ = -1LL;
-    int64_t rowIdxType_ = -1LL;
-
-    // input tensors shape
-    gert::Shape xShape_;
-    gert::Shape expertIdxShape_;
-    gert::Shape scaleShape_;
-    gert::Shape offsetShape_;
-    gert::Shape topkWeightShape_;
-    // output tensors shape
-    gert::Shape expandedXShape_;
-    gert::Shape expandedRowIdxShape_;
-    gert::Shape expertTokensCountOrCumsumShape_;
-    gert::Shape expandedScaleShape_;
-    gert::Shape expandedTopkWeightShape_;
-
-    // input tensors dtype
-    ge::DataType xDtype_;
-    ge::DataType expertIdxDtype_;
-    ge::DataType scaleDtype_;
-    ge::DataType offsetDtype_;
-    ge::DataType topkWeightDtype_;
-    // output tensors dtype
-    ge::DataType expandedXDtype_;
-    ge::DataType expandedRowIdxDtype_;
-    ge::DataType expertTokensCountOrCumsumDtype_;
-    ge::DataType expandedScaleDtype_;
-    ge::DataType expandedTopkWeightDtype_;
 };
 
 } // namespace optiling
