@@ -45,6 +45,10 @@ public:
     bool isExistSeqUsed_ = false;
 
 private:
+    __aicore__ inline bool IsGroupedDecodeActive(uint32_t bIdx);
+    __aicore__ inline uint32_t GetRawSeqUsed(uint32_t bIdx);
+    __aicore__ inline uint32_t GetRawStartPos(uint32_t bIdx);
+
     bool isExistStartPos_ = false;
     GlobalTensor<int32_t> cuSeqlensGm_;
     GlobalTensor<int32_t> sequsedGm_;
@@ -71,7 +75,7 @@ __aicore__ inline void CompressorTools<COMP>::Init(__gm__ uint8_t *startPos, __g
 }
 
 template <typename COMP>
-__aicore__ inline uint32_t CompressorTools<COMP>::GetSeqUsed(uint32_t bIdx)
+__aicore__ inline uint32_t CompressorTools<COMP>::GetRawSeqUsed(uint32_t bIdx)
 {
     if (isExistSeqUsed_) {
         return (uint32_t)sequsedGm_.GetValue(bIdx);
@@ -85,13 +89,48 @@ __aicore__ inline uint32_t CompressorTools<COMP>::GetSeqUsed(uint32_t bIdx)
 }
 
 template <typename COMP>
-__aicore__ inline uint32_t CompressorTools<COMP>::GetStartPos(uint32_t bIdx)
+__aicore__ inline uint32_t CompressorTools<COMP>::GetRawStartPos(uint32_t bIdx)
 {
     if (isExistStartPos_) {
         return (uint32_t)startPosGm_.GetValue(bIdx);
     } else {
         return 0;
     }
+}
+
+template <typename COMP>
+__aicore__ inline bool CompressorTools<COMP>::IsGroupedDecodeActive(uint32_t bIdx)
+{
+    if (toolParams_.xCacheReadSize == 0 || toolParams_.cmpRatio == 0 || !isExistStartPos_ || !isExistSeqUsed_) {
+        return false;
+    }
+    uint32_t rawStartPos = GetRawStartPos(bIdx);
+    uint32_t rawSeqUsed = GetRawSeqUsed(bIdx);
+    uint32_t cmpRatio = toolParams_.cmpRatio;
+    return ((rawStartPos + rawSeqUsed) / cmpRatio) > (rawStartPos / cmpRatio);
+}
+
+template <typename COMP>
+__aicore__ inline uint32_t CompressorTools<COMP>::GetSeqUsed(uint32_t bIdx)
+{
+    if (toolParams_.xCacheReadSize > 0 && toolParams_.cmpRatio > 0 && isExistStartPos_ && isExistSeqUsed_) {
+        return IsGroupedDecodeActive(bIdx) ? toolParams_.xCacheReadSize : 0;
+    }
+    return GetRawSeqUsed(bIdx);
+}
+
+template <typename COMP>
+__aicore__ inline uint32_t CompressorTools<COMP>::GetStartPos(uint32_t bIdx)
+{
+    if (toolParams_.xCacheReadSize > 0 && toolParams_.cmpRatio > 0 && isExistStartPos_ && isExistSeqUsed_) {
+        if (!IsGroupedDecodeActive(bIdx)) {
+            return GetRawStartPos(bIdx);
+        }
+        uint32_t completeGroupEnd = ((GetRawStartPos(bIdx) + GetRawSeqUsed(bIdx)) / toolParams_.cmpRatio) *
+                                    toolParams_.cmpRatio;
+        return completeGroupEnd - toolParams_.xCacheReadSize;
+    }
+    return GetRawStartPos(bIdx);
 }
 
 template <typename COMP>

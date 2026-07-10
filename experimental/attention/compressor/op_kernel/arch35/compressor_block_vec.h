@@ -402,34 +402,19 @@ CompressorBlockVector<COMP>::InitVec1GlobalTensor(GlobalTensor<T> kvMm1ResGm, Gl
 template <typename COMP>
 __aicore__ inline uint32_t CompressorBlockVector<COMP>::GetSeqUsed(uint32_t bIdx)
 {
-    if (isExistSeqUsed_) {
-        return (uint32_t)sequsedGm_.GetValue(bIdx);
-    } else {
-        if constexpr (COMP::xLayout == X_LAYOUT::TH) {
-            return (uint32_t)(cuSeqlensGm_.GetValue(bIdx + 1) - cuSeqlensGm_.GetValue(bIdx));
-        } else {
-            return constInfo_.sSize;
-        }
-    }
+    return tools_.GetSeqUsed(bIdx);
 }
 
 template <typename COMP>
 __aicore__ inline uint32_t CompressorBlockVector<COMP>::GetStartPos(uint32_t bIdx)
 {
-    if (isExistStartPos_) {
-        return startPosGm_.GetValue(bIdx);
-    }
-    return 0;
+    return tools_.GetStartPos(bIdx);
 }
 
 template <typename COMP>
 __aicore__ inline uint32_t CompressorBlockVector<COMP>::GetSeqLength(uint32_t bIdx)
 {
-    if (COMP::xLayout == X_LAYOUT::TH) {
-        return cuSeqlensGm_.GetValue(bIdx + 1) - cuSeqlensGm_.GetValue(bIdx);
-    } else {
-        return constInfo_.sSize;
-    }
+    return tools_.GetSeqLength(bIdx);
 }
 
 template <typename COMP>
