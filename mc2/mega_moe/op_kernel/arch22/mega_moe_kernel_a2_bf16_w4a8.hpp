@@ -722,7 +722,8 @@ private:
     }
 
     CATLASS_DEVICE
-    void CrossRankSyncAndlocalTokenPerExpertAllGatherAndGetSumPreRankV2(Params const &params, int64_t localTokenPerExpertOffset)
+    void CrossRankSyncAndlocalTokenPerExpertAllGatherAndGetSumPreRankV2(Params const &params,
+        int64_t localTokenPerExpertOffset)
     {
         const int32_t rank = RuntimeRank(params);
         uint32_t numPerCore = paddedExpertNumAligned;
@@ -730,22 +731,26 @@ private:
         AscendC::LocalTensor<int32_t> prevSumBuf = tmpBuffer[numPerCore];
         uint64_t ubOffet = 2 * numPerCore * sizeof(uint32_t);
         AscendC::LocalTensor<uint64_t> rdmaUbLocal = resource.ubBuf.template GetBufferByByte<uint64_t>(ubOffet);
-        AscendC::LocalTensor<uint32_t> rdmaUbLocalHead = resource.ubBuf.template GetBufferByByte<uint32_t>(ubOffet + UB_ALIGN);
+        AscendC::LocalTensor<uint32_t> rdmaUbLocalHead =
+            resource.ubBuf.template GetBufferByByte<uint32_t>(ubOffet + UB_ALIGN);
         // flagUb：用于路径 C 拼 32B flag payload，放在 rdmaUbLocalHead 之后
-        AscendC::LocalTensor<int32_t> flagUb = resource.ubBuf.template GetBufferByByte<int32_t>(ubOffet + 2 * UB_ALIGN);
+        AscendC::LocalTensor<int32_t> flagUb =
+            resource.ubBuf.template GetBufferByByte<int32_t>(ubOffet + 2 * UB_ALIGN);
 
         // ── Stage 1：发送（每 core 处理若干 dstEpIdx）──────────────
-        for(int32_t dstEpIdx = coreIdx, dstServerId = 0; dstEpIdx < params.EP; dstEpIdx += coreNum) {
+        for (int32_t dstEpIdx = coreIdx, dstServerId = 0; dstEpIdx < params.EP; dstEpIdx += coreNum) {
             dstServerId = dstEpIdx / SERVER_RANK_SIZE_A2;
             AscendC::GlobalTensor<int32_t> srcAddress;
-            srcAddress.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(shmem.windowsOutAddr() + localTokenPerExpertOffset));
+            srcAddress.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(shmem.windowsOutAddr() +
+                localTokenPerExpertOffset));
             AscendC::GlobalTensor<int32_t> dstAddress;
             __gm__ void* dstPeermemPtr = shmem(localTokenPerExpertOffset, dstEpIdx);
 
-            dstAddress.SetGlobalBuffer((__gm__ int32_t * )dstPeermemPtr);
+            dstAddress.SetGlobalBuffer((__gm__ int32_t *)dstPeermemPtr);
             AscendC::GlobalTensor<int32_t> localDstAddress;
-            GM_ADDR localDstPeermemPtr = shmem.windowsOutAddr() + peermemInfo.offsetPeerTokenPerExpert + tokenPerExpertLayout(dstEpIdx, 0, 0) * sizeof(int32_t);
-            localDstAddress.SetGlobalBuffer((__gm__ int32_t * )localDstPeermemPtr);
+            GM_ADDR localDstPeermemPtr = shmem.windowsOutAddr() +
+                peermemInfo.offsetPeerTokenPerExpert + tokenPerExpertLayout(dstEpIdx, 0, 0) * sizeof(int32_t);
+            localDstAddress.SetGlobalBuffer((__gm__ int32_t *)localDstPeermemPtr);
 
             AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
             using TType = Gemm::GemmType<int32_t, layout::RowMajor>;
@@ -788,7 +793,8 @@ private:
                     layout::RowMajor{ 1, numPerCore},
                     layout::RowMajor{1, numPerCore});
                 AscendC::PipeBarrier<PIPE_ALL>();
-                AIVRDMAPostSend((GM_ADDR)localDstAddress.GetPhyAddr(), (GM_ADDR)dstAddress.GetPhyAddr(), dstEpIdx, numPerCore * sizeof(int32_t),
+                AIVRDMAPostSend((GM_ADDR)localDstAddress.GetPhyAddr(),
+                                (GM_ADDR)dstAddress.GetPhyAddr(), dstEpIdx, numPerCore * sizeof(int32_t),
                                 qp_info_, rdmaUbLocal, rdmaUbLocalHead);
                 AscendC::PipeBarrier<PIPE_ALL>();
                 // 准备 32B flag payload：[0]=magic，其余 7 个 i32 = 0
@@ -822,7 +828,7 @@ private:
         }
 
         // ── Stage 2：等 flag + 读 tokenPerExpert + 算 preSumBeforeRank ──
-        for(int32_t dstEpIdx = coreIdx; dstEpIdx < params.EP; dstEpIdx += coreNum) {
+        for (int32_t dstEpIdx = coreIdx; dstEpIdx < params.EP; dstEpIdx += coreNum) {
             // self-rank 已在 Stage 1 本地搬运完毕，无 flag；其它 rank 等 allgather flag
             if (dstEpIdx != rank) {
                 __gm__ int32_t* flagAddr = reinterpret_cast<__gm__ int32_t*>(
@@ -1359,7 +1365,8 @@ private:
             MoeTokenUnpermuteTilingData tilingData;
             MoeTokenUnpermuteTiling(params.problemShape.m() * params.topK, n2, params.topK, tilingData, coreNum / 2);
             KernelMoeTokenUnpermute<ElementD2, int32_t, float, true> kernelMoeTokenUnpermuteOp;
-            kernelMoeTokenUnpermuteOp.Init(shmem() + peermemInfo.offsetD, workspaceInfo.expandedRowIdx, params.probs, reinterpret_cast<GM_ADDR>(params.ptrOutput), &tilingData);
+            kernelMoeTokenUnpermuteOp.Init(shmem() + peermemInfo.offsetD,
+                workspaceInfo.expandedRowIdx, params.probs, reinterpret_cast<GM_ADDR>(params.ptrOutput), &tilingData);
             kernelMoeTokenUnpermuteOp.Process();
         }
     }
