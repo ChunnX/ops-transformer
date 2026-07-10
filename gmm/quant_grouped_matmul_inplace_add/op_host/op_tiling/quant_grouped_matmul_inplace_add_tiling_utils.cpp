@@ -131,8 +131,10 @@ bool CheckDtypeForInplaceAdd(const GQmmInputInfo &inputParams)
 
 bool CheckCoreNumForInplaceAdd(const gert::TilingContext *context, const GQmmInputInfo &inputParams)
 {
-    auto aicNum = context->GetCompileInfo<GMMCompileInfo>()->aicNum;
-    auto aivNum = context->GetCompileInfo<GMMCompileInfo>()->aivNum;
+    auto compileInfo = context->GetCompileInfo<GMMCompileInfo>();
+    OP_CHECK_IF(compileInfo == nullptr, OP_LOGE(inputParams.opName, "compileInfo is nullptr."), return false);
+    auto aicNum = compileInfo->aicNum;
+    auto aivNum = compileInfo->aivNum;
     OP_CHECK_IF(aicNum == 0, OP_LOGE(inputParams.opName, "aicNum should be positive integer, actual is %u.", aicNum),
                 return false);
     OP_CHECK_IF(
@@ -213,7 +215,7 @@ bool CheckShapeForMxQuant(const gert::Shape &x1ScaleShape, const gert::Shape &x2
     auto xScaleMDim = static_cast<uint64_t>(x1ScaleShape.GetDim(x1ScaleDimNum - LAST_SECOND_DIM_INDEX));
     auto wScaleLastDim = static_cast<uint64_t>(x2ScaleShape.GetDim(x2ScaleDimNum - 1));
     auto wScaleNDim = static_cast<uint64_t>(x2ScaleShape.GetDim(x2ScaleDimNum - LAST_SECOND_DIM_INDEX));
-    auto wScaleKDim = static_cast<uint64_t>(x1ScaleShape.GetDim(0));
+    auto wScaleKDim = static_cast<uint64_t>(x2ScaleShape.GetDim(0));
     auto expectedKDimValue = inputParams.kSize / MXFP_BASEK_FACTOR + inputParams.groupNum;
     OP_CHECK_IF(
         xScaleLastDim != MXFP_MULTI_BASE_SIZE || xScaleKDim != expectedKDimValue || xScaleMDim != inputParams.mSize,
