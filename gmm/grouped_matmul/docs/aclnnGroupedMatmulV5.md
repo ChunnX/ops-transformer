@@ -282,8 +282,6 @@ aclnnGroupedMatmulV5 默认确定性实现。
 
 ### 公共约束
 
-每一个场景约束中，只关注该场景需要用到的参数，其余参数均视为该场景不涉及，可以填 `nullptr`。
-
 以下约束在所有场景和产品代际下通用：
 
 - x/weight中每组 Tensor的最后一维 < 65536。
@@ -295,8 +293,8 @@ aclnnGroupedMatmulV5 默认确定性实现。
 - groupListOptional：out中TensorList长度为1时，groupList约束输出数据有效范围，未指定部分不参与更新。
 - groupListType：
   - groupListType=0：须为非负单调非递减数列（累积和）。以M=256、E=4（各组大小依次为64、0、128、64）为例：`[64, 64, 192, 256]`
-  - groupListType=1：须为非负数列（各组大小）。以M=256、E=4为例：`[64, 0, 128, 64]`
-  - groupListType=2：须为非负数列，shape `[E, 2]`（[组索引, 组大小]），非零组前置。以M=256、E=4为例：`[[0, 64], [2, 128], [3, 64], [1, 0]]`
+  - groupListType=1：须为非负数列（各组大小）。例如：`[64, 0, 128, 64]`
+  - groupListType=2：须为非负数列，shape `[E, 2]`（[组索引, 组大小]），非零组前置。例如：`[[0, 64], [2, 128], [3, 64], [1, 0]]`
 
 ### Ascend 950PR/Ascend 950DT
 

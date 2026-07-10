@@ -9,7 +9,22 @@ abbr {
 
 ## GroupedMatmul简介
 
-GroupedMatmul是分组矩阵乘算子，支持按 M轴或K轴对输入张量进行分组，分别对各组执行矩阵乘法。涵盖非量化、伪量化和全量化三种计算场景，广泛应用于 MoE等大模型推理加速。
+GroupedMatmul是 MoE网络中的重要算子，核心功能是做分组矩阵乘：将输入 token按组分配给不同专家，每组独立执行矩阵乘法。支持按 M轴或K轴对输入张量进行分组，涵盖非量化、伪量化和全量化三种计算场景。在 MoE推理中，GroupedMatmul通常被调用两次：第一次对输入 token与各专家的上投影权重做分组矩阵乘，得到各专家的中间结果；第二次将中间结果与各专家的下投影权重做分组矩阵乘，得到各专家的输出。
+
+```mermaid
+graph LR
+    B["moe_gating_top_k"] --> C["moe_init_routing"]
+    C --> D["grouped_matmul<br>(W1:gate_up_proj)"]
+    D --> E["swiglu"]
+    E --> F["grouped_matmul<br>(W2:down_proj)"]
+    F --> G["moe_finalize_routing"]
+
+    classDef gmm fill:#fff3bf,stroke:#f08c00,stroke-width:2px,color:#333;
+    classDef other fill:#d0ebff,stroke:#1c7ed6,stroke-width:2px,color:#333;
+
+    class D,F gmm;
+    class B,C,E,G other;
+```
 
 ---
 
@@ -120,11 +135,12 @@ $$
   - $weight_i$ 最后一维：weight不转置时为 N轴，weight转置时为 K轴。
 - x/weight转置时对应 Tensor必须 [非连续](../../docs/zh/context/非连续的Tensor.md)。
 - weight为 [FRACTAL_NZ](../../docs/zh/context/数据格式.md) 格式时，shape 须满足 NZ格式要求。
-- perTokenScaleOptional：通常仅 1维，长度与 x的M一致。仅支持 x/weight/out均为单Tensor 场景。
-- groupListOptional：out中 TensorList长度为 1 时，groupList约束输出数据有效范围，未指定部分不参与更新。
-- groupListType=0：groupListOptional须为非负单调非递减数列（累积和）。
-- groupListType=1：须为非负数列（各组大小）。
-- groupListType=2：须为非负数列，shape `[E, 2]`（[组索引, 组大小]）。
+- perTokenScaleOptional：通常仅1维，长度与 x的M一致。仅支持 x/weight/out均为单Tensor场景。
+- groupListOptional：out中 TensorList长度为1时，groupList约束输出数据有效范围，未指定部分不参与更新。
+- groupListType：
+  - groupListType=0：须为非负单调非递减数列（累积和）。
+  - groupListType=1：须为非负数列（各组大小）。
+  - groupListType=2：须为非负数列，shape `[E, 2]`（[组索引, 组大小]），非零组前置。
 
 > 各场景详细约束请参见 [aclnnGroupedMatmulV5约束说明](docs/aclnnGroupedMatmulV5.md#7-约束说明)。
 
