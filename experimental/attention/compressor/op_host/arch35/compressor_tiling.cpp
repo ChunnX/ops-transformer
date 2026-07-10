@@ -69,6 +69,10 @@ void CompressorTiling::ConvertOptionalParams(gert::TilingContext &context, Compr
     compressorContext.seqUsed.shape = context.GetOptionalInputShape(SEQ_USED_INPUT_INDEX);
     compressorContext.startPos.desc = context.GetOptionalInputDesc(START_POS_INPUT_INDEX);
     compressorContext.startPos.shape = context.GetOptionalInputShape(START_POS_INPUT_INDEX);
+    compressorContext.xCache.desc = context.GetOptionalInputDesc(X_CACHE_INPUT_INDEX);
+    compressorContext.xCache.shape = context.GetOptionalInputShape(X_CACHE_INPUT_INDEX);
+    compressorContext.xCacheSlotMapping.desc = context.GetOptionalInputDesc(X_CACHE_SLOT_MAPPING_INPUT_INDEX);
+    compressorContext.xCacheSlotMapping.shape = context.GetOptionalInputShape(X_CACHE_SLOT_MAPPING_INPUT_INDEX);
 }
 
 ge::graphStatus CompressorTiling::ConvertContext(gert::TilingContext &context, CompressorContext &compressorContext)
@@ -96,6 +100,7 @@ ge::graphStatus CompressorTiling::ConvertContext(gert::TilingContext &context, C
     compressorContext.rotaryMode = attrs->GetAttrPointer<int>(ROTARY_MODE_ATTR_INDEX);
     compressorContext.cacheMode = attrs->GetAttrPointer<int>(CACHE_MODE_ATTR_INDEX);
     compressorContext.stateCacheStrideDim0 = attrs->GetAttrPointer<int>(STATE_CACHE_STRIDE_DIM0_ATTR_INDEX);
+    compressorContext.xCacheUpdate = attrs->GetAttrPointer<bool>(X_CACHE_UPDATE_ATTR_INDEX);
 
     OP_CHECK_IF(context.GetWorkspaceSizes(1) == nullptr,
                 OPS_REPORT_VECTOR_INNER_ERR(context.GetNodeName(), "workSpaceSize got from ge is nullptr"),
@@ -129,29 +134,44 @@ ge::graphStatus CompressorTiling::GetNpuInfo()
 
 ge::graphStatus CompressorTiling::SetBaseInfo()
 {
+    uint32_t computeSeqSize = 0;
     if (context_->x.shape->GetStorageShape().GetDimNum() == COMPRESSOR_DIM_NUM_3) {
+        const bool hasXCache = context_->xCache.desc != nullptr;
         baseParams_->batchSize = context_->x.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_0);
         baseParams_->seqSize = context_->x.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_1);
+        // With x_cache present, one decode token plus cached history is computed as
+        // a full compression window.  Without x_cache, keep the original BSH seq size.
+        baseParams_->xCacheReadSize = hasXCache ? static_cast<uint32_t>(*context_->cmpRatio) : 0;
         baseParams_->hiddenSize = context_->x.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_2);
-        baseParams_->tokenSize = baseParams_->batchSize * baseParams_->seqSize;
+        computeSeqSize = hasXCache ? baseParams_->xCacheReadSize : baseParams_->seqSize;
+        baseParams_->tokenSize = baseParams_->batchSize * computeSeqSize;
         baseParams_->cgSize = context_->ropeSin.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_1);
     } else {
         baseParams_->batchSize = context_->cuSeqlens.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_0) - 1;
+        baseParams_->seqSize = context_->x.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_0);
+        baseParams_->xCacheReadSize = 0;
         baseParams_->tokenSize = context_->x.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_0);
         baseParams_->hiddenSize = context_->x.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_1);
+        computeSeqSize = baseParams_->tokenSize;
         baseParams_->cgSize = context_->ropeSin.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_0);
     }
 
     baseParams_->headDim = context_->normWeight.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_0);
     baseParams_->cmpRatio = static_cast<uint32_t>(*context_->cmpRatio);
-    baseParams_->csSize = baseParams_->seqSize - (baseParams_->seqSize % baseParams_->cmpRatio);
+    baseParams_->csSize = computeSeqSize - (computeSeqSize % baseParams_->cmpRatio);
     baseParams_->ropeHeadDim = static_cast<uint32_t>(*context_->ropeHeadDim);
     baseParams_->normEps = static_cast<float>(*context_->normEps);
     baseParams_->reciprocalD = 1.0 / baseParams_->headDim;
     baseParams_->cgSize =
-        (baseParams_->seqSize + baseParams_->cmpRatio - 1) / baseParams_->cmpRatio; // number of token after compress
+        (computeSeqSize + baseParams_->cmpRatio - 1) / baseParams_->cmpRatio; // number of token after compress
     coff = static_cast<uint8_t>(*context_->coff);
     baseParams_->stateCacheStrideDim0 = static_cast<uint64_t>(*context_->stateCacheStrideDim0);
+    baseParams_->xCacheSize = context_->xCache.desc == nullptr ? 0 :
+        context_->xCache.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_1);
+    bool xCacheUpdate = context_->xCacheUpdate == nullptr || *context_->xCacheUpdate;
+    // Only HCA/update calls write current x into the ring cache.  Read-only KV/LI
+    // calls still pass x_cache for grouped-window reads but leave update batch size 0.
+    baseParams_->xCacheUpdateBatchSize = (context_->xCache.desc != nullptr && xCacheUpdate) ? baseParams_->batchSize : 0;
     baseParams_->nSize = 2; // 2:每个核处理两个基本块后做全核同步
     baseParams_->usedCoreNum = aicNum_;
     OP_LOGI(context_->opName, "[TILING] bSize:%u  tSize:%u cmpRatio:%u coff:%u, stateCacheStrideDim0:%u",
@@ -198,7 +218,8 @@ ge::graphStatus CompressorTiling::SetTemplateId()
     }
     if (socVersion_ == platform_ascendc::SocVersion::ASCEND950) {
         // 设置高性能模板
-        if (context_->layout == LayoutType::LAYOUT_BSH && baseParams_->seqSize <= 4 && baseParams_->tokenSize <= 256) {
+        if (context_->layout == LayoutType::LAYOUT_BSH && context_->seqUsed.desc == nullptr &&
+            baseParams_->seqSize <= 4 && baseParams_->tokenSize <= 256) {
             context_->templateId = TemplateId::FULL_LOAD;
         }
         return ge::GRAPH_SUCCESS;
@@ -412,6 +433,8 @@ ge::graphStatus CompressorTiling::CheckSinglePara() const
         ge::GRAPH_SUCCESS != CheckSingleParaCuSeqlens() ||
         ge::GRAPH_SUCCESS != CheckSingleParaSeqused() ||
         ge::GRAPH_SUCCESS != CheckSingleParaStartPos() ||
+        ge::GRAPH_SUCCESS != CheckSingleParaXCache() ||
+        ge::GRAPH_SUCCESS != CheckSingleParaXCacheSlotMapping() ||
         ge::GRAPH_SUCCESS != CheckSingleParaCmpKv() ||
         ge::GRAPH_SUCCESS != CheckSingleParaRopeHeadDim() ||
         ge::GRAPH_SUCCESS != CheckSingleParaCmpRatio() ||
@@ -687,6 +710,38 @@ ge::graphStatus CompressorTiling::CheckSingleParaStartPos() const
     return ge::GRAPH_SUCCESS;
 }
 
+ge::graphStatus CompressorTiling::CheckSingleParaXCache() const
+{
+    if (context_->xCache.desc == nullptr) {
+        return ge::GRAPH_SUCCESS;
+    }
+    if (ge::GRAPH_SUCCESS != CheckDtypeSupport(context_->xCache.desc, X_CACHE_NAME) ||
+        ge::GRAPH_SUCCESS != CheckDimNumSupport(context_->xCache.shape, X_CACHE_NAME)) {
+        return ge::GRAPH_FAILED;
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus CompressorTiling::CheckSingleParaXCacheSlotMapping() const
+{
+    if (context_->xCacheSlotMapping.desc == nullptr) {
+        // x_cache and its slot mapping are an all-or-none pair because the kernel
+        // needs explicit physical slots for current-token ring-cache writes.
+        OP_CHECK_IF(context_->xCache.desc != nullptr,
+                    OP_LOGE(context_->opName, "x_cache_slot_mapping is required when x_cache is provided"),
+                    return ge::GRAPH_FAILED);
+        return ge::GRAPH_SUCCESS;
+    }
+    OP_CHECK_IF(context_->xCache.desc == nullptr,
+                OP_LOGE(context_->opName, "x_cache is required when x_cache_slot_mapping is provided"),
+                return ge::GRAPH_FAILED);
+    if (ge::GRAPH_SUCCESS != CheckDtypeSupport(context_->xCacheSlotMapping.desc, X_CACHE_SLOT_MAPPING_NAME) ||
+        ge::GRAPH_SUCCESS != CheckDimNumSupport(context_->xCacheSlotMapping.shape, X_CACHE_SLOT_MAPPING_NAME)) {
+        return ge::GRAPH_FAILED;
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus CompressorTiling::CheckSingleParaCmpKv() const
 {
     if (context_->cmpKv.desc == nullptr) {
@@ -887,6 +942,14 @@ ge::graphStatus CompressorTiling::CheckShapeConsistency() const
                                                       "batchSize", baseParams_->batchSize) ||
         ge::GRAPH_SUCCESS != LogErrorShapeConsistency("startPos", context_->startPos.shape, COMPRESSOR_DIM_INDEX_0,
                                                       "batchSize", baseParams_->batchSize) ||
+        // Ring cache is indexed as [batch, slot, hidden]; slot count may be cmp_ratio
+        // or a model-selected cache depth, so only batch and hidden are fixed here.
+        ge::GRAPH_SUCCESS != LogErrorShapeConsistency("xCache", context_->xCache.shape, COMPRESSOR_DIM_INDEX_0,
+                                                      "batchSize", baseParams_->batchSize) ||
+        ge::GRAPH_SUCCESS != LogErrorShapeConsistency("xCache", context_->xCache.shape, COMPRESSOR_DIM_INDEX_2,
+                                                      "hiddenSize", baseParams_->hiddenSize) ||
+        ge::GRAPH_SUCCESS != LogErrorShapeConsistency("xCacheSlotMapping", context_->xCacheSlotMapping.shape,
+                                                      COMPRESSOR_DIM_INDEX_0, "batchSize", baseParams_->batchSize) ||
         ge::GRAPH_SUCCESS != LogErrorShapeConsistency("wkv", context_->wkv.shape, COMPRESSOR_DIM_INDEX_1, "hiddenSize",
                                                       baseParams_->hiddenSize) ||
         ge::GRAPH_SUCCESS != LogErrorShapeConsistency("wgate", context_->wgate.shape, COMPRESSOR_DIM_INDEX_1,

@@ -34,6 +34,8 @@ namespace optiling {
     struct CompressorBaseParams {   
         uint32_t batchSize = 0;             // bastch size（批大小）
         uint32_t seqSize = 0;               // sequence size（kvs大小）  
+        uint32_t xCacheReadSize = 0;        // grouped decode x_cache read size
+        uint32_t xCacheUpdateBatchSize = 0; // grouped decode x_cache update batch size
         uint32_t hiddenSize = 0;            // hidden size（隐藏层大小）
         uint32_t tokenSize = 0;             // token size = batchSize * seqSize(token总数：批大小x序列1长度)
         uint32_t headDim = 0;               // head size of kv
@@ -46,6 +48,7 @@ namespace optiling {
         uint32_t usedCoreNum = 0;           // 使用核数
         uint32_t nSize = 0;                 // 控制v2积攒的轮数
         uint64_t stateCacheStrideDim0 = 0;  // stateCache第0维的stride
+        uint32_t xCacheSize = 0;            // grouped decode x_cache ring size
         uint32_t kBaseNum = 0;
         uint32_t kBaseSize = 0;
         uint32_t coreGroupNum = 0;
