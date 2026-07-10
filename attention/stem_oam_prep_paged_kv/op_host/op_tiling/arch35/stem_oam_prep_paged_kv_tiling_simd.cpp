@@ -202,5 +202,4 @@ void StemPrepKvTiling::DumpTilingInfo()
 }
 
 REGISTER_OPS_TILING_TEMPLATE(StemOamPrepPagedKv, StemPrepKvTiling, 0);
-
 } // namespace optiling
