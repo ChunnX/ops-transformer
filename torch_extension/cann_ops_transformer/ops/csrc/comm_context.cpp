@@ -652,7 +652,6 @@ public:
 
     void UpdateGroup(const std::string &group, at::Tensor &contextTensor)
     {
-        Destroy();
         group_ = group;
         cclBufferSize_ = 0;
         EnsureResolved();
