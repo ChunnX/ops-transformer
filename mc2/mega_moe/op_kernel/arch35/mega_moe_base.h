@@ -213,10 +213,6 @@ __aicore__ inline void SyncFuncStatic()
 // ============================================================================
 // 大 bs dispatch 分块常量
 // ============================================================================
-// DISPATCH_TRIPLE_TILE: triple 三元组每批派发的最多行数。
-//   与大 bs route batch 解耦——即使单个 batch 命中数千行，triple 也按此值分批，峰值固定 2048*32B=64KB。
-constexpr int32_t DISPATCH_TRIPLE_TILE = 2048;
-
 // DISPATCH_RESET_BATCH: ResetFlagList 分批清零的粒度（int32 个数）。
 //   本核 flag 份额超此值时，用同一片零 UB 分批推 GM，使 reset UB 恒 ≤ 8KB，与 bs 解耦。
 constexpr int32_t DISPATCH_RESET_BATCH = 2048;
