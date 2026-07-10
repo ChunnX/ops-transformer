@@ -61,20 +61,23 @@ quant_flash_attn(
     int64_t bSize = 0;
     at::SmallVector<int64_t, MAX_DIM_SIZE> attentionOutSize;
     at::SmallVector<int64_t, MAX_DIM_SIZE> softmaxOutSize;
+
     if (layout_q == "TND") {
         tSize = q.size(0);
         nSize = q.size(1);
-        dSize = v.size(2);
     } else if (layout_q == "BSND") {
         bSize = q.size(0);
         sSize = q.size(1);
         nSize = q.size(2);
-        dSize = v.size(3);
     } else {
         bSize = q.size(0);
         nSize = q.size(1);
         sSize = q.size(2);
-        dSize = v.size(3);
+    }
+    if (layout_kv == "TND") {
+        dSize = v.size(2);
+    } else {
+        dSize = v.size(v.dim() - 1);
     }
     if (return_softmax_lse) {
         if (q.dim() == DIM_THREE) {
