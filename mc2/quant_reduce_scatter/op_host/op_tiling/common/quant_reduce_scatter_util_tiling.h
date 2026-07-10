@@ -75,8 +75,6 @@ enum OpType : size_t {
 
 // 封装参数
 struct TilingRunInfo {
-    const char *groupPtr; // group指针
-    std::string group;    // group属性
     uint32_t quantMode;   // 量化方式
     int64_t rankSize;     // rank大小
 };
