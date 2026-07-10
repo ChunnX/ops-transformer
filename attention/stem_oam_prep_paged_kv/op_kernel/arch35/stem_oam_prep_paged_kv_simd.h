@@ -274,6 +274,8 @@ __aicore__ inline void StemOamPrepPagedKvSimd::CopyInKVCache(int32_t batchIdx, i
     LocalTensor<fp8_e4m3fn_t> kCacheLocal = kCacheQue_.AllocTensor<fp8_e4m3fn_t>();
     LocalTensor<fp8_e4m3fn_t> vCacheLocal = vCacheQue_.AllocTensor<fp8_e4m3fn_t>();
     LocalTensor<float> kScalarLocal = kScalarBuf_.Get<float>();
+    GlobalTensor<int8_t> kCacheGm = kCacheGm_.ReinterpretCast<int8_t>();
+    GlobalTensor<int8_t> vCacheGm = vCacheGm_.ReinterpretCast<int8_t>();
     for (int64_t i = 0; i < stemBlockSize_; i++) {
         int64_t kvIndicesIdx = (stemBlockIdx * stemBlockSize_ + i) / kvBlockSize_;
         int64_t kvBlockSizeIdx = (stemBlockIdx * stemBlockSize_ + i) % kvBlockSize_;
@@ -285,12 +287,12 @@ __aicore__ inline void StemOamPrepPagedKvSimd::CopyInKVCache(int32_t batchIdx, i
         int64_t kScaleCacheOffset = logicIdx * kScaleCacheStride_[0] + headIdx * kScaleCacheStride_[1] +
                                     kvBlockSizeIdx * kScaleCacheStride_[2];
         if ((stemBlockIdx * stemBlockSize_ + i) < actualRows) {
-            CopyIn(kCacheLocal[i * dimQk_], kCacheGm_[kCacheOffset], 1, dimQk_, 0, 0); // R * StemStride * dim_qk
-            CopyIn(vCacheLocal[i * dimV_], vCacheGm_[vCacheOffset], 1, dimV_, 0, 0);
+            CopyIn(kCacheLocal[i * dimQk_], kCacheGm[kCacheOffset], 1, dimQk_, 0, 0); // R * StemStride * dim_qk
+            CopyIn(vCacheLocal[i * dimV_], vCacheGm[vCacheOffset], 1, dimV_, 0, 0);
             kScalarLocal.SetValue(i, kScaleCacheGm_.GetValue(kScaleCacheOffset));
         } else {
-            Duplicate(kCacheLocal[i * dimQk_], fp8_e4m3fn_t(0), dimQk_);
-            Duplicate(vCacheLocal[i * dimV_], fp8_e4m3fn_t(0), dimV_);
+            Duplicate(kCacheLocal[i * dimQk_], int8_t(0), dimQk_);
+            Duplicate(vCacheLocal[i * dimV_], int8_t(0), dimV_);
             kScalarLocal.SetValue(i, 0);
         }
     }
