@@ -166,6 +166,7 @@ public:
                             DataCopy(fp32Local, stateFp32Ub_, Dv_ * curDk_);
                             outQueue_.EnQue(fp32Local);
                             CopyOut<float>(sTP_->stateFp32Out[nvId * Dv_ * Dk_], Dv_, Dk_, false, curDk_);
+                            PipeBarrier<PIPE_MTE3>();
                             auto bf16Accum = outQueue_.AllocTensor<bfloat16_t>();
                             Cast(bf16Accum, stateFp32Ub_, RoundMode::CAST_RINT, Dv_ * curDk_);
                             outQueue_.EnQue(bf16Accum);
