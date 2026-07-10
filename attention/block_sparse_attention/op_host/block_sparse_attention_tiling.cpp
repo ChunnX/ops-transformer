@@ -521,12 +521,12 @@ ge::graphStatus BSATiling::CheckAttentionOutDtype(gert::TilingContext *bsaContex
             return ge::GRAPH_FAILED;
         }
     }
-    // V3 新增:mxfp4 (DT_FLOAT4_E2M1) 输入时,attentionOut 必须为 bfloat16
+    // V3 新增:mxfp4 (DT_FLOAT4_E2M1) 输入时,attentionOut 支持 float16 或 bfloat16
     if (IsMxfp4Quant(quantMode_)) {
         attentionOutDataType_ = bsaContext->GetOutputDesc(ATTENTION_OUT_INDEX)->GetDataType();
-        if (attentionOutDataType_ != ge::DT_BF16) {
+        if (attentionOutDataType_ != ge::DT_FLOAT16 && attentionOutDataType_ != ge::DT_BF16) {
             OP_LOGE(bsaContext->GetNodeName(),
-                    "The supported dtype of attentionOut is bfloat16 when the dtype of query/key/value is "
+                    "The supported dtype of attentionOut is float16 or bfloat16 when the dtype of query/key/value is "
                     "all float4_e2m1 (mxfp4), but now it is %s.",
                     DataTypeToString(attentionOutDataType_).c_str());
             return ge::GRAPH_FAILED;
@@ -1333,9 +1333,17 @@ uint64_t BSATiling::GenerateTilingKey(gert::TilingContext *bsaContext)
         }
     }
     if (quantMode_ == MXFP4_OCP_QUANT) {
-         tilingKey += 30;
+        if (attentionOutDataType_ == ge::DT_FLOAT16) {
+            tilingKey += 31;
+        } else {
+            tilingKey += 30;
+        }
     } else if (quantMode_ == MXFP4_CX_QUANT) {
-        tilingKey += 40;
+        if (attentionOutDataType_ == ge::DT_FLOAT16) {
+            tilingKey += 41;
+        } else {
+            tilingKey += 40;
+        }
     }
 
     // [位11-13] KV Layout（十亿位）
