@@ -9,6 +9,7 @@
  */
 
 #include "block_sparse_attention_tiling.h"
+#include <algorithm>
 #include <cmath>
 #include <cstring>
 #include "log/log.h"
@@ -540,10 +541,14 @@ ge::graphStatus BSATiling::CheckSparsePattern(gert::TilingContext *bsaContext, c
             "but got elem0: %ld, elem1: %ld.", blockShapeX_, blockShapeY_);
         return ge::GRAPH_FAILED;
     }
-    // temporary regulation of blockShapeY
+    if (blockShapeX_ % defaultShape != 0) {
+        OP_LOGE(bsaContext->GetNodeName(), "BlockShape elem0 must be a multiple of %ld, "
+            "but got elem0: %ld.", defaultShape, blockShapeX_);
+        return ge::GRAPH_FAILED;
+    }
     if (blockShapeY_ % defaultShape != 0) {
-        OP_LOGE(bsaContext->GetNodeName(), "BlockShape elem1 must be a multiple of 16 so far, "
-            "but got elem1: %ld.", blockShapeY_);
+        OP_LOGE(bsaContext->GetNodeName(), "BlockShape elem1 must be a multiple of %ld, "
+            "but got elem1: %ld.", defaultShape, blockShapeY_);
         return ge::GRAPH_FAILED;
     }
     if (blockSparseMaskShape->GetStorageShape().GetDimNum() != 4) {
@@ -598,7 +603,9 @@ ge::graphStatus BSATiling::ParseSparsePattern(gert::TilingContext *bsaContext)
             blockShapeY_ = blockShapeList[1];
         }
     }
-    if (CheckSparsePattern(bsaContext, MIN_BLOCK_ALIGN) != ge::GRAPH_SUCCESS) {
+    const int64_t defaultShape =
+        (socVer_ == SOC_VER_950_CODE) ? MIN_BLOCK_ALIGN : DEFAULT_BLOCK_SHAPE;
+    if (CheckSparsePattern(bsaContext, defaultShape) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -1000,7 +1007,11 @@ void BSATiling::CalcMatmulPhaseL1TileInfo950()
         // 如果kvBaseTile_进一步增大，考虑关闭db，使得kvBaseTile_不分割
         mm2L1TileN_ = TILE_SIZE_128;
         mm2L1TileKLeft_ = kvBaseTileAligned128;
-        vL1BufNum_ = (kvBaseTileAligned128 > TILE_SIZE_256) ? DUO_BUF : DUO_BUF;
+        if (kvBaseTileAligned128 > TILE_SIZE_256) {
+            vL1BufNum_ = DUO_BUF;
+        } else {
+            vL1BufNum_ = std::max(TILE_SIZE_128 / kvBaseTileAligned128, 1U);
+        }
         // P矩阵在950上会常驻L1，由于基块的prelaunch为2，因此最好有3 buf，以免基块间流水阻塞
         mm2L1TileM_ = qBaseTileAligned128;
         mm2L1TileKRight_ = kvBaseTileAligned128;
