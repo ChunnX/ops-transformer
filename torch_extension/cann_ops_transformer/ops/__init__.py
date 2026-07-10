@@ -13,6 +13,7 @@ from .mega_moe import (
     get_symm_buffer_for_mega_moe,
     mega_moe
 )
+from .quant_reduce_scatter import quant_reduce_scatter
 from .deep_ep import MoeDistributeBuffer
 from .flash_attn import flash_attn, flash_attn_metadata
 from .mixed_quant_sparse_flash_mla import (
