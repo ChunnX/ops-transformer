@@ -1,6 +1,9 @@
+import logging
 import torch
 import torch.multiprocessing as mp
 from typing import Callable
+
+logger = logging.getLogger("compare")
 
 DEFAULT_TOLERANCE = {
     torch.float32: {"atol": 1e-3, "rtol": 1e-3},
@@ -61,6 +64,9 @@ def compare_outputs(
                 break
         except (ImportError, AttributeError):
             pass
+    missing_keys = set(cpu_out.keys()) - set(npu_out.keys())
+    if missing_keys:
+        logger.warning("[cmp] npu_out missing keys: %s", missing_keys)
     result = {}
     all_passed = True
     for key in cpu_out:

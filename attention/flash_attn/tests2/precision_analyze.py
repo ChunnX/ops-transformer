@@ -2,6 +2,8 @@ import os
 
 import torch
 
+from compare import DEFAULT_TOLERANCE
+
 SEP = "━" * 80
 
 
@@ -35,8 +37,10 @@ def analyze_failure(
         ref_abs = torch.abs(cpu_t)
         rel_err = diff / (ref_abs + 1e-6)
 
-        rtol = result.get("rtol", 0.005)
-        atol = result.get("atol", 0.000025)
+        cpu_dtype = cpu_out[key].dtype
+        default_tol = DEFAULT_TOLERANCE.get(cpu_dtype, {"atol": 1e-3, "rtol": 1e-3})
+        rtol = result.get("rtol", default_tol["rtol"])
+        atol = result.get("atol", default_tol["atol"])
         fail_mask = ~torch.isclose(cpu_t, npu_t, rtol=rtol, atol=atol)
 
         fail_cnt = int(fail_mask.sum().item())
@@ -110,14 +114,14 @@ def analyze_failure(
 
 def analyze_dimensions(cpu_out: dict, npu_out: dict, compare_result: dict) -> str:
     # TODO: 维度分析 (移植非量化FA analyze_fail_distribution: batch/head/seq分维统计)
-    ...
+    raise NotImplementedError("维度分析待实现")
 
 
 def analyze_continuity(cpu_out: dict, npu_out: dict, compare_result: dict) -> str:
     # TODO: 连续性分析 (失败点位连段检测+模式判定)
-    ...
+    raise NotImplementedError("连续性分析待实现")
 
 
 def visualize_failure(cpu_out: dict, npu_out: dict, compare_result: dict, save_dir: str = None) -> str:
     # TODO: 可视化 (热力图)
-    ...
+    raise NotImplementedError("可视化待实现")

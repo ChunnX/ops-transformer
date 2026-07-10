@@ -6,6 +6,8 @@ _CASE_SET_TO_PREFIX = {
     "debug": "stc",
     "func_rdv": "rdv",
     "perf_rdv": "rdv",
+    "whitebox": "whitebox",
+    "redline": "redline",
 }
 
 
@@ -31,12 +33,12 @@ def load_cases(case_set: str = "ci") -> tuple[list[dict], list[str]]:
     case_sets = mod.CASE_SETS
     skip_cases = mod.SKIP_CASES
 
-    case_dict = case_sets.get(case_set, {})
+    set_cases = case_sets.get(case_set, {})
     skip_set = skip_cases.get(case_set, set())
 
     cases = []
     case_ids = []
-    for case_name, case_dict in case_dict.items():
+    for case_name, case_dict in set_cases.items():
         expanded = dict(case_dict)
         for key, default_vals in defaults.items():
             if key not in expanded:

@@ -59,10 +59,19 @@ class Reporter:
     def print_interim(self, total: int):
         self._print_table(self._results, self._dtypes, total, is_final=False)
 
-    def print_final(self) -> int:
+    def close(self):
         if self._csv_file:
             self._csv_file.close()
             self._csv_file = None
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        self.close()
+
+    def print_final(self) -> int:
+        self.close()
         return self._print_table(self._results, self._dtypes, len(self._results), is_final=True)
 
     @staticmethod
@@ -178,6 +187,9 @@ def run_case(stages: set, params: dict, reporter: Reporter, *,
     result_dir = str(Path("result") / case_id)
     dtype = params.get("dtype", "")
     result = {"passed": True, "fail_msg": ""}
+    inputs = None
+    cpu_out = None
+    npu_out = None
     try:
         gen = GenDataBackend()
         cpu = CpuBackend()
@@ -277,12 +289,6 @@ def run_case(stages: set, params: dict, reporter: Reporter, *,
             except NotImplementedError:
                 pass
 
-        if "npu" in stages:
-            torch.npu.empty_cache()
-        if "gpu" in stages:
-            torch.cuda.empty_cache()
-        del inputs, cpu_out, npu_out
-        gc.collect()
         return result
     except Exception as e:
         logger.error("[err]  %s: %s", type(e).__name__, e)
@@ -292,3 +298,15 @@ def run_case(stages: set, params: dict, reporter: Reporter, *,
         fail["fail_msg"] = str(e)
         reporter.record(case_id, fail, error=str(e), dtype=dtype)
         return fail
+    finally:
+        if "npu" in stages:
+            torch.npu.empty_cache()
+        if "gpu" in stages:
+            torch.cuda.empty_cache()
+        if inputs is not None:
+            del inputs
+        if cpu_out is not None:
+            del cpu_out
+        if npu_out is not None:
+            del npu_out
+        gc.collect()

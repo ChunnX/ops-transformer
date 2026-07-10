@@ -18,17 +18,23 @@ except ImportError:
 
 
 class FlashAttnGraphNetwork(torch.nn.Module):
-    """torch.compile 图模式包装器。"""
+    """torch.compile 图模式包装器。
 
-    def forward(self, q, k, v, block_table, attn_mask, metadata,
-                cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv,
-                softmax_scale, mask_mode, win_left, win_right,
-                max_seqlen_q, max_seqlen_kv, layout_q, layout_kv, layout_out,
-                return_softmax_lse):
+    NOTE: forward() 参数列表须与 flash_attn 签名保持同步。
+    torch.compile 要求固定输入签名, 故使用显式参数而非 **kwargs。
+    """
+
+    def forward(self, q, k, v, *, metadata, block_table=None, sinks=None,
+                attn_mask=None, cu_seqlens_q=None, cu_seqlens_kv=None,
+                seqused_q=None, seqused_kv=None, softmax_scale=1.0,
+                mask_mode=0, win_left=-1, win_right=-1,
+                max_seqlen_q=-1, max_seqlen_kv=-1,
+                layout_q="BNSD", layout_kv="BNSD", layout_out="BNSD",
+                return_softmax_lse=False):
         out, lse_out = flash_attn(
             q, k, v,
             block_table=block_table,
-            sinks=None,
+            sinks=sinks,
             attn_mask=attn_mask,
             metadata=metadata,
             cu_seqlens_q=cu_seqlens_q,
@@ -99,23 +105,7 @@ class NpuBackend(NpuBase):
             net = self._get_graph_net()
             out, lse = net(
                 inputs["q"], inputs["k"], inputs["v"],
-                kernel_kwargs.get("block_table"),
-                kernel_kwargs.get("attn_mask"),
-                metadata,
-                kernel_kwargs.get("cu_seqlens_q"),
-                kernel_kwargs.get("cu_seqlens_kv"),
-                kernel_kwargs.get("seqused_q"),
-                kernel_kwargs.get("seqused_kv"),
-                kernel_kwargs.get("softmax_scale", 1.0),
-                kernel_kwargs.get("mask_mode", 0),
-                kernel_kwargs.get("win_left", -1),
-                kernel_kwargs.get("win_right", -1),
-                kernel_kwargs.get("max_seqlen_q", -1),
-                kernel_kwargs.get("max_seqlen_kv", -1),
-                kernel_kwargs.get("layout_q", "BNSD"),
-                kernel_kwargs.get("layout_kv", "BNSD"),
-                kernel_kwargs.get("layout_out", "BNSD"),
-                kernel_kwargs.get("return_softmax_lse", False),
+                metadata=metadata, **kernel_kwargs
             )
         else:
             out, lse = flash_attn(inputs["q"], inputs["k"], inputs["v"],
