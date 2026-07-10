@@ -1,0 +1,5 @@
+case_name,x1_shape,x1_dtype,x2_shape,x2_dtype,scale2_shape,scale2_dtype,group_list_shape,y_shape,scale1_shape,scale1_dtype,out_shape,out_dtype,transpose_x1,bitcast_x1,transpose_scale1,expected_status,expected_transpose_count,expected_bitcast_count,expected_x1_shape,expected_scale1_shape
+direct_x1_transpose,4 64,DT_FLOAT8_E5M2,4 64,DT_FLOAT8_E5M2,4 1,DT_FLOAT8_E8M0,2,4 32,4 1,DT_FLOAT,4 32,DT_FLOAT,1,0,0,SUCCESS,0,0,4 64,
+bitcast_x1_transpose,4 64,DT_FLOAT8_E5M2,4 64,DT_FLOAT8_E5M2,4 1,DT_FLOAT8_E8M0,2,4 32,4 1,DT_FLOAT,4 32,DT_FLOAT,1,1,0,SUCCESS,0,1,4 64,
+mx_scale1_transpose,4 64,DT_FLOAT8_E5M2,4 64,DT_FLOAT8_E5M2,4 1,DT_FLOAT8_E8M0,2,4 32,4 1,DT_FLOAT8_E8M0,4 32,DT_FLOAT,1,0,1,SUCCESS,0,0,4 64,4 1
+unsupported_x1_dtype,4 64,DT_FLOAT16,4 64,DT_FLOAT8_E5M2,4 1,DT_FLOAT8_E8M0,2,4 32,4 1,DT_FLOAT,4 32,DT_FLOAT,1,0,0,GRAPH_NOT_CHANGED,1,0,,
