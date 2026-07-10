@@ -930,7 +930,7 @@ __aicore__ inline void GroupMatmul2CombineA8W4(
 {
     (void)vecSetSyncCom2;
     Detail::Gmm2ArgsA8W4 args{groupCnt, pingpongIdx, groupIdx};
-    Detail::GroupMatmulImplA8W4<CombineQuantMode, Detail::Gmm2PolicyA8W4, ElementA, ElementB, ElementC,
+    Detail::GroupMatmulImplA8W4<CombineQuantMode, Detail::Gmm2Policy, ElementA, ElementB, ElementC,
         ElementMxScaleA, ElementMxScaleB, IsLayered>(params, problemShape, gmmAddrInfo, startBlockIdx, args);
 }
 
