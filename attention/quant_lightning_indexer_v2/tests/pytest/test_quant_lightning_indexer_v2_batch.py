@@ -53,7 +53,10 @@ def qliv2(testcase_files):   # 初始化参数和tensor
     if return_value:
         result_return_value, fulfill_precent_return_value = result_compare_method.check_result_return_value(cpu_topk_value, npu_topk_value, params)
         print(f"result_return_value: {result_return_value}")
-        print(f"result_return_value: {fulfill_precent_return_value}")
+        print(f"fulfill_precent_return_value: {fulfill_precent_return_value}")
+    else:
+        result_return_value = "N/A"
+        fulfill_precent_return_value = 0
     
     row_data = {
         "Testcase_Name": Path(testcase_files).stem,
@@ -88,7 +91,9 @@ def qliv2(testcase_files):   # 初始化参数和tensor
         "cmp_ratio":params[28],
         "output_idx_offset": params[29],
         "result":result,
-        "fulfill_percent":fulfill_percent
+        "fulfill_percent":fulfill_percent,
+        "result_return_value": result_return_value,
+        "fulfill_precent_return_value": fulfill_precent_return_value
     }
 
     # 检查文件是否存在

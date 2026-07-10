@@ -22,8 +22,9 @@ import copy
 import ast
 import cann_ops_transformer
 
-DEFAULT_SPLIT_S1 = False
-DEFAULT_S1SIZE = 2048
+DISCONTINUOUS_KEYS = True      # key非连续
+DEFAULT_SPLIT_S1 = False       # golden切分S1Flag
+DEFAULT_S1SIZE = 2048          # s1切分基本块大小
 
 FP32_FRACTION_BITS = 23        # fp32尾数位数
 
@@ -823,10 +824,49 @@ def qliv2_output_single(params, is_batch = False, split_s1 = DEFAULT_SPLIT_S1, s
     k_scale_datarange, cmp_ratio, return_value, output_idx_offset = params
 
     if is_batch:
+        if q_t_size is None:
+            q_t_size = 0
+        if k_t_size is None:
+            k_t_size = 0
+        if block_size is None:
+            block_size = 0
+        if block_num is None:
+            block_num = 0
+
+        batch_size = int(batch_size)
+        q_seq = int(q_seq)
+        k_seq = int(k_seq)
+        q_t_size = int(q_t_size)
+        k_t_size = int(k_t_size)
+        q_head_num = int(q_head_num)
+        k_head_num = int(k_head_num)
+        head_dim = int(head_dim)
+        block_size = int(block_size)
+        block_num = int(block_num)
+        if max_seqlen_q is None:
+            max_seqlen_q = -1
+        max_seqlen_q = int(max_seqlen_q)
+        if quant_mode is None:
+            quant_mode = 1
+        quant_mode = int(quant_mode)
+        sparse_count = int(sparse_count)
+        sparse_mode = int(sparse_mode)
+        return_value = int(return_value)
+
+        params = (batch_size, q_seq, k_seq, q_t_size, k_t_size, q_head_num, k_head_num, head_dim, block_size,
+                  block_num, qk_dtype, dequant_dtype, actual_seq_dtype,
+                  cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k, cmp_residual_k,
+                  max_seqlen_q, quant_mode, layout_query, layout_key,
+                  sparse_count, sparse_mode,
+                  query_datarange, key_datarange, weights_datarange, q_scale_datarange, k_scale_datarange,
+                  cmp_ratio, return_value, output_idx_offset)
+
         if qk_dtype == 'INT8':
             qk_dtype = torch.int8
         elif qk_dtype == 'FLOAT8_E4M3FN':
             qk_dtype = torch.float8_e4m3fn
+        elif qk_dtype == 'HIFLOAT8':
+            qk_dtype = torch.uint8
 
         if dequant_dtype == 'FP16':
             dequant_dtype = torch.float16
@@ -835,7 +875,7 @@ def qliv2_output_single(params, is_batch = False, split_s1 = DEFAULT_SPLIT_S1, s
 
         if actual_seq_dtype == 'INT32':
             actual_seq_dtype = torch.int32
-
+        
         if cu_seqlens_q is not None:
             cu_seqlens_q = ast.literal_eval(cu_seqlens_q)
         if cu_seqlens_k is not None:
@@ -854,6 +894,7 @@ def qliv2_output_single(params, is_batch = False, split_s1 = DEFAULT_SPLIT_S1, s
             weights_datarange = ast.literal_eval(weights_datarange)
         if output_idx_offset is not None:
             output_idx_offset = ast.literal_eval(output_idx_offset)
+            output_idx_offset = [int(x) for x in output_idx_offset]
             if layout_query == "TND":
                 output_idx_offset_size = q_t_size * 1
             else:
@@ -863,6 +904,8 @@ def qliv2_output_single(params, is_batch = False, split_s1 = DEFAULT_SPLIT_S1, s
             q_scale_datarange = ast.literal_eval(q_scale_datarange)
         if isinstance(k_scale_datarange, str):
             k_scale_datarange = ast.literal_eval(k_scale_datarange)
+
+
 
     if qk_dtype == torch.uint8:
         hifp8mode = 1
@@ -1018,6 +1061,7 @@ def qliv2_output_single(params, is_batch = False, split_s1 = DEFAULT_SPLIT_S1, s
         if output_idx_offset is not None:
             output_idx_offset = torch.tensor(output_idx_offset).reshape(q_t_size, 1).to(torch.int32).npu()
     properties = torch.npu.get_device_properties()
+    blockFusion = None
     if layout_key == "BSND":
         key = torch.tensor(np.random.uniform(key_datarange[0], key_datarange[1], (batch_size, k_seq, k_head_num, head_dim))).to(torch.float)
         if hifp8mode == 1:
@@ -1125,7 +1169,7 @@ def qliv2_output_single(params, is_batch = False, split_s1 = DEFAULT_SPLIT_S1, s
                         key_dequant_scale_block[cur_block_id, :, i_n] = key_dequant_scale_expand[i_batch, i_n,block_start_pos:block_start_pos+block_size]
         # kv_cache 0轴非连续：将key和key_dequant_scale融合到blockFusion (ref v1 commit keyStride0)
         properties = torch.npu.get_device_properties()
-        if quant_mode != 4 and "Ascend950" in properties.name:
+        if quant_mode != 4 and "Ascend950" in properties.name and DEFAULT_SPLIT_S1:
             bytes_per_token = head_dim + key_dequant_scale_block.element_size() // key.element_size()
             blockFusion = torch.zeros((block_num, block_size * k_head_num * bytes_per_token), dtype=qk_dtype)
             key_flat = key.view(block_num, block_size * k_head_num * head_dim)
@@ -1150,7 +1194,46 @@ def qliv2_output_single(params, is_batch = False, split_s1 = DEFAULT_SPLIT_S1, s
     # max_seqlen 从个体长度中取
     max_seqlen_q_meta = actual_seq_lengths_query.max().item()
     max_seqlen_k_meta = actual_seq_lengths_key.max().item()
-    metadata = torch.ops.cann_ops_transformer.quant_lightning_indexer_metadata(
+
+    if is_batch:
+        if qk_dtype == torch.float8_e4m3fn:
+            query = query.to(dtype=torch.float16)
+            key = key.to(dtype=torch.float16)
+            if blockFusion is not None:
+                blockFusion = blockFusion.to(dtype=torch.float16)
+
+        output_tensors = {
+            "params":params,
+            "cpu_result": cpu_result,
+            "topk_value": topk_value,
+            "cpu_topk_value": cpu_topk_value,
+            "query": query,
+            "key":key,
+            "weights": weights,
+            "query_dequant_scale": query_dequant_scale,
+            "key_dequant_scale": key_dequant_scale,
+            "blockFusion": blockFusion,
+            "cu_seqlens_query": cu_seqlens_query,
+            "cu_seqlens_key": cu_seqlens_key,
+            "seqused_q": seqused_q_tensor,
+            "seqused_k": seqused_k_tensor,
+            "output_idx_offset": output_idx_offset,
+            "actual_seq_lengths_query": actual_seq_lengths_query,
+            "actual_seq_lengths_key": actual_seq_lengths_key,
+            "cmp_residual_k_for_npu": cmp_residual_k_for_npu,
+            "block_table": block_table,
+            "max_seqlen_q_meta": max_seqlen_q_meta,
+            "max_seqlen_k_meta": max_seqlen_k_meta,
+            "quant_mode":quant_mode,
+            "layout_query":layout_query,
+            "layout_key":layout_key,
+            "sparse_count":sparse_count,
+            "sparse_mode":sparse_mode,
+            "cmp_ratio":cmp_ratio
+        }
+        return output_tensors
+    else:
+        metadata = torch.ops.cann_ops_transformer.quant_lightning_indexer_metadata(
                                     cu_seqlens_q = cu_seqlens_query,
                                     cu_seqlens_k = cu_seqlens_key,
                                     seqused_q = seqused_q_tensor,
@@ -1168,42 +1251,7 @@ def qliv2_output_single(params, is_batch = False, split_s1 = DEFAULT_SPLIT_S1, s
                                     layout_q = layout_query,
                                     layout_k = layout_key,
                                     cmp_ratio = cmp_ratio)
-
-    metadata = metadata.npu()
-    if is_batch:
-        if qk_dtype == torch.float8_e4m3fn:
-            query = query.to(dtype=torch.float16)
-            key = key.to(dtype=torch.float16)
-
-        output_tensors = {
-            "params":params,
-            "cpu_result": cpu_result,
-            "topk_value": topk_value,
-            "cpu_topk_value": cpu_topk_value,
-            "query": query,
-            "key":key,
-            "weights": weights,
-            "query_dequant_scale": query_dequant_scale,
-            "key_dequant_scale": key_dequant_scale,
-            "cu_seqlens_query": cu_seqlens_query,
-            "cu_seqlens_key": cu_seqlens_key,
-            "seqused_q": seqused_q_tensor,
-            "seqused_k": seqused_k_tensor,
-            "output_idx_offset": output_idx_offset,
-            "actual_seq_lengths_query": actual_seq_lengths_query,
-            "actual_seq_lengths_key": actual_seq_lengths_key,
-            "cmp_residual_k_for_npu": cmp_residual_k_for_npu,
-            "block_table": block_table,
-            "metadata": metadata,
-            "quant_mode":quant_mode,
-            "layout_query":layout_query,
-            "layout_key":layout_key,
-            "sparse_count":sparse_count,
-            "sparse_mode":sparse_mode,
-            "cmp_ratio":cmp_ratio
-        }
-        return output_tensors
-    else:
+        metadata = metadata.npu()
         npu_result, npu_topk_value = torch.ops.cann_ops_transformer.quant_lightning_indexer(query, key, weights,
                                                     query_dequant_scale,
                                                     key_dequant_scale,

@@ -519,8 +519,6 @@ def check_result_return_value(expect, result, params):
     data_compe = expect.cpu().float().numpy()
     real_data = npu_output.flatten()
     data_compe = cpu_output.flatten()
-    diff_cpu = []
-    diff_npu = []
 
     if layout_query in ["BSND"]:
         sp = (batch_size, q_seq, k_head_num)
@@ -557,11 +555,6 @@ def check_result_return_value(expect, result, params):
             npu_pass = False
     end_time = time()
     print(f"耗时：{end_time - start_time:.6f} 秒")
-    topk_precision = not diff_npu and not diff_cpu
-    if topk_precision:
-        print(f'[success]TopK精度通过, idx不同的地方的value误差在阈值之内')
-    else:
-        print(f'[fail]TopK精度失败')
     print(f"npu_pass is {npu_pass}")
     if real_data.size == 0 and real_data.size == data_compe.size:
         print_log(
@@ -587,7 +580,7 @@ def check_result_return_value(expect, result, params):
                         float(split_count) * 100.0
     display_output_np_isclose(real_data, data_compe, start, end)
     pct_thd = (1 - pct_thd) * 100.0
-    result = "Pass" if (npu_pass or topk_precision) else "Failed"
+    result = "Pass" if npu_pass else "Failed"
     print_log(
         '---------------------------------------------------------------------------------------')
     print_log('Rtol   \t Atol   \t PctThd   \t PctRlt   \t Result')
