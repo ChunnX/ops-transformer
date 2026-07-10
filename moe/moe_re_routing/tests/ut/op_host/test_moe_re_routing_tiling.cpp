@@ -101,8 +101,8 @@ protected:
     }
 };
 
-std::map<std::string, std::string> short_soc_version = {{"Short_SoC_version", "Ascend950"}};
-std::map<std::string, std::string> soc_version_infos = {{"Short_SoC_version", "Ascend910B"}};
+static std::map<std::string, std::string> short_soc_version = {{"Short_SoC_version", "Ascend950"}};
+static std::map<std::string, std::string> soc_version_infos = {{"Short_SoC_version", "Ascend910B"}};
 
 TEST_F(MoeReRoutingTiling, moe_re_routing_tiling_000) {
     optiling::MoeReRoutingCompileInfo compileInfo = {48, 65536};

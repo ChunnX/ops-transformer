@@ -811,14 +811,6 @@ static ge::graphStatus InferShape4MoeInitRoutingV4(gert::InferShapeContext *cont
         return ge::GRAPH_FAILED;
     }
 
-    if (activeNumShape != nullptr) {
-        auto activeNumDtype = context->GetOptionalInputDesc(MOE_INIT_ROUTING_V4_INPUT_ACTIVE_NUM)->GetDataType();
-        OP_CHECK_IF(activeNumDtype != ge::DT_INT64,
-                    OP_LOGE_FOR_INVALID_DTYPE(context->GetNodeName(), "active_num",
-                                              Ops::Base::ToString(activeNumDtype), "DT_INT64"),
-                    return ge::GRAPH_FAILED);
-    }
-
     if (CheckInputShape(context, xShape, expertIdxShape, scaleShape, offsetShape, expertStart, expertEnd, quantMode) !=
         ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
@@ -975,6 +967,13 @@ static ge::graphStatus InferDataType4MoeInitRoutingV4(gert::InferDataTypeContext
     int64_t quantMode = *quantModePtr;
     auto xDtype = context->GetInputDataType(MOE_INIT_ROUTING_V4_INPUT_X);
     if (ValidateInputDtype(context, xDtype, quantMode) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+
+    auto activeNumDtype = context->GetInputDataType(MOE_INIT_ROUTING_V4_INPUT_ACTIVE_NUM);
+    if (activeNumDtype != ge::DT_UNDEFINED && activeNumDtype != ge::DT_INT64) {
+        OP_LOGE_FOR_INVALID_DTYPE(context->GetNodeName(), "active_num",
+                                  Ops::Base::ToString(activeNumDtype), "DT_INT64");
         return ge::GRAPH_FAILED;
     }
 
