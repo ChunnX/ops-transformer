@@ -13,8 +13,12 @@
  * \brief StemOamPrepPagedKv simd Tiling implementation
  */
 #include "stem_oam_prep_paged_kv_tiling_simd.h"
+#include "register/op_def_registry.h"
+#include "tiling/tiling_api.h"
 #include "tiling/platform/platform_ascendc.h"
-
+#include "log/log.h"
+#include "platform/platform_info.h"
+#include "util/platform_util.h"
 namespace optiling {
 
 bool StemPrepKvTiling::IsCapable()
@@ -22,7 +26,7 @@ bool StemPrepKvTiling::IsCapable()
     return true;
 }
 
-void StemPrepKvTiling::ContinuousStridesCompute(gert::Shape &shape, gert::Stride &stride, size_t idx)
+ge::graphStatus StemPrepKvTiling::ContinuousStridesCompute(gert::Shape &shape, gert::Stride &stride, size_t idx)
 {
     auto xStorageShape = context_->GetInputShape(idx);
     OP_CHECK_NULL_WITH_CONTEXT(context_, xStorageShape);
@@ -36,6 +40,7 @@ void StemPrepKvTiling::ContinuousStridesCompute(gert::Shape &shape, gert::Stride
         stride.SetStride(j, xStride);
         xStride *= shape.GetDim(j);
     }
+    return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus StemPrepKvTiling::GetTensorInfo(gert::Shape &shape, gert::Stride &inputStride, size_t idx)
