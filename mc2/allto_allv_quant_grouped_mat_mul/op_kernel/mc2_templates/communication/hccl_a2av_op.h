@@ -59,8 +59,8 @@ public:
     __aicore__ inline HcclA2avOp() {}
     __aicore__ inline void Init(const void *hcclInitTiling, uint64_t hcclCcTilingOffset,
                                 const TaskTilingInfo *taskTilingInfo, GM_ADDR sendBuffer,
-                                GM_ADDR recvBuffer, GM_ADDR permuteBuffer = nullptr,
-                                uint32_t aivCoreNum = 1U);
+                                GM_ADDR recvBuffer, GM_ADDR permuteBuffer,
+                                uint32_t aivCoreNum);
     __aicore__ inline void InitScaleBuffer(GM_ADDR sendBuffer, GM_ADDR commOutBuffer, GM_ADDR permuteOutBuffer);
     __aicore__ inline void LaunchCommScale(uint32_t startExpertIdx, uint32_t expertNum);
     __aicore__ inline void LaunchCommData(uint32_t startExpertIdx, uint32_t expertNum);
