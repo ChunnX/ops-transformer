@@ -15,6 +15,7 @@
 
 #include <map>
 #include <numeric>
+#include <iostream>
 #include "log/log.h"
 #include "log/error_code.h"
 #include "err/ops_err.h"
@@ -229,18 +230,40 @@ ge::graphStatus QfaInfoParser::GetAttrParaInfo()
     OP_CHECK_IF(attrs == nullptr, OP_LOGE(context_->GetNodeName(), "attrs got from ge is nullptr"),
                 return ge::GRAPH_FAILED);
 
-    opParamInfo_.quantMode = attrs->GetAttrPointer<int32_t>(ATTR_QUANT_MODE_INDEX);
+    opParamInfo_.quantMode = attrs->GetAttrPointer<int64_t>(ATTR_QUANT_MODE_INDEX);
     opParamInfo_.softmaxScale = attrs->GetAttrPointer<float>(ATTR_SOFTMAX_SCALE_INDEX);
-    opParamInfo_.maskMode = attrs->GetAttrPointer<int32_t>(ATTR_MASK_MODE_INDEX);
-    opParamInfo_.winLeft = attrs->GetAttrPointer<int32_t>(ATTR_WIN_LEFT_INDEX);
-    opParamInfo_.winRight = attrs->GetAttrPointer<int32_t>(ATTR_WIN_RIGHT_INDEX);
-    opParamInfo_.maxSeqlenQ = attrs->GetAttrPointer<int32_t>(ATTR_MAX_SEQLEN_Q_INDEX);
-    opParamInfo_.maxSeqlenKV = attrs->GetAttrPointer<int32_t>(ATTR_MAX_SEQLEN_KV_INDEX);
+    opParamInfo_.maskMode = attrs->GetAttrPointer<int64_t>(ATTR_MASK_MODE_INDEX);
+    opParamInfo_.winLeft = attrs->GetAttrPointer<int64_t>(ATTR_WIN_LEFT_INDEX);
+    opParamInfo_.winRight = attrs->GetAttrPointer<int64_t>(ATTR_WIN_RIGHT_INDEX);
+    opParamInfo_.maxSeqlenQ = attrs->GetAttrPointer<int64_t>(ATTR_MAX_SEQLEN_Q_INDEX);
+    opParamInfo_.maxSeqlenKV = attrs->GetAttrPointer<int64_t>(ATTR_MAX_SEQLEN_KV_INDEX);
     opParamInfo_.layoutQ = attrs->GetStr(ATTR_LAYOUT_Q_INDEX);
     opParamInfo_.layoutKV = attrs->GetStr(ATTR_LAYOUT_KV_INDEX);
     opParamInfo_.layoutOut = attrs->GetStr(ATTR_LAYOUT_OUT_INDEX);
-    opParamInfo_.paBlockSize = attrs->GetAttrPointer<int32_t>(ATTR_PA_BLOCK_SIZE_INDEX);
-    opParamInfo_.returnSoftMaxLse = attrs->GetAttrPointer<int32_t>(ATTR_RETURN_LSE_INDEX);
+    opParamInfo_.paBlockSize = attrs->GetAttrPointer<int64_t>(ATTR_PA_BLOCK_SIZE_INDEX);
+    opParamInfo_.returnSoftMaxLse = attrs->GetAttrPointer<int64_t>(ATTR_RETURN_LSE_INDEX);
+
+    std::cout << "[QFA DEBUG] quantMode ptr=" << static_cast<const void*>(opParamInfo_.quantMode)
+              << " val=" << (opParamInfo_.quantMode ? std::to_string(*opParamInfo_.quantMode) : "nullptr") << std::endl;
+    std::cout << "[QFA DEBUG] softmaxScale ptr=" << static_cast<const void*>(opParamInfo_.softmaxScale)
+              << " val=" << (opParamInfo_.softmaxScale ? std::to_string(*opParamInfo_.softmaxScale) : "nullptr") << std::endl;
+    std::cout << "[QFA DEBUG] maskMode ptr=" << static_cast<const void*>(opParamInfo_.maskMode)
+              << " val=" << (opParamInfo_.maskMode ? std::to_string(*opParamInfo_.maskMode) : "nullptr") << std::endl;
+    std::cout << "[QFA DEBUG] winLeft ptr=" << static_cast<const void*>(opParamInfo_.winLeft)
+              << " val=" << (opParamInfo_.winLeft ? std::to_string(*opParamInfo_.winLeft) : "nullptr") << std::endl;
+    std::cout << "[QFA DEBUG] winRight ptr=" << static_cast<const void*>(opParamInfo_.winRight)
+              << " val=" << (opParamInfo_.winRight ? std::to_string(*opParamInfo_.winRight) : "nullptr") << std::endl;
+    std::cout << "[QFA DEBUG] maxSeqlenQ ptr=" << static_cast<const void*>(opParamInfo_.maxSeqlenQ)
+              << " val=" << (opParamInfo_.maxSeqlenQ ? std::to_string(*opParamInfo_.maxSeqlenQ) : "nullptr") << std::endl;
+    std::cout << "[QFA DEBUG] maxSeqlenKV ptr=" << static_cast<const void*>(opParamInfo_.maxSeqlenKV)
+              << " val=" << (opParamInfo_.maxSeqlenKV ? std::to_string(*opParamInfo_.maxSeqlenKV) : "nullptr") << std::endl;
+    std::cout << "[QFA DEBUG] layoutQ=" << (opParamInfo_.layoutQ ? opParamInfo_.layoutQ : "nullptr") << std::endl;
+    std::cout << "[QFA DEBUG] layoutKV=" << (opParamInfo_.layoutKV ? opParamInfo_.layoutKV : "nullptr") << std::endl;
+    std::cout << "[QFA DEBUG] layoutOut=" << (opParamInfo_.layoutOut ? opParamInfo_.layoutOut : "nullptr") << std::endl;
+    std::cout << "[QFA DEBUG] paBlockSize ptr=" << static_cast<const void*>(opParamInfo_.paBlockSize)
+              << " val=" << (opParamInfo_.paBlockSize ? std::to_string(*opParamInfo_.paBlockSize) : "nullptr") << std::endl;
+    std::cout << "[QFA DEBUG] returnSoftMaxLse ptr=" << static_cast<const void*>(opParamInfo_.returnSoftMaxLse)
+              << " val=" << (opParamInfo_.returnSoftMaxLse ? std::to_string(*opParamInfo_.returnSoftMaxLse) : "nullptr") << std::endl;
 
     return ge::GRAPH_SUCCESS;
 }
@@ -396,16 +419,11 @@ ge::graphStatus QfaInfoParser::GetS2SizeForPageAttention()
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "block_table", "provided",
             "When layout_kv is PA, block_table must be provided but got nullptr."),
                 return ge::GRAPH_FAILED);
-    if (maxSeqKv_ <= 0) {
-        OP_LOGE(opName_, "[GetS2SizeForPageAttention] max_seqlen_kv must be positive, got %ld.", maxSeqKv_);
+    if (GetBlockNum() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
-    if (paBlockSize_ <= 0) {
-        OP_LOGE(opName_, "[GetS2SizeForPageAttention] pa_block_size must be positive, got %ld.", paBlockSize_);
-        return ge::GRAPH_FAILED;
-    }
-    maxBlockNumPerBatch_ = (maxSeqKv_ + paBlockSize_ - 1) / paBlockSize_;
-    s2Size_ = paBlockSize_ * maxBlockNumPerBatch_;
+    maxBlockNumPerBatch_ = opParamInfo_.blockTable.tensor->GetStorageShape().GetDim(1);
+    s2Size_ = static_cast<int64_t>(maxBlockNumPerBatch_) * paBlockSize_;
     return ge::GRAPH_SUCCESS;
 }
 

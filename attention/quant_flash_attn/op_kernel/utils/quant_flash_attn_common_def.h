@@ -190,11 +190,6 @@ struct RunInfoX {
     uint64_t kvPaddingBeginOffset = 0;
 };
 
-struct StridesConstInfo {
-    uint64_t bnStride = 0;
-    uint64_t n2Stride = 0;
-};
-
 struct CommonConstInfo {
     uint32_t bSize;
     uint64_t t1Size;
@@ -213,12 +208,6 @@ struct CommonConstInfo {
     uint64_t cuSeqLensKVSize;
     uint64_t seqUsedQSize;
     uint64_t seqUsedKvSize;
-
-    StridesConstInfo keyStrides;
-    StridesConstInfo valueStrides;
-    StridesConstInfo kRopeStrides;
-    StridesConstInfo kScaleStrides;
-    StridesConstInfo vScaleStrides;
 
     uint32_t bN2Start;
     uint32_t bN2End;

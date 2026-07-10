@@ -194,18 +194,18 @@ struct QfaParaInfo {
     QfaOptionalParaInfo metadata = {nullptr, nullptr};
     QfaOptionalParaInfo attnMask = {nullptr, nullptr};
 
-    const int32_t *quantMode = nullptr;
+    const int64_t *quantMode = nullptr;
     const float *softmaxScale = nullptr;
-    const int32_t *maskMode = nullptr;
-    const int32_t *winLeft = nullptr;
-    const int32_t *winRight = nullptr;
-    const int32_t *maxSeqlenQ = nullptr;
-    const int32_t *maxSeqlenKV = nullptr;
+    const int64_t *maskMode = nullptr;
+    const int64_t *winLeft = nullptr;
+    const int64_t *winRight = nullptr;
+    const int64_t *maxSeqlenQ = nullptr;
+    const int64_t *maxSeqlenKV = nullptr;
     const char *layoutQ = nullptr;
     const char *layoutKV = nullptr;
     const char *layoutOut = nullptr;
-    const int32_t *paBlockSize = nullptr;
-    const int32_t *returnSoftMaxLse = nullptr;
+    const int64_t *paBlockSize = nullptr;
+    const int64_t *returnSoftMaxLse = nullptr;
 
     QfaRequiredParaInfo attnOut = {nullptr, nullptr};
     QfaRequiredParaInfo lseOut = {nullptr, nullptr};

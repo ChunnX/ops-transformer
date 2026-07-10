@@ -36,18 +36,18 @@ namespace l0op {
  * @param sinksOptional       learnable sink weights (optional, FLOAT32)
  * @param attnMaskOptional    attention mask (optional, INT8)
  * @param metadataOptional    pre-computed tiling metadata (optional, INT32)
- * @param quantMode           quantization mode (int32_t): 1=MXFP8 softmax FP32
+ * @param quantMode           quantization mode (int64_t): 1=MXFP8 softmax FP32
  * @param softmaxScale        softmax scaling factor (double)
- * @param maskMode            mask mode (int32_t)
- * @param winLeft             left window size (int32_t)
- * @param winRight            right window size (int32_t)
- * @param maxSeqlenQ          max query sequence length (int32_t)
- * @param maxSeqlenKV         max kv sequence length (int32_t)
+ * @param maskMode            mask mode (int64_t)
+ * @param winLeft             left window size (int64_t)
+ * @param winRight            right window size (int64_t)
+ * @param maxSeqlenQ          max query sequence length (int64_t)
+ * @param maxSeqlenKV         max kv sequence length (int64_t)
  * @param layoutQ             query layout string
  * @param layoutKv            kv layout string
  * @param layoutOut           output layout string
- * @param paBlockSize         paged attention block size (int32_t)
- * @param returnSoftmaxLse    whether to output softmax_lse (int32_t)
+ * @param paBlockSize         paged attention block size (int64_t)
+ * @param returnSoftmaxLse    whether to output softmax_lse (int64_t)
  * @param executor            op executor
  * @return std::array<const aclTensor*, 2> [attnOut, softmaxLse]
  *         Any element being nullptr indicates InferShape or Launch failure for that output.
@@ -68,18 +68,18 @@ const std::array<const aclTensor *, 2> QuantFlashAttn(
     const aclTensor *sinksOptional,
     const aclTensor *attnMaskOptional,
     const aclTensor *metadataOptional,
-    int32_t quantMode,
+    int64_t quantMode,
     double softmaxScale,
-    int32_t maskMode,
-    int32_t winLeft,
-    int32_t winRight,
-    int32_t maxSeqlenQ,
-    int32_t maxSeqlenKV,
+    int64_t maskMode,
+    int64_t winLeft,
+    int64_t winRight,
+    int64_t maxSeqlenQ,
+    int64_t maxSeqlenKV,
     const char *layoutQ,
     const char *layoutKv,
     const char *layoutOut,
-    int32_t paBlockSize,
-    int32_t returnSoftmaxLse,
+    int64_t paBlockSize,
+    int64_t returnSoftmaxLse,
     aclOpExecutor *executor);
 
 }  // namespace l0op

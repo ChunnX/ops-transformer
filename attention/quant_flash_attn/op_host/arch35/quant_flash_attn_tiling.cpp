@@ -329,7 +329,7 @@ void QuantFlashAttnTilingImpl::SetQFATilingData()
         (qfaInfo_->kvLayout == QfaLayout::TND && cuSeqLenKVFlag_) ? qfaInfo_->bSize + 1 : 0;
     tilingData_.baseTiling.quantFlashAttnBaseParams.seqUsedQSize = seqUsedQFlag_ ? qfaInfo_->bSize : 0;
     tilingData_.baseTiling.quantFlashAttnBaseParams.seqUsedKvSize = seqUsedKvFlag_ ? qfaInfo_->bSize : 0;
-    tilingData_.baseTiling.quantFlashAttnBaseParams.isKvContinuous = qfaInfo_->batchContinuousFlag;
+    tilingData_.baseTiling.quantFlashAttnBaseParams.isKvContinuous = true;
     tilingData_.baseTiling.quantFlashAttnBaseParams.isSoftMaxLseEnable = qfaInfo_->softmaxLseFlag;
     tilingData_.baseTiling.quantFlashAttnBaseParams.iscuSeqLengthsNull =
         !(cuSeqLenQFlag_ && qfaInfo_->qLayout == QfaLayout::TND);
