@@ -137,9 +137,9 @@ namespace BlockSparse {
 
             uint32_t subCoreIdx = AscendC::GetBlockIdx();
             uint32_t curStartRowIdx = subCoreIdx * avgRowPerSubCore;
-            uint32_t totalRowNumBlockMask = batch * qHeads * maxQBlockNum;
+            uint64_t totalRowNumBlockMask = static_cast<uint64_t>(batch) * qHeads * maxQBlockNum;
             uint32_t actDealtRow = (subCoreIdx == preActivateSubCoreNum - 1) ?
-                (totalRowNumBlockMask - curStartRowIdx) : avgRowPerSubCore;
+                static_cast<uint32_t>(totalRowNumBlockMask - curStartRowIdx) : avgRowPerSubCore;
             if (subCoreIdx < preActivateSubCoreNum) {
                 uint32_t rowLoop = CeilDiv(actDealtRow, PRE_ROW_TILE);
                 uint32_t colLoop = CeilDiv(maxKvBlockNum, PRE_COL_TILE);
@@ -158,8 +158,8 @@ namespace BlockSparse {
                         AscendC::CreateVecIndex(maskIdxUbLocal, static_cast<int32_t>(curLoopColOffset), PRE_COL_TILE);
                         AscendC::PipeBarrier<PIPE_V>();
                         AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(idxPingPongFlag);
-                        int32_t maskOffset = curStartRowIdx * maxKvBlockNum +
-                            curLoopRowOffset * maxKvBlockNum + curLoopColOffset;
+                        int64_t maskOffset = static_cast<int64_t>(curStartRowIdx) * maxKvBlockNum +
+                            static_cast<int64_t>(curLoopRowOffset) * maxKvBlockNum + curLoopColOffset;
                         AscendC::DataCopyPad(
                             maskPatternUbLocal[idxPingPongFlag],
                             maskGM[maskOffset],
@@ -208,8 +208,9 @@ namespace BlockSparse {
                                 AscendC::WaitFlag<AscendC::HardEvent::S_MTE3>(0);
                             }
                             AscendC::DataCopyPad(
-                                selectIdxGM[curStartRowIdx * maxKvBlockNum +
-                                    curLoopRowOffset * maxKvBlockNum + k * maxKvBlockNum + rsvdCountPerRow[k]],
+                                selectIdxGM[static_cast<int64_t>(curStartRowIdx) * maxKvBlockNum +
+                                    static_cast<int64_t>(curLoopRowOffset) * maxKvBlockNum +
+                                    static_cast<int64_t>(k) * maxKvBlockNum + rsvdCountPerRow[k]],
                                 sparseIdxUbLocal[idxPingPongFlag][k * PRE_COL_TILE],
                                 AscendC::DataCopyExtParams(
                                     1, rsvdCountPerRowCurColLoop[k] * sizeof(int32_t), 0, 0, 0));
@@ -399,22 +400,22 @@ namespace BlockSparse {
                 // strideB = N * S * D, strideN = S * D, strideS = D
                 // maxQSeqlen is the third dimension (S) of query shape, set in tiling
                 strideQOB = static_cast<uint64_t>(qHeads) * maxQSeqlen * embed;  // batch stride
-                strideQON = maxQSeqlen * embed;  // head stride
+                strideQON = static_cast<uint64_t>(maxQSeqlen) * embed;  // head stride
                 strideQOS = embed;  // seq stride
             } else {
                 // TND: [T, N, D]
-                strideQO = qHeads * embed;
+                strideQO = static_cast<uint64_t>(qHeads) * embed;
             }
 
             if constexpr (KV_CACHE_LAYOUT == 1) {  // BNSD
                 // BNSD: [B, N, S, D]
                 // maxKvSeqlen is the third dimension (S) of value shape, set in tiling
                 strideKVB = static_cast<uint64_t>(kvHeads) * maxKvSeqlen * embed;  // batch stride
-                strideKVN = maxKvSeqlen * embed;  // head stride
+                strideKVN = static_cast<uint64_t>(maxKvSeqlen) * embed;  // head stride
                 strideKVS = embed;  // seq stride
             } else {
                 // TND: [T, N, D]
-                strideKV = kvHeads * embed;
+                strideKV = static_cast<uint64_t>(kvHeads) * embed;
             }
 
             uint32_t embedRound = AlignUp<uint32_t>(embed, BLOCK_SIZE);
@@ -455,25 +456,25 @@ namespace BlockSparse {
                     // Update offsets based on layout (compile-time optimization)
                     if constexpr (QUERY_LAYOUT == 1) {  // BNSD_Q
                         // BNSD: [B, N, S, D], offset = batch * strideB
-                        qBOffset = curBatch * strideQOB;
-                        oBOffset = curBatch * strideQOB;
+                        qBOffset = static_cast<uint64_t>(curBatch) * strideQOB;
+                        oBOffset = static_cast<uint64_t>(curBatch) * strideQOB;
                         lseBOffset = static_cast<uint64_t>(curBatch) * qHeads * maxQSeqlen;
                     } else {
                         // TND
-                        qBOffset += qSeqlen * strideQO;
-                        oBOffset += qSeqlen * strideQO;
-                        lseBOffset += qSeqlen * qHeads;
+                        qBOffset += static_cast<uint64_t>(qSeqlen) * strideQO;
+                        oBOffset += static_cast<uint64_t>(qSeqlen) * strideQO;
+                        lseBOffset += static_cast<uint64_t>(qSeqlen) * qHeads;
                     }
 
                     if constexpr (!PAGED_CACHE_FLAG) {
                         if constexpr (KV_CACHE_LAYOUT == 1) {  // BNSD
                             // BNSD: [B, N, S, D], offset = batch * strideB
-                            kBOffset = curBatch * strideKVB;
-                            vBOffset = curBatch * strideKVB;
+                            kBOffset = static_cast<uint64_t>(curBatch) * strideKVB;
+                            vBOffset = static_cast<uint64_t>(curBatch) * strideKVB;
                         } else {
                             // TND
-                            kBOffset += kvSeqlen * strideKV;
-                            vBOffset += kvSeqlen * strideKV;
+                            kBOffset += static_cast<uint64_t>(kvSeqlen) * strideKV;
+                            vBOffset += static_cast<uint64_t>(kvSeqlen) * strideKV;
                         }
                     } else {
                         blockBOffset += maxNumBlocksPerBatch;
@@ -507,7 +508,8 @@ namespace BlockSparse {
                 uint32_t kvHeadIdx = qNBlockIdx / qNBlockNumPerGroup;
                 uint32_t qHeadIdx = kvHeadIdx * groupSize + qNBlockIdxCurGroup * curQNBlockTile;
 
-                uint32_t curSelectIdx = curBatch * qHeads * maxQBlockNum + qHeadIdx * maxQBlockNum + qXIdx;
+                uint64_t curSelectIdx = static_cast<uint64_t>(curBatch) * qHeads * maxQBlockNum
+                                      + static_cast<uint64_t>(qHeadIdx) * maxQBlockNum + qXIdx;
                 uint32_t curSelectNum = static_cast<uint32_t>(gSelectNumIdx.GetValue(curSelectIdx));
                 if (curSelectNum == 0) {
                     continue;
@@ -526,28 +528,32 @@ namespace BlockSparse {
                 if constexpr (QUERY_LAYOUT == 1) {  // BNSD_Q: [B, N, S, D]
                     // offset = batch * strideB + head * strideN + seq * strideS
                     uint32_t qSeqOffset = qXIdx * qBlockX + qXInnerIdx * BASIC_BLOCK_SIZE;
-                    gmOffsetQ = qBOffset + qHeadIdx * strideQON + qSeqOffset * strideQOS;
-                    gmOffsetO = oBOffset + qHeadIdx * strideQON + qSeqOffset * strideQOS;
+                    gmOffsetQ = qBOffset + static_cast<uint64_t>(qHeadIdx) * strideQON
+                              + static_cast<uint64_t>(qSeqOffset) * strideQOS;
+                    gmOffsetO = oBOffset + static_cast<uint64_t>(qHeadIdx) * strideQON
+                              + static_cast<uint64_t>(qSeqOffset) * strideQOS;
                     // LSE format: [B, N, S] - strideN = maxQSeqlen
                     gmOffsetLse = lseBOffset + static_cast<uint64_t>(qHeadIdx) * maxQSeqlen + qSeqOffset;
                 } else {
                     // TND: [T, N, D]
                     uint32_t qSeqOffset = qXIdx * qBlockX + qXInnerIdx * BASIC_BLOCK_SIZE;
-                    gmOffsetQ = qBOffset + qSeqOffset * strideQO + qHeadIdx * embed;
-                    gmOffsetO = oBOffset + qSeqOffset * strideQO + qHeadIdx * embed;
+                    gmOffsetQ = qBOffset + static_cast<uint64_t>(qSeqOffset) * strideQO
+                              + static_cast<uint64_t>(qHeadIdx) * embed;
+                    gmOffsetO = oBOffset + static_cast<uint64_t>(qSeqOffset) * strideQO
+                              + static_cast<uint64_t>(qHeadIdx) * embed;
                     // LSE format: [T, N] - same as Q/O but without D dimension
-                    gmOffsetLse = lseBOffset + qSeqOffset * qHeads + qHeadIdx;
+                    gmOffsetLse = lseBOffset + static_cast<uint64_t>(qSeqOffset) * qHeads + qHeadIdx;
                 }
 
                 if constexpr (KV_CACHE_LAYOUT == 1) {  // BNSD: [B, N, S, D]
                     // offset = batch * strideB + head * strideN
                     // seq offset will be handled in blockMmadQK/blockMmadPV based on selectIdx
-                    gmOffsetK = kBOffset + kvHeadIdx * strideKVN;
-                    gmOffsetV = vBOffset + kvHeadIdx * strideKVN;
+                    gmOffsetK = kBOffset + static_cast<uint64_t>(kvHeadIdx) * strideKVN;
+                    gmOffsetV = vBOffset + static_cast<uint64_t>(kvHeadIdx) * strideKVN;
                 } else {
                     // TND: [T, N, D]
-                    gmOffsetK = kBOffset + kvHeadIdx * embed;
-                    gmOffsetV = vBOffset + kvHeadIdx * embed;
+                    gmOffsetK = kBOffset + static_cast<uint64_t>(kvHeadIdx) * embed;
+                    gmOffsetV = vBOffset + static_cast<uint64_t>(kvHeadIdx) * embed;
                 }
 
                 uint32_t qSBlockSize = (qXIdx == xBlockNum) ?
