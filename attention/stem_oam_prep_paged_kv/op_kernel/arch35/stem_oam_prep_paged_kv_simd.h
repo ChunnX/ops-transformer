@@ -271,8 +271,8 @@ __aicore__ inline void StemOamPrepPagedKvSimd::CopyInVFlatOut(int32_t batchIdx, 
 __aicore__ inline void StemOamPrepPagedKvSimd::CopyInKVCache(int32_t batchIdx, int32_t headIdx, int32_t stemBlockIdx,
                                                              int64_t actualRows)
 {
-    LocalTensor<fp8_e4m3fn_t> kCacheLocal = kCacheQue_.AllocTensor<fp8_e4m3fn_t>();
-    LocalTensor<fp8_e4m3fn_t> vCacheLocal = vCacheQue_.AllocTensor<fp8_e4m3fn_t>();
+    LocalTensor<int8_t> kCacheLocal = kCacheQue_.AllocTensor<int8_t>();
+    LocalTensor<int8_t> vCacheLocal = vCacheQue_.AllocTensor<int8_t>();
     LocalTensor<float> kScalarLocal = kScalarBuf_.Get<float>();
     GlobalTensor<int8_t> kCacheGm = kCacheGm_.ReinterpretCast<int8_t>();
     GlobalTensor<int8_t> vCacheGm = vCacheGm_.ReinterpretCast<int8_t>();

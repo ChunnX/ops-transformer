@@ -30,9 +30,9 @@ __global__ __aicore__ void stem_oam_prep_paged_kv(GM_ADDR kCache, GM_ADDR vCache
         return;
     }
 
-    REGISTER_TILING_DEFAULT(StemOamPrepPagedKVTilingData);
+    REGISTER_TILING_DEFAULT(StemOamPrepPagedKvTilingData);
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY);
-    GET_TILING_DATA_WITH_STRUCT(StemOamPrepPagedKVTilingData, tilingData, tiling);
+    GET_TILING_DATA_WITH_STRUCT(StemOamPrepPagedKvTilingData, tilingData, tiling);
 
     TPipe pipe;
     StemOamPrepPagedKvSimd op;
