@@ -347,7 +347,6 @@ function help_info() {
     echo "to be continued ..."
 }
 
-
 export BASE_PATH=$(
     cd "$(dirname $0)"
     pwd
