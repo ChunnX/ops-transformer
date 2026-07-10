@@ -88,7 +88,6 @@ quant_grouped_mat_mul_allto_allv(GM_ADDR gmmxGM, GM_ADDR gmmweightGM, GM_ADDR gm
     //   [0, wsGmmOutputSize)                 → 路由专家 GMM 输出 (每轮从偏移0开始写入)
     //   [+, wsGmmComputeWorkspaceSize)       → GmmComputeOp 内部空间
     //   [+, wsSharedGmmComputeWorkspaceSize) → SharedGmmComputeOp 内部空间
-    //   [+, wsPermuteOutSize)                → PermuteSend 重排空间 (expert优先→rank优先)
     uint64_t wsOffset = 0;
     GM_ADDR gmmOutputGM = userWorkspace + wsOffset;
     wsOffset += tilingData_->workspaceInfo.wsGmmOutputSize;
@@ -96,8 +95,6 @@ quant_grouped_mat_mul_allto_allv(GM_ADDR gmmxGM, GM_ADDR gmmweightGM, GM_ADDR gm
     wsOffset += tilingData_->workspaceInfo.wsGmmComputeWorkspaceSize;
     GM_ADDR sharedGmmComputeWSGM = userWorkspace + wsOffset;
     wsOffset += tilingData_->workspaceInfo.wsSharedGmmComputeWorkspaceSize;
-    GM_ADDR permuteSendGM = userWorkspace + wsOffset;
-    wsOffset += tilingData_->workspaceInfo.wsPermuteOutSize;
 
     using HcclOpType = HcclA2avOp<DTYPE_Y, false, TILINGKEY_COMM_MODE>;
     using GmmASWKernelType =

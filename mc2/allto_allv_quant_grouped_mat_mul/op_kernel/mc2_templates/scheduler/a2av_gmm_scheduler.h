@@ -88,9 +88,6 @@ protected:
     }
 
 private:
-    __aicore__ inline void ProcessCommRoundMode();
-
-private:
     CommOpType &commOp_;
     ComputeOpType &computeOp_;
     LocalComputeOpType &localComputeOp_;

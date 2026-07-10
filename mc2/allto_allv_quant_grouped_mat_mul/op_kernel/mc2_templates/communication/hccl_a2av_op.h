@@ -66,7 +66,6 @@ public:
     __aicore__ inline void LaunchCommData(uint32_t startExpertIdx, uint32_t expertNum);
     __aicore__ inline void PermuteScale(uint32_t startExpertIdx, uint32_t expertNum);
     __aicore__ inline void PermuteData(uint32_t startExpertIdx, uint32_t expertNum);
-    __aicore__ inline void PermuteSendAfterCompute(uint32_t startExpertIdx, uint32_t expertNum);
     __aicore__ inline void WaitScale(uint32_t startExpertIdx);
     __aicore__ inline void Wait(uint32_t startExpertIdx);
     __aicore__ inline void WaitAll(uint32_t allNum, uint32_t step = 1U);
@@ -76,7 +75,6 @@ private:
     typename HcclTypeSelector<commMode>::type hccl_;
     const TaskTilingInfo *taskTilingInfo_;
 
-    uint32_t rankId_ = 0U;
     uint32_t rankDim_ = 0U;
     uint32_t e_ = 0U;
     uint64_t H1_ = 0UL;
@@ -86,7 +84,6 @@ private:
     GlobalTensor<CommBufType> sendGlobalBuffer_;
     GlobalTensor<CommBufType> recvGlobalBuffer_;
     GlobalTensor<CommBufType> permuteOutBuffer_;
-    GlobalTensor<CommBufType> permuteSrcBuffer_;
     GlobalTensor<fp8_e8m0_t> sendScaleGlobalBuffer_;
     GlobalTensor<fp8_e8m0_t> recvScaleGlobalBuffer_;
     GlobalTensor<fp8_e8m0_t> scalePermuteOutBuffer_;
@@ -128,7 +125,6 @@ __aicore__ inline void HcclA2avOp<hcclDataType, commBeforeComputeFlag, commMode>
     GM_ADDR hcclContextGm = GetHcclContext<HCCL_GROUP_ID_0>();
     hccl_.InitV2(hcclContextGm, hcclInitTiling);
     hccl_.SetCcTilingV2(hcclCcTilingOffset);
-    rankId_ = hccl_.GetRankId();
     rankDim_ = hccl_.GetRankDim();
     e_ = taskTilingInfo_->e;
     H1_ = taskTilingInfo_->H1;
@@ -137,9 +133,6 @@ __aicore__ inline void HcclA2avOp<hcclDataType, commBeforeComputeFlag, commMode>
     sendGlobalBuffer_.SetGlobalBuffer((__gm__ CommBufType *)sendBuffer);
     recvGlobalBuffer_.SetGlobalBuffer((__gm__ CommBufType *)recvBuffer);
     permuteOutBuffer_.SetGlobalBuffer((__gm__ CommBufType *)permuteBuffer);
-    if constexpr (!commBeforeComputeFlag) {
-        permuteSrcBuffer_.SetGlobalBuffer((__gm__ CommBufType *)permuteBuffer);
-    }
     for (int i = 0; i < e_ * rankDim_; i++) {
         recvCounts_[i] = taskTilingInfo_->recvCnt[i];
         sendCounts_[i] = taskTilingInfo_->sendCnt[i];
@@ -240,24 +233,6 @@ __aicore__ inline void HcclA2avOp<hcclDataType, commBeforeComputeFlag, commMode>
         recvGlobalBuffer_, permuteOutBuffer_,
         recvCounts_, e_, rankDim_, startExpertIdx, expertNum,
         axis, permuteBaseOffset_, permuteTBuf_, permuteTBuf2_, bufferLen_, eventID_,
-        aivCoreNum_);
-}
-
-template <typename hcclDataType, bool commBeforeComputeFlag, int commMode>
-__aicore__ inline void HcclA2avOp<hcclDataType, commBeforeComputeFlag, commMode>::PermuteSendAfterCompute(
-    uint32_t startExpertIdx, uint32_t expertNum)
-{
-    A2AV_AIV_ALL();
-    if (!permuteBufInitialized_) {
-        TPipe *pipe = GetTPipePtr();
-        pipe->InitBuffer(permuteTBuf_, bufferLen_);
-        pipe->InitBuffer(permuteTBuf2_, bufferLen_);
-        permuteBufInitialized_ = true;
-    }
-    PermuteImplParallel<CommBufType, true, false>(
-        permuteSrcBuffer_, sendGlobalBuffer_,
-        sendCounts_, e_, rankDim_, startExpertIdx, expertNum,
-        N1_, permuteBaseOffset_, permuteTBuf_, permuteTBuf2_, bufferLen_, eventID_,
         aivCoreNum_);
 }
 
