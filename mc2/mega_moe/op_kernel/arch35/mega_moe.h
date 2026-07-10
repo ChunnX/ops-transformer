@@ -706,11 +706,11 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::CopyGMToGMPerToken(
         TEventID eventId = kBufEvents[primeIdx];
         uint64_t remoteCopyOffset = static_cast<uint64_t>(tokenIndex) * static_cast<uint64_t>(copyInNum);
         DataCopy(copyTmpTensors_[primeIdx], remoteRankGlobalTensor[remoteCopyOffset], copyInNum);
+        SetFlag<AscendC::HardEvent::MTE2_MTE3>(eventId);
         tripleTensor_[primeIdx * INT32_PER_256B].SetValue(RANK_ID, remoteRankIdx);
         tripleTensor_[primeIdx * INT32_PER_256B].SetValue(TOKEN_ID, tokenIndex);
         tripleTensor_[primeIdx * INT32_PER_256B].SetValue(TOPK_INDEX, topkIndex % topK_);
         SetFlag<AscendC::HardEvent::S_MTE3>(eventId);
-        SetFlag<AscendC::HardEvent::MTE2_MTE3>(eventId);
     }
     // Phase 2 steady: MTE3(token + scale + triple) → 组装下条 triple → issueMTE2
     for (int32_t copyIdx = 0; copyIdx < copyNum; ++copyIdx) {
