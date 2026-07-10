@@ -1811,14 +1811,14 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Process()
         UpdateGlobalBuffer<AddrUpdateMode::kGmm1>(gmm1AddrInfo, gmm1State);
         GroupMatmulWithSwigluQuant(gmm1AddrInfo, gmm1State);
     }
-    // EndSync(vecSetSyncCom_);
-    // if constexpr(g_coreType == AIV) {
-    //     if (subBlockIdx_ == 1) {
-    //         ExpertTokenNumCopyOut(); // 本卡专家接受的tokenCnt总数搬出
-    //     }
-    // }
+    EndSync(vecSetSyncCom_);
+    if constexpr(g_coreType == AIV) {
+        if (subBlockIdx_ == 1) {
+            ExpertTokenNumCopyOut(); // 本卡专家接受的tokenCnt总数搬出
+        }
+    }
 
-    // SyncAll<true>();
+    SyncAll<true>();
     // // 3. 本卡专家接收数据GroupMatmul2 & Combine
     // vecSetSyncCom_ = 0;
     // GMMAddrInfo gmm2AddrInfo;
