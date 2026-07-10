@@ -129,7 +129,7 @@ public:
     {
         uint32_t nSplitSize = blockSize;
         if (nowNIdx == nLoop - 1U) {
-            nSplitSize = static_cast<uint32_t>(kvSeqlen - static_cast<uint64_t>(nowNIdx) * blockSize);
+            nSplitSize = kvSeqlen - nowNIdx * blockSize;
         }
         actualShape[COORD_DIM2] = nSplitSize;
     }
@@ -142,7 +142,7 @@ public:
             uint32_t blockTableId = gBlockTable.GetValue(nowNIdx);
             kOffset = blockTableId * blockSize * strideKV;
         } else {
-            kOffset = static_cast<uint64_t>(nowNIdx) * blockSize * strideKV;
+            kOffset = nowNIdx * blockSize * strideKV;
         }
     }
 
