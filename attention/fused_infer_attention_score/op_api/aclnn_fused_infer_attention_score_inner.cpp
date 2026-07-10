@@ -16,6 +16,7 @@
 #include "opdev/fast_vector.h"
 #include "aclnn_kernels/common/op_error_check.h"
 #include "aclnn_kernels/contiguous.h"
+#include "aclnn_kernels/reshape.h"
 #include "opdev/tensor_view_utils.h"
 #include "acl/acl.h"
 
@@ -329,11 +330,68 @@ aclnnStatus MakeTensorListContiguous(const aclTensorList *&tensorList, const cha
     return ACLNN_SUCCESS;
 }
 
-aclnnStatus ProcessKeyValueForContiguous(const aclTensorList *&key, const aclTensorList *&value,
-                                         const aclTensor *blockTableOptional, aclOpExecutor *executor)
+aclnnStatus ReshapeTensorToViewShape(const aclTensor *&tensor, const char *name, aclOpExecutor *executor)
+{
+    if (tensor == nullptr) {
+        return ACLNN_SUCCESS;
+    }
+
+    const auto viewShape = tensor->GetViewShape();
+    std::vector<int64_t> shapeValues;
+    shapeValues.reserve(viewShape.GetDimNum());
+    for (uint64_t i = 0; i < viewShape.GetDimNum(); ++i) {
+        shapeValues.emplace_back(viewShape.GetDim(i));
+    }
+
+    std::string beforeName = std::string(name) + ".beforeReshape";
+    LogTensorDebugInfo(beforeName.c_str(), tensor);
+    tensor = l0op::Reshape(tensor, executor->AllocIntArray(shapeValues.data(), shapeValues.size()), executor);
+    if (tensor == nullptr) {
+        OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "Try reshape %s to view shape failed.", name);
+        return ACLNN_ERR_INNER_NULLPTR;
+    }
+    std::string afterName = std::string(name) + ".afterReshape";
+    LogTensorDebugInfo(afterName.c_str(), tensor);
+    return ACLNN_SUCCESS;
+}
+
+aclnnStatus ReshapeTensorListToViewShape(const aclTensorList *&tensorList, const char *name, aclOpExecutor *executor)
+{
+    if (tensorList == nullptr) {
+        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "%s tensorList is nullptr.", name);
+        return ACLNN_ERR_PARAM_NULLPTR;
+    }
+
+    std::vector<const aclTensor *> tensors;
+    tensors.reserve(tensorList->Size());
+    for (uint64_t i = 0; i < tensorList->Size(); ++i) {
+        auto tensor = (*tensorList)[i];
+        if (tensor != nullptr) {
+            std::string itemName = std::string(name) + "[" + std::to_string(i) + "]";
+            CHECK_RET(ReshapeTensorToViewShape(tensor, itemName.c_str(), executor) == ACLNN_SUCCESS,
+                      ACLNN_ERR_INNER_NULLPTR);
+        }
+        tensors.emplace_back(tensor);
+    }
+
+    auto reshapedList = executor->AllocTensorList(tensors.data(), tensors.size());
+    if (reshapedList == nullptr) {
+        OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "Try alloc reshaped %s tensorList failed.", name);
+        return ACLNN_ERR_INNER_NULLPTR;
+    }
+    tensorList = reshapedList;
+    return ACLNN_SUCCESS;
+}
+
+aclnnStatus ProcessQKVForL0Input(const aclTensor *&query, const aclTensorList *&key, const aclTensorList *&value,
+                                 const aclTensor *blockTableOptional, aclOpExecutor *executor)
 {
     if (executor == nullptr) {
         OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "executor is nullptr.");
+        return ACLNN_ERR_PARAM_NULLPTR;
+    }
+    if (query == nullptr) {
+        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "query tensor is nullptr.");
         return ACLNN_ERR_PARAM_NULLPTR;
     }
     if (key == nullptr || value == nullptr) {
@@ -346,21 +404,28 @@ aclnnStatus ProcessKeyValueForContiguous(const aclTensorList *&key, const aclTen
         return ACLNN_ERR_PARAM_INVALID;
     }
 
-    FiaDebugPrintf("[FIA_DEBUG][INNER] ProcessKeyValueForContiguous cacheScene[%d].",
+    FiaDebugPrintf("[FIA_DEBUG][INNER] ProcessQKVForL0Input cacheScene[%d].",
                    static_cast<int32_t>(IsCacheScene(blockTableOptional)));
-    LogTensorDebugInfo("ProcessKeyValue.blockTableOptional", blockTableOptional);
-    LogTensorListDebugInfo("ProcessKeyValue.key.before", key);
-    LogTensorListDebugInfo("ProcessKeyValue.value.before", value);
+    LogTensorDebugInfo("ProcessQKV.query.before", query);
+    LogTensorDebugInfo("ProcessQKV.blockTableOptional", blockTableOptional);
+    LogTensorListDebugInfo("ProcessQKV.key.before", key);
+    LogTensorListDebugInfo("ProcessQKV.value.before", value);
     if (IsCacheScene(blockTableOptional)) {
         CHECK_RET(CheckTensorListFirstAxisOnlyNonContiguous(key, "key") == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
         CHECK_RET(CheckTensorListFirstAxisOnlyNonContiguous(value, "value") == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
         return ACLNN_SUCCESS;
     }
 
+    query = l0op::Contiguous(query, executor);
+    CHECK_RET(query != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    CHECK_RET(ReshapeTensorToViewShape(query, "query", executor) == ACLNN_SUCCESS, ACLNN_ERR_INNER_NULLPTR);
     CHECK_RET(MakeTensorListContiguous(key, "key", executor) == ACLNN_SUCCESS, ACLNN_ERR_INNER_NULLPTR);
     CHECK_RET(MakeTensorListContiguous(value, "value", executor) == ACLNN_SUCCESS, ACLNN_ERR_INNER_NULLPTR);
-    LogTensorListDebugInfo("ProcessKeyValue.key.after", key);
-    LogTensorListDebugInfo("ProcessKeyValue.value.after", value);
+    CHECK_RET(ReshapeTensorListToViewShape(key, "key", executor) == ACLNN_SUCCESS, ACLNN_ERR_INNER_NULLPTR);
+    CHECK_RET(ReshapeTensorListToViewShape(value, "value", executor) == ACLNN_SUCCESS, ACLNN_ERR_INNER_NULLPTR);
+    LogTensorDebugInfo("ProcessQKV.query.after", query);
+    LogTensorListDebugInfo("ProcessQKV.key.after", key);
+    LogTensorListDebugInfo("ProcessQKV.value.after", value);
     return ACLNN_SUCCESS;
 }
 
@@ -444,18 +509,20 @@ aclnnStatus InnerFusedInferAttentionScoreGetWorkspaceSize(
         return ACLNN_SUCCESS;
     }
 
+    const aclTensor *processedQuery = query;
     const aclTensorList *processedKey = key;
     const aclTensorList *processedValue = value;
 
     aclOpExecutor *l0Executor = uniqueExecutor.get();
-    CHECK_RET(ProcessKeyValueForContiguous(processedKey, processedValue, blockTableOptional, l0Executor) == ACLNN_SUCCESS,
-              ACLNN_ERR_PARAM_INVALID);
+    auto qkvProcessRet = ProcessQKVForL0Input(processedQuery, processedKey, processedValue, blockTableOptional, l0Executor);
+    CHECK_RET(qkvProcessRet == ACLNN_SUCCESS, qkvProcessRet);
+    LogTensorDebugInfo("inner.query.processed", processedQuery);
     LogTensorListDebugInfo("inner.key.processed", processedKey);
     LogTensorListDebugInfo("inner.value.processed", processedValue);
 
     FiaDebugPrintf("[FIA_DEBUG][INNER] before l0op::FusedInferAttentionScore.");
     auto l0Out = l0op::FusedInferAttentionScore(
-        query, processedKey, processedValue, pseShiftOptional, attenMaskOptional, actualSeqLengthsOptional,
+        processedQuery, processedKey, processedValue, pseShiftOptional, attenMaskOptional, actualSeqLengthsOptional,
         actualSeqLengthsKvOptional, deqScale1Optional, quantScale1Optional, deqScale2Optional, quantScale2Optional,
         quantOffset2Optional, antiquantScaleOptional, antiquantOffsetOptional, blockTableOptional,
         queryPaddingSizeOptional, kvPaddingSizeOptional, keyAntiquantScaleOptional, keyAntiquantOffsetOptional,
@@ -497,7 +564,12 @@ aclnnStatus InnerFusedInferAttentionScore(
     void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, const aclrtStream stream)
 {
     L2_DFX_PHASE_2(InnerFusedInferAttentionScore);
-    return CommonOpExecutorRun(workspace, workspaceSize, executor, stream);
+    FiaDebugPrintf("[FIA_DEBUG][INNER_RUN] before CommonOpExecutorRun workspace[%p] workspaceSize[%lu] "
+                   "executor[%p] stream[%p].",
+                   workspace, workspaceSize, static_cast<void *>(executor), static_cast<void *>(stream));
+    auto ret = CommonOpExecutorRun(workspace, workspaceSize, executor, stream);
+    FiaDebugPrintf("[FIA_DEBUG][INNER_RUN] after CommonOpExecutorRun ret[%d].", static_cast<int32_t>(ret));
+    return ret;
 }
 
 #ifdef __cplusplus
