@@ -14,13 +14,13 @@ GroupedMatmul是 MoE网络中的重要算子，核心功能是做分组矩阵乘
 ```mermaid
 graph LR
     B["moe_gating_top_k"] --> C["moe_init_routing"]
-    C --> D["grouped_matmul<br>(W1:gate_up_proj)"]
+    C --> D["grouped_matmul(W1)"]
     D --> E["swiglu"]
-    E --> F["grouped_matmul<br>(W2:down_proj)"]
+    E --> F["grouped_matmul(W2)"]
     F --> G["moe_finalize_routing"]
 
-    classDef gmm fill:#fff3bf,stroke:#f08c00,stroke-width:2px,color:#333;
-    classDef other fill:#d0ebff,stroke:#1c7ed6,stroke-width:2px,color:#333;
+    classDef gmm fill:#E8ECFF,stroke:#1c7ed6,stroke-width:2px,color:#333;
+    classDef other fill:#DCEFFA,stroke:#1c7ed6,stroke-width:2px,color:#333;
 
     class D,F gmm;
     class B,C,E,G other;
