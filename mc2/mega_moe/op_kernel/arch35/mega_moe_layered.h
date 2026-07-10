@@ -1797,10 +1797,10 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Process()
             if (subBlockIdx_ == 1 && localExpertId + 1 < expertPerRank_) {
                 DispatchTokenToRmtServer(localExpertId + 1);
                 SendCntCal(localExpertId + 1, nextSendCnt);
-                // if (UpdateGroupParams<AddrUpdateMode::kGmm1>(dispatchState, localExpertId + 1, nextSendCnt)) {
-                //     UpdateGlobalBuffer<AddrUpdateMode::kGmm1>(dispatchAddrInfo, dispatchState);
-                //     TripleInfoCalAndDispatch(dispatchAddrInfo, localExpertId + 1);
-                // }
+                if (UpdateGroupParams<AddrUpdateMode::kGmm1>(dispatchState, localExpertId + 1, nextSendCnt)) {
+                    UpdateGlobalBuffer<AddrUpdateMode::kGmm1>(dispatchAddrInfo, dispatchState);
+                    TripleInfoCalAndDispatch(dispatchAddrInfo, localExpertId + 1);
+                }
             }
         }
 
