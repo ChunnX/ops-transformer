@@ -143,6 +143,10 @@ void FusedInferAttentionScoreProcessSoftmaxLse(bool softmaxLseFlag, const aclTen
     }
 }
 
+#ifdef __cplusplus
+}
+#endif
+
 namespace {
 constexpr uint64_t DEBUG_TENSOR_LIST_LOG_LIMIT = 4;
 
@@ -361,6 +365,10 @@ aclnnStatus ProcessKeyValueForContiguous(const aclTensorList *&key, const aclTen
 }
 
 } // namespace
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 aclnnStatus InnerFusedInferAttentionScoreGetWorkspaceSize(
     const aclTensor *query, const aclTensorList *key, const aclTensorList *value,
