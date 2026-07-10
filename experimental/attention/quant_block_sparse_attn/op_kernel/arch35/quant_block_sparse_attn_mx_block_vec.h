@@ -166,6 +166,15 @@ public:
         LocalTensor<uint8_t> attenMaskUb;
         if constexpr (HAS_ATTEN) {
             attenMaskUb = CopyAttenMaskToUb(runInfo, subLoop, s2CalcSize);
+            int array_x = 64;
+            int array_y = 64;
+            int desc_index = 100;
+            uint32_t array[] = {static_cast<uint32_t>(array_x), static_cast<uint32_t>(array_y)};
+            AscendC::ShapeInfo shapeinfo(2, array);
+            AscendC::DumpTensor(attenMaskUb, desc_index, array_x * array_y, shapeinfo);
+            AscendC::DumpTensor(attenMaskUb[array_x * array_y], desc_index + 1, array_x * array_y, shapeinfo);
+            AscendC::DumpTensor(attenMaskUb[array_x * array_y * 2], desc_index + 2, array_x * array_y, shapeinfo);
+            AscendC::DumpTensor(attenMaskUb[array_x * array_y * 3], desc_index + 3, array_x * array_y, shapeinfo);
         }
         // 先搬 mask，再等待 C1，以重叠 MTE2 与 BMM1。
         bmm1ResBuf.WaitCrossCore();
@@ -445,8 +454,11 @@ private:
         if (!constInfo.isSoftmaxLseEnable || runInfo.actVecMSize == 0U) {
             return;
         }
+        WaitFlag<HardEvent::MTE3_V>(mte3ToVId_[0]);
         LocalTensor<float> lseUb = softmaxExpBuf_[0].template Get<float>();
         ComputeLseOutputVF(lseUb, sumUb, maxUb, runInfo.actVecMSize);
+        SetFlag<HardEvent::V_MTE3>(vToMte3Id_[0]);
+        WaitFlag<HardEvent::V_MTE3>(vToMte3Id_[0]);
         DataCopyExtParams dataCopyParams;
         dataCopyParams.blockLen = sizeof(float);
         dataCopyParams.blockCount = runInfo.actVecMSize;
@@ -456,6 +468,7 @@ private:
             (runInfo.queryTokenBase + runInfo.s1Idx + runInfo.vecMbaseIdx) * constInfo.realN2Size +
             runInfo.realN2Idx;
         DataCopyPad(softmaxLseGm_[dstOffset], lseUb, dataCopyParams);
+        SetFlag<HardEvent::MTE3_V>(mte3ToVId_[0]);
     }
 
     TPipe *tPipe_ = nullptr;
