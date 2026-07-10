@@ -34,7 +34,7 @@ void InitParsePlatformInfo950(fe::PlatFormInfos &platformInfo)
     map<string, string> aicoreSpec;
     socInfos["ai_core_cnt"] = to_string(compileInfoJson["hardware_info"]["CORE_NUM"].get<uint32_t>());
     socInfos["l2_size"] = to_string(compileInfoJson["hardware_info"]["L2_SIZE"].get<uint32_t>());
-    socInfos["core_type_list"] = "CubeCore,VectorCore";
+    socInfos["core_type_list"] = "AICore";
     aicoreSpec["ub_size"] = to_string(compileInfoJson["hardware_info"]["UB_SIZE"].get<uint32_t>());
     aicoreSpec["l1_size"] = to_string(compileInfoJson["hardware_info"]["L1_SIZE"].get<uint32_t>());
     map<string, string> versions = {{"NpuArch", "3510"}, {"Short_SoC_version", "Ascend950"}};
@@ -113,7 +113,7 @@ protected:
     }
 };
 
-std::map<std::string, std::string> soc_version_infos = {{"Short_SoC_version", "Ascend950"}};
+static std::map<std::string, std::string> soc_version_infos = {{"Short_SoC_version", "Ascend950"}};
 
 TEST_F(MoeReRoutingV2Tiling, moe_re_routing_v2_r_with_scale_float) {
     optiling::MoeReRoutingCompileInfo compileInfo = {48, 65536};
