@@ -19,8 +19,8 @@ graph LR
     E --> F["grouped_matmul(W2)"]
     F --> G["moe_finalize_routing"]
 
-    classDef gmm fill:#E8ECFF,stroke:#1c7ed6,stroke-width:2px,color:#333;
-    classDef other fill:#DCEFFA,stroke:#1c7ed6,stroke-width:2px,color:#333;
+    classDef gmm fill:#E8ECFF,stroke:none,color:#333;
+    classDef other fill:#DCEFFA,stroke:none,color:#333;
 
     class D,F gmm;
     class B,C,E,G other;
