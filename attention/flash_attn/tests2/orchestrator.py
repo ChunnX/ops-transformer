@@ -159,12 +159,11 @@ def _shapes_summary(data: dict) -> str:
 
 
 def _exec_or_load(stages: set, stage_name: str, compute_fn, case_set: str,
-                  case_id: str, keep_pt: bool):
+                  case_id: str):
     """执行阶段(若在stages中)并保存pt, 否则从pt加载, pt不存在则返回None。"""
     if stage_name in stages:
         output = compute_fn()
-        if keep_pt:
-            _save_pt(output, _pt_path(case_set, case_id, stage_name))
+        _save_pt(output, _pt_path(case_set, case_id, stage_name))
         return output
     pt = _pt_path(case_set, case_id, stage_name)
     return _load_pt(pt) if pt.exists() else None
@@ -174,7 +173,7 @@ def _exec_or_load(stages: set, stage_name: str, compute_fn, case_set: str,
 def run_case(stages: set, params: dict, reporter: Reporter, *,
              max_retries: int = 0, load_pt: str = None, graph_path: int = 0,
              chunk_size: int = 0, num_workers: int = 0, verbose_diff: bool = False,
-             fail_analysis: bool = True, keep_pt: bool = True) -> dict:
+             fail_analysis: bool = True) -> dict:
     case_set = params.get("case_set", "")
     case_id = params.get("case_id", params.get("name", ""))
     result_dir = str(Path("result") / case_id)
@@ -194,8 +193,7 @@ def run_case(stages: set, params: dict, reporter: Reporter, *,
                 t0 = time.perf_counter()
                 inputs = gen.gen_inputs(gen.normalize_params(params))
                 logger.info("[gen]  done  | %.2fs | %s", time.perf_counter() - t0, _shapes_summary(inputs))
-            if keep_pt:
-                _save_pt(inputs, _pt_path(case_set, case_id, "input"))
+            _save_pt(inputs, _pt_path(case_set, case_id, "input"))
         else:
             logger.info("[gen]  skip  | loading from pt")
             inputs = _load_pt(_pt_path(case_set, case_id, "input"))
@@ -203,7 +201,7 @@ def run_case(stages: set, params: dict, reporter: Reporter, *,
         logger.info("[cpu]  start")
         t0 = time.perf_counter()
         cpu_out = _exec_or_load(stages, "cpu", lambda: cpu.cpu_compute(inputs),
-                                case_set, case_id, keep_pt)
+                                case_set, case_id)
         if "cpu" in stages:
             logger.info("[cpu]  done  | %.2fs | %s", time.perf_counter() - t0,
                         _shapes_summary(cpu_out) if cpu_out else "(none)")
@@ -227,7 +225,7 @@ def run_case(stages: set, params: dict, reporter: Reporter, *,
             logger.info("[npu]  start | %s", "graph" if graph_path else "eager")
             t0 = time.perf_counter()
         npu_out = _exec_or_load(stages, "npu", _do_npu,
-                                case_set, case_id, keep_pt)
+                                case_set, case_id)
         if "npu" in stages:
             logger.info("[npu]  done  | %.2fs | %s", time.perf_counter() - t0,
                         _shapes_summary(npu_out) if npu_out else "(none)")
@@ -244,8 +242,7 @@ def run_case(stages: set, params: dict, reporter: Reporter, *,
             t0 = time.perf_counter()
             gpu_out = gpu.gpu_compute(dev_inputs)
             logger.info("[gpu]  done  | %.2fs | %s", time.perf_counter() - t0, _shapes_summary(gpu_out))
-            if keep_pt:
-                _save_pt(gpu_out, _pt_path(case_set, case_id, "gpu"))
+            _save_pt(gpu_out, _pt_path(case_set, case_id, "gpu"))
             del dev_inputs
 
         if "compare" in stages and cpu_out is not None and npu_out is not None:

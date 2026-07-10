@@ -17,7 +17,6 @@ def pytest_addoption(parser):
     parser.addoption("--verbose-diff", action="store_true", help="精度不达标时打印全部失败元素")
     parser.addoption("--fail-analysis", action="store_true", default=True,
                      help="精度不达标时输出失败分析报告")
-    parser.addoption("--keep-pt", action="store_true", default=True, help="保留中间pt产物")
     parser.addoption("--report-interval", default=20, type=int, help="中间报告间隔")
     parser.addoption("--load-pt", default=None, help="从pt加载inputs替代gen_inputs")
     parser.addoption("--chunk-size", default=0, type=int, help="比对分块大小(0=不分块)")
