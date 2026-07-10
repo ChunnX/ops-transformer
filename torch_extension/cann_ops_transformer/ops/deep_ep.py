@@ -7,15 +7,263 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
+import math
 import torch
 import torch_npu
 from torch.library import impl
 from torch_npu.utils._error_code import ErrCode, ops_error
 from cann_ops_transformer.op_builder.builder import OpBuilder
 from cann_ops_transformer.op_builder.builder import AS_LIBRARY
-from .moe_distribute_combine import npu_moe_distribute_combine
-from .moe_distribute_dispatch import npu_moe_distribute_dispatch
 from .comm_context import CommContextManager
+
+
+class MoeDistributeDispatchOpBuilder(OpBuilder):
+    def __init__(self):
+        super(MoeDistributeDispatchOpBuilder, self).__init__("npu_moe_distribute_dispatch")
+
+    def sources(self):
+        """Path to C++ source code."""
+        return ['ops/csrc/moe_distribute_dispatch.cpp']
+
+    def schema(self) -> str:
+        """PyTorch operator signature."""
+        return "npu_moe_distribute_dispatch(Tensor context, Tensor x, Tensor expert_ids, " \
+            "int ep_world_size, int ep_rank_id, int moe_expert_num, int ccl_buffer_size, " \
+            "*, Tensor? scales=None, Tensor? x_active_mask=None, " \
+            "Tensor? expert_scales=None, Tensor? elastic_info=None, Tensor? performance_info=None, "\
+            "int tp_world_size=0, int tp_rank_id=0, int expert_shard_type=0, int shared_expert_num=1, " \
+            "int shared_expert_rank_num=0, int quant_mode=0, int global_bs=0, int expert_token_nums_type=1, " \
+            "str comm_alg=\"\", int zero_expert_num=0, int copy_expert_num=0, int const_expert_num=0, " \
+            "int? y_dtype=None, int? x_dtype=None, int? scales_dtype=None) " \
+            "-> (Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor)"
+
+    def register_meta(self):
+        """
+        Registers the Meta implementation (Shape/Dtype inference).
+        Essential for Autograd and FakeTensor support.
+        """
+        def get_dispatch_dynamic_scales_dtype(x, scales, quant_mode):
+            dynamic_scales_dtype = torch.float32
+            if quant_mode == 0:
+                if x.dtype != torch.bfloat16 and x.dtype != torch.float16 and scales is not None:
+                    dynamic_scales_dtype = scales.dtype
+            elif quant_mode == 4:
+                dynamic_scales_dtype = torch.uint8  # float8_e8m0
+            return dynamic_scales_dtype
+
+        def get_dispatch_dynamic_shape(scales, quant_mode, a, h):
+            shape = tuple([a])
+            if quant_mode == 0 and scales is not None:
+                if scales.dim() < 2:
+                    raise RuntimeError(f"Expected scales to be at least 2-d, but got {scales.dim()}-d.")
+                shape = tuple([a * scales.shape[1]])
+            elif quant_mode == 2:
+                shape = tuple([a])
+            elif quant_mode == 3:
+                shape = tuple([a, math.ceil(h / 128)])
+            elif quant_mode == 4:
+                shape = tuple([a, (math.ceil(h / 32) + 1) // 2 * 2])
+            return shape
+
+        @impl(AS_LIBRARY, self.name, "Meta")
+        def npu_moe_distribute_dispatch_meta(context, x, expert_ids, ep_world_size, ep_rank_id, moe_expert_num,
+                                             ccl_buffer_size, scales=None, x_active_mask=None, expert_scales=None,
+                                             elastic_info=None, performance_info=None, tp_world_size=0, tp_rank_id=0,
+                                             expert_shard_type=0, shared_expert_num=1, shared_expert_rank_num=0,
+                                             quant_mode=0, global_bs=0, expert_token_nums_type=1, comm_alg="",
+                                             zero_expert_num=0, copy_expert_num=0, const_expert_num=0, y_dtype=None,
+                                             x_dtype=None, scales_dtype=None):
+            torch._check(
+                (ep_rank_id >= 0) and (ep_rank_id < ep_world_size),
+                lambda: (
+                    f"ep_rank_id should be in [0, ep_world_size), "
+                    f"but got {ep_world_size=}, {ep_rank_id=}."
+                    f"{ops_error(ErrCode.VALUE)}."
+                ),
+            )
+            torch._check(
+                (shared_expert_rank_num >= 0) and (shared_expert_rank_num < ep_world_size),
+                lambda: (
+                    f"shared_expert_rank_num should be in [0, ep_world_size), "
+                    f"but got {ep_world_size=}, {shared_expert_rank_num=}."
+                    f"{ops_error(ErrCode.VALUE)}."
+                ),
+            )
+            is_shared_default = ((shared_expert_num == 1) and (shared_expert_rank_num == 0))
+            is_no_shared = ((shared_expert_num == 0) and (shared_expert_rank_num == 0))
+            is_valid_shared = (
+                (shared_expert_num > 0)
+                and ((shared_expert_rank_num // shared_expert_num) > 0)
+                and ((shared_expert_rank_num % shared_expert_num) == 0)
+            )
+            torch._check(
+                is_shared_default or is_no_shared or is_valid_shared,
+                lambda: (
+                    f"shared expert setting invalid, "
+                    f"got {shared_expert_num=}, {shared_expert_rank_num=}."
+                    f"{ops_error(ErrCode.VALUE)}."
+                ),
+            )
+            torch._check(
+                expert_token_nums_type in [0, 1],
+                lambda: "the expert_token_nums_type should be 0 or 1" + ops_error(ErrCode.VALUE)
+            )
+
+            bs = x.size(0)
+            h = x.size(1)
+            k = expert_ids.size(1)
+            shared_front = (expert_shard_type == 0)
+            out_dtype = torch.int8
+            local_moe_expert_num = 1
+            global_bs_real = 0
+            if global_bs == 0:
+                global_bs_real = bs * ep_world_size
+            else:
+                global_bs_real = global_bs
+            a = 0
+            if shared_front:
+                if ep_rank_id < shared_expert_rank_num:
+                    local_moe_expert_num = 1
+                    max_bs = global_bs_real // ep_world_size
+                    rank_num_per_shared_expert = shared_expert_rank_num // shared_expert_num
+                    max_shared_group_num = ((ep_world_size + rank_num_per_shared_expert - 1)
+                                            // rank_num_per_shared_expert)
+                    a = max_bs * max_shared_group_num
+                else:
+                    local_moe_expert_num = moe_expert_num // (ep_world_size - shared_expert_rank_num)
+                    a = global_bs_real * min(local_moe_expert_num, k)
+                if elastic_info is not None:
+                    if ((is_shared_default) or (is_no_shared)):
+                        local_moe_expert_num = max(local_moe_expert_num,
+                                                   moe_expert_num // (ep_world_size - shared_expert_rank_num))
+                        a = global_bs_real * min(local_moe_expert_num, k)
+                    else:
+                        max_bs = global_bs_real // ep_world_size
+                        rank_num_per_shared_expert = shared_expert_rank_num // shared_expert_num
+                        max_shared_group_num = ((ep_world_size + rank_num_per_shared_expert - 1)
+                                                // rank_num_per_shared_expert)
+                        a = max(max_bs * max_shared_group_num,
+                                global_bs_real * min(moe_expert_num // (ep_world_size - shared_expert_rank_num), k))
+                        local_moe_expert_num = max(local_moe_expert_num,
+                                                   moe_expert_num // (ep_world_size - shared_expert_rank_num))
+
+            ep_recv_cnt_num = 0
+            if tp_world_size == 2:
+                ep_recv_cnt_num = ep_world_size * local_moe_expert_num * tp_world_size
+            else:
+                ep_recv_cnt_num = ep_world_size * local_moe_expert_num
+            if quant_mode == 0:
+                out_dtype = x.dtype
+
+            assist_info_for_combine_shape = max(bs * k, a * 128)
+            expand_x = x.new_empty(tuple([max(a, a * tp_world_size), h]), dtype=out_dtype)
+            dynamic_scales_dtype = get_dispatch_dynamic_scales_dtype(x, scales, quant_mode)
+            if tp_world_size == 0:
+                dynamic_scales = x.new_empty((a), dtype=dynamic_scales_dtype)
+            elif tp_world_size == 1:
+                dynamic_scales_shape = get_dispatch_dynamic_shape(scales, quant_mode, a, h)
+                dynamic_scales = x.new_empty(dynamic_scales_shape, dtype=dynamic_scales_dtype)
+            else:
+                dynamic_scales = x.new_empty((a * tp_world_size), dtype=dynamic_scales_dtype)
+            expert_token_nums = x.new_empty((local_moe_expert_num), dtype=torch.int64)
+            ep_recv_counts = x.new_empty((ep_recv_cnt_num), dtype=torch.int32)
+            tp_recv_counts = x.new_empty((tp_world_size), dtype=torch.int32)
+            expand_scales = x.new_empty((0), dtype=torch.float32)
+            if expert_scales is not None:
+                ep_recv_cnt_num = ep_world_size * local_moe_expert_num + global_bs_real * 2 * k * (ep_world_size // 8)
+                ep_recv_counts = x.new_empty((ep_recv_cnt_num), dtype=torch.int32)
+                expand_scales = x.new_empty((a), dtype=torch.float32)
+                assist_info_for_combine_shape = max(assist_info_for_combine_shape,
+                                                    global_bs_real * 2 * k * (ep_world_size // 8))
+            expand_idx = x.new_empty(assist_info_for_combine_shape, dtype=torch.int32)
+            return (expand_x, dynamic_scales, expand_idx, expert_token_nums,
+                    ep_recv_counts, tp_recv_counts, expand_scales)
+
+
+class MoeDistributeCombineOpBuilder(OpBuilder):
+    def __init__(self):
+        super(MoeDistributeCombineOpBuilder, self).__init__("npu_moe_distribute_combine")
+
+    def sources(self):
+        """Path to C++ source code."""
+        return ['ops/csrc/moe_distribute_combine.cpp']
+
+    def schema(self) -> str:
+        """PyTorch operator signature."""
+        return "npu_moe_distribute_combine(Tensor context, Tensor expand_x, Tensor expert_ids, " \
+            "Tensor assist_info_for_combine, Tensor ep_send_counts, Tensor expert_scales, " \
+            "int ep_world_size, int ep_rank_id, int moe_expert_num, int ccl_buffer_size, " \
+            "*, Tensor? tp_send_counts=None, Tensor? x_active_mask=None, " \
+            "Tensor? expand_scales=None, Tensor? shared_expert_x=None, Tensor? elastic_info=None, " \
+            "Tensor? ori_x=None, Tensor? const_expert_alpha_1=None, Tensor? const_expert_alpha_2=None, " \
+            "Tensor? const_expert_v=None, Tensor? performance_info=None, int tp_world_size=0, " \
+            "int tp_rank_id=0, int expert_shard_type=0, int shared_expert_num=1, int shared_expert_rank_num=0, " \
+            "int global_bs=0, int comm_quant_mode=0, str comm_alg=\"\", int zero_expert_num=0, " \
+            "int copy_expert_num=0, int const_expert_num=0) -> Tensor"
+
+    def register_meta(self):
+        """
+        Registers the Meta implementation (Shape/Dtype inference).
+        Essential for Autograd and FakeTensor support.
+        """
+        @impl(AS_LIBRARY, self.name, "Meta")
+        def npu_moe_distribute_combine_meta(context, expand_x, expert_ids, assist_info_for_combine,
+                                            ep_send_counts, expert_scales, ep_world_size, ep_rank_id,
+                                            moe_expert_num, ccl_buffer_size, tp_send_counts=None,
+                                            x_active_mask=None, expand_scales=None,
+                                            shared_expert_x=None, elastic_info=None, ori_x=None,
+                                            const_expert_alpha_1=None, const_expert_alpha_2=None,
+                                            const_expert_v=None, performance_info=None, tp_world_size=0,
+                                            tp_rank_id=0, expert_shard_type=0, shared_expert_num=1,
+                                            shared_expert_rank_num=0, global_bs=0, comm_quant_mode=0, comm_alg="",
+                                            zero_expert_num=0, copy_expert_num=0, const_expert_num=0):
+            dim_tuple = (expert_ids.size(0), expand_x.size(1))
+            return expand_x.new_empty(dim_tuple)
+
+
+moe_distribute_dispatch_op_builder = MoeDistributeDispatchOpBuilder()
+moe_distribute_combine_op_builder = MoeDistributeCombineOpBuilder()
+
+
+@impl(AS_LIBRARY, moe_distribute_dispatch_op_builder.name, "PrivateUse1")
+def _npu_moe_distribute_dispatch(context, x, expert_ids, ep_world_size, ep_rank_id, moe_expert_num,
+                                 ccl_buffer_size, scales=None, x_active_mask=None, expert_scales=None,
+                                 elastic_info=None, performance_info=None, tp_world_size=0, tp_rank_id=0,
+                                 expert_shard_type=0, shared_expert_num=1, shared_expert_rank_num=0,
+                                 quant_mode=0, global_bs=0, expert_token_nums_type=1, comm_alg="",
+                                 zero_expert_num=0, copy_expert_num=0, const_expert_num=0, y_dtype=None,
+                                 x_dtype=None, scales_dtype=None):
+    op_module = moe_distribute_dispatch_op_builder.load()
+    return op_module.npu_moe_distribute_dispatch(context, x, expert_ids, ep_world_size, ep_rank_id, moe_expert_num,
+                                                 ccl_buffer_size, scales, x_active_mask, expert_scales, elastic_info,
+                                                 performance_info, tp_world_size, tp_rank_id,
+                                                 expert_shard_type, shared_expert_num, shared_expert_rank_num,
+                                                 quant_mode, global_bs, expert_token_nums_type, comm_alg,
+                                                 zero_expert_num, copy_expert_num, const_expert_num, y_dtype,
+                                                 x_dtype, scales_dtype)
+
+
+@impl(AS_LIBRARY, moe_distribute_combine_op_builder.name, "PrivateUse1")
+def _npu_moe_distribute_combine(context, expand_x, expert_ids, assist_info_for_combine, ep_send_counts,
+                                expert_scales, ep_world_size, ep_rank_id, moe_expert_num, ccl_buffer_size,
+                                tp_send_counts=None, x_active_mask=None, expand_scales=None,
+                                shared_expert_x=None, elastic_info=None, ori_x=None,
+                                const_expert_alpha_1=None, const_expert_alpha_2=None,
+                                const_expert_v=None, performance_info=None,
+                                tp_world_size=0, tp_rank_id=0, expert_shard_type=0, shared_expert_num=1,
+                                shared_expert_rank_num=0, global_bs=0, comm_quant_mode=0, comm_alg="",
+                                zero_expert_num=0, copy_expert_num=0, const_expert_num=0):
+    op_module = moe_distribute_combine_op_builder.load()
+    return op_module.npu_moe_distribute_combine(context, expand_x, expert_ids, assist_info_for_combine,
+                                                ep_send_counts, expert_scales, ep_world_size, ep_rank_id,
+                                                moe_expert_num, ccl_buffer_size,
+                                                tp_send_counts, x_active_mask, expand_scales,
+                                                shared_expert_x, elastic_info, ori_x,
+                                                const_expert_alpha_1, const_expert_alpha_2,
+                                                const_expert_v, performance_info, tp_world_size,
+                                                tp_rank_id, expert_shard_type, shared_expert_num,
+                                                shared_expert_rank_num, global_bs, comm_quant_mode, comm_alg,
+                                                zero_expert_num, copy_expert_num, const_expert_num)
 
 
 class MoeDistributeBuffer:
@@ -153,7 +401,7 @@ class MoeDistributeBuffer:
                                              elastic_info=elastic_info,
                                              ori_x=ori_x,
                                              const_expert_alpha_1=const_expert_alpha_1,
-                                             const_expert_alpha_2=const_expert_alpha_2,  
+                                             const_expert_alpha_2=const_expert_alpha_2,
                                              const_expert_v=const_expert_v,
                                              performance_info=None,
                                              expert_shard_type=expert_shared_type,
@@ -165,4 +413,3 @@ class MoeDistributeBuffer:
                                              comm_alg=comm_alg,
                                              comm_quant_mode=comm_quant_mode,
                                              global_bs=num_max_dispatch_tokens_per_rank * self.world_size)
-  
