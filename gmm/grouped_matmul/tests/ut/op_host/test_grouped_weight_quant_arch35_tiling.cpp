@@ -343,6 +343,14 @@ TEST_F(GroupedWeightQuantBatchMatmulTilingTest, test_tiling_mxa8w4_sms_scale3d_n
     ExpectMxA8W4SmsTilingSuccess(param);
 }
 
+// MxA8W4 NZ - FLOAT4_E1M2 weight reuses the E2M1 tiling strategy and selects a different kernel decode path.
+TEST_F(GroupedWeightQuantBatchMatmulTilingTest, test_tiling_mxa8w4_e1m2_sms_scale3d_no_bias)
+{
+    MxA8W4SmsTilingParam param;
+    param.weightDtype = ge::DT_FLOAT4_E1M2;
+    ExpectMxA8W4SmsTilingSuccess(param);
+}
+
 // MxA8W4 NZ场景 - 单多单模式, 带bias多tensor
 TEST_F(GroupedWeightQuantBatchMatmulTilingTest, test_tiling_mxa8w4_sms_with_bias)
 {

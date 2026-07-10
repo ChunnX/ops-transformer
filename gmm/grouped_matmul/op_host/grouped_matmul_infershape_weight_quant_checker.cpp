@@ -45,7 +45,8 @@ bool GroupedMatmulWeightQuantChecker::IsA16MxFp4NZ(const ge::DataType xDtype, co
 
 bool GroupedMatmulWeightQuantChecker::IsMxA8W4NZ(const ge::DataType xDtype, const ge::DataType weightDtype) const
 {
-    return xDtype == ge::DT_FLOAT8_E4M3FN && (weightDtype == ge::DT_FLOAT4_E2M1 || weightDtype == ge::DT_FLOAT);
+    return xDtype == ge::DT_FLOAT8_E4M3FN &&
+           (weightDtype == ge::DT_FLOAT4_E2M1 || weightDtype == ge::DT_FLOAT4_E1M2 || weightDtype == ge::DT_FLOAT);
 }
 
 bool GroupedMatmulWeightQuantChecker::IsS8S4NZ(const ge::DataType xDtype, const ge::DataType weightDtype) const
@@ -180,7 +181,8 @@ ge::graphStatus GroupedMatmulWeightQuantChecker::CheckShapeForXAndWeight(const g
                 OP_LOGE(context->GetNodeName(),
                         "The k dim value should not be negative, but the actual value is [%ld].", weightKDim_),
                 return ge::GRAPH_FAILED);
-    if (weightDtype_ == ge::DT_FLOAT4_E2M1 || weightDtype_ == ge::DT_FLOAT || IsS8S4NZ(xDtype_, weightDtype_)) {
+    if (weightDtype_ == ge::DT_FLOAT4_E2M1 || weightDtype_ == ge::DT_FLOAT4_E1M2 ||
+        weightDtype_ == ge::DT_FLOAT || IsS8S4NZ(xDtype_, weightDtype_)) {
         // A16MxF4/MxA8W4/S8S4校验32B对齐
         OP_CHECK_IF(
             !((weightNDim_ % GMM_N_K_ALIGN_VALUE_WEIGHT_QUANT_4BIT == 0) &&
@@ -670,6 +672,7 @@ ge::graphStatus GroupedMatmulWeightQuantChecker::CheckShapeForWeightQuantParam(c
     auto antiquantOffsetShape = context->GetDynamicInputShape(GMM_INDEX_IN_ANTIQUANT_OFFSET, 0);
     OP_CHECK_IF(IsNonEmpty(antiquantOffsetShape) && (FP8_SUPPORT_SET.find(weightDtype_) != FP8_SUPPORT_SET.end() ||
                                                      weightDtype_ == ge::DT_FLOAT4_E2M1 ||
+                                                     weightDtype_ == ge::DT_FLOAT4_E1M2 ||
                                                      weightDtype_ == ge::DT_FLOAT || IsS8S4NZ(xDtype_, weightDtype_)),
                 OP_LOGE(context->GetNodeName(),
                         "In weight quant case, only support antiquantOffset is none when weightDtype is fp8/hif8/fp4 "
@@ -685,7 +688,8 @@ ge::graphStatus GroupedMatmulWeightQuantChecker::CheckShapeForWeightQuantParam(c
     OP_CHECK_IF(
         IsNonEmpty(perTokenScaleShape) && (!IsMxA8W4NZ(xDtype_, weightDtype_) && !IsS8S4NZ(xDtype_, weightDtype_)),
         OP_LOGE(context->GetNodeName(),
-                "If xDtype-weightDtype is not fp8_e4m3-fp4_e2m1 or int8-int4, pertokenscale must be empty."),
+                "If xDtype-weightDtype is not fp8_e4m3-fp4_e2m1/fp4_e1m2 or int8-int4, "
+                "pertokenscale must be empty."),
         return ge::GRAPH_FAILED);
     OP_CHECK_IF(
         !IsNonEmpty(perTokenScaleShape) && (IsMxA8W4NZ(xDtype_, weightDtype_) || IsS8S4NZ(xDtype_, weightDtype_)),
