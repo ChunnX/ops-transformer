@@ -1379,6 +1379,10 @@ ge::graphStatus CommonChecker::CheckKvISContiguous(const FiaTilingInfo &fiaInfo)
     if (fiaInfo.isTensorV1) {
         return ge::GRAPH_SUCCESS;
     }
+
+    if (fiaInfo.kvStorageMode == KvStorageMode::TENSOR_LIST) {
+        return ge::GRAPH_SUCCESS;
+    }
     const gert::Shape &keyShape = fiaInfo.opParamInfo.key.shape->GetStorageShape();
     const gert::Shape &valueShape = fiaInfo.opParamInfo.value.shape->GetStorageShape();
     uint32_t keyDimNum = keyShape.GetDimNum();
