@@ -170,6 +170,8 @@ private:
     GM_ADDR actualQseqlen_;
     GM_ADDR actualKvseqlen_;
     GM_ADDR blockSparseMask_;
+    GM_ADDR indexWorkspace_;
+    GM_ADDR indexShapeWorkspace_;
     int32_t batch_num_;
     int32_t q_seq_len_;
     int32_t kv_seq_len_;
@@ -201,10 +203,13 @@ private:
     uint64_t mask64_arr_[2];
     uint32_t start_one_pos_;
     uint32_t is_mask_align_{0};
-
+    uint64_t loop_num_{0};
+    int32_t block_global_idx{0};
+    int32_t block_local_idx{0};
+    uint64_t vaild_block_num{0};
 public:
     __aicore__ inline void Init(const TILING_CLASS *tilingData, GM_ADDR actualQseqlen, GM_ADDR actualKvseqlen,
-                                GM_ADDR blockSparseMask)
+                                GM_ADDR blockSparseMask, GM_ADDR workspace)
     {
         this->batch_num_ = tilingData->batchNum;
         this->q_seq_len_ = tilingData->qSeqLen;
@@ -217,6 +222,8 @@ public:
         this->actualQseqlen_ = actualQseqlen;
         this->actualKvseqlen_ = actualKvseqlen;
         this->blockSparseMask_ = blockSparseMask;
+        this->indexWorkspace_ = workspace + tilingData->indexWorkspaceOffset;
+        this->indexShapeWorkspace_ = workspace + tilingData->indexShapeWorkspaceOffset;
         this->block_x_ = tilingData->BlockX;
         this->block_y_ = tilingData->BlockY;
         this->base_m_ = tilingData->baseM;
@@ -259,83 +266,56 @@ public:
         }
     }
 
+    __aicore__ void unravel_index(int32_t flat_index, int32_t &b, int32_t &n, int32_t &x, int32_t &y) {
+        // 计算步长
+        int stride_y = 1;
+        int stride_x = kv_block_num_;
+        int stride_n = kv_block_num_ * q_block_num_;
+        int stride_b = kv_block_num_ * q_block_num_ * q_head_num_;
+        
+        // 还原各个维度下标
+        b = flat_index / stride_b;
+        int32_t remaining = flat_index % stride_b;
+        
+        n = remaining / stride_n;
+        remaining = remaining % stride_n;
+        x = remaining / stride_x;
+        y = remaining % stride_x;
+    }
+
+
     __aicore__ inline void GetRunTimeInfo(RunTimeInfo &runTimeInfo)
     {
         runTimeInfo.need_compute = 0;
+        int32_t block_size = batch_num_ * q_head_num_ *  q_block_num_ * kv_block_num_;
+        int32_t single_block_num = 16;
+        if (loop_num_ == 0) {
+            this->vaild_block_num = ((__gm__ uint64_t *)indexShapeWorkspace_)[2];
+            block_global_idx = cube_core_idx_;
+            block_local_idx = 0;
+        } else {
+            if (block_local_idx % single_block_num == 0) {
+                block_global_idx += cube_core_num_;
+                block_local_idx = 0;
+            }
+        }
+        int64_t index_worksapce_offset = block_global_idx * single_block_num + block_local_idx;
 
-        if (!single_block_.IsFinish()) {
-            // 如果singleBlock未计算完，先计算singleBlock内的内容
-            single_block_.UpdateRunTimeInfo<INPUT_LAYOUT>(const_info_, blockSparseMask_, runTimeInfo);
+        if (index_worksapce_offset >= vaild_block_num){
             return;
         }
-
-        while (true) {
-            if (InitStartIdx()) {
-                break;
-            }
-            int32_t vaild_s1_idx;
-            int32_t vaild_s1_len;
-            int32_t s2_len = GetBlockLen(s2Idx_, cur_kv_seq_len_, base_n_);
-            bool hit_core_block = current_cube_idx_ % cube_core_num_ == cube_core_idx_;
-
-            if (IsValidSingleBlock(vaild_s1_idx, vaild_s1_len, hit_core_block)) {
-                // 如果singleBlock内全是无效的base块，则不记录
-                if (hit_core_block) {
-                    RunTimeInfoRecord(runTimeInfo, vaild_s1_idx, s2Idx_, vaild_s1_len, s2_len);
-                }
-                current_cube_idx_++;
-            }
-
-            if (current_cube_idx_ && current_cube_idx_ % cube_core_num_ == 0) {
-                // 所有cube核分配到任务，暂时跳出循环，等下次分配
-                current_cube_idx_ = 0;
-                break;
-            }
-        }
+        int32_t block_sparse_idx = ((__gm__ int32_t *)indexWorkspace_)[index_worksapce_offset];
+        unravel_index(block_sparse_idx, bIdx_, n1Idx_, s2Idx_, s1Idx_);
+        s1Idx_ *= base_m_;
+        s2Idx_ *= base_n_;
+        int32_t s1_len = GetBlockLen(s1Idx_, cur_q_seq_len_, base_m_);
+        int32_t s2_len = GetBlockLen(s2Idx_, cur_kv_seq_len_, base_n_);
+        RunTimeInfoRecord(runTimeInfo, s1Idx_, s2Idx_, s1_len, s2_len);
+        loop_num_++;
+        block_local_idx++;
     }
 
 private:
-    __aicore__ inline bool IsValidSingleBlock(int32_t &vaild_s1_idx, int32_t &vaild_s1_len, bool hit_core_block)
-    {
-        /*
-         * 功能：判断singleBlock内是否存在有效base块，并返回第一块有效base块的起始idx和长度
-         */
-        int32_t s1_len = GetBlockLen(s1Idx_, cur_q_seq_len_, single_m_);
-        int32_t s1_end_idx = s1Idx_ + s1_len;
-        int32_t start_block_x_idx = CeilDiv<int32_t>(s1Idx_, block_x_);
-        int32_t block_x_num = s1_len / block_x_;
-        int32_t block_y_idx = s2Idx_ / block_y_;
-        int32_t UINT64_CNT = 8;
-        int32_t loop_num = CeilDiv<int32_t>(block_x_num, UINT64_CNT);
-        bool find_vaild_block = false;
-
-        if (likely(is_mask_align_)) {
-            for(int32_t i=0; i < loop_num;i++) {
-                int32_t block_x_idx = start_block_x_idx + i * UINT64_CNT;
-                if (IsValidBlockUint64(const_info_, bIdx_, n1Idx_, block_x_idx, block_y_idx, blockSparseMask_, start_one_pos_, hit_core_block, i == loop_num - 1, mask64_arr_)){
-                    vaild_s1_idx = (block_x_idx + start_one_pos_) * block_x_;
-                    vaild_s1_len = s1_end_idx - vaild_s1_idx;
-                    find_vaild_block = true;
-                    break;
-                }
-            }
-        } else {
-            for (int32_t s1_idx = s1Idx_; s1_idx < s1_end_idx; s1_idx += block_x_) {
-                int32_t block_x_idx = s1_idx / block_x_;
-                if (IsValidBlock(const_info_, bIdx_, n1Idx_, block_x_idx, block_y_idx, blockSparseMask_)) {
-                    find_vaild_block = true;
-                    vaild_s1_idx = s1_idx;
-                    vaild_s1_len = s1_end_idx - s1_idx;
-                }
-                if (find_vaild_block) {
-                    break;
-                }
-            }
-        }
-
-        return find_vaild_block;
-    }
-
     __aicore__ inline void UpdateSeqLen()
     {
         if constexpr (INPUT_LAYOUT != TND) {
@@ -398,22 +378,17 @@ private:
     __aicore__ inline void RunTimeInfoRecord(RunTimeInfo &runTimeInfo, int32_t vaild_s1_idx, int32_t vaild_s2_idx,
                                              int32_t vaild_s1_len, int32_t vaild_s2_len)
     {
-        int32_t base_s1_idx;
-        int32_t base_s1_len;
-        single_block_.Reset(const_info_, blockSparseMask_, bIdx_, n1Idx_, vaild_s1_idx, vaild_s2_idx, vaild_s1_len,
-                            mask64_arr_, start_one_pos_, base_s1_idx, base_s1_len);
         int32_t n2Idx = n1Idx_ / q_group_;
-
         runTimeInfo.bIdx = bIdx_;
         runTimeInfo.last_q_seq_sum = last_q_seq_sum_;
         runTimeInfo.cur_q_seq_len = cur_q_seq_len_;
-        runTimeInfo.s1Idx = base_s1_idx;
+        runTimeInfo.s1Idx = vaild_s1_idx;
         runTimeInfo.s2Idx = vaild_s2_idx;
         runTimeInfo.n1Idx = n1Idx_;
         runTimeInfo.n2Idx = n2Idx;
-        runTimeInfo.s1Len = base_s1_len;
+        runTimeInfo.s1Len = vaild_s1_len;
         runTimeInfo.s2Len = vaild_s2_len;
-        runTimeInfo.s1LenAlign = RoundUp(base_s1_len, 16);
+        runTimeInfo.s1LenAlign = RoundUp(vaild_s1_len, 16);
         runTimeInfo.s2LenAlign = RoundUp(vaild_s2_len, 16);
         runTimeInfo.queryGmOffset =
             GetQKVGmOffset<INPUT_LAYOUT>(runTimeInfo.last_q_seq_sum, runTimeInfo.cur_q_seq_len, q_head_num_, head_dim_,
@@ -428,7 +403,6 @@ private:
             GetSftgGmOffset<INPUT_LAYOUT>(runTimeInfo.last_q_seq_sum, runTimeInfo.cur_q_seq_len, q_head_num_,
                                           runTimeInfo.bIdx, runTimeInfo.s1Idx, runTimeInfo.n1Idx);
         runTimeInfo.need_compute = 1;
-        single_block_.RecordRunTimeInfo(runTimeInfo);
     }
 };
 } // namespace BSA_ARC35

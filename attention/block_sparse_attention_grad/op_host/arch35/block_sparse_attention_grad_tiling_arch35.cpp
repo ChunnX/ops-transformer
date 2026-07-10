@@ -7,12 +7,14 @@
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
+#pragma once
 #include "err/ops_err.h"
 #include "log/log.h"
 #include "op_host/tiling_base.h"
 #include "op_host/tiling_templates_registry.h"
 #include "tiling/platform/platform_ascendc.h"
 #include "../block_sparse_attention_grad_tiling.h"
+#include "non_zero_tiling_arch35.h"
 
 namespace optiling {
 namespace BSA_ARC35 {
@@ -20,6 +22,11 @@ namespace BSA_ARC35 {
 int64_t AlignTo(int64_t x, int64_t align)
 {
     return (x + align - 1) / align * align;
+}
+
+int64_t CeilDiv(int64_t x, int64_t align)
+{
+    return AlignTo(x, align) / align;
 }
 
 template <typename... Args>
@@ -235,8 +242,8 @@ protected:
         blockShapeY_ = blockShapeList[1];
 
         return InputCheck({q_batch_num, q_head_num, q_seq_len, q_head_dim},
-                          {k_batch_num, k_head_num, k_seq_len, q_head_dim},
-                          {v_batch_num, v_head_num, v_seq_len, q_head_dim}, q_group, context_);
+                          {k_batch_num, k_head_num, k_seq_len, k_head_dim},
+                          {v_batch_num, v_head_num, v_seq_len, v_head_dim}, q_group, context_);
     }
 
     ge::graphStatus GetPlatformInfo() override
@@ -248,12 +255,22 @@ protected:
     {
         auto ascendcPlatform = platform_ascendc::PlatformAscendC(context_->GetPlatformInfo());
         auto cubeCoreNum = ascendcPlatform.GetCoreNumAic();
+        uint64_t vecCoreNum = ascendcPlatform.GetCoreNumAiv();
+        uint64_t vecRegLen = ascendcPlatform.GetVecRegLen();
+        uint64_t ubSize;
+        ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
+        NonZeroAscendCTilingImpl tilingImpl = NonZeroAscendCTilingImpl(context_);
+
+        if (tilingImpl.DoTiling(vecCoreNum, ubSize, vecRegLen, tilingData_.mNonZeroTilingData) != ge::GRAPH_SUCCESS) {
+            OP_LOGE(context_->GetNodeName(), "Tiling4NonZero do tiling failed.");
+            return ge::GRAPH_FAILED;
+        }
 
         uint32_t baseM = blockShapeX_ <= 128 ? blockShapeX_ : 128;
         uint32_t baseN = blockShapeY_ <= 128 ? blockShapeY_ : 128;
         uint32_t singleM = AlignTo(2048, baseM);
-        uint32_t block_num_x = q_seq_len_ / blockShapeX_;
-        uint32_t block_num_y = kv_seq_len_ / blockShapeY_;
+        x_block_num_ = CeilDiv(q_seq_len_, blockShapeX_);
+        y_block_num_ = CeilDiv(kv_seq_len_, blockShapeY_);
 
         tilingData_.set_BlockX(blockShapeX_);
         tilingData_.set_BlockY(blockShapeY_);
@@ -285,6 +302,7 @@ protected:
         auto ascendcPlatform = platform_ascendc::PlatformAscendC(context_->GetPlatformInfo());
         uint64_t sys_workspace_size = ascendcPlatform.GetLibApiWorkSpaceSize();
         uint64_t usr_workspace_offset = 0;
+        uint64_t block_sparse_mask_size = batch_num_ * q_head_num_ * x_block_num_ * y_block_num_;
 
         if (strcmp(layout_, BSND_STR) == 0 || strcmp(layout_, BNSD_STR) == 0) {
             dq_size = batch_num_ * q_seq_len_ * q_head_num_ * head_dim_;
@@ -303,6 +321,10 @@ protected:
 
         tilingData_.set_dqSize(dq_size);
         tilingData_.set_dkSize(dk_size);
+        tilingData_.set_indexWorkspaceOffset(usr_workspace_offset);
+        usr_workspace_offset += block_sparse_mask_size * sizeof(int32_t);
+        tilingData_.set_indexShapeWorkspaceOffset(usr_workspace_offset);
+        usr_workspace_offset += 512;
         tilingData_.set_sftgWorkspaceOffset(usr_workspace_offset);
         usr_workspace_offset += sftg_size * sizeof(float);
         tilingData_.set_dqWorkspaceOffset(usr_workspace_offset);
@@ -364,6 +386,8 @@ private:
     int32_t head_dim_ = 0;
     int32_t blockShapeX_ = 0;
     int32_t blockShapeY_ = 0;
+    int32_t x_block_num_ = 0;
+    int32_t y_block_num_ = 0;
     int32_t max_q_seq_len_ = 0;
     int32_t max_kv_seq_len_ = 0;
 };

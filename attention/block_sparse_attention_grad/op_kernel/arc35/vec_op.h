@@ -120,7 +120,6 @@ public:
         this->act_seq_q_len = actualQseqlen;
         v_core_idx_ = GetBlockIdx();
         v_sub_core_idx_ = GetSubBlockIdx();
-
         // gm_tensor
         lse_gm_.SetGlobalBuffer((__gm__ float *)softmaxLse);
         sftg_workspace_.SetGlobalBuffer((__gm__ float *)(workspace + tilingData->sftgWorkspaceOffset));
