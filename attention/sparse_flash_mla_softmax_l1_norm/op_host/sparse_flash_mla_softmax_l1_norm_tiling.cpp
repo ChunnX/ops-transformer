@@ -25,7 +25,7 @@ static ge::graphStatus SparseFlashMlaSoftmaxL1NormTilingFunc(gert::TilingContext
     uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
     uint32_t aicNum = ascendcPlatform.GetCoreNumAic();
     uint32_t blockDim = ascendcPlatform.CalcTschBlockDim(aivNum, aicNum, aivNum);
-    context->SetBlockDim(blockDim);
+    context->SetBlockDim(32);
 
     // query: [B, Sq, G, D], key: [B, Sk, 1, D]
     auto queryShape = context->GetInputShape(0);

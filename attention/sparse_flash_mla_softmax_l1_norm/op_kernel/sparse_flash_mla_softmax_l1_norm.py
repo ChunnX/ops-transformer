@@ -95,8 +95,7 @@ class OpTiling:
 #  TilingKey
 # ================================================================
 class SmlaTilingKey:
-    def is_valid(self, key):
-        return True
+    SparseMode = tilingkey_field(bits=1, values=[0, 1])
 
 
 # ================================================================
@@ -222,19 +221,70 @@ def compute_softmax_l1_norm(softmax_l1_norm, qi, ki, currentHalfG, s2_real_size,
 
     pl.set_validshape(out_vec_slot, [1, s2_real_size])
     pl.store(softmax_l1_norm, out_vec_slot, [batch_id, s1_idx, ki], atomic=pl.AtomicType.AtomicAdd)
+    # pl.printf("will write out, batch_id = %d, s1_idx = %d, ki = %d\n",
+    #     batch_id, s1_idx, ki)
+    # pl.dump_tensor(softmax_l1_norm, offsets=[batch_id, s1_idx, ki], shapes=[1, 1, s2_real_size])
 
 
 # ================================================================
-#  Inner kernel — receives typed tensor views + workspace
+#  Kernel — dynamic rank: inputs are raw pointers, shapes come from tiling
 # ================================================================
-
-def sparse_flash_mla_softmax_l1_norm_inner(
-    q, k, softmax_lse, softmax_l1_norm, qk, tiling
+@pl.jit(auto_mutex=True,
+    tiling_key=SmlaTilingKey,
+    datatype={
+        "query": "input_dtype",
+    },
+    pipeline=pl.pipeline.PipelineConfig(sync_only=True))
+def sparse_flash_mla_softmax_l1_norm(
+    query: pl.Ptr[pl.DT_UINT8],
+    key: pl.Ptr[pl.DT_UINT8],
+    lse: pl.Ptr[pl.DT_UINT8],
+    sparse_indices_optional: pl.Ptr[pl.DT_UINT8],
+    cu_seqlens_q_optional: pl.Ptr[pl.DT_UINT8],
+    cu_seqlens_k_optional: pl.Ptr[pl.DT_UINT8],
+    seqused_q_optional: pl.Ptr[pl.DT_UINT8],
+    seqused_k_optional: pl.Ptr[pl.DT_UINT8],
+    cmp_residual_k_optional: pl.Ptr[pl.DT_UINT8],
+    topk_length_optional: pl.Ptr[pl.DT_UINT8],
+    metadata_optional: pl.Ptr[pl.DT_UINT8],
+    softmax_l1_norm: pl.Ptr[pl.DT_UINT8],
+    workspace: pl.Ptr[pl.DT_UINT8],
+    tiling: OpTiling,
 ):
+    tensor_q = pl.make_tensor(
+        query,
+        [tiling.b, tiling.sq, tiling.g, tiling.d],
+        [tiling.sq * tiling.g * tiling.d, tiling.g * tiling.d, tiling.d, 1],
+        dtype=pl.DT_FP16,
+    )
+    tensor_k = pl.make_tensor(
+        key,
+        [tiling.b, tiling.sk, 1, tiling.d],
+        [tiling.sk * tiling.d, tiling.d, tiling.d, 1],
+        dtype=pl.DT_FP16,
+    )
+    tensor_lse = pl.make_tensor(
+        lse,
+        [tiling.b, 1, tiling.sq, tiling.g],
+        [tiling.sq * tiling.g, tiling.sq * tiling.g, tiling.g, 1],
+        dtype=pl.DT_FP32,
+    )
+    tensor_softmax_l1_norm = pl.make_tensor(
+        softmax_l1_norm,
+        [tiling.b, tiling.sq, tiling.sk],
+        [tiling.sq * tiling.sk, tiling.sk, 1],
+        dtype=pl.DT_FP32,
+    )
+    tensor_qk = pl.make_tensor(
+        workspace,
+        [tiling.g, tiling.sk],
+        [tiling.sk, 1],
+        dtype=pl.DT_FP32,
+    )
+
     num_cores = pl.get_block_num()
     core_id = pl.get_block_idx()
     sub_id = pl.get_subblock_idx()
-
     Sq_dim = tiling.sq
     skv_dim = tiling.sk
     g_dim = tiling.g
@@ -287,76 +337,14 @@ def sparse_flash_mla_softmax_l1_norm_inner(
             lse_vec_slot = lse_vec_db.next()
             if currentHalfG > 0:
                 pl.set_validshape(lse_vec_slot, [1, currentHalfG])
-                pl.load(lse_vec_slot, softmax_lse, [batch_id, 0, qi % Sq_dim, sub_id * firstHalfG], tile_dims=[1, 3])
+                pl.load(lse_vec_slot, tensor_lse, [batch_id, 0, qi % Sq_dim, sub_id * firstHalfG], tile_dims=[1, 3])
         s2_real_size = TKV
         for ki in pl.range(0, skv_dim, TKV):
             if ki + TKV > skv_dim:
                 s2_real_size = skv_dim - ki
             with pl.section_cube():
-                compute_qk(g_dim, ki, qi, tick, q, k, cur_q_slot, q_mat_db, k_mat_db, left_db, right_db, acc_db, qk_vec_db, Sq_dim, s2_real_size, qk)
+                compute_qk(g_dim, ki, qi, tick, tensor_q, tensor_k, cur_q_slot, q_mat_db, k_mat_db, left_db, right_db, acc_db, qk_vec_db, Sq_dim, s2_real_size, tensor_qk)
             with pl.section_vector():
-                compute_softmax_l1_norm(softmax_l1_norm, qi, ki, currentHalfG, s2_real_size, softmax_l1_norm_scale, qk_vec_db, lse_vec_slot, out_vec_db, sub_id, Sq_dim, qk)
+                compute_softmax_l1_norm(tensor_softmax_l1_norm, qi, ki, currentHalfG, s2_real_size, softmax_l1_norm_scale, qk_vec_db, lse_vec_slot, out_vec_db, sub_id, Sq_dim, tensor_qk)
             tick = tick + 1
         q_count = q_count + 1
-    return
-
-
-# ================================================================
-#  Kernel — dynamic rank: inputs are raw pointers, shapes come from tiling
-# ================================================================
-@pl.jit(auto_mutex=True, tiling_key=SmlaTilingKey, pipeline=pl.pipeline.PipelineConfig(sync_only=True))
-def sparse_flash_mla_softmax_l1_norm(
-    query: pl.Ptr[pl.DT_UINT8],
-    key: pl.Ptr[pl.DT_UINT8],
-    lse: pl.Ptr[pl.DT_UINT8],
-    sparse_indices_optional: pl.Ptr[pl.DT_UINT8],
-    cu_seqlens_q_optional: pl.Ptr[pl.DT_UINT8],
-    cu_seqlens_k_optional: pl.Ptr[pl.DT_UINT8],
-    seqused_q_optional: pl.Ptr[pl.DT_UINT8],
-    seqused_k_optional: pl.Ptr[pl.DT_UINT8],
-    cmp_residual_k_optional: pl.Ptr[pl.DT_UINT8],
-    topk_length_optional: pl.Ptr[pl.DT_UINT8],
-    metadata_optional: pl.Ptr[pl.DT_UINT8],
-    softmax_l1_norm: pl.Ptr[pl.DT_UINT8],
-    workspace: pl.Ptr[pl.DT_UINT8],
-    tiling: OpTiling,
-):
-    tensor_q = pl.make_tensor(
-        query,
-        [tiling.b, tiling.sq, tiling.g, tiling.d],
-        [tiling.sq * tiling.g * tiling.d, tiling.g * tiling.d, tiling.d, 1],
-        dtype=pl.DT_FP16,
-    )
-    tensor_k = pl.make_tensor(
-        key,
-        [tiling.b, tiling.sk, 1, tiling.d],
-        [tiling.sk * tiling.d, tiling.d, tiling.d, 1],
-        dtype=pl.DT_FP16,
-    )
-    tensor_lse = pl.make_tensor(
-        lse,
-        [tiling.b, 1, tiling.sq, tiling.g],
-        [tiling.sq * tiling.g, tiling.sq * tiling.g, tiling.g, 1],
-        dtype=pl.DT_FP32,
-    )
-    tensor_softmax_l1_norm = pl.make_tensor(
-        softmax_l1_norm,
-        [tiling.b, tiling.sq, tiling.sk],
-        [tiling.sq * tiling.sk, tiling.sk, 1],
-        dtype=pl.DT_FP32,
-    )
-    tensor_qk = pl.make_tensor(
-        workspace,
-        [tiling.g, tiling.sk],
-        [tiling.sk, 1],
-        dtype=pl.DT_FP32,
-    )
-
-    sparse_flash_mla_softmax_l1_norm_inner(
-        tensor_q,
-        tensor_k,
-        tensor_lse,
-        tensor_softmax_l1_norm,
-        tensor_qk,
-        tiling,
-    )
