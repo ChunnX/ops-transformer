@@ -24,7 +24,6 @@
 #include "./vf/vf_flash_decode.h"
 #include "fia_public_define_arch35.h"
 #include "../memory_copy_arch35.h"
-#include "./vf/vf_post_quant_gs1.h"
 
 namespace BaseApi {
 struct TaskInfo {
@@ -38,17 +37,13 @@ template <typename INPUT_T, typename T, typename OUTPUT_T, LayOutTypeEnum layout
           LayOutTypeEnum outLayout = LayOutTypeEnum::None, S1TemplateType s1TemplateType = S1TemplateType::Aligned128,
           S2TemplateType s2TemplateType = S2TemplateType::Aligned128,
           DTemplateType dTemplateType = DTemplateType::Aligned128,
-          DTemplateType dVTemplateType = DTemplateType::Aligned128, PseTypeEnum pseMode = PseTypeEnum::PSE_NONE_TYPE,
-          bool hasAtten = false, bool hasDrop = false, bool hasRope = false, uint8_t KvLayoutType = 0,
-          bool enableKVPrefix = false, bool useDn = false, bool bmm2Write2Ub = true, bool splitD = false>
+          DTemplateType dVTemplateType = DTemplateType::Aligned128,
+          bool hasAtten = false, uint8_t KvLayoutType = 0>
 class FiaBlockVecFlashDecode {
 public:
     // =================================类型定义区=================================
     // 中间计算数据类型为float，高精度模式
     static constexpr GmFormat PostQuant_FORMAT = GmFormat::NGD;
-    using SINK_T = INPUT_T;
-    static constexpr bool POST_QUANT = !IsSameType<OUTPUT_T, half>::value && !IsSameType<OUTPUT_T, bfloat16_t>::value &&
-                                       !IsSameType<OUTPUT_T, float>::value;
 
 private:
     // =================================常量区=================================
@@ -88,7 +83,6 @@ protected:
     GlobalTensor<uint64_t> actualSeqLengthsGmQ;
     GlobalTensor<uint64_t> actualSeqLengthsGm;
     GlobalTensor<float> softmaxLseGm;
-    GlobalTensor<SINK_T> sinkGm;
 
     static constexpr UbFormat UB_FORMAT = GetOutUbFormat<layout>();
     static constexpr bool isS1G = (UB_FORMAT == UbFormat::S1G);
@@ -107,7 +101,7 @@ protected:
 
     static constexpr T BOOL_ATTEN_MASK_SCALAR_VALUE = -1000000000000.0; // 用于mask为bool类型
     uint32_t negativeIntScalar = *((uint32_t *)&BOOL_ATTEN_MASK_SCALAR_VALUE);
-    bool learnableSinkFlag = false;
+    static constexpr bool learnableSinkFlag = false;
 
     uint64_t actSeqLensKv = 0;
     uint64_t actSeqLensQ = 0;
@@ -142,8 +136,7 @@ public:
     __aicore__ inline void InitGlobalTensor(GlobalTensor<float> lseMaxFdGm, GlobalTensor<float> lseSumFdGm,
                                             GlobalTensor<float> accumOutGm, GlobalTensor<OUTPUT_T> attentionOutGm,
                                             GlobalTensor<uint64_t> actualSeqLengthsGmQ,
-                                            GlobalTensor<uint64_t> actualSeqLengthsGm, __gm__ uint8_t *key,
-                                            __gm__ uint8_t *quantScale2, __gm__ uint8_t *quantOffset2)
+                                            GlobalTensor<uint64_t> actualSeqLengthsGm, __gm__ uint8_t *key)
     {
         this->lseMaxFdGm = lseMaxFdGm;
         this->lseSumFdGm = lseSumFdGm;
@@ -160,11 +153,6 @@ public:
     __aicore__ inline void InitSoftmaxLseGm(GlobalTensor<float> softmaxLseGm)
     {
         this->softmaxLseGm = softmaxLseGm;
-    }
-    __aicore__ inline void InitLearnableSinkGm(GlobalTensor<SINK_T> learnableSink)
-    {
-        learnableSinkFlag = true;
-        this->sinkGm = learnableSink;
     }
     __aicore__ inline void InitParams()
     {
@@ -195,14 +183,6 @@ public:
             // OutQue, SYNC_LSEOUTPUT_BUF_FLAG
             pipe->InitBuffer(fdLseUbBuf, BUFFER_SIZE_BYTE_256B);
 
-            // TmpBuf
-            if (unlikely(learnableSinkFlag)) {
-                // InQue, DB, SYNC_SINK_BUF1_FLAG SYNC_SINK_BUF2_FLAG
-                pipe->InitBuffer(fdSinkCopyInBuf, BUFFER_SIZE_BYTE_2K);
-                // TmpBuf
-                pipe->InitBuffer(fdSinkValueBuf, BUFFER_SIZE_BYTE_2K);
-                pipe->InitBuffer(fdSinkTmpBuf, BUFFER_SIZE_BYTE_2K);
-            }
             // 后面要取地址，放到外面
             pipe->InitBuffer(fdSinkExpBuf, BUFFER_SIZE_BYTE_256B);
         }
@@ -272,9 +252,6 @@ protected:
     {
         LocalTensor<T> lseSum = (cntM & 1) == 0 ? fdSumBuf1.Get<T>() : fdSumBuf2.Get<T>();
         LocalTensor<T> lseMax = (cntM & 1) == 0 ? fdMaxBuf1.Get<T>() : fdMaxBuf2.Get<T>();
-        if (unlikely(learnableSinkFlag)) {
-            SinkMax(startRow, dealRowCount);
-        }
         LocalTensor<T> lseMaxUb = (cntM & 1) == 0 ? fdLseMaxUbBuf1.Get<T>() : fdLseMaxUbBuf2.Get<T>();
 
         LocalTensor<T> sinkExpBuf = fdSinkExpBuf.Get<T>();
@@ -343,24 +320,17 @@ protected:
     {
         LocalTensor<OUTPUT_T> tmpBmm2ResCastTensor = fdOutputBuf.Get<OUTPUT_T>();
         AscendC::PipeBarrier<PIPE_V>();
-        if constexpr (POST_QUANT) {
-            DealInvalidRows(tmpBmm2ResCastTensor, startRow, dealRowCount, this->dSizeV_Align);
-            DealInvalidMaskRows(tmpBmm2ResCastTensor, startRow, dealRowCount, this->dSizeV_Align, cntM);
-        } else {
-            DealInvalidRows(accumOutLocal, startRow, dealRowCount, this->dSizeV_Align);
-            DealInvalidMaskRows(accumOutLocal, startRow, dealRowCount, this->dSizeV_Align, cntM);
-        }
+        DealInvalidRows(accumOutLocal, startRow, dealRowCount, this->dSizeV_Align);
+        DealInvalidMaskRows(accumOutLocal, startRow, dealRowCount, this->dSizeV_Align, cntM);
         WaitFlag<AscendC::HardEvent::MTE3_V>(SYNC_FDOUTPUT_BUF_FLAG);
-        if constexpr (!POST_QUANT) {
-            uint32_t shapeArray[] = {dealRowCount, (uint32_t)constInfo.dSizeV};
-            tmpBmm2ResCastTensor.SetShapeInfo(ShapeInfo(2, shapeArray, DataFormat::ND));
-            if constexpr (IsSameType<OUTPUT_T, bfloat16_t>::value) { // bf16 采取四舍六入五成双模式
-                Cast(tmpBmm2ResCastTensor, accumOutLocal, AscendC::RoundMode::CAST_RINT,
-                     dealRowCount * this->dSizeV_Align);
-            } else {
-                Cast(tmpBmm2ResCastTensor, accumOutLocal, AscendC::RoundMode::CAST_ROUND,
-                     dealRowCount * this->dSizeV_Align);
-            }
+        uint32_t shapeArray[] = {dealRowCount, (uint32_t)constInfo.dSizeV};
+        tmpBmm2ResCastTensor.SetShapeInfo(ShapeInfo(2, shapeArray, DataFormat::ND));
+        if constexpr (IsSameType<OUTPUT_T, bfloat16_t>::value) { // bf16 采取四舍六入五成双模式
+            Cast(tmpBmm2ResCastTensor, accumOutLocal, AscendC::RoundMode::CAST_RINT,
+                 dealRowCount * this->dSizeV_Align);
+        } else {
+            Cast(tmpBmm2ResCastTensor, accumOutLocal, AscendC::RoundMode::CAST_ROUND,
+                 dealRowCount * this->dSizeV_Align);
         }
         SetFlag<AscendC::HardEvent::V_MTE3>(SYNC_FDOUTPUT_BUF_FLAG);
         WaitFlag<AscendC::HardEvent::V_MTE3>(SYNC_FDOUTPUT_BUF_FLAG);
@@ -386,55 +356,6 @@ protected:
             nextTokensPerBatch = actSeqLensKv - actSeqLensQ;
             preTokensPerBatch = 0;
         }
-    }
-    __aicore__ inline void CopySinkIn(uint32_t cntM)
-    {
-        LocalTensor<SINK_T> sinkCopyInBuf =
-            fdSinkCopyInBuf.GetWithOffset<SINK_T>(BUFFER_SIZE_BYTE_1K, (cntM & 1) * BUFFER_SIZE_BYTE_1K);
-
-        uint64_t sinkGmOffset = taskInfo.n2Idx * constInfo.gSize;
-        DataCopyExtParams sinkCopyParams;
-        sinkCopyParams.blockCount = 1;
-        sinkCopyParams.blockLen = constInfo.gSize * sizeof(SINK_T);
-        sinkCopyParams.srcStride = 0;
-        sinkCopyParams.dstStride = 0;
-        DataCopyPadExtParams<SINK_T> sinkPadParams;
-        sinkPadParams.isPad = true;
-        sinkPadParams.paddingValue = static_cast<SINK_T>(0);
-
-        WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_SINK_BUF1_FLAG + (cntM & 1));
-        DataCopyPad(sinkCopyInBuf, sinkGm[sinkGmOffset], sinkCopyParams, sinkPadParams);
-        SetFlag<AscendC::HardEvent::MTE2_V>(SYNC_SINK_BUF1_FLAG + (cntM & 1));
-        WaitFlag<AscendC::HardEvent::MTE2_V>(SYNC_SINK_BUF1_FLAG + (cntM & 1));
-
-        LocalTensor<T> tmpSinkCastBuf = fdSinkTmpBuf.Get<T>();
-        Cast(tmpSinkCastBuf, sinkCopyInBuf, AscendC::RoundMode::CAST_NONE, constInfo.gSize);
-        AscendC::PipeBarrier<PIPE_V>();
-
-        SetFlag<AscendC::HardEvent::V_MTE2>(SYNC_SINK_BUF1_FLAG + (cntM & 1));
-
-        LocalTensor<T> sinkBrcbBuf = fdSinkValueBuf.Get<T>();
-        Brcb(sinkBrcbBuf, tmpSinkCastBuf, (constInfo.gSize + BLOCK_ELEMENT_NUM - 1) / BLOCK_ELEMENT_NUM,
-             {1, BLOCK_ELEMENT_NUM});
-        AscendC::PipeBarrier<PIPE_V>();
-    }
-    __aicore__ inline void SinkMax(uint32_t startRow, uint32_t dealRowCount)
-    {
-        constexpr GmFormat Q_FORMAT = GetQueryGmFormat<layout>();
-        int64_t gIdx = 0;
-        LocalTensor<T> sinkBrcbBuf = fdSinkValueBuf.Get<T>();
-        LocalTensor<T> sinkExpBuf = fdSinkExpBuf.Get<T>();
-
-        for (int64_t row = 0; row < dealRowCount; ++row) {
-            if constexpr ((Q_FORMAT == GmFormat::BSNGD) || (Q_FORMAT == GmFormat::TNGD)) { // 内存按照S1G排布
-                gIdx = (taskInfo.gS1Idx + startRow + row) % constInfo.gSize;
-            } else if constexpr ((Q_FORMAT == GmFormat::BNGSD) || (Q_FORMAT == GmFormat::NGTD)) { // 内存按照GS1排布
-                int64_t actS1Size = qActSeqLensParser.GetActualSeqLength(taskInfo.bIdx);
-                gIdx = (taskInfo.gS1Idx + startRow + row) / actS1Size;
-            }
-            DataCopy(sinkExpBuf[row * BLOCK_ELEMENT_NUM], sinkBrcbBuf[gIdx * BLOCK_ELEMENT_NUM], BLOCK_ELEMENT_NUM);
-        }
-        AscendC::PipeBarrier<PIPE_V>();
     }
 
     template <typename UBOUT_T>
@@ -597,9 +518,8 @@ template <typename INPUT_T, typename T, typename OUTPUT_T, LayOutTypeEnum layout
           LayOutTypeEnum outLayout = LayOutTypeEnum::None, S1TemplateType s1TemplateType = S1TemplateType::Aligned128,
           S2TemplateType s2TemplateType = S2TemplateType::Aligned128,
           DTemplateType dTemplateType = DTemplateType::Aligned128,
-          DTemplateType dVTemplateType = DTemplateType::Aligned128, PseTypeEnum pseMode = PseTypeEnum::PSE_NONE_TYPE,
-          bool hasAtten = false, bool hasDrop = false, bool hasRope = false, uint8_t KvLayoutType = 0,
-          bool enableKVPrefix = false, bool useDn = false, bool bmm2Write2Ub = true, bool splitD = false>
+          DTemplateType dVTemplateType = DTemplateType::Aligned128,
+          bool hasAtten = false, uint8_t KvLayoutType = 0>
 class FiaBlockVecFlashDecodeDummy {
 public:
     using ConstInfoX = ConstInfo_t<FiaKernelType::NO_QUANT>;
