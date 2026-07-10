@@ -389,9 +389,9 @@ def _reference_attention(case, query, dense_key, dense_value, q_scale, k_scale, 
                 for li, q_idx in enumerate(q_indices):
                     if not bool(any_valid[li].item()):
                         continue
-                    _set_output(attention_out, layout_q, cu_seqlens_q, batch_idx, q_idx, head_idx,
+                    _set_output(attention_out, cu_seqlens_q, batch_idx, q_idx, head_idx,
                                 attn[li].to(output_dtype))
-                    _set_lse(softmax_lse, layout_q, cu_seqlens_q, batch_idx, q_idx, head_idx, lse[li])
+                    _set_lse(softmax_lse, cu_seqlens_q, batch_idx, q_idx, head_idx, lse[li])
 
     return attention_out, softmax_lse
 
