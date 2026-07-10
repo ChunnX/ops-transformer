@@ -651,41 +651,39 @@ ge::graphStatus PagedAttentionChecker::CheckNonContiguousSupport(const FiaTiling
     int32_t valueDim = fiaInfo.valueNonContigDim;
     int32_t keyRopeDim = fiaInfo.keyRopeNonContigDim;
 
-    if (enableNonQuant_) { //非量化
-        if (fiaInfo.kvLayout == FiaLayout::BnBsH) {
-            OP_CHECK_IF(keyDim > 0,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "key",
-                    ("In PA BBND scenarios, key only supports non-contiguous tensors in dimension 0, "
-                    "but the first non-contiguous dimension is index " + std::to_string(keyDim) + ".").c_str()),
-            return ge::GRAPH_FAILED);
-            OP_CHECK_IF(valueDim > 0,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "value",
-                    ("In PA BBND scenarios, value only supports non-contiguous tensors in dimension 0, "
-                    "but the first non-contiguous dimension is index " + std::to_string(valueDim) + ".").c_str()),
-            return ge::GRAPH_FAILED);
-            OP_CHECK_IF(keyRopeDim > 0,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "keyRope",
-                    ("In PA BBND scenarios, keyRope only supports non-contiguous tensors in dimension 0, "
-                    "but the first non-contiguous dimension is index " + std::to_string(keyRopeDim) + ".").c_str()),
-            return ge::GRAPH_FAILED);
-        } else if (fiaInfo.kvLayout == FiaLayout::BnNBsD || fiaInfo.kvLayout == FiaLayout::NZ) {
-            OP_CHECK_IF(keyDim > 1,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "key",
-                    ("In PA BNBD/NZ scenarios, key only supports non-contiguous tensors in dimensions 0 or 1, "
-                    "but the first non-contiguous dimension is index " + std::to_string(keyDim) + ".").c_str()),
-            return ge::GRAPH_FAILED);
-            OP_CHECK_IF(valueDim > 1,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "value",
-                    ("In PA BNBD/NZ scenarios, value only supports non-contiguous tensors in dimensions 0 or 1, "
-                    "but the first non-contiguous dimension is index " + std::to_string(valueDim) + ".").c_str()),
-            return ge::GRAPH_FAILED);
-            OP_CHECK_IF(keyRopeDim > 1,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "keyRope",
-                    ("In PA BNBD/NZ scenarios, keyRope only supports non-contiguous tensors in dimensions 0 or 1, "
-                    "but the first non-contiguous dimension is index " + std::to_string(keyRopeDim) + ".").c_str()),
-            return ge::GRAPH_FAILED);
-        }
-    } 
+    if (fiaInfo.kvLayout == FiaLayout::BnBsH) {
+        OP_CHECK_IF(keyDim > 0,
+            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "key",
+                ("In PA BBND scenarios, key only supports non-contiguous tensors in dimension 0, "
+                "but the first non-contiguous dimension is index " + std::to_string(keyDim) + ".").c_str()),
+        return ge::GRAPH_FAILED);
+        OP_CHECK_IF(valueDim > 0,
+            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "value",
+                ("In PA BBND scenarios, value only supports non-contiguous tensors in dimension 0, "
+                "but the first non-contiguous dimension is index " + std::to_string(valueDim) + ".").c_str()),
+        return ge::GRAPH_FAILED);
+        OP_CHECK_IF(keyRopeDim > 0,
+            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "keyRope",
+                ("In PA BBND scenarios, keyRope only supports non-contiguous tensors in dimension 0, "
+                "but the first non-contiguous dimension is index " + std::to_string(keyRopeDim) + ".").c_str()),
+        return ge::GRAPH_FAILED);
+    } else if (fiaInfo.kvLayout == FiaLayout::BnNBsD || fiaInfo.kvLayout == FiaLayout::NZ) {
+        OP_CHECK_IF(keyDim > 1,
+            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "key",
+                ("In PA BNBD/NZ scenarios, key only supports non-contiguous tensors in dimensions 0 or 1, "
+                "but the first non-contiguous dimension is index " + std::to_string(keyDim) + ".").c_str()),
+        return ge::GRAPH_FAILED);
+        OP_CHECK_IF(valueDim > 1,
+            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "value",
+                ("In PA BNBD/NZ scenarios, value only supports non-contiguous tensors in dimensions 0 or 1, "
+                "but the first non-contiguous dimension is index " + std::to_string(valueDim) + ".").c_str()),
+        return ge::GRAPH_FAILED);
+        OP_CHECK_IF(keyRopeDim > 1,
+            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "keyRope",
+                ("In PA BNBD/NZ scenarios, keyRope only supports non-contiguous tensors in dimensions 0 or 1, "
+                "but the first non-contiguous dimension is index " + std::to_string(keyRopeDim) + ".").c_str()),
+        return ge::GRAPH_FAILED);
+    }
 
     return ge::GRAPH_SUCCESS;
 }
@@ -769,14 +767,6 @@ ge::graphStatus PagedAttentionChecker::CheckFeatureInputLayoutForAntiquant(const
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
-}
-
-ge::graphStatus PagedAttentionChecker::CheckNonKVContiguousSupport(const FiaTilingInfo &fiaInfo){
-    if (fiaInfo.isTensorV1){
-        return ge::GRAPH_SUCCESS;
-    }
-
-    
 }
 
 ge::graphStatus PagedAttentionChecker::CheckSinglePara(const FiaTilingInfo &fiaInfo)
