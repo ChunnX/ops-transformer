@@ -1104,7 +1104,6 @@ public:
     static constexpr bool HAS_PREFIX = enableKVPrefix;
     static constexpr bool BMM2_TOUB = bmm2Write2Ub;
     static constexpr bool USE_DN = useDn;
-
     using ROPE_T = bfloat16_t;
     using Q_T = INPUT_T;
     using KV_T = INPUT_T;
@@ -1115,7 +1114,6 @@ public:
     using MM1_DBUF_T = Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>;
     using MM2_ABUF_POLICY_T = BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD>;
     using MM2_ABUF_T = Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD>;
-
     using ConstInfoX = ConstInfo_t<FiaKernelType::FULL_QUANT>;
     __aicore__ inline FAFullQuantMxBlockCubeDummy(ConstInfoX &constInfo) {};
 };
