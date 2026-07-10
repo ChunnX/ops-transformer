@@ -473,7 +473,6 @@ def check_result_return_value(expect, result, params):
     start_time = time()
     invalid_data = cpu_reshape != -1
     valid_lens = invalid_data.sum(axis=-1)  # (total_rows,)
-    err_cnt = 0
     for t_id in range(total_rows):
         bsn = np.unravel_index(t_id, sp)
         if layout_query == "TND":
@@ -490,10 +489,7 @@ def check_result_return_value(expect, result, params):
         npu_pass_t, max_re_t = compare_return_value(cur_npu_output_value,
                                                     cur_cpu_output_value)
         if not npu_pass_t:
-            err_cnt += 1
-    pct_thd_percent = (1 - pct_thd) * 100.0
-    fulfill_percent = float(total_rows - err_cnt) / float(total_rows) * 100.0
-    npu_pass = True if (fulfill_percent >= pct_thd_percent) else False
+            npu_pass = False
     
     end_time = time()
     print(f"耗时：{end_time - start_time:.6f} 秒")
