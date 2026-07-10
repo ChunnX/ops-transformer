@@ -874,13 +874,10 @@ ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::SetGmmA2avWorkspaceInfo
     uint64_t sharedGmmComputeWsSize = localParams_.ep * sizeof(int64_t) + tensorListSize + sharedTtScaleRepeatSize;
     localTilingData_.workspaceInfo.wsSharedGmmComputeWorkspaceSize =
         mc2tiling::AlignUp(sharedGmmComputeWsSize, alignAddrLen);
-    // PermuteSend 已消除: GMM 直接输出 rank-first 布局, 无需重排空间
-    localTilingData_.workspaceInfo.wsPermuteOutSize = 0;
 
     workSpaceSize_ = libApiWorkSpaceSize_ + inferredInfo_.gmmResultLen +
                      localTilingData_.workspaceInfo.wsGmmComputeWorkspaceSize +
-                     localTilingData_.workspaceInfo.wsSharedGmmComputeWorkspaceSize +
-                     localTilingData_.workspaceInfo.wsPermuteOutSize;
+                     localTilingData_.workspaceInfo.wsSharedGmmComputeWorkspaceSize;
 
     return ge::GRAPH_SUCCESS;
 }

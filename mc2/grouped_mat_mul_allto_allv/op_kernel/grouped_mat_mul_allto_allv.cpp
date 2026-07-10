@@ -87,8 +87,6 @@ grouped_mat_mul_allto_allv(GM_ADDR gmmxGM, GM_ADDR gmmweightGM, GM_ADDR sendCoun
     wsOffset += tilingData_->workspaceInfo.wsGmmComputeWorkspaceSize;
     GM_ADDR sharedGmmComputeWSGM = userWorkspace + wsOffset;
     wsOffset += tilingData_->workspaceInfo.wsSharedGmmComputeWorkspaceSize;
-    GM_ADDR permuteSendGM = userWorkspace + wsOffset;
-    wsOffset += tilingData_->workspaceInfo.wsPermuteOutSize;
 
     GM_ADDR sendBufferAddr = gmmOutputGM;
     HcclOpType hcclOp;

@@ -25,13 +25,12 @@ using MC2KernelTemplate::GMMQuantTilingData;
 using MC2KernelTemplate::TaskTilingInfo;
 
 /**
- * GMM A2AV Workspace 信息 (后通信模式: GMM计算 → AlltoAllv发送, Permute已消除)
+ * GMM A2AV Workspace 信息 (后通信模式: GMM计算 → AlltoAllv发送)
  *
- * 算子级 workspace 分为四部分:
+ * 算子级 workspace 分为三部分:
  *   [0, wsGmmOutputSize)                              → 路由专家 GMM 输出缓冲 (rank-first布局), 传给 GmmComputeOp.Init 的 y 参数
  *   [wsGmmOutputSize, + wsGmmComputeWorkspaceSize)    → 路由专家 GmmComputeOp 内部空间, 传给 GmmComputeOp.Init 的 tempAddr 参数
  *   [+, + wsSharedGmmComputeWorkspaceSize)            → 共享专家 SharedGmmComputeOp 内部空间, 传给 SharedGmmComputeOp.Init 的 tempAddr 参数
- *   [+, + wsPermuteOutSize)                           → 保留字段 (始终为0, Permute已消除)
  *
  * 注: 后通信模式 recvBuffer=yGM (AlltoAllv直接写入输出tensor), 无需额外commRecv workspace
  *
@@ -54,7 +53,6 @@ struct GmmA2avWorkspaceInfo {
     uint64_t wsGmmOutputSize;                    // 路由专家 GMM 主输出缓冲大小 (x @ weight -> gmm_output -> hccl send)
     uint64_t wsGmmComputeWorkspaceSize;          // 路由专家 GmmComputeOp 内部空间大小
     uint64_t wsSharedGmmComputeWorkspaceSize;    // 共享专家 SharedGmmComputeOp 内部空间大小
-    uint64_t wsPermuteOutSize;                   // PermuteSend 数据重排空间大小 (expertNum>1时使用, expert优先→rank优先)
 };
 
 struct QuantGmmA2avTilingData {
