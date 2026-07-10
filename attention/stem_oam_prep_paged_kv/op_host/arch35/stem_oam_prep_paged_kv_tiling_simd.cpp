@@ -26,7 +26,7 @@ void StemPrepKVTiling::ContinuousStridesCompute(gert::Shape &shape, gert::Stride
 {
     inputStride.SetDimNum(shape.GetDimNum());
     int32_t maxDim = static_cast<int32_t>(shape.GetDimNum()) - 1;
-    int64_t tmpStride = 1; 
+    int64_t tmpStride = 1;
     for (int32_t j = maxDim; j >= 0; --j) {
         inputStride.SetStride(j, tmpStride);
         tmpStride *= shape.GetDim(j);
@@ -36,7 +36,7 @@ void StemPrepKVTiling::ContinuousStridesCompute(gert::Shape &shape, gert::Stride
 ge::graphStatus StemPrepKVTiling::GetInputStrides(gert::Shape &shape, gert::Stride &inputStride, size_t idx)
 {
     if (context_->InputIsView(idx)) {
-        auto* strides = context_->GetInputStride(idx);
+        auto *strides = context_->GetInputStride(idx);
         if (strides == nullptr || strides->GetDimNum() == 0) {
             ContinuousStridesCompute(shape, inputStride);
         } else {
@@ -137,10 +137,8 @@ ge::graphStatus StemPrepKVTiling::GetWorkspaceSize()
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     uint32_t sysWorkspaceSize = ascendcPlatform.GetLibApiWorkSpaceSize();
     uint64_t maxKvPadded = MAX_KV_PADDED;
-    uint64_t vFlatSize = static_cast<uint64_t>(batchSize_) *
-                         static_cast<uint64_t>(numKvHeads_) *
-                         (maxKvPadded / static_cast<uint64_t>(stemStride_)) *
-                         sizeof(float);
+    uint64_t vFlatSize = static_cast<uint64_t>(batchSize_) * static_cast<uint64_t>(numKvHeads_) *
+                         (maxKvPadded / static_cast<uint64_t>(stemStride_)) * sizeof(float);
     workspaceSize_ = vFlatSize;
 
     auto workspaces = context_->GetWorkspaceSizes(1);
@@ -176,6 +174,32 @@ ge::graphStatus StemPrepKVTiling::PostTiling()
 
     context_->SetBlockDim(usedCoreNum);
     return ge::GRAPH_SUCCESS;
+}
+
+void StemPrepKVTiling::DumpTilingInfo()
+{
+    std::ostringstream info;
+    info << "kvLayout: " << kvLayout_ << std::endl;
+    info << "kvBlockSize: " << kvBlockSize_ << std::endl;
+    info << "numKvHeads: " << numKvHeads_ << std::endl;
+    info << "maxKvBlocks: " << maxKvBlocks_ << std::endl;
+    info << "dimQk: " << dimQk_ << std::endl;
+    info << "dimV: " << dimV_ << std::endl;
+    info << "maxKb: " << maxKb_ << std::endl;
+    info << "kflatDim: " << kflatDim_ << std::endl;
+    info << "batchSize: " << batchSize_ << std::endl;
+    info << "stemBlockSize: " << stemBlockSize_ << std::endl;
+    info << "stemStride: " << stemStride_ << std::endl;
+    info << "lambdaMag: " << lambdaMag_ << std::endl;
+    info << "rVal: " << rVal_ << std::endl;
+    info << "kCacheStride: " << kCacheStride_[0] << " " << kCacheStride_[1] << " " << kCacheStride_[2] << " "
+         << kCacheStride_[3] << std::endl;
+    info << "vCacheStride: " << vCacheStride_[0] << " " << vCacheStride_[1] << " " << vCacheStride_[2] << " "
+         << vCacheStride_[3] << std::endl;
+    info << "kScaleCacheStride: " << kScaleCacheStride_[0] << " " << kScaleCacheStride_[1] << " "
+         << kScaleCacheStride_[2] << " " << kScaleCacheStride_[3] << std::endl;
+
+    OP_LOGI(opName, "Tiling info is: %s", info.str().c_str());
 }
 
 REGISTER_OPS_TILING_TEMPLATE(StemOamPrepPagedKV, StemPrepKVTiling, 0);
