@@ -49,9 +49,6 @@ namespace {
     const static int64_t MIN_TOPK = 1LL;
     const static int64_t MAX_TOPK = 16LL;
     const static int64_t MIN_BS = 1LL;
-    const static int64_t NUM_8 = 8LL;
-    const static int64_t NUM_64 = 64LL;
-    const static int64_t USED_BUUFER_SIZE = 48 * 1024LL;
     const static int64_t MIN_EXPERT_PER_RANK = 1LL;
     const static int64_t MAX_EXPERT_PER_RANK = 1024LL;
     const static int64_t H_BASE = 1024LL;
@@ -915,24 +912,11 @@ static ge::graphStatus CheckInputParam(const gert::TilingContext *context, MegaM
     const gert::StorageShape *xStorageShape = context->GetInputShape(config.xIndex);
 
     int64_t xDim0 = xStorageShape->GetStorageShape().GetDim(0);
+
+    // Prefill 路径通过 route-batch 流式处理，UB 峰值已与 bs 解耦，不再需要 maxBs 上限。
+
     const gert::StorageShape *topkIdsStorageShape = context->GetInputShape(config.topkIdsIndex);
     int64_t topkIdsDim1 = topkIdsStorageShape->GetStorageShape().GetDim(1);
-
-    // 检查MAX_BS范围
-    uint64_t ubSize = 0UL;
-    auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
-    ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
-    auto attrs = context->GetAttrs();
-    auto epWorldSizePtr = attrs->GetAttrPointer<int64_t>((config.attrEpWorldSizeIndex));
-    int64_t worldSize = static_cast<int64_t>(*epWorldSizePtr);
-    // 当前最大bs根据ub剩余空间反算得来，bsMax = (8*(UB_SIZE-48K))/(topK*(64+worldSize))
-    int64_t maxBs = NUM_8 * (ubSize - USED_BUUFER_SIZE) / (topkIdsDim1 * (NUM_64 + worldSize));
-    OP_TILING_CHECK(xDim0 < MIN_BS || xDim0 > maxBs,
-        OP_LOGE_FOR_INVALID_VALUE(nodeName, "BS", std::to_string(xDim0).c_str(),
-            (std::string("should in [") + std::to_string(MIN_BS) + ", " +
-             std::to_string(maxBs) + "]" + ", "
-             + "maxBs = (8 * (TOTAL_UB_SIZE - 48K)) / (topK * (64 + worldSize))").c_str()),
-        return ge::GRAPH_FAILED);
 
     int64_t xDim1 = xStorageShape->GetStorageShape().GetDim(1);
     // 检查 H 范围 [1K, 8K]
