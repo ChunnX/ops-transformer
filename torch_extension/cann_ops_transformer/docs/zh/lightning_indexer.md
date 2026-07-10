@@ -32,11 +32,49 @@
 调用lightning_indexer接口之前，先调用前置接口lightning_indexer_metadata，完成lightning_indexer负载均衡的计算。
 
 ```python
-cann_ops_transformer.lightning_indexer_metadata(num_heads_q, num_heads_k, head_dim, topk, *, cu_seqlens_q=None, cu_seqlens_k=None, seqused_q=None, seqused_k=None, cmp_residual_k=None, batch_size=0, max_seqlen_q=-1, max_seqlen_k=-1, layout_q="BSND", layout_k="BSND", mask_mode=0, cmp_ratio=1) -> Tensor
+cann_ops_transformer.lightning_indexer_metadata(
+  num_heads_q,
+  num_heads_k,
+  head_dim,
+  topk,
+  *,
+  cu_seqlens_q=None,
+  cu_seqlens_k=None,
+  seqused_q=None,
+  seqused_k=None,
+  cmp_residual_k=None,
+  batch_size=0,
+  max_seqlen_q=-1,
+  max_seqlen_k=-1,
+  layout_q="BSND",
+  layout_k="BSND",
+  mask_mode=0,
+  cmp_ratio=1
+) -> Tensor
 ```
 
 ```python
-cann_ops_transformer.lightning_indexer(q, k, w, topk, *, cu_seqlens_q=None, cu_seqlens_k=None, seqused_q=None, seqused_k=None, cmp_residual_k=None, block_table=None, output_idx_offset=None, metadata=None, max_seqlen_q=-1, layout_q="BSND", layout_k="BSND", mask_mode=0, cmp_ratio=1, return_value=0) -> (Tensor, Tensor)
+cann_ops_transformer.lightning_indexer(
+  q,
+  k,
+  w,
+  topk,
+  *,
+  cu_seqlens_q=None,
+  cu_seqlens_k=None,
+  seqused_q=None,
+  seqused_k=None,
+  cmp_residual_k=None,
+  block_table=None,
+  output_idx_offset=None,
+  metadata=None,
+  max_seqlen_q=-1,
+  layout_q="BSND",
+  layout_k="BSND",
+  mask_mode=0,
+  cmp_ratio=1,
+  return_value=0
+) -> (Tensor, Tensor)
 ```
 
 ## 参数说明
@@ -53,11 +91,11 @@ cann_ops_transformer.lightning_indexer(q, k, w, topk, *, cu_seqlens_q=None, cu_s
 | num_heads_k | int | 必选 | 表示Key的head个数，当前仅支持1。 | int32 | - |
 | head_dim | int | 必选 | 表示注意力头的维度，当前仅支持128。 | int32 | - |
 | topk | int | 必选 | 表示从Query中筛选出的关键稀疏token的个数，当前仅支持[1, 2048]。 | int32 | - |
-| cu_seqlens_q | Tensor | 可选 | 表示不同Batch中Query的有效Sequence Length，仅layout_q为TND场景下必传，第一个值固定为0。数据格式为ND，支持非连续的Tensor。 | int32 | B+1 |
-| cu_seqlens_k | Tensor | 可选 | 表示不同Batch中Key的有效Sequence Length，仅layout_k为TND场景下必传，第一个值固定为0。数据格式为ND，支持非连续的Tensor。 | int32 | B+1 |
-| seqused_q | Tensor | 可选 | 表示不同Batch中Query实际参与运算的Sequence Length。数据格式为ND，支持非连续的Tensor。 | int32 | B |
-| seqused_k | Tensor | 可选 | 表示不同Batch中Key实际参与运算的Sequence Length。数据格式为ND，支持非连续的Tensor。 | int32 | B |
-| cmp_residual_k | Tensor | 可选 | 表示不同Batch中cmp_kv压缩后Sequence Length的余数，配合cmp_ratio实现cmp_kv部分的mask和负载计算。cmp_ratio不为1且mask_mode为3场景下必传。数据格式为ND，支持非连续的Tensor。 | int32 | B |
+| cu_seqlens_q | Tensor | 可选 | 表示不同Batch中Query的有效Sequence Length，仅layout_q为TND场景下必传，第一个值固定为0。数据格式为ND，支持非连续的Tensor。 | int32 | (B+1, ) |
+| cu_seqlens_k | Tensor | 可选 | 表示不同Batch中Key的有效Sequence Length，仅layout_k为TND场景下必传，第一个值固定为0。数据格式为ND，支持非连续的Tensor。 | int32 | (B+1, ) |
+| seqused_q | Tensor | 可选 | 表示不同Batch中Query实际参与运算的Sequence Length。数据格式为ND，支持非连续的Tensor。 | int32 | (B, ) |
+| seqused_k | Tensor | 可选 | 表示不同Batch中Key实际参与运算的Sequence Length。数据格式为ND，支持非连续的Tensor。 | int32 | (B, ) |
+| cmp_residual_k | Tensor | 可选 | 表示不同Batch中cmp_kv压缩后Sequence Length的余数，配合cmp_ratio实现cmp_kv部分的mask和负载计算。cmp_ratio不为1且mask_mode为3场景下必传。数据格式为ND，支持非连续的Tensor。 | int32 | (B, ) |
 | batch_size | int | 可选 | 表示Batch数量，默认值为0。 | int32 | - |
 | max_seqlen_q | int | 可选 | 表示Query的最长Sequence Length，-1表示任意可能长度，默认值为-1。 | int32 | - |
 | max_seqlen_k | int | 可选 | 表示Key的最长Sequence Length，-1表示任意可能长度，默认值为-1。 | int32 | - |
@@ -111,7 +149,7 @@ cann_ops_transformer.lightning_indexer(q, k, w, topk, *, cu_seqlens_q=None, cu_s
 
 ## 约束说明
 
-- 该接口支持训练、推理场景下使用。
+- 该接口支持推理场景下使用。
 - 该接口支持单算子模式和aclgraph图模式调用。
 - lightning_indexer_metadata接口需与lightning_indexer算子配套使用。
 - B（Batch）表示输入样本批量大小。
@@ -127,6 +165,11 @@ cann_ops_transformer.lightning_indexer(q, k, w, topk, *, cu_seqlens_q=None, cu_s
   - topk取值范围当前仅支持[1, 2048]，以及3072、4096、5120、6144、7168、8192。
   - 当前不支持sequsedQOptional、outputIdxOffsetOptional、maxSeqlenQ功能，不建议传入这些参数。
   - 当layout_k为PA_BBND时，必须传入sequsedKOptional；当layout_k不为PA_BBND时，不支持sequsedKOptional功能，不建议传入该参数。
+- <term>Ascend 950PR/Ascend 950DT</term>:
+  - 当layout_q为BSND时，不支持传入cuSeqlensQOptional；当layout_k为BSND或PA_BBND时，不支持传入cuSeqlensKOptional。
+  - 当传入outputIdxOffsetOptional时，只支持大于0的索引偏移值；且应满足约束：加上传入的索引偏移值后，得到的sparseIndice值不超过INT32的最大值。
+  - 当layout_q为TND时，必须传入cuSeqlensQOptional，如果也传入sequsedQOptional，应保证由sequsedQOptional传入的各个batch的query长度不超过根据cuSeqlensQOptional计算出的各个batch的q序列长度。当某个batch由sequsedQOptional传入的q序列长度seqlen1小于由cuSeqlensQOptional计算出的query长度seqlen2时，会启用TND Padding功能，将该batch的从seqlen1 + 1到seqlen2的query输出的sparseIndices和sparseValues全部置为无效值。
+  - 当传入的cmpRatio > 1且maskMode = 3时，必须传入cmpResidualKOptional，其余情况不传入。
 
 ## 确定性计算
 

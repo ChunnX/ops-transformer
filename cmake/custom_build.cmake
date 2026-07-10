@@ -340,7 +340,6 @@ if(ENABLE_TEST)
     endif()
 endif()
 
-
 if (DEFINED MC2_OPT AND EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/mc2/common/CMakeLists.txt AND EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/mc2/3rd/CMakeLists.txt)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/mc2/common)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/mc2/3rd)
@@ -962,6 +961,16 @@ if (NOT ENABLE_AICPU_KERNEL)
     # and add matching install(DIRECTORY ...) if they need the same dedup treatment.
     set(OPS_TRANSFORMER_SHARED_KERNEL_INSTALL_DEPS mc2/common)
 
+    # pypto-pro ops (marked by enable_pypto_kernel, global property PYPTO_ENABLED_OPS keyed by op_file):
+    # forward so ascendc_impl_build.py emits the pypto wrapper variant (calls pypto_compile_op).
+    # Comma-joined so it stays a single argv token.
+    get_property(_pypto_adapt_ops GLOBAL PROPERTY PYPTO_ENABLED_OPS)
+    set(PYPTO_ADAPT_OPS_OPTION "")
+    if (_pypto_adapt_ops)
+        list(JOIN _pypto_adapt_ops "," _pypto_adapt_ops_str)
+        set(PYPTO_ADAPT_OPS_OPTION --pypto-ops ${_pypto_adapt_ops_str})
+    endif ()
+
     add_custom_target(generate_transformer_adapt_py
             COMMAND ${HI_PYTHON} ${CMAKE_CURRENT_SOURCE_DIR}/cmake/scripts/util/ascendc_impl_build.py
             \"\"
@@ -973,12 +982,21 @@ if (NOT ENABLE_AICPU_KERNEL)
             --opsinfo-dir ${base_aclnn_binary_dir} ${base_aclnn_binary_dir}/inner ${base_aclnn_binary_dir}/exc
             --compute-unit ${ASCEND_COMPUTE_UNIT}
             --enable-experimental ${ENABLE_EXPERIMENTAL}
+            ${PYPTO_ADAPT_OPS_OPTION}
     )
 
     add_dependencies(generate_transformer_adapt_py opbuild_gen_default opbuild_gen_inner opbuild_gen_exc)
 
     foreach (_op_name ${OP_LIST})
         install(FILES ${ASCEND_IMPL_OUT_DIR}/dynamic/${_op_name}.py
+                DESTINATION ${IMPL_DYNAMIC_INSTALL_DIR}
+                OPTIONAL
+        )
+        install(FILES ${ASCEND_IMPL_OUT_DIR}/dynamic/${_op_name}_a2.py
+                DESTINATION ${IMPL_DYNAMIC_INSTALL_DIR}
+                OPTIONAL
+        )
+        install(FILES ${ASCEND_IMPL_OUT_DIR}/dynamic/${_op_name}_a3.py
                 DESTINATION ${IMPL_DYNAMIC_INSTALL_DIR}
                 OPTIONAL
         )
@@ -1001,9 +1019,9 @@ if (NOT ENABLE_AICPU_KERNEL)
     install(DIRECTORY ${TENSOR_API}
             DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common
     )
-    # Shared kernel headers for whitelist deps (contents -> ascendc/common/op_kernel).
+    # Shared kernel headers for whitelist deps (contents -> ascendc/common).
     install(DIRECTORY ${OPS_ADV_DIR}/mc2/common/op_kernel/
-            DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common/op_kernel
+            DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common
     )
 
     file(GLOB _3rd_op_dirs "${OPS_ADV_DIR}/mc2/3rd/*")
@@ -1011,7 +1029,7 @@ foreach(_3rd_op_dir ${_3rd_op_dirs})
     if(IS_DIRECTORY "${_3rd_op_dir}")
         if(EXISTS "${_3rd_op_dir}/op_kernel" AND IS_DIRECTORY "${_3rd_op_dir}/op_kernel")
             get_filename_component(_3rd_op_name "${_3rd_op_dir}" NAME)
-            install(DIRECTORY ${_3rd_op_dir}/op_kernel
+            install(DIRECTORY ${_3rd_op_dir}/op_kernel/
                         DESTINATION ${IMPL_INSTALL_DIR}/ascendc/3rd/${_3rd_op_name}
             )
         endif()
@@ -1072,6 +1090,32 @@ endforeach(    )
                 list(APPEND ALL_COMMON_SRC_DIRS "${COMMON_SRC_DIR}")
             endif()
         endforeach ()
+        foreach (op_depend_dir ${${_op_name}_a2_depends})
+            get_filename_component(_op_depened_name "${op_depend_dir}" NAME)
+            get_filename_component(_op_parent_name "${op_depend_dir}" DIRECTORY)
+            if (ENABLE_OPS_KERNEL AND ${_op_depened_name} STREQUAL "common")
+                set(COMMON_SRC_DIR "")
+                if (ENABLE_EXPERIMENTAL)
+                    get_filename_component(COMMON_SRC_DIR "${OPS_TRANSFORMER_DIR}/experimental/${op_depend_dir}" REALPATH)
+                else()
+                    get_filename_component(COMMON_SRC_DIR "${OPS_TRANSFORMER_DIR}/${op_depend_dir}" REALPATH)
+                endif()
+                list(APPEND ALL_COMMON_SRC_DIRS "${COMMON_SRC_DIR}")
+            endif()
+        endforeach ()
+        foreach (op_depend_dir ${${_op_name}_a3_depends})
+            get_filename_component(_op_depened_name "${op_depend_dir}" NAME)
+            get_filename_component(_op_parent_name "${op_depend_dir}" DIRECTORY)
+            if (ENABLE_OPS_KERNEL AND ${_op_depened_name} STREQUAL "common")
+                set(COMMON_SRC_DIR "")
+                if (ENABLE_EXPERIMENTAL)
+                    get_filename_component(COMMON_SRC_DIR "${OPS_TRANSFORMER_DIR}/experimental/${op_depend_dir}" REALPATH)
+                else()
+                    get_filename_component(COMMON_SRC_DIR "${OPS_TRANSFORMER_DIR}/${op_depend_dir}" REALPATH)
+                endif()
+                list(APPEND ALL_COMMON_SRC_DIRS "${COMMON_SRC_DIR}")
+            endif()
+        endforeach ()
         foreach (op_depend_dir ${${_op_name}_apt_depends})
             get_filename_component(_op_depened_name "${op_depend_dir}" NAME)
             get_filename_component(_op_parent_name "${op_depend_dir}" DIRECTORY)
@@ -1102,11 +1146,7 @@ if (ALL_COMMON_SRC_DIRS)
         list(APPEND COMMON_COPY_COMMANDS
             COMMAND ${CMAKE_COMMAND} -E copy_directory ${SRC_DIR} ${_COMMON_OUT_SRC_DIR}
         )
-        if (SRC_DIR MATCHES "mc2/common$" AND NOT ENABLE_EXPERIMENTAL)
-            list(APPEND COMMON_COPY_COMMANDS
-                COMMAND ${CMAKE_COMMAND} -E copy_directory ${SRC_DIR}/op_kernel ${_COMMON_OUT_SRC_DIR}
-            )
-        endif()
+
     endforeach()
 
     if(NOT TARGET common_src_copy)

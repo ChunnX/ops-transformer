@@ -90,22 +90,9 @@ protected:
     GlobalTensor<float> softmaxLseGm;
     GlobalTensor<SINK_T> sinkGm;
 
-    // postquant
-    using postQuantGmType = typename std::conditional<POST_QUANT, FaGmTensor<T, PostQuant_FORMAT>, int8_t>::type;
-    using postQuantBf16GmType = typename std::conditional<POST_QUANT,
-        FaGmTensor<bfloat16_t, PostQuant_FORMAT>, int8_t>::type;
-    postQuantGmType quantScale2GmTensor;
-    postQuantGmType quantOffset2GmTensor;
-    postQuantBf16GmType quantScale2Bf16GmTensor;
-    postQuantBf16GmType quantOffset2Bf16GmTensor;
     static constexpr UbFormat UB_FORMAT = GetOutUbFormat<layout>();
     static constexpr bool isS1G = (UB_FORMAT == UbFormat::S1G);
     static constexpr bool isPa = KvLayoutType > 0;
-    bool isQuantOffset2Exit = false;
-    bool isQuant2PerChn = false;
-    bool isQuant2Bf16 = false;
-    float postQuantScaleValue = 0;
-    float postQuantOffsetValue = 0;
 
     // =======================获取实际Act_S===========================
     static constexpr ActualSeqLensMode Q_MODE = GetQActSeqMode<layout>();
@@ -168,10 +155,6 @@ public:
 
         qActSeqLensParser.Init(this->actualSeqLengthsGmQ, constInfo.actualSeqLenSize, constInfo.s1Size);
         kvActSeqLensParser.Init(this->actualSeqLengthsGm, constInfo.actualSeqLenKVSize, constInfo.s2Size);
-
-        if constexpr (POST_QUANT) {
-            InitPostQuant(quantScale2, quantOffset2);
-        }
     }
 
     __aicore__ inline void InitSoftmaxLseGm(GlobalTensor<float> softmaxLseGm)
@@ -320,8 +303,7 @@ protected:
             FaGmTensor<OUTPUT_T, OUT_FORMAT> outGmTensor;
             outGmTensor.gmTensor = attentionOutGm;
             outGmTensor.offsetCalculator.Init(constInfo.bSize, constInfo.n2Size, constInfo.gSize, constInfo.s1Size,
-                                              constInfo.dSizeV, actualSeqLengthsGmQ, constInfo.actualSeqLenSize,
-                                              constInfo.isQHasLeftPadding, constInfo.queryRightPaddingSize);
+                                              constInfo.dSizeV, actualSeqLengthsGmQ, constInfo.actualSeqLenSize);
             CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<layout>()> copyAttenOutUbToGm;
             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
         } else if (constInfo.outputLayout == FIA_LAYOUT::BNSD) {
@@ -329,8 +311,7 @@ protected:
             FaGmTensor<OUTPUT_T, OUT_FORMAT> outGmTensor;
             outGmTensor.gmTensor = attentionOutGm;
             outGmTensor.offsetCalculator.Init(constInfo.bSize, constInfo.n2Size, constInfo.gSize, constInfo.s1Size,
-                                              constInfo.dSizeV, actualSeqLengthsGmQ, constInfo.actualSeqLenSize,
-                                              constInfo.isQHasLeftPadding, constInfo.queryRightPaddingSize);
+                                              constInfo.dSizeV, actualSeqLengthsGmQ, constInfo.actualSeqLenSize);
             CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<layout>()> copyAttenOutUbToGm;
             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
         } else if (constInfo.outputLayout == FIA_LAYOUT::TND) {
@@ -360,15 +341,6 @@ protected:
     __aicore__ inline void CopyFinalResOut(LocalTensor<T> &accumOutLocal, uint32_t startRow, uint32_t dealRowCount,
                                            uint32_t cntM)
     {
-        if constexpr (POST_QUANT) {
-            if (isQuant2PerChn) {
-                DealPostQuantOutPerChn(accumOutLocal, startRow, dealRowCount, this->dSizeV_Align, cntM);
-                AscendC::PipeBarrier<PIPE_V>();
-            } else {
-                DealPostQuantOutPerTensor(accumOutLocal, startRow, dealRowCount, this->dSizeV_Align);
-                AscendC::PipeBarrier<PIPE_V>();
-            }
-        }
         LocalTensor<OUTPUT_T> tmpBmm2ResCastTensor = fdOutputBuf.Get<OUTPUT_T>();
         AscendC::PipeBarrier<PIPE_V>();
         if constexpr (POST_QUANT) {
@@ -398,12 +370,7 @@ protected:
     __aicore__ inline void CalcPreNextTokens()
     {
         actSeqLensQ = qActSeqLensParser.GetActualSeqLength(taskInfo.bIdx);
-        if (constInfo.actualSeqLenKVSize == 0 && !constInfo.isKvContinuous) {
-            actSeqLensKv = SeqLenFromTensorList<layout>(keyPtr, taskInfo.bIdx);
-        } else {
-            actSeqLensKv = kvActSeqLensParser.GetActualSeqLength(taskInfo.bIdx);
-        }
-        actSeqLensKv += constInfo.actualKVPrefixSize;
+        actSeqLensKv = kvActSeqLensParser.GetActualSeqLength(taskInfo.bIdx);
         int64_t safePreToken = constInfo.preTokens;
         int64_t safeNextToken = constInfo.nextTokens;
 
@@ -516,151 +483,6 @@ protected:
                                                           attenOutUb);
     }
 
-    __aicore__ inline void InitPostQuant(__gm__ uint8_t *postQuantScale, __gm__ uint8_t *postQuantOffset)
-    {
-        isQuant2PerChn = constInfo.isPostQuantPerChnl;
-        isQuant2Bf16 = constInfo.isPostQuantBF16;
-        if constexpr (POST_QUANT) {
-            if (!isQuant2PerChn && !isQuant2Bf16) {
-                if (postQuantScale != nullptr) {
-                    GlobalTensor<T> postQuantScaleGm;
-                    postQuantScaleGm.SetGlobalBuffer((__gm__ float *)postQuantScale);
-                    postQuantScaleValue = postQuantScaleGm.GetValue(0);
-                }
-                if (postQuantOffset != nullptr) {
-                    isQuantOffset2Exit = true;
-                    GlobalTensor<T> postQuantOffsetGm;
-                    postQuantOffsetGm.SetGlobalBuffer((__gm__ float *)postQuantOffset);
-                    postQuantOffsetValue = postQuantOffsetGm.GetValue(0);
-                } else {
-                    postQuantOffsetValue = 0.0;
-                }
-            }
-
-            if (!isQuant2PerChn && isQuant2Bf16) {
-                if (postQuantScale != nullptr) {
-                    GlobalTensor<bfloat16_t> postQuantScaleBf16Gm;
-                    postQuantScaleBf16Gm.SetGlobalBuffer((__gm__ bfloat16_t *)postQuantScale);
-                    postQuantScaleValue = ToFloat(postQuantScaleBf16Gm.GetValue(0));
-                }
-                if (postQuantOffset != nullptr) {
-                    isQuantOffset2Exit = true;
-                    GlobalTensor<bfloat16_t> postQuantOffsetBf16Gm;
-                    postQuantOffsetBf16Gm.SetGlobalBuffer((__gm__ bfloat16_t *)postQuantOffset);
-                    postQuantOffsetValue = ToFloat(postQuantOffsetBf16Gm.GetValue(0));
-                } else {
-                    postQuantOffsetValue = 0.0;
-                }
-            }
-
-            if (isQuant2PerChn && !isQuant2Bf16) {
-                if (postQuantScale != nullptr) {
-                    GlobalTensor<T> postQuantScaleGm;
-                    postQuantScaleGm.SetGlobalBuffer((__gm__ float *)postQuantScale);
-                    quantScale2GmTensor.gmTensor = postQuantScaleGm;
-                    quantScale2GmTensor.offsetCalculator.Init(constInfo.n2Size, constInfo.gSize, constInfo.dSizeV);
-                }
-                if (postQuantOffset != nullptr) {
-                    isQuantOffset2Exit = true;
-                    GlobalTensor<T> postQuantOffsetGm;
-                    postQuantOffsetGm.SetGlobalBuffer((__gm__ float *)postQuantOffset);
-                    quantOffset2GmTensor.gmTensor = postQuantOffsetGm;
-                    quantOffset2GmTensor.offsetCalculator.Init(constInfo.n2Size, constInfo.gSize, constInfo.dSizeV);
-                }
-            }
-
-            if (isQuant2PerChn && isQuant2Bf16) {
-                if (postQuantScale != nullptr) {
-                    GlobalTensor<bfloat16_t> postQuantScaleBf16Gm;
-                    postQuantScaleBf16Gm.SetGlobalBuffer((__gm__ bfloat16_t *)postQuantScale);
-                    quantScale2Bf16GmTensor.gmTensor = postQuantScaleBf16Gm;
-                    quantScale2Bf16GmTensor.offsetCalculator.Init(constInfo.n2Size, constInfo.gSize, constInfo.dSizeV);
-                }
-                if (postQuantOffset != nullptr) {
-                    isQuantOffset2Exit = true;
-                    GlobalTensor<bfloat16_t> postQuantOffsetBf16Gm;
-                    postQuantOffsetBf16Gm.SetGlobalBuffer((__gm__ bfloat16_t *)postQuantOffset);
-                    quantOffset2Bf16GmTensor.gmTensor = postQuantOffsetBf16Gm;
-                    quantOffset2Bf16GmTensor.offsetCalculator.Init(constInfo.n2Size, constInfo.gSize, constInfo.dSizeV);
-                }
-            }
-        }
-    }
-    __aicore__ inline void DealPostQuantOutPerChn(LocalTensor<T> &bmm2ResUb, uint32_t startRow, uint32_t dealRowCount,
-                                                  uint32_t columnCount, uint32_t cntM)
-    {
-        PostQuantInfo_V2 postQuantInfo;
-        postQuantInfo.gSize = constInfo.gSize;
-        postQuantInfo.dSize = constInfo.dSizeV;
-        postQuantInfo.s1Size = actSeqLensQ;
-        postQuantInfo.n2Idx = taskInfo.n2Idx;
-        postQuantInfo.gS1Idx = taskInfo.gS1Idx + startRow;
-        postQuantInfo.gS1DealSize = dealRowCount;
-        postQuantInfo.colCount = columnCount;
-
-        LocalTensor<OUTPUT_T> tmpBmm2ResCastTensor = fdOutputBuf.Get<OUTPUT_T>();
-
-        if (isQuant2Bf16) {
-            uint32_t computeSize = dealRowCount * columnCount;
-            LocalTensor<bfloat16_t> quantScale2Ub =
-                ((cntM & 1) == 0) ? fdMm2ResBuf1.Get<bfloat16_t>() : fdMm2ResBuf2.Get<bfloat16_t>();
-            WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_MM2RES_BUF1_FLAG + (cntM & 1));
-            CopyParamsGmToUb<bfloat16_t, PostQuant_FORMAT, UB_FORMAT>(quantScale2Ub, quantScale2Bf16GmTensor,
-                                                                      postQuantInfo);
-            if (isQuantOffset2Exit) {
-                LocalTensor<bfloat16_t> quantOffset2Ub =
-                    ((cntM & 1) == 0) ? fdMm2ResBuf1.Get<bfloat16_t>() : fdMm2ResBuf2.Get<bfloat16_t>();
-                AscendC::PipeBarrier<PIPE_MTE2>();
-                CopyParamsGmToUb<bfloat16_t, PostQuant_FORMAT, UB_FORMAT>(quantOffset2Ub, quantOffset2Bf16GmTensor,
-                                                                          postQuantInfo);
-                SetFlag<AscendC::HardEvent::MTE2_V>(SYNC_MM2RES_BUF1_FLAG + (cntM & 1));
-                WaitFlag<AscendC::HardEvent::MTE2_V>(SYNC_MM2RES_BUF1_FLAG + (cntM & 1));
-                AscendC::PipeBarrier<PIPE_V>();
-                FaVectorApi::PostQuantPerChnlOffsetImpl<T, OUTPUT_T, bfloat16_t, isS1G>(
-                    tmpBmm2ResCastTensor, bmm2ResUb, quantScale2Ub, quantOffset2Ub, postQuantInfo);
-            } else {
-                SetFlag<AscendC::HardEvent::MTE2_V>(SYNC_MM2RES_BUF1_FLAG + (cntM & 1));
-                WaitFlag<AscendC::HardEvent::MTE2_V>(SYNC_MM2RES_BUF1_FLAG + (cntM & 1));
-                AscendC::PipeBarrier<PIPE_V>();
-                FaVectorApi::PostQuantPerChnlNoOffsetImpl<T, OUTPUT_T, bfloat16_t, isS1G>(
-                    tmpBmm2ResCastTensor, bmm2ResUb, quantScale2Ub, postQuantInfo);
-            }
-            SetFlag<AscendC::HardEvent::V_MTE2>(SYNC_MM2RES_BUF1_FLAG + (cntM & 1));
-            AscendC::PipeBarrier<PIPE_V>();
-        } else {
-            LocalTensor<T> quantScale2Ub = ((cntM & 1) == 0) ? fdMm2ResBuf1.Get<T>() : fdMm2ResBuf2.Get<T>();
-            WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_MM2RES_BUF1_FLAG + (cntM & 1));
-            CopyParamsGmToUb<T, PostQuant_FORMAT, UB_FORMAT>(quantScale2Ub, quantScale2GmTensor, postQuantInfo);
-            if (isQuantOffset2Exit) {
-                LocalTensor<T> quantOffset2Ub = ((cntM & 1) == 0) ? fdMm2ResBuf1.Get<T>() : fdMm2ResBuf2.Get<T>();
-                AscendC::PipeBarrier<PIPE_MTE2>();
-                CopyParamsGmToUb<T, PostQuant_FORMAT, UB_FORMAT>(quantOffset2Ub, quantOffset2GmTensor, postQuantInfo);
-                SetFlag<AscendC::HardEvent::MTE2_V>(SYNC_MM2RES_BUF1_FLAG + (cntM & 1));
-                WaitFlag<AscendC::HardEvent::MTE2_V>(SYNC_MM2RES_BUF1_FLAG + (cntM & 1));
-                AscendC::PipeBarrier<PIPE_V>();
-                PostQuantPerChnlOffsetImpl<T, OUTPUT_T, T, isS1G>(tmpBmm2ResCastTensor, bmm2ResUb, quantScale2Ub,
-                                                                  quantOffset2Ub, postQuantInfo);
-
-            } else {
-                SetFlag<AscendC::HardEvent::MTE2_V>(SYNC_MM2RES_BUF1_FLAG + (cntM & 1));
-                WaitFlag<AscendC::HardEvent::MTE2_V>(SYNC_MM2RES_BUF1_FLAG + (cntM & 1));
-                AscendC::PipeBarrier<PIPE_V>();
-                PostQuantPerChnlNoOffsetImpl<T, OUTPUT_T, T, isS1G>(tmpBmm2ResCastTensor, bmm2ResUb, quantScale2Ub,
-                                                                    postQuantInfo);
-            }
-            SetFlag<AscendC::HardEvent::V_MTE2>(SYNC_MM2RES_BUF1_FLAG + (cntM & 1));
-            AscendC::PipeBarrier<PIPE_V>();
-        }
-    }
-    __aicore__ inline void DealPostQuantOutPerTensor(LocalTensor<T> &bmm2ResUb, uint32_t startRow,
-                                                     uint32_t dealRowCount, uint32_t columnCount)
-    {
-        LocalTensor<OUTPUT_T> tmpBmm2ResCastTensor = fdOutputBuf.Get<OUTPUT_T>();
-        PostQuantPerTensorImpl<T, OUTPUT_T, true>(tmpBmm2ResCastTensor, bmm2ResUb, postQuantScaleValue,
-                                                  postQuantOffsetValue, dealRowCount, constInfo.dSizeV,
-                                                  this->dSizeV_Align);
-    }
-
 public:
     __aicore__ inline void LoadLseAndPreloadData(uint32_t startRow, uint32_t actualGSplitSize,
         uint64_t taskOffset, uint32_t reduceMLoop, uint32_t reduceGlobaLoop)
@@ -669,9 +491,6 @@ public:
         CopyLseIn(startRow, actualGSplitSize, taskOffset, reduceMLoop);
         SetFlag<AscendC::HardEvent::MTE2_V>(SYNC_LSE_MAX_SUM_BUF1_FLAG + (reduceMLoop & 1));
         WaitFlag<AscendC::HardEvent::MTE2_V>(SYNC_LSE_MAX_SUM_BUF1_FLAG + (reduceMLoop & 1));
-        if (unlikely(learnableSinkFlag)) {
-            CopySinkIn(reduceMLoop);
-        }
         for (uint32_t preLoadIdx = 0; preLoadIdx < preLoadNum; ++preLoadIdx) {
             LocalTensor<T> mm2Res =
                 ((reduceGlobaLoop + preLoadIdx) & 1) == 0 ? fdMm2ResBuf1.Get<T>() : fdMm2ResBuf2.Get<T>();
@@ -694,8 +513,8 @@ public:
                 uint32_t prefixBS1 = qActSeqLensParser.GetTBase(taskInfo.bIdx);
                 uint64_t bN2Offset =
                     prefixBS1 * constInfo.gSize * constInfo.n2Size + taskInfo.n2Idx * constInfo.gSize;
-                DataCopySoftmaxLseTNDArch35<T, ConstInfoX>(
-                    softmaxLseGm, maxLseUb, bN2Offset, mOffset, actualGSplitSize, constInfo);
+                DataCopySoftmaxLseTNDArch35<T, ConstInfoX>(softmaxLseGm, maxLseUb, bN2Offset, mOffset,
+                    actualGSplitSize, constInfo);
             } else if constexpr (layout == LayOutTypeEnum::LAYOUT_NTD) {
                 uint32_t prefixBS1 = qActSeqLensParser.GetTBase(taskInfo.bIdx);
                 uint32_t s1Size = qActSeqLensParser.GetActualSeqLength(taskInfo.bIdx);
@@ -705,24 +524,15 @@ public:
                     actualGSplitSize, constInfo, s1Size);
             } else if constexpr (layout == LayOutTypeEnum::LAYOUT_BSH) {
                 uint64_t bN2Offset = taskInfo.bIdx * constInfo.gSize * constInfo.n2Size * constInfo.s1Size +
-                                     taskInfo.n2Idx * constInfo.gSize * constInfo.s1Size;
-                uint64_t qActSeqLens = qActSeqLensParser.GetActualSeqLength(taskInfo.bIdx);
-                uint64_t s1LeftPaddingSize =
-                    constInfo.isQHasLeftPadding ?
-                        (constInfo.s1Size - qActSeqLens - constInfo.queryRightPaddingSize) :
-                        0;
+                                        taskInfo.n2Idx * constInfo.gSize * constInfo.s1Size;
                 DataCopySoftmaxLseBSNDArch35<T, ConstInfoX>(softmaxLseGm, maxLseUb, bN2Offset, mOffset,
-                    actualGSplitSize, constInfo, s1LeftPaddingSize);
+                    actualGSplitSize, constInfo);
             } else { // BNSD
                 uint64_t bN2Offset = taskInfo.bIdx * constInfo.gSize * constInfo.n2Size * constInfo.s1Size +
-                                     taskInfo.n2Idx * constInfo.gSize * constInfo.s1Size;
+                                        taskInfo.n2Idx * constInfo.gSize * constInfo.s1Size;
                 uint64_t qActSeqLens = qActSeqLensParser.GetActualSeqLength(taskInfo.bIdx);
-                uint64_t s1LeftPaddingSize =
-                    constInfo.isQHasLeftPadding ?
-                        (constInfo.s1Size - qActSeqLens - constInfo.queryRightPaddingSize) :
-                        0;
                 DataCopySoftmaxLseBNSDArch35<T, ConstInfoX>(softmaxLseGm, maxLseUb, bN2Offset, mOffset,
-                    actualGSplitSize, constInfo, qActSeqLens, s1LeftPaddingSize);
+                    actualGSplitSize, constInfo, qActSeqLens);
             }
         }
     }

@@ -14,7 +14,6 @@
  */
 #include "common/utils/op_mc2.h"
 #include "mc2_log.h"
-#include "mc2_comm_utils.h"
 #include "kc_quant_matmul_allto_all_tiling_base.h"
 #include "matmul_allto_all_fit_balance_tiling.h"
 
@@ -143,12 +142,11 @@ ge::graphStatus KcQuantMatmulAllToAllTilingBase::SetHcclTiling()
                                          Mc2CcTilingConfigBuilder::AlgConfigType::ALL_TO_ALL);
 
     // 获取commMode
-    uint8_t commMode = 0;
+    uint8_t engineType = 0;
     if (MatmulAlltoAllTilingUtil::GetAndConvertCommMode(context_, opName_, contextInfo, MATMUL_ALLTOALL_INDEX_SCHEMA,
-                                                        commMode) != ge::GRAPH_SUCCESS) {
+                                                        engineType) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
-    uint8_t engineType = (commMode == Mc2Comm::COMM_MODE_CCU) ? Mc2Comm::ENGINE_CCU : Mc2Comm::ENGINE_AICPU;
 
     //reducetype接口附带的数据类型优先于调用通信接口传入的数据类型，因此这里需要设置
     AscendC::Mc2CcTilingConfig allToAllTilingConfig = allToAllBuilder.
@@ -482,11 +480,12 @@ uint64_t KcQuantMatmulAllToAllTilingBase::GetTilingKey() const
     bool x2TransposeFlag = contextInfo.args_.isBTrans ? true : false;
     uint32_t biasDType = DTYPE_BIAS_FP32;
 
-    uint8_t commMode = 0;
+    uint8_t engineType = 0;
     if (MatmulAlltoAllTilingUtil::GetAndConvertCommMode(context_, opName_, contextInfo, MATMUL_ALLTOALL_INDEX_SCHEMA,
-                                                        commMode) != ge::GRAPH_SUCCESS) {
+                                                        engineType) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
+    uint8_t commMode = (engineType == mc2tiling::A5_CCU_ENGINE) ? COMMMODE_CCU : COMMMODE_AICPU;
 
     const uint64_t tilingKey = GET_TPL_TILING_KEY(KC_QUANT_MODE, x2TransposeFlag, biasDType, commMode);
     OP_LOGD(opName_, "KCQUANTMODE,X2TRANSPOSE,DTYPEBIAS,COMMMODE: [%d,%d,%d,%d], TilingKey is [%lu].", KC_QUANT_MODE,

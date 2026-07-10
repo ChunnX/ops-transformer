@@ -863,6 +863,9 @@ ge::graphStatus FlashAttentionScoreGradTilingS1s2Bn2::GetShapeAttrsInfo()
     }
     td_->opInfo.set_pseType(tmpData_.pseType);
 
+    if (isMaxWorkspace_) {
+        return ge::GRAPH_SUCCESS;
+    }
     SetBandIdx();
     status = CheckTokens();
     if (status != ge::GRAPH_SUCCESS) {
@@ -1767,9 +1770,17 @@ ge::graphStatus FlashAttentionScoreGradTilingS1s2Bn2::SetBaseInfo(const gert::Sh
             OP_CHECK_IF((qValue == nullptr || kvValue == nullptr),
                     OP_LOGE(context_, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [qValue or kvValue is null]"), return ge::GRAPH_FAILED);
             int64_t tempN2 = keyShape.GetDim(DIM_1);
-            for (size_t i = 0; i < seqQShapeSize; i++) {
-                int64_t qSeqLen = (i == 0 ? qValue[i] : std::max(int64_t(0), qValue[i] - qValue[i - 1]));
-                int64_t kvSeqLen = (i == 0 ? kvValue[i] : std::max(int64_t(0), kvValue[i] - kvValue[i - 1]));
+
+            // EOD场景: 累加和尾部连续为0的batch为无效数据，需跳过
+            size_t realBSize = seqQShapeSize;
+            while (realBSize > 0 && qValue[realBSize - 1] == 0 && kvValue[realBSize - 1] == 0) {
+                --realBSize;
+            }
+            td_->opInfo.set_B(realBSize);
+
+            for (size_t i = 0; i < realBSize; i++) {
+                int64_t qSeqLen = (i == 0 ? qValue[i] : (qValue[i] - qValue[i - 1]));
+                int64_t kvSeqLen = (i == 0 ? kvValue[i] : (kvValue[i] - kvValue[i - 1]));
                 tmpData_.actualSeqQlen.push_back(qSeqLen);
                 tmpData_.actualSeqKvlen.push_back(kvSeqLen);
                 int64_t s1s2Product = tmpData_.actualSeqQlen[i] * tmpData_.actualSeqKvlen[i];
@@ -1787,23 +1798,13 @@ ge::graphStatus FlashAttentionScoreGradTilingS1s2Bn2::SetBaseInfo(const gert::Sh
                 }
             }
 
-            uint64_t tailZeroCount = 0;
-            for (auto i = seqQShapeSize - 1; i >= 1; --i) {
-                if (tmpData_.actualSeqQlen[i] <= 0 && tmpData_.actualSeqKvlen[i] <= 0) {
-                    ++tailZeroCount;
-                } else {
-                    break;
-                }
-            }
-            auto realBSize = seqQShapeSize - tailZeroCount;
-            td_->opInfo.set_B(realBSize);
-
             // query [t1, n1, d]   kv [t2, n2, d]   dy [t1, n1, d]
             OP_CHECK_IF(keyShape.GetDim(DIM_1) == 0, OP_LOGW(context_, "dim 1 of key is 0."),
                     return ge::GRAPH_PARAM_INVALID);
             td_->opInfo.set_S1(*std::max_element(tmpData_.actualSeqQlen.begin(), tmpData_.actualSeqQlen.end()));
             td_->opInfo.set_S2(*std::max_element(tmpData_.actualSeqKvlen.begin(), tmpData_.actualSeqKvlen.end()));
         } else {
+            tmpData_.sumS1S2Product = 1;
             td_->opInfo.set_B(1);
             td_->opInfo.set_S1(queryShape.GetDim(DIM_0));
             td_->opInfo.set_S2(keyShape.GetDim(DIM_0));
@@ -1900,6 +1901,10 @@ ge::graphStatus FlashAttentionScoreGradTilingS1s2Bn2::ProcessDropInfo()
         int64_t dimValue = dropMaskShape->GetStorageShape().GetDim(i);
         dropMaskShapeSize *= dimValue;
     }
+    OP_CHECK_IF(dropMaskShapeSize == 0,
+        OP_LOGE(context_, "The op [FlashAttentionScoreGrad] received bad params, the reason is: "
+            "[dropMask has zero elements (shape size is 0) when keepProb=%f]", td_->opInfo.get_keepProb()),
+    return ge::GRAPH_FAILED);
 
     auto shapeSize = AlignUp(tmpData_.dropMaskSize, static_cast<int64_t>(BIT_NUM)) / BIT_NUM;
     if (dropMaskShapeSize < shapeSize) {

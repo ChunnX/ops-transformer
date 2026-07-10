@@ -13,9 +13,7 @@
 ## 功能说明
 - 算子功能：
 
-  `MixedQuantSparseFlashMlaMetadata`接口用于生成一个任务列表`metadata`，包含每个AIcore的Attention计算任务的起止点的Batch、Head、以及Q和K的分块的索引，供后续`MixedQuantSparseFlashMla`算子使用。主算子必须传入该`metadata`。
-
-  `MixedQuantSparseFlashMla`算子旨在完成以下公式描述的Attention计算，支持SWA（Sliding Window Attention）、CSA（Compressed Sparse Attention）、HCA（Heavily Compressed Attention）三类Attention计算场景。与`SparseFlashMla`的区别在于，本算子支持KV的per-token-group量化输入。
+  `MixedQuantSparseFlashMla`算子旨在完成以下公式描述的Attention计算，支持SWA（Sliding Window Attention）、CSA（Compressed Sparse Attention）、HCA（Heavily Compressed Attention）三类Attention计算场景。与`SparseFlashMla`的区别在于，本算子支持KV的per-token-group量化输入。调用时需要使用`MixedQuantSparseFlashMlaMetadata`生成的任务列表`metadata`。
 
   典型调用流程如下：
 
@@ -180,7 +178,7 @@
     <tr>
       <td>quant_mode</td>
       <td>可选属性</td>
-      <td>表示量化模式。量化模式1表示K、V nope为per-token-group量化，K、V依次由rope（64，bfloat16）、nope（448，FLOAT8_E4M3FN）、scale（7，bfloat16）、pad（18B）拼接而成；量化模式2表示K、V nope为per-token-group量化，K、V依次由nope（448，FLOAT8_E4M3FN）、rope（64，bfloat16）、scale（7，FLOAT8_E8M0）、pad（1B）拼接而成。</td>
+      <td>表示量化模式。量化模式1表示K、V nope为per-token-group量化，K、V依次由rope（64，bfloat16）、nope（448，FLOAT8_E4M3FN）、scale（7，bfloat16）、pad（18B）拼接而成；量化模式2表示K、V nope为per-token-group量化，K、V依次由nope（448，FLOAT8_E4M3FN）、rope（64，bfloat16）、scale（7，FLOAT8_E8M0）、pad（1B）拼接而成。当前仅支持1和2，量化模式2仅支持layout_kv为PA_BBND。</td>
       <td>INT</td>
       <td>-</td>
     </tr>
@@ -314,7 +312,7 @@
 - 目前暂不支持对`ori_kv`进行稀疏计算，因此设置`ori_sparse_indices`无效。
 - 除`ori_topk_length`和`cmp_topk_length`等预留输入可不传或传入空Tensor外，其余已传入Tensor不支持为空。
 - `seqused_cmp_kv`为所有`layout_kv`下的可选输入，显式传入时用于覆盖cmp侧逻辑有效长度；未传时由`cmp_kv` shape、`cu_seqlens_cmp_kv`或PA block table相关语义推导。
-- `cmp_residual_kv`为主算子和metadata算子的可选入参；传入后用于按`cmp_len * cmp_ratio + residual`恢复cmp侧mask使用的压缩前KV长度，其中`cmp_len`优先来自显式传入的`seqused_cmp_kv`。
+- `cmp_residual_kv`为算子的可选入参；传入后用于按`cmp_len * cmp_ratio + residual`恢复cmp侧mask使用的压缩前KV长度，其中`cmp_len`优先来自显式传入的`seqused_cmp_kv`。
 - `q`、`ori_kv`、`cmp_kv`数据排布格式支持从多种维度解读，B（Batch）表示输入样本批量大小、S（Seq-Length）表示输入样本序列长度、H（Hidden-Size）表示隐藏层的大小、N（Head-Num）表示多头数、D（Head-Dim）表示hidden层最小的单元尺寸，且满足D=H/N、T表示所有Batch输入样本序列长度的累加和。
 - Q\_S和S1表示q shape中的S，S2表示ori_kv shape中的S，S3表示cmp_kv shape中的S；Q\_N和N1表示num\_q\_heads，KV\_N和N2表示num\_ori_kv\_heads和num\_cmp_kv\_heads；Q\_T和T1表示q shape中的输入样本序列长度的累加和。
 
@@ -323,4 +321,4 @@
 | 调用方式  | 样例代码                                                     | 说明                                                         |
 | --------- | ------------------------------------------------------------ | ------------------------------------------------------------ |
 | aclnn API | [test_aclnn_mixed_quant_sparse_flash_mla](./examples/test_aclnn_mixed_quant_sparse_flash_mla.cpp) | 通过[aclnnMixedQuantSparseFlashMla](./docs/aclnnMixedQuantSparseFlashMla.md)调用MixedQuantSparseFlashMla算子 |
-| PyTorch API | [mixed_quant_sparse_flash_mla](../../torch_extension/cann_ops_transformer/docs/zh/mixed_quant_sparse_flash_mla.md) | 通过`cann_ops_transformer.ops.mixed_quant_sparse_flash_mla`调用MixedQuantSparseFlashMla算子 |
+| PyTorch API | [mixed_quant_sparse_flash_mla](../../torch_extension/cann_ops_transformer/docs/zh/mixed_quant_sparse_flash_mla.md) | 通过`cann_ops_transformer.mixed_quant_sparse_flash_mla`调用MixedQuantSparseFlashMla算子 |

@@ -26,7 +26,7 @@
 - **计算公式**：
 
     1.将输入shape为[NUM_ROWS, K]的expertIdx展平为一行做排序，其中NUM_ROWS为输入token个数，K为token选择的专家个数，得出排序后的结果sortedExpertIdx和对应的序号sortedRowIdx：
-    
+
     $$
     sortedExpertIdx, sortedRowIdx=keyValueSort(\text{flatten}(expertIdx))
     $$
@@ -89,31 +89,31 @@
 
 ```cpp
 aclnnStatus aclnnMoeInitRoutingQuantV2GetWorkspaceSize(
-    const aclTensor  *x, 
-    const aclTensor  *expertIdx, 
-    const aclTensor  *scaleOptional, 
-    const aclTensor  *offsetOptional, 
-    int64_t           activeNum, 
-    int64_t           expertCapacity, 
-    int64_t           expertNum, 
-    int64_t           dropPadMode, 
-    int64_t           expertTokensCountOrCumsumFlag, 
-    bool              expertTokensBeforeCapacityFlag, 
-    int64_t           quantMode, 
-    const aclTensor  *expandedXOut, 
-    const aclTensor  *expandedRowIdxOut, 
-    const aclTensor  *expertTokensCountOrCumsumOutOptional, 
-    const aclTensor  *expertTokensBeforeCapacityOutOptional, 
-    const aclTensor  *dynamicQuantScaleOutOptional, 
-    uint64_t         *workspaceSize, 
+    const aclTensor  *x,
+    const aclTensor  *expertIdx,
+    const aclTensor  *scaleOptional,
+    const aclTensor  *offsetOptional,
+    int64_t           activeNum,
+    int64_t           expertCapacity,
+    int64_t           expertNum,
+    int64_t           dropPadMode,
+    int64_t           expertTokensCountOrCumsumFlag,
+    bool              expertTokensBeforeCapacityFlag,
+    int64_t           quantMode,
+    const aclTensor  *expandedXOut,
+    const aclTensor  *expandedRowIdxOut,
+    const aclTensor  *expertTokensCountOrCumsumOutOptional,
+    const aclTensor  *expertTokensBeforeCapacityOutOptional,
+    const aclTensor  *dynamicQuantScaleOutOptional,
+    uint64_t         *workspaceSize,
     aclOpExecutor   **executor)
 ```
 
 ```cpp
 aclnnStatus aclnnMoeInitRoutingQuantV2(
-    void             *workspace, 
-    uint64_t          workspaceSize, 
-    aclOpExecutor    *executor, 
+    void             *workspace,
+    uint64_t          workspaceSize,
+    aclOpExecutor    *executor,
     aclrtStream       stream)
 ```
 
@@ -124,10 +124,10 @@ aclnnStatus aclnnMoeInitRoutingQuantV2(
   <table style="undefined;table-layout: fixed; width: 1550px"><colgroup>
     <col style="width: 350px">
     <col style="width: 120px">
-    <col style="width: 300px">  
-    <col style="width: 550px">  
-    <col style="width: 212px">  
-    <col style="width: 100px"> 
+    <col style="width: 300px">
+    <col style="width: 550px">
+    <col style="width: 212px">
+    <col style="width: 100px">
     <col style="width: 190px">
     <col style="width: 145px">
     </colgroup>
@@ -197,7 +197,7 @@ aclnnStatus aclnnMoeInitRoutingQuantV2(
       <td>expertCapacity</td>
       <td>输入</td>
       <td>表示每个专家能够处理的tokens数。</td>
-      <td>值范围大于等于0；Drop/Pad场景下值域范围(0, NUM_ROWS]，此时各专家将超过capacity的tokens drop掉，不够capacity阈值时则pad全0 tokens；其他场景不关心该属性值。</td>
+      <td>值范围大于等于0；Drop/Pad场景下值域范围(0, NUM_ROWS]，即必须大于0且不超过NUM_ROWS；其他场景不关心该属性值。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -331,7 +331,7 @@ aclnnStatus aclnnMoeInitRoutingQuantV2(
   `aclnnStatus`：返回状态码，具体参见 <a href="../../../docs/zh/context/aclnn返回码.md">aclnn返回码</a>。
 
   一段接口完成入参校验，出现以下场景时报错：
-  <table style="undefined;table-layout: fixed; width: 1180px"> 
+  <table style="undefined;table-layout: fixed; width: 1180px">
     <colgroup>
       <col style="width: 250px">
       <col style="width: 130px">
@@ -382,7 +382,7 @@ aclnnStatus aclnnMoeInitRoutingQuantV2(
 
 - **参数说明：**
 
-  <table style="undefined;table-layout: fixed; width: 1180px"> 
+  <table style="undefined;table-layout: fixed; width: 1180px">
   <colgroup>
     <col style="width: 250px">
     <col style="width: 130px">
@@ -422,7 +422,7 @@ aclnnStatus aclnnMoeInitRoutingQuantV2(
 - **返回值：**
 
   aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
-    
+
 ## 约束说明
 
 - 确定性计算：

@@ -267,15 +267,11 @@ __simd_vf__ void HistogramsThirdVFImpl(__ubuf__ uint32_t* histogramsBuf, __ubuf_
     MicroAPI::MaskReg pregB8Reg2 = MicroAPI::CreateMask<uint8_t, MicroAPI::MaskPattern::ALL>();
 
     // 计算直方图0-127 128-255
-    MicroAPI::RegTensor<uint16_t> cout0;
-    MicroAPI::RegTensor<uint16_t> cout1;
+    MicroAPI::RegTensor<uint16_t> cout0, cout1;
     MicroAPI::Duplicate(cout0, 0);
     MicroAPI::Duplicate(cout1, 0);
 
-    MicroAPI::RegTensor<uint32_t> cout0U32Even;
-    MicroAPI::RegTensor<uint32_t> cout0U32Odd;
-    MicroAPI::RegTensor<uint32_t> cout1U32Even;
-    MicroAPI::RegTensor<uint32_t> cout1U32Odd;
+    MicroAPI::RegTensor<uint32_t> cout0U32Even, cout0U32Odd, cout1U32Even, cout1U32Odd;
 
     MicroAPI::RegTensor<uint32_t> idx0;
     MicroAPI::RegTensor<uint32_t> idx1;
@@ -283,15 +279,9 @@ __simd_vf__ void HistogramsThirdVFImpl(__ubuf__ uint32_t* histogramsBuf, __ubuf_
     MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_BRC_B8>(idx0, idx0Buf);
     MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_BRC_B8>(idx1, idx1Buf);
 
-    MicroAPI::RegTensor<uint32_t> vreg0U16;
-    MicroAPI::RegTensor<uint32_t> vreg1U16;
-    MicroAPI::RegTensor<uint32_t> vreg2U16;
-    MicroAPI::RegTensor<uint32_t> vreg3U16;
+    MicroAPI::RegTensor<uint32_t> vreg0U16, vreg1U16, vreg2U16, vreg3U16;
 
-    MicroAPI::RegTensor<uint8_t> vreg0;
-    MicroAPI::RegTensor<uint8_t> vreg1;
-    MicroAPI::RegTensor<uint8_t> vreg2;
-    MicroAPI::RegTensor<uint8_t> vreg3;
+    MicroAPI::RegTensor<uint8_t> vreg0, vreg1, vreg2, vreg3;
 
     static constexpr MicroAPI::CastTrait CAST_TRAIT_UINT16_TOUINT32_EVEN = {MicroAPI::RegLayout::ZERO,
                 MicroAPI::SatMode::UNKNOWN, MicroAPI::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
@@ -399,33 +389,21 @@ __simd_vf__ void HistogramsLastVFImpl(__ubuf__ uint32_t* histogramsBuf, __ubuf__
     MicroAPI::MaskReg pregB8Reg3 = MicroAPI::CreateMask<uint8_t, MicroAPI::MaskPattern::ALL>();
 
     // 计算直方图0-127 128-255
-    MicroAPI::RegTensor<uint16_t> cout0;
-    MicroAPI::RegTensor<uint16_t> cout1;
+    MicroAPI::RegTensor<uint16_t> cout0, cout1;
     MicroAPI::Duplicate(cout0, 0);
     MicroAPI::Duplicate(cout1, 0);
 
-    MicroAPI::RegTensor<uint32_t> cout0U32Even;
-    MicroAPI::RegTensor<uint32_t> cout0U32Odd;
-    MicroAPI::RegTensor<uint32_t> cout1U32Even;
-    MicroAPI::RegTensor<uint32_t> cout1U32Odd;
+    MicroAPI::RegTensor<uint32_t> cout0U32Even, cout0U32Odd, cout1U32Even, cout1U32Odd;
 
-    MicroAPI::RegTensor<uint32_t> idx0;
-    MicroAPI::RegTensor<uint32_t> idx1;
-    MicroAPI::RegTensor<uint32_t> idx2;
+    MicroAPI::RegTensor<uint32_t> idx0, idx1, idx2;
     // 0x000000fc -> 0xfcfcfcfc
     MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_BRC_B8>(idx0, idx0Buf);
     MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_BRC_B8>(idx1, idx1Buf);
     MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_BRC_B8>(idx2, idx2Buf);
 
-    MicroAPI::RegTensor<uint32_t> vreg0U16;
-    MicroAPI::RegTensor<uint32_t> vreg1U16;
-    MicroAPI::RegTensor<uint32_t> vreg2U16;
-    MicroAPI::RegTensor<uint32_t> vreg3U16;
+    MicroAPI::RegTensor<uint32_t> vreg0U16, vreg1U16, vreg2U16, vreg3U16;
 
-    MicroAPI::RegTensor<uint8_t> vreg0;
-    MicroAPI::RegTensor<uint8_t> vreg1;
-    MicroAPI::RegTensor<uint8_t> vreg2;
-    MicroAPI::RegTensor<uint8_t> vreg3;
+    MicroAPI::RegTensor<uint8_t> vreg0, vreg1, vreg2, vreg3;
 
     static constexpr MicroAPI::CastTrait CAST_TRAIT_UINT16_TOUINT32_EVEN = {MicroAPI::RegLayout::ZERO,
                 MicroAPI::SatMode::UNKNOWN, MicroAPI::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
@@ -434,8 +412,7 @@ __simd_vf__ void HistogramsLastVFImpl(__ubuf__ uint32_t* histogramsBuf, __ubuf__
                 MicroAPI::SatMode::UNKNOWN, MicroAPI::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
 
     for (uint16_t i = 0; i < vfLoop; ++i) {
-        MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_DINTLV_B16>(vreg1U16, vreg0U16,
-                                                                           inputBuf + i * 256);
+        MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_DINTLV_B16>(vreg1U16, vreg0U16, inputBuf + i * 256);
         MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_DINTLV_B16>(vreg3U16, vreg2U16,
                                                                            inputBuf + (i * 256) + 128);
 

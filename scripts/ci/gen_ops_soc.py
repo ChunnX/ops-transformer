@@ -43,7 +43,8 @@ group_op_dict = {
                      "flash_attention_score_grad": 3},
     "ascend950": {"fused_infer_attention_score": 20,
                    "flash_attention_score": 5,
-                   "flash_attention_score_grad": 5}
+                   "flash_attention_score_grad": 5,
+                   "mega_moe": 20}
 }
 
 
@@ -95,12 +96,8 @@ def grouped(gen_path, soc, group_size):
     special_task_barrier = ""
     for op_name, count in op_counts.items():
         op_name_real = op_name
-        if soc == 'ascend950' and op_name.endswith('_apt'):
-            op_name_real = op_name.replace('_apt', '')
-        if op_name == 'allto_all_matmul_apt' and op_name.endswith('_apt'):
-            op_name_real = op_name.replace('_apt', '')
-        if op_name == 'matmul_allto_all_apt' and op_name.endswith('_apt'):
-            op_name_real = op_name.replace('_apt', '')
+        if op_name.endswith(('_a2', '_a3', '_apt')):
+            op_name_real = op_name.rsplit('_', 1)[0]
         if op_name_real in black_list:
             continue
         for i in range(count):
@@ -158,10 +155,8 @@ def grouped_back(gen_path, soc, group_size):
 
     for op_name, count in op_counts.items():
         op_name_real = op_name
-        if soc == 'ascend950' and op_name.endswith('_apt'):
-            op_name_real = op_name.replace('_apt', '')
-        elif op_name in ('allto_all_matmul_apt', 'matmul_allto_all_apt'):
-            op_name_real = op_name.replace('_apt', '')
+        if op_name.endswith(('_a2', '_a3', '_apt')):
+            op_name_real = op_name.rsplit('_', 1)[0]
 
         if op_name_real in black_list:
             continue

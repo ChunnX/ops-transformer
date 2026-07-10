@@ -13,7 +13,17 @@
 
 ## 功能说明
 
-- 接口功能：`SparseFlashMla`算子实现基于共享KV（Key=Value）的稀疏注意力计算，支持SWA（Sliding Window Attention）、CSA（Compressed Sparse Attention）、HCA（Heavily Compressed Attention）三类Attention计算场景。该算子适用于大语言模型训练、推理场景，通过滑动窗口和KV压缩机制大幅降低长序列注意力计算的开销。
+- 接口功能：
+
+  `aclnnSparseFlashMla`算子实现基于共享KV（Key=Value）的稀疏注意力计算，支持SWA（Sliding Window Attention）、CSA（Compressed Sparse Attention）、HCA（Heavily Compressed Attention）三类Attention计算场景。该算子适用于大语言模型训练、推理场景，通过滑动窗口和KV压缩机制大幅降低长序列注意力计算的开销。调用时需要使用`aclnnSparseFlashMlaMetadata`生成的任务列表`metadata`。
+
+  **该算子不建议单独使用，建议与aclnnSparseFlashMla算子配合使用，形成完整的工作流。**
+
+  典型调用流程如下：
+
+  1. 准备`q`、`ori_kv`、`cmp_kv`、序列长度、`block table`、`sinks`等输入。
+  2. 调用`aclnnSparseFlashMlaMetadata`生成`metadata`。
+  3. 调用`aclnnSparseFlashMla`，将上一步得到的`metadata`传入主算子。
 
 - 计算公式：
 
@@ -306,7 +316,7 @@ aclnnStatus aclnnSparseFlashMla(
       <td>cmpResidualKvOptional（aclTensor*）</td>
       <td>输入</td>
       <td>压缩KV余数，用于恢复cmp侧mask使用的压缩前KV长度。</td>
-      <td>可选输入。传入时shape必须为(B,)，第b个batch按cmp_len * cmpRatio + cmpResidualKvOptional[b]恢复压缩前KV长度；在CSA、HCA、cmpRatio不等于1且cmpMaskMode为3场景必传。该参数是主算子和SparseFlashMlaMetadata的可选入参，layoutKvOptional为BSND、TND、PA_BBND时均可使用。</td>
+      <td>可选输入。传入时shape必须为(B,)，第b个batch按cmp_len * cmpRatio + cmpResidualKvOptional[b]恢复压缩前KV长度；在CSA、HCA、cmpRatio不等于1且cmpMaskMode为3场景必传。该参数是主算子和aclnnSparseFlashMlaMetadata的可选入参，layoutKvOptional为BSND、TND、PA_BBND时均可使用。</td>
       <td>INT32</td>
       <td>ND</td>
       <td>(B,)</td>
@@ -345,7 +355,7 @@ aclnnStatus aclnnSparseFlashMla(
     <tr>
       <td>metadataOptional（aclTensor*）</td>
       <td>输入</td>
-      <td>AICPU算子SparseFlashMlaMetadata的分核结果。</td>
+      <td>AICPU算子aclnnSparseFlashMlaMetadata的分核结果。</td>
       <td>必须传入。由aclnnSparseFlashMlaMetadata算子生成。</td>
       <td>INT32</td>
       <td>ND</td>

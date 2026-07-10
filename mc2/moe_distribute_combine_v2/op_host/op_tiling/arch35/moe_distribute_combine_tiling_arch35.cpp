@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file moe_distribute_combine_tiling_a5.cc
+ * \file moe_distribute_combine_tiling_arch35.cpp
  * \brief
  */
 
@@ -33,7 +33,6 @@
 #include "register/tilingdata_base.h"
 #include "op_host/op_tiling/mc2_tiling_utils.h"
 #include "../../../op_kernel/moe_distribute_combine_v2_tiling.h"
-#include "../../../op_kernel/moe_distribute_combine_v2_tiling_key.h"
 #include "moe_distribute_combine_tiling_arch35.h"
 using namespace Mc2Tiling;
 
@@ -811,6 +810,13 @@ ge::graphStatus MoeDistributeCombineV2TilingFuncA5::MoeDistributeCombineTilingFu
     return MoeDistributeCombineA3TilingFuncImpl(context, config);
 }
 
+struct MoeDistributeCombineCompileInfo {};
+static ge::graphStatus TilingParseForMoeDistributeCombineV2(gert::TilingParseContext *context)
+{
+    (void)context;
+    return ge::GRAPH_SUCCESS;
+}
+
 static ge::graphStatus MoeDistributeCombineV2TilingFuncImplA5(gert::TilingContext* context)
 {
     MoeDistributeCombineV2TilingFuncA5 impl;
@@ -818,6 +824,7 @@ static ge::graphStatus MoeDistributeCombineV2TilingFuncImplA5(gert::TilingContex
 }
 
 IMPL_OP_OPTILING(MoeDistributeCombineV2)
-    .Tiling(MoeDistributeCombineV2TilingFuncImplA5);
+    .Tiling(MoeDistributeCombineV2TilingFuncImplA5)
+    .TilingParse<MoeDistributeCombineCompileInfo>(TilingParseForMoeDistributeCombineV2);
 
 } // namespace optiling

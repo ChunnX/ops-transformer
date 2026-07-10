@@ -43,7 +43,7 @@ aclnnStatus aclnnMoeFinalizeRoutingV3GetWorkspaceSize(
     int64_t           dropPadMode,
     const aclIntArray *zeroExpertRange,
     const aclIntArray *copyExpertRange,
-    const aclIntArray *constantExpertRange, 
+    const aclIntArray *constantExpertRange,
     const aclTensor *out,
     uint64_t        *workspaceSize,
     aclOpExecutor  **executor)
@@ -353,7 +353,7 @@ aclnnStatus aclnnMoeFinalizeRoutingV3(
   </table>
 
 - **返回值**
-  
+
   aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
 ## 约束说明
@@ -361,11 +361,11 @@ aclnnStatus aclnnMoeFinalizeRoutingV3(
 1. 确定性计算：
     - aclnnMoeFinalizeRoutingV3默认确定性实现。
 
-2. NUM\_ROWS：表示行数；  
-    - K：表示从总的专家E中选出K个专家；  
-    - H：表示hidden size，即每个token序列长度，为列数；  
-    - E：表示expert num，即专家数，E需要大于等于K；  
-    - C：表示expert capacity，即专家处理token数量的能力阈值。  
+2. NUM\_ROWS：表示行数；
+    - K：表示从总的专家E中选出K个专家；
+    - H：表示hidden size，即每个token序列长度，为列数；
+    - E：表示expert num，即专家数，E需要大于等于K；
+    - C：表示expert capacity，即专家处理token数量的能力阈值。
 
 3. expandedRowIdx：当dropPadMode参数值为0、2时，Tensor中的值取值范围是[0,NUM_ROWS * K-1]；当dropPadMode参数值为1、3时，Tensor中的值取值范围是[-1, E \* C - 1]。
 
@@ -392,6 +392,8 @@ aclnnStatus aclnnMoeFinalizeRoutingV3(
 #include "aclnnop/aclnn_moe_finalize_routing_v3.h"
 #include <iostream>
 #include <vector>
+#include <cstdio>
+
 
 #define CHECK_RET(cond, return_expr) \
   do {                               \
@@ -470,7 +472,7 @@ int main() {
   void* expandedExpertIdxAddr = nullptr;
   void* expandedRowIdxAddr = nullptr;
   void* outDeviceAddr = nullptr;
-  
+
   aclTensor* expandedX = nullptr;
   aclTensor* x1 = nullptr;
   aclTensor* x2Optional = nullptr;
@@ -505,7 +507,7 @@ int main() {
   // 创建totalWeightOut aclTensor
   ret = CreateAclTensor(scalesHostData, scalesShape, &scalesDeviceAddr, aclDataType::ACL_FLOAT, &scales);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
-  
+
   // 创建expandedExpertIdx aclTensor
   ret = CreateAclTensor(expandedExpertIdxHostData, expandedExpertIdxShape, &expandedExpertIdxAddr,
                         aclDataType::ACL_INT32, &expandedExpertIdx);

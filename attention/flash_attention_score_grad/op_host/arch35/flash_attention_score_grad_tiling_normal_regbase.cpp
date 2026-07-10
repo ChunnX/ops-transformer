@@ -1794,19 +1794,35 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::InitTilingData()
     } else if (isTnd) {
         if (fBaseParams.isDeterministic) {
             FagTilingWithTemplateTFTF *tilingData = this->context_->GetTilingData<FagTilingWithTemplateTFTF>();
+            if (tilingData == nullptr) {
+                OP_LOGE("InitTilingData", "InitTilingData failed.");
+                return ge::GRAPH_FAILED;
+            }
             TND_TILING_DATA_COMMON_ASSIGN(tilingData);
             baseDeterParam_ = &tilingData->baseDeterParam;
         } else {
             FagTilingWithTemplateFFTF *tilingData = this->context_->GetTilingData<FagTilingWithTemplateFFTF>();
+            if (tilingData == nullptr) {
+                OP_LOGE("InitTilingData", "InitTilingData failed.");
+                return ge::GRAPH_FAILED;
+            }
             TND_TILING_DATA_COMMON_ASSIGN(tilingData);
         }
     } else {
         if (fBaseParams.isDeterministic) {
             FagTilingWithTemplateTFFF *tilingData = this->context_->GetTilingData<FagTilingWithTemplateTFFF>();
+            if (tilingData == nullptr) {
+                OP_LOGE("InitTilingData", "InitTilingData failed.");
+                return ge::GRAPH_FAILED;
+            }
             BASE_TILING_DATA_COMMON_ASSIGN(tilingData);
             baseDeterParam_ = &tilingData->baseDeterParam;
         } else {
             FagTilingWithTemplateFFFF *tilingData = this->context_->GetTilingData<FagTilingWithTemplateFFFF>();
+            if (tilingData == nullptr) {
+                OP_LOGE("InitTilingData", "InitTilingData failed.");
+                return ge::GRAPH_FAILED;
+            }
             BASE_TILING_DATA_COMMON_ASSIGN(tilingData);
         }
     }
@@ -1849,7 +1865,7 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::SaveToTilingData()
     s1s2BNGS1S2BaseParams_->set_offset(fBaseParams.offset);
     s1s2BNGS1S2BaseParams_->set_qStartIdx(fBaseParams.qStartIdx);
     s1s2BNGS1S2BaseParams_->set_kvStartIdx(fBaseParams.kvStartIdx);
-    s1s2BNGS1S2BaseParams_->set_dropMaskOuter(fBaseParams.dropMaskOuter);
+    s1s2BNGS1S2BaseParams_->set_dropMaskOuter(static_cast<uint8_t>(fBaseParams.dropMaskOuter));
     s1s2BNGS1S2BaseParams_->set_sinkOptional(fBaseParams.sinkOptional);
     s1s2BNGS1S2BaseParams_->set_s1SinkOuter(fBaseParams.s1SinkOuter);
     s1s2BNGS1S2BaseParams_->set_s2SinkOuter(fBaseParams.s2SinkOuter);

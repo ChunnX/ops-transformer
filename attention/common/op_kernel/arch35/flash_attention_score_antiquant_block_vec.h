@@ -1054,8 +1054,8 @@ __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::Bmm2DataCop
         attenOutOffset = constInfo.n2GDv;
         if constexpr (isInfer) {
             if (constInfo.isPfaGS1Merge) {
-                attenOutOffset = 0;
                 dataCopyParams.blockLen *= constInfo.gSize;
+                attenOutOffset = 0;
                 dataCopyParams.blockCount /= constInfo.gSize;
             } else if (constInfo.isGqa) {
                 attenOutOffset = constInfo.dSizeV;
