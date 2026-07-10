@@ -500,8 +500,8 @@ ge::graphStatus MhcPreBaseTiling::ValidateAndSetTilingParams(const gert::Tensor 
     uint64_t phiSecondDim = phiTensor->GetStorageShape().GetDim(1);
     if (phiSecondDim != matK_) {
         OP_LOGE_FOR_INVALID_SHAPE(context_->GetNodeName(), "phi",
-                                      Ops::Base::ToString(phiTensor->GetStorageShape()).c_str(),
-                                      ShapeToString({matN_, matK_}).c_str());
+                                  Ops::Base::ToString(phiTensor->GetStorageShape()).c_str(),
+                                  ShapeToString({matN_, matK_}).c_str());
         return ge::GRAPH_FAILED;
     }
 
