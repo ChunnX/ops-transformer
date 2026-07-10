@@ -21,12 +21,12 @@ using namespace ge;
 using namespace gert;
 
 // input index
-constexpr size_t X_INDEX = 0;
-constexpr size_t SCALES_INDEX = 1;
+constexpr size_t CONTEXT_IDDEX = 0;
+constexpr size_t X_INDEX = 1;
+constexpr size_t SCALES_INDEX = 2;
 // output index
 constexpr size_t OUTPUT_INDEX = 0;
 // attr index
-constexpr size_t GROUP_INDEX = 0;
 constexpr size_t REDUCE_OP_INDEX = 1;
 constexpr size_t OUTPUT_DTYPE_INDEX = 2;
 constexpr size_t WORLD_SIZE_INDEX = 3;
@@ -75,8 +75,6 @@ enum OpType : size_t {
 
 // 封装参数
 struct TilingRunInfo {
-    const char *groupPtr; // group指针
-    std::string group;    // group属性
     uint32_t quantMode;   // 量化方式
     int64_t rankSize;     // rank大小
 };
