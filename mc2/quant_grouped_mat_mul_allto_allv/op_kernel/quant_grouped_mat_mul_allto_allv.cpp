@@ -62,8 +62,7 @@ quant_grouped_mat_mul_allto_allv(GM_ADDR gmmxGM, GM_ADDR gmmweightGM, GM_ADDR gm
     if (workspaceGM == nullptr) {
         return;
     }
-    SetSysWorkspace(workspaceGM);
-    GM_ADDR userWorkspace = AscendC::GetUserWorkspace(workspaceGM);
+    GM_ADDR userWorkspace = GetUserWorkspace(workspaceGM);
     if (userWorkspace == nullptr) {
         return;
     }
@@ -80,21 +79,6 @@ quant_grouped_mat_mul_allto_allv(GM_ADDR gmmxGM, GM_ADDR gmmweightGM, GM_ADDR gm
     constexpr bool IS_SHARED_EXPERT = true;
     constexpr bool IS_NOT_SHARED_EXPERT = false;
 
-    // workspace布局 (后通信模式):
-    //   [0, wsGmmOutputSize)                 → 路由专家 GMM 输出 (每轮从偏移0开始写入)
-    //   [+, wsGmmComputeWorkspaceSize)       → GmmComputeOp 内部空间
-    //   [+, wsSharedGmmComputeWorkspaceSize) → SharedGmmComputeOp 内部空间
-    //   [+, wsPermuteOutSize)                → PermuteSend 重排空间 (expert优先→rank优先)
-    uint64_t wsOffset = 0;
-    GM_ADDR gmmOutputGM = userWorkspace + wsOffset;
-    wsOffset += tilingData_->workspaceInfo.wsGmmOutputSize;
-    GM_ADDR gmmComputeWSGM = userWorkspace + wsOffset;
-    wsOffset += tilingData_->workspaceInfo.wsGmmComputeWorkspaceSize;
-    GM_ADDR sharedGmmComputeWSGM = userWorkspace + wsOffset;
-    wsOffset += tilingData_->workspaceInfo.wsSharedGmmComputeWorkspaceSize;
-    GM_ADDR permuteSendGM = userWorkspace + wsOffset;
-    wsOffset += tilingData_->workspaceInfo.wsPermuteOutSize;
-
     using HcclOpType = HcclA2avOp<DTYPE_Y, false, TILINGKEY_COMM_MODE>;
     using GmmASWKernelType =
         Mc2GroupedMatmul::Mc2GmmASWKernel<DTYPE_GMM_X, DTYPE_GMM_WEIGHT, float, DTYPE_GMM_X_SCALE, DTYPE_Y, W_FORMAT,
@@ -107,23 +91,24 @@ quant_grouped_mat_mul_allto_allv(GM_ADDR gmmxGM, GM_ADDR gmmweightGM, GM_ADDR gm
                                                      false, TILINGKEY_MATMUL_TRANS, true, false>;
     using GmmA2avSchedulerType =
         GmmA2avScheduler<HcclOpType, ComputeOpType, SharedGmmExpertOpType, TILINGKEY_COMPUTE_MATMUL>;
-    // hccl: sendBuffer=GMM输出缓冲 (rank-first布局, 无需permute重排)
-    GM_ADDR sendBufferAddr = gmmOutputGM;
+    // hccl
     HcclOpType hcclOp;
-    hcclOp.Init(hcclInitTiling, hcclCcTilingOffset, &tilingData.taskTilingInfo, sendBufferAddr, yGM, gmmOutputGM,
-        static_cast<uint32_t>(tilingData_->taskTilingInfo.aivCoreNum));
-    // gmm: yGM=GMM输出缓冲(通信发送源), workspaceGM=groupList+ptrTable区域
+    hcclOp.Init(hcclInitTiling, hcclCcTilingOffset, &tilingData.taskTilingInfo, workspaceGM, yGM);
+    // gmm
     GET_NESTED_TILING_DATA_MEMBER_ADDR(QuantGmmA2avTilingData, GMMQuantTilingData, gmmBaseTiling, gmmArray,
                                        gmmArrayAddr_, tilingGM);
     ComputeOpType computeOp;
-    computeOp.Init(gmmxGM, gmmweightGM, gmmxScaleGM, gmmWeightScaleGM, gmmOutputGM, gmmComputeWSGM, tilingData_,
+    auto gmmGroupListGM = workspaceGM + tilingData_->workspaceInfo.wsGmmOutputSize;
+    computeOp.Init(gmmxGM, gmmweightGM, gmmxScaleGM, gmmWeightScaleGM, workspaceGM, gmmGroupListGM, tilingData_,
                    &tilingData_->gmmBaseTiling, gmmArrayAddr_, &pipe, false);
     // sharedmm
     GET_NESTED_TILING_DATA_MEMBER_ADDR(QuantGmmA2avTilingData, GMMQuantTilingData, sharedGmmTiling, gmmArray,
                                        mmArrayAddr_, tilingGM);
     SharedGmmExpertOpType shareComputeOp;
-    shareComputeOp.Init(mmxOptionalGM, mmweightOptionalGM, mmxScaleGM, mmWeightScaleGM, mmyOptionalGM,
-        sharedGmmComputeWSGM, tilingData_, &tilingData_->sharedGmmTiling, mmArrayAddr_, &pipe, false);
+    auto mmGroupListGM =
+        workspaceGM + tilingData_->workspaceInfo.wsGmmOutputSize + tilingData_->workspaceInfo.wsGmmComputeWorkspaceSize;
+    shareComputeOp.Init(mmxOptionalGM, mmweightOptionalGM, mmxScaleGM, mmWeightScaleGM, mmyOptionalGM, mmGroupListGM,
+                        tilingData_, &tilingData_->sharedGmmTiling, mmArrayAddr_, &pipe, false);
     GmmA2avSchedulerType gmmA2avScheduler(hcclOp, computeOp, shareComputeOp, &tilingData.taskTilingInfo);
     gmmA2avScheduler.Process();
 }
