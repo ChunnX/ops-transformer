@@ -47,9 +47,9 @@ extern "C" {
  * @return aclnnStatus: 返回状态码
  */
 ACLNN_API aclnnStatus aclnnQuantReduceScatterGetWorkspaceSize(const aclTensor *x, const aclTensor *scales,
-                                                              const char *group, const char *reduceOp,
-                                                              aclTensor *output, uint64_t *workspaceSize,
-                                                              aclOpExecutor **executor);
+                                                               const int64_t hcclBufferSize, const int64_t worldSize,
+                                                               const char *reduceOp, aclTensor *output,
+                                                               uint64_t *workspaceSize, aclOpExecutor **executor);
 
 /**
  * @brief aclnnQuantReduceScatter的第二段接口，用于执行计算。
