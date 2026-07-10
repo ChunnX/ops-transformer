@@ -18,7 +18,7 @@
 #include <vector>
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
-#include "../../../op_api/aclnn_quant_all_reduce.h"
+#include "aclnn_quant_all_reduce.h"
 #include "op_api_ut_common/tensor_desc.h"
 #include "op_api_ut_common/op_api_ut.h"
 #include "opdev/platform.h"
