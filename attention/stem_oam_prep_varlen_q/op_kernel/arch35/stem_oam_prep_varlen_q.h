@@ -247,7 +247,7 @@ public:
         // varlenInfoBuf_: [MAX_BATCH_SIZE] INT32 = 4 KB
         pipe_.InitBuffer(qBlockBuf_, ubFactor_ * B_ * dim_qk_ * sizeof(int8_t));
         pipe_.InitBuffer(qBlockFP32Buf_, ubFactor_ * B_ * dim_qk_ * sizeof(float));
-        pipe_.InitBuffer(scalesBuf_, ubFactor_ * B_ * sizeof(float));
+        pipe_.InitBuffer(scalesBuf_, ubFactor_ * B_ * num_q_heads_ * sizeof(float));
         pipe_.InitBuffer(groupSumBuf_, ubFactor_ * qflat_dim_ * sizeof(float));
         pipe_.InitBuffer(outQueueQflat_, ubFactor_ * qflat_dim_ * sizeof(bfloat16_t));
         pipe_.InitBuffer(varlenInfoBuf_, MAX_BATCH_SIZE * sizeof(int32_t) * 2);
@@ -312,6 +312,11 @@ private:
                 firstQb_ = qbLcl;
             }
 
+            taskMetaHead_[i] = hIdx;
+            taskMetaCuOff_[i] = cuOff;
+            taskMetaStartRow_[i] = startRow;
+            taskMetaValidRows_[i] = validRows;
+
             sumValid += validRows;
         }
         chunkTotalRows_ = sumValid;
@@ -366,16 +371,27 @@ private:
         SetFlag<HardEvent::V_MTE2>(EVENT_ID1);
         WaitFlag<HardEvent::V_MTE2>(EVENT_ID1);
 
-        uint32_t scaleBase = chunkGmPos_ * num_q_heads_ + chunkHead_;
-        qscaleGm_.SetGlobalBuffer((__gm__ float*)qscaleBase_ + scaleBase,
-            chunkTotalRows_ * num_q_heads_);
         DataCopyPadExtParams<float> padParams{false, 0, 0, 0.0f};
         DataCopyExtParams params{
-            static_cast<uint16_t>(chunkTotalRows_),
-            static_cast<uint32_t>(sizeof(float)),
-            static_cast<uint32_t>((num_q_heads_ - 1) * sizeof(float)),
+            static_cast<uint16_t>(1),                      // count: per task 1 scale
+            static_cast<uint32_t>(sizeof(float)),          // blockLen = 4 bytes
+            static_cast<uint32_t>((num_q_heads_ - 1) * sizeof(float)),  // srcStride: skip other heads
             0, 0};
-        DataCopyPad(scalesLocal, qscaleGm_, params, padParams);
+
+        for (uint32_t i = 0; i < curBatch_; i++) {
+            uint32_t valid = taskMetaValidRows_[i];
+            if (valid == 0) continue;
+
+            uint32_t gmPos = taskMetaCuOff_[i] + taskMetaStartRow_[i];
+            uint32_t scaleBase = gmPos * num_q_heads_ + taskMetaHead_[i];
+            qscaleGm_.SetGlobalBuffer((__gm__ float*)qscaleBase_ + scaleBase,
+                                      valid * num_q_heads_);
+
+            params.blockCount = static_cast<uint16_t>(valid);
+            LocalTensor<float> dstElem = scalesLocal[i * B_];
+            DataCopyPad(dstElem, qscaleGm_, params, padParams);
+        }
+
         SetFlag<HardEvent::MTE2_V>(EVENT_ID1);
     }
 
@@ -443,6 +459,11 @@ private:
     uint32_t firstBatch_ = 0;
     uint32_t firstHead_ = 0;
     uint32_t firstQb_ = 0;
+
+    uint32_t taskMetaHead_[4] = {0};
+    uint32_t taskMetaCuOff_[4] = {0};
+    uint32_t taskMetaStartRow_[4] = {0};
+    uint32_t taskMetaValidRows_[4] = {0};
 
     GM_ADDR qSeqLensBase_ = nullptr;
     GM_ADDR cuSeqLensBase_ = nullptr;
