@@ -408,14 +408,14 @@ __aicore__ inline void MatmulFullMX(const LocalTensor<A> &aL1Tensor,
     if (param.realM != 0) {
         mmadParams.m = param.realM;
     }
+    if (mmadParams.m == 1) {
+        mmadParams.m = 16;
+    }
     mmadParams.n = param.singleN;
     mmadParams.k = param.singleK;
     mmadParams.cmatrixInitVal = param.isOutKFisrt;
     mmadParams.cmatrixSource = false;
     mmadParams.unitFlag = param.unitFlag;
-    if (mmadParams.m == 1) {
-        mmadParams.m = 16;
-    }
  
     Mmad(cL0Tensor, L0ATensor, L0BTensor, mmadParams);
  

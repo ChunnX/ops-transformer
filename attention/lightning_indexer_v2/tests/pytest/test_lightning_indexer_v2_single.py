@@ -17,6 +17,7 @@ from test_lightning_indexer_v2_paramset import ENABLED_PARAMS
 import result_compare_method
 import lightning_indexer_v2_golden
 import pytest
+import lightning_indexer_v2_acl_graph
 
 for _, params in enumerate(ENABLED_PARAMS):
     # 将params的所有字段注册为局部变量
@@ -102,7 +103,10 @@ for _, params in enumerate(ENABLED_PARAMS):
                     cmp_ratio, return_value, max_seqlen_q
 
         # 获得cpu结果(真值)和算子结果（测试值）
+        # eager
         cpu_result, npu_result, topk_value, cpu_topk_value, npu_topk_value = lightning_indexer_v2_golden.liv2_output_single(test_data)
+        # aclgraph
+        cpu_result, npu_result, topk_value, cpu_topk_value, npu_topk_value = lightning_indexer_v2_acl_graph.liv2_output_acl_graph(test_data)
         print("npu_result", npu_result)
         print("cpu_result:", cpu_result)
         # 结果精度对比
