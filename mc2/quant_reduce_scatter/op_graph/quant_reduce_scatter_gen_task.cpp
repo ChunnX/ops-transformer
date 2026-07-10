@@ -9,9 +9,9 @@
  */
 
 /*!
- * \file quant_reduce_scatter_gen_task.cpp
- * \brief 静态shape图下沉实现
- */
+* \file quant_reduce_scatter_gen_task.cpp
+* \brief 静态shape图下沉实现
+*/
 #include <vector>
 #include <platform/platform_info.h>
 #include "common/utils/op_mc2.h"
