@@ -95,8 +95,7 @@ class OpTiling:
 #  TilingKey
 # ================================================================
 class SmlaTilingKey:
-    def is_valid(self, key):
-        return True
+    SparseMode = tilingkey_field(bits=1, values=[0, 1])
 
 
 # ================================================================
@@ -222,89 +221,20 @@ def compute_softmax_l1_norm(softmax_l1_norm, qi, ki, currentHalfG, s2_real_size,
 
     pl.set_validshape(out_vec_slot, [1, s2_real_size])
     pl.store(softmax_l1_norm, out_vec_slot, [batch_id, s1_idx, ki], atomic=pl.AtomicType.AtomicAdd)
-
-
-# ================================================================
-#  Inner kernel — receives typed tensor views + workspace
-# ================================================================
-
-def sparse_flash_mla_softmax_l1_norm_inner(
-    q, k, softmax_lse, softmax_l1_norm, qk, tiling
-):
-    num_cores = pl.get_block_num()
-    core_id = pl.get_block_idx()
-    sub_id = pl.get_subblock_idx()
-
-    Sq_dim = tiling.sq
-    skv_dim = tiling.sk
-    g_dim = tiling.g
-    sq_tiles = tiling.b * Sq_dim
-    firstHalfG = (g_dim + 2 - 1) // 2
-    secondHalfG = g_dim - firstHalfG
-    currentHalfG = firstHalfG
-    if sub_id == 1:
-        currentHalfG = secondHalfG
-
-    softmax_l1_norm_scale = 1.0 / g_dim
-
-    qk_vec_db = pl.make_tile_group(
-        type=pl.TileType(shape=[TG_HALF, TKV], dtype=pl.DT_FP32, target_memory=pl.MemorySpace.Vec), addrs=VA0, mutex_ids=[0,1],
-        fwd_ids=QK_READY_FORWARD_IDS, bwd_ids=QK_READY_BARKWARD_IDS
-    )
-
-    with pl.section_cube():
-        q_mat_db = pl.make_tile_group(type=pl.TileType(
-                shape=[TG, D_TOTAL], dtype=pl.DT_FP16, target_memory=pl.MemorySpace.Mat, layout=pl.NZ, valid_shape=[-1, -1], compact=1), addrs=MA0, mutex_ids=[2,3])
-        k_mat_db = pl.make_tile_group(type=pl.TileType(
-                shape=[TD, TKV], dtype=pl.DT_FP16, target_memory=pl.MemorySpace.Mat, layout=pl.ZN), addrs=MA1, mutex_ids=[4,5,12,13])
-        left_db = pl.make_tile_group(
-            type=pl.TileType(shape=[TG, TD], dtype=pl.DT_FP16, target_memory=pl.MemorySpace.Left, valid_shape=[-1, -1], compact=1), addrs=LA0, mutex_ids=[6,7])
-        right_db = pl.make_tile_group(
-            type=pl.TileType(shape=[TD, TKV], dtype=pl.DT_FP16, target_memory=pl.MemorySpace.Right), addrs=RA0, mutex_ids=[8,9]
-        )
-        acc_db = pl.make_tile_group(
-            type=pl.TileType(shape=[TG, TKV], dtype=pl.DT_FP32, target_memory=pl.MemorySpace.Acc, valid_shape=[-1, -1], compact=1), addrs=CA0, mutex_ids=[10,11]
-        )
-
-    with pl.section_vector():
-        gather_vec_db = pl.make_tile_group(
-            type=pl.TileType(shape=[GATHER_ROW_NUM, TD], dtype=pl.DT_FP16, target_memory=pl.MemorySpace.Vec), addrs=VA1, mutex_ids=[2,3]
-        )
-        lse_vec_db = pl.make_tile_group(
-            type=pl.TileType(shape=[1, TG], dtype=pl.DT_FP32, target_memory=pl.MemorySpace.Vec), addrs=VA2, mutex_ids=[4,5]
-        )
-        out_vec_db = pl.make_tile_group(
-            type=pl.TileType(shape=[1, TKV], dtype=pl.DT_FP32, target_memory=pl.MemorySpace.Vec), addrs=VA3, mutex_ids=[6,7]
-        )
-    tick = 0
-    q_count = 0
-    for qi in pl.range(core_id, sq_tiles, num_cores):
-        batch_id = qi // Sq_dim
-        with pl.section_cube():
-            cur_q_slot = q_mat_db.next()
-            pl.set_validshape(cur_q_slot, [g_dim, D_TOTAL])
-        with pl.section_vector():
-            lse_vec_slot = lse_vec_db.next()
-            if currentHalfG > 0:
-                pl.set_validshape(lse_vec_slot, [1, currentHalfG])
-                pl.load(lse_vec_slot, softmax_lse, [batch_id, 0, qi % Sq_dim, sub_id * firstHalfG], tile_dims=[1, 3])
-        s2_real_size = TKV
-        for ki in pl.range(0, skv_dim, TKV):
-            if ki + TKV > skv_dim:
-                s2_real_size = skv_dim - ki
-            with pl.section_cube():
-                compute_qk(g_dim, ki, qi, tick, q, k, cur_q_slot, q_mat_db, k_mat_db, left_db, right_db, acc_db, qk_vec_db, Sq_dim, s2_real_size, qk)
-            with pl.section_vector():
-                compute_softmax_l1_norm(softmax_l1_norm, qi, ki, currentHalfG, s2_real_size, softmax_l1_norm_scale, qk_vec_db, lse_vec_slot, out_vec_db, sub_id, Sq_dim, qk)
-            tick = tick + 1
-        q_count = q_count + 1
-    return
+    # pl.printf("will write out, batch_id = %d, s1_idx = %d, ki = %d\n",
+    #     batch_id, s1_idx, ki)
+    # pl.dump_tensor(softmax_l1_norm, offsets=[batch_id, s1_idx, ki], shapes=[1, 1, s2_real_size])
 
 
 # ================================================================
 #  Kernel — dynamic rank: inputs are raw pointers, shapes come from tiling
 # ================================================================
-@pl.jit(auto_mutex=True, tiling_key=SmlaTilingKey, pipeline=pl.pipeline.PipelineConfig(sync_only=True))
+@pl.jit(auto_mutex=True,
+    tiling_key=SmlaTilingKey,
+    datatype={
+        "query": "input_dtype",
+    },
+    pipeline=pl.pipeline.PipelineConfig(sync_only=True))
 def sparse_flash_mla_softmax_l1_norm(
     query: pl.Ptr[pl.DT_UINT8],
     key: pl.Ptr[pl.DT_UINT8],
@@ -351,12 +281,91 @@ def sparse_flash_mla_softmax_l1_norm(
         [tiling.sk, 1],
         dtype=pl.DT_FP32,
     )
-
-    sparse_flash_mla_softmax_l1_norm_inner(
-        tensor_q,
-        tensor_k,
-        tensor_lse,
-        tensor_softmax_l1_norm,
-        tensor_qk,
-        tiling,
+    tensor_metadata = pl.make_tensor(
+        metadata_optional,
+        [1, 64],
+        [64, 1],
+        dtype=pl.DT_INT32,
     )
+
+    core_id = pl.get_block_idx()
+    sub_id = pl.get_subblock_idx()
+    Sq_dim = tiling.sq
+    skv_dim = tiling.sk
+    g_dim = tiling.g
+    firstHalfG = (g_dim + 2 - 1) // 2
+    secondHalfG = g_dim - firstHalfG
+    currentHalfG = firstHalfG
+    if sub_id == 1:
+        currentHalfG = secondHalfG
+
+    softmax_l1_norm_scale = 1.0 / g_dim
+
+    totalNum = pl.getval(tensor_metadata, 0)
+    formerCoreProcessNum = pl.getval(tensor_metadata, 1)
+    remainCoreProcessNum = pl.getval(tensor_metadata, 2)
+    remainCoreNum = pl.getval(tensor_metadata, 3)
+    totalCoreNum = pl.getval(tensor_metadata, 4)
+
+    former_core_num = totalCoreNum - remainCoreNum
+    if core_id < former_core_num:
+        qi_start = core_id * formerCoreProcessNum
+        qi_count = formerCoreProcessNum
+    elif core_id < totalCoreNum:
+        qi_start = former_core_num * formerCoreProcessNum + (core_id - former_core_num) * remainCoreProcessNum
+        qi_count = remainCoreProcessNum
+    else:
+        qi_start = 0
+        qi_count = 0
+
+    qk_vec_db = pl.make_tile_group(
+        type=pl.TileType(shape=[TG_HALF, TKV], dtype=pl.DT_FP32, target_memory=pl.MemorySpace.Vec), addrs=VA0, mutex_ids=[0,1],
+        fwd_ids=QK_READY_FORWARD_IDS, bwd_ids=QK_READY_BARKWARD_IDS
+    )
+
+    with pl.section_cube():
+        q_mat_db = pl.make_tile_group(type=pl.TileType(
+                shape=[TG, D_TOTAL], dtype=pl.DT_FP16, target_memory=pl.MemorySpace.Mat, layout=pl.NZ, valid_shape=[-1, -1], compact=1), addrs=MA0, mutex_ids=[2,3])
+        k_mat_db = pl.make_tile_group(type=pl.TileType(
+                shape=[TD, TKV], dtype=pl.DT_FP16, target_memory=pl.MemorySpace.Mat, layout=pl.ZN), addrs=MA1, mutex_ids=[4,5,12,13])
+        left_db = pl.make_tile_group(
+            type=pl.TileType(shape=[TG, TD], dtype=pl.DT_FP16, target_memory=pl.MemorySpace.Left, valid_shape=[-1, -1], compact=1), addrs=LA0, mutex_ids=[6,7])
+        right_db = pl.make_tile_group(
+            type=pl.TileType(shape=[TD, TKV], dtype=pl.DT_FP16, target_memory=pl.MemorySpace.Right), addrs=RA0, mutex_ids=[8,9]
+        )
+        acc_db = pl.make_tile_group(
+            type=pl.TileType(shape=[TG, TKV], dtype=pl.DT_FP32, target_memory=pl.MemorySpace.Acc, valid_shape=[-1, -1], compact=1), addrs=CA0, mutex_ids=[10,11]
+        )
+
+    with pl.section_vector():
+        gather_vec_db = pl.make_tile_group(
+            type=pl.TileType(shape=[GATHER_ROW_NUM, TD], dtype=pl.DT_FP16, target_memory=pl.MemorySpace.Vec), addrs=VA1, mutex_ids=[2,3]
+        )
+        lse_vec_db = pl.make_tile_group(
+            type=pl.TileType(shape=[1, TG], dtype=pl.DT_FP32, target_memory=pl.MemorySpace.Vec), addrs=VA2, mutex_ids=[4,5]
+        )
+        out_vec_db = pl.make_tile_group(
+            type=pl.TileType(shape=[1, TKV], dtype=pl.DT_FP32, target_memory=pl.MemorySpace.Vec), addrs=VA3, mutex_ids=[6,7]
+        )
+    tick = 0
+    q_count = 0
+    for qi in pl.range(qi_start, qi_start + qi_count):
+        batch_id = qi // Sq_dim
+        with pl.section_cube():
+            cur_q_slot = q_mat_db.next()
+            pl.set_validshape(cur_q_slot, [g_dim, D_TOTAL])
+        with pl.section_vector():
+            lse_vec_slot = lse_vec_db.next()
+            if currentHalfG > 0:
+                pl.set_validshape(lse_vec_slot, [1, currentHalfG])
+                pl.load(lse_vec_slot, tensor_lse, [batch_id, 0, qi % Sq_dim, sub_id * firstHalfG], tile_dims=[1, 3])
+        s2_real_size = TKV
+        for ki in pl.range(0, skv_dim, TKV):
+            if ki + TKV > skv_dim:
+                s2_real_size = skv_dim - ki
+            with pl.section_cube():
+                compute_qk(g_dim, ki, qi, tick, tensor_q, tensor_k, cur_q_slot, q_mat_db, k_mat_db, left_db, right_db, acc_db, qk_vec_db, Sq_dim, s2_real_size, tensor_qk)
+            with pl.section_vector():
+                compute_softmax_l1_norm(tensor_softmax_l1_norm, qi, ki, currentHalfG, s2_real_size, softmax_l1_norm_scale, qk_vec_db, lse_vec_slot, out_vec_db, sub_id, Sq_dim, tensor_qk)
+            tick = tick + 1
+        q_count = q_count + 1

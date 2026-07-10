@@ -36,13 +36,13 @@ static ge::graphStatus SparseFlashMlaSoftmaxL1NormTilingFunc(gert::TilingContext
     int64_t dSize = queryShape->GetStorageShape().GetDim(3);
     int64_t skSize = keyShape->GetStorageShape().GetDim(1);
 
-    // OpTiling comes from the pypto kernel (.py dataclass) via force-include.
     OpTiling *tilingData = context->GetTilingData<OpTiling>();
     tilingData->b = bSize;
     tilingData->sq = sqSize;
     tilingData->sk = skSize;
     tilingData->g = gSize;
     tilingData->d = dSize;
+
     context->SetTilingKey(0);
 
     // Workspace: system reserve + qk buffer [G, Sk] FP32.
