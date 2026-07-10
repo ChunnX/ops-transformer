@@ -42,9 +42,9 @@
             ],
             "attrs": [
                 {
-                    "name": "group",
-                    "dtype": "string",
-                    "value": ""
+                    "name": "hccl_buffer_size",
+                    "dtype": "int",
+                    "value": -1
                 },
                 {
                     "name": "reduce_op",
@@ -104,9 +104,9 @@
             ],
             "attrs": [
                 {
-                    "name": "group",
-                    "dtype": "string",
-                    "value": ""
+                    "name": "hccl_buffer_size",
+                    "dtype": "int",
+                    "value": -1
                 },
                 {
                     "name": "reduce_op",
@@ -166,9 +166,9 @@
             ],
             "attrs": [
                 {
-                    "name": "group",
-                    "dtype": "string",
-                    "value": ""
+                    "name": "hccl_buffer_size",
+                    "dtype": "int",
+                    "value": -1
                 },
                 {
                     "name": "reduce_op",
@@ -228,9 +228,9 @@
             ],
             "attrs": [
                 {
-                    "name": "group",
-                    "dtype": "string",
-                    "value": ""
+                    "name": "hccl_buffer_size",
+                    "dtype": "int",
+                    "value": -1
                 },
                 {
                     "name": "reduce_op",
@@ -290,9 +290,9 @@
             ],
             "attrs": [
                 {
-                    "name": "group",
-                    "dtype": "string",
-                    "value": ""
+                    "name": "hccl_buffer_size",
+                    "dtype": "int",
+                    "value": -1
                 },
                 {
                     "name": "reduce_op",
@@ -352,9 +352,9 @@
             ],
             "attrs": [
                 {
-                    "name": "group",
-                    "dtype": "string",
-                    "value": ""
+                    "name": "hccl_buffer_size",
+                    "dtype": "int",
+                    "value": -1
                 },
                 {
                     "name": "reduce_op",
@@ -414,9 +414,9 @@
             ],
             "attrs": [
                 {
-                    "name": "group",
-                    "dtype": "string",
-                    "value": ""
+                    "name": "hccl_buffer_size",
+                    "dtype": "int",
+                    "value": -1
                 },
                 {
                     "name": "reduce_op",
@@ -476,9 +476,9 @@
             ],
             "attrs": [
                 {
-                    "name": "group",
-                    "dtype": "string",
-                    "value": ""
+                    "name": "hccl_buffer_size",
+                    "dtype": "int",
+                    "value": -1
                 },
                 {
                     "name": "reduce_op",
@@ -538,9 +538,9 @@
             ],
             "attrs": [
                 {
-                    "name": "group",
-                    "dtype": "string",
-                    "value": ""
+                    "name": "hccl_buffer_size",
+                    "dtype": "int",
+                    "value": -1
                 },
                 {
                     "name": "reduce_op",
@@ -600,9 +600,9 @@
             ],
             "attrs": [
                 {
-                    "name": "group",
-                    "dtype": "string",
-                    "value": ""
+                    "name": "hccl_buffer_size",
+                    "dtype": "int",
+                    "value": -1
                 },
                 {
                     "name": "reduce_op",
@@ -662,9 +662,9 @@
             ],
             "attrs": [
                 {
-                    "name": "group",
-                    "dtype": "string",
-                    "value": ""
+                    "name": "hccl_buffer_size",
+                    "dtype": "int",
+                    "value": -1
                 },
                 {
                     "name": "reduce_op",
@@ -724,9 +724,9 @@
             ],
             "attrs": [
                 {
-                    "name": "group",
-                    "dtype": "string",
-                    "value": ""
+                    "name": "hccl_buffer_size",
+                    "dtype": "int",
+                    "value": -1
                 },
                 {
                     "name": "reduce_op",
@@ -786,9 +786,9 @@
             ],
             "attrs": [
                 {
-                    "name": "group",
-                    "dtype": "string",
-                    "value": ""
+                    "name": "hccl_buffer_size",
+                    "dtype": "int",
+                    "value": -1
                 },
                 {
                     "name": "reduce_op",
@@ -848,9 +848,9 @@
             ],
             "attrs": [
                 {
-                    "name": "group",
-                    "dtype": "string",
-                    "value": ""
+                    "name": "hccl_buffer_size",
+                    "dtype": "int",
+                    "value": -1
                 },
                 {
                     "name": "reduce_op",
@@ -910,9 +910,9 @@
             ],
             "attrs": [
                 {
-                    "name": "group",
-                    "dtype": "string",
-                    "value": ""
+                    "name": "hccl_buffer_size",
+                    "dtype": "int",
+                    "value": -1
                 },
                 {
                     "name": "reduce_op",
@@ -972,9 +972,9 @@
             ],
             "attrs": [
                 {
-                    "name": "group",
-                    "dtype": "string",
-                    "value": ""
+                    "name": "hccl_buffer_size",
+                    "dtype": "int",
+                    "value": -1
                 },
                 {
                     "name": "reduce_op",
@@ -1034,9 +1034,9 @@
             ],
             "attrs": [
                 {
-                    "name": "group",
-                    "dtype": "string",
-                    "value": ""
+                    "name": "hccl_buffer_size",
+                    "dtype": "int",
+                    "value": -1
                 },
                 {
                     "name": "reduce_op",
@@ -1096,9 +1096,9 @@
             ],
             "attrs": [
                 {
-                    "name": "group",
-                    "dtype": "string",
-                    "value": ""
+                    "name": "hccl_buffer_size",
+                    "dtype": "int",
+                    "value": -1
                 },
                 {
                     "name": "reduce_op",
@@ -1158,9 +1158,9 @@
             ],
             "attrs": [
                 {
-                    "name": "group",
-                    "dtype": "string",
-                    "value": ""
+                    "name": "hccl_buffer_size",
+                    "dtype": "int",
+                    "value": -1
                 },
                 {
                     "name": "reduce_op",
@@ -1220,9 +1220,9 @@
             ],
             "attrs": [
                 {
-                    "name": "group",
-                    "dtype": "string",
-                    "value": ""
+                    "name": "hccl_buffer_size",
+                    "dtype": "int",
+                    "value": -1
                 },
                 {
                     "name": "reduce_op",
@@ -1282,9 +1282,9 @@
             ],
             "attrs": [
                 {
-                    "name": "group",
-                    "dtype": "string",
-                    "value": ""
+                    "name": "hccl_buffer_size",
+                    "dtype": "int",
+                    "value": -1
                 },
                 {
                     "name": "reduce_op",
@@ -1344,9 +1344,9 @@
             ],
             "attrs": [
                 {
-                    "name": "group",
-                    "dtype": "string",
-                    "value": ""
+                    "name": "hccl_buffer_size",
+                    "dtype": "int",
+                    "value": -1
                 },
                 {
                     "name": "reduce_op",
@@ -1406,9 +1406,9 @@
             ],
             "attrs": [
                 {
-                    "name": "group",
-                    "dtype": "string",
-                    "value": ""
+                    "name": "hccl_buffer_size",
+                    "dtype": "int",
+                    "value": -1
                 },
                 {
                     "name": "reduce_op",
@@ -1468,9 +1468,9 @@
             ],
             "attrs": [
                 {
-                    "name": "group",
-                    "dtype": "string",
-                    "value": ""
+                    "name": "hccl_buffer_size",
+                    "dtype": "int",
+                    "value": -1
                 },
                 {
                     "name": "reduce_op",
@@ -1530,9 +1530,9 @@
             ],
             "attrs": [
                 {
-                    "name": "group",
-                    "dtype": "string",
-                    "value": ""
+                    "name": "hccl_buffer_size",
+                    "dtype": "int",
+                    "value": -1
                 },
                 {
                     "name": "reduce_op",
@@ -1592,9 +1592,9 @@
             ],
             "attrs": [
                 {
-                    "name": "group",
-                    "dtype": "string",
-                    "value": ""
+                    "name": "hccl_buffer_size",
+                    "dtype": "int",
+                    "value": -1
                 },
                 {
                     "name": "reduce_op",
@@ -1654,9 +1654,9 @@
             ],
             "attrs": [
                 {
-                    "name": "group",
-                    "dtype": "string",
-                    "value": ""
+                    "name": "hccl_buffer_size",
+                    "dtype": "int",
+                    "value": -1
                 },
                 {
                     "name": "reduce_op",
@@ -1716,9 +1716,9 @@
             ],
             "attrs": [
                 {
-                    "name": "group",
-                    "dtype": "string",
-                    "value": ""
+                    "name": "hccl_buffer_size",
+                    "dtype": "int",
+                    "value": -1
                 },
                 {
                     "name": "reduce_op",
@@ -1778,9 +1778,9 @@
             ],
             "attrs": [
                 {
-                    "name": "group",
-                    "dtype": "string",
-                    "value": ""
+                    "name": "hccl_buffer_size",
+                    "dtype": "int",
+                    "value": -1
                 },
                 {
                     "name": "reduce_op",
@@ -1840,9 +1840,9 @@
             ],
             "attrs": [
                 {
-                    "name": "group",
-                    "dtype": "string",
-                    "value": ""
+                    "name": "hccl_buffer_size",
+                    "dtype": "int",
+                    "value": -1
                 },
                 {
                     "name": "reduce_op",
