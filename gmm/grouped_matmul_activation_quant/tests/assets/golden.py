@@ -10,9 +10,9 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # ----------------------------------------------------------------------------
 __golden__ = {
-        "kernel": {
-            "grouped_matmul_activation_quant": "grouped_matmul_activation_quant_golden"
-        }
+    "kernel": {
+        "grouped_matmul_activation_quant": "grouped_matmul_activation_quant_golden"
+    }
 }
 
 import numpy as np
@@ -33,23 +33,36 @@ FP8_E5M2_MAX = 57344.0
 QUANT_DTYPE_E5M2 = 35
 QUANT_DTYPE_E4M3FN = 36
 SCALE_ALG_OCP = 0
-BF16_EXP_MASK = 0x7f80
-BF16_EXP_BIAS = 0x7f00
+BF16_EXP_MASK = 0x7F80
+BF16_EXP_BIAS = 0x7F00
 FP8_E4M3_MAX_EXP = 0x0400
 FP8_E5M2_MAX_EXP = 0x0780
-MAX_EXP_FOR_FP8 = 0x00ff
-NAN_CUSTOMIZATION = 0x7f81
+MAX_EXP_FOR_FP8 = 0x00FF
+NAN_CUSTOMIZATION = 0x7F81
 SPECIAL_EXP_THRESHOLD = 0x0040
 GELU_TANH_NEG_SQRT_EIGHT_OVER_PI = -1.595769121 * 0.044715
 GELU_TANH_APPROX_FACTOR = 1.0 / 0.044715
 
 
-def grouped_matmul_activation_quant_golden(x, group_list, weight, weight_scale, bias, activation_type: str, *,
-                                           x_scale=None, transpose_weight: bool = False,
-                                           group_list_type: int = 0, tuning_config=None, quant_mode: str = "",
-                                           y_dtype: int = QUANT_DTYPE_E4M3FN,
-                                           round_mode: str = "rint", scale_alg: int = 0,
-                                           dst_type_max: float = 0.0, **kwargs):
+def grouped_matmul_activation_quant_golden(
+    x,
+    group_list,
+    weight,
+    weight_scale,
+    bias,
+    activation_type: str,
+    *,
+    x_scale=None,
+    transpose_weight: bool = False,
+    group_list_type: int = 0,
+    tuning_config=None,
+    quant_mode: str = "",
+    y_dtype: int = QUANT_DTYPE_E4M3FN,
+    round_mode: str = "rint",
+    scale_alg: int = 0,
+    dst_type_max: float = 0.0,
+    **kwargs,
+):
     del bias, tuning_config, round_mode, dst_type_max
     if activation_type != "gelu_tanh":
         raise ValueError("activation_type only supports gelu_tanh.")
@@ -75,7 +88,9 @@ def grouped_matmul_activation_quant_golden(x, group_list, weight, weight_scale, 
     m, k = x_fp32.shape
     n = _get_n_size(weight_fp32, weight_scale_fp32, transpose_weight)
     if n % N_ALIGN_SIZE != 0:
-        raise ValueError("N must be a multiple of {}, actual is {}.".format(N_ALIGN_SIZE, n))
+        raise ValueError(
+            "N must be a multiple of {}, actual is {}.".format(N_ALIGN_SIZE, n)
+        )
 
     x_dequant = _dequant_x(x_fp32, x_scale_fp32)
     mm_out = np.zeros((m, n), dtype=np.float32)
@@ -85,8 +100,12 @@ def grouped_matmul_activation_quant_golden(x, group_list, weight, weight_scale, 
         if cur_m <= pre_m:
             pre_m = cur_m
             continue
-        weight_dequant = _dequant_weight(weight_fp32, weight_scale_fp32, group_idx, k, n, transpose_weight)
-        mm_out[pre_m:cur_m, :] = _torch_matmul(x_dequant[pre_m:cur_m, :], weight_dequant)
+        weight_dequant = _dequant_weight(
+            weight_fp32, weight_scale_fp32, group_idx, k, n, transpose_weight
+        )
+        mm_out[pre_m:cur_m, :] = _torch_matmul(
+            x_dequant[pre_m:cur_m, :], weight_dequant
+        )
         pre_m = cur_m
 
     activated = _to_bfloat16_float32(_gelu_tanh(mm_out))
@@ -128,7 +147,7 @@ def _dequant_weight(weight, weight_scale, group_idx, k, n, transpose_weight):
     weight_scale_broadcast = np.repeat(weight_scale_g, MXFP_SCALE_ELEMENT_NUM, axis=0)
     k_aligned = weight_scale_broadcast.shape[0]
     weight_padded = np.zeros((k_aligned, n), dtype=np.float32)
-    weight_padded[:weight_g.shape[0], :weight_g.shape[1]] = weight_g[:, :n]
+    weight_padded[: weight_g.shape[0], : weight_g.shape[1]] = weight_g[:, :n]
     return weight_padded * weight_scale_broadcast
 
 
@@ -162,7 +181,11 @@ def _get_n_size(weight, weight_scale, transpose_weight):
     if weight_scale.ndim >= 4:
         return weight_scale.shape[1] if transpose_weight else weight_scale.shape[2]
     if weight.ndim >= 5:
-        return weight.shape[2] * weight.shape[3] if transpose_weight else weight.shape[1] * weight.shape[4]
+        return (
+            weight.shape[2] * weight.shape[3]
+            if transpose_weight
+            else weight.shape[1] * weight.shape[4]
+        )
     if weight.ndim >= 3:
         return weight.shape[-2] if transpose_weight else weight.shape[-1]
     raise ValueError("can not infer N from weight or weight_scale")
@@ -187,7 +210,12 @@ def _torch_matmul(x, weight):
 
 
 def _to_bfloat16_float32(x):
-    return torch.from_numpy(x.astype(np.float32)).to(torch.bfloat16).to(torch.float32).numpy()
+    return (
+        torch.from_numpy(x.astype(np.float32))
+        .to(torch.bfloat16)
+        .to(torch.float32)
+        .numpy()
+    )
 
 
 def _dynamic_quant_fp8(x, y_dtype):
@@ -243,18 +271,18 @@ def _bf16_exp_bits(x):
 def _compute_ocp_scale(max_exp, fp8_max_exp):
     if max_exp <= fp8_max_exp:
         max_exp = fp8_max_exp
-    shared_exp = (max_exp - fp8_max_exp) & 0xffff
+    shared_exp = (max_exp - fp8_max_exp) & 0xFFFF
     if max_exp == BF16_EXP_MASK:
         scale_byte = MAX_EXP_FOR_FP8
         half_scale_bits = NAN_CUSTOMIZATION
     else:
-        scale_byte = (shared_exp >> 7) & 0xff
+        scale_byte = (shared_exp >> 7) & 0xFF
         if shared_exp == 0:
             half_scale_bits = 0
         elif shared_exp == BF16_EXP_BIAS:
             half_scale_bits = SPECIAL_EXP_THRESHOLD
         else:
-            half_scale_bits = (BF16_EXP_BIAS - shared_exp) & 0xffff
+            half_scale_bits = (BF16_EXP_BIAS - shared_exp) & 0xFFFF
     return scale_byte, _bf16_bits_to_float32(half_scale_bits)
 
 
@@ -287,17 +315,25 @@ def _ge_dtype_to_name(dtype):
 def _cast_fp8(x, dtype_name):
     dtype_name = _normalize_dtype_name(dtype_name)
     if dtype_name == "float8_e5m2":
-        return _cast_fp8_from_bytes(_float_to_fp8_bytes(x, exp_bits=5, mant_bits=2, bias=15,
-                                                        max_exp_field=30, max_mant=3), dtype_name)
-    return _cast_fp8_from_bytes(_float_to_fp8_bytes(x, exp_bits=4, mant_bits=3, bias=7,
-                                                    max_exp_field=15, max_mant=6), dtype_name)
+        return _cast_fp8_from_bytes(
+            _float_to_fp8_bytes(
+                x, exp_bits=5, mant_bits=2, bias=15, max_exp_field=30, max_mant=3
+            ),
+            dtype_name,
+        )
+    return _cast_fp8_from_bytes(
+        _float_to_fp8_bytes(
+            x, exp_bits=4, mant_bits=3, bias=7, max_exp_field=15, max_mant=6
+        ),
+        dtype_name,
+    )
 
 
 def _float_to_fp8_bytes(x, *, exp_bits, mant_bits, bias, max_exp_field, max_mant):
     x = np.asarray(x, dtype=np.float32)
     sign = np.signbit(x)
     ax = np.abs(x)
-    sign_bit = (sign.astype(np.uint8) << 7)
+    sign_bit = sign.astype(np.uint8) << 7
     out = sign_bit.copy()
     finite = np.isfinite(ax)
     min_subnormal = np.float32(2.0 ** (1 - bias - mant_bits))
@@ -317,15 +353,25 @@ def _float_to_fp8_bytes(x, *, exp_bits, mant_bits, bias, max_exp_field, max_mant
     exp_unbiased[carry_mask] += 1
     mant[carry_mask] = 0
     exp_field = exp_unbiased + bias
-    over_mask = (exp_field > max_exp_field) | ((exp_field == max_exp_field) & (mant > max_mant))
+    over_mask = (exp_field > max_exp_field) | (
+        (exp_field == max_exp_field) & (mant > max_mant)
+    )
     exp_field = np.where(over_mask, max_exp_field, exp_field)
     mant = np.where(over_mask, max_mant, mant)
     exp_field = np.clip(exp_field, 0, max_exp_field)
     mant = np.clip(mant, 0, (1 << mant_bits) - 1)
-    out[normal_mask] = sign_bit[normal_mask] | (exp_field.astype(np.uint8) << mant_bits) | mant.astype(np.uint8)
+    out[normal_mask] = (
+        sign_bit[normal_mask]
+        | (exp_field.astype(np.uint8) << mant_bits)
+        | mant.astype(np.uint8)
+    )
 
     special_mask = ~finite
-    out[special_mask] = sign_bit[special_mask] | (np.uint8(max_exp_field) << mant_bits) | np.uint8(max_mant)
+    out[special_mask] = (
+        sign_bit[special_mask]
+        | (np.uint8(max_exp_field) << mant_bits)
+        | np.uint8(max_mant)
+    )
     return out
 
 

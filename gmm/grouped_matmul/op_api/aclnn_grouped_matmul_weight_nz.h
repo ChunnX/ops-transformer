@@ -65,21 +65,23 @@ __attribute__((visibility("default"))) aclnnStatus aclnnGroupedMatmulWeightNzGet
     const aclTensorList *antiquantScaleOptional, const aclTensorList *antiquantOffsetOptional,
     const aclTensorList *perTokenScaleOptional, const aclTensor *groupListOptional,
     const aclTensorList *activationInputOptional, const aclTensorList *activationQuantScaleOptional,
-    const aclTensorList *activationQuantOffsetOptional,  int64_t splitItem, int64_t groupType,
-    int64_t groupListType, int64_t actType, aclIntArray *tuningConfigOptional, int64_t quantGroupSize, aclTensorList *out, aclTensorList *activationFeatureOutOptional,
-    aclTensorList *dynQuantScaleOutOptional, uint64_t *workspaceSize,
+    const aclTensorList *activationQuantOffsetOptional, int64_t splitItem, int64_t groupType, int64_t groupListType,
+    int64_t actType, aclIntArray *tuningConfigOptional, int64_t quantGroupSize, aclTensorList *out,
+    aclTensorList *activationFeatureOutOptional, aclTensorList *dynQuantScaleOutOptional, uint64_t *workspaceSize,
     aclOpExecutor **executor);
 
 /**
  * @brief aclnnGroupedMatmulWeightNz的第二段接口，用于执行计算。
  * @param [in] workspace: 在npu device侧申请的workspace内存起址。
- * @param [in] workspaceSize: 在npu device侧申请的workspace大小，由第一段接口aclnnGroupedMatmulWeightNzGetWorkspaceSize获取。
+ * @param [in] workspaceSize: 在npu
+ * device侧申请的workspace大小，由第一段接口aclnnGroupedMatmulWeightNzGetWorkspaceSize获取。
  * @param [in] stream: acl stream流。
  * @param [in] executor: op执行器，包含了算子计算流程。
  * @return aclnnStatus: 返回状态码。
  */
-__attribute__((visibility("default"))) aclnnStatus aclnnGroupedMatmulWeightNz(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor,
-                                            aclrtStream stream);
+__attribute__((visibility("default"))) aclnnStatus aclnnGroupedMatmulWeightNz(void *workspace, uint64_t workspaceSize,
+                                                                              aclOpExecutor *executor,
+                                                                              aclrtStream stream);
 
 #ifdef __cplusplus
 }

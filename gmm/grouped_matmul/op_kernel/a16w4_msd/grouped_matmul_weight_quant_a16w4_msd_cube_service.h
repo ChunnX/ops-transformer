@@ -49,7 +49,8 @@ private:
     __aicore__ inline void LoadWeightS8ToL0b(uint64_t kL1Offset, const A16W4MsdBasicBlockOffsetParam &curOffsetParam);
     __aicore__ inline void MmadC2S32(uint64_t kL0RealSize, const A16W4MsdBasicBlockOffsetParam &curOffsetParam);
     __aicore__ inline void FixpC2S32ToL1(uint64_t kLoopId, const DataCopyCO12DstParams &params);
-    __aicore__ inline void LoadAS8ToL0a(uint64_t kL1BaseOffset, uint64_t kL1Offset, const A16W4MsdBasicBlockOffsetParam &curOffsetParam);
+    __aicore__ inline void LoadAS8ToL0a(uint64_t kL1BaseOffset, uint64_t kL1Offset,
+                                        const A16W4MsdBasicBlockOffsetParam &curOffsetParam);
     __aicore__ inline void MmadC1F32(uint64_t kL0RealSize, const A16W4MsdBasicBlockOffsetParam &curOffsetParam);
     __aicore__ inline void LoadCF16ToL0b(uint64_t kLoopIdx, uint64_t cF16BufId,
                                          const A16W4MsdBasicBlockOffsetParam &curOffsetParam);
@@ -63,23 +64,23 @@ private:
     GlobalTensor<mm1InputType> aUnfoldGm_;
     GlobalTensor<mm1OutputType> cF32Gm_;
 
-    LocalTensor<mm1InputType> wS8L1_;        // 320k 320 * 512
-    LocalTensor<mm1InputType> aUnfoldS8L1_;  // 64k // 64 * 512
-    LocalTensor<half> cFp16L1_;              // 128 k // 64 * 256
+    LocalTensor<mm1InputType> wS8L1_;       // 320k 320 * 512
+    LocalTensor<mm1InputType> aUnfoldS8L1_; // 64k // 64 * 512
+    LocalTensor<half> cFp16L1_;             // 128 k // 64 * 256
 
     LocalTensor<int8_t> s8l0a_;
     LocalTensor<int8_t> s8l0b_;
-    LocalTensor<bfloat16_t> datoMatrixFp16l0b_;  // dato算法的右常数矩阵
-    LocalTensor<bfloat16_t> datoMatrixFp16l0a_;  // dato算法的左常数矩阵
-    LocalTensor<half> constMatrix2Fp16l0a_;      // 系数2的矩阵
+    LocalTensor<bfloat16_t> datoMatrixFp16l0b_; // dato算法的右常数矩阵
+    LocalTensor<bfloat16_t> datoMatrixFp16l0a_; // dato算法的左常数矩阵
+    LocalTensor<half> constMatrix2Fp16l0a_;     // 系数2的矩阵
     LocalTensor<int32_t> s32l0c_;
 
     LocalTensor<int32_t> datoBiasBT_;
 
-    uint64_t loopIdx_ = 0;        // l1的计数器
-    uint64_t loopL0abIdx_ = 0;    // l0ab的计数器
-    uint64_t loopL0cIdx_ = 0;     // l0c的计数器
-    uint64_t loopCF16L1Idx_ = 0;  // c2矩阵的计数器
+    uint64_t loopIdx_ = 0;       // l1的计数器
+    uint64_t loopL0abIdx_ = 0;   // l0ab的计数器
+    uint64_t loopL0cIdx_ = 0;    // l0c的计数器
+    uint64_t loopCF16L1Idx_ = 0; // c2矩阵的计数器
 
     static constexpr uint64_t S8_L1_BUF_NUM = 2;
     static constexpr uint64_t L0AB_BUF_NUM = 3;
@@ -110,7 +111,7 @@ private:
     static constexpr uint64_t WEIGHT_S8_L1_BUFFER_OFFSET = 320 * 512;
     static constexpr uint64_t A_UNFOLD_L1_BUFFER_OFFSET = 64 * 512;
 
-    static constexpr AscendC::IsResetLoad3dConfig LOAD3DV2_CONFIG = {true, true};  // isSetFMatrix isSetPadding;
+    static constexpr AscendC::IsResetLoad3dConfig LOAD3DV2_CONFIG = {true, true}; // isSetFMatrix isSetPadding;
 };
 
 GMM_WQ_A16W4_MSD_CUBE_SERVICE_TEMPLATE_PARAM
@@ -171,7 +172,7 @@ __aicore__ inline void GMM_WQ_A16W4_MSD_CUBE_SERVICE_CLASS::InitDato(TPipe *tPip
     // 初始化bias
     InitConstValueParams<int32_t> initDatoBiasParams;
     initDatoBiasParams.repeatTimes = 1;
-    initDatoBiasParams.blockNum = 32;  // 默认初始化长度是256
+    initDatoBiasParams.blockNum = 32; // 默认初始化长度是256
     initDatoBiasParams.dstGap = 0;
     initDatoBiasParams.initValue = 1260388352;
     AscendC::InitConstValue(cFp16L1_.template ReinterpretCast<int32_t>()[1024], initDatoBiasParams);
@@ -181,7 +182,7 @@ __aicore__ inline void GMM_WQ_A16W4_MSD_CUBE_SERVICE_CLASS::InitDato(TPipe *tPip
     // dato初始化
     InitConstValueParams<bfloat16_t> initDatoL0bParams;
     initDatoL0bParams.repeatTimes = 1;
-    initDatoL0bParams.blockNum = 16;  // k:16 * n:256的矩阵
+    initDatoL0bParams.blockNum = 16; // k:16 * n:256的矩阵
     initDatoL0bParams.dstGap = 0;
     initDatoL0bParams.initValue = 5;
     AscendC::InitConstValue(datoMatrixFp16l0b_, initDatoL0bParams);
@@ -222,7 +223,7 @@ __aicore__ inline void GMM_WQ_A16W4_MSD_CUBE_SERVICE_CLASS::InitMatDuceL0()
 #endif
 
     DataCopyParams dmaParams;
-    dmaParams.blockCount = 1;  // 对角阵默认1024B,总共8个blk
+    dmaParams.blockCount = 1; // 对角阵默认1024B,总共8个blk
     dmaParams.blockLen = 16;
     dmaParams.srcStride = 0;
     dmaParams.dstStride = 0;
@@ -246,8 +247,9 @@ __aicore__ inline void GMM_WQ_A16W4_MSD_CUBE_SERVICE_CLASS::UpdateGlobalAddr(__g
 }
 
 GMM_WQ_A16W4_MSD_CUBE_SERVICE_TEMPLATE_PARAM
-__aicore__ inline void GMM_WQ_A16W4_MSD_CUBE_SERVICE_CLASS::ComputeA8W8MatDuce(
-    uint64_t cvLoopIdx, const A16W4MsdConstParam &constParams, const A16W4MsdBasicBlockOffsetParam &curOffsetParam)
+__aicore__ inline void
+GMM_WQ_A16W4_MSD_CUBE_SERVICE_CLASS::ComputeA8W8MatDuce(uint64_t cvLoopIdx, const A16W4MsdConstParam &constParams,
+                                                        const A16W4MsdBasicBlockOffsetParam &curOffsetParam)
 {
     WaitFlag<HardEvent::MTE1_MTE2>(MTE1_MTE2_EVENT + loopIdx_ % S8_L1_BUF_NUM);
     DataCopyGmToL1(0, curOffsetParam.kUbSize > K_L1_BASE_SIZE ? K_L1_BASE_SIZE : curOffsetParam.kUbSize, cvLoopIdx,
@@ -278,8 +280,9 @@ __aicore__ inline void GMM_WQ_A16W4_MSD_CUBE_SERVICE_CLASS::ComputeA8W8MatDuce(
 }
 
 GMM_WQ_A16W4_MSD_CUBE_SERVICE_TEMPLATE_PARAM
-__aicore__ inline void GMM_WQ_A16W4_MSD_CUBE_SERVICE_CLASS::ComputeC2S32ToL1(
-    uint64_t kL1BaseOffset, const A16W4MsdBasicBlockOffsetParam &curOffsetParam)
+__aicore__ inline void
+GMM_WQ_A16W4_MSD_CUBE_SERVICE_CLASS::ComputeC2S32ToL1(uint64_t kL1BaseOffset,
+                                                      const A16W4MsdBasicBlockOffsetParam &curOffsetParam)
 {
     DataCopyCO12DstParams params;
     params.mSize = curOffsetParam.mL1Size;
@@ -294,14 +297,14 @@ __aicore__ inline void GMM_WQ_A16W4_MSD_CUBE_SERVICE_CLASS::ComputeC2S32ToL1(
     for (uint64_t kL1Offset = 0; kL1Offset < 4 * K_L0_BASE_SIZE; kL1Offset += K_L0_BASE_SIZE) {
         WaitFlag<HardEvent::M_MTE1>(M_MTE1_EVENT + loopL0abIdx_ % L0AB_BUF_NUM);
         uint64_t kL1RealOffset = kL1BaseOffset + kL1Offset;
-        LoadAS8ToL0a(K_L1_BASE_SIZE, kL1RealOffset, curOffsetParam);  // 32 * 32
+        LoadAS8ToL0a(K_L1_BASE_SIZE, kL1RealOffset, curOffsetParam); // 32 * 32
 
-        LoadWeightS8ToL0b(kL1RealOffset, curOffsetParam);  // 256 * 32
+        LoadWeightS8ToL0b(kL1RealOffset, curOffsetParam); // 256 * 32
         WaitFlag<HardEvent::FIX_M>(FIX_M_EVENT + loopL0cIdx_ % L0C_BUF_NUM);
         MmadC2S32(K_L0_BASE_SIZE, curOffsetParam);
         SetFlag<HardEvent::M_MTE1>(M_MTE1_EVENT + loopL0abIdx_ % L0AB_BUF_NUM);
         loopL0abIdx_++;
-        FixpC2S32ToL1(kL1Offset / K_L0_BASE_SIZE, params);  // 32k 一次fixp
+        FixpC2S32ToL1(kL1Offset / K_L0_BASE_SIZE, params); // 32k 一次fixp
         SetFlag<HardEvent::FIX_M>(FIX_M_EVENT + loopL0cIdx_ % L0C_BUF_NUM);
         loopL0cIdx_++;
     }
@@ -310,9 +313,10 @@ __aicore__ inline void GMM_WQ_A16W4_MSD_CUBE_SERVICE_CLASS::ComputeC2S32ToL1(
 }
 
 GMM_WQ_A16W4_MSD_CUBE_SERVICE_TEMPLATE_PARAM
-__aicore__ inline void GMM_WQ_A16W4_MSD_CUBE_SERVICE_CLASS::ComputeCFp32ToGm(
-    uint64_t kL1BaseOffset, uint64_t loopCF16L1Idx, uint64_t cvLoopIdx, const A16W4MsdConstParam &constParams,
-    const A16W4MsdBasicBlockOffsetParam &curOffsetParam)
+__aicore__ inline void
+GMM_WQ_A16W4_MSD_CUBE_SERVICE_CLASS::ComputeCFp32ToGm(uint64_t kL1BaseOffset, uint64_t loopCF16L1Idx,
+                                                      uint64_t cvLoopIdx, const A16W4MsdConstParam &constParams,
+                                                      const A16W4MsdBasicBlockOffsetParam &curOffsetParam)
 {
     DataCopyCO12DstParams intriParams;
     intriParams.mSize = curOffsetParam.mL1Size;
@@ -327,9 +331,9 @@ __aicore__ inline void GMM_WQ_A16W4_MSD_CUBE_SERVICE_CLASS::ComputeCFp32ToGm(
     for (uint64_t kL1Offset = 0; kL1Offset < 4 * K_L0_BASE_SIZE; kL1Offset += K_L0_BASE_SIZE) {
         WaitFlag<HardEvent::M_MTE1>(M_MTE1_EVENT + loopL0abIdx_ % L0AB_BUF_NUM);
         uint64_t kL1RealOffset = kL1BaseOffset + kL1Offset;
-        LoadAS8ToL0a(0, kL1RealOffset, curOffsetParam);  // 32 * 32
+        LoadAS8ToL0a(0, kL1RealOffset, curOffsetParam); // 32 * 32
 
-        LoadWeightS8ToL0b(kL1RealOffset, curOffsetParam);  // 256 * 32
+        LoadWeightS8ToL0b(kL1RealOffset, curOffsetParam); // 256 * 32
         WaitFlag<HardEvent::FIX_M>(FIX_M_EVENT + loopL0cIdx_ % L0C_BUF_NUM);
         if (unlikely(kL1RealOffset == KL1_BASE_SIZE)) {
             SetFlag<HardEvent::MTE1_MTE2>(MTE1_MTE2_EVENT + loopIdx_ % S8_L1_BUF_NUM);
@@ -352,16 +356,17 @@ __aicore__ inline void GMM_WQ_A16W4_MSD_CUBE_SERVICE_CLASS::ComputeCFp32ToGm(
 }
 
 GMM_WQ_A16W4_MSD_CUBE_SERVICE_TEMPLATE_PARAM
-__aicore__ inline void GMM_WQ_A16W4_MSD_CUBE_SERVICE_CLASS::DataCopyGmToL1(
-    uint64_t kGmOffset, uint64_t kL1RealSize, uint64_t cvLoopIdx, const A16W4MsdConstParam &constParams,
-    const A16W4MsdBasicBlockOffsetParam &curOffsetParam)
+__aicore__ inline void
+GMM_WQ_A16W4_MSD_CUBE_SERVICE_CLASS::DataCopyGmToL1(uint64_t kGmOffset, uint64_t kL1RealSize, uint64_t cvLoopIdx,
+                                                    const A16W4MsdConstParam &constParams,
+                                                    const A16W4MsdBasicBlockOffsetParam &curOffsetParam)
 {
     uint64_t loopIdx = loopIdx_ + (kGmOffset >= KL1_BASE_SIZE);
     // B矩阵 GmToL1
     Nd2NzParams nd2nzPara;
     nd2nzPara.ndNum = 1;
     nd2nzPara.dstNzNStride = 1;
-    nd2nzPara.nValue = curOffsetParam.nL1Size;  // 行数
+    nd2nzPara.nValue = curOffsetParam.nL1Size; // 行数
     nd2nzPara.dValue = kL1RealSize;
     nd2nzPara.srcDValue = BASE_KUB_SIZE;
     nd2nzPara.dstNzC0Stride = CeilAlign(curOffsetParam.nL1Size, (uint64_t)BLOCK_CUBE);
@@ -369,10 +374,10 @@ __aicore__ inline void GMM_WQ_A16W4_MSD_CUBE_SERVICE_CLASS::DataCopyGmToL1(
              weightS8Gm_[(cvLoopIdx % CV_LOOP_BUF_NUM) * WORKSPACE_CACHE_WEIGHT_S8_SIZE + kGmOffset], nd2nzPara);
 
     // A矩阵 GmToL1 32 * 512
-    nd2nzPara.nValue = curOffsetParam.mL1Size;  // 行数
+    nd2nzPara.nValue = curOffsetParam.mL1Size; // 行数
     nd2nzPara.dValue = kL1RealSize;
     nd2nzPara.srcDValue = constParams.kSize;
-    nd2nzPara.dstNzC0Stride = CeilAlign(curOffsetParam.mL1Size, (uint64_t)BLOCK_CUBE);  // 对齐到16 单位block
+    nd2nzPara.dstNzC0Stride = CeilAlign(curOffsetParam.mL1Size, (uint64_t)BLOCK_CUBE); // 对齐到16 单位block
     // 默认一块buf最多放两份
     DataCopy(aUnfoldS8L1_[(loopIdx % S8_L1_BUF_NUM) * A_UNFOLD_L1_BUFFER_OFFSET],
              aUnfoldGm_[curOffsetParam.mOffset * constParams.kSize + kGmOffset + curOffsetParam.kOffset], nd2nzPara);
@@ -385,8 +390,9 @@ __aicore__ inline void GMM_WQ_A16W4_MSD_CUBE_SERVICE_CLASS::DataCopyGmToL1(
 
 // 256 * 32
 GMM_WQ_A16W4_MSD_CUBE_SERVICE_TEMPLATE_PARAM
-__aicore__ inline void GMM_WQ_A16W4_MSD_CUBE_SERVICE_CLASS::LoadWeightS8ToL0b(
-    uint64_t kL1Offset, const A16W4MsdBasicBlockOffsetParam &curOffsetParam)
+__aicore__ inline void
+GMM_WQ_A16W4_MSD_CUBE_SERVICE_CLASS::LoadWeightS8ToL0b(uint64_t kL1Offset,
+                                                       const A16W4MsdBasicBlockOffsetParam &curOffsetParam)
 {
     uint64_t realL1LoopId = kL1Offset >= KL1_BASE_SIZE ? loopIdx_ + 1 : loopIdx_;
     LoadData2DParams l1ToL0bParams;
@@ -402,8 +408,9 @@ __aicore__ inline void GMM_WQ_A16W4_MSD_CUBE_SERVICE_CLASS::LoadWeightS8ToL0b(
 }
 
 GMM_WQ_A16W4_MSD_CUBE_SERVICE_TEMPLATE_PARAM
-__aicore__ inline void GMM_WQ_A16W4_MSD_CUBE_SERVICE_CLASS::MmadC2S32(
-    uint64_t kL0RealSize, const A16W4MsdBasicBlockOffsetParam &curOffsetParam)
+__aicore__ inline void
+GMM_WQ_A16W4_MSD_CUBE_SERVICE_CLASS::MmadC2S32(uint64_t kL0RealSize,
+                                               const A16W4MsdBasicBlockOffsetParam &curOffsetParam)
 {
     SetFlag<HardEvent::MTE1_M>(MTE1_M_EVENT);
     WaitFlag<HardEvent::MTE1_M>(MTE1_M_EVENT);
@@ -431,8 +438,9 @@ __aicore__ inline void GMM_WQ_A16W4_MSD_CUBE_SERVICE_CLASS::FixpC2S32ToL1(uint64
 
 // 32 * 32
 GMM_WQ_A16W4_MSD_CUBE_SERVICE_TEMPLATE_PARAM
-__aicore__ inline void GMM_WQ_A16W4_MSD_CUBE_SERVICE_CLASS::LoadAS8ToL0a(
-    uint64_t kL1BaseOffset, uint64_t kL1Offset, const A16W4MsdBasicBlockOffsetParam &curOffsetParam)
+__aicore__ inline void
+GMM_WQ_A16W4_MSD_CUBE_SERVICE_CLASS::LoadAS8ToL0a(uint64_t kL1BaseOffset, uint64_t kL1Offset,
+                                                  const A16W4MsdBasicBlockOffsetParam &curOffsetParam)
 {
     uint64_t realL1LoopId = kL1Offset >= KL1_BASE_SIZE ? loopIdx_ + 1 : loopIdx_;
     LoadData2DParams l1ToL0aParams;
@@ -449,8 +457,9 @@ __aicore__ inline void GMM_WQ_A16W4_MSD_CUBE_SERVICE_CLASS::LoadAS8ToL0a(
 }
 
 GMM_WQ_A16W4_MSD_CUBE_SERVICE_TEMPLATE_PARAM
-__aicore__ inline void GMM_WQ_A16W4_MSD_CUBE_SERVICE_CLASS::MmadC1F32(
-    uint64_t kL0RealSize, const A16W4MsdBasicBlockOffsetParam &curOffsetParam)
+__aicore__ inline void
+GMM_WQ_A16W4_MSD_CUBE_SERVICE_CLASS::MmadC1F32(uint64_t kL0RealSize,
+                                               const A16W4MsdBasicBlockOffsetParam &curOffsetParam)
 {
     SetFlag<HardEvent::MTE1_M>(MTE1_M_EVENT);
     WaitFlag<HardEvent::MTE1_M>(MTE1_M_EVENT);
@@ -459,7 +468,8 @@ __aicore__ inline void GMM_WQ_A16W4_MSD_CUBE_SERVICE_CLASS::MmadC1F32(
     mmadParams.n = curOffsetParam.nL1Size;
     mmadParams.k = kL0RealSize;
     mmadParams.cmatrixInitVal = false;
-    // dato的乘法 将s32的l0c变fp32，当前后移到vec处理，如果cube实现，需要对datoMatrixFp16l0a_和datoMatrixFp16l0b_执行mmad并累加
+    // dato的乘法
+    // 将s32的l0c变fp32，当前后移到vec处理，如果cube实现，需要对datoMatrixFp16l0a_和datoMatrixFp16l0b_执行mmad并累加
     Mmad(s32l0c_[(loopL0cIdx_ % L0C_BUF_NUM) * L0C_4BUFF_OFFSET],
          s8l0a_[(loopL0abIdx_ % L0AB_BUF_NUM) * L0AB_S8_4BUFF_OFFSET],
          s8l0b_[(loopL0abIdx_ % L0AB_BUF_NUM) * L0AB_S8_4BUFF_OFFSET], datoBiasBT_, mmadParams);
@@ -469,23 +479,24 @@ __aicore__ inline void GMM_WQ_A16W4_MSD_CUBE_SERVICE_CLASS::MmadC1F32(
 
 // 32 * 256
 GMM_WQ_A16W4_MSD_CUBE_SERVICE_TEMPLATE_PARAM
-__aicore__ inline void GMM_WQ_A16W4_MSD_CUBE_SERVICE_CLASS::LoadCF16ToL0b(
-    uint64_t kLoopIdx, uint64_t cF16BufId, const A16W4MsdBasicBlockOffsetParam &curOffsetParam)
+__aicore__ inline void
+GMM_WQ_A16W4_MSD_CUBE_SERVICE_CLASS::LoadCF16ToL0b(uint64_t kLoopIdx, uint64_t cF16BufId,
+                                                   const A16W4MsdBasicBlockOffsetParam &curOffsetParam)
 {
     AscendC::LoadData3DParamsV2<half> loadData3DParams;
     // SetFmatrixParams
-    loadData3DParams.l1H = CeilDiv(curOffsetParam.mL1Size, (uint64_t)BLOCK_CUBE);            // Hin=M1=8
-    loadData3DParams.l1W = BLOCK_CUBE;                                                       // Win=M0
-    loadData3DParams.channelSize = CeilAlign(curOffsetParam.nL1Size, (uint64_t)BLOCK_CUBE);  // Cin=K
+    loadData3DParams.l1H = CeilDiv(curOffsetParam.mL1Size, (uint64_t)BLOCK_CUBE);           // Hin=M1=8
+    loadData3DParams.l1W = BLOCK_CUBE;                                                      // Win=M0
+    loadData3DParams.channelSize = CeilAlign(curOffsetParam.nL1Size, (uint64_t)BLOCK_CUBE); // Cin=K
 
     loadData3DParams.padList[0] = 0;
     loadData3DParams.padList[1] = 0;
     loadData3DParams.padList[2] = 0;
-    loadData3DParams.padList[3] = 255;  // 尾部数据不影响滑窗的结果
+    loadData3DParams.padList[3] = 255; // 尾部数据不影响滑窗的结果
 
     // SetLoadToA0Params
-    loadData3DParams.mExtension = curOffsetParam.mL1Size;                                   // M height维度目的
-    loadData3DParams.kExtension = CeilAlign(curOffsetParam.nL1Size, (uint64_t)BLOCK_CUBE);  // K   width维度目的
+    loadData3DParams.mExtension = curOffsetParam.mL1Size;                                  // M height维度目的
+    loadData3DParams.kExtension = CeilAlign(curOffsetParam.nL1Size, (uint64_t)BLOCK_CUBE); // K   width维度目的
     loadData3DParams.kStartPt = 0;
     loadData3DParams.strideW = 1;
     loadData3DParams.strideH = 1;
@@ -506,8 +517,8 @@ __aicore__ inline void GMM_WQ_A16W4_MSD_CUBE_SERVICE_CLASS::LoadCF16ToL0b(
 
 // 32 * 256 @ 64 * 64
 GMM_WQ_A16W4_MSD_CUBE_SERVICE_TEMPLATE_PARAM
-__aicore__ inline void GMM_WQ_A16W4_MSD_CUBE_SERVICE_CLASS::MmadCF16ConstMatrix(
-    const A16W4MsdBasicBlockOffsetParam &curOffsetParam)
+__aicore__ inline void
+GMM_WQ_A16W4_MSD_CUBE_SERVICE_CLASS::MmadCF16ConstMatrix(const A16W4MsdBasicBlockOffsetParam &curOffsetParam)
 {
     SetFlag<HardEvent::MTE1_M>(MTE1_M_EVENT);
     WaitFlag<HardEvent::MTE1_M>(MTE1_M_EVENT);
@@ -548,6 +559,6 @@ __aicore__ inline void GMM_WQ_A16W4_MSD_CUBE_SERVICE_CLASS::EndMsd()
     }
 }
 
-}  // namespace GROUPED_MATMUL::A16W4Msd
+} // namespace GROUPED_MATMUL::A16W4Msd
 
-#endif  // GROUPED_MATMUL_WEIGHT_QUANT_CUBE_COMPUTE_H
+#endif // GROUPED_MATMUL_WEIGHT_QUANT_CUBE_COMPUTE_H

@@ -51,8 +51,9 @@ class BlockMmadBuilder {
 template <class AType_, class LayoutA_, class BType_, class LayoutB_, class CType_, class LayoutC_, class BiasType_,
           class LayoutBias_, class L1TileShape_, class L0TileShape_, class BlockScheduler_, class BlockMatmulPolicy_,
           class TileCopyParam_>
-class BlockMmadBuilder<AType_, LayoutA_, BType_, LayoutB_, CType_, LayoutC_, BiasType_, LayoutBias_, L1TileShape_,
-    L0TileShape_, BlockScheduler_, BlockMatmulPolicy_, TileCopyParam_,
+class BlockMmadBuilder<
+    AType_, LayoutA_, BType_, LayoutB_, CType_, LayoutC_, BiasType_, LayoutBias_, L1TileShape_, L0TileShape_,
+    BlockScheduler_, BlockMatmulPolicy_, TileCopyParam_,
     AscendC::Std::enable_if_t<AscendC::Std::is_base_of_v<MatmulMultiBlockWithLayout<>, BlockMatmulPolicy_> ||
                               AscendC::Std::is_base_of_v<MatmulNaivePipelineWithLayout<>, BlockMatmulPolicy_> ||
                               AscendC::Std::is_base_of_v<MatmulMultiBlockWithOutQue<>, BlockMatmulPolicy_> ||
@@ -106,10 +107,13 @@ public:
     // params
     using Params = Arguments;
 
-    __aicore__ inline BlockMmadBuilder() {}
+    __aicore__ inline BlockMmadBuilder()
+    {
+    }
 
-    __aicore__ inline ~BlockMmadBuilder() {}
-
+    __aicore__ inline ~BlockMmadBuilder()
+    {
+    }
 };
 } // namespace Block
 } // namespace Gemm

@@ -15,23 +15,23 @@ using namespace gmm;
 
 namespace {
 static const std::unordered_set<DataType> FP8_SUPPORT_SET = {ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E5M2, ge::DT_HIFLOAT8};
-static constexpr int64_t X_Y_SEPARATED = 0L;  // x,y no split
-static constexpr int64_t Y_SEPARATED = 1L;    // x split
-static constexpr int64_t X_SEPARATED = 2L;    // y split
-static constexpr int64_t NO_SEPARATED = 3L;   // x,y split
+static constexpr int64_t X_Y_SEPARATED = 0L; // x,y no split
+static constexpr int64_t Y_SEPARATED = 1L;   // x split
+static constexpr int64_t X_SEPARATED = 2L;   // y split
+static constexpr int64_t NO_SEPARATED = 3L;  // x,y split
 static constexpr int64_t MAX_GROUP_LIST_SIZE_ARRAY = 128L;
 static constexpr int64_t MULTI_WEIGHT_DIM = 2UL;
 static constexpr int64_t MULTI_WEIGHT_NZ_DIM = 4UL;
-}  // namespace
+} // namespace
 
 std::string AclnnGroupedMatmulWeightQuantDAV3510Checker::GetDataFlowString() const
 {
     return "when the dtype of x is " + std::string(op::ToString(xDtype_).GetString()) + " and the dtype of weight is " +
-        std::string(op::ToString(weightDtype_).GetString());
+           std::string(op::ToString(weightDtype_).GetString());
 }
 
 // 根据 apiVersion 返回对应的 aclnn 函数名字符串
-const char* AclnnGroupedMatmulWeightQuantDAV3510Checker::GetAclnnName() const
+const char *AclnnGroupedMatmulWeightQuantDAV3510Checker::GetAclnnName() const
 {
     switch (gmmParams_.apiVersion) {
         case gmm::GMMApiVersion::V1:
@@ -131,7 +131,8 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckTensorNotNullPtr(c
     const aclTensor *tensor = (*tensorList)[idx];
     if (unlikely(tensor == nullptr)) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GetAclnnName(), tensorType, "nullptr",
-            tensorType + "[" + std::to_string(idx) + "] is null, which is not supported");
+                                              tensorType + "[" + std::to_string(idx) +
+                                                  "] is null, which is not supported");
         return ACLNN_ERR_PARAM_NULLPTR;
     }
     return ACLNN_SUCCESS;
@@ -144,12 +145,10 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckTensorDtype(const 
     const aclTensor *tensor = (*tensorList)[idx];
     if (unlikely(tensor->GetDataType() != tensorDtype)) {
         std::string incorrectDtypes = std::string(op::ToString(tensor->GetDataType()).GetString());
-        std::string reason = "The dtype of each tensor in " + tensorType +
-            " tensor list must be consistent. " + tensorType + "[" + std::to_string(idx) +
-            "]'s dtype [" + incorrectDtypes + "] is different from the expected dtype [" +
-            op::ToString(tensorDtype).GetString() + "]";
-        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(GetAclnnName(), tensorType,
-            incorrectDtypes, reason);
+        std::string reason = "The dtype of each tensor in " + tensorType + " tensor list must be consistent. " +
+                             tensorType + "[" + std::to_string(idx) + "]'s dtype [" + incorrectDtypes +
+                             "] is different from the expected dtype [" + op::ToString(tensorDtype).GetString() + "]";
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(GetAclnnName(), tensorType, incorrectDtypes, reason);
         return ACLNN_ERR_PARAM_INVALID;
     }
     return ACLNN_SUCCESS;
@@ -163,7 +162,7 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckTensorShape(const 
     auto wShape = (*gmmParams_.weight)[idx]->GetViewShape();
 
     size_t tensorDimNum = tensorShape.GetDimNum();
-    size_t expectedDimNum = gmmParams_.groupType == SPLIT_M ? 2 : 1;  // 单单单场景默认维度为2，多多多场景默认维度为1
+    size_t expectedDimNum = gmmParams_.groupType == SPLIT_M ? 2 : 1; // 单单单场景默认维度为2，多多多场景默认维度为1
 
     if ((IsA16MxFp4NZ() || IsS8S4NZ()) && tensorType.find("antiquant") != std::string::npos) {
         expectedDimNum = 3; // Mx / PerGroup量化，仅支持antiquantSacle/antiquantOffset维度为3
@@ -176,14 +175,13 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckTensorShape(const 
             expectedDimNum = IsMultiTensorWeight() ? MX_MULTI_BIAS_DIM : MX_SINGLE_BIAS_DIM;
         }
     } else if (IsA16W4() && tensorType.find("antiquant") != std::string::npos) {
-        size_t perchannelDim = gmmParams_.groupType == SPLIT_M ? 2 : 1;  // 单单单场景默认维度为2，多多多场景默认维度为1
+        size_t perchannelDim = gmmParams_.groupType == SPLIT_M ? 2 : 1; // 单单单场景默认维度为2，多多多场景默认维度为1
         size_t pergroupDim = perchannelDim + 1;
         if (tensorDimNum != perchannelDim && tensorDimNum != pergroupDim) {
             std::string reason = "When x_dtype-weight_dtype is fp16/bf16-int4, Dim must be [" +
                                  std::to_string(perchannelDim) + "] (perchannel) or [" + std::to_string(pergroupDim) +
                                  "] (pergroup), but now is [" + std::to_string(tensorDimNum) + "]";
-            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(GetAclnnName(), tensorType,
-                std::to_string(tensorDimNum), reason);
+            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(GetAclnnName(), tensorType, std::to_string(tensorDimNum), reason);
             return ACLNN_ERR_PARAM_INVALID;
         }
         expectedDimNum = tensorDimNum;
@@ -192,8 +190,7 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckTensorShape(const 
     if (unlikely(tensorDimNum != expectedDimNum)) {
         std::string incorrectDim = std::to_string(tensorDimNum);
         std::string reason = "Dim must be [" + std::to_string(expectedDimNum) + "], but now is [" + incorrectDim + "]";
-        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(GetAclnnName(), tensorType,
-            incorrectDim, reason);
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(GetAclnnName(), tensorType, incorrectDim, reason);
         return ACLNN_ERR_PARAM_INVALID;
     }
 
@@ -203,9 +200,8 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckTensorShape(const 
         if (unlikely(batchSize != groupNum)) {
             std::string incorrectValue = std::to_string(batchSize);
             std::string reason = "batch size[" + incorrectValue + "] should be equal with groupList length[" +
-                std::to_string(groupNum) + "]";
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GetAclnnName(), tensorType,
-                incorrectValue, reason);
+                                 std::to_string(groupNum) + "]";
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GetAclnnName(), tensorType, incorrectValue, reason);
             return ACLNN_ERR_PARAM_INVALID;
         }
     }
@@ -222,9 +218,8 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckTensorShape(const 
     if (unlikely(tensorNDimValue != weightNDimValue)) {
         std::string incorrectValues = std::to_string(tensorNDimValue) + ", " + std::to_string(weightNDimValue);
         std::string reason = "NDim[" + std::to_string(tensorNDimValue) + "] of " + tensorType +
-            " must be equal to NDim[" + std::to_string(weightNDimValue) + "] of weight";
-        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(GetAclnnName(), tensorType + ", weight",
-            incorrectValues, reason);
+                             " must be equal to NDim[" + std::to_string(weightNDimValue) + "] of weight";
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(GetAclnnName(), tensorType + ", weight", incorrectValues, reason);
         return ACLNN_ERR_PARAM_INVALID;
     }
 
@@ -242,8 +237,8 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckWeightInnerAxisEve
         int64_t evenDivider = 2;
         if (unlikely(wShape.GetDim(weightLastDimIdx) % evenDivider != 0)) {
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(GetAclnnName(), "weight",
-                std::to_string(wShape.GetDim(weightLastDimIdx)),
-                "The last axis of each weight tensor must be even");
+                                                  std::to_string(wShape.GetDim(weightLastDimIdx)),
+                                                  "The last axis of each weight tensor must be even");
             return ACLNN_ERR_PARAM_INVALID;
         }
     }
@@ -256,8 +251,7 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckAntiQuantParams() 
     // 多多多场景antiQuantScale可能为[(0)]，此时会被aclnn_grouped_matmul.cpp中的CheckOptionalTensorListEmpty置为nullptr
     auto w0Shape = (*gmmParams_.weight)[0]->GetViewShape();
     int64_t w0NDim = w0Shape.GetDim(w0Shape.GetDimNum() - 1);
-    bool antiquantScaleNullFlag =
-        gmmParams_.groupType == NO_SPLIT && gmmParams_.weight->Size() == 1 && w0NDim == 0;
+    bool antiquantScaleNullFlag = gmmParams_.groupType == NO_SPLIT && gmmParams_.weight->Size() == 1 && w0NDim == 0;
     if (!antiquantScaleNullFlag) {
         CHECK_COND(gmmParams_.antiquantScaleOptional != nullptr, ACLNN_ERR_PARAM_NULLPTR,
                    "AntiquantScale must not be nullptr in antiquant, but now is nullptr.");
@@ -312,13 +306,13 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckDimNumAndFormat(si
     if (IsA16W8ND() || IsA16F8ND() || IsA16W4()) {
         if (unlikely(op::IsPrivateFormat((*gmmParams_.weight)[wIdx]->GetStorageFormat()))) {
             OP_LOGE_FOR_INVALID_FORMATS_WITH_REASON(GetAclnnName(), "weight", "NZ",
-                "The format of weight must be ND " + GetDataFlowString());
+                                                    "The format of weight must be ND " + GetDataFlowString());
             return ACLNN_ERR_PARAM_INVALID;
         }
     } else {
         if (unlikely(!op::IsPrivateFormat((*gmmParams_.weight)[wIdx]->GetStorageFormat()))) {
             OP_LOGE_FOR_INVALID_FORMATS_WITH_REASON(GetAclnnName(), "weight", "ND",
-                "The format of weight must be NZ " + GetDataFlowString());
+                                                    "The format of weight must be NZ " + GetDataFlowString());
             return ACLNN_ERR_PARAM_INVALID;
         }
     }
@@ -331,49 +325,44 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckDimNumAndFormat(si
     if (gmmParams_.groupType == NO_SPLIT) {
         if (IsA16W4Pergroup(wIdx)) {
             if (unlikely(xDimNum != MIN_FM_DIM)) {
-                std::string reason = "The shape dim of x[" + std::to_string(xIdx) + "] must be 2" +
-                    ", when weight separated";
-                OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(GetAclnnName(), "x",
-                    std::to_string(xDimNum), reason);
+                std::string reason =
+                    "The shape dim of x[" + std::to_string(xIdx) + "] must be 2" + ", when weight separated";
+                OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(GetAclnnName(), "x", std::to_string(xDimNum), reason);
                 return ACLNN_ERR_PARAM_INVALID;
             }
         } else {
             if (unlikely(!(xDimNum <= MAX_FM_DIM && xDimNum >= MIN_FM_DIM))) {
                 std::string incorrectDim = "The shape dim of x[" + std::to_string(xIdx) + "] must be within the range ";
                 std::string reason = incorrectDim + std::to_string(MIN_FM_DIM) + "-" + std::to_string(MAX_FM_DIM);
-                OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(GetAclnnName(), "x",
-                    std::to_string(xDimNum), reason);
+                OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(GetAclnnName(), "x", std::to_string(xDimNum), reason);
                 return ACLNN_ERR_PARAM_INVALID;
             }
         }
         if (unlikely(weightDimNum != MIN_FM_DIM)) {
-            std::string reason = "The shape dim of weight[" + std::to_string(wIdx) + "] must be 2" +
-                ", when weight separated";
-            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(GetAclnnName(), "weight",
-                std::to_string(weightDimNum), reason);
+            std::string reason =
+                "The shape dim of weight[" + std::to_string(wIdx) + "] must be 2" + ", when weight separated";
+            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(GetAclnnName(), "weight", std::to_string(weightDimNum), reason);
             return ACLNN_ERR_PARAM_INVALID;
         }
     } else {
         if (unlikely(xDimNum != MIN_FM_DIM)) {
             std::string reason = "The shape dim of x[" + std::to_string(xIdx) + "] must be 2";
-            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(GetAclnnName(), "x",
-                std::to_string(xDimNum), reason);
+            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(GetAclnnName(), "x", std::to_string(xDimNum), reason);
             return ACLNN_ERR_PARAM_INVALID;
         }
         if (IsMxA8W4NZ()) {
-            if (unlikely(weightDimNum != MULTI_WEIGHT_DIM &&
-                         weightDimNum != SPLIT_M_SINGLE_WEIGHT_DIM)) {
+            if (unlikely(weightDimNum != MULTI_WEIGHT_DIM && weightDimNum != SPLIT_M_SINGLE_WEIGHT_DIM)) {
                 std::string reason = "In weight quant case fp8_e4m3-fp4_e2m1, The shape dim of weight[" +
                                      std::to_string(wIdx) + "] must be 2 or 3";
-                OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(GetAclnnName(), "weight",
-                    std::to_string(weightDimNum), reason);
+                OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(GetAclnnName(), "weight", std::to_string(weightDimNum),
+                                                         reason);
                 return ACLNN_ERR_PARAM_INVALID;
             }
         } else {
             if (unlikely(weightDimNum != SPLIT_M_SINGLE_WEIGHT_DIM)) {
                 std::string reason = "The shape dim of weight[" + std::to_string(wIdx) + "] must be 3";
-                OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(GetAclnnName(), "weight",
-                    std::to_string(weightDimNum), reason);
+                OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(GetAclnnName(), "weight", std::to_string(weightDimNum),
+                                                         reason);
                 return ACLNN_ERR_PARAM_INVALID;
             }
         }
@@ -382,10 +371,10 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckDimNumAndFormat(si
     if (unlikely(xDimNum != yDimNum)) {
         std::string incorrectValues = std::to_string(xDimNum) + ", " + std::to_string(yDimNum);
         std::string reason = "The shape dim of x[" + std::to_string(xIdx) + "] " +
-            "must be equal to the shape dim of y[" + std::to_string(yIdx) + "]";
+                             "must be equal to the shape dim of y[" + std::to_string(yIdx) + "]";
         OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(GetAclnnName(),
-            "x[" + std::to_string(xIdx) + "], y[" + std::to_string(yIdx) + "]",
-            incorrectValues, reason);
+                                               "x[" + std::to_string(xIdx) + "], y[" + std::to_string(yIdx) + "]",
+                                               incorrectValues, reason);
         return ACLNN_ERR_PARAM_INVALID;
     }
 
@@ -395,15 +384,15 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckDimNumAndFormat(si
 aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckTransposeStatus() const
 {
     if (unlikely(gmmParams_.transposeX)) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GetAclnnName(), "transposeX",
-            "true", "x cannot be transposed, when weight quant");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GetAclnnName(), "transposeX", "true",
+                                              "x cannot be transposed, when weight quant");
         return ACLNN_ERR_PARAM_INVALID;
     }
 
     if (gmmParams_.groupType == NO_SPLIT) {
         if (unlikely(gmmParams_.apiVersion == gmm::GMMApiVersion::V1 && gmmParams_.transposeWeight)) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GetAclnnName(), "transposeWeight",
-                "true",
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                GetAclnnName(), "transposeWeight", "true",
                 "weight cannot be transposed, for aclnnGroupedMatmul V1, when x, weight and y are all separated");
             return ACLNN_ERR_PARAM_INVALID;
         }
@@ -411,16 +400,16 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckTransposeStatus() 
 
     if (IsA16F8ND() || IsMxA8W4NZ()) {
         if (unlikely(!gmmParams_.transposeWeight)) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GetAclnnName(), "transposeWeight",
-                "false",
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                GetAclnnName(), "transposeWeight", "false",
                 "In weight quant case fp16/bf16-int8, fp16/bf16-fp8/hif8 and fp8_e4m3-fp4_e2m1, weight must be "
                 "transposed");
             return ACLNN_ERR_PARAM_INVALID;
         }
     } else if (IsA16MxFp4NZ() || IsS8S4NZ()) {
         if (unlikely(gmmParams_.transposeWeight)) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GetAclnnName(), "transposeWeight",
-                "true",
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                GetAclnnName(), "transposeWeight", "true",
                 "In weight quant case fp16/bf16-fp4_e2m1 and int8-int4, weight must be not transposed");
             return ACLNN_ERR_PARAM_INVALID;
         }
@@ -436,11 +425,11 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckDimValue(size_t xI
         size_t yDimValue = (*gmmParams_.y)[yIdx]->GetViewShape().GetDim(dimIdx);
         if (unlikely(xDimValue != yDimValue)) {
             std::string incorrectValues = std::to_string(xDimValue) + ", " + std::to_string(yDimValue);
-            std::string reason = std::to_string(dimIdx) + " of x[" + std::to_string(xIdx) +
-                "] must be equal to axis " + std::to_string(dimIdx) + " of y[" + std::to_string(yIdx) + "]";
+            std::string reason = std::to_string(dimIdx) + " of x[" + std::to_string(xIdx) + "] must be equal to axis " +
+                                 std::to_string(dimIdx) + " of y[" + std::to_string(yIdx) + "]";
             OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(GetAclnnName(),
-                "x[" + std::to_string(xIdx) + "], y[" + std::to_string(yIdx) +"]",
-                incorrectValues, reason);
+                                                   "x[" + std::to_string(xIdx) + "], y[" + std::to_string(yIdx) + "]",
+                                                   incorrectValues, reason);
             return ACLNN_ERR_PARAM_INVALID;
         }
     }
@@ -458,23 +447,27 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckDimMatching(size_t
     size_t weightNDim = (*gmmParams_.weight)[wIdx]->GetViewShape().GetDim(weightNIdx);
     if (unlikely(xKDim != weightKDim)) {
         std::string incorrectValues = "x[" + std::to_string(xIdx) + "] dim k value " + std::to_string(xKDim) +
-            ", weight[" + std::to_string(wIdx) + "] dim k value " + std::to_string(weightKDim);
+                                      ", weight[" + std::to_string(wIdx) + "] dim k value " +
+                                      std::to_string(weightKDim);
         std::string reason = "x[" + std::to_string(xIdx) + "] dim k value " + std::to_string(xKDim) +
-            " must be equal to weight[" + std::to_string(wIdx) + "] dim k value " + std::to_string(weightKDim);
+                             " must be equal to weight[" + std::to_string(wIdx) + "] dim k value " +
+                             std::to_string(weightKDim);
         OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(GetAclnnName(),
-            "x[" + std::to_string(xIdx) + "], weight[" + std::to_string(wIdx) +"]",
-            incorrectValues, reason);
+                                               "x[" + std::to_string(xIdx) + "], weight[" + std::to_string(wIdx) + "]",
+                                               incorrectValues, reason);
         return ACLNN_ERR_PARAM_INVALID;
     }
     size_t yNDim = (*gmmParams_.y)[yIdx]->GetViewShape().GetDim(xDimNum - 1);
     if (unlikely(yNDim != weightNDim)) {
         std::string incorrectValues = "y[" + std::to_string(yIdx) + "] dim n value " + std::to_string(yNDim) +
-            ", weight[" + std::to_string(wIdx) + "] dim n value " + std::to_string(weightNDim);
+                                      ", weight[" + std::to_string(wIdx) + "] dim n value " +
+                                      std::to_string(weightNDim);
         std::string reason = "y[" + std::to_string(yIdx) + "] dim n value " + std::to_string(yNDim) +
-            " must be equal to weight[" + std::to_string(wIdx) + "] dim n value " + std::to_string(weightNDim);
+                             " must be equal to weight[" + std::to_string(wIdx) + "] dim n value " +
+                             std::to_string(weightNDim);
         OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(GetAclnnName(),
-            "y[" + std::to_string(yIdx) + "], weight[" + std::to_string(wIdx) +"]",
-            incorrectValues, reason);
+                                               "y[" + std::to_string(yIdx) + "], weight[" + std::to_string(wIdx) + "]",
+                                               incorrectValues, reason);
         return ACLNN_ERR_PARAM_INVALID;
     }
     if (IsA16MxFp4NZ() || IsMxA8W4NZ() || IsS8S4NZ()) {
@@ -482,9 +475,8 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckDimMatching(size_t
                        (weightKDim % N_K_ALIGN_VALUE_WEIGHT_QUANT_4BIT == 0)))) {
             std::string incorrectValues = "n=" + std::to_string(weightNDim) + ", k=" + std::to_string(weightKDim);
             std::string reason = "The value of dim n, k should be an integer multiple of " +
-                std::to_string(N_K_ALIGN_VALUE_WEIGHT_QUANT_4BIT);
-            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(GetAclnnName(), "weight n and k dims",
-                incorrectValues, reason);
+                                 std::to_string(N_K_ALIGN_VALUE_WEIGHT_QUANT_4BIT);
+            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(GetAclnnName(), "weight n and k dims", incorrectValues, reason);
             return ACLNN_ERR_PARAM_INVALID;
         }
     }
@@ -508,17 +500,15 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckV1GroupList(size_t
         int64_t xMDimValue = (*gmmParams_.x)[idx]->GetViewShape().GetDim(0);
         int64_t preGroupList = idx == 0 ? 0 : (*gmmParams_.groupListOptional)[idx - 1];
         int64_t mValueGroupList = (*gmmParams_.groupListOptional)[idx] - preGroupList;
-        std::string errorMessage = idx == 0 ? "groupListOptional[0]"
-                                            : "groupListOptional[" + std::to_string(idx) + "] - groupListOptional[" +
+        std::string errorMessage = idx == 0 ? "groupListOptional[0]" :
+                                              "groupListOptional[" + std::to_string(idx) + "] - groupListOptional[" +
                                                   std::to_string(idx - 1) + "]";
         if (unlikely(xMDimValue != mValueGroupList)) {
-            std::string incorrectValues = "x[" + std::to_string(idx) + "] dim 0 value " +
-                std::to_string(xMDimValue) + ", " + errorMessage + " " + std::to_string(mValueGroupList);
-            std::string reason = "x[" + std::to_string(idx) + "] dim 0 value " +
-                std::to_string(xMDimValue) + " should be equal to " + errorMessage + " " +
-                std::to_string(mValueGroupList);
-            OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(GetAclnnName(), "x, groupListOptional",
-                incorrectValues, reason);
+            std::string incorrectValues = "x[" + std::to_string(idx) + "] dim 0 value " + std::to_string(xMDimValue) +
+                                          ", " + errorMessage + " " + std::to_string(mValueGroupList);
+            std::string reason = "x[" + std::to_string(idx) + "] dim 0 value " + std::to_string(xMDimValue) +
+                                 " should be equal to " + errorMessage + " " + std::to_string(mValueGroupList);
+            OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(GetAclnnName(), "x, groupListOptional", incorrectValues, reason);
             return ACLNN_ERR_PARAM_INVALID;
         }
     }
@@ -530,15 +520,14 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckYDtype() const
 {
     if (IsMxA8W4NZ() || IsS8S4NZ()) {
         if (unlikely(!(yDtype_ == DataType::DT_BF16 || yDtype_ == DataType::DT_FLOAT16))) {
-            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(GetAclnnName(), "y",
-                op::ToString(yDtype_).GetString(),
-                "The dtype of y must be float16 or bfloat16, " +
-                GetDataFlowString());
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(GetAclnnName(), "y", op::ToString(yDtype_).GetString(),
+                                                  "The dtype of y must be float16 or bfloat16, " + GetDataFlowString());
             return ACLNN_ERR_PARAM_INVALID;
         }
     } else {
         if (unlikely(yDtype_ != xDtype_)) {
-            OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(GetAclnnName(), "y, x",
+            OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
+                GetAclnnName(), "y, x",
                 std::string(op::ToString(yDtype_).GetString()) + ", " + op::ToString(xDtype_).GetString(),
                 "The dtype of y must be equal to the dtype of x in weight quant case");
             return ACLNN_ERR_PARAM_INVALID;
@@ -554,32 +543,31 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckBiasDtype()
         biasDtype_ = (*gmmParams_.biasOptional)[0]->GetDataType();
         if (xDtype_ == DataType::DT_BF16) {
             if (unlikely(!(biasDtype_ == DataType::DT_BF16 || biasDtype_ == DataType::DT_FLOAT))) {
-                OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(GetAclnnName(), "bias",
-                    op::ToString(biasDtype_).GetString(),
+                OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
+                    GetAclnnName(), "bias", op::ToString(biasDtype_).GetString(),
                     "the dtype of bias must be bfloat16 or float32 when the dtype of x is bfloat16");
                 return ACLNN_ERR_PARAM_INVALID;
             }
         } else if (xDtype_ == DataType::DT_FLOAT16) {
             if (unlikely(biasDtype_ != DataType::DT_FLOAT16)) {
-                OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(GetAclnnName(), "bias",
-                    op::ToString(biasDtype_).GetString(),
+                OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
+                    GetAclnnName(), "bias", op::ToString(biasDtype_).GetString(),
                     "the dtype of bias must be float16 when the dtype of x is float16");
                 return ACLNN_ERR_PARAM_INVALID;
             }
         } else if (IsMxA8W4NZ()) {
             if (unlikely(biasDtype_ != yDtype_)) {
-                std::string incorrectDtypes = std::string(op::ToString(biasDtype_).GetString()) +
-                    ", " + op::ToString(yDtype_).GetString();
-                OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(GetAclnnName(), "bias, y",
-                    incorrectDtypes,
-                    "The dtype of bias must be equal to the dtype of y, " + GetDataFlowString());
+                std::string incorrectDtypes =
+                    std::string(op::ToString(biasDtype_).GetString()) + ", " + op::ToString(yDtype_).GetString();
+                OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(GetAclnnName(), "bias, y", incorrectDtypes,
+                                                       "The dtype of bias must be equal to the dtype of y, " +
+                                                           GetDataFlowString());
                 return ACLNN_ERR_PARAM_INVALID;
             }
         } else if (IsS8S4NZ()) {
             if (unlikely(biasDtype_ != DataType::DT_FLOAT)) {
-                OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(GetAclnnName(), "bias",
-                    op::ToString(biasDtype_).GetString(),
-                    "The dtype of bias must be float32, " + GetDataFlowString());
+                OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(GetAclnnName(), "bias", op::ToString(biasDtype_).GetString(),
+                                                      "The dtype of bias must be float32, " + GetDataFlowString());
                 return ACLNN_ERR_PARAM_INVALID;
             }
         }
@@ -609,9 +597,9 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckAntiQuantDtype(siz
 
     if (gmmParams_.antiquantOffsetOptional != nullptr) {
         // 当前有antiquantOffset的数据流，antiquantOffset的数据类型均和x一致
-        CHECK_RET(
-            CheckTensorDtype(gmmParams_.antiquantOffsetOptional, xDtype_, idx, "antiquantOffset") == ACLNN_SUCCESS,
-            ACLNN_ERR_PARAM_INVALID);
+        CHECK_RET(CheckTensorDtype(gmmParams_.antiquantOffsetOptional, xDtype_, idx, "antiquantOffset") ==
+                      ACLNN_SUCCESS,
+                  ACLNN_ERR_PARAM_INVALID);
     }
     return ACLNN_SUCCESS;
 }
@@ -646,9 +634,9 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckDimValueAllOne(con
     }
 
     if (dimValueAllOne) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GetAclnnName(), paramName,
-            "true",
-            "When xDtype-weightDtype is fp16/bf16-int4, The dim value of " + paramName + " not support all be 1");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GetAclnnName(), paramName, "true",
+                                              "When xDtype-weightDtype is fp16/bf16-int4, The dim value of " +
+                                                  paramName + " not support all be 1");
         return ACLNN_ERR_PARAM_INVALID;
     }
 
@@ -660,7 +648,7 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckAntiQuantTranspose
     if (IsA16W4()) {
         auto antiquantScaleShape = (*gmmParams_.antiquantScaleOptional)[idx]->GetViewShape();
         auto antiquantScaleDimNum = antiquantScaleShape.GetDimNum();
-        size_t perchannelDim = gmmParams_.groupType == SPLIT_M ? 2 : 1;  // 单单单场景默认维度为2，多多多场景默认维度为1
+        size_t perchannelDim = gmmParams_.groupType == SPLIT_M ? 2 : 1; // 单单单场景默认维度为2，多多多场景默认维度为1
         if (antiquantScaleDimNum <= perchannelDim) {
             return ACLNN_SUCCESS;
         }
@@ -671,8 +659,8 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckAntiQuantTranspose
         // pergroup不支持antiquant_scale和antiquant_offset转置
         bool antiquant_scale_trans = IsTransposeLastTwoDims((*gmmParams_.antiquantScaleOptional)[idx]);
         if (antiquant_scale_trans) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GetAclnnName(), "antiquantScale",
-                "true",
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                GetAclnnName(), "antiquantScale", "true",
                 "When xDtype-weightDtype is fp16/bf16-int4, The transpose of antiquantScale only support false");
             return ACLNN_ERR_PARAM_INVALID;
         }
@@ -699,8 +687,8 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckQuantDtype() const
     if (IsMxA8W4NZ()) {
         auto pertokenScaleDtype = (*gmmParams_.perTokenScaleOptional)[0]->GetDataType();
         if (unlikely(pertokenScaleDtype != ge::DT_FLOAT8_E8M0)) {
-            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(GetAclnnName(), "perTokenScale",
-                op::ToString(pertokenScaleDtype).GetString(),
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
+                GetAclnnName(), "perTokenScale", op::ToString(pertokenScaleDtype).GetString(),
                 "The dype of pertokenScale must be float8_e8m0, " + GetDataFlowString());
             return ACLNN_ERR_PARAM_INVALID;
         }
@@ -710,15 +698,14 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckQuantDtype() const
         auto pertokenScaleDtype = (*gmmParams_.perTokenScaleOptional)[0]->GetDataType();
         if (unlikely(pertokenScaleDtype != ge::DT_FLOAT)) {
             OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(GetAclnnName(), "perTokenScale",
-                op::ToString(pertokenScaleDtype).GetString(),
-                "The dtype of pertokenScale must be float, " + GetDataFlowString());
+                                                  op::ToString(pertokenScaleDtype).GetString(),
+                                                  "The dtype of pertokenScale must be float, " + GetDataFlowString());
             return ACLNN_ERR_PARAM_INVALID;
         }
         auto scaleDtype = (*gmmParams_.scaleOptional)[0]->GetDataType();
         if (unlikely(scaleDtype != ge::DT_FLOAT)) {
-            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(GetAclnnName(), "scale",
-                op::ToString(scaleDtype).GetString(),
-                "The dtype of scale must be float, " + GetDataFlowString());
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(GetAclnnName(), "scale", op::ToString(scaleDtype).GetString(),
+                                                  "The dtype of scale must be float, " + GetDataFlowString());
             return ACLNN_ERR_PARAM_INVALID;
         }
     }
@@ -735,8 +722,8 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckScaleAndPerTokenSc
         size_t perTokenScaleSupportDimNum = 3;
         if (unlikely(perTokenScaleShapeDimNum != perTokenScaleSupportDimNum)) {
             OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(GetAclnnName(), "perTokenScale",
-                std::to_string(perTokenScaleShapeDimNum),
-                "The shape dim of perTokenScale must be 3");
+                                                     std::to_string(perTokenScaleShapeDimNum),
+                                                     "The shape dim of perTokenScale must be 3");
             return ACLNN_ERR_PARAM_INVALID;
         }
         auto xShape = (*gmmParams_.x)[0]->GetViewShape();
@@ -746,14 +733,14 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckScaleAndPerTokenSc
         auto xShapeMDim = xShape.GetDim(0);
         if (unlikely(xShapeMDim != perTokenScaleShapeMDim)) {
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(GetAclnnName(), "perTokenScale",
-                std::to_string(perTokenScaleShapeMDim),
-                "The first dim of perTokenScale must be equal to the first dim of x");
+                                                  std::to_string(perTokenScaleShapeMDim),
+                                                  "The first dim of perTokenScale must be equal to the first dim of x");
             return ACLNN_ERR_PARAM_INVALID;
         }
         // 64含义：pertokenscale的shape应为(m,k/64,2)
         if (unlikely(xShapeKDim != perTokenScaleShapeKDim * 64)) {
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(GetAclnnName(), "perTokenScale",
-                std::to_string(perTokenScaleShapeKDim),
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                GetAclnnName(), "perTokenScale", std::to_string(perTokenScaleShapeKDim),
                 "The second dim of x must be 64 times the second dim of perTokenScale");
             return ACLNN_ERR_PARAM_INVALID;
         }
@@ -769,8 +756,8 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckS8S4NZScaleShape()
     auto perTokenScaleShapeDimNum = perTokenScaleShape.GetDimNum();
     if (unlikely(perTokenScaleShapeDimNum != 1)) {
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(GetAclnnName(), "perTokenScale",
-            std::to_string(perTokenScaleShapeDimNum),
-            "The shape dim of perTokenScale must be 1");
+                                                 std::to_string(perTokenScaleShapeDimNum),
+                                                 "The shape dim of perTokenScale must be 1");
         return ACLNN_ERR_PARAM_INVALID;
     }
     auto xShape = (*gmmParams_.x)[0]->GetViewShape();
@@ -778,28 +765,24 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckS8S4NZScaleShape()
     auto xShapeMDim = xShape.GetDim(0);
     auto perTokenScaleShapeMDim = perTokenScaleShape.GetDim(0);
     if (unlikely(xShapeMDim != perTokenScaleShapeMDim)) {
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(GetAclnnName(), "perTokenScale",
-            std::to_string(perTokenScaleShapeMDim),
-            "The first axis of pertokenscale must be equal to the first dim of x");
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(GetAclnnName(), "perTokenScale", std::to_string(perTokenScaleShapeMDim),
+                                              "The first axis of pertokenscale must be equal to the first dim of x");
         return ACLNN_ERR_PARAM_INVALID;
     }
     auto scaleShape = (*gmmParams_.scaleOptional)[0]->GetViewShape();
     if (unlikely(scaleShape.GetDimNum() != 2)) {
-        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(GetAclnnName(), "scale",
-            std::to_string(scaleShape.GetDimNum()),
-            "The shape dim of scale must be 2");
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(GetAclnnName(), "scale", std::to_string(scaleShape.GetDimNum()),
+                                                 "The shape dim of scale must be 2");
         return ACLNN_ERR_PARAM_INVALID;
     }
     if (unlikely(scaleShape.GetDim(0) != weightShape.GetDim(0))) {
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(GetAclnnName(), "scale",
-            std::to_string(scaleShape.GetDim(0)),
-            "The dim0 of scale must be equal to g");
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(GetAclnnName(), "scale", std::to_string(scaleShape.GetDim(0)),
+                                              "The dim0 of scale must be equal to g");
         return ACLNN_ERR_PARAM_INVALID;
     }
     if (unlikely(scaleShape.GetDim(1) != weightShape.GetDim(2))) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GetAclnnName(), "scale",
-            std::to_string(scaleShape.GetDim(1)),
-            "The dim1 of scale must be equal to n");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GetAclnnName(), "scale", std::to_string(scaleShape.GetDim(1)),
+                                              "The dim1 of scale must be equal to n");
         return ACLNN_ERR_PARAM_INVALID;
     }
     return ACLNN_SUCCESS;
@@ -849,19 +832,17 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckGroupSize(size_t i
     // 2含义: (g,k,n)的k轴索引
     int64_t kSize = weightShape.GetDim(weightShape.GetDimNum() - 2);
     // 2含义: (g,k/groupSize,n)的k轴索引
-    int64_t groupNum = IsMxA8W4NZ() ? antiquantScaleShape.GetDim(antiquantScaleDimNum - 3) * 2:
+    int64_t groupNum = IsMxA8W4NZ() ? antiquantScaleShape.GetDim(antiquantScaleDimNum - 3) * 2 :
                                       antiquantScaleShape.GetDim(antiquantScaleDimNum - 2);
     if (unlikely(groupNum <= 0)) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GetAclnnName(), "groupNum",
-            std::to_string(groupNum),
-            "The value of groupNum must be greater than 0");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GetAclnnName(), "groupNum", std::to_string(groupNum),
+                                              "The value of groupNum must be greater than 0");
         return ACLNN_ERR_PARAM_INVALID;
     }
     if (unlikely(kSize % groupNum != 0)) {
         std::string incorrectValues = "kSize: " + std::to_string(kSize) + ", groupNum: " + std::to_string(groupNum);
-        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(GetAclnnName(), "kSize, groupNum",
-            incorrectValues,
-            "kSize must be a multiple of groupNum");
+        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(GetAclnnName(), "kSize, groupNum", incorrectValues,
+                                               "kSize must be a multiple of groupNum");
         return ACLNN_ERR_PARAM_INVALID;
     }
     groupSize = kSize / groupNum;
@@ -873,25 +854,23 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckGroupSize(size_t i
     if (IsS8S4NZ()) {
         // 伪量化S8S4场景支持groupsize为128/192/256/512
         if (unlikely(!(groupSize == 128 || groupSize == 256 || groupSize == 512 || groupSize == 192))) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GetAclnnName(), "groupSize",
-                std::to_string(groupSize),
-                "The value of groupSize must be 128/192/256/512");
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GetAclnnName(), "groupSize", std::to_string(groupSize),
+                                                  "The value of groupSize must be 128/192/256/512");
             return ACLNN_ERR_PARAM_INVALID;
         }
     } else if (IsA16W4Pergroup(idx)) {
         // 伪量化A16W4 pergroup场景支持groupsize为32/64/128/256
         if (unlikely(!(groupSize == 32 || groupSize == 64 || groupSize == 128 || groupSize == 256))) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GetAclnnName(), "groupSize",
-                std::to_string(groupSize),
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                GetAclnnName(), "groupSize", std::to_string(groupSize),
                 "When the quant mode is pergroup, The value of groupSize must be 32/64/128/256 on arch3510");
             return ACLNN_ERR_PARAM_INVALID;
         }
     } else {
         // 当前伪量化非S8S4仅支持groupsize为32
         if (unlikely(groupSize != 32)) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GetAclnnName(), "groupSize",
-                std::to_string(groupSize),
-                "The value of groupSize must be 32");
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GetAclnnName(), "groupSize", std::to_string(groupSize),
+                                                  "The value of groupSize must be 32");
             return ACLNN_ERR_PARAM_INVALID;
         }
     }
@@ -906,22 +885,22 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckGroupTypeScenario(
     // V1接口没有groupType字段，是在aclnnGroupedMatmulGetWorkspaceSize赋值的，只会出现0/-1，不会出现2
     if (IsA16W8ND() || IsA16W4()) {
         if (unlikely(!(gmmParams_.groupType == NO_SPLIT || gmmParams_.groupType == SPLIT_M))) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GetAclnnName(), "groupType",
-                std::to_string(gmmParams_.groupType),
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                GetAclnnName(), "groupType", std::to_string(gmmParams_.groupType),
                 "GMM only support groupType 0 (split M) or groupType -1 (no split), " + GetDataFlowString());
             return ACLNN_ERR_PARAM_INVALID;
         }
     } else {
         errorMessage =
-            gmmParams_.apiVersion == gmm::GMMApiVersion::V1
-                ? "M-split scenario, but the actual scenario is no-split (multi-multi-multi)"
-                : "groupType 0 (split M), but the actual groupType is [" + std::to_string(gmmParams_.groupType) + "]";
+            gmmParams_.apiVersion == gmm::GMMApiVersion::V1 ?
+                "M-split scenario, but the actual scenario is no-split (multi-multi-multi)" :
+                "groupType 0 (split M), but the actual groupType is [" + std::to_string(gmmParams_.groupType) + "]";
         if (unlikely(gmmParams_.groupType != SPLIT_M)) {
-            std::string reason = std::string("Weight quant cases with x dtype [") +
-                op::ToString(xDtype_).GetString() + "] and weight dtype [" +
-                op::ToString(weightDtype_).GetString() + "] only support " + errorMessage;
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GetAclnnName(), "groupType",
-                std::to_string(gmmParams_.groupType), reason);
+            std::string reason = std::string("Weight quant cases with x dtype [") + op::ToString(xDtype_).GetString() +
+                                 "] and weight dtype [" + op::ToString(weightDtype_).GetString() + "] only support " +
+                                 errorMessage;
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GetAclnnName(), "groupType", std::to_string(gmmParams_.groupType),
+                                                  reason);
             return ACLNN_ERR_PARAM_INVALID;
         }
     }
@@ -929,40 +908,36 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckGroupTypeScenario(
     // 多多多/单单单校验
     // groupType为-1仅对应多多多；groupType为0会出现单单单/单多单/单多多/多多单，仅支持单单单
     if (gmmParams_.groupType == NO_SPLIT) {
-        if (unlikely(!(gmmParams_.x->Size() == gmmParams_.weight->Size() &&
-                       gmmParams_.x->Size() == gmmParams_.y->Size()))) {
+        if (unlikely(
+                !(gmmParams_.x->Size() == gmmParams_.weight->Size() && gmmParams_.x->Size() == gmmParams_.y->Size()))) {
             std::string incorrectSizes = "x size: " + std::to_string(gmmParams_.x->Size()) +
-                ", weight size: " + std::to_string(gmmParams_.weight->Size()) +
-                ", y size: " + std::to_string(gmmParams_.y->Size());
-            OP_LOGE_FOR_INVALID_LISTSIZE(GetAclnnName(), "x, weight, y",
-                incorrectSizes,
+                                         ", weight size: " + std::to_string(gmmParams_.weight->Size()) +
+                                         ", y size: " + std::to_string(gmmParams_.y->Size());
+            OP_LOGE_FOR_INVALID_LISTSIZE(
+                GetAclnnName(), "x, weight, y", incorrectSizes,
                 "In multi-multi-multi scenario, the sizes of x, weight and y should be all the same");
             return ACLNN_ERR_PARAM_INVALID;
         }
     } else {
-        errorMessage = gmmParams_.apiVersion == gmm::GMMApiVersion::V1 ? "When splited axis is M"
-                                                                       : "When groupType is 0 (split M)";
+        errorMessage = gmmParams_.apiVersion == gmm::GMMApiVersion::V1 ? "When splited axis is M" :
+                                                                         "When groupType is 0 (split M)";
         if (IsMxA8W4NZ()) {
-            if (unlikely(!(gmmParams_.x->Size() == 1 && gmmParams_.y->Size() == 1 &&
-                           gmmParams_.weight->Size() >= 1))) {
+            if (unlikely(!(gmmParams_.x->Size() == 1 && gmmParams_.y->Size() == 1 && gmmParams_.weight->Size() >= 1))) {
                 std::string incorrectSizes = "x size: " + std::to_string(gmmParams_.x->Size()) +
-                    ", weight size: " + std::to_string(gmmParams_.weight->Size()) +
-                    ", y size: " + std::to_string(gmmParams_.y->Size());
-                std::string reason = errorMessage +
-                    ", When the quant mode is A8W4 MX, x and y size must be 1, weight size must be >= 1";
-                OP_LOGE_FOR_INVALID_LISTSIZE(GetAclnnName(), "x, weight, y",
-                    incorrectSizes, reason);
+                                             ", weight size: " + std::to_string(gmmParams_.weight->Size()) +
+                                             ", y size: " + std::to_string(gmmParams_.y->Size());
+                std::string reason =
+                    errorMessage + ", When the quant mode is A8W4 MX, x and y size must be 1, weight size must be >= 1";
+                OP_LOGE_FOR_INVALID_LISTSIZE(GetAclnnName(), "x, weight, y", incorrectSizes, reason);
                 return ACLNN_ERR_PARAM_INVALID;
             }
         } else {
-            if (unlikely(!(gmmParams_.x->Size() == 1 && gmmParams_.weight->Size() == 1 &&
-                           gmmParams_.y->Size() == 1))) {
+            if (unlikely(!(gmmParams_.x->Size() == 1 && gmmParams_.weight->Size() == 1 && gmmParams_.y->Size() == 1))) {
                 std::string incorrectSizes = "x size: " + std::to_string(gmmParams_.x->Size()) +
-                    ", weight size: " + std::to_string(gmmParams_.weight->Size()) +
-                    ", y size: " + std::to_string(gmmParams_.y->Size());
+                                             ", weight size: " + std::to_string(gmmParams_.weight->Size()) +
+                                             ", y size: " + std::to_string(gmmParams_.y->Size());
                 std::string reason = errorMessage + ", the sizes of x, weight and y should all be 1";
-                OP_LOGE_FOR_INVALID_LISTSIZE(GetAclnnName(), "x, weight, y",
-                    incorrectSizes, reason);
+                OP_LOGE_FOR_INVALID_LISTSIZE(GetAclnnName(), "x, weight, y", incorrectSizes, reason);
                 return ACLNN_ERR_PARAM_INVALID;
             }
         }
@@ -982,44 +957,43 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckGroupListAndSplitI
                        "GroupListOptional(groupTensorOptional) should be nullptr when groupType is -1.");
         }
         if (unlikely(!(gmmParams_.splitItem == X_Y_SEPARATED || gmmParams_.splitItem == Y_SEPARATED))) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GetAclnnName(), "splitItem",
-                std::to_string(gmmParams_.splitItem),
-                "When y is separated, splitItem must be 0 or 1");
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GetAclnnName(), "splitItem", std::to_string(gmmParams_.splitItem),
+                                                  "When y is separated, splitItem must be 0 or 1");
             return ACLNN_ERR_PARAM_INVALID;
         }
     } else {
         if (gmmParams_.apiVersion == gmm::GMMApiVersion::V1 || gmmParams_.apiVersion == gmm::GMMApiVersion::V2) {
             CHECK_COND(gmmParams_.groupListOptional != nullptr, ACLNN_ERR_PARAM_INVALID,
-                       "GroupListOptional should not be nullptr when splited axis is M.");  // V1 没有groupType参数
+                       "GroupListOptional should not be nullptr when splited axis is M."); // V1 没有groupType参数
         } else {
             CHECK_COND(gmmParams_.groupTensorOptional != nullptr, ACLNN_ERR_PARAM_INVALID,
                        "GroupListOptional should not be nullptr when groupType is 0.");
         }
 
         if (unlikely(!(gmmParams_.splitItem == X_SEPARATED || gmmParams_.splitItem == NO_SEPARATED))) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GetAclnnName(), "splitItem",
-                std::to_string(gmmParams_.splitItem),
-                "When y is not separated, splitItem must be 2 or 3");
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GetAclnnName(), "splitItem", std::to_string(gmmParams_.splitItem),
+                                                  "When y is not separated, splitItem must be 2 or 3");
             return ACLNN_ERR_PARAM_INVALID;
         }
     }
     return ACLNN_SUCCESS;
 }
 
-aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckOptionalListSize(
-    const aclTensorList *optional, const aclTensorList *reference,
-    const char *optionalName, const char *referenceName, const char *opName)
+aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckOptionalListSize(const aclTensorList *optional,
+                                                                               const aclTensorList *reference,
+                                                                               const char *optionalName,
+                                                                               const char *referenceName,
+                                                                               const char *opName)
 {
     if (optional == nullptr) {
         return ACLNN_SUCCESS;
     }
     if (unlikely(optional->Size() != reference->Size())) {
-        std::string incorrectSizes = std::string(optionalName) + " size: " +
-            std::to_string(optional->Size()) + ", " + std::string(referenceName) +
-            " size: " + std::to_string(reference->Size());
+        std::string incorrectSizes = std::string(optionalName) + " size: " + std::to_string(optional->Size()) + ", " +
+                                     std::string(referenceName) + " size: " + std::to_string(reference->Size());
         std::string combinedName = std::string(optionalName) + ", " + std::string(referenceName);
-        std::string reason = std::string(optionalName) + " size must be equal to " +
-            std::string(referenceName) + " size";
+        std::string reason =
+            std::string(optionalName) + " size must be equal to " + std::string(referenceName) + " size";
         OP_LOGE_FOR_INVALID_LISTSIZE(opName, combinedName.c_str(), incorrectSizes, reason.c_str());
         return ACLNN_ERR_PARAM_INVALID;
     }
@@ -1028,20 +1002,20 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckOptionalListSize(
 
 aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckTensorListSize() const
 {
-    CHECK_RET(CheckOptionalListSize(gmmParams_.antiquantScaleOptional, gmmParams_.weight,
-                                    "antiquantScaleOptional", "weight", GetAclnnName()) == ACLNN_SUCCESS,
+    CHECK_RET(CheckOptionalListSize(gmmParams_.antiquantScaleOptional, gmmParams_.weight, "antiquantScaleOptional",
+                                    "weight", GetAclnnName()) == ACLNN_SUCCESS,
               ACLNN_ERR_PARAM_INVALID);
-    CHECK_RET(CheckOptionalListSize(gmmParams_.antiquantOffsetOptional, gmmParams_.weight,
-                                    "antiquantOffsetOptional", "weight", GetAclnnName()) == ACLNN_SUCCESS,
+    CHECK_RET(CheckOptionalListSize(gmmParams_.antiquantOffsetOptional, gmmParams_.weight, "antiquantOffsetOptional",
+                                    "weight", GetAclnnName()) == ACLNN_SUCCESS,
               ACLNN_ERR_PARAM_INVALID);
-    CHECK_RET(CheckOptionalListSize(gmmParams_.biasOptional, gmmParams_.weight,
-                                    "biasOptional", "weight", GetAclnnName()) == ACLNN_SUCCESS,
+    CHECK_RET(CheckOptionalListSize(gmmParams_.biasOptional, gmmParams_.weight, "biasOptional", "weight",
+                                    GetAclnnName()) == ACLNN_SUCCESS,
               ACLNN_ERR_PARAM_INVALID);
-    CHECK_RET(CheckOptionalListSize(gmmParams_.perTokenScaleOptional, gmmParams_.x,
-                                    "perTokenScaleOptional", "x", GetAclnnName()) == ACLNN_SUCCESS,
+    CHECK_RET(CheckOptionalListSize(gmmParams_.perTokenScaleOptional, gmmParams_.x, "perTokenScaleOptional", "x",
+                                    GetAclnnName()) == ACLNN_SUCCESS,
               ACLNN_ERR_PARAM_INVALID);
-    CHECK_RET(CheckOptionalListSize(gmmParams_.scaleOptional, gmmParams_.weight,
-                                    "scaleOptional", "weight", GetAclnnName()) == ACLNN_SUCCESS,
+    CHECK_RET(CheckOptionalListSize(gmmParams_.scaleOptional, gmmParams_.weight, "scaleOptional", "weight",
+                                    GetAclnnName()) == ACLNN_SUCCESS,
               ACLNN_ERR_PARAM_INVALID);
     return ACLNN_SUCCESS;
 }
@@ -1083,8 +1057,8 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckGroupedMatmulWeigh
         CHECK_RET(CheckDimNumAndFormat(xIdx, yIdx, wIdx) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
         if (unlikely(IsTransposeLastTwoDims((*gmmParams_.weight)[wIdx]) != gmmParams_.transposeWeight)) {
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(GetAclnnName(), "weight[" + std::to_string(wIdx) + "]",
-                "inconsistent",
-                "The transpose state must be the same for each tensor in weight");
+                                                  "inconsistent",
+                                                  "The transpose state must be the same for each tensor in weight");
             return ACLNN_ERR_PARAM_INVALID;
         }
         CHECK_RET(CheckDimValue(xIdx, yIdx, wIdx) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);

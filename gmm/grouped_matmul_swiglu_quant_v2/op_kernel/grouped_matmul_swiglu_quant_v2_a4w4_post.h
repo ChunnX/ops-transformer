@@ -79,7 +79,8 @@ private:
     int64_t aivCoreNum = 0;
 };
 
-__aicore__ inline void GMMA4W4PostProcess::Init(const GMAddrParams gmAddrParams,
+__aicore__ inline void
+GMMA4W4PostProcess::Init(const GMAddrParams gmAddrParams,
                          const GMMSwigluQuantV2BaseParams *__restrict gmmSwigluQuantV2BaseParamsIN,
                          const GMMSwigluQuantV2 *__restrict gmmSwigluIN)
 {
@@ -169,7 +170,7 @@ __aicore__ inline void GMMA4W4PostProcess::Swiglu(uint32_t loopIdx, VecConfig &v
 }
 
 __aicore__ inline void GMMA4W4PostProcess::ApplySmoothScale(uint32_t loopIdx, VecConfig &vecConfig,
-                                                                WorkSpaceSplitConfig &workspaceSplitConfig)
+                                                            WorkSpaceSplitConfig &workspaceSplitConfig)
 {
     int64_t smoothScaleDimNum = gmmSwigluQuantV2BaseParams->smoothScaleDimNum;
     int64_t halfTokenLen = gmmSwigluQuantV2->tokenLen / SWIGLU_REDUCE_FACTOR;
@@ -297,8 +298,7 @@ __aicore__ inline void GMMA4W4PostProcess::UpdateVecConfig(uint32_t blockIdx, Ve
     // 第四步 申请空间
     // 2 * row * n * sizeof(float) + row * n / 2 * sizeof(int8) + alignUp<row, 8> * sizeof(float) + n * sizeof(float) +
     // n / 2 *sizeof(float) + 64 < 191 * 1024
-    pipe->InitBuffer(mmOutQueue, 1,
-                     gmmSwigluQuantV2->maxProcessRowNum * gmmSwigluQuantV2->tokenLen * sizeof(float));
+    pipe->InitBuffer(mmOutQueue, 1, gmmSwigluQuantV2->maxProcessRowNum * gmmSwigluQuantV2->tokenLen * sizeof(float));
     pipe->InitBuffer(quantOutQueue, 1,
                      gmmSwigluQuantV2->maxProcessRowNum * gmmSwigluQuantV2->tokenLen / SWIGLU_REDUCE_FACTOR *
                          sizeof(int8_t));

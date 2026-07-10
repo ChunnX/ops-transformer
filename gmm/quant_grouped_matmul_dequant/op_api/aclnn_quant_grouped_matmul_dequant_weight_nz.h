@@ -56,10 +56,12 @@ __attribute__((visibility("default"))) aclnnStatus aclnnQuantGroupedMatmulDequan
  * @return aclnnStatus: 返回状态码。
  */
 __attribute__((visibility("default"))) aclnnStatus aclnnQuantGroupedMatmulDequantWeightNZ(void *workspace,
-    uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream);
+                                                                                          uint64_t workspaceSize,
+                                                                                          aclOpExecutor *executor,
+                                                                                          aclrtStream stream);
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif  // OP_API_INC_QUANT_GROUPED_MATMUL_DEQUANT_WEIGHT_NZ_H_
+#endif // OP_API_INC_QUANT_GROUPED_MATMUL_DEQUANT_WEIGHT_NZ_H_

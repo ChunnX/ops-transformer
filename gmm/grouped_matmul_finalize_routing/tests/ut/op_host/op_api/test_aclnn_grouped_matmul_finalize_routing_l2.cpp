@@ -23,8 +23,7 @@
 using namespace std;
 using namespace op;
 
-class l2_GroupedMatmulFinalizeRouting_test : public testing::Test
-{
+class l2_GroupedMatmulFinalizeRouting_test : public testing::Test {
 protected:
     static void SetUpTestCase()
     {
