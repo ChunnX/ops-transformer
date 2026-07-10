@@ -188,9 +188,9 @@ def compare_topk_valid(cur_cpu, cur_npu, topk_value, bsn, diff_npu, diff_cpu,
         if output_idx_offset is not None:
             if layout_query == "TND":
                 cur_prefix = cu_seqlens_q[b_idx]
-                offset = np.array(output_idx_offset).flatten()[cur_prefix + s1_idx]
+                offset = np.array(output_idx_offset.cpu()).flatten()[cur_prefix + s1_idx]
             else:
-                offset = np.array(output_idx_offset).flatten()[b_idx * q_seq + s1_idx]
+                offset = np.array(output_idx_offset.cpu()).flatten()[b_idx * q_seq + s1_idx]
             offset_mask = cur_cpu != -1
             cur_npu = np.where(offset_mask, cur_npu - offset, cur_npu)
             cur_cpu = np.where(offset_mask, cur_cpu - offset, cur_cpu)
