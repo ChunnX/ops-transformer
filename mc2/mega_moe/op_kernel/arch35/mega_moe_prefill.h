@@ -156,7 +156,7 @@ private:
                                             Std::IsSame<QuantOutType, fp4x2_e2m1_t>::value;
     static constexpr int32_t DISPATCH_BUFFER_NUM = 6;
     static constexpr int32_t UNPERMUTE_BATCH_LEN = 1024;  // k∈[1,8192], topK∈[2,8], 每 token topK×6B, 1024 安全
-    static constexpr int32_t DISPATCH_RECV_BATCH_LEN = 4096;  // 收侧每 batch route item 数，匹配标准 bs=512*topK=8
+    static constexpr int32_t DISPATCH_RECV_BATCH_LEN = 8192;  // 收侧每 batch route item 数，最坏 ws=1024 时 UB 占用 62%
 
     // ── UB tensor（与主线共用名，但大 bs 路径下大小按 batch 级而非全量 routeItemNum）──
     LocalTensor<int32_t> topkIndexTensor_;          // 收侧: 每 batch 重建的全局 route item index
