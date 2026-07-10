@@ -361,16 +361,16 @@ __aicore__ inline void GMM_WQ_A16W4_MSD_CONTROLLER_CLASS_M_SPARSE::PreUpdateGmAd
     GlobalTensor<wType> &weightGmUpdate, GlobalTensor<xType> &antiquantScaleGmUpdate,
     GlobalTensor<biasType> &biasGmUpdate, uint64_t kSize, uint64_t nSize, uint32_t expertIdx)
 {
-    uint64_t wBaseOffset = 0;
+    uint32_t wBaseOffset = 0;
     if constexpr (IsSameType<wType, int4b_t>::value) {
-        wBaseOffset = (static_cast<uint64_t>(expertIdx) * nSize * kSize) >> 1;
+        wBaseOffset = (expertIdx * nSize * kSize) >> 1;
     } else {
-        wBaseOffset = static_cast<uint64_t>(expertIdx) * nSize * kSize;
+        wBaseOffset = expertIdx * nSize * kSize;
     }
     weightGmUpdate.SetGlobalBuffer(this->weightGm_ + wBaseOffset);
     antiquantScaleGmUpdate.SetGlobalBuffer(
-        this->antiquantScaleGm_ + static_cast<uint64_t>(expertIdx) * nSize * this->gmmBaseTiling_->quantGroupNum);
-    biasGmUpdate.SetGlobalBuffer(this->biasGm_ + static_cast<uint64_t>(expertIdx) * nSize);
+        this->antiquantScaleGm_ + expertIdx * nSize * this->gmmBaseTiling_->quantGroupNum);
+    biasGmUpdate.SetGlobalBuffer(this->biasGm_ + expertIdx * nSize);
 }
 
 GMM_WQ_A16W4_MSD_CONTROLLER_TEMPLATE_PARAM
