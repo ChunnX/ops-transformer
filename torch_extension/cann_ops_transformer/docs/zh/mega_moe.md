@@ -14,9 +14,8 @@
 - 接口功能：
 
     Mega MoE算子 将 MoE 层的专家 FFN 的完整计算流程及前后数据通信（即 Dispatch + Linear1 + SwiGLU + Linear2 + Combine）融合为单个算子，实现了通信和计算的掩盖。
-    该算子提供了mega_moe、get_mega_moe_ccl_buffer_size与 get_symm_buffer_for_mega_moe等接口，这些接口需配套使用。
+    该算子提供了 mega_moe 与 get_symm_buffer_for_mega_moe等接口，这些接口需配套使用。
 
-    - get_mega_moe_ccl_buffer_size：需与mega_moe配套使用，用于计算mega_moe算子所需的HCCL通信buffer_size大小（单位：MB）。
     - get_symm_buffer_for_mega_moe：需与mega_moe配套使用，用于封装输入参数并创建SymmBuffer结构体，生成`context`、`ep_world_size`和`ccl_buffer_size`等mega_moe算子运行所需信息。
 
 - 计算公式：
@@ -459,12 +458,6 @@
 
 ## 函数原型
 
-- get_mega_moe_ccl_buffer_size：
-
-```python
-get_mega_moe_ccl_buffer_size(ep_world_size, moe_expert_num, num_max_tokens_per_rank, num_topk, hidden, max_recv_token_num=0, dispatch_quant_mode=0, dispatch_quant_out_dtype=None, combine_quant_mode=0, comm_alg="") -> int
-```
-
 - get_symm_buffer_for_mega_moe：
 
 ```python
@@ -478,80 +471,6 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
 ```
 
 ## 参数说明
-
-### get_mega_moe_ccl_buffer_size
-
-<table style="undefined;table-layout: fixed; width:840px"><colgroup>
-<col style="width: 160px">
-<col style="width: 120px">
-<col style="width: 80px">
-<col style="width: 480px">
-</colgroup>
-<thead>
-<tr>
-    <th>参数名</th>
-    <th>参数类型</th>
-    <th>可选/必选</th>
-    <th>描述</th>
-</tr>
-</thead>
-<tbody>
-    <tr>
-        <td>ep_world_size</td>
-        <td>int</td>
-        <td>必选</td>
-        <td>通信域的大小。</td>
-    </tr>
-    <tr>
-        <td>moe_expert_num</td>
-        <td>int</td>
-        <td>必选</td>
-        <td>MoE专家数量。</td>
-    </tr>
-    <tr>
-        <td>num_max_tokens_per_rank</td>
-        <td>int</td>
-        <td>必选</td>
-        <td>每张卡上的token数量。当每个rank的num_tokens不同时，为最大的num_tokens大小。</td>
-    </tr>
-    <tr>
-        <td>num_topk</td>
-        <td>int</td>
-        <td>必选</td>
-        <td>选取topK个专家。</td>
-    </tr>
-    <tr>
-        <td>hidden</td>
-        <td>int</td>
-        <td>必选</td>
-        <td>hidden size隐藏层大小。</td>
-    </tr>
-    <tr>
-        <td>dispatch_quant_mode</td>
-        <td>int</td>
-        <td>可选</td>
-        <td>dispatch通信时量化模式。0表示非量化（A16W16场景），2表示INT8量化（A8W8-INT、A8W4-INT场景），4表示MXFP量化（A8W8-FP场景）。各产品支持的取值见约束说明。默认值为0。</td>
-    </tr>
-    <tr>
-        <td>dispatch_quant_out_dtype</td>
-        <td>torch.dtype</td>
-        <td>可选</td>
-        <td>dispatch量化后输出的数据类型。支持 torch.int8、torch.float8_e5m2、torch.float8_e4m3fn。各产品支持的取值见约束说明。默认值为None。</td>
-    </tr>
-    <tr>
-        <td>combine_quant_mode</td>
-        <td>int</td>
-        <td>可选</td>
-        <td>combine通信时的量化模式。0表示非量化，3表示MXFP float8_e5m2类型，4表示MXFP float8_e4m3类型。各产品支持的取值见约束说明。默认值为0。</td>
-    </tr>
-    <tr>
-        <td>comm_alg</td>
-        <td>str</td>
-        <td>可选</td>
-        <td>暂不支持该参数，使用默认值即可。默认值为""。</td>
-    </tr>
-</tbody>
-</table>
 
 ### get_symm_buffer_for_mega_moe
 
@@ -862,38 +781,6 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
 
 ## 返回值说明
 
-### get_mega_moe_ccl_buffer_size
-
-<table style="undefined;table-layout: fixed; width:1200px"><colgroup>
-<col style="width: 120px">
-<col style="width: 120px">
-<col style="width: 100px">
-<col style="width: 300px">
-<col style="width: 120px">
-<col style="width: 200px">
-</colgroup>
-<thead>
-<tr>
-    <th>参数名</th>
-    <th>参数类型</th>
-    <th>可选/必选</th>
-    <th>描述</th>
-    <th>数据类型</th>
-    <th>维度(shape)</th>
-</tr>
-</thead>
-<tbody>
-    <tr>
-        <td>ccl_buffer_size</td>
-        <td>int</td>
-        <td>必选</td>
-        <td>计算得到的ccl_buffer_size大小，单位为MB。</td>
-        <td>int</td>
-        <td>-</td>
-    </tr>
-</tbody>
-</table>
-
 ### get_symm_buffer_for_mega_moe
 
 <table style="undefined;table-layout: fixed; width:1200px"><colgroup>
@@ -1055,7 +942,7 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
 - **通信域和组网约束**：
     - 仅支持`EP`域，无`TP`域，不支持`groupTp`、`tpWorldSize`、`tpRankId`属性。
     - 所有卡的`ep_world_size`、`ccl_buffer_size`参数取值需保持一致。
-    - 各卡的通信域缓存区大小应当一致，且不能低于 `get_mega_moe_ccl_buffer_size` 计算出的最小值。`ccl_buffer_size` 为 HBM 上分配的 CCL 通信缓冲区**总大小**（Bytes），包含等大小的 **windowIn** 和 **windowOut** 两块空间，校验时以单个空间 `ccl_buffer_size / 2` 为准，需满足：
+    - 各卡的通信域缓存区大小应当一致。`ccl_buffer_size` 为 HBM 上分配的 CCL 通信缓冲区**总大小**（Bytes），包含等大小的 **windowIn** 和 **windowOut** 两块空间，校验时以单个空间 `ccl_buffer_size / 2` 为准，需满足：
 
         $$ccl\_buffer\_size\ /\ 2 \ge \mathrm{offsetTokenPerExpert} + \mathrm{offsetTensor} + \mathrm{offsetFlag} + 10\,\mathrm{MB}$$
 
@@ -1100,7 +987,7 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
         offsetFlag           = ep_world_size × 512B
         ```
 
-        其中 `ep_world_size` 即通信域大小，$maxExpertPerRank$ 表示每张卡上可能专家数的最大值，$\mathrm{quant}$ 表示是否开启 dispatch 量化（`dispatch_quant_mode = 2`）。预留空间 10 MB 为内部元数据对齐与安全余量。该值即 `get_mega_moe_ccl_buffer_size` 接口的返回值。
+        其中 `ep_world_size` 即通信域大小，$maxExpertPerRank$ 表示每张卡上可能专家数的最大值，$\mathrm{quant}$ 表示是否开启 dispatch 量化（`dispatch_quant_mode = 2`）。预留空间 10 MB 为内部元数据对齐与安全余量。
     - 通信域各节点的驱动版本应当相同。
     - Atlas A2 训练系列产品/Atlas A2 推理系列产品：多机通信域要求交换机组网，不支持双机直连组网。
     - Atlas A3 训练系列产品/Atlas A3 推理系列产品：多机通信域要求在一个超节点内，不支持双机直连组网和跨超节点组网。
@@ -1205,7 +1092,7 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
 
 - 单算子模式调用：
 
-  下面示例将三个接口按调用顺序串联：先用 get_mega_moe_ccl_buffer_size 计算 HCCL 通信 buffer 大小，再用 init_hccl_comm 初始化通信域，然后用 get_symm_buffer_for_mega_moe 构造 sym_buffer，最后调用 mega_moe 运行算子。
+  下面示例将三个接口按调用顺序串联：先用 init_hccl_comm 初始化通信域，然后用 get_symm_buffer_for_mega_moe 构造 sym_buffer，最后调用 mega_moe 运行算子。
 
   ```python
   import os
@@ -1215,7 +1102,7 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
   import torch.distributed as dist
   from torch.distributed import ReduceOp
   import torch.multiprocessing as mp
-  from cann_ops_transformer.ops import get_mega_moe_ccl_buffer_size, get_symm_buffer_for_mega_moe, mega_moe
+  from cann_ops_transformer.ops import get_symm_buffer_for_mega_moe, mega_moe
   import torchair
 
   E = 4
@@ -1239,11 +1126,11 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
       torch_npu.npu.set_device(rank % rank_per_dev)
       print(f"current device set: {torch_npu.npu.current_device()}")
 
-  def init_hccl_comm(rank, buffer_size):
+  def init_hccl_comm(rank):
       # 创建HCCL通信链路并初始化EP域
       print(f'[INFO] device_{rank} 创建HCCL通信链路')
       master_ip = '127.0.0.1'
-      hccl_config = {"hccl_buffer_size": buffer_size}
+      hccl_config = {"hccl_buffer_size": 200}
       dist.init_process_group(backend="hccl", rank=rank, world_size=world_size, init_method=f'tcp://{master_ip}:50001',
                              hccl_config=hccl_config)
       print(f"device_{rank} init_process_group success")
@@ -1294,22 +1181,16 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
           weights_scales2=weights_scales2,
           expert_scales=expert_scales,
       )
-      # 步骤1：计算mega_moe算子所需的HCCL通信buffer_size大小（单位：MB）
-      buffer_size = get_mega_moe_ccl_buffer_size(
-          world_size, moe_expert_num, num_tokens, topK, H,
-          dispatch_quant_mode=4, dispatch_quant_out_dtype=torch.float8_e5m2
-      )
-      print(f"[INFO] device_{rank} buffer_size is {buffer_size}")
-      # 步骤2：初始化通信域
-      ep_hcomm_info, ep_group = init_hccl_comm(rank, buffer_size)
-      # 步骤3：构造distribute_buffer（SymmBuffer结构体）
+      # 步骤1：初始化通信域
+      ep_hcomm_info, ep_group = init_hccl_comm(rank)
+      # 步骤2：构造distribute_buffer（SymmBuffer结构体）
       distribute_buffer = get_symm_buffer_for_mega_moe(
           ep_group, num_experts=moe_expert_num,
           num_max_tokens_per_rank=0, num_topk=topK,
           hidden=H, intermediate_hidden=0,
           dispatch_quant_mode=4, dispatch_quant_out_dtype=torch.float8_e5m2
       )
-      # 步骤4：运行mega_moe，传入上一步构造的sym_buffer
+      # 步骤3：运行mega_moe，传入上一步构造的sym_buffer
       y, expert_token_nums = mega_moe(**megamoe_kwargs, sym_buffer=distribute_buffer)
 
       torch.npu.synchronize()
