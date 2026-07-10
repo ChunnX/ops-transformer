@@ -48,7 +48,7 @@ private:
     __aicore__ inline void InitBuffer();
     __aicore__ inline void ComputeConstexpr();
     __aicore__ inline void SetRunInfo(RunInfo<isInfer> &runInfo, RunParamStr<isInfer>& runParam, int64_t taskId, int64_t s2LoopCount, int64_t s2LoopLimit, int64_t multiCoreInnerIdx);
-    __aicore__ inline void ComputeAxisIdxByBnAndGs1(int64_t bnIndx, int64_t gS1Index, int64_t &multiCoreInnerIdx, RunParamStr<isInfer>& runParam);
+    __aicore__ inline void ComputeAxisIdxByBnAndGs1(int64_t bnIndx, int64_t gS1Index, RunParamStr<isInfer>& runParam);
     __aicore__ inline void GetSeqQlenKvlenByBoidx(int64_t boIdx, int64_t &actualSeqQlen, int64_t &actualSeqKvLen);
     __aicore__ inline void ComputeBmm1Tail(RunInfo<isInfer> &runInfo, RunParamStr<isInfer>& runParam);
     __aicore__ inline bool IsLastBN(uint32_t bnStartIdx, uint32_t bnEndIdx);
@@ -437,7 +437,7 @@ __aicore__ inline void FAKernelNoquantMla<CubeBlockType, VecBlockType>::Process(
         }
         for (int64_t gS1Index = gS1StartIdx; gS1Index <runParam.s1LoopTimes; gS1Index++) {
             s2LoopLimit = 0;
-            this->ComputeAxisIdxByBnAndGs1(bnIdx, gS1Index, multiCoreInnerIdx, runParam);
+            this->ComputeAxisIdxByBnAndGs1(bnIdx, gS1Index, runParam);
             bool s1NoNeedCalc = ComputeParamS1<CHILD_SPEC_TEMPLATE_ARGS, useDn, enableKVPrefix>(runParam, constInfo,
                 gS1Index, actualSeqQlenAddr, this->pseInfo);
             bool s2NoNeedCalc = ComputeS2LoopInfo<CHILD_SPEC_TEMPLATE_ARGS, useDn, enableKVPrefix>(runParam, constInfo);
@@ -447,7 +447,7 @@ __aicore__ inline void FAKernelNoquantMla<CubeBlockType, VecBlockType>::Process(
             if (((s1NoNeedCalc || s2NoNeedCalc) && !lastLoopThisCore) || lastBnNoNeedCalc) {
                 continue;
             }
-            multiCoreInnerIdx++;
+            multiCoreInnerIdx++; // 统计核内实际计算次数，用于runInfo的多核索引更新
             // s2轴循环计数，支持sparse和非sparse场景
             s2LoopLimit = runParam.s2LoopEndIdx - 1;
             if (lastLoopThisCore) {
@@ -486,7 +486,7 @@ __aicore__ inline void FAKernelNoquantMla<CubeBlockType, VecBlockType>::Process(
 
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void FAKernelNoquantMla<CubeBlockType, VecBlockType>::ComputeAxisIdxByBnAndGs1(
-    int64_t bnIndx, int64_t gS1Index, int64_t &multiCoreInnerIdx, RunParamStr<isInfer>& runParam)
+    int64_t bnIndx, int64_t gS1Index, RunParamStr<isInfer>& runParam)
 {
     if constexpr (layout == LayOutTypeEnum::LAYOUT_TND) {
         if (runParam.boIdx == 0) {
