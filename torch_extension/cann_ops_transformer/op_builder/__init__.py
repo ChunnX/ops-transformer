@@ -7,5 +7,14 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
+import importlib
+import pkgutil
+import logging
 
-from .builder import OpBuilder, get_as_library
+logger = logging.getLogger(__name__)
+
+for _, name, _ in pkgutil.iter_modules(__path__):
+    try:
+        importlib.import_module("." + name, __package__)
+    except Exception as e:
+        logger.debug("Failed to import graph_convert module %s: %s", name, e)
