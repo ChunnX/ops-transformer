@@ -37,13 +37,15 @@ namespace ge {
  * @li world_size: A required int identifying the rank size.
  */
 REG_OP(QuantAllReduce)
+    .INPUT(context, "T0")
     .INPUT(x, "T1")
     .INPUT(scales, "T2")
     .OUTPUT(out_put, "T3")
+    .DATATYPE(T0, TensorType({DT_INT32}))
     .DATATYPE(T1, TensorType({DT_INT8, DT_HIFLOAT8, DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN, DT_FLOAT4_E1M2, DT_FLOAT4_E2M1}))
     .DATATYPE(T2, TensorType({DT_FLOAT, DT_FLOAT8_E8M0}))
     .DATATYPE(T3, TensorType({DT_FLOAT16, DT_BF16, DT_FLOAT}))
-    .REQUIRED_ATTR(group, String)
+    .REQUIRED_ATTR(hccl_buffer_size, Int)
     .ATTR(reduce_op, String, "sum")
     .ATTR(output_dtype, Int, DT_BF16)
     .REQUIRED_ATTR(world_size, Int)
