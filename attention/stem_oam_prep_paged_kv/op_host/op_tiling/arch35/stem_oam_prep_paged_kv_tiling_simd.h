@@ -48,8 +48,8 @@ protected:
     ge::graphStatus PostTiling() override;
     void DumpTilingInfo() override;
 
-    void ContinuousStridesCompute(gert::Shape &shape, gert::Stride &inputStride);
-    ge::graphStatus GetInputStrides(gert::Shape &shape, gert::Stride &inputStride, size_t idx);
+    void ContinuousStridesCompute(gert::Shape &shape, gert::Stride &inputStride, size_t idx);
+    ge::graphStatus GetTensorInfo(gert::Shape &shape, gert::Stride &inputStride, size_t idx);
 private:
     uint64_t totalCoreNum_ = 0;
 
