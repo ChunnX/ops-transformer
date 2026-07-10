@@ -220,12 +220,12 @@ CutResult MatmulReduceScatterV2Tiling::GetTilingResult()
     } else if (mc2tiling::Is8P(args_.rankDim, npuArch_)) {
         MMReduceScatterFitBalanceTiling scatterTiling(args_,
             KernelType::REDUCE_SCATTER_VIA_ALL_TO_ALL, TopoType::EIGHT_P,
-            SocVersion::SOC950, /*isAicpuComm=*/(commMode_ == TPL_AICPU_COMM_MODE));
+            SocVersion::SOC950, (commMode_ == TPL_AICPU_COMM_MODE));
         return scatterTiling.GetTiling();
     } else {
         SocVersion inputSocVersion = (npuArch_ == NpuArch::DAV_3510) ? SocVersion::SOC950 : SocVersion::SOC910_B;
         MMPlusReduceScatter scatterTiling(args_, args_.rankDim, KernelType::REDUCE_SCATTER, inputSocVersion,
-            /*deterministicFlag=*/false, /*isAicpuComm=*/(commMode_ == TPL_AICPU_COMM_MODE));
+            false, (commMode_ == TPL_AICPU_COMM_MODE));
         scatterTiling.GetTiling();
         return scatterTiling.tilingM_.cutRes;
     }
