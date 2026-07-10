@@ -194,59 +194,35 @@ cann_ops_transformer.sparse_flash_mla_grad(
 
 ### sparse_flash_mla_grad_metadata
 
-- **num_heads_q**（`int`）：必选参数，表示公式中$Q$的头数（即N1），当前支持[1, 128]。数据类型支持`int`。
-
-- **num_heads_kv**（`int`）：必选参数，表示公式中$oriKv$或$cmpkv$的头数（即N2），当前仅支持1。数据类型支持`int`。
-
-- **head_dim**（`int`）：必选参数，表示头的维度（即D），当前仅支持512。数据类型支持`int`。
-
-- **cu_seqlens_q**（`Tensor`）：可选参数，代表每个Batch中，q的有效token数的累加和形式，当`layout_q`为TND时该参数必传，支持非连续，数据格式支持ND，累加和与T1保持一致。数据类型支持`int32`，shape为 `(B+1,)`。
-
-- **cu_seqlens_ori_kv**（`Tensor`）：可选参数，代表每个Batch中，ori_kv的有效token数的累加和形式，当`layout_kv`为TND时该参数必传，支持非连续，数据格式支持ND，累加和与T2保持一致。数据类型支持`int32`，shape为 `(B+1,)`。
-
-- **cu_seqlens_cmp_kv**（`Tensor`）：可选参数，代表每个Batch中，cmp_kv的有效token数的累加和形式，当`layout_kv`为TND时该参数必传，支持非连续，数据格式支持ND，累加和与T3保持一致。数据类型支持`int32`，shape为 `(B+1,)`。
-
-- **seqused_q**（`Tensor`）：可选参数，表示不同batch中query实际参与运算的token数。数据类型支持`int32`，shape为 `(B,)`。
-
-- **seqused_ori_kv**（`Tensor`）：可选参数，表示不同batch中ori_kv实际参与运算的token数。数据类型支持`int32`，shape为 `(B,)`。
-
-- **seqused_cmp_kv**（`Tensor`）：可选参数，表示不同batch中cmp_kv实际参与运算的token数。数据类型支持`int32`，shape为 `(B,)`。
-
-- **cmp_residual_kv**（`Tensor`）：可选参数，表示每个batch 实际ori_s2 // cmpRatio后的余数，支持非连续，数据格式支持ND，当cmp_kv不为空且cmp_mask_mode=3时必须传入。数据类型支持`int32`，shape为 `(B,)`。
-
-- **ori_topk_length**（`Tensor`）：可选参数，表示每行query对应的ori_kv实际可选的topk长度。数据类型支持`int32`，shape为 `(B, S1, N2)` 或 `(T1, N2)`。
-
-- **cmp_topk_length**（`Tensor`）：可选参数，表示每行query对应的cmp_kv实际可选的topk长度。数据类型支持`int32`，shape为 `(B, S1, N2)` 或 `(T1, N2)`。
-
-- **batch_size**（`int`）：可选参数，表示输入样本批量大小（即B），默认值为0。数据类型支持`int`。
-
-- **max_seqlen_q**（`int`）：可选参数，表示TND场景下输入q的最大序列长度，默认值为0。数据类型支持`int`。
-
-- **max_seqlen_ori_kv**（`int`）：可选参数，表示TND场景下输入ori_kv的最大序列长度，默认值为0。数据类型支持`int`。
-
-- **max_seqlen_cmp_kv**（`int`）：可选参数，表示TND场景下输入cmp_kv的最大序列长度，默认值为0。数据类型支持`int`。
-
-- **ori_topk**（`int`）：可选参数，表示ori_kv的topk长度，默认值为0。数据类型支持`int`。
-
-- **cmp_topk**（`int`）：可选参数，表示cmp_kv的topk长度，默认值为0。数据类型支持`int`。
-
-- **cmp_ratio**（`int`）：可选参数，代表压缩率，取值范围：1~128，默认值为1。数据类型支持`int`。
-
-- **ori_mask_mode**（`int`）：可选参数，表示q和ori_kv计算的mask模式，0表示No mask，3表示rightDownCausal模式，4表示sliding window模式，默认值为0。数据类型支持`int`。
-
-- **cmp_mask_mode**（`int`）：可选参数，表示q和cmp_kv计算的mask模式，0表示No mask，3表示rightDownCausal模式，默认值为0。数据类型支持`int`。
-
-- **ori_win_left**（`int`）：可选参数，表示q和ori_kv计算中q对过去token计算的数量，-1表示无穷大，默认值为-1。数据类型支持`int`。
-
-- **ori_win_right**（`int`）：可选参数，表示q和ori_kv计算中q对未来token计算的数量，-1表示无穷大，默认值为-1。数据类型支持`int`。
-
-- **layout_q**（`str`）：可选参数，表示q的数据排布格式，支持"BSND"、"TND"，默认值为BSND。数据类型支持`str`。
-
-- **layout_kv**（`str`）：可选参数，表示ori_kv、cmp_kv的数据排布格式，支持"BSND"、"TND"，当前必须与layout_q保持一致，默认值为BSND。数据类型支持`str`。
-
-- **has_ori_kv**（`bool`）：可选参数，表示是否传入ori_kv，默认值为true。数据类型支持`bool`。
-
-- **has_cmp_kv**（`bool`）：可选参数，表示是否传入cmp_kv，默认值为true。数据类型支持`bool`。
+| 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 维度(shape) |
+|--------|----------|-----------|------|----------|-------------|
+| num_heads_q | int | 必选 | 表示公式中$Q$的头数（即N1），当前支持[1, 128]。 | int32 | - |
+| num_heads_kv | int | 必选 | 表示公式中$oriKv$或$cmpkv$的头数（即N2），当前仅支持1。 | int32 | - |
+| head_dim | int | 必选 | 表示头的维度（即D），当前仅支持512。 | int32 | - |
+| cu_seqlens_q | Tensor | 可选 | 代表每个Batch中，q的有效token数的累加和形式，当`layout_q`为TND时该参数必传，支持非连续，数据格式支持ND，累加和与T1保持一致。 | int32 | (B+1, ) |
+| cu_seqlens_ori_kv | Tensor | 可选 | 代表每个Batch中，ori_kv的有效token数的累加和形式，当`layout_kv`为TND时该参数必传，支持非连续，数据格式支持ND，累加和与T2保持一致。 | int32 | (B+1, ) |
+| cu_seqlens_cmp_kv | Tensor | 可选 | 代表每个Batch中，cmp_kv的有效token数的累加和形式，当`layout_kv`为TND时该参数必传，支持非连续，数据格式支持ND，累加和与T3保持一致。 | int32 | (B+1, ) |
+| seqused_q | Tensor | 可选 | 表示不同batch中query实际参与运算的token数。 | int32 | (B, ) |
+| seqused_ori_kv | Tensor | 可选 | 表示不同batch中ori_kv实际参与运算的token数。 | int32 | (B, ) |
+| seqused_cmp_kv | Tensor | 可选 | 表示不同batch中cmp_kv实际参与运算的token数。 | int32 | (B, ) |
+| cmp_residual_kv | Tensor | 可选 | 表示每个batch 实际ori_s2 // cmpRatio后的余数，支持非连续，数据格式支持ND，当cmp_kv不为空且cmp_mask_mode=3时必须传入。 | int32 | (B, ) |
+| ori_topk_length | Tensor | 可选 | 表示每行query对应的ori_kv实际可选的topk长度。 | int32 | (B, S1, N2)或(T1, N2) |
+| cmp_topk_length | Tensor | 可选 | 表示每行query对应的cmp_kv实际可选的topk长度。 | int32 | (B, S1, N2)或(T1, N2) |
+| batch_size | int | 可选 | 表示输入样本批量大小（即B），默认值为0。 | int32 | - |
+| max_seqlen_q | int | 可选 | 表示TND场景下输入q的最大序列长度，默认值为0。 | int32 | - |
+| max_seqlen_ori_kv | int | 可选 | 表示TND场景下输入ori_kv的最大序列长度，默认值为0。 | int32 | - |
+| max_seqlen_cmp_kv | int | 可选 | 表示TND场景下输入cmp_kv的最大序列长度，默认值为0。 | int32 | - |
+| ori_topk | int | 可选 | 表示ori_kv的topk长度，默认值为0。 | int32 | - |
+| cmp_topk | int | 可选 | 表示cmp_kv的topk长度，默认值为0。 | int32 | - |
+| cmp_ratio | int | 可选 | 代表压缩率，取值范围：1~128，默认值为1。 | int32 | - |
+| ori_mask_mode | int | 可选 | 表示q和ori_kv计算的mask模式，0表示No mask，3表示rightDownCausal模式，4表示sliding window模式，默认值为0。 | int32 | - |
+| cmp_mask_mode | int | 可选 | 表示q和cmp_kv计算的mask模式，0表示No mask，3表示rightDownCausal模式，默认值为0。 | int32 | - |
+| ori_win_left | int | 可选 | 表示q和ori_kv计算中q对过去token计算的数量，-1表示无穷大，默认值为-1。 | int32 | - |
+| ori_win_right | int | 可选 | 表示q和ori_kv计算中q对未来token计算的数量，-1表示无穷大，默认值为-1。 | int32 | - |
+| layout_q | str | 可选 | 表示q的数据排布格式，支持"BSND"、"TND"，默认值为BSND。 | string | - |
+| layout_kv | str | 可选 | 表示ori_kv、cmp_kv的数据排布格式，支持"BSND"、"TND"，当前必须与layout_q保持一致，默认值为BSND。 | string | - |
+| has_ori_kv | bool | 可选 | 表示是否传入ori_kv，默认值为true。 | bool | - |
+| has_cmp_kv | bool | 可选 | 表示是否传入cmp_kv，默认值为true。 | bool | - |
 
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品、Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：不支持seqused_q、seqused_ori_kv、seqused_cmp_kv、ori_topk_length、cmp_topk_length，ori_mask_mode仅支持4，cmp_mask_mode仅支持3，ori_win_left仅支持127，ori_win_right仅支持0。
 
