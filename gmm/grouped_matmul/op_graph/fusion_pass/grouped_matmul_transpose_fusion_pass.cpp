@@ -35,7 +35,7 @@ using namespace ge::fusion;
 
 namespace ops {
 namespace {
-constexpr char kPassName[] = "GroupedMatmulTransposeFusionPass";
+constexpr char kPassName[] = "GroupedMatmulTransFusionPass";
 constexpr char kOpTypeGroupedMatmul[] = "GroupedMatmul";
 constexpr char kOpTypeTranspose[] = "Transpose";
 constexpr char kOpTypeTransposeD[] = "TransposeD";
@@ -45,7 +45,7 @@ constexpr char kOpTypeConst[] = "Const";
 constexpr char kTransposeXAttr[] = "transpose_x";
 constexpr char kTransposeWeightAttr[] = "transpose_weight";
 constexpr char kFixPipeIntrinsic[] = "Intrinsic_fix_pipe_l0c2out";
-constexpr char kDav3510SocVersion[] = "Ascend950";
+constexpr char kDav3510ShortSocVersion[] = "Ascend950";
 
 constexpr int32_t kXIndex = 0;
 constexpr int32_t kWeightIndex = 1;
@@ -157,7 +157,7 @@ bool CheckPlatformIsDav3510ForGmm()
         OP_LOGW(kPassName, "Get platform information failed.");
         return false;
     }
-    return optionalInfo.soc_version == kDav3510SocVersion;
+    return platformInfo.str_info.short_soc_version == kDav3510ShortSocVersion;
 }
 
 bool CheckPlatformSupportReshapePattern()
@@ -778,7 +778,7 @@ Status RunGroupedMatmulTransposeFusion(GraphPtr& graph, CustomPassContext& passC
 }
 } // namespace
 
-Status GroupedMatmulTransposeFusionPass::Run(GraphPtr& graph, CustomPassContext& passContext)
+Status GroupedMatmulTransFusionPass::Run(GraphPtr& graph, CustomPassContext& passContext)
 {
     if (!IsTargetVersion()) {
         return GRAPH_NOT_CHANGED;
@@ -789,7 +789,7 @@ Status GroupedMatmulTransposeFusionPass::Run(GraphPtr& graph, CustomPassContext&
 }
 
 #if GE_COMPILER_VERSION_NUM >= 90100000
-REG_FUSION_PASS(GroupedMatmulTransposeFusionPass)
+REG_FUSION_PASS(GroupedMatmulTransFusionPass)
     .Stage(IsTargetVersion() ? CustomPassStage::kCompatibleInherited : CustomPassStage::kAfterInferShape);
 #endif
 } // namespace ops

@@ -32,7 +32,7 @@ using namespace ge;
 using namespace ge::fusion;
 
 namespace {
-constexpr int32_t kGraphFusionSupportVersion = 90000000;
+constexpr int32_t kGraphFusionSupportVersion = 90100000;
 constexpr int32_t kXIndex = 0;
 constexpr int32_t kWeightIndex = 1;
 constexpr char kGroupedMatmulType[] = "GroupedMatmul";
@@ -70,7 +70,7 @@ struct TensorWithDesc {
     TensorDesc desc;
 };
 
-class TestGroupedMatmulTransposeFusionPass : public ops::GroupedMatmulTransposeFusionPass {
+class TestGroupedMatmulTransposeFusionPass : public ops::GroupedMatmulTransFusionPass {
 public:
     Status RunForTest(GraphPtr &graph, CustomPassContext &passContext)
     {
@@ -183,6 +183,7 @@ void SetPlatformSupport()
 {
     fe::PlatformInfo platformInfo;
     fe::OptionalInfo optionalInfo;
+    platformInfo.str_info.short_soc_version = "Ascend950";
     optionalInfo.soc_version = "Ascend950";
     fe::PlatformInfoManager::Instance().platform_info_map_.clear();
     fe::PlatformInfoManager::Instance().platform_info_map_[optionalInfo.soc_version] = platformInfo;
