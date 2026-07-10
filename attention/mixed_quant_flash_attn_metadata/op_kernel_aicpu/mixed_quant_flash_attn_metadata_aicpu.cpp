@@ -238,7 +238,7 @@ bool MixedQuantFlashAttnMetadataCpuKernel::ParamsInit()
     // KV 按量化模式选择数据类型，此处 DataType 仅用于表达元素位宽：
     //   quantMode_ == 1 → INT4（0.5 byte，4-bit 量化）
     //   quantMode_ != 1 → INT8（1 byte，8-bit 量化）
-    baseInfo.kvType = quantMode_ == 1 ? load_balance::DataType::INT4 : load_balance::DataType::INT8; 
+    baseInfo.kvType = quantMode_ == 1 ? load_balance::DataType::INT4 : load_balance::DataType::INT8;
     // param
     if (numHeadsKv_ == 0) {
         numHeadsKv_ = numHeadsQ_;
@@ -247,14 +247,19 @@ bool MixedQuantFlashAttnMetadataCpuKernel::ParamsInit()
         groupSize_ = numHeadsQ_ / numHeadsKv_;
     }
     ValidSocVersion validSocVersion = ProcessSocVersion();
-    if (quantMode_ == 1 && validSocVersion == ValidSocVersion::ASCEND950) {
-        s2BaseSize_ = 64U;
-        mBaseSize_ = 256U;
-    } else if (quantMode_ == 1 && validSocVersion == ValidSocVersion::ASCEND910_96) {
-        s2BaseSize_ = 32U;
-        mBaseSize_ = 512U;
+    if (quantMode_ == 1) {
+        if (validSocVersion == ValidSocVersion::ASCEND950) {
+            mBaseSize_ = 64U;
+            s2BaseSize_ = 256U;
+        } else if (validSocVersion == ValidSocVersion::ASCEND910_96) {
+            mBaseSize_ = 32U;
+            s2BaseSize_ = 512U;
+        } else {
+            KERNEL_LOG_ERROR("unsupported socVersion");
+            return false;
+        }
     } else {
-        KERNEL_LOG_ERROR("unsupported quantMode or socVersion");
+        KERNEL_LOG_ERROR("unsupported quantMode");
         return false;
     }
     param.mBaseSize = mBaseSize_;
@@ -262,7 +267,8 @@ bool MixedQuantFlashAttnMetadataCpuKernel::ParamsInit()
     param.costFunc = CalcCost;
     param.mode = load_balance::BalanceMode::BN1_S1;
     param.l2Byte = 0U;     // Set sectionNum to 1
-    param.fdTolerance = 300;                 // 300: least block
+    param.fdTolerance = 10;
+    param.fdLeastBlock = 3;
     param.fdOn = (maskMode_ != 4);           // TODO: turn off fd for flash attn
     return true;
 }
