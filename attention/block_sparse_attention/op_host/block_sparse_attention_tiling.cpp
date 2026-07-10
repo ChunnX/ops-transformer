@@ -90,6 +90,7 @@ constexpr uint32_t NUM3 = 3;
 constexpr uint32_t SOC_VER_950_CODE = 4;
 constexpr uint32_t INF_WINDOW_SIZE_PRE_NEXT = 2147483647;
 
+constexpr uint32_t  TILE_SIZE_16 = 16;
 constexpr uint32_t TILE_SIZE_128 = 128;
 constexpr uint32_t TILE_SIZE_256 = 256;
 constexpr uint32_t D_SIZE_128 = 128;
@@ -541,7 +542,7 @@ ge::graphStatus BSATiling::CheckSparsePattern(gert::TilingContext *bsaContext, c
     }
     // temporary regulation of blockShapeY
     if (blockShapeY_ % defaultShape != 0) {
-        OP_LOGE(bsaContext->GetNodeName(), "BlockShape elem1 must be a multiple of 128 so far, "
+        OP_LOGE(bsaContext->GetNodeName(), "BlockShape elem1 must be a multiple of 16 so far, "
             "but got elem1: %ld.", blockShapeY_);
         return ge::GRAPH_FAILED;
     }
@@ -574,6 +575,7 @@ ge::graphStatus BSATiling::CheckSparsePattern(gert::TilingContext *bsaContext, c
 
 ge::graphStatus BSATiling::ParseSparsePattern(gert::TilingContext *bsaContext)
 {
+    constexpr int64_t MIN_BLOCK_ALIGN = 16;
     constexpr int64_t DEFAULT_BLOCK_SHAPE = 128;
     blockShapeX_ = DEFAULT_BLOCK_SHAPE;
     blockShapeY_ = DEFAULT_BLOCK_SHAPE;
@@ -596,7 +598,7 @@ ge::graphStatus BSATiling::ParseSparsePattern(gert::TilingContext *bsaContext)
             blockShapeY_ = blockShapeList[1];
         }
     }
-    if (CheckSparsePattern(bsaContext, DEFAULT_BLOCK_SHAPE) != ge::GRAPH_SUCCESS) {
+    if (CheckSparsePattern(bsaContext, MIN_BLOCK_ALIGN) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -855,10 +857,13 @@ uint32_t BSATiling::GetCurQSTileNum950(int64_t curQSeqlen)
 void BSATiling::CalcBaseTileTilingParams950()
 {
     qBaseTile_ = (blockShapeX_ > TILE_SIZE_128) ? TILE_SIZE_128 : blockShapeX_;
-    if (innerPrecise_ == BsaInnerCalcPrec::LOW_HIGH_MIXED && embeddingSize_ <= D_SIZE_128) {
+    if (innerPrecise_ == BsaInnerCalcPrec::LOW_HIGH_MIXED && embeddingSize_ <= D_SIZE_128 && blockShapeY_ % TILE_SIZE_256 == 0) {
         kvBaseTile_ = TILE_SIZE_256;
-    } else {
+    } else if (blockShapeY_ % TILE_SIZE_128 == 0)
+    {
         kvBaseTile_ = TILE_SIZE_128;
+    } else {
+        kvBaseTile_ = blockShapeY_;
     }
 }
 
@@ -880,6 +885,7 @@ void BSATiling::CalcSplitCoreTilingParams950()
     yBlockNumAligned_ = (maxKvSeqlen_ + blockShapeY_ - 1) / blockShapeY_;
     uint32_t totalRowNumBlockMask = batch_ * numHeads_ * xBlockNumAligned_;
     avgRowPerSubCore_ = (totalRowNumBlockMask + aivNum_ - 1) / aivNum_;
+    // preActiveSubCoreNum_ = 实际需要激活的 AIV Core 数量（可能少于 aivNum_ ，如果任务不够分）
     preActiveSubCoreNum_ = (totalRowNumBlockMask + avgRowPerSubCore_ - 1) / avgRowPerSubCore_;
 }
 
@@ -980,7 +986,7 @@ void BSATiling::CalcMatmulPhaseL1TileInfo950()
         // V矩阵D按256分割，kvBaseTile_不分割，指令提前于核间同步下发，是否开启db取决于kvBaseTile_的大小
         mm2L1TileN_ = TILE_SIZE_256;
         mm2L1TileKLeft_ = kvBaseTileAligned128;
-        vL1BufNum_ = TILE_SIZE_256 / kvBaseTileAligned128;
+        vL1BufNum_ = std::max(TILE_SIZE_256 / kvBaseTileAligned128, 1U);
         // P矩阵在950上会常驻L1，由于基块的prelaunch为2，因此最好有3 buf，以免基块间流水阻塞
         mm2L1TileM_ = qBaseTileAligned128;
         mm2L1TileKRight_ = kvBaseTileAligned128;
@@ -993,8 +999,8 @@ void BSATiling::CalcMatmulPhaseL1TileInfo950()
         // V矩阵开启db，D按128分割，kvBaseTile_不分割，指令同样提前于核间同步下发
         // 如果kvBaseTile_进一步增大，考虑关闭db，使得kvBaseTile_不分割
         mm2L1TileN_ = TILE_SIZE_128;
-        mm2L1TileKLeft_ = TILE_SIZE_256;
-        vL1BufNum_ = DUO_BUF;
+        mm2L1TileKLeft_ = kvBaseTileAligned128;
+        vL1BufNum_ = (kvBaseTileAligned128 > TILE_SIZE_256) ? DUO_BUF : DUO_BUF;
         // P矩阵在950上会常驻L1，由于基块的prelaunch为2，因此最好有3 buf，以免基块间流水阻塞
         mm2L1TileM_ = qBaseTileAligned128;
         mm2L1TileKRight_ = kvBaseTileAligned128;
