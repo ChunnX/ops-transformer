@@ -42,6 +42,10 @@ static ge::graphStatus TilingPrepare4StemOamPrepPagedKv(gert::TilingParseContext
     return ge::GRAPH_SUCCESS;
 }
 
+IMPL_OP_OPTILING(MhcPreSinkhornBackward)
+    .Tiling(Tiling4MhcPreSinkhornBackward)
+    .TilingParse<MhcPreSinkhornBackwardCompileInfo>(TilingPrepare4MhcPreSinkhornBackward);
+
 IMPL_OP_OPTILING(StemOamPrepPagedKv)
     .Tiling(Tiling4StemOamPrepPagedKv)
     .TilingParse<StemOamPrepPagedKvCompileInfo>(TilingPrepare4StemOamPrepPagedKv);
