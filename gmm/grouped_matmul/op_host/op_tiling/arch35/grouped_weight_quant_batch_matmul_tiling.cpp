@@ -958,7 +958,8 @@ void GroupedWeightQuantBatchMatmulTiling::SetMatMulTiling()
             tilingData_.mmTilingData.stepKb = STEP_K_3;
         }
         OP_LOGI("SetMatMulTiling", "stepKb = %u", tilingData_.mmTilingData.stepKb);
-    } else if (xDType_ == ge::DT_FLOAT8_E4M3FN && weightDtype_ == ge::DT_FLOAT4_E2M1 &&
+    } else if (xDType_ == ge::DT_FLOAT8_E4M3FN &&
+               (weightDtype_ == ge::DT_FLOAT4_E2M1 || weightDtype_ == ge::DT_FLOAT4_E1M2) &&
                antiquantScaleDtype_ == ge::DT_FLOAT8_E8M0) {
         // MxA8W4场景配置mxTypePara
         tilingData_.mmTilingData.mxTypePara = (SCALE_FACTOR_DEFAULT << SCALE_FACTOR_N_BIT) +
@@ -1008,7 +1009,8 @@ void GroupedWeightQuantBatchMatmulTiling::SetTilingKey(gert::TilingContext *cont
         if (groupSize_ == 192u) {
             tilingKeyConfig_.templateCustom = static_cast<uint8_t>(Mte2Configuration::MTE2_INNER_SIZE_384_BUF_NUM_3);
         }
-    } else if (xDType_ == ge::DT_FLOAT8_E4M3FN && weightDtype_ == ge::DT_FLOAT4_E2M1 &&
+    } else if (xDType_ == ge::DT_FLOAT8_E4M3FN &&
+               (weightDtype_ == ge::DT_FLOAT4_E2M1 || weightDtype_ == ge::DT_FLOAT4_E1M2) &&
                antiquantScaleDtype_ == ge::DT_FLOAT8_E8M0) {
         tilingKeyConfig_.templateCustom = static_cast<uint8_t>(Mte2Configuration::MTE2_INNER_SIZE_DYNAMIC_BUF_NUM_4);
         tilingKeyConfig_.isSingleMultiSingle = isSingleMultiSingle_;
@@ -1053,7 +1055,8 @@ bool GroupedWeightQuantBatchMatmulTiling::IsA16W4NDPergroup() const
 
 bool GroupedWeightQuantBatchMatmulTiling::IsMxA8W4() const
 {
-    if (xDType_ == ge::DT_FLOAT8_E4M3FN && (weightDtype_ == ge::DT_FLOAT4_E2M1 || weightDtype_ == ge::DT_FLOAT) &&
+    if (xDType_ == ge::DT_FLOAT8_E4M3FN && (weightDtype_ == ge::DT_FLOAT4_E2M1 ||
+        weightDtype_ == ge::DT_FLOAT4_E1M2 || weightDtype_ == ge::DT_FLOAT) &&
         antiquantScaleDtype_ == ge::DT_FLOAT8_E8M0) {
         return true;
     }
@@ -1107,7 +1110,8 @@ bool GroupedWeightQuantBatchMatmulTiling::CheckUnsupportedRemainingCases() const
                 "(In weight quant, when x-weight is int8-int4)"),
             return false);
     } else if (xDType_ == ge::DT_FLOAT8_E4M3FN &&
-               (weightDtype_ == ge::DT_FLOAT4_E2M1 || weightDtype_ == ge::DT_FLOAT) &&
+               (weightDtype_ == ge::DT_FLOAT4_E2M1 || weightDtype_ == ge::DT_FLOAT4_E1M2 ||
+                weightDtype_ == ge::DT_FLOAT) &&
                antiquantScaleDtype_ == ge::DT_FLOAT8_E8M0) {
         OP_CHECK_IF(
             !(weightNzFlag_ && transB_),
@@ -1115,7 +1119,7 @@ bool GroupedWeightQuantBatchMatmulTiling::CheckUnsupportedRemainingCases() const
                 std::string("format=") + (weightNzFlag_ ? "NZ" : "ND") +
                 ", transpose=" + (transB_ ? "true" : "false"),
                 "transposed and FRACTAL_NZ-format "
-                "(In weight quant, when x-weight is float8_e4m3fn-float4_e2m1/fp32)"),
+                "(In weight quant, when x-weight is float8_e4m3fn-float4_e2m1/float4_e1m2/fp32)"),
             return false);
     }
     return true;
