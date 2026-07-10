@@ -39,13 +39,7 @@ static ge::graphStatus CheckAttrsInfo(const gert::TilingContext *context, Tiling
     const char *nodeName = context->GetNodeName();
     const gert::RuntimeAttrs *attrs = context->GetAttrs();
     OP_TILING_CHECK(attrs == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "attrs"), return ge::GRAPH_FAILED);
-    // 校验group是否为空
-    const char *groupPtr = attrs->GetAttrPointer<char>(GROUP_INDEX);
-    OP_TILING_CHECK(groupPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "group"), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(std::string(groupPtr).empty(), OP_LOGE_WITH_INVALID_INPUT(nodeName, "group"),
-                    return ge::GRAPH_FAILED);
-    runInfo.groupPtr = groupPtr;
-    runInfo.group = std::string(groupPtr);
+
     // 校验reduce_op的类型是否为sum
     const char *reduceOpPtr = attrs->GetAttrPointer<char>(REDUCE_OP_INDEX);
     OP_TILING_CHECK(reduceOpPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "reduce_op"), return ge::GRAPH_FAILED);
@@ -76,14 +70,10 @@ static ge::graphStatus SetRankSize(const gert::TilingContext *context, TilingRun
     // attrs在函数CheckAttrsInfo中已做校验
     const gert::RuntimeAttrs *attrs = context->GetAttrs();
     const int64_t *rankSizePtr = attrs->GetAttrPointer<int64_t>(WORLD_SIZE_INDEX);
-    if (rankSizePtr == nullptr || *rankSizePtr == RANK_SIZE_DEFAULT) {
-        int64_t rankSize = 0;
-        OP_TILING_CHECK(!mc2tiling::GetRankSize(nodeName, runInfo.groupPtr, rankSize),
-                        OP_LOGE(nodeName, "Get rankSize failed."), return ge::GRAPH_FAILED);
-        runInfo.rankSize = rankSize;
-    } else {
-        runInfo.rankSize = *rankSizePtr;
-    }
+    OP_TILING_CHECK(rankSizePtr == nullptr || *rankSizePtr == RANK_SIZE_DEFAULT,
+                    OP_LOGE(nodeName, "Get rankSize failed, the rankSize is nullptr or invalid value."),
+                    return ge::GRAPH_FAILED);
+    runInfo.rankSize = *rankSizePtr;
     OP_TILING_CHECK(std::find(RANK_SIZE_LIST.begin(), RANK_SIZE_LIST.end(), runInfo.rankSize) >= RANK_SIZE_LIST.end(),
                     OP_LOGE_FOR_INVALID_VALUE(nodeName, "rankSize", std::to_string(runInfo.rankSize).c_str(),
                                               VectorToString(RANK_SIZE_LIST).c_str()),
@@ -697,7 +687,6 @@ ge::graphStatus QuantReduceScatterUtilTiling::CheckTilingFunc(gert::TilingContex
                                                               const OpType opType)
 {
     const char *nodeName = context->GetNodeName();
-    // set group
     if (CheckAttrsInfo(context, runInfo) != ge::GRAPH_SUCCESS) {
         OP_LOGE(nodeName, "CheckAttrsInfo failed");
         return ge::GRAPH_FAILED;
