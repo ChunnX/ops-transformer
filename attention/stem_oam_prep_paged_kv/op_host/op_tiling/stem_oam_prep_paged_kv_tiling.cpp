@@ -16,7 +16,7 @@
 #include "register/op_def_registry.h"
 #include "tiling/tiling_api.h"
 #include "tiling/platform/platform_ascendc.h"
-#include "stem_oam_prep_paged_kv_tiling_simd.h"
+#include "arch35/stem_oam_prep_paged_kv_tiling_simd.h"
 #include "stem_oam_prep_paged_kv_tiling.h"
 #include "log/log.h"
 #include "op_host/tiling_templates_registry.h"
@@ -34,7 +34,7 @@ static ge::graphStatus Tiling4StemOamPrepPagedKv(gert::TilingContext* context)
     }
 
     OP_LOGD(context->GetNodeName(), "StemOamPrepPagedKv Only Support RegbaseSocVersion.");
-    return GRAPH_FAILED;
+    return ge::GRAPH_FAILED;
 }
 
 static ge::graphStatus TilingPrepare4StemOamPrepPagedKv(gert::TilingParseContext* context)

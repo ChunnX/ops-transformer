@@ -15,7 +15,7 @@
 #ifndef STEM_OAM_PREP_PAGED_KV_TILING_DATA_H
 #define STEM_OAM_PREP_PAGED_KV_TILING_DATA_H
 
-#include "kernel_operator.h"
+#include <cstdint>
 
 struct StemOamPrepPagedKvTilingData {
     int64_t kvLayout = 0;

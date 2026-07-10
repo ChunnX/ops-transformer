@@ -83,13 +83,13 @@ ge::graphStatus StemPrepKvTiling::GetShapeAttrsInfo()
     batchSize_ = kvSeqLensShape->GetStorageShape().GetDim(0);
 
     const gert::StorageShape *kcacheShape = context_->GetInputShape(0);
+    const gert::StorageShape *vcacheShape = context_->GetInputShape(1);
     OP_CHECK_NULL_WITH_CONTEXT(context_, kcacheShape);
     if (kvLayout_ == 0) {
         numKvHeads_ = kcacheShape->GetStorageShape().GetDim(2);
     } else {
         numKvHeads_ = kcacheShape->GetStorageShape().GetDim(1);
     }
-    totalBlocks_ = kcacheShape->GetStorageShape().GetDim(0);
     dimQk_ = kcacheShape->GetStorageShape().GetDim(kcacheShape->GetStorageShape().GetDimNum() - 1);
 
     const gert::StorageShape *kvIndicesShape = context_->GetInputShape(2);
@@ -102,7 +102,7 @@ ge::graphStatus StemPrepKvTiling::GetShapeAttrsInfo()
     kflatDim_ = kFlatOutShape->GetStorageShape().GetDim(3);
 
     GetInputStrides(kcacheShape, kCacheStride_, 0);
-    GetInputStrides(kcacheShape, vCacheStride_, 1);
+    GetInputStrides(vcacheShape, vCacheStride_, 1);
     GetInputStrides(kScaleCacheShape, kScaleCacheStride_, 4);
 
     return ge::GRAPH_SUCCESS;
@@ -129,7 +129,7 @@ uint64_t StemPrepKvTiling::GetTilingKey() const
 
 ge::graphStatus StemPrepKvTiling::GetWorkspaceSize()
 {
-    auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
+    auto ascendcPlatform = platform_ascendc::PlatformAscendC(context_->GetPlatformInfo());
     uint32_t sysWorkspaceSize = ascendcPlatform.GetLibApiWorkSpaceSize();
     uint64_t maxKvPadded = MAX_Kv_PADDED;
     uint64_t vFlatSize = static_cast<uint64_t>(batchSize_) * static_cast<uint64_t>(numKvHeads_) *
@@ -145,7 +145,6 @@ ge::graphStatus StemPrepKvTiling::GetWorkspaceSize()
 ge::graphStatus StemPrepKvTiling::PostTiling()
 {
     uint32_t usedCoreNum = static_cast<uint32_t>(totalCoreNum_);
-    uint32_t totalBh = batchSize_ * numKvHeads_;
 
     for (int32_t i = 0; i < 4; i++) {
         tilingData_->kCacheStride[i] = kCacheStride_[i];
@@ -194,7 +193,7 @@ void StemPrepKvTiling::DumpTilingInfo()
     info << "kScaleCacheStride: " << kScaleCacheStride_[0] << " " << kScaleCacheStride_[1] << " "
          << kScaleCacheStride_[2] << " " << kScaleCacheStride_[3] << std::endl;
 
-    OP_LOGI(opName, "Tiling info is: %s", info.str().c_str());
+    OP_LOGI("StemOamPrepPagedKv", "Tiling info is: %s", info.str().c_str());
 }
 
 REGISTER_OPS_TILING_TEMPLATE(StemOamPrepPagedKv, StemPrepKvTiling, 0);

@@ -20,6 +20,7 @@
 #include "register/op_impl_registry.h"
 #include "op_host/tiling_base.h"
 #include "op_kernel/arch35/stem_oam_prep_paged_kv_tiling_data.h"
+#include "op_kernel/arch35/stem_oam_prep_paged_kv_tiling_key.h"
 
 namespace optiling {
 
@@ -67,7 +68,7 @@ private:
     gert::Stride vCacheStride_;
     gert::Stride kScaleCacheStride_;
 
-    StemOamPrepPagedKvTilingData* tilingData_;
+    StemOamPrepPagedKvTilingData* tilingData_ = nullptr;
 };
 
 } // namespace optiling
