@@ -56,10 +56,12 @@ public:
     {
         if ASCEND_IS_AIC {
             stage1MT_.Init(&tiling_->matmulTilingFp32, pipe_);
-            stage1MTFp32C_.Init(&tiling_->matmulTilingFp32, pipe_);
             stage2MT_.Init(&tiling_->matmulTilingFp32, pipe_);
-            stage2MTFp32C_.Init(&tiling_->matmulTilingFp32, pipe_);
             stage3MT_.Init(&tiling_->matmulTilingFp32, pipe_);
+            if constexpr (kStateIsFp32) {
+                stage1MTFp32C_.Init(&tiling_->matmulTilingFp32, pipe_);
+                stage2MTFp32C_.Init(&tiling_->matmulTilingFp32, pipe_);
+            }
         }
     }
 
@@ -210,7 +212,7 @@ private:
     {
         GDRStageOneInitParams initStageOneParams {query_, key_, value_, beta_, g_,
                                                 gCum_, kCumDecay_, vInner_, vInnerFp32_, qPrime_, kg_, qkt_,
-                                                stageWsAddr_, stageOneMask_, cg, gFlag_, kStateIsFp32};
+                                                stageWsAddr_, stageOneMask_, cg, gFlag_};
         stageOneOp_.Init(initStageOneParams, pipe_, tiling_);
         stageOneOp_.Process();
         pipe_->Reset();
@@ -309,7 +311,7 @@ private:
     StageThreeMT stage3MT_;
 
     // Stage operators
-    Stage1 stageOneOp_;
+    Stage1<kStateIsFp32> stageOneOp_;
     bool gFlag_ = false;
 };
 

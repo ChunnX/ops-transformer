@@ -25,11 +25,10 @@ using namespace matmul;
 
 using aT2 = MatmulType<TPosition::GM, CubeFormat::ND, bfloat16_t, true>;
 using bT2 = MatmulType<TPosition::GM, CubeFormat::ND, bfloat16_t, true>;
-using cT2 = MatmulType<TPosition::GM, CubeFormat::ND, bfloat16_t>;
-using StageTwoMT = matmul::MatmulImpl<aT2, bT2, cT2>;
-
-using cT2Fp32 = MatmulType<TPosition::GM, CubeFormat::ND, float>;
-using StageTwoMTFp32C = matmul::MatmulImpl<aT2, bT2, cT2Fp32>;
+template <typename cType>
+using StageTwoMTT = matmul::MatmulImpl<aT2, bT2, MatmulType<TPosition::GM, CubeFormat::ND, cType>>;
+using StageTwoMT = StageTwoMTT<bfloat16_t>;
+using StageTwoMTFp32C = StageTwoMTT<float>;
 
 struct StageTwoParams {
     GlobalTensor<bfloat16_t> qPrime;    // (Nv, Sp, Dk)
@@ -169,8 +168,9 @@ public:
                             outQueue_.EnQue(bf16Accum);
                             CopyOut<bfloat16_t>(sTP_->curState[nvId * Dv_ * Dk_], Dv_, Dk_, false, curDk_);
                             uint64_t mm_offset1 = nvId * Sp_ * Dv_ + length * Dv_;
-                            CastVInnerToBf16(sTP_->vInnerFp32[mm_offset1], sTP_->vInner[mm_offset1],
-                                             curChunkSize_ * Dv_);
+                            CastGmToGm<float, bfloat16_t>(sTP_->vInnerFp32[mm_offset1],
+                                                          sTP_->vInner[mm_offset1],
+                                                          curChunkSize_ * Dv_);
                         }
                         CrossCoreSetFlag<0x2, PIPE_MTE3>(0x5);
                         CrossCoreWaitFlag(0x4);
@@ -276,17 +276,39 @@ public:
         }
     }
 
+    template <typename MMType, typename AT, typename BT, typename CT>
+    __aicore__ inline void RunMatmul(MMType *mm, GlobalTensor<AT> a, bool transA,
+                                     GlobalTensor<BT> b, bool transB,
+                                     GlobalTensor<CT> c, int64_t M, int64_t N, int64_t K, int32_t accum)
+    {
+        mm->SetOrgShape(M, N, K);
+        mm->SetSingleShape(M, N, K);
+        mm->SetTensorA(a, transA);
+        mm->SetTensorB(b, transB);
+        mm->IterateAll(c, accum);
+        mm->End();
+    }
+
+    template <typename MMType, typename AT, typename BT, typename CT>
+    __aicore__ inline void RunMatmul(MMType *mm, GlobalTensor<AT> a, bool transA,
+                                     GlobalTensor<BT> b, bool transB,
+                                     GlobalTensor<CT> c, int64_t M, int64_t N, int64_t K,
+                                     int64_t Ka, int64_t Kb, int32_t accum = 0)
+    {
+        mm->SetOrgShape(M, N, K, Ka, Kb);
+        mm->SetSingleShape(M, N, K);
+        mm->SetTensorA(a, transA);
+        mm->SetTensorB(b, transB);
+        mm->IterateAll(c, accum);
+        mm->End();
+    }
+
     __aicore__ inline void CalAttnInter(GlobalTensor<bfloat16_t> qPrime,
                                         GlobalTensor<bfloat16_t> state,
                                         GlobalTensor<bfloat16_t> out)
     {
-        // q_prime @ state.transpose(0, 1)
-        sTP_->mm1->SetOrgShape(curChunkSize_, Dv_, Dk_, Dk_, Nv_ * Dv_);    // MNKaKbN
-        sTP_->mm1->SetSingleShape(curChunkSize_, Dv_, Dk_);                 // SingleCoreMNK
-        sTP_->mm1->SetTensorA(qPrime, false);
-        sTP_->mm1->SetTensorB(state, true);
-        sTP_->mm1->IterateAll(out);
-        sTP_->mm1->End();
+        RunMatmul(sTP_->mm1, qPrime, false, state, true, out,
+                  curChunkSize_, Dv_, Dk_, Dk_, Nv_ * Dv_);
     }
 
     template <typename vInnerType>
@@ -295,19 +317,11 @@ public:
                                      GlobalTensor<vInnerType> vPrime)
     {
         if constexpr (std::is_same_v<vInnerType, float>) {
-            sTP_->mm1Fp32C->SetOrgShape(curChunkSize_, Dv_, Dk_);
-            sTP_->mm1Fp32C->SetSingleShape(curChunkSize_, Dv_, Dk_);
-            sTP_->mm1Fp32C->SetTensorA(kCumdecay, false);
-            sTP_->mm1Fp32C->SetTensorB(state, true);
-            sTP_->mm1Fp32C->IterateAll(vPrime, 1);
-            sTP_->mm1Fp32C->End();
+            RunMatmul(sTP_->mm1Fp32C, kCumdecay, false, state, true, vPrime,
+                      curChunkSize_, Dv_, Dk_, 1);
         } else {
-            sTP_->mm1->SetOrgShape(curChunkSize_, Dv_, Dk_);
-            sTP_->mm1->SetSingleShape(curChunkSize_, Dv_, Dk_);
-            sTP_->mm1->SetTensorA(kCumdecay, false);
-            sTP_->mm1->SetTensorB(state, true);
-            sTP_->mm1->IterateAll(vPrime, 1);
-            sTP_->mm1->End();
+            RunMatmul(sTP_->mm1, kCumdecay, false, state, true, vPrime,
+                      curChunkSize_, Dv_, Dk_, 1);
         }
     }
 
@@ -317,45 +331,38 @@ public:
                                        GlobalTensor<stateOutType> state)
     {
         if constexpr (std::is_same_v<stateOutType, float>) {
-            sTP_->mm1Fp32C->SetOrgShape(Dv_, Dk_, curChunkSize_);
-            sTP_->mm1Fp32C->SetSingleShape(Dv_, Dk_, curChunkSize_);
-            sTP_->mm1Fp32C->SetTensorA(vInner, true);
-            sTP_->mm1Fp32C->SetTensorB(kg, false);
-            sTP_->mm1Fp32C->IterateAll(state, 1);
-            sTP_->mm1Fp32C->End();
+            RunMatmul(sTP_->mm1Fp32C, vInner, true, kg, false, state,
+                      Dv_, Dk_, curChunkSize_, 1);
         } else {
-            sTP_->mm1->SetOrgShape(Dv_, Dk_, curChunkSize_);
-            sTP_->mm1->SetSingleShape(Dv_, Dk_, curChunkSize_);
-            sTP_->mm1->SetTensorA(vInner, true);
-            sTP_->mm1->SetTensorB(kg, false);
-            sTP_->mm1->IterateAll(state, 1);
-            sTP_->mm1->End();
+            RunMatmul(sTP_->mm1, vInner, true, kg, false, state,
+                      Dv_, Dk_, curChunkSize_, 1);
         }
     }
 
-    __aicore__ inline void CastVInnerToBf16(GlobalTensor<float> srcGm, GlobalTensor<bfloat16_t> dstGm,
-                                            int32_t count)
+    template <typename srcType, typename dstType>
+    __aicore__ inline void CastGmToGm(GlobalTensor<srcType> srcGm, GlobalTensor<dstType> dstGm,
+                                      int32_t count)
     {
-        int32_t paddedCount = Ceil(count, BLOCK_BF16_NUM) * BLOCK_BF16_NUM;
+        int32_t paddedCount = Ceil(count, BLOCK_SIZE / sizeof(dstType)) * (BLOCK_SIZE / sizeof(dstType));
         int32_t padding = paddedCount - count;
 
-        auto fp32Local = inQueue_.AllocTensor<float>();
-        DataCopyExtParams inParams{1, static_cast<uint32_t>(count * sizeof(float)), 0, 0, 0};
-        DataCopyPadExtParams<float> inPadParams{true, 0, static_cast<uint8_t>(padding), 0};
-        DataCopyPad(fp32Local, srcGm, inParams, inPadParams);
-        inQueue_.EnQue(fp32Local);
+        auto srcLocal = inQueue_.AllocTensor<srcType>();
+        DataCopyExtParams inParams{1, static_cast<uint32_t>(count * sizeof(srcType)), 0, 0, 0};
+        DataCopyPadExtParams<srcType> inPadParams{true, 0, static_cast<uint8_t>(padding), 0};
+        DataCopyPad(srcLocal, srcGm, inParams, inPadParams);
+        inQueue_.EnQue(srcLocal);
 
-        fp32Local = inQueue_.DeQue<float>();
-        auto bf16Local = outQueue_.AllocTensor<bfloat16_t>();
-        Cast(bf16Local, fp32Local, RoundMode::CAST_RINT, paddedCount);
-        inQueue_.FreeTensor(fp32Local);
-        outQueue_.EnQue(bf16Local);
+        srcLocal = inQueue_.DeQue<srcType>();
+        auto dstLocal = outQueue_.AllocTensor<dstType>();
+        Cast(dstLocal, srcLocal, RoundMode::CAST_RINT, paddedCount);
+        inQueue_.FreeTensor(srcLocal);
+        outQueue_.EnQue(dstLocal);
 
-        bf16Local = outQueue_.DeQue<bfloat16_t>();
-        DataCopyExtParams outParams{1, static_cast<uint32_t>(count * sizeof(bfloat16_t)), 0, 0, 0};
-        DataCopyPadExtParams<bfloat16_t> outPadParams{false, 0, 0, 0};
-        DataCopyPad(dstGm, bf16Local, outParams);
-        outQueue_.FreeTensor(bf16Local);
+        dstLocal = outQueue_.DeQue<dstType>();
+        DataCopyExtParams outParams{1, static_cast<uint32_t>(count * sizeof(dstType)), 0, 0, 0};
+        DataCopyPadExtParams<dstType> outPadParams{false, 0, 0, 0};
+        DataCopyPad(dstGm, dstLocal, outParams);
+        outQueue_.FreeTensor(dstLocal);
     }
 
     template <typename inType>

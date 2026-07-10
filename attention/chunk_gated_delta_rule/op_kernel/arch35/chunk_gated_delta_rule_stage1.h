@@ -25,11 +25,10 @@ using namespace matmul;
 
 using aT1 = MatmulType<TPosition::GM, CubeFormat::ND, bfloat16_t>;
 using bT1 = MatmulType<TPosition::GM, CubeFormat::ND, bfloat16_t>;
-using cT1 = MatmulType<TPosition::GM, CubeFormat::ND, bfloat16_t>;
-using StageOneMT = matmul::MatmulImpl<aT1, bT1, cT1>;
-
-using cT1Fp32 = MatmulType<TPosition::GM, CubeFormat::ND, float>;
-using StageOneMTFp32C = matmul::MatmulImpl<aT1, bT1, cT1Fp32>;
+template <typename cType>
+using StageOneMTT = matmul::MatmulImpl<aT1, bT1, MatmulType<TPosition::GM, CubeFormat::ND, cType>>;
+using StageOneMT = StageOneMTT<bfloat16_t>;
+using StageOneMTFp32C = StageOneMTT<float>;
 
 constexpr uint64_t UB_REST_BYTES = 140 * 1024;  // 140KB
 constexpr uint64_t INVERSE_SHAPE = 32;          // 对角块边长
@@ -68,9 +67,9 @@ struct GDRStageOneInitParams {
     GlobalTensor<float> stageOneMask;   // (Nv, cg_len, C)
     ChunkGroup cg;
     bool gOptional;
-    bool stateIsFp32;
 };
 
+template <bool kStateIsFp32 = false>
 class Stage1 {
 public:
     __aicore__ inline Stage1(StageOneMT &mm, StageOneMTFp32C &mmFp32C) : mm(mm), mmFp32C(mmFp32C) {}
@@ -216,7 +215,6 @@ public:
         coreNum_ = tiling_->aiCoreNum;
         cg_ = initParams.cg;
         gOptional_ = initParams.gOptional;
-        stateIsFp32_ = initParams.stateIsFp32;
         vRowStride_ = nv_ * dv_;
         numChunk_ = (cg_.length + chunkSize_ - 1) / chunkSize_;
         subBlockIdx_ = GetSubBlockIdx();
@@ -305,14 +303,14 @@ private:
         AscendC::CrossCoreWaitFlag(0x9); // 同步0
         // key @ key.transpose(-1,-2)
         for (uint32_t i = 0; i < curParaNum; ++i) {
-            AICProcess(keyConGm_[i * ckOffset_], keyConGm_[i * ckOffset_], kkWsGm_[i * ccOffset_],
+            AICProcess(mm, keyConGm_[i * ckOffset_], keyConGm_[i * ckOffset_], kkWsGm_[i * ccOffset_],
                        {chunkSize_, chunkSize_, dk_, chunkSize_, chunkSize_, dk_}, true);
         }
         AscendC::CrossCoreSetFlag<0x2, PIPE_FIX>(0x8); // 同步1
 
         // query @ key.transpose(-1,-2)   stage1 out
         for (uint32_t i = 0; i < curParaNum; ++i) {
-            AICProcess(queryConGm_[i * ckOffset_], keyConGm_[i * ckOffset_], outQkGm_[chunkRowBase_[i] * chunkSize_],
+            AICProcess(mm, queryConGm_[i * ckOffset_], keyConGm_[i * ckOffset_], outQkGm_[chunkRowBase_[i] * chunkSize_],
                        {validLenBatch_[i], validLenBatch_[i], dk_, validLenBatch_[i], validLenBatch_[i], dk_},
                        true);
         }
@@ -327,19 +325,20 @@ private:
 
         // attn @ k_cumdecay
         for (uint32_t i = 0; i < curParaNum; ++i) {
-            AICProcess(attnWsGm_[i * ccOffset_], gBKWsGm_[i * ckOffset_], outKCumdecayGm_[chunkRowBase_[i] * dk_],
+            AICProcess(mm, attnWsGm_[i * ccOffset_], gBKWsGm_[i * ckOffset_], outKCumdecayGm_[chunkRowBase_[i] * dk_],
                        {chunkSize_, dk_, chunkSize_, chunkSize_, dk_, chunkSize_});
         }
         AscendC::CrossCoreWaitFlag(0x5); // 同步4
 
         // attn @ v_beta    stage1 out
         for (uint32_t i = 0; i < curParaNum; ++i) {
-            if (stateIsFp32_) {
-                AICProcessFp32C(attnWsGm_[i * ccOffset_], vBetaWsGm_[i * cvOffset_],
-                                outVInnerFp32Gm_[chunkRowBase_[i] * dv_],
-                                {chunkSize_, dv_, chunkSize_, chunkSize_, dv_, chunkSize_});
+            if constexpr (kStateIsFp32) {
+                AICProcess(mmFp32C, attnWsGm_[i * ccOffset_], vBetaWsGm_[i * cvOffset_],
+                           outVInnerFp32Gm_[chunkRowBase_[i] * dv_],
+                           {chunkSize_, dv_, chunkSize_, chunkSize_, dv_, chunkSize_});
             } else {
-                AICProcess(attnWsGm_[i * ccOffset_], vBetaWsGm_[i * cvOffset_], outVInnerGm_[chunkRowBase_[i] * dv_],
+                AICProcess(mm, attnWsGm_[i * ccOffset_], vBetaWsGm_[i * cvOffset_],
+                           outVInnerGm_[chunkRowBase_[i] * dv_],
                            {chunkSize_, dv_, chunkSize_, chunkSize_, dv_, chunkSize_});
             }
         }
@@ -818,26 +817,16 @@ private:
         WaitFlag<HardEvent::FIX_MTE2>(eventID);
     }
 
-    __aicore__ inline void AICProcess(GlobalTensor<bfloat16_t> x, GlobalTensor<bfloat16_t> y,
-                                      GlobalTensor<bfloat16_t> z, const MatmulShapeParams &shape, bool transB = false)
+    template <typename MMType, typename CType>
+    __aicore__ inline void AICProcess(MMType &mmRef, GlobalTensor<bfloat16_t> x, GlobalTensor<bfloat16_t> y,
+                                      GlobalTensor<CType> z, const MatmulShapeParams &shape, bool transB = false)
     {
-        mm.SetOrgShape(shape.m, shape.n, shape.k);
-        mm.SetSingleShape(shape.sm, shape.sn, shape.sk);
-        mm.SetTensorA(x);
-        mm.SetTensorB(y, transB);
-        mm.IterateAll(z);
-        mm.End();
-    }
-
-    __aicore__ inline void AICProcessFp32C(GlobalTensor<bfloat16_t> x, GlobalTensor<bfloat16_t> y,
-                                           GlobalTensor<float> z, const MatmulShapeParams &shape, bool transB = false)
-    {
-        mmFp32C.SetOrgShape(shape.m, shape.n, shape.k);
-        mmFp32C.SetSingleShape(shape.sm, shape.sn, shape.sk);
-        mmFp32C.SetTensorA(x);
-        mmFp32C.SetTensorB(y, transB);
-        mmFp32C.IterateAll(z);
-        mmFp32C.End();
+        mmRef.SetOrgShape(shape.m, shape.n, shape.k);
+        mmRef.SetSingleShape(shape.sm, shape.sn, shape.sk);
+        mmRef.SetTensorA(x);
+        mmRef.SetTensorB(y, transB);
+        mmRef.IterateAll(z);
+        mmRef.End();
     }
 
     __aicore__ inline void InverseAICProcess(GlobalTensor<bfloat16_t> x, GlobalTensor<bfloat16_t> y,
@@ -873,7 +862,6 @@ private:
     uint32_t coreNum_;
     float scale_;
     bool gOptional_;
-    bool stateIsFp32_;
     uint32_t paraNum_;
     uint64_t ccOffset_;
     uint64_t ckOffset_;
