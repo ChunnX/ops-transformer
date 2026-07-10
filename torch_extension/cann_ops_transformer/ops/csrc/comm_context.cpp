@@ -459,7 +459,7 @@ public:
         uint64_t bufferSizeBytes = static_cast<uint64_t>(customCclBufferSize_);
         if (*customDeviceBuffer_ == nullptr) {
             aclError ar = aclrtMalloc(customDeviceBuffer_, bufferSizeBytes, ACL_MEM_MALLOC_HUGE_FIRST);
-            TORCH_CHECK(ar == ACL_SUCCESS, "aclrtMalloc(", bufferSizeBytes, " B) failed, ret=", ar);
+            TORCH_CHECK(ar == ACL_SUCCESS, "aclrtMalloc(", bufferSizeBytes, " ) failed, ret=", ar);
             ar = aclrtMemset(*customDeviceBuffer_, bufferSizeBytes, 0, bufferSizeBytes);
             TORCH_CHECK(ar == ACL_SUCCESS, "aclrtMemset(customDeviceBuffer_) failed, ret=", ar);
         }
