@@ -118,6 +118,22 @@ enum class AddrUpdateMode : int32_t {
     kGmm2
 };
 
+// Logical block scheduling information supplied by the caller. threadBlockIdx
+// is zero-based and contiguous in [0, threadBlockNum). All three physical cores
+// in one MIX_AIC_1_2 block must receive the same context.
+struct ThreadBlockContext {
+    uint32_t threadBlockIdx;
+    uint32_t threadBlockNum;
+};
+
+// GM workspace indexing is independent of the number of blocks participating
+// in a reusable stage. This keeps shared data readable by later stages that may
+// use a different block count.
+struct BlockWorkspaceContext {
+    uint32_t blockIdx;
+    uint32_t blockNum;
+};
+
 __aicore__ inline void NotifyCube(uint16_t value = 0)
 {
     CrossCoreSetFlag<SYNC_AIC_AIV_MODE, PIPE_V>(AIV_SYNC_AIC_FLAG + value);
