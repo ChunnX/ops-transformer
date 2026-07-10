@@ -154,11 +154,11 @@ at::Tensor sparse_flash_mla_softmax_l1_norm(
         auto local_device = c10::Device(query.device());
         const c10::OptionalDeviceGuard device_guard(local_device);
         if (layout_q_str == "BSND") {
-            softmax_l1_norm = at::empty(
+            softmax_l1_norm = at::zeros(
                 {query.size(DIM_0), s1, s2},
                 query.options().dtype(at::kFloat));
         } else {
-            softmax_l1_norm = at::empty(
+            softmax_l1_norm = at::zeros(
                 {s1, s2},
                 query.options().dtype(at::kFloat));
         }
