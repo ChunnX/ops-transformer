@@ -1863,26 +1863,26 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Process()
             MegaMoeCombineImpl::CombineSendTokenToRemote<bfloat16_t>(params_);
         }
     }
-    // for (uint32_t expertIdx = 0; expertIdx < expertPerRank_; expertIdx++) {
-    //     if (!UpdateGroupParams<AddrUpdateMode::kGmm2>(gmm2State, expertIdx)) {
-    //         continue;
-    //     }
-    //     UpdateGlobalBuffer<AddrUpdateMode::kGmm2>(gmm2AddrInfo, gmm2State);
-    //     GroupMatmulWithCombine(gmm2AddrInfo, gmm2State, expertIdx);
-    // }
-    // if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
-    //     EndGMM2Sync(vecSetSyncCom_, gmm2PingPongIdx_);
-    // }
-    // PipeBarrier<PIPE_ALL>();
-    // SyncAll<true>();
+    for (uint32_t expertIdx = 0; expertIdx < expertPerRank_; expertIdx++) {
+        if (!UpdateGroupParams<AddrUpdateMode::kGmm2>(gmm2State, expertIdx)) {
+            continue;
+        }
+        UpdateGlobalBuffer<AddrUpdateMode::kGmm2>(gmm2AddrInfo, gmm2State);
+        GroupMatmulWithCombine(gmm2AddrInfo, gmm2State, expertIdx);
+    }
+    if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
+        EndGMM2Sync(vecSetSyncCom_, gmm2PingPongIdx_);
+    }
+    PipeBarrier<PIPE_ALL>();
+    SyncAll<true>();
 
-    // // 4. 本卡数据Unpermute
-    // if constexpr(g_coreType == AIV) {
-    //     UnpermuteBuffInit();
-    //     CrossRankSyncInWorldSize(); // 全卡软同步，确认combine send完成
-    //     Unpermute();
-    // }
-    // SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);
+    // 4. 本卡数据Unpermute
+    if constexpr(g_coreType == AIV) {
+        UnpermuteBuffInit();
+        CrossRankSyncInWorldSize(); // 全卡软同步，确认combine send完成
+        Unpermute();
+    }
+    SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);
 }
 
 }   // namespace MegaMoeImpl
