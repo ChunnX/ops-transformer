@@ -19,8 +19,16 @@
 
 - 计算公式：
 
+  当 hRes 提供时：
+
   $$
   x_{l+1} = (H_{l}^{res})^{T} \times x_l + h_{l}^{out} \otimes H_{t}^{post}
+  $$
+
+  当 hRes 缺省时（仅 Ascend 950 支持）：
+
+  $$
+  x_{l+1} = x_l + h_{l}^{out} \otimes H_{t}^{post}
   $$
 
 ## 函数原型
@@ -84,8 +92,8 @@ aclnnStatus aclnnMhcPost(
     </tr>
     <tr>
       <td>hRes</td>
-      <td>输入</td>
-      <td>mHC的hRes变换矩阵，是做完sinkhorn变换后的双随机矩阵。</td>
+      <td>输入（可选）</td>
+      <td>mHC的hRes变换矩阵，是做完sinkhorn变换后的双随机矩阵。传nullptr时退化为直接残差连接（仅 Ascend 950 支持）。</td>
       <td>-</td>
       <td>FLOAT32</td>
       <td>ND</td>
@@ -164,18 +172,18 @@ aclnnStatus aclnnMhcPost(
           <tr>
               <td>ACLNN_ERR_PARAM_NULLPTR</td>
               <td>161001</td>
-              <td>x、hRes、hOut、hPost、out存在空指针。</td>
+              <td>x、hOut、hPost、out存在空指针。</td>
           </tr>
           <tr>
               <td rowspan="3">ACLNN_ERR_PARAM_INVALID</td>
               <td rowspan="3">161002</td>
-              <td>x、hRes、hOut、hPost、out的数据类型不在支持的范围内。</td>
+              <td>x、hRes（非空时）、hOut、hPost、out的数据类型不在支持的范围内。</td>
           </tr>
             <tr>
-              <td>x、hRes、hOut、hPost、out的shape维度不在支持的范围内。</td>
+              <td>x、hRes（非空时）、hOut、hPost、out的shape维度不在支持的范围内。</td>
           </tr>
           <tr>
-              <td>x、hRes、hOut、hPost、out的数据类型或shape不匹配。</td>
+              <td>x、hRes（非空时）、hOut、hPost、out的数据类型或shape不匹配。</td>
           </tr>
             <tr>
               <td>ACLNN_ERR_INNER_NULLPTR</td>
@@ -231,7 +239,8 @@ aclnnStatus aclnnMhcPost(
 ## 约束说明
 
 - aclnnMhcPost默认确定性实现。
-- 规格约束（A2/A3）
+- Ascend 950PR/Ascend 950DT：hRes 传 nullptr（nohres 路径）仅在 Ascend 950 上支持。
+- Atlas A2/A3 系列：hRes 必传，不支持 nohres 路径。
 
   | 规格项   | 规格               | 规格说明                                |
   | :------- | :----------------- | :------------------------------------- |
