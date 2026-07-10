@@ -91,7 +91,7 @@
 - 参数key、value中对应Tensor的shape需要完全一致；非连续场景下key、value的tensorlist中的batch只能为1，个数等于query的B，N和D需要相等。由于tensorlist限制，非连续场景下B不能大于256。
 
 - 当Q_S大于1时，query，key，value输入，功能使用限制如下：
-    - 支持B轴小于等于65536。
+      - 支持B轴小于等于65536。
 
   - 如果输入类型为INT8且D轴不是32字节对齐，则B轴的最大支持值为128。若输入类型为FLOAT16或BFLOAT16且D轴不是16字节对齐，B轴同样仅支持到128。
 

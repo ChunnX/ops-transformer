@@ -240,7 +240,7 @@ OP_ADD(AllGatherAdd);
     };
     ```
 
-    - commTurn: 通信切分轮次，在实际业务场景中是对通算融合掩盖程度重要影响因素，参考[通算融合基础知识](https://www.hiascend.com/document/detail/zh/canncommercial/850/opdevg/Ascendcopdevg/atlas_ascendc_10_10033.html)。
+    - commTurn: 通信切分轮次，在实际业务场景中是对通算融合掩盖程度重要影响因素，参考[通算融合基础知识]()。
     - tileNum: 计算切分轮次。在本节Tiling实现分析中可知单轮计算UB无溢出风险，该值为1。
     - totalElemNum: 总计算数，其值为输入b的ShapeSize，即480。
     - blockElemNum：每个核需要处理的数据量，其值为totalElemNum / GetBlockDim()。

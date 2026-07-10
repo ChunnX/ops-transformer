@@ -44,7 +44,7 @@ bash build.sh --soc=Ascend910B3
 
 测试会输出每个用例的执行结果：
 
-```
+```text
 --- Test: Basic TND Format ---
 Config: batch=1, qSeq=256, kvSeq=512, heads=8, blockShape=[64,64]
 Result: PASS

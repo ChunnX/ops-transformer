@@ -823,7 +823,6 @@ aclnnStatus aclnnMlaPrologV3WeightNz(
         <col style="width: 625px">
         <col style="width: 360px">
         </colgroup>
-  <table>
     <thead>
       <tr>
         <th>字段名</th>
@@ -949,6 +948,7 @@ aclnnStatus aclnnMlaPrologV3WeightNz(
       - kvCache的维度为(T,Nkv,Dr)
   - 当ckvkrRepoMode=1时
       - krCache的维度应包含0，支持shape为(0)
+
   </details>
 
   <details>
@@ -959,6 +959,7 @@ aclnnStatus aclnnMlaPrologV3WeightNz(
   - per-tile量化模式下，CacheMode只支持PA_BSND, BSND和TND。
   - 当ckvkrRepoMode值为1时，krCache必须为空Tensor（即shape的乘积为0）。
   - kvcache per-tensor量化模式下，kvCacheQuantMode和queryQuantMode必须同时为1。
+
   </details>
 
   <details>

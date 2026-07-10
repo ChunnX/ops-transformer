@@ -122,57 +122,58 @@
 - 计算公式：
 
   K是卷积核宽度（固定为3），L是原始序列长度，dim是特征维度。
+
   1. 缓存读取
 
-      缓存行索引：
-
-      $$
-      readCacheLine = \begin{cases}
-      cacheIndices[batchId, \; initialStateIdx[batchId]], & \text{APC模式} \\
-      cacheIndices[batchId], & \text{非APC且cacheIndices存在} \\
-      batchId, & \text{其他}
-      \end{cases}
-      $$
-
-      Case 1：首次计算（numComputedTokens[batchId] == 0）
-
-      $$
-      cachedState[i, dim] = 0, \quad 0 \leq i < K-1
-      $$
-
-      $$
-      offset = 0
-      $$
-
-      Case 2：投机解码模式（numAcceptedTokens存在）
-
-      $$
-      offset = numAcceptedTokens[batchId] - 1
-      $$
-
-      $$
-      cachedState[i, dim] = convStates[readCacheLine][i, dim], \quad 0 \leq i <   offset + K - 1
-      $$
-
-      Case 3：默认模式
-
-      $$
-      offset = C - (K - 1)
-      $$
-
-      $$
-      cachedState[i, dim] = convStates[readCacheLine][i, dim], \quad 0 \leq i < offset + K - 1
-      $$
+     缓存行索引：
+ 
+     $$
+     readCacheLine = \begin{cases}
+     cacheIndices[batchId, \; initialStateIdx[batchId]], & \text{APC模式} \\
+     cacheIndices[batchId], & \text{非APC且cacheIndices存在} \\
+     batchId, & \text{其他}
+     \end{cases}
+     $$
+ 
+     Case 1：首次计算（numComputedTokens[batchId] == 0）
+ 
+     $$
+     cachedState[i, dim] = 0, \quad 0 \leq i < K-1
+     $$
+ 
+     $$
+     offset = 0
+     $$
+ 
+     Case 2：投机解码模式（numAcceptedTokens存在）
+ 
+     $$
+     offset = numAcceptedTokens[batchId] - 1
+     $$
+ 
+     $$
+     cachedState[i, dim] = convStates[readCacheLine][i, dim], \quad 0 \leq i <    offset + K - 1
+     $$
+ 
+     Case 3：默认模式
+ 
+     $$
+     offset = C - (K - 1)
+     $$
+ 
+     $$
+     cachedState[i, dim] = convStates[readCacheLine][i, dim], \quad 0 \leq i <  offset + K - 1
+     $$
 
   2. 缓存拼接
 
-      $$
-      paddedInput[i, dim] =
-      \begin{cases}
-      cachedState[i, dim], & 0 \leq i < offset + K - 1 \\
-      x[i - (offset + K - 1), dim], & offset + K - 1 \leq i < offset + K - 1 + L
-      \end{cases}
-      $$
+     $$
+     paddedInput[i, dim] =
+     \begin{cases}
+     cachedState[i, dim], & 0 \leq i < offset + K - 1 \\
+     x[i - (offset + K - 1), dim], & offset + K - 1 \leq i < offset + K - 1 + L
+     \end{cases}
+     $$
 
   3. 缓存更新
 
@@ -443,7 +444,7 @@
     - conv_states必须是3维[..., K-1, dim]，第0维大小不固定且大于等于batch，同时大于等于cache_indices总维度大小。
     - query_start_loc必须存在。
     - cache_indices为1维[batch, ]或2维[batch, maxNumBlocks]，其中1维表示未开启APC，2维表示开启APC。
-    - cu_seq_len范围[batch, 1024 * 1024]，dim范围[64, 16384]且是16的倍数，且两者乘积需满足[64 * batch, 4G]。
+    - cu_seq_len范围$[batch, 1024 * 1024]$，dim范围[64, 16384]且是16的倍数，且两者乘积需满足[64 * batch, 4G]。
     - batch范围[1, 256]，maxNumBlocks范围[1, 1024]。
   - prefill和decode混合场景：
     - x支持2维[cu_seq_len, dim]。
@@ -451,7 +452,7 @@
     - conv_states必须是3维[..., K-1+m, dim]，第0维大小不固定且大于等于batch，同时大于等于cache_indices总维度大小。
     - query_start_loc必须存在。
     - cache_indices为1维[batch, ]或2维[batch, maxNumBlocks]，其中1维表示未开启APC，2维表示开启APC。
-    - cu_seq_len范围[batch, 1024 * 1024]，dim范围[64, 16384]且是16的倍数，且两者乘积需满足[64 * batch, 4G]。
+    - cu_seq_len范围$[batch, 1024 * 1024]$，dim范围[64, 16384]且是16的倍数，且两者乘积需满足[64 * batch, 4G]。
     - batch范围[1, 256]，maxNumBlocks范围[1, 1024]。
   - decode场景（变长序列）：
     - x支持2维[cu_seq_len, dim]。

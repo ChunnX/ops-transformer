@@ -448,7 +448,7 @@
     - conv_states必须是3维[..., K-1, dim]，第0维大小不固定且大于等于batch，同时大于等于cache_indices总维度大小。
     - query_start_loc必须存在。
     - cache_indices为1维[batch, ]或2维[batch, maxNumBlocks]，其中1维表示未开启APC，2维表示开启APC。
-    - cu_seq_len范围[batch, 1024 * 1024]，dim范围[64, 16384]且是16的倍数，且两者乘积需满足[64 * batch, 4G]。
+S    - cu_seq_len范围[batch, 1024 *1024]，dim范围[64, 16384]且是16的倍数，且两者乘积需满足[64* batch, 4G]。
     - batch范围[1, 256]，maxNumBlocks范围[1, 1024]。
   - prefill和decode混合场景：
     - x支持2维[cu_seq_len, dim]。
@@ -456,7 +456,7 @@
     - conv_states必须是3维[..., K-1+m, dim]，第0维大小不固定且大于等于batch，同时大于等于cache_indices总维度大小。
     - query_start_loc必须存在。
     - cache_indices为1维[batch, ]或2维[batch, maxNumBlocks]，其中1维表示未开启APC，2维表示开启APC。
-    - cu_seq_len范围[batch, 1024 * 1024]，dim范围[64, 16384]且是16的倍数，且两者乘积需满足[64 * batch, 4G]。
+    - cu_seq_len范围[batch, 1024 *1024]，dim范围[64, 16384]且是16的倍数，且两者乘积需满足[64* batch, 4G]。
     - batch范围[1, 256]，maxNumBlocks范围[1, 1024]。
   - decode场景（变长序列）：
     - x支持2维[cu_seq_len, dim]。
@@ -495,6 +495,3 @@
   | --------- | ------------------------------------------------------------ | ------------------------------------------------------------ |
   | aclnn接口 | [test_aclnn_fused_causal_conv1d](./examples/test_aclnn_fused_causal_conv1d.cpp) | 通过[aclnnFusedCausalConv1d](./docs/aclnnFusedCausalConv1d.md)调用FusedCausalConv1d算子 |
   | 图模式 | - | 通过[算子IR](./op_graph/fused_causal_conv1d_proto.h)构图方式调用FusedCausalConv1d算子 |
-
-
-  

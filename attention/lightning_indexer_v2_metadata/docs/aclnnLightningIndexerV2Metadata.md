@@ -84,7 +84,7 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
     <tr>
       <td>cuSeqlensQOptional</td>
       <td>输入</td>
-      <td>表示不同Batch中Query的有效Sequence Length</br>TND场景下必传，以该入参的数量作为Batch值</br>第一个值为额外值并固定为0。</td>
+      <td>表示不同Batch中Query的有效Sequence Length<br>TND场景下必传，以该入参的数量作为Batch值<br>第一个值为额外值并固定为0。</td>
       <td>支持空Tensor</td>
       <td>INT32</td>
       <td>ND</td>
@@ -94,7 +94,7 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
     <tr>
       <td>cuSeqlensKOptional</td>
       <td>输入</td>
-      <td>表示不同Batch中Key的有效Sequence Length</br>TND场景下必传，以该入参的数量作为Batch值</br>第一个值为额外值并固定为0。</td>
+      <td>表示不同Batch中Key的有效Sequence Length<br>TND场景下必传，以该入参的数量作为Batch值<br>第一个值为额外值并固定为0。</td>
       <td>支持空Tensor</td>
       <td>INT32</td>
       <td>ND</td>
@@ -124,7 +124,7 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
     <tr>
       <td>cmpResidualKOptional</td>
       <td>输入</td>
-      <td>预留参数，表示不同Batch中Key的Sequence Length的余数，当前不影响算子计算效果。</br>如果cmpRatio不为1，且mask为3，则必须传入cmpResidualKOptional。</td>
+      <td>预留参数，表示不同Batch中Key的Sequence Length的余数，当前不影响算子计算效果。<br>如果cmpRatio不为1，且mask为3，则必须传入cmpResidualKOptional。</td>
       <td>支持空Tensor</td>
       <td>INT32</td>
       <td>ND</td>
@@ -175,7 +175,7 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
       <td>batchSize</td>
       <td>输入</td>
       <td>表示Batch数量。</td>
-      <td>支持非负数</br>建议值为0</td>
+      <td>支持非负数<br>建议值为0</td>
       <td>INT64</td>
       <td>-</td>
       <td>-</td>
@@ -185,7 +185,7 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
       <td>maxSeqlenQ</td>
       <td>输入</td>
       <td>表示Query的最长Sequence Length。</td>
-      <td>支持非负数</br>建议值为0</td>
+      <td>支持非负数<br>建议值为0</td>
       <td>INT64</td>
       <td>-</td>
       <td>-</td>
@@ -195,7 +195,7 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
       <td>maxSeqlenK</td>
       <td>输入</td>
       <td>表示Key的最长Sequence Length。</td>
-      <td>支持非负数</br>建议值为0</td>
+      <td>支持非负数<br>建议值为0</td>
       <td>INT64</td>
       <td>-</td>
       <td>-</td>
@@ -205,7 +205,7 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
       <td>layoutQOptional</td>
       <td>输入</td>
       <td>表示Query的排列格式。</td>
-      <td>支持BSND、TND</br>建议值为BSND</td>
+      <td>支持BSND、TND<br>建议值为BSND</td>
       <td>INT64</td>
       <td>-</td>
       <td>-</td>
@@ -215,7 +215,7 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
       <td>layoutKOptional</td>
       <td>输入</td>
       <td>表示Key的排列格式。</td>
-      <td>支持BSND、TND、PA_BBND</br>建议值为BSND</td>
+      <td>支持BSND、TND、PA_BBND<br>建议值为BSND</td>
       <td>INT64</td>
       <td>-</td>
       <td>-</td>
@@ -225,7 +225,7 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
       <td>maskMode</td>
       <td>输入</td>
       <td>表示sparse模式。</td>
-      <td>0: No mask</br>3: rightDownCausal模式的mask，对应以右顶点为划分的下三角场景 </br>建议值为0</td>
+      <td>0: No mask<br>3: rightDownCausal模式的mask，对应以右顶点为划分的下三角场景 <br>建议值为0</td>
       <td>INT64</td>
       <td>-</td>
       <td>-</td>
@@ -234,7 +234,7 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
     <tr>
       <td>cmpRatio</td>
       <td>输入</td>
-      <td>预留参数，表示Key的压缩率，当前不影响算子计算效果。</br>建议值1，表示无压缩。</td>
+      <td>预留参数，表示Key的压缩率，当前不影响算子计算效果。<br>建议值1，表示无压缩。</td>
       <td>取值范围[1，128]</td>
       <td>INT64</td>
       <td>-</td>
