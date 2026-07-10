@@ -30,23 +30,7 @@ using namespace AscendC;
 using namespace optiling;
 
 namespace BaseApi {
-/*
- * MXFP8 全量化路径与已有 FP8 kernel 路径隔离：
- *   1. quant_mode == 2 时，host 侧下发 QuantBlockSparseAttnMxTilingData；
- *   2. 本入口将精简后的 tiling data 转换为 MxConstInfo；
- *   3. cube 侧负责 QK/PV 矩阵乘，并在 L1->L0 搬运时完成 MX 随路反量化；
- *   4. vector 侧负责 softmax、P 静态量化、输出 update 以及可选 LSE 写回。
- *
- * 当前 MX 特性仅支持 TND query/output、PA BNBD key/value、D=DV=128，
- * kernel 计算 tile 仍为 512 token。当前 sparse_kv_block_size 可以是 128 或 64，
- * 因此一个 512 宽 logical S2 tile 会由多个 sparse KV block 拼接而成；
- * 512 宽 tile 再拆成两个 256 宽 C1/V1 subLoop，随后一次 C2/V2 消费合并后的
- * 128x512 P 矩阵。
- *
- * 模板参数顺序与 FP8 的 BSA_OP_IMPL 保持一致，使 tiling key 选中的数据类型、
- * layout、基本块配置和特性开关在 kernel 入口处可见，并继续向 cube/vector 透传。
- * useDn 控制 C1/V1 数据布局选择；hasAtten 来自 MASK_MODE。
- */
+// MX 独立 tiling/kernel 路径：两个 256 C1/V1 subLoop 生成 P[128,512]，再执行一次 C2/V2。
 template <typename inputType, typename mmType, typename outputType, BSALayout layout, BSALayout kvLayout,
           S1TemplateType s1TemplateType, S2TemplateType s2TemplateType, DTemplateType dTemplateType,
           DTemplateType dVTemplateType, bool hasAtten, bool isPa, bool useDn = true>
@@ -69,9 +53,7 @@ public:
                   "MXFullQuantMode currently only supports TND query and PA_BNSD KV");
     static_assert(M_BASE == 128U && S2_BASE == 512U && D_BASE == 128U && DV_BASE == 128U,
                   "MXFullQuantMode currently only supports S1=128, S2=512, D=128 and DV=128");
-    // 延迟两个 task 后再启动 C2/V2，表示 C2/V2 执行时，后续两个 C1/V1 task 已经预取。
-    // 每个 512 KV block 又会拆成两个 C1/V1 subLoop，因此启动阶段会先看到六次 C1/V1，
-    // 再进入第一轮延迟 C2/V2，匹配当前 MX 流水预热方式。
+    // 延迟两个 task 执行 C2/V2。
     static constexpr uint32_t PRELOAD_N = 2U;
     static constexpr uint32_t PRELOAD_TASK_CACHE_SIZE = PRELOAD_N + 1U;
 
@@ -86,9 +68,7 @@ public:
                                 __gm__ uint8_t *softmaxLse, __gm__ uint8_t *attentionOut, __gm__ uint8_t *,
                                 const QuantBlockSparseAttnMxTilingData *__restrict tiling, TPipe *tPipe)
     {
-        // Q/K/V 保留原始 GM 指针，因为 cube 拷贝点需要按实际矩阵选择 ND2NZ/DN2NZ，
-        // 并结合 block_table 做 PA 寻址。其他标量/索引类 tensor 在这里包装成
-        // GlobalTensor，便于生成 RunInfo 时直接读取 sparse 元信息。
+        // Q/K/V 在 cube 中结合 block_table 完成 PA 搬运。
         pipe = tPipe;
         tilingData = tiling;
         queryPtr = query;
@@ -126,8 +106,7 @@ public:
 private:
     __aicore__ inline void InitConstInfo()
     {
-        // AIC 与 AIV 使用同一个逻辑 core id。AIV 额外记录 subBlockIdx，
-        // 用于把 128 行 query 拆给两个 vector sub-block 分别处理。
+        // 两个 AIV subBlock 共享逻辑 AIC id。
         if ASCEND_IS_AIC {
             constInfo.aicIdx = GetBlockIdx();
         } else {
@@ -167,12 +146,7 @@ private:
         constInfo.maxQb = sparseParams.maxQb;
         constInfo.maxKb = sparseParams.maxKb;
 
-        // host 侧下发的 MX scale shape：
-        //   Q/K scale: [T, N, D/64, 2]，单个 token 行有 (D/64)*2 个 e8m0 元素；
-        //   V scale:   [T/64, N, DV, 2]，host 将最后两个 e8m0 元素展平到
-        //              valueScaleDSize = DV * 2。
-        // 以下 stride 均以 e8m0 元素个数为单位，供 PA scale 拷贝 helper 使用；
-        // scale 搬到 L1 后，再由 LoadData 完成 MX 随路反量化。
+        // Q/K scale 为 [T,N,D/64,2]，V scale 为 [T/64,N,DV,2]。
         constInfo.scaleLastDim = scaleParams.scaleLastDim;
         constInfo.queryScaleDSize = scaleParams.queryScaleDSize;
         constInfo.keyScaleDSize = scaleParams.keyScaleDSize;
@@ -185,8 +159,7 @@ private:
     __aicore__ inline void InitAttenMaskInfo()
     {
         if constexpr (HAS_ATTEN) {
-            // MX 当前只放开 mask_mode=3。host 将它兼容成 RIGHT_DOWN_CAUSAL_MODE，
-            // vector 侧再按 BSA FP8 DN 的 offset 规则从 attenMask GM 搬运到 UB。
+            // mask_mode=3 使用 FP8 DN 的 right-down causal offset。
             const auto &attenMaskParams = tilingData->attenMaskParams;
             attenMaskInfo.preTokens = attenMaskParams.preTokens;
             attenMaskInfo.nextTokens = attenMaskParams.nextTokens;
@@ -204,35 +177,13 @@ private:
 
     __aicore__ inline void InitMMResBuf()
     {
-        // 这里分配的是 AIC/AIV 之间跨核交接用的公共 buffer，设计背景参考 common MX
-        // full-quant 的流水组织：C1 结果先从 cube fixpipe 到 UB，再由 V1 做 softmax；
-        // V1 量化后的 P/PScale 留在 L1，延迟后的 C2 再从 L1 读取 P/PScale 参与 BMM2。
-        //
-        // bmm1Buffers 保存 C1 的 fp32 结果。虽然完整逻辑 P 是 [128, 512]，
-        // 但 MX 路径会把一个 512 KV block 拆成两个 256 subLoop，且每个 AIV subBlock
-        // 只处理 128 行 query 的一半，因此单个 UB C1 tile 实际是：
-        //   (M_BASE / CV_RATIO) * (S2_BASE / 2) * sizeof(float)
-        // 也就是 [64, 256] 的 fp32 tile。
+        // C1 UB 为 [64,256] fp32，C2 UB 为 [64,128] fp32。
         constexpr uint32_t mm1ResultSize = M_BASE / CV_RATIO * S2_BASE * sizeof(MM_T) / 2U;
-        // bmm2Buffers 保存 C2 的 fp32 结果。C2 已经消费完整 P[128,512]，
-        // 但 V2 仍按 AIV subBlock 处理半个 M 方向，所以单个 UB C2 tile 为：
-        //   (M_BASE / CV_RATIO) * DV_BASE * sizeof(float)，即 [64, 128]。
         constexpr uint32_t mm2ResultSize = M_BASE / CV_RATIO * DV_BASE * sizeof(MM_T);
-        // L1 P buffer 由 V1 和 C2 共享。这样做是为了避免把完整 P[128,512]
-        // 写回 GM 再读入，直接在 L1 中完成 V1->C2 交接：
-        //   [0, 128*512)                  : 量化后的 P，类型为 fp8_e4m3fn
-        //   [128*512, 128*512 + scaleLen) : P scale，类型为 fp8_e8m0
-        // scaleLen 按 MX group 计算，每 32 个 fp8 P 元素对应 1 个 e8m0 scale 元素。
-        // C2 通过 MX LoadData 路径同时读取 P 和 PScale，并在 L1->L0 时完成随路反量化。
+        // L1 连续保存 P(e4m3) 和 PScale(e8m0)，供 C2 随路反量化。
         constexpr uint32_t mm2LeftSize = M_BASE * S2_BASE * sizeof(INPUT_T) + M_BASE * S2_BASE / 32U;
-        // 512KB 是 arch35 当前 L1 管理器的统一容量入口。cube 自己还会从同一个
-        // l1BufferManager 中切出 Q/K/V 临时 L1 buffer；这里先切出跨 AIV/AIC 共享的 P buffer。
         l1BufferManager.Init(pipe, 512U * 1024U);
         l1PBuffers.Init(l1BufferManager, mm2LeftSize);
-        // UB 中同时存在两类跨核结果：C1 使用双 buffer 以覆盖 C1/V1 流水，
-        // C2 使用单 buffer，因为同一 delayed task 的 C2/V2 是顺序交接。
-        // ubBufferManager 只负责统一申请总容量，具体 DB/single 策略由下面的
-        // bmm1Buffers/bmm2Buffers 决定。
         ubBufferManager.Init(pipe, mm1ResultSize * 2U + mm2ResultSize);
         bmm1Buffers.Init(ubBufferManager, mm1ResultSize);
         bmm2Buffers.Init(ubBufferManager, mm2ResultSize);
@@ -294,9 +245,7 @@ private:
 
     __aicore__ inline uint32_t GetSparseBlocksPerTask() const
     {
-        // MX C1/V1 的计算 tile 固定为 512 token；PA sparse block 可以是 128 或 64。
-        // 因此一个 task 需要从 sparseIndices 连续取 4 个或 8 个 block 拼成 512。
-        // host 当前只允许 128/64，这里仍保留数组容量上限，避免后续扩展时越界。
+        // 一个 512 tile 由 4 个 128 block 或 8 个 64 block 拼成。
         const uint32_t blockCount = S2_BASE / constInfo.kvSparseBlockSize;
         if (blockCount == 0U) {
             return 1U;
@@ -307,8 +256,7 @@ private:
 
     __aicore__ inline bool ShouldMoveSparseBlockBack(int64_t previousBlockIdx, int64_t currentBlockIdx) const
     {
-        // 与 FP8 IdxSortBySparseIdx 的顺序一致：有效 block 按逻辑 id 升序，
-        // -1 等无效 block 放到末尾。MX 将该两元素规则推广到单 task 的 4/8 个 block。
+        // 有效 block 升序，无效 block 放末尾。
         if (previousBlockIdx < 0) {
             return currentBlockIdx >= 0;
         }
@@ -320,8 +268,7 @@ private:
 
     __aicore__ inline void SortSparseBlocks(MxRunInfo &runInfo) const
     {
-        // block 数最大为 8，插入排序的控制开销很小；排序只移动 block id，
-        // token offset、真实长度、tile offset 和 partial-mask 会在排序后统一生成。
+        // 最多 8 个 block，排序后再统一生成 offset 与 mask 状态。
         for (uint32_t i = 1U; i < runInfo.sparseBlockCount; ++i) {
             const int64_t currentBlockIdx = runInfo.sparseBlockIdx[i];
             uint32_t insertPos = i;
@@ -338,9 +285,7 @@ private:
                                        uint32_t s1OuterIdx, uint32_t s2LoopIdx, uint32_t s2LoopEnd,
                                        uint32_t sparseBlockCount, uint64_t sparseBase)
     {
-        // 一个 RunInfo 表示一个 (B, N1, S1-outer) tile 下的一个 512-token logical S2 tile。
-        // sparse_kv_block_size 为 128/64 时，当前 tile 会由多个 sparseIndices entry 拼接而成；
-        // cube 后续逐块结合 block_table，找到 PA BNBD 布局中的物理 page。
+        // 构造一个 512-token logical S2 tile 的运行参数。
         runInfo = {};
         runInfo.loop = static_cast<uint32_t>(loop);
         runInfo.mLoop = mLoop;
@@ -383,8 +328,7 @@ private:
             int64_t sparseTokenOffset = 0;
             uint32_t sparseBlockRealSize = 0U;
             runInfo.sparseBlockTileOffset[i] = runInfo.actSingleLoopS2Size;
-            // 与 FP8 SetSparseIndicesRunInfo 保持一致：负 index 表示无效 sparse block，
-            // 不参与 K/V/mask 拼接，也不能用负 index 计算 token offset。
+            // 负 index 不参与拼接。
             if (sparseBlkIdx >= 0) {
                 sparseTokenOffset = sparseBlkIdx * static_cast<int64_t>(constInfo.kvSparseBlockSize);
                 const int64_t remainS2 = static_cast<int64_t>(runInfo.actS2Size) - sparseTokenOffset;
@@ -427,11 +371,7 @@ private:
 
     __aicore__ inline void ExecuteTask(uint64_t loop, MxRunInfo taskRunInfo[PRELOAD_TASK_CACHE_SIZE])
     {
-        // 当前 task 执行 C1/V1；PRELOAD_N 个 loop 之前的 task 执行 C2/V2。
-        // 这对应“两轮 C1/V1 匹配一轮 C2/V2”的流水：
-        // 当前 task 可能由 4 个 128-token 或 8 个 64-token sparse block 拼成 512-token tile。
-        // C1(sub0)->V1(sub0)、C1(sub1)->V1(sub1) 在 L1 中生成完整 128x512 P，
-        // 延迟后的 C2 再读取该 P/PScale，并与 V/VScale 做矩阵乘。
+        // 当前 task 做 C1/V1，PRELOAD_N 之前的 task 做 C2/V2。
         MxRunInfo &runInfoCur = taskRunInfo[loop % PRELOAD_TASK_CACHE_SIZE];
         MxRunInfo &runInfoPre = taskRunInfo[(loop - PRELOAD_N) % PRELOAD_TASK_CACHE_SIZE];
         if (runInfoCur.isValid) {
@@ -459,12 +399,7 @@ private:
 
     __aicore__ inline void ProcessMainLoop()
     {
-        // 主循环的外层任务划分参考 BSA FP8 路径：
-        //   experimental/attention/quant_block_sparse_attn/op_kernel/arch35/quant_block_sparse_attn_kernel.h
-        //   中的 QuantBlockSparseAttnKernel::ProcessMainLoop。
-        // host 已经在 metadata 中按 core 切好连续的 BN1/S1-outer 区间，这里只读取
-        // bn1Start/bn1End/s1Start/s1End，不重新做切核策略，保证 MX 与 FP8 使用同一套
-        // sparse_indices、sparseSeqLen 和 block_table 任务分配方式。
+        // 沿用 FP8 metadata 中的 BN1/S1 分核结果。
         uint32_t bn1StartIdx = GetBsaAttrMetadata(metadataGm, constInfo.aicIdx, BSA_FA_BN1_START_INDEX);
         uint32_t bn1EndIdx = GetBsaAttrMetadata(metadataGm, constInfo.aicIdx, BSA_FA_BN1_END_INDEX);
         uint32_t s1StartIdx = GetBsaAttrMetadata(metadataGm, constInfo.aicIdx, BSA_FA_S1_START_INDEX);
@@ -473,30 +408,18 @@ private:
             ++bn1EndIdx;
         }
 
-        // taskRunInfo 是三槽环形缓存，参考 common MX full-quant 的流水组织：
-        //   attention/common/op_kernel/arch35/fia_kernel_fullquant_mx.h
-        //   attention/common/op_kernel/arch35/fia_block_cube_fullquant_mx.h
-        //   attention/common/op_kernel/arch35/fia_block_vec_fullquant_mx.h
-        // 当前 loop 的 task 先执行 C1/V1；PRELOAD_N 个 loop 之前的 task 再执行 C2/V2。
-        // PRELOAD_N=2 表示流水启动时先预热两组 task。每个 task 仍是 512-token
-        // logical tile，并拆成两个 256-token C1/V1 subLoop，所以实际开头会先看到多次 C1/V1，
-        // 再由延迟 task 消费已经完整写入 L1 的 P/PScale 做 C2/V2。
+        // 三槽环形缓存组织 C1/V1 与延迟 C2/V2。
         MxRunInfo taskRunInfo[PRELOAD_TASK_CACHE_SIZE] = {};
         uint64_t loop = 0U;
         uint32_t mLoop = 0U;
         for (uint32_t bn1Idx = bn1StartIdx; bn1Idx < bn1EndIdx; ++bn1Idx) {
-            // bn1Idx 展开为 batch 和 query head。MX 当前 TND + GQA 场景下，
-            // realN2Size 等价于 query head 数；n1/n2/g 的映射在 FillRunInfo 中完成。
             const uint32_t bIdx = bn1Idx / constInfo.realN2Size;
             const uint32_t actualS1Size = GetActualQSeqLen(bIdx);
-            // 当前 core 可能只负责起始/结束 BN1 的一部分 S1 outer block；
-            // 中间 BN1 则处理完整的 [0, ceil(actualS1/128))。
             const uint32_t s1LoopStart = GetS1LoopStart(bn1Idx, bn1StartIdx, s1StartIdx);
             const uint32_t s1LoopEnd = GetS1LoopEnd(bn1Idx, bn1EndIdx, s1EndIdx, actualS1Size);
             for (uint32_t s1OuterIdx = s1LoopStart; s1OuterIdx < s1LoopEnd; ++s1OuterIdx) {
                 const uint32_t n1Idx = bn1Idx % constInfo.realN2Size;
-                // sparseSeqLen[B, N1, Qb] 表示当前 128-row query block 有多少个有效
-                // sparse KV block。长度为 0 时不需要进入 C1/V1/C2/V2。
+                // 当前 query block 的有效 sparse block 数。
                 const int32_t sparseLen =
                     sparseSeqLenGm.GetValue((static_cast<uint64_t>(bIdx) * constInfo.realN2Size + n1Idx) *
                                                 constInfo.maxQb +
@@ -504,8 +427,7 @@ private:
                 if (sparseLen <= 0) {
                     continue;
                 }
-                // sparseBase 指向 sparseIndices[B, N1, Qb, 0]。后续 s2LoopIdx 会从该基址
-                // 读取逻辑 KV block id；cube 再结合 block_table 找到 PA BNBD 的物理 block。
+                // sparseBase 指向 sparseIndices[B,N1,Qb,0]。
                 const uint64_t sparseBase =
                     (static_cast<uint64_t>(bIdx) * constInfo.realN2Size + n1Idx) * constInfo.maxQb *
                         constInfo.maxKb +
@@ -517,9 +439,6 @@ private:
                     const uint32_t remainSparseBlockCount = static_cast<uint32_t>(sparseLen) - s2LoopIdx;
                     const uint32_t sparseBlockCount =
                         remainSparseBlockCount > sparseBlocksPerTask ? sparseBlocksPerTask : remainSparseBlockCount;
-                    // FillRunInfo 把当前 S2 tile 的所有运行期地址一次性算好：
-                    // query/qScale 的 TND offset、当前 512 tile 内多个 sparseIndices 逻辑 block id、
-                    // 实际 S2 tail 长度以及 causal partial-mask 标志。
                     FillRunInfo(runInfo, loop, mLoop, bn1Idx, s1OuterIdx, s2LoopIdx, s2LoopEnd, sparseBlockCount,
                                 sparseBase);
                     if (runInfo.actSingleLoopS2Size != 0U && runInfo.actMSize != 0U) {
@@ -532,8 +451,7 @@ private:
                 ++mLoop;
             }
         }
-        // 主遍历结束后，环形缓存中仍可能有已经完成 C1/V1、但因 PRELOAD_N 延迟
-        // 尚未执行 C2/V2 的 task。这里继续推进空 loop，把尾部 task 全部 drain 掉。
+        // 排空尚未执行 C2/V2 的尾部 task。
         while (HasValidTask(taskRunInfo)) {
             ExecuteTask(loop, taskRunInfo);
             ++loop;

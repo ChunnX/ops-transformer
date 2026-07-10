@@ -21,9 +21,7 @@ namespace optiling {
 constexpr uint32_t BSA_MX_MAX_CORE_NUM = 48U;
 constexpr uint32_t BSA_MX_CORE_SPLIT_NUM = BSA_MX_MAX_CORE_NUM + 1U;
 
-// MX tiling data 有意与现有 FP8 tiling data 隔离。MX kernel 参考 common MX
-// 全量化思路，因此运行期字段按特性区域分组，并使用普通 struct，
-// 不复用 FP8 的生成式 tiling class。
+// MX 使用独立 struct tiling data，与 FP8 路径隔离。
 struct QuantBlockSparseAttnMxStrideParams {
     uint64_t bnStride = 0;
     uint64_t n2Stride = 0;
@@ -58,8 +56,7 @@ struct QuantBlockSparseAttnMxBaseParams {
     uint8_t isActualSeqLengthsKVNull = 0;
     uint32_t coreNum = 0;
     uint32_t outputLayout = 0;
-    // K/V 数据以及 K/V scale 的 PA BNBD stride。这里以元素个数保存，
-    // kernel helper 在 block_table 完成物理 block 映射后据此计算偏移。
+    // PA BNBD stride，单位为元素。
     QuantBlockSparseAttnMxStrideParams keyStrides;
     QuantBlockSparseAttnMxStrideParams valueStrides;
     QuantBlockSparseAttnMxStrideParams kScaleStrides;
@@ -119,11 +116,7 @@ struct QuantBlockSparseAttnMxWorkspaceParams {
 };
 
 struct QuantBlockSparseAttnMxScaleParams {
-    // quant_mode=2 的 scale 语义约束：
-    //   quantScale1:        [1]，静态 P 量化 scale，fp8_e8m0
-    //   dequantScaleQuery:  [T, N, D/64, 2]，per-token-group，fp8_e8m0
-    //   keyAntiquantScale:  [Tkv, N, D/64, 2]，per-token-group，fp8_e8m0
-    //   valueAntiquantScale:[Tkv/64, N, DV, 2]，per-channel-group，fp8_e8m0
+    // PScale:[1]；Q/K scale:[T,N,D/64,2]；V scale:[T/64,N,DV,2]。
     uint32_t scaleGroupSize = 0;
     uint32_t scaleLastDim = 0;
     uint32_t queryScaleDSize = 0;
@@ -146,8 +139,7 @@ struct QuantBlockSparseAttnMxEmptyTensorParams {
 };
 
 struct QuantBlockSparseAttnMxTilingData {
-    // 各参数组保持显式分离。host 只在 MXFullQuantMode 下填充该 struct；
-    // FP8 仍继续使用 QuantBlockSparseAttnTilingData。
+    // 仅由 MXFullQuantMode 填充。
     QuantBlockSparseAttnMxAttrParams attrParams;
     QuantBlockSparseAttnMxBaseParams baseParams;
     QuantBlockSparseAttnMxAttenMaskParams attenMaskParams;
