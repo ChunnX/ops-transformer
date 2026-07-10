@@ -259,34 +259,6 @@ protected:
         FreeAll(dyGm, cosGm, sinGm, dxGm, workspace, tilingGm);
     }
 
-    // ---- EMPTY slice: just verify no-op ----
-    void RunEmpty(const vector<float> &dyData, const vector<float> &refDx, const vector<int64_t> &dyShape,
-                  int64_t sliceStart, int64_t sliceEnd)
-    {
-        size_t dyBytes = dyData.size() * sizeof(float);
-        size_t cosBytes = 0;
-        size_t tilingBytes = sizeof(InplacePartialRotaryMulGradUTTilingData);
-
-        uint8_t *dyGm, *cosGm, *sinGm, *dxGm, *workspace, *tilingGm;
-        vector<float> emptyCos;
-        AllocAndCopy(dyGm, cosGm, sinGm, dxGm, workspace, tilingGm, dyData, emptyCos, emptyCos, dyBytes, cosBytes,
-                     tilingBytes);
-
-        auto *td = reinterpret_cast<InplacePartialRotaryMulGradUTTilingData *>(tilingGm);
-        td->usedCoreNum = 1;
-        td->sliceStart = sliceStart;
-        td->sliceEnd = sliceEnd;
-        td->sliceLength = 0;
-
-        AscendC::SetKernelMode(KernelMode::AIV_MODE);
-        ICPU_SET_TILING_KEY(TILING_KEY_EMPTY);
-        ICPU_RUN_KF(inplace_partial_rotary_mul_grad, 1, dyGm, cosGm, sinGm, dxGm, workspace, tilingGm);
-
-        vector<float> result(dyBytes / sizeof(float));
-        AscendC::GmMemcpy((uint8_t *)result.data(), dxGm, dyBytes);
-        Verify(result, refDx, "EMPTY");
-        FreeAll(dyGm, cosGm, sinGm, dxGm, workspace, tilingGm);
-    }
 
     void Verify(const vector<float> &result, const vector<float> &ref, const string &tag)
     {
@@ -452,27 +424,4 @@ TEST_F(InplacePartialRotaryMulGradKernelTest, B_BROADCAST_BSN_interleave)
     InterleaveGradRefAB(dyData, cosData, sinData, refDx, B, N, S, D, sliceStart, sliceEnd, true);
 
     RunAorB(dyShape, cosShape, dyData, cosData, sinData, refDx, sliceStart, sliceEnd, TILING_KEY_B);
-}
-
-// ===================== EMPTY (403): sliceLength==0 =====================
-TEST_F(InplacePartialRotaryMulGradKernelTest, EMPTY_slice)
-{
-    int64_t B = 2, S = 2, N = 2, D = 8;
-    int64_t sliceStart = 4, sliceEnd = 4;
-
-    vector<int64_t> dyShape = {B, S, N, D};
-    vector<float> dyData(B * S * N * D);
-    for (int i = 0; i < B * S * N; i++) {
-        dyData[i * D + 0] = 1.0f;
-        dyData[i * D + 1] = 2.0f;
-        dyData[i * D + 2] = 3.0f;
-        dyData[i * D + 3] = 4.0f;
-        dyData[i * D + 4] = 5.0f;
-        dyData[i * D + 5] = 6.0f;
-        dyData[i * D + 6] = 7.0f;
-        dyData[i * D + 7] = 8.0f;
-    }
-    vector<float> refDx = dyData; // no change
-
-    RunEmpty(dyData, refDx, dyShape, sliceStart, sliceEnd);
 }

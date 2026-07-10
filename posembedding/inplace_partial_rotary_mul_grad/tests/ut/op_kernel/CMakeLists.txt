@@ -8,9 +8,16 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
-add_ut_test(TEST_TARGET inplace_partial_rotary_mul_grad_kernel_ut
-            CPP_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/test_inplace_partial_rotary_mul_grad_kernel.cpp
-            DEP_LIBS gtest
-            INSTALL_DST ${CMAKE_INSTALL_PREFIX}/tests/ut/op_kernel
-            DATA_DIR ${CMAKE_CURRENT_SOURCE_DIR}/inplace_partial_rotary_mul_grad_data
-            DATA_INSTALL_DST data)
+if(UT_TEST_ALL OR OP_KERNEL_UT)
+    set(inplace_partial_rotary_mul_grad_tiling_files
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../../op_host/inplace_partial_rotary_mul_grad_tiling.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../../op_host/inplace_partial_rotary_mul_grad_regbase_tiling_a_and_b.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../../op_host/inplace_partial_rotary_mul_grad_regbase_tiling_aba_and_ba.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../../op_host/inplace_partial_rotary_mul_grad_regbase_tiling_ab.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../../op_host/inplace_partial_rotary_mul_grad_regbase_tiling_bab.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../../op_host/inplace_partial_rotary_mul_grad_tiling_base_arch35.cpp
+    )
+    AddOpTestCase(inplace_partial_rotary_mul_grad "ascend910B1" "-DDTYPE_X=float -DTYPE_DY=float -DDTYPE_COS=float"
+        "${inplace_partial_rotary_mul_grad_tiling_files}"
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../../op_kernel/inplace_partial_rotary_mul_grad_apt.cpp)
+endif()

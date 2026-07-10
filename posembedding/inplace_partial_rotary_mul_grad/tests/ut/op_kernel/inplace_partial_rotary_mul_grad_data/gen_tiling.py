@@ -27,8 +27,7 @@ TILING_DATA_SIZE = 19
 # Pre-calibrated tiling data for specific test cases
 # To calibrate: run OpHost UT, copy tiling data from log output
 tiling_params = {
-    # Empty slice placeholder: kernel returns immediately via TILING_KEY_EMPTY=403
-    (403, 0, 0): [0] * TILING_DATA_SIZE,
+    # Empty slice (sliceLength==0) is not supported.
 }
 
 

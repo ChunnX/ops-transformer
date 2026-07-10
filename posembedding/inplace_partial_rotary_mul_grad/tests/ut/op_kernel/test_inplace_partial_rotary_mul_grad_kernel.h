@@ -71,7 +71,6 @@ constexpr uint64_t TILING_KEY_BAB = 203;
 constexpr uint64_t TILING_KEY_AB = 204;
 constexpr uint64_t TILING_KEY_A = 205;
 constexpr uint64_t TILING_KEY_B = 206;
-constexpr uint64_t TILING_KEY_EMPTY = 403;
 
 /// BSND layout reference (BAB template)
 inline void InterleaveGradRefBSND(const std::vector<float> &dy, const std::vector<float> &cos,
