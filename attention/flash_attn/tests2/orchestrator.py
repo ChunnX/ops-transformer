@@ -181,7 +181,7 @@ def _exec_or_load(stages: set, stage_name: str, compute_fn, case_set: str,
 # ============ Engine ============
 def run_case(stages: set, params: dict, reporter: Reporter, *,
              max_retries: int = 0, load_network_pt: str = None, graph_path: int = 0,
-             chunk_size: int = 0, num_workers: int = 0, verbose_diff: bool = False) -> dict:
+             chunk_size: int = 0, verbose_diff: bool = False) -> dict:
     case_set = params.get("case_set", "")
     case_id = params.get("case_id", params.get("name", ""))
     result_dir = str(Path("result") / case_id)
@@ -260,7 +260,7 @@ def run_case(stages: set, params: dict, reporter: Reporter, *,
             logger.info("[cmp]  start")
             t0 = time.perf_counter()
             result = compare_outputs(cpu_out, npu_out,
-                                     chunk_size=chunk_size, num_workers=num_workers)
+                                     chunk_size=chunk_size)
             logger.info("[cmp]  done  | %.2fs", time.perf_counter() - t0)
             for key, m in result.items():
                 if isinstance(m, dict):

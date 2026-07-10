@@ -84,7 +84,6 @@ def test_op(params, stages, reporter, request):
                       load_network_pt=request.config.getoption("--load-network-pt"),
                       graph_path=request.config.getoption("--graph-path"),
                       chunk_size=request.config.getoption("--chunk-size"),
-                      num_workers=request.config.getoption("--num-workers"),
                       verbose_diff=request.config.getoption("--verbose-diff"))
     if not result.get("passed", False):
         pytest.fail(result.get("fail_msg", "精度校验失败"))
@@ -101,7 +100,6 @@ def main():
     parser.add_argument("--report-interval", default=20, type=int, help="中间报告间隔")
     parser.add_argument("--load-network-pt", default=None, help="从整网推理产出的pt加载inputs")
     parser.add_argument("--chunk-size", default=0, type=int, help="比对分块大小")
-    parser.add_argument("--num-workers", default=0, type=int, help="比对并行worker数")
     parser.add_argument("--max-retries", default=0, type=int, help="NPU最大重试次数")
     parser.add_argument("--log-level", default="INFO",
                         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
@@ -130,7 +128,6 @@ def main():
                      load_network_pt=args.load_network_pt,
                      graph_path=args.graph_path,
                      chunk_size=args.chunk_size,
-                     num_workers=args.num_workers,
                      verbose_diff=args.verbose_diff)
         except Exception as e:
             err = f"{e}\n{traceback.format_exc()}"

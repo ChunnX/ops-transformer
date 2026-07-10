@@ -1,6 +1,5 @@
 import logging
 import torch
-import torch.multiprocessing as mp
 from typing import Callable
 
 logger = logging.getLogger("compare")
@@ -36,11 +35,6 @@ def _stats(ef, rf, atol, rtol):
     }
 
 
-def _chunk_worker(args):
-    cpu_shm, npu_shm, offset, length, atol, rtol = args
-    ef = cpu_shm.view(-1)[offset:offset + length]
-    rf = npu_shm.view(-1)[offset:offset + length]
-    return _stats(ef, rf, atol, rtol)
 
 
 def compare_outputs(
@@ -48,7 +42,6 @@ def compare_outputs(
     npu_out: dict,
     *,
     chunk_size: int = 0,
-    num_workers: int = 0,
     dtype_handler: Callable[[torch.Tensor], torch.Tensor] = None,
     atol: float = None,
     rtol: float = None,
@@ -82,16 +75,13 @@ def compare_outputs(
         a, r = _resolve_tolerance(cpu_t.dtype, atol, rtol)
         total = cpu_f.numel()
         if chunk_size > 0 and total > chunk_size:
-            cpu_shm = cpu_f.contiguous().clone()
-            npu_shm = npu_f.contiguous().clone()
-            cpu_shm.share_memory_()
-            npu_shm.share_memory_()
-            tasks = []
+            # 分块顺序处理：降低内存峰值，无需多进程和共享内存
+            cpu_flat = cpu_f.reshape(-1)
+            npu_flat = npu_f.reshape(-1)
+            parts = []
             for off in range(0, total, chunk_size):
                 length = min(chunk_size, total - off)
-                tasks.append((cpu_shm, npu_shm, off, length, a, r))
-            with mp.Pool(num_workers or None) as pool:
-                parts = pool.map(_chunk_worker, tasks)
+                parts.append(_stats(cpu_flat[off:off + length], npu_flat[off:off + length], a, r))
             tot = sum(p["total"] for p in parts)
             fail_cnt = sum(p["fail_cnt"] for p in parts)
             stats = {

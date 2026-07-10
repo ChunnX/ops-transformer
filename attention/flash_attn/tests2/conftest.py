@@ -18,7 +18,6 @@ def pytest_addoption(parser):
     parser.addoption("--report-interval", default=20, type=int, help="中间报告间隔")
     parser.addoption("--load-network-pt", default=None, help="从整网推理产出的pt加载inputs(设计目标8)")
     parser.addoption("--chunk-size", default=0, type=int, help="比对分块大小(0=不分块)")
-    parser.addoption("--num-workers", default=0, type=int, help="比对并行worker数(0=单进程)")
     parser.addoption("--max-retries", default=0, type=int, help="NPU计算最大重试次数")
 
 
