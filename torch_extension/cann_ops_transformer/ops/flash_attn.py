@@ -228,5 +228,5 @@ def flash_attn(
         max_seqlen_q, max_seqlen_kv,
         layout_q, layout_kv, layout_out,
         return_softmax_lse)
-flash_attn = torch.ops.cann_ops_transformer.flash_attn
-flash_attn_metadata = torch.ops.cann_ops_transformer.flash_attn_metadata
+# flash_attn = torch.ops.cann_ops_transformer.flash_attn
+# flash_attn_metadata = torch.ops.cann_ops_transformer.flash_attn_metadata
