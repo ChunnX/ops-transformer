@@ -449,7 +449,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ResetFlagList()
     if constexpr (CombineQuantMode != COMBINE_NO_QUANT) {
         ResetGmm2CombineSyncCounters();
     }
-    if (sharedExpertNum_ > 0) {
+    if (sharedExpertNum_ > 0 && aivCoreIdx_ == 0) {
         WriteGmByPassDCache((__gm__ int32_t*)params_.workspaceInfo.quantDoneFlagPtr, int32_t(0));
         WriteGmByPassDCache((__gm__ int32_t*)params_.workspaceInfo.sharedExpertGmm2DoneFlagPtr, int32_t(0));
         WriteGmByPassDCache((__gm__ int32_t*)params_.workspaceInfo.sharedExpertGmm1DoneFlagPtr, int32_t(0));
@@ -1327,7 +1327,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SharedExpertGmm1()
 
     if constexpr (g_coreType == AIC) {
         while (AscendC::ReadGmByPassDCache(
-            (__gm__ int32_t*)params_.workspaceInfo.quantDoneFlagPtr) != int32_t(blockAivNum_)) {
+            (__gm__ int32_t*)params_.workspaceInfo.quantDoneFlagPtr) != int32_t(1)) {
             AscendC::Nop<200>();
         }
     }
@@ -1354,12 +1354,21 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SharedExpertGmm1()
         Get<K_VALUE>(problemShape) = hiddenDim_;
 
         if constexpr (ENABLE_A8W4) {
+            TupleShape problemShapeA8W4;
+            Get<M_VALUE>(problemShapeA8W4) = m_;
+            Get<N_VALUE>(problemShapeA8W4) = hiddenDim_;
+            Get<K_VALUE>(problemShapeA8W4) = k_;
             MegaMoeImpl::Detail::GroupMatmulSharedExpertA8W4<true,
                 QuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType, QuantScaleOutType>(
-                problemShape, gmm1AddrInfo);
+                problemShapeA8W4, gmm1AddrInfo);
         } else {
-            MegaMoeImpl::Detail::GroupMatmulSharedExpert<QuantOutType, QuantOutType, bfloat16_t,
-                QuantScaleOutType, QuantScaleOutType>(problemShape, gmm1AddrInfo);
+            if (params_.tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4_NZ) {
+                MegaMoeImpl::Detail::GroupMatmulSharedExpert<true, QuantOutType, QuantOutType, bfloat16_t,
+                    QuantScaleOutType, QuantScaleOutType>(problemShape, gmm1AddrInfo);
+            } else {
+                MegaMoeImpl::Detail::GroupMatmulSharedExpert<false, QuantOutType, QuantOutType, bfloat16_t,
+                    QuantScaleOutType, QuantScaleOutType>(problemShape, gmm1AddrInfo);
+            }
         }
     }
 
@@ -1502,8 +1511,14 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SharedExpertGmm2()
                 SwigluQuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType, QuantScaleOutType>(
                 problemShape, gmm2AddrInfo);
         } else {
-            MegaMoeImpl::Detail::GroupMatmulSharedExpert<QuantOutType, QuantOutType, bfloat16_t,
-                QuantScaleOutType, QuantScaleOutType>(problemShape, gmm2AddrInfo);
+            if (params_.tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ ||
+                params_.tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4_NZ) {
+                MegaMoeImpl::Detail::GroupMatmulSharedExpert<true, QuantOutType, QuantOutType, bfloat16_t,
+                    QuantScaleOutType, QuantScaleOutType>(problemShape, gmm2AddrInfo);
+            } else {
+                MegaMoeImpl::Detail::GroupMatmulSharedExpert<false, QuantOutType, QuantOutType, bfloat16_t,
+                    QuantScaleOutType, QuantScaleOutType>(problemShape, gmm2AddrInfo);
+            }
         }
         PipeBarrier<PIPE_ALL>();
     }
@@ -1585,19 +1600,16 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
         SendMaskCal();
         if (sharedExpertNum_ > 0) {
             SharedExpertCopyInput();
-            AscendC::AtomicAdd((__gm__ int32_t*)params_.workspaceInfo.quantDoneFlagPtr, int32_t(1));
+            PipeBarrier<PIPE_ALL>();
+            SyncAll<true>();
+            if (aivCoreIdx_ == 0) {
+                WriteGmByPassDCache((__gm__ int32_t*)params_.workspaceInfo.quantDoneFlagPtr, int32_t(1));
+            }
         }
     }
-    // ===== 共享专家阶段: GMM1+Swiglu =====
     if (sharedExpertNum_ > 0) {
         SharedExpertGmm1();
-        if constexpr (g_coreType == AIV) {
-            while (AscendC::ReadGmByPassDCache(
-                (__gm__ int32_t*)params_.workspaceInfo.sharedExpertGmm1DoneFlagPtr) != int32_t(aicNum_)) {
-                AscendC::Nop<200>();
-            }
-            SharedExpertSwiglu();
-        }
+        PipeBarrier<PIPE_ALL>();
         SyncAll<false>();
     }
     else {
@@ -1669,7 +1681,25 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
         }
     }
 
-    // SharedSwiglu 已在 MoE GMM1 之前完成, 无需在此等待
+    if (sharedExpertNum_ > 0) {
+        if constexpr (g_coreType == AIV) {
+            PipeBarrier<PIPE_ALL>();
+            while (AscendC::ReadGmByPassDCache(
+                (__gm__ int32_t*)params_.workspaceInfo.sharedExpertGmm1DoneFlagPtr) != int32_t(aicNum_)) {
+                AscendC::Nop<200>();
+            }
+            SharedExpertSwiglu();
+            PipeBarrier<PIPE_ALL>();
+            AscendC::AtomicAdd(
+                (__gm__ int32_t*)params_.workspaceInfo.sharedExpertSwigluDoneFlagPtr, int32_t(1));
+        } else {
+            PipeBarrier<PIPE_ALL>();
+            while (AscendC::ReadGmByPassDCache(
+                (__gm__ int32_t*)params_.workspaceInfo.sharedExpertSwigluDoneFlagPtr) != int32_t(blockAivNum_)) {
+                AscendC::Nop<200>();
+            }
+        }
+    }
 
     // 3. 本卡专家接收数据GroupMatmul2 & Combine
     vecSetSyncCom_ = 0;

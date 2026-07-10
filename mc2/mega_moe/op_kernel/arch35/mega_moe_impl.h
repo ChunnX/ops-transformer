@@ -690,7 +690,7 @@ __aicore__ inline void GroupMatmulExecSharedExpertA8W4(
 // =================================================================================================
 // GroupMatmulSharedExpert: A8W8 纯 AIC matmul, 输出到 GM
 // =================================================================================================
-template <typename ElementA, typename ElementB, typename ElementC,
+template <bool IsWeightNZ = false, typename ElementA, typename ElementB, typename ElementC,
           typename ElementMxScaleA, typename ElementMxScaleB>
 __aicore__ inline void GroupMatmulSharedExpert(
     const AscendC::Shape<int64_t, int64_t, int64_t, int64_t>& problemShape,
@@ -699,7 +699,7 @@ __aicore__ inline void GroupMatmulSharedExpert(
     if constexpr (g_coreType != AscendC::AIC) { return; }
 
     using Config = Detail::Config<false, Detail::Gmm2Policy, MXFP8_E4M3_COMM_QUANT,
-        ElementA, ElementB, ElementC, ElementMxScaleA, ElementMxScaleB>;
+        ElementA, ElementB, ElementC, ElementMxScaleA, ElementMxScaleB, IsWeightNZ>;
     auto config = Config::BuildProblemConfig(problemShape);
     auto layouts = Config::BuildLayouts(config);
 
