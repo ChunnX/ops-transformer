@@ -141,18 +141,12 @@ public:
                             auto stateIn = inQueue_.DeQue<float>();
                             DataCopy(stateFp32Ub_, stateIn, Dv_ * curDk_);
                             inQueue_.FreeTensor(stateIn);
-                            if (cId == 0) {
-                                if (isFirstGroup_) {
-                                    auto bf16Init = outQueue_.AllocTensor<bfloat16_t>();
-                                    Cast(bf16Init, stateFp32Ub_, RoundMode::CAST_RINT, Dv_ * curDk_);
-                                    outQueue_.EnQue(bf16Init);
-                                    CopyOut<bfloat16_t>(sTP_->curStateBf16[nvId * Dv_ * Dk_], Dv_, Dk_, false, curDk_);
-                                }
-                            }
+                            auto bf16State = outQueue_.AllocTensor<bfloat16_t>();
+                            Cast(bf16State, stateFp32Ub_, RoundMode::CAST_RINT, Dv_ * curDk_);
+                            outQueue_.EnQue(bf16State);
+                            CopyOut<bfloat16_t>(sTP_->curStateBf16[nvId * Dv_ * Dk_], Dv_, Dk_, false, curDk_);
                         }
-                        if (cId == 0) {
-                            CrossCoreSetFlag<0x2, PIPE_MTE3>(0x3);
-                        }
+                        CrossCoreSetFlag<0x2, PIPE_MTE3>(0x3);
                         CrossCoreWaitFlag(0x2);
                         if (GetSubBlockIdx() == 0) {
                             CalGCumExp(sTP_->gCum[nvId * Sp_ + length]);
@@ -161,10 +155,6 @@ public:
                             outQueue_.EnQue(fp32Local);
                             CopyOut<float>(sTP_->stateOut[nvId * Dv_ * Dk_], Dv_, Dk_, false, curDk_);
                             PipeBarrier<PIPE_MTE3>();
-                            auto bf16Accum = outQueue_.AllocTensor<bfloat16_t>();
-                            Cast(bf16Accum, stateFp32Ub_, RoundMode::CAST_RINT, Dv_ * curDk_);
-                            outQueue_.EnQue(bf16Accum);
-                            CopyOut<bfloat16_t>(sTP_->curStateBf16[nvId * Dv_ * Dk_], Dv_, Dk_, false, curDk_);
                             uint64_t mm_offset1 = nvId * Sp_ * Dv_ + length * Dv_;
                             CastGmToGm<float, bfloat16_t>(sTP_->vInner[mm_offset1],
                                                           sTP_->vInner[mm_offset1].template ReinterpretCast<bfloat16_t>(),
@@ -191,12 +181,11 @@ public:
                 if ASCEND_IS_AIC {
                     uint64_t mm_offset0 = nvId * Sp_ * Dk_ + length * Dk_;
                     uint64_t mm_offset1 = nvId * Sp_ * Dv_ + length * Dv_;
-                    auto stateForAic = sTP_->curStateBf16[nvId * Dv_ * Dk_];
                     auto stateOut = sTP_->stateOut[nvId * Dv_ * Dk_];
+                    GlobalTensor<bfloat16_t> stateForAic;
                     if constexpr (kIsFp32) {
-                        if (cId == 0) {
-                            CrossCoreWaitFlag(0x3);
-                        }
+                        CrossCoreWaitFlag(0x3);
+                        stateForAic = sTP_->curStateBf16[nvId * Dv_ * Dk_];
                     } else {
                         stateForAic = (cId == 0) ? sTP_->curStateBf16[nvId * Dv_ * Dk_]
                                                  : sTP_->stateOut[nvId * Dv_ * Dk_];
@@ -208,8 +197,7 @@ public:
                     CrossCoreWaitFlag(0x5);
                     if constexpr (kIsFp32) {
                         CalStateNew(sTP_->vInner[mm_offset1].template ReinterpretCast<bfloat16_t>(),
-                                    sTP_->kg[mm_offset0], stateOut,
-                                    sTP_->curStateBf16[nvId * Dv_ * Dk_]);
+                                    sTP_->kg[mm_offset0], stateOut);
                     } else {
                         CalStateNew(sTP_->vInner[mm_offset1], sTP_->kg[mm_offset0], stateOut);
                     }
@@ -322,13 +310,10 @@ public:
     template <typename stateOutType>
     __aicore__ inline void CalStateNew(GlobalTensor<bfloat16_t> vInner,
                                        GlobalTensor<bfloat16_t> kg,
-                                       GlobalTensor<stateOutType> state,
-                                       GlobalTensor<bfloat16_t> stateBf16 = {})
+                                       GlobalTensor<stateOutType> state)
     {
         if constexpr (std::is_same_v<stateOutType, float>) {
             RunMatmul(sTP_->mm1Fp32C, vInner, true, kg, false, state,
-                      Dv_, Dk_, curChunkSize_, 1);
-            RunMatmul(sTP_->mm1, vInner, true, kg, false, stateBf16,
                       Dv_, Dk_, curChunkSize_, 1);
         } else {
             RunMatmul(sTP_->mm1, vInner, true, kg, false, state,
