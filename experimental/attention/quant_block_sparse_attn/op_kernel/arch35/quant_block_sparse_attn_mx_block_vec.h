@@ -17,6 +17,7 @@
 
 #include "kernel_operator.h"
 #include "quant_block_sparse_attn_common_arch35.h"
+#include "quant_block_sparse_attn_attenmask.h"
 #include "common/buffer_manager.h"
 #include "common/buffers_policy.h"
 #include "common/util_regbase_mx.h"
@@ -41,21 +42,32 @@ namespace BaseApi {
  * V1 将两个 subLoop 都写入同一个 L1 P buffer，因此 C2 看到的是完整的
  * [128, 512] 左矩阵。
  */
-template <bool useDn = true>
+template <typename inputType, typename mmType, typename outputType, BSALayout layout, BSALayout kvLayout,
+          S1TemplateType s1TemplateType, S2TemplateType s2TemplateType, DTemplateType dTemplateType,
+          DTemplateType dVTemplateType, bool hasAtten, bool isPa, bool useDn = true>
 class QuantBlockSparseAttnMxBlockVec {
 public:
-    using INPUT_T = fp8_e4m3fn_t;
+    using INPUT_T = inputType;
     using SCALE_T = fp8_e8m0_t;
-    using MM_T = float;
-    using OUTPUT_T = bfloat16_t;
+    using MM_T = mmType;
+    using OUTPUT_T = outputType;
     using MxBmm2Buf = Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>;
 
     static constexpr bool USE_DN = useDn;
-    static constexpr uint32_t M_BASE = 128U;
-    static constexpr uint32_t S2_BASE = 512U;
+    static constexpr bool HAS_ATTEN = hasAtten;
+    static constexpr bool IS_PA = isPa;
+    static constexpr BSALayout LAYOUT = layout;
+    static constexpr BSALayout KV_LAYOUT = kvLayout;
+    static constexpr uint32_t M_BASE = static_cast<uint32_t>(s1TemplateType);
+    static constexpr uint32_t S2_BASE = static_cast<uint32_t>(s2TemplateType);
     static constexpr uint32_t S2_SPLIT = 256U;
-    static constexpr uint32_t D_BASE = 128U;
-    static constexpr uint32_t DV_BASE = 128U;
+    static constexpr uint32_t VEC_M_BASE = M_BASE >> 1U;
+    static constexpr uint32_t D_BASE = static_cast<uint32_t>(dTemplateType);
+    static constexpr uint32_t DV_BASE = static_cast<uint32_t>(dVTemplateType);
+    static_assert(LAYOUT == BSALayout::TND && KV_LAYOUT == BSALayout::PA_BNSD && IS_PA,
+                  "MX vector currently only supports TND query and PA_BNSD KV");
+    static_assert(M_BASE == 128U && S2_BASE == 512U && D_BASE == 128U && DV_BASE == 128U,
+                  "MX vector currently only supports S1=128, S2=512, D=128 and DV=128");
     static constexpr uint32_t DB = 2U;
     static constexpr uint32_t PRELOAD_N = 2U;
     static constexpr uint32_t MX_SCALE_GROUP = 32U;
@@ -63,15 +75,22 @@ public:
     static constexpr uint32_t DN_VSELR_INDEX_SIZE = 256U;
     static constexpr uint32_t DN_VSELR_GROUP_NUM = 4U;
     static constexpr uint32_t DN_VSELR_GROUP_SIZE = DN_VSELR_INDEX_SIZE / DN_VSELR_GROUP_NUM;
+    static constexpr uint32_t ATTEN_MASK_UB_SIZE = S2_SPLIT * VEC_M_BASE;
+    static constexpr uint32_t MASK_COPY_BLOCK_BYTES = 32U;
 
     __aicore__ inline void Init(TPipe *pipe, __gm__ uint8_t *pScale, __gm__ uint8_t *softmaxLse,
-                                __gm__ uint8_t *attentionOut)
+                                __gm__ uint8_t *attentionOut, __gm__ uint8_t *attenMask,
+                                const regbaseutil::AttenMaskInfo &attenMaskInfo)
     {
         if ASCEND_IS_AIV {
             tPipe_ = pipe;
             attentionOutGm_.SetGlobalBuffer((__gm__ OUTPUT_T *)attentionOut);
             softmaxLseGm_.SetGlobalBuffer((__gm__ float *)softmaxLse);
             pScaleGm_.SetGlobalBuffer((__gm__ uint8_t *)pScale);
+            if constexpr (HAS_ATTEN) {
+                attenMaskGm_.SetGlobalBuffer((__gm__ uint8_t *)attenMask);
+                attenMaskInfo_ = attenMaskInfo;
+            }
             uint32_t negativeIntScalar = NEGATIVE_MIN_VALUE_FP32;
             negativeFloatScalar_ = *((MM_T *)&negativeIntScalar);
             // quantScale1 是输入传入的静态 P 量化 scale，shape 为 [1]，存储类型为 e8m0。
@@ -120,6 +139,17 @@ public:
             tPipe_->InitBuffer(preLoopMaxBuf_, 256U);
             tPipe_->InitBuffer(preLoopSumBuf_, 256U);
             tPipe_->InitBuffer(firstLoopSumBuf_, 256U);
+            if constexpr (HAS_ATTEN) {
+                // attenMaskInQue_ 保存当前 256-column V1 subLoop 使用的 bool mask。
+                // 参考 BSA FP8 DN 路径的 attenMaskInQue[0]：
+                //   - VF 的 DN mask 布局为 [S2, M/2]，每个 S2 token 一行，
+                //     当前 AIV subBlock 只处理 64 个 query 行；
+                //   - MX 的 logical S2 tile 是 512，但 V1 每次只处理一个 256-column subLoop，
+                //     因此 UB 容量仍为 256 * 64 = 16384B；
+                //   - 当 sparse block size 为 128/64 时，一个 subLoop 可能由多个
+                //     task 内排序后的 sparse block 拼接，CopyAttenMaskToUb 会按 segment 填充。
+                tPipe_->InitBuffer(attenMaskInQue_, 1, ATTEN_MASK_UB_SIZE);
+            }
             // vselrIndexesBuf_ 是 DN VF 的 lane 重排索引表。它不是数据缓存，而是告诉 VF
             // 如何把 DN packed 的 P 重新选择成 C2 需要的顺序。参考 common MX
             // fia_block_vec_fullquant_mx.h 中 USE_DN=true 的 DN_INDEX 初始化逻辑。
@@ -160,8 +190,8 @@ public:
                                        Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf,
                                        MxRunInfo &runInfo, const MxConstInfo &constInfo, uint32_t subLoop)
     {
-        bmm1ResBuf.WaitCrossCore();
         if (unlikely(runInfo.actVecMSize == 0U)) {
+            bmm1ResBuf.WaitCrossCore();
             bmm1ResBuf.SetCrossCore();
             if (IsLastSubLoop(runInfo, subLoop)) {
                 outputBuf.SetCrossCore();
@@ -181,24 +211,36 @@ public:
         LocalTensor<MM_T> mmRes = bmm1ResBuf.template GetTensor<MM_T>();
         LocalTensor<INPUT_T> stage1CastTensor = stage1OutQue_[stage1Offset].template AllocTensor<INPUT_T>();
         LocalTensor<SCALE_T> pScaleSubLoopTensor = pScaleSubLoop0Que_.template AllocTensor<SCALE_T>();
-        LocalTensor<uint8_t> emptyMask;
 
         const uint32_t s2CalcSize = GetSubLoopS2Size(runInfo, subLoop);
+        LocalTensor<uint8_t> attenMaskUb;
+        if constexpr (HAS_ATTEN) {
+            attenMaskUb = CopyAttenMaskToUb(runInfo, subLoop, s2CalcSize);
+        }
+        // 与 FP8 ProcessVec1Dn 的流水顺序一致：先发起 attenMask GM->UB 搬运，
+        // 再等待 AIC 的 C1 结果。这样 mask 的 MTE2 搬运可以与 BMM1 计算重叠；
+        // WaitCrossCore 之后 VF 才真正读取 mmRes，因此不会提前消费未完成的 C1。
+        bmm1ResBuf.WaitCrossCore();
         constexpr float descaleQK = 1.0f;
         // VF 执行流程：C1 * scale_value -> mask/softmax -> 在线更新 sum/max
         // -> 使用输入 quantScale1 静态量化 P(fp8_e4m3fn) + 生成 C2 用 P 反量化 scale(fp8_e8m0)。
         // descaleQK 为 1.0，因为 Q/K 反量化 scale 已经在 BMM1 的 cube LoadData
         // MX 随路反量化过程中被消费。
         if constexpr (USE_DN) {
-            if (unlikely(runInfo.isFirstS2Loop)) {
-                FaVectorApi::ProcessVec1VfDnMxfp8<MM_T, INPUT_T, false, false, S2_SPLIT>(
-                    stage1CastTensor, sumUb, maxUb, mmRes, expUb, vselrIndexesBuf_, emptyMask, pScaleSubLoopTensor,
+            // VF 的 isUpdate 表示是否需要与“上一轮 logical S2 tile”的 online-softmax 状态合并，
+            // 不是表示当前 512 tile 内的 subLoop 0/1。第一轮 S2 tile 的两个 256 subLoop
+            // 都没有历史 S2 状态，因此都走 NoUpdate；NoUpdate VF 内部会用 subLoop==1
+            // 合并当前 512 tile 的前后两个 256 半块。第二轮及以后才都走 Update。
+            const bool hasPreviousS2Loop = !runInfo.isFirstS2Loop;
+            if (unlikely(!hasPreviousS2Loop)) {
+                FaVectorApi::ProcessVec1VfDnMxfp8<MM_T, INPUT_T, false, HAS_ATTEN, S2_SPLIT>(
+                    stage1CastTensor, sumUb, maxUb, mmRes, expUb, vselrIndexesBuf_, attenMaskUb, pScaleSubLoopTensor,
                     ((runInfo.actMSizeAlign32 >> 1U) + 63U) >> 6 << 6, runInfo.actSingleLoopS2SizeAlign / 2U,
                     s2CalcSize, static_cast<MM_T>(constInfo.scaleValue), descaleQK, pScaleValue_,
                     negativeFloatScalar_, 0.0F, preLoopMaxUb, preLoopSumUb, firstLoopSumUb, subLoop);
             } else {
-                FaVectorApi::ProcessVec1VfDnMxfp8<MM_T, INPUT_T, true, false, S2_SPLIT>(
-                    stage1CastTensor, sumUb, maxUb, mmRes, expUb, vselrIndexesBuf_, emptyMask, pScaleSubLoopTensor,
+                FaVectorApi::ProcessVec1VfDnMxfp8<MM_T, INPUT_T, true, HAS_ATTEN, S2_SPLIT>(
+                    stage1CastTensor, sumUb, maxUb, mmRes, expUb, vselrIndexesBuf_, attenMaskUb, pScaleSubLoopTensor,
                     ((runInfo.actMSizeAlign32 >> 1U) + 63U) >> 6 << 6, runInfo.actSingleLoopS2SizeAlign / 2U,
                     s2CalcSize, static_cast<MM_T>(constInfo.scaleValue), descaleQK, pScaleValue_,
                     negativeFloatScalar_, 0.0F, preLoopMaxUb, preLoopSumUb, firstLoopSumUb, subLoop);
@@ -208,6 +250,9 @@ public:
                                   "use_dn=false is reserved for future extension");
         }
         bmm1ResBuf.SetCrossCore();
+        if constexpr (HAS_ATTEN) {
+            attenMaskInQue_.template FreeTensor(attenMaskUb);
+        }
 
         // 先拷贝 C2 用 P 反量化 scale，再拷贝 P。C2 只有在最后一个 subLoop 的
         // outputBuf.SetCrossCore() 之后才会读取；在此之前 P/scale 都只属于当前 V1 task。
@@ -300,6 +345,107 @@ private:
     __aicore__ inline bool IsLastSubLoop(const MxRunInfo &runInfo, uint32_t subLoop) const
     {
         return (runInfo.actSingleLoopS2Size <= S2_SPLIT) || (subLoop != 0U);
+    }
+
+    __aicore__ inline void BoolCopyInMxMask(const LocalTensor<uint8_t> &dstTensor, int64_t srcOffset,
+                                            uint32_t s2Len, uint32_t qLen)
+    {
+        if (s2Len == 0U || qLen == 0U) {
+            return;
+        }
+
+        // 这是 BoolCopyInRegbase 的 MX 版小型复用：FP8 版本依赖 regbaseutil::ConstInfo，
+        // 而 MX 路径使用独立的 MxConstInfo。实际 DN mask 搬运只需要 GM row stride
+        // attenMaskS2Size 和 UB row stride VEC_M_BASE，因此在这里保留同样的数据搬运形态。
+        DataCopyParams dataCopyParams;
+        dataCopyParams.blockCount = s2Len;
+        dataCopyParams.blockLen = CeilDiv(qLen, MASK_COPY_BLOCK_BYTES);
+        dataCopyParams.dstStride = CeilDiv(VEC_M_BASE, MASK_COPY_BLOCK_BYTES) - dataCopyParams.blockLen;
+        if (attenMaskInfo_.attenMaskS2Size % MASK_COPY_BLOCK_BYTES == 0 && qLen % MASK_COPY_BLOCK_BYTES == 0) {
+            dataCopyParams.srcStride =
+                (static_cast<uint32_t>(attenMaskInfo_.attenMaskS2Size) - qLen) / MASK_COPY_BLOCK_BYTES;
+            DataCopy(dstTensor, attenMaskGm_[static_cast<uint64_t>(srcOffset)], dataCopyParams);
+        } else {
+            DataCopyExtParams dataCopyExtParams;
+            dataCopyExtParams.blockCount = s2Len;
+            dataCopyExtParams.blockLen = qLen;
+            dataCopyExtParams.srcStride = static_cast<uint32_t>(attenMaskInfo_.attenMaskS2Size) - qLen;
+            dataCopyExtParams.dstStride =
+                CeilDiv(VEC_M_BASE, MASK_COPY_BLOCK_BYTES) - CeilDiv(qLen, MASK_COPY_BLOCK_BYTES);
+            DataCopyPadExtParams<uint8_t> dataCopyPadParams;
+            DataCopyPad(dstTensor, attenMaskGm_[static_cast<uint64_t>(srcOffset)], dataCopyExtParams,
+                        dataCopyPadParams);
+        }
+    }
+
+    __aicore__ inline int64_t ComputeCausalMaskOffset(const MxRunInfo &runInfo, int64_t segmentS2TokenOffset) const
+    {
+        const int64_t deltaN = static_cast<int64_t>(runInfo.actS1Size) - static_cast<int64_t>(runInfo.actS2Size);
+        const int64_t deltaCausalOrNext = static_cast<int64_t>(runInfo.s1Idx) - segmentS2TokenOffset - deltaN;
+        return regbaseutil::ComputeOffsetForCausal(
+            deltaCausalOrNext, M_BASE, S2_SPLIT, static_cast<uint32_t>(attenMaskInfo_.attenMaskS2Size),
+            static_cast<int64_t>(runInfo.vecMbaseIdx), USE_DN);
+    }
+
+    __aicore__ inline void CopyAttenMaskSegment(LocalTensor<uint8_t> &attenMaskUb, const MxRunInfo &runInfo,
+                                                uint32_t dstS2Offset, uint32_t segmentS2Len,
+                                                int64_t sparseBlkIdx, int64_t segmentS2TokenOffset,
+                                                bool needAtten)
+    {
+        const uint32_t dstOffset = dstS2Offset * VEC_M_BASE;
+        if (segmentS2Len == 0U) {
+            return;
+        }
+        if (sparseBlkIdx < 0) {
+            Duplicate<uint8_t>(attenMaskUb[dstOffset], 0, segmentS2Len * VEC_M_BASE);
+            return;
+        }
+
+        // MX 当前 host 只放开 sparseMode=3，也就是 right-down causal mask。
+        // 对完全可见的 segment，直接填 1，避免多余 GM 搬运；跨 causal 边界的
+        // segment 才按 FP8 DN 同款 offset 从 attenMask GM 搬到 UB。
+        const bool isRightDownCausal =
+            attenMaskInfo_.compressMode ==
+            static_cast<uint8_t>(regbaseutil::AttenMaskCompressMode::RIGHT_DOWN_CAUSAL_MODE);
+        if (isRightDownCausal && !needAtten) {
+            Duplicate<uint8_t>(attenMaskUb[dstOffset], 1, segmentS2Len * VEC_M_BASE);
+            return;
+        }
+
+        const int64_t maskOffset = isRightDownCausal ? ComputeCausalMaskOffset(runInfo, segmentS2TokenOffset) : 0;
+        BoolCopyInMxMask(attenMaskUb[dstOffset], maskOffset, segmentS2Len, VEC_M_BASE);
+    }
+
+    __aicore__ inline LocalTensor<uint8_t> CopyAttenMaskToUb(const MxRunInfo &runInfo, uint32_t subLoop,
+                                                             uint32_t s2CalcSize)
+    {
+        LocalTensor<uint8_t> attenMaskUb = attenMaskInQue_.template AllocTensor<uint8_t>();
+        // 与 FP8 AttenMaskCopyInDn 一致，只写当前拼接后有效的 S2 segment：
+        // partial/full-mask segment 从 GM 搬运压缩 mask，完全可见 segment 填 1。
+        // originN 之后的 C1 tail 会在 MX VF 内先写成最小值，因此不需要预清零整块
+        // mask UB；这样也避免 vector Duplicate 与 MTE2 DataCopy 同时写同一块 UB。
+
+        const uint32_t subLoopStart = subLoop * S2_SPLIT;
+        const uint32_t subLoopEnd = subLoopStart + s2CalcSize;
+        for (uint32_t i = 0U; i < runInfo.sparseBlockCount; ++i) {
+            const uint32_t blockS2Len = runInfo.sparseBlockRealSize[i];
+            const uint32_t blockTileStart = runInfo.sparseBlockTileOffset[i];
+            const uint32_t blockTileEnd = blockTileStart + blockS2Len;
+            if (blockTileEnd <= subLoopStart || blockTileStart >= subLoopEnd) {
+                continue;
+            }
+            const uint32_t overlapStart = blockTileStart > subLoopStart ? blockTileStart : subLoopStart;
+            const uint32_t overlapEnd = blockTileEnd < subLoopEnd ? blockTileEnd : subLoopEnd;
+            const uint32_t segmentS2Len = overlapEnd - overlapStart;
+            const uint32_t segmentOffsetInBlock = overlapStart - blockTileStart;
+            const int64_t segmentS2TokenOffset =
+                runInfo.sparseBlockTokenOffset[i] + static_cast<int64_t>(segmentOffsetInBlock);
+            CopyAttenMaskSegment(attenMaskUb, runInfo, overlapStart - subLoopStart, segmentS2Len,
+                                 runInfo.sparseBlockIdx[i], segmentS2TokenOffset,
+                                 runInfo.sparseBlockPartialMask[i]);
+        }
+        attenMaskInQue_.template EnQue(attenMaskUb);
+        return attenMaskInQue_.template DeQue<uint8_t>();
     }
 
     __aicore__ inline void CopyPScaleToL1(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputBuf,
@@ -399,6 +545,9 @@ private:
     GlobalTensor<OUTPUT_T> attentionOutGm_;
     GlobalTensor<float> softmaxLseGm_;
     GlobalTensor<uint8_t> pScaleGm_;
+    GlobalTensor<uint8_t> attenMaskGm_;
+    regbaseutil::AttenMaskInfo attenMaskInfo_;
+    TQue<QuePosition::VECIN, 1> attenMaskInQue_;
     TQue<QuePosition::VECOUT, 1> stage1OutQue_[2];
     TQue<QuePosition::VECOUT, 1> pScaleSubLoop0Que_;
     TBuf<> stage2OutBuf_;

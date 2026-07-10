@@ -30,21 +30,30 @@ using namespace fa_base_matmul;
 using namespace regbasemx;
 
 namespace BaseApi {
-template <bool useDn = true>
+template <typename inputType, typename mmType, typename outputType, BSALayout layout, BSALayout kvLayout,
+          S1TemplateType s1TemplateType, S2TemplateType s2TemplateType, DTemplateType dTemplateType,
+          DTemplateType dVTemplateType, bool isPa, bool useDn = true>
 class QuantBlockSparseAttnMxBlockCube {
 public:
-    using INPUT_T = fp8_e4m3fn_t;
+    using INPUT_T = inputType;
     using SCALE_T = fp8_e8m0_t;
-    using MM_T = float;
-    using OUTPUT_T = bfloat16_t;
+    using MM_T = mmType;
+    using OUTPUT_T = outputType;
     using MxBmm2Buf = Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>;
 
     static constexpr bool USE_DN = useDn;
-    static constexpr uint32_t M_BASE = 128U;
-    static constexpr uint32_t S2_BASE = 512U;
+    static constexpr bool IS_PA = isPa;
+    static constexpr BSALayout LAYOUT = layout;
+    static constexpr BSALayout KV_LAYOUT = kvLayout;
+    static constexpr uint32_t M_BASE = static_cast<uint32_t>(s1TemplateType);
+    static constexpr uint32_t S2_BASE = static_cast<uint32_t>(s2TemplateType);
     static constexpr uint32_t S2_SPLIT = 256U;
-    static constexpr uint32_t D_BASE = 128U;
-    static constexpr uint32_t DV_BASE = 128U;
+    static constexpr uint32_t D_BASE = static_cast<uint32_t>(dTemplateType);
+    static constexpr uint32_t DV_BASE = static_cast<uint32_t>(dVTemplateType);
+    static_assert(LAYOUT == BSALayout::TND && KV_LAYOUT == BSALayout::PA_BNSD && IS_PA,
+                  "MX cube currently only supports TND query and PA_BNSD KV");
+    static_assert(M_BASE == 128U && S2_BASE == 512U && D_BASE == 128U && DV_BASE == 128U,
+                  "MX cube currently only supports S1=128, S2=512, D=128 and DV=128");
     // L1 中 e8m0 scale tensor 通过 bfloat16 reinterpret 方式搬运。
     // 当 D=128 且 shape 为 [D/64, 2] 时，单行有 4 个 e8m0 scale 元素；
     // 在当前紧凑 L1 寻址中，相当于每 32 个 fp8 数据元素对应 1 个 scale 元素。
@@ -128,7 +137,7 @@ public:
         // BMM1 计算一块 fp32 attention-score：
         //   K[subLoop: 256, D] x Q^T[D, 128] -> C1[256, 128]。
         // 当 sparse block size 为 128/64 时，当前 256 宽 K tile 会由 2/4 个
-        // sparse block 按 sparseIndices 顺序拼接得到。
+        // sparse block 按 task 内排序后的 sparse block 顺序拼接得到。
         // Q/K 为 fp8_e4m3fn；qScale/kScale 为 fp8_e8m0，由 LoadDataToL0*Mx 消费，
         // 因此反量化发生在 L1->L0 搬运过程中，而不是在 L1 或 UB 中显式展开 Q/K。
         const uint32_t s2CalcSize = GetSubLoopS2Size(runInfo, subLoop);
@@ -212,7 +221,7 @@ public:
         //   P[128, 512] x V[512, DV] -> O[128, DV]。
         // P 已由 V1 量化为 fp8_e4m3fn，PScale(e8m0) 紧跟在同一个 L1 buffer 后半段。
         // V/VScale 按 256-token 分块从 PA BNBD page 中搬入；当 sparse block 为
-        // 128/64 时，同样按 sparseIndices 顺序拼接多个 block。
+        // 128/64 时，同样按 task 内排序后的 sparse block 顺序拼接多个 block。
         Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> pBuf = inputBuf.GetCube();
         pBuf.WaitCrossCore();
 
@@ -312,17 +321,15 @@ private:
     {
         // Key GM layout 为 PA BNBD：[physicalBlock, kvHead, blockSize, D]。
         // 当前 256-token subLoop 可能跨多个 sparse block。这里参考 BSA FP8 的拼接方式：
-        // 每拷完一个 sparse block 片段，就按 L1 NZ-like 行偏移把下一个片段接在后面。
+        // task 内 block 先按逻辑 id 排序，再使用 RunInfo 中统一的 tile offset
+        // 把每个片段写到 L1 NZ-like 的对应位置。
         const uint32_t tileStart = subLoop * S2_SPLIT;
         const uint32_t tileEnd = tileStart + s2CalcSize;
         constexpr uint32_t blockElementCnt = 32U / sizeof(INPUT_T);
-        uint32_t sparseTileOffset = 0U;
-        uint32_t copiedRowCount = 0U;
         for (uint32_t i = 0U; i < runInfo.sparseBlockCount; ++i) {
             const uint32_t blockRealSize = runInfo.sparseBlockRealSize[i];
-            const uint32_t blockStart = sparseTileOffset;
+            const uint32_t blockStart = runInfo.sparseBlockTileOffset[i];
             const uint32_t blockEnd = blockStart + blockRealSize;
-            sparseTileOffset = blockEnd;
             if (blockRealSize == 0U || blockEnd <= tileStart || blockStart >= tileEnd) {
                 continue;
             }
@@ -348,9 +355,8 @@ private:
             shape.copyRowNumAlign = AlignUp32(s2CalcSize);
             shape.pageStride = constInfo.paBlockStride;
             shape.rowStride = constInfo.dSize;
-            LocalTensor<INPUT_T> keyDstTensor = dstTensor[copiedRowCount * blockElementCnt];
+            LocalTensor<INPUT_T> keyDstTensor = dstTensor[(overlapStart - tileStart) * blockElementCnt];
             GmCopyInToL1PA<INPUT_T>(keyDstTensor, keyGm_, blockTableGm_, KVLAYOUT::BNBD, shape, startPos);
-            copiedRowCount += copyRowNum;
         }
     }
 
@@ -362,13 +368,10 @@ private:
         const uint32_t tileStart = subLoop * S2_SPLIT;
         const uint32_t tileEnd = tileStart + s2CalcSize;
         constexpr uint32_t blockElementCnt = 32U / sizeof(SCALE_T);
-        uint32_t sparseTileOffset = 0U;
-        uint32_t copiedRowCount = 0U;
         for (uint32_t i = 0U; i < runInfo.sparseBlockCount; ++i) {
             const uint32_t blockRealSize = runInfo.sparseBlockRealSize[i];
-            const uint32_t blockStart = sparseTileOffset;
+            const uint32_t blockStart = runInfo.sparseBlockTileOffset[i];
             const uint32_t blockEnd = blockStart + blockRealSize;
-            sparseTileOffset = blockEnd;
             if (blockRealSize == 0U || blockEnd <= tileStart || blockStart >= tileEnd) {
                 continue;
             }
@@ -394,9 +397,8 @@ private:
             shape.copyRowNumAlign = AlignUp32(s2CalcSize);
             shape.pageStride = constInfo.kvSparseBlockSize * constInfo.kScaleN2D;
             shape.rowStride = constInfo.kScaleN2D;
-            LocalTensor<SCALE_T> keyScaleDstTensor = dstTensor[copiedRowCount * blockElementCnt];
+            LocalTensor<SCALE_T> keyScaleDstTensor = dstTensor[(overlapStart - tileStart) * blockElementCnt];
             GmFlatScaleCopyInToL1PAForDN<SCALE_T>(keyScaleDstTensor, kScaleGm_, blockTableGm_, shape, startPos);
-            copiedRowCount += copyRowNum;
         }
     }
 
@@ -408,13 +410,10 @@ private:
         const uint32_t tileStart = kIdx * S2_SPLIT;
         const uint32_t tileEnd = tileStart + realK;
         constexpr uint32_t blockElementCnt = 32U / sizeof(INPUT_T);
-        uint32_t sparseTileOffset = 0U;
-        uint32_t copiedRowCount = 0U;
         for (uint32_t i = 0U; i < runInfo.sparseBlockCount; ++i) {
             const uint32_t blockRealSize = runInfo.sparseBlockRealSize[i];
-            const uint32_t blockStart = sparseTileOffset;
+            const uint32_t blockStart = runInfo.sparseBlockTileOffset[i];
             const uint32_t blockEnd = blockStart + blockRealSize;
-            sparseTileOffset = blockEnd;
             if (blockRealSize == 0U || blockEnd <= tileStart || blockStart >= tileEnd) {
                 continue;
             }
@@ -440,9 +439,8 @@ private:
             shape.copyRowNumAlign = AlignUp64(realK);
             shape.pageStride = constInfo.paBlockStride;
             shape.rowStride = constInfo.dSizeV;
-            LocalTensor<INPUT_T> valueDstTensor = dstTensor[copiedRowCount * blockElementCnt];
+            LocalTensor<INPUT_T> valueDstTensor = dstTensor[(overlapStart - tileStart) * blockElementCnt];
             GmCopyInToL1PA<INPUT_T>(valueDstTensor, valueGm_, blockTableGm_, KVLAYOUT::BNBD, shape, startPos);
-            copiedRowCount += copyRowNum;
         }
     }
 
@@ -456,13 +454,11 @@ private:
         const uint32_t tileEnd = tileStart + realK;
         const uint32_t scaleBlockSize = constInfo.kvSparseBlockSize / MX_TOKEN_GROUP;
         constexpr uint32_t blockElementCnt = 32U / sizeof(SCALE_T);
-        uint32_t sparseTileOffset = 0U;
         uint32_t copiedGroupCount = 0U;
         for (uint32_t i = 0U; i < runInfo.sparseBlockCount; ++i) {
             const uint32_t blockRealSize = runInfo.sparseBlockRealSize[i];
-            const uint32_t blockStart = sparseTileOffset;
+            const uint32_t blockStart = runInfo.sparseBlockTileOffset[i];
             const uint32_t blockEnd = blockStart + blockRealSize;
-            sparseTileOffset = blockEnd;
             if (blockRealSize == 0U || blockEnd <= tileStart || blockStart >= tileEnd) {
                 continue;
             }
