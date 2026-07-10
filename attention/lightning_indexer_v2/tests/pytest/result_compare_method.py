@@ -490,7 +490,6 @@ def check_result_return_value(expect, result, params):
                                                     cur_cpu_output_value)
         if not npu_pass_t:
             npu_pass = False
-    
     end_time = time()
     print(f"耗时：{end_time - start_time:.6f} 秒")
     print(f"npu_pass is {npu_pass}")
