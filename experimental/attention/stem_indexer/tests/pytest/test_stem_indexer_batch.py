@@ -56,11 +56,15 @@ def append_result(case, result, detail=""):
     if RESULT_PATH.exists():
         df = pd.read_excel(RESULT_PATH)
         if set(df.columns) != set(RESULT_COLUMNS):
-            print("Warning: result.xlsx columns mismatch, skip appending StemIndexer result.")
+            print(
+                "Warning: result.xlsx columns mismatch, skip appending StemIndexer result."
+            )
             print(f"Existing columns: {list(df.columns)}")
             print(f"Expected columns: {RESULT_COLUMNS}")
             return False
-        df = pd.concat([df, pd.DataFrame([row_data], columns=RESULT_COLUMNS)], ignore_index=True)
+        df = pd.concat(
+            [df, pd.DataFrame([row_data], columns=RESULT_COLUMNS)], ignore_index=True
+        )
     else:
         df = pd.DataFrame([row_data], columns=RESULT_COLUMNS)
     df.to_excel(RESULT_PATH, index=False)
@@ -83,12 +87,16 @@ def load_case(filepath):
 def test_stem_indexer_batch(testcase_file):
     case = load_case(testcase_file)
     if case["testcase_name"] == "invalid_sparse_indices_shape":
-        pytest.skip("Torch custom op API does not expose output tensor shape injection.")
+        pytest.skip(
+            "Torch custom op API does not expose output tensor shape injection."
+        )
 
     if case["expected_result"] == "FAIL":
         try:
             with pytest.raises(Exception):
-                stem_indexer_pt_loadprocess.stem_indexer_process(testcase_file, device_id=0)
+                stem_indexer_pt_loadprocess.stem_indexer_process(
+                    testcase_file, device_id=0
+                )
         except pytest.fail.Exception as err:
             append_result(case, "FAIL", format_error_detail(err))
             raise
@@ -96,10 +104,14 @@ def test_stem_indexer_batch(testcase_file):
         return
 
     try:
-        expected_indices, expected_seq_len, npu_result, case, test_data = stem_indexer_pt_loadprocess.stem_indexer_process(
-            testcase_file, device_id=0, return_test_data=True
+        expected_indices, expected_seq_len, npu_result, case, test_data = (
+            stem_indexer_pt_loadprocess.stem_indexer_process(
+                testcase_file, device_id=0, return_test_data=True
+            )
         )
-        result_compare_method.assert_stem_indexer_result(expected_indices, expected_seq_len, npu_result, case, test_data)
+        result_compare_method.assert_stem_indexer_result(
+            expected_indices, expected_seq_len, npu_result, case, test_data
+        )
         append_result(case, "PASS")
     except Exception as err:
         append_result(case, "FAIL", format_error_detail(err))

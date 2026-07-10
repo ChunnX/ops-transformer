@@ -10,11 +10,7 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
-__input__ = {
-    "e2e": {
-        "torch_npu.npu_quant_lightning_indexer": "generate_qli_inputs"
-    }
-}
+__input__ = {"e2e": {"torch_npu.npu_quant_lightning_indexer": "generate_qli_inputs"}}
 
 import math
 import torch
@@ -37,15 +33,26 @@ def fill_tensor_from_value(tensor, value):
     tensor.copy_(data.reshape(tensor.shape))
 
 
-def generate_qli_inputs(query, key, weights,
-                         query_dequant_scale, key_dequant_scale,
-                         query_quant_mode, key_quant_mode, *,
-                         actual_seq_lengths_query=None,
-                         actual_seq_lengths_key=None,
-                         block_table=None,
-                         layout_query='BSND', layout_key='BSND',
-                         sparse_count=2048, sparse_mode=3,
-                         query_dtype=None, key_dtype=None, **kwargs):
+def generate_qli_inputs(
+    query,
+    key,
+    weights,
+    query_dequant_scale,
+    key_dequant_scale,
+    query_quant_mode,
+    key_quant_mode,
+    *,
+    actual_seq_lengths_query=None,
+    actual_seq_lengths_key=None,
+    block_table=None,
+    layout_query="BSND",
+    layout_key="BSND",
+    sparse_count=2048,
+    sparse_mode=3,
+    query_dtype=None,
+    key_dtype=None,
+    **kwargs,
+):
     """Generate and preprocess NPU inputs for QuantLightningIndexer with quantization scale handling."""
     fill_tensor_from_value(actual_seq_lengths_query, actual_seq_lengths_query)
     fill_tensor_from_value(actual_seq_lengths_key, actual_seq_lengths_key)
@@ -60,12 +67,20 @@ def generate_qli_inputs(query, key, weights,
         B = len(act_q) if act_q else 1
 
     if not act_q:
-        act_q = [query.shape[1] if layout_query == "BSND" else max(query.shape[0] // B, 1)] * B
+        act_q = [
+            query.shape[1] if layout_query == "BSND" else max(query.shape[0] // B, 1)
+        ] * B
     if not act_k:
-        act_k = [key.shape[1] if layout_key == "BSND" else max(key.shape[0] // B, 1)] * B
+        act_k = [
+            key.shape[1] if layout_key == "BSND" else max(key.shape[0] // B, 1)
+        ] * B
 
-    if block_table is not None and torch.is_tensor(block_table) and layout_key == "PA_BSND":
-        block_size = kwargs.get('block_size', 256)
+    if (
+        block_table is not None
+        and torch.is_tensor(block_table)
+        and layout_key == "PA_BSND"
+    ):
+        block_size = kwargs.get("block_size", 256)
         key_block_num_per_batch = [math.ceil(k / block_size) for k in act_k]
         new_bt = torch.full(tuple(block_table.shape), -1, dtype=torch.int32)
         cur_block_id = 0

@@ -21,59 +21,49 @@ public:
     {
         this->Input("x")
             .ParamType(REQUIRED)
-            .DataType({ ge::DT_FLOAT16 })
-            .Format({ ge::FORMAT_ND })
-            .UnknownShapeFormat({ ge::FORMAT_ND });
+            .DataType({ge::DT_FLOAT16})
+            .Format({ge::FORMAT_ND})
+            .UnknownShapeFormat({ge::FORMAT_ND});
         this->Input("gamma")
             .ParamType(REQUIRED)
-            .DataType({ ge::DT_FLOAT16 })
-            .Format({ ge::FORMAT_ND })
-            .UnknownShapeFormat({ ge::FORMAT_ND });
+            .DataType({ge::DT_FLOAT16})
+            .Format({ge::FORMAT_ND})
+            .UnknownShapeFormat({ge::FORMAT_ND});
         this->Input("beta")
             .ParamType(REQUIRED)
-            .DataType({ ge::DT_FLOAT16 })
-            .Format({ ge::FORMAT_ND })
-            .UnknownShapeFormat({ ge::FORMAT_ND });
+            .DataType({ge::DT_FLOAT16})
+            .Format({ge::FORMAT_ND})
+            .UnknownShapeFormat({ge::FORMAT_ND});
         this->Input("weight")
             .ParamType(REQUIRED)
-            .DataType({ ge::DT_FLOAT16 })
-            .Format({ ge::FORMAT_ND })
-            .UnknownShapeFormat({ ge::FORMAT_ND });
+            .DataType({ge::DT_FLOAT16})
+            .Format({ge::FORMAT_ND})
+            .UnknownShapeFormat({ge::FORMAT_ND});
         this->Input("bias")
             .ParamType(REQUIRED)
-            .DataType({ ge::DT_FLOAT16 })
-            .Format({ ge::FORMAT_ND })
-            .UnknownShapeFormat({ ge::FORMAT_ND });
+            .DataType({ge::DT_FLOAT16})
+            .Format({ge::FORMAT_ND})
+            .UnknownShapeFormat({ge::FORMAT_ND});
         this->Output("query_output")
             .ParamType(REQUIRED)
-            .DataType({ ge::DT_FLOAT16 })
-            .Format({ ge::FORMAT_ND })
-            .UnknownShapeFormat({ ge::FORMAT_ND });
+            .DataType({ge::DT_FLOAT16})
+            .Format({ge::FORMAT_ND})
+            .UnknownShapeFormat({ge::FORMAT_ND});
         this->Output("key_output")
             .ParamType(REQUIRED)
-            .DataType({ ge::DT_FLOAT16 })
-            .Format({ ge::FORMAT_ND })
-            .UnknownShapeFormat({ ge::FORMAT_ND });
+            .DataType({ge::DT_FLOAT16})
+            .Format({ge::FORMAT_ND})
+            .UnknownShapeFormat({ge::FORMAT_ND});
         this->Output("value_output")
             .ParamType(REQUIRED)
-            .DataType({ ge::DT_FLOAT16 })
-            .Format({ ge::FORMAT_ND })
-            .UnknownShapeFormat({ ge::FORMAT_ND });
-        this->Attr("head_num")
-            .AttrType(REQUIRED)
-            .Int();
-        this->Attr("head_dim")
-            .AttrType(REQUIRED)
-            .Int();
-        this->Attr("seq_length")
-            .AttrType(REQUIRED)
-            .Int();
-        this->Attr("shifts")
-            .AttrType(OPTIONAL)
-            .ListInt({});
-        this->Attr("epsilon")
-            .AttrType(OPTIONAL)
-            .Float(0.0000001f);
+            .DataType({ge::DT_FLOAT16})
+            .Format({ge::FORMAT_ND})
+            .UnknownShapeFormat({ge::FORMAT_ND});
+        this->Attr("head_num").AttrType(REQUIRED).Int();
+        this->Attr("head_dim").AttrType(REQUIRED).Int();
+        this->Attr("seq_length").AttrType(REQUIRED).Int();
+        this->Attr("shifts").AttrType(OPTIONAL).ListInt({});
+        this->Attr("epsilon").AttrType(OPTIONAL).Float(0.0000001f);
         this->AICore().AddConfig("ascend910b");
         this->AICore().AddConfig("kirinx90");
         this->AICore().AddConfig("kirin9030");
@@ -81,4 +71,4 @@ public:
 };
 
 OP_ADD(SwinTransformerLnQKV);
-}
+} // namespace ops

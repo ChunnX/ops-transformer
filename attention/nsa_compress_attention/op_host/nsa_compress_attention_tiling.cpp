@@ -52,8 +52,8 @@ static ge::graphStatus CheckParams(const gert::TilingContext *context)
                         return ge::GRAPH_FAILED);
             // kD < vD
             OP_CHECK_IF((keyShape.GetDim(2) < valueShape.GetDim(2)),
-                OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "key or value shape is invalid"),
-                return ge::GRAPH_FAILED);
+                        OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "key or value shape is invalid"),
+                        return ge::GRAPH_FAILED);
             return ge::SUCCESS;
         } else {
             OP_LOGW(context, "Got invalid input_layout[%s]. Only support TND now.", inputLayout);
@@ -77,14 +77,10 @@ ASCENDC_EXTERN_C ge::graphStatus TilingNsaCompressAttention(gert::TilingContext 
 ASCENDC_EXTERN_C ge::graphStatus TilingPrepareForNsaCompressAttention(gert::TilingParseContext *context)
 {
     auto platformInfoPtr = context->GetPlatformInfo();
-    OP_CHECK_IF(platformInfoPtr == nullptr,
-                OP_LOGE(context->GetNodeName(),
-                "platformInfoPtr is null"),
+    OP_CHECK_IF(platformInfoPtr == nullptr, OP_LOGE(context->GetNodeName(), "platformInfoPtr is null"),
                 return ge::GRAPH_FAILED);
     auto compileInfoPtr = context->GetCompiledInfo<NsaCompressAttentionCompileInfo>();
-    OP_CHECK_IF(compileInfoPtr == nullptr,
-                OP_LOGE(context->GetNodeName(),
-                "compileInfoPtr is null"),
+    OP_CHECK_IF(compileInfoPtr == nullptr, OP_LOGE(context->GetNodeName(), "compileInfoPtr is null"),
                 return ge::GRAPH_FAILED);
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
     compileInfoPtr->aivNum = ascendcPlatform.GetCoreNumAiv();
@@ -100,6 +96,6 @@ ASCENDC_EXTERN_C ge::graphStatus TilingPrepareForNsaCompressAttention(gert::Tili
 IMPL_OP_OPTILING(NsaCompressAttention)
     .Tiling(TilingNsaCompressAttention)
     .TilingInputsDataDependency({4, 5, 6})
-    .TilingParse<NsaCompressAttentionCompileInfo>(TilingPrepareForNsaCompressAttention);  // 向框架注册入口函数
+    .TilingParse<NsaCompressAttentionCompileInfo>(TilingPrepareForNsaCompressAttention); // 向框架注册入口函数
 
 } // namespace optiling

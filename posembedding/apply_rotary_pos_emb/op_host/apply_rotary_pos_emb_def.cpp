@@ -22,7 +22,7 @@ static const std::vector<ge::Format> qFormat = {ge::FORMAT_ND, ge::FORMAT_ND, ge
 
 class ApplyRotaryPosEmb : public OpDef {
 public:
-    explicit ApplyRotaryPosEmb(const char* name) : OpDef(name)
+    explicit ApplyRotaryPosEmb(const char *name) : OpDef(name)
     {
         this->Input("query")
             .ParamType(REQUIRED)

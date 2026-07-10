@@ -16,8 +16,8 @@
 
 namespace ops {
 class QuantGroupedMatmulDequant : public OpDef {
-   public:
-    explicit QuantGroupedMatmulDequant(const char* name) : OpDef(name)
+public:
+    explicit QuantGroupedMatmulDequant(const char *name) : OpDef(name)
     {
         this->Input("x")
             .ParamType(REQUIRED)
@@ -64,12 +64,8 @@ class QuantGroupedMatmulDequant : public OpDef {
             .DataType({ge::DT_FLOAT16, ge::DT_FLOAT16})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND});
-        this->Attr("x_quant_mode")
-            .AttrType(OPTIONAL)
-            .String("pertoken");
-        this->Attr("transpose_weight")
-            .AttrType(OPTIONAL)
-            .Bool(true);
+        this->Attr("x_quant_mode").AttrType(OPTIONAL).String("pertoken");
+        this->Attr("transpose_weight").AttrType(OPTIONAL).Bool(true);
 
         OpAICoreConfig aicore_config;
         aicore_config.DynamicCompileStaticFlag(true)
@@ -84,4 +80,4 @@ class QuantGroupedMatmulDequant : public OpDef {
 };
 
 OP_ADD(QuantGroupedMatmulDequant);
-}  // namespace ops
+} // namespace ops

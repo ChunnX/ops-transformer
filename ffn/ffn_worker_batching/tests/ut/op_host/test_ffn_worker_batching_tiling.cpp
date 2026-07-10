@@ -19,11 +19,13 @@ using namespace optiling;
 
 class FfnWorkerBatchingTilingTest : public testing::Test {
 protected:
-    static void SetUpTestCase() {
+    static void SetUpTestCase()
+    {
         std::cout << "FfnWorkerBatchingTilingTest SetUp" << std::endl;
     }
 
-    static void TearDownTestCase() {
+    static void TearDownTestCase()
+    {
         std::cout << "FfnWorkerBatchingTilingTest TearDown" << std::endl;
     }
 };
@@ -44,26 +46,24 @@ TEST_F(FfnWorkerBatchingTilingTest, ffn_worker_batching_tiling_test01)
     FfnWorkerBatchingCompileInfo compileInfo = {};
     gert::TilingContextPara tilingContextPara(
         "FfnWorkerBatching",
-        {   // input
-            {schedule_context_shape, ge::DT_INT8, ge::FORMAT_ND}
-        },
-        {   // output
-            {y_shape, ge::DT_INT8, ge::FORMAT_ND},  // y
-            {group_list_shape, ge::DT_INT64, ge::FORMAT_ND},  // group_list
-            {session_ids_shape, ge::DT_INT32, ge::FORMAT_ND},  // session_ids
-            {micro_batch_ids_shape, ge::DT_INT32, ge::FORMAT_ND},  // micro_batch_ids
-            {token_ids_shape, ge::DT_INT32, ge::FORMAT_ND},  // token_ids
-            {expert_offsets_shape, ge::DT_INT32, ge::FORMAT_ND},  // expert_offsets
-            {dynamic_scale_shape, ge::DT_FLOAT, ge::FORMAT_ND},  // dynamic_scale
-            {actual_token_num_shape, ge::DT_INT64, ge::FORMAT_ND},  // actual_token_num
-        },
+        {// input
+         {schedule_context_shape, ge::DT_INT8, ge::FORMAT_ND}},
         {
-            {"expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
-            {"max_out_shape", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({16, 8, 9, 4096})},
-            {"token_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"need_schedule", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-            {"layer_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)}
+            // output
+            {y_shape, ge::DT_INT8, ge::FORMAT_ND},                 // y
+            {group_list_shape, ge::DT_INT64, ge::FORMAT_ND},       // group_list
+            {session_ids_shape, ge::DT_INT32, ge::FORMAT_ND},      // session_ids
+            {micro_batch_ids_shape, ge::DT_INT32, ge::FORMAT_ND},  // micro_batch_ids
+            {token_ids_shape, ge::DT_INT32, ge::FORMAT_ND},        // token_ids
+            {expert_offsets_shape, ge::DT_INT32, ge::FORMAT_ND},   // expert_offsets
+            {dynamic_scale_shape, ge::DT_FLOAT, ge::FORMAT_ND},    // dynamic_scale
+            {actual_token_num_shape, ge::DT_INT64, ge::FORMAT_ND}, // actual_token_num
         },
+        {{"expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
+         {"max_out_shape", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({16, 8, 9, 4096})},
+         {"token_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+         {"need_schedule", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+         {"layer_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)}},
         &compileInfo);
     int64_t expectTilingKey = 101;
     std::string expectTilingData = "1152 4096 0 8 32 261888 8160 1152 ";

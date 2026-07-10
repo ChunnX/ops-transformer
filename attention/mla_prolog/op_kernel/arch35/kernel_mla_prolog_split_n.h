@@ -289,7 +289,7 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::Init(
     __gm__ uint8_t *workspace)
 {
     cvRatio_ = GetSubBlockNum(); // CV1:2场景返回2，其他场景返回1
-    blockIdx_ = GetBlockIdx(); // cube:0-23  vec:0-47
+    blockIdx_ = GetBlockIdx();   // cube:0-23  vec:0-47
     if ASCEND_IS_AIC {
         cubeBlockIdx_ = blockIdx_;
     } else {

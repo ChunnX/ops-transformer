@@ -62,7 +62,7 @@ struct CompressShapeInfo {
 };
 
 static aclnnStatus CheckNsaCompressParam(const aclTensor *input, const aclTensor *weight, const aclTensor *output,
-                                         const uint64_t *workspaceSize, aclOpExecutor ** const executor)
+                                         const uint64_t *workspaceSize, aclOpExecutor **const executor)
 {
     // 必须的参数指针判空
     CHECK_RET(input != nullptr, ACLNN_ERR_PARAM_NULLPTR);

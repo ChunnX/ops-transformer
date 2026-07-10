@@ -554,23 +554,22 @@ void MlaPrologTilingCheck::FillScenarioParamInfo()
 {
     using FillFunc = void (MlaPrologTilingCheck::*)();
     static const std::unordered_map<QUANT_MODE, FillFunc> dispatchTable = {
-        {QUANT_MODE::NO_QUANT,                              &MlaPrologTilingCheck::FillNonQuantParamInfo},
-        {QUANT_MODE::PARTIAL_QUANT_KV_NO_QUANT,             &MlaPrologTilingCheck::FillPartialQuantParamInfo},
-        {QUANT_MODE::PARTIAL_QUANT_KV_QUANT_PER_CHANNEL,    &MlaPrologTilingCheck::FillPartialKVQuantParamInfo},
-        {QUANT_MODE::PARTIAL_QUANT_KV_QUANT_PER_TILE,       &MlaPrologTilingCheck::FillPartialKVPertileQuantParamInfo},
-        {QUANT_MODE::FULL_QUANT_KV_NO_QUANT,                &MlaPrologTilingCheck::FillFullQuantParamInfo},
-        {QUANT_MODE::FULL_QUANT_KV_QUANT_PER_TENSOR,        &MlaPrologTilingCheck::FillFullKVQuantParamInfo},
-        {QUANT_MODE::FULL_QUANT_KV_QUANT_PER_TILE,          &MlaPrologTilingCheck::FillFullKVPertileQuantParamInfo},
-        {QUANT_MODE::MXFP8_FULL_QUANT_KV_NO_QUANT,          &MlaPrologTilingCheck::FillMxfp8FullQuantParamInfo},
-        {QUANT_MODE::MXFP8_FULL_QUANT_KV_QUANT_PER_TENSOR,  &MlaPrologTilingCheck::FillMxfp8FullKVQuantParamInfo},
-        {QUANT_MODE::MXFP8_FULL_QUANT_KV_QUANT_PER_TILE,    &MlaPrologTilingCheck::FillMxfp8FullKVPertileParamInfo},
-        {QUANT_MODE::FP8_FULL_QUANT_KV_NO_QUANT,            &MlaPrologTilingCheck::FillFP8FullQuantParamInfo},
-        {QUANT_MODE::FP8_FULL_QUANT_KV_QUANT_PER_TENSOR,    &MlaPrologTilingCheck::FillFP8FullKVQuantParamInfo},
-        {QUANT_MODE::HIF8_FULL_QUANT_KV_NO_QUANT,           &MlaPrologTilingCheck::FillHIF8FullQuantParamInfo},
-        {QUANT_MODE::HIF8_FULL_QUANT_KV_QUANT_PER_TENSOR,   &MlaPrologTilingCheck::FillHIF8FullKVQuantParamInfo},
-        {QUANT_MODE::FP8_FULL_QUANT_KV_QUANT_PER_TILE,      &MlaPrologTilingCheck::FillFP8FullKVPertileQuantParamInfo},
-        {QUANT_MODE::HIF8_FULL_QUANT_KV_QUANT_PER_TILE,     &MlaPrologTilingCheck::FillHIF8FullKVPertileQuantParamInfo}
-    };
+        {QUANT_MODE::NO_QUANT, &MlaPrologTilingCheck::FillNonQuantParamInfo},
+        {QUANT_MODE::PARTIAL_QUANT_KV_NO_QUANT, &MlaPrologTilingCheck::FillPartialQuantParamInfo},
+        {QUANT_MODE::PARTIAL_QUANT_KV_QUANT_PER_CHANNEL, &MlaPrologTilingCheck::FillPartialKVQuantParamInfo},
+        {QUANT_MODE::PARTIAL_QUANT_KV_QUANT_PER_TILE, &MlaPrologTilingCheck::FillPartialKVPertileQuantParamInfo},
+        {QUANT_MODE::FULL_QUANT_KV_NO_QUANT, &MlaPrologTilingCheck::FillFullQuantParamInfo},
+        {QUANT_MODE::FULL_QUANT_KV_QUANT_PER_TENSOR, &MlaPrologTilingCheck::FillFullKVQuantParamInfo},
+        {QUANT_MODE::FULL_QUANT_KV_QUANT_PER_TILE, &MlaPrologTilingCheck::FillFullKVPertileQuantParamInfo},
+        {QUANT_MODE::MXFP8_FULL_QUANT_KV_NO_QUANT, &MlaPrologTilingCheck::FillMxfp8FullQuantParamInfo},
+        {QUANT_MODE::MXFP8_FULL_QUANT_KV_QUANT_PER_TENSOR, &MlaPrologTilingCheck::FillMxfp8FullKVQuantParamInfo},
+        {QUANT_MODE::MXFP8_FULL_QUANT_KV_QUANT_PER_TILE, &MlaPrologTilingCheck::FillMxfp8FullKVPertileParamInfo},
+        {QUANT_MODE::FP8_FULL_QUANT_KV_NO_QUANT, &MlaPrologTilingCheck::FillFP8FullQuantParamInfo},
+        {QUANT_MODE::FP8_FULL_QUANT_KV_QUANT_PER_TENSOR, &MlaPrologTilingCheck::FillFP8FullKVQuantParamInfo},
+        {QUANT_MODE::HIF8_FULL_QUANT_KV_NO_QUANT, &MlaPrologTilingCheck::FillHIF8FullQuantParamInfo},
+        {QUANT_MODE::HIF8_FULL_QUANT_KV_QUANT_PER_TENSOR, &MlaPrologTilingCheck::FillHIF8FullKVQuantParamInfo},
+        {QUANT_MODE::FP8_FULL_QUANT_KV_QUANT_PER_TILE, &MlaPrologTilingCheck::FillFP8FullKVPertileQuantParamInfo},
+        {QUANT_MODE::HIF8_FULL_QUANT_KV_QUANT_PER_TILE, &MlaPrologTilingCheck::FillHIF8FullKVPertileQuantParamInfo}};
     auto it = dispatchTable.find(scenarioInfo_.quantMode_);
     if (it != dispatchTable.end()) {
         (this->*(it->second))();
@@ -984,10 +983,9 @@ void MlaPrologTilingCheck::CheckQueryQuantMode(bool isPertensor, ge::graphStatus
     std::string name = isPertensor ? "PER_TOKEN_HEAD" : "NO_QUANT";
 
     if (*(context_.queryQuantMode) != static_cast<int>(expected)) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_.opName, "queryQuantMode",
-                                              std::to_string(*(context_.queryQuantMode)),
-                                              "When " + desc + " quant mode, must be " + name + "(" +
-                                                  std::to_string(static_cast<int>(expected)) + ")");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            context_.opName, "queryQuantMode", std::to_string(*(context_.queryQuantMode)),
+            "When " + desc + " quant mode, must be " + name + "(" + std::to_string(static_cast<int>(expected)) + ")");
         isCorrect = ge::GRAPH_FAILED;
     }
 }

@@ -77,8 +77,8 @@ protected:
     uint32_t GetDeterSparseTilingKey();
     uint8_t GetSparseType();
     void CalcleDeterParam();
-    virtual void CalcleTNDDeterParam(){};
-    virtual void CalcTNDSwizzleParam(){};
+    virtual void CalcleTNDDeterParam() {};
+    virtual void CalcTNDSwizzleParam() {};
 
     void GetWorkspaceSize4Deter(size_t &workspaceSize);
     void GetIsDeterArr();
@@ -91,17 +91,18 @@ protected:
     void DoPostTiling();
     ge::graphStatus SaveToTilingData();
     ge::graphStatus GetSparsePrefixBlockInfo();
-    virtual ge::graphStatus GetSparseUnpadBlockInfo(){};
-    virtual bool GetBlockInfoOfBNS4TND(){};
+    virtual ge::graphStatus GetSparseUnpadBlockInfo() {};
+    virtual bool GetBlockInfoOfBNS4TND() {};
     void FillBlockInfoLoadBalance(std::vector<std::vector<int64_t>> &totalBlockInfo,
                                   std::vector<std::vector<float>> &acturalBlockInfo);
     void GetParseS1S2OuterInfo(int64_t (*parseInfo)[ARRAY_LENGTH]);
     bool CheckSparseLeftAndRight(int64_t s1oDimIdx, int64_t s2IdxLeft, int64_t s2IdxRight, int64_t bIdx = 0,
                                  int64_t blockIdx = 0);
-    virtual bool CheckUnpadSparseLeftAndRight(int64_t s1oDimIdx, int64_t s2IdxLeft, int64_t s2IdxRight, int64_t bIdx){};
-    virtual bool IsValidUnpad(int64_t blockIdx){};
+    virtual bool CheckUnpadSparseLeftAndRight(int64_t s1oDimIdx, int64_t s2IdxLeft, int64_t s2IdxRight, int64_t bIdx) {
+    };
+    virtual bool IsValidUnpad(int64_t blockIdx) {};
     ge::graphStatus DoBn2MultiBlkSparse();
-    virtual ge::graphStatus GetBlockInfoOfTNDForBn2(){};
+    virtual ge::graphStatus GetBlockInfoOfTNDForBn2() {};
     ge::graphStatus GetSparseBlockInfoBn2();
     FuzzyBaseInfoParamsRegbase fBaseParams;
     platform_ascendc::SocVersion socVersion;

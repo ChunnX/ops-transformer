@@ -19,19 +19,19 @@
 * ​计算公式​：
 
   稀疏块大小：$blockShapeX×blockShapeY$，BlockSparseMask指定稀疏模式。
-  
+
   已知正向计算公式为：
-  
+
   $$
   attentionOut=Softmax(Mask(scale⋅query⋅key_{sparse}^{T},  atten\_mask))⋅value_{sparse}
   $$
-  
+
   为方便表达，以变量$S$和$P$表示计算公式：
-  
+
   $$
   S = Mask(scale⋅query⋅key_{sparse}^{T},atten\_mask)
   $$
-  
+
   $$
   P = SoftMax(S)
   $$
@@ -43,7 +43,7 @@
   $$
   Out = PV
   $$
-  
+
   则反向计算公式为：
 
   $$

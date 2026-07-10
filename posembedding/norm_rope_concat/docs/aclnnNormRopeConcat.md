@@ -41,9 +41,9 @@
         $$
         hiddenState_q = query
         $$
-        
+
         当`normType = LAYER_NORM`时
-        
+
         $$
         \begin{aligned}
         queryMean_{b,s,n} &= \frac{1}{D}\sum_{i=0}^{D}query_{b,s,n} \\

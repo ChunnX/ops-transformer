@@ -20,18 +20,13 @@ using namespace AscendC;
 using namespace Catlass;
 using namespace matmulReduceScatterV2_util;
 
-#define PADDING_ARGS_FUN() \
-    bool transA, bool transB, bool alignedA, bool alignedB, \
-    uint32_t matrixAM, uint32_t matrixAK, uint32_t matrixBK, uint32_t matrixBN, \
-    uint32_t matrixAMAlign, uint32_t matrixAKAlign, uint32_t matrixBKAlign, uint32_t matrixBNAlign, \
-    GM_ADDR gmA, GM_ADDR gmB, GM_ADDR gmAAlign, GM_ADDR gmBAlign
+#define PADDING_ARGS_FUN()                                                                                             \
+    bool transA, bool transB, bool alignedA, bool alignedB, uint32_t matrixAM, uint32_t matrixAK, uint32_t matrixBK,   \
+        uint32_t matrixBN, uint32_t matrixAMAlign, uint32_t matrixAKAlign, uint32_t matrixBKAlign,                     \
+        uint32_t matrixBNAlign, GM_ADDR gmA, GM_ADDR gmB, GM_ADDR gmAAlign, GM_ADDR gmBAlign
 
 namespace Catlass::Gemm::Kernel {
-template <
-    class ArchTag_,
-    class AType_,
-    class BType_
->
+template <class ArchTag_, class AType_, class BType_>
 class TemplatePadder {
 public:
     using ArchTag = ArchTag_;
@@ -52,37 +47,39 @@ public:
         LayoutA layoutA;
         GM_ADDR ptrB;
         LayoutB layoutB;
-        GM_ADDR ptrWA; // A矩阵padding地址
+        GM_ADDR ptrWA;    // A矩阵padding地址
         LayoutA layoutWA; // A矩阵padding布局
-        GM_ADDR ptrWB; // B矩阵padding地址
+        GM_ADDR ptrWB;    // B矩阵padding地址
         LayoutB layoutWB; // B矩阵padding布局
-        bool alignA; // A矩阵是否padding
-        bool alignB; // B矩阵是否padding
+        bool alignA;      // A矩阵是否padding
+        bool alignB;      // B矩阵是否padding
 
         // Methods
         CATLASS_HOST_DEVICE
-        Params() {}
+        Params()
+        {
+        }
 
         CATLASS_HOST_DEVICE
-        Params(GM_ADDR ptrA_, LayoutA layoutA_, GM_ADDR ptrB_, LayoutB layoutB_,
-               GM_ADDR ptrWA_, LayoutA layoutWA_, GM_ADDR ptrWB_, LayoutB layoutWB_,
-               bool alignA_, bool alignB_)
-            : ptrA(ptrA_), layoutA(layoutA_), ptrB(ptrB_), layoutB(layoutB_),
-              ptrWA(ptrWA_), layoutWA(layoutWA_), ptrWB(ptrWB_), layoutWB(layoutWB_),
-              alignA(alignA_), alignB(alignB_) {}
+        Params(GM_ADDR ptrA_, LayoutA layoutA_, GM_ADDR ptrB_, LayoutB layoutB_, GM_ADDR ptrWA_, LayoutA layoutWA_,
+               GM_ADDR ptrWB_, LayoutB layoutWB_, bool alignA_, bool alignB_)
+            : ptrA(ptrA_), layoutA(layoutA_), ptrB(ptrB_), layoutB(layoutB_), ptrWA(ptrWA_), layoutWA(layoutWA_),
+              ptrWB(ptrWB_), layoutWB(layoutWB_), alignA(alignA_), alignB(alignB_)
+        {
+        }
     };
 
     // Methods
     CATLASS_DEVICE
-    TemplatePadder() {}
+    TemplatePadder()
+    {
+    }
 
     template <int32_t CORE_TYPE = g_coreType>
-    CATLASS_DEVICE
-    void operator()(Params const &params);
+    CATLASS_DEVICE void operator()(Params const &params);
 
     template <>
-    CATLASS_DEVICE
-    void operator()<AscendC::AIV>(Params const &params)
+    CATLASS_DEVICE void operator()<AscendC::AIV>(Params const &params)
     {
         if (params.alignA) {
             AscendC::GlobalTensor<ElementA> gmA;
@@ -105,6 +102,7 @@ public:
         Catlass::Arch::CrossCoreBarrier<0x0, PIPE_MTE3>();
         Catlass::Arch::CrossCoreSetFlag<0x2, PIPE_MTE3>(flagAivFinishPadding);
     }
+
 private:
     static constexpr Arch::FlagID FLAG_AIV_FINISH_STORE = AIC_WAIT_AIV_FINISH_ALIGN_FLAG_ID;
     Arch::CrossCoreFlag flagAivFinishPadding{FLAG_AIV_FINISH_STORE};
@@ -137,9 +135,8 @@ public:
             LayoutB layoutWB{matrixBK, matrixBNAlign};
 
             using TemplatePadder = Gemm::Kernel::TemplatePadder<ArchTag, AType, BType>;
-            typename TemplatePadder::Params params{gmA, layoutA, gmB, layoutB,
-                                                   gmAAlign, layoutWA, gmBAlign, layoutWB,
-                                                   alignedA, alignedB};
+            typename TemplatePadder::Params params{gmA,      layoutA,  gmB,      layoutB,  gmAAlign,
+                                                   layoutWA, gmBAlign, layoutWB, alignedA, alignedB};
             TemplatePadder padder;
             padder(params);
         } else if (!transA && transB) {
@@ -153,9 +150,8 @@ public:
             LayoutB layoutWB{matrixBKAlign, matrixBN};
 
             using TemplatePadder = Gemm::Kernel::TemplatePadder<ArchTag, AType, BType>;
-            typename TemplatePadder::Params params{gmA, layoutA, gmB, layoutB,
-                                                   gmAAlign, layoutWA, gmBAlign, layoutWB,
-                                                   alignedA, alignedB};
+            typename TemplatePadder::Params params{gmA,      layoutA,  gmB,      layoutB,  gmAAlign,
+                                                   layoutWA, gmBAlign, layoutWB, alignedA, alignedB};
             TemplatePadder padder;
             padder(params);
         } else if (transA && !transB) {
@@ -169,9 +165,8 @@ public:
             LayoutB layoutWB{matrixBK, matrixBNAlign};
 
             using TemplatePadder = Gemm::Kernel::TemplatePadder<ArchTag, AType, BType>;
-            typename TemplatePadder::Params params{gmA, layoutA, gmB, layoutB,
-                                                   gmAAlign, layoutWA, gmBAlign, layoutWB,
-                                                   alignedA, alignedB};
+            typename TemplatePadder::Params params{gmA,      layoutA,  gmB,      layoutB,  gmAAlign,
+                                                   layoutWA, gmBAlign, layoutWB, alignedA, alignedB};
             TemplatePadder padder;
             padder(params);
         } else {
@@ -185,14 +180,13 @@ public:
             LayoutB layoutWB{matrixBKAlign, matrixBN};
 
             using TemplatePadder = Gemm::Kernel::TemplatePadder<ArchTag, AType, BType>;
-            typename TemplatePadder::Params params{gmA, layoutA, gmB, layoutB,
-                                                   gmAAlign, layoutWA, gmBAlign, layoutWB,
-                                                   alignedA, alignedB};
+            typename TemplatePadder::Params params{gmA,      layoutA,  gmB,      layoutB,  gmAAlign,
+                                                   layoutWA, gmBAlign, layoutWB, alignedA, alignedB};
             TemplatePadder padder;
             padder(params);
         }
     }
 };
-}
+} // namespace padding
 
 #endif

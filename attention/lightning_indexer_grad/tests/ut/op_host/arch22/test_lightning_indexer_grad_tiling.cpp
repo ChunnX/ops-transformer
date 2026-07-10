@@ -38,111 +38,70 @@ optiling::LIGCompileInfo MakeCompileInfo()
 
 std::vector<OpAttr> MakeAttrs(const std::string &layout, int64_t sparseMode = 3, bool determinstic = false)
 {
-    return {
-        {"headNum", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)},
-        {"layout", Ops::Transformer::AnyValue::CreateFrom<std::string>(layout)},
-        {"sparseMode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(sparseMode)},
-        {"preTokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(65536)},
-        {"nextTokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(65536)},
-        {"determinstic", Ops::Transformer::AnyValue::CreateFrom<bool>(determinstic)}
-    };
+    return {{"headNum", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)},
+            {"layout", Ops::Transformer::AnyValue::CreateFrom<std::string>(layout)},
+            {"sparseMode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(sparseMode)},
+            {"preTokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(65536)},
+            {"nextTokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(65536)},
+            {"determinstic", Ops::Transformer::AnyValue::CreateFrom<bool>(determinstic)}};
 }
 
-gert::TilingContextPara MakeBsndPara(optiling::LIGCompileInfo &compileInfo,
-                                     ge::DataType dataType = ge::DT_FLOAT16,
-                                     const std::string &layout = "BSND",
-                                     int64_t sparseMode = 3,
-                                     int64_t headNumQ = 64,
-                                     int64_t headNumK = 1,
-                                     int64_t headDim = 128)
+gert::TilingContextPara MakeBsndPara(optiling::LIGCompileInfo &compileInfo, ge::DataType dataType = ge::DT_FLOAT16,
+                                     const std::string &layout = "BSND", int64_t sparseMode = 3, int64_t headNumQ = 64,
+                                     int64_t headNumK = 1, int64_t headDim = 128)
 {
-    return gert::TilingContextPara(
-        kOpName,
-        {
-            {{{2, 8, headNumQ, headDim}, {2, 8, headNumQ, headDim}}, dataType, ge::FORMAT_ND},
-            {{{2, 16, headNumK, headDim}, {2, 16, headNumK, headDim}}, dataType, ge::FORMAT_ND},
-            {{{2, 8, headNumQ, headDim}, {2, 8, headNumQ, headDim}}, dataType, ge::FORMAT_ND},
-            {{{2, 8, 2048}, {2, 8, 2048}}, ge::DT_INT32, ge::FORMAT_ND},
-            {{{2, 8, headNumQ}, {2, 8, headNumQ}}, dataType, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND}
-        },
-        {
-            {{{2, 8, headNumQ, headDim}, {2, 8, headNumQ, headDim}}, dataType, ge::FORMAT_ND},
-            {{{2, 16, headNumK, headDim}, {2, 16, headNumK, headDim}}, dataType, ge::FORMAT_ND},
-            {{{2, 8, headNumQ}, {2, 8, headNumQ}}, dataType, ge::FORMAT_ND}
-        },
-        MakeAttrs(layout, sparseMode),
-        std::vector<uint32_t>{1, 1, 1, 1, 1, 0, 0},
-        std::vector<uint32_t>{1, 1, 1},
-        &compileInfo,
-        "Ascend910B",
-        kCoreNum,
-        kUbSize,
-        kTilingDataSize);
+    return gert::TilingContextPara(kOpName,
+                                   {{{{2, 8, headNumQ, headDim}, {2, 8, headNumQ, headDim}}, dataType, ge::FORMAT_ND},
+                                    {{{2, 16, headNumK, headDim}, {2, 16, headNumK, headDim}}, dataType, ge::FORMAT_ND},
+                                    {{{2, 8, headNumQ, headDim}, {2, 8, headNumQ, headDim}}, dataType, ge::FORMAT_ND},
+                                    {{{2, 8, 2048}, {2, 8, 2048}}, ge::DT_INT32, ge::FORMAT_ND},
+                                    {{{2, 8, headNumQ}, {2, 8, headNumQ}}, dataType, ge::FORMAT_ND},
+                                    {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+                                    {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND}},
+                                   {{{{2, 8, headNumQ, headDim}, {2, 8, headNumQ, headDim}}, dataType, ge::FORMAT_ND},
+                                    {{{2, 16, headNumK, headDim}, {2, 16, headNumK, headDim}}, dataType, ge::FORMAT_ND},
+                                    {{{2, 8, headNumQ}, {2, 8, headNumQ}}, dataType, ge::FORMAT_ND}},
+                                   MakeAttrs(layout, sparseMode), std::vector<uint32_t>{1, 1, 1, 1, 1, 0, 0},
+                                   std::vector<uint32_t>{1, 1, 1}, &compileInfo, "Ascend910B", kCoreNum, kUbSize,
+                                   kTilingDataSize);
 }
 
-gert::TilingContextPara MakeTndPara(optiling::LIGCompileInfo &compileInfo,
-                                    int32_t *actualSeqQ,
-                                    int32_t *actualSeqK,
-                                    bool withActualSeq = true,
-                                    ge::DataType dataType = ge::DT_BF16,
-                                    int64_t sparseMode = 3,
-                                    int64_t headNumQ = 64,
-                                    int64_t headNumK = 1,
+gert::TilingContextPara MakeTndPara(optiling::LIGCompileInfo &compileInfo, int32_t *actualSeqQ, int32_t *actualSeqK,
+                                    bool withActualSeq = true, ge::DataType dataType = ge::DT_BF16,
+                                    int64_t sparseMode = 3, int64_t headNumQ = 64, int64_t headNumK = 1,
                                     int64_t headDim = 128)
 {
     if (withActualSeq) {
-        return gert::TilingContextPara(
-            kOpName,
-            {
-                {{{64, headNumQ, headDim}, {64, headNumQ, headDim}}, dataType, ge::FORMAT_ND},
-                {{{128, headNumK, headDim}, {128, headNumK, headDim}}, dataType, ge::FORMAT_ND},
-                {{{64, headNumQ, headDim}, {64, headNumQ, headDim}}, dataType, ge::FORMAT_ND},
-                {{{64, 2048}, {64, 2048}}, ge::DT_INT32, ge::FORMAT_ND},
-                {{{64, headNumQ}, {64, headNumQ}}, dataType, ge::FORMAT_ND},
-                {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND, true, actualSeqQ},
-                {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND, true, actualSeqK}
-            },
-            {
-                {{{64, headNumQ, headDim}, {64, headNumQ, headDim}}, dataType, ge::FORMAT_ND},
-                {{{128, headNumK, headDim}, {128, headNumK, headDim}}, dataType, ge::FORMAT_ND},
-                {{{64, headNumQ}, {64, headNumQ}}, dataType, ge::FORMAT_ND}
-            },
-            MakeAttrs("TND", sparseMode),
-            std::vector<uint32_t>{1, 1, 1, 1, 1, 1, 1},
-            std::vector<uint32_t>{1, 1, 1},
-            &compileInfo,
-            "Ascend910B",
-            kCoreNum,
-            kUbSize,
-            kTilingDataSize);
+        return gert::TilingContextPara(kOpName,
+                                       {{{{64, headNumQ, headDim}, {64, headNumQ, headDim}}, dataType, ge::FORMAT_ND},
+                                        {{{128, headNumK, headDim}, {128, headNumK, headDim}}, dataType, ge::FORMAT_ND},
+                                        {{{64, headNumQ, headDim}, {64, headNumQ, headDim}}, dataType, ge::FORMAT_ND},
+                                        {{{64, 2048}, {64, 2048}}, ge::DT_INT32, ge::FORMAT_ND},
+                                        {{{64, headNumQ}, {64, headNumQ}}, dataType, ge::FORMAT_ND},
+                                        {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND, true, actualSeqQ},
+                                        {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND, true, actualSeqK}},
+                                       {{{{64, headNumQ, headDim}, {64, headNumQ, headDim}}, dataType, ge::FORMAT_ND},
+                                        {{{128, headNumK, headDim}, {128, headNumK, headDim}}, dataType, ge::FORMAT_ND},
+                                        {{{64, headNumQ}, {64, headNumQ}}, dataType, ge::FORMAT_ND}},
+                                       MakeAttrs("TND", sparseMode), std::vector<uint32_t>{1, 1, 1, 1, 1, 1, 1},
+                                       std::vector<uint32_t>{1, 1, 1}, &compileInfo, "Ascend910B", kCoreNum, kUbSize,
+                                       kTilingDataSize);
     }
 
-    return gert::TilingContextPara(
-        kOpName,
-        {
-            {{{64, headNumQ, headDim}, {64, headNumQ, headDim}}, dataType, ge::FORMAT_ND},
-            {{{128, headNumK, headDim}, {128, headNumK, headDim}}, dataType, ge::FORMAT_ND},
-            {{{64, headNumQ, headDim}, {64, headNumQ, headDim}}, dataType, ge::FORMAT_ND},
-            {{{64, 2048}, {64, 2048}}, ge::DT_INT32, ge::FORMAT_ND},
-            {{{64, headNumQ}, {64, headNumQ}}, dataType, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND}
-        },
-        {
-            {{{64, headNumQ, headDim}, {64, headNumQ, headDim}}, dataType, ge::FORMAT_ND},
-            {{{128, headNumK, headDim}, {128, headNumK, headDim}}, dataType, ge::FORMAT_ND},
-            {{{64, headNumQ}, {64, headNumQ}}, dataType, ge::FORMAT_ND}
-        },
-        MakeAttrs("TND", sparseMode),
-        std::vector<uint32_t>{1, 1, 1, 1, 1, 0, 0},
-        std::vector<uint32_t>{1, 1, 1},
-        &compileInfo,
-        "Ascend910B",
-        kCoreNum,
-        kUbSize,
-        kTilingDataSize);
+    return gert::TilingContextPara(kOpName,
+                                   {{{{64, headNumQ, headDim}, {64, headNumQ, headDim}}, dataType, ge::FORMAT_ND},
+                                    {{{128, headNumK, headDim}, {128, headNumK, headDim}}, dataType, ge::FORMAT_ND},
+                                    {{{64, headNumQ, headDim}, {64, headNumQ, headDim}}, dataType, ge::FORMAT_ND},
+                                    {{{64, 2048}, {64, 2048}}, ge::DT_INT32, ge::FORMAT_ND},
+                                    {{{64, headNumQ}, {64, headNumQ}}, dataType, ge::FORMAT_ND},
+                                    {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+                                    {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND}},
+                                   {{{{64, headNumQ, headDim}, {64, headNumQ, headDim}}, dataType, ge::FORMAT_ND},
+                                    {{{128, headNumK, headDim}, {128, headNumK, headDim}}, dataType, ge::FORMAT_ND},
+                                    {{{64, headNumQ}, {64, headNumQ}}, dataType, ge::FORMAT_ND}},
+                                   MakeAttrs("TND", sparseMode), std::vector<uint32_t>{1, 1, 1, 1, 1, 0, 0},
+                                   std::vector<uint32_t>{1, 1, 1}, &compileInfo, "Ascend910B", kCoreNum, kUbSize,
+                                   kTilingDataSize);
 }
 } // namespace
 

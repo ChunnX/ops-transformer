@@ -88,7 +88,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV3GetWorkspaceSize(
   const aclTensor   *softmaxSumOptional,
   const aclTensor   *softmaxInOptional,
   const aclTensor   *attentionInOptional,
-  const aclTensor   *sinkInOptional,            
+  const aclTensor   *sinkInOptional,
   const aclIntArray *prefixOptional,
   const aclIntArray *qStartIdxOptional,
   const aclIntArray *kvStartIdxOptional,
@@ -105,7 +105,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV3GetWorkspaceSize(
   const aclTensor   *dkOut,
   const aclTensor   *dvOut,
   const aclTensor   *dpseOut,
-  const aclTensor   *dsinkOut,            
+  const aclTensor   *dsinkOut,
   uint64_t          *workspaceSize,
   aclOpExecutor    **executor)
 ```
@@ -688,7 +688,7 @@ int main() {
   std::vector<int64_t> dqShape = {256, 1, 128};
   std::vector<int64_t> dkShape = {256, 1, 128};
   std::vector<int64_t> dvShape = {256, 1, 128};
-  std::vector<int64_t> dsinkShape = {1};  
+  std::vector<int64_t> dsinkShape = {1};
 
   void* qDeviceAddr = nullptr;
   void* kDeviceAddr = nullptr;
@@ -821,7 +821,7 @@ int main() {
   aclDestroyTensor(softmaxMax);
   aclDestroyTensor(softmaxSum);
   aclDestroyTensor(attentionIn);
-  aclDestroyTensor(sinkInOptional);  
+  aclDestroyTensor(sinkInOptional);
   aclDestroyTensor(dq);
   aclDestroyTensor(dk);
   aclDestroyTensor(dv);

@@ -68,13 +68,13 @@ __aicore__ inline uint32_t GetAttrAbsIndex(uint32_t coreIdx, uint32_t metaIdx, b
 #endif
 
 namespace detail {
-    struct QSMLAMetaData {
-        uint32_t faMetadata[AIC_CORE_NUM][FA_METADATA_SIZE];
-        uint32_t fdMetadata[AIV_CORE_NUM][FD_METADATA_SIZE];
-    };
+struct QSMLAMetaData {
+    uint32_t faMetadata[AIC_CORE_NUM][FA_METADATA_SIZE];
+    uint32_t fdMetadata[AIV_CORE_NUM][FD_METADATA_SIZE];
 };
+}; // namespace detail
 
 static_assert(QSMLA_META_SIZE * sizeof(QSMLA_METADATA_T) >= sizeof(detail::QSMLAMetaData));
-};
+}; // namespace optiling
 
 #endif // QUANT_SPARSE_FLASH_MLA_METADATA_H

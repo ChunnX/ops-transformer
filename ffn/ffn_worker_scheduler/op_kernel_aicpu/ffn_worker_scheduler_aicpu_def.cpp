@@ -26,4 +26,4 @@ public:
 };
 
 OP_ADD(FfnWorkerScheduler);
-}  // namespace ops
+} // namespace ops

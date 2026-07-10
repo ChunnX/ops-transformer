@@ -49,9 +49,9 @@ ge::graphStatus InferShapeDenseLightningIndexerGradKLLoss(gert::InferShapeContex
         OP_LOGE("DenseLightningIndexerGradKLLoss", "context is nullptr!");
         return ge::GRAPH_FAILED;
     }
-    
+
     OP_LOGD(context->GetNodeName(), "Begin to do InferShapeDenseLightningIndexerGradKLLoss");
-    
+
     // get input shapes
     const gert::Shape *queryShape = context->GetInputShape(queryEnum);
     OP_CHECK_NULL_WITH_CONTEXT(context, queryShape);
@@ -104,5 +104,7 @@ ge::graphStatus InferDataTypeDenseLightningIndexerGradKLLoss(gert::InferDataType
     return ge::GRAPH_SUCCESS;
 }
 
-IMPL_OP(DenseLightningIndexerGradKLLoss).InferShape(InferShapeDenseLightningIndexerGradKLLoss).InferDataType(InferDataTypeDenseLightningIndexerGradKLLoss);
+IMPL_OP(DenseLightningIndexerGradKLLoss)
+    .InferShape(InferShapeDenseLightningIndexerGradKLLoss)
+    .InferDataType(InferDataTypeDenseLightningIndexerGradKLLoss);
 } // namespace ops

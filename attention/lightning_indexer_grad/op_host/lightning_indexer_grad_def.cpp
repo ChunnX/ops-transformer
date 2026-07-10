@@ -57,7 +57,10 @@ public:
             .AutoContiguous();
         this->Output("dq").ParamType(REQUIRED).DataTypeList({ge::DT_BF16, ge::DT_FLOAT16}).FormatList({ge::FORMAT_ND});
         this->Output("dk").ParamType(REQUIRED).DataTypeList({ge::DT_BF16, ge::DT_FLOAT16}).FormatList({ge::FORMAT_ND});
-        this->Output("dweights").ParamType(REQUIRED).DataTypeList({ge::DT_BF16, ge::DT_FLOAT16}).FormatList({ge::FORMAT_ND});
+        this->Output("dweights")
+            .ParamType(REQUIRED)
+            .DataTypeList({ge::DT_BF16, ge::DT_FLOAT16})
+            .FormatList({ge::FORMAT_ND});
         this->Attr("headNum").AttrType(REQUIRED).Int(1);
         this->Attr("layout").AttrType(OPTIONAL).String("BSND");
         this->Attr("sparseMode").AttrType(OPTIONAL).Int(3);

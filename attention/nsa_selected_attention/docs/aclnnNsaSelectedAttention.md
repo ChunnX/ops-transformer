@@ -372,7 +372,7 @@ aclnnStatus aclnnNsaSelectedAttention(
 - 支持输入query的N和key/value的N不相等，但必须成比例关系，即N_q / N_kv必须是非0整数，称为G（group），且需满足G <= 32。
 - 当attenMaskOptional输入为nullptr时，sparseMode参数不生效，固定为全计算。
 - 关于数据shape的约束，以inputLayout的TND举例（注：T等于各batch S的长度累加和。当各batch的S相等时，T=B*S）。其中：
-  
+
   - B（Batchsize）：取值范围为1\~1024。
   - N（Head-Num）：取值范围为1\~128。
   - G（Group）：取值范围为1\~32。
@@ -556,7 +556,7 @@ int main()
     std::vector<int64_t> attentionOutShape = {batch * s1, n2 * g, d2};
     std::vector<int64_t> softmaxMaxShape = {batch * s1, n2 * g, 8};
     std::vector<int64_t> softmaxSumShape = {batch * s1, n2 * g, 8};
-    
+
     double scaleValue = 1.0;
     int64_t headNum = 16;
     int64_t selectedBlockSize = 64;

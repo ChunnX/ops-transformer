@@ -70,4 +70,4 @@ public:
 };
 
 OP_ADD(MoeFusedTopk);
-}  // namespace ops
+} // namespace ops

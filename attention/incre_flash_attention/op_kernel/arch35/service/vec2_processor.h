@@ -35,7 +35,7 @@ struct Vec2TaskParam {
     uint32_t dealRowCount;
     uint32_t columnCount;
     uint32_t actualColumnCount;
-    
+
     uint64_t attenOutOffset;
     uint32_t splitKVNum;
     uint32_t gSize;
@@ -49,13 +49,12 @@ struct Vec2TaskParam {
 };
 
 template <typename IFAT>
-class Vec2Processor
-{
+class Vec2Processor {
 public:
     using T = float;
     using OUT_T = typename IFAT::outputType;
     using MM_OUT_T = T;
-    static constexpr IFAProfile PROFILE = IFAT::profile; 
+    static constexpr IFAProfile PROFILE = IFAT::profile;
     static constexpr bool FLASH_DECODE = IFAT::flashDecode;
     static constexpr bool ATTEN_MASK = IFAT::attenMask;
     static constexpr bool POST_QUANT = IsSameType<OUT_T, int8_t>::value;
@@ -63,34 +62,34 @@ public:
     static constexpr uint32_t REPEAT_ELEMENT_NUM = REPEAT_BLOCK_BYTE / sizeof(T);
 
     __aicore__ inline Vec2Processor(){};
-    __aicore__ inline void Process(LocalTensor<MM_OUT_T>& bmm2ResUb, TQue<QuePosition::VECOUT, 1>& updateResOutputQue,
-                              LocalTensor<T>& softmaxSumUb, LocalTensor<T>& softmaxExpUb, LocalTensor<T>& softmaxMaxUb,
-                              GlobalTensor<OUT_T> attentionOutGm, GlobalTensor<T> accumOutGm,
-                              const Vec2TaskParam& taskParam);
-    __aicore__ inline void Bmm2Out(GlobalTensor<OUT_T> attentionOutGm, LocalTensor<MM_OUT_T>& bmm2PreResUb,
-                                   TQue<QuePosition::VECOUT, 1>& updateResOutputQue, const Vec2TaskParam& taskParam);
+    __aicore__ inline void Process(LocalTensor<MM_OUT_T> &bmm2ResUb, TQue<QuePosition::VECOUT, 1> &updateResOutputQue,
+                                   LocalTensor<T> &softmaxSumUb, LocalTensor<T> &softmaxExpUb,
+                                   LocalTensor<T> &softmaxMaxUb, GlobalTensor<OUT_T> attentionOutGm,
+                                   GlobalTensor<T> accumOutGm, const Vec2TaskParam &taskParam);
+    __aicore__ inline void Bmm2Out(GlobalTensor<OUT_T> attentionOutGm, LocalTensor<MM_OUT_T> &bmm2PreResUb,
+                                   TQue<QuePosition::VECOUT, 1> &updateResOutputQue, const Vec2TaskParam &taskParam);
 
 private:
     __aicore__ inline void RowDivs(LocalTensor<T> dstUb, LocalTensor<T> src0Ub, LocalTensor<T> src1Ub,
-                                   const Vec2TaskParam& taskParam);
-    __aicore__ inline void RowInvalid(LocalTensor<MM_OUT_T>& bmm2PreResUb, LocalTensor<T>& softmaxMaxUb,
-                                      const Vec2TaskParam& taskParam);
+                                   const Vec2TaskParam &taskParam);
+    __aicore__ inline void RowInvalid(LocalTensor<MM_OUT_T> &bmm2PreResUb, LocalTensor<T> &softmaxMaxUb,
+                                      const Vec2TaskParam &taskParam);
     __aicore__ inline void PostQuant();
-    __aicore__ inline void Bmm2FDOut(GlobalTensor<T> accumOutGm, LocalTensor<MM_OUT_T>& bmm2PreResUb,
-                                     TQue<QuePosition::VECOUT, 1>& updateResOutputQue, const Vec2TaskParam& taskParam);
-    __aicore__ inline void Bmm2FDDataCopyOut(GlobalTensor<T> accumOutGm, LocalTensor<MM_OUT_T>& attenOutUb,
-                                             const Vec2TaskParam& taskParam);
+    __aicore__ inline void Bmm2FDOut(GlobalTensor<T> accumOutGm, LocalTensor<MM_OUT_T> &bmm2PreResUb,
+                                     TQue<QuePosition::VECOUT, 1> &updateResOutputQue, const Vec2TaskParam &taskParam);
+    __aicore__ inline void Bmm2FDDataCopyOut(GlobalTensor<T> accumOutGm, LocalTensor<MM_OUT_T> &attenOutUb,
+                                             const Vec2TaskParam &taskParam);
 
-    __aicore__ inline void Bmm2DataCopyOut(GlobalTensor<OUT_T> attentionOutGm, LocalTensor<OUT_T>& attenOutUb,
-                                           const Vec2TaskParam& taskParam);
-    LocalTensor<MM_OUT_T> bmm2PreResUb;                             
+    __aicore__ inline void Bmm2DataCopyOut(GlobalTensor<OUT_T> attentionOutGm, LocalTensor<OUT_T> &attenOutUb,
+                                           const Vec2TaskParam &taskParam);
+    LocalTensor<MM_OUT_T> bmm2PreResUb;
 };
 template <typename IFAT>
-__aicore__ inline void Vec2Processor<IFAT>::Process(LocalTensor<MM_OUT_T>& bmm2ResUb,
-                                                    TQue<QuePosition::VECOUT, 1>& updateResOutputQue,
-                                                    LocalTensor<T>& softmaxSumUb, LocalTensor<T>& softmaxExpUb,
-                                                    LocalTensor<T>& softmaxMaxUb, GlobalTensor<OUT_T> attentionOutGm,
-                                                    GlobalTensor<T> accumOutGm, const Vec2TaskParam& taskParam)
+__aicore__ inline void Vec2Processor<IFAT>::Process(LocalTensor<MM_OUT_T> &bmm2ResUb,
+                                                    TQue<QuePosition::VECOUT, 1> &updateResOutputQue,
+                                                    LocalTensor<T> &softmaxSumUb, LocalTensor<T> &softmaxExpUb,
+                                                    LocalTensor<T> &softmaxMaxUb, GlobalTensor<OUT_T> attentionOutGm,
+                                                    GlobalTensor<T> accumOutGm, const Vec2TaskParam &taskParam)
 {
     if (taskParam.isFirstSInnerLoop) {
         bmm2PreResUb = updateResOutputQue.AllocTensor<T>();
@@ -115,7 +114,7 @@ __aicore__ inline void Vec2Processor<IFAT>::Process(LocalTensor<MM_OUT_T>& bmm2R
 
 template <typename IFAT>
 __aicore__ inline void Vec2Processor<IFAT>::RowDivs(LocalTensor<T> dstUb, LocalTensor<T> src0Ub, LocalTensor<T> src1Ub,
-                                                    const Vec2TaskParam& taskParam)
+                                                    const Vec2TaskParam &taskParam)
 {
     uint32_t dtypeMask = REPEAT_ELEMENT_NUM;
     uint32_t dLoop = PROFILE.D / dtypeMask;
@@ -134,8 +133,8 @@ __aicore__ inline void Vec2Processor<IFAT>::RowDivs(LocalTensor<T> dstUb, LocalT
 }
 
 template <typename IFAT>
-__aicore__ inline void Vec2Processor<IFAT>::RowInvalid(LocalTensor<MM_OUT_T>& bmm2PreResUb, 
-    LocalTensor<T>& softmaxMaxUb, const Vec2TaskParam& taskParam)
+__aicore__ inline void Vec2Processor<IFAT>::RowInvalid(LocalTensor<MM_OUT_T> &bmm2PreResUb,
+                                                       LocalTensor<T> &softmaxMaxUb, const Vec2TaskParam &taskParam)
 {
     if (!taskParam.isRowInvalid) {
         return;
@@ -154,14 +153,14 @@ __aicore__ inline void Vec2Processor<IFAT>::RowInvalid(LocalTensor<MM_OUT_T>& bm
     }
     if (isRowInvalidNeedUpdate) {
         RowInvalidUpdate<T>(bmm2PreResUb, softmaxMaxUb, taskParam.dealRowCount, taskParam.columnCount,
-            taskParam.actualColumnCount, reduceSize);
+                            taskParam.actualColumnCount, reduceSize);
     }
 }
 
 template <typename IFAT>
 __aicore__ inline void Vec2Processor<IFAT>::Bmm2DataCopyOut(GlobalTensor<OUT_T> attentionOutGm,
-                                                            LocalTensor<OUT_T>& attenOutUb,
-                                                            const Vec2TaskParam& taskParam)
+                                                            LocalTensor<OUT_T> &attenOutUb,
+                                                            const Vec2TaskParam &taskParam)
 {
     DataCopyExtParams dataCopyParams;
     dataCopyParams.blockCount = taskParam.dealRowCount;
@@ -178,8 +177,8 @@ __aicore__ inline void Vec2Processor<IFAT>::Bmm2DataCopyOut(GlobalTensor<OUT_T> 
 
 template <typename IFAT>
 __aicore__ inline void Vec2Processor<IFAT>::Bmm2FDDataCopyOut(GlobalTensor<T> accumOutGm,
-                                                              LocalTensor<MM_OUT_T>& attenOutUb,
-                                                              const Vec2TaskParam& taskParam)
+                                                              LocalTensor<MM_OUT_T> &attenOutUb,
+                                                              const Vec2TaskParam &taskParam)
 {
     DataCopyExtParams dataCopyParams;
     dataCopyParams.blockCount = taskParam.dealRowCount;
@@ -192,16 +191,14 @@ __aicore__ inline void Vec2Processor<IFAT>::Bmm2FDDataCopyOut(GlobalTensor<T> ac
                 attenOutUb, dataCopyParams);
 }
 template <typename IFAT>
-__aicore__ inline void Vec2Processor<IFAT>::Bmm2Out(GlobalTensor<OUT_T> attentionOutGm,
-                                                    LocalTensor<MM_OUT_T>& bmm2PreResUb,
-                                                    TQue<QuePosition::VECOUT, 1>& updateResOutputQue,
-                                                    const Vec2TaskParam& taskParam)
+__aicore__ inline void
+Vec2Processor<IFAT>::Bmm2Out(GlobalTensor<OUT_T> attentionOutGm, LocalTensor<MM_OUT_T> &bmm2PreResUb,
+                             TQue<QuePosition::VECOUT, 1> &updateResOutputQue, const Vec2TaskParam &taskParam)
 {
     LocalTensor<OUT_T> tmpBmm2ResCastTensor;
     if constexpr (!POST_QUANT) {
         tmpBmm2ResCastTensor = bmm2PreResUb.template ReinterpretCast<OUT_T>();
-        Cast(tmpBmm2ResCastTensor, bmm2PreResUb, AscendC::RoundMode::CAST_ROUND,
-             taskParam.dealRowCount * PROFILE.D);
+        Cast(tmpBmm2ResCastTensor, bmm2PreResUb, AscendC::RoundMode::CAST_ROUND, taskParam.dealRowCount * PROFILE.D);
     } else {
         PostQuant();
     }
@@ -213,9 +210,9 @@ __aicore__ inline void Vec2Processor<IFAT>::Bmm2Out(GlobalTensor<OUT_T> attentio
 }
 
 template <typename IFAT>
-__aicore__ inline void Vec2Processor<IFAT>::Bmm2FDOut(GlobalTensor<T> accumOutGm, LocalTensor<MM_OUT_T>& bmm2PreResUb,
-                                                      TQue<QuePosition::VECOUT, 1>& updateResOutputQue,
-                                                      const Vec2TaskParam& taskParam)
+__aicore__ inline void Vec2Processor<IFAT>::Bmm2FDOut(GlobalTensor<T> accumOutGm, LocalTensor<MM_OUT_T> &bmm2PreResUb,
+                                                      TQue<QuePosition::VECOUT, 1> &updateResOutputQue,
+                                                      const Vec2TaskParam &taskParam)
 {
     updateResOutputQue.EnQue(bmm2PreResUb);
     updateResOutputQue.DeQue<T>();
@@ -224,5 +221,7 @@ __aicore__ inline void Vec2Processor<IFAT>::Bmm2FDOut(GlobalTensor<T> accumOutGm
 }
 
 template <typename IFAT>
-__aicore__ inline void Vec2Processor<IFAT>::PostQuant(){}
+__aicore__ inline void Vec2Processor<IFAT>::PostQuant()
+{
+}
 #endif

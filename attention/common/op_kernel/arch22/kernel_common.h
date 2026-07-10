@@ -27,11 +27,12 @@ using AscendC::GlobalTensor;
 
 namespace fa_base_kernel {
 
-__aicore__ inline uint64_t GetActualQSeqLength(GlobalTensor<uint64_t> &actualSeqLengths, uint32_t bIdx, const ConstInfo &constInfo)
+__aicore__ inline uint64_t GetActualQSeqLength(GlobalTensor<uint64_t> &actualSeqLengths, uint32_t bIdx,
+                                               const ConstInfo &constInfo)
 {
     if (constInfo.actualLenQDims == 0) {
         return constInfo.qSeqSize;
-    } 
+    }
     if (constInfo.actualLenQDims == 1 || bIdx == 0) {
         return actualSeqLengths.GetValue(0);
     }
@@ -59,14 +60,15 @@ __aicore__ inline uint64_t SeqLenFromTensorList(__gm__ uint8_t *keyPtr, uint32_t
 }
 
 template <FIA_LAYOUT LAYOUT_T>
-__aicore__ inline uint64_t GetActualKVSeqLength(GlobalTensor<uint64_t> &actualSeqLengths, uint32_t bIdx, const ConstInfo &constInfo, __gm__ uint8_t *keyPtr)
+__aicore__ inline uint64_t GetActualKVSeqLength(GlobalTensor<uint64_t> &actualSeqLengths, uint32_t bIdx,
+                                                const ConstInfo &constInfo, __gm__ uint8_t *keyPtr)
 {
     if (constInfo.actualLenDims == 0) {
         if (!constInfo.batchContinuous) {
             return SeqLenFromTensorList<LAYOUT_T>(keyPtr, bIdx);
         }
         return constInfo.kvSeqSize;
-    } 
+    }
     if (constInfo.actualLenDims == 1 || bIdx == 0) {
         return actualSeqLengths.GetValue(0);
     }

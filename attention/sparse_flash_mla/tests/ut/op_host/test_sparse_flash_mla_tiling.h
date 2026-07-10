@@ -69,7 +69,7 @@ inline void InitSwaTilingData(optiling::SparseFlashMlaTilingData &tiling, uint32
 }
 
 inline void InitCsaTilingData(optiling::SparseFlashMlaTilingData &tiling, uint32_t tokenNum, uint32_t kvSeqLen,
-                               uint32_t oriBlockNum, uint32_t cmpBlockNum, uint32_t blockSize)
+                              uint32_t oriBlockNum, uint32_t cmpBlockNum, uint32_t blockSize)
 {
     InitSwaTilingData(tiling, tokenNum, kvSeqLen, oriBlockNum, blockSize);
     tiling.cmpParams.set_cmpMaxBlockNumPerBatch(cmpBlockNum);

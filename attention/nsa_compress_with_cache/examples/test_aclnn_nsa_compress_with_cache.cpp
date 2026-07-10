@@ -16,24 +16,26 @@
 #include "aclnnop/aclnn_nsa_compress_with_cache.h"
 #include <iostream>
 #include <vector>
-#define CHECK_RET(cond, return_expr) \
-  do {                               \
-    if (!(cond)) {                   \
-      return_expr;                   \
-    }                                \
-  } while (0)
-#define LOG_PRINT(message, ...)     \
-  do {                              \
-    printf(message, ##__VA_ARGS__); \
-  } while (0)
-int64_t GetShapeSize(const std::vector<int64_t>& shape) {
+#define CHECK_RET(cond, return_expr)                                                                                   \
+    do {                                                                                                               \
+        if (!(cond)) {                                                                                                 \
+            return_expr;                                                                                               \
+        }                                                                                                              \
+    } while (0)
+#define LOG_PRINT(message, ...)                                                                                        \
+    do {                                                                                                               \
+        printf(message, ##__VA_ARGS__);                                                                                \
+    } while (0)
+int64_t GetShapeSize(const std::vector<int64_t> &shape)
+{
     int64_t shape_size = 1;
     for (auto i : shape) {
         shape_size *= i;
     }
     return shape_size;
 }
-int Init(int32_t deviceId, aclrtStream* stream) {
+int Init(int32_t deviceId, aclrtStream *stream)
+{
     // 固定写法，资源初始化
     auto ret = aclInit(nullptr);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclInit failed. ERROR: %d\n", ret); return ret);
@@ -44,8 +46,9 @@ int Init(int32_t deviceId, aclrtStream* stream) {
     return 0;
 }
 template <typename T>
-int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& shape, void** deviceAddr,
-                    aclDataType dataType, aclTensor** tensor) {
+int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &shape, void **deviceAddr,
+                    aclDataType dataType, aclTensor **tensor)
+{
     auto size = GetShapeSize(shape) * sizeof(T);
     // 调用aclrtMalloc申请device侧内存
     auto ret = aclrtMalloc(deviceAddr, size, ACL_MEM_MALLOC_HUGE_FIRST);
@@ -63,7 +66,8 @@ int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& 
                               shape.data(), shape.size(), *deviceAddr);
     return 0;
 }
-int main() {
+int main()
+{
     // 输入shape相关参数设置
     constexpr int64_t compress_block_size = 32;
     constexpr int64_t compress_stride = 16;
@@ -108,11 +112,11 @@ int main() {
                                           aclFloatToFloat16(1.0));
     std::vector<aclFloat16> weightHostData(weightShape[0] * weightShape[1], aclFloatToFloat16(1.0));
     std::vector<int32_t> slotMappingHostData(slotMappingShape[0], 0);
-    std::vector<aclFloat16> outputCacheRefHostData(outputCacheRefShape[0] * outputCacheRefShape[1] *
-                                                   outputCacheRefShape[2], aclFloatToFloat16(1.0));
+    std::vector<aclFloat16> outputCacheRefHostData(
+        outputCacheRefShape[0] * outputCacheRefShape[1] * outputCacheRefShape[2], aclFloatToFloat16(1.0));
     std::vector<int64_t> actSeqLenHostData(actSeqLenShape[0], 0);
     std::vector<int32_t> blockTableHostData(blockTableShape[0] * blockTableShape[1]);
-    actSeqLenHostData[0]=32;
+    actSeqLenHostData[0] = 32;
     // 创建self aclTensor
     ret = CreateAclTensor(inputHostData, inputShape, &inputDeviceAddr, aclDataType::ACL_FLOAT16, &input);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
@@ -132,7 +136,7 @@ int main() {
     int64_t actSeqLenType = 1;
     // 3. 调用CANN算子库API，需要修改为具体的API
     uint64_t workspaceSize = 0;
-    aclOpExecutor* executor;
+    aclOpExecutor *executor;
     // 调用aclnnNsaCompressWithCache第一段接口
     ret = aclnnNsaCompressWithCacheGetWorkspaceSize(input, weight, slotMapping, actSeqLen, blockTable, layout,
                                                     compress_block_size, compress_stride, actSeqLenType,
@@ -140,7 +144,7 @@ int main() {
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnNsaCompressWithCacheGetWorkspaceSize failed. ERROR: %d\n", ret);
               return ret);
     // 根据第一段接口计算出的workspaceSize申请device内存
-    void* workspaceAddr = nullptr;
+    void *workspaceAddr = nullptr;
     if (workspaceSize > 0) {
         ret = aclrtMalloc(&workspaceAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("allocate workspace failed. ERROR: %d\n", ret); return ret;);

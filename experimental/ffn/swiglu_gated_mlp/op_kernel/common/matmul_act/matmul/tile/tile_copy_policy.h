@@ -50,7 +50,7 @@ struct CopyInAndCopyOutSplitMWithLayout {}; ///< Copy policy for splitting input
  * @param [in] cfg: configuration settings, default is CFG_NORM
  */
 template <class ArchTag, class DispatchPolicy, class DataType, class DstTrait, class SrcTrait, typename Enable = void,
-          const auto& cfg = CFG_NORM>
+          const auto &cfg = CFG_NORM>
 struct Copy {};
 } // namespace Tile
 } // namespace Gemm

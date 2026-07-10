@@ -24,12 +24,18 @@ namespace ge {
 * @brief Fusion of alltoallv and grouped matmul.
 
 * @par Inputs:
-* @li gmm_x: A matrix tensor of shape [BSK, H1]. The data type of elements supports float16 or bfloat16; the format supports ND.
-* @li gmm_weight: A matrix tensor of shape [e, H1, N1]. The data type of elements supports float16 or bfloat16 and should match that of gmm_x; the format supports ND.
-* @li send_counts_tensor: A tensor of shape [e * ep]. The data type of elements supports int32 or int64; the format supports ND.
-* @li recv_counts_tensor: A tensor of shape [e * ep]. The data type of elements supports int32 or int64; the format supports ND.
-* @li mm_x: A matrix tensor of shape [BS, H1]. The data type of elements supports float16 or bfloat16; the format supports ND.
-* @li mm_weight: gmm_weight: A matrix tensor of shape [H2, N2]. The data type of elements supports float16 or bfloat16 and should match that of mm_x; the format supports ND.
+* @li gmm_x: A matrix tensor of shape [BSK, H1]. The data type of elements supports float16 or bfloat16; the format
+supports ND.
+* @li gmm_weight: A matrix tensor of shape [e, H1, N1]. The data type of elements supports float16 or bfloat16 and
+should match that of gmm_x; the format supports ND.
+* @li send_counts_tensor: A tensor of shape [e * ep]. The data type of elements supports int32 or int64; the format
+supports ND.
+* @li recv_counts_tensor: A tensor of shape [e * ep]. The data type of elements supports int32 or int64; the format
+supports ND.
+* @li mm_x: A matrix tensor of shape [BS, H1]. The data type of elements supports float16 or bfloat16; the format
+supports ND.
+* @li mm_weight: gmm_weight: A matrix tensor of shape [H2, N2]. The data type of elements supports float16 or bfloat16
+and should match that of mm_x; the format supports ND.
 
 * @par Attributes:
 * @li group: A required String identifying the expert group of ranks
@@ -42,31 +48,34 @@ namespace ge {
 * @li comm_mode: A String value. Indicating communication type.
 
 * @par Outputs:
-* @li gmm_y: A matrix tensor of shape [A, N1] containing result of grouped matmul. The data type of elements supports float16 or bfloat16; the format supports ND.
-* @li mm_y: A matrix tensor of shape [BS, N2] containing result of matmul. The data type of elements supports float16 or bfloat16; the format supports ND.
-* @li permute_out: A matrix tensor of shape [BSK, H1] containing result of permutation if permute_out_flag == true. The data type of elements supports float16 or bfloat16; the format supports ND.
+* @li gmm_y: A matrix tensor of shape [A, N1] containing result of grouped matmul. The data type of elements supports
+float16 or bfloat16; the format supports ND.
+* @li mm_y: A matrix tensor of shape [BS, N2] containing result of matmul. The data type of elements supports float16 or
+bfloat16; the format supports ND.
+* @li permute_out: A matrix tensor of shape [BSK, H1] containing result of permutation if permute_out_flag == true. The
+data type of elements supports float16 or bfloat16; the format supports ND.
 */
 REG_OP(AlltoAllvGroupedMatMul)
-      .INPUT(gmm_x, TensorType({DT_FLOAT16, DT_BF16}))
-      .INPUT(gmm_weight, TensorType({DT_FLOAT16, DT_BF16}))
-      .OPTIONAL_INPUT(send_counts_tensor, TensorType({DT_INT32, DT_INT64}))
-      .OPTIONAL_INPUT(recv_counts_tensor, TensorType({DT_INT32, DT_INT64}))
-      .OPTIONAL_INPUT(mm_x, TensorType({DT_FLOAT16, DT_BF16}))
-      .OPTIONAL_INPUT(mm_weight, TensorType({DT_FLOAT16, DT_BF16}))
-      .OUTPUT(gmm_y, TensorType({DT_FLOAT16, DT_BF16}))
-      .OUTPUT(mm_y, TensorType({DT_FLOAT16, DT_BF16}))
-      .OUTPUT(permute_out, TensorType({DT_FLOAT16, DT_BF16}))
-      .REQUIRED_ATTR(group, String)
-      .REQUIRED_ATTR(ep_world_size, Int)
-      .REQUIRED_ATTR(send_counts, ListInt)
-      .REQUIRED_ATTR(recv_counts, ListInt)
-      .ATTR(trans_gmm_weight, Bool, false)
-      .ATTR(trans_mm_weight, Bool, false)
-      .ATTR(permute_out_flag, Bool, false)
-      .ATTR(comm_mode, String, "ai_cpu")
-      .OP_END_FACTORY_REG(AlltoAllvGroupedMatMul)
+    .INPUT(gmm_x, TensorType({DT_FLOAT16, DT_BF16}))
+    .INPUT(gmm_weight, TensorType({DT_FLOAT16, DT_BF16}))
+    .OPTIONAL_INPUT(send_counts_tensor, TensorType({DT_INT32, DT_INT64}))
+    .OPTIONAL_INPUT(recv_counts_tensor, TensorType({DT_INT32, DT_INT64}))
+    .OPTIONAL_INPUT(mm_x, TensorType({DT_FLOAT16, DT_BF16}))
+    .OPTIONAL_INPUT(mm_weight, TensorType({DT_FLOAT16, DT_BF16}))
+    .OUTPUT(gmm_y, TensorType({DT_FLOAT16, DT_BF16}))
+    .OUTPUT(mm_y, TensorType({DT_FLOAT16, DT_BF16}))
+    .OUTPUT(permute_out, TensorType({DT_FLOAT16, DT_BF16}))
+    .REQUIRED_ATTR(group, String)
+    .REQUIRED_ATTR(ep_world_size, Int)
+    .REQUIRED_ATTR(send_counts, ListInt)
+    .REQUIRED_ATTR(recv_counts, ListInt)
+    .ATTR(trans_gmm_weight, Bool, false)
+    .ATTR(trans_mm_weight, Bool, false)
+    .ATTR(permute_out_flag, Bool, false)
+    .ATTR(comm_mode, String, "ai_cpu")
+    .OP_END_FACTORY_REG(AlltoAllvGroupedMatMul)
 
-}  // namespace ge
+} // namespace ge
 
 
-#endif  // ALLTO_ALLV_GROUPED_MAT_MUL_PROTO_H_
+#endif // ALLTO_ALLV_GROUPED_MAT_MUL_PROTO_H_

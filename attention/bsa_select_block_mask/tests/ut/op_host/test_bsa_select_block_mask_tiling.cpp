@@ -22,10 +22,12 @@ using namespace ge;
 
 class BSASelectBlockMaskTilingTest : public testing::Test {
 protected:
-    static void SetUpTestCase() {
+    static void SetUpTestCase()
+    {
         std::cout << "--- BSASelectBlockMaskTiling UT SetUp ---" << std::endl;
     }
-    static void TearDownTestCase() {
+    static void TearDownTestCase()
+    {
         std::cout << "--- BSASelectBlockMaskTiling UT TearDown ---" << std::endl;
     }
 };
@@ -48,38 +50,32 @@ TEST_F(BSASelectBlockMaskTilingTest, tiling_bnsd_case0)
 
     gert::TilingContextPara tilingContextPara(
         "BSASelectBlockMask",
-        {
-            // --- Input Info ---
-            // 0: query [B, N, S, D]
-            {{{b, n, s, d}, {b, n, s, d}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-            // 1: key [B, N, S_kv, D]
-            {{{b, n, s_kv, d}, {b, n, s_kv, d}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-            // 2: block_shape (OPTIONAL, has value)
-            {{{2}, {2}}, ge::DT_INT64, ge::FORMAT_ND, (void*)blockShapeData},
-            // 3: post_block_shape (OPTIONAL, not provided)
-            {{{-1}, {-1}}, ge::DT_UNDEFINED, ge::FORMAT_ND},
-            // 4: actual_seq_lengths (OPTIONAL, has value)
-            {{{b}, {b}}, ge::DT_INT64, ge::FORMAT_ND, (void*)actualSeqData},
-            // 5: actual_seq_lengths_kv (OPTIONAL, has value)
-            {{{b}, {b}}, ge::DT_INT64, ge::FORMAT_ND, (void*)actualSeqKvData},
-            // 6: actual_block_len_query (OPTIONAL, not provided)
-            {{{-1}, {-1}}, ge::DT_UNDEFINED, ge::FORMAT_ND},
-            // 7: actual_block_len_key (OPTIONAL, not provided)
-            {{{-1}, {-1}}, ge::DT_UNDEFINED, ge::FORMAT_ND}
-        },
-        {
-            // --- Output Info ---
-            // 0: block_sparse_mask_out [B, N, ceilQ, ceilKv]
-            {{{b, n, ceilQ, ceilKv}, {b, n, ceilQ, ceilKv}}, ge::DT_INT8, ge::FORMAT_ND}
-        },
-        {
-            // --- Attr Info (对齐 OpDef 里的 5 个属性顺序) ---
-            {"q_input_layout", Ops::Transformer::AnyValue::CreateFrom<std::string>("BNSD")},
-            {"kv_input_layout", Ops::Transformer::AnyValue::CreateFrom<std::string>("BNSD")},
-            {"num_key_value_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(n)},
-            {"scale_value", Ops::Transformer::AnyValue::CreateFrom<float>(0.088388f)},
-            {"sparsity", Ops::Transformer::AnyValue::CreateFrom<float>(0.5f)}
-        },
+        {// --- Input Info ---
+         // 0: query [B, N, S, D]
+         {{{b, n, s, d}, {b, n, s, d}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         // 1: key [B, N, S_kv, D]
+         {{{b, n, s_kv, d}, {b, n, s_kv, d}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         // 2: block_shape (OPTIONAL, has value)
+         {{{2}, {2}}, ge::DT_INT64, ge::FORMAT_ND, (void *)blockShapeData},
+         // 3: post_block_shape (OPTIONAL, not provided)
+         {{{-1}, {-1}}, ge::DT_UNDEFINED, ge::FORMAT_ND},
+         // 4: actual_seq_lengths (OPTIONAL, has value)
+         {{{b}, {b}}, ge::DT_INT64, ge::FORMAT_ND, (void *)actualSeqData},
+         // 5: actual_seq_lengths_kv (OPTIONAL, has value)
+         {{{b}, {b}}, ge::DT_INT64, ge::FORMAT_ND, (void *)actualSeqKvData},
+         // 6: actual_block_len_query (OPTIONAL, not provided)
+         {{{-1}, {-1}}, ge::DT_UNDEFINED, ge::FORMAT_ND},
+         // 7: actual_block_len_key (OPTIONAL, not provided)
+         {{{-1}, {-1}}, ge::DT_UNDEFINED, ge::FORMAT_ND}},
+        {// --- Output Info ---
+         // 0: block_sparse_mask_out [B, N, ceilQ, ceilKv]
+         {{{b, n, ceilQ, ceilKv}, {b, n, ceilQ, ceilKv}}, ge::DT_INT8, ge::FORMAT_ND}},
+        {// --- Attr Info (对齐 OpDef 里的 5 个属性顺序) ---
+         {"q_input_layout", Ops::Transformer::AnyValue::CreateFrom<std::string>("BNSD")},
+         {"kv_input_layout", Ops::Transformer::AnyValue::CreateFrom<std::string>("BNSD")},
+         {"num_key_value_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(n)},
+         {"scale_value", Ops::Transformer::AnyValue::CreateFrom<float>(0.088388f)},
+         {"sparsity", Ops::Transformer::AnyValue::CreateFrom<float>(0.5f)}},
         &compileInfo);
 
     uint64_t expectTilingKey = 1UL;
@@ -105,35 +101,29 @@ TEST_F(BSASelectBlockMaskTilingTest, tiling_bnsd_block64)
 
     gert::TilingContextPara tilingContextPara(
         "BSASelectBlockMask",
-        {
-            // 0: query
-            {{{b, n, s, d}, {b, n, s, d}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-            // 1: key
-            {{{b, n, s_kv, d}, {b, n, s_kv, d}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-            // 2: block_shape
-            {{{2}, {2}}, ge::DT_INT64, ge::FORMAT_ND, (void*)blockShapeData},
-            // 3: post_block_shape
-            {{{-1}, {-1}}, ge::DT_UNDEFINED, ge::FORMAT_ND},
-            // 4: actual_seq_lengths
-            {{{b}, {b}}, ge::DT_INT64, ge::FORMAT_ND, (void*)actualSeqData},
-            // 5: actual_seq_lengths_kv
-            {{{b}, {b}}, ge::DT_INT64, ge::FORMAT_ND, (void*)actualSeqKvData},
-            // 6: actual_block_len_query
-            {{{-1}, {-1}}, ge::DT_UNDEFINED, ge::FORMAT_ND},
-            // 7: actual_block_len_key
-            {{{-1}, {-1}}, ge::DT_UNDEFINED, ge::FORMAT_ND}
-        },
-        {
-            // 0: block_sparse_mask_out
-            {{{b, n, ceilQ, ceilKv}, {b, n, ceilQ, ceilKv}}, ge::DT_INT8, ge::FORMAT_ND}
-        },
-        {
-            {"q_input_layout", Ops::Transformer::AnyValue::CreateFrom<std::string>("BNSD")},
-            {"kv_input_layout", Ops::Transformer::AnyValue::CreateFrom<std::string>("BNSD")},
-            {"num_key_value_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(n)},
-            {"scale_value", Ops::Transformer::AnyValue::CreateFrom<float>(0.088388f)},
-            {"sparsity", Ops::Transformer::AnyValue::CreateFrom<float>(0.25f)}
-        },
+        {// 0: query
+         {{{b, n, s, d}, {b, n, s, d}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         // 1: key
+         {{{b, n, s_kv, d}, {b, n, s_kv, d}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         // 2: block_shape
+         {{{2}, {2}}, ge::DT_INT64, ge::FORMAT_ND, (void *)blockShapeData},
+         // 3: post_block_shape
+         {{{-1}, {-1}}, ge::DT_UNDEFINED, ge::FORMAT_ND},
+         // 4: actual_seq_lengths
+         {{{b}, {b}}, ge::DT_INT64, ge::FORMAT_ND, (void *)actualSeqData},
+         // 5: actual_seq_lengths_kv
+         {{{b}, {b}}, ge::DT_INT64, ge::FORMAT_ND, (void *)actualSeqKvData},
+         // 6: actual_block_len_query
+         {{{-1}, {-1}}, ge::DT_UNDEFINED, ge::FORMAT_ND},
+         // 7: actual_block_len_key
+         {{{-1}, {-1}}, ge::DT_UNDEFINED, ge::FORMAT_ND}},
+        {// 0: block_sparse_mask_out
+         {{{b, n, ceilQ, ceilKv}, {b, n, ceilQ, ceilKv}}, ge::DT_INT8, ge::FORMAT_ND}},
+        {{"q_input_layout", Ops::Transformer::AnyValue::CreateFrom<std::string>("BNSD")},
+         {"kv_input_layout", Ops::Transformer::AnyValue::CreateFrom<std::string>("BNSD")},
+         {"num_key_value_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(n)},
+         {"scale_value", Ops::Transformer::AnyValue::CreateFrom<float>(0.088388f)},
+         {"sparsity", Ops::Transformer::AnyValue::CreateFrom<float>(0.25f)}},
         &compileInfo);
 
     uint64_t expectTilingKey = 1UL;
@@ -159,35 +149,29 @@ TEST_F(BSASelectBlockMaskTilingTest, tiling_bf16_case)
 
     gert::TilingContextPara tilingContextPara(
         "BSASelectBlockMask",
-        {
-            // 0: query (BF16)
-            {{{b, n, s, d}, {b, n, s, d}}, ge::DT_BF16, ge::FORMAT_ND},
-            // 1: key (BF16)
-            {{{b, n, s_kv, d}, {b, n, s_kv, d}}, ge::DT_BF16, ge::FORMAT_ND},
-            // 2: block_shape
-            {{{2}, {2}}, ge::DT_INT64, ge::FORMAT_ND, (void*)blockShapeData},
-            // 3: post_block_shape
-            {{{-1}, {-1}}, ge::DT_UNDEFINED, ge::FORMAT_ND},
-            // 4: actual_seq_lengths
-            {{{b}, {b}}, ge::DT_INT64, ge::FORMAT_ND, (void*)actualSeqData},
-            // 5: actual_seq_lengths_kv
-            {{{b}, {b}}, ge::DT_INT64, ge::FORMAT_ND, (void*)actualSeqKvData},
-            // 6: actual_block_len_query
-            {{{-1}, {-1}}, ge::DT_UNDEFINED, ge::FORMAT_ND},
-            // 7: actual_block_len_key
-            {{{-1}, {-1}}, ge::DT_UNDEFINED, ge::FORMAT_ND}
-        },
-        {
-            // 0: block_sparse_mask_out
-            {{{b, n, ceilQ, ceilKv}, {b, n, ceilQ, ceilKv}}, ge::DT_INT8, ge::FORMAT_ND}
-        },
-        {
-            {"q_input_layout", Ops::Transformer::AnyValue::CreateFrom<std::string>("BNSD")},
-            {"kv_input_layout", Ops::Transformer::AnyValue::CreateFrom<std::string>("BNSD")},
-            {"num_key_value_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(n)},
-            {"scale_value", Ops::Transformer::AnyValue::CreateFrom<float>(0.088388f)},
-            {"sparsity", Ops::Transformer::AnyValue::CreateFrom<float>(0.5f)}
-        },
+        {// 0: query (BF16)
+         {{{b, n, s, d}, {b, n, s, d}}, ge::DT_BF16, ge::FORMAT_ND},
+         // 1: key (BF16)
+         {{{b, n, s_kv, d}, {b, n, s_kv, d}}, ge::DT_BF16, ge::FORMAT_ND},
+         // 2: block_shape
+         {{{2}, {2}}, ge::DT_INT64, ge::FORMAT_ND, (void *)blockShapeData},
+         // 3: post_block_shape
+         {{{-1}, {-1}}, ge::DT_UNDEFINED, ge::FORMAT_ND},
+         // 4: actual_seq_lengths
+         {{{b}, {b}}, ge::DT_INT64, ge::FORMAT_ND, (void *)actualSeqData},
+         // 5: actual_seq_lengths_kv
+         {{{b}, {b}}, ge::DT_INT64, ge::FORMAT_ND, (void *)actualSeqKvData},
+         // 6: actual_block_len_query
+         {{{-1}, {-1}}, ge::DT_UNDEFINED, ge::FORMAT_ND},
+         // 7: actual_block_len_key
+         {{{-1}, {-1}}, ge::DT_UNDEFINED, ge::FORMAT_ND}},
+        {// 0: block_sparse_mask_out
+         {{{b, n, ceilQ, ceilKv}, {b, n, ceilQ, ceilKv}}, ge::DT_INT8, ge::FORMAT_ND}},
+        {{"q_input_layout", Ops::Transformer::AnyValue::CreateFrom<std::string>("BNSD")},
+         {"kv_input_layout", Ops::Transformer::AnyValue::CreateFrom<std::string>("BNSD")},
+         {"num_key_value_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(n)},
+         {"scale_value", Ops::Transformer::AnyValue::CreateFrom<float>(0.088388f)},
+         {"sparsity", Ops::Transformer::AnyValue::CreateFrom<float>(0.5f)}},
         &compileInfo);
 
     uint64_t expectTilingKey = 1UL;
@@ -213,35 +197,29 @@ TEST_F(BSASelectBlockMaskTilingTest, tiling_batch2_case)
 
     gert::TilingContextPara tilingContextPara(
         "BSASelectBlockMask",
-        {
-            // 0: query
-            {{{b, n, s, d}, {b, n, s, d}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-            // 1: key
-            {{{b, n, s_kv, d}, {b, n, s_kv, d}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-            // 2: block_shape
-            {{{2}, {2}}, ge::DT_INT64, ge::FORMAT_ND, (void*)blockShapeData},
-            // 3: post_block_shape
-            {{{-1}, {-1}}, ge::DT_UNDEFINED, ge::FORMAT_ND},
-            // 4: actual_seq_lengths
-            {{{b}, {b}}, ge::DT_INT64, ge::FORMAT_ND, (void*)actualSeqData},
-            // 5: actual_seq_lengths_kv
-            {{{b}, {b}}, ge::DT_INT64, ge::FORMAT_ND, (void*)actualSeqKvData},
-            // 6: actual_block_len_query
-            {{{-1}, {-1}}, ge::DT_UNDEFINED, ge::FORMAT_ND},
-            // 7: actual_block_len_key
-            {{{-1}, {-1}}, ge::DT_UNDEFINED, ge::FORMAT_ND}
-        },
-        {
-            // 0: block_sparse_mask_out
-            {{{b, n, ceilQ, ceilKv}, {b, n, ceilQ, ceilKv}}, ge::DT_INT8, ge::FORMAT_ND}
-        },
-        {
-            {"q_input_layout", Ops::Transformer::AnyValue::CreateFrom<std::string>("BNSD")},
-            {"kv_input_layout", Ops::Transformer::AnyValue::CreateFrom<std::string>("BNSD")},
-            {"num_key_value_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(n)},
-            {"scale_value", Ops::Transformer::AnyValue::CreateFrom<float>(0.088388f)},
-            {"sparsity", Ops::Transformer::AnyValue::CreateFrom<float>(0.75f)}
-        },
+        {// 0: query
+         {{{b, n, s, d}, {b, n, s, d}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         // 1: key
+         {{{b, n, s_kv, d}, {b, n, s_kv, d}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         // 2: block_shape
+         {{{2}, {2}}, ge::DT_INT64, ge::FORMAT_ND, (void *)blockShapeData},
+         // 3: post_block_shape
+         {{{-1}, {-1}}, ge::DT_UNDEFINED, ge::FORMAT_ND},
+         // 4: actual_seq_lengths
+         {{{b}, {b}}, ge::DT_INT64, ge::FORMAT_ND, (void *)actualSeqData},
+         // 5: actual_seq_lengths_kv
+         {{{b}, {b}}, ge::DT_INT64, ge::FORMAT_ND, (void *)actualSeqKvData},
+         // 6: actual_block_len_query
+         {{{-1}, {-1}}, ge::DT_UNDEFINED, ge::FORMAT_ND},
+         // 7: actual_block_len_key
+         {{{-1}, {-1}}, ge::DT_UNDEFINED, ge::FORMAT_ND}},
+        {// 0: block_sparse_mask_out
+         {{{b, n, ceilQ, ceilKv}, {b, n, ceilQ, ceilKv}}, ge::DT_INT8, ge::FORMAT_ND}},
+        {{"q_input_layout", Ops::Transformer::AnyValue::CreateFrom<std::string>("BNSD")},
+         {"kv_input_layout", Ops::Transformer::AnyValue::CreateFrom<std::string>("BNSD")},
+         {"num_key_value_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(n)},
+         {"scale_value", Ops::Transformer::AnyValue::CreateFrom<float>(0.088388f)},
+         {"sparsity", Ops::Transformer::AnyValue::CreateFrom<float>(0.75f)}},
         &compileInfo);
 
     uint64_t expectTilingKey = 1UL;

@@ -54,7 +54,7 @@ enum class AttrIndex : uint32_t {
 ge::graphStatus InferShape4SparseFlashAttentionGrad(gert::InferShapeContext *context)
 {
     OP_CHECK_IF(context == nullptr, OP_LOGE("SparseFlashAttentionGrad", "InferShapeContext is nullptr"),
-               return ge::GRAPH_FAILED);
+                return ge::GRAPH_FAILED);
     OP_LOGD(context, "Enter InferShape4SparseFlashAttentionGrad.");
 
     const gert::Shape *queryShape = context->GetInputShape(static_cast<size_t>(InputIndex::QUERY));
@@ -80,7 +80,7 @@ ge::graphStatus InferShape4SparseFlashAttentionGrad(gert::InferShapeContext *con
     }
     if (inputLayoutSfag != "BSND" && inputLayoutSfag != "TND") {
         OP_LOGE(context, "The SparseFlashAttentionGrad inputLayout should be BSND/TND, but got %s.",
-                  inputLayoutSfag.c_str());
+                inputLayoutSfag.c_str());
         return GRAPH_FAILED;
     }
 
@@ -112,7 +112,7 @@ ge::graphStatus InferShape4SparseFlashAttentionGrad(gert::InferShapeContext *con
 ge::graphStatus InferDataType4SparseFlashAttentionGrad(gert::InferDataTypeContext *context)
 {
     OP_CHECK_IF(context == nullptr, OP_LOGE("SparseFlashAttentionGrad", "InferDataTypeContext is nullptr"),
-               return ge::GRAPH_FAILED);
+                return ge::GRAPH_FAILED);
     OP_LOGD(context, "Enter InferDataType4SparseFlashAttentionGrad.");
 
     auto dtype = context->GetInputDataType(static_cast<size_t>(InputIndex::QUERY));

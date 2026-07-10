@@ -89,8 +89,8 @@ __aicore__ inline size_t BlockAlign(size_t s)
 
 struct PAShape {
     uint32_t blockSize;
-    uint32_t headNum;             // 一般为kv的head num，对应n2
-    uint32_t headDim;             // 512 对应d
+    uint32_t headNum; // 一般为kv的head num，对应n2
+    uint32_t headDim; // 512 对应d
     uint32_t kvStride;
     uint32_t maxblockNumPerBatch; // block table 每一行的最大个数
     uint32_t actHeadDim;          // 实际拷贝col大小,考虑到N切块   s*d, 对应d
@@ -284,7 +284,7 @@ struct ConstInfo {
     uint32_t oriMaxBlockNumPerBatch = 0; // PA场景的最大单batch block number
     uint32_t cmpMaxBlockNumPerBatch = 0;
     uint32_t splitKVNum = 0U; // S2核间切分的切分份数
-    SMLA_LAYOUT outputLayout;  // 输出的Transpose格式
+    SMLA_LAYOUT outputLayout; // 输出的Transpose格式
     uint32_t oriMaskMode = 0;
     uint32_t cmpMaskMode = 0;
     uint64_t oriKvStride0 = 0;

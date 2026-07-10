@@ -1,4 +1,4 @@
-# Recurrent_gated_delta_rule算子测试框架 
+# Recurrent_gated_delta_rule算子测试框架
 
 ## 功能说明
 

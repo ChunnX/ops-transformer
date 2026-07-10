@@ -72,7 +72,7 @@ struct InnerSplitParams {
 };
 
 enum class SparseMode : uint32_t {
-    RIGHT_DOWN_CAUSAL = 3  // 右下角点划分的下三角部分
+    RIGHT_DOWN_CAUSAL = 3 // 右下角点划分的下三角部分
 };
 
 struct AiCoreParams {
@@ -98,9 +98,10 @@ struct SparseLightningIndexerGradKLLossCompileInfo {
     NpuArch npuArch;
 };
 
-template <typename T> inline T Align(T num, T rnd)
+template <typename T>
+inline T Align(T num, T rnd)
 {
-    return (((rnd) == 0) ? 0 : (((num) + (rnd) - 1) / (rnd) * (rnd)));
+    return (((rnd) == 0) ? 0 : (((num) + (rnd)-1) / (rnd) * (rnd)));
 }
 
 } // namespace optiling

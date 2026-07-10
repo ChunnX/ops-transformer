@@ -261,8 +261,8 @@ ge::graphStatus MlaPrologTiling::SetScenarioInfo()
         (scenarioInfo_.cacheMode_ == CACHE_MODE::PA_BLK_BSND || scenarioInfo_.cacheMode_ == CACHE_MODE::PA_BLK_NZ)) {
         OP_CHECK_IF(context_->actualSeqLen.shape == nullptr,
                     OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->opName, "actualSeqLen", "null",
-                                                             "When cacheMode in {PA_BLK_BSND, PA_BLK_NZ} and tokenX "
-                                                             "shape dim num is 2, actualSeqLen should not be null"),
+                                                          "When cacheMode in {PA_BLK_BSND, PA_BLK_NZ} and tokenX "
+                                                          "shape dim num is 2, actualSeqLen should not be null"),
                     return GRAPH_FAILED);
         baseShapeInfo_.bSize = context_->actualSeqLen.shape->GetStorageShape().GetDim(MLA_PROLOG_DIM_INDEX_0);
         scenarioInfo_.actualSeqMode_ = ACTUAL_SEQ_MODE::EN_Q_LEN;
@@ -272,8 +272,8 @@ ge::graphStatus MlaPrologTiling::SetScenarioInfo()
     uint32_t cvRatio = aivNum_ / aicNum_;
     // 当前仅在BS>=8K且数据类型为MXFP8时路由到切M模板，其他情况均路由到切N模板
     scenarioInfo_.splitMFlag_ = 0U;
-    if (scenarioInfo_.weightQuantMode_ == WEIGHT_QUANT_MODE::MXFP8_FULL_QUANT &&
-        baseShapeInfo_.tSize >= 8192 && cvRatio == 2) { // 8192：BS >= 8K
+    if (scenarioInfo_.weightQuantMode_ == WEIGHT_QUANT_MODE::MXFP8_FULL_QUANT && baseShapeInfo_.tSize >= 8192 &&
+        cvRatio == 2) { // 8192：BS >= 8K
         if ((baseShapeInfo_.heSize == HEAD_SIZE1 || baseShapeInfo_.heSize == HEAD_SIZE2) &&
             baseShapeInfo_.nSize == 128) { // 128：N为128时路由到切M模板
             scenarioInfo_.splitMFlag_ = 1U;
@@ -557,7 +557,7 @@ ge::graphStatus MlaPrologTiling::CalcWorkSpace()
     // SplitM非pertile量化场景下 mmQcQrResDequant使用两份workspace
     if (scenarioInfo_.splitMFlag_ == 1U &&
         (scenarioInfo_.quantMode_ == QUANT_MODE::MXFP8_FULL_QUANT_KV_NO_QUANT ||
-        scenarioInfo_.quantMode_ == QUANT_MODE::MXFP8_FULL_QUANT_KV_QUANT_PER_TENSOR)) {
+         scenarioInfo_.quantMode_ == QUANT_MODE::MXFP8_FULL_QUANT_KV_QUANT_PER_TENSOR)) {
         workspaceSize_ += static_cast<size_t>(stepBatchSize_) * static_cast<size_t>(baseShapeInfo_.nSize) *
                           static_cast<size_t>(baseShapeInfo_.dSize) * mm3Mult * static_cast<size_t>(NUM_BYTES_BF16);
     }

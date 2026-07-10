@@ -21,8 +21,8 @@ namespace optiling {
 std::string LayoutToSerialString(FiaLayout layout)
 {
     const std::map<FiaLayout, std::string> layout2Str = {
-        { FiaLayout::BSND, "BSND" },
-        { FiaLayout::BNSD, "BNSD" },
+        {FiaLayout::BSND, "BSND"},
+        {FiaLayout::BNSD, "BNSD"},
     };
 
     if (layout2Str.find(layout) != layout2Str.end()) {

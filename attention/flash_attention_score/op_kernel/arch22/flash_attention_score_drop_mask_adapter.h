@@ -33,7 +33,8 @@ public:
     __aicore__ inline void CopyOut(int64_t offset, int32_t calSize);
     __aicore__ inline void SyncAllCores();
 
-    template <typename T1, typename T2> __aicore__ inline T1 CeilDiv(T1 a, T2 b)
+    template <typename T1, typename T2>
+    __aicore__ inline T1 CeilDiv(T1 a, T2 b)
     {
         if (b == 0) {
             return 0;
@@ -41,7 +42,8 @@ public:
         return (a + b - 1) / b;
     };
 
-    template <typename T1, typename T2> __aicore__ inline T1 Min(T1 a, T2 b)
+    template <typename T1, typename T2>
+    __aicore__ inline T1 Min(T1 a, T2 b)
     {
         return (a > b) ? (b) : (a);
     };
@@ -135,8 +137,9 @@ __aicore__ inline void FlashAttentionScoreDropMaskAdapter::CopyIn(int64_t offset
     dropMaskInputQueue.EnQue(dropMaskUb);
 }
 
-__aicore__ inline void FlashAttentionScoreDropMaskAdapter::Compute(int32_t calSize, 
-                    AscendC::LocalTensor<half> &dropMaskSelSrc, const AscendC::BinaryRepeatParams &binaryRepeatParams)
+__aicore__ inline void
+FlashAttentionScoreDropMaskAdapter::Compute(int32_t calSize, AscendC::LocalTensor<half> &dropMaskSelSrc,
+                                            const AscendC::BinaryRepeatParams &binaryRepeatParams)
 {
     AscendC::LocalTensor<half> dropMaskSelRes = dropMaskSelResTBuf.template Get<half>();
     AscendC::LocalTensor<uint8_t> dropMaskUb = dropMaskInputQueue.template DeQue<uint8_t>();

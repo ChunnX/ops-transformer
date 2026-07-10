@@ -22,8 +22,8 @@ namespace ops {
 constexpr int64_t QKV_INDEX = 0;
 // In-place inputs
 constexpr int64_t Q_OUT_INDEX = 6;
-constexpr int64_t K_CACHE_INDEX = 7;  
-constexpr int64_t V_CACHE_INDEX = 8;    
+constexpr int64_t K_CACHE_INDEX = 7;
+constexpr int64_t V_CACHE_INDEX = 8;
 constexpr int64_t IS_OUTPUT_QKV_IDX = 4;
 
 constexpr size_t OUTPUT_IDX_Q_OUT = 0;
@@ -43,7 +43,7 @@ constexpr int64_t DIM_ONE = 1;
 constexpr int64_t DIM_TWO = 2;
 constexpr int64_t DIM_THREE = 3;
 
-inline ge::graphStatus SetAllUnknownDim(const int64_t rank, gert::Shape* output_shape)
+inline ge::graphStatus SetAllUnknownDim(const int64_t rank, gert::Shape *output_shape)
 {
     output_shape->SetDimNum(rank);
     for (int64_t i = 0; i < rank; ++i) {
@@ -52,43 +52,43 @@ inline ge::graphStatus SetAllUnknownDim(const int64_t rank, gert::Shape* output_
     return ge::GRAPH_SUCCESS;
 }
 
-graphStatus InferShape4QkvRmsNormRopeCache(gert::InferShapeContext* context)
+graphStatus InferShape4QkvRmsNormRopeCache(gert::InferShapeContext *context)
 {
     OP_LOGI(context, "Begin to do InferShape4QkvRmsNormRopeCache.");
 
-    const gert::Shape* qkvInputShape = context->GetInputShape(QKV_INDEX);
+    const gert::Shape *qkvInputShape = context->GetInputShape(QKV_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, qkvInputShape);
-    const gert::Shape* qOutInputShape = context->GetInputShape(Q_OUT_INDEX);
+    const gert::Shape *qOutInputShape = context->GetInputShape(Q_OUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, qOutInputShape);
-    const gert::Shape* kCacheInputShape = context->GetInputShape(K_CACHE_INDEX);
+    const gert::Shape *kCacheInputShape = context->GetInputShape(K_CACHE_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, kCacheInputShape);
-    const gert::Shape* vCacheInputShape = context->GetInputShape(V_CACHE_INDEX);
+    const gert::Shape *vCacheInputShape = context->GetInputShape(V_CACHE_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, vCacheInputShape);
 
-    gert::Shape* qOutShape = context->GetOutputShape(OUTPUT_IDX_Q_OUT);
+    gert::Shape *qOutShape = context->GetOutputShape(OUTPUT_IDX_Q_OUT);
     OP_CHECK_NULL_WITH_CONTEXT(context, qOutShape);
-    gert::Shape* kCacheShape = context->GetOutputShape(OUTPUT_IDX_K_CACHE);
+    gert::Shape *kCacheShape = context->GetOutputShape(OUTPUT_IDX_K_CACHE);
     OP_CHECK_NULL_WITH_CONTEXT(context, kCacheShape);
-    gert::Shape* vCacheShape = context->GetOutputShape(OUTPUT_IDX_V_CACHE);
+    gert::Shape *vCacheShape = context->GetOutputShape(OUTPUT_IDX_V_CACHE);
     OP_CHECK_NULL_WITH_CONTEXT(context, vCacheShape);
-    gert::Shape* qOutProtoShape = context->GetOutputShape(OUTPUT_IDX_Q_OUT_PROTO);
+    gert::Shape *qOutProtoShape = context->GetOutputShape(OUTPUT_IDX_Q_OUT_PROTO);
     OP_CHECK_NULL_WITH_CONTEXT(context, qOutProtoShape);
-    gert::Shape* kCacheProtoShape = context->GetOutputShape(OUTPUT_IDX_K_CACHE_PROTO);
+    gert::Shape *kCacheProtoShape = context->GetOutputShape(OUTPUT_IDX_K_CACHE_PROTO);
     OP_CHECK_NULL_WITH_CONTEXT(context, kCacheProtoShape);
-    gert::Shape* vCacheProtoShape = context->GetOutputShape(OUTPUT_IDX_V_CACHE_PROTO);
+    gert::Shape *vCacheProtoShape = context->GetOutputShape(OUTPUT_IDX_V_CACHE_PROTO);
     OP_CHECK_NULL_WITH_CONTEXT(context, vCacheProtoShape);
-    
+
     int64_t qOutDimSize = qOutInputShape->GetDimNum();
     int64_t qkvDimSize = qkvInputShape->GetDimNum();
-    
+
     auto attrs = context->GetAttrs();
-    const bool* isOutputQkv = attrs->GetBool(IS_OUTPUT_QKV_IDX);
+    const bool *isOutputQkv = attrs->GetBool(IS_OUTPUT_QKV_IDX);
     bool tmp = isOutputQkv == nullptr ? false : *isOutputQkv;
-    
+
     *qOutShape = *qOutInputShape;
     *kCacheShape = *kCacheInputShape;
     *vCacheShape = *vCacheInputShape;
-    if(!tmp){
+    if (!tmp) {
         return GRAPH_SUCCESS;
     }
     *qOutProtoShape = *qOutInputShape;
@@ -117,7 +117,7 @@ graphStatus InferShape4QkvRmsNormRopeCache(gert::InferShapeContext* context)
             return ge::GRAPH_FAILED;
         }
     }
-    
+
     if (!Ops::Base::IsUnknownRank(*kCacheInputShape)) {
         kCacheProtoShape->SetDim(DIM_ONE, kCacheInputShape->GetDim(DIM_ONE) * kCacheInputShape->GetDim(DIM_THREE));
     }
@@ -129,7 +129,7 @@ graphStatus InferShape4QkvRmsNormRopeCache(gert::InferShapeContext* context)
     return GRAPH_SUCCESS;
 }
 
-graphStatus InferDtype4QkvRmsNormRopeCache(gert::InferDataTypeContext* context)
+graphStatus InferDtype4QkvRmsNormRopeCache(gert::InferDataTypeContext *context)
 {
     OP_LOGD(context, "InferShape4QkvRmsNormRopeCache enter");
 

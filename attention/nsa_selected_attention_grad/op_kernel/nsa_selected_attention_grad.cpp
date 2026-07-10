@@ -25,7 +25,7 @@ constexpr static uint32_t TND = 3;
 #define INVOKE_SELECTED_ATTENTION_IMPL(INPUT_TYPE, ATTEN_ENABLE)                                                       \
     do {                                                                                                               \
         TPipe pipeIn;                                                                                                  \
-        SetMaskNorm();                                                                                               \
+        SetMaskNorm();                                                                                                 \
         __gm__ uint8_t *user = GetUserWorkspace(workspace);                                                            \
         GET_TILING_DATA_WITH_STRUCT(NsaSelectedAttentionGradTilingData, tiling_data_in, tiling_data);                  \
         const NsaSelectedAttentionGradTilingData *__restrict tilingData = &tiling_data_in;                             \
@@ -49,10 +49,10 @@ constexpr static uint32_t TND = 3;
         opCast.Process();                                                                                              \
     } while (0)
 
-#define INVOKE_SELECTED_ATTENTION_DETERMINISTIC_IMPL(INPUT_TYPE, ATTEN_ENABLE)                                                       \
+#define INVOKE_SELECTED_ATTENTION_DETERMINISTIC_IMPL(INPUT_TYPE, ATTEN_ENABLE)                                         \
     do {                                                                                                               \
         TPipe pipeIn;                                                                                                  \
-        SetMaskNorm();                                                                                               \
+        SetMaskNorm();                                                                                                 \
         __gm__ uint8_t *user = GetUserWorkspace(workspace);                                                            \
         GET_TILING_DATA_WITH_STRUCT(NsaSelectedAttentionGradTilingData, tiling_data_in, tiling_data);                  \
         const NsaSelectedAttentionGradTilingData *__restrict tilingData = &tiling_data_in;                             \

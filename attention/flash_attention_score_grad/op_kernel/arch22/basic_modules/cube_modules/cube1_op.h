@@ -16,10 +16,9 @@
 #define _CUBE1_OP_H_
 
 template <typename TYPE>
-__aicore__ inline __attribute__((always_inline)) void CubeOp<TYPE>::LoadDataAToL1(LocalTensor<TYPE> dstTensor,
-                                                                                  GlobalTensor<TYPE> srcTensor,
-                                                                                  const int32_t mSize,
-                                                                                  const int32_t kSize)
+__aicore__ inline __attribute__((always_inline)) void
+CubeOp<TYPE>::LoadDataAToL1(LocalTensor<TYPE> dstTensor, GlobalTensor<TYPE> srcTensor, const int32_t mSize,
+                            const int32_t kSize)
 {
     int32_t mSizeAlign = RoundUp(mSize, C0_SIZE);
     commonNd2NzParams.nValue = mSize;
@@ -34,10 +33,9 @@ __aicore__ inline __attribute__((always_inline)) void CubeOp<TYPE>::LoadDataAToL
 }
 
 template <typename TYPE>
-__aicore__ inline __attribute__((always_inline)) void CubeOp<TYPE>::LoadDataBToL1(LocalTensor<TYPE> dstTensor,
-                                                                                  GlobalTensor<TYPE> srcTensor,
-                                                                                  const int32_t nSize,
-                                                                                  const int32_t kSize)
+__aicore__ inline __attribute__((always_inline)) void
+CubeOp<TYPE>::LoadDataBToL1(LocalTensor<TYPE> dstTensor, GlobalTensor<TYPE> srcTensor, const int32_t nSize,
+                            const int32_t kSize)
 {
     int32_t nSizeAlign = RoundUp(nSize, C0_SIZE);
     commonNd2NzParams.nValue = nSize;
@@ -52,12 +50,9 @@ __aicore__ inline __attribute__((always_inline)) void CubeOp<TYPE>::LoadDataBToL
 }
 
 template <typename TYPE>
-__aicore__ inline __attribute__((always_inline)) void CubeOp<TYPE>::LoadDataAToL0(LocalTensor<TYPE> dstTensor,
-                                                                                  LocalTensor<TYPE> srcTensor,
-                                                                                  const int32_t m0,
-                                                                                  const int32_t k0,
-                                                                                  const int32_t mSize,
-                                                                                  const bool skip)
+__aicore__ inline __attribute__((always_inline)) void
+CubeOp<TYPE>::LoadDataAToL0(LocalTensor<TYPE> dstTensor, LocalTensor<TYPE> srcTensor, const int32_t m0,
+                            const int32_t k0, const int32_t mSize, const bool skip)
 {
     int32_t mSizeAlign = RoundUp(mSize, C0_SIZE);
 
@@ -77,8 +72,7 @@ __aicore__ inline __attribute__((always_inline)) void CubeOp<TYPE>::LoadDataAToL
 template <typename TYPE>
 __aicore__ inline __attribute__((always_inline)) void CubeOp<TYPE>::LoadDataBToL0(LocalTensor<TYPE> dstTensor,
                                                                                   LocalTensor<TYPE> srcTensor,
-                                                                                  const int32_t k0,
-                                                                                  const int32_t nSize)
+                                                                                  const int32_t k0, const int32_t nSize)
 {
     int32_t nSizeAlign = RoundUp(nSize, C0_SIZE);
 
@@ -96,12 +90,9 @@ __aicore__ inline __attribute__((always_inline)) void CubeOp<TYPE>::LoadDataBToL
 }
 
 template <typename TYPE>
-__aicore__ inline __attribute__((always_inline)) void CubeOp<TYPE>::Cube1Mmad(LocalTensor<float> dstCTensor,
-                                                                              LocalTensor<TYPE> srcATensor,
-                                                                              LocalTensor<TYPE> srcBTensor,
-                                                                              const int32_t m_mad_,
-                                                                              const int32_t n_mad_,
-                                                                              const bool skip)
+__aicore__ inline __attribute__((always_inline)) void
+CubeOp<TYPE>::Cube1Mmad(LocalTensor<float> dstCTensor, LocalTensor<TYPE> srcATensor, LocalTensor<TYPE> srcBTensor,
+                        const int32_t m_mad_, const int32_t n_mad_, const bool skip)
 {
     if (skip) {
         return;
@@ -117,10 +108,9 @@ __aicore__ inline __attribute__((always_inline)) void CubeOp<TYPE>::Cube1Mmad(Lo
 }
 
 template <typename TYPE>
-__aicore__ inline __attribute__((always_inline)) void CubeOp<TYPE>::Cube1CopyOut(GlobalTensor<float> dstTensor,
-                                                                                 LocalTensor<float> srcTensor,
-                                                                                 const int32_t mSize,
-                                                                                 const int32_t nSize)
+__aicore__ inline __attribute__((always_inline)) void
+CubeOp<TYPE>::Cube1CopyOut(GlobalTensor<float> dstTensor, LocalTensor<float> srcTensor, const int32_t mSize,
+                           const int32_t nSize)
 {
     int32_t mSizeAlign = RoundUp(mSize, C0_SIZE);
     commonFixpipeParamsV220.mSize = mSize;

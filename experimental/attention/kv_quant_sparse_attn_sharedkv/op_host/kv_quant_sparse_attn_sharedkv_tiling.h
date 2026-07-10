@@ -67,7 +67,7 @@ REGISTER_TILING_DATA_CLASS(KvQuantSparseAttnSharedkv, KvQuantSparseAttnSharedkvT
 // ---------------算子Tiling类---------------
 class KvQuantSparseAttnSharedkvTiling {
 public:
-    explicit KvQuantSparseAttnSharedkvTiling(gert::TilingContext *context) : context_(context){};
+    explicit KvQuantSparseAttnSharedkvTiling(gert::TilingContext *context) : context_(context) {};
     ge::graphStatus DoOpTiling(KvQuantSASTilingInfo *tilingInfo);
 
 private:
@@ -81,5 +81,5 @@ private:
     KvQuantSASTilingInfo *sasInfo_ = nullptr;
 };
 
-}
+} // namespace optiling
 #endif

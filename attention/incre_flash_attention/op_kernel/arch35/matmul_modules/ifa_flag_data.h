@@ -17,9 +17,9 @@
 #define IFA_FLAG_DATA_H
 
 struct IFAFlagData {
-  uint64_t tscmIdx : 2;  // query tscm que idx
-  uint64_t tscmReuse : 1;
-  uint64_t rsvd : 61;  // 保留
+    uint64_t tscmIdx   : 2; // query tscm que idx
+    uint64_t tscmReuse : 1;
+    uint64_t rsvd      : 61; // 保留
 };
 
-#endif  // IFA_FLAG_DATA_H
+#endif // IFA_FLAG_DATA_H

@@ -110,6 +110,6 @@ REG_OP(FlashAttentionScore)
     .ATTR(out_dtype, Int, 0)
     .ATTR(softmax_out_layout, String, "")
     .OP_END_FACTORY_REG(FlashAttentionScore)
-}  // namespace ge
+} // namespace ge
 
-#endif  // FLASH_ATTENTION_SCORE_PROTO_H_
+#endif // FLASH_ATTENTION_SCORE_PROTO_H_

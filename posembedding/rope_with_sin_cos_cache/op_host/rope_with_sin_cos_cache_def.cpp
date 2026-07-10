@@ -15,10 +15,9 @@
 #include "register/op_def_registry.h"
 
 namespace ops {
-class RopeWithSinCosCache : public OpDef
-{
+class RopeWithSinCosCache : public OpDef {
 public:
-    explicit RopeWithSinCosCache(const char* name) : OpDef(name)
+    explicit RopeWithSinCosCache(const char *name) : OpDef(name)
     {
         this->Input("positions")
             .ParamType(REQUIRED)
@@ -58,7 +57,7 @@ public:
         this->Attr("kStride").AttrType(OPTIONAL).Int(0);
         this->Attr("isNeoxStyle").AttrType(OPTIONAL).Bool(true);
         this->Attr("cacheMode").AttrType(OPTIONAL).Int(0);
-        
+
         OpAICoreConfig membaseCfg;
         membaseCfg.DynamicCompileStaticFlag(true)
             .DynamicRankSupportFlag(true)
@@ -66,7 +65,7 @@ public:
             .ExtendCfgInfo("opFile.value", "rope_with_sin_cos_cache");
         this->AICore().AddConfig("ascend910b", membaseCfg);
         this->AICore().AddConfig("ascend910_93", membaseCfg);
-        
+
         OpAICoreConfig regbaseCfg;
         regbaseCfg.DynamicCompileStaticFlag(true)
             .DynamicRankSupportFlag(true)

@@ -81,8 +81,8 @@ private:
 
 template <typename T>
 __aicore__ inline void MoeGatherOutHif8Quant<T>::Init(GM_ADDR x, GM_ADDR workspace, GM_ADDR expandedRowIdx,
-                                             GM_ADDR expandedX,
-                                             const MoeInitRoutingV3Arch35TilingData *tilingData, TPipe *tPipe)
+                                                      GM_ADDR expandedX,
+                                                      const MoeInitRoutingV3Arch35TilingData *tilingData, TPipe *tPipe)
 {
     pipe_ = tPipe;
     blockIdx_ = GetBlockIdx();
@@ -122,9 +122,9 @@ __aicore__ inline void MoeGatherOutHif8Quant<T>::Init(GM_ADDR x, GM_ADDR workspa
     curCoreLastLoopIndicesElements_ = curCoreIndicesElements_ - (indicesLoops_ - 1) * curCorePerLoopIndicesElements_;
 
     xGm_.SetGlobalBuffer((__gm__ T *)x, n_ * cols_);
-    
+
     expandedXGm_.SetGlobalBuffer((__gm__ hifloat8_t *)expandedX + blockIdx_ * perCoreIndicesElements_ * cols_,
-                                    curCoreIndicesElements_ * cols_);
+                                 curCoreIndicesElements_ * cols_);
 
     pipe_->InitBuffer(expandedRowIdxCopyInQueue_, GATHER_HIF8_QUANT_BUFFER_NUM,
                       AlignBytes(curCorePerLoopIndicesElements_, sizeof(int32_t)));

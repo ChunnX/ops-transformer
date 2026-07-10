@@ -28,15 +28,15 @@ using namespace op;
 
 namespace {
 constexpr int64_t kT = 128;
-constexpr int64_t kN1 = 4;          // query head_num
-constexpr int64_t kN2 = 2;          // kv head_num   (G = kN1 / kN2 = 2)
+constexpr int64_t kN1 = 4; // query head_num
+constexpr int64_t kN2 = 2; // kv head_num   (G = kN1 / kN2 = 2)
 constexpr int64_t kQueryD = 128;
 constexpr int64_t kValueD = 128;
 constexpr int64_t kCompressBlockSize = 32;
 constexpr int64_t kCompressStride = 16;
 constexpr int64_t kSelectedBlockSize = 64;
-constexpr int64_t kSelectedBlockCount = 4;     // (kT / kSelectedBlockSize) == 2 valid values
-}  // namespace
+constexpr int64_t kSelectedBlockCount = 4; // (kT / kSelectedBlockSize) == 2 valid values
+} // namespace
 
 class nsa_compress_attention_opapi_ut : public testing::Test {
 protected:
@@ -76,33 +76,13 @@ TEST_F(nsa_compress_attention_opapi_ut, nsa_compress_attention_aclnn_0)
     auto tensorAttentionOut = TensorDesc({kT, kN1, kValueD}, ACL_FLOAT16, ACL_FORMAT_ND);
     auto tensorTopkIndicesOut = TensorDesc({kT, kN2, kSelectedBlockCount}, ACL_INT32, ACL_FORMAT_ND);
 
-    auto ut = OP_API_UT(
-        aclnnNsaCompressAttention,
-        INPUT(
-            tensorQ,
-            tensorK,
-            tensorV,
-            nullptr,            // attenMaskOptional
-            nullptr,            // topkMaskOptional
-            actualSeqQLen,
-            actualCmpSeqKvLen,
-            actualSelSeqKvLen,
-            scaleValue,
-            headNum,
-            layout,
-            sparseMode,
-            kCompressBlockSize,
-            kCompressStride,
-            kSelectedBlockSize,
-            kSelectedBlockCount
-        ),
-        OUTPUT(
-            tensorSoftmaxMax,
-            tensorSoftmaxSum,
-            tensorAttentionOut,
-            tensorTopkIndicesOut
-        )
-    );
+    auto ut = OP_API_UT(aclnnNsaCompressAttention,
+                        INPUT(tensorQ, tensorK, tensorV,
+                              nullptr, // attenMaskOptional
+                              nullptr, // topkMaskOptional
+                              actualSeqQLen, actualCmpSeqKvLen, actualSelSeqKvLen, scaleValue, headNum, layout,
+                              sparseMode, kCompressBlockSize, kCompressStride, kSelectedBlockSize, kSelectedBlockCount),
+                        OUTPUT(tensorSoftmaxMax, tensorSoftmaxSum, tensorAttentionOut, tensorTopkIndicesOut));
 
     uint64_t workspaceSize = 0;
     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspaceSize);
@@ -129,33 +109,11 @@ TEST_F(nsa_compress_attention_opapi_ut, nsa_compress_attention_aclnn_bf16)
     auto tensorAttentionOut = TensorDesc({kT, kN1, kValueD}, ACL_BF16, ACL_FORMAT_ND);
     auto tensorTopkIndicesOut = TensorDesc({kT, kN2, kSelectedBlockCount}, ACL_INT32, ACL_FORMAT_ND);
 
-    auto ut = OP_API_UT(
-        aclnnNsaCompressAttention,
-        INPUT(
-            tensorQ,
-            tensorK,
-            tensorV,
-            nullptr,
-            nullptr,
-            actualSeqQLen,
-            actualCmpSeqKvLen,
-            actualSelSeqKvLen,
-            scaleValue,
-            headNum,
-            layout,
-            sparseMode,
-            kCompressBlockSize,
-            kCompressStride,
-            kSelectedBlockSize,
-            kSelectedBlockCount
-        ),
-        OUTPUT(
-            tensorSoftmaxMax,
-            tensorSoftmaxSum,
-            tensorAttentionOut,
-            tensorTopkIndicesOut
-        )
-    );
+    auto ut = OP_API_UT(aclnnNsaCompressAttention,
+                        INPUT(tensorQ, tensorK, tensorV, nullptr, nullptr, actualSeqQLen, actualCmpSeqKvLen,
+                              actualSelSeqKvLen, scaleValue, headNum, layout, sparseMode, kCompressBlockSize,
+                              kCompressStride, kSelectedBlockSize, kSelectedBlockCount),
+                        OUTPUT(tensorSoftmaxMax, tensorSoftmaxSum, tensorAttentionOut, tensorTopkIndicesOut));
 
     uint64_t workspaceSize = 0;
     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspaceSize);
@@ -184,33 +142,13 @@ TEST_F(nsa_compress_attention_opapi_ut, nsa_compress_attention_aclnn_varlen)
     auto tensorAttentionOut = TensorDesc({kT, kN1, kValueD}, ACL_FLOAT16, ACL_FORMAT_ND);
     auto tensorTopkIndicesOut = TensorDesc({kT, kN2, kSelectedBlockCount}, ACL_INT32, ACL_FORMAT_ND);
 
-    auto ut = OP_API_UT(
-        aclnnNsaCompressAttention,
-        INPUT(
-            tensorQ,
-            tensorK,
-            tensorV,
-            nullptr,            // attenMaskOptional
-            nullptr,            // topkMaskOptional
-            actualSeqQLen,
-            actualCmpSeqKvLen,
-            actualSelSeqKvLen,
-            scaleValue,
-            headNum,
-            layout,
-            sparseMode,
-            kCompressBlockSize,
-            kCompressStride,
-            kSelectedBlockSize,
-            kSelectedBlockCount
-        ),
-        OUTPUT(
-            tensorSoftmaxMax,
-            tensorSoftmaxSum,
-            tensorAttentionOut,
-            tensorTopkIndicesOut
-        )
-    );
+    auto ut = OP_API_UT(aclnnNsaCompressAttention,
+                        INPUT(tensorQ, tensorK, tensorV,
+                              nullptr, // attenMaskOptional
+                              nullptr, // topkMaskOptional
+                              actualSeqQLen, actualCmpSeqKvLen, actualSelSeqKvLen, scaleValue, headNum, layout,
+                              sparseMode, kCompressBlockSize, kCompressStride, kSelectedBlockSize, kSelectedBlockCount),
+                        OUTPUT(tensorSoftmaxMax, tensorSoftmaxSum, tensorAttentionOut, tensorTopkIndicesOut));
 
     uint64_t workspaceSize = 0;
     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspaceSize);
@@ -239,33 +177,13 @@ TEST_F(nsa_compress_attention_opapi_ut, nsa_compress_attention_aclnn_with_topk_m
     auto tensorAttentionOut = TensorDesc({kT, kN1, kValueD}, ACL_FLOAT16, ACL_FORMAT_ND);
     auto tensorTopkIndicesOut = TensorDesc({kT, kN2, kSelectedBlockCount}, ACL_INT32, ACL_FORMAT_ND);
 
-    auto ut = OP_API_UT(
-        aclnnNsaCompressAttention,
-        INPUT(
-            tensorQ,
-            tensorK,
-            tensorV,
-            nullptr,            // attenMaskOptional
-            tensorTopkMask,
-            actualSeqQLen,
-            actualCmpSeqKvLen,
-            actualSelSeqKvLen,
-            scaleValue,
-            headNum,
-            layout,
-            sparseMode,
-            kCompressBlockSize,
-            kCompressStride,
-            kSelectedBlockSize,
-            kSelectedBlockCount
-        ),
-        OUTPUT(
-            tensorSoftmaxMax,
-            tensorSoftmaxSum,
-            tensorAttentionOut,
-            tensorTopkIndicesOut
-        )
-    );
+    auto ut = OP_API_UT(aclnnNsaCompressAttention,
+                        INPUT(tensorQ, tensorK, tensorV,
+                              nullptr, // attenMaskOptional
+                              tensorTopkMask, actualSeqQLen, actualCmpSeqKvLen, actualSelSeqKvLen, scaleValue, headNum,
+                              layout, sparseMode, kCompressBlockSize, kCompressStride, kSelectedBlockSize,
+                              kSelectedBlockCount),
+                        OUTPUT(tensorSoftmaxMax, tensorSoftmaxSum, tensorAttentionOut, tensorTopkIndicesOut));
 
     uint64_t workspaceSize = 0;
     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspaceSize);
@@ -285,7 +203,7 @@ TEST_F(nsa_compress_attention_opapi_ut, nsa_compress_attention_aclnn_invalid_lay
 
     const double scaleValue = 0.088388;
     const int64_t headNum = kN1;
-    char layout[] = "BSH";              // not TND -> aclnn must reject
+    char layout[] = "BSH"; // not TND -> aclnn must reject
     const int64_t sparseMode = 0;
 
     auto tensorSoftmaxMax = TensorDesc({kT, kN1, 8}, ACL_FLOAT, ACL_FORMAT_ND);
@@ -293,33 +211,11 @@ TEST_F(nsa_compress_attention_opapi_ut, nsa_compress_attention_aclnn_invalid_lay
     auto tensorAttentionOut = TensorDesc({kT, kN1, kValueD}, ACL_FLOAT16, ACL_FORMAT_ND);
     auto tensorTopkIndicesOut = TensorDesc({kT, kN2, kSelectedBlockCount}, ACL_INT32, ACL_FORMAT_ND);
 
-    auto ut = OP_API_UT(
-        aclnnNsaCompressAttention,
-        INPUT(
-            tensorQ,
-            tensorK,
-            tensorV,
-            nullptr,
-            nullptr,
-            actualSeqQLen,
-            actualCmpSeqKvLen,
-            actualSelSeqKvLen,
-            scaleValue,
-            headNum,
-            layout,
-            sparseMode,
-            kCompressBlockSize,
-            kCompressStride,
-            kSelectedBlockSize,
-            kSelectedBlockCount
-        ),
-        OUTPUT(
-            tensorSoftmaxMax,
-            tensorSoftmaxSum,
-            tensorAttentionOut,
-            tensorTopkIndicesOut
-        )
-    );
+    auto ut = OP_API_UT(aclnnNsaCompressAttention,
+                        INPUT(tensorQ, tensorK, tensorV, nullptr, nullptr, actualSeqQLen, actualCmpSeqKvLen,
+                              actualSelSeqKvLen, scaleValue, headNum, layout, sparseMode, kCompressBlockSize,
+                              kCompressStride, kSelectedBlockSize, kSelectedBlockCount),
+                        OUTPUT(tensorSoftmaxMax, tensorSoftmaxSum, tensorAttentionOut, tensorTopkIndicesOut));
 
     uint64_t workspaceSize = 0;
     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspaceSize);

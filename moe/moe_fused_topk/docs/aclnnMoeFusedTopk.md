@@ -51,7 +51,7 @@
     $$
     y = y / (ReduceSum(y, dim=-1))*scale
     $$
-    
+
     如果enableExpertMapping为true，再将indices中的物理专家按照输入的mappingNum和mappingTable映射到逻辑专家，得到输出的indices。
 
 ## 函数原型
@@ -60,29 +60,29 @@
 
 ```Cpp
 aclnnMoeFusedTopkGetWorkspaceSize(
-  const aclTensor* x, 
-  const aclTensor* addNum, 
-  const aclTensor* mappingNum, 
-  const aclTensor* mappingTable, 
-  uint32_t         groupNum, 
-  uint32_t         groupTopk, 
-  uint32_t         topN, 
-  uint32_t         topK, 
-  uint32_t         activateType, 
-  bool             isNorm, 
-  float            scale, 
-  bool             enableExpertMapping, 
-  aclTensor*       y, 
-  aclTensor*       indices, 
-  uint64_t*        workspaceSize, 
+  const aclTensor* x,
+  const aclTensor* addNum,
+  const aclTensor* mappingNum,
+  const aclTensor* mappingTable,
+  uint32_t         groupNum,
+  uint32_t         groupTopk,
+  uint32_t         topN,
+  uint32_t         topK,
+  uint32_t         activateType,
+  bool             isNorm,
+  float            scale,
+  bool             enableExpertMapping,
+  aclTensor*       y,
+  aclTensor*       indices,
+  uint64_t*        workspaceSize,
   aclOpExecutor**  executor)
 ```
 
 ```Cpp
 aclnnStatus aclnnMoeFusedTopk(
-  void*          workspace, 
-  uint64_t       workspaceSize, 
-  aclOpExecutor* executor, 
+  void*          workspace,
+  uint64_t       workspaceSize,
+  aclOpExecutor* executor,
   aclrtStream    stream)
 ```
 

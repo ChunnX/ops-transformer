@@ -27,7 +27,7 @@
   $$
   expandedX[i]=x[sortedRowIdx[i]\%numRows]
   $$
-    
+
 ## 参数说明
 
   <table style="table-layout: auto; width: 100%">

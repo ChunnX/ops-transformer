@@ -44,7 +44,7 @@ using AscendC::Nd2NzParams;
 // BUFFER_NUM 是指K Buffer流水方案中每个模块的重复执行次数
 #define BUFFER_NUM 2
 
-#define KV_INPUT_QUEUE_SIZE  BUFFER_SIZE_BYTE_16K
+#define KV_INPUT_QUEUE_SIZE BUFFER_SIZE_BYTE_16K
 struct ExtraInfo {
     uint64_t bIdx = 0;
     uint64_t n1Idx = 0;
@@ -67,7 +67,7 @@ struct ExtraInfo {
     bool isFirstSInnerLoop = false;
     uint8_t keyAntiquantResScmIdx = 0;
     uint8_t valueAntiquantResScmIdx = 0;
-    uint64_t s2BatchOffset = 0;  // For Flash Decode
+    uint64_t s2BatchOffset = 0; // For Flash Decode
     uint32_t flashDecodeS2Idx;
     uint32_t sInnerLoopTimes;
     uint64_t kvPaddingBeginOffset;
@@ -83,22 +83,22 @@ struct TaskContext {
 };
 
 template <typename IFAT>
-class IncreFlashAttentionAntiqSplitBbn2s2Us2
-{
+class IncreFlashAttentionAntiqSplitBbn2s2Us2 {
 public:
     __aicore__ inline IncreFlashAttentionAntiqSplitBbn2s2Us2(
-        const optiling::IncreFlashAttentionTilingDataRegbase& __restrict tilingData);
-    __aicore__ inline void Init(__gm__ uint8_t* query, __gm__ uint8_t* key, __gm__ uint8_t* value, __gm__ uint8_t* pseShift,
-                                __gm__ uint8_t* attenMask, __gm__ uint8_t* actualSeqLengthsQ, __gm__ uint8_t* actualSeqLengths,
-                                __gm__ uint8_t* blockTable, __gm__ uint8_t* queryPaddingSize, __gm__ uint8_t* kvPaddingSize,
-                                __gm__ uint8_t* attentionOut, __gm__ uint8_t* softmaxLse, __gm__ uint8_t* workspace,
-                                const optiling::IncreFlashAttentionTilingDataRegbase* __restrict tiling, TPipe* tPipe);
-    __aicore__ inline void InitQuant(__gm__ uint8_t* deqScale1, __gm__ uint8_t* quantScale1, __gm__ uint8_t* deqScale2,
-                                     __gm__ uint8_t* quantScale2, __gm__ uint8_t* quantOffset2,
-                                     __gm__ uint8_t* antiquantScale, __gm__ uint8_t* antiquantOffset,
-                                     __gm__ uint8_t* keyAntiquantScale, __gm__ uint8_t* keyAntiquantOffset,
-                                     __gm__ uint8_t* valueAntiquantScale, __gm__ uint8_t* valueAntiquantOffset,
-                                     __gm__ uint8_t* workspace);
+        const optiling::IncreFlashAttentionTilingDataRegbase &__restrict tilingData);
+    __aicore__ inline void Init(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
+                                __gm__ uint8_t *pseShift, __gm__ uint8_t *attenMask, __gm__ uint8_t *actualSeqLengthsQ,
+                                __gm__ uint8_t *actualSeqLengths, __gm__ uint8_t *blockTable,
+                                __gm__ uint8_t *queryPaddingSize, __gm__ uint8_t *kvPaddingSize,
+                                __gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxLse, __gm__ uint8_t *workspace,
+                                const optiling::IncreFlashAttentionTilingDataRegbase *__restrict tiling, TPipe *tPipe);
+    __aicore__ inline void InitQuant(__gm__ uint8_t *deqScale1, __gm__ uint8_t *quantScale1, __gm__ uint8_t *deqScale2,
+                                     __gm__ uint8_t *quantScale2, __gm__ uint8_t *quantOffset2,
+                                     __gm__ uint8_t *antiquantScale, __gm__ uint8_t *antiquantOffset,
+                                     __gm__ uint8_t *keyAntiquantScale, __gm__ uint8_t *keyAntiquantOffset,
+                                     __gm__ uint8_t *valueAntiquantScale, __gm__ uint8_t *valueAntiquantOffset,
+                                     __gm__ uint8_t *workspace);
     __aicore__ inline void Process();
 
     using T = float;
@@ -120,21 +120,22 @@ public:
     static constexpr bool KVFP4 = (IsSameType<KV_T, fp4x2_e1m2_t>::value || IsSameType<KV_T, fp4x2_e2m1_t>::value);
 
     // 目前只有FP4支持per group,所以使用数据类型判断
-    static constexpr bool ANTIQUANT_PER_GROUP = (IsSameType<KV_T, fp4x2_e1m2_t>::value
-        || IsSameType<KV_T, fp4x2_e2m1_t>::value);
+    static constexpr bool ANTIQUANT_PER_GROUP =
+        (IsSameType<KV_T, fp4x2_e1m2_t>::value || IsSameType<KV_T, fp4x2_e2m1_t>::value);
 
-    static constexpr bool PAGE_ATTENTION_ANTIQUANT = (IFAT::antiquantMode == ANTIQUANTMODE::PER_TOKEN_PAGE_ATTENTION
-        || IFAT::antiquantMode == ANTIQUANTMODE::PER_TOKEN_HEAD_PAGE_ATTENTION
-    );
-    static constexpr bool KEY_ANTIQUANT_PER_TOKEN = (IFAT::antiquantMode == ANTIQUANTMODE::PER_TOKEN
-        || IFAT::antiquantMode == ANTIQUANTMODE::PER_TOKEN_PAGE_ATTENTION 
-        || IFAT::antiquantMode == ANTIQUANTMODE::PER_TOKEN_HEAD_PAGE_ATTENTION
-    );
-    static constexpr bool VALUE_ANTIQUANT_PER_TOKEN = (IFAT::antiquantMode == ANTIQUANTMODE::PER_TOKEN 
-        || IFAT::antiquantMode == ANTIQUANTMODE::PER_TOKEN_PAGE_ATTENTION
-        || IFAT::antiquantMode == ANTIQUANTMODE::PER_TOKEN_HEAD_PAGE_ATTENTION 
-        || IFAT::antiquantMode == ANTIQUANTMODE::K_PER_CHANNEL_V_PER_TOKEN // split antiquant mode
-    );
+    static constexpr bool PAGE_ATTENTION_ANTIQUANT =
+        (IFAT::antiquantMode == ANTIQUANTMODE::PER_TOKEN_PAGE_ATTENTION ||
+         IFAT::antiquantMode == ANTIQUANTMODE::PER_TOKEN_HEAD_PAGE_ATTENTION);
+    static constexpr bool KEY_ANTIQUANT_PER_TOKEN =
+        (IFAT::antiquantMode == ANTIQUANTMODE::PER_TOKEN ||
+         IFAT::antiquantMode == ANTIQUANTMODE::PER_TOKEN_PAGE_ATTENTION ||
+         IFAT::antiquantMode == ANTIQUANTMODE::PER_TOKEN_HEAD_PAGE_ATTENTION);
+    static constexpr bool VALUE_ANTIQUANT_PER_TOKEN =
+        (IFAT::antiquantMode == ANTIQUANTMODE::PER_TOKEN ||
+         IFAT::antiquantMode == ANTIQUANTMODE::PER_TOKEN_PAGE_ATTENTION ||
+         IFAT::antiquantMode == ANTIQUANTMODE::PER_TOKEN_HEAD_PAGE_ATTENTION ||
+         IFAT::antiquantMode == ANTIQUANTMODE::K_PER_CHANNEL_V_PER_TOKEN // split antiquant mode
+        );
     using KEY_ANTIQ_PARAMS_T = typename std::conditional<KEY_ANTIQUANT_PER_TOKEN, T, Q_T>::type;
     using VALUE_ANTIQ_PARAMS_T = typename std::conditional<VALUE_ANTIQUANT_PER_TOKEN, T, Q_T>::type;
 
@@ -190,11 +191,11 @@ public:
     Vec2Processor<IFAT> vec2Processor;
 
 protected:
-    const optiling::IncreFlashAttentionTilingDataRegbase* __restrict tilingData;
-    TPipe* pipe;
+    const optiling::IncreFlashAttentionTilingDataRegbase *__restrict tilingData;
+    TPipe *pipe;
 
-    __gm__ uint8_t* keyPtr;
-    __gm__ uint8_t* valuePtr;
+    __gm__ uint8_t *keyPtr;
+    __gm__ uint8_t *valuePtr;
 
     GlobalTensor<Q_T> queryGm;
     GlobalTensor<KV_T> keyGm;
@@ -220,16 +221,16 @@ protected:
     GlobalTensor<int64_t> kvPaddingSizeGm;
 
     // tilingData
-    const uint32_t& batchSize;
-    const uint32_t& kvHeadNum;
-    const uint32_t& qHeadNum;
-    const uint32_t& gSize;
-    const uint32_t& headNumRatio;
-    const uint32_t& headDim;
-    const uint32_t& kvSeqSize;
-    const uint32_t& qSeqSize;
-    const uint32_t& actualLenDims;
-    const uint32_t& actualLenQDims;
+    const uint32_t &batchSize;
+    const uint32_t &kvHeadNum;
+    const uint32_t &qHeadNum;
+    const uint32_t &gSize;
+    const uint32_t &headNumRatio;
+    const uint32_t &headDim;
+    const uint32_t &kvSeqSize;
+    const uint32_t &qSeqSize;
+    const uint32_t &actualLenDims;
+    const uint32_t &actualLenQDims;
 
     uint32_t curNIdx = 0;
     uint32_t curBIdx = 0;
@@ -244,8 +245,8 @@ protected:
     uint32_t headNum;
     uint32_t sInnerStartIndex = 0;
 
-    const uint32_t& batchContinuous;
-    const uint32_t& singleProcessSInnerSize;
+    const uint32_t &batchContinuous;
+    const uint32_t &singleProcessSInnerSize;
 
     uint32_t sInnerLoopTimes;
     uint32_t sOuterLoopEnd;
@@ -254,47 +255,47 @@ protected:
     uint32_t actualSInnerLoopSize;
     uint32_t singleProcessSInnerSizeTail;
 
-    const uint32_t& blockSplitBn2Range;
-    const uint32_t& tailBlockSplitBn2Range;
-    const uint32_t& usedCoreNum;
-    const uint32_t& formerCoreNum;
-    const uint32_t* coreStartIdx;
-    const uint32_t* coreSposStartIdx;
-    const uint32_t& splitKVNum;
-    const uint32_t& antiquantPerTensorFlag;
-    const uint32_t& antiquantPerHeadFlag;
+    const uint32_t &blockSplitBn2Range;
+    const uint32_t &tailBlockSplitBn2Range;
+    const uint32_t &usedCoreNum;
+    const uint32_t &formerCoreNum;
+    const uint32_t *coreStartIdx;
+    const uint32_t *coreSposStartIdx;
+    const uint32_t &splitKVNum;
+    const uint32_t &antiquantPerTensorFlag;
+    const uint32_t &antiquantPerHeadFlag;
 
-    const uint32_t& attenMaskBatch;
-    const uint32_t& attenMaskQSize;
-    const uint32_t& attenMaskKVSize;
-    const uint32_t& sparseMode;
-    const int32_t& preToken;
-    const int32_t& nextToken;
-    const uint32_t& isRowInvalid;
-    const uint32_t& selectWithByteMaskTmpMinSize;
+    const uint32_t &attenMaskBatch;
+    const uint32_t &attenMaskQSize;
+    const uint32_t &attenMaskKVSize;
+    const uint32_t &sparseMode;
+    const int32_t &preToken;
+    const int32_t &nextToken;
+    const uint32_t &isRowInvalid;
+    const uint32_t &selectWithByteMaskTmpMinSize;
 
     int64_t preTokenPerBatch = 0;
     int64_t nextTokenPerBatch = 0;
     int64_t nextTokenInvalidOffset = 0;
 
-    const uint32_t& pseShiftB;
-    const uint32_t& pseShiftS;
-    const uint32_t& pseShiftS0;
+    const uint32_t &pseShiftB;
+    const uint32_t &pseShiftS;
+    const uint32_t &pseShiftS0;
 
-    const uint32_t& qPaddingFlag;
-    const uint32_t& kvPaddingFlag;
-    const uint32_t& isPerChnU8Out;
-    const uint32_t& isOutQuantTypeBf16;
+    const uint32_t &qPaddingFlag;
+    const uint32_t &kvPaddingFlag;
+    const uint32_t &isPerChnU8Out;
+    const uint32_t &isOutQuantTypeBf16;
     bool softmaxLseFlag = false;
 
-    const uint32_t& antiqSeqSize;
+    const uint32_t &antiqSeqSize;
 
-    const uint32_t& paKvShapeType;  // pa场景下kv的shape, 0:(BBH) 1:(BNBD)
-    const uint32_t& kvCacheBlockSize = 0;
-    const uint32_t& maxBlockNumPerSeq = 0;
+    const uint32_t &paKvShapeType; // pa场景下kv的shape, 0:(BBH) 1:(BNBD)
+    const uint32_t &kvCacheBlockSize = 0;
+    const uint32_t &maxBlockNumPerSeq = 0;
 
     uint32_t tmpBlockIdx;
-    uint32_t subBlockIdx;      // aicore内 vector核id
+    uint32_t subBlockIdx; // aicore内 vector核id
 
     uint32_t beforeBlockSplitBnNums;
     uint32_t bnNums = 1;
@@ -336,7 +337,7 @@ protected:
     TQue<QuePosition::VECIN, 1> keyAntiqOffsetInputQue;
     TQue<QuePosition::VECIN, 1> valueAntiqScaleInputQue;
     TQue<QuePosition::VECIN, 1> valueAntiqOffsetInputQue;
-    TBuf<> kvAntiqMxScaleRes;  // for w4
+    TBuf<> kvAntiqMxScaleRes; // for w4
 
     TQue<QuePosition::VECIN, 1> maskInputQue;
     TQue<QuePosition::VECIN, 1> pseInputQue;
@@ -379,17 +380,16 @@ protected:
     __aicore__ inline void InitValueGm(uint32_t bIdx);
     __aicore__ inline void SetLoopTimes();
     __aicore__ inline void UpdateSOuterLoopEnd(uint32_t bnIdx);
-    __aicore__ inline void UpdateZeroActualSeqLen(uint32_t bIdx, uint64_t& paddingBeginOffset,
-                                                  uint32_t& loopTimes, uint64_t& actualSeqLen);
-    __aicore__ inline void UpdateZeroActualSeqLenPFA(uint32_t bIdx, uint64_t& paddingBeginOffset,
-                                                     uint32_t& loopTimes, uint64_t& actualSeqLen,
-                                                     uint64_t s1Idx, int64_t preTokenPerBatch,
-                                                     int64_t nextTokenPerBatch, uint32_t& sInnerStartIndex);
+    __aicore__ inline void UpdateZeroActualSeqLen(uint32_t bIdx, uint64_t &paddingBeginOffset, uint32_t &loopTimes,
+                                                  uint64_t &actualSeqLen);
+    __aicore__ inline void UpdateZeroActualSeqLenPFA(uint32_t bIdx, uint64_t &paddingBeginOffset, uint32_t &loopTimes,
+                                                     uint64_t &actualSeqLen, uint64_t s1Idx, int64_t preTokenPerBatch,
+                                                     int64_t nextTokenPerBatch, uint32_t &sInnerStartIndex);
     __aicore__ inline void DealActualSeqLenIsZero(uint32_t bnIdx);
     __aicore__ inline void InitAllZeroOutput(uint32_t bnIdx);
-    __aicore__ inline void GetQueryActualSeqLen(uint32_t bIdx, uint64_t& qActualSeqLen);
-    __aicore__ inline void GetActualSeqLen(uint32_t bIdx, uint64_t& actualSeqLen);
-    __aicore__ inline bool ComputePaddingBeginOffset(uint64_t actualSeqLen, uint64_t& paddingBeginOffset,
+    __aicore__ inline void GetQueryActualSeqLen(uint32_t bIdx, uint64_t &qActualSeqLen);
+    __aicore__ inline void GetActualSeqLen(uint32_t bIdx, uint64_t &actualSeqLen);
+    __aicore__ inline bool ComputePaddingBeginOffset(uint64_t actualSeqLen, uint64_t &paddingBeginOffset,
                                                      bool paddingFlag, int64_t seqLen);
     __aicore__ inline void InitQueryLeftPaddingData();
     __aicore__ inline void InitLeftPaddingData();
@@ -397,19 +397,20 @@ protected:
     __aicore__ inline void InitLseOutputSingleCore();
 
     __aicore__ inline void GetBNId(uint32_t bnIdx);
-    __aicore__ inline void CalcParams(uint32_t loop, TaskContext& task);
+    __aicore__ inline void CalcParams(uint32_t loop, TaskContext &task);
 
-    __aicore__ inline void CalcPreNextTokenPerBatch(int64_t& preTokenPerBatch,
-        int64_t& nextTokenPerBatch, uint64_t curQueryActualSeqLen, uint64_t curActualSeqLen);
-    __aicore__ inline void FixParamWithRowInvalid(int64_t& preTokenPerBatch, int64_t& nextTokenPerBatch,
-        int64_t& nextTokenInvalidOffset, uint64_t& curQueryActualSeqLen, uint64_t curActualSeqLen);
+    __aicore__ inline void CalcPreNextTokenPerBatch(int64_t &preTokenPerBatch, int64_t &nextTokenPerBatch,
+                                                    uint64_t curQueryActualSeqLen, uint64_t curActualSeqLen);
+    __aicore__ inline void FixParamWithRowInvalid(int64_t &preTokenPerBatch, int64_t &nextTokenPerBatch,
+                                                  int64_t &nextTokenInvalidOffset, uint64_t &curQueryActualSeqLen,
+                                                  uint64_t curActualSeqLen);
     __aicore__ inline int64_t ClipSInnerToken(int64_t sInnerToken, int64_t minValue, int64_t maxValue);
-    __aicore__ inline uint64_t CalcAttenMaskCoreOffset(uint64_t bIdx, uint64_t s1Idx,
-        uint64_t qPaddingBeginOffset, uint64_t kvPaddingBeginOffset);
+    __aicore__ inline uint64_t CalcAttenMaskCoreOffset(uint64_t bIdx, uint64_t s1Idx, uint64_t qPaddingBeginOffset,
+                                                       uint64_t kvPaddingBeginOffset);
     __aicore__ inline uint64_t CalcAttenMaskOffset(uint64_t attenMaskCoreOffset, uint64_t s2Idx, uint64_t s1Idx,
-        int64_t nextTokenPerBatch, int64_t nextTokenInvalidOffset);
+                                                   int64_t nextTokenPerBatch, int64_t nextTokenInvalidOffset);
     __aicore__ inline uint64_t CalcAttenMaskOffsetPre(uint64_t attenMaskCoreOffset, uint64_t s2Idx, uint64_t s1Idx,
-        int64_t preTokenPerBatch);
+                                                      int64_t preTokenPerBatch);
 
     __aicore__ inline void AntiquantKey(uint32_t loop);
     __aicore__ inline void AntiquantValue(uint32_t loop);
@@ -422,19 +423,19 @@ protected:
     __aicore__ inline void Vector2(uint32_t loop);
     __aicore__ inline void Update(uint32_t loop);
 
-    __aicore__ inline void Bmm2DataCopyOut(uint64_t attenOutOffset, LocalTensor<OUT_T>& attenOutUb, uint32_t startRow,
+    __aicore__ inline void Bmm2DataCopyOut(uint64_t attenOutOffset, LocalTensor<OUT_T> &attenOutUb, uint32_t startRow,
                                            uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount);
     __aicore__ inline void CopyLseIn(uint32_t bIdx, uint32_t n2Idx, uint32_t startRow, uint32_t dealRowCount);
-    __aicore__ inline void CopyFinalResOut(uint64_t attenOutOffset, LocalTensor<T>& accumOutLocal, uint32_t startRow,
+    __aicore__ inline void CopyFinalResOut(uint64_t attenOutOffset, LocalTensor<T> &accumOutLocal, uint32_t startRow,
                                            uint32_t dealRowCount);
     __aicore__ inline void CopyAccumOutIn(uint32_t bIdx, uint32_t n2Idx, uint32_t splitKVIndex, uint32_t startRow,
                                           uint32_t dealRowCount);
-    __aicore__ inline void ReduceFinalRes(uint32_t bIdx, uint32_t n2Idx, LocalTensor<T>& dst, LocalTensor<T>& lseLocal,
+    __aicore__ inline void ReduceFinalRes(uint32_t bIdx, uint32_t n2Idx, LocalTensor<T> &dst, LocalTensor<T> &lseLocal,
                                           uint32_t startRow, uint32_t dealRowCount);
     __aicore__ inline void CombineSplitKVRes(uint64_t attenOutOffset, uint32_t bIdx, uint32_t n2Idx);
-    
-    __aicore__ inline void ComputeScaleValue(LocalTensor<T> lseMaxUb, LocalTensor<T> lseSumUb, 
-                                             uint32_t splitSize, uint64_t lseOffset);
+
+    __aicore__ inline void ComputeScaleValue(LocalTensor<T> lseMaxUb, LocalTensor<T> lseSumUb, uint32_t splitSize,
+                                             uint64_t lseOffset);
     __aicore__ inline void FlashDecodeCompute();
 
     __aicore__ inline uint64_t SeqLenFromTensorList(uint32_t bIdx);
@@ -442,65 +443,49 @@ protected:
 
 template <typename IFAT>
 __aicore__ inline IncreFlashAttentionAntiqSplitBbn2s2Us2<IFAT>::IncreFlashAttentionAntiqSplitBbn2s2Us2(
-    const optiling::IncreFlashAttentionTilingDataRegbase& __restrict tilingData)
+    const optiling::IncreFlashAttentionTilingDataRegbase &__restrict tilingData)
     : singleProcessSInnerSize(tilingData.increFlashAttentionSingleCoreParams.singleProcessSInnerSize),
       usedCoreNum(tilingData.increFlashAttentionSingleCoreParams.usedCoreNum),
       formerCoreNum(tilingData.increFlashAttentionSingleCoreParams.formerCoreNum),
       blockSplitBn2Range(tilingData.increFlashAttentionSingleCoreParams.blockSplitBn2Range),
       tailBlockSplitBn2Range(tilingData.increFlashAttentionSingleCoreParams.tailSplitedBatchRange),
-      splitKVNum(tilingData.splitKVParams.s2),
-      batchSize(tilingData.baseParams.batchSize),
-      kvHeadNum(tilingData.baseParams.kvHeadNum),
-      qHeadNum(tilingData.baseParams.qHeadNum),
-      headNumRatio(tilingData.baseParams.headNumRatio),
-      gSize(tilingData.baseParams.nNumOfQInOneGroup),
-      qSeqSize(tilingData.baseParams.qSeqSize),
-      kvSeqSize(tilingData.baseParams.seqSize),
-      actualLenQDims(tilingData.baseParams.actualLenQDims),
-      actualLenDims(tilingData.baseParams.actualLenDims),
-      headDim(tilingData.baseParams.headSize),
-      batchContinuous(tilingData.baseParams.batchContinuousFlag),
+      splitKVNum(tilingData.splitKVParams.s2), batchSize(tilingData.baseParams.batchSize),
+      kvHeadNum(tilingData.baseParams.kvHeadNum), qHeadNum(tilingData.baseParams.qHeadNum),
+      headNumRatio(tilingData.baseParams.headNumRatio), gSize(tilingData.baseParams.nNumOfQInOneGroup),
+      qSeqSize(tilingData.baseParams.qSeqSize), kvSeqSize(tilingData.baseParams.seqSize),
+      actualLenQDims(tilingData.baseParams.actualLenQDims), actualLenDims(tilingData.baseParams.actualLenDims),
+      headDim(tilingData.baseParams.headSize), batchContinuous(tilingData.baseParams.batchContinuousFlag),
       coreStartIdx(tilingData.increFlashAttentionCoreParams.coreSidxEndRegbase),
       coreSposStartIdx(tilingData.increFlashAttentionCoreParams.coreSposStartRegbase),
       // msdIterNum(tilingData.baseParams.msdIterNum),
       antiquantPerTensorFlag(tilingData.baseParams.antiquantPerTensorFlag),
       antiquantPerHeadFlag(tilingData.baseParams.antiquantPerHeadFlag),
-      attenMaskBatch(tilingData.baseParams.attenMaskBatch),
-      attenMaskQSize(tilingData.baseParams.attenMaskQSize),
-      attenMaskKVSize(tilingData.baseParams.attenMaskSize),
-      sparseMode(tilingData.baseParams.sparseMode),
-      preToken(tilingData.baseParams.preToken),
-      nextToken(tilingData.baseParams.nextToken),
+      attenMaskBatch(tilingData.baseParams.attenMaskBatch), attenMaskQSize(tilingData.baseParams.attenMaskQSize),
+      attenMaskKVSize(tilingData.baseParams.attenMaskSize), sparseMode(tilingData.baseParams.sparseMode),
+      preToken(tilingData.baseParams.preToken), nextToken(tilingData.baseParams.nextToken),
       isRowInvalid(tilingData.baseParams.isRowInvalid),
       selectWithByteMaskTmpMinSize(tilingData.baseParams.selectWithByteMaskTmpMinSize),
-      pseShiftB(tilingData.baseParams.pseShiftB),
-      pseShiftS0(tilingData.baseParams.pseShiftS0),
-      pseShiftS(tilingData.baseParams.pseShiftS),
-      qPaddingFlag(tilingData.baseParams.qPaddingFlag),
-      kvPaddingFlag(tilingData.baseParams.kvPaddingFlag),
-      isPerChnU8Out(tilingData.outputParams.isPerChnOut),
-      isOutQuantTypeBf16(tilingData.outputParams.isOutQuantTypeBf16),
-      antiqSeqSize(tilingData.baseParams.antiqSeqSize),
-      paKvShapeType(tilingData.baseParams.paKvShapeType),
-      kvCacheBlockSize(tilingData.baseParams.blockSize),
-      maxBlockNumPerSeq(tilingData.baseParams.maxBlockNumPerSeq),
-      softmaxLseFlag(tilingData.baseParams.softmaxLseFlag),
+      pseShiftB(tilingData.baseParams.pseShiftB), pseShiftS0(tilingData.baseParams.pseShiftS0),
+      pseShiftS(tilingData.baseParams.pseShiftS), qPaddingFlag(tilingData.baseParams.qPaddingFlag),
+      kvPaddingFlag(tilingData.baseParams.kvPaddingFlag), isPerChnU8Out(tilingData.outputParams.isPerChnOut),
+      isOutQuantTypeBf16(tilingData.outputParams.isOutQuantTypeBf16), antiqSeqSize(tilingData.baseParams.antiqSeqSize),
+      paKvShapeType(tilingData.baseParams.paKvShapeType), kvCacheBlockSize(tilingData.baseParams.blockSize),
+      maxBlockNumPerSeq(tilingData.baseParams.maxBlockNumPerSeq), softmaxLseFlag(tilingData.baseParams.softmaxLseFlag),
       totalOutputSize(tilingData.outputParams.totalOutputSize),
       totalLseOutputSize(tilingData.outputParams.totalLseOutputSize),
       singleCoreSize(tilingData.outputParams.singleCoreSize),
-      singleCoreLseSize(tilingData.outputParams.singleCoreLseSize),
-      needInit(tilingData.outputParams.needInit),
+      singleCoreLseSize(tilingData.outputParams.singleCoreLseSize), needInit(tilingData.outputParams.needInit),
       isBSNDOut(tilingData.outputParams.isBSNDOut)
 {
 }
 
 template <typename IFAT>
 __aicore__ inline void IncreFlashAttentionAntiqSplitBbn2s2Us2<IFAT>::Init(
-    __gm__ uint8_t* query, __gm__ uint8_t* key, __gm__ uint8_t* value, __gm__ uint8_t* pseShift,
-    __gm__ uint8_t* attenMask, __gm__ uint8_t* actualSeqLengthsQ, __gm__ uint8_t* actualSeqLengths,
-    __gm__ uint8_t* blockTable, __gm__ uint8_t* queryPaddingSize, __gm__ uint8_t* kvPaddingSize,
-    __gm__ uint8_t* attentionOut, __gm__ uint8_t* softmaxLse, __gm__ uint8_t* workspace,
-    const optiling::IncreFlashAttentionTilingDataRegbase* __restrict tiling, TPipe* tPipe)
+    __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *pseShift,
+    __gm__ uint8_t *attenMask, __gm__ uint8_t *actualSeqLengthsQ, __gm__ uint8_t *actualSeqLengths,
+    __gm__ uint8_t *blockTable, __gm__ uint8_t *queryPaddingSize, __gm__ uint8_t *kvPaddingSize,
+    __gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxLse, __gm__ uint8_t *workspace,
+    const optiling::IncreFlashAttentionTilingDataRegbase *__restrict tiling, TPipe *tPipe)
 {
     tmpBlockIdx = GetBlockIdx();
     subBlockIdx = tmpBlockIdx % 2;
@@ -517,7 +502,7 @@ __aicore__ inline void IncreFlashAttentionAntiqSplitBbn2s2Us2<IFAT>::Init(
     }
 
     pipe = tPipe;
-    queryGm.SetGlobalBuffer((__gm__ Q_T*)query);
+    queryGm.SetGlobalBuffer((__gm__ Q_T *)query);
 
     keyPtr = key;
     valuePtr = value;
@@ -527,19 +512,19 @@ __aicore__ inline void IncreFlashAttentionAntiqSplitBbn2s2Us2<IFAT>::Init(
         InitValueGm(0);
     }
 
-    attentionOutGm.SetGlobalBuffer((__gm__ OUT_T*)attentionOut);
+    attentionOutGm.SetGlobalBuffer((__gm__ OUT_T *)attentionOut);
     if constexpr (ATTEN_MASK) {
-        attenMaskGm.SetGlobalBuffer((__gm__ uint8_t*)attenMask);
+        attenMaskGm.SetGlobalBuffer((__gm__ uint8_t *)attenMask);
     }
     if constexpr (PSE_SHIFT) {
-        pseShiftGm.SetGlobalBuffer((__gm__ PSE_SHIFT_T*)pseShift);
+        pseShiftGm.SetGlobalBuffer((__gm__ PSE_SHIFT_T *)pseShift);
     }
     if (softmaxLseFlag) {
-        softmaxLseGm.SetGlobalBuffer((__gm__ T*)softmaxLse);
+        softmaxLseGm.SetGlobalBuffer((__gm__ T *)softmaxLse);
     }
 
     if constexpr (PAGE_ATTENTION) {
-        blockTableGm.SetGlobalBuffer((__gm__ int32_t*)blockTable);
+        blockTableGm.SetGlobalBuffer((__gm__ int32_t *)blockTable);
     }
 
     tilingData = tiling;
@@ -549,44 +534,44 @@ __aicore__ inline void IncreFlashAttentionAntiqSplitBbn2s2Us2<IFAT>::Init(
 
     uint64_t offset = 0;
     if constexpr (FLASH_DECODE) {
-        accumOutGm.SetGlobalBuffer((__gm__ T*)(workspace + offset));
+        accumOutGm.SetGlobalBuffer((__gm__ T *)(workspace + offset));
         offset = offset + tilingData->splitKVParams.accumOutSize * sizeof(T);
-        softmaxMaxGm.SetGlobalBuffer((__gm__ T*)(workspace + offset));
+        softmaxMaxGm.SetGlobalBuffer((__gm__ T *)(workspace + offset));
         offset = offset + tilingData->splitKVParams.logSumExpSize * sizeof(T);
-        softmaxSumGm.SetGlobalBuffer((__gm__ T*)(workspace + offset));
+        softmaxSumGm.SetGlobalBuffer((__gm__ T *)(workspace + offset));
         offset = offset + tilingData->splitKVParams.logSumExpSize * sizeof(T);
     }
     if constexpr (!FLASH_DECODE) {
         if (actualLenQDims != 0) {
-            actualSeqLengthsQGm.SetGlobalBuffer((__gm__ uint64_t*)actualSeqLengthsQ, actualLenQDims);
+            actualSeqLengthsQGm.SetGlobalBuffer((__gm__ uint64_t *)actualSeqLengthsQ, actualLenQDims);
         }
         if (needInit) {
-           InitOutputSingleCore();
-           if (softmaxLseFlag) {
-            InitLseOutputSingleCore();
-           }
+            InitOutputSingleCore();
+            if (softmaxLseFlag) {
+                InitLseOutputSingleCore();
+            }
         }
         if (qPaddingFlag == 1) {
-            queryPaddingSizeGm.SetGlobalBuffer((__gm__ int64_t*) queryPaddingSize);
+            queryPaddingSizeGm.SetGlobalBuffer((__gm__ int64_t *)queryPaddingSize);
             InitQueryLeftPaddingData();
         }
     }
     if (actualLenDims != 0) {
-        actualSeqLengthsGm.SetGlobalBuffer((__gm__ uint64_t*)actualSeqLengths, actualLenDims);
+        actualSeqLengthsGm.SetGlobalBuffer((__gm__ uint64_t *)actualSeqLengths, actualLenDims);
     }
-    
+
     if (kvPaddingFlag == 1) {
-        kvPaddingSizeGm.SetGlobalBuffer((__gm__ int64_t*) kvPaddingSize);
+        kvPaddingSizeGm.SetGlobalBuffer((__gm__ int64_t *)kvPaddingSize);
         InitLeftPaddingData();
     }
 }
 
 template <typename IFAT>
 __aicore__ inline void IncreFlashAttentionAntiqSplitBbn2s2Us2<IFAT>::InitQuant(
-    __gm__ uint8_t* deqScale1, __gm__ uint8_t* quantScale1, __gm__ uint8_t* deqScale2, __gm__ uint8_t* quantScale2,
-    __gm__ uint8_t* quantOffset2, __gm__ uint8_t* antiquantScale, __gm__ uint8_t* antiquantOffset,
-    __gm__ uint8_t* keyAntiquantScale, __gm__ uint8_t* keyAntiquantOffset, __gm__ uint8_t* valueAntiquantScale,
-    __gm__ uint8_t* valueAntiquantOffset, __gm__ uint8_t* workspace)
+    __gm__ uint8_t *deqScale1, __gm__ uint8_t *quantScale1, __gm__ uint8_t *deqScale2, __gm__ uint8_t *quantScale2,
+    __gm__ uint8_t *quantOffset2, __gm__ uint8_t *antiquantScale, __gm__ uint8_t *antiquantOffset,
+    __gm__ uint8_t *keyAntiquantScale, __gm__ uint8_t *keyAntiquantOffset, __gm__ uint8_t *valueAntiquantScale,
+    __gm__ uint8_t *valueAntiquantOffset, __gm__ uint8_t *workspace)
 {
     if constexpr (ANTIQUANT) {
         if (keyAntiquantScale == nullptr) {
@@ -601,20 +586,21 @@ __aicore__ inline void IncreFlashAttentionAntiqSplitBbn2s2Us2<IFAT>::InitQuant(
             if (antiquantPerTensorFlag) {
                 antiValueOffsetInitPos = 1;
             }
-            keyAntiqScaleGm.SetGlobalBuffer((__gm__ KEY_ANTIQ_PARAMS_T*)antiquantScale);
-            valueAntiqScaleGm.SetGlobalBuffer(((__gm__ VALUE_ANTIQ_PARAMS_T*)antiquantScale) + antiValueOffsetInitPos);
+            keyAntiqScaleGm.SetGlobalBuffer((__gm__ KEY_ANTIQ_PARAMS_T *)antiquantScale);
+            valueAntiqScaleGm.SetGlobalBuffer(((__gm__ VALUE_ANTIQ_PARAMS_T *)antiquantScale) + antiValueOffsetInitPos);
             antiqOffsetExistFlag = (antiquantOffset != nullptr);
             if (antiqOffsetExistFlag) {
-                keyAntiquantOffsetGm.SetGlobalBuffer((__gm__ KEY_ANTIQ_PARAMS_T*)antiquantOffset);
-                valueAntiquantOffsetGm.SetGlobalBuffer(((__gm__ VALUE_ANTIQ_PARAMS_T*)antiquantOffset) + antiValueOffsetInitPos);
+                keyAntiquantOffsetGm.SetGlobalBuffer((__gm__ KEY_ANTIQ_PARAMS_T *)antiquantOffset);
+                valueAntiquantOffsetGm.SetGlobalBuffer(((__gm__ VALUE_ANTIQ_PARAMS_T *)antiquantOffset) +
+                                                       antiValueOffsetInitPos);
             }
         } else {
-            keyAntiqScaleGm.SetGlobalBuffer((__gm__ KEY_ANTIQ_PARAMS_T*)keyAntiquantScale);
-            valueAntiqScaleGm.SetGlobalBuffer((__gm__ VALUE_ANTIQ_PARAMS_T*)valueAntiquantScale);
+            keyAntiqScaleGm.SetGlobalBuffer((__gm__ KEY_ANTIQ_PARAMS_T *)keyAntiquantScale);
+            valueAntiqScaleGm.SetGlobalBuffer((__gm__ VALUE_ANTIQ_PARAMS_T *)valueAntiquantScale);
             antiqOffsetExistFlag = (keyAntiquantOffset != nullptr);
             if (antiqOffsetExistFlag) {
-                keyAntiquantOffsetGm.SetGlobalBuffer((__gm__ KEY_ANTIQ_PARAMS_T*)keyAntiquantOffset);
-                valueAntiquantOffsetGm.SetGlobalBuffer((__gm__ VALUE_ANTIQ_PARAMS_T*)valueAntiquantOffset);
+                keyAntiquantOffsetGm.SetGlobalBuffer((__gm__ KEY_ANTIQ_PARAMS_T *)keyAntiquantOffset);
+                valueAntiquantOffsetGm.SetGlobalBuffer((__gm__ VALUE_ANTIQ_PARAMS_T *)valueAntiquantOffset);
             }
         }
     }
@@ -624,11 +610,11 @@ template <typename IFAT>
 __aicore__ inline void IncreFlashAttentionAntiqSplitBbn2s2Us2<IFAT>::InitTilingData()
 {
     isPFABSH = LAYOUT_T == LAYOUT::BSH && qSeqSize > 1;
-    headDimAlignFp32 = ALIGN((uint64_t)headDim, BYTE_BLOCK / sizeof(T));  // 32B对齐
+    headDimAlignFp32 = ALIGN((uint64_t)headDim, BYTE_BLOCK / sizeof(T)); // 32B对齐
     headDimAlignBlock = ALIGN((uint64_t)headDim, BYTE_BLOCK / sizeof(Q_T));
-    tensorAStride = isPFABSH? qHeadNum * headDim : headDim; // IFAqs=1时Q不区分BSH与BNSD
+    tensorAStride = isPFABSH ? qHeadNum * headDim : headDim; // IFAqs=1时Q不区分BSH与BNSD
     tensorBStride = (LAYOUT_T == LAYOUT::BNSD) ? headDim : kvHeadNum * headDim;
-    attenOutStride = isBSNDOut? qHeadNum * headDim : tensorAStride;
+    attenOutStride = isBSNDOut ? qHeadNum * headDim : tensorAStride;
     headNum = qSeqSize > 1 ? qHeadNum : kvHeadNum;
 }
 
@@ -677,19 +663,20 @@ __aicore__ inline void IncreFlashAttentionAntiqSplitBbn2s2Us2<IFAT>::InitBuffers
                 pipe->InitBuffer(maskInputQue, 1, PROFILE.G * PROFILE.S); // 基本块大小 * sizeof(bool/int8/uint8)
             }
         } else {
-            pipe->InitBuffer(maskInputQue, 1, BUFFER_SIZE_BYTE_1K); // ATTEN_MASK与G无关，仅需申请 S2*sizeof(uint8_t)即可
+            pipe->InitBuffer(maskInputQue, 1,
+                             BUFFER_SIZE_BYTE_1K); // ATTEN_MASK与G无关，仅需申请 S2*sizeof(uint8_t)即可
         }
     }
     if constexpr (PSE_SHIFT) {
         pipe->InitBuffer(pseInputQue, 1, PROFILE.G * PROFILE.S * sizeof(Q_T));
     }
     // 尽量一次初始化一大块。
-    uint32_t maxValue = MAX(PROFILE.S, PROFILE.D);  // bmm1, bmm2复用输出内存, 大小取D分档和S分档中较大的值
+    uint32_t maxValue = MAX(PROFILE.S, PROFILE.D); // bmm1, bmm2复用输出内存, 大小取D分档和S分档中较大的值
     pipe->InitBuffer(entireMmResBuffer, PROFILE.G * maxValue * sizeof(T) * BUFFER_NUM);
     mmResultBufferArray[0] = entireMmResBuffer.GetWithOffset<T>(PROFILE.G * maxValue, 0);
     mmResultBufferArray[1] = entireMmResBuffer.GetWithOffset<T>(PROFILE.G * maxValue, PROFILE.G * maxValue * sizeof(T));
 
-    pipe->InitBuffer(softmaxResOutputQue, 1, (PROFILE.G + 1) * PROFILE.S * sizeof(Q_T));  // 加1是为了解bank冲突
+    pipe->InitBuffer(softmaxResOutputQue, 1, (PROFILE.G + 1) * PROFILE.S * sizeof(Q_T)); // 加1是为了解bank冲突
     pipe->InitBuffer(updateResOutputQue, 1, PROFILE.G * PROFILE.D * sizeof(T));
     pipe->InitBuffer(softmaxLseOutputQue, 1, BUFFER_SIZE_BYTE_512B);
 
@@ -717,11 +704,10 @@ __aicore__ inline void IncreFlashAttentionAntiqSplitBbn2s2Us2<IFAT>::InitFDBuffe
 template <typename IFAT>
 __aicore__ inline void IncreFlashAttentionAntiqSplitBbn2s2Us2<IFAT>::InitL1Buffers()
 {
-    uint32_t kvAntiquantResBytes =
-        ALIGN((uint32_t)singleProcessSInnerSize, 16U) * PROFILE.D * sizeof(Q_T);  // 正常64K
+    uint32_t kvAntiquantResBytes = ALIGN((uint32_t)singleProcessSInnerSize, 16U) * PROFILE.D * sizeof(Q_T); // 正常64K
     // 当前伪量化模板，左矩阵类型Q_T为fp16或bf16，L1需要16元素对齐（注：D=64且使能pse，PROFILE.G为8）
     uint32_t queryBytes = FP16_ONE_BLOCK_SIZE * PROFILE.D * sizeof(Q_T);
-     // 当前伪量化模板，左矩阵类型Q_T为fp16或bf16，L1需要16元素对齐，每行大小是PROFILE.S
+    // 当前伪量化模板，左矩阵类型Q_T为fp16或bf16，L1需要16元素对齐，每行大小是PROFILE.S
     uint32_t mm2ABytes = FP16_ONE_BLOCK_SIZE * PROFILE.S * sizeof(Q_T);
 
     for (uint32_t i = 0; i < BUFFER_NUM; i++) {
@@ -739,9 +725,11 @@ template <typename IFAT>
 __aicore__ inline void IncreFlashAttentionAntiqSplitBbn2s2Us2<IFAT>::InitCalcParamsEach()
 {
     bnNums = ((coreStartIdx[tmpBlockIdx + 1] - coreStartIdx[tmpBlockIdx]) > 0 || qSeqSize == 1) ?
-       (coreStartIdx[tmpBlockIdx + 1] - coreStartIdx[tmpBlockIdx]) : 1; // PFA需要对Q的S方向分核，多个核会共b/n
+                 (coreStartIdx[tmpBlockIdx + 1] - coreStartIdx[tmpBlockIdx]) :
+                 1; // PFA需要对Q的S方向分核，多个核会共b/n
     bnNums += (coreSposStartIdx[tmpBlockIdx + 1] != 0 && coreStartIdx[tmpBlockIdx + 1] != coreStartIdx[tmpBlockIdx]) ?
-        1 : 0; // PFA分核时会跨b/n取s，这时需要加1
+                  1 :
+                  0; // PFA分核时会跨b/n取s，这时需要加1
     beforeBlockSplitBnNums = coreStartIdx[tmpBlockIdx];
     curBIdx = beforeBlockSplitBnNums / headNum;
     curNIdx = beforeBlockSplitBnNums % headNum;
@@ -759,8 +747,8 @@ __aicore__ inline void IncreFlashAttentionAntiqSplitBbn2s2Us2<IFAT>::InitAllZero
 {
     uint32_t dealRow = qSeqSize == 1 ? gSize : qSeqSize;
     uint32_t copySize = dealRow * headDim;
-    if constexpr (POST_QUANT) {  // out int8
-                                 //
+    if constexpr (POST_QUANT) { // out int8
+                                //
     } else {
         matmul::InitOutput<OUT_T>(attentionOutGm[bnIdx * copySize], copySize, 0);
     }
@@ -780,7 +768,7 @@ __aicore__ inline void IncreFlashAttentionAntiqSplitBbn2s2Us2<IFAT>::InitAllZero
     }
 }
 
-template<typename IFAT>
+template <typename IFAT>
 __aicore__ inline void IncreFlashAttentionAntiqSplitBbn2s2Us2<IFAT>::InitOutputSingleCore()
 {
     uint32_t tailSize = totalOutputSize - tmpBlockIdx * singleCoreSize;
@@ -789,7 +777,7 @@ __aicore__ inline void IncreFlashAttentionAntiqSplitBbn2s2Us2<IFAT>::InitOutputS
     SyncAll();
 }
 
-template<typename IFAT>
+template <typename IFAT>
 __aicore__ inline void IncreFlashAttentionAntiqSplitBbn2s2Us2<IFAT>::InitLseOutputSingleCore()
 {
     uint32_t tailSize = totalLseOutputSize - tmpBlockIdx * singleCoreLseSize;
@@ -800,7 +788,7 @@ __aicore__ inline void IncreFlashAttentionAntiqSplitBbn2s2Us2<IFAT>::InitLseOutp
 
 template <typename IFAT>
 __aicore__ inline void IncreFlashAttentionAntiqSplitBbn2s2Us2<IFAT>::GetQueryActualSeqLen(uint32_t bIdx,
-                                                                                     uint64_t& qActualSeqLen)
+                                                                                          uint64_t &qActualSeqLen)
 {
     if (actualLenQDims == 0) {
         qActualSeqLen = qSeqSize;
@@ -813,7 +801,7 @@ __aicore__ inline void IncreFlashAttentionAntiqSplitBbn2s2Us2<IFAT>::GetQueryAct
 
 template <typename IFAT>
 __aicore__ inline void IncreFlashAttentionAntiqSplitBbn2s2Us2<IFAT>::GetActualSeqLen(uint32_t bIdx,
-                                                                                     uint64_t& actualSeqLen)
+                                                                                     uint64_t &actualSeqLen)
 {
     if (actualLenDims == 0) {
         actualSeqLen = kvSeqSize;
@@ -828,17 +816,15 @@ __aicore__ inline void IncreFlashAttentionAntiqSplitBbn2s2Us2<IFAT>::GetActualSe
 }
 
 template <typename IFAT>
-__aicore__ inline bool IncreFlashAttentionAntiqSplitBbn2s2Us2<IFAT>::ComputePaddingBeginOffset(uint64_t actualSeqLen,
-                                                                                                uint64_t& paddingBeginOffset,
-                                                                                                bool paddingFlag,
-                                                                                                int64_t seqLen)
+__aicore__ inline bool IncreFlashAttentionAntiqSplitBbn2s2Us2<IFAT>::ComputePaddingBeginOffset(
+    uint64_t actualSeqLen, uint64_t &paddingBeginOffset, bool paddingFlag, int64_t seqLen)
 {
     if (paddingFlag != 1) {
         return true;
     }
 
     int64_t startPosition = seqLen - static_cast<int64_t>(actualSeqLen);
-    
+
     if (startPosition < 0) {
         return false;
     }
@@ -850,17 +836,17 @@ __aicore__ inline bool IncreFlashAttentionAntiqSplitBbn2s2Us2<IFAT>::ComputePadd
 template <typename IFAT>
 __aicore__ inline void IncreFlashAttentionAntiqSplitBbn2s2Us2<IFAT>::InitKeyGm(uint32_t bIdx)
 {
-    ListTensorDesc keyListTensorDesc((__gm__ void*)keyPtr);
-    __gm__ uint8_t* key_ = (__gm__ uint8_t*)keyListTensorDesc.GetDataPtr<__gm__ uint8_t>(bIdx);
-    keyGm.SetGlobalBuffer((__gm__ KV_T*)key_);
+    ListTensorDesc keyListTensorDesc((__gm__ void *)keyPtr);
+    __gm__ uint8_t *key_ = (__gm__ uint8_t *)keyListTensorDesc.GetDataPtr<__gm__ uint8_t>(bIdx);
+    keyGm.SetGlobalBuffer((__gm__ KV_T *)key_);
 }
 
 template <typename IFAT>
 __aicore__ inline void IncreFlashAttentionAntiqSplitBbn2s2Us2<IFAT>::InitValueGm(uint32_t bIdx)
 {
-    ListTensorDesc valueListTensorDesc((__gm__ void*)valuePtr);
-    __gm__ uint8_t* value_ = (__gm__ uint8_t*)valueListTensorDesc.GetDataPtr<__gm__ uint8_t>(bIdx);
-    valueGm.SetGlobalBuffer((__gm__ KV_T*)value_);
+    ListTensorDesc valueListTensorDesc((__gm__ void *)valuePtr);
+    __gm__ uint8_t *value_ = (__gm__ uint8_t *)valueListTensorDesc.GetDataPtr<__gm__ uint8_t>(bIdx);
+    valueGm.SetGlobalBuffer((__gm__ KV_T *)value_);
 }
 
 template <typename IFAT>
@@ -872,14 +858,15 @@ __aicore__ inline void IncreFlashAttentionAntiqSplitBbn2s2Us2<IFAT>::SetLoopTime
     if constexpr (FLASH_DECODE) {
         GetActualSeqLen(tmpBlockIdx / (kvHeadNum * splitKVNum), curActualSeqLen);
         sInnerLoopSize = (kvSeqSize + splitKVNum - 1) / splitKVNum;
-        if constexpr (PAGE_ATTENTION_ANTIQUANT) {  // PA管理伪量化参数时，dstOffset必须32B对齐
+        if constexpr (PAGE_ATTENTION_ANTIQUANT) { // PA管理伪量化参数时，dstOffset必须32B对齐
             sInnerLoopSize = ALIGN((uint64_t)sInnerLoopSize, BYTE_BLOCK / sizeof(T));
         }
         if (sInnerLoopSize * (tmpBlockIdx % splitKVNum) > curActualSeqLen) {
             actualSInnerLoopSize = 0;
         } else {
-            actualSInnerLoopSize = (curActualSeqLen - sInnerLoopSize * (tmpBlockIdx % splitKVNum)) > sInnerLoopSize ? 
-                                    sInnerLoopSize : (curActualSeqLen - sInnerLoopSize * (tmpBlockIdx % splitKVNum));
+            actualSInnerLoopSize = (curActualSeqLen - sInnerLoopSize * (tmpBlockIdx % splitKVNum)) > sInnerLoopSize ?
+                                       sInnerLoopSize :
+                                       (curActualSeqLen - sInnerLoopSize * (tmpBlockIdx % splitKVNum));
         }
         sInnerLoopTimes = (actualSInnerLoopSize + singleProcessSInnerSize - 1) / singleProcessSInnerSize;
         bnLoopTimes = 1;
@@ -900,21 +887,21 @@ __aicore__ inline void IncreFlashAttentionAntiqSplitBbn2s2Us2<IFAT>::SetLoopTime
 template <typename IFAT>
 __aicore__ inline uint64_t IncreFlashAttentionAntiqSplitBbn2s2Us2<IFAT>::SeqLenFromTensorList(uint32_t bIdx)
 {
-    uint64_t dimInfo[4];  // this mem is used to set shapeinfo, BSH(3) or BNSD(4)
+    uint64_t dimInfo[4]; // this mem is used to set shapeinfo, BSH(3) or BNSD(4)
     AscendC::TensorDesc<__gm__ uint8_t> keyTensorDesc;
-    ListTensorDesc keyListTensorDesc((__gm__ void*)keyPtr);
+    ListTensorDesc keyListTensorDesc((__gm__ void *)keyPtr);
     keyTensorDesc.SetShapeAddr(&dimInfo[0]);
     keyListTensorDesc.GetDesc(keyTensorDesc, bIdx);
     if constexpr (LAYOUT_T == LAYOUT::BNSD) {
-        return keyTensorDesc.GetShape(2);  // BNSD, idx of s is 2
+        return keyTensorDesc.GetShape(2); // BNSD, idx of s is 2
     } else {
-        return keyTensorDesc.GetShape(1);  // BSH, idx of s is 1
+        return keyTensorDesc.GetShape(1); // BSH, idx of s is 1
     }
 }
 
-template<typename IFAT>
-__aicore__ inline void IncreFlashAttentionAntiqSplitBbn2s2Us2<IFAT>::CalcPreNextTokenPerBatch(int64_t& preTokenPerBatch,
-    int64_t& nextTokenPerBatch, uint64_t curQueryActualSeqLen, uint64_t curActualSeqLen)
+template <typename IFAT>
+__aicore__ inline void IncreFlashAttentionAntiqSplitBbn2s2Us2<IFAT>::CalcPreNextTokenPerBatch(
+    int64_t &preTokenPerBatch, int64_t &nextTokenPerBatch, uint64_t curQueryActualSeqLen, uint64_t curActualSeqLen)
 {
     preTokenPerBatch = preToken;
     nextTokenPerBatch = nextToken;
@@ -923,19 +910,24 @@ __aicore__ inline void IncreFlashAttentionAntiqSplitBbn2s2Us2<IFAT>::CalcPreNext
         nextTokenPerBatch = static_cast<int64_t>(curActualSeqLen) - static_cast<int64_t>(curQueryActualSeqLen);
     }
     if (sparseMode == SPARSE_MODE_BAND) {
-        preTokenPerBatch = preToken - static_cast<int64_t>(curActualSeqLen) + static_cast<int64_t>(curQueryActualSeqLen);
-        nextTokenPerBatch = nextToken + static_cast<int64_t>(curActualSeqLen) - static_cast<int64_t>(curQueryActualSeqLen);
+        preTokenPerBatch =
+            preToken - static_cast<int64_t>(curActualSeqLen) + static_cast<int64_t>(curQueryActualSeqLen);
+        nextTokenPerBatch =
+            nextToken + static_cast<int64_t>(curActualSeqLen) - static_cast<int64_t>(curQueryActualSeqLen);
     }
 }
 
-template<typename IFAT>
-__aicore__ inline void IncreFlashAttentionAntiqSplitBbn2s2Us2<IFAT>::FixParamWithRowInvalid(int64_t& preTokenPerBatch,
-    int64_t& nextTokenPerBatch, int64_t& nextTokenInvalidOffset, uint64_t& curQueryActualSeqLen, uint64_t curActualSeqLen)
+template <typename IFAT>
+__aicore__ inline void IncreFlashAttentionAntiqSplitBbn2s2Us2<IFAT>::FixParamWithRowInvalid(
+    int64_t &preTokenPerBatch, int64_t &nextTokenPerBatch, int64_t &nextTokenInvalidOffset,
+    uint64_t &curQueryActualSeqLen, uint64_t curActualSeqLen)
 {
     int64_t nextTokensError = (nextTokenPerBatch < 0) ? -nextTokenPerBatch : 0;
     nextTokensError = nextTokensError > curQueryActualSeqLen ? curQueryActualSeqLen : nextTokensError;
-    int64_t preTokensError = (static_cast<int64_t>(curQueryActualSeqLen) > static_cast<int64_t>(curActualSeqLen) + preTokenPerBatch) ?
-        (static_cast<int64_t>(curQueryActualSeqLen) - static_cast<int64_t>(curActualSeqLen) - preTokenPerBatch) : 0;
+    int64_t preTokensError =
+        (static_cast<int64_t>(curQueryActualSeqLen) > static_cast<int64_t>(curActualSeqLen) + preTokenPerBatch) ?
+            (static_cast<int64_t>(curQueryActualSeqLen) - static_cast<int64_t>(curActualSeqLen) - preTokenPerBatch) :
+            0;
     preTokensError = preTokensError > curQueryActualSeqLen ? curQueryActualSeqLen : preTokensError;
 
     nextTokenPerBatch += nextTokensError;
@@ -957,9 +949,10 @@ __aicore__ inline void IncreFlashAttentionAntiqSplitBbn2s2Us2<IFAT>::UpdateSOute
         } else {
             CalcPreNextTokenPerBatch(preTokenPerBatch, nextTokenPerBatch, curQueryActualSeqLen, curActualSeqLen);
             FixParamWithRowInvalid(preTokenPerBatch, nextTokenPerBatch, nextTokenInvalidOffset, curQueryActualSeqLen,
-                curActualSeqLen); // 修正preTokenPerBatch、nextTokenPerBatch、curQueryActualSeqLen
-            if (coreStartIdx[tmpBlockIdx + 1] / qHeadNum != curBIdx || coreStartIdx[tmpBlockIdx + 1] % qHeadNum != curNIdx) {
-                sOuterLoopEnd = (curQueryActualSeqLen + PROFILE.G -1) / PROFILE.G;
+                                   curActualSeqLen); // 修正preTokenPerBatch、nextTokenPerBatch、curQueryActualSeqLen
+            if (coreStartIdx[tmpBlockIdx + 1] / qHeadNum != curBIdx ||
+                coreStartIdx[tmpBlockIdx + 1] % qHeadNum != curNIdx) {
+                sOuterLoopEnd = (curQueryActualSeqLen + PROFILE.G - 1) / PROFILE.G;
             } else {
                 sOuterLoopEnd = coreSposStartIdx[tmpBlockIdx + 1];
             }
@@ -970,9 +963,9 @@ __aicore__ inline void IncreFlashAttentionAntiqSplitBbn2s2Us2<IFAT>::UpdateSOute
     }
 }
 
-template<typename IFAT>
-__aicore__ inline int64_t IncreFlashAttentionAntiqSplitBbn2s2Us2<IFAT>::ClipSInnerToken(int64_t sInnerToken,
-    int64_t minValue, int64_t maxValue)
+template <typename IFAT>
+__aicore__ inline int64_t
+IncreFlashAttentionAntiqSplitBbn2s2Us2<IFAT>::ClipSInnerToken(int64_t sInnerToken, int64_t minValue, int64_t maxValue)
 {
     sInnerToken = sInnerToken > minValue ? sInnerToken : minValue;
     sInnerToken = sInnerToken < maxValue ? sInnerToken : maxValue;
@@ -980,27 +973,27 @@ __aicore__ inline int64_t IncreFlashAttentionAntiqSplitBbn2s2Us2<IFAT>::ClipSInn
 }
 
 template <typename IFAT>
-__aicore__ inline void IncreFlashAttentionAntiqSplitBbn2s2Us2<IFAT>::UpdateZeroActualSeqLenPFA(uint32_t bIdx, uint64_t& paddingBeginOffset,
-                                                                                               uint32_t& loopTimes, uint64_t& actualSeqLen,
-                                                                                               uint64_t s1Idx, int64_t preTokenPerBatch,
-                                                                                               int64_t nextTokenPerBatch, uint32_t& sInnerStartIndex)
+__aicore__ inline void IncreFlashAttentionAntiqSplitBbn2s2Us2<IFAT>::UpdateZeroActualSeqLenPFA(
+    uint32_t bIdx, uint64_t &paddingBeginOffset, uint32_t &loopTimes, uint64_t &actualSeqLen, uint64_t s1Idx,
+    int64_t preTokenPerBatch, int64_t nextTokenPerBatch, uint32_t &sInnerStartIndex)
 {
     GetActualSeqLen(bIdx, actualSeqLen);
     if (!ComputePaddingBeginOffset(actualSeqLen, paddingBeginOffset, kvPaddingFlag, remainSeqLen)) {
         actualSeqLen = 0;
     }
-    int64_t sInnerFirstToken = ClipSInnerToken(static_cast<int64_t>(s1Idx * PROFILE.G) -
-        preTokenPerBatch, 0, actualSeqLen);
-    int64_t sInnerLastToken = ClipSInnerToken(static_cast<int64_t>(s1Idx * PROFILE.G) +
-        nextTokenPerBatch + PROFILE.G, 0, actualSeqLen);
+    int64_t sInnerFirstToken =
+        ClipSInnerToken(static_cast<int64_t>(s1Idx * PROFILE.G) - preTokenPerBatch, 0, actualSeqLen);
+    int64_t sInnerLastToken =
+        ClipSInnerToken(static_cast<int64_t>(s1Idx * PROFILE.G) + nextTokenPerBatch + PROFILE.G, 0, actualSeqLen);
 
     sInnerStartIndex = (uint32_t)sInnerFirstToken / singleProcessSInnerSize;
     loopTimes = ((uint32_t)sInnerLastToken + singleProcessSInnerSize - 1) / singleProcessSInnerSize;
 }
 
 template <typename IFAT>
-__aicore__ inline void IncreFlashAttentionAntiqSplitBbn2s2Us2<IFAT>::UpdateZeroActualSeqLen(uint32_t bIdx, uint64_t& paddingBeginOffset,
-                                                                                            uint32_t& loopTimes, uint64_t& actualSeqLen)
+__aicore__ inline void
+IncreFlashAttentionAntiqSplitBbn2s2Us2<IFAT>::UpdateZeroActualSeqLen(uint32_t bIdx, uint64_t &paddingBeginOffset,
+                                                                     uint32_t &loopTimes, uint64_t &actualSeqLen)
 {
     GetActualSeqLen(bIdx, actualSeqLen);
     if (!ComputePaddingBeginOffset(actualSeqLen, paddingBeginOffset, kvPaddingFlag, remainSeqLen)) {
@@ -1023,9 +1016,9 @@ __aicore__ inline void IncreFlashAttentionAntiqSplitBbn2s2Us2<IFAT>::GetBNId(uin
     }
 }
 
-template<typename IFAT> 
-__aicore__ inline uint64_t IncreFlashAttentionAntiqSplitBbn2s2Us2<IFAT>::CalcAttenMaskCoreOffset(uint64_t bIdx,
-    uint64_t s1Idx, uint64_t qPaddingBeginOffset, uint64_t kvPaddingBeginOffset)
+template <typename IFAT>
+__aicore__ inline uint64_t IncreFlashAttentionAntiqSplitBbn2s2Us2<IFAT>::CalcAttenMaskCoreOffset(
+    uint64_t bIdx, uint64_t s1Idx, uint64_t qPaddingBeginOffset, uint64_t kvPaddingBeginOffset)
 {
     if (qSeqSize > 1) {
         uint64_t attenMaskBatchOffset = 0;
@@ -1033,38 +1026,44 @@ __aicore__ inline uint64_t IncreFlashAttentionAntiqSplitBbn2s2Us2<IFAT>::CalcAtt
         if (attenMaskBatch != 1) {
             attenMaskBatchOffset = bIdx * (uint64_t)attenMaskKVSize * (uint64_t)attenMaskQSize;
         }
-        return (s1Idx * (uint64_t)PROFILE.G + qPaddingBeginOffset) *
-            (uint64_t)attenMaskKVSize + kvPaddingBeginOffset + attenMaskBatchOffset;
+        return (s1Idx * (uint64_t)PROFILE.G + qPaddingBeginOffset) * (uint64_t)attenMaskKVSize + kvPaddingBeginOffset +
+               attenMaskBatchOffset;
     } else {
         return bIdx * (uint64_t)attenMaskKVSize + kvPaddingBeginOffset;
     }
 }
 
-template<typename IFAT>
-__aicore__ inline uint64_t IncreFlashAttentionAntiqSplitBbn2s2Us2<IFAT>::CalcAttenMaskOffset(uint64_t attenMaskCoreOffset,
-    uint64_t s2Idx, uint64_t s1Idx, int64_t nextTokenPerBatch, int64_t nextTokenInvalidOffset)
+template <typename IFAT>
+__aicore__ inline uint64_t
+IncreFlashAttentionAntiqSplitBbn2s2Us2<IFAT>::CalcAttenMaskOffset(uint64_t attenMaskCoreOffset, uint64_t s2Idx,
+                                                                  uint64_t s1Idx, int64_t nextTokenPerBatch,
+                                                                  int64_t nextTokenInvalidOffset)
 {
     if (qSeqSize > 1) {
         uint64_t attenMaskOffset = 0;
         // 2:leftUp mode of sparseMode, 3:rightdown mode of sparseMode, 4:band mode of sparseMode
-        if (sparseMode == SPARSE_MODE_LEFT_UP || sparseMode == SPARSE_MODE_RIGHT_DOWN || sparseMode == SPARSE_MODE_BAND) {
+        if (sparseMode == SPARSE_MODE_LEFT_UP || sparseMode == SPARSE_MODE_RIGHT_DOWN ||
+            sparseMode == SPARSE_MODE_BAND) {
             int64_t delta = 0;
             if (sparseMode == SPARSE_MODE_LEFT_UP) {
                 delta = static_cast<int64_t>(s1Idx * PROFILE.G) -
-                    static_cast<int64_t>(s2Idx * singleProcessSInnerSize) + nextToken;
+                        static_cast<int64_t>(s2Idx * singleProcessSInnerSize) + nextToken;
             } else {
                 delta = static_cast<int64_t>(s1Idx * PROFILE.G) -
-                    static_cast<int64_t>(s2Idx * singleProcessSInnerSize) + nextTokenPerBatch;
+                        static_cast<int64_t>(s2Idx * singleProcessSInnerSize) + nextTokenPerBatch;
             }
 
             if (delta < 0) {
                 attenMaskOffset = (static_cast<int64_t>(PROFILE.G) + delta) > 0 ? (-delta) : PROFILE.G;
             } else {
                 attenMaskOffset = ((static_cast<int64_t>(singleProcessSInnerSize) - delta) > 0 ?
-                    delta : static_cast<int64_t>(singleProcessSInnerSize)) * attenMaskKVSize;
+                                       delta :
+                                       static_cast<int64_t>(singleProcessSInnerSize)) *
+                                  attenMaskKVSize;
             }
         } else {
-            attenMaskOffset = attenMaskCoreOffset + nextTokenInvalidOffset * attenMaskKVSize + s2Idx * singleProcessSInnerSize;
+            attenMaskOffset =
+                attenMaskCoreOffset + nextTokenInvalidOffset * attenMaskKVSize + s2Idx * singleProcessSInnerSize;
         }
         return attenMaskOffset;
     } else {
@@ -1072,30 +1071,31 @@ __aicore__ inline uint64_t IncreFlashAttentionAntiqSplitBbn2s2Us2<IFAT>::CalcAtt
     }
 }
 
-template<typename IFAT>
-__aicore__ inline uint64_t IncreFlashAttentionAntiqSplitBbn2s2Us2<IFAT>::CalcAttenMaskOffsetPre(uint64_t attenMaskCoreOffset,
-    uint64_t s2Idx, uint64_t s1Idx, int64_t preTokenPerBatch)
+template <typename IFAT>
+__aicore__ inline uint64_t
+IncreFlashAttentionAntiqSplitBbn2s2Us2<IFAT>::CalcAttenMaskOffsetPre(uint64_t attenMaskCoreOffset, uint64_t s2Idx,
+                                                                     uint64_t s1Idx, int64_t preTokenPerBatch)
 {
     if (sparseMode != SPARSE_MODE_BAND) {
         return 0;
     }
-    uint64_t attenMaskOffsetPre = 0;  
-    int64_t delta = static_cast<int64_t>(s1Idx * PROFILE.G) -
-        static_cast<int64_t>(s2Idx * singleProcessSInnerSize) - preTokenPerBatch - 1;
+    uint64_t attenMaskOffsetPre = 0;
+    int64_t delta = static_cast<int64_t>(s1Idx * PROFILE.G) - static_cast<int64_t>(s2Idx * singleProcessSInnerSize) -
+                    preTokenPerBatch - 1;
     if (delta < 0) {
-        attenMaskOffsetPre = (static_cast<int64_t>(PROFILE.G) + delta) > 0 ?
-            (-delta) : PROFILE.G;
+        attenMaskOffsetPre = (static_cast<int64_t>(PROFILE.G) + delta) > 0 ? (-delta) : PROFILE.G;
     } else {
-        attenMaskOffsetPre = ((static_cast<int64_t>(singleProcessSInnerSize) - delta) > 0 ?
-            delta : singleProcessSInnerSize) * attenMaskKVSize;
+        attenMaskOffsetPre =
+            ((static_cast<int64_t>(singleProcessSInnerSize) - delta) > 0 ? delta : singleProcessSInnerSize) *
+            attenMaskKVSize;
     }
     return attenMaskOffsetPre;
 }
 
 template <typename IFAT>
-__aicore__ inline void IncreFlashAttentionAntiqSplitBbn2s2Us2<IFAT>::CalcParams(uint32_t loop, TaskContext& task)
+__aicore__ inline void IncreFlashAttentionAntiqSplitBbn2s2Us2<IFAT>::CalcParams(uint32_t loop, TaskContext &task)
 {
-    ExtraInfo& info = extraInfo[loop % BUFFER_NUM];
+    ExtraInfo &info = extraInfo[loop % BUFFER_NUM];
     uint64_t qActualSeqLen = curQueryActualSeqLen;
     uint64_t kvActualSeqLen = curActualSeqLen;
     int64_t preTokenThisBatch = preTokenPerBatch;
@@ -1110,7 +1110,7 @@ __aicore__ inline void IncreFlashAttentionAntiqSplitBbn2s2Us2<IFAT>::CalcParams(
     info.kvPaddingBeginOffset = kvPaddingBeginOffset;
     info.sInnerStartIndex = sInnerStartIndex;
     if constexpr (FLASH_DECODE) {
-        info.flashDecodeS2Idx = tmpBlockIdx % splitKVNum;  // 用于偏移
+        info.flashDecodeS2Idx = tmpBlockIdx % splitKVNum; // 用于偏移
     } else {
         if (qSeqSize > 1) {
             info.qPaddingBeginOffset = qPaddingBeginOffset;
@@ -1121,11 +1121,11 @@ __aicore__ inline void IncreFlashAttentionAntiqSplitBbn2s2Us2<IFAT>::CalcParams(
                 ComputePaddingBeginOffset(qActualSeqLen, info.qPaddingBeginOffset, qPaddingFlag, remainQSeqLen);
                 CalcPreNextTokenPerBatch(preTokenThisBatch, nextTokenThisBatch, qActualSeqLen, kvActualSeqLen);
                 FixParamWithRowInvalid(preTokenThisBatch, nextTokenThisBatch, nextTokenInvalidOffsetThisBatch,
-                    qActualSeqLen, kvActualSeqLen);
+                                       qActualSeqLen, kvActualSeqLen);
             }
             if (info.bIdx != curBIdx || info.n1Idx != curNIdx || info.s1Idx != sOuterLoopIdx) {
                 UpdateZeroActualSeqLenPFA(info.bIdx, info.kvPaddingBeginOffset, info.sInnerLoopTimes, kvActualSeqLen,
-                    info.s1Idx, preTokenThisBatch, nextTokenThisBatch, info.sInnerStartIndex);
+                                          info.s1Idx, preTokenThisBatch, nextTokenThisBatch, info.sInnerStartIndex);
             }
         } else if (info.bIdx != curBIdx) {
             UpdateZeroActualSeqLen(info.bIdx, info.kvPaddingBeginOffset, info.sInnerLoopTimes, kvActualSeqLen);
@@ -1154,8 +1154,8 @@ __aicore__ inline void IncreFlashAttentionAntiqSplitBbn2s2Us2<IFAT>::CalcParams(
                 tensorBCoreOffset += info.flashDecodeS2Idx * sInnerLoopSize * headDim;
             }
         } else {
-            tensorACoreOffset = (info.bIdx * qSeqSize + info.qPaddingBeginOffset) * qHeadNum * headDim
-                                + info.n1Idx * gSize * headDim + nextTokenInvalidOffsetThisBatch * qHeadNum * headDim;
+            tensorACoreOffset = (info.bIdx * qSeqSize + info.qPaddingBeginOffset) * qHeadNum * headDim +
+                                info.n1Idx * gSize * headDim + nextTokenInvalidOffsetThisBatch * qHeadNum * headDim;
             tensorBCoreOffset = info.bIdx * kvSeqSize * kvHeadNum * headDim + info.n2Idx * headDim +
                                 info.kvPaddingBeginOffset * kvHeadNum * headDim;
             if (!batchContinuous) {
@@ -1174,39 +1174,43 @@ __aicore__ inline void IncreFlashAttentionAntiqSplitBbn2s2Us2<IFAT>::CalcParams(
     } else {
         if (isBSNDOut) {
             info.attenOutOffset = (info.bIdx * qSeqSize + info.qPaddingBeginOffset) * qHeadNum * headDim +
-                                   info.n1Idx * gSize * headDim + nextTokenInvalidOffsetThisBatch * qHeadNum * headDim;
+                                  info.n1Idx * gSize * headDim + nextTokenInvalidOffsetThisBatch * qHeadNum * headDim;
         } else {
             info.attenOutOffset = tensorACoreOffset;
         }
     }
-    
+
     info.actualSingleProcessSInnerSize = singleProcessSInnerSize;
     info.antiqKeyParamOffset = info.n2Idx * headDim;
     info.antiqValueParamOffset = info.n2Idx * headDim;
     if constexpr (ATTEN_MASK) {
-        info.attenMaskCoreOffset = CalcAttenMaskCoreOffset(info.bIdx, info.s1Idx, info.qPaddingBeginOffset, info.kvPaddingBeginOffset);
+        info.attenMaskCoreOffset =
+            CalcAttenMaskCoreOffset(info.bIdx, info.s1Idx, info.qPaddingBeginOffset, info.kvPaddingBeginOffset);
     }
     info.s2BatchOffset = singleProcessSInnerSize * info.s2Idx + info.kvPaddingBeginOffset;
     if constexpr (FLASH_DECODE) {
         info.attenMaskCoreOffset += info.flashDecodeS2Idx * sInnerLoopSize;
         info.s2BatchOffset +=
-            info.flashDecodeS2Idx * sInnerLoopSize;  // FD场景 计算KV当前Sequence位置，需要加上FD切KV后的偏移量
+            info.flashDecodeS2Idx * sInnerLoopSize; // FD场景 计算KV当前Sequence位置，需要加上FD切KV后的偏移量
     }
     if constexpr (ATTEN_MASK) {
-        info.attenMaskOffset = CalcAttenMaskOffset(info.attenMaskCoreOffset, info.s2Idx, info.s1Idx, nextTokenThisBatch, nextTokenInvalidOffsetThisBatch);
-        info.attenMaskOffsetPre = CalcAttenMaskOffsetPre(info.attenMaskCoreOffset, info.s2Idx, info.s1Idx, preTokenThisBatch);
+        info.attenMaskOffset = CalcAttenMaskOffset(info.attenMaskCoreOffset, info.s2Idx, info.s1Idx, nextTokenThisBatch,
+                                                   nextTokenInvalidOffsetThisBatch);
+        info.attenMaskOffsetPre =
+            CalcAttenMaskOffsetPre(info.attenMaskCoreOffset, info.s2Idx, info.s1Idx, preTokenThisBatch);
     }
-        if constexpr (PSE_SHIFT) {
+    if constexpr (PSE_SHIFT) {
         info.pseShiftCoreOffset =
-            (pseShiftB == 1)
-                ? (info.n1Idx * gSize * pseShiftS0 * pseShiftS + info.kvPaddingBeginOffset + info.qPaddingBeginOffset * pseShiftS)
-                : (info.bIdx * qHeadNum * pseShiftS0 * pseShiftS + info.n1Idx * gSize * pseShiftS0 * pseShiftS +
-                   info.kvPaddingBeginOffset + info.qPaddingBeginOffset * pseShiftS);
+            (pseShiftB == 1) ?
+                (info.n1Idx * gSize * pseShiftS0 * pseShiftS + info.kvPaddingBeginOffset +
+                 info.qPaddingBeginOffset * pseShiftS) :
+                (info.bIdx * qHeadNum * pseShiftS0 * pseShiftS + info.n1Idx * gSize * pseShiftS0 * pseShiftS +
+                 info.kvPaddingBeginOffset + info.qPaddingBeginOffset * pseShiftS);
         if constexpr (FLASH_DECODE) {
             info.pseShiftCoreOffset += info.flashDecodeS2Idx * sInnerLoopSize;
         }
         info.pseShiftOffset = info.pseShiftCoreOffset + info.s2Idx * singleProcessSInnerSize +
-            nextTokenInvalidOffsetThisBatch * pseShiftS;
+                              nextTokenInvalidOffsetThisBatch * pseShiftS;
     }
     // s不对齐场景需按实际 tail 刷新 singleProcessSInnerSizeTail;
     uint32_t sInnerLoopTimesNoSparse = info.sInnerLoopTimes;
@@ -1218,9 +1222,10 @@ __aicore__ inline void IncreFlashAttentionAntiqSplitBbn2s2Us2<IFAT>::CalcParams(
             sInnerLoopTimesNoSparse = (kvActualSeqLen + singleProcessSInnerSize - 1) / singleProcessSInnerSize;
         }
     }
-    if (info.s2Idx == sInnerLoopTimesNoSparse - 1) {  // 尾块
-        info.actualSingleProcessSInnerSize =
-            FLASH_DECODE ? actualSInnerLoopSize - (sInnerLoopTimesNoSparse - 1) * PROFILE.S : kvActualSeqLen - (sInnerLoopTimesNoSparse - 1) * PROFILE.S;
+    if (info.s2Idx == sInnerLoopTimesNoSparse - 1) { // 尾块
+        info.actualSingleProcessSInnerSize = FLASH_DECODE ?
+                                                 actualSInnerLoopSize - (sInnerLoopTimesNoSparse - 1) * PROFILE.S :
+                                                 kvActualSeqLen - (sInnerLoopTimesNoSparse - 1) * PROFILE.S;
     }
     uint32_t loopCount = (qActualSeqLen + PROFILE.G - 1) / PROFILE.G;
     if (info.s1Idx == (loopCount - 1)) {
@@ -1236,7 +1241,7 @@ __aicore__ inline void IncreFlashAttentionAntiqSplitBbn2s2Us2<IFAT>::CalcParams(
 template <typename IFAT>
 __aicore__ inline void IncreFlashAttentionAntiqSplitBbn2s2Us2<IFAT>::AntiquantKey(uint32_t loop)
 {
-    ExtraInfo& info = extraInfo[loop % BUFFER_NUM];
+    ExtraInfo &info = extraInfo[loop % BUFFER_NUM];
     uint8_t keyAntiquantResScmIdx = info.keyAntiquantResScmIdx;
     uint32_t copySplitS = KV_INPUT_QUEUE_SIZE / sizeof(KV_T) / PROFILE.D;
     uint32_t curSequence = info.s2BatchOffset;
@@ -1293,14 +1298,14 @@ __aicore__ inline void IncreFlashAttentionAntiqSplitBbn2s2Us2<IFAT>::AntiquantKe
     taskParam.sInnerLoopSize = sInnerLoopSize;
     taskParam.antiqSeqSize = antiqSeqSize;
     keyAntiquantProcessor.Process(kvAntiquantResScm[keyAntiquantResScmIdx], keyGm, keyAntiqScaleGm,
-                              keyAntiquantOffsetGm, blockTableGm, kvInputQue, kvOutputQue, keyAntiqScaleInputQue,
-                              keyAntiqOffsetInputQue, kvAntiqMxScaleRes, taskParam);
+                                  keyAntiquantOffsetGm, blockTableGm, kvInputQue, kvOutputQue, keyAntiqScaleInputQue,
+                                  keyAntiqOffsetInputQue, kvAntiqMxScaleRes, taskParam);
 }
 
 template <typename IFAT>
 __aicore__ inline void IncreFlashAttentionAntiqSplitBbn2s2Us2<IFAT>::AntiquantValue(uint32_t loop)
 {
-    ExtraInfo& info = extraInfo[loop % BUFFER_NUM];
+    ExtraInfo &info = extraInfo[loop % BUFFER_NUM];
     uint8_t valueAntiquantResScmIdx = info.valueAntiquantResScmIdx;
     uint32_t copySplitS = KV_INPUT_QUEUE_SIZE / sizeof(KV_T) / PROFILE.D;
     uint32_t curSequence = info.s2BatchOffset;
@@ -1355,15 +1360,15 @@ __aicore__ inline void IncreFlashAttentionAntiqSplitBbn2s2Us2<IFAT>::AntiquantVa
     taskParam.flashDecodeS2Idx = info.flashDecodeS2Idx;
     taskParam.sInnerLoopSize = sInnerLoopSize;
     taskParam.antiqSeqSize = antiqSeqSize;
-    valueAntiquantProcessor.Process(kvAntiquantResScm[valueAntiquantResScmIdx], valueGm,
-                                valueAntiqScaleGm, valueAntiquantOffsetGm, blockTableGm, kvInputQue, kvOutputQue,
-                                valueAntiqScaleInputQue, valueAntiqOffsetInputQue, kvAntiqMxScaleRes, taskParam);
+    valueAntiquantProcessor.Process(kvAntiquantResScm[valueAntiquantResScmIdx], valueGm, valueAntiqScaleGm,
+                                    valueAntiquantOffsetGm, blockTableGm, kvInputQue, kvOutputQue,
+                                    valueAntiqScaleInputQue, valueAntiqOffsetInputQue, kvAntiqMxScaleRes, taskParam);
 }
 
 template <typename IFAT>
 __aicore__ inline void IncreFlashAttentionAntiqSplitBbn2s2Us2<IFAT>::CopyQueryToL1(uint32_t loop)
 {
-    ExtraInfo& info = extraInfo[loop % BUFFER_NUM];
+    ExtraInfo &info = extraInfo[loop % BUFFER_NUM];
 
     uint32_t queryScmIdx = info.bnIdxInCurCore % BUFFER_NUM;
     AntiquantQPreprocessorTaskParam taskParam;
@@ -1381,7 +1386,7 @@ __aicore__ inline void IncreFlashAttentionAntiqSplitBbn2s2Us2<IFAT>::CopyQueryTo
 template <typename IFAT>
 __aicore__ inline void IncreFlashAttentionAntiqSplitBbn2s2Us2<IFAT>::SendQK(uint32_t loop)
 {
-    ExtraInfo& info = extraInfo[loop % BUFFER_NUM];
+    ExtraInfo &info = extraInfo[loop % BUFFER_NUM];
     uint32_t queryScmIdx = info.bnIdxInCurCore % BUFFER_NUM;
 
     uint8_t keyAntiquantResScmIdx = info.keyAntiquantResScmIdx;
@@ -1402,7 +1407,7 @@ __aicore__ inline void IncreFlashAttentionAntiqSplitBbn2s2Us2<IFAT>::WaitQK(uint
 template <typename IFAT>
 __aicore__ inline void IncreFlashAttentionAntiqSplitBbn2s2Us2<IFAT>::Vector1(uint32_t loop)
 {
-    ExtraInfo& info = extraInfo[loop % BUFFER_NUM];
+    ExtraInfo &info = extraInfo[loop % BUFFER_NUM];
     uint32_t outTensorIdx = loop % BUFFER_NUM;
     // softmax计算时，非第一次计算时会使用上一轮的sum、max结果作为输入
     uint32_t inTensorIdx = info.isFirstSInnerLoop ? outTensorIdx : (loop - 1) % BUFFER_NUM;
@@ -1431,16 +1436,16 @@ __aicore__ inline void IncreFlashAttentionAntiqSplitBbn2s2Us2<IFAT>::Vector1(uin
     taskParam.sparseMode = sparseMode;
 
     vec1Processor.Process(softmaxResOutputQue, mm2AScm[loop % BUFFER_NUM], softmaxMaxUb[outTensorIdx],
-                          softmaxSumUb[outTensorIdx], softmaxExpUb[outTensorIdx], mmResultBufferArray[loop % BUFFER_NUM],
-                          softmaxMaxUb[inTensorIdx], softmaxSumUb[inTensorIdx], softmaxTmpUb, attenMaskGm,
-                          maskInputQue, pseShiftGm, pseInputQue, softmaxLseOutputQue, softmaxLseGm, taskParam,
-                          softmaxMaxGm, softmaxSumGm);
+                          softmaxSumUb[outTensorIdx], softmaxExpUb[outTensorIdx],
+                          mmResultBufferArray[loop % BUFFER_NUM], softmaxMaxUb[inTensorIdx], softmaxSumUb[inTensorIdx],
+                          softmaxTmpUb, attenMaskGm, maskInputQue, pseShiftGm, pseInputQue, softmaxLseOutputQue,
+                          softmaxLseGm, taskParam, softmaxMaxGm, softmaxSumGm);
 }
 
 template <typename IFAT>
 __aicore__ inline void IncreFlashAttentionAntiqSplitBbn2s2Us2<IFAT>::SendSV(uint32_t loop)
 {
-    ExtraInfo& info = extraInfo[loop % BUFFER_NUM];
+    ExtraInfo &info = extraInfo[loop % BUFFER_NUM];
 
     uint8_t valueAntiquantResScmIdx = info.valueAntiquantResScmIdx;
     Mm2TaskParam taskParam;
@@ -1458,9 +1463,10 @@ __aicore__ inline void IncreFlashAttentionAntiqSplitBbn2s2Us2<IFAT>::WaitSV(uint
 }
 
 template <typename IFAT>
-__aicore__ inline void IncreFlashAttentionAntiqSplitBbn2s2Us2<IFAT>::Bmm2DataCopyOut(
-    uint64_t attenOutOffset, LocalTensor<OUT_T>& attenOutUb, uint32_t startRow, uint32_t dealRowCount,
-    uint32_t columnCount, uint32_t actualColumnCount)
+__aicore__ inline void
+IncreFlashAttentionAntiqSplitBbn2s2Us2<IFAT>::Bmm2DataCopyOut(uint64_t attenOutOffset, LocalTensor<OUT_T> &attenOutUb,
+                                                              uint32_t startRow, uint32_t dealRowCount,
+                                                              uint32_t columnCount, uint32_t actualColumnCount)
 {
     DataCopyExtParams dataCopyParams;
     dataCopyParams.blockCount = dealRowCount;
@@ -1473,7 +1479,7 @@ __aicore__ inline void IncreFlashAttentionAntiqSplitBbn2s2Us2<IFAT>::Bmm2DataCop
 template <typename IFAT>
 __aicore__ inline void IncreFlashAttentionAntiqSplitBbn2s2Us2<IFAT>::Update(uint32_t loop)
 {
-    ExtraInfo& info = extraInfo[loop % BUFFER_NUM];
+    ExtraInfo &info = extraInfo[loop % BUFFER_NUM];
 
     Vec2TaskParam taskParam;
     taskParam.isFirstSInnerLoop = info.isFirstSInnerLoop;
@@ -1494,7 +1500,8 @@ __aicore__ inline void IncreFlashAttentionAntiqSplitBbn2s2Us2<IFAT>::Update(uint
     taskParam.isRowInvalid = isRowInvalid == 1 ? true : false;
 
     vec2Processor.Process(mmResultBufferArray[loop % BUFFER_NUM], updateResOutputQue, softmaxSumUb[loop % BUFFER_NUM],
-                          softmaxExpUb[loop % BUFFER_NUM], softmaxMaxUb[loop % BUFFER_NUM], attentionOutGm, accumOutGm, taskParam);
+                          softmaxExpUb[loop % BUFFER_NUM], softmaxMaxUb[loop % BUFFER_NUM], attentionOutGm, accumOutGm,
+                          taskParam);
 }
 
 template <typename IFAT>
@@ -1532,13 +1539,12 @@ __aicore__ inline void IncreFlashAttentionAntiqSplitBbn2s2Us2<IFAT>::CopyLseIn(u
 }
 
 template <typename IFAT>
-__aicore__ inline void IncreFlashAttentionAntiqSplitBbn2s2Us2<IFAT>::CopyFinalResOut(uint64_t attenOutOffset,
-                                                                                     LocalTensor<T>& accumOutLocal,
-                                                                                     uint32_t startRow,
-                                                                                     uint32_t dealRowCount)
+__aicore__ inline void
+IncreFlashAttentionAntiqSplitBbn2s2Us2<IFAT>::CopyFinalResOut(uint64_t attenOutOffset, LocalTensor<T> &accumOutLocal,
+                                                              uint32_t startRow, uint32_t dealRowCount)
 {
     if constexpr (!POST_QUANT) {
-        LocalTensor<OUT_T> tmpBmm2ResCastTensor = updateResOutputQue.AllocTensor<OUT_T>();  // 复用内存
+        LocalTensor<OUT_T> tmpBmm2ResCastTensor = updateResOutputQue.AllocTensor<OUT_T>(); // 复用内存
         uint32_t shapeArray[] = {(uint32_t)dealRowCount, (uint32_t)headDim};
         tmpBmm2ResCastTensor.SetShapeInfo(ShapeInfo(2, shapeArray, DataFormat::ND));
         Cast(tmpBmm2ResCastTensor, accumOutLocal, AscendC::RoundMode::CAST_ROUND, dealRowCount * PROFILE.D);
@@ -1551,12 +1557,11 @@ __aicore__ inline void IncreFlashAttentionAntiqSplitBbn2s2Us2<IFAT>::CopyFinalRe
 }
 
 template <typename IFAT>
-__aicore__ inline void IncreFlashAttentionAntiqSplitBbn2s2Us2<IFAT>::CopyAccumOutIn(uint32_t bIdx, uint32_t n2Idx,
-                                                                                    uint32_t splitKVIndex,
-                                                                                    uint32_t startRow,
-                                                                                    uint32_t dealRowCount)
+__aicore__ inline void
+IncreFlashAttentionAntiqSplitBbn2s2Us2<IFAT>::CopyAccumOutIn(uint32_t bIdx, uint32_t n2Idx, uint32_t splitKVIndex,
+                                                             uint32_t startRow, uint32_t dealRowCount)
 {
-    LocalTensor<T> accumOutLocal = accumOutInputQue.AllocTensor<T>();  // 复用内存
+    LocalTensor<T> accumOutLocal = accumOutInputQue.AllocTensor<T>(); // 复用内存
 
     DataCopyExtParams copyInParams;
     DataCopyPadExtParams<T> copyInPadParams;
@@ -1578,11 +1583,10 @@ __aicore__ inline void IncreFlashAttentionAntiqSplitBbn2s2Us2<IFAT>::CopyAccumOu
 }
 
 template <typename IFAT>
-__aicore__ inline void IncreFlashAttentionAntiqSplitBbn2s2Us2<IFAT>::ReduceFinalRes(uint32_t bIdx, uint32_t n2Idx,
-                                                                                    LocalTensor<T>& dst,
-                                                                                    LocalTensor<T>& lseLocal,
-                                                                                    uint32_t startRow,
-                                                                                    uint32_t dealRowCount)
+__aicore__ inline void
+IncreFlashAttentionAntiqSplitBbn2s2Us2<IFAT>::ReduceFinalRes(uint32_t bIdx, uint32_t n2Idx, LocalTensor<T> &dst,
+                                                             LocalTensor<T> &lseLocal, uint32_t startRow,
+                                                             uint32_t dealRowCount)
 {
     BinaryRepeatParams repeatParams;
     repeatParams.src0RepStride = 1;
@@ -1611,18 +1615,18 @@ __aicore__ inline void IncreFlashAttentionAntiqSplitBbn2s2Us2<IFAT>::ReduceFinal
     }
 }
 template <typename IFAT>
-__aicore__ inline void IncreFlashAttentionAntiqSplitBbn2s2Us2<IFAT>::ComputeScaleValue(LocalTensor<T> lseMaxUb,
-                                                                                       LocalTensor<T> lseSumUb,
-                                                                                       uint32_t splitSize,
-                                                                                       uint64_t lseOffset)
-{   
+__aicore__ inline void
+IncreFlashAttentionAntiqSplitBbn2s2Us2<IFAT>::ComputeScaleValue(LocalTensor<T> lseMaxUb, LocalTensor<T> lseSumUb,
+                                                                uint32_t splitSize, uint64_t lseOffset)
+{
     LocalTensor<T> lseOutputUb;
     if (softmaxLseFlag) {
         lseOutputUb = softmaxLseOutputQue.template AllocTensor<T>();
     }
     LocalTensor<bfloat16_t> tmpSinkUb;
     bool learnableSinkFlag = false;
-    FaVectorApi::ComputeScaleValue_VF(tmpSinkUb, lseMaxUb, lseSumUb, lseOutputUb, splitSize, actualCombineLoopSize, softmaxLseFlag, learnableSinkFlag);
+    FaVectorApi::ComputeScaleValue_VF(tmpSinkUb, lseMaxUb, lseSumUb, lseOutputUb, splitSize, actualCombineLoopSize,
+                                      softmaxLseFlag, learnableSinkFlag);
     if (softmaxLseFlag) {
         softmaxLseOutputQue.template EnQue<T>(lseOutputUb);
         softmaxLseOutputQue.DeQue<T>();
@@ -1640,7 +1644,7 @@ template <typename IFAT>
 __aicore__ inline void IncreFlashAttentionAntiqSplitBbn2s2Us2<IFAT>::CombineSplitKVRes(uint64_t attenOutOffset,
                                                                                        uint32_t bIdx, uint32_t n2Idx)
 {
-    uint32_t gSplitSizeLse = BUFFER_SIZE_BYTE_32K / (BYTE_BLOCK * splitKVNum);  // 8k / (splitKVNum * 32B)
+    uint32_t gSplitSizeLse = BUFFER_SIZE_BYTE_32K / (BYTE_BLOCK * splitKVNum); // 8k / (splitKVNum * 32B)
     uint32_t gSplitSizeAccumOut = BUFFER_SIZE_BYTE_32K / sizeof(float) / PROFILE.D;
     // 取两者较小的，用来切g，保证ub够用
     uint32_t gSplitSize = (gSplitSizeLse < gSplitSizeAccumOut) ? gSplitSizeLse : gSplitSizeAccumOut;
@@ -1653,7 +1657,7 @@ __aicore__ inline void IncreFlashAttentionAntiqSplitBbn2s2Us2<IFAT>::CombineSpli
     uint32_t tailSplitSize = gSize - (loopCount - 1) * gSplitSize;
 
     // 尾块与非尾块都使用这些ub，减少处理次数
-    LocalTensor<T> lseMaxUb = lseTmpBuff.Get<T>();  // 复用内存
+    LocalTensor<T> lseMaxUb = lseTmpBuff.Get<T>(); // 复用内存
     uint32_t shapeArray[] = {(uint32_t)gSplitSize, FP32_ONE_BLOCK_SIZE};
     lseMaxUb.SetShapeInfo(ShapeInfo(2, shapeArray, DataFormat::ND));
     uint64_t lseOffset = 0;
@@ -1697,7 +1701,7 @@ __aicore__ inline void IncreFlashAttentionAntiqSplitBbn2s2Us2<IFAT>::CombineSpli
 template <typename IFAT>
 __aicore__ inline void IncreFlashAttentionAntiqSplitBbn2s2Us2<IFAT>::FlashDecodeCompute()
 {
-    uint32_t bIdx = tmpBlockIdx / kvHeadNum;  // 局部变量
+    uint32_t bIdx = tmpBlockIdx / kvHeadNum; // 局部变量
     uint32_t n2Idx = tmpBlockIdx % kvHeadNum;
     if (tmpBlockIdx >= batchSize * kvHeadNum) {
         return;
@@ -1736,16 +1740,17 @@ __aicore__ inline void IncreFlashAttentionAntiqSplitBbn2s2Us2<IFAT>::Process()
                 if constexpr (!FLASH_DECODE) {
                     if (qSeqSize > 1) {
                         UpdateZeroActualSeqLenPFA(curBIdx, kvPaddingBeginOffset, sInnerLoopTimes, curActualSeqLen,
-                            sOuterLoopIdx, preTokenPerBatch, nextTokenPerBatch, sInnerStartIndex);
+                                                  sOuterLoopIdx, preTokenPerBatch, nextTokenPerBatch, sInnerStartIndex);
                     }
                 }
                 for (uint32_t sInnerLoopIdx = sInnerStartIndex; sInnerLoopIdx < sInnerLoopTimes; sInnerLoopIdx++) {
-                    TaskContext& task = taskContext[taskIdx++];
+                    TaskContext &task = taskContext[taskIdx++];
                     task.bIdx = curBIdx;
                     task.nIdx = curNIdx;
                     task.s1Idx = sOuterLoopIdx;
                     task.s2Idx = sInnerLoopIdx;
-                    bool isLast = (bnIdx == bnLoopTimes - 1) && (sOuterLoopIdx == sOuterLoopEnd - 1) && (sInnerLoopIdx == sInnerLoopTimes - 1);
+                    bool isLast = (bnIdx == bnLoopTimes - 1) && (sOuterLoopIdx == sOuterLoopEnd - 1) &&
+                                  (sInnerLoopIdx == sInnerLoopTimes - 1);
                     if (taskIdx < BUFFER_NUM && !isLast) {
                         continue;
                     }
@@ -1758,7 +1763,7 @@ __aicore__ inline void IncreFlashAttentionAntiqSplitBbn2s2Us2<IFAT>::Process()
                         CalcParams(loop, taskContext[loop % BUFFER_NUM]);
                         AntiquantKey(loop);
                         CopyQueryToL1(loop);
-                        SendQK(loop); 
+                        SendQK(loop);
                     }
                     for (uint32_t i = 0; i < taskIdx; i++) {
                         uint32_t loop = gLoop + i;

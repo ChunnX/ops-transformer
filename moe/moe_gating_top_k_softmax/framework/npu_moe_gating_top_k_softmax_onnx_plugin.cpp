@@ -17,38 +17,39 @@
 namespace domi {
 using NodeProto = ge::onnx::NodeProto;
 
-static Status  ParseParamsMoeGatingTopKSoftmax(const Message* op_src, ge::Operator& op_dest) {
-  const NodeProto* node = dynamic_cast<const NodeProto*>(op_src);
-  if (node == nullptr) {
-    OP_LOGE("MoeGatingTopKSoftmax", "Dynamic cast op_src to NodeProto failed.");
-    return FAILED;
-  }
-
-  int k = -1;
-  for (auto& attr : node->attribute()) {
-    if (attr.name() == "k" && attr.type() == ge::onnx::AttributeProto::INT) {
-      k = attr.i();
+static Status ParseParamsMoeGatingTopKSoftmax(const Message *op_src, ge::Operator &op_dest)
+{
+    const NodeProto *node = dynamic_cast<const NodeProto *>(op_src);
+    if (node == nullptr) {
+        OP_LOGE("MoeGatingTopKSoftmax", "Dynamic cast op_src to NodeProto failed.");
+        return FAILED;
     }
-  }
-  if (k == -1) {
-    return FAILED;
-  }
-  op_dest.SetAttr("k", k);
-  return SUCCESS;
+
+    int k = -1;
+    for (auto &attr : node->attribute()) {
+        if (attr.name() == "k" && attr.type() == ge::onnx::AttributeProto::INT) {
+            k = attr.i();
+        }
+    }
+    if (k == -1) {
+        return FAILED;
+    }
+    op_dest.SetAttr("k", k);
+    return SUCCESS;
 }
 
 // register npu_flash_attention_score op info to GE
 REGISTER_CUSTOM_OP("MoeGatingTopKSoftmax")
-  .FrameworkType(ONNX)
-  .OriginOpType({ge::AscendString("npu::1::NPUMoeGatingTopKSoftmax"), 
-                 ge::AscendString("ai.onnx::11::NPUMoeGatingTopKSoftmax"),
-                 ge::AscendString("ai.onnx::12::NPUMoeGatingTopKSoftmax"),
-                 ge::AscendString("ai.onnx::13::NPUMoeGatingTopKSoftmax"),
-                 ge::AscendString("ai.onnx::14::NPUMoeGatingTopKSoftmax"),
-                 ge::AscendString("ai.onnx::15::NPUMoeGatingTopKSoftmax"),
-                 ge::AscendString("ai.onnx::16::NPUMoeGatingTopKSoftmax"),
-                 ge::AscendString("ai.onnx::17::NPUMoeGatingTopKSoftmax"),
-                 ge::AscendString("ai.onnx::18::NPUMoeGatingTopKSoftmax")})
-  .ParseParamsFn(ParseParamsMoeGatingTopKSoftmax)
-  .ImplyType(ImplyType::TVM);
-}  // namespace domi
+    .FrameworkType(ONNX)
+    .OriginOpType({ge::AscendString("npu::1::NPUMoeGatingTopKSoftmax"),
+                   ge::AscendString("ai.onnx::11::NPUMoeGatingTopKSoftmax"),
+                   ge::AscendString("ai.onnx::12::NPUMoeGatingTopKSoftmax"),
+                   ge::AscendString("ai.onnx::13::NPUMoeGatingTopKSoftmax"),
+                   ge::AscendString("ai.onnx::14::NPUMoeGatingTopKSoftmax"),
+                   ge::AscendString("ai.onnx::15::NPUMoeGatingTopKSoftmax"),
+                   ge::AscendString("ai.onnx::16::NPUMoeGatingTopKSoftmax"),
+                   ge::AscendString("ai.onnx::17::NPUMoeGatingTopKSoftmax"),
+                   ge::AscendString("ai.onnx::18::NPUMoeGatingTopKSoftmax")})
+    .ParseParamsFn(ParseParamsMoeGatingTopKSoftmax)
+    .ImplyType(ImplyType::TVM);
+} // namespace domi

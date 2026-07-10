@@ -19,15 +19,12 @@
 #define MTE_COMM 1
 // 模板参数
 ASCENDC_TPL_ARGS_DECL(QuantReduceScatter,
-    ASCENDC_TPL_UINT_DECL(quantReduceScatterCommMode, ASCENDC_TPL_8_BW, ASCENDC_TPL_UI_LIST, MTE_COMM),
-);
+                      ASCENDC_TPL_UINT_DECL(quantReduceScatterCommMode, ASCENDC_TPL_8_BW, ASCENDC_TPL_UI_LIST,
+                                            MTE_COMM), );
 
 // 模板参数组合
 // 用于调用GET_TPL_TILING_KEY获取TilingKey时，接口内部校验TilingKey是否合法
-ASCENDC_TPL_SEL(
-    ASCENDC_TPL_ARGS_SEL(
-        ASCENDC_TPL_UINT_SEL(quantReduceScatterCommMode, ASCENDC_TPL_UI_LIST, MTE_COMM),
-    ),
-);
+ASCENDC_TPL_SEL(ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_UINT_SEL(quantReduceScatterCommMode, ASCENDC_TPL_UI_LIST,
+                                                          MTE_COMM), ), );
 
 #endif // QUANT_REDUCE_SCATTER_TILING_KEY_H

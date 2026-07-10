@@ -31,14 +31,22 @@ def as_numpy(value):
 
 def row_set_diff_positions(output_row, golden_row):
     golden_set = {int(x) for x in golden_row if x >= 0}
-    bad_positions = [idx for idx, value in enumerate(output_row) if value >= 0 and int(value) not in golden_set]
+    bad_positions = [
+        idx
+        for idx, value in enumerate(output_row)
+        if value >= 0 and int(value) not in golden_set
+    ]
     output_set = {int(x) for x in output_row if x >= 0}
     missing_count = max(len(output_set - golden_set), len(golden_set - output_set))
     if missing_count <= 0:
         return []
     if len(bad_positions) >= missing_count:
         return bad_positions[:missing_count]
-    positional = [idx for idx, (out, gold) in enumerate(zip(output_row, golden_row)) if out != gold]
+    positional = [
+        idx
+        for idx, (out, gold) in enumerate(zip(output_row, golden_row))
+        if out != gold
+    ]
     return (bad_positions + positional)[:missing_count]
 
 
@@ -50,7 +58,10 @@ def score_relative_diff(score, boundary):
 
 def is_score_close_to_boundary(score, boundary):
     score_diff = abs(float(score) - float(boundary))
-    return score_diff <= _TOPK_ABS_TOL or score_relative_diff(score, boundary) <= _TOPK_REL_TOL
+    return (
+        score_diff <= _TOPK_ABS_TOL
+        or score_relative_diff(score, boundary) <= _TOPK_REL_TOL
+    )
 
 
 def row_score_diff_to_boundary(output_indices, golden_indices, score_row):
@@ -113,12 +124,18 @@ def topk_index_compare(npu_out, golden_out, scores):
         sorted_golden = np.sort(golden, axis=-1).reshape(-1)
         diff_idx = np.where(sorted_npu != sorted_golden)[0].tolist()
         precision = (sorted_golden.size - len(diff_idx)) / sorted_golden.size * 100
-        reason = "score context missing" if scores_np is None else f"score shape {scores_np.shape} vs index shape {golden.shape}"
+        reason = (
+            "score context missing"
+            if scores_np is None
+            else f"score shape {scores_np.shape} vs index shape {golden.shape}"
+        )
         return {
             "pass": len(diff_idx) == 0,
             "precision": precision,
             "diff_indices": diff_idx[:1000],
-            "error_info": None if not diff_idx else f"TopK fallback sorted-index compare failed: {reason}",
+            "error_info": None
+            if not diff_idx
+            else f"TopK fallback sorted-index compare failed: {reason}",
             "metrics": {"fallback": reason, "diff_positions": len(diff_idx)},
         }
 
@@ -134,7 +151,9 @@ def topk_index_compare(npu_out, golden_out, scores):
     failed_rows = 0
     max_failed_abs_diff = 0.0
     max_failed_rel_diff = 0.0
-    for row_idx, (output_row, golden_row, score_row) in enumerate(zip(output_rows, golden_rows, score_rows)):
+    for row_idx, (output_row, golden_row, score_row) in enumerate(
+        zip(output_rows, golden_rows, score_rows)
+    ):
         output_valid = output_row[output_row >= 0].astype(np.int64)
         golden_valid = golden_row[golden_row >= 0].astype(np.int64)
         if np.array_equal(np.sort(output_valid), np.sort(golden_valid)):
@@ -144,11 +163,15 @@ def topk_index_compare(npu_out, golden_out, scores):
             score_equiv_rows += 1
             continue
         failed_rows += 1
-        abs_diff, rel_diff = row_score_diff_to_boundary(output_valid, golden_valid, score_row)
+        abs_diff, rel_diff = row_score_diff_to_boundary(
+            output_valid, golden_valid, score_row
+        )
         max_failed_abs_diff = max(max_failed_abs_diff, abs_diff)
         max_failed_rel_diff = max(max_failed_rel_diff, rel_diff)
         base = row_idx * k_count
-        diff_indices.extend(base + i for i in row_set_diff_positions(output_row, golden_row))
+        diff_indices.extend(
+            base + i for i in row_set_diff_positions(output_row, golden_row)
+        )
 
     precision = (golden.size - len(diff_indices)) / golden.size * 100
     fail_ratio = len(diff_indices) / golden.size
@@ -193,7 +216,8 @@ def expected_values_from_scores(scores, value_shape):
     if sorted_scores.shape[-1] < k_count:
         pad_shape = sorted_scores.shape[:-1] + (k_count - sorted_scores.shape[-1],)
         sorted_scores = np.concatenate(
-            [sorted_scores, np.full(pad_shape, -np.inf, dtype=np.float32)], axis=-1)
+            [sorted_scores, np.full(pad_shape, -np.inf, dtype=np.float32)], axis=-1
+        )
     return sorted_scores[..., :k_count]
 
 
@@ -211,26 +235,44 @@ def value_compare(npu_out, golden_out, scores=None):
         }
     if expected.size == 0:
         return {"pass": True, "precision": 100.0}
-    diff = ~np.isclose(npu.reshape(-1), expected.reshape(-1), rtol=_VALUE_RTOL, atol=_VALUE_ATOL, equal_nan=True)
+    diff = ~np.isclose(
+        npu.reshape(-1),
+        expected.reshape(-1),
+        rtol=_VALUE_RTOL,
+        atol=_VALUE_ATOL,
+        equal_nan=True,
+    )
     diff_idx = np.where(diff)[0].tolist()
     precision = (expected.size - len(diff_idx)) / expected.size * 100
     return {
         "pass": (len(diff_idx) / expected.size) <= _VALUE_FAIL_RATIO,
         "precision": precision,
         "diff_indices": diff_idx[:1000],
-        "error_info": None if not diff_idx else f"value compare mismatches={len(diff_idx)}",
-        "metrics": {"rtol": _VALUE_RTOL, "atol": _VALUE_ATOL, "fail_ratio": _VALUE_FAIL_RATIO},
+        "error_info": None
+        if not diff_idx
+        else f"value compare mismatches={len(diff_idx)}",
+        "metrics": {
+            "rtol": _VALUE_RTOL,
+            "atol": _VALUE_ATOL,
+            "fail_ratio": _VALUE_FAIL_RATIO,
+        },
     }
 
 
 def compare(*outputs, scores=None):
     """Compare NPU outputs against golden references using TopK index and value tolerance policies."""
     if len(outputs) < 2 or len(outputs) % 2 != 0:
-        return {"pass": False, "precision": "invalid", "error_info": "compare expects NPU outputs followed by golden outputs"}
+        return {
+            "pass": False,
+            "precision": "invalid",
+            "error_info": "compare expects NPU outputs followed by golden outputs",
+        }
     half = len(outputs) // 2
     npu_outputs = outputs[:half]
     golden_outputs = outputs[half:]
     results = [topk_index_compare(npu_outputs[0], golden_outputs[0], scores)]
     for idx in range(1, half):
-        results.append(value_compare(npu_outputs[idx], golden_outputs[idx], scores=scores))
+        results.append(
+            value_compare(npu_outputs[idx], golden_outputs[idx], scores=scores)
+        )
     return results[0] if len(results) == 1 else results

@@ -861,9 +861,8 @@ private:
                                        const AscendC::GlobalTensor<BType> &bGlobal,
                                        const AscendC::GlobalTensor<fp8_e8m0_t> &scaleAGlobal,
                                        const AscendC::GlobalTensor<fp8_e8m0_t> &scaleBGlobal,
-                                       const AscendC::GlobalTensor<BiasType> &biasGlobal,
-                                       const BlockShape &singleShape, AscendC::MmadParams &mmParams,
-                                       uint64_t &l0cOffset)
+                                       const AscendC::GlobalTensor<BiasType> &biasGlobal, const BlockShape &singleShape,
+                                       AscendC::MmadParams &mmParams, uint64_t &l0cOffset)
     {
         TileL1L0Param tileL1L0Param;
         tileL1L0Param.curM = Get<IDX_M_TILE_IDX>(singleShape);

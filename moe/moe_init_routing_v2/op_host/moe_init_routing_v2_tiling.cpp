@@ -801,8 +801,8 @@ void MoeInitRoutingV2TilingBase::Tiling4SrcToDstCapacityCompute()
     int64_t lastCoreRows = totalLength - perCoreRows * (needCoreNum - 1);
     tilingData->set_lastCoreRows(lastCoreRows);
 
-    int64_t rowSize = (perCoreRows * sizeof(int32_t) * NUM_TWO + ONE_BLOCK_BYTE + ONE_BLOCK_BYTE - 1) /
-                      ONE_BLOCK_BYTE * ONE_BLOCK_BYTE;
+    int64_t rowSize = (perCoreRows * sizeof(int32_t) * NUM_TWO + ONE_BLOCK_BYTE + ONE_BLOCK_BYTE - 1) / ONE_BLOCK_BYTE *
+                      ONE_BLOCK_BYTE;
     int64_t colSize = (cols * inuptXDtypeSize_ + ONE_BLOCK_BYTE - 1) / ONE_BLOCK_BYTE * ONE_BLOCK_BYTE;
 
     if (rowSize + colSize < static_cast<int64_t>(aicoreParams_.ubSize)) {
@@ -921,8 +921,8 @@ void MoeInitRoutingV2TilingBase::SetGatherOutLoopParams(int64_t perCoreRows, int
 
     bool colsAligned = (cols * inuptXDtypeSize_ % ONE_BLOCK_BYTE == 0);
     // 使用moe_v2_scatter_out_batch_row模板
-    bool useScatterMode = regBase && colsAligned && (ubRowsVal >= NUM_TWO) &&
-                         (dropPadMode != 1) && (moeInitRoutingTilingData.get_k() <= SCATTER_MODE_MAX_K);
+    bool useScatterMode = regBase && colsAligned && (ubRowsVal >= NUM_TWO) && (dropPadMode != 1) &&
+                          (moeInitRoutingTilingData.get_k() <= SCATTER_MODE_MAX_K);
     if (useScatterMode) {
         tilingData->set_scatterMode(1);
         int64_t actualActivateRows = tilingData->get_activateRows();

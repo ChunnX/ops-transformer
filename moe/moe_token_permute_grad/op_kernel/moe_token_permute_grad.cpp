@@ -16,15 +16,11 @@
 #include "moe_token_permute_grad.h"
 #include "kernel_operator.h"
 
-extern "C" __global__ __aicore__ void moe_token_permute_grad(
-    GM_ADDR permuted_output_grad,
-    GM_ADDR sorted_indices,
-    GM_ADDR input_grad,
-    GM_ADDR workspace,
-    GM_ADDR tiling)
+extern "C" __global__ __aicore__ void moe_token_permute_grad(GM_ADDR permuted_output_grad, GM_ADDR sorted_indices,
+                                                             GM_ADDR input_grad, GM_ADDR workspace, GM_ADDR tiling)
 {
     GET_TILING_DATA(tiling_data_in, tiling);
-    const MoeTokenPermuteGradTilingData* __restrict tiling_data = &tiling_data_in;
+    const MoeTokenPermuteGradTilingData *__restrict tiling_data = &tiling_data_in;
 
     // 调用unpermute计算， probs始终false
     if (TILING_KEY_IS(0)) {

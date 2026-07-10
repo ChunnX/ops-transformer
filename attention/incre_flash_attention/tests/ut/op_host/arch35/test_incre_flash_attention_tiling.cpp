@@ -35,15 +35,15 @@ TEST_F(IncreFlashAttentionTiling, IncreFlashAttention_950_tiling_0)
 {
     optiling::PromptFlashAttentionCompileInfo compileInfo = {
         64, 32, 65536, 65536, 65536, 1048576, 32768, 33554432, platform_ascendc::SocVersion::ASCEND950};
-    
+
     gert::TilingContextPara tilingContextPara(
         "IncreFlashAttention",
         {
          // 0:q
         {{{4, 1, 1024}, {4, 1, 1024}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-         // 1:k: 
+         // 1:k:
          {{{4, 2048, 128}, {4, 2048, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-         // 2:v: 
+         // 2:v:
          {{{4, 2048, 128}, {4, 2048, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
          // 3:pse_shift
          {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
@@ -91,15 +91,15 @@ TEST_F(IncreFlashAttentionTiling, IncreFlashAttention_950_tiling_1)
 {
     optiling::PromptFlashAttentionCompileInfo compileInfo = {
         64, 32, 65536, 65536, 65536, 1048576, 32768, 33554432, platform_ascendc::SocVersion::ASCEND950};
-    
+
     gert::TilingContextPara tilingContextPara(
         "IncreFlashAttention",
         {
          // 0:q
         {{{2, 1, 24, 128}, {2, 1, 24, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-         // 1:k: 
+         // 1:k:
          {{{2, 736, 24, 128}, {2, 736, 24, 128}}, ge::DT_INT8, ge::FORMAT_ND},
-         // 2:v: 
+         // 2:v:
          {{{2, 736, 24, 128}, {2, 736, 24, 128}}, ge::DT_INT8, ge::FORMAT_ND},
          // 3:pse_shift
          {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
@@ -147,15 +147,15 @@ TEST_F(IncreFlashAttentionTiling, IncreFlashAttention_950_tiling_2)
 {
     optiling::PromptFlashAttentionCompileInfo compileInfo = {
         64, 32, 65536, 65536, 65536, 1048576, 32768, 33554432, platform_ascendc::SocVersion::ASCEND950};
-    
+
     gert::TilingContextPara tilingContextPara(
         "IncreFlashAttention",
         {
          // 0:q
         {{{5, 20, 1, 21}, {5, 20, 1, 21}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-         // 1:k: 
+         // 1:k:
          {{{5, 2, 237094, 21}, {5, 2, 237094, 21}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-         // 2:v: 
+         // 2:v:
          {{{5, 2, 237094, 21}, {5, 2, 237094, 21}}, ge::DT_FLOAT16, ge::FORMAT_ND},
          // 3:pse_shift
          {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
@@ -202,15 +202,15 @@ TEST_F(IncreFlashAttentionTiling, IncreFlashAttention_950_tiling_3)
 {
     optiling::PromptFlashAttentionCompileInfo compileInfo = {
         64, 32, 65536, 65536, 65536, 1048576, 32768, 33554432, platform_ascendc::SocVersion::ASCEND950};
-    
+
     gert::TilingContextPara tilingContextPara(
         "IncreFlashAttention",
         {
          // 0:q
         {{{1,5,1, 128}, {1,5,1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-         // 1:k: 
+         // 1:k:
          {{{16, 128, 640}, {16, 128, 640}}, ge::DT_INT8, ge::FORMAT_ND},
-         // 2:v: 
+         // 2:v:
          {{{16, 128, 640}, {16, 128, 640}}, ge::DT_INT8, ge::FORMAT_ND},
          // 3:pse_shift
          {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
@@ -257,15 +257,15 @@ TEST_F(IncreFlashAttentionTiling, IncreFlashAttention_950_tiling_4)
 {
     optiling::PromptFlashAttentionCompileInfo compileInfo = {
         64, 32, 65536, 65536, 65536, 1048576, 32768, 33554432, platform_ascendc::SocVersion::ASCEND950};
-    
+
     gert::TilingContextPara tilingContextPara(
         "IncreFlashAttention",
         {
          // 0:q
         {{{1,5,1, 128}, {1,5,1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-         // 1:k: 
+         // 1:k:
          {{{1,5,2048,128}, {1,5,2048,128}}, ge::DT_INT8, ge::FORMAT_ND},
-         // 2:v: 
+         // 2:v:
          {{{1,5,2048,128}, {1,5,2048,128}}, ge::DT_INT8, ge::FORMAT_ND},
          // 3:pse_shift
          {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
@@ -312,15 +312,15 @@ TEST_F(IncreFlashAttentionTiling, IncreFlashAttention_950_tiling_5)
 {
     optiling::PromptFlashAttentionCompileInfo compileInfo = {
         64, 32, 65536, 65536, 65536, 1048576, 32768, 33554432, platform_ascendc::SocVersion::ASCEND950};
-    
+
     gert::TilingContextPara tilingContextPara(
         "IncreFlashAttention",
         {
          // 0:q
         {{{1,1,640}, {1,1,640}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-         // 1:k: 
+         // 1:k:
          {{{1,2048,640}, {1,2048,640}}, ge::DT_INT8, ge::FORMAT_ND},
-         // 2:v: 
+         // 2:v:
          {{{1,2048,640}, {1,2048,640}}, ge::DT_INT8, ge::FORMAT_ND},
          // 3:pse_shift
          {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
@@ -367,15 +367,15 @@ TEST_F(IncreFlashAttentionTiling, IncreFlashAttention_950_tiling_6)
 {
     optiling::PromptFlashAttentionCompileInfo compileInfo = {
         64, 32, 65536, 65536, 65536, 1048576, 32768, 33554432, platform_ascendc::SocVersion::ASCEND950};
-    
+
     gert::TilingContextPara tilingContextPara(
         "IncreFlashAttention",
         {
          // 0:q
         {{{2,1,640}, {2,1,640}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-         // 1:k: 
+         // 1:k:
          {{{1,2048,640}, {1,2048,640}}, ge::DT_INT8, ge::FORMAT_ND},
-         // 2:v: 
+         // 2:v:
          {{{1,2048,640}, {1,2048,640}}, ge::DT_INT8, ge::FORMAT_ND},
          // 3:pse_shift
          {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
@@ -422,15 +422,15 @@ TEST_F(IncreFlashAttentionTiling, IncreFlashAttention_950_tiling_7)
 {
     optiling::PromptFlashAttentionCompileInfo compileInfo = {
         64, 32, 65536, 65536, 65536, 1048576, 32768, 33554432, platform_ascendc::SocVersion::ASCEND950};
-    
+
     gert::TilingContextPara tilingContextPara(
         "IncreFlashAttention",
         {
          // 0:q
         {{{1,5,1,128}, {1,5,1,128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-         // 1:k: 
+         // 1:k:
          {{{16,5,128,128}, {16,5,128,128}}, ge::DT_INT8, ge::FORMAT_ND},
-         // 2:v: 
+         // 2:v:
          {{{16,5,128,128}, {16,5,128,128}}, ge::DT_INT8, ge::FORMAT_ND},
          // 3:pse_shift
          {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
@@ -459,7 +459,7 @@ TEST_F(IncreFlashAttentionTiling, IncreFlashAttention_950_tiling_7)
          },
         {
          {{{1,5,1,128}, {1,5,1,128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-         
+
         },
         {
          {"num_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(5)},
@@ -478,15 +478,15 @@ TEST_F(IncreFlashAttentionTiling, IncreFlashAttention_950_tiling_8)
 {
     optiling::PromptFlashAttentionCompileInfo compileInfo = {
         64, 32, 65536, 65536, 65536, 1048576, 32768, 33554432, platform_ascendc::SocVersion::ASCEND950};
-    
+
     gert::TilingContextPara tilingContextPara(
         "IncreFlashAttention",
         {
          // 0:q
         {{{1,5,1,128}, {1,5,1,128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-         // 1:k: 
+         // 1:k:
          {{{16,5,128,128,1}, {16,5,128,128,1}}, ge::DT_INT8, ge::FORMAT_ND},
-         // 2:v: 
+         // 2:v:
          {{{16,5,128,128,1}, {16,5,128,128,1}}, ge::DT_INT8, ge::FORMAT_ND},
          // 3:pse_shift
          {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
@@ -515,7 +515,7 @@ TEST_F(IncreFlashAttentionTiling, IncreFlashAttention_950_tiling_8)
          },
         {
          {{{1,5,1,128}, {1,5,1,128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-         
+
         },
         {
          {"num_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(5)},
@@ -534,15 +534,15 @@ TEST_F(IncreFlashAttentionTiling, IncreFlashAttention_950_tiling_9)
 {
     optiling::PromptFlashAttentionCompileInfo compileInfo = {
         64, 32, 65536, 65536, 65536, 1048576, 32768, 33554432, platform_ascendc::SocVersion::ASCEND950};
-    
+
     gert::TilingContextPara tilingContextPara(
         "IncreFlashAttention",
         {
          // 0:q
         {{{1,5,1,128}, {1,5,1,128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-         // 1:k: 
+         // 1:k:
          {{{16,5,128,128}, {16,5,128,128}}, ge::DT_INT8, ge::FORMAT_ND},
-         // 2:v: 
+         // 2:v:
          {{{16,5,128,128,1}, {16,5,128,128,1}}, ge::DT_INT8, ge::FORMAT_ND},
          // 3:pse_shift
          {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
@@ -571,7 +571,7 @@ TEST_F(IncreFlashAttentionTiling, IncreFlashAttention_950_tiling_9)
          },
         {
          {{{1,5,1,128}, {1,5,1,128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-         
+
         },
         {
          {"num_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(5)},
@@ -590,15 +590,15 @@ TEST_F(IncreFlashAttentionTiling, IncreFlashAttention_950_tiling_10)
 {
     optiling::PromptFlashAttentionCompileInfo compileInfo = {
         64, 32, 65536, 65536, 65536, 1048576, 32768, 33554432, platform_ascendc::SocVersion::ASCEND950};
-    
+
     gert::TilingContextPara tilingContextPara(
         "IncreFlashAttention",
         {
          // 0:q
         {{{1,5,1, 128}, {1,5,1, 128}}, ge::DT_BF16, ge::FORMAT_ND},
-         // 1:k: 
+         // 1:k:
          {{{16, 128, 640}, {16, 128, 640}}, ge::DT_INT8, ge::FORMAT_ND},
-         // 2:v: 
+         // 2:v:
          {{{16, 128, 640}, {16, 128, 640}}, ge::DT_INT8, ge::FORMAT_ND},
          // 3:pse_shift
          {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
@@ -645,15 +645,15 @@ TEST_F(IncreFlashAttentionTiling, IncreFlashAttention_950_tiling_11)
 {
     optiling::PromptFlashAttentionCompileInfo compileInfo = {
         64, 32, 65536, 65536, 65536, 1048576, 32768, 33554432, platform_ascendc::SocVersion::ASCEND950};
-    
+
     gert::TilingContextPara tilingContextPara(
         "IncreFlashAttention",
         {
          // 0:q
         {{{1,5,1, 128}, {1,5,1, 128}}, ge::DT_FLOAT16 , ge::FORMAT_ND},
-         // 1:k: 
+         // 1:k:
          {{{16, 128, 640}, {16, 128, 640}}, ge::DT_INT8, ge::FORMAT_ND},
-         // 2:v: 
+         // 2:v:
          {{{16, 128, 640}, {16, 128, 640}}, ge::DT_INT8, ge::FORMAT_ND},
          // 3:pse_shift
          {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
@@ -700,15 +700,15 @@ TEST_F(IncreFlashAttentionTiling, IncreFlashAttention_950_tiling_12)
 {
     optiling::PromptFlashAttentionCompileInfo compileInfo = {
         64, 32, 65536, 65536, 65536, 1048576, 32768, 33554432, platform_ascendc::SocVersion::ASCEND950};
-    
+
     gert::TilingContextPara tilingContextPara(
         "IncreFlashAttention",
         {
          // 0:q
         {{{1,5,1, 128}, {1,5,1, 128}}, ge::DT_FLOAT, ge::FORMAT_ND},
-         // 1:k: 
+         // 1:k:
          {{{16, 128, 640}, {16, 128, 640}}, ge::DT_INT8, ge::FORMAT_ND},
-         // 2:v: 
+         // 2:v:
          {{{16, 128, 640}, {16, 128, 640}}, ge::DT_INT8, ge::FORMAT_ND},
          // 3:pse_shift
          {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
@@ -755,15 +755,15 @@ TEST_F(IncreFlashAttentionTiling, IncreFlashAttention_950_tiling_13)
 {
     optiling::PromptFlashAttentionCompileInfo compileInfo = {
         64, 32, 65536, 65536, 65536, 1048576, 32768, 33554432, platform_ascendc::SocVersion::ASCEND950};
-    
+
     gert::TilingContextPara tilingContextPara(
         "IncreFlashAttention",
         {
          // 0:q
         {{{2, 1, 24, 128}, {2, 1, 24, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-         // 1:k: 
+         // 1:k:
          {{{2, 736, 24, 128}, {2, 736, 24, 128}}, ge::DT_INT8, ge::FORMAT_ND},
-         // 2:v: 
+         // 2:v:
          {{{2, 736, 24, 128}, {2, 736, 24, 128}}, ge::DT_INT8, ge::FORMAT_ND},
          // 3:pse_shift
          {{{1,5,1,2048}, {1,5,1,2048}}, ge::DT_FLOAT16, ge::FORMAT_ND},
@@ -811,15 +811,15 @@ TEST_F(IncreFlashAttentionTiling, IncreFlashAttention_950_tiling_14)
 {
     optiling::PromptFlashAttentionCompileInfo compileInfo = {
         64, 32, 65536, 65536, 65536, 1048576, 32768, 33554432, platform_ascendc::SocVersion::ASCEND950};
-    
+
     gert::TilingContextPara tilingContextPara(
         "IncreFlashAttention",
         {
          // 0:q
         {{{2, 1, 24, 128}, {2, 1, 24, 128}}, ge::DT_BF16, ge::FORMAT_ND},
-         // 1:k: 
+         // 1:k:
          {{{2, 736, 24, 128}, {2, 736, 24, 128}}, ge::DT_INT8, ge::FORMAT_ND},
-         // 2:v: 
+         // 2:v:
          {{{2, 736, 24, 128}, {2, 736, 24, 128}}, ge::DT_INT8, ge::FORMAT_ND},
          // 3:pse_shift
          {{{1,5,1,2048}, {1,5,1,2048}}, ge::DT_FLOAT16, ge::FORMAT_ND},
@@ -867,15 +867,15 @@ TEST_F(IncreFlashAttentionTiling, IncreFlashAttention_950_tiling_15)
 {
     optiling::PromptFlashAttentionCompileInfo compileInfo = {
         64, 32, 65536, 65536, 65536, 1048576, 32768, 33554432, platform_ascendc::SocVersion::ASCEND950};
-    
+
     gert::TilingContextPara tilingContextPara(
         "IncreFlashAttention",
         {
          // 0:q
         {{{2, 1, 24, 128}, {2, 1, 24, 128}}, ge::DT_BF16, ge::FORMAT_ND},
-         // 1:k: 
+         // 1:k:
          {{{2, 736, 24, 128}, {2, 736, 24, 128}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},
-         // 2:v: 
+         // 2:v:
          {{{2, 736, 24, 128}, {2, 736, 24, 128}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},
          // 3:pse_shift
          {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
@@ -922,15 +922,15 @@ TEST_F(IncreFlashAttentionTiling, IncreFlashAttention_950_tiling_16)
 {
     optiling::PromptFlashAttentionCompileInfo compileInfo = {
         64, 32, 65536, 65536, 65536, 1048576, 32768, 33554432, platform_ascendc::SocVersion::ASCEND950};
-    
+
     gert::TilingContextPara tilingContextPara(
         "IncreFlashAttention",
         {
          // 0:q
         {{{2, 1, 24, 128}, {2, 1, 24, 128}}, ge::DT_BF16, ge::FORMAT_ND},
-         // 1:k: 
+         // 1:k:
          {{{2, 736, 24, 128}, {2, 736, 24, 128}}, ge::DT_FLOAT4_E1M2, ge::FORMAT_ND},
-         // 2:v: 
+         // 2:v:
          {{{2, 736, 24, 128}, {2, 736, 24, 128}}, ge::DT_FLOAT4_E1M2, ge::FORMAT_ND},
          // 3:pse_shift
          {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
@@ -977,15 +977,15 @@ TEST_F(IncreFlashAttentionTiling, IncreFlashAttention_950_tiling_17)
 {
     optiling::PromptFlashAttentionCompileInfo compileInfo = {
         64, 32, 65536, 65536, 65536, 1048576, 32768, 33554432, platform_ascendc::SocVersion::ASCEND950};
-    
+
     gert::TilingContextPara tilingContextPara(
         "IncreFlashAttention",
         {
          // 0:q
         {{{2, 1, 24, 128}, {2, 1, 24, 128}}, ge::DT_BF16, ge::FORMAT_ND},
-         // 1:k: 
+         // 1:k:
          {{{2, 736, 24, 128}, {2, 736, 24, 128}}, ge::DT_HIFLOAT8, ge::FORMAT_ND},
-         // 2:v: 
+         // 2:v:
          {{{2, 736, 24, 128}, {2, 736, 24, 128}}, ge::DT_HIFLOAT8, ge::FORMAT_ND},
          // 3:pse_shift
          {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
@@ -1032,15 +1032,15 @@ TEST_F(IncreFlashAttentionTiling, IncreFlashAttention_950_tiling_18)
 {
     optiling::PromptFlashAttentionCompileInfo compileInfo = {
         64, 32, 65536, 65536, 65536, 1048576, 32768, 33554432, platform_ascendc::SocVersion::ASCEND950};
-    
+
     gert::TilingContextPara tilingContextPara(
         "IncreFlashAttention",
         {
          // 0:q
         {{{1, 1, 24, 128}, {1, 1, 24, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-         // 1:k: 
+         // 1:k:
          {{{1, 736, 24, 128}, {1, 736, 24, 128}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},
-         // 2:v: 
+         // 2:v:
          {{{1, 736, 24, 128}, {1, 736, 24, 128}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},
          // 3:pse_shift
          {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
@@ -1087,15 +1087,15 @@ TEST_F(IncreFlashAttentionTiling, IncreFlashAttention_950_tiling_19)
 {
     optiling::PromptFlashAttentionCompileInfo compileInfo = {
         64, 32, 65536, 65536, 65536, 1048576, 32768, 33554432, platform_ascendc::SocVersion::ASCEND950};
-    
+
     gert::TilingContextPara tilingContextPara(
         "IncreFlashAttention",
         {
          // 0:q
         {{{1, 2, 24, 128}, {1, 2, 24, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-         // 1:k: 
+         // 1:k:
          {{{1, 736, 24, 128}, {1, 736, 24, 128}}, ge::DT_INT8, ge::FORMAT_ND},
-         // 2:v: 
+         // 2:v:
          {{{1, 736, 24, 128}, {1, 736, 24, 128}}, ge::DT_INT8, ge::FORMAT_ND},
          // 3:pse_shift
          {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
@@ -1143,15 +1143,15 @@ TEST_F(IncreFlashAttentionTiling, IncreFlashAttention_950_tiling_20)
 {
     optiling::PromptFlashAttentionCompileInfo compileInfo = {
         64, 32, 65536, 65536, 65536, 1048576, 32768, 33554432, platform_ascendc::SocVersion::ASCEND950};
-    
+
     gert::TilingContextPara tilingContextPara(
         "IncreFlashAttention",
         {
          // 0:q
         {{{1, 2, 24, 128}, {1, 2, 24, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-         // 1:k: 
+         // 1:k:
          {{{1, 736, 24, 128}, {1, 736, 24, 128}}, ge::DT_INT8, ge::FORMAT_ND},
-         // 2:v: 
+         // 2:v:
          {{{1, 736, 24, 128}, {1, 736, 24, 128}}, ge::DT_INT8, ge::FORMAT_ND},
          // 3:pse_shift
          {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
@@ -1199,15 +1199,15 @@ TEST_F(IncreFlashAttentionTiling, IncreFlashAttention_950_tiling_21)
 {
     optiling::PromptFlashAttentionCompileInfo compileInfo = {
         64, 32, 65536, 65536, 65536, 1048576, 32768, 33554432, platform_ascendc::SocVersion::ASCEND950};
-    
+
     gert::TilingContextPara tilingContextPara(
         "IncreFlashAttention",
         {
          // 0:q
         {{{1, 2, 24, 128}, {1, 2, 24, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-         // 1:k: 
+         // 1:k:
          {{{1, 736, 24, 128}, {1, 736, 24, 128}}, ge::DT_INT8, ge::FORMAT_ND},
-         // 2:v: 
+         // 2:v:
          {{{1, 736, 24, 128}, {1, 736, 24, 128}}, ge::DT_INT8, ge::FORMAT_ND},
          // 3:pse_shift
          {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
@@ -1255,15 +1255,15 @@ TEST_F(IncreFlashAttentionTiling, IncreFlashAttention_950_tiling_22)
 {
     optiling::PromptFlashAttentionCompileInfo compileInfo = {
         64, 32, 65536, 65536, 65536, 1048576, 32768, 33554432, platform_ascendc::SocVersion::ASCEND950};
-    
+
     gert::TilingContextPara tilingContextPara(
         "IncreFlashAttention",
         {
          // 0:q
         {{{1, 2, 24, 128}, {1, 2, 24, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-         // 1:k: 
+         // 1:k:
          {{{1, 736, 24, 128}, {1, 736, 24, 128}}, ge::DT_INT8, ge::FORMAT_ND},
-         // 2:v: 
+         // 2:v:
          {{{1, 736, 24, 128}, {1, 736, 24, 128}}, ge::DT_INT8, ge::FORMAT_ND},
          // 3:pse_shift
          {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
@@ -1311,15 +1311,15 @@ TEST_F(IncreFlashAttentionTiling, IncreFlashAttention_950_tiling_23)
 {
     optiling::PromptFlashAttentionCompileInfo compileInfo = {
         64, 32, 65536, 65536, 65536, 1048576, 32768, 33554432, platform_ascendc::SocVersion::ASCEND950};
-    
+
     gert::TilingContextPara tilingContextPara(
         "IncreFlashAttention",
         {
          // 0:q
         {{{1, 2, 24, 128}, {1, 2, 24, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-         // 1:k: 
+         // 1:k:
          {{{1, 736, 24, 128}, {1, 736, 24, 128}}, ge::DT_INT8, ge::FORMAT_ND},
-         // 2:v: 
+         // 2:v:
          {{{1, 736, 24, 128}, {1, 736, 24, 128}}, ge::DT_INT8, ge::FORMAT_ND},
          // 3:pse_shift
          {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
@@ -1367,15 +1367,15 @@ TEST_F(IncreFlashAttentionTiling, IncreFlashAttention_950_tiling_24)
 {
     optiling::PromptFlashAttentionCompileInfo compileInfo = {
         64, 32, 65536, 65536, 65536, 1048576, 32768, 33554432, platform_ascendc::SocVersion::ASCEND950};
-    
+
     gert::TilingContextPara tilingContextPara(
         "IncreFlashAttention",
         {
          // 0:q
         {{{1, 2, 24, 128}, {1, 2, 24, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-         // 1:k: 
+         // 1:k:
          {{{1, 736, 24, 128}, {1, 736, 24, 128}}, ge::DT_INT8, ge::FORMAT_ND},
-         // 2:v: 
+         // 2:v:
          {{{1, 736, 24, 128}, {1, 736, 24, 128}}, ge::DT_INT8, ge::FORMAT_ND},
          // 3:pse_shift
          {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
@@ -1423,15 +1423,15 @@ TEST_F(IncreFlashAttentionTiling, IncreFlashAttention_950_tiling_25)
 {
     optiling::PromptFlashAttentionCompileInfo compileInfo = {
         64, 32, 65536, 65536, 65536, 1048576, 32768, 33554432, platform_ascendc::SocVersion::ASCEND950};
-    
+
     gert::TilingContextPara tilingContextPara(
         "IncreFlashAttention",
         {
          // 0:q
         {{{1, 2, 24, 128}, {1, 2, 24, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-         // 1:k: 
+         // 1:k:
          {{{1, 736, 24, 128}, {1, 736, 24, 128}}, ge::DT_INT8, ge::FORMAT_ND},
-         // 2:v: 
+         // 2:v:
          {{{1, 736, 24, 128}, {1, 736, 24, 128}}, ge::DT_INT8, ge::FORMAT_ND},
          // 3:pse_shift
          {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
@@ -1479,15 +1479,15 @@ TEST_F(IncreFlashAttentionTiling, IncreFlashAttention_950_tiling_26)
 {
     optiling::PromptFlashAttentionCompileInfo compileInfo = {
         64, 32, 65536, 65536, 65536, 1048576, 32768, 33554432, platform_ascendc::SocVersion::ASCEND950};
-    
+
     gert::TilingContextPara tilingContextPara(
         "IncreFlashAttention",
         {
          // 0:q
         {{{1, 2, 24, 128}, {1, 2, 24, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-         // 1:k: 
+         // 1:k:
          {{{1, 736, 24, 128}, {1, 736, 24, 128}}, ge::DT_INT8, ge::FORMAT_ND},
-         // 2:v: 
+         // 2:v:
          {{{1, 736, 24, 128}, {1, 736, 24, 128}}, ge::DT_INT8, ge::FORMAT_ND},
          // 3:pse_shift
          {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
@@ -1535,15 +1535,15 @@ TEST_F(IncreFlashAttentionTiling, IncreFlashAttention_950_tiling_27)
 {
     optiling::PromptFlashAttentionCompileInfo compileInfo = {
         64, 32, 65536, 65536, 65536, 1048576, 32768, 33554432, platform_ascendc::SocVersion::ASCEND950};
-    
+
     gert::TilingContextPara tilingContextPara(
         "IncreFlashAttention",
         {
          // 0:q
         {{{1, 2, 24, 128}, {1, 2, 24, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-         // 1:k: 
+         // 1:k:
          {{{1, 736, 24, 128}, {1, 736, 24, 128}}, ge::DT_INT8, ge::FORMAT_ND},
-         // 2:v: 
+         // 2:v:
          {{{1, 736, 24, 128}, {1, 736, 24, 128}}, ge::DT_INT8, ge::FORMAT_ND},
          // 3:pse_shift
          {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
@@ -1591,15 +1591,15 @@ TEST_F(IncreFlashAttentionTiling, IncreFlashAttention_950_tiling_28)
 {
     optiling::PromptFlashAttentionCompileInfo compileInfo = {
         64, 32, 65536, 65536, 65536, 1048576, 32768, 33554432, platform_ascendc::SocVersion::ASCEND950};
-    
+
     gert::TilingContextPara tilingContextPara(
         "IncreFlashAttention",
         {
          // 0:q
         {{{1,5,1, 128}, {1,5,1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-         // 1:k: 
+         // 1:k:
          {{{16, 128, 640}, {16, 128, 640}}, ge::DT_INT8, ge::FORMAT_ND},
-         // 2:v: 
+         // 2:v:
          {{{16, 128, 640}, {16, 128, 640}}, ge::DT_INT8, ge::FORMAT_ND},
          // 3:pse_shift
          {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
@@ -1647,15 +1647,15 @@ TEST_F(IncreFlashAttentionTiling, IncreFlashAttention_950_tiling_29)
 {
     optiling::PromptFlashAttentionCompileInfo compileInfo = {
         64, 32, 65536, 65536, 65536, 1048576, 32768, 33554432, platform_ascendc::SocVersion::ASCEND950};
-    
+
     gert::TilingContextPara tilingContextPara(
         "IncreFlashAttention",
         {
          // 0:q
         {{{4, 1, 1024}, {4, 1, 1024}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-         // 1:k: 
+         // 1:k:
          {{{4, 2048, 128}, {4, 2048, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-         // 2:v: 
+         // 2:v:
          {{{4, 2048, 128}, {4, 2048, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
          // 3:pse_shift
          {{{1}, {1}}, ge::DT_FLOAT16, ge::FORMAT_ND},
@@ -1703,15 +1703,15 @@ TEST_F(IncreFlashAttentionTiling, IncreFlashAttention_950_tiling_30)
 {
     optiling::PromptFlashAttentionCompileInfo compileInfo = {
         64, 32, 65536, 65536, 65536, 1048576, 32768, 33554432, platform_ascendc::SocVersion::ASCEND950};
-    
+
     gert::TilingContextPara tilingContextPara(
         "IncreFlashAttention",
         {
          // 0:q
         {{{2, 1, 24, 128}, {2, 1, 24, 128}}, ge::DT_BF16, ge::FORMAT_ND},
-         // 1:k: 
+         // 1:k:
          {{{2, 736, 24, 128}, {2, 736, 24, 128}}, ge::DT_INT8, ge::FORMAT_ND},
-         // 2:v: 
+         // 2:v:
          {{{2, 736, 24, 128}, {2, 736, 24, 128}}, ge::DT_INT8, ge::FORMAT_ND},
          // 3:pse_shift
          {{{1,5,1,2048}, {1,5,1,2048}}, ge::DT_FLOAT, ge::FORMAT_ND},
@@ -1759,15 +1759,15 @@ TEST_F(IncreFlashAttentionTiling, IncreFlashAttention_950_tiling_31)
 {
     optiling::PromptFlashAttentionCompileInfo compileInfo = {
         64, 32, 65536, 65536, 65536, 1048576, 32768, 33554432, platform_ascendc::SocVersion::ASCEND950};
-    
+
     gert::TilingContextPara tilingContextPara(
         "IncreFlashAttention",
         {
          // 0:q
         {{{2, 2, 24, 128}, {2, 2, 24, 128}}, ge::DT_BF16, ge::FORMAT_ND},
-         // 1:k: 
+         // 1:k:
          {{{2, 736, 24, 128}, {2, 736, 24, 128}}, ge::DT_INT8, ge::FORMAT_ND},
-         // 2:v: 
+         // 2:v:
          {{{2, 736, 24, 128}, {2, 736, 24, 128}}, ge::DT_INT8, ge::FORMAT_ND},
          // 3:pse_shift
          {{{1,24,3,2048}, {1,24,3,2048}}, ge::DT_BF16, ge::FORMAT_ND},
@@ -1815,15 +1815,15 @@ TEST_F(IncreFlashAttentionTiling, IncreFlashAttention_950_tiling_32)
 {
     optiling::PromptFlashAttentionCompileInfo compileInfo = {
         64, 32, 65536, 65536, 65536, 1048576, 32768, 33554432, platform_ascendc::SocVersion::ASCEND950};
-    
+
     gert::TilingContextPara tilingContextPara(
         "IncreFlashAttention",
         {
          // 0:q
         {{{1,5,1, 127}, {1,5,1, 127}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-         // 1:k: 
+         // 1:k:
          {{{1,5,2048,128}, {1,5,2048,128}}, ge::DT_INT8, ge::FORMAT_ND},
-         // 2:v: 
+         // 2:v:
          {{{1,5,2048,128}, {1,5,2048,128}}, ge::DT_INT8, ge::FORMAT_ND},
          // 3:pse_shift
          {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
@@ -1870,15 +1870,15 @@ TEST_F(IncreFlashAttentionTiling, IncreFlashAttention_950_tiling_33)
 {
     optiling::PromptFlashAttentionCompileInfo compileInfo = {
         64, 32, 65536, 65536, 65536, 1048576, 32768, 33554432, platform_ascendc::SocVersion::ASCEND950};
-    
+
     gert::TilingContextPara tilingContextPara(
         "IncreFlashAttention",
         {
          // 0:q
         {{{1,5,1, 128}, {1,5,1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-         // 1:k: 
+         // 1:k:
          {{{1,5,2048,128}, {1,5,2048,128}}, ge::DT_INT8, ge::FORMAT_ND},
-         // 2:v: 
+         // 2:v:
          {{{1,5,2048,127}, {1,5,2048,127}}, ge::DT_INT8, ge::FORMAT_ND},
          // 3:pse_shift
          {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
@@ -1925,15 +1925,15 @@ TEST_F(IncreFlashAttentionTiling, IncreFlashAttention_950_tiling_34)
 {
     optiling::PromptFlashAttentionCompileInfo compileInfo = {
         64, 32, 65536, 65536, 65536, 1048576, 32768, 33554432, platform_ascendc::SocVersion::ASCEND950};
-    
+
     gert::TilingContextPara tilingContextPara(
         "IncreFlashAttention",
         {
          // 0:q
         {{{1,5,1,128}, {1,5,1,128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-         // 1:k: 
+         // 1:k:
          {{{16,5,128,128,16}, {16,5,128,128,16}}, ge::DT_INT4, ge::FORMAT_ND},
-         // 2:v: 
+         // 2:v:
          {{{16,5,128,128,16}, {16,5,128,128,16}}, ge::DT_INT4, ge::FORMAT_ND},
          // 3:pse_shift
          {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
@@ -1962,7 +1962,7 @@ TEST_F(IncreFlashAttentionTiling, IncreFlashAttention_950_tiling_34)
          },
         {
          {{{1,5,1,128}, {1,5,1,128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-         
+
         },
         {
          {"num_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(5)},
@@ -1981,15 +1981,15 @@ TEST_F(IncreFlashAttentionTiling, IncreFlashAttention_950_tiling_35)
 {
     optiling::PromptFlashAttentionCompileInfo compileInfo = {
         64, 32, 65536, 65536, 65536, 1048576, 32768, 33554432, platform_ascendc::SocVersion::ASCEND950};
-    
+
     gert::TilingContextPara tilingContextPara(
         "IncreFlashAttention",
         {
          // 0:q
         {{{1,5,1,128}, {1,5,1,128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-         // 1:k: 
+         // 1:k:
          {{{16,5,128,128,16}, {16,5,128,128,16}}, ge::DT_INT8, ge::FORMAT_ND},
-         // 2:v: 
+         // 2:v:
          {{{16,5,128,128,16}, {16,5,128,128,16}}, ge::DT_INT8, ge::FORMAT_ND},
          // 3:pse_shift
          {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
@@ -2018,7 +2018,7 @@ TEST_F(IncreFlashAttentionTiling, IncreFlashAttention_950_tiling_35)
          },
         {
          {{{1,5,1,128}, {1,5,1,128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-         
+
         },
         {
          {"num_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(5)},
@@ -2037,15 +2037,15 @@ TEST_F(IncreFlashAttentionTiling, IncreFlashAttention_950_tiling_36)
 {
     optiling::PromptFlashAttentionCompileInfo compileInfo = {
         64, 32, 65536, 65536, 65536, 1048576, 32768, 33554432, platform_ascendc::SocVersion::ASCEND950};
-    
+
     gert::TilingContextPara tilingContextPara(
         "IncreFlashAttention",
         {
          // 0:q
         {{{2, 1, 24, 128}, {2, 1, 24, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-         // 1:k: 
+         // 1:k:
          {{{2, 736, 24, 128}, {2, 736, 24, 128}}, ge::DT_INT8, ge::FORMAT_ND},
-         // 2:v: 
+         // 2:v:
          {{{2, 736, 24, 128,1}, {2, 736, 24, 128,1}}, ge::DT_INT8, ge::FORMAT_ND},
          // 3:pse_shift
          {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
@@ -2093,15 +2093,15 @@ TEST_F(IncreFlashAttentionTiling, IncreFlashAttention_950_tiling_37)
 {
     optiling::PromptFlashAttentionCompileInfo compileInfo = {
         64, 32, 65536, 65536, 65536, 1048576, 32768, 33554432, platform_ascendc::SocVersion::ASCEND950};
-    
+
     gert::TilingContextPara tilingContextPara(
         "IncreFlashAttention",
         {
          // 0:q
         {{{2, 1, 24, 128}, {2, 1, 24, 128}}, ge::DT_BF16, ge::FORMAT_ND},
-         // 1:k: 
+         // 1:k:
          {{{2, 736, 24, 128}, {2, 736, 24, 128}}, ge::DT_HIFLOAT8, ge::FORMAT_ND},
-         // 2:v: 
+         // 2:v:
          {{{2, 736, 24, 128}, {2, 736, 24, 128}}, ge::DT_HIFLOAT8, ge::FORMAT_ND},
          // 3:pse_shift
          {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
@@ -2149,15 +2149,15 @@ TEST_F(IncreFlashAttentionTiling, IncreFlashAttention_950_tiling_38)
 {
     optiling::PromptFlashAttentionCompileInfo compileInfo = {
         64, 32, 65536, 65536, 65536, 1048576, 32768, 33554432, platform_ascendc::SocVersion::ASCEND950};
-    
+
     gert::TilingContextPara tilingContextPara(
         "IncreFlashAttention",
         {
          // 0:q
         {{{1, 2, 24, 128}, {1, 2, 24, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-         // 1:k: 
+         // 1:k:
          {{{1, 736, 24, 128}, {1, 736, 24, 128}}, ge::DT_INT8, ge::FORMAT_ND},
-         // 2:v: 
+         // 2:v:
          {{{1, 736, 24, 128}, {1, 736, 24, 128}}, ge::DT_INT8, ge::FORMAT_ND},
          // 3:pse_shift
          {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
@@ -2205,15 +2205,15 @@ TEST_F(IncreFlashAttentionTiling, IncreFlashAttention_950_tiling_39)
 {
     optiling::PromptFlashAttentionCompileInfo compileInfo = {
         64, 32, 65536, 65536, 65536, 1048576, 32768, 33554432, platform_ascendc::SocVersion::ASCEND950};
-    
+
     gert::TilingContextPara tilingContextPara(
         "IncreFlashAttention",
         {
          // 0:q
         {{{1, 2, 24, 128}, {1, 2, 24, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-         // 1:k: 
+         // 1:k:
          {{{1, 736, 24, 128}, {1, 736, 24, 128}}, ge::DT_INT8, ge::FORMAT_ND},
-         // 2:v: 
+         // 2:v:
          {{{1, 736, 24, 128}, {1, 736, 24, 128}}, ge::DT_INT8, ge::FORMAT_ND},
          // 3:pse_shift
          {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
@@ -2260,15 +2260,15 @@ TEST_F(IncreFlashAttentionTiling, IncreFlashAttention_950_tiling_40)
 {
     optiling::PromptFlashAttentionCompileInfo compileInfo = {
         64, 32, 65536, 65536, 65536, 1048576, 32768, 33554432, platform_ascendc::SocVersion::ASCEND950};
-    
+
     gert::TilingContextPara tilingContextPara(
         "IncreFlashAttention",
         {
          // 0:q
         {{{1, 2, 24, 128}, {1, 2, 24, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-         // 1:k: 
+         // 1:k:
          {{{1, 736, 24, 128}, {1, 736, 24, 128}}, ge::DT_INT8, ge::FORMAT_ND},
-         // 2:v: 
+         // 2:v:
          {{{1, 736, 24, 128}, {1, 736, 24, 128}}, ge::DT_INT8, ge::FORMAT_ND},
          // 3:pse_shift
          {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
@@ -2315,15 +2315,15 @@ TEST_F(IncreFlashAttentionTiling, IncreFlashAttention_950_tiling_41)
 {
     optiling::PromptFlashAttentionCompileInfo compileInfo = {
         64, 32, 65536, 65536, 65536, 1048576, 32768, 33554432, platform_ascendc::SocVersion::ASCEND950};
-    
+
     gert::TilingContextPara tilingContextPara(
         "IncreFlashAttention",
         {
          // 0:q
         {{{1,5,1, 128}, {1,5,1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-         // 1:k: 
+         // 1:k:
          {{{1,5,2048,128}, {1,5,2048,128}}, ge::DT_INT8, ge::FORMAT_ND},
-         // 2:v: 
+         // 2:v:
          {{{1,5,2048,128}, {1,5,2048,128}}, ge::DT_INT8, ge::FORMAT_ND},
          // 3:pse_shift
          {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
@@ -2370,15 +2370,15 @@ TEST_F(IncreFlashAttentionTiling, IncreFlashAttention_950_tiling_42)
 {
     optiling::PromptFlashAttentionCompileInfo compileInfo = {
         64, 32, 65536, 65536, 65536, 1048576, 32768, 33554432, platform_ascendc::SocVersion::ASCEND950};
-    
+
     gert::TilingContextPara tilingContextPara(
         "IncreFlashAttention",
         {
          // 0:q
         {{{1,5,2, 128}, {1,5,2, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-         // 1:k: 
+         // 1:k:
          {{{1,5,2048,128}, {1,5,2048,128}}, ge::DT_INT8, ge::FORMAT_ND},
-         // 2:v: 
+         // 2:v:
          {{{1,5,2048,128}, {1,5,2048,128}}, ge::DT_INT8, ge::FORMAT_ND},
          // 3:pse_shift
          {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},

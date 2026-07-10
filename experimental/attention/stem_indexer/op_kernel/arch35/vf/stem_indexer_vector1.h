@@ -26,26 +26,26 @@ struct FloatSortTraits;
 template <>
 struct FloatSortTraits<float> {
     using UInt = uint32_t;
-    static constexpr UInt ZERO      = 0x00000000;
+    static constexpr UInt ZERO = 0x00000000;
     static constexpr UInt SIGN_MASK = 0x80000000;
-    static constexpr UInt NAN_MASK  = 0x7FC00000;
-    static constexpr UInt ALL_ONE   = 0xFFFFFFFF;
+    static constexpr UInt NAN_MASK = 0x7FC00000;
+    static constexpr UInt ALL_ONE = 0xFFFFFFFF;
 };
 
 // bf16
 template <>
 struct FloatSortTraits<bfloat16_t> {
     using UInt = uint16_t;
-    static constexpr UInt ZERO      = 0x0000;
+    static constexpr UInt ZERO = 0x0000;
     static constexpr UInt SIGN_MASK = 0x8000;
-    static constexpr UInt NAN_MASK  = 0x7FC0;
-    static constexpr UInt ALL_ONE   = 0xFFFF;
+    static constexpr UInt NAN_MASK = 0x7FC0;
+    static constexpr UInt ALL_ONE = 0xFFFF;
 };
 
 template <typename FloatT>
 struct FloatSortConstCtx {
     using Traits = FloatSortTraits<FloatT>;
-    using UInt   = typename Traits::UInt;
+    using UInt = typename Traits::UInt;
     AscendC::MicroAPI::RegTensor<UInt> zeros;
     AscendC::MicroAPI::RegTensor<UInt> allOne;
     AscendC::MicroAPI::RegTensor<UInt> signMask;
@@ -53,31 +53,30 @@ struct FloatSortConstCtx {
 };
 
 template <typename FloatT>
-__simd_callee__ inline void InitFloatSortConstCtx(FloatSortConstCtx<FloatT>& ctx, AscendC::MicroAPI::MaskReg& maskAll)
+__simd_callee__ inline void InitFloatSortConstCtx(FloatSortConstCtx<FloatT> &ctx, AscendC::MicroAPI::MaskReg &maskAll)
 {
     using Traits = FloatSortTraits<FloatT>;
-    AscendC::MicroAPI::Duplicate(ctx.zeros,    Traits::ZERO,      maskAll);
-    AscendC::MicroAPI::Duplicate(ctx.allOne,   Traits::ALL_ONE,   maskAll);
+    AscendC::MicroAPI::Duplicate(ctx.zeros, Traits::ZERO, maskAll);
+    AscendC::MicroAPI::Duplicate(ctx.allOne, Traits::ALL_ONE, maskAll);
     AscendC::MicroAPI::Duplicate(ctx.signMask, Traits::SIGN_MASK, maskAll);
-    AscendC::MicroAPI::Duplicate(ctx.nan,      Traits::NAN_MASK,  maskAll);
+    AscendC::MicroAPI::Duplicate(ctx.nan, Traits::NAN_MASK, maskAll);
 }
 
 template <typename FloatT>
-__simd_callee__ inline void FloatToSortableKey(
-    AscendC::MicroAPI::RegTensor<typename FloatSortTraits<FloatT>::UInt>& outKey,
-    AscendC::MicroAPI::RegTensor<FloatT>& inVal,
-    FloatSortConstCtx<FloatT>& ctx,
-    AscendC::MicroAPI::MaskReg& maskAll)
+__simd_callee__ inline void
+FloatToSortableKey(AscendC::MicroAPI::RegTensor<typename FloatSortTraits<FloatT>::UInt> &outKey,
+                   AscendC::MicroAPI::RegTensor<FloatT> &inVal, FloatSortConstCtx<FloatT> &ctx,
+                   AscendC::MicroAPI::MaskReg &maskAll)
 {
     using Traits = FloatSortTraits<FloatT>;
-    using UInt   = typename Traits::UInt;
+    using UInt = typename Traits::UInt;
 
     AscendC::MicroAPI::RegTensor<UInt> regTemp;
     AscendC::MicroAPI::RegTensor<UInt> regMask;
     AscendC::MicroAPI::MaskReg regSelectNan;
     AscendC::MicroAPI::MaskReg regSelectSign;
 
-    auto& inBits = (AscendC::MicroAPI::RegTensor<UInt>&)inVal;
+    auto &inBits = (AscendC::MicroAPI::RegTensor<UInt> &)inVal;
 
     // 1. NaN check
     AscendC::MicroAPI::Compare<UInt, CMPMODE::EQ>(regSelectNan, inBits, ctx.nan, maskAll);
@@ -96,24 +95,22 @@ __simd_callee__ inline void FloatToSortableKey(
 }
 
 template <typename FloatT>
-__simd_callee__ inline void FloatX2ToSortableKey(
-    AscendC::MicroAPI::RegTensor<typename FloatSortTraits<FloatT>::UInt>& outKey0,
-    AscendC::MicroAPI::RegTensor<typename FloatSortTraits<FloatT>::UInt>& outKey1,
-    AscendC::MicroAPI::RegTensor<FloatT>& inVal0,
-    AscendC::MicroAPI::RegTensor<FloatT>& inVal1,
-    FloatSortConstCtx<FloatT>& ctx,
-    AscendC::MicroAPI::MaskReg& maskAll)
+__simd_callee__ inline void
+FloatX2ToSortableKey(AscendC::MicroAPI::RegTensor<typename FloatSortTraits<FloatT>::UInt> &outKey0,
+                     AscendC::MicroAPI::RegTensor<typename FloatSortTraits<FloatT>::UInt> &outKey1,
+                     AscendC::MicroAPI::RegTensor<FloatT> &inVal0, AscendC::MicroAPI::RegTensor<FloatT> &inVal1,
+                     FloatSortConstCtx<FloatT> &ctx, AscendC::MicroAPI::MaskReg &maskAll)
 {
     using Traits = FloatSortTraits<FloatT>;
-    using UInt   = typename Traits::UInt;
+    using UInt = typename Traits::UInt;
 
     AscendC::MicroAPI::RegTensor<UInt> regTemp[2];
     AscendC::MicroAPI::RegTensor<UInt> regMask[2];
     AscendC::MicroAPI::MaskReg regSelectNan[2];
     AscendC::MicroAPI::MaskReg regSelectSign[2];
 
-    auto& inBits0 = (AscendC::MicroAPI::RegTensor<UInt>&)inVal0;
-    auto& inBits1 = (AscendC::MicroAPI::RegTensor<UInt>&)inVal1;
+    auto &inBits0 = (AscendC::MicroAPI::RegTensor<UInt> &)inVal0;
+    auto &inBits1 = (AscendC::MicroAPI::RegTensor<UInt> &)inVal1;
 
     // 1. NaN check
     AscendC::MicroAPI::Compare<UInt, CMPMODE::EQ>(regSelectNan[0], inBits0, ctx.nan, maskAll);
@@ -139,12 +136,9 @@ __simd_callee__ inline void FloatX2ToSortableKey(
 
 // QK_T in, sortable key out
 template <typename QK_T>
-__simd_vf__ inline void MulRSquareAndAddVBiasVFImpl(__ubuf__ typename FloatSortTraits<QK_T>::UInt* outBuf,
-                                                    __ubuf__ QK_T* qkBuf,
-                                                    __ubuf__ float* vBiasBuf,
-                                                    const float rSquare,
-                                                    const int gS1BasePerVecSize_,
-                                                    const int s2BaseSize,
+__simd_vf__ inline void MulRSquareAndAddVBiasVFImpl(__ubuf__ typename FloatSortTraits<QK_T>::UInt *outBuf,
+                                                    __ubuf__ QK_T *qkBuf, __ubuf__ float *vBiasBuf, const float rSquare,
+                                                    const int gS1BasePerVecSize_, const int s2BaseSize,
                                                     const int mrgValueLen)
 {
     using ScoreT = QK_T;
@@ -152,7 +146,7 @@ __simd_vf__ inline void MulRSquareAndAddVBiasVFImpl(__ubuf__ typename FloatSortT
     // Each vector register has 64 elements; split s2BaseSize into 4 registers.
     constexpr int32_t S2_REG_ELEMS = 64;
 
-    MicroAPI::RegTensor<float> regvBias[4];   // vbias 恒为 FP32 输入
+    MicroAPI::RegTensor<float> regvBias[4]; // vbias 恒为 FP32 输入
     MicroAPI::RegTensor<ScoreT> regQK[4];
     MicroAPI::RegTensor<ScoreT> regQKMul[4];
     MicroAPI::RegTensor<ScoreT> regQKBias[4];
@@ -190,12 +184,12 @@ __simd_vf__ inline void MulRSquareAndAddVBiasVFImpl(__ubuf__ typename FloatSortT
         FloatX2ToSortableKey<ScoreT>(regOut[2], regOut[3], regQKBias[2], regQKBias[3], scoreCtx, maskAllB32);
         // 搬入outBuf的value部分
         MicroAPI::StoreAlign<KeyT, MicroAPI::StoreDist::DIST_NORM>(outBuf + (mrgValueLen * i), regOut[0], maskAllB32);
-        MicroAPI::StoreAlign<KeyT, MicroAPI::StoreDist::DIST_NORM>(
-            outBuf + (mrgValueLen * i) + S2_REG_ELEMS, regOut[1], maskAllB32);
-        MicroAPI::StoreAlign<KeyT, MicroAPI::StoreDist::DIST_NORM>(
-            outBuf + (mrgValueLen * i) + 2 * S2_REG_ELEMS, regOut[2], maskAllB32);
-        MicroAPI::StoreAlign<KeyT, MicroAPI::StoreDist::DIST_NORM>(
-            outBuf + (mrgValueLen * i) + 3 * S2_REG_ELEMS, regOut[3], maskAllB32);
+        MicroAPI::StoreAlign<KeyT, MicroAPI::StoreDist::DIST_NORM>(outBuf + (mrgValueLen * i) + S2_REG_ELEMS, regOut[1],
+                                                                   maskAllB32);
+        MicroAPI::StoreAlign<KeyT, MicroAPI::StoreDist::DIST_NORM>(outBuf + (mrgValueLen * i) + 2 * S2_REG_ELEMS,
+                                                                   regOut[2], maskAllB32);
+        MicroAPI::StoreAlign<KeyT, MicroAPI::StoreDist::DIST_NORM>(outBuf + (mrgValueLen * i) + 3 * S2_REG_ELEMS,
+                                                                   regOut[3], maskAllB32);
     }
 }
 
@@ -211,20 +205,19 @@ __simd_vf__ inline void MulRSquareAndAddVBiasVFImpl(__ubuf__ typename FloatSortT
  */
 template <typename QK_T>
 __aicore__ inline void MulRSquareAndAddVBiasVF(
-    const LocalTensor<typename FloatSortTraits<QK_T>::UInt> &outLocal,   // out    [S2Base]       [256   ]
-    const LocalTensor<QK_T> &qkLocal,                                     // q*k^t  [qbG, S2Base]  [48 256]
-    const LocalTensor<float> &vBiasLocal,                                 // vBias  [1, S2Base]    [256   ]
-    const float rSquare, const int gS1BasePerVecSize_, const int s2BaseSize,
-    const int mrgValueLen)
+    const LocalTensor<typename FloatSortTraits<QK_T>::UInt> &outLocal, // out    [S2Base]       [256   ]
+    const LocalTensor<QK_T> &qkLocal,                                  // q*k^t  [qbG, S2Base]  [48 256]
+    const LocalTensor<float> &vBiasLocal,                              // vBias  [1, S2Base]    [256   ]
+    const float rSquare, const int gS1BasePerVecSize_, const int s2BaseSize, const int mrgValueLen)
 {
     using KeyT = typename FloatSortTraits<QK_T>::UInt;
-    __ubuf__ QK_T * qkBuf = (__ubuf__ QK_T *)qkLocal.GetPhyAddr();
-    __ubuf__ float * vBiasBuf = (__ubuf__ float *)vBiasLocal.GetPhyAddr();
-    __ubuf__ KeyT * outBuf = (__ubuf__ KeyT *)outLocal.GetPhyAddr();
+    __ubuf__ QK_T *qkBuf = (__ubuf__ QK_T *)qkLocal.GetPhyAddr();
+    __ubuf__ float *vBiasBuf = (__ubuf__ float *)vBiasLocal.GetPhyAddr();
+    __ubuf__ KeyT *outBuf = (__ubuf__ KeyT *)outLocal.GetPhyAddr();
 
     MulRSquareAndAddVBiasVFImpl(outBuf, qkBuf, vBiasBuf, rSquare, gS1BasePerVecSize_, s2BaseSize, mrgValueLen);
 }
 
-}
+} // namespace vector1
 
 #endif

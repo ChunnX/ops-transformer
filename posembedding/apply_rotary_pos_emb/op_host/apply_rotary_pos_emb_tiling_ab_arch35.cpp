@@ -65,8 +65,8 @@ ge::graphStatus ApplyRotaryPosEmbTilingAB::DoOpTiling()
         return ge::GRAPH_FAILED;
     }
     if (typeSize == 0) {
-        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(context_->GetNodeName(), "query",
-            Ops::Base::ToString(dtype_).c_str(), "The dtype size of input query cannot be 0");
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(context_->GetNodeName(), "query", Ops::Base::ToString(dtype_).c_str(),
+                                              "The dtype size of input query cannot be 0");
         return ge::GRAPH_FAILED;
     }
 
@@ -148,7 +148,7 @@ bool ApplyRotaryPosEmbTilingAB::IsCapable()
     // 1. qk:bsnd, cos:bs1d 2. qk:sbnd, cos:sb1d 3. qk:sbnd, cos:s11d 4. qk:tnd, cos:t1d
     if ((layout_ == ApplyRotaryPosEmbLayout::BSND && cosb_ == b_) ||
         (layout_ == ApplyRotaryPosEmbLayout::SBND && cosb_ == b_) ||
-        (layout_ == ApplyRotaryPosEmbLayout::SBND && cosb_ == 1)  ||
+        (layout_ == ApplyRotaryPosEmbLayout::SBND && cosb_ == 1) ||
         (layout_ == ApplyRotaryPosEmbLayout::TND && cosb_ == b_ && cosb_ == 1)) {
         return true;
     }

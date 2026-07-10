@@ -43,7 +43,7 @@ enum class LayoutType : uint8_t {
     LAYOUT_BSND = 1,
     LAYOUT_SBH = 2,
     LAYOUT_BNSD = 3,
-    LAYOUT_TND = 4,  //NSA需要用到
+    LAYOUT_TND = 4, // NSA需要用到
 };
 
 enum class SparseMode : uint8_t {
@@ -65,7 +65,7 @@ enum class ImplMode : uint8_t {
 };
 
 
-template <typename T> 
+template <typename T>
 static T AlignUp(T num1, T num2)
 {
     if (num2 == 0) {
@@ -77,7 +77,7 @@ static T AlignUp(T num1, T num2)
     return (num1 + num2 - 1) / num2 * num2;
 }
 
-template <typename T> 
+template <typename T>
 static T CeilDivision(T num1, T num2)
 {
     if (num2 == 0) {
@@ -191,7 +191,7 @@ ge::graphStatus NsaSelectedAttentionTiling::GetPlatformInfo()
     if (platformInfoPtr == nullptr) {
         auto compileInfoPtr = context_->GetCompileInfo<NsaSelectedAttentionCompileInfo>();
         OP_CHECK_IF(compileInfoPtr == nullptr, OPS_REPORT_VECTOR_INNER_ERR(opName, "compileInfoPtr is null."),
-                return ge::GRAPH_FAILED);
+                    return ge::GRAPH_FAILED);
         aivNum = compileInfoPtr->aivNum;
         aicNum = compileInfoPtr->aicNum;
         aicoreParams_.ubSize = compileInfoPtr->ubSize;
@@ -207,8 +207,7 @@ ge::graphStatus NsaSelectedAttentionTiling::GetPlatformInfo()
         ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L0_C, aicoreParams_.l0cSize);
         ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L2, l2CacheSize);
     }
-    OP_LOGI(context_,
-        "get platform from compileInfo.aivNum(%u) aicNum(%u) ubSize(%lu) l1Size(%lu) l0cSize(%lu).",
+    OP_LOGI(context_, "get platform from compileInfo.aivNum(%u) aicNum(%u) ubSize(%lu) l1Size(%lu) l0cSize(%lu).",
             aivNum, aicNum, aicoreParams_.ubSize, aicoreParams_.l1Size, aicoreParams_.l0cSize);
 
     return ge::GRAPH_SUCCESS;
@@ -246,30 +245,37 @@ ge::graphStatus NsaSelectedAttentionTiling::CheckContext()
     OP_CHECK_NULL_WITH_CONTEXT(context_, attenOutShape);
     OP_CHECK_NULL_WITH_CONTEXT(context_, context_->GetRawTilingData());
     OP_CHECK_NULL_WITH_CONTEXT(context_, context_->GetRawTilingData()->GetData());
-    OP_CHECK_IF(
-        context_->GetRawTilingData()->GetCapacity() < tilingData.GetDataSize(), OPS_REPORT_VECTOR_INNER_ERR(opName, "context tiling data capacity %zu < actual tiling data size %zu.",
-                                        context_->GetRawTilingData()->GetCapacity(), tilingData.GetDataSize()),
-            return ge::GRAPH_FAILED);
+    OP_CHECK_IF(context_->GetRawTilingData()->GetCapacity() < tilingData.GetDataSize(),
+                OPS_REPORT_VECTOR_INNER_ERR(opName, "context tiling data capacity %zu < actual tiling data size %zu.",
+                                            context_->GetRawTilingData()->GetCapacity(), tilingData.GetDataSize()),
+                return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus NsaSelectedAttentionTiling::GetShapeAttrsInfo()
 {
     opName = context_->GetNodeName();
-    OP_LOGD(opName, "TilingContext: " "%s.", GetTilingContextDebugStr().c_str());
+    OP_LOGD(opName,
+            "TilingContext: "
+            "%s.",
+            GetTilingContextDebugStr().c_str());
     OP_CHECK_IF(CheckContext() != ge::GRAPH_SUCCESS, OPS_REPORT_VECTOR_INNER_ERR(opName, "invalid context."),
-            return ge::GRAPH_FAILED);
+                return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(!AnalyzeAttrs() || !AnalyzeDtype() || !AnalyzeLayout() || !AnalyzeOptionalInput(),
-            OPS_REPORT_VECTOR_INNER_ERR(opName, "fail to analyze context info."), return ge::GRAPH_FAILED);
+                OPS_REPORT_VECTOR_INNER_ERR(opName, "fail to analyze context info."), return ge::GRAPH_FAILED);
 
-    alignedS1 = AlignUp(s1Size, FRACTAL_NUM);  // 64*1024
-    alignedS2 = AlignUp(s2Size, FRACTAL_NUM);   // 64*1024
-    alignedD = AlignUp(dSize, FRACTAL_NUM); //192
+    alignedS1 = AlignUp(s1Size, FRACTAL_NUM); // 64*1024
+    alignedS2 = AlignUp(s2Size, FRACTAL_NUM); // 64*1024
+    alignedD = AlignUp(dSize, FRACTAL_NUM);   // 192
     alignedD2 = AlignUp(d2Size, FRACTAL_NUM); // 128
 
-    OP_CHECK_IF(alignedD <= 0, OPS_REPORT_VECTOR_INNER_ERR(opName, "invalid alignedD" " %ld.", alignedD),
-        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(alignedD <= 0,
+                OPS_REPORT_VECTOR_INNER_ERR(opName,
+                                            "invalid alignedD"
+                                            " %ld.",
+                                            alignedD),
+                return ge::GRAPH_FAILED);
 
     auto &inputParams = tilingData.inputParams;
     inputParams.set_bSize(bSize);
@@ -283,9 +289,8 @@ ge::graphStatus NsaSelectedAttentionTiling::GetShapeAttrsInfo()
     inputParams.set_alignedS2(alignedS2);
     inputParams.set_selectedBlockSize(selectedBlockSize);
     inputParams.set_selectedBlockCount(selectedBlockCount);
-    OP_LOGD(context_, "input params: bn2gs1s2d[%ld, %ld, %ld, %ld, %ld, %ld], scaleValue[%f]."
-            , bSize, n2Size, gSize, s1Size, s2Size,
-            dSize, scaleValue);
+    OP_LOGD(context_, "input params: bn2gs1s2d[%ld, %ld, %ld, %ld, %ld, %ld], scaleValue[%f].", bSize, n2Size, gSize,
+            s1Size, s2Size, dSize, scaleValue);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -317,7 +322,10 @@ bool NsaSelectedAttentionTiling::AnalyzeDtype()
     }
 
     bmm2OutDtype = bmm1OutDtype;
-    OP_LOGD(context_, "Get high precision flag: " "%d.", isHighPercision);
+    OP_LOGD(context_,
+            "Get high precision flag: "
+            "%d.",
+            isHighPercision);
     return true;
 }
 
@@ -337,16 +345,16 @@ bool NsaSelectedAttentionTiling::AnalyzeAttrs()
     sparseMode = *sparseModePtr;
     selectedBlockSize = *selectedBlockSizePtr;
     OP_CHECK_IF(selectedBlockSize > 128,
-               OPS_REPORT_VECTOR_INNER_ERR(opName, "selectedBlockSize [%ld] should <= 128!", selectedBlockSize),
-               return false);
-    OP_CHECK_IF(selectedBlockSize % FRACTAL_NUM != 0,
-               OPS_REPORT_VECTOR_INNER_ERR(opName, "selectedBlockSize [%ld] should be multiple of 16!",
-                                           selectedBlockSize),
-               return false);
+                OPS_REPORT_VECTOR_INNER_ERR(opName, "selectedBlockSize [%ld] should <= 128!", selectedBlockSize),
+                return false);
+    OP_CHECK_IF(
+        selectedBlockSize % FRACTAL_NUM != 0,
+        OPS_REPORT_VECTOR_INNER_ERR(opName, "selectedBlockSize [%ld] should be multiple of 16!", selectedBlockSize),
+        return false);
     selectedBlockCount = *selectedBlockCountPtr;
     OP_CHECK_IF(selectedBlockCount > SELECTED_BLOCK_COUNT_MAX,
-               OPS_REPORT_VECTOR_INNER_ERR(opName, "selectedBlockCount [%ld] should be <= 128!", selectedBlockCount),
-               return false);
+                OPS_REPORT_VECTOR_INNER_ERR(opName, "selectedBlockCount [%ld] should be <= 128!", selectedBlockCount),
+                return false);
     selectedLength = selectedBlockSize * selectedBlockCount;
     OP_CHECK_IF(n1Size == 0, OPS_REPORT_VECTOR_INNER_ERR(opName, "Head num is zero."), return false);
     implMode = ImplMode::AA_HIGH_PRECISION;
@@ -354,14 +362,13 @@ bool NsaSelectedAttentionTiling::AnalyzeAttrs()
 
     // 当前场景只支持下三角 nexttokens和pretokens忽略
     bool supportedSparseMode = (sparseMode == static_cast<int64_t>(SparseMode::LEFT_UP_CAUSAL)) ||
-                                 (sparseMode == static_cast<int64_t>(SparseMode::NO_MASK));
-    OP_CHECK_IF(
-        !supportedSparseMode, OPS_REPORT_VECTOR_INNER_ERR(opName, "Sparse Mode is just support LEFT UP CAUSAL and NO MASK."),
+                               (sparseMode == static_cast<int64_t>(SparseMode::NO_MASK));
+    OP_CHECK_IF(!supportedSparseMode,
+                OPS_REPORT_VECTOR_INNER_ERR(opName, "Sparse Mode is just support LEFT UP CAUSAL and NO MASK."),
                 return false);
-    
-    OP_LOGD(context_, 
-        "attrs: scale_value[%f] input_layout[%s] inner_precise[%d] sparse_mode[%ld].",
-            scaleValue, inputLayout, static_cast<int32_t>(implMode), sparseMode);
+
+    OP_LOGD(context_, "attrs: scale_value[%f] input_layout[%s] inner_precise[%d] sparse_mode[%ld].", scaleValue,
+            inputLayout, static_cast<int32_t>(implMode), sparseMode);
     return true;
 }
 
@@ -374,25 +381,32 @@ bool NsaSelectedAttentionTiling::AnalyzeLayout()
 
     size_t layoutLen = strlen(inputLayout);
 
-    OP_LOGD(context_, "Get input_layout " "[%s].", inputLayout);
-    OP_CHECK_IF(topkIndicesShape.GetDim(2) != selectedBlockCount,
-            OPS_REPORT_VECTOR_INNER_ERR(opName, "topkIndices tail dim[%s] is not equal selected_block_count.", inputLayout), return false);
-    OP_CHECK_IF(queryShape.GetDimNum() != layoutLen || keyShape.GetDimNum() != layoutLen || topkIndicesShape.GetDimNum() != layoutLen,
-            OPS_REPORT_VECTOR_INNER_ERR(opName, "Invalid layout[%s].", inputLayout), return false);
+    OP_LOGD(context_,
+            "Get input_layout "
+            "[%s].",
+            inputLayout);
+    OP_CHECK_IF(
+        topkIndicesShape.GetDim(2) != selectedBlockCount,
+        OPS_REPORT_VECTOR_INNER_ERR(opName, "topkIndices tail dim[%s] is not equal selected_block_count.", inputLayout),
+        return false);
+    OP_CHECK_IF(queryShape.GetDimNum() != layoutLen || keyShape.GetDimNum() != layoutLen ||
+                    topkIndicesShape.GetDimNum() != layoutLen,
+                OPS_REPORT_VECTOR_INNER_ERR(opName, "Invalid layout[%s].", inputLayout), return false);
     OP_CHECK_IF(!Analyze3DimLayout(queryShape, keyShape, valueShape),
-            OPS_REPORT_VECTOR_INNER_ERR(opName, "Get unsupported layout: %s", inputLayout), return false);
+                OPS_REPORT_VECTOR_INNER_ERR(opName, "Get unsupported layout: %s", inputLayout), return false);
     OP_CHECK_IF(gSize == 0, OPS_REPORT_VECTOR_INNER_ERR(opName, "gSize is zero."), return false);
     OP_CHECK_IF(n2Size == 0, OPS_REPORT_VECTOR_INNER_ERR(opName, "n2Size is zero."), return false);
     OP_CHECK_IF(dSize > HEAD_DIM_MAX_VALUE || dSize <= 0L,
-            OPS_REPORT_VECTOR_INNER_ERR(opName, "dSize is not in range:(0, 512]."), return false);
-    OP_CHECK_IF(n1Size % n2Size != 0,
-            OPS_REPORT_VECTOR_INNER_ERR(opName, "n1Size [%ld] should be a multiple of n2Size [%ld].", n1Size, n2Size),
-            return false);
+                OPS_REPORT_VECTOR_INNER_ERR(opName, "dSize is not in range:(0, 512]."), return false);
+    OP_CHECK_IF(
+        n1Size % n2Size != 0,
+        OPS_REPORT_VECTOR_INNER_ERR(opName, "n1Size [%ld] should be a multiple of n2Size [%ld].", n1Size, n2Size),
+        return false);
     return true;
 }
 
 void NsaSelectedAttentionTiling::GetActualSeqLenData(int64_t inputIdx, std::array<int64_t, MAX_VAR_LEN_SEQ_LEN> &res,
-                                                        int64_t &actualLen) const
+                                                     int64_t &actualLen) const
 {
     auto actualSeqLenTensor = context_->GetOptionalInputTensor(inputIdx);
     if (actualSeqLenTensor == nullptr) {
@@ -420,7 +434,8 @@ void NsaSelectedAttentionTiling::GetActualSeqLenData(int64_t inputIdx, std::arra
     }
 }
 
-bool NsaSelectedAttentionTiling::Analyze3DimLayout(const gert::Shape &queryShape, const gert::Shape &keyShape, const gert::Shape &valueShape)
+bool NsaSelectedAttentionTiling::Analyze3DimLayout(const gert::Shape &queryShape, const gert::Shape &keyShape,
+                                                   const gert::Shape &valueShape)
 {
     int64_t h1 = 0;
     int64_t h2 = 0;
@@ -433,28 +448,26 @@ bool NsaSelectedAttentionTiling::Analyze3DimLayout(const gert::Shape &queryShape
     GetActualSeqLenData(ACTUAL_SEQ_LENGTH_INPUT_INDEX, actualSeqLenData, actualSeqQLen);
     GetActualSeqLenData(ACTUAL_SEQ_LENGTH_KV_INPUT_INDEX, actualSeqLenKvData, actualSeqKVLen);
     OP_CHECK_IF(actualSeqQLen != actualSeqKVLen,
-            OPS_REPORT_VECTOR_INNER_ERR(opName, "VarLen scene, q is not equal kv."), return false);
+                OPS_REPORT_VECTOR_INNER_ERR(opName, "VarLen scene, q is not equal kv."), return false);
     bSize = actualSeqQLen;
-    OP_CHECK_IF(bSize > 1024,
-               OPS_REPORT_VECTOR_INNER_ERR(opName, "batch size [%ld] should <= 1024", bSize),
-               return false);
+    OP_CHECK_IF(bSize > 1024, OPS_REPORT_VECTOR_INNER_ERR(opName, "batch size [%ld] should <= 1024", bSize),
+                return false);
     accumS1 = std::accumulate(actualSeqLenData.begin(), actualSeqLenData.end(), 0LL);
     accumS2 = std::accumulate(actualSeqLenKvData.begin(), actualSeqLenKvData.end(), 0LL);
-    OP_CHECK_IF(
-        t1Size < accumS1 || t2Size < accumS2,
-        OPS_REPORT_VECTOR_INNER_ERR(
-            opName,
-            "Query T(%ld) and key T(%ld) need larger than respectively sum of seqLen(%ld) and sekvLen(%ld).",
-            t1Size, t2Size, accumS1, accumS2),
-        return false);
+    OP_CHECK_IF(t1Size < accumS1 || t2Size < accumS2,
+                OPS_REPORT_VECTOR_INNER_ERR(
+                    opName,
+                    "Query T(%ld) and key T(%ld) need larger than respectively sum of seqLen(%ld) and sekvLen(%ld).",
+                    t1Size, t2Size, accumS1, accumS2),
+                return false);
     maxS1Val = *std::max_element(actualSeqLenData.begin(), actualSeqLenData.end());
     maxS2Val = *std::max_element(actualSeqLenKvData.begin(), actualSeqLenKvData.end());
     s1Size = maxS1Val;
     s2Size = maxS2Val;
-    
+
     n2Size = keyShape.GetDim(1);
     OP_CHECK_IF(n2Size == 0, OPS_REPORT_VECTOR_INNER_ERR(opName, "N2 is zero."), return false);
-    gSize =  queryShape.GetDim(1) / n2Size;
+    gSize = queryShape.GetDim(1) / n2Size;
     dSize = queryShape.GetDim(2);
     d2Size = valueShape.GetDim(2);
     h1 = n1Size * dSize;
@@ -465,8 +478,8 @@ bool NsaSelectedAttentionTiling::Analyze3DimLayout(const gert::Shape &queryShape
     tilingData.inputParams.set_layoutType(static_cast<uint8_t>(LayoutType::LAYOUT_TND));
     OP_CHECK_IF(h1 == 0 || h2 == 0, OPS_REPORT_VECTOR_INNER_ERR(opName, "H is zero."), return false);
     OP_CHECK_IF(h1 % n1Size != 0,
-            OPS_REPORT_VECTOR_INNER_ERR(opName, "h1 [%ld] should be a multiple of n1Size [%ld].", h1, n1Size),
-            return false);
+                OPS_REPORT_VECTOR_INNER_ERR(opName, "h1 [%ld] should be a multiple of n1Size [%ld].", h1, n1Size),
+                return false);
     return true;
 }
 
@@ -477,9 +490,9 @@ bool NsaSelectedAttentionTiling::AnalyzeOptionalInput()
     if (attenMaskInput != nullptr && attenMaskShape != nullptr && attenMaskShape->GetStorageShape().GetDimNum() != 0) {
         auto attenMaskType = attenMaskInput->GetDataType();
         OP_CHECK_IF(attenMaskType != ge::DT_BOOL && attenMaskType != ge::DT_UINT8,
-                OPS_REPORT_VECTOR_INNER_ERR(opName, "invalid attenMask dtype[%s], only support bool or uint8.",
-                                            ge::TypeUtils::DataTypeToSerialString(attenMaskType).c_str()),
-                return false);
+                    OPS_REPORT_VECTOR_INNER_ERR(opName, "invalid attenMask dtype[%s], only support bool or uint8.",
+                                                ge::TypeUtils::DataTypeToSerialString(attenMaskType).c_str()),
+                    return false);
 
         tilingData.inputParams.set_attenMaskDataType(1);
         auto &attenMaskStorageShape = attenMaskShape->GetStorageShape();
@@ -520,8 +533,7 @@ ge::graphStatus NsaSelectedAttentionTiling::PostTiling()
     auto blockDim = tilingData.multiCoreParams.get_coreNum();
     context_->SetBlockDim(blockDim);
     size_t *workspaces = context_->GetWorkspaceSizes(1);
-    OP_LOGD(context_, "[%s] final workspace size:%zu.",
-            templateName, workspaces[0]);
+    OP_LOGD(context_, "[%s] final workspace size:%zu.", templateName, workspaces[0]);
     OP_LOGD(opName, "[%s] tiling data:%s.", templateName, GetTilingDataDebugStr().c_str());
     OP_LOGD(context_, "[%s] tiling data size: %zu.", templateName, tilingData.GetDataSize());
     context_->SetTilingKey(GetTilingKey());
@@ -558,7 +570,7 @@ bool NsaSelectedAttentionTiling::SetBmm2TilingInput(matmul_tiling::MatmulApiTili
     if (bmm2.SetBufferSpace(aicoreParams_.l1Size, aicoreParams_.l0cSize) != 0) {
         return false;
     }
-    
+
     return true;
 }
 
@@ -583,7 +595,7 @@ void NsaSelectedAttentionTiling::SetMultiCoreParams()
     int64_t coreNumUsed = std::max(std::min(static_cast<int64_t>(aivNum), t1Size), ONE);
     int64_t s1NumPerHeadCore = CeilDivision(t1Size, coreNumUsed);
     // 尾核
-    int64_t tailCoreNum = s1NumPerHeadCore* coreNumUsed - t1Size;
+    int64_t tailCoreNum = s1NumPerHeadCore * coreNumUsed - t1Size;
     int64_t headCoreNum = coreNumUsed - tailCoreNum;
     int64_t s1NumPerTailCore = static_cast<int32_t>(s1NumPerHeadCore - 1);
     multiCoreParams.set_coreNum(static_cast<int32_t>(coreNumUsed));
@@ -594,7 +606,7 @@ void NsaSelectedAttentionTiling::SetMultiCoreParams()
 }
 
 bool NsaSelectedAttentionTiling::SetMatMulTiling()
-{   
+{
     auto platformInfo = context_->GetPlatformInfo();
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
     matmul_tiling::MatmulApiTiling bmm1(ascendcPlatform);
@@ -643,12 +655,13 @@ ge::graphStatus NsaSelectedAttentionTiling::GetWorkspaceSize()
         gSize * selectedBlockCount * selectedBlockSize * static_cast<int64_t>(sizeof(float));
     int64_t singleCoreSoftmaxResworkspaces = gSize * selectedBlockCount * selectedBlockSize * calcTypeSize;
 
-    workspaces[0] = static_cast<size_t>(
-                        (singleCoreSelectKworkspaces + singleCoreSelectVworkspaces + singleCorePworkspaces + singleCoreSoftmaxResworkspaces) * aivNum) +
-                        WORK_SPACE_RESERVE_SIZE;
+    workspaces[0] = static_cast<size_t>((singleCoreSelectKworkspaces + singleCoreSelectVworkspaces +
+                                         singleCorePworkspaces + singleCoreSoftmaxResworkspaces) *
+                                        aivNum) +
+                    WORK_SPACE_RESERVE_SIZE;
     return ge::GRAPH_SUCCESS;
 }
 
 REGISTER_OPS_TILING_TEMPLATE(NsaSelectedAttention, NsaSelectedAttentionTiling, 0);
-} // namespace nsa
+} // namespace NSA
 } // namespace optiling

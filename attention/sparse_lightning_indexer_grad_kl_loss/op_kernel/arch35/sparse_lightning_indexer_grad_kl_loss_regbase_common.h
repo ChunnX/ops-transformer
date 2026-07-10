@@ -20,7 +20,7 @@
 using namespace fa_base_matmul;
 
 static constexpr uint32_t VEC_SY_BASESIZE = 256;
-static constexpr uint32_t VEC_P_BASESIZE = 128; 
+static constexpr uint32_t VEC_P_BASESIZE = 128;
 enum class SLILayout {
     BSND = 0,
     TND = 1
@@ -45,7 +45,7 @@ struct GatherParams {
     int32_t s2ProcessSize;
     int32_t dValue;
     int32_t dRopeValue;
-    // topkIndex two line idx 
+    // topkIndex two line idx
     int64_t realS2Idx1;
     int64_t realS2Idx2;
     bool needGatherRope;
@@ -76,16 +76,16 @@ struct SLIGradKLLossConstInfo {
     uint32_t subBlockIdx;
 
     /** \brief TilingData中的信息 */
-	uint32_t bSize;
-	uint32_t n2Size; // 现阶段n2Size默认等于1
-    uint32_t gSizeQuery; // 128或者64
-    uint32_t gSizeQueryIndex; // 64或者32
-    uint32_t s1Size; // 支持泛化
-    uint32_t s2Size; // 支持泛化
-    uint32_t dSizeQuery; // 默认不带Rope，固定等于512
-    uint32_t dSizeQueryIndex; // 默认不带Rope，固定等于128
+    uint32_t bSize;
+    uint32_t n2Size;              // 现阶段n2Size默认等于1
+    uint32_t gSizeQuery;          // 128或者64
+    uint32_t gSizeQueryIndex;     // 64或者32
+    uint32_t s1Size;              // 支持泛化
+    uint32_t s2Size;              // 支持泛化
+    uint32_t dSizeQuery;          // 默认不带Rope，固定等于512
+    uint32_t dSizeQueryIndex;     // 默认不带Rope，固定等于128
     uint32_t dSizeQueryRope = 64; // Rope，固定等于64
-    uint32_t kSize; // 现阶段只支持2048
+    uint32_t kSize;               // 现阶段只支持2048
     int64_t totalCost;
     SLISparseMode sparseMode; // 0或者3
     float scaleValue;
@@ -110,7 +110,7 @@ struct SLIGradKLLossConstInfo {
 
 struct SLIGradKLLossRunInfo {
     uint32_t taskId;
-	uint32_t bIdx;
+    uint32_t bIdx;
     uint32_t s1Idx;
     uint32_t kIdx;
     int64_t accumS1Idx; // 当前循环累加的T1
@@ -122,7 +122,7 @@ struct SLIGradKLLossRunInfo {
     uint32_t kTailSize; // k切分之后的尾块大小，在P和KLLoss阶段
     uint32_t kRealSizeAlign8;
     uint32_t kLoopTimes; // k方向的循环次数，在P和KLLoss阶段
-    
+
     uint32_t nBaseSizeP;
     uint32_t nRealSizeP;
     uint32_t nBaseSizeSY;
@@ -130,7 +130,7 @@ struct SLIGradKLLossRunInfo {
     uint32_t nIdxP;
     uint32_t nIdxSY;
     uint32_t nVecSize;
-    
+
     // 存放一些offset，减少重复计算
     int32_t s2SparseLen;
     int32_t s2RealSize;
@@ -175,7 +175,7 @@ struct SLIGradKLLossSYRunInfo {
     int32_t kIdx;
 };
 struct SLIGradKLLossPRunInfo {
-    int32_t kRealBaseSize; // 
+    int32_t kRealBaseSize; //
     int32_t kIdx;
 };
 /// @}
@@ -193,7 +193,7 @@ constexpr uint8_t SYNC_C3_TO_V7_DETER_SA_FLAG = 2;
 template <typename T>
 __aicore__ inline T SLIGAlign(T num, T rnd)
 {
-    return (((rnd) == 0) ? 0 : (((num) + (rnd) - 1) / (rnd) * (rnd)));
+    return (((rnd) == 0) ? 0 : (((num) + (rnd)-1) / (rnd) * (rnd)));
 }
 
 template <typename T>
@@ -258,17 +258,20 @@ __aicore__ inline T AlignTo(const T n, const T alignSize)
 #define TEMPLATE_BASE_ARGS                                                                                             \
     ChildClass, CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_ARG_NAME) CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_ARG_NAME) end
 
-template <typename T1, typename T2> __aicore__ inline T1 Max(T1 a, T2 b)
+template <typename T1, typename T2>
+__aicore__ inline T1 Max(T1 a, T2 b)
 {
     return (a < b) ? (b) : (a);
 }
 
-template <typename T1, typename T2> __aicore__ inline T1 Min(T1 a, T2 b)
+template <typename T1, typename T2>
+__aicore__ inline T1 Min(T1 a, T2 b)
 {
     return (a > b) ? (b) : (a);
 }
 
-template <typename T> __aicore__ inline size_t BlockAlign(size_t s)
+template <typename T>
+__aicore__ inline size_t BlockAlign(size_t s)
 {
     if constexpr (IsSameType<T, int4b_t>::value) {
         return (s + 63) / 64 * 64;

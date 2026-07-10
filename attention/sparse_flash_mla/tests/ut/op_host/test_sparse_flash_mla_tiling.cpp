@@ -32,9 +32,9 @@ constexpr int64_t kMetadataSize = optiling::SMLA_META_SIZE;
 void FillMockSmlaMetadata(int64_t *metadataData)
 {
     smla_ut::InitMetadataGm(reinterpret_cast<int32_t *>(metadataData), static_cast<uint32_t>(kBatchSize),
-                           static_cast<uint32_t>(kNumHeadsKv));
+                            static_cast<uint32_t>(kNumHeadsKv));
 }
-}  // namespace
+} // namespace
 
 class SparseFlashMlaTiling : public testing::Test {
 protected:

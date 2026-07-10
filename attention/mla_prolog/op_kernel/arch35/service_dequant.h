@@ -42,8 +42,8 @@ DequantPerTokenQc(const GlobalTensor<O> &outputGm, const GlobalTensor<T> &inputG
 {
     int64_t count = dequantRowColStrideParams.row * dequantRowColStrideParams.col;
 
-    LocalTensor<T> inputLocal = shareTmpUb.ReinterpretCast<T>();                         // count * sizeof(T)
-    LocalTensor<C> scaleLocal = inputLocal[count + 16].template ReinterpretCast<C>();    // count * sizeof(C)
+    LocalTensor<T> inputLocal = shareTmpUb.ReinterpretCast<T>();                       // count * sizeof(T)
+    LocalTensor<C> scaleLocal = inputLocal[count + 16].template ReinterpretCast<C>();  // count * sizeof(C)
     LocalTensor<O> outputLocal = scaleLocal[count + 16].template ReinterpretCast<O>(); // count * sizeof(O)
 
     DataCopyParams copyParams{
@@ -145,8 +145,8 @@ DequantSplitNQc(const GlobalTensor<O> &outputGm, const GlobalTensor<T> &inputGm,
                 Rectangle dequantRowColStrideParams, uint32_t oriCol, uint32_t dstStride, uint32_t subBlockIdx_)
 {
     int64_t count = dequantRowColStrideParams.col * 1;
-    LocalTensor<T> inputLocal = shareTmpUb.ReinterpretCast<T>();                         // count * sizeof(T)
-    LocalTensor<C> scaleLocal = inputLocal[count + 16].template ReinterpretCast<C>();    // count * sizeof(C)
+    LocalTensor<T> inputLocal = shareTmpUb.ReinterpretCast<T>();                       // count * sizeof(T)
+    LocalTensor<C> scaleLocal = inputLocal[count + 16].template ReinterpretCast<C>();  // count * sizeof(C)
     LocalTensor<O> outputLocal = scaleLocal[count + 16].template ReinterpretCast<O>(); // count * sizeof(O)
 
     DataCopyParams inputCopyParams{

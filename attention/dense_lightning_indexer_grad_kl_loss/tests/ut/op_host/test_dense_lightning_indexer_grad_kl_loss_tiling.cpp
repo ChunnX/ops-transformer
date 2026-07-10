@@ -21,10 +21,12 @@ using namespace ge;
 
 class DenseLightningIndexerGradKLLossTilingTest : public testing::Test {
 protected:
-    static void SetUpTestCase() {
+    static void SetUpTestCase()
+    {
         std::cout << "--- DenseLightningIndexerGradKLLossTiling UT SetUp ---" << std::endl;
     }
-    static void TearDownTestCase() {
+    static void TearDownTestCase()
+    {
         std::cout << "--- DenseLightningIndexerGradKLLossTiling UT TearDown ---" << std::endl;
     }
 };
@@ -41,34 +43,28 @@ TEST_F(DenseLightningIndexerGradKLLossTilingTest, tiling_bsnd_case0)
 
     gert::TilingContextPara tilingContextPara(
         "DenseLightningIndexerGradKLLoss",
-        {
-            {{ {b, s1, n1, d}, {b, s1, n1, d} }, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{ {b, s2, n2, d}, {b, s2, n2, d} }, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{ {b, s1, nidx1, d}, {b, s1, nidx1, d} }, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{ {b, s2, nidx2, d}, {b, s2, nidx2, d} }, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{ {b, s1, nidx1}, {b, s1, nidx1} }, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{ {b, n2, s1, g}, {b, n2, s1, g} }, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{ {b, n2, s1, g}, {b, n2, s1, g} }, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{ {b, nidx2, s1}, {b, nidx2, s1} }, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{ {b, nidx2, s1}, {b, nidx2, s1} }, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{ {b, s1, n1, dr}, {b, s1, n1, dr} }, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{ {b, s2, n2, dr}, {b, s2, n2, dr} }, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{ {b}, {b} }, ge::DT_INT64, ge::FORMAT_ND, true, (void*)actualSeqQueryData},
-            {{ {b}, {b} }, ge::DT_INT64, ge::FORMAT_ND, true, (void*)actualSeqKeyData}
-        },
-        {
-            {{ {b, s1, nidx1, d}, {b, s1, nidx1, d} }, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{ {b, s2, nidx2, d}, {b, s2, nidx2, d} }, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{ {b, s1, nidx1}, {b, s1, nidx1} }, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{ {1}, {1} }, ge::DT_FLOAT, ge::FORMAT_ND}
-        },
-        {
-            {"scaleValue", Ops::Transformer::AnyValue::CreateFrom<float>(0.088388)},
-            {"layout", Ops::Transformer::AnyValue::CreateFrom<std::string>("BSND")},
-            {"sparseMode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
-            {"preTokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2147483647)},
-            {"nextTokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2147483647)}
-        },
+        {{{{b, s1, n1, d}, {b, s1, n1, d}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{b, s2, n2, d}, {b, s2, n2, d}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{b, s1, nidx1, d}, {b, s1, nidx1, d}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{b, s2, nidx2, d}, {b, s2, nidx2, d}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{b, s1, nidx1}, {b, s1, nidx1}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{b, n2, s1, g}, {b, n2, s1, g}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{{b, n2, s1, g}, {b, n2, s1, g}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{{b, nidx2, s1}, {b, nidx2, s1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{{b, nidx2, s1}, {b, nidx2, s1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{{b, s1, n1, dr}, {b, s1, n1, dr}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{b, s2, n2, dr}, {b, s2, n2, dr}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{b}, {b}}, ge::DT_INT64, ge::FORMAT_ND, true, (void *)actualSeqQueryData},
+         {{{b}, {b}}, ge::DT_INT64, ge::FORMAT_ND, true, (void *)actualSeqKeyData}},
+        {{{{b, s1, nidx1, d}, {b, s1, nidx1, d}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{b, s2, nidx2, d}, {b, s2, nidx2, d}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{b, s1, nidx1}, {b, s1, nidx1}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{1}, {1}}, ge::DT_FLOAT, ge::FORMAT_ND}},
+        {{"scaleValue", Ops::Transformer::AnyValue::CreateFrom<float>(0.088388)},
+         {"layout", Ops::Transformer::AnyValue::CreateFrom<std::string>("BSND")},
+         {"sparseMode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
+         {"preTokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2147483647)},
+         {"nextTokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2147483647)}},
         &compileInfo);
 
     uint64_t expectTilingKey = 1UL;
@@ -89,34 +85,28 @@ TEST_F(DenseLightningIndexerGradKLLossTilingTest, tiling_tnd_case0)
 
     gert::TilingContextPara tilingContextPara(
         "DenseLightningIndexerGradKLLoss",
-        {
-            {{ {t1, n1, d}, {t1, n1, d} }, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{ {t2, n2, d}, {t2, n2, d} }, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{ {t1, nidx1, d}, {t1, nidx1, d} }, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{ {t2, nidx2, d}, {t2, nidx2, d} }, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{ {t1, nidx1}, {t1, nidx1} }, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{ {n2, t1, g}, {n2, t1, g} }, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{ {n2, t1, g}, {n2, t1, g} }, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{ {nidx2, t1}, {nidx2, t1} }, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{ {nidx2, t1}, {nidx2, t1} }, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{ {t1, n1, dr}, {t1, n1, dr} }, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{ {t2, n2, dr}, {t2, n2, dr} }, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{ {batch}, {batch} }, ge::DT_INT64, ge::FORMAT_ND, true, (void*)actualSeqQueryData},
-            {{ {batch}, {batch} }, ge::DT_INT64, ge::FORMAT_ND, true, (void*)actualSeqKeyData}
-        },
-        {
-            {{ {t1, nidx1, d}, {t1, nidx1, d} }, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{ {t2, nidx2, d}, {t2, nidx2, d} }, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{ {t1, nidx1}, {t1, nidx1} }, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{ {1}, {1} }, ge::DT_FLOAT, ge::FORMAT_ND}
-        },
-        {
-            {"scaleValue", Ops::Transformer::AnyValue::CreateFrom<float>(0.088388)},
-            {"layout", Ops::Transformer::AnyValue::CreateFrom<std::string>("TND")},
-            {"sparseMode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
-            {"preTokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2147483647)},
-            {"nextTokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2147483647)}
-        },
+        {{{{t1, n1, d}, {t1, n1, d}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{t2, n2, d}, {t2, n2, d}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{t1, nidx1, d}, {t1, nidx1, d}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{t2, nidx2, d}, {t2, nidx2, d}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{t1, nidx1}, {t1, nidx1}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{n2, t1, g}, {n2, t1, g}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{{n2, t1, g}, {n2, t1, g}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{{nidx2, t1}, {nidx2, t1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{{nidx2, t1}, {nidx2, t1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{{t1, n1, dr}, {t1, n1, dr}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{t2, n2, dr}, {t2, n2, dr}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{batch}, {batch}}, ge::DT_INT64, ge::FORMAT_ND, true, (void *)actualSeqQueryData},
+         {{{batch}, {batch}}, ge::DT_INT64, ge::FORMAT_ND, true, (void *)actualSeqKeyData}},
+        {{{{t1, nidx1, d}, {t1, nidx1, d}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{t2, nidx2, d}, {t2, nidx2, d}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{t1, nidx1}, {t1, nidx1}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{1}, {1}}, ge::DT_FLOAT, ge::FORMAT_ND}},
+        {{"scaleValue", Ops::Transformer::AnyValue::CreateFrom<float>(0.088388)},
+         {"layout", Ops::Transformer::AnyValue::CreateFrom<std::string>("TND")},
+         {"sparseMode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
+         {"preTokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2147483647)},
+         {"nextTokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2147483647)}},
         &compileInfo);
 
     uint64_t expectTilingKey = 35UL;

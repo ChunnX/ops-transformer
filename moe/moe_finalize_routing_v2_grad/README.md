@@ -18,7 +18,7 @@
   R: batch * sequence
 
   H: hidden
-  
+
   K: topk
 
   gradY: (R, H)
@@ -32,7 +32,7 @@
   expertIdxOptional: (R, K)
 
   biasOptional: (E, H)
-  
+
   i : 0 ~ R * K - 1
 
   j : 0 ~ H
@@ -54,7 +54,7 @@
   $$
 
   (3) scalesOptional不为空指针， biasOptional不为空指针：
-  
+
   $$
   gradExpandedXOut[expandedRowIdx[i]][j] = gradY[i / K][j] * scalesOptional[i]
   $$

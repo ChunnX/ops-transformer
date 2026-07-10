@@ -17,10 +17,10 @@
 #include "platform/platform_info.h"
 
 namespace ops {
-static ge::graphStatus InferShapeSwinAttentionScoreQuant(gert::InferShapeContext* context)
+static ge::graphStatus InferShapeSwinAttentionScoreQuant(gert::InferShapeContext *context)
 {
-    const gert::Shape* x1_shape = context->GetInputShape(0);
-    gert::Shape* y_shape = context->GetOutputShape(0);
+    const gert::Shape *x1_shape = context->GetInputShape(0);
+    gert::Shape *y_shape = context->GetOutputShape(0);
     *y_shape = *x1_shape;
     return ge::GRAPH_SUCCESS;
 }
@@ -35,4 +35,4 @@ static ge::graphStatus InferDataTypeSwinAttentionScoreQuant(gert::InferDataTypeC
 IMPL_OP_INFERSHAPE(SwinAttentionScoreQuant)
     .InferShape(InferShapeSwinAttentionScoreQuant)
     .InferDataType(InferDataTypeSwinAttentionScoreQuant);
-}  // namespace ops
+} // namespace ops

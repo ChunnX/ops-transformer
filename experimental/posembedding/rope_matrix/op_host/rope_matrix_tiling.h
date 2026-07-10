@@ -13,7 +13,7 @@
 
 #include <iostream>
 // must define this before tiling.h, otherwise will compile error
-typedef uint8_t char_t; 
+typedef uint8_t char_t;
 #include "tiling/tiling_api.h"
 #include "tiling/platform/platform_ascendc.h"
 #include "../inc/rope_matrix_extern.h"
@@ -21,17 +21,17 @@ typedef uint8_t char_t;
 namespace npu_ops_transformer_ext {
 namespace RopeMatrix {
 
-uint8_t *GenerateTiling(RopeMatrixTiling *ropeTiling, uint32_t* mmTilingData, uint32_t mmSize);
+uint8_t *GenerateTiling(RopeMatrixTiling *ropeTiling, uint32_t *mmTilingData, uint32_t mmSize);
 
 uint32_t CeilingTiling(uint32_t a, uint32_t b)
 {
     if (b == 0) {
         return 0;
     }
-    return (a + b -1) / b;
+    return (a + b - 1) / b;
 }
 
-uint8_t *GetTilingBuf(optiling::TCubeTiling *tilingData, uint32_t* mmTilingData, uint32_t mmSize)
+uint8_t *GetTilingBuf(optiling::TCubeTiling *tilingData, uint32_t *mmTilingData, uint32_t mmSize)
 {
     uint8_t *buf = nullptr;
     uint32_t tilingSize = tilingData->GetDataSize();
@@ -53,7 +53,7 @@ uint8_t *GetTilingBuf(optiling::TCubeTiling *tilingData, uint32_t* mmTilingData,
     return reinterpret_cast<uint8_t *>(mmTilingData);
 }
 
-uint8_t *GenerateTiling(RopeMatrixTiling *ropeTiling, uint32_t* mmTilingData, uint32_t mmSize)
+uint8_t *GenerateTiling(RopeMatrixTiling *ropeTiling, uint32_t *mmTilingData, uint32_t mmSize)
 {
     constexpr uint32_t baseSize = 128;
     uint32_t usedCoreNum = ropeTiling->blockDim;
@@ -95,7 +95,7 @@ uint8_t *GenerateTiling(RopeMatrixTiling *ropeTiling, uint32_t* mmTilingData, ui
     tilingApi.SetCType(resultPosition, resultFormat, resultDtype);
 
     tilingApi.SetOrgShape(M, N, K); // 完成的MNK大小，单位为元素个数
-    tilingApi.SetShape(M, N, K); // matmul计算形状的MNK，考虑脏数据
+    tilingApi.SetShape(M, N, K);    // matmul计算形状的MNK，考虑脏数据
     tilingApi.SetSingleShape(calSingleCoreM, baseSize, baseSize);
     tilingApi.SetFixSplit(baseM, baseN, -1);
     tilingApi.SetBias(isBias);
@@ -110,6 +110,6 @@ uint8_t *GenerateTiling(RopeMatrixTiling *ropeTiling, uint32_t* mmTilingData, ui
 }
 
 } // namespace RopeMatrix
-} //namespace npu_ops_transformer_ext
+} // namespace npu_ops_transformer_ext
 
 #endif

@@ -9,9 +9,9 @@
  */
 
 /*!
-* \file engram_fetch_tiling_data.h
-* \brief kernel侧tiling data结构
-*/
+ * \file engram_fetch_tiling_data.h
+ * \brief kernel侧tiling data结构
+ */
 
 #ifndef ASCENDC_ENGRAM_FETCH_TILING_H
 #define ASCENDC_ENGRAM_FETCH_TILING_H

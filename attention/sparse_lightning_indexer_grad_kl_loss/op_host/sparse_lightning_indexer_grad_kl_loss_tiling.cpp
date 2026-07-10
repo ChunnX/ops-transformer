@@ -24,8 +24,8 @@
 #include "sparse_lightning_indexer_grad_kl_loss_tiling_common.h"
 
 using std::map;
-using std::string;
 using std::pair;
+using std::string;
 
 using namespace ge;
 
@@ -51,9 +51,7 @@ ge::graphStatus TilingPrepareForSparseLightningIndexerGradKLLoss(gert::TilingPar
 {
     OP_LOGW(context, "Start registering tiling.");
     auto compileInfoPtr = context->GetCompiledInfo<SparseLightningIndexerGradKLLossCompileInfo>();
-    OP_CHECK_IF(compileInfoPtr == nullptr,
-        OP_LOGE(context, "compileInfoPtr is null"),
-        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(compileInfoPtr == nullptr, OP_LOGE(context, "compileInfoPtr is null"), return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }

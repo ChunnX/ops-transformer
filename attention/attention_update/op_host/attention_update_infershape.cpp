@@ -26,12 +26,12 @@ constexpr int32_t LSE_INDEX = 0;
 constexpr int32_t OUT_INDEX = 0;
 constexpr int32_t LSEOUT_INDEX = 1;
 
-static ge::graphStatus InferShape4DecodeUpdate(gert::InferShapeContext* context)
+static ge::graphStatus InferShape4DecodeUpdate(gert::InferShapeContext *context)
 {
     OP_LOGI(context, "Begin to do InferShape4DecodeUpdate.");
 
     uint32_t inputNumInferShape = context->GetComputeNodeInputNum();
-    uint32_t sp = inputNumInferShape / NUM_TWO;    
+    uint32_t sp = inputNumInferShape / NUM_TWO;
 
     auto lseShape = context->GetInputShape(LSE_INDEX);
     auto localOutShape = context->GetInputShape(sp);
@@ -44,12 +44,12 @@ static ge::graphStatus InferShape4DecodeUpdate(gert::InferShapeContext* context)
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus InferDataType4DecodeUpdate(gert::InferDataTypeContext* context)
+static ge::graphStatus InferDataType4DecodeUpdate(gert::InferDataTypeContext *context)
 {
     OP_LOGI(context, "Begin to do InferDataType4DecodeUpdate.");
 
     uint32_t inputNumInferShape = context->GetComputeNodeInputNum();
-    uint32_t sp = inputNumInferShape / NUM_TWO;    
+    uint32_t sp = inputNumInferShape / NUM_TWO;
 
     auto lseDtype = context->GetInputDataType(NUM_ZERO);
     auto localOutDtype = context->GetInputDataType(sp);

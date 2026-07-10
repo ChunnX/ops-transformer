@@ -47,8 +47,12 @@ def run_case(module, case):
     _set_case(module, case)
     try:
         print("=" * 60)
-        print(f"  {'PA' if module.ENABLE_PA else ''}  INPUT_LAYOUT={module.INPUT_LAYOUT}  OUTPUT_LAYOUT={'TND' if module.ENABLE_PA else module.INPUT_LAYOUT}")
-        print(f"  B={module.B}  N_q={module.N_q}  N_kv={module.N_kv}  D={module.D}  SPARSE_MODE={module.SPARSE_MODE}")
+        print(
+            f"  {'PA' if module.ENABLE_PA else ''}  INPUT_LAYOUT={module.INPUT_LAYOUT}  OUTPUT_LAYOUT={'TND' if module.ENABLE_PA else module.INPUT_LAYOUT}"
+        )
+        print(
+            f"  B={module.B}  N_q={module.N_q}  N_kv={module.N_kv}  D={module.D}  SPARSE_MODE={module.SPARSE_MODE}"
+        )
         print(f"  ACTUAL_SEQ_Q={module.ACTUAL_SEQ_Q}")
         print(f"  ACTUAL_SEQ_KV={module.ACTUAL_SEQ_KV}")
         print("=" * 60)
@@ -67,11 +71,15 @@ def run_case(module, case):
                 deq_v,
                 p_scale,
                 module.ACTUAL_SEQ_Q,
-                module.ACTUAL_SEQ_KV
+                module.ACTUAL_SEQ_KV,
             )
-            print(f"[INFO] cpu_out[0] shape: {cpu_out[0].shape}, dtype: {cpu_out[0].dtype}")
+            print(
+                f"[INFO] cpu_out[0] shape: {cpu_out[0].shape}, dtype: {cpu_out[0].dtype}"
+            )
             if module.ENABLE_LSE:
-                print(f"[INFO] cpu_out[1] shape: {cpu_out[1].shape}, dtype: {cpu_out[1].dtype}")
+                print(
+                    f"[INFO] cpu_out[1] shape: {cpu_out[1].shape}, dtype: {cpu_out[1].dtype}"
+                )
         else:
             print("[INFO] GOLDEN_MODE=False, skip CPU golden.")
 
@@ -85,18 +93,22 @@ def run_case(module, case):
             deq_v,
             p_scale,
             module.ACTUAL_SEQ_Q,
-            module.ACTUAL_SEQ_KV
+            module.ACTUAL_SEQ_KV,
         )
         print(f"[INFO] npu_out[0] shape: {npu_out[0].shape}, dtype: {npu_out[0].dtype}")
         if module.ENABLE_LSE:
-            print(f"[INFO] npu_out[1] shape: {npu_out[1].shape}, dtype: {npu_out[1].dtype}")
+            print(
+                f"[INFO] npu_out[1] shape: {npu_out[1].shape}, dtype: {npu_out[1].dtype}"
+            )
 
         if not module.GOLDEN_MODE:
             print("[INFO] GOLDEN_MODE=False, skip precision check.")
             return {"name": case["name"], "status": "PASSED", "error_message": ""}
 
         compare_layout = "TND" if module.ENABLE_PA else module.INPUT_LAYOUT
-        cpu_cmp0 = module.convert_q_bnsd_to_layout(cpu_out[0], module.ACTUAL_SEQ_Q, compare_layout)
+        cpu_cmp0 = module.convert_q_bnsd_to_layout(
+            cpu_out[0], module.ACTUAL_SEQ_Q, compare_layout
+        )
         print(f"[INFO] cpu_out[0] after convert to {compare_layout}: {cpu_cmp0.shape}")
 
         print("=" * 80)
@@ -106,7 +118,9 @@ def run_case(module, case):
         status0 = res0[0] if isinstance(res0, tuple) else res0
 
         if module.ENABLE_LSE:
-            cpu_cmp1 = module.convert_q_bnsd_to_layout(cpu_out[1], module.ACTUAL_SEQ_Q, compare_layout)
+            cpu_cmp1 = module.convert_q_bnsd_to_layout(
+                cpu_out[1], module.ACTUAL_SEQ_Q, compare_layout
+            )
             print("=" * 80)
             print("  [LSE Precision Check]")
             print("=" * 80)
@@ -121,18 +135,29 @@ def run_case(module, case):
             return {"name": case["name"], "status": "FAILED", "error_message": err_msg}
         return {"name": case["name"], "status": "PASSED", "error_message": ""}
     except Exception as exc:
-        return {"name": case["name"], "status": "FAILED", "error_message": f"{type(exc).__name__}: {exc}"}
+        return {
+            "name": case["name"],
+            "status": "FAILED",
+            "error_message": f"{type(exc).__name__}: {exc}",
+        }
 
 
 def main():
     parser = argparse.ArgumentParser(description="Run FP8 Full Quant batch cases")
-    parser.add_argument("--case", action="append", default=None, help="Run only matching case name substring")
+    parser.add_argument(
+        "--case",
+        action="append",
+        default=None,
+        help="Run only matching case name substring",
+    )
     args = parser.parse_args()
 
     module = importlib.import_module("fia_fullquant_gqa_golden")
     selected = CASES
     if args.case:
-        selected = [case for case in CASES if any(item in case["name"] for item in args.case)]
+        selected = [
+            case for case in CASES if any(item in case["name"] for item in args.case)
+        ]
     if not selected:
         raise ValueError("No cases selected")
 

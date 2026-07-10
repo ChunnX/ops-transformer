@@ -64,7 +64,8 @@ struct AiCoreParams {
 class SparseFlashAttentionGradBs1Regbase : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
     explicit SparseFlashAttentionGradBs1Regbase(gert::TilingContext *context) : TilingBaseClass(context) {};
-    SparseFlashAttentionGradTilingDataRegbase *tilingData = context_->GetTilingData<SparseFlashAttentionGradTilingDataRegbase>();
+    SparseFlashAttentionGradTilingDataRegbase *tilingData =
+        context_->GetTilingData<SparseFlashAttentionGradTilingDataRegbase>();
     SparseFlashAttentionGradBaseParamsRegbase *baseParams_ = &tilingData->baseParams;
     PreParamsRegbase *preTilingData_ = &tilingData->preTilingData;
     PostParamsRegbase *postTilingData_ = &tilingData->postTilingData;
@@ -80,8 +81,8 @@ protected:
     uint64_t GetTilingKey() const override;
 
 private:
-    ge::graphStatus CheckOutShapeInfo(const gert::Shape &inputshape, const char *inputName, 
-                    const gert::Shape &outputshape, const char *inputLayout);
+    ge::graphStatus CheckOutShapeInfo(const gert::Shape &inputshape, const char *inputName,
+                                      const gert::Shape &outputshape, const char *inputLayout);
     ge::graphStatus GetBaseShapeInfo();
     ge::graphStatus DoSftTiling();
     ge::graphStatus DoBlockTiling();

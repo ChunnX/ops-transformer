@@ -61,17 +61,17 @@ using namespace MoeTokenPermute;
         AscendC::SyncAll();                                                                                            \
     } while (0)
 
-#define SORT_COPY_IMPL(sortClass2, indexCopyClass, tokenDtype, ifNumOutTokens)          \
-    do {                                                                               \
-        TPipe sortPipe2;                                                               \
-        sortClass2<int32_t> op2;                                                       \
-        op2.Init(sortedIndices, sortedIndices, userWS, t, &sortPipe2);                 \
-        op2.Process();                                                                 \
-        sortPipe2.Destroy();                                                           \
-        TPipe MoeindexCopyPipe;                                                        \
-        indexCopyClass<tokenDtype, false> indexCopyOp;                        \
-        indexCopyOp.Init(tokens, sortedIndices, permuteTokens, t, &MoeindexCopyPipe);  \
-        indexCopyOp.Process();                                                         \
+#define SORT_COPY_IMPL(sortClass2, indexCopyClass, tokenDtype, ifNumOutTokens)                                         \
+    do {                                                                                                               \
+        TPipe sortPipe2;                                                                                               \
+        sortClass2<int32_t> op2;                                                                                       \
+        op2.Init(sortedIndices, sortedIndices, userWS, t, &sortPipe2);                                                 \
+        op2.Process();                                                                                                 \
+        sortPipe2.Destroy();                                                                                           \
+        TPipe MoeindexCopyPipe;                                                                                        \
+        indexCopyClass<tokenDtype, false> indexCopyOp;                                                                 \
+        indexCopyOp.Init(tokens, sortedIndices, permuteTokens, t, &MoeindexCopyPipe);                                  \
+        indexCopyOp.Process();                                                                                         \
     } while (0)
 
 #define NONALIGNED_SORT_COPY_IMPL(indexCopyClass, tokenDtype)                                                          \
@@ -101,33 +101,33 @@ using namespace MoeTokenPermute;
         indexCopyOp.Process();                                                                                         \
     } while (0)
 
-#define GENERAL_OP_IMPL(sortClass1, sortClass2, indexCopyClass, tokenDtype, ifNumOutTokens) \
-    do {                                                                               \
-        int32_t actualOutTokens = 0;                                                   \
-        MASKSELECT_ONLY_IMPL();                                                        \
-        if (actualOutTokens != t->n * t->topK) {                                       \
-            NONALIGNED_SORT_COPY_IMPL(indexCopyClass, tokenDtype);                     \
-        } else {                                                                       \
-            SORT_COPY_IMPL(sortClass2, indexCopyClass, tokenDtype, ifNumOutTokens);    \
-        }                                                                              \
+#define GENERAL_OP_IMPL(sortClass1, sortClass2, indexCopyClass, tokenDtype, ifNumOutTokens)                            \
+    do {                                                                                                               \
+        int32_t actualOutTokens = 0;                                                                                   \
+        MASKSELECT_ONLY_IMPL();                                                                                        \
+        if (actualOutTokens != t->n * t->topK) {                                                                       \
+            NONALIGNED_SORT_COPY_IMPL(indexCopyClass, tokenDtype);                                                     \
+        } else {                                                                                                       \
+            SORT_COPY_IMPL(sortClass2, indexCopyClass, tokenDtype, ifNumOutTokens);                                    \
+        }                                                                                                              \
     } while (0)
 
-#define GENERAL_PAD_OP_IMPL(sortClass1, sortClass2, indexCopyClass, ...)         \
-    do {                                                                         \
-        TPipe sortPipe2;                                                         \
-        MoeSortMultiLastDimCore<uint8_t> op;                                     \
-        op.Init(routingMap, sortedIndices, userWS, t, &sortPipe2);               \
-        op.Process();                                                            \
-        sortPipe2.Destroy();                                                     \
-        if (hasProb) {                                                           \
-            TPipe sortPipe;                                                      \
-            AscendC::SyncAll();                                                  \
-            MoePermuteProb<DTYPE_PERMUTE_PROBS> op2;                             \
-            op2.Init(permuteProbs, probs, sortedIndices, t, &sortPipe);          \
-            op2.Process();                                                       \
-            sortPipe.Destroy();                                                  \
-        }                                                                        \
-    } while (0)                                                                  \
+#define GENERAL_PAD_OP_IMPL(sortClass1, sortClass2, indexCopyClass, ...)                                               \
+    do {                                                                                                               \
+        TPipe sortPipe2;                                                                                               \
+        MoeSortMultiLastDimCore<uint8_t> op;                                                                           \
+        op.Init(routingMap, sortedIndices, userWS, t, &sortPipe2);                                                     \
+        op.Process();                                                                                                  \
+        sortPipe2.Destroy();                                                                                           \
+        if (hasProb) {                                                                                                 \
+            TPipe sortPipe;                                                                                            \
+            AscendC::SyncAll();                                                                                        \
+            MoePermuteProb<DTYPE_PERMUTE_PROBS> op2;                                                                   \
+            op2.Init(permuteProbs, probs, sortedIndices, t, &sortPipe);                                                \
+            op2.Process();                                                                                             \
+            sortPipe.Destroy();                                                                                        \
+        }                                                                                                              \
+    } while (0)
 
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
 #define GENERAL_PAD_OP_IMPL_3510(sortClass1, sortClass2, indexCopyClass, ...)                                          \

@@ -70,7 +70,7 @@ TEST_F(l2_rotary_position_embedding_test, Ascend910B2_rotary_position_embedding_
     auto cos = TensorDesc({1, 1, 32, 128}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 8);
     auto sin = TensorDesc({1, 1, 32, 128}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 8);
     auto rotate = TensorDesc({128, 128}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
-    int64_t mode = 0; 
+    int64_t mode = 0;
     auto out = TensorDesc({1, 24, 32, 128}, ACL_BF16, ACL_FORMAT_ND);
     auto ut = OP_API_UT(aclnnRotaryPositionEmbeddingV2, INPUT(x, cos, sin, mode, rotate), OUTPUT(out));
     uint64_t workspaceSize = 0;

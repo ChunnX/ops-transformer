@@ -14,8 +14,8 @@
 
 using namespace std;
 
-extern "C" __global__ __aicore__ void grouped_matmul_add(
-    GM_ADDR x, GM_ADDR weight, GM_ADDR groupList, GM_ADDR y, GM_ADDR yRef, GM_ADDR workspace, GM_ADDR tiling);
+extern "C" __global__ __aicore__ void grouped_matmul_add(GM_ADDR x, GM_ADDR weight, GM_ADDR groupList, GM_ADDR y,
+                                                         GM_ADDR yRef, GM_ADDR workspace, GM_ADDR tiling);
 class grouped_matmul_add_test : public testing::Test {
 protected:
     static void SetUpTestCase()
@@ -37,16 +37,16 @@ TEST_F(grouped_matmul_add_test, test_case_bf16)
     size_t ySize = 345 * 2 * 567 * sizeof(float);
     size_t tilingSize = sizeof(GroupedMatmulAddTilingData);
 
-    uint8_t* x = (uint8_t*)AscendC::GmAlloc(xSize);
-    uint8_t* weight = (uint8_t*)AscendC::GmAlloc(weightSize);
-    uint8_t* groupedList = (uint8_t*)AscendC::GmAlloc(groupedListSize);
-    uint8_t* y = (uint8_t*)AscendC::GmAlloc(ySize);
+    uint8_t *x = (uint8_t *)AscendC::GmAlloc(xSize);
+    uint8_t *weight = (uint8_t *)AscendC::GmAlloc(weightSize);
+    uint8_t *groupedList = (uint8_t *)AscendC::GmAlloc(groupedListSize);
+    uint8_t *y = (uint8_t *)AscendC::GmAlloc(ySize);
 
-    uint8_t* workspace = (uint8_t*)AscendC::GmAlloc(1024 * 1024 * 1024);
-    uint8_t* tiling = (uint8_t*)AscendC::GmAlloc(tilingSize);
+    uint8_t *workspace = (uint8_t *)AscendC::GmAlloc(1024 * 1024 * 1024);
+    uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(tilingSize);
     uint32_t NumBlocks = 40;
 
-    GroupedMatmulAddTilingData* tilingData = reinterpret_cast<GroupedMatmulAddTilingData*>(tiling);
+    GroupedMatmulAddTilingData *tilingData = reinterpret_cast<GroupedMatmulAddTilingData *>(tiling);
     tilingData->gmmBaseParams.groupNum = 2;
     tilingData->gmmBaseParams.coreNum = NumBlocks;
     tilingData->gmmBaseParams.groupType = 2;
@@ -99,16 +99,16 @@ TEST_F(grouped_matmul_add_test, test_case_fp16)
     size_t ySize = 345 * 2 * 567 * sizeof(float);
     size_t tilingSize = sizeof(GroupedMatmulAddTilingData);
 
-    uint8_t* x = (uint8_t*)AscendC::GmAlloc(xSize);
-    uint8_t* weight = (uint8_t*)AscendC::GmAlloc(weightSize);
-    uint8_t* groupedList = (uint8_t*)AscendC::GmAlloc(groupedListSize);
-    uint8_t* y = (uint8_t*)AscendC::GmAlloc(ySize);
+    uint8_t *x = (uint8_t *)AscendC::GmAlloc(xSize);
+    uint8_t *weight = (uint8_t *)AscendC::GmAlloc(weightSize);
+    uint8_t *groupedList = (uint8_t *)AscendC::GmAlloc(groupedListSize);
+    uint8_t *y = (uint8_t *)AscendC::GmAlloc(ySize);
 
-    uint8_t* workspace = (uint8_t*)AscendC::GmAlloc(1024 * 1024 * 1024);
-    uint8_t* tiling = (uint8_t*)AscendC::GmAlloc(tilingSize);
+    uint8_t *workspace = (uint8_t *)AscendC::GmAlloc(1024 * 1024 * 1024);
+    uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(tilingSize);
     uint32_t NumBlocks = 40;
 
-    GroupedMatmulAddTilingData* tilingData = reinterpret_cast<GroupedMatmulAddTilingData*>(tiling);
+    GroupedMatmulAddTilingData *tilingData = reinterpret_cast<GroupedMatmulAddTilingData *>(tiling);
     tilingData->gmmBaseParams.groupNum = 2;
     tilingData->gmmBaseParams.coreNum = NumBlocks;
     tilingData->gmmBaseParams.groupType = 2;

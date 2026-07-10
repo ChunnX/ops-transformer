@@ -61,4 +61,4 @@ public:
 };
 
 OP_ADD(AttentionUpdate);
-}  // namespace ops
+} // namespace ops

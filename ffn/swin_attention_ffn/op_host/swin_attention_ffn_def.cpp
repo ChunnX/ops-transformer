@@ -14,46 +14,42 @@
  */
 #include "register/op_def_registry.h"
 
-namespace ops
-{
-    class SwinAttentionFFN : public OpDef
+namespace ops {
+class SwinAttentionFFN : public OpDef {
+public:
+    explicit SwinAttentionFFN(const char *name) : OpDef(name)
     {
-        public:
-            explicit SwinAttentionFFN(const char* name) : OpDef(name)
-            {
-                this->Input("x1")
-                    .ParamType(REQUIRED)
-                    .DataType({ge::DT_FLOAT16})
-                    .Format({ge::FORMAT_ND})
-                    .UnknownShapeFormat({ge::FORMAT_ND});
-                this->Input("x2")
-                    .ParamType(REQUIRED)
-                    .DataType({ge::DT_FLOAT16})
-                    .Format({ge::FORMAT_ND})
-                    .UnknownShapeFormat({ge::FORMAT_ND});
-                this->Input("bias")
-                    .ParamType(REQUIRED)
-                    .DataType({ge::DT_FLOAT16})
-                    .Format({ge::FORMAT_ND})
-                    .UnknownShapeFormat({ge::FORMAT_ND});
-                this->Input("x3")
-                    .ParamType(OPTIONAL)
-                    .DataType({ge::DT_FLOAT16})
-                    .Format({ge::FORMAT_ND})
-                    .UnknownShapeFormat({ge::FORMAT_ND});
-                this->Output("y")
-                    .ParamType(REQUIRED)
-                    .DataType({ge::DT_FLOAT16})
-                    .Format({ge::FORMAT_ND})
-                    .UnknownShapeFormat({ge::FORMAT_ND});
-                this->Attr("shifts")
-                    .AttrType(OPTIONAL)
-                    .ListInt({});
-                this->AICore().AddConfig("ascend910b");
-                this->AICore().AddConfig("kirinx90");
-                this->AICore().AddConfig("kirin9030");
-            }
-    };
+        this->Input("x1")
+            .ParamType(REQUIRED)
+            .DataType({ge::DT_FLOAT16})
+            .Format({ge::FORMAT_ND})
+            .UnknownShapeFormat({ge::FORMAT_ND});
+        this->Input("x2")
+            .ParamType(REQUIRED)
+            .DataType({ge::DT_FLOAT16})
+            .Format({ge::FORMAT_ND})
+            .UnknownShapeFormat({ge::FORMAT_ND});
+        this->Input("bias")
+            .ParamType(REQUIRED)
+            .DataType({ge::DT_FLOAT16})
+            .Format({ge::FORMAT_ND})
+            .UnknownShapeFormat({ge::FORMAT_ND});
+        this->Input("x3")
+            .ParamType(OPTIONAL)
+            .DataType({ge::DT_FLOAT16})
+            .Format({ge::FORMAT_ND})
+            .UnknownShapeFormat({ge::FORMAT_ND});
+        this->Output("y")
+            .ParamType(REQUIRED)
+            .DataType({ge::DT_FLOAT16})
+            .Format({ge::FORMAT_ND})
+            .UnknownShapeFormat({ge::FORMAT_ND});
+        this->Attr("shifts").AttrType(OPTIONAL).ListInt({});
+        this->AICore().AddConfig("ascend910b");
+        this->AICore().AddConfig("kirinx90");
+        this->AICore().AddConfig("kirin9030");
+    }
+};
 
-    OP_ADD(SwinAttentionFFN);
-}
+OP_ADD(SwinAttentionFFN);
+} // namespace ops

@@ -79,7 +79,7 @@
       $$
       sin = torch.cat([m[i]\ for\ i, m\ in\ enumerate(sin.split(mropeSection, dim=-1))], dim=-1)
       $$
-      
+
       $$
       queryRot = query[..., :rotaryDim]
       $$
@@ -137,7 +137,7 @@
     $$
 
     2、**rope模式**：positions的shape输入是[numTokens]：
-    
+
     $$
     cosSin[i] = cosSinCache[positions[i]]
     $$
@@ -177,7 +177,7 @@
     $$
 
     （2）rotate\_interleaved（GPT-J style）计算模式：
-    
+
     $$
     x1 = queryRot[..., ::2]
     $$
@@ -236,10 +236,10 @@ aclnnStatus aclnnRopeWithSinCosCache(
     <table style="undefined;table-layout: fixed; width: 1550px"><colgroup>
       <col style="width: 170px">
       <col style="width: 120px">
-      <col style="width: 300px">  
-      <col style="width: 550px">  
-      <col style="width: 212px">  
-      <col style="width: 100px"> 
+      <col style="width: 300px">
+      <col style="width: 550px">
+      <col style="width: 212px">
+      <col style="width: 100px">
       <col style="width: 190px">
       <col style="width: 145px">
       </colgroup>
@@ -636,7 +636,7 @@ int main() {
   aclOpExecutor *executor;
 
   // 调用aclnnRopeWithSinCosCache第一段接口
-  ret = aclnnRopeWithSinCosCacheGetWorkspaceSize(positions, queryIn, keyIn, cosSinCache, nullptr, headSize, isNeoxStyle, 
+  ret = aclnnRopeWithSinCosCacheGetWorkspaceSize(positions, queryIn, keyIn, cosSinCache, nullptr, headSize, isNeoxStyle,
                                                queryOut, keyOut, &workspaceSize, &executor);
   CHECK_RET(
       ret == ACL_SUCCESS,

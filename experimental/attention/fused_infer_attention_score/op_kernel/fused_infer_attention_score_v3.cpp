@@ -19,7 +19,8 @@
 #ifdef FIA_ENABLE_MLA
 // mla模板使用私有tiling结构，框架编译时根据一组DType预编译获取keylist，根据keylist找到对应的tiling结构
 // 在这组DType中，若没有mla模板的key，包含mla模板编译会报错：unknown type name 'FusedInferAttentionScoreTilingData'
-#if ((ORIG_DTYPE_QUERY == DT_FLOAT16) && (ORIG_DTYPE_ATTENTION_OUT == DT_FLOAT16) && (ORIG_DTYPE_KEY == DT_FLOAT16)) || \
+#if ((ORIG_DTYPE_QUERY == DT_FLOAT16) && (ORIG_DTYPE_ATTENTION_OUT == DT_FLOAT16) &&                                   \
+     (ORIG_DTYPE_KEY == DT_FLOAT16)) ||                                                                                \
     ((ORIG_DTYPE_QUERY == DT_BF16) && (ORIG_DTYPE_ATTENTION_OUT == DT_BF16) && (ORIG_DTYPE_KEY == DT_BF16))
 #ifdef NOT_DYNAMIC_COMPILE
 #include "../../common/op_kernel/arch22/fia_kernel_nonquant_mla.h"
@@ -78,14 +79,16 @@ extern "C" __global__ __aicore__ void fused_infer_attention(
     TILING_KEY_LIST(QF16_KVF16_OUTF16_BNSD_KVBNSD_MLA_TILING, C1V1_QF16_KVF16_OUTF16_BNSD_KVBNSD_MLA_TILING);
     KERNEL_TASK_TYPE(C1V1_QF16_KVF16_OUTF16_BNSD_KVBNSD_MLA_TILING, KERNEL_TYPE_MIX_AIC_1_1);
 
-    TILING_KEY_LIST(QF16_KVF16_OUTF16_BNSD_KVBNSD_FLASHDECODING_MLA_TILING, C1V1_QF16_KVF16_OUTF16_BNSD_KVBNSD_FLASHDECODING_MLA_TILING);
+    TILING_KEY_LIST(QF16_KVF16_OUTF16_BNSD_KVBNSD_FLASHDECODING_MLA_TILING,
+                    C1V1_QF16_KVF16_OUTF16_BNSD_KVBNSD_FLASHDECODING_MLA_TILING);
     KERNEL_TASK_TYPE(C1V1_QF16_KVF16_OUTF16_BNSD_KVBNSD_FLASHDECODING_MLA_TILING, KERNEL_TYPE_MIX_AIC_1_1);
 
     // Mla NoPA bf16 kv_BSH_BSND
     TILING_KEY_LIST(QF16_KVF16_OUTF16_BSH_KVBSH_MLA_TILING, C1V1_QF16_KVF16_OUTF16_BSH_KVBSH_MLA_TILING);
     KERNEL_TASK_TYPE(C1V1_QF16_KVF16_OUTF16_BSH_KVBSH_MLA_TILING, KERNEL_TYPE_MIX_AIC_1_1);
 
-    TILING_KEY_LIST(QF16_KVF16_OUTF16_BSH_KVBSH_FLASHDECODING_MLA_TILING, C1V1_QF16_KVF16_OUTF16_BSH_KVBSH_FLASHDECODING_MLA_TILING);
+    TILING_KEY_LIST(QF16_KVF16_OUTF16_BSH_KVBSH_FLASHDECODING_MLA_TILING,
+                    C1V1_QF16_KVF16_OUTF16_BSH_KVBSH_FLASHDECODING_MLA_TILING);
     KERNEL_TASK_TYPE(C1V1_QF16_KVF16_OUTF16_BSH_KVBSH_FLASHDECODING_MLA_TILING, KERNEL_TYPE_MIX_AIC_1_1);
 
 
@@ -101,23 +104,27 @@ extern "C" __global__ __aicore__ void fused_infer_attention(
 
 
 // Mla NoPA fp16 kv_BNSD
-#if (TILING_KEY_VAR == QF16_KVF16_OUTF16_BNSD_KVBNSD_MLA_TILING) || (TILING_KEY_VAR == C1V1_QF16_KVF16_OUTF16_BNSD_KVBNSD_MLA_TILING) // 7buf
+#if (TILING_KEY_VAR == QF16_KVF16_OUTF16_BNSD_KVBNSD_MLA_TILING) ||                                                    \
+    (TILING_KEY_VAR == C1V1_QF16_KVF16_OUTF16_BNSD_KVBNSD_MLA_TILING) // 7buf
     INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuantMla, FiaBlockCubeNonQuantMla, FiaBlockVecNonQuantMla,
-                               FiaBlockVecFlashDecode, half, half, half,
-                                  half, false, false, FIA_LAYOUT::BNSD, false, false, FIA_LAYOUT::BNSD);
-#elif (TILING_KEY_VAR == QF16_KVF16_OUTF16_BNSD_KVBNSD_FLASHDECODING_MLA_TILING) || (TILING_KEY_VAR == C1V1_QF16_KVF16_OUTF16_BNSD_KVBNSD_FLASHDECODING_MLA_TILING) // 7buf
+                               FiaBlockVecFlashDecode, half, half, half, half, false, false, FIA_LAYOUT::BNSD, false,
+                               false, FIA_LAYOUT::BNSD);
+#elif (TILING_KEY_VAR == QF16_KVF16_OUTF16_BNSD_KVBNSD_FLASHDECODING_MLA_TILING) ||                                    \
+    (TILING_KEY_VAR == C1V1_QF16_KVF16_OUTF16_BNSD_KVBNSD_FLASHDECODING_MLA_TILING) // 7buf
     INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuantMla, FiaBlockCubeNonQuantMla, FiaBlockVecNonQuantMla,
-                               FiaBlockVecFlashDecode, half, half, half,
-                                  half, false, true, FIA_LAYOUT::BNSD, false, false, FIA_LAYOUT::BNSD);
+                               FiaBlockVecFlashDecode, half, half, half, half, false, true, FIA_LAYOUT::BNSD, false,
+                               false, FIA_LAYOUT::BNSD);
 // Mla NoPA fp16 kv_BSH_BSND
-#elif (TILING_KEY_VAR == QF16_KVF16_OUTF16_BSH_KVBSH_MLA_TILING) || (TILING_KEY_VAR == C1V1_QF16_KVF16_OUTF16_BSH_KVBSH_MLA_TILING) // 7buf
+#elif (TILING_KEY_VAR == QF16_KVF16_OUTF16_BSH_KVBSH_MLA_TILING) ||                                                    \
+    (TILING_KEY_VAR == C1V1_QF16_KVF16_OUTF16_BSH_KVBSH_MLA_TILING) // 7buf
     INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuantMla, FiaBlockCubeNonQuantMla, FiaBlockVecNonQuantMla,
-                               FiaBlockVecFlashDecode, half, half, half,
-                                  half, false, false, FIA_LAYOUT::BSH, false, false, FIA_LAYOUT::BSH);
-#elif (TILING_KEY_VAR == QF16_KVF16_OUTF16_BSH_KVBSH_FLASHDECODING_MLA_TILING) || (TILING_KEY_VAR == C1V1_QF16_KVF16_OUTF16_BSH_KVBSH_FLASHDECODING_MLA_TILING) // 7buf
+                               FiaBlockVecFlashDecode, half, half, half, half, false, false, FIA_LAYOUT::BSH, false,
+                               false, FIA_LAYOUT::BSH);
+#elif (TILING_KEY_VAR == QF16_KVF16_OUTF16_BSH_KVBSH_FLASHDECODING_MLA_TILING) ||                                      \
+    (TILING_KEY_VAR == C1V1_QF16_KVF16_OUTF16_BSH_KVBSH_FLASHDECODING_MLA_TILING) // 7buf
     INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuantMla, FiaBlockCubeNonQuantMla, FiaBlockVecNonQuantMla,
-                               FiaBlockVecFlashDecode, half, half, half,
-                                  half, false, true, FIA_LAYOUT::BSH, false, false, FIA_LAYOUT::BSH);
+                               FiaBlockVecFlashDecode, half, half, half, half, false, true, FIA_LAYOUT::BSH, false,
+                               false, FIA_LAYOUT::BSH);
 
 // Gqa NoQuant Non PA Non Perf
 #elif TILING_KEY_VAR == 103000000000000000
@@ -163,14 +170,16 @@ extern "C" __global__ __aicore__ void fused_infer_attention(
     TILING_KEY_LIST(QBF16_KVBF16_OUTBF16_BNSD_KVBNSD_MLA_TILING, C1V1_QBF16_KVBF16_OUTBF16_BNSD_KVBNSD_MLA_TILING);
     KERNEL_TASK_TYPE(C1V1_QBF16_KVBF16_OUTBF16_BNSD_KVBNSD_MLA_TILING, KERNEL_TYPE_MIX_AIC_1_1);
 
-    TILING_KEY_LIST(QBF16_KVBF16_OUTBF16_BNSD_KVBNSD_FLASHDECODING_MLA_TILING, C1V1_QBF16_KVBF16_OUTBF16_BNSD_KVBNSD_FLASHDECODING_MLA_TILING);
+    TILING_KEY_LIST(QBF16_KVBF16_OUTBF16_BNSD_KVBNSD_FLASHDECODING_MLA_TILING,
+                    C1V1_QBF16_KVBF16_OUTBF16_BNSD_KVBNSD_FLASHDECODING_MLA_TILING);
     KERNEL_TASK_TYPE(C1V1_QBF16_KVBF16_OUTBF16_BNSD_KVBNSD_FLASHDECODING_MLA_TILING, KERNEL_TYPE_MIX_AIC_1_1);
 
     // Mla NoPA bf16 kv_BSH_BSND
     TILING_KEY_LIST(QBF16_KVBF16_OUTBF16_BSH_KVBSH_MLA_TILING, C1V1_QBF16_KVBF16_OUTBF16_BSH_KVBSH_MLA_TILING);
     KERNEL_TASK_TYPE(C1V1_QBF16_KVBF16_OUTBF16_BSH_KVBSH_MLA_TILING, KERNEL_TYPE_MIX_AIC_1_1);
 
-    TILING_KEY_LIST(QBF16_KVBF16_OUTBF16_BSH_KVBSH_FLASHDECODING_MLA_TILING, C1V1_QBF16_KVBF16_OUTBF16_BSH_KVBSH_FLASHDECODING_MLA_TILING);
+    TILING_KEY_LIST(QBF16_KVBF16_OUTBF16_BSH_KVBSH_FLASHDECODING_MLA_TILING,
+                    C1V1_QBF16_KVBF16_OUTBF16_BSH_KVBSH_FLASHDECODING_MLA_TILING);
     KERNEL_TASK_TYPE(C1V1_QBF16_KVBF16_OUTBF16_BSH_KVBSH_FLASHDECODING_MLA_TILING, KERNEL_TYPE_MIX_AIC_1_1);
 
     // Gqa NoQuant Non PA
@@ -184,25 +193,28 @@ extern "C" __global__ __aicore__ void fused_infer_attention(
     TILING_KEY_IS(103000000010522221);
 
 
-
 // Mla NoPA bf16 kv_BNSD
-#if (TILING_KEY_VAR == QBF16_KVBF16_OUTBF16_BNSD_KVBNSD_MLA_TILING) || (TILING_KEY_VAR == C1V1_QBF16_KVBF16_OUTBF16_BNSD_KVBNSD_MLA_TILING) // 7buf
+#if (TILING_KEY_VAR == QBF16_KVBF16_OUTBF16_BNSD_KVBNSD_MLA_TILING) ||                                                 \
+    (TILING_KEY_VAR == C1V1_QBF16_KVBF16_OUTBF16_BNSD_KVBNSD_MLA_TILING) // 7buf
     INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuantMla, FiaBlockCubeNonQuantMla, FiaBlockVecNonQuantMla,
-                               FiaBlockVecFlashDecode, bfloat16_t, bfloat16_t, bfloat16_t,
-                                  bfloat16_t, false, false, FIA_LAYOUT::BNSD, false, false, FIA_LAYOUT::BNSD);
-#elif (TILING_KEY_VAR == QBF16_KVBF16_OUTBF16_BNSD_KVBNSD_FLASHDECODING_MLA_TILING) || (TILING_KEY_VAR == C1V1_QBF16_KVBF16_OUTBF16_BNSD_KVBNSD_FLASHDECODING_MLA_TILING) // 7buf
+                               FiaBlockVecFlashDecode, bfloat16_t, bfloat16_t, bfloat16_t, bfloat16_t, false, false,
+                               FIA_LAYOUT::BNSD, false, false, FIA_LAYOUT::BNSD);
+#elif (TILING_KEY_VAR == QBF16_KVBF16_OUTBF16_BNSD_KVBNSD_FLASHDECODING_MLA_TILING) ||                                 \
+    (TILING_KEY_VAR == C1V1_QBF16_KVBF16_OUTBF16_BNSD_KVBNSD_FLASHDECODING_MLA_TILING) // 7buf
     INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuantMla, FiaBlockCubeNonQuantMla, FiaBlockVecNonQuantMla,
-                               FiaBlockVecFlashDecode, bfloat16_t, bfloat16_t, bfloat16_t,
-                                   bfloat16_t, false, true, FIA_LAYOUT::BNSD, false, false, FIA_LAYOUT::BNSD);
+                               FiaBlockVecFlashDecode, bfloat16_t, bfloat16_t, bfloat16_t, bfloat16_t, false, true,
+                               FIA_LAYOUT::BNSD, false, false, FIA_LAYOUT::BNSD);
 // Mla NoPA bf16 kv_BSH_BSND
-#elif (TILING_KEY_VAR == QBF16_KVBF16_OUTBF16_BSH_KVBSH_MLA_TILING) || (TILING_KEY_VAR == C1V1_QBF16_KVBF16_OUTBF16_BSH_KVBSH_MLA_TILING) // 7buf
+#elif (TILING_KEY_VAR == QBF16_KVBF16_OUTBF16_BSH_KVBSH_MLA_TILING) ||                                                 \
+    (TILING_KEY_VAR == C1V1_QBF16_KVBF16_OUTBF16_BSH_KVBSH_MLA_TILING) // 7buf
     INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuantMla, FiaBlockCubeNonQuantMla, FiaBlockVecNonQuantMla,
-                               FiaBlockVecFlashDecode, bfloat16_t, bfloat16_t, bfloat16_t,
-                                  bfloat16_t, false, false, FIA_LAYOUT::BSH, false, false, FIA_LAYOUT::BSH);
-#elif (TILING_KEY_VAR == QBF16_KVBF16_OUTBF16_BSH_KVBSH_FLASHDECODING_MLA_TILING) || (TILING_KEY_VAR == C1V1_QBF16_KVBF16_OUTBF16_BSH_KVBSH_FLASHDECODING_MLA_TILING) // 7buf
+                               FiaBlockVecFlashDecode, bfloat16_t, bfloat16_t, bfloat16_t, bfloat16_t, false, false,
+                               FIA_LAYOUT::BSH, false, false, FIA_LAYOUT::BSH);
+#elif (TILING_KEY_VAR == QBF16_KVBF16_OUTBF16_BSH_KVBSH_FLASHDECODING_MLA_TILING) ||                                   \
+    (TILING_KEY_VAR == C1V1_QBF16_KVBF16_OUTBF16_BSH_KVBSH_FLASHDECODING_MLA_TILING) // 7buf
     INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuantMla, FiaBlockCubeNonQuantMla, FiaBlockVecNonQuantMla,
-                               FiaBlockVecFlashDecode, bfloat16_t, bfloat16_t, bfloat16_t,
-                                   bfloat16_t, false, true, FIA_LAYOUT::BSH, false, false, FIA_LAYOUT::BSH);
+                               FiaBlockVecFlashDecode, bfloat16_t, bfloat16_t, bfloat16_t, bfloat16_t, false, true,
+                               FIA_LAYOUT::BSH, false, false, FIA_LAYOUT::BSH);
 // Gqa NoQuant Non PA
 #elif TILING_KEY_VAR == 103000000000022220
     INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuantGqa, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,

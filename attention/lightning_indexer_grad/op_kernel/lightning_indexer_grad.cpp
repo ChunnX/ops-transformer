@@ -22,7 +22,7 @@
 #include "lightning_indexer_grad_tiling.h"
 
 using namespace LigKernel;
-#define INVOKE_LIG_NO_KFC_OP_IMPL( ...)                                                                                \
+#define INVOKE_LIG_NO_KFC_OP_IMPL(...)                                                                                 \
     do {                                                                                                               \
         LIG_COPY_TILING_DATA(tiling);                                                                                  \
         TPipe pipePre;                                                                                                 \
@@ -33,8 +33,8 @@ using namespace LigKernel;
         pipePre.Destroy();                                                                                             \
         LIGKernel<LIGType<__VA_ARGS__>> op;                                                                            \
         TPipe pipeOp;                                                                                                  \
-        op.Init(query, key, dy, sparse_indices, weights, actual_seq_lengths_query, actual_seq_lengths_key,             \
-                dq, dk, dweights, user, tilingData, &pipeOp);                                                          \
+        op.Init(query, key, dy, sparse_indices, weights, actual_seq_lengths_query, actual_seq_lengths_key, dq, dk,     \
+                dweights, user, tilingData, &pipeOp);                                                                  \
         op.Process();                                                                                                  \
         pipeOp.Destroy();                                                                                              \
         TPipe pipePost;                                                                                                \
@@ -44,16 +44,18 @@ using namespace LigKernel;
         pipePost.Destroy();                                                                                            \
     } while (0)
 
-#define LIG_COPY_TILING_DATA(tiling)                                                                                     \
-    REGISTER_TILING_DEFAULT(optiling::LIGTilingData);                                                                    \
-    GET_TILING_DATA_WITH_STRUCT(optiling::LIGTilingData, tilingDataIn, tiling);                                          \
-    const optiling::LIGTilingData *__restrict tilingData = &tilingDataIn;                                 
+#define LIG_COPY_TILING_DATA(tiling)                                                                                   \
+    REGISTER_TILING_DEFAULT(optiling::LIGTilingData);                                                                  \
+    GET_TILING_DATA_WITH_STRUCT(optiling::LIGTilingData, tilingDataIn, tiling);                                        \
+    const optiling::LIGTilingData *__restrict tilingData = &tilingDataIn;
 
 
 template <int DATATYPE, int LAYOUT>
-__global__ __aicore__ void lightning_indexer_grad(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *dy, __gm__ uint8_t *sparse_indices,
-    __gm__ uint8_t *weights, __gm__ uint8_t *actual_seq_lengths_query, __gm__ uint8_t *actual_seq_lengths_key, __gm__ uint8_t *dq,
-    __gm__ uint8_t *dk, __gm__ uint8_t *dweights, __gm__ uint8_t *workspace, __gm__ uint8_t *tiling)
+__global__ __aicore__ void
+lightning_indexer_grad(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *dy, __gm__ uint8_t *sparse_indices,
+                       __gm__ uint8_t *weights, __gm__ uint8_t *actual_seq_lengths_query,
+                       __gm__ uint8_t *actual_seq_lengths_key, __gm__ uint8_t *dq, __gm__ uint8_t *dk,
+                       __gm__ uint8_t *dweights, __gm__ uint8_t *workspace, __gm__ uint8_t *tiling)
 {
 #if (defined __DAV_310R6__) || (__CCE_AICORE__ == 200)
 #else

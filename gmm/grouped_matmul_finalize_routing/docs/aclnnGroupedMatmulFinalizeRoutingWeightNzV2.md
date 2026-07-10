@@ -599,7 +599,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(
         bool transposeX = false;
         bool transposeW = false;
         int64_t groupListType = 1;
-        
+
         std::vector<int64_t> xShape = {m, k};
         std::vector<int64_t> wShape = {e, k, n};
         std::vector<int64_t> scaleShape = {e, n};
@@ -609,7 +609,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(
         std::vector<int64_t> logitShape = {m};
         std::vector<int64_t> rowIndexShape = {m};
         std::vector<int64_t> outShape = {batch, n};
-        std::vector<int64_t> tuningConfigVal = {1}; 
+        std::vector<int64_t> tuningConfigVal = {1};
 
         void *xDeviceAddr = nullptr;
         void *wDeviceAddr = nullptr;
@@ -717,7 +717,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnTransMatmulWeight failed. ERROR: %d\n", ret); return ret);
 
         // 调用aclnnGroupedMatmulFinalizeRoutingWeightNzV2第一段接口
-        workspaceSize = 0;                                               
+        workspaceSize = 0;
         ret = aclnnGroupedMatmulFinalizeRoutingWeightNzV2GetWorkspaceSize(x, w, scale, nullptr, nullptr, nullptr, nullptr, pertokenScale, groupList, sharedInput, logit, rowIndex, dtype, shareInputWeight, sharedInputOffset, transposeX, transposeW, groupListType, tuningConfig, out, &workspaceSize, &executor);
 
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnGroupedMatmulFinalizeRoutingWeightNzV2GetWorkspaceSize failed. ERROR: %d\n", ret);

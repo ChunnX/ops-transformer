@@ -12,8 +12,6 @@
 
 import result_compare_method
 import utils
-import itertools
-import torch
 import torch_npu
 from sparse_flash_mla_paramset import ENABLED_PARAMS
 import sparse_flash_mla_golden
@@ -25,8 +23,9 @@ save_pt = False
 pt_save_path = "data"
 
 # 处理所有参数组合
-result_path = os.getenv("SMLA_RESULT_SAVE_PATH", './result/smla_result.xlsx')
+result_path = os.getenv("SMLA_RESULT_SAVE_PATH", "./result/smla_result.xlsx")
 param_combinations = utils.generate_param_combinations(ENABLED_PARAMS)
+
 
 @pytest.mark.ci
 @pytest.mark.parametrize("param_combinations", param_combinations)
@@ -42,8 +41,12 @@ def test_example(param_combinations):
     npu_result, softmax_lse = sparse_flash_mla_process.call_npu(input_data)
     print("npu_result.size():", npu_result.size())
     # 结果精度对比
-    result, fulfill_percent = result_compare_method.check_result(input_data['cpu_output'], npu_result)
+    result, fulfill_percent = result_compare_method.check_result(
+        input_data["cpu_output"], npu_result
+    )
     if test_data.get("return_softmax_lse", False):
-        result, fulfill_percent = result_compare_method.check_result(input_data['softmax_lse'], softmax_lse)
+        result, fulfill_percent = result_compare_method.check_result(
+            input_data["softmax_lse"], softmax_lse
+        )
     # 记录结果
     utils.save_result(result, fulfill_percent, test_data, result_path)

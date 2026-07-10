@@ -21,11 +21,7 @@ class Jacobi : public OpDef {
 public:
     explicit Jacobi(const char *name) : OpDef(name)
     {
-        this->Input("A")
-            .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT})
-            .FormatList({ge::FORMAT_ND})
-            .AutoContiguous();
+        this->Input("A").ParamType(REQUIRED).DataType({ge::DT_FLOAT}).FormatList({ge::FORMAT_ND}).AutoContiguous();
         this->Output("U").ParamType(REQUIRED).DataTypeList({ge::DT_FLOAT}).FormatList({ge::FORMAT_ND});
         this->Output("S").ParamType(REQUIRED).DataTypeList({ge::DT_FLOAT}).FormatList({ge::FORMAT_ND});
         this->Output("V").ParamType(REQUIRED).DataTypeList({ge::DT_FLOAT}).FormatList({ge::FORMAT_ND});

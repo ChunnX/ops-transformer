@@ -26,8 +26,8 @@
 #include "../../../incre_flash_attention/op_host/incre_flash_attention_tiling_base.h"
 
 using std::map;
-using std::string;
 using std::pair;
+using std::string;
 using namespace ge;
 using namespace AscendC;
 namespace optiling {
@@ -41,7 +41,8 @@ std::string RopeModeToSerialString(const RopeMode &ropeMode)
             return "MLA";
         case RopeMode::ROPE_COMBINE:
             return "MLA";
-        default: return "UNKNOWN";
+        default:
+            return "UNKNOWN";
     }
 }
 
@@ -101,10 +102,8 @@ ge::graphStatus FiaTilingCheck::Process()
         return ge::GRAPH_SUCCESS;
     }
     Init();
-    if (CheckSinglePara() != ge::GRAPH_SUCCESS ||
-        CheckParaExistence() != ge::GRAPH_SUCCESS ||
-        CheckFeature() != ge::GRAPH_SUCCESS ||
-        CheckMultiParaConsistency() != ge::GRAPH_SUCCESS) {
+    if (CheckSinglePara() != ge::GRAPH_SUCCESS || CheckParaExistence() != ge::GRAPH_SUCCESS ||
+        CheckFeature() != ge::GRAPH_SUCCESS || CheckMultiParaConsistency() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;

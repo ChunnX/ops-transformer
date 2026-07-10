@@ -28,31 +28,31 @@ $$
 
 ```Cpp
 aclnnStatus aclnnSwinAttentionScoreQuantGetWorkspaceSize(
-    const aclTensor *query, 
-    const aclTensor *key, 
-    const aclTensor *value, 
-    const aclTensor *scaleQuant, 
-    const aclTensor *scaleDequant1, 
-    const aclTensor *scaleDequant2, 
-    const aclTensor *biasQuantOptional, 
-    const aclTensor *biasDequant1Optional, 
-    const aclTensor *biasDequant2Optional, 
-    const aclTensor *paddingMask1Optional, 
-    const aclTensor *paddingMask2Optional, 
-    bool             queryTranspose, 
-    bool             keyTranspose, 
-    bool             valueTranspose, 
-    int64_t          softmaxAxes, 
-    const aclTensor *out, 
-    uint64_t        *workspaceSize, 
+    const aclTensor *query,
+    const aclTensor *key,
+    const aclTensor *value,
+    const aclTensor *scaleQuant,
+    const aclTensor *scaleDequant1,
+    const aclTensor *scaleDequant2,
+    const aclTensor *biasQuantOptional,
+    const aclTensor *biasDequant1Optional,
+    const aclTensor *biasDequant2Optional,
+    const aclTensor *paddingMask1Optional,
+    const aclTensor *paddingMask2Optional,
+    bool             queryTranspose,
+    bool             keyTranspose,
+    bool             valueTranspose,
+    int64_t          softmaxAxes,
+    const aclTensor *out,
+    uint64_t        *workspaceSize,
     aclOpExecutor  **executor)
 ```
 
 ```Cpp
 aclnnStatus aclnnSwinAttentionScoreQuant(
-    void          *workspace, 
-    uint64_t       workspaceSize, 
-    aclOpExecutor *executor, 
+    void          *workspace,
+    uint64_t       workspaceSize,
+    aclOpExecutor *executor,
     aclrtStream    stream)
 ```
 
@@ -64,9 +64,9 @@ aclnnStatus aclnnSwinAttentionScoreQuant(
         <colgroup>
             <col style="width: 220px">
             <col style="width: 120px">
-            <col style="width: 300px">  
-            <col style="width: 400px">  
-            <col style="width: 212px">  
+            <col style="width: 300px">
+            <col style="width: 400px">
+            <col style="width: 212px">
             <col style="width: 100px">
             <col style="width: 190px">
             <col style="width: 145px">

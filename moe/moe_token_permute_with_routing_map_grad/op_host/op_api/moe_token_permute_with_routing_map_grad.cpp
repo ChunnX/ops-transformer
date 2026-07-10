@@ -24,14 +24,13 @@ static constexpr int64_t GRAD_Y_SHAPE_NO_GROUP_IDX = 3;
 
 OP_TYPE_REGISTER(MoeTokenPermuteWithRoutingMapGrad);
 
-const std::array<const aclTensor*, 2> MoeTokenPermuteWithRoutingMapGrad(
-    const aclTensor* permutedTokenOutputGrad, const aclTensor* permutedProbsOutputGradOptional,
-    const aclTensor* sortedIndices, const aclTensor* routingMapOptional, int64_t numExperts, int64_t tokensNum,
-    bool dropAndPad, const aclTensor* tokensGradOut, const aclTensor* probsGradOut, aclOpExecutor* executor)
+const std::array<const aclTensor *, 2> MoeTokenPermuteWithRoutingMapGrad(
+    const aclTensor *permutedTokenOutputGrad, const aclTensor *permutedProbsOutputGradOptional,
+    const aclTensor *sortedIndices, const aclTensor *routingMapOptional, int64_t numExperts, int64_t tokensNum,
+    bool dropAndPad, const aclTensor *tokensGradOut, const aclTensor *probsGradOut, aclOpExecutor *executor)
 {
-    L0_DFX(
-        MoeTokenPermuteWithRoutingMapGrad, permutedTokenOutputGrad, permutedProbsOutputGradOptional, sortedIndices,
-        routingMapOptional, numExperts, tokensNum, dropAndPad);
+    L0_DFX(MoeTokenPermuteWithRoutingMapGrad, permutedTokenOutputGrad, permutedProbsOutputGradOptional, sortedIndices,
+           routingMapOptional, numExperts, tokensNum, dropAndPad);
     if (dropAndPad) {
         op::Shape permuteTokensGradShape; // pad模式构造
         permuteTokensGradShape.AppendDim(permutedTokenOutputGrad->GetViewShape().GetDim(0));
@@ -57,9 +56,8 @@ const std::array<const aclTensor*, 2> MoeTokenPermuteWithRoutingMapGrad(
             OP_INPUT(permuteTokensGrad, permutedProbsOutputGradOptional, sortedIndices, routingMapOptional),
             OP_OUTPUT(tokensOutGrad, probsGradOut), OP_ATTR(numExperts, tokensNum, dropAndPad));
 
-        return std::array<const aclTensor*, 2>{tokensOutGrad, probsGradOut};
-    }
-    else {
+        return std::array<const aclTensor *, 2>{tokensOutGrad, probsGradOut};
+    } else {
         ADD_TO_LAUNCHER_LIST_AICORE(
             MoeTokenPermuteWithRoutingMapGrad,
             OP_INPUT(permutedTokenOutputGrad, permutedProbsOutputGradOptional, sortedIndices, routingMapOptional),

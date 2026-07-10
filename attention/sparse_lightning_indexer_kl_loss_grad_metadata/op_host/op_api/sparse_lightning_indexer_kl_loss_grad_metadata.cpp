@@ -40,17 +40,18 @@ const aclTensor *SparseLightningIndexerKLLossGradMetadata(
 
     auto ret = ADD_TO_LAUNCHER_LIST_AICPU(
         SparseLightningIndexerKLLossGradMetadata,
-        OP_ATTR_NAMES({"batch_size", "max_seqlen_q", "max_seqlen_k", "num_heads_q", "num_heads_k", "head_dim",
-                       "topk", "layout_q", "layout_k", "mask_mode", "cmp_ratio", "aic_core_num", "aiv_core_num",
-                       "soc_version" }),
+        OP_ATTR_NAMES({"batch_size", "max_seqlen_q", "max_seqlen_k", "num_heads_q", "num_heads_k", "head_dim", "topk",
+                       "layout_q", "layout_k", "mask_mode", "cmp_ratio", "aic_core_num", "aiv_core_num",
+                       "soc_version"}),
         OP_INPUT(cuSeqlensQOptional, cuSeqlensKOptional, sequsedQOptional, sequsedKOptional, cmpResidualKOptional),
         OP_OUTPUT(metadata),
         OP_ATTR(batchSize, maxSeqlenQ, maxSeqlenK, numHeadsQ, numHeadsK, headDim, topk, layoutQOptional,
                 layoutKOptional, maskMode, cmpRatio, aicCoreNum, aivCoreNum, socVersion));
 
-    OP_CHECK(ret == ACL_SUCCESS,
+    OP_CHECK(
+        ret == ACL_SUCCESS,
         OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "SparseLightningIndexerKLLossGradMetadata ADD_TO_LAUNCHER_LIST_AICPU failed."),
         return nullptr);
     return metadata;
 }
-}  // namespace l0op
+} // namespace l0op

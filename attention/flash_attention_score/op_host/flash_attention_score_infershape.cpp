@@ -59,22 +59,22 @@ ge::graphStatus InferShapeFlashAttentionScore(gert::InferShapeContext *context)
     for (auto &c : inputLayoutStr) {
         c = toupper(c);
     }
-    if (inputLayoutStr != "BSH" && inputLayoutStr != "BSND" && inputLayoutStr != "SBH" &&  inputLayoutStr != "BNSD" &&
+    if (inputLayoutStr != "BSH" && inputLayoutStr != "BSND" && inputLayoutStr != "SBH" && inputLayoutStr != "BNSD" &&
         inputLayoutStr != "TND") {
-        OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "input_layout",
-            inputLayoutStr.c_str(), "BSH, SBH, BSND, BNSD or TND");
+        OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "input_layout", inputLayoutStr.c_str(),
+                                  "BSH, SBH, BSND, BNSD or TND");
         return GRAPH_FAILED;
     }
 
     int64_t shapeB = 1;
     int64_t shapeS = 1;
     int64_t shapeT = 0;
-     if (inputLayoutStr == "SBH") {
+    if (inputLayoutStr == "SBH") {
         shapeB = queryShape->GetDim(1);
         shapeS = queryShape->GetDim(0);
     } else if (inputLayoutStr == "TND") {
         shapeT = queryShape->GetDim(0);
-    } else if (inputLayoutStr == "BSND" || inputLayoutStr == "BSH" ) {
+    } else if (inputLayoutStr == "BSND" || inputLayoutStr == "BSH") {
         shapeB = queryShape->GetDim(0);
         shapeS = queryShape->GetDim(1);
     } else {
@@ -83,7 +83,7 @@ ge::graphStatus InferShapeFlashAttentionScore(gert::InferShapeContext *context)
         shapeS = queryShape->GetDim(DIM_NUM_2);
     }
     OP_LOGI(context, "InferShape info: B=%ld, N=%ld, T=%ld, S=%ld, inputLayout=%s, dtype=%s", shapeB, *headNum, shapeT,
-              shapeS, inputLayoutStr.c_str(), ge::TypeUtils::DataTypeToSerialString(queryDesc->GetDataType()).c_str());
+            shapeS, inputLayoutStr.c_str(), ge::TypeUtils::DataTypeToSerialString(queryDesc->GetDataType()).c_str());
 
     // softmaxMax, fp32: (B, N, S, 8)
     gert::Shape *softmaxMaxShape = context->GetOutputShape(0);
@@ -134,7 +134,7 @@ ge::graphStatus InferShapeFlashAttentionScore(gert::InferShapeContext *context)
     if (inputLayoutStr == "BSND" || inputLayoutStr == "BNSD") {
         auto shapeD2 = valueShape->GetDim(3);
         attentionOutShape->SetDim(3, shapeD2);
-    } else if (inputLayoutStr == "BSH" || inputLayoutStr == "SBH" ) {
+    } else if (inputLayoutStr == "BSH" || inputLayoutStr == "SBH") {
         // 动态图场景: query/key/value 的 H 维为 -1 时, 输出 H 置为 -1
         if (queryShape->GetDim(DIM_NUM_2) == -1 || keyShape->GetDim(DIM_NUM_2) == -1 ||
             valueShape->GetDim(DIM_NUM_2) == -1) {
@@ -146,23 +146,23 @@ ge::graphStatus InferShapeFlashAttentionScore(gert::InferShapeContext *context)
             attentionOutShape->SetDim(DIM_NUM_2, 0);
             return GRAPH_SUCCESS;
         }
-        auto h1 =  queryShape->GetDim(DIM_NUM_2);
+        auto h1 = queryShape->GetDim(DIM_NUM_2);
         auto D1 = h1 / N1;
         if (D1 == 0) {
             attentionOutShape->SetDim(DIM_NUM_2, 0);
             return GRAPH_SUCCESS;
         }
-        auto h2 =  keyShape->GetDim(DIM_NUM_2);
+        auto h2 = keyShape->GetDim(DIM_NUM_2);
         auto N2 = h2 / D1;
         if (N2 == 0) {
             attentionOutShape->SetDim(DIM_NUM_2, N1 * D1);
             return GRAPH_SUCCESS;
         }
-        auto h3 =  valueShape->GetDim(DIM_NUM_2);
+        auto h3 = valueShape->GetDim(DIM_NUM_2);
         auto D2 = h3 / N2;
         attentionOutShape->SetDim(DIM_NUM_2, N1 * D2);
-    } else{
-        //TND
+    } else {
+        // TND
         auto shapeD2 = valueShape->GetDim(DIM_NUM_2);
         attentionOutShape->SetDim(DIM_NUM_2, shapeD2);
     }
@@ -200,6 +200,8 @@ ge::graphStatus InferDataTypeFlashAttentionScore(gert::InferDataTypeContext *con
     return GRAPH_SUCCESS;
 }
 
-IMPL_OP_INFERSHAPE(FlashAttentionScore).InferShape(InferShapeFlashAttentionScore).InferDataType(InferDataTypeFlashAttentionScore);
+IMPL_OP_INFERSHAPE(FlashAttentionScore)
+    .InferShape(InferShapeFlashAttentionScore)
+    .InferDataType(InferDataTypeFlashAttentionScore);
 
 } // namespace ops

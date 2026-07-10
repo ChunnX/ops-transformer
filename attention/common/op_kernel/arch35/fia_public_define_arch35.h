@@ -110,14 +110,14 @@ struct CommonConstInfo {
     uint64_t s2Size;             /* s2总大小 */
     uint64_t actualSeqLenSize;   /* 用户输入的actualseq的长度 */
     uint64_t actualSeqLenKVSize; /* 用户输入的actualseq_kv的长度 */
-    
+
     /* strides */
     StridesConstInfo keyStrides;
     StridesConstInfo valueStrides;
     StridesConstInfo kRopeStrides;
     StridesConstInfo kScaleStrides;
     StridesConstInfo vScaleStrides;
-    
+
     /* FA kernel meta */
     uint32_t bN2Start;
     uint32_t bN2End;
@@ -208,15 +208,10 @@ template <FiaKernelType>
 struct ConstInfo_t;
 
 template <>
-struct ConstInfo_t<FiaKernelType::NO_QUANT> : CommonConstInfo,
-                                              PAConstInfo,
-                                              LseConstInfo {};
+struct ConstInfo_t<FiaKernelType::NO_QUANT> : CommonConstInfo, PAConstInfo, LseConstInfo {};
 
 template <>
-struct ConstInfo_t<FiaKernelType::FULL_QUANT> : CommonConstInfo,
-                                                PAConstInfo,
-                                                LseConstInfo,
-                                                TensorListConstInfo {};
+struct ConstInfo_t<FiaKernelType::FULL_QUANT> : CommonConstInfo, PAConstInfo, LseConstInfo, TensorListConstInfo {};
 } // namespace AttentionCommon
 
 #endif // FIA_PUBLIC_DEFINE_H

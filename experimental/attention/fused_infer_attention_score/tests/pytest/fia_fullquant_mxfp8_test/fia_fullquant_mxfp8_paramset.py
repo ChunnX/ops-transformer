@@ -146,10 +146,18 @@ def _expand_paramset_to_cases():
     import itertools
 
     PARAM_NAMES = [
-        "B", "N_q", "N_kv", "D",
-        "actual_seq_q", "actual_seq_kv",
-        "enable_pa", "kv_cache_layout", "block_size",
-        "sparse_mode", "q_scale_layout", "p_scale",
+        "B",
+        "N_q",
+        "N_kv",
+        "D",
+        "actual_seq_q",
+        "actual_seq_kv",
+        "enable_pa",
+        "kv_cache_layout",
+        "block_size",
+        "sparse_mode",
+        "q_scale_layout",
+        "p_scale",
     ]
 
     cases = []

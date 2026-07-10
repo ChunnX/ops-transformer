@@ -59,7 +59,8 @@ protected:
                                    tilingData->kvCacheSizePerCore :
                                    tilingData->weightSize;
         this->pipe.InitBuffer(this->inQueue, this->tilingData->bufferNum, inQueueSize * sizeof(T));
-        this->pipe.InitBuffer(this->outQueue, this->tilingData->bufferNum, this->tilingData->compressKvCacheSizePerCore * sizeof(T));
+        this->pipe.InitBuffer(this->outQueue, this->tilingData->bufferNum,
+                              this->tilingData->compressKvCacheSizePerCore * sizeof(T));
         this->pipe.InitBuffer(this->kvCalcBuf, this->tilingData->bufferNum * kvCalcBufSize * sizeof(float));
     }
 
@@ -101,7 +102,7 @@ protected:
         seqLenStartidx = seqLen - tilingData->compressBlockSize;
         int32_t slotMappingIdx = slotMappingGm.GetValue(batchIdx);
         outputOffset = static_cast<uint64_t>(slotMappingIdx) * tilingData->headDim * tilingData->headNum +
-            static_cast<uint64_t>(headIdx) * tilingData->headDim;
+                       static_cast<uint64_t>(headIdx) * tilingData->headDim;
     }
 
     __aicore__ inline void CopyKvCache(uint32_t tileIdx)
@@ -269,9 +270,11 @@ public:
             this->tilingData->tokenNumPerTile * this->tilingData->headsNumPerCore * this->firstBroadCastSize;
 
         this->pipe.InitBuffer(this->castWeightBuf, (this->castWeightLen) * sizeof(float));
-        this->pipe.InitBuffer(this->firstBroadCastWeightBuf, this->tilingData->bufferNum * (this->firstBroadcastWeightLen) * sizeof(float));
+        this->pipe.InitBuffer(this->firstBroadCastWeightBuf,
+                              this->tilingData->bufferNum * (this->firstBroadcastWeightLen) * sizeof(float));
         this->pipe.InitBuffer(this->tileWeightBuf, this->tilingData->bufferNum * (this->tileWeightLen) * sizeof(float));
-        this->pipe.InitBuffer(this->broadcastWeightBuf, this->tilingData->bufferNum * (this->broadcastWeightLen) * sizeof(float));
+        this->pipe.InitBuffer(this->broadcastWeightBuf,
+                              this->tilingData->bufferNum * (this->broadcastWeightLen) * sizeof(float));
 
         this->InitActSeqLen();
     }
@@ -351,7 +354,8 @@ public:
 
         this->tileWeightLen = this->tiledweightShape[0];
         this->pipe.InitBuffer(this->castWeightBuf, this->tilingData->weightSize * sizeof(float));
-        this->pipe.InitBuffer(this->broadcastWeightBuf, this->tilingData->bufferNum * this->tilingData->weightSizePerCore * sizeof(float));
+        this->pipe.InitBuffer(this->broadcastWeightBuf,
+                              this->tilingData->bufferNum * this->tilingData->weightSizePerCore * sizeof(float));
         this->pipe.InitBuffer(this->tileWeightBuf, this->tilingData->bufferNum * this->tileWeightLen * sizeof(float));
         this->InitActSeqLen();
     }
@@ -421,7 +425,8 @@ public:
 
         this->pipe.InitBuffer(this->castWeightBuf,
                               this->tilingData->compressBlockSize * this->tilingData->headNum * sizeof(float));
-        this->pipe.InitBuffer(this->broadcastWeightBuf, this->tilingData->bufferNum * this->tilingData->weightSizePerCore * sizeof(float));
+        this->pipe.InitBuffer(this->broadcastWeightBuf,
+                              this->tilingData->bufferNum * this->tilingData->weightSizePerCore * sizeof(float));
 
         this->InitActSeqLen();
     }

@@ -215,7 +215,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV2(
         <td>ND</td>
         <td>0、1</td>
         <td>-</td>
-      </tr>  
+      </tr>
       <tr>
         <td>attenMaskOptional</td>
         <td>可选输入</td>
@@ -527,7 +527,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV2(
     | 2           | 内部生成pse先mul再add              | - |
     | 3           | 内部生成pse先mul再add再sqrt         | - |
 
-- sparseMode的约束如下: 
+- sparseMode的约束如下:
   - 当所有的attenMaskOptional的shape小于2048且相同的时候，建议使用default模式，来减少内存使用量；
   - 配置为1、2、3、5时，用户配置的preTokens、nextTokens不会生效；
   - 配置为0、4时，须保证attenMaskOptional与preTokens、nextTokens的范围一致。

@@ -32,8 +32,7 @@ uint8_t *CreateTensorList(const std::vector<std::vector<uint64_t>> &shapeInfos)
         tensorListDescCount += shape.size();
     }
     std::vector<uint64_t> shapeSizeList;
-    auto *tensorListDesc =
-        reinterpret_cast<uint64_t *>(AscendC::GmAlloc(tensorListDescCount * sizeof(uint64_t)));
+    auto *tensorListDesc = reinterpret_cast<uint64_t *>(AscendC::GmAlloc(tensorListDescCount * sizeof(uint64_t)));
     *tensorListDesc = (tensorListDescCount - shapeInfos.size()) * sizeof(uint64_t);
     uint64_t addrIndex = 0;
     for (size_t i = 0; i < shapeInfos.size(); ++i) {
@@ -111,7 +110,8 @@ TEST_P(AttentionUpdateTest, KernelSmoke)
     uint8_t *lse = CreateTensorList<float>(lseShapeInfos);
     uint8_t *go = CreateTensorList<float>(goShapeInfos);
     auto *output = reinterpret_cast<uint8_t *>(AscendC::GmAlloc(outputByteSize));
-    auto *lseout = tilingParam.updateType == 0 ? nullptr : reinterpret_cast<uint8_t *>(AscendC::GmAlloc(lseoutByteSize));
+    auto *lseout =
+        tilingParam.updateType == 0 ? nullptr : reinterpret_cast<uint8_t *>(AscendC::GmAlloc(lseoutByteSize));
     auto *workspace = reinterpret_cast<uint8_t *>(AscendC::GmAlloc(WORKSPACE_SIZE));
     auto *tiling = reinterpret_cast<uint8_t *>(AscendC::GmAlloc(tilingSize));
 

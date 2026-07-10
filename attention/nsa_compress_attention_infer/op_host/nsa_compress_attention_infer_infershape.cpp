@@ -40,7 +40,7 @@ static ge::graphStatus InferShapeNsaCompressAttentionInfer(gert::InferShapeConte
     const gert::Shape *queryShape = context->GetInputShape(QUERY_INPUT_INDEX);
     gert::Shape *outShape = context->GetOutputShape(ATTEN_OUTPUT_INDEX);
     const gert::Shape *valueShape = context->GetInputShape(VALUE_INPUT_INDEX);
-    
+
     auto attrs = context->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
     const int64_t *kvHeadNumsPtr = attrs->GetAttrPointer<int64_t>(KV_NUM_HEADS_ATTR_INDEX);
