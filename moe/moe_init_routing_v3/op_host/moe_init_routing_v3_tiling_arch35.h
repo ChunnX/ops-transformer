@@ -163,13 +163,13 @@ struct PerLoopParams {
     int64_t perLoopMaxIndicesElements = 0;
 };
 
-class MoeInitRoutingV3Arch35TilingClass : public TilingBaseClass {
+class MoeInitRoutingV3TilingArch35 : public TilingBaseClass {
 public:
-    explicit MoeInitRoutingV3Arch35TilingClass(gert::TilingContext *context) : TilingBaseClass(context)
+    explicit MoeInitRoutingV3TilingArch35(gert::TilingContext *context) : TilingBaseClass(context)
     {
         Reset();
     }
-    ~MoeInitRoutingV3Arch35TilingClass() override = default;
+    ~MoeInitRoutingV3TilingArch35() override = default;
 
     void Reset(gert::TilingContext *context) override
     {
@@ -181,7 +181,7 @@ protected:
     // 1、获取INPUT/OUTPUT/ATTR信息：DelayedGetShapeAttrsInfo()，延后到DoOpTiling内执行，以便先检查IsCapable()
     ge::graphStatus GetShapeAttrsInfo() override
     {
-        OP_LOGD(context_, "Entered MoeInitRoutingV3Arch35TilingClass::GetShapeAttrsInfo()");
+        OP_LOGD(context_, "Entered MoeInitRoutingV3TilingArch35::GetShapeAttrsInfo()");
         return ge::GRAPH_SUCCESS;
     }
     // 2、获取平台信息比如CoreNum、UB/L1/L0C资源大小
@@ -189,7 +189,7 @@ protected:
     // 3、判断此Tiling模板是否适配当前SOC
     bool IsCapable() override
     {
-        OP_LOGD(context_, "Entered MoeInitRoutingV3Arch35TilingClass::IsCapable()");
+        OP_LOGD(context_, "Entered MoeInitRoutingV3TilingArch35::IsCapable()");
         return Ops::Transformer::OpTiling::IsRegbaseSocVersion(context_);
     }
     // 4、计算数据切分TilingData
@@ -197,7 +197,7 @@ protected:
     // 5、计算高阶API的TilingData
     ge::graphStatus DoLibApiTiling() override
     {
-        OP_LOGD(context_, "Entered MoeInitRoutingV3Arch35TilingClass::DoLibApiTiling()");
+        OP_LOGD(context_, "Entered MoeInitRoutingV3TilingArch35::DoLibApiTiling()");
         return ge::GRAPH_SUCCESS;
     }
     // 6、计算TilingKey
@@ -212,30 +212,6 @@ protected:
         opName = nullptr;
     };
 
-private:
-    // 校验并设置必要的平台信息（把GetPlatformInfo内，校验和计算的逻辑延后至DoOpTiling处理）
-    ge::graphStatus CheckSetPlatformInfo();
-    // 获取输入输出ShapeAttrs信息（把GetShapeAttrsInfo的逻辑延后至DoOpTiling处理）
-    ge::graphStatus DoGetShapeAttrsInfo();
-    // 校验输入Attrs
-    ge::graphStatus CheckSetAttrs();
-    ge::graphStatus CheckSetListAttrs();
-    ge::graphStatus ValidateExpertTokensNumType();
-    ge::graphStatus ValidateExpertNum();
-    ge::graphStatus ValidateDropPadMode();
-    ge::graphStatus ValidateExpertCapacity();
-    ge::graphStatus ValidateQuantMode();
-    ge::graphStatus ValidateRowIdxType();
-    // 校验输入Tensor的Shape、Dtype
-    ge::graphStatus CheckSetInputs();
-    // 空tensor场景判定与相关tiling字段设置（含activeNum校验）
-    ge::graphStatus CheckSetEmptyTensor();
-    // 校验输出Tensor的Shape、Dtype
-    ge::graphStatus CheckOutputs();
-    // 空tensor场景的workspace大小计算
-    ge::graphStatus GetEmptyTensorWorkspaceSize();
-
-protected:
     // DoGetShapeAttrsInfo使用的子函数（V4 需覆盖）
     virtual ge::graphStatus GetInputTensorsInfo();
     virtual ge::graphStatus GetOutputTensorsInfo();
@@ -369,7 +345,7 @@ protected:
     template <bool IS_INPUT_TENSOR = true, bool IS_OPTIONAL_INPUT = false>
     ge::graphStatus GetTensorShapeDtype(gert::Shape &shape, ge::DataType &dtype, int64_t index)
     {
-        OP_LOGD(context_, "Entered MoeInitRoutingV3Arch35TilingClass::GetTensorShapeDtype(...)");
+        OP_LOGD(context_, "Entered MoeInitRoutingV3TilingArch35::GetTensorShapeDtype(...)");
         const gert::StorageShape *shapePtr{nullptr};
         const gert::CompileTimeTensorDesc *descPtr{nullptr};
         if constexpr (IS_INPUT_TENSOR) {
@@ -392,7 +368,7 @@ protected:
     }
     ge::graphStatus GetOptionalInputShapeDtype(gert::Shape &shape, ge::DataType &dtype, int64_t &marker, int64_t index)
     {
-        OP_LOGD(context_, "Entered MoeInitRoutingV3Arch35TilingClass::GetOptionalInputShapeDtype(...)");
+        OP_LOGD(context_, "Entered MoeInitRoutingV3TilingArch35::GetOptionalInputShapeDtype(...)");
         if (context_->GetOptionalInputShape(index) != nullptr) {
             marker = 1;
             return GetTensorShapeDtype<true, true>(shape, dtype, index);
@@ -405,7 +381,7 @@ protected:
     template <typename ATTR_T>
     ge::graphStatus GetInputAttr(ATTR_T &attr, const gert::RuntimeAttrs *attrsPtr, int64_t index)
     {
-        OP_LOGD(context_, "Entered MoeInitRoutingV3Arch35TilingClass::GetInputAttr(...)");
+        OP_LOGD(context_, "Entered MoeInitRoutingV3TilingArch35::GetInputAttr(...)");
         const auto *attrPtr = attrsPtr->GetAttrPointer<ATTR_T>(index);
         OP_CHECK_NULL_WITH_CONTEXT(context_, attrPtr);
         attr = *attrPtr;
@@ -478,6 +454,22 @@ protected:
     ge::DataType expertTokensCountOrCumsumDtype_;
     ge::DataType expandedScaleDtype_;
     ge::DataType expandedTopkWeightDtype_;
+
+private:
+    ge::graphStatus CheckSetPlatformInfo();
+    ge::graphStatus DoGetShapeAttrsInfo();
+    ge::graphStatus CheckSetAttrs();
+    ge::graphStatus CheckSetListAttrs();
+    ge::graphStatus ValidateExpertTokensNumType();
+    ge::graphStatus ValidateExpertNum();
+    ge::graphStatus ValidateDropPadMode();
+    ge::graphStatus ValidateExpertCapacity();
+    ge::graphStatus ValidateQuantMode();
+    ge::graphStatus ValidateRowIdxType();
+    ge::graphStatus CheckSetInputs();
+    ge::graphStatus CheckSetEmptyTensor();
+    ge::graphStatus CheckOutputs();
+    ge::graphStatus GetEmptyTensorWorkspaceSize();
 };
 
 } // namespace optiling

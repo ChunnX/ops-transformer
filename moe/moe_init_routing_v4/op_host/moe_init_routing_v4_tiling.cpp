@@ -28,13 +28,13 @@ const static int64_t V4_OUTPUT_EXPERT_TOKENS_COUNT_INDEX = 2LL;
 const static int64_t V4_OUTPUT_EXPANDED_SCALE_INDEX = 3LL;
 const static int64_t V4_OUTPUT_EXPANDED_TOPK_WEIGHT_INDEX = 4LL;
 
-class MoeInitRoutingV4Arch35TilingClass : public MoeInitRoutingV3Arch35TilingClass {
+class MoeInitRoutingV4TilingArch35 : public MoeInitRoutingV3TilingArch35 {
 public:
-    explicit MoeInitRoutingV4Arch35TilingClass(gert::TilingContext *context)
-        : MoeInitRoutingV3Arch35TilingClass(context)
+    explicit MoeInitRoutingV4TilingArch35(gert::TilingContext *context)
+        : MoeInitRoutingV3TilingArch35(context)
     {
     }
-    ~MoeInitRoutingV4Arch35TilingClass() override = default;
+    ~MoeInitRoutingV4TilingArch35() override = default;
 
 protected:
     bool IsCapable() override
@@ -44,7 +44,7 @@ protected:
 
     ge::graphStatus GetInputAttrsInfo() override
     {
-        OP_LOGD(context_, "Entered MoeInitRoutingV4Arch35TilingClass::GetInputAttrsInfo()");
+        OP_LOGD(context_, "Entered MoeInitRoutingV4TilingArch35::GetInputAttrsInfo()");
 
         activeNum_ = -1LL;
 
@@ -83,7 +83,7 @@ protected:
 
     ge::graphStatus GetInputTensorsInfo() override
     {
-        OP_LOGD(context_, "Entered MoeInitRoutingV4Arch35TilingClass::GetInputTensorsInfo()");
+        OP_LOGD(context_, "Entered MoeInitRoutingV4TilingArch35::GetInputTensorsInfo()");
 
         MIRV3_CHECK_GE_RET(GetTensorShapeDtype<true>(xShape_, xDtype_, V4_INPUT_X_INDEX));
         inputXDtypeSize_ = static_cast<int64_t>(ge::GetSizeByDataType(xDtype_));
@@ -118,7 +118,7 @@ protected:
 
     ge::graphStatus GetOutputTensorsInfo() override
     {
-        OP_LOGD(context_, "Entered MoeInitRoutingV4Arch35TilingClass::GetOutputTensorsInfo()");
+        OP_LOGD(context_, "Entered MoeInitRoutingV4TilingArch35::GetOutputTensorsInfo()");
 
         MIRV3_CHECK_GE_RET(
             GetTensorShapeDtype<false>(expandedXShape_, expandedXDtype_, V4_OUTPUT_EXPANDED_X_INDEX));
@@ -146,6 +146,6 @@ private:
     int64_t isInputActiveNum_ = 0;
 };
 
-REGISTER_OPS_TILING_TEMPLATE(MoeInitRoutingV4, MoeInitRoutingV4Arch35TilingClass, 1000);
+REGISTER_OPS_TILING_TEMPLATE(MoeInitRoutingV4, MoeInitRoutingV4TilingArch35, 1000);
 
 } // namespace optiling
