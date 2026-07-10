@@ -56,10 +56,12 @@ _FP_DTYPES = (torch.float16, torch.bfloat16)          # FP16/BF16: out dtype == 
 _FP8_DTYPES = (torch.float8_e4m3fn,)                  # FP8: out dtype ∈ {fp16, bf16}, 950 only
 _FP8_DEFAULT_OUT_DTYPE = torch.bfloat16
 _FP8_DESCALE_DTYPES = (torch.float32,)                # FP8 reverse-quant factor dtype
-_FP4_DISGUISE_DTYPES = (torch.uint8,)                 # float4_e2m1fn_x2 disguised as uint8: out = bf16
+_FP4_DISGUISE_DTYPES = (torch.uint8,)                 # float4_e2m1fn_x2 disguised as uint8: out ∈ {bf16, fp16}
 _FP4_LOGICAL_DTYPES = (torch_npu.float4_e2m1fn_x2,)   # valid logical dtypes when q/k/v is uint8
 _FP4_DEFAULT_OUT_DTYPE = torch.bfloat16
 _FP4_DESCALE_DTYPES = (torch.float8_e8m0fnu,)     # mxfp4 descale tensor dtype
+# Valid output dtypes for MXFP4 (quant_mode in {2, 3}) — kernel dequantizes to fp16 or bf16.
+_FP4_VALID_OUT_DTYPES = (torch.float16, torch.bfloat16)
 
 
 def _check_quant_mode(quant_mode):
@@ -89,8 +91,8 @@ def _resolve_out_dtype(in_dtype, attention_out_dtype, quant_mode):
 	• quant_mode=1 (FP8_E4M3FN) → out ∈ {fp16, bf16} (default: bf16); there is
 		NO fp8 out binary, so the old "out = in dtype" behaviour could never find
 		a kernel.
-	• quant_mode=2 (FP4_E2M1FN_X2, uint8-disguised) → out = bf16 (default: bf16);
-		the kernel dequantizes 4-bit floats to bf16 only (no fp16 out binary).
+	• quant_mode=2 (FP4_E2M1FN_X2, uint8-disguised) → out ∈ {fp16, bf16} (default: bf16);
+		the kernel dequantizes 4-bit floats to fp16 or bf16.
 	"""
 	# Pre-condition: quant_mode is already validated by `_check_quant_mode`
 	# at the entry point, so we dispatch directly.
@@ -129,9 +131,9 @@ def _resolve_out_dtype(in_dtype, attention_out_dtype, quant_mode):
 			)
 		if attention_out_dtype is None:
 			return _FP4_DEFAULT_OUT_DTYPE
-		if attention_out_dtype != _FP4_DEFAULT_OUT_DTYPE:
+		if attention_out_dtype not in _FP4_VALID_OUT_DTYPES:
 			raise ValueError(
-				f"attention_out_dtype must be torch.bfloat16 for "
+				f"attention_out_dtype must be torch.float16 or torch.bfloat16 for "
 				f"quant_mode={quant_mode} (float4_e2m1fn_x2, uint8-disguised) inputs, "
 				f"got {attention_out_dtype}"
 		)
@@ -400,7 +402,7 @@ class BlockSparseAttentionOpBuilder(OpBuilder):
 			# (fp8 in → fp16/bf16 out); _resolve_out_dtype enforces the rules.
 			resolved_out_dtype = _resolve_out_dtype(query.dtype, attention_out_dtype, quant_mode)
 			# FP4 (float4_e2m1fn_x2, uint8-disguised): kernel dequantizes 4-bit floats
-			# to bf16 only and two fp4 values pack into one uint8 byte, so attentionOut's
+			# to fp16 or bf16 and two fp4 values pack into one uint8 byte, so attentionOut's
 			# last dim is 2*D (mirrors quant_flash_attn.cpp:83-92; qDtypeRatio=2 for FP4).
 			# FP8/FP16/BF16 inputs keep query's shape. MUST match the C++ wrapper's
 			# allocation in block_sparse_attention.cpp.
@@ -491,8 +493,8 @@ def block_sparse_attention_v3(query,
 			[B, N, ceil(maxQ/128), 1]; k/v are [B, kvN, ceil(maxKV/{256|512}), 1].
 		attention_out_dtype: dtype of attention_out. Default None → input dtype for
 			FP16/BF16; bfloat16 for FP8/FP4. FP8 inputs MUST map to float16 or
-			bfloat16 (no fp8 output kernel); FP4 (quant_mode=2) inputs MUST map to
-			bfloat16 only (no fp16/fp4 output binary). FP16/BF16 inputs must map
+			bfloat16 (no fp8 output kernel); FP4 (quant_mode=2/3) inputs MUST map to
+			float16 or bfloat16 (no fp4 output binary). FP16/BF16 inputs must map
 			to the same dtype as the input.
 
 	Returns:
