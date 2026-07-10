@@ -5,8 +5,19 @@
             "bin_filename": "QuantAllReduce_ND_ND_ND_INT8_FP_FP16",
             "inputs": [
                 {
-                    "name": "x",
+                    "name": "context",
                     "index": 0,
+                    "dtype": "int32",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [
+                    -2
+                    ],
+                    "format_match_mode": "FormatAgnostic"
+                },
+                {
+                    "name": "x",
+                    "index": 1,
                     "dtype": "int8",
                     "format": "ND",
                     "paramType": "required",
@@ -17,7 +28,7 @@
                 },
                 {
                     "name": "scales",
-                    "index": 1,
+                    "index": 2,
                     "dtype": "float32",
                     "format": "ND",
                     "paramType": "required",
@@ -42,8 +53,8 @@
             ],
             "attrs": [
                 {
-                    "name": "group",
-                    "dtype": "string",
+                    "name": "hccl_buffer_size",
+                    "dtype": "int",
                     "value": ""
                 },
                 {
@@ -67,8 +78,19 @@
             "bin_filename": "QuantAllReduce_ND_ND_ND_INT8_FP_BF16",
             "inputs": [
                 {
-                    "name": "x",
+                    "name": "context",
                     "index": 0,
+                    "dtype": "int32",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [
+                    -2
+                    ],
+                    "format_match_mode": "FormatAgnostic"
+                },
+                {
+                    "name": "x",
+                    "index": 1,
                     "dtype": "int8",
                     "format": "ND",
                     "paramType": "required",
@@ -79,7 +101,7 @@
                 },
                 {
                     "name": "scales",
-                    "index": 1,
+                    "index": 2,
                     "dtype": "float32",
                     "format": "ND",
                     "paramType": "required",
@@ -104,8 +126,8 @@
             ],
             "attrs": [
                 {
-                    "name": "group",
-                    "dtype": "string",
+                    "name": "hccl_buffer_size",
+                    "dtype": "int",
                     "value": ""
                 },
                 {
@@ -129,8 +151,19 @@
             "bin_filename": "QuantAllReduce_ND_ND_ND_INT8_FP_FP",
             "inputs": [
                 {
-                    "name": "x",
+                    "name": "context",
                     "index": 0,
+                    "dtype": "int32",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [
+                    -2
+                    ],
+                    "format_match_mode": "FormatAgnostic"
+                },
+                {
+                    "name": "x",
+                    "index": 1,
                     "dtype": "int8",
                     "format": "ND",
                     "paramType": "required",
@@ -141,7 +174,7 @@
                 },
                 {
                     "name": "scales",
-                    "index": 1,
+                    "index": 2,
                     "dtype": "float32",
                     "format": "ND",
                     "paramType": "required",
@@ -166,8 +199,8 @@
             ],
             "attrs": [
                 {
-                    "name": "group",
-                    "dtype": "string",
+                    "name": "hccl_buffer_size",
+                    "dtype": "int",
                     "value": ""
                 },
                 {
@@ -191,8 +224,19 @@
             "bin_filename": "QuantAllReduce_ND_ND_ND_HF8_FP_FP16",
             "inputs": [
                 {
-                    "name": "x",
+                    "name": "context",
                     "index": 0,
+                    "dtype": "int32",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [
+                    -2
+                    ],
+                    "format_match_mode": "FormatAgnostic"
+                },
+                {
+                    "name": "x",
+                    "index": 1,
                     "dtype": "hifloat8",
                     "format": "ND",
                     "paramType": "required",
@@ -203,7 +247,7 @@
                 },
                 {
                     "name": "scales",
-                    "index": 1,
+                    "index": 2,
                     "dtype": "float32",
                     "format": "ND",
                     "paramType": "required",
@@ -228,8 +272,8 @@
             ],
             "attrs": [
                 {
-                    "name": "group",
-                    "dtype": "string",
+                    "name": "hccl_buffer_size",
+                    "dtype": "int",
                     "value": ""
                 },
                 {
@@ -253,8 +297,19 @@
             "bin_filename": "QuantAllReduce_ND_ND_ND_HF8_FP_BF16",
             "inputs": [
                 {
-                    "name": "x",
+                    "name": "context",
                     "index": 0,
+                    "dtype": "int32",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [
+                    -2
+                    ],
+                    "format_match_mode": "FormatAgnostic"
+                },
+                {
+                    "name": "x",
+                    "index": 1,
                     "dtype": "hifloat8",
                     "format": "ND",
                     "paramType": "required",
@@ -265,7 +320,7 @@
                 },
                 {
                     "name": "scales",
-                    "index": 1,
+                    "index": 2,
                     "dtype": "float32",
                     "format": "ND",
                     "paramType": "required",
@@ -290,8 +345,8 @@
             ],
             "attrs": [
                 {
-                    "name": "group",
-                    "dtype": "string",
+                    "name": "hccl_buffer_size",
+                    "dtype": "int",
                     "value": ""
                 },
                 {
@@ -315,8 +370,19 @@
             "bin_filename": "QuantAllReduce_ND_ND_ND_HF8_FP_FP",
             "inputs": [
                 {
-                    "name": "x",
+                    "name": "context",
                     "index": 0,
+                    "dtype": "int32",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [
+                    -2
+                    ],
+                    "format_match_mode": "FormatAgnostic"
+                },
+                {
+                    "name": "x",
+                    "index": 1,
                     "dtype": "hifloat8",
                     "format": "ND",
                     "paramType": "required",
@@ -327,7 +393,7 @@
                 },
                 {
                     "name": "scales",
-                    "index": 1,
+                    "index": 2,
                     "dtype": "float32",
                     "format": "ND",
                     "paramType": "required",
@@ -352,8 +418,8 @@
             ],
             "attrs": [
                 {
-                    "name": "group",
-                    "dtype": "string",
+                    "name": "hccl_buffer_size",
+                    "dtype": "int",
                     "value": ""
                 },
                 {
@@ -377,8 +443,19 @@
             "bin_filename": "QuantAllReduce_ND_ND_ND_FP8E5M2_FP_FP16",
             "inputs": [
                 {
-                    "name": "x",
+                    "name": "context",
                     "index": 0,
+                    "dtype": "int32",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [
+                    -2
+                    ],
+                    "format_match_mode": "FormatAgnostic"
+                },
+                {
+                    "name": "x",
+                    "index": 1,
                     "dtype": "float8_e5m2",
                     "format": "ND",
                     "paramType": "required",
@@ -389,7 +466,7 @@
                 },
                 {
                     "name": "scales",
-                    "index": 1,
+                    "index": 2,
                     "dtype": "float32",
                     "format": "ND",
                     "paramType": "required",
@@ -414,8 +491,8 @@
             ],
             "attrs": [
                 {
-                    "name": "group",
-                    "dtype": "string",
+                    "name": "hccl_buffer_size",
+                    "dtype": "int",
                     "value": ""
                 },
                 {
@@ -439,8 +516,19 @@
             "bin_filename": "QuantAllReduce_ND_ND_ND_FP8E5M2_FP_BF16",
             "inputs": [
                 {
-                    "name": "x",
+                    "name": "context",
                     "index": 0,
+                    "dtype": "int32",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [
+                    -2
+                    ],
+                    "format_match_mode": "FormatAgnostic"
+                },
+                {
+                    "name": "x",
+                    "index": 1,
                     "dtype": "float8_e5m2",
                     "format": "ND",
                     "paramType": "required",
@@ -451,7 +539,7 @@
                 },
                 {
                     "name": "scales",
-                    "index": 1,
+                    "index": 2,
                     "dtype": "float32",
                     "format": "ND",
                     "paramType": "required",
@@ -476,8 +564,8 @@
             ],
             "attrs": [
                 {
-                    "name": "group",
-                    "dtype": "string",
+                    "name": "hccl_buffer_size",
+                    "dtype": "int",
                     "value": ""
                 },
                 {
@@ -501,8 +589,19 @@
             "bin_filename": "QuantAllReduce_ND_ND_ND_FP8E5M2_FP_FP",
             "inputs": [
                 {
-                    "name": "x",
+                    "name": "context",
                     "index": 0,
+                    "dtype": "int32",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [
+                    -2
+                    ],
+                    "format_match_mode": "FormatAgnostic"
+                },
+                {
+                    "name": "x",
+                    "index": 1,
                     "dtype": "float8_e5m2",
                     "format": "ND",
                     "paramType": "required",
@@ -513,7 +612,7 @@
                 },
                 {
                     "name": "scales",
-                    "index": 1,
+                    "index": 2,
                     "dtype": "float32",
                     "format": "ND",
                     "paramType": "required",
@@ -538,8 +637,8 @@
             ],
             "attrs": [
                 {
-                    "name": "group",
-                    "dtype": "string",
+                    "name": "hccl_buffer_size",
+                    "dtype": "int",
                     "value": ""
                 },
                 {
@@ -563,8 +662,19 @@
             "bin_filename": "QuantAllReduce_ND_ND_ND_FP8E4M3_FP_FP16",
             "inputs": [
                 {
-                    "name": "x",
+                    "name": "context",
                     "index": 0,
+                    "dtype": "int32",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [
+                    -2
+                    ],
+                    "format_match_mode": "FormatAgnostic"
+                },
+                {
+                    "name": "x",
+                    "index": 1,
                     "dtype": "float8_e4m3fn",
                     "format": "ND",
                     "paramType": "required",
@@ -575,7 +685,7 @@
                 },
                 {
                     "name": "scales",
-                    "index": 1,
+                    "index": 2,
                     "dtype": "float32",
                     "format": "ND",
                     "paramType": "required",
@@ -600,8 +710,8 @@
             ],
             "attrs": [
                 {
-                    "name": "group",
-                    "dtype": "string",
+                    "name": "hccl_buffer_size",
+                    "dtype": "int",
                     "value": ""
                 },
                 {
@@ -625,8 +735,19 @@
             "bin_filename": "QuantAllReduce_ND_ND_ND_FP8E4M3_FP_BF16",
             "inputs": [
                 {
-                    "name": "x",
+                    "name": "context",
                     "index": 0,
+                    "dtype": "int32",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [
+                    -2
+                    ],
+                    "format_match_mode": "FormatAgnostic"
+                },
+                {
+                    "name": "x",
+                    "index": 1,
                     "dtype": "float8_e4m3fn",
                     "format": "ND",
                     "paramType": "required",
@@ -637,7 +758,7 @@
                 },
                 {
                     "name": "scales",
-                    "index": 1,
+                    "index": 2,
                     "dtype": "float32",
                     "format": "ND",
                     "paramType": "required",
@@ -662,8 +783,8 @@
             ],
             "attrs": [
                 {
-                    "name": "group",
-                    "dtype": "string",
+                    "name": "hccl_buffer_size",
+                    "dtype": "int",
                     "value": ""
                 },
                 {
@@ -687,8 +808,19 @@
             "bin_filename": "QuantAllReduce_ND_ND_ND_FP8E4M3_FP_FP",
             "inputs": [
                 {
-                    "name": "x",
+                    "name": "context",
                     "index": 0,
+                    "dtype": "int32",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [
+                    -2
+                    ],
+                    "format_match_mode": "FormatAgnostic"
+                },
+                {
+                    "name": "x",
+                    "index": 1,
                     "dtype": "float8_e4m3fn",
                     "format": "ND",
                     "paramType": "required",
@@ -699,7 +831,7 @@
                 },
                 {
                     "name": "scales",
-                    "index": 1,
+                    "index": 2,
                     "dtype": "float32",
                     "format": "ND",
                     "paramType": "required",
@@ -724,8 +856,8 @@
             ],
             "attrs": [
                 {
-                    "name": "group",
-                    "dtype": "string",
+                    "name": "hccl_buffer_size",
+                    "dtype": "int",
                     "value": ""
                 },
                 {
@@ -749,8 +881,19 @@
             "bin_filename": "QuantAllReduce_ND_ND_ND_FP8E5M2_FP8E8M0_FP16",
             "inputs": [
                 {
-                    "name": "x",
+                    "name": "context",
                     "index": 0,
+                    "dtype": "int32",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [
+                    -2
+                    ],
+                    "format_match_mode": "FormatAgnostic"
+                },
+                {
+                    "name": "x",
+                    "index": 1,
                     "dtype": "float8_e5m2",
                     "format": "ND",
                     "paramType": "required",
@@ -761,7 +904,7 @@
                 },
                 {
                     "name": "scales",
-                    "index": 1,
+                    "index": 2,
                     "dtype": "float8_e8m0",
                     "format": "ND",
                     "paramType": "required",
@@ -786,8 +929,8 @@
             ],
             "attrs": [
                 {
-                    "name": "group",
-                    "dtype": "string",
+                    "name": "hccl_buffer_size",
+                    "dtype": "int",
                     "value": ""
                 },
                 {
@@ -811,8 +954,19 @@
             "bin_filename": "QuantAllReduce_ND_ND_ND_FP8E5M2_FP8E8M0_BF16",
             "inputs": [
                 {
-                    "name": "x",
+                    "name": "context",
                     "index": 0,
+                    "dtype": "int32",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [
+                    -2
+                    ],
+                    "format_match_mode": "FormatAgnostic"
+                },
+                {
+                    "name": "x",
+                    "index": 1,
                     "dtype": "float8_e5m2",
                     "format": "ND",
                     "paramType": "required",
@@ -823,7 +977,7 @@
                 },
                 {
                     "name": "scales",
-                    "index": 1,
+                    "index": 2,
                     "dtype": "float8_e8m0",
                     "format": "ND",
                     "paramType": "required",
@@ -848,8 +1002,8 @@
             ],
             "attrs": [
                 {
-                    "name": "group",
-                    "dtype": "string",
+                    "name": "hccl_buffer_size",
+                    "dtype": "int",
                     "value": ""
                 },
                 {
@@ -873,8 +1027,19 @@
             "bin_filename": "QuantAllReduce_ND_ND_ND_FP8E5M2_FP8E8M0_FP",
             "inputs": [
                 {
-                    "name": "x",
+                    "name": "context",
                     "index": 0,
+                    "dtype": "int32",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [
+                    -2
+                    ],
+                    "format_match_mode": "FormatAgnostic"
+                },
+                {
+                    "name": "x",
+                    "index": 1,
                     "dtype": "float8_e5m2",
                     "format": "ND",
                     "paramType": "required",
@@ -885,7 +1050,7 @@
                 },
                 {
                     "name": "scales",
-                    "index": 1,
+                    "index": 2,
                     "dtype": "float8_e8m0",
                     "format": "ND",
                     "paramType": "required",
@@ -910,8 +1075,8 @@
             ],
             "attrs": [
                 {
-                    "name": "group",
-                    "dtype": "string",
+                    "name": "hccl_buffer_size",
+                    "dtype": "int",
                     "value": ""
                 },
                 {
@@ -935,8 +1100,19 @@
             "bin_filename": "QuantAllReduce_ND_ND_ND_FP8E4M3_FP8E8M0_FP16",
             "inputs": [
                 {
-                    "name": "x",
+                    "name": "context",
                     "index": 0,
+                    "dtype": "int32",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [
+                    -2
+                    ],
+                    "format_match_mode": "FormatAgnostic"
+                },
+                {
+                    "name": "x",
+                    "index": 1,
                     "dtype": "float8_e4m3fn",
                     "format": "ND",
                     "paramType": "required",
@@ -947,7 +1123,7 @@
                 },
                 {
                     "name": "scales",
-                    "index": 1,
+                    "index": 2,
                     "dtype": "float8_e8m0",
                     "format": "ND",
                     "paramType": "required",
@@ -972,8 +1148,8 @@
             ],
             "attrs": [
                 {
-                    "name": "group",
-                    "dtype": "string",
+                    "name": "hccl_buffer_size",
+                    "dtype": "int",
                     "value": ""
                 },
                 {
@@ -997,8 +1173,19 @@
             "bin_filename": "QuantAllReduce_ND_ND_ND_FP8E4M3_FP8E8M0_BF16",
             "inputs": [
                 {
-                    "name": "x",
+                    "name": "context",
                     "index": 0,
+                    "dtype": "int32",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [
+                    -2
+                    ],
+                    "format_match_mode": "FormatAgnostic"
+                },
+                {
+                    "name": "x",
+                    "index": 1,
                     "dtype": "float8_e4m3fn",
                     "format": "ND",
                     "paramType": "required",
@@ -1009,7 +1196,7 @@
                 },
                 {
                     "name": "scales",
-                    "index": 1,
+                    "index": 2,
                     "dtype": "float8_e8m0",
                     "format": "ND",
                     "paramType": "required",
@@ -1034,8 +1221,8 @@
             ],
             "attrs": [
                 {
-                    "name": "group",
-                    "dtype": "string",
+                    "name": "hccl_buffer_size",
+                    "dtype": "int",
                     "value": ""
                 },
                 {
@@ -1059,8 +1246,19 @@
             "bin_filename": "QuantAllReduce_ND_ND_ND_FP8E4M3_FP8E8M0_FP",
             "inputs": [
                 {
-                    "name": "x",
+                    "name": "context",
                     "index": 0,
+                    "dtype": "int32",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [
+                    -2
+                    ],
+                    "format_match_mode": "FormatAgnostic"
+                },
+                {
+                    "name": "x",
+                    "index": 1,
                     "dtype": "float8_e4m3fn",
                     "format": "ND",
                     "paramType": "required",
@@ -1071,7 +1269,7 @@
                 },
                 {
                     "name": "scales",
-                    "index": 1,
+                    "index": 2,
                     "dtype": "float8_e8m0",
                     "format": "ND",
                     "paramType": "required",
@@ -1096,8 +1294,8 @@
             ],
             "attrs": [
                 {
-                    "name": "group",
-                    "dtype": "string",
+                    "name": "hccl_buffer_size",
+                    "dtype": "int",
                     "value": ""
                 },
                 {
@@ -1121,8 +1319,19 @@
             "bin_filename": "QuantAllReduce_ND_ND_ND_FP4E2M1_FP_FP16",
             "inputs": [
                 {
-                    "name": "x",
+                    "name": "context",
                     "index": 0,
+                    "dtype": "int32",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [
+                    -2
+                    ],
+                    "format_match_mode": "FormatAgnostic"
+                },
+                {
+                    "name": "x",
+                    "index": 1,
                     "dtype": "float4_e2m1",
                     "format": "ND",
                     "paramType": "required",
@@ -1133,7 +1342,7 @@
                 },
                 {
                     "name": "scales",
-                    "index": 1,
+                    "index": 2,
                     "dtype": "float32",
                     "format": "ND",
                     "paramType": "required",
@@ -1158,8 +1367,8 @@
             ],
             "attrs": [
                 {
-                    "name": "group",
-                    "dtype": "string",
+                    "name": "hccl_buffer_size",
+                    "dtype": "int",
                     "value": ""
                 },
                 {
@@ -1183,8 +1392,19 @@
             "bin_filename": "QuantAllReduce_ND_ND_ND_FP4E2M1_FP_BF16",
             "inputs": [
                 {
-                    "name": "x",
+                    "name": "context",
                     "index": 0,
+                    "dtype": "int32",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [
+                    -2
+                    ],
+                    "format_match_mode": "FormatAgnostic"
+                },
+                {
+                    "name": "x",
+                    "index": 1,
                     "dtype": "float4_e2m1",
                     "format": "ND",
                     "paramType": "required",
@@ -1195,7 +1415,7 @@
                 },
                 {
                     "name": "scales",
-                    "index": 1,
+                    "index": 2,
                     "dtype": "float32",
                     "format": "ND",
                     "paramType": "required",
@@ -1220,8 +1440,8 @@
             ],
             "attrs": [
                 {
-                    "name": "group",
-                    "dtype": "string",
+                    "name": "hccl_buffer_size",
+                    "dtype": "int",
                     "value": ""
                 },
                 {
@@ -1245,8 +1465,19 @@
             "bin_filename": "QuantAllReduce_ND_ND_ND_FP4E2M1_FP_FP",
             "inputs": [
                 {
-                    "name": "x",
+                    "name": "context",
                     "index": 0,
+                    "dtype": "int32",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [
+                    -2
+                    ],
+                    "format_match_mode": "FormatAgnostic"
+                },
+                {
+                    "name": "x",
+                    "index": 1,
                     "dtype": "float4_e2m1",
                     "format": "ND",
                     "paramType": "required",
@@ -1257,7 +1488,7 @@
                 },
                 {
                     "name": "scales",
-                    "index": 1,
+                    "index": 2,
                     "dtype": "float32",
                     "format": "ND",
                     "paramType": "required",
@@ -1282,8 +1513,8 @@
             ],
             "attrs": [
                 {
-                    "name": "group",
-                    "dtype": "string",
+                    "name": "hccl_buffer_size",
+                    "dtype": "int",
                     "value": ""
                 },
                 {
@@ -1307,8 +1538,19 @@
             "bin_filename": "QuantAllReduce_ND_ND_ND_FP4E1M2_FP_FP16",
             "inputs": [
                 {
-                    "name": "x",
+                    "name": "context",
                     "index": 0,
+                    "dtype": "int32",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [
+                    -2
+                    ],
+                    "format_match_mode": "FormatAgnostic"
+                },
+                {
+                    "name": "x",
+                    "index": 1,
                     "dtype": "float4_e1m2",
                     "format": "ND",
                     "paramType": "required",
@@ -1319,7 +1561,7 @@
                 },
                 {
                     "name": "scales",
-                    "index": 1,
+                    "index": 2,
                     "dtype": "float32",
                     "format": "ND",
                     "paramType": "required",
@@ -1344,8 +1586,8 @@
             ],
             "attrs": [
                 {
-                    "name": "group",
-                    "dtype": "string",
+                    "name": "hccl_buffer_size",
+                    "dtype": "int",
                     "value": ""
                 },
                 {
@@ -1369,8 +1611,19 @@
             "bin_filename": "QuantAllReduce_ND_ND_ND_FP4E1M2_FP_BF16",
             "inputs": [
                 {
-                    "name": "x",
+                    "name": "context",
                     "index": 0,
+                    "dtype": "int32",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [
+                    -2
+                    ],
+                    "format_match_mode": "FormatAgnostic"
+                },
+                {
+                    "name": "x",
+                    "index": 1,
                     "dtype": "float4_e1m2",
                     "format": "ND",
                     "paramType": "required",
@@ -1381,7 +1634,7 @@
                 },
                 {
                     "name": "scales",
-                    "index": 1,
+                    "index": 2,
                     "dtype": "float32",
                     "format": "ND",
                     "paramType": "required",
@@ -1406,8 +1659,8 @@
             ],
             "attrs": [
                 {
-                    "name": "group",
-                    "dtype": "string",
+                    "name": "hccl_buffer_size",
+                    "dtype": "int",
                     "value": ""
                 },
                 {
@@ -1431,8 +1684,19 @@
             "bin_filename": "QuantAllReduce_ND_ND_ND_FP4E1M2_FP_FP",
             "inputs": [
                 {
-                    "name": "x",
+                    "name": "context",
                     "index": 0,
+                    "dtype": "int32",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [
+                    -2
+                    ],
+                    "format_match_mode": "FormatAgnostic"
+                },
+                {
+                    "name": "x",
+                    "index": 1,
                     "dtype": "float4_e1m2",
                     "format": "ND",
                     "paramType": "required",
@@ -1443,7 +1707,7 @@
                 },
                 {
                     "name": "scales",
-                    "index": 1,
+                    "index": 2,
                     "dtype": "float32",
                     "format": "ND",
                     "paramType": "required",
@@ -1468,8 +1732,8 @@
             ],
             "attrs": [
                 {
-                    "name": "group",
-                    "dtype": "string",
+                    "name": "hccl_buffer_size",
+                    "dtype": "int",
                     "value": ""
                 },
                 {
@@ -1493,8 +1757,19 @@
             "bin_filename": "QuantAllReduce_ND_ND_ND_FP4E2M1_FP8E8M0_FP16",
             "inputs": [
                 {
-                    "name": "x",
+                    "name": "context",
                     "index": 0,
+                    "dtype": "int32",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [
+                    -2
+                    ],
+                    "format_match_mode": "FormatAgnostic"
+                },
+                {
+                    "name": "x",
+                    "index": 1,
                     "dtype": "float4_e2m1",
                     "format": "ND",
                     "paramType": "required",
@@ -1505,7 +1780,7 @@
                 },
                 {
                     "name": "scales",
-                    "index": 1,
+                    "index": 2,
                     "dtype": "float8_e8m0",
                     "format": "ND",
                     "paramType": "required",
@@ -1530,8 +1805,8 @@
             ],
             "attrs": [
                 {
-                    "name": "group",
-                    "dtype": "string",
+                    "name": "hccl_buffer_size",
+                    "dtype": "int",
                     "value": ""
                 },
                 {
@@ -1555,8 +1830,19 @@
             "bin_filename": "QuantAllReduce_ND_ND_ND_FP4E2M1_FP8E8M0_BF16",
             "inputs": [
                 {
-                    "name": "x",
+                    "name": "context",
                     "index": 0,
+                    "dtype": "int32",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [
+                    -2
+                    ],
+                    "format_match_mode": "FormatAgnostic"
+                },
+                {
+                    "name": "x",
+                    "index": 1,
                     "dtype": "float4_e2m1",
                     "format": "ND",
                     "paramType": "required",
@@ -1567,7 +1853,7 @@
                 },
                 {
                     "name": "scales",
-                    "index": 1,
+                    "index": 2,
                     "dtype": "float8_e8m0",
                     "format": "ND",
                     "paramType": "required",
@@ -1592,8 +1878,8 @@
             ],
             "attrs": [
                 {
-                    "name": "group",
-                    "dtype": "string",
+                    "name": "hccl_buffer_size",
+                    "dtype": "int",
                     "value": ""
                 },
                 {
@@ -1617,8 +1903,19 @@
             "bin_filename": "QuantAllReduce_ND_ND_ND_FP4E2M1_FP8E8M0_FP",
             "inputs": [
                 {
-                    "name": "x",
+                    "name": "context",
                     "index": 0,
+                    "dtype": "int32",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [
+                    -2
+                    ],
+                    "format_match_mode": "FormatAgnostic"
+                },
+                {
+                    "name": "x",
+                    "index": 1,
                     "dtype": "float4_e2m1",
                     "format": "ND",
                     "paramType": "required",
@@ -1629,7 +1926,7 @@
                 },
                 {
                     "name": "scales",
-                    "index": 1,
+                    "index": 2,
                     "dtype": "float8_e8m0",
                     "format": "ND",
                     "paramType": "required",
@@ -1654,8 +1951,8 @@
             ],
             "attrs": [
                 {
-                    "name": "group",
-                    "dtype": "string",
+                    "name": "hccl_buffer_size",
+                    "dtype": "int",
                     "value": ""
                 },
                 {
@@ -1679,8 +1976,19 @@
             "bin_filename": "QuantAllReduce_ND_ND_ND_FP4E1M2_FP8E8M0_FP16",
             "inputs": [
                 {
-                    "name": "x",
+                    "name": "context",
                     "index": 0,
+                    "dtype": "int32",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [
+                    -2
+                    ],
+                    "format_match_mode": "FormatAgnostic"
+                },
+                {
+                    "name": "x",
+                    "index": 1,
                     "dtype": "float4_e1m2",
                     "format": "ND",
                     "paramType": "required",
@@ -1691,7 +1999,7 @@
                 },
                 {
                     "name": "scales",
-                    "index": 1,
+                    "index": 2,
                     "dtype": "float8_e8m0",
                     "format": "ND",
                     "paramType": "required",
@@ -1716,8 +2024,8 @@
             ],
             "attrs": [
                 {
-                    "name": "group",
-                    "dtype": "string",
+                    "name": "hccl_buffer_size",
+                    "dtype": "int",
                     "value": ""
                 },
                 {
@@ -1741,8 +2049,19 @@
             "bin_filename": "QuantAllReduce_ND_ND_ND_FP4E1M2_FP8E8M0_BF16",
             "inputs": [
                 {
-                    "name": "x",
+                    "name": "context",
                     "index": 0,
+                    "dtype": "int32",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [
+                    -2
+                    ],
+                    "format_match_mode": "FormatAgnostic"
+                },
+                {
+                    "name": "x",
+                    "index": 1,
                     "dtype": "float4_e1m2",
                     "format": "ND",
                     "paramType": "required",
@@ -1753,7 +2072,7 @@
                 },
                 {
                     "name": "scales",
-                    "index": 1,
+                    "index": 2,
                     "dtype": "float8_e8m0",
                     "format": "ND",
                     "paramType": "required",
@@ -1778,8 +2097,8 @@
             ],
             "attrs": [
                 {
-                    "name": "group",
-                    "dtype": "string",
+                    "name": "hccl_buffer_size",
+                    "dtype": "int",
                     "value": ""
                 },
                 {
@@ -1803,8 +2122,19 @@
             "bin_filename": "QuantAllReduce_ND_ND_ND_FP4E1M2_FP8E8M0_FP",
             "inputs": [
                 {
-                    "name": "x",
+                    "name": "context",
                     "index": 0,
+                    "dtype": "int32",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [
+                    -2
+                    ],
+                    "format_match_mode": "FormatAgnostic"
+                },
+                {
+                    "name": "x",
+                    "index": 1,
                     "dtype": "float4_e1m2",
                     "format": "ND",
                     "paramType": "required",
@@ -1815,7 +2145,7 @@
                 },
                 {
                     "name": "scales",
-                    "index": 1,
+                    "index": 2,
                     "dtype": "float8_e8m0",
                     "format": "ND",
                     "paramType": "required",
@@ -1840,8 +2170,8 @@
             ],
             "attrs": [
                 {
-                    "name": "group",
-                    "dtype": "string",
+                    "name": "hccl_buffer_size",
+                    "dtype": "int",
                     "value": ""
                 },
                 {
