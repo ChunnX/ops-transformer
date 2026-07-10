@@ -10,7 +10,7 @@ class GenDataBase(ABC):
     @abstractmethod
     def normalize_params(self, params: dict) -> dict: ...
 
-    def load_inputs(self, pt_path: str) -> dict:
+    def load_network_inputs(self, pt_path: str) -> dict:
         return torch.load(pt_path, map_location="cpu", weights_only=False)
 
 

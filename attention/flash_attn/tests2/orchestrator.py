@@ -186,7 +186,7 @@ def run_case(stages: set, params: dict, reporter: Reporter, *,
 
         if load_network_pt:
             logger.info("[gen]  load-network-pt | %s", load_network_pt)
-            inputs = gen.load_inputs(load_network_pt)
+            inputs = gen.load_network_inputs(load_network_pt)
             _save_pt(inputs, _pt_path(case_set, case_id, "input"))
         elif "gen" in stages:
             logger.info("[gen]  start | %s", _params_summary(params))
