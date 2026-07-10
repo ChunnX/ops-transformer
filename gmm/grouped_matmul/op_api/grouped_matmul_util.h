@@ -68,6 +68,7 @@ constexpr size_t LAST_SECOND_DIM_INDEX = 2;
 constexpr size_t LAST_THIRD_DIM_INDEX = 3;
 constexpr size_t LAST_FOURTH_DIM_INDEX = 4;
 constexpr size_t QUANT_WEIGHTNZ_STORAGE_DIM = 5;
+constexpr size_t WEIGHTNZ_MULTI_TENSOR_STORAGE_DIM = 4;
 
 enum class GMMApiVersion : uint32_t {
     V1 = 1U,
