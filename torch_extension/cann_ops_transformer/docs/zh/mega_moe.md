@@ -1050,7 +1050,7 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
 
 - **参数一致性约束**：
     - mega_moe 接口的所有输入参数及其对应的张量维度，必须与 get_symm_buffer_for_mega_moe 的同名参数（例如 `num_experts`、`hidden`、`intermediate_hidden` 等）保持一致。
-    - 调用算子过程中使用的`moe_expert_num`、`max_recv_token_num`、`dispatch_quant_mode`、`dispatch_quant_out_dtype`、`global_bs`等参数取值，所有卡需保持一致，网络中不同层中也需保持一致。
+    - 调用算子过程中使用的`moe_expert_num`、`max_recv_token_num`、`dispatch_quant_mode`、`dispatch_quant_out_dtype`、`num_max_tokens_per_rank`等参数取值，所有卡需保持一致，网络中不同层中也需保持一致。
 
 - **通信域和组网约束**：
     - 仅支持`EP`域，无`TP`域，不支持`groupTp`、`tpWorldSize`、`tpRankId`属性。
@@ -1187,7 +1187,7 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
         - `num_experts_per_rank`：取值范围 $[1,\ 16]$，且 `num_experts_per_rank = moe_expert_num / ep_world_size`。
         - `intermediate_hidden`：仅支持 1024、2048、3072、4096、7168。
         - `ep_world_size`：取值范围 $[2,\ 768]$。
-        - `global_bs`：为 0 或满足 `num_tokens × ep_world_size <= global_bs` 且 `global_bs % ep_world_size == 0`。
+        - `num_max_tokens_per_rank`：为 0 或满足 `num_tokens == num_max_tokens_per_rank`。
         - `dispatch_quant_out_dtype`：仅支持 `torch.float8_e5m2`（对应整数编码 23）或 `torch.float8_e4m3fn`（对应整数编码 24）。
         - `dispatch_quant_mode`：仅支持 4（MXFP 量化模式），dispatch 阶段使用 MX 逐组量化（group size = 32），量化缩放因子类型为 FLOAT8_E8M0。
         - `combine_quant_mode`：必须为 0。
