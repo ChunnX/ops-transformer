@@ -13,6 +13,10 @@ message(STATUS "=== Debug: start ops.moe.moe_init_routing_v4.op_host.CMakeLists.
 set(CONDITION_UNIT ${ASCEND_COMPUTE_UNIT})
 if (BUILD_OPEN_PROJECT)
     message(STATUS "=== Debug: BUILD is BUILD_OPEN_PROJECT")
+    set(moe_init_routing_v4_depends moe/moe_init_routing_v3
+        CACHE INTERNAL "Dependencies for moe_init_routing_v4")
+    set(moe_init_routing_v4_apt_depends moe/moe_init_routing_v3
+        CACHE INTERNAL "Dependencies for moe_init_routing_v4")
     target_sources(op_host_aclnnExc PRIVATE
         moe_init_routing_v4_def.cpp
     )
