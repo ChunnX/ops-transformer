@@ -28,10 +28,8 @@ python test.py --stages gen,cpu,npu,compare --case-set ci --log-level WARNING
 | 流程任意组合 | gen→cpu→npu→gpu→compare按固定顺序执行，`--stages`选子集 | `--stages gen,cpu,compare` |
 | 断点续跑 | 跳过的阶段自动从pt加载 | `--stages cpu,compare` |
 | 外部pt导入 | 从整网pt加载inputs替代gen | `--load-network-pt path/to/input.pt` |
-| pt中间产物 | 每阶段产出存pt，默认保留 | `--keep-pt` |
 | 崩溃隔离 | npu_compute用ThreadPoolExecutor隔离，单case崩溃不中断批跑 | `--max-retries 3` |
-| 大case并行 | compare阶段支持torch.multiprocessing分块并行 | `--chunk-size 1000000 --num-workers 4` |
-| 精度失败分析 | 失败时输出点位详情+Max-RE+预览 | `--fail-analysis --verbose-diff` |
+| 精度失败分析 | 失败时输出点位详情+Max-RE+预览 | `--verbose-diff` |
 | 日志系统 | 每阶段进度+耗时+shape，可调级别 | `--log-level INFO` |
 | 图模式 | npu_compute支持aclgraph | `--graph-path 7` |
 | 用例集分层 | ci/debug/func_rdv等用例集 | `--case-set ci` |
@@ -49,7 +47,7 @@ tests2/
 ├── csv_parser.py           # CSV→paramset 转换工具
 ├── pytest.ini              # marker 静态注册 + 日志配置
 ├── core/
-│   ├── __init__.py         # ABC 基类 + forward() 门面函数
+│   ├── __init__.py         # ABC 基类（GenDataBase/CpuBase/NpuBase/GpuBase）
 │   ├── case_loader.py      # 用例加载 + 笛卡尔积展开
 │   ├── gen_data.py         # GenDataBackend（gen_inputs + normalize_params）
 │   ├── cpu.py              # CpuBackend（cpu_compute）
