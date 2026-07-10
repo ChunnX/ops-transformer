@@ -499,7 +499,8 @@ void FiaInfoParser::GetPreNextToken()
 }
 
 ge::graphStatus FiaInfoParser::GetTensorListCache(uint32_t index, const std::string &name,
-                                                  std::vector<gert::StorageShape *> &cache, std::vector<gert::Stride *> &strides)
+                                                  std::vector<gert::StorageShape *> &cache,
+                                                  std::vector<gert::Stride *> &strides)
 {
     cache.clear();
     uint32_t bIdx = 0;
