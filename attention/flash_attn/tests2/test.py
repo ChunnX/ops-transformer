@@ -85,8 +85,7 @@ def test_op(params, stages, reporter, request):
                       graph_path=request.config.getoption("--graph-path"),
                       chunk_size=request.config.getoption("--chunk-size"),
                       num_workers=request.config.getoption("--num-workers"),
-                      verbose_diff=request.config.getoption("--verbose-diff"),
-                      fail_analysis=request.config.getoption("--fail-analysis"))
+                      verbose_diff=request.config.getoption("--verbose-diff"))
     if not result.get("passed", False):
         pytest.fail(result.get("fail_msg", "精度校验失败"))
 
@@ -99,7 +98,6 @@ def main():
     parser.add_argument("--case-set", default="ci", help="用例集marker: ci/debug/func_rdv/perf_rdv")
     parser.add_argument("--graph-path", default=0, type=int, help="图模式路径")
     parser.add_argument("--verbose-diff", action="store_true", help="打印全部失败元素")
-    parser.add_argument("--fail-analysis", action="store_true", default=True, help="失败分析报告")
     parser.add_argument("--report-interval", default=20, type=int, help="中间报告间隔")
     parser.add_argument("--load-network-pt", default=None, help="从整网推理产出的pt加载inputs")
     parser.add_argument("--chunk-size", default=0, type=int, help="比对分块大小")
@@ -133,8 +131,7 @@ def main():
                      graph_path=args.graph_path,
                      chunk_size=args.chunk_size,
                      num_workers=args.num_workers,
-                     verbose_diff=args.verbose_diff,
-                     fail_analysis=args.fail_analysis)
+                     verbose_diff=args.verbose_diff)
         except Exception as e:
             err = f"{e}\n{traceback.format_exc()}"
             print(f"[ERROR] {case_id} 运行异常: {e}")

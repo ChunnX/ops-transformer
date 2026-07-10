@@ -15,8 +15,6 @@ def pytest_addoption(parser):
     parser.addoption("--case-set", default="ci", help="用例集marker: ci/debug/func_rdv/perf_rdv")
     parser.addoption("--graph-path", default=0, type=int, help="图模式路径(0=非图模式)")
     parser.addoption("--verbose-diff", action="store_true", help="精度不达标时打印全部失败元素")
-    parser.addoption("--fail-analysis", action="store_true", default=True,
-                     help="精度不达标时输出失败分析报告")
     parser.addoption("--report-interval", default=20, type=int, help="中间报告间隔")
     parser.addoption("--load-network-pt", default=None, help="从整网推理产出的pt加载inputs(设计目标8)")
     parser.addoption("--chunk-size", default=0, type=int, help="比对分块大小(0=不分块)")

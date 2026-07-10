@@ -172,8 +172,7 @@ def _exec_or_load(stages: set, stage_name: str, compute_fn, case_set: str,
 # ============ Engine ============
 def run_case(stages: set, params: dict, reporter: Reporter, *,
              max_retries: int = 0, load_network_pt: str = None, graph_path: int = 0,
-             chunk_size: int = 0, num_workers: int = 0, verbose_diff: bool = False,
-             fail_analysis: bool = True) -> dict:
+             chunk_size: int = 0, num_workers: int = 0, verbose_diff: bool = False) -> dict:
     case_set = params.get("case_set", "")
     case_id = params.get("case_id", params.get("name", ""))
     result_dir = str(Path("result") / case_id)
@@ -257,7 +256,7 @@ def run_case(stages: set, params: dict, reporter: Reporter, *,
                     logger.info("[cmp]  %s | %s: max_abs=%.6f fail_ratio=%.4f%%",
                                 status, key, m.get("max_abs", 0), m.get("fail_ratio", 0) * 100)
             result["fail_msg"] = "" if result.get("passed", False) else "compare failed"
-            if not result.get("passed", False) and fail_analysis:
+            if not result.get("passed", False):
                 print(analyze_failure(cpu_out, npu_out, result,
                                       case_dir=result_dir, verbose=verbose_diff))
             reporter.record(case_id, result, dtype=dtype)
