@@ -451,8 +451,10 @@ class MoeDistributeBuffer:
                             const_expert_alpha_2=None, const_expert_v=None, zero_expert_num=0, copy_expert_num=0,
                             const_expert_num=0, expert_shared_type=0, shared_expert_num=1, shared_expert_rank_num=0,
                             num_max_dispatch_tokens_per_rank=0):
-        torch._check(assist_info_for_combine is not None, lambda: "assist_info_for_combine must be provided.")
-        torch._check(ep_send_counts is not None, lambda: "ep_send_counts must be provided.")
+        if assist_info_for_combine is None:
+            raise ValueError("assist_info_for_combine must be provided.")
+        if ep_send_counts is None:
+            raise ValueError("ep_send_counts must be provided.")
         topk_weights = _empty_topk_weights_like(x) if topk_weights is None else topk_weights
         return torch.ops.cann_ops_transformer.npu_moe_distribute_combine(
                                              context=self.context,
