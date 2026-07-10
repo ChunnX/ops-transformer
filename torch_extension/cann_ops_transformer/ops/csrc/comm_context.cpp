@@ -111,7 +111,6 @@ public:
     {
         CommContext mc2ContextHost;
         GetMc2Context(mc2ContextHost, worldSize, cclBufferSize, group.c_str());
-
         CopyContextToTensor(mc2ContextHost, contextTensor);
     }
 
