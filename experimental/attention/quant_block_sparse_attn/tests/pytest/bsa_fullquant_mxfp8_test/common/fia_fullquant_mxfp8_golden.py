@@ -766,6 +766,142 @@ def cpu_mxfp8_golden(q_fp8, k_fp8, v_fp8,
                      actual_seq_q, actual_seq_kv,
                      qr_bf16=None, kr_bf16=None):
     """CPU Flash Attention golden with MXFP8, C1V1C1V1C2V2 流水"""
+
+    # query = query.to(torch.float32)
+    # dense_key = dense_key.to(torch.float32)
+    # dense_value = dense_value.to(torch.float32)
+
+    # layout_q = case["layout_q"]
+    # batch = case["B"]
+    # n1 = case["N1"]
+    # n2 = case["N2"]
+    # group = n1 // n2
+    # head_dim = case["D"]
+    # output_dtype = case["output_dtype"]
+    # fp8_dtype = _fp8_dtype()
+    # softmax_scale = float(case["softmax_scale"])
+    # p_scale_value = float(p_scale[0].item())
+    # sparse_q_block_size = case["sparse_q_block_size"]
+    # neg_inf = float("-inf")
+
+    # if layout_q == "BSND":
+    #     attention_out = torch.zeros((batch, case["S1"], n1, head_dim), dtype=output_dtype)
+    #     softmax_lse = torch.full((batch, n1, case["S1"]), EMPTY_LSE, dtype=torch.float32)
+    # else:
+    #     total_q = int(cu_seqlens_q[-1].item())
+    #     attention_out = torch.zeros((total_q, n1, head_dim), dtype=output_dtype)
+    #     softmax_lse = torch.full((n1, total_q), EMPTY_LSE, dtype=torch.float32)
+
+    # qb_max = math.ceil(case["S1"] / sparse_q_block_size)
+    # for batch_idx in range(batch):
+    #     q_len = q_lengths[batch_idx]
+    #     kv_len = kv_lengths[batch_idx]
+    #     for head_idx in range(n1):
+    #         n2_idx = head_idx // group
+    #         v_scale_value = float(v_scale[n2_idx].item())
+    #         for qb_idx in range(qb_max):
+    #             q_start = qb_idx * sparse_q_block_size
+    #             if q_start >= q_len:
+    #                 break
+    #             q_end = min(q_start + sparse_q_block_size, q_len)
+    #             q_indices = list(range(q_start, q_end))
+
+    #             chunk_positions = _positions_from_sparse(
+    #                 case, sparse_indices, sparse_seq_len, batch_idx, head_idx, qb_idx, kv_len)
+    #             if not chunk_positions:
+    #                 continue
+    #             positions = [p for chunk in chunk_positions for p in chunk]
+
+    #             # gather q 向量（批量），shape (nq, D)
+    #             if layout_q == "BSND":
+    #                 q_block = query[batch_idx, q_start:q_end, head_idx].to(torch.float32)
+    #                 q_scale_block = q_scale[batch_idx, q_start:q_end, head_idx].to(torch.float32)
+    #             elif layout_q == "NTD":
+    #                 base = int(cu_seqlens_q[batch_idx].item())
+    #                 q_block = query[head_idx, base + q_start:base + q_end].to(torch.float32)
+    #                 q_scale_block = q_scale[head_idx, base + q_start:base + q_end].to(torch.float32)
+    #             else:
+    #                 base = int(cu_seqlens_q[batch_idx].item())
+    #                 q_block = query[base + q_start:base + q_end, head_idx].to(torch.float32)
+    #                 q_scale_block = q_scale[base + q_start:base + q_end, head_idx].to(torch.float32)
+    #             nq = q_block.shape[0]
+
+    #             # gather k/v/k_scale（按 positions 顺序），与参考一致使用 dense（padded S2）矩阵
+    #             pos_tensor = torch.as_tensor(positions, dtype=torch.long)
+    #             k_mat = dense_key[batch_idx, pos_tensor, n2_idx].to(torch.float32)      # (npos, D)
+    #             v_mat = dense_value[batch_idx, pos_tensor, n2_idx].to(torch.float32)    # (npos, D)
+    #             # k_scale：与参考 _get_k_scale 一致，TND 用 cu_seqlens 偏移；长度与 KV 矩阵一致
+    #             if layout_q == "BSND":
+    #                 k_scale_vec = k_scale[batch_idx, pos_tensor, n2_idx].to(torch.float32)  # (npos,)
+    #             else:
+    #                 kbase = int(cu_seqlens_kv[batch_idx].item())
+    #                 k_scale_vec = k_scale[kbase + pos_tensor, n2_idx].to(torch.float32)     # (npos,)
+
+    #             npos = pos_tensor.shape[0]
+    #             # valid_mask: (nq, npos) — causal/actlen，与参考 _mask_positions 一致
+    #             if case["mask_mode"] == 0:
+    #                 valid_mask = torch.ones((nq, npos), dtype=torch.bool)
+    #             elif case["mask_mode"] == 3:
+    #                 q_idx_col = torch.as_tensor(q_indices, dtype=torch.long).view(nq, 1)
+    #                 limit = q_idx_col + (kv_len - q_len)            # (nq,1)
+    #                 valid_mask = pos_tensor.view(1, npos) <= limit  # (nq, npos)
+    #             else:
+    #                 raise ValueError(f"unsupported mask_mode: {case['mask_mode']}")
+
+    #             # scores: (nq, npos)，标度在 matmul 之后施加（保持 FP8 桶一致）
+    #             scores = torch.matmul(q_block, k_mat.transpose(0, 1))
+    #             scores = scores * q_scale_block.view(nq, 1) * k_scale_vec.view(1, npos) * softmax_scale
+    #             scores = torch.where(valid_mask, scores, torch.full_like(scores, MASK_VALUE))
+
+    #             # 按 2-block chunk 的 online/flash FP8 数据流，向量化到 q 维
+    #             m_run = torch.full((nq,), neg_inf, dtype=torch.float32)
+    #             l_run = torch.zeros((nq,), dtype=torch.float32)
+    #             acc = torch.zeros((nq, head_dim), dtype=torch.float32)
+    #             offset = 0
+    #             for chunk_pos_list in chunk_positions:
+    #                 c0 = offset
+    #                 c1 = offset + len(chunk_pos_list)
+    #                 offset = c1
+    #                 s_c = scores[:, c0:c1]
+    #                 vm_c = valid_mask[:, c0:c1]
+    #                 # 每行的局部 max（在该 chunk 内的有效位置上）；行内无有效位置时记为 -inf
+    #                 masked_scores = torch.where(vm_c, s_c, torch.full_like(s_c, neg_inf))
+    #                 chunk_max = masked_scores.max(dim=-1).values            # (nq,)
+    #                 chunk_has = vm_c.any(dim=-1)                            # (nq,)
+    #                 run_started = m_run != neg_inf
+    #                 # m_new：未开始的行取 chunk_max（若该 chunk 无有效则保持 -inf）；已开始的行取 max
+    #                 m_new = torch.where(run_started, torch.maximum(m_run, chunk_max), chunk_max)
+    #                 # 该 chunk 对此行无有效位置 -> 此行本轮不更新
+    #                 m_new = torch.where(chunk_has, m_new, m_run)
+    #                 rescale = torch.where(run_started, torch.exp(m_run - m_new), torch.zeros_like(m_run))
+    #                 rescale = torch.where(torch.isfinite(rescale), rescale, torch.zeros_like(rescale))
+    #                 p_c = torch.exp(s_c - m_new.view(nq, 1))
+    #                 p_c = torch.where(vm_c, p_c, torch.zeros_like(p_c))
+    #                 # 仅对本轮有有效位置的行参与量化累加；其余行贡献 0
+    #                 p_c = torch.where(chunk_has.view(nq, 1), p_c, torch.zeros_like(p_c))
+    #                 p_quant = (p_c * p_scale_value).to(fp8_dtype).to(torch.float32)
+    #                 pv = torch.matmul(p_quant, v_mat[c0:c1]) / p_scale_value * v_scale_value  # (nq, D)
+    #                 acc = acc * rescale.view(nq, 1) + pv
+    #                 l_run = l_run * rescale + p_c.sum(dim=-1)
+    #                 m_run = torch.where(chunk_has, m_new, m_run)
+
+    #             # any_valid 行：写回 attn=acc/l_run；空行保持 0 / EMPTY_LSE
+    #             any_valid = valid_mask.any(dim=-1)                          # (nq,)
+    #             safe_l = torch.where(l_run > 0, l_run, torch.ones_like(l_run))
+    #             attn = acc / safe_l.view(nq, 1)                            # (nq, D)
+    #             # lse = logsumexp(scores[valid]) per row
+    #             lse_scores = torch.where(valid_mask, scores, torch.full_like(scores, neg_inf))
+    #             lse = torch.logsumexp(lse_scores, dim=-1)                  # (nq,)
+
+    #             for li, q_idx in enumerate(q_indices):
+    #                 if not bool(any_valid[li].item()):
+    #                     continue
+    #                 _set_output(attention_out, layout_q, cu_seqlens_q, batch_idx, q_idx, head_idx,
+    #                             attn[li].to(output_dtype))
+    #                 _set_lse(softmax_lse, layout_q, cu_seqlens_q, batch_idx, q_idx, head_idx, lse[li])
+                
+    # return attention_out, softmax_lse
+
     EPSILON = 1e-20
     LN2 = math.log(2.0)
     Q_BLOCK_SIZE = 128
