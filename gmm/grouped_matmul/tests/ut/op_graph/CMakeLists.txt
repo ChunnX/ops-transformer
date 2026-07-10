@@ -10,4 +10,14 @@
 
 if(UT_TEST_ALL OR OP_GRAPH_UT)
     add_modules_ut_sources(UT_NAME ${OP_GRAPH_MODULE_NAME} MODE PRIVATE DIR ${CMAKE_CURRENT_SOURCE_DIR})
+    set(GROUPED_MATMUL_TRANSPOSE_FUSION_PASS_CSV
+        ${CMAKE_CURRENT_SOURCE_DIR}/test_grouped_matmul_transpose_fusion_pass.csv)
+    configure_file(
+        ${GROUPED_MATMUL_TRANSPOSE_FUSION_PASS_CSV}
+        ${CMAKE_BINARY_DIR}/tests/ut/op_graph/test_grouped_matmul_transpose_fusion_pass.csv
+        COPYONLY)
+    if(TARGET ${OP_GRAPH_MODULE_NAME}_cases_obj)
+        target_compile_definitions(${OP_GRAPH_MODULE_NAME}_cases_obj PRIVATE
+            GROUPED_MATMUL_TRANSPOSE_FUSION_PASS_CSV_PATH="${GROUPED_MATMUL_TRANSPOSE_FUSION_PASS_CSV}")
+    endif()
 endif()
