@@ -39,7 +39,7 @@ static const std::initializer_list<DataType> DTYPE_SUPPORT_LIST_X_REGBASE = {
     DataType::DT_HIFLOAT8, DataType::DT_FLOAT8_E5M2, DataType::DT_FLOAT8_E4M3FN, DataType::DT_FLOAT4_E2M1};
 static const std::initializer_list<DataType> DTYPE_SUPPORT_LIST_EXPERT_IDX = {DataType::DT_INT32};
 static const std::initializer_list<DataType> DTYPE_SUPPORT_LIST_SCALE_REGBASE = {DataType::DT_FLOAT,
-                                                                                  DataType::DT_FLOAT8_E8M0};
+    DataType::DT_FLOAT8_E8M0};
 static const std::initializer_list<DataType> DTYPE_SUPPORT_LIST_OFFSET = {DataType::DT_FLOAT};
 static const std::initializer_list<DataType> DTYPE_SUPPORT_LIST_ACTIVE_NUM = {DataType::DT_INT64};
 static const std::initializer_list<DataType> DTYPE_SUPPORT_LIST_TOPK_WEIGHT = {DataType::DT_FLOAT};
