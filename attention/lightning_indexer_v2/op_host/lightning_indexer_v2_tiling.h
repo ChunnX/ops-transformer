@@ -40,7 +40,7 @@ struct TilingOptionalParaInfo {
 enum class DataLayout : uint32_t {
     BSND = 0,
     TND = 1,
-    BnBsND = 2
+    PA_BBND = 2
 };
 
 // ------------------算子原型索引常量定义----------------
@@ -175,7 +175,7 @@ public:
     ge::DataType outputType = ge::DT_INT32;
     // Layout
     DataLayout inputQLayout = DataLayout::BSND;
-    DataLayout inputKLayout = DataLayout::BnBsND;
+    DataLayout inputKLayout = DataLayout::PA_BBND;
 };
 
 // -----------算子Tiling入参信息解析及Check类---------------
@@ -238,7 +238,7 @@ public:
     uint32_t batchSupperFlag_ = 0;
     // Layout
     DataLayout qLayout_ = DataLayout::BSND;
-    DataLayout kLayout_ = DataLayout::BnBsND;
+    DataLayout kLayout_ = DataLayout::PA_BBND;
     // PageAttention
     uint32_t maxBlockNumPerBatch_ = 0;
     int32_t blockSize_ = 0;
