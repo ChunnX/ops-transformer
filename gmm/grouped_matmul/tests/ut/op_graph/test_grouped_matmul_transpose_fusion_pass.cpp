@@ -9,7 +9,6 @@
  */
 
 #include <cctype>
-#include <cstring>
 #include <fstream>
 #include <stdexcept>
 #include <string>
@@ -242,7 +241,8 @@ GNode BuildTransposeDNode(Graph *graph, const char *name, const TensorDesc &outp
                              .InstanceOutputShape("y", outputDesc.GetShape().GetDims())
                              .InstanceOutputFormat("y", FORMAT_ND)
                              .Build();
-    transposeNode.SetAttr("perm", perm);
+    auto transposePerm = perm;
+    transposeNode.SetAttr("perm", transposePerm);
     return transposeNode;
 }
 
@@ -315,8 +315,10 @@ GraphPtr BuildGraph(const GroupedMatmulTransposeFusionPassParam &param)
     LinkGroupedMatmulInput(graph, groupedMatmulNode, xInput, kXIndex);
     LinkGroupedMatmulInput(graph, groupedMatmulNode, weightInput, kWeightIndex);
     groupedMatmulNode.UpdateOutputDesc(0, outDesc);
-    groupedMatmulNode.SetAttr("transpose_x", param.initialTransposeX);
-    groupedMatmulNode.SetAttr("transpose_weight", param.initialTransposeWeight);
+    bool transposeX = param.initialTransposeX;
+    bool transposeWeight = param.initialTransposeWeight;
+    groupedMatmulNode.SetAttr("transpose_x", transposeX);
+    groupedMatmulNode.SetAttr("transpose_weight", transposeWeight);
 
     auto output =
         ge::es::EsTensorHolder(graphBuilder.GetCGraphBuilder()->GetTensorHolderFromNode(groupedMatmulNode, 0));
@@ -352,23 +354,12 @@ std::string TestName(const testing::TestParamInfo<GroupedMatmulTransposeFusionPa
 }
 } // namespace
 
-extern "C" aclError aclsysGetVersionNum(const char *, int32_t *version)
+extern "C" aclError aclsysGetVersionNum(char *, int32_t *version)
 {
     if (version != nullptr) {
         *version = kGraphFusionSupportVersion;
     }
     return ACL_SUCCESS;
-}
-
-extern "C" rtError_t rtGetSocSpec(const char *, const char *, char *value, const uint32_t len)
-{
-    if (value == nullptr || len == 0) {
-        return static_cast<rtError_t>(1);
-    }
-    const char socVersion[] = "3510";
-    std::strncpy(value, socVersion, len - 1);
-    value[len - 1] = '\0';
-    return RT_ERROR_NONE;
 }
 
 class GroupedMatmulTransposeFusionPassTest : public testing::TestWithParam<GroupedMatmulTransposeFusionPassParam> {};

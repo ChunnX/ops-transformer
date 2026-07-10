@@ -179,7 +179,6 @@ if(UT_TEST_ALL OR OP_GRAPH_UT)
     target_link_libraries(
       ${OP_GRAPH_MODULE_NAME}_cases
       PRIVATE ${OP_GRAPH_MODULE_NAME}_cases_obj
-              $<$<TARGET_EXISTS:${GRAPH_PLUGIN_NAME}_obj>:${GRAPH_PLUGIN_NAME}_obj>
       )
   endfunction()
 endif()
