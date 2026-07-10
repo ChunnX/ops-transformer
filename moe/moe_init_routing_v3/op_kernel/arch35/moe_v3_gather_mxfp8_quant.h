@@ -316,13 +316,13 @@ template <typename T, typename U, bool CLAMP_AMAX = false>
 class MoeGatherOutMxfp8Quant {
 public:
     __aicore__ inline MoeGatherOutMxfp8Quant(){};
-    __aicore__ inline void Init(GM_ADDR xAddr, GM_ADDR unused_ScaleAddr, GM_ADDR expandedRowIdxAddr,
-                                GM_ADDR expandedXAddr, GM_ADDR expandedScaleAddr, GM_ADDR sortedExpertIdxAddr,
+    __aicore__ inline void Init(GM_ADDR xAddr, GM_ADDR unused_ScaleAddr, GM_ADDR workspace,
+                                GM_ADDR expandedRowIdxAddr, GM_ADDR expandedXAddr, GM_ADDR expandedScaleAddr,
                                 const MoeInitRoutingV3Arch35TilingData *tilingData, TPipe *tPipe);
     __aicore__ inline void Process();
 
 private:
-    __aicore__ inline void InitKernelTiling(GM_ADDR sortedExpertIdxAddr, const MoeInitRoutingV3Arch35TilingData *tilingData);
+    __aicore__ inline void InitKernelTiling(GM_ADDR workspace, const MoeInitRoutingV3Arch35TilingData *tilingData);
     __aicore__ inline void CopyInExpandedExpertIdx(int64_t progress);
     __aicore__ inline void ScatterCopyExpandedXandMXQuant(int64_t progress);
     __aicore__ inline void GatherCopyExpandedXandMXQuant(int64_t progress);
@@ -368,7 +368,6 @@ private:
     int64_t lastLoopScaleCols_;
     int64_t indicesOffset_;
     int64_t rowIdxType_ = 0;
-    int64_t ep_ = 0;
 
     uint16_t fp8Emax_ = 0;
 
@@ -387,7 +386,7 @@ private:
 
 template <typename T, typename U, bool CLAMP_AMAX>
 __aicore__ inline void MoeGatherOutMxfp8Quant<T, U, CLAMP_AMAX>::Init(GM_ADDR xAddr, GM_ADDR unused_ScaleAddr,
-                                                          GM_ADDR sortedExpertIdxAddr, GM_ADDR expandedRowIdxAddr,
+                                                          GM_ADDR workspace, GM_ADDR expandedRowIdxAddr,
                                                           GM_ADDR expandedXAddr, GM_ADDR expandedScaleAddr,
                                                           const MoeInitRoutingV3Arch35TilingData *tilingData, TPipe *tPipe)
 {
@@ -397,30 +396,12 @@ __aicore__ inline void MoeGatherOutMxfp8Quant<T, U, CLAMP_AMAX>::Init(GM_ADDR xA
 
     pipe_ = tPipe;
     blockIdx_ = GetBlockIdx();
-    InitKernelTiling(sortedExpertIdxAddr, tilingData);
+    InitKernelTiling(workspace, tilingData);
 
     xInGm_.SetGlobalBuffer((__gm__ T *)xAddr);
     expandedXOutGm_.SetGlobalBuffer((__gm__ uint8_t *)expandedXAddr);
-    if (ep_) {
-        if (rowIdxType_ == SCATTER) {
-            sortedRowIdxGm_.SetGlobalBuffer((__gm__ int32_t *)expandedRowIdxAddr + blockIdx_ * perCoreRow_,
-                                            Align(perCoreRow_, sizeof(int32_t)));
-        } else {
-            sortedRowIdxGm_.SetGlobalBuffer((__gm__ int32_t *)sortedExpertIdxAddr + Align(n_ * k_, sizeof(int32_t)) +
-                                                blockIdx_ * perCoreRow_,
-                                            Align(perCoreRow_, sizeof(int32_t)));
-        }
-    } else {
-        if (rowIdxType_ == GATHER) {
-            sortedRowIdxGm_.SetGlobalBuffer((__gm__ int32_t *)expandedRowIdxAddr + blockIdx_ * perCoreRow_,
-                                            Align(perCoreRow_, sizeof(int32_t)));
-        } else {
-            // TODO,暂不支持，当前走不到该分支
-            sortedRowIdxGm_.SetGlobalBuffer((__gm__ int32_t *)sortedExpertIdxAddr + Align(n_ * k_, sizeof(int32_t)) +
-                                                blockIdx_ * perCoreRow_,
-                                            Align(perCoreRow_, sizeof(int32_t)));
-        }
-    }
+    sortedRowIdxGm_.SetGlobalBuffer((__gm__ int32_t *)expandedRowIdxAddr + blockIdx_ * perCoreRow_,
+                                    Align(perCoreRow_, sizeof(int32_t)));
     expandedScaleOutGm_.SetGlobalBuffer((__gm__ uint8_t *)expandedScaleAddr);
 
     // perrows * 2 * 2 * 4 expandRowIdx + sortedExpertId
@@ -438,7 +419,7 @@ __aicore__ inline void MoeGatherOutMxfp8Quant<T, U, CLAMP_AMAX>::Init(GM_ADDR xA
 }
 
 template <typename T, typename U, bool CLAMP_AMAX>
-__aicore__ inline void MoeGatherOutMxfp8Quant<T, U, CLAMP_AMAX>::InitKernelTiling(GM_ADDR sortedExpertIdxAddr, const MoeInitRoutingV3Arch35TilingData *tilingData)
+__aicore__ inline void MoeGatherOutMxfp8Quant<T, U, CLAMP_AMAX>::InitKernelTiling(GM_ADDR workspace, const MoeInitRoutingV3Arch35TilingData *tilingData)
 {
     gatherOutTilingData_ = &(tilingData->gatherOutComputeParamsOp);
     cols_ = tilingData->cols;
@@ -447,21 +428,21 @@ __aicore__ inline void MoeGatherOutMxfp8Quant<T, U, CLAMP_AMAX>::InitKernelTilin
     n_ = tilingData->n;
     k_ = tilingData->k;
     rowIdxType_ = tilingData->rowIdxType;
-    if (tilingData->epFullload == 0 && rowIdxType_ == GATHER) {
-        ep_ = 0;
-    } else {
-        ep_ = 1;
-    }
 
     // core split
     int64_t actualExpertNum_ = tilingData->actualExpertNum;
-    expertTotalCountGm_.SetGlobalBuffer((__gm__ int32_t *)sortedExpertIdxAddr + Align(n_ * k_, sizeof(int32_t)) * 2 +
+    expertTotalCountGm_.SetGlobalBuffer((__gm__ int32_t *)workspace + Align(n_ * k_, sizeof(int32_t)) * 2 +
                                             Align(actualExpertNum_, sizeof(int32_t)),
-                                        actualExpertNum_);
-    int64_t expertTotalCount_ = expertTotalCountGm_.GetValue(0);
-    perCoreRow_ = Ceil(expertTotalCount_, tilingData->coreNum);
-    needCoreNum_ = Ceil(expertTotalCount_, perCoreRow_);
-    int64_t lastCoreIndicesElements = expertTotalCount_ - (needCoreNum_ - 1) * perCoreRow_;
+                                        1);
+    int64_t scanRowCount = n_ * k_;
+    if (rowIdxType_ == SCATTER) {
+        AscendC::DataCacheCleanAndInvalid<int32_t, AscendC::CacheLine::SINGLE_CACHE_LINE, AscendC::DcciDst::CACHELINE_OUT>(
+            expertTotalCountGm_);
+        scanRowCount = expertTotalCountGm_.GetValue(0);
+    }
+    perCoreRow_ = Ceil(scanRowCount, tilingData->coreNum);
+    needCoreNum_ = Ceil(scanRowCount, perCoreRow_);
+    int64_t lastCoreIndicesElements = scanRowCount - (needCoreNum_ - 1) * perCoreRow_;
 
     // inner core split
     coreRows_ = perCoreRow_;
@@ -490,7 +471,7 @@ __aicore__ inline void MoeGatherOutMxfp8Quant<T, U, CLAMP_AMAX>::Process()
         currentLoopRows_ = perLoopRows_;
         for (int64_t loop = 0; loop < rowLoops_ - 1; loop++) {
             CopyInExpandedExpertIdx(loop);
-            if (ep_) {
+            if (rowIdxType_ == SCATTER) {
                 ScatterCopyExpandedXandMXQuant(loop);
             } else {
                 GatherCopyExpandedXandMXQuant(loop);
@@ -499,7 +480,7 @@ __aicore__ inline void MoeGatherOutMxfp8Quant<T, U, CLAMP_AMAX>::Process()
 
         currentLoopRows_ = lastLoopRows_;
         CopyInExpandedExpertIdx(rowLoops_ - 1);
-        if (ep_) {
+        if (rowIdxType_ == SCATTER) {
             ScatterCopyExpandedXandMXQuant(rowLoops_ - 1);
         } else {
             GatherCopyExpandedXandMXQuant(rowLoops_ - 1);
@@ -537,6 +518,7 @@ __aicore__ inline void MoeGatherOutMxfp8Quant<T, U, CLAMP_AMAX>::ScatterCopyExpa
             CopyOut(dstIdx, j, loopCols, loopScaleCols);
         }
     }
+    sortedRowIdxInQueue_.FreeTensor(indicesLocal);
 }
 
 template <typename T, typename U, bool CLAMP_AMAX>

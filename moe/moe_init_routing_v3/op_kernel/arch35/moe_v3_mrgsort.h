@@ -107,7 +107,6 @@ __aicore__ inline void MoeMrgsort::UpdateMrgParam()
 __aicore__ inline void MoeMrgsort::CopyIn()
 {
     this->remainListNum = 0;
-    // todo: 移到循环外面，待验证泛化性无影响
     event_t eventIdMte3ToMte2 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_MTE2));
     SetFlag<HardEvent::MTE3_MTE2>(eventIdMte3ToMte2);
     WaitFlag<HardEvent::MTE3_MTE2>(eventIdMte3ToMte2);
@@ -194,9 +193,6 @@ __aicore__ inline void MoeMrgsort::Init(MoeMrgsortParam *param)
 
 __aicore__ inline void MoeMrgsort::Process()
 {
-    // event_t eventIdMte3ToMte2 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_MTE2));
-    // SetFlag<HardEvent::MTE3_MTE2>(eventIdMte3ToMte2);
-    // WaitFlag<HardEvent::MTE3_MTE2>(eventIdMte3ToMte2);
     for (; allRemainElements > 0;) {
         CopyIn();
         UpdateMrgParam();
