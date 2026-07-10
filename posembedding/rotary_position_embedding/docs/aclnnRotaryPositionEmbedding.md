@@ -294,7 +294,7 @@ aclnnStatus aclnnRotaryPositionEmbedding(
   - 输入张量cos和sin的shape必须完全相同，cos和sin的shape需要与x满足[broadcast关系](../../../docs/zh/context/broadcast关系.md)，且广播后的shape必须等于x的shape。
   - 当x为TND时，cos、sin支持T1D、TND。
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
-    
+
   输入张量x支持BNSD、BSND、SBND、TND排布。
   输入张量x、cos、sin及输出张量y的D维度大小必须相同，满足D<896，且必须为2的倍数。
   输入张量x和输出张量y的shape必须完全相同。
@@ -313,9 +313,9 @@ aclnnStatus aclnnRotaryPositionEmbedding(
     - 当x为BSND时，cos、sin支持1S1D
     - 当x为SBND时，cos、sin支持S11D
     - 当x为TND时，cos、sin支持T1D
-    
+
 - <term>Atlas 推理系列产品</term>：
-    
+
   输入张量x支持BNSD、BSND、SBND、TND排布。
   输入张量x、cos、sin及输出张量y的D维度大小必须相同，满足D<=128，且必须为32的倍数。
   输入张量x和输出张量y的shape必须完全相同。
@@ -438,7 +438,7 @@ int main() {
                                       100, 20, 97, 119, 10, 4, 53, 13, 46, 82, 103, 119, 124, 80, 23, 67, 78, 56, 119, 122, 40,
                                       58, 128, 27, 30, 52, 71, 42, 123, 69, 4, 5, 116, 97, 38, 107, 8, 4, 65, 120, 40, 22, 60,
                                       44, 48, 66, 68, 125, 4, 93, 112, 112, 113, 90, 94, 23, 104, 39, 85, 84, 64, 128, 96, 119};
-    std::vector<float> outHostData(128, 0);                                      
+    std::vector<float> outHostData(128, 0);
 
     // 创建x aclTensor
     ret = CreateAclTensor(xHostData, xShape, &xDeviceAddr, aclDataType::ACL_FLOAT, &x);
@@ -451,7 +451,7 @@ int main() {
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     // 创建out aclTensor
     ret = CreateAclTensor(outHostData, outShape, &outDeviceAddr, aclDataType::ACL_FLOAT, &out);
-    CHECK_RET(ret == ACL_SUCCESS, return ret);    
+    CHECK_RET(ret == ACL_SUCCESS, return ret);
 
     // 3. 调用CANN算子库API，需要修改为具体的API
     uint64_t workspaceSize = 0;

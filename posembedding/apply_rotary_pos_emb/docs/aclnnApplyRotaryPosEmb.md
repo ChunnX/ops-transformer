@@ -21,31 +21,31 @@
   $$
   query\_q1 = query[..., : query.shape[-1] // 2]
   $$
-  
+
   $$
   query\_q2 = query[..., query.shape[-1] // 2 :]
   $$
-  
+
   $$
   query\_rotate = torch.cat((-query\_q2, query\_q1), dim=-1)
   $$
-  
+
   $$
   key\_k1 = key[..., : key.shape[-1] // 2]
   $$
-  
+
   $$
   key\_k2 = key[..., key.shape[-1] // 2 :]
   $$
-  
+
   $$
   key\_rotate = torch.cat((-key\_k2, key\_k1), dim=-1)
   $$
-  
+
   $$
   q\_embed = (query * cos) + query\_rotate * sin
   $$
-  
+
   $$
   k\_embed = (key * cos) + key\_rotate * sin
   $$
@@ -56,20 +56,20 @@
 
 ```cpp
 aclnnStatus aclnnApplyRotaryPosEmbGetWorkspaceSize(
-  aclTensor       *queryRef, 
-  aclTensor       *keyRef, 
-  const aclTensor *cos, 
-  const aclTensor *sin, 
-  int64_t         layout, 
-  uint64_t        *workspaceSize, 
+  aclTensor       *queryRef,
+  aclTensor       *keyRef,
+  const aclTensor *cos,
+  const aclTensor *sin,
+  int64_t         layout,
+  uint64_t        *workspaceSize,
   aclOpExecutor   **executor)
 ```
 
 ```cpp
 aclnnStatus aclnnApplyRotaryPosEmb(
-  void          *workspace, 
-  uint64_t      workspaceSize, 
-  aclOpExecutor *executor, 
+  void          *workspace,
+  uint64_t      workspaceSize,
+  aclOpExecutor *executor,
   aclrtStream   stream)
 ```
 
@@ -206,7 +206,7 @@ aclnnStatus aclnnApplyRotaryPosEmb(
 - **返回值**
 
   aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
-  
+
   第一段接口完成入参校验，出现以下场景时报错：
   <table>
   <tr>

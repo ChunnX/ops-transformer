@@ -16,10 +16,9 @@
 #include "register/op_def_registry.h"
 
 namespace ops {
-class RotaryPositionEmbeddingGrad : public OpDef
-{
+class RotaryPositionEmbeddingGrad : public OpDef {
 public:
-    explicit RotaryPositionEmbeddingGrad(const char* name) : OpDef(name)
+    explicit RotaryPositionEmbeddingGrad(const char *name) : OpDef(name)
     {
         this->Input("dy")
             .ParamType(REQUIRED)

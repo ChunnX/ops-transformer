@@ -31,14 +31,14 @@ constexpr uint32_t MINIMAL_WORKSPACE = 16 * 1024 * 1024;
 
 namespace optiling {
 
-static ge::graphStatus TilingForRopeQuantKvcache(gert::TilingContext* context)
+static ge::graphStatus TilingForRopeQuantKvcache(gert::TilingContext *context)
 {
-    const gert::StorageShape* cacheShape = context->GetInputShape(KVCACHE_INPUT_INDEX);
+    const gert::StorageShape *cacheShape = context->GetInputShape(KVCACHE_INPUT_INDEX);
 
     auto attrs = context->GetAttrs();
     auto attr = attrs->GetAttrPointer<gert::ContinuousVector>(0);
     OP_CHECK_NULL_WITH_CONTEXT(context, attr);
-    const int64_t* attrData = reinterpret_cast<const int64_t*>(attr->GetData());
+    const int64_t *attrData = reinterpret_cast<const int64_t *>(attr->GetData());
 
     int64_t batch = cacheShape->GetStorageShape().GetDim(0);
     int64_t cacheSeqlen = cacheShape->GetStorageShape().GetDim(1);
@@ -61,12 +61,12 @@ static ge::graphStatus TilingForRopeQuantKvcache(gert::TilingContext* context)
     tiling.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
     context->GetRawTilingData()->SetDataSize(tiling.GetDataSize());
 
-    size_t* currentWorkspace = context->GetWorkspaceSizes(1);
+    size_t *currentWorkspace = context->GetWorkspaceSizes(1);
     currentWorkspace[0] = MINIMAL_WORKSPACE;
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus TilingPrepareForRopeQuantKvcache(gert::TilingParseContext* context)
+static ge::graphStatus TilingPrepareForRopeQuantKvcache(gert::TilingParseContext *context)
 {
     (void)context;
     return GRAPH_SUCCESS;
