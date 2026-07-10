@@ -99,58 +99,41 @@ static bool CheckAllDtypesValid(const aclTensor *x, const aclTensor *scales, con
     return isAllDtypesValid;
 }
 
-static bool CheckGroupLength(const char *group)
-{
-    if (group == nullptr) {
-        OP_LOGE_WITH_INVALID_INPUT("aclnnQuantReduceScatter", "group");
-        return false;
-    }
-
-    size_t groupLen = strnlen(group, HCCL_GROUP_NAME_LENGTH_MAX); // group长度≥128字符, 返回HCCL_GROUP_NAME_LENGTH_MAX
-    if (groupLen >= HCCL_GROUP_NAME_LENGTH_MAX) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-            "aclnnQuantReduceScatter", "group", "length exceeds " + std::to_string(HCCL_GROUP_NAME_LENGTH_MAX),
-            "The length of group must be less than " + std::to_string(HCCL_GROUP_NAME_LENGTH_MAX) + " characters");
-        return false;
-    }
-
-    return true;
-}
-
-static aclnnStatus CheckParams(const aclTensor *x, const aclTensor *scales, const char *group, const aclTensor *output)
+static aclnnStatus CheckParams(const aclTensor *x, const aclTensor *scales, const aclTensor *output)
 {
     // 1. 检查参数是否为空指针
     CHECK_RET(CheckNotNull(x, scales, output), ACLNN_ERR_PARAM_NULLPTR);
     // 2. 检查输入的数据类型是否在API支持的数据类型范围之内，需要根据api定义校验
     CHECK_RET(CheckAllDtypesValid(x, scales, output), ACLNN_ERR_PARAM_INVALID);
-    // 3. 检查group参数是否在要求范围之内
-    CHECK_RET(CheckGroupLength(group), ACLNN_ERR_PARAM_INVALID);
 
     return ACLNN_SUCCESS;
 }
 } // namespace
 
-extern "C" aclnnStatus aclnnInnerQuantReduceScatterGetWorkspaceSize(const aclTensor *x, const aclTensor *scales,
-                                                                    const char *group, const char *reduceOp,
+extern "C" aclnnStatus aclnnInnerQuantReduceScatterGetWorkspaceSize(const aclTensor *context, const aclTensor *x,
+                                                                    const aclTensor *scales,
+                                                                    const int64_t hcclBufferSize, const char *reduceOp,
                                                                     uint64_t yDtype, int64_t worldSize,
                                                                     aclTensor *output, uint64_t *workspaceSize,
                                                                     aclOpExecutor **executor);
+
 extern "C" aclnnStatus aclnnInnerQuantReduceScatter(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
                                                     const aclrtStream stream);
+
 extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
 
-extern "C" aclnnStatus aclnnQuantReduceScatterGetWorkspaceSize(const aclTensor *x, const aclTensor *scales,
-                                                               const char *group, const char *reduceOp,
-                                                               aclTensor *output, uint64_t *workspaceSize,
-                                                               aclOpExecutor **executor)
+extern "C" aclnnStatus aclnnQuantReduceScatterGetWorkspaceSize(const aclTensor *context, const aclTensor *x,
+                                                               const aclTensor *scales,
+                                                               const int64_t hcclBufferSize, const int64_t worldSize,
+                                                               const char *reduceOp, aclTensor *output,
+                                                               uint64_t *workspaceSize, aclOpExecutor **executor)
 {
-    aclnnStatus retParam = CheckParams(x, scales, group, output);
+    aclnnStatus retParam = CheckParams(x, scales, output);
     CHECK_RET(retParam == ACLNN_SUCCESS, retParam);
     uint64_t yDtype = static_cast<uint64_t>(output->GetDataType());
-    int64_t worldSize = -1;
-    aclnnStatus ret =
-        aclnnInnerQuantReduceScatterGetWorkspaceSize(x, scales, const_cast<char *>(group), const_cast<char *>(reduceOp),
-                                                     yDtype, worldSize, output, workspaceSize, executor);
+    aclnnStatus ret = aclnnInnerQuantReduceScatterGetWorkspaceSize(context, x, scales, hcclBufferSize,
+                                                                   const_cast<char *>(reduceOp), yDtype,
+                                                                   worldSize, output, workspaceSize, executor);
     OP_LOGD("QuantReduceScatter, aclnnnGetWorkspaceSize ret %d.", ret);
     return ret;
 }
