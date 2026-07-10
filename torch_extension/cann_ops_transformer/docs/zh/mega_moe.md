@@ -1109,12 +1109,13 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
 
     - **公共约束**：
         - `moe_expert_num`：取值范围 $[\text{ep\_world\_size},\ 1024]$，且 `moe_expert_num % ep_world_size == 0`。
-        - `max_recv_token_num`：取值范围 $[0,\ \text{num\_tokens} \times \text{ep\_world\_size} \times \min(\text{num\_topk},\  \text{num\_experts\_per\_rank})]$。
 
     - **Atlas A2 训练系列产品/Atlas A2 推理系列产品、Atlas A3 训练系列产品/Atlas A3 推理系列产品**：
+        - 各卡 `num_tokens` 需保持一致。
         - `ep_world_size`：仅支持 2、4、8、16、32。
         - `num_experts_per_rank`：取值范围 $[1,\ 128]$，且 `num_experts_per_rank = moe_expert_num / ep_world_size`。
         - `num_max_tokens_per_rank`：取值范围 $[1,\ 4096]$。
+        - `max_recv_token_num` 需大于0，输入0表示自动计算，公式为 `num_tokens × ep_world_size × min(num_topk, num_experts_per_rank)`。
         - `num_topk`：取值范围 $[1,\ 16]$。
         - `hidden`、`intermediate_hidden`：取值范围 $[1024,\ 8192]$，且 `hidden % 512 == 0`、`intermediate_hidden % 512 == 0`。
         - `dispatch_quant_mode`：仅支持 0（非量化）、2（INT8 量化）。
