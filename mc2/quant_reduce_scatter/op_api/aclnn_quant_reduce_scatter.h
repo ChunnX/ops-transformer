@@ -46,8 +46,9 @@ extern "C" {
  * @param [out] executor: 返回op执行器，包含了算子计算流程。
  * @return aclnnStatus: 返回状态码
  */
-ACLNN_API aclnnStatus aclnnQuantReduceScatterGetWorkspaceSize(const aclTensor *x, const aclTensor *scales,
-                                                              const char *group, const char *reduceOp,
+ACLNN_API aclnnStatus aclnnQuantReduceScatterGetWorkspaceSize(const aclTensor *context, const aclTensor *x,
+                                                              const aclTensor *scales, const int64_t hcclBufferSize,
+                                                              const int64_t worldSize, const char *reduceOp,
                                                               aclTensor *output, uint64_t *workspaceSize,
                                                               aclOpExecutor **executor);
 
