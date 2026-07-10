@@ -795,23 +795,52 @@ def tilelang_grad_kl_loss_single_kernel(
             # ============================================================
             # V scope 4: Scatter dk_matmul_partial → dKeyIndex（按 sparse idx）
             #   MIX_AIC_1_2 有 2 AIV 核/cid，atomic_add 非幂等 → 必须 if vid==0 防 double
+            #   Double-buffer: overlap MTE2 copy[k+1] ∥ MTE3 atomic_add[k]
+            #   WAR-safe ping-pong: MTE2_MTE3{2,3} (RAW) / MTE3_MTE2{2,3} (WAR)
             # ============================================================
             with T.Scope("V"):
-                dk_chunk_ub = T.alloc_ub((1, DQueryIndex), calc_dtype)  # (1,128) fp32
+                dk_chunk_0 = T.alloc_ub((1, DQueryIndex), calc_dtype)
+                dk_chunk_1 = T.alloc_ub((1, DQueryIndex), calc_dtype)
 
                 if vid == 0:
                     for s1_row in T.serial(s1_start, s1_end):
+                        # Pre-fill WAR: both slots initially writable
+                        T.set_flag("mte3", "mte2", 2)
+                        T.set_flag("mte3", "mte2", 3)
+
+                        # Prologue: load k_start → slot 0
+                        T.wait_flag("mte3", "mte2", 2)
+                        T.copy(dk_matmul_partial[bz, s1_row, k_start:k_start + 1, 0:DQueryIndex], dk_chunk_0)
+                        T.set_flag("mte2", "mte3", 2)
+
                         for k_id in T.serial(k_start, k_end):
+                            cur = (k_id - k_start) % 2
+                            nxt = (k_id - k_start + 1) % 2
+
+                            # Compute current slot
+                            T.wait_flag("mte2", "mte3", cur + 2)
                             idx = SparseIndices[bz, s1_row, 0, k_id]
                             if idx >= 0:
-                                T.copy(dk_matmul_partial[bz, s1_row, k_id:k_id + 1, 0:DQueryIndex], dk_chunk_ub)
-                                # RAW: atomic write 等 GM→UB 载入完成
-                                T.set_flag("mte2", "mte3", 0)
-                                T.wait_flag("mte2", "mte3", 0)
-                                T.tile.atomic_add(dKeyIndex[bz, idx, 0, 0], dk_chunk_ub)
-                                # WAR: 下轮 mte2 覆盖前等本轮 atomic 写完
-                                T.set_flag("mte3", "mte2", 1)
-                                T.wait_flag("mte3", "mte2", 1)
+                                if cur == 0:
+                                    T.tile.atomic_add(dKeyIndex[bz, idx, 0, 0], dk_chunk_0)
+                                if cur == 1:
+                                    T.tile.atomic_add(dKeyIndex[bz, idx, 0, 0], dk_chunk_1)
+                            # WAR: current slot consumed → safe to refill
+                            T.set_flag("mte3", "mte2", cur + 2)
+
+                            # Prefetch next iteration (MTE2 load ∥ MTE3 atomic of current)
+                            next_k = k_id + 1
+                            if next_k < k_end:
+                                T.wait_flag("mte3", "mte2", nxt + 2)
+                                if nxt == 0:
+                                    T.copy(dk_matmul_partial[bz, s1_row, next_k:next_k + 1, 0:DQueryIndex], dk_chunk_0)
+                                if nxt == 1:
+                                    T.copy(dk_matmul_partial[bz, s1_row, next_k:next_k + 1, 0:DQueryIndex], dk_chunk_1)
+                                T.set_flag("mte2", "mte3", nxt + 2)
+
+                        # Clear: drain remaining WAR events
+                        T.wait_flag("mte3", "mte2", 2)
+                        T.wait_flag("mte3", "mte2", 3)
 
     return main
 
