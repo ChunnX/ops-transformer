@@ -63,6 +63,7 @@ constexpr uint32_t PER_GROUP_SIZE = 50 * 1024U; // 计算count 50KB per group
 constexpr uint32_t COUNTER_STRIDE = 2U;    // counter前两个数为 state、dstRankRecvNum
 constexpr uint32_t CORE_NUM_RATIO = 2U;     // 计算count perrank/perexpert 核数比例
 constexpr uint8_t BUFFER_NUM = 2;
+constexpr uint64_t CQE_MAX_WRITE_SIZE = 256UL * 1024UL * 1024UL;    // 单cqe内最大数据长度
 
 template <TemplateMoeEpDispatchTypeClass>
 class MoeEpDispatch {
@@ -683,19 +684,29 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::WriteToRemo
             continue;   //  本端slot已经写入win
         }
 
+        uint64_t commHandle = GetCommHandle(mc2Context_, epRankId_, dstRankId);
         if (sendTokenNum > 0) {
             uint64_t sendDataSize = static_cast<uint64_t>(perSlotBytes_) * sendTokenNum;
             uint64_t srcWorkspaceOffset = static_cast<uint64_t>(dstRankId) * axisMaxBS_ * perSlotBytes_;
             uint64_t dstRankWinOffset = static_cast<uint64_t>(epRankId_) * axisMaxBS_ * perSlotBytes_;    // 计算目标窗口地址偏移
             GM_ADDR remoteWinAddr = GetWinAddrByRankId(mc2Context_, dstRankId, winDataOffset_) + dstRankWinOffset;
-            hcomm_.WriteNbi(GetCommHandle(mc2Context_, epRankId_, dstRankId), remoteWinAddr,
-                                  slotWorkspaceAddr_ + srcWorkspaceOffset, sendDataSize);
-            hcomm_.Drain(GetCommHandle(mc2Context_, epRankId_, dstRankId));
+            GM_ADDR localWorkspaceAddr = slotWorkspaceAddr_ + srcWorkspaceOffset;
+            uint64_t splitCnt = (sendDataSize + CQE_MAX_WRITE_SIZE - 1) / CQE_MAX_WRITE_SIZE;
+            uint64_t dataSize = CQE_MAX_WRITE_SIZE;
+
+            for (uint64_t index = 0; index < splitCnt; index++) {
+                if (index == splitCnt - 1) {
+                    dataSize = sendDataSize - index * CQE_MAX_WRITE_SIZE;
+                }
+                hcomm_.WriteNbi(commHandle, remoteWinAddr, localWorkspaceAddr, dataSize);
+                localWorkspaceAddr += dataSize;
+                remoteWinAddr += dataSize;
+            }
+            hcomm_.Drain(commHandle);
         }
-        hcomm_.WriteNbi(GetCommHandle(mc2Context_, epRankId_, dstRankId), notifyAddr,
-                                  sendCntWorkspaceAddr_ + dstRankId * sizeof(uint64_t),
-                                  static_cast<uint64_t>(sizeof(uint64_t)));
-        hcomm_.Drain(GetCommHandle(mc2Context_, epRankId_, dstRankId));
+        hcomm_.WriteNbi(commHandle, notifyAddr, sendCntWorkspaceAddr_ + dstRankId * sizeof(uint64_t),
+                        static_cast<uint64_t>(sizeof(uint64_t)));
+        hcomm_.Drain(commHandle);
     }
 }
 

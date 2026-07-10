@@ -37,7 +37,7 @@
 
     $$dx' = stack((cos1' \cdot dy1' + sin2' \cdot dy2', \ cos2' \cdot dy2' - sin1' \cdot dy1'), \ dim=-1).reshape(dy'.shape)$$
 
-    $dx'$的结果inplace写回`grad_output`的`[start, end)`区间。当`start`与`end`相等时，不执行梯度计算，`grad_output`保持不变。
+    $dx'$的结果inplace写回`grad_output`的`[start, end)`区间。
 
     **说明**
     - 该算子当前仅实现了`rotary_mode="interleave"`模式。half（0）、quarter（2）、interleave-half（3）模式暂未支持。
@@ -69,13 +69,14 @@ cann_ops_transformer.inplace_partial_rotary_mul_backward(grad_output, r1, r2, *,
 - 该算子仅支持Ascend 950 AI Processor。
 - 该算子仅支持连续Tensor，不支持非连续Tensor。
 - **该算子当前版本仅支持 interleave 模式（`rotary_mode="interleave"`）**。half（0）、quarter（2）、interleave-half（3）模式暂未实现。
+- 该算子不支持输入空Tensor（任意维度不能为0），不支持 `partial_slice` 的切片长度为零（即 `end == start`）的场景。
 - `grad_output`最后一维D大小不超过1024。
 - `partial_slice`必须包含两个整数，满足`start >= 0`、`end >= 0`、`end <= D`、`end - start >= 0`。
-- `partial_slice`切片长度（即`end - start`）必须为2的倍数。当`end`和`start`相等时，不做梯度计算，直接返回。
+- `partial_slice`切片长度（即`end - start`）必须为2的倍数，且必须大于0。
 - `r1`、`r2`最后一维大小必须相同，且必须等于`partial_slice`的切片长度（即`end - start`）。
 - `r1`、`r2`的shape必须与`grad_output[..., start:end]`满足广播关系，且存在如下约束：
     - Ascend 950PR/Ascend 950DT：`r1`、`r2`的shape当前只支持BSND、B1ND、B11D、111D排布。
-- `grad_output`的各维度值必须大于0；当`partial_slice`不是空切片时，`r1`、`r2`参与计算的维度值必须大于0。
+- `grad_output`、`r1`、`r2` 的各维度值必须大于0。
 
 ## 确定性计算
 
