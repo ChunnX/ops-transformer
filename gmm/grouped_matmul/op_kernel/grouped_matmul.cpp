@@ -58,7 +58,7 @@ constexpr MatmulConfig matmulCFG = CFG_MDL;
 #endif
 
 #if defined(GMM_ANTI_QUANT_A8W4_MSD)
-constexpr MatmulConfig A8W4_GMM_CFG_MDL = GetNormalConfig();
+constexpr MatmulConfig A8W4_GMM_CFG_MDL = matmulCFG;
 constexpr auto GetMmCFG() {
     auto CFG = CFG_MDL;
     CFG.isPartialOutput = true;
