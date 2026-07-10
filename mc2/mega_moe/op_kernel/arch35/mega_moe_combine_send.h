@@ -257,12 +257,10 @@ template <typename ElementMMadOut2>
 __aicore__ inline void CombineSendTokenToRemote(const Params& params)
 {
     uint32_t maxDataLengthPerBlock = Ops::Base::CeilAlign(static_cast<int64_t>(MegaMoeImpl::L1_TILE_N *
-        sizeof(ElementMMadOut2)), (int64_t)ALIGN_32);
-    PRINTF("===maxDataLengthPerBlock===:%u", maxDataLengthPerBlock);
+        sizeof(ElementMMadOut2)), (int64_t)ALIGN_32); // 512
     uint32_t maxDataSizePerToken = Ops::Base::CeilDiv(static_cast<int64_t>(params.tilingData->h),
-        (int64_t)MegaMoeImpl::L1_TILE_N) * (ALIGN_32 + maxDataLengthPerBlock);
-    PRINTF("===maxDataSizePerToken===:%u", maxDataSizePerToken);
-    LocalTensor<int32_t> sendTensor = LocalTensor<int32_t>(TPosition::VECCALC, ALIGN_512, ALIGN_32 / sizeof(int32_t));
+        (int64_t)MegaMoeImpl::L1_TILE_N) * (ALIGN_32 + maxDataLengthPerBlock); // 2176
+    LocalTensor<int32_t> sendTensor = LocalTensor<int32_t>(TPosition::VECCALC, ALIGN_512, ALIGN_32 / sizeof(int32_t)); //8个
 
     // 分核: 仅 subBlockIdx_==1 的核参与, 核数 = GetBlockNum() (每个 block 的核1)
     uint32_t aivIdx = GetBlockIdx() / GetTaskRation();
@@ -276,15 +274,14 @@ __aicore__ inline void CombineSendTokenToRemote(const Params& params)
     uint32_t endRankId = startRankId + processRankNum;
     uint32_t cntTensorLength = Ops::Base::CeilAlign(static_cast<uint64_t>(processRankNum) * sizeof(uint32_t),
         (uint64_t)ALIGN_32);
-    PRINTF("===cntTensorLength===:%u", cntTensorLength);
     if (startRankId >= endRankId || processRankNum == 0) {
         return;
     }
 
     LocalTensor<int32_t> sendTokenCnt = LocalTensor<int32_t>(TPosition::VECCALC, ALIGN_32 + ALIGN_512,
-        cntTensorLength / sizeof(int32_t));
+        cntTensorLength / sizeof(int32_t));// 1
     LocalTensor<int32_t> totalTokenCnt = LocalTensor<int32_t>(TPosition::VECCALC, ALIGN_32 + ALIGN_512 +
-        cntTensorLength, cntTensorLength / sizeof(int32_t));
+        cntTensorLength, cntTensorLength / sizeof(int32_t)); // 1
     AscendC::Duplicate<int32_t>(sendTokenCnt, 0, processRankNum);
     AscendC::Duplicate<int32_t>(totalTokenCnt, 0, processRankNum);
     SyncFuncStatic<AscendC::HardEvent::V_S, SYNC_EVENT_ID2>();
@@ -296,9 +293,7 @@ __aicore__ inline void CombineSendTokenToRemote(const Params& params)
         (int64_t)ALIGN_256) / (int64_t)sizeof(int32_t);
     int64_t maskAlignSize = Ops::Base::CeilAlign(static_cast<int64_t>(compareCount) / 8, (int64_t)ALIGN_32);
     int64_t maskSlotSize = maskAlignSize + (int64_t)ALIGN_32;
-    PRINTF("===maskSlotSize===:%u", maskSlotSize);
     uint32_t slotWordStride = static_cast<uint32_t>(maskSlotSize / sizeof(int32_t));
-    PRINTF("===slotWordStride===:%u", slotWordStride);
     uint32_t slotCopyStride = static_cast<uint32_t>(maskSlotSize / sizeof(uint8_t));
     uint32_t countWordIdx = static_cast<uint32_t>(maskAlignSize / sizeof(int32_t));
     uint32_t expertPerRank = params.tilingData->expertPerRank;
