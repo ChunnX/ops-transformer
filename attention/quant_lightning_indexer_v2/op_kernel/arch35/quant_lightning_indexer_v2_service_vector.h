@@ -457,7 +457,7 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessVec1(const QLIV2Common::RunIn
         qwDataCopyExtParams.blockCount = curAivS1ProcNum;
         qwDataCopyExtParams.blockLen = gSize_ * sizeof(W_T);
         qwDataCopyExtParams.srcStride = 0;
-        qwDataCopyExtParams.dstStride = (UB_BANK_DEPTH_STRIDE - UB_BANK_STRIDE) / 32;
+        qwDataCopyExtParams.dstStride = (UB_BANK_DEPTH_STRIDE - qwDataCopyExtParams.blockLen) / 32;
         DataCopyPad(weightUB_[qScalepingpong * (UB_BANK_STRIDE / sizeof(W_T))],
                     weightsGm[weightGmOffset], qwDataCopyExtParams, padWeightsParams);
 
@@ -525,7 +525,7 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessVec1(const QLIV2Common::RunIn
     DataCopyExtParams copyOutParams;
     copyOutParams.blockCount = curAivS1ProcNum;
     copyOutParams.blockLen = s2BaseSize_ * sizeof(SCORE_T);
-    copyOutParams.srcStride = (UB_BANK_DEPTH_STRIDE - UB_BANK_STRIDE) / 32;
+    copyOutParams.srcStride = (UB_BANK_DEPTH_STRIDE - copyOutParams.blockLen) / 32;
     copyOutParams.dstStride = (QLIV2Common::Align((uint64_t)constInfo_.kSeqSize, (uint64_t)s2BaseSize_) - s2BaseSize_)
         * sizeof(SCORE_T);
     DataCopyPad(scoreGm[vec1OutGmOffset], outBase, copyOutParams);
