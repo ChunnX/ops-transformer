@@ -19,6 +19,8 @@
 #include "opdev/tensor_view_utils.h"
 #include "acl/acl.h"
 
+#include <cstdio>
+#include <string>
 #include <vector>
 
 using namespace op;
@@ -142,6 +144,52 @@ void FusedInferAttentionScoreProcessSoftmaxLse(bool softmaxLseFlag, const aclTen
 }
 
 namespace {
+constexpr uint64_t DEBUG_TENSOR_LIST_LOG_LIMIT = 4;
+
+template <typename... Args>
+void FiaDebugPrintf(const char *format, Args... args)
+{
+    std::printf(format, args...);
+    std::printf("\n");
+}
+
+void LogTensorDebugInfo(const char *name, const aclTensor *tensor)
+{
+    if (tensor == nullptr) {
+        FiaDebugPrintf("[FIA_DEBUG][INNER] %s is nullptr.", name);
+        return;
+    }
+    FiaDebugPrintf("[FIA_DEBUG][INNER] %s ptr[%p] dtype[%d] viewShape[%s] storageShape[%s] "
+                   "viewOffset[%ld] storageFormat[%d] isContiguous[%d].",
+                   name, static_cast<const void *>(tensor), static_cast<int32_t>(tensor->GetDataType()),
+                   op::ToString(tensor->GetViewShape()).GetString(),
+                   op::ToString(tensor->GetStorageShape()).GetString(), tensor->GetViewOffset(),
+                   static_cast<int32_t>(tensor->GetStorageFormat()), static_cast<int32_t>(IsContiguous(tensor)));
+}
+
+void LogTensorListDebugInfo(const char *name, const aclTensorList *tensorList)
+{
+    if (tensorList == nullptr) {
+        FiaDebugPrintf("[FIA_DEBUG][INNER] %s tensorList is nullptr.", name);
+        return;
+    }
+    FiaDebugPrintf("[FIA_DEBUG][INNER] %s tensorList size[%lu].", name, tensorList->Size());
+    uint64_t logSize = tensorList->Size() < DEBUG_TENSOR_LIST_LOG_LIMIT ?
+        tensorList->Size() : DEBUG_TENSOR_LIST_LOG_LIMIT;
+    for (uint64_t i = 0; i < logSize; ++i) {
+        std::string itemName = std::string(name) + "[" + std::to_string(i) + "]";
+        LogTensorDebugInfo(itemName.c_str(), (*tensorList)[i]);
+    }
+}
+
+void LogIntArrayDebugInfo(const char *name, const aclIntArray *array)
+{
+    if (array == nullptr) {
+        FiaDebugPrintf("[FIA_DEBUG][INNER] %s aclIntArray is nullptr.", name);
+        return;
+    }
+    FiaDebugPrintf("[FIA_DEBUG][INNER] %s aclIntArray size[%lu].", name, array->Size());
+}
 
 bool IsCacheScene(const aclTensor *blockTableOptional)
 {
@@ -168,7 +216,9 @@ bool IsFirstAxisOnlyNonContiguous(const aclTensor *tensor)
     if (tensor == nullptr) {
         return true;
     }
+    LogTensorDebugInfo("IsFirstAxisOnlyNonContiguous.input", tensor);
     if (IsContiguous(tensor)) {
+        FiaDebugPrintf("[FIA_DEBUG][INNER] tensor is contiguous, skip first-axis-only check.");
         return true;
     }
 
@@ -183,6 +233,15 @@ bool IsFirstAxisOnlyNonContiguous(const aclTensor *tensor)
     if (!GetAclTensorViewStrides(tensor, viewStrides, stridesNum)) {
         return false;
     }
+    std::string stridesLog = "[";
+    for (uint64_t i = 0; i < stridesNum; ++i) {
+        if (i != 0) {
+            stridesLog += ", ";
+        }
+        stridesLog += std::to_string(viewStrides[i]);
+    }
+    stridesLog += "]";
+    FiaDebugPrintf("[FIA_DEBUG][INNER] viewStrides num[%lu] value[%s].", stridesNum, stridesLog.c_str());
     if (stridesNum < static_cast<uint64_t>(dimNum)) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "View strides num[%lu] is less than view shape dim num[%ld].",
                 stridesNum, dimNum);
@@ -206,6 +265,8 @@ bool IsFirstAxisOnlyNonContiguous(const aclTensor *tensor)
     delete[] viewStrides;
 
     auto viewOffset = tensor->GetViewOffset();
+    FiaDebugPrintf("[FIA_DEBUG][INNER] first-axis-only result[%d] expectedStride[%ld] viewOffset[%ld].",
+                   static_cast<int32_t>(isFirstAxisOnlyNonContiguous), expectedStride, viewOffset);
     return isFirstAxisOnlyNonContiguous && (expectedStride == 0 || viewOffset % expectedStride == 0);
 }
 
@@ -243,11 +304,15 @@ aclnnStatus MakeTensorListContiguous(const aclTensorList *&tensorList, const cha
             tensors.emplace_back(nullptr);
             continue;
         }
+        std::string beforeName = std::string(name) + ".beforeContiguous[" + std::to_string(i) + "]";
+        LogTensorDebugInfo(beforeName.c_str(), tensor);
         auto contiguousTensor = l0op::Contiguous(tensor, executor);
         if (contiguousTensor == nullptr) {
             OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "Try make %s[%lu] contiguous failed.", name, i);
             return ACLNN_ERR_INNER_NULLPTR;
         }
+        std::string afterName = std::string(name) + ".afterContiguous[" + std::to_string(i) + "]";
+        LogTensorDebugInfo(afterName.c_str(), contiguousTensor);
         tensors.emplace_back(contiguousTensor);
     }
 
@@ -277,6 +342,11 @@ aclnnStatus ProcessKeyValueForContiguous(const aclTensorList *&key, const aclTen
         return ACLNN_ERR_PARAM_INVALID;
     }
 
+    FiaDebugPrintf("[FIA_DEBUG][INNER] ProcessKeyValueForContiguous cacheScene[%d].",
+                   static_cast<int32_t>(IsCacheScene(blockTableOptional)));
+    LogTensorDebugInfo("ProcessKeyValue.blockTableOptional", blockTableOptional);
+    LogTensorListDebugInfo("ProcessKeyValue.key.before", key);
+    LogTensorListDebugInfo("ProcessKeyValue.value.before", value);
     if (IsCacheScene(blockTableOptional)) {
         CHECK_RET(CheckTensorListFirstAxisOnlyNonContiguous(key, "key") == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
         CHECK_RET(CheckTensorListFirstAxisOnlyNonContiguous(value, "value") == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
@@ -285,6 +355,8 @@ aclnnStatus ProcessKeyValueForContiguous(const aclTensorList *&key, const aclTen
 
     CHECK_RET(MakeTensorListContiguous(key, "key", executor) == ACLNN_SUCCESS, ACLNN_ERR_INNER_NULLPTR);
     CHECK_RET(MakeTensorListContiguous(value, "value", executor) == ACLNN_SUCCESS, ACLNN_ERR_INNER_NULLPTR);
+    LogTensorListDebugInfo("ProcessKeyValue.key.after", key);
+    LogTensorListDebugInfo("ProcessKeyValue.value.after", value);
     return ACLNN_SUCCESS;
 }
 
@@ -338,6 +410,26 @@ aclnnStatus InnerFusedInferAttentionScoreGetWorkspaceSize(
         return ACLNN_ERR_PARAM_NULLPTR;
     }
 
+    FiaDebugPrintf("[FIA_DEBUG][INNER] enter InnerFusedInferAttentionScoreGetWorkspaceSize attrs: "
+                   "numHeads[%ld] scale[%f] preTokens[%ld] nextTokens[%ld] inputLayout[%s] "
+                   "numKeyValueHeads[%ld] sparseMode[%ld] innerPrecise[%ld] blockSize[%ld] "
+                   "antiquantMode[%ld] softmaxLseFlag[%d] keyAntiquantMode[%ld] valueAntiquantMode[%ld] "
+                   "queryQuantMode[%ld] pseType[%ld] outDtype[%ld].",
+                   numHeads, scaleValue, preTokens, nextTokens, inputLayout, numKeyValueHeads, sparseMode,
+                   innerPrecise, blockSize, antiquantMode, static_cast<int32_t>(softmaxLseFlag),
+                   keyAntiquantMode, valueAntiquantMode, queryQuantMode, pseType, outDtype);
+    LogTensorDebugInfo("inner.query", query);
+    LogTensorListDebugInfo("inner.key.original", key);
+    LogTensorListDebugInfo("inner.value.original", value);
+    LogTensorDebugInfo("inner.blockTableOptional", blockTableOptional);
+    LogTensorDebugInfo("inner.attentionOut", attentionOut);
+    LogTensorDebugInfo("inner.softmaxLse", softmaxLse);
+    LogIntArrayDebugInfo("inner.actualSeqLengthsOptional", actualSeqLengthsOptional);
+    LogIntArrayDebugInfo("inner.actualSeqLengthsKvOptional", actualSeqLengthsKvOptional);
+    LogIntArrayDebugInfo("inner.actualSharedPrefixLenOptional", actualSharedPrefixLenOptional);
+    LogIntArrayDebugInfo("inner.qStartIdxOptional", qStartIdxOptional);
+    LogIntArrayDebugInfo("inner.kvStartIdxOptional", kvStartIdxOptional);
+
     if (attentionOut->IsEmpty()) {
         *workspaceSize = 0;
         uniqueExecutor.ReleaseTo(executor);
@@ -350,7 +442,10 @@ aclnnStatus InnerFusedInferAttentionScoreGetWorkspaceSize(
     aclOpExecutor *l0Executor = uniqueExecutor.get();
     CHECK_RET(ProcessKeyValueForContiguous(processedKey, processedValue, blockTableOptional, l0Executor) == ACLNN_SUCCESS,
               ACLNN_ERR_PARAM_INVALID);
+    LogTensorListDebugInfo("inner.key.processed", processedKey);
+    LogTensorListDebugInfo("inner.value.processed", processedValue);
 
+    FiaDebugPrintf("[FIA_DEBUG][INNER] before l0op::FusedInferAttentionScore.");
     auto l0Out = l0op::FusedInferAttentionScore(
         query, processedKey, processedValue, pseShiftOptional, attenMaskOptional, actualSeqLengthsOptional,
         actualSeqLengthsKvOptional, deqScale1Optional, quantScale1Optional, deqScale2Optional, quantScale2Optional,
@@ -366,19 +461,26 @@ aclnnStatus InnerFusedInferAttentionScoreGetWorkspaceSize(
     auto l0AttentionOut = std::get<0>(l0Out);
     auto l0SoftmaxLse = std::get<1>(l0Out);
     if (l0AttentionOut == nullptr || l0SoftmaxLse == nullptr) {
+        FiaDebugPrintf("[FIA_DEBUG][INNER] l0op::FusedInferAttentionScore returned nullptr: attention[%p] lse[%p].",
+                       static_cast<const void *>(l0AttentionOut), static_cast<const void *>(l0SoftmaxLse));
         return ACLNN_ERR_INNER_NULLPTR;
     }
+    LogTensorDebugInfo("inner.l0AttentionOut", l0AttentionOut);
+    LogTensorDebugInfo("inner.l0SoftmaxLse", l0SoftmaxLse);
 
     auto attentionViewCopy = l0op::ViewCopy(l0AttentionOut, attentionOut, l0Executor);
     if (attentionViewCopy == nullptr) {
         return ACLNN_ERR_INNER_NULLPTR;
     }
+    LogTensorDebugInfo("inner.attentionViewCopy", attentionViewCopy);
     if (softmaxLseFlag) {
         auto softmaxLseViewCopy = l0op::ViewCopy(l0SoftmaxLse, softmaxLse, l0Executor);
         CHECK_RET(softmaxLseViewCopy != nullptr, ACLNN_ERR_INNER_NULLPTR);
+        LogTensorDebugInfo("inner.softmaxLseViewCopy", softmaxLseViewCopy);
     }
 
     *workspaceSize = uniqueExecutor->GetWorkspaceSize();
+    FiaDebugPrintf("[FIA_DEBUG][INNER] workspaceSize[%lu].", *workspaceSize);
     uniqueExecutor.ReleaseTo(executor);
     return ACLNN_SUCCESS;
 }
