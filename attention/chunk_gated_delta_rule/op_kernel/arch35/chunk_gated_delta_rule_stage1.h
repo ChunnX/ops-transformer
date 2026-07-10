@@ -28,6 +28,9 @@ using bT1 = MatmulType<TPosition::GM, CubeFormat::ND, bfloat16_t>;
 using cT1 = MatmulType<TPosition::GM, CubeFormat::ND, bfloat16_t>;
 using StageOneMT = matmul::MatmulImpl<aT1, bT1, cT1>;
 
+using cT1Fp32 = MatmulType<TPosition::GM, CubeFormat::ND, float>;
+using StageOneMTFp32C = matmul::MatmulImpl<aT1, bT1, cT1Fp32>;
+
 constexpr uint64_t UB_REST_BYTES = 140 * 1024;  // 140KB
 constexpr uint64_t INVERSE_SHAPE = 32;          // 对角块边长
 constexpr uint64_t INVERSE_COUNT = 5;           // 求逆所需空间
@@ -55,7 +58,8 @@ struct GDRStageOneInitParams {
     // ouput
     GlobalTensor<float> gCumExp;        // (Nv, cg_len)
     GlobalTensor<bfloat16_t> kCumdecay;      // (Nv, cg_len, Dk)
-    GlobalTensor<bfloat16_t> vInner;         // (Nv, cg_len, Dv)
+    GlobalTensor<bfloat16_t> vInner;         // (Nv, cg_len, Dv) BF16 vInner (temp for FP32 state path)
+    GlobalTensor<float> vInnerFp32;          // (Nv, cg_len, Dv) FP32 vInner (for FP32 state path)
     GlobalTensor<bfloat16_t> qPrime;         // (Nv, cg_len, Dk)
     GlobalTensor<bfloat16_t> kG;             // (Nv, cg_len, Dk)
     GlobalTensor<bfloat16_t> qK;             // (Nv, cg_len, C)
@@ -64,11 +68,12 @@ struct GDRStageOneInitParams {
     GlobalTensor<float> stageOneMask;   // (Nv, cg_len, C)
     ChunkGroup cg;
     bool gOptional;
+    bool stateIsFp32;
 };
 
 class Stage1 {
 public:
-    __aicore__ inline Stage1(StageOneMT &mm) : mm(mm) {}
+    __aicore__ inline Stage1(StageOneMT &mm, StageOneMTFp32C &mmFp32C) : mm(mm), mmFp32C(mmFp32C) {}
     __aicore__ inline void SetGlobalTensors(const GDRStageOneInitParams &initParams)
     {
         queryGm_ = initParams.query;
@@ -79,6 +84,7 @@ public:
         outGCumExpGm_ = initParams.gCumExp;
         outKCumdecayGm_ = initParams.kCumdecay;
         outVInnerGm_ = initParams.vInner;
+        outVInnerFp32Gm_ = initParams.vInnerFp32;
         outQPrimeGm_ = initParams.qPrime;
         outKgBaseGm_ = initParams.kG;
         outQkGm_ = initParams.qK;
@@ -210,6 +216,7 @@ public:
         coreNum_ = tiling_->aiCoreNum;
         cg_ = initParams.cg;
         gOptional_ = initParams.gOptional;
+        stateIsFp32_ = initParams.stateIsFp32;
         vRowStride_ = nv_ * dv_;
         numChunk_ = (cg_.length + chunkSize_ - 1) / chunkSize_;
         subBlockIdx_ = GetSubBlockIdx();
@@ -327,8 +334,14 @@ private:
 
         // attn @ v_beta    stage1 out
         for (uint32_t i = 0; i < curParaNum; ++i) {
-            AICProcess(attnWsGm_[i * ccOffset_], vBetaWsGm_[i * cvOffset_], outVInnerGm_[chunkRowBase_[i] * dv_],
-                       {chunkSize_, dv_, chunkSize_, chunkSize_, dv_, chunkSize_});
+            if (stateIsFp32_) {
+                AICProcessFp32C(attnWsGm_[i * ccOffset_], vBetaWsGm_[i * cvOffset_],
+                                outVInnerFp32Gm_[chunkRowBase_[i] * dv_],
+                                {chunkSize_, dv_, chunkSize_, chunkSize_, dv_, chunkSize_});
+            } else {
+                AICProcess(attnWsGm_[i * ccOffset_], vBetaWsGm_[i * cvOffset_], outVInnerGm_[chunkRowBase_[i] * dv_],
+                           {chunkSize_, dv_, chunkSize_, chunkSize_, dv_, chunkSize_});
+            }
         }
     }
 
@@ -816,6 +829,17 @@ private:
         mm.End();
     }
 
+    __aicore__ inline void AICProcessFp32C(GlobalTensor<bfloat16_t> x, GlobalTensor<bfloat16_t> y,
+                                           GlobalTensor<float> z, const MatmulShapeParams &shape, bool transB = false)
+    {
+        mmFp32C.SetOrgShape(shape.m, shape.n, shape.k);
+        mmFp32C.SetSingleShape(shape.sm, shape.sn, shape.sk);
+        mmFp32C.SetTensorA(x);
+        mmFp32C.SetTensorB(y, transB);
+        mmFp32C.IterateAll(z);
+        mmFp32C.End();
+    }
+
     __aicore__ inline void InverseAICProcess(GlobalTensor<bfloat16_t> x, GlobalTensor<bfloat16_t> y,
                                              GlobalTensor<bfloat16_t> z)
     {
@@ -829,6 +853,7 @@ private:
     
     TPipe *pipe_;
     StageOneMT &mm;
+    StageOneMTFp32C &mmFp32C;
     const ChunkGatedDeltaRuleTilingData *tiling_;
     ChunkGroup cg_;
     uint32_t nk_;
@@ -848,6 +873,7 @@ private:
     uint32_t coreNum_;
     float scale_;
     bool gOptional_;
+    bool stateIsFp32_;
     uint32_t paraNum_;
     uint64_t ccOffset_;
     uint64_t ckOffset_;
@@ -868,6 +894,7 @@ private:
     GlobalTensor<float> outGCumExpGm_;
     GlobalTensor<bfloat16_t> outKCumdecayGm_;
     GlobalTensor<bfloat16_t> outVInnerGm_;
+    GlobalTensor<float> outVInnerFp32Gm_;
     GlobalTensor<bfloat16_t> outQPrimeGm_;
     GlobalTensor<bfloat16_t> outKgBaseGm_;
     GlobalTensor<bfloat16_t> outKgGm_;

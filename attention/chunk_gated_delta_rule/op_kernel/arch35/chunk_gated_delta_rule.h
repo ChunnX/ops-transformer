@@ -46,7 +46,7 @@ class CGDR {
 public:
     static constexpr bool kStateIsFp32 = std::is_same_v<stateType, float>;
     __aicore__ inline CGDR(TPipe *pipe, const ChunkGatedDeltaRuleTilingData *tilingData)
-        : stageOneOp_(stage1MT_)
+        : stageOneOp_(stage1MT_, stage1MTFp32C_)
     {
         pipe_ = pipe;
         tiling_ = tilingData;
@@ -55,9 +55,10 @@ public:
     __aicore__ inline void InitMatmul()
     {
         if ASCEND_IS_AIC {
-            // 使用 tiling 中的 matmul tiling 数据初始化
             stage1MT_.Init(&tiling_->matmulTilingFp32, pipe_);
+            stage1MTFp32C_.Init(&tiling_->matmulTilingFp32, pipe_);
             stage2MT_.Init(&tiling_->matmulTilingFp32, pipe_);
+            stage2MTFp32C_.Init(&tiling_->matmulTilingFp32, pipe_);
             stage3MT_.Init(&tiling_->matmulTilingFp32, pipe_);
         }
     }
@@ -128,6 +129,11 @@ public:
 
         vInner_.SetGlobalBuffer(reinterpret_cast<__gm__ lowType *>(user + offset));
         offset += sizeof(lowType) * tiling_->nv * tiling_->maxGroupLength * tiling_->dv;
+
+        if constexpr (kStateIsFp32) {
+            vInnerFp32_.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(user + offset));
+            offset += sizeof(float) * tiling_->nv * tiling_->maxGroupLength * tiling_->dv;
+        }
 
         qPrime_.SetGlobalBuffer(reinterpret_cast<__gm__ lowType *>(user + offset));
         offset += sizeof(lowType) * tiling_->nv * tiling_->maxGroupLength * tiling_->dk;
@@ -203,8 +209,8 @@ private:
     __aicore__ inline void RunStage1(const ChunkGroup& cg)
     {
         GDRStageOneInitParams initStageOneParams {query_, key_, value_, beta_, g_,
-                                                gCum_, kCumDecay_, vInner_, qPrime_, kg_, qkt_,
-                                                stageWsAddr_, stageOneMask_, cg, gFlag_};
+                                                gCum_, kCumDecay_, vInner_, vInnerFp32_, qPrime_, kg_, qkt_,
+                                                stageWsAddr_, stageOneMask_, cg, gFlag_, kStateIsFp32};
         stageOneOp_.Init(initStageOneParams, pipe_, tiling_);
         stageOneOp_.Process();
         pipe_->Reset();
@@ -218,12 +224,14 @@ private:
         StageTwoParams initStageTwoParams;
         initStageTwoParams.qPrime = qPrime_;
         initStageTwoParams.vInner = vInner_;
+        initStageTwoParams.vInnerFp32 = vInnerFp32_;
         initStageTwoParams.gCum = gCum_;
         initStageTwoParams.kCumdecay = kCumDecay_;
         initStageTwoParams.kg = kg_;
         initStageTwoParams.out = out_[cg.startPos * tiling_->nv * tiling_->dv];
         initStageTwoParams.ws = stageWsAddr_;
         initStageTwoParams.mm1 = &stage2MT_;
+        initStageTwoParams.mm1Fp32C = &stage2MTFp32C_;
         initStageTwoParams.pipe = pipe_;
         initStageTwoParams.cg = &cg;
         initStageTwoParams.Nv = tiling_->nv;
@@ -280,7 +288,8 @@ private:
 
     GlobalTensor<highType> gCum_;      // (Nv, maxGroupLength)
     GlobalTensor<lowType> kCumDecay_;     // (Nv, maxGroupLength, Dk)
-    GlobalTensor<lowType> vInner_;       // (Nv, maxGroupLength, Dv)
+    GlobalTensor<lowType> vInner_;       // (Nv, maxGroupLength, Dv) BF16 (temp for FP32 state path)
+    GlobalTensor<float> vInnerFp32_;     // (Nv, maxGroupLength, Dv) FP32 (for FP32 state path)
     GlobalTensor<lowType> qPrime_;        // (Nv, maxGroupLength, Dk)
     GlobalTensor<lowType> attnInter_;    // (Nv, maxGroupLength, Dv)
     GlobalTensor<lowType> kg_;           // (Nv, maxGroupLength, Dk)
@@ -294,7 +303,9 @@ private:
 
     // Matmul objects
     StageOneMT stage1MT_;
+    StageOneMTFp32C stage1MTFp32C_;
     StageTwoMT stage2MT_;
+    StageTwoMTFp32C stage2MTFp32C_;
     StageThreeMT stage3MT_;
 
     // Stage operators
