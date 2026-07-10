@@ -142,8 +142,9 @@ aclnnStatus Mc2Context::GetHcclCommLink(const HcclComm &hcclHandle, uint32_t net
         return ACLNN_ERR_INNER;
     }
     if (netLinkNum == 0) {
-        OP_LOGE_LIBOPAPI_REPORT("Mc2Context", "The Net Link Is nullptr. srcRankId is %u, dstRankId is %u, layerId is %u", srcRankId,
-                dstRankId, netLayerId);
+        OP_LOGE_LIBOPAPI_REPORT("Mc2Context",
+                                "The Net Link Is nullptr. srcRankId is %u, dstRankId is %u, layerId is %u", srcRankId,
+                                dstRankId, netLayerId);
         return ACLNN_ERR_INNER;
     }
     OP_LOGD("Get HCCL Rank Links Success Links Num is: %u", netLinkNum);
@@ -155,7 +156,8 @@ aclnnStatus Mc2Context::GetHcclCommLink(const HcclComm &hcclHandle, uint32_t net
         }
     }
     if (index == netLinkNum) {
-        OP_LOGE_LIBOPAPI_REPORT("Mc2Context", "No matching communication protocol found in HCCL links protocol is %d", protocol);
+        OP_LOGE_LIBOPAPI_REPORT("Mc2Context", "No matching communication protocol found in HCCL links protocol is %d",
+                                protocol);
         return ACLNN_ERR_INNER;
     }
     OP_LOGD("Get HCCL communication link success, protocol is: %d", protocol);
@@ -422,13 +424,15 @@ aclnnStatus Mc2Context::CheckProtocolSupport(const HcclComm &hcclHandle, uint32_
                 return ACLNN_ERR_INNER;
             }
             if (netLinkNum == 0) {
-                OP_LOGE_LIBOPAPI_REPORT("Mc2Context", "No available HCCL links found, srcRankID %u, dstRankID %u layer is %u",
-                        srcRankId, rankIdLists[rankId], layerList[layerIndex]);
+                OP_LOGE_LIBOPAPI_REPORT("Mc2Context",
+                                        "No available HCCL links found, srcRankID %u, dstRankID %u layer is %u",
+                                        srcRankId, rankIdLists[rankId], layerList[layerIndex]);
                 return ACLNN_ERR_INNER;
             }
             if (CheckLinks(netLinkNum, linksList) != ACLNN_SUCCESS) {
-                OP_LOGE_LIBOPAPI_REPORT("Mc2Context", "No HCCL links support UB_MEM srcRankID %u, dstRankID %u layer is %u",
-                        srcRankId, rankIdLists[rankId], layerList[layerIndex]);
+                OP_LOGE_LIBOPAPI_REPORT("Mc2Context",
+                                        "No HCCL links support UB_MEM srcRankID %u, dstRankID %u layer is %u",
+                                        srcRankId, rankIdLists[rankId], layerList[layerIndex]);
                 return ACLNN_ERR_INNER;
             }
             layerMap[rankIdLists[rankId]] = layerList[layerIndex];
@@ -470,7 +474,7 @@ aclnnStatus Mc2Context::ValidateContextTag(const std::string &mc2ContextTag)
 {
     if (mc2ContextTag.size() > MAX_CONTEXT_TAG_SIZE) {
         OP_LOGE_LIBOPAPI_REPORT("Mc2Context", "Mc2ContextTag is too long, max size is %u, but current size is %u",
-                MAX_CONTEXT_TAG_SIZE, mc2ContextTag.size());
+                                MAX_CONTEXT_TAG_SIZE, mc2ContextTag.size());
         return ACLNN_ERR_INNER;
     }
     return ACLNN_SUCCESS;
@@ -527,8 +531,8 @@ aclnnStatus Mc2Context::GetMc2ContextTensor(const char *groupEp, const char *opN
     CHECK_RET(aclnnRet == ACLNN_SUCCESS, aclnnRet);
 
     Mc2MoeContext mc2ContextStruct;
-    aclnnRet = instance.CreatMc2Context(hcclHandle, mc2ContextTag, engine, protocol,
-                                        &mc2ContextStruct, ctx, hcclBuffSize);
+    aclnnRet =
+        instance.CreatMc2Context(hcclHandle, mc2ContextTag, engine, protocol, &mc2ContextStruct, ctx, hcclBuffSize);
     CHECK_RET(aclnnRet == ACLNN_SUCCESS, aclnnRet);
 
     aclnnRet = instance.CreatMc2ContextTensor(ctx, mc2Context);

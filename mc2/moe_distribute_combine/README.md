@@ -267,7 +267,7 @@
 
 - 通信方式约束：
     - <term>Ascend 950DT</term>：仅支持UB Memory通信。
-    
+
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
     - 参数说明里shape格式说明：
         - `H`：表示hidden size隐藏层大小，取值范围(0, 7168]，且保证是32的整数倍。

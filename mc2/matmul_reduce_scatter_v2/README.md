@@ -44,37 +44,37 @@
         $$
         output=ReduceScatter(\sum_{0}^{\left \lfloor \frac{k}{blockSize=32} \right \rfloor} (x1_{pr}@x2_{rq}*(x1Scale_{pr}*x2Scale_{rq})))
         $$
-    
+
 ## 函数原型
 
 每个算子分为两段式接口，必须先调用`aclnnMatmulReduceScatterV2GetWorkspaceSize`接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用`aclnnMatmulReduceScatterV2`接口执行计算。
 
 ```cpp
 aclnnStatus aclnnMatmulReduceScatterV2GetWorkspaceSize(
-    const aclTensor* x1, 
-    const aclTensor* x2, 
-    const aclTensor* bias, 
-    const aclTensor* x1Scale, 
-    const aclTensor* x2Scale, 
-    const aclTensor* quantScale, 
-    int64_t          blockSize, 
-    const char*      group, 
-    const char*      reduceOp, 
-    int64_t          commTurn, 
-    int64_t          streamMode, 
-    int64_t          groupSize, 
-    const char*      commMode, 
-    aclTensor*       output, 
-    aclTensor*       amaxOutOptional, 
-    uint64_t*        workspaceSize, 
+    const aclTensor* x1,
+    const aclTensor* x2,
+    const aclTensor* bias,
+    const aclTensor* x1Scale,
+    const aclTensor* x2Scale,
+    const aclTensor* quantScale,
+    int64_t          blockSize,
+    const char*      group,
+    const char*      reduceOp,
+    int64_t          commTurn,
+    int64_t          streamMode,
+    int64_t          groupSize,
+    const char*      commMode,
+    aclTensor*       output,
+    aclTensor*       amaxOutOptional,
+    uint64_t*        workspaceSize,
     aclOpExecutor**  executor)
 ```
 
 ```cpp
 aclnnStatus aclnnMatmulReduceScatterV2(
-    void          *workspace, 
-    uint64_t       workspaceSize, 
-    aclOpExecutor *executor, 
+    void          *workspace,
+    uint64_t       workspaceSize,
+    aclOpExecutor *executor,
     aclrtStream    stream)
 ```
 

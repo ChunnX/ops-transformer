@@ -30,7 +30,7 @@
 #include "../../op_kernel/moe_ep_dispatch_epilogue_tiling_key.h"
 
 #ifndef ALIGN_UP
-#define ALIGN_UP(x, align) (((x) + (align)-1) & ~((align)-1))
+#define ALIGN_UP(x, align) (((x) + (align) - 1) & ~((align) - 1))
 #endif
 
 using namespace AscendC;
@@ -59,7 +59,7 @@ constexpr uint32_t ATTR_EXPERT_ALIGNMENT_INDEX = 5;
 
 constexpr uint32_t ONE_DIM = 1U;
 constexpr uint32_t TWO_DIMS = 2U;
-constexpr int64_t META_INNER_DIM = 4;            // recvSrcMetadata dim(1) = 4
+constexpr int64_t META_INNER_DIM = 4; // recvSrcMetadata dim(1) = 4
 constexpr uint32_t SYSTEM_NEED_WORKSPACE = 16U * 1024U * 1024U;
 constexpr uint64_t WIN_ADDR_ALIGN = 512UL;
 constexpr int64_t MAX_EP_WORLD_SIZE = 128;
@@ -70,19 +70,18 @@ constexpr uint32_t HIDDEN_ALIGN = 32U;
 constexpr uint64_t UB_ALIGN = 32UL;
 constexpr uint64_t MAX_OUT_DTYPE_SIZE = 2UL;
 constexpr uint64_t FP8_DTYPE_SIZE = 1UL;
-constexpr uint64_t METADATA_DTYPE_SIZE = 4UL;   // sizeof(int32)=sizeof(float)=4
+constexpr uint64_t METADATA_DTYPE_SIZE = 4UL; // sizeof(int32)=sizeof(float)=4
 constexpr int64_t SCALES_GROUP_SIZE_MXFP = 32;
 constexpr int64_t SCALES_GROUP_SIZE_PERGROUP = 128;
-constexpr int64_t SCALES_ALIGN_EVEN = 2;    // fp8 align 2
+constexpr int64_t SCALES_ALIGN_EVEN = 2; // fp8 align 2
 
 static void PrintTilingDataInfo(const char *nodeName, const MoeEpDispatchEpilogueInfo &info)
 {
-    OP_LOGD(nodeName, "epWorldSize=%u, epRankId=%u, numExperts=%u, numLocalExperts=%u",
-            info.cfg.epWorldSize, info.cfg.epRankId, info.cfg.numExperts, info.cfg.numLocalExperts);
-    OP_LOGD(nodeName, "hidden=%u, topK=%u, numTokens=%u, numMaxTokensPerRank=%u, perSlotBytes=%u",
-            info.cfg.hidden, info.cfg.topK, info.cfg.numTokens, info.cfg.numMaxTokensPerRank, info.cfg.perSlotBytes);
-    OP_LOGD(nodeName, "aivNum=%u, cached=%u, scalesBytes=%u",
-            info.aivNum, info.cached, info.cfg.scalesBytes);
+    OP_LOGD(nodeName, "epWorldSize=%u, epRankId=%u, numExperts=%u, numLocalExperts=%u", info.cfg.epWorldSize,
+            info.cfg.epRankId, info.cfg.numExperts, info.cfg.numLocalExperts);
+    OP_LOGD(nodeName, "hidden=%u, topK=%u, numTokens=%u, numMaxTokensPerRank=%u, perSlotBytes=%u", info.cfg.hidden,
+            info.cfg.topK, info.cfg.numTokens, info.cfg.numMaxTokensPerRank, info.cfg.perSlotBytes);
+    OP_LOGD(nodeName, "aivNum=%u, cached=%u, scalesBytes=%u", info.aivNum, info.cached, info.cfg.scalesBytes);
 }
 
 // ---------------------------------------------------------------------------
@@ -106,31 +105,31 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, const
     OP_TILING_CHECK(numExpertsPtr == nullptr, OP_LOGE(nodeName, "numExpertsPtr is null."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(nmtPtr == nullptr, OP_LOGE(nodeName, "nmtPtr is null."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(cclBufferSizePtr == nullptr, OP_LOGE(nodeName, "cclBufferSizePtr is null."),
-        return ge::GRAPH_FAILED);
+                    return ge::GRAPH_FAILED);
     OP_TILING_CHECK(expertAlignmentPtr == nullptr, OP_LOGE(nodeName, "expertAlignmentPtr is null."),
-        return ge::GRAPH_FAILED);
+                    return ge::GRAPH_FAILED);
 
     int64_t epWorldSize = *epWorldSizePtr;
     OP_TILING_CHECK((epWorldSize < MIN_EP_WORLD_SIZE) || (epWorldSize > MAX_EP_WORLD_SIZE),
-        OP_LOGE(nodeName, "epWorldSize is invalid, should be in [%ld, %ld], got %ld.",
-            MIN_EP_WORLD_SIZE, MAX_EP_WORLD_SIZE, epWorldSize),
+                    OP_LOGE(nodeName, "epWorldSize is invalid, should be in [%ld, %ld], got %ld.", MIN_EP_WORLD_SIZE,
+                            MAX_EP_WORLD_SIZE, epWorldSize),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        (*epRankIdPtr < 0) || (*epRankIdPtr >= epWorldSize),
+        OP_LOGE(nodeName, "epRankId is invalid, should be in [0, %ld), got %ld.", epWorldSize, *epRankIdPtr),
         return ge::GRAPH_FAILED);
-    OP_TILING_CHECK((*epRankIdPtr < 0) || (*epRankIdPtr >= epWorldSize),
-        OP_LOGE(nodeName, "epRankId is invalid, should be in [0, %ld), got %ld.",
-            epWorldSize, *epRankIdPtr),
-        return ge::GRAPH_FAILED);
-    OP_TILING_CHECK((*numExpertsPtr <= 0) || (*numExpertsPtr % epWorldSize != 0),
-        OP_LOGE(nodeName, "numExperts must be positive and divisible by epWorldSize, got %ld.",
-            *numExpertsPtr),
+    OP_TILING_CHECK(
+        (*numExpertsPtr <= 0) || (*numExpertsPtr % epWorldSize != 0),
+        OP_LOGE(nodeName, "numExperts must be positive and divisible by epWorldSize, got %ld.", *numExpertsPtr),
         return ge::GRAPH_FAILED);
     OP_TILING_CHECK(*nmtPtr <= 0, OP_LOGE(nodeName, "numMaxTokensPerRank must be positive, got %ld.", *nmtPtr),
-        return ge::GRAPH_FAILED);
+                    return ge::GRAPH_FAILED);
     OP_TILING_CHECK(*cclBufferSizePtr <= 0,
-        OP_LOGE(nodeName, "cclBufferSize must be positive, got %ld.", *cclBufferSizePtr),
-        return ge::GRAPH_FAILED);
+                    OP_LOGE(nodeName, "cclBufferSize must be positive, got %ld.", *cclBufferSizePtr),
+                    return ge::GRAPH_FAILED);
     OP_TILING_CHECK(*expertAlignmentPtr != 1,
-        OP_LOGE(nodeName, "expertAlignment must be 1, got %ld.", *expertAlignmentPtr),
-        return ge::GRAPH_FAILED);
+                    OP_LOGE(nodeName, "expertAlignment must be 1, got %ld.", *expertAlignmentPtr),
+                    return ge::GRAPH_FAILED);
 
     info.cfg.epWorldSize = static_cast<uint32_t>(epWorldSize);
     info.cfg.epRankId = static_cast<uint32_t>(*epRankIdPtr);
@@ -149,40 +148,40 @@ static ge::graphStatus CheckInputDataType(const gert::TilingContext *context, co
 {
     auto contextDesc = context->GetInputDesc(CONTEXT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, contextDesc);
-    OP_TILING_CHECK(contextDesc->GetDataType() != ge::DT_INT32,
-        OP_LOGE(nodeName, "context dtype must be int32, got %d.",
-            static_cast<int32_t>(contextDesc->GetDataType())),
+    OP_TILING_CHECK(
+        contextDesc->GetDataType() != ge::DT_INT32,
+        OP_LOGE(nodeName, "context dtype must be int32, got %d.", static_cast<int32_t>(contextDesc->GetDataType())),
         return ge::GRAPH_FAILED);
 
     auto dstSlotDesc = context->GetInputDesc(DST_BUFFER_SLOT_IDX_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, dstSlotDesc);
     OP_TILING_CHECK(dstSlotDesc->GetDataType() != ge::DT_INT32,
-        OP_LOGE(nodeName, "dstBufferSlotIdx dtype must be int32, got %d.",
-            static_cast<int32_t>(dstSlotDesc->GetDataType())),
-        return ge::GRAPH_FAILED);
+                    OP_LOGE(nodeName, "dstBufferSlotIdx dtype must be int32, got %d.",
+                            static_cast<int32_t>(dstSlotDesc->GetDataType())),
+                    return ge::GRAPH_FAILED);
 
     if (cached) {
         auto recvSrcMetaDesc = context->GetInputDesc(CACHED_RECV_SRC_METADATA_INDEX);
         OP_CHECK_NULL_WITH_CONTEXT(context, recvSrcMetaDesc);
         OP_TILING_CHECK(recvSrcMetaDesc->GetDataType() != ge::DT_INT32,
-            OP_LOGE(nodeName, "cachedRecvSrcMetadata dtype must be int32, got %d.",
-                static_cast<int32_t>(recvSrcMetaDesc->GetDataType())),
-            return ge::GRAPH_FAILED);
+                        OP_LOGE(nodeName, "cachedRecvSrcMetadata dtype must be int32, got %d.",
+                                static_cast<int32_t>(recvSrcMetaDesc->GetDataType())),
+                        return ge::GRAPH_FAILED);
     }
 
     auto numRecvRankDesc = context->GetInputDesc(NUM_RECV_PER_RANK_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, numRecvRankDesc);
     OP_TILING_CHECK(numRecvRankDesc->GetDataType() != ge::DT_INT32,
-        OP_LOGE(nodeName, "numRecvPerRank dtype must be int32, got %d.",
-            static_cast<int32_t>(numRecvRankDesc->GetDataType())),
-        return ge::GRAPH_FAILED);
+                    OP_LOGE(nodeName, "numRecvPerRank dtype must be int32, got %d.",
+                            static_cast<int32_t>(numRecvRankDesc->GetDataType())),
+                    return ge::GRAPH_FAILED);
 
     auto numRecvExpertDesc = context->GetInputDesc(NUM_RECV_PER_EXPERT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, numRecvExpertDesc);
     OP_TILING_CHECK(numRecvExpertDesc->GetDataType() != ge::DT_INT64,
-        OP_LOGE(nodeName, "numRecvPerExpert dtype must be int64, got %d.",
-            static_cast<int32_t>(numRecvExpertDesc->GetDataType())),
-        return ge::GRAPH_FAILED);
+                    OP_LOGE(nodeName, "numRecvPerExpert dtype must be int64, got %d.",
+                            static_cast<int32_t>(numRecvExpertDesc->GetDataType())),
+                    return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -197,75 +196,76 @@ static ge::graphStatus CheckInputTensorShape(const gert::TilingContext *context,
     // ---- context: dim 必须 = 1 ----
     const gert::StorageShape *contextStorageShape = context->GetInputShape(CONTEXT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, contextStorageShape);
-    OP_TILING_CHECK(contextStorageShape->GetStorageShape().GetDimNum() != ONE_DIM,
-        OP_LOGE(nodeName, "contextShape dims must be 1, got %lu.",
-            contextStorageShape->GetStorageShape().GetDimNum()),
+    OP_TILING_CHECK(
+        contextStorageShape->GetStorageShape().GetDimNum() != ONE_DIM,
+        OP_LOGE(nodeName, "contextShape dims must be 1, got %lu.", contextStorageShape->GetStorageShape().GetDimNum()),
         return ge::GRAPH_FAILED);
 
     // ---- dstBufferSlotIdx [num_tokens, top_k] int32 ----
     const gert::StorageShape *dstSlotShape = context->GetInputShape(DST_BUFFER_SLOT_IDX_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, dstSlotShape);
     OP_TILING_CHECK(dstSlotShape->GetStorageShape().GetDimNum() != TWO_DIMS,
-        OP_LOGE(nodeName, "dstBufferSlotIdxShape dims must be 2, got %lu.",
-            dstSlotShape->GetStorageShape().GetDimNum()),
-        return ge::GRAPH_FAILED);
+                    OP_LOGE(nodeName, "dstBufferSlotIdxShape dims must be 2, got %lu.",
+                            dstSlotShape->GetStorageShape().GetDimNum()),
+                    return ge::GRAPH_FAILED);
     const int64_t numTokens = dstSlotShape->GetStorageShape().GetDim(0);
     const int64_t topK = dstSlotShape->GetStorageShape().GetDim(1);
     OP_TILING_CHECK(numTokens <= 0,
-        OP_LOGE(nodeName, "dstBufferSlotIdx dim0(numTokens) must be positive, got %ld.", numTokens),
-        return ge::GRAPH_FAILED);
+                    OP_LOGE(nodeName, "dstBufferSlotIdx dim0(numTokens) must be positive, got %ld.", numTokens),
+                    return ge::GRAPH_FAILED);
     OP_TILING_CHECK((topK <= 0) || (topK > K_MAX),
-        OP_LOGE(nodeName, "dstBufferSlotIdx dim1(topK) must be in (0, %ld], got %ld.", K_MAX, topK),
-        return ge::GRAPH_FAILED);
+                    OP_LOGE(nodeName, "dstBufferSlotIdx dim1(topK) must be in (0, %ld], got %ld.", K_MAX, topK),
+                    return ge::GRAPH_FAILED);
 
     // ---- cachedRecvSrcMetadata [*, 4] int32 (OPTIONAL，cached 路径才校验) ----
     if (cached) {
         const gert::StorageShape *recvSrcMetaShape = context->GetInputShape(CACHED_RECV_SRC_METADATA_INDEX);
         OP_CHECK_NULL_WITH_CONTEXT(context, recvSrcMetaShape);
         OP_TILING_CHECK(recvSrcMetaShape->GetStorageShape().GetDimNum() != TWO_DIMS,
-            OP_LOGE(nodeName, "cachedRecvSrcMetadataShape dims must be 2, got %lu.",
-                recvSrcMetaShape->GetStorageShape().GetDimNum()),
-            return ge::GRAPH_FAILED);
-        const int64_t minTopKLocalExperts = (topK < static_cast<int64_t>(info.cfg.numLocalExperts))
-                                            ? topK : static_cast<int64_t>(info.cfg.numLocalExperts);
-        const int64_t metaUpper = static_cast<int64_t>(info.cfg.epWorldSize)
-                                  * static_cast<int64_t>(info.cfg.numMaxTokensPerRank)
-                                  * minTopKLocalExperts;
+                        OP_LOGE(nodeName, "cachedRecvSrcMetadataShape dims must be 2, got %lu.",
+                                recvSrcMetaShape->GetStorageShape().GetDimNum()),
+                        return ge::GRAPH_FAILED);
+        const int64_t minTopKLocalExperts = (topK < static_cast<int64_t>(info.cfg.numLocalExperts)) ?
+                                                topK :
+                                                static_cast<int64_t>(info.cfg.numLocalExperts);
+        const int64_t metaUpper = static_cast<int64_t>(info.cfg.epWorldSize) *
+                                  static_cast<int64_t>(info.cfg.numMaxTokensPerRank) * minTopKLocalExperts;
         const int64_t metaDim0 = recvSrcMetaShape->GetStorageShape().GetDim(0);
         const int64_t metaDim1 = recvSrcMetaShape->GetStorageShape().GetDim(1);
-        OP_TILING_CHECK(metaDim0 < 0 || metaDim0 > metaUpper,
+        OP_TILING_CHECK(
+            metaDim0 < 0 || metaDim0 > metaUpper,
             OP_LOGE(nodeName, "cachedRecvSrcMetadata dim0 must be in [0, %ld], got %ld.", metaUpper, metaDim0),
             return ge::GRAPH_FAILED);
         OP_TILING_CHECK(metaDim1 != META_INNER_DIM,
-            OP_LOGE(nodeName, "cachedRecvSrcMetadata dim1 must be %ld, got %ld.", META_INNER_DIM, metaDim1),
-            return ge::GRAPH_FAILED);
+                        OP_LOGE(nodeName, "cachedRecvSrcMetadata dim1 must be %ld, got %ld.", META_INNER_DIM, metaDim1),
+                        return ge::GRAPH_FAILED);
     }
 
     // ---- numRecvPerRank [ep_world_size] int32 ----
     const gert::StorageShape *numRecvRankShape = context->GetInputShape(NUM_RECV_PER_RANK_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, numRecvRankShape);
     OP_TILING_CHECK(numRecvRankShape->GetStorageShape().GetDimNum() != ONE_DIM,
-        OP_LOGE(nodeName, "numRecvPerRankShape dims must be 1, got %lu.",
-            numRecvRankShape->GetStorageShape().GetDimNum()),
-        return ge::GRAPH_FAILED);
+                    OP_LOGE(nodeName, "numRecvPerRankShape dims must be 1, got %lu.",
+                            numRecvRankShape->GetStorageShape().GetDimNum()),
+                    return ge::GRAPH_FAILED);
     const int64_t numRecvRankDim0 = numRecvRankShape->GetStorageShape().GetDim(0);
     OP_TILING_CHECK(numRecvRankDim0 != static_cast<int64_t>(info.cfg.epWorldSize),
-        OP_LOGE(nodeName, "numRecvPerRank dim0 must equal epWorldSize=%u, got %ld.",
-            info.cfg.epWorldSize, numRecvRankDim0),
-        return ge::GRAPH_FAILED);
+                    OP_LOGE(nodeName, "numRecvPerRank dim0 must equal epWorldSize=%u, got %ld.", info.cfg.epWorldSize,
+                            numRecvRankDim0),
+                    return ge::GRAPH_FAILED);
 
     // ---- numRecvPerExpert [num_local_experts] int64 ----
     const gert::StorageShape *numRecvExpertShape = context->GetInputShape(NUM_RECV_PER_EXPERT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, numRecvExpertShape);
     OP_TILING_CHECK(numRecvExpertShape->GetStorageShape().GetDimNum() != ONE_DIM,
-        OP_LOGE(nodeName, "numRecvPerExpertShape dims must be 1, got %lu.",
-            numRecvExpertShape->GetStorageShape().GetDimNum()),
-        return ge::GRAPH_FAILED);
+                    OP_LOGE(nodeName, "numRecvPerExpertShape dims must be 1, got %lu.",
+                            numRecvExpertShape->GetStorageShape().GetDimNum()),
+                    return ge::GRAPH_FAILED);
     const int64_t numRecvExpertDim0 = numRecvExpertShape->GetStorageShape().GetDim(0);
     OP_TILING_CHECK(numRecvExpertDim0 != static_cast<int64_t>(info.cfg.numLocalExperts),
-        OP_LOGE(nodeName, "numRecvPerExpert dim0 must equal numLocalExperts=%u, got %ld.",
-            info.cfg.numLocalExperts, numRecvExpertDim0),
-        return ge::GRAPH_FAILED);
+                    OP_LOGE(nodeName, "numRecvPerExpert dim0 must equal numLocalExperts=%u, got %ld.",
+                            info.cfg.numLocalExperts, numRecvExpertDim0),
+                    return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -282,19 +282,19 @@ static ge::graphStatus CheckRecvScalesTensor(const gert::TilingContext *context,
 
     OP_CHECK_NULL_WITH_CONTEXT(context, recvScalesDesc);
     OP_CHECK_NULL_WITH_CONTEXT(context, recvScalesShape);
-    OP_TILING_CHECK(recvScalesShape->GetStorageShape().GetDimNum() != TWO_DIMS,
-        OP_LOGE(nodeName, "recvScales dims must be 2, got %lu.",
-            recvScalesShape->GetStorageShape().GetDimNum()),
+    OP_TILING_CHECK(
+        recvScalesShape->GetStorageShape().GetDimNum() != TWO_DIMS,
+        OP_LOGE(nodeName, "recvScales dims must be 2, got %lu.", recvScalesShape->GetStorageShape().GetDimNum()),
         return ge::GRAPH_FAILED);
     OP_TILING_CHECK(recvScalesShape->GetStorageShape().GetDim(0) != aAlloc,
-        OP_LOGE(nodeName, "recvScales dim0 must equal recvX dim0=%ld, got %ld.",
-            aAlloc, recvScalesShape->GetStorageShape().GetDim(0)),
-        return ge::GRAPH_FAILED);
+                    OP_LOGE(nodeName, "recvScales dim0 must equal recvX dim0=%ld, got %ld.", aAlloc,
+                            recvScalesShape->GetStorageShape().GetDim(0)),
+                    return ge::GRAPH_FAILED);
 
     const ge::DataType scalesDtype = recvScalesDesc->GetDataType();
-    OP_TILING_CHECK(scalesDtype != ge::DT_FLOAT && scalesDtype != ge::DT_FLOAT8_E8M0,
-        OP_LOGE(nodeName, "recvScales dtype must be float or fp8_e8m0, got %d.",
-            static_cast<int32_t>(scalesDtype)),
+    OP_TILING_CHECK(
+        scalesDtype != ge::DT_FLOAT && scalesDtype != ge::DT_FLOAT8_E8M0,
+        OP_LOGE(nodeName, "recvScales dtype must be float or fp8_e8m0, got %d.", static_cast<int32_t>(scalesDtype)),
         return ge::GRAPH_FAILED);
     const int64_t groupSize = (scalesDtype == ge::DT_FLOAT) ? SCALES_GROUP_SIZE_PERGROUP : SCALES_GROUP_SIZE_MXFP;
     int64_t expectedDim1 = (hidden + groupSize - 1) / groupSize;
@@ -302,9 +302,9 @@ static ge::graphStatus CheckRecvScalesTensor(const gert::TilingContext *context,
         expectedDim1 = (expectedDim1 + SCALES_ALIGN_EVEN - 1) / SCALES_ALIGN_EVEN * SCALES_ALIGN_EVEN;
     }
     OP_TILING_CHECK(recvScalesShape->GetStorageShape().GetDim(1) != expectedDim1,
-        OP_LOGE(nodeName, "recvScales dim1 must be %ld, got %ld.",
-            expectedDim1, recvScalesShape->GetStorageShape().GetDim(1)),
-        return ge::GRAPH_FAILED);
+                    OP_LOGE(nodeName, "recvScales dim1 must be %ld, got %ld.", expectedDim1,
+                            recvScalesShape->GetStorageShape().GetDim(1)),
+                    return ge::GRAPH_FAILED);
 
     uint32_t scalesSize = (scalesDtype == ge::DT_FLOAT) ? sizeof(float) : FP8_DTYPE_SIZE;
     info.cfg.scalesBytes = static_cast<uint32_t>(expectedDim1 * scalesSize);
@@ -319,73 +319,72 @@ static ge::graphStatus CheckOutputTensors(const gert::TilingContext *context, co
     auto recvXShape = context->GetOutputShape(OUT_RECV_X_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, recvXShape);
     OP_TILING_CHECK(recvXShape->GetStorageShape().GetDimNum() != TWO_DIMS,
-        OP_LOGE(nodeName, "recvX dims must be 2, got %lu.",
-            recvXShape->GetStorageShape().GetDimNum()),
-        return ge::GRAPH_FAILED);
+                    OP_LOGE(nodeName, "recvX dims must be 2, got %lu.", recvXShape->GetStorageShape().GetDimNum()),
+                    return ge::GRAPH_FAILED);
     const int64_t aAlloc = recvXShape->GetStorageShape().GetDim(0);
     const int64_t hidden = recvXShape->GetStorageShape().GetDim(1);
-    const int64_t minTopKLocalExperts = (topK < static_cast<int64_t>(info.cfg.numLocalExperts))
-                                         ? topK : static_cast<int64_t>(info.cfg.numLocalExperts);
-    const int64_t aUpper = static_cast<int64_t>(info.cfg.epWorldSize)
-                           * static_cast<int64_t>(info.cfg.numMaxTokensPerRank)
-                           * minTopKLocalExperts;
+    const int64_t minTopKLocalExperts =
+        (topK < static_cast<int64_t>(info.cfg.numLocalExperts)) ? topK : static_cast<int64_t>(info.cfg.numLocalExperts);
+    const int64_t aUpper = static_cast<int64_t>(info.cfg.epWorldSize) *
+                           static_cast<int64_t>(info.cfg.numMaxTokensPerRank) * minTopKLocalExperts;
     OP_TILING_CHECK(aAlloc < 0 || aAlloc > aUpper,
-        OP_LOGE(nodeName, "recvX dim0(A_alloc) must be in [0, ep*nmt*min(topK,numLocalExperts)=%ld], got %ld.",
-            aUpper, aAlloc),
-        return ge::GRAPH_FAILED);
+                    OP_LOGE(nodeName,
+                            "recvX dim0(A_alloc) must be in [0, ep*nmt*min(topK,numLocalExperts)=%ld], got %ld.",
+                            aUpper, aAlloc),
+                    return ge::GRAPH_FAILED);
     OP_TILING_CHECK((hidden <= 0) || (hidden > H_MAX),
-        OP_LOGE(nodeName, "recvX dim1(hidden) must be in (0, %ld], got %ld.", H_MAX, hidden),
-        return ge::GRAPH_FAILED);
+                    OP_LOGE(nodeName, "recvX dim1(hidden) must be in (0, %ld], got %ld.", H_MAX, hidden),
+                    return ge::GRAPH_FAILED);
 
     auto recvXDesc = context->GetOutputDesc(OUT_RECV_X_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, recvXDesc);
     const ge::DataType recvXDtype = recvXDesc->GetDataType();
-    OP_TILING_CHECK(recvXDtype != ge::DT_BF16 && recvXDtype != ge::DT_FLOAT16
-                     && recvXDtype != ge::DT_FLOAT8_E5M2 && recvXDtype != ge::DT_FLOAT8_E4M3FN,
-        OP_LOGE(nodeName, "recvX dtype must be bf16/fp16/fp8_e5m2/fp8_e4m3fn, got %d.",
-            static_cast<int32_t>(recvXDtype)),
-        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(recvXDtype != ge::DT_BF16 && recvXDtype != ge::DT_FLOAT16 && recvXDtype != ge::DT_FLOAT8_E5M2 &&
+                        recvXDtype != ge::DT_FLOAT8_E4M3FN,
+                    OP_LOGE(nodeName, "recvX dtype must be bf16/fp16/fp8_e5m2/fp8_e4m3fn, got %d.",
+                            static_cast<int32_t>(recvXDtype)),
+                    return ge::GRAPH_FAILED);
     OP_TILING_CHECK(CheckRecvScalesTensor(context, nodeName, recvXDtype, aAlloc, hidden, info) != ge::GRAPH_SUCCESS,
-        OP_LOGE(nodeName, "Check recvScales tensor failed."), return ge::GRAPH_FAILED);
+                    OP_LOGE(nodeName, "Check recvScales tensor failed."), return ge::GRAPH_FAILED);
 
     // ---- recvTopkWeights [A_alloc] float (OPTIONAL) ----
     auto recvTopkWeightsShape = context->GetOutputShape(OUT_RECV_TOPK_WEIGHTS_INDEX);
     if (recvTopkWeightsShape != nullptr) {
         OP_TILING_CHECK(recvTopkWeightsShape->GetStorageShape().GetDimNum() != ONE_DIM,
-            OP_LOGE(nodeName, "recvTopkWeights dims must be 1, got %lu.",
-                recvTopkWeightsShape->GetStorageShape().GetDimNum()),
-            return ge::GRAPH_FAILED);
+                        OP_LOGE(nodeName, "recvTopkWeights dims must be 1, got %lu.",
+                                recvTopkWeightsShape->GetStorageShape().GetDimNum()),
+                        return ge::GRAPH_FAILED);
         OP_TILING_CHECK(recvTopkWeightsShape->GetStorageShape().GetDim(0) != aAlloc,
-            OP_LOGE(nodeName, "recvTopkWeights dim0 must equal recvX dim0=%ld, got %ld.",
-                aAlloc, recvTopkWeightsShape->GetStorageShape().GetDim(0)),
-            return ge::GRAPH_FAILED);
+                        OP_LOGE(nodeName, "recvTopkWeights dim0 must equal recvX dim0=%ld, got %ld.", aAlloc,
+                                recvTopkWeightsShape->GetStorageShape().GetDim(0)),
+                        return ge::GRAPH_FAILED);
         auto recvTopkWeightsDesc = context->GetOutputDesc(OUT_RECV_TOPK_WEIGHTS_INDEX);
         OP_CHECK_NULL_WITH_CONTEXT(context, recvTopkWeightsDesc);
         OP_TILING_CHECK(recvTopkWeightsDesc->GetDataType() != ge::DT_FLOAT,
-            OP_LOGE(nodeName, "recvTopkWeights dtype must be float, got %d.",
-                static_cast<int32_t>(recvTopkWeightsDesc->GetDataType())),
-            return ge::GRAPH_FAILED);
+                        OP_LOGE(nodeName, "recvTopkWeights dtype must be float, got %d.",
+                                static_cast<int32_t>(recvTopkWeightsDesc->GetDataType())),
+                        return ge::GRAPH_FAILED);
     }
 
     // ---- recvSrcMetadata [A_alloc, 4] int32 ----
     auto recvSrcMetaShape = context->GetOutputShape(OUT_RECV_SRC_METADATA_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, recvSrcMetaShape);
     OP_TILING_CHECK(recvSrcMetaShape->GetStorageShape().GetDimNum() != TWO_DIMS,
-        OP_LOGE(nodeName, "recvSrcMetadata dims must be 2."), return ge::GRAPH_FAILED);
+                    OP_LOGE(nodeName, "recvSrcMetadata dims must be 2."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(recvSrcMetaShape->GetStorageShape().GetDim(0) != aAlloc,
-        OP_LOGE(nodeName, "recvSrcMetadata dim0 must equal recvX dim0=%ld, got %ld.",
-            aAlloc, recvSrcMetaShape->GetStorageShape().GetDim(0)),
-        return ge::GRAPH_FAILED);
+                    OP_LOGE(nodeName, "recvSrcMetadata dim0 must equal recvX dim0=%ld, got %ld.", aAlloc,
+                            recvSrcMetaShape->GetStorageShape().GetDim(0)),
+                    return ge::GRAPH_FAILED);
     OP_TILING_CHECK(recvSrcMetaShape->GetStorageShape().GetDim(1) != META_INNER_DIM,
-        OP_LOGE(nodeName, "recvSrcMetadata dim1 must be %ld, got %ld.",
-            META_INNER_DIM, recvSrcMetaShape->GetStorageShape().GetDim(1)),
-        return ge::GRAPH_FAILED);
+                    OP_LOGE(nodeName, "recvSrcMetadata dim1 must be %ld, got %ld.", META_INNER_DIM,
+                            recvSrcMetaShape->GetStorageShape().GetDim(1)),
+                    return ge::GRAPH_FAILED);
     auto recvSrcMetaDesc = context->GetOutputDesc(OUT_RECV_SRC_METADATA_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, recvSrcMetaDesc);
     OP_TILING_CHECK(recvSrcMetaDesc->GetDataType() != ge::DT_INT32,
-        OP_LOGE(nodeName, "recvSrcMetadata dtype must be int32, got %d.",
-            static_cast<int32_t>(recvSrcMetaDesc->GetDataType())),
-        return ge::GRAPH_FAILED);
+                    OP_LOGE(nodeName, "recvSrcMetadata dtype must be int32, got %d.",
+                            static_cast<int32_t>(recvSrcMetaDesc->GetDataType())),
+                    return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -404,7 +403,7 @@ static ge::graphStatus CheckWinSize(const gert::TilingContext *context, const ch
     auto attrs = context->GetAttrs();
     auto cclBufferSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_CCL_BUFFER_SIZE_INDEX);
     OP_TILING_CHECK(cclBufferSizePtr == nullptr, OP_LOGE(nodeName, "cclBufferSizePtr is null."),
-        return ge::GRAPH_FAILED);
+                    return ge::GRAPH_FAILED);
     uint64_t maxWindowSize = static_cast<uint64_t>(*cclBufferSizePtr);
     uint64_t epWorldSize = static_cast<uint64_t>(info.cfg.epWorldSize);
     uint64_t nmt = static_cast<uint64_t>(info.cfg.numMaxTokensPerRank);
@@ -412,18 +411,18 @@ static ge::graphStatus CheckWinSize(const gert::TilingContext *context, const ch
     uint64_t moeExpertNumPerRank = static_cast<uint64_t>(info.cfg.numLocalExperts);
     uint64_t topK = static_cast<uint64_t>(info.cfg.topK);
 
-    uint64_t dispatchWinStateSize = epWorldSize * AlignUpWin(moeExpertNumPerRank * sizeof(int32_t)) +
-                                    2 * epWorldSize * WIN_ADDR_ALIGN;
+    uint64_t dispatchWinStateSize =
+        epWorldSize * AlignUpWin(moeExpertNumPerRank * sizeof(int32_t)) + 2 * epWorldSize * WIN_ADDR_ALIGN;
     uint64_t combineWinStateSize = nmt * topK * WIN_ADDR_ALIGN + epWorldSize * WIN_ADDR_ALIGN;
     uint64_t dispatchWinDataSize = epWorldSize * nmt * perSlotBytes;
     uint32_t hiddenAlign = (info.cfg.hidden * MAX_OUT_DTYPE_SIZE + UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN;
     uint64_t combineWinDataSize = nmt * topK * AlignUpWin(static_cast<uint64_t>(hiddenAlign + UB_ALIGN));
     uint64_t totalStateWinSizeEp = dispatchWinStateSize + combineWinStateSize;
     uint64_t winNeed = dispatchWinDataSize + combineWinDataSize + totalStateWinSizeEp;
-    OP_TILING_CHECK(winNeed > maxWindowSize,
-        OP_LOGE(nodeName,
-            "HCCL Window not enough: need %lu (ep=%u, nmt=%u, perSlotBytes=%u), but cclBufferSize=%lu.",
-            winNeed, info.cfg.epWorldSize, info.cfg.numMaxTokensPerRank, info.cfg.perSlotBytes, maxWindowSize),
+    OP_TILING_CHECK(
+        winNeed > maxWindowSize,
+        OP_LOGE(nodeName, "HCCL Window not enough: need %lu (ep=%u, nmt=%u, perSlotBytes=%u), but cclBufferSize=%lu.",
+                winNeed, info.cfg.epWorldSize, info.cfg.numMaxTokensPerRank, info.cfg.perSlotBytes, maxWindowSize),
         return ge::GRAPH_FAILED);
 
     info.winDataOffset = totalStateWinSizeEp;
@@ -434,17 +433,15 @@ static ge::graphStatus MoeEpDispatchEpilogueTilingFunc(gert::TilingContext *cont
 {
     context->SetScheduleMode(1U);
     const char *nodeName = context->GetNodeName();
-    OP_TILING_CHECK(nodeName == nullptr, OP_LOGE("unKnownNodeName", "nodeName is nullptr."),
-        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(nodeName == nullptr, OP_LOGE("unKnownNodeName", "nodeName is nullptr."), return ge::GRAPH_FAILED);
 
     MoeEpDispatchEpilogueTilingData *tilingData = context->GetTilingData<MoeEpDispatchEpilogueTilingData>();
-    OP_TILING_CHECK(tilingData == nullptr, OP_LOGE(nodeName, "tilingData is nullptr."),
-        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(tilingData == nullptr, OP_LOGE(nodeName, "tilingData is nullptr."), return ge::GRAPH_FAILED);
 
     MoeEpDispatchEpilogueInfo &info = tilingData->moeEpDispatchEpilogueInfo;
 
     OP_TILING_CHECK(CheckAttrParams(context, nodeName, info) != ge::GRAPH_SUCCESS,
-        OP_LOGE(nodeName, "Check attr params failed."), return ge::GRAPH_FAILED);
+                    OP_LOGE(nodeName, "Check attr params failed."), return ge::GRAPH_FAILED);
 
     bool cached = (context->GetInputShape(CACHED_RECV_SRC_METADATA_INDEX) != nullptr);
     info.cached = cached ? 1U : 0U;
@@ -452,68 +449,64 @@ static ge::graphStatus MoeEpDispatchEpilogueTilingFunc(gert::TilingContext *cont
     bool hasTopkWeights = (context->GetOutputShape(OUT_RECV_TOPK_WEIGHTS_INDEX) != nullptr);
 
     OP_TILING_CHECK(CheckInputDataType(context, nodeName, cached) != ge::GRAPH_SUCCESS,
-        OP_LOGE(nodeName, "Check input dtype failed."), return ge::GRAPH_FAILED);
+                    OP_LOGE(nodeName, "Check input dtype failed."), return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK(CheckInputTensorShape(context, nodeName, info, cached) != ge::GRAPH_SUCCESS,
-        OP_LOGE(nodeName, "Check input tensor shape failed."), return ge::GRAPH_FAILED);
+                    OP_LOGE(nodeName, "Check input tensor shape failed."), return ge::GRAPH_FAILED);
 
     const gert::StorageShape *dstBufferSlotIdxShape = context->GetInputShape(DST_BUFFER_SLOT_IDX_INDEX);
-    OP_TILING_CHECK(dstBufferSlotIdxShape == nullptr,
-        OP_LOGE(nodeName, "dstBufferSlotIdxShape is nullptr."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(dstBufferSlotIdxShape == nullptr, OP_LOGE(nodeName, "dstBufferSlotIdxShape is nullptr."),
+                    return ge::GRAPH_FAILED);
     info.cfg.numTokens = static_cast<uint32_t>(dstBufferSlotIdxShape->GetStorageShape().GetDim(0));
     info.cfg.topK = static_cast<uint32_t>(dstBufferSlotIdxShape->GetStorageShape().GetDim(1));
     const int64_t topK = static_cast<int64_t>(info.cfg.topK);
 
     OP_TILING_CHECK(CheckOutputTensors(context, nodeName, info, topK) != ge::GRAPH_SUCCESS,
-        OP_LOGE(nodeName, "Check output tensors failed."), return ge::GRAPH_FAILED);
+                    OP_LOGE(nodeName, "Check output tensors failed."), return ge::GRAPH_FAILED);
 
     auto recvXShape = context->GetOutputShape(OUT_RECV_X_INDEX);
     info.cfg.hidden = static_cast<uint32_t>(recvXShape->GetStorageShape().GetDim(1));
 
     auto recvXDesc = context->GetOutputDesc(OUT_RECV_X_INDEX);
-    OP_TILING_CHECK(recvXDesc == nullptr, OP_LOGE(nodeName, "recvXDesc is nullptr."),
-        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(recvXDesc == nullptr, OP_LOGE(nodeName, "recvXDesc is nullptr."), return ge::GRAPH_FAILED);
     ge::DataType recvXDtype = recvXDesc->GetDataType();
     bool isFp8 = (recvXDtype == ge::DT_FLOAT8_E5M2 || recvXDtype == ge::DT_FLOAT8_E4M3FN);
     uint32_t recvXDtypeSize = isFp8 ? FP8_DTYPE_SIZE : MAX_OUT_DTYPE_SIZE;
     uint32_t hAlign32 = ((info.cfg.hidden * recvXDtypeSize + UB_ALIGN - 1UL) / UB_ALIGN) * UB_ALIGN;
     uint32_t kAlign32 = ((info.cfg.topK * METADATA_DTYPE_SIZE + UB_ALIGN - 1UL) / UB_ALIGN) * UB_ALIGN;
     uint32_t scalesSizeAlign32 = isFp8 ? ((info.cfg.scalesBytes + UB_ALIGN - 1UL) / UB_ALIGN) * UB_ALIGN : 0;
-    info.cfg.perSlotBytes = ((hAlign32 + scalesSizeAlign32 + kAlign32 * 2 + UB_ALIGN + WIN_ADDR_ALIGN - 1) /
-                            WIN_ADDR_ALIGN) * WIN_ADDR_ALIGN;
+    info.cfg.perSlotBytes =
+        ((hAlign32 + scalesSizeAlign32 + kAlign32 * 2 + UB_ALIGN + WIN_ADDR_ALIGN - 1) / WIN_ADDR_ALIGN) *
+        WIN_ADDR_ALIGN;
 
     OP_TILING_CHECK(CheckWinSize(context, nodeName, info) != ge::GRAPH_SUCCESS,
-        OP_LOGE(nodeName, "Check HCCL Window size failed."), return ge::GRAPH_FAILED);
+                    OP_LOGE(nodeName, "Check HCCL Window size failed."), return ge::GRAPH_FAILED);
 
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
     uint64_t ubSize = 0UL;
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
-    OP_TILING_CHECK(aivNum == 0U,
-        OP_LOGE(nodeName, "Platform reports aivNum=0."), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(ubSize == 0UL,
-        OP_LOGE(nodeName, "Platform reports ubSize=0."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(aivNum == 0U, OP_LOGE(nodeName, "Platform reports aivNum=0."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(ubSize == 0UL, OP_LOGE(nodeName, "Platform reports ubSize=0."), return ge::GRAPH_FAILED);
     uint32_t blockDim = ascendcPlatform.CalcTschBlockDim(aivNum, 0, aivNum);
     context->SetBlockDim(blockDim);
     info.aivNum = aivNum;
     info.totalUbSize = ubSize;
 
     size_t *workSpaces = context->GetWorkspaceSizes(1);
-    OP_TILING_CHECK(workSpaces == nullptr, OP_LOGE(nodeName, "workSpaces is nullptr."),
-        return ge::GRAPH_FAILED);
-    
+    OP_TILING_CHECK(workSpaces == nullptr, OP_LOGE(nodeName, "workSpaces is nullptr."), return ge::GRAPH_FAILED);
+
     uint32_t numLocalExpertsAlign8 = (info.cfg.numLocalExperts + 7) / 8 * 8;
     uint64_t hitCountBytes = static_cast<uint64_t>(aivNum) * numLocalExpertsAlign8 * sizeof(int32_t);
-    uint64_t hitCountBytesAlign512 = ((hitCountBytes + WIN_ADDR_ALIGN - 1UL)/ WIN_ADDR_ALIGN) * WIN_ADDR_ALIGN;
+    uint64_t hitCountBytesAlign512 = ((hitCountBytes + WIN_ADDR_ALIGN - 1UL) / WIN_ADDR_ALIGN) * WIN_ADDR_ALIGN;
 
     workSpaces[0] = SYSTEM_NEED_WORKSPACE + hitCountBytesAlign512;
 
-    uint64_t tilingKey = GET_TPL_TILING_KEY(TILINGKEY_TPL_A5, cached ? 1U : 0U,
-                                            hasTopkWeights ? 1U : 0U,
-                                            info.isMxQuant ? 1U : 0U);
+    uint64_t tilingKey =
+        GET_TPL_TILING_KEY(TILINGKEY_TPL_A5, cached ? 1U : 0U, hasTopkWeights ? 1U : 0U, info.isMxQuant ? 1U : 0U);
     context->SetTilingKey(tilingKey);
-    OP_LOGD(nodeName, "tilingKey=%lu, blockDim=%u, aivNum=%u, cached=%u, hasTopkWeights=%u, isMxQuant=%u",
-        tilingKey, blockDim, aivNum, info.cached, hasTopkWeights ? 1U : 0U, info.isMxQuant);
+    OP_LOGD(nodeName, "tilingKey=%lu, blockDim=%u, aivNum=%u, cached=%u, hasTopkWeights=%u, isMxQuant=%u", tilingKey,
+            blockDim, aivNum, info.cached, hasTopkWeights ? 1U : 0U, info.isMxQuant);
 
     PrintTilingDataInfo(nodeName, info);
     return ge::GRAPH_SUCCESS;
@@ -529,4 +522,4 @@ ge::graphStatus TilingParseForMoeEpDispatchEpilogue(gert::TilingParseContext *co
 IMPL_OP_OPTILING(MoeEpDispatchEpilogue)
     .Tiling(MoeEpDispatchEpilogueTilingFunc)
     .TilingParse<MoeEpDispatchEpilogueCompileInfo>(TilingParseForMoeEpDispatchEpilogue);
-}  // namespace optiling
+} // namespace optiling

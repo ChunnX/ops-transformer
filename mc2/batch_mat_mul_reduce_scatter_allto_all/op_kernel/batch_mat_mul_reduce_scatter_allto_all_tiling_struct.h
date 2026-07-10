@@ -37,15 +37,15 @@ struct BMM_Mc2MatmulTilingData {
 };
 
 struct Mc2RSATATiling {
-    uint32_t epGroupSize;                   // 每个ep域内的并行运行的专家的个数
-    uint32_t tpGroupSize;                   // 每个tp域内块的个数
-    uint64_t expert;                        // 专家个数
-    uint64_t EOverEp;                       // E/ep
+    uint32_t epGroupSize; // 每个ep域内的并行运行的专家的个数
+    uint32_t tpGroupSize; // 每个tp域内块的个数
+    uint64_t expert;      // 专家个数
+    uint64_t EOverEp;     // E/ep
     uint64_t C;
-    uint64_t COverTp;                       // C/tp
+    uint64_t COverTp; // C/tp
     uint64_t H;
-    uint64_t HOverTp;                       // H/tp
-    uint64_t MOverTp;                       // M/tp
+    uint64_t HOverTp; // H/tp
+    uint64_t MOverTp; // M/tp
     uint32_t aivCoreNum;
     uint32_t inputDatasize;
     uint32_t biasDatasize;
@@ -53,10 +53,10 @@ struct Mc2RSATATiling {
     uint64_t totalUbSize;
     bool isBias;
     bool isWeightTrans;
-    BMM_TileInfo localTileE;             // E 轴本地块切分信息
-    BMM_TileInfo domesticTileE;          // E 轴非本地块切分信息
-    BMM_TileInfo localTileC;             // C 轴本地块切分信息
-    BMM_TileInfo domesticTileC;          // C 轴非本地块切分信息
+    BMM_TileInfo localTileE;    // E 轴本地块切分信息
+    BMM_TileInfo domesticTileE; // E 轴非本地块切分信息
+    BMM_TileInfo localTileC;    // C 轴本地块切分信息
+    BMM_TileInfo domesticTileC; // C 轴非本地块切分信息
     uint32_t yShardFlag;
 };
 
@@ -70,5 +70,5 @@ struct BatchMatMulReduceScatterAlltoAllTilingData {
     BMM_Mc2MatmulTilingData localTailTiling;
     BMM_Mc2MatmulTilingData domesticTailTiling;
 };
-}
+} // namespace optiling
 #endif

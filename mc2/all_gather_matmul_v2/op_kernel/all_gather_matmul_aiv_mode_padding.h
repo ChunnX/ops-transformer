@@ -33,7 +33,8 @@ using namespace Catlass;
     transA, transB, alignedA, alignedB, matrixAM, matrixAK, matrixBK, matrixBN, matrixAMAlign, matrixAKAlign,          \
         matrixBKAlign, matrixBNAlign, gmA, gmB, gmAAlign, gmBAlign
 namespace Catlass::Gemm::Kernel {
-template <class ArchTag_, class AType_, class BType_> class TemplatePadder {
+template <class ArchTag_, class AType_, class BType_>
+class TemplatePadder {
 public:
     using ArchTag = ArchTag_;
     using ElementA = typename AType_::Element;
@@ -75,8 +76,10 @@ public:
     TemplatePadder()
     {
     }
-    template <int32_t CORE_TYPE = g_coreType> CATLASS_DEVICE void operator()(Params const &params);
-    template <> CATLASS_DEVICE void operator()<AscendC::AIV>(Params const &params)
+    template <int32_t CORE_TYPE = g_coreType>
+    CATLASS_DEVICE void operator()(Params const &params);
+    template <>
+    CATLASS_DEVICE void operator()<AscendC::AIV>(Params const &params)
     {
         if (params.alignA) {
             AscendC::GlobalTensor<ElementA> gmA;
@@ -105,14 +108,17 @@ private:
     Arch::Resource<ArchTag> resource;
 };
 } // namespace Catlass::Gemm::Kernel
-template <typename InputType, typename WeightType> class PaddingRunner {
+template <typename InputType, typename WeightType>
+class PaddingRunner {
 public:
     __aicore__ explicit PaddingRunner() = default;
     inline __aicore__ void Run(PADDING_ARGS_FUN())
     {
         using ArchTag = Arch::AtlasA2;
-        using ElementA = typename std::conditional<std::is_same<InputType, AscendC::int4b_t>::value, int8_t, InputType>::type;
-        using ElementB = typename std::conditional<std::is_same<WeightType, AscendC::int4b_t>::value, int8_t, WeightType>::type;
+        using ElementA =
+            typename std::conditional<std::is_same<InputType, AscendC::int4b_t>::value, int8_t, InputType>::type;
+        using ElementB =
+            typename std::conditional<std::is_same<WeightType, AscendC::int4b_t>::value, int8_t, WeightType>::type;
         if (!transA && !transB) {
             using LayoutA = layout::RowMajor;
             using LayoutB = layout::RowMajor;

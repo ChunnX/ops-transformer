@@ -21,7 +21,8 @@
 namespace optiling {
 namespace Mc2batch_matmul_v3_advanced {
 using namespace strategy;
-MC2_MM_REGISTER_TILING_TEMPLATE(Mc2BatchMatMulV3, Mc2BatchMatMulV3AswBL1FullLoadBasicTiling, DAV_3510, BL1_FULL_LOAD_BASIC);
+MC2_MM_REGISTER_TILING_TEMPLATE(Mc2BatchMatMulV3, Mc2BatchMatMulV3AswBL1FullLoadBasicTiling, DAV_3510,
+                                BL1_FULL_LOAD_BASIC);
 
 bool Mc2BatchMatMulV3AswBL1FullLoadBasicTiling::IsCapable()
 {
@@ -36,19 +37,19 @@ bool Mc2BatchMatMulV3AswBL1FullLoadBasicTiling::IsCapable()
     }
     // get align m,k,n value
     uint64_t c0Size = BLOCK_BYTE_SIZE / args_.aDtypeSize;
-    uint64_t alignMValue = args_.isATrans ? ops::CeilAlign(args_.mValue, c0Size) :
-                                            ops::CeilAlign(args_.mValue, BASIC_BLOCK_SIZE_16);
-    uint64_t alignKaValue = args_.isATrans ? ops::CeilAlign(args_.kValue, BASIC_BLOCK_SIZE_16) :
-                                             ops::CeilAlign(args_.kValue, c0Size);
-    uint64_t alignKbValue = args_.isBTrans ? ops::CeilAlign(args_.kValue, c0Size) :
-                                             ops::CeilAlign(args_.kValue, BASIC_BLOCK_SIZE_16);
-    uint64_t alignNValue = args_.isBTrans ? ops::CeilAlign(args_.nValue, BASIC_BLOCK_SIZE_16) :
-                                            ops::CeilAlign(args_.nValue, c0Size);
+    uint64_t alignMValue =
+        args_.isATrans ? ops::CeilAlign(args_.mValue, c0Size) : ops::CeilAlign(args_.mValue, BASIC_BLOCK_SIZE_16);
+    uint64_t alignKaValue =
+        args_.isATrans ? ops::CeilAlign(args_.kValue, BASIC_BLOCK_SIZE_16) : ops::CeilAlign(args_.kValue, c0Size);
+    uint64_t alignKbValue =
+        args_.isBTrans ? ops::CeilAlign(args_.kValue, c0Size) : ops::CeilAlign(args_.kValue, BASIC_BLOCK_SIZE_16);
+    uint64_t alignNValue =
+        args_.isBTrans ? ops::CeilAlign(args_.nValue, BASIC_BLOCK_SIZE_16) : ops::CeilAlign(args_.nValue, c0Size);
     uint64_t alignMatASize = batchInfo_->batchA * alignMValue * alignKaValue * args_.aDtypeSize;
     uint64_t alignMatBSize = batchInfo_->batchB * alignKbValue * alignNValue * args_.bDtypeSize;
     if (alignMatASize < (compileInfo_.l1Size) * compileInfo_.aicNum &&
         batchInfo_->batchA * ops::CeilDiv(args_.mValue, BASIC_BLOCK_SIZE_256) <
-            4UL * compileInfo_.aicNum) {  // each core needs to loop at least 4 batch
+            4UL * compileInfo_.aicNum) { // each core needs to loop at least 4 batch
         return false;
     }
     if (alignMatBSize * NUM_TWO > compileInfo_.l1Size) {
@@ -65,10 +66,10 @@ ge::graphStatus Mc2BatchMatMulV3AswBL1FullLoadBasicTiling::DoOpTiling()
 
     // l1开2db后依然只使用了一半的空间，则开启4 db。该字段仅在基础api场景生效
     uint64_t c0Size = BLOCK_BYTE_SIZE / args_.aDtypeSize;
-    uint64_t alignKbValue = args_.isBTrans ? ops::CeilAlign(args_.kValue, c0Size) :
-                                             ops::CeilAlign(args_.kValue, BASIC_BLOCK_SIZE_16);
-    uint64_t alignNValue = args_.isBTrans ? ops::CeilAlign(args_.nValue, BASIC_BLOCK_SIZE_16) :
-                                            ops::CeilAlign(args_.nValue, c0Size);
+    uint64_t alignKbValue =
+        args_.isBTrans ? ops::CeilAlign(args_.kValue, c0Size) : ops::CeilAlign(args_.kValue, BASIC_BLOCK_SIZE_16);
+    uint64_t alignNValue =
+        args_.isBTrans ? ops::CeilAlign(args_.nValue, BASIC_BLOCK_SIZE_16) : ops::CeilAlign(args_.nValue, c0Size);
     uint64_t bL1TensorSize = alignKbValue * alignNValue * args_.bDtypeSize;
 
     uint64_t aL1TensorSize = runInfo_.baseM * runInfo_.baseK * runInfo_.stepKa * args_.aDtypeSize;
@@ -92,5 +93,5 @@ uint64_t Mc2BatchMatMulV3AswBL1FullLoadBasicTiling::GetTilingKey() const
         .SetApiLevel(Mc2MatMulV3ApiLevel::BASIC_LEVEL)
         .GetTilingKey();
 }
-}
-}
+} // namespace Mc2batch_matmul_v3_advanced
+} // namespace optiling

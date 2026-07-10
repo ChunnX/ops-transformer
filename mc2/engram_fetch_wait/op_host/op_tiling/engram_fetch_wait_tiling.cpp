@@ -96,7 +96,6 @@ ge::graphStatus TilingParseForEngramFetchWait(gert::TilingParseContext *context)
     return ge::GRAPH_SUCCESS;
 }
 
-IMPL_OP_OPTILING(EngramFetchWait)
-    .Tiling(EngramFetchWaitTilingFunc);
+IMPL_OP_OPTILING(EngramFetchWait).Tiling(EngramFetchWaitTilingFunc);
 
 } // namespace optiling
