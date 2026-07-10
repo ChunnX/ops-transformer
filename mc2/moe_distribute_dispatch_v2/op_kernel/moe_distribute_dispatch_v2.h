@@ -585,7 +585,8 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Proc
         xInTensor_ = xInQueue_.AllocTensor<XInType>();
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
         LocalTensor<uint8_t> singleByteTok = xInTensor_.template ReinterpretCast<uint8_t>();
-        if constexpr ((QuantMode == MX_QUANT) || (QuantMode == PERGROUP_DYNAMIC_QUANT)) { // 提前填0，避免脏数据
+        if constexpr ((QuantMode == MX_QUANT) || (QuantMode == MX_QUANT_CLIP) ||
+            (QuantMode == PERGROUP_DYNAMIC_QUANT)) { // 提前填0，避免脏数据
             Duplicate(singleByteTok, QUANT_PADDING_VALUE, Align128(axisH_) * sizeof(XInType));
         }
 #endif
