@@ -350,7 +350,7 @@ ge::graphStatus LIV2InfoParser::GetAndCheckOptionalInput()
             if (qLayout_ == DataLayout::BSND) {
                 OP_CHECK_IF(opParamInfo_.query.shape->GetStorageShape().GetDim(DIM_IDX_ZERO) !=
                     opParamInfo_.cmpResidualK.tensor->GetStorageShape().GetShapeSize(),
-                    OP_LOGE(opName_, "when layout_q is BSND, input cmp_residual_k'shape must be (B,) "),
+                    OP_LOGE(opName_, "when layout_q is BSND, input cmp_residual_k'shape must be (B,)"),
                     return ge::GRAPH_FAILED);
             } else if (qLayout_ == DataLayout::TND) {
                 OP_CHECK_IF(opParamInfo_.cmpResidualK.tensor->GetStorageShape().GetShapeSize() !=
