@@ -409,7 +409,6 @@ public:
             GetHcclCommLink(commHandle, layerId, srcRankId, dstRank, protocol, links);
             channelDesc[channelId].channelProtocol = protocol;
             channelDesc[channelId].remoteRank = dstRank;
-            channelDesc[channelId].notifyNum = channelNum;
             channelDesc[channelId].localEndpoint = links->srcEndpointDesc;
             channelDesc[channelId].remoteEndpoint = links->dstEndpointDesc;
             channelDesc[channelId].memHandles = customMemHandle_;
