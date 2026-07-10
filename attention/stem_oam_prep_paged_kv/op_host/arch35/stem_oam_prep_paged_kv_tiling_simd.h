@@ -10,7 +10,7 @@
 
 /*!
  * \file stem_oam_prep_paged_kv_tiling.h
- * \brief StemOamPrepPagedKV simd TilingData definition and Tiling class
+ * \brief StemOamPrepPagedKv simd TilingData definition and Tiling class
  */
 #ifndef STEM_OAM_PREP_PAGED_KV_TILING_SIMD_H
 #define STEM_OAM_PREP_PAGED_KV_TILING_SIMD_H
@@ -23,16 +23,16 @@
 
 namespace optiling {
 
-constexpr uint64_t MAX_KV_PADDED = 262144;
+constexpr uint64_t MAX_Kv_PADDED = 262144;
 
-struct StemPrepKVCompileInfo {
+struct StemPrepKvCompileInfo {
     uint32_t coreNum = 0;
     uint64_t ubSize = 0;
 };
 
-class StemPrepKVTiling : public Ops::Transformer::OpTiling::TilingBaseClass {
+class StemPrepKvTiling : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
-    explicit StemPrepKVTiling(gert::TilingContext *context) : TilingBaseClass(context)
+    explicit StemPrepKvTiling(gert::TilingContext *context) : TilingBaseClass(context)
     {
     }
 
@@ -67,7 +67,7 @@ private:
     gert::Stride vCacheStride_;
     gert::Stride kScaleCacheStride_;
 
-    StemPrepKVTilingData* tilingData_;
+    StemPrepKvTilingData* tilingData_;
 };
 
 } // namespace optiling

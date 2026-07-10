@@ -31,11 +31,11 @@ __global__ __aicore__ void stem_oam_prep_paged_kv(GM_ADDR kCache, GM_ADDR vCache
     }
 
     REGISTER_TILING_DEFAULT(StemOamPrepPagedKVTilingData);
-    KERNEL_TASK_TYPE_DEFAULT(ASCENDC_TPL_AIV_ONLY);
+    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY);
     GET_TILING_DATA_WITH_STRUCT(StemOamPrepPagedKVTilingData, tilingData, tiling);
 
     TPipe pipe;
-    StemOamPrepPagedKv op;
+    StemOamPrepPagedKvSimd op;
     op.Init(kCache, vCache, kvIndices, kvSeqLens, kScaleCache, vScale, kFlat, vBias, workspace, &tilingData, &pipe);
     op.Process();
 }

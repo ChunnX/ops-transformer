@@ -10,14 +10,14 @@
 
 /*!
  * \file stem_oam_prep_paged_kv_tiling_data.h
- * \brief StemOamPrepPagedKV TilingData struct definition (arch35)
+ * \brief StemOamPrepPagedKv TilingData struct definition (arch35)
  */
 #ifndef STEM_OAM_PREP_PAGED_KV_TILING_DATA_H
 #define STEM_OAM_PREP_PAGED_KV_TILING_DATA_H
 
 #include "kernel_operator.h"
 
-struct StemOamPrepPagedKVTilingData {
+struct StemOamPrepPagedKvTilingData {
     int64_t kvLayout = 0;
     int64_t kvBlockSize = 0;
     int64_t numKvHeads = 0;

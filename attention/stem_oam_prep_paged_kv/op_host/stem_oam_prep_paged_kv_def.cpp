@@ -16,9 +16,9 @@
 
 namespace ops {
 
-class StemOamPrepPagedKV : public OpDef {
+class StemOamPrepPagedKv : public OpDef {
 public:
-    explicit StemOamPrepPagedKV(const char *name) : OpDef(name)
+    explicit StemOamPrepPagedKv(const char *name) : OpDef(name)
     {
         this->Input("kCache")
             .ParamType(REQUIRED)
@@ -69,6 +69,6 @@ public:
     }
 };
 
-OP_ADD(StemOamPrepPagedKV);
+OP_ADD(StemOamPrepPagedKv);
 
 } // namespace ops

@@ -24,25 +24,25 @@
 
 namespace optiling {
 
-static ge::graphStatus Tiling4StemOamPrepPagedKV(gert::TilingContext* context)
+static ge::graphStatus Tiling4StemOamPrepPagedKv(gert::TilingContext* context)
 {
-    OP_LOGD(context->GetNodeName(), "StemOamPrepPagedKV is running.");
+    OP_LOGD(context->GetNodeName(), "StemOamPrepPagedKv is running.");
 
     if (Ops::Transformer::OpTiling::IsRegbaseSocVersion(context)) {
         OP_LOGD(context->GetNodeName(), "Using arch35 tiling for RegbaseSocVersion");
         return TilingRegistry::GetInstance().DoTilingImpl(context);
     }
 
-    OP_LOGD(context->GetNodeName(), "StemOamPrepPagedKV Only Support RegbaseSocVersion.");
+    OP_LOGD(context->GetNodeName(), "StemOamPrepPagedKv Only Support RegbaseSocVersion.");
     return GRAPH_FAILED;
 }
 
-static ge::graphStatus TilingPrepare4StemOamPrepPagedKV(gert::TilingParseContext* context)
+static ge::graphStatus TilingPrepare4StemOamPrepPagedKv(gert::TilingParseContext* context)
 {
     return ge::GRAPH_SUCCESS;
 }
 
-IMPL_OP_OPTILING(StemOamPrepPagedKV)
-    .Tiling(Tiling4StemOamPrepPagedKV)
-    .TilingParse<StemOamPrepPagedKVCompileInfo>(TilingPrepare4StemOamPrepPagedKV);
+IMPL_OP_OPTILING(StemOamPrepPagedKv)
+    .Tiling(Tiling4StemOamPrepPagedKv)
+    .TilingParse<StemOamPrepPagedKvCompileInfo>(TilingPrepare4StemOamPrepPagedKv);
 } // namespace optiling

@@ -10,19 +10,19 @@
 
 /*!
  * \file stem_oam_prep_paged_kv_tiling_simd.cpp
- * \brief StemOamPrepPagedKV simd Tiling implementation
+ * \brief StemOamPrepPagedKv simd Tiling implementation
  */
 #include "stem_oam_prep_paged_kv_tiling_simd.h"
 #include "tiling/platform/platform_ascendc.h"
 
 namespace optiling {
 
-bool StemPrepKVTiling::IsCapable()
+bool StemPrepKvTiling::IsCapable()
 {
     return true;
 }
 
-void StemPrepKVTiling::ContinuousStridesCompute(gert::Shape &shape, gert::Stride &inputStride)
+void StemPrepKvTiling::ContinuousStridesCompute(gert::Shape &shape, gert::Stride &inputStride)
 {
     inputStride.SetDimNum(shape.GetDimNum());
     int32_t maxDim = static_cast<int32_t>(shape.GetDimNum()) - 1;
@@ -33,7 +33,7 @@ void StemPrepKVTiling::ContinuousStridesCompute(gert::Shape &shape, gert::Stride
     }
 }
 
-ge::graphStatus StemPrepKVTiling::GetInputStrides(gert::Shape &shape, gert::Stride &inputStride, size_t idx)
+ge::graphStatus StemPrepKvTiling::GetInputStrides(gert::Shape &shape, gert::Stride &inputStride, size_t idx)
 {
     if (context_->InputIsView(idx)) {
         auto *strides = context_->GetInputStride(idx);
@@ -48,11 +48,11 @@ ge::graphStatus StemPrepKVTiling::GetInputStrides(gert::Shape &shape, gert::Stri
     return ge::GRAPH_SUCCESS
 }
 
-ge::graphStatus StemPrepKVTiling::GetPlatformInfo()
+ge::graphStatus StemPrepKvTiling::GetPlatformInfo()
 {
     auto platformInfo = context_->GetPlatformInfo();
     if (platformInfo == nullptr) {
-        auto compileInfoPtr = reinterpret_cast<const StemPrepKVCompileInfo *>(context_->GetCompileInfo());
+        auto compileInfoPtr = reinterpret_cast<const StemPrepKvCompileInfo *>(context_->GetCompileInfo());
         OP_CHECK_IF(compileInfoPtr == nullptr, OP_LOGE(context_, "compile info is null"), return ge::GRAPH_FAILED);
         totalCoreNum_ = compileInfoPtr->coreNum;
     } else {
@@ -66,13 +66,13 @@ ge::graphStatus StemPrepKVTiling::GetPlatformInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus StemPrepKVTiling::GetShapeAttrsInfo()
+ge::graphStatus StemPrepKvTiling::GetShapeAttrsInfo()
 {
-    OP_CHECK_IF(context_ == nullptr, OP_LOGE("StemOamPrepPagedKV", "context is null"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(context_ == nullptr, OP_LOGE("StemOamPrepPagedKv", "context is null"), return ge::GRAPH_FAILED);
     auto attrs = context_->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context_, attrs);
 
-    tilingData_ = context_->GetTilingData<StemPrepKVTilingData>();
+    tilingData_ = context_->GetTilingData<StemPrepKvTilingData>();
     OP_CHECK_NULL_WITH_CONTEXT(context_, tilingData_);
 
     lambdaMag_ = attrs->GetAttrValue<float>("lambdaMag");
@@ -113,7 +113,7 @@ ge::graphStatus StemPrepKVTiling::GetShapeAttrsInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus StemPrepKVTiling::DoOpTiling()
+ge::graphStatus StemPrepKvTiling::DoOpTiling()
 {
     if (batchSize_ == 0 || numKvHeads_ == 0) {
         OP_LOGE(context_->GetNodeName(), "batchSize or numKvHeads is 0!");
@@ -122,21 +122,21 @@ ge::graphStatus StemPrepKVTiling::DoOpTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus StemPrepKVTiling::DoLibApiTiling()
+ge::graphStatus StemPrepKvTiling::DoLibApiTiling()
 {
     return ge::GRAPH_SUCCESS;
 }
 
-uint64_t StemPrepKVTiling::GetTilingKey() const
+uint64_t StemPrepKvTiling::GetTilingKey() const
 {
     return GET_TPL_TILING_KEY(true);
 }
 
-ge::graphStatus StemPrepKVTiling::GetWorkspaceSize()
+ge::graphStatus StemPrepKvTiling::GetWorkspaceSize()
 {
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     uint32_t sysWorkspaceSize = ascendcPlatform.GetLibApiWorkSpaceSize();
-    uint64_t maxKvPadded = MAX_KV_PADDED;
+    uint64_t maxKvPadded = MAX_Kv_PADDED;
     uint64_t vFlatSize = static_cast<uint64_t>(batchSize_) * static_cast<uint64_t>(numKvHeads_) *
                          (maxKvPadded / static_cast<uint64_t>(stemStride_)) * sizeof(float);
     workspaceSize_ = vFlatSize;
@@ -147,7 +147,7 @@ ge::graphStatus StemPrepKVTiling::GetWorkspaceSize()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus StemPrepKVTiling::PostTiling()
+ge::graphStatus StemPrepKvTiling::PostTiling()
 {
     uint32_t usedCoreNum = static_cast<uint32_t>(totalCoreNum_);
     uint32_t totalBh = batchSize_ * numKvHeads_;
@@ -176,7 +176,7 @@ ge::graphStatus StemPrepKVTiling::PostTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-void StemPrepKVTiling::DumpTilingInfo()
+void StemPrepKvTiling::DumpTilingInfo()
 {
     std::ostringstream info;
     info << "kvLayout: " << kvLayout_ << std::endl;
@@ -202,6 +202,6 @@ void StemPrepKVTiling::DumpTilingInfo()
     OP_LOGI(opName, "Tiling info is: %s", info.str().c_str());
 }
 
-REGISTER_OPS_TILING_TEMPLATE(StemOamPrepPagedKV, StemPrepKVTiling, 0);
+REGISTER_OPS_TILING_TEMPLATE(StemOamPrepPagedKv, StemPrepKvTiling, 0);
 
 } // namespace optiling
