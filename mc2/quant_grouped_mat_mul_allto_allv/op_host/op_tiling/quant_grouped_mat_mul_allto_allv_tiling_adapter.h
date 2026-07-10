@@ -50,8 +50,7 @@ public:
 
     ge::graphStatus Process();
     ge::graphStatus SetCommonInputParams(const QuantGmmAlltoAllvParamsInfo& params);
-    ge::graphStatus SetGroupExpertInputParameters(const QuantGmmAlltoAllvParamsInfo& params,
-        uint64_t gmmX, uint64_t expertNum = 1);
+    ge::graphStatus SetGroupExpertInputParameters(const QuantGmmAlltoAllvParamsInfo& params, uint64_t gmmX);
     ge::graphStatus SetSharedExpertInputParameters(const QuantGmmAlltoAllvParamsInfo& params);
 };
 
