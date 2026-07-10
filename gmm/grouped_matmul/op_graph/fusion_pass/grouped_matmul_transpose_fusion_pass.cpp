@@ -27,6 +27,7 @@
 #include "graph/utils/type_utils.h"
 #include "log/log.h"
 #include "platform/platform_info.h"
+#include "version/ge-compiler_version.h"
 
 using namespace std;
 using namespace ge;
@@ -53,6 +54,7 @@ constexpr int32_t kAntiquantScaleIndex = 5;
 constexpr int32_t kPertokenScaleIndex = 8;
 constexpr int32_t kPermInputIndex = 1;
 constexpr int32_t kMiniShapeLen = 2;
+constexpr int32_t kCompatibleInheritedSupportVersion = 90100000;
 const std::vector<int64_t> kPermWeight = {0, 2, 1};
 const std::vector<int64_t> kPermWeightReshapePattern = {1, 0};
 const std::vector<int64_t> kPermScaleReshapePattern = {1, 0, 2};
@@ -63,6 +65,17 @@ const std::vector<int64_t> kPermPertoken = {1, 0, 2};
 const std::vector<int64_t> kPermAntiquantScale = {0, 2, 1};
 const std::vector<int64_t> kPermAntiquantScaleMx = {0, 2, 1, 3};
 const std::vector<int64_t> kPermScale = {0, 2, 1, 3};
+
+bool IsTargetVersion()
+{
+    int32_t version = 0;
+    if (aclsysGetVersionNum("ge-compiler", &version) != ACL_SUCCESS) {
+        OP_LOGW(kPassName, "Failed to get ge compiler version.");
+        return false;
+    }
+    return version >= kCompatibleInheritedSupportVersion;
+}
+
 struct GmmReshapePatternMatchInfo {
     bool isReshapePattern = false;
     bool isBitcastReshapePattern = false;
@@ -767,11 +780,17 @@ Status RunGroupedMatmulTransposeFusion(GraphPtr& graph, CustomPassContext& passC
 
 Status GroupedMatmulTransposeFusionPass::Run(GraphPtr& graph, CustomPassContext& passContext)
 {
+    if (!IsTargetVersion()) {
+        return GRAPH_NOT_CHANGED;
+    }
     OP_LOGI(kPassName, "[GMM_TRANSPOSE_REBUILD_PASS_ENTER] Enter newly rebuilt GroupedMatmul transpose fusion pass.");
     cout<<"***GroupedMatmulTransposeFusionPass::Run"<<endl;
     return RunGroupedMatmulTransposeFusion(graph, passContext);
 }
 
-REG_FUSION_PASS(GroupedMatmulTransposeFusionPass).Stage(CustomPassStage::kCompatibleInherited);
+#if GE_COMPILER_VERSION_NUM >= 90100000
+REG_FUSION_PASS(GroupedMatmulTransposeFusionPass)
+    .Stage(IsTargetVersion() ? CustomPassStage::kCompatibleInherited : CustomPassStage::kAfterInferShape);
+#endif
 } // namespace ops
 #endif // CANN_VERSION_NUM >= GROUPED_MATMUL_GRAPH_FUSION_SUPPORT_VERSION

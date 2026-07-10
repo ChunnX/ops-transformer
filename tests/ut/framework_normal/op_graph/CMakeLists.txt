@@ -18,6 +18,11 @@ if(UT_TEST_ALL OR OP_GRAPH_UT)
   add_executable(${OP_GRAPH_UT_EXE}
       test_op_graph_main.cpp
       )
+  foreach(OPBASE_OBJ_TARGET opbase_util_objs opbase_infer_objs)
+    if(TARGET ${OPBASE_OBJ_TARGET})
+      add_dependencies(${OP_GRAPH_UT_EXE} ${OPBASE_OBJ_TARGET})
+    endif()
+  endforeach()
   target_compile_definitions(${OP_GRAPH_UT_EXE} PRIVATE LOG_CPP)
   target_compile_options(${OP_GRAPH_UT_EXE} PUBLIC -fPIE -fno-access-control)
   target_include_directories(${OP_GRAPH_UT_EXE} PRIVATE
@@ -34,7 +39,6 @@ if(UT_TEST_ALL OR OP_GRAPH_UT)
           ${OP_GRAPH_MODULE_NAME}_cases
           $<$<TARGET_EXISTS:${GRAPH_PLUGIN_NAME}_obj>:${GRAPH_PLUGIN_NAME}_obj>
       -Wl,--no-whole-archive
-      -Wl,--as-needed
       metadef
       graph
       graph_base
@@ -47,6 +51,7 @@ if(UT_TEST_ALL OR OP_GRAPH_UT)
       ascendalog
       unified_dlog
       dl
+      -Wl,--as-needed
       )
 
   if(ENABLE_UT_EXEC)
