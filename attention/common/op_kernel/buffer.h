@@ -47,6 +47,11 @@ enum class SyncType {
     CROSS_CORE_SYNC_BACKWARD,
 };
 
+enum class EventIdMode {
+    TPIPE_AUTO, // TPipe自动分配
+    USER_DEFINED, // 用户自定义, 需要用户传入EventId
+};
+
 constexpr uint32_t INVALID_CROSS_CORE_EVENT_ID = 16;
 static constexpr uint64_t CROSS_CORE_SYNC_MODE = 4;
 
@@ -139,9 +144,12 @@ public:
         }
     }
 
+    // 用于内部生成EventId的场景, 此时syncMode传SyncMode::QUEUE
+    template<EventIdMode eventIdMode>
     __aicore__ inline void Init() {
+        static_assert(eventIdMode == EventIdMode::TPIPE_AUTO, "eventIdMode should EventIdMode::TPIPE_AUTO.");
         if ASCEND_IS_AIC {
-            if constexpr (syncType == SyncType::INNER_CORE_SYNC) {
+            if constexpr (syncType == SyncType::INNER_CORE_SYNC || eventIdMode == EventIdMode::TPIPE_AUTO) {
                 p2cEventId_ = GetTPipePtr()->AllocEventID<BufferInfo<bufferType>::EventP2C>(); // 确保只能被调用一次
                 c2pEventId_ = GetTPipePtr()->AllocEventID<BufferInfo<bufferType>::EventC2P>();
                 SetFlag<BufferInfo<bufferType>::EventC2P>(c2pEventId_);
@@ -149,12 +157,29 @@ public:
         }
     }
 
+    // 用于调用者指定EventId的场景, 此时syncMode传SyncMode::SET_WAIT
+    template<EventIdMode eventIdMode>
+    __aicore__ inline void Init(uint32_t eventId) {
+        static_assert(eventIdMode == EventIdMode::USER_DEFINED, "eventIdMode should EventIdMode::USER_DEFINED.");
+        if ASCEND_IS_AIC {
+            if constexpr (syncType == SyncType::INNER_CORE_SYNC) {
+                // 静态Tensor场景, 用户自己指定EventId
+                p2cEventId_ = eventId;
+                c2pEventId_ = eventId;
+                SetFlag<BufferInfo<bufferType>::EventC2P>(c2pEventId_);
+            }
+        }
+    }
+
+    template<EventIdMode eventIdMode>
     __aicore__ inline void UnInit() {
         if ASCEND_IS_AIC {
             if constexpr (syncType == SyncType::INNER_CORE_SYNC) {
                 WaitFlag<BufferInfo<bufferType>::EventC2P>(c2pEventId_);
-                GetTPipePtr()->ReleaseEventID<BufferInfo<bufferType>::EventP2C>(p2cEventId_); // 确保只能被调用一次
-                GetTPipePtr()->ReleaseEventID<BufferInfo<bufferType>::EventC2P>(c2pEventId_);
+                if constexpr (eventIdMode == EventIdMode::TPIPE_AUTO) {
+                    GetTPipePtr()->ReleaseEventID<BufferInfo<bufferType>::EventP2C>(p2cEventId_); // 确保只能被调用一次
+                    GetTPipePtr()->ReleaseEventID<BufferInfo<bufferType>::EventC2P>(c2pEventId_);
+                }
             }
         }
     }
@@ -185,10 +210,14 @@ public:
         }
     }
 
+    template<EventIdMode eventIdMode>
     __aicore__ inline void SetEventID() {
+        static_assert(eventIdMode == EventIdMode::TPIPE_AUTO, "eventIdMode should EventIdMode::TPIPE_AUTO.");
         if ASCEND_IS_AIC {
-            p2cEventId_ = GetTPipePtr()->AllocEventID<BufferInfo<bufferType>::EventP2C>(); // 确保只能被调用一次
-            c2pEventId_ = GetTPipePtr()->AllocEventID<BufferInfo<bufferType>::EventC2P>();
+            if constexpr (eventIdMode == EventIdMode::TPIPE_AUTO) {
+                p2cEventId_ = GetTPipePtr()->AllocEventID<BufferInfo<bufferType>::EventP2C>(); // 确保只能被调用一次
+                c2pEventId_ = GetTPipePtr()->AllocEventID<BufferInfo<bufferType>::EventC2P>();
+            }
         }
     }
 

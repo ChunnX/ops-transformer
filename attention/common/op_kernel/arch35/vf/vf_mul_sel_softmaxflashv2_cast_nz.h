@@ -615,8 +615,9 @@ __aicore__ inline void SoftmaxSumUpdate(const LocalTensor<T>& sumTensor, const L
 }
 
 // =============================================================================
-// 静态 Tensor 编程适配：vselrIndexesBuf 由 TBuf<>* 改为 LocalTensor<uint8_t>*
-//   - 仅 flash_attn 算子使用（函数名带 Static 后缀，避免与原 TBuf<>* 重载歧义）
+// 静态 Tensor 编程适配重载：vselrIndexesBuf 由 TBuf<>* 改为 LocalTensor<uint8_t>*
+//   - 仅 flash_attn 算子使用（其完成了静态 Tensor 适配，废弃 TBuf<>）
+//   - 通过 C++ 函数重载，与原 TBuf<>* 版本并存，对其它算子完全透明
 //   - 底层实现接受 LocalTensor<uint8_t>，无须修改，仅复用
 // =============================================================================
 template <typename T, typename T2, typename pseShiftType, uint32_t s1BaseSize = 128, uint32_t s2BaseSize = 128,
