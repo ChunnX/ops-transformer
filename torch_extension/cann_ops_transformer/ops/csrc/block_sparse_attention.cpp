@@ -33,11 +33,13 @@
 *        • `atten_mask` is intentionally NOT exposed: the kernel does not
 *          support fine-grained intra-block masking on CANN 8.5.0-beta.1
 *          (per the kernel's own README). The wrapper passes nullptr.
-*        • `attention_out_dtype` is the dtype of `attentionOut`. For FP16/BF16 inputs it
-*          must equal the input dtype (the only combination the kernel emits a
-*          binary for). For FLOAT8_E4M3FN inputs the kernel dequantizes and
-*          writes FP16 or BF16 — there is NO fp8→fp8 binary, so `attention_out_dtype` MUST
-*          be float16 or bfloat16 (the Python frontend defaults it to bfloat16).
+*        `attention_out_dtype` is the dtype of `attentionOut`. For FP16/BF16 inputs it
+*        must equal the input dtype (the only combination the kernel emits a
+*        binary for). For FLOAT8_E4M3FN inputs the kernel dequantizes and
+*        writes FP16 or BF16 — there is no fp8→fp8 binary, so `attention_out_dtype` MUST
+*        be float16 or bfloat16 (the Python frontend defaults it to bfloat16). For MXFP4
+*        (float4_e2m1fn_x2, uint8-disguised, quant_mode in {2,3}) inputs the kernel
+*        dequantizes to fp16 or bf16 — there is no MXFP4 output binary.
 *        • `softmaxLseOptional` shape, when enabled, is layout-dependent
 *          (the kernel's infershape hardcodes LSE_DIM_D=1):
 *            TND → [T, N, 1];  BNSD → [B, N, S, 1];  BSND → [B, S, N, 1].
@@ -121,8 +123,8 @@ std::tuple<at::Tensor, at::Tensor> npu_block_sparse_attention(
 	// quant_mode selects the quantization path and the kernel binary:
 	//   0 = no quantization (FP16/BF16)   → attentionOut = input dtype
 	//   1 = FP8 (float8_e4m3fn)           → attentionOut ∈ {FP16, BF16} (dequant)
-	//   2 = mxfp4 OCP (float4_e2m1fn_x2, uint8-disguised) → attentionOut ∈ {BF16}
-	//   3 = mxfp4 CX (float4_e2m1fn_x2, uint8-disguised)  → attentionOut ∈ {BF16}
+	//   2 = mxfp4 OCP (float4_e2m1fn_x2, uint8-disguised) → attentionOut ∈ {FP16, BF16}
+	//   3 = mxfp4 CX (float4_e2m1fn_x2, uint8-disguised)  → attentionOut ∈ {FP16, BF16}
 	// The (input dtype → attentionOut dtype) pairing is what selects the kernel
 	// binary. There is no fp8/MXFP4 output binary, so allocating attentionOut as the
 	// input dtype made the op fail with "Cannot find binary".
@@ -145,14 +147,14 @@ std::tuple<at::Tensor, at::Tensor> npu_block_sparse_attention(
 	} else {  // quant_mode in {MXFP4_OCP_QUANT, MXFP4_CX_QUANT} — mxfp4 OCP/CX
 		// MXFP4 path: float4_e2m1fn_x2 disguised as uint8. The wrapper infers
 		// FLOAT4_E2M1 / FLOAT8_E8M0 from quant_mode (no caller-passed dtype args).
-		// Kernel dequantizes to bf16 only (no fp16 output binary for mxfp4).
+		// Kernel dequantizes to fp16 or bf16 (no MXFP4 output binary).
 		TORCH_CHECK(q_scalar_type == at::kByte,
 					"quant_mode in {2, 3} (mxfp4) requires query/key/value dtype to be uint8 "
 					"(float4_e2m1fn_x2 disguised as uint8), got ", q_scalar_type);
-		TORCH_CHECK(attention_out_dtype == at::kBFloat16,
-					"attention_out_dtype must be torch.bfloat16 for "
+		TORCH_CHECK(attention_out_dtype == at::kHalf || attention_out_dtype == at::kBFloat16,
+					"attention_out_dtype must be torch.float16 or torch.bfloat16 for "
 					"float4_e2m1fn_x2 (uint8-disguised, quant_mode in {2, 3}) inputs "
-					"(kernel dequantizes; there is no MXFP4 output binary and only bf16 is supported)");
+					"(kernel dequantizes; there is no MXFP4 output binary)");
 	}
 
 	// FP8-only dequant scales (aclnnBlockSparseAttentionV2). Absent on the
