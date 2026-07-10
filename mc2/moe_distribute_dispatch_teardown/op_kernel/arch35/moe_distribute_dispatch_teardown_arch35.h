@@ -80,12 +80,12 @@ private:
         LocalTensor<float>& statusSumOutTensor);
     __aicore__ inline GM_ADDR GetWindAddrByRankId(const int32_t rankId)
     {
-        return (GM_ADDR)((mc2Context_->epHcclBuffer_[rankId]) + winDataSizeOffset_);
+        return (GM_ADDR)(mc2Context_->epHcclBuffer_[rankId] + STATE_SIZE + winDataSizeOffset_);
     }
 
     __aicore__ inline GM_ADDR GetWindStateAddrByRankId(const int32_t rankId)
     {
-        return (GM_ADDR)((mc2Context_->epHcclBuffer_[rankId]) + dataState_ * WIN_STATE_OFFSET);
+        return (GM_ADDR)(mc2Context_->epHcclBuffer_[rankId] + dataState_ * WIN_STATE_OFFSET);
     }
 
     __aicore__ inline uint32_t MIN(uint32_t x, uint32_t y)
