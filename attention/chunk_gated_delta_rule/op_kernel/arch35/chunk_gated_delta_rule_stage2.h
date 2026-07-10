@@ -203,7 +203,8 @@ public:
                                      sTP_->out[nvId * Dv_ + cId * chunkSize_ * Nv_ * Dv_]);
                         CrossCoreSetFlag<0x2, PIPE_FIX>(0x2);
                         CrossCoreWaitFlag(0x5);
-                        CalStateNew(sTP_->vInnerBf16[mm_offset1], sTP_->kg[mm_offset0], stateOut);
+                        CalStateNew(sTP_->vInnerBf16[mm_offset1], sTP_->kg[mm_offset0], stateOut,
+                                    sTP_->curStateBf16[nvId * Dv_ * Dk_]);
                         SetFlag<HardEvent::FIX_MTE2>(FIX_MTE2_EVENT);
                         WaitFlag<HardEvent::FIX_MTE2>(FIX_MTE2_EVENT);
                         CrossCoreSetFlag<0x2, PIPE_FIX>(0x4);
@@ -329,10 +330,13 @@ public:
     template <typename stateOutType>
     __aicore__ inline void CalStateNew(GlobalTensor<bfloat16_t> vInner,
                                        GlobalTensor<bfloat16_t> kg,
-                                       GlobalTensor<stateOutType> state)
+                                       GlobalTensor<stateOutType> state,
+                                       GlobalTensor<bfloat16_t> stateBf16 = {})
     {
         if constexpr (std::is_same_v<stateOutType, float>) {
             RunMatmul(sTP_->mm1Fp32C, vInner, true, kg, false, state,
+                      Dv_, Dk_, curChunkSize_, 1);
+            RunMatmul(sTP_->mm1, vInner, true, kg, false, stateBf16,
                       Dv_, Dk_, curChunkSize_, 1);
         } else {
             RunMatmul(sTP_->mm1, vInner, true, kg, false, state,
