@@ -380,9 +380,9 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::P
                 PhaseA_CLoop(idxBs, lenBs);
                 PhaseB_KDim(idxBs, lenBs);
             }
-            // event_t evtMte3ToS = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_S));
-            // SetFlag<HardEvent::MTE3_S>(evtMte3ToS);
-            // WaitFlag<HardEvent::MTE3_S>(evtMte3ToS);
+            event_t evtMte3ToS = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_S));
+            SetFlag<HardEvent::MTE3_S>(evtMte3ToS);
+            WaitFlag<HardEvent::MTE3_S>(evtMte3ToS);
         }
         SyncAll();
 
@@ -392,7 +392,7 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::P
         SyncAll();
 
         CrossCoreSetFlag<AIV_AIC_MODE, PIPE_MTE3>(PIPE_MTE3_FLAG);
-        CrossCoreWaitFlag<AIV_AIC_MODE, PIPE_FIX>(PIPE_FIX_FLAG);
+        CrossCoreWaitFlag<AIV_AIC_MODE>(PIPE_FIX_FLAG);
         SyncAll();
 
         if (blockIdx_ < usedCoreNum_) {
