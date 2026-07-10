@@ -1804,12 +1804,12 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Process()
             }
         }
 
-        // // GMM1 consumer 消费 expert e。
-        // if (!UpdateGroupParams<AddrUpdateMode::kGmm1>(gmm1State, localExpertId, curSendCnt)) {
-        //     continue;
-        // }
-        // UpdateGlobalBuffer<AddrUpdateMode::kGmm1>(gmm1AddrInfo, gmm1State);
-        // GroupMatmulWithSwigluQuant(gmm1AddrInfo, gmm1State);
+        // GMM1 consumer 消费 expert e。
+        if (!UpdateGroupParams<AddrUpdateMode::kGmm1>(gmm1State, localExpertId, curSendCnt)) {
+            continue;
+        }
+        UpdateGlobalBuffer<AddrUpdateMode::kGmm1>(gmm1AddrInfo, gmm1State);
+        GroupMatmulWithSwigluQuant(gmm1AddrInfo, gmm1State);
     }
     // EndSync(vecSetSyncCom_);
     // if constexpr(g_coreType == AIV) {
