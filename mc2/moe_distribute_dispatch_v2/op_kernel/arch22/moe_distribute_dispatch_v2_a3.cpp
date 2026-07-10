@@ -71,16 +71,16 @@ __global__ __aicore__ void moe_distribute_dispatch_v2(
                 MoeDistributeDispatchV2FullMesh<Mc2Kernel::HcclContextHolder, DTYPE_X, DTYPE_EXPAND_X,
                                                 Mc2Kernel::STATIC_QUANT, false> op;
                 op.Init(contextGM0, x, expertIds, scales, xActiveMask, expertScales, elasticInfo, performanceInfo,
-                        expandXOut, dynamicScalesOut, assistInfoOut, expandScalesOut, expertTokenNumsOut, epSendCountsOut,
-                        workspaceGM, &pipe, &tilingData);
+                        expandXOut, dynamicScalesOut, assistInfoOut, expandScalesOut, expertTokenNumsOut,
+                        epSendCountsOut, workspaceGM, &pipe, &tilingData);
                 op.Process();
                 return;
             } else if constexpr (QuantMode == TILINGKEY_PERTOKEN_QUANT) {
                 MoeDistributeDispatchV2FullMesh<Mc2Kernel::HcclContextHolder, DTYPE_X, DTYPE_EXPAND_X,
                                                 Mc2Kernel::PERTOKEN_DYNAMIC_QUANT, ScaleMode> op;
                 op.Init(contextGM0, x, expertIds, scales, xActiveMask, expertScales, elasticInfo, performanceInfo,
-                        expandXOut, dynamicScalesOut, assistInfoOut, expandScalesOut, expertTokenNumsOut, epSendCountsOut,
-                        workspaceGM, &pipe, &tilingData);
+                        expandXOut, dynamicScalesOut, assistInfoOut, expandScalesOut, expertTokenNumsOut,
+                        epSendCountsOut, workspaceGM, &pipe, &tilingData);
                 op.Process();
                 return;
             }
@@ -89,16 +89,16 @@ __global__ __aicore__ void moe_distribute_dispatch_v2(
                 MoeDistributeDispatchV2<Mc2Kernel::HcclContextHolder, DTYPE_X, DTYPE_EXPAND_X,
                                         Mc2Kernel::STATIC_QUANT, false> op;
                 op.Init(contextGM0, x, expertIds, scales, xActiveMask, expertScales, elasticInfo, performanceInfo,
-                        expandXOut, dynamicScalesOut, assistInfoOut, expandScalesOut, expertTokenNumsOut, epSendCountsOut,
-                        workspaceGM, &pipe, &tilingData);
+                        expandXOut, dynamicScalesOut, assistInfoOut, expandScalesOut, expertTokenNumsOut,
+                        epSendCountsOut, workspaceGM, &pipe, &tilingData);
                 op.Process();
                 return;
             } else if constexpr (QuantMode == TILINGKEY_PERTOKEN_QUANT) {
                 MoeDistributeDispatchV2<Mc2Kernel::HcclContextHolder, DTYPE_X, DTYPE_EXPAND_X,
                                         Mc2Kernel::PERTOKEN_DYNAMIC_QUANT, ScaleMode> op;
                 op.Init(contextGM0, x, expertIds, scales, xActiveMask, expertScales, elasticInfo, performanceInfo,
-                        expandXOut, dynamicScalesOut, assistInfoOut, expandScalesOut, expertTokenNumsOut, epSendCountsOut,
-                        workspaceGM, &pipe, &tilingData);
+                        expandXOut, dynamicScalesOut, assistInfoOut, expandScalesOut, expertTokenNumsOut,
+                        epSendCountsOut, workspaceGM, &pipe, &tilingData);
                 op.Process();
                 return;
             }

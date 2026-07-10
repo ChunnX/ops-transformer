@@ -41,6 +41,7 @@ TORCH_DTYPE_ENUM_VALUE_TO_SCALAR_TYPE_MAP = {
     290: torch.uint8,  # torch_npu.hifloat8 use torch.uint8
     291: torch.float8_e5m2,
     292: torch.float8_e4m3fn,
+    293: torch.uint8,  # torch_npu.float8_e8m0fnu use torch.uint8
     296: torch.uint8,  # torch_npu.float4_e2m1fn_x2 use torch.uint8
     297: torch.uint8,  # torch_npu.float4_e1m2fn_x2 use torch.uint8
 }
@@ -84,7 +85,8 @@ class MoeDistributeDispatchOpBuilder(OpBuilder):
             dynamic_scales_dtype = torch.float32
             if quant_mode == 0:
                 if x.dtype != torch.bfloat16 and x.dtype != torch.float16 and scales is not None:
-                    dynamic_scales_dtype = get_dtype_from_enum(x_smooth_scales_dtype) if x_smooth_scales_dtype is not None else scales.dtype
+                    dynamic_scales_dtype = get_dtype_from_enum(x_smooth_scales_dtype)
+                                           if x_smooth_scales_dtype is not None else scales.dtype
             elif quant_mode == 4 or quant_mode == 5:
                 dynamic_scales_dtype = torch.uint8  # float8_e8m0
             return dynamic_scales_dtype

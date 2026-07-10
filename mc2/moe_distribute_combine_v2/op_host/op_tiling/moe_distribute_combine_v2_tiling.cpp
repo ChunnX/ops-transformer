@@ -411,7 +411,7 @@ static bool CheckInputTensorDim(const gert::TilingContext *context, const char *
 
     if (hasExpertScales) {
         const gert::StorageShape *expertScalesStorageShape = context->GetInputShape(config.expertScalesIndex);
-        OP_TILING_CHECK(expertScalesStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName,"expertScales"),
+        OP_TILING_CHECK(expertScalesStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "expertScales"),
             return false);
         OP_TILING_CHECK(expertScalesStorageShape->GetStorageShape().GetDimNum() != TWO_DIMS,
             OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(nodeName, "expertScales",
@@ -630,7 +630,7 @@ static bool CheckExpertTensorDataType(const gert::TilingContext *context, const 
     }
     if (hasExpertScales) {
         auto expertScalesDesc = context->GetInputDesc(config.expertScalesIndex);
-        OP_TILING_CHECK(expertScalesDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName,"expertScalesDesc"),
+        OP_TILING_CHECK(expertScalesDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "expertScalesDesc"),
             return false);
         OP_TILING_CHECK((expertScalesDesc->GetDataType() != ge::DT_FLOAT),
             OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(nodeName, "expertScales",
@@ -742,7 +742,7 @@ static bool CheckInputTensorFormat(const gert::TilingContext *context, const cha
 
     if (hasExpertScales) {
         auto expertScalesDesc = context->GetInputDesc(config.expertScalesIndex);
-        OP_TILING_CHECK(expertScalesDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName,"expertScalesDesc"),
+        OP_TILING_CHECK(expertScalesDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "expertScalesDesc"),
             return false);
         OP_TILING_CHECK(static_cast<ge::Format>(ge::GetPrimaryFormat(expertScalesDesc->GetStorageFormat())) ==
             ge::FORMAT_FRACTAL_NZ, OP_LOGE_FOR_INVALID_FORMAT(nodeName, "expertScales", "not FRACTAL_NZ", "FRACTAL_NZ"), return false);
@@ -920,7 +920,7 @@ static bool CheckExpertsTensorShape(const gert::TilingContext *context, MoeDistr
     // 校验expertScales的维度
     if (hasExpertScales) {
         const gert::StorageShape *expertScalesStorageShape = context->GetInputShape(config.expertScalesIndex);
-        OP_TILING_CHECK(expertScalesStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName,"expertScales"),
+        OP_TILING_CHECK(expertScalesStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "expertScales"),
             return false);
         int64_t expertScalesDim0 = expertScalesStorageShape->GetStorageShape().GetDim(0);
         int64_t expertScalesDim1 = expertScalesStorageShape->GetStorageShape().GetDim(1);
