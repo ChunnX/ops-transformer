@@ -12,8 +12,7 @@ from .moe_distribute_dispatch import npu_moe_distribute_dispatch
 from .moe_distribute_combine import npu_moe_distribute_combine
 from .mega_moe import (
     get_symm_buffer_for_mega_moe,
-    mega_moe,
-    get_mega_moe_ccl_buffer_size
+    mega_moe
 )
 from .deep_ep import MoeDistributeBuffer
 from .flash_attn import flash_attn, flash_attn_metadata
