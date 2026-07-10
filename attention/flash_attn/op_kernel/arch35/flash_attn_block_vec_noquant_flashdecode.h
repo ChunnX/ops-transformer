@@ -138,6 +138,7 @@ private:
     LocalTensor<T> fdLseMaxUbBuf1;
     LocalTensor<T> fdLseMaxUbBuf2;
     LocalTensor<T> fdLseUbBuf;
+    LocalTensor<T> fdSinkExpBuf;
 
 public:
     __aicore__ inline FiaBlockVecFlashDecode(ConstInfoX &constInfo,
@@ -226,6 +227,14 @@ public:
                                  BUFFER_SIZE_BYTE_256B).template ReinterpretCast<T>();
             fdLseUbBuf     = LocalTensor<uint8_t>(TPosition::VECIN, OFF_BUF2A + 2U * BUFFER_SIZE_BYTE_256B,
                                  BUFFER_SIZE_BYTE_256B).template ReinterpretCast<T>();
+
+            // 即使无 learnableSink，ComputeScaleValue 仍会把 fdSinkExpBuf 作为参数传入
+            // __simd_vf__ 函数 ComputeScaleValue_VF_FD。VF 内虽在 for(i<learnableSinkFlag) 中保护了
+            // lseSink 访问，但编译器/调度器可能在循环外提前准备地址寄存器，未初始化的 LocalTensor
+            // (address_==0) 会让 VEC 取到非法地址 → aicore subErrType 0x4 / timeout or trap error。
+            // 因此无条件按编译期常量初始化，保证地址合法（位于 UB 内、32B 对齐）。
+            fdSinkExpBuf   = LocalTensor<uint8_t>(TPosition::VECIN, OFF_BUF2A + 3U * BUFFER_SIZE_BYTE_256B,
+                                 BUFFER_SIZE_BYTE_256B).template ReinterpretCast<T>();
         }
     }
     __aicore__ inline void AllocEventID()
@@ -302,7 +311,7 @@ protected:
         LocalTensor<T> lseMax = (cntM & 1) == 0 ? fdMaxBuf1 : fdMaxBuf2;
         LocalTensor<T> lseMaxUb = (cntM & 1) == 0 ? fdLseMaxUbBuf1 : fdLseMaxUbBuf2;
 
-        LocalTensor<T> sinkExpBuf;
+        LocalTensor<T> sinkExpBuf = fdSinkExpBuf;
         LocalTensor<T> maxLseUb = fdLseUbBuf;
         bool learnableSinkFlag = false;
         ComputeScaleValue_VF_FD(sinkExpBuf, lseMax, lseSum, lseExp, maxLseUb, lseMaxUb, dealRowCount,
