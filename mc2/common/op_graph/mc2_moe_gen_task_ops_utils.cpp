@@ -183,26 +183,36 @@ ge::Status Mc2MoeGenTaskOpsUtils::McMoeInsertHiddenInputForAicore(const gert::Ex
 // McMoeInsertHiddenInputForAicoreV2 在新接口中与V1无差别，整合为一
 
 ge::Status Mc2MoeGenTaskOpsUtils::CreateAicpuTaskMc2Moe(const gert::ExeResGenerationContext *context,
-                                                        ge::KernelLaunchInfo &aicpuTask, const int32_t groupCnt)
+                                                         ge::KernelLaunchInfo &aicpuTask, const int32_t groupCnt)
 {
+    size_t inputSize = context->GetComputeNodeInfo()->GetIrInputsNum();
+    size_t outputSize = context->GetComputeNodeInfo()->GetIrOutputsNum();
+    OPS_LOG_I(context->GetNodeName(), "IR inputNum: %zu, IR outputNum: %zu", inputSize, outputSize);
     // desc 配置
     union {
         HcclCommParamDescTmp hcclCommParamDesc;
         uint64_t customValue;
     } desc;
-    desc.hcclCommParamDesc.version = 1; // 保留参数，暂时保持为 1
+    desc.hcclCommParamDesc.version = 1;
     desc.hcclCommParamDesc.groupNum = groupCnt;
-    desc.hcclCommParamDesc.hasFfts = 0; // aicpu 暂时用不到此参数
-    desc.hcclCommParamDesc.tilingOff = desc.hcclCommParamDesc.hasFfts + desc.hcclCommParamDesc.groupNum + 1;
-    desc.hcclCommParamDesc.isDyn = 0; // 现在默认为 0
+    desc.hcclCommParamDesc.hasFfts = 0;
+    desc.hcclCommParamDesc.tilingOff = 1 + groupCnt + inputSize + outputSize + 1;
+    desc.hcclCommParamDesc.isDyn = 0;
 
-    // aicpu 参数顺序: {desc}{ffts}{hcom}{tiling}
     std::vector<ge::ArgDescInfo> argsDescInfos;
     argsDescInfos.emplace_back(ge::ArgDescInfo::CreateCustomValue(desc.customValue));
 
     for (size_t i = 0; i < groupCnt; ++i) {
         argsDescInfos.emplace_back(ge::ArgDescInfo::CreateHiddenInput(ge::HiddenInputSubType::kHcom));
     }
+    argsDescInfos.emplace_back(ge::ArgDescInfo(ge::ArgDescType::kIrInput, 0));
+    for (size_t i = 1; i < inputSize; i++) {
+        argsDescInfos.emplace_back(ge::ArgDescInfo(ge::ArgDescType::kIrInput, 0));
+    }
+    for (size_t j = 0; j < outputSize; j++) {
+        argsDescInfos.emplace_back(ge::ArgDescInfo(ge::ArgDescType::kIrOutput, j));
+    }
+    argsDescInfos.emplace_back(ge::ArgDescInfo(ge::ArgDescType::kWorkspace));
     argsDescInfos.emplace_back(ge::ArgDescInfo(ge::ArgDescType::kTiling));
 
     auto argsFormatStr = ge::ArgsFormatSerializer::Serialize(argsDescInfos);
