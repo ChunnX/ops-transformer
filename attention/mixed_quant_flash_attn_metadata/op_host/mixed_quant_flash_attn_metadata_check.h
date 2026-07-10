@@ -74,9 +74,9 @@ static aclnnStatus ParamsCheck(const aclTensor *cuSeqlensQOptional, const aclTen
     }
 
     bool layoutKvValid =
-        (strcmp(layoutKv, "PA_BNBD") == 0 || strcmp(layoutKv, "PA_BBND") == 0);
+        (strcmp(layoutKv, "PA_BNBD") == 0 || strcmp(layoutKv, "PA_BBND") == 0 || strcmp(layoutKv, "PA_NZ") == 0);
     if (!layoutKvValid) {
-        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "layoutKv only supports PA_BNBD, PA_BBND, but got %s",
+        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "layoutKv only supports PA_BNBD, PA_BBND, PA_NZ, but got %s",
                 layoutKv);
         return ACLNN_ERR_PARAM_INVALID;
     }

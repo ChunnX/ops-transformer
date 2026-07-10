@@ -112,8 +112,9 @@ public:
 
     BufferManager<BufferType::UB> ubBufferManager;
     BufferManager<BufferType::L1> l1BufferManager;
-    BuffersPolicyDB<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> bmmBuffers;
-    BuffersPolicyDB<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> l1PBuffers;
+    BuffersPolicyDB<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> bmm1Buffers;
+    BuffersPolicyDB<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> bmm2Buffers;
+    BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> l1PBuffers;
 
     GlobalTensor<int32_t> cuSeqLensGmQ;
     GlobalTensor<int32_t> seqUsedGmQ;
@@ -262,7 +263,7 @@ public:
         l1BufferManager.Init(pipe, 524288);
         l1PBuffers.Init(l1BufferManager, mm2LeftSize);
         ubBufferManager.Init(pipe, mm1ResultSize * 2);
-        bmmBuffers.Init(ubBufferManager, mm1ResultSize);
+        bmm2Buffers.Init(ubBufferManager, mm1ResultSize);
     }
 
     __aicore__ inline void InitConstInfo()
@@ -338,16 +339,16 @@ public:
     __aicore__ inline void CrossCoreBufferInit()
     {
         if ASCEND_IS_AIV {
-            bmmBuffers.Get().SetCrossCore();
-            bmmBuffers.Get().SetCrossCore();
+            bmm2Buffers.Get().SetCrossCore();
+            bmm2Buffers.Get().SetCrossCore();
         }
     }
 
     __aicore__ inline void CrossCoreBufferUnInit()
     {
         if ASCEND_IS_AIC {
-            bmmBuffers.Get().WaitCrossCore();
-            bmmBuffers.Get().WaitCrossCore();
+            bmm2Buffers.Get().WaitCrossCore();
+            bmm2Buffers.Get().WaitCrossCore();
         }
     }
 
@@ -639,7 +640,7 @@ public:
 
     __aicore__ inline void ComputeMm2(RunInfoX &runInfo)
     {
-        // TODO: 待后续填充实现
+        cubeBlock.IterateBmm2(this->bmm2Buffers.Get(), this->l1PBuffers, runInfo);
     }
 
     __aicore__ inline void AntiquantKey(RunInfoX &runInfo)
