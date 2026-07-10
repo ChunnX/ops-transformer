@@ -18,6 +18,7 @@
 #include "kernel_operator.h"
 #include "../quant_block_sparse_attn_mx_tiling_data.h"
 #include "quant_block_sparse_attn_common_arch35.h"
+#include "quant_block_sparse_attn_attenmask.h"
 #include "quant_block_sparse_attn_kvcache.h"
 #include "quant_block_sparse_attn_mx_block_cube.h"
 #include "quant_block_sparse_attn_mx_block_vec.h"
@@ -42,20 +43,32 @@ namespace BaseApi {
  * 512 宽 tile 再拆成两个 256 宽 C1/V1 subLoop，随后一次 C2/V2 消费合并后的
  * 128x512 P 矩阵。
  *
- * useDn 与 FP8 模板保持同一设计含义：控制 C1/V1 数据布局选择。当前 kernel
- * 入口固定实例化 useDn=true，MX kernel 内的非 DN 分支保留为后续扩展入口。
+ * 模板参数顺序与 FP8 的 BSA_OP_IMPL 保持一致，使 tiling key 选中的数据类型、
+ * layout、基本块配置和特性开关在 kernel 入口处可见，并继续向 cube/vector 透传。
+ * useDn 控制 C1/V1 数据布局选择；hasAtten 来自 MASK_MODE。
  */
-template <bool useDn = true>
+template <typename inputType, typename mmType, typename outputType, BSALayout layout, BSALayout kvLayout,
+          S1TemplateType s1TemplateType, S2TemplateType s2TemplateType, DTemplateType dTemplateType,
+          DTemplateType dVTemplateType, bool hasAtten, bool isPa, bool useDn = true>
 class QuantBlockSparseAttnMxKernel {
 public:
-    using INPUT_T = fp8_e4m3fn_t;
-    using MM_T = float;
+    using INPUT_T = inputType;
+    using MM_T = mmType;
+    using OUTPUT_T = outputType;
     static constexpr bool USE_DN = useDn;
-    static constexpr uint32_t M_BASE = 128U;
-    static constexpr uint32_t S2_BASE = 512U;
+    static constexpr bool HAS_ATTEN = hasAtten;
+    static constexpr bool IS_PA = isPa;
+    static constexpr BSALayout LAYOUT = layout;
+    static constexpr BSALayout KV_LAYOUT = kvLayout;
+    static constexpr uint32_t M_BASE = static_cast<uint32_t>(s1TemplateType);
+    static constexpr uint32_t S2_BASE = static_cast<uint32_t>(s2TemplateType);
     static constexpr uint32_t S2_SPLIT = 256U;
-    static constexpr uint32_t D_BASE = 128U;
-    static constexpr uint32_t DV_BASE = 128U;
+    static constexpr uint32_t D_BASE = static_cast<uint32_t>(dTemplateType);
+    static constexpr uint32_t DV_BASE = static_cast<uint32_t>(dVTemplateType);
+    static_assert(LAYOUT == BSALayout::TND && KV_LAYOUT == BSALayout::PA_BNSD && IS_PA,
+                  "MXFullQuantMode currently only supports TND query and PA_BNSD KV");
+    static_assert(M_BASE == 128U && S2_BASE == 512U && D_BASE == 128U && DV_BASE == 128U,
+                  "MXFullQuantMode currently only supports S1=128, S2=512, D=128 and DV=128");
     // 延迟两个 task 后再启动 C2/V2，表示 C2/V2 执行时，后续两个 C1/V1 task 已经预取。
     // 每个 512 KV block 又会拆成两个 C1/V1 subLoop，因此启动阶段会先看到六次 C1/V1，
     // 再进入第一轮延迟 C2/V2，匹配当前 MX 流水预热方式。
@@ -66,7 +79,7 @@ public:
 
     __aicore__ inline void Init(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
                                 __gm__ uint8_t *sparseIndices, __gm__ uint8_t *sparseSeqLen,
-                                __gm__ uint8_t *, __gm__ uint8_t *metadata, __gm__ uint8_t *cuSeqlensQ,
+                                __gm__ uint8_t *attenMask, __gm__ uint8_t *metadata, __gm__ uint8_t *cuSeqlensQ,
                                 __gm__ uint8_t *cuSeqlensKv, __gm__ uint8_t *seqUsedQ,
                                 __gm__ uint8_t *seqUsedKv, __gm__ uint8_t *blockTable, __gm__ uint8_t *qScale,
                                 __gm__ uint8_t *kScale, __gm__ uint8_t *vScale, __gm__ uint8_t *pScale,
@@ -89,9 +102,10 @@ public:
         seqUsedQGm.SetGlobalBuffer((__gm__ int32_t *)seqUsedQ);
         seqUsedKvGm.SetGlobalBuffer((__gm__ int32_t *)seqUsedKv);
         InitConstInfo();
+        InitAttenMaskInfo();
         InitMMResBuf();
         cubeBlock.Init(pipe, &l1BufferManager, queryPtr, keyPtr, valuePtr, blockTable, qScale, kScale, vScale);
-        vecBlock.Init(pipe, pScale, softmaxLse, attentionOut);
+        vecBlock.Init(pipe, pScale, softmaxLse, attentionOut, attenMask, attenMaskInfo);
     }
 
     __aicore__ inline void Process()
@@ -166,6 +180,26 @@ private:
         constInfo.qScaleN1D = constInfo.realN2Size * constInfo.queryScaleDSize * constInfo.scaleLastDim;
         constInfo.kScaleN2D = constInfo.n2Size * constInfo.keyScaleDSize * constInfo.scaleLastDim;
         constInfo.valueScaleN2D = constInfo.n2Size * constInfo.valueScaleDSize;
+    }
+
+    __aicore__ inline void InitAttenMaskInfo()
+    {
+        if constexpr (HAS_ATTEN) {
+            // MX 当前只放开 mask_mode=3。host 将它兼容成 RIGHT_DOWN_CAUSAL_MODE，
+            // vector 侧再按 BSA FP8 DN 的 offset 规则从 attenMask GM 搬运到 UB。
+            const auto &attenMaskParams = tilingData->attenMaskParams;
+            attenMaskInfo.preTokens = attenMaskParams.preTokens;
+            attenMaskInfo.nextTokens = attenMaskParams.nextTokens;
+            attenMaskInfo.compressMode = attenMaskParams.attenMaskCompressMode;
+            attenMaskInfo.attenMaskShapeType = attenMaskBS1S2;
+            attenMaskInfo.attenMaskS1Size = attenMaskParams.attenMaskS1Size;
+            attenMaskInfo.attenMaskS2Size = attenMaskParams.attenMaskS2Size;
+            attenMaskInfo.bandIndex = 0;
+            attenMaskInfo.prefixNAddr = nullptr;
+            attenMaskInfo.attenMaskOffsetPre = 0;
+            attenMaskInfo.computeMode = regbaseutil::AttenMaskComputeMode::NORMAL_MODE;
+            attenMaskInfo.attenMaskS1Offset = 0;
+        }
     }
 
     __aicore__ inline void InitMMResBuf()
@@ -271,6 +305,35 @@ private:
             regbasemx::BSA_MX_MAX_SPARSE_BLOCK_PER_TASK : blockCount;
     }
 
+    __aicore__ inline bool ShouldMoveSparseBlockBack(int64_t previousBlockIdx, int64_t currentBlockIdx) const
+    {
+        // 与 FP8 IdxSortBySparseIdx 的顺序一致：有效 block 按逻辑 id 升序，
+        // -1 等无效 block 放到末尾。MX 将该两元素规则推广到单 task 的 4/8 个 block。
+        if (previousBlockIdx < 0) {
+            return currentBlockIdx >= 0;
+        }
+        if (currentBlockIdx < 0) {
+            return false;
+        }
+        return previousBlockIdx > currentBlockIdx;
+    }
+
+    __aicore__ inline void SortSparseBlocks(MxRunInfo &runInfo) const
+    {
+        // block 数最大为 8，插入排序的控制开销很小；排序只移动 block id，
+        // token offset、真实长度、tile offset 和 partial-mask 会在排序后统一生成。
+        for (uint32_t i = 1U; i < runInfo.sparseBlockCount; ++i) {
+            const int64_t currentBlockIdx = runInfo.sparseBlockIdx[i];
+            uint32_t insertPos = i;
+            while (insertPos > 0U &&
+                   ShouldMoveSparseBlockBack(runInfo.sparseBlockIdx[insertPos - 1U], currentBlockIdx)) {
+                runInfo.sparseBlockIdx[insertPos] = runInfo.sparseBlockIdx[insertPos - 1U];
+                --insertPos;
+            }
+            runInfo.sparseBlockIdx[insertPos] = currentBlockIdx;
+        }
+    }
+
     __aicore__ inline void FillRunInfo(MxRunInfo &runInfo, uint64_t loop, uint32_t mLoop, uint32_t bn1Idx,
                                        uint32_t s1OuterIdx, uint32_t s2LoopIdx, uint32_t s2LoopEnd,
                                        uint32_t sparseBlockCount, uint64_t sparseBase)
@@ -312,38 +375,44 @@ private:
         runInfo.sparseBlockCount = sparseBlockCount > regbasemx::BSA_MX_MAX_SPARSE_BLOCK_PER_TASK ?
             regbasemx::BSA_MX_MAX_SPARSE_BLOCK_PER_TASK : sparseBlockCount;
         for (uint32_t i = 0U; i < runInfo.sparseBlockCount; ++i) {
-            const int64_t sparseBlkIdx = sparseIndicesGm.GetValue(sparseBase + s2LoopIdx + i);
-            const int64_t sparseTokenOffset = sparseBlkIdx * static_cast<int64_t>(constInfo.kvSparseBlockSize);
-            const int64_t remainS2 = static_cast<int64_t>(runInfo.actS2Size) - sparseTokenOffset;
-            const uint32_t sparseBlockRealSize =
-                remainS2 > static_cast<int64_t>(constInfo.kvSparseBlockSize) ? constInfo.kvSparseBlockSize :
-                    (remainS2 > 0 ? static_cast<uint32_t>(remainS2) : 0U);
-            runInfo.sparseBlockIdx[i] = sparseBlkIdx;
+            runInfo.sparseBlockIdx[i] = sparseIndicesGm.GetValue(sparseBase + s2LoopIdx + i);
+        }
+        SortSparseBlocks(runInfo);
+        for (uint32_t i = 0U; i < runInfo.sparseBlockCount; ++i) {
+            const int64_t sparseBlkIdx = runInfo.sparseBlockIdx[i];
+            int64_t sparseTokenOffset = 0;
+            uint32_t sparseBlockRealSize = 0U;
+            runInfo.sparseBlockTileOffset[i] = runInfo.actSingleLoopS2Size;
+            // 与 FP8 SetSparseIndicesRunInfo 保持一致：负 index 表示无效 sparse block，
+            // 不参与 K/V/mask 拼接，也不能用负 index 计算 token offset。
+            if (sparseBlkIdx >= 0) {
+                sparseTokenOffset = sparseBlkIdx * static_cast<int64_t>(constInfo.kvSparseBlockSize);
+                const int64_t remainS2 = static_cast<int64_t>(runInfo.actS2Size) - sparseTokenOffset;
+                sparseBlockRealSize =
+                    remainS2 > static_cast<int64_t>(constInfo.kvSparseBlockSize) ? constInfo.kvSparseBlockSize :
+                        (remainS2 > 0 ? static_cast<uint32_t>(remainS2) : 0U);
+            }
             runInfo.sparseBlockTokenOffset[i] = sparseTokenOffset;
             runInfo.sparseBlockRealSize[i] = sparseBlockRealSize;
+            if constexpr (HAS_ATTEN) {
+                if (sparseBlockRealSize != 0U) {
+                    const int64_t causalDelta = static_cast<int64_t>(runInfo.actS2Size) -
+                                                static_cast<int64_t>(runInfo.actS1Size);
+                    int64_t sparseBlkIdxForMask = sparseBlkIdx;
+                    AttentionMaskFullProcessingOrRequired(runInfo.s1Idx, sparseTokenOffset, causalDelta,
+                                                          sparseBlockRealSize, sparseBlkIdxForMask,
+                                                          runInfo.sparseBlockPartialMask[i]);
+                }
+            }
             runInfo.actSingleLoopS2Size += sparseBlockRealSize;
         }
-        if (runInfo.sparseBlockCount != 0U) {
-            runInfo.sparseBlkIdx1 = runInfo.sparseBlockIdx[0];
-            runInfo.sparseS2TokenOffset = runInfo.sparseBlockTokenOffset[0];
-            runInfo.s2SparseBlk1RealSize = runInfo.sparseBlockRealSize[0];
-        }
-        runInfo.s2SparseBlk1RealAlignedSize = (runInfo.actSingleLoopS2Size + 63U) >> 6 << 6;
-        runInfo.actSingleLoopS2SizeAlign = runInfo.s2SparseBlk1RealAlignedSize;
+        runInfo.actSingleLoopS2SizeAlign = (runInfo.actSingleLoopS2Size + 63U) >> 6 << 6;
         runInfo.isFirstS2Loop = s2LoopIdx == 0U;
         runInfo.isLastS2Loop = s2LoopIdx + runInfo.sparseBlockCount - 1U >= s2LoopEnd;
         runInfo.queryOffset =
             (runInfo.queryTokenBase + runInfo.s1Idx) * constInfo.n2GD + runInfo.realN2Idx * constInfo.dSize;
         runInfo.queryScaleOffset = (runInfo.queryTokenBase + runInfo.s1Idx) * constInfo.qScaleN1D +
                                    runInfo.realN2Idx * constInfo.queryScaleDSize * constInfo.scaleLastDim;
-        // 保留 BSA sparse-mask 的判断结果到 RunInfo。当前 MX vector 调用路径暂未启用
-        // mask 输入，但该标志记录 512 block 是否与 causal 边界相交，后续接入 mask 时
-        // 可以直接复用这个入口。
-        int64_t delta = static_cast<int64_t>(runInfo.actS2Size) - static_cast<int64_t>(runInfo.actS1Size);
-        int64_t sparseBlkIdx = runInfo.sparseBlkIdx1;
-        AttentionMaskFullProcessingOrRequired(runInfo.s1Idx, runInfo.sparseS2TokenOffset, delta,
-                                              runInfo.actSingleLoopS2Size, sparseBlkIdx,
-                                              runInfo.sparseBlk1PartialMask);
     }
 
     __aicore__ inline bool HasValidTask(MxRunInfo taskRunInfo[PRELOAD_TASK_CACHE_SIZE]) const
@@ -474,6 +543,7 @@ private:
     TPipe *pipe = nullptr;
     const QuantBlockSparseAttnMxTilingData *__restrict tilingData = nullptr;
     regbasemx::MxConstInfo constInfo;
+    regbaseutil::AttenMaskInfo attenMaskInfo;
     __gm__ uint8_t *queryPtr = nullptr;
     __gm__ uint8_t *keyPtr = nullptr;
     __gm__ uint8_t *valuePtr = nullptr;
@@ -489,8 +559,12 @@ private:
     BuffersPolicyDB<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> bmm1Buffers;
     BuffersPolicySingleBuffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> bmm2Buffers;
     BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> l1PBuffers;
-    QuantBlockSparseAttnMxBlockCube<USE_DN> cubeBlock;
-    QuantBlockSparseAttnMxBlockVec<USE_DN> vecBlock;
+    QuantBlockSparseAttnMxBlockCube<INPUT_T, MM_T, OUTPUT_T, LAYOUT, KV_LAYOUT, s1TemplateType, s2TemplateType,
+                                    dTemplateType, dVTemplateType, IS_PA, USE_DN>
+        cubeBlock;
+    QuantBlockSparseAttnMxBlockVec<INPUT_T, MM_T, OUTPUT_T, LAYOUT, KV_LAYOUT, s1TemplateType, s2TemplateType,
+                                   dTemplateType, dVTemplateType, HAS_ATTEN, IS_PA, USE_DN>
+        vecBlock;
 };
 } // namespace BaseApi
 

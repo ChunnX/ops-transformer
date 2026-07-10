@@ -60,16 +60,21 @@ using namespace optiling;
         BSA_OP_IMPL_WITH_TILING(tilingData, __VA_ARGS__); \
     } while (0)
 
-#define BSA_MX_OP_IMPL(useDn) \
+#define BSA_MX_OP_IMPL_WITH_TILING(tilingDataPtr, ...) \
     do { \
         /* MXFullQuantMode 读取 QuantBlockSparseAttnMxTilingData，不读取 FP8 tiling struct。 */ \
-        BaseApi::QuantBlockSparseAttnMxKernel<useDn> op; \
-        GET_TILING_DATA_WITH_STRUCT(QuantBlockSparseAttnMxTilingData, tilingDataIn, tiling); \
-        const QuantBlockSparseAttnMxTilingData *__restrict tilingData = &tilingDataIn; \
+        BaseApi::QuantBlockSparseAttnMxKernel<__VA_ARGS__> op; \
         op.Init(query, key, value, sparseIndices, sparseSeqLen, attenMask, metadata, cuSeqlensQ, cuSeqlensKv, \
                 seqUsedQ, seqUsedKv, blockTable, qScale, kScale, vScale, pScale, softmaxLse, attentionOut, user, \
-                tilingData, &tPipe); \
+                tilingDataPtr, &tPipe); \
         op.Process(); \
+    } while (0)
+
+#define BSA_MX_OP_IMPL(...) \
+    do { \
+        GET_TILING_DATA_WITH_STRUCT(QuantBlockSparseAttnMxTilingData, tilingDataIn, tiling); \
+        const QuantBlockSparseAttnMxTilingData *__restrict tilingData = &tilingDataIn; \
+        BSA_MX_OP_IMPL_WITH_TILING(tilingData, __VA_ARGS__); \
     } while (0)
 
 
@@ -102,7 +107,9 @@ __global__ __aicore__ void quant_block_sparse_attn(
         // kernel 以 S2=512 logical tile 计算，tile 内可拼接多个 sparse KV block。
         static_assert(Config == Config_S1Aligned128_S2Aligned512_DAligned128_DVAligned128,
                       "MXFullQuantMode must use S1=128, S2=512, D=128, DV=128 config");
-        BSA_MX_OP_IMPL(true);
+        BSA_MX_OP_IMPL(fp8_e4m3fn_t, float, bfloat16_t, layout, kvLayout, S1TemplateType::Aligned128,
+                       S2TemplateType::Aligned512, DTemplateType::Aligned128, DTemplateType::Aligned128,
+                       HAS_ATTENTION, bsaIsPa, bsaUseDn);
     } else {
         static_assert(Config == Config_S1Aligned128_S2Aligned256_DAligned128_DVAligned128,
                       "FP8QuantMode must use S1=128, S2=256, D=128, DV=128 config");
