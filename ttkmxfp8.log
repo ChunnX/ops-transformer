@@ -1,254 +1,30 @@
-TND_B1_QS704_KVS900_Nq32_Nkv32_D128_SP0,,fia_mxfp8_wrapper.npu_fia_mxfp8,"((1, 32, 704, 128), (1, 32, 900, 128), (1, 32, 900, 128), (1, 32, 704, 4), (1, 32, 900, 4), (1, 32, 29, 128), (1,), (0,))","('float16', 'float16', 'float16', 'float32', 'float32', 'float32', 'float32', 'int32')",(),(),(),(),(),"{'B': 1, 'N_q': 32, 'N_kv': 32, 'D': 128, 'actual_seq_q': [704], 'actual_seq_kv': [900], 'enable_pa': False, 'kv_cache_layout': 'TND', 'block_size': 512, 'sparse_mode': 0, 'q_scale_layout': 'TND', 'p_scale_value': 100.0, 'data_range_q': 1.0, 'data_range_k': 1.0, 'data_range_v': 1.0, 'enable_lse': False, 'enable_rope': True, 'D_rope': 64, 'graph_path': 0, 'input_layout': 'TND', 'is_contiguous': True, 'device_id': 0}",,"((None, None), (None, None), (None, None), (None, None), (None, None), (None, None), (None, None), (None, None))",,"(1e-08,)",True,,,0,FAIL,COMPARE_FAILURE,,,,,,,,,,,,,,
-TND_B1_QS4000_KVS896_Nq8_Nkv4_D128_SP0,,fia_mxfp8_wrapper.npu_fia_mxfp8,"((1, 8, 4000, 128), (1, 4, 896, 128), (1, 4, 896, 128), (1, 8, 4000, 4), (1, 4, 896, 4), (1, 4, 28, 128), (1,), (0,))","('float16', 'float16', 'float16', 'float32', 'float32', 'float32', 'float32', 'int32')",(),(),(),(),(),"{'B': 1, 'N_q': 8, 'N_kv': 4, 'D': 128, 'actual_seq_q': [4000], 'actual_seq_kv': [896], 'enable_pa': False, 'kv_cache_layout': 'TND', 'block_size': 1024, 'sparse_mode': 0, 'q_scale_layout': 'N2TGD', 'p_scale_value': 100.0, 'data_range_q': 1.0, 'data_range_k': 1.0, 'data_range_v': 1.0, 'enable_lse': False, 'enable_rope': True, 'D_rope': 64, 'graph_path': 0, 'input_layout': 'TND', 'is_contiguous': True, 'device_id': 0}",,"((None, None), (None, None), (None, None), (None, None), (None, None), (None, None), (None, None), (None, None))",,"(1e-08,)",True,,,0,FAIL,COMPARE_FAILURE,,,,,,,,,,,,,,
+PA_BnNBsD_B1_QS15_KVS0_Nq20_Nkv4_D128_SP0,,fia_mxfp8_wrapper.npu_fia_mxfp8,"((1, 20, 15, 128), (1, 4, 0, 128), (1, 4, 0, 128), (1, 20, 15, 4), (1, 4, 0, 4), (1, 4, 0, 128), (1,), (0,))","('float16', 'float16', 'float16', 'float32', 'float32', 'float32', 'float32', 'int32')",(),(),(),(),(),"{'B': 1, 'N_q': 20, 'N_kv': 4, 'D': 128, 'actual_seq_q': [15], 'actual_seq_kv': [0], 'enable_pa': True, 'kv_cache_layout': 'BnNBsD', 'block_size': 512, 'sparse_mode': 0, 'q_scale_layout': 'TND', 'p_scale_value': 100.0, 'data_range_q': 1.0, 'data_range_k': 1.0, 'data_range_v': 1.0, 'enable_lse': False, 'enable_rope': False, 'D_rope': 64, 'graph_path': 0, 'input_layout': 'TND', 'is_contiguous': True, 'device_id': 0}",,"((None, None), (None, None), (None, None), (None, None), (None, None), (None, None), (None, None), (None, None))",,"(1e-08,)",True,,,0,"Traceback (most recent call last):
+  File ""/home/z00954345/Ascendfzxttk/cann/ops-test-kit/ttk/core_modules/framework_api/profiling.py"", line 215, in profile_process
+    _do_profile(testcase, backend, device_grant_events, device_granted_indices,
+  File ""/home/z00954345/Ascendfzxttk/cann/ops-test-kit/ttk/core_modules/framework_api/profiling.py"", line 577, in _do_profile
+    result_nps, perf = _execute_eager(
+                       ^^^^^^^^^^^^^^^
+  File ""/home/z00954345/Ascendfzxttk/cann/ops-test-kit/ttk/core_modules/framework_api/profiling.py"", line 328, in _execute_eager
+    resolved(*args, **kwargs)
+  File ""/home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test/fia_mxfp8_wrapper.py"", line 102, in npu_fia_mxfp8
+    atten_out, lse_out = golden_mod.npu_mxfp8_fa(
+                         ^^^^^^^^^^^^^^^^^^^^^^^^
+  File ""/home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test/common/fia_fullquant_mxfp8_golden.py"", line 1009, in npu_mxfp8_fa
+    k_pa = mxfp8_pa_preprocessing(k_fp8, actual_seq_kv, BLOCK_SIZE, block_table_torch,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File ""/home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test/common/fia_fullquant_mxfp8_golden.py"", line 476, in mxfp8_pa_preprocessing
+    block_table = block_table if isinstance(block_table, torch.Tensor) else torch.as_tensor(block_table)
+                                                                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+RuntimeError: Could not infer dtype of NoneType
 
+During handling of the above exception, another exception occurred:
 
-npu:0                                       | 2932176 64_Nkv1_D128_SP3 OnGenGolden          RUNNING  55s  |
-|                                             | 2932177 q80_Nkv4_D64_SP3 OnGenGolden          RUNNING  78s  |
-|                                             | 2932178 q8_Nkv4_D128_SP0 OnGenGolden          RUNNING  5s   |
-|                                             | 2932179 2_Nkv32_D128_SP0 OnEagerProfiling     RUNNING  5s   |
-+-----------------------------------------------------------------------------------------------------------+
-[NPU TND] k=torch.Size([900, 32, 128]), v=torch.Size([900, 32, 128])
-[NPU TND] K scale shape=torch.Size([900, 32, 2, 2]), V scale shape=torch.Size([15, 32, 128, 2])
-[NPU] 调用 TND 模式...
-[NPU] 调用单算子模式...
-[NPU] output=torch.Size([704, 32, 128])
-[WRAPPER] 使用 customize_inputs 缓存的真实 FP8 数据
-[NPU] Q layout auto: G=1, S1=704, G*S1=704, q_layout=TND
-[NPU TND] q=torch.Size([704, 32, 128])
-[NPU] Q scale layout=TND, shape=torch.Size([704, 32, 2, 2])
-[NPU] q_rope=torch.Size([704, 32, 64]), k_rope=torch.Size([900, 32, 64])
-[NPU TND] k=torch.Size([900, 32, 128]), v=torch.Size([900, 32, 128])
-
-+-----------------------------------------------------------------------------------------------------------+
-| Version: 3.0.0 Summary (Device Total: 1) Progress: 12% 19 / 149 ET: 153s Rev: 7f1d28b                     |
-+-----------------------------------------------------------------------------------------------------------+
-| npu:0                                       | 2932176 64_Nkv1_D128_SP3 OnGenGolden          RUNNING  65s  |
-|                                             | 2932177 q80_Nkv4_D64_SP3 OnGenGolden          RUNNING  88s  |
-|                                             | 2932178 q8_Nkv4_D128_SP0 OnGenGolden          RUNNING  15s  |
-|                                             | 2932179 2_Nkv32_D128_SP0 OnEagerProfiling     RUNNING  15s  |
-+-----------------------------------------------------------------------------------------------------------+
-[NPU TND] K scale shape=torch.Size([900, 32, 2, 2]), V scale shape=torch.Size([15, 32, 128, 2])
-[NPU] 调用 TND 模式...
-[NPU] 调用单算子模式...
-[NPU] output=torch.Size([704, 32, 128])
-[WRAPPER] 使用 customize_inputs 缓存的真实 FP8 数据
-[NPU] Q layout auto: G=1, S1=704, G*S1=704, q_layout=TND
-[NPU TND] q=torch.Size([704, 32, 128])
-[NPU] Q scale layout=TND, shape=torch.Size([704, 32, 2, 2])
-[NPU] q_rope=torch.Size([704, 32, 64]), k_rope=torch.Size([900, 32, 64])
-[NPU TND] k=torch.Size([900, 32, 128]), v=torch.Size([900, 32, 128])
-[NPU TND] K scale shape=torch.Size([900, 32, 2, 2]), V scale shape=torch.Size([15, 32, 128, 2])
-[NPU] 调用 TND 模式...
-[NPU] 调用单算子模式...
-[NPU] output=torch.Size([704, 32, 128])
-[WRAPPER] 使用 customize_inputs 缓存的真实 FP8 数据
-[NPU] Q layout auto: G=1, S1=704, G*S1=704, q_layout=TND
-[NPU TND] q=torch.Size([704, 32, 128])
-[NPU] Q scale layout=TND, shape=torch.Size([704, 32, 2, 2])
-
-+-----------------------------------------------------------------------------------------------------------+
-| Version: 3.0.0 Summary (Device Total: 1) Progress: 12% 19 / 149 ET: 163s Rev: 7f1d28b                     |
-+-----------------------------------------------------------------------------------------------------------+
-| npu:0                                       | 2932176 64_Nkv1_D128_SP3 OnGenGolden          RUNNING  75s  |
-|                                             | 2932177 q80_Nkv4_D64_SP3 OnGenGolden          RUNNING  98s  |
-|                                             | 2932178 q8_Nkv4_D128_SP0 OnGenGolden          RUNNING  25s  |
-|                                             | 2932179 2_Nkv32_D128_SP0 OnEagerProfiling     RUNNING  25s  |
-+-----------------------------------------------------------------------------------------------------------+
-[NPU] q_rope=torch.Size([704, 32, 64]), k_rope=torch.Size([900, 32, 64])
-[NPU TND] k=torch.Size([900, 32, 128]), v=torch.Size([900, 32, 128])
-[NPU TND] K scale shape=torch.Size([900, 32, 2, 2]), V scale shape=torch.Size([15, 32, 128, 2])
-[NPU] 调用 TND 模式...
-[NPU] 调用单算子模式...
-[NPU] output=torch.Size([704, 32, 128])
-[WRAPPER] 使用 customize_inputs 缓存的真实 FP8 数据
-[NPU] Q layout auto: G=1, S1=704, G*S1=704, q_layout=TND
-[NPU TND] q=torch.Size([704, 32, 128])
-[NPU] Q scale layout=TND, shape=torch.Size([704, 32, 2, 2])
-[NPU] q_rope=torch.Size([704, 32, 64]), k_rope=torch.Size([900, 32, 64])
-
-+------------------------------------------------------------------------------------------------------------+
-| Version: 3.0.0 Summary (Device Total: 1) Progress: 12% 19 / 149 ET: 173s Rev: 7f1d28b                      |
-+------------------------------------------------------------------------------------------------------------+
-| npu:0                                       | 2932176 64_Nkv1_D128_SP3 OnGenGolden          RUNNING  85s   |
-|                                             | 2932177 q80_Nkv4_D64_SP3 OnGenGolden          RUNNING  108s  |
-|                                             | 2932178 q8_Nkv4_D128_SP0 OnGenGolden          RUNNING  35s   |
-|                                             | 2932179 2_Nkv32_D128_SP0 OnEagerProfiling     RUNNING  35s   |
-+------------------------------------------------------------------------------------------------------------+
-[NPU TND] k=torch.Size([900, 32, 128]), v=torch.Size([900, 32, 128])
-[NPU TND] K scale shape=torch.Size([900, 32, 2, 2]), V scale shape=torch.Size([15, 32, 128, 2])
-[NPU] 调用 TND 模式...
-[NPU] 调用单算子模式...
-[NPU] output=torch.Size([704, 32, 128])
-[WRAPPER] 使用 customize_inputs 缓存的真实 FP8 数据
-[NPU] Q layout auto: G=1, S1=704, G*S1=704, q_layout=TND
-[NPU TND] q=torch.Size([704, 32, 128])
-[NPU] Q scale layout=TND, shape=torch.Size([704, 32, 2, 2])
-[NPU] q_rope=torch.Size([704, 32, 64]), k_rope=torch.Size([900, 32, 64])
-
-+------------------------------------------------------------------------------------------------------------+
-| Version: 3.0.0 Summary (Device Total: 1) Progress: 12% 19 / 149 ET: 183s Rev: 7f1d28b                      |
-+------------------------------------------------------------------------------------------------------------+
-| npu:0                                       | 2932176 64_Nkv1_D128_SP3 OnGenGolden          RUNNING  95s   |
-|                                             | 2932177 q80_Nkv4_D64_SP3 OnGenGolden          RUNNING  118s  |
-|                                             | 2932178 q8_Nkv4_D128_SP0 OnGenGolden          RUNNING  45s   |
-|                                             | 2932179 2_Nkv32_D128_SP0 OnEagerProfiling     RUNNING  45s   |
-+------------------------------------------------------------------------------------------------------------+
-[NPU TND] k=torch.Size([900, 32, 128]), v=torch.Size([900, 32, 128])
-[NPU TND] K scale shape=torch.Size([900, 32, 2, 2]), V scale shape=torch.Size([15, 32, 128, 2])
-[NPU] 调用 TND 模式...
-[NPU] 调用单算子模式...
-[NPU] output=torch.Size([704, 32, 128])
-[CPU Golden] TILES_Q=6, TILES_KV=4, Sq=704, Skv=900
-
-+------------------------------------------------------------------------------------------------------------+
-| Version: 3.0.0 Summary (Device Total: 1) Progress: 12% 19 / 149 ET: 193s Rev: 7f1d28b                      |
-+------------------------------------------------------------------------------------------------------------+
-| npu:0                                       | 2932176 64_Nkv1_D128_SP3 OnGenGolden          RUNNING  105s  |
-|                                             | 2932177 q80_Nkv4_D64_SP3 OnGenGolden          RUNNING  128s  |
-|                                             | 2932178 q8_Nkv4_D128_SP0 OnGenGolden          RUNNING  55s   |
-|                                             | 2932179 2_Nkv32_D128_SP0 OnGenGolden          RUNNING  8s    |
-+------------------------------------------------------------------------------------------------------------+
-
-+------------------------------------------------------------------------------------------------------------+
-| Version: 3.0.0 Summary (Device Total: 1) Progress: 12% 19 / 149 ET: 203s Rev: 7f1d28b                      |
-+------------------------------------------------------------------------------------------------------------+
-| npu:0                                       | 2932176 64_Nkv1_D128_SP3 OnGenGolden          RUNNING  115s  |
-|                                             | 2932177 q80_Nkv4_D64_SP3 OnGenGolden          RUNNING  138s  |
-|                                             | 2932178 q8_Nkv4_D128_SP0 OnGenGolden          RUNNING  65s   |
-|                                             | 2932179 2_Nkv32_D128_SP0 OnGenGolden          RUNNING  18s   |
-+------------------------------------------------------------------------------------------------------------+
-[CPU Golden] output=torch.Size([1, 32, 704, 128])
-[TND_B1_QS704_KVS900_Nq32_Nkv32_D128_SP0] Eager comparison failure
 Traceback (most recent call last):
-  File "/home/z00954345/Ascendfzxttk/cann/ops-test-kit/ttk/core_modules/framework_api/profiling.py", line 471, in _evaluate_eager_precision
-    custom_result = _try_custom_compare(testcase, result_nps, golden_nps, switches)
-                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/z00954345/Ascendfzxttk/cann/ops-test-kit/ttk/core_modules/framework_api/profiling.py", line 435, in _try_custom_compare
-    ret = func(*nested_result, *nested_golden)
-          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test/assets/impl/compare.py", line 75, in compare
-    npu_torch = _to_torch(npu_out)
-                ^^^^^^^^^^^^^^^^^^
-  File "/home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test/assets/impl/compare.py", line 37, in _to_torch
-    return torch.from_numpy(x)
-           ^^^^^^^^^^^^^^^^^^^
-TypeError: can't convert np.ndarray of type ml_dtypes.bfloat16. The only supported types are: float64, float32, float16, complex64, complex128, int64, int32, int16, int8, uint64, uint32, uint16, uint8, and bool.
-
- ####################################### Eager Result Summary  ######################################## 
-EAGER:       COMPARE_FAILURE
-  DEVICE: None us
-  CPU:    None us
-STATUS: FAIL
-Golden Shapes: ((704, 32, 128),)
-Golden Dtypes: ('float32',)
-#######################################################################################################
-
-+------------------------------------------------------------------------------------------------------------+
-| Version: 3.0.0 Summary (Device Total: 1) Progress: 13% 20 / 149 ET: 213s Rev: 7f1d28b                      |
-+------------------------------------------------------------------------------------------------------------+
-| npu:0                                       | 2932176 64_Nkv1_D128_SP3 OnGenGolden          RUNNING  125s  |
-|                                             | 2932177 q80_Nkv4_D64_SP3 OnGenGolden          RUNNING  148s  |
-|                                             | 2932178 q8_Nkv4_D128_SP0 OnGenGolden          RUNNING  75s   |
-|                                             | 2932179 96_Nkv2_D128_SP3 OnGenInput           RUNNING  5s    |
-+------------------------------------------------------------------------------------------------------------+
-
-----------------------------------------------------------------------------------------------------
-API Name: fia_mxfp8_wrapper.npu_fia_mxfp8
-Golden API: 
-Backend: npu
-////////////// Tensors //////////////
-Input View Shapes: ((3, 96, 933, 128), (3, 2, 3712, 128), (3, 2, 3712, 128), (3, 96, 933, 4), (3, 2, 3712, 4), (3, 2, 116, 128), (1,), (0,))
-Input Dtypes: ('float16', 'float16', 'float16', 'float32', 'float32', 'float32', 'float32', 'int32')
-Input Storage Shapes: ()
-Input Formats: ()
-Input View Offsets: ()
-Input View Strides: ()
-//////////// Output Info //////////
-Output Tensor Indexes: ()
-//////////// Attributes //////////
-B: 3
-N_q: 96
-N_kv: 2
-D: 128
-actual_seq_q: [933, 768, 911]
-actual_seq_kv: [3584, 3712, 2496]
-enable_pa: False
-kv_cache_layout: TND
-block_size: 512
-sparse_mode: 3
-q_scale_layout: TND
-p_scale_value: 15.0
-data_range_q: 1.0
-data_range_k: 1.0
-data_range_v: 1.0
-enable_lse: False
-enable_rope: True
-D_rope: 64
-graph_path: 0
-input_layout: TND
-is_contiguous: True
-device_id: 0
-//////////// Test Config //////////
-Input Data Range: ((None, None), (None, None), (None, None), (None, None), (None, None), (None, None), (None, None), (None, None))
-Precision Tolerance: None
-Absolute Precision: (1e-08,)
-Mode: ASCEND_ONBOARD
-PID: 2932179
-Device: 0
-----------------------------------------------------------------------------------------------------
-[WRAPPER] 使用 customize_inputs 缓存的真实 FP8 数据
-[NPU] Q layout auto: G=48, S1=933, G*S1=44784, q_layout=TND
-
-+------------------------------------------------------------------------------------------------------------+
-| Version: 3.0.0 Summary (Device Total: 1) Progress: 13% 20 / 149 ET: 223s Rev: 7f1d28b                      |
-+------------------------------------------------------------------------------------------------------------+
-| npu:0                                       | 2932176 64_Nkv1_D128_SP3 OnGenGolden          RUNNING  135s  |
-|                                             | 2932177 q80_Nkv4_D64_SP3 OnGenGolden          RUNNING  158s  |
-|                                             | 2932178 q8_Nkv4_D128_SP0 OnGenGolden          RUNNING  85s   |
-|                                             | 2932179 96_Nkv2_D128_SP3 OnEagerProfiling     RUNNING  5s    |
-+------------------------------------------------------------------------------------------------------------+
-[CPU Golden] output=torch.Size([6, 64, 896, 128])
-[NPU TND] q=torch.Size([2612, 96, 128])
-[NPU] Q scale layout=TND, shape=torch.Size([2612, 96, 2, 2])
-
-+------------------------------------------------------------------------------------------------------------+
-| Version: 3.0.0 Summary (Device Total: 1) Progress: 13% 20 / 149 ET: 233s Rev: 7f1d28b                      |
-+------------------------------------------------------------------------------------------------------------+
-| npu:0                                       | 2932176 64_Nkv1_D128_SP3 OnGenGolden          RUNNING  145s  |
-|                                             | 2932177 q80_Nkv4_D64_SP3 OnGenGolden          RUNNING  168s  |
-|                                             | 2932178 q8_Nkv4_D128_SP0 OnGenGolden          RUNNING  95s   |
-|                                             | 2932179 96_Nkv2_D128_SP3 OnEagerProfiling     RUNNING  15s   |
-+------------------------------------------------------------------------------------------------------------+
-^C
-+------------------------------------------------------------------------------------------------------------+
-| Version: 3.0.0 Summary (Device Total: 1) Progress: 13% 20 / 149 ET: 243s Rev: 7f1d28b                      |
-+------------------------------------------------------------------------------------------------------------+
-| npu:0                                       | 2932176 64_Nkv1_D128_SP3 OnGenGolden          RUNNING  155s  |
-|                                             | 2932177 q80_Nkv4_D64_SP3 OnGenGolden          RUNNING  178s  |
-|                                             | 2932178 q8_Nkv4_D128_SP0 OnGenGolden          RUNNING  105s  |
-|                                             | 2932179 96_Nkv2_D128_SP3 OnEagerProfiling     RUNNING  25s   |
-+------------------------------------------------------------------------------------------------------------+
-[NPU] q_rope=torch.Size([2612, 96, 64]), k_rope=torch.Size([9792, 2, 64])
-[NPU TND] k=torch.Size([9792, 2, 128]), v=torch.Size([9792, 2, 128])
-[CPU Golden] output=torch.Size([1, 8, 4000, 128])
-[NPU TND] K scale shape=torch.Size([9792, 2, 2, 2]), V scale shape=torch.Size([153, 2, 128, 2])
-[NPU] 调用 TND 模式...
-[NPU] 调用单算子模式...
-[NPU] output=torch.Size([2612, 96, 128])
-[WRAPPER] 使用 customize_inputs 缓存的真实 FP8 数据
-[NPU] Q layout auto: G=48, S1=933, G*S1=44784, q_layout=TND
-[TND_B1_QS4000_KVS896_Nq8_Nkv4_D128_SP0] Eager comparison failure
-Traceback (most recent call last):
-  File "/home/z00954345/Ascendfzxttk/cann/ops-test-kit/ttk/core_modules/framework_api/profiling.py", line 471, in _evaluate_eager_precision
-    custom_result = _try_custom_compare(testcase, result_nps, golden_nps, switches)
-                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/z00954345/Ascendfzxttk/cann/ops-test-kit/ttk/core_modules/framework_api/profiling.py", line 435, in _try_custom_compare
-    ret = func(*nested_result, *nested_golden)
-          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test/assets/impl/compare.py", line 75, in compare
-    npu_torch = _to_torch(npu_out)
-                ^^^^^^^^^^^^^^^^^^
-  File "/home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test/assets/impl/compare.py", line 37, in _to_torch
-    return torch.from_numpy(x)
-           ^^^^^^^^^^^^^^^^^^^
-TypeError: can't convert np.ndarray of type ml_dtypes.bfloat16. The only supported types are: float64, float32, float16, complex64, complex128, int64, int32, int16, int8, uint64, uint32, uint16, uint8, and bool.
+  File ""/home/z00954345/Ascendfzxttk/cann/ops-test-kit/ttk/core_modules/tbe_multiprocessing/pool.py"", line 202, in intermediate_func
+    function_return = func(*func_args, **func_kwargs)
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File ""/home/z00954345/Ascendfzxttk/cann/ops-test-kit/ttk/core_modules/framework_api/profiling.py"", line 219, in profile_process
+    return_struct.precision = str(e)
+    ^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'FrameworkApiReturnStructure' object has no attribute 'precision'
+",FAILURE,FAILURE,FAILURE,FAILURE,FAILURE,FAILURE,FAILURE,FAILURE,FAILURE,FAILURE,FAILURE,FAILURE,FAILURE,FAILURE,FAILURE
