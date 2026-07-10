@@ -263,6 +263,7 @@ struct CompressorContext {
     OptionalParaInfo cuSeqlens;
     OptionalParaInfo seqUsed;
     OptionalParaInfo startPos;
+    // Optional grouped-decode ring-cache inputs.  They are null on legacy/no-xcache paths.
     OptionalParaInfo xCache;
     OptionalParaInfo xCacheSlotMapping;
     RequiredParaInfo cmpKv;
@@ -274,6 +275,7 @@ struct CompressorContext {
     const int *rotaryMode;
     const int *cacheMode;
     const int *stateCacheStrideDim0;
+    // False means this call may read x_cache but must not write current x into it.
     const bool *xCacheUpdate;
     TemplateId templateId;
 

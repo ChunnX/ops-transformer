@@ -138,6 +138,8 @@ ge::graphStatus CompressorTiling::SetBaseInfo()
     if (context_->x.shape->GetStorageShape().GetDimNum() == COMPRESSOR_DIM_NUM_3) {
         baseParams_->batchSize = context_->x.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_0);
         baseParams_->seqSize = context_->x.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_1);
+        // With x_cache present, one decode token plus cached history is computed as
+        // a full compression window.  Without x_cache, keep the original BSH seq size.
         baseParams_->xCacheReadSize = context_->xCache.desc == nullptr ? 0 : static_cast<uint32_t>(*context_->cmpRatio);
         baseParams_->hiddenSize = context_->x.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_2);
         computeSeqSize = baseParams_->xCacheReadSize == 0 ? baseParams_->seqSize : baseParams_->xCacheReadSize;
@@ -166,6 +168,8 @@ ge::graphStatus CompressorTiling::SetBaseInfo()
     baseParams_->xCacheSize = context_->xCache.desc == nullptr ? 0 :
         context_->xCache.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_1);
     bool xCacheUpdate = context_->xCacheUpdate == nullptr || *context_->xCacheUpdate;
+    // Only HCA/update calls write current x into the ring cache.  Read-only KV/LI
+    // calls still pass x_cache for grouped-window reads but leave update batch size 0.
     baseParams_->xCacheUpdateBatchSize = (context_->xCache.desc != nullptr && xCacheUpdate) ? baseParams_->batchSize : 0;
     baseParams_->nSize = 2; // 2:每个核处理两个基本块后做全核同步
     baseParams_->usedCoreNum = aicNum_;
@@ -720,6 +724,8 @@ ge::graphStatus CompressorTiling::CheckSingleParaXCache() const
 ge::graphStatus CompressorTiling::CheckSingleParaXCacheSlotMapping() const
 {
     if (context_->xCacheSlotMapping.desc == nullptr) {
+        // x_cache and its slot mapping are an all-or-none pair because the kernel
+        // needs explicit physical slots for current-token ring-cache writes.
         OP_CHECK_IF(context_->xCache.desc != nullptr,
                     OP_LOGE(context_->opName, "x_cache_slot_mapping is required when x_cache is provided"),
                     return ge::GRAPH_FAILED);
@@ -935,6 +941,8 @@ ge::graphStatus CompressorTiling::CheckShapeConsistency() const
                                                       "batchSize", baseParams_->batchSize) ||
         ge::GRAPH_SUCCESS != LogErrorShapeConsistency("startPos", context_->startPos.shape, COMPRESSOR_DIM_INDEX_0,
                                                       "batchSize", baseParams_->batchSize) ||
+        // Ring cache is indexed as [batch, slot, hidden]; slot count may be cmp_ratio
+        // or a model-selected cache depth, so only batch and hidden are fixed here.
         ge::GRAPH_SUCCESS != LogErrorShapeConsistency("xCache", context_->xCache.shape, COMPRESSOR_DIM_INDEX_0,
                                                       "batchSize", baseParams_->batchSize) ||
         ge::GRAPH_SUCCESS != LogErrorShapeConsistency("xCache", context_->xCache.shape, COMPRESSOR_DIM_INDEX_2,

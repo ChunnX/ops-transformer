@@ -24,6 +24,8 @@ namespace Compressor {
 
 struct ToolsParams {
     uint32_t seqSize = 0U;
+    // Nonzero only for grouped decode x_cache reads.  It is the logical number
+    // of X rows the compressor consumes after composing cache history and current x.
     uint32_t xCacheReadSize = 0U;
     uint32_t cmpRatio = 0U;
 };
@@ -104,6 +106,8 @@ __aicore__ inline bool CompressorTools<COMP>::IsGroupedDecodeActive(uint32_t bId
     if (toolParams_.xCacheReadSize == 0 || toolParams_.cmpRatio == 0 || !isExistStartPos_ || !isExistSeqUsed_) {
         return false;
     }
+    // Each batch may sit at a different decode position.  A batch is active only
+    // when raw [start_pos, start_pos + seq_used) crosses a compression boundary.
     uint32_t rawStartPos = GetRawStartPos(bIdx);
     uint32_t rawSeqUsed = GetRawSeqUsed(bIdx);
     uint32_t cmpRatio = toolParams_.cmpRatio;
@@ -114,6 +118,8 @@ template <typename COMP>
 __aicore__ inline uint32_t CompressorTools<COMP>::GetSeqUsed(uint32_t bIdx)
 {
     if (toolParams_.xCacheReadSize > 0 && toolParams_.cmpRatio > 0 && isExistStartPos_ && isExistSeqUsed_) {
+        // Inactive grouped decode batches must skip projection entirely; active
+        // batches consume one complete x_cache window.
         return IsGroupedDecodeActive(bIdx) ? toolParams_.xCacheReadSize : 0;
     }
     return GetRawSeqUsed(bIdx);
@@ -128,6 +134,7 @@ __aicore__ inline uint32_t CompressorTools<COMP>::GetStartPos(uint32_t bIdx)
         }
         uint32_t completeGroupEnd = ((GetRawStartPos(bIdx) + GetRawSeqUsed(bIdx)) / toolParams_.cmpRatio) *
                                     toolParams_.cmpRatio;
+        // Align the composed window to the complete group that just became available.
         return completeGroupEnd - toolParams_.xCacheReadSize;
     }
     return GetRawStartPos(bIdx);
@@ -140,6 +147,8 @@ __aicore__ inline uint32_t CompressorTools<COMP>::GetSeqLength(uint32_t bIdx)
         return cuSeqlensGm_.GetValue(bIdx + 1) - cuSeqlensGm_.GetValue(bIdx);
     } else {
         if (toolParams_.xCacheReadSize > 0) {
+            // BSH grouped decode logically runs over the composed x_cache window,
+            // not just the one-token x tensor passed by the caller.
             return toolParams_.xCacheReadSize;
         }
         return toolParams_.seqSize;

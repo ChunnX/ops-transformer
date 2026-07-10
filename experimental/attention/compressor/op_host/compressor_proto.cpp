@@ -33,6 +33,7 @@ namespace ops {
     constexpr uint32_t CU_SEQ_LEN_INPUT_INDEX = 9;
     constexpr uint32_t SEQ_USED_INPUT_INDEX = 10;
     constexpr uint32_t START_POS_INPUT_INDEX = 11;
+    // Keep these indices aligned with Compressor OpDef optional x_cache inputs.
     constexpr uint32_t X_CACHE_INPUT_INDEX = 12;
     constexpr uint32_t X_CACHE_SLOT_MAPPING_INPUT_INDEX = 13;
 
@@ -44,6 +45,7 @@ namespace ops {
     constexpr uint32_t ROTARY_MODE_ATTR_INDEX = 4;
     constexpr uint32_t CACHE_MODE_ATTR_INDEX = 5;
     constexpr uint32_t STATE_CACHE_STRIDE_DIM0_ATTR_INDEX = 6;
+    // Mirrors the ACLNN attr used by tiling to distinguish update and read-only calls.
     constexpr uint32_t X_CACHE_UPDATE_ATTR_INDEX = 7;
 
     // OUTPUT

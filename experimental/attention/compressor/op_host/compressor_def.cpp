@@ -82,6 +82,9 @@ public:
             .DataTypeList({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
+        // Optional grouped-decode ring cache.  When present, x_cache_slot_mapping
+        // names the current-token write slot; x_cache_update controls whether this
+        // Compressor call updates the ring cache before compression.
         this->Input("x_cache")
             .ParamType(OPTIONAL)
             .DataType({ge::DT_BF16, ge::DT_FLOAT16})
@@ -107,6 +110,7 @@ public:
         this->Attr("rotary_mode").AttrType(OPTIONAL).Int(ROTARY_MODE_VALUE);
         this->Attr("cache_mode").AttrType(OPTIONAL).Int(CACHE_MODE_VALUE);
         this->Attr("state_cache_stride_dim0").AttrType(OPTIONAL).Int(STATE_CACHE_STRIDE_DIM0);
+        // True for HCA/write calls; false for KV/LI read-only grouped decode calls.
         this->Attr("x_cache_update").AttrType(OPTIONAL).Bool(true);
         OpAICoreConfig aicore_config;
         aicore_config.DynamicCompileStaticFlag(true)

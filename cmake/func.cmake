@@ -361,8 +361,6 @@ function(add_ops_compile_options)
                 OUTPUT_VARIABLE EXEC_INFO
                 ERROR_VARIABLE EXEC_ERROR)
         if (EXEC_RESULT)
-            message("add ops compile options info: ${EXEC_INFO}")
-            message("add ops compile options error: ${EXEC_ERROR}")
             message(FATAL_ERROR "Error: add ops compile options failed!")
         endif ()
     else()

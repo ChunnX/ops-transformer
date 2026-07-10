@@ -24,18 +24,6 @@
 
 using namespace AscendC;
 
-#ifndef COMPRESSOR_XCACHE_DEBUG_PRINTF
-#define COMPRESSOR_XCACHE_DEBUG_PRINTF 0
-#endif
-
-#if COMPRESSOR_XCACHE_DEBUG_PRINTF
-#define COMPRESSOR_XCACHE_PRINTF(...) AscendC::PRINTF(__VA_ARGS__)
-#else
-#define COMPRESSOR_XCACHE_PRINTF(...) \
-    do {                              \
-    } while (0)
-#endif
-
 namespace Compressor {
 template <typename T>
 __aicore__ inline T CeilDivT(T num1, T num2)

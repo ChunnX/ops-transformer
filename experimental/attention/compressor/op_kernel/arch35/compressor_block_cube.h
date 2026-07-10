@@ -245,43 +245,25 @@ __aicore__ inline void CompressorBlockCube<COMP>::CopyXGmToL1(const RunInfo &inf
     uint32_t srcDValue = constInfo_.hSize;
     uint32_t dstNzC0Stride = (copySeqCnt + 15) / 16 * 16;    // 1行变2行的行方向的偏移，需要16对齐
     if (isExistXCache_) {
-        // Compose grouped decode input from cached history and the current x tensor inside the operator.
+        // Compose grouped decode input from cached history and the current x tensor
+        // inside the operator.  Cache rows may wrap around the ring buffer, while
+        // the tail rows come from the one-token x input of this decode call.
         uint32_t seqUsed = tools_.isExistSeqUsed_ ? tools_.GetSeqUsed(info.bStart) : constInfo_.xCacheReadSize;
         uint32_t currentInputSeqSize = min(constInfo_.sSize, seqUsed);
         uint32_t currentStart = seqUsed - currentInputSeqSize;
         uint32_t sliceStart = info.sStart;
         uint32_t sliceEnd = info.sStart + copySeqCnt;
         uint32_t cacheCopyEnd = min(sliceEnd, currentStart);
-        bool dumpCopy = constInfo_.aiCoreIdx == 0 && info.bStart == 0 && info.sStart == 0 && hIdx == 0;
-        if (dumpCopy) {
-            COMPRESSOR_XCACHE_PRINTF("[CompressorXCacheDebug] CopyXGmToL1 enter b=%d sStart=%d dealSeq=%d hIdx=%d kBase=%d "
-                            "seqUsed=%d currentStart=%d currentInputSeqSize=%d xCacheSize=%d\n",
-                            static_cast<int32_t>(info.bStart), static_cast<int32_t>(info.sStart),
-                            static_cast<int32_t>(copySeqCnt), static_cast<int32_t>(hIdx),
-                            static_cast<int32_t>(kBase), static_cast<int32_t>(seqUsed),
-                            static_cast<int32_t>(currentStart), static_cast<int32_t>(currentInputSeqSize),
-                            static_cast<int32_t>(constInfo_.xCacheSize));
-        }
         if (sliceStart < cacheCopyEnd) {
             uint32_t cacheCopyRows = cacheCopyEnd - sliceStart;
             uint64_t cacheStart = (tools_.GetStartPos(info.bStart) + sliceStart) % constInfo_.xCacheSize;
             uint32_t firstCopySeqCnt = min(cacheCopyRows, constInfo_.xCacheSize - static_cast<uint32_t>(cacheStart));
             uint64_t firstGmOffset = (info.bStart * constInfo_.xCacheSize + cacheStart) * constInfo_.hSize + hIdx;
-            if (dumpCopy) {
-                COMPRESSOR_XCACHE_PRINTF("[CompressorXCacheDebug] CopyXGmToL1 cache first rows=%d cacheStart=%d gmOffset=%d\n",
-                                static_cast<int32_t>(firstCopySeqCnt), static_cast<int32_t>(cacheStart),
-                                static_cast<int32_t>(firstGmOffset));
-            }
             CopySingleMatrixNDToNZ(xL1Tensor[xL1Offset], xCacheGm_[firstGmOffset], firstCopySeqCnt, dValue, srcDValue,
                                    dstNzC0Stride);
             if (firstCopySeqCnt < cacheCopyRows) {
                 uint64_t secondGmOffset = info.bStart * constInfo_.xCacheSize * constInfo_.hSize + hIdx;
                 uint32_t secondL1Offset = xL1Offset + firstCopySeqCnt * (32 / sizeof(X_T));
-                if (dumpCopy) {
-                    COMPRESSOR_XCACHE_PRINTF("[CompressorXCacheDebug] CopyXGmToL1 cache second rows=%d gmOffset=%d\n",
-                                    static_cast<int32_t>(cacheCopyRows - firstCopySeqCnt),
-                                    static_cast<int32_t>(secondGmOffset));
-                }
                 CopySingleMatrixNDToNZ(xL1Tensor[secondL1Offset], xCacheGm_[secondGmOffset],
                                        cacheCopyRows - firstCopySeqCnt, dValue, srcDValue, dstNzC0Stride);
             }
@@ -295,11 +277,6 @@ __aicore__ inline void CompressorBlockCube<COMP>::CopyXGmToL1(const RunInfo &inf
             uint32_t currentL1Offset = xL1Offset + currentLocalRow * (32 / sizeof(X_T));
             uint64_t currentGmOffset =
                 (static_cast<uint64_t>(info.bStart) * constInfo_.sSize + currentXRow) * constInfo_.hSize + hIdx;
-            if (dumpCopy) {
-                COMPRESSOR_XCACHE_PRINTF("[CompressorXCacheDebug] CopyXGmToL1 current rows=%d localRow=%d xRow=%d gmOffset=%d\n",
-                                static_cast<int32_t>(currentCopyRows), static_cast<int32_t>(currentLocalRow),
-                                static_cast<int32_t>(currentXRow), static_cast<int32_t>(currentGmOffset));
-            }
             CopySingleMatrixNDToNZ(xL1Tensor[currentL1Offset], xGm_[currentGmOffset], currentCopyRows, dValue,
                                    srcDValue, dstNzC0Stride);
         }
