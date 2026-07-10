@@ -73,7 +73,7 @@ public:
         AscendC::GlobalTensor<ElementSparseMask> gSparseMask,
         AscendC::GlobalTensor<ElementSparseIdx> gSparseIdx,
         AscendC::GlobalTensor<ElementSparseCount> gSparseCount,
-        uint64_t totalRowNumBlockMask,
+        uint32_t totalRowNumBlockMask,
         uint32_t yBlockNumAligned,
         uint32_t avgRowPerSubCore,
         uint32_t preActiveSubCoreNum)
@@ -81,7 +81,7 @@ public:
         uint32_t subCoreIdx = AscendC::GetBlockIdx();
         uint32_t curSubCoreRowOffset = subCoreIdx * avgRowPerSubCore;
         uint32_t actDealtRow = (subCoreIdx == preActiveSubCoreNum - 1) ?
-            static_cast<uint32_t>(totalRowNumBlockMask - curSubCoreRowOffset) : avgRowPerSubCore;
+            (totalRowNumBlockMask - curSubCoreRowOffset) : avgRowPerSubCore;
         
         if (subCoreIdx < preActiveSubCoreNum) {
             uint32_t rowLoop = CeilDiv(actDealtRow, PRE_ROW_TILE);
@@ -106,7 +106,7 @@ public:
                     AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(IdxPingPongFlag);
                     AscendC::DataCopyPad(
                         maskPatUb8[IdxPingPongFlag],
-                        gSparseMask[static_cast<int64_t>(globalRowOffset) * yBlockNumAligned + curLoopColOffset],
+                        gSparseMask[globalRowOffset * yBlockNumAligned + curLoopColOffset],
                         AscendC::DataCopyExtParams(
                             actDealtRowCurLoop,
                             actDealtColCurLoop * sizeof(ElementSparseMask),
@@ -149,8 +149,7 @@ public:
                         }
                         AscendC::DataCopyPad(
                             gSparseIdx[
-                                static_cast<int64_t>(globalRowOffset) * yBlockNumAligned +
-                                static_cast<int64_t>(k) * yBlockNumAligned +
+                                globalRowOffset * yBlockNumAligned + k * yBlockNumAligned +
                                 rsvdCountPerRow[k]],
                             sparseIdxUb[IdxPingPongFlag][k * PRE_COL_TILE],
                             AscendC::DataCopyExtParams(
@@ -175,7 +174,7 @@ public:
                 AscendC::SetFlag<AscendC::HardEvent::S_MTE3>(CountPingPongFlag + 2);
                 AscendC::WaitFlag<AscendC::HardEvent::S_MTE3>(CountPingPongFlag + 2);
                 AscendC::DataCopyPad(
-                    gSparseCount[static_cast<int64_t>(globalRowOffset)],
+                    gSparseCount[globalRowOffset],
                     sparseCountUb[CountPingPongFlag],
                     AscendC::DataCopyExtParams(1, actDealtRowCurLoop * sizeof(ElementSparseCount), 0, 0, 0));
                 AscendC::SetFlag<AscendC::HardEvent::MTE3_S>(CountPingPongFlag);
