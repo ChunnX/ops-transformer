@@ -169,10 +169,10 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateVF(
     Max(max0, max0, max2, preg_108);
     Max(max1, max1, max3, preg_108);
     Max(max0, max0, max1, preg_108);
-    Compares<T, CMPMODE::EQ>(preg_invalid_cur, max0, minValue, preg_108);
+    Compares<T, CMPMODE::NE>(preg_invalid_cur, max0, minValue, preg_108);
 
     Sub(max0, max0, vreg_ln_p_scale, preg_108);
-    Select(max0, vreg_empty_lse, max0, preg_invalid_cur);
+    Select(max0, max0, vreg_empty_lse, preg_invalid_cur);
 
     StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B16>((__ubuf__ T *&)new_global_max, max0, preg_108);
 
@@ -200,22 +200,14 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateVF(
         LoadAlign(vreg_x_f32_6, input_x_local_UB + ubN_m_m_div_2 + i0 * m * 2 + 64);
         LoadAlign(vreg_x_f32_7, input_x_local_UB + ubN_m_m_mul3_div_4 + i0 * m * 2 + 64);
 
-        FusedExpSub(vreg_x_exp_0, vreg_x_f32_0, max0, preg_134);
-        FusedExpSub(vreg_x_exp_4, vreg_x_f32_4, max0, preg_134);
-        FusedExpSub(vreg_x_exp_1, vreg_x_f32_1, max0, preg_134);
-        FusedExpSub(vreg_x_exp_5, vreg_x_f32_5, max0, preg_134);
-        FusedExpSub(vreg_x_exp_2, vreg_x_f32_2, max0, preg_134);
-        FusedExpSub(vreg_x_exp_6, vreg_x_f32_6, max0, preg_134);
-        FusedExpSub(vreg_x_exp_3, vreg_x_f32_3, max0, preg_134);
-        FusedExpSub(vreg_x_exp_7, vreg_x_f32_7, max0, preg_134);
-        Select(vreg_x_exp_0, vreg_zero, vreg_x_exp_0, preg_invalid_cur);
-        Select(vreg_x_exp_4, vreg_zero, vreg_x_exp_4, preg_invalid_cur);
-        Select(vreg_x_exp_1, vreg_zero, vreg_x_exp_1, preg_invalid_cur);
-        Select(vreg_x_exp_5, vreg_zero, vreg_x_exp_5, preg_invalid_cur);
-        Select(vreg_x_exp_2, vreg_zero, vreg_x_exp_2, preg_invalid_cur);
-        Select(vreg_x_exp_6, vreg_zero, vreg_x_exp_6, preg_invalid_cur);
-        Select(vreg_x_exp_3, vreg_zero, vreg_x_exp_3, preg_invalid_cur);
-        Select(vreg_x_exp_7, vreg_zero, vreg_x_exp_7, preg_invalid_cur);
+        FusedExpSub(vreg_x_exp_0, vreg_x_f32_0, max0, preg_invalid_cur);
+        FusedExpSub(vreg_x_exp_4, vreg_x_f32_4, max0, preg_invalid_cur);
+        FusedExpSub(vreg_x_exp_1, vreg_x_f32_1, max0, preg_invalid_cur);
+        FusedExpSub(vreg_x_exp_5, vreg_x_f32_5, max0, preg_invalid_cur);
+        FusedExpSub(vreg_x_exp_2, vreg_x_f32_2, max0, preg_invalid_cur);
+        FusedExpSub(vreg_x_exp_6, vreg_x_f32_6, max0, preg_invalid_cur);
+        FusedExpSub(vreg_x_exp_3, vreg_x_f32_3, max0, preg_invalid_cur);
+        FusedExpSub(vreg_x_exp_7, vreg_x_f32_7, max0, preg_invalid_cur);
 
         Add(vreg_x_sum_0, vreg_x_exp_0, vreg_x_sum_0, preg_134);
         Add(vreg_x_sum_4, vreg_x_exp_4, vreg_x_sum_4, preg_134);
@@ -422,10 +414,10 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateAttenTailVF(
     Max(max0, max0, max2, preg_108);
     Max(max1, max1, max3, preg_108);
     Max(max0, max0, max1, preg_108);
-    Compares<T, CMPMODE::EQ>(preg_invalid_cur, max0, minValue, preg_108);
+    Compares<T, CMPMODE::NE>(preg_invalid_cur, max0, minValue, preg_108);
 
     Sub(max0, max0, vreg_ln_p_scale, preg_108);
-    Select(max0, vreg_empty_lse, max0, preg_invalid_cur);
+    Select(max0, max0, vreg_empty_lse, preg_invalid_cur);
 
     StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B16>((__ubuf__ T *&)new_global_max, max0, preg_108);
 
@@ -453,22 +445,14 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateAttenTailVF(
         LoadAlign(vreg_x_f32_6, input_x_local_UB + ubN_m_m_div_2 + i0 * m * 2 + 64);
         LoadAlign(vreg_x_f32_7, input_x_local_UB + ubN_m_m_mul3_div_4 + i0 * m * 2 + 64);
 
-        FusedExpSub(vreg_x_exp_0, vreg_x_f32_0, max0, preg_134);
-        FusedExpSub(vreg_x_exp_4, vreg_x_f32_4, max0, preg_134);
-        FusedExpSub(vreg_x_exp_1, vreg_x_f32_1, max0, preg_134);
-        FusedExpSub(vreg_x_exp_5, vreg_x_f32_5, max0, preg_134);
-        FusedExpSub(vreg_x_exp_2, vreg_x_f32_2, max0, preg_134);
-        FusedExpSub(vreg_x_exp_6, vreg_x_f32_6, max0, preg_134);
-        FusedExpSub(vreg_x_exp_3, vreg_x_f32_3, max0, preg_134);
-        FusedExpSub(vreg_x_exp_7, vreg_x_f32_7, max0, preg_134);
-        Select(vreg_x_exp_0, vreg_zero, vreg_x_exp_0, preg_invalid_cur);
-        Select(vreg_x_exp_4, vreg_zero, vreg_x_exp_4, preg_invalid_cur);
-        Select(vreg_x_exp_1, vreg_zero, vreg_x_exp_1, preg_invalid_cur);
-        Select(vreg_x_exp_5, vreg_zero, vreg_x_exp_5, preg_invalid_cur);
-        Select(vreg_x_exp_2, vreg_zero, vreg_x_exp_2, preg_invalid_cur);
-        Select(vreg_x_exp_6, vreg_zero, vreg_x_exp_6, preg_invalid_cur);
-        Select(vreg_x_exp_3, vreg_zero, vreg_x_exp_3, preg_invalid_cur);
-        Select(vreg_x_exp_7, vreg_zero, vreg_x_exp_7, preg_invalid_cur);
+        FusedExpSub(vreg_x_exp_0, vreg_x_f32_0, max0, preg_invalid_cur);
+        FusedExpSub(vreg_x_exp_4, vreg_x_f32_4, max0, preg_invalid_cur);
+        FusedExpSub(vreg_x_exp_1, vreg_x_f32_1, max0, preg_invalid_cur);
+        FusedExpSub(vreg_x_exp_5, vreg_x_f32_5, max0, preg_invalid_cur);
+        FusedExpSub(vreg_x_exp_2, vreg_x_f32_2, max0, preg_invalid_cur);
+        FusedExpSub(vreg_x_exp_6, vreg_x_f32_6, max0, preg_invalid_cur);
+        FusedExpSub(vreg_x_exp_3, vreg_x_f32_3, max0, preg_invalid_cur);
+        FusedExpSub(vreg_x_exp_7, vreg_x_f32_7, max0, preg_invalid_cur);
 
         Add(vreg_x_sum_0, vreg_x_exp_0, vreg_x_sum_0, preg_134);
         Add(vreg_x_sum_4, vreg_x_exp_4, vreg_x_sum_4, preg_134);
@@ -718,10 +702,10 @@ ProcessVec1DnUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ float *input_x_local_UB, __ub
     Max(max0, max0, max2, preg_108);
     Max(max1, max1, max3, preg_108);
     Max(max0, max0, max1, preg_108);
-    Compares<T, CMPMODE::EQ>(preg_invalid_cur, max0, minValue, preg_108);
+    Compares<T, CMPMODE::NE>(preg_invalid_cur, max0, minValue, preg_108);
 
     Sub(max0, max0, vreg_ln_p_scale, preg_108);
-    Select(max0, vreg_empty_lse, max0, preg_invalid_cur);
+    Select(max0, max0, vreg_empty_lse, preg_invalid_cur);
     Max(max0, max0, vreg_x_max_f32_b, preg_108);
 
     FusedExpSub(vreg_x_max_f32_b, vreg_x_max_f32_b, max0, preg_134);
@@ -752,22 +736,14 @@ ProcessVec1DnUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ float *input_x_local_UB, __ub
         LoadAlign(vreg_x_f32_6, input_x_local_UB + ubN_m_m_div_2 + i0 * m * 2 + 64);
         LoadAlign(vreg_x_f32_7, input_x_local_UB + ubN_m_m_mul3_div_4 + i0 * m * 2 + 64);
 
-        FusedExpSub(vreg_x_exp_0, vreg_x_f32_0, max0, preg_134);
-        FusedExpSub(vreg_x_exp_4, vreg_x_f32_4, max0, preg_134);
-        FusedExpSub(vreg_x_exp_1, vreg_x_f32_1, max0, preg_134);
-        FusedExpSub(vreg_x_exp_5, vreg_x_f32_5, max0, preg_134);
-        FusedExpSub(vreg_x_exp_2, vreg_x_f32_2, max0, preg_134);
-        FusedExpSub(vreg_x_exp_6, vreg_x_f32_6, max0, preg_134);
-        FusedExpSub(vreg_x_exp_3, vreg_x_f32_3, max0, preg_134);
-        FusedExpSub(vreg_x_exp_7, vreg_x_f32_7, max0, preg_134);
-        Select(vreg_x_exp_0, vreg_zero, vreg_x_exp_0, preg_invalid_cur);
-        Select(vreg_x_exp_4, vreg_zero, vreg_x_exp_4, preg_invalid_cur);
-        Select(vreg_x_exp_1, vreg_zero, vreg_x_exp_1, preg_invalid_cur);
-        Select(vreg_x_exp_5, vreg_zero, vreg_x_exp_5, preg_invalid_cur);
-        Select(vreg_x_exp_2, vreg_zero, vreg_x_exp_2, preg_invalid_cur);
-        Select(vreg_x_exp_6, vreg_zero, vreg_x_exp_6, preg_invalid_cur);
-        Select(vreg_x_exp_3, vreg_zero, vreg_x_exp_3, preg_invalid_cur);
-        Select(vreg_x_exp_7, vreg_zero, vreg_x_exp_7, preg_invalid_cur);
+        FusedExpSub(vreg_x_exp_0, vreg_x_f32_0, max0, preg_invalid_cur);
+        FusedExpSub(vreg_x_exp_4, vreg_x_f32_4, max0, preg_invalid_cur);
+        FusedExpSub(vreg_x_exp_1, vreg_x_f32_1, max0, preg_invalid_cur);
+        FusedExpSub(vreg_x_exp_5, vreg_x_f32_5, max0, preg_invalid_cur);
+        FusedExpSub(vreg_x_exp_2, vreg_x_f32_2, max0, preg_invalid_cur);
+        FusedExpSub(vreg_x_exp_6, vreg_x_f32_6, max0, preg_invalid_cur);
+        FusedExpSub(vreg_x_exp_3, vreg_x_f32_3, max0, preg_invalid_cur);
+        FusedExpSub(vreg_x_exp_7, vreg_x_f32_7, max0, preg_invalid_cur);
 
         Add(vreg_x_sum_0, vreg_x_exp_0, vreg_x_sum_0, preg_134);
         Add(vreg_x_sum_4, vreg_x_exp_4, vreg_x_sum_4, preg_134);
@@ -946,7 +922,7 @@ ProcessVec1DnUpdateAttenTailVF(__ubuf__ T2 *x_exp, __ubuf__ float *input_x_local
         Mul(vreg_data_tmp2, vreg_data_tmp2, vreg_kscale_val, preg_135);
         LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + iter_m * 4 + 3);
         Mul(vreg_data_tmp3, vreg_data_tmp3, vreg_kscale_val, preg_135);
-
+        
         if constexpr (needAtten) {
             LoadAlign<uint32_t, MicroAPI::MaskDist::DIST_DS>(preg_compare0, mask_ub0 + iter_m * m);
             LoadAlign<uint32_t, MicroAPI::MaskDist::DIST_DS>(preg_compare1, mask_ub1 + iter_m * m);
@@ -979,10 +955,10 @@ ProcessVec1DnUpdateAttenTailVF(__ubuf__ T2 *x_exp, __ubuf__ float *input_x_local
     Max(max0, max0, max2, preg_108);
     Max(max1, max1, max3, preg_108);
     Max(max0, max0, max1, preg_108);
-    Compares<T, CMPMODE::EQ>(preg_invalid_cur, max0, minValue, preg_108);
+    Compares<T, CMPMODE::NE>(preg_invalid_cur, max0, minValue, preg_108);
 
     Sub(max0, max0, vreg_ln_p_scale, preg_108);
-    Select(max0, vreg_empty_lse, max0, preg_invalid_cur);
+    Select(max0, max0, vreg_empty_lse, preg_invalid_cur);
     Max(max0, max0, vreg_x_max_f32_b, preg_108);
 
     FusedExpSub(vreg_x_max_f32_b, vreg_x_max_f32_b, max0, preg_134);
@@ -1013,22 +989,14 @@ ProcessVec1DnUpdateAttenTailVF(__ubuf__ T2 *x_exp, __ubuf__ float *input_x_local
         LoadAlign(vreg_x_f32_6, input_x_local_UB + ubN_m_m_div_2 + i0 * m * 2 + 64);
         LoadAlign(vreg_x_f32_7, input_x_local_UB + ubN_m_m_mul3_div_4 + i0 * m * 2 + 64);
 
-        FusedExpSub(vreg_x_exp_0, vreg_x_f32_0, max0, preg_134);
-        FusedExpSub(vreg_x_exp_4, vreg_x_f32_4, max0, preg_134);
-        FusedExpSub(vreg_x_exp_1, vreg_x_f32_1, max0, preg_134);
-        FusedExpSub(vreg_x_exp_5, vreg_x_f32_5, max0, preg_134);
-        FusedExpSub(vreg_x_exp_2, vreg_x_f32_2, max0, preg_134);
-        FusedExpSub(vreg_x_exp_6, vreg_x_f32_6, max0, preg_134);
-        FusedExpSub(vreg_x_exp_3, vreg_x_f32_3, max0, preg_134);
-        FusedExpSub(vreg_x_exp_7, vreg_x_f32_7, max0, preg_134);
-        Select(vreg_x_exp_0, vreg_zero, vreg_x_exp_0, preg_invalid_cur);
-        Select(vreg_x_exp_4, vreg_zero, vreg_x_exp_4, preg_invalid_cur);
-        Select(vreg_x_exp_1, vreg_zero, vreg_x_exp_1, preg_invalid_cur);
-        Select(vreg_x_exp_5, vreg_zero, vreg_x_exp_5, preg_invalid_cur);
-        Select(vreg_x_exp_2, vreg_zero, vreg_x_exp_2, preg_invalid_cur);
-        Select(vreg_x_exp_6, vreg_zero, vreg_x_exp_6, preg_invalid_cur);
-        Select(vreg_x_exp_3, vreg_zero, vreg_x_exp_3, preg_invalid_cur);
-        Select(vreg_x_exp_7, vreg_zero, vreg_x_exp_7, preg_invalid_cur);
+        FusedExpSub(vreg_x_exp_0, vreg_x_f32_0, max0, preg_invalid_cur);
+        FusedExpSub(vreg_x_exp_4, vreg_x_f32_4, max0, preg_invalid_cur);
+        FusedExpSub(vreg_x_exp_1, vreg_x_f32_1, max0, preg_invalid_cur);
+        FusedExpSub(vreg_x_exp_5, vreg_x_f32_5, max0, preg_invalid_cur);
+        FusedExpSub(vreg_x_exp_2, vreg_x_f32_2, max0, preg_invalid_cur);
+        FusedExpSub(vreg_x_exp_6, vreg_x_f32_6, max0, preg_invalid_cur);
+        FusedExpSub(vreg_x_exp_3, vreg_x_f32_3, max0, preg_invalid_cur);
+        FusedExpSub(vreg_x_exp_7, vreg_x_f32_7, max0, preg_invalid_cur);
 
         Add(vreg_x_sum_0, vreg_x_exp_0, vreg_x_sum_0, preg_134);
         Add(vreg_x_sum_4, vreg_x_exp_4, vreg_x_sum_4, preg_134);
@@ -1310,10 +1278,10 @@ __simd_vf__ inline void ProcessVec1DnNoUpdatePerTokenHeadVF(
     Max(max0, max0, max2, preg_108);
     Max(max1, max1, max3, preg_108);
     Max(max0, max0, max1, preg_108);
-    Compares<T, CMPMODE::EQ>(preg_invalid_cur, max0, minValue, preg_108);
+    Compares<T, CMPMODE::NE>(preg_invalid_cur, max0, minValue, preg_108);
 
     Sub(max0, max0, vreg_ln_p_scale, preg_108);
-    Select(max0, vreg_empty_lse, max0, preg_invalid_cur);
+    Select(max0, max0, vreg_empty_lse, preg_invalid_cur);
 
     StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B16>((__ubuf__ T *&)new_global_max, max0, preg_108);
 
@@ -1341,62 +1309,50 @@ __simd_vf__ inline void ProcessVec1DnNoUpdatePerTokenHeadVF(
         LoadAlign(vreg_x_f32_6, input_x_local_UB + ubN_m_m_div_2 + i0 * m * 2 + 64);
         LoadAlign(vreg_x_f32_7, input_x_local_UB + ubN_m_m_mul3_div_4 + i0 * m * 2 + 64);
 
-        FusedExpSub(vreg_x_exp_0, vreg_x_f32_0, max0, preg_134);
-        FusedExpSub(vreg_x_exp_1, vreg_x_f32_1, max0, preg_134);
-        FusedExpSub(vreg_x_exp_2, vreg_x_f32_2, max0, preg_134);
-        FusedExpSub(vreg_x_exp_3, vreg_x_f32_3, max0, preg_134);
-        Select(vreg_x_exp_0, vreg_zero, vreg_x_exp_0, preg_invalid_cur);
-        Select(vreg_x_exp_1, vreg_zero, vreg_x_exp_1, preg_invalid_cur);
-        Select(vreg_x_exp_2, vreg_zero, vreg_x_exp_2, preg_invalid_cur);
-        Select(vreg_x_exp_3, vreg_zero, vreg_x_exp_3, preg_invalid_cur);
-
-        FusedExpSub(vreg_x_exp_4, vreg_x_f32_4, max0, preg_134);
-        FusedExpSub(vreg_x_exp_5, vreg_x_f32_5, max0, preg_134);
-        FusedExpSub(vreg_x_exp_6, vreg_x_f32_6, max0, preg_134);
-        FusedExpSub(vreg_x_exp_7, vreg_x_f32_7, max0, preg_134);
-        Select(vreg_x_exp_4, vreg_zero, vreg_x_exp_4, preg_invalid_cur);
-        Select(vreg_x_exp_5, vreg_zero, vreg_x_exp_5, preg_invalid_cur);
-        Select(vreg_x_exp_6, vreg_zero, vreg_x_exp_6, preg_invalid_cur);
-        Select(vreg_x_exp_7, vreg_zero, vreg_x_exp_7, preg_invalid_cur);
+        FusedExpSub(vreg_x_exp_0, vreg_x_f32_0, max0, preg_invalid_cur);
+        FusedExpSub(vreg_x_exp_4, vreg_x_f32_4, max0, preg_invalid_cur);
+        FusedExpSub(vreg_x_exp_1, vreg_x_f32_1, max0, preg_invalid_cur);
+        FusedExpSub(vreg_x_exp_5, vreg_x_f32_5, max0, preg_invalid_cur);
+        FusedExpSub(vreg_x_exp_2, vreg_x_f32_2, max0, preg_invalid_cur);
+        FusedExpSub(vreg_x_exp_6, vreg_x_f32_6, max0, preg_invalid_cur);
+        FusedExpSub(vreg_x_exp_3, vreg_x_f32_3, max0, preg_invalid_cur);
+        FusedExpSub(vreg_x_exp_7, vreg_x_f32_7, max0, preg_invalid_cur);
 
         Add(vreg_x_sum_0, vreg_x_exp_0, vreg_x_sum_0, preg_134);
+        Add(vreg_x_sum_4, vreg_x_exp_4, vreg_x_sum_4, preg_134);
         Add(vreg_x_sum_1, vreg_x_exp_1, vreg_x_sum_1, preg_134);
+        Add(vreg_x_sum_5, vreg_x_exp_5, vreg_x_sum_5, preg_134);
         Add(vreg_x_sum_2, vreg_x_exp_2, vreg_x_sum_2, preg_134);
+        Add(vreg_x_sum_6, vreg_x_exp_6, vreg_x_sum_6, preg_134);
         Add(vreg_x_sum_3, vreg_x_exp_3, vreg_x_sum_3, preg_134);
+        Add(vreg_x_sum_7, vreg_x_exp_7, vreg_x_sum_7, preg_134);
         if constexpr (!IsSameType<T2, hifloat8_t>::value) {
             Cast<T2, T, castTraitRintZero>(vreg_x_exp_fp8_0, vreg_x_exp_0, preg_135);
+            Cast<T2, T, castTraitRintZero>(vreg_x_exp_fp8_1, vreg_x_exp_4, preg_135);
             Cast<T2, T, castTraitRintOne>((RegTensor<T2> &)vreg_x_exp_0, vreg_x_exp_1, preg_135);
+            Cast<T2, T, castTraitRintOne>((RegTensor<T2> &)vreg_x_exp_4, vreg_x_exp_5, preg_135);
             Cast<T2, T, castTraitRintTwo>((RegTensor<T2> &)vreg_x_exp_1, vreg_x_exp_2, preg_135);
+            Cast<T2, T, castTraitRintTwo>((RegTensor<T2> &)vreg_x_exp_5, vreg_x_exp_6, preg_135);
             Cast<T2, T, castTraitRintThree>((RegTensor<T2> &)vreg_x_exp_2, vreg_x_exp_3, preg_135);
+            Cast<T2, T, castTraitRintThree>((RegTensor<T2> &)vreg_x_exp_6, vreg_x_exp_7, preg_135);
         }
 
         Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_0, (RegTensor<uint8_t> &)vreg_x_exp_fp8_0,
            (RegTensor<uint8_t> &)vreg_x_exp_0, preg_134);
-        Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_0, (RegTensor<uint8_t> &)vreg_x_exp_fp8_0,
-           (RegTensor<uint8_t> &)vreg_x_exp_1, preg_134);
-        Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_0, (RegTensor<uint8_t> &)vreg_x_exp_fp8_0,
-           (RegTensor<uint8_t> &)vreg_x_exp_2, preg_134);
-        Gather(vreg_x_exp_f8_pack_0, vreg_x_exp_fp8_0, idx_nd2nz);
-        StoreAlign<T2, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
-            ((__ubuf__ T2 *&)x_exp), vreg_x_exp_f8_pack_0, blockStride, repeatStride, preg_134);
-
-        Add(vreg_x_sum_4, vreg_x_exp_4, vreg_x_sum_4, preg_134);
-        Add(vreg_x_sum_5, vreg_x_exp_5, vreg_x_sum_5, preg_134);
-        Add(vreg_x_sum_6, vreg_x_exp_6, vreg_x_sum_6, preg_134);
-        Add(vreg_x_sum_7, vreg_x_exp_7, vreg_x_sum_7, preg_134);
-        if constexpr (!IsSameType<T2, hifloat8_t>::value) {
-            Cast<T2, T, castTraitRintZero>(vreg_x_exp_fp8_1, vreg_x_exp_4, preg_135);
-            Cast<T2, T, castTraitRintOne>((RegTensor<T2> &)vreg_x_exp_4, vreg_x_exp_5, preg_135);
-            Cast<T2, T, castTraitRintTwo>((RegTensor<T2> &)vreg_x_exp_5, vreg_x_exp_6, preg_135);
-            Cast<T2, T, castTraitRintThree>((RegTensor<T2> &)vreg_x_exp_6, vreg_x_exp_7, preg_135);
-        }
         Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_1, (RegTensor<uint8_t> &)vreg_x_exp_fp8_1,
            (RegTensor<uint8_t> &)vreg_x_exp_4, preg_134);
+        Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_0, (RegTensor<uint8_t> &)vreg_x_exp_fp8_0,
+           (RegTensor<uint8_t> &)vreg_x_exp_1, preg_134);
         Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_1, (RegTensor<uint8_t> &)vreg_x_exp_fp8_1,
            (RegTensor<uint8_t> &)vreg_x_exp_5, preg_134);
+        Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_0, (RegTensor<uint8_t> &)vreg_x_exp_fp8_0,
+           (RegTensor<uint8_t> &)vreg_x_exp_2, preg_134);
         Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_1, (RegTensor<uint8_t> &)vreg_x_exp_fp8_1,
            (RegTensor<uint8_t> &)vreg_x_exp_6, preg_134);
+        Gather(vreg_x_exp_f8_pack_0, vreg_x_exp_fp8_0, idx_nd2nz);
         Gather(vreg_x_exp_f8_pack_1, vreg_x_exp_fp8_1, idx_nd2nz);
+        StoreAlign<T2, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
+            ((__ubuf__ T2 *&)x_exp), vreg_x_exp_f8_pack_0, blockStride, repeatStride, preg_134);
         StoreAlign<T2, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
             ((__ubuf__ T2 *&)x_exp_1), vreg_x_exp_f8_pack_1, blockStride, repeatStride, preg_134);
     }
@@ -1556,10 +1512,10 @@ __simd_vf__ inline void ProcessVec1DnNoUpdatePerTokenHeadAttenTailVF(
     Max(max0, max0, max2, preg_108);
     Max(max1, max1, max3, preg_108);
     Max(max0, max0, max1, preg_108);
-    Compares<T, CMPMODE::EQ>(preg_invalid_cur, max0, minValue, preg_108);
+    Compares<T, CMPMODE::NE>(preg_invalid_cur, max0, minValue, preg_108);
 
     Sub(max0, max0, vreg_ln_p_scale, preg_108);
-    Select(max0, vreg_empty_lse, max0, preg_invalid_cur);
+    Select(max0, max0, vreg_empty_lse, preg_invalid_cur);
 
     StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B16>((__ubuf__ T *&)new_global_max, max0, preg_108);
 
@@ -1587,63 +1543,50 @@ __simd_vf__ inline void ProcessVec1DnNoUpdatePerTokenHeadAttenTailVF(
         LoadAlign(vreg_x_f32_6, input_x_local_UB + ubN_m_m_div_2 + i0 * m * 2 + 64);
         LoadAlign(vreg_x_f32_7, input_x_local_UB + ubN_m_m_mul3_div_4 + i0 * m * 2 + 64);
 
-        FusedExpSub(vreg_x_exp_0, vreg_x_f32_0, max0, preg_134);
-        FusedExpSub(vreg_x_exp_1, vreg_x_f32_1, max0, preg_134);
-        FusedExpSub(vreg_x_exp_2, vreg_x_f32_2, max0, preg_134);
-        FusedExpSub(vreg_x_exp_3, vreg_x_f32_3, max0, preg_134);
-        Select(vreg_x_exp_0, vreg_zero, vreg_x_exp_0, preg_invalid_cur);
-        Select(vreg_x_exp_1, vreg_zero, vreg_x_exp_1, preg_invalid_cur);
-        Select(vreg_x_exp_2, vreg_zero, vreg_x_exp_2, preg_invalid_cur);
-        Select(vreg_x_exp_3, vreg_zero, vreg_x_exp_3, preg_invalid_cur);
-
-        FusedExpSub(vreg_x_exp_4, vreg_x_f32_4, max0, preg_134);
-        FusedExpSub(vreg_x_exp_5, vreg_x_f32_5, max0, preg_134);
-        FusedExpSub(vreg_x_exp_6, vreg_x_f32_6, max0, preg_134);
-        FusedExpSub(vreg_x_exp_7, vreg_x_f32_7, max0, preg_134);
-        Select(vreg_x_exp_4, vreg_zero, vreg_x_exp_4, preg_invalid_cur);
-        Select(vreg_x_exp_5, vreg_zero, vreg_x_exp_5, preg_invalid_cur);
-        Select(vreg_x_exp_6, vreg_zero, vreg_x_exp_6, preg_invalid_cur);
-        Select(vreg_x_exp_7, vreg_zero, vreg_x_exp_7, preg_invalid_cur);
+        FusedExpSub(vreg_x_exp_0, vreg_x_f32_0, max0, preg_invalid_cur);
+        FusedExpSub(vreg_x_exp_4, vreg_x_f32_4, max0, preg_invalid_cur);
+        FusedExpSub(vreg_x_exp_1, vreg_x_f32_1, max0, preg_invalid_cur);
+        FusedExpSub(vreg_x_exp_5, vreg_x_f32_5, max0, preg_invalid_cur);
+        FusedExpSub(vreg_x_exp_2, vreg_x_f32_2, max0, preg_invalid_cur);
+        FusedExpSub(vreg_x_exp_6, vreg_x_f32_6, max0, preg_invalid_cur);
+        FusedExpSub(vreg_x_exp_3, vreg_x_f32_3, max0, preg_invalid_cur);
+        FusedExpSub(vreg_x_exp_7, vreg_x_f32_7, max0, preg_invalid_cur);
 
         Add(vreg_x_sum_0, vreg_x_exp_0, vreg_x_sum_0, preg_134);
+        Add(vreg_x_sum_4, vreg_x_exp_4, vreg_x_sum_4, preg_134);
         Add(vreg_x_sum_1, vreg_x_exp_1, vreg_x_sum_1, preg_134);
+        Add(vreg_x_sum_5, vreg_x_exp_5, vreg_x_sum_5, preg_134);
         Add(vreg_x_sum_2, vreg_x_exp_2, vreg_x_sum_2, preg_134);
+        Add(vreg_x_sum_6, vreg_x_exp_6, vreg_x_sum_6, preg_134);
         Add(vreg_x_sum_3, vreg_x_exp_3, vreg_x_sum_3, preg_134);
+        Add(vreg_x_sum_7, vreg_x_exp_7, vreg_x_sum_7, preg_134);
         if constexpr (!IsSameType<T2, hifloat8_t>::value) {
             Cast<T2, T, castTraitRintZero>(vreg_x_exp_fp8_0, vreg_x_exp_0, preg_135);
+            Cast<T2, T, castTraitRintZero>(vreg_x_exp_fp8_1, vreg_x_exp_4, preg_135);
             Cast<T2, T, castTraitRintOne>((RegTensor<T2> &)vreg_x_exp_0, vreg_x_exp_1, preg_135);
+            Cast<T2, T, castTraitRintOne>((RegTensor<T2> &)vreg_x_exp_4, vreg_x_exp_5, preg_135);
             Cast<T2, T, castTraitRintTwo>((RegTensor<T2> &)vreg_x_exp_1, vreg_x_exp_2, preg_135);
+            Cast<T2, T, castTraitRintTwo>((RegTensor<T2> &)vreg_x_exp_5, vreg_x_exp_6, preg_135);
             Cast<T2, T, castTraitRintThree>((RegTensor<T2> &)vreg_x_exp_2, vreg_x_exp_3, preg_135);
+            Cast<T2, T, castTraitRintThree>((RegTensor<T2> &)vreg_x_exp_6, vreg_x_exp_7, preg_135);
         }
 
         Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_0, (RegTensor<uint8_t> &)vreg_x_exp_fp8_0,
            (RegTensor<uint8_t> &)vreg_x_exp_0, preg_134);
-        Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_0, (RegTensor<uint8_t> &)vreg_x_exp_fp8_0,
-           (RegTensor<uint8_t> &)vreg_x_exp_1, preg_134);
-        Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_0, (RegTensor<uint8_t> &)vreg_x_exp_fp8_0,
-           (RegTensor<uint8_t> &)vreg_x_exp_2, preg_134);
-        Gather(vreg_x_exp_f8_pack_0, vreg_x_exp_fp8_0, idx_nd2nz);
-        StoreAlign<T2, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
-            ((__ubuf__ T2 *&)x_exp), vreg_x_exp_f8_pack_0, blockStride, repeatStride, preg_134);
-
-        Add(vreg_x_sum_4, vreg_x_exp_4, vreg_x_sum_4, preg_134);
-        Add(vreg_x_sum_5, vreg_x_exp_5, vreg_x_sum_5, preg_134);
-        Add(vreg_x_sum_6, vreg_x_exp_6, vreg_x_sum_6, preg_134);
-        Add(vreg_x_sum_7, vreg_x_exp_7, vreg_x_sum_7, preg_134);
-        if constexpr (!IsSameType<T2, hifloat8_t>::value) {
-            Cast<T2, T, castTraitRintZero>(vreg_x_exp_fp8_1, vreg_x_exp_4, preg_135);
-            Cast<T2, T, castTraitRintOne>((RegTensor<T2> &)vreg_x_exp_4, vreg_x_exp_5, preg_135);
-            Cast<T2, T, castTraitRintTwo>((RegTensor<T2> &)vreg_x_exp_5, vreg_x_exp_6, preg_135);
-            Cast<T2, T, castTraitRintThree>((RegTensor<T2> &)vreg_x_exp_6, vreg_x_exp_7, preg_135);
-        }
-
         Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_1, (RegTensor<uint8_t> &)vreg_x_exp_fp8_1,
            (RegTensor<uint8_t> &)vreg_x_exp_4, preg_134);
+        Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_0, (RegTensor<uint8_t> &)vreg_x_exp_fp8_0,
+           (RegTensor<uint8_t> &)vreg_x_exp_1, preg_134);
         Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_1, (RegTensor<uint8_t> &)vreg_x_exp_fp8_1,
            (RegTensor<uint8_t> &)vreg_x_exp_5, preg_134);
+        Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_0, (RegTensor<uint8_t> &)vreg_x_exp_fp8_0,
+           (RegTensor<uint8_t> &)vreg_x_exp_2, preg_134);
         Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_1, (RegTensor<uint8_t> &)vreg_x_exp_fp8_1,
            (RegTensor<uint8_t> &)vreg_x_exp_6, preg_134);
+        Gather(vreg_x_exp_f8_pack_0, vreg_x_exp_fp8_0, idx_nd2nz);
         Gather(vreg_x_exp_f8_pack_1, vreg_x_exp_fp8_1, idx_nd2nz);
+        StoreAlign<T2, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
+            ((__ubuf__ T2 *&)x_exp), vreg_x_exp_f8_pack_0, blockStride, repeatStride, preg_134);
         StoreAlign<T2, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
             ((__ubuf__ T2 *&)x_exp_1), vreg_x_exp_f8_pack_1, blockStride, repeatStride, preg_134);
     }
@@ -1845,10 +1788,10 @@ __simd_vf__ inline void ProcessVec1DnUpdatePerTokenHeadVF(
     Max(max0, max0, max2, preg_108);
     Max(max1, max1, max3, preg_108);
     Max(max0, max0, max1, preg_108);
-    Compares<T, CMPMODE::EQ>(preg_invalid_cur, max0, minValue, preg_108);
+    Compares<T, CMPMODE::NE>(preg_invalid_cur, max0, minValue, preg_108);
 
     Sub(max0, max0, vreg_ln_p_scale, preg_108);
-    Select(max0, vreg_empty_lse, max0, preg_invalid_cur);
+    Select(max0, max0, vreg_empty_lse, preg_invalid_cur);
     Max(max0, max0, vreg_x_max_f32_b, preg_108);
 
     FusedExpSub(vreg_x_max_f32_b, vreg_x_max_f32_b, max0, preg_134);
@@ -1879,63 +1822,50 @@ __simd_vf__ inline void ProcessVec1DnUpdatePerTokenHeadVF(
         LoadAlign(vreg_x_f32_6, input_x_local_UB + ubN_m_m_div_2 + i0 * m * 2 + 64);
         LoadAlign(vreg_x_f32_7, input_x_local_UB + ubN_m_m_mul3_div_4 + i0 * m * 2 + 64);
 
-        FusedExpSub(vreg_x_exp_0, vreg_x_f32_0, max0, preg_134);
-        FusedExpSub(vreg_x_exp_1, vreg_x_f32_1, max0, preg_134);
-        FusedExpSub(vreg_x_exp_2, vreg_x_f32_2, max0, preg_134);
-        FusedExpSub(vreg_x_exp_3, vreg_x_f32_3, max0, preg_134);
-        Select(vreg_x_exp_0, vreg_zero, vreg_x_exp_0, preg_invalid_cur);
-        Select(vreg_x_exp_1, vreg_zero, vreg_x_exp_1, preg_invalid_cur);
-        Select(vreg_x_exp_2, vreg_zero, vreg_x_exp_2, preg_invalid_cur);
-        Select(vreg_x_exp_3, vreg_zero, vreg_x_exp_3, preg_invalid_cur);
-
-        FusedExpSub(vreg_x_exp_4, vreg_x_f32_4, max0, preg_134);
-        FusedExpSub(vreg_x_exp_5, vreg_x_f32_5, max0, preg_134);
-        FusedExpSub(vreg_x_exp_6, vreg_x_f32_6, max0, preg_134);
-        FusedExpSub(vreg_x_exp_7, vreg_x_f32_7, max0, preg_134);
-        Select(vreg_x_exp_4, vreg_zero, vreg_x_exp_4, preg_invalid_cur);
-        Select(vreg_x_exp_5, vreg_zero, vreg_x_exp_5, preg_invalid_cur);
-        Select(vreg_x_exp_6, vreg_zero, vreg_x_exp_6, preg_invalid_cur);
-        Select(vreg_x_exp_7, vreg_zero, vreg_x_exp_7, preg_invalid_cur);
+        FusedExpSub(vreg_x_exp_0, vreg_x_f32_0, max0, preg_invalid_cur);
+        FusedExpSub(vreg_x_exp_4, vreg_x_f32_4, max0, preg_invalid_cur);
+        FusedExpSub(vreg_x_exp_1, vreg_x_f32_1, max0, preg_invalid_cur);
+        FusedExpSub(vreg_x_exp_5, vreg_x_f32_5, max0, preg_invalid_cur);
+        FusedExpSub(vreg_x_exp_2, vreg_x_f32_2, max0, preg_invalid_cur);
+        FusedExpSub(vreg_x_exp_6, vreg_x_f32_6, max0, preg_invalid_cur);
+        FusedExpSub(vreg_x_exp_3, vreg_x_f32_3, max0, preg_invalid_cur);
+        FusedExpSub(vreg_x_exp_7, vreg_x_f32_7, max0, preg_invalid_cur);
 
         Add(vreg_x_sum_0, vreg_x_exp_0, vreg_x_sum_0, preg_134);
+        Add(vreg_x_sum_4, vreg_x_exp_4, vreg_x_sum_4, preg_134);
         Add(vreg_x_sum_1, vreg_x_exp_1, vreg_x_sum_1, preg_134);
+        Add(vreg_x_sum_5, vreg_x_exp_5, vreg_x_sum_5, preg_134);
         Add(vreg_x_sum_2, vreg_x_exp_2, vreg_x_sum_2, preg_134);
+        Add(vreg_x_sum_6, vreg_x_exp_6, vreg_x_sum_6, preg_134);
         Add(vreg_x_sum_3, vreg_x_exp_3, vreg_x_sum_3, preg_134);
+        Add(vreg_x_sum_7, vreg_x_exp_7, vreg_x_sum_7, preg_134);
         if constexpr (!IsSameType<T2, hifloat8_t>::value) {
             Cast<T2, T, castTraitRintZero>(vreg_x_exp_fp8_0, vreg_x_exp_0, preg_135);
+            Cast<T2, T, castTraitRintZero>(vreg_x_exp_fp8_1, vreg_x_exp_4, preg_135);
             Cast<T2, T, castTraitRintOne>((RegTensor<T2> &)vreg_x_exp_0, vreg_x_exp_1, preg_135);
+            Cast<T2, T, castTraitRintOne>((RegTensor<T2> &)vreg_x_exp_4, vreg_x_exp_5, preg_135);
             Cast<T2, T, castTraitRintTwo>((RegTensor<T2> &)vreg_x_exp_1, vreg_x_exp_2, preg_135);
+            Cast<T2, T, castTraitRintTwo>((RegTensor<T2> &)vreg_x_exp_5, vreg_x_exp_6, preg_135);
             Cast<T2, T, castTraitRintThree>((RegTensor<T2> &)vreg_x_exp_2, vreg_x_exp_3, preg_135);
+            Cast<T2, T, castTraitRintThree>((RegTensor<T2> &)vreg_x_exp_6, vreg_x_exp_7, preg_135);
         }
 
         Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_0, (RegTensor<uint8_t> &)vreg_x_exp_fp8_0,
            (RegTensor<uint8_t> &)vreg_x_exp_0, preg_134);
-        Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_0, (RegTensor<uint8_t> &)vreg_x_exp_fp8_0,
-           (RegTensor<uint8_t> &)vreg_x_exp_1, preg_134);
-        Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_0, (RegTensor<uint8_t> &)vreg_x_exp_fp8_0,
-           (RegTensor<uint8_t> &)vreg_x_exp_2, preg_134);
-        Gather(vreg_x_exp_f8_pack_0, vreg_x_exp_fp8_0, idx_nd2nz);
-        StoreAlign<T2, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
-            ((__ubuf__ T2 *&)x_exp), vreg_x_exp_f8_pack_0, blockStride, repeatStride, preg_134);
-
-        Add(vreg_x_sum_4, vreg_x_exp_4, vreg_x_sum_4, preg_134);
-        Add(vreg_x_sum_5, vreg_x_exp_5, vreg_x_sum_5, preg_134);
-        Add(vreg_x_sum_6, vreg_x_exp_6, vreg_x_sum_6, preg_134);
-        Add(vreg_x_sum_7, vreg_x_exp_7, vreg_x_sum_7, preg_134);
-        if constexpr (!IsSameType<T2, hifloat8_t>::value) {
-            Cast<T2, T, castTraitRintZero>(vreg_x_exp_fp8_1, vreg_x_exp_4, preg_135);
-            Cast<T2, T, castTraitRintOne>((RegTensor<T2> &)vreg_x_exp_4, vreg_x_exp_5, preg_135);
-            Cast<T2, T, castTraitRintTwo>((RegTensor<T2> &)vreg_x_exp_5, vreg_x_exp_6, preg_135);
-            Cast<T2, T, castTraitRintThree>((RegTensor<T2> &)vreg_x_exp_6, vreg_x_exp_7, preg_135);
-        }
-
         Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_1, (RegTensor<uint8_t> &)vreg_x_exp_fp8_1,
            (RegTensor<uint8_t> &)vreg_x_exp_4, preg_134);
+        Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_0, (RegTensor<uint8_t> &)vreg_x_exp_fp8_0,
+           (RegTensor<uint8_t> &)vreg_x_exp_1, preg_134);
         Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_1, (RegTensor<uint8_t> &)vreg_x_exp_fp8_1,
            (RegTensor<uint8_t> &)vreg_x_exp_5, preg_134);
+        Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_0, (RegTensor<uint8_t> &)vreg_x_exp_fp8_0,
+           (RegTensor<uint8_t> &)vreg_x_exp_2, preg_134);
         Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_1, (RegTensor<uint8_t> &)vreg_x_exp_fp8_1,
            (RegTensor<uint8_t> &)vreg_x_exp_6, preg_134);
+        Gather(vreg_x_exp_f8_pack_0, vreg_x_exp_fp8_0, idx_nd2nz);
         Gather(vreg_x_exp_f8_pack_1, vreg_x_exp_fp8_1, idx_nd2nz);
+        StoreAlign<T2, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
+            ((__ubuf__ T2 *&)x_exp), vreg_x_exp_f8_pack_0, blockStride, repeatStride, preg_134);
         StoreAlign<T2, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
             ((__ubuf__ T2 *&)x_exp_1), vreg_x_exp_f8_pack_1, blockStride, repeatStride, preg_134);
     }
@@ -2099,10 +2029,10 @@ __simd_vf__ inline void ProcessVec1DnUpdatePerTokenHeadAttenTailVF(
     Max(max0, max0, max2, preg_108);
     Max(max1, max1, max3, preg_108);
     Max(max0, max0, max1, preg_108);
-    Compares<T, CMPMODE::EQ>(preg_invalid_cur, max0, minValue, preg_108);
+    Compares<T, CMPMODE::NE>(preg_invalid_cur, max0, minValue, preg_108);
 
     Sub(max0, max0, vreg_ln_p_scale, preg_108);
-    Select(max0, vreg_empty_lse, max0, preg_invalid_cur);
+    Select(max0, max0, vreg_empty_lse, preg_invalid_cur);
     Max(max0, max0, vreg_x_max_f32_b, preg_108);
 
     FusedExpSub(vreg_x_max_f32_b, vreg_x_max_f32_b, max0, preg_134);
@@ -2133,63 +2063,50 @@ __simd_vf__ inline void ProcessVec1DnUpdatePerTokenHeadAttenTailVF(
         LoadAlign(vreg_x_f32_6, input_x_local_UB + ubN_m_m_div_2 + i0 * m * 2 + 64);
         LoadAlign(vreg_x_f32_7, input_x_local_UB + ubN_m_m_mul3_div_4 + i0 * m * 2 + 64);
 
-        FusedExpSub(vreg_x_exp_0, vreg_x_f32_0, max0, preg_134);
-        FusedExpSub(vreg_x_exp_1, vreg_x_f32_1, max0, preg_134);
-        FusedExpSub(vreg_x_exp_2, vreg_x_f32_2, max0, preg_134);
-        FusedExpSub(vreg_x_exp_3, vreg_x_f32_3, max0, preg_134);
-        Select(vreg_x_exp_0, vreg_zero, vreg_x_exp_0, preg_invalid_cur);
-        Select(vreg_x_exp_1, vreg_zero, vreg_x_exp_1, preg_invalid_cur);
-        Select(vreg_x_exp_2, vreg_zero, vreg_x_exp_2, preg_invalid_cur);
-        Select(vreg_x_exp_3, vreg_zero, vreg_x_exp_3, preg_invalid_cur);
-
-        FusedExpSub(vreg_x_exp_4, vreg_x_f32_4, max0, preg_134);
-        FusedExpSub(vreg_x_exp_5, vreg_x_f32_5, max0, preg_134);
-        FusedExpSub(vreg_x_exp_6, vreg_x_f32_6, max0, preg_134);
-        FusedExpSub(vreg_x_exp_7, vreg_x_f32_7, max0, preg_134);
-        Select(vreg_x_exp_4, vreg_zero, vreg_x_exp_4, preg_invalid_cur);
-        Select(vreg_x_exp_5, vreg_zero, vreg_x_exp_5, preg_invalid_cur);
-        Select(vreg_x_exp_6, vreg_zero, vreg_x_exp_6, preg_invalid_cur);
-        Select(vreg_x_exp_7, vreg_zero, vreg_x_exp_7, preg_invalid_cur);
+        FusedExpSub(vreg_x_exp_0, vreg_x_f32_0, max0, preg_invalid_cur);
+        FusedExpSub(vreg_x_exp_4, vreg_x_f32_4, max0, preg_invalid_cur);
+        FusedExpSub(vreg_x_exp_1, vreg_x_f32_1, max0, preg_invalid_cur);
+        FusedExpSub(vreg_x_exp_5, vreg_x_f32_5, max0, preg_invalid_cur);
+        FusedExpSub(vreg_x_exp_2, vreg_x_f32_2, max0, preg_invalid_cur);
+        FusedExpSub(vreg_x_exp_6, vreg_x_f32_6, max0, preg_invalid_cur);
+        FusedExpSub(vreg_x_exp_3, vreg_x_f32_3, max0, preg_invalid_cur);
+        FusedExpSub(vreg_x_exp_7, vreg_x_f32_7, max0, preg_invalid_cur);
 
         Add(vreg_x_sum_0, vreg_x_exp_0, vreg_x_sum_0, preg_134);
+        Add(vreg_x_sum_4, vreg_x_exp_4, vreg_x_sum_4, preg_134);
         Add(vreg_x_sum_1, vreg_x_exp_1, vreg_x_sum_1, preg_134);
+        Add(vreg_x_sum_5, vreg_x_exp_5, vreg_x_sum_5, preg_134);
         Add(vreg_x_sum_2, vreg_x_exp_2, vreg_x_sum_2, preg_134);
+        Add(vreg_x_sum_6, vreg_x_exp_6, vreg_x_sum_6, preg_134);
         Add(vreg_x_sum_3, vreg_x_exp_3, vreg_x_sum_3, preg_134);
+        Add(vreg_x_sum_7, vreg_x_exp_7, vreg_x_sum_7, preg_134);
         if constexpr (!IsSameType<T2, hifloat8_t>::value) {
             Cast<T2, T, castTraitRintZero>(vreg_x_exp_fp8_0, vreg_x_exp_0, preg_135);
+            Cast<T2, T, castTraitRintZero>(vreg_x_exp_fp8_1, vreg_x_exp_4, preg_135);
             Cast<T2, T, castTraitRintOne>((RegTensor<T2> &)vreg_x_exp_0, vreg_x_exp_1, preg_135);
+            Cast<T2, T, castTraitRintOne>((RegTensor<T2> &)vreg_x_exp_4, vreg_x_exp_5, preg_135);
             Cast<T2, T, castTraitRintTwo>((RegTensor<T2> &)vreg_x_exp_1, vreg_x_exp_2, preg_135);
+            Cast<T2, T, castTraitRintTwo>((RegTensor<T2> &)vreg_x_exp_5, vreg_x_exp_6, preg_135);
             Cast<T2, T, castTraitRintThree>((RegTensor<T2> &)vreg_x_exp_2, vreg_x_exp_3, preg_135);
+            Cast<T2, T, castTraitRintThree>((RegTensor<T2> &)vreg_x_exp_6, vreg_x_exp_7, preg_135);
         }
 
         Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_0, (RegTensor<uint8_t> &)vreg_x_exp_fp8_0,
            (RegTensor<uint8_t> &)vreg_x_exp_0, preg_134);
-        Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_0, (RegTensor<uint8_t> &)vreg_x_exp_fp8_0,
-           (RegTensor<uint8_t> &)vreg_x_exp_1, preg_134);
-        Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_0, (RegTensor<uint8_t> &)vreg_x_exp_fp8_0,
-           (RegTensor<uint8_t> &)vreg_x_exp_2, preg_134);
-        Gather(vreg_x_exp_f8_pack_0, vreg_x_exp_fp8_0, idx_nd2nz);
-        StoreAlign<T2, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
-            ((__ubuf__ T2 *&)x_exp), vreg_x_exp_f8_pack_0, blockStride, repeatStride, preg_134);
-
-        Add(vreg_x_sum_4, vreg_x_exp_4, vreg_x_sum_4, preg_134);
-        Add(vreg_x_sum_5, vreg_x_exp_5, vreg_x_sum_5, preg_134);
-        Add(vreg_x_sum_6, vreg_x_exp_6, vreg_x_sum_6, preg_134);
-        Add(vreg_x_sum_7, vreg_x_exp_7, vreg_x_sum_7, preg_134);
-        if constexpr (!IsSameType<T2, hifloat8_t>::value) {
-            Cast<T2, T, castTraitRintZero>(vreg_x_exp_fp8_1, vreg_x_exp_4, preg_135);
-            Cast<T2, T, castTraitRintOne>((RegTensor<T2> &)vreg_x_exp_4, vreg_x_exp_5, preg_135);
-            Cast<T2, T, castTraitRintTwo>((RegTensor<T2> &)vreg_x_exp_5, vreg_x_exp_6, preg_135);
-            Cast<T2, T, castTraitRintThree>((RegTensor<T2> &)vreg_x_exp_6, vreg_x_exp_7, preg_135);
-        }
-
         Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_1, (RegTensor<uint8_t> &)vreg_x_exp_fp8_1,
            (RegTensor<uint8_t> &)vreg_x_exp_4, preg_134);
+        Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_0, (RegTensor<uint8_t> &)vreg_x_exp_fp8_0,
+           (RegTensor<uint8_t> &)vreg_x_exp_1, preg_134);
         Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_1, (RegTensor<uint8_t> &)vreg_x_exp_fp8_1,
            (RegTensor<uint8_t> &)vreg_x_exp_5, preg_134);
+        Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_0, (RegTensor<uint8_t> &)vreg_x_exp_fp8_0,
+           (RegTensor<uint8_t> &)vreg_x_exp_2, preg_134);
         Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_1, (RegTensor<uint8_t> &)vreg_x_exp_fp8_1,
            (RegTensor<uint8_t> &)vreg_x_exp_6, preg_134);
+        Gather(vreg_x_exp_f8_pack_0, vreg_x_exp_fp8_0, idx_nd2nz);
         Gather(vreg_x_exp_f8_pack_1, vreg_x_exp_fp8_1, idx_nd2nz);
+        StoreAlign<T2, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
+            ((__ubuf__ T2 *&)x_exp), vreg_x_exp_f8_pack_0, blockStride, repeatStride, preg_134);
         StoreAlign<T2, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
             ((__ubuf__ T2 *&)x_exp_1), vreg_x_exp_f8_pack_1, blockStride, repeatStride, preg_134);
     }
