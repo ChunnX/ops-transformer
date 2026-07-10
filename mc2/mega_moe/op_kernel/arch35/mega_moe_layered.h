@@ -1782,10 +1782,10 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Process()
         if (subBlockIdx_ == 1) {
             DispatchTokenToRmtServer(0);
             SendCntCal(0, nextSendCnt);
-            // if (UpdateGroupParams<AddrUpdateMode::kGmm1>(dispatchState, 0, nextSendCnt)) {
-            //     UpdateGlobalBuffer<AddrUpdateMode::kGmm1>(dispatchAddrInfo, dispatchState);
-            //     TripleInfoCalAndDispatch(dispatchAddrInfo, 0);
-            // }
+            if (UpdateGroupParams<AddrUpdateMode::kGmm1>(dispatchState, 0, nextSendCnt)) {
+                UpdateGlobalBuffer<AddrUpdateMode::kGmm1>(dispatchAddrInfo, dispatchState);
+                TripleInfoCalAndDispatch(dispatchAddrInfo, 0);
+            }
         }
     }
 
