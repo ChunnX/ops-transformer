@@ -124,7 +124,6 @@ private:
     uint64_t maxOutputSize_ = 0;
     int32_t vecSetSyncCom_ = 0;
     uint32_t startBlockIdx_ = 0;
-    uint32_t shareBlockIdx_ = 0;  // 共享专家专用 block 索引，与 MoE 专家隔离
     uint32_t blockNumPerRank_ = 2;
     int32_t dispatchFlagSlotsPerExpert_ = 0;
     int32_t maxWavesPerExpert_ = 0;
