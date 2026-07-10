@@ -49,16 +49,16 @@ const static int64_t SIZE_INT32 = 4;
 const static int64_t SIZE_INT16 = 2;
 const static int64_t SIZE_INT8 = 1;
 const static int64_t SIZE_FP32 = 4;
-const static int64_t INT4_USED_BYTE = 32 * 2 + 32 * 2 +256;// 2*32 for align 32*2+256 for compute
+const static int64_t INT4_USED_BYTE = 32 * 2 + 32 * 2 + 256; // 2*32 for align 32*2+256 for compute
 
-class MoeInitRoutingQuantV2TilingBase : public InnerMoeInitRoutingV2TilingBase
-{
+class MoeInitRoutingQuantV2TilingBase : public InnerMoeInitRoutingV2TilingBase {
 public:
-    explicit MoeInitRoutingQuantV2TilingBase(gert::TilingContext* context) : InnerMoeInitRoutingV2TilingBase(context)
-    {}
+    explicit MoeInitRoutingQuantV2TilingBase(gert::TilingContext *context) : InnerMoeInitRoutingV2TilingBase(context)
+    {
+    }
     ~MoeInitRoutingQuantV2TilingBase() override = default;
 
-    void Reset(gert::TilingContext* context) override
+    void Reset(gert::TilingContext *context) override
     {
         InnerMoeInitRoutingV2TilingBase::Reset(context);
     }
@@ -79,17 +79,16 @@ private:
     bool IsFullLoadQuant(int64_t space);
     bool IsFullLoadDynamicQuant(int64_t space);
     bool IsFullLoad() override;
-    void SetGatherTilingData(
-        InnerMoeV2GatherOutComputeTilingData* tilingData, int64_t perCoreRows, int64_t lastCoreRows, int64_t cols);
-    void SetGatherTilingDataCols(InnerMoeV2GatherOutComputeTilingData* tilingData, int64_t baseMaxCols, int64_t cols);
-    void SetGatherTilingDataRows(
-        InnerMoeV2GatherOutComputeTilingData* tilingData, int64_t perCoreRows, int64_t lastCoreRows,
-        int64_t basePerLoopMaxRows);
+    void SetGatherTilingData(InnerMoeV2GatherOutComputeTilingData *tilingData, int64_t perCoreRows,
+                             int64_t lastCoreRows, int64_t cols);
+    void SetGatherTilingDataCols(InnerMoeV2GatherOutComputeTilingData *tilingData, int64_t baseMaxCols, int64_t cols);
+    void SetGatherTilingDataRows(InnerMoeV2GatherOutComputeTilingData *tilingData, int64_t perCoreRows,
+                                 int64_t lastCoreRows, int64_t basePerLoopMaxRows);
     void Tiling4GatherQuant();
     void Tiling4GatherDynamicQuant();
     void Tiling4SrcToDstCapacityCompute() override;
     void Tiling4GatherOutCompute() override;
-    void CopyGatherOutTiling(InnerMoeV2GatherOutComputeTilingData& dst, InnerMoeV2GatherOutComputeTilingData& src);
+    void CopyGatherOutTiling(InnerMoeV2GatherOutComputeTilingData &dst, InnerMoeV2GatherOutComputeTilingData &src);
     void CopyTilingData();
 
     int64_t quantMode;
@@ -97,22 +96,22 @@ private:
     MoeInitRoutingQuantV2TilingData quantTilingData;
 };
 
-#define CHECK_NULL(context, ptr, ...)                                                                    \
-    do {                                                                                                 \
-        if ((ptr) == nullptr) {                                                                          \
-            const char* name = ((context)->GetNodeName() == nullptr) ? "nil" : (context)->GetNodeName(); \
-            OP_LOGE_WITHOUT_REPORT(name, "%s is nullptr!", ##__VA_ARGS__);                               \
-            REPORT_INNER_ERR_MSG("EZ9999", "op[%s], %s is nullptr!", name, ##__VA_ARGS__);               \
-            return ge::GRAPH_FAILED;                                                                     \
-        }                                                                                                \
+#define CHECK_NULL(context, ptr, ...)                                                                                  \
+    do {                                                                                                               \
+        if ((ptr) == nullptr) {                                                                                        \
+            const char *name = ((context)->GetNodeName() == nullptr) ? "nil" : (context)->GetNodeName();               \
+            OP_LOGE_WITHOUT_REPORT(name, "%s is nullptr!", ##__VA_ARGS__);                                             \
+            REPORT_INNER_ERR_MSG("EZ9999", "op[%s], %s is nullptr!", name, ##__VA_ARGS__);                             \
+            return ge::GRAPH_FAILED;                                                                                   \
+        }                                                                                                              \
     } while (0)
 
-#define CHECK_FAIL(context, cond, log_func) \
-    do {                                    \
-        if (cond) {                         \
-            log_func;                       \
-            return ge::GRAPH_FAILED;        \
-        }                                   \
+#define CHECK_FAIL(context, cond, log_func)                                                                            \
+    do {                                                                                                               \
+        if (cond) {                                                                                                    \
+            log_func;                                                                                                  \
+            return ge::GRAPH_FAILED;                                                                                   \
+        }                                                                                                              \
     } while (0)
 
 inline static int64_t GetPerOrLastValue(int64_t x, int64_t y)
@@ -147,29 +146,29 @@ ge::graphStatus MoeInitRoutingQuantV2TilingBase::CheckOutShape()
         CHECK_NULL(context_, dynamicQuantScaleDesc, "DynamicQuantScale");
         auto dt = dynamicQuantScaleDesc->GetDataType();
         CHECK_FAIL(context_, dt != ge::DT_FLOAT,
-            OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "dynamicQuantScale",
-                Ops::Base::ToString(dt).c_str(), "FLOAT"));
+                   OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "dynamicQuantScale",
+                                             Ops::Base::ToString(dt).c_str(), "FLOAT"));
 
         const gert::Shape dynamicQuantScaleShape = dynamicShapePtr->GetStorageShape();
         size_t dynamicQuantScaleDimNum = dynamicQuantScaleShape.GetDimNum();
         std::string dynamicQuantScaleDimStr = std::to_string(dynamicQuantScaleDimNum) + "D";
         CHECK_FAIL(context_, dynamicQuantScaleDimNum != 1U,
-            OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "dynamicQuantScale",
-                dynamicQuantScaleDimStr.c_str(), "1D"));
+                   OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "dynamicQuantScale",
+                                                dynamicQuantScaleDimStr.c_str(), "1D"));
         if (dropPadMode == 0) {
             int64_t firstDim = moeInitRoutingTilingData.get_n() * moeInitRoutingTilingData.get_k();
             firstDim = activateNum == 0 ? firstDim : std::min(firstDim, activateNum);
-            CHECK_FAIL(
-                context_, dynamicQuantScaleShape.GetDim(0) != firstDim,
-                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "dynamicQuantScale",
-                    Ops::Base::ToString(dynamicQuantScaleShape).c_str(),
-                    "The first dim of dynamicQuantScale should be n * k or activeNum"));
+            CHECK_FAIL(context_, dynamicQuantScaleShape.GetDim(0) != firstDim,
+                       OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                           context_->GetNodeName(), "dynamicQuantScale",
+                           Ops::Base::ToString(dynamicQuantScaleShape).c_str(),
+                           "The first dim of dynamicQuantScale should be n * k or activeNum"));
         } else {
-            CHECK_FAIL(
-                context_, dynamicQuantScaleShape.GetDim(0) != expertNum * expertCapacity,
-                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "dynamicQuantScale",
-                    Ops::Base::ToString(dynamicQuantScaleShape).c_str(),
-                    "The first dim of dynamicQuantScale should be expertNum * expertCapacity"));
+            CHECK_FAIL(context_, dynamicQuantScaleShape.GetDim(0) != expertNum * expertCapacity,
+                       OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                           context_->GetNodeName(), "dynamicQuantScale",
+                           Ops::Base::ToString(dynamicQuantScaleShape).c_str(),
+                           "The first dim of dynamicQuantScale should be expertNum * expertCapacity"));
         }
     }
     return ge::GRAPH_SUCCESS;
@@ -184,15 +183,15 @@ ge::graphStatus MoeInitRoutingQuantV2TilingBase::CheckInt4Info()
     if (isInt4) {
         int64_t cols = InnerMoeInitRoutingV2TilingBase::moeInitRoutingTilingData.get_cols();
         CHECK_FAIL(context_, cols % NUM_TWO != 0,
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "x",
-                std::to_string(cols).c_str(),
-                "The second dim of x should be a multiple of 2 when expandedX is int4"));
+                   OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                       context_->GetNodeName(), "x", std::to_string(cols).c_str(),
+                       "The second dim of x should be a multiple of 2 when expandedX is int4"));
         CHECK_FAIL(context_, quantMode != 1,
-            OP_LOGE_WITH_INVALID_ATTR(context_->GetNodeName(), "quantMode", std::to_string(quantMode).c_str(),
-                "1 when expandedX is int4"));
+                   OP_LOGE_WITH_INVALID_ATTR(context_->GetNodeName(), "quantMode", std::to_string(quantMode).c_str(),
+                                             "1 when expandedX is int4"));
         CHECK_FAIL(context_, dropPadMode != 0,
-            OP_LOGE_WITH_INVALID_ATTR(context_->GetNodeName(), "dropPadMode", std::to_string(dropPadMode).c_str(),
-                "0 when expandedX is int4"));
+                   OP_LOGE_WITH_INVALID_ATTR(context_->GetNodeName(), "dropPadMode",
+                                             std::to_string(dropPadMode).c_str(), "0 when expandedX is int4"));
         auto scaleShapePtr = context_->GetOptionalInputShape(INDEX_SCALE);
         if (scaleShapePtr != nullptr) {
             auto scaleDesc = context_->GetOptionalInputDesc(INDEX_SCALE);
@@ -201,12 +200,11 @@ ge::graphStatus MoeInitRoutingQuantV2TilingBase::CheckInt4Info()
             size_t smoothDimNum = smoothShape.GetDimNum();
             std::string smoothDimStr = std::to_string(smoothDimNum) + "D";
             CHECK_FAIL(context_, smoothDimNum != static_cast<size_t>(NUM_TWO),
-                OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "scale", smoothDimStr.c_str(), "2D"));
-            CHECK_FAIL(
-                context_, smoothShape.GetDim(0) != 1,
-                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "scale",
-                    Ops::Base::ToString(smoothShape).c_str(),
-                    "The first dim of scale should be 1 when expandedX is int4"));
+                       OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "scale", smoothDimStr.c_str(), "2D"));
+            CHECK_FAIL(context_, smoothShape.GetDim(0) != 1,
+                       OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                           context_->GetNodeName(), "scale", Ops::Base::ToString(smoothShape).c_str(),
+                           "The first dim of scale should be 1 when expandedX is int4"));
         }
     }
     return ge::GRAPH_SUCCESS;
@@ -215,11 +213,15 @@ ge::graphStatus MoeInitRoutingQuantV2TilingBase::CheckInt4Info()
 ge::graphStatus MoeInitRoutingQuantV2TilingBase::GetShapeAttrsInfo()
 {
     auto attrs = context_->GetAttrs();
-    const int64_t* quantModePtr = attrs->GetAttrPointer<int64_t>(ATTR_QUANT_MODE);
-    if (quantModePtr != nullptr) {quantMode = *quantModePtr;}
-    CHECK_FAIL(context_, quantMode < 0 || quantMode > 1,
+    const int64_t *quantModePtr = attrs->GetAttrPointer<int64_t>(ATTR_QUANT_MODE);
+    if (quantModePtr != nullptr) {
+        quantMode = *quantModePtr;
+    }
+    CHECK_FAIL(
+        context_, quantMode < 0 || quantMode > 1,
         OP_LOGE_WITH_INVALID_ATTR(context_->GetNodeName(), "quantMode", std::to_string(quantMode).c_str(), "0 or 1"));
-    if (InnerMoeInitRoutingV2TilingBase::GetShapeAttrsInfo() == ge::GRAPH_FAILED || CheckInt4Info() == ge::GRAPH_FAILED) {
+    if (InnerMoeInitRoutingV2TilingBase::GetShapeAttrsInfo() == ge::GRAPH_FAILED ||
+        CheckInt4Info() == ge::GRAPH_FAILED) {
         return ge::GRAPH_FAILED;
     }
     auto scaleShapePtr = context_->GetOptionalInputShape(INDEX_SCALE);
@@ -229,8 +231,8 @@ ge::graphStatus MoeInitRoutingQuantV2TilingBase::GetShapeAttrsInfo()
         CHECK_NULL(context_, scaleDesc, "scale");
         auto dt_scale = scaleDesc->GetDataType();
         CHECK_FAIL(context_, dt_scale != ge::DT_FLOAT,
-            OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "scale",
-            Ops::Base::ToString(dt_scale).c_str(), "FLOAT"));
+                   OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "scale", Ops::Base::ToString(dt_scale).c_str(),
+                                             "FLOAT"));
 
         auto offsetShapePtr = context_->GetOptionalInputShape(INDEX_OFFSET);
         CHECK_NULL(context_, offsetShapePtr, "offset");
@@ -238,29 +240,32 @@ ge::graphStatus MoeInitRoutingQuantV2TilingBase::GetShapeAttrsInfo()
         CHECK_NULL(context_, offsetDesc, "offset");
         auto dt_offset = offsetDesc->GetDataType();
         CHECK_FAIL(context_, dt_offset != ge::DT_FLOAT,
-            OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "offset",
-                Ops::Base::ToString(dt_offset).c_str(), "FLOAT"));
+                   OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "offset", Ops::Base::ToString(dt_offset).c_str(),
+                                             "FLOAT"));
 
         auto scaleShape = scaleShapePtr->GetStorageShape();
         std::string scaleDimStr = std::to_string(scaleShape.GetDimNum()) + "D";
         CHECK_FAIL(context_, scaleShape.GetDimNum() != 1,
-            OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "scale", scaleDimStr.c_str(), "1D"));
+                   OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "scale", scaleDimStr.c_str(), "1D"));
         CHECK_FAIL(context_, scaleShape.GetDim(0) != 1,
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "scale",
-                Ops::Base::ToString(scaleShape).c_str(), "The first dim of scale should be 1"));
+                   OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "scale",
+                                                         Ops::Base::ToString(scaleShape).c_str(),
+                                                         "The first dim of scale should be 1"));
         auto offsetShape = offsetShapePtr->GetStorageShape();
         std::string offsetDimStr = std::to_string(offsetShape.GetDimNum()) + "D";
         CHECK_FAIL(context_, offsetShape.GetDimNum() != 1,
-            OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "offset", offsetDimStr.c_str(), "1D"));
+                   OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "offset", offsetDimStr.c_str(), "1D"));
         CHECK_FAIL(context_, offsetShape.GetDim(0) != 1,
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "offset",
-                Ops::Base::ToString(offsetShape).c_str(), "The first dim of offset should be 1"));
+                   OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "offset",
+                                                         Ops::Base::ToString(offsetShape).c_str(),
+                                                         "The first dim of offset should be 1"));
     } else {
         if (scaleShapePtr != nullptr) {
             auto scaleDesc = context_->GetOptionalInputDesc(INDEX_SCALE);
             CHECK_NULL(context_, scaleDesc, "scale");
             auto dt = scaleDesc->GetDataType();
-            CHECK_FAIL(context_, dt != ge::DT_FLOAT,
+            CHECK_FAIL(
+                context_, dt != ge::DT_FLOAT,
                 OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "scale", Ops::Base::ToString(dt).c_str(), "FLOAT"));
 
             int64_t cols = InnerMoeInitRoutingV2TilingBase::moeInitRoutingTilingData.get_cols();
@@ -268,15 +273,16 @@ ge::graphStatus MoeInitRoutingQuantV2TilingBase::GetShapeAttrsInfo()
             size_t smoothDimNum = smoothShape.GetDimNum();
             std::string smoothDimStr = std::to_string(smoothDimNum) + "D";
             CHECK_FAIL(context_, smoothDimNum != static_cast<size_t>(NUM_TWO),
-                OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "scale", smoothDimStr.c_str(), "2D"));
-            CHECK_FAIL(
-                context_, smoothShape.GetDim(0) != 1 && smoothShape.GetDim(0) != expertNum,
-                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "scale",
-                    Ops::Base::ToString(smoothShape).c_str(), "The first dim of scale should be 1 or expertNum"));
+                       OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "scale", smoothDimStr.c_str(), "2D"));
+            CHECK_FAIL(context_, smoothShape.GetDim(0) != 1 && smoothShape.GetDim(0) != expertNum,
+                       OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "scale",
+                                                             Ops::Base::ToString(smoothShape).c_str(),
+                                                             "The first dim of scale should be 1 or expertNum"));
             CHECK_FAIL(context_, smoothShape.GetDim(1) != cols,
-                OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context_->GetNodeName(), "scale and x",
-                    (std::to_string(smoothShape.GetDim(1)) + " and " + std::to_string(cols)).c_str(),
-                    "The second dim of scale and x should be equal"));
+                       OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
+                           context_->GetNodeName(), "scale and x",
+                           (std::to_string(smoothShape.GetDim(1)) + " and " + std::to_string(cols)).c_str(),
+                           "The second dim of scale and x should be equal"));
             quantTilingData.set_smoothType((smoothShape.GetDim(0) == 1) ? SMOOTH_1H : SMOOTH_EH);
         } else {
             quantTilingData.set_smoothType(SMOOTH_NONE);
@@ -321,8 +327,8 @@ bool MoeInitRoutingQuantV2TilingBase::IsFullLoad()
     }
 }
 
-void MoeInitRoutingQuantV2TilingBase::SetGatherTilingData(
-    InnerMoeV2GatherOutComputeTilingData* tilingData, int64_t perCoreRows, int64_t lastCoreRows, int64_t cols)
+void MoeInitRoutingQuantV2TilingBase::SetGatherTilingData(InnerMoeV2GatherOutComputeTilingData *tilingData,
+                                                          int64_t perCoreRows, int64_t lastCoreRows, int64_t cols)
 {
     tilingData->set_perCorePerLoopRows(perCoreRows);
     tilingData->set_perCoreLastLoopRows(perCoreRows);
@@ -344,8 +350,8 @@ struct GatherTilingDataParam {
     int64_t lastCoreLoops = 1;
 };
 
-void SetGatherTilingDatawithloop(
-    InnerMoeV2GatherOutComputeTilingData* tilingData, GatherTilingDataParam gatherTilingDataParam)
+void SetGatherTilingDatawithloop(InnerMoeV2GatherOutComputeTilingData *tilingData,
+                                 GatherTilingDataParam gatherTilingDataParam)
 {
     tilingData->set_perCorePerLoopRows(gatherTilingDataParam.perCorePerLoopRows);
     tilingData->set_perCoreLastLoopRows(gatherTilingDataParam.perCoreLastLoopRows);
@@ -358,21 +364,21 @@ void SetGatherTilingDatawithloop(
     tilingData->set_colLoops(1);
 }
 
-void MoeInitRoutingQuantV2TilingBase::SetGatherTilingDataCols(
-    InnerMoeV2GatherOutComputeTilingData* tilingData, int64_t baseMaxCols, int64_t cols)
+void MoeInitRoutingQuantV2TilingBase::SetGatherTilingDataCols(InnerMoeV2GatherOutComputeTilingData *tilingData,
+                                                              int64_t baseMaxCols, int64_t cols)
 {
     tilingData->set_perLoopCols(std::min(baseMaxCols, cols));
     tilingData->set_lastLoopCols(GetPerOrLastValue(cols, baseMaxCols));
     tilingData->set_colLoops(baseMaxCols == 0 ? 0 : (cols + baseMaxCols - 1) / baseMaxCols);
 }
-void MoeInitRoutingQuantV2TilingBase::SetGatherTilingDataRows(
-    InnerMoeV2GatherOutComputeTilingData* tilingData, int64_t perCoreRows, int64_t lastCoreRows,
-    int64_t basePerLoopMaxRows)
+void MoeInitRoutingQuantV2TilingBase::SetGatherTilingDataRows(InnerMoeV2GatherOutComputeTilingData *tilingData,
+                                                              int64_t perCoreRows, int64_t lastCoreRows,
+                                                              int64_t basePerLoopMaxRows)
 {
     tilingData->set_perCorePerLoopRows(std::min(perCoreRows, basePerLoopMaxRows));
     tilingData->set_perCoreLastLoopRows(GetPerOrLastValue(perCoreRows, basePerLoopMaxRows));
-    tilingData->set_perCoreLoops(
-        basePerLoopMaxRows == 0 ? 0 : (perCoreRows + basePerLoopMaxRows - 1) / basePerLoopMaxRows);
+    tilingData->set_perCoreLoops(basePerLoopMaxRows == 0 ? 0 :
+                                                           (perCoreRows + basePerLoopMaxRows - 1) / basePerLoopMaxRows);
 
     tilingData->set_lastCorePerLoopRows(std::min(lastCoreRows, basePerLoopMaxRows));
     tilingData->set_lastCoreLastLoopRows(GetPerOrLastValue(lastCoreRows, basePerLoopMaxRows));
@@ -455,7 +461,7 @@ void MoeInitRoutingQuantV2TilingBase::Tiling4GatherDynamicQuant()
 {
     auto tilingData = &quantTilingData.gatherOutComputeParamsOp;
     int64_t perCoreRows = Ops::Base::CeilDiv(totalLength, aivNum);
-    aicoreParams_.ubSize = isInt4 ? aicoreParams_.ubSize - INT4_USED_BYTE: aicoreParams_.ubSize;
+    aicoreParams_.ubSize = isInt4 ? aicoreParams_.ubSize - INT4_USED_BYTE : aicoreParams_.ubSize;
     int64_t cols = InnerMoeInitRoutingV2TilingBase::moeInitRoutingTilingData.get_cols();
     int64_t lastCoreRows = totalLength - perCoreRows * (tilingData->get_needCoreNum() - 1);
     tilingData->set_lastCoreRows(lastCoreRows);
@@ -468,11 +474,13 @@ void MoeInitRoutingQuantV2TilingBase::Tiling4GatherDynamicQuant()
         (SIZE_INT32 * NUM_FOUR);
     int64_t oneBlockNumInt = static_cast<int64_t>(ONE_BLOCK_BYTE) / static_cast<int64_t>(SIZE_INT32);
     onceRowSize = onceRowSize / oneBlockNumInt * oneBlockNumInt;
-    bool ifOneLoopInt4 = isInt4 && 
+    bool ifOneLoopInt4 =
+        isInt4 &&
         ((static_cast<int64_t>(aicoreParams_.ubSize) > colSize + scaleSize + ONE_BLOCK_BYTE * NUM_FOUR * NUM_FOUR));
     bool ifOneLoop =
         ((static_cast<int64_t>(aicoreParams_.ubSize) > colSize + scaleSize + ONE_BLOCK_BYTE * NUM_FOUR * NUM_FOUR) &&
-         quantTilingData.get_smoothType() == SMOOTH_NONE && cols == FULLLOAD_H_LIMIT) || ifOneLoopInt4;
+         quantTilingData.get_smoothType() == SMOOTH_NONE && cols == FULLLOAD_H_LIMIT) ||
+        ifOneLoopInt4;
     int64_t perCoreOnceRowSize = ifOneLoop ? std::min(onceRowSize, perCoreRows) : perCoreRows;
     int64_t lastCoreOnceRowSize = ifOneLoop ? std::min(onceRowSize, lastCoreRows) : lastCoreRows;
     int64_t perCoreLoops = ifOneLoop ? Ops::Base::CeilDiv(perCoreRows, perCoreOnceRowSize) : 1;
@@ -497,7 +505,8 @@ void MoeInitRoutingQuantV2TilingBase::Tiling4GatherDynamicQuant()
         if (cols < MAX_COLS_DYNAMIC_QUANT) {
             basePerLoopMaxRows = AlignOneBlockByteCeil((ubSize - colSize - scaleSize) / SIZE_INT32) / NUM_FOUR;
         } else if (perCoreRows < basePerLoopMaxRows) {
-            baseMaxCols = AlignOneBlockByteCeil((ubSize - rowSize - scaleSize) / DYNAMIC_QUANT_COLS_BUFFER);// aligin ub
+            baseMaxCols =
+                AlignOneBlockByteCeil((ubSize - rowSize - scaleSize) / DYNAMIC_QUANT_COLS_BUFFER); // aligin ub
         }
         SetGatherTilingDataCols(tilingData, baseMaxCols, cols);
         SetGatherTilingDataRows(tilingData, perCoreRows, lastCoreRows, basePerLoopMaxRows);
@@ -526,8 +535,8 @@ void MoeInitRoutingQuantV2TilingBase::Tiling4GatherOutCompute()
     }
 }
 
-void MoeInitRoutingQuantV2TilingBase::CopyGatherOutTiling(
-    InnerMoeV2GatherOutComputeTilingData& dst, InnerMoeV2GatherOutComputeTilingData& src)
+void MoeInitRoutingQuantV2TilingBase::CopyGatherOutTiling(InnerMoeV2GatherOutComputeTilingData &dst,
+                                                          InnerMoeV2GatherOutComputeTilingData &src)
 {
     dst.set_needCoreNum(src.get_needCoreNum());
     dst.set_activateRows(src.get_activateRows());
@@ -575,12 +584,10 @@ void MoeInitRoutingQuantV2TilingBase::CopyTilingData()
     quantTilingData.sortOutComputeParamsOp.set_oneLoopMaxElements(
         InnerMoeInitRoutingV2TilingBase::moeInitRoutingTilingData.sortOutComputeParamsOp.get_oneLoopMaxElements());
 
-    CopyGatherOutTiling(
-        quantTilingData.srcToDstComputeParamsOp,
-        InnerMoeInitRoutingV2TilingBase::moeInitRoutingTilingData.srcToDstComputeParamsOp);
-    CopyGatherOutTiling(
-        quantTilingData.srcToDstCapacityComputeParamsOp,
-        InnerMoeInitRoutingV2TilingBase::moeInitRoutingTilingData.srcToDstCapacityComputeParamsOp);
+    CopyGatherOutTiling(quantTilingData.srcToDstComputeParamsOp,
+                        InnerMoeInitRoutingV2TilingBase::moeInitRoutingTilingData.srcToDstComputeParamsOp);
+    CopyGatherOutTiling(quantTilingData.srcToDstCapacityComputeParamsOp,
+                        InnerMoeInitRoutingV2TilingBase::moeInitRoutingTilingData.srcToDstCapacityComputeParamsOp);
 }
 
 ge::graphStatus MoeInitRoutingQuantV2TilingBase::GetWorkspaceSize()
@@ -599,7 +606,7 @@ ge::graphStatus MoeInitRoutingQuantV2TilingBase::PostTiling()
 {
     CopyTilingData();
     context_->SetBlockDim(aivNum);
-    size_t* currentWorkspace = context_->GetWorkspaceSizes(1);
+    size_t *currentWorkspace = context_->GetWorkspaceSizes(1);
     currentWorkspace[0] = workspaceSize_;
     context_->SetLocalMemorySize(aicoreParams_.ubSize);
     auto rawTilingData = context_->GetRawTilingData();
@@ -615,20 +622,20 @@ uint64_t MoeInitRoutingQuantV2TilingBase::GetTilingKey() const
         return static_cast<uint64_t>(TILING_KEY_PERF_BASE + static_cast<int64_t>(quantMode) * TILING_KEY_QUANT_BASE);
     }
     context_->SetScheduleMode(1);
-    return static_cast<uint64_t>(
-        static_cast<int64_t>(TILING_KEY_BASE) +
-        static_cast<int64_t>(quantMode) * static_cast<int64_t>(TILING_KEY_QUANT_BASE) +
-        static_cast<int64_t>(dropPadMode) * static_cast<int64_t>(TILING_KEY_DROP_MODE_BASE) +
-        static_cast<int64_t>(totalLength > sortLoopMaxElement) * static_cast<int64_t>(TILING_KEY_SORT_BASE));
+    return static_cast<uint64_t>(static_cast<int64_t>(TILING_KEY_BASE) +
+                                 static_cast<int64_t>(quantMode) * static_cast<int64_t>(TILING_KEY_QUANT_BASE) +
+                                 static_cast<int64_t>(dropPadMode) * static_cast<int64_t>(TILING_KEY_DROP_MODE_BASE) +
+                                 static_cast<int64_t>(totalLength > sortLoopMaxElement) *
+                                     static_cast<int64_t>(TILING_KEY_SORT_BASE));
 }
 
-ge::graphStatus TilingForMoeInitRoutingQuantV2(gert::TilingContext* context)
+ge::graphStatus TilingForMoeInitRoutingQuantV2(gert::TilingContext *context)
 {
     MoeInitRoutingQuantV2TilingBase tiling(context);
     return tiling.DoTiling();
 }
 
-ge::graphStatus TilingPrepareForMoeInitRoutingQuantV2(gert::TilingParseContext* context)
+ge::graphStatus TilingPrepareForMoeInitRoutingQuantV2(gert::TilingParseContext *context)
 {
     (void)context;
     return ge::GRAPH_SUCCESS;

@@ -95,11 +95,11 @@ extern "C" {
 #endif
 
 ACLNN_API aclnnStatus aclnnMoeFinalizeRoutingV2GradGetWorkspaceSize(
-    const aclTensor* gradY, const aclTensor* expandedRowIdx, const aclTensor* expandedXOptional,
-    const aclTensor* scalesOptional, const aclTensor* expertIdxOptional, const aclTensor* biasOptional,
+    const aclTensor *gradY, const aclTensor *expandedRowIdx, const aclTensor *expandedXOptional,
+    const aclTensor *scalesOptional, const aclTensor *expertIdxOptional, const aclTensor *biasOptional,
     int64_t dropPadMode, int64_t activeNum, int64_t expertNum, int64_t expertCapacity,
-    const aclTensor* gradExpandedXOut, const aclTensor* gradScalesOut, uint64_t* workspaceSize,
-    aclOpExecutor** executor)
+    const aclTensor *gradExpandedXOut, const aclTensor *gradScalesOut, uint64_t *workspaceSize,
+    aclOpExecutor **executor)
 {
     OP_CHECK_COMM_INPUT(workspaceSize, executor);
     L2_DFX_PHASE_1(aclnnMoeFinalizeRoutingV2Grad,
@@ -121,35 +121,35 @@ ACLNN_API aclnnStatus aclnnMoeFinalizeRoutingV2GradGetWorkspaceSize(
     auto expandedRowIdxContiguous = l0op::Contiguous(expandedRowIdx, uniqueExecutor.get());
     CHECK_RET(expandedRowIdxContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
-    const aclTensor* expandedXContiguous = nullptr;
+    const aclTensor *expandedXContiguous = nullptr;
     if (expandedXOptional != nullptr) {
         expandedXContiguous = l0op::Contiguous(expandedXOptional, uniqueExecutor.get());
         CHECK_RET(expandedXContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
     }
 
-    const aclTensor* scalesContiguous = nullptr;
+    const aclTensor *scalesContiguous = nullptr;
     if (scalesOptional != nullptr) {
         scalesContiguous = l0op::Contiguous(scalesOptional, uniqueExecutor.get());
         CHECK_RET(scalesContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
     }
 
-    const aclTensor* expertIdxContiguous = nullptr;
+    const aclTensor *expertIdxContiguous = nullptr;
     if (expertIdxOptional != nullptr) {
         expertIdxContiguous = l0op::Contiguous(expertIdxOptional, uniqueExecutor.get());
         CHECK_RET(expertIdxContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
     }
 
-    const aclTensor* biasContiguous = nullptr;
+    const aclTensor *biasContiguous = nullptr;
     if (biasOptional != nullptr) {
         biasContiguous = l0op::Contiguous(biasOptional, uniqueExecutor.get());
         CHECK_RET(biasContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
     }
 
     // 调用l0接口进行计算，传入输出参数
-    auto result = l0op::MoeFinalizeRoutingV2Grad(gradYContiguous, expandedRowIdxContiguous, expandedXContiguous,
-                                                 scalesContiguous, expertIdxContiguous, biasContiguous,
-                                                 dropPadMode, activeNum, expertNum, expertCapacity,
-                                                 gradExpandedXOut, gradScalesOut, uniqueExecutor.get());
+    auto result =
+        l0op::MoeFinalizeRoutingV2Grad(gradYContiguous, expandedRowIdxContiguous, expandedXContiguous, scalesContiguous,
+                                       expertIdxContiguous, biasContiguous, dropPadMode, activeNum, expertNum,
+                                       expertCapacity, gradExpandedXOut, gradScalesOut, uniqueExecutor.get());
     auto [gradExpandedXOut_, gradScalesOut_] = result;
     bool hasNullptr = (gradExpandedXOut_ == nullptr) || (gradScalesOut_ == nullptr);
     CHECK_RET(hasNullptr != true, ACLNN_ERR_INNER_NULLPTR);
@@ -166,8 +166,8 @@ ACLNN_API aclnnStatus aclnnMoeFinalizeRoutingV2GradGetWorkspaceSize(
     return ACLNN_SUCCESS;
 }
 
-ACLNN_API aclnnStatus aclnnMoeFinalizeRoutingV2Grad(
-    void* workspace, uint64_t workspaceSize, aclOpExecutor* executor, aclrtStream stream)
+ACLNN_API aclnnStatus aclnnMoeFinalizeRoutingV2Grad(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
+                                                    aclrtStream stream)
 {
     L2_DFX_PHASE_2(aclnnMoeFinalizeRoutingV2Grad);
     return CommonOpExecutorRun(workspace, workspaceSize, executor, stream);

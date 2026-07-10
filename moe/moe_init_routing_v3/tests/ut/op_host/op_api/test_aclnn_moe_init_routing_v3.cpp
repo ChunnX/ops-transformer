@@ -20,8 +20,7 @@
 
 using namespace std;
 
-class l2_moe_init_routing_v3_test : public testing::Test
-{
+class l2_moe_init_routing_v3_test : public testing::Test {
 protected:
     static void SetUpTestCase()
     {
@@ -56,11 +55,12 @@ TEST_F(l2_moe_init_routing_v3_test, Ascend910B2_moe_init_routing_v3)
     int64_t quantMode = -1;
     int64_t rowIdxType = 1;
 
-    auto ut = OP_API_UT(aclnnMoeInitRoutingV3, INPUT(x, expertIdx, nullptr, nullptr, activeNum, expertCapacity, expertNum, dropPadMode,
-                                                      expertTokensNumType, expertTokensNumFlag, quantMode, activeExpertRange, rowIdxType), 
+    auto ut = OP_API_UT(aclnnMoeInitRoutingV3,
+                        INPUT(x, expertIdx, nullptr, nullptr, activeNum, expertCapacity, expertNum, dropPadMode,
+                              expertTokensNumType, expertTokensNumFlag, quantMode, activeExpertRange, rowIdxType),
                         OUTPUT(expandedXOut, expandedRowIdxOut, expertTokensCountOrCumsumOut, expandedScaleOut));
     uint64_t workspaceSize = 0;
-    aclOpExecutor* executor = nullptr;
+    aclOpExecutor *executor = nullptr;
     aclnnStatus getWorkspaceResult = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     EXPECT_EQ(getWorkspaceResult, ACLNN_SUCCESS);
 }

@@ -50,8 +50,7 @@ static ge::graphStatus CheckInputDimsAndAttr(gert::InferShapeContext *context, c
             return ge::GRAPH_FAILED;
         }
     } else if (xShape->GetDimNum() != DIM_TWO) {
-        OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "x", std::to_string(xShape->GetDimNum()),
-                                     "2 or dynamic");
+        OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "x", std::to_string(xShape->GetDimNum()), "2 or dynamic");
         return ge::GRAPH_FAILED;
     }
 

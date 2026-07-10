@@ -259,7 +259,8 @@ __aicore__ inline void MoeV3GatherStaticQuant<T>::Init(GM_ADDR inputX, GM_ADDR s
     offset_ = offsetGm_.GetValue(0);
 
     expertTotalCountGm_.SetGlobalBuffer((__gm__ int32_t *)workspace + Align(totalLength_, sizeof(int32_t)) * 2 +
-                                            Align(actualExpertNum_, sizeof(int32_t)), 1);
+                                            Align(actualExpertNum_, sizeof(int32_t)),
+                                        1);
     AscendC::DataCacheCleanAndInvalid<int32_t, AscendC::CacheLine::SINGLE_CACHE_LINE, AscendC::DcciDst::CACHELINE_OUT>(
         expertTotalCountGm_);
     expertTotalCount_ = expertTotalCountGm_.GetValue(0);

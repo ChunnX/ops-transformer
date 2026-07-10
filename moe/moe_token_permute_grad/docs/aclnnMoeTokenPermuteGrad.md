@@ -21,11 +21,11 @@
   $$
   inputGrad = permutedOutputGrad.indexSelect(0, sortedIndices)
   $$
-  
+
   $$
   inputGrad = inputGrad.reshape(-1, numTopk, hiddenSize)
   $$
-  
+
   $$
   inputGrad = inputGrad.sum(dim = 1)
   $$
@@ -222,7 +222,7 @@ aclnnStatus aclnnMoeTokenPermuteGrad(
     </tr>
   </tbody>
   </table>
-    
+
 - **返回值：**
 
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。

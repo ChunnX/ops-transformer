@@ -16,10 +16,9 @@
 #include "register/op_def_registry.h"
 
 namespace ops {
-class MoeFinalizeRoutingV2Grad : public OpDef
-{
+class MoeFinalizeRoutingV2Grad : public OpDef {
 public:
-    explicit MoeFinalizeRoutingV2Grad(const char* name) : OpDef(name)
+    explicit MoeFinalizeRoutingV2Grad(const char *name) : OpDef(name)
     {
         this->Input("grad_y")
             .ParamType(REQUIRED)
@@ -74,74 +73,58 @@ public:
         OpAICoreConfig regbaseCfg;
         regbaseCfg.Input("grad_y")
             .ParamType(REQUIRED)
-            .DataType(
-                {ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_BF16,
-                 ge::DT_BF16, ge::DT_BF16})
-            .Format(
-                {ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
-                 ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
+            .DataType({ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT,
+                       ge::DT_BF16, ge::DT_BF16, ge::DT_BF16})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
+                     ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
         regbaseCfg.Input("expanded_row_idx")
             .ParamType(REQUIRED)
-            .DataType(
-                {ge::DT_INT32, ge::DT_INT32, ge::DT_INT32, ge::DT_INT32, ge::DT_INT32, ge::DT_INT32, ge::DT_INT32,
-                 ge::DT_INT32, ge::DT_INT32})
-            .Format(
-                {ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
-                 ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
+            .DataType({ge::DT_INT32, ge::DT_INT32, ge::DT_INT32, ge::DT_INT32, ge::DT_INT32, ge::DT_INT32, ge::DT_INT32,
+                       ge::DT_INT32, ge::DT_INT32})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
+                     ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
         regbaseCfg.Input("expanded_x")
             .ParamType(OPTIONAL)
-            .DataType(
-                {ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_BF16,
-                 ge::DT_BF16, ge::DT_BF16})
-            .Format(
-                {ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
-                 ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
+            .DataType({ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT,
+                       ge::DT_BF16, ge::DT_BF16, ge::DT_BF16})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
+                     ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
         regbaseCfg.Input("scales")
             .ParamType(OPTIONAL)
-            .DataType(
-                {ge::DT_FLOAT16, ge::DT_FLOAT, ge::DT_BF16, ge::DT_FLOAT16, ge::DT_FLOAT, ge::DT_BF16, ge::DT_FLOAT16,
-                 ge::DT_FLOAT, ge::DT_BF16})
-            .Format(
-                {ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
-                 ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
+            .DataType({ge::DT_FLOAT16, ge::DT_FLOAT, ge::DT_BF16, ge::DT_FLOAT16, ge::DT_FLOAT, ge::DT_BF16,
+                       ge::DT_FLOAT16, ge::DT_FLOAT, ge::DT_BF16})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
+                     ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
         regbaseCfg.Input("expert_idx")
             .ParamType(OPTIONAL)
-            .DataType(
-                {ge::DT_INT32, ge::DT_INT32, ge::DT_INT32, ge::DT_INT32, ge::DT_INT32, ge::DT_INT32, ge::DT_INT32,
-                 ge::DT_INT32, ge::DT_INT32})
-            .Format(
-                {ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
-                 ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
+            .DataType({ge::DT_INT32, ge::DT_INT32, ge::DT_INT32, ge::DT_INT32, ge::DT_INT32, ge::DT_INT32, ge::DT_INT32,
+                       ge::DT_INT32, ge::DT_INT32})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
+                     ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
         regbaseCfg.Input("bias")
             .ParamType(OPTIONAL)
-            .DataType(
-                {ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_BF16,
-                 ge::DT_BF16, ge::DT_BF16})
-            .Format(
-                {ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
-                 ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
+            .DataType({ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT,
+                       ge::DT_BF16, ge::DT_BF16, ge::DT_BF16})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
+                     ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
         regbaseCfg.Output("grad_expanded_x")
             .ParamType(REQUIRED)
-            .DataType(
-                {ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_BF16,
-                 ge::DT_BF16, ge::DT_BF16})
-            .Format(
-                {ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
-                 ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
+            .DataType({ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT,
+                       ge::DT_BF16, ge::DT_BF16, ge::DT_BF16})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
+                     ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
         regbaseCfg.Output("grad_scales")
             .ParamType(REQUIRED)
-            .DataType(
-                {ge::DT_FLOAT16, ge::DT_FLOAT, ge::DT_BF16, ge::DT_FLOAT16, ge::DT_FLOAT, ge::DT_BF16, ge::DT_FLOAT16,
-                 ge::DT_FLOAT, ge::DT_BF16})
-            .Format(
-                {ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
-                 ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
+            .DataType({ge::DT_FLOAT16, ge::DT_FLOAT, ge::DT_BF16, ge::DT_FLOAT16, ge::DT_FLOAT, ge::DT_BF16,
+                       ge::DT_FLOAT16, ge::DT_FLOAT, ge::DT_BF16})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
+                     ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
         regbaseCfg.DynamicCompileStaticFlag(true)
             .DynamicRankSupportFlag(true)
             .DynamicShapeSupportFlag(true)

@@ -22,13 +22,13 @@ using namespace Ops::Transformer::OpTiling;
 using namespace AscendC;
 namespace optiling {
 
-static ge::graphStatus TilingMoeGatingTopKSoftmax(gert::TilingContext* context)
+static ge::graphStatus TilingMoeGatingTopKSoftmax(gert::TilingContext *context)
 {
     // 初始化算子Tiling类
     return TilingRegistry::GetInstance().DoTilingImpl(context);
 }
 
-static ge::graphStatus TilingPrepare4MoeGatingTopKSoftmax(gert::TilingParseContext* context)
+static ge::graphStatus TilingPrepare4MoeGatingTopKSoftmax(gert::TilingParseContext *context)
 {
     (void)context;
     return ge::GRAPH_SUCCESS;

@@ -81,7 +81,7 @@
     $$
     expandedXOut[i]=quantResult[sortedRowIdx[i]\%NUM\_ROWS]
     $$
-    
+
 ## 参数说明
 
   <table style="table-layout: auto; width: 100%">
@@ -151,14 +151,14 @@
 1：表示Drop/Pad场景，需要校验expertNum和expertCapacity，对于每个专家处理的超过和不足expertCapacity的值会做相应的处理。</td>
       <td>INT64</td>
       <td>-</td>
-    </tr>    
+    </tr>
     <tr>
       <td>expertTokensCountOrCumsumFlag</td>
       <td>属性</td>
       <td>0：表示不输出expertTokensCountOrCumsumOutOptional。1：表示输出的值为各个专家处理的token数量的累计值。2：表示输出的值为各个专家处理的token数量。</td>
       <td>INT64</td>
       <td>-</td>
-    </tr>    
+    </tr>
     <tr>
       <td>expertTokensBeforeCapacityFlag</td>
       <td>属性</td>
@@ -166,14 +166,14 @@
 true：表示输出的值为在drop之前各个专家处理的token数量。</td>
       <td>BOOL</td>
       <td>-</td>
-    </tr>    
+    </tr>
     <tr>
       <td>quantMode</td>
       <td>属性</td>
       <td>取值为0和1。0：表示静态quant场景；1：表示动态quant场景。</td>
       <td>INT64</td>
       <td>-</td>
-    </tr>  
+    </tr>
     <tr>
       <td>expandedXOut</td>
       <td>输出</td>

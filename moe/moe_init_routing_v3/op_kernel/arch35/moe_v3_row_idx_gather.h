@@ -25,8 +25,8 @@ using namespace AscendC;
 class RowIdxGather {
 public:
     __aicore__ inline RowIdxGather(){};
-    __aicore__ inline void Init(GM_ADDR expandedRowIdx, GM_ADDR workspace, const MoeInitRoutingV3Arch35TilingData *tilingData,
-                                TPipe *tPipe);
+    __aicore__ inline void Init(GM_ADDR expandedRowIdx, GM_ADDR workspace,
+                                const MoeInitRoutingV3Arch35TilingData *tilingData, TPipe *tPipe);
     __aicore__ inline void Process();
 
 private:
@@ -83,8 +83,8 @@ __aicore__ inline void RowIdxGather::Init(GM_ADDR expandedRowIdx, GM_ADDR worksp
     }
 
     expertTotalCountGm_.SetGlobalBuffer((__gm__ int32_t *)workspace +
-                                            Align(tilingData->n * tilingData->k, sizeof(int32_t)) * 2 +
-                                            Align(actualExpertNum_, sizeof(int32_t)));
+                                        Align(tilingData->n * tilingData->k, sizeof(int32_t)) * 2 +
+                                        Align(actualExpertNum_, sizeof(int32_t)));
     int64_t expertTotalCount_ = expertTotalCountGm_.GetValue(0);
 
     perCoreElements = Ceil(expertTotalCount_, needCoreNum_);
@@ -126,7 +126,7 @@ __aicore__ inline void RowIdxGather::Process()
         __gm__ int32_t *sortedExpertIndicesGmAddr = (__gm__ int32_t *)sortedExpertIndicesGm_.GetPhyAddr();
         __gm__ int32_t *expandedRowIdxGmAddr = (__gm__ int32_t *)expandedRowIdxGm_.GetPhyAddr();
         asc_vf_call<ComputeSimt>(dim3{SIMT_THREAD_NUM, 1, 1}, elements, blockIdx_ * perCoreElements,
-                                   sortedExpertIndicesGmAddr, expandedRowIdxGmAddr);
+                                 sortedExpertIndicesGmAddr, expandedRowIdxGmAddr);
     }
 }
 
