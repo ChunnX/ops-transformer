@@ -343,8 +343,6 @@ static aclnnStatus aclnnQuantGroupedMatmulInplaceAddGetWorkspaceSizeCommon(
 {
     // 固定写法，创建OpExecutor
     OP_CHECK_COMM_INPUT(workspaceSize, executor);
-    auto ret = CheckParams(params);
-    CHECK_RET(ret == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
     auto uniqueExecutor = CREATE_EXECUTOR();
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
     auto executorPtr = uniqueExecutor.get();
@@ -356,6 +354,8 @@ static aclnnStatus aclnnQuantGroupedMatmulInplaceAddGetWorkspaceSizeCommon(
         return ACLNN_SUCCESS;
     }
     // 固定写法，参数检查
+    auto ret = CheckParams(params);
+    CHECK_RET(ret == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
     bool transposeX = gmm::IsTransposeLastTwoDims(params.x1);      // check is transpose x
     bool transposeWeight = gmm::IsTransposeLastTwoDims(params.x2); // check is transpose weight
     // when the last two dims of weight are (1, 1), consider tranB as false
