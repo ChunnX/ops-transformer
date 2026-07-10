@@ -8,9 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-/* !
- * \file mega_moe.cpp
- * \brief
+/*!
+ * \file mega_moe_apt.cpp
  */
 
 #if ASC_DEVKIT_MAJOR > 9 || (ASC_DEVKIT_MAJOR == 9 && ASC_DEVKIT_MINOR > 0)

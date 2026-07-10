@@ -83,7 +83,7 @@ void PrintMegaMoeTilingData(const MegaMoeTilingData *tilingData, const char *nod
     OP_LOGD(nodeName, "clampLimit is %f", tilingData->clampLimit);
 }
 
-void printWorkspaceInfo(const struct WorkspaceInfo *info, const char *nodeName)
+void PrintWorkspaceInfo(const struct WorkspaceInfo *info, const char *nodeName)
 {
     OP_LOGD(nodeName, "dispatchRevDataPtr:         %ld\n", info->dispatchRevDataPtr);
     OP_LOGD(nodeName, "dispatchRevScalePtr:        %ld\n", info->dispatchRevScalePtr);
@@ -96,7 +96,7 @@ void printWorkspaceInfo(const struct WorkspaceInfo *info, const char *nodeName)
     OP_LOGD(nodeName, "flagSendCntCalToUpdParamsPtr:      %ld\n", info->flagSendCntCalToUpdParamsPtr);
 }
 
-void printPeermemInfo(const MegaMoeTilingData *tilingData, const char *nodeName)
+void PrintPeermemInfo(const MegaMoeTilingData *tilingData, const char *nodeName)
 {
     OP_LOGD(nodeName, "========== PeermemInfo ==========");
     int64_t rankSyncInWorldSize = PEERMEM_DATA_OFFSET;
@@ -1097,8 +1097,8 @@ ge::graphStatus MegaMoeTilingFuncImplPublic(gert::TilingContext *context, MegaMo
 
     // Print Info
     PrintMegaMoeTilingData(tilingData, nodeName);
-    printWorkspaceInfo(&workspaceInfo, nodeName);
-    printPeermemInfo(tilingData, nodeName);
+    PrintWorkspaceInfo(&workspaceInfo, nodeName);
+    PrintPeermemInfo(tilingData, nodeName);
 
     return ge::GRAPH_SUCCESS;
 }
