@@ -151,7 +151,7 @@ struct MultipleParams {
 };
 
 struct PerLoopParams {
-    int64_t xCopyInQueueBufferNum = 2;
+    int64_t xCopyInQueueBufferNum = DOUBLE_BUFFER;
     int64_t perLoopCols = 0;
     int64_t perLoopMaxIndicesElements = 0;
 };
@@ -264,6 +264,7 @@ private:
     MultipleParams GetMultipleParams();
     PerLoopParams GetPerLoopParams(MultipleParams &multipleParams, int64_t perCoreIndicesElements);
     void AlignInt4DynamicQuantPerLoopCols(PerLoopParams &perLoopParams) const;
+    int64_t CalcNoQuantDropPadMaxIndicesElements(const MultipleParams &multipleParams, int64_t perLoopCols) const;
     void SetPerLoopParams4NoQuantDropPad(const MultipleParams &multipleParams, PerLoopParams &perLoopParams,
                                          const int64_t perCoreIndicesElements);
     int64_t GetXBufferNum(const int additionalBufferNum);
@@ -1828,16 +1829,15 @@ void MoeInitRoutingV3Arch35TilingClass::SetPerLoopParams4NoQuantDropPad(const Mu
                                                                         const int64_t perCoreIndicesElements)
 {
     perLoopParams.perLoopMaxIndicesElements =
-            (availUbSize_ - Align(perLoopParams.perLoopCols, inputXDtypeSize_) * multipleParams.colMultiple -
-             UB_BLOCK_SIZE * NUM_TWO) /
-            multipleParams.rowMultiple / static_cast<int64_t>(sizeof(int32_t));
+        CalcNoQuantDropPadMaxIndicesElements(multipleParams, perLoopParams.perLoopCols);
     while (perLoopParams.perLoopMaxIndicesElements <= 0 && perLoopParams.perLoopCols > 1) {
         perLoopParams.perLoopCols = Ops::Base::CeilDiv(perLoopParams.perLoopCols, NUM_TWO);
         perLoopParams.perLoopMaxIndicesElements =
-            (availUbSize_ - Align(perLoopParams.perLoopCols, inputXDtypeSize_) * multipleParams.colMultiple -
-             UB_BLOCK_SIZE * NUM_TWO) /
-            multipleParams.rowMultiple / static_cast<int64_t>(sizeof(int32_t));
+            CalcNoQuantDropPadMaxIndicesElements(multipleParams, perLoopParams.perLoopCols);
     }
+    AlignInt4DynamicQuantPerLoopCols(perLoopParams);
+    perLoopParams.perLoopMaxIndicesElements =
+        CalcNoQuantDropPadMaxIndicesElements(multipleParams, perLoopParams.perLoopCols);
     perLoopParams.perLoopMaxIndicesElements =
         std::min(perLoopParams.perLoopMaxIndicesElements, perCoreIndicesElements);
 
@@ -1850,6 +1850,14 @@ void MoeInitRoutingV3Arch35TilingClass::SetPerLoopParams4NoQuantDropPad(const Mu
     int64_t remainingSpace = availUbSize_ - baseMemory;
     int64_t additionalBufferNum = remainingSpace / xQueueSize;
     perLoopParams.xCopyInQueueBufferNum = GetXBufferNum(additionalBufferNum);
+}
+
+int64_t MoeInitRoutingV3Arch35TilingClass::CalcNoQuantDropPadMaxIndicesElements(
+    const MultipleParams &multipleParams, int64_t perLoopCols) const
+{
+    return (availUbSize_ - Align(perLoopCols, inputXDtypeSize_) * multipleParams.colMultiple -
+            UB_BLOCK_SIZE * NUM_TWO) /
+           multipleParams.rowMultiple / static_cast<int64_t>(sizeof(int32_t));
 }
 
 int64_t MoeInitRoutingV3Arch35TilingClass::GetXBufferNum(const int additionalBufferNum)
@@ -1889,12 +1897,6 @@ void MoeInitRoutingV3Arch35TilingClass::Tiling4GatherOutCompute()
 
     MultipleParams multipleParams = GetMultipleParams();
     PerLoopParams perLoopParams = GetPerLoopParams(multipleParams, perCoreIndicesElements);
-    int64_t originPerLoopCols = perLoopParams.perLoopCols;
-    AlignInt4DynamicQuantPerLoopCols(perLoopParams);
-    if (perLoopParams.perLoopCols != originPerLoopCols) {
-        SetPerLoopParams4NoQuantDropPad(multipleParams, perLoopParams, perCoreIndicesElements);
-        AlignInt4DynamicQuantPerLoopCols(perLoopParams);
-    }
 
     int64_t colsLoops = Ops::Base::CeilDiv(tilingDataPtr_->cols, perLoopParams.perLoopCols);
     int64_t lastLoopCols = tilingDataPtr_->cols - (colsLoops - 1) * perLoopParams.perLoopCols;
@@ -2105,8 +2107,8 @@ bool MoeInitRoutingV3Arch35TilingClass::IsFullLoad()
                                     BF16_TO_FP32_SIZE_FACTOR * AlignBytes(cols_, inputXDtypeSize_);
             inputXInSpace *= NUM_TWO;
             int64_t smoothInSpace = AlignBytes(cols_, sizeof(float));
-            // INT4 output is cols/2 bytes (2 INT4 values packed per byte).
-            int64_t inputXOutSpace = AlignBytes(Ops::Base::CeilDiv(cols_, NUM_TWO), sizeof(int8_t));
+            // cols_ is validated as even for INT4, so two INT4 values are packed into each byte.
+            int64_t inputXOutSpace = AlignBytes(cols_ / NUM_TWO, sizeof(int8_t));
             int64_t calcSpace = AlignBytes(cols_, sizeof(float));
             int64_t scaleOutSpace = UB_BLOCK_SIZE * NUM_TWO;
             remainUb -=
