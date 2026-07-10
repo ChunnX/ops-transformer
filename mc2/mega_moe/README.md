@@ -222,9 +222,9 @@
    <td></td>
   </tr>
   <tr>
-   <td>global_bs</td>
+   <td>num_max_tokens_per_rank</td>
    <td>可选属性</td>
-   <td>全局batch size，多卡场景下的总Token数，默认值为0表示使用单卡BS。默认值按最大值maxBs*ep_world_size计算。</td>
+   <td>单卡batch size，通信域中单卡总Token数，默认值为0表示使用单卡BS。</td>
    <td>INT64</td>
    <td></td>
   </tr>
@@ -248,11 +248,11 @@
 ## 约束说明
 
 - **参数一致性约束**：
-  - 调用算子过程中使用的`ep_world_size`、`global_bs`、`HCCL_BUFFSIZE`等参数取值，所有卡需保持一致，网络中不同层中也需保持一致。
+  - 调用算子过程中使用的`ep_world_size`、`num_max_tokens_per_rank`、`HCCL_BUFFSIZE`等参数取值，所有卡需保持一致，网络中不同层中也需保持一致。
 
 - **通信域使用约束**：
   - 仅支持`EP`域，无`TP`域，不支持`groupTp`、`tpWorldSize`、`tpRankId`属性。
-  - 所有卡的`moe_expert_num`、`ep_world_size`、`ccl_buffer_size`、`max_recv_token_num`、`dispatch_quant_mode`、`dispatch_quant_out_type`、`global_bs`参数取值需保持一致。
+  - 所有卡的`moe_expert_num`、`ep_world_size`、`ccl_buffer_size`、`max_recv_token_num`、`dispatch_quant_mode`、`dispatch_quant_out_type`、`num_max_tokens_per_rank`参数取值需保持一致。
 
 - **参数约束**：
   - BS（x.dim0）范围 [1, 512]。
