@@ -83,6 +83,8 @@ def load_excel_test_cases(excel_file_path: str, sheetname: str):
                 'block_size2': to_int_or_na,
                 # 'kv_quant_mode': to_int_or_na,
             })
+        if 'Testcase_Name' in df.columns and 'testcase_name' not in df.columns:
+            df = df.rename(columns={'Testcase_Name': 'testcase_name'})
         df = df.replace({np.nan: None, pd.NA: None})
         df = df.applymap(parse_to_list)
         df = df.astype({
@@ -191,7 +193,7 @@ def generate_param_combinations(ENABLED_PARAMS, is_save_pt=False):
     for params in ENABLED_PARAMS:
         # 确保所有参数都存在，缺失的用默认值填充
         param_values = {
-            "testcase_name": params.get("testcase_name", [None] if not is_save_pt else None),
+            "testcase_name": params.get("testcase_name", params.get("Testcase_Name", [None] if not is_save_pt else None)),
             "layout_q": params.get("layout_q", [None] if not is_save_pt else None),
             "layout_kv": params.get("layout_kv", [None] if not is_save_pt else None),
             "q_type": params.get("q_type", [None] if not is_save_pt else None),
@@ -232,11 +234,13 @@ def generate_param_combinations(ENABLED_PARAMS, is_save_pt=False):
             "cmp_sparse_indices_mode": params.get("cmp_sparse_indices_mode", ["full"] if not is_save_pt else "full"),
             "actlen_mode": params.get("actlen_mode", ["full"] if not is_save_pt else "full"),
             "template_mode": params.get("template_mode", [None] if not is_save_pt else None),
+            "template_run_mode": params.get("template_run_mode", [None] if not is_save_pt else None),
             "q_datarange": params.get("q_datarange", ["[-10, 10]"] if not is_save_pt else "[-10, 10]"),
             "ori_kv_datarange": params.get("ori_kv_datarange", ["[-10, 10]"] if not is_save_pt else "[-10, 10]"),
             "cmp_kv_datarange": params.get("cmp_kv_datarange", ["[-10, 10]"] if not is_save_pt else "[-10, 10]"),
             "qk_equal_len": params.get("qk_equal_len", ["False"] if not is_save_pt else False),
-            "return_softmax_lse": params.get("return_softmax_lse", ["full"] if not is_save_pt else "full")
+            "S1EQS2": params.get("S1EQS2", [False] if not is_save_pt else False),
+            "return_softmax_lse": params.get("return_softmax_lse", [False] if not is_save_pt else False)
         }
         param_names = list(param_values.keys())
         for key, value in param_values.items():
@@ -300,21 +304,39 @@ def generate_seqused(cu_seqlens: list) -> list:
         seqused.append(cu_seqlens[i] - cu_seqlens[i - 1])
     return seqused
 
-def fill_random_cu_len(T, SMax, B, qk_equal_len=True, random_seq=False):
+def fill_random_cu_len(T, SMax, B, random_seq=False):
+    """生成cu_seqlens，保证每个batch长度<=SMax。S*B>=T时必须末位==T，S*B<T时强制末位==T并print"""
     cu_seqlens = [0]
-    S = min(SMax, T // B)
-    S_eq = random.randint(0, S) if random_seq else S
+    S = SMax if (SMax is not None and SMax > 0) else max(1, T // B)
+
+    can_fit = (S * B >= T)
+
     for i in range(B):
-        length = S_eq if qk_equal_len else random.randint(0, S)
+        remaining_batches = B - i
+        remaining_T = T - cu_seqlens[-1]
+        if remaining_batches <= 0:
+            break
+        if random_seq:
+            max_len = min(S, remaining_T - (remaining_batches - 1))
+            min_len = max(0, remaining_T - (remaining_batches - 1) * S)
+            if max_len < min_len:
+                max_len = min_len
+            length = random.randint(min_len, max_len) if max_len > 0 else 0
+        else:
+            length = min(S, remaining_T // remaining_batches)
         cu_seqlens.append(cu_seqlens[-1] + length)
-    cu_seqlens[-1] = T
+
+    if cu_seqlens[-1] != T:
+        if can_fit:
+            raise ValueError(f"fill_random_cu_len: S*B>=T但末位({cu_seqlens[-1]})!=T({T})，生成异常")
+        print(f"fill_random_cu_len: S*B<T，强制修正末位{cu_seqlens[-1]}为T({T})")
+        cu_seqlens[-1] = T
     return cu_seqlens
 
-def fill_random_used_len(SMax, B, qk_equal_len=True, random_seq=False):
+def fill_random_used_len(SMax, B, random_seq=False):
     used_lens = []
-    S_eq = random.randint(0, SMax) if random_seq else SMax
     for i in range(B):
-        length = S_eq if qk_equal_len else random.randint(0, SMax)
+        length = random.randint(0, SMax) if random_seq else SMax
         used_lens.append(length)
     return used_lens
 
@@ -325,62 +347,115 @@ def generate_case_with_default_param(param_combinations):
     case_param.update({'ori_kv_datarange': ast.literal_eval(param_combinations.get('ori_kv_datarange')) if param_combinations.get('ori_kv_datarange') is not None else [-10, 10]})
     case_param.update({'cmp_kv_datarange': ast.literal_eval(param_combinations.get('cmp_kv_datarange')) if param_combinations.get('cmp_kv_datarange') is not None else [-10, 10]})
 
-    # 测试用，数据预填充，TND场景下cu_seqlens如果没有传入，根据T和S自动填充随机值
-    # 常用参数提取
     layout_q = case_param['layout_q']
     layout_kv = case_param['layout_kv']
-    T1 = case_param['T1']
-    T2 = case_param['T2']
     B = case_param['B']
     S1 = case_param['S1']
-    S2 = case_param['S2']
-    cmp_ratio = case_param['cmp_ratio']
-    # 数据预填充
-    if case_param['cu_seqlens_q'] is None:
-        if layout_q == "TND":
-            case_param['cu_seqlens_q'] = fill_random_cu_len(T1, S1, B, param_combinations['qk_equal_len'])
-            print("cu_seqlens_q auto set to: ", case_param['cu_seqlens_q'])
-        elif layout_q == "BSND":
-            case_param['cu_seqlens_q'] = fill_random_cu_len(B * S1, S1, B, True)
-            print("cu_seqlens_q auto set to: ", case_param['cu_seqlens_q'])
+    S2 = case_param.get('S2')
+    cmp_ratio = case_param.get('cmp_ratio')
+    actlen_mode = case_param.get('actlen_mode', 'full')
+    random_seq = (actlen_mode == 'random')
+    S1EQS2 = case_param.get('S1EQS2')
+    if S1EQS2 is None:
+        S1EQS2 = case_param.get('qk_equal_len', False)
 
-    if case_param['cu_seqlens_ori_kv'] is None and layout_kv == "TND":
-        case_param['cu_seqlens_ori_kv'] = fill_random_cu_len(T2, S2, B, param_combinations['qk_equal_len'])
-        print("cu_seqlens_ori_kv auto set to: ", case_param['cu_seqlens_ori_kv'])
+    # Q侧: TND场景cu_seqlens_q生成
+    if layout_q == "TND":
+        if case_param.get('cu_seqlens_q') is None:
+            T1 = case_param.get('T1')
+            if T1 is not None:
+                case_param['cu_seqlens_q'] = fill_random_cu_len(T1, S1, B, random_seq)
+                print("cu_seqlens_q auto set to: ", case_param['cu_seqlens_q'])
+            else:
+                raise ValueError("layout_q为TND时，cu_seqlens_q和T1不能同时为None")
+        T1_actual = case_param['cu_seqlens_q'][-1]
+        if case_param.get('T1') is not None and case_param['T1'] != T1_actual:
+            print(f"T1({case_param['T1']})与cu_seqlens_q末位({T1_actual})不一致，修正T1为{T1_actual}")
+        case_param['T1'] = T1_actual
 
-    if case_param['cu_seqlens_cmp_kv'] is None and layout_kv == "TND" and cmp_ratio is not None:
-        case_param['seqused_ori_kv'] = generate_seqused(case_param['cu_seqlens_ori_kv'])
-        case_param['seqused_cmp_kv'] = [x // cmp_ratio for x in case_param['seqused_ori_kv']]
-        case_param['cu_seqlens_cmp_kv'] = generate_cu_seqlens(case_param['seqused_cmp_kv'])
-        print("cu_seqlens_cmp_kv auto set to: ", case_param['cu_seqlens_cmp_kv'])
-        case_param['T3'] = case_param['cu_seqlens_cmp_kv'][-1]
+    # ori_kv侧: TND场景cu_seqlens_ori_kv生成
+    if layout_kv == "TND":
+        if case_param.get('cu_seqlens_ori_kv') is None:
+            T2 = case_param.get('T2')
+            if T2 is not None:
+                case_param['cu_seqlens_ori_kv'] = fill_random_cu_len(T2, S2, B, random_seq)
+                print("cu_seqlens_ori_kv auto set to: ", case_param['cu_seqlens_ori_kv'])
+            else:
+                raise ValueError("layout_kv为TND时，cu_seqlens_ori_kv和T2不能同时为None")
+        T2_actual = case_param['cu_seqlens_ori_kv'][-1]
+        if case_param.get('T2') is not None and case_param['T2'] != T2_actual:
+            print(f"T2({case_param['T2']})与cu_seqlens_ori_kv末位({T2_actual})不一致，修正T2为{T2_actual}")
+        case_param['T2'] = T2_actual
 
-    if case_param['seqused_ori_kv'] is None and layout_kv != "TND":
-        case_param['seqused_ori_kv'] = fill_random_used_len(S2, B, param_combinations['qk_equal_len'])
-        print("seqused_ori_kv auto set to: ", case_param['seqused_ori_kv'])
+    # S1EQS2联动: Q和ori_kv对应batch的真实长度一致
+    if S1EQS2 and layout_q == "TND" and layout_kv == "TND":
+        if case_param.get('cu_seqlens_q') is not None and case_param.get('cu_seqlens_ori_kv') is not None:
+            seqused_q = generate_seqused(case_param['cu_seqlens_q'])
+            seqused_ori = generate_seqused(case_param['cu_seqlens_ori_kv'])
+            if seqused_q != seqused_ori:
+                case_param['cu_seqlens_ori_kv'] = list(case_param['cu_seqlens_q'])
+                case_param['T2'] = case_param['T1']
+                print(f"S1EQS2: cu_seqlens_ori_kv同步为cu_seqlens_q: {case_param['cu_seqlens_ori_kv']}")
 
+    # ori_kv侧: PA_BBND场景seqused_ori_kv生成
+    if layout_kv == "PA_BBND":
+        if case_param.get('seqused_ori_kv') is None:
+            if S2 is not None:
+                case_param['seqused_ori_kv'] = fill_random_used_len(S2, B, random_seq)
+                print("seqused_ori_kv auto set to: ", case_param['seqused_ori_kv'])
+            else:
+                raise ValueError("layout_kv为PA_BBND时，seqused_ori_kv和S2不能同时为None")
+
+    # S1EQS2联动: PA_BBND场景下seqused_ori_kv同步seqused_q
+    if S1EQS2 and layout_q == "BSND" and layout_kv == "PA_BBND":
+        if case_param.get('seqused_q') is not None and case_param.get('seqused_ori_kv') is not None:
+            if case_param['seqused_q'] != case_param['seqused_ori_kv']:
+                case_param['seqused_ori_kv'] = list(case_param['seqused_q'])
+                print(f"S1EQS2: seqused_ori_kv同步为seqused_q: {case_param['seqused_ori_kv']}")
+
+    # cmp_kv侧: TND场景cu_seqlens_cmp_kv生成
+    if layout_kv == "TND" and cmp_ratio is not None:
+        if case_param.get('cu_seqlens_cmp_kv') is None:
+            T3 = case_param.get('T3')
+            if T3 is not None:
+                S3 = S2 // cmp_ratio if (S2 is not None and cmp_ratio) else None
+                case_param['cu_seqlens_cmp_kv'] = fill_random_cu_len(T3, S3, B, random_seq)
+                print("cu_seqlens_cmp_kv auto set to: ", case_param['cu_seqlens_cmp_kv'])
+                case_param['T3'] = case_param['cu_seqlens_cmp_kv'][-1]
+            else:
+                raise ValueError("layout_kv为TND且非SWA时，cu_seqlens_cmp_kv和T3不能同时为None")
+        else:
+            case_param['T3'] = case_param['cu_seqlens_cmp_kv'][-1]
+
+    # cmp_kv侧: PA_BBND场景seqused_cmp_kv生成
+    if layout_kv == "PA_BBND" and cmp_ratio is not None:
+        if case_param.get('seqused_cmp_kv') is None:
+            S3 = S2 // cmp_ratio if (S2 is not None and cmp_ratio) else None
+            if S3 is not None:
+                case_param['seqused_cmp_kv'] = fill_random_used_len(S3, B, random_seq)
+                print("seqused_cmp_kv auto set to: ", case_param['seqused_cmp_kv'])
+            else:
+                raise ValueError("layout_kv为PA_BBND且非SWA时，seqused_cmp_kv和S2/cmp_ratio不能同时为None")
+
+    # 默认值
     if 'seqused_ori_kv' not in case_param:
         case_param['seqused_ori_kv'] = None
     if 'seqused_cmp_kv' not in case_param:
         case_param['seqused_cmp_kv'] = None
-    if 'cmp_residual_kv' not in case_param:
-        case_param['cmp_residual_kv'] = None
+    if case_param.get('cmp_residual_kv') is None and cmp_ratio is not None:
+        case_param['cmp_residual_kv'] = [random.randint(0, cmp_ratio - 1) for _ in range(B)]
 
-    # maxSeqLen / block_size向上取整
-    ori_block_num_per_batch = []
+    # block_num计算
     ori_block_num_sum = 0
-    cmp_block_num_per_batch = []
     cmp_block_num_sum = 0
 
     if layout_kv == "PA_BBND":
         for cur_ori_act_kv in case_param['seqused_ori_kv']:
             cur_ori_kv_block_num = math.ceil(cur_ori_act_kv / case_param['block_size1'])
-            ori_block_num_per_batch.append(cur_ori_kv_block_num)
             ori_block_num_sum += cur_ori_kv_block_num
-            if cmp_ratio is not None and case_param['block_size2'] is not None:
+            if cmp_ratio is not None and case_param.get('block_size2') is not None:
                 cur_cmp_act_kv = math.floor(cur_ori_act_kv / cmp_ratio)
                 cur_cmp_kv_block_num = math.ceil(cur_cmp_act_kv / case_param['block_size2'])
-                cmp_block_num_per_batch.append(cur_cmp_kv_block_num)
                 cmp_block_num_sum += cur_cmp_kv_block_num
     case_param['block_num1'] = ori_block_num_sum
     case_param['block_num2'] = cmp_block_num_sum

@@ -54,13 +54,24 @@ def check_valid_param(params):
             raise ValueError(f"cu_seqlens_ori_kv必须单调递增: {cu_seqlens_ori_kv}")
 
         cu_seqlens_cmp_kv = params.get('cu_seqlens_cmp_kv')
+        seqused_cmp_kv = params.get('seqused_cmp_kv')
+        template_run_mode = params.get('template_run_mode')
+        if template_run_mode in ("HCA", "CSA") and cu_seqlens_cmp_kv is None and seqused_cmp_kv is None:
+            raise ValueError("layout_kv为TND且template_run_mode为HCA/CSA时，cu_seqlens_cmp_kv或seqused_cmp_kv至少传一个")
         if cu_seqlens_cmp_kv is not None:
             T3 = cu_seqlens_cmp_kv[-1]
             if len(cu_seqlens_cmp_kv) != B + 1:
                 raise ValueError(f"cu_seqlens_cmp_kv长度({len(cu_seqlens_cmp_kv)})应等于B+1({B + 1})")
             if not all(cu_seqlens_cmp_kv[i] <= cu_seqlens_cmp_kv[i + 1] for i in range(len(cu_seqlens_cmp_kv) - 1)):
                 raise ValueError(f"cu_seqlens_cmp_kv必须单调递增: {cu_seqlens_cmp_kv}")
-            if cmp_ratio is not None and cmp_ratio != 1:
-                expected_T3 = math.floor(T2 / cmp_ratio)
-                if T3 != expected_T3:
-                    raise ValueError(f"cu_seqlens_cmp_kv最后一维({T3})与预期T3({expected_T3})不一致, T2={T2}, cmp_ratio={cmp_ratio}")
+
+    if params.get('layout_kv') == "PA_BBND":
+        seqused_ori_kv = params.get('seqused_ori_kv')
+        if seqused_ori_kv is None:
+            raise ValueError("layout_kv为PA_BBND时，seqused_ori_kv不能为None")
+
+        template_run_mode = params.get('template_run_mode')
+        if template_run_mode in ("HCA", "CSA"):
+            seqused_cmp_kv = params.get('seqused_cmp_kv')
+            if seqused_cmp_kv is None:
+                raise ValueError("layout_kv为PA_BBND且template_run_mode为HCA/CSA时，seqused_cmp_kv不能为None")
