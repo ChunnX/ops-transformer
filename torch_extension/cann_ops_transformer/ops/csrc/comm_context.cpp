@@ -43,6 +43,7 @@ struct CommContext {
     uint64_t kfcContextAddr = 0; // 通信API所需的地址
     uint64_t epHcclBuffer_[HCCL_MAX_RANK_SIZE] = {};
     ChannelHandle hcommHandle_[HCCL_MAX_RANK_SIZE] = {}; // ROCE或者URMA通信所需句柄
+    uint64_t hcclBuffSize = 0;
 };
 
 // ======================== Common Types and Utilities ========================
@@ -111,7 +112,7 @@ public:
     {
         CommContext mc2ContextHost;
         GetMc2Context(mc2ContextHost, worldSize, cclBufferSize, group.c_str());
-
+        mc2ContextHost.hcclBuffSize = static_cast<uint64_t>(cclBufferSize);
         CopyContextToTensor(mc2ContextHost, contextTensor);
     }
 
@@ -224,6 +225,7 @@ public:
         BuildContext(hcclHandle, group, opName, protocol, commContextStruct, cclBufferSize);
         rankNumPerServer_ = rankNumPerUbDomain_;
         commContextStruct.rankSizePerServer = rankNumPerServer_;
+        commContextStruct.hcclBuffSize = static_cast<uint64_t>(cclBufferSize);
 
         CopyContextToTensor(commContextStruct, contextTensor);
         ASCEND_LOGI("Get CommContext Tensor Success, group: %s, ccl_buffer_size: %d", group.c_str(), cclBufferSize);
