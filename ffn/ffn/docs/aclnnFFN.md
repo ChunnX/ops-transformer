@@ -45,43 +45,43 @@ FFN在无专家或单个专家场景是否有性能收益需要根据实际测�
 
 ```Cpp
 aclnnStatus aclnnFFNGetWorkspaceSize(
-  const aclTensor*   x, 
-  const aclTensor*   weight1, 
+  const aclTensor*   x,
+  const aclTensor*   weight1,
   const aclTensor*   weight2,
-  const aclIntArray* expertTokens, 
-  const aclTensor*   bias1, 
-  const aclTensor*   bias2, 
-  const aclTensor*   scale, 
-  const aclTensor*   offset, 
-  const aclTensor*   deqScale1, 
-  const aclTensor*   deqScale2, 
-  const aclTensor*   antiquantScale1, 
-  const aclTensor*   antiquantScale2, 
-  const aclTensor*   antiquantOffset1, 
-  const aclTensor*   antiquantOffset2, 
-  const char*        activation, 
-  int64_t            innerPrecise, 
-  const aclTensor*   y, 
-  uint64_t*          workspaceSize, 
+  const aclIntArray* expertTokens,
+  const aclTensor*   bias1,
+  const aclTensor*   bias2,
+  const aclTensor*   scale,
+  const aclTensor*   offset,
+  const aclTensor*   deqScale1,
+  const aclTensor*   deqScale2,
+  const aclTensor*   antiquantScale1,
+  const aclTensor*   antiquantScale2,
+  const aclTensor*   antiquantOffset1,
+  const aclTensor*   antiquantOffset2,
+  const char*        activation,
+  int64_t            innerPrecise,
+  const aclTensor*   y,
+  uint64_t*          workspaceSize,
   aclOpExecutor**    executor)
 ```
 
 ```Cpp
 aclnnStatus aclnnFFN(
-  void*          workspace, 
-  uint64_t       workspaceSize, 
-  aclOpExecutor* executor, 
+  void*          workspace,
+  uint64_t       workspaceSize,
+  aclOpExecutor* executor,
   aclrtStream    stream)
 ```
 
 ## aclnnFFNGetWorkspaceSize
 
-**说明：**  
-M表示token个数，对应transform中的BS（B：Batch，表示输入样本批量大小，S：  Seq-Length，表示输入样本序列长度）；  
-K1表示第一个matmul的输入通道数，对应transform中的H（Head-Size，表示隐藏层的大小）；  
-N1表示第一个matmul的输出通道数；K2表示第二个matmul的输入通道数；  
-N2表示第二个matmul的输出通道数，对应transform中的H；  
-E表示有专家场景的专家数。  
+**说明：**
+M表示token个数，对应transform中的BS（B：Batch，表示输入样本批量大小，S：  Seq-Length，表示输入样本序列长度）；
+K1表示第一个matmul的输入通道数，对应transform中的H（Head-Size，表示隐藏层的大小）；
+N1表示第一个matmul的输出通道数；K2表示第二个matmul的输入通道数；
+N2表示第二个matmul的输出通道数，对应transform中的H；
+E表示有专家场景的专家数。
 G表示伪量化per-group场景下，antiquantOffset、antiquantScale的组数。
 
 - **参数说明**

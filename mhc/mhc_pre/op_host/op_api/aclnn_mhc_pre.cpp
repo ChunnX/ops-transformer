@@ -249,7 +249,7 @@ static bool CheckInputOutShape(const MhcParamsBase &params)
     int64_t alphaSize = params.alpha->GetViewShape().GetDim(0);
     int64_t expectedPhiRows = 0;
     int64_t expectedBiasSize = 0;
-    
+
     // dim of phi,bias
     if (alphaSize == ALPHA_DIM_SIZE_2) {
         expectedPhiRows = 2 * n;
@@ -316,8 +316,7 @@ static bool CheckPhiShape(const aclTensor *phiTensor, int64_t n2Plus2n, int64_t 
 {
     auto phiShape = phiTensor->GetViewShape();
     if (phiShape.GetDim(0) != n2Plus2n) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Phi tensor first dim must be %ld, but got %ld", n2Plus2n,
-                phiShape.GetDim(0));
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Phi tensor first dim must be %ld, but got %ld", n2Plus2n, phiShape.GetDim(0));
         return false;
     }
     if (phiShape.GetDim(1) != nD) {
@@ -331,8 +330,7 @@ static bool CheckBiasShape(const aclTensor *biasTensor, int64_t n2Plus2n)
 {
     auto biasShape = biasTensor->GetViewShape();
     if (biasShape.GetDim(0) != n2Plus2n) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Bias tensor dim must be %ld, but got %ld", n2Plus2n,
-                biasShape.GetDim(0));
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Bias tensor dim must be %ld, but got %ld", n2Plus2n, biasShape.GetDim(0));
         return false;
     }
     return true;
@@ -494,9 +492,9 @@ static aclnnStatus mHCPreCommonProcess(MhcParamsBase &params, aclOpExecutor *exe
 
     int64_t outFlag =
         (params.invRmsOptional != nullptr && params.hMixOptional != nullptr && params.hPreOptional != nullptr) ? 1 : 0;
-    auto outParams = l0op::MhcPre(params.xContiguous, params.phiContiguous, params.alphaContiguous,
-                                  params.biasContiguous, params.gammaOptionalContiguous, outFlag, params.normEps,
-                                  params.hcEps, executor);
+    auto outParams =
+        l0op::MhcPre(params.xContiguous, params.phiContiguous, params.alphaContiguous, params.biasContiguous,
+                     params.gammaOptionalContiguous, outFlag, params.normEps, params.hcEps, executor);
     CHECK_RET(outParams != std::tuple(nullptr, nullptr, nullptr, nullptr, nullptr, nullptr), ACLNN_ERR_INNER_NULLPTR);
 
     auto out0 = std::get<0>(outParams);

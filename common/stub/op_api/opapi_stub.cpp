@@ -101,7 +101,7 @@ const aclTensor *ReViewToOut(const aclTensor *x, const aclTensor * /*y*/, aclOpE
     return x;
 }
 
-const std::tuple<aclTensor *, aclTensor *> Sort(const aclTensor * self, int64_t /*dim*/, bool /*descending*/,
+const std::tuple<aclTensor *, aclTensor *> Sort(const aclTensor *self, int64_t /*dim*/, bool /*descending*/,
                                                 bool /*stable*/, op::DataType /*indicesType*/,
                                                 aclOpExecutor * /*executor*/)
 {
@@ -260,27 +260,27 @@ const aclTensor *ReduceSumOp(const aclTensor *x, const aclIntArray * /*axes*/, b
     return x;
 }
 
-const aclTensor *MaskedScatter(const aclTensor * self, const aclTensor * /*mask*/, const aclTensor * /*source*/,
+const aclTensor *MaskedScatter(const aclTensor *self, const aclTensor * /*mask*/, const aclTensor * /*source*/,
                                aclOpExecutor * /*executor*/)
 {
     return self;
 }
 
-const aclTensor *InplaceIndexAddAiCore(const aclTensor * self, const int64_t /*dim*/, const aclTensor * /*index*/,
+const aclTensor *InplaceIndexAddAiCore(const aclTensor *self, const int64_t /*dim*/, const aclTensor * /*index*/,
                                        const aclTensor * /*source*/, const aclTensor * /*alphaTensor*/,
                                        aclOpExecutor * /*executor*/)
 {
     return self;
 }
 
-const aclTensor *InplaceIndexAddAiCpu(const aclTensor * self, const int64_t /*dim*/, const aclTensor * /*index*/,
+const aclTensor *InplaceIndexAddAiCpu(const aclTensor *self, const int64_t /*dim*/, const aclTensor * /*index*/,
                                       const aclTensor * /*source*/, const aclTensor * /*alphaTensor*/,
                                       aclOpExecutor * /*executor*/)
 {
     return self;
 }
 
-const aclTensor *InplaceIndexAddWithSorted(const aclTensor * self, const int64_t /*dim*/,
+const aclTensor *InplaceIndexAddWithSorted(const aclTensor *self, const int64_t /*dim*/,
                                            const aclTensor * /*sortedIndices*/, const aclTensor * /*pos*/,
                                            const aclTensor * /*value*/, const aclTensor * /*alphaTensor*/,
                                            aclOpExecutor * /*executor*/)
@@ -289,7 +289,7 @@ const aclTensor *InplaceIndexAddWithSorted(const aclTensor * self, const int64_t
 }
 
 const aclTensor *GatherV3(const aclTensor *self, int64_t axis, const aclTensor *indices, aclOpExecutor *executor,
-                        int batchDims = 0, bool negativeIndexSupport = false)
+                          int batchDims = 0, bool negativeIndexSupport = false)
 {
     (void)self;
     (void)axis;

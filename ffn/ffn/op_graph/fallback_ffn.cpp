@@ -148,8 +148,7 @@ static graphStatus FFNExecuteFunc(OpExecuteContext *host_api_ctx)
                                   scale_ge, offset_ge, deq_scale1_ge, deq_scale2_ge, antiquant_scale1_ge,
                                   antiquant_scale2_ge, antiquant_offset1_ge, antiquant_offset2_ge, activation_type_ge,
                                   *inner_pricise_ge, *tokens_index_flag_ge, output_acl);
-    OP_CHECK_IF((api_ret != GRAPH_SUCCESS), OP_LOGE("aclnnfallback", "api_ret faild:%u", api_ret),
-               return GRAPH_FAILED);
+    OP_CHECK_IF((api_ret != GRAPH_SUCCESS), OP_LOGE("aclnnfallback", "api_ret faild:%u", api_ret), return GRAPH_FAILED);
 
     return GRAPH_SUCCESS;
 }
