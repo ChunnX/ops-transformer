@@ -9,6 +9,12 @@
 # -----------------------------------------------------------------------------------------------------------
 import importlib
 import pkgutil
+import logging
+
+logger = logging.getLogger(__name__)
 
 for _, name, _ in pkgutil.iter_modules(__path__):
-    importlib.import_module("." + name, __package__)
+    try:
+        importlib.import_module("." + name, __package__)
+    except Exception as e:
+        logger.debug("Failed to import graph_convert module %s: %s", name, e)
