@@ -30,12 +30,12 @@ abbr {
 
 | 术语 | 简要说明 |
 |------|----------|
-| 非量化 | x 和 weight 均为浮点类型直接计算 |
-| 伪量化 | weight 低精度存储，通过 antiquantScale/Offset 反量化后计算 |
-| 全量化 | x 和 weight 均为低精度计算，通过 scale 还原 |
+| 非量化 | x和weight均为浮点类型直接计算 |
+| 伪量化 | weight低精度存储，通过antiquantScale/Offset反量化后计算 |
+| 全量化 | x和weight均为低精度计算，通过scale还原 |
 | A8W4 | A8 表示 Activation 采用 8bit 量化，W4 表示 weight 采用 4bit 量化，同理还有 A8W8、A4W4 |
 | A16W8 | A16 表示 Activation 采用 16bit 非量化，W8 表示 weight 采用 8bit 量化，同理还有 A16W4 |
-| perchannel | 每列独立缩放因子 |
+| perchannel | 每列独立缩放因子，详见[《量化介绍》](../../../docs/zh/context/量化介绍.md) |
 | pertensor | 一个 Tensor统一缩放因子 |
 | pertoken | 每行独立缩放因子 |
 | pergroup | 在 reduce 轴上对数据分组，每组使用独立的量化参数，group size 为 gs |
@@ -47,7 +47,7 @@ abbr {
 | G-B | pergroup-perblock：输入侧按 K分组缩放，权重侧按 N×K 分块缩放 |
 | MX | pergroup-pergroup（G-G）量化模式，量化参数类型为 FLOAT8_E8M0，group size 为 32 的特例 |
 | ND | 常规连续排布 |
-| NZ | FRACTAL_NZ格式（亲核排布） |
+| NZ | [FRACTAL_NZ](../../../docs/zh/context/数据格式.md)格式（亲核排布） |
 
 ---
 
