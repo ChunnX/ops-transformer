@@ -19,8 +19,8 @@
 #include "register/tilingdata_base.h"
 #include "register/op_impl_registry.h"
 #include "op_host/tiling_base.h"
-#include "op_kernel/arch35/stem_oam_prep_paged_kv_tiling_data.h"
-#include "op_kernel/arch35/stem_oam_prep_paged_kv_tiling_key.h"
+#include "attention/stem_oam_prep_paged_kv/op_kernel/arch35/stem_oam_prep_paged_kv_tiling_data.h"
+#include "attention/stem_oam_prep_paged_kv/op_kernel/arch35/stem_oam_prep_paged_kv_tiling_key.h"
 
 namespace optiling {
 
