@@ -341,7 +341,7 @@ public:
             AscendC::PipeBarrier<PIPE_V>();
 
             AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(eventUbDVMTE3List[ubListId]);
-            AscendC::Cast(ubD, ubCFp32ChunkN, AscendC::RoundMode::CAST_ROUND, ChunkTileLen);
+            AscendC::Cast(ubD, ubCFp32ChunkN, AscendC::RoundMode::CAST_RINT, ChunkTileLen);
             AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(eventUbDMTE3VList[ubListId]);
 
             LayoutD layoutUbD{1, ChunkTileLen};

@@ -597,16 +597,16 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm2L1SplitN(mm
         LocalTensor<INPUT_T> mm2BTensor = mm2B.GetTensor<INPUT_T>();
         uint64_t gmNOffset = n * baseN;
         if constexpr (isPa) {
-            Position startPos;
-            startPos.bIdx = runInfo.boIdx;
-            startPos.n2Idx = runInfo.n2oIdx;
+            Position startPosition;
+            startPosition.bIdx = runInfo.boIdx;
+            startPosition.n2Idx = runInfo.n2oIdx;
             if constexpr (isFd) {
-                startPos.s2Offset = runInfo.flashDecodeS2Idx * constInfo.sInnerLoopSize +  // FD分片起始
+                startPosition.s2Offset = runInfo.flashDecodeS2Idx * constInfo.sInnerLoopSize +  // FD分片起始
                            runInfo.s2LoopCount * s2BaseSize;  // 核心内循环偏移
             } else {
-                startPos.s2Offset = runInfo.s2StartIdx + runInfo.s2LoopCount * s2BaseSize;  // 非FD场景
+                startPosition.s2Offset = runInfo.s2StartIdx + runInfo.s2LoopCount * s2BaseSize;  // 非FD场景
             }
-            startPos.dIdx = n * baseN;
+            startPosition.dIdx = n * baseN;
             PAShape shape;
             shape.blockSize = kvCacheBlockSize;
             shape.headNum = constInfo.n2Size;
@@ -620,7 +620,7 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm2L1SplitN(mm
                 shape.copyRowNumAlign = (runInfo.s2RealSize + 15) >> 4 << 4;
             }
             GlobalTensor<INPUT_T> mm2BGmTensor = GetValueGm(runInfo, constInfo);
-            GmCopyInToL1PA<INPUT_T>(mm2BTensor, mm2BGmTensor, blockTableGm, kvLayout, shape, startPos);
+            GmCopyInToL1PA<INPUT_T>(mm2BTensor, mm2BGmTensor, blockTableGm, kvLayout, shape, startPosition);
         } else {
             if constexpr (enableKVPrefix) { 
                 if ((runInfo.s2LoopCount + runInfo.s2StartIdx / s2BaseSize) < constInfo.prefixLoopCount) {
@@ -673,7 +673,7 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm2L1SplitN(mm
         fixpipeParams.mSize = s1BaseSize; // 有效数据不足16行，只需要输出部分行即可; L0C上的bmm1结果矩阵M方向的size大小; 同mmadParams.m
         fixpipeParams.srcStride = ((s1BaseSize + 15) / 16) * 16; // L0C上bmm1结果相邻连续数据片段间隔（前面一个数据块的头与后面数据块的头的间隔）
         if constexpr (!useDn) {
-            fixpipeParams.mSize = (runInfo.s1RealSize + 1) >> 1 << 1; // 有效数据不足16行，只需输出部分行即可;L0C上的bmm1结果矩阵M方向的size大小必须是偶数
+            fixpipeParams.mSize = ((runInfo.s1RealSize + 1) >> 1) << 1; // 有效数据不足16行，只需输出部分行即可;L0C上的bmm1结果矩阵M方向的size大小必须是偶数
             fixpipeParams.srcStride = ((fixpipeParams.mSize + 15) / 16) * 16; // L0C上bmm1结果相邻连续数据片段间隔（前面一个数据块的头与后面数据块的头的间隔）
             if constexpr (isInfer && Q_FORMAT != GmFormat::BNGSD) {
                 bool isS1Odd = (constInfo.s1Size % 2) != 0; // GS1合轴时，若s1为奇数且开启双目标模式，扩展M维度对齐g，避免计算中间块
@@ -848,15 +848,15 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm2(mm2ResPos 
                     }
                 }
             }
+            fixpipeParams.params.dstNdStride = 0;
             if constexpr (bmm2Write2Ub) {
                 fixpipeParams.dstStride = ((uint32_t)dVTemplateType + 15) >> 4 << 4;
             } else {
                 fixpipeParams.dstStride = (uint32_t)constInfo.dSizeV; // dstGm 两行之间的间隔
             }
             fixpipeParams.dualDstCtl = 1;
-            fixpipeParams.params.ndNum = 1;
             fixpipeParams.params.srcNdStride = 0;
-            fixpipeParams.params.dstNdStride = 0;
+            fixpipeParams.params.ndNum = 1;
             Fixpipe<T, T, BMM2_FIXPIPE_CONFIG>(outputBuf.template GetTensor<T>(), mm2ResL0C.GetTensor<T>(), fixpipeParams); // 将matmul结果从L0C搬运到UB
             mm2ResL0C.Set<HardEvent::FIX_M>(); // 释放
             outputBuf.SetCrossCore();
@@ -994,10 +994,6 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm1NdL0Split(
                     subMSizeAlign = (runInfo.s1RealSize + 15) >> 4 << 4; // NZ矩阵相邻Block起始地址之间的偏移，单位为Block个数，16对齐
                 }
 
-                FaL1Tensor<INPUT_T, L1Format::NZ> dstTensor {
-                    .tensor = mm1ATensor,
-                    .rowCount = static_cast<uint32_t>(subMSizeAlign)
-                };
                 GmCoord gmCoord {
                     .bIdx = static_cast<uint32_t>(runInfo.boIdx),
                     .n2Idx = static_cast<uint32_t>(runInfo.n2oIdx),
@@ -1006,6 +1002,12 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm1NdL0Split(
                     .gS1DealSize = static_cast<uint32_t>(runInfo.s1RealSize),
                     .dDealSize = static_cast<uint32_t>(constInfo.dSize)
                 };
+
+                FaL1Tensor<INPUT_T, L1Format::NZ> dstTensor {
+                    .tensor = mm1ATensor,
+                    .rowCount = static_cast<uint32_t>(subMSizeAlign)
+                };
+
                 copyQueryGmToL1(dstTensor, this->queryGm, gmCoord);
                 if constexpr (hasRope) {
                     dstTensor.tensor = mm1ATensor[subMSizeAlign * constInfo.dSize];
@@ -1169,11 +1171,12 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm1DnSplitK(
                 } else {
                     subMSizeAlign = (runInfo.s1RealSize + 15) >> 4 << 4; // NZ矩阵相邻Block起始地址之间的偏移，单位为Block个数，16对齐
                 }
-
+                // dstTensor赋值
                 FaL1Tensor<INPUT_T, L1Format::NZ> dstTensor {
                     .tensor = mm1BTensor,
                     .rowCount = static_cast<uint32_t>(subMSizeAlign)
                 };
+                // gmCoord赋值
                 GmCoord gmCoord {
                     .bIdx = static_cast<uint32_t>(runInfo.boIdx),
                     .n2Idx = static_cast<uint32_t>(runInfo.n2oIdx),
@@ -1519,10 +1522,10 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm2Nz(mm2ResPo
  
     fixpipeParams.mSize = runInfo.s1RealSize; // 有效数据不足16行，只需要输出部分行即可; L0C上的bmm1结果矩阵M方向的size大小; 同mmadParams.m
     fixpipeParams.srcStride = ((runInfo.s1RealSize + 15) / 16) * 16; // L0C上bmm1结果相邻连续数据片段间隔（前面一个数据块的头与后面数据块的头的间隔）
-    if constexpr (bmm2Write2Ub) {
-        fixpipeParams.dstStride = ((uint32_t)dVTemplateType + 15) >> 4 << 4;
-    } else {
+    if constexpr (!bmm2Write2Ub) {
         fixpipeParams.dstStride = (uint32_t)constInfo.dSizeV; // dstGm 两行之间的间隔
+    } else {
+        fixpipeParams.dstStride = ((uint32_t)dVTemplateType + 15) >> 4 << 4;
     }
     fixpipeParams.dualDstCtl = 1;
     fixpipeParams.params.ndNum = 1;
@@ -1562,6 +1565,7 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm1Nd(
                     .tensor = mm1ATensor,
                     .rowCount = static_cast<uint32_t>(subMSizeAlign)
                 };
+
                 GmCoord gmCoord {
                     .bIdx = static_cast<uint32_t>(runInfo.boIdx),
                     .n2Idx = static_cast<uint32_t>(runInfo.n2oIdx),
@@ -1588,11 +1592,11 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm1Nd(
             CopyToL1Nd2Nz<INPUT_T>(mm1ATensor, this->queryGm.gmTensor[gmOffset], runInfo.s1RealSize, constInfo.dSize,
                 constInfo.mm1Ka);
         }
-        mm1A.Set<HardEvent::MTE2_MTE1>(); // 通知
+        mm1A.Set<HardEvent::MTE2_MTE1>(); // 通知MTE2_MTE1
     } else { // 非S2的第一次循环直接复用Q
         mm1A = l1QBuffers.GetPre();
         // 左矩阵复用时，sinner循环内不需要MTE2同步等待
-        mm1A.Set<HardEvent::MTE2_MTE1>(); // 通知
+        mm1A.Set<HardEvent::MTE2_MTE1>(); // 通知mm1A
     }
 
     // 加载当前轮的右矩阵到L1
@@ -1745,9 +1749,9 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm1NdL1SplitK(
                 CopyToL1Nd2Nz<INPUT_T>(mm1ATensor[k * l1BaseKOffset], this->queryGm.gmTensor[gmOffset + gmKOffset],
                     runInfo.s1RealSize, realK, constInfo.mm1Ka);
             }
-
-            mm1A.Set<HardEvent::MTE2_MTE1>(); // 通知
-        } else { // 非s2的第一次循环直接复用Q
+            mm1A.Set<HardEvent::MTE2_MTE1>(); // 通知HardEvent::MTE2_MTE1
+        } else {
+            // 非s2的第一次循环直接复用Q
             mm1A = l1QBuffers.GetPre();
             // 左矩阵复用时，sinner循环内不需要MTE2同步等待
             mm1A.Set<HardEvent::MTE2_MTE1>();
@@ -1851,10 +1855,8 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm1Dn(
                 } else {
                     subMSizeAlign = (runInfo.s1RealSize + 15) >> 4 << 4; // NZ矩阵相邻Block起始地址之间的偏移，单位为Block个数，16对齐
                 }
-                FaL1Tensor<INPUT_T, L1Format::NZ> dstTensor = {
-                    .tensor = mm1BTensor,
-                    .rowCount = static_cast<uint32_t>(subMSizeAlign)
-                };
+                
+                // gm坐标赋值
                 GmCoord gmCoord {
                     .bIdx = static_cast<uint32_t>(runInfo.boIdx),
                     .n2Idx = static_cast<uint32_t>(runInfo.n2oIdx),
@@ -1863,6 +1865,12 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm1Dn(
                     .gS1DealSize = static_cast<uint32_t>(runInfo.s1RealSize),
                     .dDealSize = static_cast<uint32_t>(constInfo.dSize)
                 };
+
+                FaL1Tensor<INPUT_T, L1Format::NZ> dstTensor = {
+                    .tensor = mm1BTensor,
+                    .rowCount = static_cast<uint32_t>(subMSizeAlign)
+                };
+
                 copyQueryGmToL1(dstTensor, this->queryGm, gmCoord);
             } else {
                 if constexpr (layout == LayOutTypeEnum::LAYOUT_NTD) {  
@@ -1893,18 +1901,18 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm1Dn(
         startPos.bIdx = runInfo.boIdx;
         startPos.n2Idx = runInfo.n2oIdx;
         if constexpr (isFd) {
-            startPos.s2Offset = runInfo.flashDecodeS2Idx * constInfo.sInnerLoopSize +  // FD分片起始
-                        runInfo.s2LoopCount * s2BaseSize;  // 核心内循环偏移
+            startPos.s2Offset = (runInfo.flashDecodeS2Idx * constInfo.sInnerLoopSize) +  // FD分片起始
+                        (runInfo.s2LoopCount * s2BaseSize);  // 核心内循环偏移
         } else {
-            startPos.s2Offset = runInfo.s2StartIdx + runInfo.s2LoopCount * s2BaseSize;  // 非FD场景
+            startPos.s2Offset = runInfo.s2StartIdx + (runInfo.s2LoopCount * s2BaseSize);  // 非FD场景
         }
         startPos.dIdx = 0;
         PAShape shape;
         shape.blockSize = kvCacheBlockSize;
+        shape.maxblockNumPerBatch = maxBlockNumPerBatch;
         shape.headNum = constInfo.n2Size;
         shape.headDim = constInfo.dSize;
         shape.actHeadDim = constInfo.dSize;
-        shape.maxblockNumPerBatch = maxBlockNumPerBatch;
         shape.copyRowNum = runInfo.s2RealSize;
         shape.copyRowNumAlign = (runInfo.s2RealSize + 15) >> 4 << 4;
         GlobalTensor<INPUT_T> mm1AGmTensor = GetKeyGm(runInfo, constInfo);
@@ -2144,15 +2152,15 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm2MLAFullQuan
     }
     fixpipeParams.mSize = s1BaseSize; // 有效数据不足16行，只需要输出部分行即可; L0C上的bmm1结果矩阵M方向的size大小; 同mmadParams.m
     fixpipeParams.srcStride = ((s1BaseSize + 15) / 16) * 16; // L0C上bmm1结果相邻连续数据片段间隔（前面一个数据块的头与后面数据块的头的间隔）
+    fixpipeParams.params.dstNdStride = 0;
     if constexpr (bmm2Write2Ub || splitD) {
         fixpipeParams.dstStride = ((uint32_t)dVTemplateType + 15) >> 4 << 4;
     } else {
         fixpipeParams.dstStride = (uint32_t)constInfo.dSizeV; // dstGm 两行之间的间隔
     }
-    fixpipeParams.dualDstCtl = 1;
     fixpipeParams.params.ndNum = 1;
     fixpipeParams.params.srcNdStride = 0;
-    fixpipeParams.params.dstNdStride = 0;
+    fixpipeParams.dualDstCtl = 1;
     Fixpipe<T, T, BMM2_FIXPIPE_CONFIG>(outputBuf.template GetTensor<T>(), mm2ResL0C.GetTensor<T>(), fixpipeParams); // 将matmul结果从L0C搬运到UB
     mm2ResL0C.Set<HardEvent::FIX_M>(); // 释放
 
