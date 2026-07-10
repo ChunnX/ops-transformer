@@ -104,11 +104,27 @@ class SymmBuffer:
         self.rank_id = torch.distributed.get_rank(group)
         self.group_name = group._get_backend(torch.device("npu")).get_hccl_comm_name(self.rank_id, init_comm=False)
         self.ep_world_size = torch.distributed.get_world_size(group)
-        self._ctx_manager = CommContextManager(self.group_name, self.ep_world_size, backend={
-            "Ascend910B": "kfc",
-            "Ascend910_93": "kfc",
-            "Ascend950": "channel"
-        })
+        required_ccl_buffer_size = _get_mega_moe_ccl_buffer_size(
+            self.ep_world_size,
+            num_experts,
+            num_max_tokens_per_rank,
+            num_topk,
+            hidden,
+            dispatch_quant_mode,
+            dispatch_quant_out_dtype,
+            combine_quant_mode,
+            comm_alg,
+        )
+        self._ctx_manager = CommContextManager(
+            self.group_name,
+            self.ep_world_size,
+            backend={
+                "Ascend910B": "kfc",
+                "Ascend910_93": "kfc",
+                "Ascend950": "channel"
+            },
+            customCclBufferSize=required_ccl_buffer_size,
+        )
         self.context = self._ctx_manager.create_context()
         self.ccl_buffer_size = self._ctx_manager.ccl_buffer_size
         self.num_experts = num_experts
@@ -123,6 +139,9 @@ class SymmBuffer:
         self.comm_alg = comm_alg
         self.topo_type = self._ctx_manager.topo_type
         self.rank_num_per_server = self._ctx_manager.rank_num_per_server
+
+    def destroy(self):
+        self._ctx_manager.destroy() 
 
 
 _TORCH_DTYPE_TO_INT = {  # torch枚举
@@ -144,7 +163,7 @@ def _dtype_to_int(dtype):
     raise TypeError(f"dispatch_quant_out_dtype must be torch.dtype or int, got {type(dtype)}.")
 
 
-def get_mega_moe_ccl_buffer_size(
+def _get_mega_moe_ccl_buffer_size(
     ep_world_size: int, moe_expert_num: int, num_max_tokens_per_rank: int,
     num_topk: int, hidden: int,
     max_recv_token_num: int = 0,
@@ -172,7 +191,6 @@ def get_symm_buffer_for_mega_moe(
     dispatch_quant_out_dtype: Optional[torch.dtype] = None,
     combine_quant_mode: int = 0,
     comm_alg: str = "",
-    use_ccl_buffer: bool = True
 ) -> SymmBuffer:
 
     return SymmBuffer(
