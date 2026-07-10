@@ -103,7 +103,7 @@ def main():
     parser.add_argument("--max-retries", default=0, type=int, help="NPU最大重试次数")
     parser.add_argument("--log-level", default="INFO",
                         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
-                        help="日志级别")
+                        help="框架日志级别(编排器/比对)")
     args = parser.parse_args()
 
     logging.basicConfig(level=getattr(logging, args.log_level),
