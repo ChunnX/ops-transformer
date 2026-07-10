@@ -25,7 +25,8 @@ CaseWithSocversion::CaseWithSocversion() : CaseWithSocversion("Undefined", true,
 {
 }
 
-CaseWithSocversion::CaseWithSocversion(const char *name, bool enable, const char *dbgInfo, int32_t tilingTemplatePriority)
+CaseWithSocversion::CaseWithSocversion(const char *name, bool enable, const char *dbgInfo,
+                                       int32_t tilingTemplatePriority)
     : mName(name), mEnable(enable), mDbgInfo(dbgInfo), mTilingTemplatePriority(tilingTemplatePriority)
 {
 }
