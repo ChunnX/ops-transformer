@@ -114,6 +114,31 @@ aclnnStatus RunMhcPreNoOptional(TensorDesc &x, TensorDesc &phi, TensorDesc &alph
     return ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
 }
 
+enum class RequiredTensor { X, Phi, Alpha, Bias, HIn, HPost, HRes };
+
+aclnnStatus RunMhcPreMissingRequired(MhcPreTensors &tensors, RequiredTensor missing)
+{
+    auto x = tensors.x->ToAclType();
+    auto phi = tensors.phi->ToAclType();
+    auto alpha = tensors.alpha->ToAclType();
+    auto bias = tensors.bias->ToAclType();
+    auto gamma = tensors.gamma->ToAclType();
+    auto hIn = tensors.hIn->ToAclType();
+    auto hPost = tensors.hPost->ToAclType();
+    auto hRes = tensors.hRes->ToAclType();
+    auto getRequired = [missing](RequiredTensor current, auto *tensor) {
+        return missing == current ? nullptr : tensor;
+    };
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    return aclnnMhcPreGetWorkspaceSize(
+        getRequired(RequiredTensor::X, x.get()), getRequired(RequiredTensor::Phi, phi.get()),
+        getRequired(RequiredTensor::Alpha, alpha.get()), getRequired(RequiredTensor::Bias, bias.get()), gamma.get(),
+        NORM_EPS, HC_EPS, getRequired(RequiredTensor::HIn, hIn.get()),
+        getRequired(RequiredTensor::HPost, hPost.get()), getRequired(RequiredTensor::HRes, hRes.get()), nullptr,
+        nullptr, nullptr, &workspaceSize, &executor);
+}
+
 aclnnStatus RunMhcPrePartialOptional(TensorDesc &x, TensorDesc &phi, TensorDesc &alpha, TensorDesc &bias,
                                      TensorDesc &gamma, TensorDesc &hIn, TensorDesc &hPost, TensorDesc &hRes,
                                      TensorDesc &invRms)
@@ -144,6 +169,24 @@ TEST_F(MhcPreOpapiUt, aclnn_mhc_pre_valid_4d_fp16_with_optional_outputs)
               ACLNN_ERR_PARAM_INVALID);
 }
 
+TEST_F(MhcPreOpapiUt, aclnn_mhc_pre_missing_required_tensor_cases)
+{
+    const std::vector<std::pair<const char *, RequiredTensor>> cases = {
+        {"missing_x", RequiredTensor::X},           {"missing_phi", RequiredTensor::Phi},
+        {"missing_alpha", RequiredTensor::Alpha},   {"missing_bias", RequiredTensor::Bias},
+        {"missing_hin", RequiredTensor::HIn},       {"missing_hpost", RequiredTensor::HPost},
+        {"missing_hres", RequiredTensor::HRes},
+    };
+    for (const auto &[name, missing] : cases) {
+        auto tensors = MakeValidTensors();
+        const auto actual = RunMhcPreMissingRequired(tensors, missing);
+        const auto result = actual == ACLNN_ERR_PARAM_NULLPTR ? "PASS" : "FAIL";
+        cout << "[" << result << "] case=" << name << ", expected=" << ACLNN_ERR_PARAM_NULLPTR
+             << ", actual=" << actual << endl;
+        EXPECT_EQ(actual, ACLNN_ERR_PARAM_NULLPTR) << name;
+    }
+}
+
 TEST_F(MhcPreOpapiUt, aclnn_mhc_pre_invalid_dtype_shape_cases)
 {
     std::vector<InvalidCase> cases = {
@@ -167,6 +210,9 @@ TEST_F(MhcPreOpapiUt, aclnn_mhc_pre_invalid_dtype_shape_cases)
          }},
         {"invalid_alpha_dtype_float16", "alpha dtype is float16", [](MhcPreTensors &t) {
              t.alpha = MakeTensor({3}, ACL_FLOAT16, 0.5, 1.5);
+         }},
+        {"invalid_alpha_shape_rank0", "alpha shape rank is 0D, expected 1D", [](MhcPreTensors &t) {
+             t.alpha = MakeTensor({}, ACL_FLOAT, 0.5, 1.5);
          }},
         {"invalid_alpha_shape_rank2", "alpha shape rank is 2D, expected 1D", [](MhcPreTensors &t) {
              t.alpha = MakeTensor({1, 3}, ACL_FLOAT, 0.5, 1.5);
