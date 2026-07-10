@@ -11,7 +11,7 @@
 /*!
  * \file mega_moe_prefill.h
  * \brief MegaMoe 大 bs Prefill 场景适配实现。
- *        对 dispatch 路径的 UB 做分块流式处理（route batch / triple tile / reset batch /
+ *        对 dispatch 路径的 UB 做分块流式处理（route batch / ring buffer triple / reset batch /
  *        unpermute token batch），将 UB 峰值从 O(bs*topK) 降为 O(batchLen)，与大 bs 解耦。
  *        其余 GMM/combine 等路径保持与主线 mega_moe.h 一致。
  */
@@ -157,6 +157,7 @@ private:
     static constexpr int32_t DISPATCH_BUFFER_NUM = 6;
     static constexpr int32_t UNPERMUTE_BATCH_LEN = 1024;  // k∈[1,8192], topK∈[2,8], 每 token topK×6B, 1024 安全
     static constexpr int32_t DISPATCH_RECV_BATCH_LEN = 12288;  // 收侧每 batch route item 数，最坏 ws=1024 时 UB 占用 75%
+    static constexpr int32_t DISPATCH_SEND_BATCH_LEN = 12288;  // 发侧每 batch route item 数，固定常量（收侧同值）
 
     // ── UB tensor（与主线共用名，但大 bs 路径下大小按 batch 级而非全量 routeItemNum）──
     LocalTensor<int32_t> topkIndexTensor_;          // 收侧: 每 batch 重建的全局 route item index
@@ -266,7 +267,7 @@ __aicore__ inline void MegaMoePrefill<TemplateMegaMoePrefillTypeFunc>::Init(
 }
 
 // ======================================================================================
-// SendAndQuantBuffInit：发侧 UB 布局 + 反推 sendRouteBatchLen_
+// SendAndQuantBuffInit：发侧 UB 布局（sendRouteBatchLen_ 固定为 DISPATCH_SEND_BATCH_LEN）
 // ======================================================================================
 template <TemplateMegaMoePrefillTypeClass>
 __aicore__ inline void MegaMoePrefill<TemplateMegaMoePrefillTypeFunc>::SendAndQuantBuffInit()
@@ -276,7 +277,6 @@ __aicore__ inline void MegaMoePrefill<TemplateMegaMoePrefillTypeFunc>::SendAndQu
     }
 
     // ── 与 route batch 无关的固定占用 ──
-    uint32_t resetTensorAddr = 0;  // 占位，等下面算完 batchLen 再落
     uint64_t totalFlagInt32 = static_cast<uint64_t>(expertPerRank_) *
         (static_cast<uint64_t>(INT_CACHELINE) + static_cast<uint64_t>(dispatchFlagSlotsPerExpert_) +
         static_cast<uint64_t>(INT_CACHELINE) * static_cast<uint64_t>(aicNum_));
@@ -296,25 +296,17 @@ __aicore__ inline void MegaMoePrefill<TemplateMegaMoePrefillTypeFunc>::SendAndQu
         static_cast<uint32_t>(ALIGN_256));
     uint32_t xOutTensorSize = xOutTokenBytes + Ops::Base::CeilDiv(k_, static_cast<uint32_t>(ALIGN_32));
     uint32_t xInAlignSize = Ops::Base::CeilAlign(k_, static_cast<uint32_t>(ALIGN_128)) * sizeof(bfloat16_t);
-    // sendCntAccTensor_: per-owned-expert 跨 batch count 累加器
     uint32_t expertPerCoreMax = Ops::Base::CeilDiv(worldSize_ * expertPerRank_, blockAivNum_);
     uint32_t sendCntAccSize = Ops::Base::CeilAlign(
         static_cast<int64_t>(expertPerCoreMax * sizeof(int32_t)), static_cast<int64_t>(ALIGN_32));
-    uint32_t sendMaskFixedBytes = static_cast<uint32_t>(DOUBLE_BUFFER) * static_cast<uint32_t>(ALIGN_32);
-    uint32_t fixedBytes = resetTensorSize + mxTempTensorSize + 2 * xOutTensorSize + 2 * xInAlignSize +
-        sendCntAccSize + sendMaskFixedBytes;
 
-    // ── 用 UB 余量反推 sendRouteBatchLen_ ──
-    int64_t ubAvailable = static_cast<int64_t>(params_.tilingData->ubSize) - DISPATCH_UB_SAFETY;
-    int64_t ubForBatch = ubAvailable - static_cast<int64_t>(fixedBytes);
-    // 随 batch 线性增长: topk(4B) + sendGatherOut(4B) + sendMask 双buf(DOUBLE_BUFFER*1/8B)
-    // batchLen * ((4+4) + DOUBLE_BUFFER/8) ≤ ubForBatch
-    int64_t batchLenByUb = ubForBatch * 8 / ((4 + 4) * 8 + static_cast<int64_t>(DOUBLE_BUFFER));
-    int64_t batchLenCap = Ops::Base::CeilAlign(static_cast<int64_t>(sendTotalNum_), static_cast<int64_t>(ALIGN_256));
-    int64_t batchLen = batchLenByUb < batchLenCap ? batchLenByUb : batchLenCap;
-    batchLen = batchLen / ALIGN_256 * ALIGN_256;
-    batchLen = batchLen < ALIGN_256 ? ALIGN_256 : batchLen;
-    sendRouteBatchLen_ = static_cast<int32_t>(batchLen);
+    // ── 固定 batchLen（编译期常量 DISPATCH_SEND_BATCH_LEN）──
+    sendRouteBatchLen_ = DISPATCH_SEND_BATCH_LEN;
+    if (sendRouteBatchLen_ > static_cast<int32_t>(sendTotalNum_)) {
+        sendRouteBatchLen_ = static_cast<int32_t>(sendTotalNum_);
+    }
+    sendRouteBatchLen_ = static_cast<int32_t>(Ops::Base::CeilAlign(
+        static_cast<int64_t>(sendRouteBatchLen_), static_cast<int64_t>(ALIGN_256)));
     sendRouteBatchNum_ = static_cast<int32_t>(
         Ops::Base::CeilDiv(sendTotalNum_, static_cast<uint64_t>(sendRouteBatchLen_)));
 
@@ -448,7 +440,6 @@ __aicore__ inline void MegaMoePrefill<TemplateMegaMoePrefillTypeFunc>::SendMaskC
             // 尾部的 topkIdsTensor_ 填充 -1，避免 CompareScalar 误匹配
             Duplicate<int32_t>(topkIdsTensor_, -1, sendRouteBatchLen_);
         }
-        DataCopyExtParams maskCopyParams{1U, static_cast<uint32_t>(pushBytes), 0U, 0U, 0U};
 
         // ── 加载本 batch 的 topk（V_MTE2 → MTE2_V = topk load 与 mask push 流水重叠）──
         SyncFuncStatic<AscendC::HardEvent::V_MTE2, SYNC_EVENT_ID1>();
@@ -463,12 +454,12 @@ __aicore__ inline void MegaMoePrefill<TemplateMegaMoePrefillTypeFunc>::SendMaskC
             int32_t localExpertId = globalExpertId % static_cast<int32_t>(expertPerRank_); // 目标卡上第几个 expert
 
             // ping-pong 选 buf：iter % DOUBLE_BUFFER
-            TEventID ev = kBufEvents[iter % static_cast<int32_t>(DOUBLE_BUFFER)];
+            TEventID bufEvent = kBufEvents[iter % static_cast<int32_t>(DOUBLE_BUFFER)];
             LocalTensor<uint8_t> maskBuf = sendMaskTensor_[iter % static_cast<int32_t>(DOUBLE_BUFFER)];
             LocalTensor<uint32_t> maskBufU32 = maskBuf.template ReinterpretCast<uint32_t>();
 
             // ── Step 1: 等上次 push 完成 → 生成 mask ──
-            WaitFlag<AscendC::HardEvent::MTE3_V>(ev);
+            WaitFlag<AscendC::HardEvent::MTE3_V>(bufEvent);
             // CompareScalar: topkIdsTensor_[i] == globalExpertId → maskBuf bit[i]=1
             CompareScalar(maskBuf, topkIdsTensor_, globalExpertId, AscendC::CMPMODE::EQ, sendRouteBatchLen_);
             uint64_t sendCnt = 0;
@@ -494,10 +485,9 @@ __aicore__ inline void MegaMoePrefill<TemplateMegaMoePrefillTypeFunc>::SendMaskC
             uint64_t dstOffset = maskWinOffset_ + static_cast<uint64_t>(
                 localExpertId * static_cast<int32_t>(worldSize_) + static_cast<int32_t>(rankId_)) *
                 static_cast<uint64_t>(maskSlotSize_) + static_cast<uint64_t>(batchStart / 8);
-            dstGlobalTensor.SetGlobalBuffer(
-                (__gm__ uint8_t*)GetRankWinAddrWithOffset(dstRank, dstOffset));
-            DataCopyPad(dstGlobalTensor, maskBuf, maskCopyParams);
-            SetFlag<AscendC::HardEvent::MTE3_V>(ev);  // 标记该 buf push 完成，可复用
+            dstGlobalTensor.SetGlobalBuffer((__gm__ uint8_t *)GetRankWinAddrWithOffset(dstRank, dstOffset));
+            DataCopyPad(dstGlobalTensor, maskBuf, {1U, static_cast<uint32_t>(pushBytes), 0U, 0U, 0U});
+            SetFlag<AscendC::HardEvent::MTE3_V>(bufEvent);  // 标记该 buf push 完成，可复用
         }
     }
 
