@@ -35,7 +35,7 @@ __global__ __aicore__ void mhc_post(GM_ADDR x, GM_ADDR hRes, GM_ADDR hOut, GM_AD
     if constexpr (USE_H_RES == 0) {
         REGISTER_TILING_FOR_TILINGKEY("USE_H_RES == 0", MhcPostRegbaseTilingData);
         GET_TILING_DATA_WITH_STRUCT(MhcPostRegbaseTilingData, tilingData, tiling);
-        MhcPostNoHResRegbase<DTYPE_X> op(&tPipe, &tilingData);
+        MhcPostNoHRes<DTYPE_X> op(&tPipe, &tilingData);
         op.Init(x, hOut, hPost, output, workspace);
         op.Process();
     } else if constexpr (USE_REGBASE == 0) {

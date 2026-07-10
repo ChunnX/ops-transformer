@@ -37,6 +37,7 @@ const static int64_t X_INPUT_INDEX = 0;
 const static int64_t H_RES_INPUT_INDEX = 1;
 const static int64_t H_OUT_INPUT_INDEX = 1;
 const static int64_t H_POST_INPUT_INDEX = 2;
+const static int64_t H_POST_FULL_INPUT_INDEX = 3;
 
 const static int64_t OUTPUT_INDEX = 0;
 
@@ -98,7 +99,7 @@ private:
 
 bool MhcPostTilingNoHResArch35::IsCapable()
 {
-    auto input3 = context_->GetInputDesc(3);
+    auto input3 = context_->GetInputDesc(H_POST_FULL_INPUT_INDEX);
     if (input3 != nullptr && input3->GetDataType() == ge::DT_FLOAT) {
         return false;
     }
@@ -129,7 +130,7 @@ ge::graphStatus MhcPostTilingNoHResArch35::GetPlatformInfo()
 
 ge::graphStatus MhcPostTilingNoHResArch35::GetShapeAttrsInfo()
 {
-    auto input3 = context_->GetInputDesc(3);
+    auto input3 = context_->GetInputDesc(H_POST_FULL_INPUT_INDEX);
     if (input3 != nullptr && input3->GetDataType() == ge::DT_FLOAT) {
         auto xShapePtr = context_->GetInputShape(X_INPUT_INDEX);
         if (xShapePtr != nullptr) {

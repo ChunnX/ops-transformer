@@ -19,6 +19,12 @@
 #include "ascendc/host_api/tiling/template_argument.h"
 #include "mhc_post_tiling_data.h"
 
+namespace MhcPost {
+constexpr uint32_t DOUBLE_BUFFER_DEPTH = 2;
+constexpr uint16_t REG_ALIGN_N = 8;
+constexpr uint16_t REG_ALIGN_D = 16;
+}  // namespace MhcPost
+
 ASCENDC_TPL_ARGS_DECL(MhcPost,
     ASCENDC_TPL_BOOL_DECL(USE_PERMANENT_X, 0, 1),
     ASCENDC_TPL_BOOL_DECL(USE_REGBASE, 0, 1),

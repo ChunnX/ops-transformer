@@ -30,9 +30,9 @@ using namespace AscendC;
 #define NOHRES_TEMPLATE_ARGS T
 
 NOHRES_TEMPLATE_DECLARE
-class MhcPostNoHResRegbase {
+class MhcPostNoHRes {
 public:
-    __aicore__ inline MhcPostNoHResRegbase(TPipe *tPipe, const MhcPostRegbaseTilingData *__restrict tilingData)
+    __aicore__ inline MhcPostNoHRes(TPipe *tPipe, const MhcPostRegbaseTilingData *__restrict tilingData)
         : pipe_(tPipe),
           tilingData_(tilingData){};
     __aicore__ inline void Init(GM_ADDR x, GM_ADDR hOut, GM_ADDR hPost, GM_ADDR output, GM_ADDR workspace);
@@ -44,19 +44,18 @@ private:
     __aicore__ inline void CopyInHPost(int64_t bsIdx, int64_t nIdx, int64_t nNum);
     __aicore__ inline void DoMulAndAdd(LocalTensor<float> hPostUb, int64_t nNum, int64_t dNum);
     __aicore__ inline void CopyOutY(int64_t bsIdx, int64_t nIdx, int64_t nNum, int64_t dIdx, int64_t dNum);
-    __aicore__ inline uint16_t CeilDiv(uint32_t a, uint16_t b);
 
 private:
     TPipe *pipe_;
     const MhcPostRegbaseTilingData *tilingData_;
 
-    // Input queues - Double Buffer enabled (queue depth = 2)
-    TQue<QuePosition::VECIN, 2> hOutTileQueue_;
-    TQue<QuePosition::VECIN, 2> xTileQueue_;
-    TQue<QuePosition::VECIN, 2> hPostTileQueue_;
+    // Input queues - Double Buffer enabled (queue depth = DOUBLE_BUFFER_DEPTH)
+    TQue<QuePosition::VECIN, DOUBLE_BUFFER_DEPTH> hOutTileQueue_;
+    TQue<QuePosition::VECIN, DOUBLE_BUFFER_DEPTH> xTileQueue_;
+    TQue<QuePosition::VECIN, DOUBLE_BUFFER_DEPTH> hPostTileQueue_;
 
-    // Output queues - Double Buffer enabled (queue depth = 2)
-    TQue<QuePosition::VECOUT, 2> yTileQueue_;
+    // Output queues - Double Buffer enabled (queue depth = DOUBLE_BUFFER_DEPTH)
+    TQue<QuePosition::VECOUT, DOUBLE_BUFFER_DEPTH> yTileQueue_;
     TBuf<QuePosition::VECCALC> yTileBuf_;
 
     // Global memory tensors - inputs (bf16/fp16)
@@ -76,7 +75,7 @@ private:
 };
 
 NOHRES_TEMPLATE_DECLARE
-__aicore__ inline void MhcPostNoHResRegbase<NOHRES_TEMPLATE_ARGS>::Init(
+__aicore__ inline void MhcPostNoHRes<NOHRES_TEMPLATE_ARGS>::Init(
     GM_ADDR x, GM_ADDR hOut, GM_ADDR hPost, GM_ADDR output, GM_ADDR workspace)
 {
     blockIdx_ = GetBlockIdx();
@@ -99,22 +98,22 @@ __aicore__ inline void MhcPostNoHResRegbase<NOHRES_TEMPLATE_ARGS>::Init(
 
     // Initialize output buffers
     pipe_->InitBuffer(yTileBuf_, tilingData_->nInner * tilingData_->dInner * sizeof(float));
-    pipe_->InitBuffer(yTileQueue_, 2, tilingData_->nInner * tilingData_->dInner * sizeof(T));
+    pipe_->InitBuffer(yTileQueue_, DOUBLE_BUFFER_DEPTH, tilingData_->nInner * tilingData_->dInner * sizeof(T));
 
     // Initialize input queues (no hResTileQueue_)
-    int64_t nInnerBuf = ((tilingData_->nInner + 7) / 8) * 8;
-    pipe_->InitBuffer(hPostTileQueue_, 2, nInnerBuf * sizeof(float));
-    pipe_->InitBuffer(hOutTileQueue_, 2, tilingData_->dInner * sizeof(T));
-    pipe_->InitBuffer(xTileQueue_, 2, tilingData_->nInner * tilingData_->dInner * sizeof(T));
+    int64_t nInnerBuf = Ops::Base::CeilAlign(tilingData_->nInner, static_cast<int64_t>(REG_ALIGN_N));
+    pipe_->InitBuffer(hPostTileQueue_, DOUBLE_BUFFER_DEPTH, nInnerBuf * sizeof(float));
+    pipe_->InitBuffer(hOutTileQueue_, DOUBLE_BUFFER_DEPTH, tilingData_->dInner * sizeof(T));
+    pipe_->InitBuffer(xTileQueue_, DOUBLE_BUFFER_DEPTH, tilingData_->nInner * tilingData_->dInner * sizeof(T));
 }
 
 NOHRES_TEMPLATE_DECLARE
-__aicore__ inline void MhcPostNoHResRegbase<NOHRES_TEMPLATE_ARGS>::DoMulAndAdd(
+__aicore__ inline void MhcPostNoHRes<NOHRES_TEMPLATE_ARGS>::DoMulAndAdd(
     LocalTensor<float> hPostUb, int64_t nNum, int64_t dNum)
 {
     uint16_t nTimes = static_cast<uint16_t>(nNum);
-    uint16_t dRepeatTimes = CeilDiv(dNum, VL_FP32);
-    uint16_t dAlign = static_cast<uint16_t>(CeilDiv(dNum, 16) * 16);
+    uint16_t dRepeatTimes = static_cast<uint16_t>(Ops::Base::CeilDiv(dNum, static_cast<int64_t>(VL_FP32)));
+    uint16_t dAlign = static_cast<uint16_t>(Ops::Base::CeilAlign(dNum, static_cast<int64_t>(REG_ALIGN_D)));
 
     LocalTensor<T> xUb = xTileQueue_.DeQue<T>();
     LocalTensor<T> hOutUb = hOutTileQueue_.DeQue<T>();
@@ -178,7 +177,7 @@ __aicore__ inline void MhcPostNoHResRegbase<NOHRES_TEMPLATE_ARGS>::DoMulAndAdd(
 }
 
 NOHRES_TEMPLATE_DECLARE
-__aicore__ inline void MhcPostNoHResRegbase<NOHRES_TEMPLATE_ARGS>::Process()
+__aicore__ inline void MhcPostNoHRes<NOHRES_TEMPLATE_ARGS>::Process()
 {
     if (blockIdx_ >= tilingData_->usedCoreNum) {
         return;
@@ -212,7 +211,7 @@ __aicore__ inline void MhcPostNoHResRegbase<NOHRES_TEMPLATE_ARGS>::Process()
 }
 
 NOHRES_TEMPLATE_DECLARE
-__aicore__ inline void MhcPostNoHResRegbase<NOHRES_TEMPLATE_ARGS>::CopyInHOut(
+__aicore__ inline void MhcPostNoHRes<NOHRES_TEMPLATE_ARGS>::CopyInHOut(
     int64_t bsIdx, int64_t dIdx, int64_t dNum)
 {
     int64_t hOutOffset = bsIdx * tilingData_->d + dIdx * tilingData_->dInner;
@@ -225,7 +224,7 @@ __aicore__ inline void MhcPostNoHResRegbase<NOHRES_TEMPLATE_ARGS>::CopyInHOut(
 }
 
 NOHRES_TEMPLATE_DECLARE
-__aicore__ inline void MhcPostNoHResRegbase<NOHRES_TEMPLATE_ARGS>::CopyInHPost(
+__aicore__ inline void MhcPostNoHRes<NOHRES_TEMPLATE_ARGS>::CopyInHPost(
     int64_t bsIdx, int64_t nIdx, int64_t nNum)
 {
     int64_t hPostOffset = bsIdx * tilingData_->n + nIdx * tilingData_->nInner;
@@ -237,7 +236,7 @@ __aicore__ inline void MhcPostNoHResRegbase<NOHRES_TEMPLATE_ARGS>::CopyInHPost(
 }
 
 NOHRES_TEMPLATE_DECLARE
-__aicore__ inline void MhcPostNoHResRegbase<NOHRES_TEMPLATE_ARGS>::CopyInX(
+__aicore__ inline void MhcPostNoHRes<NOHRES_TEMPLATE_ARGS>::CopyInX(
     int64_t bsIdx, int64_t nIdx, int64_t nNum, int64_t dIdx, int64_t dNum)
 {
     int64_t dStart = dIdx * tilingData_->dInner;
@@ -253,7 +252,7 @@ __aicore__ inline void MhcPostNoHResRegbase<NOHRES_TEMPLATE_ARGS>::CopyInX(
 }
 
 NOHRES_TEMPLATE_DECLARE
-__aicore__ inline void MhcPostNoHResRegbase<NOHRES_TEMPLATE_ARGS>::CopyOutY(
+__aicore__ inline void MhcPostNoHRes<NOHRES_TEMPLATE_ARGS>::CopyOutY(
     int64_t bsIdx, int64_t nIdx, int64_t nNum, int64_t dIdx, int64_t dNum)
 {
     int64_t dStart = dIdx * tilingData_->dInner;
@@ -267,15 +266,6 @@ __aicore__ inline void MhcPostNoHResRegbase<NOHRES_TEMPLATE_ARGS>::CopyOutY(
     DataCopyPad(outputGm_[yOffset], yTileLocal, copyParams);
 
     yTileQueue_.FreeTensor(yTileLocal);
-}
-
-NOHRES_TEMPLATE_DECLARE
-__aicore__ inline uint16_t MhcPostNoHResRegbase<NOHRES_TEMPLATE_ARGS>::CeilDiv(uint32_t a, uint16_t b)
-{
-    if (b == 0) {
-        return 0;
-    }
-    return (a + b - 1) / b;
 }
 
 }  // namespace MhcPost

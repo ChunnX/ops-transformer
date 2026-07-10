@@ -27,9 +27,6 @@
 namespace MhcPost {
 using namespace AscendC;
 
-// Double Buffer configuration - Double Buffer提升Memory Bound算子性能
-constexpr uint32_t DOUBLE_BUFFER_DEPTH = 2;  // Double Buffer depth for data tiles
-
 #define TEMPLATE_DECLARE template <typename T, uint16_t USE_PERMANENT_X>
 #define TEMPLATE_ARGS T, USE_PERMANENT_X
 
