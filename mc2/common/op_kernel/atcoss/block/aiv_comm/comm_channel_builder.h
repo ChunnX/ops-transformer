@@ -31,7 +31,7 @@ constexpr uint32_t CHANNEL_NOTIFY_NUM = 3U;
 
 #define ASC_CHECK(call) do { if (!(call)) { return false; } } while(0)
 
-enum class CommMode {
+enum class ChannelModel {
     URMA,
     UBMEM
 };
@@ -62,10 +62,10 @@ public:
      * \return true 成功, false 失败
      */
     bool AllocRegAndBuildChannels(
-        CommMode mode, bool useHcclBuf, uint64_t bufSize, const char* memTag,
+        ChannelModel mode, bool useHcclBuf, uint64_t bufSize, const char* memTag,
         uint64_t& localAddr, uint64_t* channels, uint64_t* remoteAddrs)
     {
-        ::CommProtocol protocol = (mode == CommMode::URMA) ? ::CommProtocol::COMM_PROTOCOL_UBC_CTP
+        ::CommProtocol protocol = (mode == ChannelModel::URMA) ? ::CommProtocol::COMM_PROTOCOL_UBC_CTP
                                                            : ::CommProtocol::COMM_PROTOCOL_UB_MEM;
 
         void* buf = nullptr;
@@ -118,7 +118,7 @@ private:
         return true;
     }
 
-    bool BuildChannels(CommMode mode, bool useHcclBuf,
+    bool BuildChannels(ChannelModel mode, bool useHcclBuf,
                        ::CommProtocol protocol, HcclMemHandle memHandle,
                        const char* memTag, uint64_t* channels, uint64_t* remoteAddrs)
     {
