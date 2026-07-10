@@ -1819,19 +1819,19 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Process()
     }
 
     SyncAll<true>();
-    // // 3. 本卡专家接收数据GroupMatmul2 & Combine
-    // vecSetSyncCom_ = 0;
-    // GMMAddrInfo gmm2AddrInfo;
-    // ExpertLoopState gmm2State{initShape, initOffset, 0};
-    // InitCombineBuffers();
+    // 3. 本卡专家接收数据GroupMatmul2 & Combine
+    vecSetSyncCom_ = 0;
+    GMMAddrInfo gmm2AddrInfo;
+    ExpertLoopState gmm2State{initShape, initOffset, 0};
+    InitCombineBuffers();
 
-    // if constexpr (CombineQuantMode == COMBINE_NO_QUANT && g_coreType == AIV) {
-    //     if (GetSubBlockIdx() == 1) {
-    //         LocalTensor<uint8_t> hcommTensor_=LocalTensor<uint8_t>(TPosition::VECCALC, 0, ALIGN_512 / sizeof(uint8_t));
-    //         hcomm_.Init(hcommTensor_, ALIGN_512);
-    //         MegaMoeCombineImpl::CombineSendTokenToRemote<bfloat16_t>(params_);
-    //     }
-    // }
+    if constexpr (CombineQuantMode == COMBINE_NO_QUANT && g_coreType == AIV) {
+        if (GetSubBlockIdx() == 1) {
+            LocalTensor<uint8_t> hcommTensor_=LocalTensor<uint8_t>(TPosition::VECCALC, 0, ALIGN_512 / sizeof(uint8_t));
+            hcomm_.Init(hcommTensor_, ALIGN_512);
+            MegaMoeCombineImpl::CombineSendTokenToRemote<bfloat16_t>(params_);
+        }
+    }
     // for (uint32_t expertIdx = 0; expertIdx < expertPerRank_; expertIdx++) {
     //     if (!UpdateGroupParams<AddrUpdateMode::kGmm2>(gmm2State, expertIdx)) {
     //         continue;
