@@ -296,10 +296,10 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, MegaM
 
     auto maxRecvTokenNumPtr = attrs->GetAttrPointer<int64_t>((config.attrMaxRecvTokenNumIndex));
     int64_t maxRecvTokenNum = static_cast<int64_t>(*maxRecvTokenNumPtr);
-    OP_TILING_CHECK(maxRecvTokenNum < 0 || maxRecvTokenNum > bs * epWorldSize * std::min(topK, expertPerRank),
+    OP_TILING_CHECK(maxRecvTokenNum < 0 || maxRecvTokenNum > bs,
                     OP_LOGE_FOR_INVALID_VALUE(nodeName, "maxRecvTokenNum", std::to_string(maxRecvTokenNum).c_str(),
                                               (std::string("should in [0, ") +
-                                               std::to_string(bs * epWorldSize * std::min(topK, expertPerRank)) + "]")
+                                               std::to_string(bs) + "]")
                                                   .c_str()),
                     return ge::GRAPH_FAILED);
 
