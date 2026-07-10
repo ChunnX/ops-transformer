@@ -41,6 +41,7 @@ TORCH_DTYPE_ENUM_VALUE_TO_SCALAR_TYPE_MAP = {
     290: torch.uint8,  # torch_npu.hifloat8 use torch.uint8
     291: torch.float8_e5m2,
     292: torch.float8_e4m3fn,
+    293: torch.uint8,  # torch_npu.float8_e8m0fnu use torch.uint8
     296: torch.uint8,  # torch_npu.float4_e2m1fn_x2 use torch.uint8
     297: torch.uint8,  # torch_npu.float4_e1m2fn_x2 use torch.uint8
 }
