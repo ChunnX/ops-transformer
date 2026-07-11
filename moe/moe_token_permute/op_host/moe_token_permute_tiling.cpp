@@ -13,6 +13,7 @@
  * \brief
  */
 #include "moe_token_permute_tiling.h"
+#include "op_host/tiling_util.h"
 
 namespace {
 const static int64_t SPLIT_N = 0;
@@ -172,6 +173,7 @@ protected:
 private:
     ge::graphStatus CheckOutShape();
     void Tiling4IndexCopyCompute();
+    void Tiling4IndexCopyRegBase();
     void Tiling4SortOutCompute();
     void Tiling4VMSMiddleCompute();
     void Tiling4VBSCompute();
@@ -190,6 +192,7 @@ private:
     int64_t sortLoopMaxElement = 0;
     int64_t mrgSortListMaxElement = 1024;
     bool paddedMode = false;
+    bool regBase = false;
     const char* opName = nullptr;
     MoeTokenPermuteTilingData moeTokenPermuteTilingData;
 };
@@ -207,12 +210,13 @@ ge::graphStatus MoeTokenPermuteTilingBase::GetPlatformInfo()
         platformInfo == nullptr, OP_LOGE(opName, "fail to get platform info"),
         return ge::GRAPH_FAILED);
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
+    regBase = Ops::Transformer::OpTiling::IsRegbaseSocVersion(context_);
 
     auto indicesPtr = context_->GetInputTensor(1);
     OP_CHECK_IF(
         indicesPtr == nullptr, OP_LOGE(opName, "fail to get input [indices]"),
         return ge::GRAPH_FAILED);
-    if (indicesPtr->GetShapeSize() <= SORT32_ALIGN_ELEMENT) {
+    if (!regBase && indicesPtr->GetShapeSize() <= SORT32_ALIGN_ELEMENT) {
         aivNum = 1;
     } else {
         aivNum = ascendcPlatform.GetCoreNumAiv();
@@ -417,12 +421,28 @@ void MoeTokenPermuteTilingBase::ShowTilingData()
 }
 ge::graphStatus MoeTokenPermuteTilingBase::DoOpTiling()
 {
-    sortLoopMaxElement = (aicoreParams_.ubSize - aivNum * ONE_BLOCK_BYTE) / (NUM_FOUR * NUM_TWO * NUM_FOUR) /
-                         SORT32_ALIGN_ELEMENT * SORT32_ALIGN_ELEMENT;
+    if (regBase) {
+        int64_t sortBufferBytes = sizeof(int32_t) * NUM_TWO * NUM_FOUR;
+        if (indicesBtypeSize == static_cast<int64_t>(sizeof(int64_t))) {
+            sortBufferBytes += sizeof(int32_t);
+        }
+        sortLoopMaxElement = FloorAlign(
+            (static_cast<int64_t>(aicoreParams_.ubSize) - ONE_BLOCK_BYTE) / sortBufferBytes,
+            SORT32_ALIGN_ELEMENT);
+    } else {
+        sortLoopMaxElement = (aicoreParams_.ubSize - aivNum * ONE_BLOCK_BYTE) / (NUM_FOUR * NUM_TWO * NUM_FOUR) /
+                             SORT32_ALIGN_ELEMENT * SORT32_ALIGN_ELEMENT;
+    }
+    OP_CHECK_IF(
+        sortLoopMaxElement <= 0, OP_LOGE(opName, "insufficient UB space for sorting"), return ge::GRAPH_FAILED);
     Tiling4VBSCompute();
     Tiling4VMSMiddleCompute();
     Tiling4SortOutCompute();
-    Tiling4IndexCopyCompute();
+    if (regBase) {
+        Tiling4IndexCopyRegBase();
+    } else {
+        Tiling4IndexCopyCompute();
+    }
     ShowTilingData();
     return ge::GRAPH_SUCCESS;
 }
@@ -457,6 +477,9 @@ ge::graphStatus MoeTokenPermuteTilingBase::PostTiling()
     OP_CHECK_NULL_WITH_CONTEXT(context_, rawTilingData);
     // 涉及核间同步的算子必须设置schedule_mode为1，独占全核
     context_->SetScheduleMode(1);
+    if (regBase) {
+        context_->SetLocalMemorySize(aicoreParams_.ubSize);
+    }
     moeTokenPermuteTilingData.SaveToBuffer(rawTilingData->GetData(), rawTilingData->GetCapacity());
     rawTilingData->SetDataSize(moeTokenPermuteTilingData.GetDataSize());
     return ge::GRAPH_SUCCESS;
@@ -547,6 +570,91 @@ void MoeTokenPermuteTilingBase::Tiling4SortOutCompute()
     auto tilingData = &moeTokenPermuteTilingData.sortOutComputeParamsOp;
     tilingData->set_oneLoopMaxElements(mrgSortListMaxElement);
 }
+
+void MoeTokenPermuteTilingBase::Tiling4IndexCopyRegBase()
+{
+    auto tilingData = &moeTokenPermuteTilingData.indexCopyComputeParamsOp;
+    if (numOutTokens != totalLength) {
+        tilingKey_ += ENABLE_NUMOUTTOKENS;
+    }
+    tilingData->set_numOutTokens(numOutTokens);
+
+    if (totalLength <= 0) {
+        tilingData->set_needCoreNum(0);
+        return;
+    }
+
+    int64_t perCoreRows = GetCeilInt(totalLength, aivNum);
+    int64_t needCoreNum = GetCeilInt(totalLength, perCoreRows);
+    int64_t lastCoreRows = totalLength - (needCoreNum - 1) * perCoreRows;
+
+    int64_t perCorePerLoopRows = perCoreRows;
+    int64_t perCoreLastLoopRows = perCoreRows;
+    int64_t lastCorePerLoopRows = lastCoreRows;
+    int64_t lastCoreLastLoopRows = lastCoreRows;
+    int64_t perCoreLoops = 1;
+    int64_t lastCoreLoops = 1;
+    int64_t perLoopCols = moeTokenPermuteTilingData.get_cols();
+    int64_t lastLoopCols = perLoopCols;
+    int64_t colLoops = 1;
+
+    if (perLoopCols > 0 && numOutTokens > 0) {
+        int64_t ubSize = static_cast<int64_t>(aicoreParams_.ubSize) / NUM_TWO;
+        int64_t rowSize = UpAlign(perCoreRows * static_cast<int64_t>(sizeof(int32_t)), ONE_BLOCK_BYTE);
+        int64_t colSize = UpAlign(perLoopCols * tokenBtypeSize, ONE_BLOCK_BYTE);
+
+        if (rowSize + colSize >= ubSize) {
+            int64_t baseMaxCols = std::min(MAX_COLS_ONE_LOOP, perLoopCols);
+            int64_t baseMaxColsSize = UpAlign(baseMaxCols * tokenBtypeSize, ONE_BLOCK_BYTE);
+            int64_t basePerLoopMaxRows = FloorAlign(
+                std::max(ubSize - baseMaxColsSize, static_cast<int64_t>(sizeof(int32_t))) /
+                    static_cast<int64_t>(sizeof(int32_t)),
+                ONE_BLOCK_BYTE);
+
+            if (perLoopCols < MAX_COLS_ONE_LOOP) {
+                basePerLoopMaxRows = FloorAlign(
+                    std::max(ubSize - colSize, static_cast<int64_t>(sizeof(int32_t))) /
+                        static_cast<int64_t>(sizeof(int32_t)),
+                    ONE_BLOCK_BYTE);
+            } else if (perCoreRows < basePerLoopMaxRows) {
+                baseMaxCols = FloorAlign(
+                    std::max(ubSize - rowSize, tokenBtypeSize) / tokenBtypeSize, ONE_BLOCK_BYTE);
+            }
+
+            baseMaxCols = std::max(baseMaxCols, static_cast<int64_t>(1));
+            basePerLoopMaxRows = std::max(basePerLoopMaxRows, static_cast<int64_t>(1));
+            perLoopCols = std::min(baseMaxCols, perLoopCols);
+            colLoops = GetCeilInt(moeTokenPermuteTilingData.get_cols(), perLoopCols);
+            lastLoopCols = moeTokenPermuteTilingData.get_cols() - (colLoops - 1) * perLoopCols;
+
+            perCorePerLoopRows = std::min(perCoreRows, basePerLoopMaxRows);
+            perCoreLoops = GetCeilInt(perCoreRows, perCorePerLoopRows);
+            perCoreLastLoopRows = perCoreRows - (perCoreLoops - 1) * perCorePerLoopRows;
+
+            lastCorePerLoopRows = std::min(lastCoreRows, basePerLoopMaxRows);
+            lastCoreLoops = GetCeilInt(lastCoreRows, lastCorePerLoopRows);
+            lastCoreLastLoopRows = lastCoreRows - (lastCoreLoops - 1) * lastCorePerLoopRows;
+        }
+    }
+
+    // Reuse the legacy index-copy payload as the Arch35 gather tiling payload.
+    tilingData->set_needCoreNum(needCoreNum);
+    tilingData->set_coreCalcNum(perCoreRows);
+    tilingData->set_coreCalcTail(lastCoreRows);
+    tilingData->set_onceIndicesTokenNums(perCorePerLoopRows);
+    tilingData->set_frontCoreLastTokenNums(perCoreLastLoopRows);
+    tilingData->set_onceUbTokenNums(lastCorePerLoopRows);
+    tilingData->set_tailLastIndicesLastTokenNums(lastCoreLastLoopRows);
+    tilingData->set_frontCoreLoop(perCoreLoops);
+    tilingData->set_tailCoreLoop(lastCoreLoops);
+    tilingData->set_oneTokenOnceMove(perLoopCols);
+    tilingData->set_oneTokenlastMove(lastLoopCols);
+    tilingData->set_oneTokenMoveTimes(colLoops);
+    tilingData->set_oneTokenBtypeSize(moeTokenPermuteTilingData.get_cols() * tokenBtypeSize);
+    tilingData->set_tokenUB(UpAlign(perLoopCols * tokenBtypeSize, ONE_BLOCK_BYTE));
+    tilingData->set_indicesUB(UpAlign(perCorePerLoopRows * static_cast<int64_t>(sizeof(int32_t)), ONE_BLOCK_BYTE));
+}
+
 void MoeTokenPermuteTilingBase::Tiling4IndexCopyCompute()
 {
     auto tilingData = &moeTokenPermuteTilingData.indexCopyComputeParamsOp;
