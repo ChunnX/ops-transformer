@@ -1,9 +1,14 @@
+# -----------------------------------------------------------------------------------------------------------
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+# -----------------------------------------------------------------------------------------------------------
+
 import torch
-import torch_npu
-import torchair
-import torch.nn as nn
-import npu_ops_transformer
-import pandas as pd
 
 AIC_CORE_NUM = 36
 AIV_CORE_NUM = 72
@@ -16,8 +21,8 @@ qHeads = 1
 kvHeads = 1
 dimQkflat = 128
 stemBlockSize = 128
-causal=True
-windowSize=4
+causal = True
+windowSize = 4
 
 metadata = torch.ops.npu_ops_transformer.npu_stem_indexer_metadata(
     q_seq_lens=qSeqLens,
@@ -27,7 +32,7 @@ metadata = torch.ops.npu_ops_transformer.npu_stem_indexer_metadata(
     causal=causal,
     dim_qkflat=dimQkflat,
     stem_block_size=stemBlockSize,
-    window_size=windowSize
+    window_size=windowSize,
 )
 
 if isinstance(metadata, torch.Tensor):
@@ -42,7 +47,9 @@ fd_data = [[0 for _ in range(FD_METADATA_SIZE)] for _ in range(AIV_CORE_NUM)]
 fa_length = AIC_CORE_NUM * FA_METADATA_SIZE
 fd_length = AIV_CORE_NUM * FD_METADATA_SIZE
 if len(metadata_np) < fa_length + fd_length:
-    raise ValueError(f"算子输出数据长度({len(metadata_np)})不足，期望至少{fa_length} + {fd_length}")
+    raise ValueError(
+        f"算子输出数据长度({len(metadata_np)})不足，期望至少{fa_length} + {fd_length}"
+    )
 
 for i in range(AIC_CORE_NUM):
     for j in range(FA_METADATA_SIZE):
@@ -53,8 +60,8 @@ for i in range(AIV_CORE_NUM):
         fd_data[i][j] = metadata_np[fa_length + i * FD_METADATA_SIZE + j]
 
 print("=============================== FA =========================")
-for aic in range (AIC_CORE_NUM):
+for aic in range(AIC_CORE_NUM):
     print(fa_data[aic])
 print("=============================== FD =========================")
-for aiv in range (AIV_CORE_NUM):
+for aiv in range(AIV_CORE_NUM):
     print(fd_data[aiv])

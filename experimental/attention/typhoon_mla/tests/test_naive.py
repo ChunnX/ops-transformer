@@ -1,14 +1,22 @@
+# -----------------------------------------------------------------------------------------------------------
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+# -----------------------------------------------------------------------------------------------------------
+
 
 import pytest
-import torch 
-import torch_npu
+import torch
 import numpy as np
 
 from src.typhoon_mla import fused_infer_attention_score_shared
 from src.utils import softmax
 
 torch.set_printoptions(sci_mode=False)
-
 
 
 def baseline(q, k, v, scale):
@@ -24,19 +32,23 @@ def baseline(q, k, v, scale):
     out = torch.einsum("sht,thc->shc", scores, v)
     return out, lse
 
-@pytest.mark.parametrize("bsz, seqlen", [
-    (4, 128),
-    (16, 256),
-    (1, 8192),
-])
+
+@pytest.mark.parametrize(
+    "bsz, seqlen",
+    [
+        (4, 128),
+        (16, 256),
+        (1, 8192),
+    ],
+)
 def test_naive(bsz, seqlen):
     n_heads = 128
     n_kv_heads = 128
     q_headdim = 192
     k_headdim = 192
     v_headdim = 128
-    
-    softmax_scale = 1/np.sqrt(128)
+
+    softmax_scale = 1 / np.sqrt(128)
 
     dtype = torch.bfloat16
     device = torch.device("npu:0")
@@ -48,7 +60,9 @@ def test_naive(bsz, seqlen):
     actseqlen = [bsz]
     actseqlenkv = [seqlen]
 
-    out, lse = fused_infer_attention_score_shared(q, k, v, actseqlen, actseqlenkv, softmax_scale)
+    out, lse = fused_infer_attention_score_shared(
+        q, k, v, actseqlen, actseqlenkv, softmax_scale
+    )
     out_gt, lse_gt = baseline(q, k, v, softmax_scale)
 
     print(out[-1, -1, :])
@@ -57,8 +71,13 @@ def test_naive(bsz, seqlen):
     print(lse[-1, :, 0])
     print(lse_gt[-1, :, 0])
 
-    assert torch.allclose(out, out_gt, atol=1e-2, rtol=0), f"out-out_gt max. err: {torch.abs(out-out_gt).max():.3e}"
-    assert torch.allclose(lse, lse_gt, atol=1e-2, rtol=0), f"lse-lse_gt max. err: {torch.abs(lse-lse_gt).max():.3e}"
+    assert torch.allclose(out, out_gt, atol=1e-2, rtol=0), (
+        f"out-out_gt max. err: {torch.abs(out - out_gt).max():.3e}"
+    )
+    assert torch.allclose(lse, lse_gt, atol=1e-2, rtol=0), (
+        f"lse-lse_gt max. err: {torch.abs(lse - lse_gt).max():.3e}"
+    )
 
-if __name__=="__main__":
+
+if __name__ == "__main__":
     test_naive(4, 256)

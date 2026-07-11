@@ -1,3 +1,13 @@
+# -----------------------------------------------------------------------------------------------------------
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+# -----------------------------------------------------------------------------------------------------------
+
 import pytest
 import _pytest.terminal
 
@@ -19,12 +29,12 @@ def pytest_runtest_makereport(item, call):
         except AttributeError:
             pass
         if msg and msg.startswith("Failed: "):
-            msg = msg[len("Failed: "):]
+            msg = msg[len("Failed: ") :]
         _fail_msgs[rep.nodeid] = msg
 
 
 def _custom_get_line(config, rep, tw, word_markup):
-    if hasattr(rep, 'when') and rep.when == "call" and rep.failed:
+    if hasattr(rep, "when") and rep.when == "call" and rep.failed:
         fail_msg = _fail_msgs.get(rep.nodeid)
         if fail_msg:
             verbose_word, verbose_markup = rep._get_verbose_word_with_markup(

@@ -1,3 +1,13 @@
+# -----------------------------------------------------------------------------------------------------------
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+# -----------------------------------------------------------------------------------------------------------
+
 """用例加载 + 参数规范化。从 test_flash_attn.py 抽取。"""
 
 import itertools
@@ -44,12 +54,22 @@ def normalize_params(raw: dict) -> dict:
             c.pop(key, None)
 
     if layout_q == "TND":
-        c.setdefault("seqused_q", [c["cu_seqlens_q"][i + 1] - c["cu_seqlens_q"][i]
-                                   for i in range(len(c["cu_seqlens_q"]) - 1)])
+        c.setdefault(
+            "seqused_q",
+            [
+                c["cu_seqlens_q"][i + 1] - c["cu_seqlens_q"][i]
+                for i in range(len(c["cu_seqlens_q"]) - 1)
+            ],
+        )
         if c.get("layout_kv", layout_q) not in ("PA_BBND", "PA_BNBD", "PA_NZ"):
             c.setdefault("cu_seqlens_kv", list(c["cu_seqlens_q"]))
-            c.setdefault("seqused_kv", [c["cu_seqlens_kv"][i + 1] - c["cu_seqlens_kv"][i]
-                                        for i in range(len(c["cu_seqlens_kv"]) - 1)])
+            c.setdefault(
+                "seqused_kv",
+                [
+                    c["cu_seqlens_kv"][i + 1] - c["cu_seqlens_kv"][i]
+                    for i in range(len(c["cu_seqlens_kv"]) - 1)
+                ],
+            )
         c["B"] = 1
 
     layout_kv_val = c.get("layout_kv", layout_q)
@@ -108,9 +128,13 @@ def resolve_case_ids(case_id_arg: str, all_cases: Dict) -> List[str]:
     result = []
     missing = []
     for cid in ids:
-        matches = [k for k in all_cases
-                   if k.endswith(f"/{cid}") or k == cid
-                   or k.rsplit("/", 1)[-1].startswith(f"{cid}_")]
+        matches = [
+            k
+            for k in all_cases
+            if k.endswith(f"/{cid}")
+            or k == cid
+            or k.rsplit("/", 1)[-1].startswith(f"{cid}_")
+        ]
         if matches:
             result.extend(matches)
         else:
