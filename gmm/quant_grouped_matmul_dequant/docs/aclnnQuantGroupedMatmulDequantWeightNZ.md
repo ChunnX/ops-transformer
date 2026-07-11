@@ -82,7 +82,7 @@ aclnnStatus aclnnQuantGroupedMatmulDequantWeightNZGetWorkspaceSize(
   const aclTensor *smoothScaleOptional,
   char            *xQuantMode,
   bool             transposeWeight,
-  const aclTensor *out,
+  aclTensor *out,
   uint64_t        *workspaceSize,
   aclOpExecutor  **executor)
 ```

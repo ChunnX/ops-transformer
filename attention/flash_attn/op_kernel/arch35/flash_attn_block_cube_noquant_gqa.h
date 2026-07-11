@@ -172,21 +172,21 @@ public:
     static constexpr GmFormat Q_FORMAT = GetQueryGmFormat<layout>();
     static constexpr GmFormat KV_FORMAT = GetKVGmFormat<layout, KvLayoutType, PAGE_ATTENTION>();
 
-    using Q_T = INPUT_T;
-    using KV_T = INPUT_T;
-    using MM_T = T;
-    using mm2ResPos = typename std::conditional<bmm2Write2Ub, Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>,
-                                                Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_FORWARD>>::type;
-
-    using MM1_DBUF_T = Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>;
-    using MM2_ABUF_POLICY_T = BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD>;
-    using MM2_ABUF_T = Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD>;
-
     using L1KvType = typename KVL1BuffSel<s2BaseSize, dBaseSize>::Type;
     using L1QType = typename QL1BuffSel<dBaseSize>::Type;
     using L0AType = typename L0ABuffSel::Type;
     using L0BType = typename L0BBuffSel<s2BaseSize, dBaseSize>::Type;
     using L0CType = typename L0CBuffSel<mBaseSize, s2BaseSize, dVBaseSize>::Type;
+
+    using Q_T = INPUT_T;
+    using KV_T = INPUT_T;
+    using MM_T = T;
+    using mm2ResPos = typename std::conditional<bmm2Write2Ub, Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>,
+                                                 Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_FORWARD>>::type;
+
+    using MM1_DBUF_T = Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>;
+    using MM2_ABUF_POLICY_T = BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD>;
+    using MM2_ABUF_T = Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD>;
 
     using ConstInfoX = ConstInfo_t<FiaKernelType::NO_QUANT>;
 
@@ -217,6 +217,15 @@ public:
                                         BuffersPolicyDB<BufferType::L1>>;
     };
 
+    /* ============确定L0C的类型============= */
+    template <uint32_t mBaseSize, uint32_t s2BaseSize, uint32_t dVBaseSize>
+    struct L0CBuffSel {
+        using Type = std::conditional_t<(mBaseSize * s2BaseSize * FLOAT_BYTES <= (L0C_SIZE * KB_TO_BYTES) / NUM_4 &&
+                                         mBaseSize * dVBaseSize * FLOAT_BYTES <= (L0C_SIZE * KB_TO_BYTES) / NUM_4),
+                                        BuffersPolicy4buff<BufferType::L0C>,
+                                        BuffersPolicyDB<BufferType::L0C>>;
+    };
+
     /* ============确定L0A的类型============= */
     struct L0ABuffSel {
         using Type = BuffersPolicyDB<BufferType::L0A>;
@@ -227,15 +236,6 @@ public:
         using Type = std::conditional_t<(s2BaseSize == 256 && dBaseSize > 128),
                                         BuffersPolicySingleBuffer<BufferType::L0B>,
                                         BuffersPolicyDB<BufferType::L0B>>;
-    };
-
-    /* ============确定L0C的类型============= */
-    template <uint32_t mBaseSize, uint32_t s2BaseSize, uint32_t dVBaseSize>
-    struct L0CBuffSel {
-        using Type = std::conditional_t<(mBaseSize * s2BaseSize * FLOAT_BYTES <= (L0C_SIZE * KB_TO_BYTES) / NUM_4 &&
-                                         mBaseSize * dVBaseSize * FLOAT_BYTES <= (L0C_SIZE * KB_TO_BYTES) / NUM_4),
-                                        BuffersPolicy4buff<BufferType::L0C>,
-                                        BuffersPolicyDB<BufferType::L0C>>;
     };
 
     static constexpr uint32_t mBaseSize = (uint32_t)s1TemplateType;
@@ -253,12 +253,6 @@ public:
     static constexpr GmFormat Q_FORMAT = GetQueryGmFormat<layout>();
     static constexpr GmFormat KV_FORMAT = GetKVGmFormat<layout, KvLayoutType, PAGE_ATTENTION>();
 
-    using Q_T = INPUT_T;
-    using KV_T = INPUT_T;
-    using MM_T = T;
-    using mm2ResPos = typename std::conditional<bmm2Write2Ub, Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>,
-                                                Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_FORWARD>>::type;
-
     using MM1_DBUF_T = Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>;
     using MM2_ABUF_POLICY_T = BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD>;
     using MM2_ABUF_T = Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD>;
@@ -268,6 +262,12 @@ public:
     using L0AType = typename L0ABuffSel::Type;
     using L0BType = typename L0BBuffSel<s2BaseSize, dBaseSize>::Type;
     using L0CType = typename L0CBuffSel<mBaseSize, s2BaseSize, dVBaseSize>::Type;
+
+    using Q_T = INPUT_T;
+    using KV_T = INPUT_T;
+    using MM_T = T;
+    using mm2ResPos = typename std::conditional<bmm2Write2Ub, Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>,
+                                                 Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_FORWARD>>::type;
 
     using ConstInfoX = ConstInfo_t<FiaKernelType::NO_QUANT>;
 
@@ -427,10 +427,8 @@ public:
         }
     }
 
-    __aicore__ inline void AllocEventID()
-    {
-        // InitBuffers阶段已完成eventId申请和SetFlag，这里为空实现
-    }
+    // InitBuffers阶段已完成eventId申请和SetFlag，这里为空实现
+    __aicore__ inline void AllocEventID() {}
 
     __aicore__ inline void FreeEventID()
     {
@@ -443,8 +441,8 @@ public:
     }
 
     // copy query with full s1g and split D
-    __aicore__ inline void CopyQuerySlice(const LocalTensor<Q_T> &dstTensor, uint32_t dOffset, uint32_t dRealSize,
-                                          RunInfoX &runInfo)
+    __aicore__ inline void CopyQuerySlice(const LocalTensor<Q_T> &dstTensor, uint32_t dOffset,
+                                          uint32_t dRealSize, RunInfoX &runInfo)
     {
         uint32_t nopeDealSize = dRealSize;
 
@@ -491,15 +489,15 @@ public:
     __aicore__ inline void CopyValueSlice(const LocalTensor<KV_T> &dstTensor, uint32_t dOffset, uint32_t dRealSize,
                                           RunInfoX &runInfo)
     {
-        FaL1Tensor<KV_T, L1Format::NZ> l1Tensor{.tensor = dstTensor,
-                                                .rowCount = AttentionCommon::Align(runInfo.actSingleLoopS2Size, 16U)};
-
         GmKvCoord gmCoord{.bIdx = constInfo.isKvContinuous ? runInfo.bIdx : 0,
                           .n2Idx = runInfo.n2Idx,
                           .s2Idx = runInfo.s2Idx,
                           .dIdx = dOffset,
                           .s2DealSize = runInfo.actSingleLoopS2Size,
                           .dDealSize = dRealSize};
+
+        FaL1Tensor<KV_T, L1Format::NZ> l1Tensor{.tensor = dstTensor,
+                                                .rowCount = AttentionCommon::Align(runInfo.actSingleLoopS2Size, 16U)};
         copyKvGmToL1(l1Tensor, valueGm, gmCoord);
     }
 
@@ -534,7 +532,7 @@ public:
         valueGm.offsetCalculator.Init(0, constInfo.n2Size, s2Size, constInfo.dSize);
     }
 
-    __aicore__ inline void IterateBmm1(MM1_DBUF_T &outputBuf, RunInfoX &runInfo)
+    __aicore__ inline void IterateBmm1(MM1_DBUF_T &mm1ResBuf, RunInfoX &runInfo)
     {
         if constexpr (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_BNSD) {
             if (runInfo.isChangeBatch) {
@@ -543,25 +541,25 @@ public:
         }
 
 #ifdef SKIP_C1
-        outputBuf.WaitCrossCore();
-        outputBuf.SetCrossCore();
+        mm1ResBuf.WaitCrossCore();
+        mm1ResBuf.SetCrossCore();
         return;
 #endif
 
         if constexpr (dBaseSize > 256) {
-            IterateBmm1NdL1SplitK(outputBuf, runInfo);
+            IterateBmm1NdL1SplitK(mm1ResBuf, runInfo);
             return;
         }
 
         if constexpr (useDn) {
             if constexpr (dBaseSize > 128) {
-                IterateBmm1DnSplitK(outputBuf, runInfo);
+                IterateBmm1DnSplitK(mm1ResBuf, runInfo);
             } else {
-                IterateBmm1Dn(outputBuf, runInfo);
+                IterateBmm1Dn(mm1ResBuf, runInfo);
             }
             return;
         }
-        IterateBmm1NdL0Split(outputBuf, runInfo);
+        IterateBmm1NdL0Split(mm1ResBuf, runInfo);
     }
 
     __aicore__ inline void FixpipeMm1(const LocalTensor<T> &dstTensor, const LocalTensor<T> &l0C, RunInfoX &runInfo)
@@ -584,7 +582,7 @@ public:
     }
 
     /* 针对S1Base=128, S2Base = 128, D > 128场景，L1全载，左矩阵驻留 + L0切D + L0Db*/
-    __aicore__ inline void IterateBmm1NdL0Split(MM1_DBUF_T &outputBuf, RunInfoX &runInfo)
+    __aicore__ inline void IterateBmm1NdL0Split(MM1_DBUF_T &mm1ResBuf, RunInfoX &runInfo)
     {
         Buffer<BufferType::L1> mm1A;
         if (unlikely(runInfo.isFirstS2Loop)) {
@@ -634,15 +632,15 @@ public:
         mm1ResL0C.Set<HardEvent::M_FIX>();  // 通知
         mm1ResL0C.Wait<HardEvent::M_FIX>(); // 等待L0C
 
-        outputBuf.WaitCrossCore();
-        FixpipeMm1(outputBuf.template GetTensor<T>(), mm1ResL0C.GetTensor<T>(), runInfo);
+        mm1ResBuf.WaitCrossCore();
+        FixpipeMm1(mm1ResBuf.template GetTensor<T>(), mm1ResL0C.GetTensor<T>(), runInfo);
 
         mm1ResL0C.Set<HardEvent::FIX_M>();
-        outputBuf.SetCrossCore();
+        mm1ResBuf.SetCrossCore();
     }
 
     /* 针对S1Base=128, S2Base = 128, D > 256场景，L1层面切K，且左矩阵单Buffer+驻留，右矩阵每次重新搬运。*/
-    __aicore__ inline void IterateBmm1NdL1SplitK(MM1_DBUF_T &outputBuf, RunInfoX &runInfo)
+    __aicore__ inline void IterateBmm1NdL1SplitK(MM1_DBUF_T &mm1ResBuf, RunInfoX &runInfo)
     {
         constexpr uint32_t baseKSize = l1BaseD;
         uint32_t kLoops = (constInfo.dSize + baseKSize - 1) / baseKSize;
@@ -694,39 +692,39 @@ public:
             mm1A.Set<HardEvent::MTE1_MTE2>();
         }
         mm1ResL0C.Set<HardEvent::M_FIX>(); // 通知
-        outputBuf.WaitCrossCore();
+        mm1ResBuf.WaitCrossCore();
 
         mm1ResL0C.Wait<HardEvent::M_FIX>(); // 等待L0C
-        FixpipeMm1(outputBuf.template GetTensor<T>(), mm1ResL0C.GetTensor<T>(), runInfo);
+        FixpipeMm1(mm1ResBuf.template GetTensor<T>(), mm1ResL0C.GetTensor<T>(), runInfo);
 
         mm1ResL0C.Set<HardEvent::FIX_M>(); // 释放
-        outputBuf.SetCrossCore();
+        mm1ResBuf.SetCrossCore();
     }
 
     /* 针对useDn=true, S1Base=128, S2Base = 128, 128 < D <= 256场景，L1全载，左矩阵驻留 + L0切D + L0Db*/
-    __aicore__ inline void IterateBmm1DnSplitK(MM1_DBUF_T &outputBuf, RunInfoX &runInfo)
+    __aicore__ inline void IterateBmm1DnSplitK(MM1_DBUF_T &mm1ResBuf, RunInfoX &runInfo)
     {
-        Buffer<BufferType::L1> mm1B;
+        Buffer<BufferType::L1> mm1BBuffer;
         if (unlikely(runInfo.isFirstS2Loop)) {
-            mm1B = l1QBuffers.Get();
-            mm1B.Wait<HardEvent::MTE1_MTE2>();
-            LocalTensor<Q_T> mm1BTensor = mm1B.GetTensor<Q_T>();
+            mm1BBuffer = l1QBuffers.Get();
+            mm1BBuffer.Wait<HardEvent::MTE1_MTE2>();
+            LocalTensor<Q_T> mm1BTensor = mm1BBuffer.GetTensor<Q_T>();
             CopyQueryTile(mm1BTensor, runInfo);
-            mm1B.Set<HardEvent::MTE2_MTE1>();
+            mm1BBuffer.Set<HardEvent::MTE2_MTE1>();
         } else {
-            mm1B = l1QBuffers.GetPre();
-            mm1B.Set<HardEvent::MTE2_MTE1>();
+            mm1BBuffer = l1QBuffers.GetPre();
+            mm1BBuffer.Set<HardEvent::MTE2_MTE1>();
         }
 
-        Buffer<BufferType::L1> mm1A = l1KBuffers.Get();
-        mm1A.Wait<HardEvent::MTE1_MTE2>();
-        LocalTensor<KV_T> mm1ATensor = mm1A.GetTensor<KV_T>();
+        Buffer<BufferType::L1> mm1ABuffer = l1KBuffers.Get();
+        mm1ABuffer.Wait<HardEvent::MTE1_MTE2>();
+        LocalTensor<KV_T> mm1ATensor = mm1ABuffer.GetTensor<KV_T>();
 
         CopyKeyTile(mm1ATensor, runInfo);
 
-        mm1A.Set<HardEvent::MTE2_MTE1>();
-        mm1A.Wait<HardEvent::MTE2_MTE1>();
-        mm1B.Wait<HardEvent::MTE2_MTE1>();
+        mm1ABuffer.Set<HardEvent::MTE2_MTE1>();
+        mm1ABuffer.Wait<HardEvent::MTE2_MTE1>();
+        mm1BBuffer.Wait<HardEvent::MTE2_MTE1>();
 
         Buffer<BufferType::L0C> mm1ResL0C = mmL0CBuffers.Get();
         mm1ResL0C.Wait<HardEvent::FIX_M>();
@@ -734,21 +732,21 @@ public:
         MMParam param = MakeMMParam((uint32_t)runInfo.actSingleLoopS2Size, (uint32_t)runInfo.actMSize,
                                     (uint32_t)(constInfo.dSize), false, true);
 
-        MatmulK<KV_T, Q_T, T, 128, 128, 128, ABLayout::MK, ABLayout::KN>(mm1A.GetTensor<KV_T>(),
-            mm1B.GetTensor<Q_T>(), mmL0ABuffers, mmL0BBuffers, mm1ResL0C.GetTensor<T>(), param);
+        MatmulK<KV_T, Q_T, T, 128, 128, 128, ABLayout::MK, ABLayout::KN>(mm1ABuffer.GetTensor<KV_T>(),
+            mm1BBuffer.GetTensor<Q_T>(), mmL0ABuffers, mmL0BBuffers, mm1ResL0C.GetTensor<T>(), param);
 
         if (unlikely(runInfo.isLastS2Loop)) {
-            mm1B.Set<HardEvent::MTE1_MTE2>();
+            mm1BBuffer.Set<HardEvent::MTE1_MTE2>();
         }
-        mm1A.Set<HardEvent::MTE1_MTE2>();
+        mm1ABuffer.Set<HardEvent::MTE1_MTE2>();
         mm1ResL0C.Set<HardEvent::M_FIX>();
         mm1ResL0C.Wait<HardEvent::M_FIX>();
 
-        outputBuf.WaitCrossCore();
-        FixpipeMm1Dn(outputBuf.template GetTensor<T>(), mm1ResL0C.GetTensor<T>(), runInfo);
+        mm1ResBuf.WaitCrossCore();
+        FixpipeMm1Dn(mm1ResBuf.template GetTensor<T>(), mm1ResL0C.GetTensor<T>(), runInfo);
 
         mm1ResL0C.Set<HardEvent::FIX_M>();
-        outputBuf.SetCrossCore();
+        mm1ResBuf.SetCrossCore();
     }
 
     __aicore__ inline void FixpipeMm1Dn(const LocalTensor<T> &dstTensor, const LocalTensor<T> &l0C, RunInfoX &runInfo)
@@ -765,7 +763,7 @@ public:
         Fixpipe<T, T, PFA_CFG_ROW_MAJOR_UB>(dstTensor, l0C, fixpipeParams); // 将matmul结果从L0C搬运到UB
     }
 
-    __aicore__ inline void IterateBmm1Dn(MM1_DBUF_T &outputBuf, RunInfoX &runInfo)
+    __aicore__ inline void IterateBmm1Dn(MM1_DBUF_T &mm1ResBuf, RunInfoX &runInfo)
     {
         Buffer<BufferType::L1> mm1B;
         if (unlikely(runInfo.isFirstS2Loop)) {
@@ -807,13 +805,13 @@ public:
         mm1ResL0C.Set<HardEvent::M_FIX>();
         mm1ResL0C.Wait<HardEvent::M_FIX>();
 
-        outputBuf.WaitCrossCore();
-        FixpipeMm1Dn(outputBuf.template GetTensor<T>(), mm1ResL0C.GetTensor<T>(), runInfo);
+        mm1ResBuf.WaitCrossCore();
+        FixpipeMm1Dn(mm1ResBuf.template GetTensor<T>(), mm1ResL0C.GetTensor<T>(), runInfo);
         mm1ResL0C.Set<HardEvent::FIX_M>(); // 释放L0C
-        outputBuf.SetCrossCore();
+        mm1ResBuf.SetCrossCore();
     }
 
-    __aicore__ inline void IterateBmm2(mm2ResPos &outputBuf, MM2_ABUF_POLICY_T &inputBuf, RunInfoX &runInfo)
+    __aicore__ inline void IterateBmm2(mm2ResPos &mm2ResBuf, MM2_ABUF_POLICY_T &inputBuf, RunInfoX &runInfo)
     {
         if constexpr (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_BNSD) {
             if (runInfo.isChangeBatch) {
@@ -825,35 +823,34 @@ public:
         Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> mm2A = inputBuf.Get();
         mm2A.WaitCrossCore();
         if constexpr (bmm2Write2Ub) {
-            outputBuf.WaitCrossCore();
+            mm2ResBuf.WaitCrossCore();
         }
-        outputBuf.SetCrossCore();
+        mm2ResBuf.SetCrossCore();
         return;
 #endif
 
         if constexpr ((uint32_t)dVTemplateType > 256 || (uint32_t)dTemplateType > 256) {
-            IterateBmm2L1SplitN(outputBuf, inputBuf, runInfo);
+            IterateBmm2L1SplitN(mm2ResBuf, inputBuf, runInfo);
         } else {
-            IterateBmm2l0Split(outputBuf, inputBuf, runInfo);
+            IterateBmm2l0Split(mm2ResBuf, inputBuf, runInfo);
         }
     }
 
-    __aicore__ inline void IterateBmm2L1SplitN(mm2ResPos &outputBuf, MM2_ABUF_POLICY_T &inputBuf, RunInfoX &runInfo)
+    __aicore__ inline void IterateBmm2L1SplitN(mm2ResPos &mm2ResBuf, MM2_ABUF_POLICY_T &inputBuf, RunInfoX &runInfo)
     {
         MM2_ABUF_T mm2A = inputBuf.Get();
         mm2A.WaitCrossCore();
 
         // dVTemplateType > 256, L1切N, 左矩阵不变，右矩阵每次循环搬运S2*128
         if constexpr (bmm2Write2Ub) {
-            outputBuf.WaitCrossCore();
+            mm2ResBuf.WaitCrossCore();
         }
         constexpr uint32_t baseNSize = l1BaseD;
         uint32_t nLoops = ((uint32_t)constInfo.dSizeV + baseNSize - 1) / baseNSize; // 尾块处理
         uint32_t realN = baseNSize;
         for (uint32_t nIdx = 0; nIdx < nLoops; ++nIdx) {
             if (nIdx == nLoops - 1) {
-                uint32_t tailSize = (uint32_t)constInfo.dSizeV % baseNSize;
-                realN = tailSize ? tailSize : baseNSize;
+                realN = constInfo.dSizeV - nIdx * baseNSize;
             }
             Buffer<BufferType::L1> mm2B = l1VBuffers.Get();
             mm2B.Wait<HardEvent::MTE1_MTE2>();
@@ -877,11 +874,11 @@ public:
             mm2ResL0C.Set<HardEvent::M_FIX>();
             mm2ResL0C.Wait<HardEvent::M_FIX>();
 
-            FixpipeMm2PartialN(outputBuf.template GetTensor<T>()[nIdx * baseNSize],
+            FixpipeMm2PartialN(mm2ResBuf.template GetTensor<T>()[nIdx * baseNSize],
                                mm2ResL0C.GetTensor<T>(), realN, runInfo);
             mm2ResL0C.Set<HardEvent::FIX_M>();
         }
-        outputBuf.SetCrossCore();
+        mm2ResBuf.SetCrossCore();
     }
 
     template <typename DST_TENSOR_T>
@@ -915,7 +912,7 @@ public:
         Fixpipe<T, T, BMM2_FIXPIPE_CONFIG>(dstTensor, l0C, fixpipeParams);
     }
 
-    __aicore__ inline void IterateBmm2l0Split(mm2ResPos &outputBuf, MM2_ABUF_POLICY_T &inputBuf, RunInfoX &runInfo)
+    __aicore__ inline void IterateBmm2l0Split(mm2ResPos &mm2ResBuf, MM2_ABUF_POLICY_T &inputBuf, RunInfoX &runInfo)
     {
         Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> mm2A = inputBuf.Get();
         Buffer<BufferType::L1> mm2B = l1VBuffers.Get();
@@ -927,16 +924,9 @@ public:
 
         Buffer<BufferType::L0C> mm2ResL0C = mmL0CBuffers.Get();
         mm2ResL0C.Wait<HardEvent::FIX_M>(); // 占用
-        MMParam param = {
-            (uint32_t)mBaseSize,                   // singleM 128
-            (uint32_t)constInfo.dSizeV,            // singleN 128
-            (uint32_t)runInfo.actSingleLoopS2Size, // singleK
-            useDn,                                 // isLeftTranspose
-            false                                  // isRightTranspose
-        };
-        if constexpr (!useDn) {
-            param.realM = (uint32_t)runInfo.actMSize;
-        }
+        MMParam param = MakeMMParam(mBaseSize, (uint32_t)constInfo.dSizeV,
+                                    (uint32_t)runInfo.actSingleLoopS2Size, useDn, false,
+                                    true, true, 0, useDn ? 0 : (uint32_t)runInfo.actMSize);
         mm2B.Wait<HardEvent::MTE2_MTE1>(); // 等待
 
         if constexpr ((uint32_t)dVTemplateType <= 128) {
@@ -957,13 +947,13 @@ public:
         mm2ResL0C.Wait<HardEvent::M_FIX>(); // 等待
 
         if constexpr (bmm2Write2Ub) {
-            outputBuf.WaitCrossCore();
+            mm2ResBuf.WaitCrossCore();
         }
 
-        FixpipeMm2PartialN(outputBuf.template GetTensor<T>(), mm2ResL0C.GetTensor<T>(), constInfo.dSizeV, runInfo);
+        FixpipeMm2PartialN(mm2ResBuf.template GetTensor<T>(), mm2ResL0C.GetTensor<T>(), constInfo.dSizeV, runInfo);
 
         mm2ResL0C.Set<HardEvent::FIX_M>(); // 释放
-        outputBuf.SetCrossCore();
+        mm2ResBuf.SetCrossCore();
     }
 
 };

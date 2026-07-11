@@ -37,35 +37,35 @@
     <tr>
       <td>cu_seqlens_q</td>
       <td>可选输入</td>
-      <td>表示不同Batch中Query的有效Sequence Length，维度为B+1，仅layout_q为TND场景下必传，第一个值固定为0。</td>
+      <td>表示不同Batch中Query的有效Sequence Length，shape为(B+1, )，仅layout_q为TND场景下必传，第一个值固定为0。</td>
       <td>INT32</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>cu_seqlens_k</td>
       <td>可选输入</td>
-      <td>表示不同Batch中Key的有效Sequence Length，维度为B+1，仅layout_k为TND场景下必传，第一个值固定为0。</td>
+      <td>表示不同Batch中Key的有效Sequence Length，shape为(B+1, )，仅layout_k为TND场景下必传，第一个值固定为0。</td>
       <td>INT32</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>seqused_q</td>
       <td>可选输入</td>
-      <td>表示不同Batch中Query实际参与运算的Sequence Length，维度为B。</td>
+      <td>表示不同Batch中Query实际参与运算的Sequence Length，shape为(B, )。</td>
       <td>INT32</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>seqused_k</td>
       <td>可选输入</td>
-      <td>表示不同Batch中Key实际参与运算的Sequence Length，维度为B。</td>
+      <td>表示不同Batch中Key实际参与运算的Sequence Length，shape为(B, )。</td>
       <td>INT32</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>cmp_residual_k</td>
       <td>可选输入</td>
-      <td>表示不同Batch中cmp_kv压缩后Sequence Length的余数，配合cmp_ratio实现cmp_kv部分的mask和负载计算，维度为B。cmp_ratio不为1且mask_mode为3场景下必传。</td>
+      <td>表示不同Batch中cmp_kv压缩后Sequence Length的余数，配合cmp_ratio实现cmp_kv部分的mask和负载计算，shape为(B, )。cmp_ratio不为1且mask_mode为3场景下必传。</td>
       <td>INT32</td>
       <td>ND</td>
     </tr>
@@ -170,4 +170,4 @@
 | 调用方式  | 样例代码                                                     | 说明                                                         |
 | --------- | ------------------------------------------------------------ | ------------------------------------------------------------ |
 | aclnn API | [test_aclnn_lightning_indexer_v2_metadata](./examples/test_aclnn_lightning_indexer_v2_metadata.cpp) | 通过[aclnnLightningIndexerV2Metadata](./docs/aclnnLightningIndexerV2Metadata.md)接口调用LightningIndexerV2Metadata算子 |
-| PyTorch API | [test_torch_lightning_indexer_v2_metadata](./examples/test_torch_lightning_indexer_v2_metadata.py) | 通过[torch.ops.cann_ops_transformer.lightning_indexer_metadata](../../torch_extension/cann_ops_transformer/docs/zh/lightning_indexer.md)接口调用LightningIndexerV2Metadata算子 |
+| PyTorch API | [test_torch_lightning_indexer_v2_metadata](./examples/test_torch_lightning_indexer_v2_metadata.py) | 通过[lightning_indexer_metadata](../../torch_extension/cann_ops_transformer/docs/zh/lightning_indexer.md)接口调用LightningIndexerV2Metadata算子 |

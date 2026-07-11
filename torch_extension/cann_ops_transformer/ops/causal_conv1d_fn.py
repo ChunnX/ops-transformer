@@ -28,7 +28,7 @@ class CausalConv1dFnOpBuilder(OpBuilder):
         """PyTorch operator schema."""
         return (
             "causal_conv1d_fn("
-            "Tensor x, Tensor weight, Tensor bias, "
+            "Tensor x, Tensor weight, Tensor? bias, "
             "Tensor conv_states, "
             "Tensor query_start_loc, "
             "*, "
@@ -51,7 +51,7 @@ class CausalConv1dFnOpBuilder(OpBuilder):
         def causal_conv1d_fn_meta(
             x: torch.Tensor,
             weight: torch.Tensor,
-            bias: torch.Tensor,
+            bias: Optional[torch.Tensor],
             conv_states: torch.Tensor,
             query_start_loc: torch.Tensor,
             *,
@@ -71,14 +71,13 @@ class CausalConv1dFnOpBuilder(OpBuilder):
 
 
 _causal_conv1d_fn_op_builder = CausalConv1dFnOpBuilder()
-_op_module = _causal_conv1d_fn_op_builder.load()
 
 
 @impl(AS_LIBRARY, _causal_conv1d_fn_op_builder.name, "PrivateUse1")
 def _causal_conv1d_fn(
     x: torch.Tensor,
     weight: torch.Tensor,
-    bias: torch.Tensor,
+    bias: Optional[torch.Tensor],
     conv_states: torch.Tensor,
     query_start_loc: torch.Tensor,
     *,
@@ -93,6 +92,7 @@ def _causal_conv1d_fn(
     num_computed_tokens: Optional[torch.Tensor] = None,
     block_size_to_align: int = 0,
 ) -> torch.Tensor:
+    _op_module = _causal_conv1d_fn_op_builder.load()
     return _op_module.causal_conv1d_fn(
         x, weight, bias, conv_states,
         query_start_loc, cache_indices,
@@ -109,7 +109,7 @@ def _causal_conv1d_fn(
 def causal_conv1d_fn(
     x: torch.Tensor,
     weight: torch.Tensor,
-    bias: torch.Tensor,
+    bias: Optional[torch.Tensor],
     conv_states: torch.Tensor,
     query_start_loc: torch.Tensor,
     *,
@@ -134,7 +134,7 @@ def causal_conv1d_fn(
         x (Tensor): 输入序列，shape 为 [batch, seq_len, dim]（固定 batch）或 [cu_seq_len, dim]（变长），
             dtype 支持 float16/bfloat16。
         weight (Tensor): 卷积权重，shape 为 [kW, dim]，其中 kW∈{2, 3, 4}，dtype 与 x 一致。
-        bias (Tensor): 偏置，shape 为 [dim]，dtype 与 x 一致。
+        bias (Tensor, optional): 偏置，shape 为 [dim]，dtype 与 x 一致，None 表示不使用。
         conv_states (Tensor): 卷积状态缓存，shape 为 [num_cache_lines, state_len, dim]，
             dtype 与 x 一致。计算后原地更新。
         query_start_loc (Tensor): 变长序列起始位置索引，shape 为 [batch+1]，int32。

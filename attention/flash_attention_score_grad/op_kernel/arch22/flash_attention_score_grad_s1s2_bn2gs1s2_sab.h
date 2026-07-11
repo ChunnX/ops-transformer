@@ -3762,14 +3762,14 @@ FlashAttentionScoreGradS1s2Bn2gs1s2SameAB<FAGT>::SubGrapA(int64_t curIdx, int64_
         AscendC::WaitFlag<HardEvent::MTE2_V>(static_cast<int32_t>(vWaitMte2));
     } else {
         int64_t mmAddr = pingpongIdx * cubeBaseMN + curS1Idx * s1VecSize * C0_SIZE + curS2Idx * dbParam.s1CvExtendAlign * s2VecSize;
-        NZCopyIn(mmAddr, mm2WorkspaceGm, vecClc2Buffer, s1VecSize, s2ExtendAlign, dbParam.s1CvExtendAlign);
+        NZCopyIn(mmAddr, mm2WorkspaceGm, vecClc2Buffer, s1ExtendSubGraph, s2ExtendAlign, dbParam.s1CvExtendAlign);
         event_t vWaitMte2 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_V));
         AscendC::SetFlag<HardEvent::MTE2_V>(static_cast<int32_t>(vWaitMte2));
         AscendC::WaitFlag<HardEvent::MTE2_V>(static_cast<int32_t>(vWaitMte2));
         auto tmpTensor = unifiedBuffer.GetWithOffset<T2>(TMP_UB_SIZE / sizeof(T2), TMP_UB_OFFSET);
-        DataCopy(tmpTensor, vecClc2Buffer, s1VecSize * s2ExtendAlign + s2ExtendAlign / C0_SIZE * VEC_REPEAT);
+        DataCopy(tmpTensor, vecClc2Buffer, s1ExtendSubGraph * s2ExtendAlign + s2ExtendAlign / C0_SIZE * VEC_REPEAT);
         AscendC::PipeBarrier<PIPE_V>();
-        NZ2ND(vecClc2Buffer, tmpTensor, s1VecSize, s2ExtendAlign);
+        NZ2ND(vecClc2Buffer, tmpTensor, s1ExtendSubGraph, s2ExtendAlign);
     }
 
     ///////////////////////////////////////////////////////////////
@@ -3990,14 +3990,14 @@ FlashAttentionScoreGradS1s2Bn2gs1s2SameAB<FAGT>::SubGrapB(int64_t curIdx, int64_
         AscendC::WaitFlag<HardEvent::MTE2_V>(static_cast<int32_t>(vWaitMte2));
     } else {
         int64_t mmAddr = pingpongIdx * cubeBaseMN + curS1Idx * s1VecSize * C0_SIZE + curS2Idx * dbParam.s1CvExtendAlign * s2VecSize;
-        NZCopyIn(mmAddr, mm1WorkspaceGm, vecClc1Buffer, s1VecSize, s2ExtendAlign, dbParam.s1CvExtendAlign);
+        NZCopyIn(mmAddr, mm1WorkspaceGm, vecClc1Buffer, s1ExtendSubGraph, s2ExtendAlign, dbParam.s1CvExtendAlign);
         event_t vWaitMte2 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_V));
         AscendC::SetFlag<HardEvent::MTE2_V>(static_cast<int32_t>(vWaitMte2));
         AscendC::WaitFlag<HardEvent::MTE2_V>(static_cast<int32_t>(vWaitMte2));
         auto tmpTensor = unifiedBuffer.GetWithOffset<T2>(TMP_UB_SIZE / sizeof(T2), TMP_UB_OFFSET);
-        DataCopy(tmpTensor, vecClc1Buffer, s1VecSize * s2ExtendAlign + s2ExtendAlign / C0_SIZE * VEC_REPEAT);
+        DataCopy(tmpTensor, vecClc1Buffer, s1ExtendSubGraph * s2ExtendAlign + s2ExtendAlign / C0_SIZE * VEC_REPEAT);
         AscendC::PipeBarrier<PIPE_V>();
-        NZ2ND(vecClc1Buffer, tmpTensor, s1VecSize, s2ExtendAlign);
+        NZ2ND(vecClc1Buffer, tmpTensor, s1ExtendSubGraph, s2ExtendAlign);
     }
 
     ///////////////////////////////////////////////////////////////

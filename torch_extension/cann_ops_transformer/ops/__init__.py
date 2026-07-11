@@ -8,12 +8,11 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 from .sparse_flash_mla_grad import sparse_flash_mla_grad, sparse_flash_mla_grad_metadata
-from .moe_distribute_dispatch import npu_moe_distribute_dispatch
-from .moe_distribute_combine import npu_moe_distribute_combine
+from .moe_token_permute import moe_token_permute
 from .mega_moe import (
     get_symm_buffer_for_mega_moe,
     mega_moe,
-    npu_get_mega_moe_ccl_buffer_size
+    get_mega_moe_ccl_buffer_size
 )
 from .deep_ep import MoeDistributeBuffer
 from .flash_attn import flash_attn, flash_attn_metadata
@@ -32,6 +31,13 @@ from .kv_compress_epilog import kv_compress_epilog
 from .indexer_quant_cache import indexer_quant_cache
 from .compressor import compressor
 from .inplace_partial_rotary_mul import inplace_partial_rotary_mul
-from . import graph_convert as _graph_convert
+from .inplace_partial_rotary_mul_backward import inplace_partial_rotary_mul_backward
 from .causal_conv1d_fn import causal_conv1d_fn
 from .causal_conv1d_update import causal_conv1d_update
+from . import graph_convert as _graph_convert
+from .qkv_rms_norm_rope_cache_with_k_scale import (
+    qkv_rms_norm_rope_cache_with_k_scale,
+    qkv_rms_norm_rope_cache_with_k_scale_
+)
+from .elastic_buffer import ElasticBuffer, EPHandle
+from .grouped_matmul_activation_quant import grouped_matmul_activation_quant

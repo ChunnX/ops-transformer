@@ -20,7 +20,7 @@
 #include "common/utils/op_mc2.h"
 #include "mc2_log.h"
 #include "op_host/op_tiling/mc2_tiling_utils.h"
-#include "mc2_comm_utils.h"
+#include "mc2_tiling_utils.h"
 #include "op_host/tiling_templates_registry.h"
 #include "../../../op_kernel/matmul_reduce_scatter_v2_apt_tiling_key.h"
 #include "reduce_scatter_fit_balance_tiling.h"
@@ -72,7 +72,6 @@ constexpr uint32_t OUTPUT_TYPE_FLOAT = 2;
 constexpr uint32_t BLOCKSIZE_INDEX = 6;
 constexpr uint32_t GROUPSIZE_INDEX = 7;
 constexpr uint32_t TRANSPOSEB_INDEX = 3;
-constexpr uint32_t COMMMODE_INDEX = 10;
 }  // namespace
 
 bool QuantBmmReduceScatterTiling::IsCapable()
@@ -384,12 +383,12 @@ ge::graphStatus QuantBmmReduceScatterTiling::SetMc2Hcomm()
     AscendC::Mc2CcTilingConfig mc2CcTilingConfig(
         group, opType, rsConfig, reduceType, dataType, dataType
     );
-    if (commMode_ == Mc2Comm::COMM_MODE_AICPU) {
-        mc2CcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_AICPU);
-        OP_LOGD(opName_, "[COMM_MODE] Set CommEngine to AiCPU for matmul_reduce_scatter_v2");
+    if (commMode_ == TPL_AICPU_COMM_MODE) {
+        mc2CcTilingConfig.SetCommEngine(mc2tiling::A5_AICPU_TS_ENGINE);
+        OP_LOGD(opName_, "[SetCommEngine] Set CommEngine to AiCPU for quant_bmm_reduce_scatter_tiling.");
     } else {
-        mc2CcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_CCU);
-        OP_LOGD(opName_, "[COMM_MODE] Set CommEngine to CCU for matmul_reduce_scatter_v2");
+        mc2CcTilingConfig.SetCommEngine(mc2tiling::A5_CCU_ENGINE);
+        OP_LOGD(opName_, "[SetCommEngine] Set CommEngine to CCU for quant_bmm_reduce_scatter_tiling.");
     }
     OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(quantBmmMatmulReducescatterTilingData_->mc2InitTiling) != 0,
         OP_LOGE(opName_, "mc2CcTilingConfig mc2tiling GetTiling mc2InitTiling failed"), return ge::GRAPH_FAILED);
@@ -854,11 +853,13 @@ CutResult QuantBmmReduceScatterTiling::GetTilingResult()
         return quantBmmScatterTiling.GetTiling();
     } else if (mc2tiling::Is8P(args_.rankDim, npuArch_)) {
         MMReduceScatterFitBalanceTiling quantBmmScatterTiling(args_,
-            KernelType::REDUCE_SCATTER_VIA_ALL_TO_ALL, TopoType::EIGHT_P);
+            KernelType::REDUCE_SCATTER_VIA_ALL_TO_ALL, TopoType::EIGHT_P,
+            SocVersion::SOC950, (commMode_ == TPL_AICPU_COMM_MODE));
         return quantBmmScatterTiling.GetTiling();
     } else {
         SocVersion inputSocVersion = (npuArch_ == NpuArch::DAV_3510) ? SocVersion::SOC950 : SocVersion::SOC910_B;
-        MMPlusReduceScatter quantBmmScatterTiling(args_, args_.rankDim, KernelType::REDUCE_SCATTER, inputSocVersion);
+        MMPlusReduceScatter quantBmmScatterTiling(args_, args_.rankDim, KernelType::REDUCE_SCATTER, inputSocVersion,
+            false, (commMode_ == TPL_AICPU_COMM_MODE));
         quantBmmScatterTiling.GetTiling();
         return quantBmmScatterTiling.tilingM_.cutRes;
     }

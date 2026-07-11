@@ -22,7 +22,7 @@
 #include "tiling/tiling_api.h"
 #include "mat_mul_v3/op_host/op_tiling/matmul_v3_base_tiling.h"
 #include "quant_batch_matmul_v3/op_host/op_tiling/arch35/adaptive_sliding_window_tiling.h"
-#include "../../../op_kernel/arch35/all_gather_matmul_tiling_arch35.h"
+#include "../../../op_kernel/all_gather_matmul_tiling_arch35.h"
 
 namespace optiling
 {
@@ -66,6 +66,7 @@ protected:
     ge::graphStatus CheckGroupSize();
     ge::graphStatus CheckPerBlockScaleInput();
     ge::graphStatus CheckMXFPScaleInput();
+    ge::graphStatus CheckMXFP4Input();
     ge::graphStatus CheckPerTensorScaleInput();
     ge::graphStatus CheckBiasInput();
     ge::graphStatus SetQuantScene();
@@ -81,6 +82,7 @@ private:
     uint64_t myWorkSpaceSize_{0U};
     uint64_t scale1kSpaceSize_{0U};
     mc2tiling::Mc2QuantMode quantMmMode_{mc2tiling::Mc2QuantMode::INVALID_MODE};
+    bool isFp4_ = false;
 };
 
 class AllGatherQuantBmmHelper : public Mc2AdaptiveSlidingWindowTiling

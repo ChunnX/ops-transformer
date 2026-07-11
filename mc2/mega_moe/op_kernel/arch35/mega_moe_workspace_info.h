@@ -23,6 +23,7 @@
 #define GM_ADDR uint8_t*
 #define HOST_DEVICE
 #endif
+#include "mega_moe_impl_base.h"
 
 namespace {
 constexpr uint64_t M_VALUE = 0UL;
@@ -98,6 +99,9 @@ constexpr uint8_t GROUPED_MATMUL_MODE_A8W8_NZ = 2U;
 constexpr uint8_t GROUPED_MATMUL_MODE_A4W4 = 3U;
 // a4w4 NZ 场景：weight1/weight2 均为 fp4 NZ 格式。
 constexpr uint8_t GROUPED_MATMUL_MODE_A4W4_NZ = 4U;
+constexpr int64_t TOPO_TYPE_MTE = 0U; // mte
+constexpr int64_t TOPO_TYPE_URMA = 1U; // urma
+
 } // namespace
 
 struct WorkspaceInfo {
@@ -109,14 +113,23 @@ struct WorkspaceInfo {
     GM_ADDR tripleInfoPtr;
     GM_ADDR flagSwiGluToGmm2Ptr;
     GM_ADDR flagDispatchToGmm1Ptr;
+    GM_ADDR flagSendCntCalToUpdParamsPtr;
     GM_ADDR cumsumInfoPtr;
     GM_ADDR gmm1MmadResPtr;
     GM_ADDR gmm2MmadResPtr;
     GM_ADDR gmm2CombineSyncCounterPtr;
 
+    GM_ADDR maskSlotPtr; // urma发送mask临时GM
+    GM_ADDR dispatchL1CommPtr; // dispatch L1 communication workspace
+    GM_ADDR dispatchCursorPtr; // dispatch cnt for each expert
+    GM_ADDR dispatchDonePtr; // dispatch done
+    GM_ADDR dispatchL2CommPtr; // dispatch l2 communication workspace
+    GM_ADDR combineCommNotifyPtr; // 合并发送通知临时GM
+    GM_ADDR combineCommDataPtr; // combine communication workspace
+
     int64_t workspaceSize;
     HOST_DEVICE WorkspaceInfo() = default;
-    HOST_DEVICE WorkspaceInfo(GM_ADDR base, const MegaMoeTilingData *tilingData)
+    HOST_DEVICE WorkspaceInfo(GM_ADDR base, const MegaMoeTilingData *tilingData, uint32_t serverNum = 1)
     {
         workspaceSize = 0;
         dispatchRevDataPtr = base;
@@ -152,6 +165,10 @@ struct WorkspaceInfo {
         int64_t dispatchFlagSlotsPerExpert = Ops::Base::CeilAlign(maxWavesPerExpert,
             static_cast<int64_t>(INT_CACHELINE));
         workspaceSize += SIZE_INT_32 * tilingData->expertPerRank * dispatchFlagSlotsPerExpert;
+
+        // 每(expert, aiCore)单独占一个cache_line
+        flagSendCntCalToUpdParamsPtr = base + workspaceSize;
+        workspaceSize += SIZE_INT_32 * INT_CACHELINE * tilingData->expertPerRank * tilingData->aicNum;
 
         // Conditional allocation for A8W4 / combine-quant paths.
         // 以下条件分配与 mega_moe.h 编译期守卫 (ENABLE_A8W4 / ENABLE_A4W4 / CombineQuantMode) 一致，
@@ -189,6 +206,61 @@ struct WorkspaceInfo {
             int64_t stridePerExpert = Ops::Base::CeilAlign(
                 static_cast<int64_t>(tilingData->blockAivNum) * INT_CACHELINE * SIZE_INT_32, ALIGN_128);
             workspaceSize += stridePerExpert * tilingData->expertPerRank;
+        }
+
+        if (tilingData->topoType == TOPO_TYPE_URMA) {
+            maskSlotPtr = base + workspaceSize;
+            int64_t sendTotalNum = static_cast<int64_t>(tilingData->bs) * tilingData->topK;
+            int64_t compareCount = Ops::Base::CeilAlign(sendTotalNum * (int64_t)sizeof(int32_t), (int64_t)ALIGN_256) /
+                                                        (int64_t)sizeof(int32_t);
+            int64_t maskAlignSize = Ops::Base::CeilAlign(compareCount / 8, (int64_t)ALIGN_32);
+            int64_t maskSlotSize = maskAlignSize + (int64_t)ALIGN_32;  // mask + 32B count
+            
+            workspaceSize += Ops::Base::CeilAlign(
+                (int64_t)tilingData->expertPerRank * tilingData->epWorldSize * maskSlotSize, (int64_t)ALIGN_512);
+            
+            dispatchL1CommPtr = base + workspaceSize;
+            uint32_t mxScaleNum = Ops::Base::CeilDiv(tilingData->h, static_cast<uint32_t>(MXFP_SCALE_GROUP_NUM));
+            uint32_t dataBytes = Ops::Base::CeilAlign(tilingData->h, static_cast<uint32_t>(ALIGN_256)) * SIZE_INT_8;
+            uint32_t scaleBytes = mxScaleNum * SIZE_INT_8;
+            uint32_t tokenScaleBytes = Ops::Base::CeilAlign(dataBytes + scaleBytes, static_cast<uint32_t>(ALIGN_32));
+            uint32_t recordBytes = Ops::Base::CeilAlign(tokenScaleBytes + static_cast<uint32_t>(ALIGN_32),
+                static_cast<uint32_t>(ALIGN_512));
+            int64_t serverWorkspaceBytes = static_cast<int64_t>(ALIGN_32) +
+                static_cast<int64_t>(tilingData->bs) * recordBytes;
+            workspaceSize += Ops::Base::CeilAlign(
+                static_cast<int64_t>(serverNum) * serverWorkspaceBytes, static_cast<int64_t>(ALIGN_512));
+            
+            dispatchCursorPtr = base + workspaceSize;
+            workspaceSize += Ops::Base::CeilAlign(static_cast<int64_t>(serverNum * SIZE_INT_32),
+                static_cast<int64_t>(ALIGN_512));
+            
+            dispatchDonePtr = base + workspaceSize;
+            workspaceSize += Ops::Base::CeilAlign(static_cast<int64_t>(tilingData->aicNum * SIZE_INT_32),
+                static_cast<int64_t>(ALIGN_512));
+            
+            dispatchL2CommPtr = base + workspaceSize;
+            workspaceSize += Ops::Base::CeilAlign(
+                static_cast<int64_t>(tilingData->aicNum) * 6 * static_cast<int64_t>(recordBytes),
+                static_cast<int64_t>(ALIGN_512));
+
+            combineCommDataPtr = base + workspaceSize;
+            int64_t maxDataLengthPerBlock = Ops::Base::CeilAlign(static_cast<int64_t>(MegaMoeImpl::L1_TILE_N *
+                sizeof(uint32_t) / 2), (int64_t)ALIGN_32);
+            // 每个 token 含数据+三元组(32B)
+            int64_t maxDataSizePerToken = Ops::Base::CeilDiv(static_cast<int64_t>(tilingData->h),
+                (int64_t)MegaMoeImpl::L1_TILE_N) * (ALIGN_32 + maxDataLengthPerBlock);
+            int64_t maxDataSize = Ops::Base::CeilAlign(
+                static_cast<int64_t>(tilingData->bs) * maxDataSizePerToken *
+                static_cast<int64_t>(tilingData->expertPerRank) *
+                static_cast<int64_t>(tilingData->epWorldSize), (int64_t)ALIGN_512);
+            workspaceSize += maxDataSize;
+
+            combineCommNotifyPtr = base + workspaceSize;
+            // 每个 expert 分配一个 int32 通知
+            uint32_t maxNotifySize = Ops::Base::CeilAlign((int64_t)(tilingData->epWorldSize * sizeof(int32_t)),
+                (int64_t)ALIGN_512);
+            workspaceSize += maxNotifySize;
         }
     }
 };

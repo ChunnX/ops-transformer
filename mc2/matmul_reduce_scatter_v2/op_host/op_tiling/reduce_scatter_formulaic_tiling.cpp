@@ -15,6 +15,8 @@
 #include "mc2_log.h"
 #include "reduce_scatter_formulaic_tiling.h"
 
+constexpr static uint64_t AICPU_M_TILE_CAP = 4; // AICPU通路通信切分膨胀较大，限制最大切分轮数
+
 void MMPlusReduceScatter::SetCommTimeFactorForA5()
 {
     commPerf_.ChangeCommTimeFactorByDivision(REDUCESCATTER_COMMTIME_FACTOR);
@@ -91,6 +93,9 @@ void MMPlusReduceScatter::EstimateKernelTime()
 
 void MMPlusReduceScatter::SelectTilingMethod()
 {
+    if (isAicpuComm_ && rankDim_ > 8) { // AICPU大于8P场景通信切分膨胀较大，限制最大切分轮数
+        tilingM_.SetMaxTileCnt(AICPU_M_TILE_CAP);
+    }
     if (tilingM_.SetShortTileLen()) { // 如果shape太小就不切
         return;
     }
