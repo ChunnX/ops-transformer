@@ -147,7 +147,7 @@
 - 该接口支持图模式（GEIR）和单算子模式（aclnn）。
 - 参数A（Attention worker数量）支持 ≤ 1024。
 - 参数M（micro batch数量）支持 ≤ 64。
-- 参数topK+1（即max_out_shape[2]，topK加共享专家数）支持 ≤ 64。
+- 参数max_out_shape的第3维（topK+1，即topK加共享专家数）支持 ≤ 64。
 - 参数BS（micro batch size）和Y支持泛化，无硬上限（受内存限制）。
 - 参数H（hidden size）支持泛化。
 - token_dtype为2时，输入int8数据与fp32 scale连续排布。
