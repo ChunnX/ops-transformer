@@ -19,10 +19,10 @@ from cann_ops_transformer.op_builder.builder import OpBuilder
 
 @dataclass
 class EngramFetchCtx:
-    """训练态前向的 save-for-backward，原样传给 engram_fetch_backward。
+    """训练态前向的 save-for-backward，原样传给 engram_fetch_grad。
 
     前向 EngramFetch(with_grad=True) 产出以下 5 个 tensor，打包为 EngramFetchCtx 返回给用户。
-    反向 EngramFetchBackward 吃入这些 tensor，不自行重算（会漏 a2a 结果 recvLocalEntry）。
+    反向 EngramFetchGrad 吃入这些 tensor，不自行重算（会漏 a2a 结果 recvLocalEntry）。
 
     Attributes:
         perm: (T,) int32 — 桶排列序索引（原始 pos → 桶排 pos），反向步骤①按此重排 grad
@@ -307,11 +307,11 @@ class ElasticBuffer:
 
         return self._runtime.engram_fetch(indices)
 
-    def engram_fetch_backward(self, grad_fetched: torch.Tensor,
+    def engram_fetch_grad(self, grad_fetched: torch.Tensor,
                               fetch_ctx: "EngramFetchCtx"
                               ) -> Tuple[torch.Tensor, torch.Tensor]:
         """
-        Backward: launch fused kernel aclnnEngramFetchBackward.
+        Backward: launch fused kernel aclnnEngramFetchGrad.
 
         吃入前向 save-for-backward (fetch_ctx)，单融合 kernel 完成 3 步：
         ① grad_sorted = gradFetched[perm]
@@ -331,7 +331,7 @@ class ElasticBuffer:
                      lambda: f"grad_fetched must be on NPU, got device: {grad_fetched.device}")
         torch._check(grad_fetched.dim() == 2,
                      lambda: f"grad_fetched must be 2D, got dimensions: {grad_fetched.dim()}")
-        return self._runtime.engram_fetch_backward(
+        return self._runtime.engram_fetch_grad(
             grad_fetched, fetch_ctx.perm, fetch_ctx.sendCounts,
             fetch_ctx.recvCounts, fetch_ctx.recvLocalEntry)
 

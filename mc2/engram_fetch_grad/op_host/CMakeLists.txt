@@ -16,7 +16,7 @@ if (BUILD_OPEN_PROJECT)  # custom
         OP_API_INDEPENDENT ON
         OP_API_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../op_api
         OP_MC2_ENABLE ON
-        OPTYPE engram_fetch_backward engram_fetch_backward ACLNNTYPE aclnn aclnn_inner)
+        OPTYPE engram_fetch_grad engram_fetch_grad ACLNNTYPE aclnn aclnn_inner)
     set(SUB_MC2_COMPILE TRUE PARENT_SCOPE)
     set(MC2_OPT ON PARENT_SCOPE)
     set(engram_fetch_grad_depends mc2/common mc2/3rd mc2/engram_fetch PARENT_SCOPE)
@@ -24,12 +24,12 @@ if (BUILD_OPEN_PROJECT)  # custom
     set(CONDITION_UNIT ${ASCEND_COMPUTE_UNIT})
     if("${CONDITION_UNIT}" STREQUAL "ascend950")
         add_ops_compile_options(
-            OP_NAME EngramFetchBackward
+            OP_NAME EngramFetchGrad
             COMPUTE_UNIT Ascend950PR_9599
             OPTIONS --cce-auto-sync=off
         )
     endif()
 else()
-    add_mc2_modules_sources(OPTYPE engram_fetch_backward engram_fetch_backward ACLNNTYPE aclnn aclnn_inner)
+    add_mc2_modules_sources(OPTYPE engram_fetch_grad engram_fetch_grad ACLNNTYPE aclnn aclnn_inner)
     set(SUB_MC2_COMPILE TRUE PARENT_SCOPE)
 endif()

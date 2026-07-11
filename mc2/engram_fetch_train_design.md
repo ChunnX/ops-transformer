@@ -14,7 +14,7 @@
 2. **`with_grad` 在 `ElasticBuffer` 构造函数**：不在算子 attr 上
 3. **save-for-backward 作为可选输出**：推理传 nullptr，训练态非空
 4. **训练态内部走 all-to-all**：桶排序→a2a→gather→a2a→还原，融合在 issue/wait 内
-5. **反向 `EngramFetchBackward` 是新算子**：单融合 kernel，3 步
+5. **反向 `EngramFetchGrad` 是新算子**：单融合 kernel，3 步
 
 ### 1.2 推理 vs 训练对比
 
@@ -22,7 +22,7 @@
 |---|---|---|
 | 内部数据路径 | one-sided GET 拉行（RDMA read） | 两侧 all-to-all（桶排序→a2a→gather→a2a→还原） |
 | save-for-backward 可选输出 | 传 nullptr / 不产出 | 产出 `perm/sendCounts/recvCounts/recvLocalEntry/numRecv` |
-| `fetched` 是否可反向 | 否 | 是（经 `EngramFetchBackward`） |
+| `fetched` 是否可反向 | 否 | 是（经 `EngramFetchGrad`） |
 | GM（设备显存） | 无 | 每次 fetch 动态申请/释放（a2a 收发缓冲区） |
 | wait | callable 内调 `aclnnEngramFetchWait` | 接口内调 `aclnnEngramFetchWait` |
 
@@ -54,7 +54,7 @@ indices[T]
    └─→ save-for-backward: perm, sendCounts, recvCounts, recvLocalEntry, numRecv
 ```
 
-#### 反向 EngramFetchBackward（新算子，3 步）
+#### 反向 EngramFetchGrad（新算子，3 步）
 
 ```
 gradFetched(T,H) + perm/sendCounts/recvCounts/recvLocalEntry（前向 save-for-backward）
@@ -174,7 +174,7 @@ int64_t gmBytes = AlignTo(maxR * fp32_hiddenBytes, BUFFER_ALIGNMENT);
 ```python
 @dataclass
 class EngramFetchCtx:
-    """训练态前向的 save-for-backward，传给 engram_fetch_backward"""
+    """训练态前向的 save-for-backward，传给 engram_fetch_grad"""
     perm: torch.Tensor            # (T,) int32 — 桶排列序索引
     sendCounts: torch.Tensor      # (W,) int32 — 每 rank 发送的 index 数
     recvCounts: torch.Tensor      # (W,) int32 — 每 rank 接收的 index 数
@@ -205,17 +205,17 @@ def engram_fetch(self, indices: torch.Tensor) -> Callable:
     # 训练: 分配 5 个 save-for-backward tensor → 调 C++ → 返回 train_hook
 ```
 
-### 3.4 engram_fetch_backward
+### 3.4 engram_fetch_grad
 
 ```python
-def engram_fetch_backward(self, grad_fetched: torch.Tensor,
+def engram_fetch_grad(self, grad_fetched: torch.Tensor,
                           fetch_ctx: EngramFetchCtx) -> Tuple[Tensor, Tensor]:
     """
     返回 (grad_unique (K,H) fp32, unique_local_entry (K,) int32)
     grad_unique: 累加后的稀疏梯度
     unique_local_entry: 1D sparse index，标识梯度对应哪行 embedding
     """
-    return self._runtime.engram_fetch_backward(
+    return self._runtime.engram_fetch_grad(
         grad_fetched, fetch_ctx.perm, fetch_ctx.sendCounts,
         fetch_ctx.recvCounts, fetch_ctx.recvLocalEntry)
 ```
@@ -235,7 +235,7 @@ fetched, fetch_ctx = hook()              # (fetched (T,H), EngramFetchCtx)
 grad_fetched = ...                       # 对 fetched 的梯度
 
 # 反向
-grad_unique, unique_local_entry = buf.engram_fetch_backward(grad_fetched, fetch_ctx)
+grad_unique, unique_local_entry = buf.engram_fetch_grad(grad_fetched, fetch_ctx)
 # grad_unique (K,H) fp32 + unique_local_entry (K,) → 优化器更新 storage[unique_local_entry]
 ```
 
@@ -274,7 +274,7 @@ public:
         at::Tensor *numRecvOut = nullptr);
 
     // 反向（新算子）
-    std::tuple<at::Tensor, at::Tensor> EngramFetchBackward(
+    std::tuple<at::Tensor, at::Tensor> EngramFetchGrad(
         const at::Tensor &gradFetched,
         const at::Tensor &perm, const at::Tensor &sendCounts,
         const at::Tensor &recvCounts, const at::Tensor &recvLocalEntry);
@@ -307,14 +307,14 @@ EngramFetch(indices, permOut, sendCountsOut, recvCountsOut, recvLocalEntryOut, n
   └─ return [fetched]() { return fetched; }
 ```
 
-### 4.4 EngramFetchBackward 流程
+### 4.4 EngramFetchGrad 流程
 
 ```
-EngramFetchBackward(gradFetched, perm, sendCounts, recvCounts, recvLocalEntry)
+EngramFetchGrad(gradFetched, perm, sendCounts, recvCounts, recvLocalEntry)
   ├─ EnsureEngramContext()
   ├─ TORCH_CHECK(withGrad_, ...)
   ├─ AllocateAndExchangeGm(gmBytes)           ← fp32 规模
-  ├─ ACLNN_CMD(aclnnEngramFetchBackward, ...)
+  ├─ ACLNN_CMD(aclnnEngramFetchGrad, ...)
   │    # kernel: ① grad_sorted = gradFetched[perm]
   │    #         ② a2a(grad_sorted) → recvGrad
   │    #         ③ unique + fp32 scatter-add → gradUnique + uniqueLocalEntry
@@ -337,7 +337,7 @@ EngramFetchBackward(gradFetched, perm, sendCounts, recvCounts, recvLocalEntry)
      pybind11::arg("recvCountsOut") = pybind11::none(),
      pybind11::arg("recvLocalEntryOut") = pybind11::none(),
      pybind11::arg("numRecvOut") = pybind11::none())
-.def("engram_fetch_backward", ...,
+.def("engram_fetch_grad", ...,
      pybind11::arg("gradFetched").noconvert(),
      pybind11::arg("perm").noconvert(),
      pybind11::arg("sendCounts").noconvert(),
@@ -433,7 +433,7 @@ aclnnStatus aclnnEngramFetchGetWorkspaceSize(
 ### 6.1 算子定义（`engram_fetch_grad_def.cpp`）
 
 ```cpp
-class EngramFetchBackward : public OpDef {
+class EngramFetchGrad : public OpDef {
     // Input 0: commContext (int32) — 通信上下文（含 gmCommBuffer）
     // Input 1: gradFetched (T, H) bf16/fp16/fp32 — 前向 fetched 的梯度
     // Input 2: perm (T,) int32 — 前向 save-for-backward
@@ -481,7 +481,7 @@ struct EngramFetchGradTilingData {
 ### 6.5 aclnn 接口（`aclnn_engram_fetch_grad.cpp`）
 
 ```cpp
-aclnnStatus aclnnEngramFetchBackwardGetWorkspaceSize(
+aclnnStatus aclnnEngramFetchGradGetWorkspaceSize(
     const aclTensor *commContext, const aclTensor *gradFetched,
     const aclTensor *perm, const aclTensor *sendCounts,
     const aclTensor *recvCounts, const aclTensor *recvLocalEntry,
@@ -517,12 +517,12 @@ Python: buf.engram_fetch(indices)
 ### 7.2 训练反向
 
 ```
-Python: buf.engram_fetch_backward(grad_fetched, fetch_ctx)
+Python: buf.engram_fetch_grad(grad_fetched, fetch_ctx)
   │
-  ├─ C++: EngramFetchBackward(gradFetched, perm, sendCounts, recvCounts, recvLocalEntry)
+  ├─ C++: EngramFetchGrad(gradFetched, perm, sendCounts, recvCounts, recvLocalEntry)
   │   ├─ EnsureEngramContext()
   │   ├─ AllocateAndExchangeGm(gmBytes)         ← fp32 规模 GM
-  │   ├─ ACLNN_CMD(aclnnEngramFetchBackward, ...)
+  │   ├─ ACLNN_CMD(aclnnEngramFetchGrad, ...)
   │   │    # ① grad_sorted = gradFetched[perm]
   │   │    # ② a2a(grad_sorted) → recvGrad
   │   │    # ③ unique + fp32 scatter-add
@@ -559,19 +559,19 @@ Python: buf.engram_fetch(indices)
 | `engram_fetch_tiling_key.h` | `ENGRAM_FETCH_INFER_MODE` / `ENGRAM_FETCH_WITH_GRAD_MODE` |
 | `engram_fetch_tiling.cpp` | `GetWithGrad`，训练分支 workspace |
 | `aclnn_engram_fetch.cpp` | 5 个可选输出参数 |
-| `elastic_buffer.cpp` | `CommContext` + `gmAddrList`；`EngramContextBuilder` + `withGrad`；`ElasticBuffer` + GM 方法 + `EngramFetch` 5 输出 + `EngramFetchBackward`；pybind |
-| `elastic_buffer.py` | `EngramFetchCtx`；`with_grad` 构造参数；`engram_fetch` 训练态；`engram_fetch_backward` |
+| `elastic_buffer.cpp` | `CommContext` + `gmAddrList`；`EngramContextBuilder` + `withGrad`；`ElasticBuffer` + GM 方法 + `EngramFetch` 5 输出 + `EngramFetchGrad`；pybind |
+| `elastic_buffer.py` | `EngramFetchCtx`；`with_grad` 构造参数；`engram_fetch` 训练态；`engram_fetch_grad` |
 
 ### 反向（新建文件）
 
 | 文件 | 内容 |
 |------|------|
-| `engram_fetch_grad_def.cpp` | `EngramFetchBackward` 算子定义（6 input + 3 output） |
+| `engram_fetch_grad_def.cpp` | `EngramFetchGrad` 算子定义（6 input + 3 output） |
 | `engram_fetch_grad_infershape.cpp` | 动态 shape（gradUnique fp32 / uniqueLocalEntry int32 / numUnique int32） |
 | `engram_fetch_grad_tiling_data.h` | TilingData（hiddenBytes 按 fp32） |
 | `engram_fetch_grad_tiling_key.h` | 单一 `ENGRAM_FETCH_GRAD_DEFAULT_MODE` |
 | `engram_fetch_grad_tiling.cpp` | 7 步 tiling，校验 6 input + 3 output |
-| `aclnn_engram_fetch_grad.cpp` | `aclnnEngramFetchBackward` 薄封装 |
+| `aclnn_engram_fetch_grad.cpp` | `aclnnEngramFetchGrad` 薄封装 |
 
 ---
 

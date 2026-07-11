@@ -325,7 +325,7 @@ private:
 
 // ElasticBuffer class - unified interface for Engram storage and MoE EP kernels
 // 推理(with_grad=false): RDMA read (one-sided GET), 异步 fetch + wait callable
-// 训练(with_grad=true): all-to-all (桶排序→a2a→gather→a2a→还原), save-for-backward 输出 + EngramFetchBackward
+// 训练(with_grad=true): all-to-all (桶排序→a2a→gather→a2a→还原), save-for-backward 输出 + EngramFetchGrad
 class ElasticBuffer {
 public:
     ElasticBuffer(const std::string &groupName, int64_t numCpuBytes, bool withGrad = false);
@@ -341,11 +341,11 @@ public:
         at::Tensor *recvCountsOut = nullptr,
         at::Tensor *recvLocalEntryOut = nullptr,
         at::Tensor *numRecvOut = nullptr);
-    // EngramFetchBackward: 训练反向（新算子 EngramFetchBackward 的 C++ 封装）
+    // EngramFetchGrad: 训练反向（新算子 EngramFetchGrad 的 C++ 封装）
     // 输入: gradFetched + 前向 save-for-backward (perm/sendCounts/recvCounts/recvLocalEntry)
     // 输出: (gradUnique fp32, uniqueLocalEntry int32) — 本 rank owned 分片稀疏梯度
-    // 内部: AllocateAndExchangeGm → aclnnEngramFetchBackward → FreeGm → narrow 截取
-    std::tuple<at::Tensor, at::Tensor> EngramFetchBackward(
+    // 内部: AllocateAndExchangeGm → aclnnEngramFetchGrad → FreeGm → narrow 截取
+    std::tuple<at::Tensor, at::Tensor> EngramFetchGrad(
         const at::Tensor &gradFetched,
         const at::Tensor &perm, const at::Tensor &sendCounts,
         const at::Tensor &recvCounts, const at::Tensor &recvLocalEntry);
@@ -597,20 +597,20 @@ std::function<at::Tensor()> ElasticBuffer::EngramFetch(
     };
 }
 
-// EngramFetchBackward - training backward: produce gradUnique (fp32), uniqueLocalEntry (sparse index)
+// EngramFetchGrad - training backward: produce gradUnique (fp32), uniqueLocalEntry (sparse index)
 // kernel 内部 3 步: ① grad_sorted = gradFetched[perm] ② a2a(grad_sorted) → recvGrad ③ unique + fp32 scatter-add
 // GM 用于 a2a 通信（fp32 规模），per-fetch 动态申请/释放
-std::tuple<at::Tensor, at::Tensor> ElasticBuffer::EngramFetchBackward(
+std::tuple<at::Tensor, at::Tensor> ElasticBuffer::EngramFetchGrad(
     const at::Tensor &gradFetched,
     const at::Tensor &perm, const at::Tensor &sendCounts,
     const at::Tensor &recvCounts, const at::Tensor &recvLocalEntry)
 {
     EnsureEngramContext();
-    TORCH_CHECK(!destroyed_, "engram_fetch_backward cannot be called after destroy");
-    TORCH_CHECK(withGrad_, "engram_fetch_backward requires with_grad=True");
-    TORCH_CHECK(writeCalled_, "engram_fetch_backward must be called after at least one engram_write");
+    TORCH_CHECK(!destroyed_, "engram_fetch_grad cannot be called after destroy");
+    TORCH_CHECK(withGrad_, "engram_fetch_grad requires with_grad=True");
+    TORCH_CHECK(writeCalled_, "engram_fetch_grad must be called after at least one engram_write");
     TORCH_CHECK(!fetchInProgress_.load(),
-                "Cannot call engram_fetch_backward while previous fetch callback is pending");
+                "Cannot call engram_fetch_grad while previous fetch callback is pending");
 
     int64_t numTokens = gradFetched.size(0);
     int64_t hidden = gradFetched.size(1);
@@ -628,7 +628,7 @@ std::tuple<at::Tensor, at::Tensor> ElasticBuffer::EngramFetchBackward(
     auto numUnique = at::empty({1},
         at::TensorOptions().dtype(at::kInt).device(gradFetched.device()));
 
-    ACLNN_CMD(aclnnEngramFetchBackward, contextTensor_, gradFetched,
+    ACLNN_CMD(aclnnEngramFetchGrad, contextTensor_, gradFetched,
               perm, sendCounts, recvCounts, recvLocalEntry,
               hiddenSize_, numEngramEntries_,
               gradUnique, uniqueLocalEntry, numUnique);
@@ -1012,7 +1012,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
              pybind11::arg("recvCountsOut") = pybind11::none(),
              pybind11::arg("recvLocalEntryOut") = pybind11::none(),
              pybind11::arg("numRecvOut") = pybind11::none())
-        .def("engram_fetch_backward", &Mc2Api::ElasticBuffer::EngramFetchBackward,
+        .def("engram_fetch_grad", &Mc2Api::ElasticBuffer::EngramFetchGrad,
              pybind11::arg("gradFetched").noconvert(),
              pybind11::arg("perm").noconvert(),
              pybind11::arg("sendCounts").noconvert(),

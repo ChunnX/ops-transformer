@@ -10,7 +10,7 @@
 
 /*!
 * \file engram_fetch_grad.cpp
-* \brief EngramFetchBackward 算子 kernel 入口
+* \brief EngramFetchGrad 算子 kernel 入口
 *
 * 单融合 kernel，3 步:
 * ① grad_sorted = gradFetched[perm]
@@ -34,7 +34,7 @@
 
 using namespace AscendC;
 
-__global__ __aicore__ void engram_fetch_backward(
+__global__ __aicore__ void engram_fetch_grad(
     GM_ADDR commContext, GM_ADDR gradFetched,
     GM_ADDR perm, GM_ADDR sendCounts, GM_ADDR recvCounts, GM_ADDR recvLocalEntry,
     GM_ADDR gradUniqueOut, GM_ADDR uniqueLocalEntryOut, GM_ADDR numUniqueOut,
@@ -49,5 +49,5 @@ __global__ __aicore__ void engram_fetch_backward(
     // ② a2a(grad_sorted; sendCounts↔recvCounts) → recvGrad (用 gmCommBuffer)
     // ③ owner unique + fp32 scatter-add (recvLocalEntry, recvGrad)
     //    → gradUniqueOut + uniqueLocalEntryOut + numUniqueOut
-    printf("hello engram_fetch_backward\n");
+    printf("hello engram_fetch_grad\n");
 }

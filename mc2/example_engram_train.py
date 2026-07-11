@@ -115,7 +115,7 @@ def main():
     dist.all_gather(all_indices, indices_npu, group=group)
     all_indices_list = [t.cpu().tolist() for t in all_indices]
 
-    grad_unique, unique_local_entry = buffer.engram_fetch_backward(grad_fetched, fetch_ctx)
+    grad_unique, unique_local_entry = buffer.engram_fetch_grad(grad_fetched, fetch_ctx)
 
     print(f"[rank {rank}] backward: grad_unique shape={grad_unique.shape} (fp32)")
     print(f"[rank {rank}] backward: unique_local_entry={unique_local_entry.cpu().tolist()}")

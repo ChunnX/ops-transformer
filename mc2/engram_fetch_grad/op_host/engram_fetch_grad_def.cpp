@@ -10,7 +10,7 @@
 
 /*!
  * \file engram_fetch_grad_def.cpp
- * \brief 算子信息库定义 — EngramFetchBackward（反向，新算子）
+ * \brief 算子信息库定义 — EngramFetchGrad（反向，新算子）
  *
  * 单融合 kernel，3 步:
  * ① grad_sorted = gradFetched[perm]
@@ -24,9 +24,9 @@
 #include "register/op_def_registry.h"
 
 namespace ops {
-class EngramFetchBackward : public OpDef {
+class EngramFetchGrad : public OpDef {
 public:
-    explicit EngramFetchBackward(const char *name) : OpDef(name)
+    explicit EngramFetchGrad(const char *name) : OpDef(name)
     {
         // Input 0: 通信上下文
         this->Input("commContext")
@@ -98,5 +98,5 @@ public:
         this->AICore().AddConfig("ascend950", aicore_config_950);
     }
 };
-OP_ADD(EngramFetchBackward);
+OP_ADD(EngramFetchGrad);
 } // namespace ops

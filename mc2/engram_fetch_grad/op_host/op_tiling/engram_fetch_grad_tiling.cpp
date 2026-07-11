@@ -10,7 +10,7 @@
 
 /*!
 * \file engram_fetch_grad_tiling.cpp
-* \brief host侧tiling实现 — EngramFetchBackward
+* \brief host侧tiling实现 — EngramFetchGrad
 *        校验 6 input + 3 output（dtype/shape/format）
 *        hiddenBytes 按 fp32 计算（反向 FP32 聚合）
 *        rankSize 从 sendCounts dim0 获取
@@ -73,7 +73,7 @@ static void PrintEngramFetchGradTilingData(const EngramFetchGradTilingData *tili
     OP_TILING_CHECK(tilingData == nullptr,
         OP_LOGE_WITH_INVALID_INPUT(nodeName, "tilingData"), return);
 
-    OP_LOGD(nodeName, "========== EngramFetchBackwardTilingData ==========");
+    OP_LOGD(nodeName, "========== EngramFetchGradTilingData ==========");
     OP_LOGD(nodeName, "numTokens is %ld", tilingData->numTokens);
     OP_LOGD(nodeName, "numEntriesPerRank is %d", tilingData->numEntriesPerRank);
     OP_LOGD(nodeName, "hiddenDim is %ld", tilingData->hiddenDim);
@@ -362,7 +362,7 @@ static ge::graphStatus CheckTensorFormat(const gert::TilingContext *context)
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus TilingCheckEngramFetchBackward(const gert::TilingContext *context, int64_t &numTokens)
+static ge::graphStatus TilingCheckEngramFetchGrad(const gert::TilingContext *context, int64_t &numTokens)
 {
     const char *nodeName = context->GetNodeName();
 
@@ -467,7 +467,7 @@ static void SetTilingKey(gert::TilingContext *context)
     const char *nodeName = context->GetNodeName();
     const uint64_t tilingKey = GET_TPL_TILING_KEY(ENGRAM_FETCH_GRAD_DEFAULT_MODE);
     context->SetTilingKey(tilingKey);
-    OP_LOGD(nodeName, "tilingKey is [%lu] in engram_fetch_backward.", tilingKey);
+    OP_LOGD(nodeName, "tilingKey is [%lu] in engram_fetch_grad.", tilingKey);
 }
 
 static ge::graphStatus SetWorkSpace(gert::TilingContext *context,
@@ -495,19 +495,19 @@ static ge::graphStatus SetWorkSpace(gert::TilingContext *context,
 static ge::graphStatus EngramFetchGradTilingFunc(gert::TilingContext *context)
 {
     OP_TILING_CHECK(context == nullptr,
-        OP_LOGE("engram_fetch_backward_tiling", "failed to get tiling context."), return ge::GRAPH_FAILED);
+        OP_LOGE("engram_fetch_grad_tiling", "failed to get tiling context."), return ge::GRAPH_FAILED);
     const char *nodeName = context->GetNodeName();
     OP_TILING_CHECK(nodeName == nullptr,
         OP_LOGE_WITH_INVALID_INPUT(nodeName, "nodeName"), return ge::GRAPH_FAILED);
 
-    OP_LOGI(nodeName, "Enter EngramFetchBackward tiling func.");
+    OP_LOGI(nodeName, "Enter EngramFetchGrad tiling func.");
 
     EngramFetchGradTilingData *tilingData = context->GetTilingData<EngramFetchGradTilingData>();
     OP_TILING_CHECK(tilingData == nullptr,
         OP_LOGE_WITH_INVALID_INPUT(nodeName, "tilingData"), return ge::GRAPH_FAILED);
 
     int64_t numTokens = 0;
-    OP_TILING_CHECK(TilingCheckEngramFetchBackward(context, numTokens) != ge::GRAPH_SUCCESS,
+    OP_TILING_CHECK(TilingCheckEngramFetchGrad(context, numTokens) != ge::GRAPH_SUCCESS,
         OP_LOGE(nodeName, "check input/output failed."), return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK(CheckAttrs(context) != ge::GRAPH_SUCCESS,
@@ -525,10 +525,10 @@ static ge::graphStatus EngramFetchGradTilingFunc(gert::TilingContext *context)
         OP_LOGE(nodeName, "set workspace failed."), return ge::GRAPH_FAILED);
 
     PrintEngramFetchGradTilingData(tilingData, nodeName);
-    OP_LOGI(nodeName, "EngramFetchBackward tiling end.");
+    OP_LOGI(nodeName, "EngramFetchGrad tiling end.");
     return ge::GRAPH_SUCCESS;
 }
 
-IMPL_OP_OPTILING(EngramFetchBackward)
+IMPL_OP_OPTILING(EngramFetchGrad)
     .Tiling(EngramFetchGradTilingFunc);
 } // namespace MC2Tiling

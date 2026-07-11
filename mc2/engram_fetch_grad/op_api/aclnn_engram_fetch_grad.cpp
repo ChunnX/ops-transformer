@@ -9,8 +9,8 @@
  */
 
 /*!
-* \file aclnn_engram_fetch_grad.cpp
-* \brief EngramFetchBackward 算子 aclnn 接口实现
+ * \file aclnn_engram_fetch_grad.cpp
+* \brief EngramFetchGrad 算子 aclnn 接口实现
 */
 
 #include <algorithm>
@@ -56,7 +56,7 @@ static aclnnStatus CheckParams(const aclTensor *commContext, const aclTensor *gr
 extern "C" {
 #endif
 
-aclnnStatus aclnnEngramFetchBackwardGetWorkspaceSize(
+aclnnStatus aclnnEngramFetchGradGetWorkspaceSize(
     const aclTensor *commContext, const aclTensor *gradFetched,
     const aclTensor *perm, const aclTensor *sendCounts,
     const aclTensor *recvCounts, const aclTensor *recvLocalEntry,
@@ -67,7 +67,7 @@ aclnnStatus aclnnEngramFetchBackwardGetWorkspaceSize(
     auto retParam = CheckParams(commContext, gradFetched, perm, sendCounts, recvCounts, recvLocalEntry,
                                 gradUniqueOut, uniqueLocalEntryOut, numUniqueOut);
     CHECK_RET(retParam == ACLNN_SUCCESS, retParam);
-    aclnnStatus ret = aclnnInnerEngramFetchBackwardGetWorkspaceSize(
+    aclnnStatus ret = aclnnInnerEngramFetchGradGetWorkspaceSize(
         commContext, gradFetched, perm, sendCounts, recvCounts, recvLocalEntry,
         hiddenSize, numEntriesPerRank,
         gradUniqueOut, uniqueLocalEntryOut, numUniqueOut,
@@ -75,10 +75,10 @@ aclnnStatus aclnnEngramFetchBackwardGetWorkspaceSize(
     return ret;
 }
 
-aclnnStatus aclnnEngramFetchBackward(void *workspace, uint64_t workspaceSize,
+aclnnStatus aclnnEngramFetchGrad(void *workspace, uint64_t workspaceSize,
                                       aclOpExecutor *executor, aclrtStream stream)
 {
-    aclnnStatus ret = aclnnInnerEngramFetchBackward(workspace, workspaceSize, executor, stream);
+    aclnnStatus ret = aclnnInnerEngramFetchGrad(workspace, workspaceSize, executor, stream);
     return ret;
 }
 

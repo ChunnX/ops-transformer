@@ -10,7 +10,7 @@
 
 /*!
  * \file engram_fetch_grad_infershape.cpp
- * \brief EngramFetchBackward 算子 infershape 实现
+ * \brief EngramFetchGrad 算子 infershape 实现
  *        gradUniqueOut: [-1, hiddenSize] fp32（动态 shape，dim0=numUnique 运行时决定）
  *        uniqueLocalEntryOut: [-1] int32（1D sparse index，与 gradUniqueOut dim0 一致）
  *        numUniqueOut: [1] int32（固定标量）
@@ -28,9 +28,9 @@ static constexpr size_t OUT_NUM_UNIQUE = 2UL;
 static constexpr size_t ATTR_HIDDEN_SIZE = 0UL;
 static constexpr int64_t FIRST_ELE_SIZE = -1;
 
-static ge::graphStatus InferShapeEngramFetchBackward(gert::InferShapeContext *context)
+static ge::graphStatus InferShapeEngramFetchGrad(gert::InferShapeContext *context)
 {
-    OPS_LOG_D(context->GetNodeName(), "Begin to do InferShapeEngramFetchBackward.");
+    OPS_LOG_D(context->GetNodeName(), "Begin to do InferShapeEngramFetchGrad.");
 
     auto *attrs = context->GetAttrs();
     auto hiddenSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_HIDDEN_SIZE);
@@ -52,24 +52,24 @@ static ge::graphStatus InferShapeEngramFetchBackward(gert::InferShapeContext *co
     numUniqueShape->SetDimNum(1);
     numUniqueShape->SetDim(0, 1);
 
-    OPS_LOG_D(context->GetNodeName(), "End to do InferShapeEngramFetchBackward.");
+    OPS_LOG_D(context->GetNodeName(), "End to do InferShapeEngramFetchGrad.");
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus InferDataTypeEngramFetchBackward(gert::InferDataTypeContext *context)
+static ge::graphStatus InferDataTypeEngramFetchGrad(gert::InferDataTypeContext *context)
 {
-    OPS_LOG_D(context->GetNodeName(), "Begin to do InferDataTypeEngramFetchBackward.");
+    OPS_LOG_D(context->GetNodeName(), "Begin to do InferDataTypeEngramFetchGrad.");
     // gradUnique: fp32（反向 FP32 聚合）
     context->SetOutputDataType(OUT_GRAD_UNIQUE, ge::DT_FLOAT);
     // uniqueLocalEntry: int32
     context->SetOutputDataType(OUT_UNIQUE_LOCAL_ENTRY, ge::DT_INT32);
     // numUnique: int32
     context->SetOutputDataType(OUT_NUM_UNIQUE, ge::DT_INT32);
-    OPS_LOG_D(context->GetNodeName(), "End to do InferDataTypeEngramFetchBackward.");
+    OPS_LOG_D(context->GetNodeName(), "End to do InferDataTypeEngramFetchGrad.");
     return ge::GRAPH_SUCCESS;
 }
 
-IMPL_OP_INFERSHAPE(EngramFetchBackward)
-    .InferShape(InferShapeEngramFetchBackward)
-    .InferDataType(InferDataTypeEngramFetchBackward);
+IMPL_OP_INFERSHAPE(EngramFetchGrad)
+    .InferShape(InferShapeEngramFetchGrad)
+    .InferDataType(InferDataTypeEngramFetchGrad);
 } // namespace ops

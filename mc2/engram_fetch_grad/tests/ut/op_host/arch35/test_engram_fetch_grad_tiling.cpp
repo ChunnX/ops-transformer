@@ -10,13 +10,13 @@
 
 /*!
  * \file test_engram_fetch_grad_tiling.cpp
- * \brief EngramFetchBackward 算子 host 侧 tiling UT
+ * \brief EngramFetchGrad 算子 host 侧 tiling UT
  *
  * 测试用例覆盖:
  * - 正常场景: bf16/fp16/fp32 gradFetched, 各种 token/hidden 组合
  * - 异常场景: dtype 不匹配、维度错误、attr 非法值
  *
- * EngramFetchBackward 输入输出规格:
+ * EngramFetchGrad 输入输出规格:
  *   input:  commContext(0), gradFetched(1), perm(2), sendCounts(3), recvCounts(4), recvLocalEntry(5)
  *   output: gradUniqueOut(0), uniqueLocalEntryOut(1), numUniqueOut(2)
  *   attr:   hidden_size, num_entries_per_rank
@@ -26,11 +26,11 @@
 #include <gtest/gtest.h>
 #include "tiling_case_executor.h"
 
-namespace EngramFetchBackwardUT {
+namespace EngramFetchGradUT {
 
-static const std::string OP_NAME = "EngramFetchBackward";
+static const std::string OP_NAME = "EngramFetchGrad";
 
-struct EngramFetchBackwardTestParam {
+struct EngramFetchGradTestParam {
     std::string caseName;
     std::initializer_list<int64_t> commContextShape;
     ge::DataType commContextDtype;
@@ -55,12 +55,12 @@ struct EngramFetchBackwardTestParam {
     std::vector<size_t> expectWorkspaces;
 };
 
-inline std::ostream& operator<<(std::ostream& os, const EngramFetchBackwardTestParam& param)
+inline std::ostream& operator<<(std::ostream& os, const EngramFetchGradTestParam& param)
 {
     return os << param.caseName;
 }
 
-static EngramFetchBackwardTestParam g_testCases[] = {
+static EngramFetchGradTestParam g_testCases[] = {
     {"success_bf16_basic",
      {6146}, ge::DT_INT32, ge::FORMAT_ND,
      {8, 512}, ge::DT_BF16, ge::FORMAT_ND,
@@ -182,22 +182,22 @@ static EngramFetchBackwardTestParam g_testCases[] = {
      ge::GRAPH_FAILED, 0UL, "", {}},
 };
 
-class EngramFetchBackwardArch35TilingTest : public testing::TestWithParam<EngramFetchBackwardTestParam> {
+class EngramFetchGradArch35TilingTest : public testing::TestWithParam<EngramFetchGradTestParam> {
 protected:
     static void SetUpTestCase()
     {
-        std::cout << "EngramFetchBackwardArch35TilingTest SetUp." << std::endl;
+        std::cout << "EngramFetchGradArch35TilingTest SetUp." << std::endl;
     }
 
     static void TearDownTestCase()
     {
-        std::cout << "EngramFetchBackwardArch35TilingTest TearDown." << std::endl;
+        std::cout << "EngramFetchGradArch35TilingTest TearDown." << std::endl;
     }
 };
 
-static struct EngramFetchBackwardCompileInfo {} compileInfo;
+static struct EngramFetchGradCompileInfo {} compileInfo;
 
-static gert::TilingContextPara BuildTilingContextPara(const EngramFetchBackwardTestParam &param)
+static gert::TilingContextPara BuildTilingContextPara(const EngramFetchGradTestParam &param)
 {
     std::cout << "[TEST_CASE] " << param.caseName << std::endl;
     gert::StorageShape commContextShape = {param.commContextShape, param.commContextShape};
@@ -233,7 +233,7 @@ static gert::TilingContextPara BuildTilingContextPara(const EngramFetchBackwardT
                                    param.socVersion);
 }
 
-TEST_P(EngramFetchBackwardArch35TilingTest, GeneralCases)
+TEST_P(EngramFetchGradArch35TilingTest, GeneralCases)
 {
     auto param = GetParam();
     auto tilingContextPara = BuildTilingContextPara(param);
@@ -241,7 +241,7 @@ TEST_P(EngramFetchBackwardArch35TilingTest, GeneralCases)
                     param.expectTilingData, param.expectWorkspaces);
 }
 
-INSTANTIATE_TEST_CASE_P(EngramFetchBackwardTilingUT, EngramFetchBackwardArch35TilingTest,
+INSTANTIATE_TEST_CASE_P(EngramFetchGradTilingUT, EngramFetchGradArch35TilingTest,
                         testing::ValuesIn(g_testCases));
 
-} // namespace EngramFetchBackwardUT
+} // namespace EngramFetchGradUT
