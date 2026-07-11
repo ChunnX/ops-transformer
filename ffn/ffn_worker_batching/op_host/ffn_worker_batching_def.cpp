@@ -75,6 +75,15 @@ public:
     this->AICore()
         .AddConfig("ascend910_93")
         .AddConfig("ascend910b");
+
+    // Ascend950 (arch35 / DAV_3510) 全新代次路径：opFile.value 指向 _apt.cpp 入口，
+    // A2/A3 两行 AddConfig 保留不动，零回归。
+    OpAICoreConfig regbaseCfg;
+    regbaseCfg.DynamicCompileStaticFlag(true)
+        .DynamicRankSupportFlag(true)
+        .DynamicShapeSupportFlag(true)
+        .ExtendCfgInfo("opFile.value", "ffn_worker_batching_apt");
+    this->AICore().AddConfig("ascend950", regbaseCfg);
   }
 };
 OP_ADD(FfnWorkerBatching);

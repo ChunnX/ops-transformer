@@ -4,7 +4,7 @@
 
 | 产品 | 是否支持 |
 | :---------------------------- | :-----------: |
-|<term>Ascend 950PR/Ascend 950DT</term>| × |
+|<term>Ascend 950PR/Ascend 950DT</term>| √ |
 |<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>| √ |
 |<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>| √ |
 |<term>Atlas 200I/500 A2 推理产品</term>| × |
@@ -147,10 +147,17 @@
 - 该接口支持图模式（GEIR）和单算子模式（aclnn）。
 - 参数A（Attention worker数量）支持 ≤ 1024。
 - 参数M（micro batch数量）支持 ≤ 64。
-- 参数K（topK数）支持 ≤ 64。
+- 参数max_out_shape的第3维（topK+1，即topK加共享专家数）支持 ≤ 64。
 - 参数BS（micro batch size）和Y支持泛化，无硬上限（受内存限制）。
 - 参数H（hidden size）支持泛化。
 - token_dtype为2时，输入int8数据与fp32 scale连续排布。
+- 属性expert_num取值范围为 (0, 8192]。
+- 属性max_out_shape长度必须为4，格式为 {A, BS, topK+1, H}，其中BS>0、H>0。
+- 属性token_dtype取值范围为 [0, 2]，need_schedule取值范围为 [0, 1]，layer_num取值范围为 [0, expert_num]。
+- 输入schedule_context为一维Tensor，shape为 [1024]（固定1024字节结构体），不支持空Tensor。
+- 输出y的数据类型由token_dtype决定：0为FP16、1为BF16、2为INT8。
+- 输出dynamic_scale仅在token_dtype=2时有效，token_dtype为0或1时为空Tensor。
+- 精度口径为二进制一致（非计算类算子：整数索引排序 + 原样字节搬运，无浮点运算）。
 
 ## 调用说明
 
