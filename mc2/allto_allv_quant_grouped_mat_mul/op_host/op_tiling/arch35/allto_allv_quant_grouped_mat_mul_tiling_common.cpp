@@ -90,14 +90,7 @@ ge::graphStatus AlltoAllvQuantGmmTilingCommon::DoLibApiTiling()
         }
         maxMSize = std::max(mSize, maxMSize);
     }
-    // check expertNum
-    OP_TILING_CHECK(expertNum_ == 0,
-        OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "expertNum_",
-            std::to_string(expertNum_).c_str(), "positive value"),
-        return ge::GRAPH_FAILED);
-    expertNum_ = Ops::Base::CeilDiv(e_, expertNum_) > MX_HCCL_HANDLE_MAX ?
-        Ops::Base::CeilDiv(e_, static_cast<uint64_t>(MX_HCCL_HANDLE_MAX)) : expertNum_;
-    MC2_CHECK_LOG_RET(context_->GetNodeName(), DoGmmTiling(maxMSize, expertNum_));
+    MC2_CHECK_LOG_RET(context_->GetNodeName(), DoGmmTiling(maxMSize));
     OP_LOGD(context_->GetNodeName(), "end DoLibApiTiling.");
     return ge::GRAPH_SUCCESS;
 }
@@ -108,17 +101,10 @@ ge::graphStatus AlltoAllvQuantGmmTilingCommon::GetWorkspaceSize()
     size_t *workspaces = context_->GetWorkspaceSizes(1);
     OP_TILING_CHECK(workspaces == nullptr, OP_LOGE(context_->GetNodeName(), "can not get workspace."),
         return ge::GRAPH_FAILED);
-    // set workspace
-    SetWorkspaceInfo();
-    // tensorListSize为kernel侧tensorlist开辟的空间
     const uint64_t tensorListSize = 512;
     uint64_t groupListSize = sizeof(int64_t) * e_; // GMM计算所需的groupList GM空间大小
-    tilingData->workspaceInfo.gmmComputeSize += groupListSize + tensorListSize;
-    workspaces[0] = libApiWorkSpaceSize_ + tilingData->workspaceInfo.commXOutSize +
-                    tilingData->workspaceInfo.permuteXOutSize +
-                    tilingData->workspaceInfo.commXScaleSize +
-                    tilingData->workspaceInfo.permuteScaleOutSize +
-                    tilingData->workspaceInfo.gmmComputeSize;
+    // tensorListSize为kernel侧tensorlist开辟的空间
+    workspaces[0] = libApiWorkSpaceSize_ + permuteOutSize_ + permuteScaleOutSize_ + groupListSize + tensorListSize;
     OP_LOGD(context_->GetNodeName(), "end GetWorkspaceSize.");
     return ge::GRAPH_SUCCESS;
 }
@@ -172,18 +158,9 @@ ge::graphStatus AlltoAllvQuantGmmTilingCommon::PostTiling()
     tilingData->taskTilingInfo.epWorldSize = epWorldSize_;
     tilingData->taskTilingInfo.e = e_;
     tilingData->taskTilingInfo.ubSize = ubSize_;
-    tilingData->taskTilingInfo.aivCoreNum = static_cast<uint64_t>(aivCoreNum_);
-    tilingData->taskTilingInfo.aicCoreNum = static_cast<uint64_t>(aicCoreNum_);
-    OP_TILING_CHECK(expertNum_ == 0,
-        OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "expertNum_",
-            std::to_string(expertNum_).c_str(), "positive value"),
-        return ge::GRAPH_FAILED);
-    tilingData->taskTilingInfo.expertNum = expertNum_;
-    tilingData->taskTilingInfo.mainLoopExpertNum = expertNum_;
-    tilingData->taskTilingInfo.tailLoopExpertNum =
-        (e_ % expertNum_ == 0) ? 0 : static_cast<uint32_t>(e_ % expertNum_);
-    tilingData->taskTilingInfo.totalLoopCount =
-        static_cast<uint32_t>(Ops::Base::CeilDiv(e_, static_cast<uint64_t>(expertNum_)));
+    tilingData->taskTilingInfo.mainLoopExpertNum = e_;
+    tilingData->taskTilingInfo.tailLoopExpertNum = 0;
+    tilingData->taskTilingInfo.totalLoopCount = e_;
     tilingData->isNeedMM = hasSharedExpertFlag_;
     for (uint32_t i = 0; i < e_ * epWorldSize_; i++) {
         tilingData->taskTilingInfo.sendCnt[i] = sendCounts[i];
@@ -253,8 +230,7 @@ void AlltoAllvQuantGmmTilingCommon::PrintTaskTilingInfo(const MC2KernelTemplate:
         << ", N2=" << taskTilingInfo.N2;
     ss << ", epWorldSize=" << taskTilingInfo.epWorldSize
         << ", e=" << taskTilingInfo.e;
-    ss << ", expertNum=" << taskTilingInfo.expertNum
-        << ", mainLoopExpertNum=" << taskTilingInfo.mainLoopExpertNum
+    ss << ", mainLoopExpertNum=" << taskTilingInfo.mainLoopExpertNum
         << ", tailLoopExpertNum=" << taskTilingInfo.tailLoopExpertNum
         << ", totalLoopCount=" << taskTilingInfo.totalLoopCount;
     // SendCounts 信息
