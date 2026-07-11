@@ -376,6 +376,7 @@ class MoeDistributeBuffer:
         mb_conversion = 1024 * 1024
         ub_align = 32 # 32B
         scale_expand_index_buffer = 44 # scale 32B + 3 * 4 expand_idx
+        topk_weights_buffer = ub_align
         full_mesh_data_align = 480
         win_addr_align = 512
 
@@ -383,7 +384,11 @@ class MoeDistributeBuffer:
         torch._check(comm_alg in comm_alg_support_list,
                      lambda: (f"comm_alg only support {comm_alg_support_list=}, but got {comm_alg=}."))
 
-        token_actual_len = inline_align(hidden * max_out_dtype_size, ub_align) + scale_expand_index_buffer
+        token_actual_len = (
+            inline_align(hidden * max_out_dtype_size, ub_align)
+            + scale_expand_index_buffer
+            + topk_weights_buffer
+        )
         if (comm_alg == "fullmesh_v2"):
             token_need_size_dispatch = inline_align(token_actual_len, full_mesh_data_align) // full_mesh_data_align * \
                 win_addr_align

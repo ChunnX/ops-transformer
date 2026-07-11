@@ -29,6 +29,7 @@ enum class QuantMode : int64_t {
     QUANT_MODE_PERTOKEN = 2,
     QUANT_MODE_PERGROUP = 3,
     QUANT_MODE_MX = 4,
+    QUANT_MODE_MX_CLIP = 5,
 };
 }
 
@@ -107,6 +108,12 @@ static bool IsTargetNpuArchInfershape(const char *nodeName, const std::set<std::
     return (targetPlatform.count(versionValNpuArch) > 0); 
 }
 
+static bool IsMxQuantMode(int64_t quantMode)
+{
+    return (static_cast<QuantMode>(quantMode) == QuantMode::QUANT_MODE_MX) ||
+           (static_cast<QuantMode>(quantMode) == QuantMode::QUANT_MODE_MX_CLIP);
+}
+
 static void InferShapeDynamicScalesA5(gert::Shape *dynamicScalesShape, const gert::Shape *scalesShape,
                                       int64_t quantMode, int64_t a, int64_t h)
 {
@@ -114,7 +121,7 @@ static void InferShapeDynamicScalesA5(gert::Shape *dynamicScalesShape, const ger
         dynamicScalesShape->SetDimNum(DIM_TWO);
         dynamicScalesShape->SetDim(0U, a);
         dynamicScalesShape->SetDim(1U, (h + PER_GROUP_SIZE - 1) / PER_GROUP_SIZE);
-    } else if (static_cast<QuantMode>(quantMode) == QuantMode::QUANT_MODE_MX) {
+    } else if (IsMxQuantMode(quantMode)) {
         dynamicScalesShape->SetDimNum(DIM_TWO);
         dynamicScalesShape->SetDim(0U, a);
         dynamicScalesShape->SetDim(1U, ((h + MX_QUANT_SIZE - 1) / MX_QUANT_SIZE + 1) / NUM_EVEN * NUM_EVEN);
@@ -131,7 +138,7 @@ static void InferShapeDynamicScalesA5(gert::Shape *dynamicScalesShape, const ger
 static ge::DataType InferDataTypeDynamicScales(int64_t quantMode, ge::DataType scalesType, bool quantFlag)
 {
     ge::DataType dynamicScalesDtype = ge::DT_FLOAT;
-    if (static_cast<QuantMode>(quantMode) == QuantMode::QUANT_MODE_MX) {
+    if (IsMxQuantMode(quantMode)) {
         dynamicScalesDtype = ge::DT_FLOAT8_E8M0;
     }
     if (quantFlag && static_cast<QuantMode>(quantMode) == QuantMode::QUANT_MODE_NO_QUANT) {
@@ -359,7 +366,7 @@ static ge::graphStatus CheckQuantMode(const gert::InferDataTypeContext *context,
             return ge::GRAPH_FAILED;
         }
     } else if ((static_cast<QuantMode>(*quantMode) == QuantMode::QUANT_MODE_PERGROUP) ||
-               (static_cast<QuantMode>(*quantMode) == QuantMode::QUANT_MODE_MX)) {
+               IsMxQuantMode(*quantMode)) {
         if ((yDtype != static_cast<int64_t>(ge::DT_FLOAT8_E4M3FN)) &&
             (yDtype != static_cast<int64_t>(ge::DT_FLOAT8_E5M2)) &&
             (yDtype != static_cast<int64_t>(ge::DT_FLOAT4_E2M1)) &&
