@@ -171,7 +171,6 @@ private:
     LocalTensor<int32_t> sendCntTensor_;            // SendCntCal stride 只读 ws 个 count
     LocalTensor<uint8_t> maskBatchTensor_;          // TripleInfoCalAndDispatch 当前 batch 的 mask 切片
     LocalTensor<uint32_t> maskBatchU32Tensor_;      // maskBatchTensor_ 的 u32 视图，供 GatherMask
-    LocalTensor<uint32_t> maskBatchU32Tensor_;      // maskBatchTensor_ 的 u32 视图，供 GatherMask
     LocalTensor<int32_t> expertTokenCntTensor_;
     LocalTensor<int32_t> validTopkIndexTensor_;
     LocalTensor<int32_t> cumsumInfoTensor_;
