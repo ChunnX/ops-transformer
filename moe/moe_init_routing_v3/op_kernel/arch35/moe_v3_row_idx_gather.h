@@ -128,6 +128,7 @@ __aicore__ inline void RowIdxGather::Process()
         asc_vf_call<ComputeSimt>(dim3{SIMT_THREAD_NUM, 1, 1}, elements, blockIdx_ * perCoreElements,
                                    sortedExpertIndicesGmAddr, expandedRowIdxGmAddr);
     }
+    SyncAll();
 }
 
 } // namespace MoeInitRoutingV3
