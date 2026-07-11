@@ -107,7 +107,7 @@ public:
 
     void EngramWrite(const at::Tensor &storage);
     std::function<at::Tensor()> EngramFetch(const at::Tensor &indices);
-    void EngramBarrier(bool withDeviceSync = false);
+    void EngramBarrier(bool useCommStream = true, bool withCpuSync = false);
     void Destroy();
 
     int64_t GetHostBufPtr() const
@@ -115,8 +115,9 @@ public:
         return reinterpret_cast<int64_t>(hostBufPtr_);
     }
 
-    static int64_t GetEngramStorageSizeHint(int64_t numEntries, int64_t hiddenSize,
-                                            at::ScalarType dtype = at::kBFloat16);
+    static std::tuple<int64_t, int64_t> GetEngramStorageSizeHint(int64_t numEntries, int64_t hiddenSize,
+                                                                 int64_t numMaxTokensPerRank,
+                                                                 at::ScalarType dtype = at::kBFloat16);
 
     // Stateless MoE EP kernels used by the Python ElasticBuffer dispatcher.
     using DispatchTensorList = std::tuple<at::Tensor, at::Tensor, at::Tensor>;
@@ -372,6 +373,10 @@ void ElasticBuffer::CreateContextInternal(const HcclComm &commHandle, const std:
                 commContext_.rankSize, ", min ", HCCL_MIN_RANK_SIZE);
     TORCH_CHECK(commContext_.rankSize <= HCCL_MAX_RANK_SIZE, "rankSize exceeds HCCL_MAX_RANK_SIZE, got ",
                 commContext_.rankSize, ", max ", HCCL_MAX_RANK_SIZE);
+    
+    if (numCpuBytes_ == 0) {
+        return;
+    }
 
     std::string memBufferTag = mc2ContextTag + "_buffer";
     AllocateAndRegisterBuffer(commHandle, memBufferTag, commContext_.epRankId);
@@ -397,7 +402,7 @@ void ElasticBuffer::EngramWrite(const at::Tensor &storage)
                 "num_entries * rank_size must not exceed INT32_MAX, got num_entries=", numEngramEntries_,
                 ", rank_size=", commContext_.rankSize, ", product=", numEngramEntries_ * commContext_.rankSize);
 
-    EngramBarrier(true);
+    EngramBarrier(false, true);
 
     hiddenSize_ = storage.size(1);
     numEngramEntries_ = storage.size(0);
@@ -420,7 +425,7 @@ void ElasticBuffer::EngramWrite(const at::Tensor &storage)
         }
     }
 
-    EngramBarrier(true);
+    EngramBarrier(false, true);
     writeCalled_ = true;
 }
 
@@ -434,9 +439,9 @@ std::function<at::Tensor()> ElasticBuffer::EngramFetch(const at::Tensor &indices
                 "please invoke the callback function returned by the previous engram_fetch first");
 
     int64_t numTokens = indices.size(0);
-    if (numTokens == 0) {
+    if (numTokens == 0 || numCpuBytes_ == 0) {
         auto emptyTensor =
-            at::empty({0, hiddenSize_}, at::TensorOptions().dtype(engramDtype_).device(indices.device()));
+            at::empty({numTokens, hiddenSize_}, at::TensorOptions().dtype(engramDtype_).device(indices.device()));
         return [=]() { return emptyTensor; };
     }
 
@@ -457,13 +462,13 @@ std::function<at::Tensor()> ElasticBuffer::EngramFetch(const at::Tensor &indices
 }
 
 // EngramBarrier - cross-rank synchronization
-void ElasticBuffer::EngramBarrier(bool withDeviceSync)
+void ElasticBuffer::EngramBarrier(bool useCommStream, bool withCpuSync)
 {
     TORCH_CHECK(!destroyed_,
                 "engram_barrier cannot be called after destroy, please create a new ElasticBuffer instance");
     TORCH_CHECK(hcclComm_ != nullptr, "HCCL comm not initialized");
 
-    if (withDeviceSync) {
+    if (withCpuSync) {
         aclError aclRet = aclrtSynchronizeDevice();
         TORCH_CHECK(aclRet == ACL_SUCCESS, "aclrtSynchronizeDevice failed, ret: ", aclRet);
     }
@@ -472,7 +477,7 @@ void ElasticBuffer::EngramBarrier(bool withDeviceSync)
     HcclResult ret = HcclBarrierFunc(hcclComm_, stream);
     TORCH_CHECK(ret == HCCL_SUCCESS, "HcclBarrier failed, ret: ", ret);
 
-    if (withDeviceSync) {
+    if (withCpuSync) {
         aclError aclRet = aclrtSynchronizeDevice();
         TORCH_CHECK(aclRet == ACL_SUCCESS, "aclrtSynchronizeDevice failed, ret: ", aclRet);
     }
@@ -483,7 +488,7 @@ void ElasticBuffer::Destroy()
 {
     if (destroyed_)
         return;
-
+    EngramBarrier(true, true);
     if (hostBufPtr_ != nullptr) {
         aclError ret = aclrtHostUnregister(hostBufPtr_);
         TORCH_CHECK(ret == ACL_SUCCESS, "aclrtHostUnregister failed, ret: ", ret);
@@ -492,7 +497,7 @@ void ElasticBuffer::Destroy()
         hostBufPtr_ = nullptr;
         deviceBufPtr_ = nullptr;
     }
-
+    
     destroyed_ = true;
 }
 
@@ -527,20 +532,23 @@ int64_t ElasticBuffer::ContextTensorSize()
     return (sizeof(CommContext) + sizeof(int32_t) - 1) / sizeof(int32_t);
 }
 
-// GetEngramStorageSizeHint - calculate recommended CPU buffer size (static method)
-int64_t ElasticBuffer::GetEngramStorageSizeHint(int64_t numEntries, int64_t hiddenSize, at::ScalarType dtype)
+// GetEngramStorageSizeHint - calculate recommended NPU/CPU buffer size (static method)
+std::tuple<int64_t, int64_t> ElasticBuffer::GetEngramStorageSizeHint(int64_t numEntries, int64_t hiddenSize,
+                                                                     int64_t numMaxTokensPerRank,
+                                                                     at::ScalarType dtype)
 {
     int64_t dtypeSize = at::elementSize(dtype);
     TORCH_CHECK(hiddenSize <= INT64_MAX / dtypeSize, "hiddenSize * dtypeSize overflow");
     int64_t hiddenSizeBytes = hiddenSize * dtypeSize;
-    int64_t numSfPacks = (dtypeSize <= 1) ? CeilDiv(hiddenSize, 32) : 0;
-    TORCH_CHECK(hiddenSizeBytes <= INT64_MAX - numSfPacks * 4, "numBytesPerEntry addition overflow");
-    int64_t numBytesPerEntry = AlignTo(hiddenSizeBytes + numSfPacks * 4, 32);
+    int64_t numBytesPerEntry = AlignTo(hiddenSizeBytes, 32);
     TORCH_CHECK(numBytesPerEntry > 0 && numEntries <= INT64_MAX / numBytesPerEntry,
                 "numBytesPerEntry * numEntries overflow");
+    TORCH_CHECK(numMaxTokensPerRank <= INT64_MAX / numBytesPerEntry,
+                "numBytesPerEntry * numMaxTokensPerRank overflow");
+    int64_t numNpuBytes = AlignTo(numBytesPerEntry * numMaxTokensPerRank, BUFFER_ALIGNMENT);
     int64_t numCpuBytes = AlignTo(numBytesPerEntry * numEntries, BUFFER_ALIGNMENT);
 
-    return numCpuBytes;
+    return std::make_tuple(numNpuBytes, numCpuBytes);
 }
 
 } // namespace Mc2Api
@@ -739,12 +747,14 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
         .def(pybind11::init<const std::string &, int64_t>(), pybind11::arg("groupName"), pybind11::arg("numCpuBytes"))
         .def("engram_write", &Mc2Api::ElasticBuffer::EngramWrite, pybind11::arg("storage").noconvert())
         .def("engram_fetch", &Mc2Api::ElasticBuffer::EngramFetch, pybind11::arg("indices").noconvert())
-        .def("engram_barrier", &Mc2Api::ElasticBuffer::EngramBarrier, pybind11::arg("withDeviceSync") = false)
+        .def("engram_barrier", &Mc2Api::ElasticBuffer::EngramBarrier, pybind11::arg("useCommStream") = true,
+             pybind11::arg("withCpuSync") = false)
         .def("destroy", &Mc2Api::ElasticBuffer::Destroy)
         .def("get_host_buf_ptr", &Mc2Api::ElasticBuffer::GetHostBufPtr)
         .def_static("moe_ep_dispatch", &Mc2Api::ElasticBuffer::MoeEpDispatch)
         .def_static("moe_ep_dispatch_epilogue", &Mc2Api::ElasticBuffer::MoeEpDispatchEpilogue)
         .def_static("moe_ep_combine", &Mc2Api::ElasticBuffer::MoeEpCombine)
         .def_static("get_engram_storage_size_hint", &Mc2Api::ElasticBuffer::GetEngramStorageSizeHint,
-                    pybind11::arg("numEntries"), pybind11::arg("hiddenSize"), pybind11::arg("dtype") = at::kBFloat16);
+                    pybind11::arg("numEntries"), pybind11::arg("hiddenSize"),
+                    pybind11::arg("numMaxTokensPerRank"), pybind11::arg("dtype") = at::kBFloat16);
 }
