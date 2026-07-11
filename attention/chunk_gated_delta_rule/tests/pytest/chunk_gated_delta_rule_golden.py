@@ -12,38 +12,34 @@ import torch_npu
 import torch.nn.functional as F
 import numpy as np
 import logging
-import datetime
-import os
-import sys
-import argparse
 from typing import Optional
 
 np.random.seed(21)
 np.set_printoptions(suppress=True)
 DEVICE_ID = 0
 torch.npu.config.allow_internal_format = True
-eb_threshold = 2**(-8)
-err_threshold = 2**(-8)
-CV_MAX_RE = 5               # 最大相对误差
-CV_AVER_RE = 1.5            # 平均相对误差
-CV_RMSE = 1.5               # 均方根误差
-CV_SMALL_VAL = 2            # 小值域错误占比
-CV_ERR_BALANCE = 2          # 误差均衡性
+eb_threshold = 2 ** (-8)
+err_threshold = 2 ** (-8)
+CV_MAX_RE = 5  # 最大相对误差
+CV_AVER_RE = 1.5  # 平均相对误差
+CV_RMSE = 1.5  # 均方根误差
+CV_SMALL_VAL = 2  # 小值域错误占比
+CV_ERR_BALANCE = 2  # 误差均衡性
 MIN_ERR = 1e-3
-logging.basicConfig(level=logging.INFO, format='%(message)s', force=True)
+logging.basicConfig(level=logging.INFO, format="%(message)s", force=True)
 logger = logging.getLogger(__name__)
 
 
 # 定义ANSI颜色常量（新增）
 class bcolors:
-    HEADER = '\033[95m'
-    OKBLUE = '\033[94m'
-    OKGREEN = '\033[92m'    # 绿色
-    WARNING = '\033[93m'
-    FAIL = '\033[91m'       # 红色
-    ENDC = '\033[0m'        # 重置颜色
-    BOLD = '\033[1m'
-    UNDERLINE = '\033[4m'
+    HEADER = "\033[95m"
+    OKBLUE = "\033[94m"
+    OKGREEN = "\033[92m"  # 绿色
+    WARNING = "\033[93m"
+    FAIL = "\033[91m"  # 红色
+    ENDC = "\033[0m"  # 重置颜色
+    BOLD = "\033[1m"
+    UNDERLINE = "\033[4m"
 
 
 def chunk_gated_delta_rule_npu(
@@ -213,14 +209,14 @@ def get_rmse(golden: torch.Tensor, actual: torch.Tensor):
 def get_smra(golden: torch.Tensor, actual: torch.Tensor):
     # 小值域错误占比
     abs_A = torch.abs(golden)
-    mask_A = abs_A < 2**(-10)
+    mask_A = abs_A < 2 ** (-10)
     num_a = torch.sum(mask_A).item()
 
     # 统计对应位置 B 中元素绝对值大于 1e-16 的个数
     abs_B = torch.abs(golden - actual)
     mask_B = abs_B > 1e-16
     num_b = torch.sum(mask_A & mask_B).item()
-    
+
     smra = num_b / num_a if num_a > 0 else 0
     return smra
 
@@ -233,7 +229,12 @@ def get_eb(golden: torch.Tensor, actual: torch.Tensor):
     return error_balance
 
 
-def compare_cv(golden: torch.Tensor, golden_high_type: torch.Tensor, actual: torch.Tensor, name=None):
+def compare_cv(
+    golden: torch.Tensor,
+    golden_high_type: torch.Tensor,
+    actual: torch.Tensor,
+    name=None,
+):
     golden = golden.to(torch.float32)
     golden_high_type = golden_high_type.to(torch.float32)
     actual = actual.to(torch.float32)
@@ -259,11 +260,23 @@ def compare_cv(golden: torch.Tensor, golden_high_type: torch.Tensor, actual: tor
 
     if name is not None:
         print(f"compare_cv for {name}:")
-    print(f"\tmax_re_rate={max_re_rate:.3f} ({CV_MAX_RE}), max_re_high_type={max_re_high_type:.3e}")
-    print(f"\tavg_re_rate={avg_re_rate:.3f} ({CV_AVER_RE}), avg_re_high_type={avg_re_high_type:.3e}")
-    print(f"\trmse_rate={rmse_rate:.3f} ({CV_RMSE}), rmse_high_type={rmse_high_type:.3e}")
-    print(f"\tsmra_rate={smra_rate:.3f} ({CV_SMALL_VAL}), smra_high_type={smra_high_type:.3e}")
-    result = (max_re_rate < CV_MAX_RE) and (avg_re_rate < CV_AVER_RE) and (rmse_rate < CV_RMSE)
+    print(
+        f"\tmax_re_rate={max_re_rate:.3f} ({CV_MAX_RE}), max_re_high_type={max_re_high_type:.3e}"
+    )
+    print(
+        f"\tavg_re_rate={avg_re_rate:.3f} ({CV_AVER_RE}), avg_re_high_type={avg_re_high_type:.3e}"
+    )
+    print(
+        f"\trmse_rate={rmse_rate:.3f} ({CV_RMSE}), rmse_high_type={rmse_high_type:.3e}"
+    )
+    print(
+        f"\tsmra_rate={smra_rate:.3f} ({CV_SMALL_VAL}), smra_high_type={smra_high_type:.3e}"
+    )
+    result = (
+        (max_re_rate < CV_MAX_RE)
+        and (avg_re_rate < CV_AVER_RE)
+        and (rmse_rate < CV_RMSE)
+    )
     result = result and smra_rate < CV_SMALL_VAL
     if not result:
         epsilon = 2.0**-7
@@ -273,7 +286,9 @@ def compare_cv(golden: torch.Tensor, golden_high_type: torch.Tensor, actual: tor
     return result
 
 
-def cgdr_golden(q, k, v, g, beta, scale, initial_state, actual_seq_lengths, use_float64=False):
+def cgdr_golden(
+    q, k, v, g, beta, scale, initial_state, actual_seq_lengths, use_float64=False
+):
     t0 = time.time()
     cu_seqlens = F.pad(actual_seq_lengths, (1, 0)).cumsum(dim=0)
     if use_float64:
@@ -290,7 +305,7 @@ def cgdr_golden(q, k, v, g, beta, scale, initial_state, actual_seq_lengths, use_
         beta.unsqueeze(0).to(v.device).to(v.dtype),
         scale=scale,
         initial_state=initial_state.transpose(-1, -2).clone().to(v.device).to(v.dtype),
-        cu_seqlens=cu_seqlens.to(v.device)
+        cu_seqlens=cu_seqlens.to(v.device),
     )
     o_golden = o_golden[0]
     state_golden = state_golden.transpose(-1, -2)
@@ -310,7 +325,7 @@ def cgdr_benchmark(q, k, v, g, beta, scale, initial_state, actual_seq_lengths):
         beta.unsqueeze(0),
         scale=scale,
         initial_state=initial_state.transpose(-1, -2).clone(),
-        cu_seqlens=cu_seqlens
+        cu_seqlens=cu_seqlens,
     )
     o_bench = o_bench[0].to(torch.float32)
     state_bench = state_bench.transpose(-1, -2).to(torch.float32)
@@ -319,20 +334,23 @@ def cgdr_benchmark(q, k, v, g, beta, scale, initial_state, actual_seq_lengths):
 
 def cgdr_npu(q, k, v, g, beta, scale, initial_state, actual_seq_lengths):
     o_npu, state_npu = torch_npu.npu_chunk_gated_delta_rule(
-        q, k, v,
+        q,
+        k,
+        v,
         beta=beta,
         initial_state=initial_state.clone(),
         actual_seq_lengths=actual_seq_lengths,
         scale=scale,
-        g=g
+        g=g,
     )
     o_npu = o_npu.to(torch.float32)
     state_npu = state_npu.to(torch.float32)
     return o_npu, state_npu
 
 
-def run_chunk_gated_delta_rule_eager(B, seqlen, nk, nv, dk, dv, chunk_size=64,
-                                     data_type=torch.bfloat16):
+def run_chunk_gated_delta_rule_eager(
+    B, seqlen, nk, nv, dk, dv, chunk_size=64, data_type=torch.bfloat16
+):
     torch_npu.npu.set_device(int(DEVICE_ID))
     # ======================== gen input data start =============================
     T = B * seqlen
@@ -343,30 +361,44 @@ def run_chunk_gated_delta_rule_eager(B, seqlen, nk, nv, dk, dv, chunk_size=64,
     beta = torch.rand((T, nv), dtype=data_type, device="npu:%s" % DEVICE_ID)
     q = torch.nn.functional.normalize(q, p=2, dim=-1)
     k = torch.nn.functional.normalize(k, p=2, dim=-1)
-    scale = 1 / (dk ** 0.5)
-    initial_state = torch.rand((B, nv, dv, dk), dtype=data_type, device="npu:%s" % DEVICE_ID)
-    actual_seq_lengths = torch.tensor([seqlen] * B, dtype=torch.int32, device="npu:%s" % DEVICE_ID)
+    scale = 1 / (dk**0.5)
+    initial_state = torch.rand(
+        (B, nv, dv, dk), dtype=data_type, device="npu:%s" % DEVICE_ID
+    )
+    actual_seq_lengths = torch.tensor(
+        [seqlen] * B, dtype=torch.int32, device="npu:%s" % DEVICE_ID
+    )
     # ======================== gen input data finish =============================
 
     # ======================== execute golden/benchmark/npu ================================
-    o_golden, state_golden = cgdr_golden(q, k, v, g, beta, scale, initial_state, actual_seq_lengths, use_float64=False)
-    o_bench, state_bench = cgdr_benchmark(q, k, v, g, beta, scale, initial_state, actual_seq_lengths)
-    o_npu, state_npu = cgdr_npu(q, k, v, g, beta, scale, initial_state, actual_seq_lengths)
+    o_golden, state_golden = cgdr_golden(
+        q, k, v, g, beta, scale, initial_state, actual_seq_lengths, use_float64=False
+    )
+    o_bench, state_bench = cgdr_benchmark(
+        q, k, v, g, beta, scale, initial_state, actual_seq_lengths
+    )
+    o_npu, state_npu = cgdr_npu(
+        q, k, v, g, beta, scale, initial_state, actual_seq_lengths
+    )
     # ======================== check result ================================
     ret = True
     if not compare_cv(o_golden, o_bench, o_npu, name="o"):
         print("compare o failed.")
         err_o = torch.abs(o_golden - o_npu).flatten()
         idx = torch.argmax(err_o)
-        print(f"idx={idx}, err_o={err_o[idx]}, o_golden={o_golden.flatten()[idx]}, "
-              f"o_npu={o_npu.flatten()[idx]}, o_bench={o_bench.flatten()[idx]}")
+        print(
+            f"idx={idx}, err_o={err_o[idx]}, o_golden={o_golden.flatten()[idx]}, "
+            f"o_npu={o_npu.flatten()[idx]}, o_bench={o_bench.flatten()[idx]}"
+        )
         ret = False
     if not compare_cv(state_golden, state_bench, state_npu, name="state"):
         print("compare state failed.")
         err_s = torch.abs(state_golden - state_npu).flatten()
         idx = torch.argmax(err_s)
-        print(f"idx={idx}, err_s={err_s[idx]}, state_golden={state_golden.flatten()[idx]}, "
-              f"state_npu={state_npu.flatten()[idx]}, state_bench={state_bench.flatten()[idx]}")
+        print(
+            f"idx={idx}, err_s={err_s[idx]}, state_golden={state_golden.flatten()[idx]}, "
+            f"state_npu={state_npu.flatten()[idx]}, state_bench={state_bench.flatten()[idx]}"
+        )
         ret = False
     print("PASSED" if ret else "FAILED")
     return ret
@@ -374,7 +406,12 @@ def run_chunk_gated_delta_rule_eager(B, seqlen, nk, nv, dk, dv, chunk_size=64,
 
 def run_precision_test(inputs):
     run_chunk_gated_delta_rule_eager(
-        inputs['B'], inputs['seqlen'], inputs['nk'],
-        inputs['nv'], inputs['dk'], inputs['dv'], inputs['chunk_size'],
-        data_type=inputs['data_type']
+        inputs["B"],
+        inputs["seqlen"],
+        inputs["nk"],
+        inputs["nv"],
+        inputs["dk"],
+        inputs["dv"],
+        inputs["chunk_size"],
+        data_type=inputs["data_type"],
     )

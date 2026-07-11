@@ -7,7 +7,7 @@
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
- 
+
 /*!
  * \file kvquant_sparse_attn_sharedkv_def.cpp
  * \brief
@@ -20,11 +20,7 @@ class KvQuantSparseAttnSharedkv : public OpDef {
 public:
     explicit KvQuantSparseAttnSharedkv(const char *name) : OpDef(name)
     {
-        this->Input("q")
-            .ParamType(REQUIRED)
-            .DataTypeList({ge::DT_BF16})
-            .FormatList({ge::FORMAT_ND})
-            .AutoContiguous();
+        this->Input("q").ParamType(REQUIRED).DataTypeList({ge::DT_BF16}).FormatList({ge::FORMAT_ND}).AutoContiguous();
         this->Input("ori_kv")
             .ParamType(OPTIONAL)
             .DataType({ge::DT_FLOAT8_E4M3FN, ge::DT_HIFLOAT8})
@@ -90,21 +86,15 @@ public:
             .DataTypeList({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
-        this->Output("attn_out")
-            .ParamType(REQUIRED)
-            .DataTypeList({ge::DT_BF16})
-            .FormatList({ge::FORMAT_ND});
-        this->Output("softmax_lse")
-            .ParamType(REQUIRED)
-            .DataTypeList({ge::DT_FLOAT})
-            .FormatList({ge::FORMAT_ND});
+        this->Output("attn_out").ParamType(REQUIRED).DataTypeList({ge::DT_BF16}).FormatList({ge::FORMAT_ND});
+        this->Output("softmax_lse").ParamType(REQUIRED).DataTypeList({ge::DT_FLOAT}).FormatList({ge::FORMAT_ND});
         this->Attr("kv_quant_mode").AttrType(REQUIRED).Int(1);
-        this->Attr("tile_size").AttrType(OPTIONAL).Int(64); // tile_size默认值64
+        this->Attr("tile_size").AttrType(OPTIONAL).Int(64);     // tile_size默认值64
         this->Attr("rope_head_dim").AttrType(OPTIONAL).Int(64); // rope_head_dim默认值64
         this->Attr("softmax_scale").AttrType(REQUIRED).Float(1.0);
         this->Attr("cmp_ratio").AttrType(REQUIRED).Int(1);
-        this->Attr("ori_mask_mode").AttrType(REQUIRED).Int(4); // ori_mask_mode默认值4
-        this->Attr("cmp_mask_mode").AttrType(REQUIRED).Int(3); // cmp_mask_mode默认值3
+        this->Attr("ori_mask_mode").AttrType(REQUIRED).Int(4);  // ori_mask_mode默认值4
+        this->Attr("cmp_mask_mode").AttrType(REQUIRED).Int(3);  // cmp_mask_mode默认值3
         this->Attr("ori_win_left").AttrType(OPTIONAL).Int(127); // ori_win_left默认值127
         this->Attr("ori_win_right").AttrType(OPTIONAL).Int(0);
         this->Attr("layout_q").AttrType(OPTIONAL).String("BSND");

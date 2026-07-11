@@ -613,7 +613,7 @@ __aicore__ inline void MlaPrologV3SplitM<MLAPT>::WorkspaceInit(__gm__ uint8_t *w
                        baseParams_->mm2BlockNum * sizeof(mmCkvKrOutputType);
 
     mmQcQrResGm_.SetGlobalBuffer((__gm__ mmQcQrOutputType *)(workspace + workspaceOffset)); // aicOffset.qcQrResOffset
-    
+
     if constexpr (IsFullQuantMode<mmQcQrInputType, dequantScaleType, false>()) {
         workspaceOffset += static_cast<int64_t>(baseParams_->stepBatchSize) *
                            static_cast<int64_t>(baseParams_->headSizeQc + baseParams_->headSizeQr) *
@@ -1095,7 +1095,7 @@ __aicore__ inline void MlaPrologV3SplitM<MLAPT>::CopyGlobalParams()
     DataCopy(rmsnormGammaCkvLocal_, rmsnormGammaCkvGm_, baseParams_->headSizeCkv);
 
     // quantScaleCkv
-    
+
     if constexpr (IsFullQuantMode<rmsNormCkvOutputType, dequantScaleType, false>() && !isPertile) {
         if constexpr (std::is_same<mmCkvKrOutputType, int32_t>::value ||
                       (std::is_same<mmCkvKrOutputType, float>::value && !isFp8E8m0)) {
@@ -1160,7 +1160,7 @@ __aicore__ inline void MlaPrologV3SplitM<MLAPT>::RmsNormCq(int64_t tokenIndex, i
                                       baseParams_->qcQrScale,
                                       baseParams_->isQcQrScaleEnable};
 
-                                      
+
         if constexpr (IsFullQuantMode<rmsNormCqOutputType, dequantScaleType, false>()) {
             RmsNormDynamicQuant<mmCqOutputType, rmsNormGammaType, float, rmsNormComputType, rmsNormCqOutputType,
                                 dequantScaleType>(outputLocal, dequantScaleQcQr[scaleOffset],
@@ -1346,7 +1346,7 @@ __aicore__ inline void MlaPrologV3SplitM<MLAPT>::RmsNormAndQuantizeCkv(LocalTens
             static_cast<uint32_t>(baseParams_->headSizeCkv)  // columnStride
         };
         if constexpr (std::is_same<mmCkvKrOutputType, int32_t>::value ||
-                         std::is_same<mmCkvKrOutputType, float>::value) {
+                      std::is_same<mmCkvKrOutputType, float>::value) {
             QuantPerTensor(outputLocal, inputLocal, quantScaleCkvLocal_, sharedBuf, rectangleParams);
         } else {
             QuantPerChannel(outputLocal, inputLocal, quantScaleCkvLocal_, sharedBuf, rectangleParams);

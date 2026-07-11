@@ -21,7 +21,7 @@
 * 计算公式：
 
     1、**mrope模式**：positions的shape输入是[m, numTokens], m为mropeSection的元素数，支持3或4：
-    
+
     $$
     cosSin[i] = cosSinCache[positions[i]]
     $$
@@ -82,7 +82,7 @@
       $$
       sin = torch.cat([m[i]\ for\ i, m\ in\ enumerate(sin.split(mropeSection, dim=-1))], dim=-1)
       $$
-      
+
       $$
       queryRot = query[..., :rotaryDim]
       $$
@@ -274,10 +274,10 @@ aclnnStatus aclnnRopeWithSinCosCacheV2(
     <table style="undefined;table-layout: fixed; width: 1550px"><colgroup>
       <col style="width: 170px">
       <col style="width: 120px">
-      <col style="width: 300px">  
-      <col style="width: 550px">  
-      <col style="width: 212px">  
-      <col style="width: 100px"> 
+      <col style="width: 300px">
+      <col style="width: 550px">
+      <col style="width: 212px">
+      <col style="width: 100px">
       <col style="width: 190px">
       <col style="width: 145px">
       </colgroup>

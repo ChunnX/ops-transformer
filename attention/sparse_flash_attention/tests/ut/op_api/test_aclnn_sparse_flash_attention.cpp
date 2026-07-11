@@ -25,8 +25,7 @@ void DestroyAclTensor(aclTensor *tensor)
 }
 } // namespace
 
-class sparse_flash_attention_opapi_ut : public testing::Test
-{
+class sparse_flash_attention_opapi_ut : public testing::Test {
 protected:
     static void SetUpTestCase()
     {
@@ -59,29 +58,9 @@ TEST_F(sparse_flash_attention_opapi_ut, sparse_flash_attention_aclnn_0)
     aclOpExecutor *executor = nullptr;
 
     aclnnStatus aclRet = aclnnSparseFlashAttentionGetWorkspaceSize(
-        query.get(),
-        key.get(),
-        value.get(),
-        sparseIndices.get(),
-        nullptr,
-        nullptr,
-        nullptr,
-        nullptr,
-        nullptr,
-        0.0416666666666667,
-        64,
-        layoutQ,
-        layoutKv,
-        3,
-        INT64_MAX,
-        INT64_MAX,
-        0,
-        true,
-        attentionOut.get(),
-        nullptr,
-        nullptr,
-        &workspaceSize,
-        &executor);
+        query.get(), key.get(), value.get(), sparseIndices.get(), nullptr, nullptr, nullptr, nullptr, nullptr,
+        0.0416666666666667, 64, layoutQ, layoutKv, 3, INT64_MAX, INT64_MAX, 0, true, attentionOut.get(), nullptr,
+        nullptr, &workspaceSize, &executor);
 
     EXPECT_NE(aclRet, ACL_SUCCESS);
     EXPECT_EQ(executor, nullptr);
@@ -104,29 +83,9 @@ TEST_F(sparse_flash_attention_opapi_ut, sparse_flash_attention_aclnn_1)
     aclOpExecutor *executor = nullptr;
 
     aclnnStatus aclRet = aclnnSparseFlashAttentionGetWorkspaceSize(
-        query.get(),
-        nullptr,
-        value.get(),
-        sparseIndices.get(),
-        nullptr,
-        nullptr,
-        nullptr,
-        nullptr,
-        nullptr,
-        0.0416666666666667,
-        64,
-        layoutQ,
-        layoutKv,
-        3,
-        INT64_MAX,
-        INT64_MAX,
-        0,
-        false,
-        attentionOut.get(),
-        nullptr,
-        nullptr,
-        &workspaceSize,
-        &executor);
+        query.get(), nullptr, value.get(), sparseIndices.get(), nullptr, nullptr, nullptr, nullptr, nullptr,
+        0.0416666666666667, 64, layoutQ, layoutKv, 3, INT64_MAX, INT64_MAX, 0, false, attentionOut.get(), nullptr,
+        nullptr, &workspaceSize, &executor);
 
     EXPECT_NE(aclRet, ACL_SUCCESS);
     EXPECT_EQ(executor, nullptr);

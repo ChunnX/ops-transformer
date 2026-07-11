@@ -134,7 +134,7 @@ int main()
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor;
     ret = aclnnScatterPaKvCacheWithKScaleGetWorkspaceSize(key, value, keyCache, valueCache, slotMapping, keyScale,
-                                                        keyScaleCache, cacheLayout, &workspaceSize, &executor);
+                                                          keyScaleCache, cacheLayout, &workspaceSize, &executor);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnScatterPaKvCacheWithKScaleGetWorkspaceSize failed. ERROR: %d\n", ret);
               return ret);
     void *workspaceAddr = nullptr;

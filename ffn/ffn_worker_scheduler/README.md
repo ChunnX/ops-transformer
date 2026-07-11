@@ -74,7 +74,7 @@
         classDef output fill:#e3f2fd
         classDef micro fill:#e1f5fe
         classDef expert fill:#bbdefd
-        
+
         %% 添加子图背景色样式
         style Session0 fill:#fff3e0,stroke:#ff9800,stroke-width:2px
         style Session1 fill:#fce4ec,stroke:#e91e63,stroke-width:2px
@@ -88,7 +88,7 @@
 1. 初始化，根据入参ScheduleContext中的session_num和sync_group_size计算分组个数。
   1. 若分组个数为1，表示全同步处理数据，待全部session数据准备就绪后，进行数据整理。
   2. 若分组个数不为1，表示非全同步处理数据，待group内的session数据准备就绪后，进行数据整理。
-  
+
      $$
      \text{Initialize:} \quad\text{group\_num} = \frac{\text{session\_num}}{\text{sync\_group\_size}}
      $$

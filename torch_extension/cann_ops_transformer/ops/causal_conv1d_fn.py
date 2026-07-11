@@ -10,7 +10,6 @@
 from typing import Optional
 
 import torch
-import torch_npu
 from torch.library import impl
 from cann_ops_transformer.op_builder.builder import OpBuilder
 from cann_ops_transformer.op_builder.builder import AS_LIBRARY
@@ -22,7 +21,7 @@ class CausalConv1dFnOpBuilder(OpBuilder):
 
     def sources(self):
         """Path to C++ source code."""
-        return ['ops/csrc/causal_conv1d_fn.cpp']
+        return ["ops/csrc/causal_conv1d_fn.cpp"]
 
     def schema(self) -> str:
         """PyTorch operator schema."""
@@ -34,7 +33,7 @@ class CausalConv1dFnOpBuilder(OpBuilder):
             "*, "
             "Tensor? cache_indices=None, "
             "Tensor? has_initial_state=None, "
-            "str activation=\"silu\", "
+            'str activation="silu", '
             "int pad_slot_id=-1, "
             "int null_block_id=0, "
             "Tensor? block_idx_first_scheduled_token=None, "
@@ -47,6 +46,7 @@ class CausalConv1dFnOpBuilder(OpBuilder):
 
     def register_meta(self):
         """Register Meta implementation for shape/dtype inference."""
+
         @impl(AS_LIBRARY, self.name, "Meta")
         def causal_conv1d_fn_meta(
             x: torch.Tensor,
@@ -94,10 +94,16 @@ def _causal_conv1d_fn(
 ) -> torch.Tensor:
     _op_module = _causal_conv1d_fn_op_builder.load()
     return _op_module.causal_conv1d_fn(
-        x, weight, bias, conv_states,
-        query_start_loc, cache_indices,
+        x,
+        weight,
+        bias,
+        conv_states,
+        query_start_loc,
+        cache_indices,
         has_initial_state,
-        activation, pad_slot_id, null_block_id,
+        activation,
+        pad_slot_id,
+        null_block_id,
         block_idx_first_scheduled_token,
         block_idx_last_scheduled_token,
         initial_state_idx,
@@ -156,7 +162,11 @@ def causal_conv1d_fn(
         Tensor: 卷积输出 y，shape 与 x 一致，dtype 与 x 一致。
     """
     return _causal_conv1d_fn(
-        x, weight, bias, conv_states, query_start_loc,
+        x,
+        weight,
+        bias,
+        conv_states,
+        query_start_loc,
         cache_indices=cache_indices,
         has_initial_state=has_initial_state,
         activation=activation,

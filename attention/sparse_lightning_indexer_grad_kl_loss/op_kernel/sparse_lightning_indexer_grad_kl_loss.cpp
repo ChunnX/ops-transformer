@@ -55,18 +55,13 @@ using namespace SligKlLoss;
     } while (0)
 #endif
 
-template< bool HasRope, int TopKRange, int LayoutT_QT, int LayoutT_KT, int SparseMode, bool Deterministic>
- __global__ __aicore__ void
-sparse_lightning_indexer_grad_kl_loss(__gm__ uint8_t *query, __gm__ uint8_t *key,
-                                      __gm__ uint8_t *queryIndex, __gm__ uint8_t *keyIndex,
-                                      __gm__ uint8_t *weight, __gm__ uint8_t *sparseIndices,
-                                      __gm__ uint8_t *softmaxMax, __gm__ uint8_t *softmaxMum,
-                                      __gm__ uint8_t* queryRope, __gm__ uint8_t* keyRope,
-                                      __gm__ uint8_t* actualSeqLengthsQuery,
-                                      __gm__ uint8_t* actualSeqLengthsKey,
-                                      __gm__ uint8_t *dQueryIndex, __gm__ uint8_t *dKeyIndex,
-                                      __gm__ uint8_t *dWeight, __gm__ uint8_t *loss,
-                                      __gm__ uint8_t *workspace, __gm__ uint8_t *tiling)
+template <bool HasRope, int TopKRange, int LayoutT_QT, int LayoutT_KT, int SparseMode, bool Deterministic>
+__global__ __aicore__ void sparse_lightning_indexer_grad_kl_loss(
+    __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *queryIndex, __gm__ uint8_t *keyIndex,
+    __gm__ uint8_t *weight, __gm__ uint8_t *sparseIndices, __gm__ uint8_t *softmaxMax, __gm__ uint8_t *softmaxMum,
+    __gm__ uint8_t *queryRope, __gm__ uint8_t *keyRope, __gm__ uint8_t *actualSeqLengthsQuery,
+    __gm__ uint8_t *actualSeqLengthsKey, __gm__ uint8_t *dQueryIndex, __gm__ uint8_t *dKeyIndex,
+    __gm__ uint8_t *dWeight, __gm__ uint8_t *loss, __gm__ uint8_t *workspace, __gm__ uint8_t *tiling)
 {
 #if __CCE_AICORE__ == 310
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
@@ -93,16 +88,15 @@ sparse_lightning_indexer_grad_kl_loss(__gm__ uint8_t *query, __gm__ uint8_t *key
     __gm__ uint8_t *user = GetUserWorkspace(workspace);
 
     if constexpr (ORIG_DTYPE_QUERY == DT_FLOAT16 && ORIG_DTYPE_KEY == DT_FLOAT16) {
-        SLI_OP_IMPL(SparseLightningIndexerGradKLLossBase, optiling::SparseLightningIndexerGradKLLossTilingData,
-            half, half, DTYPE_WEIGHT, half, static_cast<SLITopKRange>(TopKRange),
-            static_cast<SLILayout>(LayoutT_QT), static_cast<SLILayout>(LayoutT_KT),
-            SLISparseMode::RightDown, HasRope, Deterministic);
+        SLI_OP_IMPL(SparseLightningIndexerGradKLLossBase, optiling::SparseLightningIndexerGradKLLossTilingData, half,
+                    half, DTYPE_WEIGHT, half, static_cast<SLITopKRange>(TopKRange), static_cast<SLILayout>(LayoutT_QT),
+                    static_cast<SLILayout>(LayoutT_KT), SLISparseMode::RightDown, HasRope, Deterministic);
     }
     if constexpr (ORIG_DTYPE_QUERY == DT_BF16 && ORIG_DTYPE_KEY == DT_BF16) {
         SLI_OP_IMPL(SparseLightningIndexerGradKLLossBase, optiling::SparseLightningIndexerGradKLLossTilingData,
-            bfloat16_t, bfloat16_t, DTYPE_WEIGHT, bfloat16_t, static_cast<SLITopKRange>(TopKRange),
-            static_cast<SLILayout>(LayoutT_QT), static_cast<SLILayout>(LayoutT_KT),
-            SLISparseMode::RightDown, HasRope, Deterministic);
+                    bfloat16_t, bfloat16_t, DTYPE_WEIGHT, bfloat16_t, static_cast<SLITopKRange>(TopKRange),
+                    static_cast<SLILayout>(LayoutT_QT), static_cast<SLILayout>(LayoutT_KT), SLISparseMode::RightDown,
+                    HasRope, Deterministic);
     }
 #endif
 }

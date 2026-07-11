@@ -23,31 +23,31 @@
 namespace optiling {
 using namespace Ops::Transformer::OpTiling;
 
-std::tuple<int64_t, int64_t, int64_t, int64_t> QkvRmsNormRopeCacheTilingBase::GetShapeTuple(
-    const gert::TilingContext* context, const int64_t index)
+std::tuple<int64_t, int64_t, int64_t, int64_t>
+QkvRmsNormRopeCacheTilingBase::GetShapeTuple(const gert::TilingContext *context, const int64_t index)
 {
-    const gert::StorageShape* shapePtr = context->GetInputShape(index);
-    OP_CHECK_IF(shapePtr == nullptr, OP_LOGE(context->GetNodeName(), "Shape is nullptr."), return std::make_tuple(0, 0, 0, 0));
+    const gert::StorageShape *shapePtr = context->GetInputShape(index);
+    OP_CHECK_IF(shapePtr == nullptr, OP_LOGE(context->GetNodeName(), "Shape is nullptr."),
+                return std::make_tuple(0, 0, 0, 0));
     // check shape length is DIM_SIZE
-    OP_CHECK_IF(
-        shapePtr->GetStorageShape().GetDimNum() != DIM_SIZE, OP_LOGE(context->GetNodeName(), "the number of dimensions must be 4."),
-        return std::make_tuple(0, 0, 0, 0));
-    return std::make_tuple(
-        shapePtr->GetStorageShape().GetDim(DIM_ZERO), shapePtr->GetStorageShape().GetDim(DIM_ONE),
-        shapePtr->GetStorageShape().GetDim(DIM_TWO), shapePtr->GetStorageShape().GetDim(DIM_THREE));
+    OP_CHECK_IF(shapePtr->GetStorageShape().GetDimNum() != DIM_SIZE,
+                OP_LOGE(context->GetNodeName(), "the number of dimensions must be 4."),
+                return std::make_tuple(0, 0, 0, 0));
+    return std::make_tuple(shapePtr->GetStorageShape().GetDim(DIM_ZERO), shapePtr->GetStorageShape().GetDim(DIM_ONE),
+                           shapePtr->GetStorageShape().GetDim(DIM_TWO), shapePtr->GetStorageShape().GetDim(DIM_THREE));
 }
 
-std::tuple<int64_t, int64_t> QkvRmsNormRopeCacheTilingBase::GetShapeTupleOfTH(
-    const gert::TilingContext* context, const int64_t index)
+std::tuple<int64_t, int64_t> QkvRmsNormRopeCacheTilingBase::GetShapeTupleOfTH(const gert::TilingContext *context,
+                                                                              const int64_t index)
 {
-    const gert::StorageShape* shapePtr = context->GetInputShape(index);
-    OP_CHECK_IF(shapePtr == nullptr, OP_LOGE(context->GetNodeName(), "Shape is nullptr."), return std::make_tuple(0, 0));
+    const gert::StorageShape *shapePtr = context->GetInputShape(index);
+    OP_CHECK_IF(shapePtr == nullptr, OP_LOGE(context->GetNodeName(), "Shape is nullptr."),
+                return std::make_tuple(0, 0));
     // check shape length is DIM_SIZE
-    OP_CHECK_IF(
-        shapePtr->GetStorageShape().GetDimNum() != DIM_TWO, OP_LOGE(context->GetNodeName(), "the number of dimensions must be 2."),
-        return std::make_tuple(0, 0));
-    return std::make_tuple(
-        shapePtr->GetStorageShape().GetDim(SHAPE_IDX_BS), shapePtr->GetStorageShape().GetDim(SHAPE_IDX_ND));
+    OP_CHECK_IF(shapePtr->GetStorageShape().GetDimNum() != DIM_TWO,
+                OP_LOGE(context->GetNodeName(), "the number of dimensions must be 2."), return std::make_tuple(0, 0));
+    return std::make_tuple(shapePtr->GetStorageShape().GetDim(SHAPE_IDX_BS),
+                           shapePtr->GetStorageShape().GetDim(SHAPE_IDX_ND));
 }
 
 ge::graphStatus QkvRmsNormRopeCacheTilingBase::GetPlatformInfo()
@@ -55,8 +55,7 @@ ge::graphStatus QkvRmsNormRopeCacheTilingBase::GetPlatformInfo()
     auto platformInfo = context_->GetPlatformInfo();
     if (platformInfo == nullptr) {
         auto compileInfoPtr = context_->GetCompileInfo<QkvRmsNormRopeCacheCompileInfo>();
-        OP_CHECK_IF(compileInfoPtr == nullptr, OP_LOGE(context_, "compile info is null"),
-                      return ge::GRAPH_FAILED);
+        OP_CHECK_IF(compileInfoPtr == nullptr, OP_LOGE(context_, "compile info is null"), return ge::GRAPH_FAILED);
         coreNum_ = compileInfoPtr->coreNum;
         ubSize_ = compileInfoPtr->ubSize;
         OP_LOGD(context_->GetNodeName(), "GetPlatformInfo : platformInfo == nullptr");
@@ -76,7 +75,7 @@ uint64_t QkvRmsNormRopeCacheTilingBase::GetTilingKey() const
 {
     return tilingKey_;
 }
-ge::graphStatus Tiling4QkvRmsNormRopeCache(gert::TilingContext* context)
+ge::graphStatus Tiling4QkvRmsNormRopeCache(gert::TilingContext *context)
 {
     OP_LOGD(context, "Tiling4QkvRmsNormRopeCache running.");
     return Ops::Transformer::OpTiling::TilingRegistry::GetInstance().DoTilingImpl(context);
@@ -84,7 +83,7 @@ ge::graphStatus Tiling4QkvRmsNormRopeCache(gert::TilingContext* context)
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus TilingPrepare4QkvRmsNormRopeCache(gert::TilingParseContext* context)
+ge::graphStatus TilingPrepare4QkvRmsNormRopeCache(gert::TilingParseContext *context)
 {
     OP_LOGD(context, "TilingPrepare4QkvRmsNormRopeCache running.");
     auto compileInfo = context->GetCompiledInfo<QkvRmsNormRopeCacheCompileInfo>();
@@ -94,21 +93,15 @@ ge::graphStatus TilingPrepare4QkvRmsNormRopeCache(gert::TilingParseContext* cont
 
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
     compileInfo->coreNum = ascendcPlatform.GetCoreNumAiv();
-    OP_CHECK_IF(
-        (compileInfo->coreNum <= 0),
-        OP_LOGE(
-            context->GetNodeName(), "coreNum must be greater than 0."),
-        return ge::GRAPH_FAILED);
-    
+    OP_CHECK_IF((compileInfo->coreNum <= 0), OP_LOGE(context->GetNodeName(), "coreNum must be greater than 0."),
+                return ge::GRAPH_FAILED);
+
     uint64_t ubSize = 0;
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
     compileInfo->ubSize = ubSize;
-    OP_CHECK_IF(
-        (compileInfo->ubSize <= 0),
-        OP_LOGE(
-            context->GetNodeName(), "ubSize must be greater than 0."),
-        return ge::GRAPH_FAILED);
-    
+    OP_CHECK_IF((compileInfo->ubSize <= 0), OP_LOGE(context->GetNodeName(), "ubSize must be greater than 0."),
+                return ge::GRAPH_FAILED);
+
     OP_LOGD(context, "coreNum: %ld, ubSize: %ld", compileInfo->coreNum, compileInfo->ubSize);
     OP_LOGD(context, "TilingPrepare4QkvRmsNormRopeCache success.");
     return ge::GRAPH_SUCCESS;

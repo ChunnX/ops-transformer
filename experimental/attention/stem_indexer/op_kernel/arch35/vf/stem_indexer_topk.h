@@ -27,8 +27,7 @@ constexpr uint32_t NK_VALUE_SIZE = 64U;
 template <typename T>
 class SITopk {
 public:
-    __aicore__ inline void operator()(LocalTensor<uint32_t>& outputIdxLocal,
-                                      LocalTensor<T>& inputLocal,
+    __aicore__ inline void operator()(LocalTensor<uint32_t> &outputIdxLocal, LocalTensor<T> &inputLocal,
                                       uint32_t s2SeqLen)
     {
     }
@@ -42,8 +41,8 @@ public:
         // 2 * SICommon::Align(topK, HISTOGRAM_BIN_NUM): 两块hisIndexLocal
         // 5 * 256：histogramsLocal + idxLocal[0-3]
         // 64：nkValueLocal
-        uint64_t bufferSize1 = (2 * SICommon::Align(topK, HISTOGRAM_BIN_NUM) +
-                                5 * HISTOGRAM_BIN_NUM + NK_VALUE_SIZE) * sizeof(uint32_t);
+        uint64_t bufferSize1 =
+            (2 * SICommon::Align(topK, HISTOGRAM_BIN_NUM) + 5 * HISTOGRAM_BIN_NUM + NK_VALUE_SIZE) * sizeof(uint32_t);
         // SICommon::Align(topK, HISTOGRAM_BIN_NUM) + trunkLen：tmpIndexLocal
         uint64_t bufferSize2 = (SICommon::Align(topK, HISTOGRAM_BIN_NUM) + trunkLen) * sizeof(uint32_t);
         return bufferSize1 + bufferSize2;
@@ -71,7 +70,7 @@ public:
         this->topK = topK;
     }
 
-    __aicore__ inline void InitBuffers(LocalTensor<uint32_t>& sharedTmpBuffer)
+    __aicore__ inline void InitBuffers(LocalTensor<uint32_t> &sharedTmpBuffer)
     {
         LocalTensor<uint32_t> hisIndexLocal1 = sharedTmpBuffer[0];
         LocalTensor<uint32_t> hisIndexLocal2 = hisIndexLocal1[SICommon::Align(topK, HISTOGRAM_BIN_NUM)];
@@ -86,8 +85,7 @@ public:
         tmpIndexLocal = nkValueLocal[NK_VALUE_SIZE];
     }
 
-    __aicore__ inline void InitBuffers(LocalTensor<uint32_t>& sharedTmpBuffer,
-                                       LocalTensor<uint32_t>& indicesOutLocal)
+    __aicore__ inline void InitBuffers(LocalTensor<uint32_t> &sharedTmpBuffer, LocalTensor<uint32_t> &indicesOutLocal)
     {
         LocalTensor<uint32_t> hisIndexLocal2 = indicesOutLocal;
         hisIndexLocal[1] = hisIndexLocal2;
@@ -96,12 +94,12 @@ public:
         tmpIndexLocal = nkValueLocal[NK_VALUE_SIZE];
     }
 
-    __aicore__ inline void operator()(const LocalTensor<uint32_t>& mrgValueLocal,
-                                      const LocalTensor<uint32_t>& indicesOutLocal,
-                                      const LocalTensor<uint32_t>& hisValueLocal,
-                                      const LocalTensor<uint32_t>& reuseMm1ResLocal,
-                                      const LocalTensor<uint32_t>& reuseGlobalIndexLocal,
-                                      uint32_t s2SeqLen, uint32_t loopIdx, uint32_t s2LoopNum)
+    __aicore__ inline void operator()(const LocalTensor<uint32_t> &mrgValueLocal,
+                                      const LocalTensor<uint32_t> &indicesOutLocal,
+                                      const LocalTensor<uint32_t> &hisValueLocal,
+                                      const LocalTensor<uint32_t> &reuseMm1ResLocal,
+                                      const LocalTensor<uint32_t> &reuseGlobalIndexLocal, uint32_t s2SeqLen,
+                                      uint32_t loopIdx, uint32_t s2LoopNum)
     {
         // uint32_t时UB需要进行复用，此处将每8位的targetbin复用mm1res
         idx0Local = reuseMm1ResLocal;
@@ -112,30 +110,27 @@ public:
         hisIndexLocal[0] = reuseGlobalIndexLocal;
 
         if (s2LoopNum == 1) {
-            SITopkb32gather::SiTopKVF<false>(tmpIndexLocal, hisValueLocal, mrgValueLocal, histogramsLocal,
-                                             idx0Local, idx1Local, idx2Local, idx3Local,
-                                             nkValueLocal, topK, s2SeqLen);
+            SITopkb32gather::SiTopKVF<false>(tmpIndexLocal, hisValueLocal, mrgValueLocal, histogramsLocal, idx0Local,
+                                             idx1Local, idx2Local, idx3Local, nkValueLocal, topK, s2SeqLen);
             PipeBarrier<PIPE_V>();
             AscendC::DataCopy(indicesOutLocal, tmpIndexLocal, SICommon::Align(topK, HISTOGRAM_BIN_NUM));
         } else {
             if (loopIdx == 0) {
-                SITopkb32gather::SiTopKVF<true>(tmpIndexLocal, hisValueLocal, mrgValueLocal, histogramsLocal,
-                                                idx0Local, idx1Local, idx2Local, idx3Local,
-                                                nkValueLocal, topK, s2SeqLen);
+                SITopkb32gather::SiTopKVF<true>(tmpIndexLocal, hisValueLocal, mrgValueLocal, histogramsLocal, idx0Local,
+                                                idx1Local, idx2Local, idx3Local, nkValueLocal, topK, s2SeqLen);
                 PipeBarrier<PIPE_V>();
                 AscendC::DataCopy(hisIndexLocal[1], tmpIndexLocal, SICommon::Align(topK, HISTOGRAM_BIN_NUM));
             } else {
-                SITopkb32gather::SiTopKVF<true>(tmpIndexLocal, hisValueLocal, mrgValueLocal, histogramsLocal,
-                                                idx0Local, idx1Local, idx2Local, idx3Local,
-                                                nkValueLocal, topK, s2SeqLen);
+                SITopkb32gather::SiTopKVF<true>(tmpIndexLocal, hisValueLocal, mrgValueLocal, histogramsLocal, idx0Local,
+                                                idx1Local, idx2Local, idx3Local, nkValueLocal, topK, s2SeqLen);
                 PipeBarrier<PIPE_V>();
-                SITopkb32gather::SiTopKGatherVF(hisIndexLocal[1], hisValueLocal,
-                                                mrgValueLocal, tmpIndexLocal, hisIndexLocal[0],
-                                                topK, loopIdx * trunkLen - SICommon::Align(topK, HISTOGRAM_BIN_NUM),
-                                                s2SeqLen);
+                SITopkb32gather::SiTopKGatherVF(
+                    hisIndexLocal[1], hisValueLocal, mrgValueLocal, tmpIndexLocal, hisIndexLocal[0], topK,
+                    loopIdx * trunkLen - SICommon::Align(topK, HISTOGRAM_BIN_NUM), s2SeqLen);
             }
         }
     }
+
 private:
     LocalTensor<uint32_t> hisIndexLocal[2]; // 每trunkLen长度的s2选出的topK个索引
     LocalTensor<uint32_t> histogramsLocal;  // 直方图的临时Buf 256 * 4B
@@ -148,5 +143,5 @@ private:
     uint32_t topK = 512;
     uint32_t trunkLen = 8192;
 };
-}
+} // namespace SIKernel
 #endif

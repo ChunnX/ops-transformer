@@ -119,11 +119,9 @@ ge::graphStatus QSMLATilingCheck::CheckHCAExistence()
                     opParamInfo_.cmpRatio != nullptr,
                 OP_LOGE(opName_, "cmpKv must not be empty in HCA mode."), return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(
-        opParamInfo_.oriKv.tensor != nullptr && opParamInfo_.cmpKv.tensor != nullptr &&
-            opParamInfo_.cmpRatio == nullptr,
-        OP_LOGE(opName_, "cmpRatio must not be empty in HCA mode."),
-        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(opParamInfo_.oriKv.tensor != nullptr && opParamInfo_.cmpKv.tensor != nullptr &&
+                    opParamInfo_.cmpRatio == nullptr,
+                OP_LOGE(opName_, "cmpRatio must not be empty in HCA mode."), return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(opParamInfo_.oriKv.tensor != nullptr && opParamInfo_.cmpKv.tensor != nullptr &&
                     opParamInfo_.cmpRatio == nullptr,

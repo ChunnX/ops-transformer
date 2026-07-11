@@ -37,12 +37,12 @@ using namespace AttentionCommon;
 
 namespace BaseApi {
 
-template <
-    typename INPUT_T, typename T, typename OUTPUT_T, LayOutTypeEnum layout = LayOutTypeEnum::None,
-    LayOutTypeEnum outLayout = LayOutTypeEnum::None, S1TemplateType s1TemplateType = S1TemplateType::Aligned128,
-    S2TemplateType s2TemplateType = S2TemplateType::Aligned128, DTemplateType dTemplateType = DTemplateType::Aligned128,
-    DTemplateType dVTemplateType = DTemplateType::Aligned128, bool hasAtten = false, bool hasDrop = false,
-    uint8_t KvLayoutType = 0, bool useDn = false, bool bmm2Write2Ub = true, bool splitD = false>
+template <typename INPUT_T, typename T, typename OUTPUT_T, LayOutTypeEnum layout = LayOutTypeEnum::None,
+          LayOutTypeEnum outLayout = LayOutTypeEnum::None, S1TemplateType s1TemplateType = S1TemplateType::Aligned128,
+          S2TemplateType s2TemplateType = S2TemplateType::Aligned128,
+          DTemplateType dTemplateType = DTemplateType::Aligned128,
+          DTemplateType dVTemplateType = DTemplateType::Aligned128, bool hasAtten = false, bool hasDrop = false,
+          uint8_t KvLayoutType = 0, bool useDn = false, bool bmm2Write2Ub = true, bool splitD = false>
 class VecBlockBase {
 public:
     /* =================编译期常量的基本块信息================= */
@@ -68,7 +68,8 @@ public:
     static constexpr MaskFormat MASK_LAYOUT =
         (layout == LayOutTypeEnum::LAYOUT_BSH || layout == LayOutTypeEnum::LAYOUT_TND ||
          layout == LayOutTypeEnum::LAYOUT_SBH) ?
-            MaskFormat::SG : MaskFormat::GS;
+            MaskFormat::SG :
+            MaskFormat::GS;
 
     static constexpr T BOOL_ATTEN_MASK_SCALAR_VALUE = -1000000000000.0; // 用于mask为bool类型
     uint32_t negativeIntScalar = *((uint32_t *)&BOOL_ATTEN_MASK_SCALAR_VALUE);
@@ -87,12 +88,12 @@ public:
     __aicore__ inline VecBlockBase(ConstInfoX &constInfo){};
 };
 
-template <
-    typename INPUT_T, typename T, typename OUTPUT_T, LayOutTypeEnum layout = LayOutTypeEnum::None,
-    LayOutTypeEnum outLayout = LayOutTypeEnum::None, S1TemplateType s1TemplateType = S1TemplateType::Aligned128,
-    S2TemplateType s2TemplateType = S2TemplateType::Aligned128, DTemplateType dTemplateType = DTemplateType::Aligned128,
-    DTemplateType dVTemplateType = DTemplateType::Aligned128, bool hasAtten = false, bool hasDrop = false,
-    uint8_t KvLayoutType = 0, bool useDn = false, bool bmm2Write2Ub = true, bool splitD = false>
+template <typename INPUT_T, typename T, typename OUTPUT_T, LayOutTypeEnum layout = LayOutTypeEnum::None,
+          LayOutTypeEnum outLayout = LayOutTypeEnum::None, S1TemplateType s1TemplateType = S1TemplateType::Aligned128,
+          S2TemplateType s2TemplateType = S2TemplateType::Aligned128,
+          DTemplateType dTemplateType = DTemplateType::Aligned128,
+          DTemplateType dVTemplateType = DTemplateType::Aligned128, bool hasAtten = false, bool hasDrop = false,
+          uint8_t KvLayoutType = 0, bool useDn = false, bool bmm2Write2Ub = true, bool splitD = false>
 class FANoQuantGqaBlockVec
     : public VecBlockBase<INPUT_T, T, OUTPUT_T, layout, outLayout, s1TemplateType, s2TemplateType, dTemplateType,
                           dVTemplateType, hasAtten, hasDrop, KvLayoutType, useDn, bmm2Write2Ub, splitD> {
@@ -144,8 +145,7 @@ public:
 
     GlobalTensor<int32_t> actualSeqLengthsGmQ;
     using QSeqParserType =
-        typename std::conditional<(layout == LayOutTypeEnum::LAYOUT_TND),
-                                  ActualSeqLensParser<Q_MODE, int32_t, true>,
+        typename std::conditional<(layout == LayOutTypeEnum::LAYOUT_TND), ActualSeqLensParser<Q_MODE, int32_t, true>,
                                   ActualSeqLensParser<Q_MODE, int32_t>>::type;
     QSeqParserType *qActSeqLensParser = nullptr;
 
@@ -244,8 +244,8 @@ public:
             if constexpr (splitD) {
                 bmm2ResBlock = (int64_t)dVTemplateType;
             }
-            int64_t mm2ResultSize = (mBaseSize) * bmm2ResBlock;  // 使用cube计算的总大小, Gm上的数据按照实际的dSize存储
-            bmm2SubBlockOffset = constInfo.subBlockIdx * mm2ResultSize >> 1;  // mBaseSize一定可以被2整除
+            int64_t mm2ResultSize = (mBaseSize)*bmm2ResBlock; // 使用cube计算的总大小, Gm上的数据按照实际的dSize存储
+            bmm2SubBlockOffset = constInfo.subBlockIdx * mm2ResultSize >> 1; // mBaseSize一定可以被2整除
         }
 
         if (learnableSink != nullptr) {
@@ -322,7 +322,7 @@ public:
                 matmul::InitOutput<half>(attentionOutTmpGm[constInfo.aivIdx * singleCoreSize], singleInitOutputSize, 0);
             } else {
                 matmul::InitOutput<OUTPUT_T>(attentionOutGm[constInfo.aivIdx * singleCoreSize], singleInitOutputSize,
-                    0);
+                                             0);
             }
             SetFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
         }
@@ -390,7 +390,7 @@ public:
                      {vec1S2CopyCountDn, vec1S2CopyLenDn, 1,
                       static_cast<uint16_t>(runInfo.actSingleLoopS2SizeAlign - vec1S2CopyLenDn)});
             DataCopy(vec1L1ResTensor[constInfo.subBlockIdx * vec1HalfS1BaseSize * runInfo.actSingleLoopS2SizeAlign +
-                                  vec1S2strideDn],
+                                     vec1S2strideDn],
                      stage1CastTensor[vec1ResOffsetDn],
                      {vec1S2CopyCountDn, static_cast<uint16_t>(runInfo.actSingleLoopS2SizeAlign - vec1S2CopyLenDn),
                       static_cast<uint16_t>(s2BaseSize - runInfo.actSingleLoopS2SizeAlign + 1), vec1S2CopyLenDn});
@@ -448,20 +448,20 @@ public:
         if constexpr (layout == LayOutTypeEnum::LAYOUT_TND) {
             uint32_t prefixBS1 = qActSeqLensParser->GetTBase(runInfo.bIdx);
             uint64_t bN2Offset = runInfo.n2Idx * constInfo.gSize * constInfo.t1Size + prefixBS1;
-            DataCopySoftmaxLseTNDtoNTArch35<T, ConstInfoX>(softmaxLseGm, lseUb, bN2Offset, vecMStartIdx, runInfo.actVecMSize,
-                                                            constInfo);
+            DataCopySoftmaxLseTNDtoNTArch35<T, ConstInfoX>(softmaxLseGm, lseUb, bN2Offset, vecMStartIdx,
+                                                           runInfo.actVecMSize, constInfo);
         } else if constexpr (layout == LayOutTypeEnum::LAYOUT_BSH) {
             uint64_t bN2Offset = runInfo.bIdx * constInfo.n2Size * constInfo.gSize * constInfo.s1Size +
                                  runInfo.n2Idx * constInfo.gSize * constInfo.s1Size;
             uint64_t qActSeqLens = qActSeqLensParser->GetActualSeqLength(runInfo.bIdx);
-            DataCopySoftmaxLseBSNDArch35<T, ConstInfoX>(softmaxLseGm, lseUb, bN2Offset, vecMStartIdx, runInfo.actVecMSize,
-                                                         constInfo);
+            DataCopySoftmaxLseBSNDArch35<T, ConstInfoX>(softmaxLseGm, lseUb, bN2Offset, vecMStartIdx,
+                                                        runInfo.actVecMSize, constInfo);
         } else { // BNSD
             uint64_t bN2Offset = runInfo.bIdx * constInfo.n2Size * constInfo.gSize * constInfo.s1Size +
                                  runInfo.n2Idx * constInfo.gSize * constInfo.s1Size;
             uint64_t qActSeqLens = qActSeqLensParser->GetActualSeqLength(runInfo.bIdx);
-            DataCopySoftmaxLseBNSDArch35<T, ConstInfoX>(softmaxLseGm, lseUb, bN2Offset, vecMStartIdx, runInfo.actVecMSize,
-                                                         constInfo, qActSeqLens);
+            DataCopySoftmaxLseBNSDArch35<T, ConstInfoX>(softmaxLseGm, lseUb, bN2Offset, vecMStartIdx,
+                                                        runInfo.actVecMSize, constInfo, qActSeqLens);
         }
 
         softmaxLseQueue.FreeTensor(lseUb);
@@ -613,7 +613,7 @@ public:
 
         if (likely(runInfo.actVecMSize != 0)) {
             DataCopy(vec1L1ResTensor[constInfo.subBlockIdx * (blockBytes / sizeof(INPUT_T)) *
-                                  (runInfo.actMSize - runInfo.actVecMSize)],
+                                     (runInfo.actMSize - runInfo.actVecMSize)],
                      stage1CastTensor,
                      {s2BaseSize / 16, (uint16_t)runInfo.actVecMSize, (uint16_t)(vec1Srcstride - runInfo.actVecMSize),
                       (uint16_t)(mBaseSize - runInfo.actVecMSize)});
@@ -724,8 +724,8 @@ public:
                 } else {
                     DataCopy(bmm2Ub,
                              mm2Res[constInfo.subBlockIdx * (runInfo.actMSize - runInfo.actVecMSize) *
-                                       (int64_t)dVTemplateType +
-                                   mm2ResInnerOffset],
+                                        (int64_t)dVTemplateType +
+                                    mm2ResInnerOffset],
                              vec2CalcSize);
                 }
             } else {
@@ -741,8 +741,8 @@ public:
                 } else {
                     DataCopyPad(bmm2Ub,
                                 mm2Res[constInfo.subBlockIdx * (runInfo.actMSize - runInfo.actVecMSize) *
-                                          (int64_t)dVTemplateType +
-                                      mm2ResInnerOffset],
+                                           (int64_t)dVTemplateType +
+                                       mm2ResInnerOffset],
                                 dataCopyParams, dataCopyPadParams);
                 }
             }
@@ -759,9 +759,9 @@ public:
                 } else {
                     DataCopy(vec2ResUb,
                              this->vec2ResGm[runInfo.loop & (DB - 1)][constInfo.subBlockIdx *
-                                                                    (runInfo.actMSize - runInfo.actVecMSize) *
-                                                                    constInfo.dBasicBlock +
-                                                                vec2ResInnerOffset],
+                                                                          (runInfo.actMSize - runInfo.actVecMSize) *
+                                                                          constInfo.dBasicBlock +
+                                                                      vec2ResInnerOffset],
                              vec2CalcSize);
                 }
             }
@@ -802,13 +802,12 @@ public:
                 WaitFlag<HardEvent::V_MTE3>(vToMte3Id[0]);
                 if constexpr (useDn) {
                     DataCopy(this->vec2ResGm[runInfo.loop & (DB - 1)][vec2SubBlockOffset + vec2ResInnerOffset],
-                             vec2ResUb,
-                             vec2CalcSize);
+                             vec2ResUb, vec2CalcSize);
                 } else {
                     DataCopy(this->vec2ResGm[runInfo.loop & (DB - 1)][constInfo.subBlockIdx *
-                                                                    (runInfo.actMSize - runInfo.actVecMSize) *
-                                                                    constInfo.dBasicBlock +
-                                                                vec2ResInnerOffset],
+                                                                          (runInfo.actMSize - runInfo.actVecMSize) *
+                                                                          constInfo.dBasicBlock +
+                                                                      vec2ResInnerOffset],
                              vec2ResUb, vec2CalcSize);
                 }
             }
@@ -865,8 +864,10 @@ public:
                                       RunInfoX &runInfo, int64_t dSizeAligned64)
     {
         if constexpr (hasAtten) {
-            int64_t s1FirstValidToken = AttentionCommon::Min(AttentionCommon::Max(-runInfo.nextTokensLeftUp, 0), runInfo.actS1Size);
-            int64_t s1LastValidToken = AttentionCommon::Min(AttentionCommon::Max(runInfo.preTokensLeftUp + runInfo.actS2Size, 0), runInfo.actS1Size);
+            int64_t s1FirstValidToken =
+                AttentionCommon::Min(AttentionCommon::Max(-runInfo.nextTokensLeftUp, 0), runInfo.actS1Size);
+            int64_t s1LastValidToken = AttentionCommon::Min(
+                AttentionCommon::Max(runInfo.preTokensLeftUp + runInfo.actS2Size, 0), runInfo.actS1Size);
             s1LastValidToken = AttentionCommon::Max(s1LastValidToken - 1, 0);
             bool hasValidRow = (s1FirstValidToken > 0) || (s1LastValidToken < runInfo.actS1Size);
             bool batchNeedRowInvalid = ((constInfo.sparseMode != SparseMode::LEFT_UP_CAUSAL) &&
@@ -907,8 +908,7 @@ public:
             constexpr GmFormat OUT_FORMAT = GmFormat::TNGD;
             FaGmTensor<OUTPUT_T, OUT_FORMAT, int32_t, true> outGmTensor;
             outGmTensor.gmTensor = attentionOutGm;
-            outGmTensor.offsetCalculator.Init(constInfo.n2Size, constInfo.gSize, constInfo.dSizeV,
-                                              *qActSeqLensParser);
+            outGmTensor.offsetCalculator.Init(constInfo.n2Size, constInfo.gSize, constInfo.dSizeV, *qActSeqLensParser);
             CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<layout>()> copyAttenOutUbToGm;
             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
         } else if constexpr (outLayout == LayOutTypeEnum::LAYOUT_BNSD) {
@@ -961,7 +961,7 @@ public:
         DataCopy(softmaxFDMaxGm[gmOffset], maxOutTensor, calculateSize);
         maxBrdcst.template FreeTensor(maxOutTensor);
     }
-    
+
     __aicore__ inline void Bmm2ResForFDCopyOut(const RunInfoX &runInfo, LocalTensor<T> &vec2ResUb, uint32_t mStartVec,
                                                uint32_t mDealSize)
     {
@@ -1035,11 +1035,11 @@ public:
                 if constexpr (useDn) {
                     DataCopy(bmm2Ub, mm2Res[bmm2SubBlockOffset + mm2ResInnerOffset], vec2CalcSize);
                 } else {
-                    DataCopy(bmm2Ub,
-                             mm2Res[constInfo.subBlockIdx *
-                                    (runInfo.actMSize - runInfo.actVecMSize) *
-                                    constInfo.dSizeV + mm2ResInnerOffset],
-                             vec2CalcSize);
+                    DataCopy(
+                        bmm2Ub,
+                        mm2Res[constInfo.subBlockIdx * (runInfo.actMSize - runInfo.actVecMSize) * constInfo.dSizeV +
+                               mm2ResInnerOffset],
+                        vec2CalcSize);
                 }
             } else {
                 DataCopyParams dataCopyParams;
@@ -1055,7 +1055,7 @@ public:
                     DataCopyPad(
                         bmm2Ub,
                         mm2Res[constInfo.subBlockIdx * (runInfo.actMSize - runInfo.actVecMSize) * constInfo.dSizeV +
-                              mm2ResInnerOffset],
+                               mm2ResInnerOffset],
                         dataCopyParams, dataCopyPadParams);
                 }
             }

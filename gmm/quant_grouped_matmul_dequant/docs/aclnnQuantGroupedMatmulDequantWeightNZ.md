@@ -16,21 +16,21 @@
 ## 功能说明
 
 - 算子功能：对输入x进行量化，分组矩阵乘以及反量化，[aclnnQuantGroupedMatmulDequant](./aclnnQuantGroupedMatmulDequant.md)接口的weightNZ特化版本。
-- 计算公式：  
+- 计算公式：
   1.若输入smoothScaleOptional，则
-  
+
   $$
       x = x\cdot scale_{smooth}
   $$
 
   2.若不输入xScaleOptional，则为动态量化，需要计算x量化系数
-  
+
   $$
       scale_{x}=row\_max(abs(x))/max_{quantDataType}
   $$
 
   3.量化
-  
+
   $$
       x_{quantized}=round(x/scale_{x})
   $$

@@ -9,8 +9,8 @@
  */
 
 /*!
-  *\file aclnn_lightning_indexer_v2_metadata.cpp
-  *\brief
+ *\file aclnn_lightning_indexer_v2_metadata.cpp
+ *\brief
  */
 
 #include "aclnn_lightning_indexer_v2_metadata.h"
@@ -123,7 +123,7 @@ aclnnStatus aclnnLightningIndexerV2MetadataGetWorkspaceSize(
 }
 
 aclnnStatus aclnnLightningIndexerV2Metadata(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
-    aclrtStream stream)
+                                            aclrtStream stream)
 {
     L2_DFX_PHASE_2(aclnnLightningIndexerV2Metadata);
     return CommonOpExecutorRun(workspace, workspaceSize, executor, stream);

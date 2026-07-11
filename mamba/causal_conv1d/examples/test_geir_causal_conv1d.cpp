@@ -45,53 +45,53 @@ const int S = 16;  // seqlen
 const int D = 128; // dim
 const int K = 4;   // kernel width
 
-#define ADD_INPUT(intputIndex, intputName, intputDtype, inputShape)                               \
-    do {                                                                                          \
-        vector<int64_t> placeholder##intputIndex##_shape = inputShape;                            \
-        auto placeholder##intputIndex = op::Data("placeholder" + intputIndex).set_attr_index(0);  \
-        TensorDesc placeholder##intputIndex##_desc = TensorDesc(                                  \
-            ge::Shape(placeholder##intputIndex##_shape), FORMAT_ND, intputDtype);                 \
-        placeholder##intputIndex##_desc.SetPlacement(ge::kPlacementHost);                         \
-        placeholder##intputIndex##_desc.SetFormat(FORMAT_ND);                                     \
-        Tensor tensor_placeholder##intputIndex;                                                   \
-        ret = GenOnesData(placeholder##intputIndex##_shape, tensor_placeholder##intputIndex,      \
-                          placeholder##intputIndex##_desc, intputDtype, 2);                       \
-        if (ret != SUCCESS) {                                                                     \
-            printf("%s - ERROR - [XIR]: Generate input data failed\n", GetTime().c_str());        \
-            return FAILED;                                                                        \
-        }                                                                                         \
-        placeholder##intputIndex.update_input_desc_x(placeholder##intputIndex##_desc);            \
-        input.push_back(tensor_placeholder##intputIndex);                                         \
-        graph.AddOp(placeholder##intputIndex);                                                    \
-        causal_conv1d.set_input_##intputName(placeholder##intputIndex);                           \
-        inputs.push_back(placeholder##intputIndex);                                               \
+#define ADD_INPUT(intputIndex, intputName, intputDtype, inputShape)                                                    \
+    do {                                                                                                               \
+        vector<int64_t> placeholder##intputIndex##_shape = inputShape;                                                 \
+        auto placeholder##intputIndex = op::Data("placeholder" + intputIndex).set_attr_index(0);                       \
+        TensorDesc placeholder##intputIndex##_desc =                                                                   \
+            TensorDesc(ge::Shape(placeholder##intputIndex##_shape), FORMAT_ND, intputDtype);                           \
+        placeholder##intputIndex##_desc.SetPlacement(ge::kPlacementHost);                                              \
+        placeholder##intputIndex##_desc.SetFormat(FORMAT_ND);                                                          \
+        Tensor tensor_placeholder##intputIndex;                                                                        \
+        ret = GenOnesData(placeholder##intputIndex##_shape, tensor_placeholder##intputIndex,                           \
+                          placeholder##intputIndex##_desc, intputDtype, 2);                                            \
+        if (ret != SUCCESS) {                                                                                          \
+            printf("%s - ERROR - [XIR]: Generate input data failed\n", GetTime().c_str());                             \
+            return FAILED;                                                                                             \
+        }                                                                                                              \
+        placeholder##intputIndex.update_input_desc_x(placeholder##intputIndex##_desc);                                 \
+        input.push_back(tensor_placeholder##intputIndex);                                                              \
+        graph.AddOp(placeholder##intputIndex);                                                                         \
+        causal_conv1d.set_input_##intputName(placeholder##intputIndex);                                                \
+        inputs.push_back(placeholder##intputIndex);                                                                    \
     } while (0)
 
-#define ADD_OPTIONAL_INPUT(intputIndex, intputName, intputDtype, inputShape)                      \
-    do {                                                                                          \
-        vector<int64_t> placeholder##intputIndex##_shape = inputShape;                            \
-        auto placeholder##intputIndex = op::Data("placeholder" + intputIndex).set_attr_index(0);  \
-        TensorDesc placeholder##intputIndex##_desc = TensorDesc(                                  \
-            ge::Shape(placeholder##intputIndex##_shape), FORMAT_ND, intputDtype);                 \
-        placeholder##intputIndex##_desc.SetPlacement(ge::kPlacementHost);                         \
-        placeholder##intputIndex##_desc.SetFormat(FORMAT_ND);                                     \
-        Tensor tensor_placeholder##intputIndex;                                                   \
-        ret = GenOnesData(placeholder##intputIndex##_shape, tensor_placeholder##intputIndex,      \
-                          placeholder##intputIndex##_desc, intputDtype, 2);                       \
-        if (ret != SUCCESS) {                                                                     \
-            printf("%s - ERROR - [XIR]: Generate input data failed\n", GetTime().c_str());        \
-            return FAILED;                                                                        \
-        }                                                                                         \
-        placeholder##intputIndex.update_input_desc_x(placeholder##intputIndex##_desc);            \
-        input.push_back(tensor_placeholder##intputIndex);                                         \
-        graph.AddOp(placeholder##intputIndex);                                                    \
-        causal_conv1d.set_input_##intputName(placeholder##intputIndex);                           \
-        inputs.push_back(placeholder##intputIndex);                                               \
+#define ADD_OPTIONAL_INPUT(intputIndex, intputName, intputDtype, inputShape)                                           \
+    do {                                                                                                               \
+        vector<int64_t> placeholder##intputIndex##_shape = inputShape;                                                 \
+        auto placeholder##intputIndex = op::Data("placeholder" + intputIndex).set_attr_index(0);                       \
+        TensorDesc placeholder##intputIndex##_desc =                                                                   \
+            TensorDesc(ge::Shape(placeholder##intputIndex##_shape), FORMAT_ND, intputDtype);                           \
+        placeholder##intputIndex##_desc.SetPlacement(ge::kPlacementHost);                                              \
+        placeholder##intputIndex##_desc.SetFormat(FORMAT_ND);                                                          \
+        Tensor tensor_placeholder##intputIndex;                                                                        \
+        ret = GenOnesData(placeholder##intputIndex##_shape, tensor_placeholder##intputIndex,                           \
+                          placeholder##intputIndex##_desc, intputDtype, 2);                                            \
+        if (ret != SUCCESS) {                                                                                          \
+            printf("%s - ERROR - [XIR]: Generate input data failed\n", GetTime().c_str());                             \
+            return FAILED;                                                                                             \
+        }                                                                                                              \
+        placeholder##intputIndex.update_input_desc_x(placeholder##intputIndex##_desc);                                 \
+        input.push_back(tensor_placeholder##intputIndex);                                                              \
+        graph.AddOp(placeholder##intputIndex);                                                                         \
+        causal_conv1d.set_input_##intputName(placeholder##intputIndex);                                                \
+        inputs.push_back(placeholder##intputIndex);                                                                    \
     } while (0)
 
-#define LOG_PRINT(message, ...)         \
-    do {                                \
-        printf(message, ##__VA_ARGS__); \
+#define LOG_PRINT(message, ...)                                                                                        \
+    do {                                                                                                               \
+        printf(message, ##__VA_ARGS__);                                                                                \
     } while (0)
 
 string GetTime()
@@ -235,7 +235,8 @@ int main(int argc, char *argv[])
     ret = session->RunGraph(graph_id, input, output);
     if (ret != SUCCESS) {
         std::cout << "GE error: " << ge::GEGetErrorMsgV2().GetString() << std::endl;
-        printf("%s - INFO - [XIR]: Run graph failed (expected for custom op in standalone GEIR mode)\n", GetTime().c_str());
+        printf("%s - INFO - [XIR]: Run graph failed (expected for custom op in standalone GEIR mode)\n",
+               GetTime().c_str());
     } else {
         printf("%s - INFO - [XIR]: Run graph success\n", GetTime().c_str());
 

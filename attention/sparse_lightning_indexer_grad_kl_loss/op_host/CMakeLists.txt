@@ -41,7 +41,7 @@ else()
                     -Werror
     )
     add_modules_sources(
-        OPTYPE sparse_lightning_indexer_grad_kl_loss 
+        OPTYPE sparse_lightning_indexer_grad_kl_loss
         ACLNNTYPE aclnn
     )
 endif()

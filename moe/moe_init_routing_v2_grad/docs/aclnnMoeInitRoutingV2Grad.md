@@ -28,21 +28,21 @@
 
 ```cpp
 aclnnStatus aclnnMoeInitRoutingV2GradGetWorkspaceSize(
-    const aclTensor  *gradExpandedX, 
-    const aclTensor  *expandedRowIdx, 
-    int64_t           topK, 
-    int64_t           dropPadMode, 
-    int64_t           activeNum, 
-    const aclTensor  *out, 
-    uint64_t         *workspaceSize, 
+    const aclTensor  *gradExpandedX,
+    const aclTensor  *expandedRowIdx,
+    int64_t           topK,
+    int64_t           dropPadMode,
+    int64_t           activeNum,
+    const aclTensor  *out,
+    uint64_t         *workspaceSize,
     aclOpExecutor   **executor)
 ```
 
 ```cpp
 aclnnStatus aclnnMoeInitRoutingV2Grad(
-    void            *workspace, 
-    uint64_t         workspaceSize, 
-    aclOpExecutor   *executor, 
+    void            *workspace,
+    uint64_t         workspaceSize,
+    aclOpExecutor   *executor,
     aclrtStream      stream)
 ```
 
@@ -53,10 +53,10 @@ aclnnStatus aclnnMoeInitRoutingV2Grad(
   <table style="undefined;table-layout: fixed; width: 1550px"><colgroup>
     <col style="width: 170px">
     <col style="width: 120px">
-    <col style="width: 300px">  
-    <col style="width: 550px">  
-    <col style="width: 212px">  
-    <col style="width: 100px"> 
+    <col style="width: 300px">
+    <col style="width: 550px">
+    <col style="width: 212px">
+    <col style="width: 100px">
     <col style="width: 190px">
     <col style="width: 145px">
     </colgroup>
@@ -168,7 +168,7 @@ aclnnStatus aclnnMoeInitRoutingV2Grad(
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
-  <table style="undefined;table-layout: fixed; width: 1180px"> 
+  <table style="undefined;table-layout: fixed; width: 1180px">
     <colgroup>
       <col style="width: 250px">
       <col style="width: 130px">
@@ -225,7 +225,7 @@ aclnnStatus aclnnMoeInitRoutingV2Grad(
 
 - **参数说明：**
 
-  <table style="undefined;table-layout: fixed; width: 1180px"> 
+  <table style="undefined;table-layout: fixed; width: 1180px">
     <colgroup>
       <col style="width: 250px">
       <col style="width: 130px">
@@ -265,7 +265,7 @@ aclnnStatus aclnnMoeInitRoutingV2Grad(
 - **返回值：**
 
   aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
-    
+
 ## 约束说明
 
 - 确定性计算：

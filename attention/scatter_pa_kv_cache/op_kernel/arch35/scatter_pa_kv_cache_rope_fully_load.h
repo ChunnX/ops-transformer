@@ -34,8 +34,8 @@ constexpr uint32_t VECTOR_LENGTH = GetVRegSize();
 constexpr uint32_t VL_B32 = VECTOR_LENGTH / sizeof(uint32_t);
 
 template <typename T, typename U>
-__simd_vf__ inline void CastToOriginFullyVf(__ubuf__ U* srcAddr, __ubuf__ T* dstAddr,
-    uint32_t dataLen, uint16_t loopNum)
+__simd_vf__ inline void CastToOriginFullyVf(__ubuf__ U *srcAddr, __ubuf__ T *dstAddr, uint32_t dataLen,
+                                            uint16_t loopNum)
 {
     MicroAPI::RegTensor<U> valueSrc;
     MicroAPI::MaskReg curpreg;
@@ -115,7 +115,8 @@ private:
     static constexpr bool isNeedCast_ =
         (IsSameType<T, bfloat16_t>::value || IsSameType<T, half>::value || IsSameType<T, hifloat8_t>::value ||
          IsSameType<T, fp8_e5m2_t>::value || IsSameType<T, fp8_e4m3fn_t>::value);
-    static constexpr bool isIntger8or16_ = (IsSameType<T, int8_t>::value || IsSameType<T, int16_t>::value || IsSameType<T, uint8_t>::value || IsSameType<T, uint16_t>::value);
+    static constexpr bool isIntger8or16_ = (IsSameType<T, int8_t>::value || IsSameType<T, int16_t>::value ||
+                                            IsSameType<T, uint8_t>::value || IsSameType<T, uint16_t>::value);
 };
 
 template <typename T, typename IndexDtype, int64_t InOutMode>
@@ -261,7 +262,7 @@ __aicore__ inline void ScatterPaKvCacheRopeFullyLoad<T, IndexDtype, InOutMode>::
 
     uint16_t loopNum = CeilDivFully(dataLen, VL_B32);
 
-    CastToOriginFullyVf<T, U>((__ubuf__ U*)srcPhyAddr, (__ubuf__ T*)dstPhyAddr, dataLen, loopNum);
+    CastToOriginFullyVf<T, U>((__ubuf__ U *)srcPhyAddr, (__ubuf__ T *)dstPhyAddr, dataLen, loopNum);
 }
 
 template <typename T, typename IndexDtype, int64_t InOutMode>
@@ -362,9 +363,9 @@ ScatterPaKvCacheRopeFullyLoad<T, IndexDtype, InOutMode>::CopyInKey(int64_t iter,
                                                                    int64_t curBlockFactor)
 {
     LocalTensor<T> inputKeyLocal = inputKeyQueue_.AllocTensor<T>();
-    DataCopyExtParams inKeyParams = {
-        static_cast<uint16_t>(1), static_cast<uint32_t>(tilingData_->kHeadSize * sizeof(T)), static_cast<uint32_t>(0),
-        static_cast<uint32_t>(0), static_cast<uint32_t>(0)};
+    DataCopyExtParams inKeyParams = {static_cast<uint16_t>(1),
+                                     static_cast<uint32_t>(tilingData_->kHeadSize * sizeof(T)),
+                                     static_cast<uint32_t>(0), static_cast<uint32_t>(0), static_cast<uint32_t>(0)};
     DataCopyPadExtParams<T> padParams;
     padParams.isPad = 0;
     padParams.leftPadding = 0;
@@ -378,7 +379,7 @@ ScatterPaKvCacheRopeFullyLoad<T, IndexDtype, InOutMode>::CopyInKey(int64_t iter,
             break;
         }
         DataCopyPad(inputKeyLocal[(k - startIdx) * RoundUp(tilingData_->kHeadSize)],
-                 inputKeyGm_[offset + k * tilingData_->keyStride1], inKeyParams, padParams);
+                    inputKeyGm_[offset + k * tilingData_->keyStride1], inKeyParams, padParams);
     }
     inputKeyQueue_.EnQue(inputKeyLocal);
 }
@@ -390,9 +391,9 @@ ScatterPaKvCacheRopeFullyLoad<T, IndexDtype, InOutMode>::CopyInValue(int64_t ite
 {
     LocalTensor<T> inputValueLocal = inputValueQueue_.AllocTensor<T>();
 
-    DataCopyExtParams inValueParams = {
-        static_cast<uint16_t>(1), static_cast<uint32_t>(tilingData_->vHeadSize * sizeof(T)), static_cast<uint32_t>(0),
-        static_cast<uint32_t>(0), static_cast<uint32_t>(0)};
+    DataCopyExtParams inValueParams = {static_cast<uint16_t>(1),
+                                       static_cast<uint32_t>(tilingData_->vHeadSize * sizeof(T)),
+                                       static_cast<uint32_t>(0), static_cast<uint32_t>(0), static_cast<uint32_t>(0)};
     DataCopyPadExtParams<T> padParams;
     padParams.isPad = 0;
     padParams.leftPadding = 0;
@@ -405,7 +406,7 @@ ScatterPaKvCacheRopeFullyLoad<T, IndexDtype, InOutMode>::CopyInValue(int64_t ite
             break;
         }
         DataCopyPad(inputValueLocal[(k - startIdx) * RoundUp(tilingData_->vHeadSize)],
-                 inputValueGm_[offset + k * tilingData_->valueStride1], inValueParams, padParams);
+                    inputValueGm_[offset + k * tilingData_->valueStride1], inValueParams, padParams);
     }
     inputValueQueue_.EnQue(inputValueLocal);
 }

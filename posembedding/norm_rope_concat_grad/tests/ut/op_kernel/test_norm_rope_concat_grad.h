@@ -25,6 +25,6 @@ inline void InitNormRopeConcatGradTilingData(uint8_t *tiling, NormRopeConcatGrad
 }
 
 #define GET_TILING_DATA(tilingData, tilingPointer)                                                                     \
-    NormRopeConcatGradTilingData tilingData;                                                                      \
+    NormRopeConcatGradTilingData tilingData;                                                                           \
     InitNormRopeConcatGradTilingData(tilingPointer, &tilingData)
 #endif

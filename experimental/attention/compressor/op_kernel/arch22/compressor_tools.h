@@ -654,8 +654,8 @@ __aicore__ inline void CompressorVec1SliceIterator<COMP>::IteratorSlice()
             if (sliceInfo_.bSeqUsed < seqLength) {
                 uint32_t nextAlignSIdx = Align(sliceInfo_.bStartPos + sliceInfo_.sIdx, cmpRatio) - sliceInfo_.bStartPos;
                 sliceInfo_.dealedSeqCnt += nextAlignSIdx - sliceInfo_.sIdx;
-                uint32_t tcGap = CeilDivT(static_cast<int32_t>(seqLength - nextAlignSIdx),
-                                    static_cast<int32_t>(cmpRatio));
+                uint32_t tcGap =
+                    CeilDivT(static_cast<int32_t>(seqLength - nextAlignSIdx), static_cast<int32_t>(cmpRatio));
                 if (sliceInfo_.bSeqUsed == 0 && nextAlignSIdx > sliceInfo_.sIdx) {
                     // 此时bseqused所在压缩块未被纳入计算
                     tcGap++;
@@ -757,7 +757,7 @@ __aicore__ inline StatisticInfo &CompressorVec1SliceIterator<COMP>::FullIterator
     return statisticInfo_;
 }
 
-struct Vec2SliceInfo{
+struct Vec2SliceInfo {
     __aicore__ inline Vec2SliceInfo(){};
     __aicore__ inline Vec2SliceInfo(uint32_t bIdx, uint32_t scIdx) : bIdx(bIdx), scIdx(scIdx)
     {
@@ -766,14 +766,14 @@ struct Vec2SliceInfo{
     uint32_t bIdx = 0U;
     uint32_t scIdx = 0U;
     uint32_t scNum = 0U;
-    uint32_t remainScCnt = 0U;     // 当前batch剩余sc数量
+    uint32_t remainScCnt = 0U; // 当前batch剩余sc数量
     uint32_t bStartPos = 0U;
     uint32_t bSeqUsed = 0U;
     uint32_t bSeqLength = 0U;
-    uint32_t dealedScCnt = 0U;     // 全局的dealedScCnt（Reset刷新）
-    uint32_t curDealScNum = 0U;    // 当前循环处理的sc数量（IteratorSlice刷新）
-    uint32_t bOutputScLen = 0U;    // BSH场景每个batch填充后的输出长度
-    uint32_t padScIdx = 0U;        // 当前sc输出位置，TH场景为全局的dealedScCnt，BSH场景则为填充后全局的索引（Reset刷新）
+    uint32_t dealedScCnt = 0U;  // 全局的dealedScCnt（Reset刷新）
+    uint32_t curDealScNum = 0U; // 当前循环处理的sc数量（IteratorSlice刷新）
+    uint32_t bOutputScLen = 0U; // BSH场景每个batch填充后的输出长度
+    uint32_t padScIdx = 0U; // 当前sc输出位置，TH场景为全局的dealedScCnt，BSH场景则为填充后全局的索引（Reset刷新）
     uint32_t loopDealedScCnt = 0U; // 当前迭代已处理的sc数量（Reset刷新）
 };
 
@@ -792,6 +792,7 @@ public:
     __aicore__ inline bool IsEnd();
     __aicore__ inline void IteratorSlice();
     __aicore__ inline Vec2SliceInfo &GetSlice();
+
 private:
     CompressorTools<COMP> &tools_;
 
@@ -828,7 +829,6 @@ __aicore__ inline void CompressorVec2SliceIterator<COMP>::ResetLoopDealedScCnt()
 }
 
 
-
 template <typename COMP>
 __aicore__ inline void CompressorVec2SliceIterator<COMP>::SetMaxBatchSize(uint32_t batch_size)
 {
@@ -858,7 +858,8 @@ __aicore__ inline void CompressorVec2SliceIterator<COMP>::IteratorSlice()
             sliceInfo_.scIdx = 0;
             sliceInfo_.bStartPos = tools_.GetStartPos(sliceInfo_.bIdx);
             sliceInfo_.bSeqUsed = tools_.GetSeqUsed(sliceInfo_.bIdx);
-            sliceInfo_.scNum = (sliceInfo_.bStartPos + sliceInfo_.bSeqUsed) / cmpRatio - sliceInfo_.bStartPos / cmpRatio;
+            sliceInfo_.scNum =
+                (sliceInfo_.bStartPos + sliceInfo_.bSeqUsed) / cmpRatio - sliceInfo_.bStartPos / cmpRatio;
         }
         sliceInfo_.remainScCnt = sliceInfo_.scNum - sliceInfo_.scIdx;
     }

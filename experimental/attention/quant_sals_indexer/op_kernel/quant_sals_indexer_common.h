@@ -29,7 +29,7 @@ enum class QSI_LAYOUT {
 };
 
 template <typename Q_T, typename K_T, typename OUT_T, const bool PAGE_ATTENTION = false,
-        QSI_LAYOUT K_LAYOUT_T = QSI_LAYOUT::PA_BNSD, typename... Args>
+          QSI_LAYOUT K_LAYOUT_T = QSI_LAYOUT::PA_BNSD, typename... Args>
 struct QSIType {
     using queryType = Q_T;
     using keyType = K_T;
@@ -98,16 +98,16 @@ struct ConstInfo {
     uint64_t qHeadNum = 0ULL;
     uint64_t kHeadNum;
     uint64_t headDim;
-    uint64_t sparseCount;             // topK选取大小
-    uint64_t kSeqSize = 0ULL;         // kv最大S长度
-    uint64_t qSeqSize = 1ULL;         // q最大S长度
-    uint32_t kCacheBlockSize = 0;     // PA场景的block size
+    uint64_t sparseCount;         // topK选取大小
+    uint64_t kSeqSize = 0ULL;     // kv最大S长度
+    uint64_t qSeqSize = 1ULL;     // q最大S长度
+    uint32_t kCacheBlockSize = 0; // PA场景的block size
     int32_t sparseBlockSize = 0;
     float sparseRatio = 0.0f;
     int32_t fixedTailCount = 1UL;
     int32_t maxSeqlenKey = 0ULL;
     uint32_t maxBlockNumPerBatch = 0; // PA场景的最大单batch block number
-    QSI_LAYOUT outputLayout;           // 输出的格式
+    QSI_LAYOUT outputLayout;          // 输出的格式
     bool attenMaskFlag = false;
 
     uint32_t actualLenQDims = 0U; // query的actualSeqLength 的维度
@@ -123,7 +123,7 @@ struct SplitCoreInfo {
     uint32_t bN2End = 0U;
     uint32_t gS1Start = 0U;
     uint32_t gS1End = 0U;
-    bool isLD = false;     // 当前核是否需要进行Decode归约任务
+    bool isLD = false; // 当前核是否需要进行Decode归约任务
 };
 
 template <typename T>
@@ -146,13 +146,13 @@ __aicore__ inline T1 Max(T1 a, T2 b)
 
 __aicore__ inline uint64_t QSiCeilDiv(uint64_t num, uint64_t rnd)
 {
-    return rnd == 0 ? 0 : (num + rnd-1) / rnd;
+    return rnd == 0 ? 0 : (num + rnd - 1) / rnd;
 }
 
 template <typename T>
 __aicore__ inline T QSiCeilAlign(T num, T rnd)
 {
-    return rnd == 0 ? 0 : (num + rnd-1) / rnd * rnd;
+    return rnd == 0 ? 0 : (num + rnd - 1) / rnd * rnd;
 }
 } // namespace QSICommon
 

@@ -18,10 +18,9 @@
 
 namespace ops {
 constexpr int64_t INDEX_GROUP_LIST = 2;
-class GroupedMatmulAdd : public OpDef
-{
+class GroupedMatmulAdd : public OpDef {
 public:
-    explicit GroupedMatmulAdd(const char* name) : OpDef(name)
+    explicit GroupedMatmulAdd(const char *name) : OpDef(name)
     {
         this->Input("x")
             .ParamType(REQUIRED)

@@ -22,9 +22,9 @@
 #endif
 #include "lib/matmul_intf.h"
 
-#define LOCAL_TEMPLATE_CLASS_PARAMS                                                                              \
-    template <class xType, class wType, class biasType, class scaleType, class yType, CubeFormat wFormat,        \
-              bool aTrans, bool bTrans>
+#define LOCAL_TEMPLATE_CLASS_PARAMS                                                                                    \
+    template <class xType, class wType, class biasType, class scaleType, class yType, CubeFormat wFormat, bool aTrans, \
+              bool bTrans>
 #define LOCAL_TEMPLATE_FUNC_PARAMS xType, wType, biasType, scaleType, yType, wFormat, aTrans, bTrans
 
 namespace QuantUtils {
@@ -71,23 +71,27 @@ enum class QuantMode : uint32_t {
 };
 
 template <typename T>
-__aicore__ inline T Max(T a, T b) {
+__aicore__ inline T Max(T a, T b)
+{
     return a > b ? a : b;
 }
 
 template <typename T>
-__aicore__ inline T Min(T a, T b) {
+__aicore__ inline T Min(T a, T b)
+{
     return a > b ? b : a;
 }
 
-__aicore__ inline uint64_t CeilDiv(uint64_t a, uint64_t b) {
+__aicore__ inline uint64_t CeilDiv(uint64_t a, uint64_t b)
+{
     if (b == 0) {
         return a;
     }
     return (a + b - 1) / b;
 }
 
-__aicore__ inline uint64_t Align(uint64_t a, uint64_t b) {
+__aicore__ inline uint64_t Align(uint64_t a, uint64_t b)
+{
     return CeilDiv(a, b) * b;
 }
 
@@ -135,9 +139,10 @@ __aicore__ inline constexpr uint32_t GetTaskRation()
 #endif
 }
 
-__aicore__ inline int32_t GetSplitValueFromGroupList(uint32_t groupIdx, int32_t &preOffset,
-                                                     int32_t groupType, uint32_t groupListType,
-                                                     const AscendC::GlobalTensor<int64_t> &groupListGm) {
+__aicore__ inline int32_t GetSplitValueFromGroupList(uint32_t groupIdx, int32_t &preOffset, int32_t groupType,
+                                                     uint32_t groupListType,
+                                                     const AscendC::GlobalTensor<int64_t> &groupListGm)
+{
     int32_t splitValue = 0;
     if (likely(groupType != -1)) { // -1: no  need to split
         if (groupListType == 0) {
@@ -167,12 +172,12 @@ __aicore__ inline void InitOutputWithZero(AscendC::GlobalTensor<T> yInitGlobal, 
     }
     uint32_t blockIdx = AscendC::GetBlockIdx() / AscendC::GetTaskRation();
     // 仿照InitOutput接口取值
-    uint64_t initSize = (QuantUtils::MAX_REPEAT_TIMES * AscendC::ONE_BLK_SIZE) / sizeof(T); // 能存放输出dtype的多少个元素
+    uint64_t initSize =
+        (QuantUtils::MAX_REPEAT_TIMES * AscendC::ONE_BLK_SIZE) / sizeof(T); // 能存放输出dtype的多少个元素
     uint64_t perCoreSize = QuantUtils::CeilDiv(ySize, usedCoreNum);
     perCoreSize = GROUPED_MATMUL::AlignUp<QuantUtils::UB_ALIGN_SIZE>(perCoreSize * sizeof(T)) / sizeof(T);
     initSize = QuantUtils::Min(initSize, perCoreSize);
-    uint64_t realCoreNum =
-        QuantUtils::Min(QuantUtils::CeilDiv(ySize, initSize), static_cast<uint64_t>(usedCoreNum));
+    uint64_t realCoreNum = QuantUtils::Min(QuantUtils::CeilDiv(ySize, initSize), static_cast<uint64_t>(usedCoreNum));
     if (blockIdx >= realCoreNum) { // 多余核数返回，每个核上最少32B
         return;
     }
@@ -199,6 +204,6 @@ __aicore__ inline void InitOutputWithZero(AscendC::GlobalTensor<T> yInitGlobal, 
     }
 }
 #endif
-}  // namespace QUANT_UTILS
+} // namespace QuantUtils
 
-#endif  // ASCENDC_QUANT_UTILS_H
+#endif // ASCENDC_QUANT_UTILS_H

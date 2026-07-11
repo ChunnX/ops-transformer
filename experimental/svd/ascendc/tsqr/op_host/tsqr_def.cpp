@@ -18,7 +18,8 @@
 namespace ops {
 class Tsqr : public OpDef {
 public:
-    explicit Tsqr(const char* name): OpDef(name) {
+    explicit Tsqr(const char *name) : OpDef(name)
+    {
         this->Input("A")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT})

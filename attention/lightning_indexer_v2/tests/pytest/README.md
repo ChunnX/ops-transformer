@@ -15,7 +15,7 @@
 ### 环境配置
 
 #### 前置要求
-1、 确认torch_npu为最新版本  
+1、 确认torch_npu为最新版本
 2、 参考Attention融合算子Experimental使用说明激活CANN包和自定义算子包
 
 #### custom包调用
@@ -29,7 +29,7 @@
 - pytest.ini                                   # 创建测试标记
 
 单用例测试：
-- test_lightning_indexer_v2_single.py       # pytest测试单用例运行主程序 
+- test_lightning_indexer_v2_single.py       # pytest测试单用例运行主程序
 - test_lightning_indexer_v2_paramset.py     # 单用例入参配置
 
 批量测试：
@@ -37,7 +37,7 @@
 - ./batch/lightning_indexer_v2_pt_loadprocess.py    # 读取pt文件并调用算子获取npu输出
 - ./batch/lightning_indexer_v2_pt_save.py           # 读取excel表格批量生成用例pt文件
 - ./batch/replace_path.py                              # test_lightning_indexer_v2_batch.py占位符替换
- 
+
 
 ## 使用方法
 在pytest文件夹路径下执行：

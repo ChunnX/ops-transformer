@@ -126,7 +126,8 @@ ge::graphStatus CheckTndSoftmaxSumShape(gert::TilingContext *context, int64_t t1
 ge::graphStatus CheckAttentionInShape(gert::TilingContext *context);
 ge::graphStatus CheckSoftmaxDtype(gert::TilingContext *context);
 ge::graphStatus CheckAttentionInDtype(gert::TilingContext *context);
-ge::graphStatus CheckTndShapeValid(gert::TilingContext *context, int64_t t1, int64_t n1, int64_t d, int64_t d2, int64_t n2);
+ge::graphStatus CheckTndShapeValid(gert::TilingContext *context, int64_t t1, int64_t n1, int64_t d, int64_t d2,
+                                   int64_t n2);
 ge::graphStatus CheckDtypeValid(gert::TilingContext *context);
 bool IsSameShape(const gert::StorageShape *aShape, const gert::StorageShape *bShape);
 

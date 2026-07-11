@@ -304,20 +304,20 @@ bool MoeFFNTiling::GetCheckAttr(gert::TilingContext *context)
                     VECTOR_INNER_ERR_REPORT_TILIING(context->GetNodeName(),
                                                     "MoeFFN get scale_group_size is nullptr, please check."),
                     return false);
-    OP_TILING_CHECK(*scale_group_size <= 0,
-                    VECTOR_INNER_ERR_REPORT_TILIING(context->GetNodeName(),
-                                                    "MoeFFN get scale_group_size <= 0, please check."),
-                    return false);
+    OP_TILING_CHECK(
+        *scale_group_size <= 0,
+        VECTOR_INNER_ERR_REPORT_TILIING(context->GetNodeName(), "MoeFFN get scale_group_size <= 0, please check."),
+        return false);
     OP_TILING_CHECK(*scale_group_size % 32 != 0,
                     VECTOR_INNER_ERR_REPORT_TILIING(context->GetNodeName(),
                                                     "MoeFFN get scale_group_size not aligned to 32, please check."),
                     return false);
     _Params.scaleGroupSize = *scale_group_size;
     const int64_t *topk = attrs->GetAttrPointer<int64_t>(1);
-    OP_TILING_CHECK(topk == nullptr,
-                    VECTOR_INNER_ERR_REPORT_TILIING(context->GetNodeName(),
-                                                    "MoeFFN get topk is nullptr, please check."),
-                    return false);
+    OP_TILING_CHECK(
+        topk == nullptr,
+        VECTOR_INNER_ERR_REPORT_TILIING(context->GetNodeName(), "MoeFFN get topk is nullptr, please check."),
+        return false);
     OP_TILING_CHECK(*topk <= 0,
                     VECTOR_INNER_ERR_REPORT_TILIING(context->GetNodeName(), "MoeFFN get topk <= 0, please check."),
                     return false);

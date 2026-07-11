@@ -33,8 +33,8 @@ public:
     __aicore__ inline void Process();
 
 private:
-    __aicore__ inline int64_t GetBlockCacheOffset(
-        int32_t blockID, int64_t blockDataSize, int64_t cacheBlockStride) const
+    __aicore__ inline int64_t GetBlockCacheOffset(int32_t blockID, int64_t blockDataSize,
+                                                  int64_t cacheBlockStride) const
     {
         if (cacheBlockStride > 0) {
             return static_cast<int64_t>(blockID) * cacheBlockStride;
@@ -182,8 +182,8 @@ __aicore__ inline void GatherPaKvCacheNd<T>::Process()
                 if (taskID++ % coreNum == vecIdx) {
                     uint16_t copyLen = realUbBaseK_ * sizeof(T) / 32;
                     AscendC::DataCopyParams copyParams = {1, copyLen, 0, 0};
-                    int64_t kBlockStart = GetBlockCacheOffset(
-                        blockID, static_cast<int64_t>(blockSize) * tokenSizeK, kCacheBlockStride);
+                    int64_t kBlockStart =
+                        GetBlockCacheOffset(blockID, static_cast<int64_t>(blockSize) * tokenSizeK, kCacheBlockStride);
                     DataCopy(tmpTensor, inKeyCacheGM[kBlockStart + blkKOffset], copyParams);
                     AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE3>(EVENT_ID1);
                     AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE3>(EVENT_ID1);
@@ -203,8 +203,8 @@ __aicore__ inline void GatherPaKvCacheNd<T>::Process()
                 if (taskID++ % coreNum == vecIdx) {
                     uint16_t copyLen = realUbBaseV_ * sizeof(T) / 32;
                     AscendC::DataCopyParams copyParams = {1, copyLen, 0, 0};
-                    int64_t vBlockStart = GetBlockCacheOffset(
-                        blockID, static_cast<int64_t>(blockSize) * tokenSizeV, vCacheBlockStride);
+                    int64_t vBlockStart =
+                        GetBlockCacheOffset(blockID, static_cast<int64_t>(blockSize) * tokenSizeV, vCacheBlockStride);
                     DataCopy(tmpTensor, inValueCacheGM[vBlockStart + blkVOffset], copyParams);
                     AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE3>(EVENT_ID1);
                     AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE3>(EVENT_ID1);

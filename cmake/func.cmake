@@ -94,8 +94,8 @@ function(op_add_subdirectory OP_LIST OP_DIR_LIST)
         "${CMAKE_CURRENT_SOURCE_DIR}/experimental/moe/**/op_host/CMakeLists.txt"
         "${CMAKE_CURRENT_SOURCE_DIR}/experimental/posembedding/**/op_host/CMakeLists.txt"
         )
-        if(NOT (ASCEND_COMPUTE_UNIT STREQUAL "kirinx90" OR 
-                ASCEND_COMPUTE_UNIT STREQUAL "kirin9030" OR 
+        if(NOT (ASCEND_COMPUTE_UNIT STREQUAL "kirinx90" OR
+                ASCEND_COMPUTE_UNIT STREQUAL "kirin9030" OR
                 ASCEND_COMPUTE_UNIT STREQUAL "mc62"))
             file(GLOB MC2_OP_HOST_CMAKE_FILES
             "${CMAKE_CURRENT_SOURCE_DIR}/experimental/mc2/**/op_host/CMakeLists.txt"
@@ -137,8 +137,8 @@ function(op_add_subdirectory OP_LIST OP_DIR_LIST)
             if(ADD_CANNDEV_FFN)
                 List(APPEND CANNDEV_OPS_HOST_CMAKE_FILES ${FFN_CANNDEV_OPS_HOST_CMAKE_FILES})
             endif()
-            if(NOT (ASCEND_COMPUTE_UNIT STREQUAL "kirinx90" OR 
-                ASCEND_COMPUTE_UNIT STREQUAL "kirin9030" OR 
+            if(NOT (ASCEND_COMPUTE_UNIT STREQUAL "kirinx90" OR
+                ASCEND_COMPUTE_UNIT STREQUAL "kirin9030" OR
                 ASCEND_COMPUTE_UNIT STREQUAL "mc62"))
                 file(GLOB MC2_CANNDEV_OPS_HOST_CMAKE_FILES
                 "${CMAKE_CURRENT_SOURCE_DIR}/mc2/**/op_host/CMakeLists.txt"
@@ -183,7 +183,7 @@ function(op_add_subdirectory OP_LIST OP_DIR_LIST)
             if (NOT EXISTS "${OP_DIR}/tests/CMakeLists.txt")
                 continue()
             endif()
-            
+
             file(READ "${OP_DIR}/tests/CMakeLists.txt" CML_CONTENT)
             if (CML_CONTENT MATCHES "OpsTest_Level2_AddOp")
                 set(UTEST_FRAMEWORK_OLD TRUE CACHE BOOL "UTEST_FRAMEWORK_OLD" FORCE)
@@ -443,8 +443,8 @@ function(add_ops_src_copy)
             get_filename_component(_ROOT_OPS_SRC_DIR    "${SRC_COPY_DST}" DIRECTORY)
             set(OPS_UTILS_INC_KERNEL_DIR ${_ROOT_OPS_SRC_DIR}/ascendc/common)
             set(UTILS_COPY_STAMP "${OPS_UTILS_INC_KERNEL_DIR}/.utils_copy.stamp")
-            file(GLOB_RECURSE UTILS_FILES CONFIGURE_DEPENDS 
-                ${OPS_ADV_UTILS_KERNEL_INC}/* 
+            file(GLOB_RECURSE UTILS_FILES CONFIGURE_DEPENDS
+                ${OPS_ADV_UTILS_KERNEL_INC}/*
                 ${OPS_CGMCT}/*
                 ${OPS_GMM_COMMON_KERNEL_INC}/*
             )

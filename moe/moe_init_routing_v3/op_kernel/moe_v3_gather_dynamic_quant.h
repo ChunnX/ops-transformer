@@ -102,8 +102,9 @@ __aicore__ inline void MoeGatherOutDynamicQuant<T, COPYOUTTYPE>::CopyInExpandedE
     DataCopyExtParams dataCopyParams{1, static_cast<uint32_t>(currentLoopRows_ * sizeof(int32_t)), 0, 0, 0};
     DataCopyPadExtParams<int32_t> dataCopyPadParams{false, 0, 0, 0};
     DataCopyPad(indicesLocal, expandedRowIdxGm_[indicesOffset_], dataCopyParams, dataCopyPadParams);
-    if constexpr (COPYOUTTYPE == SCATTER) { 
-        DataCopyPad(indicesLocal[currentLoopRowsAlign_], expandedExpertIdxGm_[indicesOffset_], dataCopyParams, dataCopyPadParams); 
+    if constexpr (COPYOUTTYPE == SCATTER) {
+        DataCopyPad(indicesLocal[currentLoopRowsAlign_], expandedExpertIdxGm_[indicesOffset_], dataCopyParams,
+                    dataCopyPadParams);
     }
     expandRowIdxInQueue_.EnQue<int32_t>(indicesLocal);
 }

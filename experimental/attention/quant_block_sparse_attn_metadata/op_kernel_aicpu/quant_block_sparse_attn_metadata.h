@@ -33,25 +33,26 @@ constexpr uint32_t QBSA_METADATA_SIZE = 8U;
 constexpr uint32_t FD_METADATA_SIZE = 8U;
 
 // QBSA Metadata Index Definitions
-constexpr uint32_t QBSA_CORE_ENABLE_INDEX = 0U; // 当前AIC核是否有负载需要计算
-constexpr uint32_t QBSA_BN1_START_INDEX = 1U; // 当前AIC核的起始bn1Idx
-constexpr uint32_t QBSA_M_START_INDEX = 2U; // 当前AIC核的起始s1Idx
-constexpr uint32_t QBSA_S2_START_INDEX = 3U; // 当前AIC核的起始s2Idx
-constexpr uint32_t QBSA_BN1_END_INDEX = 4U; // 当前AIC核的终止bn1Idx
-constexpr uint32_t QBSA_M_END_INDEX = 5U; // 当前AIC核的终止s1Idx
-constexpr uint32_t QBSA_S2_END_INDEX = 6U; // 当前AIC核的终止s2Idx
+constexpr uint32_t QBSA_CORE_ENABLE_INDEX = 0U;                 // 当前AIC核是否有负载需要计算
+constexpr uint32_t QBSA_BN1_START_INDEX = 1U;                   // 当前AIC核的起始bn1Idx
+constexpr uint32_t QBSA_M_START_INDEX = 2U;                     // 当前AIC核的起始s1Idx
+constexpr uint32_t QBSA_S2_START_INDEX = 3U;                    // 当前AIC核的起始s2Idx
+constexpr uint32_t QBSA_BN1_END_INDEX = 4U;                     // 当前AIC核的终止bn1Idx
+constexpr uint32_t QBSA_M_END_INDEX = 5U;                       // 当前AIC核的终止s1Idx
+constexpr uint32_t QBSA_S2_END_INDEX = 6U;                      // 当前AIC核的终止s2Idx
 constexpr uint32_t QBSA_FIRST_FD_DATA_WORKSPACE_IDX_INDEX = 7U; // 当前AIC核第一份规约任务在FD_DATA_WORKSPACE的idx
 
 #ifndef __CCE_AICORE__
 namespace detail {
 struct qbsaMetaData {
     QBSA_METADATA_T *qbsaMetadata; // [AIC_CORE_NUM][QBSA_METADATA_SIZE];
-    QBSA_METADATA_T *fdMetadata; // [AIV_CORE_NUM][FD_METADATA_SIZE];
+    QBSA_METADATA_T *fdMetadata;   // [AIV_CORE_NUM][FD_METADATA_SIZE];
 
     explicit qbsaMetaData(void *metadataPtr)
         : qbsaMetadata(static_cast<QBSA_METADATA_T *>(metadataPtr)),
           fdMetadata(static_cast<QBSA_METADATA_T *>(metadataPtr) + AIC_CORE_NUM * QBSA_METADATA_SIZE)
-    {}
+    {
+    }
 
     void setQbsaMetadata(uint32_t aicIdx, uint32_t metaIdx, uint32_t val)
     {
@@ -71,7 +72,7 @@ struct qbsaMetaData {
 #endif
 
 static_assert(QBSA_META_SIZE * sizeof(QBSA_METADATA_T) >=
-              (AIC_CORE_NUM * QBSA_METADATA_SIZE + AIV_CORE_NUM * FD_METADATA_SIZE) * sizeof(QBSA_METADATA_T),
+                  (AIC_CORE_NUM * QBSA_METADATA_SIZE + AIV_CORE_NUM * FD_METADATA_SIZE) * sizeof(QBSA_METADATA_T),
               "QBSA metadata output buffer is too small");
 
 } // namespace optiling

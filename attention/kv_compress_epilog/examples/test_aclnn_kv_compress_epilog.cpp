@@ -18,22 +18,19 @@ int main()
     // cache (in-place input/output): 4D [blockNum, blockSize, 1, headDim] = [128, 16, 1, 384],
     //   num_slots = 128*16 = 2048, headDim=384 >= kvCacheCol(mode1 d256 -> 323), dtype=uint8
     int64_t cacheShape[] = {128, 16, 1, 384};
-    aclTensor *cache = aclCreateTensor(
-        cacheShape, 4, ACL_UINT8, ACL_FORMAT_ND, ACL_FORMAT_ND);
+    aclTensor *cache = aclCreateTensor(cacheShape, 4, ACL_UINT8, ACL_FORMAT_ND, ACL_FORMAT_ND);
 
     // x: [1024, 256], dtype=bfloat16
     int64_t xShape[] = {1024, 256};
-    aclTensor *x = aclCreateTensor(
-        xShape, 2, ACL_BF16, ACL_FORMAT_ND, ACL_FORMAT_ND);
+    aclTensor *x = aclCreateTensor(xShape, 2, ACL_BF16, ACL_FORMAT_ND, ACL_FORMAT_ND);
 
     // slotMapping: [1024], dtype=int32
     int64_t slotShape[] = {1024};
-    aclTensor *slotMapping = aclCreateTensor(
-        slotShape, 1, ACL_INT32, ACL_FORMAT_ND, ACL_FORMAT_ND);
+    aclTensor *slotMapping = aclCreateTensor(slotShape, 1, ACL_INT32, ACL_FORMAT_ND, ACL_FORMAT_ND);
 
     // 2. 设置属性
     int64_t quantGroupSize = 64;
-    int64_t quantMode = 1;   // group quantization, xScale stored as float8_e8m0
+    int64_t quantMode = 1; // group quantization, xScale stored as float8_e8m0
     bool roundScale = true;
     float xScale = 1.0f;
 
@@ -41,10 +38,8 @@ int main()
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
 
-    aclnnStatus status = aclnnKvCompressEpilogGetWorkspaceSize(
-        cache, x, slotMapping,
-        quantGroupSize, quantMode, roundScale, xScale,
-        &workspaceSize, &executor);
+    aclnnStatus status = aclnnKvCompressEpilogGetWorkspaceSize(cache, x, slotMapping, quantGroupSize, quantMode,
+                                                               roundScale, xScale, &workspaceSize, &executor);
 
     if (status != ACLNN_SUCCESS) {
         std::cerr << "GetWorkspaceSize failed: " << status << std::endl;

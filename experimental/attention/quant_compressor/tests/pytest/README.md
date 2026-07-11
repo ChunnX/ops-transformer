@@ -1,4 +1,4 @@
-# Compressor算子测试框架 
+# Compressor算子测试框架
 ## 功能说明
 基于pytest测试框架，实现Compressor算子的功能验证：
 - **CPU侧**：复现算子功能用以生成golden数据
@@ -20,7 +20,7 @@
 ### 环境配置
 
 #### 前置要求
-1、 确认torch_npu为最新版本  
+1、 确认torch_npu为最新版本
 2、 参考[Attention融合算子Experimental使用说明](../../../Attention融合算子Experimental使用说明.md)激活CANN包和自定义算子包
 #### custom包调用
 支持custom包调用

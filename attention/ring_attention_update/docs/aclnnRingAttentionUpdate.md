@@ -35,26 +35,26 @@ $$
 
 ```Cpp
 aclnnStatus aclnnRingAttentionUpdateGetWorkspaceSize(
-  const aclTensor *prevAttnOut, 
-  const aclTensor *prevSoftmaxMax, 
-  const aclTensor *prevSoftmaxSum, 
-  const aclTensor *curAttnOut, 
-  const aclTensor *curSoftmaxMax, 
-  const aclTensor *curSoftmaxSum, 
-  const aclTensor *actualSeqQlenOptional, 
-  char            *inputLayoutOptional, 
-  const aclTensor *attnOutOut, 
-  const aclTensor *softmaxMaxOut, 
-  const aclTensor *softmaxSumOut, 
-  uint64_t        *workspaceSize, 
+  const aclTensor *prevAttnOut,
+  const aclTensor *prevSoftmaxMax,
+  const aclTensor *prevSoftmaxSum,
+  const aclTensor *curAttnOut,
+  const aclTensor *curSoftmaxMax,
+  const aclTensor *curSoftmaxSum,
+  const aclTensor *actualSeqQlenOptional,
+  char            *inputLayoutOptional,
+  const aclTensor *attnOutOut,
+  const aclTensor *softmaxMaxOut,
+  const aclTensor *softmaxSumOut,
+  uint64_t        *workspaceSize,
   aclOpExecutor  **executor)
 ```
 
 ```Cpp
 aclnnStatus aclnnRingAttentionUpdate(
-  void          *workspace, 
-  uint64_t       workspaceSize, 
-  aclOpExecutor *executor, 
+  void          *workspace,
+  uint64_t       workspaceSize,
+  aclOpExecutor *executor,
   aclrtStream    stream)
 ```
 
@@ -241,7 +241,7 @@ aclnnStatus aclnnRingAttentionUpdate(
   </table>
 
   - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：当输入数据排布inputLayoutOptional为TND时，D限制为64的倍数。
-  
+
 - **返回值**
 
   aclnnStatus: 返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
@@ -416,7 +416,7 @@ int main() {
   int64_t seqSize = 2;
   int64_t headDim = 4;
   int64_t headSize = headNum * headDim;
- 
+
   std::vector<int64_t> prevAttnOutShape = {seqSize, batchNum, headSize};
   std::vector<int64_t> prevSoftmaxMaxShape = {batchNum, headNum, seqSize, 8};
   std::vector<int64_t> prevSoftmaxSumShape = {batchNum, headNum, seqSize, 8};
@@ -424,7 +424,7 @@ int main() {
   std::vector<int64_t> curSoftmaxMaxShape = {batchNum, headNum, seqSize, 8};
   std::vector<int64_t> curSoftmaxSumShape = {batchNum, headNum, seqSize, 8};
   std::vector<int64_t> actualSeqQlenOptionalShape = {batchNum, headNum};
-  
+
   std::vector<int64_t> attnOutShape = {seqSize, batchNum, headSize};
   std::vector<int64_t> softmaxMaxShape = {batchNum, headNum, seqSize, 8};
   std::vector<int64_t> softmaxSumShape = {batchNum, headNum, seqSize, 8};
@@ -452,7 +452,7 @@ int main() {
   aclTensor* attnOut = nullptr;
   aclTensor* softmaxMax = nullptr;
   aclTensor* softmaxSum = nullptr;
-  
+
   std::vector<float> prevAttnOutHostData(seqSize * batchNum * headSize, 1);
   std::vector<float> prevSoftmaxMaxHostData(batchNum * headNum * seqSize * 8, 1);
   std::vector<float> prevSoftmaxSumHostData(batchNum * headNum * seqSize * 8, 1);
@@ -487,7 +487,7 @@ int main() {
   // 创建actualSeqQlenOptional aclTensor
   ret = CreateAclTensor(actualSeqQlenOptionalHostData, actualSeqQlenOptionalShape, &actualSeqQlenOptionalDeviceAddr, aclDataType::ACL_INT64, &actualSeqQlenOptional);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
-  
+
   // 创建attnOut aclTensor
   ret = CreateAclTensor(attnOutHostData, attnOutShape, &attnOutDeviceAddr, aclDataType::ACL_FLOAT, &attnOut);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
@@ -502,9 +502,9 @@ int main() {
   uint64_t workspaceSize = 0;
   aclOpExecutor* executor;
   // 调用aclnnRingAttentionUpdate第一段接口
-  ret = aclnnRingAttentionUpdateGetWorkspaceSize(prevAttnOut, prevSoftmaxMax, prevSoftmaxSum, 
-                                                 curAttnOut, curSoftmaxMax, curSoftmaxSum, 
-                                                 actualSeqQlenOptional, inputLayoutOptional, 
+  ret = aclnnRingAttentionUpdateGetWorkspaceSize(prevAttnOut, prevSoftmaxMax, prevSoftmaxSum,
+                                                 curAttnOut, curSoftmaxMax, curSoftmaxSum,
+                                                 actualSeqQlenOptional, inputLayoutOptional,
                                                  attnOut, softmaxMax, softmaxSum, &workspaceSize, &executor);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnRingAttentionUpdateGetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
   // 根据第一段接口计算出的workspaceSize申请device内存
@@ -537,7 +537,7 @@ int main() {
   for (int64_t i = 0; i < softmaxMaxSize; i++) {
     LOG_PRINT("softmaxMaxResultData[%ld] is: %f\n", i, softmaxMaxResultData[i]);
   }
-  
+
   auto softmaxSumSize = GetShapeSize(softmaxSumShape);
   std::vector<float> softmaxSumResultData(softmaxSumSize, 0);
   ret = aclrtMemcpy(softmaxSumResultData.data(), softmaxSumResultData.size() * sizeof(softmaxSumResultData[0]), softmaxSumDeviceAddr, softmaxSumSize * sizeof(float),

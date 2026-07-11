@@ -27,9 +27,9 @@
 #include "sparse_flash_mla_grad_kernel.h"
 
 
-#define INVOKE_FAG_GENERAL_S1S2_BN2GS1S2_REGBASE_IMPL(                                                                 \
-    INPUT_TYPE, CALC_TYPE, OUTDTYPE, IS_TND, s2TemplateType, dTemplateType, isOriKVExist, isCmpKVExist, isOriKVSparse, \
-    isCmpKVSparse, isDeter)                                                                                            \
+#define INVOKE_FAG_GENERAL_S1S2_BN2GS1S2_REGBASE_IMPL(INPUT_TYPE, CALC_TYPE, OUTDTYPE, IS_TND, s2TemplateType,         \
+                                                      dTemplateType, isOriKVExist, isCmpKVExist, isOriKVSparse,        \
+                                                      isCmpKVSparse, isDeter)                                          \
     do {                                                                                                               \
         SparseFlashMlaGradPreRegbase<INPUT_TYPE, float, IS_TND, isOriKVExist, isCmpKVExist, isOriKVSparse,             \
                                      isCmpKVSparse>                                                                    \
@@ -44,15 +44,13 @@
             SfagBaseApi::FAGBlockCube<INPUT_TYPE, CALC_TYPE, OUTDTYPE, IS_TND, s2TemplateType, dTemplateType,          \
                                       isOriKVExist, isCmpKVExist, isOriKVSparse, isCmpKVSparse, isDeter>,              \
             SfagBaseApi::FAGBlockCubeDummy<INPUT_TYPE, CALC_TYPE, OUTDTYPE, IS_TND, s2TemplateType, dTemplateType,     \
-                                           isOriKVExist, isCmpKVExist, isOriKVSparse, isCmpKVSparse,                   \
-                                           isDeter>>::type;                                                            \
+                                           isOriKVExist, isCmpKVExist, isOriKVSparse, isCmpKVSparse, isDeter>>::type;  \
         using VecBlockType = typename std::conditional<                                                                \
             g_coreType == AscendC::AIC,                                                                                \
             SfagBaseApi::FAGBlockVecDummy<INPUT_TYPE, CALC_TYPE, OUTDTYPE, IS_TND, s2TemplateType, dTemplateType,      \
                                           isOriKVExist, isCmpKVExist, isOriKVSparse, isCmpKVSparse, isDeter>,          \
             SfagBaseApi::FAGBlockVec<INPUT_TYPE, CALC_TYPE, OUTDTYPE, IS_TND, s2TemplateType, dTemplateType,           \
-                                     isOriKVExist, isCmpKVExist, isOriKVSparse, isCmpKVSparse,                         \
-                                     isDeter>>::type;                                                                  \
+                                     isOriKVExist, isCmpKVExist, isOriKVSparse, isCmpKVSparse, isDeter>>::type;        \
                                                                                                                        \
         SfagBaseApi::SparseFlashMlaGradKernel<CubeBlockType, VecBlockType> op;                                         \
         op.Init(query, ori_kv, cmp_kv, d_out, out, ori_sparse_indices, cmp_sparse_indices, cu_seqlens_q,               \
@@ -64,8 +62,7 @@
             op.SyncALLCores();                                                                                         \
             pipeBase.Destroy();                                                                                        \
             TPipe pipePost;                                                                                            \
-            SparseFlashMlaGradPostRegbase<INPUT_TYPE, float, OUTDTYPE, IS_TND, isOriKVExist, isCmpKVExist>             \
-                opPost;                                                                                                \
+            SparseFlashMlaGradPostRegbase<INPUT_TYPE, float, OUTDTYPE, IS_TND, isOriKVExist, isCmpKVExist> opPost;     \
             opPost.Init(dq, dori_kv, dcmp_kv, dsinks, user, tilingData, &pipePost);                                    \
             opPost.Process();                                                                                          \
         } else {                                                                                                       \

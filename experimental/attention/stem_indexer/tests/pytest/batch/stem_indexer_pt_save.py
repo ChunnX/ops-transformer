@@ -27,7 +27,6 @@ if PYTEST_DIR not in sys.path:
     sys.path.insert(0, PYTEST_DIR)
 
 import stem_indexer_golden
-import custom_ops  # 注册 torch.ops.custom.npu_stem_indexer(_metadata)
 
 
 LIST_COLUMNS = {
@@ -113,18 +112,27 @@ def find_excel_files(path_pattern):
     paths = sorted(glob.glob(path_pattern))
     if not paths and os.path.isfile(path_pattern):
         paths = [path_pattern]
-    return [path for path in paths if path.endswith((".xlsx", ".xls")) and not os.path.basename(path).startswith("~$")]
+    return [
+        path
+        for path in paths
+        if path.endswith((".xlsx", ".xls"))
+        and not os.path.basename(path).startswith("~$")
+    ]
 
 
 def load_excel_test_cases(path_pattern, sheet_name):
     excel_files = find_excel_files(path_pattern)
     if not excel_files:
-        raise FileNotFoundError(f"No Excel testcase file found from path: {path_pattern}")
+        raise FileNotFoundError(
+            f"No Excel testcase file found from path: {path_pattern}"
+        )
 
     test_cases = []
     for excel_file in excel_files:
         df = pd.read_excel(excel_file, sheet_name=sheet_name)
-        missing_columns = [column for column in REQUIRED_COLUMNS if column not in df.columns]
+        missing_columns = [
+            column for column in REQUIRED_COLUMNS if column not in df.columns
+        ]
         if missing_columns:
             raise ValueError(f"{excel_file} missing columns: {missing_columns}")
         for _, row in df.iterrows():
@@ -167,7 +175,9 @@ def build_pt_payload(case):
     expected_indices = None
     expected_seq_len = None
     if case["expected_result"] == "PASS":
-        expected_indices, expected_seq_len = stem_indexer_golden.stem_indexer_golden(case, inputs)
+        expected_indices, expected_seq_len = stem_indexer_golden.stem_indexer_golden(
+            case, inputs
+        )
 
     return {
         "case": case,
@@ -200,9 +210,13 @@ def save_test_cases(test_cases, output_dir):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Generate StemIndexer pt cases from Excel.")
+    parser = argparse.ArgumentParser(
+        description="Generate StemIndexer pt cases from Excel."
+    )
     parser.add_argument("excel_path", type=str, help="Excel file path or glob pattern.")
-    parser.add_argument("pt_output_dir", type=str, help="Output directory for pt files.")
+    parser.add_argument(
+        "pt_output_dir", type=str, help="Output directory for pt files."
+    )
     parser.add_argument("--sheet-name", type=str, default="Sheet1")
     parser.add_argument("--device-id", type=int, default=0)
     args = parser.parse_args()

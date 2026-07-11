@@ -21,6 +21,6 @@
 #endif
 
 namespace optiling {
-} // optiling
+} // namespace optiling
 
 #endif

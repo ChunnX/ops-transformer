@@ -11,10 +11,7 @@
 # -----------------------------------------------------------------------------------------------------------
 
 import torch
-import numpy as np
-import collections
 import torch.distributed as dist
-import torch_npu
 
 import ctypes
 from atk.configs.dataset_config import InputDataset
@@ -24,7 +21,7 @@ from atk.tasks.api_execute.base_api import BaseApi
 from atk.tasks.api_execute.aclnn_base_api import AclnnBaseApi
 from atk.tasks.dataset.base_dataset import OpsDataset
 from atk.tasks.backends.lib_interface.acl_wrapper import AclTensor
-from atk.tasks.backends.lib_interface.acl_wrapper import AclFormat
+
 
 @register("function_allgather_matmul")
 class AllGatherMatmul(BaseApi):
@@ -35,14 +32,14 @@ class AllGatherMatmul(BaseApi):
     def __call__(self, input_data: InputDataset, with_output: bool = False):
         rank_id = self.dist_task_info.rank
         world_size = self.dist_task_info.world_size
-        input_chunk = input_data.kwargs['x1']
-        weight_chunk = input_data.kwargs['x2']
+        input_chunk = input_data.kwargs["x1"]
+        weight_chunk = input_data.kwargs["x2"]
 
         m_size = input_chunk.shape[0] // world_size
         if m_size != 0:
             start = self.dist_task_info.rank * m_size
-            end = start + m_size 
-            input_chunk = input_chunk[start:end,:]
+            end = start + m_size
+            input_chunk = input_chunk[start:end, :]
 
         if input_chunk.shape == []:
             if self.name == "cpu" or self.dist_task_info.is_bm:
@@ -59,8 +56,13 @@ class AllGatherMatmul(BaseApi):
             return output, gather_output_cpu
 
         if self.dist_task_info.is_bm:
-            tensor_allgather_shape = [input_chunk.shape[0] * world_size, input_chunk.shape[1]]
-            all_gather_out = torch.zeros(tensor_allgather_shape, dtype=input_chunk.dtype).npu()
+            tensor_allgather_shape = [
+                input_chunk.shape[0] * world_size,
+                input_chunk.shape[1],
+            ]
+            all_gather_out = torch.zeros(
+                tensor_allgather_shape, dtype=input_chunk.dtype
+            ).npu()
             dist._all_gather_base(all_gather_out, input_chunk)
             output = torch.matmul(all_gather_out, weight_chunk)
             gather_output_cpu = all_gather_out
@@ -68,22 +70,28 @@ class AllGatherMatmul(BaseApi):
 
     def init_by_input_data(self, input_data: InputDataset):
         OpsDataset.seed_everything()
-        input_chunk = input_data.kwargs['x1']
-        weight_chunk = input_data.kwargs['x2']
+        input_chunk = input_data.kwargs["x1"]
+        weight_chunk = input_data.kwargs["x2"]
 
-        if weight_chunk.shape[0]!=input_chunk.shape[1] and weight_chunk.shape[1] == input_chunk.shape[1]:
-            input_data.kwargs['x2'] = input_data.kwargs['x2'].transpose(0, 1)
-        
-        if self.device == 'pyaclnn' and dist.is_available():
+        if (
+            weight_chunk.shape[0] != input_chunk.shape[1]
+            and weight_chunk.shape[1] == input_chunk.shape[1]
+        ):
+            input_data.kwargs["x2"] = input_data.kwargs["x2"].transpose(0, 1)
+
+        if self.device == "pyaclnn" and dist.is_available():
             rank_id = self.dist_task_info.rank
-            input_data.kwargs['group'] = AllGatherMatmul.get_hcomm_info(rank_id)
-    
+            input_data.kwargs["group"] = AllGatherMatmul.get_hcomm_info(rank_id)
+
     @staticmethod
     def get_hcomm_info(rank_id):
         from torch.distributed.distributed_c10d import _get_default_group
+
         default_pg = _get_default_group()
-        if torch.__version__ > '2.0.1':
-            hcomm_info = default_pg._get_backend(torch.device("npu")).get_hccl_comm_name(rank_id)
+        if torch.__version__ > "2.0.1":
+            hcomm_info = default_pg._get_backend(
+                torch.device("npu")
+            ).get_hccl_comm_name(rank_id)
         else:
             hcomm_info = default_pg.get_hccl_comm_name(rank_id)
         return hcomm_info
@@ -94,20 +102,18 @@ class AclnnAllGatherMatmul(AclnnBaseApi):
     def __init__(self, task_result: TaskResult, backend):
         super(AclnnAllGatherMatmul, self).__init__(task_result, backend)
         self.dist_task_info = task_result.dist_task_info
-    
-    def init_by_input_data(self, input_data: InputDataset):
 
+    def init_by_input_data(self, input_data: InputDataset):
         world_size = self.dist_task_info.world_size
-        input_chunk = input_data.kwargs['x1']
+        input_chunk = input_data.kwargs["x1"]
         m_size = input_chunk.shape[0] // world_size
         if m_size != 0:
             start = self.dist_task_info.rank * m_size
-            end = start + m_size 
-            input_data.kwargs['x1'] = input_data.kwargs['x1'][start:end,:]
-        
+            end = start + m_size
+            input_data.kwargs["x1"] = input_data.kwargs["x1"][start:end, :]
 
         input_args, output_packages = super().init_by_input_data(input_data)
-        
+
         return input_args, output_packages
 
     def get_null_tensor_pte(self):

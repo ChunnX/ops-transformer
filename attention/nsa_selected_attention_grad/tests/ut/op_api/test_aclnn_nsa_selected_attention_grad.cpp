@@ -92,12 +92,11 @@ TEST_F(NsaSelectedAttentionGradOpapiUt, A1_tnd_fp16_no_mask)
     aclOpExecutor *executor = nullptr;
 
     aclnnStatus aclRet = aclnnNsaSelectedAttentionGradGetWorkspaceSize(
-        query.get(), key.get(), value.get(), attentionOut.get(), attentionOutGrad.get(),
-        softmaxMax.get(), softmaxSum.get(), topkIndices.get(),
-        actSeqQ.get(), actSeqKv.get(), /*attenMaskOptional=*/nullptr,
+        query.get(), key.get(), value.get(), attentionOut.get(), attentionOutGrad.get(), softmaxMax.get(),
+        softmaxSum.get(), topkIndices.get(), actSeqQ.get(), actSeqKv.get(), /*attenMaskOptional=*/nullptr,
         /*scaleValue=*/0.088388, selectedBlockSize, selectedBlockCount,
-        /*headNum=*/n1, inputLayout, /*sparseMode=*/0,
-        dqOut.get(), dkOut.get(), dvOut.get(), &workspaceSize, &executor);
+        /*headNum=*/n1, inputLayout, /*sparseMode=*/0, dqOut.get(), dkOut.get(), dvOut.get(), &workspaceSize,
+        &executor);
 
     EXPECT_EQ(aclRet, ACL_SUCCESS);
     EXPECT_NE(executor, nullptr);
@@ -140,12 +139,11 @@ TEST_F(NsaSelectedAttentionGradOpapiUt, A2_tnd_bf16_with_mask)
     aclOpExecutor *executor = nullptr;
 
     aclnnStatus aclRet = aclnnNsaSelectedAttentionGradGetWorkspaceSize(
-        query.get(), key.get(), value.get(), attentionOut.get(), attentionOutGrad.get(),
-        softmaxMax.get(), softmaxSum.get(), topkIndices.get(),
-        actSeqQ.get(), actSeqKv.get(), attenMask.get(),
+        query.get(), key.get(), value.get(), attentionOut.get(), attentionOutGrad.get(), softmaxMax.get(),
+        softmaxSum.get(), topkIndices.get(), actSeqQ.get(), actSeqKv.get(), attenMask.get(),
         /*scaleValue=*/0.088388, selectedBlockSize, selectedBlockCount,
-        /*headNum=*/n1, inputLayout, /*sparseMode=*/2,
-        dqOut.get(), dkOut.get(), dvOut.get(), &workspaceSize, &executor);
+        /*headNum=*/n1, inputLayout, /*sparseMode=*/2, dqOut.get(), dkOut.get(), dvOut.get(), &workspaceSize,
+        &executor);
 
     EXPECT_EQ(aclRet, ACL_SUCCESS);
     EXPECT_NE(executor, nullptr);
@@ -170,13 +168,12 @@ TEST_F(NsaSelectedAttentionGradOpapiUt, E1_null_query)
     aclOpExecutor *executor = nullptr;
 
     aclnnStatus aclRet = aclnnNsaSelectedAttentionGradGetWorkspaceSize(
-        /*query=*/nullptr, key.get(), value.get(), attentionOut.get(), attentionOutGrad.get(),
-        softmaxMax.get(), softmaxSum.get(), topkIndices.get(),
+        /*query=*/nullptr, key.get(), value.get(), attentionOut.get(), attentionOutGrad.get(), softmaxMax.get(),
+        softmaxSum.get(), topkIndices.get(),
         /*actualSeqQLenOptional=*/nullptr, /*actualSeqKvLenOptional=*/nullptr,
         /*attenMaskOptional=*/nullptr,
         /*scaleValue=*/0.088388, /*selectedBlockSize=*/64, /*selectedBlockCount=*/16,
-        /*headNum=*/4, inputLayout, /*sparseMode=*/0,
-        dqOut.get(), dkOut.get(), dvOut.get(), &workspaceSize, &executor);
+        /*headNum=*/4, inputLayout, /*sparseMode=*/0, dqOut.get(), dkOut.get(), dvOut.get(), &workspaceSize, &executor);
 
     EXPECT_NE(aclRet, ACL_SUCCESS);
     EXPECT_EQ(executor, nullptr);
@@ -201,13 +198,12 @@ TEST_F(NsaSelectedAttentionGradOpapiUt, E2_null_topk_indices)
     aclOpExecutor *executor = nullptr;
 
     aclnnStatus aclRet = aclnnNsaSelectedAttentionGradGetWorkspaceSize(
-        query.get(), key.get(), value.get(), attentionOut.get(), attentionOutGrad.get(),
-        softmaxMax.get(), softmaxSum.get(), /*topkIndices=*/nullptr,
+        query.get(), key.get(), value.get(), attentionOut.get(), attentionOutGrad.get(), softmaxMax.get(),
+        softmaxSum.get(), /*topkIndices=*/nullptr,
         /*actualSeqQLenOptional=*/nullptr, /*actualSeqKvLenOptional=*/nullptr,
         /*attenMaskOptional=*/nullptr,
         /*scaleValue=*/0.088388, /*selectedBlockSize=*/64, /*selectedBlockCount=*/16,
-        /*headNum=*/4, inputLayout, /*sparseMode=*/0,
-        dqOut.get(), dkOut.get(), dvOut.get(), &workspaceSize, &executor);
+        /*headNum=*/4, inputLayout, /*sparseMode=*/0, dqOut.get(), dkOut.get(), dvOut.get(), &workspaceSize, &executor);
 
     EXPECT_NE(aclRet, ACL_SUCCESS);
     EXPECT_EQ(executor, nullptr);
@@ -232,8 +228,8 @@ TEST_F(NsaSelectedAttentionGradOpapiUt, E3_null_dq_output)
     aclOpExecutor *executor = nullptr;
 
     aclnnStatus aclRet = aclnnNsaSelectedAttentionGradGetWorkspaceSize(
-        query.get(), key.get(), value.get(), attentionOut.get(), attentionOutGrad.get(),
-        softmaxMax.get(), softmaxSum.get(), topkIndices.get(),
+        query.get(), key.get(), value.get(), attentionOut.get(), attentionOutGrad.get(), softmaxMax.get(),
+        softmaxSum.get(), topkIndices.get(),
         /*actualSeqQLenOptional=*/nullptr, /*actualSeqKvLenOptional=*/nullptr,
         /*attenMaskOptional=*/nullptr,
         /*scaleValue=*/0.088388, /*selectedBlockSize=*/64, /*selectedBlockCount=*/16,

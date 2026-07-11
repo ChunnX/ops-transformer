@@ -68,10 +68,10 @@ static aclnnStatus CheckFormat(gmm_add_advanced::GroupedMatmulAddParams params, 
     CHECK_COND(params.groupList->GetStorageFormat() == Format::FORMAT_ND, ACLNN_ERR_PARAM_INVALID,
                "In op [%s], when non-quant, the format of [%s] is not supported, got [%s].", opName, "groupList",
                op::ToString(params.groupList->GetStorageFormat()).GetString());
-    CHECK_COND(
-        params.yRef->GetStorageFormat() == Format::FORMAT_ND || params.yRef->GetStorageFormat() == Format::FORMAT_NCL,
-        ACLNN_ERR_PARAM_INVALID, "In op [%s], when non-quant, the format of [%s] is not supported, got [%s].",
-        opName, "yRef", op::ToString(params.yRef->GetStorageFormat()).GetString());
+    CHECK_COND(params.yRef->GetStorageFormat() == Format::FORMAT_ND ||
+                   params.yRef->GetStorageFormat() == Format::FORMAT_NCL,
+               ACLNN_ERR_PARAM_INVALID, "In op [%s], when non-quant, the format of [%s] is not supported, got [%s].",
+               opName, "yRef", op::ToString(params.yRef->GetStorageFormat()).GetString());
     return ACLNN_SUCCESS;
 }
 
@@ -98,10 +98,10 @@ static aclnnStatus CheckShape(gmm_add_advanced::GroupedMatmulAddParams params, c
                "In op [%s], when non-quant, the shape of [%s] is not supported, got [dim num %zu]. "
                "Constraint:[dim num must be 1].",
                opName, "groupList", groupListDimNum);
-    auto aKDim = xViewShape.GetDim(0); // 0: x shape k direction
-    auto aMDim = xViewShape.GetDim(1); // 1: x shape m direction
-    auto bKDim = wViewShape.GetDim(0); // 0: w shape k direction
-    auto bNDim = wViewShape.GetDim(1); // 1: w shape m direction
+    auto aKDim = xViewShape.GetDim(0);                // 0: x shape k direction
+    auto aMDim = xViewShape.GetDim(1);                // 1: x shape m direction
+    auto bKDim = wViewShape.GetDim(0);                // 0: w shape k direction
+    auto bNDim = wViewShape.GetDim(1);                // 1: w shape m direction
     auto groupListDim = groupListViewShape.GetDim(0); // 0: groupList shape
 
     CHECK_COND(aMDim >= 0, ACLNN_ERR_PARAM_INVALID,
@@ -120,12 +120,12 @@ static aclnnStatus CheckShape(gmm_add_advanced::GroupedMatmulAddParams params, c
         OP_LOGW("Expected shape of y is 3 Dim.");
     }
     // only check total size for avoiding error interception. the y shape Dim is not interceped before.
-    auto expectedYSize =  aMDim * bNDim * groupListDim;
+    auto expectedYSize = aMDim * bNDim * groupListDim;
     auto actualYSize = yRefViewShape.GetShapeSize();
     CHECK_COND(expectedYSize == actualYSize, ACLNN_ERR_PARAM_INVALID,
-        "In op [%s], when non-quant, the shape of [%s] is not supported, got [shape size %ld]. "
-        "Constraint:[shape size should be %ld].",
-        opName, "yRef", actualYSize, expectedYSize);
+               "In op [%s], when non-quant, the shape of [%s] is not supported, got [shape size %ld]. "
+               "Constraint:[shape size should be %ld].",
+               opName, "yRef", actualYSize, expectedYSize);
 
     if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
         auto groupNum = params.groupList->GetViewShape().GetDim(0);
@@ -156,7 +156,7 @@ static aclnnStatus CheckShape(gmm_add_advanced::GroupedMatmulAddParams params, c
 static aclnnStatus CheckZeroShape(gmm_add_advanced::GroupedMatmulAddParams params)
 {
     bool isEmptyX = params.x->IsEmpty() ? true : false;
-    bool isEmptyWeight = params.weight->IsEmpty()? true : false;
+    bool isEmptyWeight = params.weight->IsEmpty() ? true : false;
     // support return empty tensor
     aclnnStatus ret = isEmptyX || isEmptyWeight ? ACLNN_ERR_PARAM_INVALID : ACLNN_SUCCESS;
     return ret;
@@ -186,12 +186,10 @@ static aclnnStatus CheckDtype(gmm_add_advanced::GroupedMatmulAddParams params, c
     auto xDtype = params.x->GetDataType();
     auto weightDtype = params.weight->GetDataType();
     CHECK_COND(params.yRef->GetDataType() == DataType::DT_FLOAT, ACLNN_ERR_PARAM_INVALID,
-               "In op [%s], when non-quant, the data type of [%s] is not supported, got [%s].", opName,
-               "yRef",
+               "In op [%s], when non-quant, the data type of [%s] is not supported, got [%s].", opName, "yRef",
                op::ToString(params.yRef->GetDataType()).GetString());
     CHECK_COND(params.groupList->GetDataType() == DataType::DT_INT64, ACLNN_ERR_PARAM_INVALID,
-               "In op [%s], when non-quant, the data type of [%s] is not supported, got [%s].", opName,
-               "groupList",
+               "In op [%s], when non-quant, the data type of [%s] is not supported, got [%s].", opName, "groupList",
                op::ToString(params.groupList->GetDataType()).GetString());
     if ((xDtype != DataType::DT_FLOAT16 && xDtype != DataType::DT_BF16) || (xDtype != weightDtype)) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,

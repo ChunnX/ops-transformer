@@ -24,7 +24,7 @@
   $$
 
   其中:
-  
+
   $$
   Q=[query, queryRope], K=[key, keyRope]
   $$

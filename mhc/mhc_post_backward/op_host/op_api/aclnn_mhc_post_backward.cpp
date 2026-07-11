@@ -62,8 +62,8 @@ struct MhcPostBackwardParams {
 };
 
 static aclnnStatus CheckNotNull(const aclTensor *gradOutput, const aclTensor *x, const aclTensor *hRes,
-                                const aclTensor *hOut, const aclTensor *hPost, aclTensor *gradX,
-                                aclTensor *gradHres, aclTensor *gradHout, aclTensor *gradHpost)
+                                const aclTensor *hOut, const aclTensor *hPost, aclTensor *gradX, aclTensor *gradHres,
+                                aclTensor *gradHout, aclTensor *gradHpost)
 {
     CHECK_COND(gradOutput != nullptr, ACLNN_ERR_PARAM_NULLPTR, "gradOutput must not be nullptr.");
     CHECK_COND(x != nullptr, ACLNN_ERR_PARAM_NULLPTR, "x must not be nullptr.");
@@ -120,10 +120,10 @@ static bool IsBSNDFormat(size_t dimNum)
 
 static aclnnStatus CheckDimD(int64_t dimD)
 {
-    CHECK_COND(dimD > 0 && dimD <= D_MAX, ACLNN_ERR_PARAM_INVALID,
-               "the dim D should be > 0, <= %ld, but got %ld", D_MAX, dimD);
-    CHECK_COND(dimD % D_ALIGN == 0, ACLNN_ERR_PARAM_INVALID,
-               "the dim D should be aligned to %ld, but got %ld", D_ALIGN, dimD);
+    CHECK_COND(dimD > 0 && dimD <= D_MAX, ACLNN_ERR_PARAM_INVALID, "the dim D should be > 0, <= %ld, but got %ld",
+               D_MAX, dimD);
+    CHECK_COND(dimD % D_ALIGN == 0, ACLNN_ERR_PARAM_INVALID, "the dim D should be aligned to %ld, but got %ld", D_ALIGN,
+               dimD);
     return ACLNN_SUCCESS;
 }
 
@@ -133,74 +133,74 @@ static aclnnStatus CheckShape3D(const MhcPostBackwardParams &params)
     auto xDim0 = params.x->GetViewShape().GetDim(DIM_IDX_0);
     auto xDim1 = params.x->GetViewShape().GetDim(DIM_IDX_1);
     auto xDim2 = params.x->GetViewShape().GetDim(DIM_IDX_2);
-    
+
     // gradOutput: [T, n, D]
     auto gradOutputDim0 = params.gradOutput->GetViewShape().GetDim(DIM_IDX_0);
     auto gradOutputDim1 = params.gradOutput->GetViewShape().GetDim(DIM_IDX_1);
     auto gradOutputDim2 = params.gradOutput->GetViewShape().GetDim(DIM_IDX_2);
-    CHECK_COND(gradOutputDim0 == xDim0, ACLNN_ERR_PARAM_INVALID,
-               "gradOutput dim[0] %ld is not equal to x dim[0] %ld", gradOutputDim0, xDim0);
-    CHECK_COND(gradOutputDim1 == xDim1, ACLNN_ERR_PARAM_INVALID,
-               "gradOutput dim[1] %ld is not equal to x dim[1] %ld", gradOutputDim1, xDim1);
-    CHECK_COND(gradOutputDim2 == xDim2, ACLNN_ERR_PARAM_INVALID,
-               "gradOutput dim[2] %ld is not equal to x dim[2] %ld", gradOutputDim2, xDim2);
-    
+    CHECK_COND(gradOutputDim0 == xDim0, ACLNN_ERR_PARAM_INVALID, "gradOutput dim[0] %ld is not equal to x dim[0] %ld",
+               gradOutputDim0, xDim0);
+    CHECK_COND(gradOutputDim1 == xDim1, ACLNN_ERR_PARAM_INVALID, "gradOutput dim[1] %ld is not equal to x dim[1] %ld",
+               gradOutputDim1, xDim1);
+    CHECK_COND(gradOutputDim2 == xDim2, ACLNN_ERR_PARAM_INVALID, "gradOutput dim[2] %ld is not equal to x dim[2] %ld",
+               gradOutputDim2, xDim2);
+
     // hRes shape: [T, n, n]
     auto hResDim0 = params.hRes->GetViewShape().GetDim(DIM_IDX_0);
     auto hResDim1 = params.hRes->GetViewShape().GetDim(DIM_IDX_1);
     auto hResDim2 = params.hRes->GetViewShape().GetDim(DIM_IDX_2);
-    CHECK_COND(hResDim0 == xDim0, ACLNN_ERR_PARAM_INVALID,
-               "hRes dim[0] %ld is not equal to x dim[0] %ld", hResDim0, xDim0);
-    CHECK_COND(hResDim1 == xDim1, ACLNN_ERR_PARAM_INVALID,
-               "hRes dim[1] %ld is not equal to x dim[1] %ld", hResDim1, xDim1);
-    CHECK_COND(hResDim2 == xDim1, ACLNN_ERR_PARAM_INVALID,
-               "hRes dim[2] %ld must equal hRes dim[1] %ld (n x n matrix)", hResDim2, hResDim1);
+    CHECK_COND(hResDim0 == xDim0, ACLNN_ERR_PARAM_INVALID, "hRes dim[0] %ld is not equal to x dim[0] %ld", hResDim0,
+               xDim0);
+    CHECK_COND(hResDim1 == xDim1, ACLNN_ERR_PARAM_INVALID, "hRes dim[1] %ld is not equal to x dim[1] %ld", hResDim1,
+               xDim1);
+    CHECK_COND(hResDim2 == xDim1, ACLNN_ERR_PARAM_INVALID, "hRes dim[2] %ld must equal hRes dim[1] %ld (n x n matrix)",
+               hResDim2, hResDim1);
 
     // hOut shape: [T, D]
     auto hOutDim0 = params.hOut->GetViewShape().GetDim(DIM_IDX_0);
     auto hOutDim1 = params.hOut->GetViewShape().GetDim(DIM_IDX_1);
-    CHECK_COND(hOutDim0 == xDim0, ACLNN_ERR_PARAM_INVALID,
-               "hOut dim[0] %ld is not equal to x dim[0] %ld", hOutDim0, xDim0);
-    CHECK_COND(hOutDim1 == xDim2, ACLNN_ERR_PARAM_INVALID,
-               "hOut dim[1] %ld is not equal to x dim[2] %ld", hOutDim1, xDim2);
+    CHECK_COND(hOutDim0 == xDim0, ACLNN_ERR_PARAM_INVALID, "hOut dim[0] %ld is not equal to x dim[0] %ld", hOutDim0,
+               xDim0);
+    CHECK_COND(hOutDim1 == xDim2, ACLNN_ERR_PARAM_INVALID, "hOut dim[1] %ld is not equal to x dim[2] %ld", hOutDim1,
+               xDim2);
 
     // hPost shape: [T, n]
     auto hPostDim0 = params.hPost->GetViewShape().GetDim(DIM_IDX_0);
     auto hPostDim1 = params.hPost->GetViewShape().GetDim(DIM_IDX_1);
-    CHECK_COND(hPostDim0 == xDim0, ACLNN_ERR_PARAM_INVALID,
-               "hPost dim[0] %ld is not equal to x dim[0] %ld", hPostDim0, xDim0);
-    CHECK_COND(hPostDim1 == xDim1, ACLNN_ERR_PARAM_INVALID,
-               "hPost dim[1] %ld is not equal to x dim[1] %ld", hPostDim1, xDim1);
+    CHECK_COND(hPostDim0 == xDim0, ACLNN_ERR_PARAM_INVALID, "hPost dim[0] %ld is not equal to x dim[0] %ld", hPostDim0,
+               xDim0);
+    CHECK_COND(hPostDim1 == xDim1, ACLNN_ERR_PARAM_INVALID, "hPost dim[1] %ld is not equal to x dim[1] %ld", hPostDim1,
+               xDim1);
 
     // gradX shape: [T, n, D]
     auto gradXDim0 = params.gradX->GetViewShape().GetDim(DIM_IDX_0);
     auto gradXDim1 = params.gradX->GetViewShape().GetDim(DIM_IDX_1);
     auto gradXDim2 = params.gradX->GetViewShape().GetDim(DIM_IDX_2);
-    CHECK_COND(gradXDim0 == xDim0, ACLNN_ERR_PARAM_INVALID,
-               "gradX dim[0] %ld is not equal to x dim[0] %ld", gradXDim0, xDim0);
-    CHECK_COND(gradXDim1 == xDim1, ACLNN_ERR_PARAM_INVALID,
-               "gradX dim[1] %ld is not equal to x dim[1] %ld", gradXDim1, xDim1);
-    CHECK_COND(gradXDim2 == xDim2, ACLNN_ERR_PARAM_INVALID,
-               "gradX dim[2] %ld is not equal to x dim[2] %ld", gradXDim2, xDim2);
-    
+    CHECK_COND(gradXDim0 == xDim0, ACLNN_ERR_PARAM_INVALID, "gradX dim[0] %ld is not equal to x dim[0] %ld", gradXDim0,
+               xDim0);
+    CHECK_COND(gradXDim1 == xDim1, ACLNN_ERR_PARAM_INVALID, "gradX dim[1] %ld is not equal to x dim[1] %ld", gradXDim1,
+               xDim1);
+    CHECK_COND(gradXDim2 == xDim2, ACLNN_ERR_PARAM_INVALID, "gradX dim[2] %ld is not equal to x dim[2] %ld", gradXDim2,
+               xDim2);
+
     // gradHres shape: [T, n, n]
     auto gradHresDim0 = params.gradHres->GetViewShape().GetDim(DIM_IDX_0);
     auto gradHresDim1 = params.gradHres->GetViewShape().GetDim(DIM_IDX_1);
     auto gradHresDim2 = params.gradHres->GetViewShape().GetDim(DIM_IDX_2);
-    CHECK_COND(gradHresDim0 == hResDim0, ACLNN_ERR_PARAM_INVALID,
-               "gradHres dim[0] %ld is not equal to hRes dim[0] %ld", gradHresDim0, hResDim0);
-    CHECK_COND(gradHresDim1 == hResDim1, ACLNN_ERR_PARAM_INVALID,
-               "gradHres dim[1] %ld is not equal to hRes dim[1] %ld", gradHresDim1, hResDim1);
-    CHECK_COND(gradHresDim2 == hResDim2, ACLNN_ERR_PARAM_INVALID,
-               "gradHres dim[2] %ld must equal hRes dim[2] %ld", gradHresDim2, hResDim2);
+    CHECK_COND(gradHresDim0 == hResDim0, ACLNN_ERR_PARAM_INVALID, "gradHres dim[0] %ld is not equal to hRes dim[0] %ld",
+               gradHresDim0, hResDim0);
+    CHECK_COND(gradHresDim1 == hResDim1, ACLNN_ERR_PARAM_INVALID, "gradHres dim[1] %ld is not equal to hRes dim[1] %ld",
+               gradHresDim1, hResDim1);
+    CHECK_COND(gradHresDim2 == hResDim2, ACLNN_ERR_PARAM_INVALID, "gradHres dim[2] %ld must equal hRes dim[2] %ld",
+               gradHresDim2, hResDim2);
 
     // gradHout shape: [T, D]
     auto gradHoutDim0 = params.gradHout->GetViewShape().GetDim(DIM_IDX_0);
     auto gradHoutDim1 = params.gradHout->GetViewShape().GetDim(DIM_IDX_1);
-    CHECK_COND(gradHoutDim0 == hOutDim0, ACLNN_ERR_PARAM_INVALID,
-               "gradHout dim[0] %ld is not equal to hOut dim[0] %ld", gradHoutDim0, hOutDim0);
-    CHECK_COND(gradHoutDim1 == hOutDim1, ACLNN_ERR_PARAM_INVALID,
-               "gradHout dim[1] %ld is not equal to hOut dim[1] %ld", gradHoutDim1, hOutDim1);
+    CHECK_COND(gradHoutDim0 == hOutDim0, ACLNN_ERR_PARAM_INVALID, "gradHout dim[0] %ld is not equal to hOut dim[0] %ld",
+               gradHoutDim0, hOutDim0);
+    CHECK_COND(gradHoutDim1 == hOutDim1, ACLNN_ERR_PARAM_INVALID, "gradHout dim[1] %ld is not equal to hOut dim[1] %ld",
+               gradHoutDim1, hOutDim1);
 
     // gradHpost shape: [T, n]
     auto gradHpostDim0 = params.gradHpost->GetViewShape().GetDim(DIM_IDX_0);
@@ -226,89 +226,89 @@ static aclnnStatus CheckShape4D(const MhcPostBackwardParams &params)
     auto gradOutputDim1 = params.gradOutput->GetViewShape().GetDim(DIM_IDX_1);
     auto gradOutputDim2 = params.gradOutput->GetViewShape().GetDim(DIM_IDX_2);
     auto gradOutputDim3 = params.gradOutput->GetViewShape().GetDim(DIM_IDX_3);
-    CHECK_COND(gradOutputDim0 == xDim0, ACLNN_ERR_PARAM_INVALID,
-               "gradOutput dim[0] %ld is not equal to x dim[0] %ld", gradOutputDim0, xDim0);
-    CHECK_COND(gradOutputDim1 == xDim1, ACLNN_ERR_PARAM_INVALID,
-               "gradOutput dim[1] %ld is not equal to x dim[1] %ld", gradOutputDim1, xDim1);
-    CHECK_COND(gradOutputDim2 == xDim2, ACLNN_ERR_PARAM_INVALID,
-               "gradOutput dim[2] %ld is not equal to x dim[2] %ld", gradOutputDim2, xDim2);
-    CHECK_COND(gradOutputDim3 == xDim3, ACLNN_ERR_PARAM_INVALID,
-               "gradOutput dim[3] %ld is not equal to x dim[3] %ld", gradOutputDim3, xDim3);
+    CHECK_COND(gradOutputDim0 == xDim0, ACLNN_ERR_PARAM_INVALID, "gradOutput dim[0] %ld is not equal to x dim[0] %ld",
+               gradOutputDim0, xDim0);
+    CHECK_COND(gradOutputDim1 == xDim1, ACLNN_ERR_PARAM_INVALID, "gradOutput dim[1] %ld is not equal to x dim[1] %ld",
+               gradOutputDim1, xDim1);
+    CHECK_COND(gradOutputDim2 == xDim2, ACLNN_ERR_PARAM_INVALID, "gradOutput dim[2] %ld is not equal to x dim[2] %ld",
+               gradOutputDim2, xDim2);
+    CHECK_COND(gradOutputDim3 == xDim3, ACLNN_ERR_PARAM_INVALID, "gradOutput dim[3] %ld is not equal to x dim[3] %ld",
+               gradOutputDim3, xDim3);
 
     // hRes shape: [B, S, n, n]
     auto hResDim0 = params.hRes->GetViewShape().GetDim(DIM_IDX_0);
     auto hResDim1 = params.hRes->GetViewShape().GetDim(DIM_IDX_1);
     auto hResDim2 = params.hRes->GetViewShape().GetDim(DIM_IDX_2);
     auto hResDim3 = params.hRes->GetViewShape().GetDim(DIM_IDX_3);
-    CHECK_COND(hResDim0 == xDim0, ACLNN_ERR_PARAM_INVALID,
-               "hRes dim[0] %ld is not equal to x dim[0] %ld", hResDim0, xDim0);
-    CHECK_COND(hResDim1 == xDim1, ACLNN_ERR_PARAM_INVALID,
-               "hRes dim[1] %ld is not equal to x dim[1] %ld", hResDim1, xDim1);
-    CHECK_COND(hResDim2 == xDim2, ACLNN_ERR_PARAM_INVALID,
-               "hRes dim[2] %ld is not equal to x dim[2] %ld", hResDim2, xDim2);
-    CHECK_COND(hResDim3 == xDim2, ACLNN_ERR_PARAM_INVALID,
-               "hRes dim[3] %ld must equal hRes dim[2] %ld (n x n matrix)", hResDim3, hResDim2);
+    CHECK_COND(hResDim0 == xDim0, ACLNN_ERR_PARAM_INVALID, "hRes dim[0] %ld is not equal to x dim[0] %ld", hResDim0,
+               xDim0);
+    CHECK_COND(hResDim1 == xDim1, ACLNN_ERR_PARAM_INVALID, "hRes dim[1] %ld is not equal to x dim[1] %ld", hResDim1,
+               xDim1);
+    CHECK_COND(hResDim2 == xDim2, ACLNN_ERR_PARAM_INVALID, "hRes dim[2] %ld is not equal to x dim[2] %ld", hResDim2,
+               xDim2);
+    CHECK_COND(hResDim3 == xDim2, ACLNN_ERR_PARAM_INVALID, "hRes dim[3] %ld must equal hRes dim[2] %ld (n x n matrix)",
+               hResDim3, hResDim2);
 
     // hOut shape: [B, S, D]
     auto hOutDim0 = params.hOut->GetViewShape().GetDim(DIM_IDX_0);
     auto hOutDim1 = params.hOut->GetViewShape().GetDim(DIM_IDX_1);
     auto hOutDim2 = params.hOut->GetViewShape().GetDim(DIM_IDX_2);
-    CHECK_COND(hOutDim0 == xDim0, ACLNN_ERR_PARAM_INVALID,
-               "hOut dim[0] %ld is not equal to x dim[0] %ld", hOutDim0, xDim0);
-    CHECK_COND(hOutDim1 == xDim1, ACLNN_ERR_PARAM_INVALID,
-               "hOut dim[1] %ld is not equal to x dim[1] %ld", hOutDim1, xDim1);
-    CHECK_COND(hOutDim2 == xDim3, ACLNN_ERR_PARAM_INVALID,
-               "hOut dim[2] %ld is not equal to x dim[3] %ld", hOutDim2, xDim3);
+    CHECK_COND(hOutDim0 == xDim0, ACLNN_ERR_PARAM_INVALID, "hOut dim[0] %ld is not equal to x dim[0] %ld", hOutDim0,
+               xDim0);
+    CHECK_COND(hOutDim1 == xDim1, ACLNN_ERR_PARAM_INVALID, "hOut dim[1] %ld is not equal to x dim[1] %ld", hOutDim1,
+               xDim1);
+    CHECK_COND(hOutDim2 == xDim3, ACLNN_ERR_PARAM_INVALID, "hOut dim[2] %ld is not equal to x dim[3] %ld", hOutDim2,
+               xDim3);
 
     // hPost shape: [B, S, n]
     auto hPostDim0 = params.hPost->GetViewShape().GetDim(DIM_IDX_0);
     auto hPostDim1 = params.hPost->GetViewShape().GetDim(DIM_IDX_1);
     auto hPostDim2 = params.hPost->GetViewShape().GetDim(DIM_IDX_2);
-    CHECK_COND(hPostDim0 == xDim0, ACLNN_ERR_PARAM_INVALID,
-               "hPost dim[0] %ld is not equal to x dim[0] %ld", hPostDim0, xDim0);
-    CHECK_COND(hPostDim1 == xDim1, ACLNN_ERR_PARAM_INVALID,
-               "hPost dim[1] %ld is not equal to x dim[1] %ld", hPostDim1, xDim1);
-    CHECK_COND(hPostDim2 == xDim2, ACLNN_ERR_PARAM_INVALID,
-               "hPost dim[2] %ld is not equal to x dim[2] %ld", hPostDim2, xDim2);
+    CHECK_COND(hPostDim0 == xDim0, ACLNN_ERR_PARAM_INVALID, "hPost dim[0] %ld is not equal to x dim[0] %ld", hPostDim0,
+               xDim0);
+    CHECK_COND(hPostDim1 == xDim1, ACLNN_ERR_PARAM_INVALID, "hPost dim[1] %ld is not equal to x dim[1] %ld", hPostDim1,
+               xDim1);
+    CHECK_COND(hPostDim2 == xDim2, ACLNN_ERR_PARAM_INVALID, "hPost dim[2] %ld is not equal to x dim[2] %ld", hPostDim2,
+               xDim2);
 
     // gradX shape: [B, S, n, D]
     auto gradXDim0 = params.gradX->GetViewShape().GetDim(DIM_IDX_0);
     auto gradXDim1 = params.gradX->GetViewShape().GetDim(DIM_IDX_1);
     auto gradXDim2 = params.gradX->GetViewShape().GetDim(DIM_IDX_2);
     auto gradXDim3 = params.gradX->GetViewShape().GetDim(DIM_IDX_3);
-    CHECK_COND(gradXDim0 == xDim0, ACLNN_ERR_PARAM_INVALID,
-               "gradX dim[0] %ld is not equal to x dim[0] %ld", gradXDim0, xDim0);
-    CHECK_COND(gradXDim1 == xDim1, ACLNN_ERR_PARAM_INVALID,
-               "gradX dim[1] %ld is not equal to x dim[1] %ld", gradXDim1, xDim1);
-    CHECK_COND(gradXDim2 == xDim2, ACLNN_ERR_PARAM_INVALID,
-               "gradX dim[2] %ld is not equal to x dim[2] %ld", gradXDim2, xDim2);
-    CHECK_COND(gradXDim3 == xDim3, ACLNN_ERR_PARAM_INVALID,
-               "gradX dim[3] %ld is not equal to x dim[3] %ld", gradXDim3, xDim3);
-    
+    CHECK_COND(gradXDim0 == xDim0, ACLNN_ERR_PARAM_INVALID, "gradX dim[0] %ld is not equal to x dim[0] %ld", gradXDim0,
+               xDim0);
+    CHECK_COND(gradXDim1 == xDim1, ACLNN_ERR_PARAM_INVALID, "gradX dim[1] %ld is not equal to x dim[1] %ld", gradXDim1,
+               xDim1);
+    CHECK_COND(gradXDim2 == xDim2, ACLNN_ERR_PARAM_INVALID, "gradX dim[2] %ld is not equal to x dim[2] %ld", gradXDim2,
+               xDim2);
+    CHECK_COND(gradXDim3 == xDim3, ACLNN_ERR_PARAM_INVALID, "gradX dim[3] %ld is not equal to x dim[3] %ld", gradXDim3,
+               xDim3);
+
     // gradHres shape: [B, S, n, n]
     auto gradHresDim0 = params.gradHres->GetViewShape().GetDim(DIM_IDX_0);
     auto gradHresDim1 = params.gradHres->GetViewShape().GetDim(DIM_IDX_1);
     auto gradHresDim2 = params.gradHres->GetViewShape().GetDim(DIM_IDX_2);
     auto gradHresDim3 = params.gradHres->GetViewShape().GetDim(DIM_IDX_3);
-    CHECK_COND(gradHresDim0 == hResDim0, ACLNN_ERR_PARAM_INVALID,
-               "gradHres dim[0] %ld is not equal to hRes dim[0] %ld", gradHresDim0, hResDim0);
-    CHECK_COND(gradHresDim1 == hResDim1, ACLNN_ERR_PARAM_INVALID,
-               "gradHres dim[1] %ld is not equal to hRes dim[1] %ld", gradHresDim1, hResDim1);
-    CHECK_COND(gradHresDim2 == hResDim2, ACLNN_ERR_PARAM_INVALID,
-               "gradHres dim[2] %ld must equal hRes dim[2] %ld", gradHresDim2, hResDim2);
-    CHECK_COND(gradHresDim3 == hResDim3, ACLNN_ERR_PARAM_INVALID,
-               "gradHres dim[3] %ld must equal hRes dim[3] %ld", gradHresDim3, hResDim3);
-            
+    CHECK_COND(gradHresDim0 == hResDim0, ACLNN_ERR_PARAM_INVALID, "gradHres dim[0] %ld is not equal to hRes dim[0] %ld",
+               gradHresDim0, hResDim0);
+    CHECK_COND(gradHresDim1 == hResDim1, ACLNN_ERR_PARAM_INVALID, "gradHres dim[1] %ld is not equal to hRes dim[1] %ld",
+               gradHresDim1, hResDim1);
+    CHECK_COND(gradHresDim2 == hResDim2, ACLNN_ERR_PARAM_INVALID, "gradHres dim[2] %ld must equal hRes dim[2] %ld",
+               gradHresDim2, hResDim2);
+    CHECK_COND(gradHresDim3 == hResDim3, ACLNN_ERR_PARAM_INVALID, "gradHres dim[3] %ld must equal hRes dim[3] %ld",
+               gradHresDim3, hResDim3);
+
     // gradHout shape: [B, S, D]
     auto gradHoutDim0 = params.gradHout->GetViewShape().GetDim(DIM_IDX_0);
     auto gradHoutDim1 = params.gradHout->GetViewShape().GetDim(DIM_IDX_1);
     auto gradHoutDim2 = params.gradHout->GetViewShape().GetDim(DIM_IDX_2);
-    CHECK_COND(gradHoutDim0 == hOutDim0, ACLNN_ERR_PARAM_INVALID,
-               "gradHout dim[0] %ld is not equal to hOut dim[0] %ld", gradHoutDim0, hOutDim0);
-    CHECK_COND(gradHoutDim1 == hOutDim1, ACLNN_ERR_PARAM_INVALID,
-               "gradHout dim[1] %ld is not equal to hOut dim[1] %ld", gradHoutDim1, hOutDim1);
-    CHECK_COND(gradHoutDim2 == hOutDim2, ACLNN_ERR_PARAM_INVALID,
-               "gradHout dim[2] %ld is not equal to hOut dim[2] %ld", gradHoutDim2, hOutDim2);
+    CHECK_COND(gradHoutDim0 == hOutDim0, ACLNN_ERR_PARAM_INVALID, "gradHout dim[0] %ld is not equal to hOut dim[0] %ld",
+               gradHoutDim0, hOutDim0);
+    CHECK_COND(gradHoutDim1 == hOutDim1, ACLNN_ERR_PARAM_INVALID, "gradHout dim[1] %ld is not equal to hOut dim[1] %ld",
+               gradHoutDim1, hOutDim1);
+    CHECK_COND(gradHoutDim2 == hOutDim2, ACLNN_ERR_PARAM_INVALID, "gradHout dim[2] %ld is not equal to hOut dim[2] %ld",
+               gradHoutDim2, hOutDim2);
 
     // gradHpost shape: [B, S, n]
     auto gradHpostDim0 = params.gradHpost->GetViewShape().GetDim(DIM_IDX_0);
@@ -346,8 +346,7 @@ static aclnnStatus CheckShape(const MhcPostBackwardParams &params)
             CHECK_COND((xDim1 == 4) || (xDim1 == 6) || (xDim1 == 8), ACLNN_ERR_PARAM_INVALID,
                        "the dim n should be 4 / 6 / 8 for 3D format");
         } else {
-            CHECK_COND(xDim1 == N_VALUE, ACLNN_ERR_PARAM_INVALID,
-                       "the dim n should be %ld for 3D format", N_VALUE);
+            CHECK_COND(xDim1 == N_VALUE, ACLNN_ERR_PARAM_INVALID, "the dim n should be %ld for 3D format", N_VALUE);
             auto xDimD = params.x->GetViewShape().GetDim(DIM_IDX_2);
             CHECK_COND(CheckDimD(xDimD) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID, "invalid dim D for 3D format");
         }
@@ -374,8 +373,7 @@ static aclnnStatus CheckShape(const MhcPostBackwardParams &params)
             CHECK_COND((xDim2 == 4) || (xDim2 == 6) || (xDim2 == 8), ACLNN_ERR_PARAM_INVALID,
                        "the dim n should be 4 / 6 / 8 for 4D format");
         } else {
-            CHECK_COND(xDim2 == N_VALUE, ACLNN_ERR_PARAM_INVALID,
-                       "the dim n should be %ld for 4D format", N_VALUE);
+            CHECK_COND(xDim2 == N_VALUE, ACLNN_ERR_PARAM_INVALID, "the dim n should be %ld for 4D format", N_VALUE);
             auto xDimD = params.x->GetViewShape().GetDim(DIM_IDX_3);
             CHECK_COND(CheckDimD(xDimD) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID, "invalid dim D for 4D format");
         }
@@ -409,15 +407,15 @@ static aclnnStatus CheckFormat(const MhcPostBackwardParams &params)
     op::Format hOutFormat = params.hOut->GetStorageFormat();
     op::Format hPostFormat = params.hPost->GetStorageFormat();
     CHECK_COND(!op::IsPrivateFormat(gradOutputFormat), ACLNN_ERR_PARAM_INVALID, "format of gradOutput %s is invalid.",
-            op::ToString(gradOutputFormat).GetString());
+               op::ToString(gradOutputFormat).GetString());
     CHECK_COND(!op::IsPrivateFormat(xFormat), ACLNN_ERR_PARAM_INVALID, "format of x %s is invalid.",
-            op::ToString(xFormat).GetString());
+               op::ToString(xFormat).GetString());
     CHECK_COND(!op::IsPrivateFormat(hResFormat), ACLNN_ERR_PARAM_INVALID, "format of hRes %s is invalid.",
-            op::ToString(hResFormat).GetString());
+               op::ToString(hResFormat).GetString());
     CHECK_COND(!op::IsPrivateFormat(hOutFormat), ACLNN_ERR_PARAM_INVALID, "format of hOut %s is invalid.",
-            op::ToString(hOutFormat).GetString());
+               op::ToString(hOutFormat).GetString());
     CHECK_COND(!op::IsPrivateFormat(hPostFormat), ACLNN_ERR_PARAM_INVALID, "format of hPost %s is invalid.",
-            op::ToString(hPostFormat).GetString());
+               op::ToString(hPostFormat).GetString());
     return ACLNN_SUCCESS;
 }
 
@@ -431,13 +429,12 @@ static aclnnStatus CheckParam(const MhcPostBackwardParams &params)
 }
 
 aclnnStatus aclnnMhcPostBackwardGetWorkspaceSize(const aclTensor *gradOutput, const aclTensor *x, const aclTensor *hRes,
-    const aclTensor *hOut, const aclTensor *hPost, aclTensor *gradX,
-    aclTensor *gradHres, aclTensor *gradHout, aclTensor *gradHpost,
-    uint64_t *workspaceSize, aclOpExecutor **executor)
+                                                 const aclTensor *hOut, const aclTensor *hPost, aclTensor *gradX,
+                                                 aclTensor *gradHres, aclTensor *gradHout, aclTensor *gradHpost,
+                                                 uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     CHECK_COND(CheckNotNull(gradOutput, x, hRes, hOut, hPost, gradX, gradHres, gradHout, gradHpost) == ACLNN_SUCCESS,
-        ACLNN_ERR_PARAM_NULLPTR,
-        "one of required inputs for aclnnMhcPostBackwardGetWorkspaceSize is nullptr.");
+               ACLNN_ERR_PARAM_NULLPTR, "one of required inputs for aclnnMhcPostBackwardGetWorkspaceSize is nullptr.");
     // Check if input tensors are empty
     if (gradOutput->IsEmpty() || x->IsEmpty() || hRes->IsEmpty() || hOut->IsEmpty() || hPost->IsEmpty()) {
         OP_LOGE(ACLNN_ERR_INNER, "aclnn_mhc_post_backward do not support empty tensor!");
@@ -450,13 +447,13 @@ aclnnStatus aclnnMhcPostBackwardGetWorkspaceSize(const aclTensor *gradOutput, co
     // Create OpExecutor
     auto uniqueExecutor = CREATE_EXECUTOR();
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
-    aclTensor* outGradX = nullptr;
-    aclTensor* outGradHres = nullptr;
-    aclTensor* outGradHout = nullptr;
-    aclTensor* outGradHpost = nullptr;
+    aclTensor *outGradX = nullptr;
+    aclTensor *outGradHres = nullptr;
+    aclTensor *outGradHout = nullptr;
+    aclTensor *outGradHpost = nullptr;
 
     L2_DFX_PHASE_1(aclnnMhcPostBackward, DFX_IN(params.gradOutput, params.x, params.hRes, params.hOut, params.hPost),
-        DFX_OUT(params.gradX, params.gradHres, params.gradHout, params.gradHpost));
+                   DFX_OUT(params.gradX, params.gradHres, params.gradHout, params.gradHpost));
 
     // Convert input tensors to contiguous
     auto reformatedGradOutput = l0op::Contiguous(gradOutput, uniqueExecutor.get());
@@ -471,9 +468,9 @@ aclnnStatus aclnnMhcPostBackwardGetWorkspaceSize(const aclTensor *gradOutput, co
     CHECK_COND(reformatedHPost != nullptr, ACLNN_ERR_INNER_NULLPTR, "hPost Contiguous failed.");
 
     // Call l0 interface: MhcPostBackward kernel
-    const auto Result = l0op::MhcPostBackward(reformatedGradOutput, reformatedX,
-        reformatedHRes, reformatedHOut, reformatedHPost, uniqueExecutor.get());
-    
+    const auto Result = l0op::MhcPostBackward(reformatedGradOutput, reformatedX, reformatedHRes, reformatedHOut,
+                                              reformatedHPost, uniqueExecutor.get());
+
     CHECK_RET(std::get<0>(Result) != nullptr, ACLNN_ERR_INNER_NULLPTR);
     outGradX = std::get<0>(Result);
     outGradHres = std::get<1>(Result);
@@ -482,17 +479,17 @@ aclnnStatus aclnnMhcPostBackwardGetWorkspaceSize(const aclTensor *gradOutput, co
     CHECK_RET(outGradHres != nullptr, ACLNN_ERR_INNER_NULLPTR);
     CHECK_RET(outGradHout != nullptr, ACLNN_ERR_INNER_NULLPTR);
     CHECK_RET(outGradHpost != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    
+
     // Convert output tensor to contiguous tensor and copy to output
     auto viewCopygradXResult = l0op::ViewCopy(outGradX, gradX, uniqueExecutor.get());
     CHECK_RET(viewCopygradXResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    
+
     auto viewCopygradHresResult = l0op::ViewCopy(outGradHres, gradHres, uniqueExecutor.get());
     CHECK_RET(viewCopygradHresResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    
+
     auto viewCopygradHoutResult = l0op::ViewCopy(outGradHout, gradHout, uniqueExecutor.get());
     CHECK_RET(viewCopygradHoutResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    
+
     auto viewCopygradHpostResult = l0op::ViewCopy(outGradHpost, gradHpost, uniqueExecutor.get());
     CHECK_RET(viewCopygradHpostResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
 

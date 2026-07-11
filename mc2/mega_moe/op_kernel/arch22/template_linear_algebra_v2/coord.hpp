@@ -16,11 +16,10 @@
 namespace Catlass {
 
 /// Statically-sized array specifying Coords within a tensor
-template <
-    int RANK_,                         ///< Logical rank of coordinate
-    class Index_ = uint32_t,        ///< Index type used for each dimension
-    class LongIndex_ = int64_t      ///< Long index type used for linear offsets
->
+template <int RANK_,                 ///< Logical rank of coordinate
+          class Index_ = uint32_t,   ///< Index type used for each dimension
+          class LongIndex_ = int64_t ///< Long index type used for linear offsets
+          >
 struct Coord {
 public:
     // Number of elements in Coord
@@ -33,8 +32,7 @@ public:
     using LongIndex = LongIndex_;
 
     // Default ctor initializes uniformly
-    CATLASS_HOST_DEVICE constexpr
-    explicit Coord(Index value = Index(0))
+    CATLASS_HOST_DEVICE constexpr explicit Coord(Index value = Index(0))
     {
         for (int i = 0; i < RANK; ++i) {
             idx[i] = value;
@@ -42,8 +40,7 @@ public:
     }
 
     // Constructs from an array of integers
-    CATLASS_HOST_DEVICE constexpr
-    Coord(Index const (&idx_)[RANK])
+    CATLASS_HOST_DEVICE constexpr Coord(Index const (&idx_)[RANK])
     {
         for (int i = 0; i < RANK; ++i) {
             idx[i] = idx_[i];
@@ -227,8 +224,7 @@ public:
 
     // Gets the index of a given Coord element
     template <int DIM>
-    CATLASS_HOST_DEVICE
-    Index &At()
+    CATLASS_HOST_DEVICE Index &At()
     {
         return idx[DIM];
     }
@@ -242,8 +238,7 @@ public:
 
     // Gets the index of a given Coord element
     template <int DIM>
-    CATLASS_HOST_DEVICE
-    Index const &At() const
+    CATLASS_HOST_DEVICE Index const &At() const
     {
         return idx[DIM];
     }
@@ -256,8 +251,7 @@ public:
     }
 
     template <int... Is>
-    CATLASS_HOST_DEVICE
-    auto GetCoordByAxis() const
+    CATLASS_HOST_DEVICE auto GetCoordByAxis() const
     {
         Index idx_[sizeof...(Is)]{idx[Is]...};
         return Coord<sizeof...(Is), Index, LongIndex>{idx_};
@@ -280,8 +274,7 @@ private:
 
 // Helper to make a 1-element coordinate
 template <class T>
-CATLASS_HOST_DEVICE constexpr
-Coord<1, T> MakeCoord(T dim0)
+CATLASS_HOST_DEVICE constexpr Coord<1, T> MakeCoord(T dim0)
 {
     T values[1] = {dim0};
     return Coord<1, T>(values);
@@ -289,8 +282,7 @@ Coord<1, T> MakeCoord(T dim0)
 
 /// Helper to make a 2-element coordinate
 template <class T>
-CATLASS_HOST_DEVICE constexpr
-Coord<2, T> MakeCoord(T dim0, T dim1)
+CATLASS_HOST_DEVICE constexpr Coord<2, T> MakeCoord(T dim0, T dim1)
 {
     T values[2] = {dim0, dim1};
     return Coord<2, T>(values);
@@ -298,8 +290,7 @@ Coord<2, T> MakeCoord(T dim0, T dim1)
 
 /// Helper to make a 3-element coordinate
 template <class T>
-CATLASS_HOST_DEVICE constexpr
-Coord<3, T> MakeCoord(T dim0, T dim1, T dim2)
+CATLASS_HOST_DEVICE constexpr Coord<3, T> MakeCoord(T dim0, T dim1, T dim2)
 {
     T values[3] = {dim0, dim1, dim2};
     return Coord<3, T>(values);
@@ -307,8 +298,7 @@ Coord<3, T> MakeCoord(T dim0, T dim1, T dim2)
 
 /// Helper to make a 4-element coordinate
 template <class T>
-CATLASS_HOST_DEVICE constexpr
-Coord<4, T> MakeCoord(T dim0, T dim1, T dim2, T dim3)
+CATLASS_HOST_DEVICE constexpr Coord<4, T> MakeCoord(T dim0, T dim1, T dim2, T dim3)
 {
     T values[4] = {dim0, dim1, dim2, dim3};
     return Coord<4, T>(values);
@@ -316,8 +306,7 @@ Coord<4, T> MakeCoord(T dim0, T dim1, T dim2, T dim3)
 
 /// Helper to make a 5-element coordinate
 template <class T>
-CATLASS_HOST_DEVICE constexpr
-Coord<5, T> MakeCoord(T dim0, T dim1, T dim2, T dim3, T dim4)
+CATLASS_HOST_DEVICE constexpr Coord<5, T> MakeCoord(T dim0, T dim1, T dim2, T dim3, T dim4)
 {
     T values[5] = {dim0, dim1, dim2, dim3, dim4};
     return Coord<5, T>(values);
@@ -325,8 +314,7 @@ Coord<5, T> MakeCoord(T dim0, T dim1, T dim2, T dim3, T dim4)
 
 /// Helper to make a 6-element coordinate
 template <class T>
-CATLASS_HOST_DEVICE constexpr
-Coord<6, T> MakeCoord(T dim0, T dim1, T dim2, T dim3, T dim4, T dim5)
+CATLASS_HOST_DEVICE constexpr Coord<6, T> MakeCoord(T dim0, T dim1, T dim2, T dim3, T dim4, T dim5)
 {
     T values[6] = {dim0, dim1, dim2, dim3, dim4, dim5};
     return Coord<6, T>(values);
@@ -334,13 +322,12 @@ Coord<6, T> MakeCoord(T dim0, T dim1, T dim2, T dim3, T dim4, T dim5)
 
 /// Helper to make a 7-element coordinate
 template <class T>
-CATLASS_HOST_DEVICE constexpr
-Coord<7, T> MakeCoord(T dim0, T dim1, T dim2, T dim3, T dim4, T dim5, T dim6)
+CATLASS_HOST_DEVICE constexpr Coord<7, T> MakeCoord(T dim0, T dim1, T dim2, T dim3, T dim4, T dim5, T dim6)
 {
     T values[7] = {dim0, dim1, dim2, dim3, dim4, dim5, dim6};
     return Coord<7, T>(values);
 }
 
-}  // namespace Catlass
+} // namespace Catlass
 
-#endif  // CATLASS_COORD_HPP
+#endif // CATLASS_COORD_HPP

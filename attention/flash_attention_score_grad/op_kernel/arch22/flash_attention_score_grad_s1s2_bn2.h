@@ -934,7 +934,8 @@ template <typename T1, typename T2, const MatmulConfig &MM_CFG, const CubeFormat
           const CubeFormat MM2_OUT_FORMAT, const bool POST, const bool L1CUSTOM>
 __aicore__ inline void
 FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MASK_CFG, DROPOUT_CFG, LAYOUT,
-                               MM2_OUT_FORMAT, POST, L1CUSTOM>::DumpGmZero(GlobalTensor<float> &gm, int64_t num, int64_t offset)
+                               MM2_OUT_FORMAT, POST, L1CUSTOM>::DumpGmZero(GlobalTensor<float> &gm, int64_t num,
+                                                                           int64_t offset)
 {
     // dump 0 to gm by blockIdx
     int64_t perSize = (num + tilingData->opInfo.castUsedCoreNum - 1) / tilingData->opInfo.castUsedCoreNum;
@@ -988,9 +989,8 @@ FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MAS
 template <typename T1, typename T2, const MatmulConfig &MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
           const uint64_t ATTEN_MASK_CFG, const uint64_t DROPOUT_CFG, const uint32_t LAYOUT,
           const CubeFormat MM2_OUT_FORMAT, const bool POST, const bool L1CUSTOM>
-__aicore__ inline void
-FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MASK_CFG, DROPOUT_CFG, LAYOUT,
-                               MM2_OUT_FORMAT, POST, L1CUSTOM>::EODClean()
+__aicore__ inline void FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MASK_CFG,
+                                                      DROPOUT_CFG, LAYOUT, MM2_OUT_FORMAT, POST, L1CUSTOM>::EODClean()
 {
     int64_t realDimT_q = tilingData->postTilingData.t1;
     int64_t realDimT_kv = tilingData->postTilingData.t2;
@@ -2670,8 +2670,8 @@ FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MAS
                 if (prefixCompressCanSimplify == false) {
                     uint32_t s2InnerAlign =
                         (emitInsn.s2Inner + 31) / 32 * 32; // attenmask做pad时会32对齐，故加31/32做ceil
-                        int64_t maskNum = static_cast<int64_t>(emitInsn.s1Inner) *
-                            static_cast<int64_t>(s2InnerAlign) / 2; // 除2数据量按照uint16类型折半
+                    int64_t maskNum = static_cast<int64_t>(emitInsn.s1Inner) * static_cast<int64_t>(s2InnerAlign) /
+                                      2; // 除2数据量按照uint16类型折半
 
                     AscendC::SetFlag<HardEvent::V_MTE2>(static_cast<int32_t>(eventIdMte2WaitV));
                     AscendC::WaitFlag<HardEvent::V_MTE2>(static_cast<int32_t>(eventIdMte2WaitV));

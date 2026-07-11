@@ -124,9 +124,9 @@ aclnnStatus aclnnSparseFlashMlaGrad(
         <colgroup>
             <col style="width: 220px">
             <col style="width: 120px">
-            <col style="width: 200px">  
-            <col style="width: 400px">  
-            <col style="width: 212px">  
+            <col style="width: 200px">
+            <col style="width: 400px">
+            <col style="width: 212px">
             <col style="width: 100px">
             <col style="width: 290px">
             <col style="width: 145px">
@@ -542,7 +542,7 @@ aclnnStatus aclnnSparseFlashMlaGrad(
             </td>
             <td>√</td>
         </tr>
-        <tr>  
+        <tr>
             <td>dCmpKvOptional（aclTensor*）</td>
             <td>输出</td>
             <td>表示cmpKvOptional的梯度。</td>
@@ -555,7 +555,7 @@ aclnnStatus aclnnSparseFlashMlaGrad(
             </td>
             <td>√</td>
         </tr>
-        <tr>  
+        <tr>
             <td>dSinksOutOptional（aclTensor*）</td>
             <td>输出</td>
             <td>表示sinksOptional的梯度。</td>
@@ -568,7 +568,7 @@ aclnnStatus aclnnSparseFlashMlaGrad(
             </td>
             <td>√</td>
         </tr>
-        <tr>  
+        <tr>
             <td>oriSoftmaxL1NormOptional（aclTensor*）</td>
             <td>输出</td>
             <td>表示query与oriKvOptional计算得出的softmax L1Norm结果，公式为reduceG(softmax)/G。</td>
@@ -581,7 +581,7 @@ aclnnStatus aclnnSparseFlashMlaGrad(
             </td>
             <td>√</td>
         </tr>
-        <tr>  
+        <tr>
             <td>cmpSoftmaxL1NormOptional（aclTensor*）</td>
             <td>输出</td>
             <td>表示query与cmpKvOptional计算得出的softmax L1Norm结果，公式为reduceG(softmax)/G。</td>
@@ -972,33 +972,33 @@ int main() {
   int64_t oriWinRight = 0;
   char layoutQ[5] = {'T', 'N', 'D', 0};
   char layoutKv[5] = {'T', 'N', 'D', 0};
-  
+
   // 3. 调用CANN算子库API，需要修改为具体的Api名称
   uint64_t workspaceSize = 0;
   aclOpExecutor* executor;
-  
+
   // 调用aclnnSparseFlashMlaGrad第一段接口
   ret = aclnnSparseFlashMlaGradGetWorkspaceSize(q, dOut, out, lse, oriKv, cmpKv, nullptr, nullptr, cuSeqQLen, cuSeqOriKvLen, cuSeqCmpKvLen,
             nullptr, nullptr, nullptr, cmpResidualKv, nullptr, nullptr, sinks, nullptr, scaleValue, cmpRatio, oriMaskMode, cmpMaskMode, oriWinLeft, oriWinRight,
-            layoutQ, layoutKv, dq, dOriKv, dCmpKv, dSinks, oriSoftmaxL1Norm, cmpSoftmaxL1Norm, 
+            layoutQ, layoutKv, dq, dOriKv, dCmpKv, dSinks, oriSoftmaxL1Norm, cmpSoftmaxL1Norm,
             &workspaceSize, &executor);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnSparseFlashMlaGradGetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
-  
+
   // 根据第一段接口计算出的workspaceSize申请device内存
   void* workspaceAddr = nullptr;
   if (workspaceSize > 0) {
     ret = aclrtMalloc(&workspaceAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("allocate workspace failed. ERROR: %d\n", ret); return ret);
   }
-  
+
   // 调用aclnnSparseFlashMlaGrad第二段接口
   ret = aclnnSparseFlashMlaGrad(workspaceAddr, workspaceSize, executor, stream);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnSparseFlashMlaGrad failed. ERROR: %d\n", ret); return ret);
-  
+
   // 4.（固定写法）同步等待任务执行结束
   ret = aclrtSynchronizeStream(stream);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
-  
+
   // 5. 获取输出的值，将device侧内存上的结果拷贝至host侧，需要根据具体API的接口定义修改
   PrintOutResult(qShape, &dqDeviceAddr);
   PrintOutResult(oriKvShape, &dOriKvDeviceAddr);
@@ -1049,7 +1049,7 @@ int main() {
   aclrtDestroyContext(context);
   aclrtResetDevice(deviceId);
   aclFinalize();
-  
+
   return 0;
 }
 ```

@@ -17,7 +17,7 @@
 namespace ops {
 class RingAttentionUpdate : public OpDef {
 public:
-    explicit RingAttentionUpdate(const char* name) : OpDef(name)
+    explicit RingAttentionUpdate(const char *name) : OpDef(name)
     {
         this->Input("prev_attn_out")
             .ParamType(REQUIRED)
@@ -108,7 +108,10 @@ private:
             .PrecisionReduceFlag(true);
         config_kirin.Input("prev_attn_out")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT, ge::DT_FLOAT16,})
+            .DataType({
+                ge::DT_FLOAT,
+                ge::DT_FLOAT16,
+            })
             .Format({ge::FORMAT_ND, ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
@@ -126,7 +129,10 @@ private:
             .AutoContiguous();
         config_kirin.Input("cur_attn_out")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT, ge::DT_FLOAT16,})
+            .DataType({
+                ge::DT_FLOAT,
+                ge::DT_FLOAT16,
+            })
             .Format({ge::FORMAT_ND, ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
@@ -150,7 +156,10 @@ private:
             .AutoContiguous();
         config_kirin.Output("attn_out")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT, ge::DT_FLOAT16,})
+            .DataType({
+                ge::DT_FLOAT,
+                ge::DT_FLOAT16,
+            })
             .Format({ge::FORMAT_ND, ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND});
         config_kirin.Output("softmax_max")

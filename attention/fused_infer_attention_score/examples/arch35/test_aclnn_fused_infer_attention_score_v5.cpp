@@ -91,11 +91,12 @@ int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &
 
 } // namespace
 
-float fp16_to_float(uint16_t h) {
+float fp16_to_float(uint16_t h)
+{
     uint32_t sign = ((h >> 15) & 1);
     uint32_t exponent = ((h >> 10) & 0x1F);
     uint32_t mantissa = (h & 0x3FF);
-    
+
     uint32_t f32;
     if (exponent == 0x1F) {
         exponent = 0xFF;
@@ -112,9 +113,9 @@ float fp16_to_float(uint16_t h) {
     } else {
         exponent += (127 - 15);
     }
-    
+
     f32 = (sign << 31) | (exponent << 23) | (mantissa << 13);
-    return *((float*)&f32);
+    return *((float *)&f32);
 }
 
 int main()
@@ -143,7 +144,7 @@ int main()
     std::vector<uint16_t> keyHostData(keyShapeSize, 0x3C00);
     std::vector<uint16_t> valueHostData(valueShapeSize, 0x3C00);
     std::vector<uint16_t> pseHostData(pseShapeSize, 0x3C00); // fp16 1.0
-    std::vector<uint8_t> attenHostData(attenShapeSize, 0); // bool 0 = attend (all positions valid)
+    std::vector<uint8_t> attenHostData(attenShapeSize, 0);   // bool 0 = attend (all positions valid)
     std::vector<uint16_t> outHostData(outShapeSize, 0);
     std::vector<uint16_t> resultData(outShapeSize, 0x3C00);
 

@@ -31,7 +31,8 @@ ASCENDC_EXTERN_C ge::graphStatus TilingMLAPreprocessV2(gert::TilingContext *cont
     mlaTiling.Init(context);
     bool qDownOutFlag = *(context->GetAttrs()->GetAttrPointer<bool>(ATTR_Q_DOWN_OUT_FLAG_IDX));
     mlaTiling.mlaTilingData.set_qDownOutFlag(qDownOutFlag);
-    mlaTiling.mlaTilingData.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
+    mlaTiling.mlaTilingData.SaveToBuffer(context->GetRawTilingData()->GetData(),
+                                         context->GetRawTilingData()->GetCapacity());
     context->GetRawTilingData()->SetDataSize(mlaTiling.mlaTilingData.GetDataSize());
     return ge::GRAPH_SUCCESS;
 }

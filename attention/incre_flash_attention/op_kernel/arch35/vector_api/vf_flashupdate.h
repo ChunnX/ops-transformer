@@ -23,14 +23,14 @@ namespace AscendC {
  * ************************************************************************************************* */
 
 template <typename T, typename OUTPUT_T>
-__aicore__ inline void FlashUpdateBasic(const LocalTensor<T>& dstTensor, const LocalTensor<T>& curTensor,
-                                        const LocalTensor<T>& preTensor, const LocalTensor<T>& expMaxTensor,
+__aicore__ inline void FlashUpdateBasic(const LocalTensor<T> &dstTensor, const LocalTensor<T> &curTensor,
+                                        const LocalTensor<T> &preTensor, const LocalTensor<T> &expMaxTensor,
                                         const uint16_t m, const uint16_t d, const uint16_t srcD)
 {
-    __ubuf__ float * dstUb = (__ubuf__ T*)dstTensor.GetPhyAddr();
-    __ubuf__ float * curUb = (__ubuf__ T*)curTensor.GetPhyAddr();
-    __ubuf__ float * preUb = (__ubuf__ T*)preTensor.GetPhyAddr();
-    __ubuf__ float * expMaxUb = (__ubuf__ T*)expMaxTensor.GetPhyAddr();
+    __ubuf__ float *dstUb = (__ubuf__ T *)dstTensor.GetPhyAddr();
+    __ubuf__ float *curUb = (__ubuf__ T *)curTensor.GetPhyAddr();
+    __ubuf__ float *preUb = (__ubuf__ T *)preTensor.GetPhyAddr();
+    __ubuf__ float *expMaxUb = (__ubuf__ T *)expMaxTensor.GetPhyAddr();
 
     const uint16_t floatRepSize = 64;
     const uint16_t reduceSize = 8;
@@ -57,22 +57,22 @@ __aicore__ inline void FlashUpdateBasic(const LocalTensor<T>& dstTensor, const L
                 MicroAPI::Mul<T, MicroAPI::MaskMergeMode::ZEROING>(vRegMul, vRegMax, vRegPre, maskRegAll);
                 MicroAPI::Add<T, MicroAPI::MaskMergeMode::ZEROING>(vRegAdd, vRegMul, vRegCur, maskRegAll);
 
-                MicroAPI::DataCopy<OUTPUT_T, MicroAPI::StoreDist::DIST_NORM_B32>(
-                    dstUb + i * srcD + j * floatRepSize, vRegAdd, maskRegAll); // output0
+                MicroAPI::DataCopy<OUTPUT_T, MicroAPI::StoreDist::DIST_NORM_B32>(dstUb + i * srcD + j * floatRepSize,
+                                                                                 vRegAdd, maskRegAll); // output0
             }
         }
     }
 }
 
 template <typename T, typename OUTPUT_T>
-__aicore__ inline void FlashUpdateGeneral(const LocalTensor<T>& dstTensor, const LocalTensor<T>& curTensor,
-                                          const LocalTensor<T>& preTensor, const LocalTensor<T>& expMaxTensor,
+__aicore__ inline void FlashUpdateGeneral(const LocalTensor<T> &dstTensor, const LocalTensor<T> &curTensor,
+                                          const LocalTensor<T> &preTensor, const LocalTensor<T> &expMaxTensor,
                                           const uint16_t m, const uint16_t d, const uint16_t srcD)
 {
-    __ubuf__ float * dstUb = (__ubuf__ T*)dstTensor.GetPhyAddr();
-    __ubuf__ float * curUb = (__ubuf__ T*)curTensor.GetPhyAddr();
-    __ubuf__ float * preUb = (__ubuf__ T*)preTensor.GetPhyAddr();
-    __ubuf__ float * expMaxUb = (__ubuf__ T*)expMaxTensor.GetPhyAddr();
+    __ubuf__ float *dstUb = (__ubuf__ T *)dstTensor.GetPhyAddr();
+    __ubuf__ float *curUb = (__ubuf__ T *)curTensor.GetPhyAddr();
+    __ubuf__ float *preUb = (__ubuf__ T *)preTensor.GetPhyAddr();
+    __ubuf__ float *expMaxUb = (__ubuf__ T *)expMaxTensor.GetPhyAddr();
 
     const uint16_t floatRepSize = 64;
     const uint16_t reduceSize = 8;
@@ -107,8 +107,8 @@ __aicore__ inline void FlashUpdateGeneral(const LocalTensor<T>& dstTensor, const
                 MicroAPI::Mul<T, MicroAPI::MaskMergeMode::ZEROING>(vRegMul, vRegMax, vRegPre, maskRegAll);
                 MicroAPI::Add<T, MicroAPI::MaskMergeMode::ZEROING>(vRegAdd, vRegMul, vRegCur, maskRegAll);
 
-                MicroAPI::DataCopy<OUTPUT_T, MicroAPI::StoreDist::DIST_NORM_B32>(
-                    dstUb + i * srcD + j * floatRepSize, vRegAdd, maskRegAll); // output0
+                MicroAPI::DataCopy<OUTPUT_T, MicroAPI::StoreDist::DIST_NORM_B32>(dstUb + i * srcD + j * floatRepSize,
+                                                                                 vRegAdd, maskRegAll); // output0
             }
             for (uint16_t t = 0; t < hasTail; ++t) {
                 MicroAPI::DataCopy<T, MicroAPI::LoadDist::DIST_NORM>(vRegPre, preUb + i * srcD + dLoops * floatRepSize);
@@ -135,8 +135,8 @@ __aicore__ inline void FlashUpdateGeneral(const LocalTensor<T>& dstTensor, const
  * @param [in] d, input colums, should be 32 bytes aligned
  */
 template <typename T, typename OUTPUT_T>
-__aicore__ inline void FlashUpdate(const LocalTensor<T>& dstTensor, const LocalTensor<T>& curTensor,
-                                   const LocalTensor<T>& preTensor, const LocalTensor<T>& expMaxTensor,
+__aicore__ inline void FlashUpdate(const LocalTensor<T> &dstTensor, const LocalTensor<T> &curTensor,
+                                   const LocalTensor<T> &preTensor, const LocalTensor<T> &expMaxTensor,
                                    const uint16_t m, const uint16_t d, const uint16_t srcD)
 {
     static_assert(IsSameType<T, float>::value, "VF FlashUpdate, T must be float");
@@ -151,16 +151,16 @@ __aicore__ inline void FlashUpdate(const LocalTensor<T>& dstTensor, const LocalT
 
 
 template <typename T, typename OUTPUT_T>
-__aicore__ inline void FlashUpdateLastBasic(const LocalTensor<T>& dstTensor, const LocalTensor<T>& curTensor,
-                                            const LocalTensor<T>& preTensor, const LocalTensor<T>& expMaxTensor,
-                                            const LocalTensor<T>& expSumTensor, const uint16_t m,
-                                            const uint16_t d, const uint16_t srcD)
+__aicore__ inline void FlashUpdateLastBasic(const LocalTensor<T> &dstTensor, const LocalTensor<T> &curTensor,
+                                            const LocalTensor<T> &preTensor, const LocalTensor<T> &expMaxTensor,
+                                            const LocalTensor<T> &expSumTensor, const uint16_t m, const uint16_t d,
+                                            const uint16_t srcD)
 {
-    __ubuf__ float * dstUb = (__ubuf__ T*)dstTensor.GetPhyAddr();
-    __ubuf__ float * curUb = (__ubuf__ T*)curTensor.GetPhyAddr();
-    __ubuf__ float * preUb = (__ubuf__ T*)preTensor.GetPhyAddr();
-    __ubuf__ float * expMaxUb = (__ubuf__ T*)expMaxTensor.GetPhyAddr();
-    __ubuf__ float * expSumUb = (__ubuf__ T*)expSumTensor.GetPhyAddr();
+    __ubuf__ float *dstUb = (__ubuf__ T *)dstTensor.GetPhyAddr();
+    __ubuf__ float *curUb = (__ubuf__ T *)curTensor.GetPhyAddr();
+    __ubuf__ float *preUb = (__ubuf__ T *)preTensor.GetPhyAddr();
+    __ubuf__ float *expMaxUb = (__ubuf__ T *)expMaxTensor.GetPhyAddr();
+    __ubuf__ float *expSumUb = (__ubuf__ T *)expSumTensor.GetPhyAddr();
 
     const uint16_t floatRepSize = 64;
     uint16_t reduceSize = 8;
@@ -192,24 +192,24 @@ __aicore__ inline void FlashUpdateLastBasic(const LocalTensor<T>& dstTensor, con
                 MicroAPI::Add<T, MicroAPI::MaskMergeMode::ZEROING>(vRegAdd, vRegMul, vRegCur, maskRegAll);
                 MicroAPI::Div<T, &mode>(vRegDiv, vRegAdd, vRegSum, maskRegAll);
 
-                MicroAPI::DataCopy<OUTPUT_T, MicroAPI::StoreDist::DIST_NORM_B32>(
-                    dstUb + i * d + j * floatRepSize, vRegDiv, maskRegAll); // output0
+                MicroAPI::DataCopy<OUTPUT_T, MicroAPI::StoreDist::DIST_NORM_B32>(dstUb + i * d + j * floatRepSize,
+                                                                                 vRegDiv, maskRegAll); // output0
             }
         }
     }
 }
 
 template <typename T, typename OUTPUT_T>
-__aicore__ inline void FlashUpdateLastGeneral(const LocalTensor<T>& dstTensor, const LocalTensor<T>& curTensor,
-                                              const LocalTensor<T>& preTensor, const LocalTensor<T>& expMaxTensor,
-                                              const LocalTensor<T>& expSumTensor, const uint16_t m,
-                                              const uint16_t d, const uint16_t srcD)
+__aicore__ inline void FlashUpdateLastGeneral(const LocalTensor<T> &dstTensor, const LocalTensor<T> &curTensor,
+                                              const LocalTensor<T> &preTensor, const LocalTensor<T> &expMaxTensor,
+                                              const LocalTensor<T> &expSumTensor, const uint16_t m, const uint16_t d,
+                                              const uint16_t srcD)
 {
-    __ubuf__ float * dstUb = (__ubuf__ T*)dstTensor.GetPhyAddr();
-    __ubuf__ float * curUb = (__ubuf__ T*)curTensor.GetPhyAddr();
-    __ubuf__ float * preUb = (__ubuf__ T*)preTensor.GetPhyAddr();
-    __ubuf__ float * expMaxUb = (__ubuf__ T*)expMaxTensor.GetPhyAddr();
-    __ubuf__ float * expSumUb = (__ubuf__ T*)expSumTensor.GetPhyAddr();
+    __ubuf__ float *dstUb = (__ubuf__ T *)dstTensor.GetPhyAddr();
+    __ubuf__ float *curUb = (__ubuf__ T *)curTensor.GetPhyAddr();
+    __ubuf__ float *preUb = (__ubuf__ T *)preTensor.GetPhyAddr();
+    __ubuf__ float *expMaxUb = (__ubuf__ T *)expMaxTensor.GetPhyAddr();
+    __ubuf__ float *expSumUb = (__ubuf__ T *)expSumTensor.GetPhyAddr();
 
     const uint16_t floatRepSize = 64;
     uint16_t reduceSize = 8;
@@ -249,8 +249,8 @@ __aicore__ inline void FlashUpdateLastGeneral(const LocalTensor<T>& dstTensor, c
                 MicroAPI::Add<T, MicroAPI::MaskMergeMode::ZEROING>(vRegAdd, vRegMul, vRegCur, maskRegAll);
                 MicroAPI::Div<T, &mode>(vRegDiv, vRegAdd, vRegSum, maskRegAll);
 
-                MicroAPI::DataCopy<OUTPUT_T, MicroAPI::StoreDist::DIST_NORM_B32>(
-                    dstUb + i * srcD + j * floatRepSize, vRegDiv, maskRegAll); // output0
+                MicroAPI::DataCopy<OUTPUT_T, MicroAPI::StoreDist::DIST_NORM_B32>(dstUb + i * srcD + j * floatRepSize,
+                                                                                 vRegDiv, maskRegAll); // output0
             }
 
             for (uint16_t t = 0; t < hasTail; ++t) {
@@ -280,10 +280,9 @@ __aicore__ inline void FlashUpdateLastGeneral(const LocalTensor<T>& dstTensor, c
  * @param [in] d, input colums, 32 bytes align
  */
 template <typename T, typename OUTPUT_T>
-__aicore__ inline void FlashUpdateLast(const LocalTensor<T>& dstTensor, const LocalTensor<T>& curTensor,
-                                       const LocalTensor<T>& preTensor, const LocalTensor<T>& expMaxTensor,
-                                       const LocalTensor<T>& expSumTensor, uint16_t m,
-                                       uint16_t d, uint16_t srcD)
+__aicore__ inline void FlashUpdateLast(const LocalTensor<T> &dstTensor, const LocalTensor<T> &curTensor,
+                                       const LocalTensor<T> &preTensor, const LocalTensor<T> &expMaxTensor,
+                                       const LocalTensor<T> &expSumTensor, uint16_t m, uint16_t d, uint16_t srcD)
 {
     static_assert(IsSameType<T, float>::value, "VF FlashUpdateLast, T must be float");
 
@@ -295,6 +294,6 @@ __aicore__ inline void FlashUpdateLast(const LocalTensor<T>& dstTensor, const Lo
     }
 }
 
-} // namespace
+} // namespace AscendC
 
 #endif // MY_FLASH_UPDATE_INTERFACE_H

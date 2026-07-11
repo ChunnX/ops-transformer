@@ -44,7 +44,7 @@ stateDiagram-v2
 		MatMul: CUB
 		Vector: VEC
 	}
-	
+
 	class Active ActiveState
 	class MatMul1, MatMul2, MatMul3, MatMul4, MatMul CUBState
 	class Gauss, Jacobi, HouseholderQR, Vector VECState
@@ -53,15 +53,15 @@ stateDiagram-v2
 
 ## Custom Kernel Input/Output (I/O)
 
-**Parameters description:**  
-B: batch size is zero or more batch dimensions  
-S: sequence length (127 < S < 8M)  
-D: hidden dimension (31 < D < 2K)  
-R: SVD rank size (15 < R < D)  
+**Parameters description:**
+B: batch size is zero or more batch dimensions
+S: sequence length (127 < S < 8M)
+D: hidden dimension (31 < D < 2K)
+R: SVD rank size (15 < R < D)
 
 **Input**
 
-| Tensor | Layout | dType | Description                                                                  | 
+| Tensor | Layout | dType | Description                                                                  |
 |--------|--------|-------|------------------------------------------------------------------------------|
 | A      | BSD    | FP32  | Tensor of shape (*, S, D) where * is zero or more batch dimensions and S > D |
 
@@ -83,7 +83,7 @@ There are 4 linear algebra operators npu_linalg are the core implementation modu
 | Jacobi        | torch.linalg.svd(A) | torch.ops.npu_linalg.svd(A) | Jacobi rotation SVD                 |
 | SvdLowrank    | torch.svd_lowrank(A, q=6, niter=2) | torch.ops.npu_linalg.svd_lowrank(A, q=6, niter=2) | Low-rank SVD |
 
-**Directory structure**  
+**Directory structure**
 
 ```
 ├── svd                   # Linear algebra components for ShadowKV SVD

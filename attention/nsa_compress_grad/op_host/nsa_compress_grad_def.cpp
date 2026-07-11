@@ -17,7 +17,7 @@
 namespace ops {
 class NsaCompressGrad : public OpDef {
 public:
-    explicit NsaCompressGrad(const char* name) : OpDef(name)
+    explicit NsaCompressGrad(const char *name) : OpDef(name)
     {
         this->Input("outputGrad")
             .ParamType(REQUIRED)
@@ -57,7 +57,7 @@ public:
             .DataType({ge::DT_FLOAT16, ge::DT_BF16})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND});
-            
+
         OpAICoreConfig aicore_config;
         aicore_config.DynamicCompileStaticFlag(true)
             .DynamicFormatFlag(true)
@@ -75,4 +75,4 @@ public:
 };
 
 OP_ADD(NsaCompressGrad);
-}
+} // namespace ops

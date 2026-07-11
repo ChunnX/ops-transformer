@@ -58,10 +58,10 @@ __simd_vf__ void ComputeVFImpl(__ubuf__ T *xAddr, __ubuf__ O *yAddr, __ubuf__ fl
         AscendC::MicroAPI::RegLayout::ZERO, AscendC::MicroAPI::SatMode::SAT, AscendC::MicroAPI::MaskMergeMode::ZEROING,
         RoundMode::CAST_ROUND};
     static constexpr AscendC::MicroAPI::DivSpecificMode mode = {AscendC::MicroAPI::MaskMergeMode::ZEROING, true};
-    AscendC::MicroAPI::RegTensor<T> xInput;         // 搬入的x
-    AscendC::MicroAPI::RegTensor<float> xFp32;      // cast成float之后的x
-    AscendC::MicroAPI::RegTensor<float> xFp32Abs;   // x的绝对值absvalue
-    AscendC::MicroAPI::RegTensor<float> xMaxAbs;    // x的abs与-inf比较的结果，可以认为是x的absvalue的一些最大值
+    AscendC::MicroAPI::RegTensor<T> xInput;       // 搬入的x
+    AscendC::MicroAPI::RegTensor<float> xFp32;    // cast成float之后的x
+    AscendC::MicroAPI::RegTensor<float> xFp32Abs; // x的绝对值absvalue
+    AscendC::MicroAPI::RegTensor<float> xMaxAbs; // x的abs与-inf比较的结果，可以认为是x的absvalue的一些最大值
     AscendC::MicroAPI::RegTensor<float> xReduceMax; // reduceMax
     AscendC::MicroAPI::RegTensor<float> xScale;     // scale
     AscendC::MicroAPI::RegTensor<float> xScaleDup;  // Duplicate之后的scale，为了和input一起得到y

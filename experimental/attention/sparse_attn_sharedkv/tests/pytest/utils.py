@@ -15,8 +15,8 @@ import pandas as pd
 from pathlib import Path
 import pytest
 
-def load_excel_test_cases(excel_file_path: str, sheetname: str):
 
+def load_excel_test_cases(excel_file_path: str, sheetname: str):
     """
     从 Excel 文件加载测试用例。
 
@@ -30,7 +30,7 @@ def load_excel_test_cases(excel_file_path: str, sheetname: str):
     """
     # 优先使用传入的 sheetname，否则尝试从环境变量获取
     if sheetname is None:
-        sheetname = 'Sheet1'
+        sheetname = "Sheet1"
 
     # 检查文件是否存在
     if not os.path.exists(excel_file_path):
@@ -43,14 +43,35 @@ def load_excel_test_cases(excel_file_path: str, sheetname: str):
 
         # 定义必需的列名
         required_columns = [
-            "layout_q", "layout_kv", "q_type", "ori_kv_type", "cmp_kv_type", "B", "S1", "S2", "N1", "N2", "D", "K",
-            "block_size1", "block_size2", "softmax_scale", "cmp_ratio",
-            "ori_mask_mode", "cmp_mask_mode", "ori_win_left", "ori_win_right", "testcase_name"
+            "layout_q",
+            "layout_kv",
+            "q_type",
+            "ori_kv_type",
+            "cmp_kv_type",
+            "B",
+            "S1",
+            "S2",
+            "N1",
+            "N2",
+            "D",
+            "K",
+            "block_size1",
+            "block_size2",
+            "softmax_scale",
+            "cmp_ratio",
+            "ori_mask_mode",
+            "cmp_mask_mode",
+            "ori_win_left",
+            "ori_win_right",
+            "testcase_name",
         ]
         # 检查是否缺少必要列
         missing_cols = [col for col in required_columns if col not in df.columns]
         if missing_cols:
-            pytest.skip(f"Missing required columns in Excel: {missing_cols}", allow_module_level=True)
+            pytest.skip(
+                f"Missing required columns in Excel: {missing_cols}",
+                allow_module_level=True,
+            )
 
         # 构建测试用例列表
         test_cases = []
@@ -63,10 +84,13 @@ def load_excel_test_cases(excel_file_path: str, sheetname: str):
         pytest.skip(f"Failed to read Excel file: {e}", allow_module_level=True)
         return None
 
-def save_result(result, fulfill_percent, params, result_path='./result/sas_result.xlsx'):
+
+def save_result(
+    result, fulfill_percent, params, result_path="./result/sas_result.xlsx"
+):
     result_path = Path(result_path)
     row_data = {
-        "testcase_name": params[24] ,
+        "testcase_name": params[24],
         "layout_q": params[0],
         "layout_kv": params[1],
         "q_type": params[2],
@@ -107,7 +131,7 @@ def save_result(result, fulfill_percent, params, result_path='./result/sas_resul
     if result_path.exists():
         # 读取现有数据
         df = pd.read_excel(result_path)
-        
+
         # 检查列名是否一致
         if set(df.columns) != set(row_data.keys()):
             print("警告：变量名与Excel列名不匹配！")
@@ -115,13 +139,13 @@ def save_result(result, fulfill_percent, params, result_path='./result/sas_resul
             print(f"变量名: {list(row_data.keys())}")
             print("请检查变量名或Excel文件")
             return False
-        
+
         # 追加新行
         new_df = pd.DataFrame([row_data])
         df = pd.concat([df, new_df], ignore_index=True)
     else:
         # 文件不存在，创建新的DataFrame
         df = pd.DataFrame([row_data])
-    
+
     # 保存到Excel
     df.to_excel(result_path, index=False)

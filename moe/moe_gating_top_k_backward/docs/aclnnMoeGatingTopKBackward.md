@@ -17,43 +17,43 @@
 
 - 接口功能：完成MoE（Mixture of Experts）门控Top-K选择的反向梯度计算。该算子是aclnnMoeGatingTopK的反向算子，根据前向算子输出的归一化得分（xNorm）、上游梯度（gradY）和专家索引（expertIdx），计算输入得分矩阵的梯度（gradX）。支持sigmoid模式（normType=1）。
 - 计算公式（sigmoid模式，normType=1）：
-  
+
   1. 缩放梯度
-  
+
     $$
     gradYScaled_{ip} = routedScalingFactor \cdot gradY_{ip}
     $$
-  
+
   2. 正向renorm的反向传播
-  
+
     $$
     wPrime_{ip} = xNorm_{i,\ expertIdx_{ip}}
     $$
-  
+
     $$
     D_i = \sum_{p} wPrime_{ip} + eps
     $$
-    
+
     $$
     w_{ip} = \frac{wPrime_{ip}}{D_i}
     $$
-    
+
     $$
     beta_i = \sum_{p} w_{ip} \cdot gradYScaled_{ip}
     $$
-    
+
     $$
     gradWPrime_{ip} = \frac{gradYScaled_{ip} - beta_i}{D_i}
     $$
-  
+
   3. 散射到完整维度
-  
+
     $$
     gradNormX_{ij} = \sum_{p:\ expertIdx_{ip}=j} gradWPrime_{ip}
     $$
-  
+
   4. Sigmoid反向传播
-  
+
     $$
     gradX_{ij} = xNorm_{ij} \cdot (1 - xNorm_{ij}) \cdot gradNormX_{ij}
     $$
@@ -87,7 +87,7 @@ aclnnStatus aclnnMoeGatingTopKBackward(
 ## aclnnMoeGatingTopKBackwardGetWorkspaceSize
 
 - **参数说明**
-  
+
   <table style="undefined;table-layout: fixed; width: 1550px"><colgroup>
    <col style="width: 230px">
   <col style="width: 120px">
@@ -215,9 +215,9 @@ aclnnStatus aclnnMoeGatingTopKBackward(
 - **返回值**
 
   aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
-  
+
   第一段接口完成入参校验，出现以下场景时报错：
-  
+
   <table style="undefined;table-layout: fixed; width: 1100px"><colgroup>
   <col style="width: 300px">
   <col style="width: 150px">
@@ -258,7 +258,7 @@ aclnnStatus aclnnMoeGatingTopKBackward(
 ## aclnnMoeGatingTopKBackward
 
 - **参数说明**
-  
+
   <table style="undefined;table-layout: fixed; width: 1100px"><colgroup>
    <col style="width: 200px">
    <col style="width: 130px">

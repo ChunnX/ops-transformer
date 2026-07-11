@@ -15,10 +15,9 @@
 #include "register/op_def_registry.h"
 
 namespace ops {
-class MoeTokenPermuteWithEp : public OpDef
-{
+class MoeTokenPermuteWithEp : public OpDef {
 public:
-    explicit MoeTokenPermuteWithEp(const char* name) : OpDef(name)
+    explicit MoeTokenPermuteWithEp(const char *name) : OpDef(name)
     {
         this->Input("tokens")
             .ParamType(REQUIRED)

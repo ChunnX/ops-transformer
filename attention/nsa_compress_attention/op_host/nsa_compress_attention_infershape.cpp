@@ -52,8 +52,7 @@ ge::graphStatus InferShapeNsaCompressAttention(gert::InferShapeContext *context)
         c = toupper(c);
     }
     if (inputLayoutStr != "TND") {
-        OP_LOGE(context, "The inputLayout should be TND(case-insensitive), but got %s.",
-                  inputLayoutStr.c_str());
+        OP_LOGE(context, "The inputLayout should be TND(case-insensitive), but got %s.", inputLayoutStr.c_str());
         return GRAPH_FAILED;
     }
 
@@ -112,6 +111,8 @@ ge::graphStatus InferDataTypeNsaCompressAttention(gert::InferDataTypeContext *co
     return GRAPH_SUCCESS;
 }
 
-IMPL_OP_INFERSHAPE(NsaCompressAttention).InferShape(InferShapeNsaCompressAttention).InferDataType(InferDataTypeNsaCompressAttention);
+IMPL_OP_INFERSHAPE(NsaCompressAttention)
+    .InferShape(InferShapeNsaCompressAttention)
+    .InferDataType(InferDataTypeNsaCompressAttention);
 
 } // namespace ops

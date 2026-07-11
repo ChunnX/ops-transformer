@@ -18,7 +18,7 @@ BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULA
 namespace ops {
 class ChunkGatedDeltaRule : public OpDef {
 public:
-    explicit ChunkGatedDeltaRule(const char* name) : OpDef(name)
+    explicit ChunkGatedDeltaRule(const char *name) : OpDef(name)
     {
         this->Input("query")
             .ParamType(REQUIRED)
@@ -67,7 +67,7 @@ public:
             .DataType({ge::DT_BF16})
             .Format({ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND});
-            
+
         this->Attr("scale_value").AttrType(OPTIONAL).Float(1.0);
 
         OpAICoreConfig aicoreConfig;

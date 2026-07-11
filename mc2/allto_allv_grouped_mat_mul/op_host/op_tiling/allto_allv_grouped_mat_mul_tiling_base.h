@@ -45,15 +45,14 @@ struct MMTilingParams {
     int32_t curMaxM;
     int32_t curMaxK;
     int32_t curMaxN;
-    int32_t* curBaseM;
-    int32_t* curBaseK;
-    int32_t* curBaseN;
+    int32_t *curBaseM;
+    int32_t *curBaseK;
+    int32_t *curBaseN;
 };
 
-class AlltoAllvGmmTilingBase : public AlltoAllvQuantGmmTilingBase
-{
+class AlltoAllvGmmTilingBase : public AlltoAllvQuantGmmTilingBase {
 public:
-    explicit AlltoAllvGmmTilingBase(gert::TilingContext* context) : AlltoAllvQuantGmmTilingBase(context){};
+    explicit AlltoAllvGmmTilingBase(gert::TilingContext *context) : AlltoAllvQuantGmmTilingBase(context) {};
 
 protected:
     ge::graphStatus GetShapeAttrsInfo() override;
@@ -64,10 +63,9 @@ protected:
     ge::graphStatus GetPlatformInfo() override;
 };
 
-class AlltoAllvGmmTilingCommon
-{
+class AlltoAllvGmmTilingCommon {
 public:
-    virtual ge::graphStatus AlltoAllvGmmOpTilingFunc(gert::TilingContext* context) = 0;
+    virtual ge::graphStatus AlltoAllvGmmOpTilingFunc(gert::TilingContext *context) = 0;
 };
 } // namespace optiling
 

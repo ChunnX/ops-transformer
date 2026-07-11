@@ -58,13 +58,12 @@ namespace detail {
 struct FaMetadata {
     uint32_t sectionNum;
     FA_METADATA_T *headMetadata; // [HEAD_METADATA_STRIDE];
-    FA_METADATA_T *faMetadata; // [sectionNum][AIC_CORE_NUM][FA_METADATA_STRIDE];
-    FA_METADATA_T *fdMetadata; // [sectionNum][AIV_CORE_NUM][FD_METADATA_STRIDE];
+    FA_METADATA_T *faMetadata;   // [sectionNum][AIC_CORE_NUM][FA_METADATA_STRIDE];
+    FA_METADATA_T *fdMetadata;   // [sectionNum][AIV_CORE_NUM][FD_METADATA_STRIDE];
     FaMetadata(void *metadataPtr, uint32_t sectionNum)
-        :sectionNum(sectionNum),
-        headMetadata(static_cast<FA_METADATA_T*>(metadataPtr)),
-        faMetadata(headMetadata + HEAD_METADATA_STRIDE),
-        fdMetadata(faMetadata + sectionNum * AIC_CORE_NUM * FA_METADATA_STRIDE)
+        : sectionNum(sectionNum), headMetadata(static_cast<FA_METADATA_T *>(metadataPtr)),
+          faMetadata(headMetadata + HEAD_METADATA_STRIDE),
+          fdMetadata(faMetadata + sectionNum * AIC_CORE_NUM * FA_METADATA_STRIDE)
     {
         headMetadata[0] = sectionNum;
     }

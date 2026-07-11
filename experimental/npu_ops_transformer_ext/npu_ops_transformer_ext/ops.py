@@ -10,12 +10,9 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
-import torch
-from torch import Tensor
 
 # __all__ = ["dummy", ]
 
 
 # def dummy(x: Tensor) -> Tensor:
 #     return torch.ops.npu_ops_transformer_ext.dummy.default(x)
-

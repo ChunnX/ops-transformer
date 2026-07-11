@@ -136,5 +136,5 @@ protected:
     BSAOutputParams *outputParams_ = nullptr;
 };
 
-} // optiling
+} // namespace optiling
 #endif

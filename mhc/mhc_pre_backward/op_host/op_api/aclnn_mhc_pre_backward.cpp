@@ -156,9 +156,8 @@ bool MhcGradCheckInputNotNull(const AclnnMhcPreBackwardParams &params)
            MhcGradCheckInputNotNullImpl(params.gradHIn, "gradHIn") &&
            MhcGradCheckInputNotNullImpl(params.gradHPost, "gradHPost") &&
            MhcGradCheckInputNotNullImpl(params.gradHRes, "gradHRes") &&
-           MhcGradCheckInputNotNullImpl(params.invRms, "invRms") &&
-           MhcGradCheckInputNotNullImpl(params.hMix, "hMix") && MhcGradCheckInputNotNullImpl(params.hPre, "hPre") &&
-           MhcGradCheckInputNotNullImpl(params.hPost, "hPost") &&
+           MhcGradCheckInputNotNullImpl(params.invRms, "invRms") && MhcGradCheckInputNotNullImpl(params.hMix, "hMix") &&
+           MhcGradCheckInputNotNullImpl(params.hPre, "hPre") && MhcGradCheckInputNotNullImpl(params.hPost, "hPost") &&
            (params.gamma == nullptr || MhcGradCheckInputNotNullImpl(params.gamma, "gamma")) &&
            (params.gradXPostOptional == nullptr ||
             MhcGradCheckInputNotNullImpl(params.gradXPostOptional, "gradXPostOptional"));
@@ -261,7 +260,7 @@ bool CheckShapeDim(const gert::Shape &shape, uint64_t index, uint64_t expected, 
 {
     if (shape.GetDim(index) != expected) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "%s, and dim %lu must be %lu, actual is %ld", msg, index, expected,
-            shape.GetDim(index));
+                shape.GetDim(index));
         return false;
     }
     return true;
@@ -494,7 +493,7 @@ bool CheckDtype(const aclTensor *tensor, DataType expected, const char *name, bo
     bool valid = isValidX ? (dtype == DataType::DT_BF16 || dtype == DataType::DT_FLOAT16) : (dtype == expected);
     if (!valid) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "%s tensor dtype must be %s. actual is [%s].", name,
-            isValidX ? "BF16 or FP16" : op::ToString(expected).GetString(), op::ToString(dtype).GetString());
+                isValidX ? "BF16 or FP16" : op::ToString(expected).GetString(), op::ToString(dtype).GetString());
         return false;
     }
     return true;
@@ -509,11 +508,10 @@ bool MhcGradCheckInputDtype(const AclnnMhcPreBackwardParams &params)
            CheckDtype(params.gradHPost, DataType::DT_FLOAT, "gradHPost") &&
            CheckDtype(params.gradHRes, DataType::DT_FLOAT, "gradHRes") &&
            CheckDtype(params.invRms, DataType::DT_FLOAT, "invRms") &&
-           CheckDtype(params.hMix, DataType::DT_FLOAT, "hMix") &&
-           CheckDtype(params.hPre, DataType::DT_FLOAT, "hPre") &&
+           CheckDtype(params.hMix, DataType::DT_FLOAT, "hMix") && CheckDtype(params.hPre, DataType::DT_FLOAT, "hPre") &&
            CheckDtype(params.hPost, DataType::DT_FLOAT, "hPost") &&
            (params.gradXPostOptional == nullptr ||
-             CheckDtype(params.gradXPostOptional, params.x->GetDataType(), "gradXPostOptional"));
+            CheckDtype(params.gradXPostOptional, params.x->GetDataType(), "gradXPostOptional"));
 }
 
 bool MhcGradCheckOutputDtype(const AclnnMhcPreBackwardParams &params)
@@ -672,10 +670,10 @@ aclnnStatus aclnnMhcPreBackwardGetWorkspaceSize(
     float hcEps, const aclTensor *gradX, const aclTensor *gradPhi, const aclTensor *gradAlpha,
     const aclTensor *gradBias, const aclTensor *gradGamma, uint64_t *workspaceSize, aclOpExecutor **executor)
 {
-    L2_DFX_PHASE_1(aclnnMhcPreBackward,
-                   DFX_IN(x, phi, alpha, gradHIn, gradHPost, gradHRes, invRms, hMix, hPre, hPost, gamma,
-                          gradXPostOptional),
-                   DFX_OUT(gradX, gradPhi, gradAlpha, gradBias, gradGamma));
+    L2_DFX_PHASE_1(
+        aclnnMhcPreBackward,
+        DFX_IN(x, phi, alpha, gradHIn, gradHPost, gradHRes, invRms, hMix, hPre, hPost, gamma, gradXPostOptional),
+        DFX_OUT(gradX, gradPhi, gradAlpha, gradBias, gradGamma));
     auto uniqueExecutor = CREATE_EXECUTOR();
 
     AclnnMhcPreBackwardParams params = AclnnMhcPreBackward::Create()

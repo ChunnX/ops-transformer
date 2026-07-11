@@ -21,19 +21,18 @@ namespace KvRmsNormRopeCache {
 
 using namespace AscendC;
 template <typename T_KV, typename T_K_CACHE, typename T_V_CACHE>
-class KvRmsNormRopeCacheRegbaseFullLoad : public KvRmsNormRopeCacheRegbase<T_KV, T_K_CACHE, T_V_CACHE>
-{
+class KvRmsNormRopeCacheRegbaseFullLoad : public KvRmsNormRopeCacheRegbase<T_KV, T_K_CACHE, T_V_CACHE> {
 public:
-    __aicore__ inline KvRmsNormRopeCacheRegbaseFullLoad(
-        TPipe* pipe, const KvRmsNormRopeCacheRegbaseFullLoadTilingData* tiling)
+    __aicore__ inline KvRmsNormRopeCacheRegbaseFullLoad(TPipe *pipe,
+                                                        const KvRmsNormRopeCacheRegbaseFullLoadTilingData *tiling)
     {
         tilingData_ = tiling;
         pipe_ = pipe;
     }
 
-    __aicore__ inline void Init(
-        GM_ADDR kv, GM_ADDR gamma, GM_ADDR cos, GM_ADDR sin, GM_ADDR index, GM_ADDR k_cache, GM_ADDR v_cache,
-        GM_ADDR k_scale, GM_ADDR v_scale, GM_ADDR k_offset, GM_ADDR v_offset, GM_ADDR k_out, GM_ADDR v_out)
+    __aicore__ inline void Init(GM_ADDR kv, GM_ADDR gamma, GM_ADDR cos, GM_ADDR sin, GM_ADDR index, GM_ADDR k_cache,
+                                GM_ADDR v_cache, GM_ADDR k_scale, GM_ADDR v_scale, GM_ADDR k_offset, GM_ADDR v_offset,
+                                GM_ADDR k_out, GM_ADDR v_out)
     {
         // 获取分块操作中的单个块的大小。判断是否是最后一块，是最后一块，则等于剩余元素的数量，否则等于固定的单核处理的行数
         int64_t currentBlockFactor = tilingData_->blockFactor;
@@ -93,34 +92,37 @@ public:
         this->dvLoopCount = ops::CeilDiv(tilingData_->dv, static_cast<int64_t>(VL_FP32));
 
         // init global memory
-        this->kvGm.SetGlobalBuffer((__gm__ T_KV*)kv + this->blockIdx * tilingData_->blockFactor * dKV);
-        this->gammaGm.SetGlobalBuffer((__gm__ T_KV*)gamma);
-        this->cosGm.SetGlobalBuffer((__gm__ T_KV*)cos);
-        this->sinGm.SetGlobalBuffer((__gm__ T_KV*)sin);
-        this->indexGm.SetGlobalBuffer((__gm__ int64_t*)index);
-        this->kCacheGm.SetGlobalBuffer((__gm__ T_K_CACHE*)k_cache);
-        this->vCacheGm.SetGlobalBuffer((__gm__ T_V_CACHE*)v_cache);
-        this->kScaleGm.SetGlobalBuffer((__gm__ float*)k_scale);
-        this->vScaleGm.SetGlobalBuffer((__gm__ float*)v_scale);
-        this->kOffsetGm.SetGlobalBuffer((__gm__ float*)k_offset);
-        this->vOffsetGm.SetGlobalBuffer((__gm__ float*)v_offset);
-        this->kOutGm.SetGlobalBuffer((__gm__ T_KV*)k_out + this->blockIdx * tilingData_->blockFactor * this->dk);
-        this->vOutGm.SetGlobalBuffer((__gm__ T_KV*)v_out + this->blockIdx * tilingData_->blockFactor * this->dv);
+        this->kvGm.SetGlobalBuffer((__gm__ T_KV *)kv + this->blockIdx * tilingData_->blockFactor * dKV);
+        this->gammaGm.SetGlobalBuffer((__gm__ T_KV *)gamma);
+        this->cosGm.SetGlobalBuffer((__gm__ T_KV *)cos);
+        this->sinGm.SetGlobalBuffer((__gm__ T_KV *)sin);
+        this->indexGm.SetGlobalBuffer((__gm__ int64_t *)index);
+        this->kCacheGm.SetGlobalBuffer((__gm__ T_K_CACHE *)k_cache);
+        this->vCacheGm.SetGlobalBuffer((__gm__ T_V_CACHE *)v_cache);
+        this->kScaleGm.SetGlobalBuffer((__gm__ float *)k_scale);
+        this->vScaleGm.SetGlobalBuffer((__gm__ float *)v_scale);
+        this->kOffsetGm.SetGlobalBuffer((__gm__ float *)k_offset);
+        this->vOffsetGm.SetGlobalBuffer((__gm__ float *)v_offset);
+        this->kOutGm.SetGlobalBuffer((__gm__ T_KV *)k_out + this->blockIdx * tilingData_->blockFactor * this->dk);
+        this->vOutGm.SetGlobalBuffer((__gm__ T_KV *)v_out + this->blockIdx * tilingData_->blockFactor * this->dv);
 
         // init pipe
         pipe_->InitBuffer(inQueueGamma, BUFFER_COUNT_SINGLE, tilingData_->dvAlign * sizeof(T_KV));
-        pipe_->InitBuffer(inQueueCosSin, BUFFER_COUNT_DOUBLE, this->ubFactor * COS_SIN_CHANNEL_COUNT * tilingData_->halfDkAlign * sizeof(T_KV));
+        pipe_->InitBuffer(inQueueCosSin, BUFFER_COUNT_DOUBLE,
+                          this->ubFactor * COS_SIN_CHANNEL_COUNT * tilingData_->halfDkAlign * sizeof(T_KV));
         pipe_->InitBuffer(inQueueX, BUFFER_COUNT_DOUBLE, this->ubFactor * tilingData_->inUbSize);
         pipe_->InitBuffer(outQueue, BUFFER_COUNT_DOUBLE, this->ubFactor * tilingData_->outUbSize);
         pipe_->InitBuffer(wsBuffer0, WORKSPACE_FLOAT_VECTOR_COUNT * VL_FP32 * sizeof(float));
         pipe_->InitBuffer(wsBuffer1, this->ubFactor * tilingData_->rmsNormWspSize);
         if constexpr (IsSameType<T_K_CACHE, int8_t>::value || IsSameType<T_K_CACHE, hifloat8_t>::value ||
                       IsSameType<T_K_CACHE, fp8_e5m2_t>::value || IsSameType<T_K_CACHE, fp8_e4m3fn_t>::value) {
-            pipe_->InitBuffer(kScaleOffsetQueue, BUFFER_COUNT_SINGLE, K_SCALE_OFFSET_CHANNEL_COUNT * tilingData_->halfDkAlign * sizeof(float));
+            pipe_->InitBuffer(kScaleOffsetQueue, BUFFER_COUNT_SINGLE,
+                              K_SCALE_OFFSET_CHANNEL_COUNT * tilingData_->halfDkAlign * sizeof(float));
         }
         if constexpr (IsSameType<T_V_CACHE, int8_t>::value || IsSameType<T_V_CACHE, hifloat8_t>::value ||
                       IsSameType<T_V_CACHE, fp8_e5m2_t>::value || IsSameType<T_V_CACHE, fp8_e4m3fn_t>::value) {
-            pipe_->InitBuffer(vScaleOffsetQueue, BUFFER_COUNT_SINGLE, V_SCALE_OFFSET_CHANNEL_COUNT * tilingData_->dvAlign * sizeof(float));
+            pipe_->InitBuffer(vScaleOffsetQueue, BUFFER_COUNT_SINGLE,
+                              V_SCALE_OFFSET_CHANNEL_COUNT * tilingData_->dvAlign * sizeof(float));
         }
     }
 
@@ -262,13 +264,14 @@ public:
         }
     }
 
-    __aicore__ inline void RopeAsymQuantWithKvVF(
-        __local_mem__ T_KV* outFront, __local_mem__ T_KV* outBack, __local_mem__ T_K_CACHE* quantFront,
-        __local_mem__ T_K_CACHE* quantBack, __local_mem__ T_KV* x, __local_mem__ T_KV* realCos, __local_mem__ T_KV* imgCos,
-        __local_mem__ T_KV* realSin, __local_mem__ T_KV* imgSin, __local_mem__ float* realKScale,
-        __local_mem__ float* imgKScale, __local_mem__ float* realKOffset, __local_mem__ float* imgKOffset,
-        __local_mem__ float* ws, uint16_t row, uint16_t colLoopCount, uint32_t colCosSin, uint32_t xOffset,
-        uint32_t cosSinOffset, uint32_t quantOutOffset)
+    __aicore__ inline void
+    RopeAsymQuantWithKvVF(__local_mem__ T_KV *outFront, __local_mem__ T_KV *outBack,
+                          __local_mem__ T_K_CACHE *quantFront, __local_mem__ T_K_CACHE *quantBack,
+                          __local_mem__ T_KV *x, __local_mem__ T_KV *realCos, __local_mem__ T_KV *imgCos,
+                          __local_mem__ T_KV *realSin, __local_mem__ T_KV *imgSin, __local_mem__ float *realKScale,
+                          __local_mem__ float *imgKScale, __local_mem__ float *realKOffset,
+                          __local_mem__ float *imgKOffset, __local_mem__ float *ws, uint16_t row, uint16_t colLoopCount,
+                          uint32_t colCosSin, uint32_t xOffset, uint32_t cosSinOffset, uint32_t quantOutOffset)
     {
         __VEC_SCOPE__
         {
@@ -280,15 +283,14 @@ public:
                 AscendC::MicroAPI::CreateMask<float, AscendC::MicroAPI::MaskPattern::ALL>();
             for (uint16_t rowId = 0; rowId < row; rowId++) {
                 uint32_t sreg = colCosSin;
-                __local_mem__ T_KV* out0 = outFront + rowId * xOffset;
-                __local_mem__ T_KV* out1 = outBack + rowId * xOffset;
-                __local_mem__ T_K_CACHE* out2 = quantFront + rowId * quantOutOffset;
-                __local_mem__ T_K_CACHE* out3 = quantBack + rowId * quantOutOffset;
+                __local_mem__ T_KV *out0 = outFront + rowId * xOffset;
+                __local_mem__ T_KV *out1 = outBack + rowId * xOffset;
+                __local_mem__ T_K_CACHE *out2 = quantFront + rowId * quantOutOffset;
+                __local_mem__ T_K_CACHE *out3 = quantBack + rowId * quantOutOffset;
                 for (uint16_t i = 0; i < colLoopCount; i++) {
                     mask = AscendC::MicroAPI::UpdateMask<float>(sreg);
-                    RopeBasicComputeVF(
-                        x, x_0, x_1, cos_0, cos_1, sin_0, sin_1, realCos, imgCos, realSin, imgSin, ws, xOffset,
-                        cosSinOffset, rowId, i, mask, maskAll);
+                    RopeBasicComputeVF(x, x_0, x_1, cos_0, cos_1, sin_0, sin_1, realCos, imgCos, realSin, imgSin, ws,
+                                       xOffset, cosSinOffset, rowId, i, mask, maskAll);
                     StoreUnAlignOneTensor<T_KV>(out0, sin_0, UReg0, mask, VL_FP32);
                     StoreUnAlignOneTensor<T_KV>(out1, sin_1, UReg1, mask, VL_FP32);
                     LoadTensorForDtypeT(realKScale, scale_0, mask, i * VL_FP32);
@@ -303,9 +305,8 @@ public:
                     StoreUnAlignOneTensor<T_K_CACHE>(out3, offset_1, UReg3, mask, VL_FP32);
                 }
                 mask = AscendC::MicroAPI::UpdateMask<float>(sreg);
-                RopeBasicComputeVF(
-                    x, x_0, x_1, cos_0, cos_1, sin_0, sin_1, realCos, imgCos, realSin, imgSin, ws, xOffset,
-                    cosSinOffset, rowId, colLoopCount, mask, maskAll);
+                RopeBasicComputeVF(x, x_0, x_1, cos_0, cos_1, sin_0, sin_1, realCos, imgCos, realSin, imgSin, ws,
+                                   xOffset, cosSinOffset, rowId, colLoopCount, mask, maskAll);
                 StoreUnAlignOneTensor<T_KV>(out0, sin_0, UReg0, mask, kVFTail);
                 StoreUnAlignOneTensor<T_KV>(out1, sin_1, UReg1, mask, kVFTail);
                 LoadTensorForDtypeT(realKScale, scale_0, mask, colLoopCount * VL_FP32);
@@ -326,12 +327,14 @@ public:
         }
     }
 
-    __aicore__ inline void RopeSymQuantWithKvVF(
-        __local_mem__ T_KV* outFront, __local_mem__ T_KV* outBack, __local_mem__ T_K_CACHE* quantFront,
-        __local_mem__ T_K_CACHE* quantBack, __local_mem__ T_KV* x, __local_mem__ T_KV* realCos, __local_mem__ T_KV* imgCos,
-        __local_mem__ T_KV* realSin, __local_mem__ T_KV* imgSin, __local_mem__ float* realKScale,
-        __local_mem__ float* imgKScale, __local_mem__ float* ws, uint16_t row, uint16_t colLoopCount,
-        uint32_t colCosSin, uint32_t xOffset, uint32_t cosSinOffset, uint32_t quantOutOffset)
+    __aicore__ inline void RopeSymQuantWithKvVF(__local_mem__ T_KV *outFront, __local_mem__ T_KV *outBack,
+                                                __local_mem__ T_K_CACHE *quantFront, __local_mem__ T_K_CACHE *quantBack,
+                                                __local_mem__ T_KV *x, __local_mem__ T_KV *realCos,
+                                                __local_mem__ T_KV *imgCos, __local_mem__ T_KV *realSin,
+                                                __local_mem__ T_KV *imgSin, __local_mem__ float *realKScale,
+                                                __local_mem__ float *imgKScale, __local_mem__ float *ws, uint16_t row,
+                                                uint16_t colLoopCount, uint32_t colCosSin, uint32_t xOffset,
+                                                uint32_t cosSinOffset, uint32_t quantOutOffset)
     {
         __VEC_SCOPE__
         {
@@ -342,15 +345,14 @@ public:
                 AscendC::MicroAPI::CreateMask<float, AscendC::MicroAPI::MaskPattern::ALL>();
             for (uint16_t rowId = 0; rowId < row; rowId++) {
                 uint32_t sreg = colCosSin;
-                __local_mem__ T_KV* out0 = outFront + rowId * xOffset;
-                __local_mem__ T_KV* out1 = outBack + rowId * xOffset;
-                __local_mem__ T_K_CACHE* out2 = quantFront + rowId * quantOutOffset;
-                __local_mem__ T_K_CACHE* out3 = quantBack + rowId * quantOutOffset;
+                __local_mem__ T_KV *out0 = outFront + rowId * xOffset;
+                __local_mem__ T_KV *out1 = outBack + rowId * xOffset;
+                __local_mem__ T_K_CACHE *out2 = quantFront + rowId * quantOutOffset;
+                __local_mem__ T_K_CACHE *out3 = quantBack + rowId * quantOutOffset;
                 for (uint16_t i = 0; i < colLoopCount; i++) {
                     mask = AscendC::MicroAPI::UpdateMask<float>(sreg);
-                    RopeBasicComputeVF(
-                        x, x_0, x_1, cos_0, cos_1, sin_0, sin_1, realCos, imgCos, realSin, imgSin, ws, xOffset,
-                        cosSinOffset, rowId, i, mask, maskAll);
+                    RopeBasicComputeVF(x, x_0, x_1, cos_0, cos_1, sin_0, sin_1, realCos, imgCos, realSin, imgSin, ws,
+                                       xOffset, cosSinOffset, rowId, i, mask, maskAll);
                     StoreUnAlignOneTensor<T_KV>(out0, sin_0, UReg0, mask, VL_FP32);
                     StoreUnAlignOneTensor<T_KV>(out1, sin_1, UReg1, mask, VL_FP32);
                     LoadTensorForDtypeT(realKScale, scale_0, mask, i * VL_FP32);
@@ -361,9 +363,8 @@ public:
                     StoreUnAlignOneTensor<T_K_CACHE>(out3, scale_1, UReg3, mask, VL_FP32);
                 }
                 mask = AscendC::MicroAPI::UpdateMask<float>(sreg);
-                RopeBasicComputeVF(
-                    x, x_0, x_1, cos_0, cos_1, sin_0, sin_1, realCos, imgCos, realSin, imgSin, ws, xOffset,
-                    cosSinOffset, rowId, colLoopCount, mask, maskAll);
+                RopeBasicComputeVF(x, x_0, x_1, cos_0, cos_1, sin_0, sin_1, realCos, imgCos, realSin, imgSin, ws,
+                                   xOffset, cosSinOffset, rowId, colLoopCount, mask, maskAll);
                 StoreUnAlignOneTensor<T_KV>(out0, sin_0, UReg0, mask, kVFTail);
                 StoreUnAlignOneTensor<T_KV>(out1, sin_1, UReg1, mask, kVFTail);
                 LoadTensorForDtypeT(realKScale, scale_0, mask, colLoopCount * VL_FP32);
@@ -380,12 +381,14 @@ public:
         }
     }
 
-    __aicore__ inline void RopeAsymQuantVF(
-        __local_mem__ T_K_CACHE* quantFront, __local_mem__ T_K_CACHE* quantBack, __local_mem__ T_KV* x,
-        __local_mem__ T_KV* realCos, __local_mem__ T_KV* imgCos, __local_mem__ T_KV* realSin,
-        __local_mem__ T_KV* imgSin, __local_mem__ float* realKScale, __local_mem__ float* imgKScale,
-        __local_mem__ float* realKOffset, __local_mem__ float* imgKOffset, __local_mem__ float* ws, uint16_t row,
-        uint16_t colLoopCount, uint32_t colCosSin, uint32_t xOffset, uint32_t cosSinOffset, uint32_t quantOutOffset)
+    __aicore__ inline void RopeAsymQuantVF(__local_mem__ T_K_CACHE *quantFront, __local_mem__ T_K_CACHE *quantBack,
+                                           __local_mem__ T_KV *x, __local_mem__ T_KV *realCos,
+                                           __local_mem__ T_KV *imgCos, __local_mem__ T_KV *realSin,
+                                           __local_mem__ T_KV *imgSin, __local_mem__ float *realKScale,
+                                           __local_mem__ float *imgKScale, __local_mem__ float *realKOffset,
+                                           __local_mem__ float *imgKOffset, __local_mem__ float *ws, uint16_t row,
+                                           uint16_t colLoopCount, uint32_t colCosSin, uint32_t xOffset,
+                                           uint32_t cosSinOffset, uint32_t quantOutOffset)
     {
         __VEC_SCOPE__
         {
@@ -397,13 +400,12 @@ public:
                 AscendC::MicroAPI::CreateMask<float, AscendC::MicroAPI::MaskPattern::ALL>();
             for (uint16_t rowId = 0; rowId < row; rowId++) {
                 uint32_t sreg = colCosSin;
-                __local_mem__ T_K_CACHE* out2 = quantFront + rowId * quantOutOffset;
-                __local_mem__ T_K_CACHE* out3 = quantBack + rowId * quantOutOffset;
+                __local_mem__ T_K_CACHE *out2 = quantFront + rowId * quantOutOffset;
+                __local_mem__ T_K_CACHE *out3 = quantBack + rowId * quantOutOffset;
                 for (uint16_t i = 0; i < colLoopCount; i++) {
                     mask = AscendC::MicroAPI::UpdateMask<float>(sreg);
-                    RopeBasicComputeVF(
-                        x, x_0, x_1, cos_0, cos_1, sin_0, sin_1, realCos, imgCos, realSin, imgSin, ws, xOffset,
-                        cosSinOffset, rowId, i, mask, maskAll);
+                    RopeBasicComputeVF(x, x_0, x_1, cos_0, cos_1, sin_0, sin_1, realCos, imgCos, realSin, imgSin, ws,
+                                       xOffset, cosSinOffset, rowId, i, mask, maskAll);
                     LoadTensorForDtypeT(realKScale, scale_0, mask, i * VL_FP32);
                     LoadTensorForDtypeT(imgKScale, scale_1, mask, i * VL_FP32);
                     AscendC::MicroAPI::Mul(scale_0, sin_0, scale_0, mask);
@@ -416,9 +418,8 @@ public:
                     StoreUnAlignOneTensor<T_K_CACHE>(out3, offset_1, UReg3, mask, VL_FP32);
                 }
                 mask = AscendC::MicroAPI::UpdateMask<float>(sreg);
-                RopeBasicComputeVF(
-                    x, x_0, x_1, cos_0, cos_1, sin_0, sin_1, realCos, imgCos, realSin, imgSin, ws, xOffset,
-                    cosSinOffset, rowId, colLoopCount, mask, maskAll);
+                RopeBasicComputeVF(x, x_0, x_1, cos_0, cos_1, sin_0, sin_1, realCos, imgCos, realSin, imgSin, ws,
+                                   xOffset, cosSinOffset, rowId, colLoopCount, mask, maskAll);
                 LoadTensorForDtypeT(realKScale, scale_0, mask, colLoopCount * VL_FP32);
                 LoadTensorForDtypeT(imgKScale, scale_1, mask, colLoopCount * VL_FP32);
                 AscendC::MicroAPI::Mul(scale_0, sin_0, scale_0, mask);
@@ -435,12 +436,13 @@ public:
         }
     }
 
-    __aicore__ inline void RopeSymQuantVF(
-        __local_mem__ T_K_CACHE* quantFront, __local_mem__ T_K_CACHE* quantBack, __local_mem__ T_KV* x,
-        __local_mem__ T_KV* realCos, __local_mem__ T_KV* imgCos, __local_mem__ T_KV* realSin,
-        __local_mem__ T_KV* imgSin, __local_mem__ float* realKScale, __local_mem__ float* imgKScale,
-        __local_mem__ float* ws, uint16_t row, uint16_t colLoopCount, uint32_t colCosSin, uint32_t xOffset,
-        uint32_t cosSinOffset, uint32_t quantOutOffset)
+    __aicore__ inline void RopeSymQuantVF(__local_mem__ T_K_CACHE *quantFront, __local_mem__ T_K_CACHE *quantBack,
+                                          __local_mem__ T_KV *x, __local_mem__ T_KV *realCos,
+                                          __local_mem__ T_KV *imgCos, __local_mem__ T_KV *realSin,
+                                          __local_mem__ T_KV *imgSin, __local_mem__ float *realKScale,
+                                          __local_mem__ float *imgKScale, __local_mem__ float *ws, uint16_t row,
+                                          uint16_t colLoopCount, uint32_t colCosSin, uint32_t xOffset,
+                                          uint32_t cosSinOffset, uint32_t quantOutOffset)
     {
         __VEC_SCOPE__
         {
@@ -451,25 +453,22 @@ public:
                 AscendC::MicroAPI::CreateMask<float, AscendC::MicroAPI::MaskPattern::ALL>();
             for (uint16_t rowId = 0; rowId < row; rowId++) {
                 uint32_t sreg = colCosSin;
-                __local_mem__ T_K_CACHE* out2 = quantFront + rowId * quantOutOffset;
-                __local_mem__ T_K_CACHE* out3 = quantBack + rowId * quantOutOffset;
+                __local_mem__ T_K_CACHE *out2 = quantFront + rowId * quantOutOffset;
+                __local_mem__ T_K_CACHE *out3 = quantBack + rowId * quantOutOffset;
                 for (uint16_t i = 0; i < colLoopCount; i++) {
                     mask = AscendC::MicroAPI::UpdateMask<float>(sreg);
-                    RopeBasicComputeVF(
-                        x, x_0, x_1, cos_0, cos_1, sin_0, sin_1, realCos, imgCos, realSin, imgSin, ws, xOffset,
-                        cosSinOffset, rowId, i, mask, maskAll);
+                    RopeBasicComputeVF(x, x_0, x_1, cos_0, cos_1, sin_0, sin_1, realCos, imgCos, realSin, imgSin, ws,
+                                       xOffset, cosSinOffset, rowId, i, mask, maskAll);
                     LoadTensorForDtypeT(realKScale, scale_0, mask, i * VL_FP32);
                     LoadTensorForDtypeT(imgKScale, scale_1, mask, i * VL_FP32);
                     AscendC::MicroAPI::Mul(scale_0, sin_0, scale_0, mask);
                     AscendC::MicroAPI::Mul(scale_1, sin_1, scale_1, mask);
                     StoreUnAlignOneTensor<T_K_CACHE>(out2, scale_0, UReg2, mask, VL_FP32);
                     StoreUnAlignOneTensor<T_K_CACHE>(out3, scale_1, UReg3, mask, VL_FP32);
-                    
                 }
                 mask = AscendC::MicroAPI::UpdateMask<float>(sreg);
-                RopeBasicComputeVF(
-                    x, x_0, x_1, cos_0, cos_1, sin_0, sin_1, realCos, imgCos, realSin, imgSin, ws, xOffset,
-                    cosSinOffset, rowId, colLoopCount, mask, maskAll);
+                RopeBasicComputeVF(x, x_0, x_1, cos_0, cos_1, sin_0, sin_1, realCos, imgCos, realSin, imgSin, ws,
+                                   xOffset, cosSinOffset, rowId, colLoopCount, mask, maskAll);
                 LoadTensorForDtypeT(realKScale, scale_0, mask, colLoopCount * VL_FP32);
                 LoadTensorForDtypeT(imgKScale, scale_1, mask, colLoopCount * VL_FP32);
                 AscendC::MicroAPI::Mul(scale_0, sin_0, scale_0, mask);
@@ -482,13 +481,14 @@ public:
         }
     }
 
-    __aicore__ inline void RopeBasicComputeVF(
-        __local_mem__ T_KV* x, AscendC::MicroAPI::RegTensor<float>& x_0, AscendC::MicroAPI::RegTensor<float>& x_1,
-        AscendC::MicroAPI::RegTensor<float>& cos_0, AscendC::MicroAPI::RegTensor<float>& cos_1,
-        AscendC::MicroAPI::RegTensor<float>& sin_0, AscendC::MicroAPI::RegTensor<float>& sin_1,
-        __local_mem__ T_KV* realCos, __local_mem__ T_KV* imgCos, __local_mem__ T_KV* realSin,
-        __local_mem__ T_KV* imgSin, __local_mem__ float* ws, uint32_t xOffset, uint32_t cosSinOffset, uint16_t rowId,
-        uint16_t colId, AscendC::MicroAPI::MaskReg mask, AscendC::MicroAPI::MaskReg maskAll)
+    __aicore__ inline void
+    RopeBasicComputeVF(__local_mem__ T_KV *x, AscendC::MicroAPI::RegTensor<float> &x_0,
+                       AscendC::MicroAPI::RegTensor<float> &x_1, AscendC::MicroAPI::RegTensor<float> &cos_0,
+                       AscendC::MicroAPI::RegTensor<float> &cos_1, AscendC::MicroAPI::RegTensor<float> &sin_0,
+                       AscendC::MicroAPI::RegTensor<float> &sin_1, __local_mem__ T_KV *realCos,
+                       __local_mem__ T_KV *imgCos, __local_mem__ T_KV *realSin, __local_mem__ T_KV *imgSin,
+                       __local_mem__ float *ws, uint32_t xOffset, uint32_t cosSinOffset, uint16_t rowId, uint16_t colId,
+                       AscendC::MicroAPI::MaskReg mask, AscendC::MicroAPI::MaskReg maskAll)
     {
         // cast to float32
         LoadTensorForDtypeT<T_KV>(x, x_0, maskAll, colId * CONST_TWO * VL_FP32 + rowId * xOffset);
@@ -497,7 +497,7 @@ public:
         StoreTensorForDtypeTOut<float>(ws, x_1, maskAll, VL_FP32);
         AscendC::MicroAPI::LocalMemBar<AscendC::MicroAPI::MemType::VEC_STORE, AscendC::MicroAPI::MemType::VEC_LOAD>();
         // get x
-        DataCopy<float, AscendC::MicroAPI::LoadDist::DIST_DINTLV_B32>(x_0, x_1, ((__local_mem__ float*)(ws)));
+        DataCopy<float, AscendC::MicroAPI::LoadDist::DIST_DINTLV_B32>(x_0, x_1, ((__local_mem__ float *)(ws)));
         LoadTensorForDtypeT(realCos, cos_0, mask, colId * VL_FP32 + rowId * cosSinOffset);
         LoadTensorForDtypeT(imgCos, cos_1, mask, colId * VL_FP32 + rowId * cosSinOffset);
         LoadTensorForDtypeT(realSin, sin_0, mask, colId * VL_FP32 + rowId * cosSinOffset);
@@ -511,10 +511,10 @@ public:
         AscendC::MicroAPI::Add(sin_1, cos_1, sin_1, mask);
     }
 
-    __aicore__ inline void RopeVF(
-        __local_mem__ T_KV* outFront, __local_mem__ T_KV* outBack, __local_mem__ T_KV* x, __local_mem__ T_KV* realCos,
-        __local_mem__ T_KV* imgCos, __local_mem__ T_KV* realSin, __local_mem__ T_KV* imgSin, __local_mem__ float* ws,
-        uint16_t row, uint16_t colLoopCount, uint32_t colCosSin, uint32_t xOffset, uint32_t cosSinOffset)
+    __aicore__ inline void RopeVF(__local_mem__ T_KV *outFront, __local_mem__ T_KV *outBack, __local_mem__ T_KV *x,
+                                  __local_mem__ T_KV *realCos, __local_mem__ T_KV *imgCos, __local_mem__ T_KV *realSin,
+                                  __local_mem__ T_KV *imgSin, __local_mem__ float *ws, uint16_t row,
+                                  uint16_t colLoopCount, uint32_t colCosSin, uint32_t xOffset, uint32_t cosSinOffset)
     {
         __VEC_SCOPE__
         {
@@ -527,22 +527,20 @@ public:
             for (uint16_t rowId = 0; rowId < row; rowId++) {
                 uint32_t sreg = colCosSin;
                 // 跨行地址重刷新
-                __local_mem__ T_KV* out0 = outFront + rowId * xOffset;
-                __local_mem__ T_KV* out1 = outBack + rowId * xOffset;
+                __local_mem__ T_KV *out0 = outFront + rowId * xOffset;
+                __local_mem__ T_KV *out1 = outBack + rowId * xOffset;
                 // 整块
                 for (uint16_t i = 0; i < colLoopCount; i++) {
                     mask = AscendC::MicroAPI::UpdateMask<float>(sreg);
-                    RopeBasicComputeVF(
-                        x, x_0, x_1, cos_0, cos_1, sin_0, sin_1, realCos, imgCos, realSin, imgSin, ws, xOffset,
-                        cosSinOffset, rowId, i, mask, maskAll);
+                    RopeBasicComputeVF(x, x_0, x_1, cos_0, cos_1, sin_0, sin_1, realCos, imgCos, realSin, imgSin, ws,
+                                       xOffset, cosSinOffset, rowId, i, mask, maskAll);
                     StoreUnAlignOneTensor<T_KV>(out0, sin_0, UReg0, mask, VL_FP32);
                     StoreUnAlignOneTensor<T_KV>(out1, sin_1, UReg1, mask, VL_FP32);
                 }
                 // 尾块
                 mask = AscendC::MicroAPI::UpdateMask<float>(sreg);
-                RopeBasicComputeVF(
-                    x, x_0, x_1, cos_0, cos_1, sin_0, sin_1, realCos, imgCos, realSin, imgSin, ws, xOffset,
-                    cosSinOffset, rowId, colLoopCount, mask, maskAll);
+                RopeBasicComputeVF(x, x_0, x_1, cos_0, cos_1, sin_0, sin_1, realCos, imgCos, realSin, imgSin, ws,
+                                   xOffset, cosSinOffset, rowId, colLoopCount, mask, maskAll);
                 StoreUnAlignOneTensor<T_KV>(out0, sin_0, UReg0, mask, kVFTail);
                 StoreUnAlignOneTensor<T_KV>(out1, sin_1, UReg1, mask, kVFTail);
                 AscendC::MicroAPI::DataCopyUnAlignPost(out0, UReg0, 0);
@@ -551,12 +549,12 @@ public:
         }
     }
 
-    __aicore__ inline void Rope(
-        const LocalTensor<T_KV>& xLocal, const LocalTensor<T_KV>& realCosLocal, const LocalTensor<T_KV>& imgCosLocal,
-        const LocalTensor<T_KV>& realSinLocal, const LocalTensor<T_KV>& imgSinLocal,
-        const LocalTensor<float>& realKScaleLocal, const LocalTensor<float>& imgKScaleLocal,
-        const LocalTensor<float>& realKOffsetLocal, const LocalTensor<float>& imgKOffsetLocal,
-        const LocalTensor<float>& wsLocal, uint16_t rowNum)
+    __aicore__ inline void Rope(const LocalTensor<T_KV> &xLocal, const LocalTensor<T_KV> &realCosLocal,
+                                const LocalTensor<T_KV> &imgCosLocal, const LocalTensor<T_KV> &realSinLocal,
+                                const LocalTensor<T_KV> &imgSinLocal, const LocalTensor<float> &realKScaleLocal,
+                                const LocalTensor<float> &imgKScaleLocal, const LocalTensor<float> &realKOffsetLocal,
+                                const LocalTensor<float> &imgKOffsetLocal, const LocalTensor<float> &wsLocal,
+                                uint16_t rowNum)
     {
         uint16_t row = rowNum;
         uint32_t colCosSin = tilingData_->halfDk;
@@ -564,16 +562,16 @@ public:
         uint32_t cosSinOffset = tilingData_->halfDkAlign;
         uint32_t quantOutOffset = tilingData_->dkB8Align;
 
-        __local_mem__ T_KV* x = (__local_mem__ T_KV*)xLocal.GetPhyAddr();
-        __local_mem__ T_KV* realCos = (__local_mem__ T_KV*)realCosLocal.GetPhyAddr();
-        __local_mem__ T_KV* imgCos = (__local_mem__ T_KV*)imgCosLocal.GetPhyAddr();
-        __local_mem__ T_KV* realSin = (__local_mem__ T_KV*)realSinLocal.GetPhyAddr();
-        __local_mem__ T_KV* imgSin = (__local_mem__ T_KV*)imgSinLocal.GetPhyAddr();
-        __local_mem__ float* realKScale = (__local_mem__ float*)realKScaleLocal.GetPhyAddr();
-        __local_mem__ float* imgKScale = (__local_mem__ float*)imgKScaleLocal.GetPhyAddr();
-        __local_mem__ float* realKOffset = (__local_mem__ float*)realKOffsetLocal.GetPhyAddr();
-        __local_mem__ float* imgKOffset = (__local_mem__ float*)imgKOffsetLocal.GetPhyAddr();
-        __local_mem__ float* ws = (__local_mem__ float*)wsLocal.GetPhyAddr();
+        __local_mem__ T_KV *x = (__local_mem__ T_KV *)xLocal.GetPhyAddr();
+        __local_mem__ T_KV *realCos = (__local_mem__ T_KV *)realCosLocal.GetPhyAddr();
+        __local_mem__ T_KV *imgCos = (__local_mem__ T_KV *)imgCosLocal.GetPhyAddr();
+        __local_mem__ T_KV *realSin = (__local_mem__ T_KV *)realSinLocal.GetPhyAddr();
+        __local_mem__ T_KV *imgSin = (__local_mem__ T_KV *)imgSinLocal.GetPhyAddr();
+        __local_mem__ float *realKScale = (__local_mem__ float *)realKScaleLocal.GetPhyAddr();
+        __local_mem__ float *imgKScale = (__local_mem__ float *)imgKScaleLocal.GetPhyAddr();
+        __local_mem__ float *realKOffset = (__local_mem__ float *)realKOffsetLocal.GetPhyAddr();
+        __local_mem__ float *imgKOffset = (__local_mem__ float *)imgKOffsetLocal.GetPhyAddr();
+        __local_mem__ float *ws = (__local_mem__ float *)wsLocal.GetPhyAddr();
 
         if constexpr (IsSameType<T_K_CACHE, int8_t>::value || IsSameType<T_K_CACHE, hifloat8_t>::value ||
                       IsSameType<T_K_CACHE, fp8_e5m2_t>::value || IsSameType<T_K_CACHE, fp8_e4m3fn_t>::value) {
@@ -582,54 +580,53 @@ public:
                 kQuantLocal =
                     kOutLocal
                         .template ReinterpretCast<T_K_CACHE>()[this->ubFactor * tilingData_->dkB8Align * sizeof(T_KV)];
-                __local_mem__ T_KV* outFront = (__local_mem__ T_KV*)kOutLocal.GetPhyAddr();
-                __local_mem__ T_KV* outBack = (__local_mem__ T_KV*)kOutLocal.GetPhyAddr() + tilingData_->halfDk;
-                __local_mem__ T_K_CACHE* quantFront = (__local_mem__ T_K_CACHE*)kQuantLocal.GetPhyAddr();
-                __local_mem__ T_K_CACHE* quantBack = (__local_mem__ T_K_CACHE*)kQuantLocal.GetPhyAddr() + tilingData_->halfDk;
+                __local_mem__ T_KV *outFront = (__local_mem__ T_KV *)kOutLocal.GetPhyAddr();
+                __local_mem__ T_KV *outBack = (__local_mem__ T_KV *)kOutLocal.GetPhyAddr() + tilingData_->halfDk;
+                __local_mem__ T_K_CACHE *quantFront = (__local_mem__ T_K_CACHE *)kQuantLocal.GetPhyAddr();
+                __local_mem__ T_K_CACHE *quantBack =
+                    (__local_mem__ T_K_CACHE *)kQuantLocal.GetPhyAddr() + tilingData_->halfDk;
                 if (tilingData_->kOffsetType > 0) {
-                    RopeAsymQuantWithKvVF(
-                        outFront, outBack, quantFront, quantBack, x, realCos, imgCos, realSin, imgSin, realKScale,
-                        imgKScale, realKOffset, imgKOffset, ws, row, kVFLoop, colCosSin, xOffset, cosSinOffset,
-                        quantOutOffset);
+                    RopeAsymQuantWithKvVF(outFront, outBack, quantFront, quantBack, x, realCos, imgCos, realSin, imgSin,
+                                          realKScale, imgKScale, realKOffset, imgKOffset, ws, row, kVFLoop, colCosSin,
+                                          xOffset, cosSinOffset, quantOutOffset);
                 } else {
-                    RopeSymQuantWithKvVF(
-                        outFront, outBack, quantFront, quantBack, x, realCos, imgCos, realSin, imgSin, realKScale,
-                        imgKScale, ws, row, kVFLoop, colCosSin, xOffset, cosSinOffset, quantOutOffset);
+                    RopeSymQuantWithKvVF(outFront, outBack, quantFront, quantBack, x, realCos, imgCos, realSin, imgSin,
+                                         realKScale, imgKScale, ws, row, kVFLoop, colCosSin, xOffset, cosSinOffset,
+                                         quantOutOffset);
                 }
                 outQueue.EnQue(kOutLocal);
                 kOutLocal = outQueue.DeQue<T_KV>();
             } else {
                 kQuantLocal = outQueue.AllocTensor<T_K_CACHE>();
-                __local_mem__ T_K_CACHE* quantFront = (__local_mem__ T_K_CACHE*)kQuantLocal.GetPhyAddr();
-                __local_mem__ T_K_CACHE* quantBack = (__local_mem__ T_K_CACHE*)kQuantLocal.GetPhyAddr() + tilingData_->halfDk;
+                __local_mem__ T_K_CACHE *quantFront = (__local_mem__ T_K_CACHE *)kQuantLocal.GetPhyAddr();
+                __local_mem__ T_K_CACHE *quantBack =
+                    (__local_mem__ T_K_CACHE *)kQuantLocal.GetPhyAddr() + tilingData_->halfDk;
                 if (tilingData_->kOffsetType > 0) {
-                    RopeAsymQuantVF(
-                        quantFront, quantBack, x, realCos, imgCos, realSin, imgSin, realKScale, imgKScale, realKOffset,
-                        imgKOffset, ws, row, kVFLoop, colCosSin, xOffset, cosSinOffset, quantOutOffset);
+                    RopeAsymQuantVF(quantFront, quantBack, x, realCos, imgCos, realSin, imgSin, realKScale, imgKScale,
+                                    realKOffset, imgKOffset, ws, row, kVFLoop, colCosSin, xOffset, cosSinOffset,
+                                    quantOutOffset);
                 } else {
-                    RopeSymQuantVF(
-                        quantFront, quantBack, x, realCos, imgCos, realSin, imgSin, realKScale, imgKScale, ws, row,
-                        kVFLoop, colCosSin, xOffset, cosSinOffset, quantOutOffset);
+                    RopeSymQuantVF(quantFront, quantBack, x, realCos, imgCos, realSin, imgSin, realKScale, imgKScale,
+                                   ws, row, kVFLoop, colCosSin, xOffset, cosSinOffset, quantOutOffset);
                 }
                 outQueue.EnQue(kQuantLocal);
                 kQuantLocal = outQueue.DeQue<T_K_CACHE>();
             }
         } else {
             kOutLocal = outQueue.AllocTensor<T_KV>();
-            __local_mem__ T_KV* outFront = (__local_mem__ T_KV*)kOutLocal.GetPhyAddr();
-            __local_mem__ T_KV* outBack = (__local_mem__ T_KV*)kOutLocal.GetPhyAddr() + tilingData_->halfDk;
-            RopeVF(
-                outFront, outBack, x, realCos, imgCos, realSin, imgSin, ws, row, kVFLoop, colCosSin, xOffset,
-                cosSinOffset);
+            __local_mem__ T_KV *outFront = (__local_mem__ T_KV *)kOutLocal.GetPhyAddr();
+            __local_mem__ T_KV *outBack = (__local_mem__ T_KV *)kOutLocal.GetPhyAddr() + tilingData_->halfDk;
+            RopeVF(outFront, outBack, x, realCos, imgCos, realSin, imgSin, ws, row, kVFLoop, colCosSin, xOffset,
+                   cosSinOffset);
             outQueue.EnQue(kOutLocal);
             kOutLocal = outQueue.DeQue<T_K_CACHE>();
         }
     }
 
-    __aicore__ inline void RmsNorm(
-        const LocalTensor<T_KV>& outVLocal, const LocalTensor<T_KV>& xLocal, const LocalTensor<T_KV>& gammaLocal,
-        const LocalTensor<float>& wsLocal, const LocalTensor<float>& vScaleTensor,
-        const LocalTensor<float>& vOffsetTensor, int64_t calcRow)
+    __aicore__ inline void RmsNorm(const LocalTensor<T_KV> &outVLocal, const LocalTensor<T_KV> &xLocal,
+                                   const LocalTensor<T_KV> &gammaLocal, const LocalTensor<float> &wsLocal,
+                                   const LocalTensor<float> &vScaleTensor, const LocalTensor<float> &vOffsetTensor,
+                                   int64_t calcRow)
     {
         // 需要量化
         if constexpr (IsSameType<T_V_CACHE, int8_t>::value || IsSameType<T_V_CACHE, hifloat8_t>::value ||
@@ -641,17 +638,17 @@ public:
                         .template ReinterpretCast<T_V_CACHE>()[this->ubFactor * tilingData_->dvB8Align * sizeof(T_KV)];
                 // 需要量化+偏移
                 if (tilingData_->vOffsetType > 0) {
-                    this->RmsNormAsymQuantWithKvVF(
-                        outVLocal, vQuantLocal, xLocal, gammaLocal, wsLocal, vScaleTensor, vOffsetTensor, calcRow);
+                    this->RmsNormAsymQuantWithKvVF(outVLocal, vQuantLocal, xLocal, gammaLocal, wsLocal, vScaleTensor,
+                                                   vOffsetTensor, calcRow);
                 } else { // 只需要量化
-                    this->RmsNormSymQuantWithKvVF(
-                        outVLocal, vQuantLocal, xLocal, gammaLocal, wsLocal, vScaleTensor, calcRow);
+                    this->RmsNormSymQuantWithKvVF(outVLocal, vQuantLocal, xLocal, gammaLocal, wsLocal, vScaleTensor,
+                                                  calcRow);
                 }
             } else {
                 vQuantLocal = outVLocal.template ReinterpretCast<T_V_CACHE>();
                 if (tilingData_->vOffsetType > 0) {
-                    this->RmsNormAsymQuantVF(
-                        vQuantLocal, xLocal, gammaLocal, wsLocal, vScaleTensor, vOffsetTensor, calcRow);
+                    this->RmsNormAsymQuantVF(vQuantLocal, xLocal, gammaLocal, wsLocal, vScaleTensor, vOffsetTensor,
+                                             calcRow);
                 } else {
                     this->RmsNormSymQuantVF(vQuantLocal, xLocal, gammaLocal, wsLocal, vScaleTensor, calcRow);
                 }
@@ -684,8 +681,8 @@ public:
             CopyInLineAlign<float>(imgKScaleLocal, this->kScaleGm[kScaleCopyOffset], 1, kScaleCopyLen, kScaleCopyLen);
             if (tilingData_->kOffsetType > 0) {
                 CopyInLineAlign<float>(realKOffsetLocal, this->kOffsetGm, 1, kOffsetCopyLen, kOffsetCopyLen);
-                CopyInLineAlign<float>(
-                    imgKOffsetLocal, this->kOffsetGm[kOffsetCopyOffset], 1, kOffsetCopyLen, kOffsetCopyLen);
+                CopyInLineAlign<float>(imgKOffsetLocal, this->kOffsetGm[kOffsetCopyOffset], 1, kOffsetCopyLen,
+                                       kOffsetCopyLen);
             }
             kScaleOffsetQueue.EnQue(realKScaleLocal);
             realKScaleLocal = kScaleOffsetQueue.DeQue<float>();
@@ -732,21 +729,19 @@ public:
             LocalTensor<T_KV> imgCosLocal = realCosLocal[this->ubFactor * tilingData_->halfDkAlign];
             LocalTensor<T_KV> realSinLocal = imgCosLocal[this->ubFactor * tilingData_->halfDkAlign];
             LocalTensor<T_KV> imgSinLocal = realSinLocal[this->ubFactor * tilingData_->halfDkAlign];
-            CopyInLineAlign<T_KV>(
-                ropeLocal, this->kvGm[kvGlobalMemoryOffset + tilingData_->dv], calcRow, dKV, tilingData_->dk);
+            CopyInLineAlign<T_KV>(ropeLocal, this->kvGm[kvGlobalMemoryOffset + tilingData_->dv], calcRow, dKV,
+                                  tilingData_->dk);
             if (tilingData_->cosSinNeedBrc == 0) {
                 freqGlobalMemoryOffset =
                     this->blockIdx * tilingData_->blockFactor * this->dk + loopIdx * this->ubFactor * tilingData_->dk;
-                CopyInLineAlign<T_KV>(
-                    realCosLocal, this->cosGm[freqGlobalMemoryOffset], calcRow, tilingData_->dk, tilingData_->halfDk);
-                CopyInLineAlign<T_KV>(
-                    imgCosLocal, this->cosGm[freqGlobalMemoryOffset + tilingData_->halfDk], calcRow, tilingData_->dk,
-                    tilingData_->halfDk);
-                CopyInLineAlign<T_KV>(
-                    realSinLocal, this->sinGm[freqGlobalMemoryOffset], calcRow, tilingData_->dk, tilingData_->halfDk);
-                CopyInLineAlign<T_KV>(
-                    imgSinLocal, this->sinGm[freqGlobalMemoryOffset + tilingData_->halfDk], calcRow, tilingData_->dk,
-                    tilingData_->halfDk);
+                CopyInLineAlign<T_KV>(realCosLocal, this->cosGm[freqGlobalMemoryOffset], calcRow, tilingData_->dk,
+                                      tilingData_->halfDk);
+                CopyInLineAlign<T_KV>(imgCosLocal, this->cosGm[freqGlobalMemoryOffset + tilingData_->halfDk], calcRow,
+                                      tilingData_->dk, tilingData_->halfDk);
+                CopyInLineAlign<T_KV>(realSinLocal, this->sinGm[freqGlobalMemoryOffset], calcRow, tilingData_->dk,
+                                      tilingData_->halfDk);
+                CopyInLineAlign<T_KV>(imgSinLocal, this->sinGm[freqGlobalMemoryOffset + tilingData_->halfDk], calcRow,
+                                      tilingData_->dk, tilingData_->halfDk);
             } else {
                 int64_t batchId = 0;
                 int64_t ubOffset = 0;
@@ -754,18 +749,16 @@ public:
                     batchId = (startIdx + i) / tilingData_->seqLength;
                     freqGlobalMemoryOffset = batchId * tilingData_->dk;
                     ubOffset = i * tilingData_->halfDkAlign;
-                    CopyInLineAlign<T_KV>(
-                        realCosLocal[ubOffset], this->cosGm[freqGlobalMemoryOffset], 1, tilingData_->dk,
-                        tilingData_->halfDk);
-                    CopyInLineAlign<T_KV>(
-                        imgCosLocal[ubOffset], this->cosGm[freqGlobalMemoryOffset + tilingData_->halfDk], 1,
-                        tilingData_->dk, tilingData_->halfDk);
-                    CopyInLineAlign<T_KV>(
-                        realSinLocal[ubOffset], this->sinGm[freqGlobalMemoryOffset], 1, tilingData_->dk,
-                        tilingData_->halfDk);
-                    CopyInLineAlign<T_KV>(
-                        imgSinLocal[ubOffset], this->sinGm[freqGlobalMemoryOffset + tilingData_->halfDk], 1,
-                        tilingData_->dk, tilingData_->halfDk);
+                    CopyInLineAlign<T_KV>(realCosLocal[ubOffset], this->cosGm[freqGlobalMemoryOffset], 1,
+                                          tilingData_->dk, tilingData_->halfDk);
+                    CopyInLineAlign<T_KV>(imgCosLocal[ubOffset],
+                                          this->cosGm[freqGlobalMemoryOffset + tilingData_->halfDk], 1, tilingData_->dk,
+                                          tilingData_->halfDk);
+                    CopyInLineAlign<T_KV>(realSinLocal[ubOffset], this->sinGm[freqGlobalMemoryOffset], 1,
+                                          tilingData_->dk, tilingData_->halfDk);
+                    CopyInLineAlign<T_KV>(imgSinLocal[ubOffset],
+                                          this->sinGm[freqGlobalMemoryOffset + tilingData_->halfDk], 1, tilingData_->dk,
+                                          tilingData_->halfDk);
                 }
             }
             inQueueX.EnQue(ropeLocal);
@@ -773,9 +766,8 @@ public:
             ropeLocal = inQueueX.DeQue<T_KV>();
             realCosLocal = inQueueCosSin.DeQue<T_KV>();
             // Calc: RoPE
-            Rope(
-                ropeLocal, realCosLocal, imgCosLocal, realSinLocal, imgSinLocal, realKScaleLocal, imgKScaleLocal,
-                realKOffsetLocal, imgKOffsetLocal, workspaceBuffer0, calcRow);
+            Rope(ropeLocal, realCosLocal, imgCosLocal, realSinLocal, imgSinLocal, realKScaleLocal, imgKScaleLocal,
+                 realKOffsetLocal, imgKOffsetLocal, workspaceBuffer0, calcRow);
             inQueueX.FreeTensor(ropeLocal);
             inQueueCosSin.FreeTensor(realCosLocal);
             // 拷出到kCache
@@ -838,12 +830,12 @@ public:
     }
 
 private:
-    const KvRmsNormRopeCacheRegbaseFullLoadTilingData* tilingData_;
+    const KvRmsNormRopeCacheRegbaseFullLoadTilingData *tilingData_;
     TQue<QuePosition::VECIN, 1> inQueueX, inQueueGamma, inQueueCosSin;
     TQue<QuePosition::VECIN, 1> kScaleOffsetQueue, vScaleOffsetQueue;
     TQue<QuePosition::VECOUT, 1> outQueue;
     TBuf<TPosition::VECCALC> wsBuffer0, wsBuffer1;
-    TPipe* pipe_ = nullptr;
+    TPipe *pipe_ = nullptr;
 
     LocalTensor<T_KV> kOutLocal;
     LocalTensor<T_K_CACHE> kQuantLocal;

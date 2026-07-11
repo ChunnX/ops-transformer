@@ -335,18 +335,17 @@ uint64_t SparseFlashMlaGradTilingBs1Regbase::GetTilingKey() const
     baseParams_->set_hasCmpTopK(tmpData.cmpTopK);
     baseParams_->set_isSink(tmpData.sinks);
 
-    OP_LOGI(
-        context_,
-        "SparseFlashMlaGrad get tilingkey, InputDType[%ld], IsTnd[%ld], GTemplateNum[%ld], S2TemplateNum[%ld], \
+    OP_LOGI(context_,
+            "SparseFlashMlaGrad get tilingkey, InputDType[%ld], IsTnd[%ld], GTemplateNum[%ld], S2TemplateNum[%ld], \
         DTemplateNum[%ld], IsOriKVExist[%d], IsCmpKVExist[%d], IsOriKVSparse[%d], IsCmpKVSparse[%d], \
         HasUsedSeqQ[%d], HasUsedSeqOriKV[%d], HasUsedSeqCmpKV[%d], HasOriTopK[%d], HasCmpTopK[%d], IsSink[%d], \
         Deterministic[%d]",
-        inputDtypeSize, isTnd, tmpData.singleM, tmpData.singleN, tmpData.d, static_cast<uint8_t>(tmpData.oriKV),
-        static_cast<uint8_t>(tmpData.cmpKV), static_cast<uint8_t>(tmpData.oriKVSparse),
-        static_cast<uint8_t>(tmpData.cmpKVSparse), static_cast<uint8_t>(tmpData.usedSeqQ),
-        static_cast<uint8_t>(tmpData.usedSeqOriKV), static_cast<uint8_t>(tmpData.usedSeqCmpKV),
-        static_cast<uint8_t>(tmpData.oriTopK), static_cast<uint8_t>(tmpData.cmpTopK),
-        static_cast<uint8_t>(tmpData.sinks), static_cast<uint8_t>(tmpData.deterministic));
+            inputDtypeSize, isTnd, tmpData.singleM, tmpData.singleN, tmpData.d, static_cast<uint8_t>(tmpData.oriKV),
+            static_cast<uint8_t>(tmpData.cmpKV), static_cast<uint8_t>(tmpData.oriKVSparse),
+            static_cast<uint8_t>(tmpData.cmpKVSparse), static_cast<uint8_t>(tmpData.usedSeqQ),
+            static_cast<uint8_t>(tmpData.usedSeqOriKV), static_cast<uint8_t>(tmpData.usedSeqCmpKV),
+            static_cast<uint8_t>(tmpData.oriTopK), static_cast<uint8_t>(tmpData.cmpTopK),
+            static_cast<uint8_t>(tmpData.sinks), static_cast<uint8_t>(tmpData.deterministic));
     // tmpData.singleM 为G方向上固定切分大小 tmpData.singleN为S2方向上固定切分大小
     tilingKey = GET_TPL_TILING_KEY(
         static_cast<uint8_t>(inputDtypeSize), static_cast<uint8_t>(isTnd), static_cast<uint16_t>(tmpData.singleM),

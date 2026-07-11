@@ -59,23 +59,23 @@
 
 ```Cpp
 aclnnStatus aclnnScatterPaKvCacheWithKScaleGetWorkspaceSize(
-  const aclTensor   *key, 
-  const aclTensor   *value, 
-  aclTensor         *keyCacheRef, 
-  aclTensor         *valueCacheRef, 
-  const aclTensor   *slotMapping, 
-  aclTensor         *keyScale, 
-  aclTensor         *keyScaleCacheRef, 
-  char              *cacheLayoutOptional, 
-  uint64_t          *workspaceSize, 
+  const aclTensor   *key,
+  const aclTensor   *value,
+  aclTensor         *keyCacheRef,
+  aclTensor         *valueCacheRef,
+  const aclTensor   *slotMapping,
+  aclTensor         *keyScale,
+  aclTensor         *keyScaleCacheRef,
+  char              *cacheLayoutOptional,
+  uint64_t          *workspaceSize,
   aclOpExecutor    **executor)
 ```
 
 ```Cpp
 aclnnStatus aclnnScatterPaKvCacheWithKScale(
-  void          *workspace, 
-  uint64_t       workspaceSize, 
-  aclOpExecutor *executor, 
+  void          *workspace,
+  uint64_t       workspaceSize,
+  aclOpExecutor *executor,
   aclrtStream    stream)
 ```
 

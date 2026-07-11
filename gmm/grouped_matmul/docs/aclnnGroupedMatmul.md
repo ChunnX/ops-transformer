@@ -410,7 +410,7 @@ aclnnStatus aclnnGroupedMatmul(
       <a id="支持场景约束"></a>
 
     - 支持场景中单表示单tensor，多表示多tensor，表示顺序为x、weight、y。例如单多单表示支持x为单tensor、weight多tensor、y单tensor的场景。
-    
+
       |支持场景 |场景限制 |
       |:-------:|:-------|
       | 多多多 |1）仅支持splitItem为0/1<br>2）伪量化场景x中tensor要求维度一致，支持2-6维，y中tensor维度和x保持一致；非量化场景x，y中tensor需为2维， shape分别为（$m_i$, $k_i$）和（$m_i$, $n_i$）；weight中tensor需为2维，shape为（$n_i$, $k_i$）或（$k_i$, $n_i$）；bias中tensor需为1维，shape为（$n_i$）<br>3）若x中存在tensor大于2维，groupListOptional必须传空<br>4）若x中tensor为2维且传入groupListOptional，groupListOptional的差值需与x中tensor的第一维一一对应，且长度最大为128<br>5）仅支持ND进ND出<br>6）不支持x转置，不支持weight转置 |

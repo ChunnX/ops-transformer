@@ -185,7 +185,9 @@ public:
 // -----------算子Tiling入参信息解析及Check类---------------
 class QLIV2InfoParser {
 public:
-    explicit QLIV2InfoParser(gert::TilingContext *context) : context_(context) {}
+    explicit QLIV2InfoParser(gert::TilingContext *context) : context_(context)
+    {
+    }
     ~QLIV2InfoParser() = default;
 
     ge::graphStatus CheckRequiredInOutExistence() const;
@@ -269,5 +271,5 @@ private:
     QLIV2TilingData tilingData_;
 };
 
-}  // namespace optiling
-#endif  // QUANT_LIGHTNING_INDEXER_V2_TILING_H
+} // namespace optiling
+#endif // QUANT_LIGHTNING_INDEXER_V2_TILING_H

@@ -529,7 +529,7 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV4(
   - 每个batch相同时，shape为1NHSkv(H=1024)。
   - TND场景下，每个batch段内部仍按[N, Sq_i, Skv_i]生成，但存储与传参时统一flatten。若第i个batch段的真实query长度为Sq_i、真实key/value长度为Skv_i，则该段PSE元素个数为N * Sq_i * Skv_i，整段PSE总长度pseTotalLen为sum_i(N * Sq_i * Skv_i)。
   - 如不使用该参数可传入nullptr。
-- sparseMode的约束如下: 
+- sparseMode的约束如下:
   - 当所有的attenMaskOptional的shape小于2048且相同的时候，建议使用default模式，来减少内存使用量；
   - 配置为1、2、3时，用户配置的preTokens、nextTokens不会生效；
   - 配置为0、4时，须保证attenMaskOptional与preTokens、nextTokens的范围一致。

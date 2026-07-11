@@ -17,7 +17,7 @@
 namespace ops {
 class MhcPre : public OpDef {
 public:
-    explicit MhcPre(const char* name) : OpDef(name)
+    explicit MhcPre(const char *name) : OpDef(name)
     {
         this->Input("x")
             .ParamType(REQUIRED)
@@ -79,12 +79,12 @@ public:
 
         OpAICoreConfig aicConfig;
         aicConfig.DynamicCompileStaticFlag(true)
-                .DynamicFormatFlag(false)
-                .DynamicRankSupportFlag(true)
-                .DynamicShapeSupportFlag(true)
-                .NeedCheckSupportFlag(false)
-                .ExtendCfgInfo("aclnnSupport.value", "support_aclnn")
-                .ExtendCfgInfo("opFile.value", "mhc_pre_apt");
+            .DynamicFormatFlag(false)
+            .DynamicRankSupportFlag(true)
+            .DynamicShapeSupportFlag(true)
+            .NeedCheckSupportFlag(false)
+            .ExtendCfgInfo("aclnnSupport.value", "support_aclnn")
+            .ExtendCfgInfo("opFile.value", "mhc_pre_apt");
         this->AICore().AddConfig("ascend950", aicConfig);
 
         this->Attr("out_flag").AttrType(OPTIONAL).Int(0);
@@ -95,4 +95,4 @@ public:
 
 OP_ADD(MhcPre);
 
-}
+} // namespace ops

@@ -10,7 +10,7 @@
 /*!
  * \file scatter_pa_kv_cache_omni_fully_load.h
  * \brief
-*/
+ */
 
 #ifndef SCATTER_PA_KV_CACHE_OMNI_FULLY_LOAD_H_
 #define SCATTER_PA_KV_CACHE_OMNI_FULLY_LOAD_H_
@@ -134,9 +134,9 @@ ScatterPaKvCacheOmniFullyLoad<T, IndexDtype, InOutMode>::CopyInKey(int64_t iter,
                                                                    int64_t curBlockFactor)
 {
     LocalTensor<T> inputKeyLocal = inputKeyQueue_.AllocTensor<T>();
-    DataCopyExtParams inKeyParams = {
-        static_cast<uint16_t>(1), static_cast<uint32_t>(tilingData_->kHeadSize * sizeof(T)), static_cast<uint32_t>(0),
-        static_cast<uint32_t>(0), static_cast<uint32_t>(0)};
+    DataCopyExtParams inKeyParams = {static_cast<uint16_t>(1),
+                                     static_cast<uint32_t>(tilingData_->kHeadSize * sizeof(T)),
+                                     static_cast<uint32_t>(0), static_cast<uint32_t>(0), static_cast<uint32_t>(0)};
     DataCopyPadExtParams<T> padParams;
     padParams.isPad = 0;
     padParams.leftPadding = 0;
@@ -150,7 +150,7 @@ ScatterPaKvCacheOmniFullyLoad<T, IndexDtype, InOutMode>::CopyInKey(int64_t iter,
             break;
         }
         DataCopyPad(inputKeyLocal[(k - startIdx) * RoundUp(tilingData_->kHeadSize)],
-                 inputKeyGm_[offset + k * tilingData_->keyStride1], inKeyParams, padParams);
+                    inputKeyGm_[offset + k * tilingData_->keyStride1], inKeyParams, padParams);
     }
     inputKeyQueue_.EnQue(inputKeyLocal);
 }
@@ -162,9 +162,9 @@ ScatterPaKvCacheOmniFullyLoad<T, IndexDtype, InOutMode>::CopyInValue(int64_t ite
 {
     LocalTensor<T> inputValueLocal = inputValueQueue_.AllocTensor<T>();
 
-    DataCopyExtParams inValueParams = {
-        static_cast<uint16_t>(1), static_cast<uint32_t>(tilingData_->vHeadSize * sizeof(T)), static_cast<uint32_t>(0),
-        static_cast<uint32_t>(0), static_cast<uint32_t>(0)};
+    DataCopyExtParams inValueParams = {static_cast<uint16_t>(1),
+                                       static_cast<uint32_t>(tilingData_->vHeadSize * sizeof(T)),
+                                       static_cast<uint32_t>(0), static_cast<uint32_t>(0), static_cast<uint32_t>(0)};
     DataCopyPadExtParams<T> padParams;
     padParams.isPad = 0;
     padParams.leftPadding = 0;
@@ -177,7 +177,7 @@ ScatterPaKvCacheOmniFullyLoad<T, IndexDtype, InOutMode>::CopyInValue(int64_t ite
             break;
         }
         DataCopyPad(inputValueLocal[(k - startIdx) * RoundUp(tilingData_->vHeadSize)],
-                 inputValueGm_[offset + k * tilingData_->valueStride1], inValueParams, padParams);
+                    inputValueGm_[offset + k * tilingData_->valueStride1], inValueParams, padParams);
     }
     inputValueQueue_.EnQue(inputValueLocal);
 }

@@ -127,15 +127,14 @@ struct FusedInferAttentionTilingUtParam : public FusedInferAttentionHostUtParamB
         std::string keyShapeStr = ReadMap(csvMap, "key_shape");
         if (keyShapeStr.find('|') != std::string::npos) {
             this->isTensorList = true;
-            this->keyList = GetTensorListGE<gert::TilingContextPara::TensorDescription>(
-                csvMap, "key_shape", "key_dtype", "key_format");
+            this->keyList = GetTensorListGE<gert::TilingContextPara::TensorDescription>(csvMap, "key_shape",
+                                                                                        "key_dtype", "key_format");
             this->valueList = GetTensorListGE<gert::TilingContextPara::TensorDescription>(
                 csvMap, "value_shape", "value_dtype", "value_format");
             this->inputInstance.emplace_back(static_cast<uint32_t>(this->keyList.size()));
             this->inputInstance.emplace_back(static_cast<uint32_t>(this->valueList.size()));
         } else {
-            this->inputInstance.emplace_back(
-                GetTensorGE(csvMap, "key_shape", "key_dtype", "key_format", this->key));
+            this->inputInstance.emplace_back(GetTensorGE(csvMap, "key_shape", "key_dtype", "key_format", this->key));
             this->inputInstance.emplace_back(
                 GetTensorGE(csvMap, "value_shape", "value_dtype", "value_format", this->value));
         }

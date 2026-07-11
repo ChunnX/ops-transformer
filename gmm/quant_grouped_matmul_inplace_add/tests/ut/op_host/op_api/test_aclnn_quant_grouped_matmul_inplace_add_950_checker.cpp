@@ -32,14 +32,13 @@ struct CheckerInputPack {
     gmm::GroupedMatmulParamsBase<aclTensor> params;
 
     CheckerInputPack()
-        : x(nullptr, static_cast<TensorDeleter>(Release)),
-          weight(nullptr, static_cast<TensorDeleter>(Release)),
+        : x(nullptr, static_cast<TensorDeleter>(Release)), weight(nullptr, static_cast<TensorDeleter>(Release)),
           scale(nullptr, static_cast<TensorDeleter>(Release)),
           perTokenScale(nullptr, static_cast<TensorDeleter>(Release)),
-          groupList(nullptr, static_cast<TensorDeleter>(Release)),
-          y(nullptr, static_cast<TensorDeleter>(Release)),
+          groupList(nullptr, static_cast<TensorDeleter>(Release)), y(nullptr, static_cast<TensorDeleter>(Release)),
           offset(nullptr, static_cast<TensorListDeleter>(Release))
-    {}
+    {
+    }
 };
 
 CheckerInputPack BuildBasePack()

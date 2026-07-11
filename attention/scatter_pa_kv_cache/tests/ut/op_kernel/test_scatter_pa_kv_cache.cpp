@@ -27,13 +27,13 @@
 
 using namespace std;
 
-extern "C" __global__ __aicore__ void scatter_pa_kv_cache(
-    GM_ADDR key, GM_ADDR key_cache_in, GM_ADDR slot_mapping, GM_ADDR value, GM_ADDR value_cache_in,
-    GM_ADDR compress_lens, GM_ADDR compress_seq_offset, GM_ADDR seq_lens, GM_ADDR key_cache_out,
-    GM_ADDR value_cache_out, GM_ADDR workspace, GM_ADDR tiling);
+extern "C" __global__ __aicore__ void scatter_pa_kv_cache(GM_ADDR key, GM_ADDR key_cache_in, GM_ADDR slot_mapping,
+                                                          GM_ADDR value, GM_ADDR value_cache_in, GM_ADDR compress_lens,
+                                                          GM_ADDR compress_seq_offset, GM_ADDR seq_lens,
+                                                          GM_ADDR key_cache_out, GM_ADDR value_cache_out,
+                                                          GM_ADDR workspace, GM_ADDR tiling);
 
-class scatter_pa_kv_cache_test : public testing::Test
-{
+class scatter_pa_kv_cache_test : public testing::Test {
 protected:
     static void SetUpTestCase()
     {
@@ -64,29 +64,28 @@ TEST_F(scatter_pa_kv_cache_test, test_case_nz_full_load_001)
     size_t slotMappingSize = numTokens * sizeof(int32_t);
     size_t tilingDataSize = sizeof(ScatterPaKvCacheTilingData);
 
-    uint8_t* key = (uint8_t*)AscendC::GmAlloc(keySize);
-    uint8_t* value = (uint8_t*)AscendC::GmAlloc(valueSize);
-    uint8_t* keyCache = (uint8_t*)AscendC::GmAlloc(keyCacheSize);
-    uint8_t* valueCache = (uint8_t*)AscendC::GmAlloc(valueCacheSize);
-    uint8_t* slotMapping = (uint8_t*)AscendC::GmAlloc(slotMappingSize);
+    uint8_t *key = (uint8_t *)AscendC::GmAlloc(keySize);
+    uint8_t *value = (uint8_t *)AscendC::GmAlloc(valueSize);
+    uint8_t *keyCache = (uint8_t *)AscendC::GmAlloc(keyCacheSize);
+    uint8_t *valueCache = (uint8_t *)AscendC::GmAlloc(valueCacheSize);
+    uint8_t *slotMapping = (uint8_t *)AscendC::GmAlloc(slotMappingSize);
 
-    uint8_t* compress_lens = nullptr;
-    uint8_t* compress_seq_offset = nullptr;
-    uint8_t* seq_lens = nullptr;
+    uint8_t *compress_lens = nullptr;
+    uint8_t *compress_seq_offset = nullptr;
+    uint8_t *seq_lens = nullptr;
 
-    uint8_t* workspace = (uint8_t*)AscendC::GmAlloc(1024 * 1024 * 1024);
-    uint8_t* tiling = (uint8_t*)AscendC::GmAlloc(tilingDataSize);
+    uint8_t *workspace = (uint8_t *)AscendC::GmAlloc(1024 * 1024 * 1024);
+    uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(tilingDataSize);
     uint32_t blockDim = 24;
 
-    system(
-    "cp -r "
-    "../../../../index/scatter_pa_kv_cache/tests/ut/op_kernel/"
-    "scatter_pa_kv_cache_data ./ && chmod -R 755 ./scatter_pa_kv_cache_data/");
+    system("cp -r "
+           "../../../../index/scatter_pa_kv_cache/tests/ut/op_kernel/"
+           "scatter_pa_kv_cache_data ./ && chmod -R 755 ./scatter_pa_kv_cache_data/");
     system("cd ./scatter_pa_kv_cache_data/ && rm -rf ./*bin");
     system("cd ./scatter_pa_kv_cache_data/ && python3 gen_data.py test_scatter_pa_kv_cache_full_load1");
     system("cd ./scatter_pa_kv_cache_data/ && python3 gen_tiling.py test_scatter_pa_kv_cache_full_load1");
 
-    char* path_ = get_current_dir_name();
+    char *path_ = get_current_dir_name();
     string path(path_);
     ReadFile(path + "/scatter_pa_kv_cache_data/input_key.bin", keySize, key, keySize);
     ReadFile(path + "/scatter_pa_kv_cache_data/input_value.bin", valueSize, value, valueSize);
@@ -96,9 +95,8 @@ TEST_F(scatter_pa_kv_cache_test, test_case_nz_full_load_001)
     ReadFile(path + "/scatter_pa_kv_cache_data/tiling.bin", tilingDataSize, tiling, tilingDataSize);
 
     ICPU_SET_TILING_KEY(1141);
-    ICPU_RUN_KF(
-        scatter_pa_kv_cache, blockDim, key, keyCache, slotMapping, value, valueCache, compress_lens,
-        compress_seq_offset, seq_lens, keyCache, valueCache, workspace, tiling);
+    ICPU_RUN_KF(scatter_pa_kv_cache, blockDim, key, keyCache, slotMapping, value, valueCache, compress_lens,
+                compress_seq_offset, seq_lens, keyCache, valueCache, workspace, tiling);
 
     WriteFile(path + "/scatter_pa_kv_cache_data/output_key_cache.bin", keyCache, keyCacheSize);
     WriteFile(path + "/scatter_pa_kv_cache_data/output_value_cache.bin", valueCache, valueCacheSize);
@@ -110,7 +108,7 @@ TEST_F(scatter_pa_kv_cache_test, test_case_nz_full_load_001)
     AscendC::GmFree(slotMapping);
     AscendC::GmFree(workspace);
     AscendC::GmFree(tiling);
-    
+
     free(path_);
 }
 
@@ -132,29 +130,28 @@ TEST_F(scatter_pa_kv_cache_test, test_case_nz_full_load_002)
     size_t slotMappingSize = numTokens * sizeof(int64_t);
     size_t tilingDataSize = sizeof(ScatterPaKvCacheTilingData);
 
-    uint8_t* key = (uint8_t*)AscendC::GmAlloc(keySize);
-    uint8_t* value = (uint8_t*)AscendC::GmAlloc(valueSize);
-    uint8_t* keyCache = (uint8_t*)AscendC::GmAlloc(keyCacheSize);
-    uint8_t* valueCache = (uint8_t*)AscendC::GmAlloc(valueCacheSize);
-    uint8_t* slotMapping = (uint8_t*)AscendC::GmAlloc(slotMappingSize);
+    uint8_t *key = (uint8_t *)AscendC::GmAlloc(keySize);
+    uint8_t *value = (uint8_t *)AscendC::GmAlloc(valueSize);
+    uint8_t *keyCache = (uint8_t *)AscendC::GmAlloc(keyCacheSize);
+    uint8_t *valueCache = (uint8_t *)AscendC::GmAlloc(valueCacheSize);
+    uint8_t *slotMapping = (uint8_t *)AscendC::GmAlloc(slotMappingSize);
 
-    uint8_t* compress_lens = nullptr;
-    uint8_t* compress_seq_offset = nullptr;
-    uint8_t* seq_lens = nullptr;
+    uint8_t *compress_lens = nullptr;
+    uint8_t *compress_seq_offset = nullptr;
+    uint8_t *seq_lens = nullptr;
 
-    uint8_t* workspace = (uint8_t*)AscendC::GmAlloc(1024 * 1024 * 1024);
-    uint8_t* tiling = (uint8_t*)AscendC::GmAlloc(tilingDataSize);
+    uint8_t *workspace = (uint8_t *)AscendC::GmAlloc(1024 * 1024 * 1024);
+    uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(tilingDataSize);
     uint32_t blockDim = 24;
 
-    system(
-    "cp -r "
-    "../../../../index/scatter_pa_kv_cache/tests/ut/op_kernel/"
-    "scatter_pa_kv_cache_data ./ && chmod -R 755 ./scatter_pa_kv_cache_data/");
+    system("cp -r "
+           "../../../../index/scatter_pa_kv_cache/tests/ut/op_kernel/"
+           "scatter_pa_kv_cache_data ./ && chmod -R 755 ./scatter_pa_kv_cache_data/");
     system("cd ./scatter_pa_kv_cache_data/ && rm -rf ./*bin");
     system("cd ./scatter_pa_kv_cache_data/ && python3 gen_data.py test_scatter_pa_kv_cache_full_load2");
     system("cd ./scatter_pa_kv_cache_data/ && python3 gen_tiling.py test_scatter_pa_kv_cache_full_load2");
 
-    char* path_ = get_current_dir_name();
+    char *path_ = get_current_dir_name();
     string path(path_);
     ReadFile(path + "/scatter_pa_kv_cache_data/input_key.bin", keySize, key, keySize);
     ReadFile(path + "/scatter_pa_kv_cache_data/input_value.bin", valueSize, value, valueSize);
@@ -164,9 +161,8 @@ TEST_F(scatter_pa_kv_cache_test, test_case_nz_full_load_002)
     ReadFile(path + "/scatter_pa_kv_cache_data/tiling.bin", tilingDataSize, tiling, tilingDataSize);
 
     ICPU_SET_TILING_KEY(1181);
-    ICPU_RUN_KF(
-        scatter_pa_kv_cache, blockDim, key, keyCache, slotMapping, value, valueCache, compress_lens,
-        compress_seq_offset, seq_lens, keyCache, valueCache, workspace, tiling);
+    ICPU_RUN_KF(scatter_pa_kv_cache, blockDim, key, keyCache, slotMapping, value, valueCache, compress_lens,
+                compress_seq_offset, seq_lens, keyCache, valueCache, workspace, tiling);
 
     WriteFile(path + "/scatter_pa_kv_cache_data/output_key_cache.bin", keyCache, keyCacheSize);
     WriteFile(path + "/scatter_pa_kv_cache_data/output_value_cache.bin", valueCache, valueCacheSize);
@@ -201,29 +197,28 @@ TEST_F(scatter_pa_kv_cache_test, test_case_nz_not_full_load_001)
     size_t slotMappingSize = numTokens * sizeof(int32_t);
     size_t tilingDataSize = sizeof(ScatterPaKvCacheTilingData);
 
-    uint8_t* key = (uint8_t*)AscendC::GmAlloc(keySize);
-    uint8_t* value = (uint8_t*)AscendC::GmAlloc(valueSize);
-    uint8_t* keyCache = (uint8_t*)AscendC::GmAlloc(keyCacheSize);
-    uint8_t* valueCache = (uint8_t*)AscendC::GmAlloc(valueCacheSize);
-    uint8_t* slotMapping = (uint8_t*)AscendC::GmAlloc(slotMappingSize);
+    uint8_t *key = (uint8_t *)AscendC::GmAlloc(keySize);
+    uint8_t *value = (uint8_t *)AscendC::GmAlloc(valueSize);
+    uint8_t *keyCache = (uint8_t *)AscendC::GmAlloc(keyCacheSize);
+    uint8_t *valueCache = (uint8_t *)AscendC::GmAlloc(valueCacheSize);
+    uint8_t *slotMapping = (uint8_t *)AscendC::GmAlloc(slotMappingSize);
 
-    uint8_t* compress_lens = nullptr;
-    uint8_t* compress_seq_offset = nullptr;
-    uint8_t* seq_lens = nullptr;
+    uint8_t *compress_lens = nullptr;
+    uint8_t *compress_seq_offset = nullptr;
+    uint8_t *seq_lens = nullptr;
 
-    uint8_t* workspace = (uint8_t*)AscendC::GmAlloc(1024 * 1024 * 1024);
-    uint8_t* tiling = (uint8_t*)AscendC::GmAlloc(tilingDataSize);
+    uint8_t *workspace = (uint8_t *)AscendC::GmAlloc(1024 * 1024 * 1024);
+    uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(tilingDataSize);
     uint32_t blockDim = 24;
 
-    system(
-    "cp -r "
-    "../../../../index/scatter_pa_kv_cache/tests/ut/op_kernel/"
-    "scatter_pa_kv_cache_data ./ && chmod -R 755 ./scatter_pa_kv_cache_data/");
+    system("cp -r "
+           "../../../../index/scatter_pa_kv_cache/tests/ut/op_kernel/"
+           "scatter_pa_kv_cache_data ./ && chmod -R 755 ./scatter_pa_kv_cache_data/");
     system("cd ./scatter_pa_kv_cache_data/ && rm -rf ./*bin");
     system("cd ./scatter_pa_kv_cache_data/ && python3 gen_data.py test_case_nz_not_full_load_001");
     system("cd ./scatter_pa_kv_cache_data/ && python3 gen_tiling.py test_case_nz_not_full_load_001");
 
-    char* path_ = get_current_dir_name();
+    char *path_ = get_current_dir_name();
     string path(path_);
     ReadFile(path + "/scatter_pa_kv_cache_data/input_key.bin", keySize, key, keySize);
     ReadFile(path + "/scatter_pa_kv_cache_data/input_value.bin", valueSize, value, valueSize);
@@ -233,9 +228,8 @@ TEST_F(scatter_pa_kv_cache_test, test_case_nz_not_full_load_001)
     ReadFile(path + "/scatter_pa_kv_cache_data/tiling.bin", tilingDataSize, tiling, tilingDataSize);
 
     ICPU_SET_TILING_KEY(1140);
-    ICPU_RUN_KF(
-        scatter_pa_kv_cache, blockDim, key, keyCache, slotMapping, value, valueCache, compress_lens,
-        compress_seq_offset, seq_lens, keyCache, valueCache, workspace, tiling);
+    ICPU_RUN_KF(scatter_pa_kv_cache, blockDim, key, keyCache, slotMapping, value, valueCache, compress_lens,
+                compress_seq_offset, seq_lens, keyCache, valueCache, workspace, tiling);
 
     WriteFile(path + "/scatter_pa_kv_cache_data/output_key_cache.bin", keyCache, keyCacheSize);
     WriteFile(path + "/scatter_pa_kv_cache_data/output_value_cache.bin", valueCache, valueCacheSize);
@@ -247,7 +241,7 @@ TEST_F(scatter_pa_kv_cache_test, test_case_nz_not_full_load_001)
     AscendC::GmFree(slotMapping);
     AscendC::GmFree(workspace);
     AscendC::GmFree(tiling);
-    
+
     free(path_);
 }
 
@@ -269,29 +263,28 @@ TEST_F(scatter_pa_kv_cache_test, test_case_nz_not_full_load_002)
     size_t slotMappingSize = numTokens * sizeof(int64_t);
     size_t tilingDataSize = sizeof(ScatterPaKvCacheTilingData);
 
-    uint8_t* key = (uint8_t*)AscendC::GmAlloc(keySize);
-    uint8_t* value = (uint8_t*)AscendC::GmAlloc(valueSize);
-    uint8_t* keyCache = (uint8_t*)AscendC::GmAlloc(keyCacheSize);
-    uint8_t* valueCache = (uint8_t*)AscendC::GmAlloc(valueCacheSize);
-    uint8_t* slotMapping = (uint8_t*)AscendC::GmAlloc(slotMappingSize);
+    uint8_t *key = (uint8_t *)AscendC::GmAlloc(keySize);
+    uint8_t *value = (uint8_t *)AscendC::GmAlloc(valueSize);
+    uint8_t *keyCache = (uint8_t *)AscendC::GmAlloc(keyCacheSize);
+    uint8_t *valueCache = (uint8_t *)AscendC::GmAlloc(valueCacheSize);
+    uint8_t *slotMapping = (uint8_t *)AscendC::GmAlloc(slotMappingSize);
 
-    uint8_t* compress_lens = nullptr;
-    uint8_t* compress_seq_offset = nullptr;
-    uint8_t* seq_lens = nullptr;
+    uint8_t *compress_lens = nullptr;
+    uint8_t *compress_seq_offset = nullptr;
+    uint8_t *seq_lens = nullptr;
 
-    uint8_t* workspace = (uint8_t*)AscendC::GmAlloc(1024 * 1024 * 1024);
-    uint8_t* tiling = (uint8_t*)AscendC::GmAlloc(tilingDataSize);
+    uint8_t *workspace = (uint8_t *)AscendC::GmAlloc(1024 * 1024 * 1024);
+    uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(tilingDataSize);
     uint32_t blockDim = 24;
 
-    system(
-    "cp -r "
-    "../../../../index/scatter_pa_kv_cache/tests/ut/op_kernel/"
-    "scatter_pa_kv_cache_data ./ && chmod -R 755 ./scatter_pa_kv_cache_data/");
+    system("cp -r "
+           "../../../../index/scatter_pa_kv_cache/tests/ut/op_kernel/"
+           "scatter_pa_kv_cache_data ./ && chmod -R 755 ./scatter_pa_kv_cache_data/");
     system("cd ./scatter_pa_kv_cache_data/ && rm -rf ./*bin");
     system("cd ./scatter_pa_kv_cache_data/ && python3 gen_data.py test_case_nz_not_full_load_002");
     system("cd ./scatter_pa_kv_cache_data/ && python3 gen_tiling.py test_case_nz_not_full_load_002");
 
-    char* path_ = get_current_dir_name();
+    char *path_ = get_current_dir_name();
     string path(path_);
     ReadFile(path + "/scatter_pa_kv_cache_data/input_key.bin", keySize, key, keySize);
     ReadFile(path + "/scatter_pa_kv_cache_data/input_value.bin", valueSize, value, valueSize);
@@ -301,9 +294,8 @@ TEST_F(scatter_pa_kv_cache_test, test_case_nz_not_full_load_002)
     ReadFile(path + "/scatter_pa_kv_cache_data/tiling.bin", tilingDataSize, tiling, tilingDataSize);
 
     ICPU_SET_TILING_KEY(1180);
-    ICPU_RUN_KF(
-        scatter_pa_kv_cache, blockDim, key, keyCache, slotMapping, value, valueCache, compress_lens,
-        compress_seq_offset, seq_lens, keyCache, valueCache, workspace, tiling);
+    ICPU_RUN_KF(scatter_pa_kv_cache, blockDim, key, keyCache, slotMapping, value, valueCache, compress_lens,
+                compress_seq_offset, seq_lens, keyCache, valueCache, workspace, tiling);
 
     WriteFile(path + "/scatter_pa_kv_cache_data/output_key_cache.bin", keyCache, keyCacheSize);
     WriteFile(path + "/scatter_pa_kv_cache_data/output_value_cache.bin", valueCache, valueCacheSize);

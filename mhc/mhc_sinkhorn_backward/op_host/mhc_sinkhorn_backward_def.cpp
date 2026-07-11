@@ -14,11 +14,10 @@
  */
 #include "register/op_def_registry.h"
 
-namespace ops
-{
-class MhcSinkhornBackward: public OpDef {
+namespace ops {
+class MhcSinkhornBackward : public OpDef {
 public:
-    explicit MhcSinkhornBackward(const char* name) : OpDef(name)
+    explicit MhcSinkhornBackward(const char *name) : OpDef(name)
     {
         this->Input("grad_y")
             .ParamType(REQUIRED)
@@ -29,21 +28,21 @@ public:
         this->Input("norm")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT})
-           .Format({ge::FORMAT_ND})
-           .UnknownShapeFormat({ge::FORMAT_ND})
-           .AutoContiguous();
+            .Format({ge::FORMAT_ND})
+            .UnknownShapeFormat({ge::FORMAT_ND})
+            .AutoContiguous();
         this->Input("sum")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT})
-           .Format({ge::FORMAT_ND})
-           .UnknownShapeFormat({ge::FORMAT_ND})
-           .AutoContiguous();
+            .Format({ge::FORMAT_ND})
+            .UnknownShapeFormat({ge::FORMAT_ND})
+            .AutoContiguous();
         this->Output("grad_input")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT})
-           .Format({ge::FORMAT_ND})
-           .UnknownShapeFormat({ge::FORMAT_ND})
-           .AutoContiguous();
+            .Format({ge::FORMAT_ND})
+            .UnknownShapeFormat({ge::FORMAT_ND})
+            .AutoContiguous();
         OpAICoreConfig aicore_config;
         aicore_config.DynamicCompileStaticFlag(true)
             .DynamicFormatFlag(false)
@@ -57,4 +56,4 @@ public:
 };
 
 OP_ADD(MhcSinkhornBackward);
-}  // namespace ops
+} // namespace ops

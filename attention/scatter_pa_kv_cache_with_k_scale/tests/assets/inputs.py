@@ -44,7 +44,7 @@ def scatter_kv_cache_with_k_scale_input(
     if gen_num > max_token:
         raise ValueError("cann not gen input max_token over numBlocks * blockSize")
     slot_mapping = np.random.choice(max_token, gen_num, replace=False).astype(slot_mapping.dtype)
-    
+
     return[key, value, key_cache, value_cache, slot_mapping, key_scale, key_scale_cache]
 
 def aclnnScatterPaKvCacheWithKScaleInput(
@@ -70,5 +70,5 @@ def aclnnScatterPaKvCacheWithKScaleInput(
         raise ValueError("cann not gen input max_token over numBlocks * blockSize")
     np_type = torch.tensor([], dtype=slot_mapping.dtype).numpy().dtype
     slot_mapping = np.random.choice(max_token, gen_num, replace=False).astype(np_type)
-    
+
     return[key, value, key_cache, value_cache, slot_mapping, key_scale, key_scale_cache]

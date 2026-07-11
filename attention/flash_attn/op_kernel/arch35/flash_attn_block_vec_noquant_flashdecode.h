@@ -130,15 +130,15 @@ protected:
 
 private:
     // ================================FD Local Buffer区====================================
-    LocalTensor<T> fdSumBuf1;    // 1.5k: 16*24*4
-    LocalTensor<T> fdSumBuf2;    // 1.5k: 16*24*4
-    LocalTensor<T> fdMaxBuf1;    // 1.5k: 16*24*4
-    LocalTensor<T> fdMaxBuf2;    // 1.5k: 16*24*4
-    LocalTensor<T> fdLseExpBuf;  // 1.5k: 16*24*4
-    LocalTensor<T> fdMm2ResBuf1; // 32k: 16*512*4
-    LocalTensor<T> fdMm2ResBuf2; // 32k: 16*512*4
-    LocalTensor<T> fdReduceBuf;  // 32k: 16*512*4
-    LocalTensor<OUTPUT_T> fdOutputBuf;  // 32k: 16*512*4
+    LocalTensor<T> fdSumBuf1;          // 1.5k: 16*24*4
+    LocalTensor<T> fdSumBuf2;          // 1.5k: 16*24*4
+    LocalTensor<T> fdMaxBuf1;          // 1.5k: 16*24*4
+    LocalTensor<T> fdMaxBuf2;          // 1.5k: 16*24*4
+    LocalTensor<T> fdLseExpBuf;        // 1.5k: 16*24*4
+    LocalTensor<T> fdMm2ResBuf1;       // 32k: 16*512*4
+    LocalTensor<T> fdMm2ResBuf2;       // 32k: 16*512*4
+    LocalTensor<T> fdReduceBuf;        // 32k: 16*512*4
+    LocalTensor<OUTPUT_T> fdOutputBuf; // 32k: 16*512*4
     LocalTensor<T> fdSinkCopyInBuf;
     LocalTensor<T> fdSinkValueBuf;
     LocalTensor<T> fdSinkExpBuf;
@@ -401,7 +401,6 @@ protected:
     }
     __aicore__ inline void CopySinkIn(uint32_t cntM)
     {
-
     }
     __aicore__ inline void SinkMax(uint32_t startRow, uint32_t dealRowCount)
     {

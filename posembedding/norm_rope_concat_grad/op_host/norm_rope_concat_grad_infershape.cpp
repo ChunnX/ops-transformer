@@ -20,8 +20,8 @@
 using namespace ge;
 using namespace NormRopeConcatGrad;
 namespace ops {
-static ge::graphStatus CheckShape(gert::InferShapeContext *context, const gert::Shape *shape, int64_t batch, int64_t head,
-                           int64_t dim, int64_t &seq)
+static ge::graphStatus CheckShape(gert::InferShapeContext *context, const gert::Shape *shape, int64_t batch,
+                                  int64_t head, int64_t dim, int64_t &seq)
 {
     if (shape->GetDimNum() != INPUT_DIM_NUM) {
         OP_LOGE(context, "Input must be 4D tensors(B, S, H, D).");
@@ -36,7 +36,7 @@ static ge::graphStatus CheckShape(gert::InferShapeContext *context, const gert::
 }
 
 static ge::graphStatus CheckTransposeShape(gert::InferShapeContext *context, const gert::Shape *shape, int64_t batch,
-                                    int64_t head, int64_t dim, int64_t &seq)
+                                           int64_t head, int64_t dim, int64_t &seq)
 {
     if (shape->GetDimNum() != INPUT_DIM_NUM) {
         OP_LOGE(context, "Input must be 4D tensors(B, S, H, D).");
@@ -233,5 +233,7 @@ static ge::graphStatus InferDataType4NormRopeConcatGrad(gert::InferDataTypeConte
     return GRAPH_SUCCESS;
 }
 
-IMPL_OP_INFERSHAPE(NormRopeConcatGrad).InferShape(InferShape4NormRopeConcatGrad).InferDataType(InferDataType4NormRopeConcatGrad);
+IMPL_OP_INFERSHAPE(NormRopeConcatGrad)
+    .InferShape(InferShape4NormRopeConcatGrad)
+    .InferDataType(InferDataType4NormRopeConcatGrad);
 } // namespace ops

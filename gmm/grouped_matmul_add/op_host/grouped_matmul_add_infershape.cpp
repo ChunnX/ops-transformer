@@ -26,7 +26,7 @@ static constexpr size_t INDEX_IN_GROUP_LIST = 2;
 static constexpr size_t INDEX_IN_Y = 3;
 static constexpr size_t INDEX_OUT_Y = 0;
 
-static graphStatus InferShapeGroupedMatmulAdd(gert::InferShapeContext* context)
+static graphStatus InferShapeGroupedMatmulAdd(gert::InferShapeContext *context)
 {
     auto yShape = context->GetInputShape(INDEX_IN_Y);
     OP_CHECK_NULL_WITH_CONTEXT(context, yShape);
@@ -37,7 +37,7 @@ static graphStatus InferShapeGroupedMatmulAdd(gert::InferShapeContext* context)
     return GRAPH_SUCCESS;
 }
 
-static graphStatus InferDataTypeGroupedMatmulAdd(gert::InferDataTypeContext* context)
+static graphStatus InferDataTypeGroupedMatmulAdd(gert::InferDataTypeContext *context)
 {
     auto xDtype = context->GetInputDataType(INDEX_IN_X);
     auto wDtype = context->GetInputDataType(INDEX_IN_WEIGHT);

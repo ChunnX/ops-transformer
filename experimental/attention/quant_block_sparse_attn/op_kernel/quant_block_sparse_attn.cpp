@@ -27,29 +27,25 @@ using namespace AscendC;
 //   - GET_TILING_DATA -> InitBaseAPI -> Process()
 // __VA_ARGS__ 为 block 模板参数（严格对齐 CUBE_BLOCK_TRAITS 字段顺序，共 17 个）。
 
-#define BSA_OP_IMPL(...) \
-    do { \
-        using CubeBlockType = \
-            typename std::conditional<g_coreType == AscendC::AIC, BaseApi::BSABlockCube<__VA_ARGS__>, \
-                                      BaseApi::BSABlockCubeDummy<__VA_ARGS__>>::type; \
-        using VecBlockType = \
-            typename std::conditional<g_coreType == AscendC::AIC, BaseApi::BSABlockVecDummy<__VA_ARGS__>, \
-                                      BaseApi::BSABlockVec<__VA_ARGS__>>::type; \
-        BaseApi::QuantBlockSparseAttnKernel<CubeBlockType, VecBlockType> op; \
-        GET_TILING_DATA_WITH_STRUCT(QuantBlockSparseAttnTilingData, tilingDataIn, tiling); \
-        const QuantBlockSparseAttnTilingData *__restrict tilingData = &tilingDataIn; \
-        op.InitBaseAPI(query, key, value, sparseIndices, sparseSeqLen, attenMask, metadata, \
-                       cuSeqlensQ, cuSeqlensKv, seqUsedQ, seqUsedKv, blockTable, \
-                       nullptr /* queryPaddingSize */, nullptr /* kvPaddingSize */, \
-                       qScale /* deqScaleQ */, kScale /* deqScaleK */, vScale /* deqScaleV */, \
-                       pScale /* pScale */, nullptr /* keySharedPrefix */, \
-                       nullptr /* valueSharedPrefix */, nullptr /* actualSharedPrefixLen */, \
-                       nullptr /* queryRope */, nullptr /* keyRope */, \
-                       nullptr /* learnableSink */, nullptr /* softmaxMax */, \
-                       nullptr /* softmaxSum */, nullptr /* softmaxOut */, \
-                       softmaxLse, attentionOut, user /* workspace */, \
-                       tilingData, &tPipe); \
-        op.Process(); \
+#define BSA_OP_IMPL(...)                                                                                               \
+    do {                                                                                                               \
+        using CubeBlockType =                                                                                          \
+            typename std::conditional<g_coreType == AscendC::AIC, BaseApi::BSABlockCube<__VA_ARGS__>,                  \
+                                      BaseApi::BSABlockCubeDummy<__VA_ARGS__>>::type;                                  \
+        using VecBlockType =                                                                                           \
+            typename std::conditional<g_coreType == AscendC::AIC, BaseApi::BSABlockVecDummy<__VA_ARGS__>,              \
+                                      BaseApi::BSABlockVec<__VA_ARGS__>>::type;                                        \
+        BaseApi::QuantBlockSparseAttnKernel<CubeBlockType, VecBlockType> op;                                           \
+        GET_TILING_DATA_WITH_STRUCT(QuantBlockSparseAttnTilingData, tilingDataIn, tiling);                             \
+        const QuantBlockSparseAttnTilingData *__restrict tilingData = &tilingDataIn;                                   \
+        op.InitBaseAPI(query, key, value, sparseIndices, sparseSeqLen, attenMask, metadata, cuSeqlensQ, cuSeqlensKv,   \
+                       seqUsedQ, seqUsedKv, blockTable, nullptr /* queryPaddingSize */, nullptr /* kvPaddingSize */,   \
+                       qScale /* deqScaleQ */, kScale /* deqScaleK */, vScale /* deqScaleV */, pScale /* pScale */,    \
+                       nullptr /* keySharedPrefix */, nullptr /* valueSharedPrefix */,                                 \
+                       nullptr /* actualSharedPrefixLen */, nullptr /* queryRope */, nullptr /* keyRope */,            \
+                       nullptr /* learnableSink */, nullptr /* softmaxMax */, nullptr /* softmaxSum */,                \
+                       nullptr /* softmaxOut */, softmaxLse, attentionOut, user /* workspace */, tilingData, &tPipe);  \
+        op.Process();                                                                                                  \
     } while (0)
 
 

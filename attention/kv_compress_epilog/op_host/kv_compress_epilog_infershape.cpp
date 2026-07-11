@@ -18,12 +18,12 @@
 using namespace ge;
 namespace ops {
 
-graphStatus InferShape4KvCompressEpilog(gert::InferShapeContext* context)
+graphStatus InferShape4KvCompressEpilog(gert::InferShapeContext *context)
 {
     // 输出 cache 与输入 cache（原地更新）shape 一致。图模式下 GE 依赖此处推导 NetOutput shape，
     // 缺省（空实现）会导致 GE NetOutput shape 为 [] 与 FX 图不一致。单算子直调路径不经过此函数。
-    const gert::Shape* cacheShape = context->GetInputShape(0);
-    gert::Shape* outCacheShape = context->GetOutputShape(0);
+    const gert::Shape *cacheShape = context->GetInputShape(0);
+    gert::Shape *outCacheShape = context->GetOutputShape(0);
     if (cacheShape == nullptr || outCacheShape == nullptr) {
         return ge::GRAPH_FAILED;
     }
@@ -31,14 +31,12 @@ graphStatus InferShape4KvCompressEpilog(gert::InferShapeContext* context)
     return ge::GRAPH_SUCCESS;
 }
 
-graphStatus InferDtype4KvCompressEpilog(gert::InferDataTypeContext* context)
+graphStatus InferDtype4KvCompressEpilog(gert::InferDataTypeContext *context)
 {
     // 输出 cache 与输入 cache dtype 一致（UINT8）。
     context->SetOutputDataType(0, context->GetInputDataType(0));
     return GRAPH_SUCCESS;
 }
 
-IMPL_OP_INFERSHAPE(KvCompressEpilog)
-    .InferShape(InferShape4KvCompressEpilog)
-    .InferDataType(InferDtype4KvCompressEpilog);
-}  // namespace ops
+IMPL_OP_INFERSHAPE(KvCompressEpilog).InferShape(InferShape4KvCompressEpilog).InferDataType(InferDtype4KvCompressEpilog);
+} // namespace ops

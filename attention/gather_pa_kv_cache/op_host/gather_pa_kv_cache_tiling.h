@@ -68,18 +68,18 @@ TILING_DATA_FIELD_DEF(uint64_t, maxUbHiddenSize);
 // bit6: vCache blockSize轴非连续, bit7: vCache N轴非连续
 // bit8: keyOut head(dim1)轴非连续, bit9: valueOut head(dim1)轴非连续
 TILING_DATA_FIELD_DEF(uint32_t, nonContiguousFlag);
-TILING_DATA_FIELD_DEF(int64_t, kCacheStride0);  // blockNum轴stride (元素粒度)
-TILING_DATA_FIELD_DEF(int64_t, kCacheStride1);  // blockSize轴stride
-TILING_DATA_FIELD_DEF(int64_t, kCacheStride2);  // N轴stride
-TILING_DATA_FIELD_DEF(int64_t, vCacheStride0);  // blockNum轴stride
-TILING_DATA_FIELD_DEF(int64_t, vCacheStride1);  // blockSize轴stride
-TILING_DATA_FIELD_DEF(int64_t, vCacheStride2);  // N轴stride
-TILING_DATA_FIELD_DEF(int64_t, keyOutStride0);  // B轴stride
-TILING_DATA_FIELD_DEF(int64_t, keyOutStride1);  // S轴stride
+TILING_DATA_FIELD_DEF(int64_t, kCacheStride0);   // blockNum轴stride (元素粒度)
+TILING_DATA_FIELD_DEF(int64_t, kCacheStride1);   // blockSize轴stride
+TILING_DATA_FIELD_DEF(int64_t, kCacheStride2);   // N轴stride
+TILING_DATA_FIELD_DEF(int64_t, vCacheStride0);   // blockNum轴stride
+TILING_DATA_FIELD_DEF(int64_t, vCacheStride1);   // blockSize轴stride
+TILING_DATA_FIELD_DEF(int64_t, vCacheStride2);   // N轴stride
+TILING_DATA_FIELD_DEF(int64_t, keyOutStride0);   // B轴stride
+TILING_DATA_FIELD_DEF(int64_t, keyOutStride1);   // S轴stride
 TILING_DATA_FIELD_DEF(int64_t, valueOutStride0); // B轴stride
 TILING_DATA_FIELD_DEF(int64_t, valueOutStride1); // S轴stride
-TILING_DATA_FIELD_DEF(uint64_t, numHeadsK);     // key的head数量
-TILING_DATA_FIELD_DEF(uint64_t, numHeadsV);     // value的head数量
+TILING_DATA_FIELD_DEF(uint64_t, numHeadsK);      // key的head数量
+TILING_DATA_FIELD_DEF(uint64_t, numHeadsV);      // value的head数量
 END_TILING_DATA_DEF;
 
 constexpr uint64_t TILING_KEY_1111 = 1111;
@@ -199,10 +199,10 @@ private:
     bool isKeyOutContiguous_ = true;
     bool isValueOutContiguous_ = true;
     bool isKeyOutHeadNonContig_ = false;   // keyOut head(dim1)轴非连续 (ND, ref dim1散写)
-    bool isValueOutHeadNonContig_ = false;  // valueOut head(dim1)轴非连续
+    bool isValueOutHeadNonContig_ = false; // valueOut head(dim1)轴非连续
 
-    bool isKCacheSlotNonContig_ = false;  // blockSize轴非连续
-    bool isKCacheHeadNonContig_ = false;  // N轴非连续
+    bool isKCacheSlotNonContig_ = false; // blockSize轴非连续
+    bool isKCacheHeadNonContig_ = false; // N轴非连续
     bool isVCacheSlotNonContig_ = false;
     bool isVCacheHeadNonContig_ = false;
 

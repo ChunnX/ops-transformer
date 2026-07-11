@@ -52,38 +52,38 @@
 
 ```c++
 aclnnStatus aclnnFusedFloydAttentionGradGetWorkspaceSize(
-  const aclTensor   *query, 
-  const aclTensor   *key1, 
-  const aclTensor   *value1, 
-  const aclTensor   *key2, 
-  const aclTensor   *value2, 
-  const aclTensor   *dy, 
-  const aclTensor   *attenMaskOptional, 
-  const aclTensor   *softmaxMax, 
-  const aclTensor   *softmaxSum, 
-  const aclTensor   *attentionIn, 
-  double             scaleValue, 
-  const aclTensor   *dqOut, 
-  const aclTensor   *dk1Out, 
-  const aclTensor   *dv1Out, 
-  const aclTensor   *dk2Out, 
-  const aclTensor   *dv2Out, 
-  uint64_t          *workspaceSize, 
+  const aclTensor   *query,
+  const aclTensor   *key1,
+  const aclTensor   *value1,
+  const aclTensor   *key2,
+  const aclTensor   *value2,
+  const aclTensor   *dy,
+  const aclTensor   *attenMaskOptional,
+  const aclTensor   *softmaxMax,
+  const aclTensor   *softmaxSum,
+  const aclTensor   *attentionIn,
+  double             scaleValue,
+  const aclTensor   *dqOut,
+  const aclTensor   *dk1Out,
+  const aclTensor   *dv1Out,
+  const aclTensor   *dk2Out,
+  const aclTensor   *dv2Out,
+  uint64_t          *workspaceSize,
   aclOpExecutor    **executor)
 ```
 
 ```c++
 aclnnStatus aclnnFusedFloydAttentionGrad(
-  void          *workspace, 
-  uint64_t       workspaceSize, 
-  aclOpExecutor *executor, 
+  void          *workspace,
+  uint64_t       workspaceSize,
+  aclOpExecutor *executor,
   aclrtStream    stream)
 ```
 
 ## aclnnFusedFloydAttentionGradGetWorkspaceSize
 
 - **参数说明**
-  
+
   <table style="undefined;table-layout: fixed; width: 1565px"><colgroup>
       <col style="width: 146px">
       <col style="width: 135px">
@@ -328,7 +328,7 @@ aclnnStatus aclnnFusedFloydAttentionGrad(
 ## aclnnFusedFloydAttentionGrad
 
 - **参数说明：**
-  
+
   <table style="undefined;table-layout: fixed; width: 1151px"><colgroup>
   <col style="width: 184px">
   <col style="width: 134px">
@@ -365,7 +365,7 @@ aclnnStatus aclnnFusedFloydAttentionGrad(
   </table>
 
 - **返回值：**
-  
+
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
 ## 约束说明
@@ -585,7 +585,7 @@ int main() {
   aclOpExecutor* executor;
 
   // 调用aclnnFusedFloydAttentionGrad第一段接口
-  ret = aclnnFusedFloydAttentionGradGetWorkspaceSize(q, k1, v1, k2, v2, dx, attenmask, softmaxMax, softmaxSum, 
+  ret = aclnnFusedFloydAttentionGradGetWorkspaceSize(q, k1, v1, k2, v2, dx, attenmask, softmaxMax, softmaxSum,
         attentionIn, scaleValue, dq, dk1, dv1, dk2, dv2, &workspaceSize, &executor);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnFusedFloydAttentionGradGetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
 

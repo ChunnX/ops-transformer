@@ -74,7 +74,7 @@ static ge::graphStatus InferShapeLightningIndexerGrad(gert::InferShapeContext *c
             return ge::GRAPH_FAILED;
         }
     }
-    
+
     *dqShape = *queryShape;
     *dkShape = *keyShape;
     *dweightShape = *weightShape;
@@ -87,7 +87,7 @@ static ge::graphStatus InferDataTypeLightningIndexerGrad(gert::InferDataTypeCont
         return ge::GRAPH_FAILED;
     }
     ge::DataType defaultType = context->GetInputDataType(0);
-    
+
     // dq, outidx:0
     context->SetOutputDataType(0, defaultType);
     // dk, outidx:1

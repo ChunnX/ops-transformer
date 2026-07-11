@@ -19,7 +19,8 @@
 namespace py = pybind11;
 using namespace CatlassKernelWrapper;
 
-PYBIND11_MODULE(_C, m) {
+PYBIND11_MODULE(_C, m)
+{
     m.doc() = "Python bindings for CatlassKernel";
     m.def("mla", &RunMLA, "");
     m.def("catlass_mla_prepare", &KernelGetKVSplit, "");

@@ -29,17 +29,16 @@ const static int64_t MAX_CACHE_LINE_SIZE = 512;
 const static int64_t DOUBLE_BUFFER = 2;
 const static int64_t FP16_BF16_SIZE = 2;
 
-class MoeInitRoutingV2GradRegbaseSplitH : public MoeInitRoutingV2GradTilingBaseClass
-{
+class MoeInitRoutingV2GradRegbaseSplitH : public MoeInitRoutingV2GradTilingBaseClass {
 public:
-    explicit MoeInitRoutingV2GradRegbaseSplitH(gert::TilingContext* context)
+    explicit MoeInitRoutingV2GradRegbaseSplitH(gert::TilingContext *context)
         : MoeInitRoutingV2GradTilingBaseClass(context)
     {
         Reset();
     }
     ~MoeInitRoutingV2GradRegbaseSplitH() override = default;
 
-    void Reset(gert::TilingContext* context) override
+    void Reset(gert::TilingContext *context) override
     {
         MoeInitRoutingV2GradTilingBaseClass::Reset(context);
         Reset();
@@ -141,7 +140,7 @@ uint64_t MoeInitRoutingV2GradRegbaseSplitH::GetTilingKey() const
 ge::graphStatus MoeInitRoutingV2GradRegbaseSplitH::PostTiling()
 {
     context_->SetBlockDim(numBlocks);
-    size_t* currentWorkspace = context_->GetWorkspaceSizes(1);
+    size_t *currentWorkspace = context_->GetWorkspaceSizes(1);
     OP_CHECK_NULL_WITH_CONTEXT(context_, currentWorkspace);
     currentWorkspace[0] = workspaceSize_;
     auto tilingData = context_->GetRawTilingData();

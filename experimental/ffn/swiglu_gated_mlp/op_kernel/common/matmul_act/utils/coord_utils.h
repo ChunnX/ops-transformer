@@ -61,9 +61,10 @@ GetOffset(BlockCoord_ blockCoord, ProblemShape_ problemShape, ATensorType_ aTens
 }
 // GetOffsetWithoutLayout
 template <class BlockCoord, class ProblemShape, class ATensorType, class BTensorType, class CTensorType>
-__aicore__ inline AscendC::Coord<int64_t, int64_t, int64_t, int64_t> GetOffsetWithoutLayout(BlockCoord blockCoord,
-    ProblemShape problemShape, ATensorType aTensor, BTensorType bTensor, CTensorType cTensor, bool transA, bool transB,
-    bool isBias, AscendC::Shape<int64_t, int64_t> sliceParams, uint64_t curML1 = 1UL)
+__aicore__ inline AscendC::Coord<int64_t, int64_t, int64_t, int64_t>
+GetOffsetWithoutLayout(BlockCoord blockCoord, ProblemShape problemShape, ATensorType aTensor, BTensorType bTensor,
+                       CTensorType cTensor, bool transA, bool transB, bool isBias,
+                       AscendC::Shape<int64_t, int64_t> sliceParams, uint64_t curML1 = 1UL)
 {
     int64_t m = Get<MNK_M>(problemShape);
     int64_t n = Get<MNK_N>(problemShape);
@@ -74,7 +75,7 @@ __aicore__ inline AscendC::Coord<int64_t, int64_t, int64_t, int64_t> GetOffsetWi
     int64_t realMOffset = Get<0>(blockCoord);
     if (srcNdStride != 1 && sliceM != 0) {
         int64_t oriM = srcNdStride / k;
-        realM = (curML1 / sliceM) * oriM;  // ndNum * oriM
+        realM = (curML1 / sliceM) * oriM; // ndNum * oriM
         realMOffset = Get<2>(blockCoord);
     }
     int64_t offsetA = Get<MNK_B>(blockCoord) * realM * k;
@@ -101,9 +102,8 @@ __aicore__ inline AscendC::Coord<int64_t, int64_t, int64_t, int64_t> GetOffsetWi
 template <class BlockCoord_, class ProblemShape_, class ATensorType_, class BTensorType_, class CTensorType_>
 __aicore__ inline AscendC::Coord<int64_t, int64_t, int64_t, int64_t>
 GetOffsetStreamK(BlockCoord_ blockCoord, ProblemShape_ problemShape,
-                 AscendC::Shape<int64_t, int64_t, int64_t, int64_t> tileL1, int64_t kSingleCore,
-                 ATensorType_ aTensor, BTensorType_ bTensor, CTensorType_ cTensor,
-                 bool transA, bool transB, bool isBias)
+                 AscendC::Shape<int64_t, int64_t, int64_t, int64_t> tileL1, int64_t kSingleCore, ATensorType_ aTensor,
+                 BTensorType_ bTensor, CTensorType_ cTensor, bool transA, bool transB, bool isBias)
 {
     int64_t m = Get<MNK_M>(problemShape);
     int64_t n = Get<MNK_N>(problemShape);
@@ -116,22 +116,18 @@ GetOffsetStreamK(BlockCoord_ blockCoord, ProblemShape_ problemShape,
     int64_t offsetC = Get<MNK_B>(blockCoord) * m * n + Get<MNK_M>(blockCoord) * mL1 * n + Get<MNK_N>(blockCoord) * nL1;
     int64_t offsetBias = 0;
     if (transA) {
-        offsetA = Get<MNK_B>(blockCoord) * m * k +
-                  Get<MNK_M>(blockCoord) * mL1 +
-                  Get<MNK_K>(blockCoord) * kSingleCore * m;
+        offsetA =
+            Get<MNK_B>(blockCoord) * m * k + Get<MNK_M>(blockCoord) * mL1 + Get<MNK_K>(blockCoord) * kSingleCore * m;
     } else {
-        offsetA = Get<MNK_B>(blockCoord) * m * k +
-                  Get<MNK_M>(blockCoord) * mL1 * k +
-                  Get<MNK_K>(blockCoord) * kSingleCore;
+        offsetA =
+            Get<MNK_B>(blockCoord) * m * k + Get<MNK_M>(blockCoord) * mL1 * k + Get<MNK_K>(blockCoord) * kSingleCore;
     }
     if (transB) {
-        offsetB = Get<MNK_B>(blockCoord) * n * k +
-                  Get<MNK_N>(blockCoord) * nL1 * k +
-                  Get<MNK_K>(blockCoord) * kSingleCore;
+        offsetB =
+            Get<MNK_B>(blockCoord) * n * k + Get<MNK_N>(blockCoord) * nL1 * k + Get<MNK_K>(blockCoord) * kSingleCore;
     } else {
-        offsetB = Get<MNK_B>(blockCoord) * n * k +
-                  Get<MNK_N>(blockCoord) * nL1 +
-                  Get<MNK_K>(blockCoord) * kSingleCore * n;
+        offsetB =
+            Get<MNK_B>(blockCoord) * n * k + Get<MNK_N>(blockCoord) * nL1 + Get<MNK_K>(blockCoord) * kSingleCore * n;
     }
     if (isBias) {
         offsetBias = Get<MNK_B>(blockCoord) * n + Get<MNK_N>(blockCoord) * nL1;
@@ -170,7 +166,8 @@ class CoordUtils {
 public:
     __aicore__ inline CoordUtils(int64_t m, int64_t n, int64_t k, int64_t l1M, int64_t l1N, int64_t l1K)
         : m(m), n(n), k(k), l1M(l1M), l1N(l1N), l1K(l1K)
-    {}
+    {
+    }
 
     static constexpr bool isTransA = isTransA_;
     static constexpr bool isTransB = isTransB_;
@@ -193,11 +190,11 @@ public:
                 return 0;
             }
             if (isTransB) {
-                return batchTileIdx * CeilAlign(n, OUTER_SIZE) * CeilAlign(k, c0) + (nTileIdx * l1N + nSplitOffset) * c0
-                       + kTileIdx * l1K * CeilAlign(n, OUTER_SIZE);
+                return batchTileIdx * CeilAlign(n, OUTER_SIZE) * CeilAlign(k, c0) +
+                       (nTileIdx * l1N + nSplitOffset) * c0 + kTileIdx * l1K * CeilAlign(n, OUTER_SIZE);
             }
-            return batchTileIdx * CeilAlign(n, c0) * CeilAlign(k, OUTER_SIZE) + kTileIdx * l1K * c0
-                   + (nTileIdx * l1N + nSplitOffset) * CeilAlign(k, OUTER_SIZE);
+            return batchTileIdx * CeilAlign(n, c0) * CeilAlign(k, OUTER_SIZE) + kTileIdx * l1K * c0 +
+                   (nTileIdx * l1N + nSplitOffset) * CeilAlign(k, OUTER_SIZE);
         }
         if (isTransB) {
             return batchTileIdx * n * k + (nTileIdx * l1N + nSplitOffset) * k + kTileIdx * l1K;

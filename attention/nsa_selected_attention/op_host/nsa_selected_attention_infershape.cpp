@@ -56,8 +56,7 @@ ge::graphStatus InferShapeNsaSelectedAttention(gert::InferShapeContext *context)
         c = toupper(c);
     }
     if (inputLayoutStr != "TND") {
-        OP_LOGE(context, "The inputLayout should be TND(case-insensitive), but got %s.",
-                inputLayoutStr.c_str());
+        OP_LOGE(context, "The inputLayout should be TND(case-insensitive), but got %s.", inputLayoutStr.c_str());
         return GRAPH_FAILED;
     }
 
@@ -82,14 +81,14 @@ ge::graphStatus InferShapeNsaSelectedAttention(gert::InferShapeContext *context)
     gert::Shape *attentionOutShape = context->GetOutputShape(2);
     OP_CHECK_NULL_WITH_CONTEXT(context, attentionOutShape);
     *attentionOutShape = *queryShape;
-    //TND
+    // TND
     auto shapeD2 = valueShape->GetDim(2);
     attentionOutShape->SetDim(2, shapeD2);
     return GRAPH_SUCCESS;
-}    
+}
 
 ge::graphStatus InferDataTypeNsaSelectedAttention(gert::InferDataTypeContext *context)
-{   
+{
     if (context == nullptr) {
         return ge::GRAPH_FAILED;
     }
@@ -103,5 +102,7 @@ ge::graphStatus InferDataTypeNsaSelectedAttention(gert::InferDataTypeContext *co
     return ge::GRAPH_SUCCESS;
 }
 
-IMPL_OP_INFERSHAPE(NsaSelectedAttention).InferShape(InferShapeNsaSelectedAttention).InferDataType(InferDataTypeNsaSelectedAttention);
+IMPL_OP_INFERSHAPE(NsaSelectedAttention)
+    .InferShape(InferShapeNsaSelectedAttention)
+    .InferDataType(InferDataTypeNsaSelectedAttention);
 } // namespace ops

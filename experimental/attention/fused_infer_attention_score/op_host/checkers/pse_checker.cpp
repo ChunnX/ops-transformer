@@ -305,8 +305,7 @@ ge::graphStatus PSEChecker::CheckParaExistence(const FiaTilingInfo &fiaInfo)
 
 ge::graphStatus PSEChecker::CheckCrossFeature(const FiaTilingInfo &fiaInfo)
 {
-    if (ge::GRAPH_SUCCESS != CheckFeaturePA(fiaInfo) ||
-        ge::GRAPH_SUCCESS != CheckerFeatureCrossover(fiaInfo)) {
+    if (ge::GRAPH_SUCCESS != CheckFeaturePA(fiaInfo) || ge::GRAPH_SUCCESS != CheckerFeatureCrossover(fiaInfo)) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;

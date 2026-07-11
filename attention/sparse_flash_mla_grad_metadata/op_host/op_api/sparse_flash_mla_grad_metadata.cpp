@@ -47,10 +47,11 @@ const aclTensor *SparseFlashMlaGradMetadata(
 
     auto ret = ADD_TO_LAUNCHER_LIST_AICPU(
         SparseFlashMlaGradMetadata,
-        OP_ATTR_NAMES({"num_heads_q", "num_heads_kv", "head_dim", "batch_size", "max_seqlen_q", "max_seqlen_ori_kv",
-                       "max_seqlen_cmp_kv", "ori_topk", "cmp_topk", "cmp_ratio", "ori_mask_mode", "cmp_mask_mode",
-                       "ori_win_left", "ori_win_right", "layout_q", "layout_kv", "has_ori_kv", "has_cmp_kv",
-                       "soc_version", "aic_core_num", "aiv_core_num"}),
+        OP_ATTR_NAMES({"num_heads_q",       "num_heads_kv",      "head_dim",     "batch_size",    "max_seqlen_q",
+                       "max_seqlen_ori_kv", "max_seqlen_cmp_kv", "ori_topk",     "cmp_topk",      "cmp_ratio",
+                       "ori_mask_mode",     "cmp_mask_mode",     "ori_win_left", "ori_win_right", "layout_q",
+                       "layout_kv",         "has_ori_kv",        "has_cmp_kv",   "soc_version",   "aic_core_num",
+                       "aiv_core_num"}),
         OP_INPUT(cuSeqlensQOptional, cuSeqlensOriKvOptional, cuSeqlensCmpKvOptional, sequsedQOptional,
                  sequsedOriKvOptional, sequsedCmpKvOptional, cmpResidualKvOptional, oriTopkLengthOptional,
                  cmpTopkLengthOptional),

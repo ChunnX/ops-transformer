@@ -54,7 +54,7 @@ static int32_t GetCeilInt(int32_t value1, int32_t value2)
     return static_cast<int32_t>((value1 + value2 - 1) / value2);
 }
 
-}
+} // namespace
 
 namespace optiling {
 const uint32_t BLOCK_C = 1024;
@@ -143,38 +143,30 @@ ge::graphStatus MhcPostBackwardTilingBaseArch22::DoOpTiling()
     auto gradYDesc = context_->GetInputDesc(GRAD_Y_IDX);
     OP_CHECK_NULL_WITH_CONTEXT(context_, gradYDesc);
     auto gradYDtype = gradYDesc->GetDataType();
-    OP_CHECK_IF(
-        gradYDtype != ge::DataType::DT_BF16 && gradYDtype != ge::DataType::DT_FLOAT16,
-        OP_LOGE(context_->GetNodeName(), "grad_y dtype only supports bf16,half."),
-        return ge::GRAPH_FAILED);
-    
+    OP_CHECK_IF(gradYDtype != ge::DataType::DT_BF16 && gradYDtype != ge::DataType::DT_FLOAT16,
+                OP_LOGE(context_->GetNodeName(), "grad_y dtype only supports bf16,half."), return ge::GRAPH_FAILED);
+
     auto xDesc = context_->GetInputDesc(X_IDX);
     OP_CHECK_NULL_WITH_CONTEXT(context_, xDesc);
-    OP_CHECK_IF(
-        xDesc->GetDataType() != gradYDtype,
-        OP_LOGE(context_->GetNodeName(), "the dtype of x should be same with grad_y."),
-        return ge::GRAPH_FAILED);
-    
+    OP_CHECK_IF(xDesc->GetDataType() != gradYDtype,
+                OP_LOGE(context_->GetNodeName(), "the dtype of x should be same with grad_y."),
+                return ge::GRAPH_FAILED);
+
     auto hOutDesc = context_->GetInputDesc(H_OUT_IDX);
     OP_CHECK_NULL_WITH_CONTEXT(context_, hOutDesc);
-    OP_CHECK_IF(
-        hOutDesc->GetDataType() != gradYDtype,
-        OP_LOGE(context_->GetNodeName(), "the dtype of h_out should be same with grad_y."),
-        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(hOutDesc->GetDataType() != gradYDtype,
+                OP_LOGE(context_->GetNodeName(), "the dtype of h_out should be same with grad_y."),
+                return ge::GRAPH_FAILED);
 
     auto hResDesc = context_->GetInputDesc(H_RES_IDX);
     OP_CHECK_NULL_WITH_CONTEXT(context_, hResDesc);
-    OP_CHECK_IF(
-        hResDesc->GetDataType() != ge::DataType::DT_FLOAT,
-        OP_LOGE(context_->GetNodeName(), "h_res dtype only supports float32."),
-        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(hResDesc->GetDataType() != ge::DataType::DT_FLOAT,
+                OP_LOGE(context_->GetNodeName(), "h_res dtype only supports float32."), return ge::GRAPH_FAILED);
 
     auto hPostDesc = context_->GetInputDesc(H_POST_IDX);
     OP_CHECK_NULL_WITH_CONTEXT(context_, hPostDesc);
-    OP_CHECK_IF(
-        hPostDesc->GetDataType() != ge::DataType::DT_FLOAT,
-        OP_LOGE(context_->GetNodeName(), "h_post dtype only supports float32."),
-        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(hPostDesc->GetDataType() != ge::DataType::DT_FLOAT,
+                OP_LOGE(context_->GetNodeName(), "h_post dtype only supports float32."), return ge::GRAPH_FAILED);
 
     const auto dFPostResShape = gradYTensor->GetStorageShape();
     const uint32_t dimNum = dFPostResShape.GetDimNum();
@@ -212,7 +204,7 @@ ge::graphStatus MhcPostBackwardTilingBaseArch22::DoOpTiling()
     uint32_t hOutSize = hOutTensor->GetShapeSize();
     uint32_t hPostSize = hPostTensor->GetShapeSize();
 
-    const uint32_t alignN = GetCeilInt(n * SIZE_FLOAT, 32) * 32 /SIZE_FLOAT;
+    const uint32_t alignN = GetCeilInt(n * SIZE_FLOAT, 32) * 32 / SIZE_FLOAT;
     const uint32_t blockChannel = BLOCK_C > channel ? channel : BLOCK_C;
     const uint32_t loopC = channel / blockChannel;
     const uint32_t tailC = channel % blockChannel;
@@ -242,10 +234,8 @@ ge::graphStatus MhcPostBackwardTilingBaseArch22::DoOpTiling()
 }
 
 REGISTER_TILING_TEMPLATE_WITH_SOCVERSION(
-    MhcPostBackward,
-    MhcPostBackwardTilingBaseArch22,
-    std::vector<int32_t>({
-        static_cast<int32_t>(platform_ascendc::SocVersion::ASCEND910B),
-        static_cast<int32_t>(platform_ascendc::SocVersion::ASCEND910_93)}),
+    MhcPostBackward, MhcPostBackwardTilingBaseArch22,
+    std::vector<int32_t>({static_cast<int32_t>(platform_ascendc::SocVersion::ASCEND910B),
+                          static_cast<int32_t>(platform_ascendc::SocVersion::ASCEND910_93)}),
     1);
-}
+} // namespace optiling

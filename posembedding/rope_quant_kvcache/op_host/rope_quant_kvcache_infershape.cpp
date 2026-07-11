@@ -26,20 +26,20 @@ static constexpr int TOTAL_DIM = 4;
 static constexpr int THIRD_DIM = 2;
 static constexpr int FORTH_DIM = 3;
 
-static ge::graphStatus RopeQuantKvcacheInferShape(gert::InferShapeContext* context)
+static ge::graphStatus RopeQuantKvcacheInferShape(gert::InferShapeContext *context)
 {
-    const gert::Shape* qkvShape = context->GetInputShape(0);
-    const gert::Shape* cacheShape = context->GetInputShape(KVCACHE_INPUT_INDEX);
+    const gert::Shape *qkvShape = context->GetInputShape(0);
+    const gert::Shape *cacheShape = context->GetInputShape(KVCACHE_INPUT_INDEX);
 
-    gert::Shape* qOutShape = context->GetOutputShape(Q_OUTPUT_INDEX);
-    gert::Shape* kOutShape = context->GetOutputShape(K_OUTPUT_INDEX);
-    gert::Shape* vOutShape = context->GetOutputShape(V_OUTPUT_INDEX);
-    gert::Shape* kCacheShape = context->GetOutputShape(KCACHE_OUTPUT_INDEX);
-    gert::Shape* vCacheShape = context->GetOutputShape(VCACHE_OUTPUT_INDEX);
+    gert::Shape *qOutShape = context->GetOutputShape(Q_OUTPUT_INDEX);
+    gert::Shape *kOutShape = context->GetOutputShape(K_OUTPUT_INDEX);
+    gert::Shape *vOutShape = context->GetOutputShape(V_OUTPUT_INDEX);
+    gert::Shape *kCacheShape = context->GetOutputShape(KCACHE_OUTPUT_INDEX);
+    gert::Shape *vCacheShape = context->GetOutputShape(VCACHE_OUTPUT_INDEX);
 
     auto attrs = context->GetAttrs();
-    const gert::ContinuousVector* splitSize = attrs->GetAttrPointer<gert::ContinuousVector>(0);
-    const int64_t* splitSizeArray = reinterpret_cast<const int64_t*>(splitSize->GetData());
+    const gert::ContinuousVector *splitSize = attrs->GetAttrPointer<gert::ContinuousVector>(0);
+    const int64_t *splitSizeArray = reinterpret_cast<const int64_t *>(splitSize->GetData());
 
     int64_t batch = cacheShape->GetDim(0);
     int64_t qkvSeqlen = qkvShape->GetDim(1);
@@ -76,7 +76,7 @@ static ge::graphStatus RopeQuantKvcacheInferShape(gert::InferShapeContext* conte
     return GRAPH_SUCCESS;
 }
 
-static ge::graphStatus RopeQuantKvcacheInferDataType(gert::InferDataTypeContext* context)
+static ge::graphStatus RopeQuantKvcacheInferDataType(gert::InferDataTypeContext *context)
 {
     if (context == nullptr) {
         return GRAPH_FAILED;

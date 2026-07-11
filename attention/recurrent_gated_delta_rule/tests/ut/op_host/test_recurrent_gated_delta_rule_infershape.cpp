@@ -20,8 +20,7 @@
 #include "infer_shape_case_executor.h"
 #include "base/registry/op_impl_space_registry_v2.h"
 
-class RecurrentGatedDeltaRuleTest : public testing::Test
-{
+class RecurrentGatedDeltaRuleTest : public testing::Test {
 protected:
     static void SetUpTestCase()
     {
@@ -47,7 +46,7 @@ TEST_F(RecurrentGatedDeltaRuleTest, Test0)
     gert::StorageShape queryShape = {{t, nk, dk}, {t, nk, dk}};
     gert::StorageShape keyShape = {{t, nk, dk}, {t, nk, dk}};
     gert::StorageShape valueShape = {{t, nv, dv}, {t, nv, dv}};
-    gert::StorageShape betaShape = {{t,nv}, {t,nv}};
+    gert::StorageShape betaShape = {{t, nv}, {t, nv}};
     gert::StorageShape stateShape = {{sBlockNum, nv, dv, dk}, {sBlockNum, nv, dv, dk}};
     gert::StorageShape seqLengthsShape = {{b}, {b}};
     gert::StorageShape ssmStateIndicesShape = {{t}, {t}};
@@ -55,7 +54,8 @@ TEST_F(RecurrentGatedDeltaRuleTest, Test0)
     gert::StorageShape gkShape = {{}, {}};
     gert::StorageShape accTokensShape = {{b}, {b}};
 
-    gert::InfershapeContextPara infershapeContextPara("RecurrentGatedDeltaRule", 
+    gert::InfershapeContextPara infershapeContextPara(
+        "RecurrentGatedDeltaRule",
         {
             {queryShape, ge::DT_BF16, ge::FORMAT_ND},
             {keyShape, ge::DT_BF16, ge::FORMAT_ND},
@@ -72,8 +72,7 @@ TEST_F(RecurrentGatedDeltaRuleTest, Test0)
         },
         {
             {"sacle_value", Ops::Transformer::AnyValue::CreateFrom<float>(1.0)},
-        }
-    );
+        });
 
     std::vector<std::vector<int64_t>> expectOutputShape = {{t, nv, dv}};
     ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape);

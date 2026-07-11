@@ -352,7 +352,7 @@ aclnnStatus aclnnLightningIndexerV2(
 ## aclnnLightningIndexerV2
 
 - **参数说明：**
-  
+
   <table style="undefined;table-layout: fixed; width: 1151px"><colgroup>
     <col style="width: 184px">
     <col style="width: 134px">
@@ -389,7 +389,7 @@ aclnnStatus aclnnLightningIndexerV2(
   </table>
 
 - **返回值：**
-  
+
   aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
 ## 约束说明
@@ -412,7 +412,7 @@ aclnnStatus aclnnLightningIndexerV2(
   - 当传入outputIdxOffsetOptional时，只支持大于0的索引偏移值；且应满足约束：加上传入的索引偏移值后，得到的sparseIndice值不超过INT32的最大值。
   - 当layout_q为TND时，必须传入cuSeqlensQOptional，如果也传入sequsedQOptional，应保证由sequsedQOptional传入的各个batch的query长度不超过根据cuSeqlensQOptional计算出的各个batch的q序列长度。当某个batch由sequsedQOptional传入的q序列长度seqlen1小于由cuSeqlensQOptional计算出的query长度seqlen2时，会启用TND Padding功能，将该batch的从seqlen1 + 1到seqlen2的query输出的sparseIndices和sparseValues全部置为无效值。
   - 当传入的cmpRatio > 1且maskMode = 3时，必须传入cmpResidualKOptional，其余情况不传入。
-  
+
 ## 调用示例
 
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。

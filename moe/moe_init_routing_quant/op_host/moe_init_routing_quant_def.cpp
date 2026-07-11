@@ -15,10 +15,9 @@
 #include "register/op_def_registry.h"
 
 namespace ops {
-class MoeInitRoutingQuant : public OpDef
-{
+class MoeInitRoutingQuant : public OpDef {
 public:
-    explicit MoeInitRoutingQuant(const char* name) : OpDef(name)
+    explicit MoeInitRoutingQuant(const char *name) : OpDef(name)
     {
         this->Input("x")
             .ParamType(REQUIRED)

@@ -12,7 +12,6 @@
 
 import os
 import glob
-import torch
 import torch_npu
 from setuptools import setup, find_packages
 from torch.utils.cpp_extension import BuildExtension

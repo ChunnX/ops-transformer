@@ -142,36 +142,65 @@ struct ConfigParams {
 };
 
 // Config
-static constexpr ConfigParams ConfigValue[] ={
-   {inferS1TemplateType::Aligned64, inferS2TemplateType::Aligned256, inferDTemplateType::Aligned64, inferDTemplateType::Aligned64}, //0
-   {inferS1TemplateType::Aligned64, inferS2TemplateType::Aligned256, inferDTemplateType::Aligned128, inferDTemplateType::Aligned128}, //1
-   {inferS1TemplateType::Aligned128, inferS2TemplateType::Aligned128, inferDTemplateType::Aligned64, inferDTemplateType::Aligned64}, //2
-   {inferS1TemplateType::Aligned128, inferS2TemplateType::Aligned128, inferDTemplateType::Aligned128, inferDTemplateType::Aligned128}, //3
-   {inferS1TemplateType::Aligned128, inferS2TemplateType::Aligned128, inferDTemplateType::Aligned192, inferDTemplateType::Aligned128}, //4
-   {inferS1TemplateType::Aligned128, inferS2TemplateType::Aligned128, inferDTemplateType::Aligned256, inferDTemplateType::Aligned128}, //5
-   {inferS1TemplateType::Aligned128, inferS2TemplateType::Aligned128, inferDTemplateType::Aligned256, inferDTemplateType::Aligned256}, //6
-   {inferS1TemplateType::Aligned128, inferS2TemplateType::Aligned128, inferDTemplateType::Aligned512, inferDTemplateType::Aligned512}, //7
-   {inferS1TemplateType::Aligned128, inferS2TemplateType::Aligned256, inferDTemplateType::Aligned64, inferDTemplateType::Aligned64}, //8
-   {inferS1TemplateType::Aligned64, inferS2TemplateType::Aligned128, inferDTemplateType::Aligned576, inferDTemplateType::Aligned512}, //9
-   {inferS1TemplateType::Aligned64, inferS2TemplateType::Aligned64, inferDTemplateType::Aligned256, inferDTemplateType::Aligned256}, //10
-   {inferS1TemplateType::Aligned64, inferS2TemplateType::Aligned64, inferDTemplateType::Aligned512, inferDTemplateType::Aligned512}, //11
-   {inferS1TemplateType::Aligned16, inferS2TemplateType::Aligned1024, inferDTemplateType::Aligned64, inferDTemplateType::Aligned64}, //12
-   {inferS1TemplateType::Aligned16, inferS2TemplateType::Aligned512, inferDTemplateType::Aligned128, inferDTemplateType::Aligned128}, //13
-   {inferS1TemplateType::Aligned16, inferS2TemplateType::Aligned256, inferDTemplateType::Aligned256, inferDTemplateType::Aligned256}, //14
-   {inferS1TemplateType::Aligned16, inferS2TemplateType::Aligned128, inferDTemplateType::Aligned512, inferDTemplateType::Aligned512}, //15
-   {inferS1TemplateType::Aligned16, inferS2TemplateType::Aligned512, inferDTemplateType::Aligned64, inferDTemplateType::Aligned64}, //16
-   {inferS1TemplateType::Aligned128, inferS2TemplateType::Aligned256, inferDTemplateType::Aligned128, inferDTemplateType::Aligned128}, //17
-   {inferS1TemplateType::Aligned64, inferS2TemplateType::Aligned256, inferDTemplateType::Aligned256, inferDTemplateType::Aligned256}, //18
-   {inferS1TemplateType::Aligned32, inferS2TemplateType::Aligned512, inferDTemplateType::Aligned64, inferDTemplateType::Aligned64}, //19
-   {inferS1TemplateType::Aligned32, inferS2TemplateType::Aligned512, inferDTemplateType::Aligned128, inferDTemplateType::Aligned128}, //20
-   {inferS1TemplateType::Aligned32, inferS2TemplateType::Aligned256, inferDTemplateType::Aligned256, inferDTemplateType::Aligned256}, //21
-   {inferS1TemplateType::Aligned32, inferS2TemplateType::Aligned128, inferDTemplateType::Aligned512, inferDTemplateType::Aligned512}, //22
-   {inferS1TemplateType::Aligned128, inferS2TemplateType::Aligned128, inferDTemplateType::Aligned128, inferDTemplateType::Aligned64}, //23
-   {inferS1TemplateType::Aligned128, inferS2TemplateType::Aligned128, inferDTemplateType::Aligned64, inferDTemplateType::Aligned128}, //24
-   {inferS1TemplateType::Aligned64, inferS2TemplateType::Aligned256, inferDTemplateType::Aligned128, inferDTemplateType::Aligned64}, //25
-   {inferS1TemplateType::Aligned64, inferS2TemplateType::Aligned256, inferDTemplateType::Aligned64, inferDTemplateType::Aligned128}, //26
-   {inferS1TemplateType::Aligned128, inferS2TemplateType::Aligned512, inferDTemplateType::Aligned64, inferDTemplateType::Aligned64}, //27
-   {inferS1TemplateType::Aligned128, inferS2TemplateType::Aligned512, inferDTemplateType::Aligned128, inferDTemplateType::Aligned128}, //28
+static constexpr ConfigParams ConfigValue[] = {
+    {inferS1TemplateType::Aligned64, inferS2TemplateType::Aligned256, inferDTemplateType::Aligned64,
+     inferDTemplateType::Aligned64}, // 0
+    {inferS1TemplateType::Aligned64, inferS2TemplateType::Aligned256, inferDTemplateType::Aligned128,
+     inferDTemplateType::Aligned128}, // 1
+    {inferS1TemplateType::Aligned128, inferS2TemplateType::Aligned128, inferDTemplateType::Aligned64,
+     inferDTemplateType::Aligned64}, // 2
+    {inferS1TemplateType::Aligned128, inferS2TemplateType::Aligned128, inferDTemplateType::Aligned128,
+     inferDTemplateType::Aligned128}, // 3
+    {inferS1TemplateType::Aligned128, inferS2TemplateType::Aligned128, inferDTemplateType::Aligned192,
+     inferDTemplateType::Aligned128}, // 4
+    {inferS1TemplateType::Aligned128, inferS2TemplateType::Aligned128, inferDTemplateType::Aligned256,
+     inferDTemplateType::Aligned128}, // 5
+    {inferS1TemplateType::Aligned128, inferS2TemplateType::Aligned128, inferDTemplateType::Aligned256,
+     inferDTemplateType::Aligned256}, // 6
+    {inferS1TemplateType::Aligned128, inferS2TemplateType::Aligned128, inferDTemplateType::Aligned512,
+     inferDTemplateType::Aligned512}, // 7
+    {inferS1TemplateType::Aligned128, inferS2TemplateType::Aligned256, inferDTemplateType::Aligned64,
+     inferDTemplateType::Aligned64}, // 8
+    {inferS1TemplateType::Aligned64, inferS2TemplateType::Aligned128, inferDTemplateType::Aligned576,
+     inferDTemplateType::Aligned512}, // 9
+    {inferS1TemplateType::Aligned64, inferS2TemplateType::Aligned64, inferDTemplateType::Aligned256,
+     inferDTemplateType::Aligned256}, // 10
+    {inferS1TemplateType::Aligned64, inferS2TemplateType::Aligned64, inferDTemplateType::Aligned512,
+     inferDTemplateType::Aligned512}, // 11
+    {inferS1TemplateType::Aligned16, inferS2TemplateType::Aligned1024, inferDTemplateType::Aligned64,
+     inferDTemplateType::Aligned64}, // 12
+    {inferS1TemplateType::Aligned16, inferS2TemplateType::Aligned512, inferDTemplateType::Aligned128,
+     inferDTemplateType::Aligned128}, // 13
+    {inferS1TemplateType::Aligned16, inferS2TemplateType::Aligned256, inferDTemplateType::Aligned256,
+     inferDTemplateType::Aligned256}, // 14
+    {inferS1TemplateType::Aligned16, inferS2TemplateType::Aligned128, inferDTemplateType::Aligned512,
+     inferDTemplateType::Aligned512}, // 15
+    {inferS1TemplateType::Aligned16, inferS2TemplateType::Aligned512, inferDTemplateType::Aligned64,
+     inferDTemplateType::Aligned64}, // 16
+    {inferS1TemplateType::Aligned128, inferS2TemplateType::Aligned256, inferDTemplateType::Aligned128,
+     inferDTemplateType::Aligned128}, // 17
+    {inferS1TemplateType::Aligned64, inferS2TemplateType::Aligned256, inferDTemplateType::Aligned256,
+     inferDTemplateType::Aligned256}, // 18
+    {inferS1TemplateType::Aligned32, inferS2TemplateType::Aligned512, inferDTemplateType::Aligned64,
+     inferDTemplateType::Aligned64}, // 19
+    {inferS1TemplateType::Aligned32, inferS2TemplateType::Aligned512, inferDTemplateType::Aligned128,
+     inferDTemplateType::Aligned128}, // 20
+    {inferS1TemplateType::Aligned32, inferS2TemplateType::Aligned256, inferDTemplateType::Aligned256,
+     inferDTemplateType::Aligned256}, // 21
+    {inferS1TemplateType::Aligned32, inferS2TemplateType::Aligned128, inferDTemplateType::Aligned512,
+     inferDTemplateType::Aligned512}, // 22
+    {inferS1TemplateType::Aligned128, inferS2TemplateType::Aligned128, inferDTemplateType::Aligned128,
+     inferDTemplateType::Aligned64}, // 23
+    {inferS1TemplateType::Aligned128, inferS2TemplateType::Aligned128, inferDTemplateType::Aligned64,
+     inferDTemplateType::Aligned128}, // 24
+    {inferS1TemplateType::Aligned64, inferS2TemplateType::Aligned256, inferDTemplateType::Aligned128,
+     inferDTemplateType::Aligned64}, // 25
+    {inferS1TemplateType::Aligned64, inferS2TemplateType::Aligned256, inferDTemplateType::Aligned64,
+     inferDTemplateType::Aligned128}, // 26
+    {inferS1TemplateType::Aligned128, inferS2TemplateType::Aligned512, inferDTemplateType::Aligned64,
+     inferDTemplateType::Aligned64}, // 27
+    {inferS1TemplateType::Aligned128, inferS2TemplateType::Aligned512, inferDTemplateType::Aligned128,
+     inferDTemplateType::Aligned128}, // 28
 };
 
 #define Config_S1Aligned64_S2Aligned256_DAligned64_DVAligned64 0

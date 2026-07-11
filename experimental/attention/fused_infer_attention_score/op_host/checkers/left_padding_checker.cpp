@@ -112,7 +112,8 @@ ge::graphStatus LeftPaddingChecker::CheckFeatureActualLen(const FiaTilingInfo &f
 
 ge::graphStatus LeftPaddingChecker::CheckFeatureLayout(const FiaTilingInfo &fiaInfo)
 {
-    // When left-padding is enabled for Query and Key/Value, BSH_BNSD/BSND_BNSD/TND/NTD/NTD_TND/TND_NTD scenarios are not supported.
+    // When left-padding is enabled for Query and Key/Value, BSH_BNSD/BSND_BNSD/TND/NTD/NTD_TND/TND_NTD scenarios are
+    // not supported.
     std::string layoutStr(fiaInfo.opParamInfo.layOut);
     if (fiaInfo.qPaddingSizeFlag || fiaInfo.kvPaddingSizeFlag) {
         OP_CHECK_IF(layoutStr == "BSH_BNSD",
@@ -121,11 +122,9 @@ ge::graphStatus LeftPaddingChecker::CheckFeatureLayout(const FiaTilingInfo &fiaI
         OP_CHECK_IF(layoutStr == "BSND_BNSD",
                     OP_LOGE(fiaInfo.opName, "QueryLeftPadding illegal condition:input layout BSND_BNSD!"),
                     return ge::GRAPH_FAILED);
-        OP_CHECK_IF(layoutStr == "TND",
-                    OP_LOGE(fiaInfo.opName, "QueryLeftPadding illegal condition:input layout TND!"),
+        OP_CHECK_IF(layoutStr == "TND", OP_LOGE(fiaInfo.opName, "QueryLeftPadding illegal condition:input layout TND!"),
                     return ge::GRAPH_FAILED);
-        OP_CHECK_IF(layoutStr == "NTD",
-                    OP_LOGE(fiaInfo.opName, "QueryLeftPadding illegal condition:input layout NTD!"),
+        OP_CHECK_IF(layoutStr == "NTD", OP_LOGE(fiaInfo.opName, "QueryLeftPadding illegal condition:input layout NTD!"),
                     return ge::GRAPH_FAILED);
         OP_CHECK_IF(layoutStr == "NTD_TND",
                     OP_LOGE(fiaInfo.opName, "QueryLeftPadding illegal condition:input layout NTD_TND!"),
@@ -175,9 +174,9 @@ ge::graphStatus LeftPaddingChecker::CheckFeatureQueryS(const FiaTilingInfo &fiaI
                 (keyAntiquantMode == PER_CHANNEL_MODE || keyAntiquantMode == PER_TOKEN_MODE) &&
                     fiaInfo.inputKvType == ge::DT_INT8,
                 OP_LOGE(fiaInfo.opName,
-                    "In keyAntiquant/valueAntiquant split mode and data type of key/value is int8 scenario, if "
-                    "keyAntiquantMode/valueAntiquantMode is 0 or 1, leftpadding is not supported!"),
-                    return ge::GRAPH_FAILED);
+                        "In keyAntiquant/valueAntiquant split mode and data type of key/value is int8 scenario, if "
+                        "keyAntiquantMode/valueAntiquantMode is 0 or 1, leftpadding is not supported!"),
+                return ge::GRAPH_FAILED);
         }
     }
     return ge::GRAPH_SUCCESS;
@@ -220,4 +219,4 @@ ge::graphStatus LeftPaddingChecker::CheckMultiParaConsistency(const FiaTilingInf
     return ge::GRAPH_SUCCESS;
 }
 
-}  // namespace optiling
+} // namespace optiling

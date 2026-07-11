@@ -18,12 +18,13 @@ namespace l0op {
 
 OP_TYPE_REGISTER(NsaCompressAttention);
 
-const std::array<const aclTensor *, 4> NsaCompressAttention(
-    const aclTensor *query, const aclTensor *key, const aclTensor *value, const aclTensor *attenMaskOptional,
-    const aclIntArray *actualSeqQLenOptional, const aclIntArray *actualCmpSeqKvLenOptional,
-    const aclIntArray *actualSelSeqKvLenOptional, const aclTensor *topkMaskOptional, double scaleValueOptional,
-    int64_t headNum, const char *inputLayout, int64_t sparseModeOptional, int64_t compressBlockSize,
-    int64_t compressStride, int64_t selectBlockSize, int64_t selectBlockCount, aclOpExecutor *executor)
+const std::array<const aclTensor *, 4>
+NsaCompressAttention(const aclTensor *query, const aclTensor *key, const aclTensor *value,
+                     const aclTensor *attenMaskOptional, const aclIntArray *actualSeqQLenOptional,
+                     const aclIntArray *actualCmpSeqKvLenOptional, const aclIntArray *actualSelSeqKvLenOptional,
+                     const aclTensor *topkMaskOptional, double scaleValueOptional, int64_t headNum,
+                     const char *inputLayout, int64_t sparseModeOptional, int64_t compressBlockSize,
+                     int64_t compressStride, int64_t selectBlockSize, int64_t selectBlockCount, aclOpExecutor *executor)
 {
     L0_DFX(NsaCompressAttention, query, key, value, attenMaskOptional, actualSeqQLenOptional, actualCmpSeqKvLenOptional,
            actualSelSeqKvLenOptional, topkMaskOptional, scaleValueOptional, headNum, inputLayout, sparseModeOptional,
@@ -73,7 +74,7 @@ const std::array<const aclTensor *, 4> NsaCompressAttention(
     auto topkIndicesOutOut = executor->AllocTensor(DataType::DT_INT32, Format::FORMAT_ND, Format::FORMAT_ND);
 
     auto ret = INFER_SHAPE(NsaCompressAttention,
-                           OP_INPUT(query, key, value, attenMaskOptional, actualSeqQLen, actualCmpSeqKvLen, 
+                           OP_INPUT(query, key, value, attenMaskOptional, actualSeqQLen, actualCmpSeqKvLen,
                                     actualSelSeqKvLen, topkMaskOptional),
                            OP_OUTPUT(softmaxMaxOut, softmaxSumOut, attentionOutOut, topkIndicesOutOut),
                            OP_ATTR(static_cast<float>(scaleValueOptional), headNum, inputLayout, sparseModeOptional,
@@ -84,11 +85,12 @@ const std::array<const aclTensor *, 4> NsaCompressAttention(
     }
 
     ADD_TO_LAUNCHER_LIST_AICORE(NsaCompressAttention,
-                                OP_INPUT(query, key, value, attenMaskOptional, actualSeqQLen, actualCmpSeqKvLen, 
+                                OP_INPUT(query, key, value, attenMaskOptional, actualSeqQLen, actualCmpSeqKvLen,
                                          actualSelSeqKvLen, topkMaskOptional),
                                 OP_OUTPUT(softmaxMaxOut, softmaxSumOut, attentionOutOut, topkIndicesOutOut),
-                                OP_ATTR(static_cast<float>(scaleValueOptional), headNum, inputLayout, sparseModeOptional,
-                                        compressBlockSize, compressStride, selectBlockSize, selectBlockCount));
+                                OP_ATTR(static_cast<float>(scaleValueOptional), headNum, inputLayout,
+                                        sparseModeOptional, compressBlockSize, compressStride, selectBlockSize,
+                                        selectBlockCount));
     return {softmaxMaxOut, softmaxSumOut, attentionOutOut, topkIndicesOutOut};
 }
 

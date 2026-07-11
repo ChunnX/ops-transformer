@@ -123,14 +123,12 @@ ge::graphStatus FaInfoParser::GetOpName()
 ge::graphStatus FaInfoParser::GetNpuInfo()
 {
     platformInfo_ = context_->GetPlatformInfo();
-    OP_CHECK_IF(platformInfo_ == nullptr, OP_LOGE(opName_, "GetPlatformInfo is nullptr."),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(platformInfo_ == nullptr, OP_LOGE(opName_, "GetPlatformInfo is nullptr."), return ge::GRAPH_FAILED);
 
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo_);
     uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
     uint32_t aicNum = ascendcPlatform.GetCoreNumAic();
-    OP_CHECK_IF(aicNum == 0 || aivNum == 0, OP_LOGE(opName_, "num of core obtained is 0."),
-                return GRAPH_FAILED);
+    OP_CHECK_IF(aicNum == 0 || aivNum == 0, OP_LOGE(opName_, "num of core obtained is 0."), return GRAPH_FAILED);
     npuArch_ = ascendcPlatform.GetCurNpuArch();
     if (npuArch_ != NpuArch::DAV_3510) {
         OP_LOGE(opName_, "NpuArch[%d] is not support.", static_cast<int32_t>(npuArch_));
@@ -318,8 +316,8 @@ ge::graphStatus FaInfoParser::GetS1Size()
 
 void FaInfoParser::GetKvStorageMode()
 {
-    bool isPaLayout = (layoutKV_ == FaLayout::PA_BBND || layoutKV_ == FaLayout::PA_BNBD ||
-                       layoutKV_ == FaLayout::PA_NZ);
+    bool isPaLayout =
+        (layoutKV_ == FaLayout::PA_BBND || layoutKV_ == FaLayout::PA_BNBD || layoutKV_ == FaLayout::PA_NZ);
 
     if (isPaLayout) {
         kvStorageMode_ = KvStorageMode::PAGE_ATTENTION;
@@ -361,9 +359,10 @@ ge::graphStatus FaInfoParser::GetBlockNum()
 
 ge::graphStatus FaInfoParser::GetS2SizeForPageAttention()
 {
-    OP_CHECK_IF(opParamInfo_.blockTable.tensor == nullptr,
+    OP_CHECK_IF(
+        opParamInfo_.blockTable.tensor == nullptr,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "block_table", "provided",
-            "When layout_kv is PA, block_table must be provided but got nullptr."),
+                                              "When layout_kv is PA, block_table must be provided but got nullptr."),
         return ge::GRAPH_FAILED);
     if (GetBlockSize() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
@@ -405,8 +404,7 @@ ge::graphStatus FaInfoParser::GetInAndOutLayout()
     auto itQ = layoutMap.find(opParamInfo_.layoutQ);
     if (itQ == layoutMap.end()) {
         std::string reason = "layout_q: " + std::string(opParamInfo_.layoutQ) + " is not supported.";
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "layout_q",
-            opParamInfo_.layoutQ, reason.c_str());
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "layout_q", opParamInfo_.layoutQ, reason.c_str());
         return ge::GRAPH_FAILED;
     }
     layoutQ_ = itQ->second;
@@ -414,8 +412,7 @@ ge::graphStatus FaInfoParser::GetInAndOutLayout()
     auto itKV = layoutMap.find(opParamInfo_.layoutKV);
     if (itKV == layoutMap.end()) {
         std::string reason = "layout_kv: " + std::string(opParamInfo_.layoutKV) + " is not supported.";
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "layout_kv",
-            opParamInfo_.layoutKV, reason.c_str());
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "layout_kv", opParamInfo_.layoutKV, reason.c_str());
         return ge::GRAPH_FAILED;
     }
     layoutKV_ = itKV->second;
@@ -423,8 +420,7 @@ ge::graphStatus FaInfoParser::GetInAndOutLayout()
     auto itOut = layoutMap.find(opParamInfo_.layoutOut);
     if (itOut == layoutMap.end()) {
         std::string reason = "layout_out: " + std::string(opParamInfo_.layoutOut) + " is not supported.";
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "layout_out",
-            opParamInfo_.layoutOut, reason.c_str());
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "layout_out", opParamInfo_.layoutOut, reason.c_str());
         return ge::GRAPH_FAILED;
     }
     layoutOut_ = itOut->second;
@@ -475,9 +471,9 @@ ge::graphStatus FaInfoParser::GetGSize()
     }
     if (n1Size_ % n2Size_ != 0U) {
         std::string shapeStr = ToString(opParamInfo_.query.shape->GetStorageShape()) + " and " +
-            ToString(opParamInfo_.key.shape->GetStorageShape());
-        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(opName_, "query and key",
-            shapeStr.c_str(), "N of query must be an integer multiple of the same axis of key");
+                               ToString(opParamInfo_.key.shape->GetStorageShape());
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(opName_, "query and key", shapeStr.c_str(),
+                                               "N of query must be an integer multiple of the same axis of key");
         return ge::GRAPH_FAILED;
     }
     gSize_ = n1Size_ / n2Size_;

@@ -29,35 +29,35 @@
 
 ```c++
 aclnnStatus aclnnFlashAttentionScoreGetWorkspaceSize(
-  const aclTensor   *query, 
-  const aclTensor   *key, 
-  const aclTensor   *value, 
-  const aclTensor   *realShiftOptional, 
-  const aclTensor   *dropMaskOptional, 
-  const aclTensor   *paddingMaskOptional, 
-  const aclTensor   *attenMaskOptional, 
-  const aclIntArray *prefixOptional, 
-  double             scaleValue, 
-  double             keepProb, 
-  int64_t            preTokens, 
-  int64_t            nextTokens, 
-  int64_t            headNum, 
-  char              *inputLayout, 
-  int64_t            innerPrecise, 
-  int64_t            sparseMode, 
-  const aclTensor   *softmaxMaxOut, 
-  const aclTensor   *softmaxSumOut, 
-  const aclTensor   *softmaxOutOut, 
-  const aclTensor   *attentionOutOut, 
-  uint64_t          *workspaceSize, 
+  const aclTensor   *query,
+  const aclTensor   *key,
+  const aclTensor   *value,
+  const aclTensor   *realShiftOptional,
+  const aclTensor   *dropMaskOptional,
+  const aclTensor   *paddingMaskOptional,
+  const aclTensor   *attenMaskOptional,
+  const aclIntArray *prefixOptional,
+  double             scaleValue,
+  double             keepProb,
+  int64_t            preTokens,
+  int64_t            nextTokens,
+  int64_t            headNum,
+  char              *inputLayout,
+  int64_t            innerPrecise,
+  int64_t            sparseMode,
+  const aclTensor   *softmaxMaxOut,
+  const aclTensor   *softmaxSumOut,
+  const aclTensor   *softmaxOutOut,
+  const aclTensor   *attentionOutOut,
+  uint64_t          *workspaceSize,
   aclOpExecutor    **executor)
 ```
 
 ```c++
 aclnnStatus aclnnFlashAttentionScore(
-  void              *workspace, 
-  uint64_t           workspaceSize, 
-  aclOpExecutor     *executor, 
+  void              *workspace,
+  uint64_t           workspaceSize,
+  aclOpExecutor     *executor,
   const aclrtStream  stream)
 ```
 
@@ -320,7 +320,7 @@ aclnnStatus aclnnFlashAttentionScore(
   aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
-  
+
   <table style="undefined;table-layout: fixed;width: 1202px"><colgroup>
   <col style="width: 262px">
   <col style="width: 121px">
@@ -507,7 +507,7 @@ int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& 
 }
 
 int main() {
-  // 1.（固定写法）device/stream初始化，参考acl API手册 
+  // 1.（固定写法）device/stream初始化，参考acl API手册
   // 根据自己的实际device填写deviceId
   int32_t deviceId = 0;
   aclrtContext context;
@@ -567,7 +567,7 @@ int main() {
   CHECK_RET(ret == ACL_SUCCESS, return ret);
   ret = CreateAclTensor(softmaxSumHostData, softmaxSumShape, &softmaxSumDeviceAddr, aclDataType::ACL_FLOAT, &softmaxSum);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
-  
+
   std::vector<int64_t> prefixOp = {0};
   aclIntArray *prefix = aclCreateIntArray(prefixOp.data(), 1);
   double scaleValue = 0.088388;
@@ -577,40 +577,40 @@ int main() {
   int64_t headNum = 1;
   int64_t innerPrecise = 0;
   int64_t sparseMode = 0;
-  
+
   char layOut[5] = {'S', 'B', 'H', 0};
-  
+
   // 3. 调用CANN算子库API，需要修改为具体的Api名称
   uint64_t workspaceSize = 0;
   aclOpExecutor* executor;
-  
+
   // 调用aclnnFlashAttentionScore第一段接口
   ret = aclnnFlashAttentionScoreGetWorkspaceSize(
             q, k, v, pse, dropMask, padding, attenmask, prefix, scaleValue,
             keepProb, preTokens, nextTokens, headNum, layOut, innerPrecise,
             sparseMode, softmaxMax, softmaxSum, softmaxOut, attentionOut, &workspaceSize, &executor);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnFlashAttentionScoreGetWorkspaceSize failed. ERROR: %d.\n[ERROR msg]%s", ret, aclGetRecentErrMsg()); return ret);
-  
+
   // 根据第一段接口计算出的workspaceSize申请device内存
   void* workspaceAddr = nullptr;
   if (workspaceSize > 0) {
     ret = aclrtMalloc(&workspaceAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("allocate workspace failed. ERROR: %d.\n[ERROR msg]%s", ret, aclGetRecentErrMsg()); return ret);
   }
-  
+
   // 调用aclnnFlashAttentionScore第二段接口
   ret = aclnnFlashAttentionScore(workspaceAddr, workspaceSize, executor, stream);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnFlashAttentionScore failed. ERROR: %d.\n[ERROR msg]%s", ret, aclGetRecentErrMsg()); return ret);
-  
+
   // 4.（固定写法）同步等待任务执行结束
   ret = aclrtSynchronizeStream(stream);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d.\n[ERROR msg]%s", ret, aclGetRecentErrMsg()); return ret);
-  
+
   // 5. 获取输出的值，将device侧内存上的结果拷贝至host侧，需要根据具体API的接口定义修改
   PrintOutResult(attentionOutShape, &attentionOutDeviceAddr);
   PrintOutResult(softmaxMaxShape, &softmaxMaxDeviceAddr);
   PrintOutResult(softmaxSumShape, &softmaxSumDeviceAddr);
-  
+
   // 6. 释放aclTensor和aclScalar，需要根据具体API的接口定义修改
   aclDestroyTensor(q);
   aclDestroyTensor(k);
@@ -619,7 +619,7 @@ int main() {
   aclDestroyTensor(attentionOut);
   aclDestroyTensor(softmaxMax);
   aclDestroyTensor(softmaxSum);
-  
+
   // 7. 释放device资源
   aclrtFree(qDeviceAddr);
   aclrtFree(kDeviceAddr);
@@ -635,7 +635,7 @@ int main() {
   aclrtDestroyContext(context);
   aclrtResetDevice(deviceId);
   aclFinalize();
-  
+
   return 0;
 }
 

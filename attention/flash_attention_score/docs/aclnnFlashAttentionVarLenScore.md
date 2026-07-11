@@ -428,7 +428,7 @@ aclnnStatus aclnnFlashAttentionVarLenScore(
   - TND场景下，每个batch段内部仍按[N, Sq_i, Skv_i]生成，但存储与传参时统一flatten。若第i个batch段的真实query长度为Sq_i、真实key/value长度为Skv_i，则该段PSE元素个数为N * Sq_i * Skv_i，整段PSE总长度pseTotalLen为sum_i(N * Sq_i * Skv_i)。
   - 如不使用该参数可传入nullptr。
 - innerPrecise：当前0、1为保留配置值，2为开启无效行计算，其功能是避免在计算过程中存在整行mask进而导致精度有损失，但是该配置会导致性能下降。如果算子可判断出存在无效行场景，会自动开启无效行计算，例如sparseMode为3，Sq > Skv场景。
-- sparseMode的约束如下: 
+- sparseMode的约束如下:
   - 当所有的attenMaskOptional的shape小于2048且相同的时候，建议使用default模式，来减少内存使用量；
   - 配置为1、2、3、6时，用户配置的preTokens、nextTokens不会生效；
   - 配置为0、4、7、8时，须保证attenMaskOptional与preTokens、nextTokens的范围一致。
@@ -584,7 +584,7 @@ int main() {
   CHECK_RET(ret == ACL_SUCCESS, return ret);
   ret = CreateAclTensor(softmaxSumHostData, softmaxSumShape, &softmaxSumDeviceAddr, aclDataType::ACL_FLOAT, &softmaxSum);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
-  
+
   std::vector<int64_t> prefixOp = {0};
   aclIntArray *prefix = aclCreateIntArray(prefixOp.data(), 1);
   std::vector<int64_t>  acSeqQLenOp = {256};
@@ -598,13 +598,13 @@ int main() {
   int64_t headNum = 1;
   int64_t innerPrecise = 0;
   int64_t sparseMode = 0;
-  
+
   char layOut[5] = {'T', 'N', 'D', 0};
-  
+
   // 3. 调用CANN算子库API，需要修改为具体的Api名称
   uint64_t workspaceSize = 0;
   aclOpExecutor* executor;
-  
+
   // 调用aclnnFlashAttentionVarLenScore第一段接口
   ret = aclnnFlashAttentionVarLenScoreGetWorkspaceSize(
             q, k, v, pse, dropMask, padding, attenmask, prefix, acSeqQLen, acSeqKvLen,
@@ -612,27 +612,27 @@ int main() {
             sparseMode, softmaxMax, softmaxSum, softmaxOut, attentionOut, &workspaceSize, &executor);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnFlashAttentionVarLenScoreGetWorkspaceSize failed. ERROR: %d\n", ret);
             return ret);
-  
+
   // 根据第一段接口计算出的workspaceSize申请device内存
   void* workspaceAddr = nullptr;
   if (workspaceSize > 0) {
     ret = aclrtMalloc(&workspaceAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("allocate workspace failed. ERROR: %d\n", ret); return ret);
   }
-  
+
   // 调用aclnnFlashAttentionVarLenScore第二段接口
   ret = aclnnFlashAttentionVarLenScore(workspaceAddr, workspaceSize, executor, stream);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnFlashAttentionVarLenScore failed. ERROR: %d\n", ret); return ret);
-  
+
   // 4.（固定写法）同步等待任务执行结束
   ret = aclrtSynchronizeStream(stream);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
-  
+
   // 5. 获取输出的值，将device侧内存上的结果拷贝至host侧，需要根据具体API的接口定义修改
   PrintOutResult(attentionOutShape, &attentionOutDeviceAddr);
   PrintOutResult(softmaxMaxShape, &softmaxMaxDeviceAddr);
   PrintOutResult(softmaxSumShape, &softmaxSumDeviceAddr);
-  
+
   // 6. 释放aclTensor和aclScalar，需要根据具体API的接口定义修改
   aclDestroyTensor(q);
   aclDestroyTensor(k);
@@ -641,7 +641,7 @@ int main() {
   aclDestroyTensor(attentionOut);
   aclDestroyTensor(softmaxMax);
   aclDestroyTensor(softmaxSum);
-  
+
   // 7. 释放device资源
   aclrtFree(qDeviceAddr);
   aclrtFree(kDeviceAddr);
@@ -657,7 +657,7 @@ int main() {
   aclrtDestroyContext(context);
   aclrtResetDevice(deviceId);
   aclFinalize();
-  
+
   return 0;
 }
 ```

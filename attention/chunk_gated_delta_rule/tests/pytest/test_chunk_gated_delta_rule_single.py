@@ -9,7 +9,6 @@
 # -----------------------------------------------------------------------------------------------------------
 
 import itertools
-import torch
 import torch_npu
 
 # ******入参调用
@@ -27,9 +26,7 @@ for _, params in enumerate(ENABLED_PARAMS):
         locals()[f"param_{key}"] = value
 
     # 生成所有参数组合
-    param_names = [
-        "B", "seqlen", "nk", "nv", "dk", "dv", "chunk_size", "data_type"
-    ]
+    param_names = ["B", "seqlen", "nk", "nv", "dk", "dv", "chunk_size", "data_type"]
 
     param_values = [
         locals()["param_B"],
@@ -51,14 +48,14 @@ for _, params in enumerate(ENABLED_PARAMS):
     @pytest.mark.parametrize("param_combinations", locals()["param_combinations"])
     def test_chunk_gated_delta_rule(param_combinations):
         # 初始化参数和tensor
-        B = param_combinations['B']
-        seqlen = param_combinations['seqlen']
-        nk = param_combinations['nk']
-        nv = param_combinations['nv']
-        dk = param_combinations['dk']
-        dv = param_combinations['dv']
-        chunk_size = param_combinations['chunk_size']
-        data_type = param_combinations['data_type']
+        B = param_combinations["B"]
+        seqlen = param_combinations["seqlen"]
+        nk = param_combinations["nk"]
+        nv = param_combinations["nv"]
+        dk = param_combinations["dk"]
+        dv = param_combinations["dv"]
+        chunk_size = param_combinations["chunk_size"]
+        data_type = param_combinations["data_type"]
 
         test_data = B, seqlen, nk, nv, dk, dv, chunk_size, data_type
 

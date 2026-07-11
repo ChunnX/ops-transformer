@@ -175,8 +175,8 @@ string SFATensorDesc2String(const gert::StorageShape *shape, const gert::Compile
     sfaOss << "(ori_shape:" << GetShapeStr(shape->GetOriginShape()) << "),";
     sfaOss << "(format: "
            << ge::TypeUtils::FormatToAscendString(
-               static_cast<ge::Format>(ge::GetPrimaryFormat(tensor->GetStorageFormat())))
-               .GetString()
+                  static_cast<ge::Format>(ge::GetPrimaryFormat(tensor->GetStorageFormat())))
+                  .GetString()
            << "),";
     sfaOss << "(ori_format: " << ge::TypeUtils::FormatToAscendString(tensor->GetOriginFormat()).GetString() << ") ";
 

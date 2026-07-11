@@ -18,7 +18,7 @@
 namespace ops {
 class SwinAttentionScoreQuant : public OpDef {
 public:
-    explicit SwinAttentionScoreQuant(const char* name) : OpDef(name)
+    explicit SwinAttentionScoreQuant(const char *name) : OpDef(name)
     {
         this->Input("query")
             .ParamType(REQUIRED)
@@ -91,21 +91,13 @@ public:
             .DataType({ge::DT_FLOAT16})
             .Format({ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND});
-        this->Attr("query_transpose")
-            .AttrType(OPTIONAL)
-            .Bool(false);
-        this->Attr("key_transpose")
-            .AttrType(OPTIONAL)
-            .Bool(false);
-        this->Attr("value_transpose")
-            .AttrType(OPTIONAL)
-            .Bool(false);
-        this->Attr("softmax_axes")
-            .AttrType(OPTIONAL)
-            .Int(-1);
+        this->Attr("query_transpose").AttrType(OPTIONAL).Bool(false);
+        this->Attr("key_transpose").AttrType(OPTIONAL).Bool(false);
+        this->Attr("value_transpose").AttrType(OPTIONAL).Bool(false);
+        this->Attr("softmax_axes").AttrType(OPTIONAL).Int(-1);
         this->AICore().AddConfig("ascend310p");
     }
 };
 
 OP_ADD(SwinAttentionScoreQuant);
-}  // namespace ops
+} // namespace ops

@@ -14,7 +14,7 @@ import torch
 
 # 定义测试参数组合
 TEST_PARAMS = {
-    "decode_first":{
+    "decode_first": {
         "Testcase_Name": [None],
         "layout_q": ["TND"],
         "layout_kv": ["PA_ND"],
@@ -43,12 +43,11 @@ TEST_PARAMS = {
         "kv_quant_mode": [1],
         "tile_size": [64],
         "rope_head_dim": [64],
-        "template_run_mode": ["SWA"], # SWA SCFA CFA
-        "actlen_mode":["full"],       # random full
-        "S1EQS2":[False]
+        "template_run_mode": ["SWA"],  # SWA SCFA CFA
+        "actlen_mode": ["full"],  # random full
+        "S1EQS2": [False],
     },
-
-    "prefill_first":{
+    "prefill_first": {
         "Testcase_Name": [None],
         "layout_q": ["TND"],
         "layout_kv": ["PA_ND"],
@@ -57,7 +56,7 @@ TEST_PARAMS = {
         "cmp_kv_type": [torch.float8_e4m3fn],
         "B": [1],
         "S1": [8192],
-        "S2": [8192], 
+        "S2": [8192],
         "N1": [64],
         "N2": [1],
         "D": [512],
@@ -66,8 +65,8 @@ TEST_PARAMS = {
         "block_num2": [None],
         "block_size1": [128],
         "block_size2": [128],
-        "cu_seqlens_q": [None], 
-        "seqused_kv": [None], 
+        "cu_seqlens_q": [None],
+        "seqused_kv": [None],
         "softmax_scale": [0.04419417],
         "cmp_ratio": [1],
         "ori_mask_mode": [4],
@@ -77,11 +76,11 @@ TEST_PARAMS = {
         "kv_quant_mode": [1],
         "tile_size": [64],
         "rope_head_dim": [64],
-        "template_run_mode": ["SWA"], # SWA SCFA CFA
-        "actlen_mode":["full"],       # random full
-        "S1EQS2":[False]
+        "template_run_mode": ["SWA"],  # SWA SCFA CFA
+        "actlen_mode": ["full"],  # random full
+        "S1EQS2": [False],
     },
-    "decode_first_hif8":{
+    "decode_first_hif8": {
         "Testcase_Name": [None],
         "layout_q": ["TND"],
         "layout_kv": ["PA_ND"],
@@ -110,11 +109,11 @@ TEST_PARAMS = {
         "kv_quant_mode": [10],
         "tile_size": [64],
         "rope_head_dim": [64],
-        "template_run_mode": ["SWA"], # SWA SCFA CFA
-        "actlen_mode":["full"],       # random full
-        "S1EQS2":[False]
+        "template_run_mode": ["SWA"],  # SWA SCFA CFA
+        "actlen_mode": ["full"],  # random full
+        "S1EQS2": [False],
     },
-    "decode_typical":{
+    "decode_typical": {
         "Testcase_Name": [None],
         "layout_q": ["TND"],
         "layout_kv": ["PA_ND"],
@@ -143,11 +142,11 @@ TEST_PARAMS = {
         "kv_quant_mode": [1],
         "tile_size": [64],
         "rope_head_dim": [64],
-        "template_run_mode": ["SCFA"], # SWA SCFA CFA
-        "actlen_mode":["full"],       # random full
-        "S1EQS2":[False]
+        "template_run_mode": ["SCFA"],  # SWA SCFA CFA
+        "actlen_mode": ["full"],  # random full
+        "S1EQS2": [False],
     },
-    "prefill_typical":{
+    "prefill_typical": {
         "Testcase_Name": [None],
         "layout_q": ["TND"],
         "layout_kv": ["PA_ND"],
@@ -176,12 +175,12 @@ TEST_PARAMS = {
         "kv_quant_mode": [1],
         "tile_size": [64],
         "rope_head_dim": [64],
-        "template_run_mode": ["SCFA"], # SWA SCFA CFA
-        "actlen_mode":["full"],       # random full
-        "S1EQS2":[False]
+        "template_run_mode": ["SCFA"],  # SWA SCFA CFA
+        "actlen_mode": ["full"],  # random full
+        "S1EQS2": [False],
     },
 }
 
 # 填入启用的测试参数
 ENABLED_PARAMS = [TEST_PARAMS["decode_typical"]]
-#ENABLED_PARAMS = [TEST_PARAMS[key] for key in TEST_PARAMS.keys()]
+# ENABLED_PARAMS = [TEST_PARAMS[key] for key in TEST_PARAMS.keys()]

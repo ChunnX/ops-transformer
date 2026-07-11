@@ -17,7 +17,7 @@
 namespace ops {
 class DenseLightningIndexerSoftmaxLse : public OpDef {
 public:
-    explicit DenseLightningIndexerSoftmaxLse(const char* name) : OpDef(name)
+    explicit DenseLightningIndexerSoftmaxLse(const char *name) : OpDef(name)
     {
         this->Input("query_index")
             .ParamType(REQUIRED)
@@ -54,8 +54,8 @@ public:
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
-        this->Attr("layout").AttrType(OPTIONAL).String("TND");         // BSND, TND
-        this->Attr("sparse_mode").AttrType(OPTIONAL).Int(3);            // 3:默认值，只计算下三角
+        this->Attr("layout").AttrType(OPTIONAL).String("TND"); // BSND, TND
+        this->Attr("sparse_mode").AttrType(OPTIONAL).Int(3);   // 3:默认值，只计算下三角
         this->Attr("pre_tokens").AttrType(OPTIONAL).Int(9223372036854775807);
         this->Attr("next_tokens").AttrType(OPTIONAL).Int(9223372036854775807);
         OpAICoreConfig aicore_config;

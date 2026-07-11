@@ -36,9 +36,10 @@ public:
 
 protected:
     ge::graphStatus SwinTransformerLnQKVSaveTilingData(gert::TilingContext *context);
-    ge::graphStatus SwinTransformerLnQKVSetLayernormTilingData(gert::TilingContext *context,
-        SwinTransformerLnQKVLayernormTilingData &layernormTilingData);
-    ge::graphStatus SwinTransformerLnQKVSetMatmulTilingData(gert::TilingContext* context, TCubeTiling mmtilingData);
+    ge::graphStatus
+    SwinTransformerLnQKVSetLayernormTilingData(gert::TilingContext *context,
+                                               SwinTransformerLnQKVLayernormTilingData &layernormTilingData);
+    ge::graphStatus SwinTransformerLnQKVSetMatmulTilingData(gert::TilingContext *context, TCubeTiling mmtilingData);
 }; // class SwinTransformerLnQKVTilingCompute
 
 ge::graphStatus SwinTransformerLnQKVTilingCompute::SwinTransformerLnQKVSaveTilingData(gert::TilingContext *context)
@@ -48,10 +49,10 @@ ge::graphStatus SwinTransformerLnQKVTilingCompute::SwinTransformerLnQKVSaveTilin
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus SwinTransformerLnQKVTilingCompute::SwinTransformerLnQKVSetLayernormTilingData(gert::TilingContext *context,
-    SwinTransformerLnQKVLayernormTilingData &layernormTilingData)
+ge::graphStatus SwinTransformerLnQKVTilingCompute::SwinTransformerLnQKVSetLayernormTilingData(
+    gert::TilingContext *context, SwinTransformerLnQKVLayernormTilingData &layernormTilingData)
 {
-    uint32_t bLength = 8; // 8 is for ln
+    uint32_t bLength = 8;   // 8 is for ln
     uint32_t sLength = 256; // 256 is for ln
     uint32_t hLength = 128; // 128 is for ln
     layernormTilingData.set_bLength(bLength);
@@ -83,7 +84,7 @@ ge::graphStatus SwinTransformerLnQKVTilingCompute::SwinTransformerLnQKVSetLayern
     layernormTilingData.set_elementPerBlock(loopSize * tilingData.opBaseInfo.get_baseLoopNum());
     layernormTilingData.set_remainderElementPerBlock(loopSize * (tilingData.opBaseInfo.get_baseLoopNum() + 1));
     layernormTilingData.set_normalBlockElementOffset(loopSize * (tilingData.opBaseInfo.get_baseLoopNum() + 1) *
-        tilingData.opBaseInfo.get_remainderBlockNum());
+                                                     tilingData.opBaseInfo.get_remainderBlockNum());
 
     uint32_t innerLoopSize = sLength * hLength; // 32K
     layernormTilingData.set_innerLoopLength(innerLoopSize);
@@ -92,8 +93,8 @@ ge::graphStatus SwinTransformerLnQKVTilingCompute::SwinTransformerLnQKVSetLayern
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus SwinTransformerLnQKVTilingCompute::SwinTransformerLnQKVSetMatmulTilingData(gert::TilingContext* context,
-    TCubeTiling mmtilingData)
+ge::graphStatus SwinTransformerLnQKVTilingCompute::SwinTransformerLnQKVSetMatmulTilingData(gert::TilingContext *context,
+                                                                                           TCubeTiling mmtilingData)
 {
     uint32_t seqLength = 128; // 128 is for ln
     uint32_t loopTime = 8;
@@ -109,7 +110,7 @@ ge::graphStatus SwinTransformerLnQKVTilingCompute::SwinTransformerLnQKVSetMatmul
     tiling.SetBias(true);
     tiling.SetBufferSpace(-1, -1, -1);
     tiling.SetTraverse(MatrixTraverse::FIRSTN);
-    int ret = tiling.GetTiling(mmtilingData);    // if ret = -1, gen tiling failed
+    int ret = tiling.GetTiling(mmtilingData); // if ret = -1, gen tiling failed
     if (ret == -1) {
         OP_LOGW(context, "SwinTransformerLnQKV get tiling fail.");
         return ge::GRAPH_FAILED;
@@ -121,16 +122,15 @@ ge::graphStatus SwinTransformerLnQKVTilingCompute::SwinTransformerLnQKVTilingMai
 {
     const gert::StorageShape *x1Shape =
         context->GetInputShape(0); // [B,S, H]   [8,65536, 128] -> [1, 65536,128] -> 32 * [8,256,128]
-    int32_t dataSize = 1;           // 8(batch) *32(out loop) * [32, 64, 128] ->  [8192, 64 ,128]
-    OP_CHECK_IF(x1Shape == nullptr, OP_LOGE("SwinTransformerLnQkv",
-                    "The INPUT x1Shape param is null!"),
-                    return ge::GRAPH_FAILED);
+    int32_t dataSize = 1;          // 8(batch) *32(out loop) * [32, 64, 128] ->  [8192, 64 ,128]
+    OP_CHECK_IF(x1Shape == nullptr, OP_LOGE("SwinTransformerLnQkv", "The INPUT x1Shape param is null!"),
+                return ge::GRAPH_FAILED);
     for (uint32_t i = 0; i < x1Shape->GetStorageShape().GetDimNum(); i++) {
         dataSize *= x1Shape->GetStorageShape().GetDim(i);
     }
     tilingData.set_inputSizeSum(dataSize);
 
-    auto compileInfo = reinterpret_cast<const SwinTransformerLnQKVCompileInfo*>(context->GetCompileInfo());
+    auto compileInfo = reinterpret_cast<const SwinTransformerLnQKVCompileInfo *>(context->GetCompileInfo());
     OP_CHECK_NULL_WITH_CONTEXT(context, compileInfo);
     tilingData.set_maxCoreNum(uint32_t(compileInfo->coreNum));
 
@@ -140,12 +140,12 @@ ge::graphStatus SwinTransformerLnQKVTilingCompute::SwinTransformerLnQKVTilingMai
     tilingData.opBaseInfo.set_inputsize(dataSize);
     tilingData.opBaseInfo.set_hSize(256); // The default value is 256.
     size_t *workspaces = context->GetWorkspaceSizes(1);
-    OP_CHECK_IF(workspaces == nullptr, OP_LOGE("SwinTransformerLnQkv",
-                        "failed to get workspace size"),
-                        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(workspaces == nullptr, OP_LOGE("SwinTransformerLnQkv", "failed to get workspace size"),
+                return ge::GRAPH_FAILED);
 
     auto platformInfoPtr = context->GetPlatformInfo();
-    OP_CHECK_IF(platformInfoPtr == nullptr, OP_LOGE(context->GetNodeName(), "platformInfoPtr is null"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(platformInfoPtr == nullptr, OP_LOGE(context->GetNodeName(), "platformInfoPtr is null"),
+                return ge::GRAPH_FAILED);
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
     if (ascendcPlatform.GetSocVersion() == platform_ascendc::SocVersion::KIRINX90 ||
         ascendcPlatform.GetSocVersion() == platform_ascendc::SocVersion::KIRIN9030) {
@@ -156,9 +156,12 @@ ge::graphStatus SwinTransformerLnQKVTilingCompute::SwinTransformerLnQKVTilingMai
         for (uint32_t i = 0; i < qShape->GetStorageShape().GetDimNum(); i++) {
             outSize *= qShape->GetStorageShape().GetDim(i);
         }
-        workspaces[0] = dataSize * sizeof(uint16_t) + outSize * sizeof(uint16_t) + outSize * sizeof(uint16_t) + outSize * sizeof(uint16_t);
+        workspaces[0] = dataSize * sizeof(uint16_t) + outSize * sizeof(uint16_t) + outSize * sizeof(uint16_t) +
+                        outSize * sizeof(uint16_t);
     } else {
-        workspaces[0] = 1200 * 1024 * 1024; // To use the workspace, set the workspace size to 1200 x 1024 x 1024 MB by default. Memory on GM
+        workspaces[0] =
+            1200 * 1024 *
+            1024; // To use the workspace, set the workspace size to 1200 x 1024 x 1024 MB by default. Memory on GM
     }
     tilingData.set_workspaceSize(workspaces[0]);
 
@@ -175,7 +178,8 @@ ge::graphStatus TilingFuncForSwinTransformerLnQKV(gert::TilingContext *context)
     return ret;
 } // TilingFunc
 
-static ge::graphStatus TilingPrepareForSwinTransformerLnQKV(gert::TilingParseContext* context) {
+static ge::graphStatus TilingPrepareForSwinTransformerLnQKV(gert::TilingParseContext *context)
+{
     // auto compileInfo = GetCompileInfoPtr<SwinTransformerLnQKVCompileInfo>(context);
     auto compileInfo = context->GetCompiledInfo<SwinTransformerLnQKVCompileInfo>();
     OP_CHECK_NULL_WITH_CONTEXT(context, compileInfo);
@@ -196,6 +200,6 @@ static ge::graphStatus TilingPrepareForSwinTransformerLnQKV(gert::TilingParseCon
 }
 
 IMPL_OP_OPTILING(SwinTransformerLnQKV)
-.Tiling(TilingFuncForSwinTransformerLnQKV)
-.TilingParse<SwinTransformerLnQKVCompileInfo>(TilingPrepareForSwinTransformerLnQKV);
+    .Tiling(TilingFuncForSwinTransformerLnQKV)
+    .TilingParse<SwinTransformerLnQKVCompileInfo>(TilingPrepareForSwinTransformerLnQKV);
 } // namespace optiling

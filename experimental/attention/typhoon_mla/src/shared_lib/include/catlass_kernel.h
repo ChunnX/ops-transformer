@@ -37,6 +37,6 @@ struct MLAKernelInfo {
 
 void LaunchMLA(uint32_t blockNum, aclrtStream stream, MLAKernelInfo mlaKernelInfo);
 std::vector<uint64_t> GetKVSplitKernel(uint32_t blockNum, aclrtStream stream, MLAKernelInfo mlaKernelInfo);
-}
+} // namespace CatlassKernel
 
 #endif // SHARED_LIB_CATLASS_KERNEL_H

@@ -77,7 +77,7 @@
   $$
   y\_RoPE = torch.cat((-y2, y1), dim = -1)
   $$
-  
+
   $$
   y\_embed = (y * cos) + y\_RoPE * sin
   $$
@@ -99,7 +99,7 @@
   $$
 
   非对称量化部分：
-  
+
   $$
   kQuant = kRoPE / kScale + kOffset \\
   vQuant = v / vScale + vOffset

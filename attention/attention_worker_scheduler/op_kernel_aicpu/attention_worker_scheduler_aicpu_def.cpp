@@ -24,4 +24,4 @@ public:
 };
 
 OP_ADD(AttentionWorkerScheduler);
-}  // namespace ops
+} // namespace ops

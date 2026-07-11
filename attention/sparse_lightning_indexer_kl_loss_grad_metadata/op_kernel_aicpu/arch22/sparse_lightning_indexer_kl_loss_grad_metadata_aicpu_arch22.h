@@ -103,8 +103,7 @@ inline bool SparseLightningIndexerKLLossGradMetadataCpuKernelArch22::Prepare(Cpu
     cmpResidualKey_ = ctx.Input(4);
     metadata_ = ctx.Output(0);
 
-    bool requiredAttrs = GetAttrValue(ctx, "num_heads_q", numHeadsQ_) &&
-                         GetAttrValue(ctx, "num_heads_k", numHeadsK_) &&
+    bool requiredAttrs = GetAttrValue(ctx, "num_heads_q", numHeadsQ_) && GetAttrValue(ctx, "num_heads_k", numHeadsK_) &&
                          GetAttrValue(ctx, "head_dim", headDim_);
     if (!requiredAttrs) {
         return false;
@@ -151,8 +150,8 @@ inline bool SparseLightningIndexerKLLossGradMetadataCpuKernelArch22::ParamsCheck
         return false;
     }
     if (numHeadsQ_ <= 0 || numHeadsK_ <= 0 || headDim_ <= 0) {
-        KERNEL_LOG_ERROR("num_heads_q/num_heads_k/head_dim must be positive, but got nq=%ld nk=%ld d=%ld",
-                         numHeadsQ_, numHeadsK_, headDim_);
+        KERNEL_LOG_ERROR("num_heads_q/num_heads_k/head_dim must be positive, but got nq=%ld nk=%ld d=%ld", numHeadsQ_,
+                         numHeadsK_, headDim_);
         return false;
     }
     if (bSize_ <= 0 || kSize_ <= 0) {
@@ -160,18 +159,15 @@ inline bool SparseLightningIndexerKLLossGradMetadataCpuKernelArch22::ParamsCheck
         return false;
     }
     if (layoutType_ == SliLayout::BSND && (s1Size_ <= 0 || s2Size_ <= 0)) {
-        KERNEL_LOG_ERROR("max_seqlen_q/max_seqlen_k must be positive for BSND, but got q=%ld k=%ld",
-                         s1Size_, s2Size_);
+        KERNEL_LOG_ERROR("max_seqlen_q/max_seqlen_k must be positive for BSND, but got q=%ld k=%ld", s1Size_, s2Size_);
         return false;
     }
     if (s1Size_ < 0 || s2Size_ < 0) {
-        KERNEL_LOG_ERROR("max_seqlen_q/max_seqlen_k must be non-negative, but got q=%ld k=%ld",
-                         s1Size_, s2Size_);
+        KERNEL_LOG_ERROR("max_seqlen_q/max_seqlen_k must be non-negative, but got q=%ld k=%ld", s1Size_, s2Size_);
         return false;
     }
     if (numHeadsQ_ % numHeadsK_ != 0) {
-        KERNEL_LOG_ERROR("num_heads_q must be divisible by num_heads_k, but got nq=%ld nk=%ld",
-                         numHeadsQ_, numHeadsK_);
+        KERNEL_LOG_ERROR("num_heads_q must be divisible by num_heads_k, but got nq=%ld nk=%ld", numHeadsQ_, numHeadsK_);
         return false;
     }
     if (sparseMode_ != static_cast<int64_t>(SliSparseMode::NO_MASK) &&
@@ -187,9 +183,8 @@ inline bool SparseLightningIndexerKLLossGradMetadataCpuKernelArch22::ParamsCheck
         KERNEL_LOG_ERROR("cu_seqlens_q/cu_seqlens_k must be provided for TND metadata.");
         return false;
     }
-    if (layoutType_ == SliLayout::TND &&
-        (cuSeqLensQuery_->GetTensorShape()->GetDimSize(0) < bSize_ + 1 ||
-         cuSeqLensKey_->GetTensorShape()->GetDimSize(0) < bSize_ + 1)) {
+    if (layoutType_ == SliLayout::TND && (cuSeqLensQuery_->GetTensorShape()->GetDimSize(0) < bSize_ + 1 ||
+                                          cuSeqLensKey_->GetTensorShape()->GetDimSize(0) < bSize_ + 1)) {
         KERNEL_LOG_ERROR("cu_seqlens_q/cu_seqlens_k length must be at least batch_size + 1.");
         return false;
     }
@@ -257,8 +252,8 @@ inline int64_t SparseLightningIndexerKLLossGradMetadataCpuKernelArch22::GetS1Loa
     return s2RealSize + fixedS1Load;
 }
 
-inline bool SparseLightningIndexerKLLossGradMetadataCpuKernelArch22::BuildSparseValidArray(
-    std::vector<int64_t> &sparseValidArray)
+inline bool
+SparseLightningIndexerKLLossGradMetadataCpuKernelArch22::BuildSparseValidArray(std::vector<int64_t> &sparseValidArray)
 {
     if (sparseValidArray.empty()) {
         KERNEL_LOG_ERROR("Sparse valid array size should be larger than 0.");
@@ -315,8 +310,9 @@ inline bool SparseLightningIndexerKLLossGradMetadataCpuKernelArch22::CanSplitWit
     return usedPartNum <= partNum;
 }
 
-inline int64_t SparseLightningIndexerKLLossGradMetadataCpuKernelArch22::FindMinMaxLoad(
-    const std::vector<int64_t> &sparseValidArray, int64_t start, int64_t partNum) const
+inline int64_t
+SparseLightningIndexerKLLossGradMetadataCpuKernelArch22::FindMinMaxLoad(const std::vector<int64_t> &sparseValidArray,
+                                                                        int64_t start, int64_t partNum) const
 {
     int64_t totalLoad = std::accumulate(sparseValidArray.begin() + start, sparseValidArray.end(), 0LL);
     int64_t minMaxLoad = std::max(*std::max_element(sparseValidArray.begin() + start, sparseValidArray.end()),
@@ -404,8 +400,8 @@ inline bool SparseLightningIndexerKLLossGradMetadataCpuKernelArch22::BuildBalanc
     return true;
 }
 
-inline bool SparseLightningIndexerKLLossGradMetadataCpuKernelArch22::SetSparseStartIdx(
-    const std::vector<int64_t> &sparseValidArray)
+inline bool
+SparseLightningIndexerKLLossGradMetadataCpuKernelArch22::SetSparseStartIdx(const std::vector<int64_t> &sparseValidArray)
 {
     if (!BuildBalancedSparseStartIdx(sparseValidArray, bS1Index_)) {
         return false;

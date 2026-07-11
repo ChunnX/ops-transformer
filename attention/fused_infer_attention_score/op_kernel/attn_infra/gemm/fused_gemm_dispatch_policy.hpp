@@ -14,8 +14,7 @@
 #include "../../attn_infra/fused_base_defs.hpp"
 #include "../../attn_infra/arch/fused_arch.hpp"
 
-namespace NpuArch::Gemm 
-{
+namespace NpuArch::Gemm {
 
 // Block Mmad Policies
 
@@ -71,6 +70,6 @@ struct MmadAtlasA2FAITailPV : public MmadAtlasA2 {
     static constexpr bool ENABLE_UNIT_FLAG = ENABLE_UNIT_FLAG_;
 };
 
-}  // namespace NpuArch::Gemm
+} // namespace NpuArch::Gemm
 
-#endif  // GEMM_DISPATCH_POLICY_HPP
+#endif // GEMM_DISPATCH_POLICY_HPP

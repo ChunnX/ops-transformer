@@ -30,11 +30,7 @@ constexpr uint64_t VEC_REPEAT_BYTES = 256;
 constexpr int32_t CONST_TWO = 2;
 
 
-
-
-
-__aicore__ inline void CopyIn(LocalTensor<float> &mmOutUb, GlobalTensor<float> &mMoutGm,
-                            int64_t MMout_gmoffset,
+__aicore__ inline void CopyIn(LocalTensor<float> &mmOutUb, GlobalTensor<float> &mMoutGm, int64_t MMout_gmoffset,
                               int64_t groupInner, int64_t s2Inner, int64_t mmUbStride)
 {
     // 将MMout_gmoffset copy到UB上
@@ -61,8 +57,7 @@ __aicore__ inline void CopyOut(const GlobalTensor<T> &dstGm, const LocalTensor<T
 }
 
 __aicore__ inline void DoScale(const LocalTensor<float> &reduceCacheBuf, LocalTensor<float> &mmOutUb,
-                               LocalTensor<float> &tmpBuff,
-                               int64_t groupInner, int64_t s2Inner, int32_t outerGidx)
+                               LocalTensor<float> &tmpBuff, int64_t groupInner, int64_t s2Inner, int32_t outerGidx)
 {
     // do scale: [groupInner, 8] * [groupInner, s2Inner]
     uint64_t countPerRepeat = VEC_REPEAT_BYTES / sizeof(float);

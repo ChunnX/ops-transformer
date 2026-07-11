@@ -32,7 +32,7 @@ __aicore__ inline void SetGatherSrcOffset(const LocalTensor<int32_t> &gatherOffs
     for (uint32_t i = 0; i < 8; i++) {
         gatherOffsetLocal.SetValue(i, i ^ 1);
     }
-    
+
     event_t eventId_S_V = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::S_V));
     SetFlag<HardEvent::S_V>(eventId_S_V);
     WaitFlag<HardEvent::S_V>(eventId_S_V);
@@ -112,7 +112,7 @@ __aicore__ inline void RotaryPosEmb(const LocalTensor<float> &dstLocal, const Lo
         }
         ResetMask();
     }
-   
+
     PipeBarrier<PIPE_V>();
     BinaryRepeatParams computeParams{1,
                                      1,
@@ -125,6 +125,6 @@ __aicore__ inline void RotaryPosEmb(const LocalTensor<float> &dstLocal, const Lo
     PipeBarrier<PIPE_V>();
     Add(dstLocal[baseAddr], dstLocal[baseAddr], reArrLocal, col, row, computeParams);
 }
-}
+} // namespace Compressor
 
 #endif

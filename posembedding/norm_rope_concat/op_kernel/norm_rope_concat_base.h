@@ -89,16 +89,15 @@ __aicore__ inline T CeilAlign(T a, T b)
 template <RopeType ropeType>
 class RopeOperation {
 public:
-    __aicore__ inline RopeOperation(TPipe *pipe, GM_ADDR sin, GM_ADDR cos, uint32_t actualSeq,
-                                    uint32_t ropeDim, uint32_t ropeNum,
-                                    uint32_t alignedRopeDim)
+    __aicore__ inline RopeOperation(TPipe *pipe, GM_ADDR sin, GM_ADDR cos, uint32_t actualSeq, uint32_t ropeDim,
+                                    uint32_t ropeNum, uint32_t alignedRopeDim)
         : ropeDim_(ropeDim), ropeNum_(ropeNum), alignedRopeDim_(alignedRopeDim),
           totalRopeDim_(ropeNum * alignedRopeDim), actualSeq_(actualSeq)
     {
         if constexpr (ropeType == RopeType::NONE) {
             return;
         }
-        
+
         sinGm_.SetGlobalBuffer((__gm__ DTYPE_ROPE_SIN *)sin);
         cosGm_.SetGlobalBuffer((__gm__ DTYPE_ROPE_SIN *)cos);
         pipe->InitBuffer(ropeQueue_, SINGLE_BUFFER, totalRopeDim_ * NUM_TWO * sizeof(DTYPE_ROPE_SIN));

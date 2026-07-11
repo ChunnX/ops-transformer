@@ -24,8 +24,10 @@ namespace optiling {
 
 class PagedAttentionChecker : public BaseChecker {
 public:
-    PagedAttentionChecker(bool enableNonQuant, bool enableFullQuant, bool enableAntiQuant) :
-        BaseChecker(enableNonQuant, enableFullQuant, enableAntiQuant) {}
+    PagedAttentionChecker(bool enableNonQuant, bool enableFullQuant, bool enableAntiQuant)
+        : BaseChecker(enableNonQuant, enableFullQuant, enableAntiQuant)
+    {
+    }
     ~PagedAttentionChecker() override = default;
 
     ge::graphStatus CheckSinglePara(const FiaTilingInfo &fiaInfo) override;
@@ -55,17 +57,19 @@ private:
     ge::graphStatus CheckKVLayout(const FiaTilingInfo &fiaInfo) const;
 
     ge::graphStatus CheckPACacheShape3D(const FiaTilingInfo &fiaInfo, const gert::Shape &tempShape,
-        const std::string &inputName, uint32_t compareD, const std::string &shapeStr) const;
+                                        const std::string &inputName, uint32_t compareD,
+                                        const std::string &shapeStr) const;
     ge::graphStatus CheckPACacheShape4D(const FiaTilingInfo &fiaInfo, const gert::Shape &tempShape,
-        const std::string &inputName, uint32_t compareD, const std::string &shapeStr) const;
-    ge::graphStatus CheckPACacheShapeNZAntiquant(const FiaTilingInfo &fiaInfo,
-        const std::string &inputName, const std::string &shapeStr, uint32_t compareD,
-        int64_t tempD0, int64_t tempD1) const;
-    ge::graphStatus CheckPACacheShapeNZNonAntiquant(const FiaTilingInfo &fiaInfo,
-        const std::string &inputName, const std::string &shapeStr, uint32_t compareD,
-        int64_t tempD0, int64_t tempD1) const;
+                                        const std::string &inputName, uint32_t compareD,
+                                        const std::string &shapeStr) const;
+    ge::graphStatus CheckPACacheShapeNZAntiquant(const FiaTilingInfo &fiaInfo, const std::string &inputName,
+                                                 const std::string &shapeStr, uint32_t compareD, int64_t tempD0,
+                                                 int64_t tempD1) const;
+    ge::graphStatus CheckPACacheShapeNZNonAntiquant(const FiaTilingInfo &fiaInfo, const std::string &inputName,
+                                                    const std::string &shapeStr, uint32_t compareD, int64_t tempD0,
+                                                    int64_t tempD1) const;
     ge::graphStatus CheckPACacheShape(const FiaTilingInfo &fiaInfo, const gert::Shape tempShape,
-        const std::string& inputName) const;
+                                      const std::string &inputName) const;
     ge::graphStatus CheckBlockSizeNonQuant910B(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckBlockSizeNonQuantOther(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckBlockSizeAntiquant(const FiaTilingInfo &fiaInfo);

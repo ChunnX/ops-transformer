@@ -359,7 +359,8 @@ __aicore__ inline void NsaSelectedAttentionGradPost<OUT_TYPE, TILING_TYPE, CAST_
                 Muls(tmpTensor[ubOffset], tmpTensor[ubOffset], (float)tilingData->postTilingData.scaleValue,
                      sLen * headDimAlign);
             } else {
-                Muls(vecOut[ubOffset], vecOut[ubOffset], (float)tilingData->postTilingData.scaleValue, sLen * headDimAlign);
+                Muls(vecOut[ubOffset], vecOut[ubOffset], (float)tilingData->postTilingData.scaleValue,
+                     sLen * headDimAlign);
             }
 
             PipeBarrier<PIPE_V>();
@@ -375,11 +376,13 @@ __aicore__ inline void NsaSelectedAttentionGradPost<OUT_TYPE, TILING_TYPE, CAST_
 
         if constexpr (LAYOUT == TND) {
             DataCopyPad(dstGm[copyOutDstOffset], vecOut[ubOffset],
-                        {static_cast<uint16_t>(dataLen / headDimAlign), static_cast<uint32_t>(headDim * sizeof(OUT_TYPE)), 0,
+                        {static_cast<uint16_t>(dataLen / headDimAlign),
+                         static_cast<uint32_t>(headDim * sizeof(OUT_TYPE)), 0,
                          static_cast<uint32_t>((n2 * curG * headDim - headDim) * sizeof(OUT_TYPE)), 0});
         } else {
             DataCopyPad(dstGm[copyOutDstOffset], vecOut[ubOffset],
-                        {static_cast<uint16_t>(dataLen / headDimAlign), static_cast<uint32_t>(headDim * sizeof(OUT_TYPE)), 0,
+                        {static_cast<uint16_t>(dataLen / headDimAlign),
+                         static_cast<uint32_t>(headDim * sizeof(OUT_TYPE)), 0,
                          static_cast<uint32_t>(copyOutDstStride * sizeof(OUT_TYPE)), 0});
         }
 
