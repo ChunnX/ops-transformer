@@ -517,7 +517,7 @@ def check_result_return_value(expect, result, params):
                         float(split_count) * 100.0
     display_output_np_isclose(real_data, data_compe, start, end)
     pct_thd = (1 - pct_thd) * 100.0
-    result = "Pass" if (npu_pass or topk_precision) else "Failed"
+    result = "Pass" if npu_pass else "Failed"
     print_log(
         '---------------------------------------------------------------------------------------')
     print_log('Rtol   \t Atol   \t PctThd   \t PctRlt   \t Result')
