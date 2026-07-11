@@ -423,7 +423,7 @@ aclnnGroupedMatmulV5 默认确定性实现。
 | groupType | shape |
 |:---:|:---|
 | 0 | `(g, N, ceil(K/64), 2)`（weight 转置）/ `(g, ceil(K/64), N, 2)`（weight不转置） |
-| 2 | `(K/64 + g, N, 2)`，scale_i起始地址偏移为 `((K_0 + K_1 + ... + K_{i-1}) / 64 + g_i) * N * 2`，即scale_0偏移为0，scale_1偏移为 `(K_0 / 64 + 1) * N * 2`，依此类推 |
+| 2 | `(K/64 + g, N, 2)`，scale_i起始地址偏移为 `((K_0 + K_1 + ... + K_{i-1}) / 64 + g_i) * N * 2`（$g_i$ 为第 i 个分组，下标从 0 开始），即scale_0偏移为0，scale_1偏移为 `(K_0 / 64 + 1) * N * 2`，scale_2偏移为 `((K_0 + K_1) / 64 + 2) * N * 2`，依此类推 |
 
 - **perTokenScaleOptional shape**：
 
@@ -455,14 +455,14 @@ aclnnGroupedMatmulV5 默认确定性实现。
 | groupType | shape |
 |:---:|:---|
 | 0 | `(g, ceil(N/gsN), ceil(K/gsK))`（转置）/ `(g, ceil(K/gsK), ceil(N/gsN))`（非转置），gsN=gsK=128 |
-| 2 | `(K/gsK + g, ceil(N/gsN))`，scale_i地址偏移为 `((K_0 + K_1 + ... + K_{i-1}) / gsK + g_i) * ceil(N / gsN)`，即scale_0偏移为0，scale_1偏移为 `(K_0 / gsK + 1) * ceil(N / gsN)`，依此类推 |
+| 2 | `(K/gsK + g, ceil(N/gsN))`，scale_i地址偏移为 `((K_0 + K_1 + ... + K_{i-1}) / gsK + g_i) * ceil(N / gsN)`（$g_i$ 为第 i 个分组，下标从 0 开始），即scale_0偏移为0，scale_1偏移为 `(K_0 / gsK + 1) * ceil(N / gsN)`，scale_2偏移为 `((K_0 + K_1) / gsK + 2) * ceil(N / gsN)`，依此类推 |
 
 - **perTokenScaleOptional shape**：
 
 | groupType | shape |
 |:---:|:---|
 | 0 | `(M, ceil(K/gsK))` |
-| 2 | `(K/gsK + g, M)`，per_token_scale_i地址偏移为 `((K_0 + K_1 + ... + K_{i-1}) / gsK + g_i) * M`，即per_token_scale_0偏移为0，per_token_scale_1偏移为 `(K_0 / gsK + 1) * M`，依此类推 |
+| 2 | `(K/gsK + g, M)`，per_token_scale_i地址偏移为 `((K_0 + K_1 + ... + K_{i-1}) / gsK + g_i) * M`（$g_i$ 为第 i 个分组，下标从 0 开始），即per_token_scale_0偏移为0，per_token_scale_1偏移为 `(K_0 / gsK + 1) * M`，per_token_scale_2偏移为 `((K_0 + K_1) / gsK + 2) * M`，依此类推 |
 
 - **动态量化特殊场景处理**：
   - 在动态量化场景 M分组或K分组情况下，当 N等于1 且 scaleOptional 的 shape 为 `(g, 1)` 时，weight既可以pertensor量化也可以perchannel量化时，优先选择pertensor量化模式。
@@ -534,7 +534,7 @@ aclnnGroupedMatmulV5 默认确定性实现。
   - groupListType=0：须为非负单调非递减数列（累积和）。以M=256、E=4（各组大小依次为64、0、128、64）为例：`[64, 64, 192, 256]`
   - groupListType=1：须为非负数列（各组大小）。例如：`[64, 0, 128, 64]`
   - groupListType=2：须为非负数列，shape `[E, 2]`（[组索引, 组大小]），非零组前置。例如：`[[0, 64], [2, 128], [3, 64], [1, 0]]`
-- groupType：支持 M轴分组（0）和不分组（-1），非量化/全量化额外支持 K轴分组（2）。全量化下 groupType 仅支持 0（M轴分组）。
+- groupType：支持 M轴分组（0）和不分组（-1），非量化额外支持 K轴分组（2）。全量化下 groupType 仅支持 0（M轴分组）。
 - tuningConfigOptional：支持。具体配置见 [tuningConfigOptional 配置示例](#tuningconfigoptional-配置示例)。
 - actType：非量化/伪量化仅支持 0。全量化下 x/weight=INT8 时支持 0/1/2/4/5。
 - 输入参数 x、weight，输出参数 out支持最多 128个Tensor。
@@ -565,8 +565,10 @@ aclnnGroupedMatmulV5 默认确定性实现。
 | FLOAT16 | FLOAT16 (ND/NZ) | FLOAT16/null | INT64 | FLOAT16 |
 | BFLOAT16 | BFLOAT16(ND/NZ) | FLOAT/null | INT64 | BFLOAT16 |
 
+> 以下参数须传空：scale、offset、antiquantScale、antiquantOffset、perTokenScale、activationInput、activationQuantScale、activationQuantOffset、activationFeatureOut。
+
 **约束**：
-- 支持 groupType=-1、0、2，actType=0，groupListType=0/1。
+- 支持 groupType=-1、0、2，actType=0，groupListType=0/1/2。
 
 </details>
 
@@ -581,15 +583,14 @@ aclnnGroupedMatmulV5 默认确定性实现。
 |:---|:---|:---|:---|:---|:---|
 | INT8 | INT8 (ND) | INT32/null | UINT64 | null | INT8 |
 | INT8 | INT8 (ND/NZ) | INT32/null | BFLOAT16 | FLOAT/null | BFLOAT16 |
-| INT8 | INT8 (NZ) | null | FLOAT/BFLOAT16 | FLOAT/null | BFLOAT16 |
 | INT8 | INT8 (ND/NZ) | INT32/null | FLOAT | FLOAT/null | FLOAT16 |
 | INT8 | INT8 (ND/NZ) | INT32/null | null | null | INT32 |
 
-> 其余参数（offset、antiquantScale、antiquantOffset、activationXxx等）均须传空。
+> 以下参数须传空：offset、antiquantScale、antiquantOffset、activationInput、activationQuantScale、activationQuantOffset。
 
 **约束**：
 - 仅 groupType=0（M轴分组）。
-- x、weight、out 仅支持长度的 1 TensorList。
+- x、weight、out 仅支持长度为 1 的 TensorList。
 - x不支持转置，2维 `(M, K)`；weight 3维 `(E, K, N)` 或 `(E, N, K)`。
 - **定轴算法**（优化性能）需同时满足：
   - shape（满足其一）：`(M, 7168) × (7168, 4096)` 或 `(M, 2048) × (2048, 7168)`
@@ -608,9 +609,11 @@ aclnnGroupedMatmulV5 默认确定性实现。
 |:---|:---|:---|:---|:---|:---|
 | INT4 | INT4 (ND/NZ) | null | UINT64 | FLOAT/null | FLOAT16/BFLOAT16 |
 
+> 以下参数须传空：offset、antiquantScale、antiquantOffset、activationInput、activationQuantScale、activationQuantOffset。
+
 **约束**：
 - groupType=0，actType=0，groupListType=0/1/2。
-- x/weight/out 仅支持长度的 1 TensorList。
+- x/weight/out 仅支持长度为 1 的 TensorList。
 - x不转置，2维 `(M, K)`。
 - weight 3维 `(E, K, N)`。ND格式时 N为 8 的倍数。
 - weight NZ格式支持转置，ND 仅支持非转置。
@@ -631,6 +634,8 @@ aclnnGroupedMatmulV5 默认确定性实现。
 | INT8 | INT4 (ND/NZ) | FLOAT | UINT64 | null | FLOAT | BFLOAT16 |
 | INT8 | INT4 (ND/NZ) | FLOAT | UINT64 | FLOAT/null | FLOAT | FLOAT16 |
 
+> 以下参数须传空：antiquantScale、antiquantOffset、activationInput、activationQuantScale、activationQuantOffset。
+
 **约束**：
 - groupType=0，actType=0。
 - 当前支持x、out均为长度为1的TensorList。
@@ -638,6 +643,7 @@ aclnnGroupedMatmulV5 默认确定性实现。
 - x/weight均不转置。x 2维 `(M, K)`；weight 3维 `(E, K, N)`。
 - bias 为离线辅助结果：$bias_i = 8 \times weight_i \times scale_i$ 沿 K轴规约，shape `(E, N)`。
 - weight=INT32 时，每个 INT32 视为 8 个 INT4。
+- tuningConfigOptional[1] 可置 1 开启 weight 亲核格式（仅 perchannel 生效，需 weight shape `(E, N, K)` 经 ND2NZ 转换；K ≥ 2048 && N ≥ 2048 时有性能优势）。
 
 **offset为空（对称量化）：**
 - 按 count模式（不检查 groupListType），K为 quantGroupSize=256 的整数倍，K ≤ 18432。
@@ -648,7 +654,6 @@ aclnnGroupedMatmulV5 默认确定性实现。
 **offset 不为空（非对称量化）：**
 - scale shape `(E, 1, N)`。
 - offset为离线辅助结果（$antiquantOffset \times scale$），shape `(E, 1, N)`，dtype=FLOAT32。
-- tuningConfigOptional[1]可置1，以开启 weight亲核格式（仅支持 perchannel，需 weight shape `(E, N, K)` 经 ND2NZ 转换），K ≥ 2048 && N ≥ 2048 时有性能优势。
 
 </details>
 
@@ -663,6 +668,8 @@ aclnnGroupedMatmulV5 默认确定性实现。
 |:---|:---|:---|:---|:---|:---|
 | FLOAT16 | INT8 (ND) | FLOAT16/null | FLOAT16 | FLOAT16 | FLOAT16 |
 | BFLOAT16 | INT8 (ND) | FLOAT/null | BFLOAT16 | BFLOAT16 | BFLOAT16 |
+
+> 以下参数须传空：scale、offset、perTokenScale、activationInput、activationQuantScale、activationQuantOffset。
 
 **约束**：
 - x不转置；groupType=-1/0；actType=0；groupListType=0/1/2。
@@ -689,10 +696,12 @@ aclnnGroupedMatmulV5 默认确定性实现。
 | FLOAT16 | INT4 (ND) | FLOAT16/null | FLOAT16 | FLOAT16 | FLOAT16 |
 | BFLOAT16 | INT4 (ND) | FLOAT/null | BFLOAT16 | BFLOAT16 | BFLOAT16 |
 
+> 以下参数须传空：scale、offset、perTokenScale、activationInput、activationQuantScale、activationQuantOffset。
+
 **约束**：
 - x不转置；groupType=-1/0；actType=0；groupListType=0/1/2。
-- weight 最后一维为偶数；pergroup场景下 weight转置时 pergroup长度为偶数。
-- pergroup场景：G须能整除对应 $K_i$。多Tensor时所有 $s_i$ 相等。
+- weight 最后一维为偶数（最后一维指 weight不转置时 $weight_i$ 的 N轴、转置时 $weight_i$ 的 K轴）；pergroup场景下 weight转置时 pergroup长度为偶数。
+- 对称量化支持 perchannel 和 pergroup 两种模式；pergroup场景：G须能整除对应 $K_i$。多Tensor时所有 $s_i$ 相等。
 - 非对称量化仅 perchannel。
 - antiquantScale/Offset shape：
 
@@ -708,6 +717,10 @@ aclnnGroupedMatmulV5 默认确定性实现。
 #### groupType 支持场景
 
 > x、weight、y 输入为 aclTensorList。"单" = 单元素TensorList，"多" = 多元素TensorList。
+
+各量化类型支持的 groupType 速览：
+- A16W8、A16W4：仅支持 groupType=-1、0。
+- A8W8、A8W4、A4W4：仅支持 groupType=0，且 x 为单 tensor。
 
 | groupType | x | weight | y | splitItem | groupListOptional | 转置 | 其余场景限制 |
 |:---:|:---:|:---:|:---:|:---:|:---|:---|:---|
