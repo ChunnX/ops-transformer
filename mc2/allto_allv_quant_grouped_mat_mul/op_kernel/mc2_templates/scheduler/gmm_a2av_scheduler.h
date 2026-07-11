@@ -30,7 +30,6 @@ public:
     __aicore__ inline GmmA2avScheduler(CommOpType &hcclOp, ComputationOpType &computeOp,
                                        SharedComputationOpType &shareComputeOp, TaskTilingInfo *taskTilingInfo)
         : hcclOp_(hcclOp), computeOp_(computeOp), shareComputeOp_(shareComputeOp), taskTilingInfo_(taskTilingInfo){};
-    __aicore__ inline void Init();
 
     __aicore__ inline void Process()
     {

@@ -36,6 +36,7 @@ public:
         GM_ADDR workspaceGM, const TilingDataType *tilingData, const GmmTilingDataType *gmmTilingData,
         TILING_TYPE *gmmArrayAddrIn, TPipe *tPipe, bool isA2avGmmFlag);
     __aicore__ inline void Process(uint32_t startExpertIdx, uint32_t expertNum);
+    __aicore__ inline void Process(uint32_t expertIdx);
     __aicore__ inline void End();
 
 protected:
