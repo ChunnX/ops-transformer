@@ -110,9 +110,8 @@ ge::graphStatus InferTNDFormat(const gert::Shape *gradHInShape, const gert::Shap
     return GRAPH_SUCCESS;
 }
 
-ge::graphStatus InferOutputShapes(gert::Shape *gradPhiShape, gert::Shape *gradAlphaShape,
-                                  gert::Shape *gradBiasShape, gert::Shape *gradGammaShape, uint64_t numsResidual,
-                                  uint64_t dimen)
+ge::graphStatus InferOutputShapes(gert::Shape *gradPhiShape, gert::Shape *gradAlphaShape, gert::Shape *gradBiasShape,
+                                  gert::Shape *gradGammaShape, uint64_t numsResidual, uint64_t dimen)
 {
     uint64_t n2Plus2n = (2 * numsResidual) + (numsResidual * numsResidual);
 
@@ -175,8 +174,7 @@ static ge::graphStatus InferShape4mHCPreGrad(InferShapeContext *context)
         return ret;
     }
 
-    ret = InferOutputShapes(gradPhiShape, gradAlphaShape, gradBiasShape, gradGammaShape,
-                            numsResidual, dimen);
+    ret = InferOutputShapes(gradPhiShape, gradAlphaShape, gradBiasShape, gradGammaShape, numsResidual, dimen);
     if (ret != GRAPH_SUCCESS) {
         return ret;
     }

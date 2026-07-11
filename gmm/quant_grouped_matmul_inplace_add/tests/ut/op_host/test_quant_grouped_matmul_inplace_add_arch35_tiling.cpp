@@ -68,7 +68,15 @@ struct QGmmInplaceAddArch35Param {
     void Test() const
     {
         optiling::GMMCompileInfo compileInfo = {
-            32, 64, 262144, 524288, 134217728, 262144, 65536, 65536, platform_ascendc::SocVersion::ASCEND950,
+            32,
+            64,
+            262144,
+            524288,
+            134217728,
+            262144,
+            65536,
+            65536,
+            platform_ascendc::SocVersion::ASCEND950,
             NpuArch::DAV_3510,
         };
 
@@ -92,8 +100,7 @@ struct QGmmInplaceAddArch35Param {
             {{yShape, yDtype, ge::FORMAT_ND}},
             {{"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(groupListType)},
              {"group_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}},
-            &compileInfo,
-            "3510", compileInfo.aicNum, compileInfo.ubSize, actualTilingDataSize);
+            &compileInfo, "3510", compileInfo.aicNum, compileInfo.ubSize, actualTilingDataSize);
 
         TilingInfo tilingInfo;
         bool tilingResult = ExecuteTiling(tilingContextPara, tilingInfo);
@@ -188,8 +195,7 @@ const vector<QGmmInplaceAddArch35Param> &GetAscend950Params()
     return params;
 }
 
-class TestQuantGroupedMatmulInplaceAddArch35Tiling : public testing::TestWithParam<QGmmInplaceAddArch35Param> {
-};
+class TestQuantGroupedMatmulInplaceAddArch35Tiling : public testing::TestWithParam<QGmmInplaceAddArch35Param> {};
 
 TEST_P(TestQuantGroupedMatmulInplaceAddArch35Tiling, csvDrivenCase)
 {

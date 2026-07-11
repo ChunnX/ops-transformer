@@ -55,7 +55,7 @@ using aT = MatmulType<TPosition::GM, CubeFormat::ND, float>;
 using bT = MatmulType<TPosition::GM, CubeFormat::ND, float, true>;
 using cT = MatmulType<TPosition::GM, CubeFormat::ND, float>;
 using MT = matmul::MatmulImpl<aT, bT, cT>;
-#endif  // MHC_PRE_COMMON_DEFINED
+#endif // MHC_PRE_COMMON_DEFINED
 
 struct MatrixInfo {
     uint32_t totalLength = 0;
@@ -84,10 +84,10 @@ struct MNConfig {
     uint64_t curSingleCoreK;
 };
 
-#define PROCESS_HIN_IDX(nIdx, lenD, dIdx, eleNumPerVf_) \
-    MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(xInReg, xInAddr + nIdx * lenD + dIdx * eleNumPerVf_); \
-    MicroAPI::Cast<float, T, ctHalf2Fp32Zero>(xFp32Reg, xInReg, mask); \
-    MicroAPI::Muls(xFp32Reg, xFp32Reg, hPreValue##nIdx, mask); \
+#define PROCESS_HIN_IDX(nIdx, lenD, dIdx, eleNumPerVf_)                                                                \
+    MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(xInReg, xInAddr + nIdx * lenD + dIdx * eleNumPerVf_);  \
+    MicroAPI::Cast<float, T, ctHalf2Fp32Zero>(xFp32Reg, xInReg, mask);                                                 \
+    MicroAPI::Muls(xFp32Reg, xFp32Reg, hPreValue##nIdx, mask);                                                         \
     MicroAPI::Add(accFp32Reg, accFp32Reg, xFp32Reg, mask)
 
 template <class T, class P>
@@ -108,7 +108,9 @@ public:
     static constexpr float kOneValue = 1.0f;
     static constexpr float kTwoValue = 2.0f;
 
-    __aicore__ inline MhcPreKernelBase(MT &matmul) : mm(matmul) {}
+    __aicore__ inline MhcPreKernelBase(MT &matmul) : mm(matmul)
+    {
+    }
 
     __aicore__ inline void InitPipeAndCoreIdx(TPipe *pipe)
     {
@@ -207,11 +209,13 @@ public:
     }
 
     template <bool hasGamma, bool isFirstND>
-    __aicore__ inline void VFDoV0ProcessXIn(__ubuf__ P *xDst, __ubuf__ P *invRmsDst, __ubuf__ T *xIn,
-                                            __ubuf__ P *gamma, uint16_t mSize, uint16_t nSize)
+    __aicore__ inline void VFDoV0ProcessXIn(__ubuf__ P *xDst, __ubuf__ P *invRmsDst, __ubuf__ T *xIn, __ubuf__ P *gamma,
+                                            uint16_t mSize, uint16_t nSize)
     {
-        uint32_t nSrcUbAligned = MhcPreUtils::Align(nSize, static_cast<uint16_t>(MhcPreUtils::UB_ALIGN_SIZE / sizeof(T)));
-        uint32_t nDstUbAligned = MhcPreUtils::Align(nSize, static_cast<uint16_t>(MhcPreUtils::UB_ALIGN_SIZE / sizeof(P)));
+        uint32_t nSrcUbAligned =
+            MhcPreUtils::Align(nSize, static_cast<uint16_t>(MhcPreUtils::UB_ALIGN_SIZE / sizeof(T)));
+        uint32_t nDstUbAligned =
+            MhcPreUtils::Align(nSize, static_cast<uint16_t>(MhcPreUtils::UB_ALIGN_SIZE / sizeof(P)));
         uint16_t nLoopCnt = MhcPreUtils::CeilDiv(nSize, eleNumPerVf_);
         __VEC_SCOPE__
         {
@@ -341,9 +345,8 @@ public:
         DataCopyPad(invRmsGm_[offset], invRmsUb_, copyParams);
     }
 
-    __aicore__ inline void DataCopyOutToWorkSpace(LocalTensor<P> &x, uint32_t curMLen,
-                                                   uint32_t curNdLen, uint32_t offsetM,
-                                                   uint32_t offsetNd)
+    __aicore__ inline void DataCopyOutToWorkSpace(LocalTensor<P> &x, uint32_t curMLen, uint32_t curNdLen,
+                                                  uint32_t offsetM, uint32_t offsetNd)
     {
         DataCopyParams copyParams;
         copyParams.blockCount = static_cast<uint16_t>(curMLen);
@@ -389,7 +392,7 @@ public:
                 }
             }
         }
-  
+
         BiasCopyIn();
         biasInUb_ = biasInQue_.DeQue<P>();
     }
@@ -535,8 +538,8 @@ public:
         }
     }
 
-    __aicore__ inline void VFDoV1ProcessHinForN4(__ubuf__ T *xInAddr, __ubuf__ T *hinOutAddr,
-                                                 uint32_t lenD, uint32_t tIdx)
+    __aicore__ inline void VFDoV1ProcessHinForN4(__ubuf__ T *xInAddr, __ubuf__ T *hinOutAddr, uint32_t lenD,
+                                                 uint32_t tIdx)
     {
         uint16_t dLoopCnt = (lenD + eleNumPerVf_ - 1) / eleNumPerVf_;
         __VEC_SCOPE__
@@ -567,8 +570,8 @@ public:
         }
     }
 
-    __aicore__ inline void VFDoV1ProcessHinForN6(__ubuf__ T *xInAddr, __ubuf__ T *hinOutAddr,
-                                                 uint32_t lenD, uint32_t tIdx)
+    __aicore__ inline void VFDoV1ProcessHinForN6(__ubuf__ T *xInAddr, __ubuf__ T *hinOutAddr, uint32_t lenD,
+                                                 uint32_t tIdx)
     {
         uint16_t dLoopCnt = (lenD + eleNumPerVf_ - 1) / eleNumPerVf_;
         __VEC_SCOPE__
@@ -603,8 +606,8 @@ public:
         }
     }
 
-    __aicore__ inline void VFDoV1ProcessHinForN8(__ubuf__ T *xInAddr, __ubuf__ T *hinOutAddr,
-                                                 uint32_t lenD, uint32_t tIdx)
+    __aicore__ inline void VFDoV1ProcessHinForN8(__ubuf__ T *xInAddr, __ubuf__ T *hinOutAddr, uint32_t lenD,
+                                                 uint32_t tIdx)
     {
         uint16_t dLoopCnt = (lenD + eleNumPerVf_ - 1) / eleNumPerVf_;
         __VEC_SCOPE__
@@ -637,7 +640,8 @@ public:
                 PROCESS_HIN_IDX(7, lenD, dIdx, eleNumPerVf_);
 
                 MicroAPI::Cast<T, P, ctFp32To16>(outB16Reg, accFp32Reg, mask);
-                MicroAPI::StoreAlign<T, MicroAPI::StoreDist::DIST_PACK_B32>(hinOutAddr + dIdx * eleNumPerVf_, outB16Reg, mask);
+                MicroAPI::StoreAlign<T, MicroAPI::StoreDist::DIST_PACK_B32>(hinOutAddr + dIdx * eleNumPerVf_, outB16Reg,
+                                                                            mask);
             }
         }
     }

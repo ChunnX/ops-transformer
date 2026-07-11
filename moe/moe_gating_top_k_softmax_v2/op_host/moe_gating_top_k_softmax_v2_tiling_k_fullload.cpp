@@ -134,7 +134,7 @@ ge::graphStatus MoeGatingTopKSoftmaxV2KFullLoadTiling::DoOpTiling()
     if (!CalculateParamInUb()) {
         std::string kStr = std::to_string(k);
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "k", kStr.c_str(),
-            "AutoTiling failed, the attr k is too large for non-renorm tiling");
+                                              "AutoTiling failed, the attr k is too large for non-renorm tiling");
         return ge::GRAPH_FAILED;
     }
     tilingData.set_ubLoop(ubLoop);

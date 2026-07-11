@@ -215,7 +215,8 @@ __aicore__ inline void MoeV2GatherOutSimt<T>::Init(GM_ADDR inputX, GM_ADDR expan
 
     expandedRowIdxIndexGm_.SetGlobalBuffer((__gm__ int32_t *)workspace +
                                                Align(this->totalLength_, sizeof(int32_t)) * 2 + this->expertNum_ +
-                                               this->blockIdx * this->gatherOutTilingData->perCoreRows, 0);
+                                               this->blockIdx * this->gatherOutTilingData->perCoreRows,
+                                           0);
     if (this->gatherOutTilingData->perLoopCols > this->cols) {
         this->perLoopCols = this->cols;
         this->lastLoopCols = this->cols;

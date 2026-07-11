@@ -19,25 +19,25 @@
 - **计算公式**：
 
   (1) probs非None：
-  
+
   $$
   permutedTokensGrad[outIndex[i]] = unpermutedTokensGrad[permuteTokenId[i]]
   $$
-  
+
   $$
   permutedProbsGrad = permutedTokensGrad * permutedTokensOptional
   $$
-  
+
   $$
   probsGradExpertOrder = \sum_{j=0}^{hidden\_size}(permutedProbsGrad_{i,j})
   $$
 
     - dropAndPad为false时：
-  
+
   $$
   probsGradOut = masked\_scatter(routingMapOptional^T,probsGradExpertOrder)
   $$
-  
+
   $$
   permutedProbs = probsOptional^T.masked\_select(routingMapOptional^T)
   $$
@@ -47,7 +47,7 @@
   $$
 
     - dropAndPad为true时：
-  
+
   $$
   probsGradOut[permuteTokenId[i], outIndex[i]/capacity] = probsGradExpertOrder[outIndex[i]]
   $$
@@ -248,9 +248,9 @@ aclnnStatus aclnnMoeTokenUnpermuteWithRoutingMapGrad(
   </table>
 
 - **返回值：**
-  
+
   aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
-  
+
   第一段接口完成入参校验，出现以下场景时报错：
 
   <table style="undefined;table-layout: fixed; width: 1149px"><colgroup>
@@ -345,7 +345,7 @@ aclnnStatus aclnnMoeTokenUnpermuteWithRoutingMapGrad(
   </table>
 
 - **返回值：**
-  
+
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
 ## 约束说明

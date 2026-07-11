@@ -107,39 +107,39 @@ static aclnnStatus CheckShape3D(const MhcPostParams &params)
     auto hResDim0 = params.hRes->GetViewShape().GetDim(DIM_IDX_0);
     auto hResDim1 = params.hRes->GetViewShape().GetDim(DIM_IDX_1);
     auto hResDim2 = params.hRes->GetViewShape().GetDim(DIM_IDX_2);
-    CHECK_COND(hResDim0 == xDim0, ACLNN_ERR_PARAM_INVALID,
-               "hRes dim[0] %ld is not equal to x dim[0] %ld", hResDim0, xDim0);
-    CHECK_COND(hResDim1 == xDim1, ACLNN_ERR_PARAM_INVALID,
-               "hRes dim[1] %ld is not equal to x dim[1] %ld", hResDim1, xDim1);
-    CHECK_COND(hResDim2 == xDim1, ACLNN_ERR_PARAM_INVALID,
-               "hRes dim[2] %ld must equal hRes dim[1] %ld (n x n matrix)", hResDim2, hResDim1);
+    CHECK_COND(hResDim0 == xDim0, ACLNN_ERR_PARAM_INVALID, "hRes dim[0] %ld is not equal to x dim[0] %ld", hResDim0,
+               xDim0);
+    CHECK_COND(hResDim1 == xDim1, ACLNN_ERR_PARAM_INVALID, "hRes dim[1] %ld is not equal to x dim[1] %ld", hResDim1,
+               xDim1);
+    CHECK_COND(hResDim2 == xDim1, ACLNN_ERR_PARAM_INVALID, "hRes dim[2] %ld must equal hRes dim[1] %ld (n x n matrix)",
+               hResDim2, hResDim1);
 
     // hOut shape: [T, D]
     auto hOutDim0 = params.hOut->GetViewShape().GetDim(DIM_IDX_0);
     auto hOutDim1 = params.hOut->GetViewShape().GetDim(DIM_IDX_1);
-    CHECK_COND(hOutDim0 == xDim0, ACLNN_ERR_PARAM_INVALID,
-               "hOut dim[0] %ld is not equal to x dim[0] %ld", hOutDim0, xDim0);
-    CHECK_COND(hOutDim1 == xDim2, ACLNN_ERR_PARAM_INVALID,
-               "hOut dim[1] %ld is not equal to x dim[2] %ld", hOutDim1, xDim2);
+    CHECK_COND(hOutDim0 == xDim0, ACLNN_ERR_PARAM_INVALID, "hOut dim[0] %ld is not equal to x dim[0] %ld", hOutDim0,
+               xDim0);
+    CHECK_COND(hOutDim1 == xDim2, ACLNN_ERR_PARAM_INVALID, "hOut dim[1] %ld is not equal to x dim[2] %ld", hOutDim1,
+               xDim2);
 
     // hPost shape: [T, n]
     auto hPostDim0 = params.hPost->GetViewShape().GetDim(DIM_IDX_0);
     auto hPostDim1 = params.hPost->GetViewShape().GetDim(DIM_IDX_1);
-    CHECK_COND(hPostDim0 == xDim0, ACLNN_ERR_PARAM_INVALID,
-               "hPost dim[0] %ld is not equal to x dim[0] %ld", hPostDim0, xDim0);
-    CHECK_COND(hPostDim1 == xDim1, ACLNN_ERR_PARAM_INVALID,
-               "hPost dim[1] %ld is not equal to x dim[1] %ld", hPostDim1, xDim1);
+    CHECK_COND(hPostDim0 == xDim0, ACLNN_ERR_PARAM_INVALID, "hPost dim[0] %ld is not equal to x dim[0] %ld", hPostDim0,
+               xDim0);
+    CHECK_COND(hPostDim1 == xDim1, ACLNN_ERR_PARAM_INVALID, "hPost dim[1] %ld is not equal to x dim[1] %ld", hPostDim1,
+               xDim1);
 
     // out shape: [T, n, D]
     auto outDim0 = params.out->GetViewShape().GetDim(DIM_IDX_0);
     auto outDim1 = params.out->GetViewShape().GetDim(DIM_IDX_1);
     auto outDim2 = params.out->GetViewShape().GetDim(DIM_IDX_2);
-    CHECK_COND(outDim0 == xDim0, ACLNN_ERR_PARAM_INVALID,
-               "out dim[0] %ld is not equal to x dim[0] %ld", outDim0, xDim0);
-    CHECK_COND(outDim1 == xDim1, ACLNN_ERR_PARAM_INVALID,
-               "out dim[1] %ld is not equal to x dim[1] %ld", outDim1, xDim1);
-    CHECK_COND(outDim2 == xDim2, ACLNN_ERR_PARAM_INVALID,
-               "out dim[2] %ld is not equal to x dim[2] %ld", outDim2, xDim2);
+    CHECK_COND(outDim0 == xDim0, ACLNN_ERR_PARAM_INVALID, "out dim[0] %ld is not equal to x dim[0] %ld", outDim0,
+               xDim0);
+    CHECK_COND(outDim1 == xDim1, ACLNN_ERR_PARAM_INVALID, "out dim[1] %ld is not equal to x dim[1] %ld", outDim1,
+               xDim1);
+    CHECK_COND(outDim2 == xDim2, ACLNN_ERR_PARAM_INVALID, "out dim[2] %ld is not equal to x dim[2] %ld", outDim2,
+               xDim2);
 
     return ACLNN_SUCCESS;
 }
@@ -157,50 +157,50 @@ static aclnnStatus CheckShape4D(const MhcPostParams &params)
     auto hResDim1 = params.hRes->GetViewShape().GetDim(DIM_IDX_1);
     auto hResDim2 = params.hRes->GetViewShape().GetDim(DIM_IDX_2);
     auto hResDim3 = params.hRes->GetViewShape().GetDim(DIM_IDX_3);
-    CHECK_COND(hResDim0 == xDim0, ACLNN_ERR_PARAM_INVALID,
-               "hRes dim[0] %ld is not equal to x dim[0] %ld", hResDim0, xDim0);
-    CHECK_COND(hResDim1 == xDim1, ACLNN_ERR_PARAM_INVALID,
-               "hRes dim[1] %ld is not equal to x dim[1] %ld", hResDim1, xDim1);
-    CHECK_COND(hResDim2 == xDim2, ACLNN_ERR_PARAM_INVALID,
-               "hRes dim[2] %ld is not equal to x dim[2] %ld", hResDim2, xDim2);
-    CHECK_COND(hResDim3 == xDim2, ACLNN_ERR_PARAM_INVALID,
-               "hRes dim[3] %ld must equal hRes dim[2] %ld (n x n matrix)", hResDim3, hResDim2);
+    CHECK_COND(hResDim0 == xDim0, ACLNN_ERR_PARAM_INVALID, "hRes dim[0] %ld is not equal to x dim[0] %ld", hResDim0,
+               xDim0);
+    CHECK_COND(hResDim1 == xDim1, ACLNN_ERR_PARAM_INVALID, "hRes dim[1] %ld is not equal to x dim[1] %ld", hResDim1,
+               xDim1);
+    CHECK_COND(hResDim2 == xDim2, ACLNN_ERR_PARAM_INVALID, "hRes dim[2] %ld is not equal to x dim[2] %ld", hResDim2,
+               xDim2);
+    CHECK_COND(hResDim3 == xDim2, ACLNN_ERR_PARAM_INVALID, "hRes dim[3] %ld must equal hRes dim[2] %ld (n x n matrix)",
+               hResDim3, hResDim2);
 
     // hOut shape: [B, S, D]
     auto hOutDim0 = params.hOut->GetViewShape().GetDim(DIM_IDX_0);
     auto hOutDim1 = params.hOut->GetViewShape().GetDim(DIM_IDX_1);
     auto hOutDim2 = params.hOut->GetViewShape().GetDim(DIM_IDX_2);
-    CHECK_COND(hOutDim0 == xDim0, ACLNN_ERR_PARAM_INVALID,
-               "hOut dim[0] %ld is not equal to x dim[0] %ld", hOutDim0, xDim0);
-    CHECK_COND(hOutDim1 == xDim1, ACLNN_ERR_PARAM_INVALID,
-               "hOut dim[1] %ld is not equal to x dim[1] %ld", hOutDim1, xDim1);
-    CHECK_COND(hOutDim2 == xDim3, ACLNN_ERR_PARAM_INVALID,
-               "hOut dim[2] %ld is not equal to x dim[3] %ld", hOutDim2, xDim3);
+    CHECK_COND(hOutDim0 == xDim0, ACLNN_ERR_PARAM_INVALID, "hOut dim[0] %ld is not equal to x dim[0] %ld", hOutDim0,
+               xDim0);
+    CHECK_COND(hOutDim1 == xDim1, ACLNN_ERR_PARAM_INVALID, "hOut dim[1] %ld is not equal to x dim[1] %ld", hOutDim1,
+               xDim1);
+    CHECK_COND(hOutDim2 == xDim3, ACLNN_ERR_PARAM_INVALID, "hOut dim[2] %ld is not equal to x dim[3] %ld", hOutDim2,
+               xDim3);
 
     // hPost shape: [B, S, n]
     auto hPostDim0 = params.hPost->GetViewShape().GetDim(DIM_IDX_0);
     auto hPostDim1 = params.hPost->GetViewShape().GetDim(DIM_IDX_1);
     auto hPostDim2 = params.hPost->GetViewShape().GetDim(DIM_IDX_2);
-    CHECK_COND(hPostDim0 == xDim0, ACLNN_ERR_PARAM_INVALID,
-               "hPost dim[0] %ld is not equal to x dim[0] %ld", hPostDim0, xDim0);
-    CHECK_COND(hPostDim1 == xDim1, ACLNN_ERR_PARAM_INVALID,
-               "hPost dim[1] %ld is not equal to x dim[1] %ld", hPostDim1, xDim1);
-    CHECK_COND(hPostDim2 == xDim2, ACLNN_ERR_PARAM_INVALID,
-               "hPost dim[2] %ld is not equal to x dim[2] %ld", hPostDim2, xDim2);
+    CHECK_COND(hPostDim0 == xDim0, ACLNN_ERR_PARAM_INVALID, "hPost dim[0] %ld is not equal to x dim[0] %ld", hPostDim0,
+               xDim0);
+    CHECK_COND(hPostDim1 == xDim1, ACLNN_ERR_PARAM_INVALID, "hPost dim[1] %ld is not equal to x dim[1] %ld", hPostDim1,
+               xDim1);
+    CHECK_COND(hPostDim2 == xDim2, ACLNN_ERR_PARAM_INVALID, "hPost dim[2] %ld is not equal to x dim[2] %ld", hPostDim2,
+               xDim2);
 
     // out shape: [B, S, n, D]
     auto outDim0 = params.out->GetViewShape().GetDim(DIM_IDX_0);
     auto outDim1 = params.out->GetViewShape().GetDim(DIM_IDX_1);
     auto outDim2 = params.out->GetViewShape().GetDim(DIM_IDX_2);
     auto outDim3 = params.out->GetViewShape().GetDim(DIM_IDX_3);
-    CHECK_COND(outDim0 == xDim0, ACLNN_ERR_PARAM_INVALID,
-               "out dim[0] %ld is not equal to x dim[0] %ld", outDim0, xDim0);
-    CHECK_COND(outDim1 == xDim1, ACLNN_ERR_PARAM_INVALID,
-               "out dim[1] %ld is not equal to x dim[1] %ld", outDim1, xDim1);
-    CHECK_COND(outDim2 == xDim2, ACLNN_ERR_PARAM_INVALID,
-               "out dim[2] %ld is not equal to x dim[2] %ld", outDim2, xDim2);
-    CHECK_COND(outDim3 == xDim3, ACLNN_ERR_PARAM_INVALID,
-               "out dim[3] %ld is not equal to x dim[3] %ld", outDim3, xDim3);
+    CHECK_COND(outDim0 == xDim0, ACLNN_ERR_PARAM_INVALID, "out dim[0] %ld is not equal to x dim[0] %ld", outDim0,
+               xDim0);
+    CHECK_COND(outDim1 == xDim1, ACLNN_ERR_PARAM_INVALID, "out dim[1] %ld is not equal to x dim[1] %ld", outDim1,
+               xDim1);
+    CHECK_COND(outDim2 == xDim2, ACLNN_ERR_PARAM_INVALID, "out dim[2] %ld is not equal to x dim[2] %ld", outDim2,
+               xDim2);
+    CHECK_COND(outDim3 == xDim3, ACLNN_ERR_PARAM_INVALID, "out dim[3] %ld is not equal to x dim[3] %ld", outDim3,
+               xDim3);
 
     return ACLNN_SUCCESS;
 }

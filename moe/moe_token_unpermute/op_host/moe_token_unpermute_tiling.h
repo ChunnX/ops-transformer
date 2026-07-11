@@ -72,7 +72,7 @@ struct MoeTokenUnpermuteParam {
     TilingParam tokenPerCore;
     CoreParam core;
 };
-ge::graphStatus TilingCompute(gert::TilingContext* context, const int64_t topK);
+ge::graphStatus TilingCompute(gert::TilingContext *context, const int64_t topK);
 BEGIN_TILING_DATA_DEF(MoeTokenUnpermuteTilingData)
 TILING_DATA_FIELD_DEF(int64_t, hidden_size);
 TILING_DATA_FIELD_DEF(int64_t, top_k);
@@ -92,8 +92,7 @@ TILING_DATA_FIELD_DEF(int64_t, buffer_num);
 END_TILING_DATA_DEF;
 
 REGISTER_TILING_DATA_CLASS(MoeTokenUnpermute, MoeTokenUnpermuteTilingData)
-struct MoeTokenUnpermuteCompileInfo {
-};
+struct MoeTokenUnpermuteCompileInfo {};
 
 } // namespace optiling
 #endif // OPS_BUILT_IN_OP_TILING_RUNTIME_MOE_TOKEN_UNPERMUTE_H

@@ -1,11 +1,12 @@
-      
 import torch
 
 
 # 1. Sigmoid反向：已修正h_pre的hc_eps处理
 
-def SigmoidGrad(z: torch.Tensor, dy: torch.Tensor, is_pre: bool = False, hc_eps: float = 1e-6):
 
+def SigmoidGrad(
+    z: torch.Tensor, dy: torch.Tensor, is_pre: bool = False, hc_eps: float = 1e-6
+):
     """
 
     Sigmoid激活函数的梯度计算
@@ -22,16 +23,14 @@ def SigmoidGrad(z: torch.Tensor, dy: torch.Tensor, is_pre: bool = False, hc_eps:
 
     """
 
-    y = torch.sigmoid(z)          # sigmoid(z) = 1/(1 + exp(-z))
+    y = torch.sigmoid(z)  # sigmoid(z) = 1/(1 + exp(-z))
 
     if is_pre:
-
         # 正向：h_pre = sigmoid(z) + hc_eps → 导数中的sigmoid(z) = y - hc_eps
 
         sigma = y - hc_eps
 
     else:
-
         # 正向：h_post = 2 * sigmoid(z) → 没有加eps
 
         sigma = y
@@ -41,8 +40,8 @@ def SigmoidGrad(z: torch.Tensor, dy: torch.Tensor, is_pre: bool = False, hc_eps:
 
 # 2. RMSNorm倒数梯度：标准命名版
 
-def RMSNormGrad(x: torch.Tensor, inv_rms: torch.Tensor, grad_inv_rms: torch.Tensor):
 
+def RMSNormGrad(x: torch.Tensor, inv_rms: torch.Tensor, grad_inv_rms: torch.Tensor):
     """
 
     RMSNorm倒数的梯度计算
@@ -59,15 +58,15 @@ def RMSNormGrad(x: torch.Tensor, inv_rms: torch.Tensor, grad_inv_rms: torch.Tens
 
     NC = x.size(-1)
 
-    grad_x = - (inv_rms ** 3) * x * grad_inv_rms / float(NC)
+    grad_x = -(inv_rms**3) * x * grad_inv_rms / float(NC)
 
     return grad_x
 
 
 # 3. exp激活梯度：标准命名版
 
-def ExpGrad(x: torch.Tensor, y_grad: torch.Tensor):
 
+def ExpGrad(x: torch.Tensor, y_grad: torch.Tensor):
     """
 
     数值稳定的exp激活梯度计算（对应正向的softmax第一步）
@@ -80,7 +79,7 @@ def ExpGrad(x: torch.Tensor, y_grad: torch.Tensor):
 
     arange_idx = torch.arange(n, device=x.device)[None, :]
 
-    is_max = (idx == arange_idx)
+    is_max = idx == arange_idx
 
     y = (x - x_max).exp()
 
@@ -91,16 +90,10 @@ def ExpGrad(x: torch.Tensor, y_grad: torch.Tensor):
 
 # 4. Sinkhorn-Knopp反向：标准命名版
 
+
 def SinkhornGrad(
-
-    grad_h_res: torch.Tensor,
-
-    sum_out: torch.Tensor,
-
-    norm_out: torch.Tensor
-
+    grad_h_res: torch.Tensor, sum_out: torch.Tensor, norm_out: torch.Tensor
 ):
-
     """
 
     Sinkhorn-Knopp算法的梯度计算
@@ -121,74 +114,55 @@ def SinkhornGrad(
 
     iters = sum_out.shape[0]
 
-
-
     for i in reversed(range(iters)):
-
         row_sum = sum_out[i][0].view(bs, seq_len, n, 1)
 
         col_sum = sum_out[i][1].view(bs, seq_len, 1, n)
 
         x_row_normed = norm_out[i][0].view(bs, seq_len, n, n)
 
-
         # 列归一化的梯度
 
-        grad_x_row_normed = x_grad / col_sum - (x_grad * x_row_normed / (col_sum ** 2)).sum(dim=-2, keepdim=True)
+        grad_x_row_normed = x_grad / col_sum - (
+            x_grad * x_row_normed / (col_sum**2)
+        ).sum(dim=-2, keepdim=True)
 
         # 行归一化的梯度
 
-        x_grad = grad_x_row_normed / row_sum - (grad_x_row_normed * x_row_normed / row_sum).sum(dim=-1, keepdim=True)
-
-    
+        x_grad = grad_x_row_normed / row_sum - (
+            grad_x_row_normed * x_row_normed / row_sum
+        ).sum(dim=-1, keepdim=True)
 
     return x_grad
 
 
 # 主梯度计算函数：完全对齐算子原型命名
 
+
 def mhc_pre_sinkhorn_backward_golden(
-
     grad_hin: torch.Tensor,
-
     grad_h_post: torch.Tensor,
-
     grad_h_res: torch.Tensor,
-
     x: torch.Tensor,
-
     phi: torch.Tensor,
-
     alpha: torch.Tensor,
-
     bias: torch.Tensor,
-
     h_pre: torch.Tensor,
-
     hc_before_norm: torch.Tensor,
-
     inv_rms: torch.Tensor,
-
     sum_out: torch.Tensor,
-
     norm_out: torch.Tensor,
-
-    hc_eps: float = 1e-6
-
+    hc_eps: float = 1e-6,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-
-
     # 获取形状信息
 
     B, S, n, d = x.shape
-
 
     # 转换为float32计算，保证精度
 
     grad_hin_fp32 = grad_hin.float()
 
     x_fp32 = x.float()
-
 
     # -------------------------- 步骤1：输入聚合的梯度 --------------------------
 
@@ -200,7 +174,6 @@ def mhc_pre_sinkhorn_backward_golden(
 
     grad_h_pre = (grad_hin_fp32[..., None, :] * x_fp32).sum(-1)
 
-
     # -------------------------- 步骤2：计算正向的中间变量 --------------------------
 
     # norm_out = hc_before_norm * inv_rms（正向步骤4）
@@ -211,10 +184,11 @@ def mhc_pre_sinkhorn_backward_golden(
 
     z_pre = norm_out_forward[..., :n] * alpha[0] + bias[:n]
 
-    z_post = norm_out_forward[..., n:2*n] * alpha[1] + bias[n:2*n]
+    z_post = norm_out_forward[..., n : 2 * n] * alpha[1] + bias[n : 2 * n]
 
-    z_res = (norm_out_forward[..., 2*n:] * alpha[2] + bias[2*n:]).reshape(B, S, n, n)
-
+    z_res = (norm_out_forward[..., 2 * n :] * alpha[2] + bias[2 * n :]).reshape(
+        B, S, n, n
+    )
 
     # -------------------------- 步骤3：三路激活的梯度 --------------------------
 
@@ -232,30 +206,23 @@ def mhc_pre_sinkhorn_backward_golden(
 
     grad_z_res = ExpGrad(z_res, sk_grad).flatten(2)
 
-
     # -------------------------- 步骤4：偏置bias的梯度 --------------------------
 
-    grad_bias = torch.cat([
-
-        grad_z_pre.sum((0, 1)),
-
-        grad_z_post.sum((0, 1)),
-
-        grad_z_res.sum((0, 1))
-
-    ])
-
+    grad_bias = torch.cat(
+        [grad_z_pre.sum((0, 1)), grad_z_post.sum((0, 1)), grad_z_res.sum((0, 1))]
+    )
 
     # -------------------------- 步骤5：缩放因子alpha的梯度 --------------------------
 
     grad_alpha_pre = (norm_out_forward[..., :n] * grad_z_pre).sum()
 
-    grad_alpha_post = (norm_out_forward[..., n:2*n] * grad_z_post).sum()
+    grad_alpha_post = (norm_out_forward[..., n : 2 * n] * grad_z_post).sum()
 
-    grad_alpha_res = (norm_out_forward[..., 2*n:] * grad_z_res).sum()
+    grad_alpha_res = (norm_out_forward[..., 2 * n :] * grad_z_res).sum()
 
-    grad_alpha = torch.tensor([grad_alpha_pre, grad_alpha_post, grad_alpha_res], dtype=torch.float32)
-
+    grad_alpha = torch.tensor(
+        [grad_alpha_pre, grad_alpha_post, grad_alpha_res], dtype=torch.float32
+    )
 
     # -------------------------- 步骤6：线性变换的梯度 --------------------------
 
@@ -267,8 +234,9 @@ def mhc_pre_sinkhorn_backward_golden(
 
     grad_norm_out_res = grad_z_res * alpha[2]
 
-    grad_norm_out = torch.cat([grad_norm_out_pre, grad_norm_out_post, grad_norm_out_res], dim=-1)
-
+    grad_norm_out = torch.cat(
+        [grad_norm_out_pre, grad_norm_out_post, grad_norm_out_res], dim=-1
+    )
 
     # -------------------------- 步骤7：乘法的梯度 --------------------------
 
@@ -280,13 +248,11 @@ def mhc_pre_sinkhorn_backward_golden(
 
     grad_inv_rms = (hc_before_norm * grad_norm_out).sum(-1, keepdim=True)
 
-
     # -------------------------- 步骤8：RMSNorm倒数的梯度 --------------------------
 
     x_flat = x_fp32.flatten(2)
 
     grad_x_from_rms = RMSNormGrad(x_flat, inv_rms, grad_inv_rms)
-
 
     # -------------------------- 步骤9：矩阵乘法的梯度 --------------------------
 
@@ -302,21 +268,12 @@ def mhc_pre_sinkhorn_backward_golden(
 
     grad_phi = grad_hc_before_norm_flat.T @ x_flat_flat
 
-
     # -------------------------- 步骤10：汇总所有梯度 --------------------------
 
     grad_x = (
-
         grad_x_from_hin.view(x.shape)
-
         + grad_x_from_rms.view(x.shape)
-
         + grad_x_from_matmul.view(x.shape)
-
     ).to(x.dtype)
 
-
-
     return grad_x, grad_phi, grad_alpha, grad_bias
-
-    

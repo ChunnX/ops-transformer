@@ -65,7 +65,8 @@ string TilingData2Str(const void *tilingData, size_t tilingSize)
     return oss.str();
 }
 
-vector<gert::TilingContextPara::OpAttr> GetGroupedNoQuantAttrs(int64_t splitItem, bool transposeX, bool transposeWeight, int64_t groupType)
+vector<gert::TilingContextPara::OpAttr> GetGroupedNoQuantAttrs(int64_t splitItem, bool transposeX, bool transposeWeight,
+                                                               int64_t groupType)
 {
     return {
         {"split_item", Ops::Transformer::AnyValue::CreateFrom<int64_t>(splitItem)},
@@ -122,16 +123,16 @@ public:
                 {xShape, xDtype, ge::FORMAT_ND},                                                          // x
                 {weightShape, weightDtype, weightFormat == "NZ" ? ge::FORMAT_FRACTAL_NZ : ge::FORMAT_ND}, // weight
                 {biasShape, biasDtype, ge::FORMAT_ND},                                                    // bias
-                {MakeEmptyShape(), ge::DT_FLOAT, ge::FORMAT_ND},         // scale (empty for no quant)
-                {MakeEmptyShape(), ge::DT_FLOAT, ge::FORMAT_ND},         // offset (empty for no quant)
-                {MakeEmptyShape(), ge::DT_FLOAT, ge::FORMAT_ND},         // antiquantScale (empty for no quant)
-                {MakeEmptyShape(), ge::DT_FLOAT, ge::FORMAT_ND},         // antiquantOffset (empty for no quant)
-                {groupListShape, ge::DT_INT64, ge::FORMAT_ND},           // groupList
-                {MakeEmptyShape(), ge::DT_FLOAT, ge::FORMAT_ND},         // perTokenScale (empty for no quant)
+                {MakeEmptyShape(), ge::DT_FLOAT, ge::FORMAT_ND}, // scale (empty for no quant)
+                {MakeEmptyShape(), ge::DT_FLOAT, ge::FORMAT_ND}, // offset (empty for no quant)
+                {MakeEmptyShape(), ge::DT_FLOAT, ge::FORMAT_ND}, // antiquantScale (empty for no quant)
+                {MakeEmptyShape(), ge::DT_FLOAT, ge::FORMAT_ND}, // antiquantOffset (empty for no quant)
+                {groupListShape, ge::DT_INT64, ge::FORMAT_ND},   // groupList
+                {MakeEmptyShape(), ge::DT_FLOAT, ge::FORMAT_ND}, // perTokenScale (empty for no quant)
             },
             {{ops::ut::MakeGertStorageShape({m}, {n}), yDtype, ge::FORMAT_ND}},
-            GetGroupedNoQuantAttrs(splitItem, transposeX, transposeWeight, groupType),
-            &compileInfo, "3510", compileInfo.aicNum, compileInfo.ubSize);
+            GetGroupedNoQuantAttrs(splitItem, transposeX, transposeWeight, groupType), &compileInfo, "3510",
+            compileInfo.aicNum, compileInfo.ubSize);
 
         TilingInfo tilingInfo;
         bool tilingResult = ExecuteTiling(tilingContextPara, tilingInfo);
@@ -280,6 +281,6 @@ TEST_P(TestGroupedNoQuantArch35Tiling, generalTest)
 }
 
 INSTANTIATE_TEST_SUITE_P(GROUPED_NO_QUANT_950, TestGroupedNoQuantArch35Tiling, testing::ValuesIn(GetAscend950Params()),
-                          MakeParamName);
+                         MakeParamName);
 
 } // namespace GroupedNoQuantArch35TilingUT

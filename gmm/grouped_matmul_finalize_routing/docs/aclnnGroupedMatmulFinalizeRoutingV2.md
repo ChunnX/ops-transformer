@@ -36,7 +36,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV2GetWorkspaceSize(
     const aclTensor *sharedInputOptional,
     const aclTensor *logitOptional,
     const aclTensor *rowIndexOptional,
-    int64_t          dtype, 
+    int64_t          dtype,
     float            sharedInputWeight,
     int64_t          sharedInputOffset,
     bool             transposeX1,
@@ -296,7 +296,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV2(
 - **返回值**
 
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
-  
+
   第一段接口完成入参校验，出现以下场景时报错：
   <table style="undefined;table-layout: fixed;width: 1155px"><colgroup>
   <col style="width: 250px">
@@ -378,7 +378,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV2(
 
 - **伪量化场景支持类型**
   输入和输出支持以下数据类型组合：
-  
+
   | x1    | x2    | scaleOptional | biasOptional    | offsetOptional  | antiquantScaleOptional | antiquantOffsetOptional | pertokenScaleOptional | groupListOptional |  sharedInputOptional | logitOptional   | rowIndexOptional | out       |
   |------|------|-------|---------|---------|----------------|-----------------|---------------|-----------|-------------|---------|----------|---------|
   | INT8 | INT4 | INT64 | FLOAT32 | FLOAT32 | null           | null            | FLOAT32       | INT64     | BFLOAT16    | FLOAT32 | INT64    | FLOAT32 |
@@ -521,7 +521,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV2(
       bool transposeX = false;
       bool transposeW = false;
       int64_t groupListType = 1;
-      
+
       std::vector<int64_t> xShape = {m, k};
       std::vector<int64_t> wShape = {e, k, n / 8};
       std::vector<int64_t> scaleShape = {e, 1, n};

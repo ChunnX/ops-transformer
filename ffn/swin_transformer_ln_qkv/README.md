@@ -21,7 +21,7 @@
 
     $$
     (Q,K,V)=((Layernorm(inputX)).transpose() * weight).transpose().split()
-    $$  
+    $$
 
   其中，weight是Q、K、V三个矩阵权重的拼接。
 
@@ -77,7 +77,7 @@
     <td>表示目标张量转换使用的偏移矩阵，维度只支持1维且维度为[3 * H]，Device侧的aclTensor。不支持非连续的Tensor。</td>
     <td>FLOAT16</td>
     <td>ND</td>
-  </tr> 
+  </tr>
   <tr>
     <td>query_output</td>
     <td>输出</td>
@@ -98,7 +98,7 @@
     <td>表示转换之后的张量，公式中的V，Device侧的aclTensor。不支持非连续的Tensor。</td>
     <td>FLOAT16</td>
     <td>ND</td>
-  </tr> 
+  </tr>
 </tbody>
 </table>
 

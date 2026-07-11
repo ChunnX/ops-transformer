@@ -88,7 +88,6 @@ TILING_DATA_FIELD_DEF_STRUCT(PermuteSortOutComputeTilingData, sortOutComputePara
 TILING_DATA_FIELD_DEF_STRUCT(IndexCopyComputeTilingData, indexCopyComputeParamsOp);
 END_TILING_DATA_DEF;
 REGISTER_TILING_DATA_CLASS(MoeTokenPermute, MoeTokenPermuteTilingData)
-struct MoeTokenPermuteCompileInfo {
-};
+struct MoeTokenPermuteCompileInfo {};
 } // namespace optiling
 #endif // MOE_TOKEN_PERMUTE

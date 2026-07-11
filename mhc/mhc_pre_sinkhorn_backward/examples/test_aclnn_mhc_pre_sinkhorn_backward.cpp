@@ -22,7 +22,7 @@
 
 #define LOG_PRINT(message, ...)                                                                                        \
     do {                                                                                                               \
-        printf(message, ##__VA_ARGS__);                                                                                 \
+        printf(message, ##__VA_ARGS__);                                                                                \
     } while (0)
 
 int64_t GetShapeSize(const std::vector<int64_t> &shape)
@@ -204,7 +204,8 @@ int CreateInputTensors(const std::vector<int64_t> &grad_hin_shape, const std::ve
 
     int ret = CreateAclTensorBfloat16(grad_hin_host_data, grad_hin_shape, tensors.grad_hin_addr, tensors.grad_hin);
     CHECK_RET(ret == 0, LOG_PRINT("Create grad_hin_tensor failed\n"); return -1);
-    ret = CreateAclTensorFloat32(grad_h_post_host_data, grad_h_post_shape, tensors.grad_h_post_addr, tensors.grad_h_post);
+    ret =
+        CreateAclTensorFloat32(grad_h_post_host_data, grad_h_post_shape, tensors.grad_h_post_addr, tensors.grad_h_post);
     CHECK_RET(ret == 0, LOG_PRINT("Create grad_h_post_tensor failed\n"); return -1);
     ret = CreateAclTensorFloat32(grad_h_res_host_data, grad_h_res_shape, tensors.grad_h_res_addr, tensors.grad_h_res);
     CHECK_RET(ret == 0, LOG_PRINT("Create grad_h_res_tensor failed\n"); return -1);
@@ -218,7 +219,8 @@ int CreateInputTensors(const std::vector<int64_t> &grad_hin_shape, const std::ve
     CHECK_RET(ret == 0, LOG_PRINT("Create bias_tensor failed\n"); return -1);
     ret = CreateAclTensorFloat32(h_pre_host_data, h_pre_shape, tensors.h_pre_addr, tensors.h_pre);
     CHECK_RET(ret == 0, LOG_PRINT("Create h_pre_tensor failed\n"); return -1);
-    ret = CreateAclTensorFloat32(hc_before_norm_host_data, hc_before_norm_shape, tensors.hc_before_norm_addr, tensors.hc_before_norm);
+    ret = CreateAclTensorFloat32(hc_before_norm_host_data, hc_before_norm_shape, tensors.hc_before_norm_addr,
+                                 tensors.hc_before_norm);
     CHECK_RET(ret == 0, LOG_PRINT("Create hc_before_norm_tensor failed\n"); return -1);
     ret = CreateAclTensorFloat32(inv_rms_host_data, inv_rms_shape, tensors.inv_rms_addr, tensors.inv_rms);
     CHECK_RET(ret == 0, LOG_PRINT("Create inv_rms_tensor failed\n"); return -1);
@@ -320,9 +322,9 @@ int main()
     int ret = InitAcl(device_id, context, stream);
     CHECK_RET(ret == 0, LOG_PRINT("InitAcl failed, error: %d\n", ret); return -1);
 
-    ret = CreateInputTensors(grad_hin_shape, grad_h_post_shape, grad_h_res_shape, x_shape,
-                             phi_shape, alpha_shape, bias_shape, h_pre_shape,
-                             hc_before_norm_shape, inv_rms_shape, sum_out_shape, norm_out_shape, tensors);
+    ret = CreateInputTensors(grad_hin_shape, grad_h_post_shape, grad_h_res_shape, x_shape, phi_shape, alpha_shape,
+                             bias_shape, h_pre_shape, hc_before_norm_shape, inv_rms_shape, sum_out_shape,
+                             norm_out_shape, tensors);
     CHECK_RET(ret == 0, return -1);
 
     ret = CreateOutputTensors(grad_x_shape, grad_phi_shape, grad_alpha_shape, grad_bias_shape, tensors);
@@ -332,14 +334,11 @@ int main()
     aclOpExecutor *executor = nullptr;
 
     aclnnStatus aclnn_ret = aclnnMhcPreSinkhornBackwardGetWorkspaceSize(
-        tensors.grad_hin, tensors.grad_h_post, tensors.grad_h_res,
-        tensors.x, tensors.phi, tensors.alpha, tensors.bias,
-        tensors.h_pre, tensors.hc_before_norm, tensors.inv_rms,
-        tensors.sum_out, tensors.norm_out,
-        hc_eps,
-        tensors.grad_x, tensors.grad_phi, tensors.grad_alpha, tensors.grad_bias,
-        &workspace_size, &executor);
-    CHECK_RET(aclnn_ret == ACL_SUCCESS, LOG_PRINT("aclnnMhcPreSinkhornBackwardGetWorkspaceSize failed, error: %d\n", aclnn_ret);
+        tensors.grad_hin, tensors.grad_h_post, tensors.grad_h_res, tensors.x, tensors.phi, tensors.alpha, tensors.bias,
+        tensors.h_pre, tensors.hc_before_norm, tensors.inv_rms, tensors.sum_out, tensors.norm_out, hc_eps,
+        tensors.grad_x, tensors.grad_phi, tensors.grad_alpha, tensors.grad_bias, &workspace_size, &executor);
+    CHECK_RET(aclnn_ret == ACL_SUCCESS,
+              LOG_PRINT("aclnnMhcPreSinkhornBackwardGetWorkspaceSize failed, error: %d\n", aclnn_ret);
               return -1);
 
     void *workspace_addr = nullptr;
@@ -349,7 +348,8 @@ int main()
     }
 
     aclnn_ret = aclnnMhcPreSinkhornBackward(workspace_addr, workspace_size, executor, stream);
-    CHECK_RET(aclnn_ret == ACL_SUCCESS, LOG_PRINT("aclnnMhcPreSinkhornBackward failed, error: %d\n", aclnn_ret); return -1);
+    CHECK_RET(aclnn_ret == ACL_SUCCESS, LOG_PRINT("aclnnMhcPreSinkhornBackward failed, error: %d\n", aclnn_ret);
+              return -1);
 
     CHECK_RET(aclrtSynchronizeStream(stream) == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed\n"); return -1);
 

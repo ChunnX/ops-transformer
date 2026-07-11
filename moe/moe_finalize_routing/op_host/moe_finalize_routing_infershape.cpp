@@ -188,7 +188,7 @@ static ge::graphStatus CheckInputDims(const gert::InferShapeContext *context, co
                 OP_LOGE(context->GetNodeName(),
                         "The dim 0 of expanded_permuted_rows and expanded_src_to_dst_row should be same."),
                 return ge::GRAPH_FAILED);
-    
+
     return ge::GRAPH_SUCCESS;
 }
 

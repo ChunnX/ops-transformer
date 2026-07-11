@@ -25,8 +25,7 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(SIMT_THREAD_NUM) inline void FullLoadCompute
     int32_t elementNum, int32_t expertStart, int32_t expertEnd, __local_mem__ int32_t *sortedExpertIdLocalAddr,
     __local_mem__ int32_t *expertFirstIndexLocalAddr)
 {
-    for (auto i = static_cast<int32_t>(threadIdx.x); i < elementNum;
-         i += static_cast<int32_t>(blockDim.x)) {
+    for (auto i = static_cast<int32_t>(threadIdx.x); i < elementNum; i += static_cast<int32_t>(blockDim.x)) {
         auto currExpertId = sortedExpertIdLocalAddr[i];
         if (currExpertId >= expertEnd) {
             break;
@@ -42,8 +41,7 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(SIMT_THREAD_NUM) inline void FullLoadCompute
     int32_t elementNum, int32_t expertStart, int32_t expertEnd, __local_mem__ int32_t *sortedExpertIdLocalAddr,
     __local_mem__ int32_t *expertFirstIndexLocalAddr, __local_mem__ int32_t *expertCountOutLocalAddr)
 {
-    for (auto i = static_cast<int32_t>(threadIdx.x); i < elementNum;
-         i += static_cast<int32_t>(blockDim.x)) {
+    for (auto i = static_cast<int32_t>(threadIdx.x); i < elementNum; i += static_cast<int32_t>(blockDim.x)) {
         auto currExpertId = sortedExpertIdLocalAddr[i];
         if (currExpertId >= expertEnd) {
             break;
@@ -60,8 +58,7 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(SIMT_THREAD_NUM) inline void FullLoadCompute
     __local_mem__ int32_t *actualIdxNumAddr)
 {
     int32_t localCount = 0;
-    for (auto i = static_cast<int32_t>(threadIdx.x); i < elementNum;
-         i += static_cast<int32_t>(blockDim.x)) {
+    for (auto i = static_cast<int32_t>(threadIdx.x); i < elementNum; i += static_cast<int32_t>(blockDim.x)) {
         auto currExpertId = sortedExpertIdLocalAddr[i];
         if (currExpertId >= expertStart && currExpertId < expertEnd) {
             localCount++;
@@ -166,8 +163,8 @@ __aicore__ inline void MoeV3FullLoadBase<T>::Init(GM_ADDR expertIdx, GM_ADDR exp
     this->activeNum_ = tilingData->activeNum;
     this->dropPadMode_ = tilingData->dropPadMode;
     this->expertCapacity_ = tilingData->expertCapacity;
-    this->outputRows_ = this->dropPadMode_ == DROP_PAD_MODE ? tilingData->expertNum * tilingData->expertCapacity :
- 	                    this->activeNum_;
+    this->outputRows_ =
+        this->dropPadMode_ == DROP_PAD_MODE ? tilingData->expertNum * tilingData->expertCapacity : this->activeNum_;
     if (this->blockIdx_ == this->gatherOutTilingData_->needCoreNum - 1) {
         this->coreIndicesElements_ = this->gatherOutTilingData_->lastCoreIndicesElements;
     } else {
@@ -205,7 +202,7 @@ __aicore__ inline void MoeV3FullLoadBase<T>::Init(GM_ADDR expertIdx, GM_ADDR exp
 
 template <typename T>
 __aicore__ inline void MoeV3FullLoadBase<T>::InitGlobalBuffers(GM_ADDR expertIdx, GM_ADDR expandedRowIdx,
-                                                                GM_ADDR expertTokensCountOrCumsum, GM_ADDR workspace)
+                                                               GM_ADDR expertTokensCountOrCumsum, GM_ADDR workspace)
 {
     expertIdxGm_.SetGlobalBuffer((__gm__ int32_t *)expertIdx, this->tileLength_);
     expandedRowIdxGm_.SetGlobalBuffer((__gm__ int32_t *)expandedRowIdx, this->tileLength_);
@@ -215,7 +212,8 @@ __aicore__ inline void MoeV3FullLoadBase<T>::InitGlobalBuffers(GM_ADDR expertIdx
     }
 
     expertTotalCountGm_.SetGlobalBuffer((__gm__ int32_t *)workspace + Align(this->totalLength_, sizeof(int32_t)) * 2 +
-                                        Align(this->actualExpertNum_, sizeof(int32_t)), 1);
+                                            Align(this->actualExpertNum_, sizeof(int32_t)),
+                                        1);
 }
 
 template <typename T>
@@ -281,9 +279,9 @@ __aicore__ inline void MoeV3FullLoadBase<T>::SortCompute()
     Duplicate(expertCountLocal, static_cast<int32_t>(0), static_cast<int32_t>(1));
     __local_mem__ int32_t *sortedExpertIdxLocalAddr = (__local_mem__ int32_t *)sortedExpertIdxLocal.GetPhyAddr();
     __local_mem__ int32_t *actualIdxNumAddr = (__local_mem__ int32_t *)expertCountLocal.GetPhyAddr();
-    asc_vf_call<FullLoadComputeActualIdxNumSimt>(
-        dim3{SIMT_THREAD_NUM, 1, 1}, static_cast<int32_t>(totalLength_), static_cast<int32_t>(expertStart_),
-        static_cast<int32_t>(expertEnd_), sortedExpertIdxLocalAddr, actualIdxNumAddr);
+    asc_vf_call<FullLoadComputeActualIdxNumSimt>(dim3{SIMT_THREAD_NUM, 1, 1}, static_cast<int32_t>(totalLength_),
+                                                 static_cast<int32_t>(expertStart_), static_cast<int32_t>(expertEnd_),
+                                                 sortedExpertIdxLocalAddr, actualIdxNumAddr);
     actualExpertIdxNum_ = static_cast<int64_t>(expertCountLocal.GetValue(0));
 
     sortedExpertIdxQueue_.EnQue<int32_t>(sortedExpertIdxLocal);

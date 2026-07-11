@@ -110,114 +110,129 @@ struct QkvRmsNormRopeCacheWithKScaleCase {
         const char *layoutQOutArg = hasLayoutQOutValue ? layoutQOutStorage.c_str() : nullptr;
 
         if (!ParseBool(hasQkv)) {
-            auto ut =
-                OP_API_UT(aclnnQkvRmsNormRopeCacheWithKScale,
-                          INPUT(nullptr, qGamma, kGamma, cosSin, slotMapping, kCache, vCache, kScaleCache, queryStartLoc,
-                                seqLens, rotationOptional, vScaleOptional, headNums, layoutQkvArg, layoutQOutArg, epsilon),
-                          OUTPUT(qOut, qScale));
+            auto ut = OP_API_UT(aclnnQkvRmsNormRopeCacheWithKScale,
+                                INPUT(nullptr, qGamma, kGamma, cosSin, slotMapping, kCache, vCache, kScaleCache,
+                                      queryStartLoc, seqLens, rotationOptional, vScaleOptional, headNums, layoutQkvArg,
+                                      layoutQOutArg, epsilon),
+                                OUTPUT(qOut, qScale));
             ret = ut.TestGetWorkspaceSize(&workspaceSize);
         } else if (!ParseBool(hasQGamma)) {
             auto ut = OP_API_UT(aclnnQkvRmsNormRopeCacheWithKScale,
-                                INPUT(qkv, nullptr, kGamma, cosSin, slotMapping, kCache, vCache, kScaleCache, queryStartLoc,
-                                      seqLens, rotationOptional, vScaleOptional, headNums, layoutQkvArg, layoutQOutArg, epsilon),
+                                INPUT(qkv, nullptr, kGamma, cosSin, slotMapping, kCache, vCache, kScaleCache,
+                                      queryStartLoc, seqLens, rotationOptional, vScaleOptional, headNums, layoutQkvArg,
+                                      layoutQOutArg, epsilon),
                                 OUTPUT(qOut, qScale));
             ret = ut.TestGetWorkspaceSize(&workspaceSize);
         } else if (!ParseBool(hasKGamma)) {
             auto ut = OP_API_UT(aclnnQkvRmsNormRopeCacheWithKScale,
-                                INPUT(qkv, qGamma, nullptr, cosSin, slotMapping, kCache, vCache, kScaleCache, queryStartLoc,
-                                      seqLens, rotationOptional, vScaleOptional, headNums, layoutQkvArg, layoutQOutArg, epsilon),
+                                INPUT(qkv, qGamma, nullptr, cosSin, slotMapping, kCache, vCache, kScaleCache,
+                                      queryStartLoc, seqLens, rotationOptional, vScaleOptional, headNums, layoutQkvArg,
+                                      layoutQOutArg, epsilon),
                                 OUTPUT(qOut, qScale));
             ret = ut.TestGetWorkspaceSize(&workspaceSize);
         } else if (!ParseBool(hasCosSin)) {
             auto ut = OP_API_UT(aclnnQkvRmsNormRopeCacheWithKScale,
-                                INPUT(qkv, qGamma, kGamma, nullptr, slotMapping, kCache, vCache, kScaleCache, queryStartLoc,
-                                      seqLens, rotationOptional, vScaleOptional, headNums, layoutQkvArg, layoutQOutArg, epsilon),
+                                INPUT(qkv, qGamma, kGamma, nullptr, slotMapping, kCache, vCache, kScaleCache,
+                                      queryStartLoc, seqLens, rotationOptional, vScaleOptional, headNums, layoutQkvArg,
+                                      layoutQOutArg, epsilon),
                                 OUTPUT(qOut, qScale));
             ret = ut.TestGetWorkspaceSize(&workspaceSize);
         } else if (!ParseBool(hasSlotMapping)) {
             auto ut = OP_API_UT(aclnnQkvRmsNormRopeCacheWithKScale,
                                 INPUT(qkv, qGamma, kGamma, cosSin, nullptr, kCache, vCache, kScaleCache, queryStartLoc,
-                                      seqLens, rotationOptional, vScaleOptional, headNums, layoutQkvArg, layoutQOutArg, epsilon),
+                                      seqLens, rotationOptional, vScaleOptional, headNums, layoutQkvArg, layoutQOutArg,
+                                      epsilon),
                                 OUTPUT(qOut, qScale));
             ret = ut.TestGetWorkspaceSize(&workspaceSize);
         } else if (!ParseBool(hasKCache)) {
             auto ut = OP_API_UT(aclnnQkvRmsNormRopeCacheWithKScale,
-                                INPUT(qkv, qGamma, kGamma, cosSin, slotMapping, nullptr, vCache, kScaleCache, queryStartLoc,
-                                      seqLens, rotationOptional, vScaleOptional, headNums, layoutQkvArg, layoutQOutArg, epsilon),
+                                INPUT(qkv, qGamma, kGamma, cosSin, slotMapping, nullptr, vCache, kScaleCache,
+                                      queryStartLoc, seqLens, rotationOptional, vScaleOptional, headNums, layoutQkvArg,
+                                      layoutQOutArg, epsilon),
                                 OUTPUT(qOut, qScale));
             ret = ut.TestGetWorkspaceSize(&workspaceSize);
         } else if (!ParseBool(hasVCache)) {
             auto ut = OP_API_UT(aclnnQkvRmsNormRopeCacheWithKScale,
-                                INPUT(qkv, qGamma, kGamma, cosSin, slotMapping, kCache, nullptr, kScaleCache, queryStartLoc,
-                                      seqLens, rotationOptional, vScaleOptional, headNums, layoutQkvArg, layoutQOutArg, epsilon),
+                                INPUT(qkv, qGamma, kGamma, cosSin, slotMapping, kCache, nullptr, kScaleCache,
+                                      queryStartLoc, seqLens, rotationOptional, vScaleOptional, headNums, layoutQkvArg,
+                                      layoutQOutArg, epsilon),
                                 OUTPUT(qOut, qScale));
             ret = ut.TestGetWorkspaceSize(&workspaceSize);
         } else if (!ParseBool(hasKScaleCache)) {
             auto ut = OP_API_UT(aclnnQkvRmsNormRopeCacheWithKScale,
                                 INPUT(qkv, qGamma, kGamma, cosSin, slotMapping, kCache, vCache, nullptr, queryStartLoc,
-                                      seqLens, rotationOptional, vScaleOptional, headNums, layoutQkvArg, layoutQOutArg, epsilon),
+                                      seqLens, rotationOptional, vScaleOptional, headNums, layoutQkvArg, layoutQOutArg,
+                                      epsilon),
                                 OUTPUT(qOut, qScale));
             ret = ut.TestGetWorkspaceSize(&workspaceSize);
         } else if (!ParseBool(hasQueryStartLoc)) {
-            auto ut = OP_API_UT(aclnnQkvRmsNormRopeCacheWithKScale,
-                                INPUT(qkv, qGamma, kGamma, cosSin, slotMapping, kCache, vCache, kScaleCache, nullptr,
-                                      seqLens, rotationOptional, vScaleOptional, headNums, layoutQkvArg, layoutQOutArg, epsilon),
-                                OUTPUT(qOut, qScale));
+            auto ut =
+                OP_API_UT(aclnnQkvRmsNormRopeCacheWithKScale,
+                          INPUT(qkv, qGamma, kGamma, cosSin, slotMapping, kCache, vCache, kScaleCache, nullptr, seqLens,
+                                rotationOptional, vScaleOptional, headNums, layoutQkvArg, layoutQOutArg, epsilon),
+                          OUTPUT(qOut, qScale));
             ret = ut.TestGetWorkspaceSize(&workspaceSize);
         } else if (!ParseBool(hasSeqLens)) {
             auto ut = OP_API_UT(aclnnQkvRmsNormRopeCacheWithKScale,
-                                INPUT(qkv, qGamma, kGamma, cosSin, slotMapping, kCache, vCache, kScaleCache, queryStartLoc,
-                                      nullptr, rotationOptional, vScaleOptional, headNums, layoutQkvArg, layoutQOutArg, epsilon),
+                                INPUT(qkv, qGamma, kGamma, cosSin, slotMapping, kCache, vCache, kScaleCache,
+                                      queryStartLoc, nullptr, rotationOptional, vScaleOptional, headNums, layoutQkvArg,
+                                      layoutQOutArg, epsilon),
                                 OUTPUT(qOut, qScale));
             ret = ut.TestGetWorkspaceSize(&workspaceSize);
         } else if (!ParseBool(hasOptionalRotation)) {
-            auto ut = OP_API_UT(aclnnQkvRmsNormRopeCacheWithKScale,
-                                INPUT(qkv, qGamma, kGamma, cosSin, slotMapping, kCache, vCache, kScaleCache, queryStartLoc,
-                                      seqLens, nullptr, vScaleOptional, headNums, layoutQkvArg, layoutQOutArg, epsilon),
-                                OUTPUT(qOut, qScale));
+            auto ut =
+                OP_API_UT(aclnnQkvRmsNormRopeCacheWithKScale,
+                          INPUT(qkv, qGamma, kGamma, cosSin, slotMapping, kCache, vCache, kScaleCache, queryStartLoc,
+                                seqLens, nullptr, vScaleOptional, headNums, layoutQkvArg, layoutQOutArg, epsilon),
+                          OUTPUT(qOut, qScale));
             ret = ut.TestGetWorkspaceSize(&workspaceSize);
         } else if (!ParseBool(hasOptionalVScale)) {
-            auto ut = OP_API_UT(aclnnQkvRmsNormRopeCacheWithKScale,
-                                INPUT(qkv, qGamma, kGamma, cosSin, slotMapping, kCache, vCache, kScaleCache, queryStartLoc,
-                                      seqLens, rotationOptional, nullptr, headNums, layoutQkvArg, layoutQOutArg, epsilon),
-                                OUTPUT(qOut, qScale));
+            auto ut =
+                OP_API_UT(aclnnQkvRmsNormRopeCacheWithKScale,
+                          INPUT(qkv, qGamma, kGamma, cosSin, slotMapping, kCache, vCache, kScaleCache, queryStartLoc,
+                                seqLens, rotationOptional, nullptr, headNums, layoutQkvArg, layoutQOutArg, epsilon),
+                          OUTPUT(qOut, qScale));
             ret = ut.TestGetWorkspaceSize(&workspaceSize);
         } else if (!hasHeadNumsValue) {
             auto ut = OP_API_UT(aclnnQkvRmsNormRopeCacheWithKScale,
-                                INPUT(qkv, qGamma, kGamma, cosSin, slotMapping, kCache, vCache, kScaleCache, queryStartLoc,
-                                      seqLens, rotationOptional, vScaleOptional, nullptr, layoutQkvArg,
+                                INPUT(qkv, qGamma, kGamma, cosSin, slotMapping, kCache, vCache, kScaleCache,
+                                      queryStartLoc, seqLens, rotationOptional, vScaleOptional, nullptr, layoutQkvArg,
                                       layoutQOutArg, epsilon),
                                 OUTPUT(qOut, qScale));
             ret = ut.TestGetWorkspaceSize(&workspaceSize);
         } else if (!hasLayoutQkvValue) {
-            auto ut = OP_API_UT(aclnnQkvRmsNormRopeCacheWithKScale,
-                                INPUT(qkv, qGamma, kGamma, cosSin, slotMapping, kCache, vCache, kScaleCache, queryStartLoc,
-                                      seqLens, rotationOptional, vScaleOptional, headNums, nullptr, layoutQOutArg, epsilon),
-                                OUTPUT(qOut, qScale));
+            auto ut =
+                OP_API_UT(aclnnQkvRmsNormRopeCacheWithKScale,
+                          INPUT(qkv, qGamma, kGamma, cosSin, slotMapping, kCache, vCache, kScaleCache, queryStartLoc,
+                                seqLens, rotationOptional, vScaleOptional, headNums, nullptr, layoutQOutArg, epsilon),
+                          OUTPUT(qOut, qScale));
             ret = ut.TestGetWorkspaceSize(&workspaceSize);
         } else if (!hasLayoutQOutValue) {
-            auto ut = OP_API_UT(aclnnQkvRmsNormRopeCacheWithKScale,
-                                INPUT(qkv, qGamma, kGamma, cosSin, slotMapping, kCache, vCache, kScaleCache, queryStartLoc,
-                                      seqLens, rotationOptional, vScaleOptional, headNums, layoutQkvArg, nullptr,
-                                      epsilon),
-                                OUTPUT(qOut, qScale));
+            auto ut =
+                OP_API_UT(aclnnQkvRmsNormRopeCacheWithKScale,
+                          INPUT(qkv, qGamma, kGamma, cosSin, slotMapping, kCache, vCache, kScaleCache, queryStartLoc,
+                                seqLens, rotationOptional, vScaleOptional, headNums, layoutQkvArg, nullptr, epsilon),
+                          OUTPUT(qOut, qScale));
             ret = ut.TestGetWorkspaceSize(&workspaceSize);
         } else if (!ParseBool(hasQOut)) {
             auto ut = OP_API_UT(aclnnQkvRmsNormRopeCacheWithKScale,
-                                INPUT(qkv, qGamma, kGamma, cosSin, slotMapping, kCache, vCache, kScaleCache, queryStartLoc,
-                                      seqLens, rotationOptional, vScaleOptional, headNums, layoutQkvArg, layoutQOutArg, epsilon),
+                                INPUT(qkv, qGamma, kGamma, cosSin, slotMapping, kCache, vCache, kScaleCache,
+                                      queryStartLoc, seqLens, rotationOptional, vScaleOptional, headNums, layoutQkvArg,
+                                      layoutQOutArg, epsilon),
                                 OUTPUT(nullptr, qScale));
             ret = ut.TestGetWorkspaceSize(&workspaceSize);
         } else if (!ParseBool(hasQScale)) {
             auto ut = OP_API_UT(aclnnQkvRmsNormRopeCacheWithKScale,
-                                INPUT(qkv, qGamma, kGamma, cosSin, slotMapping, kCache, vCache, kScaleCache, queryStartLoc,
-                                      seqLens, rotationOptional, vScaleOptional, headNums, layoutQkvArg, layoutQOutArg, epsilon),
+                                INPUT(qkv, qGamma, kGamma, cosSin, slotMapping, kCache, vCache, kScaleCache,
+                                      queryStartLoc, seqLens, rotationOptional, vScaleOptional, headNums, layoutQkvArg,
+                                      layoutQOutArg, epsilon),
                                 OUTPUT(qOut, nullptr));
             ret = ut.TestGetWorkspaceSize(&workspaceSize);
         } else {
             auto ut = OP_API_UT(aclnnQkvRmsNormRopeCacheWithKScale,
-                                INPUT(qkv, qGamma, kGamma, cosSin, slotMapping, kCache, vCache, kScaleCache, queryStartLoc,
-                                      seqLens, rotationOptional, vScaleOptional, headNums, layoutQkvArg, layoutQOutArg, epsilon),
+                                INPUT(qkv, qGamma, kGamma, cosSin, slotMapping, kCache, vCache, kScaleCache,
+                                      queryStartLoc, seqLens, rotationOptional, vScaleOptional, headNums, layoutQkvArg,
+                                      layoutQOutArg, epsilon),
                                 OUTPUT(qOut, qScale));
             ret = ut.TestGetWorkspaceSize(&workspaceSize);
         }

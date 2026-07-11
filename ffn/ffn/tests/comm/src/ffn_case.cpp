@@ -203,8 +203,8 @@ bool FFNCase::Run()
     if (ffnTiling->mm1TilingData.M == 0) {
         int mmTilingSize = sizeof(TCubeTiling) / sizeof(int32_t);
         for (int i = 0; i < mmTilingSize; i++) {
-            *((int32_t*)(&ffnTiling->mm1TilingData) + i) = 1;
-            *((int32_t*)(&ffnTiling->mm2TilingData) + i) = 1;
+            *((int32_t *)(&ffnTiling->mm1TilingData) + i) = 1;
+            *((int32_t *)(&ffnTiling->mm2TilingData) + i) = 1;
         }
     }
     if (!mOpInfo.ProcessKernel(mName)) {

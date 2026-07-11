@@ -14,10 +14,9 @@
  */
 #include "register/op_def_registry.h"
 namespace ops {
-class MoeInitRoutingV2Grad : public OpDef
-{
+class MoeInitRoutingV2Grad : public OpDef {
 public:
-    explicit MoeInitRoutingV2Grad(const char* name) : OpDef(name)
+    explicit MoeInitRoutingV2Grad(const char *name) : OpDef(name)
     {
         this->Input("grad_expanded_x")
             .ParamType(REQUIRED)

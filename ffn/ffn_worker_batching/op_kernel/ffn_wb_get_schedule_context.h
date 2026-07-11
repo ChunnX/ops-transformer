@@ -15,9 +15,9 @@
  */
 
 /*!
-* \file ffn_wb_get_schedule_context.h
-* \brief
-*/
+ * \file ffn_wb_get_schedule_context.h
+ * \brief
+ */
 
 #ifndef OP_KERNEL_FFN_WB_GET_SCHEDULE_CONTEXT_H
 #define OP_KERNEL_FFN_WB_GET_SCHEDULE_CONTEXT_H
@@ -32,14 +32,15 @@ using namespace AscendC;
 constexpr int64_t STRUCT_LENGTH = 1024;
 template <bool isScanMode = false>
 __aicore__ inline void ScheduleContextInfoCompute(GM_ADDR schedule_context,
-                                                const FfnWorkerBatchingTilingData *tilingData,
-                                                ScheduleContextInfo &contextInfo, TPipe *pipe){
+                                                  const FfnWorkerBatchingTilingData *tilingData,
+                                                  ScheduleContextInfo &contextInfo, TPipe *pipe)
+{
     GlobalTensor<int8_t> scheduleContext;
     TBuf<TPosition::VECIN> buffer;
 
     scheduleContext.SetGlobalBuffer((__gm__ int8_t *)schedule_context, STRUCT_LENGTH);
 
-    pipe->InitBuffer(buffer, STRUCT_LENGTH);  // 检验数据是否正确；
+    pipe->InitBuffer(buffer, STRUCT_LENGTH); // 检验数据是否正确；
     LocalTensor<int8_t> valLocal = buffer.Get<int8_t>();
     DataCopy(valLocal, scheduleContext, STRUCT_LENGTH);
 
@@ -95,7 +96,8 @@ __aicore__ inline void ScheduleContextInfoCompute(GM_ADDR schedule_context,
         LocalTensor<uint64_t> localMicroBatchIdsBuf = valLocal[544].template ReinterpretCast<uint64_t>();
         uint64_t microBatchIdsBufValue = localMicroBatchIdsBuf.GetValue(0);
         contextInfo.bufferPtr.microBatchIdsBuf = microBatchIdsBufValue;
-        // 验证 contextInfo.bufferPtr.microBatchIdsBuf = reinterpret_cast<uint64_t>(microBatchIdsBufValue + schedule_context);
+        // 验证 contextInfo.bufferPtr.microBatchIdsBuf = reinterpret_cast<uint64_t>(microBatchIdsBufValue +
+        // schedule_context);
 
         // expert_ids_buf: offset = 432  // 560
         LocalTensor<uint64_t> localExpertIdsBuf = valLocal[560].template ReinterpretCast<uint64_t>();
@@ -115,12 +117,13 @@ __aicore__ inline void ScheduleContextInfoCompute(GM_ADDR schedule_context,
         LocalTensor<uint64_t> pollIdxBuf = valLocal[416].template ReinterpretCast<uint64_t>();
         contextInfo.curMicroBatchID = (uint64_t)(pollIdxBuf.GetValue(0));
         ASSERT_MSG(contextInfo.curMicroBatchID < contextInfo.M,
-            "curMicroBatchID:%lu should be less than micro_batch_num:%lu", contextInfo.curMicroBatchID, contextInfo.M);
+                   "curMicroBatchID:%lu should be less than micro_batch_num:%lu", contextInfo.curMicroBatchID,
+                   contextInfo.M);
 
-        contextInfo.BsKPaddingCount = Align(contextInfo.BS * contextInfo.K, sizeof(int32_t)) -
-                                    contextInfo.BS * contextInfo.K;
+        contextInfo.BsKPaddingCount =
+            Align(contextInfo.BS * contextInfo.K, sizeof(int32_t)) - contextInfo.BS * contextInfo.K;
     }
 }
 
-}  // namespace FfnWbBatching
-#endif  // OP_KERNEL_FFN_WB_GET_SCHEDULE_CONTEXT_H
+} // namespace FfnWbBatching
+#endif // OP_KERNEL_FFN_WB_GET_SCHEDULE_CONTEXT_H

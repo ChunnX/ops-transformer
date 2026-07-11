@@ -90,9 +90,11 @@ int64_t MoeGatingTopKSoftmaxRegbaseTiling::CalcMaxRowCountInUb()
 {
     int64_t maxRowCountInUb = 0;
     int64_t inQueue = static_cast<int64_t>(expertCountAlign_ * sizeof(float) + BLOCK_BYTES);
-    int64_t outQueue = static_cast<int64_t>(kAlign_ * sizeof(float) + kAlign_ * sizeof(float) + kAlign_ * sizeof(float));
-    int64_t bufQueue = static_cast<int64_t>(expertCountAlign_ * sizeof(float) + expertCountAlign_ * sizeof(float) + expertCountAlign_ * sizeof(float));
-    int64_t sortTmpQueue =  static_cast<int64_t>(expertCountAlign_ * sizeof(float) * CONSTANT_TWO * CONSTANT_TWO);
+    int64_t outQueue =
+        static_cast<int64_t>(kAlign_ * sizeof(float) + kAlign_ * sizeof(float) + kAlign_ * sizeof(float));
+    int64_t bufQueue = static_cast<int64_t>(expertCountAlign_ * sizeof(float) + expertCountAlign_ * sizeof(float) +
+                                            expertCountAlign_ * sizeof(float));
+    int64_t sortTmpQueue = static_cast<int64_t>(expertCountAlign_ * sizeof(float) * CONSTANT_TWO * CONSTANT_TWO);
     int64_t sortedQueue = static_cast<int64_t>(expertCountAlign_ * sizeof(float) * CONSTANT_TWO);
     maxRowCountInUb = static_cast<int64_t>((ubSize - sortedQueue) / (inQueue + outQueue + bufQueue + sortTmpQueue));
     OP_LOGD(context_, "maxRowCountInUb is: %ld", maxRowCountInUb);

@@ -130,43 +130,40 @@ aclnnStatus GetGroupedMatmulFinalizeRoutingV3Workspace(const GroupedMatmulFinali
 
     if (!param.hasLogits) {
         if (param.hasSharedInputTensor) {
-            auto ut =
-                OP_API_UT(aclnnGroupedMatmulFinalizeRoutingV3,
-                          INPUT(param.x1, param.x2, param.scale, biasInput, param.offset, nullptr, nullptr,
-                                param.perTokenScale, param.groupList, param.sharedInput, nullptr, param.rowIndex,
-                                param.dtype, param.sharedInputWeight, param.sharedInputOffset, param.transposeX,
-                                param.transposeW, param.groupListType, param.tuningConfig),
-                          OUTPUT(param.out));
-            return ut.TestGetWorkspaceSize(workspaceSize);
-        }
-
-        auto ut =
-            OP_API_UT(aclnnGroupedMatmulFinalizeRoutingV3,
-                      INPUT(param.x1, param.x2, param.scale, biasInput, param.offset, nullptr, nullptr,
-                            param.perTokenScale, param.groupList, nullptr, nullptr, param.rowIndex, param.dtype,
-                            param.sharedInputWeight, param.sharedInputOffset, param.transposeX, param.transposeW,
-                            param.groupListType, param.tuningConfig),
-                      OUTPUT(param.out));
-        return ut.TestGetWorkspaceSize(workspaceSize);
-    }
-
-    if (param.hasAntiQuantScale) {
-        if (param.hasSharedInputTensor) {
             auto ut = OP_API_UT(aclnnGroupedMatmulFinalizeRoutingV3,
-                                INPUT(param.x1, param.x2, param.scale, biasInput, param.offset,
-                                      param.antiQuantScale, nullptr, param.perTokenScale, param.groupList,
-                                      param.sharedInput, param.logits, param.rowIndex, param.dtype,
-                                      param.sharedInputWeight, param.sharedInputOffset, param.transposeX,
+                                INPUT(param.x1, param.x2, param.scale, biasInput, param.offset, nullptr, nullptr,
+                                      param.perTokenScale, param.groupList, param.sharedInput, nullptr, param.rowIndex,
+                                      param.dtype, param.sharedInputWeight, param.sharedInputOffset, param.transposeX,
                                       param.transposeW, param.groupListType, param.tuningConfig),
                                 OUTPUT(param.out));
             return ut.TestGetWorkspaceSize(workspaceSize);
         }
 
         auto ut = OP_API_UT(aclnnGroupedMatmulFinalizeRoutingV3,
+                            INPUT(param.x1, param.x2, param.scale, biasInput, param.offset, nullptr, nullptr,
+                                  param.perTokenScale, param.groupList, nullptr, nullptr, param.rowIndex, param.dtype,
+                                  param.sharedInputWeight, param.sharedInputOffset, param.transposeX, param.transposeW,
+                                  param.groupListType, param.tuningConfig),
+                            OUTPUT(param.out));
+        return ut.TestGetWorkspaceSize(workspaceSize);
+    }
+
+    if (param.hasAntiQuantScale) {
+        if (param.hasSharedInputTensor) {
+            auto ut = OP_API_UT(aclnnGroupedMatmulFinalizeRoutingV3,
+                                INPUT(param.x1, param.x2, param.scale, biasInput, param.offset, param.antiQuantScale,
+                                      nullptr, param.perTokenScale, param.groupList, param.sharedInput, param.logits,
+                                      param.rowIndex, param.dtype, param.sharedInputWeight, param.sharedInputOffset,
+                                      param.transposeX, param.transposeW, param.groupListType, param.tuningConfig),
+                                OUTPUT(param.out));
+            return ut.TestGetWorkspaceSize(workspaceSize);
+        }
+
+        auto ut = OP_API_UT(aclnnGroupedMatmulFinalizeRoutingV3,
                             INPUT(param.x1, param.x2, param.scale, biasInput, param.offset, param.antiQuantScale,
-                                  nullptr, param.perTokenScale, param.groupList, nullptr, param.logits,
-                                  param.rowIndex, param.dtype, param.sharedInputWeight, param.sharedInputOffset,
-                                  param.transposeX, param.transposeW, param.groupListType, param.tuningConfig),
+                                  nullptr, param.perTokenScale, param.groupList, nullptr, param.logits, param.rowIndex,
+                                  param.dtype, param.sharedInputWeight, param.sharedInputOffset, param.transposeX,
+                                  param.transposeW, param.groupListType, param.tuningConfig),
                             OUTPUT(param.out));
         return ut.TestGetWorkspaceSize(workspaceSize);
     }
@@ -174,18 +171,18 @@ aclnnStatus GetGroupedMatmulFinalizeRoutingV3Workspace(const GroupedMatmulFinali
     if (param.hasSharedInputTensor) {
         auto ut = OP_API_UT(aclnnGroupedMatmulFinalizeRoutingV3,
                             INPUT(param.x1, param.x2, param.scale, biasInput, param.offset, nullptr, nullptr,
-                                  param.perTokenScale, param.groupList, param.sharedInput, param.logits,
-                                  param.rowIndex, param.dtype, param.sharedInputWeight, param.sharedInputOffset,
-                                  param.transposeX, param.transposeW, param.groupListType, param.tuningConfig),
+                                  param.perTokenScale, param.groupList, param.sharedInput, param.logits, param.rowIndex,
+                                  param.dtype, param.sharedInputWeight, param.sharedInputOffset, param.transposeX,
+                                  param.transposeW, param.groupListType, param.tuningConfig),
                             OUTPUT(param.out));
         return ut.TestGetWorkspaceSize(workspaceSize);
     }
 
     auto ut = OP_API_UT(aclnnGroupedMatmulFinalizeRoutingV3,
                         INPUT(param.x1, param.x2, param.scale, biasInput, param.offset, nullptr, nullptr,
-                              param.perTokenScale, param.groupList, nullptr, param.logits, param.rowIndex,
-                              param.dtype, param.sharedInputWeight, param.sharedInputOffset, param.transposeX,
-                              param.transposeW, param.groupListType, param.tuningConfig),
+                              param.perTokenScale, param.groupList, nullptr, param.logits, param.rowIndex, param.dtype,
+                              param.sharedInputWeight, param.sharedInputOffset, param.transposeX, param.transposeW,
+                              param.groupListType, param.tuningConfig),
                         OUTPUT(param.out));
     return ut.TestGetWorkspaceSize(workspaceSize);
 }
@@ -240,16 +237,33 @@ struct GroupedMatmulFinalizeRoutingV3Case {
 
         uint64_t workspaceSize = 0;
         const GroupedMatmulFinalizeRoutingV3RunParam runParam{
-            x1,    x2,          scale,      offset,            antiQuantScale,        perTokenScale,
-            groupList, sharedInput, logits, rowIndex,          out,                   tuningConfigPtr,
-            dtype,  sharedInputWeight,      sharedInputOffset, transposeX,            transposeW,
-            groupListType,                  ParseBool(hasOffset), ParseBool(hasAntiQuantScale),
-            ParseBool(hasLogits),           hasSharedInputTensor,
+            x1,
+            x2,
+            scale,
+            offset,
+            antiQuantScale,
+            perTokenScale,
+            groupList,
+            sharedInput,
+            logits,
+            rowIndex,
+            out,
+            tuningConfigPtr,
+            dtype,
+            sharedInputWeight,
+            sharedInputOffset,
+            transposeX,
+            transposeW,
+            groupListType,
+            ParseBool(hasOffset),
+            ParseBool(hasAntiQuantScale),
+            ParseBool(hasLogits),
+            hasSharedInputTensor,
         };
 
-        const aclnnStatus ret = bias.has_value()
-                                    ? GetGroupedMatmulFinalizeRoutingV3Workspace(runParam, *bias, &workspaceSize)
-                                    : GetGroupedMatmulFinalizeRoutingV3Workspace(runParam, nullptr, &workspaceSize);
+        const aclnnStatus ret = bias.has_value() ?
+                                    GetGroupedMatmulFinalizeRoutingV3Workspace(runParam, *bias, &workspaceSize) :
+                                    GetGroupedMatmulFinalizeRoutingV3Workspace(runParam, nullptr, &workspaceSize);
 
         if (ParseBool(checkRet)) {
             EXPECT_EQ(ret, ParseStatus(expectRet));
@@ -372,9 +386,9 @@ vector<GroupedMatmulFinalizeRoutingV3Case> LoadCases(const string &csvFilePath)
 
 const vector<GroupedMatmulFinalizeRoutingV3Case> &GetV3Cases()
 {
-    static const auto cases = LoadCases(
-        ops::ut::ResolveCsvPath("test_aclnn_grouped_matmul_finalize_routing_v3_l2.csv",
-                                "gmm/grouped_matmul_finalize_routing/tests/ut/op_host/op_api", __FILE__));
+    static const auto cases =
+        LoadCases(ops::ut::ResolveCsvPath("test_aclnn_grouped_matmul_finalize_routing_v3_l2.csv",
+                                          "gmm/grouped_matmul_finalize_routing/tests/ut/op_host/op_api", __FILE__));
     return cases;
 }
 
@@ -383,14 +397,14 @@ string MakeParamName(const testing::TestParamInfo<GroupedMatmulFinalizeRoutingV3
     return ops::ut::MakeSafeParamName(info.param.socVersion + "_" + info.param.caseName);
 }
 
-class grouped_matmul_finalize_routing_v3_csv_test
-    : public testing::TestWithParam<GroupedMatmulFinalizeRoutingV3Case> {};
+class grouped_matmul_finalize_routing_v3_csv_test : public testing::TestWithParam<GroupedMatmulFinalizeRoutingV3Case> {
+};
 
 TEST_P(grouped_matmul_finalize_routing_v3_csv_test, csvDrivenCase)
 {
     GetParam().Run();
 }
 
-INSTANTIATE_TEST_SUITE_P(GMMFR_V3_L2_CSV, grouped_matmul_finalize_routing_v3_csv_test,
-                         testing::ValuesIn(GetV3Cases()), MakeParamName);
-}  // namespace
+INSTANTIATE_TEST_SUITE_P(GMMFR_V3_L2_CSV, grouped_matmul_finalize_routing_v3_csv_test, testing::ValuesIn(GetV3Cases()),
+                         MakeParamName);
+} // namespace

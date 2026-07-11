@@ -13,8 +13,8 @@
 
 ## 功能说明
 
-- 接口功能：Swin Transformer网络模型完成Q、K、V的计算。  
-- 计算公式：  
+- 接口功能：Swin Transformer网络模型完成Q、K、V的计算。
+- 计算公式：
 
   q/k/v = (Quant(Layernorm(x).transpose)  * weight).dequant.transpose.split
   其中，weight是Q、K、V三个矩阵权重的拼接。
@@ -25,34 +25,34 @@
 
 ```cpp
 aclnnStatus aclnnSwinTransformerLnQkvQuantGetWorkspaceSize(
-  const aclTensor *x, 
-  const aclTensor *gamma, 
-  const aclTensor *beta, 
-  const aclTensor *weight, 
-  const aclTensor *bias, 
-  const aclTensor *quantScale, 
-  const aclTensor *quantOffset, 
-  const aclTensor *dequantScale, 
-  int64_t          headNum, 
-  int64_t          seqLength, 
-  double           epsilon, 
-  int64_t          oriHeight, 
-  int64_t          oriWeight, 
-  int64_t          hWinSize, 
-  int64_t          wWinSize, 
-  bool             weightTranspose, 
-  const aclTensor *queryOutputOut, 
-  const aclTensor *keyOutputOut, 
-  const aclTensor *valueOutputOut, 
-  uint64_t        *workspaceSize, 
+  const aclTensor *x,
+  const aclTensor *gamma,
+  const aclTensor *beta,
+  const aclTensor *weight,
+  const aclTensor *bias,
+  const aclTensor *quantScale,
+  const aclTensor *quantOffset,
+  const aclTensor *dequantScale,
+  int64_t          headNum,
+  int64_t          seqLength,
+  double           epsilon,
+  int64_t          oriHeight,
+  int64_t          oriWeight,
+  int64_t          hWinSize,
+  int64_t          wWinSize,
+  bool             weightTranspose,
+  const aclTensor *queryOutputOut,
+  const aclTensor *keyOutputOut,
+  const aclTensor *valueOutputOut,
+  uint64_t        *workspaceSize,
   aclOpExecutor   **executor)
 ```
 
 ```cpp
 aclnnStatus aclnnSwinTransformerLnQkvQuant(
-  void          *workspace, 
-  uint64_t       workspaceSize, 
-  aclOpExecutor *executor, 
+  void          *workspace,
+  uint64_t       workspaceSize,
+  aclOpExecutor *executor,
   aclrtStream    stream)
 ```
 
@@ -292,7 +292,7 @@ aclnnStatus aclnnSwinTransformerLnQkvQuant(
       <td>-</td>
       <td>-</td>
     </tr>
-  </tbody></table>  
+  </tbody></table>
 
 - **返回值**：
 

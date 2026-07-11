@@ -39,74 +39,76 @@ template <class T, class P, int8_t HAS_RESI>
 class MhcPreKernelSplitBS : public MhcPreKernelBase<T, P> {
 public:
     using Base = MhcPreKernelBase<T, P>;
-    using Base::mm;
-    using Base::mnConfig_;
-    using Base::coreNum_;
-    using Base::totalLength_;
-    using Base::N_;
-    using Base::D_;
-    using Base::outFlag_;
-    using Base::hasGamma_;
-    using Base::xGm_;
-    using Base::phiGm_;
-    using Base::alphaGm_;
-    using Base::biasGm_;
-    using Base::gammaGm_;
-    using Base::hinGm_;
-    using Base::hPostGm_;
-    using Base::hResGm_;
-    using Base::invRmsGm_;
-    using Base::hMixGm_;
-    using Base::hPreGm_;
-    using Base::xFloatGm_;
-    using Base::xInQueue_;
-    using Base::gammaInQueue_;
-    using Base::invRmsOutQueue_;
-    using Base::outQueue_;
-    using Base::biasInQue_;
-    using Base::tmpBuff_;
     using Base::alphaBuf_;
-    using Base::inputBuff_;
-    using Base::hPreBuff_;
-    using Base::hPostBuff_;
-    using Base::hResBuff_;
+    using Base::alphaGm_;
     using Base::alphaInUb_;
+    using Base::biasGm_;
+    using Base::biasInQue_;
     using Base::biasInUb_;
-    using Base::matmulRes_;
-    using Base::xLocal_;
-    using Base::invRmsUb_;
-    using Base::gammaUb_;
-    using Base::preOffsetBuf_;
-    using Base::postOffsetBuf_;
-    using Base::resOffsetBuf_;
-    using Base::pipe_;
-    using Base::matrixInfo_;
-    using Base::vectorOffset_;
-    using Base::tiling_;
     using Base::chunkTSize_;
-    using Base::v1ChunkDSize_;
-    using Base::curSingleT_;
     using Base::coreIdx_;
-    using Base::subBlockIdx_;
-    using Base::scaleMean_;
-    using Base::globalOffsetM_;
-    using Base::vectorCount_;
+    using Base::coreNum_;
     using Base::cubeCount_;
-    using Base::mmCount_;
-    using Base::vec1Count_;
+    using Base::curSingleT_;
+    using Base::D_;
     using Base::eleNumPerVf_;
-    using Base::kDoubleBufferCount;
-    using Base::kSingleBufferCount;
-    using Base::kHalfSplitDivisor;
-    using Base::ND_LENGTH;
-    using Base::PARALLEL_NUM;
+    using Base::gammaGm_;
+    using Base::gammaInQueue_;
+    using Base::gammaUb_;
+    using Base::globalOffsetM_;
+    using Base::hasGamma_;
     using Base::hasResi_;
+    using Base::hinGm_;
+    using Base::hMixGm_;
+    using Base::hPostBuff_;
+    using Base::hPostGm_;
+    using Base::hPreBuff_;
+    using Base::hPreGm_;
+    using Base::hResBuff_;
+    using Base::hResGm_;
+    using Base::inputBuff_;
+    using Base::invRmsGm_;
+    using Base::invRmsOutQueue_;
+    using Base::invRmsUb_;
+    using Base::kDoubleBufferCount;
+    using Base::kHalfSplitDivisor;
+    using Base::kSingleBufferCount;
+    using Base::matmulRes_;
+    using Base::matrixInfo_;
+    using Base::mm;
+    using Base::mmCount_;
+    using Base::mnConfig_;
+    using Base::N_;
+    using Base::ND_LENGTH;
+    using Base::outFlag_;
+    using Base::outQueue_;
+    using Base::PARALLEL_NUM;
+    using Base::phiGm_;
+    using Base::pipe_;
+    using Base::postOffsetBuf_;
+    using Base::preOffsetBuf_;
+    using Base::resOffsetBuf_;
+    using Base::scaleMean_;
+    using Base::subBlockIdx_;
+    using Base::tiling_;
+    using Base::tmpBuff_;
+    using Base::totalLength_;
     using Base::V0_BASE_T;
     using Base::V1_BASE_T;
+    using Base::v1ChunkDSize_;
+    using Base::vec1Count_;
+    using Base::vectorCount_;
+    using Base::vectorOffset_;
+    using Base::xFloatGm_;
+    using Base::xGm_;
+    using Base::xInQueue_;
+    using Base::xLocal_;
 
     static constexpr int8_t kHasResi = HAS_RESI;
 
-    __aicore__ inline MhcPreKernelSplitBS(MT &matmul) : Base(matmul) {}
+    __aicore__ inline MhcPreKernelSplitBS(MT &matmul) : Base(matmul)
+    {
+    }
     __aicore__ inline void Init(InitParams initParams);
     __aicore__ inline void InitHMixBuffer(InitParams initParams);
     __aicore__ inline void InitUbBuffers();
@@ -291,22 +293,24 @@ __aicore__ inline void MhcPreKernelSplitBS<T, P, HAS_RESI>::V0Prologue(uint32_t 
             gammaUb_ = gammaInQueue_.template DeQue<P>();
 
             if (offsetNd == 0) {
-                this->template VFDoV0ProcessXIn<true, true>((__ubuf__ P *)aL1Ub.GetPhyAddr(), (__ubuf__ P *)invRmsUb.GetPhyAddr(),
-                                             (__ubuf__ T *)xLocal_.GetPhyAddr(), (__ubuf__ P *)gammaUb_.GetPhyAddr(),
-                                             curMLen, curNdLen);
+                this->template VFDoV0ProcessXIn<true, true>(
+                    (__ubuf__ P *)aL1Ub.GetPhyAddr(), (__ubuf__ P *)invRmsUb.GetPhyAddr(),
+                    (__ubuf__ T *)xLocal_.GetPhyAddr(), (__ubuf__ P *)gammaUb_.GetPhyAddr(), curMLen, curNdLen);
             } else {
-                this->template VFDoV0ProcessXIn<true, false>((__ubuf__ P *)aL1Ub.GetPhyAddr(), (__ubuf__ P *)invRmsUb.GetPhyAddr(),
-                                              (__ubuf__ T *)xLocal_.GetPhyAddr(), (__ubuf__ P *)gammaUb_.GetPhyAddr(),
-                                              curMLen, curNdLen);
+                this->template VFDoV0ProcessXIn<true, false>(
+                    (__ubuf__ P *)aL1Ub.GetPhyAddr(), (__ubuf__ P *)invRmsUb.GetPhyAddr(),
+                    (__ubuf__ T *)xLocal_.GetPhyAddr(), (__ubuf__ P *)gammaUb_.GetPhyAddr(), curMLen, curNdLen);
             }
             gammaInQueue_.FreeTensor(gammaUb_);
         } else {
             if (offsetNd == 0) {
-                this->template VFDoV0ProcessXIn<false, true>((__ubuf__ P *)aL1Ub.GetPhyAddr(), (__ubuf__ P *)invRmsUb.GetPhyAddr(),
-                                              (__ubuf__ T *)xLocal_.GetPhyAddr(), nullptr, curMLen, curNdLen);
+                this->template VFDoV0ProcessXIn<false, true>(
+                    (__ubuf__ P *)aL1Ub.GetPhyAddr(), (__ubuf__ P *)invRmsUb.GetPhyAddr(),
+                    (__ubuf__ T *)xLocal_.GetPhyAddr(), nullptr, curMLen, curNdLen);
             } else {
-                this->template VFDoV0ProcessXIn<false, false>((__ubuf__ P *)aL1Ub.GetPhyAddr(), (__ubuf__ P *)invRmsUb.GetPhyAddr(),
-                                               (__ubuf__ T *)xLocal_.GetPhyAddr(), nullptr, curMLen, curNdLen);
+                this->template VFDoV0ProcessXIn<false, false>(
+                    (__ubuf__ P *)aL1Ub.GetPhyAddr(), (__ubuf__ P *)invRmsUb.GetPhyAddr(),
+                    (__ubuf__ T *)xLocal_.GetPhyAddr(), nullptr, curMLen, curNdLen);
             }
         }
         outQueue_.template EnQue<P>(aL1Ub);
@@ -326,7 +330,7 @@ __aicore__ inline void MhcPreKernelSplitBS<T, P, HAS_RESI>::V0PostProcess(uint32
     }
 
     this->VFDoV0ProcessInvRms((__ubuf__ P *)invRmsUb_.GetPhyAddr(), vectorOffset_.singleCoreM, scaleMean_,
-                        matrixInfo_.normEps);
+                              matrixInfo_.normEps);
     this->DataCopyOutInvRmsUb(vectorOffset_.singleCoreM, vectorOffset_.offsetMStart);
 }
 
@@ -355,8 +359,8 @@ __aicore__ inline void MhcPreKernelSplitBS<T, P, HAS_RESI>::AIV1Process(uint64_t
 }
 
 template <class T, class P, int8_t HAS_RESI>
-__aicore__ inline void MhcPreKernelSplitBS<T, P, HAS_RESI>::AIV1Prologue(
-    uint64_t offsetT, uint64_t lenT, uint64_t singleCoreOffset)
+__aicore__ inline void MhcPreKernelSplitBS<T, P, HAS_RESI>::AIV1Prologue(uint64_t offsetT, uint64_t lenT,
+                                                                         uint64_t singleCoreOffset)
 {
     uint64_t offset = globalOffsetM_ + offsetT;
     uint64_t HMixOffset = 0;

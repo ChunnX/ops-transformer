@@ -23,18 +23,18 @@
 // A8W4 MSD场景
 #if defined(ORIG_DTYPE_X) && defined(DT_INT8) && ORIG_DTYPE_X == DT_INT8 && defined(ORIG_DTYPE_WEIGHT) &&              \
     defined(DT_INT4) && ORIG_DTYPE_WEIGHT == DT_INT4
-        #define GMM_SWIGLU_QUANT_A8W4_MSD
-        using DTYPE_X_A8W4_MSD = AscendC::int4b_t;
+#define GMM_SWIGLU_QUANT_A8W4_MSD
+using DTYPE_X_A8W4_MSD = AscendC::int4b_t;
 // A8W8 场景
 #elif defined(ORIG_DTYPE_X) && defined(DT_INT8) && ORIG_DTYPE_X == DT_INT8 && defined(ORIG_DTYPE_WEIGHT) &&            \
     defined(DT_INT8) && ORIG_DTYPE_WEIGHT == DT_INT8
-        #define GMM_SWIGLU_QUANT_A8W8
+#define GMM_SWIGLU_QUANT_A8W8
 #endif // 场景分类
 
 #if defined(FORMAT_WEIGHT) && FORMAT_WEIGHT == FORMAT_FRACTAL_NZ
-    constexpr CubeFormat wFormat = CubeFormat::NZ;
+constexpr CubeFormat wFormat = CubeFormat::NZ;
 #elif defined(FORMAT_WEIGHT) && FORMAT_WEIGHT == FORMAT_ND
-    constexpr CubeFormat wFormat = CubeFormat::ND;
+constexpr CubeFormat wFormat = CubeFormat::ND;
 #endif // weight格式分类
 
 #endif // 芯片型号分类

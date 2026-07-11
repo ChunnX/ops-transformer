@@ -27,13 +27,13 @@ constexpr size_t INPUT_IDX_COS = 1;
 constexpr size_t INPUT_IDX_SIN = 2;
 constexpr size_t OUTPUT_IDX_Y = 0;
 
-graphStatus InferShape4InterleaveRope(gert::InferShapeContext* context)
+graphStatus InferShape4InterleaveRope(gert::InferShapeContext *context)
 {
     OP_LOGI(context, "Begin to do InferShape4InterleaveRope.");
 
-    const gert::Shape* xInputShape = context->GetInputShape(INPUT_IDX_X);
+    const gert::Shape *xInputShape = context->GetInputShape(INPUT_IDX_X);
     OP_CHECK_NULL_WITH_CONTEXT(context, xInputShape);
-    gert::Shape* yShape = context->GetOutputShape(OUTPUT_IDX_Y);
+    gert::Shape *yShape = context->GetOutputShape(OUTPUT_IDX_Y);
     OP_CHECK_NULL_WITH_CONTEXT(context, yShape);
     *yShape = *xInputShape;
 
@@ -41,7 +41,7 @@ graphStatus InferShape4InterleaveRope(gert::InferShapeContext* context)
     return GRAPH_SUCCESS;
 }
 
-graphStatus InferDtype4InterleaveRope(gert::InferDataTypeContext* context)
+graphStatus InferDtype4InterleaveRope(gert::InferDataTypeContext *context)
 {
     OP_LOGD(context, "InferDtype4InterleaveRope enter");
 

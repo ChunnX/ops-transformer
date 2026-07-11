@@ -15,10 +15,9 @@
 #include "register/op_def_registry.h"
 
 namespace ops {
-class MoeComputeExpertTokens : public OpDef
-{
+class MoeComputeExpertTokens : public OpDef {
 public:
-    explicit MoeComputeExpertTokens(const char* name) : OpDef(name)
+    explicit MoeComputeExpertTokens(const char *name) : OpDef(name)
     {
         this->Input("sorted_experts")
             .ParamType(REQUIRED)

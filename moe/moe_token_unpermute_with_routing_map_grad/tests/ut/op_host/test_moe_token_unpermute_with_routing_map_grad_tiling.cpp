@@ -49,8 +49,7 @@ void InitParsePlatformInfo(fe::PlatFormInfos &platformInfo)
 }
 } // namespace
 
-class MoeTokenUnpermuteWithRoutingMapGradTiling : public testing::Test
-{
+class MoeTokenUnpermuteWithRoutingMapGradTiling : public testing::Test {
 protected:
     static void SetUpTestCase()
     {
@@ -63,7 +62,8 @@ protected:
     }
 };
 
-TEST_F(MoeTokenUnpermuteWithRoutingMapGradTiling, test_tiling_prob_not_none_bf16_tilingkey_1) {
+TEST_F(MoeTokenUnpermuteWithRoutingMapGradTiling, test_tiling_prob_not_none_bf16_tilingkey_1)
+{
     optiling::MoeTokenUnpermuteWithRoutingMapGradCompileInfo compileInfo = {};
     std::string socVersion = "Ascend910B";
     uint64_t coreNum = 40;
@@ -82,15 +82,15 @@ TEST_F(MoeTokenUnpermuteWithRoutingMapGradTiling, test_tiling_prob_not_none_bf16
                                                   {{{30, 64}, {30, 64}}, ge::DT_BF16, ge::FORMAT_ND},
                                               },
                                               {{"drop_and_pad", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}},
-                                              &compileInfo,
-                                              socVersion, coreNum, ubSize);
+                                              &compileInfo, socVersion, coreNum, ubSize);
     int64_t expectTilingKey = 1;
     string expectTilingData = "30 1 0 64 64 30 30 10 1 0 1 0 64 1 0 64 0 1 16 64 196352 ";
     std::vector<size_t> expectWorkspaces = {16 * 1024 * 1024};
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }
 
-TEST_F(MoeTokenUnpermuteWithRoutingMapGradTiling, test_tiling_prob_not_none_bf16_tilingkey_11) {
+TEST_F(MoeTokenUnpermuteWithRoutingMapGradTiling, test_tiling_prob_not_none_bf16_tilingkey_11)
+{
     optiling::MoeTokenUnpermuteWithRoutingMapGradCompileInfo compileInfo = {};
     std::string socVersion = "Ascend910B";
     uint64_t coreNum = 40;
@@ -109,15 +109,15 @@ TEST_F(MoeTokenUnpermuteWithRoutingMapGradTiling, test_tiling_prob_not_none_bf16
                                                   {{{30, 64}, {30, 64}}, ge::DT_BF16, ge::FORMAT_ND},
                                               },
                                               {{"drop_and_pad", Ops::Transformer::AnyValue::CreateFrom<bool>(true)}},
-                                              &compileInfo,
-                                              socVersion, coreNum, ubSize);
+                                              &compileInfo, socVersion, coreNum, ubSize);
     int64_t expectTilingKey = 11;
     string expectTilingData = "30 0 0 64 64 30 30 10 0 0 1 0 64 1 8 64 1 1 0 0 196352 ";
     std::vector<size_t> expectWorkspaces = {16 * 1024 * 1024};
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }
 
-TEST_F(MoeTokenUnpermuteWithRoutingMapGradTiling, test_tiling_prob_none_bf16_tilingkey_0) {
+TEST_F(MoeTokenUnpermuteWithRoutingMapGradTiling, test_tiling_prob_none_bf16_tilingkey_0)
+{
     optiling::MoeTokenUnpermuteWithRoutingMapGradCompileInfo compileInfo = {};
     std::string socVersion = "Ascend910B";
     uint64_t coreNum = 40;
@@ -134,15 +134,15 @@ TEST_F(MoeTokenUnpermuteWithRoutingMapGradTiling, test_tiling_prob_none_bf16_til
                                                   {{{30, 64}, {30, 64}}, ge::DT_BF16, ge::FORMAT_ND},
                                               },
                                               {{"drop_and_pad", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}},
-                                              &compileInfo,
-                                              socVersion, coreNum, ubSize);
+                                              &compileInfo, socVersion, coreNum, ubSize);
     int64_t expectTilingKey = 0;
     string expectTilingData = "30 1 0 0 64 30 30 10 0 0 1 0 64 1 0 64 1 1 0 0 196352 ";
     std::vector<size_t> expectWorkspaces = {16 * 1024 * 1024};
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }
 
-TEST_F(MoeTokenUnpermuteWithRoutingMapGradTiling, test_tilingkey_101) {
+TEST_F(MoeTokenUnpermuteWithRoutingMapGradTiling, test_tilingkey_101)
+{
     optiling::MoeTokenUnpermuteWithRoutingMapGradCompileInfo compileInfo = {};
     std::string socVersion = "Ascend910B";
     uint64_t coreNum = 40;
@@ -161,15 +161,15 @@ TEST_F(MoeTokenUnpermuteWithRoutingMapGradTiling, test_tilingkey_101) {
                                                   {{{30, 8}, {30, 8}}, ge::DT_FLOAT, ge::FORMAT_ND},
                                               },
                                               {{"drop_and_pad", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}},
-                                              &compileInfo,
-                                              socVersion, coreNum, ubSize);
+                                              &compileInfo, socVersion, coreNum, ubSize);
     int64_t expectTilingKey = 101;
     string expectTilingData = "30 1 0 8 8 30 30 10 1 0 1 0 16 1 0 8 0 1 16 32 196352 ";
     std::vector<size_t> expectWorkspaces = {16 * 1024 * 1024};
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }
 
-TEST_F(MoeTokenUnpermuteWithRoutingMapGradTiling, test_tilingkey_111) {
+TEST_F(MoeTokenUnpermuteWithRoutingMapGradTiling, test_tilingkey_111)
+{
     optiling::MoeTokenUnpermuteWithRoutingMapGradCompileInfo compileInfo = {};
     std::string socVersion = "Ascend910B";
     uint64_t coreNum = 40;
@@ -188,8 +188,7 @@ TEST_F(MoeTokenUnpermuteWithRoutingMapGradTiling, test_tilingkey_111) {
                                                   {{{30, 8}, {30, 8}}, ge::DT_FLOAT, ge::FORMAT_ND},
                                               },
                                               {{"drop_and_pad", Ops::Transformer::AnyValue::CreateFrom<bool>(true)}},
-                                              &compileInfo,
-                                              socVersion, coreNum, ubSize);
+                                              &compileInfo, socVersion, coreNum, ubSize);
     int64_t expectTilingKey = 111;
     string expectTilingData = "30 0 3 8 8 30 30 10 0 0 1 0 16 1 8 8 1 1 0 0 196352 ";
     std::vector<size_t> expectWorkspaces = {16 * 1024 * 1024};
@@ -260,10 +259,7 @@ TEST_F(MoeTokenUnpermuteWithRoutingMapGradTiling, test_tiling_prob_none_small_ub
                                                   {{{30, 512}, {30, 512}}, ge::DT_BF16, ge::FORMAT_ND},
                                               },
                                               {{"drop_and_pad", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}},
-                                              &compileInfo,
-                                              "Ascend910B",
-                                              40,
-                                              512);
+                                              &compileInfo, "Ascend910B", 40, 512);
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 0);
 }
 
@@ -284,10 +280,7 @@ TEST_F(MoeTokenUnpermuteWithRoutingMapGradTiling, test_tiling_prob_not_none_pad_
                                                   {{{30, 64}, {30, 64}}, ge::DT_BF16, ge::FORMAT_ND},
                                               },
                                               {{"drop_and_pad", Ops::Transformer::AnyValue::CreateFrom<bool>(true)}},
-                                              &compileInfo,
-                                              "Ascend910B",
-                                              40,
-                                              8192);
+                                              &compileInfo, "Ascend910B", 40, 8192);
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 11);
 }
 

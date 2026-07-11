@@ -26,19 +26,18 @@ static constexpr float FLOAT_ZERO = 0.0;
 
 using namespace AscendC;
 template <typename T_KV, typename T_K_CACHE, typename T_V_CACHE>
-class KvRmsNormRopeCacheRegbaseRecompute : public KvRmsNormRopeCacheRegbase<T_KV, T_K_CACHE, T_V_CACHE>
-{
+class KvRmsNormRopeCacheRegbaseRecompute : public KvRmsNormRopeCacheRegbase<T_KV, T_K_CACHE, T_V_CACHE> {
 public:
-    __aicore__ inline KvRmsNormRopeCacheRegbaseRecompute(
-        TPipe* pipe, const KvRmsNormRopeCacheRegbaseRecomputeTilingData* tiling)
+    __aicore__ inline KvRmsNormRopeCacheRegbaseRecompute(TPipe *pipe,
+                                                         const KvRmsNormRopeCacheRegbaseRecomputeTilingData *tiling)
     {
         tilingData_ = tiling;
         pipe_ = pipe;
     }
 
-    __aicore__ inline void Init(
-        GM_ADDR kv, GM_ADDR gamma, GM_ADDR cos, GM_ADDR sin, GM_ADDR index, GM_ADDR k_cache, GM_ADDR v_cache,
-        GM_ADDR k_scale, GM_ADDR v_scale, GM_ADDR k_offset, GM_ADDR v_offset, GM_ADDR k_out, GM_ADDR v_out)
+    __aicore__ inline void Init(GM_ADDR kv, GM_ADDR gamma, GM_ADDR cos, GM_ADDR sin, GM_ADDR index, GM_ADDR k_cache,
+                                GM_ADDR v_cache, GM_ADDR k_scale, GM_ADDR v_scale, GM_ADDR k_offset, GM_ADDR v_offset,
+                                GM_ADDR k_out, GM_ADDR v_out)
     {
         bs = tilingData_->bs;
         blockFactor = tilingData_->blockFactor; // 每个核需要处理的行数
@@ -49,8 +48,8 @@ public:
         this->epsilon = tilingData_->epsilon;
         this->dv = tilingData_->dv;
         this->dk = tilingData_->dk;
-        
-        this->ubFactor = tilingData_->ubFactor;  // num of cols which needs to compute: split the R-axis for recompute
+
+        this->ubFactor = tilingData_->ubFactor; // num of cols which needs to compute: split the R-axis for recompute
         ubFactorDvLoopCountCeil = tilingData_->ubFactorDvLoopCountCeil;
         ubFactorDvTail = tilingData_->ubFactorDvTail;
         ubFactorDkLoopCountCeil = tilingData_->ubFactorDkLoopCountCeil;
@@ -79,19 +78,19 @@ public:
         dv1 = this->dv / dv0;
 
         // init global memory
-        this->kvGm.SetGlobalBuffer((__gm__ T_KV*)kv);
-        this->gammaGm.SetGlobalBuffer((__gm__ T_KV*)gamma);
-        this->cosGm.SetGlobalBuffer((__gm__ T_KV*)cos);
-        this->sinGm.SetGlobalBuffer((__gm__ T_KV*)sin);
-        this->indexGm.SetGlobalBuffer((__gm__ int64_t*)index);
-        this->kCacheGm.SetGlobalBuffer((__gm__ T_K_CACHE*)k_cache);
-        this->vCacheGm.SetGlobalBuffer((__gm__ T_V_CACHE*)v_cache);
-        this->kScaleGm.SetGlobalBuffer((__gm__ float*)k_scale);
-        this->vScaleGm.SetGlobalBuffer((__gm__ float*)v_scale);
-        this->kOffsetGm.SetGlobalBuffer((__gm__ float*)k_offset);
-        this->vOffsetGm.SetGlobalBuffer((__gm__ float*)v_offset);
-        this->kOutGm.SetGlobalBuffer((__gm__ T_KV*)k_out + this->blockIdx * tilingData_->blockFactor * this->dk);
-        this->vOutGm.SetGlobalBuffer((__gm__ T_KV*)v_out + this->blockIdx * tilingData_->blockFactor * this->dv);
+        this->kvGm.SetGlobalBuffer((__gm__ T_KV *)kv);
+        this->gammaGm.SetGlobalBuffer((__gm__ T_KV *)gamma);
+        this->cosGm.SetGlobalBuffer((__gm__ T_KV *)cos);
+        this->sinGm.SetGlobalBuffer((__gm__ T_KV *)sin);
+        this->indexGm.SetGlobalBuffer((__gm__ int64_t *)index);
+        this->kCacheGm.SetGlobalBuffer((__gm__ T_K_CACHE *)k_cache);
+        this->vCacheGm.SetGlobalBuffer((__gm__ T_V_CACHE *)v_cache);
+        this->kScaleGm.SetGlobalBuffer((__gm__ float *)k_scale);
+        this->vScaleGm.SetGlobalBuffer((__gm__ float *)v_scale);
+        this->kOffsetGm.SetGlobalBuffer((__gm__ float *)k_offset);
+        this->vOffsetGm.SetGlobalBuffer((__gm__ float *)v_offset);
+        this->kOutGm.SetGlobalBuffer((__gm__ T_KV *)k_out + this->blockIdx * tilingData_->blockFactor * this->dk);
+        this->vOutGm.SetGlobalBuffer((__gm__ T_KV *)v_out + this->blockIdx * tilingData_->blockFactor * this->dv);
 
         // init pipe
         pipe_->InitBuffer(cacheBuffer, RECOMPUTE_BINARY_CACHE_BTYES);
@@ -101,7 +100,7 @@ public:
         pipe_->InitBuffer(inQueueX, BUFFER_COUNT_DOUBLE, this->ubFactor * sizeof(T_KV));
         pipe_->InitBuffer(outQueue, BUFFER_COUNT_DOUBLE, BUFFER_COUNT_DOUBLE * this->ubFactor * sizeof(T_KV));
         pipe_->InitBuffer(xPowBuffer, BUFFER_COUNT_DOUBLE * this->ubFactor * sizeof(T_KV));
-        
+
         if constexpr (IsSameType<T_K_CACHE, int8_t>::value || IsSameType<T_K_CACHE, hifloat8_t>::value ||
                       IsSameType<T_K_CACHE, fp8_e5m2_t>::value || IsSameType<T_K_CACHE, fp8_e4m3fn_t>::value) {
             // scaleoffset需要放scale和offset，所以需要2 * 1 * ubFactor * sizeof(float)
@@ -113,7 +112,7 @@ public:
         }
     }
 
-    __aicore__ inline void CastPowVF(__local_mem__ float*& xFp32Ptr, __local_mem__ T_KV*& xPtr, uint32_t ubFactor) 
+    __aicore__ inline void CastPowVF(__local_mem__ float *&xFp32Ptr, __local_mem__ T_KV *&xPtr, uint32_t ubFactor)
     {
         __VEC_SCOPE__
         {
@@ -146,7 +145,7 @@ public:
         }
     }
 
-    __aicore__ inline void FoldBlockVF(__local_mem__ float*& x1Ptr, __local_mem__ float*& x2Ptr, uint32_t ubFactor) 
+    __aicore__ inline void FoldBlockVF(__local_mem__ float *&x1Ptr, __local_mem__ float *&x2Ptr, uint32_t ubFactor)
     {
         __VEC_SCOPE__
         {
@@ -180,12 +179,12 @@ public:
         }
     }
 
-    __aicore__ inline int64_t GetCacheId(const uint64_t idx) 
+    __aicore__ inline int64_t GetCacheId(const uint64_t idx)
     {
         return AscendC::ScalarGetCountOfValue<1>(idx ^ (idx + CONST_ONE)) - CONST_ONE;
     }
 
-    __aicore__ inline void UpdateCache(const LocalTensor<float>& dstTensor, const LocalTensor<float>& srcTensor,
+    __aicore__ inline void UpdateCache(const LocalTensor<float> &dstTensor, const LocalTensor<float> &srcTensor,
                                        const int64_t cacheId, const int64_t stride, const int64_t count)
     {
         uint16_t outerLoopTimes =
@@ -194,9 +193,9 @@ public:
         uint32_t outerLoopStride = VL_FP32;
         uint32_t innerLoopStride = stride;
 
-        __local_mem__ float* dst = (__local_mem__ float*)dstTensor.GetPhyAddr();
-        __local_mem__ float* cache = (__local_mem__ float*)dstTensor.GetPhyAddr() + cacheId * stride;
-        __local_mem__ float* src = (__local_mem__ float*)srcTensor.GetPhyAddr();
+        __local_mem__ float *dst = (__local_mem__ float *)dstTensor.GetPhyAddr();
+        __local_mem__ float *cache = (__local_mem__ float *)dstTensor.GetPhyAddr() + cacheId * stride;
+        __local_mem__ float *src = (__local_mem__ float *)srcTensor.GetPhyAddr();
 
         __VEC_SCOPE__
         {
@@ -205,19 +204,20 @@ public:
             AscendC::MicroAPI::MaskReg pMask;
             for (uint16_t i = 0; i < outerLoopTimes; ++i) {
                 pMask = AscendC::MicroAPI::UpdateMask<float>(sreg);
-                AscendC::MicroAPI::DataCopy(aReg, (__local_mem__ float*)src + i * outerLoopStride);
+                AscendC::MicroAPI::DataCopy(aReg, (__local_mem__ float *)src + i * outerLoopStride);
                 for (uint16_t j = 0; j < innerLoopTimes; ++j) {
                     AscendC::MicroAPI::DataCopy(bReg,
-                                                (__local_mem__ float*)dst + i * outerLoopStride + j * innerLoopStride);
+                                                (__local_mem__ float *)dst + i * outerLoopStride + j * innerLoopStride);
                     AscendC::MicroAPI::Add<float, AscendC::MicroAPI::MaskMergeMode::ZEROING>(aReg, aReg, bReg, pMask);
                 }
-                AscendC::MicroAPI::DataCopy((__local_mem__ float*)cache + i * outerLoopStride, aReg, pMask);
+                AscendC::MicroAPI::DataCopy((__local_mem__ float *)cache + i * outerLoopStride, aReg, pMask);
             }
         }
     }
 
-    __aicore__ inline void CalculateVOutVF(__local_mem__ T_KV*& yPtr, __local_mem__ T_KV*& xPtr, __local_mem__ T_KV*& gammaPtr, 
-                                           __local_mem__ float*& xSumPtr, uint32_t ubFactor)
+    __aicore__ inline void CalculateVOutVF(__local_mem__ T_KV *&yPtr, __local_mem__ T_KV *&xPtr,
+                                           __local_mem__ T_KV *&gammaPtr, __local_mem__ float *&xSumPtr,
+                                           uint32_t ubFactor)
     {
         float reciprocal = this->reciprocal;
         float epsilon = this->epsilon;
@@ -264,9 +264,9 @@ public:
         }
     }
 
-    template <typename T=T_KV>
-    __aicore__ inline void LoadDataAndCast2Fp32(AscendC::MicroAPI::RegTensor<float>& dst, __local_mem__ T* xAddr,
-                                                AscendC::MicroAPI::MaskReg& mask)
+    template <typename T = T_KV>
+    __aicore__ inline void LoadDataAndCast2Fp32(AscendC::MicroAPI::RegTensor<float> &dst, __local_mem__ T *xAddr,
+                                                AscendC::MicroAPI::MaskReg &mask)
     {
         if constexpr (!IsSameType<T, float>::value) {
             AscendC::MicroAPI::RegTensor<T> vregB16;
@@ -278,9 +278,8 @@ public:
     }
 
     template <typename T>
-    __aicore__ inline void StoreQuantAndCastFromFp32(__local_mem__ T*& dst, 
-                                                    AscendC::MicroAPI::RegTensor<float>& src, 
-                                                    AscendC::MicroAPI::MaskReg& mask)
+    __aicore__ inline void StoreQuantAndCastFromFp32(__local_mem__ T *&dst, AscendC::MicroAPI::RegTensor<float> &src,
+                                                     AscendC::MicroAPI::MaskReg &mask)
     {
         AscendC::MicroAPI::RegTensor<T> vregQuant;
         if constexpr (IsSameType<T, int8_t>::value) {
@@ -289,19 +288,18 @@ public:
             AscendC::MicroAPI::Cast<int16_t, float, CAST_FP32_TO_INT16>(vregInt16, src, mask);
             AscendC::MicroAPI::Cast<half, int16_t, CAST_INT16_TO_FP16>(vregHalf, vregInt16, mask);
             AscendC::MicroAPI::Cast<T, half, CAST_FP16_TO_INT8>(vregQuant, vregHalf, mask);
-        }
-        else if constexpr (IsSameType<T, hifloat8_t>::value) {
+        } else if constexpr (IsSameType<T, hifloat8_t>::value) {
             AscendC::MicroAPI::Cast<T, float, CAST_FP32_TO_HIFLOAT8>(vregQuant, src, mask);
-        }
-        else if constexpr (IsSameType<T, fp8_e5m2_t>::value || IsSameType<T, fp8_e4m3fn_t>::value) {
+        } else if constexpr (IsSameType<T, fp8_e5m2_t>::value || IsSameType<T, fp8_e4m3fn_t>::value) {
             AscendC::MicroAPI::Cast<T, float, CAST_FP32_TO_FLOAT8>(vregQuant, src, mask);
         }
         AscendC::MicroAPI::DataCopy<T, AscendC::MicroAPI::StoreDist::DIST_PACK4_B32>(dst, vregQuant, mask);
     }
 
-    template <typename T=T_KV>
-    __aicore__ inline void StoreDataAndCastFromFp32(__local_mem__ T*& dst, AscendC::MicroAPI::RegTensor<float>& src, 
-                                                    AscendC::MicroAPI::UnalignReg& uReg,  AscendC::MicroAPI::MaskReg& mask, uint32_t postUpdateStride)
+    template <typename T = T_KV>
+    __aicore__ inline void StoreDataAndCastFromFp32(__local_mem__ T *&dst, AscendC::MicroAPI::RegTensor<float> &src,
+                                                    AscendC::MicroAPI::UnalignReg &uReg,
+                                                    AscendC::MicroAPI::MaskReg &mask, uint32_t postUpdateStride)
     {
         if constexpr (!IsSameType<T, float>::value) {
             AscendC::MicroAPI::RegTensor<T> vregB16, vregB16Pack;
@@ -320,15 +318,15 @@ public:
         LocalTensor<float> xPowLocal2 = xPowLocal1[this->ubFactor];
         tmpReduceLocal = tmpReduceBuffer.Get<float>();
         LocalTensor<float> cacheLocal = cacheBuffer.Get<float>();
-        __local_mem__ float* x1Fp32Ptr = (__local_mem__ float*)xPowLocal1.GetPhyAddr();
-        __local_mem__ float* x2Fp32Ptr = (__local_mem__ float*)xPowLocal2.GetPhyAddr();
+        __local_mem__ float *x1Fp32Ptr = (__local_mem__ float *)xPowLocal1.GetPhyAddr();
+        __local_mem__ float *x2Fp32Ptr = (__local_mem__ float *)xPowLocal2.GetPhyAddr();
 
         // dv 不超过一个 ubFactor 时无需二分折叠，basicBlockLoop 为 0，单块直接归约
         if (basicBlockLoop == 0) {
             uint32_t singleBlockFactor =
                 ubFactorDvTail > 0 ? static_cast<uint32_t>(ubFactorDvTail) : static_cast<uint32_t>(this->ubFactor);
             LocalTensor<T_KV> xLocal = inQueueX.AllocTensor<T_KV>();
-            __local_mem__ T_KV* xPtr = (__local_mem__ T_KV*)xLocal.GetPhyAddr();
+            __local_mem__ T_KV *xPtr = (__local_mem__ T_KV *)xLocal.GetPhyAddr();
 
             xDataCopyParams.blockLen = singleBlockFactor * sizeof(T_KV);
             AscendC::DataCopyPad(xLocal, this->kvGm[xDimOffset], xDataCopyParams, padParams);
@@ -348,22 +346,22 @@ public:
 
         for (uint64_t basicBlockIdx = 0; basicBlockIdx < basicBlockLoop; basicBlockIdx++) {
             LocalTensor<T_KV> x1Local = inQueueX.AllocTensor<T_KV>();
-            __local_mem__ T_KV* x1Ptr = (__local_mem__ T_KV*)x1Local.GetPhyAddr();
-            int64_t xUbOffset1 = xDimOffset + this->ubFactor * basicBlockIdx;                          // 主块
-            int64_t xUbOffset2 = xDimOffset + this->ubFactor * (basicBlockLoop + basicBlockIdx);  // 被折叠块
+            __local_mem__ T_KV *x1Ptr = (__local_mem__ T_KV *)x1Local.GetPhyAddr();
+            int64_t xUbOffset1 = xDimOffset + this->ubFactor * basicBlockIdx;                    // 主块
+            int64_t xUbOffset2 = xDimOffset + this->ubFactor * (basicBlockLoop + basicBlockIdx); // 被折叠块
 
             // Get the fold block x1
             xDataCopyParams.blockLen = this->ubFactor * sizeof(T_KV);
             AscendC::DataCopyPad(x1Local, this->kvGm[xUbOffset1], xDataCopyParams, padParams);
             inQueueX.EnQue<T_KV>(x1Local);
             x1Local = inQueueX.DeQue<T_KV>();
-            
+
             CastPowVF(x1Fp32Ptr, x1Ptr, this->ubFactor);
             inQueueX.FreeTensor(x1Local);
 
             // Get the fold block x2
             LocalTensor<T_KV> x2Local = inQueueX.AllocTensor<T_KV>();
-            __local_mem__ T_KV* x2Ptr = (__local_mem__ T_KV*)x2Local.GetPhyAddr();
+            __local_mem__ T_KV *x2Ptr = (__local_mem__ T_KV *)x2Local.GetPhyAddr();
             if (basicBlockIdx < this->mainFoldCount) {
                 xDataCopyParams.blockLen = this->ubFactor * sizeof(T_KV);
                 AscendC::DataCopyPad(x2Local, this->kvGm[xUbOffset2], xDataCopyParams, padParams);
@@ -372,7 +370,7 @@ public:
                 CastPowVF(x2Fp32Ptr, x2Ptr, this->ubFactor);
                 FoldBlockVF(x1Fp32Ptr, x2Fp32Ptr, this->ubFactor);
             } else if ((basicBlockIdx == mainFoldCount) && (ubFactorDvTail > 0)) {
-                xDataCopyParams.blockLen = ubFactorDvTail * sizeof(T_KV);  // x2 is the tail of ub block here.
+                xDataCopyParams.blockLen = ubFactorDvTail * sizeof(T_KV); // x2 is the tail of ub block here.
                 AscendC::DataCopyPad(x2Local, this->kvGm[xUbOffset2], xDataCopyParams, padParams);
                 inQueueX.EnQue<T_KV>(x2Local);
                 x2Local = inQueueX.DeQue<T_KV>();
@@ -396,15 +394,15 @@ public:
         // RmsNorm: step 1. Σ x^2
         ReduceSumBasicComputeVF(xDimOffset);
         // RmsNorm: step 2. x / (sqrt(1 / dv_ * (Σ x^2) + epsilon)) * gamma
-        __local_mem__ float* xSumPtr = (__local_mem__ float*)totalSumLocal.GetPhyAddr();
-        
+        __local_mem__ float *xSumPtr = (__local_mem__ float *)totalSumLocal.GetPhyAddr();
+
         for (uint16_t ubIdx = 0; ubIdx < ubFactorDvLoopCountCeil; ubIdx++) {
             LocalTensor<T_KV> xLocal = inQueueX.AllocTensor<T_KV>();
             LocalTensor<T_KV> gammaLocal = inQueueGamma.AllocTensor<T_KV>();
             vOutLocal = outQueue.AllocTensor<T_KV>();
-            __local_mem__ T_KV* xPtr = (__local_mem__ T_KV*)xLocal.GetPhyAddr();
-            __local_mem__ T_KV* gammaPtr = (__local_mem__ T_KV*)gammaLocal.GetPhyAddr();
-            __local_mem__ T_KV* vPtr = (__local_mem__ T_KV*)vOutLocal.GetPhyAddr();
+            __local_mem__ T_KV *xPtr = (__local_mem__ T_KV *)xLocal.GetPhyAddr();
+            __local_mem__ T_KV *gammaPtr = (__local_mem__ T_KV *)gammaLocal.GetPhyAddr();
+            __local_mem__ T_KV *vPtr = (__local_mem__ T_KV *)vOutLocal.GetPhyAddr();
 
             int64_t xUbOffset = xDimOffset + this->ubFactor * ubIdx;
             int64_t gammaUbOffset = this->ubFactor * ubIdx;
@@ -415,7 +413,7 @@ public:
                 tmpFactor = ubFactorDvTail;
             }
             xDataCopyParams.blockLen = tmpFactor * sizeof(T_KV);
-            
+
             AscendC::DataCopyPad(xLocal, this->kvGm[xUbOffset], xDataCopyParams, padParams);
             AscendC::DataCopyPad(gammaLocal, this->gammaGm[gammaUbOffset], xDataCopyParams, padParams);
 
@@ -425,7 +423,7 @@ public:
             gammaLocal = inQueueGamma.DeQue<T_KV>();
 
             CalculateVOutVF(vPtr, xPtr, gammaPtr, xSumPtr, tmpFactor);
-            
+
             outQueue.EnQue<T_KV>(vOutLocal);
             vOutLocal = outQueue.DeQue<T_KV>();
 
@@ -446,10 +444,11 @@ public:
     }
 
     // 需要中间结果+量化+偏移
-    __aicore__ inline void CalculateVOutAsymQuantWithKvVF(__local_mem__ T_KV*& outPtr, __local_mem__ T_KV*& xPtr, 
-                                                          __local_mem__ T_KV*& gammaPtr, __local_mem__ float*& xSumPtr, 
-                                                          __local_mem__ float*& vScalePtr, __local_mem__ float*& vOffsetPtr, 
-                                                          __local_mem__ T_V_CACHE*& vQuantPtr, uint32_t ubFactor)
+    __aicore__ inline void CalculateVOutAsymQuantWithKvVF(__local_mem__ T_KV *&outPtr, __local_mem__ T_KV *&xPtr,
+                                                          __local_mem__ T_KV *&gammaPtr, __local_mem__ float *&xSumPtr,
+                                                          __local_mem__ float *&vScalePtr,
+                                                          __local_mem__ float *&vOffsetPtr,
+                                                          __local_mem__ T_V_CACHE *&vQuantPtr, uint32_t ubFactor)
     {
         float reciprocal = this->reciprocal;
         float epsilon = this->epsilon;
@@ -516,13 +515,13 @@ public:
             StoreQuantAndCastFromFp32<T_V_CACHE>(vQuantAddr, vregTmp, mask);
         }
     }
-    
+
     __aicore__ inline void RmsNormAsymQuantWithVCache(int64_t xDimOffset, int64_t rowIdx, int64_t vCacheRowOffset)
     {
         // RmsNorm: step 1. Σ x^2
         ReduceSumBasicComputeVF(xDimOffset);
         // RmsNorm: step 2. x / (sqrt(1 / dv_ * (Σ x^2) + epsilon)) * gamma
-        __local_mem__ float* xSumPtr = (__local_mem__ float*)totalSumLocal.GetPhyAddr();
+        __local_mem__ float *xSumPtr = (__local_mem__ float *)totalSumLocal.GetPhyAddr();
 
         for (uint16_t ubIdx = 0; ubIdx < ubFactorDvLoopCountCeil; ubIdx++) {
             LocalTensor<T_KV> xLocal = inQueueX.AllocTensor<T_KV>();
@@ -531,27 +530,28 @@ public:
             LocalTensor<float> vOffsetLocal = vScaleLocal[this->ubFactor];
             // 量化场景
             vOutLocal = outQueue.AllocTensor<T_KV>();
-            vQuantLocal = vOutLocal.template ReinterpretCast<T_V_CACHE>()[this->ubFactor * sizeof(T_KV) / sizeof(T_V_CACHE)];
-            
-            __local_mem__ T_KV* xPtr = (__local_mem__ T_KV*)xLocal.GetPhyAddr();
-            __local_mem__ T_KV* gammaPtr = (__local_mem__ T_KV*)gammaLocal.GetPhyAddr();
-            __local_mem__ T_KV* vPtr = (__local_mem__ T_KV*)vOutLocal.GetPhyAddr();
-            __local_mem__ T_V_CACHE* vQuantPtr = (__local_mem__ T_V_CACHE*)vQuantLocal.GetPhyAddr();
-            __local_mem__ float* vScalePtr = (__local_mem__ float*)vScaleLocal.GetPhyAddr();
-            __local_mem__ float* vOffsetPtr = (__local_mem__ float*)vOffsetLocal.GetPhyAddr();
+            vQuantLocal =
+                vOutLocal.template ReinterpretCast<T_V_CACHE>()[this->ubFactor * sizeof(T_KV) / sizeof(T_V_CACHE)];
+
+            __local_mem__ T_KV *xPtr = (__local_mem__ T_KV *)xLocal.GetPhyAddr();
+            __local_mem__ T_KV *gammaPtr = (__local_mem__ T_KV *)gammaLocal.GetPhyAddr();
+            __local_mem__ T_KV *vPtr = (__local_mem__ T_KV *)vOutLocal.GetPhyAddr();
+            __local_mem__ T_V_CACHE *vQuantPtr = (__local_mem__ T_V_CACHE *)vQuantLocal.GetPhyAddr();
+            __local_mem__ float *vScalePtr = (__local_mem__ float *)vScaleLocal.GetPhyAddr();
+            __local_mem__ float *vOffsetPtr = (__local_mem__ float *)vOffsetLocal.GetPhyAddr();
 
             int64_t xUbOffset = xDimOffset + this->ubFactor * ubIdx;
             int64_t gammaUbOffset = this->ubFactor * ubIdx;
             int64_t vScaleUbOffset = this->ubFactor * ubIdx;
             int64_t vOffsetUbOffset = this->ubFactor * ubIdx;
             int64_t vOutOffset = rowIdx * this->dv + this->ubFactor * ubIdx;
-            
+
             uint32_t tmpFactor = this->ubFactor;
             if (ubIdx == ubFactorDvLoopCountCeil - 1 && ubFactorDvTail > 0) {
                 tmpFactor = ubFactorDvTail;
             }
             xDataCopyParams.blockLen = tmpFactor * sizeof(T_KV);
-          
+
             AscendC::DataCopyPad(xLocal, this->kvGm[xUbOffset], xDataCopyParams, padParams);
             AscendC::DataCopyPad(gammaLocal, this->gammaGm[gammaUbOffset], xDataCopyParams, padParams);
 
@@ -586,7 +586,7 @@ public:
             if (tilingData_->vOffsetType == 1) {
                 AscendC::Duplicate<float>(vOffsetLocal, vOffsetLocal, this->ubFactor);
             }
-    
+
             CalculateVOutAsymQuantWithKvVF(vPtr, xPtr, gammaPtr, xSumPtr, vScalePtr, vOffsetPtr, vQuantPtr, tmpFactor);
 
             outQueue.EnQue<T_KV>(vOutLocal);
@@ -594,7 +594,7 @@ public:
 
             xDataCopyParams.blockLen = tmpFactor * sizeof(T_KV);
             AscendC::DataCopyPad(this->vOutGm[vOutOffset], vOutLocal, xDataCopyParams);
-            
+
             if (tilingData_->cacheMode <= PA_NZ_CACHE_MODE) {
                 ScatterUpdateV(vCacheRowOffset, ubIdx, tmpFactor);
             } else {
@@ -609,10 +609,10 @@ public:
     }
 
     // 需要中间结果 + 量化
-    __aicore__ inline void CalculateVOutSymQuantWithKvVF(__local_mem__ T_KV*& outPtr, __local_mem__ T_KV*& xPtr, 
-                                                         __local_mem__ T_KV*& gammaPtr, __local_mem__ float*& xSumPtr, 
-                                                         __local_mem__ float*& vScalePtr, __local_mem__ T_V_CACHE*& vQuantPtr, 
-                                                         uint32_t ubFactor)
+    __aicore__ inline void CalculateVOutSymQuantWithKvVF(__local_mem__ T_KV *&outPtr, __local_mem__ T_KV *&xPtr,
+                                                         __local_mem__ T_KV *&gammaPtr, __local_mem__ float *&xSumPtr,
+                                                         __local_mem__ float *&vScalePtr,
+                                                         __local_mem__ T_V_CACHE *&vQuantPtr, uint32_t ubFactor)
     {
         float reciprocal = this->reciprocal;
         float epsilon = this->epsilon;
@@ -673,13 +673,13 @@ public:
             StoreQuantAndCastFromFp32<T_V_CACHE>(vQuantAddr, vregTmp, mask);
         }
     }
-    
+
     __aicore__ inline void RmsNormSymQuantWithVCache(int64_t xDimOffset, int64_t rowIdx, int64_t vCacheRowOffset)
     {
         // RmsNorm: step 1. Σ x^2
         ReduceSumBasicComputeVF(xDimOffset);
         // RmsNorm: step 2. x / (sqrt(1 / dv_ * (Σ x^2) + epsilon)) * gamma
-        __local_mem__ float* xSumPtr = (__local_mem__ float*)totalSumLocal.GetPhyAddr();
+        __local_mem__ float *xSumPtr = (__local_mem__ float *)totalSumLocal.GetPhyAddr();
 
         for (uint16_t ubIdx = 0; ubIdx < ubFactorDvLoopCountCeil; ubIdx++) {
             LocalTensor<T_KV> xLocal = inQueueX.AllocTensor<T_KV>();
@@ -687,13 +687,14 @@ public:
             LocalTensor<float> vScaleLocal = vScaleOffsetQueue.AllocTensor<float>();
             // 量化场景
             vOutLocal = outQueue.AllocTensor<T_KV>();
-            vQuantLocal = vOutLocal.template ReinterpretCast<T_V_CACHE>()[this->ubFactor * sizeof(T_KV) / sizeof(T_V_CACHE)];
-    
-            __local_mem__ T_KV* xPtr = (__local_mem__ T_KV*)xLocal.GetPhyAddr();
-            __local_mem__ T_KV* gammaPtr = (__local_mem__ T_KV*)gammaLocal.GetPhyAddr();
-            __local_mem__ T_KV* vPtr = (__local_mem__ T_KV*)vOutLocal.GetPhyAddr();
-            __local_mem__ float* vScalePtr = (__local_mem__ float*)vScaleLocal.GetPhyAddr();
-            __local_mem__ T_V_CACHE* vQuantPtr = (__local_mem__ T_V_CACHE*)vQuantLocal.GetPhyAddr();
+            vQuantLocal =
+                vOutLocal.template ReinterpretCast<T_V_CACHE>()[this->ubFactor * sizeof(T_KV) / sizeof(T_V_CACHE)];
+
+            __local_mem__ T_KV *xPtr = (__local_mem__ T_KV *)xLocal.GetPhyAddr();
+            __local_mem__ T_KV *gammaPtr = (__local_mem__ T_KV *)gammaLocal.GetPhyAddr();
+            __local_mem__ T_KV *vPtr = (__local_mem__ T_KV *)vOutLocal.GetPhyAddr();
+            __local_mem__ float *vScalePtr = (__local_mem__ float *)vScaleLocal.GetPhyAddr();
+            __local_mem__ T_V_CACHE *vQuantPtr = (__local_mem__ T_V_CACHE *)vQuantLocal.GetPhyAddr();
 
             int64_t xUbOffset = xDimOffset + this->ubFactor * ubIdx;
             int64_t gammaUbOffset = this->ubFactor * ubIdx;
@@ -714,7 +715,7 @@ public:
                 AscendC::DataCopyPad(vScaleLocal, this->vScaleGm[vScaleUbOffset], xDataCopyParams, padParams);
             } else {
                 xDataCopyParams.blockLen = sizeof(float);
-                AscendC::DataCopyPad(vScaleLocal, this->vScaleGm, xDataCopyParams, padParams);  
+                AscendC::DataCopyPad(vScaleLocal, this->vScaleGm, xDataCopyParams, padParams);
             }
 
             inQueueX.EnQue<T_KV>(xLocal);
@@ -751,10 +752,10 @@ public:
     }
 
     // 不需要中间结果+量化+偏移
-    __aicore__ inline void CalculateVOutAsymQuantVF(__local_mem__ T_KV*& xPtr, __local_mem__ T_KV*& gammaPtr, 
-                                                    __local_mem__ float*& xSumPtr, __local_mem__ float*& vScalePtr,
-                                                    __local_mem__ float*& vOffsetPtr, __local_mem__ T_V_CACHE*& vQuantPtr, 
-                                                    uint32_t ubFactor)
+    __aicore__ inline void CalculateVOutAsymQuantVF(__local_mem__ T_KV *&xPtr, __local_mem__ T_KV *&gammaPtr,
+                                                    __local_mem__ float *&xSumPtr, __local_mem__ float *&vScalePtr,
+                                                    __local_mem__ float *&vOffsetPtr,
+                                                    __local_mem__ T_V_CACHE *&vQuantPtr, uint32_t ubFactor)
     {
         float reciprocal = this->reciprocal;
         float epsilon = this->epsilon;
@@ -817,13 +818,13 @@ public:
             StoreQuantAndCastFromFp32<T_V_CACHE>(vQuantAddr, vregTmp, mask);
         }
     }
-    
+
     __aicore__ inline void RmsNormAsymQuant(int64_t xDimOffset, int64_t vCacheRowOffset)
     {
         // RmsNorm: step 1. Σ x^2
         ReduceSumBasicComputeVF(xDimOffset);
         // RmsNorm: step 2. x / (sqrt(1 / dv_ * (Σ x^2) + epsilon)) * gamma
-        __local_mem__ float* xSumPtr = (__local_mem__ float*)totalSumLocal.GetPhyAddr();
+        __local_mem__ float *xSumPtr = (__local_mem__ float *)totalSumLocal.GetPhyAddr();
 
         for (uint16_t ubIdx = 0; ubIdx < ubFactorDvLoopCountCeil; ubIdx++) {
             LocalTensor<T_KV> xLocal = inQueueX.AllocTensor<T_KV>();
@@ -833,12 +834,12 @@ public:
             // 量化场景
             vOutLocal = outQueue.AllocTensor<T_KV>();
             vQuantLocal = vOutLocal.template ReinterpretCast<T_V_CACHE>();
-            
-            __local_mem__ T_KV* xPtr = (__local_mem__ T_KV*)xLocal.GetPhyAddr();
-            __local_mem__ T_KV* gammaPtr = (__local_mem__ T_KV*)gammaLocal.GetPhyAddr();
-            __local_mem__ float* vScalePtr = (__local_mem__ float*)vScaleLocal.GetPhyAddr();
-            __local_mem__ float* vOffsetPtr = (__local_mem__ float*)vOffsetLocal.GetPhyAddr();
-            __local_mem__ T_V_CACHE* vQuantPtr = (__local_mem__ T_V_CACHE*)vQuantLocal.GetPhyAddr();
+
+            __local_mem__ T_KV *xPtr = (__local_mem__ T_KV *)xLocal.GetPhyAddr();
+            __local_mem__ T_KV *gammaPtr = (__local_mem__ T_KV *)gammaLocal.GetPhyAddr();
+            __local_mem__ float *vScalePtr = (__local_mem__ float *)vScaleLocal.GetPhyAddr();
+            __local_mem__ float *vOffsetPtr = (__local_mem__ float *)vOffsetLocal.GetPhyAddr();
+            __local_mem__ T_V_CACHE *vQuantPtr = (__local_mem__ T_V_CACHE *)vQuantLocal.GetPhyAddr();
 
             int64_t xUbOffset = xDimOffset + this->ubFactor * ubIdx;
             int64_t gammaUbOffset = this->ubFactor * ubIdx;
@@ -887,7 +888,7 @@ public:
             }
 
             CalculateVOutAsymQuantVF(xPtr, gammaPtr, xSumPtr, vScalePtr, vOffsetPtr, vQuantPtr, tmpFactor);
-            
+
             outQueue.EnQue<T_KV>(vOutLocal);
             vOutLocal = outQueue.DeQue<T_KV>();
 
@@ -905,9 +906,9 @@ public:
     }
 
     // 不需要中间结果 + 量化
-    __aicore__ inline void CalculateVOutSymQuantVF(__local_mem__ T_V_CACHE*& vQuantPtr, __local_mem__ T_KV*& xPtr, 
-                                                   __local_mem__ T_KV*& gammaPtr, __local_mem__ float*& xSumPtr, 
-                                                   __local_mem__ float*& vScalePtr, uint32_t ubFactor)
+    __aicore__ inline void CalculateVOutSymQuantVF(__local_mem__ T_V_CACHE *&vQuantPtr, __local_mem__ T_KV *&xPtr,
+                                                   __local_mem__ T_KV *&gammaPtr, __local_mem__ float *&xSumPtr,
+                                                   __local_mem__ float *&vScalePtr, uint32_t ubFactor)
     {
         float reciprocal = this->reciprocal;
         float epsilon = this->epsilon;
@@ -974,8 +975,8 @@ public:
         int64_t vCacheIdx = this->indexGm(rowIdx);
         SetFlag<HardEvent::S_MTE3>(eventIDSToMTE3);
         WaitFlag<HardEvent::S_MTE3>(eventIDSToMTE3);
-        
-        int64_t gmOffset; 
+
+        int64_t gmOffset;
 
         if (vCacheIdx >= 0) {
             if (tilingData_->cacheMode == NORM_CACHE_MODE) {
@@ -1006,10 +1007,13 @@ public:
                     xDataCopyParams.blockLen = dv0 * sizeof(T_KV);
                 }
                 for (int64_t i = 0; i < tmpFactor / dv0; i++) {
-                    gmOffset = batchIdx * tilingData_->dv * tilingData_->blockSize + (blockOffset + i * tilingData_->blockSize) * dv0 + this->ubFactor * ubIdx * tilingData_->blockSize;
+                    gmOffset = batchIdx * tilingData_->dv * tilingData_->blockSize +
+                               (blockOffset + i * tilingData_->blockSize) * dv0 +
+                               this->ubFactor * ubIdx * tilingData_->blockSize;
                     int64_t ubOffset = i * dv0;
                     if constexpr (IsSameType<T_V_CACHE, int8_t>::value || IsSameType<T_V_CACHE, hifloat8_t>::value ||
-                                  IsSameType<T_V_CACHE, fp8_e5m2_t>::value || IsSameType<T_V_CACHE, fp8_e4m3fn_t>::value) {
+                                  IsSameType<T_V_CACHE, fp8_e5m2_t>::value ||
+                                  IsSameType<T_V_CACHE, fp8_e4m3fn_t>::value) {
                         AscendC::DataCopyPad(this->vCacheGm[gmOffset], vQuantLocal[ubOffset], xDataCopyParams);
                     } else {
                         AscendC::DataCopyPad(this->vCacheGm[gmOffset], vOutLocal[ubOffset], xDataCopyParams);
@@ -1033,14 +1037,15 @@ public:
         int64_t vCacheIdx = this->indexGm(idx);
         SetFlag<HardEvent::S_MTE3>(eventIDSToMTE3);
         WaitFlag<HardEvent::S_MTE3>(eventIDSToMTE3);
-        
+
         int64_t gmOffset;
 
         if (vCacheIdx >= 0) {
             if (tilingData_->cacheMode == PA_BLK_BNSD_CACHE_MODE) {
                 int64_t blockOffset = vCacheIdx / tilingData_->blockSize;
                 int64_t rowOffset = seqIdx % tilingData_->blockSize;
-                gmOffset = (blockOffset * tilingData_->blockSize + rowOffset) * tilingData_->dv + ubIdx * this->ubFactor;
+                gmOffset =
+                    (blockOffset * tilingData_->blockSize + rowOffset) * tilingData_->dv + ubIdx * this->ubFactor;
                 if constexpr (IsSameType<T_V_CACHE, int8_t>::value || IsSameType<T_V_CACHE, hifloat8_t>::value ||
                               IsSameType<T_V_CACHE, fp8_e5m2_t>::value || IsSameType<T_V_CACHE, fp8_e4m3fn_t>::value) {
                     AscendC::DataCopyPad(this->vCacheGm[gmOffset], vQuantLocal, xDataCopyParams);
@@ -1058,10 +1063,13 @@ public:
                     xDataCopyParams.blockLen = dv0 * sizeof(T_KV);
                 }
                 for (int i = 0; i < tmpFactor / dv0; i++) {
-                    gmOffset = idx * tilingData_->dv * tilingData_->blockSize + (rowOffset + i * tilingData_->blockSize) * dv0 + this->ubFactor * ubIdx * tilingData_->blockSize;
+                    gmOffset = idx * tilingData_->dv * tilingData_->blockSize +
+                               (rowOffset + i * tilingData_->blockSize) * dv0 +
+                               this->ubFactor * ubIdx * tilingData_->blockSize;
                     int64_t ubOffset = i * dv0;
                     if constexpr (IsSameType<T_V_CACHE, int8_t>::value || IsSameType<T_V_CACHE, hifloat8_t>::value ||
-                                  IsSameType<T_V_CACHE, fp8_e5m2_t>::value || IsSameType<T_V_CACHE, fp8_e4m3fn_t>::value) {
+                                  IsSameType<T_V_CACHE, fp8_e5m2_t>::value ||
+                                  IsSameType<T_V_CACHE, fp8_e4m3fn_t>::value) {
                         AscendC::DataCopyPad(this->vCacheGm[gmOffset], vQuantLocal[ubOffset], xDataCopyParams);
                     } else {
                         AscendC::DataCopyPad(this->vCacheGm[gmOffset], vOutLocal[ubOffset], xDataCopyParams);
@@ -1070,13 +1078,13 @@ public:
             }
         }
     }
-    
+
     __aicore__ inline void RmsNormSymQuant(int64_t xDimOffset, int64_t vCacheRowOffset)
     {
         // RmsNorm: step 1. Σ x^2
         ReduceSumBasicComputeVF(xDimOffset);
         // RmsNorm: step 2. x / (sqrt(1 / dv_ * (Σ x^2) + epsilon)) * gamma
-        __local_mem__ float* xSumPtr = (__local_mem__ float*)totalSumLocal.GetPhyAddr();
+        __local_mem__ float *xSumPtr = (__local_mem__ float *)totalSumLocal.GetPhyAddr();
 
         for (uint16_t ubIdx = 0; ubIdx < ubFactorDvLoopCountCeil; ubIdx++) {
             LocalTensor<T_KV> xLocal = inQueueX.AllocTensor<T_KV>();
@@ -1086,11 +1094,11 @@ public:
             vOutLocal = outQueue.AllocTensor<T_KV>();
             vQuantLocal = vOutLocal.template ReinterpretCast<T_V_CACHE>();
 
-            __local_mem__ T_KV* xPtr = (__local_mem__ T_KV*)xLocal.GetPhyAddr();
-            __local_mem__ T_KV* gammaPtr = (__local_mem__ T_KV*)gammaLocal.GetPhyAddr();
-            __local_mem__ float* vScalePtr = (__local_mem__ float*)vScaleLocal.GetPhyAddr();
-            __local_mem__ T_KV* vPtr = (__local_mem__ T_KV*)vOutLocal.GetPhyAddr();
-            __local_mem__ T_V_CACHE* vQuantPtr = (__local_mem__ T_V_CACHE*)vQuantLocal.GetPhyAddr();
+            __local_mem__ T_KV *xPtr = (__local_mem__ T_KV *)xLocal.GetPhyAddr();
+            __local_mem__ T_KV *gammaPtr = (__local_mem__ T_KV *)gammaLocal.GetPhyAddr();
+            __local_mem__ float *vScalePtr = (__local_mem__ float *)vScaleLocal.GetPhyAddr();
+            __local_mem__ T_KV *vPtr = (__local_mem__ T_KV *)vOutLocal.GetPhyAddr();
+            __local_mem__ T_V_CACHE *vQuantPtr = (__local_mem__ T_V_CACHE *)vQuantLocal.GetPhyAddr();
 
             int64_t xUbOffset = xDimOffset + this->ubFactor * ubIdx;
             int64_t gammaUbOffset = this->ubFactor * ubIdx;
@@ -1126,7 +1134,7 @@ public:
             }
 
             CalculateVOutSymQuantVF(vQuantPtr, xPtr, gammaPtr, xSumPtr, vScalePtr, tmpFactor);
-            
+
             outQueue.EnQue<T_KV>(vOutLocal);
             vOutLocal = outQueue.DeQue<T_KV>();
 
@@ -1135,7 +1143,7 @@ public:
             } else {
                 ScatterBlkUpdateV(vCacheRowOffset, ubIdx, tmpFactor);
             }
-            
+
             inQueueX.FreeTensor(xLocal);
             inQueueGamma.FreeTensor(gammaLocal);
             outQueue.FreeTensor(vOutLocal);
@@ -1150,14 +1158,14 @@ public:
                       IsSameType<T_V_CACHE, fp8_e5m2_t>::value || IsSameType<T_V_CACHE, fp8_e4m3fn_t>::value) {
             // 需要输出中间结果
             if (tilingData_->isOutputKv > 0) {
-                //量化+偏移
+                // 量化+偏移
                 if (tilingData_->vOffsetType > 0) {
                     RmsNormAsymQuantWithVCache(xDimOffset, rowIdx, vCacheRowOffset);
                 } else { // 量化
                     RmsNormSymQuantWithVCache(xDimOffset, rowIdx, vCacheRowOffset);
                 }
             } else {
-                 // 不需要输出中间结果
+                // 不需要输出中间结果
                 if (tilingData_->vOffsetType > 0) {
                     // 量化+偏移
                     RmsNormAsymQuant(xDimOffset, vCacheRowOffset);
@@ -1172,18 +1180,18 @@ public:
         }
     }
 
-     __aicore__ inline void RopeVF(__local_mem__ T_KV*& outPtr1, __local_mem__ T_KV*& outPtr2,
-                                   __local_mem__ T_KV*& ropePtr, __local_mem__ T_KV*& cosPtr1,
-                                   __local_mem__ T_KV*& cosPtr2, __local_mem__ T_KV*& sinPtr1,
-                                   __local_mem__ T_KV*& sinPtr2, __local_mem__ float*& tmpBufferPtr,
-                                   uint32_t ubFactor)
+    __aicore__ inline void RopeVF(__local_mem__ T_KV *&outPtr1, __local_mem__ T_KV *&outPtr2,
+                                  __local_mem__ T_KV *&ropePtr, __local_mem__ T_KV *&cosPtr1,
+                                  __local_mem__ T_KV *&cosPtr2, __local_mem__ T_KV *&sinPtr1,
+                                  __local_mem__ T_KV *&sinPtr2, __local_mem__ float *&tmpBufferPtr, uint32_t ubFactor)
     {
         uint32_t vlStride = VL_FP32 * CONST_TWO;
         uint16_t repeatTimesFloor = ops::FloorDiv(ubFactor, vlStride);
         uint16_t regTailWidth = (ubFactor - repeatTimesFloor * vlStride) / CONST_TWO;
         __VEC_SCOPE__
         {
-            AscendC::MicroAPI::RegTensor<float> vregRope1Fp32, vregRope2Fp32, vregCos1Fp32, vregCos2Fp32, vregSin1Fp32, vregSin2Fp32;
+            AscendC::MicroAPI::RegTensor<float> vregRope1Fp32, vregRope2Fp32, vregCos1Fp32, vregCos2Fp32, vregSin1Fp32,
+                vregSin2Fp32;
             AscendC::MicroAPI::MaskReg mask;
             AscendC::MicroAPI::UnalignReg uReg;
             uint32_t width = VL_FP32;
@@ -1204,8 +1212,10 @@ public:
                 LoadDataAndCast2Fp32(vregRope2Fp32, ropeAddr2, mask);
                 AscendC::MicroAPI::DataCopy(tmpBufferPtr, vregRope1Fp32, mask);
                 AscendC::MicroAPI::DataCopy(tmpBufferPtr + VL_FP32, vregRope2Fp32, mask);
-                AscendC::MicroAPI::LocalMemBar<AscendC::MicroAPI::MemType::VEC_STORE, AscendC::MicroAPI::MemType::VEC_LOAD>();
-                AscendC::MicroAPI::DataCopy<float, AscendC::MicroAPI::LoadDist::DIST_DINTLV_B32>(vregRope1Fp32, vregRope2Fp32, ((__local_mem__ float*)(tmpBufferPtr)));
+                AscendC::MicroAPI::LocalMemBar<AscendC::MicroAPI::MemType::VEC_STORE,
+                                               AscendC::MicroAPI::MemType::VEC_LOAD>();
+                AscendC::MicroAPI::DataCopy<float, AscendC::MicroAPI::LoadDist::DIST_DINTLV_B32>(
+                    vregRope1Fp32, vregRope2Fp32, ((__local_mem__ float *)(tmpBufferPtr)));
 
                 LoadDataAndCast2Fp32(vregCos1Fp32, cosAddr1, mask);
                 LoadDataAndCast2Fp32(vregCos2Fp32, cosAddr2, mask);
@@ -1238,8 +1248,10 @@ public:
             LoadDataAndCast2Fp32(vregRope2Fp32, ropeAddr2, mask);
             AscendC::MicroAPI::DataCopy(tmpBufferPtr, vregRope1Fp32, mask);
             AscendC::MicroAPI::DataCopy(tmpBufferPtr + VL_FP32, vregRope2Fp32, mask);
-            AscendC::MicroAPI::LocalMemBar<AscendC::MicroAPI::MemType::VEC_STORE, AscendC::MicroAPI::MemType::VEC_LOAD>();
-            AscendC::MicroAPI::DataCopy<float, AscendC::MicroAPI::LoadDist::DIST_DINTLV_B32>(vregRope1Fp32, vregRope2Fp32, ((__local_mem__ float*)(tmpBufferPtr)));
+            AscendC::MicroAPI::LocalMemBar<AscendC::MicroAPI::MemType::VEC_STORE,
+                                           AscendC::MicroAPI::MemType::VEC_LOAD>();
+            AscendC::MicroAPI::DataCopy<float, AscendC::MicroAPI::LoadDist::DIST_DINTLV_B32>(
+                vregRope1Fp32, vregRope2Fp32, ((__local_mem__ float *)(tmpBufferPtr)));
 
             LoadDataAndCast2Fp32(vregCos1Fp32, cosAddr1, mask);
             LoadDataAndCast2Fp32(vregCos2Fp32, cosAddr2, mask);
@@ -1261,11 +1273,11 @@ public:
         }
     }
 
-    __aicore__ inline void RopeSymQuantVF(__local_mem__ T_K_CACHE*& quantPtr1, __local_mem__ T_K_CACHE*& quantPtr2,
-                                          __local_mem__ T_KV*& ropePtr, __local_mem__ T_KV*& cosPtr1,
-                                          __local_mem__ T_KV*& cosPtr2, __local_mem__ T_KV*& sinPtr1,
-                                          __local_mem__ T_KV*& sinPtr2, __local_mem__ float*& scalePtr1,
-                                          __local_mem__ float*& scalePtr2, __local_mem__ float*& tmpBufferPtr,
+    __aicore__ inline void RopeSymQuantVF(__local_mem__ T_K_CACHE *&quantPtr1, __local_mem__ T_K_CACHE *&quantPtr2,
+                                          __local_mem__ T_KV *&ropePtr, __local_mem__ T_KV *&cosPtr1,
+                                          __local_mem__ T_KV *&cosPtr2, __local_mem__ T_KV *&sinPtr1,
+                                          __local_mem__ T_KV *&sinPtr2, __local_mem__ float *&scalePtr1,
+                                          __local_mem__ float *&scalePtr2, __local_mem__ float *&tmpBufferPtr,
                                           uint32_t ubFactor)
     {
         uint32_t vlStride = VL_FP32 * CONST_TWO;
@@ -1273,7 +1285,8 @@ public:
         uint16_t regTailWidth = (ubFactor - repeatTimesFloor * vlStride) / CONST_TWO;
         __VEC_SCOPE__
         {
-            AscendC::MicroAPI::RegTensor<float> vregRope1Fp32, vregRope2Fp32, vregCos1Fp32, vregCos2Fp32, vregSin1Fp32, vregSin2Fp32;
+            AscendC::MicroAPI::RegTensor<float> vregRope1Fp32, vregRope2Fp32, vregCos1Fp32, vregCos2Fp32, vregSin1Fp32,
+                vregSin2Fp32;
             AscendC::MicroAPI::RegTensor<float> vregScale1Fp32, vregScale2Fp32;
             AscendC::MicroAPI::RegTensor<half> vregHalf;
             AscendC::MicroAPI::RegTensor<int16_t> vregInt16;
@@ -1300,8 +1313,10 @@ public:
                 LoadDataAndCast2Fp32(vregRope2Fp32, ropeAddr2, mask);
                 AscendC::MicroAPI::DataCopy(tmpBufferPtr, vregRope1Fp32, mask);
                 AscendC::MicroAPI::DataCopy(tmpBufferPtr + VL_FP32, vregRope2Fp32, mask);
-                AscendC::MicroAPI::LocalMemBar<AscendC::MicroAPI::MemType::VEC_STORE, AscendC::MicroAPI::MemType::VEC_LOAD>();
-                AscendC::MicroAPI::DataCopy<float, AscendC::MicroAPI::LoadDist::DIST_DINTLV_B32>(vregRope1Fp32, vregRope2Fp32, ((__local_mem__ float*)(tmpBufferPtr)));
+                AscendC::MicroAPI::LocalMemBar<AscendC::MicroAPI::MemType::VEC_STORE,
+                                               AscendC::MicroAPI::MemType::VEC_LOAD>();
+                AscendC::MicroAPI::DataCopy<float, AscendC::MicroAPI::LoadDist::DIST_DINTLV_B32>(
+                    vregRope1Fp32, vregRope2Fp32, ((__local_mem__ float *)(tmpBufferPtr)));
 
                 LoadDataAndCast2Fp32(vregCos1Fp32, cosAddr1, mask);
                 LoadDataAndCast2Fp32(vregCos2Fp32, cosAddr2, mask);
@@ -1343,8 +1358,10 @@ public:
             LoadDataAndCast2Fp32(vregRope2Fp32, ropeAddr2, mask);
             AscendC::MicroAPI::DataCopy(tmpBufferPtr, vregRope1Fp32, mask);
             AscendC::MicroAPI::DataCopy(tmpBufferPtr + VL_FP32, vregRope2Fp32, mask);
-            AscendC::MicroAPI::LocalMemBar<AscendC::MicroAPI::MemType::VEC_STORE, AscendC::MicroAPI::MemType::VEC_LOAD>();
-            AscendC::MicroAPI::DataCopy<float, AscendC::MicroAPI::LoadDist::DIST_DINTLV_B32>(vregRope1Fp32, vregRope2Fp32, ((__local_mem__ float*)(tmpBufferPtr)));
+            AscendC::MicroAPI::LocalMemBar<AscendC::MicroAPI::MemType::VEC_STORE,
+                                           AscendC::MicroAPI::MemType::VEC_LOAD>();
+            AscendC::MicroAPI::DataCopy<float, AscendC::MicroAPI::LoadDist::DIST_DINTLV_B32>(
+                vregRope1Fp32, vregRope2Fp32, ((__local_mem__ float *)(tmpBufferPtr)));
 
             LoadDataAndCast2Fp32(vregCos1Fp32, cosAddr1, mask);
             LoadDataAndCast2Fp32(vregCos2Fp32, cosAddr2, mask);
@@ -1373,12 +1390,12 @@ public:
         }
     }
 
-    __aicore__ inline void RopeSymQuantWithVF(__local_mem__ T_KV*& outPtr1, __local_mem__ T_KV*& outPtr2,
-                                              __local_mem__ T_K_CACHE*& quantPtr1, __local_mem__ T_K_CACHE*& quantPtr2,
-                                              __local_mem__ T_KV*& ropePtr, __local_mem__ T_KV*& cosPtr1,
-                                              __local_mem__ T_KV*& cosPtr2, __local_mem__ T_KV*& sinPtr1,
-                                              __local_mem__ T_KV*& sinPtr2, __local_mem__ float*& scalePtr1,
-                                              __local_mem__ float*& scalePtr2, __local_mem__ float*& tmpBufferPtr,
+    __aicore__ inline void RopeSymQuantWithVF(__local_mem__ T_KV *&outPtr1, __local_mem__ T_KV *&outPtr2,
+                                              __local_mem__ T_K_CACHE *&quantPtr1, __local_mem__ T_K_CACHE *&quantPtr2,
+                                              __local_mem__ T_KV *&ropePtr, __local_mem__ T_KV *&cosPtr1,
+                                              __local_mem__ T_KV *&cosPtr2, __local_mem__ T_KV *&sinPtr1,
+                                              __local_mem__ T_KV *&sinPtr2, __local_mem__ float *&scalePtr1,
+                                              __local_mem__ float *&scalePtr2, __local_mem__ float *&tmpBufferPtr,
                                               uint32_t ubFactor)
     {
         uint32_t vlStride = VL_FP32 * CONST_TWO;
@@ -1386,7 +1403,8 @@ public:
         uint16_t regTailWidth = (ubFactor - repeatTimesFloor * vlStride) / CONST_TWO;
         __VEC_SCOPE__
         {
-            AscendC::MicroAPI::RegTensor<float> vregRope1Fp32, vregRope2Fp32, vregCos1Fp32, vregCos2Fp32, vregSin1Fp32, vregSin2Fp32;
+            AscendC::MicroAPI::RegTensor<float> vregRope1Fp32, vregRope2Fp32, vregCos1Fp32, vregCos2Fp32, vregSin1Fp32,
+                vregSin2Fp32;
             AscendC::MicroAPI::RegTensor<float> vregScale1Fp32, vregScale2Fp32;
             AscendC::MicroAPI::RegTensor<half> vregHalf;
             AscendC::MicroAPI::RegTensor<int16_t> vregInt16;
@@ -1415,8 +1433,10 @@ public:
                 LoadDataAndCast2Fp32(vregRope2Fp32, ropeAddr2, mask);
                 AscendC::MicroAPI::DataCopy(tmpBufferPtr, vregRope1Fp32, mask);
                 AscendC::MicroAPI::DataCopy(tmpBufferPtr + VL_FP32, vregRope2Fp32, mask);
-                AscendC::MicroAPI::LocalMemBar<AscendC::MicroAPI::MemType::VEC_STORE, AscendC::MicroAPI::MemType::VEC_LOAD>();
-                AscendC::MicroAPI::DataCopy<float, AscendC::MicroAPI::LoadDist::DIST_DINTLV_B32>(vregRope1Fp32, vregRope2Fp32, ((__local_mem__ float*)(tmpBufferPtr)));
+                AscendC::MicroAPI::LocalMemBar<AscendC::MicroAPI::MemType::VEC_STORE,
+                                               AscendC::MicroAPI::MemType::VEC_LOAD>();
+                AscendC::MicroAPI::DataCopy<float, AscendC::MicroAPI::LoadDist::DIST_DINTLV_B32>(
+                    vregRope1Fp32, vregRope2Fp32, ((__local_mem__ float *)(tmpBufferPtr)));
 
                 LoadDataAndCast2Fp32(vregCos1Fp32, cosAddr1, mask);
                 LoadDataAndCast2Fp32(vregCos2Fp32, cosAddr2, mask);
@@ -1464,8 +1484,10 @@ public:
             LoadDataAndCast2Fp32(vregRope2Fp32, ropeAddr2, mask);
             AscendC::MicroAPI::DataCopy(tmpBufferPtr, vregRope1Fp32, mask);
             AscendC::MicroAPI::DataCopy(tmpBufferPtr + VL_FP32, vregRope2Fp32, mask);
-            AscendC::MicroAPI::LocalMemBar<AscendC::MicroAPI::MemType::VEC_STORE, AscendC::MicroAPI::MemType::VEC_LOAD>();
-            AscendC::MicroAPI::DataCopy<float, AscendC::MicroAPI::LoadDist::DIST_DINTLV_B32>(vregRope1Fp32, vregRope2Fp32, ((__local_mem__ float*)(tmpBufferPtr)));
+            AscendC::MicroAPI::LocalMemBar<AscendC::MicroAPI::MemType::VEC_STORE,
+                                           AscendC::MicroAPI::MemType::VEC_LOAD>();
+            AscendC::MicroAPI::DataCopy<float, AscendC::MicroAPI::LoadDist::DIST_DINTLV_B32>(
+                vregRope1Fp32, vregRope2Fp32, ((__local_mem__ float *)(tmpBufferPtr)));
 
             LoadDataAndCast2Fp32(vregCos1Fp32, cosAddr1, mask);
             LoadDataAndCast2Fp32(vregCos2Fp32, cosAddr2, mask);
@@ -1498,7 +1520,8 @@ public:
         }
     }
 
-    __aicore__ inline void RopeSymQuantWithKCache(int64_t xDimOffset, int64_t rowIdx, int64_t cosSinDimOffset, int64_t kCacheRowOffset) 
+    __aicore__ inline void RopeSymQuantWithKCache(int64_t xDimOffset, int64_t rowIdx, int64_t cosSinDimOffset,
+                                                  int64_t kCacheRowOffset)
     {
         for (int64_t ubIdx = 0; ubIdx < ubFactorDkLoopCountCeil; ubIdx++) {
             LocalTensor<T_KV> ropeLocal = inQueueX.AllocTensor<T_KV>();
@@ -1506,13 +1529,14 @@ public:
             kScaleLocalPart1 = kScaleOffsetQueue.AllocTensor<float>();
 
             kOutLocal = outQueue.AllocTensor<T_KV>();
-            kQuantLocal = kOutLocal.template ReinterpretCast<T_K_CACHE>()[this->ubFactor * sizeof(T_KV) / sizeof(T_K_CACHE)];
+            kQuantLocal =
+                kOutLocal.template ReinterpretCast<T_K_CACHE>()[this->ubFactor * sizeof(T_KV) / sizeof(T_K_CACHE)];
 
             int64_t tmpFactor = this->ubFactor;
             if (ubIdx == ubFactorDkLoopCountCeil - 1 && ubFactorDkTail > 0) { // 尾块
                 tmpFactor = ubFactorDkTail;
             }
-            
+
             int64_t kInOffset = xDimOffset + this->dv + this->ubFactor * ubIdx;
             int64_t cosSinOffset1 = cosSinDimOffset + this->ubFactor * ubIdx / CONST_TWO;
             int64_t cosSinOffset2 = this->dk / CONST_TWO + cosSinOffset1;
@@ -1531,19 +1555,19 @@ public:
             kOutLocal1 = kOutLocal[alignOffset];
             kScaleLocalPart2 = kScaleLocalPart1[alignOffset];
 
-            __local_mem__ T_KV* ropePtr = (__local_mem__ T_KV*)ropeLocal.GetPhyAddr();
-            __local_mem__ T_KV* cosPtr1 = (__local_mem__ T_KV*)cosLocalPart1.GetPhyAddr();
-            __local_mem__ T_KV* cosPtr2 = (__local_mem__ T_KV*)cosLocalPart2.GetPhyAddr();
-            __local_mem__ T_KV* sinPtr1 = (__local_mem__ T_KV*)sinLocalPart1.GetPhyAddr();
-            __local_mem__ T_KV* sinPtr2 = (__local_mem__ T_KV*)sinLocalPart2.GetPhyAddr();
-            __local_mem__ float* scalePtr1 = (__local_mem__ float*)kScaleLocalPart1.GetPhyAddr();
-            __local_mem__ float* scalePtr2 = (__local_mem__ float*)kScaleLocalPart2.GetPhyAddr();
-            __local_mem__ T_K_CACHE* kQuantPtr1 = (__local_mem__ T_K_CACHE*)kQuantLocal.GetPhyAddr();
-            __local_mem__ T_K_CACHE* kQuantPtr2 = (__local_mem__ T_K_CACHE*)kQuantLocal1.GetPhyAddr();
-            __local_mem__ T_KV* kOutPtr1 = (__local_mem__ T_KV*)kOutLocal.GetPhyAddr();
-            __local_mem__ T_KV* kOutPtr2 = (__local_mem__ T_KV*)kOutLocal1.GetPhyAddr();
+            __local_mem__ T_KV *ropePtr = (__local_mem__ T_KV *)ropeLocal.GetPhyAddr();
+            __local_mem__ T_KV *cosPtr1 = (__local_mem__ T_KV *)cosLocalPart1.GetPhyAddr();
+            __local_mem__ T_KV *cosPtr2 = (__local_mem__ T_KV *)cosLocalPart2.GetPhyAddr();
+            __local_mem__ T_KV *sinPtr1 = (__local_mem__ T_KV *)sinLocalPart1.GetPhyAddr();
+            __local_mem__ T_KV *sinPtr2 = (__local_mem__ T_KV *)sinLocalPart2.GetPhyAddr();
+            __local_mem__ float *scalePtr1 = (__local_mem__ float *)kScaleLocalPart1.GetPhyAddr();
+            __local_mem__ float *scalePtr2 = (__local_mem__ float *)kScaleLocalPart2.GetPhyAddr();
+            __local_mem__ T_K_CACHE *kQuantPtr1 = (__local_mem__ T_K_CACHE *)kQuantLocal.GetPhyAddr();
+            __local_mem__ T_K_CACHE *kQuantPtr2 = (__local_mem__ T_K_CACHE *)kQuantLocal1.GetPhyAddr();
+            __local_mem__ T_KV *kOutPtr1 = (__local_mem__ T_KV *)kOutLocal.GetPhyAddr();
+            __local_mem__ T_KV *kOutPtr2 = (__local_mem__ T_KV *)kOutLocal1.GetPhyAddr();
             LocalTensor<float> tmpLocal = xPowBuffer.Get<float>();
-            __local_mem__ float* tmpBufferPtr = (__local_mem__ float*)tmpLocal.GetPhyAddr();
+            __local_mem__ float *tmpBufferPtr = (__local_mem__ float *)tmpLocal.GetPhyAddr();
 
             xDataCopyParams.blockLen = tmpFactor * sizeof(T_KV);
             AscendC::DataCopyPad(ropeLocal, this->kvGm[kInOffset], xDataCopyParams, padParams);
@@ -1573,9 +1597,10 @@ public:
             if (tilingData_->kScaleType == 1) {
                 AscendC::Duplicate<float>(kScaleLocalPart1, kScaleLocalPart1, this->ubFactor);
             }
-            
-            RopeSymQuantWithVF(kOutPtr1, kOutPtr2, kQuantPtr1, kQuantPtr2, ropePtr, cosPtr1, cosPtr2, sinPtr1, sinPtr2, scalePtr1, scalePtr2, tmpBufferPtr, tmpFactor);
-            
+
+            RopeSymQuantWithVF(kOutPtr1, kOutPtr2, kQuantPtr1, kQuantPtr2, ropePtr, cosPtr1, cosPtr2, sinPtr1, sinPtr2,
+                               scalePtr1, scalePtr2, tmpBufferPtr, tmpFactor);
+
             outQueue.EnQue<T_KV>(kOutLocal);
             kOutLocal = outQueue.DeQue<T_KV>();
 
@@ -1596,20 +1621,21 @@ public:
         }
     }
 
-     __aicore__ inline void RopeAsymQuantVF(__local_mem__ T_K_CACHE*& quantPtr1, __local_mem__ T_K_CACHE*& quantPtr2,
-                                            __local_mem__ T_KV*& ropePtr, __local_mem__ T_KV*& cosPtr1,
-                                            __local_mem__ T_KV*& cosPtr2, __local_mem__ T_KV*& sinPtr1,
-                                            __local_mem__ T_KV*& sinPtr2, __local_mem__ float*& scalePtr1,
-                                            __local_mem__ float*& scalePtr2, __local_mem__ float*& offsetPtr1, 
-                                            __local_mem__ float*& offsetPtr2, __local_mem__ float*& tmpBufferPtr,
-                                            uint32_t ubFactor)
+    __aicore__ inline void RopeAsymQuantVF(__local_mem__ T_K_CACHE *&quantPtr1, __local_mem__ T_K_CACHE *&quantPtr2,
+                                           __local_mem__ T_KV *&ropePtr, __local_mem__ T_KV *&cosPtr1,
+                                           __local_mem__ T_KV *&cosPtr2, __local_mem__ T_KV *&sinPtr1,
+                                           __local_mem__ T_KV *&sinPtr2, __local_mem__ float *&scalePtr1,
+                                           __local_mem__ float *&scalePtr2, __local_mem__ float *&offsetPtr1,
+                                           __local_mem__ float *&offsetPtr2, __local_mem__ float *&tmpBufferPtr,
+                                           uint32_t ubFactor)
     {
         uint32_t vlStride = VL_FP32 * CONST_TWO;
         uint16_t repeatTimesFloor = ops::FloorDiv(ubFactor, vlStride);
         uint16_t regTailWidth = (ubFactor - repeatTimesFloor * vlStride) / CONST_TWO;
         __VEC_SCOPE__
         {
-            AscendC::MicroAPI::RegTensor<float> vregRope1Fp32, vregRope2Fp32, vregCos1Fp32, vregCos2Fp32, vregSin1Fp32, vregSin2Fp32;
+            AscendC::MicroAPI::RegTensor<float> vregRope1Fp32, vregRope2Fp32, vregCos1Fp32, vregCos2Fp32, vregSin1Fp32,
+                vregSin2Fp32;
             AscendC::MicroAPI::RegTensor<float> vregScale1Fp32, vregScale2Fp32, vregOffset1Fp32, vregOffset2Fp32;
             AscendC::MicroAPI::RegTensor<half> vregHalf;
             AscendC::MicroAPI::RegTensor<int16_t> vregInt16;
@@ -1630,7 +1656,7 @@ public:
                 auto scaleAddr1 = scalePtr1 + j * VL_FP32;
                 auto scaleAddr2 = scalePtr2 + j * VL_FP32;
                 auto offsetAdd1 = offsetPtr1 + j * VL_FP32;
-                auto offsetAdd2 = offsetPtr2 + j* VL_FP32;
+                auto offsetAdd2 = offsetPtr2 + j * VL_FP32;
                 auto kQuantAddr1 = quantPtr1 + j * VL_FP32;
                 auto kQuantAddr2 = quantPtr2 + j * VL_FP32;
 
@@ -1638,8 +1664,10 @@ public:
                 LoadDataAndCast2Fp32(vregRope2Fp32, ropeAddr2, mask);
                 AscendC::MicroAPI::DataCopy(tmpBufferPtr, vregRope1Fp32, mask);
                 AscendC::MicroAPI::DataCopy(tmpBufferPtr + VL_FP32, vregRope2Fp32, mask);
-                AscendC::MicroAPI::LocalMemBar<AscendC::MicroAPI::MemType::VEC_STORE, AscendC::MicroAPI::MemType::VEC_LOAD>();
-                AscendC::MicroAPI::DataCopy<float, AscendC::MicroAPI::LoadDist::DIST_DINTLV_B32>(vregRope1Fp32, vregRope2Fp32, ((__local_mem__ float*)(tmpBufferPtr)));
+                AscendC::MicroAPI::LocalMemBar<AscendC::MicroAPI::MemType::VEC_STORE,
+                                               AscendC::MicroAPI::MemType::VEC_LOAD>();
+                AscendC::MicroAPI::DataCopy<float, AscendC::MicroAPI::LoadDist::DIST_DINTLV_B32>(
+                    vregRope1Fp32, vregRope2Fp32, ((__local_mem__ float *)(tmpBufferPtr)));
 
                 LoadDataAndCast2Fp32(vregCos1Fp32, cosAddr1, mask);
                 LoadDataAndCast2Fp32(vregCos2Fp32, cosAddr2, mask);
@@ -1687,8 +1715,10 @@ public:
             LoadDataAndCast2Fp32(vregRope2Fp32, ropeAddr2, mask);
             AscendC::MicroAPI::DataCopy(tmpBufferPtr, vregRope1Fp32, mask);
             AscendC::MicroAPI::DataCopy(tmpBufferPtr + VL_FP32, vregRope2Fp32, mask);
-            AscendC::MicroAPI::LocalMemBar<AscendC::MicroAPI::MemType::VEC_STORE, AscendC::MicroAPI::MemType::VEC_LOAD>();
-            AscendC::MicroAPI::DataCopy<float, AscendC::MicroAPI::LoadDist::DIST_DINTLV_B32>(vregRope1Fp32, vregRope2Fp32, ((__local_mem__ float*)(tmpBufferPtr)));
+            AscendC::MicroAPI::LocalMemBar<AscendC::MicroAPI::MemType::VEC_STORE,
+                                           AscendC::MicroAPI::MemType::VEC_LOAD>();
+            AscendC::MicroAPI::DataCopy<float, AscendC::MicroAPI::LoadDist::DIST_DINTLV_B32>(
+                vregRope1Fp32, vregRope2Fp32, ((__local_mem__ float *)(tmpBufferPtr)));
 
             LoadDataAndCast2Fp32(vregCos1Fp32, cosAddr1, mask);
             LoadDataAndCast2Fp32(vregCos2Fp32, cosAddr2, mask);
@@ -1721,7 +1751,8 @@ public:
         }
     }
 
-    __aicore__ inline void RopeAsymQuant(int64_t xDimOffset, int64_t rowIdx, int64_t cosSinDimOffset, int64_t kCacheRowOffset) 
+    __aicore__ inline void RopeAsymQuant(int64_t xDimOffset, int64_t rowIdx, int64_t cosSinDimOffset,
+                                         int64_t kCacheRowOffset)
     {
         for (int64_t ubIdx = 0; ubIdx < ubFactorDkLoopCountCeil; ubIdx++) {
             LocalTensor<T_KV> ropeLocal = inQueueX.AllocTensor<T_KV>();
@@ -1734,7 +1765,7 @@ public:
             if (ubIdx == ubFactorDkLoopCountCeil - 1 && ubFactorDkTail > 0) { // 尾块
                 tmpFactor = ubFactorDkTail;
             }
-            
+
             int64_t kInOffset = xDimOffset + this->dv + this->ubFactor * ubIdx;
             int64_t cosSinOffset1 = cosSinDimOffset + this->ubFactor * ubIdx / CONST_TWO;
             int64_t cosSinOffset2 = this->dk / CONST_TWO + cosSinOffset1;
@@ -1752,19 +1783,19 @@ public:
             kScaleLocalPart2 = kScaleLocalPart1[alignOffset];
             kOffsetLocalPart2 = kOffsetLocalPart1[alignOffset];
 
-            __local_mem__ T_KV* ropePtr = (__local_mem__ T_KV*)ropeLocal.GetPhyAddr();
-            __local_mem__ T_KV* cosPtr1 = (__local_mem__ T_KV*)cosLocalPart1.GetPhyAddr();
-            __local_mem__ T_KV* cosPtr2 = (__local_mem__ T_KV*)cosLocalPart2.GetPhyAddr();
-            __local_mem__ T_KV* sinPtr1 = (__local_mem__ T_KV*)sinLocalPart1.GetPhyAddr();
-            __local_mem__ T_KV* sinPtr2 = (__local_mem__ T_KV*)sinLocalPart2.GetPhyAddr();
-            __local_mem__ float* scalePtr1 = (__local_mem__ float*)kScaleLocalPart1.GetPhyAddr();
-            __local_mem__ float* scalePtr2 = (__local_mem__ float*)kScaleLocalPart2.GetPhyAddr();
-            __local_mem__ float* offsetPtr1 = (__local_mem__ float*)kOffsetLocalPart1.GetPhyAddr();
-            __local_mem__ float* offsetPtr2 = (__local_mem__ float*)kOffsetLocalPart2.GetPhyAddr();
-            __local_mem__ T_K_CACHE* kQuantPtr1 = (__local_mem__ T_K_CACHE*)kQuantLocal.GetPhyAddr();
-            __local_mem__ T_K_CACHE* kQuantPtr2 = (__local_mem__ T_K_CACHE*)kQuantLocal1.GetPhyAddr();
+            __local_mem__ T_KV *ropePtr = (__local_mem__ T_KV *)ropeLocal.GetPhyAddr();
+            __local_mem__ T_KV *cosPtr1 = (__local_mem__ T_KV *)cosLocalPart1.GetPhyAddr();
+            __local_mem__ T_KV *cosPtr2 = (__local_mem__ T_KV *)cosLocalPart2.GetPhyAddr();
+            __local_mem__ T_KV *sinPtr1 = (__local_mem__ T_KV *)sinLocalPart1.GetPhyAddr();
+            __local_mem__ T_KV *sinPtr2 = (__local_mem__ T_KV *)sinLocalPart2.GetPhyAddr();
+            __local_mem__ float *scalePtr1 = (__local_mem__ float *)kScaleLocalPart1.GetPhyAddr();
+            __local_mem__ float *scalePtr2 = (__local_mem__ float *)kScaleLocalPart2.GetPhyAddr();
+            __local_mem__ float *offsetPtr1 = (__local_mem__ float *)kOffsetLocalPart1.GetPhyAddr();
+            __local_mem__ float *offsetPtr2 = (__local_mem__ float *)kOffsetLocalPart2.GetPhyAddr();
+            __local_mem__ T_K_CACHE *kQuantPtr1 = (__local_mem__ T_K_CACHE *)kQuantLocal.GetPhyAddr();
+            __local_mem__ T_K_CACHE *kQuantPtr2 = (__local_mem__ T_K_CACHE *)kQuantLocal1.GetPhyAddr();
             LocalTensor<float> tmpLocal = xPowBuffer.Get<float>();
-            __local_mem__ float* tmpBufferPtr = (__local_mem__ float*)tmpLocal.GetPhyAddr();
+            __local_mem__ float *tmpBufferPtr = (__local_mem__ float *)tmpLocal.GetPhyAddr();
 
             xDataCopyParams.blockLen = tmpFactor * sizeof(T_KV);
             AscendC::DataCopyPad(ropeLocal, this->kvGm[kInOffset], xDataCopyParams, padParams);
@@ -1808,7 +1839,8 @@ public:
                 AscendC::Duplicate<float>(kOffsetLocalPart1, kOffsetLocalPart1, this->ubFactor);
             }
 
-            RopeAsymQuantVF(kQuantPtr1, kQuantPtr2, ropePtr, cosPtr1, cosPtr2, sinPtr1, sinPtr2, scalePtr1, scalePtr2, offsetPtr1, offsetPtr2, tmpBufferPtr, tmpFactor);
+            RopeAsymQuantVF(kQuantPtr1, kQuantPtr2, ropePtr, cosPtr1, cosPtr2, sinPtr1, sinPtr2, scalePtr1, scalePtr2,
+                            offsetPtr1, offsetPtr2, tmpBufferPtr, tmpFactor);
 
             outQueue.EnQue<T_K_CACHE>(kQuantLocal);
             kQuantLocal = outQueue.DeQue<T_K_CACHE>();
@@ -1837,11 +1869,12 @@ public:
         int64_t kCacheIdx = this->indexGm(rowIdx);
         SetFlag<HardEvent::S_MTE3>(eventIDSToMTE3);
         WaitFlag<HardEvent::S_MTE3>(eventIDSToMTE3);
-        int64_t gmOffset1, gmOffset2; 
+        int64_t gmOffset1, gmOffset2;
 
         if (kCacheIdx >= 0) {
             if (tilingData_->cacheMode == NORM_CACHE_MODE) {
-                gmOffset1 = (batchIdx * tilingData_->seqLength + kCacheIdx) * tilingData_->dk + this->ubFactor * ubIdx / 2;
+                gmOffset1 =
+                    (batchIdx * tilingData_->seqLength + kCacheIdx) * tilingData_->dk + this->ubFactor * ubIdx / 2;
                 gmOffset2 = gmOffset1 + tilingData_->dk / 2;
                 if constexpr (IsSameType<T_K_CACHE, int8_t>::value || IsSameType<T_K_CACHE, hifloat8_t>::value ||
                               IsSameType<T_K_CACHE, fp8_e5m2_t>::value || IsSameType<T_K_CACHE, fp8_e4m3fn_t>::value) {
@@ -1874,11 +1907,14 @@ public:
                     xDataCopyParams.blockLen = dk0 * sizeof(T_KV);
                 }
                 for (int64_t i = 0; i < tmpFactor / dk0; i++) {
-                    gmOffset1 = batchIdx * tilingData_->dk * tilingData_->blockSize + (blockOffset + i * tilingData_->blockSize) * dk0 + this->ubFactor * ubIdx * tilingData_->blockSize / 2;
-                    gmOffset2 = gmOffset1 + tilingData_->dk / 2  * tilingData_->blockSize;
+                    gmOffset1 = batchIdx * tilingData_->dk * tilingData_->blockSize +
+                                (blockOffset + i * tilingData_->blockSize) * dk0 +
+                                this->ubFactor * ubIdx * tilingData_->blockSize / 2;
+                    gmOffset2 = gmOffset1 + tilingData_->dk / 2 * tilingData_->blockSize;
                     int64_t ubOffset = i * dk0;
                     if constexpr (IsSameType<T_K_CACHE, int8_t>::value || IsSameType<T_K_CACHE, hifloat8_t>::value ||
-                                  IsSameType<T_K_CACHE, fp8_e5m2_t>::value || IsSameType<T_K_CACHE, fp8_e4m3fn_t>::value) {
+                                  IsSameType<T_K_CACHE, fp8_e5m2_t>::value ||
+                                  IsSameType<T_K_CACHE, fp8_e4m3fn_t>::value) {
                         AscendC::DataCopyPad(this->kCacheGm[gmOffset1], kQuantLocal[ubOffset], xDataCopyParams);
                         AscendC::DataCopyPad(this->kCacheGm[gmOffset2], kQuantLocal1[ubOffset], xDataCopyParams);
                     } else {
@@ -1911,7 +1947,8 @@ public:
             if (tilingData_->cacheMode == PA_BLK_BNSD_CACHE_MODE) {
                 int64_t blockOffset = kCacheIdx / tilingData_->blockSize;
                 int64_t rowOffset = seqIdx % tilingData_->blockSize;
-                gmOffset1 = (blockOffset * tilingData_->blockSize + rowOffset) * tilingData_->dk + ubIdx * this->ubFactor / 2;
+                gmOffset1 =
+                    (blockOffset * tilingData_->blockSize + rowOffset) * tilingData_->dk + ubIdx * this->ubFactor / 2;
                 gmOffset2 = gmOffset1 + tilingData_->dk / 2;
                 if constexpr (IsSameType<T_K_CACHE, int8_t>::value || IsSameType<T_K_CACHE, hifloat8_t>::value ||
                               IsSameType<T_K_CACHE, fp8_e5m2_t>::value || IsSameType<T_K_CACHE, fp8_e4m3fn_t>::value) {
@@ -1920,7 +1957,7 @@ public:
                 } else {
                     xDataCopyParams.blockLen = tmpFactor * sizeof(T_KV);
                     AscendC::DataCopyPad(this->kCacheGm[gmOffset1], kOutLocal, xDataCopyParams);
-                    AscendC::DataCopyPad(this->kCacheGm[gmOffset2], kOutLocal1, xDataCopyParams); 
+                    AscendC::DataCopyPad(this->kCacheGm[gmOffset2], kOutLocal1, xDataCopyParams);
                 }
             } else {
                 int64_t blockOffset = kCacheIdx / tilingData_->blockSize;
@@ -1932,11 +1969,14 @@ public:
                     xDataCopyParams.blockLen = dk0 * sizeof(T_KV);
                 }
                 for (int i = 0; i < tmpFactor / dk0; i++) {
-                    gmOffset1 = idx * tilingData_->dk * tilingData_->blockSize + (rowOffset + i * tilingData_->blockSize) * dk0 + this->ubFactor * ubIdx * tilingData_->blockSize / 2;
+                    gmOffset1 = idx * tilingData_->dk * tilingData_->blockSize +
+                                (rowOffset + i * tilingData_->blockSize) * dk0 +
+                                this->ubFactor * ubIdx * tilingData_->blockSize / 2;
                     gmOffset2 = gmOffset1 + tilingData_->dk * tilingData_->blockSize / 2;
                     int64_t ubOffset = i * dk0;
                     if constexpr (IsSameType<T_K_CACHE, int8_t>::value || IsSameType<T_K_CACHE, hifloat8_t>::value ||
-                                  IsSameType<T_K_CACHE, fp8_e5m2_t>::value || IsSameType<T_K_CACHE, fp8_e4m3fn_t>::value) {
+                                  IsSameType<T_K_CACHE, fp8_e5m2_t>::value ||
+                                  IsSameType<T_K_CACHE, fp8_e4m3fn_t>::value) {
                         AscendC::DataCopyPad(this->kCacheGm[gmOffset1], kQuantLocal[ubOffset], xDataCopyParams);
                         AscendC::DataCopyPad(this->kCacheGm[gmOffset2], kQuantLocal1[ubOffset], xDataCopyParams);
                     } else {
@@ -1948,7 +1988,8 @@ public:
         }
     }
 
-    __aicore__ inline void RopeSymQuant(int64_t xDimOffset, int64_t rowIdx, int64_t cosSinDimOffset, int64_t kCacheRowOffset) 
+    __aicore__ inline void RopeSymQuant(int64_t xDimOffset, int64_t rowIdx, int64_t cosSinDimOffset,
+                                        int64_t kCacheRowOffset)
     {
         for (int64_t ubIdx = 0; ubIdx < ubFactorDkLoopCountCeil; ubIdx++) {
             LocalTensor<T_KV> ropeLocal = inQueueX.AllocTensor<T_KV>();
@@ -1960,7 +2001,7 @@ public:
             if (ubIdx == ubFactorDkLoopCountCeil - 1 && ubFactorDkTail > 0) { // 尾块
                 tmpFactor = ubFactorDkTail;
             }
-            
+
             int64_t kInOffset = xDimOffset + this->dv + this->ubFactor * ubIdx;
             int64_t cosSinOffset1 = cosSinDimOffset + this->ubFactor * ubIdx / CONST_TWO;
             int64_t cosSinOffset2 = this->dk / CONST_TWO + cosSinOffset1;
@@ -1975,17 +2016,17 @@ public:
             kQuantLocal1 = kQuantLocal[alignOffset];
             kScaleLocalPart2 = kScaleLocalPart1[alignOffset];
 
-            __local_mem__ T_KV* ropePtr = (__local_mem__ T_KV*)ropeLocal.GetPhyAddr();
-            __local_mem__ T_KV* cosPtr1 = (__local_mem__ T_KV*)cosLocalPart1.GetPhyAddr();
-            __local_mem__ T_KV* cosPtr2 = (__local_mem__ T_KV*)cosLocalPart2.GetPhyAddr();
-            __local_mem__ T_KV* sinPtr1 = (__local_mem__ T_KV*)sinLocalPart1.GetPhyAddr();
-            __local_mem__ T_KV* sinPtr2 = (__local_mem__ T_KV*)sinLocalPart2.GetPhyAddr();
-            __local_mem__ float* scalePtr1 = (__local_mem__ float*)kScaleLocalPart1.GetPhyAddr();
-            __local_mem__ float* scalePtr2 = (__local_mem__ float*)kScaleLocalPart2.GetPhyAddr();
-            __local_mem__ T_K_CACHE* kQuantPtr1 = (__local_mem__ T_K_CACHE*)kQuantLocal.GetPhyAddr();
-            __local_mem__ T_K_CACHE* kQuantPtr2 = (__local_mem__ T_K_CACHE*)kQuantLocal1.GetPhyAddr();
+            __local_mem__ T_KV *ropePtr = (__local_mem__ T_KV *)ropeLocal.GetPhyAddr();
+            __local_mem__ T_KV *cosPtr1 = (__local_mem__ T_KV *)cosLocalPart1.GetPhyAddr();
+            __local_mem__ T_KV *cosPtr2 = (__local_mem__ T_KV *)cosLocalPart2.GetPhyAddr();
+            __local_mem__ T_KV *sinPtr1 = (__local_mem__ T_KV *)sinLocalPart1.GetPhyAddr();
+            __local_mem__ T_KV *sinPtr2 = (__local_mem__ T_KV *)sinLocalPart2.GetPhyAddr();
+            __local_mem__ float *scalePtr1 = (__local_mem__ float *)kScaleLocalPart1.GetPhyAddr();
+            __local_mem__ float *scalePtr2 = (__local_mem__ float *)kScaleLocalPart2.GetPhyAddr();
+            __local_mem__ T_K_CACHE *kQuantPtr1 = (__local_mem__ T_K_CACHE *)kQuantLocal.GetPhyAddr();
+            __local_mem__ T_K_CACHE *kQuantPtr2 = (__local_mem__ T_K_CACHE *)kQuantLocal1.GetPhyAddr();
             LocalTensor<float> tmpLocal = xPowBuffer.Get<float>();
-            __local_mem__ float* tmpBufferPtr = (__local_mem__ float*)tmpLocal.GetPhyAddr();
+            __local_mem__ float *tmpBufferPtr = (__local_mem__ float *)tmpLocal.GetPhyAddr();
 
             xDataCopyParams.blockLen = tmpFactor * sizeof(T_KV);
             AscendC::DataCopyPad(ropeLocal, this->kvGm[kInOffset], xDataCopyParams, padParams);
@@ -2016,7 +2057,8 @@ public:
                 AscendC::Duplicate<float>(kScaleLocalPart1, kScaleLocalPart1, this->ubFactor);
             }
 
-            RopeSymQuantVF(kQuantPtr1, kQuantPtr2, ropePtr, cosPtr1, cosPtr2, sinPtr1, sinPtr2, scalePtr1, scalePtr2, tmpBufferPtr, tmpFactor);
+            RopeSymQuantVF(kQuantPtr1, kQuantPtr2, ropePtr, cosPtr1, cosPtr2, sinPtr1, sinPtr2, scalePtr1, scalePtr2,
+                           tmpBufferPtr, tmpFactor);
 
             outQueue.EnQue<T_K_CACHE>(kQuantLocal);
             kQuantLocal = outQueue.DeQue<T_K_CACHE>();
@@ -2034,7 +2076,8 @@ public:
         }
     }
 
-    __aicore__ inline void RopeWithoutQuant(int64_t xDimOffset, int64_t rowIdx, int64_t cosSinOffset, int64_t kCacheRowOffset) 
+    __aicore__ inline void RopeWithoutQuant(int64_t xDimOffset, int64_t rowIdx, int64_t cosSinOffset,
+                                            int64_t kCacheRowOffset)
     {
         for (int64_t ubIdx = 0; ubIdx < ubFactorDkLoopCountCeil; ubIdx++) {
             LocalTensor<T_KV> ropeLocal = inQueueX.AllocTensor<T_KV>();
@@ -2045,7 +2088,7 @@ public:
             if (ubIdx == ubFactorDkLoopCountCeil - 1 && ubFactorDkTail > 0) {
                 tmpFactor = ubFactorDkTail;
             }
-            
+
             int64_t kInOffset = xDimOffset + this->dv + this->ubFactor * ubIdx;
             int64_t cosSinOffset1, cosSinOffset2;
 
@@ -2061,15 +2104,15 @@ public:
             LocalTensor<T_KV> sinLocalPart2 = sinLocalPart1[alignOffset];
             kOutLocal1 = kOutLocal[alignOffset];
 
-            __local_mem__ T_KV* ropePtr = (__local_mem__ T_KV*)ropeLocal.GetPhyAddr();
-            __local_mem__ T_KV* cosPtr1 = (__local_mem__ T_KV*)cosLocalPart1.GetPhyAddr();
-            __local_mem__ T_KV* cosPtr2 = (__local_mem__ T_KV*)cosLocalPart2.GetPhyAddr();
-            __local_mem__ T_KV* sinPtr1 = (__local_mem__ T_KV*)sinLocalPart1.GetPhyAddr();
-            __local_mem__ T_KV* sinPtr2 = (__local_mem__ T_KV*)sinLocalPart2.GetPhyAddr();
-            __local_mem__ T_KV* outPtr1 = (__local_mem__ T_KV*)kOutLocal.GetPhyAddr();
-            __local_mem__ T_KV* outPtr2 = (__local_mem__ T_KV*)kOutLocal1.GetPhyAddr();
+            __local_mem__ T_KV *ropePtr = (__local_mem__ T_KV *)ropeLocal.GetPhyAddr();
+            __local_mem__ T_KV *cosPtr1 = (__local_mem__ T_KV *)cosLocalPart1.GetPhyAddr();
+            __local_mem__ T_KV *cosPtr2 = (__local_mem__ T_KV *)cosLocalPart2.GetPhyAddr();
+            __local_mem__ T_KV *sinPtr1 = (__local_mem__ T_KV *)sinLocalPart1.GetPhyAddr();
+            __local_mem__ T_KV *sinPtr2 = (__local_mem__ T_KV *)sinLocalPart2.GetPhyAddr();
+            __local_mem__ T_KV *outPtr1 = (__local_mem__ T_KV *)kOutLocal.GetPhyAddr();
+            __local_mem__ T_KV *outPtr2 = (__local_mem__ T_KV *)kOutLocal1.GetPhyAddr();
             LocalTensor<float> tmpLocal = xPowBuffer.Get<float>();
-            __local_mem__ float* tmpBufferPtr = (__local_mem__ float*)tmpLocal.GetPhyAddr();
+            __local_mem__ float *tmpBufferPtr = (__local_mem__ float *)tmpLocal.GetPhyAddr();
 
             xDataCopyParams.blockLen = tmpFactor * sizeof(T_KV);
             AscendC::DataCopyPad(ropeLocal, this->kvGm[kInOffset], xDataCopyParams, padParams);
@@ -2085,7 +2128,7 @@ public:
             cosLocalPart1 = inQueueCosSin.DeQue<T_KV>();
 
             RopeVF(outPtr1, outPtr2, ropePtr, cosPtr1, cosPtr2, sinPtr1, sinPtr2, tmpBufferPtr, tmpFactor);
-            
+
             outQueue.EnQue<T_KV>(kOutLocal);
             kOutLocal = outQueue.DeQue<T_KV>();
 
@@ -2099,28 +2142,29 @@ public:
             } else {
                 ScatterBlkUpdateK(kCacheRowOffset, ubIdx, tmpFactor / 2);
             }
-            
+
             outQueue.FreeTensor(kOutLocal);
             inQueueCosSin.FreeTensor(cosLocalPart1);
             inQueueX.FreeTensor(ropeLocal);
         }
     }
 
-    __aicore__ inline void RopeAsymQuantWithKvVF(__local_mem__ T_KV*& outPtr1, __local_mem__ T_KV*& outPtr2,
-                                                 __local_mem__ T_K_CACHE*& quantPtr1, __local_mem__ T_K_CACHE*& quantPtr2,
-                                                 __local_mem__ T_KV*& ropePtr, __local_mem__ T_KV*& cosPtr1,
-                                                 __local_mem__ T_KV*& cosPtr2, __local_mem__ T_KV*& sinPtr1,
-                                                 __local_mem__ T_KV*& sinPtr2, __local_mem__ float*& scalePtr1,
-                                                 __local_mem__ float*& scalePtr2, __local_mem__ float*& offsetPtr1, 
-                                                 __local_mem__ float*& offsetPtr2, __local_mem__ float*& tmpBufferPtr,
-                                                 uint32_t ubFactor)
+    __aicore__ inline void RopeAsymQuantWithKvVF(__local_mem__ T_KV *&outPtr1, __local_mem__ T_KV *&outPtr2,
+                                                 __local_mem__ T_K_CACHE *&quantPtr1,
+                                                 __local_mem__ T_K_CACHE *&quantPtr2, __local_mem__ T_KV *&ropePtr,
+                                                 __local_mem__ T_KV *&cosPtr1, __local_mem__ T_KV *&cosPtr2,
+                                                 __local_mem__ T_KV *&sinPtr1, __local_mem__ T_KV *&sinPtr2,
+                                                 __local_mem__ float *&scalePtr1, __local_mem__ float *&scalePtr2,
+                                                 __local_mem__ float *&offsetPtr1, __local_mem__ float *&offsetPtr2,
+                                                 __local_mem__ float *&tmpBufferPtr, uint32_t ubFactor)
     {
         uint32_t vlStride = VL_FP32 * CONST_TWO;
         uint16_t repeatTimesFloor = ops::FloorDiv(ubFactor, vlStride);
         uint16_t regTailWidth = (ubFactor - repeatTimesFloor * vlStride) / CONST_TWO;
         __VEC_SCOPE__
         {
-            AscendC::MicroAPI::RegTensor<float> vregRope1Fp32, vregRope2Fp32, vregCos1Fp32, vregCos2Fp32, vregSin1Fp32, vregSin2Fp32;
+            AscendC::MicroAPI::RegTensor<float> vregRope1Fp32, vregRope2Fp32, vregCos1Fp32, vregCos2Fp32, vregSin1Fp32,
+                vregSin2Fp32;
             AscendC::MicroAPI::RegTensor<float> vregScale1Fp32, vregScale2Fp32, vregOffset1Fp32, vregOffset2Fp32;
             AscendC::MicroAPI::RegTensor<half> vregHalf;
             AscendC::MicroAPI::RegTensor<int16_t> vregInt16;
@@ -2141,7 +2185,7 @@ public:
                 auto scaleAddr1 = scalePtr1 + j * VL_FP32;
                 auto scaleAddr2 = scalePtr2 + j * VL_FP32;
                 auto offsetAdd1 = offsetPtr1 + j * VL_FP32;
-                auto offsetAdd2 = offsetPtr2 + j* VL_FP32;
+                auto offsetAdd2 = offsetPtr2 + j * VL_FP32;
                 auto kQuantAddr1 = quantPtr1 + j * VL_FP32;
                 auto kQuantAddr2 = quantPtr2 + j * VL_FP32;
                 auto kOutAddr1 = outPtr1 + j * VL_FP32;
@@ -2151,8 +2195,10 @@ public:
                 LoadDataAndCast2Fp32(vregRope2Fp32, ropeAddr2, mask);
                 AscendC::MicroAPI::DataCopy(tmpBufferPtr, vregRope1Fp32, mask);
                 AscendC::MicroAPI::DataCopy(tmpBufferPtr + VL_FP32, vregRope2Fp32, mask);
-                AscendC::MicroAPI::LocalMemBar<AscendC::MicroAPI::MemType::VEC_STORE, AscendC::MicroAPI::MemType::VEC_LOAD>();
-                AscendC::MicroAPI::DataCopy<float, AscendC::MicroAPI::LoadDist::DIST_DINTLV_B32>(vregRope1Fp32, vregRope2Fp32, ((__local_mem__ float*)(tmpBufferPtr)));
+                AscendC::MicroAPI::LocalMemBar<AscendC::MicroAPI::MemType::VEC_STORE,
+                                               AscendC::MicroAPI::MemType::VEC_LOAD>();
+                AscendC::MicroAPI::DataCopy<float, AscendC::MicroAPI::LoadDist::DIST_DINTLV_B32>(
+                    vregRope1Fp32, vregRope2Fp32, ((__local_mem__ float *)(tmpBufferPtr)));
 
                 LoadDataAndCast2Fp32(vregCos1Fp32, cosAddr1, mask);
                 LoadDataAndCast2Fp32(vregCos2Fp32, cosAddr2, mask);
@@ -2205,8 +2251,10 @@ public:
             LoadDataAndCast2Fp32(vregRope2Fp32, ropeAddr2, mask);
             AscendC::MicroAPI::DataCopy(tmpBufferPtr, vregRope1Fp32, mask);
             AscendC::MicroAPI::DataCopy(tmpBufferPtr + VL_FP32, vregRope2Fp32, mask);
-            AscendC::MicroAPI::LocalMemBar<AscendC::MicroAPI::MemType::VEC_STORE, AscendC::MicroAPI::MemType::VEC_LOAD>();
-            AscendC::MicroAPI::DataCopy<float, AscendC::MicroAPI::LoadDist::DIST_DINTLV_B32>(vregRope1Fp32, vregRope2Fp32, ((__local_mem__ float*)(tmpBufferPtr)));
+            AscendC::MicroAPI::LocalMemBar<AscendC::MicroAPI::MemType::VEC_STORE,
+                                           AscendC::MicroAPI::MemType::VEC_LOAD>();
+            AscendC::MicroAPI::DataCopy<float, AscendC::MicroAPI::LoadDist::DIST_DINTLV_B32>(
+                vregRope1Fp32, vregRope2Fp32, ((__local_mem__ float *)(tmpBufferPtr)));
 
             LoadDataAndCast2Fp32(vregCos1Fp32, cosAddr1, mask);
             LoadDataAndCast2Fp32(vregCos2Fp32, cosAddr2, mask);
@@ -2242,7 +2290,8 @@ public:
         }
     }
 
-    __aicore__ inline void RopeAsymQuantWithKCache(int64_t xDimOffset, int64_t rowIdx, int64_t cosSinDimOffset, int64_t kCacheRowOffset) 
+    __aicore__ inline void RopeAsymQuantWithKCache(int64_t xDimOffset, int64_t rowIdx, int64_t cosSinDimOffset,
+                                                   int64_t kCacheRowOffset)
     {
         for (int64_t ubIdx = 0; ubIdx < ubFactorDkLoopCountCeil; ubIdx++) {
             LocalTensor<T_KV> ropeLocal = inQueueX.AllocTensor<T_KV>();
@@ -2251,13 +2300,14 @@ public:
             kOffsetLocalPart1 = kScaleLocalPart1[this->ubFactor];
 
             kOutLocal = outQueue.AllocTensor<T_KV>();
-            kQuantLocal = kOutLocal.template ReinterpretCast<T_K_CACHE>()[this->ubFactor * sizeof(T_KV) / sizeof(T_K_CACHE)];
+            kQuantLocal =
+                kOutLocal.template ReinterpretCast<T_K_CACHE>()[this->ubFactor * sizeof(T_KV) / sizeof(T_K_CACHE)];
 
             int64_t tmpFactor = this->ubFactor;
             if (ubIdx == ubFactorDkLoopCountCeil - 1 && ubFactorDkTail > 0) { // 尾块
                 tmpFactor = ubFactorDkTail;
             }
-            
+
             int64_t kInOffset = xDimOffset + this->dv + this->ubFactor * ubIdx;
             int64_t cosSinOffset1 = cosSinDimOffset + this->ubFactor * ubIdx / CONST_TWO;
             int64_t cosSinOffset2 = this->dk / CONST_TWO + cosSinOffset1;
@@ -2279,21 +2329,21 @@ public:
             kScaleLocalPart2 = kScaleLocalPart1[alignOffset];
             kOffsetLocalPart2 = kOffsetLocalPart1[alignOffset];
 
-            __local_mem__ T_KV* ropePtr = (__local_mem__ T_KV*)ropeLocal.GetPhyAddr();
-            __local_mem__ T_KV* cosPtr1 = (__local_mem__ T_KV*)cosLocalPart1.GetPhyAddr();
-            __local_mem__ T_KV* cosPtr2 = (__local_mem__ T_KV*)cosLocalPart2.GetPhyAddr();
-            __local_mem__ T_KV* sinPtr1 = (__local_mem__ T_KV*)sinLocalPart1.GetPhyAddr();
-            __local_mem__ T_KV* sinPtr2 = (__local_mem__ T_KV*)sinLocalPart2.GetPhyAddr();
-            __local_mem__ float* scalePtr1 = (__local_mem__ float*)kScaleLocalPart1.GetPhyAddr();
-            __local_mem__ float* scalePtr2 = (__local_mem__ float*)kScaleLocalPart2.GetPhyAddr();
-            __local_mem__ float* offsetPtr1 = (__local_mem__ float*)kOffsetLocalPart1.GetPhyAddr();
-            __local_mem__ float* offsetPtr2 = (__local_mem__ float*)kOffsetLocalPart2.GetPhyAddr();
-            __local_mem__ T_K_CACHE* kQuantPtr1 = (__local_mem__ T_K_CACHE*)kQuantLocal.GetPhyAddr();
-            __local_mem__ T_K_CACHE* kQuantPtr2 = (__local_mem__ T_K_CACHE*)kQuantLocal1.GetPhyAddr();
-            __local_mem__ T_KV* kOutPtr1 = (__local_mem__ T_KV*)kOutLocal.GetPhyAddr();
-            __local_mem__ T_KV* kOutPtr2 = (__local_mem__ T_KV*)kOutLocal1.GetPhyAddr();
+            __local_mem__ T_KV *ropePtr = (__local_mem__ T_KV *)ropeLocal.GetPhyAddr();
+            __local_mem__ T_KV *cosPtr1 = (__local_mem__ T_KV *)cosLocalPart1.GetPhyAddr();
+            __local_mem__ T_KV *cosPtr2 = (__local_mem__ T_KV *)cosLocalPart2.GetPhyAddr();
+            __local_mem__ T_KV *sinPtr1 = (__local_mem__ T_KV *)sinLocalPart1.GetPhyAddr();
+            __local_mem__ T_KV *sinPtr2 = (__local_mem__ T_KV *)sinLocalPart2.GetPhyAddr();
+            __local_mem__ float *scalePtr1 = (__local_mem__ float *)kScaleLocalPart1.GetPhyAddr();
+            __local_mem__ float *scalePtr2 = (__local_mem__ float *)kScaleLocalPart2.GetPhyAddr();
+            __local_mem__ float *offsetPtr1 = (__local_mem__ float *)kOffsetLocalPart1.GetPhyAddr();
+            __local_mem__ float *offsetPtr2 = (__local_mem__ float *)kOffsetLocalPart2.GetPhyAddr();
+            __local_mem__ T_K_CACHE *kQuantPtr1 = (__local_mem__ T_K_CACHE *)kQuantLocal.GetPhyAddr();
+            __local_mem__ T_K_CACHE *kQuantPtr2 = (__local_mem__ T_K_CACHE *)kQuantLocal1.GetPhyAddr();
+            __local_mem__ T_KV *kOutPtr1 = (__local_mem__ T_KV *)kOutLocal.GetPhyAddr();
+            __local_mem__ T_KV *kOutPtr2 = (__local_mem__ T_KV *)kOutLocal1.GetPhyAddr();
             LocalTensor<float> tmpLocal = xPowBuffer.Get<float>();
-            __local_mem__ float* tmpBufferPtr = (__local_mem__ float*)tmpLocal.GetPhyAddr();
+            __local_mem__ float *tmpBufferPtr = (__local_mem__ float *)tmpLocal.GetPhyAddr();
 
             xDataCopyParams.blockLen = tmpFactor * sizeof(T_KV);
             AscendC::DataCopyPad(ropeLocal, this->kvGm[kInOffset], xDataCopyParams, padParams);
@@ -2337,7 +2387,8 @@ public:
                 AscendC::Duplicate<float>(kOffsetLocalPart1, kOffsetLocalPart1, this->ubFactor);
             }
 
-            RopeAsymQuantWithKvVF(kOutPtr1, kOutPtr2, kQuantPtr1, kQuantPtr2, ropePtr, cosPtr1, cosPtr2, sinPtr1, sinPtr2, scalePtr1, scalePtr2, offsetPtr1, offsetPtr2, tmpBufferPtr, tmpFactor);
+            RopeAsymQuantWithKvVF(kOutPtr1, kOutPtr2, kQuantPtr1, kQuantPtr2, ropePtr, cosPtr1, cosPtr2, sinPtr1,
+                                  sinPtr2, scalePtr1, scalePtr2, offsetPtr1, offsetPtr2, tmpBufferPtr, tmpFactor);
 
             outQueue.EnQue<T_KV>(kOutLocal);
             kOutLocal = outQueue.DeQue<T_KV>();
@@ -2362,23 +2413,23 @@ public:
     __aicore__ inline void Rope(int64_t xDimOffset, int64_t rowIdx, int64_t cosSinOffset, int64_t kCacheRowOffset)
     {
         if constexpr (IsSameType<T_K_CACHE, int8_t>::value || IsSameType<T_K_CACHE, hifloat8_t>::value ||
-                      IsSameType<T_K_CACHE, fp8_e5m2_t>::value || IsSameType<T_K_CACHE, fp8_e4m3fn_t>::value) { 
+                      IsSameType<T_K_CACHE, fp8_e5m2_t>::value || IsSameType<T_K_CACHE, fp8_e4m3fn_t>::value) {
             // 量化部分需要增加量化输出 quantOutPtr
             if (tilingData_->isOutputKv > 0) {
                 // 需要输出中间结果
-                if (tilingData_->kOffsetType > 0) { 
+                if (tilingData_->kOffsetType > 0) {
                     // 量化 + 偏移
                     RopeAsymQuantWithKCache(xDimOffset, rowIdx, cosSinOffset, kCacheRowOffset);
-                } else { 
+                } else {
                     // 量化
                     RopeSymQuantWithKCache(xDimOffset, rowIdx, cosSinOffset, kCacheRowOffset);
                 }
             } else {
                 // 不需要输出中间结果
-                if (tilingData_->kOffsetType > 0) { 
+                if (tilingData_->kOffsetType > 0) {
                     // 量化 + 偏移
                     RopeAsymQuant(xDimOffset, rowIdx, cosSinOffset, kCacheRowOffset);
-                } else { 
+                } else {
                     // 量化
                     RopeSymQuant(xDimOffset, rowIdx, cosSinOffset, kCacheRowOffset);
                 }
@@ -2412,21 +2463,21 @@ public:
             } else {
                 cosSinOffset = cosSinDimOffset;
             }
-            
+
             // for Rope
             Rope(xDimOffset, rowIdx, cosSinOffset, kCacheRowOffset);
         }
     }
 
 private:
-    const KvRmsNormRopeCacheRegbaseRecomputeTilingData* tilingData_;
+    const KvRmsNormRopeCacheRegbaseRecomputeTilingData *tilingData_;
     TQue<QuePosition::VECIN, 1> inQueueX, inQueueGamma, inQueueCosSin;
     TQue<QuePosition::VECIN, 1> kScaleOffsetQueue, vScaleOffsetQueue;
     TQue<QuePosition::VECOUT, 1> outQueue;
     TBuf<TPosition::VECCALC> xPowBuffer;
     TBuf<TPosition::VECCALC> cacheBuffer;
     TBuf<TPosition::VECCALC> tmpReduceBuffer;
-    TPipe* pipe_ = nullptr;
+    TPipe *pipe_ = nullptr;
 
     LocalTensor<float> tmpReduceLocal;
 
@@ -2464,7 +2515,7 @@ private:
     int64_t dv1 = 0;
 
     DataCopyParams xDataCopyParams;
-    DataCopyPadParams padParams {false, 0, 0, 0};
+    DataCopyPadParams padParams{false, 0, 0, 0};
 
     static constexpr bool xToFp32_ = !IsSameType<T_KV, float>::value;
     static constexpr bool yToFp32_ = IsSameType<T_KV, float>::value;

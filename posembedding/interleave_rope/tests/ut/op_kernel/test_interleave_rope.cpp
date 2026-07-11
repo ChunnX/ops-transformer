@@ -26,11 +26,10 @@
 
 using namespace std;
 
-extern "C" __global__ __aicore__ void interleave_rope(
-    GM_ADDR x, GM_ADDR cos, GM_ADDR sin, GM_ADDR y, GM_ADDR workspace, GM_ADDR tiling);
+extern "C" __global__ __aicore__ void interleave_rope(GM_ADDR x, GM_ADDR cos, GM_ADDR sin, GM_ADDR y, GM_ADDR workspace,
+                                                      GM_ADDR tiling);
 
-class interleave_rope_test : public testing::Test
-{
+class interleave_rope_test : public testing::Test {
 protected:
     static void SetUpTestCase()
     {
@@ -51,17 +50,17 @@ TEST_F(interleave_rope_test, test_case_0001)
     size_t tiling_data_size = sizeof(InterleaveRopeTilingData);
     uint32_t blockDim = 8;
 
-    uint8_t* x = (uint8_t*)AscendC::GmAlloc(xSize);
-    uint8_t* y = (uint8_t*)AscendC::GmAlloc(ySize);
-    uint8_t* cos = (uint8_t*)AscendC::GmAlloc(cosSize);
-    uint8_t* sin = (uint8_t*)AscendC::GmAlloc(sinSize);
-    uint8_t* workspace = (uint8_t*)AscendC::GmAlloc(16 * 2);
-    uint8_t* tiling = (uint8_t*)AscendC::GmAlloc(tiling_data_size);
+    uint8_t *x = (uint8_t *)AscendC::GmAlloc(xSize);
+    uint8_t *y = (uint8_t *)AscendC::GmAlloc(ySize);
+    uint8_t *cos = (uint8_t *)AscendC::GmAlloc(cosSize);
+    uint8_t *sin = (uint8_t *)AscendC::GmAlloc(sinSize);
+    uint8_t *workspace = (uint8_t *)AscendC::GmAlloc(16 * 2);
+    uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(tiling_data_size);
 
-    char* path_ = get_current_dir_name();
+    char *path_ = get_current_dir_name();
     string path(path_);
 
-    InterleaveRopeTilingData* tilingDatafromBin = reinterpret_cast<InterleaveRopeTilingData*>(tiling);
+    InterleaveRopeTilingData *tilingDatafromBin = reinterpret_cast<InterleaveRopeTilingData *>(tiling);
 
     tilingDatafromBin->blockDim = 8;
 
@@ -86,17 +85,17 @@ TEST_F(interleave_rope_test, test_case_0002)
     size_t tiling_data_size = sizeof(InterleaveRopeTilingData);
     uint32_t blockDim = 8;
 
-    uint8_t* x = (uint8_t*)AscendC::GmAlloc(xSize);
-    uint8_t* y = (uint8_t*)AscendC::GmAlloc(ySize);
-    uint8_t* cos = (uint8_t*)AscendC::GmAlloc(cosSize);
-    uint8_t* sin = (uint8_t*)AscendC::GmAlloc(sinSize);
-    uint8_t* workspace = (uint8_t*)AscendC::GmAlloc(16 * 2);
-    uint8_t* tiling = (uint8_t*)AscendC::GmAlloc(tiling_data_size);
+    uint8_t *x = (uint8_t *)AscendC::GmAlloc(xSize);
+    uint8_t *y = (uint8_t *)AscendC::GmAlloc(ySize);
+    uint8_t *cos = (uint8_t *)AscendC::GmAlloc(cosSize);
+    uint8_t *sin = (uint8_t *)AscendC::GmAlloc(sinSize);
+    uint8_t *workspace = (uint8_t *)AscendC::GmAlloc(16 * 2);
+    uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(tiling_data_size);
 
-    char* path_ = get_current_dir_name();
+    char *path_ = get_current_dir_name();
     string path(path_);
 
-    InterleaveRopeTilingData* tilingDatafromBin = reinterpret_cast<InterleaveRopeTilingData*>(tiling);
+    InterleaveRopeTilingData *tilingDatafromBin = reinterpret_cast<InterleaveRopeTilingData *>(tiling);
 
     tilingDatafromBin->blockDim = 8;
 
@@ -121,17 +120,17 @@ TEST_F(interleave_rope_test, test_case_0003)
     size_t tiling_data_size = sizeof(InterleaveRopeTilingData);
     uint32_t blockDim = 8;
 
-    uint8_t* x = (uint8_t*)AscendC::GmAlloc(xSize);
-    uint8_t* y = (uint8_t*)AscendC::GmAlloc(ySize);
-    uint8_t* cos = (uint8_t*)AscendC::GmAlloc(cosSize);
-    uint8_t* sin = (uint8_t*)AscendC::GmAlloc(sinSize);
-    uint8_t* workspace = (uint8_t*)AscendC::GmAlloc(16 * 2);
-    uint8_t* tiling = (uint8_t*)AscendC::GmAlloc(tiling_data_size);
+    uint8_t *x = (uint8_t *)AscendC::GmAlloc(xSize);
+    uint8_t *y = (uint8_t *)AscendC::GmAlloc(ySize);
+    uint8_t *cos = (uint8_t *)AscendC::GmAlloc(cosSize);
+    uint8_t *sin = (uint8_t *)AscendC::GmAlloc(sinSize);
+    uint8_t *workspace = (uint8_t *)AscendC::GmAlloc(16 * 2);
+    uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(tiling_data_size);
 
-    char* path_ = get_current_dir_name();
+    char *path_ = get_current_dir_name();
     string path(path_);
 
-    InterleaveRopeTilingData* tilingDatafromBin = reinterpret_cast<InterleaveRopeTilingData*>(tiling);
+    InterleaveRopeTilingData *tilingDatafromBin = reinterpret_cast<InterleaveRopeTilingData *>(tiling);
 
     tilingDatafromBin->blockDim = 8;
 

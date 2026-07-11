@@ -84,16 +84,16 @@ ge::graphStatus MhcSinkhornTiling::GetShapeAttrsInfo()
     OP_CHECK_NULL_WITH_CONTEXT(context_, numItersPtr);
     num_iters_ = static_cast<int64_t>(*numItersPtr);
     if (num_iters_ < NUM_ONE || num_iters_ > NUM_ONE_HUNDRED) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "num_iters",
-            std::to_string(num_iters_).c_str(), "num_iters must be between 1 and 100");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "num_iters", std::to_string(num_iters_).c_str(),
+                                              "num_iters must be between 1 and 100");
         return ge::GRAPH_FAILED;
     }
     auto outFlagPtr = attrs->GetAttrPointer<int64_t>(ATTR_OUT_FLAG_IDX);
     OP_CHECK_NULL_WITH_CONTEXT(context_, outFlagPtr);
     outFlag_ = static_cast<int64_t>(*outFlagPtr);
     if (outFlag_ != NUM_ZERO && outFlag_ != NUM_ONE) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "out_flag",
-            std::to_string(outFlag_).c_str(), "out_flag must be 0 or 1");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "out_flag", std::to_string(outFlag_).c_str(),
+                                              "out_flag must be 0 or 1");
         return ge::GRAPH_FAILED;
     }
 
@@ -111,9 +111,8 @@ ge::graphStatus MhcSinkhornTiling::CheckInputDtype()
     OP_CHECK_NULL_WITH_CONTEXT(context_, xPtr);
     xDtype_ = xPtr->GetDataType();
     if (X_DTYPE.find(xDtype_) == X_DTYPE.end()) {
-        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, "x",
-            ge::TypeUtils::DataTypeToSerialString(xDtype_).c_str(),
-            "x dtype only supports float32, please check");
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, "x", ge::TypeUtils::DataTypeToSerialString(xDtype_).c_str(),
+                                              "x dtype only supports float32, please check");
         return ge::GRAPH_FAILED;
     }
 
@@ -121,9 +120,8 @@ ge::graphStatus MhcSinkhornTiling::CheckInputDtype()
     OP_CHECK_NULL_WITH_CONTEXT(context_, outputPtr);
     auto outputDtype = outputPtr->GetDataType();
     if (outputDtype != xDtype_) {
-        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(opName_, "y",
-            ge::TypeUtils::DataTypeToSerialString(outputDtype).c_str(),
-            "the dtype of y must be equal to the dtype of x");
+        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(opName_, "y", ge::TypeUtils::DataTypeToSerialString(outputDtype).c_str(),
+                                               "the dtype of y must be equal to the dtype of x");
         return ge::GRAPH_FAILED;
     }
 
@@ -136,14 +134,13 @@ ge::graphStatus MhcSinkhornTiling::CheckInputShape()
     OP_CHECK_NULL_WITH_CONTEXT(context_, xShapePtr);
     auto xShape = xShapePtr->GetStorageShape();
     if (xShape.GetShapeSize() == 0) {
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "x",
-            "empty tensor", "each dimension must be >= 1");
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "x", "empty tensor", "each dimension must be >= 1");
         return ge::GRAPH_FAILED;
     }
     xDimNum_ = static_cast<int64_t>(xShape.GetDimNum());
     if (xDimNum_ != DIM_NUM_3 && xDimNum_ != DIM_NUM_4) {
-        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(opName_, "x",
-            std::to_string(xDimNum_).c_str(), "the dim of x must be 3 or 4");
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(opName_, "x", std::to_string(xDimNum_).c_str(),
+                                                 "the dim of x must be 3 or 4");
         return ge::GRAPH_FAILED;
     }
     auto n0 = xShape.GetDim(DIM_TWO);
@@ -157,13 +154,12 @@ ge::graphStatus MhcSinkhornTiling::CheckInputShape()
     }
     if (n_ != n0) {
         std::string shapeMsg = "{" + std::to_string(n0) + ", " + std::to_string(n_) + "}";
-        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(opName_, "n0, n1",
-            shapeMsg.c_str(), "n0 must be equal to n1");
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(opName_, "n0, n1", shapeMsg.c_str(), "n0 must be equal to n1");
         return ge::GRAPH_FAILED;
     }
     if (n_ != N_NUM_4 && n_ != N_NUM_6 && n_ != N_NUM_8) {
-        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(opName_, "x_n",
-            std::to_string(n_).c_str(), "x nDim must be 4, 6, or 8");
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(opName_, "x_n", std::to_string(n_).c_str(),
+                                                 "x nDim must be 4, 6, or 8");
         return ge::GRAPH_FAILED;
     }
 
@@ -172,20 +168,19 @@ ge::graphStatus MhcSinkhornTiling::CheckInputShape()
     auto yShape = yShapePtr->GetStorageShape();
     yDimNum_ = static_cast<int64_t>(yShape.GetDimNum());
     if (yDimNum_ != DIM_NUM_3 && yDimNum_ != DIM_NUM_4) {
-        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(opName_, "y",
-            std::to_string(yDimNum_).c_str(), "the dim of y must be 3 or 4");
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(opName_, "y", std::to_string(yDimNum_).c_str(),
+                                                 "the dim of y must be 3 or 4");
         return ge::GRAPH_FAILED;
     }
     int64_t n = yShape.GetDim(DIM_TWO);
     if (n != 4 && n != 6 && n != 8) {
-        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(opName_, "y_n",
-            std::to_string(n).c_str(), "y nDim must be 4, 6, or 8");
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(opName_, "y_n", std::to_string(n).c_str(),
+                                                 "y nDim must be 4, 6, or 8");
         return ge::GRAPH_FAILED;
     }
     if (yDimNum_ != xDimNum_) {
         std::string dimMsg = "y=" + std::to_string(yDimNum_) + ", x=" + std::to_string(xDimNum_);
-        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(opName_, "x, y",
-            dimMsg.c_str(), "y dim must equal x dim");
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(opName_, "x, y", dimMsg.c_str(), "y dim must equal x dim");
         return ge::GRAPH_FAILED;
     }
 

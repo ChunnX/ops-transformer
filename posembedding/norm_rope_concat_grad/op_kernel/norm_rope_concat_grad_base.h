@@ -191,7 +191,7 @@ public:
             DataCopyPad(rope, sinGm_[curSeq * ropeDim_], params, padParams);
             DataCopyPad(rope[alignedRopeDim_], cosGm_[curSeq * ropeDim_], params, padParams);
         }
-        
+
         ropeQueue_.EnQue(rope);
         LocalTensor<DTYPE_ROPE_SIN> deQue = ropeQueue_.DeQue<DTYPE_ROPE_SIN>();
         if (sizeof(DTYPE_ROPE_SIN) < sizeof(float)) {

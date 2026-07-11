@@ -43,10 +43,8 @@ private:
     __aicore__ inline void ComputeMultiPass(LocalTensor<float> &smoothLocal);
     __aicore__ inline void ScatterOutXDynamicQuant();
     __aicore__ inline void GatherOutXDynamicQuant();
-    __aicore__ inline void StoreInt4QuantOut(__local_mem__ uint8_t *outUbAddr,
-                                             MicroAPI::RegTensor<float> &inReg,
-                                             MicroAPI::MaskReg &maskRegInLoop,
-                                             MicroAPI::MaskReg &maskRegHalf);
+    __aicore__ inline void StoreInt4QuantOut(__local_mem__ uint8_t *outUbAddr, MicroAPI::RegTensor<float> &inReg,
+                                             MicroAPI::MaskReg &maskRegInLoop, MicroAPI::MaskReg &maskRegHalf);
 
 private:
     TQue<QuePosition::VECIN, 3> inputXInQueue_;
@@ -75,8 +73,7 @@ __aicore__ inline void
 MoeV3FullLoadDynamicQuant<T, QuantT>::Init(GM_ADDR x, GM_ADDR expertIdx, GM_ADDR scale, GM_ADDR expandedX,
                                            GM_ADDR expandedRowIdx, GM_ADDR expertTokensCountOrCumsum,
                                            GM_ADDR expandedScale, GM_ADDR workspace,
-                                           const MoeInitRoutingV3Arch35TilingData *tilingData,
-                                           TPipe *tPipe)
+                                           const MoeInitRoutingV3Arch35TilingData *tilingData, TPipe *tPipe)
 {
     MoeV3FullLoadBase<T>::Init(expertIdx, expandedRowIdx, expertTokensCountOrCumsum, workspace, tilingData, tPipe);
 
@@ -109,9 +106,10 @@ MoeV3FullLoadDynamicQuant<T, QuantT>::Init(GM_ADDR x, GM_ADDR expertIdx, GM_ADDR
 }
 
 template <typename T, typename QuantT>
-__aicore__ inline void MoeV3FullLoadDynamicQuant<T, QuantT>::StoreInt4QuantOut(
-    __local_mem__ uint8_t *outUbAddr, MicroAPI::RegTensor<float> &inReg, MicroAPI::MaskReg &maskRegInLoop,
-    MicroAPI::MaskReg &maskRegHalf)
+__aicore__ inline void MoeV3FullLoadDynamicQuant<T, QuantT>::StoreInt4QuantOut(__local_mem__ uint8_t *outUbAddr,
+                                                                               MicroAPI::RegTensor<float> &inReg,
+                                                                               MicroAPI::MaskReg &maskRegInLoop,
+                                                                               MicroAPI::MaskReg &maskRegHalf)
 {
     MicroAPI::RegTensor<half> outRegF16;
     MicroAPI::RegTensor<uint8_t> outRegI4;
@@ -119,8 +117,8 @@ __aicore__ inline void MoeV3FullLoadDynamicQuant<T, QuantT>::StoreInt4QuantOut(
 
     MicroAPI::Cast<half, float, castTraitF32ToF16>(outRegF16, inReg, maskRegInLoop);
     MicroAPI::Pack(outRegPackedHalf, (MicroAPI::RegTensor<uint32_t> &)outRegF16);
-    MicroAPI::Cast<int4x2_t, half, castTraitF16ToI4>(
-        (MicroAPI::RegTensor<int4x2_t> &)outRegI4, (MicroAPI::RegTensor<half> &)outRegPackedHalf, maskRegInLoop);
+    MicroAPI::Cast<int4x2_t, half, castTraitF16ToI4>((MicroAPI::RegTensor<int4x2_t> &)outRegI4,
+                                                     (MicroAPI::RegTensor<half> &)outRegPackedHalf, maskRegInLoop);
     MicroAPI::DataCopy<uint8_t, MicroAPI::StoreDist::DIST_PACK4_B32>(outUbAddr, outRegI4, maskRegHalf);
 }
 
@@ -322,8 +320,7 @@ __aicore__ inline void MoeV3FullLoadDynamicQuant<T, QuantT>::ScatterOutXDynamicQ
         if constexpr (IsSameType<T, float>::value) {
             DataCopyPad(inLocal, xGm_[srcIdx / this->k_ * this->cols_], copyInParams, {false, 0, 0, 0});
         } else {
-            DataCopyPad(inLocal[colsAlign_], xGm_[srcIdx / this->k_ * this->cols_], copyInParams,
-                        {false, 0, 0, 0});
+            DataCopyPad(inLocal[colsAlign_], xGm_[srcIdx / this->k_ * this->cols_], copyInParams, {false, 0, 0, 0});
         }
         inputXInQueue_.EnQue<T>(inLocal);
 

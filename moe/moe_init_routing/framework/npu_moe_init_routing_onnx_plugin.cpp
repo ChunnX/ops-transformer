@@ -18,42 +18,44 @@ namespace domi {
 using NodeProto = ge::onnx::NodeProto;
 static const int REQ_ATTR_NUM = 1;
 
-static Status ParseParamsNpuMoeInitRouting(const Message* op_src, ge::Operator& op_dest) {
+static Status ParseParamsNpuMoeInitRouting(const Message *op_src, ge::Operator &op_dest)
+{
     const NodeProto *node = dynamic_cast<const NodeProto *>(op_src);
     if (node == nullptr) {
-      OP_LOGE(GetOpName(op_dest).c_str(), "Dynamic cast op_src to NodeProto failed.");
-      return FAILED;
+        OP_LOGE(GetOpName(op_dest).c_str(), "Dynamic cast op_src to NodeProto failed.");
+        return FAILED;
     }
     // The initialization of required attributes count
     int req_attr_count = 0;
-    for (const auto& attr: node->attribute()) {
-      if (attr.name() == "active_num" && attr.type() == ge::onnx::AttributeProto::INT) {
-        int active_num = attr.i();
-        op_dest.SetAttr("active_num", active_num);
-        ++req_attr_count;
-      }
+    for (const auto &attr : node->attribute()) {
+        if (attr.name() == "active_num" && attr.type() == ge::onnx::AttributeProto::INT) {
+            int active_num = attr.i();
+            op_dest.SetAttr("active_num", active_num);
+            ++req_attr_count;
+        }
     }
     // Node must have required attribute active_num
     if (req_attr_count != REQ_ATTR_NUM) {
-      OP_LOGE(GetOpName(op_dest).c_str(), "Node must have attr active_num.");
-      return FAILED;
+        OP_LOGE(GetOpName(op_dest).c_str(), "Node must have attr active_num.");
+        return FAILED;
     }
     return SUCCESS;
 }
 
 // register npu_moe_init_routing op info to GE
 REGISTER_CUSTOM_OP("MoeInitRouting")
-  .FrameworkType(ONNX)
-  .OriginOpType({ge::AscendString("npu::1::NPUMoeInitRouting"),
-                 ge::AscendString("ai.onnx::11::NPUMoeInitRouting"),
-                 ge::AscendString("ai.onnx::12::NPUMoeInitRouting"),
-                 ge::AscendString("ai.onnx::13::NPUMoeInitRouting"),
-                 ge::AscendString("ai.onnx::14::NPUMoeInitRouting"),
-                 ge::AscendString("ai.onnx::15::NPUMoeInitRouting"),
-                 ge::AscendString("ai.onnx::16::NPUMoeInitRouting"),
-                 ge::AscendString("ai.onnx::17::NPUMoeInitRouting"),
-                 ge::AscendString("ai.onnx::18::NPUMoeInitRouting"),
-                })
-  .ParseParamsFn(ParseParamsNpuMoeInitRouting)
-  .ImplyType(ImplyType::TVM);
+    .FrameworkType(ONNX)
+    .OriginOpType({
+        ge::AscendString("npu::1::NPUMoeInitRouting"),
+        ge::AscendString("ai.onnx::11::NPUMoeInitRouting"),
+        ge::AscendString("ai.onnx::12::NPUMoeInitRouting"),
+        ge::AscendString("ai.onnx::13::NPUMoeInitRouting"),
+        ge::AscendString("ai.onnx::14::NPUMoeInitRouting"),
+        ge::AscendString("ai.onnx::15::NPUMoeInitRouting"),
+        ge::AscendString("ai.onnx::16::NPUMoeInitRouting"),
+        ge::AscendString("ai.onnx::17::NPUMoeInitRouting"),
+        ge::AscendString("ai.onnx::18::NPUMoeInitRouting"),
+    })
+    .ParseParamsFn(ParseParamsNpuMoeInitRouting)
+    .ImplyType(ImplyType::TVM);
 } // namespace domi

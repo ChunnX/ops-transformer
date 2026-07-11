@@ -18,51 +18,51 @@
 - 算子功能：对输入张量（x）进行dequant（可选）后，按`sizeSplits`（为切分的长度）对尾轴进行切分，划分为q、k、vOut，对q、k进行旋转位置编码，生成qOut和kOut，之后对kOut和vOut进行量化并按照`indices`更新到kCacheRef和vCacheRef上。
 
 - 计算公式：
-  
+
   $$
   dequantX = Dequant(x,weightScaleOptional,activationScaleOptional,biasOptional)
   $$
-  
+
   $$
   q,k,vOut = SplitTensor(dequantX,dim=-1,`sizeSplits`)
   $$
-  
+
   $$
   qOut,kOut = ApplyRotaryPosEmb(q,k,cos,sin)
   $$
-  
+
   $$
   quantK = Quant(kOut,scaleK,offsetKOptional)
   $$
-  
+
   $$
   quantV = Quant(vOut,scaleV,offsetVOptional)
   $$
-  
+
   如果cacheModeOptional为contiguous则：
-  
+
   $$
   kCacheRef[i][indice[i]]=quantK[i]
   $$
-  
+
   $$
   vCacheRef[i][indice[i]]=quantV[i]
   $$
-  
+
   如果cacheModeOptional为page则：
-  
+
   $$
   kCacheRefView=kCacheRef.view(-1,kCacheRef[-2],kCacheRef[-1])
   $$
-  
+
   $$
   vCacheRefView=vCacheRef.view(-1,vCacheRef[-2],vCacheRef[-1])
   $$
-  
+
   $$
   kCacheRefView[indices[i]]=quantK[i]
   $$
-  
+
   $$
   vCacheRefView[indices[i]]=quantV[i]
   $$
@@ -73,36 +73,36 @@
 
 ```Cpp
 aclnnStatus aclnnDequantRopeQuantKvcacheGetWorkspaceSize(
-  const aclTensor   *x, 
-  const aclTensor   *cos, 
-  const aclTensor   *sin, 
-  aclTensor         *kCacheRef, 
-  aclTensor         *vCacheRef, 
-  const aclTensor   *indices, 
-  const aclTensor   *scaleK, 
-  const aclTensor   *scaleV, 
-  const aclTensor   *offsetKOptional, 
-  const aclTensor   *offsetVOptional, 
-  const aclTensor   *weightScaleOptional, 
-  const aclTensor   *activationScaleOptional, 
-  const aclTensor   *biasOptional, 
-  const aclIntArray *sizeSplits, 
-  char              *quantModeOptional, 
-  char              *layoutOptional, 
-  bool               kvOutput, 
-  char              *cacheModeOptional, 
-  const aclTensor   *qOut, 
-  const aclTensor   *kOut, 
-  const aclTensor   *vOut, 
-  uint64_t          *workspaceSize, 
+  const aclTensor   *x,
+  const aclTensor   *cos,
+  const aclTensor   *sin,
+  aclTensor         *kCacheRef,
+  aclTensor         *vCacheRef,
+  const aclTensor   *indices,
+  const aclTensor   *scaleK,
+  const aclTensor   *scaleV,
+  const aclTensor   *offsetKOptional,
+  const aclTensor   *offsetVOptional,
+  const aclTensor   *weightScaleOptional,
+  const aclTensor   *activationScaleOptional,
+  const aclTensor   *biasOptional,
+  const aclIntArray *sizeSplits,
+  char              *quantModeOptional,
+  char              *layoutOptional,
+  bool               kvOutput,
+  char              *cacheModeOptional,
+  const aclTensor   *qOut,
+  const aclTensor   *kOut,
+  const aclTensor   *vOut,
+  uint64_t          *workspaceSize,
   aclOpExecutor    **executor)
 ```
 
 ```Cpp
 aclnnStatus aclnnDequantRopeQuantKvcache(
-  void*          workspace, 
-  uint64_t       workspaceSize, 
-  aclOpExecutor* executor, 
+  void*          workspace,
+  uint64_t       workspaceSize,
+  aclOpExecutor* executor,
   aclrtStream    stream)
 ```
 
@@ -365,9 +365,9 @@ aclnnStatus aclnnDequantRopeQuantKvcache(
     </tbody></table>
 
 - **返回值**
-  
+
   aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
-  
+
   第一段接口完成入参校验，出现以下场景时报错：
 
   <table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
@@ -398,7 +398,7 @@ aclnnStatus aclnnDequantRopeQuantKvcache(
 ## aclnnDequantRopeQuantKvcache
 
 - **参数说明**
-  
+
   <table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
   <col style="width: 168px">
   <col style="width: 128px">
@@ -435,7 +435,7 @@ aclnnStatus aclnnDequantRopeQuantKvcache(
   </table>
 
 - **返回值**
-  
+
   aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
 ## 约束说明

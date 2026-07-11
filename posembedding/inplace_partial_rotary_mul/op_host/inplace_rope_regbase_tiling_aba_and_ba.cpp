@@ -115,11 +115,9 @@ ge::graphStatus InplacePartialRopeRegBaseTilingClassABAAndBA::ComputeUbFactor()
 
     int64_t numOfDAvailable = FloorDiv(static_cast<int64_t>(aicoreParams_.ubSize), totalDSize);
     OP_CHECK_IF(numOfDAvailable < ubFactorB_ + 1,
-        OP_LOGE(context_,
-            "D is too big to load in ub, ubSize is %ld bytes, loading requires %ld bytes.",
-            static_cast<int64_t>(aicoreParams_.ubSize),
-            totalDSize * (ubFactorB_ + 1)),
-        return ge::GRAPH_FAILED);
+                OP_LOGE(context_, "D is too big to load in ub, ubSize is %ld bytes, loading requires %ld bytes.",
+                        static_cast<int64_t>(aicoreParams_.ubSize), totalDSize * (ubFactorB_ + 1)),
+                return ge::GRAPH_FAILED);
 
     ubFactorS_ = std::min(blockFactorS_, FloorDiv(numOfDAvailable, ubFactorB_ + 1));
     ubFactorS_ = std::min(ubFactorS_, MAX_COPY_BLOCK_COUNT / dSplitCoef_);
@@ -179,45 +177,27 @@ void InplacePartialRopeRegBaseTilingClassABAAndBA::SetTilingData()
     tilingData_.set_sliceLength(static_cast<int64_t>(sliceLength_));
 
     OP_LOGI(context_->GetNodeName(),
-        "InplacePartialRopeRegBaseTilingClassABAAndBA tilingData: "
-        "B is %ld, CosB is %ld, S is %ld, D is %ld, N is %ld, blockNumB %ld,"
-        "blockFactorB_ is %ld, blockNumS %ld, blockFactorS is %ld, ubLoopNumS is %ld,"
-        "ubFactorS is %ld, ubTailFactorS %ld, ubLoopNumB is %ld, ubFactorB is %ld,"
-        "ubTailFactorB is %ld, ubLoopNumN is %ld, ubFactorN is %ld, ubTailFactorN is %ld,"
-        "rotaryMode is %ld, tilingKey is %ld, sliceStart is %ld, sliceEnd is %ld, sliceLength is %ld",
-        tilingData_.get_B(),
-        tilingData_.get_CosB(),
-        tilingData_.get_S(),
-        tilingData_.get_D(),
-        tilingData_.get_N(),
-        tilingData_.get_blockNumB(),
-        tilingData_.get_blockFactorB(),
-        tilingData_.get_blockNumS(),
-        tilingData_.get_blockFactorS(),
-        tilingData_.get_ubLoopNumS(),
-        tilingData_.get_ubFactorS(),
-        tilingData_.get_ubTailFactorS(),
-        tilingData_.get_ubLoopNumB(),
-        tilingData_.get_ubFactorB(),
-        tilingData_.get_ubTailFactorB(),
-        tilingData_.get_ubLoopNumN(),
-        tilingData_.get_ubFactorN(),
-        tilingData_.get_ubTailFactorN(),
-        tilingData_.get_rotaryMode(),
-        GetTilingKey(),
-        tilingData_.get_sliceStart(),
-        tilingData_.get_sliceEnd(),
-        tilingData_.get_sliceLength());
+            "InplacePartialRopeRegBaseTilingClassABAAndBA tilingData: "
+            "B is %ld, CosB is %ld, S is %ld, D is %ld, N is %ld, blockNumB %ld,"
+            "blockFactorB_ is %ld, blockNumS %ld, blockFactorS is %ld, ubLoopNumS is %ld,"
+            "ubFactorS is %ld, ubTailFactorS %ld, ubLoopNumB is %ld, ubFactorB is %ld,"
+            "ubTailFactorB is %ld, ubLoopNumN is %ld, ubFactorN is %ld, ubTailFactorN is %ld,"
+            "rotaryMode is %ld, tilingKey is %ld, sliceStart is %ld, sliceEnd is %ld, sliceLength is %ld",
+            tilingData_.get_B(), tilingData_.get_CosB(), tilingData_.get_S(), tilingData_.get_D(), tilingData_.get_N(),
+            tilingData_.get_blockNumB(), tilingData_.get_blockFactorB(), tilingData_.get_blockNumS(),
+            tilingData_.get_blockFactorS(), tilingData_.get_ubLoopNumS(), tilingData_.get_ubFactorS(),
+            tilingData_.get_ubTailFactorS(), tilingData_.get_ubLoopNumB(), tilingData_.get_ubFactorB(),
+            tilingData_.get_ubTailFactorB(), tilingData_.get_ubLoopNumN(), tilingData_.get_ubFactorN(),
+            tilingData_.get_ubTailFactorN(), tilingData_.get_rotaryMode(), GetTilingKey(), tilingData_.get_sliceStart(),
+            tilingData_.get_sliceEnd(), tilingData_.get_sliceLength());
 }
 
 ge::graphStatus InplacePartialRopeRegBaseTilingClassABAAndBA::DoOpTiling()
 {
-    OP_CHECK_IF(SplitCore() != ge::GRAPH_SUCCESS,
-        OP_LOGE(context_->GetNodeName(), "failed to split core."),
-        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(SplitCore() != ge::GRAPH_SUCCESS, OP_LOGE(context_->GetNodeName(), "failed to split core."),
+                return ge::GRAPH_FAILED);
     OP_CHECK_IF(ComputeUbFactor() != ge::GRAPH_SUCCESS,
-        OP_LOGE(context_->GetNodeName(), "failed to compute ub factor."),
-        return ge::GRAPH_FAILED);
+                OP_LOGE(context_->GetNodeName(), "failed to compute ub factor."), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -259,4 +239,4 @@ ge::graphStatus InplacePartialRopeRegBaseTilingClassABAAndBA::PostTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-}  // namespace optiling
+} // namespace optiling

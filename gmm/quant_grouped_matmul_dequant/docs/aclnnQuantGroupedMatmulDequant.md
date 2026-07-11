@@ -14,21 +14,21 @@
 ## 功能说明
 
 - 算子功能：对输入x进行量化，分组矩阵乘以及反量化。
-- 计算公式：  
+- 计算公式：
   1.若输入smoothScaleOptional，则
-  
+
   $$
       x = x\cdot scale_{smooth}
   $$
 
   2.若不输入xScaleOptional，则为动态量化，需要计算x量化系数
-  
+
   $$
       scale_{x}=row\_max(abs(x))/max_{quantDataType}
   $$
 
   3.量化
-  
+
   $$
       x_{quantized}=round(x/scale_{x})
   $$
@@ -252,7 +252,7 @@ aclnnStatus aclnnQuantGroupedMatmulDequant(
   </tbody>
   </table>
 
-    - ND格式下，weight的shape支持3维。 
+    - ND格式下，weight的shape支持3维。
       - 在transposeWeight为true情况下各个维度表示：（g，n，k）。
       - 在transposeWeight为false情况下各个维度表示：（g，k，n）。
     - FRACTAL_NZ格式下，weight的shape支持5维。
@@ -499,7 +499,7 @@ int main() {
   // 调用aclnnQuantGroupedMatmulDequant第一段接口
   ret = aclnnQuantGroupedMatmulDequantGetWorkspaceSize(x, weight, weightScale, groupList,
                                                 bias, xScale, xOffset, smoothScale,
-                                                quantMode, transposeWeight, out, 
+                                                quantMode, transposeWeight, out,
                                                 &workspaceSize, &executor);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnQuantGroupedMatmulDequantGetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
 

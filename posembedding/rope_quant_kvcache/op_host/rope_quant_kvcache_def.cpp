@@ -14,10 +14,9 @@
  */
 #include "register/op_def_registry.h"
 namespace ops {
-class RopeQuantKvcache : public OpDef
-{
+class RopeQuantKvcache : public OpDef {
 public:
-    explicit RopeQuantKvcache(const char* name) : OpDef(name)
+    explicit RopeQuantKvcache(const char *name) : OpDef(name)
     {
         this->Input("qkv")
             .ParamType(REQUIRED)

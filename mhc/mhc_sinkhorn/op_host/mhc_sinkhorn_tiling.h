@@ -27,8 +27,7 @@
 #include "../op_kernel/arch35/mhc_sinkhorn_struct.h"
 #include "../op_kernel/arch35/mhc_sinkhorn_tiling_key.h"
 
-namespace optiling
-{
+namespace optiling {
 using Ops::Transformer::OpTiling::TilingBaseClass;
 
 
@@ -37,10 +36,9 @@ struct MhcSinkhornCompileInfo {
     int64_t ubSize{0};
 };
 
-class MhcSinkhornTiling : public TilingBaseClass
-{
+class MhcSinkhornTiling : public TilingBaseClass {
 public:
-    explicit MhcSinkhornTiling(gert::TilingContext* context) : TilingBaseClass(context)
+    explicit MhcSinkhornTiling(gert::TilingContext *context) : TilingBaseClass(context)
     {
     }
 
@@ -70,7 +68,7 @@ private:
     int64_t tTailCoreLoop_ = 0;
     int64_t tUbTailTail_ = 0;
     int64_t tNormCore_ = 0;
-    
+
     int64_t tTailCore_ = 0;
     int64_t tilingKey_ = 0;
     int64_t totalCoreNum_ = 0;
@@ -85,7 +83,7 @@ private:
     gert::Shape outputShape_;
     ge::DataType xDtype_ = ge::DT_UNDEFINED;
     MhcSinkhornTilingData tilingData_;
-    const char* opName_ = "MhcSinkhorn";
+    const char *opName_ = "MhcSinkhorn";
 };
-}  // namespace optiling
-#endif  // AIR_CXX_RUNTIME_V2_OP_IMPL_MHC_SINKHORN_TILING_H_
+} // namespace optiling
+#endif // AIR_CXX_RUNTIME_V2_OP_IMPL_MHC_SINKHORN_TILING_H_

@@ -20,7 +20,7 @@
 
 using namespace AscendC;
 
-template<bool TILINGKEY>
+template <bool TILINGKEY>
 __global__ __aicore__ void
 mhc_pre_sinkhorn_backward(GM_ADDR grad_hin, GM_ADDR grad_h_post, GM_ADDR grad_h_res, GM_ADDR x, GM_ADDR phi,
                           GM_ADDR alpha, GM_ADDR bias, GM_ADDR h_pre, GM_ADDR hc_before_norm, GM_ADDR inv_rms,

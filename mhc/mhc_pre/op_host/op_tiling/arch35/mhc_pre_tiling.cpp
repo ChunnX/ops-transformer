@@ -288,8 +288,8 @@ ge::graphStatus MhcPreBaseTiling::CheckBsndOutputShape(uint64_t b, uint64_t s, u
         OP_CHECK_IF(outHresShape->GetDimNum() != DIM_NUM_4 || outHresShape->GetDim(DIM_0) != b ||
                         outHresShape->GetDim(DIM_1) != s || outHresShape->GetDim(DIM_2) != n ||
                         outHresShape->GetDim(DIM_3) != n,
-                    OP_LOGE(context_->GetNodeName(),
-                        "OutHres shape (B,S,N,N) mismatch with X"), return ge::GRAPH_FAILED);
+                    OP_LOGE(context_->GetNodeName(), "OutHres shape (B,S,N,N) mismatch with X"),
+                    return ge::GRAPH_FAILED);
     }
 
     auto outInvRmsShapePtr = context_->GetOutputShape(OUT_INV_RMS_INDEX);
@@ -664,8 +664,8 @@ ge::graphStatus MhcPreBaseTiling::CheckUbBufferSize()
     }
 
     if (hasGamma_) {
-        size_t gammaBufferLength = (tilingMode_ == TilingMode::SPLIT_BS) ? SPLIT_BS_GAMMA_BUFFER_LENGTH
-                                                                         : SPLIT_ND_GAMMA_BUFFER_LENGTH;
+        size_t gammaBufferLength =
+            (tilingMode_ == TilingMode::SPLIT_BS) ? SPLIT_BS_GAMMA_BUFFER_LENGTH : SPLIT_ND_GAMMA_BUFFER_LENGTH;
         dynamicBufferSize += gammaBufferLength * floatSize;
     }
 

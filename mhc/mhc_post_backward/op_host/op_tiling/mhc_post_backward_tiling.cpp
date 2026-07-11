@@ -20,8 +20,8 @@
 #include "log/log.h"
 #include "kernel_tiling/kernel_tiling.h"
 
-using Ops::Transformer::OpTiling::TilingRegistryNew;
 using Ops::Transformer::OpTiling::TilingRegistryArch;
+using Ops::Transformer::OpTiling::TilingRegistryNew;
 
 namespace optiling {
 static ge::graphStatus Tiling4MhcPostBackward(gert::TilingContext *context)

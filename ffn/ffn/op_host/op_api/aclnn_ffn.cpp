@@ -341,8 +341,9 @@ static aclnnStatus CheckQuantScaleAndOffset(const FFNParams &ffnParams, bool has
                        "BFLOAT16 for output dtype is BFLOAT16, others are not supported.");
         }
     } else {
-        CHECK_COND(
-            scaleDimNum == 1 && (scaleLengthDim0 == 1 || scaleLengthDim0 == weight1N1), ACLNN_ERR_PARAM_INVALID, "scale dimNum should be 1 and dimValue should be equal to n1 or 1 when no experts, but currently dimNum is %lu, dimValue is %ld",
+        CHECK_COND(scaleDimNum == 1 && (scaleLengthDim0 == 1 || scaleLengthDim0 == weight1N1), ACLNN_ERR_PARAM_INVALID,
+                   "scale dimNum should be 1 and dimValue should be equal to n1 or 1 when no experts, but currently "
+                   "dimNum is %lu, dimValue is %ld",
                    scaleDimNum, scaleLengthDim0);
         if (scaleLengthDim0 == weight1N1 && weight1N1 != 1) { // 1 represents the last dimension of weight1
             CHECK_COND(deqScaleDtype == DataType::DT_UINT64 || deqScaleDtype == DataType::DT_BF16 ||
@@ -374,7 +375,7 @@ static aclnnStatus CheckQuantDimNumAndShape(const FFNParams &ffnParams)
     auto offsetDimNum = ffnParams.offset->GetViewShape().GetDimNum();
     CHECK_COND(offsetDimNum == 1, ACLNN_ERR_PARAM_INVALID, "offset DimNum should be 1, but offset DimNum is %zu",
                offsetDimNum);
-    // check deqScale last dim is equal to the corresponding weight 
+    // check deqScale last dim is equal to the corresponding weight
     size_t weightSize = hasExperts ? DIM_NUM_THREE : DIM_NUM_TWO;
     size_t weightNDimIdx = weightSize - 1;
     size_t dequantParamNDimIdx = dequantParamSize - 1;
@@ -549,7 +550,7 @@ static aclnnStatus CheckAntiQuantShapeE(const FFNParams &ffnParams)
 
 static aclnnStatus CheckAntiQuantShape(const FFNParams &ffnParams)
 {
-    // check last dim of antiquant params is equal to the corresponding weight 
+    // check last dim of antiquant params is equal to the corresponding weight
     size_t antiquantParamSize = ffnParams.antiquantScale1->GetViewShape().GetDimNum();
     size_t weightSize = ffnParams.expertTokens != nullptr ? DIM_NUM_THREE : DIM_NUM_TWO;
     size_t weightNDimIdx = weightSize - 1;
@@ -560,13 +561,17 @@ static aclnnStatus CheckAntiQuantShape(const FFNParams &ffnParams)
     int64_t antiquantOffset1NDimValue = ffnParams.antiquantOffset1->GetViewShape().GetDim(antiquantParamNDimIdx);
     int64_t antiquantScale2NDimValue = ffnParams.antiquantScale2->GetViewShape().GetDim(antiquantParamNDimIdx);
     int64_t antiquantOffset2NDimValue = ffnParams.antiquantOffset2->GetViewShape().GetDim(antiquantParamNDimIdx);
-    CHECK_COND(antiquantScale1NDimValue == weight1NDimValue, ACLNN_ERR_PARAM_INVALID, "antiquantScale1 last dim should be %ld, but antiquantScale1 last dim is %ld", weight1NDimValue,
+    CHECK_COND(antiquantScale1NDimValue == weight1NDimValue, ACLNN_ERR_PARAM_INVALID,
+               "antiquantScale1 last dim should be %ld, but antiquantScale1 last dim is %ld", weight1NDimValue,
                antiquantScale1NDimValue);
-    CHECK_COND(antiquantOffset1NDimValue == weight1NDimValue, ACLNN_ERR_PARAM_INVALID, "antiquantOffset1 last dim should be %ld, but antiquantOffset1 last dim is %ld", weight1NDimValue,
+    CHECK_COND(antiquantOffset1NDimValue == weight1NDimValue, ACLNN_ERR_PARAM_INVALID,
+               "antiquantOffset1 last dim should be %ld, but antiquantOffset1 last dim is %ld", weight1NDimValue,
                antiquantOffset1NDimValue);
-    CHECK_COND(antiquantScale2NDimValue == weight2NDimValue, ACLNN_ERR_PARAM_INVALID, "antiquantScale2 last dim should be %ld, but antiquantScale2 last dim is %ld", weight2NDimValue,
+    CHECK_COND(antiquantScale2NDimValue == weight2NDimValue, ACLNN_ERR_PARAM_INVALID,
+               "antiquantScale2 last dim should be %ld, but antiquantScale2 last dim is %ld", weight2NDimValue,
                antiquantScale2NDimValue);
-    CHECK_COND(antiquantOffset2NDimValue == weight2NDimValue, ACLNN_ERR_PARAM_INVALID, "antiquantOffset2 last dim should be %ld, but antiquantOffset2 last dim is %ld", weight2NDimValue,
+    CHECK_COND(antiquantOffset2NDimValue == weight2NDimValue, ACLNN_ERR_PARAM_INVALID,
+               "antiquantOffset2 last dim should be %ld, but antiquantOffset2 last dim is %ld", weight2NDimValue,
                antiquantOffset2NDimValue);
 
     CHECK_COND(CheckAntiQuantW4Shape(ffnParams, weightNDimIdx) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
@@ -899,18 +904,18 @@ static aclnnStatus GetFFNResultByL0Api(FFNParams &ffnParams, const char *activat
     ret = InputsContiguousAndTransFormat(ffnParams.weight2, reformatedWeight2, "weight2", uniqueExecutor.get());
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
 
-    // when input tensor is from pytorch framework, its view_shape/ori_shape/storage_shape is different
-    // view_shape is ND-dimension as we expected, but ori_shape/storage_shape is flattened.
-    // Now storage_shape is used in tiling process to determine some scenarios like pergroup antiquant,
-    // smooth quant and etc. So we call l0op::contiguous to keep them identical.
-    // Currently quant_scale, antiquant_scale1,  antiquant_scale2 need to be processed.
-    
-    // 定义校验宏
-    #define CHECK_AND_CONVERT(param, param_name, conti_var) \
-        const aclTensor *conti_var = nullptr; \
-        CHECK_COND(InputsContiguousAndTransFormat(ffnParams.param, conti_var, #param_name, \
-                                                uniqueExecutor.get()) == ACLNN_SUCCESS, \
-                ACLNN_ERR_PARAM_INVALID, "Convert " #param_name " to contiguous tensor failed.")
+// when input tensor is from pytorch framework, its view_shape/ori_shape/storage_shape is different
+// view_shape is ND-dimension as we expected, but ori_shape/storage_shape is flattened.
+// Now storage_shape is used in tiling process to determine some scenarios like pergroup antiquant,
+// smooth quant and etc. So we call l0op::contiguous to keep them identical.
+// Currently quant_scale, antiquant_scale1,  antiquant_scale2 need to be processed.
+
+// 定义校验宏
+#define CHECK_AND_CONVERT(param, param_name, conti_var)                                                                \
+    const aclTensor *conti_var = nullptr;                                                                              \
+    CHECK_COND(InputsContiguousAndTransFormat(ffnParams.param, conti_var, #param_name, uniqueExecutor.get()) ==        \
+                   ACLNN_SUCCESS,                                                                                      \
+               ACLNN_ERR_PARAM_INVALID, "Convert " #param_name " to contiguous tensor failed.")
 
     // 使用宏进行校验和转换
     CHECK_AND_CONVERT(expertTokens, expertTokens, contiExpertTokens);
@@ -928,13 +933,10 @@ static aclnnStatus GetFFNResultByL0Api(FFNParams &ffnParams, const char *activat
 
     // call l0 interface
     DataType yDtype = ffnParams.y->GetDataType();
-    auto ffnResult =
-        l0op::FFN(reformatedX, reformatedWeight1, reformatedWeight2, 
-                contiExpertTokens, contiBias1, contiBias2,
-                contiQuantScale, contiOffset, contiDeqScale1, contiDeqScale2,
-                contiAntiScale1, contiAntiScale2, contiAntiOffset1, contiAntiOffset2,
-                activation, ffnParams.innerPrecise, yDtype, 
-                ffnParams.tokensIndexFlag, uniqueExecutor.get());
+    auto ffnResult = l0op::FFN(reformatedX, reformatedWeight1, reformatedWeight2, contiExpertTokens, contiBias1,
+                               contiBias2, contiQuantScale, contiOffset, contiDeqScale1, contiDeqScale2,
+                               contiAntiScale1, contiAntiScale2, contiAntiOffset1, contiAntiOffset2, activation,
+                               ffnParams.innerPrecise, yDtype, ffnParams.tokensIndexFlag, uniqueExecutor.get());
     CHECK_RET(ffnResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
     const aclTensor *reformatedFFNResult;
     ret = OutputransFormat(ffnParams, ffnResult, reformatedFFNResult, uniqueExecutor.get());

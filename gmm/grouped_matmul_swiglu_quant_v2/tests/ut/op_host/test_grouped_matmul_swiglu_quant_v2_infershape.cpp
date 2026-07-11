@@ -144,25 +144,19 @@ struct GroupedMatmulSwigluQuantV2InfershapeCase {
         ge::DataType offsetDataType = ops::ut::ParseGeDtype(offsetDtype);
         ge::DataType antiquantOffsetDataType = ops::ut::ParseGeDtype(antiquantOffsetDtype);
         vector<void *> inputDataTypes = {
-            &xDataType,
-            &xScaleDataType,
-            &groupListDataType,
-            &weightDataType,
-            &weightScaleDataType,
-            &biasDataType,
-            &offsetDataType,
-            &antiquantOffsetDataType,
+            &xDataType,           &xScaleDataType, &groupListDataType, &weightDataType,
+            &weightScaleDataType, &biasDataType,   &offsetDataType,    &antiquantOffsetDataType,
         };
 
-        auto contextHolder = gert::InferDataTypeContextFaker()
-                                 .SetOpType("GroupedMatmulSwigluQuantV2")
-                                 .NodeIoNum(8, 2)
-                                 .NodeOutputTd(0, ops::ut::ParseGeFormat(yFormat), ops::ut::ParseGeFormat(yFormat))
-                                 .NodeOutputTd(1, ops::ut::ParseGeFormat(yScaleFormat),
-                                               ops::ut::ParseGeFormat(yScaleFormat))
-                                 .InputDataTypes(inputDataTypes)
-                                 .NodeAttrs(BuildDtypeAttrs())
-                                 .Build();
+        auto contextHolder =
+            gert::InferDataTypeContextFaker()
+                .SetOpType("GroupedMatmulSwigluQuantV2")
+                .NodeIoNum(8, 2)
+                .NodeOutputTd(0, ops::ut::ParseGeFormat(yFormat), ops::ut::ParseGeFormat(yFormat))
+                .NodeOutputTd(1, ops::ut::ParseGeFormat(yScaleFormat), ops::ut::ParseGeFormat(yScaleFormat))
+                .InputDataTypes(inputDataTypes)
+                .NodeAttrs(BuildDtypeAttrs())
+                .Build();
         auto context = contextHolder.GetContext<gert::InferDataTypeContext>();
         ASSERT_NE(context, nullptr);
         auto inferDtypeRet = opImpl->infer_datatype(context);
@@ -341,8 +335,12 @@ const vector<GroupedMatmulSwigluQuantV2InfershapeCase> &GetSwigluQuantV2Infersha
 class TestGroupedMatmulSwigluQuantV2Infershape
     : public testing::TestWithParam<GroupedMatmulSwigluQuantV2InfershapeCase> {
 protected:
-    static void SetUpTestCase() {}
-    static void TearDownTestCase() {}
+    static void SetUpTestCase()
+    {
+    }
+    static void TearDownTestCase()
+    {
+    }
 };
 
 TEST_P(TestGroupedMatmulSwigluQuantV2Infershape, csvDrivenCase)

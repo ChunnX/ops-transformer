@@ -125,8 +125,8 @@ private:
     __aicore__ inline void ComputeTileAiv(TileParam &tile, const TileParam &lastTile, bool isLastTile)
     {
         const uint32_t aRotL1BufferId = static_cast<uint32_t>(tileCount_ & (QKV_K_SCALE_DOUBLE_BUFFER_NUM - 1U));
-        const uint32_t outputBufferId = static_cast<uint32_t>(outputBufferUseId_ &
-                                                              (QKV_K_SCALE_DOUBLE_BUFFER_NUM - 1U));
+        const uint32_t outputBufferId =
+            static_cast<uint32_t>(outputBufferUseId_ & (QKV_K_SCALE_DOUBLE_BUFFER_NUM - 1U));
         const LocalTensor<bfloat16_t> aRotL1Nz =
             aRotL1Pool_[aRotL1BufferId * QKV_K_SCALE_A_ROT_L1_LOGICAL_BUFFER_ELEMENTS];
         WaitAicMte1ToAivMte3AConsumed();
@@ -138,8 +138,8 @@ private:
         }
         SetAivMte3ToAicMte1AReady();
         if (tileCount_ > 0U) {
-            const uint32_t lastOutputBufferId = static_cast<uint32_t>(outputBufferUseId_ &
-                                                                      (QKV_K_SCALE_DOUBLE_BUFFER_NUM - 1U));
+            const uint32_t lastOutputBufferId =
+                static_cast<uint32_t>(outputBufferUseId_ & (QKV_K_SCALE_DOUBLE_BUFFER_NUM - 1U));
             WaitAicFixToAivVCReady();
             vec_.PostprocessQk(lastTile,
                                outputDbPoolUb_[lastOutputBufferId * QKV_K_SCALE_OUTPUT_ONE_BUFFER_FLOAT_ELEMENTS],
@@ -164,8 +164,8 @@ private:
     __aicore__ inline void EndAiv(const TileParam &lastTile)
     {
         if (tileCount_ > 0U) {
-            const uint32_t lastOutputBufferId = static_cast<uint32_t>(outputBufferUseId_ &
-                                                                      (QKV_K_SCALE_DOUBLE_BUFFER_NUM - 1U));
+            const uint32_t lastOutputBufferId =
+                static_cast<uint32_t>(outputBufferUseId_ & (QKV_K_SCALE_DOUBLE_BUFFER_NUM - 1U));
             WaitAicFixToAivVCReady();
             vec_.PostprocessQk(lastTile,
                                outputDbPoolUb_[lastOutputBufferId * QKV_K_SCALE_OUTPUT_ONE_BUFFER_FLOAT_ELEMENTS],
