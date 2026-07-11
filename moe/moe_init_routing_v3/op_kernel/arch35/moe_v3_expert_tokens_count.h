@@ -263,6 +263,9 @@ __aicore__ inline void ExpertTokensCount::expertCountCompute()
     event_t eventIDMte2ToS = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_S));
     SetFlag<HardEvent::MTE2_S>(eventIDMte2ToS);
     WaitFlag<HardEvent::MTE2_S>(eventIDMte2ToS);
+    // 方案一优化：获取指针地址，消除循环内 GetValue/SetValue 的标量调用开销
+    __local_mem__ int32_t *inputPtr = (__local_mem__ int32_t *)expertCountTempInLocal.GetPhyAddr();
+    __local_mem__ int64_t *outputPtr = (__local_mem__ int64_t *)expertCountOutLocal.GetPhyAddr();
     if (expertTokensNumType_ == KEY_VALUE_MODE) {
         int64_t expertOffset = 0;
         Duplicate(expertCountOutLocal.ReinterpretCast<int32_t>(), static_cast<int32_t>(0),
@@ -271,10 +274,10 @@ __aicore__ inline void ExpertTokensCount::expertCountCompute()
         SetFlag<HardEvent::V_S>(eventIDVToS);
         WaitFlag<HardEvent::V_S>(eventIDVToS);
         for (int64_t i = 0; i < actualExpertNum_; i++) {
-            int64_t expertCount = static_cast<int64_t>(expertCountTempInLocal.GetValue(i));
+            int64_t expertCount = static_cast<int64_t>(inputPtr[i]);
             if (expertCount != 0) {
-                expertCountOutLocal.SetValue(expertOffset * KEY_VALUE_MODE_DIM_NUM, i + expertStart_);
-                expertCountOutLocal.SetValue(expertOffset * KEY_VALUE_MODE_DIM_NUM + 1, expertCount);
+                outputPtr[expertOffset * KEY_VALUE_MODE_DIM_NUM] = i + expertStart_;
+                outputPtr[expertOffset * KEY_VALUE_MODE_DIM_NUM + 1] = expertCount;
                 expertOffset++;
                 actualExpertTotalNum_ += expertCount;
             }
@@ -282,16 +285,16 @@ __aicore__ inline void ExpertTokensCount::expertCountCompute()
         expertCountElements_ = Min(expertCountElements_, static_cast<int64_t>((expertOffset + 1) * KEY_VALUE_MODE));
     } else if (expertTokensNumType_ == COUNT_MODE) {
         for (int64_t i = 0; i < actualExpertNum_; i++) {
-            int64_t expertCount = static_cast<int64_t>(expertCountTempInLocal.GetValue(i));
-            expertCountOutLocal.SetValue(i, expertCount);
+            int64_t expertCount = static_cast<int64_t>(inputPtr[i]);
+            outputPtr[i] = expertCount;
             actualExpertTotalNum_ += expertCount;
         }
     } else if (expertTokensNumType_ == CUMSUM_MODE) {
         int64_t cumsumCount = 0;
         for (int64_t i = 0; i < actualExpertNum_; i++) {
-            int64_t expertCount = static_cast<int64_t>(expertCountTempInLocal.GetValue(i));
+            int64_t expertCount = static_cast<int64_t>(inputPtr[i]);
             cumsumCount += expertCount;
-            expertCountOutLocal.SetValue(i, cumsumCount);
+            outputPtr[i] = cumsumCount;
             actualExpertTotalNum_ += expertCount;
         }
     }
