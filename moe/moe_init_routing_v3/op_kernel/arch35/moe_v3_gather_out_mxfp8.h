@@ -55,8 +55,7 @@ private:
     int64_t needCoreNum_;
     int64_t blockIdx_;
     int64_t cols_;
-    int64_t validScaleCols_; // 一个token实际有意义的scale有多少个元素（列）
-    int64_t scaleCols_; // 一个token的scale有多少个元素（列），即CeilAlign(CeliDiv(h,32),2)，在actualScaleCols_为奇数时，scaleCols_=validScaleCols_+1
+    int64_t scaleCols_; // 一个token的scale有多少个元素（列）
     int64_t n_;
     int64_t k_;
     int64_t perCoreRow_;
@@ -77,12 +76,12 @@ private:
 };
 
 template <typename T>
-__aicore__ inline void MoeV3GatherOutMxfp8<T>::InitKernelTiling(GM_ADDR workspace, const MoeInitRoutingV3Arch35TilingData *tilingData)
+__aicore__ inline void MoeV3GatherOutMxfp8<T>::InitKernelTiling(GM_ADDR workspace,
+                                                                const MoeInitRoutingV3Arch35TilingData *tilingData)
 {
     gatherOutTilingData_ = &(tilingData->gatherOutComputeParamsOp);
     cols_ = tilingData->cols;
-    validScaleCols_ = Ops::Base::CeilDiv<int64_t>(cols_, MX_BLOCK_SIZE);
-    scaleCols_ = Ops::Base::CeilAlign<int64_t>(validScaleCols_, 2); // CeilDiv(h, 32)后再向上到2的倍数（偶数）
+    scaleCols_ = Ops::Base::CeilAlign<int64_t>(Ops::Base::CeilDiv<int64_t>(cols_, MX_BLOCK_SIZE), 2);
     n_ = tilingData->n;
     k_ = tilingData->k;
     rowIdxType_ = tilingData->rowIdxType;
@@ -95,7 +94,7 @@ __aicore__ inline void MoeV3GatherOutMxfp8<T>::InitKernelTiling(GM_ADDR workspac
                                         1);
     int64_t scanRowCount = n_ * k_;
     if (rowIdxType_ == SCATTER) {
-        AscendC::DataCacheCleanAndInvalid<int32_t, AscendC::CacheLine::SINGLE_CACHE_LINE, AscendC::DcciDst::CACHELINE_OUT>(
+        DataCacheCleanAndInvalid<int32_t,CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(
             expertTotalCountGm_);
         scanRowCount = expertTotalCountGm_.GetValue(0);
     }
@@ -121,7 +120,6 @@ __aicore__ inline void MoeV3GatherOutMxfp8<T>::InitKernelTiling(GM_ADDR workspac
     colLoops_ = gatherOutTilingData_->colsLoops;
     perLoopScaleCols_ = perLoopCols_ / MX_BLOCK_SIZE; // perLoopCols_在tiling侧计算，已经对齐到32的整数倍了
     lastLoopScaleCols_ = scaleCols_ - (colLoops_ - 1) * perLoopScaleCols_;
-
 }
 
 template <typename T >
@@ -234,7 +232,8 @@ __aicore__ inline void MoeV3GatherOutMxfp8<T>::ScatterCopyExpandedXandMXQuant(in
 
             if (isInputScale_ == 1) {
                 LocalTensor<uint8_t> mxScaleLocal = scaleCopyInQueue_.DeQue<uint8_t>();
-                DataCopyExtParams copyScaleParams = {1, static_cast<uint32_t>(loopScaleCols * sizeof(uint8_t)), 0, 0, 0};
+                DataCopyExtParams copyScaleParams = {1, static_cast<uint32_t>(loopScaleCols * sizeof(uint8_t)),
+                                                     0, 0, 0};
                 int64_t outScaleOffset = dstIdx * scaleCols_ + j * perLoopScaleCols_;
                 DataCopyPad<uint8_t>(expandedScaleOutGm_[outScaleOffset], mxScaleLocal, copyScaleParams);
                 scaleCopyInQueue_.FreeTensor(mxScaleLocal);
