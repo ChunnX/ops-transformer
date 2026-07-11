@@ -48,12 +48,17 @@ def call_smla_npu(testcase_files):   # 初始化参数和tensor
     torch_npu.npu.set_device(0)
     test_data = torch.load(testcase_files, map_location="cpu")
     npu_result = None
+    npu_error_msg = None
+    softmax_lse = None
     try:
         npu_result, softmax_lse = sparse_flash_mla_process.call_npu(test_data)
     except Exception as e:
-        utils.save_result('Exception', 0, test_data['params'], result_path)
-        raise e
-    if npu_result != None:
+        npu_error_msg = str(e)
+        print("NPU ERROR: ", npu_error_msg)
+    if npu_error_msg is not None:
+        result = "NPU ERROR"
+        fulfill_percent = 0
+    elif npu_result is not None:
         result, fulfill_percent = result_compare_method.check_result(test_data['cpu_output'], npu_result)
     else:
         result = "Failed"
@@ -62,6 +67,11 @@ def call_smla_npu(testcase_files):   # 初始化参数和tensor
             print("return_softmax_lse is true!!!")
             result, fulfill_percent = result_compare_method.check_result(test_data['softmax_lse'], softmax_lse)
     utils.save_result(result, fulfill_percent, test_data['params'], result_path)
+
+    if result == "Failed":
+        pytest.fail(f"用例精度失败:{testcase_files} 精度:{fulfill_percent:.2f}%")
+    if result == "NPU ERROR":
+        pytest.fail(f"用例执行失败:{testcase_files} NPU ERROR: {npu_error_msg}")
 
 @pytest.mark.ci
 @pytest.mark.parametrize("testcase_files", locals()["testcase_files"])

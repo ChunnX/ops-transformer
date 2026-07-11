@@ -237,6 +237,9 @@ __aicore__ inline void SparseFlashMlaSwaKernel<CubeBlockType, VecBlockType>::Par
     constInfo.actualSeqLenSize = constInfo.bSize + 1;
     constInfo.actualSeqLenKVSize = constInfo.bSize;
     constInfo.oriKeyStride0 = sparseFlashMLABaseParams.oriKeyStride0;
+    if constexpr (TEMPLATE_MODE != SMLATemplateMode::SWA_TEMPLATE_MODE) {
+        constInfo.cmpKeyStride0 = sparseFlashMLACmpParams.cmpKeyStride0;
+    }
     if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::TND) {
         this->constInfo.isActualLenDimsOriKVNull = 0U;
     } else {
@@ -365,7 +368,7 @@ __aicore__ inline void SparseFlashMlaSwaKernel<CubeBlockType, VecBlockType>::Ini
     }
     s2SplitStagingBase = workspace + fdStagingOffset;
 }
- 
+
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void SparseFlashMlaSwaKernel<CubeBlockType, VecBlockType>::InitLocalBuffer()
 {

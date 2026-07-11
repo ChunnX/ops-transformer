@@ -627,7 +627,7 @@ ge::graphStatus SMLAInfoParser::CheckContiguous() const
     bool oriKeyNonContiguous = false;
     bool cmpKeyNonContiguous = false;
     size_t checkStartIdx = (kvLayout_ == SMLALayout::PA_BBND) ? 1 : 0;
-    if (opParamInfo_.oriKv.tensor != nullptr && !oriKeyStridesVec_.empty()) {
+    if (opParamInfo_.oriKv.tensor != nullptr && !oriKeyStridesVec_.empty() && opParamInfo_.oriKv.tensor->GetShapeSize() > 0) {
         std::vector<uint64_t> oriExpectedStrides;
         if (kvLayout_ == SMLALayout::BSND || kvLayout_ == SMLALayout::PA_BBND) {
             uint64_t dim1 = static_cast<uint64_t>(oriKvShape_.GetDim(1));
@@ -646,7 +646,7 @@ ge::graphStatus SMLAInfoParser::CheckContiguous() const
         oriKeyNonContiguous = static_cast<uint64_t>(oriKeyStridesVec_[checkStartIdx]) !=
             oriExpectedStrides[checkStartIdx];
     }
-    if (opParamInfo_.cmpKv.tensor != nullptr && !cmpKeyStridesVec_.empty()) {
+    if (opParamInfo_.cmpKv.tensor != nullptr && !cmpKeyStridesVec_.empty() && opParamInfo_.cmpKv.tensor->GetShapeSize() > 0) {
         std::vector<uint64_t> cmpExpectedStrides;
         if (kvLayout_ == SMLALayout::BSND || kvLayout_ == SMLALayout::PA_BBND) {
             uint64_t dim1 = static_cast<uint64_t>(cmpKvShape_.GetDim(1));
@@ -665,7 +665,7 @@ ge::graphStatus SMLAInfoParser::CheckContiguous() const
         cmpKeyNonContiguous = static_cast<uint64_t>(cmpKeyStridesVec_[checkStartIdx]) !=
             cmpExpectedStrides[checkStartIdx];
     }
-    
+
     OP_CHECK_IF(oriKeyNonContiguous,
         OP_LOGE(opName_, "oriKey only support non-continuous keying on the 0-axis."),
         return ge::GRAPH_FAILED);
@@ -1564,6 +1564,11 @@ ge::graphStatus SMLATilingCheck::CheckSingleParaOriMaskMode() const
 
 ge::graphStatus SMLATilingCheck::CheckSingleParaCmpMaskMode() const
 {
+    if (smlaInfo_.perfMode == SMLATemplateMode::SWA_TEMPLATE_MODE) {
+        OP_CHECK_IF(*opParamInfo_.cmpMaskMode != 0,
+            OP_LOGE(opName_, "cmpMaskMode only support 0 in SWA mode, but got %u.", *opParamInfo_.cmpMaskMode),
+            return ge::GRAPH_FAILED);
+    }
     return ge::GRAPH_SUCCESS;
 }
 
