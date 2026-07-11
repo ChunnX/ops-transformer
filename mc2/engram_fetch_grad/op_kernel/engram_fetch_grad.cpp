@@ -34,6 +34,7 @@
 
 using namespace AscendC;
 
+template<uint32_t EngramFetchGradMode>
 __global__ __aicore__ void engram_fetch_grad(
     GM_ADDR commContext, GM_ADDR gradFetched,
     GM_ADDR perm, GM_ADDR sendCounts, GM_ADDR recvCounts, GM_ADDR recvLocalEntry,
