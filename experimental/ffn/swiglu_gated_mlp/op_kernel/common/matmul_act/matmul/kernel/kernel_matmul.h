@@ -56,8 +56,12 @@ template <class ProblemShape_, class BlockMmadBuilder_, class BlockEpilogue_, cl
 class KernelMatmul<ProblemShape_, BlockMmadBuilder_, BlockEpilogue_, BlockScheduler_,
                    AscendC::Std::enable_if_t<AscendC::Std::is_same_v<BlockEpilogue_, Block::BlockEpilogueEmpty>>> {
 public:
-    __aicore__ inline KernelMatmul() {}
-    __aicore__ inline ~KernelMatmul() {}
+    __aicore__ inline KernelMatmul()
+    {
+    }
+    __aicore__ inline ~KernelMatmul()
+    {
+    }
 
     using BlockMmadBuilder = BlockMmadBuilder_;
     using ProblemShape = ProblemShape_;
@@ -118,12 +122,12 @@ public:
         Params() = default;
     };
 
-    __aicore__ inline static TupleShape ToShapeTuple(ProblemShape const& shape)
+    __aicore__ inline static TupleShape ToShapeTuple(ProblemShape const &shape)
     {
         return {shape.m, shape.n, shape.k, shape.b};
     }
 
-    __aicore__ inline void Init(Params const& params)
+    __aicore__ inline void Init(Params const &params)
     {
         problemShape_ = ToShapeTuple(params.problemShape);
         blockMmadParams_ = params.mmadParams;
@@ -138,7 +142,7 @@ public:
         InitGlobalTensorC<NDLayout, CGlobalTensorType, CTensorTrait, CType>(cGlobal_, blockMmadParams_.cGmAddr, m, n);
     }
 
-    __host_aicore__ static Status CheckShape(ProblemShape const& shape)
+    __host_aicore__ static Status CheckShape(ProblemShape const &shape)
     {
         int64_t m = shape.m;
         int64_t n = shape.n;
@@ -169,7 +173,7 @@ public:
         return Status::success;
     }
 
-    __host_aicore__ static Status CanImplement(Arguments const& args)
+    __host_aicore__ static Status CanImplement(Arguments const &args)
     {
         // Check shape in kernel
         CHECK_AND_RETURN(CheckShape(args.problemShape));
@@ -190,7 +194,7 @@ public:
         return workSpaceSize;
     }
 
-    __host_aicore__ static Params InitParams(Arguments const& args, GM_ADDR workspace)
+    __host_aicore__ static Params InitParams(Arguments const &args, GM_ADDR workspace)
     {
         BlockMmadParams mmadParams = BlockMmadBuilder::InitParams(args.mmadArgs);
         // mmad params with epiligue takes workspaceGm as output
@@ -203,7 +207,7 @@ public:
         return BlockSchedulerOp::GetBlockNum(shape);
     }
 
-    __aicore__ inline void operator()(Params const& params)
+    __aicore__ inline void operator()(Params const &params)
     {
         if ASCEND_IS_AIV {
             return;

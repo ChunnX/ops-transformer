@@ -22,7 +22,9 @@ MAX_FAILURES = 8
 
 def normalize_npu_result(npu_result):
     if isinstance(npu_result, (tuple, list)) and len(npu_result) == 2:
-        return npu_result[0].detach().cpu().to(torch.int32), npu_result[1].detach().cpu().to(torch.int32)
+        return npu_result[0].detach().cpu().to(torch.int32), npu_result[
+            1
+        ].detach().cpu().to(torch.int32)
     raise TypeError("StemIndexer should return (sparse_indices, sparse_seq_len).")
 
 
@@ -46,11 +48,15 @@ def get_s2_valid(case, b_idx, q_block_idx):
     kv_block_num = stem_indexer_golden.ceil_div(kv_len, case["stem_block_size"])
     decode = stem_indexer_golden.is_decode_case(q_len, kv_len, prompt_len)
     if case["causal"] and not decode:
-        return stem_indexer_golden.calc_causal_s2_valid(q_block_idx, q_block_num, kv_block_num)
+        return stem_indexer_golden.calc_causal_s2_valid(
+            q_block_idx, q_block_num, kv_block_num
+        )
     return kv_block_num
 
 
-def explain_topk_mismatch(case, inputs, b_idx, q_head_idx, q_block_idx, actual_prefix, expected_prefix):
+def explain_topk_mismatch(
+    case, inputs, b_idx, q_head_idx, q_block_idx, actual_prefix, expected_prefix
+):
     if inputs is None:
         return {
             "b": b_idx,
@@ -87,7 +93,9 @@ def explain_topk_mismatch(case, inputs, b_idx, q_head_idx, q_block_idx, actual_p
             "reason": "actual sparse_indices contains out-of-range indices",
         }
 
-    forced = stem_indexer_golden.get_forced_indices(s2_valid, case["initial_blocks"], case["window_size"])
+    forced = stem_indexer_golden.get_forced_indices(
+        s2_valid, case["initial_blocks"], case["window_size"]
+    )
     missing_forced = sorted(forced - actual_set)
     if missing_forced:
         return {
@@ -153,7 +161,9 @@ def explain_topk_mismatch(case, inputs, b_idx, q_head_idx, q_block_idx, actual_p
     return None
 
 
-def assert_stem_indexer_result(expected_indices, expected_seq_len, npu_result, case, inputs=None):
+def assert_stem_indexer_result(
+    expected_indices, expected_seq_len, npu_result, case, inputs=None
+):
     actual_indices, actual_seq_len = normalize_npu_result(npu_result)
     expected_indices = expected_indices.to(torch.int32)
     expected_seq_len = expected_seq_len.to(torch.int32)
@@ -166,7 +176,9 @@ def assert_stem_indexer_result(expected_indices, expected_seq_len, npu_result, c
         f"{case['case_id']} sparse_indices shape mismatch: "
         f"actual={tuple(actual_indices.shape)}, expected={tuple(expected_indices.shape)}"
     )
-    assert torch.equal(actual_seq_len, expected_seq_len), f"{case['case_id']} sparse_seq_len mismatch"
+    assert torch.equal(actual_seq_len, expected_seq_len), (
+        f"{case['case_id']} sparse_seq_len mismatch"
+    )
 
     failures = []
     for index in torch.nonzero(expected_seq_len >= 0, as_tuple=False):
@@ -174,14 +186,27 @@ def assert_stem_indexer_result(expected_indices, expected_seq_len, npu_result, c
         valid_len = int(expected_seq_len[b_idx, q_head_idx, q_block_idx])
         if valid_len == 0:
             continue
-        actual_prefix = actual_indices[b_idx, q_head_idx, q_block_idx, :valid_len].tolist()
-        expected_prefix = expected_indices[b_idx, q_head_idx, q_block_idx, :valid_len].tolist()
+        actual_prefix = actual_indices[
+            b_idx, q_head_idx, q_block_idx, :valid_len
+        ].tolist()
+        expected_prefix = expected_indices[
+            b_idx, q_head_idx, q_block_idx, :valid_len
+        ].tolist()
         if sorted(actual_prefix) != sorted(expected_prefix):
-            failure = explain_topk_mismatch(case, inputs, b_idx, q_head_idx, q_block_idx,
-                                            actual_prefix, expected_prefix)
+            failure = explain_topk_mismatch(
+                case,
+                inputs,
+                b_idx,
+                q_head_idx,
+                q_block_idx,
+                actual_prefix,
+                expected_prefix,
+            )
             if failure is not None:
                 failures.append(failure)
         if len(failures) >= MAX_FAILURES:
             break
 
-    assert not failures, f"{case['case_id']} sparse_indices valid prefix mismatch: {failures}"
+    assert not failures, (
+        f"{case['case_id']} sparse_indices valid prefix mismatch: {failures}"
+    )

@@ -19,11 +19,15 @@ PACKING = "block_segmented_k_v_k_descale"
 
 def _fp8_dtype():
     if not hasattr(torch, "float8_e4m3fn"):
-        raise RuntimeError("torch.float8_e4m3fn is required for combined KV cache views")
+        raise RuntimeError(
+            "torch.float8_e4m3fn is required for combined KV cache views"
+        )
     return torch.float8_e4m3fn
 
 
-def make_combined_kv_meta(block_num, block_size, n2, d_size, dv_size, block_padding_bytes, layout_kv):
+def make_combined_kv_meta(
+    block_num, block_size, n2, d_size, dv_size, block_padding_bytes, layout_kv
+):
     if layout_kv != "PA_BNSD":
         raise ValueError(f"unsupported combined KV layout: {layout_kv}")
     if block_padding_bytes != 0:
@@ -36,9 +40,12 @@ def make_combined_kv_meta(block_num, block_size, n2, d_size, dv_size, block_padd
     k_scale_offset_bytes = key_segment_bytes + value_segment_bytes
     if k_scale_offset_bytes % FP32_BYTES != 0:
         raise ValueError(
-            f"k_scale offset should be divisible by {FP32_BYTES}, got {k_scale_offset_bytes}")
+            f"k_scale offset should be divisible by {FP32_BYTES}, got {k_scale_offset_bytes}"
+        )
     if pa_block_stride % FP32_BYTES != 0:
-        raise ValueError(f"pa_block_stride should be divisible by {FP32_BYTES}, got {pa_block_stride}")
+        raise ValueError(
+            f"pa_block_stride should be divisible by {FP32_BYTES}, got {pa_block_stride}"
+        )
 
     return {
         "packing": PACKING,
@@ -60,8 +67,14 @@ def make_combined_kv_meta(block_num, block_size, n2, d_size, dv_size, block_padd
 
 
 def make_combined_kv_views(storage, meta):
-    if storage.dtype != torch.uint8 or storage.dim() != 1 or not storage.is_contiguous():
-        raise ValueError("combined KV storage should be a contiguous rank-1 uint8 tensor")
+    if (
+        storage.dtype != torch.uint8
+        or storage.dim() != 1
+        or not storage.is_contiguous()
+    ):
+        raise ValueError(
+            "combined KV storage should be a contiguous rank-1 uint8 tensor"
+        )
 
     block_num = meta["block_num"]
     block_size = meta["block_size"]
@@ -71,9 +84,13 @@ def make_combined_kv_views(storage, meta):
     pa_block_stride = meta["pa_block_stride"]
     required_bytes = block_num * pa_block_stride
     if storage.numel() < required_bytes:
-        raise ValueError(f"combined KV storage has {storage.numel()} bytes, expected at least {required_bytes}")
+        raise ValueError(
+            f"combined KV storage has {storage.numel()} bytes, expected at least {required_bytes}"
+        )
     if storage.numel() % FP32_BYTES != 0:
-        raise ValueError(f"combined KV storage byte length should be divisible by {FP32_BYTES}")
+        raise ValueError(
+            f"combined KV storage byte length should be divisible by {FP32_BYTES}"
+        )
 
     if meta["layout_kv"] != "PA_BNSD":
         raise ValueError(f"unsupported combined KV layout: {meta['layout_kv']}")
@@ -84,21 +101,38 @@ def make_combined_kv_views(storage, meta):
     key_stride = (pa_block_stride, block_size * d_size, d_size, 1)
     value_stride = (pa_block_stride, block_size * dv_size, dv_size, 1)
     key = torch.as_strided(
-        fp8_storage, (block_num, n2, block_size, d_size), key_stride, meta["key_offset_bytes"])
+        fp8_storage,
+        (block_num, n2, block_size, d_size),
+        key_stride,
+        meta["key_offset_bytes"],
+    )
     value = torch.as_strided(
-        fp8_storage, (block_num, n2, block_size, dv_size), value_stride, meta["value_offset_bytes"])
+        fp8_storage,
+        (block_num, n2, block_size, dv_size),
+        value_stride,
+        meta["value_offset_bytes"],
+    )
 
     fp32_storage = storage.view(torch.float32)
     k_scale_stride = (pa_block_stride // FP32_BYTES, block_size, 1)
     k_scale = torch.as_strided(
-        fp32_storage, (block_num, n2, block_size), k_scale_stride,
-        meta["k_scale_offset_bytes"] // FP32_BYTES)
+        fp32_storage,
+        (block_num, n2, block_size),
+        k_scale_stride,
+        meta["k_scale_offset_bytes"] // FP32_BYTES,
+    )
     return key, value, k_scale
 
 
 def make_combined_kv_kernel_inputs(storage, meta):
-    if storage.dtype != torch.uint8 or storage.dim() != 1 or not storage.is_contiguous():
-        raise ValueError("combined KV storage should be a contiguous rank-1 uint8 tensor")
+    if (
+        storage.dtype != torch.uint8
+        or storage.dim() != 1
+        or not storage.is_contiguous()
+    ):
+        raise ValueError(
+            "combined KV storage should be a contiguous rank-1 uint8 tensor"
+        )
     if meta["layout_kv"] != "PA_BNSD":
         raise ValueError(f"unsupported combined KV layout: {meta['layout_kv']}")
     if meta.get("packing") != PACKING:
@@ -106,36 +140,50 @@ def make_combined_kv_kernel_inputs(storage, meta):
 
     required_bytes = meta["block_num"] * meta["pa_block_stride"]
     if storage.numel() < required_bytes:
-        raise ValueError(f"combined KV storage has {storage.numel()} bytes, expected at least {required_bytes}")
+        raise ValueError(
+            f"combined KV storage has {storage.numel()} bytes, expected at least {required_bytes}"
+        )
 
     # The kernel indexes physical blocks with pa_block_stride from each segment base.
     # Passing compact 4D as_strided views makes the ACL tensor MPU range equal to
     # the logical numel, so block1 crosses that range. Tail views keep every
     # kernel-side offset inside the argument's declared storage range.
     fp8_storage = storage.view(_fp8_dtype())
-    key = fp8_storage[meta["key_offset_bytes"]:]
-    value = fp8_storage[meta["value_offset_bytes"]:]
+    key = fp8_storage[meta["key_offset_bytes"] :]
+    value = fp8_storage[meta["value_offset_bytes"] :]
 
     if meta["k_scale_offset_bytes"] % FP32_BYTES != 0:
         raise ValueError(
-            f"k_scale offset should be divisible by {FP32_BYTES}, got {meta['k_scale_offset_bytes']}")
+            f"k_scale offset should be divisible by {FP32_BYTES}, got {meta['k_scale_offset_bytes']}"
+        )
     fp32_storage = storage.view(torch.float32)
-    k_scale = fp32_storage[meta["k_scale_offset_bytes"] // FP32_BYTES:]
+    k_scale = fp32_storage[meta["k_scale_offset_bytes"] // FP32_BYTES :]
     return key, value, k_scale
 
 
-def pack_combined_kv_cache(dense_key, dense_value, dense_k_scale, block_table, block_size,
-                           block_padding_bytes, layout_kv):
+def pack_combined_kv_cache(
+    dense_key,
+    dense_value,
+    dense_k_scale,
+    block_table,
+    block_size,
+    block_padding_bytes,
+    layout_kv,
+):
     if dense_key.dim() != 4 or dense_value.dim() != 4 or dense_k_scale.dim() != 3:
         raise ValueError("dense key/value/k_scale should have ranks 4/4/3")
-    if dense_key.shape[:3] != dense_value.shape[:3] or dense_key.shape[:3] != dense_k_scale.shape:
+    if (
+        dense_key.shape[:3] != dense_value.shape[:3]
+        or dense_key.shape[:3] != dense_k_scale.shape
+    ):
         raise ValueError("dense key/value/k_scale B/S/N dimensions should match")
 
     batch, seq_len, n2, d_size = dense_key.shape
     dv_size = dense_value.shape[-1]
     block_num = int(block_table.max().item()) + 1
     meta = make_combined_kv_meta(
-        block_num, block_size, n2, d_size, dv_size, block_padding_bytes, layout_kv)
+        block_num, block_size, n2, d_size, dv_size, block_padding_bytes, layout_kv
+    )
     storage = torch.zeros((block_num * meta["pa_block_stride"],), dtype=torch.uint8)
     key, value, k_scale = make_combined_kv_views(storage, meta)
 
@@ -148,11 +196,14 @@ def pack_combined_kv_cache(dense_key, dense_value, dense_k_scale, block_table, b
             if token_count <= 0:
                 continue
             key[physical_block, :, :token_count].copy_(
-                dense_key[batch_idx, start:end].permute(1, 0, 2))
+                dense_key[batch_idx, start:end].permute(1, 0, 2)
+            )
             value[physical_block, :, :token_count].copy_(
-                dense_value[batch_idx, start:end].permute(1, 0, 2))
+                dense_value[batch_idx, start:end].permute(1, 0, 2)
+            )
             k_scale[physical_block, :, :token_count].copy_(
-                dense_k_scale[batch_idx, start:end].permute(1, 0))
+                dense_k_scale[batch_idx, start:end].permute(1, 0)
+            )
 
     return storage, meta
 
@@ -160,7 +211,11 @@ def pack_combined_kv_cache(dense_key, dense_value, dense_k_scale, block_table, b
 def assert_combined_kv_views(storage, meta):
     key, value, k_scale = make_combined_kv_views(storage, meta)
     storage_ptr = storage.untyped_storage().data_ptr()
-    if not (key.untyped_storage().data_ptr() == value.untyped_storage().data_ptr() == storage_ptr):
+    if not (
+        key.untyped_storage().data_ptr()
+        == value.untyped_storage().data_ptr()
+        == storage_ptr
+    ):
         raise AssertionError("key and value should share the combined KV storage")
     if k_scale.untyped_storage().data_ptr() != storage_ptr:
         raise AssertionError("k_scale should share the combined KV storage")
@@ -176,7 +231,9 @@ def assert_combined_kv_views(storage, meta):
         meta["k_scale_offset_bytes"],
     )
     if offsets != expected_offsets:
-        raise AssertionError(f"unexpected combined KV view offsets: {offsets}, expected {expected_offsets}")
+        raise AssertionError(
+            f"unexpected combined KV view offsets: {offsets}, expected {expected_offsets}"
+        )
 
     expected_key_stride = (
         meta["pa_block_stride"],
@@ -196,9 +253,15 @@ def assert_combined_kv_views(storage, meta):
         1,
     )
     if key.stride() != expected_key_stride:
-        raise AssertionError(f"unexpected key stride: {key.stride()}, expected {expected_key_stride}")
+        raise AssertionError(
+            f"unexpected key stride: {key.stride()}, expected {expected_key_stride}"
+        )
     if value.stride() != expected_value_stride:
-        raise AssertionError(f"unexpected value stride: {value.stride()}, expected {expected_value_stride}")
+        raise AssertionError(
+            f"unexpected value stride: {value.stride()}, expected {expected_value_stride}"
+        )
     if k_scale.stride() != expected_k_scale_stride:
-        raise AssertionError(f"unexpected k_scale stride: {k_scale.stride()}, expected {expected_k_scale_stride}")
+        raise AssertionError(
+            f"unexpected k_scale stride: {k_scale.stride()}, expected {expected_k_scale_stride}"
+        )
     return key, value, k_scale

@@ -46,8 +46,8 @@ public:
                                       const SparseAttnSharedkvTilingData *__restrict tilingData);
     __aicore__ inline void InitVec1GlobalTensor(GlobalTensor<MM1_OUT_T> mm1ResGm, GlobalTensor<KV_T> vec1ResGm,
                                                 GlobalTensor<int32_t> actualSeqLengthsQGm,
-                                                GlobalTensor<int32_t> actualSeqLengthsKVGm,
-                                                GlobalTensor<T> sinksGm, GlobalTensor<T> softmaxLseGm);
+                                                GlobalTensor<int32_t> actualSeqLengthsKVGm, GlobalTensor<T> sinksGm,
+                                                GlobalTensor<T> softmaxLseGm);
     __aicore__ inline void InitVec2GlobalTensor(GlobalTensor<T> accumOutGm, GlobalTensor<UPDATE_T> vec2ResGm,
                                                 GlobalTensor<MM2_OUT_T> mm2ResGm, GlobalTensor<OUT_T> attentionOutGm);
     __aicore__ inline void AllocEventID();
@@ -69,8 +69,8 @@ public:
                                                  uint32_t startRow, uint32_t dealRowCount, uint32_t columnCount,
                                                  uint32_t actualColumnCount);
     __aicore__ inline void ElewiseCompute(const RunInfo &info, const MSplitInfo &mSplitInfo,
-                                          const LocalTensor<T> &mmResUb, uint32_t dealRowCount,
-                                          uint32_t startRow, uint32_t columnCount);
+                                          const LocalTensor<T> &mmResUb, uint32_t dealRowCount, uint32_t startRow,
+                                          uint32_t columnCount);
     __aicore__ inline void ProcessLse(const RunInfo &info, const MSplitInfo &mSplitInfo);
     // ================================Vecotr2==========================================
     __aicore__ inline void ProcessVec2SingleBuf(const RunInfo &info, const MSplitInfo &mSplitInfo);
@@ -221,11 +221,9 @@ __aicore__ inline void SWAVectorBlock<SAST>::InitParams(const struct ConstInfo &
 }
 
 template <typename SAST>
-__aicore__ inline void
-SWAVectorBlock<SAST>::InitVec1GlobalTensor(GlobalTensor<MM1_OUT_T> mm1ResGm, GlobalTensor<KV_T> vec1ResGm,
-                                           GlobalTensor<int32_t> actualSeqLengthsQGm,
-                                           GlobalTensor<int32_t> actualSeqLengthsKVGm,
-                                           GlobalTensor<SINKS_T> sinksGm, GlobalTensor<T> softmaxLseGm)
+__aicore__ inline void SWAVectorBlock<SAST>::InitVec1GlobalTensor(
+    GlobalTensor<MM1_OUT_T> mm1ResGm, GlobalTensor<KV_T> vec1ResGm, GlobalTensor<int32_t> actualSeqLengthsQGm,
+    GlobalTensor<int32_t> actualSeqLengthsKVGm, GlobalTensor<SINKS_T> sinksGm, GlobalTensor<T> softmaxLseGm)
 {
     this->mm1ResGm = mm1ResGm;
     this->vec1ResGm = vec1ResGm;
@@ -323,8 +321,7 @@ __aicore__ inline void SWAVectorBlock<SAST>::InitSoftmaxDefaultBuffer()
 }
 
 template <typename SAST>
-__aicore__ inline void SWAVectorBlock<SAST>::ElewiseCompute(const RunInfo &info,
-                                                            const MSplitInfo &mSplitInfo,
+__aicore__ inline void SWAVectorBlock<SAST>::ElewiseCompute(const RunInfo &info, const MSplitInfo &mSplitInfo,
                                                             const LocalTensor<T> &mmResUb, uint32_t startRow,
                                                             uint32_t dealRowCount, uint32_t columnCount)
 {
@@ -377,11 +374,11 @@ __aicore__ inline void SWAVectorBlock<SAST>::ElewiseCompute(const RunInfo &info,
             }
             SetInfInBlk(mmResUb[ubOffset], dealTempSize, columnCount, 0, oriLeft - 1);
             SetInfInBlk(mmResUb[ubOffset], dealTempSize, columnCount, oriRight + 1,
-                info.actualSingleProcessSInnerOriSize - 1);
+                        info.actualSingleProcessSInnerOriSize - 1);
             oriRight = Min(oriRight + 1, info.actualSingleProcessSInnerOriSize);
             oriLeft = Max(0, static_cast<int32_t>(oriRight) - constInfo.oriWinLeft + constInfo.oriWinRight);
             SetInfInBlk(mmResUb[ubOffset], dealTempSize, columnCount, cmpRight + info.actualSingleProcessSInnerOriSize,
-                columnCount - 1);
+                        columnCount - 1);
             noMaskCmpSize += 1;
             ubOffset += dealTempSize * columnCount;
             gStartIdx = 0;
@@ -413,9 +410,8 @@ __aicore__ inline void SWAVectorBlock<SAST>::ElewiseCompute(const RunInfo &info,
 }
 
 template <typename SAST>
-__aicore__ inline void SWAVectorBlock<SAST>::SetInfInBlk(const LocalTensor<T> &mmResUb,
-                                                         uint32_t dealRowCount, uint32_t columnCount,
-                                                         int64_t startId, int64_t endId)
+__aicore__ inline void SWAVectorBlock<SAST>::SetInfInBlk(const LocalTensor<T> &mmResUb, uint32_t dealRowCount,
+                                                         uint32_t columnCount, int64_t startId, int64_t endId)
 {
     //       startId     endId
     // x x x   0      0   0     x x x
@@ -433,8 +429,7 @@ __aicore__ inline void SWAVectorBlock<SAST>::SetInfInBlk(const LocalTensor<T> &m
 
     uint64_t maskOneBlk = ~notComputeMaskOneBlk;
     uint64_t mask[1] = {maskOneBlk};
-    Duplicate(mmResUb[startFloorAlignSize], SOFTMAX_MIN_NUM, mask,
-              dealRowCount, 1, columnCount / 8);
+    Duplicate(mmResUb[startFloorAlignSize], SOFTMAX_MIN_NUM, mask, dealRowCount, 1, columnCount / 8);
 }
 
 template <typename SAST>
@@ -480,12 +475,10 @@ __aicore__ inline void SWAVectorBlock<SAST>::ProcessLse(const RunInfo &info, con
     uint64_t lseOffset;
     if (constInfo.outputLayout == SAS_LAYOUT::TND) {
         uint32_t tBase = actualSeqLengthsQGm.GetValue(info.bIdx);
-        lseOffset = (tBase + info.s1Idx) * constInfo.gSize +
-                    info.n2IdxReal * constInfo.qSeqSize * constInfo.gSize;
+        lseOffset = (tBase + info.s1Idx) * constInfo.gSize + info.n2IdxReal * constInfo.qSeqSize * constInfo.gSize;
     } else if (constInfo.outputLayout == SAS_LAYOUT::BSND) {
         lseOffset = info.bIdx * constInfo.qSeqSize * constInfo.kvHeadNum * constInfo.gSize +
-                    info.n2IdxReal * constInfo.qSeqSize * constInfo.gSize +
-                    info.s1Idx * constInfo.gSize;
+                    info.n2IdxReal * constInfo.qSeqSize * constInfo.gSize + info.s1Idx * constInfo.gSize;
     }
     lseOffset = lseOffset + mSplitInfo.nBufferStartM + mSplitInfo.vecStartM;
     uint32_t baseOffset = mSplitInfo.nBufferStartM / 2;

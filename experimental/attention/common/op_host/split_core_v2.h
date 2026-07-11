@@ -11,7 +11,7 @@
 /*!
  * \file split_core_v2.h
  * \brief
-*/
+ */
 
 #ifndef SPLIT_CORE_V2_H
 #define SPLIT_CORE_V2_H
@@ -130,7 +130,7 @@ struct FAMetaData {
     FlashDecodeResult fdRes{0U, 0U}; // FD信息
     FAMetaData(uint32_t coreNum, uint32_t ratio)
         : vecCubeRatio(ratio), bN2End(coreNum), mEnd(coreNum), s2End(coreNum), firstFdDataWorkspaceIdx(coreNum),
-          fdRes(coreNum, ratio){};
+          fdRes(coreNum, ratio) {};
 };
 
 // 分核功能模块内部使用：记录切分信息

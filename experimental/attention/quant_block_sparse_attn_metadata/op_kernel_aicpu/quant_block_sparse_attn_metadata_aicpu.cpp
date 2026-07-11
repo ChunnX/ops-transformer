@@ -47,10 +47,9 @@ bool QuantBlockSparseAttnMetadataCpuKernel::Prepare(CpuKernelContext &ctx)
     // output
     metadata_ = ctx.Output(static_cast<uint32_t>(ParamId::metadata));
 
-    bool requiredAttrs =
-        GetAttrValue(ctx, "soc_version", socVersion_) &&
-        GetAttrValue(ctx, "aic_core_num", aicCoreNum_) &&
-        GetAttrValue(ctx, "aiv_core_num", aivCoreNum_);
+    bool requiredAttrs = GetAttrValue(ctx, "soc_version", socVersion_) &&
+                         GetAttrValue(ctx, "aic_core_num", aicCoreNum_) &&
+                         GetAttrValue(ctx, "aiv_core_num", aivCoreNum_);
     if (!requiredAttrs) {
         return false;
     }
@@ -122,23 +121,22 @@ bool QuantBlockSparseAttnMetadataCpuKernel::ParamsInit()
         numHeadsKv_ = numHeadsQ_;
     }
     if (numHeadsKv_ <= 0 || numHeadsQ_ % numHeadsKv_ != 0) {
-        KERNEL_LOG_ERROR("numHeadsQ must be divisible by numHeadsKv, numHeadsQ=%d, numHeadsKv=%d",
-                         numHeadsQ_, numHeadsKv_);
+        KERNEL_LOG_ERROR("numHeadsQ must be divisible by numHeadsKv, numHeadsQ=%d, numHeadsKv=%d", numHeadsQ_,
+                         numHeadsKv_);
         return false;
     }
     if (sparseSeqLenDimNum_ == 3U) {
         uint32_t sparseN1Size = static_cast<uint32_t>(sparseSeqLenShape->GetDimSize(1));
         Qbmax_ = static_cast<uint32_t>(sparseSeqLenShape->GetDimSize(2));
         if (sparseN1Size != static_cast<uint32_t>(numHeadsQ_)) {
-            KERNEL_LOG_ERROR("sparseSeqLen shape must be [B,N1,Qb], got N1=%u, expected N1=%d",
-                             sparseN1Size, numHeadsQ_);
+            KERNEL_LOG_ERROR("sparseSeqLen shape must be [B,N1,Qb], got N1=%u, expected N1=%d", sparseN1Size,
+                             numHeadsQ_);
             return false;
         }
     } else if (sparseSeqLenDimNum_ == 2U) {
         Qbmax_ = static_cast<uint32_t>(sparseSeqLenShape->GetDimSize(1));
     } else {
-        KERNEL_LOG_ERROR("sparseSeqLen must be 3D [B,N1,Qb] or legacy 2D [B,Qb], but got %u dims",
-                         sparseSeqLenDimNum_);
+        KERNEL_LOG_ERROR("sparseSeqLen must be 3D [B,N1,Qb] or legacy 2D [B,Qb], but got %u dims", sparseSeqLenDimNum_);
         return false;
     }
     if (numHeadsQ_ <= 0 || aicCoreNum_ <= 0 || Qbmax_ == 0U) {
@@ -151,8 +149,8 @@ bool QuantBlockSparseAttnMetadataCpuKernel::ParamsInit()
 
 uint32_t QuantBlockSparseAttnMetadataCpuKernel::GetRowBlockNum(uint32_t bIdx, uint32_t n1Idx, uint32_t s1Idx) const
 {
-    if (bIdx >= static_cast<uint32_t>(batchSize_) || n1Idx >= static_cast<uint32_t>(numHeadsQ_) ||
-        s1Idx >= Qbmax_ || sparseSeqLen_ == nullptr || sparseSeqLen_->GetData() == nullptr) {
+    if (bIdx >= static_cast<uint32_t>(batchSize_) || n1Idx >= static_cast<uint32_t>(numHeadsQ_) || s1Idx >= Qbmax_ ||
+        sparseSeqLen_ == nullptr || sparseSeqLen_->GetData() == nullptr) {
         return 0U;
     }
     const int32_t *sparseSeqLenData = static_cast<const int32_t *>(sparseSeqLen_->GetData());
@@ -254,8 +252,7 @@ void QuantBlockSparseAttnMetadataCpuKernel::AssignByRow(AssignContext &assignCon
         if (!AdvanceToValidRow(assignContext)) {
             break;
         }
-        uint32_t rowBlock =
-            GetRowBlockNum(assignContext.curBIdx, assignContext.curN1Idx, assignContext.curS1Idx);
+        uint32_t rowBlock = GetRowBlockNum(assignContext.curBIdx, assignContext.curN1Idx, assignContext.curS1Idx);
         if (assignContext.coreCache.block > 0U &&
             assignContext.coreCache.block + rowBlock > assignContext.coreCache.blockLimit) {
             return;
@@ -268,7 +265,7 @@ void QuantBlockSparseAttnMetadataCpuKernel::AssignByRow(AssignContext &assignCon
 
 void QuantBlockSparseAttnMetadataCpuKernel::ScheduleFa(uint64_t blockNum, SplitResult &result)
 {
-    AssignContext assignContext {};
+    AssignContext assignContext{};
     assignContext.unassignedBlock = blockNum;
     assignContext.curBIdx = 0U;
     assignContext.curN1Idx = 0U;
@@ -288,10 +285,8 @@ void QuantBlockSparseAttnMetadataCpuKernel::ScheduleFa(uint64_t blockNum, SplitR
 
         assignContext.coreCache = {};
         uint32_t remainingCore = static_cast<uint32_t>(aicCoreNum_) - i;
-        assignContext.coreCache.blockLimit =
-            (assignContext.unassignedBlock + remainingCore - 1U) / remainingCore;
-        uint32_t curRowBlock =
-            GetRowBlockNum(assignContext.curBIdx, assignContext.curN1Idx, assignContext.curS1Idx);
+        assignContext.coreCache.blockLimit = (assignContext.unassignedBlock + remainingCore - 1U) / remainingCore;
+        uint32_t curRowBlock = GetRowBlockNum(assignContext.curBIdx, assignContext.curN1Idx, assignContext.curS1Idx);
         assignContext.coreCache.blockLimit =
             std::max(assignContext.coreCache.blockLimit, static_cast<uint64_t>(curRowBlock));
 
@@ -363,7 +358,7 @@ bool QuantBlockSparseAttnMetadataCpuKernel::GenMetadata(const SplitResult &split
         qbsaMetadata.setQbsaMetadata(i, optiling::QBSA_M_END_INDEX, splitRes.s1End[i]);
         qbsaMetadata.setQbsaMetadata(i, optiling::QBSA_S2_END_INDEX, splitRes.s2End[i]);
         qbsaMetadata.setQbsaMetadata(i, optiling::QBSA_FIRST_FD_DATA_WORKSPACE_IDX_INDEX,
-                                 splitRes.firstFdDataWorkspaceIdx[i]);
+                                     splitRes.firstFdDataWorkspaceIdx[i]);
     }
     return true;
 }

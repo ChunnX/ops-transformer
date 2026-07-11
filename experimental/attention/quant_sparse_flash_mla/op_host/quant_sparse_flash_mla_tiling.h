@@ -79,5 +79,5 @@ private:
     QSMLATilingInfo *qsmlaInfo_ = nullptr;
 };
 
-}
+} // namespace optiling
 #endif

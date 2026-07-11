@@ -56,9 +56,9 @@ if [[ "$SCRIPT_TYPE" == "-h" ]] || [[ "$SCRIPT_TYPE" == "--help" ]]; then
 fi
 
 # 运行 单跑 脚本的函数
-run_script_single() {    
+run_script_single() {
     echo "准备运行 单跑 脚本..."
-    
+
     # 解析 test_sparse_attn_sharedkv_single.py 的参数
     while [[ $# -gt 0 ]]; do
         case $1 in
@@ -77,20 +77,20 @@ run_script_single() {
                 ;;
         esac
     done
-    
+
     # 打印参数信息
     echo "==============================="
     echo "参数配置:"
-    
+
     if [ -n "$R_VALUE" ]; then
         echo "  结果存储至文件 $R_VALUE"
         export RESULT_SAVE_PATH="$R_VALUE"
     else
         echo "  结果存储至文件 ./result/sas_result.xlsx"
     fi
-    
+
     echo "==============================="
-    
+
     # 运行 Python 脚本
     if [ "$VERBOSE" = true ]; then
         echo "正在运行 test_sparse_attn_sharedkv_single.py..."
@@ -108,7 +108,7 @@ run_script_single() {
 # 运行 批跑生成pt文件 脚本的函数
 run_script_save() {
     echo "准备运行 sparse_attn_sharedkv_pt_save.py 脚本..."
-    
+
     # 解析 sparse_attn_sharedkv_pt_save.py 的参数
     while [[ $# -gt 0 ]]; do
         case $1 in
@@ -143,40 +143,40 @@ run_script_save() {
                 ;;
         esac
     done
-    
+
     # 打印参数信息
     echo "==============================="
     echo "脚本: sparse_attn_sharedkv_pt_save.py"
     echo "参数配置:"
-    
+
     if [ -n "$E_VALUE" ]; then
         echo "  输入excel文件路径 $E_VALUE"
         export SAS_EXCEL_PATH="$E_VALUE"
     else
         echo "  默认输入excel文件路径 excel/example.xlsx"
     fi
-    
+
     if [ -n "$S_VALUE" ]; then
         echo "  使用sheet名 $S_VALUE"
         export SAS_EXCEL_SHEET="$S_VALUE"
     else
         echo "  默认使用 Sheet1"
     fi
-    
+
     if [ -n "$P_VALUE" ]; then
         echo "  PT文件保存地址 $P_VALUE"
         export SAS_PT_SAVE_PATH="$P_VALUE"
     else
         echo "  默认PT文件保存地址 ./data"
     fi
-    
+
     echo "==============================="
     # 检查脚本是否存在
     if [ ! -f "batch/sparse_attn_sharedkv_pt_save.py" ]; then
         echo "错误: 找不到 sparse_attn_sharedkv_pt_save.py 脚本"
         exit 1
     fi
-    
+
     # 运行脚本，传递环境变量
     python3 -m pytest -rA -s batch/sparse_attn_sharedkv_pt_save.py  -v -m ci
 }
@@ -184,7 +184,7 @@ run_script_save() {
 # 运行 批跑执行pt文件 脚本的函数
 run_script_load() {
     echo "准备运行 test_sas_load.py 脚本..."
-    
+
     # 解析 test_sparse_attn_sharedkv_batch.py 的参数
     while [[ $# -gt 0 ]]; do
         case $1 in
@@ -211,12 +211,12 @@ run_script_load() {
                 ;;
         esac
     done
-    
+
     # 打印参数信息
     echo "==============================="
     echo "脚本: test_sparse_attn_sharedkv_batch.py"
     echo "参数配置:"
-    
+
     if [ -n "$P_VALUE" ]; then
         echo "  PT文件读取地址 $P_VALUE"
         export SAS_PT_LOAD_PATH="$P_VALUE"
@@ -230,15 +230,15 @@ run_script_load() {
     else
         echo "  结果存储至文件 ./result/sas_result.xlsx"
     fi
-    
+
     echo "==============================="
-    
+
     # 检查脚本是否存在
     if [ ! -f "test_sparse_attn_sharedkv_batch.py" ]; then
         echo "错误: 找不到 test_sparse_attn_sharedkv_batch.py 脚本"
         exit 1
     fi
-    
+
     # 运行脚本，传递环境变量
     python3 -m pytest -rA -s test_sparse_attn_sharedkv_batch.py  -v -m ci
 }

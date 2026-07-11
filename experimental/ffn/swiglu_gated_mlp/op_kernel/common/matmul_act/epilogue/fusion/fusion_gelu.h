@@ -28,7 +28,10 @@
 namespace Act {
 namespace Gemm {
 namespace Block {
-enum class GeluApproxiMate : uint8_t { ERF = 0, TANH = 1 };
+enum class GeluApproxiMate : uint8_t {
+    ERF = 0,
+    TANH = 1
+};
 
 constexpr float SCALAR_ONE = 1.0;
 constexpr float BETA = 0.044715;
@@ -58,8 +61,8 @@ public:
     AscendC::LocalTensor<DataTypeIn> inputLocal_;
 
     template <class LocalTensor>
-    __aicore__ inline void Init(Params const& params, LocalTensor ubTensor, int64_t ubCalcM, int64_t ubCalcN,
-                                int64_t& ubOffset, int64_t& stageSize)
+    __aicore__ inline void Init(Params const &params, LocalTensor ubTensor, int64_t ubCalcM, int64_t ubCalcN,
+                                int64_t &ubOffset, int64_t &stageSize)
     {
         static constexpr int64_t stageNum = (approxiMate == GeluApproxiMate::ERF) ? 2 : 1;
         int64_t lastUBSize = AscendC::TOTAL_UB_SIZE - ubOffset * sizeof(DataTypeIn);
@@ -73,8 +76,8 @@ public:
         stageSize = stageSize_;
     }
 
-    __aicore__ inline void operator()(const AscendC::LocalTensor<DataTypeIn>& srcLocal,
-                                      AscendC::LocalTensor<DataTypeIn>& outputLocal, int64_t offset, int64_t curAivM,
+    __aicore__ inline void operator()(const AscendC::LocalTensor<DataTypeIn> &srcLocal,
+                                      AscendC::LocalTensor<DataTypeIn> &outputLocal, int64_t offset, int64_t curAivM,
                                       int64_t curAivN, int64_t strideN, int64_t stageSize)
     {
         TPipeSetWaitFlag<AscendC::HardEvent::MTE3_V>();

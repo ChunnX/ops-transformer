@@ -63,15 +63,15 @@ static ge::graphStatus InferShapeQuantLightningIndexer(gert::InferShapeContext *
     int64_t keyHeadNum = (inputLayoutKeyPtrStr == "TND") ? keyShape->GetDim(1) : keyShape->GetDim(2);
     if (inputLayoutQueryPtrStr == "BSND") {
         sparseIndicesShape->SetDimNum(DIM_NUM_4);
-        sparseIndicesShape->SetDim(0, queryShape->GetDim(0));  // 0:Dim B
-        sparseIndicesShape->SetDim(1, queryShape->GetDim(1));  // 1:Dim S
-        sparseIndicesShape->SetDim(2, keyHeadNum);             // 2:Dim N
-        sparseIndicesShape->SetDim(3, *sparse_count);          // 3:Dim K
+        sparseIndicesShape->SetDim(0, queryShape->GetDim(0)); // 0:Dim B
+        sparseIndicesShape->SetDim(1, queryShape->GetDim(1)); // 1:Dim S
+        sparseIndicesShape->SetDim(2, keyHeadNum);            // 2:Dim N
+        sparseIndicesShape->SetDim(3, *sparse_count);         // 3:Dim K
     } else {
         sparseIndicesShape->SetDimNum(DIM_NUM_3);
-        sparseIndicesShape->SetDim(0, queryShape->GetDim(0));  // 0:Dim T
-        sparseIndicesShape->SetDim(1, keyHeadNum);             // 1:output shape's N Dim, 2: key shape's N Dim
-        sparseIndicesShape->SetDim(2, *sparse_count);          // 2:Dim K
+        sparseIndicesShape->SetDim(0, queryShape->GetDim(0)); // 0:Dim T
+        sparseIndicesShape->SetDim(1, keyHeadNum);            // 1:output shape's N Dim, 2: key shape's N Dim
+        sparseIndicesShape->SetDim(2, *sparse_count);         // 2:Dim K
     }
     const bool *return_value = attrs->GetAttrPointer<bool>(ATTR_RETURN_VALUE_INDEX);
     bool returnValueFlag = (return_value != nullptr) ? *return_value : false;
@@ -103,4 +103,4 @@ static ge::graphStatus InferDataTypeQuantLightningIndexer(gert::InferDataTypeCon
 IMPL_OP_INFERSHAPE(QuantLightningIndexer)
     .InferShape(InferShapeQuantLightningIndexer)
     .InferDataType(InferDataTypeQuantLightningIndexer);
-}  // namespace ops
+} // namespace ops

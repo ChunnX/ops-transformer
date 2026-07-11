@@ -34,7 +34,7 @@ const int NUM_SIX = 6;
 const int NUM_SEVEN = 7;
 const int NUM_EIGHT = 8;
 const int NUM_TEN = 10;
-const int COMMUNICATION_DATA_SIZE = 10;  // 10*1024以上two shot
+const int COMMUNICATION_DATA_SIZE = 10; // 10*1024以上two shot
 static constexpr char REDUCE_OP_SUM[] = "sum";
 static constexpr size_t BIAS_SUPPORTED_DIMENSIONAL = 2U;
 static constexpr size_t SUPPORTED_DIMENSIONAL = 3U;
@@ -103,12 +103,12 @@ typedef struct tagHcclAndAicpuResource {
 } HcclAndAicpuResource;
 
 // all_to_all allgather/reducescatter bmm算子X type支持fp16和bf16
-static const std::initializer_list<op::DataType> MOE_X_DTYPE_SUPPORT_LIST = {
-    op::DataType::DT_FLOAT16, op::DataType::DT_BF16};
+static const std::initializer_list<op::DataType> MOE_X_DTYPE_SUPPORT_LIST = {op::DataType::DT_FLOAT16,
+                                                                             op::DataType::DT_BF16};
 
 // all_to_all allgather/reducescatter bmm算子bias type支持fp16和fp32
-static const std::initializer_list<op::DataType> MOE_BIAS_DTYPE_SUPPORT_LIST = {
-    op::DataType::DT_FLOAT16, op::DataType::DT_FLOAT};
+static const std::initializer_list<op::DataType> MOE_BIAS_DTYPE_SUPPORT_LIST = {op::DataType::DT_FLOAT16,
+                                                                                op::DataType::DT_FLOAT};
 
-}  // namespace op
-#endif  // OP_MC2_DEF_H_
+} // namespace op
+#endif // OP_MC2_DEF_H_

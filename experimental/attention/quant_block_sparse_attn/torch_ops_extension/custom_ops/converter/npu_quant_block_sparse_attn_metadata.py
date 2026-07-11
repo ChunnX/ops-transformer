@@ -15,7 +15,9 @@ from torchair.ge._ge_graph import Tensor, TensorSpec
 from torchair.ge import attr
 
 
-@register_fx_node_ge_converter(torch.ops.custom.npu_quant_block_sparse_attn_metadata.default)
+@register_fx_node_ge_converter(
+    torch.ops.custom.npu_quant_block_sparse_attn_metadata.default
+)
 def convert_npu_quant_block_sparse_attn_metadata(
     sparse_seq_len: Tensor,
     num_heads_q: int,

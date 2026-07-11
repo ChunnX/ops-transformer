@@ -339,9 +339,9 @@ If this block-sparse kernel is of interest, please consider merging it with the 
       </tr>
       </tbody>
       </table>
-      
+
     - 支持D轴小于等于512。inputLayout为BSH或者BSND时，要求N*D小于65535。
-    
+
   - Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box异构组件：在TND场景下query，key，value输入的综合限制：
     - T小于等于65536。
     - N等于8/16/32/64/128，且Q_N、K_N、V_N相等。
@@ -349,7 +349,7 @@ If this block-sparse kernel is of interest, please consider merging it with the 
     - 数据类型仅支持BFLOAT16。
     - sparse模式仅支持sparse=0且不传mask，或sparse=3且传入mask。
     - 当sparse=3时，要求每个batch单独的actualSeqLengths < actualSeqLengthsKv。
-  
+
 - 当inputLayout为BNSD_BSND时，输入query的shape是BNSD，输出attentionOut的shape为BSND；其余情况attentionOut的shape需要与入参query的shape保持一致。
 
 ## 调用说明

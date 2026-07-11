@@ -22,7 +22,7 @@
 #include "helper.hpp"
 
 namespace MLATiling {
-using namespace std;  // to not pollute global namespace
+using namespace std; // to not pollute global namespace
 const int32_t TILING_BATCH = 0;
 const int32_t TILING_NUMHEADS = 1;
 const int32_t TILING_HEADDIM = 2;
@@ -86,7 +86,10 @@ const int32_t KV_SEQLEN_SLICE = 128;
 
 constexpr std::array<int32_t, NUM6> QN_TILE_LIST = {128, 64, 32, 16, 8, 1};
 
-enum class MaskType { NO_MASK = 0, MASK_SPEC = 1 };
+enum class MaskType {
+    NO_MASK = 0,
+    MASK_SPEC = 1
+};
 
 struct MLAInfo {
     int32_t numTokens = 0;
@@ -111,8 +114,14 @@ using AddrOffsets = struct AddressOffsetInfo {
     uint64_t addrLSeqOffset = 0;
 };
 
-inline uint32_t GetHigh32Bit(uint64_t v) { return static_cast<uint32_t>(v >> NUM32); }
-inline uint32_t GetLow32Bit(uint64_t v) { return static_cast<uint32_t>(v); }
+inline uint32_t GetHigh32Bit(uint64_t v)
+{
+    return static_cast<uint32_t>(v >> NUM32);
+}
+inline uint32_t GetLow32Bit(uint64_t v)
+{
+    return static_cast<uint32_t>(v);
+}
 
 void GetAddrOffsetMLA(uint32_t *tilingHost, const AddrOffsets addrOffsets, const int32_t tilingOffset)
 {
@@ -208,8 +217,9 @@ void GetTilingHead(const MLAInfo &mlaInfo, uint32_t *tilingHost, const uint32_t 
     tilingHost[TILING_TOR] = *torPtr;
     tilingHost[TILING_KVHEADS] = mlaInfo.kvHeads;
     int32_t curQNBlockTile = GetQNBlockTile(mlaInfo, maxQseqlen, specStrategyFlag);
-    if (curQNBlockTile==0){
-        throw std::runtime_error("curQNBlockTile can not be zero");;
+    if (curQNBlockTile == 0) {
+        throw std::runtime_error("curQNBlockTile can not be zero");
+        ;
     }
     int32_t curQNBlockNum = (mlaInfo.numHeads + curQNBlockTile - 1) / curQNBlockTile;
 
@@ -267,7 +277,7 @@ uint32_t GetKVSplitParamSpec(const MLAInfo &mlaInfo, uint32_t &blockDim, uint32_
     // Calculate the tiling parameters related to flash decoding
     uint32_t totalTaskNumSpec = tilingHost[TILING_TOTAL_QTOKENS];
 
-    if (blockDim==0){
+    if (blockDim == 0) {
         throw std::runtime_error("blockDim can not be zero");
     }
 

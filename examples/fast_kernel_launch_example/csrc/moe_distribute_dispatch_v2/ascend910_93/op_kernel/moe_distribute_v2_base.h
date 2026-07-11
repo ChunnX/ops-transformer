@@ -24,8 +24,9 @@ namespace MoeDistributeV2Base {
 using namespace AscendC;
 using namespace Mc2Kernel;
 
-__aicore__ inline uint32_t InitWinState(GlobalTensor<uint32_t> selfDataStatusGMTensor, uint32_t epRankIdHccl, uint32_t epWorldSizeHccl, uint32_t epRankIdOriginal,
-                                           uint32_t moeExpertNum, uint32_t epWorldSizeOriginal, uint32_t globalBS, TBuf<> dataStateBuf)
+__aicore__ inline uint32_t InitWinState(GlobalTensor<uint32_t> selfDataStatusGMTensor, uint32_t epRankIdHccl,
+                                        uint32_t epWorldSizeHccl, uint32_t epRankIdOriginal, uint32_t moeExpertNum,
+                                        uint32_t epWorldSizeOriginal, uint32_t globalBS, TBuf<> dataStateBuf)
 {
     LocalTensor<uint64_t> dataStateLocalTensor64 = dataStateBuf.Get<uint64_t>();
     LocalTensor<uint32_t> dataStateLocalTensor = dataStateBuf.Get<uint32_t>();
@@ -54,6 +55,6 @@ __aicore__ inline uint32_t InitWinState(GlobalTensor<uint32_t> selfDataStatusGMT
     }
     return dataState;
 }
-}
+} // namespace MoeDistributeV2Base
 
 #endif // MOE_DISTRIBUTE_V2_BASE_H

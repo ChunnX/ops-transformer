@@ -61,18 +61,18 @@ struct TempLoopInfo {
     uint32_t bIdx = 0U;
     uint32_t n2Idx = 0U;
     uint32_t gS1Idx = 0U;
-    uint32_t gS1LoopEnd = 0U;   // End index of the gS1 loop.
-    uint32_t s2LoopEnd = 0U;    // End index of the S2 loop.
-    uint32_t actS1Size = 1U;    // Actual S1 size for the current batch.
+    uint32_t gS1LoopEnd = 0U; // End index of the gS1 loop.
+    uint32_t s2LoopEnd = 0U;  // End index of the S2 loop.
+    uint32_t actS1Size = 1U;  // Actual S1 size for the current batch.
     uint32_t actS2Size = 0U;
     uint32_t promptLen = 0U;
     uint32_t s2ValidSize = 0U;
     bool curActSeqLenIsZero = false;
-    bool needDealActS1LessThanS1 = false;  // Whether to clear output when actual S1 is shorter than shape S1.
-    uint32_t actMBaseSize = 0U;            // Actual M size in the gS1 dimension.
-    uint32_t mBasicSizeTail = 0U;          // Tail basic block size in the gS1 dimension.
-    uint32_t s2BasicSizeTail = 0U;         // Tail basic block size in the S2 dimension.
-    bool isNeedLD = false;                 // Whether this basic block needs LD.
+    bool needDealActS1LessThanS1 = false; // Whether to clear output when actual S1 is shorter than shape S1.
+    uint32_t actMBaseSize = 0U;           // Actual M size in the gS1 dimension.
+    uint32_t mBasicSizeTail = 0U;         // Tail basic block size in the gS1 dimension.
+    uint32_t s2BasicSizeTail = 0U;        // Tail basic block size in the S2 dimension.
+    bool isNeedLD = false;                // Whether this basic block needs LD.
 };
 struct RunInfo {
     uint32_t loop;
@@ -117,59 +117,59 @@ struct ConstInfo {
     uint64_t headDim = 0ULL;
     uint64_t maxQb = 0ULL;
     uint64_t maxKb = 0ULL;
-    uint64_t sparseCount = 0ULL;       // TopK selection size.
-    uint64_t kSeqSize = 0ULL;          // Maximum KV S length.
-    uint64_t qSeqSize = 1ULL;          // Maximum Q S length.
+    uint64_t sparseCount = 0ULL; // TopK selection size.
+    uint64_t kSeqSize = 0ULL;    // Maximum KV S length.
+    uint64_t qSeqSize = 1ULL;    // Maximum Q S length.
     uint32_t usedCoreNum = 0U;
     uint32_t causal = 1U;
     uint32_t stemBlockSize = 128U;
     uint32_t stemStride = 16U;
     uint32_t initialBlocks = 4U;
     uint32_t windowSize = 4U;
-    float rSquare = 1.0f / 64.0f;  // 1/(stem_block_size/stem_stride)^2 = 1/64
-    float alpha = 1.0f;  // TPD decay factor, configurable at runtime.
+    float rSquare = 1.0f / 64.0f; // 1/(stem_block_size/stem_stride)^2 = 1/64
+    float alpha = 1.0f;           // TPD decay factor, configurable at runtime.
     float kBlockNumRateMedium = 0.2f;
     uint32_t kBlockNumBiasMedium = 30U;
     float kBlockNumRateLarge = 0.1f;
     uint32_t kBlockNumBiasLarge = 30U;
-    uint32_t kCacheBlockSize = 0;      // PA block size.
-    uint32_t maxBlockNumPerBatch = 0;  // Maximum block number per batch in PA.
-    SI_LAYOUT outputLayout;            // Output layout.
+    uint32_t kCacheBlockSize = 0;     // PA block size.
+    uint32_t maxBlockNumPerBatch = 0; // Maximum block number per batch in PA.
+    SI_LAYOUT outputLayout;           // Output layout.
     bool attenMaskFlag = false;
     uint32_t cmpRatio = 1;
-    bool batchSupperFlag = false;      // Whether actual_seq length is B + 1.
+    bool batchSupperFlag = false; // Whether actual_seq length is B + 1.
     uint32_t keyStride0 = 0;
     uint32_t keyDequantScaleStride0 = 0;
 
-    uint32_t actualLenQDims = 0U;  // Dimension of query actualSeqLength.
-    uint32_t actualLenDims = 0U;   // Dimension of KV actualSeqLength.
-    bool isAccumSeqS1 = false;     // Whether S1 uses cumulative mode.
-    bool isAccumSeqS2 = false;     // Whether S2 uses cumulative mode.
+    uint32_t actualLenQDims = 0U; // Dimension of query actualSeqLength.
+    uint32_t actualLenDims = 0U;  // Dimension of KV actualSeqLength.
+    bool isAccumSeqS1 = false;    // Whether S1 uses cumulative mode.
+    bool isAccumSeqS2 = false;    // Whether S2 uses cumulative mode.
     bool isLDOpen = false;
 };
 
 struct LdSplitCoreInfo {
-    bool isLdCoreEnable = false;     // Whether current core participates in LD reduction.
-    uint32_t saveWorkSpaceIdx = 0U;  // Address for LD parameters.
-    uint32_t bn2Idx = 0U;            // Reduction task index.
+    bool isLdCoreEnable = false;    // Whether current core participates in LD reduction.
+    uint32_t saveWorkSpaceIdx = 0U; // Address for LD parameters.
+    uint32_t bn2Idx = 0U;           // Reduction task index.
     uint32_t bIdx = 0U;
     uint32_t n2Idx = 0U;
     uint32_t mIdx = 0U;
-    uint32_t workspaceIdx = 0U;      // Reduction task index on current AIV.
-    uint32_t workspaceNum = 0U;      // Number of S2 splits for reduction on current AIV.
+    uint32_t workspaceIdx = 0U; // Reduction task index on current AIV.
+    uint32_t workspaceNum = 0U; // Number of S2 splits for reduction on current AIV.
     uint32_t mStart = 0U;
     uint32_t mNum = 0U;
-    uint64_t indiceOutCoreOffset = 0U;  // Initial offset for final TopK output indices.
+    uint64_t indiceOutCoreOffset = 0U; // Initial offset for final TopK output indices.
 };
 
 struct SplitCoreInfo {
-    uint32_t s2Start = 0U;  // Start position of S2.
-    uint32_t s2End = 0U;    // Upper index of the S2 loop.
+    uint32_t s2Start = 0U; // Start position of S2.
+    uint32_t s2End = 0U;   // Upper index of the S2 loop.
     uint32_t bN2Start = 0U;
     uint32_t bN2End = 0U;
     uint32_t gS1Start = 0U;
     uint32_t gS1End = 0U;
-    bool isLD = false;  // Whether current task needs decode reduction.
+    bool isLD = false; // Whether current task needs decode reduction.
     bool isCoreEnable = false;
 };
 
@@ -196,19 +196,19 @@ __aicore__ inline T CeilDiv(T num, T rnd)
 {
     return (((rnd) == 0) ? 0 : (((num) + (rnd)-1) / (rnd)));
 }
-}  // namespace SICommon
+} // namespace SICommon
 
 // Bank conflict optimization.
 // 256KB bank layout
 // shape  (             bank_depth  (            banks  bank_groups  block))  (512  (  2   8  32))
 // stride (banks*bank_groups*block  (bank_groups*block        block      1))  (512  (256  32   1))
-#define UB_BLOCK              32   // 32B
-#define UB_BANK_GROUPS        8
-#define UB_BANKS              2
-#define UB_BANK_DEPTH         512
+#define UB_BLOCK 32 // 32B
+#define UB_BANK_GROUPS 8
+#define UB_BANKS 2
+#define UB_BANK_DEPTH 512
 
-#define UB_BANK_GROUP_STRIDE  UB_BLOCK                                   // 32B
-#define UB_BANK_STRIDE        (UB_BANK_GROUPS * UB_BLOCK)               // 256B
-#define UB_BANK_DEPTH_STRIDE  (UB_BANKS * UB_BANK_GROUPS * UB_BLOCK)    // 512B
+#define UB_BANK_GROUP_STRIDE UB_BLOCK                               // 32B
+#define UB_BANK_STRIDE (UB_BANK_GROUPS * UB_BLOCK)                  // 256B
+#define UB_BANK_DEPTH_STRIDE (UB_BANKS * UB_BANK_GROUPS * UB_BLOCK) // 512B
 
-#endif  // stem_indexer_COMMON_H
+#endif // stem_indexer_COMMON_H

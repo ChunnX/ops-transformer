@@ -24,8 +24,10 @@
 namespace optiling {
 class SoftmaxLSEChecker : public BaseChecker {
 public:
-    SoftmaxLSEChecker(bool enableNonQuant, bool enableFullQuant, bool enableAntiQuant) :
-        BaseChecker(enableNonQuant, enableFullQuant, enableAntiQuant) {}
+    SoftmaxLSEChecker(bool enableNonQuant, bool enableFullQuant, bool enableAntiQuant)
+        : BaseChecker(enableNonQuant, enableFullQuant, enableAntiQuant)
+    {
+    }
     ~SoftmaxLSEChecker() override = default;
 
     ge::graphStatus CheckSinglePara(const FiaTilingInfo &fiaInfo) override;

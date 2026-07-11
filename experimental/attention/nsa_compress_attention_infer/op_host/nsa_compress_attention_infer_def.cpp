@@ -19,7 +19,7 @@
 namespace ops {
 class NsaCompressAttentionInfer : public OpDef {
 public:
-    explicit NsaCompressAttentionInfer(const char* name) : OpDef(name)
+    explicit NsaCompressAttentionInfer(const char *name) : OpDef(name)
     {
         this->Input("query")
             .ParamType(REQUIRED)
@@ -76,7 +76,7 @@ public:
             .DataType({ge::DT_INT32, ge::DT_INT32})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND});
-        
+
         this->Attr("numHeads").AttrType(OPTIONAL).Int(1);
         this->Attr("numKeyValueHeads").AttrType(OPTIONAL).Int(0);
         this->Attr("selectBlockSize").AttrType(OPTIONAL).Int(0);
@@ -94,4 +94,4 @@ public:
 };
 
 OP_ADD(NsaCompressAttentionInfer);
-}
+} // namespace ops

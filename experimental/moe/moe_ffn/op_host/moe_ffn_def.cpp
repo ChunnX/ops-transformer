@@ -17,8 +17,8 @@
 
 namespace ops {
 class MoeFFN : public OpDef {
-   public:
-    explicit MoeFFN(const char* name) : OpDef(name)
+public:
+    explicit MoeFFN(const char *name) : OpDef(name)
     {
         this->Input("x")
             .ParamType(REQUIRED)
@@ -80,12 +80,8 @@ class MoeFFN : public OpDef {
             .DataType({ge::DT_BF16, ge::DT_FLOAT16})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND});
-        this->Attr("scale_group_size")
-            .AttrType(OPTIONAL)
-            .Int(0);
-        this->Attr("topk")
-            .AttrType(OPTIONAL)
-            .Int(0);
+        this->Attr("scale_group_size").AttrType(OPTIONAL).Int(0);
+        this->Attr("topk").AttrType(OPTIONAL).Int(0);
         OpAICoreConfig aicore_config;
         aicore_config.DynamicCompileStaticFlag(true)
             .DynamicFormatFlag(true)
@@ -95,11 +91,9 @@ class MoeFFN : public OpDef {
             .PrecisionReduceFlag(true)
             .ExtendCfgInfo("aclnnSupport.value", "support_aclnn");
 
-        this->AICore()
-            .SetTiling(optiling::TilingMoeFFN)
-            .AddConfig("ascend910b", aicore_config);
+        this->AICore().SetTiling(optiling::TilingMoeFFN).AddConfig("ascend910b", aicore_config);
     }
 };
 
 OP_ADD(MoeFFN);
-}  // namespace ops
+} // namespace ops

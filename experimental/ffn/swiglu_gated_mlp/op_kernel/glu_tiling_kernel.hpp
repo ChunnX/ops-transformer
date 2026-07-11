@@ -32,8 +32,7 @@ namespace swiglu_gated_mlp_kernel {
 struct GluKernelTilingCtx {
     __aicore__ GluKernelTilingCtx() = default;
 
-    __aicore__ explicit GluKernelTilingCtx(const SwigluGatedMlpTilingData &tilingData)
-        : info(tilingData)
+    __aicore__ explicit GluKernelTilingCtx(const SwigluGatedMlpTilingData &tilingData) : info(tilingData)
     {
         Init();
     }
@@ -70,7 +69,7 @@ struct GluKernelTilingCtx {
         return rowStart * info.outSize;
     }
 
-    GluTilingInfo info {};
+    GluTilingInfo info{};
     uint32_t blockIdx = 0;
     uint32_t blockNum = 0;
     bool validCore = false;
@@ -79,6 +78,6 @@ struct GluKernelTilingCtx {
     uint64_t rowEnd = 0;
 };
 
-}  // namespace swiglu_gated_mlp_kernel
+} // namespace swiglu_gated_mlp_kernel
 
-#endif  // OP_KERNEL_GLU_TILING_KERNEL_HPP_
+#endif // OP_KERNEL_GLU_TILING_KERNEL_HPP_
