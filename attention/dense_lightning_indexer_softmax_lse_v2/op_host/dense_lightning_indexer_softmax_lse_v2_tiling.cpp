@@ -45,17 +45,31 @@ static ge::graphStatus DenseLightningIndexerSoftmaxLseV2TilingFunc(gert::TilingC
     tilingData->s2 = s2Size;
     tilingData->n1 = n1Size;
     tilingData->d = dSize;
-    context->SetTilingKey(0);
 
-    // Workspace: system reserve + workspace_max [1,72] FP32 (512 bytes) + workspace_sum [1,72] FP32 (512 bytes) + workspace [1,S2] FP32.
-    constexpr size_t WS_MAX_BYTES = 512;
+    // Determine if S2 exceeds reduce_sum_vec UB capacity.
+    // KV_CACHE_NUM is computed from UB layout in the kernel .py.
+    constexpr int64_t TKV = 128;
+    constexpr int64_t TKV_HALF = TKV / 2;
+    constexpr int64_t KV_CACHE_NUM = 46832;  // mirrors kernel .py computation
+    int64_t s2Tiles = (s2Size + TKV - 1) / TKV;
+    int64_t maxUbS2Tiles = KV_CACHE_NUM / TKV_HALF;
+    int64_t isLongS2 = (s2Tiles > maxUbS2Tiles) ? 1 : 0;
+    tilingData->isLongS2 = isLongS2;
+
+    context->SetTilingKey(static_cast<uint32_t>(isLongS2));
+
+    // Workspace: system reserve + workspace_max [1,576] FP32 (2560 bytes) + workspace_sum [1,576] FP32 (2560 bytes)
+    //            + workspace [36, S2] FP32 (for long S2 reduce_sum spill).
+    constexpr size_t WS_MAX_BYTES = 2560;
+    constexpr int64_t WS_MAX_CORES = 36;
     size_t workspaceSize = ascendcPlatform.GetLibApiWorkSpaceSize();
-    workspaceSize += WS_MAX_BYTES * 2 + static_cast<size_t>(s2Size) * sizeof(float);
+    workspaceSize += WS_MAX_BYTES * 2;
+    workspaceSize += static_cast<size_t>(WS_MAX_CORES) * static_cast<size_t>(s2Size) * sizeof(float);
     size_t* workSpaces = context->GetWorkspaceSizes(1);
     workSpaces[0] = workspaceSize;
 
-    OP_LOGI(context->GetNodeName(), "DenseLightningIndexerSoftmaxLseV2 tiling completed: blockDim=%u, aivNum=%u, aicNum=%u, B=%ld, S1=%ld, S2=%ld, N1=%ld, D=%ld, workspaceSize=%zu.",
-            blockDim, aivNum, aicNum, bSize, s1Size, s2Size, n1Size, dSize, workspaceSize);
+    OP_LOGI(context->GetNodeName(), "DenseLightningIndexerSoftmaxLseV2 tiling completed: blockDim=%u, aivNum=%u, aicNum=%u, B=%ld, S1=%ld, S2=%ld, N1=%ld, D=%ld, isLongS2=%ld, workspaceSize=%zu.",
+            blockDim, aivNum, aicNum, bSize, s1Size, s2Size, n1Size, dSize, isLongS2, workspaceSize);
     return ge::GRAPH_SUCCESS;
 }
 
