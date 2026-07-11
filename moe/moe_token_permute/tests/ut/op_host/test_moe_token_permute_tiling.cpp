@@ -74,6 +74,52 @@ TEST_F(MoeTokenPermuteTiling, MoeTokenPermute_tiling_float16) {
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }
 
+TEST_F(MoeTokenPermuteTiling, MoeTokenPermute_tiling_regbase_int64_slice) {
+    optiling::MoeTokenPermuteCompileInfo compileInfo = {};
+    gert::TilingContextPara tilingContextPara("MoeTokenPermute",
+                                            {
+                                                {{{8, 30}, {8, 30}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                                {{{8, 6}, {8, 6}}, ge::DT_INT64, ge::FORMAT_ND},
+                                            },
+                                            {
+                                                {{{47, 30}, {47, 30}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                                {{{48}, {48}}, ge::DT_INT32, ge::FORMAT_ND},
+                                            },
+                                            {
+                                                {"num_out_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(-1)},
+                                                {"padded_mode", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+                                            },
+                                            &compileInfo,
+                                            "Ascend950");
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 5, "", {});
+}
+
+TEST_F(MoeTokenPermuteTiling, MoeTokenPermute_tiling_regbase_multi_core) {
+    optiling::MoeTokenPermuteCompileInfo compileInfo = {};
+    constexpr int64_t tokenNum = 4096;
+    constexpr int64_t topK = 4;
+    constexpr int64_t hiddenSize = 2048;
+    gert::TilingContextPara tilingContextPara("MoeTokenPermute",
+                                            {
+                                                {{{tokenNum, hiddenSize}, {tokenNum, hiddenSize}}, ge::DT_FLOAT16,
+                                                 ge::FORMAT_ND},
+                                                {{{tokenNum, topK}, {tokenNum, topK}}, ge::DT_INT32, ge::FORMAT_ND},
+                                            },
+                                            {
+                                                {{{tokenNum * topK, hiddenSize}, {tokenNum * topK, hiddenSize}},
+                                                 ge::DT_FLOAT16, ge::FORMAT_ND},
+                                                {{{tokenNum * topK}, {tokenNum * topK}}, ge::DT_INT32, ge::FORMAT_ND},
+                                            },
+                                            {
+                                                {"num_out_tokens",
+                                                 Ops::Transformer::AnyValue::CreateFrom<int64_t>(tokenNum * topK)},
+                                                {"padded_mode", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+                                            },
+                                            &compileInfo,
+                                            "Ascend950");
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 2, "", {});
+}
+
 
 TEST_F(MoeTokenPermuteTiling, MoeTokenPermute_tiling_float16_multi_core) {
     optiling::MoeTokenPermuteCompileInfo compileInfo = {};
@@ -401,4 +447,3 @@ TEST_F(MoeTokenPermuteTiling, MoeTokenPermute_tiling_data_field_access) {
     tilingData.set_coreNum(64);
     EXPECT_EQ(tilingData.get_coreNum(), 64);
 }
-

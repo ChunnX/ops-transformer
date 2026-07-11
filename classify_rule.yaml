@@ -889,6 +889,11 @@ moe@ops-transformer:
                 - ops/ops-transformer/moe/moe_re_routing/op_host/moe_re_routing_tiling.h
                 - ops/ops-transformer/moe/moe_re_routing/op_kernel/arch35
                 - ops/ops-transformer/moe/moe_re_routing/op_kernel/moe_re_routing_apt.cpp
+                - ops/ops-transformer/moe/moe_token_permute/op_host/moe_token_permute_infershape.cpp
+                - ops/ops-transformer/moe/moe_token_permute/op_host/moe_token_permute_tiling.cpp
+                - ops/ops-transformer/moe/moe_token_permute/op_host/moe_token_permute_tiling.h
+                - ops/ops-transformer/moe/moe_token_permute/op_kernel/arch35
+                - ops/ops-transformer/moe/moe_token_permute/op_kernel/moe_token_permute.cpp
                 - ops/ops-transformer/moe/moe_token_permute/op_host/op_api
                 - ops/ops-transformer/moe/moe_token_permute_grad/op_host/op_api
                 - ops/ops-transformer/moe/moe_token_unpermute/op_host/op_api

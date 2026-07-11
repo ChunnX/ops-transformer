@@ -808,6 +808,16 @@ Ascend 950支持的算子分类和算子列表如下：
   </tr>
   <tr>
     <td>moe</td>
+    <td><a href="../../moe/moe_token_permute/README.md">moe_token_permute</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>AI Core</td>
+    <td>MoE的permute计算，根据索引indices将tokens广播并排序。</td>
+  </tr>
+  <tr>
+    <td>moe</td>
     <td><a href="../../moe/moe_token_permute_with_routing_map/README.md">moe_token_permute_with_routing_map</a></td>
     <td>✓</td>
     <td>✓</td>
