@@ -362,6 +362,7 @@ __aicore__ inline void DlikgBlockCube<TEMPLATE_ARGS>::ComputeMm4(
         int64_t gatherWorkspaceOffset = (runInfo.s2Offset + kIdx * VEC_P_BASESIZE) * dSize;
 
         if (runInfo.s2Offset == 0) {
+            mm4L0CBuffer.Wait<HardEvent::FIX_M>();
             mmParam.isOutKFisrt = true;
         } else {
             mmParam.isOutKFisrt = false;
@@ -393,6 +394,7 @@ __aicore__ inline void DlikgBlockCube<TEMPLATE_ARGS>::ComputeMm4(
         }
         Fixpipe<OUT_T, T, PFA_CFG_ROW_MAJOR_GM>(mm4ResGm[runInfo.queryIndexTensorOffset], mm4L0CBuffer.GetTensor<T>(),
             fixpipe2GmParams);
+        mm4L0CBuffer.Set<HardEvent::FIX_M>();
     }
 };
 
