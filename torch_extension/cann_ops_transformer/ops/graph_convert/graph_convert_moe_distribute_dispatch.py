@@ -48,6 +48,40 @@ if _TORCHAIR_AVAILABLE:
             "expand_scales",
         ],
     )
+    DispatchAttrs = namedtuple(
+        "DispatchAttrs",
+        [
+            "ep_world_size",
+            "ep_rank_id",
+            "moe_expert_num",
+            "ccl_buffer_size",
+            "tp_world_size",
+            "tp_rank_id",
+            "expert_shard_type",
+            "shared_expert_num",
+            "shared_expert_rank_num",
+            "quant_mode",
+            "global_bs",
+            "expert_token_nums_type",
+            "comm_alg",
+            "zero_expert_num",
+            "copy_expert_num",
+            "const_expert_num",
+        ],
+    )
+    DispatchTensors = namedtuple(
+        "DispatchTensors",
+        [
+            "context",
+            "x",
+            "expert_ids",
+            "scales",
+            "x_active_mask",
+            "expert_scales",
+            "elastic_info",
+            "performance_info",
+        ],
+    )
 
 
     @auto_convert_to_tensor([False, False, False, False, False, False, False, False],
@@ -213,42 +247,22 @@ if _TORCHAIR_AVAILABLE:
         return DataType.DT_INT8
 
 
-    def _make_dispatch_attrs(ep_world_size, ep_rank_id, moe_expert_num, ccl_buffer_size, tp_world_size, tp_rank_id,
-                             expert_shard_type, shared_expert_num, shared_expert_rank_num, quant_mode, global_bs,
-                             expert_token_nums_type, comm_alg, zero_expert_num, copy_expert_num, const_expert_num):
-        return {
-            "ep_world_size": ep_world_size,
-            "ep_rank_id": ep_rank_id,
-            "moe_expert_num": moe_expert_num,
-            "ccl_buffer_size": ccl_buffer_size,
-            "tp_world_size": tp_world_size,
-            "tp_rank_id": tp_rank_id,
-            "expert_shard_type": expert_shard_type,
-            "shared_expert_num": shared_expert_num,
-            "shared_expert_rank_num": shared_expert_rank_num,
-            "quant_mode": quant_mode,
-            "global_bs": global_bs,
-            "expert_token_nums_type": expert_token_nums_type,
-            "comm_alg": comm_alg,
-            "zero_expert_num": zero_expert_num,
-            "copy_expert_num": copy_expert_num,
-            "const_expert_num": const_expert_num,
-        }
+    def _make_dispatch_attrs(attrs: DispatchAttrs):
+        return attrs._asdict()
 
 
-    def _call_moe_distribute_dispatch(context, x, expert_ids, scales, x_active_mask, expert_scales,
-                                      elastic_info, performance_info, attrs, expand_x_dtype):
+    def _call_moe_distribute_dispatch(tensors: DispatchTensors, attrs: DispatchAttrs, expand_x_dtype):
         return DispatchOutputs(*MoeDistributeDispatch(
-            context=context,
-            x=x,
-            expert_ids=expert_ids,
-            scales=scales,
-            x_active_mask=x_active_mask,
-            expert_scales=expert_scales,
-            elastic_info=elastic_info,
-            performance_info=performance_info,
+            context=tensors.context,
+            x=tensors.x,
+            expert_ids=tensors.expert_ids,
+            scales=tensors.scales,
+            x_active_mask=tensors.x_active_mask,
+            expert_scales=tensors.expert_scales,
+            elastic_info=tensors.elastic_info,
+            performance_info=tensors.performance_info,
             y_dtype=expand_x_dtype,
-            **attrs,
+            **_make_dispatch_attrs(attrs),
         ))
 
 
@@ -311,13 +325,14 @@ if _TORCHAIR_AVAILABLE:
         x = _convert_dispatch_x(x, x_dtype)
         scales = _convert_dispatch_scales(scales, x_smooth_scales_dtype)
         expand_x_dtype = _get_expand_x_dtype(x, quant_mode, y_dtype)
-        attrs = _make_dispatch_attrs(
+        attrs = DispatchAttrs(
             ep_world_size, ep_rank_id, moe_expert_num, ccl_buffer_size, tp_world_size, tp_rank_id,
             expert_shard_type, shared_expert_num, shared_expert_rank_num, quant_mode, global_bs,
             expert_token_nums_type, comm_alg, zero_expert_num, copy_expert_num, const_expert_num)
+        tensors = DispatchTensors(
+            context, x, expert_ids, scales, x_active_mask, expert_scales, elastic_info, performance_info)
         outputs = _call_moe_distribute_dispatch(
-            context, x, expert_ids, scales, x_active_mask, expert_scales,
-            elastic_info, performance_info, attrs, expand_x_dtype)
+            tensors, attrs, expand_x_dtype)
         expand_x = _format_expand_x(outputs.expand_x, expand_x_dtype, y_dtype)
         dynamic_scales = _set_dynamic_scales_dtype(outputs.dynamic_scales, x, scales, quant_mode)
         return outputs._replace(expand_x=expand_x, dynamic_scales=dynamic_scales)

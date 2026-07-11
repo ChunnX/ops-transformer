@@ -37,9 +37,13 @@ aclDataType GetDynamicScalesDtype(const at::Tensor &x, const c10::optional<at::T
 {
     aclDataType dynamic_scale_dtype = ACL_FLOAT;
     if (quant_mode == QuantMode::QUANT_MODE_NO_QUANT) {
-        aclDataType scale_value_type = HasTensor(scales) ? ConvertToAclDataType(scales.value().scalar_type()) : ACL_FLOAT;
-        dynamic_scale_dtype = (x.scalar_type() == at::kBFloat16 || x.scalar_type() == at::kHalf)
-            ? ACL_FLOAT : (scales_dtype.has_value() ? GetAclDataType(scales_dtype.value()) : scale_value_type);
+        aclDataType scale_value_type = ACL_FLOAT;
+        if (HasTensor(scales)) {
+            scale_value_type = ConvertToAclDataType(scales.value().scalar_type());
+        }
+        if (x.scalar_type() != at::kBFloat16 && x.scalar_type() != at::kHalf) {
+            dynamic_scale_dtype = scales_dtype.has_value() ? GetAclDataType(scales_dtype.value()) : scale_value_type;
+        }
     } else if (quant_mode == QuantMode::QUANT_MODE_MX || quant_mode == QuantMode::QUANT_MODE_MX_CLIP) {
         dynamic_scale_dtype = ACL_FLOAT8_E8M0;
     }
@@ -121,11 +125,11 @@ tensor_list NpuMoeDistributeDispatch(
     const at::Tensor &context, const at::Tensor &x, const at::Tensor &expertIds, int64_t epWorldSize, int64_t epRankId,
     int64_t moeExpertNum, int64_t cclBufferSize, const c10::optional<at::Tensor> &scales,
     const c10::optional<at::Tensor> &xActiveMask, const c10::optional<at::Tensor> &expertScales,
-    const c10::optional<at::Tensor> &elasticInfo, const c10::optional<at::Tensor> &performanceInfo, int64_t tpWorldSize,
-    int64_t tpRankId, int64_t expertShardType, int64_t sharedExpertNum, int64_t sharedExpertRankNum, int64_t quantMode,
-    int64_t globalBs, int64_t expertTokenNumsType, std::string commAlg, int64_t zeroExpertNum, int64_t copyExpertNum,
-    int64_t constExpertNum, c10::optional<int64_t> yDtype, c10::optional<int64_t> xDtype,
-    c10::optional<int64_t> scalesDtype)
+    const c10::optional<at::Tensor> &elasticInfo, const c10::optional<at::Tensor> &performanceInfo,
+    int64_t tpWorldSize, int64_t tpRankId, int64_t expertShardType, int64_t sharedExpertNum,
+    int64_t sharedExpertRankNum, int64_t quantMode, int64_t globalBs, int64_t expertTokenNumsType,
+    std::string commAlg, int64_t zeroExpertNum, int64_t copyExpertNum, int64_t constExpertNum,
+    c10::optional<int64_t> yDtype, c10::optional<int64_t> xDtype, c10::optional<int64_t> scalesDtype)
 {
     TORCH_CHECK((x.dim() == DIM_TWO) && (expertIds.dim() == DIM_TWO), "The x and expert_ids should be 2D");
     TORCH_CHECK((epWorldSize > 0), "The ep_world_sizes should be greater than 0, current is: ", epWorldSize);
@@ -242,7 +246,8 @@ tensor_list NpuMoeDistributeDispatch(
     std::string commAlgStr = std::string(commAlg);
     char *commAlgPtr = const_cast<char *>(commAlgStr.c_str());
 
-    aclDataType xAclDtype = xDtype.has_value() ? GetAclDataType(xDtype.value()) : ConvertToAclDataType(x.scalar_type());
+    aclDataType xAclDtype = xDtype.has_value()
+        ? GetAclDataType(xDtype.value()) : ConvertToAclDataType(x.scalar_type());
     at::Tensor scalesTensor = HasTensor(scales) ? scales.value() : at::Tensor();
     aclDataType scalesAclDtype = scalesDtype.has_value() ? GetAclDataType(scalesDtype.value())
         : ConvertToAclDataType(scalesTensor.defined() ? scalesTensor.scalar_type() : at::kFloat);
