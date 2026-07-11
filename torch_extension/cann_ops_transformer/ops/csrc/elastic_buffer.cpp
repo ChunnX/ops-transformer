@@ -259,19 +259,22 @@ void ElasticBuffer::BuildChannelDescs(const HcclComm &commHandle, uint32_t srcRa
     TORCH_CHECK(r == HCCL_SUCCESS, "Get HCCL layers failed, ret: ", r);
 
     for (uint32_t peer = 0; peer < rankDim; ++peer) {
-        if (peer == srcRankId)
+        if (peer == srcRankId) {
             continue;
+        }
         bool found = false;
         for (uint32_t li = 0; li < netLayerNum && !found; ++li) {
             CommLink *linkList = nullptr;
             uint32_t listSize = 0;
             r = HcclRankGraphGetLinksFunc(commHandle, netLayers[li], srcRankId, peer, &linkList, &listSize);
-            if (r != HCCL_SUCCESS)
+            if (r != HCCL_SUCCESS) {
                 continue;
+            }
             for (uint32_t i = 0; i < listSize && !found; ++i) {
                 const int p = static_cast<int>(linkList[i].linkAttr.linkProtocol);
-                if (p != COMM_PROTOCOL_UBC_CTP_VALUE && p != COMM_PROTOCOL_UBC_TP_VALUE)
+                if (p != COMM_PROTOCOL_UBC_CTP_VALUE && p != COMM_PROTOCOL_UBC_TP_VALUE) {
                     continue;
+                }
                 HcclChannelDesc desc;
                 HcclResult initRet = HcclChannelDescInit(&desc, 1);
                 TORCH_CHECK(initRet == HCCL_SUCCESS, "HcclChannelDescInit failed, ret=", initRet);
@@ -372,6 +375,10 @@ void ElasticBuffer::CreateContextInternal(const HcclComm &commHandle, const std:
                 commContext_.rankSize, ", min ", HCCL_MIN_RANK_SIZE);
     TORCH_CHECK(commContext_.rankSize <= HCCL_MAX_RANK_SIZE, "rankSize exceeds HCCL_MAX_RANK_SIZE, got ",
                 commContext_.rankSize, ", max ", HCCL_MAX_RANK_SIZE);
+    
+    if (numCpuBytes_ == 0) {
+        return;
+    }
 
     std::string memBufferTag = mc2ContextTag + "_buffer";
     AllocateAndRegisterBuffer(commHandle, memBufferTag, commContext_.epRankId);
@@ -434,9 +441,9 @@ std::function<at::Tensor()> ElasticBuffer::EngramFetch(const at::Tensor &indices
                 "please invoke the callback function returned by the previous engram_fetch first");
 
     int64_t numTokens = indices.size(0);
-    if (numTokens == 0) {
+    if (numTokens == 0 || numCpuBytes_ == 0) {
         auto emptyTensor =
-            at::empty({0, hiddenSize_}, at::TensorOptions().dtype(engramDtype_).device(indices.device()));
+            at::empty({numTokens, hiddenSize_}, at::TensorOptions().dtype(engramDtype_).device(indices.device()));
         return [=]() { return emptyTensor; };
     }
 
@@ -481,8 +488,9 @@ void ElasticBuffer::EngramBarrier(bool withDeviceSync)
 // Destroy - explicit resource cleanup
 void ElasticBuffer::Destroy()
 {
-    if (destroyed_)
+    if (destroyed_) {
         return;
+    }
 
     if (hostBufPtr_ != nullptr) {
         aclError ret = aclrtHostUnregister(hostBufPtr_);
