@@ -756,58 +756,80 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::CopyGMToGMPerToken(
 }
 
 // ====================================================================================================
-// TripleInfoCalAndDispatch：专家接收token的三元组信息计算搬出 & token dispatch & 写Flag位
-// ----------------------------------------------------------------------------------------------------
-//   Phase 1: 按照blockNumPerRank_对aiv进行分组，一个rank归一个组aiv处理，组内根据该卡要发的token数量进行分核；
-//   Phase 2: dispatch->gmm1 flag位AtomicAdd，每个 expert 有 maxWavesPerExpert_ 个槽位读写Flag；
+// TripleInfoCalAndDispatch：route batch 扫描 + matchedTotal(batch间累计命中数) + triple ring buffer
 // ====================================================================================================
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::TripleInfoCalAndDispatch(
     GMMAddrInfo &gmmAddrInfo, int32_t localExpertId)
 {
-    // Phase 1: 分组分核进行三元组组装以及token dispatch
     constexpr int32_t L1_TILE_M_I32 = static_cast<int32_t>(MegaMoeImpl::L1_TILE_M_256);
-    int32_t priorExpertCumsum = (localExpertId == 0) ? 0 : // 前面所有 expert 在本卡的总 token 数
+    int32_t priorExpertCumsum = (localExpertId == 0) ? 0 :
         cumsumInfoTensor_.GetValue(localExpertId * worldSize_ - 1);
-    uint32_t topkIndexTensorSize =
-        Ops::Base::CeilAlign(static_cast<int64_t>(sendTotalNum_ * sizeof(int32_t)), static_cast<int64_t>(ALIGN_32));
-    // A8W4 路径下 SwigluQuant 覆盖 V1 UB，topkIndexTensor_ 需重新初始化
-    if constexpr (ENABLE_A8W4) {
-        if (localExpertId != 0) {
-            CreateVecIndex(topkIndexTensor_, 0, topkIndexTensorSize / sizeof(int32_t));
-            AscendC::PipeBarrier<PIPE_V>();
-        }
-    }
+
     for (uint32_t idx = blockIdx_; idx < worldSize_ * blockNumPerRank_; idx += blockNum_) {
         uint32_t dstRankIdx = idx / blockNumPerRank_;
-        uint64_t sendToCurExpTokenCnt = 0;
-        GatherMask(validTopkIndexTensor_, topkIndexTensor_,
-            gatherMaskInt32Tensor_[dstRankIdx * (maskSlotSize_ / sizeof(uint32_t))],
-            true, sendTotalNum_, {1, 1, 0, 0}, sendToCurExpTokenCnt);
         uint32_t aivIdxInGroup = idx % blockNumPerRank_;
-        int32_t rowStartIdxInDst = ((dstRankIdx == 0 && localExpertId == 0) ? 0 :
+        uint32_t rowStartIdxInDst = ((dstRankIdx == 0 && localExpertId == 0) ? 0 :
             cumsumInfoTensor_.GetValue(localExpertId * worldSize_ + dstRankIdx - 1));
-        int32_t rowsThisCore = 0;
+        int32_t srcRowLo = 0;
+        int32_t srcRowHi = 0;
         int32_t rowDstOffsetInCore = 0;
         if (rowStartIdxInDst < maxOutputSize_) {
-            int32_t rowsCopyCnt = sendToCurExpTokenCnt;
-            if (rowStartIdxInDst + rowsCopyCnt > maxOutputSize_) {
-                rowsCopyCnt = maxOutputSize_ - rowStartIdxInDst;
-            }
+            int32_t sendToCurExpTokenCnt = cumsumInfoTensor_.GetValue(localExpertId * worldSize_ + dstRankIdx) -
+                static_cast<int32_t>(rowStartIdxInDst);
+            int32_t rowsCopyCnt = (rowStartIdxInDst + sendToCurExpTokenCnt > maxOutputSize_) ?
+                static_cast<int32_t>(maxOutputSize_ - rowStartIdxInDst) : sendToCurExpTokenCnt;
             int32_t rowsNumInCore = Ops::Base::CeilDiv(rowsCopyCnt, static_cast<int32_t>(blockNumPerRank_));
             int32_t rowSrcIdxInCore = aivIdxInGroup * rowsNumInCore;
             rowDstOffsetInCore = rowStartIdxInDst + rowSrcIdxInCore;
-            if (rowDstOffsetInCore + rowsNumInCore > rowStartIdxInDst + rowsCopyCnt) {
-                rowsNumInCore = rowStartIdxInDst + rowsCopyCnt - rowDstOffsetInCore;
-            }
+            rowsNumInCore = (rowDstOffsetInCore + rowsNumInCore > rowStartIdxInDst + rowsCopyCnt) ?
+                static_cast<int32_t>(rowStartIdxInDst + rowsCopyCnt - rowDstOffsetInCore) : rowsNumInCore;
             if (rowsNumInCore > 0) {
-                SyncFuncStatic<AscendC::HardEvent::V_S, SYNC_EVENT_ID4>();
-                CopyGMToGMPerToken(rowDstOffsetInCore, dstRankIdx, rowSrcIdxInCore, rowsNumInCore);
-                rowsThisCore = rowsNumInCore;
+                srcRowLo = rowSrcIdxInCore;
+                srcRowHi = rowSrcIdxInCore + rowsNumInCore;
             }
         }
 
-        // Phase 2: flag位AtomicAdd，确认当前token需要atomic的槽位
+        GlobalTensor<uint8_t> maskSrcGlobal;
+        int32_t matchedTotal = 0;  // 跨 batch 累计已命中数量，作为下一 batch 的全局命中偏移
+        int32_t rowsThisCore = 0;
+        for (int32_t batchIdx = 0; batchIdx < recvRouteBatchNum_ && matchedTotal < srcRowHi; ++batchIdx) {
+            int32_t batchStart = batchIdx * recvRouteBatchLen_;
+            bool isLastBatch = (batchIdx == recvRouteBatchNum_ - 1);
+            int32_t validLen = recvRouteBatchLen_;
+            int32_t sliceBytes = recvRouteBatchLen_ / 8;
+            if (isLastBatch) {
+                validLen = static_cast<int32_t>(sendTotalNum_ - static_cast<uint64_t>(batchStart));
+                if (batchStart / 8 + sliceBytes > static_cast<int32_t>(maskAlignSize_)) {
+                    sliceBytes = static_cast<int32_t>(maskAlignSize_) - batchStart / 8;
+                }
+            }
+            maskSrcGlobal.SetGlobalBuffer((__gm__ uint8_t*)(params_.peermemInfo.maskRecvPtr +
+                (static_cast<uint64_t>(localExpertId) * worldSize_ + dstRankIdx) * maskSlotSize_ +
+                static_cast<uint64_t>(batchStart / 8)));
+            DataCopy(maskBatchTensor_, maskSrcGlobal, static_cast<uint32_t>(sliceBytes));
+            SyncFuncStatic<AscendC::HardEvent::MTE2_V, SYNC_EVENT_ID1>();
+            CreateVecIndex(topkIndexTensor_, batchStart, recvRouteBatchLen_);
+            uint64_t matchedInBatch = 0;
+            GatherMask(validTopkIndexTensor_, topkIndexTensor_, maskBatchU32Tensor_, true,
+                static_cast<uint32_t>(validLen), {1, 1, 0, 0}, matchedInBatch);
+            SyncFuncStatic<AscendC::HardEvent::V_S, SYNC_EVENT_ID4>();
+            // 本 batch 的命中在全局命中序列中的范围 [batchLo, batchHi)
+            int32_t batchLo = matchedTotal;
+            int32_t batchHi = matchedTotal + static_cast<int32_t>(matchedInBatch);
+            // 取本 core 源行区间 [srcRowLo, srcRowHi) 与 [batchLo, batchHi) 的交集
+            int32_t hitLo = batchLo > srcRowLo ? batchLo : srcRowLo;
+            int32_t hitHi = batchHi < srcRowHi ? batchHi : srcRowHi;
+            if (hitHi > hitLo) {
+                int32_t batchHitStart = hitLo - matchedTotal;
+                int32_t batchHitCount = hitHi - hitLo;
+                int32_t globalDstRow = static_cast<int32_t>(rowStartIdxInDst) + hitLo;
+                CopyGMToGMPerToken(globalDstRow, dstRankIdx, batchHitStart, batchHitCount);
+                rowsThisCore += batchHitCount;
+            }
+            matchedTotal = batchHi;  // 推进全局偏移
+        }
+
         if (rowsThisCore > 0) {
             SyncFuncStatic<AscendC::HardEvent::MTE3_S, SYNC_EVENT_ID5>();
             // rowDstOffsetInCore 是跨expert累加的全局偏移(含前置 expert 的行数)，需要减掉前置专家行数;
