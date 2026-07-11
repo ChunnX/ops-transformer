@@ -164,8 +164,10 @@ aclnnStatus aclnnSparseFlashMlaGradMetadataGetWorkspaceSize(
     return ACLNN_SUCCESS;
 }
 
-__attribute__((visibility("default"))) aclnnStatus aclnnSparseFlashMlaGradMetadata(
-    void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream)
+__attribute__((visibility("default"))) aclnnStatus aclnnSparseFlashMlaGradMetadata(void *workspace,
+                                                                                   uint64_t workspaceSize,
+                                                                                   aclOpExecutor *executor,
+                                                                                   aclrtStream stream)
 {
     L2_DFX_PHASE_2(aclnnSparseFlashMlaGradMetadata);
     return CommonOpExecutorRun(workspace, workspaceSize, executor, stream);

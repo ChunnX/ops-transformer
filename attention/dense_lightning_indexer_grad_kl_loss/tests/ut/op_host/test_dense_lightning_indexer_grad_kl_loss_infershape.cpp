@@ -12,11 +12,13 @@
 
 class DenseLightningIndexerGradKLLossInferShapeTest : public testing::Test {
 protected:
-    static void SetUpTestCase() {
+    static void SetUpTestCase()
+    {
         std::cout << "--- DenseLightningIndexerGradKLLoss InferShape UT SetUp ---" << std::endl;
     }
 
-    static void TearDownTestCase() {
+    static void TearDownTestCase()
+    {
         std::cout << "--- DenseLightningIndexerGradKLLoss InferShape UT TearDown ---" << std::endl;
     }
 };
@@ -28,42 +30,30 @@ TEST_F(DenseLightningIndexerGradKLLossInferShapeTest, infershape_bsnd_layout)
 
     gert::InfershapeContextPara infershapeContextPara(
         "DenseLightningIndexerGradKLLoss",
-        {
-            {{ {b, s1, n1, d}, {b, s1, n1, d} }, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{ {b, s2, n2, d}, {b, s2, n2, d} }, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{ {b, s1, nidx1, d}, {b, s1, nidx1, d} }, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{ {b, s2, nidx2, d}, {b, s2, nidx2, d} }, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{ {b, s1, nidx1}, {b, s1, nidx1} }, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{ {b, n2, s1, g}, {b, n2, s1, g} }, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{ {b, n2, s1, g}, {b, n2, s1, g} }, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{ {b, nidx2, s1}, {b, nidx2, s1} }, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{ {b, nidx2, s1}, {b, nidx2, s1} }, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{ {b, s1, n1, dr}, {b, s1, n1, dr} }, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{ {b, s2, n2, dr}, {b, s2, n2, dr} }, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{ {b}, {b} }, ge::DT_INT64, ge::FORMAT_ND},
-            {{ {b}, {b} }, ge::DT_INT64, ge::FORMAT_ND}
-        },
-        {
-            {{ {-1}, {-1} }, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{ {-1}, {-1} }, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{ {-1}, {-1} }, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{ {-1}, {-1} }, ge::DT_FLOAT, ge::FORMAT_ND}
-        },
-        {
-            {"scaleValue", Ops::Transformer::AnyValue::CreateFrom<float>(0.088388)},
-            {"layout", Ops::Transformer::AnyValue::CreateFrom<std::string>("BSND")},
-            {"sparseMode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
-            {"preTokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2147483647)},
-            {"nextTokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2147483647)}
-        }
-    );
+        {{{{b, s1, n1, d}, {b, s1, n1, d}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{b, s2, n2, d}, {b, s2, n2, d}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{b, s1, nidx1, d}, {b, s1, nidx1, d}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{b, s2, nidx2, d}, {b, s2, nidx2, d}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{b, s1, nidx1}, {b, s1, nidx1}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{b, n2, s1, g}, {b, n2, s1, g}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{{b, n2, s1, g}, {b, n2, s1, g}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{{b, nidx2, s1}, {b, nidx2, s1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{{b, nidx2, s1}, {b, nidx2, s1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{{b, s1, n1, dr}, {b, s1, n1, dr}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{b, s2, n2, dr}, {b, s2, n2, dr}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{b}, {b}}, ge::DT_INT64, ge::FORMAT_ND},
+         {{{b}, {b}}, ge::DT_INT64, ge::FORMAT_ND}},
+        {{{{-1}, {-1}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{-1}, {-1}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{-1}, {-1}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{-1}, {-1}}, ge::DT_FLOAT, ge::FORMAT_ND}},
+        {{"scaleValue", Ops::Transformer::AnyValue::CreateFrom<float>(0.088388)},
+         {"layout", Ops::Transformer::AnyValue::CreateFrom<std::string>("BSND")},
+         {"sparseMode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
+         {"preTokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2147483647)},
+         {"nextTokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2147483647)}});
 
-    std::vector<std::vector<int64_t>> expectOutputShape = {
-        {b, s1, nidx1, d},
-        {b, s2, nidx2, d},
-        {b, s1, nidx1},
-        {1}
-    };
+    std::vector<std::vector<int64_t>> expectOutputShape = {{b, s1, nidx1, d}, {b, s2, nidx2, d}, {b, s1, nidx1}, {1}};
 
     ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape);
 }
@@ -76,42 +66,30 @@ TEST_F(DenseLightningIndexerGradKLLossInferShapeTest, infershape_tnd_layout)
 
     gert::InfershapeContextPara infershapeContextPara(
         "DenseLightningIndexerGradKLLoss",
-        {
-            {{ {t1, n1, d}, {t1, n1, d} }, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{ {t2, n2, d}, {t2, n2, d} }, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{ {t1, nidx1, d}, {t1, nidx1, d} }, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{ {t2, nidx2, d}, {t2, nidx2, d} }, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{ {t1, nidx1}, {t1, nidx1} }, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{ {n2, t1, g}, {n2, t1, g} }, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{ {n2, t1, g}, {n2, t1, g} }, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{ {nidx2, t1}, {nidx2, t1} }, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{ {nidx2, t1}, {nidx2, t1} }, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{ {t1, n1, dr}, {t1, n1, dr} }, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{ {t2, n2, dr}, {t2, n2, dr} }, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{ {batch}, {batch} }, ge::DT_INT64, ge::FORMAT_ND},
-            {{ {batch}, {batch} }, ge::DT_INT64, ge::FORMAT_ND}
-        },
-        {
-            {{ {-1}, {-1} }, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{ {-1}, {-1} }, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{ {-1}, {-1} }, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{ {-1}, {-1} }, ge::DT_FLOAT, ge::FORMAT_ND}
-        },
-        {
-            {"scaleValue", Ops::Transformer::AnyValue::CreateFrom<float>(0.088388)},
-            {"layout", Ops::Transformer::AnyValue::CreateFrom<std::string>("TND")},
-            {"sparseMode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
-            {"preTokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2147483647)},
-            {"nextTokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2147483647)}
-        }
-    );
+        {{{{t1, n1, d}, {t1, n1, d}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{t2, n2, d}, {t2, n2, d}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{t1, nidx1, d}, {t1, nidx1, d}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{t2, nidx2, d}, {t2, nidx2, d}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{t1, nidx1}, {t1, nidx1}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{n2, t1, g}, {n2, t1, g}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{{n2, t1, g}, {n2, t1, g}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{{nidx2, t1}, {nidx2, t1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{{nidx2, t1}, {nidx2, t1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{{t1, n1, dr}, {t1, n1, dr}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{t2, n2, dr}, {t2, n2, dr}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{batch}, {batch}}, ge::DT_INT64, ge::FORMAT_ND},
+         {{{batch}, {batch}}, ge::DT_INT64, ge::FORMAT_ND}},
+        {{{{-1}, {-1}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{-1}, {-1}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{-1}, {-1}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{-1}, {-1}}, ge::DT_FLOAT, ge::FORMAT_ND}},
+        {{"scaleValue", Ops::Transformer::AnyValue::CreateFrom<float>(0.088388)},
+         {"layout", Ops::Transformer::AnyValue::CreateFrom<std::string>("TND")},
+         {"sparseMode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
+         {"preTokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2147483647)},
+         {"nextTokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2147483647)}});
 
-    std::vector<std::vector<int64_t>> expectOutputShape = {
-        {t1, nidx1, d},
-        {t2, nidx2, d},
-        {t1, nidx1},
-        {1}
-    };
+    std::vector<std::vector<int64_t>> expectOutputShape = {{t1, nidx1, d}, {t2, nidx2, d}, {t1, nidx1}, {1}};
 
     ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape);
 }

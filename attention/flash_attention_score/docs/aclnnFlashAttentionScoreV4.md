@@ -32,15 +32,15 @@
      attention\_out=Dropout(Softmax(Mask(scale*(query*key^T) + pse),atten\_mask),keep\_prob)*value
      $$
   其中增加**sink**之后计算逻辑见下，主要修改相关softmax_max和softmax_sum逻辑计算部分
-  
+
   $$
   S = Q * K^{T}
   $$
-  
+
   $$
   m = max(sink, max(S))
   $$
-  
+
   $$
   Attention = \frac{e^{S - m} * V}{\sum e^{S-m} + e^{sink - m}}
   $$
@@ -91,9 +91,9 @@ aclnnStatus aclnnFlashAttentionScoreV4GetWorkspaceSize(
 
 ```c++
 aclnnStatus aclnnFlashAttentionScoreV4(
-  void             *workspace, 
-  uint64_t          workspaceSize, 
-  aclOpExecutor    *executor, 
+  void             *workspace,
+  uint64_t          workspaceSize,
+  aclOpExecutor    *executor,
   const aclrtStream stream)
 ```
 
@@ -555,7 +555,7 @@ aclnnStatus aclnnFlashAttentionScoreV4(
     </tr>
   </tbody>
   </table>
-  
+
 - **返回值：**
 
     返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
@@ -594,7 +594,7 @@ aclnnStatus aclnnFlashAttentionScoreV4(
 
 - pseType为2或3的时候，当前只支持Sq和Skv等长。
 - sinkOptional不为None时，query与key等输入tensor仅支持float16和bfloat16两种类型。
-- sparseMode约束如下: 
+- sparseMode约束如下:
   - 当所有的attenMaskOptional的shape小于2048且相同的时候，建议使用default模式，来减少内存使用量。
   - 配置为1、2、3、5时，用户配置的preTokens、nextTokens不会生效。
   - 配置为0、4时，须保证attenMaskOptional与preTokens、nextTokens的范围一致。
@@ -759,7 +759,7 @@ int main() {
   aclTensor* softmaxMax = nullptr;
   aclTensor* softmaxSum = nullptr;
   aclTensor* softmaxOut = nullptr;
- 
+
   std::vector<op::fp16_t> qHostData(q_size, 1.0);
   std::vector<op::fp16_t> kHostData(kv_size, 1.0);
   std::vector<op::fp16_t> vHostData(kv_size, 1.0);
@@ -795,9 +795,9 @@ int main() {
   aclIntArray *prefix = aclCreateIntArray(prefixOp.data(), 1);
   aclIntArray *qStartIdx = aclCreateIntArray(qStartIdxOp.data(), 1);
   aclIntArray *kvStartIdx = aclCreateIntArray(kvStartIdxOp.data(), 1);
-  aclIntArray* actualSeqQLen = aclCreateIntArray(actualSeqQLenOp.data(), 1);  
+  aclIntArray* actualSeqQLen = aclCreateIntArray(actualSeqQLenOp.data(), 1);
   aclIntArray* actualSeqKVLen = aclCreateIntArray(actualSeqKVLenOp.data(), 1);
- 
+
   double scaleValue = 0.088388;
   double keepProb = 1;
   int64_t preTokens = 65536;
@@ -873,5 +873,5 @@ int main() {
   aclFinalize();
 
   return 0;
-} 
+}
 ```

@@ -8,7 +8,7 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 #include <vector>
-#include <array> 
+#include <array>
 #include "gtest/gtest.h"
 #include "../../../op_api/aclnn_flash_attention_score.h"
 #include "op_api_ut_common/tensor_desc.h"
@@ -18,8 +18,7 @@
 using namespace std;
 using namespace op;
 
-class flash_attention_score_v3_opapi_ut : public testing::Test
-{
+class flash_attention_score_v3_opapi_ut : public testing::Test {
 protected:
     static void SetUpTestCase()
     {
@@ -32,15 +31,12 @@ protected:
     }
 };
 
-TEST_F(flash_attention_score_v3_opapi_ut, flash_attention_score_aclnn_0) {
-    auto tensorQ = TensorDesc({256, 1, 128}, ACL_FLOAT, ACL_FORMAT_ND)
-        .ValueRange(-1, 1);  
-    auto tensorK = TensorDesc({256, 1, 128}, ACL_FLOAT, ACL_FORMAT_ND)
-        .ValueRange(-1, 1);
-    auto tensorV = TensorDesc({256, 1, 128}, ACL_FLOAT, ACL_FORMAT_ND)
-        .ValueRange(-1, 1);
-    auto tensorAttenMask = TensorDesc({256, 256}, ACL_UINT8, ACL_FORMAT_ND)
-        .Value(vector<uint8_t>{0});
+TEST_F(flash_attention_score_v3_opapi_ut, flash_attention_score_aclnn_0)
+{
+    auto tensorQ = TensorDesc({256, 1, 128}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto tensorK = TensorDesc({256, 1, 128}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto tensorV = TensorDesc({256, 1, 128}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto tensorAttenMask = TensorDesc({256, 256}, ACL_UINT8, ACL_FORMAT_ND).Value(vector<uint8_t>{0});
 
     const double scaleValue = 0.088388;
     const double keepProb = 1.0;
@@ -62,40 +58,21 @@ TEST_F(flash_attention_score_v3_opapi_ut, flash_attention_score_aclnn_0) {
     auto tensorSoftmaxMax = TensorDesc({1, 1, 256, 8}, ACL_FLOAT, ACL_FORMAT_ND);
     auto tensorSoftmaxSum = TensorDesc({1, 1, 256, 8}, ACL_FLOAT, ACL_FORMAT_ND);
 
-    auto ut = OP_API_UT(
-        aclnnFlashAttentionScoreV3,
-        INPUT(
-            tensorQ,
-            tensorK,
-            tensorV,
-            nullptr,                  // pse
-            nullptr,                  // dropMask
-            nullptr,                  // padding
-            tensorAttenMask,
-            nullptr,                  // sink
-            nullptr,                  // Prefix
-            nullptr,                  // QStartIdx
-            nullptr,                  // KVStartIdx                        
-            scaleValue,
-            keepProb,
-            preTokens,
-            nextTokens,
-            headNum,
-            layout,
-            innerPrecise,
-            sparseMode,
-            pseType
-        ),
-        OUTPUT(
-            tensorSoftmaxMax,
-            tensorSoftmaxSum,
-            tensorSoftmaxOutDesc,
-            tensorAttentionOutDesc
-        )
-    );
+    auto ut = OP_API_UT(aclnnFlashAttentionScoreV3,
+                        INPUT(tensorQ, tensorK, tensorV,
+                              nullptr, // pse
+                              nullptr, // dropMask
+                              nullptr, // padding
+                              tensorAttenMask,
+                              nullptr, // sink
+                              nullptr, // Prefix
+                              nullptr, // QStartIdx
+                              nullptr, // KVStartIdx
+                              scaleValue, keepProb, preTokens, nextTokens, headNum, layout, innerPrecise, sparseMode,
+                              pseType),
+                        OUTPUT(tensorSoftmaxMax, tensorSoftmaxSum, tensorSoftmaxOutDesc, tensorAttentionOutDesc));
 
     uint64_t workspaceSize = 0;
     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspaceSize);
     EXPECT_EQ(aclRet, ACL_SUCCESS);
-
 }

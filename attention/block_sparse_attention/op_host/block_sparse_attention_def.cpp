@@ -14,7 +14,7 @@ namespace ops {
 
 class BlockSparseAttention : public OpDef {
 public:
-    explicit BlockSparseAttention(const char* name) : OpDef(name)
+    explicit BlockSparseAttention(const char *name) : OpDef(name)
     {
         this->Input("query")
             .ParamType(REQUIRED)
@@ -28,30 +28,12 @@ public:
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN})
             .FormatList({ge::FORMAT_ND});
-        this->Input("blockSparseMask")
-            .ParamType(OPTIONAL)
-            .DataTypeList({ge::DT_INT8})
-            .FormatList({ge::FORMAT_ND});
-        this->Input("attenMask")
-            .ParamType(OPTIONAL)
-            .DataTypeList({ge::DT_INT8})
-            .FormatList({ge::FORMAT_ND});
-        this->Input("blockShape")
-            .ParamType(OPTIONAL)
-            .DataTypeList({ge::DT_INT64})
-            .FormatList({ge::FORMAT_ND}); 
-        this->Input("actualSeqLengths")
-            .ParamType(OPTIONAL)
-            .DataTypeList({ge::DT_INT64})
-            .FormatList({ge::FORMAT_ND});
-        this->Input("actualSeqLengthsKv")
-            .ParamType(OPTIONAL)
-            .DataTypeList({ge::DT_INT64})
-            .FormatList({ge::FORMAT_ND});
-        this->Input("blockTable")
-            .ParamType(OPTIONAL)
-            .DataTypeList({ge::DT_INT32})
-            .FormatList({ge::FORMAT_ND});
+        this->Input("blockSparseMask").ParamType(OPTIONAL).DataTypeList({ge::DT_INT8}).FormatList({ge::FORMAT_ND});
+        this->Input("attenMask").ParamType(OPTIONAL).DataTypeList({ge::DT_INT8}).FormatList({ge::FORMAT_ND});
+        this->Input("blockShape").ParamType(OPTIONAL).DataTypeList({ge::DT_INT64}).FormatList({ge::FORMAT_ND});
+        this->Input("actualSeqLengths").ParamType(OPTIONAL).DataTypeList({ge::DT_INT64}).FormatList({ge::FORMAT_ND});
+        this->Input("actualSeqLengthsKv").ParamType(OPTIONAL).DataTypeList({ge::DT_INT64}).FormatList({ge::FORMAT_ND});
+        this->Input("blockTable").ParamType(OPTIONAL).DataTypeList({ge::DT_INT32}).FormatList({ge::FORMAT_ND});
         this->Input("qDequantScaleOptional")
             .ParamType(OPTIONAL)
             .DataTypeList({ge::DT_FLOAT})
@@ -68,11 +50,8 @@ public:
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT16, ge::DT_BF16})
             .FormatList({ge::FORMAT_ND});
-        this->Output("softmaxLse")
-            .ParamType(OPTIONAL)
-            .DataTypeList({ge::DT_FLOAT})
-            .FormatList({ge::FORMAT_ND});
-        
+        this->Output("softmaxLse").ParamType(OPTIONAL).DataTypeList({ge::DT_FLOAT}).FormatList({ge::FORMAT_ND});
+
         this->Attr("qInputLayout").AttrType(OPTIONAL).String("TND");
         this->Attr("kvInputLayout").AttrType(OPTIONAL).String("TND");
         this->Attr("numKeyValueHeads").AttrType(OPTIONAL).Int(1);
@@ -92,5 +71,4 @@ public:
 
 OP_ADD(BlockSparseAttention);
 
-}  // namespace ops
-
+} // namespace ops

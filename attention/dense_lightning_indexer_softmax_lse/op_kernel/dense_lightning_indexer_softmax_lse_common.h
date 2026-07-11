@@ -91,9 +91,9 @@ struct ConstInfo {
     uint64_t qHeadNum = 0ULL;
     uint64_t kHeadNum;
     uint64_t headDim;
-    uint64_t kSeqSize = 0ULL;         // kv最大S长度
-    uint64_t qSeqSize = 1ULL;         // q最大S长度
-    LAYOUT outputLayout;              // 输出的格式
+    uint64_t kSeqSize = 0ULL; // kv最大S长度
+    uint64_t qSeqSize = 1ULL; // q最大S长度
+    LAYOUT outputLayout;      // 输出的格式
     bool attenMaskFlag = false;
     int64_t preTokens = INT64_MAX;
     int64_t nextTokens = INT64_MAX;

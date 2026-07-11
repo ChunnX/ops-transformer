@@ -15,14 +15,8 @@ import torch
 import check_valid_param
 import mixed_quant_sparse_flash_mla_golden
 import pytest
-import random
-import pandas as pd
-from pathlib import Path
-import numpy as np
-import math
 import os
 import utils
-import argparse
 import concurrent.futures
 
 # 读取表格（支持通过环境变量传入）
@@ -35,9 +29,9 @@ param_combinations = []
 for _, params in enumerate(ENABLED_PARAMS):
     normalized_params = {}
     for key, value in params.items():
-        if value == 'torch.bfloat16':
+        if value == "torch.bfloat16":
             value = torch.bfloat16
-        elif value == 'torch.float8_e4m3fn':
+        elif value == "torch.float8_e4m3fn":
             value = torch.float8_e4m3fn
         elif value == "FALSE":
             value = False
@@ -46,20 +40,57 @@ for _, params in enumerate(ENABLED_PARAMS):
         normalized_params[key] = value
     normalized_params["topk_value_mode"] = params.get("topk_value_mode", 1)
     normalized_params["return_softmax_lse"] = params.get("return_softmax_lse", False)
-    for key in ["seqused_q", "cu_seqlens_q", "seqused_ori_kv", "seqused_cmp_kv",
-                "cu_seqlens_ori_kv", "cu_seqlens_cmp_kv", "cmp_residual_kv"]:
+    for key in [
+        "seqused_q",
+        "cu_seqlens_q",
+        "seqused_ori_kv",
+        "seqused_cmp_kv",
+        "cu_seqlens_ori_kv",
+        "cu_seqlens_cmp_kv",
+        "cmp_residual_kv",
+    ]:
         normalized_params[key] = utils.parse_list_param(params.get(key))
     template_run_mode = normalized_params["template_run_mode"]
     if isinstance(template_run_mode, list):
         template_run_mode = template_run_mode[0]
 
     param_names = [
-        "Testcase_Name", "layout_q", "layout_kv", "q_type", "ori_kv_type", "cmp_kv_type", "B", "S1", "S2", "N1", \
-        "N2", "D", "K", "block_size1", "block_size2", "softmax_scale", "cmp_ratio", "ori_mask_mode", "cmp_mask_mode", \
-        "ori_win_left", "ori_win_right", "quant_mode", "tile_size", "rope_head_dim", "template_run_mode", \
-        "actlen_mode", "S1EQS2", "topk_value_mode", "return_softmax_lse", \
-        "seqused_q", "cu_seqlens_q", "seqused_ori_kv", "seqused_cmp_kv", \
-        "cu_seqlens_ori_kv", "cu_seqlens_cmp_kv", "cmp_residual_kv"
+        "Testcase_Name",
+        "layout_q",
+        "layout_kv",
+        "q_type",
+        "ori_kv_type",
+        "cmp_kv_type",
+        "B",
+        "S1",
+        "S2",
+        "N1",
+        "N2",
+        "D",
+        "K",
+        "block_size1",
+        "block_size2",
+        "softmax_scale",
+        "cmp_ratio",
+        "ori_mask_mode",
+        "cmp_mask_mode",
+        "ori_win_left",
+        "ori_win_right",
+        "quant_mode",
+        "tile_size",
+        "rope_head_dim",
+        "template_run_mode",
+        "actlen_mode",
+        "S1EQS2",
+        "topk_value_mode",
+        "return_softmax_lse",
+        "seqused_q",
+        "cu_seqlens_q",
+        "seqused_ori_kv",
+        "seqused_cmp_kv",
+        "cu_seqlens_ori_kv",
+        "cu_seqlens_cmp_kv",
+        "cmp_residual_kv",
     ]
 
     param_values = [
@@ -108,18 +139,24 @@ for _, params in enumerate(ENABLED_PARAMS):
     print(param_combinations)
 
 case_id = 0
+
+
 def qsmla(param_combinations):
     global case_id
     params = utils.fill_none_params(param_combinations)
 
-    Testcase_Name = params['Testcase_Name']
+    Testcase_Name = params["Testcase_Name"]
     if Testcase_Name is None:
-        ops_mode = 'prefill' if params['S1'] > 4 else "decode"
-        q_type_str = "BF16" if params['q_type'] == torch.bfloat16 else "FP16"
-        kv_type_str = "HIF8" if params['ori_kv_type'] == torch.uint8 else "FP8_E4M3FN"
-        prefix_part = f"{param_combinations['tc_prefix']}_"if param_combinations.get('tc_prefix', '') else ""
+        ops_mode = "prefill" if params["S1"] > 4 else "decode"
+        q_type_str = "BF16" if params["q_type"] == torch.bfloat16 else "FP16"
+        kv_type_str = "HIF8" if params["ori_kv_type"] == torch.uint8 else "FP8_E4M3FN"
+        prefix_part = (
+            f"{param_combinations['tc_prefix']}_"
+            if param_combinations.get("tc_prefix", "")
+            else ""
+        )
         Testcase_Name = f"QSMLA_{prefix_part}{params['template_run_mode']}_{ops_mode}_{params['layout_q']}_{q_type_str}_{params['layout_kv']}_{kv_type_str}_{params['B']}_{params['N1']}_{params['N2']}_{params['S1']}_{params['S2']}_{params['D']}_{params['K']}_{params['rope_head_dim']}_{case_id:06d}"
-        params['Testcase_Name'] = Testcase_Name
+        params["Testcase_Name"] = Testcase_Name
     print("input_params:", params)
 
     # 输入参数的合法性校验
@@ -129,12 +166,15 @@ def qsmla(param_combinations):
         pytest.skip(f"输入参数校验失败:{e}")
 
     # 生成测试数据
-    input_data = mixed_quant_sparse_flash_mla_golden.generate_and_save_testdata(params, save_pt=True, save_path=save_path)
+    input_data = mixed_quant_sparse_flash_mla_golden.generate_and_save_testdata(
+        params, save_pt=True, save_path=save_path
+    )
     case_id += 1
+
 
 @pytest.mark.ci
 @pytest.mark.parametrize("param_combinations", param_combinations)
-def test_mixed_quant_sparse_flash_mla(param_combinations):   # 初始化参数和tensor
+def test_mixed_quant_sparse_flash_mla(param_combinations):  # 初始化参数和tensor
     # 线程池
     with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
         futures = executor.submit(qsmla, param_combinations)
@@ -142,5 +182,5 @@ def test_mixed_quant_sparse_flash_mla(param_combinations):   # 初始化参数�
         for future in concurrent.futures.as_completed([futures]):
             try:
                 result = future.result()
-            except Exception as e:
-                pytest.fail(f"当前用例线程执行失败")
+            except Exception:
+                pytest.fail("当前用例线程执行失败")

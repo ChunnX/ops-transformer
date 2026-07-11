@@ -37,9 +37,7 @@ TEST_F(NsaCompressApiTest, aclnn_nsa_compress_A1_small_fp16)
     char layoutOptional[] = "TND";
     auto output = TensorDesc({3, 32, 16}, ACL_FLOAT16, ACL_FORMAT_ND);
 
-    auto ut = OP_API_UT(aclnnNsaCompress,
-        INPUT(input, weight, actSeqLen, layoutOptional, 16, 16, 0),
-        OUTPUT(output));
+    auto ut = OP_API_UT(aclnnNsaCompress, INPUT(input, weight, actSeqLen, layoutOptional, 16, 16, 0), OUTPUT(output));
     uint64_t workspaceSize = 0;
     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspaceSize);
     EXPECT_EQ(aclRet, ACLNN_SUCCESS);
@@ -58,9 +56,7 @@ TEST_F(NsaCompressApiTest, aclnn_nsa_compress_A2_large_fp16)
     char layoutOptional[] = "TND";
     auto output = TensorDesc({288, 4, 192}, ACL_FLOAT16, ACL_FORMAT_ND);
 
-    auto ut = OP_API_UT(aclnnNsaCompress,
-        INPUT(input, weight, actSeqLen, layoutOptional, 16, 16, 0),
-        OUTPUT(output));
+    auto ut = OP_API_UT(aclnnNsaCompress, INPUT(input, weight, actSeqLen, layoutOptional, 16, 16, 0), OUTPUT(output));
     uint64_t workspaceSize = 0;
     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspaceSize);
     EXPECT_EQ(aclRet, ACLNN_SUCCESS);

@@ -274,7 +274,7 @@ struct ConstInfo {
     uint32_t oriMaxBlockNumPerBatch = 0; // PA场景的最大单batch block number
     uint32_t cmpMaxBlockNumPerBatch = 0;
     uint32_t splitKVNum = 0U; // S2核间切分的切分份数
-    SMLA_LAYOUT outputLayout;  // 输出的Transpose格式
+    SMLA_LAYOUT outputLayout; // 输出的Transpose格式
     uint32_t oriMaskMode = 0;
     uint32_t cmpMaskMode = 0;
     bool needInit = false;

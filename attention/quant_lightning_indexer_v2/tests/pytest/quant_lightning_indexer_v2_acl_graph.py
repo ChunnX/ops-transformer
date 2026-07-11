@@ -10,14 +10,10 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
-import test
 import torch
-import torch_npu
-import pytest
 import torchair
 import torch.nn as nn
 from torchair.configs.compiler_config import CompilerConfig
-import cann_ops_transformer
 import quant_lightning_indexer_v2_golden
 
 
@@ -25,28 +21,53 @@ class QLIV2Network(nn.Module):
     def __init__(self):
         super(QLIV2Network, self).__init__()
 
-    def forward(self, query, key, weights, query_dequant_scale, key_dequant_scale, cu_seqlens_q, cu_seqlens_k,
-                seqused_q, seqused_k, cmp_residual_k, output_idx_offset, max_seqlen_q, block_table, metadata,
-                quant_mode, layout_query, layout_key, sparse_count, sparse_mode, cmp_ratio, return_value):
-        return torch.ops.cann_ops_transformer.quant_lightning_indexer(query, key, weights,
-                                                    query_dequant_scale,
-                                                    key_dequant_scale,
-                                                    cu_seqlens_q=cu_seqlens_q,
-                                                    cu_seqlens_k=cu_seqlens_k,
-                                                    seqused_q=seqused_q,
-                                                    seqused_k=seqused_k,
-                                                    cmp_residual_k=cmp_residual_k,
-                                                    output_idx_offset=output_idx_offset,
-                                                    max_seqlen_q=max_seqlen_q,
-                                                    block_table=block_table,
-                                                    metadata=metadata,
-                                                    quant_mode=quant_mode,
-                                                    layout_q=layout_query,
-                                                    layout_k=layout_key,
-                                                    topk=sparse_count,
-                                                    mask_mode=sparse_mode,
-                                                    cmp_ratio=cmp_ratio,
-                                                    return_value=return_value)
+    def forward(
+        self,
+        query,
+        key,
+        weights,
+        query_dequant_scale,
+        key_dequant_scale,
+        cu_seqlens_q,
+        cu_seqlens_k,
+        seqused_q,
+        seqused_k,
+        cmp_residual_k,
+        output_idx_offset,
+        max_seqlen_q,
+        block_table,
+        metadata,
+        quant_mode,
+        layout_query,
+        layout_key,
+        sparse_count,
+        sparse_mode,
+        cmp_ratio,
+        return_value,
+    ):
+        return torch.ops.cann_ops_transformer.quant_lightning_indexer(
+            query,
+            key,
+            weights,
+            query_dequant_scale,
+            key_dequant_scale,
+            cu_seqlens_q=cu_seqlens_q,
+            cu_seqlens_k=cu_seqlens_k,
+            seqused_q=seqused_q,
+            seqused_k=seqused_k,
+            cmp_residual_k=cmp_residual_k,
+            output_idx_offset=output_idx_offset,
+            max_seqlen_q=max_seqlen_q,
+            block_table=block_table,
+            metadata=metadata,
+            quant_mode=quant_mode,
+            layout_q=layout_query,
+            layout_k=layout_key,
+            topk=sparse_count,
+            mask_mode=sparse_mode,
+            cmp_ratio=cmp_ratio,
+            return_value=return_value,
+        )
 
 
 def qliv2_output_acl_graph(params):
@@ -54,7 +75,9 @@ def qliv2_output_acl_graph(params):
     max_seqlen_q = params[18]
     return_value = params[30]
 
-    test_data = quant_lightning_indexer_v2_golden.qliv2_output_single(params, is_batch=True)
+    test_data = quant_lightning_indexer_v2_golden.qliv2_output_single(
+        params, is_batch=True
+    )
     cpu_result = test_data["cpu_result"]
     topk_value = test_data["topk_value"]
     cpu_topk_value = test_data["cpu_topk_value"]
@@ -89,24 +112,32 @@ def qliv2_output_acl_graph(params):
     npu_backend = torchair.get_npu_backend(compiler_config=config)
     torch._dynamo.reset()
     config.mode = "reduce-overhead"
-    npu_mode = torch.compile(QLIV2Network().npu(), fullgraph=True, backend=npu_backend, dynamic=False)
-    npu_result, npu_topk_value = npu_mode(query, key, weights, query_dequant_scale, key_dequant_scale,
-                        cu_seqlens_q=cu_seqlens_query,
-                        cu_seqlens_k=cu_seqlens_key,
-                        seqused_q=seqused_q,
-                        seqused_k=seqused_k,
-                        cmp_residual_k=cmp_residual_k,
-                        output_idx_offset=output_idx_offset,
-                        max_seqlen_q=max_seqlen_q,
-                        block_table=block_table,
-                        metadata=metadata,
-                        quant_mode=quant_mode,
-                        layout_query=layout_query,
-                        layout_key=layout_key,
-                        sparse_count=sparse_count,
-                        sparse_mode=sparse_mode,
-                        cmp_ratio=cmp_ratio,
-                        return_value=return_value)
+    npu_mode = torch.compile(
+        QLIV2Network().npu(), fullgraph=True, backend=npu_backend, dynamic=False
+    )
+    npu_result, npu_topk_value = npu_mode(
+        query,
+        key,
+        weights,
+        query_dequant_scale,
+        key_dequant_scale,
+        cu_seqlens_q=cu_seqlens_query,
+        cu_seqlens_k=cu_seqlens_key,
+        seqused_q=seqused_q,
+        seqused_k=seqused_k,
+        cmp_residual_k=cmp_residual_k,
+        output_idx_offset=output_idx_offset,
+        max_seqlen_q=max_seqlen_q,
+        block_table=block_table,
+        metadata=metadata,
+        quant_mode=quant_mode,
+        layout_query=layout_query,
+        layout_key=layout_key,
+        sparse_count=sparse_count,
+        sparse_mode=sparse_mode,
+        cmp_ratio=cmp_ratio,
+        return_value=return_value,
+    )
     torch.npu.synchronize()
     npu_topk_value, _ = npu_topk_value.sort(dim=-1, descending=True)
     return cpu_result, npu_result, topk_value, cpu_topk_value, npu_topk_value

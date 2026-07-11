@@ -77,66 +77,66 @@
 ```c++
 aclnnStatus aclnnFlashAttentionScoreGradV4GetWorkspaceSize(
   const aclTensor   *query,
-  const aclTensor   *keyIn, 
-  const aclTensor   *value, 
-  const aclTensor   *dy, 
-  const aclTensor   *pseShiftOptional, 
-  const aclTensor   *dropMaskOptional, 
-  const aclTensor   *paddingMaskOptional, 
-  const aclTensor   *attenMaskOptional, 
-  const aclTensor   *softmaxMaxOptional, 
-  const aclTensor   *softmaxSumOptional, 
-  const aclTensor   *softmaxInOptional, 
-  const aclTensor   *attentionInOptional, 
-  const aclTensor   *sinkInOptional, 
-  const aclTensor   *queryRopeOptional, 
-  const aclTensor   *keyRopeOptional, 
-  const aclTensor   *dScaleQOptional, 
-  const aclTensor   *dScaleKOptional, 
-  const aclTensor   *dScaleVOptional, 
-  const aclTensor   *dScaleDyOptional, 
-  const aclTensor   *dScaleOOptional, 
-  const aclIntArray *prefixOptional, 
-  const aclIntArray *actualSeqQLenOptional, 
-  const aclIntArray *actualSeqKvLenOptional, 
-  const aclIntArray *qStartIdxOptional, 
-  const aclIntArray *kvStartIdxOptional, 
-  double             scaleValue, 
-  double             keepProb, 
-  int64_t            preTokens, 
-  int64_t            nextTokens, 
-  int64_t            headNum, 
-  char              *inputLayout, 
-  char              *softmaxInLayout, 
-  int64_t            innerPrecise, 
-  int64_t            sparseMode, 
-  int64_t            pseType,  
-  int64_t            seed, 
-  int64_t            offset, 
-  int64_t            outDtype, 
-  const aclTensor   *dqOut, 
-  const aclTensor   *dkOut, 
-  const aclTensor   *dvOut, 
-  const aclTensor   *dqRopeOut, 
-  const aclTensor   *dkRopeOut, 
-  const aclTensor   *dpseOut, 
+  const aclTensor   *keyIn,
+  const aclTensor   *value,
+  const aclTensor   *dy,
+  const aclTensor   *pseShiftOptional,
+  const aclTensor   *dropMaskOptional,
+  const aclTensor   *paddingMaskOptional,
+  const aclTensor   *attenMaskOptional,
+  const aclTensor   *softmaxMaxOptional,
+  const aclTensor   *softmaxSumOptional,
+  const aclTensor   *softmaxInOptional,
+  const aclTensor   *attentionInOptional,
+  const aclTensor   *sinkInOptional,
+  const aclTensor   *queryRopeOptional,
+  const aclTensor   *keyRopeOptional,
+  const aclTensor   *dScaleQOptional,
+  const aclTensor   *dScaleKOptional,
+  const aclTensor   *dScaleVOptional,
+  const aclTensor   *dScaleDyOptional,
+  const aclTensor   *dScaleOOptional,
+  const aclIntArray *prefixOptional,
+  const aclIntArray *actualSeqQLenOptional,
+  const aclIntArray *actualSeqKvLenOptional,
+  const aclIntArray *qStartIdxOptional,
+  const aclIntArray *kvStartIdxOptional,
+  double             scaleValue,
+  double             keepProb,
+  int64_t            preTokens,
+  int64_t            nextTokens,
+  int64_t            headNum,
+  char              *inputLayout,
+  char              *softmaxInLayout,
+  int64_t            innerPrecise,
+  int64_t            sparseMode,
+  int64_t            pseType,
+  int64_t            seed,
+  int64_t            offset,
+  int64_t            outDtype,
+  const aclTensor   *dqOut,
+  const aclTensor   *dkOut,
+  const aclTensor   *dvOut,
+  const aclTensor   *dqRopeOut,
+  const aclTensor   *dkRopeOut,
+  const aclTensor   *dpseOut,
   const aclTensor   *dsinkOut,
-  uint64_t          *workspaceSize, 
+  uint64_t          *workspaceSize,
   aclOpExecutor    **executor)`
 ```
 
 ```c++
 aclnnStatus aclnnFlashAttentionScoreGradV4(
-  void             *workspace, 
-  uint64_t          workspaceSize, 
-  aclOpExecutor    *executor, 
+  void             *workspace,
+  uint64_t          workspaceSize,
+  aclOpExecutor    *executor,
   aclrtStream       stream)
 ```
 
 ## aclnnFlashAttentionScoreGradV4GetWorkspaceSize
 
 - **参数说明：**
-  
+
   <table style="undefined;table-layout: fixed; width: 1565px">
   <colgroup>
     <col style="width: 146px">
@@ -637,7 +637,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
     </tr>
   </tbody>
   </table>
-  
+
 - **返回值：**
 
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
@@ -677,7 +677,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
   <table style="undefined;table-layout: fixed; width: 1166px"><colgroup>
   <col style="width: 173px">
   <col style="width: 133px">
-  <col style="width: 860px"> 
+  <col style="width: 860px">
   </colgroup>
   <thead>
     <tr>
@@ -982,7 +982,7 @@ int main() {
 
   // 调用aclnnFlashAttentionScoreGradV4第一段接口
   ret = aclnnFlashAttentionScoreGradV4GetWorkspaceSize(q, k, v, dx, pse, dropMask, padding,
-            attenmask, softmaxMax, softmaxSum, softmaxIn, attentionIn, nullptr, queryRope, keyRope, dScaleQ, dScaleK, dScaleV, 
+            attenmask, softmaxMax, softmaxSum, softmaxIn, attentionIn, nullptr, queryRope, keyRope, dScaleQ, dScaleK, dScaleV,
             dScaleDy, dScaleO, nullptr, nullptr, nullptr, nullptr, nullptr, scaleValue, keepProb,
             preTokens, nextTokens, headNum, inputLayOut, softmaxInLayoutArr, innerPrecise, sparseMode, pseType, seed, offset, outDtype,
             dq,dk,dv,dqRope,dkRope,dpse, nullptr, &workspaceSize, &executor);

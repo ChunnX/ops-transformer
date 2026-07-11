@@ -18,27 +18,23 @@ int main()
     // cache (in-place input/output): 4D [blockNum, blockSize, 1, headDim] = [128, 16, 1, 128],
     //   num_slots = 128*16 = 2048; mode1(Normal) headDim=128 >= d(128), dtype=float8_e4m3fn
     int64_t cacheShape[] = {128, 16, 1, 128};
-    aclTensor *cache = aclCreateTensor(
-        cacheShape, 4, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND, ACL_FORMAT_ND);
+    aclTensor *cache = aclCreateTensor(cacheShape, 4, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND, ACL_FORMAT_ND);
 
     // cacheScale (in-place input/output): 4D [blockNum, blockSize, 1, scaleHeadDim] = [128, 16, 1, 1],
     //   mode1 scaleCol=1, dtype=float32
     int64_t scaleShape[] = {128, 16, 1, 1};
-    aclTensor *cacheScale = aclCreateTensor(
-        scaleShape, 4, ACL_FLOAT, ACL_FORMAT_ND, ACL_FORMAT_ND);
+    aclTensor *cacheScale = aclCreateTensor(scaleShape, 4, ACL_FLOAT, ACL_FORMAT_ND, ACL_FORMAT_ND);
 
     // x: [1024, 128], dtype=float16
     int64_t xShape[] = {1024, 128};
-    aclTensor *x = aclCreateTensor(
-        xShape, 2, ACL_FLOAT16, ACL_FORMAT_ND, ACL_FORMAT_ND);
+    aclTensor *x = aclCreateTensor(xShape, 2, ACL_FLOAT16, ACL_FORMAT_ND, ACL_FORMAT_ND);
 
     // slotMapping: [1024], dtype=int32
     int64_t slotShape[] = {1024};
-    aclTensor *slotMapping = aclCreateTensor(
-        slotShape, 1, ACL_INT32, ACL_FORMAT_ND, ACL_FORMAT_ND);
+    aclTensor *slotMapping = aclCreateTensor(slotShape, 1, ACL_INT32, ACL_FORMAT_ND, ACL_FORMAT_ND);
 
     // 2. 设置属性
-    int64_t quantMode = 1;   // Normal block quantization
+    int64_t quantMode = 1; // Normal block quantization
     bool roundScale = true;
     float xScale = 1.0f;
 
@@ -46,11 +42,8 @@ int main()
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
 
-    aclnnStatus status = aclnnIndexerQuantCacheGetWorkspaceSize(
-        cache, cacheScale,
-        x, slotMapping,
-        quantMode, roundScale, xScale,
-        &workspaceSize, &executor);
+    aclnnStatus status = aclnnIndexerQuantCacheGetWorkspaceSize(cache, cacheScale, x, slotMapping, quantMode,
+                                                                roundScale, xScale, &workspaceSize, &executor);
 
     if (status != ACLNN_SUCCESS) {
         std::cerr << "GetWorkspaceSize failed: " << status << std::endl;

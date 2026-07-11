@@ -25,7 +25,7 @@
 
 namespace NASCompress {
 
-template <class T> 
+template <class T>
 class KernelNASCompress {
 public:
     __aicore__ inline KernelNASCompress(){};
@@ -350,9 +350,8 @@ __aicore__ inline void KernelNASCompress<T>::Init(__gm__ uint8_t *input, __gm__ 
 template <typename T>
 __aicore__ inline void KernelNASCompress<T>::CopyIn()
 {
-    uint64_t block_start =
-        static_cast<uint64_t>(coreInfo.coreSeqIdx) * tiling.headNum * tiling.headDim +
-        static_cast<uint64_t>(coreInfo.coreHeadIdx) * tiling.headDim;
+    uint64_t block_start = static_cast<uint64_t>(coreInfo.coreSeqIdx) * tiling.headNum * tiling.headDim +
+                           static_cast<uint64_t>(coreInfo.coreHeadIdx) * tiling.headDim;
 
     AscendC::LocalTensor<T> kvCacheLocal = inQueueKvFp16.AllocTensor<T>();
 
@@ -374,7 +373,7 @@ __aicore__ inline void KernelNASCompress<T>::CopyIn()
 }
 
 
-template <typename T> 
+template <typename T>
 __aicore__ inline void KernelNASCompress<T>::InitWeight()
 {
     int32_t ubBlockNum = 32 / sizeof(T);
@@ -428,7 +427,7 @@ __aicore__ inline void KernelNASCompress<T>::InitWeight()
     AscendC::PipeBarrier<PIPE_V>();
 }
 
-template <typename T> 
+template <typename T>
 __aicore__ inline void KernelNASCompress<T>::Compute()
 {
     // acquire sub_compress_kv
@@ -489,7 +488,7 @@ __aicore__ inline void KernelNASCompress<T>::Compute()
     return;
 }
 
-template <typename T> 
+template <typename T>
 __aicore__ inline void KernelNASCompress<T>::CopyOut()
 {
     if (!outQueCompressKv.HasTensorInQue()) {
@@ -500,9 +499,8 @@ __aicore__ inline void KernelNASCompress<T>::CopyOut()
     // 成功压缩一个compress token. 数据UB->GM
     AscendC::LocalTensor<T> compressKvCacheLocal = outQueCompressKv.DeQue<T>();
     if (coreInfo.coreCompressIdx < coreInfo.coreCompressNum) {
-        uint64_t compressOffset =
-            coreInfo.coreCompressOffset +
-            static_cast<uint64_t>(coreInfo.coreCompressIdx) * tiling.headNum * tiling.headDim;
+        uint64_t compressOffset = coreInfo.coreCompressOffset +
+                                  static_cast<uint64_t>(coreInfo.coreCompressIdx) * tiling.headNum * tiling.headDim;
         AscendC::PipeBarrier<PIPE_ALL>();
         AscendC::DataCopy(compressKvGm[compressOffset], compressKvCacheLocal, coreInfo.coreCompressSize);
         AscendC::PipeBarrier<PIPE_ALL>();

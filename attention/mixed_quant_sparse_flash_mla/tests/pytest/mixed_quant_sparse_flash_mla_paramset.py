@@ -13,7 +13,7 @@
 import torch
 
 TEST_PARAMS = {
-    "decode_first":{
+    "decode_first": {
         "Testcase_Name": [None],
         "layout_q": ["TND"],
         "layout_kv": ["PA_BBND"],
@@ -48,11 +48,10 @@ TEST_PARAMS = {
         "tile_size": [64],
         "rope_head_dim": [64],
         "template_run_mode": ["SWA"],
-        "actlen_mode":["full"],
-        "S1EQS2":[False]
+        "actlen_mode": ["full"],
+        "S1EQS2": [False],
     },
-
-    "prefill_first":{
+    "prefill_first": {
         "Testcase_Name": [None],
         "layout_q": ["TND"],
         "layout_kv": ["PA_BBND"],
@@ -87,10 +86,10 @@ TEST_PARAMS = {
         "tile_size": [64],
         "rope_head_dim": [64],
         "template_run_mode": ["SWA"],
-        "actlen_mode":["full"],
-        "S1EQS2":[False]
-    }
+        "actlen_mode": ["full"],
+        "S1EQS2": [False],
+    },
 }
 
 ENABLED_PARAMS = [TEST_PARAMS["decode_first"]]
-#ENABLED_PARAMS = [TEST_PARAMS[key] for key in TEST_PARAMS.keys()]
+# ENABLED_PARAMS = [TEST_PARAMS[key] for key in TEST_PARAMS.keys()]

@@ -29,27 +29,31 @@
 #include "../../common/arch35/flash_attention_score_tiling_regbase.h"
 #endif
 
-template<typename T>
+template <typename T>
 class IncreFlashAttentionDummy {
 public:
-    __aicore__ inline IncreFlashAttentionDummy() {};
-    __aicore__ inline void Init(__gm__ uint8_t* attentionOut, const FlashAttentionScoreSimplifiedTilingData* __restrict tiling);
+    __aicore__ inline IncreFlashAttentionDummy(){};
+    __aicore__ inline void Init(__gm__ uint8_t *attentionOut,
+                                const FlashAttentionScoreSimplifiedTilingData *__restrict tiling);
     __aicore__ inline void Process();
 
 protected:
-    const FlashAttentionScoreSimplifiedTilingData* __restrict tilingData;
+    const FlashAttentionScoreSimplifiedTilingData *__restrict tilingData;
     GlobalTensor<T> attentionOutGm;
 };
 
-template<typename T>
-__aicore__ inline void IncreFlashAttentionDummy<T>::Init(__gm__ uint8_t *attentionOut,
-    const FlashAttentionScoreSimplifiedTilingData* __restrict tiling) {
-    attentionOutGm.SetGlobalBuffer((__gm__ T*)attentionOut);
+template <typename T>
+__aicore__ inline void
+IncreFlashAttentionDummy<T>::Init(__gm__ uint8_t *attentionOut,
+                                  const FlashAttentionScoreSimplifiedTilingData *__restrict tiling)
+{
+    attentionOutGm.SetGlobalBuffer((__gm__ T *)attentionOut);
     tilingData = tiling;
 }
 
-template<typename T>
-__aicore__ inline void IncreFlashAttentionDummy<T>::Process() {
+template <typename T>
+__aicore__ inline void IncreFlashAttentionDummy<T>::Process()
+{
     uint32_t blockIdx = GetBlockIdx();
 }
-#endif  // INCRE_FLASH_ATTENTION_DUMMY_H
+#endif // INCRE_FLASH_ATTENTION_DUMMY_H

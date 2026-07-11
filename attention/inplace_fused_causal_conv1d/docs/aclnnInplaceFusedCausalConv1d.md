@@ -42,7 +42,7 @@
     ```
 
     其中cu_seq_len为batch内所有变长序列拼接后的总长度。
-  
+
   - 场景二（prefill和decode混合场景）：
 
     ```Cpp
@@ -94,7 +94,7 @@
     其中state_len必须大于所有batch中最大的token个数加1。
 
   - 场景四（decode场景 - 固定batch）：
-  
+
     ```Cpp
     x: [batch, m+1, dim]
     weight: [K, dim]，其中K=3

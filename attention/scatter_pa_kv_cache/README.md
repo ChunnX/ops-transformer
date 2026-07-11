@@ -31,8 +31,8 @@
     last_dim_v = 32 / sizeof(dtypeValue)
     (k_head_size * sizeof(dtypeKey)) % 32 == 0
     (v_head_size * sizeof(dtypeValue)) % 32 == 0
-    ```  
-    
+    ```
+
   - 场景二：
 
     ```

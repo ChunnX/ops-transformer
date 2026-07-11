@@ -23,7 +23,7 @@
     keyCache:[num_blocks, block_size, num_head, k_head_size]
     slotMapping:[batch * seq_len]
     cacheMode:"Norm"
-    ```  
+    ```
 
     $$
     keyCache = slotMapping(key)
@@ -63,7 +63,7 @@
     $$
     keyCache = slotMapping(key[seqLens - compressLens : seqLens])
     $$
-  
+
   上述场景根据构造的参数来区别，符合第一种入参构造走场景一，符合第二种构造走场景二，符合第三种构造走场景三。场景一没有compressLensOptional、seqLensOptional、compressSeqOffsetOptional这三个可选参数，场景三没有compressSeqOffsetOptional可选参数。
 
 ## 参数说明

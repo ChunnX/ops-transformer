@@ -296,7 +296,7 @@ __aicore__ constexpr bool GET_IS_NZ_OUT(const uint8_t SPLIT_AXIS, const uint32_t
     X(IS_N_EQUAL, bool, false)                                                                                         \
     X(IS_D_NO_EQUAL, bool, false)                                                                                      \
     X(IS_ROPE, bool, false)                                                                                            \
-    X(IS_NZ_OUT, bool, false)                                                                                      \
+    X(IS_NZ_OUT, bool, false)                                                                                          \
     X(IS_TND_SWIZZLE, bool, false)                                                                                     \
     X(SPLIT_AXIS, uint8_t, 0)                                                                                          \
     X(s1TemplateType, S1TemplateType, S1TemplateType::Aligned128)                                                      \
@@ -338,12 +338,13 @@ __aicore__ constexpr bool GET_IS_NZ_OUT(const uint8_t SPLIT_AXIS, const uint32_t
     ChildClass, CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_ARG_NAME) CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_ARG_NAME) end
 
 #define FagOldTilingType                                                                                               \
-    const FlashAttentionScoreGradTilingDataUs1s2Bbn2gs1s2Regbase<NEED_DETER(DETER_SPARSE_TYPE), \
-        NEED_DETER_PREFIX(DETER_SPARSE_TYPE, IS_TND), IS_TND, false> *__restrict
+    const FlashAttentionScoreGradTilingDataUs1s2Bbn2gs1s2Regbase<                                                      \
+        NEED_DETER(DETER_SPARSE_TYPE), NEED_DETER_PREFIX(DETER_SPARSE_TYPE, IS_TND), IS_TND, false> *__restrict
 
 #define FagTilingType                                                                                                  \
-    const __gm__ FlashAttentionScoreGradTilingDataUs1s2Bbn2gs1s2Regbase<NEED_DETER(DETER_SPARSE_TYPE), \
-        NEED_DETER_PREFIX(DETER_SPARSE_TYPE, IS_TND), IS_TND, IS_TND_SWIZZLE> *__restrict
+    const __gm__ FlashAttentionScoreGradTilingDataUs1s2Bbn2gs1s2Regbase<NEED_DETER(DETER_SPARSE_TYPE),                 \
+                                                                        NEED_DETER_PREFIX(DETER_SPARSE_TYPE, IS_TND),  \
+                                                                        IS_TND, IS_TND_SWIZZLE> *__restrict
 
 struct LoopInfo {
     int64_t bIdx{0};
@@ -395,10 +396,10 @@ struct FagConstInfo {
     float attenMaskMinValue;
 
     // quant
-    float pScale; // 量化参数
-    float dsScale; // 量化参数
-    float pScaleD; // 反量化参数
-    float dsScaleD; // 反量化参数
+    float pScale;    // 量化参数
+    float dsScale;   // 量化参数
+    float pScaleD;   // 反量化参数
+    float dsScaleD;  // 反量化参数
     float pScaleLog; // log(pScale)
     int64_t copyOutDStride;
 

@@ -172,25 +172,24 @@ TEST_F(RecurrentGatedDeltaRuleTilingTest, Test1)
     gert::StorageShape stateOutShape = {{sBlockNum, nv, dv, dk}, {sBlockNum, nv, dv, dk}};
 
     gert::TilingContextPara tilingContextPara("RecurrentGatedDeltaRule",
-        {
-            {queryShape, ge::DT_BF16, ge::FORMAT_ND},
-            {keyShape, ge::DT_BF16, ge::FORMAT_ND},
-            {valueShape, ge::DT_BF16, ge::FORMAT_ND},
-            {betaShape, ge::DT_BF16, ge::FORMAT_ND},
-            {stateShape, ge::DT_FLOAT, ge::FORMAT_ND},
-            {seqLengthsShape, ge::DT_INT32, ge::FORMAT_ND},
-            {ssmStateIndicesShape, ge::DT_INT32, ge::FORMAT_ND},
-            {gShape, ge::DT_FLOAT, ge::FORMAT_ND},
-        },
-        {
-            {outShape, ge::DT_BF16, ge::FORMAT_ND},
-            {stateOutShape, ge::DT_FLOAT, ge::FORMAT_ND},
-        },
-        {
-            {"sacle_value", Ops::Transformer::AnyValue::CreateFrom<float>(1.0)},
-        },
-        &compileinfo
-    );
+                                              {
+                                                  {queryShape, ge::DT_BF16, ge::FORMAT_ND},
+                                                  {keyShape, ge::DT_BF16, ge::FORMAT_ND},
+                                                  {valueShape, ge::DT_BF16, ge::FORMAT_ND},
+                                                  {betaShape, ge::DT_BF16, ge::FORMAT_ND},
+                                                  {stateShape, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                  {seqLengthsShape, ge::DT_INT32, ge::FORMAT_ND},
+                                                  {ssmStateIndicesShape, ge::DT_INT32, ge::FORMAT_ND},
+                                                  {gShape, ge::DT_FLOAT, ge::FORMAT_ND},
+                                              },
+                                              {
+                                                  {outShape, ge::DT_BF16, ge::FORMAT_ND},
+                                                  {stateOutShape, ge::DT_FLOAT, ge::FORMAT_ND},
+                                              },
+                                              {
+                                                  {"sacle_value", Ops::Transformer::AnyValue::CreateFrom<float>(1.0)},
+                                              },
+                                              &compileinfo);
 
     int64_t expectTilingKey = 1UL;
 

@@ -65,9 +65,7 @@ def get_topk_scores():
 
 
 __golden__ = {
-    "e2e": {
-        "torch_npu.npu_quant_lightning_indexer": "cpu_quant_lightning_indexer"
-    }
+    "e2e": {"torch_npu.npu_quant_lightning_indexer": "cpu_quant_lightning_indexer"}
 }
 
 
@@ -93,14 +91,20 @@ def ttk_per_batch_from_prefix(prefix):
 
 def ttk_scores_to_layout(golden_obj, scores_bnsd, layout_query, act_q_per_batch):
     shape = list(scores_bnsd.shape)
-    return golden_obj.trans_bnsd_to_layout(scores_bnsd, shape, layout_query, act_q_per_batch)
+    return golden_obj.trans_bnsd_to_layout(
+        scores_bnsd, shape, layout_query, act_q_per_batch
+    )
 
 
 def ttk_restore_pa_bsnd(paged_tensor, block_table, act_k, block_size):
     if paged_tensor is None or block_table is None:
         return paged_tensor
     act_k = [int(x) for x in act_k]
-    page_table = block_table.detach().cpu() if torch.is_tensor(block_table) else torch.tensor(block_table)
+    page_table = (
+        block_table.detach().cpu()
+        if torch.is_tensor(block_table)
+        else torch.tensor(block_table)
+    )
     src = paged_tensor.detach().cpu()
     batch = len(act_k)
     num_heads = src.shape[2]
@@ -117,21 +121,37 @@ def ttk_restore_pa_bsnd(paged_tensor, block_table, act_k, block_size):
             if block_id < 0:
                 continue
             take = min(block_size, cur_k - copied)
-            restored[b_idx, :, copied:copied + take, ...] = src[block_id, :take, :, ...].permute(1, 0, *range(2, src.dim() - 1))
+            restored[b_idx, :, copied : copied + take, ...] = src[
+                block_id, :take, :, ...
+            ].permute(1, 0, *range(2, src.dim() - 1))
             copied += take
             if copied >= cur_k:
                 break
     return restored
 
 
-def cpu_quant_lightning_indexer(query, key, weights, query_dequant_scale,
-                                key_dequant_scale, query_quant_mode=0, key_quant_mode=0,
-                                *, actual_seq_lengths_query=None,
-                                actual_seq_lengths_key=None, block_table=None,
-                                layout_query="BSND", layout_key="BSND", sparse_count=2048,
-                                sparse_mode=3, pre_tokens=(1 << 63) - 1,
-                                next_tokens=(1 << 63) - 1, query_dtype=None,
-                                key_dtype=None, **kwargs):
+def cpu_quant_lightning_indexer(
+    query,
+    key,
+    weights,
+    query_dequant_scale,
+    key_dequant_scale,
+    query_quant_mode=0,
+    key_quant_mode=0,
+    *,
+    actual_seq_lengths_query=None,
+    actual_seq_lengths_key=None,
+    block_table=None,
+    layout_query="BSND",
+    layout_key="BSND",
+    sparse_count=2048,
+    sparse_mode=3,
+    pre_tokens=(1 << 63) - 1,
+    next_tokens=(1 << 63) - 1,
+    query_dtype=None,
+    key_dtype=None,
+    **kwargs,
+):
     """Golden reference implementation for quantized LightningIndexer attention with TopK scoring."""
     clear_topk_scores()
     q_shape = list(query.shape)
@@ -172,20 +192,61 @@ def cpu_quant_lightning_indexer(query, key, weights, query_dequant_scale,
     golden_key_scale = key_dequant_scale
     if layout_key == "PA_BSND":
         golden_key = ttk_restore_pa_bsnd(key, block_table, act_k_forward, block_size)
-        golden_key_scale = ttk_restore_pa_bsnd(key_dequant_scale, block_table, act_k_forward, block_size).squeeze(-1)
+        golden_key_scale = ttk_restore_pa_bsnd(
+            key_dequant_scale, block_table, act_k_forward, block_size
+        ).squeeze(-1)
 
     golden_cls = load_pytest_golden_module().GeneralizedQLI
-    golden = golden_cls(batch_size, q_seq, k_seq, q_t_size, k_t_size,
-                            q_head_num, k_head_num, head_dim, block_size, block_num,
-                            query.dtype, weights.dtype, query_dequant_scale.dtype,
-                            torch.int32, act_q_forward, act_k_forward,
-                            int(query_quant_mode), int(key_quant_mode),
-                            layout_query, layout_key, int(sparse_count), int(sparse_mode))
-    fwd_act_q = act_q_forward if layout_query == "TND" else torch.tensor(act_q_forward, dtype=torch.int32)
-    fwd_act_k = act_k_forward if layout_key == "TND" else torch.tensor(act_k_forward, dtype=torch.int32)
-    indices, full_scores_bnsd = golden.forward(query, golden_key, weights,
-                                               query_dequant_scale, golden_key_scale,
-                                               fwd_act_q, fwd_act_k, block_table)
-    act_q_per_batch = ttk_per_batch_from_prefix(act_q_forward) if layout_query == "TND" else act_q_forward
-    set_topk_scores(ttk_scores_to_layout(golden, full_scores_bnsd, layout_query, act_q_per_batch))
+    golden = golden_cls(
+        batch_size,
+        q_seq,
+        k_seq,
+        q_t_size,
+        k_t_size,
+        q_head_num,
+        k_head_num,
+        head_dim,
+        block_size,
+        block_num,
+        query.dtype,
+        weights.dtype,
+        query_dequant_scale.dtype,
+        torch.int32,
+        act_q_forward,
+        act_k_forward,
+        int(query_quant_mode),
+        int(key_quant_mode),
+        layout_query,
+        layout_key,
+        int(sparse_count),
+        int(sparse_mode),
+    )
+    fwd_act_q = (
+        act_q_forward
+        if layout_query == "TND"
+        else torch.tensor(act_q_forward, dtype=torch.int32)
+    )
+    fwd_act_k = (
+        act_k_forward
+        if layout_key == "TND"
+        else torch.tensor(act_k_forward, dtype=torch.int32)
+    )
+    indices, full_scores_bnsd = golden.forward(
+        query,
+        golden_key,
+        weights,
+        query_dequant_scale,
+        golden_key_scale,
+        fwd_act_q,
+        fwd_act_k,
+        block_table,
+    )
+    act_q_per_batch = (
+        ttk_per_batch_from_prefix(act_q_forward)
+        if layout_query == "TND"
+        else act_q_forward
+    )
+    set_topk_scores(
+        ttk_scores_to_layout(golden, full_scores_bnsd, layout_query, act_q_per_batch)
+    )
     return indices

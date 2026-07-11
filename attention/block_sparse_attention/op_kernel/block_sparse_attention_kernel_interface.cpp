@@ -25,26 +25,15 @@ using namespace NpuArch;
 
 #if (__CCE_AICORE__ == 220)
 namespace BlockSparse {
-template <
-    typename InputDtype = half,
-    typename SoftmaxDtype = float,
-    Epilogue::LseMode lseMode = Epilogue::LseMode::NONE,
-    uint32_t QueryLayout = 0,      // 0=TND, 1=BNSD, 2=BSND
-    uint32_t KvCacheLayout = 0>    // 0=TND, 1=BNSD, 2=BSND
-__global__ __aicore__ void BlockSparseAttentionInfer(
-    GM_ADDR q,
-    GM_ADDR k,
-    GM_ADDR v,
-    GM_ADDR blockSparseMask,
-    GM_ADDR mask,
-    GM_ADDR blockTables,
-    GM_ADDR o,
-    GM_ADDR actualQseqlen,
-    GM_ADDR actualKvseqlen,
-    GM_ADDR blockShape,
-    GM_ADDR workspace,                // S matrix (QK^T result)
-    GM_ADDR lse,
-    GM_ADDR tiling)
+template <typename InputDtype = half, typename SoftmaxDtype = float,
+          Epilogue::LseMode lseMode = Epilogue::LseMode::NONE,
+          uint32_t QueryLayout = 0,   // 0=TND, 1=BNSD, 2=BSND
+          uint32_t KvCacheLayout = 0> // 0=TND, 1=BNSD, 2=BSND
+__global__ __aicore__ void BlockSparseAttentionInfer(GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR blockSparseMask,
+                                                     GM_ADDR mask, GM_ADDR blockTables, GM_ADDR o,
+                                                     GM_ADDR actualQseqlen, GM_ADDR actualKvseqlen, GM_ADDR blockShape,
+                                                     GM_ADDR workspace, // S matrix (QK^T result)
+                                                     GM_ADDR lse, GM_ADDR tiling)
 {
     using ArchTag = Arch::AtlasA2;
     using ElementQ = InputDtype;
@@ -75,8 +64,7 @@ __global__ __aicore__ void BlockSparseAttentionInfer(
     using QType = Gemm::GemmType<ElementQ, LayoutQ>;
     using KType = Gemm::GemmType<ElementK, LayoutK>;
     using SType = Gemm::GemmType<ElementS, LayoutS>;
-    using BlockMmadQK = Gemm::Block::BlockMmad<DispatchPolicyQK, L1TileShapeQK, L0TileShapeQK,
-                                            QType, KType, SType>;
+    using BlockMmadQK = Gemm::Block::BlockMmad<DispatchPolicyQK, L1TileShapeQK, L0TileShapeQK, QType, KType, SType>;
 
     using L1TileShapePV = GemmShape<128, 128, 256>;
     using L0TileShapePV = GemmShape<128, 128, 128>;
@@ -84,51 +72,44 @@ __global__ __aicore__ void BlockSparseAttentionInfer(
     using PType = Gemm::GemmType<ElementP, LayoutP>;
     using VType = Gemm::GemmType<ElementV, LayoutV>;
     using OTmpType = Gemm::GemmType<ElementOTmp, LayoutOTmp>;
-    using BlockMmadPV = Gemm::Block::BlockMmad<DispatchPolicyPV, L1TileShapePV, L0TileShapePV,
-                                            PType, VType, OTmpType>;
+    using BlockMmadPV = Gemm::Block::BlockMmad<DispatchPolicyPV, L1TileShapePV, L0TileShapePV, PType, VType, OTmpType>;
 
     // Epilogue policies for sparse attention
     using DispatchPolicyOnlineSoftmax = Epilogue::EpilogueAtlasA2OnlineSoftmax<lseMode, SoftmaxDtype>;
     using MaskType = Gemm::GemmType<ElementMask, LayoutMask>;
-    using EpilogueOnlineSoftmax = Epilogue::Block::BlockEpilogue<DispatchPolicyOnlineSoftmax,
-        PType, SType, MaskType>;
+    using EpilogueOnlineSoftmax = Epilogue::Block::BlockEpilogue<DispatchPolicyOnlineSoftmax, PType, SType, MaskType>;
     using DispatchPolicyRescaleO = Epilogue::EpilogueAtlasA2RescaleO<lseMode, SoftmaxDtype>;
     using OType = Gemm::GemmType<ElementO, LayoutO>;
     using OUpdateType = Gemm::GemmType<ElementUpdate, LayoutUpdate>;
     using LseType = Gemm::GemmType<ElementLse, LayoutLse>;
-    using EpilogueRescaleO = Epilogue::Block::BlockEpilogue<DispatchPolicyRescaleO,
-                                                            OType, OTmpType, OUpdateType, LseType>;
+    using EpilogueRescaleO =
+        Epilogue::Block::BlockEpilogue<DispatchPolicyRescaleO, OType, OTmpType, OUpdateType, LseType>;
 
     // Kernel instantiation
-    using BlockSparseAttentionKernelType = BlockSparseAttentionKernel<BlockMmadQK, BlockMmadPV,
-                                                                    EpilogueOnlineSoftmax,
-                                                                    EpilogueRescaleO,
-                                                                    false,           // PAGED_CACHE_FLAG
-                                                                    QueryLayout,     // QUERY_LAYOUT
-                                                                    KvCacheLayout>;  // KV_CACHE_LAYOUT
-    BlockSparseAttentionKernelParams params{q, k, v, blockSparseMask, mask, blockTables, actualQseqlen, actualKvseqlen,
-                                o, lse, workspace, tiling};
+    using BlockSparseAttentionKernelType =
+        BlockSparseAttentionKernel<BlockMmadQK, BlockMmadPV, EpilogueOnlineSoftmax, EpilogueRescaleO,
+                                   false,          // PAGED_CACHE_FLAG
+                                   QueryLayout,    // QUERY_LAYOUT
+                                   KvCacheLayout>; // KV_CACHE_LAYOUT
+    BlockSparseAttentionKernelParams params{
+        q, k, v, blockSparseMask, mask, blockTables, actualQseqlen, actualKvseqlen, o, lse, workspace, tiling};
 
     // Call block sparse attention kernel
     BlockSparseAttentionKernelType blockSparseAttenInfer;
     blockSparseAttenInfer(params);
 }
-}
+} // namespace BlockSparse
 #endif
 #if (__CCE_AICORE__ == 310)
 
 using namespace BsaKernelArch35;
 
-template <
-    class InDtype, class SMDtype, class REDtype,
-    Format qFormat, Format kvFormat,
-    Epilogue::LseMode lseMode, Epilogue::LseFormat lseFormat>
-__global__ __aicore__ void BsaInferIntfRegular(
-    GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR mask, GM_ADDR blockTables,
-    GM_ADDR o, GM_ADDR actualQseqlen, GM_ADDR actualKvseqlen,
-    GM_ADDR blockSparseMask, GM_ADDR workspace, GM_ADDR lse,
-    GM_ADDR tiling
-) {
+template <class InDtype, class SMDtype, class REDtype, Format qFormat, Format kvFormat, Epilogue::LseMode lseMode,
+          Epilogue::LseFormat lseFormat>
+__global__ __aicore__ void BsaInferIntfRegular(GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR mask, GM_ADDR blockTables,
+                                               GM_ADDR o, GM_ADDR actualQseqlen, GM_ADDR actualKvseqlen,
+                                               GM_ADDR blockSparseMask, GM_ADDR workspace, GM_ADDR lse, GM_ADDR tiling)
+{
     using ArchTag = Arch::AtlasA5;
     using ElementSparseMask = uint8_t;
     using ElementSparseIdx = int32_t;
@@ -155,18 +136,17 @@ __global__ __aicore__ void BsaInferIntfRegular(
     using LayoutSparseCount = layout::RowMajor;
     // block mask pre-process
     using DispatchPolicyMask2Idx = Epilogue::EpilogueBsaMask2Idx;
-    using EpilogueMask2Idx = Epilogue::Block::BlockEpilogue<
-        DispatchPolicyMask2Idx, ElementSparseMask, ElementSparseIdx, ElementSparseCount>;
+    using EpilogueMask2Idx =
+        Epilogue::Block::BlockEpilogue<DispatchPolicyMask2Idx, ElementSparseMask, ElementSparseIdx, ElementSparseCount>;
     // 处理单个tile内Q和K的matmul
     using L1TileShapeQK = Shape<Int<128>, Int<128>, Int<128>>;
     using L0TileShapeQK = Shape<Int<128>, Int<128>, Int<128>>;
     using DispatchPolicyQK = Gemm::MmadAtlasA5BsaQK;
-    using TileCopyQK = Gemm::Tile::PackedTileCopyTlaToUB<
-        ArchTag, ElementQ, LayoutQ, ElementK, LayoutK, ElementS, LayoutS,
-        void, Gemm::Tile::CopyL0CToUBMode::NO_SPLIT>;
-    using BlockMmadQK = Gemm::Block::BlockMmadTla<
-        DispatchPolicyQK, L1TileShapeQK, L0TileShapeQK, ElementQ, ElementK, ElementS, void, TileCopyQK>;
-   // online softmax
+    using TileCopyQK = Gemm::Tile::PackedTileCopyTlaToUB<ArchTag, ElementQ, LayoutQ, ElementK, LayoutK, ElementS,
+                                                         LayoutS, void, Gemm::Tile::CopyL0CToUBMode::NO_SPLIT>;
+    using BlockMmadQK = Gemm::Block::BlockMmadTla<DispatchPolicyQK, L1TileShapeQK, L0TileShapeQK, ElementQ, ElementK,
+                                                  ElementS, void, TileCopyQK>;
+    // online softmax
     using DispatchPolicyOnlineSoftmax = Epilogue::EpilogueOnlineSoftmaxBsa;
     using PType = Gemm::GemmType<ElementP, LayoutPDummy>;
     using SType = Gemm::GemmType<ElementS, LayoutS>;
@@ -175,32 +155,29 @@ __global__ __aicore__ void BsaInferIntfRegular(
     using L1TileShapePV = Shape<Int<128>, Int<128>, Int<128>>;
     using L0TileShapePV = Shape<Int<128>, Int<128>, Int<128>>;
     using DispatchPolicyPV = Gemm::MmadAtlasA5BsaPV;
-    using TileCopyPV = Gemm::Tile::PackedTileCopyTlaToUB<
-        ArchTag, ElementP, LayoutPDummy, ElementV, LayoutV, ElementOTmp, LayoutOTmp,
-        void, Gemm::Tile::CopyL0CToUBMode::SPLIT_M>;
-    using BlockMmadPV = Gemm::Block::BlockMmadTla<
-        DispatchPolicyPV, L1TileShapePV, L0TileShapePV, ElementP, ElementV, ElementOTmp, void, TileCopyPV>;
+    using TileCopyPV =
+        Gemm::Tile::PackedTileCopyTlaToUB<ArchTag, ElementP, LayoutPDummy, ElementV, LayoutV, ElementOTmp, LayoutOTmp,
+                                          void, Gemm::Tile::CopyL0CToUBMode::SPLIT_M>;
+    using BlockMmadPV = Gemm::Block::BlockMmadTla<DispatchPolicyPV, L1TileShapePV, L0TileShapePV, ElementP, ElementV,
+                                                  ElementOTmp, void, TileCopyPV>;
     // rescale O
     using DispatchPolicyRescaleO = Epilogue::EpilogueAtlasA5BsaRescaleO<lseMode, lseFormat>;
-    using TileCopyRescaleO = Epilogue::Tile::TileCopyRescaleO<
-        ArchTag, ElementO, LayoutO, LayoutOTmp>;
-    using EpilogueRescaleO = Epilogue::Block::BlockEpilogue<
-        DispatchPolicyRescaleO, ElementO, ElementOTmp, ElementS, ElementK, TileCopyRescaleO, Arch::PositionL0C>;
+    using TileCopyRescaleO = Epilogue::Tile::TileCopyRescaleO<ArchTag, ElementO, LayoutO, LayoutOTmp>;
+    using EpilogueRescaleO = Epilogue::Block::BlockEpilogue<DispatchPolicyRescaleO, ElementO, ElementOTmp, ElementS,
+                                                            ElementK, TileCopyRescaleO, Arch::PositionL0C>;
 
-    using BsaRegularKernelArch35 = BsaRegularKernelArch35<
-        EpilogueMask2Idx, BlockMmadQK, EpilogueOnlineSoftmax, BlockMmadPV, EpilogueRescaleO, qFormat, kvFormat>;
-    BsaKernelParamsArch35 params{q, k, v, mask, blockTables,
-        actualQseqlen, actualKvseqlen, blockSparseMask, o, workspace, lse, tiling};
+    using BsaRegularKernelArch35 = BsaRegularKernelArch35<EpilogueMask2Idx, BlockMmadQK, EpilogueOnlineSoftmax,
+                                                          BlockMmadPV, EpilogueRescaleO, qFormat, kvFormat>;
+    BsaKernelParamsArch35 params{q, k,         v,   mask,  blockTables, actualQseqlen, actualKvseqlen, blockSparseMask,
+                                 o, workspace, lse, tiling};
     BsaRegularKernelArch35 bsaRegularKernelArch35;
     bsaRegularKernelArch35(params);
 }
 
-template <
-    class InDtype, class SMDtype, class REDtype,
-    Format qFormat, Format kvFormat,
-    Epilogue::LseMode lseMode, Epilogue::LseFormat lseFormat>
-__global__ __aicore__ void BsaInferInterfaceFullQuant(
-                           GM_ADDR query, GM_ADDR key, GM_ADDR value, GM_ADDR blockSparseMask, GM_ADDR attenMask,
+template <class InDtype, class SMDtype, class REDtype, Format qFormat, Format kvFormat, Epilogue::LseMode lseMode,
+          Epilogue::LseFormat lseFormat>
+__global__ __aicore__ void
+BsaInferInterfaceFullQuant(GM_ADDR query, GM_ADDR key, GM_ADDR value, GM_ADDR blockSparseMask, GM_ADDR attenMask,
                            GM_ADDR blockTable, GM_ADDR actualSeqLengths, GM_ADDR actualSeqLengthsKv,
                            GM_ADDR qDequantScale, GM_ADDR kDequantScale, GM_ADDR vDequantScale, GM_ADDR attentionOut,
                            GM_ADDR workspace, GM_ADDR lse, GM_ADDR tiling)

@@ -25,4 +25,3 @@ endif()
 if(NOT BUILD_OPS_RTY_KERNEL)
     add_modules_sources(OPTYPE mla_preprocess_v2 ACLNNTYPE aclnn)
 endif()
-

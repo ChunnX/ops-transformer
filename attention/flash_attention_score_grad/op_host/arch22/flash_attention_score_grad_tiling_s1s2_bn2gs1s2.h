@@ -137,7 +137,8 @@ public:
     {
         tilingData->reset();
     }
-    FlashAttentionScoreGradTilingDataS1s2Bn2gs1s2 *tilingData = context_->GetTilingData<FlashAttentionScoreGradTilingDataS1s2Bn2gs1s2>();
+    FlashAttentionScoreGradTilingDataS1s2Bn2gs1s2 *tilingData =
+        context_->GetTilingData<FlashAttentionScoreGradTilingDataS1s2Bn2gs1s2>();
 
 protected:
     bool IsCapable() override;
@@ -153,7 +154,7 @@ protected:
     ge::graphStatus DoSparse();
     bool CheckFuzzyArgsLegal(uint32_t s1Inner, uint32_t s2Inner);
     std::tuple<uint32_t, uint32_t, uint32_t> FuzzyForBestSplit();
-    void SetMatmulTilingBufferInfo(AscendC::tiling::TCubeTiling* mmTiling);
+    void SetMatmulTilingBufferInfo(AscendC::tiling::TCubeTiling *mmTiling);
     ge::graphStatus GetSparseBlockInfo();
     ge::graphStatus DoPreTiling();
     ge::graphStatus DoPostTiling();

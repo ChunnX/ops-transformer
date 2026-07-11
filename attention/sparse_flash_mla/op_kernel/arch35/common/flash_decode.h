@@ -76,7 +76,7 @@ __aicore__ inline void InitFDBuffers(const FdRunInfo &fdRunInfo, PipeType *tPipe
 {
     tPipe->Reset();
     int64_t maxSumTotal = static_cast<uint32_t>(fdRunInfo.workspaceNum) * FD_REDUCE_CHUNK_ROWS *
-        FD_BROADCAST_ELEMS_PER_ROW * sizeof(float);
+                          FD_BROADCAST_ELEMS_PER_ROW * sizeof(float);
     int64_t lseExpSize = FD_REDUCE_CHUNK_ROWS * FD_BROADCAST_ELEMS_PER_ROW * sizeof(float);
     int64_t accumOutSize = static_cast<uint32_t>(fdRunInfo.mNum) * D_ALIGN * sizeof(T);
     int64_t partialOSize = FD_REDUCE_CHUNK_ROWS * D_ALIGN * sizeof(T);
@@ -126,10 +126,10 @@ struct S2SplitFdStagingLayout {
 
 // Stage Vec1 max/sum to GM staging.
 // tmpUb must hold at least 2 * stagingM * broadcastElems floats (max + sum broadcast blocks).
-__aicore__ inline void StageVec1Lse(const S2SplitFdStagingLayout &layout,
-    __gm__ uint8_t *stagingBase, int64_t workspaceIdx, int64_t stagingMOffset,
-    int64_t validRows, LocalTensor<float> &maxUb, LocalTensor<float> &sumUb,
-    LocalTensor<float> &tmpUb, uint8_t vToMte3Id, uint8_t mte3ToVId)
+__aicore__ inline void StageVec1Lse(const S2SplitFdStagingLayout &layout, __gm__ uint8_t *stagingBase,
+                                    int64_t workspaceIdx, int64_t stagingMOffset, int64_t validRows,
+                                    LocalTensor<float> &maxUb, LocalTensor<float> &sumUb, LocalTensor<float> &tmpUb,
+                                    uint8_t vToMte3Id, uint8_t mte3ToVId)
 {
     __gm__ uint8_t *maxRegion = layout.MaxRegion(stagingBase);
     __gm__ uint8_t *sumRegion = layout.SumRegion(stagingBase);
@@ -139,18 +139,16 @@ __aicore__ inline void StageVec1Lse(const S2SplitFdStagingLayout &layout,
     sumGm.SetGlobalBuffer((__gm__ float *)sumRegion);
     LocalTensor<float> tmpMaxBlockUb = tmpUb;
     LocalTensor<float> tmpSumBlockUb = tmpUb[1024 / sizeof(float)];
-    int64_t mSizeAlign8 = (validRows + layout.broadcastElems - 1) /
-        layout.broadcastElems * layout.broadcastElems;
+    int64_t mSizeAlign8 = (validRows + layout.broadcastElems - 1) / layout.broadcastElems * layout.broadcastElems;
     int64_t brcbRepeat = mSizeAlign8 / layout.broadcastElems;
     Brcb(tmpMaxBlockUb, maxUb, brcbRepeat, {1, static_cast<uint16_t>(layout.broadcastElems)});
     Brcb(tmpSumBlockUb, sumUb, brcbRepeat, {1, static_cast<uint16_t>(layout.broadcastElems)});
     SetFlag<HardEvent::V_MTE3>(vToMte3Id);
     WaitFlag<HardEvent::V_MTE3>(vToMte3Id);
     int64_t maxSumBytes = layout.StagingMaxSumBytes();
-    int64_t floatOffset = workspaceIdx * (maxSumBytes / sizeof(float)) +
-        stagingMOffset * layout.broadcastElems;
+    int64_t floatOffset = workspaceIdx * (maxSumBytes / sizeof(float)) + stagingMOffset * layout.broadcastElems;
     DataCopyExtParams lseOutParams{static_cast<uint16_t>(validRows),
-        static_cast<uint32_t>(layout.broadcastElems * sizeof(float)), 0, 0, 0};
+                                   static_cast<uint32_t>(layout.broadcastElems * sizeof(float)), 0, 0, 0};
     DataCopyPad(sumGm[floatOffset], tmpSumBlockUb, lseOutParams);
     DataCopyPad(maxGm[floatOffset], tmpMaxBlockUb, lseOutParams);
     SetFlag<HardEvent::MTE3_V>(mte3ToVId);
@@ -161,13 +159,12 @@ __aicore__ inline void StageVec1Lse(const S2SplitFdStagingLayout &layout,
 // vec2ResUb must contain FP32 partial O after final division.
 // stagingOut points to the base of the atten-out staging region; workspaceIdx offset is folded into the element offset.
 template <typename T>
-__aicore__ inline void StageVec2PartialO(const S2SplitFdStagingLayout &layout,
-    GlobalTensor<float> &stagingOut, int64_t workspaceIdx, int64_t stagingMOffset,
-    int64_t validRows, int64_t dValid, LocalTensor<T> &vec2ResUb,
-    uint8_t vToMte3Id, uint8_t mte3ToVId)
+__aicore__ inline void StageVec2PartialO(const S2SplitFdStagingLayout &layout, GlobalTensor<float> &stagingOut,
+                                         int64_t workspaceIdx, int64_t stagingMOffset, int64_t validRows,
+                                         int64_t dValid, LocalTensor<T> &vec2ResUb, uint8_t vToMte3Id,
+                                         uint8_t mte3ToVId)
 {
-    int64_t offset = workspaceIdx * layout.StagingAttenOutElems() +
-        stagingMOffset * dValid;
+    int64_t offset = workspaceIdx * layout.StagingAttenOutElems() + stagingMOffset * dValid;
     SetFlag<HardEvent::V_MTE3>(vToMte3Id);
     WaitFlag<HardEvent::V_MTE3>(vToMte3Id);
     DataCopyExtParams outParams;
@@ -182,13 +179,11 @@ __aicore__ inline void StageVec2PartialO(const S2SplitFdStagingLayout &layout,
 // D_ALIGN is a compile-time constant (e.g. 512) used by ReduceFinalRes_const_VF.
 // workspaceNum must not exceed maxSplits (currently 2).
 template <typename T, int64_t D_ALIGN>
-__aicore__ inline void Reduce(const S2SplitFdStagingLayout &layout,
-    __gm__ uint8_t *stagingBase, int64_t workspaceIdx, int64_t workspaceNum,
-    int64_t fdMOffset, int64_t mNum, int64_t dValid,
-    LocalTensor<T> &accumulatedO, LocalTensor<float> &lseExpUb,
-    LocalTensor<float> &blockMaxUb, LocalTensor<float> &blockSumUb,
-    LocalTensor<T> &partialOFp32,
-    uint8_t vToMte2Id0, uint8_t vToMte2Id1, uint8_t mte2ToVId)
+__aicore__ inline void Reduce(const S2SplitFdStagingLayout &layout, __gm__ uint8_t *stagingBase, int64_t workspaceIdx,
+                              int64_t workspaceNum, int64_t fdMOffset, int64_t mNum, int64_t dValid,
+                              LocalTensor<T> &accumulatedO, LocalTensor<float> &lseExpUb,
+                              LocalTensor<float> &blockMaxUb, LocalTensor<float> &blockSumUb,
+                              LocalTensor<T> &partialOFp32, uint8_t vToMte2Id0, uint8_t vToMte2Id1, uint8_t mte2ToVId)
 {
     constexpr int64_t OUTPUT_ELEMS_PER_BLOCK = FD_BUFFER_SIZE_BYTE_32B / sizeof(float);
     int64_t attenOutElems = layout.StagingAttenOutElems();
@@ -202,8 +197,8 @@ __aicore__ inline void Reduce(const S2SplitFdStagingLayout &layout,
     sumGm.SetGlobalBuffer((__gm__ float *)(sumRegion + workspaceIdx * maxSumBytes));
     int64_t splitStride = maxSumBytes / sizeof(float);
     GlobalTensor<float> stagingOutGm;
-    stagingOutGm.SetGlobalBuffer((__gm__ float *)(layout.AttenOutRegion(stagingBase) +
-        workspaceIdx * attenOutElems * sizeof(float)));
+    stagingOutGm.SetGlobalBuffer(
+        (__gm__ float *)(layout.AttenOutRegion(stagingBase) + workspaceIdx * attenOutElems * sizeof(float)));
     int64_t outSplitStride = attenOutElems;
     int64_t mChunks = (mNum + layout.chunkRows - 1) / layout.chunkRows;
     int64_t startRow = 0;
@@ -226,8 +221,8 @@ __aicore__ inline void Reduce(const S2SplitFdStagingLayout &layout,
         WaitFlag<HardEvent::MTE2_V>(mte2ToVId);
 
         LocalTensor<T> sinkUb;
-        FaVectorApi::ComputeScaleValue_VF<T, T>(sinkUb, blockMaxUb, blockSumUb, lseExpUb,
-                                   dealRowCount, workspaceNum, false, false);
+        FaVectorApi::ComputeScaleValue_VF<T, T>(sinkUb, blockMaxUb, blockSumUb, lseExpUb, dealRowCount, workspaceNum,
+                                                false, false);
         PipeBarrier<PIPE_V>();
 
         LocalTensor<T> chunkAccumO = accumulatedO[startRow * D_ALIGN];
@@ -239,13 +234,13 @@ __aicore__ inline void Reduce(const S2SplitFdStagingLayout &layout,
             inParams.dstStride = static_cast<uint16_t>((D_ALIGN - dValid) / OUTPUT_ELEMS_PER_BLOCK);
             inParams.blockCount = dealRowCount;
             DataCopyPadExtParams<float> padParams{true, 0,
-                static_cast<uint8_t>((D_ALIGN - dValid) % OUTPUT_ELEMS_PER_BLOCK), 0};
+                                                  static_cast<uint8_t>((D_ALIGN - dValid) % OUTPUT_ELEMS_PER_BLOCK), 0};
             WaitFlag<HardEvent::V_MTE2>(vToMte2Id1);
             DataCopyPad(partialOFp32, stagingOutGm[outSrcOffset], inParams, padParams);
             SetFlag<HardEvent::MTE2_V>(mte2ToVId);
             WaitFlag<HardEvent::MTE2_V>(mte2ToVId);
-            FaVectorApi::ReduceFinalRes_const_VF<T, D_ALIGN>(chunkAccumO, blockSumUb, partialOFp32,
-                                                         dealRowCount, splitIdx);
+            FaVectorApi::ReduceFinalRes_const_VF<T, D_ALIGN>(chunkAccumO, blockSumUb, partialOFp32, dealRowCount,
+                                                             splitIdx);
             SetFlag<HardEvent::V_MTE2>(vToMte2Id1);
             outSrcOffset += outSplitStride;
         }
@@ -257,4 +252,4 @@ __aicore__ inline void Reduce(const S2SplitFdStagingLayout &layout,
 
 } // namespace AttentionCommon
 
-#endif  // SPARSE_FLASH_MLA_FLASH_DECODE_H
+#endif // SPARSE_FLASH_MLA_FLASH_DECODE_H

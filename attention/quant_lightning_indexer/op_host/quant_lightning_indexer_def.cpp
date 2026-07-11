@@ -19,21 +19,9 @@ class QuantLightningIndexer : public OpDef {
 public:
     explicit QuantLightningIndexer(const char *name) : OpDef(name)
     {
-        this->Input("query")
-            .ParamType(REQUIRED)
-            .DataType({ge::DT_INT8})
-            .Format({ge::FORMAT_ND})
-            .AutoContiguous();
-        this->Input("key")
-            .ParamType(REQUIRED)
-            .DataType({ge::DT_INT8})
-            .Format({ge::FORMAT_ND})
-            .AutoContiguous();
-        this->Input("weights")
-            .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT16})
-            .Format({ge::FORMAT_ND})
-            .AutoContiguous();
+        this->Input("query").ParamType(REQUIRED).DataType({ge::DT_INT8}).Format({ge::FORMAT_ND}).AutoContiguous();
+        this->Input("key").ParamType(REQUIRED).DataType({ge::DT_INT8}).Format({ge::FORMAT_ND}).AutoContiguous();
+        this->Input("weights").ParamType(REQUIRED).DataType({ge::DT_FLOAT16}).Format({ge::FORMAT_ND}).AutoContiguous();
         this->Input("query_dequant_scale")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT16})
@@ -60,15 +48,19 @@ public:
             .Format({ge::FORMAT_ND})
             .AutoContiguous();
         this->Output("sparse_indices").ParamType(REQUIRED).DataType({ge::DT_INT32}).Format({ge::FORMAT_ND});
-        this->Attr("query_quant_mode").AttrType(REQUIRED).Int(0);  // 0: 默认值，per-token-head
-        this->Attr("key_quant_mode").AttrType(REQUIRED).Int(0);    // 0: 默认值，per-token-head
+        this->Attr("query_quant_mode").AttrType(REQUIRED).Int(0); // 0: 默认值，per-token-head
+        this->Attr("key_quant_mode").AttrType(REQUIRED).Int(0);   // 0: 默认值，per-token-head
         this->Attr("layout_query").AttrType(OPTIONAL).String("BSND");
         this->Attr("layout_key").AttrType(OPTIONAL).String("BSND");
-        this->Attr("sparse_count").AttrType(OPTIONAL).Int(2048);  // 2048: 默认值，筛选前2048
-        this->Attr("sparse_mode").AttrType(OPTIONAL).Int(3);      // 3: 默认值，只计算下三角
-        this->Attr("pre_tokens").AttrType(OPTIONAL).Int(9223372036854775807);  // 9223372036854775807: 默认值，int64的最大值
-        this->Attr("next_tokens").AttrType(OPTIONAL).Int(9223372036854775807); // 9223372036854775807: 默认值，int64的最大值
-        this->Attr("key_stride0").AttrType(OPTIONAL).Int(-1);               // -1: 默认值
+        this->Attr("sparse_count").AttrType(OPTIONAL).Int(2048); // 2048: 默认值，筛选前2048
+        this->Attr("sparse_mode").AttrType(OPTIONAL).Int(3);     // 3: 默认值，只计算下三角
+        this->Attr("pre_tokens")
+            .AttrType(OPTIONAL)
+            .Int(9223372036854775807); // 9223372036854775807: 默认值，int64的最大值
+        this->Attr("next_tokens")
+            .AttrType(OPTIONAL)
+            .Int(9223372036854775807);                        // 9223372036854775807: 默认值，int64的最大值
+        this->Attr("key_stride0").AttrType(OPTIONAL).Int(-1); // -1: 默认值
         this->Attr("key_dequant_scale_stride0").AttrType(OPTIONAL).Int(-1); // -1: 默认值
         OpAICoreConfig aicore_config;
         aicore_config.DynamicCompileStaticFlag(true)
@@ -122,9 +114,9 @@ public:
             .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
         aicore_config_95.Output("sparse_indices")
-        .ParamType(REQUIRED)
-        .DataType({ge::DT_INT32, ge::DT_INT32, ge::DT_INT32, ge::DT_INT32})
-        .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
+            .ParamType(REQUIRED)
+            .DataType({ge::DT_INT32, ge::DT_INT32, ge::DT_INT32, ge::DT_INT32})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
         aicore_config_95.DynamicCompileStaticFlag(true)
             .DynamicFormatFlag(true)
             .DynamicRankSupportFlag(true)
@@ -135,4 +127,4 @@ public:
     }
 };
 OP_ADD(QuantLightningIndexer);
-}  // namespace ops
+} // namespace ops

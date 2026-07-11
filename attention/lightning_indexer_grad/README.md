@@ -175,7 +175,7 @@
 
 - inputLayout支持TND/BSND。
 - 关于数据shape的约束，以Layout的BSND举例。其中：
-  
+
   - B（Batchsize）：取值范围为1\~1024。
   - N（Head-Num）：取值为1\~64。
   - G（Group）：取值为N。

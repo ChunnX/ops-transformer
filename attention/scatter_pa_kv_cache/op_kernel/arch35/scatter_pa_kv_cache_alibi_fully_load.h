@@ -110,9 +110,8 @@ __aicore__ inline void ScatterPaKvCacheAlibiFullyLoad<T, IndexDtype, InOutMode>:
                                                                                            int64_t seqLenOffset)
 {
     LocalTensor<T> inputKeyLocal = inputKeyQueue_.AllocTensor<T>();
-    DataCopyExtParams params = {
-        static_cast<uint16_t>(1), static_cast<uint32_t>(tilingData_->kHeadSize * sizeof(T)), static_cast<uint32_t>(0),
-        static_cast<uint32_t>(0), static_cast<uint32_t>(0)};
+    DataCopyExtParams params = {static_cast<uint16_t>(1), static_cast<uint32_t>(tilingData_->kHeadSize * sizeof(T)),
+                                static_cast<uint32_t>(0), static_cast<uint32_t>(0), static_cast<uint32_t>(0)};
     DataCopyPadExtParams<T> padParams;
     padParams.isPad = 0;
     padParams.leftPadding = 0;
@@ -128,8 +127,8 @@ __aicore__ inline void ScatterPaKvCacheAlibiFullyLoad<T, IndexDtype, InOutMode>:
             continue;
         }
         DataCopyPad(inputKeyLocal[k * RoundUp(tilingData_->kHeadSize)],
-                 inputKeyGm_[offset + (seqLenOffset - offsetIndex + k) * tilingData_->keyStride1],
-                 params, padParams);
+                    inputKeyGm_[offset + (seqLenOffset - offsetIndex + k) * tilingData_->keyStride1], params,
+                    padParams);
     }
     inputKeyQueue_.EnQue(inputKeyLocal);
 }
@@ -140,9 +139,8 @@ __aicore__ inline void ScatterPaKvCacheAlibiFullyLoad<T, IndexDtype, InOutMode>:
                                                                                              int64_t seqLenOffset)
 {
     LocalTensor<T> inputValueLocal = inputValueQueue_.AllocTensor<T>();
-    DataCopyExtParams params = {
-        static_cast<uint16_t>(1), static_cast<uint32_t>(tilingData_->vHeadSize * sizeof(T)), static_cast<uint32_t>(0),
-        static_cast<uint32_t>(0), static_cast<uint32_t>(0)};
+    DataCopyExtParams params = {static_cast<uint16_t>(1), static_cast<uint32_t>(tilingData_->vHeadSize * sizeof(T)),
+                                static_cast<uint32_t>(0), static_cast<uint32_t>(0), static_cast<uint32_t>(0)};
     DataCopyPadExtParams<T> padParams;
     padParams.isPad = 0;
     padParams.leftPadding = 0;
@@ -158,8 +156,8 @@ __aicore__ inline void ScatterPaKvCacheAlibiFullyLoad<T, IndexDtype, InOutMode>:
             continue;
         }
         DataCopyPad(inputValueLocal[k * RoundUp(tilingData_->vHeadSize)],
-                 inputValueGm_[offset + (seqLenOffset - offsetIndex + k) * tilingData_->valueStride1],
-                 params, padParams);
+                    inputValueGm_[offset + (seqLenOffset - offsetIndex + k) * tilingData_->valueStride1], params,
+                    padParams);
     }
     inputValueQueue_.EnQue(inputValueLocal);
 }

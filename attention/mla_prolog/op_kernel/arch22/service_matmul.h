@@ -31,7 +31,7 @@ __aicore__ inline constexpr uint32_t GetC0Num()
     return 16;
 }
 
-constexpr uint8_t UNIT_FLAG_DISABLE = 0;  // 0: disable: 不配置unitFlag
+constexpr uint8_t UNIT_FLAG_DISABLE = 0; // 0: disable: 不配置unitFlag
 constexpr uint8_t UNIT_FLAG_SET = 0b11; // 3: enable: 在k的最后一轮循环，会将mmadParams.unitFlag设置为 0b11
 constexpr uint8_t UNIT_FLAG_CHECK = 0b10; // 2: enable: 将mmadParams.unitFlag设置为 0b10
 
@@ -68,7 +68,7 @@ __aicore__ inline void CopyNZGmToL1(LocalTensor<T> &l1Tensor, const GlobalTensor
 {
     DataCopyParams param;
     param.blockCount = CeilDivT(srcD, GetC0Num<T>());
-    param.blockLen = srcN;                 // 单位为32B srcN*16/16
+    param.blockLen = srcN; // 单位为32B srcN*16/16
     param.dstStride = 0;
     param.srcStride = (srcNstride - srcN); // 单位为32B (srcNstride - srcN)*16/16
     DataCopy(l1Tensor, gmSrcTensor, param);
@@ -233,8 +233,8 @@ __aicore__ inline void GetTensorC(const GlobalTensor<O> &tensorCGm, const LocalT
     FixpipeParamsV220 fixParams;
     fixParams.srcStride = srcStride; // ((fixParams.mSize + 15) / 16) * 16
     fixParams.dstStride = dstStride;
-    fixParams.nSize = nSize;         // 实现切片大小
-    fixParams.mSize = mSize;         // msdIterNum * gSize; // 有效数据不足16行，只需要输出部分行即可
+    fixParams.nSize = nSize; // 实现切片大小
+    fixParams.mSize = mSize; // msdIterNum * gSize; // 有效数据不足16行，只需要输出部分行即可
     fixParams.ndNum = 1;
     fixParams.unitFlag = enUnitFlag ? UNIT_FLAG_SET : UNIT_FLAG_DISABLE;
     if constexpr (std::is_same<O_L0C, float>::value && std::is_same<O, bfloat16_t>::value) {

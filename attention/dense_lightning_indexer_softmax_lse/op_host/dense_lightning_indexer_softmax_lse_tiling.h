@@ -74,10 +74,10 @@ constexpr uint32_t HEAD_DIM_LIMIT = 128;
 constexpr uint32_t SPARSE_MODE_LOWER = 3;
 
 constexpr uint32_t MM1_RES_ELEM_SIZE = 4; // 4: fp32
-constexpr uint32_t DOUBLE_BUFFER = 2; // 双Buffer
-constexpr uint32_t M_BASE_SIZE = 512; // m轴基本块大小
-constexpr uint32_t S2_BASE_SIZE = 512; // S2轴基本块大小
-constexpr uint32_t S1_BASE_SIZE = 8; // S1轴基本块大小
+constexpr uint32_t DOUBLE_BUFFER = 2;     // 双Buffer
+constexpr uint32_t M_BASE_SIZE = 512;     // m轴基本块大小
+constexpr uint32_t S2_BASE_SIZE = 512;    // S2轴基本块大小
+constexpr uint32_t S1_BASE_SIZE = 8;      // S1轴基本块大小
 constexpr uint32_t MAX_KEY_SEQ_LENGTH = 128 * 1024;
 
 // -----------算子TilingData定义---------------
@@ -209,13 +209,13 @@ public:
 // ---------------算子Tiling类---------------
 class DenseLightningIndexerSoftmaxLseTiling {
 public:
-    explicit DenseLightningIndexerSoftmaxLseTiling(gert::TilingContext *context) : context_(context){};
+    explicit DenseLightningIndexerSoftmaxLseTiling(gert::TilingContext *context) : context_(context) {};
     ge::graphStatus DoTiling(DenseLISoftmaxLseTilingInfo *tilingInfo);
 
 private:
     gert::TilingContext *context_ = nullptr;
     DenseLISoftmaxLseTilingData tilingData_;
 };
-}
+} // namespace optiling
 
 #endif // DENSE_LIGHTNING_INDEXER_SOFTMAX_LSE_TILING_H_

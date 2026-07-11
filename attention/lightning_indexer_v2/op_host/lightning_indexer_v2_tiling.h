@@ -26,7 +26,7 @@
 #include "op_host/tiling_util.h"
 
 namespace optiling {
-    // ------------------公共定义--------------------------
+// ------------------公共定义--------------------------
 struct TilingRequiredParaInfo {
     const gert::CompileTimeTensorDesc *desc;
     const gert::StorageShape *shape;
@@ -258,7 +258,7 @@ public:
 // ---------------算子Tiling类---------------
 class LightningIndexerV2Tiling {
 public:
-    explicit LightningIndexerV2Tiling(gert::TilingContext *context) : context_(context){};
+    explicit LightningIndexerV2Tiling(gert::TilingContext *context) : context_(context) {};
     ge::graphStatus DoTiling(LIV2TilingInfo *tilingInfo);
 
 private:

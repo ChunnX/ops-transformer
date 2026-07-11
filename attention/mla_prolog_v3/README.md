@@ -100,7 +100,7 @@
 | quant_scale_ckr      | 输入      | KRCache输出量化参数。 | FLOAT | ND         |
 | smooth_scales_cq     | 输入      | RmsNormCq输出动态量化参数。 | FLOAT | ND         |
 | actual_seq_len                 | 输入      | 预留参数，当前版本暂未使用，必须传入空指针。 | INT32 | ND         |
-| k_nope_clip_alpha    | 输入      | 对kv_cache做clip操作时的缩放因子。  | FLOAT | ND         |    
+| k_nope_clip_alpha    | 输入      | 对kv_cache做clip操作时的缩放因子。  | FLOAT | ND         |
 | rmsnorm_epsilon_cq           | 输入      | 计算$c^Q$的RmsNorm公式中$\epsilon$参数。 | DOUBLE | -          |
 | rmsnorm_epsilon_ckv          | 输入      | 计算$c^{KV}$的RmsNorm公式中$\epsilon$参数。 | DOUBLE | -          |
 | cache_mode          | 输入      | kvCache模式。 | CHAR* | -          |
@@ -173,7 +173,7 @@
       <td colspan="2">非量化</td>
       <td>
           weight_quant_mode=0，kv_cache_quant_mode=0，query_quant_mode=0<br>
-          入参：所有入参皆为非量化数据 <br> 
+          入参：所有入参皆为非量化数据 <br>
           出参：所有出参皆为非量化数据
       </td>
     </tr>

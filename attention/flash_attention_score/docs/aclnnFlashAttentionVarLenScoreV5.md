@@ -88,7 +88,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV5(
 ## aclnnFlashAttentionVarLenScoreV5GetWorkspaceSize
 
 - **参数说明**
-  
+
   <table style="undefined;table-layout: fixed; width: 1452px"><colgroup>
     <col style="width: 174px">
     <col style="width: 121px">
@@ -423,7 +423,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV5(
       </tr>
     </tbody>
   </table>
-  
+
 - **返回值**
 
   aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
@@ -466,7 +466,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV5(
 ## aclnnFlashAttentionVarLenScoreV5
 
 - **参数说明**
-  
+
   <table style="undefined;table-layout: fixed; width: 1154px"><colgroup>
   <col style="width: 153px">
   <col style="width: 121px">
@@ -534,7 +534,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV5(
   - 如果pseType为2或3的时候，数据类型需为FLOAT32,对应shape支持范围是[B,N]或[N]。
   - 如果不开启该参数，realShiftOptional需要传入nullptr，pseType需要传入1。
 - innerPrecise：当前0、1为保留配置值，2为开启无效行计算，其功能是避免在计算过程中存在整行mask进而导致精度有损失，但是该配置会导致性能下降。如果算子可判断出存在无效行场景，会自动开启无效行计算，例如sparseMode为3，Sq > Skv场景。
-- sparseMode的约束如下: 
+- sparseMode的约束如下:
   - 当所有的attenMaskOptional的shape小于2048且相同的时候，建议使用default模式，来减少内存使用量。
   - 配置为1、2、3、6时，用户配置的preTokens、nextTokens不会生效。
   - 配置为0、4、7时，须保证attenMaskOptional与preTokens、nextTokens的范围一致。

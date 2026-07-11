@@ -36,76 +36,78 @@ constexpr size_t DIM_SHAPE_Q = 512;
 constexpr size_t DIM_SHAPE_QR = 64;
 constexpr size_t DIM_SHAPE_Q_CACHE = 576;
 
-static ge::graphStatus InferShapeMlaPreprocess(gert::InferShapeContext* context) {
-  OP_LOGD(context->GetNodeName(), "Begin to do InferShapeMlaPreprocess.");
-  auto attrs = context->GetAttrs();
-  OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
+static ge::graphStatus InferShapeMlaPreprocess(gert::InferShapeContext *context)
+{
+    OP_LOGD(context->GetNodeName(), "Begin to do InferShapeMlaPreprocess.");
+    auto attrs = context->GetAttrs();
+    OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
 
-  const int64_t *cacheModePtr = attrs->GetAttrPointer<int64_t>(ATTR_CACHE_MODE);
-  if (cacheModePtr == nullptr) {
-    return ge::GRAPH_FAILED;
-  }
-  const int64_t cacheMode = *cacheModePtr;
-  
-  const gert::Shape* kvCacheShape = context->GetInputShape(INPUT_KV_CACHE);
-  const gert::Shape* kvCacheRopeShape = context->GetInputShape(INPUT_KV_CACHE_ROPE);
-  const gert::Shape* inputShape = context->GetInputShape(INPUT_INPUT);
-  const gert::Shape* wukShape = context->GetInputShape(INPUT_WUK);
+    const int64_t *cacheModePtr = attrs->GetAttrPointer<int64_t>(ATTR_CACHE_MODE);
+    if (cacheModePtr == nullptr) {
+        return ge::GRAPH_FAILED;
+    }
+    const int64_t cacheMode = *cacheModePtr;
 
-  const int64_t tokenNum = inputShape->GetDim(0);
-  const int64_t headNum = wukShape->GetDim(0);
+    const gert::Shape *kvCacheShape = context->GetInputShape(INPUT_KV_CACHE);
+    const gert::Shape *kvCacheRopeShape = context->GetInputShape(INPUT_KV_CACHE_ROPE);
+    const gert::Shape *inputShape = context->GetInputShape(INPUT_INPUT);
+    const gert::Shape *wukShape = context->GetInputShape(INPUT_WUK);
 
-  gert::Shape* qOutShape = context->GetOutputShape(OUTPUT_Q_OUT);
-  gert::Shape* kvCacheOutShape = context->GetOutputShape(OUTPUT_KV_CACHE_OUT);
+    const int64_t tokenNum = inputShape->GetDim(0);
+    const int64_t headNum = wukShape->GetDim(0);
 
-  *kvCacheOutShape = *kvCacheShape;
+    gert::Shape *qOutShape = context->GetOutputShape(OUTPUT_Q_OUT);
+    gert::Shape *kvCacheOutShape = context->GetOutputShape(OUTPUT_KV_CACHE_OUT);
 
-  qOutShape->SetDimNum(DIM_THREE);
-  qOutShape->SetDim(0, tokenNum);
-  qOutShape->SetDim(1, headNum);
+    *kvCacheOutShape = *kvCacheShape;
 
-  if (cacheMode != 0) {
-    gert::Shape* qRopeOutShape = context->GetOutputShape(OUTPUT_Q_ROPE_OUT);
-    gert::Shape* krCacheOutShape = context->GetOutputShape(OUTPUT_KR_CACHE_OUT);
-    *krCacheOutShape = *kvCacheRopeShape;
+    qOutShape->SetDimNum(DIM_THREE);
+    qOutShape->SetDim(0, tokenNum);
+    qOutShape->SetDim(1, headNum);
 
-    qOutShape->SetDim(DIM_TWO, DIM_SHAPE_Q);
+    if (cacheMode != 0) {
+        gert::Shape *qRopeOutShape = context->GetOutputShape(OUTPUT_Q_ROPE_OUT);
+        gert::Shape *krCacheOutShape = context->GetOutputShape(OUTPUT_KR_CACHE_OUT);
+        *krCacheOutShape = *kvCacheRopeShape;
 
-    qRopeOutShape->SetDimNum(DIM_THREE);
-    qRopeOutShape->SetDim(0, tokenNum);
-    qRopeOutShape->SetDim(1, headNum);
-    qRopeOutShape->SetDim(DIM_TWO, DIM_SHAPE_QR);
-  } else {
-    qOutShape->SetDim(DIM_TWO, DIM_SHAPE_Q_CACHE);
-  }
+        qOutShape->SetDim(DIM_TWO, DIM_SHAPE_Q);
 
-  OP_LOGD(context->GetNodeName(), "End to do InferShapeMlaPreprocess.");
-  return ge::GRAPH_SUCCESS;
+        qRopeOutShape->SetDimNum(DIM_THREE);
+        qRopeOutShape->SetDim(0, tokenNum);
+        qRopeOutShape->SetDim(1, headNum);
+        qRopeOutShape->SetDim(DIM_TWO, DIM_SHAPE_QR);
+    } else {
+        qOutShape->SetDim(DIM_TWO, DIM_SHAPE_Q_CACHE);
+    }
+
+    OP_LOGD(context->GetNodeName(), "End to do InferShapeMlaPreprocess.");
+    return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus InferDataTypeMlaPreprocess(gert::InferDataTypeContext* context) {
-  OP_LOGD(context->GetNodeName(), "Begin to do InferDataTypeMlaPreprocess.");
-  auto attrs = context->GetAttrs();
-  OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
+static ge::graphStatus InferDataTypeMlaPreprocess(gert::InferDataTypeContext *context)
+{
+    OP_LOGD(context->GetNodeName(), "Begin to do InferDataTypeMlaPreprocess.");
+    auto attrs = context->GetAttrs();
+    OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
 
-  const int64_t *cacheModePtr = attrs->GetAttrPointer<int64_t>(ATTR_CACHE_MODE);
-  if (cacheModePtr == nullptr) {
-    return ge::GRAPH_FAILED;
-  }
-  const int64_t cacheMode = *cacheModePtr;
+    const int64_t *cacheModePtr = attrs->GetAttrPointer<int64_t>(ATTR_CACHE_MODE);
+    if (cacheModePtr == nullptr) {
+        return ge::GRAPH_FAILED;
+    }
+    const int64_t cacheMode = *cacheModePtr;
 
-  auto inputDtype = context->GetInputDataType(INPUT_INPUT);
-  auto kvCacheDtype = context->GetInputDataType(INPUT_KV_CACHE);
-  context->SetOutputDataType(OUTPUT_Q_OUT, kvCacheDtype);
-  context->SetOutputDataType(OUTPUT_KV_CACHE_OUT, kvCacheDtype);
-  if (cacheMode != 0) {
-    context->SetOutputDataType(OUTPUT_Q_ROPE_OUT, inputDtype);
-    context->SetOutputDataType(OUTPUT_KR_CACHE_OUT, inputDtype);
-  }
-  OP_LOGD(context->GetNodeName(), "End to do InferDataTypeMlaPreprocess.");
-  return ge::GRAPH_SUCCESS;
+    auto inputDtype = context->GetInputDataType(INPUT_INPUT);
+    auto kvCacheDtype = context->GetInputDataType(INPUT_KV_CACHE);
+    context->SetOutputDataType(OUTPUT_Q_OUT, kvCacheDtype);
+    context->SetOutputDataType(OUTPUT_KV_CACHE_OUT, kvCacheDtype);
+    if (cacheMode != 0) {
+        context->SetOutputDataType(OUTPUT_Q_ROPE_OUT, inputDtype);
+        context->SetOutputDataType(OUTPUT_KR_CACHE_OUT, inputDtype);
+    }
+    OP_LOGD(context->GetNodeName(), "End to do InferDataTypeMlaPreprocess.");
+    return ge::GRAPH_SUCCESS;
 }
 
 IMPL_OP_INFERSHAPE(MlaPreprocess).InferShape(InferShapeMlaPreprocess).InferDataType(InferDataTypeMlaPreprocess);
 
-}  // namespace ops
+} // namespace ops

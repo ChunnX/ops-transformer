@@ -14,24 +14,12 @@ namespace ops {
 
 class RainFusionAttention : public OpDef {
 public:
-    explicit RainFusionAttention(const char* name) : OpDef(name)
+    explicit RainFusionAttention(const char *name) : OpDef(name)
     {
-        this->Input("query")
-            .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT16, ge::DT_BF16})
-            .FormatList({ge::FORMAT_ND});
-        this->Input("key")
-            .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT16, ge::DT_BF16})
-            .FormatList({ge::FORMAT_ND});
-        this->Input("value")
-            .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT16, ge::DT_BF16})
-            .FormatList({ge::FORMAT_ND});
-        this->Input("selectIdx")
-            .ParamType(REQUIRED)
-            .DataType({ge::DT_INT64, ge::DT_INT64})
-            .FormatList({ge::FORMAT_ND});
+        this->Input("query").ParamType(REQUIRED).DataType({ge::DT_FLOAT16, ge::DT_BF16}).FormatList({ge::FORMAT_ND});
+        this->Input("key").ParamType(REQUIRED).DataType({ge::DT_FLOAT16, ge::DT_BF16}).FormatList({ge::FORMAT_ND});
+        this->Input("value").ParamType(REQUIRED).DataType({ge::DT_FLOAT16, ge::DT_BF16}).FormatList({ge::FORMAT_ND});
+        this->Input("selectIdx").ParamType(REQUIRED).DataType({ge::DT_INT64, ge::DT_INT64}).FormatList({ge::FORMAT_ND});
         this->Input("selectNumIdx")
             .ParamType(REQUIRED)
             .DataType({ge::DT_INT64, ge::DT_INT64})
@@ -39,7 +27,7 @@ public:
         this->Input("blockShape")
             .ParamType(REQUIRED)
             .DataType({ge::DT_INT64, ge::DT_INT64})
-            .FormatList({ge::FORMAT_ND}); 
+            .FormatList({ge::FORMAT_ND});
         this->Input("attenMask")
             .ParamType(OPTIONAL)
             .DataType({ge::DT_FLOAT16, ge::DT_BF16})
@@ -64,13 +52,13 @@ public:
             .ParamType(OPTIONAL)
             .DataType({ge::DT_FLOAT, ge::DT_FLOAT})
             .FormatList({ge::FORMAT_ND});
-        
+
         this->Attr("qInputLayout").AttrType(OPTIONAL).String("TND");
         this->Attr("kvInputLayout").AttrType(OPTIONAL).String("TND");
         this->Attr("numKeyValueHeads").AttrType(OPTIONAL).Int(1);
         this->Attr("maskType").AttrType(OPTIONAL).Int(0);
         this->Attr("scaleValue").AttrType(OPTIONAL).Float(0.0);
-        this->Attr("innerPrecise").AttrType(OPTIONAL).Int(1);  // 0=float32 softmax, 1=fp16 softmax（推理优先）
+        this->Attr("innerPrecise").AttrType(OPTIONAL).Int(1); // 0=float32 softmax, 1=fp16 softmax（推理优先）
         this->Attr("blockSize").AttrType(OPTIONAL).Int(128);
 
         this->AICore().AddConfig("ascend910b");
@@ -80,5 +68,4 @@ public:
 
 OP_ADD(RainFusionAttention);
 
-}  // namespace ops
-
+} // namespace ops

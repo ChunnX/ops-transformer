@@ -63,7 +63,7 @@ struct ExtraInfoNormal {
 };
 
 #ifndef L1_SELF_CONTROL
-static constexpr MatmulConfig GenConfMM1Normal(const IFAProfile& ifa)
+static constexpr MatmulConfig GenConfMM1Normal(const IFAProfile &ifa)
 {
     MatmulConfig conf = GenConfMM1(ifa);
     conf.enableSetTail = true;
@@ -72,7 +72,7 @@ static constexpr MatmulConfig GenConfMM1Normal(const IFAProfile& ifa)
 }
 #endif
 
-static constexpr MatmulConfig GenConfMM2Normal(const IFAProfile& ifa)
+static constexpr MatmulConfig GenConfMM2Normal(const IFAProfile &ifa)
 {
     MatmulConfig conf = GenConfMM2(ifa);
     conf.enableSetTail = true;
@@ -81,20 +81,20 @@ static constexpr MatmulConfig GenConfMM2Normal(const IFAProfile& ifa)
 }
 
 template <typename IFAT>
-class IncreFlashAttentionNormalSplitBbn2s2Us2
-{
+class IncreFlashAttentionNormalSplitBbn2s2Us2 {
 public:
     __aicore__ inline IncreFlashAttentionNormalSplitBbn2s2Us2(
-        const optiling::IncreFlashAttentionTilingDataRegbase& __restrict tilingData);
-    __aicore__ inline void Init(__gm__ uint8_t* query, __gm__ uint8_t* key, __gm__ uint8_t* value, __gm__ uint8_t* pseShift,
-                                __gm__ uint8_t* attenMask, __gm__ uint8_t* actualSeqLengthsQ, __gm__ uint8_t* actualSeqLengths,
-                                __gm__ uint8_t* blockTable, __gm__ uint8_t* queryPaddingSize, __gm__ uint8_t* kvPaddingSize, __gm__ uint8_t* attentionOut,
-                                __gm__ uint8_t* softmaxLse, __gm__ uint8_t* workspace, const optiling::IncreFlashAttentionTilingDataRegbase* __restrict tiling,
-                                TPipe* tPipe);
-    __aicore__ inline void InitQuant(__gm__ uint8_t* deqScale1, __gm__ uint8_t* quantScale1, __gm__ uint8_t* deqScale2,
-                                     __gm__ uint8_t* quantScale2, __gm__ uint8_t* quantOffset2,
-                                     __gm__ uint8_t* antiquantScale, __gm__ uint8_t* antiquantOffset,
-                                     __gm__ uint8_t* workspace);
+        const optiling::IncreFlashAttentionTilingDataRegbase &__restrict tilingData);
+    __aicore__ inline void Init(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
+                                __gm__ uint8_t *pseShift, __gm__ uint8_t *attenMask, __gm__ uint8_t *actualSeqLengthsQ,
+                                __gm__ uint8_t *actualSeqLengths, __gm__ uint8_t *blockTable,
+                                __gm__ uint8_t *queryPaddingSize, __gm__ uint8_t *kvPaddingSize,
+                                __gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxLse, __gm__ uint8_t *workspace,
+                                const optiling::IncreFlashAttentionTilingDataRegbase *__restrict tiling, TPipe *tPipe);
+    __aicore__ inline void InitQuant(__gm__ uint8_t *deqScale1, __gm__ uint8_t *quantScale1, __gm__ uint8_t *deqScale2,
+                                     __gm__ uint8_t *quantScale2, __gm__ uint8_t *quantOffset2,
+                                     __gm__ uint8_t *antiquantScale, __gm__ uint8_t *antiquantOffset,
+                                     __gm__ uint8_t *workspace);
     __aicore__ inline void Process();
 
     using T = float;
@@ -118,7 +118,8 @@ public:
     using MM_IN_T = Q_T;
 
 #ifdef L1_SELF_CONTROL
-    using mm1AType = MatmulType<TPosition::TSCM, CubeFormat::NZ, MM_IN_T, false, LayoutMode::NONE, false, TPosition::GM>;
+    using mm1AType =
+        MatmulType<TPosition::TSCM, CubeFormat::NZ, MM_IN_T, false, LayoutMode::NONE, false, TPosition::GM>;
     using mm1BType = MatmulType<TPosition::TSCM, CubeFormat::NZ, MM_IN_T, true, LayoutMode::NONE, false, TPosition::GM>;
 #else
     using mm1AType = MatmulType<TPosition::GM, CubeFormat::ND, MM_IN_T, false>;
@@ -128,17 +129,18 @@ public:
     using mm1CType = MatmulType<TPosition::VECCALC, CubeFormat::ND_ALIGN, MM_OUT_T>;
 
 #ifdef L1_SELF_CONTROL
-    __aicore__ inline static constexpr MatmulApiStaticTiling MM1GetMatmulApiTiling() {
+    __aicore__ inline static constexpr MatmulApiStaticTiling MM1GetMatmulApiTiling()
+    {
         MatmulConfig conf = GenConfMM1MDL(PROFILE);
         MatmulApiStaticTiling mm1TilingTmp = GetMatmulApiTiling<mm1AType, mm1BType, mm1CType, mm1BiasType>(conf);
         mm1TilingTmp.depthA1 = 1;
-        mm1TilingTmp.depthB1 = 2;  // 自管理搬入L1的基本块个数为2
+        mm1TilingTmp.depthB1 = 2; // 自管理搬入L1的基本块个数为2
         mm1TilingTmp.stepM = 1;
-        mm1TilingTmp.stepN = 2;  // N方向搬入基本快个数为2
+        mm1TilingTmp.stepN = 2; // N方向搬入基本快个数为2
         mm1TilingTmp.stepKa = 1;
         mm1TilingTmp.stepKb = 1;
-        mm1TilingTmp.dbL0A = 2;  // 2表示L0A开启db
-        mm1TilingTmp.dbL0B = 2;  // 2表示L0B开启db
+        mm1TilingTmp.dbL0A = 2; // 2表示L0A开启db
+        mm1TilingTmp.dbL0B = 2; // 2表示L0B开启db
         mm1TilingTmp.dbL0C = 1;
         return mm1TilingTmp;
     }
@@ -170,11 +172,11 @@ public:
     Vec2Processor<IFAT> vec2Processor;
 
 protected:
-    const optiling::IncreFlashAttentionTilingDataRegbase* __restrict tilingData;
-    TPipe* pipe;
+    const optiling::IncreFlashAttentionTilingDataRegbase *__restrict tilingData;
+    TPipe *pipe;
 
-    __gm__ uint8_t* keyPtr;
-    __gm__ uint8_t* valuePtr;
+    __gm__ uint8_t *keyPtr;
+    __gm__ uint8_t *valuePtr;
     GlobalTensor<Q_T> queryGm;
     GlobalTensor<KV_T> keyGm;
     GlobalTensor<KV_T> valueGm;
@@ -190,13 +192,13 @@ protected:
     GlobalTensor<int64_t> kvPaddingSizeGm;
 
     // tilingData
-    const uint32_t& batchSize;
-    const uint32_t& kvHeadNum;
-    const uint32_t& qHeadNum;
-    const uint32_t& gSize;
-    const uint32_t& headDim;
-    const uint32_t& kvSeqSize;
-    const uint32_t& actualLenDims;
+    const uint32_t &batchSize;
+    const uint32_t &kvHeadNum;
+    const uint32_t &qHeadNum;
+    const uint32_t &gSize;
+    const uint32_t &headDim;
+    const uint32_t &kvSeqSize;
+    const uint32_t &actualLenDims;
 
     uint32_t curS2Idx;
     uint32_t curN2Idx;
@@ -206,30 +208,30 @@ protected:
     int64_t remainSeqLen;
     uint64_t kvPaddingBeginOffset = 0;
 
-    const uint32_t& batchContinuous;
-    const uint32_t& singleProcessSInnerSize;
+    const uint32_t &batchContinuous;
+    const uint32_t &singleProcessSInnerSize;
 
     uint32_t sInnerLoopTimes;
     uint32_t sInnerLoopSize;
     uint32_t actualSInnerLoopSize;
     uint32_t singleProcessSInnerSizeTail;
 
-    const uint32_t& blockSplitBn2Range;
-    const uint32_t& tailBlockSplitBn2Range;
-    const uint32_t& usedCoreNum;
-    const uint32_t& formerCoreNum;
-    const uint32_t* coreStartIdx;
-    const uint32_t& splitKVNum;
+    const uint32_t &blockSplitBn2Range;
+    const uint32_t &tailBlockSplitBn2Range;
+    const uint32_t &usedCoreNum;
+    const uint32_t &formerCoreNum;
+    const uint32_t *coreStartIdx;
+    const uint32_t &splitKVNum;
 
-    const uint32_t& attentMaskSize;
-    const uint32_t& selectWithByteMaskTmpMinSize;
+    const uint32_t &attentMaskSize;
+    const uint32_t &selectWithByteMaskTmpMinSize;
 
-    const uint32_t& pseShiftB;
-    const uint32_t& pseShiftS;
+    const uint32_t &pseShiftB;
+    const uint32_t &pseShiftS;
 
-    const uint32_t& kvPaddingFlag;
-    const uint32_t& isPerChnU8Out;
-    const uint32_t& isOutQuantTypeBf16;
+    const uint32_t &kvPaddingFlag;
+    const uint32_t &isPerChnU8Out;
+    const uint32_t &isOutQuantTypeBf16;
     bool softmaxLseFlag = false;
 
     uint32_t tmpBlockIdx;
@@ -291,9 +293,9 @@ protected:
     __aicore__ inline void UpdateZeroActSeqLen();
     __aicore__ inline void DealActSeqLenIsZero(uint32_t bn2Idx);
     __aicore__ inline void InitAllZeroOutput(uint32_t bn2Idx);
-    __aicore__ inline void GetActualSeqLen(uint32_t bIdx, uint64_t& actualSeqLen);
+    __aicore__ inline void GetActualSeqLen(uint32_t bIdx, uint64_t &actualSeqLen);
     __aicore__ inline bool ComputeKVPaddingBeginOffset();
-    __aicore__ inline void InitLeftPaddingDate(); 
+    __aicore__ inline void InitLeftPaddingDate();
 
     __aicore__ inline void GetBN2S2GId(uint32_t loop, uint32_t gLoopCount);
     __aicore__ inline void CalcParams(uint32_t loop);
@@ -306,17 +308,17 @@ protected:
     __aicore__ inline void Vector2(uint32_t loop);
     __aicore__ inline void Update(uint32_t loop);
 
-    __aicore__ inline void Bmm2DataCopyOut(uint64_t attenOutOffset, LocalTensor<OUT_T>& attenOutUb, uint32_t startRow,
+    __aicore__ inline void Bmm2DataCopyOut(uint64_t attenOutOffset, LocalTensor<OUT_T> &attenOutUb, uint32_t startRow,
                                            uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount);
     __aicore__ inline void CopyLseIn(uint32_t bIdx, uint32_t n2Idx, uint32_t startRow, uint32_t dealRowCount);
-    __aicore__ inline void CopyFinalResOut(uint64_t attenOutOffset, LocalTensor<T>& accumOutLocal, uint32_t startRow,
+    __aicore__ inline void CopyFinalResOut(uint64_t attenOutOffset, LocalTensor<T> &accumOutLocal, uint32_t startRow,
                                            uint32_t dealRowCount);
     __aicore__ inline void CopyAccumOutIn(uint32_t bIdx, uint32_t n2Idx, uint32_t splitKVIndex, uint32_t startRow,
                                           uint32_t dealRowCount);
-    __aicore__ inline void ReduceFinalRes(uint32_t bIdx, uint32_t n2Idx, LocalTensor<T>& dst, LocalTensor<T>& lseLocal,
+    __aicore__ inline void ReduceFinalRes(uint32_t bIdx, uint32_t n2Idx, LocalTensor<T> &dst, LocalTensor<T> &lseLocal,
                                           uint32_t startRow, uint32_t dealRowCount);
     __aicore__ inline void CombineSplitKVRes(uint64_t attenOutOffset, uint32_t bIdx, uint32_t n2Idx);
-    __aicore__ inline void ComputeScaleValue(LocalTensor<T> lseMaxUb, LocalTensor<T> lseSumUb, uint32_t splitSize, 
+    __aicore__ inline void ComputeScaleValue(LocalTensor<T> lseMaxUb, LocalTensor<T> lseSumUb, uint32_t splitSize,
                                              uint64_t lseOffset);
     __aicore__ inline void FlashDecodeCompute();
     __aicore__ inline uint64_t SeqLenFromTensorList(uint32_t bIdx);
@@ -328,28 +330,22 @@ protected:
 
 template <typename IFAT>
 __aicore__ inline IncreFlashAttentionNormalSplitBbn2s2Us2<IFAT>::IncreFlashAttentionNormalSplitBbn2s2Us2(
-    const optiling::IncreFlashAttentionTilingDataRegbase& __restrict tilingData)
+    const optiling::IncreFlashAttentionTilingDataRegbase &__restrict tilingData)
     : singleProcessSInnerSize(tilingData.increFlashAttentionSingleCoreParams.singleProcessSInnerSize),
       usedCoreNum(tilingData.increFlashAttentionSingleCoreParams.usedCoreNum),
       formerCoreNum(tilingData.increFlashAttentionSingleCoreParams.formerCoreNum),
       blockSplitBn2Range(tilingData.increFlashAttentionSingleCoreParams.blockSplitBn2Range),
       tailBlockSplitBn2Range(tilingData.increFlashAttentionSingleCoreParams.tailSplitedBatchRange),
-      splitKVNum(tilingData.splitKVParams.s2),
-      batchSize(tilingData.baseParams.batchSize),
-      kvHeadNum(tilingData.baseParams.kvHeadNum),
-      qHeadNum(tilingData.baseParams.qHeadNum),
-      gSize(tilingData.baseParams.nNumOfQInOneGroup),
-      kvSeqSize(tilingData.baseParams.seqSize),
-      actualLenDims(tilingData.baseParams.actualLenDims),
-      headDim(tilingData.baseParams.headSize),
+      splitKVNum(tilingData.splitKVParams.s2), batchSize(tilingData.baseParams.batchSize),
+      kvHeadNum(tilingData.baseParams.kvHeadNum), qHeadNum(tilingData.baseParams.qHeadNum),
+      gSize(tilingData.baseParams.nNumOfQInOneGroup), kvSeqSize(tilingData.baseParams.seqSize),
+      actualLenDims(tilingData.baseParams.actualLenDims), headDim(tilingData.baseParams.headSize),
       batchContinuous(tilingData.baseParams.batchContinuousFlag),
       coreStartIdx(tilingData.increFlashAttentionCoreParams.coreSidxEndRegbase),
       attentMaskSize(tilingData.baseParams.attenMaskSize),
       selectWithByteMaskTmpMinSize(tilingData.baseParams.selectWithByteMaskTmpMinSize),
-      pseShiftB(tilingData.baseParams.pseShiftB),
-      pseShiftS(tilingData.baseParams.pseShiftS),
-      kvPaddingFlag(tilingData.baseParams.kvPaddingFlag),
-      isPerChnU8Out(tilingData.outputParams.isPerChnOut),
+      pseShiftB(tilingData.baseParams.pseShiftB), pseShiftS(tilingData.baseParams.pseShiftS),
+      kvPaddingFlag(tilingData.baseParams.kvPaddingFlag), isPerChnU8Out(tilingData.outputParams.isPerChnOut),
       isOutQuantTypeBf16(tilingData.outputParams.isOutQuantTypeBf16),
       softmaxLseFlag(tilingData.baseParams.softmaxLseFlag)
 {
@@ -362,17 +358,17 @@ __aicore__ inline IncreFlashAttentionNormalSplitBbn2s2Us2<IFAT>::IncreFlashAtten
 #else
     size_t size = (BUFFER_SIZE_BYTE_16K * PRE_LOAD_NUM);
 #endif
-    GetTPipePtr()->InitBuffer(tmpQue, 1, size * 2);  // 2, vector0/1
+    GetTPipePtr()->InitBuffer(tmpQue, 1, size * 2); // 2, vector0/1
 #endif
 }
 
 template <typename IFAT>
 __aicore__ inline void IncreFlashAttentionNormalSplitBbn2s2Us2<IFAT>::Init(
-    __gm__ uint8_t* query, __gm__ uint8_t* key, __gm__ uint8_t* value, __gm__ uint8_t* pseShift,
-    __gm__ uint8_t* attenMask, __gm__ uint8_t* actualSeqLengthsQ, __gm__ uint8_t* actualSeqLengths,
-    __gm__ uint8_t* blockTable, __gm__ uint8_t* queryPaddingSize, __gm__ uint8_t* kvPaddingSize,
-    __gm__ uint8_t* attentionOut, __gm__ uint8_t* softmaxLse, __gm__ uint8_t* workspace,
-    const optiling::IncreFlashAttentionTilingDataRegbase* __restrict tiling, TPipe* tPipe)
+    __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *pseShift,
+    __gm__ uint8_t *attenMask, __gm__ uint8_t *actualSeqLengthsQ, __gm__ uint8_t *actualSeqLengths,
+    __gm__ uint8_t *blockTable, __gm__ uint8_t *queryPaddingSize, __gm__ uint8_t *kvPaddingSize,
+    __gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxLse, __gm__ uint8_t *workspace,
+    const optiling::IncreFlashAttentionTilingDataRegbase *__restrict tiling, TPipe *tPipe)
 {
     tmpBlockIdx = GetBlockIdx();
 
@@ -386,7 +382,7 @@ __aicore__ inline void IncreFlashAttentionNormalSplitBbn2s2Us2<IFAT>::Init(
     }
 
     pipe = tPipe;
-    queryGm.SetGlobalBuffer((__gm__ Q_T*)query);
+    queryGm.SetGlobalBuffer((__gm__ Q_T *)query);
 
     keyPtr = key;
     valuePtr = value;
@@ -396,15 +392,15 @@ __aicore__ inline void IncreFlashAttentionNormalSplitBbn2s2Us2<IFAT>::Init(
         InitValueGm(0);
     }
 
-    attentionOutGm.SetGlobalBuffer((__gm__ OUT_T*)attentionOut);
+    attentionOutGm.SetGlobalBuffer((__gm__ OUT_T *)attentionOut);
     if constexpr (ATTEN_MASK) {
-        attenMaskGm.SetGlobalBuffer((__gm__ uint8_t*)attenMask);
+        attenMaskGm.SetGlobalBuffer((__gm__ uint8_t *)attenMask);
     }
     if constexpr (PSE_SHIFT) {
-        pseShiftGm.SetGlobalBuffer((__gm__ PSE_SHIFT_T*)pseShift);
+        pseShiftGm.SetGlobalBuffer((__gm__ PSE_SHIFT_T *)pseShift);
     }
     if (softmaxLseFlag) {
-        softmaxLseGm.SetGlobalBuffer((__gm__ T*)softmaxLse);
+        softmaxLseGm.SetGlobalBuffer((__gm__ T *)softmaxLse);
     }
 
     tilingData = tiling;
@@ -414,37 +410,38 @@ __aicore__ inline void IncreFlashAttentionNormalSplitBbn2s2Us2<IFAT>::Init(
 
     uint64_t offset = 0;
     if constexpr (FLASH_DECODE) {
-        accumOutGm.SetGlobalBuffer((__gm__ T*)(workspace + offset));
+        accumOutGm.SetGlobalBuffer((__gm__ T *)(workspace + offset));
         offset = offset + tilingData->splitKVParams.accumOutSize * sizeof(T);
-        softmaxMaxGm.SetGlobalBuffer((__gm__ T*)(workspace + offset));
+        softmaxMaxGm.SetGlobalBuffer((__gm__ T *)(workspace + offset));
         offset = offset + tilingData->splitKVParams.logSumExpSize * sizeof(T);
-        softmaxSumGm.SetGlobalBuffer((__gm__ T*)(workspace + offset));
+        softmaxSumGm.SetGlobalBuffer((__gm__ T *)(workspace + offset));
         offset = offset + tilingData->splitKVParams.logSumExpSize * sizeof(T);
     }
 
     if (actualLenDims != 0) {
-        actualSeqLengthsGm.SetGlobalBuffer((__gm__ uint64_t*)actualSeqLengths, actualLenDims);
+        actualSeqLengthsGm.SetGlobalBuffer((__gm__ uint64_t *)actualSeqLengths, actualLenDims);
     }
 
     if (kvPaddingFlag == 1) {
-        kvPaddingSizeGm.SetGlobalBuffer((__gm__ int64_t*) kvPaddingSize);
+        kvPaddingSizeGm.SetGlobalBuffer((__gm__ int64_t *)kvPaddingSize);
         InitLeftPaddingDate();
     }
 }
 
 template <typename IFAT>
-__aicore__ inline void IncreFlashAttentionNormalSplitBbn2s2Us2<IFAT>::InitQuant(
-    __gm__ uint8_t* deqScale1, __gm__ uint8_t* quantScale1, __gm__ uint8_t* deqScale2, __gm__ uint8_t* quantScale2,
-    __gm__ uint8_t* quantOffset2, __gm__ uint8_t* antiquantScale, __gm__ uint8_t* antiquantOffset,
-    __gm__ uint8_t* workspace)
+__aicore__ inline void
+IncreFlashAttentionNormalSplitBbn2s2Us2<IFAT>::InitQuant(__gm__ uint8_t *deqScale1, __gm__ uint8_t *quantScale1,
+                                                         __gm__ uint8_t *deqScale2, __gm__ uint8_t *quantScale2,
+                                                         __gm__ uint8_t *quantOffset2, __gm__ uint8_t *antiquantScale,
+                                                         __gm__ uint8_t *antiquantOffset, __gm__ uint8_t *workspace)
 {
 }
 
 template <typename IFAT>
 __aicore__ inline void IncreFlashAttentionNormalSplitBbn2s2Us2<IFAT>::InitTilingData()
 {
-    headDimAlign = ALIGN((uint64_t)headDim, BYTE_BLOCK);                  // 32个数字对齐
-    headDimAlignFp32 = ALIGN((uint64_t)headDim, BYTE_BLOCK / sizeof(T));  // 32B对齐
+    headDimAlign = ALIGN((uint64_t)headDim, BYTE_BLOCK);                 // 32个数字对齐
+    headDimAlignFp32 = ALIGN((uint64_t)headDim, BYTE_BLOCK / sizeof(T)); // 32B对齐
     tensorBStride = (LAYOUT_T == LAYOUT::BNSD) ? headDim : kvHeadNum * headDim;
 }
 
@@ -474,7 +471,7 @@ __aicore__ inline void IncreFlashAttentionNormalSplitBbn2s2Us2<IFAT>::InitBuffer
     }
     // 尽量一次初始化一大块
     uint32_t maxElemCnt =
-        PROFILE.G * MAX(PROFILE.S, PROFILE.D);  // bmm1, bmm2复用输出内存, 大小取D分档和S分档中的较大的值
+        PROFILE.G * MAX(PROFILE.S, PROFILE.D); // bmm1, bmm2复用输出内存, 大小取D分档和S分档中的较大的值
     pipe->InitBuffer(mmResBuffBig, maxElemCnt * sizeof(T) * PRE_LOAD_NUM);
     mmResBuffArray[0] = mmResBuffBig.GetWithOffset<T>(maxElemCnt, 0);
     mmResBuffArray[1] = mmResBuffBig.GetWithOffset<T>(maxElemCnt, maxElemCnt * sizeof(T));
@@ -524,8 +521,9 @@ __aicore__ inline void IncreFlashAttentionNormalSplitBbn2s2Us2<IFAT>::InitL1Buff
 
 #ifdef L1_SELF_CONTROL
 template <typename IFAT>
-__aicore__ inline void IncreFlashAttentionNormalSplitBbn2s2Us2<IFAT>::CopyQueryToL1(uint32_t loop) {
-    auto& info = extraInfo[loop % PRE_LOAD_NUM];
+__aicore__ inline void IncreFlashAttentionNormalSplitBbn2s2Us2<IFAT>::CopyQueryToL1(uint32_t loop)
+{
+    auto &info = extraInfo[loop % PRE_LOAD_NUM];
     uint32_t queryScmIdx = info.bn2IdxInCurCore % TSCM_DOUBLE_BUFFER;
     LocalTensor<Q_T> queryScmTensor = mm1AScm[queryScmIdx].AllocTensor<Q_T>();
     if (info.isFirstSInnerLoop) {
@@ -538,14 +536,15 @@ __aicore__ inline void IncreFlashAttentionNormalSplitBbn2s2Us2<IFAT>::CopyQueryT
         intriParams.dstNzC0Stride = PROFILE.M1;
         intriParams.dstNzNStride = 1;
         intriParams.dstNzMatrixStride = 0;
-        DataCopy(queryScmTensor , queryGm[info.tensorAOffset], intriParams);
+        DataCopy(queryScmTensor, queryGm[info.tensorAOffset], intriParams);
     }
     mm1AScm[queryScmIdx].template EnQue(queryScmTensor);
 }
 
 template <typename IFAT>
-__aicore__ inline void IncreFlashAttentionNormalSplitBbn2s2Us2<IFAT>::CopyKeyToL1(uint32_t loop) {
-    auto& info = extraInfo[loop % PRE_LOAD_NUM];
+__aicore__ inline void IncreFlashAttentionNormalSplitBbn2s2Us2<IFAT>::CopyKeyToL1(uint32_t loop)
+{
+    auto &info = extraInfo[loop % PRE_LOAD_NUM];
     uint32_t keyScmIdx = loop % TSCM_DOUBLE_BUFFER;
     LocalTensor<KV_T> keyScmTensor = mm1BScm[keyScmIdx].AllocTensor<KV_T>();
     uint64_t keyOffset = info.tensorBOffset;
@@ -561,7 +560,7 @@ __aicore__ inline void IncreFlashAttentionNormalSplitBbn2s2Us2<IFAT>::CopyKeyToL
     intriParams.dstNzC0Stride = PROFILE.S;
     intriParams.dstNzNStride = 1;
     intriParams.dstNzMatrixStride = 0;
-    DataCopy(keyScmTensor , keyGm[keyOffset], intriParams);
+    DataCopy(keyScmTensor, keyGm[keyOffset], intriParams);
     mm1BScm[keyScmIdx].template EnQue(keyScmTensor);
 }
 #endif
@@ -600,12 +599,12 @@ template <typename IFAT>
 __aicore__ inline void IncreFlashAttentionNormalSplitBbn2s2Us2<IFAT>::InitAllZeroOutput(uint32_t bn2Idx)
 {
     uint32_t copySize = gSize * headDim;
-    if constexpr (POST_QUANT) {  // out int8
-                                 //
+    if constexpr (POST_QUANT) { // out int8
+                                //
     } else {
         matmul::InitOutput<OUT_T>(attentionOutGm[bn2Idx * copySize], copySize, 0);
     }
-    
+
     if (softmaxLseFlag) {
         LocalTensor<T> lseUb = softmaxLseOutputQue.template AllocTensor<T>();
         Duplicate(lseUb, FLOAT_MAX, gSize);
@@ -623,7 +622,7 @@ __aicore__ inline void IncreFlashAttentionNormalSplitBbn2s2Us2<IFAT>::InitAllZer
 
 template <typename IFAT>
 __aicore__ inline void IncreFlashAttentionNormalSplitBbn2s2Us2<IFAT>::GetActualSeqLen(uint32_t bIdx,
-                                                                                      uint64_t& actualSeqLen)
+                                                                                      uint64_t &actualSeqLen)
 {
     if (actualLenDims == 0) {
         actualSeqLen = kvSeqSize;
@@ -645,7 +644,7 @@ __aicore__ inline bool IncreFlashAttentionNormalSplitBbn2s2Us2<IFAT>::ComputeKVP
     }
 
     int64_t startPosition = remainSeqLen - curActualSeqLen;
-    
+
     if (startPosition < 0) {
         return false;
     }
@@ -657,17 +656,17 @@ __aicore__ inline bool IncreFlashAttentionNormalSplitBbn2s2Us2<IFAT>::ComputeKVP
 template <typename IFAT>
 __aicore__ inline void IncreFlashAttentionNormalSplitBbn2s2Us2<IFAT>::InitKeyGm(uint32_t bIdx)
 {
-    ListTensorDesc keyListTensorDesc((__gm__ void*)keyPtr);
-    __gm__ uint8_t* key_ = (__gm__ uint8_t*)keyListTensorDesc.GetDataPtr<__gm__ uint8_t>(bIdx);
-    keyGm.SetGlobalBuffer((__gm__ KV_T*)key_);
+    ListTensorDesc keyListTensorDesc((__gm__ void *)keyPtr);
+    __gm__ uint8_t *key_ = (__gm__ uint8_t *)keyListTensorDesc.GetDataPtr<__gm__ uint8_t>(bIdx);
+    keyGm.SetGlobalBuffer((__gm__ KV_T *)key_);
 }
 
 template <typename IFAT>
 __aicore__ inline void IncreFlashAttentionNormalSplitBbn2s2Us2<IFAT>::InitValueGm(uint32_t bIdx)
 {
-    ListTensorDesc valueListTensorDesc((__gm__ void*)valuePtr);
-    __gm__ uint8_t* value_ = (__gm__ uint8_t*)valueListTensorDesc.GetDataPtr<__gm__ uint8_t>(bIdx);
-    valueGm.SetGlobalBuffer((__gm__ KV_T*)value_);
+    ListTensorDesc valueListTensorDesc((__gm__ void *)valuePtr);
+    __gm__ uint8_t *value_ = (__gm__ uint8_t *)valueListTensorDesc.GetDataPtr<__gm__ uint8_t>(bIdx);
+    valueGm.SetGlobalBuffer((__gm__ KV_T *)value_);
 }
 
 template <typename IFAT>
@@ -680,8 +679,9 @@ __aicore__ inline void IncreFlashAttentionNormalSplitBbn2s2Us2<IFAT>::SetLoopTim
         if (sInnerLoopSize * (tmpBlockIdx % splitKVNum) > curActualSeqLen) {
             actualSInnerLoopSize = 0;
         } else {
-            actualSInnerLoopSize = (curActualSeqLen - sInnerLoopSize * (tmpBlockIdx % splitKVNum)) > sInnerLoopSize ? 
-                                    sInnerLoopSize : (curActualSeqLen - sInnerLoopSize * (tmpBlockIdx % splitKVNum));
+            actualSInnerLoopSize = (curActualSeqLen - sInnerLoopSize * (tmpBlockIdx % splitKVNum)) > sInnerLoopSize ?
+                                       sInnerLoopSize :
+                                       (curActualSeqLen - sInnerLoopSize * (tmpBlockIdx % splitKVNum));
         }
         sInnerLoopTimes = (actualSInnerLoopSize + singleProcessSInnerSize - 1) / singleProcessSInnerSize;
         bn2s2LoopTimes = sInnerLoopTimes * gLoopCount;
@@ -703,15 +703,15 @@ __aicore__ inline void IncreFlashAttentionNormalSplitBbn2s2Us2<IFAT>::SetLoopTim
 template <typename IFAT>
 __aicore__ inline uint64_t IncreFlashAttentionNormalSplitBbn2s2Us2<IFAT>::SeqLenFromTensorList(uint32_t bIdx)
 {
-    uint64_t dimInfo[4];  // this mem is used to set shapeinfo, BSH(3) or BNSD(4)
+    uint64_t dimInfo[4]; // this mem is used to set shapeinfo, BSH(3) or BNSD(4)
     AscendC::TensorDesc<__gm__ uint8_t> keyTensorDesc;
-    ListTensorDesc keyListTensorDesc((__gm__ void*)keyPtr);
+    ListTensorDesc keyListTensorDesc((__gm__ void *)keyPtr);
     keyTensorDesc.SetShapeAddr(&dimInfo[0]);
     keyListTensorDesc.GetDesc(keyTensorDesc, bIdx);
     if constexpr (LAYOUT_T == LAYOUT::BNSD) {
-        return keyTensorDesc.GetShape(2);  // BNSD, idx of s is 2
+        return keyTensorDesc.GetShape(2); // BNSD, idx of s is 2
     } else {
-        return keyTensorDesc.GetShape(1);  // BSH, idx of s is 1
+        return keyTensorDesc.GetShape(1); // BSH, idx of s is 1
     }
 }
 
@@ -763,13 +763,13 @@ template <typename IFAT>
 __aicore__ inline void IncreFlashAttentionNormalSplitBbn2s2Us2<IFAT>::CalcParams(uint32_t loop)
 {
     uint32_t gLoopCount = (gSize + PROFILE.G - 1) / PROFILE.G;
-    auto& info = extraInfo[loop % PRE_LOAD_NUM];
+    auto &info = extraInfo[loop % PRE_LOAD_NUM];
     if constexpr (FLASH_DECODE) {
         info.bIdx = tmpBlockIdx / (kvHeadNum * splitKVNum);
         info.n2Idx = (tmpBlockIdx / splitKVNum) % kvHeadNum;
-        info.s2Idx = loop % sInnerLoopTimes;  // 用于循环结束
+        info.s2Idx = loop % sInnerLoopTimes; // 用于循环结束
         info.gIdx = (loop / sInnerLoopTimes) % gLoopCount;
-        info.flashDecodeS2Idx = tmpBlockIdx % splitKVNum;  // 用于偏移
+        info.flashDecodeS2Idx = tmpBlockIdx % splitKVNum; // 用于偏移
         info.sInnerLoopTimes = sInnerLoopTimes;
     } else {
         GetBN2S2GId(loop, gLoopCount);
@@ -823,9 +823,9 @@ __aicore__ inline void IncreFlashAttentionNormalSplitBbn2s2Us2<IFAT>::CalcParams
     info.attenMaskOffset = info.attenMaskCoreOffset + info.s2Idx * singleProcessSInnerSize;
 
     // s不对齐场景需按实际 tail 刷新 singleProcessSInnerSizeTail;
-    if (info.s2Idx == sInnerLoopTimes - 1) {  // 尾块
-        info.actualSingleProcessSInnerSize =
-            FLASH_DECODE ? actualSInnerLoopSize - (sInnerLoopTimes - 1) * PROFILE.S : curActualSeqLen - (sInnerLoopTimes - 1) * PROFILE.S;
+    if (info.s2Idx == sInnerLoopTimes - 1) { // 尾块
+        info.actualSingleProcessSInnerSize = FLASH_DECODE ? actualSInnerLoopSize - (sInnerLoopTimes - 1) * PROFILE.S :
+                                                            curActualSeqLen - (sInnerLoopTimes - 1) * PROFILE.S;
     }
     if (info.gIdx == (gLoopCount - 1)) {
         info.gDealSize = gSize - (gLoopCount - 1) * PROFILE.G;
@@ -834,9 +834,9 @@ __aicore__ inline void IncreFlashAttentionNormalSplitBbn2s2Us2<IFAT>::CalcParams
     }
     if constexpr (PSE_SHIFT) {
         info.pseShiftCoreOffset =
-            (pseShiftB == 1)
-                ? (info.n2Idx * gSize * pseShiftS + kvPaddingBeginOffset)
-                : (info.bIdx * qHeadNum * pseShiftS + info.n2Idx * gSize * pseShiftS + kvPaddingBeginOffset);
+            (pseShiftB == 1) ?
+                (info.n2Idx * gSize * pseShiftS + kvPaddingBeginOffset) :
+                (info.bIdx * qHeadNum * pseShiftS + info.n2Idx * gSize * pseShiftS + kvPaddingBeginOffset);
         if constexpr (FLASH_DECODE) {
             info.pseShiftCoreOffset += info.flashDecodeS2Idx * sInnerLoopSize;
         }
@@ -847,7 +847,7 @@ __aicore__ inline void IncreFlashAttentionNormalSplitBbn2s2Us2<IFAT>::CalcParams
 template <typename IFAT>
 __aicore__ inline void IncreFlashAttentionNormalSplitBbn2s2Us2<IFAT>::SendQK(uint32_t loop)
 {
-    auto& info = extraInfo[loop % PRE_LOAD_NUM];
+    auto &info = extraInfo[loop % PRE_LOAD_NUM];
 #ifdef L1_SELF_CONTROL
     CopyKeyToL1(loop);
     CopyQueryToL1(loop);
@@ -893,7 +893,7 @@ __aicore__ inline void IncreFlashAttentionNormalSplitBbn2s2Us2<IFAT>::WaitQK(uin
 template <typename IFAT>
 __aicore__ inline void IncreFlashAttentionNormalSplitBbn2s2Us2<IFAT>::Vector1(uint32_t loop)
 {
-    auto& info = extraInfo[loop % PRE_LOAD_NUM];
+    auto &info = extraInfo[loop % PRE_LOAD_NUM];
     uint32_t outTensorIdx = loop % PRE_LOAD_NUM;
     uint32_t inTensorIdx = info.isFirstSInnerLoop ? outTensorIdx : (loop - 1) % PRE_LOAD_NUM;
     Vec1TaskParam taskParam;
@@ -922,15 +922,15 @@ __aicore__ inline void IncreFlashAttentionNormalSplitBbn2s2Us2<IFAT>::Vector1(ui
 
     vec1Processor.Process(softmaxResOutputQue, mm2AScm[loop % PRE_LOAD_NUM], softmaxMaxUb[outTensorIdx],
                           softmaxSumUb[outTensorIdx], softmaxExpUb[outTensorIdx], mmResBuffArray[loop % PRE_LOAD_NUM],
-                          softmaxMaxUb[inTensorIdx], softmaxSumUb[inTensorIdx], softmaxTmpUb, attenMaskGm,
-                          maskInputQue, pseShiftGm, pseInputQue, softmaxLseOutputQue, softmaxLseGm, taskParam,
-                          softmaxMaxGm, softmaxSumGm);
+                          softmaxMaxUb[inTensorIdx], softmaxSumUb[inTensorIdx], softmaxTmpUb, attenMaskGm, maskInputQue,
+                          pseShiftGm, pseInputQue, softmaxLseOutputQue, softmaxLseGm, taskParam, softmaxMaxGm,
+                          softmaxSumGm);
 }
 
 template <typename IFAT>
 __aicore__ inline void IncreFlashAttentionNormalSplitBbn2s2Us2<IFAT>::SendSV(uint32_t loop)
 {
-    auto& info = extraInfo[loop % PRE_LOAD_NUM];
+    auto &info = extraInfo[loop % PRE_LOAD_NUM];
     if (!batchContinuous && (loop == 0 || info.n2Idx == 0)) {
         InitValueGm(info.bIdx);
     }
@@ -960,9 +960,10 @@ __aicore__ inline void IncreFlashAttentionNormalSplitBbn2s2Us2<IFAT>::WaitSV(uin
 }
 
 template <typename IFAT>
-__aicore__ inline void IncreFlashAttentionNormalSplitBbn2s2Us2<IFAT>::Bmm2DataCopyOut(
-    uint64_t attenOutOffset, LocalTensor<OUT_T>& attenOutUb, uint32_t startRow, uint32_t dealRowCount,
-    uint32_t columnCount, uint32_t actualColumnCount)
+__aicore__ inline void
+IncreFlashAttentionNormalSplitBbn2s2Us2<IFAT>::Bmm2DataCopyOut(uint64_t attenOutOffset, LocalTensor<OUT_T> &attenOutUb,
+                                                               uint32_t startRow, uint32_t dealRowCount,
+                                                               uint32_t columnCount, uint32_t actualColumnCount)
 {
     DataCopyExtParams dataCopyParams;
     dataCopyParams.blockCount = dealRowCount;
@@ -975,7 +976,7 @@ __aicore__ inline void IncreFlashAttentionNormalSplitBbn2s2Us2<IFAT>::Bmm2DataCo
 template <typename IFAT>
 __aicore__ inline void IncreFlashAttentionNormalSplitBbn2s2Us2<IFAT>::Update(uint32_t loop)
 {
-    auto& info = extraInfo[loop % PRE_LOAD_NUM];
+    auto &info = extraInfo[loop % PRE_LOAD_NUM];
 
     Vec2TaskParam taskParam;
     taskParam.isFirstSInnerLoop = info.isFirstSInnerLoop;
@@ -995,7 +996,8 @@ __aicore__ inline void IncreFlashAttentionNormalSplitBbn2s2Us2<IFAT>::Update(uin
     taskParam.isRowInvalid = false;
 
     vec2Processor.Process(mmResBuffArray[loop % PRE_LOAD_NUM], updateResOutputQue, softmaxSumUb[loop % PRE_LOAD_NUM],
-                          softmaxExpUb[loop % PRE_LOAD_NUM], softmaxMaxUb[loop % PRE_LOAD_NUM], attentionOutGm, accumOutGm, taskParam);
+                          softmaxExpUb[loop % PRE_LOAD_NUM], softmaxMaxUb[loop % PRE_LOAD_NUM], attentionOutGm,
+                          accumOutGm, taskParam);
 }
 
 template <typename IFAT>
@@ -1034,13 +1036,12 @@ __aicore__ inline void IncreFlashAttentionNormalSplitBbn2s2Us2<IFAT>::CopyLseIn(
 }
 
 template <typename IFAT>
-__aicore__ inline void IncreFlashAttentionNormalSplitBbn2s2Us2<IFAT>::CopyFinalResOut(uint64_t attenOutOffset,
-                                                                                      LocalTensor<T>& accumOutLocal,
-                                                                                      uint32_t startRow,
-                                                                                      uint32_t dealRowCount)
+__aicore__ inline void
+IncreFlashAttentionNormalSplitBbn2s2Us2<IFAT>::CopyFinalResOut(uint64_t attenOutOffset, LocalTensor<T> &accumOutLocal,
+                                                               uint32_t startRow, uint32_t dealRowCount)
 {
     if constexpr (!POST_QUANT) {
-        LocalTensor<OUT_T> tmpBmm2ResCastTensor = updateResOutputQue.AllocTensor<OUT_T>();  // 复用内存
+        LocalTensor<OUT_T> tmpBmm2ResCastTensor = updateResOutputQue.AllocTensor<OUT_T>(); // 复用内存
         uint32_t shapeArray[] = {(uint32_t)dealRowCount, (uint32_t)headDim};
         tmpBmm2ResCastTensor.SetShapeInfo(ShapeInfo(2, shapeArray, DataFormat::ND));
         Cast(tmpBmm2ResCastTensor, accumOutLocal, AscendC::RoundMode::CAST_ROUND, dealRowCount * headDimAlignFp32);
@@ -1065,10 +1066,9 @@ __aicore__ inline void IncreFlashAttentionNormalSplitBbn2s2Us2<IFAT>::CopyFinalR
 }
 
 template <typename IFAT>
-__aicore__ inline void IncreFlashAttentionNormalSplitBbn2s2Us2<IFAT>::CopyAccumOutIn(uint32_t bIdx, uint32_t n2Idx,
-                                                                                     uint32_t splitKVIndex,
-                                                                                     uint32_t startRow,
-                                                                                     uint32_t dealRowCount)
+__aicore__ inline void
+IncreFlashAttentionNormalSplitBbn2s2Us2<IFAT>::CopyAccumOutIn(uint32_t bIdx, uint32_t n2Idx, uint32_t splitKVIndex,
+                                                              uint32_t startRow, uint32_t dealRowCount)
 {
     LocalTensor<T> accumOutLocal = accumOutInputQue.AllocTensor<T>();
 
@@ -1092,11 +1092,10 @@ __aicore__ inline void IncreFlashAttentionNormalSplitBbn2s2Us2<IFAT>::CopyAccumO
 }
 
 template <typename IFAT>
-__aicore__ inline void IncreFlashAttentionNormalSplitBbn2s2Us2<IFAT>::ReduceFinalRes(uint32_t bIdx, uint32_t n2Idx,
-                                                                                     LocalTensor<T>& dst,
-                                                                                     LocalTensor<T>& lseLocal,
-                                                                                     uint32_t startRow,
-                                                                                     uint32_t dealRowCount)
+__aicore__ inline void
+IncreFlashAttentionNormalSplitBbn2s2Us2<IFAT>::ReduceFinalRes(uint32_t bIdx, uint32_t n2Idx, LocalTensor<T> &dst,
+                                                              LocalTensor<T> &lseLocal, uint32_t startRow,
+                                                              uint32_t dealRowCount)
 {
     BinaryRepeatParams repeatParams;
     repeatParams.src0RepStride = 1;
@@ -1117,18 +1116,18 @@ __aicore__ inline void IncreFlashAttentionNormalSplitBbn2s2Us2<IFAT>::ReduceFina
 }
 
 template <typename IFAT>
-__aicore__ inline void IncreFlashAttentionNormalSplitBbn2s2Us2<IFAT>::ComputeScaleValue(LocalTensor<T> lseMaxUb,
-                                                                                        LocalTensor<T> lseSumUb,
-                                                                                        uint32_t splitSize,
-                                                                                        uint64_t lseOffset)
-{   
+__aicore__ inline void
+IncreFlashAttentionNormalSplitBbn2s2Us2<IFAT>::ComputeScaleValue(LocalTensor<T> lseMaxUb, LocalTensor<T> lseSumUb,
+                                                                 uint32_t splitSize, uint64_t lseOffset)
+{
     LocalTensor<T> lseOutputUb;
     if (softmaxLseFlag) {
         lseOutputUb = softmaxLseOutputQue.template AllocTensor<T>();
     }
     LocalTensor<bfloat16_t> tmpSinkUb;
     bool learnableSinkFlag = false;
-    FaVectorApi::ComputeScaleValue_VF(tmpSinkUb, lseMaxUb, lseSumUb, lseOutputUb, splitSize, actualCombineLoopSize, softmaxLseFlag, learnableSinkFlag);
+    FaVectorApi::ComputeScaleValue_VF(tmpSinkUb, lseMaxUb, lseSumUb, lseOutputUb, splitSize, actualCombineLoopSize,
+                                      softmaxLseFlag, learnableSinkFlag);
     if (softmaxLseFlag) {
         softmaxLseOutputQue.template EnQue<T>(lseOutputUb);
         softmaxLseOutputQue.DeQue<T>();
@@ -1146,7 +1145,7 @@ template <typename IFAT>
 __aicore__ inline void IncreFlashAttentionNormalSplitBbn2s2Us2<IFAT>::CombineSplitKVRes(uint64_t attenOutOffset,
                                                                                         uint32_t bIdx, uint32_t n2Idx)
 {
-    uint32_t gSplitSizeLse = BUFFER_SIZE_BYTE_32K / (BYTE_BLOCK * splitKVNum);  // 16k / (splitKVNum * 32B)
+    uint32_t gSplitSizeLse = BUFFER_SIZE_BYTE_32K / (BYTE_BLOCK * splitKVNum); // 16k / (splitKVNum * 32B)
     uint32_t gSplitSizeAccumOut = BUFFER_SIZE_BYTE_32K / sizeof(float) / headDimAlign;
     // 取两者较小的，用来切g，保证ub够用
     uint32_t gSplitSize = (gSplitSizeLse < gSplitSizeAccumOut) ? gSplitSizeLse : gSplitSizeAccumOut;
@@ -1160,7 +1159,7 @@ __aicore__ inline void IncreFlashAttentionNormalSplitBbn2s2Us2<IFAT>::CombineSpl
     uint64_t lseOffset = 0;
 
     // 尾块与非尾块都使用这些ub，减少处理次数
-    LocalTensor<T> lseMaxUb = lseTmpBuff.Get<T>();  // 复用内存
+    LocalTensor<T> lseMaxUb = lseTmpBuff.Get<T>(); // 复用内存
     uint32_t shapeArray[] = {(uint32_t)gSplitSize, FP32_ONE_BLOCK_SIZE};
     lseMaxUb.SetShapeInfo(ShapeInfo(2, shapeArray, DataFormat::ND));
 
@@ -1205,7 +1204,7 @@ __aicore__ inline void IncreFlashAttentionNormalSplitBbn2s2Us2<IFAT>::CombineSpl
 template <typename IFAT>
 __aicore__ inline void IncreFlashAttentionNormalSplitBbn2s2Us2<IFAT>::FlashDecodeCompute()
 {
-    uint32_t bIdx = tmpBlockIdx / kvHeadNum;  // 局部变量
+    uint32_t bIdx = tmpBlockIdx / kvHeadNum; // 局部变量
     uint32_t n2Idx = tmpBlockIdx % kvHeadNum;
     if (tmpBlockIdx >= batchSize * kvHeadNum) {
         return;

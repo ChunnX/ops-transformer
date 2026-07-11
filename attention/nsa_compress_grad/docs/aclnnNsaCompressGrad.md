@@ -471,7 +471,7 @@ int main() {
     // 创建gelu aclTensor
     ret = CreateAclTensor(weightHostData, weightShape, &weightDeviceAddr, aclDataType::ACL_FLOAT16, &weight);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
-    
+
     ret = CreateAclTensor(inputGradOutHostData, inputGradOutShape, &inputGradOutDeviceAddr, aclDataType::ACL_FLOAT16, &inputGradOut);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
 

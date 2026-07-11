@@ -17,6 +17,6 @@
 namespace NpuArch::Gemm::Tile {
 
 
-}  // NpuArch::Gemm::Tile
+} // namespace NpuArch::Gemm::Tile
 
 #endif // GEMM_TILE_COPY_GM_TO_UB_HPP

@@ -20,7 +20,8 @@
 #include "kernel_tiling/kernel_tiling.h"
 #include "flash_attention_score_tiling.h"
 
-template <typename INPUT_T> class FlashAttentionScoreEmptyTensor {
+template <typename INPUT_T>
+class FlashAttentionScoreEmptyTensor {
 public:
     __aicore__ inline FlashAttentionScoreEmptyTensor(){};
     __aicore__ inline void Init(__gm__ uint8_t *softmaxMax, __gm__ uint8_t *softmaxSum, __gm__ uint8_t *attentionOut,
@@ -49,7 +50,8 @@ FlashAttentionScoreEmptyTensor<INPUT_T>::Init(__gm__ uint8_t *softmaxMax, __gm__
     attentionOutGm.SetGlobalBuffer((__gm__ INPUT_T *)attentionOut);
 }
 
-template <typename INPUT_T> __aicore__ inline void FlashAttentionScoreEmptyTensor<INPUT_T>::ComputeEachCore()
+template <typename INPUT_T>
+__aicore__ inline void FlashAttentionScoreEmptyTensor<INPUT_T>::ComputeEachCore()
 {
     uint32_t coreNum = tilingData->emptyInputTilingData.coreNum;
     uint32_t attentionOutFormerNum = tilingData->emptyInputTilingData.attentionOutFormerNum;
@@ -109,7 +111,8 @@ template <typename INPUT_T> __aicore__ inline void FlashAttentionScoreEmptyTenso
     }
 }
 
-template <typename INPUT_T> __aicore__ inline void FlashAttentionScoreEmptyTensor<INPUT_T>::Process()
+template <typename INPUT_T>
+__aicore__ inline void FlashAttentionScoreEmptyTensor<INPUT_T>::Process()
 {
     ComputeEachCore();
 }

@@ -102,11 +102,12 @@ void Finalize(int32_t deviceId, aclrtStream stream)
     aclFinalize();
 }
 
-float fp16_to_float(uint16_t h) {
+float fp16_to_float(uint16_t h)
+{
     uint32_t sign = ((h >> 15) & 1);
     uint32_t exponent = ((h >> 10) & 0x1F);
     uint32_t mantissa = (h & 0x3FF);
-    
+
     uint32_t f32;
     if (exponent == 0x1F) {
         exponent = 0xFF;
@@ -123,9 +124,9 @@ float fp16_to_float(uint16_t h) {
     } else {
         exponent += (127 - 15);
     }
-    
+
     f32 = (sign << 31) | (exponent << 23) | (mantissa << 13);
-    return *((float*)&f32);
+    return *((float *)&f32);
 }
 
 int aclnnFusedInferAttentionScoreV5FullQuantTest(int32_t deviceId, aclrtStream &stream)
@@ -176,7 +177,7 @@ int aclnnFusedInferAttentionScoreV5FullQuantTest(int32_t deviceId, aclrtStream &
     int64_t keyAntiquantScaleShapeSize = GetShapeSize(keyAntiquantScaleShape);     // （KV_T, KV_N, D/64, 2）
     int64_t valueAntiquantScaleShapeSize = GetShapeSize(valueAntiquantScaleShape); // （KV_T/64, KV_N, D, 2）
     int64_t outShapeSize = GetShapeSize(outShape);                                 // BNSD
-    std::vector<uint8_t> queryHostData(queryShapeSize, 0b00111000); // fp8_e4m3 1.0
+    std::vector<uint8_t> queryHostData(queryShapeSize, 0b00111000);                // fp8_e4m3 1.0
     std::vector<uint8_t> keyHostData(keyShapeSize, 0b00111000);
     std::vector<uint8_t> valueHostData(valueShapeSize, 0b00111000);
     std::vector<float> quantScale1HostData(quantScale1ShapeSize, 1);

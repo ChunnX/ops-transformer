@@ -60,9 +60,9 @@ aclnnStatus aclnnQuantFlashAttentionScoreGetWorkspaceSize(
 
 ```c++
 aclnnStatus aclnnQuantFlashAttentionScore(
-  void             *workspace, 
-  uint64_t          workspaceSize, 
-  aclOpExecutor    *executor, 
+  void             *workspace,
+  uint64_t          workspaceSize,
+  aclOpExecutor    *executor,
   const aclrtStream stream)
 ```
 
@@ -540,7 +540,7 @@ int main() {
   aclTensor* softmaxMax = nullptr;
   aclTensor* softmaxSum = nullptr;
   aclTensor* softmaxOut = nullptr;
- 
+
   std::vector<uint8_t> qHostData(q_size, 1.0);
   std::vector<uint8_t> kHostData(kv_size, 1.0);
   std::vector<uint8_t> vHostData(kv_size, 1.0);
@@ -572,7 +572,7 @@ int main() {
   CHECK_RET(ret == ACL_SUCCESS, return ret);
   ret = CreateAclTensor(softmaxSumHostData, softmaxSumShape, &softmaxSumDeviceAddr, aclDataType::ACL_FLOAT, &softmaxSum);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
- 
+
   double scaleValue = 0.088388;
   int64_t preTokens = 65536;
   int64_t nextTokens = 65536;

@@ -7,8 +7,8 @@
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
- 
- /*!
+
+/*!
  * \file attention_update.cpp
  * \brief
  */
@@ -18,10 +18,11 @@
 #define TILING_KEY_GO_FP16_WITHOUT_MAX_OUT 10020
 #define TILING_KEY_GO_BF16_WITHOUT_MAX_OUT 10030
 
-extern "C" __global__ __aicore__ void attention_update(GM_ADDR les, GM_ADDR in, GM_ADDR out, GM_ADDR lseOut, GM_ADDR workspace, GM_ADDR tiling)
+extern "C" __global__ __aicore__ void attention_update(GM_ADDR les, GM_ADDR in, GM_ADDR out, GM_ADDR lseOut,
+                                                       GM_ADDR workspace, GM_ADDR tiling)
 {
     GET_TILING_DATA_WITH_STRUCT(DecodeUpdateTilingData, tilingDataIn, tiling);
-    const DecodeUpdateTilingData* __restrict__ tilingData = &tilingDataIn;
+    const DecodeUpdateTilingData *__restrict__ tilingData = &tilingDataIn;
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY);
     if (TILING_KEY_IS(TILING_KEY_GO_FP32_WITHOUT_MAX_OUT)) {
         AttentionUpdate::DecodeUpdate<float, float> op;

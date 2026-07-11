@@ -67,8 +67,8 @@ TEST_F(SparseFlashAttentionGradOpapiUt, A1_bsnd_fp16_value_present)
     aclOpExecutor *executor = nullptr;
 
     aclnnStatus aclRet = aclnnSparseFlashAttentionGradGetWorkspaceSize(
-        query.get(), key.get(), value.get(), sparseIndices.get(), dOut.get(), out.get(), softmaxMax.get(), softmaxSum.get(),
-        nullptr, nullptr, nullptr, nullptr, 0.0883883476, 64, layout, 3, INT64_MAX, INT64_MAX, false,
+        query.get(), key.get(), value.get(), sparseIndices.get(), dOut.get(), out.get(), softmaxMax.get(),
+        softmaxSum.get(), nullptr, nullptr, nullptr, nullptr, 0.0883883476, 64, layout, 3, INT64_MAX, INT64_MAX, false,
         dQueryOut.get(), dKeyOut.get(), dValueOut.get(), nullptr, nullptr, &workspaceSize, &executor);
 
     EXPECT_EQ(aclRet, ACL_SUCCESS);
@@ -93,8 +93,8 @@ TEST_F(SparseFlashAttentionGradOpapiUt, A2_bsnd_fp16_value_optional_null)
 
     aclnnStatus aclRet = aclnnSparseFlashAttentionGradGetWorkspaceSize(
         query.get(), key.get(), nullptr, sparseIndices.get(), dOut.get(), out.get(), softmaxMax.get(), softmaxSum.get(),
-        nullptr, nullptr, nullptr, nullptr, 0.0883883476, 64, layout, 3, INT64_MAX, INT64_MAX, false,
-        dQueryOut.get(), dKeyOut.get(), nullptr, nullptr, nullptr, &workspaceSize, &executor);
+        nullptr, nullptr, nullptr, nullptr, 0.0883883476, 64, layout, 3, INT64_MAX, INT64_MAX, false, dQueryOut.get(),
+        dKeyOut.get(), nullptr, nullptr, nullptr, &workspaceSize, &executor);
 
     EXPECT_EQ(aclRet, ACL_SUCCESS);
     EXPECT_NE(executor, nullptr);
@@ -119,8 +119,8 @@ TEST_F(SparseFlashAttentionGradOpapiUt, E1_null_query)
 
     aclnnStatus aclRet = aclnnSparseFlashAttentionGradGetWorkspaceSize(
         nullptr, key.get(), value.get(), sparseIndices.get(), dOut.get(), out.get(), softmaxMax.get(), softmaxSum.get(),
-        nullptr, nullptr, nullptr, nullptr, 0.0883883476, 64, layout, 3, INT64_MAX, INT64_MAX, false,
-        dQueryOut.get(), dKeyOut.get(), dValueOut.get(), nullptr, nullptr, &workspaceSize, &executor);
+        nullptr, nullptr, nullptr, nullptr, 0.0883883476, 64, layout, 3, INT64_MAX, INT64_MAX, false, dQueryOut.get(),
+        dKeyOut.get(), dValueOut.get(), nullptr, nullptr, &workspaceSize, &executor);
 
     EXPECT_NE(aclRet, ACL_SUCCESS);
     EXPECT_EQ(executor, nullptr);

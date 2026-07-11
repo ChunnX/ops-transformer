@@ -70,10 +70,10 @@ aclnnStatus aclnnBlockSparseAttention(
   - TND: [total_kv_tokens, num_kv_heads, head_dim]
   - BNSD: [batch, num_kv_heads, kv_seqlen, head_dim]
 
-- **blockSparseMaskOptional**: 
+- **blockSparseMaskOptional**:
   - 稀疏Mask: [batch, headNum, ceilDiv(maxQSeqLength, blockShapeX), ceilDiv(maxKvSeqLength, blockShapeY)]
 
-- **blockShapeOptional**: 
+- **blockShapeOptional**:
   - blockShapeX: Q方向块大小
   - blockShapeY: KV方向块大小
 
@@ -113,9 +113,9 @@ aclnnStatus ret = aclnnBlockSparseAttentionGetWorkspaceSize(
 if (ret == ACLNN_SUCCESS) {
     void *workspace = nullptr;
     aclrtMalloc(&workspace, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
-    
+
     ret = aclnnBlockSparseAttention(workspace, workspaceSize, executor, stream);
-    
+
     aclrtFree(workspace);
 }
 ```

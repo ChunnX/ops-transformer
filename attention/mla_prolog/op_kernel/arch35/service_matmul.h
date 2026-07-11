@@ -22,7 +22,7 @@ namespace MlaProlog {
 
 constexpr uint8_t UNIT_FLAG_DISABLE = 0;  // 0: disable: 不配置unitFlag
 constexpr uint8_t UNIT_FLAG_CHECK = 0b10; // 2: enable: 将mmadParams.unitFlag设置为 0b10
-constexpr uint8_t UNIT_FLAG_SET = 0b11;   // 3: enable: 在k的最后一轮循环，会将mmadParams.unitFlag设置为 0b11
+constexpr uint8_t UNIT_FLAG_SET = 0b11; // 3: enable: 在k的最后一轮循环，会将mmadParams.unitFlag设置为 0b11
 
 
 /**
@@ -162,9 +162,9 @@ __aicore__ inline void LoadL1AAndScale(const GlobalTensor<T> &tensorAGm, const G
     dn2Nzparam.nValue = nInput / FP8_TWO; // 单个DN矩阵的列数N, 单位为元素个数
     dn2Nzparam.dValue = mInput;           // 单个DN矩阵的实际行数D, 单位为元素个数
     dn2Nzparam.srcDnMatrixStride = 0;     // 相邻DN矩阵起始地址之间的偏移, 单位为元素个数
-    dn2Nzparam.srcDValue = srcDValue;     // 同一个DN矩阵中相邻行起始地址之间的偏移, 单位为元素个数
+    dn2Nzparam.srcDValue = srcDValue; // 同一个DN矩阵中相邻行起始地址之间的偏移, 单位为元素个数
     dn2Nzparam.dstNzC0Stride =
-        nInput / FP8_TWO;        // 来自DN矩阵中同一列的相邻两个block在NZ矩阵中起始地址间的偏移，单位为block(32B)个数
+        nInput / FP8_TWO; // 来自DN矩阵中同一列的相邻两个block在NZ矩阵中起始地址间的偏移，单位为block(32B)个数
     dn2Nzparam.dstNzNStride = 1; // 转换为NZ矩阵后，DN中相邻两行在NZ矩阵中起始地址之间的偏移，单位为元素个数
     dn2Nzparam.dstNzMatrixStride = dn2Nzparam.nValue; // 两个NZ矩阵，起始地址之间的偏移，单位为block个数
     DataCopy(bL1Tensor[scaleAInL1BOffset / FP8_TWO], tensorScaleGmCast, dn2Nzparam);
@@ -201,12 +201,12 @@ __aicore__ inline void LoadL1BAndScale(const GlobalTensor<T> &tensorBGm, const G
 
     Dn2NzParams dn2Nzparam;
     dn2Nzparam.dnNum = 1;
-    dn2Nzparam.nValue = nInput / FP8_TWO;    // 单个DN矩阵的列数N, 单位为元素个数
-    dn2Nzparam.dValue = nL1Size;             // 单个DN矩阵的实际行数D, 单位为元素个数
-    dn2Nzparam.srcDnMatrixStride = 0;        // 相邻DN矩阵起始地址之间的偏移, 单位为元素个数
+    dn2Nzparam.nValue = nInput / FP8_TWO; // 单个DN矩阵的列数N, 单位为元素个数
+    dn2Nzparam.dValue = nL1Size;          // 单个DN矩阵的实际行数D, 单位为元素个数
+    dn2Nzparam.srcDnMatrixStride = 0;     // 相邻DN矩阵起始地址之间的偏移, 单位为元素个数
     dn2Nzparam.srcDValue = nInput / FP8_TWO; // 同一个DN矩阵中相邻行起始地址之间的偏移, 单位为元素个数
     dn2Nzparam.dstNzC0Stride =
-        dn2Nzparam.srcDValue;    // 来自DN矩阵中同一列的相邻两个block在NZ矩阵中起始地址间的偏移，单位为block(32B)个数
+        dn2Nzparam.srcDValue; // 来自DN矩阵中同一列的相邻两个block在NZ矩阵中起始地址间的偏移，单位为block(32B)个数
     dn2Nzparam.dstNzNStride = 1; // 转换为NZ矩阵后，DN中相邻两行在NZ矩阵中起始地址之间的偏移，单位为元素个数
     dn2Nzparam.dstNzMatrixStride = dn2Nzparam.dstNzC0Stride; // 两个NZ矩阵，起始地址之间的偏移，单位为block个数
     DataCopy(bL1ScaleTensor[scaleBInL1BOffset / FP8_TWO], tensorScaleGmCast, dn2Nzparam);

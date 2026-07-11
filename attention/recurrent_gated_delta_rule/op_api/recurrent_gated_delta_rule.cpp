@@ -40,8 +40,7 @@ const aclTensor *RecurrentGatedDeltaRule(const aclTensor *query, const aclTensor
 
     auto out = executor->AllocTensor(outType, format, format);
 
-    OP_CHECK(out != nullptr, OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "out AllocTensor failed."),
-             return nullptr);
+    OP_CHECK(out != nullptr, OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "out AllocTensor failed."), return nullptr);
 
     // infershape
     auto ret = INFER_SHAPE(

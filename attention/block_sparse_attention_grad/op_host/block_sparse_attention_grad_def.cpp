@@ -14,24 +14,12 @@ namespace ops {
 
 class BlockSparseAttentionGrad : public OpDef {
 public:
-    explicit BlockSparseAttentionGrad(const char* name) : OpDef(name)
+    explicit BlockSparseAttentionGrad(const char *name) : OpDef(name)
     {
-        this->Input("dout")
-            .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT16, ge::DT_BF16})
-            .FormatList({ge::FORMAT_ND});
-        this->Input("query")
-            .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT16, ge::DT_BF16})
-            .FormatList({ge::FORMAT_ND});
-        this->Input("key")
-            .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT16, ge::DT_BF16})
-            .FormatList({ge::FORMAT_ND});
-        this->Input("value")
-            .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT16, ge::DT_BF16})
-            .FormatList({ge::FORMAT_ND});
+        this->Input("dout").ParamType(REQUIRED).DataType({ge::DT_FLOAT16, ge::DT_BF16}).FormatList({ge::FORMAT_ND});
+        this->Input("query").ParamType(REQUIRED).DataType({ge::DT_FLOAT16, ge::DT_BF16}).FormatList({ge::FORMAT_ND});
+        this->Input("key").ParamType(REQUIRED).DataType({ge::DT_FLOAT16, ge::DT_BF16}).FormatList({ge::FORMAT_ND});
+        this->Input("value").ParamType(REQUIRED).DataType({ge::DT_FLOAT16, ge::DT_BF16}).FormatList({ge::FORMAT_ND});
         this->Input("attentionOut")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT16, ge::DT_BF16})
@@ -60,18 +48,9 @@ public:
             .ParamType(OPTIONAL)
             .DataType({ge::DT_INT64, ge::DT_INT64})
             .FormatList({ge::FORMAT_ND});
-        this->Output("dq")
-            .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT16, ge::DT_BF16})
-            .FormatList({ge::FORMAT_ND});
-        this->Output("dk")
-            .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT16, ge::DT_BF16})
-            .FormatList({ge::FORMAT_ND});
-        this->Output("dv")
-            .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT16, ge::DT_BF16})
-            .FormatList({ge::FORMAT_ND});
+        this->Output("dq").ParamType(REQUIRED).DataType({ge::DT_FLOAT16, ge::DT_BF16}).FormatList({ge::FORMAT_ND});
+        this->Output("dk").ParamType(REQUIRED).DataType({ge::DT_FLOAT16, ge::DT_BF16}).FormatList({ge::FORMAT_ND});
+        this->Output("dv").ParamType(REQUIRED).DataType({ge::DT_FLOAT16, ge::DT_BF16}).FormatList({ge::FORMAT_ND});
 
         this->Attr("qInputLayout").AttrType(OPTIONAL);
         this->Attr("kvInputLayout").AttrType(OPTIONAL);
@@ -89,5 +68,4 @@ public:
 
 OP_ADD(BlockSparseAttentionGrad);
 
-}  // namespace ops
-
+} // namespace ops

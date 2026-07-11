@@ -84,7 +84,7 @@ ASCENDC_TPL_SEL(
 
 #if MLA_PROLOG_VERSION == -1 || MLA_PROLOG_VERSION >= 1
 // -------------------------- 非量化场景 --------------------------
-#if ORIG_DTYPE_TOKEN_X == -1 || ORIG_DTYPE_WEIGHT_UQ_QR == -1 || \
+#if ORIG_DTYPE_TOKEN_X == -1 || ORIG_DTYPE_WEIGHT_UQ_QR == -1 ||                                                       \
     (ORIG_DTYPE_TOKEN_X == DT_BF16 && ORIG_DTYPE_WEIGHT_UQ_QR == DT_BF16)
     ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_UINT_SEL(CACHE_MODE, ASCENDC_TPL_UI_LIST, 1, 2, 3, 4),
                          ASCENDC_TPL_UINT_SEL(SCENARIO, ASCENDC_TPL_UI_LIST, 1),
@@ -121,7 +121,7 @@ ASCENDC_TPL_SEL(
 #endif
 
 // -------------------------- 半量化kv非量化 --------------------------
-#if ORIG_DTYPE_TOKEN_X == -1 || ORIG_DTYPE_WEIGHT_UQ_QR == -1 || ORIG_DTYPE_KV_CACHE == -1 || \
+#if ORIG_DTYPE_TOKEN_X == -1 || ORIG_DTYPE_WEIGHT_UQ_QR == -1 || ORIG_DTYPE_KV_CACHE == -1 ||                          \
     (ORIG_DTYPE_TOKEN_X == DT_BF16 && ORIG_DTYPE_WEIGHT_UQ_QR == DT_INT8 && ORIG_DTYPE_KV_CACHE == DT_BF16)
     ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_UINT_SEL(CACHE_MODE, ASCENDC_TPL_UI_LIST, 1, 2, 3, 4),
                          ASCENDC_TPL_UINT_SEL(SCENARIO, ASCENDC_TPL_UI_LIST, 2),
@@ -191,9 +191,9 @@ ASCENDC_TPL_SEL(
 #endif
 
 // -------------------------- 半量化kv perchannel量化 --------------------------
-#if ORIG_DTYPE_TOKEN_X == -1 || ORIG_DTYPE_WEIGHT_UQ_QR == -1 || ORIG_DTYPE_KV_CACHE == -1 || \
-    ORIG_DTYPE_KR_CACHE == -1 || \
-    (ORIG_DTYPE_TOKEN_X == DT_BF16 && ORIG_DTYPE_WEIGHT_UQ_QR == DT_INT8 && ORIG_DTYPE_KV_CACHE == DT_INT8 && \
+#if ORIG_DTYPE_TOKEN_X == -1 || ORIG_DTYPE_WEIGHT_UQ_QR == -1 || ORIG_DTYPE_KV_CACHE == -1 ||                          \
+    ORIG_DTYPE_KR_CACHE == -1 ||                                                                                       \
+    (ORIG_DTYPE_TOKEN_X == DT_BF16 && ORIG_DTYPE_WEIGHT_UQ_QR == DT_INT8 && ORIG_DTYPE_KV_CACHE == DT_INT8 &&          \
      ORIG_DTYPE_KR_CACHE == DT_INT8)
     ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_UINT_SEL(CACHE_MODE, ASCENDC_TPL_UI_LIST, 1, 2, 3, 4),
                          ASCENDC_TPL_UINT_SEL(SCENARIO, ASCENDC_TPL_UI_LIST, 2),
@@ -265,7 +265,7 @@ ASCENDC_TPL_SEL(
 
 #if MLA_PROLOG_VERSION == -1 || MLA_PROLOG_VERSION >= 2
 // -------------------------- 全量化kv非量化 --------------------------
-#if ORIG_DTYPE_TOKEN_X == -1 || ORIG_DTYPE_WEIGHT_UQ_QR == -1 || ORIG_DTYPE_KV_CACHE == -1 || \
+#if ORIG_DTYPE_TOKEN_X == -1 || ORIG_DTYPE_WEIGHT_UQ_QR == -1 || ORIG_DTYPE_KV_CACHE == -1 ||                          \
     (ORIG_DTYPE_TOKEN_X == DT_INT8 && ORIG_DTYPE_WEIGHT_UQ_QR == DT_INT8 && ORIG_DTYPE_KV_CACHE == DT_BF16)
     ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_UINT_SEL(CACHE_MODE, ASCENDC_TPL_UI_LIST, 1, 2, 3, 4),
                          ASCENDC_TPL_UINT_SEL(SCENARIO, ASCENDC_TPL_UI_LIST, 2),
@@ -302,9 +302,9 @@ ASCENDC_TPL_SEL(
 #endif
 
 // -------------------------- 全量化kv pertensor量化 --------------------------
-#if ORIG_DTYPE_TOKEN_X == -1 || ORIG_DTYPE_WEIGHT_UQ_QR == -1 || ORIG_DTYPE_KV_CACHE == -1 || \
-    ORIG_DTYPE_KR_CACHE == -1 || ORIG_DTYPE_QUERY == -1 || \
-    (ORIG_DTYPE_TOKEN_X == DT_INT8 && ORIG_DTYPE_WEIGHT_UQ_QR == DT_INT8 && ORIG_DTYPE_KV_CACHE == DT_INT8 && \
+#if ORIG_DTYPE_TOKEN_X == -1 || ORIG_DTYPE_WEIGHT_UQ_QR == -1 || ORIG_DTYPE_KV_CACHE == -1 ||                          \
+    ORIG_DTYPE_KR_CACHE == -1 || ORIG_DTYPE_QUERY == -1 ||                                                             \
+    (ORIG_DTYPE_TOKEN_X == DT_INT8 && ORIG_DTYPE_WEIGHT_UQ_QR == DT_INT8 && ORIG_DTYPE_KV_CACHE == DT_INT8 &&          \
      ORIG_DTYPE_KR_CACHE == DT_BF16 && ORIG_DTYPE_QUERY == DT_INT8)
     ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_UINT_SEL(CACHE_MODE, ASCENDC_TPL_UI_LIST, 1, 2, 3, 4),
                          ASCENDC_TPL_UINT_SEL(SCENARIO, ASCENDC_TPL_UI_LIST, 2),
@@ -343,7 +343,7 @@ ASCENDC_TPL_SEL(
 
 #if MLA_PROLOG_VERSION == -1 || MLA_PROLOG_VERSION == 3
 // -------------------------- 半量化kv pertile量化 --------------------------
-#if ORIG_DTYPE_TOKEN_X == -1 || ORIG_DTYPE_WEIGHT_UQ_QR == -1 || ORIG_DTYPE_KV_CACHE == -1 || \
+#if ORIG_DTYPE_TOKEN_X == -1 || ORIG_DTYPE_WEIGHT_UQ_QR == -1 || ORIG_DTYPE_KV_CACHE == -1 ||                          \
     (ORIG_DTYPE_TOKEN_X == DT_BF16 && ORIG_DTYPE_WEIGHT_UQ_QR == DT_INT8 && ORIG_DTYPE_KV_CACHE == DT_INT8)
     ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_UINT_SEL(CACHE_MODE, ASCENDC_TPL_UI_LIST, 1),
                          ASCENDC_TPL_UINT_SEL(SCENARIO, ASCENDC_TPL_UI_LIST, 2),
@@ -369,9 +369,9 @@ ASCENDC_TPL_SEL(
 #endif
 
 // -------------------------- 全量化kv pertile量化 --------------------------
-#if ORIG_DTYPE_TOKEN_X == -1 || ORIG_DTYPE_WEIGHT_UQ_QR == -1 || ORIG_DTYPE_KV_CACHE == -1 || \
-    ORIG_DTYPE_QUERY == -1 || \
-    (ORIG_DTYPE_TOKEN_X == DT_INT8 && ORIG_DTYPE_WEIGHT_UQ_QR == DT_INT8 && ORIG_DTYPE_KV_CACHE == DT_INT8 && \
+#if ORIG_DTYPE_TOKEN_X == -1 || ORIG_DTYPE_WEIGHT_UQ_QR == -1 || ORIG_DTYPE_KV_CACHE == -1 ||                          \
+    ORIG_DTYPE_QUERY == -1 ||                                                                                          \
+    (ORIG_DTYPE_TOKEN_X == DT_INT8 && ORIG_DTYPE_WEIGHT_UQ_QR == DT_INT8 && ORIG_DTYPE_KV_CACHE == DT_INT8 &&          \
      ORIG_DTYPE_QUERY == DT_BF16)
     ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_UINT_SEL(CACHE_MODE, ASCENDC_TPL_UI_LIST, 0, 1),
                          ASCENDC_TPL_UINT_SEL(SCENARIO, ASCENDC_TPL_UI_LIST, 2),
@@ -386,9 +386,9 @@ ASCENDC_TPL_SEL(
 #endif
 
 // -------------------------- Mxfp8全量化kv非量化 --------------------------
-#if ORIG_DTYPE_TOKEN_X == -1 || ORIG_DTYPE_WEIGHT_UQ_QR == -1 || ORIG_DTYPE_KV_CACHE == -1 || \
-    ORIG_DTYPE_DEQUANT_SCALE_X == -1 || \
-    (ORIG_DTYPE_TOKEN_X == DT_FLOAT8_E4M3FN && ORIG_DTYPE_WEIGHT_UQ_QR == DT_FLOAT8_E4M3FN && \
+#if ORIG_DTYPE_TOKEN_X == -1 || ORIG_DTYPE_WEIGHT_UQ_QR == -1 || ORIG_DTYPE_KV_CACHE == -1 ||                          \
+    ORIG_DTYPE_DEQUANT_SCALE_X == -1 ||                                                                                \
+    (ORIG_DTYPE_TOKEN_X == DT_FLOAT8_E4M3FN && ORIG_DTYPE_WEIGHT_UQ_QR == DT_FLOAT8_E4M3FN &&                          \
      ORIG_DTYPE_KV_CACHE == DT_BF16 && ORIG_DTYPE_DEQUANT_SCALE_X == DT_FLOAT8_E8M0)
     ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_UINT_SEL(CACHE_MODE, ASCENDC_TPL_UI_LIST, 0, 1, 2, 3, 4),
                          ASCENDC_TPL_UINT_SEL(SCENARIO, ASCENDC_TPL_UI_LIST, 2),
@@ -403,10 +403,10 @@ ASCENDC_TPL_SEL(
 #endif
 
 // -------------------------- Mxfp8全量化kv量化 --------------------------
-#if ORIG_DTYPE_TOKEN_X == -1 || ORIG_DTYPE_WEIGHT_UQ_QR == -1 || ORIG_DTYPE_KV_CACHE == -1 || \
-    ORIG_DTYPE_KR_CACHE == -1 || ORIG_DTYPE_DEQUANT_SCALE_X == -1 || \
-    (ORIG_DTYPE_TOKEN_X == DT_FLOAT8_E4M3FN && ORIG_DTYPE_WEIGHT_UQ_QR == DT_FLOAT8_E4M3FN && \
-     ORIG_DTYPE_KV_CACHE == DT_FLOAT8_E4M3FN && ORIG_DTYPE_KR_CACHE == DT_BF16 && \
+#if ORIG_DTYPE_TOKEN_X == -1 || ORIG_DTYPE_WEIGHT_UQ_QR == -1 || ORIG_DTYPE_KV_CACHE == -1 ||                          \
+    ORIG_DTYPE_KR_CACHE == -1 || ORIG_DTYPE_DEQUANT_SCALE_X == -1 ||                                                   \
+    (ORIG_DTYPE_TOKEN_X == DT_FLOAT8_E4M3FN && ORIG_DTYPE_WEIGHT_UQ_QR == DT_FLOAT8_E4M3FN &&                          \
+     ORIG_DTYPE_KV_CACHE == DT_FLOAT8_E4M3FN && ORIG_DTYPE_KR_CACHE == DT_BF16 &&                                      \
      ORIG_DTYPE_DEQUANT_SCALE_X == DT_FLOAT8_E8M0)
     ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_UINT_SEL(CACHE_MODE, ASCENDC_TPL_UI_LIST, 0, 1, 2, 3, 4),
                          ASCENDC_TPL_UINT_SEL(SCENARIO, ASCENDC_TPL_UI_LIST, 2),
@@ -421,9 +421,9 @@ ASCENDC_TPL_SEL(
 #endif
 
 // -------------------------- Mxfp8全量化kv pertile量化 --------------------------
-#if ORIG_DTYPE_TOKEN_X == -1 || ORIG_DTYPE_WEIGHT_UQ_QR == -1 || ORIG_DTYPE_KV_CACHE == -1 || \
-    ORIG_DTYPE_DEQUANT_SCALE_X == -1 || \
-    (ORIG_DTYPE_TOKEN_X == DT_FLOAT8_E4M3FN && ORIG_DTYPE_WEIGHT_UQ_QR == DT_FLOAT8_E4M3FN && \
+#if ORIG_DTYPE_TOKEN_X == -1 || ORIG_DTYPE_WEIGHT_UQ_QR == -1 || ORIG_DTYPE_KV_CACHE == -1 ||                          \
+    ORIG_DTYPE_DEQUANT_SCALE_X == -1 ||                                                                                \
+    (ORIG_DTYPE_TOKEN_X == DT_FLOAT8_E4M3FN && ORIG_DTYPE_WEIGHT_UQ_QR == DT_FLOAT8_E4M3FN &&                          \
      ORIG_DTYPE_KV_CACHE == DT_FLOAT8_E4M3FN && ORIG_DTYPE_DEQUANT_SCALE_X == DT_FLOAT8_E8M0)
     ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_UINT_SEL(CACHE_MODE, ASCENDC_TPL_UI_LIST, 0, 1),
                          ASCENDC_TPL_UINT_SEL(SCENARIO, ASCENDC_TPL_UI_LIST, 2),
@@ -438,9 +438,9 @@ ASCENDC_TPL_SEL(
 #endif
 
 // -------------------------- fp8全量化kv非量化 --------------------------
-#if ORIG_DTYPE_TOKEN_X == -1 || ORIG_DTYPE_WEIGHT_UQ_QR == -1 || ORIG_DTYPE_KV_CACHE == -1 || \
-    ORIG_DTYPE_DEQUANT_SCALE_X == -1 || \
-    (ORIG_DTYPE_TOKEN_X == DT_FLOAT8_E4M3FN && ORIG_DTYPE_WEIGHT_UQ_QR == DT_FLOAT8_E4M3FN && \
+#if ORIG_DTYPE_TOKEN_X == -1 || ORIG_DTYPE_WEIGHT_UQ_QR == -1 || ORIG_DTYPE_KV_CACHE == -1 ||                          \
+    ORIG_DTYPE_DEQUANT_SCALE_X == -1 ||                                                                                \
+    (ORIG_DTYPE_TOKEN_X == DT_FLOAT8_E4M3FN && ORIG_DTYPE_WEIGHT_UQ_QR == DT_FLOAT8_E4M3FN &&                          \
      ORIG_DTYPE_KV_CACHE == DT_BF16 && ORIG_DTYPE_DEQUANT_SCALE_X == DT_FLOAT)
     ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_UINT_SEL(CACHE_MODE, ASCENDC_TPL_UI_LIST, 1, 2, 3, 4),
                          ASCENDC_TPL_UINT_SEL(SCENARIO, ASCENDC_TPL_UI_LIST, 2),
@@ -477,10 +477,10 @@ ASCENDC_TPL_SEL(
 #endif
 
 // -------------------------- fp8全量化kv pertensor量化 --------------------------
-#if ORIG_DTYPE_TOKEN_X == -1 || ORIG_DTYPE_WEIGHT_UQ_QR == -1 || ORIG_DTYPE_KV_CACHE == -1 || \
-    ORIG_DTYPE_KR_CACHE == -1 || ORIG_DTYPE_QUERY == -1 || ORIG_DTYPE_DEQUANT_SCALE_X == -1 || \
-    (ORIG_DTYPE_TOKEN_X == DT_FLOAT8_E4M3FN && ORIG_DTYPE_WEIGHT_UQ_QR == DT_FLOAT8_E4M3FN && \
-     ORIG_DTYPE_KV_CACHE == DT_FLOAT8_E4M3FN && ORIG_DTYPE_KR_CACHE == DT_BF16 && \
+#if ORIG_DTYPE_TOKEN_X == -1 || ORIG_DTYPE_WEIGHT_UQ_QR == -1 || ORIG_DTYPE_KV_CACHE == -1 ||                          \
+    ORIG_DTYPE_KR_CACHE == -1 || ORIG_DTYPE_QUERY == -1 || ORIG_DTYPE_DEQUANT_SCALE_X == -1 ||                         \
+    (ORIG_DTYPE_TOKEN_X == DT_FLOAT8_E4M3FN && ORIG_DTYPE_WEIGHT_UQ_QR == DT_FLOAT8_E4M3FN &&                          \
+     ORIG_DTYPE_KV_CACHE == DT_FLOAT8_E4M3FN && ORIG_DTYPE_KR_CACHE == DT_BF16 &&                                      \
      ORIG_DTYPE_QUERY == DT_FLOAT8_E4M3FN && ORIG_DTYPE_DEQUANT_SCALE_X == DT_FLOAT)
     ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_UINT_SEL(CACHE_MODE, ASCENDC_TPL_UI_LIST, 1, 2, 3, 4),
                          ASCENDC_TPL_UINT_SEL(SCENARIO, ASCENDC_TPL_UI_LIST, 2),
@@ -516,7 +516,7 @@ ASCENDC_TPL_SEL(
                          ASCENDC_TPL_TILING_STRUCT_SEL(optiling::MlaPrologTilingData)),
 #endif
 // -------------------------- hif8全量化kv非量化 --------------------------
-#if ORIG_DTYPE_TOKEN_X == -1 || ORIG_DTYPE_WEIGHT_UQ_QR == -1 || ORIG_DTYPE_KV_CACHE == -1 || \
+#if ORIG_DTYPE_TOKEN_X == -1 || ORIG_DTYPE_WEIGHT_UQ_QR == -1 || ORIG_DTYPE_KV_CACHE == -1 ||                          \
     (ORIG_DTYPE_TOKEN_X == DT_HIFLOAT8 && ORIG_DTYPE_WEIGHT_UQ_QR == DT_HIFLOAT8 && ORIG_DTYPE_KV_CACHE == DT_BF16)
     ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_UINT_SEL(CACHE_MODE, ASCENDC_TPL_UI_LIST, 1, 2, 3, 4),
                          ASCENDC_TPL_UINT_SEL(SCENARIO, ASCENDC_TPL_UI_LIST, 2),
@@ -553,9 +553,9 @@ ASCENDC_TPL_SEL(
 #endif
 
 // -------------------------- hif8全量化kv pertensor量化 --------------------------
-#if ORIG_DTYPE_TOKEN_X == -1 || ORIG_DTYPE_WEIGHT_UQ_QR == -1 || ORIG_DTYPE_KV_CACHE == -1 || \
-    ORIG_DTYPE_KR_CACHE == -1 || ORIG_DTYPE_QUERY == -1 || \
-    (ORIG_DTYPE_TOKEN_X == DT_HIFLOAT8 && ORIG_DTYPE_WEIGHT_UQ_QR == DT_HIFLOAT8 && \
+#if ORIG_DTYPE_TOKEN_X == -1 || ORIG_DTYPE_WEIGHT_UQ_QR == -1 || ORIG_DTYPE_KV_CACHE == -1 ||                          \
+    ORIG_DTYPE_KR_CACHE == -1 || ORIG_DTYPE_QUERY == -1 ||                                                             \
+    (ORIG_DTYPE_TOKEN_X == DT_HIFLOAT8 && ORIG_DTYPE_WEIGHT_UQ_QR == DT_HIFLOAT8 &&                                    \
      ORIG_DTYPE_KV_CACHE == DT_HIFLOAT8 && ORIG_DTYPE_KR_CACHE == DT_BF16 && ORIG_DTYPE_QUERY == DT_HIFLOAT8)
     ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_UINT_SEL(CACHE_MODE, ASCENDC_TPL_UI_LIST, 1, 2, 3, 4),
                          ASCENDC_TPL_UINT_SEL(SCENARIO, ASCENDC_TPL_UI_LIST, 2),
@@ -592,9 +592,9 @@ ASCENDC_TPL_SEL(
 #endif
 
 // -------------------------- fp8全量化kv pertile量化 --------------------------
-#if ORIG_DTYPE_TOKEN_X == -1 || ORIG_DTYPE_WEIGHT_UQ_QR == -1 || ORIG_DTYPE_KV_CACHE == -1 || \
-    ORIG_DTYPE_QUERY == -1 || ORIG_DTYPE_DEQUANT_SCALE_X == -1 || \
-    (ORIG_DTYPE_TOKEN_X == DT_FLOAT8_E4M3FN && ORIG_DTYPE_WEIGHT_UQ_QR == DT_FLOAT8_E4M3FN && \
+#if ORIG_DTYPE_TOKEN_X == -1 || ORIG_DTYPE_WEIGHT_UQ_QR == -1 || ORIG_DTYPE_KV_CACHE == -1 ||                          \
+    ORIG_DTYPE_QUERY == -1 || ORIG_DTYPE_DEQUANT_SCALE_X == -1 ||                                                      \
+    (ORIG_DTYPE_TOKEN_X == DT_FLOAT8_E4M3FN && ORIG_DTYPE_WEIGHT_UQ_QR == DT_FLOAT8_E4M3FN &&                          \
      ORIG_DTYPE_KV_CACHE == DT_FLOAT8_E4M3FN && ORIG_DTYPE_QUERY == DT_BF16 && ORIG_DTYPE_DEQUANT_SCALE_X == DT_FLOAT)
     ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_UINT_SEL(CACHE_MODE, ASCENDC_TPL_UI_LIST, 1),
                          ASCENDC_TPL_UINT_SEL(SCENARIO, ASCENDC_TPL_UI_LIST, 2),
@@ -620,9 +620,9 @@ ASCENDC_TPL_SEL(
 #endif
 
 // -------------------------- hif8全量化kv pertile量化 --------------------------
-#if ORIG_DTYPE_TOKEN_X == -1 || ORIG_DTYPE_WEIGHT_UQ_QR == -1 || ORIG_DTYPE_KV_CACHE == -1 || \
-    ORIG_DTYPE_QUERY == -1 || ORIG_DTYPE_DEQUANT_SCALE_X == -1 || \
-    (ORIG_DTYPE_TOKEN_X == DT_HIFLOAT8 && ORIG_DTYPE_WEIGHT_UQ_QR == DT_HIFLOAT8 && \
+#if ORIG_DTYPE_TOKEN_X == -1 || ORIG_DTYPE_WEIGHT_UQ_QR == -1 || ORIG_DTYPE_KV_CACHE == -1 ||                          \
+    ORIG_DTYPE_QUERY == -1 || ORIG_DTYPE_DEQUANT_SCALE_X == -1 ||                                                      \
+    (ORIG_DTYPE_TOKEN_X == DT_HIFLOAT8 && ORIG_DTYPE_WEIGHT_UQ_QR == DT_HIFLOAT8 &&                                    \
      ORIG_DTYPE_KV_CACHE == DT_HIFLOAT8 && ORIG_DTYPE_QUERY == DT_BF16 && ORIG_DTYPE_DEQUANT_SCALE_X == DT_FLOAT)
     ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_UINT_SEL(CACHE_MODE, ASCENDC_TPL_UI_LIST, 1),
                          ASCENDC_TPL_UINT_SEL(SCENARIO, ASCENDC_TPL_UI_LIST, 2),

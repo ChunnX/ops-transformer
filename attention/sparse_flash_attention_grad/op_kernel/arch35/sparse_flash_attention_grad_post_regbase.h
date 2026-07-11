@@ -18,13 +18,14 @@
 
 using namespace AscendC;
 
-template <typename T1, typename T2, typename OUTDTYPE=T1, const bool IS_ROPE = false, const bool IS_TND = 0> class SparseFlashAttentionGradPostRegbase {
+template <typename T1, typename T2, typename OUTDTYPE = T1, const bool IS_ROPE = false, const bool IS_TND = 0>
+class SparseFlashAttentionGradPostRegbase {
 public:
     __aicore__ inline SparseFlashAttentionGradPostRegbase(){};
-    __aicore__ inline void Init(__gm__ uint8_t *dq, __gm__ uint8_t *dk, __gm__ uint8_t *dv, __gm__ uint8_t *dqRope,
-                                __gm__ uint8_t *dkRope,__gm__ uint8_t *workspace,
-                                const optiling::sfag::SparseFlashAttentionGradTilingDataRegbase *__restrict ordTilingData,
-                                TPipe *pipe_in);
+    __aicore__ inline void
+    Init(__gm__ uint8_t *dq, __gm__ uint8_t *dk, __gm__ uint8_t *dv, __gm__ uint8_t *dqRope, __gm__ uint8_t *dkRope,
+         __gm__ uint8_t *workspace,
+         const optiling::sfag::SparseFlashAttentionGradTilingDataRegbase *__restrict ordTilingData, TPipe *pipe_in);
     __aicore__ inline void Process();
 
     constexpr static uint32_t ADDR_ALIGN_SIZE = 512;
@@ -50,8 +51,8 @@ public:
 
 template <typename T1, typename T2, typename OUTDTYPE, bool IS_ROPE, const bool IS_TND>
 __aicore__ inline void SparseFlashAttentionGradPostRegbase<T1, T2, OUTDTYPE, IS_ROPE, IS_TND>::Init(
-    __gm__ uint8_t *dq, __gm__ uint8_t *dk, __gm__ uint8_t *dv, __gm__ uint8_t *dqRope,
-    __gm__ uint8_t *dkRope, __gm__ uint8_t *workspace,
+    __gm__ uint8_t *dq, __gm__ uint8_t *dk, __gm__ uint8_t *dv, __gm__ uint8_t *dqRope, __gm__ uint8_t *dkRope,
+    __gm__ uint8_t *workspace,
     const optiling::sfag::SparseFlashAttentionGradTilingDataRegbase *__restrict ordTilingData, TPipe *pipe_in)
 {
     vBlockIdx = GetBlockIdx();
@@ -69,9 +70,12 @@ __aicore__ inline void SparseFlashAttentionGradPostRegbase<T1, T2, OUTDTYPE, IS_
     inputTotalSize = tilingData->postTilingData.qPostBlockTotal;
     qPostTailNum = tilingData->postTilingData.qPostTailNum;
 
-    dqkvWorkspace[0].SetGlobalBuffer((__gm__ float *)workspace + tilingData->postTilingData.dqWorkSpaceOffset / sizeof(T2));
-    dqkvWorkspace[1].SetGlobalBuffer((__gm__ float *)workspace + tilingData->postTilingData.dkWorkSpaceOffset / sizeof(T2));
-    dqkvWorkspace[2].SetGlobalBuffer((__gm__ float *)workspace + tilingData->postTilingData.dvWorkSpaceOffset / sizeof(T2));
+    dqkvWorkspace[0].SetGlobalBuffer((__gm__ float *)workspace +
+                                     tilingData->postTilingData.dqWorkSpaceOffset / sizeof(T2));
+    dqkvWorkspace[1].SetGlobalBuffer((__gm__ float *)workspace +
+                                     tilingData->postTilingData.dkWorkSpaceOffset / sizeof(T2));
+    dqkvWorkspace[2].SetGlobalBuffer((__gm__ float *)workspace +
+                                     tilingData->postTilingData.dvWorkSpaceOffset / sizeof(T2));
 
     if constexpr (IS_ROPE) {
         REGBASE_POST_BASE = POST_S_BASE * (ROPE_DIM + VALUE_DIM);
@@ -105,8 +109,8 @@ __aicore__ inline void SparseFlashAttentionGradPostRegbase<T1, T2, OUTDTYPE, IS_
         uint64_t blockCore = loop * REGBASE_POST_BASE;
         uint64_t begin = vBlockIdx * blockCore;
         uint64_t end = begin + blockCore;
-        uint32_t s1BaseTailSize = tilingData->baseParams.s1 % POST_S_BASE;   // 128
-        uint32_t s2BaseTailSize = tilingData->baseParams.s2 % POST_S_BASE;   // 128
+        uint32_t s1BaseTailSize = tilingData->baseParams.s1 % POST_S_BASE; // 128
+        uint32_t s2BaseTailSize = tilingData->baseParams.s2 % POST_S_BASE; // 128
 
         if (end > inputTotalSize) {
             end = inputTotalSize;
@@ -143,7 +147,7 @@ __aicore__ inline void SparseFlashAttentionGradPostRegbase<T1, T2, OUTDTYPE, IS_
             if constexpr (IS_ROPE) {
                 if (qkvIdx == 2) {
                     DataCopy(dqkv[qkvIdx][pingIdx], vecOutPing, pingSize);
-                }  else {
+                } else {
                     // 18 * (512 + 64)基本块
                     DataCopyParams dataCopyParams;
                     dataCopyParams.blockCount = seqPingSize;
@@ -177,7 +181,7 @@ __aicore__ inline void SparseFlashAttentionGradPostRegbase<T1, T2, OUTDTYPE, IS_
                 if constexpr (IS_ROPE) {
                     if (qkvIdx == 2) {
                         DataCopy(dqkv[qkvIdx][pongIdx], vecOutPong, pongSize);
-                    }  else {
+                    } else {
                         // 96 * (128 + 64)基本块
                         DataCopyParams dataCopyParams;
                         dataCopyParams.blockCount = seqPongSize;
@@ -186,7 +190,7 @@ __aicore__ inline void SparseFlashAttentionGradPostRegbase<T1, T2, OUTDTYPE, IS_
                         // 64 * sizeof(OUTDTYPE) / 32B
                         dataCopyParams.srcStride = 2 * sizeof(OUTDTYPE);
                         DataCopy(dqkv[qkvIdx][dqPongGmOffset], vecOutPong, dataCopyParams);
-    
+
                         dataCopyParams.blockLen = 2 * sizeof(OUTDTYPE);
                         dataCopyParams.srcStride = 16 * sizeof(OUTDTYPE);
                         DataCopy(dqkRope[qkvIdx][dqPongGmOffset / 8], vecOutPong[VALUE_DIM], dataCopyParams);

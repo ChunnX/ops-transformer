@@ -33,11 +33,12 @@ namespace AscendC {
  * @param [in] reduceSize, 多少个相同值表示当前行最大值
  */
 template <typename T>
-__aicore__ inline void RowInvalidUpdate(const LocalTensor<T>& finalTensor, const LocalTensor<float>& maxTensor,
-    const uint16_t m, const uint32_t dSize, const uint16_t d, const uint16_t reduceSize)
+__aicore__ inline void RowInvalidUpdate(const LocalTensor<T> &finalTensor, const LocalTensor<float> &maxTensor,
+                                        const uint16_t m, const uint32_t dSize, const uint16_t d,
+                                        const uint16_t reduceSize)
 {
-    __ubuf__ T * finalUb = (__ubuf__ T*)finalTensor.GetPhyAddr();
-    __ubuf__ float * maxUb = (__ubuf__ float*)maxTensor.GetPhyAddr();
+    __ubuf__ T *finalUb = (__ubuf__ T *)finalTensor.GetPhyAddr();
+    __ubuf__ float *maxUb = (__ubuf__ float *)maxTensor.GetPhyAddr();
 
     constexpr uint16_t floatRepSize = 64; // 64: 一个寄存器可以存储64个float类型数据
     const uint16_t dLoops = d / floatRepSize;
@@ -49,9 +50,9 @@ __aicore__ inline void RowInvalidUpdate(const LocalTensor<T>& finalTensor, const
     }
 
     constexpr uint32_t tmpZero = 0x00000000; // zero value of fp16 and fp32
-    const T zeroValue = *((T*)&tmpZero);
+    const T zeroValue = *((T *)&tmpZero);
     constexpr uint32_t tmpMin = 0xFF7FFFFF; // min value of float
-    const float minValue = *((float*)&tmpMin);
+    const float minValue = *((float *)&tmpMin);
 
     __VEC_SCOPE__
     {
@@ -74,18 +75,19 @@ __aicore__ inline void RowInvalidUpdate(const LocalTensor<T>& finalTensor, const
                 MicroAPI::DataCopy<T, MicroAPI::LoadDist::DIST_NORM>(vregFinal, finalUb + i * dSize + j * floatRepSize);
                 MicroAPI::Select<T>(vregFinalNew, vregZeroValue, vregFinal, pregCompare);
                 MicroAPI::DataCopy<T, MicroAPI::StoreDist::DIST_NORM_B32>(finalUb + i * dSize + j * floatRepSize,
-                    vregFinalNew, pregAll);
+                                                                          vregFinalNew, pregAll);
             }
             for (uint16_t t = 0; t < hasTail; ++t) {
-                MicroAPI::DataCopy<T, MicroAPI::LoadDist::DIST_NORM>(vregFinal, finalUb + i * dSize + dLoops * floatRepSize);
+                MicroAPI::DataCopy<T, MicroAPI::LoadDist::DIST_NORM>(vregFinal,
+                                                                     finalUb + i * dSize + dLoops * floatRepSize);
                 MicroAPI::Select<T>(vregFinalNew, vregZeroValue, vregFinal, pregCompare);
                 MicroAPI::DataCopy<T, MicroAPI::StoreDist::DIST_NORM_B32>(finalUb + i * dSize + dLoops * floatRepSize,
-                    vregFinalNew, pregTailD);
+                                                                          vregFinalNew, pregTailD);
             }
         }
     }
 }
 
-} // namespace
+} // namespace AscendC
 
 #endif // VF_ROW_INVALID_H
