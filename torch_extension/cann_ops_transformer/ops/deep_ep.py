@@ -153,29 +153,12 @@ class MoeDistributeDispatchOpBuilder(OpBuilder):
             )
             return is_shared_default, is_no_shared
 
-        @impl(AS_LIBRARY, self.name, "Meta")
-        def npu_moe_distribute_dispatch_meta(context, x, expert_ids, ep_world_size, ep_rank_id, moe_expert_num,
-                                             ccl_buffer_size, scales=None, x_active_mask=None, expert_scales=None,
-                                             elastic_info=None, performance_info=None, tp_world_size=0, tp_rank_id=0,
-                                             expert_shard_type=0, shared_expert_num=1, shared_expert_rank_num=0,
-                                             quant_mode=0, global_bs=0, expert_token_nums_type=1, comm_alg="",
-                                             zero_expert_num=0, copy_expert_num=0, const_expert_num=0, y_dtype=None,
-                                             x_dtype=None, x_smooth_scales_dtype=None):
-            is_shared_default, is_no_shared = check_dispatch_meta_args(
-                ep_world_size, ep_rank_id, shared_expert_num, shared_expert_rank_num, expert_token_nums_type
-            )
-
-            bs = x.size(0)
-            h = x.size(1)
-            k = expert_ids.size(1)
+        def _compute_dispatch_a_and_local_expert_num(bs, k, ep_world_size, ep_rank_id, moe_expert_num,
+                                                      shared_expert_num, shared_expert_rank_num,
+                                                      expert_shard_type, global_bs_real,
+                                                      elastic_info, is_shared_default, is_no_shared):
             shared_front = (expert_shard_type == 0)
-            out_dtype = torch.int8
             local_moe_expert_num = 1
-            global_bs_real = 0
-            if global_bs == 0:
-                global_bs_real = bs * ep_world_size
-            else:
-                global_bs_real = global_bs
             a = 0
             if shared_front:
                 if ep_rank_id < shared_expert_rank_num:
@@ -202,6 +185,30 @@ class MoeDistributeDispatchOpBuilder(OpBuilder):
                                 global_bs_real * min(moe_expert_num // (ep_world_size - shared_expert_rank_num), k))
                         local_moe_expert_num = max(local_moe_expert_num,
                                                    moe_expert_num // (ep_world_size - shared_expert_rank_num))
+            return a, local_moe_expert_num
+
+        @impl(AS_LIBRARY, self.name, "Meta")
+        def npu_moe_distribute_dispatch_meta(context, x, expert_ids, ep_world_size, ep_rank_id, moe_expert_num,
+                                             ccl_buffer_size, scales=None, x_active_mask=None, expert_scales=None,
+                                             elastic_info=None, performance_info=None, tp_world_size=0, tp_rank_id=0,
+                                             expert_shard_type=0, shared_expert_num=1, shared_expert_rank_num=0,
+                                             quant_mode=0, global_bs=0, expert_token_nums_type=1, comm_alg="",
+                                             zero_expert_num=0, copy_expert_num=0, const_expert_num=0, y_dtype=None,
+                                             x_dtype=None, x_smooth_scales_dtype=None):
+            is_shared_default, is_no_shared = check_dispatch_meta_args(
+                ep_world_size, ep_rank_id, shared_expert_num, shared_expert_rank_num, expert_token_nums_type
+            )
+
+            bs = x.size(0)
+            h = x.size(1)
+            k = expert_ids.size(1)
+            out_dtype = torch.int8
+            global_bs_real = bs * ep_world_size if global_bs == 0 else global_bs
+            a, local_moe_expert_num = _compute_dispatch_a_and_local_expert_num(
+                bs, k, ep_world_size, ep_rank_id, moe_expert_num,
+                shared_expert_num, shared_expert_rank_num,
+                expert_shard_type, global_bs_real,
+                elastic_info, is_shared_default, is_no_shared)
 
             ep_recv_cnt_num = 0
             if tp_world_size == 2:
