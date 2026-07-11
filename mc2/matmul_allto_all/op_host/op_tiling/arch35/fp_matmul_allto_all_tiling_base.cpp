@@ -354,7 +354,7 @@ CutResult FpMatmulAllToAllTilingBase::GetTilingResult()
     uint8_t engineType = 0;
     if (MatmulAlltoAllTilingUtil::GetAndConvertCommMode(context_, opName_, contextInfo, MATMUL_ALLTOALL_INDEX_SCHEMA,
                                                         engineType) != ge::GRAPH_SUCCESS) {
-        OP_LOGD(opName_, "GetTilingResult: failed to get commMode, default to CCU.");
+        OP_LOGD(opName_, "GetTilingResult: failed to get commMode, default to AICPU.");
     }
     
     uint8_t commMode = (engineType == mc2tiling::A5_CCU_ENGINE) ? Mc2Comm::COMM_MODE_CCU : Mc2Comm::COMM_MODE_AICPU;
