@@ -176,8 +176,8 @@ class ElasticBuffer:
         """
         torch._check(num_entries >= 0,
                      lambda: f"num_entries must be non-negative, got {num_entries}")
-        torch._check(hidden_size >= 0,
-                     lambda: f"hidden_size must be non-negative, got {hidden_size}")
+        torch._check(hidden_size > 0,
+                     lambda: f"hidden_size must be positive, got {hidden_size}")
         torch._check(hidden_size % 128 == 0,
                      lambda: f"hidden_size must be 128-aligned, got {hidden_size}")
         torch._check(dtype in (torch.bfloat16, torch.float16, torch.float32),
@@ -233,8 +233,6 @@ class ElasticBuffer:
 
         Note: barrier(with_device_sync=True) is called before and after write internally.
         """
-        torch._check(self.num_cpu_bytes > 0,
-                     lambda: "num_cpu_bytes must be greater than 0 to use engram_write.")
         torch._check(storage.is_cpu,
                      lambda: f"storage must be on CPU, got device: {storage.device}")
         torch._check(storage.dim() == 2,
@@ -243,6 +241,8 @@ class ElasticBuffer:
                      lambda: "storage must be contiguous")
         torch._check(storage.dtype in (torch.bfloat16, torch.float16, torch.float32),
                      lambda: f"storage dtype must be bfloat16/float16/float32, got: {storage.dtype}")
+        torch._check(storage.size(1) > 0,
+                     lambda: f"storage second dimension must be positive, got: {storage.size(1)}")
         torch._check(storage.size(1) % 128 == 0,
                      lambda: f"storage second dimension must be 128-aligned, got: {storage.size(1)}")
         self._ensure_runtime().engram_write(storage)
