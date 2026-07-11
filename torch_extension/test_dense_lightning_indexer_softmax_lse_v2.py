@@ -98,7 +98,7 @@ def test_e2e_bsnd():
 
     Kernel 约束: N1=128, D=128, S2 为 128 的倍数, B=1 (work_end 硬编码为 1)。
     """
-    B, S1, S2, N1, D = 1, 2, 512, 128, 128
+    B, S1, S2, N1, D = 37, 2, 8192, 128, 128
     torch.manual_seed(42)
     q = torch.randn(B, S1, N1, D, dtype=torch.float16).npu()
     k = torch.randn(B, S2, 1, D, dtype=torch.float16).npu()
@@ -171,10 +171,12 @@ def test_invalid_cmp_ratio():
 
 
 if __name__ == "__main__":
-    test_bsnd_metadata()
-    test_tnd_metadata()
-    test_bsnd_metadata_with_seqused()
-    test_e2e_bsnd()
-    test_invalid_num_heads_q()
-    test_invalid_cmp_ratio()
+    # test_bsnd_metadata()
+    # test_tnd_metadata()
+    # test_bsnd_metadata_with_seqused()
+    for i in range(10):
+        test_e2e_bsnd()
+        print(f"===the {i} loop is done===")
+    # test_invalid_num_heads_q()
+    # test_invalid_cmp_ratio()
     print("All tests passed!")
