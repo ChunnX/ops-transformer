@@ -158,8 +158,9 @@ private:
     static constexpr int32_t DISPATCH_BUFFER_NUM = 6;
     static constexpr int32_t UNPERMUTE_BATCH_LEN = 1024;  // k∈[1,8192], topK∈[2,8], 每 token topK×6B
     LocalTensor<int32_t> topkIndexTensor_;
-    LocalTensor<uint8_t> gatherMaskTensor_;
-    LocalTensor<uint32_t> gatherMaskInt32Tensor_;
+    LocalTensor<int32_t> sendCntTensor_;            // SendCntCal stride 只读 ws 个 count
+    LocalTensor<uint8_t> maskBatchTensor_;          // TripleInfoCalAndDispatch 当前 batch 的 mask 切片
+    LocalTensor<uint32_t> maskBatchU32Tensor_;      // maskBatchTensor_ 的 u32 视图，供 GatherMask
     LocalTensor<int32_t> expertTokenCntTensor_;
     LocalTensor<int32_t> validTopkIndexTensor_;
     LocalTensor<int32_t> cumsumInfoTensor_;
@@ -296,9 +297,9 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::DispatchBuffInit()
     // Tensor大小：maskSlotSize_ * worldSize_，每个maskSlotSize_中包含mask与count；
     uint32_t gatherMaskTensorAddr = cumsumInfoTensorAddr + cumsumInfoTensorSize;
     uint32_t gatherMaskTensorSize = maskSlotSize_ * worldSize_;
-    gatherMaskTensor_ = LocalTensor<uint8_t>(TPosition::VECCALC, gatherMaskTensorAddr,
+    maskBatchTensor_ = LocalTensor<uint8_t>(TPosition::VECCALC, gatherMaskTensorAddr,
         gatherMaskTensorSize / sizeof(uint8_t));
-    gatherMaskInt32Tensor_ = LocalTensor<uint32_t>(TPosition::VECCALC, gatherMaskTensorAddr,
+    maskBatchU32Tensor_ = LocalTensor<uint32_t>(TPosition::VECCALC, gatherMaskTensorAddr,
         gatherMaskTensorSize / sizeof(uint32_t));
     // Tensor用处：TripleInfoCalAndDispatch 函数中GatherMask的dst Tensor；
     // Tensor大小：sendTotalNum_ * sizeof(int32_t) align至32字节对齐；
@@ -607,7 +608,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::QuantProcessInRank()
 // ==================================================================================================
 // SendCntCal：目标专家卡读 count 计数，得到当前专家Id收到的token总数
 // --------------------------------------------------------------------------------------------------
-//   Phase 1: 从本卡 win 将当前 localExpertId 的 worldSize_ 个 [mask|count] 槽位读进 gatherMaskTensor_;
+//   Phase 1: 从本卡 win 将当前 localExpertId 的 worldSize_ 个 [mask|count] 槽位读进 maskBatchTensor_;
 //   Phase 2: 逐卡读取 count → 累加 sendCnt/cumsumRevCntInRank_, 写 cumsumInfoTensor_;
 //   Phase 3: 写 expertRevNumsGlobalTensor_ + AtomicAdd 通知 AIC;
 // ==================================================================================================
@@ -623,7 +624,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SendCntCal(int32_t loca
     GlobalTensor<uint8_t> maskSrcGlobal;
     maskSrcGlobal.SetGlobalBuffer((__gm__ uint8_t*)(params_.peermemInfo.maskRecvPtr +
         static_cast<uint64_t>(localExpertId) * worldSize_ * maskSlotSize_));
-    DataCopy(gatherMaskTensor_, maskSrcGlobal, worldSize_ * maskSlotSize_);
+    DataCopy(maskBatchTensor_, maskSrcGlobal, worldSize_ * maskSlotSize_);
 
     if constexpr (ENABLE_A8W4) {
         if (localExpertId != 0) {
@@ -639,7 +640,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SendCntCal(int32_t loca
 
     // Phase 2: 逐源卡直接读取槽内 count + cumsum
     for (int32_t calRankId = 0; calRankId < static_cast<int32_t>(worldSize_); ++calRankId) {
-        int32_t perRankCnt = gatherMaskInt32Tensor_.GetValue(calRankId * slotWordStride + countWordIdx);
+        int32_t perRankCnt = maskBatchU32Tensor_.GetValue(calRankId * slotWordStride + countWordIdx);
         sendCnt += static_cast<uint64_t>(perRankCnt);
         cumsumRevCntInRank_ += static_cast<uint64_t>(perRankCnt);
         cumsumInfoTensor_.SetValue(localExpertId * worldSize_ + calRankId, static_cast<int32_t>(cumsumRevCntInRank_));
