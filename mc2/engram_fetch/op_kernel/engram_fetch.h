@@ -22,7 +22,7 @@
 #include "kernel_operator.h"
 #endif
 
-constexpr uint32_t  MAX_QP_SIZE = 1024;
+constexpr uint32_t MAX_QP_SIZE = 1024;
 struct EngramCommContext {
     uint32_t rankId;
     uint32_t rankSize;

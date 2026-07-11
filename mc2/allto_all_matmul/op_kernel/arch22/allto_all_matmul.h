@@ -836,7 +836,8 @@ __aicore__ inline void AlltoAllMatmul<TemplateA2AMMFunc>::AlltoAll()
                 src_offset += allToAllSizePerRankPerLoop;
             } else if (isAlltoallOut && aivIdx == 1 && commIdx > 0 && aicIdx >= allToAllSendCoreNum &&
                        aicIdx < usedCoreNum) {
-                uint64_t blockDst = ((commIdx - 1) % MAX_BLOCK_COUNT) * pingPongBlockSize;  // 涉及m轴的全局元素个数、字节数，需要用64位表示
+                uint64_t blockDst = ((commIdx - 1) % MAX_BLOCK_COUNT) *
+                                    pingPongBlockSize; // 涉及m轴的全局元素个数、字节数，需要用64位表示
                 int32_t mThisLoop = commIdx == commCount ? m / rankSize - (commIdx - 1) * mPerLoop : mPerLoop;
                 int32_t mThisLoopPerCore = DivCeil(mThisLoop, allToAllRecvCoreNum);
                 int32_t mSt = (aicIdx - allToAllSendCoreNum) * mThisLoopPerCore;

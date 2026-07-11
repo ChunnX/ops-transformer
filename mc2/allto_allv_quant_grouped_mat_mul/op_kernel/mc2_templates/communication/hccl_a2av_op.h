@@ -32,12 +32,12 @@ using namespace AscendC;
 
 namespace MC2KernelTemplate {
 
-template<int commMode = TILINGKEY_TPL_CCU>
+template <int commMode = TILINGKEY_TPL_CCU>
 struct HcclTypeSelector {
     using type = Hccl<HcclServerType::HCCL_SERVER_TYPE_CCU>;
 };
 
-template<>
+template <>
 struct HcclTypeSelector<TILINGKEY_TPL_AICPU> {
     using type = Hccl<HcclServerType::HCCL_SERVER_TYPE_AICPU>;
 };
@@ -168,15 +168,14 @@ public:
                     DataCopyParams dataCopyParams{1U, static_cast<uint16_t>(realLength), 0U, 0U};
                     DataCopyPadParams dataCopyPadParams{false, 0U, 0U, 0U};
                     // 从commOutBuffer读取（按rank排列）GM->UB
-                    DataCopyPad(scaleUbTensor,
-                                recvScaleGlobalBuffer_[srcOffset + tile * actualTileSize], dataCopyParams,
-                                dataCopyPadParams);
+                    DataCopyPad(scaleUbTensor, recvScaleGlobalBuffer_[srcOffset + tile * actualTileSize],
+                                dataCopyParams, dataCopyPadParams);
                     eventID_ = static_cast<int32_t>(permutePipe->FetchEventID<HardEvent::MTE2_MTE3>());
                     SetFlag<HardEvent::MTE2_MTE3>(eventID_);
                     WaitFlag<HardEvent::MTE2_MTE3>(eventID_);
                     // 写入permuteOutBuffer（按专家排列）UB->GM
-                    DataCopyPad(scalePermuteOutBuffer_[dstOffset + tile * actualTileSize],
-                                scaleUbTensor, dataCopyParams);
+                    DataCopyPad(scalePermuteOutBuffer_[dstOffset + tile * actualTileSize], scaleUbTensor,
+                                dataCopyParams);
                     eventID_ = static_cast<int32_t>(permutePipe->FetchEventID<HardEvent::MTE3_MTE2>());
                     SetFlag<HardEvent::MTE3_MTE2>(eventID_);
                     WaitFlag<HardEvent::MTE3_MTE2>(eventID_);
@@ -365,7 +364,7 @@ private:
             (__gm__ uint8_t *)recvGlobalBuffer_.GetPhyAddr(), alltoAllvRecvCnt, alltoAllvRecvOffset, hcclDataType_);
     }
 
-// AICPU only: 只支持AICPU通信模式
+    // AICPU only: 只支持AICPU通信模式
     typename HcclTypeSelector<commMode>::type hccl_;
 
     const TaskTilingInfo *taskTilingInfo_;

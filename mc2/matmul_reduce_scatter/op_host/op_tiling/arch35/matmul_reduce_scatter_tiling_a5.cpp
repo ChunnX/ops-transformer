@@ -25,50 +25,51 @@
 #include "../../../op_kernel/matmul_reduce_scatter_tiling.h"
 
 namespace optiling {
-    CutResult MatmulReduceScatterTilingFuncA5::GetCutResult(MatmulReduceScatterTilingData& tilingData,
-        mc2tiling::TilingArgs& args)
-    {
-        bool commDeterministic = false;
-        MMPlusReduceScatter scatterTilingHccl(args, args.rankDim, KernelType::REDUCE_SCATTER,
-        SocVersion::SOC950, commDeterministic);
-        scatterTilingHccl.GetTiling();
+CutResult MatmulReduceScatterTilingFuncA5::GetCutResult(MatmulReduceScatterTilingData &tilingData,
+                                                        mc2tiling::TilingArgs &args)
+{
+    bool commDeterministic = false;
+    MMPlusReduceScatter scatterTilingHccl(args, args.rankDim, KernelType::REDUCE_SCATTER, SocVersion::SOC950,
+                                          commDeterministic);
+    scatterTilingHccl.GetTiling();
 
-        return scatterTilingHccl.tilingM_.cutRes;
-    }
-    ge::graphStatus MatmulReduceScatterTilingFuncA5::CheckValidRank(
-        const std::map<uint32_t, std::vector<uint32_t>> VALID_RANK,
-        MatmulReduceScatterTilingData* tilingData, gert::TilingContext* context, uint32_t rankSize)
-    {
-    auto it = std::find(VALID_RANK.at(0).begin(),
-                        VALID_RANK.at(0).end(), rankSize);
-    OP_TILING_CHECK(
-        it == VALID_RANK.at(0).end(),
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "world_size", std::to_string(rankSize).c_str(), "The value of world_size is illegal"),
-        return ge::GRAPH_FAILED);
-
-        return ge::GRAPH_SUCCESS;
-    }
-
-    std::string MatmulReduceScatterTilingFuncA5::GetRsConfig(MatmulReduceScatterTilingData& tilingData)
-    {
-        std::string rsConfig = "ReduceScatter=level0:fullmesh";
-        return rsConfig;
-    }
-
-    static ge::graphStatus MatmulReduceScatterTilingImplFuncA5(gert::TilingContext* context)
-    {
-        MatmulReduceScatterTilingFuncA5 impl;
-        return impl.MatmulReduceScatterTilingFunc(context);
-    }
-
-    struct MatmulReduceScatterCompileInfo {};
-    static ge::graphStatus TilingParseForMatmulReduceScatter(gert::TilingParseContext *context)
-    {
-        (void)context;
-        return ge::GRAPH_SUCCESS;
-    }
-
-    IMPL_OP_OPTILING(MatmulReduceScatter)
-        .Tiling(MatmulReduceScatterTilingImplFuncA5)
-        .TilingParse<MatmulReduceScatterCompileInfo>(TilingParseForMatmulReduceScatter);
+    return scatterTilingHccl.tilingM_.cutRes;
 }
+ge::graphStatus
+MatmulReduceScatterTilingFuncA5::CheckValidRank(const std::map<uint32_t, std::vector<uint32_t>> VALID_RANK,
+                                                MatmulReduceScatterTilingData *tilingData, gert::TilingContext *context,
+                                                uint32_t rankSize)
+{
+    auto it = std::find(VALID_RANK.at(0).begin(), VALID_RANK.at(0).end(), rankSize);
+    OP_TILING_CHECK(it == VALID_RANK.at(0).end(),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "world_size",
+                                                          std::to_string(rankSize).c_str(),
+                                                          "The value of world_size is illegal"),
+                    return ge::GRAPH_FAILED);
+
+    return ge::GRAPH_SUCCESS;
+}
+
+std::string MatmulReduceScatterTilingFuncA5::GetRsConfig(MatmulReduceScatterTilingData &tilingData)
+{
+    std::string rsConfig = "ReduceScatter=level0:fullmesh";
+    return rsConfig;
+}
+
+static ge::graphStatus MatmulReduceScatterTilingImplFuncA5(gert::TilingContext *context)
+{
+    MatmulReduceScatterTilingFuncA5 impl;
+    return impl.MatmulReduceScatterTilingFunc(context);
+}
+
+struct MatmulReduceScatterCompileInfo {};
+static ge::graphStatus TilingParseForMatmulReduceScatter(gert::TilingParseContext *context)
+{
+    (void)context;
+    return ge::GRAPH_SUCCESS;
+}
+
+IMPL_OP_OPTILING(MatmulReduceScatter)
+    .Tiling(MatmulReduceScatterTilingImplFuncA5)
+    .TilingParse<MatmulReduceScatterCompileInfo>(TilingParseForMatmulReduceScatter);
+} // namespace optiling

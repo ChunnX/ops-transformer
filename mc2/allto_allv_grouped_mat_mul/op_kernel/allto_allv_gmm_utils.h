@@ -29,7 +29,7 @@ using namespace AscendC;
 constexpr uint32_t UB_BLOCK_UNIT_SIZE = 32;                          // 32: a block has 32 bytes data
 constexpr uint32_t HALF_UB_BLOCK_UNIT_SIZE = UB_BLOCK_UNIT_SIZE / 2; // 2: a float16 data has two bytes
 
-template <class AT_, class BT_, class CT_, class BiasT_, const MatmulConfig& MM_CFG = CFG_MDL>
+template <class AT_, class BT_, class CT_, class BiasT_, const MatmulConfig &MM_CFG = CFG_MDL>
 struct MMImplType {
     using AT = AT_;
     using BT = BT_;

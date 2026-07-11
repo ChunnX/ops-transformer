@@ -7,7 +7,7 @@
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
- 
+
 /*!
  * \file quant_reduce_scatter_gen_task.cpp
  * \brief 静态shape图下沉实现
@@ -15,7 +15,7 @@
 #include <vector>
 #include <platform/platform_info.h>
 #include "common/utils/op_mc2.h"
- 
+
 #include "register/op_impl_registry.h"
 #include "op_graph/mc2_gen_task_ops_utils.h"
 #include "op_graph/mc2_gen_task_ops_utils_arch35.h"
@@ -47,7 +47,5 @@ static ge::Status QuantReduceScatterGenTask(const gert::ExeResGenerationContext 
     return Mc2Arch35GenTaskOpsUtils::Mc2Arch35GenTaskCallBack(context, tasks);
 }
 
-IMPL_OP(QuantReduceScatter)
-    .CalcOpParam(QuantReduceScatterCalcOpParam)
-    .GenerateTask(QuantReduceScatterGenTask);
+IMPL_OP(QuantReduceScatter).CalcOpParam(QuantReduceScatterCalcOpParam).GenerateTask(QuantReduceScatterGenTask);
 } // namespace ops
