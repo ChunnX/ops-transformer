@@ -21,7 +21,7 @@
 #ifndef OP_KERNEL_FFN_WB_SCAN_TOKEN_INFO_H
 #define OP_KERNEL_FFN_WB_SCAN_TOKEN_INFO_H
 
-namespace FfnWbBatching {
+namespace FfnWbBatchingArch35 {
 using namespace AscendC;
 constexpr uint32_t BLOCK_SIZE = 32;
 constexpr uint32_t INT32_SIZE = 4;
@@ -33,7 +33,7 @@ class KernelScanTokenInfo {
 public:
     __aicore__ inline KernelScanTokenInfo(){};
     __aicore__ inline void Init(GM_ADDR schedule_context, GM_ADDR token_info_gm_addr, GM_ADDR workspace,
-                                ScheduleContextInfo* scheduleContextInfo, TPipe* tPipe);
+                                ScheduleContextInfo *scheduleContextInfo, TPipe *tPipe);
     __aicore__ inline void Process();
 
 private:
@@ -47,7 +47,7 @@ private:
     uint32_t K = 0;
     uint32_t F = 0;
 
-    TPipe* pipe = nullptr;
+    TPipe *pipe = nullptr;
     GlobalTensor<int32_t> tokenInfoGm;
     GlobalTensor<uint64_t> pollIdxGm;
     TQue<QuePosition::VECIN, BUFFER_NUM_ONE> tokenFlagInQueue;
@@ -56,17 +56,18 @@ private:
 
 __aicore__ inline void KernelScanTokenInfo::CopyInFlag()
 {
-	int32_t offset = curMicroBatchID * F;
-	LocalTensor<int32_t> tokenInfoLocalIn = tokenFlagInQueue.AllocTensor<int32_t>();
-	DataCopyExtParams dataCopyParams{static_cast<uint16_t>(this->A), static_cast<uint32_t>(sizeof(int32_t)),
-	    static_cast<uint32_t>((M * F - 1) * sizeof(int32_t)), 0, 0};
-	DataCopyPadExtParams dataCopyPadParams{true, 0, (BLOCK_SIZE - sizeof(int32_t)) / sizeof(int32_t), 0};
-	DataCopyPad(tokenInfoLocalIn, tokenInfoGm[offset], dataCopyParams, dataCopyPadParams);
-	tokenFlagInQueue.EnQue(tokenInfoLocalIn);
+    int32_t offset = curMicroBatchID * F;
+    LocalTensor<int32_t> tokenInfoLocalIn = tokenFlagInQueue.AllocTensor<int32_t>();
+    DataCopyExtParams dataCopyParams{static_cast<uint16_t>(this->A), static_cast<uint32_t>(sizeof(int32_t)),
+                                     static_cast<uint32_t>((M * F - 1) * sizeof(int32_t)), 0, 0};
+    DataCopyPadExtParams dataCopyPadParams{true, 0, (BLOCK_SIZE - sizeof(int32_t)) / sizeof(int32_t), 0};
+    DataCopyPad(tokenInfoLocalIn, tokenInfoGm[offset], dataCopyParams, dataCopyPadParams);
+    tokenFlagInQueue.EnQue(tokenInfoLocalIn);
 }
 
 __aicore__ inline void KernelScanTokenInfo::Init(GM_ADDR schedule_context, GM_ADDR token_info_gm_addr,
-    GM_ADDR workspace, ScheduleContextInfo* scheduleContextInfo, TPipe* tPipe)
+                                                 GM_ADDR workspace, ScheduleContextInfo *scheduleContextInfo,
+                                                 TPipe *tPipe)
 {
     pipe = tPipe;
     A = scheduleContextInfo->A;
@@ -126,5 +127,5 @@ __aicore__ inline void KernelScanTokenInfo::Process()
     DataCacheCleanAndInvalid<uint64_t, AscendC::CacheLine::SINGLE_CACHE_LINE, AscendC::DcciDst::CACHELINE_ALL>(
         pollIdxGm);
 }
-}  // namespace FfnWbBatching
-#endif  // OP_KERNEL_FFN_WB_SCAN_TOKEN_INFO_H
+} // namespace FfnWbBatchingArch35
+#endif // OP_KERNEL_FFN_WB_SCAN_TOKEN_INFO_H

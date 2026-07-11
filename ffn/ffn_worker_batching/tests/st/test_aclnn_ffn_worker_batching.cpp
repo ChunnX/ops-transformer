@@ -312,6 +312,10 @@ static bool BucketSetEqual(
         const uint8_t* y;   // 指向该 token 的 payload 字节
         int64_t payload;
         bool hasScale;
+        // scale 按 bit 位（字节）比较，而非浮点 ==：dynamic_quant 随机输入常使 scale 字节凑成
+        // NaN，此时 golden/npu 位模式相同（同一份输入）但 float== 恒 false 会误报。二进制一致
+        // 契约下正确口径就是 bit-exact 比较。
+        static uint32_t ScaleBits(float f) { uint32_t u; std::memcpy(&u, &f, sizeof(u)); return u; }
         // 规范序：先按 (tid,eoff,sid,mbid) 排（这四者由原始位置 p 唯一决定，是稳定的桶内键），
         // 再按 y 字节兜底，保证同集合两侧规范序一致。
         bool operator<(const Rec& o) const {
@@ -321,13 +325,13 @@ static bool BucketSetEqual(
             if (mbid != o.mbid) return mbid < o.mbid;
             int c = std::memcmp(y, o.y, (size_t)payload);
             if (c != 0) return c < 0;
-            if (hasScale && scale != o.scale) return scale < o.scale;
+            if (hasScale && ScaleBits(scale) != ScaleBits(o.scale)) return ScaleBits(scale) < ScaleBits(o.scale);
             return false;
         }
         bool operator==(const Rec& o) const {
             if (sid != o.sid || mbid != o.mbid || tid != o.tid || eoff != o.eoff) return false;
             if (std::memcmp(y, o.y, (size_t)payload) != 0) return false;
-            if (hasScale && scale != o.scale) return false;
+            if (hasScale && ScaleBits(scale) != ScaleBits(o.scale)) return false;
             return true;
         }
     };
@@ -351,6 +355,26 @@ static bool BucketSetEqual(
             if (!(gb[k] == nb[k])) {
                 LOG_PRINT("  [FAIL] 专家桶 eid=%d 内 token 集合不一致 (桶大小=%lld，第 %lld 条规范序记录不符)",
                           eid, (long long)gb.size(), (long long)k);
+#ifdef FWB_DIAG
+                // 临时诊断：打印不符条两侧 id/scale + y 前 16 字节，定位是 y 错还是 scale/id 错
+                const Rec& G = gb[k]; const Rec& N = nb[k];
+                LOG_PRINT("    [DIAG] golden: sid=%d mbid=%d tid=%d eoff=%d scale=%.6f",
+                          G.sid, G.mbid, G.tid, G.eoff, G.scale);
+                LOG_PRINT("    [DIAG] npu   : sid=%d mbid=%d tid=%d eoff=%d scale=%.6f",
+                          N.sid, N.mbid, N.tid, N.eoff, N.scale);
+                bool idEq = (G.sid==N.sid && G.mbid==N.mbid && G.tid==N.tid && G.eoff==N.eoff);
+                bool yEq  = (std::memcmp(G.y, N.y, (size_t)payload) == 0);
+                bool scEq = (!hasScale) || (G.scale == N.scale);
+                LOG_PRINT("    [DIAG] idEq=%d yEq=%d scaleEq=%d payload=%lld",
+                          idEq, yEq, scEq, (long long)payload);
+                {
+                    char gb_hex[64]={0}, nb_hex[64]={0};
+                    int nb2 = (int)std::min<int64_t>(payload, 16);
+                    for (int t=0;t<nb2;++t){ sprintf(gb_hex+t*3,"%02x ",G.y[t]); sprintf(nb_hex+t*3,"%02x ",N.y[t]); }
+                    LOG_PRINT("    [DIAG] golden.y[0:%d]= %s", nb2, gb_hex);
+                    LOG_PRINT("    [DIAG] npu.y[0:%d]   = %s", nb2, nb_hex);
+                }
+#endif
                 return false;
             }
         }
@@ -796,7 +820,13 @@ static bool RunCaseReal(const FwbCase& c, aclrtStream stream)
     if (ret != ACL_SUCCESS) { LOG_PRINT("  [FAIL] GetWorkspaceSize ret=%d", (int)ret); ok = false; }
 
     void* ws = nullptr;
-    if (ok && wsSize > 0) aclrtMalloc(&ws, wsSize, ACL_MEM_MALLOC_HUGE_FIRST);
+    if (ok && wsSize > 0) {
+        aclrtMalloc(&ws, wsSize, ACL_MEM_MALLOC_HUGE_FIRST);
+        // workspace 必须清零：长 batch 连跑时 ACL_MEM_MALLOC_HUGE_FIRST 会复用已释放的脏 huge page，
+        // kernel 多核 sort 的 scratch / 跨核 SetAtomicAdd 计数累加区若读到上个用例残值 → actual_token_num
+        // 变少/减半（单跑拿到系统新清零页则正确，故仅长跑复现）。逐用例清零根治该跨用例污染。
+        aclrtMemset(ws, wsSize, 0, wsSize);
+    }
     if (ok) {
         ret = aclnnFfnWorkerBatching(ws, wsSize, exec, stream);
         if (ret != ACL_SUCCESS) { LOG_PRINT("  [FAIL] aclnnFfnWorkerBatching ret=%d", (int)ret); ok = false; }

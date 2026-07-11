@@ -15,9 +15,9 @@
  */
 
 /*!
-* \file ffn_wb_scan_group_listing_one_core.h
-* \brief
-*/
+ * \file ffn_wb_scan_group_listing_one_core.h
+ * \brief
+ */
 
 #ifndef OP_KERNEL_FFN_WB_SCAN_GROUP_LISTING_ONE_CORE_H
 #define OP_KERNEL_FFN_WB_SCAN_GROUP_LISTING_ONE_CORE_H
@@ -25,16 +25,16 @@
 #include "ffn_wb_common.h"
 #include "kernel_operator.h"
 
-namespace FfnWbBatching{
+namespace FfnWbBatchingArch35 {
 using namespace AscendC;
 
 class KernelFfnWBScanGroupListingOneCore {
 public:
-    __aicore__ inline KernelFfnWBScanGroupListingOneCore() {};
-    __aicore__ inline void Init(GM_ADDR x, GM_ADDR groupList, ScheduleContextInfo *scheduleContext, TPipe *tPipe) {
+    __aicore__ inline KernelFfnWBScanGroupListingOneCore(){};
+    __aicore__ inline void Init(GM_ADDR x, GM_ADDR groupList, ScheduleContextInfo *scheduleContext, TPipe *tPipe)
+    {
         int64_t outQueSize = 1024 * NUM_TWO * sizeof(int64_t) * NUM_TWO; // 1024个数, key & value, doblebuffer
-        int64_t ubMaxRows = Align((scheduleContext->ubSize - outQueSize) / sizeof(int32_t) / NUM_TWO,
-                                sizeof(int32_t));
+        int64_t ubMaxRows = Align((scheduleContext->ubSize - outQueSize) / sizeof(int32_t) / NUM_TWO, sizeof(int32_t));
         int64_t validGatherIdxLength = scheduleContext->validGatherIdxLength;
 
         perLoopRows = Min(8192L, ubMaxRows); // max 8192
@@ -50,12 +50,15 @@ public:
         groupListGm.SetGlobalBuffer((__gm__ int64_t *)groupList, expertNum * NUM_TWO);
 
         pipe->InitBuffer(copyInQueue, 1, perLoopRows * sizeof(int32_t));
-        pipe->InitBuffer(copyOutQueue, 1, 1024 * NUM_TWO * sizeof(int64_t) + 32); // 1024个数, 多留32Bytes给最后的输出加上[0, 0]
+        pipe->InitBuffer(copyOutQueue, 1,
+                         GROUP_LIST_UB_CAPACITY * NUM_TWO * sizeof(int64_t) +
+                             32); // GROUP_LIST_UB_CAPACITY个数, 多留32Bytes给最后的输出加上[0, 0]
         pipe->InitBuffer(maskBuf, perLoopRows * sizeof(int32_t));
         pipe->InitBuffer(expertIdsBuf, perLoopRows * sizeof(int32_t));
     }
 
-    __aicore__ inline void Process() {
+    __aicore__ inline void Process()
+    {
         if (blockIdx == 0) {
             groupListOutLocal = copyOutQueue.AllocTensor<int64_t>();
             curExpertIdOffset = 0;
@@ -82,8 +85,7 @@ public:
             }
 
             DataCopyExtParams copyParams{static_cast<uint16_t>(1),
-                                        static_cast<uint32_t>(curExpertIdOffset * NUM_TWO * sizeof(int64_t)),
-                                        0, 0, 0};
+                                         static_cast<uint32_t>(curExpertIdOffset * NUM_TWO * sizeof(int64_t)), 0, 0, 0};
             SetWaitFlag<HardEvent::S_MTE3>(HardEvent::S_MTE3);
             DataCopyPad(groupListGm[totalOutExpertIdNum * NUM_TWO], groupListOutLocal, copyParams);
             totalOutExpertIdNum += curExpertIdOffset;
@@ -93,15 +95,36 @@ public:
     }
 
 private:
-    __aicore__ inline void CopyIn(int64_t progress, int64_t inputNum) {
+    __aicore__ inline void CopyIn(int64_t progress, int64_t inputNum)
+    {
         LocalTensor<int32_t> inLocal = copyInQueue.AllocTensor<int32_t>();
-        DataCopyExtParams dataCopyParams{static_cast<uint16_t>(1), static_cast<uint32_t>(inputNum * sizeof(int32_t)), 0, 0, 0};
+        DataCopyExtParams dataCopyParams{static_cast<uint16_t>(1), static_cast<uint32_t>(inputNum * sizeof(int32_t)), 0,
+                                         0, 0};
         DataCopyPadExtParams<int32_t> dataCopyPadParams{false, 0, 0, 0};
         DataCopyPad(inLocal, expandedExpertIdsGm[progress * perLoopRows], dataCopyParams, dataCopyPadParams);
         copyInQueue.EnQue<int32_t>(inLocal);
     }
 
-    __aicore__ inline void Compute(int64_t inputNum, int64_t curLoop) {
+    // 中途 flush：groupListOutLocal 仅容纳 GROUP_LIST_UB_CAPACITY 条专家，当 expertNum 超过该容量时，
+    // 必须分批把已填满的条目搬到 GM 并复用 buffer，否则 SetValue 会越界（表现为 expert>1024 后
+    // group_list 读回 0）。totalOutExpertIdNum 记录已写入 GM 的条目偏移，本就为分批设计。
+    __aicore__ inline void FlushOut()
+    {
+        if (curExpertIdOffset <= 0) {
+            return;
+        }
+        DataCopyExtParams copyParams{static_cast<uint16_t>(1),
+                                     static_cast<uint32_t>(curExpertIdOffset * NUM_TWO * sizeof(int64_t)), 0, 0, 0};
+        SetWaitFlag<HardEvent::S_MTE3>(HardEvent::S_MTE3);
+        DataCopyPad(groupListGm[totalOutExpertIdNum * NUM_TWO], groupListOutLocal, copyParams);
+        // 等本次搬出完成后才能复用同一 UB buffer 再 SetValue，避免数据竞争
+        SetWaitFlag<HardEvent::MTE3_S>(HardEvent::MTE3_S);
+        totalOutExpertIdNum += curExpertIdOffset;
+        curExpertIdOffset = 0;
+    }
+
+    __aicore__ inline void Compute(int64_t inputNum, int64_t curLoop)
+    {
         uint64_t rsvdCnt = 0;
         uint32_t inLocalIndex = 0;
         int32_t curExpertId = -1;
@@ -112,11 +135,14 @@ private:
         SetWaitFlag<HardEvent::MTE2_S>(HardEvent::MTE2_S);
         int32_t firstExpertId = inLocal.GetValue(inLocalIndex);
         // 专家在上一loop结尾处截止的场景
-        if(firstExpertId != lastExpertId && lastExpertId != -1 && curExpertIdOffset < expertNum) {
+        if (firstExpertId != lastExpertId && lastExpertId != -1 && curExpertIdOffset < expertNum) {
             groupListOutLocal.SetValue(curExpertIdOffset * NUM_TWO, lastExpertId);
             groupListOutLocal.SetValue(curExpertIdOffset * NUM_TWO + 1, tokenCount);
             curExpertIdOffset += 1;
             tokenCount = 0;
+            if (curExpertIdOffset >= GROUP_LIST_UB_CAPACITY) {
+                FlushOut();
+            }
         }
 
         while (inLocalIndex < inputNum) {
@@ -124,13 +150,11 @@ private:
             SetWaitFlag<HardEvent::S_V>(HardEvent::S_V);
             LocalTensor<uint32_t> maskLocalUInt32 = maskBuf.Get<uint32_t>();
             LocalTensor<uint8_t> maskLocalTensorUInt8 = maskLocalUInt32.ReinterpretCast<uint8_t>();
-            AscendC::CompareScalar(maskLocalTensorUInt8,
-                inLocal,
-                curExpertId,
-                AscendC::CMPMODE::EQ,
-                (inputNum + ONE_REPEAT_COMPARE_NUM - 1) / ONE_REPEAT_COMPARE_NUM * ONE_REPEAT_COMPARE_NUM);
+            AscendC::CompareScalar(maskLocalTensorUInt8, inLocal, curExpertId, AscendC::CMPMODE::EQ,
+                                   (inputNum + ONE_REPEAT_COMPARE_NUM - 1) / ONE_REPEAT_COMPARE_NUM *
+                                       ONE_REPEAT_COMPARE_NUM);
             PipeBarrier<PIPE_V>();
-            
+
             GatherMaskParams gatherMaskParams;
             gatherMaskParams.repeatTimes = 1;
             gatherMaskParams.src0BlockStride = 1;
@@ -138,15 +162,18 @@ private:
             gatherMaskParams.src1RepeatStride = 0;
             GatherMask(expertIdsBufFp32, inLocal, maskLocalUInt32, true, inputNum, gatherMaskParams, rsvdCnt);
             tokenCount += rsvdCnt;
-            if(inLocalIndex + rsvdCnt >= inputNum) {
+            if (inLocalIndex + rsvdCnt >= inputNum) {
                 lastExpertId = curExpertId;
                 break;
-            } else if(inLocalIndex + rsvdCnt < inputNum && curExpertIdOffset < expertNum) {
+            } else if (inLocalIndex + rsvdCnt < inputNum && curExpertIdOffset < expertNum) {
                 groupListOutLocal.SetValue(curExpertIdOffset * NUM_TWO, curExpertId);
                 groupListOutLocal.SetValue(curExpertIdOffset * NUM_TWO + 1, tokenCount);
                 tokenCount = 0;
                 curExpertIdOffset += 1;
                 inLocalIndex += rsvdCnt;
+                if (curExpertIdOffset >= GROUP_LIST_UB_CAPACITY) {
+                    FlushOut();
+                }
             }
             processExpertCount++;
             if (processExpertCount > inputNum) {
@@ -182,5 +209,5 @@ private:
     int32_t firstExpertId = -1;
 };
 
-}  // namespace FfnWbBatching
-#endif  // OP_KERNEL_FFN_WB_SCAN_GROUP_LISTING_ONE_CORE_H
+} // namespace FfnWbBatchingArch35
+#endif // OP_KERNEL_FFN_WB_SCAN_GROUP_LISTING_ONE_CORE_H

@@ -25,14 +25,14 @@
 #define FFN_WORKER_BATCHING_ARCH35_TILING_DEF_H
 
 struct FfnWorkerBatchingArch35TilingData {
-    int64_t Y{0};                   // A*BS*K
-    int64_t H{0};                   // hidden size（max_out_shape[3]）
-    int64_t tokenDtype{0};          // 0:FP16 1:BF16 2:dynamic_quant_int8
+    int64_t Y{0};          // A*BS*K
+    int64_t H{0};          // hidden size（max_out_shape[3]）
+    int64_t tokenDtype{0}; // 0:FP16 1:BF16 2:dynamic_quant_int8
     int64_t expertNum{0};
-    int64_t coreNum{0};             // 运行时 GetCoreNumAiv 取值
-    int64_t ubSize{0};              // 运行时 GetCoreMemSize(UB) 取值
-    int64_t sortLoopMaxElement{0};  // 单次 ub 可排序 int32 数（由 ubSize 派生）
-    int64_t sortNumWorkSpace{0};    // = Y
+    int64_t coreNum{0};            // 运行时 GetCoreNumAiv 取值
+    int64_t ubSize{0};             // 运行时 GetCoreMemSize(UB) 取值
+    int64_t sortLoopMaxElement{0}; // 单次 ub 可排序 int32 数（由 ubSize 派生）
+    int64_t sortNumWorkSpace{0};   // = Y
 };
 
 #endif // FFN_WORKER_BATCHING_ARCH35_TILING_DEF_H

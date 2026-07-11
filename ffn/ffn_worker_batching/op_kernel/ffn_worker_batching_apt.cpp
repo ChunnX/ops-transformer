@@ -43,7 +43,7 @@
 #define TILING_KEY_RECV 101
 
 using namespace AscendC;
-using namespace FfnWbBatching;
+using namespace FfnWbBatchingArch35;
 
 // NORM(100)：sort（单/多核）→ gather / group_listing 核间分工。三步照搬 A2。
 extern "C" __aicore__ inline void FfnWorkerBatchingProcess(GM_ADDR schedule_context,

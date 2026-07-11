@@ -15,9 +15,9 @@
  */
 
 /*!
-* \file ffn_wb_get_schedule_context.h
-* \brief
-*/
+ * \file ffn_wb_get_schedule_context.h
+ * \brief
+ */
 
 #ifndef OP_KERNEL_FFN_WB_GET_SCHEDULE_CONTEXT_H
 #define OP_KERNEL_FFN_WB_GET_SCHEDULE_CONTEXT_H
@@ -25,21 +25,22 @@
 #include "ffn_wb_common.h"
 #include "kernel_log.h"
 
-namespace FfnWbBatching {
+namespace FfnWbBatchingArch35 {
 
 using namespace AscendC;
 
 constexpr int64_t STRUCT_LENGTH = 1024;
 template <bool isScanMode = false>
 __aicore__ inline void ScheduleContextInfoCompute(GM_ADDR schedule_context,
-                                                const FfnWorkerBatchingArch35TilingData *tilingData,
-                                                ScheduleContextInfo &contextInfo, TPipe *pipe){
+                                                  const FfnWorkerBatchingArch35TilingData *tilingData,
+                                                  ScheduleContextInfo &contextInfo, TPipe *pipe)
+{
     GlobalTensor<int8_t> scheduleContext;
     TBuf<TPosition::VECIN> buffer;
 
     scheduleContext.SetGlobalBuffer((__gm__ int8_t *)schedule_context, STRUCT_LENGTH);
 
-    pipe->InitBuffer(buffer, STRUCT_LENGTH);  // 检验数据是否正确；
+    pipe->InitBuffer(buffer, STRUCT_LENGTH); // 检验数据是否正确；
     LocalTensor<int8_t> valLocal = buffer.Get<int8_t>();
     DataCopy(valLocal, scheduleContext, STRUCT_LENGTH);
 
@@ -115,12 +116,13 @@ __aicore__ inline void ScheduleContextInfoCompute(GM_ADDR schedule_context,
         LocalTensor<uint64_t> pollIdxBuf = valLocal[416].template ReinterpretCast<uint64_t>();
         contextInfo.curMicroBatchID = (uint64_t)(pollIdxBuf.GetValue(0));
         ASSERT_MSG(contextInfo.curMicroBatchID < contextInfo.M,
-            "curMicroBatchID:%lu should be less than micro_batch_num:%lu", contextInfo.curMicroBatchID, contextInfo.M);
+                   "curMicroBatchID:%lu should be less than micro_batch_num:%lu", contextInfo.curMicroBatchID,
+                   contextInfo.M);
 
-        contextInfo.BsKPaddingCount = Align(contextInfo.BS * contextInfo.K, sizeof(int32_t)) -
-                                    contextInfo.BS * contextInfo.K;
+        contextInfo.BsKPaddingCount =
+            Align(contextInfo.BS * contextInfo.K, sizeof(int32_t)) - contextInfo.BS * contextInfo.K;
     }
 }
 
-}  // namespace FfnWbBatching
-#endif  // OP_KERNEL_FFN_WB_GET_SCHEDULE_CONTEXT_H
+} // namespace FfnWbBatchingArch35
+#endif // OP_KERNEL_FFN_WB_GET_SCHEDULE_CONTEXT_H

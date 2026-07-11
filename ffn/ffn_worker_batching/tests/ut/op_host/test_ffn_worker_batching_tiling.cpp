@@ -487,6 +487,36 @@ TEST_F(FfnWorkerBatchingTilingTest, ffn_wb_tiling_arch35_recv_corelimit_boundary
     ExecuteTestCase(para, ge::GRAPH_SUCCESS, 101, expectTilingData, expectWorkspaces);
 }
 
+// C3｜大 expert_num（>1024）：Ascend950 + RECV + expert_num=5120 -> tokenDtype/coreNum/workspace 正确派生。
+//     直接对应 scan_group_listing UB buffer 分批 flush 场景（expert_num 超 GROUP_LIST_UB_CAPACITY=1024 时
+//     kernel 须分批搬出）：tiling 侧验证 workspace 的 expertNum*4 项随大 expert_num 正确增长（非写死 8）。
+//     Y=1152(<sortLoopMaxElement 6912) 单核 sort，RECV Y<=200000 限核 coreNum=32。
+TEST_F(FfnWorkerBatchingTilingTest, ffn_wb_tiling_arch35_recv_large_expert_num_5120)
+{
+    gert::StorageShape scShape = {{1024}, {1024}};
+    FfnWorkerBatchingCompileInfo compileInfo = {};
+    gert::TilingContextPara para(
+        "FfnWorkerBatching",
+        {{scShape, ge::DT_INT8, ge::FORMAT_ND}},
+        MakeA5OutputDesc(),
+        MakeArch35Attrs(/*tokenDtype*/0, /*needSchedule*/1, /*A*/16, /*BS*/8, /*K*/9, /*H*/4096, /*expertNum*/5120),
+        &compileInfo, "Ascend950", kAivNum64, kArch35Ub248K);
+
+    TilingInfo info;
+    ASSERT_TRUE(ExecuteTiling(para, info));
+    const int64_t* d = reinterpret_cast<const int64_t*>(info.tilingData.get());
+    std::cout << "[C3][RECV][expert_num=5120] Y=" << d[0] << " expertNum=" << d[3]
+              << " coreNum=" << d[4] << std::endl;
+    EXPECT_EQ(info.tilingKey, 101);
+    EXPECT_EQ(d[3], 5120);           // expertNum 字段透传正确（>1024，触发 kernel 分批 flush 场景）
+    EXPECT_EQ(d[4], 32);             // RECV Y=1152<=200000 -> 限核 32
+
+    // Y=1152, expertNum=5120: workspace = 16777728 + 36*1152 + 5120*4 = 16839680（expertNum*4 项随大专家数增长）
+    std::string expectTilingData = "1152 4096 0 5120 32 221184 6912 1152 ";
+    std::vector<size_t> expectWorkspaces = {16839680};
+    ExecuteTestCase(para, ge::GRAPH_SUCCESS, 101, expectTilingData, expectWorkspaces);
+}
+
 // D1｜A3 零回归（NORM）：Ascend910_93 + need_schedule=0 -> monolithic 路径 TilingKey=100，coreNum=64。
 //     补齐现有 A3 RECV 无回归用例缺失的 A3 NORM 分支；DAV_2201 预留 256B -> ubSize=261888、sortLoopMaxElement=8160
 //     （与 arch35 221184/6912 不同，证明 A3 未误走 arch35 1000 档）。

@@ -25,7 +25,7 @@
 #include "kernel_operator.h"
 #include "ffn_worker_batching_arch35_tiling_def.h"
 
-namespace FfnWbBatching {
+namespace FfnWbBatchingArch35 {
 using namespace AscendC;
 
 // used for tiling
@@ -59,6 +59,9 @@ constexpr int64_t GROUP_LISTING_MULTI_CORE_LENGTH = 512;
 constexpr uint32_t GROUP_LISTING_MULTI_AIV_NUM = 4;
 constexpr uint32_t GROUP_LISTING_AIV_NUM = 1;
 constexpr uint32_t GROUP_LISTING_SCAN_AIV_NUM = 1;
+// group_list 输出 UB buffer 一次可容纳的专家条目数（与 scan_group_listing_one_core InitBuffer 一致）。
+// expertNum 超过该容量时须分批 flush 到 GM，否则 SetValue 越界。
+constexpr int64_t GROUP_LIST_UB_CAPACITY = 1024;
 constexpr int64_t ASSIST_NUM = 256;
 constexpr int64_t OFFSET_SORTED_EXPERT_IDS = 128; // workspace偏移128个uint32，开始写排序的结果
 constexpr int64_t SCAN_BATCHID_GM_OFFSET = 32;
@@ -190,7 +193,7 @@ __aicore__ inline T PowerOfFourCeil(T x)
     return result;
 }
 
-__aicore__ inline void TilingOneCoreSort(SortCustomTilingDataKernel* tilingData, const int64_t totalLength)
+__aicore__ inline void TilingOneCoreSort(SortCustomTilingDataKernel *tilingData, const int64_t totalLength)
 {
     tilingData->needCoreNum = totalLength == 0 ? 0 : 1;
     tilingData->perCoreElements = totalLength;
@@ -203,8 +206,8 @@ __aicore__ inline void TilingOneCoreSort(SortCustomTilingDataKernel* tilingData,
     tilingData->lastCoreLastLoopElements = totalLength;
 }
 
-__aicore__ inline void TilingMultiCoreSort(
-    SortCustomTilingDataKernel* tilingData, const int64_t totalLength, const ScheduleContextInfo* contextInfo)
+__aicore__ inline void TilingMultiCoreSort(SortCustomTilingDataKernel *tilingData, const int64_t totalLength,
+                                           const ScheduleContextInfo *contextInfo)
 {
     int64_t needCoreNum = CeilDiv(totalLength, contextInfo->sortLoopMaxElement); // 向上取整
     needCoreNum = PowerOfFourCeil(needCoreNum);           // 用到多核时，核数最多是4^x, 计算不小于
@@ -255,9 +258,8 @@ __aicore__ inline void TilingMultiCoreSort(
     tilingData->oneLoopMaxElementsMrg = MGR_SORT_MAX_ELEMENT;
 }
 
-__aicore__ inline void TilingScanMultiCoreSort(
-    SortCustomTilingDataKernel* tilingdataSort,
-    const ScheduleContextInfo* contextInfo)
+__aicore__ inline void TilingScanMultiCoreSort(SortCustomTilingDataKernel *tilingdataSort,
+                                               const ScheduleContextInfo *contextInfo)
 {
     // 按A分核
     // 1. 计算每次排序可以放下多少个 session_num
@@ -284,7 +286,7 @@ __aicore__ inline void TilingScanMultiCoreSort(
     tilingdataSort->oneLoopMaxElementsMrg = MGR_SORT_MAX_ELEMENT;
 }
 
-__aicore__ inline void TilingSort(SortCustomTilingDataKernel* tilingdataSort, const ScheduleContextInfo* contextInfo)
+__aicore__ inline void TilingSort(SortCustomTilingDataKernel *tilingdataSort, const ScheduleContextInfo *contextInfo)
 {
     auto totalLength = contextInfo->outNum * contextInfo->BS * contextInfo->K;
     tilingdataSort->totalLength = totalLength;
@@ -298,8 +300,8 @@ __aicore__ inline void TilingSort(SortCustomTilingDataKernel* tilingdataSort, co
     }
 }
 
-__aicore__ inline void TilingScanSort(
-    SortCustomTilingDataKernel* tilingdataSort, const ScheduleContextInfo* contextInfo)
+__aicore__ inline void TilingScanSort(SortCustomTilingDataKernel *tilingdataSort,
+                                      const ScheduleContextInfo *contextInfo)
 {
     tilingdataSort->totalLengthWithPad =
         contextInfo->A * (contextInfo->BS * contextInfo->K + contextInfo->BsKPaddingCount);
@@ -317,14 +319,14 @@ __aicore__ inline void TilingScanSort(
     }
 }
 
-__aicore__ inline void ValidGatherIdxLengthCompute(
-    GM_ADDR work_space, ScheduleContextInfo& contextInfo, GM_ADDR actual_token_num)
+__aicore__ inline void ValidGatherIdxLengthCompute(GM_ADDR work_space, ScheduleContextInfo &contextInfo,
+                                                   GM_ADDR actual_token_num)
 {
     GlobalTensor<int32_t> workSpace;
     GlobalTensor<int64_t> actualTokenNumGm;
 
-    workSpace.SetGlobalBuffer((__gm__ int32_t*)work_space, OFFSET_SORTED_EXPERT_IDS);
-    actualTokenNumGm.SetGlobalBuffer((__gm__ int64_t*)actual_token_num);
+    workSpace.SetGlobalBuffer((__gm__ int32_t *)work_space, OFFSET_SORTED_EXPERT_IDS);
+    actualTokenNumGm.SetGlobalBuffer((__gm__ int64_t *)actual_token_num);
 
     DataCacheCleanAndInvalid<int32_t, AscendC::CacheLine::SINGLE_CACHE_LINE, AscendC::DcciDst::CACHELINE_ALL>(
         workSpace);
@@ -337,8 +339,8 @@ __aicore__ inline void ValidGatherIdxLengthCompute(
     }
 }
 
-__aicore__ inline void Tiling4SrcToDstCompute(
-    const ScheduleContextInfo* tilingData, FfnWBGroupListingTileInfo& tilingInfo)
+__aicore__ inline void Tiling4SrcToDstCompute(const ScheduleContextInfo *tilingData,
+                                              FfnWBGroupListingTileInfo &tilingInfo)
 {
     int64_t ubSizePlatForm = tilingData->ubSize;
     int64_t validGatherIdxLength = tilingData->validGatherIdxLength;
@@ -376,5 +378,5 @@ __aicore__ inline void Tiling4SrcToDstCompute(
     }
 }
 
-} // namespace FfnWbBatching
+} // namespace FfnWbBatchingArch35
 #endif // OP_KERNEL_FFN_WB_COMMON_H
