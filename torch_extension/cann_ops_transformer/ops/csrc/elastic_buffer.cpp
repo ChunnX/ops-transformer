@@ -334,6 +334,7 @@ public:
     // EngramFetch: 推理/训练共用前向接口
     // 推理(with_grad=false): RDMA read, 可选输出全 nullptr, 返回 callable 内调 wait
     // 训练(with_grad=true): all-to-all, 5 个可选输出非空(save-for-backward), 接口内调 wait + GM 申请/释放
+    void EngramWrite(const at::Tensor &storage);
     std::function<at::Tensor()> EngramFetch(
         const at::Tensor &indices,
         at::Tensor *permOut = nullptr,
@@ -584,9 +585,10 @@ std::function<at::Tensor()> ElasticBuffer::EngramFetch(
         return [fetched]() { return fetched; };
     }
 
+    c10::optional<at::Tensor> nullOpt;
     ACLNN_CMD(aclnnEngramFetch, contextTensor_, indices,
               hiddenSize_, numEngramEntries_, fetched,
-              nullptr, nullptr, nullptr, nullptr, nullptr);
+              nullOpt, nullOpt, nullOpt, nullOpt, nullOpt);
 
     auto capturedContext = contextTensor_;
     auto fetchFlag = &fetchInProgress_;
