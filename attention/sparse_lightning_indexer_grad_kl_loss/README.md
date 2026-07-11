@@ -314,12 +314,12 @@
         <tbody>
         <tr>
             <td>B</td>
-            <td>支持1~256</td>
+            <td>-</td>
             <td>-</td>
         </tr>
         <tr>
             <td>S1、S2</td>
-            <td>S1支持1~8K，S2支持1~512K</td>
+            <td>-</td>
             <td>S1、S2支持不等长；S1必须小于等于S2</td>
         </tr>
         <tr>
