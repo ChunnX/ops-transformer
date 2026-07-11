@@ -126,14 +126,17 @@ static bool CheckInputTensorShape(const gert::TilingContext *context, const char
     int64_t topkDim0 = topkIdxShape->GetStorageShape().GetDim(0);
     int64_t topkDim1 = topkIdxShape->GetStorageShape().GetDim(1);
     int64_t numMaxTokensPerRank = static_cast<int64_t>(info.cfg.numMaxTokensPerRank);
-    OP_TILING_CHECK(xDim0 <= 0 || xDim0 > numMaxTokensPerRank, OP_LOGE(nodeName,
-        "xDim0 is invalid, should be in [1, %ld].", numMaxTokensPerRank), return false);
-    OP_TILING_CHECK(xDim1 <= 0 || xDim1 > H_MAX, OP_LOGE(nodeName,
-        "xDim1(hidden) is invalid, should be in (0, %ld].", H_MAX), return false);
-    OP_TILING_CHECK(xDim0 != topkDim0, OP_LOGE(nodeName, "topkIdx dim0 must equal x dim0."),
+    int64_t numExperts = static_cast<int64_t>(info.cfg.numExperts);
+    OP_TILING_CHECK((xDim0 <= 0) || (xDim0 > numMaxTokensPerRank), OP_LOGE(nodeName,
+        "xDim0 is invalid, should be in [1, numMaxTokensPerRank=%ld], but got %ld.", numMaxTokensPerRank, xDim0),
         return false);
-    OP_TILING_CHECK(topkDim1 <= 0 || topkDim1 > K_MAX, OP_LOGE(nodeName,
-        "topkIdx dim1(topK) is invalid, should be in (0, %ld].", K_MAX), return false);
+    OP_TILING_CHECK((xDim1 <= 0) || (xDim1 > H_MAX), OP_LOGE(nodeName,
+        "xDim1(hidden) is invalid, should be in (0, %ld], but got %ld.", H_MAX, xDim1), return false);
+    OP_TILING_CHECK(xDim0 != topkDim0, OP_LOGE(nodeName,
+        "topkIdx dim0 must equal x dim0, but got xDim0=%ld, topkDim0=%ld.", xDim0, topkDim0), return false);
+    OP_TILING_CHECK((topkDim1 <= 0) || (topkDim1 > K_MAX) || (topkDim1 > numExperts), OP_LOGE(nodeName,
+        "topkIdx dim1(topK) is invalid, should be in (0, min(%ld, numExperts=%ld)], but got %ld.",
+        K_MAX, numExperts, topkDim1), return false);
 
     info.cfg.numTokens = static_cast<uint32_t>(xDim0);
     info.cfg.hidden = static_cast<uint32_t>(xDim1);
@@ -202,9 +205,8 @@ static bool CheckInputTensorScales(const gert::TilingContext *context, const cha
         OP_TILING_CHECK(scalesDim0 != static_cast<int64_t>(info.cfg.numTokens), OP_LOGE(nodeName,
             "scales dim0 must equal x dim0, got %ld vs %u.", scalesDim0, info.cfg.numTokens), return false);
         OP_TILING_CHECK(scalesDim1 != expectedDim1, OP_LOGE(nodeName,
-            "scales dim1 is invalid, expected %ld but got %ld.", expectedDim1, scalesDim1),
-            return false);
-        
+            "scales dim1 is invalid, expected %ld but got %ld.", expectedDim1, scalesDim1), return false);
+
         uint32_t scalesSize = scalesDtype == ge::DT_FLOAT ? sizeof(float) : FP8_DTYPE_SIZE;
         info.cfg.scalesBytes = static_cast<uint32_t>(expectedDim1 * scalesSize);
         info.isMxQuant = (scalesDtype == ge::DT_FLOAT8_E8M0) ? 1U : 0U;
@@ -368,7 +370,7 @@ static ge::graphStatus CheckInputTensor(const gert::TilingContext *context, cons
         OP_LOGE(nodeName, "Check input tensor format failed."), return ge::GRAPH_FAILED);
 
     ge::DataType xDtype = context->GetInputDesc(X_INDEX)->GetDataType();
-    bool isXFp8 = (xDtype == ge::DT_FLOAT8_E5M2 || xDtype == ge::DT_FLOAT8_E4M3FN);
+    bool isXFp8 = ((xDtype == ge::DT_FLOAT8_E5M2) || (xDtype == ge::DT_FLOAT8_E4M3FN));
     OP_TILING_CHECK(!CheckInputTensorScales(context, nodeName, info, isXFp8),
         OP_LOGE(nodeName, "Check scales input failed."), return ge::GRAPH_FAILED);
 
