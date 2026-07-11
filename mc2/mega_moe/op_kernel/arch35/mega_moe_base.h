@@ -74,7 +74,7 @@ struct PeermemInfo {
             uint32_t scaleBytes = mxScaleNum * sizeof(int8_t);
             uint32_t tokenBytes = Ops::Base::CeilAlign(dataBytes + scaleBytes, static_cast<uint32_t>(ALIGN_32));
             offset += Ops::Base::CeilAlign(
-                static_cast<int64_t>(tilingData->bs * tokenBytes * sizeof(int8_t)), (int64_t)ALIGN_512);
+                static_cast<int64_t>(tilingData->bs) * tokenBytes * sizeof(int8_t), (int64_t)ALIGN_512);
         } else {
             dispatchRecivePtr = base + offset;
             uint32_t mxScaleNum = Ops::Base::CeilDiv(tilingData->h, static_cast<uint32_t>(ALIGN_32));
@@ -84,7 +84,7 @@ struct PeermemInfo {
             uint32_t tokenBytes = Ops::Base::CeilAlign(static_cast<int64_t>(Ops::Base::CeilAlign(dataBytes + scaleBytes,
                 static_cast<uint32_t>(ALIGN_32)) + ALIGN_32), static_cast<int64_t>(ALIGN_512));
             offset += Ops::Base::CeilAlign(
-                static_cast<int64_t>(tilingData->bs * tokenBytes * sizeof(int8_t)) *
+                static_cast<int64_t>(tilingData->bs) * tokenBytes * sizeof(int8_t) *
                 static_cast<int64_t>(serverNum), (int64_t)ALIGN_512);
         }
         combineSendPtr = base + offset;
@@ -241,5 +241,16 @@ __aicore__ inline void SyncFuncStatic()
     AscendC::SetFlag<event>(static_cast<event_t>(eventId));
     AscendC::WaitFlag<event>(static_cast<event_t>(eventId));
 }
+
+// ============================================================================
+// 大 bs dispatch 分块常量
+// ============================================================================
+// DISPATCH_RESET_BATCH: ResetFlagList 分批清零的粒度（int32 个数）。
+//   本核 flag 份额超此值时，用同一片零 UB 分批推 GM，使 reset UB 恒 ≤ 8KB，与 bs 解耦。
+constexpr int32_t DISPATCH_RESET_BATCH = 2048;
+
+// DISPATCH_UB_SAFETY: 反推 route batch 长度时从 UB 总量扣掉的保守余量，
+//   覆盖各 tensor 对齐上取整与线性系数上界，避免 UB 越界。
+constexpr int64_t DISPATCH_UB_SAFETY = 4LL * 1024;
 
 #endif

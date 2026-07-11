@@ -114,7 +114,7 @@ void printPeermemInfo(const MegaMoeTilingData *tilingData, const char *nodeName)
     uint32_t scaleBytes = mxScaleNum * sizeof(int8_t);
     uint32_t tokenBytes = ops::CeilAlign(dataBytes + scaleBytes, static_cast<uint32_t>(ALIGN_32));
     int64_t quantTokenScaleSize =
-        ops::CeilAlign((int64_t)(tilingData->bs * tokenBytes * sizeof(int8_t)), (int64_t)ALIGN_512);
+        ops::CeilAlign((int64_t)(tilingData->bs) * tokenBytes * sizeof(int8_t), (int64_t)ALIGN_512);
     OP_LOGD(nodeName, "quantTokenScaleSize: {%ld}\n", quantTokenScaleSize);
     int64_t combineSendSize = sendTotalNum * tilingData->h * 2; //  2 = sizeof(bfloat16_t)
     OP_LOGD(nodeName, "combineSendSize: {%ld}\n", combineSendSize);
@@ -958,22 +958,26 @@ static ge::graphStatus CheckInputParam(const gert::TilingContext *context, MegaM
         OP_LOGE_FOR_INVALID_VALUE(nodeName, "topK", std::to_string(topkIdsDim1).c_str(), "only support [1, 16]"),
         return ge::GRAPH_FAILED);
 
-    // 检查MAX_BS范围
-    uint64_t ubSize = 0UL;
-    auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
-    ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
+    // layered(URMA) 路径未做 route-batch 改造，UB 占用随 bs 线性增长，保留 maxBs 上限校验；
+    // prefill(MTE) 路径已通过 route-batch 流式处理解耦，不再需要此限制。
     auto attrs = context->GetAttrs();
-    auto epWorldSizePtr = attrs->GetAttrPointer<int64_t>((config.attrEpWorldSizeIndex));
-    int64_t worldSize = static_cast<int64_t>(*epWorldSizePtr);
-    // 当前最大bs根据ub剩余空间反算得来，bsMax = (8*(UB_SIZE-48K))/(topK*(64+worldSize))
-    int64_t maxBs = NUM_8 * (ubSize - USED_BUFFER_SIZE) / (topkIdsDim1 * (NUM_64 + worldSize));
-    OP_TILING_CHECK(
-        xDim0 < MIN_BS || xDim0 > maxBs,
-        OP_LOGE_FOR_INVALID_VALUE(nodeName, "BS", std::to_string(xDim0).c_str(),
-                                  (std::string("should in [") + std::to_string(MIN_BS) + ", " + std::to_string(maxBs) +
-                                   "]" + ", " + "maxBs = (8 * (TOTAL_UB_SIZE - 48K)) / (topK * (64 + worldSize))")
-                                      .c_str()),
-        return ge::GRAPH_FAILED);
+    auto topoTypePtr = attrs->GetAttrPointer<int64_t>((config.attrTopoTypeIndex));
+    if (topoTypePtr != nullptr && *topoTypePtr == TOPO_TYPE_URMA) {
+        // 检查MAX_BS范围
+        uint64_t ubSize = 0UL;
+        auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
+        ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
+        auto epWorldSizePtr = attrs->GetAttrPointer<int64_t>((config.attrEpWorldSizeIndex));
+        int64_t worldSize = static_cast<int64_t>(*epWorldSizePtr);
+        // 当前最大bs根据ub剩余空间反算得来，bsMax = (8*(UB_SIZE-48K))/(topK*(64+worldSize))
+        int64_t maxBs = NUM_8 * (ubSize - USED_BUUFER_SIZE) / (topkIdsDim1 * (NUM_64 + worldSize));
+        OP_TILING_CHECK(xDim0 < MIN_BS || xDim0 > maxBs,
+            OP_LOGE_FOR_INVALID_VALUE(nodeName, "BS", std::to_string(xDim0).c_str(),
+                (std::string("should in [") + std::to_string(MIN_BS) + ", " +
+                 std::to_string(maxBs) + "]" + ", "
+                 + "maxBs = (8 * (TOTAL_UB_SIZE - 48K)) / (topK * (64 + worldSize))").c_str()),
+            return ge::GRAPH_FAILED);
+    }
 
     int64_t xDim1 = xStorageShape->GetStorageShape().GetDim(1);
     // 检查 H 范围 [1K, 8K]
@@ -1030,6 +1034,12 @@ static ge::graphStatus SetInputParam(const gert::TilingContext *context, MegaMoe
     tilingData->hiddenDim = static_cast<uint32_t>(hiddenDim);
     tilingData->topK = static_cast<uint32_t>(topK);
     tilingData->expertPerRank = static_cast<uint32_t>(expertPerRank);
+
+    // UB 大小由平台查询, prefill 模板动态算 route batch 用
+    uint64_t ubSize = 0U;
+    auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
+    ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
+    tilingData->ubSize = static_cast<uint32_t>(ubSize);
 
     return ge::GRAPH_SUCCESS;
 }
