@@ -64,6 +64,7 @@ if (BUILD_OPEN_PROJECT)
         op_graph/mc2_gen_task_ops_utils.cpp
         op_graph/matmul_all_reduce_gen_task_ops_utils.cpp
         op_graph/mc2_moe_gen_task_ops_utils.cpp
+        op_graph/mc2_context_graph.cpp
     )
     if("${CONDITION_UNIT_COMMON}" STREQUAL "ascend950")
         list(APPEND GENTASK_SRCS ${CMAKE_CURRENT_SOURCE_DIR}/op_graph/mc2_gen_task_ops_utils_arch35.cpp)
