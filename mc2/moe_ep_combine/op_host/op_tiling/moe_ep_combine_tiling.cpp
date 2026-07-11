@@ -107,12 +107,13 @@ static ge::graphStatus CheckInputTensorShape(const gert::TilingContext *context,
         OP_LOGE(nodeName, "topkIdxShape dims must be 2."), return ge::GRAPH_FAILED);
     const int64_t topkDim0 = topkIdxShape->GetStorageShape().GetDim(0);
     const int64_t topkDim1 = topkIdxShape->GetStorageShape().GetDim(1);
+    int64_t numExperts = static_cast<int64_t>(info.cfg.numExperts);
     OP_TILING_CHECK(topkDim0 <= 0,
         OP_LOGE(nodeName, "topkIdx dim0(numTokens) must be positive, got %ld.", topkDim0),
         return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(topkDim1 <= 0 || topkDim1 > K_MAX,
-        OP_LOGE(nodeName, "topkIdx dim1(topK) must be in (0, %ld], got %ld.", K_MAX, topkDim1),
-        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(topkDim1 <= 0 || topkDim1 > K_MAX || topkDim1 > numExperts,
+        OP_LOGE(nodeName, "topkIdx dim1(topK) must be in (0, min(%ld, numExperts=%ld)], but got %ld.",
+        K_MAX, numExperts, topkDim1), return ge::GRAPH_FAILED);
     info.cfg.numTokens = static_cast<uint32_t>(topkDim0);
     info.cfg.topK = static_cast<uint32_t>(topkDim1);
 
