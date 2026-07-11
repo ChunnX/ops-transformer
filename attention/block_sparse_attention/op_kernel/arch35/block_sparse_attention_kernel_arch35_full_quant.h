@@ -221,7 +221,7 @@ public:
             int64_t sparseMaskNOffset = qHeadIdx * xBlockNumAligned_ * yBlockNumAligned_;
             int64_t sparseMaskXOffset = xBlockIdx * yBlockNumAligned_;
             int64_t gmOffsetSparseMask = sparseMaskBOffset + sparseMaskNOffset + sparseMaskXOffset;
-            // corresponding Q/K/V/O gm offset of cur task
+            // corresponding Q/K/V/O/Lse gm offset of cur task
             int64_t gmOffsetQ = 0;
             int64_t gmOffsetK = 0;
             int64_t gmOffsetV = 0;

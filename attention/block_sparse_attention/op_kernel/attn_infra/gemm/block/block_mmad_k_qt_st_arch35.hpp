@@ -336,7 +336,8 @@ public:
                 //         tla::MakeCoord(mL0Itr * L0_TILE_M, 0), tla::MakeShape(mFixPAligned8, nFixPAligned8));
                 //     CopyL0CToDst copyL0CToDst;
                 //     copyL0CToDst(ubSTensorTlaTile, l0CTensorTla);
-                if constexpr (std::is_same<ElementS, float>::value) {
+                if constexpr (std::is_same<ElementS, float>::value &&
+                              (mm1L0C2UBMode == Gemm::Tile::CopyL0CToUBMode::SPLIT_N)) {
                     uint32_t mFixPAligned8 = RoundUp(l0TileMAct, 8);
                     uint32_t nFixPAligned8 = RoundUp(qSTile, 8);
                     if constexpr (FULL_QUANT_FP8) {

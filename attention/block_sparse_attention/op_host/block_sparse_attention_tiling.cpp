@@ -867,13 +867,20 @@ void BSATiling::CalcBaseTileTilingParams950()
 
 void BSATiling::TransposedMatmulConfig950()
 {
-    if (innerPrecise_ == BsaInnerCalcPrec::ALL_HIGH && maskType_ == 0) {
-        transposedMm1_ = true;
-    } else {
-        transposedMm1_ = false;
-    }
+    transposedMm1_ = true;
     transposedMm2_ = false;
 }
+
+
+// void BSATiling::TransposedMatmulConfig950()
+// {
+//     if (innerPrecise_ == BsaInnerCalcPrec::ALL_HIGH && maskType_ == 0) {
+//         transposedMm1_ = true;
+//     } else {
+//         transposedMm1_ = false;
+//     }
+//     transposedMm2_ = false;
+// }
 
 void BSATiling::CalcSplitCoreTilingParams950()
 {
@@ -1171,6 +1178,7 @@ uint64_t BSATiling::GenerateTilingKey(gert::TilingContext *bsaContext)
         tilingKey += 1000000000ULL;
     }
     
+    printf("tkd tilingkey", tilingKey);
     return tilingKey;
 }
 
