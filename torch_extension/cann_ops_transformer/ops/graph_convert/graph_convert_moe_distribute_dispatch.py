@@ -8,7 +8,6 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 # GE Converter for Graph Mode
-from dataclasses import dataclass, replace
 
 try:
     import torch
@@ -36,58 +35,6 @@ except ImportError:
     _TORCHAIR_AVAILABLE = False
 
 if _TORCHAIR_AVAILABLE:
-    @dataclass(frozen=True)
-    class DispatchOutputs:
-        expand_x: object
-        dynamic_scales: object
-        expand_idx: object
-        expert_token_nums: object
-        ep_recv_count: object
-        tp_recv_count: object
-        expand_scales: object
-
-        def as_tuple(self):
-            return (
-                self.expand_x,
-                self.dynamic_scales,
-                self.expand_idx,
-                self.expert_token_nums,
-                self.ep_recv_count,
-                self.tp_recv_count,
-                self.expand_scales,
-            )
-
-    @dataclass(frozen=True)
-    class DispatchAttrs:
-        ep_world_size: int
-        ep_rank_id: int
-        moe_expert_num: int
-        ccl_buffer_size: int
-        tp_world_size: int
-        tp_rank_id: int
-        expert_shard_type: int
-        shared_expert_num: int
-        shared_expert_rank_num: int
-        quant_mode: int
-        global_bs: int
-        expert_token_nums_type: int
-        comm_alg: str
-        zero_expert_num: int
-        copy_expert_num: int
-        const_expert_num: int
-
-    @dataclass(frozen=True)
-    class DispatchTensors:
-        context: object
-        x: object
-        expert_ids: object
-        scales: object
-        x_active_mask: object
-        expert_scales: object
-        elastic_info: object
-        performance_info: object
-
-
     @auto_convert_to_tensor([False, False, False, False, False, False, False, False],
         [False, False, False, True, True, True, True, True])
     def MoeDistributeDispatch(context: Tensor, x: Tensor, expert_ids: Tensor, scales: Optional[Tensor],
@@ -251,25 +198,6 @@ if _TORCHAIR_AVAILABLE:
         return DataType.DT_INT8
 
 
-    def _make_dispatch_attrs(attrs: DispatchAttrs):
-        return attrs.__dict__
-
-
-    def _call_moe_distribute_dispatch(tensors: DispatchTensors, attrs: DispatchAttrs, expand_x_dtype):
-        return DispatchOutputs(*MoeDistributeDispatch(
-            context=tensors.context,
-            x=tensors.x,
-            expert_ids=tensors.expert_ids,
-            scales=tensors.scales,
-            x_active_mask=tensors.x_active_mask,
-            expert_scales=tensors.expert_scales,
-            elastic_info=tensors.elastic_info,
-            performance_info=tensors.performance_info,
-            y_dtype=expand_x_dtype,
-            **_make_dispatch_attrs(attrs),
-        ))
-
-
     def _format_expand_x(expand_x: Tensor, expand_x_dtype, y_dtype: Optional[int]):
         if y_dtype == 296 or y_dtype == 297:
             div_x2 = ge.Cast(ge.Const([1] + [2]), dst_type=DataType.DT_INT32)
@@ -329,14 +257,49 @@ if _TORCHAIR_AVAILABLE:
         x = _convert_dispatch_x(x, x_dtype)
         scales = _convert_dispatch_scales(scales, x_smooth_scales_dtype)
         expand_x_dtype = _get_expand_x_dtype(x, quant_mode, y_dtype)
-        attrs = DispatchAttrs(
-            ep_world_size, ep_rank_id, moe_expert_num, ccl_buffer_size, tp_world_size, tp_rank_id,
-            expert_shard_type, shared_expert_num, shared_expert_rank_num, quant_mode, global_bs,
-            expert_token_nums_type, comm_alg, zero_expert_num, copy_expert_num, const_expert_num)
-        tensors = DispatchTensors(
-            context, x, expert_ids, scales, x_active_mask, expert_scales, elastic_info, performance_info)
-        outputs = _call_moe_distribute_dispatch(
-            tensors, attrs, expand_x_dtype)
-        expand_x = _format_expand_x(outputs.expand_x, expand_x_dtype, y_dtype)
-        dynamic_scales = _set_dynamic_scales_dtype(outputs.dynamic_scales, x, scales, quant_mode)
-        return replace(outputs, expand_x=expand_x, dynamic_scales=dynamic_scales).as_tuple()
+        (
+            expand_x,
+            dynamic_scales,
+            expand_idx,
+            expert_token_nums,
+            ep_recv_count,
+            tp_recv_count,
+            expand_scales,
+        ) = MoeDistributeDispatch(
+            context=context,
+            x=x,
+            expert_ids=expert_ids,
+            scales=scales,
+            x_active_mask=x_active_mask,
+            expert_scales=expert_scales,
+            elastic_info=elastic_info,
+            performance_info=performance_info,
+            ep_world_size=ep_world_size,
+            ep_rank_id=ep_rank_id,
+            moe_expert_num=moe_expert_num,
+            ccl_buffer_size=ccl_buffer_size,
+            tp_world_size=tp_world_size,
+            tp_rank_id=tp_rank_id,
+            expert_shard_type=expert_shard_type,
+            shared_expert_num=shared_expert_num,
+            shared_expert_rank_num=shared_expert_rank_num,
+            quant_mode=quant_mode,
+            global_bs=global_bs,
+            expert_token_nums_type=expert_token_nums_type,
+            comm_alg=comm_alg,
+            zero_expert_num=zero_expert_num,
+            copy_expert_num=copy_expert_num,
+            const_expert_num=const_expert_num,
+            y_dtype=expand_x_dtype,
+        )
+        expand_x = _format_expand_x(expand_x, expand_x_dtype, y_dtype)
+        dynamic_scales = _set_dynamic_scales_dtype(dynamic_scales, x, scales, quant_mode)
+        return (
+            expand_x,
+            dynamic_scales,
+            expand_idx,
+            expert_token_nums,
+            ep_recv_count,
+            tp_recv_count,
+            expand_scales,
+        )

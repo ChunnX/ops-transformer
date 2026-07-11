@@ -196,16 +196,18 @@ static ge::graphStatus MoeDistributeDispatchA2CheckWinSize(const gert::TilingCon
         }
     } else {
         constexpr uint64_t extraBuffSize = 2 * MB_SIZE; // 固定2M额外空间作为存储非数据信息的区域
-        const uint64_t perTokenSize = info.h * sizeofDtypeX;
+        const uint64_t topkWeightsBuffer = info.hasExpertScales ? BLOCK_SIZE_A2 : 0ULL;
+        const uint64_t perTokenSize = info.h * sizeofDtypeX + topkWeightsBuffer;
         const uint64_t maxRecvTokenNum = maxBs * epWorldSize * std::min(localMoeExpertNum, info.k);
         minHcclBuffSize = BUFFER_NUM * (maxRecvTokenNum * perTokenSize + extraBuffSize);
         if (minHcclBuffSize > hcclBuffSize) {
             OP_LOGW(nodeName,
                     "HCCL_BUFFSIZE is too small, min required HCCL_BUFFSIZE (%lu * (maxBs * epWorldSize * "
-                    "min(localMoeExpertNum, k) * h * 2 / 1MB + 2MB)) = %luMB, actual HCCL_BUFFSIZE = %luMB, maxBs = "
-                    "%lu, epWorldSize = %u, localMoeExpertNum = %u, k = %u, h = %u. %s",
+                    "min(localMoeExpertNum, k) * (h * 2 + topkWeightsBuffer) / 1MB + 2MB)) = %luMB, "
+                    "actual HCCL_BUFFSIZE = %luMB, maxBs = %lu, epWorldSize = %u, localMoeExpertNum = %u, "
+                    "k = %u, h = %u, topkWeightsBuffer = %lu. %s",
                     BUFFER_NUM, ops::CeilDiv(minHcclBuffSize, MB_SIZE), ops::CeilDiv(hcclBuffSize, MB_SIZE), maxBs,
-                    epWorldSize, localMoeExpertNum, info.k, info.h, HCCL_BUFFSIZE_HINT);
+                    epWorldSize, localMoeExpertNum, info.k, info.h, topkWeightsBuffer, HCCL_BUFFSIZE_HINT);
         }
     }
     return ge::GRAPH_SUCCESS;
@@ -522,6 +524,7 @@ static ge::graphStatus MoeDistributeDispatchA2CheckShapeAndSetTiling(const gert:
 
     info.isTokenMask = ((isActiveMask) && (xActiveMaskStorageShape->GetStorageShape().GetDimNum() == ONE_DIM));
     info.isExpertMask = ((isActiveMask) && (xActiveMaskStorageShape->GetStorageShape().GetDimNum() == TWO_DIMS));
+    info.hasExpertScales = (expertScalesStorageShape != nullptr);
     info.bs = bs;
     info.k = k;
     info.h = h;

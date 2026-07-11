@@ -8,7 +8,6 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 import math
-from dataclasses import dataclass
 import torch
 import torch_npu
 from torch.library import impl
@@ -47,61 +46,6 @@ TORCH_DTYPE_ENUM_VALUE_TO_SCALAR_TYPE_MAP = {
     296: torch.uint8,  # torch_npu.float4_e2m1fn_x2 use torch.uint8
     297: torch.uint8,  # torch_npu.float4_e1m2fn_x2 use torch.uint8
 }
-
-
-@dataclass(frozen=True)
-class DispatchLocalArgs:
-    ep_world_size: int
-    ep_rank_id: int
-    moe_expert_num: int
-    shared_expert_num: int
-    shared_expert_rank_num: int
-    expert_shard_type: int
-    global_bs_real: int
-    topk: int
-    elastic_info: object
-    is_shared_default: bool
-    is_no_shared: bool
-
-
-@dataclass(frozen=True)
-class DispatchLocalInfo:
-    local_moe_expert_num: int
-    recv_tokens: int
-
-
-@dataclass(frozen=True)
-class DispatchExpandXArgs:
-    x: object
-    recv_tokens: int
-    hidden: int
-    tp_world_size: int
-    out_dtype: object
-    y_dtype: object
-    scales: object
-
-
-@dataclass(frozen=True)
-class DispatchDynamicScalesArgs:
-    x: object
-    scales: object
-    x_smooth_scales_dtype: object
-    quant_mode: int
-    recv_tokens: int
-    hidden: int
-    tp_world_size: int
-
-
-@dataclass(frozen=True)
-class DispatchRecvCountsArgs:
-    x: object
-    ep_world_size: int
-    global_bs_real: int
-    topk: int
-    local_moe_expert_num: int
-    tp_world_size: int
-    expert_scales: object
-    assist_info_for_combine_shape: int
 
 
 def _has_tensor(tensor):
@@ -180,32 +124,19 @@ def _check_dispatch_meta_args(ep_world_size, ep_rank_id, shared_expert_num, shar
     return is_shared_default, is_no_shared
 
 
-def _get_dispatch_local_info(args: DispatchLocalArgs):
-    local_moe_expert_num = 1
-    recv_tokens = 0
-    if args.expert_shard_type != 0:
-        return DispatchLocalInfo(local_moe_expert_num, recv_tokens)
+def _get_shared_recv_tokens(ep_world_size, shared_expert_rank_num, shared_expert_num, global_bs_real):
+    max_bs = global_bs_real // ep_world_size
+    rank_num_per_shared_expert = shared_expert_rank_num // shared_expert_num
+    max_shared_group_num = (ep_world_size + rank_num_per_shared_expert - 1) // rank_num_per_shared_expert
+    return max_bs * max_shared_group_num
 
-    if args.ep_rank_id < args.shared_expert_rank_num:
-        max_bs = args.global_bs_real // args.ep_world_size
-        rank_num_per_shared_expert = args.shared_expert_rank_num // args.shared_expert_num
-        max_shared_group_num = (args.ep_world_size + rank_num_per_shared_expert - 1) // rank_num_per_shared_expert
-        recv_tokens = max_bs * max_shared_group_num
-    else:
-        local_moe_expert_num = args.moe_expert_num // (args.ep_world_size - args.shared_expert_rank_num)
-        recv_tokens = args.global_bs_real * min(local_moe_expert_num, args.topk)
 
-    if args.elastic_info is not None:
-        base_local_expert_num = args.moe_expert_num // (args.ep_world_size - args.shared_expert_rank_num)
-        local_moe_expert_num = max(local_moe_expert_num, base_local_expert_num)
-        recv_tokens = args.global_bs_real * min(base_local_expert_num, args.topk)
-        if (not args.is_shared_default) and (not args.is_no_shared):
-            max_bs = args.global_bs_real // args.ep_world_size
-            rank_num_per_shared_expert = args.shared_expert_rank_num // args.shared_expert_num
-            max_shared_group_num = (args.ep_world_size + rank_num_per_shared_expert - 1) // rank_num_per_shared_expert
-            recv_tokens = max(max_bs * max_shared_group_num, recv_tokens)
+def _get_moe_local_expert_num(ep_world_size, shared_expert_rank_num, moe_expert_num):
+    return moe_expert_num // (ep_world_size - shared_expert_rank_num)
 
-    return DispatchLocalInfo(local_moe_expert_num, recv_tokens)
+
+def _get_moe_recv_tokens(global_bs_real, local_moe_expert_num, topk):
+    return global_bs_real * min(local_moe_expert_num, topk)
 
 
 def _get_dispatch_ep_recv_cnt_num(ep_world_size, local_moe_expert_num, tp_world_size):
@@ -223,38 +154,25 @@ def _get_dispatch_out_dtype(x, quant_mode, y_dtype):
     return out_dtype
 
 
-def _new_dispatch_expand_x(args: DispatchExpandXArgs):
-    expand_x_shape = tuple([max(args.recv_tokens, args.recv_tokens * args.tp_world_size), args.hidden])
-    if args.y_dtype is not None and _is_packed_float4(args.y_dtype) and args.scales is None:
-        if (args.hidden % 2) != 0:
+def _get_dispatch_expand_x_shape(recv_tokens, hidden, tp_world_size, y_dtype, scales):
+    expand_x_shape = tuple([max(recv_tokens, recv_tokens * tp_world_size), hidden])
+    if y_dtype is not None and _is_packed_float4(y_dtype) and scales is None:
+        if (hidden % 2) != 0:
             raise ValueError("h must be divisible by 2 when y_dtype is packed float4.")
-        expand_x_shape = tuple([max(args.recv_tokens, args.recv_tokens * args.tp_world_size), args.hidden // 2])
-    return args.x.new_empty(expand_x_shape, dtype=args.out_dtype)
+        expand_x_shape = tuple([max(recv_tokens, recv_tokens * tp_world_size), hidden // 2])
+    return expand_x_shape
 
 
-def _new_dispatch_dynamic_scales(args: DispatchDynamicScalesArgs):
-    dynamic_scales_dtype = _get_dispatch_dynamic_scales_dtype(
-        args.x, args.scales, args.x_smooth_scales_dtype, args.quant_mode)
+def _get_dispatch_dynamic_scales_shape(scales, quant_mode, recv_tokens, hidden, tp_world_size):
     if _is_ascend950():
-        dynamic_scales_shape = _get_dispatch_dynamic_shape(
-            args.scales, args.quant_mode, max(args.recv_tokens, args.recv_tokens * args.tp_world_size), args.hidden)
-        return args.x.new_empty(dynamic_scales_shape, dtype=dynamic_scales_dtype)
-    if args.tp_world_size == 0:
-        return args.x.new_empty((args.recv_tokens), dtype=dynamic_scales_dtype)
-    return args.x.new_empty((args.recv_tokens * args.tp_world_size), dtype=dynamic_scales_dtype)
+        return _get_dispatch_dynamic_shape(scales, quant_mode, max(recv_tokens, recv_tokens * tp_world_size), hidden)
+    if tp_world_size == 0:
+        return tuple([recv_tokens])
+    return tuple([recv_tokens * tp_world_size])
 
 
-def _new_dispatch_recv_counts(args: DispatchRecvCountsArgs):
-    ep_recv_cnt_num = _get_dispatch_ep_recv_cnt_num(
-        args.ep_world_size, args.local_moe_expert_num, args.tp_world_size)
-    ep_recv_counts = args.x.new_empty((ep_recv_cnt_num), dtype=torch.int32)
-    assist_info_for_combine_shape = args.assist_info_for_combine_shape
-    if _has_tensor(args.expert_scales) and not _is_ascend950():
-        expert_scales_recv_extra = args.global_bs_real * 2 * args.topk * (args.ep_world_size // 8)
-        ep_recv_cnt_num = args.ep_world_size * args.local_moe_expert_num + expert_scales_recv_extra
-        ep_recv_counts = args.x.new_empty((ep_recv_cnt_num), dtype=torch.int32)
-        assist_info_for_combine_shape = max(assist_info_for_combine_shape, expert_scales_recv_extra)
-    return ep_recv_counts, assist_info_for_combine_shape
+def _get_expert_scales_recv_extra(global_bs_real, topk, ep_world_size):
+    return global_bs_real * 2 * topk * (ep_world_size // 8)
 
 
 class MoeDistributeDispatchOpBuilder(OpBuilder):
@@ -297,28 +215,45 @@ class MoeDistributeDispatchOpBuilder(OpBuilder):
             h = x.size(1)
             k = expert_ids.size(1)
             global_bs_real = bs * ep_world_size if global_bs == 0 else global_bs
-            local_args = DispatchLocalArgs(
-                ep_world_size, ep_rank_id, moe_expert_num, shared_expert_num, shared_expert_rank_num,
-                expert_shard_type, global_bs_real, k, elastic_info, is_shared_default, is_no_shared
-            )
-            local_info = _get_dispatch_local_info(local_args)
-            local_moe_expert_num = local_info.local_moe_expert_num
-            recv_tokens = local_info.recv_tokens
+
+            local_moe_expert_num = 1
+            recv_tokens = 0
+            if expert_shard_type == 0:
+                moe_local_expert_num = _get_moe_local_expert_num(
+                    ep_world_size, shared_expert_rank_num, moe_expert_num)
+                moe_recv_tokens = _get_moe_recv_tokens(global_bs_real, moe_local_expert_num, k)
+                if ep_rank_id < shared_expert_rank_num:
+                    recv_tokens = _get_shared_recv_tokens(
+                        ep_world_size, shared_expert_rank_num, shared_expert_num, global_bs_real)
+                else:
+                    local_moe_expert_num = moe_local_expert_num
+                    recv_tokens = moe_recv_tokens
+                if elastic_info is not None:
+                    local_moe_expert_num = max(local_moe_expert_num, moe_local_expert_num)
+                    recv_tokens = moe_recv_tokens
+                    if (not is_shared_default) and (not is_no_shared):
+                        recv_tokens = max(
+                            _get_shared_recv_tokens(
+                                ep_world_size, shared_expert_rank_num, shared_expert_num, global_bs_real),
+                            recv_tokens,
+                        )
 
             out_dtype = _get_dispatch_out_dtype(x, quant_mode, y_dtype)
             assist_info_for_combine_shape = max(bs * k, recv_tokens * 128)
-            expand_x_args = DispatchExpandXArgs(x, recv_tokens, h, tp_world_size, out_dtype, y_dtype, scales)
-            expand_x = _new_dispatch_expand_x(expand_x_args)
-            dynamic_scales_args = DispatchDynamicScalesArgs(
-                x, scales, x_smooth_scales_dtype, quant_mode, recv_tokens, h, tp_world_size
+            expand_x_shape = _get_dispatch_expand_x_shape(recv_tokens, h, tp_world_size, y_dtype, scales)
+            expand_x = x.new_empty(expand_x_shape, dtype=out_dtype)
+            dynamic_scales_dtype = _get_dispatch_dynamic_scales_dtype(
+                x, scales, x_smooth_scales_dtype, quant_mode
             )
-            dynamic_scales = _new_dispatch_dynamic_scales(dynamic_scales_args)
+            dynamic_scales_shape = _get_dispatch_dynamic_scales_shape(scales, quant_mode, recv_tokens, h, tp_world_size)
+            dynamic_scales = x.new_empty(dynamic_scales_shape, dtype=dynamic_scales_dtype)
             expert_token_nums = x.new_empty((local_moe_expert_num), dtype=torch.int64)
-            recv_counts_args = DispatchRecvCountsArgs(
-                x, ep_world_size, global_bs_real, k, local_moe_expert_num, tp_world_size, expert_scales,
-                assist_info_for_combine_shape
-            )
-            ep_recv_counts, assist_info_for_combine_shape = _new_dispatch_recv_counts(recv_counts_args)
+            ep_recv_cnt_num = _get_dispatch_ep_recv_cnt_num(ep_world_size, local_moe_expert_num, tp_world_size)
+            if _has_tensor(expert_scales) and not _is_ascend950():
+                expert_scales_recv_extra = _get_expert_scales_recv_extra(global_bs_real, k, ep_world_size)
+                ep_recv_cnt_num = ep_world_size * local_moe_expert_num + expert_scales_recv_extra
+                assist_info_for_combine_shape = max(assist_info_for_combine_shape, expert_scales_recv_extra)
+            ep_recv_counts = x.new_empty((ep_recv_cnt_num), dtype=torch.int32)
             tp_recv_counts = x.new_empty((tp_world_size), dtype=torch.int32)
             expand_scales = x.new_empty((0), dtype=torch.float32)
             if _has_tensor(expert_scales):
@@ -436,7 +371,6 @@ class MoeDistributeBuffer:
     def get_low_latency_ccl_buffer_size(world_size: int, num_max_dispatch_tokens_per_rank: int, hidden: int,
                                         num_moe_expert: int, topk: int, num_shared_expert: int = 0,
                                         num_shared_expert_ranks: int = 0, comm_alg: str = "",
-                                        has_topk_weights: bool = False,
                                         ) -> int:
         def inline_align(value, base):
             return (value + base - 1) // base * base
@@ -469,7 +403,7 @@ class MoeDistributeBuffer:
         mb_conversion = 1024 * 1024
         ub_align = 32 # 32B
         scale_expand_index_buffer = 44 # scale 32B + 3 * 4 expand_idx
-        topk_weights_buffer = ub_align if has_topk_weights else 0
+        topk_weights_buffer = ub_align
         full_mesh_data_align = 480
         win_addr_align = 512
 

@@ -1451,6 +1451,7 @@ static ge::graphStatus CheckAndCalWinSize(const gert::TilingContext *context, Mo
     winSizeData.isSetFullMeshV2 = false;
     winSizeData.isLayered = isLayered;
     winSizeData.isMc2Context = config.isMc2Context;
+    winSizeData.hasExpertScales = tilingData.moeDistributeCombineV2Info.hasExpertScales;
     OP_TILING_CHECK(CheckWinSize(context, nodeName, winSizeData) != ge::GRAPH_SUCCESS,
         OP_LOGE(nodeName, "Get WinSize failed."), return ge::GRAPH_FAILED);
     tilingData.moeDistributeCombineV2Info.totalWinSizeEp = winSizeData.totalWinSizeEp;

@@ -36,7 +36,7 @@ struct MoeDistributeDispatchA2Info {
     bool isTokenMask;                    // input active mask 1dims or not
     bool isExpertMask;                   // input active mask 2dims or not
     bool isMc2Context;                      // reserved
-    bool reserved2;                      // reserved
+    bool hasExpertScales;                // has expertScales or not
     bool reserved3;                      // reserved
     uint64_t totalUbSize;                // totalUbSize
     uint32_t expertTokenNumsType;        // expert token nums type, support 0: cumsum mode, 1: count mode
