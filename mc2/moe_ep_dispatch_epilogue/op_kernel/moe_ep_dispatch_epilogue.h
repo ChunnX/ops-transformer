@@ -88,14 +88,14 @@ private:
     LocalTensor<int32_t> ubTopkIds_;
     LocalTensor<int32_t> ubTargetExpertId_;
     LocalTensor<int32_t> ubSubExpertId_;
-    LocalTensor<int32_t> ubReduceWork_;
     LocalTensor<int32_t> ubRecvCnt_;
     LocalTensor<int64_t> ubExpertPfx_;
-    LocalTensor<int32_t> ubHitCountFull_;
     LocalTensor<int64_t> ubHitCountRowI64_;
     LocalTensor<float> ubStageWeights_;
     LocalTensor<int32_t> ubStageMeta_;
     LocalTensor<ScalesType> ubScales_;
+    LocalTensor<int32_t> ubLocalCursor_;
+    LocalTensor<int32_t> ubHitList_;
 
     TBuf<QuePosition::VECIN> ubTokenBuf_;
     TBuf<QuePosition::VECIN> ubHitCountBuf_;
@@ -104,14 +104,14 @@ private:
     TBuf<QuePosition::VECIN> ubTopkIdsBuf_;
     TBuf<QuePosition::VECIN> ubTargetExpertIdBuf_;
     TBuf<QuePosition::VECIN> ubSubExpertIdBuf_;
-    TBuf<QuePosition::VECIN> ubReduceWorkBuf_;
     TBuf<QuePosition::VECIN> ubRecvCntBuf_;
     TBuf<QuePosition::VECIN> ubExpertPfxBuf_;
-    TBuf<QuePosition::VECIN> ubHitCountFullBuf_;
     TBuf<QuePosition::VECIN> ubHitCountRowI64Buf_;
     TBuf<QuePosition::VECIN> ubStageWeightsBuf_;
     TBuf<QuePosition::VECIN> ubStageMetaBuf_;
     TBuf<QuePosition::VECIN> ubScalesBuf_;
+    TBuf<QuePosition::VECIN> ubLocalCursorBuf_;
+    TBuf<QuePosition::VECIN> ubHitListBuf_;
 
     uint32_t expertSum_{0};
     uint32_t maxSlotsPerAiv_{0};
@@ -212,12 +212,10 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
     ubMetaCapElems_ = ubMetaBytes / sizeof(int32_t);
     uint32_t ubRecvCntBytes = Ceil((uint32_t)(epWorldSize_ * sizeof(int32_t)), UB_ALIGN) * UB_ALIGN;
     uint32_t ubExpertPfxBytes = Ceil((uint32_t)(numLocalExperts_ * sizeof(int64_t)), UB_ALIGN) * UB_ALIGN;
-    uint32_t ubHitCountFullBytes = Ceil((uint32_t)(aivNum_ * hitCountStride_ * sizeof(int32_t)), UB_ALIGN) * UB_ALIGN;
     uint32_t ubHitCountRowI64Bytes = Ceil((uint32_t)(numLocalExperts_ * sizeof(int64_t)), UB_ALIGN) * UB_ALIGN;
     maxSlotsPerAiv_ = maxSlotsPerAiv * epWorldSize_;
-    uint32_t ubStageWeightsBytes = Ceil((uint32_t)(maxSlotsPerAiv_ * sizeof(float)), UB_ALIGN) * UB_ALIGN;
-    uint32_t ubStageMetaBytes =
-        Ceil((uint32_t)(maxSlotsPerAiv_ * RECV_META_FIELDS * sizeof(int32_t)), UB_ALIGN) * UB_ALIGN;
+    uint32_t ubStageWeightsBytes = Ceil(sizeof(float), UB_ALIGN) * UB_ALIGN;
+    uint32_t ubStageMetaBytes = Ceil((RECV_META_FIELDS * sizeof(int32_t)), UB_ALIGN) * UB_ALIGN;
     tpipe_->InitBuffer(ubRecvCntBuf_, ubRecvCntBytes);
     tpipe_->InitBuffer(ubExpertPfxBuf_, ubExpertPfxBytes);
     tpipe_->InitBuffer(ubTokenBuf_, ubTokenBytes);
@@ -232,11 +230,14 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
         tpipe_->InitBuffer(ubTopkIdsBuf_, ubTopkIdsBytes);
         tpipe_->InitBuffer(ubTargetExpertIdBuf_, ubTopkIdsBytes);
         tpipe_->InitBuffer(ubSubExpertIdBuf_, ubTopkIdsBytes);
-        tpipe_->InitBuffer(ubReduceWorkBuf_, ubTopkIdsBytes);
-        tpipe_->InitBuffer(ubHitCountFullBuf_, ubHitCountFullBytes);
         tpipe_->InitBuffer(ubHitCountRowI64Buf_, ubHitCountRowI64Bytes);
-        tpipe_->InitBuffer(ubStageWeightsBuf_, ubStageWeightsBytes);
         tpipe_->InitBuffer(ubStageMetaBuf_, ubStageMetaBytes);
+        tpipe_->InitBuffer(ubStageWeightsBuf_, ubStageWeightsBytes);
+
+        uint32_t ubHitListBytes = Ceil((uint32_t)(axisK_ * 2 * sizeof(int32_t)), UB_ALIGN) * UB_ALIGN;
+        tpipe_->InitBuffer(ubHitListBuf_, ubHitListBytes);
+        uint32_t ubLocalCursorBytes = Ceil((uint32_t)(numLocalExperts_ * sizeof(int32_t)), UB_ALIGN) * UB_ALIGN;
+        tpipe_->InitBuffer(ubLocalCursorBuf_, ubLocalCursorBytes);
 
         ubHitCount_  = ubHitCountBuf_.Get<int32_t>();
         ubRowStart_  = ubRowStartBuf_.Get<int64_t>();
@@ -244,12 +245,11 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
         ubTopkIds_   = ubTopkIdsBuf_.Get<int32_t>();
         ubTargetExpertId_ = ubTargetExpertIdBuf_.Get<int32_t>();
         ubSubExpertId_ = ubSubExpertIdBuf_.Get<int32_t>();
-        ubReduceWork_ = ubReduceWorkBuf_.Get<int32_t>();
-
-        ubHitCountFull_ = ubHitCountFullBuf_.Get<int32_t>();
         ubHitCountRowI64_ = ubHitCountRowI64Buf_.Get<int64_t>();
-        ubStageWeights_ = ubStageWeightsBuf_.Get<float>();
         ubStageMeta_    = ubStageMetaBuf_.Get<int32_t>();
+        ubStageWeights_ = ubStageWeightsBuf_.Get<float>();
+        ubHitList_    = ubHitListBuf_.Get<int32_t>();
+        ubLocalCursor_    = ubLocalCursorBuf_.Get<int32_t>();
     }
 
     if constexpr (Std::IsSame<XType, fp8_e5m2_t>::value || Std::IsSame<XType, fp8_e4m3fn_t>::value) {
@@ -369,115 +369,108 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
 template <typename XType, typename ScalesType, uint32_t IsCached, bool HasTopkWeights>
 __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTopkWeights>::CopyFromWindowByExpert()
 {
-    DataCopyExtParams hitCountFullCopyParams{1U,
-        static_cast<uint32_t>(aivNum_ * hitCountStride_ * sizeof(int32_t)), 0U, 0U, 0U};
-    DataCopyPadExtParams<int32_t> hitCountFullPadParams{false, 0U, 0U, 0};
     SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
-    DataCopyPad(ubHitCountFull_, hitCountGm_, hitCountFullCopyParams, hitCountFullPadParams);
-    SyncFunc<AscendC::HardEvent::MTE2_V>();
-    
     Adds(ubRowStart_, ubExpertPfx_, static_cast<int64_t>(0), numLocalExperts_);
+    DataCopyExtParams hitCountOneCopyParams{1U, static_cast<uint32_t>(numLocalExperts_ * sizeof(int32_t)), 0U, 0U, 0U};
+    DataCopyPadExtParams<int32_t> hitCountOnePadParams{false, 0U, 0U, 0};
     for (uint32_t aiv = 0; aiv < aivId_; ++aiv) {
-        Cast(ubHitCountRowI64_, ubHitCountFull_[aiv * hitCountStride_], RoundMode::CAST_NONE, numLocalExperts_);
+        DataCopyPad(ubHitCount_, hitCountGm_[(int64_t)aiv * hitCountStride_], hitCountOneCopyParams,
+                    hitCountOnePadParams);
+        SyncFunc<AscendC::HardEvent::MTE2_V>();
+        Cast(ubHitCountRowI64_, ubHitCount_, RoundMode::CAST_NONE, numLocalExperts_);
         Add(ubRowStart_, ubRowStart_, ubHitCountRowI64_, numLocalExperts_);
+        SyncFunc<AscendC::HardEvent::V_MTE2>();
     }
+    Duplicate(ubLocalCursor_, (int32_t)0, numLocalExperts_);
     SyncFunc<AscendC::HardEvent::V_S>();
 
-    for (uint32_t targetExpert = 0; targetExpert < numLocalExperts_; ++targetExpert) {
-        int64_t expertRowStart = ubRowStart_.GetValue(targetExpert);
-        int32_t localWrittenRow = 0;
-        uint32_t stageIdx = 0;
+    int32_t rankExpertBase = static_cast<int32_t>(epRankId_ * numLocalExperts_);
+    int32_t rankExpertEnd = rankExpertBase + static_cast<int32_t>(numLocalExperts_);
+    DataCopyPadExtParams<int32_t> metaPadParams{false, 0, 0, 0};
 
-        for (uint32_t rankId = 0; rankId < epWorldSize_; ++rankId) {
-            int32_t slotCnt = ubRecvCnt_.GetValue(rankId);
-            if (slotCnt == 0) { continue; }
+    for (uint32_t rankId = 0; rankId < epWorldSize_; ++rankId) {
+        int32_t slotCnt = ubRecvCnt_.GetValue(rankId);
+        if (slotCnt == 0) { continue; }
 
-            uint32_t slotStart, slotEnd, slotCntPerAiv;
-            SplitToCore(static_cast<uint32_t>(slotCnt), aivNum_, slotStart, slotEnd, slotCntPerAiv);
-            if (slotStart >= slotEnd) { continue; }
+        uint32_t slotStart, slotEnd, slotCntPerAiv;
+        SplitToCore(static_cast<uint32_t>(slotCnt), aivNum_, slotStart, slotEnd, slotCntPerAiv);
+        if (slotStart >= slotEnd) { continue; }
 
-            GM_ADDR srcRankBase = localWinAddr_
-                                  + (int64_t)rankId * numMaxTokensPerRank_ * perSlotBytes_;
-            GM_ADDR firstSlotAddrThisAiv = srcRankBase + (int64_t)slotStart * perSlotBytes_;
+        GM_ADDR srcRankBase = localWinAddr_ + (int64_t)rankId * numMaxTokensPerRank_ * perSlotBytes_;
+        GM_ADDR firstSlotAddrThisAiv = srcRankBase + (int64_t)slotStart * perSlotBytes_;
+        GlobalTensor<int32_t> srcMetaGm;
+        srcMetaGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(firstSlotAddrThisAiv + metaOffset_));
+        DataCopyExtParams metaCopyParams{static_cast<uint16_t>(slotCntPerAiv), metaBytes_,
+            perSlotBytes_ - metaBytes_, 0, 0};
+        DataCopyPad(ubMeta_, srcMetaGm, metaCopyParams, metaPadParams);
+        SyncFunc<AscendC::HardEvent::MTE2_S>();
+        DataCopyParams tokenCopyParams{1U, static_cast<uint16_t>(axisH_ * sizeof(XType)), 0U, 0U};
+        DataCopyPadParams tokenPadParams{false, 0, 0, 0};
+        DataCopyExtParams metaOutParams{1U, static_cast<uint32_t>(RECV_META_FIELDS * sizeof(int32_t)), 0U, 0U, 0U};
+        DataCopyExtParams weightOutParams{1U, static_cast<uint32_t>(sizeof(float)), 0U, 0U, 0U};
 
-            GlobalTensor<int32_t> srcMetaGm;
-            srcMetaGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(firstSlotAddrThisAiv + metaOffset_));
-            DataCopyExtParams metaCopyParams{static_cast<uint16_t>(slotCntPerAiv), metaBytes_,
-                perSlotBytes_ - metaBytes_, 0, 0};
-            DataCopyPadExtParams<int32_t> metaPadParams{false, 0, 0, 0};
-            DataCopyPad(ubMeta_, srcMetaGm, metaCopyParams, metaPadParams);
-            SyncFunc<AscendC::HardEvent::MTE2_S>();
+        for (uint32_t localSlot = 0; localSlot < slotCntPerAiv; ++localSlot) {
+            uint32_t metaBase = localSlot * paddedMetaElems_;
+            uint32_t hitCnt = 0;
+            for (uint32_t topkIdx = 0; topkIdx < axisK_; ++topkIdx) {
+                int32_t expertId = ubMeta_.GetValue(metaBase + topkIdx);
+                if (expertId < 0) { continue; }
+                if (expertId < rankExpertBase || expertId >= rankExpertEnd) { continue; }
+                uint32_t localExpertId = static_cast<uint32_t>(expertId - rankExpertBase);
+                int64_t expertRowStart = ubRowStart_.GetValue(localExpertId);
+                int32_t cursor = ubLocalCursor_.GetValue(localExpertId);
+                ubLocalCursor_.SetValue(localExpertId, cursor + 1);
+                uint32_t globalRow = static_cast<uint32_t>(expertRowStart + cursor);
+                ubHitList_.SetValue(hitCnt * 2 + 0, static_cast<int32_t>(globalRow));
+                ubHitList_.SetValue(hitCnt * 2 + 1, static_cast<int32_t>(topkIdx));
+                hitCnt++;
+            }
+            if (hitCnt == 0) { continue; }
 
-            for (uint32_t localSlot = 0; localSlot < slotCntPerAiv; ++localSlot) {
-                uint32_t metaBase = localSlot * paddedMetaElems_;
+            GM_ADDR slotAddr = srcRankBase + (int64_t)(slotStart + localSlot) * perSlotBytes_;
+            GlobalTensor<XType> srcTokenTensor;
+            srcTokenTensor.SetGlobalBuffer(reinterpret_cast<__gm__ XType*>(slotAddr), axisH_);
+            DataCopyPad(ubToken_, srcTokenTensor, tokenCopyParams, tokenPadParams);
+            if constexpr (Std::IsSame<XType, fp8_e5m2_t>::value || Std::IsSame<XType, fp8_e4m3fn_t>::value) {
+                GlobalTensor<ScalesType> srcScalesTensor;
+                srcScalesTensor.SetGlobalBuffer(reinterpret_cast<__gm__ ScalesType*>(slotAddr + scalesOffset_),
+                    scalesElems_);
+                DataCopyParams scalesCopyParams{1U, static_cast<uint16_t>(scalesElems_ * sizeof(ScalesType)), 0U, 0U};
+                DataCopyPadParams scalesPadParams{false, 0, 0, 0};
+                DataCopyPad(ubScales_, srcScalesTensor, scalesCopyParams, scalesPadParams);
+            }
+            SyncFunc<AscendC::HardEvent::MTE2_MTE3>();
 
-                for (uint32_t topkIdx = 0; topkIdx < axisK_; ++topkIdx) {
-                    int32_t expertId = ubMeta_.GetValue(metaBase + topkIdx);
-                    if (expertId < 0) { continue; }
-                    uint32_t dstRank = static_cast<uint32_t>(expertId) / numLocalExperts_;
-                    if (dstRank != epRankId_) { continue; }
-                    uint32_t localExpertId = static_cast<uint32_t>(expertId) % numLocalExperts_;
-                    if (localExpertId != targetExpert) { continue; }
+            for (uint32_t i = 0; i < hitCnt; i++) {
+                uint32_t globalRow = static_cast<uint32_t>(ubHitList_.GetValue(i * 2 + 0));
+                uint32_t topkIdx = static_cast<uint32_t>(ubHitList_.GetValue(i * 2 + 1));
 
-                    uint32_t globalRow = static_cast<uint32_t>(expertRowStart + localWrittenRow);
-                    GM_ADDR slotAddr = srcRankBase + (int64_t)(slotStart + localSlot) * perSlotBytes_;
-                    GlobalTensor<XType> srcTokenTensor;
-                    srcTokenTensor.SetGlobalBuffer(reinterpret_cast<__gm__ XType*>(slotAddr), axisH_);
-                    DataCopyParams tokenCopyParams{1U, static_cast<uint16_t>(axisH_ * sizeof(XType)), 0U, 0U};
-                    DataCopyPadParams tokenPadParams{false, 0, 0, 0};
-                    DataCopyPad(ubToken_, srcTokenTensor, tokenCopyParams, tokenPadParams);
-                    if constexpr (Std::IsSame<XType, fp8_e5m2_t>::value || Std::IsSame<XType, fp8_e4m3fn_t>::value) {
-                        GlobalTensor<ScalesType> srcScalesTensor;
-                        srcScalesTensor.SetGlobalBuffer(reinterpret_cast<__gm__ ScalesType*>(slotAddr + scalesOffset_),
-                            scalesElems_);
-                        DataCopyParams scalesCopyParams{1U,
-                            static_cast<uint16_t>(scalesElems_ * sizeof(ScalesType)), 0U, 0U};
-                        DataCopyPadParams scalesPadParams{false, 0, 0, 0};
-                        DataCopyPad(ubScales_, srcScalesTensor, scalesCopyParams, scalesPadParams);
-                    }
-                    SyncFunc<AscendC::HardEvent::MTE2_MTE3>();
-                    DataCopyPad(recvXGm_[(int64_t)globalRow * axisH_], ubToken_, tokenCopyParams);
-
-                    if constexpr (Std::IsSame<XType, fp8_e5m2_t>::value || Std::IsSame<XType, fp8_e4m3fn_t>::value) {
-                        DataCopyParams scalesCopyParams{1U,
-                            static_cast<uint16_t>(scalesElems_ * sizeof(ScalesType)), 0U, 0U};
-                        DataCopyPad(recvScalesGm_[(int64_t)globalRow * scalesElems_], ubScales_, scalesCopyParams);
-                    }
-
-                    if constexpr (HasTopkWeights) {
-                        float weights = ubMeta_.ReinterpretCast<float>().GetValue(metaBase + axisKAlign_ + topkIdx);
-                        ubStageWeights_.SetValue(stageIdx, weights);
-                    }
-                    if constexpr (!IsCached) {
-                        ubStageMeta_.SetValue(stageIdx * RECV_META_FIELDS + 0,
-                            ubMeta_.GetValue(metaBase + 2 * axisKAlign_));
-                        ubStageMeta_.SetValue(stageIdx * RECV_META_FIELDS + 1,
-                            ubMeta_.GetValue(metaBase + 2 * axisKAlign_ + 1));
-                        ubStageMeta_.SetValue(stageIdx * RECV_META_FIELDS + 2,
-                            static_cast<int32_t>(topkIdx));
-                        ubStageMeta_.SetValue(stageIdx * RECV_META_FIELDS + 3,
-                            static_cast<int32_t>(slotStart + localSlot));
-                    }
-                    stageIdx++;
-                    localWrittenRow++;
-                    SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
+                DataCopyPad(recvXGm_[(int64_t)globalRow * axisH_], ubToken_, tokenCopyParams);
+                if constexpr (Std::IsSame<XType, fp8_e5m2_t>::value || Std::IsSame<XType, fp8_e4m3fn_t>::value) {
+                    DataCopyParams scalesCopyParams{1U, static_cast<uint16_t>(scalesElems_ * sizeof(ScalesType)), 0U,
+                                                    0U};
+                    DataCopyPad(recvScalesGm_[(int64_t)globalRow * scalesElems_], ubScales_, scalesCopyParams);
                 }
-            }
-            SyncFunc<AscendC::HardEvent::S_MTE2>();
-        }
 
-        if (stageIdx > 0) {
-            SyncFunc<AscendC::HardEvent::S_MTE3>();
-            if constexpr (HasTopkWeights) {
-                DataCopyExtParams weightOutParams{1U, static_cast<uint32_t>(stageIdx * sizeof(float)), 0U, 0U, 0U};
-                DataCopyPad(recvTopkWeightsGm_[expertRowStart], ubStageWeights_, weightOutParams);
+                if constexpr (HasTopkWeights) {
+                    float weights = ubMeta_.ReinterpretCast<float>().GetValue(metaBase + axisKAlign_ + topkIdx);
+                    ubStageWeights_.SetValue(0, weights);
+                }
+                ubStageMeta_.SetValue(0, ubMeta_.GetValue(metaBase + 2 * axisKAlign_));
+                ubStageMeta_.SetValue(1, ubMeta_.GetValue(metaBase + 2 * axisKAlign_ + 1));
+                ubStageMeta_.SetValue(2, static_cast<int32_t>(topkIdx));
+                ubStageMeta_.SetValue(3, static_cast<int32_t>(slotStart + localSlot));
+                SyncFunc<AscendC::HardEvent::S_MTE3>();
+
+                if constexpr (HasTopkWeights) {
+                    DataCopyPad(recvTopkWeightsGm_[globalRow], ubStageWeights_, weightOutParams);
+                }
+                DataCopyPad(recvSrcMetadataGm_[globalRow * RECV_META_FIELDS], ubStageMeta_, metaOutParams);
+                SyncFunc<AscendC::HardEvent::MTE3_S>();
             }
-            DataCopyExtParams recvMetaCopyParams{1U,
-                static_cast<uint32_t>(stageIdx * RECV_META_FIELDS * sizeof(int32_t)), 0U, 0U, 0U};
-            uint32_t gmOffset = expertRowStart * RECV_META_FIELDS;
-            DataCopyPad(recvSrcMetadataGm_[gmOffset], ubStageMeta_, recvMetaCopyParams);
-            SyncFunc<AscendC::HardEvent::MTE3_S>();
+            SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
         }
+        SyncFunc<AscendC::HardEvent::S_MTE2>();
     }
 }
 

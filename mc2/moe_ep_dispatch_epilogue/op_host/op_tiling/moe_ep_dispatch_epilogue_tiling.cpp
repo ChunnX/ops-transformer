@@ -498,6 +498,34 @@ static ge::graphStatus MoeEpDispatchEpilogueTilingFunc(gert::TilingContext *cont
     info.aivNum = aivNum;
     info.totalUbSize = ubSize;
 
+    if (!cached) {
+        uint32_t maxSlotsPerAiv = (info.cfg.numMaxTokensPerRank + aivNum - 1U) / aivNum;
+        uint32_t axisKAlign8 = (info.cfg.topK + 7U) / 8U * 8U;
+        uint32_t paddedMetaElems = ((2U * axisKAlign8 + 2U) + 7U) / 8U * 8U;
+        uint32_t paddedTopkElems = axisKAlign8;
+        uint64_t ubMetaBytes = ((static_cast<uint64_t>(maxSlotsPerAiv) * paddedMetaElems * sizeof(int32_t)
+                                + UB_ALIGN - 1UL) / UB_ALIGN) * UB_ALIGN;
+        uint64_t ubTopkIdsBytes = ((static_cast<uint64_t>(maxSlotsPerAiv) * paddedTopkElems * sizeof(int32_t)
+                                   + UB_ALIGN - 1UL) / UB_ALIGN) * UB_ALIGN;
+        uint64_t ubTokenBytes = ((static_cast<uint64_t>(info.cfg.hidden) * MAX_OUT_DTYPE_SIZE + UB_ALIGN - 1UL)
+                                 / UB_ALIGN) * UB_ALIGN;
+        uint64_t ubExpertPfxBytes = ((static_cast<uint64_t>(info.cfg.numLocalExperts) * sizeof(int64_t)
+                                      + UB_ALIGN - 1UL) / UB_ALIGN) * UB_ALIGN;
+        uint64_t ubFixedBytes = ubTokenBytes + ubExpertPfxBytes
+                                + ((static_cast<uint64_t>(info.cfg.epWorldSize) * sizeof(int32_t)
+                                    + UB_ALIGN - 1UL) / UB_ALIGN) * UB_ALIGN
+                                + UB_ALIGN * 4U
+                                + ((static_cast<uint64_t>(info.cfg.numLocalExperts) * sizeof(int64_t)
+                                    + UB_ALIGN - 1UL) / UB_ALIGN) * UB_ALIGN
+                                + ((static_cast<uint64_t>(info.cfg.numLocalExperts) * sizeof(int32_t)
+                                    + UB_ALIGN - 1UL) / UB_ALIGN) * UB_ALIGN * 2U;
+        uint64_t ubNeeded = ubFixedBytes + ubMetaBytes + ubTopkIdsBytes * 3U;
+        OP_TILING_CHECK(ubNeeded > ubSize,
+            OP_LOGE(nodeName, "UB overflow: need %lu (maxSlotsPerAiv=%u, nmt=%u, aivNum=%u), but ubSize=%lu.",
+                ubNeeded, maxSlotsPerAiv, info.cfg.numMaxTokensPerRank, aivNum, ubSize),
+            return ge::GRAPH_FAILED);
+    }
+
     size_t *workSpaces = context->GetWorkspaceSizes(1);
     OP_TILING_CHECK(workSpaces == nullptr, OP_LOGE(nodeName, "workSpaces is nullptr."),
         return ge::GRAPH_FAILED);
