@@ -353,6 +353,10 @@ private:
         GetRankInfo(resources.hcclComm, resources.context.rankId, resources.context.rankSize);
         ValidateRankSize(resources.context.rankSize);
 
+        if (numCpuBytes == 0) {
+            return;
+        }
+
         std::string memBufferTag = contextTag + "_buffer";
         AllocateAndRegisterBuffer(resources.hcclComm, memBufferTag, numCpuBytes, resources, guard);
         GetHcclCommResource(resources.hcclComm, resources, memBufferTag);
@@ -803,9 +807,9 @@ std::function<at::Tensor()> ElasticBuffer::EngramFetch(const at::Tensor &indices
                 "please invoke the callback function returned by the previous engram_fetch first");
 
     int64_t numTokens = indices.size(0);
-    if (numTokens == 0) {
+    if (numTokens == 0 || engramNumCpuBytes_ == 0) {
         auto emptyTensor =
-            at::empty({0, engramHiddenSize_}, at::TensorOptions().dtype(engramDtype_).device(indices.device()));
+            at::empty({numTokens, engramHiddenSize_}, at::TensorOptions().dtype(engramDtype_).device(indices.device()));
         return [=]() { return emptyTensor; };
     }
 
@@ -851,8 +855,9 @@ void ElasticBuffer::EngramBarrier(bool withDeviceSync)
 // Destroy - explicit resource cleanup
 void ElasticBuffer::Destroy()
 {
-    if (destroyed_)
+    if (destroyed_) {
         return;
+    }
 
     if (engramHostBufPtr_ != nullptr) {
         aclError ret = aclrtHostUnregister(engramHostBufPtr_);
@@ -876,9 +881,7 @@ int64_t ElasticBuffer::GetEngramStorageSizeHint(int64_t numEntries, int64_t hidd
     int64_t dtypeSize = at::elementSize(dtype);
     TORCH_CHECK(hiddenSize <= INT64_MAX / dtypeSize, "hiddenSize * dtypeSize overflow");
     int64_t hiddenSizeBytes = hiddenSize * dtypeSize;
-    int64_t numSfPacks = (dtypeSize <= 1) ? CeilDiv(hiddenSize, 32) : 0;
-    TORCH_CHECK(hiddenSizeBytes <= INT64_MAX - numSfPacks * 4, "numBytesPerEntry addition overflow");
-    int64_t numBytesPerEntry = AlignTo(hiddenSizeBytes + numSfPacks * 4, 32);
+    int64_t numBytesPerEntry = AlignTo(hiddenSizeBytes, 32);
     TORCH_CHECK(numBytesPerEntry > 0 && numEntries <= INT64_MAX / numBytesPerEntry,
                 "numBytesPerEntry * numEntries overflow");
     int64_t numCpuBytes = AlignTo(numBytesPerEntry * numEntries, BUFFER_ALIGNMENT);

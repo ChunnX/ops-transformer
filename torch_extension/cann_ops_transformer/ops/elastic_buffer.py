@@ -96,6 +96,7 @@ class ElasticBuffer:
         self,
         group: torch.distributed.ProcessGroup,
         *,
+        num_bytes: int = 0,
         num_cpu_bytes: int = 0,
         num_max_tokens_per_rank: Optional[int] = None,
         hidden: Optional[int] = None,
@@ -106,6 +107,7 @@ class ElasticBuffer:
 
         Arguments:
             group: the distributed process group.
+            num_bytes: the total buffer size in bytes (NPU + CPU, must be 2MB-aligned)
             num_cpu_bytes: the CPU buffer size in bytes (must be 2MB-aligned).
             num_max_tokens_per_rank: maximum MoE dispatch tokens per rank.
             hidden: hidden dimension for MoE dispatch/combine.
@@ -157,31 +159,32 @@ class ElasticBuffer:
 
     @staticmethod
     def get_engram_storage_size_hint(
-        num_entries: int, hidden_size: int, dtype: torch.dtype = torch.bfloat16
+        num_entries: int, hidden: int,
+        dtype: torch.dtype = torch.bfloat16
     ) -> int:
         """
-        Get the minimum CPU buffer size required for Engram storage.
-        The returned value is aligned to 2 MB.
+        Calculate the recommended CPU buffer size for Engram storage.
+        The result is 2 MB-aligned.
 
-        Arguments:
-            num_entries: the number of entries in the Engram storage (must be non-negative).
-            hidden_size: the hidden dimension of each entry (must be 128-aligned and non-negative).
-            dtype: the data type, defaults to `torch.bfloat16`.
+        Args:
+            num_entries: entry count of the Engram table (must be non-negative).
+            hidden: per-entry hidden dimension (must be 128-aligned and positive).
+            dtype: element type for size calculation, defaults to `torch.bfloat16`.
 
         Returns:
-            num_cpu_bytes: the recommended CPU buffer size in bytes (2 MB-aligned).
+            num_cpu_bytes: CPU-side buffer size in bytes for local Engram storage (2 MB-aligned).
         """
         torch._check(
             num_entries >= 0,
             lambda: f"num_entries must be non-negative, got {num_entries}",
         )
         torch._check(
-            hidden_size >= 0,
-            lambda: f"hidden_size must be non-negative, got {hidden_size}",
+            hidden > 0,
+            lambda: f"hidden must be positive, got {hidden}",
         )
         torch._check(
-            hidden_size % 128 == 0,
-            lambda: f"hidden_size must be 128-aligned, got {hidden_size}",
+            hidden % 128 == 0,
+            lambda: f"hidden must be 128-aligned, got {hidden}",
         )
         torch._check(
             dtype in (torch.bfloat16, torch.float16, torch.float32),
@@ -189,8 +192,7 @@ class ElasticBuffer:
         )
         _elastic_buffer_ops = _elastic_buffer_op_builder.load()
         return _elastic_buffer_ops.ElasticBuffer.get_engram_storage_size_hint(
-            num_entries, hidden_size, dtype
-        )
+            num_entries, hidden, dtype)
 
     @staticmethod
     def get_moe_ep_ccl_buffer_size(
@@ -281,6 +283,9 @@ class ElasticBuffer:
             lambda: f"storage dtype must be bfloat16/float16/float32, got: {storage.dtype}",
         )
         torch._check(
+            storage.size(1) > 0,
+            lambda: f"storage second dimension must be positive, got: {storage.size(1)}")
+        torch._check(
             storage.size(1) % 128 == 0,
             lambda: f"storage second dimension must be 128-aligned, got: {storage.size(1)}",
         )
@@ -309,6 +314,18 @@ class ElasticBuffer:
             lambda: f"indices dtype must be int32, got: {indices.dtype}",
         )
         return self._runtime.engram_fetch(indices)
+
+    def engram_barrier(self, with_device_sync: bool = False) -> None:
+        """
+        Cross-rank synchronization barrier.
+
+        Arguments:
+            with_device_sync: whether to call `aclrtSynchronizeDevice` before and after the barrier.
+
+        Returns:
+            None
+        """
+        self._ensure_runtime().engram_barrier(with_device_sync)
 
     def dispatch(
         self,
