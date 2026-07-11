@@ -114,7 +114,7 @@ void printPeermemInfo(const MegaMoeTilingData *tilingData, const char *nodeName)
     uint32_t scaleBytes = mxScaleNum * sizeof(int8_t);
     uint32_t tokenBytes = ops::CeilAlign(dataBytes + scaleBytes, static_cast<uint32_t>(ALIGN_32));
     int64_t quantTokenScaleSize =
-        ops::CeilAlign((int64_t)(tilingData->bs) * tokenBytes * sizeof(int8_t), (int64_t)ALIGN_512);
+        ops::CeilAlign((int64_t)((int64_t)(tilingData->bs) * tokenBytes * sizeof(int8_t)), (int64_t)ALIGN_512);
     OP_LOGD(nodeName, "quantTokenScaleSize: {%ld}\n", quantTokenScaleSize);
     int64_t combineSendSize = sendTotalNum * tilingData->h * 2; //  2 = sizeof(bfloat16_t)
     OP_LOGD(nodeName, "combineSendSize: {%ld}\n", combineSendSize);
@@ -970,7 +970,7 @@ static ge::graphStatus CheckInputParam(const gert::TilingContext *context, MegaM
         auto epWorldSizePtr = attrs->GetAttrPointer<int64_t>((config.attrEpWorldSizeIndex));
         int64_t worldSize = static_cast<int64_t>(*epWorldSizePtr);
         // 当前最大bs根据ub剩余空间反算得来，bsMax = (8*(UB_SIZE-48K))/(topK*(64+worldSize))
-        int64_t maxBs = NUM_8 * (ubSize - USED_BUUFER_SIZE) / (topkIdsDim1 * (NUM_64 + worldSize));
+        int64_t maxBs = NUM_8 * (ubSize - USED_BUFFER_SIZE) / (topkIdsDim1 * (NUM_64 + worldSize));
         OP_TILING_CHECK(xDim0 < MIN_BS || xDim0 > maxBs,
             OP_LOGE_FOR_INVALID_VALUE(nodeName, "BS", std::to_string(xDim0).c_str(),
                 (std::string("should in [") + std::to_string(MIN_BS) + ", " +
