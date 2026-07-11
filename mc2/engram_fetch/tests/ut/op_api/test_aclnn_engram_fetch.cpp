@@ -9,9 +9,21 @@
  */
 
 /*!
-* \file test_aclnn_engram_fetch.cpp
-* \brief engram_fetch 算子 op_api 侧 aclnn 接口 UT
-*/
+ * \file test_aclnn_engram_fetch.cpp
+ * \brief engram_fetch 算子 op_api 侧 aclnn 接口 UT
+ *
+ * 测试 aclnnEngramFetchGetWorkspaceSize 的参数校验:
+ * - 推理场景: 5 个可选输出全 nullptr
+ * - 训练场景: 5 个可选输出非空（save-for-backward）
+ * - nullptr 场景: 必选输入/输出为 nullptr
+ *
+ * aclnnEngramFetch 接口签名（需求 v4.0）:
+ *   input:  commContext, indices
+ *   output: fetched, permOut(可选), sendCountsOut(可选), recvCountsOut(可选),
+ *           recvLocalEntryOut(可选), numRecvOut(可选)
+ *   attr:   hiddenSize, numEntriesPerRank
+ *   推理: 可选输出全 nullptr; 训练: 可选输出非空
+ */
 
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
@@ -22,9 +34,15 @@
 
 extern "C" {
 aclnnStatus aclnnEngramFetchGetWorkspaceSize(const aclTensor *commContext, const aclTensor *indices,
-                                             int32_t hiddenSize, int64_t numEntriesPerRank, aclTensor *fetched, 
+                                             int32_t hiddenSize, int64_t numEntriesPerRank,
+                                             aclTensor *fetched,
+                                             aclTensor *permOut,
+                                             aclTensor *sendCountsOut,
+                                             aclTensor *recvCountsOut,
+                                             aclTensor *recvLocalEntryOut,
+                                             aclTensor *numRecvOut,
                                              uint64_t *workspaceSize, aclOpExecutor **executor);
-                                             
+
 aclnnStatus aclnnEngramFetch(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream);
 }
 
@@ -44,8 +62,9 @@ protected:
     }
 };
 
-TEST_F(AclnnEngramFetchTest, ascend950_success) {
-    auto commContext_desc = TensorDesc({2048}, ACL_INT32, ACL_FORMAT_ND).ValueRange(0, 1);
+// 推理场景: 5 个可选输出全 nullptr
+TEST_F(AclnnEngramFetchTest, ascend950_infer_success) {
+    auto commContext_desc = TensorDesc({6146}, ACL_INT32, ACL_FORMAT_ND).ValueRange(0, 1);
     auto indices_desc = TensorDesc({8}, ACL_INT32, ACL_FORMAT_ND).ValueRange(0, 7);
     auto fetched_desc = TensorDesc({8, 512}, ACL_BF16, ACL_FORMAT_ND);
 
@@ -54,7 +73,32 @@ TEST_F(AclnnEngramFetchTest, ascend950_success) {
 
     auto ut = OP_API_UT(aclnnEngramFetch,
                         INPUT(commContext_desc, indices_desc, hiddenSize, numEntriesPerRank),
-                        OUTPUT(fetched_desc));
+                        OUTPUT(fetched_desc, nullptr, nullptr, nullptr, nullptr, nullptr));
+
+    uint64_t workspace_size = 0;
+    aclOpExecutor* executor = nullptr;
+    aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor);
+    EXPECT_EQ(aclRet, ACLNN_SUCCESS);
+}
+
+// 训练场景: 5 个可选输出非空（save-for-backward）
+TEST_F(AclnnEngramFetchTest, ascend950_with_grad_success) {
+    auto commContext_desc = TensorDesc({6146}, ACL_INT32, ACL_FORMAT_ND).ValueRange(0, 1);
+    auto indices_desc = TensorDesc({8}, ACL_INT32, ACL_FORMAT_ND).ValueRange(0, 7);
+    auto fetched_desc = TensorDesc({8, 512}, ACL_BF16, ACL_FORMAT_ND);
+    auto permOut_desc = TensorDesc({8}, ACL_INT32, ACL_FORMAT_ND);
+    auto sendCountsOut_desc = TensorDesc({2}, ACL_INT32, ACL_FORMAT_ND);
+    auto recvCountsOut_desc = TensorDesc({2}, ACL_INT32, ACL_FORMAT_ND);
+    auto recvLocalEntryOut_desc = TensorDesc({16}, ACL_INT32, ACL_FORMAT_ND);
+    auto numRecvOut_desc = TensorDesc({1}, ACL_INT32, ACL_FORMAT_ND);
+
+    int32_t hiddenSize = 512;
+    int64_t numEntriesPerRank = 4;
+
+    auto ut = OP_API_UT(aclnnEngramFetch,
+                        INPUT(commContext_desc, indices_desc, hiddenSize, numEntriesPerRank),
+                        OUTPUT(fetched_desc, permOut_desc, sendCountsOut_desc,
+                               recvCountsOut_desc, recvLocalEntryOut_desc, numRecvOut_desc));
 
     uint64_t workspace_size = 0;
     aclOpExecutor* executor = nullptr;
@@ -71,7 +115,7 @@ TEST_F(AclnnEngramFetchTest, ascend950_nullptr_commContext) {
 
     auto ut = OP_API_UT(aclnnEngramFetch,
                         INPUT(nullptr, indices_desc, hiddenSize, numEntriesPerRank),
-                        OUTPUT(fetched_desc));
+                        OUTPUT(fetched_desc, nullptr, nullptr, nullptr, nullptr, nullptr));
 
     uint64_t workspace_size = 0;
     aclOpExecutor* executor = nullptr;
@@ -80,7 +124,7 @@ TEST_F(AclnnEngramFetchTest, ascend950_nullptr_commContext) {
 }
 
 TEST_F(AclnnEngramFetchTest, ascend950_nullptr_indices) {
-    auto commContext_desc = TensorDesc({2048}, ACL_INT32, ACL_FORMAT_ND).ValueRange(0, 1);
+    auto commContext_desc = TensorDesc({6146}, ACL_INT32, ACL_FORMAT_ND).ValueRange(0, 1);
     auto fetched_desc = TensorDesc({8, 512}, ACL_BF16, ACL_FORMAT_ND);
 
     int32_t hiddenSize = 512;
@@ -88,7 +132,7 @@ TEST_F(AclnnEngramFetchTest, ascend950_nullptr_indices) {
 
     auto ut = OP_API_UT(aclnnEngramFetch,
                         INPUT(commContext_desc, nullptr, hiddenSize, numEntriesPerRank),
-                        OUTPUT(fetched_desc));
+                        OUTPUT(fetched_desc, nullptr, nullptr, nullptr, nullptr, nullptr));
 
     uint64_t workspace_size = 0;
     aclOpExecutor* executor = nullptr;
@@ -97,7 +141,7 @@ TEST_F(AclnnEngramFetchTest, ascend950_nullptr_indices) {
 }
 
 TEST_F(AclnnEngramFetchTest, ascend950_nullptr_fetched) {
-    auto commContext_desc = TensorDesc({2048}, ACL_INT32, ACL_FORMAT_ND).ValueRange(0, 1);
+    auto commContext_desc = TensorDesc({6146}, ACL_INT32, ACL_FORMAT_ND).ValueRange(0, 1);
     auto indices_desc = TensorDesc({8}, ACL_INT32, ACL_FORMAT_ND).ValueRange(0, 7);
 
     int32_t hiddenSize = 512;
@@ -105,7 +149,7 @@ TEST_F(AclnnEngramFetchTest, ascend950_nullptr_fetched) {
 
     auto ut = OP_API_UT(aclnnEngramFetch,
                         INPUT(commContext_desc, indices_desc, hiddenSize, numEntriesPerRank),
-                        OUTPUT(nullptr));
+                        OUTPUT(nullptr, nullptr, nullptr, nullptr, nullptr, nullptr));
 
     uint64_t workspace_size = 0;
     aclOpExecutor* executor = nullptr;

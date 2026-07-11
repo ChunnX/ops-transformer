@@ -45,13 +45,19 @@ extern "C" {
 aclnnStatus aclnnEngramFetchGetWorkspaceSize(const aclTensor *commContext, const aclTensor *indices,
                                              int32_t hiddenSize, int64_t numEntriesPerRank,
                                              aclTensor *fetched,
+                                             aclTensor *permOut,
+                                             aclTensor *sendCountsOut,
+                                             aclTensor *recvCountsOut,
+                                             aclTensor *recvLocalEntryOut,
+                                             aclTensor *numRecvOut,
                                              uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     auto retParam = CheckParams(commContext, indices, fetched);
     CHECK_RET(retParam == ACLNN_SUCCESS, retParam);
     aclnnStatus ret = aclnnInnerEngramFetchGetWorkspaceSize(
-        commContext, indices, hiddenSize, numEntriesPerRank,
-        fetched, workspaceSize, executor);
+        commContext, indices, hiddenSize, numEntriesPerRank, fetched,
+        permOut, sendCountsOut, recvCountsOut, recvLocalEntryOut, numRecvOut,
+        workspaceSize, executor);
     return ret;
 }
 

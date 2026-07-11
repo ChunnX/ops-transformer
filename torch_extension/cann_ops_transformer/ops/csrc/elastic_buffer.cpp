@@ -93,11 +93,14 @@ static inline int64_t AlignTo(int64_t x, int64_t y)
 }
 
 // CommContext structure for HCCL communication
+// 推理/训练共用：virtualAddrList + hcommHandle 由 EngramContextBuilder 一次性填充
+// 训练专用：gmAddrList 由 AllocateAndExchangeGm 每次 fetch 动态填充
 struct CommContext {
     uint32_t epRankId = 0;
     uint32_t rankSize = 0;
-    uint64_t virtualAddrList[HCCL_MAX_RANK_SIZE] = {};
-    uint64_t hcommHandle[HCCL_MAX_RANK_SIZE] = {};
+    uint64_t virtualAddrList[HCCL_MAX_RANK_SIZE] = {};   // → kernel commBuffer: 各 rank host pinned 设备映射地址
+    uint64_t hcommHandle[HCCL_MAX_RANK_SIZE] = {};       // → kernel hcommHandle_: 各 rank UBC channel 句柄
+    uint64_t gmAddrList[HCCL_MAX_RANK_SIZE] = {};        // → kernel gmCommBuffer: 各 rank GM 缓冲区地址（per-fetch 动态）
 };
 
 struct EngramContextResources {
@@ -123,9 +126,12 @@ static at::Tensor CreateCommContextTensor(const CommContext &context)
     return tensor;
 }
 
+// EngramContextBuilder: 构建 Engram 通信上下文（PR 8541 重构，从 ElasticBuffer 内联方法提取为独立类）
+// 职责：HCCL handle 获取 → host pinned 内存分配注册 → UBC channel 建立 → 远端地址交换 → context tensor 创建
+// withGrad 参数决定 channel memHandle 槽位数（训练=2, 推理=1）
 class EngramContextBuilder {
 public:
-    EngramContextResources Build(const std::string &groupName, int64_t numCpuBytes)
+    EngramContextResources Build(const std::string &groupName, int64_t numCpuBytes, bool withGrad = false)
     {
         EngramContextResources resources;
         AcquireHcclHandle(groupName, resources.hcclComm);
@@ -135,7 +141,7 @@ public:
                     contextTag.size());
 
         HostBufferGuard guard;
-        CreateContext(resources, contextTag, numCpuBytes, guard);
+        CreateContext(resources, contextTag, numCpuBytes, withGrad, guard);
         resources.contextTensor = CreateCommContextTensor(resources.context);
         guard.Release();
         return resources;
@@ -178,6 +184,7 @@ private:
     }
 
     static void BuildChannelDescs(const HcclComm &commHandle, uint32_t srcRankId, uint32_t rankDim,
+                                  bool withGrad,
                                   HcclMemHandle &memHandle, std::vector<HcclChannelDesc> &channelDesc)
     {
         channelDesc.clear();
@@ -203,7 +210,8 @@ private:
                     if (p != COMM_PROTOCOL_UBC_CTP_VALUE && p != COMM_PROTOCOL_UBC_TP_VALUE)
                         continue;
                     HcclChannelDesc desc;
-                    HcclResult initRet = HcclChannelDescInit(&desc, 1);
+                    // 训练态预留 2 槽位（host pinned + GM），推理态 1 槽位（host pinned only）
+                    HcclResult initRet = HcclChannelDescInit(&desc, withGrad ? 2 : 1);
                     TORCH_CHECK(initRet == HCCL_SUCCESS, "HcclChannelDescInit failed, ret=", initRet);
                     desc.remoteRank = peer;
                     desc.channelProtocol = linkList[i].linkAttr.linkProtocol;
@@ -225,11 +233,12 @@ private:
     }
 
     static void GetHcclCommChannel(const HcclComm &commHandle, uint32_t rankDim, uint32_t srcRankId,
+                                   bool withGrad,
                                    HcclMemHandle &memHandle, ChannelHandle *channels)
     {
         std::vector<HcclChannelDesc> descs;
         ChannelHandle channelBuf[HCCL_MAX_RANK_SIZE] = {};
-        BuildChannelDescs(commHandle, srcRankId, rankDim, memHandle, descs);
+        BuildChannelDescs(commHandle, srcRankId, rankDim, withGrad, memHandle, descs);
         auto hcclRet = HcclChannelAcquireFunc(commHandle, CommEngine::COMM_ENGINE_AIV, descs.data(),
                                               static_cast<uint32_t>(descs.size()), channelBuf);
         TORCH_CHECK(hcclRet == HCCL_SUCCESS,
@@ -240,11 +249,12 @@ private:
     }
 
     static void GetHcclCommResource(const HcclComm &commHandle, EngramContextResources &resources,
-                                    const std::string &targetTag)
+                                    bool withGrad, const std::string &targetTag)
     {
         uint32_t rankId = resources.context.epRankId;
         ChannelHandle handlesByRank[HCCL_MAX_RANK_SIZE] = {};
-        GetHcclCommChannel(commHandle, resources.context.rankSize, rankId, resources.memHandle, handlesByRank);
+        GetHcclCommChannel(commHandle, resources.context.rankSize, rankId, withGrad,
+                           resources.memHandle, handlesByRank);
 
         for (uint32_t peer = 0; peer < resources.context.rankSize; ++peer) {
             if (peer == rankId)
@@ -284,7 +294,7 @@ private:
     }
 
     static void CreateContext(EngramContextResources &resources, const std::string &contextTag, int64_t numCpuBytes,
-                              HostBufferGuard &guard)
+                              bool withGrad, HostBufferGuard &guard)
     {
         uint64_t contextSize = sizeof(CommContext);
         void *ctx = nullptr;
@@ -305,7 +315,7 @@ private:
 
         std::string memBufferTag = contextTag + "_buffer";
         AllocateAndRegisterBuffer(resources.hcclComm, memBufferTag, numCpuBytes, resources, guard);
-        GetHcclCommResource(resources.hcclComm, resources, memBufferTag);
+        GetHcclCommResource(resources.hcclComm, resources, withGrad, memBufferTag);
 
         hcclRet = HcclEngineCtxCopyFunc(resources.hcclComm, CommEngine::COMM_ENGINE_AIV, contextTag.c_str(),
                                         &resources.context, contextSize, 0);
@@ -314,13 +324,31 @@ private:
 };
 
 // ElasticBuffer class - unified interface for Engram storage and MoE EP kernels
+// 推理(with_grad=false): RDMA read (one-sided GET), 异步 fetch + wait callable
+// 训练(with_grad=true): all-to-all (桶排序→a2a→gather→a2a→还原), save-for-backward 输出 + EngramFetchBackward
 class ElasticBuffer {
 public:
-    ElasticBuffer(const std::string &groupName, int64_t numCpuBytes);
+    ElasticBuffer(const std::string &groupName, int64_t numCpuBytes, bool withGrad = false);
     ~ElasticBuffer();
 
-    void EngramWrite(const at::Tensor &storage);
-    std::function<at::Tensor()> EngramFetch(const at::Tensor &indices);
+    // EngramFetch: 推理/训练共用前向接口
+    // 推理(with_grad=false): RDMA read, 可选输出全 nullptr, 返回 callable 内调 wait
+    // 训练(with_grad=true): all-to-all, 5 个可选输出非空(save-for-backward), 接口内调 wait + GM 申请/释放
+    std::function<at::Tensor()> EngramFetch(
+        const at::Tensor &indices,
+        at::Tensor *permOut = nullptr,
+        at::Tensor *sendCountsOut = nullptr,
+        at::Tensor *recvCountsOut = nullptr,
+        at::Tensor *recvLocalEntryOut = nullptr,
+        at::Tensor *numRecvOut = nullptr);
+    // EngramFetchBackward: 训练反向（新算子 EngramFetchBackward 的 C++ 封装）
+    // 输入: gradFetched + 前向 save-for-backward (perm/sendCounts/recvCounts/recvLocalEntry)
+    // 输出: (gradUnique fp32, uniqueLocalEntry int32) — 本 rank owned 分片稀疏梯度
+    // 内部: AllocateAndExchangeGm → aclnnEngramFetchBackward → FreeGm → narrow 截取
+    std::tuple<at::Tensor, at::Tensor> EngramFetchBackward(
+        const at::Tensor &gradFetched,
+        const at::Tensor &perm, const at::Tensor &sendCounts,
+        const at::Tensor &recvCounts, const at::Tensor &recvLocalEntry);
     void EngramBarrier(bool withDeviceSync = false);
     void Destroy();
 
@@ -361,12 +389,21 @@ private:
     void EnsureEngramContext();
     void EnsureMoeContext();
 
+    // GM 动态管理（per-fetch 生命周期，不放入 EngramContextBuilder）
+    void AllocateAndExchangeGm(int64_t gmBytes);  // 大页申请 GM → HCCL 注册 → 地址交换 → 更新 context
+    void FreeGm();                                 // barrier → 释放 GM → 清空 gmAddrList
+    void UpdateContextTensor();                    // 把最新 commContext_ 刷到 contextTensor_
+
     std::string groupName_;
     int64_t numCpuBytes_;
+    bool withGrad_ = false;
 
     void *hostBufPtr_ = nullptr;
     void *deviceBufPtr_ = nullptr;
     HcclMemHandle memHandle_ = nullptr;
+    void *gmBufPtr_ = nullptr;
+    HcclMemHandle gmMemHandle_ = nullptr;
+    std::string gmBufferTag_;
     HcclComm hcclComm_ = nullptr;
     CommContext commContext_;
     at::Tensor contextTensor_; // Cached Engram context tensor
@@ -386,8 +423,9 @@ private:
 };
 
 // Constructor
-ElasticBuffer::ElasticBuffer(const std::string &groupName, int64_t numCpuBytes)
-    : groupName_(groupName), numCpuBytes_(numCpuBytes), destroyed_(false), writeCalled_(false)
+ElasticBuffer::ElasticBuffer(const std::string &groupName, int64_t numCpuBytes, bool withGrad)
+    : groupName_(groupName), numCpuBytes_(numCpuBytes), withGrad_(withGrad),
+      destroyed_(false), writeCalled_(false)
 {
     InitHcclEngineCtxFunctions();
     InitHcclFunctions();
@@ -411,7 +449,7 @@ void ElasticBuffer::EnsureEngramContext()
     }
     TORCH_CHECK(numCpuBytes_ > 0, "num_cpu_bytes must be greater than 0 to use Engram operations");
     EngramContextBuilder builder;
-    EngramContextResources resources = builder.Build(groupName_, numCpuBytes_);
+    EngramContextResources resources = builder.Build(groupName_, numCpuBytes_, withGrad_);
     hcclComm_ = resources.hcclComm;
     memHandle_ = resources.memHandle;
     hostBufPtr_ = resources.hostBufPtr;
@@ -479,9 +517,16 @@ void ElasticBuffer::EngramWrite(const at::Tensor &storage)
     writeCalled_ = true;
 }
 
-// EngramFetch - fetch data using stored metadata
-std::function<at::Tensor()> ElasticBuffer::EngramFetch(const at::Tensor &indices)
+// EngramFetch - fetch data using stored metadata (inference/training shared)
+// 推理: ACLNN_CMD(aclnnEngramFetch, nullptr×5) → return callable { aclnnEngramFetchWait }
+// 训练: AllocateAndExchangeGm → ACLNN_CMD(aclnnEngramFetch, 5 outputs) → aclnnEngramFetchWait → FreeGm → return [fetched]()
+std::function<at::Tensor()> ElasticBuffer::EngramFetch(
+    const at::Tensor &indices,
+    at::Tensor *permOut, at::Tensor *sendCountsOut,
+    at::Tensor *recvCountsOut, at::Tensor *recvLocalEntryOut,
+    at::Tensor *numRecvOut)
 {
+    EnsureEngramContext();
     TORCH_CHECK(!destroyed_, "engram_fetch cannot be called after destroy, please create a new ElasticBuffer instance");
     TORCH_CHECK(writeCalled_, "engram_fetch must be called after at least one engram_write");
     TORCH_CHECK(!fetchInProgress_.load(),
@@ -500,7 +545,48 @@ std::function<at::Tensor()> ElasticBuffer::EngramFetch(const at::Tensor &indices
     auto fetched =
         at::empty({numTokens, hiddenSize_}, at::TensorOptions().dtype(engramDtype_).device(indices.device()));
 
-    ACLNN_CMD(aclnnEngramFetch, contextTensor_, indices, hiddenSize_, numEngramEntries_, fetched);
+    if (withGrad_) {
+        // ===== 训练态: all-to-all 路径 =====
+        uint32_t rankSize = commContext_.rankSize;
+        int64_t dtypeSize = static_cast<int64_t>(at::elementSize(engramDtype_));
+        int64_t hiddenBytes = hiddenSize_ * dtypeSize;
+        int64_t maxR = numTokens * static_cast<int64_t>(rankSize);  // a2a 接收上界
+
+        // 分配 5 个 save-for-backward tensor
+        at::Tensor perm = at::empty({numTokens}, indices.options());          // (T,) 桶排列序索引
+        at::Tensor sendCounts = at::empty({static_cast<int64_t>(rankSize)}, indices.options());  // (W,)
+        at::Tensor recvCounts = at::empty({static_cast<int64_t>(rankSize)}, indices.options());  // (W,)
+        at::Tensor recvLocalEntry = at::empty({maxR}, indices.options());     // (R_max,)
+        at::Tensor numRecv = at::empty({1}, indices.options());               // (1,)
+
+        // 申请 GM（a2a 收发缓冲区）+ 交换地址 + 更新 contextTensor_
+        int64_t gmBytes = AlignTo(maxR * hiddenBytes, BUFFER_ALIGNMENT);
+        AllocateAndExchangeGm(gmBytes);
+
+        // issue kernel: ① 桶排序 ② a2a(indices) ③ gather ④ a2a(embedding)
+        ACLNN_CMD(aclnnEngramFetch, contextTensor_, indices,
+                  hiddenSize_, numEngramEntries_, fetched,
+                  perm, sendCounts, recvCounts, recvLocalEntry, numRecv);
+
+        // wait kernel: ⑤ fetched[perm] = gathered（还原）
+        ACLNN_CMD(aclnnEngramFetchWait, contextTensor_, fetched);
+
+        // 释放 GM（barrier + aclrtFree）
+        FreeGm();
+
+        if (permOut) *permOut = perm;
+        if (sendCountsOut) *sendCountsOut = sendCounts;
+        if (recvCountsOut) *recvCountsOut = recvCounts;
+        if (recvLocalEntryOut) *recvLocalEntryOut = recvLocalEntry;
+        if (numRecvOut) *numRecvOut = numRecv;
+
+        fetchInProgress_.store(false);
+        return [fetched]() { return fetched; };
+    }
+
+    ACLNN_CMD(aclnnEngramFetch, contextTensor_, indices,
+              hiddenSize_, numEngramEntries_, fetched,
+              nullptr, nullptr, nullptr, nullptr, nullptr);
 
     auto capturedContext = contextTensor_;
     auto fetchFlag = &fetchInProgress_;
@@ -509,6 +595,147 @@ std::function<at::Tensor()> ElasticBuffer::EngramFetch(const at::Tensor &indices
         fetchFlag->store(false);
         return fetched;
     };
+}
+
+// EngramFetchBackward - training backward: produce gradUnique (fp32), uniqueLocalEntry (sparse index)
+// kernel 内部 3 步: ① grad_sorted = gradFetched[perm] ② a2a(grad_sorted) → recvGrad ③ unique + fp32 scatter-add
+// GM 用于 a2a 通信（fp32 规模），per-fetch 动态申请/释放
+std::tuple<at::Tensor, at::Tensor> ElasticBuffer::EngramFetchBackward(
+    const at::Tensor &gradFetched,
+    const at::Tensor &perm, const at::Tensor &sendCounts,
+    const at::Tensor &recvCounts, const at::Tensor &recvLocalEntry)
+{
+    EnsureEngramContext();
+    TORCH_CHECK(!destroyed_, "engram_fetch_backward cannot be called after destroy");
+    TORCH_CHECK(withGrad_, "engram_fetch_backward requires with_grad=True");
+    TORCH_CHECK(writeCalled_, "engram_fetch_backward must be called after at least one engram_write");
+    TORCH_CHECK(!fetchInProgress_.load(),
+                "Cannot call engram_fetch_backward while previous fetch callback is pending");
+
+    int64_t numTokens = gradFetched.size(0);
+    int64_t hidden = gradFetched.size(1);
+    uint32_t rankSize = commContext_.rankSize;
+    int64_t maxR = numTokens * static_cast<int64_t>(rankSize);
+
+    int64_t hiddenBytesFp32 = hidden * static_cast<int64_t>(sizeof(float));
+    int64_t gmBytes = AlignTo(maxR * hiddenBytesFp32, BUFFER_ALIGNMENT);
+    AllocateAndExchangeGm(gmBytes);
+
+    auto gradUnique = at::empty({maxR, hidden},
+        at::TensorOptions().dtype(at::kFloat).device(gradFetched.device()));
+    auto uniqueLocalEntry = at::empty({maxR},
+        at::TensorOptions().dtype(at::kInt).device(gradFetched.device()));
+    auto numUnique = at::empty({1},
+        at::TensorOptions().dtype(at::kInt).device(gradFetched.device()));
+
+    ACLNN_CMD(aclnnEngramFetchBackward, contextTensor_, gradFetched,
+              perm, sendCounts, recvCounts, recvLocalEntry,
+              hiddenSize_, numEngramEntries_,
+              gradUnique, uniqueLocalEntry, numUnique);
+
+    FreeGm();
+
+    int64_t actualK = static_cast<int64_t>(numUnique.item<int32_t>());
+    if (actualK < maxR) {
+        gradUnique = gradUnique.narrow(0, 0, actualK);
+        uniqueLocalEntry = uniqueLocalEntry.narrow(0, 0, actualK);
+    }
+
+    fetchInProgress_.store(false);
+    return {gradUnique, uniqueLocalEntry};
+}
+
+// AllocateAndExchangeGm - dynamically allocate GM, register to HCCL, exchange addresses
+// 每次 fetch/backward 调用:
+// 1. aclrtMalloc(HUGE_FIRST) 大页申请 GM
+// 2. HcclCommMemReg 注册到 HCCL（tag 带序号避免冲突）
+// 3. EngramBarrier(true) 等所有 rank 注册完
+// 4. HcclChannelGetRemoteMems 交换 GM 地址 → gmAddrList[peer]
+// 5. UpdateContextTensor() 刷 contextTensor_ 的 gmCommBuffer
+// 6. EngramBarrier(true) 等所有 rank context 更新完
+void ElasticBuffer::AllocateAndExchangeGm(int64_t gmBytes)
+{
+    TORCH_CHECK(!destroyed_, "AllocateAndExchangeGm cannot be called after destroy");
+    TORCH_CHECK(gmBytes > 0, "gmBytes must be > 0, got ", gmBytes);
+    TORCH_CHECK(gmBufPtr_ == nullptr, "previous GM not freed, call FreeGm first");
+    TORCH_CHECK(hcclComm_ != nullptr, "HCCL comm not initialized");
+
+    aclError ar = aclrtMalloc(&gmBufPtr_, static_cast<uint64_t>(gmBytes), ACL_MEM_MALLOC_HUGE_FIRST);
+    TORCH_CHECK(ar == ACL_SUCCESS, "aclrtMalloc(HUGE_FIRST, ", gmBytes, " B) failed, ret=", ar);
+
+    static std::atomic<int64_t> gmSeq{0};
+    gmBufferTag_ = groupName_ + "engram_embedding_gm_" + std::to_string(gmSeq.fetch_add(1));
+
+    CommMem mem;
+    mem.type = COMM_MEM_TYPE_DEVICE;
+    mem.addr = gmBufPtr_;
+    mem.size = static_cast<uint64_t>(gmBytes);
+
+    auto hcclRet = HcclCommMemRegFunc(hcclComm_, gmBufferTag_.c_str(), &mem, &gmMemHandle_);
+    TORCH_CHECK(hcclRet == HCCL_SUCCESS, "HcclCommMemReg(GM tag='", gmBufferTag_, "', size=", gmBytes,
+                ") failed, ret=", hcclRet);
+
+    EngramBarrier(true);
+
+    commContext_.gmAddrList[commContext_.epRankId] = reinterpret_cast<uint64_t>(gmBufPtr_);
+
+    for (uint32_t i = 0; i < commContext_.rankSize; ++i) {
+        if (i == commContext_.epRankId)
+            continue;
+        uint32_t memNum = 0;
+        CommMem *remoteMems = nullptr;
+        char **memTags = nullptr;
+        hcclRet = HcclChannelGetRemoteMemsFunc(hcclComm_, commContext_.hcommHandle[i], &memNum, &remoteMems,
+                                                &memTags);
+        TORCH_CHECK(hcclRet == HCCL_SUCCESS, "HcclChannelGetRemoteMems(peer=", i, ") for GM failed, ret=", hcclRet);
+
+        bool found = false;
+        for (uint32_t j = 0; j < memNum; j++) {
+            if (memTags == nullptr || remoteMems == nullptr) {
+                break;
+            }
+            if (memTags[j] != nullptr && gmBufferTag_ == memTags[j]) {
+                commContext_.gmAddrList[i] = reinterpret_cast<uint64_t>(remoteMems[j].addr);
+                found = true;
+                break;
+            }
+        }
+        TORCH_CHECK(found, "GM Mem tag '", gmBufferTag_, "' not found for peer ", i);
+    }
+
+    UpdateContextTensor();
+    EngramBarrier(true);
+}
+
+// FreeGm - wait for kernel completion, free GM
+// 1. EngramBarrier(true) 等 kernel 完成
+// 2. aclrtFree 释放 GM
+// 3. 清空 gmAddrList
+void ElasticBuffer::FreeGm()
+{
+    if (gmBufPtr_ == nullptr) {
+        return;
+    }
+
+    EngramBarrier(true);
+
+    aclError ret = aclrtFree(gmBufPtr_);
+    TORCH_CHECK(ret == ACL_SUCCESS, "aclrtFree(GM) failed, ret: ", ret);
+    gmBufPtr_ = nullptr;
+    gmMemHandle_ = nullptr;
+    gmBufferTag_.clear();
+
+    for (uint32_t i = 0; i < commContext_.rankSize; ++i) {
+        commContext_.gmAddrList[i] = 0;
+    }
+}
+
+// UpdateContextTensor - refresh contextTensor_ with latest commContext_
+void ElasticBuffer::UpdateContextTensor()
+{
+    TORCH_CHECK(!destroyed_, "UpdateContextTensor cannot be called after destroy");
+    at::Tensor hostTensor = at::from_blob(&commContext_, {sizeof(CommContext) / sizeof(int32_t)}, at::kInt);
+    contextTensor_.copy_(hostTensor);
 }
 
 // EngramBarrier - cross-rank synchronization
@@ -539,6 +766,13 @@ void ElasticBuffer::Destroy()
 {
     if (destroyed_)
         return;
+
+    if (gmBufPtr_ != nullptr) {
+        aclError ret = aclrtFree(gmBufPtr_);
+        TORCH_CHECK(ret == ACL_SUCCESS, "aclrtFree(GM) failed, ret: ", ret);
+        gmBufPtr_ = nullptr;
+        gmMemHandle_ = nullptr;
+    }
 
     if (hostBufPtr_ != nullptr) {
         aclError ret = aclrtHostUnregister(hostBufPtr_);
@@ -767,10 +1001,23 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
         .def("host_ptr", &OpApi::HostPinnedCounter::HostPtr);
 
     pybind11::class_<Mc2Api::ElasticBuffer>(m, "ElasticBuffer")
-        .def(pybind11::init<const std::string &, int64_t>(), pybind11::arg("groupName"),
-             pybind11::arg("numCpuBytes"))
+        .def(pybind11::init<const std::string &, int64_t, bool>(),
+             pybind11::arg("groupName"), pybind11::arg("numCpuBytes"),
+             pybind11::arg("withGrad") = false)
         .def("engram_write", &Mc2Api::ElasticBuffer::EngramWrite, pybind11::arg("storage").noconvert())
-        .def("engram_fetch", &Mc2Api::ElasticBuffer::EngramFetch, pybind11::arg("indices").noconvert())
+        .def("engram_fetch", &Mc2Api::ElasticBuffer::EngramFetch,
+             pybind11::arg("indices").noconvert(),
+             pybind11::arg("permOut") = pybind11::none(),
+             pybind11::arg("sendCountsOut") = pybind11::none(),
+             pybind11::arg("recvCountsOut") = pybind11::none(),
+             pybind11::arg("recvLocalEntryOut") = pybind11::none(),
+             pybind11::arg("numRecvOut") = pybind11::none())
+        .def("engram_fetch_backward", &Mc2Api::ElasticBuffer::EngramFetchBackward,
+             pybind11::arg("gradFetched").noconvert(),
+             pybind11::arg("perm").noconvert(),
+             pybind11::arg("sendCounts").noconvert(),
+             pybind11::arg("recvCounts").noconvert(),
+             pybind11::arg("recvLocalEntry").noconvert())
         .def("engram_barrier", &Mc2Api::ElasticBuffer::EngramBarrier, pybind11::arg("withDeviceSync") = false)
         .def("destroy", &Mc2Api::ElasticBuffer::Destroy)
         .def("get_host_buf_ptr", &Mc2Api::ElasticBuffer::GetHostBufPtr)

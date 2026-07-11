@@ -17,6 +17,27 @@ import torch.distributed as dist
 from cann_ops_transformer.op_builder.builder import OpBuilder
 
 
+@dataclass
+class EngramFetchCtx:
+    """训练态前向的 save-for-backward，原样传给 engram_fetch_backward。
+
+    前向 EngramFetch(with_grad=True) 产出以下 5 个 tensor，打包为 EngramFetchCtx 返回给用户。
+    反向 EngramFetchBackward 吃入这些 tensor，不自行重算（会漏 a2a 结果 recvLocalEntry）。
+
+    Attributes:
+        perm: (T,) int32 — 桶排列序索引（原始 pos → 桶排 pos），反向步骤①按此重排 grad
+        sendCounts: (W,) int32 — 每 rank 发送的 index 数，反向 a2a 的 send 量
+        recvCounts: (W,) int32 — 每 rank 接收的 index 数，反向 a2a 的 recv 量
+        recvLocalEntry: (R_max,) int32 — 收到的 local entry，反向步骤③ scatter-add 按此聚合
+        numRecv: (1,) int32 — 实际接收行数 R（前 numRecv 个有效）
+    """
+    perm: torch.Tensor
+    sendCounts: torch.Tensor
+    recvCounts: torch.Tensor
+    recvLocalEntry: torch.Tensor
+    numRecv: torch.Tensor
+
+
 class ElasticBufferOpBuilder(OpBuilder):
     """OpBuilder for ElasticBuffer operations"""
 
@@ -97,6 +118,7 @@ class ElasticBuffer:
         group: torch.distributed.ProcessGroup,
         *,
         num_cpu_bytes: int = 0,
+        with_grad: bool = False,
         num_max_tokens_per_rank: Optional[int] = None,
         hidden: Optional[int] = None,
         num_topk: Optional[int] = None,
@@ -109,6 +131,7 @@ class ElasticBuffer:
         Arguments:
             group: the distributed process group.
             num_cpu_bytes: the CPU buffer size in bytes (must be 2MB-aligned).
+            with_grad: if True, enable training mode (all-to-all + save-for-backward).
             num_max_tokens_per_rank: maximum MoE dispatch tokens per rank.
             hidden: hidden dimension for MoE dispatch/combine.
             num_topk: top-k value for MoE dispatch/combine.
@@ -133,6 +156,7 @@ class ElasticBuffer:
 
         self._group = group
         self._num_cpu_bytes = num_cpu_bytes
+        self._with_grad = with_grad
         self._rank_id = dist.get_rank(self._group)
         self._ep_world_size = dist.get_world_size(self._group)
 
@@ -143,7 +167,8 @@ class ElasticBuffer:
         torch._check(self._group_name is not None and len(self._group_name) > 0,
                      lambda: "HCCL comm name is empty, please check HCCL group initialization.")
         _elastic_buffer_ops = _elastic_buffer_op_builder.load()
-        self._runtime = _elastic_buffer_ops.ElasticBuffer(self._group_name, self._num_cpu_bytes)
+        self._runtime = _elastic_buffer_ops.ElasticBuffer(
+            self._group_name, self._num_cpu_bytes, self._with_grad)
 
         self._num_max_tokens_per_rank = num_max_tokens_per_rank
         self._hidden = hidden
@@ -240,15 +265,22 @@ class ElasticBuffer:
                      lambda: f"storage second dimension must be 128-aligned, got: {storage.size(1)}")
         self._runtime.engram_write(storage)
 
-    def engram_fetch(self, indices: torch.Tensor) -> Callable[[], torch.Tensor]:
+    def engram_fetch(self, indices: torch.Tensor) -> Callable:
         """
-        Fetch Engram data from remote ranks via RDMA.
+        Fetch Engram data from remote ranks. Returns a hook callable.
+
+        推理/训练共用同一方法，由 ElasticBuffer 构造时的 with_grad 决定内部路径：
+        - 推理 (with_grad=False): 内部走 one-sided RDMA GET，hook() → fetched (T,H)
+        - 训练 (with_grad=True): 内部走 all-to-all（桶排序→a2a→gather→a2a→还原），
+          hook() → (fetched, fetch_ctx)，fetch_ctx 为 EngramFetchCtx (save-for-backward)
 
         Arguments:
             indices: the indices of entries to fetch (must be 1D NPU tensor with dtype=int32).
 
         Returns:
-            wait_callable: a callable that returns the fetched tensor when invoked.
+            hook callable:
+                - 推理: hook() → fetched (T,H) bf16
+                - 训练: hook() → (fetched, fetch_ctx) where fetch_ctx is EngramFetchCtx
         """
         torch._check(indices.device.type == torch.device("npu").type,
                      lambda: f"indices must be on NPU, got device: {indices.device}")
@@ -256,7 +288,52 @@ class ElasticBuffer:
                      lambda: f"indices must be 1D, got dimensions: {indices.dim()}")
         torch._check(indices.dtype == torch.int32,
                      lambda: f"indices dtype must be int32, got: {indices.dtype}")
+
+        if self._with_grad:
+            perm = torch.empty(0, dtype=torch.int32, device=indices.device)
+            send_counts = torch.empty(0, dtype=torch.int32, device=indices.device)
+            recv_counts = torch.empty(0, dtype=torch.int32, device=indices.device)
+            recv_local_entry = torch.empty(0, dtype=torch.int32, device=indices.device)
+            num_recv = torch.empty(1, dtype=torch.int32, device=indices.device)
+
+            hook = self._runtime.engram_fetch(
+                indices, perm, send_counts, recv_counts, recv_local_entry, num_recv)
+
+            def train_hook():
+                fetched = hook()
+                fetch_ctx = EngramFetchCtx(perm, send_counts, recv_counts, recv_local_entry, num_recv)
+                return fetched, fetch_ctx
+            return train_hook
+
         return self._runtime.engram_fetch(indices)
+
+    def engram_fetch_backward(self, grad_fetched: torch.Tensor,
+                              fetch_ctx: "EngramFetchCtx"
+                              ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        Backward: launch fused kernel aclnnEngramFetchBackward.
+
+        吃入前向 save-for-backward (fetch_ctx)，单融合 kernel 完成 3 步：
+        ① grad_sorted = gradFetched[perm]
+        ② a2a(grad_sorted; sendCounts↔recvCounts) → recvGrad
+        ③ owner unique + fp32 scatter-add (recvLocalEntry, recvGrad)
+
+        Arguments:
+            grad_fetched: the gradient of forward fetched output (T, H) (NPU, bf16/fp16/fp32).
+            fetch_ctx: EngramFetchCtx from forward output (perm/sendCounts/recvCounts/recvLocalEntry).
+
+        Returns:
+            (grad_unique, unique_local_entry):
+                grad_unique (K, H) fp32 — 累加后的稀疏梯度，喂优化器。
+                unique_local_entry (K,) int32 — 1D sparse index，标识梯度对应哪行 embedding。
+        """
+        torch._check(grad_fetched.device.type == torch.device("npu").type,
+                     lambda: f"grad_fetched must be on NPU, got device: {grad_fetched.device}")
+        torch._check(grad_fetched.dim() == 2,
+                     lambda: f"grad_fetched must be 2D, got dimensions: {grad_fetched.dim()}")
+        return self._runtime.engram_fetch_backward(
+            grad_fetched, fetch_ctx.perm, fetch_ctx.sendCounts,
+            fetch_ctx.recvCounts, fetch_ctx.recvLocalEntry)
 
     def dispatch(
         self,
