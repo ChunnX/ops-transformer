@@ -19,9 +19,11 @@
 
     - 计算token实际长度：
 
-        $$token\_actual\_len = Align32(hidden * max\_out\_dtype\_size) + scale\_expand\_index\_buffer$$
+        $$token\_actual\_len = Align32(hidden * max\_out\_dtype\_size) + scale\_expand\_index\_buffer
+        + topk\_weights\_buffer$$
 
-        其中max_out_dtype_size为token类型转为字节数，scale_expand_index_buffer为scale（32B）+ expand_idx（3 × 4B）
+        其中max_out_dtype_size为token类型转为字节数，scale_expand_index_buffer为scale（32B）+ expand_idx（3 × 4B），
+        topk_weights_buffer在has_topk_weights=True时为32B，否则为0B。
 
     - 根据`comm_alg`计算dispatch阶段每个token所需大小：
 
@@ -48,7 +50,9 @@
 ## 函数原型
 
 ```python
-MoeDistributeBuffer.get_low_latency_ccl_buffer_size(world_size, num_max_dispatch_tokens_per_rank, hidden, num_moe_expert, topk, num_shared_expert=0, num_shared_expert_ranks=0, comm_alg="") -> int
+MoeDistributeBuffer.get_low_latency_ccl_buffer_size(world_size, num_max_dispatch_tokens_per_rank, hidden,
+    num_moe_expert, topk, num_shared_expert=0, num_shared_expert_ranks=0, comm_alg="",
+    has_topk_weights=False) -> int
 ```
 
 ## 参数说明
@@ -136,6 +140,15 @@ MoeDistributeBuffer.get_low_latency_ccl_buffer_size(world_size, num_max_dispatch
         <td>str</td>
         <td>-</td>
     </tr>
+    <tr>
+        <td>has_topk_weights</td>
+        <td>bool</td>
+        <td>可选</td>
+        <td>表示low_latency_dispatch是否传入topk_weights。当topk_weights不为None时，请将该参数设置为True，
+        以预留topk weight的通信窗口空间。</td>
+        <td>bool</td>
+        <td>-</td>
+    </tr>
 </tbody>
 </table>
 
@@ -214,7 +227,7 @@ list[Tensor]长度 / 是否转置 / 是否支持非连续Tensor：
 
   # 2. 静态方法调用，计算dispatch/combine所需的CCL通信buffer大小（单位MB）
   buffer_size = MoeDistributeBuffer.get_low_latency_ccl_buffer_size(world_size, bs, h, num_experts, k,\
-      shared_expert_num, shared_expert_rank_num, comm_alg)
+      shared_expert_num, shared_expert_rank_num, comm_alg, has_topk_weights=False)
 
   # 3. 将计算结果写入HCCL_BUFFSIZE环境变量，供后续low_latency_dispatch/low_latency_combine使用
   os.environ['HCCL_BUFFSIZE'] = f'buffer_size'

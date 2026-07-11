@@ -8,7 +8,7 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 # GE Converter for Graph Mode
-from collections import namedtuple
+from dataclasses import dataclass, replace
 
 try:
     import torch
@@ -36,52 +36,56 @@ except ImportError:
     _TORCHAIR_AVAILABLE = False
 
 if _TORCHAIR_AVAILABLE:
-    DispatchOutputs = namedtuple(
-        "DispatchOutputs",
-        [
-            "expand_x",
-            "dynamic_scales",
-            "expand_idx",
-            "expert_token_nums",
-            "ep_recv_count",
-            "tp_recv_count",
-            "expand_scales",
-        ],
-    )
-    DispatchAttrs = namedtuple(
-        "DispatchAttrs",
-        [
-            "ep_world_size",
-            "ep_rank_id",
-            "moe_expert_num",
-            "ccl_buffer_size",
-            "tp_world_size",
-            "tp_rank_id",
-            "expert_shard_type",
-            "shared_expert_num",
-            "shared_expert_rank_num",
-            "quant_mode",
-            "global_bs",
-            "expert_token_nums_type",
-            "comm_alg",
-            "zero_expert_num",
-            "copy_expert_num",
-            "const_expert_num",
-        ],
-    )
-    DispatchTensors = namedtuple(
-        "DispatchTensors",
-        [
-            "context",
-            "x",
-            "expert_ids",
-            "scales",
-            "x_active_mask",
-            "expert_scales",
-            "elastic_info",
-            "performance_info",
-        ],
-    )
+    @dataclass(frozen=True)
+    class DispatchOutputs:
+        expand_x: object
+        dynamic_scales: object
+        expand_idx: object
+        expert_token_nums: object
+        ep_recv_count: object
+        tp_recv_count: object
+        expand_scales: object
+
+        def as_tuple(self):
+            return (
+                self.expand_x,
+                self.dynamic_scales,
+                self.expand_idx,
+                self.expert_token_nums,
+                self.ep_recv_count,
+                self.tp_recv_count,
+                self.expand_scales,
+            )
+
+    @dataclass(frozen=True)
+    class DispatchAttrs:
+        ep_world_size: int
+        ep_rank_id: int
+        moe_expert_num: int
+        ccl_buffer_size: int
+        tp_world_size: int
+        tp_rank_id: int
+        expert_shard_type: int
+        shared_expert_num: int
+        shared_expert_rank_num: int
+        quant_mode: int
+        global_bs: int
+        expert_token_nums_type: int
+        comm_alg: str
+        zero_expert_num: int
+        copy_expert_num: int
+        const_expert_num: int
+
+    @dataclass(frozen=True)
+    class DispatchTensors:
+        context: object
+        x: object
+        expert_ids: object
+        scales: object
+        x_active_mask: object
+        expert_scales: object
+        elastic_info: object
+        performance_info: object
 
 
     @auto_convert_to_tensor([False, False, False, False, False, False, False, False],
@@ -248,7 +252,7 @@ if _TORCHAIR_AVAILABLE:
 
 
     def _make_dispatch_attrs(attrs: DispatchAttrs):
-        return attrs._asdict()
+        return attrs.__dict__
 
 
     def _call_moe_distribute_dispatch(tensors: DispatchTensors, attrs: DispatchAttrs, expand_x_dtype):
@@ -335,4 +339,4 @@ if _TORCHAIR_AVAILABLE:
             tensors, attrs, expand_x_dtype)
         expand_x = _format_expand_x(outputs.expand_x, expand_x_dtype, y_dtype)
         dynamic_scales = _set_dynamic_scales_dtype(outputs.dynamic_scales, x, scales, quant_mode)
-        return outputs._replace(expand_x=expand_x, dynamic_scales=dynamic_scales)
+        return replace(outputs, expand_x=expand_x, dynamic_scales=dynamic_scales).as_tuple()

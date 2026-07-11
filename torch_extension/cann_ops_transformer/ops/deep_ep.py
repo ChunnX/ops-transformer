@@ -8,7 +8,7 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 import math
-from collections import namedtuple
+from dataclasses import dataclass
 import torch
 import torch_npu
 from torch.library import impl
@@ -49,44 +49,59 @@ TORCH_DTYPE_ENUM_VALUE_TO_SCALAR_TYPE_MAP = {
 }
 
 
-DispatchLocalArgs = namedtuple(
-    "DispatchLocalArgs",
-    [
-        "ep_world_size",
-        "ep_rank_id",
-        "moe_expert_num",
-        "shared_expert_num",
-        "shared_expert_rank_num",
-        "expert_shard_type",
-        "global_bs_real",
-        "topk",
-        "elastic_info",
-        "is_shared_default",
-        "is_no_shared",
-    ],
-)
-DispatchLocalInfo = namedtuple("DispatchLocalInfo", ["local_moe_expert_num", "recv_tokens"])
-DispatchExpandXArgs = namedtuple(
-    "DispatchExpandXArgs",
-    ["x", "recv_tokens", "hidden", "tp_world_size", "out_dtype", "y_dtype", "scales"],
-)
-DispatchDynamicScalesArgs = namedtuple(
-    "DispatchDynamicScalesArgs",
-    ["x", "scales", "x_smooth_scales_dtype", "quant_mode", "recv_tokens", "hidden", "tp_world_size"],
-)
-DispatchRecvCountsArgs = namedtuple(
-    "DispatchRecvCountsArgs",
-    [
-        "x",
-        "ep_world_size",
-        "global_bs_real",
-        "topk",
-        "local_moe_expert_num",
-        "tp_world_size",
-        "expert_scales",
-        "assist_info_for_combine_shape",
-    ],
-)
+@dataclass(frozen=True)
+class DispatchLocalArgs:
+    ep_world_size: int
+    ep_rank_id: int
+    moe_expert_num: int
+    shared_expert_num: int
+    shared_expert_rank_num: int
+    expert_shard_type: int
+    global_bs_real: int
+    topk: int
+    elastic_info: object
+    is_shared_default: bool
+    is_no_shared: bool
+
+
+@dataclass(frozen=True)
+class DispatchLocalInfo:
+    local_moe_expert_num: int
+    recv_tokens: int
+
+
+@dataclass(frozen=True)
+class DispatchExpandXArgs:
+    x: object
+    recv_tokens: int
+    hidden: int
+    tp_world_size: int
+    out_dtype: object
+    y_dtype: object
+    scales: object
+
+
+@dataclass(frozen=True)
+class DispatchDynamicScalesArgs:
+    x: object
+    scales: object
+    x_smooth_scales_dtype: object
+    quant_mode: int
+    recv_tokens: int
+    hidden: int
+    tp_world_size: int
+
+
+@dataclass(frozen=True)
+class DispatchRecvCountsArgs:
+    x: object
+    ep_world_size: int
+    global_bs_real: int
+    topk: int
+    local_moe_expert_num: int
+    tp_world_size: int
+    expert_scales: object
+    assist_info_for_combine_shape: int
 
 
 def _has_tensor(tensor):
@@ -421,6 +436,7 @@ class MoeDistributeBuffer:
     def get_low_latency_ccl_buffer_size(world_size: int, num_max_dispatch_tokens_per_rank: int, hidden: int,
                                         num_moe_expert: int, topk: int, num_shared_expert: int = 0,
                                         num_shared_expert_ranks: int = 0, comm_alg: str = "",
+                                        has_topk_weights: bool = False,
                                         ) -> int:
         def inline_align(value, base):
             return (value + base - 1) // base * base
@@ -453,6 +469,7 @@ class MoeDistributeBuffer:
         mb_conversion = 1024 * 1024
         ub_align = 32 # 32B
         scale_expand_index_buffer = 44 # scale 32B + 3 * 4 expand_idx
+        topk_weights_buffer = ub_align if has_topk_weights else 0
         full_mesh_data_align = 480
         win_addr_align = 512
 
@@ -460,7 +477,11 @@ class MoeDistributeBuffer:
         torch._check(comm_alg in comm_alg_support_list,
                      lambda: (f"comm_alg only support {comm_alg_support_list=}, but got {comm_alg=}."))
 
-        token_actual_len = inline_align(hidden * max_out_dtype_size, ub_align) + scale_expand_index_buffer
+        token_actual_len = (
+            inline_align(hidden * max_out_dtype_size, ub_align)
+            + scale_expand_index_buffer
+            + topk_weights_buffer
+        )
         if (comm_alg == "fullmesh_v2"):
             token_need_size_dispatch = inline_align(token_actual_len, full_mesh_data_align) // full_mesh_data_align * \
                 win_addr_align
