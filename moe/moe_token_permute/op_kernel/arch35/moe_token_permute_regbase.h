@@ -83,7 +83,8 @@ struct MoeInitRoutingV2TilingData {
 namespace MoeTokenPermute {
 using namespace AscendC;
 
-__aicore__ inline void InitRegBaseCompatTiling(MoeInitRoutingV2TilingData &dst, const MoeTokenPermuteTilingData *src)
+__aicore__ inline void InitRegBaseSortTiling(MoeInitRoutingV2TilingData &dst,
+                                             const MoeTokenPermuteTilingData *src)
 {
     dst.coreNum = src->coreNum;
     dst.n = src->n;
@@ -105,9 +106,14 @@ __aicore__ inline void InitRegBaseCompatTiling(MoeInitRoutingV2TilingData &dst, 
     dst.vbsComputeParamsOp.lastCorePerLoopElements = src->vbsComputeParamsOp.lastCorePerLoopElements;
     dst.vbsComputeParamsOp.lastCoreLastLoopElements = src->vbsComputeParamsOp.lastCoreLastLoopElements;
     dst.vbsComputeParamsOp.oneLoopMaxElements = src->vbsComputeParamsOp.oneLoopMaxElements;
+    // The shared Arch35 sort has no lastCoreWSindex field; host tiling keeps all cores at equal merge depth.
     dst.vmsMiddleComputeParamsOp.needCoreNum = src->vmsMiddleComputeParamsOp.needCoreNum;
     dst.sortOutComputeParamsOp.oneLoopMaxElements = src->sortOutComputeParamsOp.oneLoopMaxElements;
+}
 
+__aicore__ inline void InitRegBaseGatherTiling(MoeInitRoutingV2TilingData &dst,
+                                               const MoeTokenPermuteTilingData *src)
+{
     const auto &indexCopy = src->indexCopyComputeParamsOp;
     MoeV2GatherOutComputeTilingData gather{};
     gather.needCoreNum = indexCopy.needCoreNum;
@@ -130,6 +136,13 @@ __aicore__ inline void InitRegBaseCompatTiling(MoeInitRoutingV2TilingData &dst, 
     dst.srcToDstComputeParamsOp = gather;
     dst.srcToDstCapacityComputeParamsOp = gather;
     dst.gatherOutComputeParamsOp = gather;
+}
+
+__aicore__ inline void InitRegBaseCompatTiling(MoeInitRoutingV2TilingData &dst,
+                                               const MoeTokenPermuteTilingData *src)
+{
+    InitRegBaseSortTiling(dst, src);
+    InitRegBaseGatherTiling(dst, src);
 }
 
 template <typename TokenType, typename IndexType>

@@ -173,7 +173,7 @@ protected:
 private:
     ge::graphStatus CheckOutShape();
     void Tiling4IndexCopyCompute();
-    void Tiling4IndexCopyRegBase();
+    void Tiling4GatherRegBase();
     void Tiling4SortOutCompute();
     void Tiling4VMSMiddleCompute();
     void Tiling4VBSCompute();
@@ -422,6 +422,7 @@ void MoeTokenPermuteTilingBase::ShowTilingData()
 ge::graphStatus MoeTokenPermuteTilingBase::DoOpTiling()
 {
     if (regBase) {
+        // Arch35 sort uses four key/value buffers. INT64 indices need one extra INT32 staging buffer per element.
         int64_t sortBufferBytes = sizeof(int32_t) * NUM_TWO * NUM_FOUR;
         if (indicesBtypeSize == static_cast<int64_t>(sizeof(int64_t))) {
             sortBufferBytes += sizeof(int32_t);
@@ -439,7 +440,7 @@ ge::graphStatus MoeTokenPermuteTilingBase::DoOpTiling()
     Tiling4VMSMiddleCompute();
     Tiling4SortOutCompute();
     if (regBase) {
-        Tiling4IndexCopyRegBase();
+        Tiling4GatherRegBase();
     } else {
         Tiling4IndexCopyCompute();
     }
@@ -516,6 +517,32 @@ void MoeTokenPermuteTilingBase::Tinlig4VBSMultiCoreCompute(PermuteVBSComputeTili
     }
 
     tilingData->set_needCoreNum(needCoreNum);
+    if (regBase) {
+        // The shared Arch35 merge reads every core's local result from the same workspace generation.
+        // Keep the tail core's local merge depth equal to the other cores so their ping-pong parity matches.
+        do {
+            tilingData->set_perCoreElements(perCoreElements);
+            tilingData->set_perCoreLoops(GetCeilInt(perCoreElements, sortLoopMaxElement));
+            tilingData->set_perCorePerLoopElements(std::min(perCoreElements, sortLoopMaxElement));
+            tilingData->set_perCoreLastLoopElements(
+                perCoreElements -
+                (tilingData->get_perCoreLoops() - 1) * tilingData->get_perCorePerLoopElements());
+
+            int64_t lastCoreElements = totalLength - (needCoreNum - 1) * perCoreElements;
+            tilingData->set_lastCoreElements(lastCoreElements);
+            tilingData->set_lastCoreLoops(tilingData->get_perCoreLoops());
+            int64_t lastCorePerLoopElements = UpAlign(
+                GetCeilInt(lastCoreElements, tilingData->get_lastCoreLoops()), SORT32_ALIGN_ELEMENT);
+            tilingData->set_lastCorePerLoopElements(lastCorePerLoopElements);
+            tilingData->set_lastCoreLastLoopElements(
+                lastCoreElements -
+                (tilingData->get_lastCoreLoops() - 1) * lastCorePerLoopElements);
+            perCoreElements -= SORT32_ALIGN_ELEMENT;
+        } while (tilingData->get_lastCoreLastLoopElements() <= 0 && perCoreElements > 0);
+        tilingData->set_lastCoreWSindex(0);
+        return;
+    }
+
     tilingData->set_perCoreElements(perCoreElements);
     tilingData->set_perCoreLoops(
         GetCeilInt(tilingData->get_perCoreElements(), sortLoopMaxElement)); // 每个核处理的loop数
@@ -571,7 +598,7 @@ void MoeTokenPermuteTilingBase::Tiling4SortOutCompute()
     tilingData->set_oneLoopMaxElements(mrgSortListMaxElement);
 }
 
-void MoeTokenPermuteTilingBase::Tiling4IndexCopyRegBase()
+void MoeTokenPermuteTilingBase::Tiling4GatherRegBase()
 {
     auto tilingData = &moeTokenPermuteTilingData.indexCopyComputeParamsOp;
     if (numOutTokens != totalLength) {
@@ -637,7 +664,7 @@ void MoeTokenPermuteTilingBase::Tiling4IndexCopyRegBase()
         }
     }
 
-    // Reuse the legacy index-copy payload as the Arch35 gather tiling payload.
+    // Keep the existing tiling ABI: Arch35 serializes its gather parameters into the legacy index-copy payload.
     tilingData->set_needCoreNum(needCoreNum);
     tilingData->set_coreCalcNum(perCoreRows);
     tilingData->set_coreCalcTail(lastCoreRows);

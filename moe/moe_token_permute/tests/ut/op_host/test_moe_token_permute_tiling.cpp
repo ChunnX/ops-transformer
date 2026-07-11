@@ -16,6 +16,84 @@
 
 using namespace std;
 
+namespace {
+constexpr uint64_t ASCEND950_AIV_NUM = 20;
+constexpr uint64_t ASCEND950_UB_SIZE = 196608;
+
+struct RawPermuteVBSComputeTilingData {
+    int64_t needCoreNum;
+    int64_t perCoreElements;
+    int64_t perCoreLoops;
+    int64_t perCorePerLoopElements;
+    int64_t perCoreLastLoopElements;
+    int64_t lastCoreElements;
+    int64_t lastCoreLoops;
+    int64_t lastCorePerLoopElements;
+    int64_t lastCoreLastLoopElements;
+    int64_t oneLoopMaxElements;
+    int64_t lastCoreWSindex;
+};
+
+struct RawPermuteVMSMiddleComputeTilingData {
+    int64_t needCoreNum;
+};
+
+struct RawPermuteSortOutComputeTilingData {
+    int64_t oneLoopMaxElements;
+};
+
+struct RawIndexCopyComputeTilingData {
+    int64_t needCoreNum;
+    int64_t frontCoreNum;
+    int64_t tailCoreNum;
+    int64_t coreCalcNum;
+    int64_t coreCalcTail;
+    int64_t oneTokenBtypeSize;
+    int64_t onceIndicesTokenMoveTimes;
+    int64_t onceUbTokenNums;
+    int64_t onceIndicesTokenNums;
+    int64_t onceIndices;
+    int64_t oneTokenlastMove;
+    int64_t oneTokenOnceMove;
+    int64_t oneTokenMoveTimes;
+    int64_t frontCoreLoop;
+    int64_t frontCoreLastTokenNums;
+    int64_t tailCoreLoop;
+    int64_t tailCoreLastTokenNums;
+    int64_t tailLastonceIndicesTokenMoveTimes;
+    int64_t tailLastIndicesLastTokenNums;
+    int64_t frontLastonceIndicesTokenMoveTimes;
+    int64_t frontLastIndicesLastTokenNums;
+    int64_t numOutTokens;
+    int64_t tokenUB;
+    int64_t indicesUB;
+};
+
+struct RawMoeTokenPermuteTilingData {
+    int64_t coreNum;
+    int64_t n;
+    int64_t cols;
+    int64_t colsAlign;
+    int64_t topK;
+    RawPermuteVBSComputeTilingData vbsComputeParamsOp;
+    RawPermuteVMSMiddleComputeTilingData vmsMiddleComputeParamsOp;
+    RawPermuteSortOutComputeTilingData sortOutComputeParamsOp;
+    RawIndexCopyComputeTilingData indexCopyComputeParamsOp;
+};
+
+static_assert(sizeof(RawMoeTokenPermuteTilingData) == 42 * sizeof(int64_t));
+
+const RawMoeTokenPermuteTilingData* GetRawTilingData(const TilingInfo& tilingInfo)
+{
+    EXPECT_EQ(tilingInfo.tilingDataSize, sizeof(RawMoeTokenPermuteTilingData));
+    EXPECT_NE(tilingInfo.tilingData, nullptr);
+    if (tilingInfo.tilingDataSize != sizeof(RawMoeTokenPermuteTilingData) || tilingInfo.tilingData == nullptr) {
+        return nullptr;
+    }
+    return reinterpret_cast<const RawMoeTokenPermuteTilingData*>(tilingInfo.tilingData.get());
+}
+} // namespace
+
 class MoeTokenPermuteTiling : public testing::Test
 {
 protected:
@@ -90,8 +168,27 @@ TEST_F(MoeTokenPermuteTiling, MoeTokenPermute_tiling_regbase_int64_slice) {
                                                 {"padded_mode", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
                                             },
                                             &compileInfo,
-                                            "Ascend950");
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 5, "", {});
+                                            "Ascend950",
+                                            ASCEND950_AIV_NUM,
+                                            ASCEND950_UB_SIZE);
+    TilingInfo tilingInfo;
+    ASSERT_TRUE(ExecuteTiling(tilingContextPara, tilingInfo));
+    ASSERT_EQ(tilingInfo.tilingKey, 5);
+    ASSERT_EQ(tilingInfo.blockNum, ASCEND950_AIV_NUM);
+    ASSERT_EQ(tilingInfo.workspaceSizes, std::vector<int64_t>({16779648}));
+
+    const auto* tilingDataPtr = GetRawTilingData(tilingInfo);
+    ASSERT_NE(tilingDataPtr, nullptr);
+    const auto& tilingData = *tilingDataPtr;
+    EXPECT_EQ(tilingData.coreNum, ASCEND950_AIV_NUM);
+    EXPECT_EQ(tilingData.vbsComputeParamsOp.oneLoopMaxElements, 5440);
+    EXPECT_EQ(tilingData.vbsComputeParamsOp.needCoreNum, 1);
+    EXPECT_EQ(tilingData.indexCopyComputeParamsOp.needCoreNum, 16);
+    EXPECT_EQ(tilingData.indexCopyComputeParamsOp.coreCalcNum, 3);
+    EXPECT_EQ(tilingData.indexCopyComputeParamsOp.coreCalcTail, 3);
+    EXPECT_EQ(tilingData.indexCopyComputeParamsOp.numOutTokens, 47);
+    EXPECT_EQ(tilingData.indexCopyComputeParamsOp.oneTokenOnceMove, 30);
+    EXPECT_EQ(tilingData.indexCopyComputeParamsOp.oneTokenMoveTimes, 1);
 }
 
 TEST_F(MoeTokenPermuteTiling, MoeTokenPermute_tiling_regbase_multi_core) {
@@ -116,8 +213,115 @@ TEST_F(MoeTokenPermuteTiling, MoeTokenPermute_tiling_regbase_multi_core) {
                                                 {"padded_mode", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
                                             },
                                             &compileInfo,
-                                            "Ascend950");
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 2, "", {});
+                                            "Ascend950",
+                                            ASCEND950_AIV_NUM,
+                                            ASCEND950_UB_SIZE);
+    TilingInfo tilingInfo;
+    ASSERT_TRUE(ExecuteTiling(tilingContextPara, tilingInfo));
+    ASSERT_EQ(tilingInfo.tilingKey, 2);
+    ASSERT_EQ(tilingInfo.blockNum, ASCEND950_AIV_NUM);
+
+    const auto* tilingDataPtr = GetRawTilingData(tilingInfo);
+    ASSERT_NE(tilingDataPtr, nullptr);
+    const auto& tilingData = *tilingDataPtr;
+    EXPECT_EQ(tilingData.vbsComputeParamsOp.oneLoopMaxElements, 6112);
+    EXPECT_EQ(tilingData.vbsComputeParamsOp.needCoreNum, 4);
+    EXPECT_EQ(tilingData.indexCopyComputeParamsOp.needCoreNum, 20);
+    EXPECT_EQ(tilingData.indexCopyComputeParamsOp.coreCalcNum, 820);
+    EXPECT_EQ(tilingData.indexCopyComputeParamsOp.coreCalcTail, 804);
+    EXPECT_EQ(tilingData.indexCopyComputeParamsOp.frontCoreLoop, 1);
+    EXPECT_EQ(tilingData.indexCopyComputeParamsOp.tailCoreLoop, 1);
+    EXPECT_EQ(tilingData.indexCopyComputeParamsOp.oneTokenOnceMove, hiddenSize);
+    EXPECT_EQ(tilingData.indexCopyComputeParamsOp.oneTokenMoveTimes, 1);
+}
+
+TEST_F(MoeTokenPermuteTiling, MoeTokenPermute_tiling_regbase_sort_merge_parity) {
+    optiling::MoeTokenPermuteCompileInfo compileInfo = {};
+    constexpr int64_t tokenNum = 162987;
+    constexpr int64_t topK = 3;
+    constexpr int64_t hiddenSize = 1;
+    constexpr int64_t totalLength = tokenNum * topK;
+    gert::TilingContextPara tilingContextPara("MoeTokenPermute",
+                                            {
+                                                {{{tokenNum, hiddenSize}, {tokenNum, hiddenSize}}, ge::DT_FLOAT16,
+                                                 ge::FORMAT_ND},
+                                                {{{tokenNum, topK}, {tokenNum, topK}}, ge::DT_INT32, ge::FORMAT_ND},
+                                            },
+                                            {
+                                                {{{totalLength, hiddenSize}, {totalLength, hiddenSize}},
+                                                 ge::DT_FLOAT16, ge::FORMAT_ND},
+                                                {{{totalLength}, {totalLength}}, ge::DT_INT32, ge::FORMAT_ND},
+                                            },
+                                            {
+                                                {"num_out_tokens",
+                                                 Ops::Transformer::AnyValue::CreateFrom<int64_t>(totalLength)},
+                                                {"padded_mode", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+                                            },
+                                            &compileInfo,
+                                            "Ascend950",
+                                            ASCEND950_AIV_NUM,
+                                            ASCEND950_UB_SIZE);
+    TilingInfo tilingInfo;
+    ASSERT_TRUE(ExecuteTiling(tilingContextPara, tilingInfo));
+    ASSERT_EQ(tilingInfo.tilingKey, 2);
+
+    const auto* tilingData = GetRawTilingData(tilingInfo);
+    ASSERT_NE(tilingData, nullptr);
+    const auto& sort = tilingData->vbsComputeParamsOp;
+    EXPECT_EQ(sort.needCoreNum, 20);
+    EXPECT_EQ(sort.perCoreElements, 24448);
+    EXPECT_EQ(sort.perCoreLoops, 4);
+    EXPECT_EQ(sort.lastCoreElements, 24449);
+    EXPECT_EQ(sort.lastCoreLoops, sort.perCoreLoops);
+    EXPECT_EQ(sort.lastCorePerLoopElements, 6144);
+    EXPECT_EQ(sort.lastCoreLastLoopElements, 6017);
+    EXPECT_EQ(sort.lastCoreWSindex, 0);
+}
+
+TEST_F(MoeTokenPermuteTiling, MoeTokenPermute_tiling_regbase_gather_row_tail) {
+    optiling::MoeTokenPermuteCompileInfo compileInfo = {};
+    constexpr int64_t tokenNum = 42881;
+    constexpr int64_t topK = 4;
+    constexpr int64_t hiddenSize = 16000;
+    constexpr int64_t totalLength = tokenNum * topK;
+    gert::TilingContextPara tilingContextPara("MoeTokenPermute",
+                                            {
+                                                {{{tokenNum, hiddenSize}, {tokenNum, hiddenSize}}, ge::DT_FLOAT,
+                                                 ge::FORMAT_ND},
+                                                {{{tokenNum, topK}, {tokenNum, topK}}, ge::DT_INT32, ge::FORMAT_ND},
+                                            },
+                                            {
+                                                {{{totalLength, hiddenSize}, {totalLength, hiddenSize}}, ge::DT_FLOAT,
+                                                 ge::FORMAT_ND},
+                                                {{{totalLength}, {totalLength}}, ge::DT_INT32, ge::FORMAT_ND},
+                                            },
+                                            {
+                                                {"num_out_tokens",
+                                                 Ops::Transformer::AnyValue::CreateFrom<int64_t>(totalLength)},
+                                                {"padded_mode", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+                                            },
+                                            &compileInfo,
+                                            "Ascend950",
+                                            ASCEND950_AIV_NUM,
+                                            ASCEND950_UB_SIZE);
+    TilingInfo tilingInfo;
+    ASSERT_TRUE(ExecuteTiling(tilingContextPara, tilingInfo));
+    ASSERT_EQ(tilingInfo.tilingKey, 2);
+
+    const auto* tilingData = GetRawTilingData(tilingInfo);
+    ASSERT_NE(tilingData, nullptr);
+    const auto& gather = tilingData->indexCopyComputeParamsOp;
+    EXPECT_EQ(gather.needCoreNum, 20);
+    EXPECT_EQ(gather.coreCalcNum, 8577);
+    EXPECT_EQ(gather.coreCalcTail, 8561);
+    EXPECT_EQ(gather.onceIndicesTokenNums, 8576);
+    EXPECT_EQ(gather.frontCoreLoop, 2);
+    EXPECT_EQ(gather.frontCoreLastTokenNums, 1);
+    EXPECT_EQ(gather.onceUbTokenNums, 8561);
+    EXPECT_EQ(gather.tailCoreLoop, 1);
+    EXPECT_EQ(gather.tailLastIndicesLastTokenNums, 8561);
+    EXPECT_EQ(gather.oneTokenOnceMove, hiddenSize);
+    EXPECT_EQ(gather.oneTokenMoveTimes, 1);
 }
 
 
