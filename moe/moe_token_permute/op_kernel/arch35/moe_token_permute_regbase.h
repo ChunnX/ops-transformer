@@ -83,8 +83,7 @@ struct MoeInitRoutingV2TilingData {
 namespace MoeTokenPermute {
 using namespace AscendC;
 
-__aicore__ inline void InitRegBaseSortTiling(MoeInitRoutingV2TilingData &dst,
-                                             const MoeTokenPermuteTilingData *src)
+__aicore__ inline void InitRegBaseSortTiling(MoeInitRoutingV2TilingData &dst, const MoeTokenPermuteTilingData *src)
 {
     dst.coreNum = src->coreNum;
     dst.n = src->n;
@@ -111,8 +110,7 @@ __aicore__ inline void InitRegBaseSortTiling(MoeInitRoutingV2TilingData &dst,
     dst.sortOutComputeParamsOp.oneLoopMaxElements = src->sortOutComputeParamsOp.oneLoopMaxElements;
 }
 
-__aicore__ inline void InitRegBaseGatherTiling(MoeInitRoutingV2TilingData &dst,
-                                               const MoeTokenPermuteTilingData *src)
+__aicore__ inline void InitRegBaseGatherTiling(MoeInitRoutingV2TilingData &dst, const MoeTokenPermuteTilingData *src)
 {
     const auto &indexCopy = src->indexCopyComputeParamsOp;
     MoeV2GatherOutComputeTilingData gather{};
@@ -133,13 +131,18 @@ __aicore__ inline void InitRegBaseGatherTiling(MoeInitRoutingV2TilingData &dst,
     gather.colLoops = indexCopy.oneTokenMoveTimes;
     gather.scatterMode = 0;
 
-    dst.srcToDstComputeParamsOp = gather;
+    // The inverse permutation performs random GM scatter. Run it in one SIMT block, then let all AIVs gather tokens.
+    MoeV2GatherOutComputeTilingData inverse = gather;
+    const int64_t totalLength = src->n * src->topK;
+    inverse.needCoreNum = 1;
+    inverse.perCoreRows = totalLength;
+    inverse.lastCoreRows = totalLength;
+    dst.srcToDstComputeParamsOp = inverse;
     dst.srcToDstCapacityComputeParamsOp = gather;
     dst.gatherOutComputeParamsOp = gather;
 }
 
-__aicore__ inline void InitRegBaseCompatTiling(MoeInitRoutingV2TilingData &dst,
-                                               const MoeTokenPermuteTilingData *src)
+__aicore__ inline void InitRegBaseCompatTiling(MoeInitRoutingV2TilingData &dst, const MoeTokenPermuteTilingData *src)
 {
     InitRegBaseSortTiling(dst, src);
     InitRegBaseGatherTiling(dst, src);
