@@ -65,7 +65,9 @@ public:
     __aicore__ inline void LaunchCommScale(uint32_t startExpertIdx, uint32_t expertNum);
     __aicore__ inline void LaunchCommData(uint32_t startExpertIdx, uint32_t expertNum);
     __aicore__ inline void PermuteScale(uint32_t startExpertIdx, uint32_t expertNum);
-    __aicore__ inline void PermuteData(uint32_t startExpertIdx, uint32_t expertNum);
+    __aicore__ inline void PermuteScale();
+    __aicore__ inline void Launch(uint32_t startExpertIdx, uint32_t expertNum);
+    __aicore__ inline void LaunchScaleBeforeCompute(uint32_t startExpertIdx, uint32_t expertNum);
     __aicore__ inline void WaitScale(uint32_t startExpertIdx);
     __aicore__ inline void Wait(uint32_t startExpertIdx);
     __aicore__ inline void WaitAll(uint32_t allNum, uint32_t step = 1U);
@@ -218,22 +220,23 @@ __aicore__ inline void HcclA2avOp<hcclDataType, commBeforeComputeFlag, commMode>
 }
 
 template <typename hcclDataType, bool commBeforeComputeFlag, int commMode>
-__aicore__ inline void HcclA2avOp<hcclDataType, commBeforeComputeFlag, commMode>::PermuteData(
+__aicore__ inline void HcclA2avOp<hcclDataType, commBeforeComputeFlag, commMode>::PermuteScale()
+{
+    PermuteScale(0, e_);
+}
+
+template <typename hcclDataType, bool commBeforeComputeFlag, int commMode>
+__aicore__ inline void HcclA2avOp<hcclDataType, commBeforeComputeFlag, commMode>::Launch(
     uint32_t startExpertIdx, uint32_t expertNum)
 {
-    A2AV_AIV_ALL();
-    if (!permuteBufInitialized_) {
-        TPipe *pipe = GetTPipePtr();
-        pipe->InitBuffer(permuteTBuf_, bufferLen_);
-        pipe->InitBuffer(permuteTBuf2_, bufferLen_);
-        permuteBufInitialized_ = true;
-    }
-    uint64_t axis = CeilDiv(H1_, PACK_FACTOR);
-    PermuteImplParallel<CommBufType, false, true>(
-        recvGlobalBuffer_, permuteOutBuffer_,
-        recvCounts_, e_, rankDim_, startExpertIdx, expertNum,
-        axis, permuteBaseOffset_, permuteTBuf_, permuteTBuf2_, bufferLen_, eventID_,
-        aivCoreNum_);
+    LaunchCommData(startExpertIdx, expertNum);
+}
+
+template <typename hcclDataType, bool commBeforeComputeFlag, int commMode>
+__aicore__ inline void HcclA2avOp<hcclDataType, commBeforeComputeFlag, commMode>::LaunchScaleBeforeCompute(
+    uint32_t startExpertIdx, uint32_t expertNum)
+{
+    LaunchCommScale(startExpertIdx, expertNum);
 }
 
 template <typename hcclDataType, bool commBeforeComputeFlag, int commMode>

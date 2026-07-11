@@ -141,6 +141,14 @@ __aicore__ inline void QuantGroupedMatmul<TilingDataType, GmmTilingDataType, xTy
 template <typename TilingDataType, typename GmmTilingDataType, class xType, class wType, class scaleType, class yType,
     CubeFormat wFormat, bool aTrans, bool bTrans, bool isLocal, bool isA2avGmm>
 __aicore__ inline void QuantGroupedMatmul<TilingDataType, GmmTilingDataType, xType, wType, scaleType, yType,
+    wFormat, aTrans, bTrans, isLocal, isA2avGmm>::Process(uint32_t expertIdx)
+{
+    Process(expertIdx, 1);
+}
+
+template <typename TilingDataType, typename GmmTilingDataType, class xType, class wType, class scaleType, class yType,
+    CubeFormat wFormat, bool aTrans, bool bTrans, bool isLocal, bool isA2avGmm>
+__aicore__ inline void QuantGroupedMatmul<TilingDataType, GmmTilingDataType, xType, wType, scaleType, yType,
     wFormat, aTrans, bTrans, isLocal, isA2avGmm>::Process(uint32_t startExpertIdx, uint32_t expertNum)
 {
     if ASCEND_IS_AIV {
