@@ -9,12 +9,12 @@
  */
 
 /*!
- * \file hccl_communicator.h
+ * \file ccu_alltoall_communicator.h
  * \brief
  */
 
-#ifndef DISTA_CCU_HCCL_COMMUNICATOR_H
-#define DISTA_CCU_HCCL_COMMUNICATOR_H
+#ifndef ATCOSS_CCU_ALLTOALL_COMMUNICATOR_H
+#define ATCOSS_CCU_ALLTOALL_COMMUNICATOR_H
 
 #include "lib/hccl/hccl.h"
 

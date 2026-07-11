@@ -20,7 +20,7 @@
 #define DISTA_ALL_TO_ALL_MX_QUANT_MATMUL_ARCH35_H
 
 #include "blaze_mx_quant_matmul.h"
-#include "../../block/ccu/hccl_communicator.h"
+#include "../../block/ccu/ccu_alltoall_communicator.h"
 
 namespace Dista {
 namespace Kernel {
