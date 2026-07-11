@@ -414,7 +414,24 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
         TPipe rowIdxPipe;
         RowIdxGather rowIdxGatherOp;
         rowIdxGatherOp.Init(expandedRowIdx, userWS, t, &rowIdxPipe);
-        rowIdxGatherOp.Process();
+        bool needSyncAll = false;
+        if constexpr (IsSameType<DTYPE_EXPANDED_X, fp8_e4m3fn_t>::value ||
+                        IsSameType<DTYPE_EXPANDED_X, fp8_e5m2_t>::value) {
+            if (TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_GATHER) ||
+                TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_GATHER)) {
+                needSyncAll = true;
+            }
+            if constexpr (IsSameType<DTYPE_X, bfloat16_t>::value ||
+                            IsSameType<DTYPE_X, half>::value) {
+                if (TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_MXFP8QUANT_GATHER) ||
+                    TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_MXFP8QUANT_GATHER) ||
+                    TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_MXFP8RS_AMAX_QUANT_GATHER) ||
+                    TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_MXFP8RS_AMAX_QUANT_GATHER)) {
+                    needSyncAll = true;
+                }
+            }
+        }
+        rowIdxGatherOp.Process(needSyncAll);
         rowIdxPipe.Destroy();
     } else if (TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_GATHER_DROP) ||
                TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_GATHER_DROP)) {

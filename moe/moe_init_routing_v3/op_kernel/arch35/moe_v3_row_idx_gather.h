@@ -27,7 +27,7 @@ public:
     __aicore__ inline RowIdxGather(){};
     __aicore__ inline void Init(GM_ADDR expandedRowIdx, GM_ADDR workspace, const MoeInitRoutingV3Arch35TilingData *tilingData,
                                 TPipe *tPipe);
-    __aicore__ inline void Process();
+    __aicore__ inline void Process(bool needSyncAll = false);
 
 private:
     GlobalTensor<int32_t> expandedRowIdxGm_;
@@ -119,7 +119,7 @@ __aicore__ inline void RowIdxGather::Init(GM_ADDR expandedRowIdx, GM_ADDR worksp
     pipe_->InitBuffer(copyOutQueue_, 1, AlignBytes(1, sizeof(int32_t)));
 }
 
-__aicore__ inline void RowIdxGather::Process()
+__aicore__ inline void RowIdxGather::Process(bool needSyncAll)
 {
     if (blockIdx_ < needCoreNum_) {
         int64_t elements = (blockIdx_ == needCoreNum_ - 1 ? lastCoreElements : perCoreElements);
@@ -128,7 +128,9 @@ __aicore__ inline void RowIdxGather::Process()
         asc_vf_call<ComputeSimt>(dim3{SIMT_THREAD_NUM, 1, 1}, elements, blockIdx_ * perCoreElements,
                                    sortedExpertIndicesGmAddr, expandedRowIdxGmAddr);
     }
-    SyncAll();
+    if (needSyncAll) {
+        SyncAll();
+    }
 }
 
 } // namespace MoeInitRoutingV3
