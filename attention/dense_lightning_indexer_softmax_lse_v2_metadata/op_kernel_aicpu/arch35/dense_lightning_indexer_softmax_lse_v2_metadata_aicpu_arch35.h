@@ -68,11 +68,6 @@ inline bool DenseLightningIndexerSoftmaxLseV2MetadataCpuKernel::BuildMetadata()
             tailCoreNum = 0;
             bS1PerCore = base;
             bS1PerTailCore = 0;
-        } else if (rem <= N - rem) {
-            forecoreNum = N - rem;
-            bS1PerCore = base;
-            tailCoreNum = rem;
-            bS1PerTailCore = base + 1;
         } else {
             forecoreNum = rem;
             bS1PerCore = base + 1;

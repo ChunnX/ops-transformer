@@ -53,12 +53,15 @@ VA4 = _align_up(VA3 + 1, 32)
 KV_CACHE_NUM = _align_up(248 * 1024 - VA4, 32) // 4
 assert VA4 + KV_CACHE_NUM * 4 <= 248 * 1024
 
+MAX_UB_S2_TILES = KV_CACHE_NUM // TKV_HALF
+
 EVENT_IDS_01 = (0, 1)
 QK_READY_IDS = (0, 1)
 QK_FREE_IDS = (2, 3)
 
 WS_MAX_ELEMS = 72
-WS_MAX_BYTES = 512
+WS_MAX_BYTES = 288
+WS_MAX_CORES = 36
 
 
 # ================================================================
@@ -71,13 +74,16 @@ class OpTiling:
     s2: int
     n1: int
     d: int
+    isLongS2: int
+    mask_mode: int
+    cmp_ratio: int
 
 
 # ================================================================
 #  TilingKey
 # ================================================================
 class DenseLiLseTilingKey:
-    SparseMode = TilingKeyField(bits=1, values=[0, 1])
+    isLongS2 = TilingKeyField(bits=1, values=[0, 1])
 
 
 # ================================================================
@@ -85,10 +91,17 @@ class DenseLiLseTilingKey:
 # ================================================================
 
 @pl.vector_function
-def init_max(max_tile):
-    preg_one = vf.update_mask(1, dtype=pl.DT_FP32)
+def init_data(max_tile):
+    preg_all = vf.create_mask(pattern=pl.MaskPattern.ALL, dtype=pl.DT_FP32)
     vreg_x = vf.full(-3.4028234663852886e+38, dtype=pl.DT_FP32)
-    vf.store_align(max_tile, vreg_x, preg_one)
+    vf.store_align(max_tile, vreg_x, preg_all)
+
+
+@pl.vector_function
+def write_scalar_vf(tile, val):
+    preg_one = vf.update_mask(1, dtype=pl.DT_FP32)
+    vreg_val = vf.full(val, dtype=pl.DT_FP32)
+    vf.store_align(tile, vreg_val, preg_one)
 
 
 @pl.vector_function
@@ -140,13 +153,19 @@ def process_lse_vf(lse_vec_tile, reduce_res, tmp_s2_max):
 
 def dense_lightning_indexer_softmax_lse_v2_inner(
     query_index, key_index, weight, lse_out,
+    seqused_q, seqused_k, cmp_residual_k,
     workspace_max, workspace_sum, workspace,
     tiling, metadata
 ):
     s1_dim = tiling.s1
     s2_dim = tiling.s2
     n1_dim = tiling.n1
-    s2_tiles = (s2_dim + TKV - 1) // TKV
+    is_long_s2 = tiling.isLongS2
+    mask_mode = tiling.mask_mode
+    cmp_ratio = tiling.cmp_ratio
+
+    s1_tiles = (s1_dim + TS - 1) // TS
+    # s2_tiles = (s2_dim + TKV - 1) // TKV
     core_id = pl.get_block_idx()
     sub_id = pl.get_subblock_idx()
 
@@ -154,21 +173,15 @@ def dense_lightning_indexer_softmax_lse_v2_inner(
     tail_core_num = pl.getval(metadata, 1)
     b_s1_per_core = pl.getval(metadata, 2)
     b_s1_per_tail_core = pl.getval(metadata, 3)
-
-    core_start_idx = 0
-    core_end_idx = 0
+    total_cores = fore_core_num + tail_core_num
+    work_count = 0
 
     if core_id < fore_core_num:
-        core_start_idx = core_id * b_s1_per_core
-        core_end_idx = core_start_idx + b_s1_per_core - 1
-    elif core_id < fore_core_num + tail_core_num:
-        tail_idx = core_id - fore_core_num
-        core_start_idx = (fore_core_num * b_s1_per_core) + (tail_idx * b_s1_per_tail_core)
-        core_end_idx = core_start_idx + b_s1_per_tail_core - 1
-    else:
-        core_start_idx = 1
-        core_end_idx = 0
+        work_count = b_s1_per_core
+    elif core_id < total_cores:
+        work_count = b_s1_per_tail_core
 
+    #【128，64】基本块用于qk的结果，这里UB开两块做db
     qk_vec = pl.make_tile_group(
         type=pl.TileType(shape=[TN, TKV_HALF], dtype=pl.DT_FP32, target_memory=pl.MemorySpace.Vec),
         addrs=VA0, mutex_ids=[0, 1]
@@ -189,6 +202,10 @@ def dense_lightning_indexer_softmax_lse_v2_inner(
         type=pl.TileType(shape=[1, KV_CACHE_NUM], dtype=pl.DT_FP32, target_memory=pl.MemorySpace.Vec),
         addrs=VA4, mutex_ids=[6]
     )
+    # tmp_vec = pl.make_tile_group(
+    #     type=pl.TileType(shape=[TN, TKV_HALF], dtype=pl.DT_FP32, target_memory=pl.MemorySpace.Vec),
+    #     addrs=VAT, mutex_ids=[7, 8]
+    # )
 
     with pl.section_cube():
         q_mat = pl.make_tile_group(
@@ -212,83 +229,180 @@ def dense_lightning_indexer_softmax_lse_v2_inner(
             addrs=CA0, mutex_ids=[15, 16]
         )
 
+        # core_start_idx = 0#pl.getval(work_ranges, core_id * 2)
+        # core_end_idx = 0#pl.getval(work_ranges, core_id * 2 + 1)
+        #pl.printf("CCCCCC core_start_idx is %d, core_end_idx + 1 is %d, \n", core_start_idx, core_end_idx + 1)
         task_id = 0
-        for work_id in pl.range(core_start_idx, core_end_idx + 1):
+        for j in pl.range(0, work_count):
+            work_id = core_id + j * total_cores
             b_idx = work_id // s1_dim
             s1_i = work_id % s1_dim
-            q_tile = q_mat.next()
-            pl.load(q_tile, query_index, [b_idx, s1_i * TS, 0, 0])
-            for s2_i in pl.range(0, s2_tiles + 1):
-                k_tile_nxt = k_mat.next()
-                if s2_i < s2_tiles:
-                    pl.load(k_tile_nxt, key_index, [b_idx, s2_i * TKV, 0, 0], is_transpose=True)
-                if s2_i > 0:
-                    k_tile_cur = k_mat.previous()
-                    left_tile = left.next()
-                    right_tile = right.next()
-                    acc_tile = acc.next()
-                    pl.move(left_tile, q_tile)
-                    pl.move(right_tile, k_tile_cur)
-                    pl.matmul(acc_tile, left_tile, right_tile)
+            q_used_size = pl.getval(seqused_q, b_idx) #if q_used else s1_dim
+            k_used_size = pl.getval(seqused_k, b_idx) #if k_used else s2_dim
+            if s1_i < q_used_size:             
+                if mask_mode == 3:
+                    if cmp_ratio > 1:
+                        cur_residual_k = pl.getval(cmp_residual_k, b_idx)
+                        ori_k_size = k_used_size * cmp_ratio + cur_residual_k
+                    else:
+                        ori_k_size = k_used_size * cmp_ratio
+                    valid_k_size = pl.max((s1_i + 1 + ori_k_size - q_used_size) // cmp_ratio, 0)
+                    s2_tiles = (valid_k_size + TKV - 1) // TKV
+                else:
+                    valid_k_size = k_used_size
+                    s2_tiles = (k_used_size + TKV - 1) // TKV
 
-                    qk_vec_tile = qk_vec.next()
-                    if task_id > 2:
-                        pl.system.wait_cross_core(pipe=pl.PipeType.FIX, event_id=QK_FREE_IDS[task_id % 2])
-                    pl.move(qk_vec_tile, acc_tile, acc_to_vec_mode=pl.AccToVecMode.DualModeSplitN)
-                    pl.system.set_cross_core(pipe=pl.PipeType.FIX, event_id=QK_READY_IDS[task_id % 2])
-                task_id = task_id + 1
+                q_tile = q_mat.next()
+                pl.load(q_tile, query_index, [b_idx, s1_i * TS, 0, 0])
+                for s2_i in pl.range(0, s2_tiles + 1):
+                    k_tile_nxt = k_mat.next() # 0-a 1-b 2-a
+                    if s2_i < s2_tiles:
+                        #pl.printf("-------p offset is %d, s2_i is %d \n ", s2_i * TKV, s2_i)
+                        pl.load(k_tile_nxt, key_index, [b_idx, s2_i * TKV, 0, 0], is_transpose=True) # 0-a 1-b 2-a
+                    if s2_i > 0:
+                        k_tile_cur = k_mat.previous() # 1-a 2-b
+                        left_tile = left.next()
+                        right_tile = right.next()
+                        acc_tile = acc.next()
+                        pl.move(left_tile, q_tile)
+                        pl.move(right_tile, k_tile_cur) # 1-a
+                        pl.matmul(acc_tile, left_tile, right_tile)
+                    
+                        # for test
+                        # #pl.printf("-------out offset is %d, s2_i is %d \n ", (s2_tiles - 1) * TKV, s2_i)
+                        # pl.store(workspace, acc_tile, [b_idx, s1_i, 0, (s2_i - 1) * TKV])
+
+                        qk_vec_tile = qk_vec.next()
+                        if task_id > 1:
+                            # if core_id == 0:
+                            #     pl.printf("CCCCCCCCCCCCCCCCCCCCCCCCCC taskid is %d, AIC WAITID is %d, buff_id is %d, s2_i is %d, s1_i is %d \n", task_id, QK_FREE_IDS[task_id % 2], buff_id % 2, s2_i, s1_i)
+                            pl.system.wait_cross_core(pipe=pl.PipeType.FIX, event_id=QK_FREE_IDS[task_id % 2])
+                            # pl.system.sync_all(core_type=pl.SyncCoreType.MIX)
+                        pl.move(qk_vec_tile, acc_tile, acc_to_vec_mode=pl.AccToVecMode.DualModeSplitN)
+                        # if core_id == 0:
+                        #     pl.printf("CCCCCCCCCCCCCCCCCCCCCCCCCC taskid is %d, AIC setID is %d, buff_id is %d, s2_i is %d, s1_i is %d\n", task_id, QK_READY_IDS[task_id % 2], buff_id % 2, s2_i, s1_i)
+                        pl.system.set_cross_core(pipe=pl.PipeType.FIX, event_id=QK_READY_IDS[task_id % 2])
+                        # pl.system.sync_all(core_type=pl.SyncCoreType.MIX)
+                        task_id = task_id + 1
 
     with pl.section_vector():
-        loop_num = (core_end_idx - core_start_idx + 1) * s2_tiles
-        s1_start_idx = core_start_idx % s1_dim
-        b_start_idx = core_start_idx // s1_dim
-        s1_end_idx = core_end_idx % s1_dim
-        b_end_idx = core_end_idx // s1_dim
+        task_id = 0
+        prev_b_idx = 0
+        prev_s1_i = 0
+        prev_s2_tiles = 0
 
-        task_id = 1
-        for b_idx in pl.range(b_start_idx, b_end_idx + 1):
-            start_idx = s1_start_idx if b_idx == b_start_idx else 0
-            end_idx = s1_end_idx if b_idx == b_end_idx else s1_dim - 1
-            for s1_i in pl.range(start_idx, end_idx + 2):
-                pl.setval(workspace_sum, core_id * 2 + sub_id, 0)
-                max_tile = max_vec.next()
-                init_max(max_tile)
-                weight_vec_nxt = weight_vec.next()
-                if s1_i < end_idx + 1:
-                    pl.load(weight_vec_nxt, weight, [b_idx, s1_i * TS, 0])
-                if s1_i > start_idx:
-                    reduce_sum_vec_tile = reduce_sum_vec.next()
-                    lse_vec_tile = lse_vec.next()
-                    for s2_i in pl.range(0, s2_tiles):
+        for j in pl.range(0, work_count + 1):
+            work_id = core_id + j * total_cores
+            b_idx = work_id // s1_dim
+            s1_i = work_id % s1_dim
+
+            max_tile = max_vec.next()
+            init_data(max_tile)
+
+            s2_tiles = 0
+            if j < work_count:
+                q_used_size = pl.getval(seqused_q, b_idx)
+                k_used_size = pl.getval(seqused_k, b_idx)
+                if mask_mode == 3:
+                    if cmp_ratio > 1:
+                        cur_residual_k = pl.getval(cmp_residual_k, b_idx)
+                        ori_k_size = k_used_size * cmp_ratio + cur_residual_k
+                    else:
+                        ori_k_size = k_used_size * cmp_ratio
+                    valid_k_size = pl.max((s1_i + 1 + ori_k_size - q_used_size) // cmp_ratio, 0)
+                    s2_tiles = (valid_k_size + TKV - 1) // TKV
+                else:
+                    s2_tiles = (k_used_size + TKV - 1) // TKV
+
+            weight_vec_nxt = weight_vec.next()
+            if j < work_count:
+                pl.load(weight_vec_nxt, weight, [b_idx, s1_i * TS, 0])
+
+            if j > 0:
+                reduce_sum_vec_tile = reduce_sum_vec.next()
+                lse_vec_tile = lse_vec.next()
+                if is_long_s2 == 0:
+                    for s2_i in pl.range(0, prev_s2_tiles):
                         qk_vec_tile = qk_vec.next()
                         weight_tile_cur = weight_vec.previous()
                         pl.system.wait_cross_core(pipe=pl.PipeType.V, event_id=QK_READY_IDS[task_id % 2])
                         src_tile = reduce_sum_vec_tile[s2_i * TKV_HALF]
                         pl.set_validshape(src_tile, [1, TKV_HALF])
                         process_reduce_max_vf(src_tile, qk_vec_tile, weight_tile_cur, max_tile, n1_dim)
-                        if task_id < loop_num - 1:
+                        if not (j == work_count and s2_i >= prev_s2_tiles - 2):
                             pl.system.set_cross_core(pipe=pl.PipeType.V, event_id=QK_FREE_IDS[task_id % 2])
                         task_id = task_id + 1
-                    pl.set_validshape(max_tile, [1, 1])
-                    pl.store(workspace_max, max_tile, [0, core_id * 2 + sub_id])
+                else:
+                    num_chunks = (prev_s2_tiles + MAX_UB_S2_TILES - 1) // MAX_UB_S2_TILES
+                    for chunk_idx in pl.range(0, num_chunks):
+                        chunk_start = chunk_idx * MAX_UB_S2_TILES
+                        chunk_end = chunk_start + MAX_UB_S2_TILES
+                        if chunk_end > prev_s2_tiles:
+                            chunk_end = prev_s2_tiles
+                        chunk_tiles = chunk_end - chunk_start
+                        for ci in pl.range(0, chunk_tiles):
+                            qk_vec_tile = qk_vec.next()
+                            weight_tile_cur = weight_vec.previous()
+                            pl.system.wait_cross_core(pipe=pl.PipeType.V, event_id=QK_READY_IDS[task_id % 2])
+                            src_tile = reduce_sum_vec_tile[ci * TKV_HALF]
+                            pl.set_validshape(src_tile, [1, TKV_HALF])
+                            process_reduce_max_vf(src_tile, qk_vec_tile, weight_tile_cur, max_tile, n1_dim)
+                            if not (j == work_count and (chunk_start + ci) >= prev_s2_tiles - 2):
+                                pl.system.set_cross_core(pipe=pl.PipeType.V, event_id=QK_FREE_IDS[task_id % 2])
+                            task_id = task_id + 1
+                        for ci in pl.range(0, chunk_tiles):
+                            ws_tile = reduce_sum_vec_tile[ci * TKV_HALF]
+                            pl.set_validshape(ws_tile, [1, TKV_HALF])
+                            pl.store(workspace, ws_tile, [core_id, (chunk_start + ci) * TKV + TKV_HALF * sub_id])
 
-                    pl.system.set_cross_core(pipe=pl.PipeType.MTE3, event_id=4, sync_mode=pl.CrossCoreSyncMode.INTER_SUBBLOCK)
-                    pl.system.wait_cross_core(pipe=pl.PipeType.MTE2, event_id=4, sync_mode=pl.CrossCoreSyncMode.INTER_SUBBLOCK)
-                    tmp_s2_max = pl.getval(max_tile, 0)
-                    pl.load(max_tile, workspace_max, [0, core_id * 2 + 1 - sub_id])
-                    tmp_s2_max = pl.max(tmp_s2_max, pl.getval(max_tile, 0))
-                    process_reduce_sum_vf(lse_vec_tile, reduce_sum_vec_tile, tmp_s2_max, s2_tiles)
-                    pl.set_validshape(lse_vec_tile, [1, 1])
-                    pl.store(workspace_sum, lse_vec_tile, [0, core_id * 2], atomic=pl.AtomicType.AtomicAdd)
+                pl.set_validshape(max_tile, [1, 1])
+                pl.store(workspace_max, max_tile, [0, core_id * 2 + sub_id])
+                pl.system.set_cross_core(pipe=pl.PipeType.MTE3, event_id=4, sync_mode=pl.CrossCoreSyncMode.INTER_SUBBLOCK)
+                pl.system.wait_cross_core(pipe=pl.PipeType.MTE2, event_id=4, sync_mode=pl.CrossCoreSyncMode.INTER_SUBBLOCK)
+                tmp_s2_max = pl.getval(max_tile, 0)
+                pl.set_validshape(max_tile, [1, 2])
+                pl.load(max_tile, workspace_max, [0, core_id * 2])
+                pl.set_validshape(max_tile, [1, 1])
+                v0_tmp_max = pl.getval(max_tile, 0)
+                v1_tmp_max = pl.getval(max_tile, 1)
+                tmp_s2_max = pl.max(v0_tmp_max, v1_tmp_max)
 
-                    pl.system.set_cross_core(pipe=pl.PipeType.MTE3, event_id=5, sync_mode=pl.CrossCoreSyncMode.INTER_SUBBLOCK)
-                    pl.system.wait_cross_core(pipe=pl.PipeType.MTE2, event_id=5, sync_mode=pl.CrossCoreSyncMode.INTER_SUBBLOCK)
+                if is_long_s2 == 0:
+                    process_reduce_sum_vf(lse_vec_tile, reduce_sum_vec_tile, tmp_s2_max, prev_s2_tiles)
+                else:
+                    ws_chunk_sum = 0.0
+                    num_chunks = (prev_s2_tiles + MAX_UB_S2_TILES - 1) // MAX_UB_S2_TILES
+                    for chunk_idx in pl.range(0, num_chunks):
+                        chunk_start = chunk_idx * MAX_UB_S2_TILES
+                        chunk_end = chunk_start + MAX_UB_S2_TILES
+                        if chunk_end > prev_s2_tiles:
+                            chunk_end = prev_s2_tiles
+                        chunk_tiles = chunk_end - chunk_start
+                        chunk_tile = reduce_sum_vec.next()
+                        for ci in pl.range(0, chunk_tiles):
+                            src = chunk_tile[ci * TKV_HALF]
+                            pl.set_validshape(src, [1, TKV_HALF])
+                            pl.load(src, workspace, [core_id, (chunk_start + ci) * TKV + TKV_HALF * sub_id])
+                        process_reduce_sum_vf(lse_vec_tile, chunk_tile, tmp_s2_max, chunk_tiles)
+                        ws_chunk_sum = ws_chunk_sum + pl.getval(lse_vec_tile, 0)
+                    write_scalar_vf(lse_vec_tile, ws_chunk_sum)
 
-                    pl.load(lse_vec_tile, workspace_sum, [0, core_id * 2])
-                    reduce_res = pl.getval(lse_vec_tile, 0)
-                    process_lse_vf(lse_vec_tile, reduce_res, tmp_s2_max)
-                    pl.store(lse_out, lse_vec_tile, [b_idx, s1_i - 1])
+                pl.set_validshape(lse_vec_tile, [1, 1])
+                pl.store(workspace_sum, lse_vec_tile, [0, core_id * 2 + sub_id])
+                pl.system.set_cross_core(pipe=pl.PipeType.MTE3, event_id=5, sync_mode=pl.CrossCoreSyncMode.INTER_SUBBLOCK)
+                pl.system.wait_cross_core(pipe=pl.PipeType.MTE2, event_id=5, sync_mode=pl.CrossCoreSyncMode.INTER_SUBBLOCK)
+                pl.set_validshape(lse_vec_tile, [1, 2])
+                pl.load(lse_vec_tile, workspace_sum, [0, core_id * 2])
+                v0_tmp_sum = pl.getval(lse_vec_tile, 0)
+                v1_tmp_sum = pl.getval(lse_vec_tile, 1)
+                reduce_res = v0_tmp_sum + v1_tmp_sum
+                process_lse_vf(lse_vec_tile, reduce_res, tmp_s2_max)
+                pl.set_validshape(lse_vec_tile, [1, 1])
+                pl.store(lse_out, lse_vec_tile, [prev_b_idx, prev_s1_i])
 
+            prev_b_idx = b_idx
+            prev_s1_i = s1_i
+            prev_s2_tiles = s2_tiles
     return
 
 
@@ -338,6 +452,24 @@ def dense_lightning_indexer_softmax_lse_v2(
         [tiling.s1, 1],
         dtype=pl.DT_FP32,
     )
+    tensor_seqused_q = pl.make_tensor(
+        seq_used_q,
+        [tiling.b, 1],
+        [1, 1],
+        dtype=pl.DT_INT32,
+    )
+    tensor_seqused_k = pl.make_tensor(
+        seq_used_k,
+        [tiling.b, 1],
+        [1, 1],
+        dtype=pl.DT_INT32,
+    )
+    tensor_cmp_residual_k = pl.make_tensor(
+        cmp_residual_k,
+        [tiling.b, 1],
+        [1, 1],
+        dtype=pl.DT_INT32,
+    )
     tensor_metadata = pl.make_tensor(
         metadata,
         [1, 64],
@@ -358,7 +490,7 @@ def dense_lightning_indexer_softmax_lse_v2(
     )
     tensor_workspace = pl.make_tensor(
         workspace + WS_MAX_BYTES * 2,
-        [1, tiling.s2],
+        [WS_MAX_CORES, tiling.s2],
         [tiling.s2, 1],
         dtype=pl.DT_FP32,
     )
@@ -368,6 +500,9 @@ def dense_lightning_indexer_softmax_lse_v2(
         tensor_key_index,
         tensor_weight,
         tensor_lse_out,
+        tensor_seqused_q,
+        tensor_seqused_k,
+        tensor_cmp_residual_k,
         tensor_workspace_max,
         tensor_workspace_sum,
         tensor_workspace,
