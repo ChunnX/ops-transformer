@@ -296,32 +296,67 @@ static ge::graphStatus CheckTensorFormat(const gert::TilingContext *context)
 {
     const char *nodeName = context->GetNodeName();
 
-    auto checkFormat = [nodeName](const gert::TilingTensorDesc *desc, const char *name) -> ge::graphStatus {
-        ge::Format fmt = static_cast<ge::Format>(ge::GetPrimaryFormat(desc->GetStorageFormat()));
-        OP_TILING_CHECK(fmt != ge::FORMAT_ND,
-            OP_LOGE_FOR_INVALID_FORMAT(nodeName, name, Ops::Base::ToString(fmt).c_str(), "ND"),
-            return ge::GRAPH_FAILED);
-        return ge::GRAPH_SUCCESS;
-    };
+    auto commContextDesc = context->GetInputDesc(IN_COMM_CONTEXT);
+    ge::Format commContextFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(commContextDesc->GetStorageFormat()));
+    OP_TILING_CHECK(commContextFormat != ge::FORMAT_ND,
+        OP_LOGE_FOR_INVALID_FORMAT(nodeName, "commContext",
+            Ops::Base::ToString(commContextFormat).c_str(), "ND"),
+        return ge::GRAPH_FAILED);
 
-    OP_TILING_CHECK(checkFormat(context->GetInputDesc(IN_COMM_CONTEXT), "commContext") != ge::GRAPH_SUCCESS,
+    auto gradFetchedDesc = context->GetInputDesc(IN_GRAD_FETCHED);
+    ge::Format gradFetchedFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(gradFetchedDesc->GetStorageFormat()));
+    OP_TILING_CHECK(gradFetchedFormat != ge::FORMAT_ND,
+        OP_LOGE_FOR_INVALID_FORMAT(nodeName, "gradFetched",
+            Ops::Base::ToString(gradFetchedFormat).c_str(), "ND"),
         return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(checkFormat(context->GetInputDesc(IN_GRAD_FETCHED), "gradFetched") != ge::GRAPH_SUCCESS,
+
+    auto permDesc = context->GetInputDesc(IN_PERM);
+    ge::Format permFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(permDesc->GetStorageFormat()));
+    OP_TILING_CHECK(permFormat != ge::FORMAT_ND,
+        OP_LOGE_FOR_INVALID_FORMAT(nodeName, "perm",
+            Ops::Base::ToString(permFormat).c_str(), "ND"),
         return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(checkFormat(context->GetInputDesc(IN_PERM), "perm") != ge::GRAPH_SUCCESS,
+
+    auto sendCountsDesc = context->GetInputDesc(IN_SEND_COUNTS);
+    ge::Format sendCountsFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(sendCountsDesc->GetStorageFormat()));
+    OP_TILING_CHECK(sendCountsFormat != ge::FORMAT_ND,
+        OP_LOGE_FOR_INVALID_FORMAT(nodeName, "sendCounts",
+            Ops::Base::ToString(sendCountsFormat).c_str(), "ND"),
         return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(checkFormat(context->GetInputDesc(IN_SEND_COUNTS), "sendCounts") != ge::GRAPH_SUCCESS,
+
+    auto recvCountsDesc = context->GetInputDesc(IN_RECV_COUNTS);
+    ge::Format recvCountsFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(recvCountsDesc->GetStorageFormat()));
+    OP_TILING_CHECK(recvCountsFormat != ge::FORMAT_ND,
+        OP_LOGE_FOR_INVALID_FORMAT(nodeName, "recvCounts",
+            Ops::Base::ToString(recvCountsFormat).c_str(), "ND"),
         return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(checkFormat(context->GetInputDesc(IN_RECV_COUNTS), "recvCounts") != ge::GRAPH_SUCCESS,
+
+    auto recvLocalEntryDesc = context->GetInputDesc(IN_RECV_LOCAL_ENTRY);
+    ge::Format recvLocalEntryFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(recvLocalEntryDesc->GetStorageFormat()));
+    OP_TILING_CHECK(recvLocalEntryFormat != ge::FORMAT_ND,
+        OP_LOGE_FOR_INVALID_FORMAT(nodeName, "recvLocalEntry",
+            Ops::Base::ToString(recvLocalEntryFormat).c_str(), "ND"),
         return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(checkFormat(context->GetInputDesc(IN_RECV_LOCAL_ENTRY), "recvLocalEntry") != ge::GRAPH_SUCCESS,
+
+    auto gradUniqueDesc = context->GetOutputDesc(OUT_GRAD_UNIQUE);
+    ge::Format gradUniqueFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(gradUniqueDesc->GetStorageFormat()));
+    OP_TILING_CHECK(gradUniqueFormat != ge::FORMAT_ND,
+        OP_LOGE_FOR_INVALID_FORMAT(nodeName, "gradUniqueOut",
+            Ops::Base::ToString(gradUniqueFormat).c_str(), "ND"),
         return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(checkFormat(context->GetOutputDesc(OUT_GRAD_UNIQUE), "gradUniqueOut") != ge::GRAPH_SUCCESS,
+
+    auto uniqueLocalEntryDesc = context->GetOutputDesc(OUT_UNIQUE_LOCAL_ENTRY);
+    ge::Format uniqueLocalEntryFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(uniqueLocalEntryDesc->GetStorageFormat()));
+    OP_TILING_CHECK(uniqueLocalEntryFormat != ge::FORMAT_ND,
+        OP_LOGE_FOR_INVALID_FORMAT(nodeName, "uniqueLocalEntryOut",
+            Ops::Base::ToString(uniqueLocalEntryFormat).c_str(), "ND"),
         return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(checkFormat(context->GetOutputDesc(OUT_UNIQUE_LOCAL_ENTRY),
-                     "uniqueLocalEntryOut") != ge::GRAPH_SUCCESS,
-        return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(checkFormat(context->GetOutputDesc(OUT_NUM_UNIQUE), "numUniqueOut") != ge::GRAPH_SUCCESS,
+
+    auto numUniqueDesc = context->GetOutputDesc(OUT_NUM_UNIQUE);
+    ge::Format numUniqueFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(numUniqueDesc->GetStorageFormat()));
+    OP_TILING_CHECK(numUniqueFormat != ge::FORMAT_ND,
+        OP_LOGE_FOR_INVALID_FORMAT(nodeName, "numUniqueOut",
+            Ops::Base::ToString(numUniqueFormat).c_str(), "ND"),
         return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;

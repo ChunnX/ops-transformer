@@ -11,8 +11,6 @@
 if (BUILD_OPEN_PROJECT)  # custom
     target_sources(op_host_aclnnInner PRIVATE
         engram_fetch_grad_def.cpp
-        engram_fetch_grad_infershape.cpp
-        op_tiling/engram_fetch_grad_tiling.cpp
     )
     add_modules_sources_with_soc(
         OP_API_INDEPENDENT ON
