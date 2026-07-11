@@ -13,7 +13,7 @@
 - 数学公式：
 
   $$intermediate = GELU(input[:, :W]) \odot input[:, W:]$$
-  $$if \ constrait: \ intermediate = Clamp(intermediate, -clampValue, clampValue)$$
+  $$if \ constraint: \ intermediate = Clamp(intermediate, -clampValue, clampValue)$$
   $$output = Quantize(intermediate \times scale) \quad \in [-128, 127]$$
 
   其中 $W = gbW / 2$，$\odot$ 表示逐元素乘法，$Quantize$ 表示四舍五入取整并截断到INT8范围。
@@ -72,7 +72,7 @@
       <td>-</td>
     </tr>
     <tr>
-      <td>constrait</td>
+      <td>constraint</td>
       <td>输入</td>
       <td>是否在量化前对GeGLU的FP32中间结果进行截断约束，默认为false</td>
       <td>bool</td>

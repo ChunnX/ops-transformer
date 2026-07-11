@@ -106,7 +106,7 @@
       <td>-</td>
     </tr>
     <tr>
-      <td>constrait</td>
+      <td>constraint</td>
       <td>属性</td>
       <td>是否在量化前对中间浮点结果进行 [-128, 128] 的截断约束</td>
       <td>bool</td>

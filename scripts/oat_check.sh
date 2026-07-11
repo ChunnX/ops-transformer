@@ -127,6 +127,11 @@ echo "[OAT] Checking $FILE_COUNT staged file(s)..."
 # ---------------------------------------------------------------------------
 mkdir -p "$OAT_REPORT_DIR"
 
+# Use a unique report directory per invocation to avoid race conditions
+# when pre-commit runs multiple instances in parallel
+_OAT_REPORT_DIR="$OAT_REPORT_DIR/run_$$"
+mkdir -p "$_OAT_REPORT_DIR"
+
 _GITIGNORE="$REPO_ROOT/.gitignore"
 for _entry in "oat_reports" "log"; do
     if ! grep -qE "^${_entry}/?$" "$_GITIGNORE" 2>/dev/null; then
@@ -138,7 +143,7 @@ done
 # ---------------------------------------------------------------------------
 # 5. Build oat command — use OAT.xml if present in repo root
 # ---------------------------------------------------------------------------
-_OAT_CMD="$_PYTHON -m oat -mode s -s $REPO_ROOT -r $OAT_REPORT_DIR -n $REPO_NAME -w 1 -f $FILE_LIST"
+_OAT_CMD="$_PYTHON -m oat -mode s -s $REPO_ROOT -r $_OAT_REPORT_DIR -n $REPO_NAME -w 1 -f $FILE_LIST"
 
 _OAT_XML="$REPO_ROOT/OAT.xml"
 if [ -f "$_OAT_XML" ]; then
@@ -240,8 +245,8 @@ _SECTION_LIC=$(_extract_section "$REPORT_FILE" "License Header Invalid Total Cou
     echo "==================================="
 } > "$RESULT_FILE"
 
-# Clean up full plain report (keep only result.txt)
-rm -f "$REPORT_FILE"
+# Clean up temporary report directory (keep only result.txt in oat_reports/)
+rm -rf "$_OAT_REPORT_DIR"
 
 # ---------------------------------------------------------------------------
 # 8. Block commit if issues found

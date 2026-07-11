@@ -1630,7 +1630,7 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
       - 入参中的数值应满足以下条件：
         - 其值应为0(per-channel/per-tensor)、1(per-token)、2(per-tensor叠加per-head)、3(per-token叠加per-head)、
           4(per-token模式使用page attention管理scale/offset)、
-          5(per-token叠加per-head模式并使用page attenion管理scale/offser)、6(per-token-group)
+          5(per-token叠加per-head模式并使用page attenion管理scale/offset)、6(per-token-group)
         - 除key支持per-channel叠加value支持per-token，keyAntiquantMode和valueAntiquantMode应相等
     - 入参keyAntiquantScale和valueAntiquantScale应满足以下条件：
       - 入参的数据类型应满足以下条件：
