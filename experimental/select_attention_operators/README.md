@@ -11,7 +11,7 @@ High performance Ascend-910B kernels for sparse attention pattern prediction for
 |   |-- 3_quest_block_select_paged - quest sparse mask predictor using metadata
 |   |-- 4_quest_block_select_paged_w -  quest sparse mask predictor using metadata with extra sink+window features
 |-- kernels - python packages, each having one or more ascendc kernels and a single torch interface
-|   |-- select_attn_ops - predictor kernels (quest predictors of sparse pattern duting LLM decoding)
+|   |-- select_attn_ops - predictor kernels (quest predictors of sparse pattern during LLM decoding)
 `-- scripts
     |-- build_kernels.sh - builds all kernels
     `-- init_cann.sh - initialize the environment and Ascend device version

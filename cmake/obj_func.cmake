@@ -8,7 +8,7 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
-# useage: add_modules_sources(DIR OPTYPE ACLNNTYPE)
+# usage: add_modules_sources(DIR OPTYPE ACLNNTYPE)
 # ACLNNTYPE 支持类型aclnn/aclnn_inner/aclnn_exclude
 # ACLNNEXTRAVERSION 算子版本(ex., v2, v3, v5, etc.)
 # OPTYPE 和 ACLNNTYPE 需一一对应
@@ -170,7 +170,7 @@ macro(add_modules_sources)
       elseif(${AclnnType} STREQUAL "no_need_aclnn")
         message(STATUS "aicpu or host aicpu no need aclnn.")
       else()
-        message(FATAL_ERROR "ACLNN TYPE UNSPPORTED, ONLY SUPPORT aclnn/aclnn_inner/aclnn_exclude")
+        message(FATAL_ERROR "ACLNN TYPE UNSUPPORTED, ONLY SUPPORT aclnn/aclnn_inner/aclnn_exclude")
       endif()
     endforeach()
   else()
@@ -362,7 +362,7 @@ macro(add_modules_sources_with_soc)
       elseif(${AclnnType} STREQUAL "no_need_aclnn")
         message(STATUS "aicpu or host aicpu no need aclnn.")
       else()
-        message(FATAL_ERROR "ACLNN TYPE UNSPPORTED, ONLY SUPPORT aclnn/aclnn_inner/aclnn_exclude")
+        message(FATAL_ERROR "ACLNN TYPE UNSUPPORTED, ONLY SUPPORT aclnn/aclnn_inner/aclnn_exclude")
       endif()
     endforeach()
   else()
@@ -546,13 +546,13 @@ function(add_infer_modules)
       $<$<BOOL:${alog_FOUND}>:$<BUILD_INTERFACE:alog_headers>>
       $<$<BOOL:${dlog_FOUND}>:$<BUILD_INTERFACE:dlog_headers>>
       -Wl,--whole-archive
-      rt2_registry_static
+      rt2_registerry_static
       -Wl,--no-whole-archive
       -Wl,--no-as-needed
       exe_graph
       graph
       graph_base
-      register
+      registerer
       ascendalog
       error_manager
       platform
@@ -604,14 +604,14 @@ function(add_tiling_modules)
       $<$<BOOL:${alog_FOUND}>:$<BUILD_INTERFACE:alog_headers>>
       $<$<BOOL:${dlog_FOUND}>:$<BUILD_INTERFACE:dlog_headers>>
       -Wl,--whole-archive
-      rt2_registry_static
+      rt2_registerry_static
       -Wl,--no-whole-archive
       -Wl,--no-as-needed
       graph
       graph_base
       exe_graph
       platform
-      register
+      registerer
       # ascendalog
       error_manager
       -Wl,--as-needed
@@ -733,7 +733,7 @@ function(add_fallback_modules)
   endif()
 endfunction()
 
-# useage: add_graph_plugin_sources()
+# usage: add_graph_plugin_sources()
 macro(add_graph_plugin_sources)
   set(SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 
@@ -880,7 +880,7 @@ macro(add_onnx_plugin_sources)
   endif()
 endmacro()
 
-# useage: add_aicpu_kernel_modules()
+# usage: add_aicpu_kernel_modules()
 # 添加aicpu kernel object
 function(add_aicpu_kernel_modules)
   message(STATUS "add_aicpu_kernel_modules")
@@ -903,7 +903,7 @@ function(add_aicpu_kernel_modules)
   endif()
 endfunction()
 
-# useage: add_aicpu_cust_kernel_modules(target_name)
+# usage: add_aicpu_cust_kernel_modules(target_name)
 # 添加aicpu cust kernel object target
 function(add_aicpu_cust_kernel_modules target_name)
   message(STATUS "add_aicpu_cust_kernel_modules for ${target_name}")
@@ -966,7 +966,7 @@ function(add_aicpu_host_kernel_modules host_target_name)
     if (NOT host_target_name IN_LIST _host_targets)
       set_property(GLOBAL APPEND PROPERTY
         AICPU_HOST_OBJ_TARGETS ${host_target_name})
-      message(STATUS "Aicpu regist host target: ${host_target_name}")
+      message(STATUS "Aicpu register host target: ${host_target_name}")
     else()
       message(STATUS "Skip duplicate target: ${host_target_name}")
     endif()

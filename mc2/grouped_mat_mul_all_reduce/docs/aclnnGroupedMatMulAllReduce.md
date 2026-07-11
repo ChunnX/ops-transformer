@@ -891,7 +891,7 @@ int launchMultiThread(Args &input_args, int32_t *devices, HcclComm *comms, Resou
 
 int InitParams(int argc, char** argv) {
   if (argc < 4) {
-    LOG_PRINT("miss paramaters\n");
+    LOG_PRINT("miss parameters\n");
   }
   g_ndev = std::stoi(argv[1]);
   loop = std::stoi(argv[2]);

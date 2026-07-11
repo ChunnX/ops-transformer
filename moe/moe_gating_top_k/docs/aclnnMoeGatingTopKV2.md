@@ -183,7 +183,7 @@ aclnnStatus aclnnMoeGatingTopKV2GetWorkspaceSize(
   double           eps,
   const aclTensor *yOut,
   const aclTensor *expertIdxOut,
-  const aclTensor *outOut,
+  const aclTensor *output,
   uint64_t        *workspaceSize,
   aclOpExecutor  **executor)
 ```
@@ -373,7 +373,7 @@ aclnnStatus aclnnMoeGatingTopKV2(
       <td>-</td>
     </tr>
     <tr>
-      <td>outOut</td>
+      <td>output</td>
       <td>输出</td>
       <td>norm计算的输出结果，对应公式中的normOut。</td>
       <td>shape要求与x保持一致。</td>

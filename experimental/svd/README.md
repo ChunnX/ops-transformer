@@ -97,7 +97,7 @@ There are 4 linear algebra operators npu_linalg are the core implementation modu
       |   ├── utils/      # Test utilities
       |   └── test_svd.py # Accuracy tests for all operators
       ├── build_and_install.sh # Compilation NPU linear algebra wheel package
-      ├── requirements.txt# Python requied installation
+      ├── requirements.txt# Python required installation
 	  └── setup.py        # Wheel package compilation file
 ```
 

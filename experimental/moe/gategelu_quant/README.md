@@ -13,7 +13,7 @@
 - 数学公式：
 
   $$intermediate = GELU(input[:, :W]) \odot input[:, W:]$$
-  $$if \ constrait: \ intermediate = Clamp(intermediate, -clampValue, clampValue)$$
+  $$if \ constraint: \ intermediate = Clamp(intermediate, -clampValue, clampValue)$$
   $$output = Quantize(intermediate \times scale) \quad \in [-128, 127]$$
 
   其中 $W = gbW / 2$，$\odot$ 表示逐元素乘法，$Quantize$ 表示四舍五入取整并截断到INT8范围。
@@ -72,7 +72,7 @@
       <td>-</td>
     </tr>
     <tr>
-      <td>constrait</td>
+      <td>constraint</td>
       <td>输入</td>
       <td>是否在量化前对GeGLU的FP32中间结果进行截断约束，默认为false</td>
       <td>bool</td>
@@ -81,7 +81,7 @@
     <tr>
       <td>clampValue</td>
       <td>输入</td>
-      <td>截断约束的阈值，配合constrait使用，将值截断在 [-clampValue, clampValue] 内，默认为128.0</td>
+      <td>截断约束的阈值，配合constraint使用，将值截断在 [-clampValue, clampValue] 内，默认为128.0</td>
       <td>float32</td>
       <td>-</td>
     </tr>
@@ -140,7 +140,7 @@
       1. `Gelu(in_one, in_one)`：对Gate部分计算GELU激活。
       2. `Mul(in_two, in_one, in_two)`：Gate和Value逐元素相乘，得到GeGLU结果。
       3. `Cast(infloat_local, in_two, CAST_NONE)`：将FP16结果转为FP32，以便进行高精度量化计算。
-      4. **[可选约束]** 若`constrait_`为true，则使用`Mins`和`Maxs`将FP32结果截断在`[-clampValue_, clampValue_]`范围内。
+      4. **[可选约束]** 若`constraint_`为true，则使用`Mins`和`Maxs`将FP32结果截断在`[-clampValue_, clampValue_]`范围内。
       5. `Mul(infloat_local, infloat_local, scale_local)`：乘以Per-Channel量化缩放因子。
       6. `Cast(infloat_local, infloat_local, CAST_RINT)`：FP32四舍五入到整数（仍以FP32格式存储）。
       7. `Mins`和`Maxs`：将值截断到`[-128.0, 127.0]`的INT8表示范围。
