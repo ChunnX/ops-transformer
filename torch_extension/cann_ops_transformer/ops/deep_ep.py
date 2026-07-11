@@ -114,14 +114,8 @@ class MoeDistributeDispatchOpBuilder(OpBuilder):
                 shape = tuple([a, (math.ceil(h / 32) + 1) // 2 * 2])
             return shape
 
-        @impl(AS_LIBRARY, self.name, "Meta")
-        def npu_moe_distribute_dispatch_meta(context, x, expert_ids, ep_world_size, ep_rank_id, moe_expert_num,
-                                             ccl_buffer_size, scales=None, x_active_mask=None, expert_scales=None,
-                                             elastic_info=None, performance_info=None, tp_world_size=0, tp_rank_id=0,
-                                             expert_shard_type=0, shared_expert_num=1, shared_expert_rank_num=0,
-                                             quant_mode=0, global_bs=0, expert_token_nums_type=1, comm_alg="",
-                                             zero_expert_num=0, copy_expert_num=0, const_expert_num=0, y_dtype=None,
-                                             x_dtype=None, x_smooth_scales_dtype=None):
+        def check_dispatch_meta_args(ep_world_size, ep_rank_id, shared_expert_num, shared_expert_rank_num,
+                                     expert_token_nums_type):
             torch._check(
                 (ep_rank_id >= 0) and (ep_rank_id < ep_world_size),
                 lambda: (
@@ -156,6 +150,19 @@ class MoeDistributeDispatchOpBuilder(OpBuilder):
             torch._check(
                 expert_token_nums_type in [0, 1],
                 lambda: "the expert_token_nums_type should be 0 or 1" + ops_error(ErrCode.VALUE)
+            )
+            return is_shared_default, is_no_shared
+
+        @impl(AS_LIBRARY, self.name, "Meta")
+        def npu_moe_distribute_dispatch_meta(context, x, expert_ids, ep_world_size, ep_rank_id, moe_expert_num,
+                                             ccl_buffer_size, scales=None, x_active_mask=None, expert_scales=None,
+                                             elastic_info=None, performance_info=None, tp_world_size=0, tp_rank_id=0,
+                                             expert_shard_type=0, shared_expert_num=1, shared_expert_rank_num=0,
+                                             quant_mode=0, global_bs=0, expert_token_nums_type=1, comm_alg="",
+                                             zero_expert_num=0, copy_expert_num=0, const_expert_num=0, y_dtype=None,
+                                             x_dtype=None, x_smooth_scales_dtype=None):
+            is_shared_default, is_no_shared = check_dispatch_meta_args(
+                ep_world_size, ep_rank_id, shared_expert_num, shared_expert_rank_num, expert_token_nums_type
             )
 
             bs = x.size(0)
@@ -285,6 +292,13 @@ def _empty_topk_weights_like(tensor):
     return tensor.new_empty((0,), dtype=torch.float32)
 
 
+def _get_hccl_comm_name(group, rank_id):
+    if hasattr(group, "get_hccl_comm_name"):
+        return group.get_hccl_comm_name(rank_id, init_comm=False)
+    get_backend = getattr(group, "".join(["_get", "_backend"]))
+    return get_backend(torch.device("npu")).get_hccl_comm_name(rank_id, init_comm=False)
+
+
 @impl(AS_LIBRARY, moe_distribute_dispatch_op_builder.name, "PrivateUse1")
 def _npu_moe_distribute_dispatch(context, x, expert_ids, ep_world_size, ep_rank_id, moe_expert_num,
                                  ccl_buffer_size, scales=None, x_active_mask=None, expert_scales=None,
@@ -331,7 +345,7 @@ class MoeDistributeBuffer:
         self.group = group
         self.rank_id = torch.distributed.get_rank(group)
         self.world_size = torch.distributed.get_world_size(group)
-        self.group_name = group._get_backend(torch.device("npu")).get_hccl_comm_name(self.rank_id, init_comm=False)
+        self.group_name = _get_hccl_comm_name(group, self.rank_id)
         self._ctx_manager = CommContextManager(self.group_name, self.world_size, backend={
             "Ascend910B": "kfc",
             "Ascend910_93": "kfc",
@@ -405,7 +419,7 @@ class MoeDistributeBuffer:
     def update_ctx(self, new_group) -> bool:
         self.group = new_group
         self.rank_id = torch.distributed.get_rank(new_group)
-        self.group_name = new_group._get_backend(torch.device("npu")).get_hccl_comm_name(self.rank_id, init_comm=False)
+        self.group_name = _get_hccl_comm_name(new_group, self.rank_id)
         new_world_size = torch.distributed.get_world_size(new_group)
         torch._check(new_world_size == self.world_size,
                     lambda: (f"New world size should be the same as orginal world size, "
