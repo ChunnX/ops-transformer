@@ -504,23 +504,26 @@ __aicore__ inline void MhcPreBackwardKernelArch22<TYPE_X, T, DETERMINISTIC>::Com
     DataCopyPad(hatLocal, preGlobal_[taskOffset * n_],
                 {static_cast<uint16_t>(tileTaskCount), static_cast<uint32_t>(n_ * sizeof(T)), 0, 0, 0}, 
                 {true, 0, static_cast<uint8_t>(ELEMENTS_SIZE_PER_BLOCK - n_), 0});
+    // DumpTensor(hatLocal, 1, tileTaskCount * 8);
 
     DataCopyPad(hatLocal[ELEMENTS_SIZE_PER_BLOCK * tileTaskCount], hPostGlobal_[taskOffset * n_],
                 {static_cast<uint16_t>(tileTaskCount), static_cast<uint32_t>(n_ * sizeof(T)), 0, 0, 0}, 
                 {true, static_cast<uint8_t>(ELEMENTS_SIZE_PER_BLOCK - n_), 0, 0});
+    // DumpTensor(hatLocal[ELEMENTS_SIZE_PER_BLOCK * tileTaskCount], 2, tileTaskCount * 8);
 
     auto eventIdMTE2ToV = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::MTE2_V>());
     SetFlag<HardEvent::MTE2_V>(eventIdMTE2ToV);
     WaitFlag<HardEvent::MTE2_V>(eventIdMTE2ToV);
 
-    // 新增: 计算真正的 sigmoid 输出 s
-    // pre 区段:  s = H_pre   (标杆已删除 eps 减法, H_pre = sigmoid(x))
-    // post 区段: s = H_post / 2    (对应文档: H_post * (1 - H_post/2) 中的 H_post/2)
+    // 计算真正的 sigmoid 输出 s
+    // pre 区段:  s = H_pre - eps  (正向 H_pre = sigmoid(x) + eps)
+    // post 区段: s = H_post / 2   (正向 H_post = 2 * sigmoid(x))
+    Adds(hatLocal, hatLocal, float(-eps_), ELEMENTS_SIZE_PER_BLOCK * tileTaskCount);
     Muls(hatLocal[ELEMENTS_SIZE_PER_BLOCK * tileTaskCount], hatLocal[ELEMENTS_SIZE_PER_BLOCK * tileTaskCount], float(0.5), ELEMENTS_SIZE_PER_BLOCK * tileTaskCount);
     PipeBarrier<PIPE_V>();
     Add(hatLocal, hatLocal, hatLocal[ELEMENTS_SIZE_PER_BLOCK * tileTaskCount], ELEMENTS_SIZE_PER_BLOCK * tileTaskCount);
     PipeBarrier<PIPE_V>();
-// printf("ComputeGradHHat2 done\n");
+
     auto hatLocalTemp = dhatBeforeNormLocal;
 
     // Sigmoid 导数: s * (1 - s)，其中 s = sigmoid(hatLocal)

@@ -28,4 +28,8 @@ bash build.sh --pkg --soc=ascend910b --ops=mhc_pre_backward
 
 ## 4. ATK
 1. 在远程环境/opt/rrh/test/mhc/mhcPreBackward/目录下，运行ATK。
-2. 运行命令：atk task -c result/MhcPreBackward/json/all_MhcPreBackward.json -n nodes.yaml -p gdd_executor_aclnnMhcPreBackward.py -wl [8]
+2. 运行命令：atk task -c result/MhcPreBackward/json/all_MhcPreBackward.json -n nodes.yaml -p gdd_executor_aclnnMhcPreBackward.py -e 100 --save_data input --save_data output
+3. ATK单个任务三分钟跑不完就停掉重新跑
+
+## 5. 精度验证
+1. 根据保存的输入输出数据，找到错误的位置，再代码中添加对应的日志，使用atk验证，读取打屏数据(如果重定向到文件，会出现日志部分丢失问题)，分析数据和标杆对应位置结果进行比较，找到错误代码并修改验证。
