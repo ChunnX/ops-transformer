@@ -140,11 +140,11 @@ docker run --name cann_container --device /dev/davinci0 --device /dev/davinci_ma
 1. 下载源码。
 
     下载与CANN版本配套的分支源码，命令如下，\$\{tag\_version\}替换为分支标签名。
-   
+
     ```bash
     git clone -b ${tag_version} https://gitcode.com/cann/ops-transformer.git
     ```
-    
+
 2. 安装依赖。
 
     先通过项目根目录install\_deps.sh一键安装上述依赖，命令如下，若遇到不支持系统，请参考该文件自行适配。
@@ -193,4 +193,3 @@ source /usr/local/Ascend/cann/set_env.sh
 # 指定路径安装
 # source ${install_path}/cann/set_env.sh
 ```
-

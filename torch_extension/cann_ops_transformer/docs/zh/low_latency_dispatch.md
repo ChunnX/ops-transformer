@@ -810,4 +810,3 @@ MoeDistributeBuffer.low_latency_dispatch(x, topk_idx, num_experts, *, quant_mode
 
         print("run npu success.")
     ```
-

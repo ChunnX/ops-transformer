@@ -247,7 +247,7 @@ macro(add_mc2_modules_sources)
 
   cmake_parse_arguments(MODULE "" "${oneValueArgs}" "${multiValueArgs}" ${ARGN})
   set(SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR})
-  
+
    # 获取父目录和祖父目录路径
   get_filename_component(CMAKE_PARENT_DIR ${CMAKE_CURRENT_SOURCE_DIR} DIRECTORY)
   get_filename_component(CMAKE_GRANDPARENT_DIR ${CMAKE_PARENT_DIR} DIRECTORY)
