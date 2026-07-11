@@ -178,18 +178,7 @@ MoeDistributeBuffer.low_latency_dispatch(x, topk_idx, num_experts, *, quant_mode
         <td>quant_mode</td>
         <td>int</td>
         <td>可选</td>
-        <td>
-            <ul>
-                <li>0表示非量化（默认）。</li>
-                <li>1表示静态量化。</li>
-                <li>2表示pertoken动态量化。</li>
-                <li>3表示pergroup动态量化。</li>
-                <li>4表示mx动态量化。</li>
-                <li>5表示mx clip动态量化。</li>
-                <li>`quant_mode`为2、3、4、5时，`dynamic_scales`输出有效。</li>
-                <li>`quant_mode`为0且输入`x`为hifloat8、float8_e5m2、float8_e4m3fn、float4_e2m1、float4_e1m2等低精度类型时，`dynamic_scales`也输出有效。</li>
-            </ul>
-        </td>
+        <td>表示量化模式，0表示非量化（默认），1表示静态量化，2表示pertoken动态量化，3表示pergroup动态量化，4表示mx动态量化，5表示mx clip动态量化。`quant_mode`为2、3、4、5时，`dynamic_scales`不为None；`quant_mode`为0且输入`x`为hifloat8、float8_e5m2、float8_e4m3fn、float4_e2m1、float4_e1m2等低精度类型时，`dynamic_scales`也不为None；其他场景下`dynamic_scales`为None。</td>
         <td>int</td>
         <td>-</td>
     </tr>
