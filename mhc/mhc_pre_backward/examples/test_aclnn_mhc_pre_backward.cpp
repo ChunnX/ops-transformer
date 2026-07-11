@@ -121,23 +121,24 @@ int main()
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Init acl failed. ERROR: %d\n", ret); return ret);
 
     // 2. 构造输入与输出，需要根据API的接口自定义构造
-    std::vector<int64_t> xShape = {1024, 4, 512};      // T, N, D
-    std::vector<int64_t> phiShape = {24, 2048};        // 2 * N + N * N, N * D
-    std::vector<int64_t> alphaShape = {3};             // 固定大小
-    std::vector<int64_t> gradHInShape = {1024, 512};   // T, D
-    std::vector<int64_t> gradHPostShape = {1024, 4};   // T, N
-    std::vector<int64_t> gradHResShape = {1024, 4, 4}; // T, N, N
-    std::vector<int64_t> invRmsShape = {1024};         // T
-    std::vector<int64_t> hMixShape = {1024, 24};       // T, 2 * N + N * N
-    std::vector<int64_t> hPreShape = {1024, 4};        // T, N
-    std::vector<int64_t> hPostShape = {1024, 4};       // T, N
-    std::vector<int64_t> gammaShape = {4, 512};        // N, D
-    std::vector<int64_t> gradXShape = {1024, 4, 512};  // T, N, D
-    std::vector<int64_t> gradPhiShape = {24, 2048};    // 2 * N + N * N, N * D
-    std::vector<int64_t> gradAlphaShape = {3};         // 固定大小
-    std::vector<int64_t> gradGammaShape = {4, 512};    // N, D
-    std::vector<int64_t> gradBiasShape = {24};         // T, N, D (grad_x_post)
-    std::vector<int64_t> gradXPostOptionalShape = {1024, 4, 512};
+    // BSND format for A2 (ascend910b): B=1, S=1024, N=4, D=512, N!=24, N!+2N=32
+    std::vector<int64_t> xShape = {1, 1024, 4, 512};       // B, S, N, D
+    std::vector<int64_t> phiShape = {32, 2048};             // 2 * N + N!, N * D
+    std::vector<int64_t> alphaShape = {3};                  // 固定大小
+    std::vector<int64_t> gradHInShape = {1, 1024, 512};     // B, S, D
+    std::vector<int64_t> gradHPostShape = {1, 1024, 4};     // B, S, N
+    std::vector<int64_t> gradHResShape = {1, 1024, 24};     // B, S, N!
+    std::vector<int64_t> invRmsShape = {1, 1024, 1};        // B, S, 1
+    std::vector<int64_t> hMixShape = {1, 1024, 32};         // B, S, 2 * N + N!
+    std::vector<int64_t> hPreShape = {1, 1024, 4};          // B, S, N
+    std::vector<int64_t> hPostShape = {1, 1024, 4};         // B, S, N
+    std::vector<int64_t> gammaShape = {4, 512};             // N, D
+    std::vector<int64_t> gradXShape = {1, 1024, 4, 512};    // B, S, N, D
+    std::vector<int64_t> gradPhiShape = {32, 2048};         // 2 * N + N!, N * D
+    std::vector<int64_t> gradAlphaShape = {3};              // 固定大小
+    std::vector<int64_t> gradGammaShape = {4, 512};         // N, D
+    std::vector<int64_t> gradBiasShape = {32};              // 2 * N + N!
+    std::vector<int64_t> gradXPostOptionalShape = {1, 1024, 4, 512};
 
     void *xDeviceAddr = nullptr;
     void *phiDeviceAddr = nullptr;
@@ -175,23 +176,23 @@ int main()
     aclTensor *gradGamma = nullptr;
     aclTensor *gradXPostOptional = nullptr;
 
-    std::vector<short> xHostData(1024 * 4 * 512, 1.0);
-    std::vector<float> phiHostData(24 * 2048, 1.0);
+    std::vector<short> xHostData(1 * 1024 * 4 * 512, 1.0);
+    std::vector<float> phiHostData(32 * 2048, 1.0);
     std::vector<float> alphaHostData(3, 1.0);
-    std::vector<short> gradHInHostData(1024 * 512, 1.0);
-    std::vector<float> gradHPostHostData(1024 * 4, 1.0);
-    std::vector<float> gradHResHostData(1024 * 4 * 4, 1.0);
-    std::vector<float> invRmsHostData(1024, 1.0);
-    std::vector<float> hMixHostData(1024 * 24, 1.0);
-    std::vector<float> hPreHostData(1024 * 4, 1.0);
-    std::vector<float> hPostHostData(1024 * 4, 1.0);
+    std::vector<short> gradHInHostData(1 * 1024 * 512, 1.0);
+    std::vector<float> gradHPostHostData(1 * 1024 * 4, 1.0);
+    std::vector<float> gradHResHostData(1 * 1024 * 24, 1.0);
+    std::vector<float> invRmsHostData(1 * 1024 * 1, 1.0);
+    std::vector<float> hMixHostData(1 * 1024 * 32, 1.0);
+    std::vector<float> hPreHostData(1 * 1024 * 4, 1.0);
+    std::vector<float> hPostHostData(1 * 1024 * 4, 1.0);
     std::vector<float> gammaHostData(4 * 512, 1.0);
-    std::vector<short> gradXHostData(1024 * 4 * 512, 0);
-    std::vector<float> gradPhiHostData(24 * 2048, 0);
+    std::vector<short> gradXHostData(1 * 1024 * 4 * 512, 0);
+    std::vector<float> gradPhiHostData(32 * 2048, 0);
     std::vector<float> gradAlphaHostData(3, 0);
-    std::vector<float> gradBiasHostData(24, 0);
+    std::vector<float> gradBiasHostData(32, 0);
     std::vector<float> gradGammaHostData(4 * 512, 0);
-    std::vector<short> gradXPostOptionalHostData(1024 * 4 * 512, 0);
+    std::vector<short> gradXPostOptionalHostData(1 * 1024 * 4 * 512, 0);
 
     ret = CreateAclTensor(xHostData, xShape, &xDeviceAddr, aclDataType::ACL_BF16, &x);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
