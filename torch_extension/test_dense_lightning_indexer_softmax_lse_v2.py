@@ -25,6 +25,54 @@ def _golden_dense_lightning_index_lse(query_index, key_index, weight):
     lse = m + torch.log(torch.exp(x - m.unsqueeze(-1)).sum(dim=-1))  # [B, S1]
     return lse
 
+def golden_dli_lse_blk(query_index, key_index, weight):
+    q = query_index.float()
+    k = key_index.float()
+    w = weight.float()
+    B, S1, N1, D = q.shape
+    _, S2, _, _ = k.shape
+    dev = q.device
+
+    TKV = 128
+    s2_tiles = (S2 + TKV - 1) // TKV
+    neg_inf = -3.4028234663852886e+38
+
+    lse = torch.zeros(B, S1, dtype=torch.float32, device=dev)
+
+    for b in range(B):
+        q_b = q[b]
+        k_b = k[b]
+        w_b = w[b]
+
+        x_full = torch.zeros(S1, S2, dtype=torch.float32, device=dev)
+        reduce_max = torch.full((S1,), neg_inf, dtype=torch.float32, device=dev)
+
+        for s2_i in range(s2_tiles):
+            s2_start = s2_i * TKV
+            s2_end = min(s2_start + TKV, S2)
+            s2_len = s2_end - s2_start
+
+            k_slice = k_b[s2_start:s2_end, 0, :]
+            if s2_len < TKV:
+                k_tile = torch.cat([k_slice, torch.zeros(TKV - s2_len, D, dtype=torch.float32, device=dev)], dim=0)
+            else:
+                k_tile = k_slice
+
+            score_tile = torch.matmul(q_b, k_tile.T)
+            relu_score = torch.relu(score_tile)
+            weighted = relu_score * w_b.unsqueeze(-1)
+            reduce_sum = weighted.sum(dim=1)
+
+            x_full[:, s2_start:s2_end] = reduce_sum[:, :s2_len]
+            tile_max = reduce_sum[:, :s2_len].amax(dim=1)
+            reduce_max = torch.maximum(reduce_max, tile_max)
+
+        valid = reduce_max > neg_inf
+        shifted = x_full - reduce_max.unsqueeze(1)
+        sum_exp = torch.exp(shifted).sum(dim=1)
+        lse[b, valid] = reduce_max[valid] + torch.log(sum_exp[valid])
+        lse[b, ~valid] = 0.0
+    return lse
 
 def test_bsnd_metadata():
     """BSND layout: 调用 metadata 算子。"""
@@ -98,7 +146,7 @@ def test_e2e_bsnd():
 
     Kernel 约束: N1=128, D=128, S2 为 128 的倍数, B=1 (work_end 硬编码为 1)。
     """
-    B, S1, S2, N1, D = 1, 2, 512, 128, 128
+    B, S1, S2, N1, D = 37, 2, 8192, 128, 128
     torch.manual_seed(42)
     q = torch.randn(B, S1, N1, D, dtype=torch.float16).npu()
     k = torch.randn(B, S2, 1, D, dtype=torch.float16).npu()
@@ -129,7 +177,8 @@ def test_e2e_bsnd():
 
     print(f"[e2e] lse shape={lse.shape}, dtype={lse.dtype}")
     print(f"[e2e] lse_out={lse.cpu().float().flatten().tolist()}")
-    lse_ref = _golden_dense_lightning_index_lse(q.cpu(), k.cpu(), w.cpu())
+    # lse_ref = _golden_dense_lightning_index_lse(q.cpu(), k.cpu(), w.cpu())
+    lse_ref = golden_dli_lse_blk(q.cpu(), k.cpu(), w.cpu())
     diff = (lse.cpu().float() - lse_ref).abs().max().item()
     print(f"[e2e] lse_ref ={lse_ref.flatten().tolist()}")
     print(f"[e2e] max|diff|={diff:.6f}")
@@ -171,10 +220,12 @@ def test_invalid_cmp_ratio():
 
 
 if __name__ == "__main__":
-    test_bsnd_metadata()
-    test_tnd_metadata()
-    test_bsnd_metadata_with_seqused()
-    test_e2e_bsnd()
-    test_invalid_num_heads_q()
-    test_invalid_cmp_ratio()
+    # test_bsnd_metadata()
+    # test_tnd_metadata()
+    # test_bsnd_metadata_with_seqused()
+    for i in range(10):
+        test_e2e_bsnd()
+        print(f"===the {i} loop is done===")
+    # test_invalid_num_heads_q()
+    # test_invalid_cmp_ratio()
     print("All tests passed!")
