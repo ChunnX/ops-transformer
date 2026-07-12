@@ -183,14 +183,14 @@ aclnnStatus aclnnGroupedMatmulV5(
 
   | 参数名 | 输入/输出 | 描述 | 使用说明 | 数据类型 | 数据格式 | 维度(shape) | 非连续Tensor |
   |--------|:---:|------|------|----------|:---:|:---|:---:|
-  | x | 输入 | 公式中的输入 $x$ | TensorList长度 [1,128] 或 [1,1024]（A5 非量化） | FLOAT、FLOAT16、INT16<span title="仅 Ascend 950PR/950DT 不支持"><sup>1</sup></span>、INT8、INT4<span title="仅 Ascend 950PR/950DT 不支持"><sup>1</sup></span>、BFLOAT16、FLOAT8_E5M2<span title="仅 Atlas A3/A2 不支持"><sup>2</sup></span>、FLOAT8_E4M3FN<span title="仅 Atlas A3/A2 不支持"><sup>2</sup></span>、HIFLOAT8<span title="仅 Atlas A3/A2 不支持"><sup>2</sup></span>、FLOAT4_E2M1<span title="仅 Atlas A3/A2 不支持"><sup>2</sup></span> | <abbr title="常规连续排布">ND</abbr> | 2~6 | √ |
-  | weight | 输入 | 公式中的 $weight$ | TensorList长度 [1,128] 或 [1,1024] | FLOAT、FLOAT16、INT16<span title="仅 Ascend 950PR/950DT 不支持"><sup>1</sup></span>、INT8、INT4、BFLOAT16、FLOAT8_E5M2<span title="仅 Atlas A3/A2 不支持"><sup>2</sup></span>、FLOAT8_E4M3FN<span title="仅 Atlas A3/A2 不支持"><sup>2</sup></span>、HIFLOAT8<span title="仅 Atlas A3/A2 不支持"><sup>2</sup></span>、FLOAT4_E2M1<span title="仅 Atlas A3/A2 不支持"><sup>2</sup></span> | ND/<abbr title="FRACTAL_NZ格式（亲核排布）">NZ</abbr> | 2~3 | √ |
-  | biasOptional | 可选输入 | 公式中的 $bias$ | 长度与weight相同 | FLOAT、FLOAT16、INT32、BFLOAT16<span title="仅 Atlas A3/A2 不支持"><sup>2</sup></span> | ND | 1~2 | √ |
-  | scaleOptional | 可选输入 | 公式中的 $scale$，代表量化参数中的缩放因子 | 一般情况下，长度与weight相同。综合约束请参见 [约束说明](#7-约束说明) | FLOAT、UINT64、BFLOAT16、FLOAT8_E8M0<span title="仅 Atlas A3/A2 不支持"><sup>2</sup></span>、INT64<span title="仅 Atlas A3/A2 不支持"><sup>2</sup></span> | ND | 1~4 | √ |
+  | x | 输入 | 公式中的输入 $x$ | TensorList长度 [1,128] 或 [1,1024]（A5 非量化） | FLOAT、FLOAT16、INT16<span title="Ascend 950PR/950DT 不支持"><sup>1</sup></span>、INT8、INT4<span title="Ascend 950PR/950DT 不支持"><sup>1</sup></span>、BFLOAT16、FLOAT8_E5M2<span title="Atlas A3/A2 不支持"><sup>2</sup></span>、FLOAT8_E4M3FN<span title="Atlas A3/A2 不支持"><sup>2</sup></span>、HIFLOAT8<span title="Atlas A3/A2 不支持"><sup>2</sup></span>、FLOAT4_E2M1<span title="Atlas A3/A2 不支持"><sup>2</sup></span> | <abbr title="常规连续排布">ND</abbr> | 2~6 | √ |
+  | weight | 输入 | 公式中的 $weight$ | TensorList长度 [1,128] 或 [1,1024] | FLOAT、FLOAT16、INT16<span title="Ascend 950PR/950DT 不支持"><sup>1</sup></span>、INT8、INT4、BFLOAT16、FLOAT8_E5M2<span title="Atlas A3/A2 不支持"><sup>2</sup></span>、FLOAT8_E4M3FN<span title="Atlas A3/A2 不支持"><sup>2</sup></span>、HIFLOAT8<span title="Atlas A3/A2 不支持"><sup>2</sup></span>、FLOAT4_E2M1<span title="Atlas A3/A2 不支持"><sup>2</sup></span> | ND/<abbr title="FRACTAL_NZ格式（亲核排布）">NZ</abbr> | 2~3 | √ |
+  | biasOptional | 可选输入 | 公式中的 $bias$ | 长度与weight相同 | FLOAT、FLOAT16、INT32、BFLOAT16<span title="Atlas A3/A2 不支持"><sup>2</sup></span> | ND | 1~2 | √ |
+  | scaleOptional | 可选输入 | 公式中的 $scale$，代表量化参数中的缩放因子 | 一般情况下，长度与weight相同。综合约束请参见 [约束说明](#7-约束说明) | FLOAT、UINT64、BFLOAT16、FLOAT8_E8M0<span title="Atlas A3/A2 不支持"><sup>2</sup></span>、INT64<span title="Atlas A3/A2 不支持"><sup>2</sup></span> | ND | 1~4 | √ |
   | offsetOptional | 可选输入 | 公式中的 $offset$，代表量化参数中的偏移量 | 长度与weight相同 | FLOAT | ND | 3 | √ |
   | antiquantScaleOptional | 可选输入 | 公式中的 $antiquant\_scale$，代表伪量化参数中的缩放因子 | 长度与weight相同。综合约束请参见 [约束说明](#7-约束说明) | FLOAT16、BFLOAT16 | ND | 1~3 | √ |
   | antiquantOffsetOptional | 可选输入 | 公式中的 $antiquant\_offset$，代表伪量化参数中的偏移量 | 长度与weight相同。综合约束请参见 [约束说明](#7-约束说明) | FLOAT16、BFLOAT16 | ND | 1~3 | √ |
-  | perTokenScaleOptional | 可选输入 | 公式中的 $per\_token\_scale$，代表量化参数中由x量化引入的缩放因子 | 一般情况下，只支持 1维且长度与 x的M相同。综合约束请参见 [约束说明](#7-约束说明) | FLOAT、FLOAT8_E8M0<span title="仅 Atlas A3/A2 不支持"><sup>2</sup></span> | ND | 1~3 | √ |
+  | perTokenScaleOptional | 可选输入 | 公式中的 $per\_token\_scale$，代表量化参数中由x量化引入的缩放因子 | 一般情况下，只支持 1维且长度与 x的M相同。综合约束请参见 [约束说明](#7-约束说明) | FLOAT、FLOAT8_E8M0<span title="Atlas A3/A2 不支持"><sup>2</sup></span> | ND | 1~3 | √ |
   | groupListOptional | 可选输入 | 代表输入和输出分组轴方向的 matmul大小分布 | 根据 groupListType输入不同格式数据 | INT64 | ND | 1~2 | √ |
   | activationInputOptional | 可选输入 | 代表激活函数的反向输入，当前只支持传入 nullptr | - | - | - | - | - |
   | activationQuantScaleOptional | 可选输入 | 激活函数量化缩放因子（预留参数），当前只支持传入 nullptr | - | - | - | - | - |
@@ -209,13 +209,11 @@ aclnnStatus aclnnGroupedMatmulV5(
   - **<term>Ascend 950PR/Ascend 950DT</term>**：
     - 上表数据类型列中的角标 <span title="Ascend 950PR/950DT 不支持"><sup>1</sup></span> 代表该系列不支持的数据类型
     - 输入参数 x、weight均不支持 INT16 类型，且 x不支持 INT4 类型
-    - 输入参数 x、weight，输出参数 out 在非量化场景支持最多 1024个Tensor，在伪量化支持最多 128个Tensor，在全量化场景最多支持 1个Tensor
   - **<term>Atlas A3/A2 系列产品</term>**：
     - 上表数据类型列中的角标 <span title="Atlas A3/A2 不支持"><sup>2</sup></span> 代表该系列不支持的数据类型
     - 不支持 FLOAT8_E5M2、FLOAT8_E4M3FN、HIFLOAT8、FLOAT8_E8M0类型
     - 输入参数 biasOptional不支持 BFLOAT16
     - 输入参数 scaleOptional不支持 INT64 类型
-    - 输入参数 x、weight，输出参数 out支持最多 128个Tensor
 
 - **返回值：**
 
@@ -305,13 +303,14 @@ aclnnGroupedMatmulV5 默认确定性实现。
 
 - groupType：支持M轴分组（0）和不分组（-1）。非量化/全量化额外支持K轴分组（2）。
 - groupListType：支持 0、1、2。
-  - groupListType=0：须为非负单调非递减数列（累积和）。
-  - groupListType=1：须为非负数列（各组大小）。
-  - groupListType=2：仅全量化且groupType=0场景下支持，须为非负数列，shape为`[E, 2]`，E表示Group大小，数据排布为`[[groupIdx0, groupSize0], [groupIdx1, groupSize1]...]`，非零组前置。
+  - groupListType=0：须为非负单调非递减数列（累积和）。以M=256、E=4（各组大小依次为64、0、128、64）为例：`[64, 64, 192, 256]`
+  - groupListType=1：须为非负数列（各组大小）。例如：`[64, 0, 128, 64]`
+  - groupListType=2：仅全量化且groupType=0场景下支持，须为非负数列，shape为`[E, 2]`，E表示Group大小，数据排布为`[[groupIdx0, groupSize0], [groupIdx1, groupSize1]...]`，非零组前置。例如：`[[0, 64], [2, 128], [3, 64], [1, 0]]`
 - tuningConfigOptional：不支持。
 - actType（0~5）：
   - 非量化/伪量化仅支持 0。
   - 全量化下 x/weight=INT8 且 out=BFLOAT16/FLOAT16、静态 T-C 或动态 K-C、scale=FLOAT32/BFLOAT16 时支持 0/1/2/4/5；其余仅支持 0。
+- 输入参数 x、weight，输出参数 out 在非量化场景支持最多 1024个Tensor，在伪量化支持最多 128个Tensor，在全量化场景最多支持 1个Tensor。
 
 #### 场景速查表
 
@@ -535,8 +534,11 @@ aclnnGroupedMatmulV5 默认确定性实现。
   - groupListType=1：须为非负数列（各组大小）。例如：`[64, 0, 128, 64]`
   - groupListType=2：须为非负数列，shape `[E, 2]`（[组索引, 组大小]），非零组前置。例如：`[[0, 64], [2, 128], [3, 64], [1, 0]]`
 - groupType：支持 M轴分组（0）和不分组（-1），非量化额外支持 K轴分组（2）。全量化下 groupType 仅支持 0（M轴分组）。
-- tuningConfigOptional：支持。具体配置见 [tuningConfigOptional 配置示例](#tuningconfigoptional-配置示例)。
-- actType：非量化/伪量化仅支持 0。全量化下 x/weight=INT8 时支持 0/1/2/4/5。
+- tuningConfigOptional：支持，为 Host侧 INT64 aclIntArray。
+  - `[0]`：预期各专家处理的 token数，tiling 按此优化，适用场景：A8W4/A8W8/A4W4，x/weight/out 单Tensor。
+  - `[1]`：是否开启 weight 亲核格式（先转置再 NZ），适用场景：A8W4。
+  - `[2]`：允许额外 workspace 上限（-1=不限），适用场景：A8W8 定轴算法优化。
+- actType：仅 A8W8（x、weight 为 INT8）且输出为 FLOAT16/BFLOAT16 时支持激活函数类型 0/1/2/4/5（3 不支持）；其余场景仅支持 0。
 - 输入参数 x、weight，输出参数 out支持最多 128个Tensor。
 
 #### 场景速查表
@@ -730,21 +732,6 @@ aclnnGroupedMatmulV5 默认确定性实现。
 | 0 | 多 | 多 | 单 | 2/3 | 可选；若传则 groupListType=0 差值 = x 第一维、groupListType=1 数值 = x 第一维、groupListType=2 第二列 = x 第一维；最大 128 组 | x不转置；weight可转置（统一） | x/weight/y 2维；weight N 轴相等 |
 | 2 | 单 | 单 | 单 | 2/3 | 必须传；groupListType=0 末值 ≤ x 第二维；groupListType=1 总和 ≤ x 第二维；groupListType=2 第二列总和 ≤ x 第二维；最大 1024 组 | x必须转置；weight不转置 | x/weight 2维，y 3维；bias传空 |
 | 2 | 单 | 多 | 多 | 0/1 | 必须传空 | x必须转置；weight不转置 | x/weight/y 2维；weight最大 128 组；原始 shape 各 weight 第一维之和 ≤ x 第一维；bias传空 |
-
-### 配置示例
-
-<a id="tuningconfigoptional-配置示例"></a>
-
-#### tuningConfigOptional 配置示例
-
-仅 <term>Atlas A3/A2 系列产品</term> 支持，Ascend 950PR/950DT 不支持此参数。
-tuningConfigOptional为 Host侧 aclIntArray，存储 INT64 元素。
-
-| 索引 | 语义 | 适用场景 |
-|:---:|------|------|
-| [0] | 预期各专家处理的 token数，tiling按此优化 | A8W4、A8W8、A4W4（x/weight/out 单Tensor） |
-| [1] | 是否开启 weight亲核格式（需先转置再 NZ） | A8W4 |
-| [2] | 允许额外 workspace上限（-1=不限），用于定轴算法优化 | A8W8 |
 
 ---
 
