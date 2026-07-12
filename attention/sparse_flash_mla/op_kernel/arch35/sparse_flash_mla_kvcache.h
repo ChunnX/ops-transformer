@@ -37,8 +37,6 @@ __aicore__ inline void GetSingleCoreParam(RunParamStr& runParam, const ConstInfo
     int32_t actualS1Size = 0;
     int32_t actualS2OriSize = 0;
     int32_t actualS2CmpSize = 0;
-    int32_t actualSeqMin = 1;
-    int32_t actualSeqKVMin = 1;
     int32_t bIdx = runParam.boIdx;
     if constexpr (LAYOUT_T == SMLA_LAYOUT::TND) {
         actualS1Size = (!hasActualSeqQlen) ? (cuSeqlensQGm.GetValue(bIdx + 1) - cuSeqlensQGm.GetValue(bIdx)) :
@@ -58,8 +56,7 @@ __aicore__ inline void GetSingleCoreParam(RunParamStr& runParam, const ConstInfo
                 actualS2OriSize = cuSeqlensOriKvGm.GetValue(bIdx + 1) - cuSeqlensOriKvGm.GetValue(bIdx);
             }
         } else {
-            actualS2OriSize = (constInfo.actualLenDimsOriKV == actualSeqKVMin) ?
-                actualSeqOriKvlenGm.GetValue(0) : actualSeqOriKvlenGm.GetValue(bIdx);
+            actualS2OriSize = actualSeqOriKvlenGm.GetValue(bIdx);
         }
     }
 
@@ -73,9 +70,11 @@ __aicore__ inline void GetSingleCoreParam(RunParamStr& runParam, const ConstInfo
                 actualS2CmpSize = actualS2OriSize / constInfo.cmpRatio;
             }
         } else {
-            actualS2CmpSize = (!hasActualSeqCmpKvlen) ? (actualS2OriSize / constInfo.cmpRatio) :
-                (constInfo.actualLenDimsCmpKV == actualSeqKVMin) ?
-                 actualSeqCmpKvlenGm.GetValue(0) : actualSeqCmpKvlenGm.GetValue(bIdx);
+            if (!hasActualSeqCmpKvlen) {
+                actualS2CmpSize = actualS2OriSize / constInfo.cmpRatio;
+            } else {
+                actualS2CmpSize = actualSeqCmpKvlenGm.GetValue(bIdx);
+            }
         }
     }
     runParam.cmpSparseBlockCount = constInfo.cmpSparseBlockCount;
@@ -322,10 +321,8 @@ __aicore__ inline void InitTaskParamByRun(const RunParamStr& runParam, RunInfo &
     runInfo.softmaxLseOffset = runParam.softmaxLseOffset;
     runInfo.qSNumInOneBlock = runParam.qSNumInOneBlock;
     runInfo.oriKvLoopEndIdx = runParam.oriKvLoopEndIdx;
-    if constexpr (TEMPLATE_MODE != SMLATemplateMode::SWA_TEMPLATE_MODE) {
-        runInfo.cmpKvLoopEndIdx = runParam.cmpKvLoopEndIdx;
-        runInfo.isCmp = runInfo.s2LoopCount >= runInfo.oriKvLoopEndIdx;
-    }
+    runInfo.cmpKvLoopEndIdx = runParam.cmpKvLoopEndIdx;
+    runInfo.isCmp = runInfo.s2LoopCount >= runInfo.oriKvLoopEndIdx;
     runInfo.oriSparseBlockCount = runParam.oriSparseBlockCount;
     runInfo.cmpSparseBlockCount = runParam.cmpSparseBlockCount;
 }
