@@ -250,6 +250,12 @@ __aicore__ inline void SparseFlashMlaSwaKernel<CubeBlockType, VecBlockType>::Par
         constInfo.cmpMaxBlockNumPerBatch = sparseFlashMLACmpParams.cmpMaxBlockNumPerBatch;
     }
 
+    constInfo.actualLenDimsOriKV = sparseFlashMLABaseParams.actualLenDimsOriKV;
+    if constexpr (TEMPLATE_MODE != SMLATemplateMode::SWA_TEMPLATE_MODE) {
+        constInfo.actualLenDimsCmpKV = sparseFlashMLABaseParams.actualLenDimsCmpKV;
+        constInfo.cmpResidualKVSize = sparseFlashMLABaseParams.cmpResidualKVSize;
+    }
+
     if (cuSeqlensQ != nullptr) {
         cuSeqlensQGm.SetGlobalBuffer((__gm__ int32_t *)cuSeqlensQ);
         hasCuSeqlensQ = true;
