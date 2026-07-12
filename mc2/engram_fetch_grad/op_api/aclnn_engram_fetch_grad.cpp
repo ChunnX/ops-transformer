@@ -27,6 +27,7 @@ using namespace op;
 static bool CheckNotNull(const aclTensor *commContext, const aclTensor *gradFetched,
                          const aclTensor *perm, const aclTensor *sendCounts,
                          const aclTensor *recvCounts, const aclTensor *recvLocalEntry,
+                         const aclTensor *numRecv,
                          aclTensor *gradUniqueOut, aclTensor *uniqueLocalEntryOut, aclTensor *numUniqueOut)
 {
     OP_CHECK_NULL(commContext, return false);
@@ -35,6 +36,7 @@ static bool CheckNotNull(const aclTensor *commContext, const aclTensor *gradFetc
     OP_CHECK_NULL(sendCounts, return false);
     OP_CHECK_NULL(recvCounts, return false);
     OP_CHECK_NULL(recvLocalEntry, return false);
+    OP_CHECK_NULL(numRecv, return false);
     OP_CHECK_NULL(gradUniqueOut, return false);
     OP_CHECK_NULL(uniqueLocalEntryOut, return false);
     OP_CHECK_NULL(numUniqueOut, return false);
@@ -44,9 +46,11 @@ static bool CheckNotNull(const aclTensor *commContext, const aclTensor *gradFetc
 static aclnnStatus CheckParams(const aclTensor *commContext, const aclTensor *gradFetched,
                                const aclTensor *perm, const aclTensor *sendCounts,
                                const aclTensor *recvCounts, const aclTensor *recvLocalEntry,
+                               const aclTensor *numRecv,
                                aclTensor *gradUniqueOut, aclTensor *uniqueLocalEntryOut, aclTensor *numUniqueOut)
 {
     CHECK_RET(CheckNotNull(commContext, gradFetched, perm, sendCounts, recvCounts, recvLocalEntry,
+                           numRecv,
                            gradUniqueOut, uniqueLocalEntryOut, numUniqueOut),
               ACLNN_ERR_PARAM_NULLPTR);
     return ACLNN_SUCCESS;
@@ -60,15 +64,18 @@ aclnnStatus aclnnEngramFetchGradGetWorkspaceSize(
     const aclTensor *commContext, const aclTensor *gradFetched,
     const aclTensor *perm, const aclTensor *sendCounts,
     const aclTensor *recvCounts, const aclTensor *recvLocalEntry,
+    const aclTensor *numRecv,
     int32_t hiddenSize, int64_t numEntriesPerRank,
     aclTensor *gradUniqueOut, aclTensor *uniqueLocalEntryOut, aclTensor *numUniqueOut,
     uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     auto retParam = CheckParams(commContext, gradFetched, perm, sendCounts, recvCounts, recvLocalEntry,
+                                numRecv,
                                 gradUniqueOut, uniqueLocalEntryOut, numUniqueOut);
     CHECK_RET(retParam == ACLNN_SUCCESS, retParam);
     aclnnStatus ret = aclnnInnerEngramFetchGradGetWorkspaceSize(
         commContext, gradFetched, perm, sendCounts, recvCounts, recvLocalEntry,
+        numRecv,
         hiddenSize, numEntriesPerRank,
         gradUniqueOut, uniqueLocalEntryOut, numUniqueOut,
         workspaceSize, executor);

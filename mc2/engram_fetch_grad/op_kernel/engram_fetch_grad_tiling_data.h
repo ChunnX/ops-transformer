@@ -26,5 +26,7 @@ struct EngramFetchGradTilingData {
     int64_t hiddenBytes;           // hiddenDim * sizeof(float)（fp32 聚合）
     uint32_t aivNum;               // AIV 核数
     uint64_t ubSize;               // UB 空间
+    uint32_t rankSize;             // 通信域 rank 数（从 sendCounts dim0 获取）
+    int64_t totalRecv;             // recvLocalEntry dim0（a2a 接收上界）
 };
 #endif

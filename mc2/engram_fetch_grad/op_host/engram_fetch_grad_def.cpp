@@ -64,6 +64,12 @@ public:
             .DataTypeList({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND});
 
+        // Input 6: numRecv (1,) int32 — 前向 save-for-backward, recvLocalEntry 有效前缀长度
+        this->Input("numRecv")
+            .ParamType(REQUIRED)
+            .DataTypeList({ge::DT_INT32})
+            .FormatList({ge::FORMAT_ND});
+
         // Output 0: gradUnique (R_max, H) fp32 — 前 numUnique 有效
         this->Output("gradUniqueOut")
             .ParamType(REQUIRED)

@@ -27,5 +27,7 @@ struct EngramFetchTilingData {
     uint32_t aivNum;              // AIV 核数
     uint64_t ubSize;              // UB 空间
     int32_t withGrad;             // 0=推理(RDMA read), 1=训练(all-to-all); 由可选输出是否非空决定
+    int64_t numMaxTokensPerRank;  // 每 rank 最大 token 数（训练态 workspace 计算用）
+    uint32_t rankSize;            // 通信域 rank 数（训练态 workspace 计算用）
 };
 #endif
