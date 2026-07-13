@@ -249,6 +249,35 @@ static EngramFetchTestParam g_testCases[] = {
      {8, 512}, ge::DT_BF16, ge::FORMAT_ND,
      512, 4, "3510",
      ge::GRAPH_FAILED, 0UL, "", {}},
+
+    // ===== 训练场景 (with_grad=true): 5 个可选输出非空 =====
+    {"success_with_grad_bf16",
+     {6146}, ge::DT_INT32, ge::FORMAT_ND,
+     {8}, ge::DT_INT32, ge::FORMAT_ND,
+     {8, 512}, ge::DT_BF16, ge::FORMAT_ND,
+     512, 4, "3510",
+     ge::GRAPH_SUCCESS, 0UL, "", {}},
+
+    {"success_with_grad_large_tokens",
+     {6146}, ge::DT_INT32, ge::FORMAT_ND,
+     {128}, ge::DT_INT32, ge::FORMAT_ND,
+     {128, 256}, ge::DT_BF16, ge::FORMAT_ND,
+     256, 100, "3510",
+     ge::GRAPH_SUCCESS, 0UL, "", {}},
+
+    {"success_with_grad_single_token",
+     {6146}, ge::DT_INT32, ge::FORMAT_ND,
+     {1}, ge::DT_INT32, ge::FORMAT_ND,
+     {1, 512}, ge::DT_BF16, ge::FORMAT_ND,
+     512, 4, "3510",
+     ge::GRAPH_SUCCESS, 0UL, "", {}},
+
+    {"fail_with_grad_permOut_dtype_float",
+     {6146}, ge::DT_INT32, ge::FORMAT_ND,
+     {8}, ge::DT_INT32, ge::FORMAT_ND,
+     {8, 512}, ge::DT_BF16, ge::FORMAT_ND,
+     512, 4, "3510",
+     ge::GRAPH_FAILED, 0UL, "", {}},
 };
 
 class EngramFetchArch35TilingTest : public testing::TestWithParam<EngramFetchTestParam> {

@@ -11,6 +11,10 @@
 /*!
 * \file engram_fetch.cpp
 * \brief engram_fetch 算子 kernel 入口
+*        INFER_MODE(0): 推理路径（RDMA read），可选输出全 nullptr
+*        WITH_GRAD_MODE(1): 训练路径（all-to-all），可选输出非空
+*        训练态 issue kernel 内部: ① 桶排序 ② a2a(indices) ③ gather ④ a2a(embedding)
+*        wait kernel 内部: ⑤ fetched[perm] = gathered（还原）
 */
 
 #if ASC_DEVKIT_MAJOR >= 9
@@ -26,17 +30,34 @@
 using namespace AscendC;
 using namespace Mc2Kernel;
 
+// kernel 签名按 op 定义顺序: input0, input1, output0~5, workspace, tiling
+// input:  commContext(0), indices(1)
+// output: fetched(0), permOut(1), sendCountsOut(2), recvCountsOut(3), recvLocalEntryOut(4), numRecvOut(5)
+// 推理态: permOut~numRecvOut 全为 nullptr
+// 训练态: permOut~numRecvOut 非空（save-for-backward）
 template<uint32_t EngramFetchMode>
-__global__ __aicore__ void engram_fetch(GM_ADDR commContext, GM_ADDR indices, GM_ADDR fetched, GM_ADDR workspaceGM,
-                                        GM_ADDR tilingGM)
+__global__ __aicore__ void engram_fetch(GM_ADDR commContext, GM_ADDR indices, GM_ADDR fetched,
+                                        GM_ADDR permOut, GM_ADDR sendCountsOut,
+                                        GM_ADDR recvCountsOut, GM_ADDR recvLocalEntryOut,
+                                        GM_ADDR numRecvOut,
+                                        GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
     REGISTER_TILING_DEFAULT(EngramFetchTilingData);
     GET_TILING_DATA_WITH_STRUCT(EngramFetchTilingData, tilingData, tilingGM);
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY);
-    if constexpr (EngramFetchMode == ENGRAM_FETCH_DEFAULT_MODE) {
+    if constexpr (EngramFetchMode == ENGRAM_FETCH_INFER_MODE) {
+        // 推理路径: RDMA read（现有实现）
         TPipe pipe;
         EngramFetchArch35 op;
         op.Init(commContext, indices, fetched, workspaceGM, &pipe, &tilingData);
         op.Process();
+    } else if constexpr (EngramFetchMode == ENGRAM_FETCH_WITH_GRAD_MODE) {
+        // 训练路径: all-to-all（待实现）
+        // ① 桶排序: indices → perm, sendCounts, sortedLocalEntry
+        // ② a2a(sortedLocalEntry) → recvLocalEntry, recvCounts
+        // ③ gather: commBuffer[rankId][recvLocalEntry] → recvTokens
+        // ④ a2a(recvTokens) → gathered (用 epHcclBuffer)
+        // ⑤ 还原在 wait kernel 内完成
+        printf("hello engram_fetch WITH_GRAD_MODE\n");
     }
 }

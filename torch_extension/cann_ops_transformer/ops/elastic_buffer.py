@@ -15,10 +15,27 @@ import torch
 import torch.distributed as dist
 
 from cann_ops_transformer.op_builder.builder import OpBuilder
-from .comm_context import CommContextManager
 
 
-_MOE_DISPATCH_COMBINE_CONTEXT = "moe_dispatch_combine"
+@dataclass
+class EngramFetchCtx:
+    """训练态前向的 save-for-backward，原样传给 engram_fetch_grad。
+
+    前向 EngramFetch(with_grad=True) 产出以下 5 个 tensor，打包为 EngramFetchCtx 返回给用户。
+    反向 EngramFetchGrad 吃入这些 tensor，不自行重算（会漏 a2a 结果 recvLocalEntry）。
+
+    Attributes:
+        perm: (T,) int32 — 桶排列序索引（原始 pos → 桶排 pos），反向步骤①按此重排 grad
+        sendCounts: (W,) int32 — 每 rank 发送的 index 数，反向 a2a 的 send 量
+        recvCounts: (W,) int32 — 每 rank 接收的 index 数，反向 a2a 的 recv 量
+        recvLocalEntry: (R_max,) int32 — 收到的 local entry，反向步骤③ scatter-add 按此聚合
+        numRecv: (1,) int32 — 实际接收行数 R（前 numRecv 个有效）
+    """
+    perm: torch.Tensor
+    sendCounts: torch.Tensor
+    recvCounts: torch.Tensor
+    recvLocalEntry: torch.Tensor
+    numRecv: torch.Tensor
 
 
 class ElasticBufferOpBuilder(OpBuilder):
@@ -101,12 +118,13 @@ class ElasticBuffer:
         group: torch.distributed.ProcessGroup,
         *,
         num_cpu_bytes: int = 0,
+        with_grad: bool = False,
         num_max_tokens_per_rank: Optional[int] = None,
         hidden: Optional[int] = None,
         num_topk: Optional[int] = None,
         num_experts: Optional[int] = None,
-        ccl_buffer_size: int = 0,
         expert_alignment: int = 1,
+        num_npu_bytes: int = 0,
     ):
         """
         Initialize the ElasticBuffer.
@@ -114,11 +132,11 @@ class ElasticBuffer:
         Arguments:
             group: the distributed process group.
             num_cpu_bytes: the CPU buffer size in bytes (must be 2MB-aligned).
-            num_max_tokens_per_rank: maximum MoE dispatch tokens per rank.
+            with_grad: if True, enable training mode (all-to-all + save-for-backward).
+            num_max_tokens_per_rank: max tokens per rank (training GM allocation + MoE dispatch).
             hidden: hidden dimension for MoE dispatch/combine.
             num_topk: top-k value for MoE dispatch/combine.
             num_experts: number of MoE experts.
-            ccl_buffer_size: initial CCL buffer size.
             expert_alignment: expert alignment value.
         """
         buffer_alignment = 2 * 1024 * 1024
@@ -137,42 +155,49 @@ class ElasticBuffer:
             ),
         )
 
-        self.group = group
-        self.num_cpu_bytes = num_cpu_bytes
-        self.group_name = None
-        self.runtime = None
+        self._group = group
+        self._num_cpu_bytes = num_cpu_bytes
+        self._with_grad = with_grad
+        self._rank_id = dist.get_rank(self._group)
+        self._ep_world_size = dist.get_world_size(self._group)
 
-        self.rank_id = None
-        self.ep_world_size = None
-        self._moe_group_name = None
-        self._ctx_manager = None
-        self._ctx_managers = {}
-        self._contexts = {}
-        self._ccl_buffer_sizes = {}
-        self.context = None
-        self.ccl_buffer_size = ccl_buffer_size
+        backend = self._group._get_backend(torch.device("npu"))
+        self._group_name = backend.get_hccl_comm_name(self._rank_id, init_comm=False)
+        if not self._group_name:
+            self._group_name = backend.get_hccl_comm_name(self._rank_id, init_comm=True)
+        torch._check(self._group_name is not None and len(self._group_name) > 0,
+                     lambda: "HCCL comm name is empty, please check HCCL group initialization.")
+        _elastic_buffer_ops = _elastic_buffer_op_builder.load()
+        self._runtime = _elastic_buffer_ops.ElasticBuffer(
+            self._group_name, self._num_cpu_bytes, self._with_grad,
+            num_max_tokens_per_rank if num_max_tokens_per_rank is not None else 0,
+            num_npu_bytes)
 
-        self.num_max_tokens_per_rank = num_max_tokens_per_rank
-        self.hidden = hidden
-        self.num_topk = num_topk
-        self.num_experts = num_experts
-        self.expert_alignment = expert_alignment
+        self._num_max_tokens_per_rank = num_max_tokens_per_rank
+        self._hidden = hidden
+        self._num_topk = num_topk
+        self._num_experts = num_experts
+        self._expert_alignment = expert_alignment
         self._host_pinned_counter = None
 
     @staticmethod
     def get_engram_storage_size_hint(num_entries: int, hidden_size: int,
-                                     dtype: torch.dtype = torch.bfloat16) -> int:
+                                     dtype: torch.dtype = torch.bfloat16,
+                                     num_max_tokens_per_rank: int = 0) -> Tuple[int, int]:
         """
-        Get the minimum CPU buffer size required for Engram storage.
-        The returned value is aligned to 2 MB.
+        Get the minimum CPU buffer size and GM buffer size for Engram storage.
+        Both returned values are aligned to 2 MB.
 
         Arguments:
             num_entries: the number of entries in the Engram storage (must be non-negative).
             hidden_size: the hidden dimension of each entry (must be 128-aligned and non-negative).
             dtype: the data type, defaults to `torch.bfloat16`.
+            num_max_tokens_per_rank: max tokens per rank for GM allocation (training mode).
 
         Returns:
             num_cpu_bytes: the recommended CPU buffer size in bytes (2 MB-aligned).
+            num_npu_bytes: the recommended GM buffer size in bytes (2 MB-aligned, 0 if
+                           num_max_tokens_per_rank is 0).
         """
         torch._check(num_entries >= 0,
                      lambda: f"num_entries must be non-negative, got {num_entries}")
@@ -183,7 +208,8 @@ class ElasticBuffer:
         torch._check(dtype in (torch.bfloat16, torch.float16, torch.float32),
                      lambda: f"dtype must be bfloat16/float16/float32, got {dtype}")
         _elastic_buffer_ops = _elastic_buffer_op_builder.load()
-        return _elastic_buffer_ops.ElasticBuffer.get_engram_storage_size_hint(num_entries, hidden_size, dtype)
+        return _elastic_buffer_ops.ElasticBuffer.get_engram_storage_size_hint(
+            num_entries, hidden_size, dtype, num_max_tokens_per_rank)
 
     @staticmethod
     def get_moe_ep_ccl_buffer_size(world_size: int, num_max_tokens_per_rank: int, hidden: int,
@@ -233,7 +259,7 @@ class ElasticBuffer:
 
         Note: barrier(with_device_sync=True) is called before and after write internally.
         """
-        torch._check(self.num_cpu_bytes > 0,
+        torch._check(self._num_cpu_bytes > 0,
                      lambda: "num_cpu_bytes must be greater than 0 to use engram_write.")
         torch._check(storage.is_cpu,
                      lambda: f"storage must be on CPU, got device: {storage.device}")
@@ -245,17 +271,16 @@ class ElasticBuffer:
                      lambda: f"storage dtype must be bfloat16/float16/float32, got: {storage.dtype}")
         torch._check(storage.size(1) % 128 == 0,
                      lambda: f"storage second dimension must be 128-aligned, got: {storage.size(1)}")
-        self._ensure_runtime().engram_write(storage)
+        self._runtime.engram_write(storage)
 
-    def engram_fetch(self, indices: torch.Tensor) -> Callable[[], torch.Tensor]:
+    def engram_fetch(self, indices: torch.Tensor) -> Callable:
         """
-        Fetch Engram data from remote ranks via RDMA.
+        Fetch Engram data from remote ranks. Returns a hook callable.
 
-        Arguments:
-            indices: the indices of entries to fetch (must be 1D NPU tensor with dtype=int32).
-
-        Returns:
-            wait_callable: a callable that returns the fetched tensor when invoked.
+        推理/训练共用同一方法，由 C++ 侧根据 with_grad 决定 hook() 返回值：
+        - 推理 (with_grad=False): hook() → fetched (T,H)
+        - 训练 (with_grad=True):  hook() → (fetched, fetch_ctx)
+          fetch_ctx 为 EngramFetchCtx（C++ bound class），可直接传给 engram_fetch_grad
         """
         torch._check(indices.device.type == torch.device("npu").type,
                      lambda: f"indices must be on NPU, got device: {indices.device}")
@@ -263,7 +288,32 @@ class ElasticBuffer:
                      lambda: f"indices must be 1D, got dimensions: {indices.dim()}")
         torch._check(indices.dtype == torch.int32,
                      lambda: f"indices dtype must be int32, got: {indices.dtype}")
-        return self.runtime.engram_fetch(indices)
+
+        return self._runtime.engram_fetch(indices)
+
+    def engram_fetch_grad(self, grad_fetched: torch.Tensor,
+                               fetch_ctx: EngramFetchCtx
+                               ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        Backward: launch fused kernel aclnnEngramFetchGrad.
+
+        吃入前向 save-for-backward (fetch_ctx)，单融合 kernel 完成 3 步：
+        ① grad_sorted = gradFetched[perm]
+        ② a2a(grad_sorted; sendCounts↔recvCounts) → recvGrad
+        ③ owner unique + fp32 scatter-add (recvLocalEntry, recvGrad)
+
+        Returns:
+            (grad_unique, unique_local_entry):
+                grad_unique (K, H) fp32 — 累加后的稀疏梯度，喂优化器。
+                unique_local_entry (K,) int32 — 1D sparse index。
+        """
+        torch._check(grad_fetched.device.type == torch.device("npu").type,
+                     lambda: f"grad_fetched must be on NPU, got device: {grad_fetched.device}")
+        torch._check(grad_fetched.dim() == 2,
+                     lambda: f"grad_fetched must be 2D, got dimensions: {grad_fetched.dim()}")
+        return self._runtime.engram_fetch_grad(
+            grad_fetched, fetch_ctx.perm, fetch_ctx.sendCounts,
+            fetch_ctx.recvCounts, fetch_ctx.recvLocalEntry, fetch_ctx.numRecv)
 
     def dispatch(
         self,
@@ -278,17 +328,16 @@ class ElasticBuffer:
         do_cpu_sync: Optional[bool] = None,
     ) -> Tuple[Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]],
                Optional[torch.Tensor], Optional[torch.Tensor], EPHandle]:
-        context, ccl_buffer_size = self._ensure_context(_MOE_DISPATCH_COMBINE_CONTEXT)
+        self._ensure_moe_config()
         args = self._prepare_dispatch_args(
             x, topk_idx, handle, num_experts, num_max_tokens_per_rank, expert_alignment, do_cpu_sync
         )
         hp_addr = self._prepare_host_counter(args.do_cpu_sync)
 
-        _elastic_buffer_ops = _elastic_buffer_op_builder.load()
         num_recv_per_rank, num_recv_per_expert, dst_slot = \
-            _elastic_buffer_ops.ElasticBuffer.moe_ep_dispatch(
-                context, args.x, args.topk_idx, topk_weights, args.scales, args.cached_dst_slot,
-                self.ep_world_size, self.rank_id, args.num_experts, args.num_max_tokens_per_rank, ccl_buffer_size,
+            self._runtime.moe_ep_dispatch(
+                args.x, args.topk_idx, topk_weights, args.scales, args.cached_dst_slot,
+                self._ep_world_size, self._rank_id, args.num_experts, args.num_max_tokens_per_rank,
                 args.expert_alignment, args.do_cpu_sync, hp_addr
             )
 
@@ -297,10 +346,10 @@ class ElasticBuffer:
             self._allocate_dispatch_outputs(args, actual_a, topk_weights)
 
         recv_x, recv_src_meta, recv_topk_weights, recv_scales = \
-            _elastic_buffer_ops.ElasticBuffer.moe_ep_dispatch_epilogue(
-                context, dst_slot, num_recv_per_rank, num_recv_per_expert, args.cached_recv_src_metadata,
-                self.ep_world_size, self.rank_id, args.num_experts, args.num_max_tokens_per_rank,
-                ccl_buffer_size, args.expert_alignment, recv_x, recv_src_meta,
+            self._runtime.moe_ep_dispatch_epilogue(
+                dst_slot, num_recv_per_rank, num_recv_per_expert, args.cached_recv_src_metadata,
+                self._ep_world_size, self._rank_id, args.num_experts, args.num_max_tokens_per_rank,
+                args.expert_alignment, recv_x, recv_src_meta,
                 recv_topk_weights, recv_scales
             )
 
@@ -316,16 +365,15 @@ class ElasticBuffer:
         topk_weights: Optional[torch.Tensor] = None,
         bias: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor], None] = None,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
-        context, ccl_buffer_size = self._ensure_context(_MOE_DISPATCH_COMBINE_CONTEXT)
+        self._ensure_moe_config()
         bias_0, bias_1 = self._unpack_bias(bias)
         torch._check(((bias_0 is None) and (bias_1 is None)), lambda: (f"bias are not supported."))
 
-        _elastic_buffer_ops = _elastic_buffer_op_builder.load()
-        combined_x, combined_topk_weights = _elastic_buffer_ops.ElasticBuffer.moe_ep_combine(
-            context, x, handle.topk_idx, handle.recv_src_metadata,
+        combined_x, combined_topk_weights = self._runtime.moe_ep_combine(
+            x, handle.topk_idx, handle.recv_src_metadata,
             handle.num_recv_tokens_per_expert, topk_weights, bias_0, bias_1,
-            self.ep_world_size, self.rank_id, handle.num_experts,
-            handle.num_max_tokens_per_rank, ccl_buffer_size
+            self._ep_world_size, self._rank_id, handle.num_experts,
+            handle.num_max_tokens_per_rank
         )
         return combined_x, combined_topk_weights
 
@@ -336,64 +384,23 @@ class ElasticBuffer:
         Returns:
             None
         """
-        if self.runtime is not None:
-            self.runtime.destroy()
-            self.runtime = None
+        if self._runtime is not None:
+            self._runtime.destroy()
         if self._host_pinned_counter is not None:
             del self._host_pinned_counter
             self._host_pinned_counter = None
-        self.context = None
-        self._contexts.clear()
-        self._ctx_managers.clear()
-        self._ccl_buffer_sizes.clear()
-        self._ctx_manager = None
-
-    def _ensure_runtime(self):
-        if self.runtime is None:
-            rank_id = dist.get_rank(self.group)
-            self.group_name = self.group._get_backend(torch.device("npu")).get_hccl_comm_name(rank_id, init_comm=True)
-            _elastic_buffer_ops = _elastic_buffer_op_builder.load()
-            self.runtime = _elastic_buffer_ops.ElasticBuffer(self.group_name, self.num_cpu_bytes)
-        return self.runtime
 
     def _ensure_moe_config(self):
         torch._check(
-            (self.num_max_tokens_per_rank is not None)
-            and (self.hidden is not None)
-            and (self.num_topk is not None)
-            and (self.num_experts is not None),
+            (self._num_max_tokens_per_rank is not None)
+            and (self._hidden is not None)
+            and (self._num_topk is not None)
+            and (self._num_experts is not None),
             lambda: (
                 "num_max_tokens_per_rank, hidden, num_topk and num_experts "
                 "must be specified to use MoE dispatch/combine."
             ),
         )
-        if self.rank_id is None:
-            self.rank_id = dist.get_rank(self.group)
-        if self.ep_world_size is None:
-            self.ep_world_size = dist.get_world_size(self.group)
-        if self._moe_group_name is None:
-            self._moe_group_name = self.group._get_backend(torch.device("npu")).get_hccl_comm_name(
-                self.rank_id, init_comm=False
-            )
-
-    def _ensure_context(self, op_name: str):
-        self._ensure_moe_config()
-        if op_name not in self._contexts:
-            manager = CommContextManager(
-                self._moe_group_name,
-                self.ep_world_size,
-                backend="channel",
-                commAlg="urma",
-                opName=op_name,
-            )
-            context = manager.create_context()
-            self._ctx_manager = manager
-            self._ctx_managers[op_name] = manager
-            self._contexts[op_name] = context
-            self._ccl_buffer_sizes[op_name] = manager.ccl_buffer_size
-            self.context = context
-            self.ccl_buffer_size = manager.ccl_buffer_size
-        return self._contexts[op_name], self._ccl_buffer_sizes[op_name]
 
     def _prepare_dispatch_args(
         self,
@@ -419,9 +426,9 @@ class ElasticBuffer:
         torch._check((topk_idx is not None), lambda: (f"topk_idx are required when no-cached."))
         return _DispatchArgs(
             x, scales, topk_idx, None, None,
-            num_experts if num_experts is not None else self.num_experts,
-            num_max_tokens_per_rank if num_max_tokens_per_rank is not None else self.num_max_tokens_per_rank,
-            expert_alignment if expert_alignment is not None else self.expert_alignment,
+            num_experts if num_experts is not None else self._num_experts,
+            num_max_tokens_per_rank if num_max_tokens_per_rank is not None else self._num_max_tokens_per_rank,
+            expert_alignment if expert_alignment is not None else self._expert_alignment,
             True if do_cpu_sync is None else do_cpu_sync,
             None
         )
@@ -440,13 +447,13 @@ class ElasticBuffer:
             return args.cached_recv_tokens
         if args.do_cpu_sync:
             return self._host_pinned_counter.spin_wait()
-        return self.ep_world_size * args.num_max_tokens_per_rank * min(
-            self.num_topk, args.num_experts // self.ep_world_size
+        return self._ep_world_size * args.num_max_tokens_per_rank * min(
+            self._num_topk, args.num_experts // self._ep_world_size
         )
 
     def _allocate_dispatch_outputs(self, args: _DispatchArgs, actual_a: int,
                                    topk_weights: Optional[torch.Tensor]):
-        recv_x = torch.empty((actual_a, self.hidden), dtype=args.x.dtype, device=args.x.device)
+        recv_x = torch.empty((actual_a, self._hidden), dtype=args.x.dtype, device=args.x.device)
         recv_src_meta = torch.empty((actual_a, 4), dtype=torch.int32, device=args.x.device)
         recv_topk_weights = None if topk_weights is None else torch.empty(
             (actual_a,), dtype=torch.float32, device=args.x.device

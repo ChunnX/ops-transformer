@@ -49,7 +49,8 @@ static ge::graphStatus ResolveRankSize(
         }
         rankSize = static_cast<int64_t>(rankNum);
 #else
-        OP_LOGE(context->GetNodeName(), "Get rank size failed, rankSize [%lld]", *rankSizeAttr);
+        OP_LOGE(context->GetNodeName(), "Get rank size failed, rankSize [%ld]", *rankSizeAttr);
+        (void)groupStr;
         return ge::GRAPH_FAILED;
 #endif
     } else {
