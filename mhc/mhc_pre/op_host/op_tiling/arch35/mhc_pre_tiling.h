@@ -24,7 +24,8 @@ namespace optiling {
 
 enum class TilingMode : uint8_t {
     SPLIT_BS = 0,
-    SPLIT_ND = 1
+    SPLIT_ND = 1,
+    LOW_API_BS = 2
 };
 
 BEGIN_TILING_DATA_DEF(MhcPreTilingData)
@@ -43,6 +44,18 @@ TILING_DATA_FIELD_DEF(uint64_t, D);
 TILING_DATA_FIELD_DEF(float, normEps);
 TILING_DATA_FIELD_DEF(float, hcEps);
 TILING_DATA_FIELD_DEF(float, scaleMean);
+TILING_DATA_FIELD_DEF(uint32_t, mL1Size);
+TILING_DATA_FIELD_DEF(uint32_t, mUbSize);
+TILING_DATA_FIELD_DEF(uint32_t, kUbSize);
+TILING_DATA_FIELD_DEF(uint32_t, kL1Size);
+TILING_DATA_FIELD_DEF(uint32_t, rowInnerFactor);
+TILING_DATA_FIELD_DEF(uint32_t, dFactor);
+TILING_DATA_FIELD_DEF(uint32_t, dLoop);
+TILING_DATA_FIELD_DEF(uint32_t, tailDFactor);
+TILING_DATA_FIELD_DEF(uint32_t, fusionAlign);
+TILING_DATA_FIELD_DEF(uint32_t, nAlign);
+TILING_DATA_FIELD_DEF(uint32_t, bufferPool0Size);
+TILING_DATA_FIELD_DEF(uint32_t, bufferPool1Size);
 END_TILING_DATA_DEF;
 
 REGISTER_TILING_DATA_CLASS(MhcPre, MhcPreTilingData);
@@ -115,6 +128,8 @@ protected:
     void FillTilingData();
     ge::graphStatus TilingProcess();
     ge::graphStatus CheckUbBufferSize();
+    void FillLowApiTilingData();
+    bool CanUseLowApiBs() const;
     size_t GetLastRequiredInputIndex() const;
 
 private:
