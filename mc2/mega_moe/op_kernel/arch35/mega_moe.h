@@ -214,8 +214,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Init(
     sendTotalNum_ = m_ * topK_;
     worldSize_ = tilingData->epWorldSize;
     expertPerRank_ = tilingData->expertPerRank;
+    moeExpertPerRank_ = tilingData->moeExpertPerRank;
     sharedExpertNum_ = tilingData->sharedExpertNum;
-    moeExpertPerRank_ = expertPerRank_ - sharedExpertNum_;
     blockNumPerRank_ = tilingData->blockNumPerEP;
     maxOutputSize_ = tilingData->maxOutputSize;
     // 与 WorkspaceInfo 构造里 flagDispatchToGmm1Ptr 的分配公式保持一致。
@@ -869,6 +869,22 @@ __aicore__ inline bool MegaMoe<TemplateMegaMoeTypeFunc>::UpdateGroupParams(Exper
         Get<IDX_M_OFFSET>(state.baseOffset) += m;
         Get<IDX_GMM1_OFFSET>(state.baseOffset) += m * n;
         Get<IDX_GMM2_OFFSET>(state.baseOffset) += m * k;
+    } else if constexpr (!IsShared) {
+        if (sharedExpertNum_ > 0) {
+            uint64_t n = Get<N_VALUE>(state.problemShape);
+            uint64_t k = Get<K_VALUE>(state.problemShape);
+            auto scaleK = Ops::Base::CeilDiv(k, static_cast<uint64_t>(MXFP_DIVISOR_SIZE)) * MXFP_MULTI_BASE_SIZE;
+            Get<IDX_B_OFFSET>(state.baseOffset) =
+                static_cast<int64_t>(sharedExpertNum_) * n * k / B_ELEMS_PER_BYTE;
+            Get<IDX_B_SCALE_OFFSET>(state.baseOffset) =
+                static_cast<int64_t>(sharedExpertNum_) * n * scaleK;
+            Get<IDX_B2_OFFSET>(state.baseOffset) =
+                static_cast<int64_t>(sharedExpertNum_) * k * n / SWIGLU_N_HALF / B_ELEMS_PER_BYTE;
+            Get<IDX_B2_SCALE_OFFSET>(state.baseOffset) =
+                static_cast<int64_t>(sharedExpertNum_) * k *
+                Ops::Base::CeilDiv(n / SWIGLU_N_HALF, static_cast<uint64_t>(MXFP_DIVISOR_SIZE)) *
+                MXFP_MULTI_BASE_SIZE;
+        }
     }
 
     if constexpr (IsShared) {
@@ -1360,8 +1376,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::GroupMatmulWithCombine(
     const GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &state, uint32_t expertIdx)
 {
     if constexpr (ENABLE_A8W4 || ENABLE_A4W4) {
-        MegaMoeImpl::GroupMatmul2CombineA8W4<CombineQuantMode, IsShared,
-            SwigluQuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType, QuantScaleOutType>(
+        MegaMoeImpl::GroupMatmul2CombineA8W4<CombineQuantMode,
+            SwigluQuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType, QuantScaleOutType, IsShared>(
             params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_,
             state.expertBeforeCnt, gmm2PingPongIdx_, expertIdx);
     } else {
@@ -1440,20 +1456,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
     DispatchBuffInit();
     GMMAddrInfo dispatchAddrInfo;
     GMMAddrInfo gmm1AddrInfo;
-    BlockOffset initOffset{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-    if (sharedExpertNum_ > 0) {
-        uint64_t n = static_cast<uint64_t>(hiddenDim_);
-        uint64_t k = static_cast<uint64_t>(k_);
-        auto scaleK = Ops::Base::CeilDiv(k, static_cast<uint64_t>(MXFP_DIVISOR_SIZE)) * MXFP_MULTI_BASE_SIZE;
-        Get<IDX_B_OFFSET>(initOffset) = static_cast<int64_t>(sharedExpertNum_) * n * k / B_ELEMS_PER_BYTE;
-        Get<IDX_B_SCALE_OFFSET>(initOffset) = static_cast<int64_t>(sharedExpertNum_) * n * scaleK;
-        Get<IDX_B2_OFFSET>(initOffset) =
-            static_cast<int64_t>(sharedExpertNum_) * k * n / SWIGLU_N_HALF / B_ELEMS_PER_BYTE;
-        Get<IDX_B2_SCALE_OFFSET>(initOffset) = static_cast<int64_t>(sharedExpertNum_) * k *
-            Ops::Base::CeilDiv(n / SWIGLU_N_HALF, static_cast<uint64_t>(MXFP_DIVISOR_SIZE)) * MXFP_MULTI_BASE_SIZE;
-    }
-    ExpertLoopState dispatchState{initShape, initOffset, 0};
-    ExpertLoopState gmm1State{initShape, initOffset, 0};
+    ExpertLoopState dispatchState{initShape, zeroOffset, 0};
+    ExpertLoopState gmm1State{initShape, zeroOffset, 0};
 
     uint64_t curSendCnt = 0;
     uint64_t nextSendCnt = 0;
@@ -1468,11 +1472,11 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
         }
     }
 
-    for (int localExpertId = 0; localExpertId < static_cast<int>(moeExpertPerRank_); localExpertId++) {
+    for (uint32_t localExpertId = 0; localExpertId < moeExpertPerRank_; localExpertId++) {
         curSendCnt = nextSendCnt;
 
         if constexpr(g_coreType == AIV) {
-            if (subBlockIdx_ == 1 && localExpertId + 1 < static_cast<int>(moeExpertPerRank_)) {
+            if (subBlockIdx_ == 1 && localExpertId + 1 < moeExpertPerRank_) {
                 SendCntCal(localExpertId + 1, nextSendCnt);
                 if (UpdateGroupParams<AddrUpdateMode::kGmm1>(dispatchState, localExpertId + 1, nextSendCnt)) {
                     UpdateGlobalBuffer<AddrUpdateMode::kGmm1>(dispatchAddrInfo, dispatchState);
@@ -1497,7 +1501,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
     // 3. 本卡专家接收数据GroupMatmul2 & Combine
     vecSetSyncCom_ = 0;
     GMMAddrInfo gmm2AddrInfo;
-    ExpertLoopState gmm2State{initShape, initOffset, 0};
+    ExpertLoopState gmm2State{initShape, zeroOffset, 0};
     InitCombineBuffers();
 
     for (uint32_t expertIdx = 0; expertIdx < moeExpertPerRank_; expertIdx++) {

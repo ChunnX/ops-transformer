@@ -394,6 +394,7 @@ static ge::graphStatus SetAttrParams(const gert::TilingContext *context, MegaMoe
     auto moeExpertNumPtr = attrs->GetAttrPointer<int64_t>((config.attrMoeExpertNumIndex));
     int64_t moeExpertNum = static_cast<int64_t>(*moeExpertNumPtr);
     int64_t moeExpertPerRank = moeExpertNum / static_cast<int64_t>(tilingData->epWorldSize);
+    tilingData->moeExpertPerRank = static_cast<uint32_t>(moeExpertPerRank);
     tilingData->sharedExpertNum = static_cast<uint32_t>(
         static_cast<int64_t>(tilingData->expertPerRank) - moeExpertPerRank);
 
@@ -606,6 +607,10 @@ static ge::graphStatus CheckOutputTensorDim(const gert::TilingContext *context, 
     auto attrs = context->GetAttrs();
     auto moeExpertNumPtr = attrs->GetAttrPointer<int64_t>((config.attrMoeExpertNumIndex));
     auto epWorldSizePtr = attrs->GetAttrPointer<int64_t>((config.attrEpWorldSizeIndex));
+    OP_TILING_CHECK(moeExpertNumPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "moeExpertNum"),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(epWorldSizePtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "epWorldSize"),
+                    return ge::GRAPH_FAILED);
     int64_t moeExpertPerRank = static_cast<int64_t>(*moeExpertNumPtr) / static_cast<int64_t>(*epWorldSizePtr);
     OP_TILING_CHECK(expertTokenNumsDim0 != moeExpertPerRank,
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "expertTokenNums",

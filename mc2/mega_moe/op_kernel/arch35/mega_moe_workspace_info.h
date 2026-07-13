@@ -114,27 +114,25 @@ struct WorkspaceInfo {
     GM_ADDR flagSwiGluToGmm2Ptr;
     GM_ADDR flagDispatchToGmm1Ptr;
     GM_ADDR flagSendCntCalToUpdParamsPtr;
-    GM_ADDR cumsumInfoPtr;
-    GM_ADDR gmm1MmadResPtr;
-    GM_ADDR gmm2MmadResPtr;
-    GM_ADDR gmm2CombineSyncCounterPtr;
-    GM_ADDR sharedExpertResultPtr;
-    GM_ADDR sharedExpertGmm1OutPtr;
-    GM_ADDR sharedExpertInputDataPtr;
-    GM_ADDR sharedExpertInputScalePtr;
-    GM_ADDR sharedExpertSwigluDataPtr;
-    GM_ADDR sharedExpertSwigluScalePtr;
-    GM_ADDR quantDoneFlagPtr;
-    GM_ADDR sharedExpertGmm2DoneFlagPtr;
-    GM_ADDR sharedExpertGmm1DoneFlagPtr;
+    GM_ADDR cumsumInfoPtr{nullptr};
+    GM_ADDR gmm1MmadResPtr{nullptr};
+    GM_ADDR gmm2MmadResPtr{nullptr};
+    GM_ADDR gmm2CombineSyncCounterPtr{nullptr};
+    GM_ADDR sharedExpertResultPtr{nullptr};
+    GM_ADDR sharedExpertGmm1OutPtr{nullptr};
+    GM_ADDR sharedExpertInputDataPtr{nullptr};
+    GM_ADDR sharedExpertInputScalePtr{nullptr};
+    GM_ADDR sharedExpertSwigluDataPtr{nullptr};
+    GM_ADDR sharedExpertSwigluScalePtr{nullptr};
+    GM_ADDR sharedExpertGmm2DoneFlagPtr{nullptr};
 
-    GM_ADDR maskSlotPtr; // urma发送mask临时GM
-    GM_ADDR dispatchL1CommPtr; // dispatch L1 communication workspace
-    GM_ADDR dispatchCursorPtr; // dispatch cnt for each expert
-    GM_ADDR dispatchDonePtr; // dispatch done
-    GM_ADDR dispatchL2CommPtr; // dispatch l2 communication workspace
-    GM_ADDR combineCommNotifyPtr; // 合并发送通知临时GM
-    GM_ADDR combineCommDataPtr; // combine communication workspace
+    GM_ADDR maskSlotPtr{nullptr}; // urma发送mask临时GM
+    GM_ADDR dispatchL1CommPtr{nullptr}; // dispatch L1 communication workspace
+    GM_ADDR dispatchCursorPtr{nullptr}; // dispatch cnt for each expert
+    GM_ADDR dispatchDonePtr{nullptr}; // dispatch done
+    GM_ADDR dispatchL2CommPtr{nullptr}; // dispatch l2 communication workspace
+    GM_ADDR combineCommNotifyPtr{nullptr}; // 合并发送通知临时GM
+    GM_ADDR combineCommDataPtr{nullptr}; // combine communication workspace
 
     int64_t workspaceSize;
     HOST_DEVICE WorkspaceInfo() = default;
@@ -183,9 +181,6 @@ struct WorkspaceInfo {
         // 以下条件分配与 mega_moe.h 编译期守卫 (ENABLE_A8W4 / ENABLE_A4W4 / CombineQuantMode) 一致，
         // 由 TilingKey 保证同步。
         // A8W4-only: cumsum GM backup and GMM1 intermediate result.
-        cumsumInfoPtr = nullptr;
-        gmm1MmadResPtr = nullptr;
-        gmm2MmadResPtr = nullptr;
         if (tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W4) {
             // cumsumInfo: per-core backup of cumsum state (expertPerRank × epWorldSize int32 per core).
             cumsumInfoPtr = base + workspaceSize;
@@ -207,8 +202,7 @@ struct WorkspaceInfo {
         }
 
         // Combine-quant-only workspace buffers
-        gmm2CombineSyncCounterPtr = nullptr;
-        if (tilingData->combineQuantMode != COMBINE_NO_QUANT || tilingData->sharedExpertNum > 0) {
+        if (tilingData->combineQuantMode != COMBINE_NO_QUANT) {
             // Token group completion counters
             gmm2CombineSyncCounterPtr = base + workspaceSize;
             // 紧密排布：每个 expert 分配 blockAivNum 个 slot
@@ -273,54 +267,40 @@ struct WorkspaceInfo {
         }
 
         // Shared expert workspace buffers
-        sharedExpertResultPtr = nullptr;
-        sharedExpertGmm1OutPtr = nullptr;
-        sharedExpertInputDataPtr = nullptr;
-        sharedExpertInputScalePtr = nullptr;
-        sharedExpertSwigluDataPtr = nullptr;
-        sharedExpertSwigluScalePtr = nullptr;
-        quantDoneFlagPtr = nullptr;
         if (tilingData->sharedExpertNum > 0) {
-            // sharedExpertResult: GMM2 output for shared experts [sharedExpertNum × maxOutputSize × h]
+            // sharedExpertResult: GMM2 output for shared experts [sharedExpertNum × bs × h]
             sharedExpertResultPtr = base + workspaceSize;
             workspaceSize += Ops::Base::CeilAlign(
-                SIZE_BF_16 * tilingData->maxOutputSize * tilingData->sharedExpertNum * tilingData->h, ALIGN_512);
-            // sharedExpertGmm1Out: GMM1 output for shared experts [sharedExpertNum × maxOutputSize × hiddenDim]
+                SIZE_BF_16 * tilingData->bs * tilingData->sharedExpertNum * tilingData->h, ALIGN_512);
+            // sharedExpertGmm1Out: GMM1 output for shared experts [sharedExpertNum × bs × hiddenDim]
             sharedExpertGmm1OutPtr = base + workspaceSize;
             workspaceSize += Ops::Base::CeilAlign(
-                SIZE_BF_16 * tilingData->maxOutputSize * tilingData->sharedExpertNum * tilingData->hiddenDim,
+                SIZE_BF_16 * tilingData->bs * tilingData->sharedExpertNum * tilingData->hiddenDim,
                 ALIGN_512);
-            // sharedExpertInputData: GMM1 input data [maxOutputSize × h]
+            // sharedExpertInputData: GMM1 input data [bs × h]
             sharedExpertInputDataPtr = base + workspaceSize;
             workspaceSize += Ops::Base::CeilAlign(
-                SIZE_INT_8 * tilingData->maxOutputSize * tilingData->h, ALIGN_512);
-            // sharedExpertInputScale: GMM1 input scale [maxOutputSize × CeilDiv(h,32)*2]
+                SIZE_INT_8 * tilingData->bs * tilingData->h, ALIGN_512);
+            // sharedExpertInputScale: GMM1 input scale [bs × CeilDiv(h,32)*2]
             sharedExpertInputScalePtr = base + workspaceSize;
             workspaceSize += Ops::Base::CeilAlign(
-                SIZE_INT_8 * tilingData->maxOutputSize * Ops::Base::CeilDiv(
+                SIZE_INT_8 * tilingData->bs * Ops::Base::CeilDiv(
                     static_cast<uint32_t>(tilingData->h), static_cast<uint32_t>(MXFP_SCALE_GROUP_NUM)) * MXFP_MULTI_BASE_SIZE,
                 ALIGN_512);
-            // sharedExpertSwigluData: SwiGLU output [sharedExpertNum × maxOutputSize × hiddenDim/2] bf16
+            // sharedExpertSwigluData: SwiGLU quant output [sharedExpertNum × bs × hiddenDim/2] fp8
             sharedExpertSwigluDataPtr = base + workspaceSize;
             workspaceSize += Ops::Base::CeilAlign(
-                SIZE_BF_16 * tilingData->maxOutputSize * tilingData->sharedExpertNum * tilingData->hiddenDim / SWIGLU_N_HALF,
+                SIZE_INT_8 * tilingData->bs * tilingData->sharedExpertNum * tilingData->hiddenDim / SWIGLU_N_HALF,
                 ALIGN_512);
-            // sharedExpertSwigluScale: SwiGLU scale [sharedExpertNum × maxOutputSize × hiddenDim/2/32]
+            // sharedExpertSwigluScale: SwiGLU scale [sharedExpertNum × bs × hiddenDim/2/32]
             sharedExpertSwigluScalePtr = base + workspaceSize;
             workspaceSize += Ops::Base::CeilAlign(
-                SIZE_INT_8 * tilingData->maxOutputSize * tilingData->sharedExpertNum * tilingData->hiddenDim /
+                SIZE_INT_8 * tilingData->bs * tilingData->sharedExpertNum * tilingData->hiddenDim /
                     SWIGLU_N_HALF / MXFP_SCALE_GROUP_NUM,
                 ALIGN_512);
             // quantDoneFlag: AIV writes (AtomicAdd, 2 per block), AIC polls [aicNum × sizeof(int32_t)]
-            quantDoneFlagPtr = base + workspaceSize;
-            workspaceSize += Ops::Base::CeilAlign(
-                static_cast<int64_t>(tilingData->aicNum) * SIZE_INT_32, ALIGN_32);
             // sharedExpertGmm2DoneFlag: AIC writes after GMM2, AIV polls in Unpermute
             sharedExpertGmm2DoneFlagPtr = base + workspaceSize;
-            workspaceSize += Ops::Base::CeilAlign(
-                static_cast<int64_t>(tilingData->aicNum) * SIZE_INT_32, ALIGN_32);
-            // sharedExpertGmm1DoneFlag: AIC AtomicAdd after GMM1, AIV polls
-            sharedExpertGmm1DoneFlagPtr = base + workspaceSize;
             workspaceSize += Ops::Base::CeilAlign(
                 static_cast<int64_t>(tilingData->aicNum) * SIZE_INT_32, ALIGN_32);
         }
