@@ -75,45 +75,38 @@ static std::string LIDataTypeToSerialString(ge::DataType type)
 ge::graphStatus LIInfoParser::CheckRequiredInOutExistence() const
 {
     OP_CHECK_IF(opParamInfo_.query.shape == nullptr,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "Shape of tensor query",
-                    "Shape of tensor query is nullptr"),
-                return ge::GRAPH_FAILED);
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "Shape of tensor query", "Shape of tensor query is nullptr"),
+        return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.query.desc == nullptr,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "Desc of tensor query",
-                    "Desc of tensor query is nullptr"),
-                return ge::GRAPH_FAILED);
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "Desc of tensor query", "Desc of tensor query is nullptr"),
+        return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.key.shape == nullptr,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "Shape of tensor key",
-                    "Shape of tensor key is nullptr"),
-                return ge::GRAPH_FAILED);
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "Shape of tensor key", "Shape of tensor key is nullptr"),
+        return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.key.desc == nullptr,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "Desc of tensor key",
-                    "Desc of tensor key is nullptr"),
-                return ge::GRAPH_FAILED);
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "Desc of tensor key", "Desc of tensor key is nullptr"),
+        return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.weights.shape == nullptr,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "Shape of tensor value",
-                    "Shape of tensor value is nullptr"),
-                return ge::GRAPH_FAILED);
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "Shape of tensor value", "Shape of tensor value is nullptr"),
+        return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.weights.desc == nullptr,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "Desc of tensor value",
-                    "Desc of tensor value is nullptr"),
-                return ge::GRAPH_FAILED);
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "Desc of tensor value", "Desc of tensor value is nullptr"),
+        return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.attenOut.shape == nullptr,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "Shape of tensor output",
-                    "Shape of tensor output is nullptr"),
-                return ge::GRAPH_FAILED);
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "Shape of tensor output",
+            "Shape of tensor output is nullptr"),
+        return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.attenOut.desc == nullptr,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "Desc of tensor output",
-                    "Desc of tensor output is nullptr"),
-                return ge::GRAPH_FAILED);
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "Desc of tensor output", "Desc of tensor output is nullptr"),
+        return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.valuesOut.shape == nullptr,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "Shape of tensor output values",
-                    "Shape of tensor output values is nullptr"),
-                return ge::GRAPH_FAILED);
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "Shape of tensor output values",
+            "Shape of tensor output values is nullptr"),
+        return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.valuesOut.desc == nullptr,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "Desc of tensor output values",
-                    "Desc of tensor output values is nullptr"),
-                return ge::GRAPH_FAILED);
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "Desc of tensor output values",
+            "Desc of tensor output values is nullptr"),
+        return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
