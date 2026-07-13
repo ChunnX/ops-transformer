@@ -1056,7 +1056,7 @@ ge::graphStatus MegaMoeTilingFuncImplPublic(gert::TilingContext *context, MegaMo
     tilingData->aicNum = aicNum;
     tilingData->blockAivNum = aivNum;
     auto attrs = context->GetAttrs();
-    tilingData->topoType = 1;//*attrs->GetAttrPointer<int64_t>((config.attrTopoTypeIndex));
+    tilingData->topoType = *attrs->GetAttrPointer<int64_t>((config.attrTopoTypeIndex));
     OP_TILING_CHECK(aivNum <= 0 || aicNum <= 0,
                     OP_LOGE_FOR_INVALID_VALUE(nodeName, "aivNum/aicNum",
                                               (std::to_string(aivNum) + ", " + std::to_string(aicNum)).c_str(),
