@@ -95,8 +95,7 @@ private:
     __aicore__ inline void QuantProcessInRank();
     __aicore__ inline void SharedExpertCopyInput();
     template <bool IsShared = false>
-    __aicore__ inline void GroupMatmulWithSwigluQuant(const GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &state,
-        BlockEpilogue &epilogueOp);
+    __aicore__ inline void GroupMatmulWithSwigluQuant(const GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &state);
     template <bool IsShared = false>
     __aicore__ inline void GroupMatmulWithCombine(const GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &state,
         uint32_t expertIdx);
@@ -196,6 +195,7 @@ private:
     using BlockEpilogue = BlockEpilogueSwigluMxQuant<SwigluQuantOutType, bfloat16_t,
         QuantScaleOutType, QuantScaleOutType, true>;
     BlockEpilogue epilogueOp_;
+    BlockEpilogue sharedEpilogueOp_;
 };
 
 // ========================
@@ -1318,13 +1318,14 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SharedExpertCopyInput()
 // ===============================================================
 // GroupMatmulWithSwigluQuant：按实现路径分发到 A8W4 或 generic GMM1。
 // IsShared=true 时跳过 dispatch flag 等待，供共享专家使用。
-// epilogueOp 由调用方传入，共享专家使用局部实例避免反复 Init。
+// epilogueOp 按 IsShared 选择成员实例（epilogueOp_ / sharedEpilogueOp_）。
 // ===============================================================
 template <TemplateMegaMoeTypeClass>
 template <bool IsShared>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::GroupMatmulWithSwigluQuant(
-    const GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &state, BlockEpilogue &epilogueOp)
+    const GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &state)
 {
+    BlockEpilogue &epilogueOp = IsShared ? sharedEpilogueOp_ : epilogueOp_;
     if constexpr (g_coreType == AIV) {
         AscendC::Coord<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t> vecBaseOffset{
             Get<IDX_C_OFFSET>(state.baseOffset), Get<IDX_C_SCALE_OFFSET>(state.baseOffset),
@@ -1414,8 +1415,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
     Get<K_VALUE>(initShape) = k_;
     BlockOffset zeroOffset{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
     if (sharedExpertNum_ > 0) {
-        BlockEpilogue sharedEpilogue;
-        sharedEpilogue.Init({params_.workspaceInfo.sharedExpertSwigluDataPtr,
+        sharedEpilogueOp_.Init({params_.workspaceInfo.sharedExpertSwigluDataPtr,
             params_.workspaceInfo.sharedExpertSwigluScalePtr,
             nullptr, nullptr, nullptr, nullptr, ALIGN_256, ALIGN_256,
             params_.tilingData->clampLimit});
@@ -1427,7 +1427,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
                 continue;
             }
             UpdateGlobalBuffer<AddrUpdateMode::kGmm1, true>(sharedGmm1AddrInfo, sharedGmm1State);
-            GroupMatmulWithSwigluQuant<true>(sharedGmm1AddrInfo, sharedGmm1State, sharedEpilogue);
+            GroupMatmulWithSwigluQuant<true>(sharedGmm1AddrInfo, sharedGmm1State);
         }
         EndSync(vecSetSyncCom_);
         vecSetSyncCom_ = 0;
@@ -1485,7 +1485,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
             continue;
         }
         UpdateGlobalBuffer<AddrUpdateMode::kGmm1>(gmm1AddrInfo, gmm1State);
-        GroupMatmulWithSwigluQuant(gmm1AddrInfo, gmm1State, epilogueOp_);
+        GroupMatmulWithSwigluQuant(gmm1AddrInfo, gmm1State);
     }
     EndSync(vecSetSyncCom_);
     if constexpr(g_coreType == AIV) {
