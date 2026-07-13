@@ -106,7 +106,6 @@ public:
     ~ElasticBuffer();
 
     void EngramWrite(const at::Tensor &storage);
-    std::function<at::Tensor()> EngramFetch(const at::Tensor &indices);
     void EngramBarrier(bool withDeviceSync = false);
     void Destroy();
 
@@ -114,6 +113,12 @@ public:
     {
         return reinterpret_cast<int64_t>(hostBufPtr_);
     }
+
+    const at::Tensor &GetContextTensor() const { return contextTensor_; }
+
+    static at::Tensor EngramFetch(const at::Tensor &context, const at::Tensor &indices, int64_t hiddenSize,
+                                  int64_t numEntries, int64_t dtypeEnum);
+    static at::Tensor EngramFetchWait(const at::Tensor &context, const at::Tensor &fetched);
 
     static int64_t GetEngramStorageSizeHint(int64_t numEntries, int64_t hiddenSize,
                                             at::ScalarType dtype = at::kBFloat16);
@@ -174,15 +179,17 @@ private:
     int64_t numEngramEntries_ = 0;
     at::ScalarType engramDtype_ = at::kBFloat16;
 
-    bool destroyed_ = false;
-    bool writeCalled_ = false;
-    std::atomic<bool> fetchInProgress_{false};
+    static inline bool destroyed_;
+    static inline bool writeCalled_;
+    static inline std::atomic<bool> fetchInProgress_{false};
 };
 
 // Constructor
 ElasticBuffer::ElasticBuffer(const std::string &groupName, int64_t numCpuBytes)
-    : groupName_(groupName), numCpuBytes_(numCpuBytes), destroyed_(false), writeCalled_(false)
+    : groupName_(groupName), numCpuBytes_(numCpuBytes)
 {
+    destroyed_ = false;
+    writeCalled_ = false;
     InitHcclEngineCtxFunctions();
     InitHcclFunctions();
     BuildCommContext();
@@ -424,36 +431,36 @@ void ElasticBuffer::EngramWrite(const at::Tensor &storage)
     writeCalled_ = true;
 }
 
-// EngramFetch - fetch data using stored metadata
-std::function<at::Tensor()> ElasticBuffer::EngramFetch(const at::Tensor &indices)
+// EngramFetch - stateless static method for torch CustomOp registration (graph-mode compatible).
+at::Tensor ElasticBuffer::EngramFetch(const at::Tensor &context, const at::Tensor &indices, int64_t hiddenSize,
+                                      int64_t numEntries, int64_t dtypeEnum)
 {
     TORCH_CHECK(!destroyed_, "engram_fetch cannot be called after destroy, please create a new ElasticBuffer instance");
     TORCH_CHECK(writeCalled_, "engram_fetch must be called after at least one engram_write");
     TORCH_CHECK(!fetchInProgress_.load(),
                 "Cannot call engram_fetch while previous fetch callback is pending, "
                 "please invoke the callback function returned by the previous engram_fetch first");
-
+    auto dtype = static_cast<at::ScalarType>(dtypeEnum);
     int64_t numTokens = indices.size(0);
-    if (numTokens == 0) {
-        auto emptyTensor =
-            at::empty({0, hiddenSize_}, at::TensorOptions().dtype(engramDtype_).device(indices.device()));
-        return [=]() { return emptyTensor; };
-    }
-
-    fetchInProgress_.store(true);
-
     auto fetched =
-        at::empty({numTokens, hiddenSize_}, at::TensorOptions().dtype(engramDtype_).device(indices.device()));
-
-    ACLNN_CMD(aclnnEngramFetch, contextTensor_, indices, hiddenSize_, numEngramEntries_, fetched);
-
-    auto capturedContext = contextTensor_;
-    auto fetchFlag = &fetchInProgress_;
-    return [capturedContext, fetched, fetchFlag]() {
-        ACLNN_CMD(aclnnEngramFetchWait, capturedContext, fetched);
-        fetchFlag->store(false);
+        at::empty({numTokens, hiddenSize}, at::TensorOptions().dtype(dtype).device(indices.device()));
+    if (numTokens == 0) {
         return fetched;
-    };
+    }
+    fetchInProgress_.store(true);
+    ACLNN_CMD(aclnnEngramFetch, context, indices, hiddenSize, numEntries, fetched);
+    return fetched;
+}
+
+// EngramFetchWait - stateless static method for torch CustomOp registration.
+at::Tensor ElasticBuffer::EngramFetchWait(const at::Tensor &context, const at::Tensor &fetched)
+{
+    if (fetched.size(0) == 0) {
+        return fetched;
+    }
+    ACLNN_CMD(aclnnEngramFetchWait, context, fetched);
+    fetchInProgress_.store(false);
+    return fetched;
 }
 
 // EngramBarrier - cross-rank synchronization
@@ -494,6 +501,7 @@ void ElasticBuffer::Destroy()
     }
 
     destroyed_ = true;
+    fetchInProgress_.store(false);
 }
 
 // CreateContext - create context tensor from commContext_
@@ -738,13 +746,18 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
     pybind11::class_<Mc2Api::ElasticBuffer>(m, "ElasticBuffer")
         .def(pybind11::init<const std::string &, int64_t>(), pybind11::arg("groupName"), pybind11::arg("numCpuBytes"))
         .def("engram_write", &Mc2Api::ElasticBuffer::EngramWrite, pybind11::arg("storage").noconvert())
-        .def("engram_fetch", &Mc2Api::ElasticBuffer::EngramFetch, pybind11::arg("indices").noconvert())
         .def("engram_barrier", &Mc2Api::ElasticBuffer::EngramBarrier, pybind11::arg("withDeviceSync") = false)
         .def("destroy", &Mc2Api::ElasticBuffer::Destroy)
         .def("get_host_buf_ptr", &Mc2Api::ElasticBuffer::GetHostBufPtr)
+        .def("get_context_tensor", &Mc2Api::ElasticBuffer::GetContextTensor)
         .def_static("moe_ep_dispatch", &Mc2Api::ElasticBuffer::MoeEpDispatch)
         .def_static("moe_ep_dispatch_epilogue", &Mc2Api::ElasticBuffer::MoeEpDispatchEpilogue)
         .def_static("moe_ep_combine", &Mc2Api::ElasticBuffer::MoeEpCombine)
         .def_static("get_engram_storage_size_hint", &Mc2Api::ElasticBuffer::GetEngramStorageSizeHint,
-                    pybind11::arg("numEntries"), pybind11::arg("hiddenSize"), pybind11::arg("dtype") = at::kBFloat16);
+                    pybind11::arg("numEntries"), pybind11::arg("hiddenSize"), pybind11::arg("dtype") = at::kBFloat16)
+        .def_static("npu_engram_fetch", &Mc2Api::ElasticBuffer::EngramFetch, pybind11::arg("context"),
+                    pybind11::arg("indices"), pybind11::arg("hidden_size"), pybind11::arg("num_entries"),
+                    pybind11::arg("dtype"))
+        .def_static("npu_engram_fetch_wait", &Mc2Api::ElasticBuffer::EngramFetchWait, pybind11::arg("context"),
+                    pybind11::arg("fetched"));
 }
