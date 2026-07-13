@@ -305,7 +305,7 @@ aclnnStatus aclnnAlltoAllMatmul(
 * 通算融合算子不支持并发调用，不同的通算融合算子也不支持并发调用。
 * 不支持跨超节点通信，只支持超节点内。
 * 通信引擎约束：
-   - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持MTE通信。
+   - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持MTE通信，且通信缓冲区大于等于200MB。
    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  ：支持AICPU通信。
    - <term>Ascend 950PR/Ascend 950DT</term>：支持CCU通信。
 
