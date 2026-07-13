@@ -170,6 +170,14 @@ static aclnnStatus MakeContiguous(const aclTensor *&query,
     if (attenMaskOptional != nullptr) {
         attenMaskOptional = l0op::Contiguous(attenMaskOptional, executor);
         CHECK_RET(attenMaskOptional != nullptr, ACLNN_ERR_INNER_NULLPTR);
+        if (attenMaskOptional->GetDataType() != DataType::DT_INT32) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "attenMask (blockEffRows) must be INT32");
+            return ACLNN_ERR_PARAM_INVALID;
+        }
+        if (blockSparseMaskOptional == nullptr) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "attenMask (blockEffRows) depends on blockSparseMask, which is not provided");
+            return ACLNN_ERR_PARAM_INVALID;
+        }
     }
 
     if (blockTableOptional != nullptr) {
