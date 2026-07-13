@@ -1005,7 +1005,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessCombine(
     }
     MegaMoeCombineImpl::CombineTileSchedule tileSchedule{tileId, tileNum};
     MegaMoeCombineImpl::CombineExpertContext expertContext{
-        expertIdx, rankId_, k_, gmm2State.expertBeforeCnt, Get<M_VALUE>(gmm2State.problemShape)};
+        expertIdx, rankId_, k_, gmm2State.expertBeforeCnt,
+        static_cast<uint32_t>(Get<M_VALUE>(gmm2State.problemShape))};
     uint64_t syncCounterOffset = (static_cast<uint64_t>(expertIdx) * blockAivNum_ + aivCoreIdx_)
         * INT_CACHELINE * sizeof(int32_t);
     MegaMoeCombineImpl::CombineBufferContext bufferContext{
