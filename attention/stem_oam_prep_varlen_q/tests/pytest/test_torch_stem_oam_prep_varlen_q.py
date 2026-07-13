@@ -10,7 +10,7 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # ----------------------------------------------------------------------------
 
-"""Torch extension test for npu_stem_oam_prep_varlen_q.
+"""Torch extension test for stem_oam_prep_varlen_q.
 
 Tests the cann_ops_transformer torch extension wrapper against a pure
 PyTorch CPU reference implementation.
@@ -129,7 +129,7 @@ def compare_result(output, golden, atol=ATOL, rtol=RTOL):
 
 def run_test(name, q_fp8, q_scale, q_seq_lens, cu_seqlens_q,
              stem_block_size=128, stem_stride=16, device='npu:0'):
-    op_fn = torch.ops.cann_ops_transformer.npu_stem_oam_prep_varlen_q
+    op_fn = torch.ops.cann_ops_transformer.stem_oam_prep_varlen_q
 
     q_npu = q_fp8.to(device)
     qscale_npu = q_scale.to(device) if q_scale is not None else None
@@ -149,7 +149,7 @@ def run_test(name, q_fp8, q_scale, q_seq_lens, cu_seqlens_q,
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Torch extension test for npu_stem_oam_prep_varlen_q")
+    parser = argparse.ArgumentParser(description="Torch extension test for stem_oam_prep_varlen_q")
     parser.add_argument('--device-id', type=int, default=0, help='NPU device id')
     args = parser.parse_args()
 
@@ -162,7 +162,7 @@ def main():
     results = []
 
     print("=" * 90)
-    print("  Torch Extension Test: npu_stem_oam_prep_varlen_q")
+    print("  Torch Extension Test: stem_oam_prep_varlen_q")
     print(f"  device={device}  atol={ATOL}  rtol={RTOL}")
     print("=" * 90)
 
