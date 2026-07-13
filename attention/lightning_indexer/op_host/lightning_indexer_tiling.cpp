@@ -360,7 +360,7 @@ ge::graphStatus LIInfoParser::GetAndCheckOptionalInput()
 {
     if (kLayout_ == DataLayout::BnBsND) {
         OP_CHECK_IF(opParamInfo_.blockTable.tensor == nullptr,
-                   OP_LOGE_WITH_INVALID_INPUT(opName_, "block_table"),
+                   OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "block_table", "when layout_key is PA_BSND, input block_table must not be null"),
                    return ge::GRAPH_FAILED);
         OP_CHECK_IF(
             opParamInfo_.actualSeqLengths.tensor == nullptr,
