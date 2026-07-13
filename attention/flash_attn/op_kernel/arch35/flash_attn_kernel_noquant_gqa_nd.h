@@ -616,11 +616,18 @@ public:
 
     __aicore__ inline void Process()
     {
+        // AllocEventID 必须在 section 循环外只调用一次：
+        // 它经 mmL0A/BPolicy.Init → BufferManager::AllocBuffer 前移 offset_ 申请 L0A/L0B，
+        // 而 FreeEventID(FreeBuffer) 并不回退 offset_。若放进循环里每个 section 都 Alloc，
+        // offset_ 会逐 section 累加，从第 2 个 section 起越过 L0A/L0B 物理容量(64K)，
+        // 导致 cube 核用非法 L0 地址做 MTE1/matmul → aicore 非法访问 → trap(subErrType 0x4)。
         if (constInfo.aicIdx < constInfo.coreNum) {
             if ASCEND_IS_AIV {
                 vecFaBlock.InitBuffers();
+                vecFaBlock.AllocEventID();
             } else {
                 cubeBlock.InitBuffers();
+                cubeBlock.AllocEventID();
             }
         }
 
@@ -631,17 +638,7 @@ public:
         }
         for (uint32_t sectionIdx = 0; sectionIdx < sectionNum_; sectionIdx++) {
             if (constInfo.aicIdx < constInfo.coreNum) {
-                if ASCEND_IS_AIV {
-                    vecFaBlock.AllocEventID();
-                } else {
-                    cubeBlock.AllocEventID();
-                }
                 FlashAttention(sectionIdx);
-                if ASCEND_IS_AIV {
-                    vecFaBlock.FreeEventID();
-                } else {
-                    cubeBlock.FreeEventID();
-                }
             }
             if ASCEND_IS_AIV {
                 FlashDecode(sectionIdx);
@@ -651,6 +648,13 @@ public:
             vecFaBlock.UnInitCrossCoreSync();
         } else {
             cubeBlock.UnInitCrossCoreSync();
+        }
+        if (constInfo.aicIdx < constInfo.coreNum) {
+            if ASCEND_IS_AIV {
+                vecFaBlock.FreeEventID();
+            } else {
+                cubeBlock.FreeEventID();
+            }
         }
     }
 }; // FlashAttentionNoQuantGqaKernelNd
