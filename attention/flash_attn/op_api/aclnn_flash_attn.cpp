@@ -56,8 +56,8 @@ aclnnStatus aclnnFlashAttnGetWorkspaceSize(
     const aclTensor *tempTensor = nullptr;
 
     aclnnStatus ret = CheckTensorContiguous(k, v);
-    if (ret != ACLNN_SUCCESS && NnopbaseSupportTensorV2 == nullptr) {
-        OP_LOGE(ACLNN_ERR_INNER_TILING_ERROR, "When tensor is not contiguous, opbase packager version check failed");
+    if (ret != ACLNN_SUCCESS) {
+        OP_LOGE(ACLNN_ERR_INNER_TILING_ERROR, "flash attn do not support non-contiguous key/value");
         return ret;
     }
 
