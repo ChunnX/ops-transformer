@@ -566,7 +566,6 @@ ge::graphStatus Tiling4StemOamPrepVarlenQ(gert::TilingContext* context) {
     uint32_t perBlockUB = B * DIM_QK_HOST * SIZEOF_FLOAT32     // qBlockFP32Buf (float)
                         + B * DIM_QK_HOST * SIZEOF_FP8         // qBlockBuf (fp8)
                         + B * SIZEOF_FLOAT32                   // scalesBuf (float)
-                        + S * DIM_QK_HOST * SIZEOF_FLOAT32     // groupSumBuf (float)
                         + S * DIM_QK_HOST * SIZEOF_BFLOAT16;   // outQueueQflat (bf16)
     uint32_t availableUB = UB_SIZE_BYTES - VARLEN_BUF_SIZE_BYTES;
     uint32_t ubFactor = availableUB / perBlockUB;
