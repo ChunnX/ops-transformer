@@ -23,7 +23,7 @@ if (BUILD_OPEN_PROJECT)
 endif()
 
 if(NOT BUILD_OPS_RTY_KERNEL)
-    add_modules_sources(OPTYPE stem_oam_prep_varlen_q ACLNNTYPE aclnn)
+    add_modules_sources(OPTYPE stem_oam_prep_varlen_q ACLNNTYPE aclnn_exclude)
     add_tiling_modules()
     target_sources(${OPHOST_NAME}_tiling_obj PRIVATE
         arch35/stem_oam_prep_varlen_q_tiling.cpp
