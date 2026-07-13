@@ -309,12 +309,13 @@ ge::graphStatus QuantBlockSparseAttnCheck::CheckShapeConsistency() const
 
 ge::graphStatus QuantBlockSparseAttnCheck::CheckMaskMode() const
 {
-    if (tilingInfo_.quantModeVal == BSA_QUANT_MODE_MXFP8_FULL_QUANT &&
-        tilingInfo_.maskModeVal != BSA_MASK_MODE_CAUSAL) {
-        OP_LOGE_WITH_INVALID_ATTR(kOpName, "mask_mode", std::to_string(tilingInfo_.maskModeVal),
-                                  std::to_string(BSA_MASK_MODE_CAUSAL));
-        return ge::GRAPH_FAILED;
-    }
+    // zyh 暂时屏蔽mask check
+    // if (tilingInfo_.quantModeVal == BSA_QUANT_MODE_MXFP8_FULL_QUANT &&
+    //     tilingInfo_.maskModeVal != BSA_MASK_MODE_CAUSAL) {
+    //     OP_LOGE_WITH_INVALID_ATTR(kOpName, "mask_mode", std::to_string(tilingInfo_.maskModeVal),
+    //                               std::to_string(BSA_MASK_MODE_CAUSAL));
+    //     return ge::GRAPH_FAILED;
+    // }
     if (tilingInfo_.quantModeVal == BSA_QUANT_MODE_FP8 && tilingInfo_.maskModeVal != BSA_MASK_MODE_NONE &&
         tilingInfo_.maskModeVal != BSA_MASK_MODE_CAUSAL) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(kOpName, "mask_mode", std::to_string(tilingInfo_.maskModeVal),
