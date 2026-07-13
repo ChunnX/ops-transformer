@@ -970,11 +970,11 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
 
 - 各张量参数的list[Tensor]长度、是否转置、是否支持非连续Tensor约束如下：
 
-    <table style=”undefined;table-layout: fixed; width:1000px”><colgroup>
-    <col style=”width: 160px”>
-    <col style=”width: 320px”>
-    <col style=”width: 160px”>
-    <col style=”width: 220px”>
+    <table style="undefined;table-layout: fixed; width:1000px"><colgroup>
+    <col style="width: 160px">
+    <col style="width: 320px">
+    <col style="width: 160px">
+    <col style="width: 220px">
     </colgroup>
     <thead>
     <tr>
@@ -1061,7 +1061,7 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
 
         **Atlas A2 训练系列产品/Atlas A2 推理系列产品：**
 
-        ```
+        ```Cpp
         offsetTokenPerExpert = ep_world_size × CeilAlign(ep_world_size × maxExpertPerRank + 1, 128) × 4B
 
         // winIn
@@ -1085,10 +1085,10 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
 
         **Atlas A3 训练系列产品/Atlas A3 推理系列产品：**
 
-        ```
+        ```Cpp
         offsetTokenPerExpert = ep_world_size × CeilAlign(ep_world_size × maxExpertPerRank + 1, 128) × 4B
 
-        // winIn（A3 仅 winIn，无 winOut）
+        // winIn（A3 仅使用 winIn）
         offsetAAfterDispatch = num_max_tokens_per_rank × num_topk × (quant ? hidden + 512 : hidden × 2)
         offsetD              = num_max_tokens_per_rank × num_topk × hidden × 2B
         winInTensorSize      = offsetAAfterDispatch + offsetD
@@ -1244,9 +1244,9 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
       # 创建HCCL通信链路并初始化EP域
       print(f'[INFO] device_{rank} 创建HCCL通信链路')
       master_ip = '127.0.0.1'
-      hccl_config = {"hccl_buffer_size": buffer_size}
-      dist.init_process_group(backend="hccl", rank=rank, world_size=world_size, init_method=f'tcp://{master_ip}:50001',
-                             hccl_config=hccl_config)
+      options = torch_npu._C._distributed_c10d.ProcessGroupHCCL.Options()
+      options.hccl_config = {"hccl_buffer_size": buffer_size} # 单位：MB，描述windowIn或windowOut的大小
+      dist.init_process_group(backend="hccl", rank=rank, world_size=world_size, init_method=f'tcp://{master_ip}:50001', pg_options=options)
       print(f"device_{rank} init_process_group success")
 
       print(f"device {rank} 初始化EP域")
