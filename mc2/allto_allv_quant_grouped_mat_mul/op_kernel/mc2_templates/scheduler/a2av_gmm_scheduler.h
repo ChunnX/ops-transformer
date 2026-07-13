@@ -125,8 +125,6 @@ private:
         }
         commOp.WaitScale(0);
         SyncAll<false>();
-        commOp.PermuteScale();
-        SyncAll<false>();
         for (uint32_t expertIdx = 0U; expertIdx < e_; expertIdx++) {
             commOp.Wait(expertIdx);
             SyncAll<false>();
