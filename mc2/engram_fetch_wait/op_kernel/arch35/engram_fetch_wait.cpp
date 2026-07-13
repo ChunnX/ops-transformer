@@ -14,9 +14,8 @@
  */
 
 
-#include "arch35/engram_fetch_wait_arch35.h"
+#include "engram_fetch_wait_arch35.h"
 
-using namespace AscendC;
 using namespace Mc2Kernel;
 
 __global__ __aicore__ void engram_fetch_wait(GM_ADDR commContext, GM_ADDR fetched, GM_ADDR fetchedOut,
@@ -25,7 +24,7 @@ __global__ __aicore__ void engram_fetch_wait(GM_ADDR commContext, GM_ADDR fetche
     REGISTER_TILING_DEFAULT(EngramFetchWaitTilingData);
     GET_TILING_DATA_WITH_STRUCT(EngramFetchWaitTilingData, tilingData, tilingGM);
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY);
-    TPipe pipe;
+    AscendC::TPipe pipe;
     EngramFetchWaitArch35 op;
     op.Init(commContext, workspaceGM, &pipe);
     op.Process();

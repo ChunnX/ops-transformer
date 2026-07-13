@@ -20,8 +20,8 @@
 #include "mc2_log.h"
 #include "graph/utils/type_utils.h"
 #include "register/op_def_registry.h"
-#include "../../op_kernel/engram_fetch_tiling_data.h"
-#include "../../op_kernel/engram_fetch_tiling_key.h"
+#include "../../../op_kernel/engram_fetch_tiling_data.h"
+#include "../../../op_kernel/engram_fetch_tiling_key.h"
 
 using namespace AscendC;
 using namespace ge;
@@ -316,7 +316,7 @@ static ge::graphStatus SetPlatformInfo(gert::TilingContext *context, EngramFetch
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
     uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
     uint32_t aicNum = ascendcPlatform.GetCoreNumAic();
-    uint32_t numBlocks = ascendcPlatform.CalcTschNumBlocks(aivNum, 0, aivNum);
+    uint32_t numBlocks = ascendcPlatform.CalcTschBlockDim(aivNum, 0, aivNum);
     context->SetBlockDim(numBlocks);
     tilingData.aivNum = aivNum;
     OP_LOGD(nodeName, "aicNum=%u, aivNum=%u, numBlocks=%u", aicNum, aivNum, numBlocks);

@@ -24,58 +24,60 @@
 #endif
 #include "kernel_tiling/kernel_tiling.h"
 #include "../engram_fetch_wait_tiling_data.h"
-#include "../../../engram_fetch/op_kernel/engram_fetch.h"
+#if __has_include("../../engram_fetch/engram_fetch_utils.h")
+#include "../../engram_fetch/engram_fetch_utils.h"
+#else
+#include "../../../engram_fetch/op_kernel/engram_fetch_utils.h"
+#endif
 #include "adv_api/hccl/hccl.h"
 #include "adv_api/hcomm/hcomm.h"
 
 namespace Mc2Kernel {
 
-using namespace AscendC;
-
 class EngramFetchWaitArch35 {
 public:
     __aicore__ inline EngramFetchWaitArch35() = default;
 
-    __aicore__ inline void Init(GM_ADDR commContext, GM_ADDR workspaceGM, TPipe *pipe);
+    __aicore__ inline void Init(GM_ADDR commContext, GM_ADDR workspaceGM, AscendC::TPipe *pipe);
 
     __aicore__ inline void Process();
 
 private:
-    TPipe *tpipe_{nullptr};
+    AscendC::TPipe *tpipe_{nullptr};
     __gm__ EngramCommContext *ctxPtr_{nullptr};
-
     uint32_t aivId_{0};
     uint32_t rankId_{0};
     uint32_t numRanks_{0};
-
-    TBuf<> hcommBuf_;
-
-    AscendC::Hcomm<COMM_PROTOCOL_UBC_CTP> hcomm_;
+    AscendC::TBuf<> hcommBuf_;
+    AscendC::Hcomm<AscendC::COMM_PROTOCOL_UBC_CTP> hcomm_;
 };
 
-__aicore__ inline void EngramFetchWaitArch35::Init(GM_ADDR commContext, GM_ADDR workspaceGM, TPipe *pipe)
+__aicore__ inline void EngramFetchWaitArch35::Init(GM_ADDR commContext, GM_ADDR workspaceGM,
+                                                   AscendC::TPipe *pipe)
 {
     tpipe_ = pipe;
-    aivId_ = GetBlockIdx();
+    aivId_ = AscendC::GetBlockIdx();
+    (void)workspaceGM;
 
     ctxPtr_ = (__gm__ EngramCommContext *)commContext;
     rankId_ = ctxPtr_->rankId;
     numRanks_ = ctxPtr_->rankSize;
 
     tpipe_->InitBuffer(hcommBuf_, Mc2Kernel::HCOMM_INIT_SIZE);
-    LocalTensor<uint8_t> hcommTensor = hcommBuf_.Get<uint8_t>();
+    AscendC::LocalTensor<uint8_t> hcommTensor = hcommBuf_.Get<uint8_t>();
     hcomm_.Init(hcommTensor, Mc2Kernel::HCOMM_INIT_SIZE);
 }
 
 __aicore__ inline void EngramFetchWaitArch35::Process()
 {
     if ASCEND_IS_AIV {
-        uint32_t totalBlocks = GetBlockNum();
+        uint32_t totalBlocks = AscendC::GetBlockNum();
         for (uint32_t channelIdx = aivId_; channelIdx < numRanks_; channelIdx += totalBlocks) {
             if (channelIdx == rankId_) {
                 continue;
             }
-            hcomm_.Drain(ctxPtr_->hcommHandle_[channelIdx]);
+            int32_t ret = hcomm_.Drain(ctxPtr_->hcommHandle[channelIdx]);
+            ascendc_assert(ret == 0, "Urma drain failed, ret=%d, channelIdx=%u", ret, channelIdx);
         }
     }
 }

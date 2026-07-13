@@ -9,12 +9,12 @@
  */
 
 /*!
- * \file engram_fetch.h
+ * \file engram_fetch_utils.h
  * \brief engram_fetch算子公共头文件
  */
 
-#ifndef ENGRAM_FETCH_H
-#define ENGRAM_FETCH_H
+#ifndef ENGRAM_FETCH_UTILS_H
+#define ENGRAM_FETCH_UTILS_H
 
 #if ASC_DEVKIT_MAJOR >= 9
 #include "basic_api/kernel_basic_intf.h"
@@ -22,23 +22,24 @@
 #include "kernel_operator.h"
 #endif
 
-constexpr uint32_t  MAX_QP_SIZE = 1024;
+namespace Mc2Kernel {
+constexpr uint32_t MAX_QP_SIZE = 1024U;
+constexpr uint32_t UB_ALIGN = 32U;
+constexpr uint32_t TILE_BYTES = 32U * 1024U;
+constexpr uint32_t HCOMM_INIT_SIZE = 512U;
+constexpr uint32_t READ_COMMIT_FIRST_THRESHOLD = 8U;
+constexpr uint32_t READ_COMMIT_THRESHOLD = 32U;
+constexpr int32_t BITS_PER_BYTE = 8;
+constexpr uint32_t ALIGNED_LEN_256 = 256U;
+constexpr uint32_t RELAY_BUFFER_NUM = 2U;
+
 struct EngramCommContext {
     uint32_t rankId;
     uint32_t rankSize;
     uint64_t commBuffer[MAX_QP_SIZE];
-    uint64_t hcommHandle_[MAX_QP_SIZE];
+    uint64_t hcommHandle[MAX_QP_SIZE];
 };
 
-namespace Mc2Kernel {
-constexpr uint32_t UB_ALIGN = 32U;
-constexpr uint32_t TILE_BYTES = 32U * 1024U;
-constexpr uint32_t HCOMM_INIT_SIZE = 512U;
-constexpr uint32_t READ_COMMIT_THRESHOLD = 64U;
-constexpr int32_t BITS_PER_BYTE = 8;
-constexpr uint32_t ALIGNED_LEN_256 = 256U;
-
-using namespace AscendC;
 } // namespace Mc2Kernel
 
 #endif
