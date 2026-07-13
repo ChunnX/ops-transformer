@@ -67,6 +67,10 @@ public:
         rankDim_ = rankDim;
         cGroupOffsetTableGm_ = cGroupOffsetTableGm;
     }
+    __aicore__ inline void SetAGroupOffsetTable(const __gm__ uint64_t *aGroupOffsetTableGm)
+    {
+        aGroupOffsetTableGm_ = aGroupOffsetTableGm;
+    }
     template <bool aTrans, bool bTrans, class xType, class scaleType, CubeFormat wFormat = CubeFormat::ND>
     __aicore__ inline void UpdateGroupOffset(int32_t m, int32_t n, int32_t k, uint32_t groupIdx);
     template <bool isGmm> __aicore__ inline void UpdateGroupParams();
@@ -92,6 +96,7 @@ private:
     uint32_t endBlockIdx_;
     uint32_t rankDim_ = 1U;
     const __gm__ uint64_t *cGroupOffsetTableGm_ = nullptr;
+    const __gm__ uint64_t *aGroupOffsetTableGm_ = nullptr;
 };
 
 template <bool isGmm>
@@ -130,10 +135,14 @@ template <bool aTrans, bool bTrans, class xType, class scaleType, CubeFormat wFo
 __aicore__ inline void QuantASWBlockSch::UpdateGroupOffset(int32_t m, int32_t n, int32_t k, uint32_t groupIdx)
 {
     if (groupIdx > 0) {
-        if constexpr (Mc2QuantUtils::IsFp4<xType>()) {
-            params_.aGroupAddrOffset += params_.m * params_.k / 2;
+        if (aGroupOffsetTableGm_ != nullptr) {
+            params_.aGroupAddrOffset = aGroupOffsetTableGm_[groupIdx];
         } else {
-            params_.aGroupAddrOffset += params_.m * params_.k;
+            if constexpr (Mc2QuantUtils::IsFp4<xType>()) {
+                params_.aGroupAddrOffset += params_.m * params_.k / 2;
+            } else {
+                params_.aGroupAddrOffset += params_.m * params_.k;
+            }
         }
 
         bool isExpertBoundary = (rankDim_ <= 1U) || (groupIdx % rankDim_ == 0U);
