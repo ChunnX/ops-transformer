@@ -54,7 +54,7 @@ static bool CheckNotNull(const aclTensor* x, const aclTensor* expertIds, const c
     return true;
 }
 
-// 入参教验
+// 入参校验
 static aclnnStatus CheckParams(const aclTensor* x, const aclTensor* expertIds, const char* groupEp,
                                const char* groupTp, int64_t quantMode, aclTensor* expandX, aclTensor* dynamicScales,
                                aclTensor* expandIdx, aclTensor* expertTokensNums, aclTensor* epRecvCounts)

@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file moe_distribute_dispatch_tiling_arch35.cpp
+ * \file moe_distribute_dispatch_v2_tiling_arch35.cpp
  * \brief
  */
 
@@ -33,7 +33,6 @@
 #include "register/tilingdata_base.h"
 #include "op_host/op_tiling/mc2_tiling_utils.h"
 #include "../../../op_kernel/moe_distribute_dispatch_v2_tiling.h"
-#include "../../../op_kernel/moe_distribute_dispatch_v2_tiling_key.h"
 #include "mc2_log_compat.h"
 using namespace Mc2Tiling;
 using namespace AscendC;
