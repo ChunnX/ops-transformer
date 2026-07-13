@@ -831,7 +831,7 @@ private:
         mmBf16_.SetTensorA(x);
         mmBf16_.SetTensorB(y);
         mmBf16_.IterateAll(z);
-        mm.End();
+        mmBf16_.End();
     }
     
     TPipe *pipe_;
