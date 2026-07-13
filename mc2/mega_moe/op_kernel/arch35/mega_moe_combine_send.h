@@ -257,10 +257,10 @@ template <typename ElementMMadOut2>
 __aicore__ inline void CombineSendTokenToRemote(const Params& params)
 {
     uint32_t maxDataLengthPerBlock = Ops::Base::CeilAlign(static_cast<int64_t>(MegaMoeImpl::L1_TILE_N *
-        sizeof(ElementMMadOut2)), (int64_t)ALIGN_32); // 512
+        sizeof(ElementMMadOut2)), (int64_t)ALIGN_32);
     uint32_t maxDataSizePerToken = Ops::Base::CeilDiv(static_cast<int64_t>(params.tilingData->h),
-        (int64_t)MegaMoeImpl::L1_TILE_N) * (ALIGN_32 + maxDataLengthPerBlock); // 2176
-    LocalTensor<int32_t> sendTensor = LocalTensor<int32_t>(TPosition::VECCALC, ALIGN_512, ALIGN_32 / sizeof(int32_t)); //8个
+        (int64_t)MegaMoeImpl::L1_TILE_N) * (ALIGN_32 + maxDataLengthPerBlock);
+    LocalTensor<int32_t> sendTensor = LocalTensor<int32_t>(TPosition::VECCALC, ALIGN_512, ALIGN_32 / sizeof(int32_t));
 
     // 分核: 仅 subBlockIdx_==1 的核参与, 核数 = GetBlockNum() (每个 block 的核1)
     uint32_t aivIdx = GetBlockIdx() / GetTaskRation();
@@ -279,9 +279,9 @@ __aicore__ inline void CombineSendTokenToRemote(const Params& params)
     }
 
     LocalTensor<int32_t> sendTokenCnt = LocalTensor<int32_t>(TPosition::VECCALC, ALIGN_32 + ALIGN_512,
-        cntTensorLength / sizeof(int32_t));// 1
+        cntTensorLength / sizeof(int32_t));
     LocalTensor<int32_t> totalTokenCnt = LocalTensor<int32_t>(TPosition::VECCALC, ALIGN_32 + ALIGN_512 +
-        cntTensorLength, cntTensorLength / sizeof(int32_t)); // 1
+        cntTensorLength, cntTensorLength / sizeof(int32_t));
     AscendC::Duplicate<int32_t>(sendTokenCnt, 0, processRankNum);
     AscendC::Duplicate<int32_t>(totalTokenCnt, 0, processRankNum);
     SyncFuncStatic<AscendC::HardEvent::V_S, SYNC_EVENT_ID2>();

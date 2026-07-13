@@ -256,9 +256,9 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Init(
 
     //PRINTF("==maxOutputSize_==:%u", maxOutputSize_);
     maxWavesPerExpert_ = static_cast<int32_t>(Ops::Base::CeilDiv(
-        static_cast<int64_t>(maxOutputSize_), DISPATCH_WAVE_TILE_M));// 64K / 256 = 256
+        static_cast<int64_t>(maxOutputSize_), DISPATCH_WAVE_TILE_M));
     dispatchFlagSlotsPerExpert_ = static_cast<int32_t>(Ops::Base::CeilAlign(
-        static_cast<int64_t>(maxWavesPerExpert_), static_cast<int64_t>(INT_CACHELINE))); // 256 16B对齐
+        static_cast<int64_t>(maxWavesPerExpert_), static_cast<int64_t>(INT_CACHELINE)));
     hiddenDim_ = tilingData->hiddenDim;
     mc2Context_ = reinterpret_cast<__gm__ Mc2MoeContext*>(context);
     rankId_ = mc2Context_->epRankId;
@@ -306,13 +306,13 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Init(
     dispatchWinOffset_ = static_cast<uint64_t>(params_.peermemInfo.dispatchRecivePtr -
         params_.peermemInfo.rankSyncInWorldPtr);
     // maskAlignSize_ 必与 PeermemInfo 中 maskAlignSize 公式数值一致。
-    compareCount_ = Ops::Base::CeilAlign(static_cast<int64_t>(sendTotalNum_ * sizeof(int32_t)), // sendTotalNum_ = 2k*16 = 32K
+    compareCount_ = Ops::Base::CeilAlign(static_cast<int64_t>(sendTotalNum_ * sizeof(int32_t)),
         static_cast<int64_t>(ALIGN_256)) / sizeof(int32_t); // 128K 256对齐后/4 = 32K
     //PRINTF("==compareCount_==:%u\n", compareCount_); // 32K
-    maskAlignSize_ = Ops::Base::CeilAlign(static_cast<int64_t>(compareCount_) / 8, static_cast<int64_t>(ALIGN_32)); // 4K 32对齐
+    maskAlignSize_ = Ops::Base::CeilAlign(static_cast<int64_t>(compareCount_) / 8, static_cast<int64_t>(ALIGN_32));
     // 每个 win 槽位再追加 32B 存 count(源卡 SendMaskCal 同步算好), 须与 PeermemInfo 的 maskSlotSize 一致。
     //PRINTF("==maskAlignSize_==:%u\n", maskAlignSize_);
-    maskSlotSize_ = maskAlignSize_ + static_cast<uint32_t>(ALIGN_32); // 4K + 32B
+    maskSlotSize_ = maskAlignSize_ + static_cast<uint32_t>(ALIGN_32);
     mxQuantScaleNumAlignPerToken_ = Ops::Base::CeilDiv(k_, static_cast<uint32_t>(ALIGN_32));
     mxQuantTokenAlignBytes_ = Ops::Base::CeilAlign(static_cast<uint32_t>(k_ / A_ELEMS_PER_BYTE),
         static_cast<uint32_t>(ALIGN_256)) * sizeof(ActivationType);
@@ -471,56 +471,55 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::SendAndQuantBuff
         totalFlagInt32 = (static_cast<int64_t>(totalFlagInt32) > tokenGroupResetSize)
                          ? static_cast<int64_t>(totalFlagInt32) : tokenGroupResetSize;
     }
-    //PRINTF("==blockAivNum_==:%u", blockAivNum_); // 56
-    uint32_t resetNumPerCore = Ops::Base::CeilDiv(totalFlagInt32, static_cast<uint64_t>(blockAivNum_)); // 823
+    uint32_t resetNumPerCore = Ops::Base::CeilDiv(totalFlagInt32, static_cast<uint64_t>(blockAivNum_));
     uint32_t resetTensorSize = Ops::Base::CeilAlign(static_cast<uint64_t>(resetNumPerCore),
-        static_cast<uint64_t>(INT32_PER_256B)) * sizeof(int32_t); // resetNumPerCore 8B对齐 后*4 = 3296
+        static_cast<uint64_t>(INT32_PER_256B)) * sizeof(int32_t);
     //PRINTF("==resetTensorSize==:%u", resetTensorSize);
 
     // 分轮次参数计算：UB 预算扣除固定开销后，求解最大 roundSendTotalNum_
     // round 张量: topkIds(R*4) + 2*maskSlot(CeilAlign(R/8,32)+32) + gatherOut(R*4)
     //            = 8R + R/4 + 64  (R 为 256 对齐时 CeilAlign(R/8,32)=R/8)
     // 解: R <= (available - 64) * 4 / 33，再 floor-align 到 256（保证 GM 写 32B 对齐）
-    uint32_t fixedUbCosts = ALIGN_512 + resetTensorSize; // 3296 + 512 = 3808
-    uint32_t availableUb = SEND_MASK_UB_LIMIT - fixedUbCosts; // 248K - 3808 = 250144
-    uint32_t maxRoundSize = (availableUb - 64U) * 4U / 33U; // 30312
+    uint32_t fixedUbCosts = ALIGN_512 + resetTensorSize;
+    uint32_t availableUb = SEND_MASK_UB_LIMIT - fixedUbCosts;
+    uint32_t maxRoundSize = (availableUb - 64U) * 4U / 33U;
     if (maxRoundSize == 0) { maxRoundSize = 256U; }
-    maxRoundSize = (maxRoundSize / 256U) * 256U; // 30208
-    if (static_cast<uint64_t>(sendTotalNum_) <= static_cast<uint64_t>(maxRoundSize)) { // bs * topk = 32K > 30312
+    maxRoundSize = (maxRoundSize / 256U) * 256U;
+    if (static_cast<uint64_t>(sendTotalNum_) <= static_cast<uint64_t>(maxRoundSize)) {
         roundSendTotalNum_ = static_cast<uint32_t>(Ops::Base::CeilAlign(
             static_cast<int64_t>(sendTotalNum_), static_cast<int64_t>(ALIGN_256)));
     } else {
         uint32_t minRounds = static_cast<uint32_t>(Ops::Base::CeilDiv(
-            static_cast<int64_t>(sendTotalNum_), static_cast<int64_t>(maxRoundSize))); // 32K / 30312 向上取整 = 2
+            static_cast<int64_t>(sendTotalNum_), static_cast<int64_t>(maxRoundSize)));
         uint32_t evenRoundSize = static_cast<uint32_t>(Ops::Base::CeilAlign(
-            Ops::Base::CeilDiv(static_cast<int64_t>(sendTotalNum_), static_cast<int64_t>(minRounds)), // 32K / 2 = 16K
+            Ops::Base::CeilDiv(static_cast<int64_t>(sendTotalNum_), static_cast<int64_t>(minRounds)),
             static_cast<int64_t>(ALIGN_256)));
         roundSendTotalNum_ = (evenRoundSize <= maxRoundSize) ? evenRoundSize : maxRoundSize;
     }
     if (roundSendTotalNum_ == 0) { roundSendTotalNum_ = 256U; }
     roundCompareCount_ = roundSendTotalNum_; // 16K
     roundMaskAlignSize_ = static_cast<uint32_t>(Ops::Base::CeilAlign(
-        static_cast<int64_t>(roundCompareCount_) / 8, static_cast<int64_t>(ALIGN_32))); // 2K
-    roundMaskSlotSize_ = roundMaskAlignSize_ + static_cast<uint32_t>(ALIGN_32); // 2K + 32B
+        static_cast<int64_t>(roundCompareCount_) / 8, static_cast<int64_t>(ALIGN_32)));
+    roundMaskSlotSize_ = roundMaskAlignSize_ + static_cast<uint32_t>(ALIGN_32);
     totalRounds_ = static_cast<uint32_t>(Ops::Base::CeilDiv(
-        static_cast<int64_t>(sendTotalNum_), static_cast<int64_t>(roundSendTotalNum_))); // 32K / 16K = 2
+        static_cast<int64_t>(sendTotalNum_), static_cast<int64_t>(roundSendTotalNum_)));
     //PRINTF("=============totalRounds_=============:%u\n", totalRounds_);
 
     // Tensor用处：SendMaskCal 每轮搬运本卡 topkIds 的一个子段；
     // Tensor大小：roundCompareCount_ 个 int32（256B 对齐）；
     uint32_t topkIdsTensorAddr = ALIGN_512;
-    uint32_t topkIdsTensorSize = roundCompareCount_ * sizeof(int32_t); //16K * 4 = 64K
+    uint32_t topkIdsTensorSize = roundCompareCount_ * sizeof(int32_t);
     topkIdsTensor_ = LocalTensor<int32_t>(TPosition::VECCALC, topkIdsTensorAddr, topkIdsTensorSize / sizeof(int32_t));
 
-    uint32_t resetTensorAddr = topkIdsTensorAddr + topkIdsTensorSize; // 512 + 64K
+    uint32_t resetTensorAddr = topkIdsTensorAddr + topkIdsTensorSize;
     resetTensor_ = LocalTensor<int32_t>(TPosition::VECCALC, resetTensorAddr, resetTensorSize / sizeof(int32_t));
     Duplicate<int32_t>(resetTensor_, 0, (resetTensorSize / sizeof(int32_t)));
     // Tensor用处：SendMaskCal 每轮存储部分 mask 位；DOUBLE_BUFFER 双缓冲；
     // Tensor大小：roundMaskSlotSize_（每轮部分 [mask|count] 槽位大小）；
-    uint32_t sendMaskAddr = resetTensorAddr + resetTensorSize; // 512 + 64K + 3296
+    uint32_t sendMaskAddr = resetTensorAddr + resetTensorSize;
     for (int32_t index = 0; index < DOUBLE_BUFFER; ++index) {
         sendMaskTensor_[index] = LocalTensor<uint8_t>(TPosition::VECCALC,
-            sendMaskAddr + static_cast<uint32_t>(index) * roundMaskSlotSize_, roundMaskSlotSize_); // 2K+32B
+            sendMaskAddr + static_cast<uint32_t>(index) * roundMaskSlotSize_, roundMaskSlotSize_);
     }
 
     // Tensor用处：SendMaskCal 每轮 GatherMask 计 count 的废弃输出 scratch；
@@ -546,7 +545,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ResetFlagList()
     swigluToGmm2FlagGm_.SetGlobalBuffer((__gm__ int32_t*)params_.workspaceInfo.flagSwiGluToGmm2Ptr);
     int32_t flagNum = static_cast<int32_t>(expertPerRank_) *
         (static_cast<int32_t>(INT_CACHELINE) + dispatchFlagSlotsPerExpert_ +
-        static_cast<int32_t>(INT_CACHELINE) * static_cast<int32_t>(aicNum_)); // 64 * (16 + 256 + 28 * 16) = 45K(46080)
+        static_cast<int32_t>(INT_CACHELINE) * static_cast<int32_t>(aicNum_));
     //PRINTF("===dispatchFlagSlotsPerExpert_, aicNum_===:%u, %u", dispatchFlagSlotsPerExpert_, aicNum_);
     //PRINTF("===flagNum===:%u", flagNum);
     int32_t coreLen, coreOffset;
