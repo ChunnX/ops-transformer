@@ -101,8 +101,7 @@ private:
     do {                                                                                                 \
         if ((ptr) == nullptr) {                                                                          \
             const char* name = ((context)->GetNodeName() == nullptr) ? "nil" : (context)->GetNodeName(); \
-            OP_LOGE_WITHOUT_REPORT(name, "%s is nullptr!", ##__VA_ARGS__);                               \
-            REPORT_INNER_ERR_MSG("EZ9999", "op[%s], %s is nullptr!", name, ##__VA_ARGS__);               \
+            OP_LOGE(name, "%s is nullptr!", #ptr);                                                       \
             return ge::GRAPH_FAILED;                                                                     \
         }                                                                                                \
     } while (0)
