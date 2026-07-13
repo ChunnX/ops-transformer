@@ -218,10 +218,10 @@ __aicore__ inline T CeilDiv(T num, T rnd)
 // 每个 bank: 2 sub banks × 16B = 32B (950 是 4 sub banks × 8B)
 // 1KB 内: bank0=0~255B, bank1=256~511B, bank2=512~767B, bank3=768~1023B
 //
-// 消除 VL 间同 bank 冲突的原理:
-// 950: 2 banks/group, dualDstCtl=1 拆半, 两个 VL 相距 M/2*dstStride, 同 bank 靠 4 sub bank 消除
-// A6: 4 banks/group, dstStride=2*s2BaseSize=1024B, 两个 VL 交错存放相距 s2BaseSize=512B
-//     512 % 1024 = 512 ≠ 0 → 两个 VL 落到同 group 不同 bank → 不冲突, 零 UB 浪费
+// 消除 ping-pong slot 间同 bank 冲突:
+// reducesum 同时读 slot0 和 slot1 的同一行, qkVLstride = slot_size = mBaseSize*dstStride
+// mBaseSize(256)*dstStride(128)*sizeof(float)(4) = 131072B, 131072%1024=0 → 同 bank 冲突
+// ping-pong 偏移加 VL_PAD_STRIDE(256B) → slot1 相对 slot0 错开 256B → 同 group 不同 bank
 #define UB_BLOCK              32   // 32B
 #define UB_BANK_GROUPS        8
 #define UB_BANKS              4
@@ -231,9 +231,8 @@ __aicore__ inline T CeilDiv(T num, T rnd)
 #define UB_BANK_STRIDE        (UB_BANK_GROUPS * UB_BLOCK)               // 256B
 #define UB_BANK_DEPTH_STRIDE  (UB_BANKS * UB_BANK_GROUPS * UB_BLOCK)    // 1024B (A6 bank 周期)
 
-// 行间 stride: 2*s2BaseSize*sizeof(float)=1024B, 两个 VL 交错存放各占 512B
-// 注意: 此值在 service_cube.h 的 Fixp 中按 2*s2BaseSize/sizeof(float) 计算
-//       不用宏, 因为 s2BaseSize 是运行时值
+// VL padding: ping-pong slot 间 256B 空隙, 消除 slot 间同 bank 冲突
+#define VL_PAD_STRIDE         (UB_BANK_STRIDE / sizeof(float))          // 64 元素 = 256B
 
 // vector buffer 行间 stride (weight/out 等，不经过 fixpipe)
 #define UB_VEC_STRIDE         (2 * UB_BANK_GROUPS * UB_BLOCK)           // 512B

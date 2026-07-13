@@ -148,8 +148,9 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::InitParams(const ConstInfo &constInf
 template <typename QLIV2T>
 __aicore__ inline void QLIV2Matmul<QLIV2T>::InitBuffers(TPipe *pipe)
 {
-    // 2(pingpong) * CeilDiv(M,2) * dstStride(2*s2BaseSize) * sizeof(float)
-    pipe->InitBuffer(bufUB_, 2 * CeilDiv(constInfo_.mBaseSize, 2) * 2 * constInfo_.s2BaseSize * sizeof(float));
+    // 2(pingpong) * (mBaseSize*s2BaseSize + VL_PAD) * sizeof(float), slot 间 padding 消除 bank 冲突
+    pipe->InitBuffer(bufUB_, 2 * (constInfo_.mBaseSize * constInfo_.s2BaseSize * sizeof(float)
+        + VL_PAD_STRIDE * sizeof(float)));
     mm1ResUB_ = bufUB_.Get<QK_T>();
     pipe->InitBuffer(bufQL1_, QUERY_BUF_NUM * QUERY_BUFFER_OFFSET * sizeof(Q_T));
     queryL1_ = bufQL1_.Get<Q_T>();
@@ -633,11 +634,12 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::Fixp(uint64_t s1gGmOffset, uint64_t 
         // s2L0RealSize <= S2_BASIC_BLOCK_L0, 未约束
         uint32_t nSize = (s2L0RealSize + 7) >> 3 << 3; // 32B对齐
         uint32_t mSize = (s1gL0RealSize + 1) >> 1 << 1;
-        // A6 bank冲突优化: dstStride=2*s2BaseSize, 两次fixpipe交错存放VL0/VL1
-        // VL0在bank0/1, VL1在bank2/3, qkVLstride=s2BaseSize=512B, 512%1024≠0 → 不冲突
-        uint32_t dstStride = 2 * constInfo_.s2BaseSize; // 2*s2BaseSize float = 1024B
         FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams;
+        // 固定参数
+        fixpipeParams.mSize = mSize;
         fixpipeParams.srcStride = mSize; // 已16对齐
+        fixpipeParams.dstStride = constInfo_.s2BaseSize; // 行间stride = s2BaseSize
+        // 单目标模式（CVRATIO=1，不需要拆M）
         fixpipeParams.dualDstCtl = 0;
         fixpipeParams.reluEn = true;   // 启用随路ReLU
 
@@ -652,19 +654,14 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::Fixp(uint64_t s1gGmOffset, uint64_t 
             // N方向在(256B, 512B]范围， 直接按512B搬, 注意此时不能开unitflag
             fixpipeParams.nSize = S2_BASIC_BLOCK_L0 / 2; // 分2个ND搬
             fixpipeParams.params.ndNum = 2;
-            fixpipeParams.params.srcNdStride = ((mSize + 15) / 16) * fixpipeParams.nSize;
-            fixpipeParams.params.dstNdStride = (mSize / 2) * dstStride;
+            fixpipeParams.params.srcNdStride = ((fixpipeParams.mSize + 15) / 16) * fixpipeParams.nSize;
+            // dstNdStride = 第一个ND块的总占用 = mSize × dstStride（含每行padding）
+            fixpipeParams.params.dstNdStride = fixpipeParams.mSize * fixpipeParams.dstStride;
         }
-        uint32_t ubBaseOffset = (runInfo.loop % 2) * (constInfo_.mBaseSize / 2) * dstStride;
-        // VL0: 前M/2行, 起始=ubBase
-        fixpipeParams.mSize = mSize / 2;
-        fixpipeParams.dstStride = dstStride;
-        Fixpipe<QK_T, float, QLIV2_CFG_ROW_MAJOR_UB>(mm1ResUB_[ubBaseOffset],
+        // ping-pong 偏移 = slot_size + VL_PAD, slot1 相对 slot0 错开 256B 消除 bank 冲突
+        Fixpipe<QK_T, float, QLIV2_CFG_ROW_MAJOR_UB>(mm1ResUB_[(runInfo.loop % 2)
+            * (constInfo_.mBaseSize * constInfo_.s2BaseSize + VL_PAD_STRIDE)],
             cL0_[(l0BufIdx_ % L0_BUF_NUM) * L0C_BUFFER_OFFSET],
-            fixpipeParams);
-        // VL1: 后M/2行, 起始=ubBase+s2BaseSize (交错, 落到不同bank)
-        Fixpipe<QK_T, float, QLIV2_CFG_ROW_MAJOR_UB>(mm1ResUB_[ubBaseOffset + constInfo_.s2BaseSize],
-            cL0_[(l0BufIdx_ % L0_BUF_NUM) * L0C_BUFFER_OFFSET + (mSize / 2) * 16],
             fixpipeParams);
     } else {
         // nSize * sizeof(QT) <= 256B, 小于一个UB bank大小(VL)
