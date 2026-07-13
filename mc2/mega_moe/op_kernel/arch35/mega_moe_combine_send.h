@@ -56,6 +56,8 @@ __aicore__ inline void CombineTokens(
         uint32_t toRankId = tripleTensor.GetValue(tileIdx * 8);
         uint32_t tokenIdx = tripleTensor.GetValue(tileIdx * 8 + 1);
         uint32_t topkIdx = tripleTensor.GetValue(tileIdx * 8 + 2);
+        // [CLAUDE-DIAG] 跳过越界三元组的远端写, 验证"combine=0大bs卡死"是否因坏三元组→非法远端写; 定位完须删本守卫
+        if (toRankId >= params.tilingData->epWorldSize || tokenIdx >= params.tilingData->bs) { continue; }
         gmRemoteD.SetGlobalBuffer(reinterpret_cast<__gm__ ElementMMadOut2*>(
             GetRankWinAddrWithOffset(toRankId, gmRemoteBaseOffset)));
         uint64_t gmDstOffset = (tokenIdx * params.tilingData->topK + topkIdx) * n + nLoc;
