@@ -55,14 +55,14 @@ constexpr uint32_t ATTR_EP_RANK_ID_INDEX = 1;
 constexpr uint32_t ATTR_NUM_EXPERTS_INDEX = 2;
 constexpr uint32_t ATTR_NUM_MAX_TPR_INDEX = 3;
 constexpr uint32_t ATTR_CCL_BUFFER_SIZE_INDEX = 4;
-constexpr uint32_t ATTR_EXPERT_ALIGNMENT_INDEX = 5;
+constexpr uint32_t ATTR_HAS_TOPK_WEIGHTS_INDEX = 5;
 
 constexpr uint32_t ONE_DIM = 1U;
 constexpr uint32_t TWO_DIMS = 2U;
 constexpr int64_t META_INNER_DIM = 4; // recvSrcMetadata dim(1) = 4
 constexpr uint32_t SYSTEM_NEED_WORKSPACE = 16U * 1024U * 1024U;
 constexpr uint64_t WIN_ADDR_ALIGN = 512UL;
-constexpr int64_t MAX_EP_WORLD_SIZE = 128;
+constexpr int64_t MAX_EP_WORLD_SIZE = 1024;
 constexpr int64_t MIN_EP_WORLD_SIZE = 2;
 constexpr int64_t MAX_NUM_EXPERTS = 2048;
 constexpr int64_t MIN_NUM_EXPERTS = 2;
@@ -100,15 +100,12 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, const
     auto numExpertsPtr = attrs->GetAttrPointer<int64_t>(ATTR_NUM_EXPERTS_INDEX);
     auto nmtPtr = attrs->GetAttrPointer<int64_t>(ATTR_NUM_MAX_TPR_INDEX);
     auto cclBufferSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_CCL_BUFFER_SIZE_INDEX);
-    auto expertAlignmentPtr = attrs->GetAttrPointer<int64_t>(ATTR_EXPERT_ALIGNMENT_INDEX);
 
     OP_TILING_CHECK(epWorldSizePtr == nullptr, OP_LOGE(nodeName, "epWorldSizePtr is null."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(epRankIdPtr == nullptr, OP_LOGE(nodeName, "epRankIdPtr is null."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(numExpertsPtr == nullptr, OP_LOGE(nodeName, "numExpertsPtr is null."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(nmtPtr == nullptr, OP_LOGE(nodeName, "nmtPtr is null."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(cclBufferSizePtr == nullptr, OP_LOGE(nodeName, "cclBufferSizePtr is null."),
-                    return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(expertAlignmentPtr == nullptr, OP_LOGE(nodeName, "expertAlignmentPtr is null."),
                     return ge::GRAPH_FAILED);
 
     int64_t epWorldSize = *epWorldSizePtr;
@@ -132,16 +129,12 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, const
     OP_TILING_CHECK(*cclBufferSizePtr <= 0,
                     OP_LOGE(nodeName, "ccl_buffer_size must be positive, but got %ld.", *cclBufferSizePtr),
                     return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(*expertAlignmentPtr != 1,
-                    OP_LOGE(nodeName, "expert_alignment must be 1, but got %ld.", *expertAlignmentPtr),
-                    return ge::GRAPH_FAILED);
 
     info.cfg.epWorldSize = static_cast<uint32_t>(epWorldSize);
     info.cfg.epRankId = static_cast<uint32_t>(*epRankIdPtr);
     info.cfg.numExperts = static_cast<uint32_t>(*numExpertsPtr);
     info.cfg.numLocalExperts = static_cast<uint32_t>(*numExpertsPtr / epWorldSize);
     info.cfg.numMaxTokensPerRank = static_cast<uint32_t>(*nmtPtr);
-    info.cfg.expertAlignment = static_cast<uint32_t>(*expertAlignmentPtr);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -319,7 +312,7 @@ static ge::graphStatus CheckRecvScalesTensor(const gert::TilingContext *context,
 }
 
 static ge::graphStatus CheckOutputTensors(const gert::TilingContext *context, const char *nodeName,
-                                          MoeEpDispatchEpilogueInfo &info, int64_t topK)
+                                          MoeEpDispatchEpilogueInfo &info, int64_t topK, bool hasTopkWeights)
 {
     // ---- recvX [A_alloc, hidden] bf16/fp16 ----
     auto recvXShape = context->GetOutputShape(OUT_RECV_X_INDEX);
@@ -356,9 +349,10 @@ static ge::graphStatus CheckOutputTensors(const gert::TilingContext *context, co
     OP_TILING_CHECK(CheckRecvScalesTensor(context, nodeName, recvXDtype, aAlloc, hidden, info) != ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "Check recvScales tensor failed."), return ge::GRAPH_FAILED);
 
-    // ---- recvTopkWeights [A_alloc] float (OPTIONAL) ----
+    // ---- recvTopkWeights [A_alloc] float when topk weights are enabled ----
     auto recvTopkWeightsShape = context->GetOutputShape(OUT_RECV_TOPK_WEIGHTS_INDEX);
-    if (recvTopkWeightsShape != nullptr) {
+    if (hasTopkWeights) {
+        OP_CHECK_NULL_WITH_CONTEXT(context, recvTopkWeightsShape);
         OP_TILING_CHECK(recvTopkWeightsShape->GetStorageShape().GetDimNum() != ONE_DIM,
                         OP_LOGE(nodeName, "recv_topk_weights dims must be 1, but got %lu.",
                                 recvTopkWeightsShape->GetStorageShape().GetDimNum()),
@@ -461,7 +455,12 @@ static ge::graphStatus MoeEpDispatchEpilogueTilingFunc(gert::TilingContext *cont
     bool cached = (context->GetInputShape(CACHED_RECV_SRC_METADATA_INDEX) != nullptr);
     info.cached = cached ? 1U : 0U;
 
-    bool hasTopkWeights = (context->GetOutputShape(OUT_RECV_TOPK_WEIGHTS_INDEX) != nullptr);
+    auto attrs = context->GetAttrs();
+    OP_TILING_CHECK(attrs == nullptr, OP_LOGE(nodeName, "attrs is nullptr."), return ge::GRAPH_FAILED);
+    auto hasTopkWeightsPtr = attrs->GetAttrPointer<bool>(ATTR_HAS_TOPK_WEIGHTS_INDEX);
+    OP_TILING_CHECK(hasTopkWeightsPtr == nullptr, OP_LOGE(nodeName, "hasTopkWeightsPtr is null."),
+                    return ge::GRAPH_FAILED);
+    bool hasTopkWeights = *hasTopkWeightsPtr;
 
     OP_TILING_CHECK(CheckInputDataType(context, nodeName, cached) != ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "Check input dtype failed."), return ge::GRAPH_FAILED);
@@ -476,7 +475,7 @@ static ge::graphStatus MoeEpDispatchEpilogueTilingFunc(gert::TilingContext *cont
     info.cfg.topK = static_cast<uint32_t>(dstBufferSlotIdxShape->GetStorageShape().GetDim(1));
     const int64_t topK = static_cast<int64_t>(info.cfg.topK);
 
-    OP_TILING_CHECK(CheckOutputTensors(context, nodeName, info, topK) != ge::GRAPH_SUCCESS,
+    OP_TILING_CHECK(CheckOutputTensors(context, nodeName, info, topK, hasTopkWeights) != ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "Check output tensors failed."), return ge::GRAPH_FAILED);
 
     auto recvXShape = context->GetOutputShape(OUT_RECV_X_INDEX);
