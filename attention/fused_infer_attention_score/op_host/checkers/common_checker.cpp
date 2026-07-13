@@ -994,14 +994,6 @@ ge::graphStatus CommonChecker::CheckMultiAttr(const FiaTilingInfo &fiaInfo)
                 "blockTable must be empty when D of query and key is not equal to D of value"),
             return ge::GRAPH_FAILED);
     }
-    OP_CHECK_IF(fiaInfo.pseShiftFlag && fiaInfo.isQKVDDifferent,
-        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "pseShift",
-            "pseShift must be empty when D of query and key is not equal to D of value"),
-        return false);
-    OP_CHECK_IF(fiaInfo.enableAlibiPse && fiaInfo.isQKVDDifferent,
-        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "pseShift",
-            "pseShift must be empty when D of query and key is not equal to D of value"),
-        return false);
 
     if (fiaInfo.inputQType != ge::DT_FLOAT16) {
         OP_LOGW(fiaInfo.opName, "When query input is not fp16,innerPrecise will not take effect");
@@ -1403,6 +1395,78 @@ ge::graphStatus CommonChecker::CheckCrossFeature(const FiaTilingInfo &fiaInfo)
     return ge::GRAPH_SUCCESS;
 }
 
+ge::graphStatus CommonChecker::CheckKVContiguous(const FiaTilingInfo &fiaInfo) const
+{
+    if (fiaInfo.isTensorV1) {
+        return ge::GRAPH_SUCCESS;
+    }
+    if (fiaInfo.kvStorageMode == KvStorageMode::TENSOR_LIST) {
+        return ge::GRAPH_SUCCESS;
+    }
+    const gert::Shape &keyShape = fiaInfo.opParamInfo.key.shape->GetStorageShape();
+    const gert::Shape &valueShape = fiaInfo.opParamInfo.value.shape->GetStorageShape();
+    uint32_t keyDimNum = keyShape.GetDimNum();
+    uint32_t valueDimNum = valueShape.GetDimNum();
+    int32_t dimIndex = 0;
+
+    if (!fiaInfo.pageAttentionFlag) {
+        OP_CHECK_IF((CheckTensorContiguous(keyDimNum, keyShape,
+                        fiaInfo.keyStrides, dimIndex) != ge::GRAPH_SUCCESS) ||
+                    (CheckTensorContiguous(valueDimNum, valueShape,
+                        fiaInfo.valueStrides, dimIndex) != ge::GRAPH_SUCCESS),
+                    OP_LOGE(fiaInfo.opName,
+                            "In non-PA scenarios, key/value tensors must be contiguous."),
+                    return ge::GRAPH_FAILED);
+        return ge::GRAPH_SUCCESS;
+    }
+
+    if (fiaInfo.kvLayout == FiaLayout::BnBsH) {
+        OP_CHECK_IF(((ge::GRAPH_SUCCESS !=
+                        CheckTensorContiguous(keyDimNum, keyShape,
+                            fiaInfo.keyStrides, dimIndex)) &&
+                    (dimIndex != 0)),
+                    OP_LOGE(fiaInfo.opName,
+                            "In PA BBND scenarios, key only supports non-contiguous "
+                            "tensors in dimension 0, "
+                            "but the first non-contiguous dimension is index %d.",
+                            dimIndex),
+                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(((ge::GRAPH_SUCCESS !=
+                        CheckTensorContiguous(valueDimNum, valueShape,
+                            fiaInfo.valueStrides, dimIndex)) &&
+                    (dimIndex != 0)),
+                    OP_LOGE(fiaInfo.opName,
+                            "In PA BBND scenarios, value only supports non-contiguous "
+                            "tensors in dimension 0, "
+                            "but the first non-contiguous dimension is index %d.",
+                            dimIndex),
+                    return ge::GRAPH_FAILED);
+    } else if (fiaInfo.kvLayout == FiaLayout::BnNBsD || fiaInfo.kvLayout == FiaLayout::NZ) {
+        OP_CHECK_IF(((ge::GRAPH_SUCCESS !=
+                        CheckTensorContiguous(keyDimNum, keyShape,
+                            fiaInfo.keyStrides, dimIndex)) &&
+                    (dimIndex != 0 && dimIndex != 1)),
+                    OP_LOGE(fiaInfo.opName,
+                            "In PA BNBD/NZ scenarios, key only supports non-contiguous "
+                            "tensors in dimensions 0 or 1, "
+                            "but the first non-contiguous dimension is index %d.",
+                            dimIndex),
+                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(((ge::GRAPH_SUCCESS !=
+                        CheckTensorContiguous(valueDimNum, valueShape,
+                            fiaInfo.valueStrides, dimIndex)) &&
+                    (dimIndex != 0 && dimIndex != 1)),
+                    OP_LOGE(fiaInfo.opName,
+                            "In PA BNBD/NZ scenarios, value only supports non-contiguous "
+                            "tensors in dimensions 0 or 1, "
+                            "but the first non-contiguous dimension is index %d.",
+                            dimIndex),
+                    return ge::GRAPH_FAILED);
+    }
+
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus CommonChecker::CheckKVStorageConsistency(const FiaTilingInfo &fiaInfo)
 {
     if (fiaInfo.kvStorageMode == KvStorageMode::PAGE_ATTENTION) {
@@ -1456,7 +1520,13 @@ ge::graphStatus CommonChecker::CheckMultiParaConsistency(const FiaTilingInfo &fi
             return ge::GRAPH_FAILED;
         }
     }
+    
     if (CheckShapeConsistency(fiaInfo) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+
+    if (fiaInfo.socVersion != platform_ascendc::SocVersion::ASCEND910B &&
+        enableNonQuant_ && CheckKVContiguous(fiaInfo) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
