@@ -368,6 +368,8 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::DoTndPadding(const QLIV2Common::RunI
         GlobalTensor<uint16_t> valueOut = valueOutGmTmp[paddingOffset];
 
         AscendC::InitGlobalMemory(valueOut, dealSize, constInfo_.NEG_INF_BFLOAT);
+        SetFlag<HardEvent::MTE3_V>(eventIDMTE3ToV);
+        WaitFlag<HardEvent::MTE3_V>(eventIDMTE3ToV);
     }
 }
 template <typename QLIV2T>
