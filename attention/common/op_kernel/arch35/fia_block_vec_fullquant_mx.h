@@ -302,11 +302,16 @@ public:
                                          RunInfoX runInfo, uint32_t subLoop)
     {
         LocalTensor<uint8_t> attenMaskUb;
+        int64_t maskLine = 0;
         if constexpr (HAS_MASK) {
             attenMaskUb = this->attenMaskInQue[0].template AllocTensor<uint8_t>();
-            AttenMaskCopyInDn(attenMaskUb, 0, runInfo.actVecMSize, runInfo, subLoop); // 全量拷贝
+            maskLine = AttenMaskCopyInDn(attenMaskUb, )
         }
-
+        if (isSkipCompute) {
+            bmm1ResBuf.SetCrossCore();
+            outputBuf.SetCrossCore();
+            runInfo.actSingleLoopS2Size = s2SplitSize;
+        }
         uint32_t softmaxBufIdx = runInfo.mloop % (PRELOAD_N + 1);
         uint32_t expBufIdx = runInfo.loop % (PRELOAD_N + 1);
         int64_t stage1Offset = runInfo.loop % DB;
@@ -336,14 +341,14 @@ public:
                     this->vselrIndexesBuf, attenMaskUb, pScaleSubLoop0Tensor,
                     ((runInfo.actMSizeAlign32 >> 1) + 63) >> 6 << 6, runInfo.actSingleLoopS2SizeAlign / 2,
                     s2CalcSize, static_cast<T>(constInfo.scaleValue), descaleQK, pScaleValue, negativeFloatScalar,
-                    0.0F, preLoopMaxUb, preLoopSumUb, firstLoopSumUb, subLoop);
+                    0.0F, preLoopMaxUb, preLoopSumUb, firstLoopSumUb, subLoop, maskLine);
             } else {
                 FaVectorApi::ProcessVec1VfDnMxfp8<T, INPUT_T, false, false, s2BaseSizeCur>(
                     stage1CastTensor, sumUb, maxUb, mmRes, expUb,
                     this->vselrIndexesBuf, attenMaskUb, pScaleSubLoop0Tensor,
                     ((runInfo.actMSizeAlign32 >> 1) + 63) >> 6 << 6, runInfo.actSingleLoopS2SizeAlign / 2,
                     s2CalcSize, static_cast<T>(constInfo.scaleValue), descaleQK, pScaleValue, negativeFloatScalar,
-                    0.0F, preLoopMaxUb, preLoopSumUb, firstLoopSumUb, subLoop);
+                    0.0F, preLoopMaxUb, preLoopSumUb, firstLoopSumUb, subLoop, maskLine);
             }
         } else {
             if (unlikely(!isSkipMask)) {
@@ -352,14 +357,14 @@ public:
                     this->vselrIndexesBuf, attenMaskUb, pScaleSubLoop0Tensor,
                     ((runInfo.actMSizeAlign32 >> 1) + 63) >> 6 << 6, runInfo.actSingleLoopS2SizeAlign / 2,
                     s2CalcSize, static_cast<T>(constInfo.scaleValue), descaleQK, pScaleValue, negativeFloatScalar,
-                    0.0F, preLoopMaxUb, preLoopSumUb, firstLoopSumUb, subLoop);
+                    0.0F, preLoopMaxUb, preLoopSumUb, firstLoopSumUb, subLoop, maskLine);
             } else {
                 FaVectorApi::ProcessVec1VfDnMxfp8<T, INPUT_T, true, false, s2BaseSizeCur>(
                     stage1CastTensor, sumUb, maxUb, mmRes, expUb,
                     this->vselrIndexesBuf, attenMaskUb, pScaleSubLoop0Tensor,
                     ((runInfo.actMSizeAlign32 >> 1) + 63) >> 6 << 6, runInfo.actSingleLoopS2SizeAlign / 2,
                     s2CalcSize, static_cast<T>(constInfo.scaleValue), descaleQK, pScaleValue, negativeFloatScalar,
-                    0.0F, preLoopMaxUb, preLoopSumUb, firstLoopSumUb, subLoop);
+                    0.0F, preLoopMaxUb, preLoopSumUb, firstLoopSumUb, subLoop, maskLine);
             }
         }
         bmm1ResBuf.SetCrossCore();
@@ -380,10 +385,6 @@ public:
         if ((runInfo.actSingleLoopS2Size > s2SplitSize) && (subLoop % 2 == 1)) {
             for (uint16_t i = 0; i < 4; i++) { // PScale在s2方向的block块大小为32，所以一共有256/32=8个，而L1上需要满足16x2的分形，所以重复拷贝4次
                 DataCopy(mm2AScaleL1Tensor[vecOffset + i * 32], pScaleSubLoop0Tensor, {4, 1, 0, pScaleDstStride});
-            }
-        } else if (unlikely(runInfo.actSingleLoopS2Size <= s2SplitSize)) {
-            for (uint16_t i = 0; i < 2; i++) {
-                DataCopy(mm2AScaleL1Tensor[vecOffset + i * 256], pScaleSubLoop0Tensor, {1, 8, 0, 0});
             }
         }
         this->pScaleSubLoop0Que.template FreeTensor(pScaleSubLoop0Tensor);
@@ -1141,10 +1142,13 @@ public:
         maskInfo.maskFormat = MASK_LAYOUT;
         maskInfo.attenMaskType = MASK_BOOL; // compatible with int8/uint8
 
+        isSkipCompute = IsSkipVFCompute(maskInfo);
         isSkipMask = IsSkipAttentionmask(maskInfo);
-        if (unlikely(!isSkipMask)) {
-            AttentionmaskCopyInDn<uint8_t, MASK_LAYOUT, true, s2BaseSizeCur>(attenMaskUb, attenMaskGmInt, maskInfo);
+        uint64_t maskLine = 0;
+        if (unlikely(!isSkipMask && !isSkipCompute)) {
+            maskLine = (ComputeAttenMaskOffsetCompressDn(maskInfo) % 2048) - 1;
         }
+        return (int64_t)maskLine;
     }
 };
 

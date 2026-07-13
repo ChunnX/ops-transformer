@@ -274,6 +274,18 @@ __aicore__ inline bool IsSkipAttentionmask(MaskInfo &info)
     return false;
 }
 
+__aicore__ inline bool IsSkipVFCompute(MaskInfo &info)
+{
+    int64_t nextToken = 0; // sparse2 本身原点就在左上角
+            static_cast<int64_t>(info.s2Size) - static_cast<int64_t>(info.s1Size); // 统一以左上角为原点计算Token
+    int64_t delta = nextToken + info.gs1StartIdx - info.s2StartIdx;
+    if (delta < 0) {
+        return -delta >= info.gs1dealNum;
+    } else {
+        return delta >= info.nBaseSize;
+    }
+}
+
 template <typename T>
 __aicore__ inline void AttentionmaskDataCopy(LocalTensor<T> &attenMaskUb, GlobalTensor<T> &srcGmAddr, MaskInfo &info,
                                              uint32_t s1StartIdx, uint32_t s1EndIdx, bool isPre = false)
