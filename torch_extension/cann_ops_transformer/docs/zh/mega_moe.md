@@ -1092,7 +1092,7 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
 
 - 单算子模式调用：
 
-  下面示例将三个接口按调用顺序串联：先用 init_hccl_comm 初始化通信域，然后用 get_symm_buffer_for_mega_moe 构造 sym_buffer，最后调用 mega_moe 运行算子。
+  下面示例将两个接口按调用顺序串联：先初始化通信域，然后用 get_symm_buffer_for_mega_moe 构造 sym_buffer，最后调用 mega_moe 运行算子。
 
   ```python
   import os
@@ -1131,6 +1131,7 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
       print(f'[INFO] device_{rank} 创建HCCL通信链路')
       master_ip = '127.0.0.1'
       optionsep = torch_npu._C._distributed_c10d.ProcessGroupHCCL.Options()
+      # 使用时hccl_buffer_size的值需根据算子接口文档中给出的通信域缓存区大小的约束进行配置
       optionsep.hccl_config = {"hccl_buffer_size": 200}
       dist.init_process_group(backend="hccl", rank=rank, world_size=world_size, init_method=f'tcp://{master_ip}:50001',
                              hccl_config=optionsep.hccl_config)
