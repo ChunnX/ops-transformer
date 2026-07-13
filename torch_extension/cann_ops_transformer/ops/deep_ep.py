@@ -389,8 +389,7 @@ class MoeDistributeBuffer:
         max_out_dtype_size = 2 # sizeof(int32)
         mb_conversion = 1024 * 1024
         ub_align = 32 # 32B
-        scale_expand_index_buffer = 44 # scale 32B + 3 * 4 expand_idx
-        topk_weights_buffer = ub_align
+        scale_expand_index_buffer = 44 # expertScale reuses the aligned space after the 3 * 4B expand_idx
         full_mesh_data_align = 480
         win_addr_align = 512
 
@@ -401,7 +400,6 @@ class MoeDistributeBuffer:
         token_actual_len = (
             inline_align(hidden * max_out_dtype_size, ub_align)
             + scale_expand_index_buffer
-            + topk_weights_buffer
         )
         if (comm_alg == "fullmesh_v2"):
             token_need_size_dispatch = inline_align(token_actual_len, full_mesh_data_align) // full_mesh_data_align * \

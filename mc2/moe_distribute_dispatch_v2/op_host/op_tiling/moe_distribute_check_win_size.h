@@ -28,7 +28,6 @@ constexpr uint64_t WIN_ADDR_ALIGN = 512UL;
 constexpr uint64_t FULL_MESH_DATA_ALIGN = 480UL;
 constexpr uint64_t UB_ALIGN = 32UL;
 constexpr uint64_t SCALE_EXPAND_IDX_BUFFER = 44UL; // scale32B + 3*4expandIdx
-constexpr uint64_t TOPK_WEIGHTS_BUFFER = UB_ALIGN;
 constexpr uint32_t EP_RANK_OFFSET_STEP = 1024;
 }
 
@@ -48,7 +47,6 @@ struct CheckWinSizeData {
     bool isSetFullMeshV2;
     bool isLayered;
     bool isMc2Context;
-    bool hasExpertScales = false;
 };
 
 inline ge::graphStatus CheckActualWinSize(const gert::TilingContext *context, const char *nodeName,
@@ -133,10 +131,9 @@ inline ge::graphStatus CheckWinSize(const gert::TilingContext *context, const ch
     uint64_t h = static_cast<uint64_t>(winSizeData.h);
     // combine数据区 token首地址对齐512
     uint64_t tokenNeedSizeCombine = ((h * MAX_OUT_DTYPE_SIZE  + WIN_ADDR_ALIGN - 1UL) / WIN_ADDR_ALIGN) * WIN_ADDR_ALIGN;
-    // dispatch数据区 token首对齐512，有效token长度h_align_32b + scale(32b) + 三元组(3*4b)
-    uint64_t topkWeightsBuffer = winSizeData.hasExpertScales ? TOPK_WEIGHTS_BUFFER : 0UL;
+    // dispatch数据区 token首对齐512；expertScale复用三元组后的对齐空间，不增加窗口占用
     uint64_t tokenActualLen = ((h * MAX_OUT_DTYPE_SIZE + UB_ALIGN - 1UL) / UB_ALIGN) * UB_ALIGN +
-        SCALE_EXPAND_IDX_BUFFER + topkWeightsBuffer;
+        SCALE_EXPAND_IDX_BUFFER;
     if (winSizeData.isSetFullMeshV2) {
         tokenNeedSizeDispatch = ((tokenActualLen + FULL_MESH_DATA_ALIGN - 1UL) / FULL_MESH_DATA_ALIGN) * WIN_ADDR_ALIGN;
     } else {

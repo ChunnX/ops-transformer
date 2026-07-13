@@ -84,6 +84,7 @@ private:
     __aicore__ inline void ProcessConstantExpert(uint32_t tokenIndex, uint32_t const_expert_idx, float scaleVal);
     __aicore__ inline void ProcessCopyExpert(uint32_t tokenIndex, float scaleVal);
     __aicore__ inline void ProcessMoeExpert(uint32_t tokenIndexOffset, uint32_t topkId, float scaleVal);
+    __aicore__ inline void AddExpertWithoutScale(LocalTensor<float>& expertLocal, uint32_t processLen);
     __aicore__ inline void ProcessExpert(uint32_t tokenIndex, uint32_t processLen);
     __aicore__ inline void ExpertScaleCopy(const uint32_t beginIndex, const uint32_t endIndex, const uint32_t tokenPerAivNum);
     __aicore__ inline void CalConstExpertAlpha(GlobalTensor<ExpandXType> constExpertAlphaGM, uint32_t const_expert_idx, float &alphaFloat);
@@ -1060,10 +1061,13 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::ProcessConsta
     Add(rowTmpFloatLocal_, rowTmpFloatLocal_, constVFloatLocal, axisH_);
     PipeBarrier<PIPE_V>();
 
-    // 乘以专家权重
-    Muls(mulBufLocal_, rowTmpFloatLocal_, scaleVal, axisH_);
-    PipeBarrier<PIPE_V>();
-    Add(sumFloatBufLocal_, sumFloatBufLocal_, mulBufLocal_, axisH_);
+    if (hasExpertScalesFlag_) {
+        Muls(mulBufLocal_, rowTmpFloatLocal_, scaleVal, axisH_);
+        PipeBarrier<PIPE_V>();
+        Add(sumFloatBufLocal_, sumFloatBufLocal_, mulBufLocal_, axisH_);
+    } else {
+        AddExpertWithoutScale(rowTmpFloatLocal_, axisH_);
+    }
     PipeBarrier<PIPE_V>();
 }
 
@@ -1082,10 +1086,21 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::ProcessCopyEx
     Cast(rowTmpFloatLocal_, tmpUb, AscendC::RoundMode::CAST_NONE, axisH_);
     PipeBarrier<PIPE_V>();
     moeSumQueue_.FreeTensor<ExpandXType>(tmpUb);
-    Muls(mulBufLocal_, rowTmpFloatLocal_, scaleVal, axisH_);
+    if (hasExpertScalesFlag_) {
+        Muls(mulBufLocal_, rowTmpFloatLocal_, scaleVal, axisH_);
+        PipeBarrier<PIPE_V>();
+        Add(sumFloatBufLocal_, sumFloatBufLocal_, mulBufLocal_, axisH_);
+    } else {
+        AddExpertWithoutScale(rowTmpFloatLocal_, axisH_);
+    }
     PipeBarrier<PIPE_V>();
-    Add(sumFloatBufLocal_, sumFloatBufLocal_, mulBufLocal_, axisH_);
-    PipeBarrier<PIPE_V>();
+}
+
+template <CombineMC2TypeClass>
+__aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::AddExpertWithoutScale(
+    LocalTensor<float>& expertLocal, uint32_t processLen)
+{
+    Add(sumFloatBufLocal_, sumFloatBufLocal_, expertLocal, processLen);
 }
 
 // 处理Moe专家
@@ -1111,23 +1126,36 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::ProcessMoeExp
     tmpUb = moeSumQueue_.DeQue<XType>();
     LocalTensor<XType> outLocalTensor = fp16CastTensor_.template ReinterpretCast<XType>();
     if constexpr (QuantMode > UNQUANT) {
-        quantInst_.DeQuantProcess(tmpUb, outLocalTensor, rowTmpFloatLocal_, sumFloatBufLocal_, scaleVal);
+        if (hasExpertScalesFlag_) {
+            quantInst_.DeQuantProcess(tmpUb, outLocalTensor, rowTmpFloatLocal_, sumFloatBufLocal_, scaleVal);
+        } else {
+            quantInst_.DeQuantProcessWithoutExpertScale(
+                tmpUb, outLocalTensor, rowTmpFloatLocal_, sumFloatBufLocal_);
+        }
 #if !(defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510))
         // 非 A5 在外层完成 INT8 加权求和
         if constexpr (QuantMode == INT8_COMM_QUANT) {
             Cast(rowTmpFloatLocal_, outLocalTensor, AscendC::RoundMode::CAST_NONE, processLen);
             PipeBarrier<PIPE_V>();
-            AscendC::Muls(mulBufLocal_, rowTmpFloatLocal_, scaleVal, processLen);
-            PipeBarrier<PIPE_V>();
-            AscendC::Add(sumFloatBufLocal_, sumFloatBufLocal_, mulBufLocal_, processLen);
+            if (hasExpertScalesFlag_) {
+                AscendC::Muls(mulBufLocal_, rowTmpFloatLocal_, scaleVal, processLen);
+                PipeBarrier<PIPE_V>();
+                AscendC::Add(sumFloatBufLocal_, sumFloatBufLocal_, mulBufLocal_, processLen);
+            } else {
+                AddExpertWithoutScale(rowTmpFloatLocal_, processLen);
+            }
         }
 #endif
     } else {
         Cast(rowTmpFloatLocal_, tmpUb, AscendC::RoundMode::CAST_NONE, processLen);
         PipeBarrier<PIPE_V>();
-        AscendC::Muls(mulBufLocal_, rowTmpFloatLocal_, scaleVal, processLen);
-        PipeBarrier<PIPE_V>();
-        AscendC::Add(sumFloatBufLocal_, sumFloatBufLocal_, mulBufLocal_, processLen);
+        if (hasExpertScalesFlag_) {
+            AscendC::Muls(mulBufLocal_, rowTmpFloatLocal_, scaleVal, processLen);
+            PipeBarrier<PIPE_V>();
+            AscendC::Add(sumFloatBufLocal_, sumFloatBufLocal_, mulBufLocal_, processLen);
+        } else {
+            AddExpertWithoutScale(rowTmpFloatLocal_, processLen);
+        }
     }
     moeSumQueue_.FreeTensor<XType>(tmpUb);
 }
@@ -1144,18 +1172,15 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::ExpertScaleCo
         expertScaleEndIdx = validBsIndexTensor_.GetValue(endIndex - 1);
         expertScaleCntPerCore = (expertScaleEndIdx - expertScaleBeginIdx_ + 1) * axisK_;
     }
-    tpipe_->InitBuffer(expertScalesBuf_, Ceil(expertScaleCntPerCore * sizeof(float), UB_ALIGN) * UB_ALIGN);
-    expertScalesLocal_ = expertScalesBuf_.Get<float>();
     if (hasExpertScalesFlag_) {
+        tpipe_->InitBuffer(expertScalesBuf_, Ceil(expertScaleCntPerCore * sizeof(float), UB_ALIGN) * UB_ALIGN);
+        expertScalesLocal_ = expertScalesBuf_.Get<float>();
         const DataCopyExtParams tokenScaleParams{
             1U, static_cast<uint32_t>(expertScaleCntPerCore * sizeof(float)), 0U, 0U, 0U};
         const DataCopyPadExtParams<float> copyPadFloatParams{false, 0U, 0U, 0U};
         DataCopyPad(expertScalesLocal_, expertScalesGM_[expertScaleBeginIdx_ * axisK_], tokenScaleParams,
             copyPadFloatParams);
         SyncFunc<AscendC::HardEvent::MTE2_S>();
-    } else {
-        Duplicate(expertScalesLocal_, static_cast<float>(1), expertScaleCntPerCore);
-        SyncFunc<AscendC::HardEvent::V_S>();
     }
 }
 
@@ -1183,7 +1208,9 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::ProcessExpert
                     continue;
                 }
             }
-            scaleVal = expertScalesLocal_.GetValue(index);
+            if (hasExpertScalesFlag_) {
+                scaleVal = expertScalesLocal_.GetValue(index);
+            }
             ProcessMoeExpert(tokenIndexOffset, topkId, scaleVal);
             index++;
         }
@@ -1199,7 +1226,9 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::ProcessExpert
                     continue;
                 }
             }
-            scaleVal = expertScalesLocal_.GetValue(index);
+            if (hasExpertScalesFlag_) {
+                scaleVal = expertScalesLocal_.GetValue(index);
+            }
 
             if (expert_id < moeExpertOriginalNum_) {
                 ProcessMoeExpert(tokenIndexOffset, topkId, scaleVal);

@@ -427,9 +427,7 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
     // 因为与V2中预留给三元组的大小不一致，需要重新计算
     hOutSizeAlign_ = tokenQuantAlign_ * sizeof(int32_t) + UB_ALIGN;
     if (hasExpertScalesFlag_) {
-        hOutSizeAlign_ = Ceil(hOutSizeAlign_, UB_ALIGN) * UB_ALIGN;
-        expertScaleAlign_ = hOutSizeAlign_ / sizeof(float);
-        hOutSizeAlign_ += UB_ALIGN;
+        expertScaleAlign_ = tokenQuantAlign_ + EXPAND_IDX_INFO;
     }
     blockCntPerToken_ = Ceil(hOutSizeAlign_, SPLIT_BLOCK_DATA_SIZE);
     hCommuSize_ = blockCntPerToken_ * SPLIT_BLOCK_SIZE;

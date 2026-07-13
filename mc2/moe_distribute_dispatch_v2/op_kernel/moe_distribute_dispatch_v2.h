@@ -417,9 +417,8 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Init
     hOutSize_ = copyOutAxisH_ * sizeof(XOutType);
     quantInst_.QuantInit(hAlignSize_, hOutSize_, scaleInBytes_, tokenQuantAlign_, hScaleIdxSize_, scaleOutBytes_, axisH_);
     if (hasExpertScalesFlag_) {
-        hScaleIdxSize_ = Ceil(hScaleIdxSize_, UB_ALIGN) * UB_ALIGN;
-        expertScaleAlign_ = hScaleIdxSize_ / sizeof(float);
-        hScaleIdxSize_ += UB_ALIGN;
+        expertScaleAlign_ = tokenQuantAlign_ + EXPAND_IDX_INFO;
+        hScaleIdxSize_ += sizeof(float);
     }
     hAlignWinSize_ = Ceil(hScaleIdxSize_, WIN_ADDR_ALIGN) * WIN_ADDR_ALIGN; // win区token起始地址对齐512
     hAlignWinCnt_ = hAlignWinSize_ / sizeof(XOutType);
