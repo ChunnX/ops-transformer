@@ -1,0 +1,205 @@
+{
+    "acl_name": "aclnnQuantLightningIndexer",
+    "case_name": "aclnnQuantLightningIndexer_LI_L0_1_64_1_64_1088_128_TND_FP16_000038",
+    "input": [
+        {
+            "name": "input0",
+            "type": "tensor",
+            "data_range": [
+                -100,
+                100
+            ],
+            "shape": [
+                64,
+                64,
+                128
+            ],
+            "dtype": "int8",
+            "acl_format": "ND",
+            "bin_path": "aclnnQuantLightningIndexer_LI_L0_1_64_1_64_1088_128_TND_FP16_000038_input_0.bin",
+            "data_distribution": "uniform"
+        },
+        {
+            "name": "input1",
+            "type": "tensor",
+            "data_range": [
+                -100,
+                100
+            ],
+            "shape": [
+                1088,
+                1,
+                128
+            ],
+            "dtype": "int8",
+            "acl_format": "ND",
+            "bin_path": "aclnnQuantLightningIndexer_LI_L0_1_64_1_64_1088_128_TND_FP16_000038_input_1.bin",
+            "data_distribution": "uniform"
+        },
+        {
+            "name": "input2",
+            "type": "tensor",
+            "data_range": [
+                -255,
+                255
+            ],
+            "shape": [
+                64,
+                64
+            ],
+            "dtype": "fp16",
+            "acl_format": "ND",
+            "bin_path": "aclnnQuantLightningIndexer_LI_L0_1_64_1_64_1088_128_TND_FP16_000038_input_2.bin",
+            "data_distribution": "uniform"
+        },
+        {
+            "name": "input3",
+            "type": "tensor",
+            "acl_format": "ND",
+            "data_distribution": "uniform",
+            "bin_path": "aclnnQuantLightningIndexer_LI_L0_1_64_1_64_1088_128_TND_FP16_000038_input_3.bin",
+            "data_range": [
+                -10.0,
+                10.0
+            ],
+            "shape": [
+                1
+            ],
+            "dtype": "int32"
+        },
+        {
+            "name": "input4",
+            "type": "tensor",
+            "data_range": [
+                "null",
+                "null"
+            ],
+            "shape": [
+                1
+            ],
+            "dtype": "int8",
+            "acl_format": "ND",
+            "bin_path": "aclnnQuantLightningIndexer_LI_L0_1_64_1_64_1088_128_TND_FP16_000038_input_4.bin",
+            "data_distribution": "uniform"
+        },
+        {
+            "name": "input5",
+            "type": "tensor",
+            "data_range": [
+                0,
+                255
+            ],
+            "shape": [
+                64,
+                64
+            ],
+            "dtype": "fp16",
+            "acl_format": "ND",
+            "bin_path": "aclnnQuantLightningIndexer_LI_L0_1_64_1_64_1088_128_TND_FP16_000038_input_5.bin",
+            "data_distribution": "uniform"
+        },
+        {
+            "name": "input6",
+            "type": "tensor",
+            "data_range": [
+                0,
+                65536
+            ],
+            "shape": [],
+            "dtype": "fp16",
+            "acl_format": "ND",
+            "bin_path": "aclnnQuantLightningIndexer_LI_L0_1_64_1_64_1088_128_TND_FP16_000038_input_6.bin",
+            "data_distribution": "uniform"
+        },
+        {
+            "name": "input7",
+            "type": "tensor",
+            "data_range": [
+                0,
+                65536
+            ],
+            "shape": [
+                1088,
+                1
+            ],
+            "dtype": "fp16",
+            "acl_format": "ND",
+            "bin_path": "aclnnQuantLightningIndexer_LI_L0_1_64_1_64_1088_128_TND_FP16_000038_input_7.bin",
+            "data_distribution": "uniform"
+        },
+        {
+            "name": "actual_seq_lengths_query",
+            "type": "int_array",
+            "dtype": "",
+            "value": [
+                64
+            ]
+        },
+        {
+            "name": "actual_seq_lengths_key",
+            "type": "int_array",
+            "dtype": "",
+            "value": [
+                1088
+            ]
+        },
+        {
+            "name": "layout_query",
+            "type": "buildins",
+            "dtype": "string",
+            "value": "TND"
+        },
+        {
+            "name": "layout_key",
+            "type": "buildins",
+            "dtype": "string",
+            "value": "TND"
+        },
+        {
+            "name": "selected_count",
+            "type": "buildins",
+            "dtype": "int64_t",
+            "value": 2048
+        },
+        {
+            "name": "sparse_mode",
+            "type": "buildins",
+            "dtype": "int64_t",
+            "value": 3
+        },
+        {
+            "name": "flaglist",
+            "type": "int_array",
+            "dtype": "",
+            "value": [
+                1,
+                1,
+                1,
+                1,
+                1,
+                0,
+                1
+            ]
+        }
+    ],
+    "output": [
+        {
+            "name": "output0",
+            "type": "tensor",
+            "dtype": [
+                "int32"
+            ],
+            "shape": [
+                64,
+                1,
+                2048
+            ],
+            "acl_format": [
+                "ND"
+            ],
+            "data_range": "",
+            "golden_path": "aclnnQuantLightningIndexer_LI_L0_1_64_1_64_1088_128_TND_FP16_000038_cpu_output_0.bin",
+            "bin_path": "aclnnQuantLightningIndexer_LI_L0_1_64_1_64_1088_128_TND_FP16_000038_output_0.bin"
+        }
+    ]
+}

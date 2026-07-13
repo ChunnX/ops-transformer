@@ -1,0 +1,621 @@
+{
+    "acl_name": "aclnnMlaPrologV3WeightNz",
+    "case_name": "aclnnMlaPrologV3WeightNz_MLAP_L0_BF16_X8_UQ8_UK16_BSH_PA_BSND_16_32_1_128_64_16_2048_7168_1536_512_128",
+    "input": [
+        {
+            "name": "input0",
+            "type": "tensor",
+            "data_range": [
+                -5,
+                5
+            ],
+            "shape": [
+                16,
+                16,
+                7168
+            ],
+            "dtype": "float8_e4m3fn",
+            "acl_format": "ND",
+            "bin_path": "aclnnMlaPrologV3WeightNz_MLAP_L0_BF16_X8_UQ8_UK16_BSH_PA_BSND_16_32_1_128_64_16_2048_7168_1536_512_128_input_0.bin",
+            "data_distribution": "uniform"
+        },
+        {
+            "name": "input1",
+            "type": "tensor",
+            "data_range": [
+                -5,
+                5
+            ],
+            "shape": [
+                7168,
+                1536
+            ],
+            "dtype": "float8_e4m3fn",
+            "acl_format": "FRACTAL_NZ",
+            "bin_path": "aclnnMlaPrologV3WeightNz_MLAP_L0_BF16_X8_UQ8_UK16_BSH_PA_BSND_16_32_1_128_64_16_2048_7168_1536_512_128_input_1.bin",
+            "data_distribution": "uniform"
+        },
+        {
+            "name": "input2",
+            "type": "tensor",
+            "data_range": [
+                -5,
+                5
+            ],
+            "shape": [
+                1536,
+                6144
+            ],
+            "dtype": "float8_e4m3fn",
+            "acl_format": "FRACTAL_NZ",
+            "bin_path": "aclnnMlaPrologV3WeightNz_MLAP_L0_BF16_X8_UQ8_UK16_BSH_PA_BSND_16_32_1_128_64_16_2048_7168_1536_512_128_input_2.bin",
+            "data_distribution": "uniform"
+        },
+        {
+            "name": "input3",
+            "type": "tensor",
+            "data_range": [
+                -1,
+                1
+            ],
+            "shape": [
+                32,
+                128,
+                512
+            ],
+            "dtype": "bf16",
+            "acl_format": "ND",
+            "bin_path": "aclnnMlaPrologV3WeightNz_MLAP_L0_BF16_X8_UQ8_UK16_BSH_PA_BSND_16_32_1_128_64_16_2048_7168_1536_512_128_input_3.bin",
+            "data_distribution": "uniform"
+        },
+        {
+            "name": "input4",
+            "type": "tensor",
+            "data_range": [
+                -5,
+                5
+            ],
+            "shape": [
+                7168,
+                576
+            ],
+            "dtype": "float8_e4m3fn",
+            "acl_format": "FRACTAL_NZ",
+            "bin_path": "aclnnMlaPrologV3WeightNz_MLAP_L0_BF16_X8_UQ8_UK16_BSH_PA_BSND_16_32_1_128_64_16_2048_7168_1536_512_128_input_4.bin",
+            "data_distribution": "uniform"
+        },
+        {
+            "name": "input5",
+            "type": "tensor",
+            "data_range": [
+                -1,
+                1
+            ],
+            "shape": [
+                1536
+            ],
+            "dtype": "bf16",
+            "acl_format": "ND",
+            "bin_path": "aclnnMlaPrologV3WeightNz_MLAP_L0_BF16_X8_UQ8_UK16_BSH_PA_BSND_16_32_1_128_64_16_2048_7168_1536_512_128_input_5.bin",
+            "data_distribution": "uniform"
+        },
+        {
+            "name": "input6",
+            "type": "tensor",
+            "data_range": [
+                -1,
+                1
+            ],
+            "shape": [
+                512
+            ],
+            "dtype": "bf16",
+            "acl_format": "ND",
+            "bin_path": "aclnnMlaPrologV3WeightNz_MLAP_L0_BF16_X8_UQ8_UK16_BSH_PA_BSND_16_32_1_128_64_16_2048_7168_1536_512_128_input_6.bin",
+            "data_distribution": "uniform"
+        },
+        {
+            "name": "input7",
+            "type": "tensor",
+            "data_range": [
+                -1,
+                1
+            ],
+            "shape": [
+                16,
+                16,
+                64
+            ],
+            "dtype": "bf16",
+            "acl_format": "ND",
+            "bin_path": "aclnnMlaPrologV3WeightNz_MLAP_L0_BF16_X8_UQ8_UK16_BSH_PA_BSND_16_32_1_128_64_16_2048_7168_1536_512_128_input_7.bin",
+            "data_distribution": "uniform"
+        },
+        {
+            "name": "input8",
+            "type": "tensor",
+            "data_range": [
+                -1,
+                1
+            ],
+            "shape": [
+                16,
+                16,
+                64
+            ],
+            "dtype": "bf16",
+            "acl_format": "ND",
+            "bin_path": "aclnnMlaPrologV3WeightNz_MLAP_L0_BF16_X8_UQ8_UK16_BSH_PA_BSND_16_32_1_128_64_16_2048_7168_1536_512_128_input_8.bin",
+            "data_distribution": "uniform"
+        },
+        {
+            "name": "input9",
+            "type": "tensor",
+            "acl_format": "ND",
+            "data_distribution": "uniform",
+            "bin_path": "aclnnMlaPrologV3WeightNz_MLAP_L0_BF16_X8_UQ8_UK16_BSH_PA_BSND_16_32_1_128_64_16_2048_7168_1536_512_128_input_9.bin",
+            "data_range": [
+                -10.0,
+                10.0
+            ],
+            "shape": [
+                16,
+                16
+            ],
+            "dtype": "int64"
+        },
+        {
+            "name": "input10",
+            "type": "tensor",
+            "data_range": [
+                -1,
+                1
+            ],
+            "shape": [
+                256,
+                128,
+                1,
+                512
+            ],
+            "dtype": "bf16",
+            "acl_format": "ND",
+            "bin_path": "aclnnMlaPrologV3WeightNz_MLAP_L0_BF16_X8_UQ8_UK16_BSH_PA_BSND_16_32_1_128_64_16_2048_7168_1536_512_128_input_10.bin",
+            "data_distribution": "uniform"
+        },
+        {
+            "name": "input11",
+            "type": "tensor",
+            "data_range": [
+                -1,
+                1
+            ],
+            "shape": [
+                256,
+                128,
+                1,
+                64
+            ],
+            "dtype": "bf16",
+            "acl_format": "ND",
+            "bin_path": "aclnnMlaPrologV3WeightNz_MLAP_L0_BF16_X8_UQ8_UK16_BSH_PA_BSND_16_32_1_128_64_16_2048_7168_1536_512_128_input_11.bin",
+            "data_distribution": "uniform"
+        },
+        {
+            "name": "input12",
+            "type": "tensor",
+            "data_range": [
+                120,
+                127
+            ],
+            "shape": [
+                256,
+                224
+            ],
+            "dtype": "float8_e8m0",
+            "acl_format": "ND",
+            "bin_path": "aclnnMlaPrologV3WeightNz_MLAP_L0_BF16_X8_UQ8_UK16_BSH_PA_BSND_16_32_1_128_64_16_2048_7168_1536_512_128_input_12.bin",
+            "data_distribution": "uniform"
+        },
+        {
+            "name": "input13",
+            "type": "tensor",
+            "data_range": [
+                120,
+                127
+            ],
+            "shape": [
+                1536,
+                224
+            ],
+            "dtype": "float8_e8m0",
+            "acl_format": "ND",
+            "bin_path": "aclnnMlaPrologV3WeightNz_MLAP_L0_BF16_X8_UQ8_UK16_BSH_PA_BSND_16_32_1_128_64_16_2048_7168_1536_512_128_input_13.bin",
+            "data_distribution": "uniform"
+        },
+        {
+            "name": "input14",
+            "type": "tensor",
+            "data_range": [
+                120,
+                127
+            ],
+            "shape": [
+                6144,
+                48
+            ],
+            "dtype": "float8_e8m0",
+            "acl_format": "ND",
+            "bin_path": "aclnnMlaPrologV3WeightNz_MLAP_L0_BF16_X8_UQ8_UK16_BSH_PA_BSND_16_32_1_128_64_16_2048_7168_1536_512_128_input_14.bin",
+            "data_distribution": "uniform"
+        },
+        {
+            "name": "input15",
+            "type": "tensor",
+            "data_range": [
+                120,
+                127
+            ],
+            "shape": [
+                576,
+                224
+            ],
+            "dtype": "float8_e8m0",
+            "acl_format": "ND",
+            "bin_path": "aclnnMlaPrologV3WeightNz_MLAP_L0_BF16_X8_UQ8_UK16_BSH_PA_BSND_16_32_1_128_64_16_2048_7168_1536_512_128_input_15.bin",
+            "data_distribution": "uniform"
+        },
+        {
+            "name": "input16",
+            "type": "tensor",
+            "data_range": [
+                "null",
+                "null"
+            ],
+            "shape": [
+                1
+            ],
+            "dtype": "fp16",
+            "acl_format": "ND",
+            "bin_path": "aclnnMlaPrologV3WeightNz_MLAP_L0_BF16_X8_UQ8_UK16_BSH_PA_BSND_16_32_1_128_64_16_2048_7168_1536_512_128_input_16.bin",
+            "data_distribution": "uniform"
+        },
+        {
+            "name": "input17",
+            "type": "tensor",
+            "data_range": [
+                "null",
+                "null"
+            ],
+            "shape": [
+                1
+            ],
+            "dtype": "fp16",
+            "acl_format": "ND",
+            "bin_path": "aclnnMlaPrologV3WeightNz_MLAP_L0_BF16_X8_UQ8_UK16_BSH_PA_BSND_16_32_1_128_64_16_2048_7168_1536_512_128_input_17.bin",
+            "data_distribution": "uniform"
+        },
+        {
+            "name": "input18",
+            "type": "tensor",
+            "data_range": [
+                "null",
+                "null"
+            ],
+            "shape": [
+                1
+            ],
+            "dtype": "fp16",
+            "acl_format": "ND",
+            "bin_path": "aclnnMlaPrologV3WeightNz_MLAP_L0_BF16_X8_UQ8_UK16_BSH_PA_BSND_16_32_1_128_64_16_2048_7168_1536_512_128_input_18.bin",
+            "data_distribution": "uniform"
+        },
+        {
+            "name": "input19",
+            "type": "tensor",
+            "data_range": [
+                1,
+                1
+            ],
+            "shape": [
+                1
+            ],
+            "dtype": "fp16",
+            "acl_format": "ND",
+            "bin_path": "aclnnMlaPrologV3WeightNz_MLAP_L0_BF16_X8_UQ8_UK16_BSH_PA_BSND_16_32_1_128_64_16_2048_7168_1536_512_128_input_19.bin",
+            "data_distribution": "uniform"
+        },
+        {
+            "name": "input20",
+            "type": "tensor",
+            "data_range": [
+                "null",
+                "null"
+            ],
+            "shape": [
+                1
+            ],
+            "dtype": "fp16",
+            "acl_format": "ND",
+            "bin_path": "aclnnMlaPrologV3WeightNz_MLAP_L0_BF16_X8_UQ8_UK16_BSH_PA_BSND_16_32_1_128_64_16_2048_7168_1536_512_128_input_20.bin",
+            "data_distribution": "uniform"
+        },
+        {
+            "name": "cache_mode",
+            "type": "buildins",
+            "dtype": "string",
+            "value": "PA_BSND"
+        },
+        {
+            "name": "b",
+            "type": "buildins",
+            "dtype": "int64_t",
+            "value": 16
+        },
+        {
+            "name": "n1",
+            "type": "buildins",
+            "dtype": "int64_t",
+            "value": 32
+        },
+        {
+            "name": "n2",
+            "type": "buildins",
+            "dtype": "int64_t",
+            "value": 1
+        },
+        {
+            "name": "d",
+            "type": "buildins",
+            "dtype": "int64_t",
+            "value": 128
+        },
+        {
+            "name": "dr",
+            "type": "buildins",
+            "dtype": "int64_t",
+            "value": 64
+        },
+        {
+            "name": "s1",
+            "type": "buildins",
+            "dtype": "int64_t",
+            "value": 16
+        },
+        {
+            "name": "s2",
+            "type": "buildins",
+            "dtype": "int64_t",
+            "value": 2048
+        },
+        {
+            "name": "he",
+            "type": "buildins",
+            "dtype": "int64_t",
+            "value": 7168
+        },
+        {
+            "name": "hcq",
+            "type": "buildins",
+            "dtype": "int64_t",
+            "value": 1536
+        },
+        {
+            "name": "hckv",
+            "type": "buildins",
+            "dtype": "int64_t",
+            "value": 512
+        },
+        {
+            "name": "t",
+            "type": "buildins",
+            "dtype": "int64_t",
+            "value": 0
+        },
+        {
+            "name": "block_size",
+            "type": "buildins",
+            "dtype": "int64_t",
+            "value": 128
+        },
+        {
+            "name": "weight_quant_mode",
+            "type": "buildins",
+            "dtype": "int64_t",
+            "value": 3
+        },
+        {
+            "name": "kv_quant_mode",
+            "type": "buildins",
+            "dtype": "int64_t",
+            "value": 0
+        },
+        {
+            "name": "query_quant_mode",
+            "type": "buildins",
+            "dtype": "int64_t",
+            "value": 0
+        },
+        {
+            "name": "ckvkr_repo_mode",
+            "type": "buildins",
+            "dtype": "int64_t",
+            "value": 0
+        },
+        {
+            "name": "quant_scale_repo_mode",
+            "type": "buildins",
+            "dtype": "int64_t",
+            "value": 0
+        },
+        {
+            "name": "tile_size",
+            "type": "buildins",
+            "dtype": "int64_t",
+            "value": 128
+        },
+        {
+            "name": "qc_qr_scale",
+            "type": "buildins",
+            "dtype": "double",
+            "value": 1
+        },
+        {
+            "name": "kc_scale",
+            "type": "buildins",
+            "dtype": "double",
+            "value": 1
+        },
+        {
+            "name": "epsilon_cq",
+            "type": "buildins",
+            "dtype": "double",
+            "value": 0.0005
+        },
+        {
+            "name": "epsilon_ckv",
+            "type": "buildins",
+            "dtype": "double",
+            "value": 0.0005
+        },
+        {
+            "name": "flaglist",
+            "type": "int_array",
+            "dtype": "",
+            "value": [
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                0,
+                0,
+                0,
+                0,
+                1,
+                1,
+                0,
+                0
+            ]
+        },
+        {
+            "name": "mla_flag",
+            "type": "buildins",
+            "dtype": "string",
+            "value": "no"
+        },
+        {
+            "name": "qnorm_flag",
+            "type": "buildins",
+            "dtype": "bool",
+            "value": true
+        },
+        {
+            "name": "actual_seq_value",
+            "type": "int_array",
+            "dtype": "",
+            "value": []
+        }
+    ],
+    "output": [
+        {
+            "name": "output0",
+            "type": "tensor",
+            "shape": [
+                16,
+                16,
+                32,
+                512
+            ],
+            "dtype": "bf16",
+            "acl_format": "ND",
+            "data_range": "",
+            "golden_path": "aclnnMlaPrologV3WeightNz_MLAP_L0_BF16_X8_UQ8_UK16_BSH_PA_BSND_16_32_1_128_64_16_2048_7168_1536_512_128_cpu_output_0.bin",
+            "bin_path": "aclnnMlaPrologV3WeightNz_MLAP_L0_BF16_X8_UQ8_UK16_BSH_PA_BSND_16_32_1_128_64_16_2048_7168_1536_512_128_output_0.bin"
+        },
+        {
+            "name": "output1",
+            "type": "tensor",
+            "shape": [
+                16,
+                16,
+                32,
+                64
+            ],
+            "dtype": "bf16",
+            "acl_format": "ND",
+            "data_range": "",
+            "golden_path": "aclnnMlaPrologV3WeightNz_MLAP_L0_BF16_X8_UQ8_UK16_BSH_PA_BSND_16_32_1_128_64_16_2048_7168_1536_512_128_cpu_output_1.bin",
+            "bin_path": "aclnnMlaPrologV3WeightNz_MLAP_L0_BF16_X8_UQ8_UK16_BSH_PA_BSND_16_32_1_128_64_16_2048_7168_1536_512_128_output_1.bin"
+        },
+        {
+            "name": "output2",
+            "type": "tensor",
+            "shape": [
+                256,
+                128,
+                1,
+                512
+            ],
+            "dtype": "bf16",
+            "acl_format": "ND",
+            "data_range": "",
+            "golden_path": "aclnnMlaPrologV3WeightNz_MLAP_L0_BF16_X8_UQ8_UK16_BSH_PA_BSND_16_32_1_128_64_16_2048_7168_1536_512_128_cpu_output_2.bin",
+            "bin_path": "aclnnMlaPrologV3WeightNz_MLAP_L0_BF16_X8_UQ8_UK16_BSH_PA_BSND_16_32_1_128_64_16_2048_7168_1536_512_128_output_2.bin"
+        },
+        {
+            "name": "output3",
+            "type": "tensor",
+            "shape": [
+                256,
+                128,
+                1,
+                64
+            ],
+            "dtype": "bf16",
+            "acl_format": "ND",
+            "data_range": "",
+            "golden_path": "aclnnMlaPrologV3WeightNz_MLAP_L0_BF16_X8_UQ8_UK16_BSH_PA_BSND_16_32_1_128_64_16_2048_7168_1536_512_128_cpu_output_3.bin",
+            "bin_path": "aclnnMlaPrologV3WeightNz_MLAP_L0_BF16_X8_UQ8_UK16_BSH_PA_BSND_16_32_1_128_64_16_2048_7168_1536_512_128_output_3.bin"
+        },
+        {
+            "name": "output4",
+            "type": "tensor",
+            "shape": [
+                16,
+                16,
+                1536
+            ],
+            "dtype": "float8_e4m3fn",
+            "acl_format": "ND",
+            "data_range": "",
+            "golden_path": "aclnnMlaPrologV3WeightNz_MLAP_L0_BF16_X8_UQ8_UK16_BSH_PA_BSND_16_32_1_128_64_16_2048_7168_1536_512_128_cpu_output_4.bin",
+            "bin_path": "aclnnMlaPrologV3WeightNz_MLAP_L0_BF16_X8_UQ8_UK16_BSH_PA_BSND_16_32_1_128_64_16_2048_7168_1536_512_128_output_4.bin"
+        },
+        {
+            "name": "output5",
+            "type": "tensor",
+            "shape": [
+                256,
+                48
+            ],
+            "dtype": "float8_e8m0",
+            "acl_format": "ND",
+            "data_range": "",
+            "golden_path": "aclnnMlaPrologV3WeightNz_MLAP_L0_BF16_X8_UQ8_UK16_BSH_PA_BSND_16_32_1_128_64_16_2048_7168_1536_512_128_cpu_output_5.bin",
+            "bin_path": "aclnnMlaPrologV3WeightNz_MLAP_L0_BF16_X8_UQ8_UK16_BSH_PA_BSND_16_32_1_128_64_16_2048_7168_1536_512_128_output_5.bin"
+        }
+    ]
+}

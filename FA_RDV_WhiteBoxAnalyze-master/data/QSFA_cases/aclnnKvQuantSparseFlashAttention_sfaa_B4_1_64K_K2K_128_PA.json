@@ -1,0 +1,348 @@
+{
+    "acl_name": "aclnnKvQuantSparseFlashAttention",
+    "case_name": "aclnnKvQuantSparseFlashAttention_sfaa_B4_1_64K_K2K_128_PA",
+    "input": [
+        {
+            "name": "input0",
+            "type": "tensor",
+            "data_range": [
+                -100,
+                100
+            ],
+            "shape": [
+                4,
+                1,
+                128,
+                512
+            ],
+            "dtype": "bf16",
+            "acl_format": "ND",
+            "bin_path": "aclnnKvQuantSparseFlashAttention_sfaa_B4_1_64K_K2K_128_PA_input_0.bin",
+            "data_distribution": "uniform"
+        },
+        {
+            "name": "input1",
+            "type": "tensor",
+            "data_range": [
+                -128,
+                127
+            ],
+            "shape": [
+                4,
+                65536,
+                1,
+                512
+            ],
+            "dtype": "int8",
+            "acl_format": "ND",
+            "bin_path": "aclnnKvQuantSparseFlashAttention_sfaa_B4_1_64K_K2K_128_PA_input_1.bin",
+            "data_distribution": "uniform"
+        },
+        {
+            "name": "input2",
+            "type": "tensor",
+            "data_range": [
+                -128,
+                127
+            ],
+            "shape": [
+                4,
+                65536,
+                1,
+                512
+            ],
+            "dtype": "int8",
+            "acl_format": "ND",
+            "bin_path": "aclnnKvQuantSparseFlashAttention_sfaa_B4_1_64K_K2K_128_PA_input_2.bin",
+            "data_distribution": "uniform"
+        },
+        {
+            "name": "input3",
+            "type": "tensor",
+            "acl_format": "ND",
+            "data_distribution": "uniform",
+            "bin_path": "aclnnKvQuantSparseFlashAttention_sfaa_B4_1_64K_K2K_128_PA_input_3.bin",
+            "data_range": [
+                -10.0,
+                10.0
+            ],
+            "shape": [
+                4,
+                1,
+                1,
+                2048
+            ],
+            "dtype": "int32"
+        },
+        {
+            "name": "input4",
+            "type": "tensor",
+            "acl_format": "ND",
+            "data_distribution": "uniform",
+            "bin_path": "aclnnKvQuantSparseFlashAttention_sfaa_B4_1_64K_K2K_128_PA_input_4.bin",
+            "data_range": [
+                -10.0,
+                10.0
+            ],
+            "shape": [
+                4,
+                512
+            ],
+            "dtype": "int32"
+        },
+        {
+            "name": "input5",
+            "type": "tensor",
+            "acl_format": "ND",
+            "data_distribution": "uniform",
+            "bin_path": "aclnnKvQuantSparseFlashAttention_sfaa_B4_1_64K_K2K_128_PA_input_5.bin",
+            "data_range": [
+                -10.0,
+                10.0
+            ],
+            "shape": [
+                4,
+                1,
+                128,
+                576
+            ],
+            "dtype": "bf16"
+        },
+        {
+            "name": "input6",
+            "type": "tensor",
+            "acl_format": "ND",
+            "data_distribution": "uniform",
+            "bin_path": "aclnnKvQuantSparseFlashAttention_sfaa_B4_1_64K_K2K_128_PA_input_6.bin",
+            "data_range": [
+                -10.0,
+                10.0
+            ],
+            "shape": [
+                2048,
+                128,
+                1,
+                656
+            ],
+            "dtype": "int8"
+        },
+        {
+            "name": "input7",
+            "type": "tensor",
+            "acl_format": "ND",
+            "data_distribution": "uniform",
+            "bin_path": "aclnnKvQuantSparseFlashAttention_sfaa_B4_1_64K_K2K_128_PA_input_7.bin",
+            "data_range": [
+                -10.0,
+                10.0
+            ],
+            "shape": [
+                2048,
+                128,
+                1,
+                656
+            ],
+            "dtype": "int8"
+        },
+        {
+            "name": "input8",
+            "type": "tensor",
+            "data_range": [
+                -100,
+                100
+            ],
+            "shape": [
+                4,
+                1,
+                128,
+                64
+            ],
+            "dtype": "bf16",
+            "acl_format": "ND",
+            "bin_path": "aclnnKvQuantSparseFlashAttention_sfaa_B4_1_64K_K2K_128_PA_input_8.bin",
+            "data_distribution": "uniform"
+        },
+        {
+            "name": "input9",
+            "type": "tensor",
+            "data_range": [
+                -100,
+                100
+            ],
+            "shape": [
+                4,
+                65536,
+                1,
+                64
+            ],
+            "dtype": "bf16",
+            "acl_format": "ND",
+            "bin_path": "aclnnKvQuantSparseFlashAttention_sfaa_B4_1_64K_K2K_128_PA_input_9.bin",
+            "data_distribution": "uniform"
+        },
+        {
+            "name": "input10",
+            "type": "tensor",
+            "data_range": [
+                -10,
+                10
+            ],
+            "shape": [
+                4,
+                65536,
+                1,
+                4
+            ],
+            "dtype": "fp32",
+            "acl_format": "ND",
+            "bin_path": "aclnnKvQuantSparseFlashAttention_sfaa_B4_1_64K_K2K_128_PA_input_10.bin",
+            "data_distribution": "uniform"
+        },
+        {
+            "name": "input11",
+            "type": "tensor",
+            "data_range": [
+                -10,
+                10
+            ],
+            "shape": [
+                4,
+                65536,
+                1,
+                4
+            ],
+            "dtype": "fp32",
+            "acl_format": "ND",
+            "bin_path": "aclnnKvQuantSparseFlashAttention_sfaa_B4_1_64K_K2K_128_PA_input_11.bin",
+            "data_distribution": "uniform"
+        },
+        {
+            "name": "actualseqlengths",
+            "type": "int_array",
+            "dtype": "",
+            "value": [
+                1,
+                1,
+                1,
+                1
+            ]
+        },
+        {
+            "name": "actualseqlengthskv",
+            "type": "int_array",
+            "dtype": "",
+            "value": [
+                65536,
+                65536,
+                65536,
+                65536
+            ]
+        },
+        {
+            "name": "scalevalue",
+            "type": "buildins",
+            "dtype": "double",
+            "value": 0.0416666666666667
+        },
+        {
+            "name": "key_quant_mode",
+            "type": "buildins",
+            "dtype": "int64_t",
+            "value": 2
+        },
+        {
+            "name": "value_quant_mode",
+            "type": "buildins",
+            "dtype": "int64_t",
+            "value": 2
+        },
+        {
+            "name": "layout_query",
+            "type": "buildins",
+            "dtype": "string",
+            "value": "BSND"
+        },
+        {
+            "name": "layout_kv",
+            "type": "buildins",
+            "dtype": "string",
+            "value": "PA_BSND"
+        },
+        {
+            "name": "sparsemode",
+            "type": "buildins",
+            "dtype": "int64_t",
+            "value": 3
+        },
+        {
+            "name": "attention_mode",
+            "type": "buildins",
+            "dtype": "int64_t",
+            "value": 2
+        },
+        {
+            "name": "quant_scale_repo_mode",
+            "type": "buildins",
+            "dtype": "int64_t",
+            "value": 1
+        },
+        {
+            "name": "tile_size",
+            "type": "buildins",
+            "dtype": "int64_t",
+            "value": 128
+        },
+        {
+            "name": "rope_head_dim",
+            "type": "buildins",
+            "dtype": "int64_t",
+            "value": 64
+        },
+        {
+            "name": "attention_mode",
+            "type": "buildins",
+            "dtype": "int64_t",
+            "value": 2
+        },
+        {
+            "name": "sparse_blocksize",
+            "type": "buildins",
+            "dtype": "int64_t",
+            "value": 1
+        },
+        {
+            "name": "flaglist",
+            "type": "int_array",
+            "dtype": "",
+            "value": [
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1
+            ]
+        }
+    ],
+    "output": [
+        {
+            "name": "output0",
+            "type": "tensor",
+            "dtype": "bf16",
+            "shape": [
+                4,
+                1,
+                128,
+                512
+            ],
+            "acl_format": "ND",
+            "data_range": "",
+            "golden_path": "aclnnKvQuantSparseFlashAttention_sfaa_B4_1_64K_K2K_128_PA_cpu_output_0.bin",
+            "bin_path": "aclnnKvQuantSparseFlashAttention_sfaa_B4_1_64K_K2K_128_PA_output_0.bin"
+        }
+    ]
+}

@@ -1,0 +1,8 @@
+aclnnLightningIndexer:
+  inputs:
+    0: query
+    1: key
+    2: weights
+    3: block_table
+    4: key(PA)
+  outputs:

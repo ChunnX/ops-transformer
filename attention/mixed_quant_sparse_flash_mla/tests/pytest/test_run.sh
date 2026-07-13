@@ -27,6 +27,14 @@ KEEP_PT=false
 # 单用例算子调测
 run_single() {
     echo "===== 执行单用例算子调测 ====="
+    if [ -n "$EXCEL_FILE" ] && [ -n "$SHEET_NAME" ]; then
+        echo "  excel: $EXCEL_FILE"
+        echo "  sheet: $SHEET_NAME"
+        export QSMLA_EXCEL="$EXCEL_FILE"
+        export QSMLA_SHEET="$SHEET_NAME"
+    else
+        unset QSMLA_EXCEL QSMLA_SHEET
+    fi
     python3 -m pytest -rA -s $TEST_QSMLA_SINGLE_SCRIPT -v -m ci -W ignore::UserWarning -W ignore::DeprecationWarning
 }
 
@@ -112,14 +120,15 @@ show_help() {
     echo "  batch        全流程：从excel生成pt + NPU测试"
     echo "  help         显示本帮助信息"
     echo ""
-    echo "选项（batch_save/batch_exec/batch 命令支持）："
+    echo "选项（single/batch_save/batch_exec/batch 命令支持）："
     echo "  --excel <路径>    指定excel文件路径（默认: ./excel/example.xlsx）"
     echo "  --sheet <名称>    指定excel sheet名（默认: decode）"
-    echo "  --pt-dir <目录>   指定pt文件保存/读取目录（默认: qsmla_testcase）"
+    echo "  --pt-dir <目录>   指定pt文件保存/读取目录（默认: qsmla_testcase，仅batch_save/batch_exec/batch）"
     echo "  --keep-pt         执行完成后保留pt文件（默认清理，仅batch命令）"
     echo ""
     echo "示例："
-    echo "  $0 single                              # 执行single模式"
+    echo "  $0 single                              # 执行single模式（使用paramset硬编码参数）"
+    echo "  $0 single --excel ./SMLA.xlsx --sheet MQSMLA  # single模式从Excel MQSMLA sheet加载用例"
     echo "  $0 batch_save                          # 用默认参数生成pt文件"
     echo "  $0 batch_save --excel my.xlsx --sheet prefill --pt-dir my_pt"
     echo "  $0 batch_exec                          # 用默认pt目录执行NPU测试"
@@ -141,8 +150,8 @@ fi
 COMMAND="$1"
 shift
 
-# 解析选项（batch_save/batch_exec/batch 共用）
-if [ "$COMMAND" = "batch_save" ] || [ "$COMMAND" = "batch_exec" ] || [ "$COMMAND" = "batch" ]; then
+# 解析选项（single/batch_save/batch_exec/batch 共用）
+if [ "$COMMAND" = "single" ] || [ "$COMMAND" = "batch_save" ] || [ "$COMMAND" = "batch_exec" ] || [ "$COMMAND" = "batch" ]; then
     while [ $# -gt 0 ]; do
         case "$1" in
             --excel)

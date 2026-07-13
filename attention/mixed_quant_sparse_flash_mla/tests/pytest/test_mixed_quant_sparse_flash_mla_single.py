@@ -70,6 +70,9 @@ for params in ENABLED_PARAMS:
         "template_run_mode": params.get("template_run_mode"),
         "actlen_mode": params.get("actlen_mode"),
         "S1EQS2": params.get("S1EQS2", [False]),
+        "q_datarange": params.get("q_datarange", [None]),
+        "ori_kv_datarange": params.get("ori_kv_datarange", [None]),
+        "cmp_kv_datarange": params.get("cmp_kv_datarange", [None]),
     }
 
     param_names = list(param_values.keys())

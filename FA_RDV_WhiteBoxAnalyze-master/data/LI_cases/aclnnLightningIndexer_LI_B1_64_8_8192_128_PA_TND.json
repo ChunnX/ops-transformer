@@ -1,0 +1,177 @@
+{
+    "acl_name": "aclnnLightningIndexer",
+    "case_name": "aclnnLightningIndexer_LI_B1_64_8_8192_128_PA_TND",
+    "input": [
+        {
+            "name": "input0",
+            "type": "tensor",
+            "data_range": [
+                -10,
+                10
+            ],
+            "shape": [
+                8,
+                64,
+                128
+            ],
+            "dtype": "bf16",
+            "acl_format": "ND",
+            "bin_path": "aclnnLightningIndexer_LI_B1_64_8_8192_128_PA_TND_input_0.bin",
+            "data_distribution": "uniform"
+        },
+        {
+            "name": "input1",
+            "type": "tensor",
+            "data_range": [
+                -10,
+                10
+            ],
+            "shape": [
+                1,
+                1,
+                8192,
+                128
+            ],
+            "dtype": "bf16",
+            "acl_format": "ND",
+            "bin_path": "aclnnLightningIndexer_LI_B1_64_8_8192_128_PA_TND_input_1.bin",
+            "data_distribution": "uniform"
+        },
+        {
+            "name": "input2",
+            "type": "tensor",
+            "data_range": [
+                -10,
+                10
+            ],
+            "shape": [
+                8,
+                64
+            ],
+            "dtype": "bf16",
+            "acl_format": "ND",
+            "bin_path": "aclnnLightningIndexer_LI_B1_64_8_8192_128_PA_TND_input_2.bin",
+            "data_distribution": "uniform"
+        },
+        {
+            "name": "input3",
+            "type": "tensor",
+            "acl_format": "ND",
+            "data_distribution": "uniform",
+            "bin_path": "aclnnLightningIndexer_LI_B1_64_8_8192_128_PA_TND_input_3.bin",
+            "data_range": [
+                -10.0,
+                10.0
+            ],
+            "shape": [
+                1,
+                32
+            ],
+            "dtype": "int32"
+        },
+        {
+            "name": "input4",
+            "type": "tensor",
+            "acl_format": "ND",
+            "data_distribution": "uniform",
+            "bin_path": "aclnnLightningIndexer_LI_B1_64_8_8192_128_PA_TND_input_4.bin",
+            "data_range": [
+                -10.0,
+                10.0
+            ],
+            "shape": [
+                32,
+                256,
+                1,
+                128
+            ],
+            "dtype": "bf16"
+        },
+        {
+            "name": "actual_seq_lengths_query",
+            "type": "int_array",
+            "dtype": "",
+            "value": [
+                8
+            ]
+        },
+        {
+            "name": "actual_seq_lengths_key",
+            "type": "int_array",
+            "dtype": "",
+            "value": [
+                8192
+            ]
+        },
+        {
+            "name": "layout_query",
+            "type": "buildins",
+            "dtype": "string",
+            "value": "TND"
+        },
+        {
+            "name": "layout_key",
+            "type": "buildins",
+            "dtype": "string",
+            "value": "PA_BSND"
+        },
+        {
+            "name": "selected_count",
+            "type": "buildins",
+            "dtype": "int64_t",
+            "value": 2048
+        },
+        {
+            "name": "sparse_mode",
+            "type": "buildins",
+            "dtype": "int64_t",
+            "value": 3
+        },
+        {
+            "name": "return_value",
+            "type": "buildins",
+            "dtype": "bool",
+            "value": false
+        },
+        {
+            "name": "flaglist",
+            "type": "int_array",
+            "dtype": "",
+            "value": [
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                0
+            ]
+        }
+    ],
+    "output": [
+        {
+            "name": "output0",
+            "type": "tensor",
+            "dtype": "int32",
+            "acl_format": "ND",
+            "data_range": "",
+            "golden_path": "aclnnLightningIndexer_LI_B1_64_8_8192_128_PA_TND_cpu_output_0.bin",
+            "bin_path": "aclnnLightningIndexer_LI_B1_64_8_8192_128_PA_TND_output_0.bin",
+            "shape": [
+                8,
+                1,
+                2048
+            ]
+        },
+        {
+            "name": "output1",
+            "type": "tensor",
+            "dtype": "",
+            "acl_format": "ND",
+            "data_range": "",
+            "golden_path": "aclnnLightningIndexer_LI_B1_64_8_8192_128_PA_TND_cpu_output_1.bin",
+            "bin_path": "aclnnLightningIndexer_LI_B1_64_8_8192_128_PA_TND_output_1.bin"
+        }
+    ]
+}
