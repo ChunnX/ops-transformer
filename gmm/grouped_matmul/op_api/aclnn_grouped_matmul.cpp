@@ -640,6 +640,16 @@ static aclnnStatus CheckGroupListSplitM(const gmm::GroupedMatmulParams &gmmParam
   return ACLNN_SUCCESS;
 }
 
+static bool IsMultiTensorWeight(const gmm::GroupedMatmulParams &gmmParams);
+
+static bool IsWeightNzMultiTensorCase(const gmm::GroupedMatmulParams &gmmParams)
+{
+    return gmmParams.x != nullptr && gmmParams.y != nullptr && gmmParams.weight != nullptr &&
+           gmmParams.apiVersion == gmm::GMMApiVersion::WeightNz && gmmParams.groupType == gmm::SPLIT_M &&
+           gmmParams.x->Size() == 1 && gmmParams.y->Size() == 1 && gmmParams.biasOptional == nullptr &&
+           IsMultiTensorWeight(gmmParams);
+}
+
 static uint64_t GetGroupSize(const gmm::GroupedMatmulParams &gmmParams) {
   // When X is already split, or in scenarios where splititem is 0 or 2, X input is pre-grouped,
   // and group size can be obtained from X.
@@ -1882,6 +1892,13 @@ static aclnnStatus CheckCaseSplitM(const gmm::GroupedMatmulParams &gmmParams, co
     bool apiVersionFlag =
         gmmParams.apiVersion == gmm::GMMApiVersion::WeightNz || gmmParams.apiVersion == gmm::GMMApiVersion::V5 ||
         gmmParams.apiVersion == gmm::GMMApiVersion::V4 || gmmParams.apiVersion == gmm::GMMApiVersion::V3;
+    if (IsWeightNzMultiTensorCase(gmmParams)) {
+        CHECK_COND(SplitMSingleXSeparatedWeightSingleY(gmmParams, opName) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
+                   "In op [%s], when groupType == 0(split-M) with single x, separated weight and single y, parameter "
+                   "check failed.",
+                   opName);
+        return ACLNN_SUCCESS;
+    }
     if (xSize == 1UL && weightSize == 1UL && ySize == 1UL) {
         CHECK_COND(SplitMSingleXSingleWeightSingleY(gmmParams, opName) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
                    "In op [%s], when groupType == 0(split-M) with single x, single weight and single y, parameter "
@@ -2080,7 +2097,9 @@ static aclnnStatus CheckCaseNoSplit(const gmm::GroupedMatmulParams &gmmParams, c
 
 static bool IsMultiTensorWeight(const gmm::GroupedMatmulParams &gmmParams)
 {
-    return (*gmmParams.weight)[0]->GetViewShape().GetDimNum() == MULTI_WEIGHT_DIM;
+    return gmmParams.weight != nullptr && gmmParams.weight->Size() > 0UL &&
+           (*gmmParams.weight)[0] != nullptr &&
+           (*gmmParams.weight)[0]->GetViewShape().GetDimNum() == MULTI_WEIGHT_DIM;
 }
 
 static aclnnStatus CheckParamsByGroupType(const gmm::GroupedMatmulParams &gmmParams, const char *opName)

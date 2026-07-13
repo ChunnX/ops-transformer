@@ -49,8 +49,9 @@ namespace ge {
 * Required in decode (run_mode=1) with speculative decoding; None otherwise.
 
 * @par Attributes:
- * @li activation_mode: A optional string. Activation type applied after convolution: "silu" or "none". Default: "silu".
-* @li null_block_id: A optional int. Cache slot ID treated as padding (skipped). Default: 0 (no padding).
+ * @li activation_mode: An optional string. Activation type applied after convolution: "silu" or "none". Default:
+"silu".
+* @li null_block_id: An optional int. Cache slot ID treated as padding (skipped). Default: 0 (no padding).
  * @par Outputs:
 * @li conv_states: Updated state cache tensor. Last state_len tokens of (history || x) written back per sequence.
 * Same shape and type as input conv_states.

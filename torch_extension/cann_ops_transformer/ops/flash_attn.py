@@ -133,7 +133,7 @@ class FlashAttenOpBuilder(OpBuilder):
 
             return (
                      torch.empty(attention_out_size, dtype=q.dtype, device='meta'),
-                     torch.empty(softmax_out_size, dtype=q.dtype, device='meta')
+                     torch.empty(softmax_out_size, dtype=torch.float, device='meta')
                  )
 
 
@@ -174,6 +174,8 @@ def flash_attn_metadata(
                                               batch_size, max_seqlen_q, max_seqlen_kv,
                                               mask_mode, win_left, win_right, layout_q, layout_kv, layout_out, output)
 
+_flash_attn_metadata = flash_attn_metadata
+
 
 @torch.library.register_kernel("cann_ops_transformer::" + FA_METADATA_OP_NAME, None)
 def flash_attn_metadata_fallback(
@@ -186,13 +188,13 @@ def flash_attn_metadata_fallback(
         layout_q: Optional[str] = None, layout_kv: Optional[str] = None, layout_out: Optional[str] = None
     ):
     # 处理所有 tensor 都为 None 的情况
-    return flash_attn_metadata(num_heads_q, num_heads_kv, head_dim,
-                               cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv,
-                               batch_size, max_seqlen_q,
-                               max_seqlen_kv,
-                               mask_mode, win_left,
-                               win_right, layout_q,
-                               layout_kv, layout_out)
+    return _flash_attn_metadata(
+        num_heads_q=num_heads_q, num_heads_kv=num_heads_kv, head_dim=head_dim,
+        cu_seqlens_q=cu_seqlens_q, cu_seqlens_kv=cu_seqlens_kv,
+        seqused_q=seqused_q, seqused_kv=seqused_kv,
+        batch_size=batch_size, max_seqlen_q=max_seqlen_q, max_seqlen_kv=max_seqlen_kv,
+        mask_mode=mask_mode, win_left=win_left, win_right=win_right,
+        layout_q=layout_q, layout_kv=layout_kv, layout_out=layout_out)
 
 
 @impl(AS_LIBRARY, flash_attn_op_builder.name, "PrivateUse1")
@@ -228,3 +230,5 @@ def flash_attn(
         max_seqlen_q, max_seqlen_kv,
         layout_q, layout_kv, layout_out,
         return_softmax_lse)
+flash_attn = torch.ops.cann_ops_transformer.flash_attn
+flash_attn_metadata = torch.ops.cann_ops_transformer.flash_attn_metadata

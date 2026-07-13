@@ -66,7 +66,7 @@ public:
                        ge::DT_INT4,    ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_INT8,    ge::DT_INT8,    ge::DT_INT8,
                        ge::DT_INT8,    ge::DT_INT8,    ge::DT_INT8})
             .FormatList({ge::FORMAT_ND})
-            .IgnoreContiguous();
+            .AutoContiguous();
         this->Input("value")
             .ParamType(DYNAMIC)
             .DataType({ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_BF16,    ge::DT_INT8,    ge::DT_INT8,    ge::DT_INT8,
@@ -88,7 +88,7 @@ public:
                        ge::DT_INT4,    ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_INT8,    ge::DT_INT8,    ge::DT_INT8,
                        ge::DT_INT8,    ge::DT_INT8,    ge::DT_INT8})
             .FormatList({ge::FORMAT_ND})
-            .IgnoreContiguous();
+            .AutoContiguous();
         this->Input("pse_shift")
             .ParamType(OPTIONAL)
             .DataType({ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_BF16,    ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16,

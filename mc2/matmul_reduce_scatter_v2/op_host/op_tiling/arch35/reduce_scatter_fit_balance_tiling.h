@@ -18,15 +18,29 @@
 #pragma once
 #include "op_host/op_tiling/mc2_fit_based_balance_tiling.h"
 
+constexpr double RS_FP4_COMPUTE_PER_CYCLE_RATIO = 4;
+
 class MMReduceScatterFitBalanceTiling : public Mc2FitBasedBalanceTiling
 {
 public:
     explicit MMReduceScatterFitBalanceTiling(const mc2tiling::TilingArgs& args, KernelType kernelType,
-        TopoType topoType = TopoType::STANDARD_CARD, SocVersion socVersion = SocVersion::SOC950) :
-        Mc2FitBasedBalanceTiling(args, kernelType, topoType, socVersion)
+        TopoType topoType = TopoType::STANDARD_CARD, SocVersion socVersion = SocVersion::SOC950,
+        bool isAicpuComm = false)  // 是否AICPU通信模式，AICPU时触发M轴切分封顶至AICPU_M_TILE_CAP
+        : Mc2FitBasedBalanceTiling(args, kernelType, topoType, socVersion),
+        isAicpuComm_(isAicpuComm)
     {
         commPerf_.SetCommShapeLen(args.nValue);
         commPerf_.SetCommDTypeSize(mmInfo_.outMatrixCDtypeSize);
+        if (args.geAType == ge::DataType::DT_FLOAT4_E2M1) {
+            matmulPerf_.mmShapeInfo_.inMatrixADtypeSize = 1;
+            matmulPerf_.mmShapeInfo_.inMatrixBDtypeSize = 1;
+            mmInfo_.inMatrixADtypeSize = 1;
+            mmInfo_.inMatrixBDtypeSize = 1;
+            matmulPerf_.calcType_ = MatmulCalcType::QUANT;
+            matmulPerf_.mmShapeInfo_.computesPerCycle =
+                RS_FP4_COMPUTE_PER_CYCLE_RATIO * MatmulPerformance::COMPUTES_PER_CYCLE;
+            mmInfo_.computesPerCycle = matmulPerf_.mmShapeInfo_.computesPerCycle;
+        }
         tilingM_.SetMinLenByMax(matmulPerf_.GetBaseM());
         tilingM_.SetAlignLength(matmulPerf_.GetBaseM());
         isQuantMatmul_ = (mmInfo_.inMatrixADtypeSize == 1) && (mmInfo_.inMatrixBDtypeSize == 1);
@@ -40,6 +54,7 @@ public:
 private:
     bool isLargerThanL2Cache_ = false;
     bool isQuantMatmul_ = false;
+    bool isAicpuComm_ = false;
 };
 
 #endif // __REDUCE_SCATTER_FIT_BALANCE_TILING_H__

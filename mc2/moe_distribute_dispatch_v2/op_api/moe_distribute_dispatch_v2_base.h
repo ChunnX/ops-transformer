@@ -40,7 +40,7 @@ ACLNN_API bool DispatchCheckNotNull(const aclTensor *x, const aclTensor *expertI
                                     [[maybe_unused]] aclTensor *dynamicScales, aclTensor *assistInfoForCombine,
                                     aclTensor *expertTokensNums, aclTensor *epRecvCounts);
 
-// 入参教验
+// 入参校验
 ACLNN_API aclnnStatus DispatchCheckParams(const aclTensor *x, const aclTensor *expertIds, const char *groupEp,
                                           const char *groupTp, int64_t quantMode, aclTensor *expandX,
                                           aclTensor *dynamicScales, aclTensor *assistInfoForCombine,

@@ -48,7 +48,7 @@ private:
     __aicore__ inline void InitBuffer();
     __aicore__ inline void ComputeConstexpr();
     __aicore__ inline void SetRunInfo(RunInfo<isInfer> &runInfo, RunParamStr<isInfer>& runParam, int64_t taskId, int64_t s2LoopCount, int64_t s2LoopLimit, int64_t multiCoreInnerIdx);
-    __aicore__ inline void ComputeAxisIdxByBnAndGs1(int64_t bnIndx, int64_t gS1Index, int64_t &multiCoreInnerIdx, RunParamStr<isInfer>& runParam);
+    __aicore__ inline void ComputeAxisIdxByBnAndGs1(int64_t bnIndx, int64_t gS1Index, RunParamStr<isInfer>& runParam);
     __aicore__ inline void GetSeqQlenKvlenByBoidx(int64_t boIdx, int64_t &actualSeqQlen, int64_t &actualSeqKvLen);
     __aicore__ inline void ComputeBmm1Tail(RunInfo<isInfer> &runInfo, RunParamStr<isInfer>& runParam);
     __aicore__ inline bool IsLastBN(uint32_t bnStartIdx, uint32_t bnEndIdx);
@@ -294,8 +294,8 @@ __aicore__ inline void FAKernelNoquantMla<CubeBlockType, VecBlockType>::ComputeC
     }
     constInfo.layoutType = inputParamsRegbase.layoutType;
     constInfo.scaleValue = static_cast<float>(inputParamsRegbase.scaleValue);
-    if constexpr (layout == LayOutTypeEnum::LAYOUT_TND) {
-        // (BS)ND
+    if constexpr (layout == LayOutTypeEnum::LAYOUT_TND || layout == LayOutTypeEnum::LAYOUT_BSH) {
+        // BSH/BSNGD
         constInfo.s1BaseN2GD = s1BaseSize * constInfo.n2GD;
         constInfo.s1BaseN2GDv = s1BaseSize * constInfo.n2GDv;
         if constexpr (hasRope) {
@@ -309,39 +309,22 @@ __aicore__ inline void FAKernelNoquantMla<CubeBlockType, VecBlockType>::ComputeC
         constInfo.mm1Kb /= inputParamsRegbase.headNumRatio;
         constInfo.mm2Kb /= inputParamsRegbase.headNumRatio;
         constInfo.attentionOutStride = 0;
-    } else {
-        if constexpr (layout == LayOutTypeEnum::LAYOUT_BSH) {
-            // BSH/BSNGD
-            constInfo.s1BaseN2GD = s1BaseSize * constInfo.n2GD;
-            constInfo.s1BaseN2GDv = s1BaseSize * constInfo.n2GDv;
-            if constexpr (hasRope) {
-                constInfo.s1BaseDR = s1BaseSize * constInfo.dSizeRope;
-                constInfo.mm1RopeKa = constInfo.dSizeRope;
-                constInfo.mm1RopeKb = constInfo.n2DR;
-            }
-            constInfo.mm1Ka = constInfo.dSize;
-            constInfo.mm1Kb = constInfo.n2D;
-            constInfo.mm2Kb = constInfo.n2Dv;
-            constInfo.mm1Kb /= inputParamsRegbase.headNumRatio;
-            constInfo.mm2Kb /= inputParamsRegbase.headNumRatio;
-            constInfo.attentionOutStride = 0;
-        } else if constexpr (layout == LayOutTypeEnum::LAYOUT_BNSD) {
-            // BNSD
-            constInfo.s1BaseD = s1BaseSize * constInfo.dSize;
-            constInfo.s2BaseD = s2BaseSize * constInfo.dSize;
-            constInfo.s1BaseDv = s1BaseSize * constInfo.dSizeV;
-            constInfo.s2BaseDv = s2BaseSize * constInfo.dSizeV;
-            if constexpr (hasRope) {
-                constInfo.s1BaseDR = s1BaseSize * constInfo.dSizeRope;
-                constInfo.s2BaseDR = s2BaseSize * constInfo.dSizeRope;
-                constInfo.mm1RopeKa = constInfo.dSizeRope;
-                constInfo.mm1RopeKb = constInfo.dSizeRope;
-            }
-            constInfo.mm1Ka = constInfo.dSize;
-            constInfo.mm1Kb = constInfo.dSize;
-            constInfo.mm2Kb = constInfo.dSizeV;
-            constInfo.attentionOutStride = 0;
+    } else if constexpr (layout == LayOutTypeEnum::LAYOUT_BNSD) {
+        // BNSD
+        constInfo.s1BaseD = s1BaseSize * constInfo.dSize;
+        constInfo.s2BaseD = s2BaseSize * constInfo.dSize;
+        constInfo.s1BaseDv = s1BaseSize * constInfo.dSizeV;
+        constInfo.s2BaseDv = s2BaseSize * constInfo.dSizeV;
+        if constexpr (hasRope) {
+            constInfo.s1BaseDR = s1BaseSize * constInfo.dSizeRope;
+            constInfo.s2BaseDR = s2BaseSize * constInfo.dSizeRope;
+            constInfo.mm1RopeKa = constInfo.dSizeRope;
+            constInfo.mm1RopeKb = constInfo.dSizeRope;
         }
+        constInfo.mm1Ka = constInfo.dSize;
+        constInfo.mm1Kb = constInfo.dSize;
+        constInfo.mm2Kb = constInfo.dSizeV;
+        constInfo.attentionOutStride = 0;
     }
 
     if constexpr (hasAtten) {
@@ -454,7 +437,7 @@ __aicore__ inline void FAKernelNoquantMla<CubeBlockType, VecBlockType>::Process(
         }
         for (int64_t gS1Index = gS1StartIdx; gS1Index <runParam.s1LoopTimes; gS1Index++) {
             s2LoopLimit = 0;
-            this->ComputeAxisIdxByBnAndGs1(bnIdx, gS1Index, multiCoreInnerIdx, runParam);
+            this->ComputeAxisIdxByBnAndGs1(bnIdx, gS1Index, runParam);
             bool s1NoNeedCalc = ComputeParamS1<CHILD_SPEC_TEMPLATE_ARGS, useDn, enableKVPrefix>(runParam, constInfo,
                 gS1Index, actualSeqQlenAddr, this->pseInfo);
             bool s2NoNeedCalc = ComputeS2LoopInfo<CHILD_SPEC_TEMPLATE_ARGS, useDn, enableKVPrefix>(runParam, constInfo);
@@ -464,6 +447,7 @@ __aicore__ inline void FAKernelNoquantMla<CubeBlockType, VecBlockType>::Process(
             if (((s1NoNeedCalc || s2NoNeedCalc) && !lastLoopThisCore) || lastBnNoNeedCalc) {
                 continue;
             }
+            multiCoreInnerIdx++; // 统计核内实际计算次数，用于runInfo的多核索引更新
             // s2轴循环计数，支持sparse和非sparse场景
             s2LoopLimit = runParam.s2LoopEndIdx - 1;
             if (lastLoopThisCore) {
@@ -502,7 +486,7 @@ __aicore__ inline void FAKernelNoquantMla<CubeBlockType, VecBlockType>::Process(
 
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void FAKernelNoquantMla<CubeBlockType, VecBlockType>::ComputeAxisIdxByBnAndGs1(
-    int64_t bnIndx, int64_t gS1Index, int64_t &multiCoreInnerIdx, RunParamStr<isInfer>& runParam)
+    int64_t bnIndx, int64_t gS1Index, RunParamStr<isInfer>& runParam)
 {
     if constexpr (layout == LayOutTypeEnum::LAYOUT_TND) {
         if (runParam.boIdx == 0) {
@@ -522,7 +506,6 @@ __aicore__ inline void FAKernelNoquantMla<CubeBlockType, VecBlockType>::ComputeA
     }
     runParam.goIdx = gS1Index / constInfo.s1OuterSize;
     runParam.s1oIdx = gS1Index % constInfo.s1OuterSize;
-    multiCoreInnerIdx++;
 }
 
 template <typename CubeBlockType, typename VecBlockType>

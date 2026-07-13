@@ -20,7 +20,8 @@ extern "C" {
 
 /**
  * @brief aclnnCausalConv1dUpdate (decode / update) 的第一段接口，计算workspace大小。
- * @param [in] x 输入张量，shape为[B, 1, D]（batch模式）或[B, D]（varlen模式），数据类型为FLOAT16或BFLOAT16
+ * @param [in] x 输入张量，shape为[B, 1, D]（3D），数据类型为FLOAT16或BFLOAT16。
+ *               2D [N, D]仅在提供numAcceptedTokens（投机解码）时支持
  * @param [in] weight 卷积权重张量，shape为[W, D]，数据类型与x相同
  * @param [in, out] convStatesRef 卷积状态张量，shape为[numCacheLines, stateLen, D]，数据类型与x相同
  * @param [in] biasOptional 可选偏置张量，shape为[D]，数据类型与x相同
