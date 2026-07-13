@@ -156,7 +156,7 @@ def test_qliv2(testcase_files):
                 try:
                     result = future.result()
                 except Exception as e:
-                    pytest.fail(f"当前用例线程执行失败")
+                    pytest.fail(f"当前用例线程执行失败：{e}")
     else:
         # 非隔离模式（直接 pytest）：使用子进程隔离，防止单条用例崩溃影响整体
         with concurrent.futures.ProcessPoolExecutor(max_workers=1) as executor:

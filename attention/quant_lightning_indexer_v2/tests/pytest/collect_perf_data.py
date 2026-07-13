@@ -63,11 +63,9 @@ def collect_and_save_incremental(prof_folder, test_result_path):
 
     if os.path.exists(perf_path):
         df_perf = pd.read_excel(perf_path)
-        if df_perf.shape[0] == df_result.shape[0]:
-            for col in perf_df.columns:
-                df_perf.loc[last_idx, col] = perf_df.loc[last_idx, col]
-        else:
-            df_perf = pd.concat([df_perf, perf_df], axis=1)
+        df_perf = df_perf.reindex(range(df_result.shape[0]))
+        for col in perf_df.columns:
+            df_perf.loc[last_idx, col] = perf_df.loc[last_idx, col]
         df_perf.to_excel(perf_path, index=False)
     else:
         df_result_with_perf = pd.concat([df_result, perf_df], axis=1)
@@ -175,7 +173,8 @@ def collect_all(test_result_path, is_compare=False, perf_golden_path="perf_golde
 
     new_path = test_result_path.replace(".xlsx", "_perf.xlsx")
     if os.path.exists(new_path):
-        os.remove(new_path)
+        print(f"增量模式已收集性能数据: {new_path}，跳过批量补采")
+        return
     df_b.to_excel(new_path, index=False)
 
     print(f"\n性能数据已保存: {new_path}")

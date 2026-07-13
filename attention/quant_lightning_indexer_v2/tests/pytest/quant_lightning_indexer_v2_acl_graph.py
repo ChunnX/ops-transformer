@@ -53,6 +53,10 @@ def qliv2_output_acl_graph(params):
     qk_dtype = params[10]
     max_seqlen_q = params[18]
     return_value = params[30]
+    batch_size = params[0]
+    q_head_num = params[5]
+    k_head_num = params[6]
+    head_dim = params[7]
 
     test_data = quant_lightning_indexer_v2_golden.qliv2_output_single(params, is_batch=True)
     cpu_result = test_data["cpu_result"]
@@ -75,13 +79,34 @@ def qliv2_output_acl_graph(params):
     cmp_residual_k = test_data["cmp_residual_k_for_npu"]
     output_idx_offset = test_data["output_idx_offset"]
     block_table = test_data["block_table"]
-    metadata = test_data["metadata"]
+    max_seqlen_q_meta = test_data["max_seqlen_q_meta"]
+    max_seqlen_k_meta = test_data["max_seqlen_k_meta"]
     quant_mode = test_data["quant_mode"]
     layout_query = test_data["layout_query"]
     layout_key = test_data["layout_key"]
     sparse_count = test_data["sparse_count"]
     sparse_mode = test_data["sparse_mode"]
     cmp_ratio = test_data["cmp_ratio"]
+
+    metadata = torch.ops.cann_ops_transformer.quant_lightning_indexer_metadata(
+                                cu_seqlens_q = cu_seqlens_query,
+                                cu_seqlens_k = cu_seqlens_key,
+                                seqused_q = seqused_q,
+                                seqused_k = seqused_k,
+                                cmp_residual_k = cmp_residual_k,
+                                batch_size = batch_size,
+                                max_seqlen_q = max_seqlen_q_meta,
+                                max_seqlen_k = max_seqlen_k_meta,
+                                num_heads_q = q_head_num,
+                                num_heads_k = k_head_num,
+                                head_dim = head_dim,
+                                topk = sparse_count,
+                                quant_mode = quant_mode,
+                                mask_mode = sparse_mode,
+                                layout_q = layout_query,
+                                layout_k = layout_key,
+                                cmp_ratio = cmp_ratio)
+    metadata = metadata.npu()
 
     print("acl_graph")
 
