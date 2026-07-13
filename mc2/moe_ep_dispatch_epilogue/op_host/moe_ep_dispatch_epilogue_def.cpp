@@ -46,10 +46,16 @@ public:
             .ParamType(REQUIRED)
             .DataTypeList({ge::DT_BF16, ge::DT_FLOAT16, ge::DT_FLOAT8_E5M2, ge::DT_FLOAT8_E4M3FN})
             .FormatList({ge::FORMAT_ND});
-        this->Output("recv_src_metadata").ParamType(REQUIRED).DataTypeList({ge::DT_INT32}).FormatList({ge::FORMAT_ND});
-        this->Output("recv_topk_weights").ParamType(OPTIONAL).DataTypeList({ge::DT_FLOAT}).FormatList({ge::FORMAT_ND});
+        this->Output("recv_src_metadata")
+            .ParamType(REQUIRED)
+            .DataTypeList({ge::DT_INT32})
+            .FormatList({ge::FORMAT_ND});
+        this->Output("recv_topk_weights")
+            .ParamType(REQUIRED)
+            .DataTypeList({ge::DT_FLOAT})
+            .FormatList({ge::FORMAT_ND});
         this->Output("recv_scales")
-            .ParamType(OPTIONAL)
+            .ParamType(REQUIRED)
             .DataTypeList({ge::DT_FLOAT, ge::DT_FLOAT8_E8M0})
             .FormatList({ge::FORMAT_ND});
 
@@ -58,7 +64,7 @@ public:
         this->Attr("num_experts").AttrType(REQUIRED).Int();
         this->Attr("num_max_tokens_per_rank").AttrType(REQUIRED).Int();
         this->Attr("ccl_buffer_size").AttrType(REQUIRED).Int();
-        this->Attr("expert_alignment").AttrType(OPTIONAL).Int(1);
+        this->Attr("has_topk_weights").AttrType(OPTIONAL).Bool(true);
 
         OpAICoreConfig aicore_config;
         aicore_config.DynamicCompileStaticFlag(true)
