@@ -22,7 +22,8 @@ namespace ge {
  * @brief Fusion op of quant all reduce.
  * @par Inputs:
  * two inputs, including:
- * @li x: A matrix tensor. The type support int8, hifloat8, float8_e4m3fn, float8_e5m2, float4_e1m2, float4_e2m1. The format supports ND.
+ * @li x: A matrix tensor. The type support int8, hifloat8, float8_e4m3fn, float8_e5m2, float4_e1m2, float4_e2m1. The
+ * format supports ND.
  * @li scale: A matrix tensor. The type support float32, float8_e8m0. The format supports ND.
  *
  * @par Outputs:
@@ -31,7 +32,8 @@ namespace ge {
  * @par Attributes:
  * @li group: A required string identifying the group of ranks participating in the op.
  * @li reduce_op: An optional string identifying the reduction operation to perform. Default: "sum".
- * @li output_dtype: An optional int identifying the data type of output. The type support 0(float), 1(float16), 27(bfloat16). Default: 27(bfloat16).
+ * @li output_dtype: An optional int identifying the data type of output. The type support 0(float), 1(float16),
+ * 27(bfloat16). Default: 27(bfloat16).
  * @li world_size: A required int identifying the rank size.
  */
 REG_OP(QuantAllReduce)

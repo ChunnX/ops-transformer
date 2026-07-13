@@ -5,7 +5,7 @@
 #  THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
 #  INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 #  See LICENSE in the root of the software repository for the full text of the License.
-# 
+#
 
 # !
 #  \file dump_analysis.sh
@@ -92,7 +92,7 @@ judge=0
 if [ ! -n "$TARGET_DIR" ]; then
     echo "warning:TARGET_DIR 参数未输入,不进行dump数据解析"
 else
-    if [ ! -d "$TARGET_DIR" ]; then 
+    if [ ! -d "$TARGET_DIR" ]; then
         echo "warning:未找到该参数对应的路径,TARGET_DIR:$TARGET_DIR,不进行dump数据解析"
     fi
 fi

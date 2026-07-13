@@ -35,7 +35,7 @@ namespace optiling {
 
 REGISTER_OPS_TILING_TEMPLATE(Mc2BatchMatMulV3, Mc2BatchMatmulV3BaseTiling, 0);
 
-static ge::graphStatus Mc2BatchMatMulV3TilingFunc(gert::TilingContext* context)
+static ge::graphStatus Mc2BatchMatMulV3TilingFunc(gert::TilingContext *context)
 {
     OP_TILING_CHECK(context == nullptr, OP_LOGE_WITH_INVALID_INPUT("Mc2BatchMatMulV3", "context"),
                     return ge::GRAPH_FAILED);
@@ -45,10 +45,11 @@ static ge::graphStatus Mc2BatchMatMulV3TilingFunc(gert::TilingContext* context)
     return TilingRegistry::GetInstance().DoTilingImpl(context);
 }
 
-static ge::graphStatus Mc2TilingPrepareForBatchMatMulV3(gert::TilingParseContext *context) {
+static ge::graphStatus Mc2TilingPrepareForBatchMatMulV3(gert::TilingParseContext *context)
+{
     OP_TILING_CHECK(context == nullptr, OP_LOGE_WITH_INVALID_INPUT("Mc2BatchMatMulV3", "context"),
                     return ge::GRAPH_FAILED);
-    fe::PlatFormInfos* platformInfo = context->GetPlatformInfo();
+    fe::PlatFormInfos *platformInfo = context->GetPlatformInfo();
     OP_TILING_CHECK(platformInfo == nullptr, OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "platformInfo"),
                     return ge::GRAPH_FAILED);
 
@@ -69,7 +70,7 @@ static ge::graphStatus Mc2TilingPrepareForBatchMatMulV3(gert::TilingParseContext
     compileInfoPtr->aicNum = ascendcPlatform.GetCoreNumAic();
     compileInfoPtr->socVersion =
         supportMmadS8S4 ? platform_ascendc::SocVersion::RESERVED_VERSION : ascendcPlatform.GetSocVersion();
-    compileInfoPtr->btSize = compileInfoPtr->supportL0c2out ? 1024UL : 0UL; // 1024 is btSize
+    compileInfoPtr->btSize = compileInfoPtr->supportL0c2out ? 1024UL : 0UL;                      // 1024 is btSize
     compileInfoPtr->btSize = compileInfoPtr->supportL12BtBf16 ? 4096UL : compileInfoPtr->btSize; // 4096 is btSize
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, compileInfoPtr->ubSize);
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L1, compileInfoPtr->l1Size);
@@ -78,14 +79,13 @@ static ge::graphStatus Mc2TilingPrepareForBatchMatMulV3(gert::TilingParseContext
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L0_C, compileInfoPtr->l0CSize);
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L2, compileInfoPtr->l2Size);
 
-    if(!TilingPrepareForOpCache(context)) {
+    if (!TilingPrepareForOpCache(context)) {
         return ge::GRAPH_FAILED;
     }
-    OP_LOGI(
-        context->GetNodeName(),
-        "compile info success soc:%d, l1Size:%lu, l2Size:%lu, coreNum:%lu, supportL0c2out:%d, supportL12BtBf16:%d",
-        static_cast<int>(compileInfoPtr->socVersion), compileInfoPtr->l1Size, compileInfoPtr->l2Size,
-        compileInfoPtr->aicNum, compileInfoPtr->supportL0c2out, compileInfoPtr->supportL12BtBf16);
+    OP_LOGI(context->GetNodeName(),
+            "compile info success soc:%d, l1Size:%lu, l2Size:%lu, coreNum:%lu, supportL0c2out:%d, supportL12BtBf16:%d",
+            static_cast<int>(compileInfoPtr->socVersion), compileInfoPtr->l1Size, compileInfoPtr->l2Size,
+            compileInfoPtr->aicNum, compileInfoPtr->supportL0c2out, compileInfoPtr->supportL12BtBf16);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -93,4 +93,4 @@ IMPL_OP_OPTILING(Mc2BatchMatMulV3)
     .Tiling(Mc2BatchMatMulV3TilingFunc)
     .TilingParse<Mc2MatmulV3CompileInfo>(Mc2TilingPrepareForBatchMatMulV3)
     .GenSimplifiedKey(Mc2GenSimplifiedKey);
-}
+} // namespace optiling
