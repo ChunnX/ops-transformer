@@ -66,7 +66,7 @@ ge::graphStatus QSMLATilingCheck::CheckCmpSparseIndicesExistence()
 {
     if (opParamInfo_.cmpSparseIndices.tensor != nullptr) {
         if (qLayout_ == QSMLALayout::BSND) {
-            if (opParamInfo_.cmpSparseIndices.tensor->GetStorageShape().GetDim(DIM_3) <= 0 ) {
+            if (opParamInfo_.cmpSparseIndices.tensor->GetStorageShape().GetDim(DIM_3) <= 0) {
                 OP_LOGE(opName_, "When qLayout is BSND, topK should be 512 or 1024, but got %ld",
                         opParamInfo_.cmpSparseIndices.tensor->GetStorageShape().GetDim(3));
                 return ge::GRAPH_FAILED;

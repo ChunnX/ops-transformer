@@ -843,6 +843,7 @@ def gen_data(params, template_mode=None):
     ori_sparse_indices_mode = params.get('ori_sparse_indices_mode')
     cmp_sparse_indices_mode = params.get('cmp_sparse_indices_mode')
     return_softmax_lse = params.get('return_softmax_lse')
+    template_mode = params.get('template_mode')
 
     B = int(B)
     S1 = int(S1)
