@@ -1130,9 +1130,10 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
       # 创建HCCL通信链路并初始化EP域
       print(f'[INFO] device_{rank} 创建HCCL通信链路')
       master_ip = '127.0.0.1'
-      hccl_config = {"hccl_buffer_size": 200}
+      optionsep = torch_npu._C._distributed_c10d.ProcessGroupHCCL.Options()
+      optionsep.hccl_config = {"hccl_buffer_size": 200}
       dist.init_process_group(backend="hccl", rank=rank, world_size=world_size, init_method=f'tcp://{master_ip}:50001',
-                             hccl_config=hccl_config)
+                             hccl_config=optionsep.hccl_config)
       print(f"device_{rank} init_process_group success")
 
       print(f"device {rank} 初始化EP域")
@@ -1186,7 +1187,7 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
       # 步骤2：构造distribute_buffer（SymmBuffer结构体）
       distribute_buffer = get_symm_buffer_for_mega_moe(
           ep_group, num_experts=moe_expert_num,
-          num_max_tokens_per_rank=0, num_topk=topK,
+          num_max_tokens_per_rank=num_tokens, num_topk=topK,
           hidden=H, intermediate_hidden=0,
           dispatch_quant_mode=4, dispatch_quant_out_dtype=torch.float8_e5m2
       )
