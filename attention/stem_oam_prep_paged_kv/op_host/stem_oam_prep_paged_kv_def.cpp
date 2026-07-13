@@ -46,11 +46,13 @@ public:
             .ParamType(REQUIRED)
             .DataType({ge::DT_BF16})
             .Format({ge::FORMAT_ND})
+            .OutputShapeDependOnCompute()
             .UnknownShapeFormat({ge::FORMAT_ND});
         this->Output("vBias")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT})
             .Format({ge::FORMAT_ND})
+            .OutputShapeDependOnCompute()
             .UnknownShapeFormat({ge::FORMAT_ND});
         this->Attr("lambdaMag").AttrType(OPTIONAL).Float(0.3);
         this->Attr("cacheLayout").AttrType(OPTIONAL).Int(0);
