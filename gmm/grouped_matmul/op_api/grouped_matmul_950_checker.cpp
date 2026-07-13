@@ -540,19 +540,22 @@ aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckMxTypeMCaseInputShape(cons
         auto scaleNDimValue =
             GetInputTensor(gmmParams_.scaleOptional, tensorIndex.scale)->GetViewShape().GetDim(weightNIndex);
         auto scaleKDimValue = GetInputTensor(gmmParams_.scaleOptional, tensorIndex.scale)->GetViewShape().GetDim(1);
-        GMM_CHECK_REPORT(weightNDimValue == scaleNDimValue,
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(GetAclnnOpName(), weightName_.c_str(),
-                ViewShapeToString(GetInputTensor(gmmParams_.weight, tensorIndex.weight)),
-                "axis N of weight must be equal to axis N of scale [" + std::to_string(scaleNDimValue) + "]"));
+        const bool isScaleLayoutMatched =
+            (scaleNDimValue == weightNDimValue && scaleKDimValue == inferedScaleKDimValue) ||
+            (scaleNDimValue == 1L &&
+                (scaleKDimValue == weightNDimValue || scaleKDimValue == inferedScaleKDimValue)) ||
+            (scaleKDimValue == 1L &&
+                (scaleNDimValue == weightNDimValue || scaleNDimValue == inferedScaleKDimValue));
+        GMM_CHECK_REPORT(isScaleLayoutMatched,
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(GetAclnnOpName(), scaleName_.c_str(),
+                ViewShapeToString(GetInputTensor(gmmParams_.scaleOptional, tensorIndex.scale)),
+                "the K/N axes of scale must match axis N of weight and ceil(k/64), or be layout-equivalent with "
+                "one axis equal to 1"));
         auto scaleGDimValue = GetInputTensor(gmmParams_.scaleOptional, tensorIndex.scale)->GetViewShape().GetDim(0);
         GMM_CHECK_REPORT(scaleGDimValue == groupNum,
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(GetAclnnOpName(), scaleName_.c_str(),
                 ViewShapeToString(GetInputTensor(gmmParams_.scaleOptional, tensorIndex.scale)),
                 "axis group of scale must be equal to axis 0 of groupTensor [" + std::to_string(groupNum) + "]"));
-        GMM_CHECK_REPORT(scaleKDimValue == inferedScaleKDimValue,
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(GetAclnnOpName(), scaleName_.c_str(),
-                ViewShapeToString(GetInputTensor(gmmParams_.scaleOptional, tensorIndex.scale)),
-                "axis K of scale must be equal to ceil(k/64) [" + std::to_string(inferedScaleKDimValue) + "]"));
     }
     GMM_CHECK_REPORT(pertokenScaleKDimValue == inferedScaleKDimValue,
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(GetAclnnOpName(), perTokenScaleName_.c_str(),
@@ -661,20 +664,14 @@ aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckGroupedMatmulMxShape() con
 }
 
 template <typename T>
-bool AclnnGroupedMatmulDAV3510Checker<T>::IsSpecialMXCase(const T *tensorList) const
+bool AclnnGroupedMatmulDAV3510Checker<T>::IsSpecialMXCase(const aclTensor *tensor) const
 {
-    // 已校验mx场景scale的shape大于或等于3维度，不存在越界取值问题
-    // mx特殊场景 (m,k,2) -> shape(1,1,2), stride(2,2,1); (k,m,2) -> shape(1,1,2), stride(2,2,1),
-    // 无法通过stride识别转置
-    for (size_t i = 0; i < GetInputTensorSize(tensorList); i++) {
-        auto tensorDimNum = GetInputTensor(tensorList, i)->GetViewShape().GetDimNum();
-        auto secondLastDimValue =
-            GetInputTensor(tensorList, i)->GetViewShape().GetDim(tensorDimNum - LAST_SECOND_DIM_INDEX);
-        auto thirdLastDimValue =
-            GetInputTensor(tensorList, i)->GetViewShape().GetDim(tensorDimNum - LAST_THIRD_DIM_INDEX);
-        if (secondLastDimValue == 1 && thirdLastDimValue == 1) {
-            return true;
-        }
+    // MX scale 的两个可交换空间轴之一为 1 时，转置前后的布局语义等价，不能再以 stride 推断转置属性。
+    auto tensorDimNum = tensor->GetViewShape().GetDimNum();
+    auto secondLastDimValue = tensor->GetViewShape().GetDim(tensorDimNum - LAST_SECOND_DIM_INDEX);
+    auto thirdLastDimValue = tensor->GetViewShape().GetDim(tensorDimNum - LAST_THIRD_DIM_INDEX);
+    if (secondLastDimValue == 1 || thirdLastDimValue == 1) {
+        return true;
     }
     return false;
 }
@@ -687,7 +684,7 @@ aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckGroupedMatmulMxScaleTransp
         const auto *scaleTensor = GetInputTensor(gmmParams_.scaleOptional, tensorIndex.scale);
         const auto *weightTensor = GetInputTensor(gmmParams_.weight, tensorIndex.weight);
         bool transposeScale = IsTransposeForMxShape(scaleTensor);
-        if (!IsSpecialMXCase(gmmParams_.scaleOptional)) {
+        if (!IsSpecialMXCase(scaleTensor)) {
             GMM_CHECK_REPORT(transposeScale == gmmParams_.transposeWeight,
                 OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(GetAclnnOpName(), "scale and weight",
                     scaleName_ + "=" + ViewShapeToString(scaleTensor) + ", " +
@@ -698,7 +695,7 @@ aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckGroupedMatmulMxScaleTransp
     const auto tensorIndex = GetTensorIndexInfo();
     const auto *perTokenScaleTensor = GetInputTensor(gmmParams_.perTokenScaleOptional, tensorIndex.perTokenScale);
     bool transposePerTokenScale = IsTransposeForMxShape(perTokenScaleTensor);
-    if (!IsSpecialMXCase(gmmParams_.perTokenScaleOptional)) {
+    if (!IsSpecialMXCase(perTokenScaleTensor)) {
         GMM_CHECK_REPORT(transposePerTokenScale == gmmParams_.transposeX,
             OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(GetAclnnOpName(), "perTokenScale and x",
                 perTokenScaleName_ + "=" + ViewShapeToString(perTokenScaleTensor) + ", " +
