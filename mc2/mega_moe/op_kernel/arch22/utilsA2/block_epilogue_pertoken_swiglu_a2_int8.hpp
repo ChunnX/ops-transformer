@@ -24,22 +24,10 @@ namespace Catlass::Epilogue::Block {
 // A2 INT8 SwiGLU: per-token-scale dequant + SiLU(x_gate) * x_up + dynamic
 // quantize to int8. 6-arg operator() matches the A2 kernel call pattern
 // (no `resource` parameter).
-template <
-    uint32_t UB_STAGES_,
-    class CType_,
-    class LayoutPerTokenScale_,
-    class DType_,
-    class TileElemWiseMuls_,
-    class TileCopy_
->
-class BlockEpilogue <
-    EpilogueAtlasA2PerTokenDequantSwigluQuantInt8<UB_STAGES_>,
-    CType_,
-    Gemm::GemmType<float, LayoutPerTokenScale_>,
-    DType_,
-    TileElemWiseMuls_,
-    TileCopy_
-> {
+template <uint32_t UB_STAGES_, class CType_, class LayoutPerTokenScale_, class DType_, class TileElemWiseMuls_,
+          class TileCopy_>
+class BlockEpilogue<EpilogueAtlasA2PerTokenDequantSwigluQuantInt8<UB_STAGES_>, CType_,
+                    Gemm::GemmType<float, LayoutPerTokenScale_>, DType_, TileElemWiseMuls_, TileCopy_> {
 public:
     using DispatchPolicy = EpilogueAtlasA2PerTokenDequantSwigluQuantInt8<UB_STAGES_>;
     using ArchTag = typename DispatchPolicy::ArchTag;
@@ -52,21 +40,19 @@ public:
     using ElementD = typename DType_::Element;
     using LayoutD = typename DType_::Layout;
 
-    static_assert(
-        (std::is_same_v<ElementC, half> || std::is_same_v<ElementC, bfloat16_t>) &&
-        (std::is_same_v<ElementD, float> || std::is_same_v<ElementD, int8_t> ||
-         std::is_same_v<ElementD, half> || std::is_same_v<ElementD, bfloat16_t>),
-        "The element type template parameters of BlockEpilogue are wrong"
-    );
-    static_assert(
-        std::is_same_v<LayoutC, layout::RowMajor> &&
-            std::is_same_v<LayoutPerTokenScale, layout::VectorLayout> && std::is_same_v<LayoutD, layout::RowMajor>,
-        "The layout template parameters of BlockEpilogue are wrong"
-    );
+    static_assert((std::is_same_v<ElementC, half> || std::is_same_v<ElementC, bfloat16_t>) &&
+                      (std::is_same_v<ElementD, float> || std::is_same_v<ElementD, int8_t> ||
+                       std::is_same_v<ElementD, half> || std::is_same_v<ElementD, bfloat16_t>),
+                  "The element type template parameters of BlockEpilogue are wrong");
+    static_assert(std::is_same_v<LayoutC, layout::RowMajor> &&
+                      std::is_same_v<LayoutPerTokenScale, layout::VectorLayout> &&
+                      std::is_same_v<LayoutD, layout::RowMajor>,
+                  "The layout template parameters of BlockEpilogue are wrong");
 
     using CopyGmToUbC = typename TileCopy_::CopyGmToUbC;
     using CopyUbToGmD = typename TileCopy_::CopyUbToGmD;
-    using CopyUbToGmDequantScale = Epilogue::Tile::CopyUb2Gm<ArchTag, Gemm::GemmType<ElementPerTokenScale, LayoutPerTokenScale>>;
+    using CopyUbToGmDequantScale =
+        Epilogue::Tile::CopyUb2Gm<ArchTag, Gemm::GemmType<ElementPerTokenScale, LayoutPerTokenScale>>;
 
     struct Params {
         __gm__ ElementPerTokenScale *ptrPerTokenScale{nullptr};
@@ -79,9 +65,11 @@ public:
 
         CATLASS_DEVICE
         Params(__gm__ ElementPerTokenScale *ptrPerTokenScale_, LayoutPerTokenScale const &layoutPerTokenScale_,
-            __gm__ ElementD *ptrD_, LayoutD const &layoutD_
-        ) : ptrPerTokenScale(ptrPerTokenScale_), layoutPerTokenScale(layoutPerTokenScale_),
-            ptrD(ptrD_), layoutD(layoutD_) {}
+               __gm__ ElementD *ptrD_, LayoutD const &layoutD_)
+            : ptrPerTokenScale(ptrPerTokenScale_), layoutPerTokenScale(layoutPerTokenScale_), ptrD(ptrD_),
+              layoutD(layoutD_)
+        {
+        }
     };
 
     CATLASS_DEVICE
@@ -135,7 +123,9 @@ public:
         }
     }
 
-    CATLASS_DEVICE ~BlockEpilogue() {}
+    CATLASS_DEVICE ~BlockEpilogue()
+    {
+    }
 
     CATLASS_DEVICE
     void UpdateParams(Params const &params_)
@@ -144,17 +134,11 @@ public:
     }
 
     CATLASS_DEVICE
-    void operator() (
-        AscendC::GlobalTensor<ElementC> const &gmC,
-        MatrixCoord const &shapeC,
-        AscendC::GlobalTensor<ElementPerTokenScale> const &gmPerTokenScale1,
-        AscendC::GlobalTensor<ElementD> const &gmD,
-        AscendC::GlobalTensor<ElementPerTokenScale> const &gmPerTokenScale2,
-        uint32_t epilogueCoreNum = 40,
-        float swigluLimit = 0.0f,
-        uint32_t gmmOutPreRowStride = 1,
-        Callback &&callback = Callback{}
-    )
+    void operator()(AscendC::GlobalTensor<ElementC> const &gmC, MatrixCoord const &shapeC,
+                    AscendC::GlobalTensor<ElementPerTokenScale> const &gmPerTokenScale1,
+                    AscendC::GlobalTensor<ElementD> const &gmD,
+                    AscendC::GlobalTensor<ElementPerTokenScale> const &gmPerTokenScale2, uint32_t epilogueCoreNum = 40,
+                    float swigluLimit = 0.0f, uint32_t gmmOutPreRowStride = 1, Callback &&callback = Callback{})
     {
         callback();
         uint32_t blockM = shapeC.row();
@@ -164,13 +148,15 @@ public:
         uint32_t subblockNum = get_block_num() * 2;
         uint32_t moveDataCoreNum = subblockNum - epilogueCoreNum;
 
-        if (subblockIdx < moveDataCoreNum) return;
+        if (subblockIdx < moveDataCoreNum)
+            return;
 
         uint32_t epilogueCoreIdx = subblockIdx - moveDataCoreNum;
-        uint32_t perCoreData =  blockM / epilogueCoreNum;
+        uint32_t perCoreData = blockM / epilogueCoreNum;
         uint32_t remainderData = blockM % epilogueCoreNum;
-        uint32_t tasksForIdx  = epilogueCoreIdx < remainderData ? perCoreData + 1 : perCoreData;
-        uint32_t loopStartIdx = epilogueCoreIdx * perCoreData + (epilogueCoreIdx < remainderData? epilogueCoreIdx : remainderData);
+        uint32_t tasksForIdx = epilogueCoreIdx < remainderData ? perCoreData + 1 : perCoreData;
+        uint32_t loopStartIdx =
+            epilogueCoreIdx * perCoreData + (epilogueCoreIdx < remainderData ? epilogueCoreIdx : remainderData);
 
         uint32_t ChunkTileLen = blockN / 2;
         uint32_t HalfChunkTileLen = ChunkTileLen / 2;
@@ -211,8 +197,8 @@ public:
             if (swigluLimit > 0.0f) {
                 AscendC::ClampMax(ubCFp32, ubCFp32, sharedTmpBuffer, swigluLimit, blockN);
                 AscendC::PipeBarrier<PIPE_V>();
-                AscendC::ClampMin(ubCFp32[ChunkTileLen], ubCFp32[ChunkTileLen], sharedTmpBuffer,
-                                  -1.0f * swigluLimit, ChunkTileLen);
+                AscendC::ClampMin(ubCFp32[ChunkTileLen], ubCFp32[ChunkTileLen], sharedTmpBuffer, -1.0f * swigluLimit,
+                                  ChunkTileLen);
                 AscendC::PipeBarrier<PIPE_V>();
             }
             // SiLU(x_gate) * x_up
@@ -268,7 +254,8 @@ public:
             LayoutPerTokenScale layoutGmPerTokenScale2{tasksForIdx};
             AscendC::SetFlag<AscendC::HardEvent::S_MTE3>(EVENT_ID0);
             AscendC::WaitFlag<AscendC::HardEvent::S_MTE3>(EVENT_ID0);
-            copyUbToGmDequantScale(gmPerTokenScale2[loopStartIdx], ubPerTokenScaleOutput[0], layoutGmPerTokenScale2, layoutGmPerTokenScale2);
+            copyUbToGmDequantScale(gmPerTokenScale2[loopStartIdx], ubPerTokenScaleOutput[0], layoutGmPerTokenScale2,
+                                   layoutGmPerTokenScale2);
         }
     }
 
@@ -299,6 +286,6 @@ private:
     CopyUbToGmDequantScale copyUbToGmDequantScale;
 };
 
-}  // namespace Catlass::Epilogue::Block
+} // namespace Catlass::Epilogue::Block
 
-#endif  // CATLASS_EPILOGUE_BLOCK_EPILOGUE_PER_TOKEN_SWIGLU_A2_INT8_HPP
+#endif // CATLASS_EPILOGUE_BLOCK_EPILOGUE_PER_TOKEN_SWIGLU_A2_INT8_HPP
