@@ -29,6 +29,7 @@ const std::array<const aclTensor *, 2> BlockSparseAttention(
     const aclTensor *qDequantScaleOptional,
     const aclTensor *kDequantScaleOptional,
     const aclTensor *vDequantScaleOptional,
+    const aclTensor *blockEffRowsOptional,
     const char *qInputLayout,
     const char *kvInputLayout,
     int64_t numKeyValueHeads,

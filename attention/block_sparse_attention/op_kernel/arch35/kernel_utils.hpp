@@ -45,21 +45,21 @@ struct BsaKernelParamsArch35 {
     GM_ADDR actualQseqlen;
     GM_ADDR actualKvseqlen;
     GM_ADDR blockSparseMask;
+    GM_ADDR blockEffRows;
     GM_ADDR o;
     GM_ADDR lse;
     GM_ADDR workSpace;
     GM_ADDR tiling;
 
-    // Methods
     __aicore__ inline
     BsaKernelParamsArch35() {}
     __aicore__ inline
     BsaKernelParamsArch35(GM_ADDR q_, GM_ADDR k_, GM_ADDR v_, GM_ADDR mask_, GM_ADDR blockTables_,
-        GM_ADDR actualQseqlen_, GM_ADDR actualKvseqlen_, GM_ADDR blockSparseMask_, GM_ADDR o_,
-        GM_ADDR workSpace_, GM_ADDR lse_, GM_ADDR tiling_)
+        GM_ADDR actualQseqlen_, GM_ADDR actualKvseqlen_, GM_ADDR blockSparseMask_, GM_ADDR blockEffRows_,
+        GM_ADDR o_, GM_ADDR workSpace_, GM_ADDR lse_, GM_ADDR tiling_)
         : q(q_), k(k_), v(v_), mask(mask_), blockTables(blockTables_), actualQseqlen(actualQseqlen_),
-        actualKvseqlen(actualKvseqlen_), blockSparseMask(blockSparseMask_), o(o_),
-        workSpace(workSpace_), lse(lse_), tiling(tiling_) {}
+        actualKvseqlen(actualKvseqlen_), blockSparseMask(blockSparseMask_), blockEffRows(blockEffRows_),
+        o(o_), workSpace(workSpace_), lse(lse_), tiling(tiling_) {}
 };
 
 struct BsaFullQuantKernelParamsArch35 {

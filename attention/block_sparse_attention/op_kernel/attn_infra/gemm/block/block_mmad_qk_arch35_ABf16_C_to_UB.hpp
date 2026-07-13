@@ -212,10 +212,44 @@ public:
                             uint32_t kvSBaseTile, uint32_t blockShapeY,
                             uint32_t yBlockNumAval, uint32_t yBlockNumRsvd,
                             uint32_t l1BTileNAct, uint32_t embed,
-                            uint32_t kvSBaseTileInnerOffset)
+                            uint32_t kvSBaseTileInnerOffset,
+                            AscendC::GlobalTensor<int32_t> gEffectiveY = AscendC::GlobalTensor<int32_t>(),
+                            uint64_t gmOffsetEffectiveY = 0,
+                            bool useEffRows = false,
+                            uint32_t *ioCurBlockIdx = nullptr,
+                            uint32_t *ioCurBlockCopied = nullptr)
     {
         using CopyGmToL1B = typename TileCopy_::template CopyGmToL1B<TensorB>;
         CopyGmToL1B copyGmToL1B;
+        if (useEffRows && ioCurBlockIdx != nullptr && ioCurBlockCopied != nullptr) {
+            uint32_t dealtLenAccum = 0;
+            while (dealtLenAccum < l1BTileNAct && (*ioCurBlockIdx) < yBlockNumRsvd) {
+                uint32_t oriYBlockIdx = gSparseBlockIdx.GetValue(*ioCurBlockIdx);
+                uint32_t effectiveY = gEffectiveY.GetValue(gmOffsetEffectiveY + (*ioCurBlockIdx));
+                uint32_t tailBlockSize = (kvSeqlen > oriYBlockIdx * blockShapeY) ?
+                    (kvSeqlen - oriYBlockIdx * blockShapeY) : 0;
+                effectiveY = (effectiveY < tailBlockSize) ? effectiveY : tailBlockSize;
+                uint32_t remaining = (effectiveY > (*ioCurBlockCopied)) ?
+                    (effectiveY - (*ioCurBlockCopied)) : 0;
+                uint32_t toCopy = (remaining < (l1BTileNAct - dealtLenAccum)) ?
+                    remaining : (l1BTileNAct - dealtLenAccum);
+                if (toCopy > 0) {
+                    uint32_t oriStartOffset = oriYBlockIdx * blockShapeY + (*ioCurBlockCopied);
+                    auto l1BTensorTlaTile = GetTile(l1BTensorTla,
+                        tla::MakeCoord(0, dealtLenAccum), tla::MakeShape(embed, toCopy));
+                    auto gBTensorTlaTile = GetTile(gBTensor,
+                        tla::MakeCoord(0, oriStartOffset), tla::MakeShape(embed, toCopy));
+                    copyGmToL1B(l1BTensorTlaTile, gBTensorTlaTile);
+                    dealtLenAccum += toCopy;
+                    (*ioCurBlockCopied) += toCopy;
+                }
+                if ((*ioCurBlockCopied) >= effectiveY) {
+                    (*ioCurBlockIdx)++;
+                    (*ioCurBlockCopied) = 0;
+                }
+            }
+            return;
+        }
         uint32_t baseTileStartOffset = gatheredKvSTileIdx * kvSBaseTile + kvSBaseTileInnerOffset;
         uint32_t baseTileEndOffset = baseTileStartOffset + l1BTileNAct;
         // 稀疏情况下对实际选中的部分gather后进行基本块切分
@@ -274,7 +308,12 @@ public:
                     uint32_t yBlockNumAval, uint32_t yBlockNumRsvd,
                     uint64_t prefixSumL0AStages, uint64_t prefixSumL0BStages,
                     Arch::CrossCoreFlag mm1ToSmFlag,
-                    uint64_t deqScalar = 0)
+                    uint64_t deqScalar = 0,
+                    AscendC::GlobalTensor<int32_t> gEffectiveY = AscendC::GlobalTensor<int32_t>(),
+                    uint64_t gmOffsetEffectiveY = 0,
+                    bool useEffRows = false,
+                    uint32_t *ioCurBlockIdx = nullptr,
+                    uint32_t *ioCurBlockCopied = nullptr)
     {
         using CopyL0CToDst = typename TileCopy_::template CopyL0CToDst<TensorC>;
         CopyL0CToDst copyL0CToDstSub0;
@@ -307,7 +346,8 @@ public:
             AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(l1BEventId);
             SparseKL1TileNLoad(
                 gBTensor, l1BTensorTla, gSparseBlockIdx, gatheredKvSTileIdx, kvSeqlen, kvSBaseTile, blockShapeY,
-                yBlockNumAval, yBlockNumRsvd, l1TileNAct, embed, nL1Itr * l1BTileN);
+                yBlockNumAval, yBlockNumRsvd, l1TileNAct, embed, nL1Itr * l1BTileN,
+                gEffectiveY, gmOffsetEffectiveY, useEffRows, ioCurBlockIdx, ioCurBlockCopied);
             AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(l1BEventId);
             AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(l1BEventId);
             uint32_t nL0LoopNum = CeilDiv(l1TileNAct, L0_TILE_N);

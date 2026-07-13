@@ -27,6 +27,7 @@ __attribute__((visibility("default"))) aclnnStatus aclnnBlockSparseAttentionGetW
     const aclIntArray *actualSeqLengthsOptional,
     const aclIntArray *actualSeqLengthsKvOptional,
     const aclTensor *blockTableOptional,
+    const aclTensor *blockEffRowsOptional,
     char *qInputLayout,
     char *kvInputLayout,
     int64_t numKeyValueHeads,

@@ -126,7 +126,7 @@ template <
 __global__ __aicore__ void BsaInferIntfRegular(
     GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR mask, GM_ADDR blockTables,
     GM_ADDR o, GM_ADDR actualQseqlen, GM_ADDR actualKvseqlen,
-    GM_ADDR blockSparseMask, GM_ADDR workspace, GM_ADDR lse,
+    GM_ADDR blockSparseMask, GM_ADDR blockEffRows, GM_ADDR workspace, GM_ADDR lse,
     GM_ADDR tiling
 ) {
     using ArchTag = Arch::AtlasA5;
@@ -190,7 +190,7 @@ __global__ __aicore__ void BsaInferIntfRegular(
     using BsaRegularKernelArch35 = BsaRegularKernelArch35<
         EpilogueMask2Idx, BlockMmadQK, EpilogueOnlineSoftmax, BlockMmadPV, EpilogueRescaleO, qFormat, kvFormat>;
     BsaKernelParamsArch35 params{q, k, v, mask, blockTables,
-        actualQseqlen, actualKvseqlen, blockSparseMask, o, workspace, lse, tiling};
+        actualQseqlen, actualKvseqlen, blockSparseMask, blockEffRows, o, workspace, lse, tiling};
     BsaRegularKernelArch35 bsaRegularKernelArch35;
     bsaRegularKernelArch35(params);
 }
