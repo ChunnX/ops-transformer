@@ -38,6 +38,14 @@ constexpr size_t OUTPUT_AMAX = 2;
 // Attr
 constexpr size_t GROUPSIZE_IDX = 7;
 
+// Dtype
+constexpr std::initializer_list<ge::DataType> MXDTYPE_SUPPORT_LIST = {
+    ge::DataType::DT_FLOAT8_E4M3FN, ge::DataType::DT_FLOAT8_E5M2,
+    ge::DataType::DT_FLOAT4_E2M1};
+
+// HcclLimit
+constexpr static uint64_t REDUCE_SCATTER_V2_HCCL_NUM_LIMIT = 63;
+
 class MatmulReduceScatterTilingBase : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
     explicit MatmulReduceScatterTilingBase(gert::TilingContext* context) : TilingBaseClass(context) {}
