@@ -129,32 +129,26 @@ ge::graphStatus QLIInfoParser::CheckRequiredInOutExistence() const
 ge::graphStatus QLIInfoParser::CheckRequiredAttrExistence() const
 {
     OP_CHECK_IF(opParamInfo_.layOutQuery == nullptr,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "layout_query",
-                    "attr layout_query is nullptr"),
-                return ge::GRAPH_FAILED);
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "layout_query", "attr layout_query is nullptr"),
+        return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(opParamInfo_.layOutKey == nullptr,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "layout_key",
-                    "attr layout_key is nullptr"),
-                return ge::GRAPH_FAILED);
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "layout_key", "attr layout_key is nullptr"),
+        return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(opParamInfo_.sparseCount == nullptr,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "sparse_count",
-                    "attr sparse_count is nullptr"),
-                return ge::GRAPH_FAILED);
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "sparse_count", "attr sparse_count is nullptr"),
+        return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(opParamInfo_.sparseMode == nullptr,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "sparse_mode",
-                    "attr sparse_mode is nullptr"),
-                return ge::GRAPH_FAILED);
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "sparse_mode", "attr sparse_mode is nullptr"),
+        return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.queryQuantMode == nullptr,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "query_quant_mode",
-                    "attr layout_query is nullptr"),
-                return ge::GRAPH_FAILED);
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "query_quant_mode", "attr layout_query is nullptr"),
+        return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.keyQuantMode == nullptr,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "key_quant_mode",
-                    "attr key_quant_mode is nullptr"),
-                return ge::GRAPH_FAILED);
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "key_quant_mode", "attr key_quant_mode is nullptr"),
+        return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }

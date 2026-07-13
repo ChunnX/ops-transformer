@@ -584,8 +584,8 @@ ge::graphStatus SFATilingCheck::CompareShape(SFATilingShapeCompareParam &param,
 
     for (size_t i = 0; i < shape.GetDimNum(); i++) {
         if (shape.GetDim(i) != sfaShapeExpected.GetDim(i)) {
-            OP_LOGE_FOR_INVALID_SHAPE(opName_, name.c_str(),
-                GetShapeStr(shape).c_str(), GetShapeStr(sfaShapeExpected).c_str());
+            OP_LOGE_FOR_INVALID_SHAPE(opName_, name.c_str(), Ops::Base::ToString(shape).c_str(),
+                                      Ops::Base::ToString(sfaShapeExpected).c_str());
             return ge::GRAPH_FAILED;
         }
     }
@@ -1388,15 +1388,15 @@ ge::graphStatus SFATilingCheck::CheckFeatureMlaNoQuantShape() const
     }
 
     OP_CHECK_IF(qkHeadDim_ != 512,
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "qkHeadDim_",
-            std::to_string(qkHeadDim_).c_str(), "qk_head_dim only support 512"),
-        return ge::GRAPH_FAILED);
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "qk_head_dim", std::to_string(qkHeadDim_).c_str(),
+                                                      "qk_head_dim only support 512"),
+                return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(qkHeadDim_ != vHeadDim_,
-        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(opName_, "qkHeadDim_ and vHeadDim_",
-            std::to_string(qkHeadDim_) + " , " + std::to_string(vHeadDim_),
-            "qk_head_dim and v_head_dim must be same"),
-        return ge::GRAPH_FAILED);
+                OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(opName_, "qk_head_dim and v_head_dim",
+                                                       std::to_string(qkHeadDim_) + " , " + std::to_string(vHeadDim_),
+                                                       "qk_head_dim and v_head_dim must be same"),
+                return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(ropeHeadDim_ != 64,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "ropeHeadDim_",
@@ -1653,25 +1653,20 @@ ge::graphStatus SFAInfoParser::CheckRequiredInOutExistence() const
 ge::graphStatus SFAInfoParser::CheckRequiredAttrExistence() const
 {
     OP_CHECK_IF(opParamInfo_.layoutQuery == nullptr,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "layoutQuery",
-                    "attr layoutQuery is nullptr"),
-                return ge::GRAPH_FAILED);
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "layoutQuery", "attr layoutQuery is nullptr"),
+        return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.layoutKV == nullptr,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "layoutKV",
-                    "attr layoutKV is nullptr"),
-                return ge::GRAPH_FAILED);
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "layoutKV", "attr layoutKV is nullptr"),
+        return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.sparseBlockSize == nullptr,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "sparseBlockSize",
-                    "attr sparseBlockSize is nullptr"),
-                return ge::GRAPH_FAILED);
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "sparseBlockSize", "attr sparseBlockSize is nullptr"),
+        return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.sparseMode == nullptr,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "sparseMode",
-                    "attr sparseMode is nullptr"),
-                return ge::GRAPH_FAILED);
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "sparseMode", "attr sparseMode is nullptr"),
+        return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.scaleValue == nullptr,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "scaleValue",
-                    "attr scaleValue is nullptr"),
-                return ge::GRAPH_FAILED);
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "scaleValue", "attr scaleValue is nullptr"),
+        return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
