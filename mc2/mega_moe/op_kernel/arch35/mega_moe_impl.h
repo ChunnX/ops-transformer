@@ -414,6 +414,7 @@ __aicore__ inline void AicComputeGeneric(
                         args.groupIdx, (__gm__ int32_t*)workSet.params.workspaceInfo.gmm2CombineSyncCounterPtr);
                 }
             }
+        }
     }
 }
 
@@ -595,7 +596,6 @@ __aicore__ inline void GroupMatmulImplGeneric(
 
     startBlockIdx = (startBlockIdx + tileNum) % config.blockNum;
 }
-
 } // namespace Detail
 // =================================================================================================
 template <typename ElementA, typename EpilogueElementA, typename ElementB, typename ElementC, typename ElementMxScaleA,
@@ -908,6 +908,7 @@ __aicore__ inline void GroupMatmulImplA8W4(const Params& params,
 
     startBlockIdx = (startBlockIdx + tileNum) % config.blockNum;
 }
+
 } // namespace Detail
 
 // GroupMatmulSwigluQuantA8W4 — A8W4 prologue（W4→W8）+ GMM1 + SwiGLU + 量化
