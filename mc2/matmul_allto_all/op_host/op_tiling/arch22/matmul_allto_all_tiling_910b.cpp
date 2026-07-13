@@ -48,6 +48,12 @@ constexpr int32_t MATMULALLTOALL_EIGHT_RANK_FP16_UBMOVENUM_DEFAULT = 80;
 constexpr int32_t HALF_KBYTE = 512;
 constexpr int32_t DEFAULT_ROW = 128;
 constexpr int32_t DEFAULT_COL = 256;
+constexpr int32_t MAX_BUFF_BYTES = 200 * 1024 * 1024;
+constexpr int32_t FLAG_BUFF_BYTES = 20 * 1024 * 1024;
+constexpr int32_t MAX_BLOCK_COUNT = 2;
+constexpr int32_t MIN_P_VALUE = 1;
+constexpr int32_t ELEMENT_SIZE = 2;
+constexpr uint32_t N_MAX_VALUE = 368640UL;
 constexpr int32_t CONDITION_M_ST = 0;
 constexpr int32_t CONDITION_M_END = 1;
 constexpr int32_t CONDITION_K_ST = 2;
@@ -66,6 +72,24 @@ const std::vector<std::vector<uint32_t>> SUPPORTED_TYPES_WITH_BIAS = {
 const std::vector<std::vector<uint32_t>> SUPPORTED_TYPES_WITHOUT_BIAS = {
     {ge::DT_BF16, ge::DT_BF16, ge::DT_BF16}, {ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16}};
 } // namespace
+
+template <typename T>
+T ClampValue(T value, T minVal, T maxVal)
+{
+    return (value < minVal) ? minVal : (value > maxVal) ? maxVal : value;
+}
+
+void TilingParamDeal(CoCTiling &cocTilingData, MatmulAlltoAllInfo &info)
+{
+    int32_t dataTypeSize = ELEMENT_SIZE;
+    int32_t peerMemSize = (MAX_BUFF_BYTES - FLAG_BUFF_BYTES) / dataTypeSize;
+    if (cocTilingData.m0 * cocTilingData.pValue * info.N > peerMemSize / MAX_BLOCK_COUNT) {
+        int32_t maxValue = peerMemSize / MAX_BLOCK_COUNT / info.N;
+        cocTilingData.m0 = DEFAULT_ROW;
+        cocTilingData.n0 = cocTilingData.m0 == DEFAULT_ROW ? DEFAULT_COL : DEFAULT_ROW;
+        cocTilingData.pValue = ClampValue(maxValue / cocTilingData.m0, MIN_P_VALUE, cocTilingData.pValue);
+    }
+}
 
 namespace MC2Tiling {
 
@@ -638,6 +662,13 @@ ge::graphStatus MatmulAlltoAllTiling910B::CheckShapeInfo(MatmulAlltoAllInfo &inf
     OP_TILING_CHECK(info.K > K_MAX_VALUE, OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "x1", std::to_string(info.K).c_str(), "The value of k dim of x1 must not exceed 65535"),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(info.N == 0, OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "x2", std::to_string(info.N).c_str(), "The value of N of x2 cannot be 0"), return ge::GRAPH_FAILED);
+    // CCL buffer data area: m0 * pValue * N * sizeof(element) must fit within 180MB / MAX_BLOCK_COUNT
+    // Worst case (m0=128, pValue=1, element=2B): N_max = 180MB / 2 / 2 / 128 = 368,640
+    OP_TILING_CHECK(info.N > N_MAX_VALUE,
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "x2",
+                        std::to_string(info.N).c_str(),
+                        "The value of N must not exceed 368640."),
+                    return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -711,6 +742,7 @@ void MatmulAlltoAllTiling910B::DoTwoRankTiling(CoCTiling &cocTilingData, MatmulA
     TilingParamMap[&cocTilingData.ubMoveNum] = MatmulAlltoAllTilingValue(MATMULALLTOALL_TWO_RANK_FP16_UBMOVENUM_DEFAULT,
                                                                          g_matmulalltoallTwoRankFP16UbmovenumMap);
     CalTilingParam(cocTilingData, TilingParamMap, info);
+    TilingParamDeal(cocTilingData, info);
 }
 
 void MatmulAlltoAllTiling910B::DoFourRankTiling(CoCTiling &cocTilingData, MatmulAlltoAllInfo &info)
@@ -723,6 +755,7 @@ void MatmulAlltoAllTiling910B::DoFourRankTiling(CoCTiling &cocTilingData, Matmul
     TilingParamMap[&cocTilingData.ubMoveNum] = MatmulAlltoAllTilingValue(
         MATMULALLTOALL_FOUR_RANK_FP16_UBMOVENUM_DEFAULT, g_matmulalltoallFourRankFP16UbmovenumMap);
     CalTilingParam(cocTilingData, TilingParamMap, info);
+    TilingParamDeal(cocTilingData, info);
 }
 
 void MatmulAlltoAllTiling910B::DoEightRankTiling(CoCTiling &cocTilingData, MatmulAlltoAllInfo &info)
@@ -735,6 +768,7 @@ void MatmulAlltoAllTiling910B::DoEightRankTiling(CoCTiling &cocTilingData, Matmu
     TilingParamMap[&cocTilingData.ubMoveNum] = MatmulAlltoAllTilingValue(
         MATMULALLTOALL_EIGHT_RANK_FP16_UBMOVENUM_DEFAULT, g_matmulalltoallEightRankFP16UbmovenumMap);
     CalTilingParam(cocTilingData, TilingParamMap, info);
+    TilingParamDeal(cocTilingData, info);
 }
 
 ge::graphStatus MatmulAlltoAllTiling910B::DoMmCommTiling(CoCTiling &cocTilingData, MatmulAlltoAllInfo &info)
