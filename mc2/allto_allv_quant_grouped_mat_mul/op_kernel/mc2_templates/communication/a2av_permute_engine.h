@@ -107,7 +107,7 @@ __aicore__ inline void PermuteImplParallel(
     uint32_t startExpertIdx, uint32_t expertNum,
     uint64_t axis, uint64_t &permuteBaseOffset,
     TBuf<QuePosition::VECIN> &permuteTBuf, TBuf<QuePosition::VECIN> &permuteTBuf2,
-    uint64_t bufferLen, int32_t &eventID,
+    uint64_t bufferLen,
     uint32_t aivCoreNum)
 {
     LocalTensor<ElemType> ubBufA = permuteTBuf.Get<ElemType>();

@@ -34,7 +34,7 @@ public:
     __aicore__ inline QuantGroupedMatmul() {}
     __aicore__ inline void Init(GM_ADDR xGM, GM_ADDR weightGM, GM_ADDR xScaleGM, GM_ADDR weightScaleGM, GM_ADDR yGM,
         GM_ADDR workspaceGM, const TilingDataType *tilingData, const GmmTilingDataType *gmmTilingData,
-        TILING_TYPE *gmmArrayAddrIn, TPipe *tPipe, bool isA2avGmmFlag);
+        TILING_TYPE *gmmArrayAddrIn, TPipe *tPipe);
     __aicore__ inline void Process(uint32_t startExpertIdx, uint32_t expertNum);
     __aicore__ inline void Process(uint32_t expertIdx);
     __aicore__ inline void End();
@@ -82,7 +82,7 @@ template <typename TilingDataType, typename GmmTilingDataType, class xType, clas
 __aicore__ inline void QuantGroupedMatmul<TilingDataType, GmmTilingDataType, xType, wType, scaleType, yType,
     wFormat, aTrans, bTrans, isLocal, isA2avGmm>::Init(GM_ADDR xGM, GM_ADDR weightGM, GM_ADDR xScaleGM,
     GM_ADDR weightScaleGM, GM_ADDR yGM, GM_ADDR workspaceGM, const TilingDataType *tilingData,
-    const GmmTilingDataType *gmmTilingData, TILING_TYPE *gmmArrayAddrIn, TPipe *tPipe, bool isA2avGmmFlag)
+    const GmmTilingDataType *gmmTilingData, TILING_TYPE *gmmArrayAddrIn, TPipe *tPipe)
 {
     if ASCEND_IS_AIV {
         return ;
@@ -130,7 +130,7 @@ __aicore__ inline void QuantGroupedMatmul<TilingDataType, GmmTilingDataType, xTy
         ttXScaleRepeatGm_ = ttWeightScaleRepeatGm_ + sizeof(float) * expertNumMax;
     }
 
-    const auto *opCnt = isA2avGmmFlag ? &tilingData_->taskTilingInfo.recvCnt[0] :
+    const auto *opCnt = isA2avGmm ? &tilingData_->taskTilingInfo.recvCnt[0] :
         &tilingData_->taskTilingInfo.sendCnt[0];
     for (uint32_t e = 0U; e < expertNumInOneRank_; e++) {
         for (uint32_t i = 0U; i < epWorldSize_; i++) {

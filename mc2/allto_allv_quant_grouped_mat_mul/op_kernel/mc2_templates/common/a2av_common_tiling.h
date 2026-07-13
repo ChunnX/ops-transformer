@@ -55,7 +55,6 @@ struct TaskTilingInfo {
     // 平台信息
     uint64_t ubSize;        // UB大小
     uint64_t aivCoreNum;    // AIV 核数量
-    uint64_t aicCoreNum;    // AIC 核数量
 
     // 循环调度参数
     uint32_t expertNum = 1U;     // 每次GMM计算合并的专家数量（计算批大小）
