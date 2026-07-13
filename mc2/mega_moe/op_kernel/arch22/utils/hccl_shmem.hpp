@@ -41,12 +41,6 @@ constexpr uint16_t RECV_SYNC_EVENT_ID = 10;
 constexpr uint32_t SELF_STATE_OFFSET = 256 * 1024;
 constexpr uint32_t STATE_OFFSET = 512;
 
-FORCE_INLINE_AICORE void AicSyncAll()
-{
-    AscendC::CrossCoreSetFlag<0x0, PIPE_FIX>(8);
-    AscendC::CrossCoreWaitFlag<0x0>(8);
-}
-
 template <typename T>
 FORCE_INLINE_AICORE void gm_store(__gm__ T *addr, T val)
 {
@@ -618,6 +612,63 @@ public:
 
         // unpermute
         AscendC::CrossCoreWaitFlag(SEND_SYNC_EVENT_ID);
+    }
+
+    FORCE_INLINE_AICORE
+    __gm__ int32_t *SyncBaseAddr()
+    {
+        uint64_t flag_offset = (m_segmentSize - MB_SIZE) / sizeof(int32_t);
+        return (__gm__ int32_t *)(*this)() + flag_offset + 2048;
+    }
+
+    // 将全卡同步函数实际操作的本地 peermem 内存区域通过 exceptionDump 进行 dump。
+    // 使用带 stride 的 Dump 跳过空洞，避免 dump 整个 1MB。
+    //
+    // 布局参考（相对 flag_offset = m_segmentSize - MB_SIZE）：
+    //   CrossRankSync（本 rank peermem 收到所有 rank 的 counter，按 world_size 存）：
+    //     - sync_counter[rank][16] int32_t（每 rank 64B，仅 [0]4B 被读写）
+    //     - sync_base: 1 个 int32_t（位于偏移 2048*4=8192B 处）
+    //   CrossRankSyncV2（per-rank status 按 world_size 存，selfStatus 按本 rank AIV 核数存）：
+    //     - InitStatusTargetSum 写 selfStatus[GetBlockIdx() * UB_ALIGN]（4B，UB_ALIGN=32）
+    //     - CrossRankSyncV2Set 写 per-rank status[m_rank*STATE_OFFSET]（32B）到其他 rank
+    //     - CrossRankSyncV2Wait 读 per-rank status[startRankId*STATE_OFFSET]（4B，stride 64B）
+    //
+    // 模板参数 ExceptionDumpT 需提供：
+    //   void Dump(GM_ADDR dumpAddr, size_t blockCount, size_t blockLen, size_t srcStride)
+    template <typename ExceptionDumpT>
+    FORCE_INLINE_AICORE
+    void DumpSyncRegions(ExceptionDumpT &exceptionDump)
+    {
+        uint64_t flagOffsetBytes = m_segmentSize - m_tailReservedSize;
+        GM_ADDR base = (*this)() + flagOffsetBytes;
+
+        // Region 0: CrossRankSync sync_counter[rank]，数据类型 int64_t
+        // 访问模式：[rank*64B, rank*64B+8B)，共 m_rankSize 个 block，stride=64B
+        exceptionDump.Dump(base,
+                           static_cast<size_t>(m_rankSize),
+                           sizeof(int64_t),
+                           64U);
+
+        // Region 1: CrossRankSync sync_base，单 int64_t
+        // 地址 = base + m_rankSize * 64（sync_counter 之后紧接着 sync_base）
+        exceptionDump.Dump(base + static_cast<uint64_t>(m_rankSize) * 64U,
+                           sizeof(int64_t));
+
+        // Region 2: CrossRankSyncV2 per-rank status，每 rank 32B（V2Set 写 8 int32_t）
+        // 访问模式：[rank*512B, rank*512B+32B)，共 m_rankSize 个 block，stride=STATE_OFFSET
+        exceptionDump.Dump(base,
+                           static_cast<size_t>(m_rankSize),
+                           UB_ALIGN,
+                           static_cast<size_t>(STATE_OFFSET));
+
+        // Region 3: CrossRankSyncV2 selfStatus，本 rank 各 AIV 核的 init 状态
+        // InitStatusTargetSum 用 GetBlockIdx() 索引，范围 [0, get_block_num())
+        // selfStatusTensor[coreIdx * UB_ALIGN] 中 UB_ALIGN 是 int32_t 元素索引，
+        // 实际字节间距 = UB_ALIGN * sizeof(int32_t) = 128B
+        exceptionDump.Dump(base + SELF_STATE_OFFSET,
+                           static_cast<size_t>(GetBlockNum()),
+                           sizeof(int32_t),
+                           static_cast<size_t>(UB_ALIGN * sizeof(int32_t)));
     }
 
 private:
