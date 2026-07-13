@@ -47,6 +47,5 @@ __global__ __aicore__ void grouped_matmul_activation_quant(GM_ADDR x, GM_ADDR gr
         GroupedMatmulActivationQuant::GmmActivationMxQuant<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::Zn>(
             x, weight, weightScale, xScale, groupList, y, yScale, workspace, tiling);
     }
-
     AscendC::SetCtrlSpr<FLOAT_OVERFLOW_MODE_CTRL, FLOAT_OVERFLOW_MODE_CTRL>(oriOverflowMode);
 }
