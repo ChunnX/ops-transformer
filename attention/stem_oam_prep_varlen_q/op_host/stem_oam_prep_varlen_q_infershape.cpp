@@ -10,6 +10,7 @@
 
 #include <exe_graph/runtime/infer_shape_context.h>
 #include <register/op_impl_registry.h>
+#include "log/log.h"
 
 namespace ops {
 
@@ -21,35 +22,46 @@ static constexpr int64_t ATTR_STEM_BLOCK_SIZE = 0;
 static constexpr int64_t ATTR_STEM_STRIDE = 1;
 
 static ge::graphStatus InferShapeForStemOamPrepVarlenQ(gert::InferShapeContext* context) {
-    auto attrs = context->GetAttrs();
-    const int64_t *stemStridePtr = attrs->GetInt(ATTR_STEM_STRIDE);
-    if (stemStridePtr == nullptr) {
+    OP_LOGI(context, "Enter StemOamPrepVarlenQ runtime infershape impl.");
+    if (context == nullptr) {
         return ge::GRAPH_FAILED;
     }
+
+    const gert::Shape *qShape = context->GetInputShape(INPUT_Q);
+    OP_CHECK_NULL_WITH_CONTEXT(context, qShape);
+    int64_t H_q = qShape->GetDim(1);
+
+    const gert::Shape *qSeqLensShape = context->GetInputShape(INPUT_Q_SEQ_LENS);
+    OP_CHECK_NULL_WITH_CONTEXT(context, qSeqLensShape);
+    int64_t batch = qSeqLensShape->GetDim(0);
+
+    const gert::Tensor *qSeqLensTensor = context->GetInputTensor(INPUT_Q_SEQ_LENS);
+    OP_CHECK_NULL_WITH_CONTEXT(context, qSeqLensTensor);
+    const int64_t *qSeqLensData = qSeqLensTensor->GetData<int64_t>();
+    OP_CHECK_NULL_WITH_CONTEXT(context, qSeqLensData);
+
+    const gert::RuntimeAttrs *attrs = context->GetAttrs();
+    auto stemBlockSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_STEM_BLOCK_SIZE);
+    OP_CHECK_NULL_WITH_CONTEXT(context, stemBlockSizePtr);
+    int64_t stemBlockSize = *stemBlockSizePtr;
+
+    auto stemStridePtr = attrs->GetAttrPointer<int64_t>(ATTR_STEM_STRIDE);
+    OP_CHECK_NULL_WITH_CONTEXT(context, stemStridePtr);
     int64_t stemStride = *stemStridePtr;
     int64_t kflat_dim = stemStride * DIM_QK;
 
-    const gert::Shape *qSeqLensShape = context->GetInputShape(INPUT_Q_SEQ_LENS);
-    if (qSeqLensShape == nullptr) {
-        return ge::GRAPH_FAILED;
+    int64_t maxQLen = 0;
+    for (int64_t i = 0; i < batch; i++) {
+        if (qSeqLensData[i] > maxQLen) {
+            maxQLen = qSeqLensData[i];
+        }
     }
-    int64_t batch = qSeqLensShape->GetDim(0);
-
-    const gert::Shape *qShape = context->GetInputShape(INPUT_Q);
-    if (qShape == nullptr) {
-        return ge::GRAPH_FAILED;
-    }
-    int64_t H_q = qShape->GetDim(1);
+    int64_t maxQPadded = ((maxQLen + stemBlockSize - 1) / stemBlockSize) * stemBlockSize;
+    int64_t maxQb = maxQPadded / stemBlockSize;
 
     gert::Shape *qFlatShape = context->GetOutputShape(OUTPUT_Q_FLAT);
-    if (qFlatShape == nullptr) {
-        return ge::GRAPH_FAILED;
-    }
-    qFlatShape->SetDimNum(4);
-    qFlatShape->SetDim(0, batch);
-    qFlatShape->SetDim(1, H_q);
-    qFlatShape->SetDim(2, -1);
-    qFlatShape->SetDim(3, kflat_dim);
+    OP_CHECK_NULL_WITH_CONTEXT(context, qFlatShape);
+    *qFlatShape = gert::Shape({batch, H_q, maxQb, kflat_dim});
 
     return ge::GRAPH_SUCCESS;
 }
