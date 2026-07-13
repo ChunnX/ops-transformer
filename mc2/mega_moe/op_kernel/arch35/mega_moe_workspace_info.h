@@ -47,13 +47,6 @@ constexpr uint8_t SYNC_AIC_AIV_MODE = 4;
 constexpr uint16_t AIC_SYNC_AIV_FLAG = 4;
 constexpr uint16_t AIV_SYNC_AIC_FLAG = 6;
 constexpr uint16_t AIC_SYNC_AIV_EPILOGUE_FLAG = 8;
-// The 3510 mode-4 flag ID range is [0, 10]. ID 9 carries the pair-local
-// AIC -> AIV1 acknowledgement; ID 10 carries the forward AIV1 -> AIC
-// dispatch-batch release.
-constexpr uint16_t AIC_SYNC_AIV_DISPATCH_BATCH_ACK_FLAG = 9;
-// AIV1 dispatch publishes one completion per rolling expert batch. Keep this
-// channel separate from the A8W4 copy-out handshake above.
-constexpr uint16_t AIV_SYNC_AIC_DISPATCH_BATCH_FLAG = 10;
 constexpr uint16_t FLAG_ID_MAX_PER_V = 16;
 constexpr uint32_t SWIGLU_N_HALF = 2U;
 constexpr int32_t MXFP_DIVISOR_SIZE = 64;
@@ -121,6 +114,7 @@ struct WorkspaceInfo {
     GM_ADDR flagSwiGluToGmm2Ptr;
     GM_ADDR flagDispatchToGmm1Ptr;
     GM_ADDR flagSendCntCalToUpdParamsPtr;
+    GM_ADDR flagDispatchBatchToGmm2Ptr;
     GM_ADDR cumsumInfoPtr;
     GM_ADDR gmm1MmadResPtr;
     GM_ADDR gmm2MmadResPtr;
@@ -181,6 +175,11 @@ struct WorkspaceInfo {
         // 每(expert, aiCore)单独占一个cache_line
         flagSendCntCalToUpdParamsPtr = base + workspaceSize;
         workspaceSize += SIZE_INT_32 * INT_CACHELINE * tilingData->expertPerRank * tilingData->aicNum;
+
+        // AIV1 dispatch publishes a monotonic batch generation to its paired AIC.
+        // Each pair owns one cache line to avoid false sharing while AIC polls.
+        flagDispatchBatchToGmm2Ptr = base + workspaceSize;
+        workspaceSize += SIZE_INT_32 * INT_CACHELINE * tilingData->aicNum;
 
         // Conditional allocation for A8W4 / combine-quant paths.
         // 以下条件分配与 mega_moe.h 编译期守卫 (ENABLE_A8W4 / ENABLE_A4W4 / CombineQuantMode) 一致，

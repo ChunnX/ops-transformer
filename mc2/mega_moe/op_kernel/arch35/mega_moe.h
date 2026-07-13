@@ -446,10 +446,12 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ResetFlagList()
     // 总数 = SwiGluToGmm2(expertPerRank * swigluFlagSlotsPerExpert_)
     //        + DispatchToGmm1(expertPerRank * dispatchFlagSlotsPerExpert_)
     //        + SendCntCalToUpdParams(expertPerRank * aicNum_ * INT_CACHELINE)
+    //        + DispatchBatchToGmm2(aicNum_ * INT_CACHELINE)
     swigluToGmm2FlagGm_.SetGlobalBuffer((__gm__ int32_t*)params_.workspaceInfo.flagSwiGluToGmm2Ptr);
     int32_t flagNum = static_cast<int32_t>(expertPerRank_) *
         (swigluFlagSlotsPerExpert_ + dispatchFlagSlotsPerExpert_ +
-        static_cast<int32_t>(INT_CACHELINE) * static_cast<int32_t>(aicNum_));
+        static_cast<int32_t>(INT_CACHELINE) * static_cast<int32_t>(aicNum_)) +
+        static_cast<int32_t>(INT_CACHELINE) * static_cast<int32_t>(aicNum_);
     int32_t coreLen, coreOffset;
     TilingByCore(flagNum, coreLen, coreOffset, 1);
     SyncFuncStatic<AscendC::HardEvent::V_MTE3, SYNC_EVENT_ID2>();
@@ -1495,29 +1497,30 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
             }
         }
 
-        // Dispatch and generic GMM2 share AIV1 UB. Publish exactly one
-        // release after this batch's prefetches; AIC consumes it immediately
-        // before issuing any fixpipe-to-AIV1 write. Close every batch transfer
-        // with a reverse AIC -> AIV1 receipt acknowledgement on legal ID 9.
-        // This receipt is flow control for the batch-release counter; the
-        // actual GMM2-slot ready/release ownership remains the per-tile
-        // 4/5 <-> 6/7 ping-pong handshake.
-        // This is pair-local (not a device-wide barrier), keeps the forward
-        // mode-4 counter depth at one, and also covers all-empty batches where
-        // no per-tile GMM2 handshake would otherwise provide backpressure.
+        // Dispatch and generic GMM2 share AIV1 UB. After this batch's
+        // prefetches drain, AIV1 publishes a monotonic generation in GM; the
+        // paired AIC waits for that generation before issuing any
+        // fixpipe-to-AIV1 write. This is deliberately one-way: GMM2 slot
+        // ready/release ownership remains the per-tile hard ping-pong
+        // handshake, so a reverse batch acknowledgement would only add
+        // cross-batch backpressure.
+        uint32_t expectedBatchGeneration = batchBegin / expertsPerBatch_ + 1U;
+        __gm__ int32_t* dispatchBatchFlag =
+            (__gm__ int32_t*)params_.workspaceInfo.flagDispatchBatchToGmm2Ptr +
+            static_cast<uint64_t>(blockIdx_) * INT_CACHELINE;
         if constexpr (g_coreType == AIV) {
             if (subBlockIdx_ == 1) {
                 PipeBarrier<PIPE_ALL>();
-                CrossCoreSetFlag<SYNC_AIC_AIV_MODE, PIPE_MTE3>(AIV_SYNC_AIC_DISPATCH_BATCH_FLAG);
-                CrossCoreWaitFlag<SYNC_AIC_AIV_MODE, PIPE_MTE3>(
-                    AIC_SYNC_AIV_DISPATCH_BATCH_ACK_FLAG);
+                AscendC::AtomicAdd(dispatchBatchFlag, static_cast<int32_t>(1));
             }
         }
         if constexpr (g_coreType == AIC) {
-            CrossCoreWaitFlag<SYNC_AIC_AIV_MODE, PIPE_M>(
-                AIV_SYNC_AIC_DISPATCH_BATCH_FLAG + FLAG_ID_MAX_PER_V);
-            CrossCoreSetFlag<SYNC_AIC_AIV_MODE, PIPE_M>(
-                AIC_SYNC_AIV_DISPATCH_BATCH_ACK_FLAG + FLAG_ID_MAX_PER_V);
+            while (AscendC::ReadGmByPassDCache(dispatchBatchFlag) <
+                static_cast<int32_t>(expectedBatchGeneration)) {
+                int64_t st = AscendC::GetSystemCycle();
+                while (AscendC::GetSystemCycle() - st < 100) {
+                }
+            }
         }
 
         // Phase 2: GMM2 continues the same flattened rolling cursor.
