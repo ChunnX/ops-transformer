@@ -577,6 +577,50 @@ bool RelinkInput(GraphPtr& graph, GNode& groupedMatmulNode, int32_t index, const
     return true;
 }
 
+void ReportTransposeFusion(const std::vector<GNode>& nodesBeforeFuse, const GNode& groupedMatmulNode,
+    CustomPassContext& passContext)
+{
+    const auto reportFuse = GraphFuseInspectorUtils::ReportFuse;
+    if (reportFuse == nullptr) {
+        OP_LOGD(kPassName, "Skip reporting fusion result because GraphFuseInspector is unavailable.");
+        return;
+    }
+    if (reportFuse(nodesBeforeFuse, {groupedMatmulNode}, passContext) != SUCCESS) {
+        OP_LOGW(kPassName, "Failed to report fusion result.");
+    }
+}
+
+void CollectFusionNodes(const GNode& groupedMatmulNode, const GmmInputPattern& pattern,
+    std::vector<GNode>& nodesBeforeFuse)
+{
+    nodesBeforeFuse = {groupedMatmulNode};
+    if (pattern.isReshapePattern) {
+        nodesBeforeFuse.emplace_back(*pattern.reshapeNode1);
+        nodesBeforeFuse.emplace_back(*pattern.transposeNode);
+        nodesBeforeFuse.emplace_back(*pattern.reshapeNode2);
+        return;
+    }
+    nodesBeforeFuse.emplace_back(*pattern.transposeNode);
+}
+
+bool SetTransposeAttr(GNode& groupedMatmulNode, int32_t index)
+{
+    const char* attrName = nullptr;
+    if (index == kXIndex) {
+        attrName = kTransposeXAttr;
+    } else if (index == kWeightIndex) {
+        attrName = kTransposeWeightAttr;
+    } else {
+        return true;
+    }
+    bool transposeValue = true;
+    if (groupedMatmulNode.SetAttr(attrName, transposeValue) != GRAPH_SUCCESS) {
+        OP_LOGW(kPassName, "Failed to set GroupedMatmul transpose attr.");
+        return false;
+    }
+    return true;
+}
+
 bool RemoveNodeIfUnused(GraphPtr& graph, const GNodePtr& node)
 {
     if (graph == nullptr || !graph->IsValid() || node == nullptr) {
@@ -631,7 +675,7 @@ bool RemoveFusionNodes(GraphPtr& graph, const GmmInputPattern& pattern)
 }
 
 Status FusionTransposeNode(GraphPtr& graph, GNode& groupedMatmulNode, int32_t index,
-    const std::vector<GmmReshapePatternMatchInfo>& reshapePattern)
+    const std::vector<GmmReshapePatternMatchInfo>& reshapePattern, CustomPassContext& passContext)
 {
     GmmInputPattern pattern;
     if (!BuildInputPattern(groupedMatmulNode, index, reshapePattern, pattern)) {
@@ -643,6 +687,12 @@ Status FusionTransposeNode(GraphPtr& graph, GNode& groupedMatmulNode, int32_t in
     if (!RelinkInput(graph, groupedMatmulNode, index, pattern)) {
         return GRAPH_FAILED;
     }
+    if (!SetTransposeAttr(groupedMatmulNode, index)) {
+        return GRAPH_FAILED;
+    }
+    std::vector<GNode> nodesBeforeFuse;
+    CollectFusionNodes(groupedMatmulNode, pattern, nodesBeforeFuse);
+    ReportTransposeFusion(nodesBeforeFuse, groupedMatmulNode, passContext);
     if (!RemoveFusionNodes(graph, pattern)) {
         return GRAPH_FAILED;
     }
@@ -650,26 +700,20 @@ Status FusionTransposeNode(GraphPtr& graph, GNode& groupedMatmulNode, int32_t in
 }
 
 Status FusionNodeX(GraphPtr& graph, GNode& groupedMatmulNode,
-    const std::vector<GmmReshapePatternMatchInfo>& reshapePattern)
+    const std::vector<GmmReshapePatternMatchInfo>& reshapePattern, CustomPassContext& passContext)
 {
     if (!CheckPlatformIsDav3510ForGmm() || IsWeightQuant(groupedMatmulNode)) {
         return GRAPH_NOT_CHANGED;
     }
 
-    auto fusionNodeXResult = FusionTransposeNode(graph, groupedMatmulNode, kXIndex, reshapePattern);
+    auto fusionNodeXResult = FusionTransposeNode(graph, groupedMatmulNode, kXIndex, reshapePattern, passContext);
     if (fusionNodeXResult != SUCCESS) {
         return fusionNodeXResult;
     }
 
-    bool transposeX = true;
-    if (groupedMatmulNode.SetAttr(kTransposeXAttr, transposeX) != GRAPH_SUCCESS) {
-        OP_LOGW(kPassName, "Failed to set grouped matmul attr transpose_x.");
-        return GRAPH_FAILED;
-    }
-
     if (GetInputNode(groupedMatmulNode, kPertokenScaleIndex) != nullptr) {
         auto pertokenScaleRet =
-            FusionTransposeNode(graph, groupedMatmulNode, kPertokenScaleIndex, reshapePattern);
+            FusionTransposeNode(graph, groupedMatmulNode, kPertokenScaleIndex, reshapePattern, passContext);
         if (pertokenScaleRet == GRAPH_FAILED) {
             return GRAPH_FAILED;
         }
@@ -678,17 +722,12 @@ Status FusionNodeX(GraphPtr& graph, GNode& groupedMatmulNode,
 }
 
 Status FusionNodeWeight(GraphPtr& graph, GNode& groupedMatmulNode,
-    const std::vector<GmmReshapePatternMatchInfo>& reshapePattern)
+    const std::vector<GmmReshapePatternMatchInfo>& reshapePattern, CustomPassContext& passContext)
 {
-    auto fusionNodeWeightResult = FusionTransposeNode(graph, groupedMatmulNode, kWeightIndex, reshapePattern);
+    auto fusionNodeWeightResult =
+        FusionTransposeNode(graph, groupedMatmulNode, kWeightIndex, reshapePattern, passContext);
     if (fusionNodeWeightResult != SUCCESS) {
         return fusionNodeWeightResult;
-    }
-
-    bool transposeWeight = true;
-    if (groupedMatmulNode.SetAttr(kTransposeWeightAttr, transposeWeight) != GRAPH_SUCCESS) {
-        OP_LOGW(kPassName, "Failed to set grouped matmul attr transpose_weight.");
-        return GRAPH_FAILED;
     }
 
     if (!CheckPlatformIsDav3510ForGmm()) {
@@ -697,13 +736,13 @@ Status FusionNodeWeight(GraphPtr& graph, GNode& groupedMatmulNode,
 
     const bool isWeightQuant = IsWeightQuant(groupedMatmulNode);
     if (!isWeightQuant && GetInputNode(groupedMatmulNode, kScaleIndex) != nullptr) {
-        auto scaleRet = FusionTransposeNode(graph, groupedMatmulNode, kScaleIndex, reshapePattern);
+        auto scaleRet = FusionTransposeNode(graph, groupedMatmulNode, kScaleIndex, reshapePattern, passContext);
         if (scaleRet == GRAPH_FAILED) {
             return GRAPH_FAILED;
         }
     } else if (isWeightQuant && GetInputNode(groupedMatmulNode, kAntiquantScaleIndex) != nullptr) {
         auto antiquantScaleRet =
-            FusionTransposeNode(graph, groupedMatmulNode, kAntiquantScaleIndex, reshapePattern);
+            FusionTransposeNode(graph, groupedMatmulNode, kAntiquantScaleIndex, reshapePattern, passContext);
         if (antiquantScaleRet == GRAPH_FAILED) {
             return GRAPH_FAILED;
         }
@@ -711,7 +750,7 @@ Status FusionNodeWeight(GraphPtr& graph, GNode& groupedMatmulNode,
     return SUCCESS;
 }
 
-Status Fusion(GraphPtr& graph, GNode& groupedMatmulNode)
+Status Fusion(GraphPtr& graph, GNode& groupedMatmulNode, CustomPassContext& passContext)
 {
     auto checkResult = CheckGmmNode(groupedMatmulNode);
     if (checkResult != SUCCESS) {
@@ -721,12 +760,12 @@ Status Fusion(GraphPtr& graph, GNode& groupedMatmulNode)
     std::vector<GmmReshapePatternMatchInfo> reshapePattern;
     DetectReshapePattern(groupedMatmulNode, reshapePattern);
 
-    auto fusionNodeXResult = FusionNodeX(graph, groupedMatmulNode, reshapePattern);
+    auto fusionNodeXResult = FusionNodeX(graph, groupedMatmulNode, reshapePattern, passContext);
     if (fusionNodeXResult == GRAPH_FAILED) {
         return GRAPH_FAILED;
     }
 
-    auto fusionNodeWeightResult = FusionNodeWeight(graph, groupedMatmulNode, reshapePattern);
+    auto fusionNodeWeightResult = FusionNodeWeight(graph, groupedMatmulNode, reshapePattern, passContext);
     if (fusionNodeWeightResult == GRAPH_FAILED) {
         return GRAPH_FAILED;
     }
@@ -763,7 +802,7 @@ Status RunGroupedMatmulTransposeFusion(GraphPtr& graph, CustomPassContext& passC
     passContext.SetPassName(kPassName);
     bool changed = false;
     for (auto& groupedMatmulNode : groupedMatmulNodes) {
-        auto status = Fusion(graph, groupedMatmulNode);
+        auto status = Fusion(graph, groupedMatmulNode, passContext);
         if (status == SUCCESS) {
             cout<<"***status == SUCCESS"<<endl;
             changed = true;
