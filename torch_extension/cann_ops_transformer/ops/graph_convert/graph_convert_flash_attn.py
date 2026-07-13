@@ -5,27 +5,39 @@ try:
     from torch.library import impl
     from torchair._ge_concrete_graph import ge_apis as ge
     from torchair.ge._ge_graph import Tensor, TensorSpec
-    from torchair._ge_concrete_graph.fx2ge_converter import declare_supported, register_fx_node_ge_converter
+    from torchair._ge_concrete_graph.fx2ge_converter import (
+        declare_supported,
+        register_fx_node_ge_converter,
+    )
     from torchair._ge_concrete_graph.supported_declaration import Support
     from typing import Any, Dict, List, Tuple, Union, Callable, Optional
-    from torchair._ge_concrete_graph.ge_ir_pb2 import GraphDef, OpDef, TensorDescriptor, TensorDef
+    from torchair._ge_concrete_graph.ge_ir_pb2 import (
+        GraphDef,
+        OpDef,
+        TensorDescriptor,
+        TensorDef,
+    )
     from torchair.ge._ge_graph import get_default_ge_graph, next_unique_name
     from torchair.ge._ge_graph import auto_convert_to_tensor
-    from torchair.ge._ge_graph import Tensor, TensorSpec, DataType, TensorType
+    from torchair.ge._ge_graph import DataType, TensorType
     from torchair.ge._ge_graph import compat_as_bytes, compat_as_bytes_list
     from torchair.ge._ge_graph import trans_to_list_list_int, trans_to_list_list_float
     from torchair.ge._ge_graph import get_invalid_desc
     from torchair._ge_concrete_graph.compat_ir import ge_op, IrDef
     from torchair.ge import attr
+
     _TORCHAIR_AVAILABLE = True
 except ImportError:
     _TORCHAIR_AVAILABLE = False
 
 if _TORCHAIR_AVAILABLE:
+
     @auto_convert_to_tensor(
         [False, False, False, False, False, False, False, False, False, False, False],
-        [False, False, False, True, True, True, True, True, True, True])
-    def FlashAttn(q: Tensor,
+        [False, False, False, True, True, True, True, True, True, True],
+    )
+    def FlashAttn(
+        q: Tensor,
         k: Tensor,
         v: Tensor,
         block_table: Optional[Tensor],
@@ -46,8 +58,8 @@ if _TORCHAIR_AVAILABLE:
         layout_kv: str = "BSND",
         layout_out: str = "BSND",
         return_softmax_lse: bool = False,
-        deterministic: int = 0):
-
+        deterministic: int = 0,
+    ):
         result = q.new_empty(q.size())
         return result
 
@@ -74,6 +86,6 @@ if _TORCHAIR_AVAILABLE:
         layout_kv: str = "BSND",
         layout_out: str = "BSND",
         return_softmax_lse: bool = False,
-        deterministic: int = 0):
-
-        raise AssertionError(f"GE not supported!")
+        deterministic: int = 0,
+    ):
+        raise AssertionError("GE not supported!")

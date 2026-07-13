@@ -23,16 +23,16 @@
 ### 1. 进入项目源码
 
 - CANNLab云开发环境：
-   
+
    默认提供最新商发版CANN包配套的项目源码，进入源码目录，\$\{gitCode\_id\}替换为开发者个人gitCode账号。
-   
+
    ```
    cd /mnt/workspace/gitCode/${gitCode_id}/ops-transformer
    ```
 - 非CANNLab云开发环境：
-  
+
   根据[release仓库](https://gitcode.com/cann/release-management)源码与CANN版本配套关系，执行如下命令下载源码，\$\{tag\_version\}替换为目标分支标签，例如9.0.0。
-    
+
   ```bash
   git clone -b ${tag_version} https://gitcode.com/cann/ops-transformer.git && cd ops-transformer
   ```
@@ -190,7 +190,7 @@ __aicore__ inline void AddExample<T>::Compute(int32_t progress)
 * **DumpTensor**
 
   该接口支持Dump指定Tensor的内容，同时支持打印自定义附加信息，比如当前行号等，详细介绍请参见[《Ascend C API》](https://hiascend.com/document/redirect/CannCommunityAscendCApi)中“Ascend C算子开发接口 > SIMD API > 基础API > 调试接口 > 上板打印 > DumpTensor”。
-  
+
   ```c++
   AscendC::LocalTensor<T> zLocal = outputQueueZ.DeQue<T>();
   // 打印zLocal Tensor信息

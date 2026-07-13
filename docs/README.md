@@ -25,11 +25,11 @@ Docs目录结构说明如下：
   │   ├── quick_op_invocation.md
   │   ├── ...
   ├── op_api_list.md                     # aclnn接口列表
-  ├── op_list.md                         # 全量算子列表  
+  ├── op_list.md                         # 全量算子列表
   └── torch_api_list.md                  # torch_extension接口列表
 ├── CONTRIBUTING_DOCS.md                 # 文档贡献说明
 ├── QUICKSTART.md                        # 快速入门
-└── README.md                            
+└── README.md
 ```
 
 ## 进阶教程

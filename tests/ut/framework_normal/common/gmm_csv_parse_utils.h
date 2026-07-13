@@ -88,8 +88,7 @@ inline int64_t ParseScalarToken(const std::string &value, const std::map<std::st
     return std::stoll(trimmed);
 }
 
-inline std::vector<int64_t> ParseDims(const std::string &value,
-                                      const std::map<std::string, int64_t> &symbols = {},
+inline std::vector<int64_t> ParseDims(const std::string &value, const std::map<std::string, int64_t> &symbols = {},
                                       bool noneAsZero = false)
 {
     const std::string trimmed = Trim(value);
@@ -256,8 +255,8 @@ inline std::string MakeSafeParamName(std::string name)
     return name;
 }
 
-inline std::string BuildCsvParseErrorMessage(const std::string &csv_path, size_t line_no,
-                                             const std::string &case_name, const std::exception &error)
+inline std::string BuildCsvParseErrorMessage(const std::string &csv_path, size_t line_no, const std::string &case_name,
+                                             const std::exception &error)
 {
     std::ostringstream oss;
     oss << "Failed to parse CSV case. file=" << csv_path << ", line=" << line_no;
