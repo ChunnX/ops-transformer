@@ -841,10 +841,16 @@ ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::SetTilingCommonInfo()
     gmmQTilingCommonInfoPtr->aivCoreNum = static_cast<uint64_t>(localParams_.aivCoreNum);
     gmmQTilingCommonInfoPtr->aicCoreNum = static_cast<uint64_t>(localParams_.aicCoreNum);
 
-    OP_TILING_CHECK(expertNum_ == 0,
-        OP_LOGE_FOR_INVALID_VALUE(opName_, "expertNum_",
-            std::to_string(expertNum_).c_str(), "positive value"),
-        return ge::GRAPH_FAILED);
+    // 动态计算 expertNum_，保证不同专家数量下通信和计算次数不超过4次
+    // expertNum_ = CeilDiv(ep, 4)，使得 totalLoopCount = CeilDiv(ep, expertNum_) <= 4
+    constexpr uint32_t TARGET_COMM_ROUNDS = 4U;
+    expertNum_ = static_cast<uint32_t>(
+        Ops::Base::CeilDiv(localParams_.ep, static_cast<uint64_t>(TARGET_COMM_ROUNDS)));
+    if (expertNum_ == 0U) {
+        expertNum_ = 1U;
+    }
+    OP_LOGD(opName_, "SetTilingCommonInfo: ep=%lu, expertNum_=%u, targetCommRounds=%u",
+            localParams_.ep, expertNum_, TARGET_COMM_ROUNDS);
     gmmQTilingCommonInfoPtr->expertNum = expertNum_;
     gmmQTilingCommonInfoPtr->mainLoopExpertNum = expertNum_;
     gmmQTilingCommonInfoPtr->tailLoopExpertNum =
