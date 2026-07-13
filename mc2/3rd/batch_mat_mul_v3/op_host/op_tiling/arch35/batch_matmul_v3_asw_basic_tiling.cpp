@@ -30,7 +30,7 @@ bool Mc2BatchMatMulV3AswBasicTiling::IsCapable()
     }
 
     bool isEqualBatch = batchInfo_->batchA0 == batchInfo_->batchB0 && batchInfo_->batchA1 == batchInfo_->batchB1 &&
-                           batchInfo_->batchA2 == batchInfo_->batchB2 && batchInfo_->batchA3 == batchInfo_->batchB3;
+                        batchInfo_->batchA2 == batchInfo_->batchB2 && batchInfo_->batchA3 == batchInfo_->batchB3;
     if (args_.hasBias || !isEqualBatch) {
         return false;
     }
@@ -41,11 +41,11 @@ ge::graphStatus Mc2BatchMatMulV3AswBasicTiling::DoOpTiling()
 {
     Mc2MatMulV3TilingHelper::ResetBase(context_, compileInfo_, args_, runInfo_);
     Mc2MatMulV3TilingHelper::CalL1Tiling(compileInfo_, args_, runInfo_);
-    
+
     // l1开2db后依然只使用了一半的空间，则开启4 db。该字段仅在基础api场景生效
     uint64_t abL1TensorSize = runInfo_.baseK * runInfo_.stepKa * (runInfo_.baseM + runInfo_.baseN) * args_.aDtypeSize;
     if (args_.hasBias) {
-        abL1TensorSize +=  runInfo_.baseN * sizeof(args_.biasType);
+        abL1TensorSize += runInfo_.baseN * sizeof(args_.biasType);
     }
     if (abL1TensorSize * NUM_FOUR <= compileInfo_.l1Size) {
         runInfo_.l1BufferNum = NUM_FOUR;
@@ -69,5 +69,5 @@ uint64_t Mc2BatchMatMulV3AswBasicTiling::GetBlockDim() const
 {
     return compileInfo_.aicNum;
 }
-}
-}
+} // namespace Mc2batch_matmul_v3_advanced
+} // namespace optiling

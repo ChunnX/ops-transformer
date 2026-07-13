@@ -23,11 +23,7 @@
 
 namespace Catlass::Gemm::Kernel {
 
-template <
-    class BlockMmad_,
-    class BlockEpilogue_,
-    class BlockScheduler_
->
+template <class BlockMmad_, class BlockEpilogue_, class BlockScheduler_>
 class OptimizedMatmul {
 public:
     using BlockMmad = BlockMmad_;
@@ -38,9 +34,11 @@ public:
     using LayoutWB = typename BlockMmad::LayoutB;
 
     using LayoutA = std::conditional_t<std::is_same_v<LayoutWA, layout::RowMajor> ||
-        std::is_same_v<LayoutWA, layout::PaddingRowMajor>, layout::RowMajor, layout::ColumnMajor>;
+                                           std::is_same_v<LayoutWA, layout::PaddingRowMajor>,
+                                       layout::RowMajor, layout::ColumnMajor>;
     using LayoutB = std::conditional_t<std::is_same_v<LayoutWB, layout::RowMajor> ||
-        std::is_same_v<LayoutWB, layout::PaddingRowMajor>, layout::RowMajor, layout::ColumnMajor>;
+                                           std::is_same_v<LayoutWB, layout::PaddingRowMajor>,
+                                       layout::RowMajor, layout::ColumnMajor>;
 
     static const uint32_t COMPUTE_LENGTH_A = 96 * 1024 / sizeof(ElementA);
     using PaddingA = PaddingMatrixBlockND<ArchTag, ElementA, LayoutA, LayoutWA, COMPUTE_LENGTH_A>;
@@ -70,27 +68,30 @@ public:
 
         // Methods
         CATLASS_DEVICE
-        Params() {}
+        Params()
+        {
+        }
 
         CATLASS_DEVICE
-        Params(GemmCoord const &problemShape_,
-               GM_ADDR ptrA_, LayoutA layoutA_, GM_ADDR ptrB_, LayoutB layoutB_, GM_ADDR ptrC_, LayoutC layoutC_,
-               GM_ADDR ptrWA_, LayoutWA layoutWA_, GM_ADDR ptrWB_, LayoutWB layoutWB_)
-            : problemShape(problemShape_), ptrA(ptrA_), layoutA(layoutA_), ptrB(ptrB_), layoutB(layoutB_),
-              ptrC(ptrC_), layoutC(layoutC_), ptrWA(ptrWA_), layoutWA(layoutWA_), ptrWB(ptrWB_), layoutWB(layoutWB_) {}
+        Params(GemmCoord const &problemShape_, GM_ADDR ptrA_, LayoutA layoutA_, GM_ADDR ptrB_, LayoutB layoutB_,
+               GM_ADDR ptrC_, LayoutC layoutC_, GM_ADDR ptrWA_, LayoutWA layoutWA_, GM_ADDR ptrWB_, LayoutWB layoutWB_)
+            : problemShape(problemShape_), ptrA(ptrA_), layoutA(layoutA_), ptrB(ptrB_), layoutB(layoutB_), ptrC(ptrC_),
+              layoutC(layoutC_), ptrWA(ptrWA_), layoutWA(layoutWA_), ptrWB(ptrWB_), layoutWB(layoutWB_)
+        {
+        }
     };
 
     // Methods
     CATLASS_DEVICE
-    OptimizedMatmul() {}
+    OptimizedMatmul()
+    {
+    }
 
     template <int32_t CORE_TYPE = g_coreType>
-    CATLASS_DEVICE
-    void operator()(Params const &params);
+    CATLASS_DEVICE void operator()(Params const &params);
 
     template <>
-    CATLASS_DEVICE
-    void operator()<AscendC::AIV>(Params const &params)
+    CATLASS_DEVICE void operator()<AscendC::AIV>(Params const &params)
     {
         if (params.ptrA != params.ptrWA) {
             AscendC::GlobalTensor<ElementA> gmA;
@@ -118,8 +119,7 @@ public:
 
     /// Executes matmul
     template <>
-    CATLASS_DEVICE
-    void operator()<AscendC::AIC>(Params const &params)
+    CATLASS_DEVICE void operator()<AscendC::AIC>(Params const &params)
     {
         if ((params.ptrA != params.ptrWA) || (params.ptrB != params.ptrWB)) {
             Catlass::Arch::CrossCoreWaitFlag(flagAivFinishPadding);
@@ -166,12 +166,9 @@ public:
             int64_t gmOffsetNextB = params.layoutWB.GetOffset(offsetNextB);
 
             // Compute block-scoped matrix multiply-add
-            blockMmad(
-                gmA[gmOffsetA], params.layoutWA,
-                gmB[gmOffsetB], params.layoutWB,
-                gmC[gmOffsetC], params.layoutC,
-                gmA[gmOffsetNextA], gmB[gmOffsetNextB],
-                actualBlockShape, nextActualBlockShape, isFirstBlock, hasNextBlock);
+            blockMmad(gmA[gmOffsetA], params.layoutWA, gmB[gmOffsetB], params.layoutWB, gmC[gmOffsetC], params.layoutC,
+                      gmA[gmOffsetNextA], gmB[gmOffsetNextB], actualBlockShape, nextActualBlockShape, isFirstBlock,
+                      hasNextBlock);
         }
     }
 
