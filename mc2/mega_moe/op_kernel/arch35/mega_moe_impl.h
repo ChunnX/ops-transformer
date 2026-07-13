@@ -833,11 +833,11 @@ __aicore__ inline void GroupMatmulExecA8W4(WorkSet& workSet, const Params& param
                 AivGmm1PostA8W4<ElementC, MakeLayoutC>(
                     args.swigluQuantOp, workSet.scheduler, workSet.l0cOutGm, config, startLoopIdx, tileNum);
             } else {
-                if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
-                    AivGmm2PostA8W4<ElementC, MakeLayoutC>(
-                        workSet.scheduler, workSet.l0cOutGm, params, args.groupCnt, config,
-                        startLoopIdx, tileNum);
-                }
+                // [combine=0 修复] GMM2 阶段 AIV 不再逐-tile 内联送出(原 AivGmm2PostA8W4 每个 N-tile 一次
+                // 跨卡写, h=7168 时每 token 拆 28 次, 大 bs 下聚合跨卡写压垮 fabric->卡死)。
+                // combine send 统一挪到 GMM2 全循环结束后, 按每-token 满 h 一次送出(见 mega_moe.h Process:
+                // SyncAll<false> 保 AIC 写完 gmm2Out -> CombineNoQuantSendAll)。此处 AIV 空转(同 combine!=0),
+                // AIC 的 NotifyVectorToCopyIn 无消费者但无害(与 WaitForCubeFinishCopyout 是不同 flag)。
             }
         }
     }
