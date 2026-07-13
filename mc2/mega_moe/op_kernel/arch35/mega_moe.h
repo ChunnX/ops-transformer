@@ -1027,7 +1027,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessCombine(
 
     uint32_t coreIdForGrouping = aivCoreIdx_;
     uint32_t totalCoresForGrouping = blockAivNum_;
-    if constexpr (ENABLE_A8W4) {
+    if constexpr (ENABLE_A8W4 || ENABLE_A4W4) {
         if (subBlockIdx_ != 1) {
             return;
         }
