@@ -18,6 +18,7 @@
 #include <cstdio>
 #include <cmath>
 #include <algorithm>
+#include <utility>
 #include "quant_block_sparse_attn_metadata_aicpu.h"
 
 #define KERNEL_STATUS_OK 0
@@ -30,8 +31,8 @@ uint32_t QuantBlockSparseAttnMetadataCpuKernel::Compute(CpuKernelContext &ctx)
     if (!success) {
         return KERNEL_STATUS_PARAM_INVALID;
     }
-    SplitResult splitRes(static_cast<uint32_t>(aicCoreNum_));
-    success = ScheduleSection(splitRes) && GenMetadata(splitRes);
+    std::vector<SectionInfo> sectionResults {};
+    success = ScheduleSections(sectionResults) && GenMetadata(sectionResults);
     return success ? KERNEL_STATUS_OK : KERNEL_STATUS_PARAM_INVALID;
 }
 
@@ -63,6 +64,7 @@ bool QuantBlockSparseAttnMetadataCpuKernel::Prepare(CpuKernelContext &ctx)
     GetAttrValueOpt(ctx, "sparse_block_size_k", sparseBlockSizeK_);
     GetAttrValueOpt(ctx, "quant_mode", quantMode_);
     GetAttrValueOpt(ctx, "mask_mode", maskMode_);
+    GetAttrValueOpt(ctx, "max_seqlen_kv", maxSeqlenKv_);
     GetAttrValueOpt(ctx, "layout_q", layoutQ_);
     GetAttrValueOpt(ctx, "layout_kv", layoutKv_);
     GetAttrValueOpt(ctx, "layout_sparse_indices", layoutSparseIndices_);
@@ -174,15 +176,77 @@ uint64_t QuantBlockSparseAttnMetadataCpuKernel::GetBN1BlockNum(uint32_t bIdx, ui
     return bN1BlockNum;
 }
 
-uint64_t QuantBlockSparseAttnMetadataCpuKernel::CalcBlockNum() const
+uint32_t QuantBlockSparseAttnMetadataCpuKernel::CalcValidS1Rows(uint32_t bIdx, uint32_t n1Idx) const
 {
-    uint64_t blockNum = 0U;
-    for (uint32_t bIdx = 0U; bIdx < static_cast<uint32_t>(batchSize_); ++bIdx) {
-        for (uint32_t n1Idx = 0U; n1Idx < static_cast<uint32_t>(numHeadsQ_); ++n1Idx) {
-            blockNum += GetBN1BlockNum(bIdx, n1Idx);
+    uint32_t validRows = 0U;
+    for (uint32_t s1Idx = 0U; s1Idx < Qbmax_; ++s1Idx) {
+        if (GetRowBlockNum(bIdx, n1Idx, s1Idx) > 0U) {
+            validRows++;
         }
     }
-    return blockNum;
+    return validRows;
+}
+
+uint64_t QuantBlockSparseAttnMetadataCpuKernel::CalcBN1Cost(uint32_t bIdx, uint32_t n1Idx) const
+{
+    constexpr uint32_t BYTES_PER_ELEM_Q = 1U;
+    constexpr uint32_t BYTES_PER_ELEM_KV = 1U;
+    constexpr uint32_t COST_FACTOR = 2U;
+
+    const uint32_t validS1Rows = CalcValidS1Rows(bIdx, n1Idx);
+    if (validS1Rows == 0U) {
+        return 0U;
+    }
+
+    const uint32_t blockSizeQ = static_cast<uint32_t>(std::max(sparseBlockSizeQ_, 1));
+    const uint32_t maxSeqlenKv = static_cast<uint32_t>(std::max(maxSeqlenKv_, 0));
+    const uint32_t headDim = static_cast<uint32_t>(std::max(headDim_, 0));
+    const uint64_t s1Cost = static_cast<uint64_t>(validS1Rows) * blockSizeQ * headDim *
+        BYTES_PER_ELEM_Q * COST_FACTOR;
+    const uint64_t s2Cost = static_cast<uint64_t>(maxSeqlenKv) * headDim * BYTES_PER_ELEM_KV * COST_FACTOR;
+    return s1Cost + s2Cost;
+}
+
+bool QuantBlockSparseAttnMetadataCpuKernel::CalcSectionBoundaries(std::vector<SectionInfo> &sectionResults) const
+{
+    constexpr uint64_t L2_BYTE = 120U * 1024U * 1024U;
+    const uint32_t totalBN1 = static_cast<uint32_t>(batchSize_) * static_cast<uint32_t>(numHeadsQ_);
+    uint32_t sectionStart = 0U;
+    uint64_t sectionCost = 0U;
+    uint64_t sectionBlockNum = 0U;
+
+    for (uint32_t bn1Idx = 0U; bn1Idx < totalBN1; ++bn1Idx) {
+        const uint32_t bIdx = bn1Idx / static_cast<uint32_t>(numHeadsQ_);
+        const uint32_t n1Idx = bn1Idx % static_cast<uint32_t>(numHeadsQ_);
+        const uint64_t curCost = CalcBN1Cost(bIdx, n1Idx);
+        const uint64_t curBlocks = GetBN1BlockNum(bIdx, n1Idx);
+
+        if (sectionCost != 0U && (sectionCost + curCost) > L2_BYTE) {
+            SectionInfo section(static_cast<uint32_t>(aicCoreNum_));
+            section.bn1Start = sectionStart;
+            section.bn1End = bn1Idx;
+            section.cost = sectionCost;
+            section.blockNum = sectionBlockNum;
+            sectionResults.emplace_back(std::move(section));
+
+            sectionStart = bn1Idx;
+            sectionCost = 0U;
+            sectionBlockNum = 0U;
+        }
+
+        sectionCost += curCost;
+        sectionBlockNum += curBlocks;
+    }
+
+    if (sectionBlockNum != 0U || sectionResults.empty()) {
+        SectionInfo section(static_cast<uint32_t>(aicCoreNum_));
+        section.bn1Start = sectionStart;
+        section.bn1End = totalBN1;
+        section.cost = sectionCost;
+        section.blockNum = sectionBlockNum;
+        sectionResults.emplace_back(std::move(section));
+    }
+    return true;
 }
 
 bool QuantBlockSparseAttnMetadataCpuKernel::AdvanceToValidRow(AssignContext &assignContext) const
@@ -191,8 +255,7 @@ bool QuantBlockSparseAttnMetadataCpuKernel::AdvanceToValidRow(AssignContext &ass
         return false;
     }
 
-    uint32_t totalBN1 = static_cast<uint32_t>(batchSize_) * static_cast<uint32_t>(numHeadsQ_);
-    while (assignContext.curBN1Idx < totalBN1) {
+    while (assignContext.curBN1Idx < assignContext.bn1Limit) {
         assignContext.curBIdx = assignContext.curBN1Idx / static_cast<uint32_t>(numHeadsQ_);
         assignContext.curN1Idx = assignContext.curBN1Idx % static_cast<uint32_t>(numHeadsQ_);
         if (assignContext.curS1Idx == 0U && assignContext.bN1Block == 0U) {
@@ -221,8 +284,7 @@ void QuantBlockSparseAttnMetadataCpuKernel::AssignByBatch(AssignContext &assignC
         return;
     }
 
-    const uint32_t totalBN1 = static_cast<uint32_t>(batchSize_) * static_cast<uint32_t>(numHeadsQ_);
-    while (assignContext.curBN1Idx < totalBN1) {
+    while (assignContext.curBN1Idx < assignContext.bn1Limit) {
         if (!AdvanceToValidRow(assignContext)) {
             return;
         }
@@ -266,16 +328,18 @@ void QuantBlockSparseAttnMetadataCpuKernel::AssignByRow(AssignContext &assignCon
     }
 }
 
-void QuantBlockSparseAttnMetadataCpuKernel::ScheduleFa(uint64_t blockNum, SplitResult &result)
+void QuantBlockSparseAttnMetadataCpuKernel::ScheduleFa(uint32_t bn1Start, uint32_t bn1End, uint64_t blockNum,
+                                                       SplitResult &result)
 {
     AssignContext assignContext {};
     assignContext.unassignedBlock = blockNum;
-    assignContext.curBIdx = 0U;
-    assignContext.curN1Idx = 0U;
-    assignContext.curBN1Idx = 0U;
+    assignContext.curBN1Idx = bn1Start;
+    assignContext.curBIdx = bn1Start / static_cast<uint32_t>(numHeadsQ_);
+    assignContext.curN1Idx = bn1Start % static_cast<uint32_t>(numHeadsQ_);
     assignContext.curS1Idx = 0U;
     assignContext.curS2Idx = 0U;
     assignContext.bN1Block = 0U;
+    assignContext.bn1Limit = bn1End;
 
     for (uint32_t i = 0; i < static_cast<uint32_t>(aicCoreNum_); i++) {
         if (assignContext.isFinished || assignContext.unassignedBlock == 0U) {
@@ -313,57 +377,63 @@ void QuantBlockSparseAttnMetadataCpuKernel::ScheduleFa(uint64_t blockNum, SplitR
     result.usedCoreNum = std::max(result.usedCoreNum, 1U);
 }
 
-bool QuantBlockSparseAttnMetadataCpuKernel::ScheduleSection(SplitResult &splitRes)
+bool QuantBlockSparseAttnMetadataCpuKernel::ScheduleSections(std::vector<SectionInfo> &sectionResults)
 {
-    uint64_t blockNum = CalcBlockNum();
-    if (blockNum == 0U) {
-        splitRes.usedCoreNum = 1U;
-        splitRes.bN1End[0] = static_cast<uint32_t>(batchSize_) * static_cast<uint32_t>(numHeadsQ_);
-        splitRes.s1End[0] = 0U;
-        splitRes.s2End[0] = 0U;
-        splitRes.firstFdDataWorkspaceIdx[0] = 0U;
+    CalcSectionBoundaries(sectionResults);
+    if (sectionResults.empty()) {
+        SectionInfo emptySection(static_cast<uint32_t>(aicCoreNum_));
+        emptySection.bn1Start = 0U;
+        emptySection.bn1End = static_cast<uint32_t>(batchSize_) * static_cast<uint32_t>(numHeadsQ_);
+        emptySection.blockNum = 0U;
+        emptySection.splitResult.usedCoreNum = 1U;
+        emptySection.splitResult.bN1End[0] = emptySection.bn1End;
+        sectionResults.emplace_back(std::move(emptySection));
         return true;
     }
-    ScheduleFa(blockNum, splitRes);
+    for (auto &section : sectionResults) {
+        if (section.blockNum == 0U) {
+            section.splitResult.usedCoreNum = 1U;
+            section.splitResult.bN1End[0] = section.bn1End;
+            section.splitResult.s1End[0] = 0U;
+            section.splitResult.s2End[0] = 0U;
+            section.splitResult.firstFdDataWorkspaceIdx[0] = 0U;
+            continue;
+        }
+        ScheduleFa(section.bn1Start, section.bn1End, section.blockNum, section.splitResult);
+    }
     return true;
 }
 
-bool QuantBlockSparseAttnMetadataCpuKernel::GenMetadata(const SplitResult &splitRes)
+bool QuantBlockSparseAttnMetadataCpuKernel::GenMetadata(const std::vector<SectionInfo> &sectionResults)
 {
     if (metadata_ == nullptr || metadata_->GetData() == nullptr) {
         KERNEL_LOG_ERROR("metadata is empty");
         return false;
     }
-    optiling::detail::qbsaMetaData qbsaMetadata(metadata_->GetData());
-    for (uint32_t i = 0; i < optiling::AIC_CORE_NUM; i++) {
-        qbsaMetadata.setQbsaMetadata(i, optiling::QBSA_CORE_ENABLE_INDEX, 0U);
-        qbsaMetadata.setQbsaMetadata(i, optiling::QBSA_BN1_START_INDEX, 0U);
-        qbsaMetadata.setQbsaMetadata(i, optiling::QBSA_M_START_INDEX, 0U);
-        qbsaMetadata.setQbsaMetadata(i, optiling::QBSA_S2_START_INDEX, 0U);
-        qbsaMetadata.setQbsaMetadata(i, optiling::QBSA_BN1_END_INDEX, 0U);
-        qbsaMetadata.setQbsaMetadata(i, optiling::QBSA_M_END_INDEX, 0U);
-        qbsaMetadata.setQbsaMetadata(i, optiling::QBSA_S2_END_INDEX, 0U);
-        qbsaMetadata.setQbsaMetadata(i, optiling::QBSA_FIRST_FD_DATA_WORKSPACE_IDX_INDEX, 0U);
-    }
-    for (uint32_t i = 0; i < optiling::AIV_CORE_NUM; i++) {
-        for (uint32_t j = 0; j < optiling::FD_METADATA_SIZE; j++) {
-            qbsaMetadata.fdMetadata[i * optiling::FD_METADATA_SIZE + j] = 0U;
+    const uint32_t sectionNum = static_cast<uint32_t>(sectionResults.size());
+    optiling::detail::qbsaMetaData qbsaMetadata(metadata_->GetData(), sectionNum);
+    qbsaMetadata.Clear();
+    qbsaMetadata.SetHeadMetadata(optiling::QBSA_HEAD_SECTION_NUM_INDEX, sectionNum);
+
+    for (uint32_t secIdx = 0; secIdx < sectionNum; ++secIdx) {
+        const auto &section = sectionResults[secIdx];
+        const auto &splitRes = section.splitResult;
+        for (uint32_t i = 0; i < splitRes.usedCoreNum; i++) {
+            qbsaMetadata.SetQbsaMetadata(secIdx, i, optiling::QBSA_CORE_ENABLE_INDEX, 1U);
+            uint32_t bn1Start = (i == 0) ? section.bn1Start : splitRes.bN1End[i - 1];
+            uint32_t bn1End = splitRes.bN1End[i];
+            uint32_t s1Start = (i == 0U) ? 0U : splitRes.s1End[i - 1U];
+            uint32_t s2Start = (i == 0U) ? 0U : splitRes.s2End[i - 1U];
+
+            qbsaMetadata.SetQbsaMetadata(secIdx, i, optiling::QBSA_BN1_START_INDEX, bn1Start);
+            qbsaMetadata.SetQbsaMetadata(secIdx, i, optiling::QBSA_M_START_INDEX, s1Start);
+            qbsaMetadata.SetQbsaMetadata(secIdx, i, optiling::QBSA_S2_START_INDEX, s2Start);
+            qbsaMetadata.SetQbsaMetadata(secIdx, i, optiling::QBSA_BN1_END_INDEX, bn1End);
+            qbsaMetadata.SetQbsaMetadata(secIdx, i, optiling::QBSA_M_END_INDEX, splitRes.s1End[i]);
+            qbsaMetadata.SetQbsaMetadata(secIdx, i, optiling::QBSA_S2_END_INDEX, splitRes.s2End[i]);
+            qbsaMetadata.SetQbsaMetadata(secIdx, i, optiling::QBSA_FIRST_FD_DATA_WORKSPACE_IDX_INDEX,
+                                     splitRes.firstFdDataWorkspaceIdx[i]);
         }
-    }
-    for (uint32_t i = 0; i < splitRes.usedCoreNum; i++) {
-        qbsaMetadata.setQbsaMetadata(i, optiling::QBSA_CORE_ENABLE_INDEX, 1U);
-        uint32_t bn1Start = (i == 0) ? 0U : splitRes.bN1End[i - 1];
-        uint32_t bn1End = splitRes.bN1End[i];
-        if (i > 0) {
-            qbsaMetadata.setQbsaMetadata(i, optiling::QBSA_M_START_INDEX, splitRes.s1End[i - 1]);
-            qbsaMetadata.setQbsaMetadata(i, optiling::QBSA_S2_START_INDEX, splitRes.s2End[i - 1]);
-        }
-        qbsaMetadata.setQbsaMetadata(i, optiling::QBSA_BN1_START_INDEX, bn1Start);
-        qbsaMetadata.setQbsaMetadata(i, optiling::QBSA_BN1_END_INDEX, bn1End);
-        qbsaMetadata.setQbsaMetadata(i, optiling::QBSA_M_END_INDEX, splitRes.s1End[i]);
-        qbsaMetadata.setQbsaMetadata(i, optiling::QBSA_S2_END_INDEX, splitRes.s2End[i]);
-        qbsaMetadata.setQbsaMetadata(i, optiling::QBSA_FIRST_FD_DATA_WORKSPACE_IDX_INDEX,
-                                 splitRes.firstFdDataWorkspaceIdx[i]);
     }
     return true;
 }
