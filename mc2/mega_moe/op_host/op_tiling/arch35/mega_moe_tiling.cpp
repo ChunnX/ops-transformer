@@ -174,7 +174,7 @@ static uint64_t CalTilingKey(const gert::TilingContext *context, MegaMoeConfig &
     auto dispatchQuantModePtr = attrs->GetAttrPointer<int64_t>((config.attrDispatchQuantModeIndex));
     int64_t opQuantMode = GetOpQuantModeByAttrDispatchOutType(context, config);
     int64_t combineQuantMode = GetCombineQuantModeByAttr(context, config);
-    // int64_t topoType = TILINGKEY_TPL_MTE;
+    //int64_t topoType = TILINGKEY_TPL_MTE;
     int64_t topoType = TILINGKEY_TPL_URMA;
 
     return GET_TPL_TILING_KEY(static_cast<int64_t>(*dispatchQuantModePtr), opQuantMode, combineQuantMode, topoType);
@@ -953,12 +953,6 @@ static ge::graphStatus CheckInputParam(const gert::TilingContext *context, MegaM
     const gert::StorageShape *topkIdsStorageShape = context->GetInputShape(config.topkIdsIndex);
     int64_t topkIdsDim1 = topkIdsStorageShape->GetStorageShape().GetDim(1);
 
-    // topk范围
-    OP_TILING_CHECK(
-        topkIdsDim1 < MIN_TOPK || topkIdsDim1 > MAX_TOPK,
-        OP_LOGE_FOR_INVALID_VALUE(nodeName, "topK", std::to_string(topkIdsDim1).c_str(), "only support [1, 16]"),
-        return ge::GRAPH_FAILED);
-
     // 检查MAX_BS范围
     uint64_t ubSize = 0UL;
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
@@ -968,13 +962,6 @@ static ge::graphStatus CheckInputParam(const gert::TilingContext *context, MegaM
     int64_t worldSize = static_cast<int64_t>(*epWorldSizePtr);
     // 当前最大bs根据ub剩余空间反算得来，bsMax = (8*(UB_SIZE-48K))/(topK*(64+worldSize))
     int64_t maxBs = NUM_8 * (ubSize - USED_BUFFER_SIZE) / (topkIdsDim1 * (NUM_64 + worldSize));
-    OP_TILING_CHECK(
-        xDim0 < MIN_BS || xDim0 > maxBs,
-        OP_LOGE_FOR_INVALID_VALUE(nodeName, "BS", std::to_string(xDim0).c_str(),
-                                  (std::string("should in [") + std::to_string(MIN_BS) + ", " + std::to_string(maxBs) +
-                                   "]" + ", " + "maxBs = (8 * (TOTAL_UB_SIZE - 48K)) / (topK * (64 + worldSize))")
-                                      .c_str()),
-        return ge::GRAPH_FAILED);
 
     int64_t xDim1 = xStorageShape->GetStorageShape().GetDim(1);
     // 检查 H 范围 [1K, 8K]
@@ -1069,7 +1056,7 @@ ge::graphStatus MegaMoeTilingFuncImplPublic(gert::TilingContext *context, MegaMo
     tilingData->aicNum = aicNum;
     tilingData->blockAivNum = aivNum;
     auto attrs = context->GetAttrs();
-    tilingData->topoType = 1;//*attrs->GetAttrPointer<int64_t>((config.attrTopoTypeIndex));
+    tilingData->topoType = *attrs->GetAttrPointer<int64_t>((config.attrTopoTypeIndex));
     OP_TILING_CHECK(aivNum <= 0 || aicNum <= 0,
                     OP_LOGE_FOR_INVALID_VALUE(nodeName, "aivNum/aicNum",
                                               (std::to_string(aivNum) + ", " + std::to_string(aicNum)).c_str(),
