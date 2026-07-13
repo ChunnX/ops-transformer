@@ -106,7 +106,12 @@ public:
     // kvcache strides (tensor v2 view inputs)
     const gert::Stride *keyStrides_ = nullptr;
     const gert::Stride *valueStrides_ = nullptr;
-    bool isTensorV1_ = false;
+    uint64_t keyBnStride_ = 0;
+    uint64_t keyN2Stride_ = 0;
+    uint64_t valueBnStride_ = 0;
+    uint64_t valueN2Stride_ = 0;
+
+    bool hasViewStride_ = true;
     int32_t keyNonContigDim_ = -1;
     int32_t valueNonContigDim_ = -1;
 
