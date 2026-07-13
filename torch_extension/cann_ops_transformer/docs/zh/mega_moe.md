@@ -1295,7 +1295,7 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
         # 步骤1：构造distribute_buffer（SymmBuffer结构体）
         distribute_buffer = get_symm_buffer_for_mega_moe(
             ep_group, num_experts=moe_expert_num,
-            num_max_tokens_per_rank=0, num_topk=topK,
+            num_max_tokens_per_rank=num_tokens, num_topk=topK,
             hidden=H, intermediate_hidden=0,
             dispatch_quant_mode=4, dispatch_quant_out_dtype=torch.float8_e5m2
         )
