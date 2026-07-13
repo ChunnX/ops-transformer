@@ -800,10 +800,11 @@ def tilelang_grad_kl_loss_single_kernel(
                 dk_chunk_1 = T.alloc_ub((1, DQueryIndex), calc_dtype)
 
                 # k_id 区间对半分配给两个 AIV
+                # vid=0: [k_start, k_start+k_half),  vid=1: [k_start+k_half, k_end)
                 k_len = k_end - k_start
                 k_half = k_len // 2
                 my_start = k_start + vid * k_half
-                my_end = k_start + (vid + 1) * k_half if vid == 0 else k_end
+                my_end = k_start + k_half + vid * (k_len - k_half)
 
                 for s1_row in T.serial(s1_start, s1_end):
                     if my_start < my_end:
