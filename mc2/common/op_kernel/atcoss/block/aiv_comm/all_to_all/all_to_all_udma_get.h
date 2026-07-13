@@ -15,13 +15,11 @@
 
 #pragma once
 
-#include "kernel_operator.h"
-#include "adv_api/hcomm/hcomm.h"
 #include "../collective_comm_base.h"
 #include "../collective_comm_context.h"
 #include "../barrier/barrier_ubmem.h"
 
-namespace Dista {
+namespace Atcoss {
 namespace AivComm {
 
 using namespace AscendC;
@@ -36,11 +34,11 @@ private:
 
     __aicore__ inline void DoCommit(uint32_t targetRankId, uint64_t tileOffset, uint64_t tileSize) {
         Barrier barrier;
-        barrier.Execute(this->syncBuf_, this->sbc_, this->useCoreNum_, this->curCoreId_);
+        barrier.Execute(this->syncBuf_, this->ubmemCtx_, this->useCoreNum_, this->curCoreId_);
         if ((this->curCoreId_ >= this->useCoreNum_) || (this->curCoreId_ == this->ctx_->myRankId)) {
             return;
         }
-        GM_ADDR srcAddr = this->remoteAddrs_[targetRankId]
+        GM_ADDR srcAddr = this->commBufferAddrs_[targetRankId]
             + this->currentTileIdx_ * this->slotStride_
             + this->myRankOffset_;
         GM_ADDR dstAddr = this->localAddr_ + targetRankId * this->chunkBytes_ +
@@ -51,21 +49,15 @@ private:
             static_cast<uint64_t>(tileSize * this->nonSplitAxisBytes_));
     }
 
-    __aicore__ inline void DoWait() {
-        const uint32_t myRankId = this->ctx_->myRankId;
-        for (uint32_t i = 0; i < this->targetRankCnt_; i++) {
-            uint32_t targetRankId = this->targetRankStart_ + i;
-            if (targetRankId != myRankId) {
-                this->comm_.Drain(this->channels_[targetRankId]);
-            }
-        }
+    __aicore__ inline void DoWait(uint32_t targetRankId) {
+        this->comm_.Drain(this->channels_[targetRankId]);
     }
 
     __aicore__ inline void DoFinalize() {
         Barrier barrier;
-        barrier.Execute(this->syncBuf_, this->sbc_, this->useCoreNum_, this->curCoreId_);
+        barrier.Execute(this->syncBuf_, this->ubmemCtx_, this->useCoreNum_, this->curCoreId_);
     }
 };
 
 } // namespace AivComm
-} // namespace Dista
+} // namespace Atcoss

@@ -19,36 +19,26 @@
 #include <cstdint>
 #endif
 
-namespace Dista {
+namespace Atcoss {
 namespace AivComm {
 
 static constexpr uint32_t HCOMM_MAX_RANK_NUM = 64;
 static constexpr uint32_t HCOMM_WORKSPACE_SIZE = 512U;
 static constexpr uint32_t HCOMM_CHANNEL_NOTIFY_NUM = 3U;
 
-struct CommChannelContext {
+struct CommUdmaContext {
     uint64_t channelHandles[HCOMM_MAX_RANK_NUM];
-    uint64_t remoteBufferAddrs[HCOMM_MAX_RANK_NUM];
-    uint64_t localBufferAddr;
-    uint64_t syncBufferAddr;
-    uint64_t remoteSyncAddrs[HCOMM_MAX_RANK_NUM];
+    uint64_t commBufferAddrs[HCOMM_MAX_RANK_NUM];
     uint32_t rankId;
     uint32_t rankSize;
     uint32_t notifyNum;
 };
 
-struct CommContext {
-    __gm__ CommChannelContext* commCtx;
+struct CommUbmemContext {
+    uint64_t commBufferAddrs[HCOMM_MAX_RANK_NUM];
+    uint32_t rankId;
     uint32_t rankSize;
-    uint32_t myRankId;
-};
-
-struct SyncBufferContext {
-    uint32_t rankSize;
-    uint32_t myRankId;
-    uint64_t localSyncBufferAddr;
-    uint64_t remoteSyncBufferAddrs[HCOMM_MAX_RANK_NUM];
 };
 
 } // namespace AivComm
-} // namespace Dista
+} // namespace Atcoss

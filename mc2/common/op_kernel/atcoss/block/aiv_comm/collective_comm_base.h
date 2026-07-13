@@ -16,12 +16,11 @@
 #pragma once
 
 #include "kernel_operator.h"
-#include "adv_api/hcomm/hcomm.h"
 #include "collective_comm_context.h"
-#include "dista/utils/comm_tiling_data.h"
+#include "../utils/comm_tiling_data.h"
 #include "tensor_api/tensor/pointer.h"
 
-namespace Dista {
+namespace Atcoss {
 namespace AivComm {
 
 using namespace AscendC;
@@ -31,17 +30,17 @@ template<typename Impl, typename Dtype>
 class CollectiveCommBase {
     friend Impl;
 protected:
-    const CommContext* ctx_;
-    GM_ADDR localAddr_;
+    const CommUdmaContext* udmaCtx_;
+    const CommUbmemContext* ubmemCtx_;
     const CommTilingData* tilingData_;
-    const SyncBufferContext* sbc_;
 
     Hcomm<AscendC::COMM_PROTOCOL_UBC_CTP> comm_;
+    GM_ADDR localAddr_;
+    __ubuf__ uint8_t* commBuf_;
     __ubuf__ uint8_t* syncBuf_;
 
     ChannelHandle channels_[HCOMM_MAX_RANK_NUM];
-    GM_ADDR remoteAddrs_[HCOMM_MAX_RANK_NUM];
-    GM_ADDR localBufferBase_;
+    GM_ADDR commBufferAddrs_[HCOMM_MAX_RANK_NUM];
 
     uint64_t chunkSize_;
     uint64_t nonSplitAxisBytes_;
@@ -64,38 +63,31 @@ public:
     __aicore__ inline CollectiveCommBase() {}
 
     __aicore__ inline uint64_t Init(
-        const CommContext* ctx,
-        const SyncBufferContext* sbc,
-        GM_ADDR localAddr,
+        const CommUdmaContext* udmaCtx,
+        const CommUbmemContext* ubmemCtx,
         const CommTilingData& tilingData,
+        GM_ADDR localAddr,
+        __ubuf__ uint8_t* commbuf,
         uint32_t useCoreNum,
         uint32_t curCoreId)
     {
-        ctx_ = ctx;
-        sbc_ = sbc;
+        udmaCtx_ = udmaCtx;
+        ubmemCtx_ = ubmemCtx;
         localAddr_ = localAddr;
         tilingData_ = &tilingData;
         useCoreNum_ = useCoreNum;
         curCoreId_ = curCoreId;
+        commBuf_ = commbuf;
 
-        __gm__ CommChannelContext* hctx = ctx->commCtx;
-        localBufferBase_ = reinterpret_cast<GM_ADDR>(hctx->localBufferAddr);
-        for (uint32_t i = 0; i < ctx->rankSize; i++) {
-            channels_[i] = static_cast<ChannelHandle>(hctx->channelHandles[i]);
-            remoteAddrs_[i] = reinterpret_cast<GM_ADDR>(hctx->remoteBufferAddrs[i]);
+        for (uint32_t i = 0; i < udmaCtx_->rankSize; i++) {
+            channels_[i] = static_cast<ChannelHandle>(udmaCtx_->channelHandles[i]);
+            commBufferAddrs_[i] = reinterpret_cast<GM_ADDR>(udmaCtx_->commBufferAddrs[i]);
         }
 
-        uint64_t ubSize = GetUBSizeInBytes();
-        uint64_t hcommOffset = (ubSize - HCOMM_WORKSPACE_SIZE) & ~31UL;
-        auto memPtr = AscendC::Te::MakeMemPtr<AscendC::Te::Location::UB, uint8_t>(hcommOffset);
-        comm_.Init(memPtr.Get(), HCOMM_WORKSPACE_SIZE);
+        comm_.Init(commBuf_, HCOMM_WORKSPACE_SIZE);
+        syncBuf_ = commBuf_ + HCOMM_WORKSPACE_SIZE;
 
-        constexpr uint64_t EXTRA_BUF_SIZE = 32;
-        uint64_t syncOffset = (hcommOffset - EXTRA_BUF_SIZE) & ~31UL;
-        auto syncPtr_ = AscendC::Te::MakeMemPtr<AscendC::Te::Location::UB, uint8_t>(syncOffset);
-        syncBuf_ = syncPtr_.Get();
-
-        uint32_t rankSize = ctx->rankSize;
+        uint32_t rankSize = udmaCtx_->rankSize;
         uint32_t targetRankPerCore = (rankSize + useCoreNum - 1) / useCoreNum;
         uint32_t targetRankStart = curCoreId * targetRankPerCore;
 
@@ -119,7 +111,7 @@ public:
         uint32_t tileMaxByteSize = (tilingData_->splitAxisTileSize > tilingData_->splitAxisTailSize ?
             tilingData_->splitAxisTileSize : tilingData_->splitAxisTailSize) * nonSplitAxisBytes_;
         slotStride_ = rankSize * tileMaxByteSize;
-        myRankOffset_ = ctx->myRankId * tileMaxByteSize;
+        myRankOffset_ = udmaCtx_->myRankId * tileMaxByteSize;
         currentTileIdx_ = 0;
         currentTileOffset_ = 0;
         remainingChunkSize_ = chunkSize_;
@@ -145,7 +137,7 @@ public:
         }
 
         if (targetRankCnt_ > 0) {
-            const uint32_t myRankId = ctx_->myRankId;
+            const uint32_t myRankId = udmaCtx_->myRankId;
             const uint32_t targetRankStart = targetRankStart_;
             const uint32_t targetRankCnt = targetRankCnt_;
 
@@ -161,8 +153,17 @@ public:
         remainingChunkSize_ -= currentTileSize;
     }
 
-    __aicore__ inline void Wait() {
-        static_cast<Impl*>(this)->DoWait();
+    __aicore__ inline void Wait(bool waitLast=false) {
+        if (waitLast) {
+            return;
+        }
+        const uint32_t myRankId = udmaCtx_->myRankId;
+        for (uint32_t i = 0; i < targetRankCnt_; i++) {
+            uint32_t targetRankId = targetRankStart_ + i;
+            if (targetRankId != myRankId) {
+                static_cast<Impl*>(this)->DoWait(targetRankId);
+            }
+        }
     }
 
     __aicore__ inline void Finalize() {
@@ -171,4 +172,4 @@ public:
 };
 
 } // namespace AivComm
-} // namespace Dista
+} // namespace Atcoss

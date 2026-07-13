@@ -15,13 +15,11 @@
 
 #pragma once
 
-#include "kernel_operator.h"
-#include "adv_api/hcomm/hcomm.h"
 #include "collective_comm_base.h"
 #include "all_to_all/all_to_all_udma_get.h"
 #include "all_to_all/all_to_all_udma_put.h"
 
-namespace Dista {
+namespace Atcoss {
 namespace AivComm {
 
 using namespace AscendC;
@@ -49,4 +47,4 @@ template<CommCollectiveOp Op, CommMode Mode, typename T>
 using CollectiveComm = typename CollectiveCommHelper<Op, Mode, T>::type;
 
 } // namespace AivComm
-} // namespace Dista
+} // namespace Atcoss
