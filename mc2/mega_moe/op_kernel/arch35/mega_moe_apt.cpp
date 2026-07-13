@@ -41,7 +41,14 @@ __global__ __aicore__ void mega_moe(
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
     REGISTER_TILING_DEFAULT(MegaMoeTilingData);
     GET_TILING_DATA_WITH_STRUCT(MegaMoeTilingData, tilingData, tilingGM);
-#ifdef ENABLE_TENSOR_API
+#if defined(ENABLE_TENSOR_API) && \
+    defined(ORIG_DTYPE_X) && (ORIG_DTYPE_X == DT_BF16) && \
+    defined(ORIG_DTYPE_Y) && (ORIG_DTYPE_Y == DT_BF16) && \
+    defined(ORIG_DTYPE_WEIGHT1) && \
+        ((ORIG_DTYPE_WEIGHT1 == DT_FLOAT8_E5M2) || \
+         (ORIG_DTYPE_WEIGHT1 == DT_FLOAT8_E4M3FN) || \
+         (ORIG_DTYPE_WEIGHT1 == DT_FLOAT4_E2M1)) && \
+    defined(ORIG_DTYPE_WEIGHT2) && (ORIG_DTYPE_WEIGHT2 == ORIG_DTYPE_WEIGHT1)
     if constexpr (DispatchQuantMode == DISPATCH_QUANT_MODE_MXFP) {
         MegaMoe<DTYPE_X, DTYPE_Y, DTYPE_TOPK_WEIGHTS, DispatchQuantOutType> op;
         op.Init(context, x, topkIds, topkWeights, weight1, weight2, xActiveMask, weightScales1, weightScales2,

@@ -244,6 +244,12 @@ ge::graphStatus CommonChecker::CheckAxis(const FaTilingInfo &faInfo)
                                                       std::to_string(faInfo.vHeadDim).c_str(),
                                                       "The value of axis D of value can only be 64/128/256"),
                 return ge::GRAPH_FAILED);
+    OP_CHECK_IF(faInfo.qkHeadDim != faInfo.vHeadDim,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    faInfo.opName, "axis D of query/key and value",
+                    (std::to_string(faInfo.qkHeadDim) + " and " + std::to_string(faInfo.vHeadDim)).c_str(),
+                    "The value of axis D of query/key must be equal to the value of axis D of value"),
+                return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -408,8 +414,7 @@ ge::graphStatus CommonChecker::CheckAttnOutShape(const FaTilingInfo &faInfo) con
 ge::graphStatus CommonChecker::CheckShapeConsistency(const FaTilingInfo &faInfo)
 {
     SetFaShapeCompare(faInfo);
-    if (ge::GRAPH_SUCCESS != CheckQueryShape(faInfo) || ge::GRAPH_SUCCESS != CheckKVShape(faInfo) ||
-        ge::GRAPH_SUCCESS != CheckAttnOutShape(faInfo)) {
+    if (ge::GRAPH_SUCCESS != CheckQueryShape(faInfo) || ge::GRAPH_SUCCESS != CheckKVShape(faInfo)) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -427,9 +432,6 @@ ge::graphStatus CommonChecker::CheckMultiPara(const FaTilingInfo &faInfo)
     if (CheckNonQuantDataType(faInfo) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
-    if (CheckAxis(faInfo) != ge::GRAPH_SUCCESS) {
-        return ge::GRAPH_FAILED;
-    }
     if (CheckNonQuantHeadNum(faInfo) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
@@ -437,6 +439,12 @@ ge::graphStatus CommonChecker::CheckMultiPara(const FaTilingInfo &faInfo)
         return ge::GRAPH_FAILED;
     }
     if (CheckShapeConsistency(faInfo) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    if (CheckAxis(faInfo) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    if (CheckAttnOutShape(faInfo) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;

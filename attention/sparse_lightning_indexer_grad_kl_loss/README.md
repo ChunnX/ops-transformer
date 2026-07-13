@@ -314,12 +314,12 @@
         <tbody>
         <tr>
             <td>B</td>
-            <td>支持1~256</td>
+            <td>-</td>
             <td>-</td>
         </tr>
         <tr>
             <td>S1、S2</td>
-            <td>S1支持1~8K，S2支持1~512K</td>
+            <td>-</td>
             <td>S1、S2支持不等长；S1必须小于等于S2</td>
         </tr>
         <tr>
@@ -369,7 +369,7 @@
         </tbody>
     </table>
 
-    <term>Ascend 950PR/Ascend 950DT</term>：B仅支持1~128；N1额外支持48，Nidx1额外支持24，二者仅允许(48,24)组合，禁止其余数值配对。
+    <term>Ascend 950PR/Ascend 950DT</term>：N1额外支持48，Nidx1额外支持24，二者仅允许(48,24)组合，禁止其余数值配对。
 
 ## 调用说明
 

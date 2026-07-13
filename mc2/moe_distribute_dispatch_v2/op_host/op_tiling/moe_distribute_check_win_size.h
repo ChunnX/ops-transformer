@@ -30,7 +30,7 @@ constexpr uint64_t WIN_ADDR_ALIGN = 512UL;
 constexpr uint64_t FULL_MESH_DATA_ALIGN = 480UL;
 constexpr uint64_t UB_ALIGN = 32UL;
 constexpr uint64_t SCALE_EXPAND_IDX_BUFFER = 44UL; // scale32B + 3*4expandIdx
-constexpr uint32_t EP_RANK_OFFSET_STEP = 8192;
+constexpr uint32_t EP_RANK_OFFSET_STEP = 1024;
 }
 
 namespace Mc2Tiling {
@@ -111,7 +111,7 @@ inline ge::graphStatus CheckActualWinSize(const gert::TilingContext *context, co
                 " localMoeExpertNum = %u, sharedExpertNum = %lu, tokenNeedSizeDispatch = %lu,"
                 " tokenNeedSizeCombine = %lu,"
                 " k = %lu, NEEDED_HCCL_BUFFSIZE(((maxBs * tokenNeedSizeDispatch * epWorldSize * localMoeExpertNum) +"
-                " (maxBs * tokenNeedSizeCombine * (k + sharedExpertNum))) * 2) + epWorldSize * 8192 = %luMB,"
+                " (maxBs * tokenNeedSizeCombine * (k + sharedExpertNum))) * 2) + epWorldSize * 1024 = %luMB,"
                 " HCCL_BUFFSIZE=%luMB, actual CCL_BUFFSIZE=%luMB.", maxBs, h, epWorldSize,
                 winSizeData.localMoeExpertNum, sharedExpertNum, tokenNeedSizeDispatch,
                 tokenNeedSizeCombine, winSizeData.k, actualSize / MB_SIZE + 1UL,

@@ -8,7 +8,7 @@ import torch
 
 from core.data import InputSpec, flash_attn_inputs
 from core.backends.base import Backend
-from utils.compare import check_result
+from utils.compare import check_result, get_tolerance
 from utils.data import trans_bnsd_to_layout
 
 
@@ -82,6 +82,8 @@ def run_case(params: dict,
     comparators = comparators or []
     layout = params.get("input_layout", params.get("layout_q", "BNSD"))
     out_layout = params.get("layout_out", layout)
+    output_dtype = params.get("Dtype", "fp16")
+    atol, rtol = get_tolerance(output_dtype)
 
     if compare_dir and case_name:
         safe_name = case_name.replace("/", "_")
@@ -173,19 +175,21 @@ def run_case(params: dict,
             print(f"  [warn] {other_path} 不存在，退回 CPU 对比")
             print(f"  [compare] CPU vs {primary.name}")
             attn_result = check_result(f"CPU_vs_{primary.name}",
-                                       cpu_out, dev_out.float(),
-                                       except_label="CPU", comp_label=primary.name,
-                                       verbose_diff=verbose_diff)
+                                        cpu_out, dev_out.float(),
+                                        except_label="CPU", comp_label=primary.name,
+                                        verbose_diff=verbose_diff,
+                                        atol=atol, rtol=rtol)
     else:
         print(f"  [compare] CPU vs {primary.name}")
         attn_result = check_result(f"CPU_vs_{primary.name}",
-                                   cpu_out, dev_out.float(),
-                                   except_label="CPU", comp_label=primary.name,
-                                   verbose_diff=verbose_diff)
+                                    cpu_out, dev_out.float(),
+                                    except_label="CPU", comp_label=primary.name,
+                                    verbose_diff=verbose_diff,
+                                    atol=atol, rtol=rtol)
 
     lse_result = {"passed": True, "max_abs": 0.0, "mean_abs": 0.0,
                   "fail_cnt": 0, "total": 0, "fail_ratio": 0.0}
-    if params.get("return_softmax_lse", 0) and "lse" in primary_out and "lse" in golden_out:
+    if params.get("return_softmax_lse", False) and "lse" in primary_out and "lse" in golden_out:
         dev_lse = primary_out["lse"]
         if isinstance(dev_lse, torch.Tensor):
             dev_lse = dev_lse.cpu().float()
@@ -199,7 +203,8 @@ def run_case(params: dict,
                 print(f"  [compare] LSE check")
                 lse_result = check_result("LSE", cpu_lse, dev_lse,
                                           except_label="CPU_lse", comp_label=f"{primary.name}_lse",
-                                          verbose_diff=verbose_diff)
+                                          verbose_diff=verbose_diff,
+                                          atol=atol, rtol=rtol)
 
     for comp in comparators:
         comp_inputs = {k: v.to(comp.device) if isinstance(v, torch.Tensor) else v for k, v in cpu_inputs.items()}
@@ -208,7 +213,8 @@ def run_case(params: dict,
         print(f"  [compare] {primary.name} vs {comp.name}")
         _ = check_result(f"{primary.name}_vs_{comp.name}",
                          dev_out.float(), comp_cpu.float(),
-                         except_label=primary.name, comp_label=comp.name)
+                         except_label=primary.name, comp_label=comp.name,
+                         atol=atol, rtol=rtol)
 
     ret = {"attn": _to_stats(attn_result), "lse": _to_stats(lse_result)}
 
@@ -259,6 +265,8 @@ def run_case_load(case_name: str, golden_dir: str, primary: Backend,
                   viz_dir: str = "./viz_output",
                   fail_analysis: bool = False) -> dict:
     inputs, golden_data, params = load_golden_case(case_name, golden_dir)
+    output_dtype = params.get("Dtype", "fp16")
+    atol, rtol = get_tolerance(output_dtype)
 
     dev_inputs = {k: v.to(primary.device) for k, v in inputs.items()}
     npu_out_raw = primary.compute(dev_inputs, params)
@@ -274,17 +282,19 @@ def run_case_load(case_name: str, golden_dir: str, primary: Backend,
 
     attn_result = check_result("CPU_vs_NPU", cpu_out.float(), dev_raw.float(),
                                except_label="CPU", comp_label=primary.name,
-                               verbose_diff=verbose_diff)
+                               verbose_diff=verbose_diff,
+                               atol=atol, rtol=rtol)
 
     lse_result = {"passed": True, "max_abs": 0.0, "mean_abs": 0.0,
                   "fail_cnt": 0, "total": 0, "fail_ratio": 0.0}
-    if params.get("return_softmax_lse", 0) and "lse" in golden_data and "lse" in npu_out:
+    if params.get("return_softmax_lse", False) and "lse" in golden_data and "lse" in npu_out:
         dev_lse = npu_out["lse"]
         cpu_lse = golden_data["lse"]
         if isinstance(dev_lse, torch.Tensor) and isinstance(cpu_lse, torch.Tensor):
             lse_result = check_result("LSE", cpu_lse.float(), dev_lse.float(),
                                       except_label="CPU_lse", comp_label=f"{primary.name}_lse",
-                                      verbose_diff=verbose_diff)
+                                      verbose_diff=verbose_diff,
+                                      atol=atol, rtol=rtol)
 
     ret = {"attn": _to_stats(attn_result), "lse": _to_stats(lse_result)}
 

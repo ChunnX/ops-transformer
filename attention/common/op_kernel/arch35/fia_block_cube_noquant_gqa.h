@@ -78,7 +78,6 @@ public:
     static constexpr LayOutTypeEnum LAYOUT = layout;
     static constexpr bool PAGE_ATTENTION = (KvLayoutType > 0);
     static constexpr bool HAS_ROPE = hasRope;
-    static constexpr bool HAS_PREFIX = enableKVPrefix;
     static constexpr bool BMM2_TOUB = bmm2Write2Ub;
     static constexpr bool USE_DN = useDn;
     static constexpr bool SPLITD = splitD;
@@ -113,8 +112,6 @@ public:
     FaGmTensor<Q_T, Q_FORMAT> queryGm;
     FaGmTensor<KV_T, KV_FORMAT> keyGm;
     FaGmTensor<KV_T, KV_FORMAT> valueGm;
-    FaGmTensor<KV_T, KV_FORMAT> keyPrefixGm;
-    FaGmTensor<KV_T, KV_FORMAT> valuePrefixGm;
     FaGmTensor<ROPE_T, Q_FORMAT> queryRopeGm;
     FaGmTensor<ROPE_T, KV_FORMAT> keyRopeGm;
     GlobalTensor<int32_t> blockTableGm;
@@ -130,13 +127,13 @@ public:
     BufferManager<BufferType::L0B> l0bBufferManager;
     BufferManager<BufferType::L0C> l0cBufferManager;
 
-    L1QType l1QBuffers;
-    L1KvType l1KBuffers;
-    L1KvType l1VBuffers;
-
     L0AType mmL0ABuffers;
     L0BType mmL0BBuffers;
     L0CType mmL0CBuffers;
+
+    L1QType l1QBuffers;
+    L1KvType l1KBuffers;
+    L1KvType l1VBuffers;
 
     __gm__ uint8_t *keyPtr = nullptr;
     __gm__ uint8_t *valuePtr = nullptr;
@@ -161,7 +158,14 @@ public:
 
     __aicore__ inline void InitBuffers()
     {
-        if constexpr (dBaseSize > 256) {
+        if constexpr (dBaseSize <= 256) {
+            constexpr uint32_t mm1LeftSize = mBaseSize * dBaseSize * sizeof(Q_T);
+            constexpr uint32_t mm1RightSize = dBaseSize * s2BaseSize * sizeof(KV_T);
+            constexpr uint32_t mm2RightSize = (uint32_t)dVTemplateType * s2BaseSize * sizeof(KV_T);
+            l1QBuffers.Init((*l1BufferManagerPtr), mm1LeftSize);
+            l1KBuffers.Init((*l1BufferManagerPtr), mm1RightSize);
+            l1VBuffers.Init((*l1BufferManagerPtr), mm2RightSize);
+        } else {
             /* D大于256的其他dtype场景，Bmm1左矩阵不开DB + 驻留 + 复用 + L1切K
             Bmm2左矩阵3 Buffer循环，Bmm1右矩阵和Bmm2右矩阵在L1上切D轴，并开启DoubleBuffer
             唯一不同的是D=256场景下的D轴只能切分到96，其余都可以切分到128，原因是D=256场景S1Base是128
@@ -169,13 +173,6 @@ public:
             constexpr uint32_t mm1LeftSize = mBaseSize * dBaseSize * sizeof(Q_T);
             constexpr uint32_t mm1RightSize = s2BaseSize * l1BaseD * sizeof(KV_T);
             constexpr uint32_t mm2RightSize = s2BaseSize * l1BaseD * sizeof(KV_T);
-            l1QBuffers.Init((*l1BufferManagerPtr), mm1LeftSize);
-            l1KBuffers.Init((*l1BufferManagerPtr), mm1RightSize);
-            l1VBuffers.Init((*l1BufferManagerPtr), mm2RightSize);
-        } else {
-            constexpr uint32_t mm1LeftSize = mBaseSize * dBaseSize * sizeof(Q_T);
-            constexpr uint32_t mm1RightSize = dBaseSize * s2BaseSize * sizeof(KV_T);
-            constexpr uint32_t mm2RightSize = (uint32_t)dVTemplateType * s2BaseSize * sizeof(KV_T);
             l1QBuffers.Init((*l1BufferManagerPtr), mm1LeftSize);
             l1KBuffers.Init((*l1BufferManagerPtr), mm1RightSize);
             l1VBuffers.Init((*l1BufferManagerPtr), mm2RightSize);
@@ -189,8 +186,8 @@ public:
         mmL0ABuffers.Init(l0aBufferManager, 32 * 1024);
         mmL0BBuffers.Init(l0bBufferManager, 32 * 1024);
 
-        if constexpr (mBaseSize * s2BaseSize * FLOAT_BYTES <= (L0C_SIZE * KB_TO_BYTES) / NUM_4 &&
-                      mBaseSize * dVBaseSize * FLOAT_BYTES <= (L0C_SIZE * KB_TO_BYTES) / NUM_4) {
+        if constexpr (mBaseSize * dVBaseSize * FLOAT_BYTES <= (L0C_SIZE * KB_TO_BYTES) / NUM_4 &&
+                      mBaseSize * s2BaseSize * FLOAT_BYTES <= (L0C_SIZE * KB_TO_BYTES) / NUM_4) {
             mmL0CBuffers.Init(l0cBufferManager, (L0C_SIZE / NUM_4) * KB_TO_BYTES);
         } else {
             mmL0CBuffers.Init(l0cBufferManager, (L0C_SIZE / NUM_2) * KB_TO_BYTES);
@@ -198,10 +195,10 @@ public:
     }
 
     __aicore__ inline void InitCubeInput(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
-                                         __gm__ uint8_t *blockTable, __gm__ uint8_t *queryRope, __gm__ uint8_t *keyRope,
-                                         __gm__ uint8_t *actualSeqQlenAddr, __gm__ uint8_t *actualSeqKvlenAddr,
-                                         __gm__ uint8_t *keySharedPrefix, __gm__ uint8_t *valueSharedPrefix,
-                                         __gm__ uint8_t *actualSharedPrefixLen)
+                                         __gm__ uint8_t *blockTable, __gm__ uint8_t *queryRope,
+                                         __gm__ uint8_t *keyRope, __gm__ uint8_t *actualSeqQlenAddr,
+                                         __gm__ uint8_t *actualSeqKvlenAddr, __gm__ uint8_t *keySharedPrefix,
+                                         __gm__ uint8_t *valueSharedPrefix, __gm__ uint8_t *actualSharedPrefixLen)
     {
         if (constInfo.actualSeqLenSize != 0) {
             actualSeqLengthsGmQ.SetGlobalBuffer((__gm__ uint64_t *)actualSeqQlenAddr, constInfo.actualSeqLenSize);
@@ -218,34 +215,21 @@ public:
 
         keyPtr = key;
         valuePtr = value;
-        if (constInfo.isKvContinuous) {
-            ListTensorDesc keyListTensorDesc((__gm__ void *)(this->keyPtr));
-            __gm__ uint8_t *key_ = (__gm__ uint8_t *)keyListTensorDesc.GetDataPtr<__gm__ uint8_t>(0);
-            ListTensorDesc valueListTensorDesc((__gm__ void *)(this->valuePtr));
-            __gm__ uint8_t *value_ = (__gm__ uint8_t *)valueListTensorDesc.GetDataPtr<__gm__ uint8_t>(0);
+        ListTensorDesc keyListTensorDesc((__gm__ void *)(this->keyPtr));
+        __gm__ uint8_t *key_ = (__gm__ uint8_t *)keyListTensorDesc.GetDataPtr<__gm__ uint8_t>(0);
+        ListTensorDesc valueListTensorDesc((__gm__ void *)(this->valuePtr));
+        __gm__ uint8_t *value_ = (__gm__ uint8_t *)valueListTensorDesc.GetDataPtr<__gm__ uint8_t>(0);
 
-            InitKVBuffer(constInfo.bSize, constInfo.s2Size, actualSeqLengthsGm, constInfo.actualSeqLenKVSize,
-                         constInfo.n2Size, constInfo.blockSize, constInfo.dSize, keyGm, key_);
-            InitKVBuffer(constInfo.bSize, constInfo.s2Size, actualSeqLengthsGm, constInfo.actualSeqLenKVSize,
-                         constInfo.n2Size, constInfo.blockSize, constInfo.dSizeV, valueGm, value_);
-        }
+        InitKVBuffer(constInfo.bSize, constInfo.s2Size, actualSeqLengthsGm, constInfo.actualSeqLenKVSize,
+                        constInfo.n2Size, constInfo.blockSize, constInfo.dSize, keyGm, key_);
+        InitKVBuffer(constInfo.bSize, constInfo.s2Size, actualSeqLengthsGm, constInfo.actualSeqLenKVSize,
+                        constInfo.n2Size, constInfo.blockSize, constInfo.dSizeV, valueGm, value_);
 
         if constexpr (hasRope) {
             InitQBuffer(constInfo.bSize, constInfo.n2Size, constInfo.gSize, constInfo.s1Size, constInfo.dSizeRope,
                         actualSeqLengthsGmQ, constInfo.actualSeqLenSize, queryRopeGm, queryRope);
             InitKVBuffer(constInfo.bSize, constInfo.s2Size, actualSeqLengthsGm, constInfo.actualSeqLenKVSize,
                          constInfo.n2Size, constInfo.blockSize, constInfo.dSizeRope, keyRopeGm, keyRope);
-        }
-
-
-        if constexpr (HAS_PREFIX) {
-            static_assert(!PAGE_ATTENTION);
-            static_assert(GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_BNSD);
-
-            keyPrefixGm.gmTensor.SetGlobalBuffer((__gm__ KV_T *)keySharedPrefix);
-            valuePrefixGm.gmTensor.SetGlobalBuffer((__gm__ KV_T *)valueSharedPrefix);
-            keyPrefixGm.offsetCalculator.Init(1, constInfo.n2Size, constInfo.kvPrefixSize, constInfo.dSize);
-            valuePrefixGm.offsetCalculator.Init(1, constInfo.n2Size, constInfo.kvPrefixSize, constInfo.dSizeV);
         }
     }
 
@@ -257,8 +241,7 @@ public:
         qGmTensor.gmTensor.SetGlobalBuffer((__gm__ Q_T *)gm);
         if constexpr (GmLayoutParams<Q_FORMAT>::CATEGORY == FormatCategory::GM_Q_OUT_BNGSD) {
             qGmTensor.offsetCalculator.Init(batchSize, n2Size, gSize, qSeqSize, headDim, actualSeqLengthsGmQ,
-                                            actualLenQDims, constInfo.isQHasLeftPadding,
-                                            constInfo.queryRightPaddingSize);
+                                            actualLenQDims);
         } else if constexpr (GmLayoutParams<Q_FORMAT>::CATEGORY == FormatCategory::GM_Q_OUT_TND) {
             qGmTensor.offsetCalculator.Init(n2Size, gSize, headDim, actualSeqLengthsGmQ, actualLenQDims);
         }
@@ -280,8 +263,7 @@ public:
             kvGmTensor.offsetCalculator.Init(n2Size, kvCacheBlockSize, d1, d0, blockTableGm,
                                              constInfo.maxBlockNumPerBatch);
         } else if constexpr (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_BNSD) {
-            kvGmTensor.offsetCalculator.Init(batchSize, n2Size, kvSeqSize, headDim, actualSeqLengthsGm, actualLenDims,
-                                             constInfo.isKVHasLeftPadding, constInfo.kvRightPaddingSize);
+            kvGmTensor.offsetCalculator.Init(batchSize, n2Size, kvSeqSize, headDim, actualSeqLengthsGm, actualLenDims);
         } else if constexpr (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_TND) {
             kvGmTensor.offsetCalculator.Init(n2Size, headDim, actualSeqLengthsGm, actualLenDims);
         }
@@ -378,7 +360,7 @@ public:
         if (nopeDealSize > 0) {
             FaL1Tensor<KV_T, L1Format::NZ> l1Tensor{.tensor = dstTensor, .rowCount = dstStride};
 
-            GmKvCoord gmCoord{.bIdx = constInfo.isKvContinuous ? runInfo.bIdx : 0,
+            GmKvCoord gmCoord{.bIdx = runInfo.bIdx,
                               .n2Idx = runInfo.n2Idx,
                               .s2Idx = runInfo.s2Idx,
                               .dIdx = dOffset,
@@ -393,7 +375,7 @@ public:
                 FaL1Tensor<KV_T, L1Format::NZ> l1Tensor = {.tensor = dstTensor[offset],
                                                            .rowCount = AttentionCommon::Align(runInfo.actSingleLoopS2Size, 16U)};
 
-                GmKvCoord gmCoord = {.bIdx = constInfo.isKvContinuous ? runInfo.bIdx : 0,
+                GmKvCoord gmCoord = {.bIdx = runInfo.bIdx,
                                      .n2Idx = runInfo.n2Idx,
                                      .s2Idx = runInfo.s2Idx,
                                      .dIdx = dOffset + nopeDealSize - static_cast<uint32_t>(constInfo.dSize),
@@ -411,7 +393,7 @@ public:
         FaL1Tensor<KV_T, L1Format::NZ> l1Tensor{.tensor = dstTensor,
                                                 .rowCount = AttentionCommon::Align(runInfo.actSingleLoopS2Size, 16U)};
 
-        GmKvCoord gmCoord{.bIdx = constInfo.isKvContinuous ? runInfo.bIdx : 0,
+        GmKvCoord gmCoord{.bIdx = runInfo.bIdx,
                           .n2Idx = runInfo.n2Idx,
                           .s2Idx = runInfo.s2Idx,
                           .dIdx = dOffset,
@@ -435,105 +417,8 @@ public:
         CopyValueSlice(dstTensor, 0, constInfo.dSizeV, runInfo);
     }
 
-    // prefix:  no rope  no page-attention
-    // copy KV & prefix with full s2 and split D
-    template <bool VALUE = false>
-    __aicore__ inline void CopyKVSliceWithPrefix(const LocalTensor<KV_T> &dstTensor, uint32_t dOffset,
-                                                 uint32_t dRealSize, RunInfoX &runInfo)
-    {
-        FaL1Tensor<KV_T, L1Format::NZ> l1Tensor{.tensor = dstTensor,
-                                                .rowCount = AttentionCommon::Align(runInfo.actSingleLoopS2Size, 16U)};
-
-        uint32_t s2DealSize = runInfo.actSingleLoopS2Size;
-        uint32_t s2StartIdx = runInfo.s2Idx;
-        uint32_t s2EndIdx = runInfo.s2Idx + s2DealSize;
-
-        uint32_t prefixDealSize =
-            constInfo.actualKVPrefixSize > s2StartIdx ? (constInfo.actualKVPrefixSize - s2StartIdx) : 0U;
-        prefixDealSize = s2DealSize < prefixDealSize ? s2DealSize : prefixDealSize;
-
-        uint32_t normalDealSize =
-            s2EndIdx > constInfo.actualKVPrefixSize ? (s2EndIdx - constInfo.actualKVPrefixSize) : 0U;
-        normalDealSize = s2DealSize < normalDealSize ? s2DealSize : normalDealSize;
-
-        // prefix
-        if (prefixDealSize > 0) {
-            GmKvCoord gmCoord{.bIdx = 0U,
-                              .n2Idx = runInfo.n2Idx,
-                              .s2Idx = s2StartIdx,
-                              .dIdx = dOffset,
-                              .s2DealSize = prefixDealSize,
-                              .dDealSize = dRealSize};
-            copyKvGmToL1(l1Tensor, VALUE ? valuePrefixGm : keyPrefixGm, gmCoord);
-        }
-
-        // normal
-        if (normalDealSize > 0) {
-            GmKvCoord gmCoord{.bIdx = constInfo.isKvContinuous ? runInfo.bIdx : 0U,
-                              .n2Idx = runInfo.n2Idx,
-                              .s2Idx = (uint32_t)(constInfo.actualKVPrefixSize > s2StartIdx ?
-                                                      0U :
-                                                      (s2StartIdx - constInfo.actualKVPrefixSize)),
-                              .dIdx = dOffset,
-                              .s2DealSize = normalDealSize,
-                              .dDealSize = dRealSize};
-            l1Tensor.tensor = dstTensor[BUFFER_SIZE_BYTE_32B / sizeof(KV_T) * prefixDealSize];
-            copyKvGmToL1(l1Tensor, VALUE ? valueGm : keyGm, gmCoord);
-        }
-    }
-
-    __aicore__ inline void CopyKeySliceWithPrefix(const LocalTensor<KV_T> &dstTensor, uint32_t dOffset,
-                                                  uint32_t dRealSize, RunInfoX &runInfo)
-    {
-        CopyKVSliceWithPrefix<true>(dstTensor, dOffset, dRealSize, runInfo);
-    }
-
-    __aicore__ inline void CopyValueSliceWithPrefix(const LocalTensor<KV_T> &dstTensor, uint32_t dOffset,
-                                                    uint32_t dRealSize, RunInfoX &runInfo)
-    {
-        CopyKVSliceWithPrefix<false>(dstTensor, dOffset, dRealSize, runInfo);
-    }
-
-    // 全量拷贝
-    __aicore__ inline void CopyKeyTileWithPrefix(const LocalTensor<KV_T> &dstTensor, RunInfoX &runInfo)
-    {
-        CopyKVSliceWithPrefix<true>(dstTensor, 0, constInfo.dSize, runInfo);
-    }
-
-    __aicore__ inline void CopyValueTileWithPrefix(const LocalTensor<KV_T> &dstTensor, RunInfoX &runInfo)
-    {
-        CopyKVSliceWithPrefix<false>(dstTensor, 0, constInfo.dSizeV, runInfo);
-    }
-
-    __aicore__ inline void UpdateKey(uint32_t bIdx)
-    {
-        ListTensorDesc keyListTensorDesc((__gm__ void *)(this->keyPtr));
-        __gm__ uint8_t *key_ = (__gm__ uint8_t *)keyListTensorDesc.GetDataPtr<__gm__ uint8_t>(bIdx);
-
-        uint64_t s2Size = SeqLenFromTensorList<LAYOUT>(this->keyPtr, bIdx);
-        keyGm.gmTensor.SetGlobalBuffer((__gm__ KV_T *)key_);
-        keyGm.offsetCalculator.Init(0, constInfo.n2Size, s2Size, constInfo.dSize, actualSeqLengthsGm,
-                                    constInfo.actualSeqLenKVSize);
-    }
-
-    __aicore__ inline void UpdateValue(uint32_t bIdx)
-    {
-        ListTensorDesc valueListTensorDesc((__gm__ void *)(this->valuePtr));
-        __gm__ uint8_t *value_ = (__gm__ uint8_t *)valueListTensorDesc.GetDataPtr<__gm__ uint8_t>(bIdx);
-        uint64_t s2Size = SeqLenFromTensorList<LAYOUT>(valuePtr, bIdx);
-        valueGm.gmTensor.SetGlobalBuffer((__gm__ KV_T *)value_);
-        valueGm.offsetCalculator.Init(0, constInfo.n2Size, s2Size, constInfo.dSize, actualSeqLengthsGm,
-                                      constInfo.actualSeqLenKVSize);
-    }
-
     __aicore__ inline void IterateBmm1(MM1_DBUF_T &outputBuf, RunInfoX &runInfo)
     {
-        if constexpr (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_BNSD) {
-            if (runInfo.isChangeBatch) {
-                UpdateKey(runInfo.bIdx);
-            }
-        }
-
         if constexpr (dBaseSize > 256) {
             IterateBmm1NdL1SplitK(outputBuf, runInfo);
             return;
@@ -578,20 +463,14 @@ public:
             mm1A.Wait<HardEvent::MTE1_MTE2>();
             LocalTensor<Q_T> mm1ATensor = mm1A.GetTensor<Q_T>();
             CopyQueryTile(mm1ATensor, runInfo);
-            mm1A.Set<HardEvent::MTE2_MTE1>();
         } else {
             mm1A = l1QBuffers.GetPre();
-            mm1A.Set<HardEvent::MTE2_MTE1>();
         }
-
+        mm1A.Set<HardEvent::MTE2_MTE1>();
         Buffer<BufferType::L1> mm1B = l1KBuffers.Get();
         mm1B.Wait<HardEvent::MTE1_MTE2>();
         LocalTensor<KV_T> mm1BTensor = mm1B.GetTensor<KV_T>();
-        if constexpr (HAS_PREFIX) {
-            CopyKeyTileWithPrefix(mm1BTensor, runInfo);
-        } else {
-            CopyKeyTile(mm1BTensor, runInfo);
-        }
+        CopyKeyTile(mm1BTensor, runInfo);
         mm1B.Set<HardEvent::MTE2_MTE1>();
         mm1A.Wait<HardEvent::MTE2_MTE1>();
         mm1B.Wait<HardEvent::MTE2_MTE1>();
@@ -599,22 +478,22 @@ public:
         Buffer<BufferType::L0C> mm1ResL0C = mmL0CBuffers.Get();
         mm1ResL0C.Wait<HardEvent::FIX_M>();
 
-        MMParam param = MakeMMParam((uint32_t)runInfo.actMSize, (uint32_t)runInfo.actSingleLoopS2Size,
-                                    (uint32_t)(constInfo.dSize + constInfo.dSizeRope), false, true);
+        MMParam mmParam = MakeMMParam((uint32_t)runInfo.actMSize, (uint32_t)runInfo.actSingleLoopS2Size,
+            (uint32_t)(constInfo.dSize + constInfo.dSizeRope), false, true);
         if constexpr (dBaseSize > 128) {
             if constexpr (s2BaseSize == 256) {
                 MatmulN<Q_T, KV_T, T, 64, 128, 256, ABLayout::MK, ABLayout::KN>(
                     mm1A.GetTensor<Q_T>(), mm1B.GetTensor<KV_T>(), mmL0ABuffers, mmL0BBuffers, mm1ResL0C.GetTensor<T>(),
-                    param);
+                    mmParam);
             } else {
                 MatmulK<Q_T, KV_T, T, 128, 128, 128, ABLayout::MK, ABLayout::KN>(
-                    mm1A.GetTensor<Q_T>(), mm1B.GetTensor<KV_T>(), mmL0ABuffers, mmL0BBuffers, mm1ResL0C.GetTensor<T>(),
-                    param);
+                    mm1A.GetTensor<Q_T>(), mm1B.GetTensor<KV_T>(), mmL0ABuffers, mmL0BBuffers,
+                    mm1ResL0C.GetTensor<T>(), mmParam);
             }
         } else {
             MatmulBase<Q_T, KV_T, T, 128, 128, dBaseSize, ABLayout::MK, ABLayout::KN>(
-                mm1A.GetTensor<Q_T>(), mm1B.GetTensor<KV_T>(), mmL0ABuffers, mmL0BBuffers, mm1ResL0C.GetTensor<T>(),
-                param);
+                mm1A.GetTensor<Q_T>(), mm1B.GetTensor<KV_T>(), mmL0ABuffers, mmL0BBuffers,
+                mm1ResL0C.GetTensor<T>(), mmParam);
         }
 
         if (unlikely(runInfo.isLastS2Loop)) {
@@ -641,7 +520,7 @@ public:
         Buffer<BufferType::L0C> mm1ResL0C = mmL0CBuffers.Get();
         mm1ResL0C.Wait<HardEvent::FIX_M>();
 
-        uint32_t dstNzC0Stride = ((runInfo.actMSize + 15) >> 4 << 4);
+        uint32_t dstNzC0Stride = (runInfo.actMSize + 15) >> 4 << 4;
         uint64_t l1BaseKOffset = baseK * dstNzC0Stride;
 
         Buffer<BufferType::L1> mm1A = l1QBuffers.Get();
@@ -651,10 +530,10 @@ public:
 
         uint32_t realK = baseK;
         for (uint32_t k = 0; k < kLoops; k++) {
-            Buffer<BufferType::L1> mm1B; // 左矩阵复用, 但是每次只加载realK列
             if (k == kLoops - 1) {
                 realK = constInfo.dSize - k * baseK;
             }
+            Buffer<BufferType::L1> mm1B; // 左矩阵复用, 但是每次只加载realK列
             if (unlikely(runInfo.isFirstS2Loop)) { // sOuter循环第一个基本快：搬运0
                 LocalTensor<Q_T> mm1ATensor = mm1A.GetTensor<Q_T>();
                 CopyQuerySlice(mm1ATensor[k * l1BaseKOffset], k * baseK, realK, runInfo);
@@ -668,11 +547,7 @@ public:
             mm1B = l1KBuffers.Get();
             mm1B.Wait<HardEvent::MTE1_MTE2>();
             LocalTensor<KV_T> mm1BTensor = mm1B.GetTensor<KV_T>();
-            if constexpr (HAS_PREFIX) {
-                CopyKeySliceWithPrefix(mm1BTensor, k * baseK, realK, runInfo);
-            } else {
-                CopyKeySlice(mm1BTensor, k * baseK, realK, runInfo);
-            }
+            CopyKeySlice(mm1BTensor, k * baseK, realK, runInfo);
             mm1B.Set<HardEvent::MTE2_MTE1>();  // 通知
             mm1A.Wait<HardEvent::MTE2_MTE1>(); // 等待L1A
             mm1B.Wait<HardEvent::MTE2_MTE1>(); // 等待L1B
@@ -706,8 +581,8 @@ public:
         if (unlikely(runInfo.isFirstS2Loop)) {
             mm1B = l1QBuffers.Get();
             mm1B.Wait<HardEvent::MTE1_MTE2>();
-            LocalTensor<Q_T> mm1BTensor = mm1B.GetTensor<Q_T>();
-            CopyQueryTile(mm1BTensor, runInfo);
+            LocalTensor<Q_T> mm1BL1Tensor = mm1B.GetTensor<Q_T>();
+            CopyQueryTile(mm1BL1Tensor, runInfo);
             mm1B.Set<HardEvent::MTE2_MTE1>();
         } else {
             mm1B = l1QBuffers.GetPre();
@@ -716,9 +591,9 @@ public:
 
         Buffer<BufferType::L1> mm1A = l1KBuffers.Get();
         mm1A.Wait<HardEvent::MTE1_MTE2>();
-        LocalTensor<KV_T> mm1ATensor = mm1A.GetTensor<KV_T>();
+        LocalTensor<KV_T> mm1AL1Tensor = mm1A.GetTensor<KV_T>();
 
-        CopyKeyTile(mm1ATensor, runInfo);
+        CopyKeyTile(mm1AL1Tensor, runInfo);
 
         mm1A.Set<HardEvent::MTE2_MTE1>();
 
@@ -769,8 +644,8 @@ public:
         if (unlikely(runInfo.isFirstS2Loop)) {
             mm1B = l1QBuffers.Get();
             mm1B.Wait<HardEvent::MTE1_MTE2>();
-            LocalTensor<Q_T> mm1BTensor = mm1B.GetTensor<Q_T>();
-            CopyQueryTile(mm1BTensor, runInfo);
+            LocalTensor<Q_T> mm1BL1 = mm1B.GetTensor<Q_T>();
+            CopyQueryTile(mm1BL1, runInfo);
             mm1B.Set<HardEvent::MTE2_MTE1>();
         } else {
             mm1B = l1QBuffers.GetPre();
@@ -779,8 +654,8 @@ public:
 
         Buffer<BufferType::L1> mm1A = l1KBuffers.Get();
         mm1A.Wait<HardEvent::MTE1_MTE2>();
-        LocalTensor<KV_T> mm1ATensor = mm1A.GetTensor<KV_T>();
-        CopyKeyTile(mm1ATensor, runInfo);
+        LocalTensor<KV_T> mm1AL1 = mm1A.GetTensor<KV_T>();
+        CopyKeyTile(mm1AL1, runInfo);
 
         mm1A.Set<HardEvent::MTE2_MTE1>();
         mm1A.Wait<HardEvent::MTE2_MTE1>();
@@ -811,12 +686,6 @@ public:
 
     __aicore__ inline void IterateBmm2(mm2ResPos &outputBuf, MM2_ABUF_POLICY_T &inputBuf, RunInfoX &runInfo)
     {
-        if constexpr (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_BNSD) {
-            if (runInfo.isChangeBatch) {
-                UpdateValue(runInfo.bIdx);
-            }
-        }
-
         if constexpr ((uint32_t)dVTemplateType > 256 || (uint32_t)dTemplateType > 256) {
             IterateBmm2L1SplitN(outputBuf, inputBuf, runInfo);
         } else {
@@ -843,11 +712,7 @@ public:
             Buffer<BufferType::L1> mm2B = l1VBuffers.Get();
             mm2B.Wait<HardEvent::MTE1_MTE2>();
             LocalTensor<KV_T> mm2BTensor = mm2B.GetTensor<KV_T>();
-            if constexpr (HAS_PREFIX) {
-                CopyValueSliceWithPrefix(mm2BTensor, n * baseN, realN, runInfo);
-            } else {
-                CopyValueSlice(mm2BTensor, n * baseN, realN, runInfo);
-            }
+            CopyValueSlice(mm2BTensor, n * baseN, realN, runInfo);
             mm2B.Set<HardEvent::MTE2_MTE1>();
 
             Buffer<BufferType::L0C> mm2ResL0C = mmL0CBuffers.Get();
@@ -872,8 +737,8 @@ public:
     }
 
     template <typename DST_TENSOR_T>
-    __aicore__ inline void FixpipeMm2PartialN(const DST_TENSOR_T &dstTensor, const LocalTensor<T> &l0C, uint32_t realN,
-                                              RunInfoX &runInfo)
+    __aicore__ inline void FixpipeMm2PartialN(const DST_TENSOR_T &dstTensor, const LocalTensor<T> &l0C,
+                                              uint32_t realN, RunInfoX &runInfo)
     {
         FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams; // L0C→UB;FixpipeParamsM300:L0C→UB
         if constexpr (bmm2Write2Ub) {
@@ -882,12 +747,12 @@ public:
             fixpipeParams.nSize = realN;
         }
 
-        if constexpr (!useDn) {
-            fixpipeParams.mSize = (runInfo.actMSize + 1) >> 1 << 1;
-            fixpipeParams.srcStride = (fixpipeParams.mSize + 15) >> 4 << 4;
-        } else {
+        if constexpr (useDn) {
             fixpipeParams.mSize = mBaseSize;
             fixpipeParams.srcStride = (mBaseSize + 15) >> 4 << 4;
+        } else {
+            fixpipeParams.mSize = (runInfo.actMSize + 1) >> 1 << 1;
+            fixpipeParams.srcStride = (fixpipeParams.mSize + 15) >> 4 << 4;
         }
 
         if constexpr (bmm2Write2Ub || splitD) {
@@ -909,11 +774,7 @@ public:
         mm2A.WaitCrossCore();
         mm2B.Wait<HardEvent::MTE1_MTE2>(); // 占用L1B
         LocalTensor<KV_T> mm2BTensor = mm2B.GetTensor<KV_T>();
-        if constexpr (HAS_PREFIX) {
-            CopyValueTileWithPrefix(mm2BTensor, runInfo);
-        } else {
-            CopyValueTile(mm2BTensor, runInfo);
-        }
+        CopyValueTile(mm2BTensor, runInfo);
         mm2B.Set<HardEvent::MTE2_MTE1>(); // 通知
 
         Buffer<BufferType::L0C> mm2ResL0C = mmL0CBuffers.Get();
@@ -968,7 +829,6 @@ public:
     static constexpr LayOutTypeEnum LAYOUT = layout;
     static constexpr bool PAGE_ATTENTION = (KvLayoutType > 0);
     static constexpr bool HAS_ROPE = hasRope;
-    static constexpr bool HAS_PREFIX = enableKVPrefix;
     static constexpr bool BMM2_TOUB = bmm2Write2Ub;
     static constexpr bool USE_DN = useDn;
 
