@@ -405,18 +405,17 @@ public:
     __aicore__ inline void DeQuantProcessWithoutExpertScale(LocalTensor<XType>& inLocal,
         LocalTensor<XType>& outLocal, LocalTensor<float>& sumTensor, LocalTensor<float>& sumFinalTensor)
     {
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
         if constexpr (QuantMode == INT8_COMM_QUANT) {
-#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
             Int8DequantProcessA5<false>(inLocal, sumFinalTensor, 0.0f);
-#else
-            Int8DequantProcess(inLocal, outLocal);
-#endif
-        }
-#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
-        else if constexpr (QuantMode == MXFP8_E5M2_COMM_QUANT) {
+        } else if constexpr (QuantMode == MXFP8_E5M2_COMM_QUANT) {
             DeQuantMxFp8<fp8_e5m2_t, false>(inLocal, sumTensor, sumFinalTensor, 0.0f);
         } else if constexpr (QuantMode == MXFP8_E4M3_COMM_QUANT) {
             DeQuantMxFp8<fp8_e4m3fn_t, false>(inLocal, sumTensor, sumFinalTensor, 0.0f);
+        }
+#else
+        if constexpr (QuantMode == INT8_COMM_QUANT) {
+            Int8DequantProcess(inLocal, outLocal);
         }
 #endif
     }
