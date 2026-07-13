@@ -14,8 +14,7 @@
 #include "infer_datatype_context_faker.h"
 #include "base/registry/op_impl_space_registry_v2.h"
 
-class MatmulReduceScatterInfershape : public testing::Test
-{
+class MatmulReduceScatterInfershape : public testing::Test {
 protected:
     static void SetUpTestCase()
     {
@@ -35,25 +34,15 @@ TEST_F(MatmulReduceScatterInfershape, Basic)
 
     gert::InfershapeContextPara infershapeContextPara(
         "MatmulReduceScatter",
-        {
-            {x1StorageShape, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {x2StorageShape, ge::DT_FLOAT16, ge::FORMAT_ND}
-        },
-        {
-            {{}, ge::DT_FLOAT16, ge::FORMAT_ND}
-        },
-        {
-            {"group", Ops::Transformer::AnyValue::CreateFrom<std::string>("hcclCom")},
-            {"reduce_op", Ops::Transformer::AnyValue::CreateFrom<std::string>("sum")},
-            {"is_trans_a", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
-            {"is_trans_b", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
-            {"comm_turn", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"rank_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)}
-        }
-    );
-    Mc2Hcom::MockValues hcomTopologyMockValues {
-        {"rankNum", 8}
-    };
+        {{x1StorageShape, ge::DT_FLOAT16, ge::FORMAT_ND}, {x2StorageShape, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {{{}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {{"group", Ops::Transformer::AnyValue::CreateFrom<std::string>("hcclCom")},
+         {"reduce_op", Ops::Transformer::AnyValue::CreateFrom<std::string>("sum")},
+         {"is_trans_a", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+         {"is_trans_b", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+         {"comm_turn", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+         {"rank_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)}});
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
 
     std::vector<std::vector<int64_t>> expectOutputShape = {{1024, 12288}};
     Mc2ExecuteTestCase(infershapeContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectOutputShape);
@@ -66,25 +55,15 @@ TEST_F(MatmulReduceScatterInfershape, EmptyTensorTest)
 
     gert::InfershapeContextPara infershapeContextPara(
         "MatmulReduceScatter",
-        {
-            {x1StorageShape, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {x2StorageShape, ge::DT_FLOAT16, ge::FORMAT_ND}
-        },
-        {
-            {{}, ge::DT_FLOAT16, ge::FORMAT_ND}
-        },
-        {
-            {"group", Ops::Transformer::AnyValue::CreateFrom<std::string>("hcclCom")},
-            {"reduce_op", Ops::Transformer::AnyValue::CreateFrom<std::string>("sum")},
-            {"is_trans_a", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
-            {"is_trans_b", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
-            {"comm_turn", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"rank_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)}
-        }
-    );
-    Mc2Hcom::MockValues hcomTopologyMockValues {
-        {"rankNum", 8}
-    };
+        {{x1StorageShape, ge::DT_FLOAT16, ge::FORMAT_ND}, {x2StorageShape, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {{{}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {{"group", Ops::Transformer::AnyValue::CreateFrom<std::string>("hcclCom")},
+         {"reduce_op", Ops::Transformer::AnyValue::CreateFrom<std::string>("sum")},
+         {"is_trans_a", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+         {"is_trans_b", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+         {"comm_turn", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+         {"rank_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)}});
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
 
     Mc2ExecuteTestCase(infershapeContextPara, hcomTopologyMockValues);
 }

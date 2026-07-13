@@ -431,7 +431,7 @@ aclnnStatus aclnnQuantMatmulAllReduceV5(
     </table>
 
 - <term>Ascend 950PR/Ascend 950DT</term>：
-    
+
     int8输入时，支持pertoken-perchannel量化 && pertensor-perchannel量化
     <table>
     <thead>

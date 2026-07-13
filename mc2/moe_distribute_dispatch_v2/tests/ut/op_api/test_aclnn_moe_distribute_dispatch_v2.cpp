@@ -69,13 +69,12 @@ TEST_F(L2AclnnMoeDistributeDispatchV2950Test, TestGetWorkspaceSize950NonCcu)
     TensorDesc tpRecvCounts = TensorDesc({2}, ACL_INT32, ACL_FORMAT_ND);
     TensorDesc expandScales = TensorDesc({8}, ACL_FLOAT, ACL_FORMAT_ND);
 
-    auto ut = OP_API_UT(aclnnMoeDistributeDispatchV2, INPUT(x, expertIds, scales, xActiveMask, expertScales,
-                                                            "test_moe_distribute_dispatch_ep", epWorldSize, epRankId,
-                                                            moeExpertNum, "test_moe_distribute_dispatch_tp", tpWorldSize,
-                                                            tpRankId, expertShardType, sharedExpertNum, shareExpertRankNum,
-                                                            quantMode, globalBs, expertTokenNumsType, "fullmesh_v1"),
-                        OUTPUT(expandX, dynamicScales, expandIdx, expertTokensNums, epRecvCounts, tpRecvCounts,
-                               expandScales));
+    auto ut = OP_API_UT(
+        aclnnMoeDistributeDispatchV2,
+        INPUT(x, expertIds, scales, xActiveMask, expertScales, "test_moe_distribute_dispatch_ep", epWorldSize, epRankId,
+              moeExpertNum, "test_moe_distribute_dispatch_tp", tpWorldSize, tpRankId, expertShardType, sharedExpertNum,
+              shareExpertRankNum, quantMode, globalBs, expertTokenNumsType, "fullmesh_v1"),
+        OUTPUT(expandX, dynamicScales, expandIdx, expertTokensNums, epRecvCounts, tpRecvCounts, expandScales));
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
@@ -110,13 +109,12 @@ TEST_F(L2AclnnMoeDistributeDispatchV2950Test, TestGetWorkspaceSize950Ccu)
     TensorDesc tpRecvCounts = TensorDesc({2}, ACL_INT32, ACL_FORMAT_ND);
     TensorDesc expandScales = TensorDesc({8}, ACL_FLOAT, ACL_FORMAT_ND);
 
-    auto ut = OP_API_UT(aclnnMoeDistributeDispatchV2, INPUT(x, expertIds, scales, xActiveMask, expertScales,
-                                                            "test_moe_distribute_dispatch_ep", epWorldSize, epRankId,
-                                                            moeExpertNum, "test_moe_distribute_dispatch_tp", tpWorldSize,
-                                                            tpRankId, expertShardType, sharedExpertNum, shareExpertRankNum,
-                                                            quantMode, globalBs, expertTokenNumsType, "ccu"),
-                        OUTPUT(expandX, dynamicScales, expandIdx, expertTokensNums, epRecvCounts, tpRecvCounts,
-                               expandScales));
+    auto ut = OP_API_UT(
+        aclnnMoeDistributeDispatchV2,
+        INPUT(x, expertIds, scales, xActiveMask, expertScales, "test_moe_distribute_dispatch_ep", epWorldSize, epRankId,
+              moeExpertNum, "test_moe_distribute_dispatch_tp", tpWorldSize, tpRankId, expertShardType, sharedExpertNum,
+              shareExpertRankNum, quantMode, globalBs, expertTokenNumsType, "ccu"),
+        OUTPUT(expandX, dynamicScales, expandIdx, expertTokensNums, epRecvCounts, tpRecvCounts, expandScales));
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
@@ -127,7 +125,7 @@ TEST_F(L2AclnnMoeDistributeDispatchV2950Test, TestExecuteEntry950)
 {
     aclnnStatus st = aclnnMoeDistributeDispatchV2(nullptr, 0U, nullptr, nullptr);
     EXPECT_THAT(st, testing::AnyOf(testing::Eq(ACLNN_SUCCESS), testing::Eq(ACLNN_ERR_PARAM_NULLPTR),
-                                    testing::Eq(ACLNN_ERR_PARAM_INVALID)));
+                                   testing::Eq(ACLNN_ERR_PARAM_INVALID)));
 }
 } // namespace MoeDistributeDispatchV2950
 
@@ -169,18 +167,20 @@ TEST_F(L2AclnnMoeDistributeDispatchV2Test, TestAclnnMoeDistributeDispatchFirstAp
 
     TensorDesc expandX = TensorDesc({8, 7168}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc dynamicScales = TensorDesc({8 * 256}, ACL_FLOAT, ACL_FORMAT_ND);
-    TensorDesc expandIdx = TensorDesc({8*8}, ACL_INT32, ACL_FORMAT_ND);
+    TensorDesc expandIdx = TensorDesc({8 * 8}, ACL_INT32, ACL_FORMAT_ND);
     TensorDesc expertTokensNums = TensorDesc({1}, ACL_INT32, ACL_FORMAT_ND);
     TensorDesc epRecvCounts = TensorDesc({288}, ACL_INT32, ACL_FORMAT_ND);
     TensorDesc tpRecvCounts = TensorDesc({0}, ACL_INT32, ACL_FORMAT_ND);
     TensorDesc expandScales = TensorDesc({8}, ACL_FLOAT, ACL_FORMAT_ND);
 
-    auto ut = OP_API_UT(aclnnMoeDistributeDispatchV2, INPUT(x, expertIds, scales, xActiveMask, expertScales, "test_moe_distribute_dispatch_ep",
-                                                            epWorldSize, epRankId, moeExpertNum, "",
-                                                            tpWorldSize, tpRankId, expertShardType, sharedExpertNum, shareExpertRankNum, quantMode, globalBs, expertTokenNumsType, "test"),
-                        OUTPUT(expandX, dynamicScales, expandIdx, expertTokensNums, epRecvCounts, tpRecvCounts, expandScales));
+    auto ut = OP_API_UT(
+        aclnnMoeDistributeDispatchV2,
+        INPUT(x, expertIds, scales, xActiveMask, expertScales, "test_moe_distribute_dispatch_ep", epWorldSize, epRankId,
+              moeExpertNum, "", tpWorldSize, tpRankId, expertShardType, sharedExpertNum, shareExpertRankNum, quantMode,
+              globalBs, expertTokenNumsType, "test"),
+        OUTPUT(expandX, dynamicScales, expandIdx, expertTokensNums, epRecvCounts, tpRecvCounts, expandScales));
     uint64_t workspaceSize = 0;
-    aclOpExecutor* executor = nullptr;
+    aclOpExecutor *executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
@@ -213,10 +213,12 @@ TEST_F(L2AclnnMoeDistributeDispatchV2Test, TestAclnnMoeDistributeDispatchDynamic
     TensorDesc tpRecvCounts = TensorDesc({0}, ACL_INT32, ACL_FORMAT_ND);
     TensorDesc expandScales = TensorDesc({8}, ACL_FLOAT, ACL_FORMAT_ND);
 
-    auto ut = OP_API_UT(aclnnMoeDistributeDispatchV2, INPUT(x, expertIds, scales, xActiveMask, expertScales, "test_moe_distribute_dispatch_ep",
-                                                            epWorldSize, epRankId, moeExpertNum, "",
-                                                            tpWorldSize, tpRankId, expertShardType, sharedExpertNum, shareExpertRankNum, quantMode, globalBs, expertTokenNumsType, "test"),
-                        OUTPUT(expandX, dynamicScales, expandIdx, expertTokensNums, epRecvCounts, tpRecvCounts, expandScales));
+    auto ut = OP_API_UT(
+        aclnnMoeDistributeDispatchV2,
+        INPUT(x, expertIds, scales, xActiveMask, expertScales, "test_moe_distribute_dispatch_ep", epWorldSize, epRankId,
+              moeExpertNum, "", tpWorldSize, tpRankId, expertShardType, sharedExpertNum, shareExpertRankNum, quantMode,
+              globalBs, expertTokenNumsType, "test"),
+        OUTPUT(expandX, dynamicScales, expandIdx, expertTokensNums, epRecvCounts, tpRecvCounts, expandScales));
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
@@ -251,10 +253,12 @@ TEST_F(L2AclnnMoeDistributeDispatchV2Test, TestAclnnMoeDistributeDispatchEmptyGr
     TensorDesc tpRecvCounts = TensorDesc({2}, ACL_INT32, ACL_FORMAT_ND);
     TensorDesc expandScales = TensorDesc({8}, ACL_FLOAT, ACL_FORMAT_ND);
 
-    auto ut = OP_API_UT(aclnnMoeDistributeDispatchV2, INPUT(x, expertIds, scales, xActiveMask, expertScales, "",
-                                                            epWorldSize, epRankId, moeExpertNum, "test_moe_distribute_dispatch_tp",
-                                                            tpWorldSize, tpRankId, expertShardType, sharedExpertNum, shareExpertRankNum, quantMode, globalBs, expertTokenNumsType, "test"),
-                        OUTPUT(expandX, dynamicScales, expandIdx, expertTokensNums, epRecvCounts, tpRecvCounts, expandScales));
+    auto ut = OP_API_UT(
+        aclnnMoeDistributeDispatchV2,
+        INPUT(x, expertIds, scales, xActiveMask, expertScales, "", epWorldSize, epRankId, moeExpertNum,
+              "test_moe_distribute_dispatch_tp", tpWorldSize, tpRankId, expertShardType, sharedExpertNum,
+              shareExpertRankNum, quantMode, globalBs, expertTokenNumsType, "test"),
+        OUTPUT(expandX, dynamicScales, expandIdx, expertTokensNums, epRecvCounts, tpRecvCounts, expandScales));
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
@@ -291,10 +295,12 @@ TEST_F(L2AclnnMoeDistributeDispatchV2Test, TestAclnnMoeDistributeDispatchGroupTp
     TensorDesc tpRecvCounts = TensorDesc({0}, ACL_INT32, ACL_FORMAT_ND);
     TensorDesc expandScales = TensorDesc({8}, ACL_FLOAT, ACL_FORMAT_ND);
 
-    auto ut = OP_API_UT(aclnnMoeDistributeDispatchV2, INPUT(x, expertIds, scales, xActiveMask, expertScales, "test_moe_distribute_dispatch_ep",
-                                                            epWorldSize, epRankId, moeExpertNum, longGroupTp.c_str(),
-                                                            tpWorldSize, tpRankId, expertShardType, sharedExpertNum, shareExpertRankNum, quantMode, globalBs, expertTokenNumsType, "test"),
-                        OUTPUT(expandX, dynamicScales, expandIdx, expertTokensNums, epRecvCounts, tpRecvCounts, expandScales));
+    auto ut = OP_API_UT(
+        aclnnMoeDistributeDispatchV2,
+        INPUT(x, expertIds, scales, xActiveMask, expertScales, "test_moe_distribute_dispatch_ep", epWorldSize, epRankId,
+              moeExpertNum, longGroupTp.c_str(), tpWorldSize, tpRankId, expertShardType, sharedExpertNum,
+              shareExpertRankNum, quantMode, globalBs, expertTokenNumsType, "test"),
+        OUTPUT(expandX, dynamicScales, expandIdx, expertTokensNums, epRecvCounts, tpRecvCounts, expandScales));
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
@@ -331,10 +337,12 @@ TEST_F(L2AclnnMoeDistributeDispatchV2Test, TestAclnnMoeDistributeDispatchGroupEp
     TensorDesc tpRecvCounts = TensorDesc({0}, ACL_INT32, ACL_FORMAT_ND);
     TensorDesc expandScales = TensorDesc({8}, ACL_FLOAT, ACL_FORMAT_ND);
 
-    auto ut = OP_API_UT(aclnnMoeDistributeDispatchV2, INPUT(x, expertIds, scales, xActiveMask, expertScales, longGroupEp.c_str(),
-                                                            epWorldSize, epRankId, moeExpertNum, "",
-                                                            tpWorldSize, tpRankId, expertShardType, sharedExpertNum, shareExpertRankNum, quantMode, globalBs, expertTokenNumsType, "test"),
-                        OUTPUT(expandX, dynamicScales, expandIdx, expertTokensNums, epRecvCounts, tpRecvCounts, expandScales));
+    auto ut = OP_API_UT(
+        aclnnMoeDistributeDispatchV2,
+        INPUT(x, expertIds, scales, xActiveMask, expertScales, longGroupEp.c_str(), epWorldSize, epRankId, moeExpertNum,
+              "", tpWorldSize, tpRankId, expertShardType, sharedExpertNum, shareExpertRankNum, quantMode, globalBs,
+              expertTokenNumsType, "test"),
+        OUTPUT(expandX, dynamicScales, expandIdx, expertTokensNums, epRecvCounts, tpRecvCounts, expandScales));
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
@@ -346,14 +354,20 @@ TEST_F(L2AclnnMoeDistributeDispatchV2Test, TestAclnnMoeDistributeDispatchV2Execu
     // 覆盖 Execute 入口分支（UT 桩无真实 workspace，仅验证不崩溃）
     aclnnStatus st = aclnnMoeDistributeDispatchV2(nullptr, 0U, nullptr, nullptr);
     EXPECT_THAT(st, testing::AnyOf(testing::Eq(ACLNN_SUCCESS), testing::Eq(ACLNN_ERR_PARAM_NULLPTR),
-                                    testing::Eq(ACLNN_ERR_PARAM_INVALID)));
+                                   testing::Eq(ACLNN_ERR_PARAM_INVALID)));
 }
 
 TEST_F(L2AclnnMoeDistributeDispatchV2Test, TestAclnnMoeDistributeDispatchV2GetWorkspaceAscend950NonCcu)
 {
     struct PlatformGuard {
-        PlatformGuard(op::SocVersion target) { op::SetPlatformSocVersion(target); }
-        ~PlatformGuard() { op::SetPlatformSocVersion(op::SocVersion::ASCEND910B); }
+        PlatformGuard(op::SocVersion target)
+        {
+            op::SetPlatformSocVersion(target);
+        }
+        ~PlatformGuard()
+        {
+            op::SetPlatformSocVersion(op::SocVersion::ASCEND910B);
+        }
     } guard(op::SocVersion::ASCEND950);
     TensorDesc x = TensorDesc({8, 7168}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc expertIds = TensorDesc({8, 8}, ACL_INT32, ACL_FORMAT_ND);
@@ -381,13 +395,12 @@ TEST_F(L2AclnnMoeDistributeDispatchV2Test, TestAclnnMoeDistributeDispatchV2GetWo
     TensorDesc tpRecvCounts = TensorDesc({0}, ACL_INT32, ACL_FORMAT_ND);
     TensorDesc expandScales = TensorDesc({8}, ACL_FLOAT, ACL_FORMAT_ND);
 
-    auto ut = OP_API_UT(aclnnMoeDistributeDispatchV2, INPUT(x, expertIds, scales, xActiveMask, expertScales,
-                                                            "test_moe_distribute_dispatch_ep", epWorldSize, epRankId,
-                                                            moeExpertNum, "", tpWorldSize,
-                                                            tpRankId, expertShardType, sharedExpertNum, shareExpertRankNum,
-                                                            quantMode, globalBs, expertTokenNumsType, "fullmesh_v1"),
-                        OUTPUT(expandX, dynamicScales, expandIdx, expertTokensNums, epRecvCounts, tpRecvCounts,
-                               expandScales));
+    auto ut = OP_API_UT(
+        aclnnMoeDistributeDispatchV2,
+        INPUT(x, expertIds, scales, xActiveMask, expertScales, "test_moe_distribute_dispatch_ep", epWorldSize, epRankId,
+              moeExpertNum, "", tpWorldSize, tpRankId, expertShardType, sharedExpertNum, shareExpertRankNum, quantMode,
+              globalBs, expertTokenNumsType, "fullmesh_v1"),
+        OUTPUT(expandX, dynamicScales, expandIdx, expertTokensNums, epRecvCounts, tpRecvCounts, expandScales));
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
     aclnnStatus wsRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);

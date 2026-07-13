@@ -62,12 +62,11 @@ void MMPlusAllReduce::EstimateKernelTime()
         tilingM_.SetMinLenByMin(static_cast<uint64_t>(tilingM_.GetMinLen() * HALF));
     }
 
-    OP_LOGD(
-        "MatmulAllReduce",
-        "Input shape {M, N, K} = {%lu, %lu, %lu}, cubeUtil_ %f, "
-        "totalMatmulTime %f, totalTP %f, minTileSize %lu, mAlignLen %lu, commTimeFactor_ %f",
-        clusterInfo_.mValue, clusterInfo_.nValue, clusterInfo_.kValue, matmulPerf_.cubeUtil_, totalMatmulTime,
-        totalTpTime, tilingM_.GetMinLen(), tilingM_.tileArgs.mAlignLen, commPerf_.commTimeFactor_);
+    OP_LOGD("MatmulAllReduce",
+            "Input shape {M, N, K} = {%lu, %lu, %lu}, cubeUtil_ %f, "
+            "totalMatmulTime %f, totalTP %f, minTileSize %lu, mAlignLen %lu, commTimeFactor_ %f",
+            clusterInfo_.mValue, clusterInfo_.nValue, clusterInfo_.kValue, matmulPerf_.cubeUtil_, totalMatmulTime,
+            totalTpTime, tilingM_.GetMinLen(), tilingM_.tileArgs.mAlignLen, commPerf_.commTimeFactor_);
 }
 
 void MMPlusAllReduce::SelectTilingMethod()
@@ -91,9 +90,8 @@ void MMPlusAllReduce::SelectTilingMethod()
                            (clusterInfo_.nValue < SMALL_SHAPE_BAR ||
                             clusterInfo_.kValue < SMALL_SHAPE_BAR); // 2p，计算Bound，且N轴或者K轴很小
     tilingM_.GenerateInitialPartition(smallDimAlignUp);
-    OP_LOGD(
-        "MatmulAllReduce", "Initial cut: longTileLen %lu, shortTileLen %lu", tilingM_.cutRes.longTileLen,
-        tilingM_.cutRes.shortTileLen);
+    OP_LOGD("MatmulAllReduce", "Initial cut: longTileLen %lu, shortTileLen %lu", tilingM_.cutRes.longTileLen,
+            tilingM_.cutRes.shortTileLen);
 
     // 根据首尾块大小、轮次等约束调整切分
     bool largeCalcCommRatio = ratioCalcComm_ > LARGE_BACKTILE_CALC_COMM_RATIO_BAR;
@@ -107,12 +105,11 @@ void MMPlusAllReduce::SelectTilingMethod()
     if (commBoundNotAligned) {
         tilingM_.cutRes.shortTileAtBack = true; // 非对齐的尾块后置
     }
-    OP_LOGD(
-        "MatmulAllReduce",
-        "Final cut: shortTileAtBack %d, longTileLen %lu, "
-        "numLongTile %lu, shortTileLen %lu, numShortTile %lu",
-        tilingM_.cutRes.shortTileAtBack, tilingM_.cutRes.longTileLen, tilingM_.cutRes.numLongTile,
-        tilingM_.cutRes.shortTileLen, tilingM_.cutRes.numShortTile);
+    OP_LOGD("MatmulAllReduce",
+            "Final cut: shortTileAtBack %d, longTileLen %lu, "
+            "numLongTile %lu, shortTileLen %lu, numShortTile %lu",
+            tilingM_.cutRes.shortTileAtBack, tilingM_.cutRes.longTileLen, tilingM_.cutRes.numLongTile,
+            tilingM_.cutRes.shortTileLen, tilingM_.cutRes.numShortTile);
 }
 
 void MMPlusQuantAllReduce::EstimateKernelTime()
@@ -134,16 +131,15 @@ void MMPlusQuantAllReduce::EstimateKernelTime()
         tilingM_.SetMinLenByMin(static_cast<uint64_t>(tilingM_.GetMinLen() * HALF));
     }
 
-    OP_LOGD(
-        "MatmulQuantAllReduce",
-        "Input shape {M, N, K} = {%lu, %lu, %lu}, cubeUtil_ %f, "
-        "totalMatmulTime %f, totalTP %f, minTileSize %lu, mAlignLen %lu, ratioCalcComm_ %f",
-        clusterInfo_.mValue, clusterInfo_.nValue, clusterInfo_.kValue, matmulPerf_.cubeUtil_, totalMatmulTime,
-        totalA2ATime, tilingM_.GetMinLen(), tilingM_.tileArgs.mAlignLen, ratioCalcComm_);
+    OP_LOGD("MatmulQuantAllReduce",
+            "Input shape {M, N, K} = {%lu, %lu, %lu}, cubeUtil_ %f, "
+            "totalMatmulTime %f, totalTP %f, minTileSize %lu, mAlignLen %lu, ratioCalcComm_ %f",
+            clusterInfo_.mValue, clusterInfo_.nValue, clusterInfo_.kValue, matmulPerf_.cubeUtil_, totalMatmulTime,
+            totalA2ATime, tilingM_.GetMinLen(), tilingM_.tileArgs.mAlignLen, ratioCalcComm_);
 }
 
-void MMPlusQuantAllReduce::SmallShortCheck(
-    const uint64_t totalLen, uint64_t& longTileLen, const uint64_t& shortTileLen) const
+void MMPlusQuantAllReduce::SmallShortCheck(const uint64_t totalLen, uint64_t &longTileLen,
+                                           const uint64_t &shortTileLen) const
 {
     // 确保长块长度合法
     longTileLen = std::max(longTileLen, shortTileLen);
@@ -160,12 +156,12 @@ void MMPlusQuantAllReduce::SmallShortCheck(
             longTileLen += (remainLen / tmpNumLong);
         }
     }
-    OP_LOGD(
-        "MatmulQuantAllReduce", "Small short check: remainLen %lu, longTileLen %lu, shortTileLen %lu", remainLen,
-        longTileLen, shortTileLen);
+    OP_LOGD("MatmulQuantAllReduce", "Small short check: remainLen %lu, longTileLen %lu, shortTileLen %lu", remainLen,
+            longTileLen, shortTileLen);
 }
 
-void MMPlusQuantAllReduce::UniformCutSetShort(const uint64_t totalLen, const uint64_t minAlign, uint64_t& shortTileLen) const
+void MMPlusQuantAllReduce::UniformCutSetShort(const uint64_t totalLen, const uint64_t minAlign,
+                                              uint64_t &shortTileLen) const
 {
     // 进入切分的判断条件是 totalLen >= 2 * minAlign = shortTileLen
     // 修改shortTileLen后依然要满足上述约束
@@ -173,12 +169,12 @@ void MMPlusQuantAllReduce::UniformCutSetShort(const uint64_t totalLen, const uin
         shortTileLen =
             static_cast<uint64_t>(static_cast<double>(minAlign) * static_cast<double>(FOUR) / static_cast<double>(TWO));
     } else if (totalLen > minAlign * THREE) {
-        shortTileLen = static_cast<uint64_t>(
-            static_cast<double>(minAlign) * static_cast<double>(THREE) / static_cast<double>(TWO));
+        shortTileLen = static_cast<uint64_t>(static_cast<double>(minAlign) * static_cast<double>(THREE) /
+                                             static_cast<double>(TWO));
     }
 }
 
-void MMPlusQuantAllReduce::SelectTilingScene(bool& longTileAlignUpFlag)
+void MMPlusQuantAllReduce::SelectTilingScene(bool &longTileAlignUpFlag)
 {
     bool moveUpFlag = clusterInfo_.mValue < SMALL_M;
     bool shortTileAtFrontBranch = !tilingM_.cutRes.shortTileAtBack || moveUpFlag;
@@ -194,8 +190,8 @@ void MMPlusQuantAllReduce::SelectTilingScene(bool& longTileAlignUpFlag)
         SmallShortCheck(clusterInfo_.mValue, tilingM_.cutRes.longTileLen, tilingM_.cutRes.shortTileLen);
     } else if (uniformCutBranch) { // a2a = ag < mm < (a2a + ag)
         UniformCutSetShort(clusterInfo_.mValue, tilingM_.GetMinLen(), tilingM_.cutRes.shortTileLen);
-        OP_LOGD(
-            "MatmulQuantAllReduce", "Scene a2a = ag < mm < (a2a + ag)，short len %lu.", tilingM_.cutRes.shortTileLen);
+        OP_LOGD("MatmulQuantAllReduce", "Scene a2a = ag < mm < (a2a + ag)，short len %lu.",
+                tilingM_.cutRes.shortTileLen);
         tilingM_.cutRes.longTileLen = tilingM_.cutRes.shortTileLen;
     } else { // (a2a + ag) < mm
         OP_LOGD("MatmulQuantAllReduce", "Scene (a2a + ag) < mm.");
@@ -225,18 +221,16 @@ void MMPlusQuantAllReduce::SelectTilingMethod()
     SelectTilingScene(longTileAlignUpFlag);
     // 生成切分
     tilingM_.GenerateInitialPartition(longTileAlignUpFlag);
-    OP_LOGD(
-        "MatmulQuantAllReduce", "Initial cut: longTileLen %lu, shortTileLen %lu", tilingM_.cutRes.longTileLen,
-        tilingM_.cutRes.shortTileLen);
+    OP_LOGD("MatmulQuantAllReduce", "Initial cut: longTileLen %lu, shortTileLen %lu", tilingM_.cutRes.longTileLen,
+            tilingM_.cutRes.shortTileLen);
 
     // 根据首尾块大小、轮次等约束调整切分
     bool largeCalcCommRatio = ratioCalcComm_ > LARGE_BACKTILE_CALC_COMM_RATIO_BAR;
     bool kGreaterThanN = clusterInfo_.kValue > clusterInfo_.nValue;
     tilingM_.FitTileLengthContinuous(kGreaterThanN, largeCalcCommRatio);
-    OP_LOGD(
-        "MatmulQuantAllReduce",
-        "Final cut: shortTileAtBack %d, longTileLen %lu, "
-        "numLongTile %lu, shortTileLen %lu, numShortTile %lu",
-        tilingM_.cutRes.shortTileAtBack, tilingM_.cutRes.longTileLen, tilingM_.cutRes.numLongTile,
-        tilingM_.cutRes.shortTileLen, tilingM_.cutRes.numShortTile);
+    OP_LOGD("MatmulQuantAllReduce",
+            "Final cut: shortTileAtBack %d, longTileLen %lu, "
+            "numLongTile %lu, shortTileLen %lu, numShortTile %lu",
+            tilingM_.cutRes.shortTileAtBack, tilingM_.cutRes.longTileLen, tilingM_.cutRes.numLongTile,
+            tilingM_.cutRes.shortTileLen, tilingM_.cutRes.numShortTile);
 }

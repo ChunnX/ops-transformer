@@ -9,13 +9,7 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # ----------------------------------------------------------------------------
-__input__ = {
-    "kernel": {
-        "matmul_reduce_scatter_v2": "matmul_reduce_scatter_v2_inputs"
-    }
-}
-
-import numpy as np
+__input__ = {"kernel": {"matmul_reduce_scatter_v2": "matmul_reduce_scatter_v2_inputs"}}
 
 
 def matmul_reduce_scatter_v2_inputs(
@@ -36,19 +30,39 @@ def matmul_reduce_scatter_v2_inputs(
     is_amax_out=False,
     y_dtype=0,
     comm_mode="ai_cpu",
-    **kwargs
+    **kwargs,
 ):
     if is_trans_b:
         x2 = x2.transpose()
         if x2_scale is not None:
-            per_block_flag = kwargs.get('per_block_flag', False)
+            per_block_flag = kwargs.get("per_block_flag", False)
             if per_block_flag:
                 x2_scale = x2_scale.transpose()
-    
+
     if rank_size <= 0:
-        rank_size = kwargs.get('world_size', 1)
-    
+        rank_size = kwargs.get("world_size", 1)
+
     if x1.shape[0] % rank_size != 0:
-        raise ValueError(f"x1.shape[0] ({x1.shape[0]}) must be divisible by rank_size ({rank_size})")
-    
-    return x1, x2, bias, x1_scale, x2_scale, quant_scale, group, reduce_op, is_trans_a, is_trans_b, comm_turn, rank_size, block_size, group_size, is_amax_out, y_dtype, comm_mode
+        raise ValueError(
+            f"x1.shape[0] ({x1.shape[0]}) must be divisible by rank_size ({rank_size})"
+        )
+
+    return (
+        x1,
+        x2,
+        bias,
+        x1_scale,
+        x2_scale,
+        quant_scale,
+        group,
+        reduce_op,
+        is_trans_a,
+        is_trans_b,
+        comm_turn,
+        rank_size,
+        block_size,
+        group_size,
+        is_amax_out,
+        y_dtype,
+        comm_mode,
+    )

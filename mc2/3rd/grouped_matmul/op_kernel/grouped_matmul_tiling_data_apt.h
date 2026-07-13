@@ -106,5 +106,5 @@ struct GMMWeightQuantTilingData {
     TCubeTiling mmTilingData;
 };
 #pragma pack(pop)
-} // Mc2GroupedMatmulTilingData
+} // namespace Mc2GroupedMatmulTilingData
 #endif // MC2_GROUPED_MATMUL_TILING_DATA_APT_H

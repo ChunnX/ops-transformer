@@ -1,11 +1,12 @@
-/* * 
+/* *
  * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This file is a part of the CANN Open Software.
  * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING
+ * BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE. See LICENSE in the root of
+ * the software repository for the full text of the License.
  */
 #include <gtest/gtest.h>
 #include "mc2_tiling_case_executor.h"
@@ -16,18 +17,21 @@ using namespace std;
 
 namespace AlltoAllvQuantGroupedMatMulUT {
 
-class AlltoAllvQuantGroupedMatMulTilingTest : public ::testing::TestWithParam<AlltoAllvQuantGroupedMatMulTilingUTParam> {
+class AlltoAllvQuantGroupedMatMulTilingTest
+    : public ::testing::TestWithParam<AlltoAllvQuantGroupedMatMulTilingUTParam> {
 protected:
-    static void SetUpTestCase() {
+    static void SetUpTestCase()
+    {
         cout << "AlltoAllvQuantGroupedMatMulTilingTest SetUp" << endl;
     }
 
-    static void TearDownTestCase() {
+    static void TearDownTestCase()
+    {
         cout << "AlltoAllvQuantGroupedMatMulTilingTest TearDown" << endl;
     }
 };
 
-TEST_P(AlltoAllvQuantGroupedMatMulTilingTest, param) 
+TEST_P(AlltoAllvQuantGroupedMatMulTilingTest, param)
 {
     auto param = GetParam();
 
@@ -51,11 +55,7 @@ TEST_P(AlltoAllvQuantGroupedMatMulTilingTest, param)
             param.mm_x_scale,
             param.mm_x_weight_scale,
         },
-        {
-            param.gmm_y,
-            param.mm_y,
-            param.permute_out
-        },
+        {param.gmm_y, param.mm_y, param.permute_out},
         {
             {"group", Ops::Transformer::AnyValue::CreateFrom<std::string>("group")},
             {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.ep_world_size)},
@@ -73,12 +73,7 @@ TEST_P(AlltoAllvQuantGroupedMatMulTilingTest, param)
             {"mm_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"commMode", Ops::Transformer::AnyValue::CreateFrom<std::string>("ccu")},
         },
-        &compileInfo,
-        "3510",
-        coreNum,
-        ubSize,
-        tilingDataSize
-    );
+        &compileInfo, "3510", coreNum, ubSize, tilingDataSize);
 
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
 
@@ -86,10 +81,8 @@ TEST_P(AlltoAllvQuantGroupedMatMulTilingTest, param)
 }
 
 INSTANTIATE_TEST_SUITE_P(
-    AlltoAllvQuantGroupedMatMul,
-    AlltoAllvQuantGroupedMatMulTilingTest,
+    AlltoAllvQuantGroupedMatMul, AlltoAllvQuantGroupedMatMulTilingTest,
     testing::ValuesIn(GetCasesFromCsv<AlltoAllvQuantGroupedMatMulTilingUTParam>(ReplaceFileExtension2Csv(__FILE__))),
-    PrintCaseInfoString<AlltoAllvQuantGroupedMatMulTilingUTParam>
-);
+    PrintCaseInfoString<AlltoAllvQuantGroupedMatMulTilingUTParam>);
 
 } // namespace AlltoAllvQuantGroupedMatMulUT
