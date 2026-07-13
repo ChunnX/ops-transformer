@@ -718,8 +718,6 @@ ge::graphStatus MhcPreBaseTiling::TilingProcess()
                              static_cast<size_t>(matN_) * sizeof(float);
 
         userWorkspaceSize = xFloatWorkspaceSize + mmResWorkspaceSize;
-    } else if (tilingMode_ == TilingMode::LOW_API_BS) {
-        userWorkspaceSize = 0;
     } else {
         userWorkspaceSize =
             (WORKSPACE_MULT_A * WORKSPACE_MULT_B * WORKSPACE_DIM_M +
