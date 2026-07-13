@@ -1375,6 +1375,51 @@ bool CommonChecker::CheckTransposeLayoutCrossover(const FiaTilingInfo &fiaInfo)
     return true;
 }
 
+ge::graphStatus CommonChecker::CheckKvISContiguous(const FiaTilingInfo &fiaInfo)
+{
+    if (fiaInfo.isTensorV1) {
+        return ge::GRAPH_SUCCESS;
+    }
+
+    for (int i = 0; i < fiaInfo.kCache.size(); ++i) {
+        const gert::Shape &keyShape = fiaInfo.kCache[i]->GetStorageShape();
+        const gert::Shape &valueShape = fiaInfo.vCache[i]->GetStorageShape();
+        uint32_t keyDimNum = keyShape.GetDimNum();
+        uint32_t valueDimNum = valueShape.GetDimNum();
+        int32_t dimIndex = 0;
+
+        if (!fiaInfo.pageAttentionFlag) {
+            OP_CHECK_IF((CheckTensorContiguous(keyDimNum, keyShape, fiaInfo.kStrideCache[i], dimIndex) !=
+                         ge::GRAPH_SUCCESS),
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "key",
+                        "In non-PA scenarios, key tensor must be contiguous"),
+                return ge::GRAPH_FAILED);
+
+            OP_CHECK_IF(CheckTensorContiguous(valueDimNum, valueShape, fiaInfo.vStrideCache[i], dimIndex) !=
+                        ge::GRAPH_SUCCESS,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "value",
+                        "In non-PA scenarios, value tensor must be contiguous"),
+                return ge::GRAPH_FAILED);
+        } else {
+            bool isMxfp8 = (enableFullQuant_ && fiaInfo.fullQuantMode == FiaFullQuantMode::QKV_MXFP8_FULL_QUANT);
+            if (!isMxfp8) {
+                OP_CHECK_IF((CheckTensorContiguous(keyDimNum, keyShape, fiaInfo.kStrideCache[i], dimIndex) !=
+                             ge::GRAPH_SUCCESS),
+                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "key",
+                            "In PA and not MXFP8 Fullquant scenarios, key tensor must be contiguous"),
+                    return ge::GRAPH_FAILED);
+
+                OP_CHECK_IF(CheckTensorContiguous(valueDimNum, valueShape, fiaInfo.vStrideCache[i], dimIndex) !=
+                            ge::GRAPH_SUCCESS,
+                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "value",
+                            "In PA and not MXFP8 Fullquant scenarios, value tensor must be contiguous"),
+                    return ge::GRAPH_FAILED);
+            }
+        }
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus CommonChecker::CheckSinglePara(const FiaTilingInfo &fiaInfo)
 {
     if (enableNonQuant_) {
@@ -1457,6 +1502,9 @@ ge::graphStatus CommonChecker::CheckMultiParaConsistency(const FiaTilingInfo &fi
         }
     }
     if (CheckShapeConsistency(fiaInfo) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    if (CheckKvISContiguous(fiaInfo) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
