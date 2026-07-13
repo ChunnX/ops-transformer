@@ -467,6 +467,7 @@ Golden 不模拟 Cube tile 搬运；数值路径与 §7.2 一致。
 - PRE_LAUNCH 流水（已启用，可继续调优）
 - double buffer / L1/L0 preload
 - score/softmax UB 复用
+- K/V L1 load优化，一次性可load多块(L1总大小512K，一块K/V是128\*128\*2=32K)
 - 空 CSR 行 task 负载均衡
 - Regbase 优化
 - combine 阶段跳过无效 slot（当前主要依赖 scale=0）

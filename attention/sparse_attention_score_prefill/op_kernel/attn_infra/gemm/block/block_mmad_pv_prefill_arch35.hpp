@@ -69,6 +69,14 @@ struct BlockMmadPVPrefillArch35 {
     uint32_t l1BaseAddr_;
     uint32_t vBufBytes_;
     uint32_t l1PStageBytes_;
+    // K dim (block valid size) of the V resident loaded by LoadVResident. operator() must build
+    // the L1 V layout with THIS K, not the gemm's causalValidLen (which is <= block valid size and
+    // only scopes the subtile). zN's N-fractal stride = RoundUp(K,16)*16 depends on this K; if the
+    // layout uses causalValidLen while the L1 data was laid out for block valid size, the strides
+    // diverge and the L0B transpose copy reads V with a wrong N-fractal stride -> N>=16 of
+    // O_partial corrupt (first N-C0 fractal correct, rest wrong). Matches QK where resident K (D)
+    // equals the gemm K, so QK never hit this.
+    uint32_t residentValidSize_ = 0;
 
     __aicore__ inline
     BlockMmadPVPrefillArch35()
@@ -130,6 +138,7 @@ struct BlockMmadPVPrefillArch35 {
     __aicore__ inline
     void LoadVResident(TensorV &gmVTensor, uint32_t validSize, uint32_t D)
     {
+        residentValidSize_ = validSize;
         using CopyGmToL1V = typename TileCopy::template CopyGmToL1B<TensorV>;
         CopyGmToL1V copyGmToL1V;
 
@@ -162,7 +171,10 @@ struct BlockMmadPVPrefillArch35 {
 
         auto l1PLayout = tla::MakeLayout<ElementP, LayoutTagL1A>(M, K);
         auto l1PTensorTla = tla::MakeTensor(l1PTensor_, l1PLayout, Arch::PositionL1{});
-        auto l1VLayout = tla::MakeLayout<ElementV, LayoutTagL1B>(K, N);
+        // V L1 layout must describe the resident (K = block valid size), not the gemm's causalValidLen.
+        // The subtile below scopes the gemm K; the layout's K must match what LoadVResident wrote so
+        // zN N-fractal strides are correct (else srcStride in the L0B transpose copy is off -> N>=16 bad).
+        auto l1VLayout = tla::MakeLayout<ElementV, LayoutTagL1B>(residentValidSize_, N);
         auto l1VTensorTla = tla::MakeTensor(l1VTensor_, l1VLayout, Arch::PositionL1{});
 
         uint32_t nL0Num = CeilDiv(N, L0_TILE_N);

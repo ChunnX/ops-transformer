@@ -168,5 +168,12 @@ class TestSparseAttentionScorePrefillNPU(TestCase):
         q_heads=2, kv_heads=1, top_k=1, seed=2, prec=1e-2)
 
 
+  def test_bf16_debug(self):
+    print("[test_bf16_q2_kv2_q64_kv4_tk16_debug]")
+    self._run_npu_test(
+        batch=1, q_seqlens=[16], kv_seqlens=[16],
+        q_heads=64, kv_heads=4, top_k=16, seed=42, prec=1e-2)
+
+
 if __name__ == '__main__':
   run_tests()

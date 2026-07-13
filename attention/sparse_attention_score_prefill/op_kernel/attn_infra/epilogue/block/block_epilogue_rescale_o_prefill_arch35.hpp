@@ -132,8 +132,6 @@ private:
                    AscendC::LocalTensor<T> &lseSumLocal)
     {
         uint32_t ubRowStride = dealRowCount * FP32_ONE_BLOCK_SIZE;
-        //AscendC::Duplicate(lseMaxLocal, NEG_INF_LSE, ubRowStride * topK_);
-        //AscendC::Duplicate(lseSumLocal, 0.0f, ubRowStride * topK_);
         auto lseCount = dealRowCount * topK_, alignedLseCount = RoundUp(lseCount, FP32_ONE_BLOCK_SIZE);
 
         AscendC::LocalTensor<T> lseMaxTmpBuf = broadCastTmpBuf_;
@@ -171,12 +169,12 @@ private:
         AscendC::LocalTensor<bfloat16_t> tmpSinkUb;
         bool softmaxLseFlag = false;
         bool learnableSinkFlag = false;
-        AscendC::DumpTensor(lseMaxLocal, 123, 64);
-        AscendC::DumpTensor(lseSumLocal, 456, 64);
+        //AscendC::DumpTensor(lseMaxLocal, 123, 64);
+        //AscendC::DumpTensor(lseSumLocal, 456, 64);
         FaVectorApi::ComputeScaleValue_VF(
             tmpSinkUb, lseMaxLocal, lseSumLocal, accumOutBuf_,
             dealRowCount, actualCombineLoopSize_, softmaxLseFlag, learnableSinkFlag);
-        //AscendC::DumpTensor(lseSumLocal, 123, 64);
+        //AscendC::DumpTensor(lseSumLocal, 789, 64);
         AscendC::PipeBarrier<PIPE_V>();
     }
 
@@ -218,6 +216,8 @@ private:
             uint64_t statIdx = statBase + static_cast<uint64_t>(splitKVIndex) * groupSize_ + gh;
             float rowSum = gmSoftmaxSum[statIdx].GetValue(0);
             uint32_t rowOff = r * headDimAlignFp32_;
+            // AscendC::printf("1111111111111111 rowSum:%f, splitKVIndex:%d, qToken:%d, kvHeadIdx:%d, r:%d\n",
+            //                 rowSum, splitKVIndex, qToken, kvHeadIdx, r);
             AscendC::Divs(
                     accumOutLocal[rowOff], accumOutLocal[rowOff], rowSum,
                     static_cast<int32_t>(headDimAlignFp32_));
@@ -242,15 +242,20 @@ private:
         // overwrite it, so the values are intact. InitWorkspaceStats prefills
         // -FLT_MAX (NEG_INF_LSE) for slots Phase1 never wrote; a valid slot's
         // rowMax is a finite score-derived value, so firstRowMax <= NEG_INF_LSE
-        // discriminates the whole slot. Skip CopyAccumOutIn + ReduceFinalRes_VF
-        // for invalid splits; scale[j]==0 from ComputeScaleValue so they
-        // contribute 0 anyway, and skipping avoids Divs-by-zero and stale-UB
-        // accumulation.
+        // discriminates the whole slot. Valid slots are left-contiguous in the
+        // workspace (Phase1 writes slotK = 0..valid_k-1 per qToken/kvHead, since
+        // build_k2q_csr assigns slot_flat = arange(topk) only to valid entries),
+        // so the first invalid slot means every later slot is invalid too: break
+        // once instead of continue. Skipping CopyAccumOutIn + ReduceFinalRes_VF
+        // for invalid splits avoids Divs-by-zero (rowSum==0) and stale-UB
+        // accumulation; scale[j]==0 from ComputeScaleValue makes them 0 anyway.
         for (uint32_t j = 0; j < actualCombineLoopSize_; ++j) {
             uint32_t maxOff = j * dealRowCount * FP32_ONE_BLOCK_SIZE;
             float firstRowMax = lseMaxBuf_[maxOff].GetValue(0);
+            // AscendC::printf("qToken:%d, kvHeadIdx:%d, firstRowMax:%f, j:%d\n",
+            //                 qToken, kvHeadIdx, firstRowMax, j);
             if (firstRowMax <= NEG_INF_LSE) {
-                continue;
+                break;
             }
             CopyAccumOutIn(
                 qToken, kvHeadIdx, j, startRow, dealRowCount,

@@ -238,7 +238,7 @@ public:
             coreIdx, coreNum, gQ, gK, gV, gK2qRowPtr, gK2qQIndices,
             gK2qSlotIndices, gBlockTable, gAccumOut, gSoftmaxMax, gSoftmaxSum);
         AscendC::SyncAll();
-        DumpPhase1OPartial(gAccumOut, gSoftmaxMax, gSoftmaxSum, gO);
+        //DumpPhase1OPartial(gAccumOut, gSoftmaxMax, gSoftmaxSum, gO);
 #ifdef __DAV_VEC__
         Phase2CombineScale(gO, gAccumOut, gSoftmaxMax, gSoftmaxSum);
 #endif
@@ -283,7 +283,7 @@ private:
 #ifdef __DAV_VEC__
         uint32_t subBlockNum = AscendC::GetSubBlockNum();
         uint32_t totalSubBlocks = AscendC::GetBlockNum() * subBlockNum;
-        uint32_t subLinearIdx = AscendC::GetBlockIdx() * subBlockNum + AscendC::GetSubBlockIdx();
+        uint32_t blockIdx = AscendC::GetBlockIdx();
         uint32_t numFullChunks = static_cast<uint32_t>(lseStatSize_ / WS_INIT_CHUNK);
         uint32_t tailElems = static_cast<uint32_t>(lseStatSize_ % WS_INIT_CHUNK);
         uint32_t totalChunks = numFullChunks + (tailElems > 0U ? 1U : 0U);
@@ -297,7 +297,7 @@ private:
         AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(WS_INIT_EVT);
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(WS_INIT_EVT);
 
-        for (uint32_t chunkIdx = subLinearIdx; chunkIdx < totalChunks; chunkIdx += totalSubBlocks) {
+        for (uint32_t chunkIdx = blockIdx; chunkIdx < totalChunks; chunkIdx += totalSubBlocks) {
             uint64_t off = static_cast<uint64_t>(chunkIdx) * WS_INIT_CHUNK;
             uint32_t cnt = (chunkIdx < numFullChunks) ? WS_INIT_CHUNK : tailElems;
             uint16_t blockLen = static_cast<uint16_t>(cnt * sizeof(float));
@@ -427,12 +427,13 @@ private:
         AscendC::LocalTensor<float> ubDump =
             resource.ubBuf.template GetBufferByByte<float>(0);
         uint32_t totalQTokens = totalTaskNumP2_ / kvHeads_;
-        for (uint32_t qToken = 0U; qToken < totalQTokens; ++qToken) {
-            for (uint32_t kvHeadIdx = 0U; kvHeadIdx < kvHeads_; ++kvHeadIdx) {
+        for (uint32_t qToken = 0U; qToken < 1; ++qToken) {
+            for (uint32_t kvHeadIdx = 0U; kvHeadIdx < 1; ++kvHeadIdx) {
                 for (uint32_t slotK = 0U; slotK < topK_; ++slotK) {
                     uint64_t oOff = SlotOOffset(qToken, kvHeadIdx, slotK);
                     uint64_t lseOff = SlotStatOffset(qToken, kvHeadIdx, slotK, 0U);
-                    //AscendC::DumpTensor(gAccumOut[oOff], 123, PHASE1_O_DUMP_ELEMS);
+                    //AscendC::DumpTensor(gAccumOut[oOff], 123, 128);
+                    break;
                     /*AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
                     AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
                     AscendC::DumpTensor(ubDump, 456U, PHASE1_O_DUMP_ELEMS);
@@ -627,10 +628,18 @@ private:
                         CopyPartialStatsToGm(
                             gSoftmaxMax, gSoftmaxSum, ubRowMaxStage[l1PBufId], ubRowSumStage[l1PBufId],
                             lseOffset, 0U, vecRows);
-                        //if (vecRows > 0)
-                        //    AscendC::DumpTensor(ubRowMaxStage[l1PBufId], 56, 8);
-                        //if (vecRows > 0)
-                        //    AscendC::DumpTensor(ubRowSumStage[l1PBufId], 78, 8);
+                        // if (qToken == 0 && kvHeadIdx == 0 && slotK == 0 && vecRows > 0) {
+                        //     AscendC::DumpTensor(ubPBuf[ubSBufId], 0, 16);
+                        //     AscendC::DumpTensor(ubPBuf[ubSBufId][17 * 16], 1, 16);
+                        //     AscendC::DumpTensor(ubPBuf[ubSBufId][17 * 16 * 2], 2, 16);
+                        //     AscendC::DumpTensor(ubPBuf[ubSBufId][17 * 16 * 3], 3, 16);
+                        //     AscendC::DumpTensor(ubPBuf[ubSBufId][17 * 16 * 4], 4, 16);
+                        //     AscendC::DumpTensor(ubPBuf[ubSBufId][17 * 16 * 5], 5, 16);
+                        //     AscendC::DumpTensor(ubPBuf[ubSBufId][17 * 16 * 6], 6, 16);
+                        //     AscendC::DumpTensor(ubPBuf[ubSBufId][17 * 16 * 7], 7, 16);
+                        //     AscendC::DumpTensor(ubRowMaxStage[l1PBufId], 8, 8); 
+                        //     AscendC::DumpTensor(ubRowSumStage[l1PBufId], 9, 8);
+                        // }
 #endif
                     }
                 }
@@ -655,8 +664,14 @@ private:
                         auto gmOTensor = tla::MakeTensor(
                             gAccumOut[wsOOff], gmOLayout, Arch::PositionGM{});
                         blockMmadPV.SetL1PBuf(l1PBufIdDe);
+                        // if (qToken == 0 && kvHeadIdx == 0 && slotK == 0) {
+                        //     AscendC::printf("1111111111111111111111 causalValidLenDe:%d\n", causalValidLenDe);
+                        // }
                         blockMmadPV(gmOTensor, groupSize_, causalValidLenDe, embed_, smToMm2Flag);
-                        //AscendC::DumpTensor(gAccumOut[wsOOff], 789 + qiDe, 8);
+                        // if (qToken == 0 && kvHeadIdx == 0 && slotK == 0) {
+                        //     AscendC::DumpTensor(gV[kvBlockBase], 456, 16);
+                        //     AscendC::DumpTensor(gAccumOut[wsOOff], 789 + qiDe, 128);
+                        // }
 #endif
                     }
                 }
