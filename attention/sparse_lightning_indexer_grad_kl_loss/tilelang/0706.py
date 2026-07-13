@@ -767,49 +767,38 @@ def tilelang_grad_kl_loss_single_kernel(
                 T.set_cross_flag("FIX", 3)
 
             # ============================================================
-            # V scope 3: Cast dQueryIndex (向量化大块 copy→cast→copy)
-            #   每个 AIV 一次性搬运全部连续行。无 g_id/d_idx 循环，无 if 分支。
+            # V scope 3: Cast dQueryIndex (g_id 半拆，小 buffer 复用)
             #   vid0 → 前半 [0, _v3_half)，vid1 → 后半 [_v3_half, v3_chunks)
-            #   同步: mte2→v{0} (RAW copy→cast), v→mte3{1} (RAW cast→copy)
-            #         v→mte2{2} (WAR cast读完→copy写), mte3→v{4} (WAR copy读完→cast写)
+            #   嵌套 if 避免 and/or；4 对 flag 保护 buffer 复用 WAR/RAW
             # ============================================================
             with T.Scope("V"):
                 T.wait_cross_flag(3)
 
+                dq_fp32_ub = T.alloc_ub((4, BLOCK_K), calc_dtype)
+                dq_fp16_ub = T.alloc_ub((4, BLOCK_K), input_dtype)
+
                 _v3_half = v3_chunks // 2  # 编译期常量: 8
-                _v3_my_rows = _v3_half * 4  # 编译期常量: 32
-                _v3_my_g_start = vid * _v3_half * 4  # vid=0→0, vid=1→32
-
-                dq_fp32_ub = T.alloc_ub((_v3_my_rows, DQueryIndex), calc_dtype)
-                dq_fp16_ub = T.alloc_ub((_v3_my_rows, DQueryIndex), input_dtype)
-
-                # Pre-fill WAR: buffer 初始可写
-                T.set_flag("v", "mte2", 2)
-                T.set_flag("mte3", "v", 4)
+                _v3_my_start = vid * _v3_half
 
                 for s1_row in T.serial(s1_start, s1_end):
-                    # --- copy gm→ub (MTE2) ---
-                    T.wait_flag("v", "mte2", 2)   # WAR: 上轮 cast 已读完 dq_fp32_ub
-                    T.copy(dQueryIndexAccum[bz, s1_row, _v3_my_g_start:_v3_my_g_start + _v3_my_rows, 0:DQueryIndex],
-                           dq_fp32_ub)
-                    T.set_flag("mte2", "v", 0)     # RAW: copy 完成 → cast 可读
-
-                    # --- cast fp32→fp16 (Vector) ---
-                    T.wait_flag("mte2", "v", 0)    # RAW: copy 完成
-                    T.wait_flag("mte3", "v", 4)    # WAR: 上轮 mte3 copy 已读完 dq_fp16_ub
-                    T.tile.cast(dq_fp16_ub, dq_fp32_ub, "CAST_ROUND", _v3_my_rows * DQueryIndex)
-                    T.set_flag("v", "mte2", 2)     # WAR: cast 读完 dq_fp32_ub → 下轮 copy 可写
-                    T.set_flag("v", "mte3", 1)     # RAW: cast 完成 → mte3 copy 可读
-
-                    # --- copy ub→gm (MTE3) ---
-                    T.wait_flag("v", "mte3", 1)    # RAW: cast 完成
-                    T.copy(dq_fp16_ub,
-                           dQueryIndex[bz, s1_row, _v3_my_g_start:_v3_my_g_start + _v3_my_rows, 0:DQueryIndex])
-                    T.set_flag("mte3", "v", 4)     # WAR: copy 读完 dq_fp16_ub → 下轮 cast 可写
-
-                # Clear: 排空残留 WAR
-                T.wait_flag("v", "mte2", 2)
-                T.wait_flag("mte3", "v", 4)
+                    for g_id in T.serial(v3_chunks):
+                        if g_id >= _v3_my_start:
+                            if g_id < _v3_my_start + _v3_half:
+                                for d_idx in T.serial(d_num_query_index):
+                                    # WAR: dq_fp32 复用，mte2 覆盖前等上轮 cast 读完
+                                    T.set_flag("v", "mte2", 2)
+                                    T.wait_flag("v", "mte2", 2)
+                                    T.copy(dQueryIndexAccum[bz, s1_row, g_id * 4:(g_id + 1) * 4, d_idx * BLOCK_K:(d_idx + 1) * BLOCK_K], dq_fp32_ub)
+                                    T.set_flag("mte2", "v", 0)
+                                    T.wait_flag("mte2", "v", 0)
+                                    # WAR: dq_fp16 复用，cast 覆盖前等上轮 mte3 读完
+                                    T.set_flag("mte3", "v", 4)
+                                    T.wait_flag("mte3", "v", 4)
+                                    T.tile.cast(dq_fp16_ub, dq_fp32_ub, "CAST_ROUND", 4 * BLOCK_K)
+                                    T.set_flag("v", "mte3", 1)
+                                    T.wait_flag("v", "mte3", 1)
+                                    T.pipe_barrier("mte3")
+                                    T.copy(dq_fp16_ub, dQueryIndex[bz, s1_row, g_id * 4:(g_id + 1) * 4, d_idx * BLOCK_K:(d_idx + 1) * BLOCK_K])
 
             # ============================================================
             # V scope 4: Scatter dk_matmul_partial → dKeyIndex（按 sparse idx）
@@ -823,25 +812,26 @@ def tilelang_grad_kl_loss_single_kernel(
                 dk_chunk_1 = T.alloc_ub((1, DQueryIndex), calc_dtype)
 
                 # k_id 区间对半分配给两个 AIV（用编译期 n_block//2，避免 runtime 除法）
-                # vid=0: [k_start, k_start + _v4_half),  vid=1: [k_start+_v4_half, k_end)
+                # T.serial 用编译期常量 _v4_half，k_id 在循环体内计算（模仿 V0 的 pattern）
+                # vid=0: my_base=k_start,        vid=1: my_base=k_start+_v4_half
                 _v4_half = n_block // 2  # 编译期常量: 32
-                my_start = k_start + vid * _v4_half
-                my_end = k_start + _v4_half + vid * (k_end - k_start - _v4_half)
+                my_base = k_start + vid * _v4_half
 
                 for s1_row in T.serial(s1_start, s1_end):
-                    if my_start < my_end:
+                    if my_base < k_end:
                         # Pre-fill WAR: both slots initially writable
                         T.set_flag("mte3", "mte2", 2)
                         T.set_flag("mte3", "mte2", 3)
 
-                        # Prologue: load my_start → slot 0
+                        # Prologue: load i=0 (k_id = my_base) → slot 0
                         T.wait_flag("mte3", "mte2", 2)
-                        T.copy(dk_matmul_partial[bz, s1_row, my_start:my_start + 1, 0:DQueryIndex], dk_chunk_0)
+                        T.copy(dk_matmul_partial[bz, s1_row, my_base:my_base + 1, 0:DQueryIndex], dk_chunk_0)
                         T.set_flag("mte2", "mte3", 2)
 
-                        for k_id in T.serial(my_start, my_end):
-                            cur = (k_id - my_start) % 2
-                            nxt = (k_id - my_start + 1) % 2
+                        for i in T.serial(_v4_half):
+                            k_id = my_base + i
+                            cur = i % 2
+                            nxt = (i + 1) % 2
 
                             # Compute current slot
                             T.wait_flag("mte2", "mte3", cur + 2)
@@ -855,8 +845,8 @@ def tilelang_grad_kl_loss_single_kernel(
                             T.set_flag("mte3", "mte2", cur + 2)
 
                             # Prefetch next iteration (MTE2 load ∥ MTE3 atomic of current)
-                            next_k = k_id + 1
-                            if next_k < my_end:
+                            if i + 1 < _v4_half:
+                                next_k = k_id + 1
                                 T.wait_flag("mte3", "mte2", nxt + 2)
                                 if nxt == 0:
                                     T.copy(dk_matmul_partial[bz, s1_row, next_k:next_k + 1, 0:DQueryIndex], dk_chunk_0)
