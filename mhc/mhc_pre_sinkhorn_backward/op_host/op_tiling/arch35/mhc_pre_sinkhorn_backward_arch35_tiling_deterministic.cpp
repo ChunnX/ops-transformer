@@ -214,7 +214,8 @@ void MhcPreSinkhornBackwardArch35DeterminiticTiling::DoUbTiling()
     int64_t perBsCostC_full =
         DOUBLE_BUFFER * n_ * cFp16AlignFull                 // xQue_
       + DOUBLE_BUFFER * n_ * cFp32AlignFull * 2             // xFp32Que_ + gradXFromHinQue_
-      + DOUBLE_BUFFER * cFp16AlignFull;                     // gradHinQue_
+      + DOUBLE_BUFFER * cFp16AlignFull                       // gradHinQue_
+      + DOUBLE_BUFFER * n_ * cFp32AlignFull;                 // gradXFromMatmulQue_ (PhaseE)
 
     // --- 场景判断 ---
     int64_t perBsCostC;
@@ -233,7 +234,8 @@ void MhcPreSinkhornBackwardArch35DeterminiticTiling::DoUbTiling()
         perBsCostC =
             DOUBLE_BUFFER * n_ * cFp16Align
           + DOUBLE_BUFFER * n_ * cFp32Align * 2
-          + DOUBLE_BUFFER * cFp16Align;
+          + DOUBLE_BUFFER * cFp16Align
+          + DOUBLE_BUFFER * n_ * cFp32Align;
     }
 
     // --- 计算 ubFactorBS ---
