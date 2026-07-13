@@ -212,7 +212,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMla(
       <td>oriSparseIndicesOptional（aclTensor*）</td>
       <td>输入</td>
       <td>代表离散取oriKvCache的索引。</td>
-      <td>CSA场景必须传入，SWA/HCA场景不传入。</td>
+      <td>-。</td>
       <td>INT32</td>
       <td>ND</td>
       <td>

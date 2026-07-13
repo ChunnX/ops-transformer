@@ -137,9 +137,9 @@ cann_ops_transformer.mixed_quant_sparse_flash_mla(
 | max_seqlen_ori_kv | int | 可选 | 表示ori_kv的最长Sequence Length，默认值为0。 | int32 | - |
 | max_seqlen_cmp_kv | int | 可选 | 表示cmp_kv的最长Sequence Length，默认值为0。 | int32 | - |
 | ori_topk | int | 可选 | 预留参数，当前不生效，表示ori_kv中筛选出的关键稀疏token的个数，0表示非稀疏场景，默认值为0。 | int32 | - |
-| cmp_topk | int | 可选 | 表示cmp_kv中筛选出的关键稀疏token的个数，支持0、512、1024。默认值为0。 | int32 | - |
+| cmp_topk | int | 可选 | 表示cmp_kv中筛选出的关键稀疏token的个数。默认值为0。 | int32 | - |
 | rope_head_dim | int | 可选 | 表示rope头的维度，仅支持64。默认值为64。 | int32 | - |
-| cmp_ratio | int | 可选 | 表示对cmp_kv的压缩率，支持1、4、128。默认值为1。 | int32 | - |
+| cmp_ratio | int | 可选 | 表示对cmp_kv的压缩率，支持1到128。默认值为1。 | int32 | - |
 | ori_mask_mode | int | 可选 | 表示q和ori_kv计算的mask模式，0表示No mask，3表示rightDownCausal模式，4表示sliding window模式，默认值为0。 | int32 | - |
 | cmp_mask_mode | int | 可选 | 表示q和cmp_kv计算的mask模式，0表示No mask，3表示rightDownCausal模式，默认值为0。 | int32 | - |
 | ori_win_left | int | 可选 | 表示q和ori_kv计算中q对过去token计算的数量，-1表示无穷大，默认值为-1。 | int32 | - |
@@ -174,7 +174,7 @@ cann_ops_transformer.mixed_quant_sparse_flash_mla(
 | quant_mode | 可选属性 | 表示量化模式，1表示K、V nope为per-token-group量化，scale类型为bfloat16，2表示K、V nope为per-token-group量化，scale类型为FLOAT8_E8M0。当前仅支持1和2。默认值为None。 | INT | - |
 | rope_head_dim | 可选属性 | 表示rope头的维度，仅支持64。默认值为None。 | INT | - |
 | softmax_scale | 可选属性 | QK矩阵乘后的缩放系数。默认值为1.0。 | FLOAT | - |
-| cmp_ratio | 可选属性 | 表示`cmp_kv`相对于压缩前KV长度的压缩倍率，用于恢复cmp侧mask使用的压缩前KV长度；仅传入`ori_kv`时不参与压缩KV计算。支持1、4、128。默认值为1。 | INT | - |
+| cmp_ratio | 可选属性 | 表示`cmp_kv`相对于压缩前KV长度的压缩倍率，用于恢复cmp侧mask使用的压缩前KV长度；仅传入`ori_kv`时不参与压缩KV计算。支持1到128。默认值为1。 | INT | - |
 | ori_mask_mode | 可选属性 | 表示`q`和`ori_kv`计算的mask模式。<br>0: No Mask。<br>3: RightDownCausal模式。<br>4: Band模式。默认值为0。 | INT | - |
 | cmp_mask_mode | 可选属性 | 表示`q`和`cmp_kv`计算的mask模式。<br>0: No Mask。<br>3: RightDownCausal模式。默认值为0。 | INT | - |
 | ori_win_left | 可选属性 | 表示`q`和`ori_kv`计算中`q`对过去token计算的数量，支持-1或非负数，其中-1表示窗口不受限。默认值为-1。 | INT | - |
@@ -223,18 +223,18 @@ cann_ops_transformer.mixed_quant_sparse_flash_mla(
     - `num_heads_q / num_heads_kv`仅支持2、4、8、16、32、64、128。
     - `ori_mask_mode`仅支持4，`cmp_mask_mode`仅支持3，`ori_win_left`仅支持127，`ori_win_right`仅支持0。
     - `rope_head_dim`仅支持64。
-    - `cmp_ratio`仅支持1、4、128。
-    - PageAttention的block_size支持16的倍数，且不超过1024。
+    - `cmp_ratio`仅支持1到128。
+    - PageAttention的block_size支持1到1024。
   - SWA：
     - 仅传入`ori_kv`时，`cmp_ratio`不参与压缩KV计算，需保持默认值1。
     - 不传入`cmp_kv`、`cmp_sparse_indices`和`cmp_block_table`。
     - `cmp_topk`传0，`cmp_mask_mode`传0。
   - CSA：
-    - `cmp_ratio`仅支持4，`cmp_mask_mode`仅支持3。
-    - `cmp_sparse_indices`必须传入，最后一维支持512或1024；`cmp_topk`对应传512或1024。
+    - `cmp_mask_mode`仅支持3。
+    - `cmp_sparse_indices`必须传入，最后一维支持泛化；`cmp_topk`对应传非0。
     - `cmp_residual_kv`必须传入，长度必须等于batch大小。
   - HCA：
-    - `cmp_ratio`仅支持128，`cmp_mask_mode`仅支持3。
+    - `cmp_mask_mode`仅支持3。
     - 不传入`cmp_sparse_indices`；`cmp_topk`传0。
     - `cmp_residual_kv`必须传入，长度必须等于batch大小。
 
