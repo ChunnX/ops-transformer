@@ -25,7 +25,6 @@ at::Tensor npu_stem_oam_prep_varlen_q(
     const at::Tensor &qSeqLens,
     const at::Tensor &cuSeqLensQ,
     const c10::optional<at::Tensor> &qScale,
-    const c10::optional<at::Tensor> &kScale,
     int64_t stemBlockSize,
     int64_t stemStride)
 {
@@ -48,15 +47,11 @@ at::Tensor npu_stem_oam_prep_varlen_q(
     at::Tensor qFlat = at::empty({batch, H_q, maxQb, qflat_dim},
                                   q.options().dtype(at::kBFloat16));
 
-    auto qSeqLensCpu = qSeqLens.cpu().to(at::kLong).contiguous();
-    std::vector<int64_t> qSeqLensVec(qSeqLensCpu.data_ptr<int64_t>(),
-                                     qSeqLensCpu.data_ptr<int64_t>() + qSeqLensCpu.numel());
-    at::IntArrayRef qSeqLensArr(qSeqLensVec);
+    at::Tensor qSeqLensCpu = qSeqLens.to(at::kLong).contiguous();
+    at::IntArrayRef qSeqLensArr(qSeqLensCpu.data_ptr<int64_t>(), qSeqLensCpu.size(0));
 
-    auto cuSeqLensQCpu = cuSeqLensQ.cpu().to(at::kLong).contiguous();
-    std::vector<int64_t> cuSeqLensQVec(cuSeqLensQCpu.data_ptr<int64_t>(),
-                                        cuSeqLensQCpu.data_ptr<int64_t>() + cuSeqLensQCpu.numel());
-    at::IntArrayRef cuSeqLensQArr(cuSeqLensQVec);
+    at::Tensor cuSeqLensQCpu = cuSeqLensQ.to(at::kLong).contiguous();
+    at::IntArrayRef cuSeqLensQArr(cuSeqLensQCpu.data_ptr<int64_t>(), cuSeqLensQCpu.size(0));
 
     ACLNN_CMD(aclnnStemOamPrepVarlenQ, q, qSeqLensArr, cuSeqLensQArr, qScale,
               stemBlockSize, stemStride, qFlat);
