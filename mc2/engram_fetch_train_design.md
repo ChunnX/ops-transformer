@@ -5,32 +5,97 @@
 
 ---
 
-## 一、数据流 kernel侧关注
+## 一、接口变化与新增
 
-### 1.1 前向训练态（EngramFetch，5 步融合在 issue kernel 内，无 wait kernel）
+### 1.1 Python API 层
 
-```
-indices[T]
-   │ ① 桶排序: owner=idx//E, local=idx%E → perm[T], sendCounts[W], sortedLocalEntry[T]
-   │ ② a2a(sortedLocalEntry) → recvLocalEntry[R], recvCounts[W]
-   │ ③ 本地 gather: storage[recvLocalEntry] → recvTokens(R,H)
-   │ ④ a2a(recvTokens) → gathered(T,H) sorted 序
-   │ ⑤ 还原: fetched[perm] = gathered
-   ├─→ fetched (T,H) bf16
-   └─→ save-for-backward: perm, sendCounts, recvCounts, recvLocalEntry, numRecv
-```
+**`ElasticBuffer.__init__`（修改）**
 
-### 1.2 反向（EngramFetchGrad，3 步单融合 kernel）
+| 参数 | 变化 | 类型 | 测试关注 |
+|------|------|------|---------|
+| ★ `with_grad` | 新增 | bool=False | True→训练态，触发 GM 申请 + save-for-backward |
+| ★ `num_npu_bytes` | 新增 | int=0 | GM 字节数，由 `get_engram_storage_size_hint` 返回 |
 
-```
-gradFetched(T,H) + perm/sendCounts/recvCounts/recvLocalEntry/numRecv
-   │ ① grad_sorted = gradFetched[perm]
-   │ ② a2a(grad_sorted; sendCounts↔recvCounts) → recvGrad(R,H)
-   │ ③ owner unique + fp32 scatter-add → gradUnique + uniqueLocalEntry + numUnique
-   ├─→ gradUniqueOut (R_max,H) fp32     前 numUnique 有效
-   ├─→ uniqueLocalEntryOut (R_max,) int32
-   └─→ numUniqueOut (1,) int32
-```
+**`engram_fetch`（修改，签名不变）**
+
+| 项 | 变化 | 测试关注 |
+|----|------|---------|
+| ▽ 返回值 | 推理: `fetched`；训练: `(fetched, EngramFetchCtx)` | 同接口两形态，按 `IsWithGrad()` 分支；|
+
+**`engram_fetch_grad`（★新增）**
+
+| 参数 | 类型 | 测试关注 |
+|------|------|---------|
+| `grad_fetched` | (T,H) bf16/fp16/fp32 | 前向 fetched 的梯度 |
+| `fetch_ctx` | EngramFetchCtx | 5 字段须与前向输出一致 |
+| 返回 `grad_unique` | (K,H) fp32 | K=numUnique，前 actualK 有效 |
+| 返回 `unique_local_entry` | (K,) int32 | 对应 local entry 索引 |
+
+**`EngramFetchCtx`（★新增，dataclass + C++ bound class）**
+
+| 字段 | shape | dtype | 测试关注 |
+|------|-------|-------|---------|
+| `perm` | (T,) | int32 | 桶排列序，反向 Input 2 |
+| `sendCounts` | (W,) | int32 | 每 rank 发送数，dim0==rankSize |
+| `recvCounts` | (W,) | int32 | 每 rank 接收数，dim0==rankSize |
+| `recvLocalEntry` | (R_max,) | int32 | dim0==totalRecv |
+| `numRecv` | (1,) | int32 | 实际接收行数 R |
+
+**`get_engram_storage_size_hint`（修改）**
+
+| 项 | 变化 | 测试关注 |
+|----|------|---------|
+| ★ `num_max_tokens_per_rank` | 新增第 4 参 | 训练态 GM 大小计算 |
+| ▽ 返回类型 | `int → Tuple[int,int]` | (cpuBytes, npuBytes) |
+
+### 1.2 aclnn 层
+
+**`aclnnEngramFetchGetWorkspaceSize`（修改）**：新增 5 个可选输出（插在 `fetched` 与 `workspaceSize` 间）
+
+| 参数 | 变化 | 类型 | 测试关注 |
+|------|------|------|---------|
+| ★ `permOut` | 新增 | aclTensor* | 训练非空 / 推理 nullOpt |
+| ★ `sendCountsOut` | 新增 | aclTensor* | 同上 |
+| ★ `recvCountsOut` | 新增 | aclTensor* | 同上 |
+| ★ `recvLocalEntryOut` | 新增 | aclTensor* | 同上 |
+| ★ `numRecvOut` | 新增 | aclTensor* | 同上 |
+
+**`aclnnEngramFetchGradGetWorkspaceSize`（★新增）**
+
+| 方向 | 参数 | dtype/shape | 测试关注 |
+|------|------|-------------|---------|
+| Input | commContext | int32 1D | REQUIRED |
+| Input | gradFetched | bf16/fp16/fp32 (T,H) | REQUIRED |
+| Input | perm | int32 (T,) | 来自前向 ctx |
+| Input | sendCounts | int32 (W,) | dim0==rankSize |
+| Input | recvCounts | int32 (W,) | dim0==rankSize |
+| Input | recvLocalEntry | int32 (R_max,) | dim0==totalRecv |
+| Input | numRecv | int32 (1,) | REQUIRED |
+| Output | gradUniqueOut | fp32 (-1,H) | REQUIRED |
+| Output | uniqueLocalEntryOut | int32 (-1,) | REQUIRED |
+| Output | numUniqueOut | int32 (1,) | REQUIRED |
+| Attr | hidden_size / num_entries_per_rank | int | REQUIRED |
+
+### 1.3 TilingData 层
+
+**前向 `EngramFetchTilingData`（修改）**
+
+| 字段 | 变化 | 类型 | 测试关注 |
+|------|------|------|---------|
+| ★ `withGrad` | 新增 | int32 | 0=推理/1=训练，决定 TilingKey |
+| ★ `numMaxTokensPerRank` | 新增 | int64 | workspace 计算用 |
+| ★ `rankSize` | 新增 | uint32 | 从 sendCountsOut.dim0 获取 |
+
+**反向 `EngramFetchGradTilingData`（★新增）**：8 字段全新增。关键交叉校验：
+- `rankSize` ← sendCounts.dim0
+- `totalRecv` ← recvLocalEntry.dim0
+
+### 1.4 TilingKey 层
+
+| 算子 | 变化 | 值 | 测试关注 |
+|------|------|----|---------|
+| 前向 | ▽ DEFAULT_MODE → 二值 | INFER_MODE=0 / WITH_GRAD_MODE=1 | 按 withGrad 选分支 |
+| 反向 | ★ 新增 | GRAD_DEFAULT_MODE=0 | 单一模式 |
 
 ---
 
@@ -100,74 +165,47 @@ struct EngramCommContext {
 };
 ```
 
-### 2.5 EngramContextBuilder
-
-`withGrad` 作为成员变量，`Build()` 入口设置一次。
-`withGrad_` 仅影响 `EnsureEngramContext` 末尾是否触发 GM 申请，不影响 channel 创建参数。
-
-**channel 创建（推理/训练一致）：**
-- `HcclChannelDescInit(&desc, 1)` — 始终初始化 1 个 descriptor
-- `desc.memHandleNum = 1` — 绑定 host pinned buffer（用于远端地址交换）
-- `desc.memHandles = &memHandle` — host buffer 句柄
-
-**训练 GM 注册路径（channel 创建之后，复用同一 channel）：**
-
-| 步骤 | 时机 | API | 说明 |
-|------|------|-----|------|
-| ① host buffer 注册 | BuildChannelDescs 前 | `HcclCommMemReg(tag="..._buffer")` | 注册 host pinned 内存 |
-| ② channel 创建 | BuildChannelDescs 内 | `HcclChannelAcquire(memHandleNum=1)` | 创建 channel，绑定 host buffer |
-| ③ 远端 host 地址交换 | GetHcclCommResource 内 | `HcclChannelGetRemoteMems(tag="..._buffer")` | 按 tag 查远端 host 地址 |
-| ④ GM 注册 | AllocateAndExchangeGm 内 | `HcclCommMemReg(tag="..._gm")` | 注册 GM 到 comm 域 |
-| ⑤ 远端 GM 地址交换 | AllocateAndExchangeGm 内 | `HcclChannelGetRemoteMems(tag="..._gm")` | 复用同一 channel，按 tag 查远端 GM 地址 |
-
-> `HcclChannelGetRemoteMems` 按 memTag 字符串匹配返回远端内存，不要求 memHandle 在 channel 创建时绑定。
-> 因此步骤④⑤复用步骤②创建的 channel，无需额外槽位。
-
-**训练前向数据流与 channel 的关系：**
-- 步骤③（本地 gather）：从 `commBuffer[rankId]` 设备映射地址直接读，**不经过 channel**
-- 步骤②④（a2a）：通过 GM（`epHcclBuffer`）做 all-to-all，使用 channel，但 GM 通过 tag 查询路径工作
+### 2.5 pybind 绑定
 
 ```cpp
-class EngramContextBuilder {
-public:
-    EngramContextResources Build(..., bool withGrad = false);
-private:
-    bool withGrad_ = false;
-    BuildChannelDescs: HcclChannelDescInit(&desc, 1), memHandleNum = 1
-};
-```
+// 注册 EngramFetchCtx 为 Python class（属性名与 Python dataclass 一致, duck typing 兼容）
+pybind11::class_<Mc2Api::EngramFetchCtx>(m, "EngramFetchCtx")
+    .def_readwrite("perm", &Mc2Api::EngramFetchCtx::perm)
+    .def_readwrite("sendCounts", &Mc2Api::EngramFetchCtx::sendCounts)
+    .def_readwrite("recvCounts", &Mc2Api::EngramFetchCtx::recvCounts)
+    .def_readwrite("recvLocalEntry", &Mc2Api::EngramFetchCtx::recvLocalEntry)
+    .def_readwrite("numRecv", &Mc2Api::EngramFetchCtx::numRecv);
 
-### 2.6 pybind 绑定
-
-```cpp
 .def(pybind11::init<const string&, int64_t, bool, int64_t, int64_t>(),
      pybind11::arg("groupName"), pybind11::arg("numCpuBytes"),
      pybind11::arg("withGrad") = false, pybind11::arg("numMaxTokensPerRank") = 0,
      pybind11::arg("numNpuBytes") = 0)
 .def("engram_fetch",
     [](ElasticBuffer &self, const at::Tensor &indices) -> py::object {
-        auto hook = self.EngramFetch(indices);
         if (self.IsWithGrad()) {
-            auto ctx = self.GetFetchCtx();
-            return py::cpp_function([hook=move(hook), ctx=move(ctx)]() mutable {
-                return py::make_tuple(hook(), get<0>(ctx), get<1>(ctx), get<2>(ctx), get<3>(ctx), get<4>(ctx));
-            });
+            Mc2Api::EngramFetchCtx ctx;                    // 局部变量, 不存成员
+            auto hook = self.EngramFetch(indices, &ctx);   // ctx 通过输出参数返回
+            return py::cpp_function(
+                [hook=move(hook), ctx=move(ctx)]() mutable {
+                    return py::make_tuple(hook(), py::cast(ctx));   // 2-tuple
+                });
         }
-        return py::cast(move(hook));
+        return py::cast(self.EngramFetch(indices));        // 推理: callable 返回单 tensor
     }, pybind11::arg("indices").noconvert())
 .def("engram_fetch_grad", &ElasticBuffer::EngramFetchGrad, ...)
 ```
 
-### 2.7 使用示例
+> C++ `EngramFetch` 加可选输出参数 `EngramFetchCtx *ctxOut = nullptr`（推理 nullptr, 训练非空）。
+> ctx 为局部变量, move 进 pybind lambda 捕获, 不存成员——多次 fetch 不覆盖。
+
+### 2.6 使用示例
 
 ```python
 buf = ElasticBuffer(group, num_cpu_bytes=..., with_grad=True, num_max_tokens_per_rank=...)
 buf.engram_write(storage)
 
 # 前向
-hook = buf.engram_fetch(indices)
-result = hook()
-fetched, fetch_ctx = result[0], EngramFetchCtx(*result[1:])
+fetched, fetch_ctx = buf.engram_fetch(indices)()
 
 # ... loss = f(fetched); loss.backward() → grad_fetched ...
 
@@ -186,25 +224,28 @@ grad_unique, unique_local_entry = buf.engram_fetch_grad(grad_fetched, fetch_ctx)
 def engram_fetch(self, indices: Tensor) -> Callable
 ```
 
-Python 无分支，C++ pybind lambda 根据 `withGrad` 决定返回值：
+Python 无分支，`return self._runtime.engram_fetch(indices)`；C++ pybind lambda 根据 `IsWithGrad` 决定 callable 返回值：
 
 | 模式 | `hook()` 返回 |
 |------|--------------|
 | 推理 | `fetched (T,H)` |
-| 训练 | `(fetched, perm, sendCounts, recvCounts, recvLocalEntry, numRecv)` 6-tuple |
+| 训练 | `(fetched, fetch_ctx)` — fetch_ctx 为 C++ bound EngramFetchCtx |
 
 ### 3.2 C++ EngramFetch 流程（`elastic_buffer.cpp`）
 
 ```
-EngramFetch(indices)
+EngramFetch(indices, ctxOut=nullptr)
   ├─ if withGrad_:
   │   ├─ TORCH_CHECK(epHcclBufferPtr_ != nullptr)         ← GM 已在 EnsureEngramContext 阶段申请
-  │   ├─ savedPerm_ = at::empty({numTokens}, ...)
-  │   ├─ savedSendCounts_ = at::empty({rankSize}, ...)
-  │   ├─ savedRecvCounts_ = at::empty({rankSize}, ...)
-  │   ├─ savedRecvLocalEntry_ = at::empty({maxR}, ...)   // maxR = num_max_token_per_rank * rankSize
-  │   ├─ savedNumRecv_ = at::empty({1}, ...)
-  │   ├─ ACLNN_CMD(aclnnEngramFetch, ..., 5 outputs)
+  │   ├─ opts = indices.options()                          ← 携带 device, int32
+  │   ├─ EngramFetchCtx ctx{                               ← 局部变量, 不存成员
+  │   │       at::empty({numTokens}, opts),                // perm
+  │   │       at::empty({rankSize}, opts),                 // sendCounts
+  │   │       at::empty({rankSize}, opts),                 // recvCounts
+  │   │       at::empty({maxR}, opts),                     // recvLocalEntry, maxR = numTokens * rankSize
+  │   │       at::empty({1}, opts)}                        // numRecv
+  │   ├─ ACLNN_CMD(aclnnEngramFetch, ..., ctx.perm, ctx.sendCounts, ...)
+  │   ├─ *ctxOut = std::move(ctx)                          ← 输出给调用方（pybind lambda 捕获）
   │   └─ return [fetched]() { return fetched; }
   │
   └─ else:
@@ -367,7 +408,7 @@ struct EngramFetchGradTilingData {
 ### 4.6 TilingKey
 
 ```
-ENGRAM_FETCH_GRAD_DEFAULT_MODE = 0   // 单一模式
+ENGRAM_FETCH_GRAD_DEFAULT_MODE = 0 
 ```
 
 ### 4.7 Workspace 布局
@@ -429,8 +470,8 @@ __global__ __aicore__ void engram_fetch_grad(
 | `engram_fetch_tiling_key.h` | `INFER_MODE` / `WITH_GRAD_MODE` |
 | `engram_fetch_tiling.cpp` | `GetWithGrad`；训练态可选输出校验；精确 workspace |
 | `aclnn_engram_fetch.cpp` | 5 个可选输出参数 |
-| `elastic_buffer.cpp` | `CommContext`+`epHcclBuffer`；`EngramContextBuilder`+`withGrad_`成员；GM EnsureEngramContext 阶段申请/destroy 释放；`numNpuBytes_`成员；`GetEngramStorageSizeHint` 返回 tuple；`EngramFetch` 简化+savedPerm_；`EngramFetchGrad`+numRecv；pybind lambda+numNpuBytes |
-| `elastic_buffer.py` | `EngramFetchCtx`；`with_grad`/`num_max_tokens_per_rank` 构造参数；`engram_fetch` 无分支；`engram_fetch_grad` |
+| `elastic_buffer.cpp` | `CommContext`+`epHcclBuffer`；`EngramContextBuilder`+`withGrad_`成员；GM EnsureEngramContext 阶段申请/destroy 释放；`numNpuBytes_`成员；`GetEngramStorageSizeHint` 返回 tuple；新增 `EngramFetchCtx` 结构体；`EngramFetch` 加 `ctxOut` 输出参数（局部 ctx, 不存成员）；删 `savedXxx_`×5 + `GetFetchCtx`；pybind 注册 `EngramFetchCtx` class + 训练返回 2-tuple；`EngramFetchGrad`+numRecv |
+| `elastic_buffer.py` | `EngramFetchCtx` dataclass（保留, duck typing 兼容 C++ bound class）；`with_grad`/`num_max_tokens_per_rank` 构造参数；`engram_fetch` 无分支（`return self._runtime.engram_fetch(indices)`）；`engram_fetch_grad` |
 
 ### 反向（新建文件）
 
@@ -447,6 +488,33 @@ __global__ __aicore__ void engram_fetch_grad(
 ---
 
 ## 六、逻辑验证示例
+
+### 6.1 前向训练态（EngramFetch，5 步融合在 issue kernel 内，无 wait kernel）
+
+```
+indices[T]
+   │ ① 桶排序: owner=idx//E, local=idx%E → perm[T], sendCounts[W], sortedLocalEntry[T]
+   │ ② a2a(sortedLocalEntry) → recvLocalEntry[R], recvCounts[W]
+   │ ③ 本地 gather: storage[recvLocalEntry] → recvTokens(R,H)
+   │ ④ a2a(recvTokens) → gathered(T,H) sorted 序
+   │ ⑤ 还原: fetched[perm] = gathered
+   ├─→ fetched (T,H) bf16
+   └─→ save-for-backward: perm, sendCounts, recvCounts, recvLocalEntry, numRecv
+```
+
+### 6.2 反向（EngramFetchGrad，3 步单融合 kernel）
+
+```
+gradFetched(T,H) + perm/sendCounts/recvCounts/recvLocalEntry/numRecv
+   │ ① grad_sorted = gradFetched[perm]
+   │ ② a2a(grad_sorted; sendCounts↔recvCounts) → recvGrad(R,H)
+   │ ③ owner unique + fp32 scatter-add → gradUnique + uniqueLocalEntry + numUnique
+   ├─→ gradUniqueOut (R_max,H) fp32     前 numUnique 有效
+   ├─→ uniqueLocalEntryOut (R_max,) int32
+   └─→ numUniqueOut (1,) int32
+```
+
+### 6.3 数值验证
 
 ```
 ep_world_size=3, numEntriesPerRank=2, hidden=2
