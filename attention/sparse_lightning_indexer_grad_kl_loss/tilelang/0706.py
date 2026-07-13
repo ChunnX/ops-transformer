@@ -404,7 +404,27 @@ def tilelang_grad_kl_loss_single_kernel(
                 rg_full_ub = T.alloc_ub((Nidx1, n_block), input_dtype)
                 rgt_ub = T.alloc_ub((n_block, Nidx1), input_dtype)
 
+                # Phase 2 (dWeight/reluGrad split) buffers
+                diff_ub = T.alloc_ub(n_block, calc_dtype)
+                dw_chunk_ub = T.alloc_ub((vector_baseg, n_block), calc_dtype)
+                dw_reduce_ub = T.alloc_ub(vector_baseg, calc_dtype)
+                rg_chunk_ub = T.alloc_ub((vector_baseg, n_block), calc_dtype)
+                ones_2d_ub = T.alloc_ub((vector_baseg, n_block), calc_dtype)
+                rg_half_ub = T.alloc_ub((vector_baseg, n_block), input_dtype)
+                dw_half_ub = T.alloc_ub(vector_baseg, input_dtype)
+                eps_ub = T.alloc_ub(n_block, calc_dtype)
+                # Phase 3 (Loss) buffers
+                loss_chunk_ub = T.alloc_ub(n_block, calc_dtype)
+                loss_log_p_ub = T.alloc_ub(n_block, calc_dtype)
+                loss_log_si_ub = T.alloc_ub(n_block, calc_dtype)
+                loss_val_ub = T.alloc_ub(n_block, calc_dtype)
+                loss_sum_ub = T.alloc_ub((1,), calc_dtype)
+
                 for s1_id in T.serial(s1_start, s1_end):
+                    # ============================================================
+                    # Common setup (both AIVs): load to UB — no GM write conflicts
+                    # Each AIV has its own UB, so identical computations are safe
+                    # ============================================================
                     T.copy(SoftmaxMax[bz, 0, s1_id, 0:G], sm_max_ub)
                     T.copy(SoftmaxSum[bz, 0, s1_id, 0:G], sm_sum_ub)
                     T.set_flag("mte2", "v", 4)
@@ -414,159 +434,139 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.pipe_barrier("v")
                     T.tile.max(sm_sum_ub, sm_sum_ub, eps_sm_ub)
 
-                    # P_reduced: broadcast sm_max/sm_sum to 2D once, then pure vector-vector
+                    # Load bmm1Res (needed by P_reduced in Phase 1)
                     T.copy(bmm1Res[bz, s1_id, 0:N1, n_idx_k * n_block:(n_idx_k + 1) * n_block], bmm1_ub)
                     T.set_flag("mte2", "v", 5)
                     T.wait_flag("mte2", "v", 5)
                     T.tile.mul(bmm1_ub, bmm1_ub, scale_value)
-                    T.tile.fill(p_reduced_tmp_ub, 1.0)  # reuse as broadcast seed
-                    # sm_max 逐行减：row_expand_sub 融合替代标量广播+sub（消除 128 PIPE_ALL）
-                    # bmm1[g,k] = bmm1[g,k] - sm_max[g]，走 brcb+sub_mask（PIPE_V，非 PIPE_ALL）
-                    T.pipe_barrier("v")
-                    T.tile.row_expand_sub_experiment(bmm1_ub, bmm1_ub, sm_max_ub, re_tmp_ub)
-                    T.pipe_barrier("v")
-                    T.tile.exp(bmm1_ub, bmm1_ub)
-                    # sm_sum 逐行除：row_expand_div 融合替代标量广播+div（消除 128 PIPE_ALL）
-                    T.pipe_barrier("v")
-                    T.tile.row_expand_div_experiment(bmm1_ub, bmm1_ub, sm_sum_ub, re_tmp_ub)
-                    T.pipe_barrier("v")
-                    T.reduce_sum(bmm1_ub, p_reduced_tmp_ub, 0)
-                    T.pipe_barrier("v")
-                    T.tile.mul(p_reduced_tmp_ub, p_reduced_tmp_ub, 1.0 / G)
-                    T.set_flag("v", "mte3", 6)
-                    T.wait_flag("v", "mte3", 6)
-                    T.copy(p_reduced_tmp_ub, PReduced[bz, s1_id, n_idx_k * n_block:(n_idx_k + 1) * n_block])
 
-                    # ReduceSumY: broadcast Weights to 2D once, then pure vector-vector
+                    # Load Weights → weight_2d_ub (needed by ReduceSumY in Phase 1 and dWeight in Phase 2)
                     T.copy(Weights[bz, s1_id, 0:Nidx1], weight_all_half_ub)
                     T.set_flag("mte2", "v", 7)
                     T.wait_flag("mte2", "v", 7)
                     T.tile.cast(weight_all_ub, weight_all_half_ub, "CAST_NONE", Nidx1)
-                    # weight 广播：row_expand_mul 替代标量循环（消除 Nidx1×PIPE_ALL）
-                    # weight_2d[k,:] = 1.0 * weight_all_ub[k] → 单次 brcb+mask 全并行
-                    # weight_2d 需物化（dWeight 循环 (b) 直接读整行 weight_2d[idx,:] 作向量）
                     T.tile.fill(weight_2d_ub, 1.0)
                     T.tile.row_expand_mul_experiment(weight_2d_ub, weight_2d_ub, weight_all_ub, re_tmp_ub)
-                    # ReduceSumY + GlobalSoftmaxI max: fused K-block pass
-                    # rsy_all_ub holds all ReduceSumY blocks (avoid GM re-reads)
-                    T.tile.fill(rsy_max_ub, -T.infinity(calc_dtype))
-                    # Double-buffer ReduceSumY loop: overlap copy[n_rsy+1] ∥ compute[n_rsy]
-                    # WAR-safe ping-pong, slot 0→bmm2_0, slot 1→bmm2_1
-                    # MTE2_V{0,1} (RAW) / V_MTE2{0,1} (WAR)
-                    T.set_flag("v", "mte2", 0)
-                    T.set_flag("v", "mte2", 1)
 
-                    # Prologue: load n_rsy=0 → slot 0
-                    T.wait_flag("v", "mte2", 0)
-                    T.copy(bmm2Res[bz, s1_id, 0:Nidx1, 0:n_block], bmm2_0)
-                    T.set_flag("mte2", "v", 0)
-
-                    for n_rsy in T.serial(n_num):
-                        cur = n_rsy % 2
-                        nxt = (n_rsy + 1) % 2
-
-                        # Compute current slot
-                        T.wait_flag("mte2", "v", cur)
+                    # ============================================================
+                    # Phase 1: AIV0 only — P_reduced, ReduceSumY DB, SoftmaxI
+                    # Single writer to GM (PReduced, ReduceSumY, SoftmaxI) — no conflict
+                    # AIV1 skips this block and falls through to barrier
+                    # ============================================================
+                    if vid == 0:
+                        T.tile.fill(p_reduced_tmp_ub, 1.0)
                         T.pipe_barrier("v")
-                        if cur == 0:
-                            T.tile.mul(bmm2_0, bmm2_0, weight_2d_ub)
-                        if cur == 1:
-                            T.tile.mul(bmm2_1, bmm2_1, weight_2d_ub)
+                        T.tile.row_expand_sub_experiment(bmm1_ub, bmm1_ub, sm_max_ub, re_tmp_ub)
                         T.pipe_barrier("v")
-                        if cur == 0:
-                            T.reduce_sum(bmm2_0, rsy_reduce_ub, 0)
-                        if cur == 1:
-                            T.reduce_sum(bmm2_1, rsy_reduce_ub, 0)
+                        T.tile.exp(bmm1_ub, bmm1_ub)
                         T.pipe_barrier("v")
-                        # Save to UB (for sum) + write to GM (for workspace)
-                        T.copy(rsy_reduce_ub, rsy_all_ub[n_rsy, :])
-                        T.pipe_barrier("mte3")
-                        T.copy(rsy_reduce_ub, ReduceSumY[bz, s1_id, n_rsy * n_block:(n_rsy + 1) * n_block])
-                        # Fused: update global max from rsy_reduce_ub (still in UB, no GM round-trip)
-                        T.tile.mul(rsy_bc_ub[0, :], rsy_reduce_ub, 1.0)
+                        T.tile.row_expand_div_experiment(bmm1_ub, bmm1_ub, sm_sum_ub, re_tmp_ub)
                         T.pipe_barrier("v")
-                        T.reduce_max(rsy_bc_ub, rsy_chunk_max_ub, 1)
+                        T.reduce_sum(bmm1_ub, p_reduced_tmp_ub, 0)
                         T.pipe_barrier("v")
-                        T.tile.max(rsy_max_ub, rsy_max_ub, rsy_chunk_max_ub)
-                        # WAR: current slot consumed → safe to refill
-                        T.set_flag("v", "mte2", cur)
+                        T.tile.mul(p_reduced_tmp_ub, p_reduced_tmp_ub, 1.0 / G)
+                        T.set_flag("v", "mte3", 6)
+                        T.wait_flag("v", "mte3", 6)
+                        T.copy(p_reduced_tmp_ub, PReduced[bz, s1_id, n_idx_k * n_block:(n_idx_k + 1) * n_block])
 
-                        # Prefetch next iteration (MTE2 load ∥ V compute of current)
-                        if n_rsy + 1 < n_num:
-                            next_n = n_rsy + 1
-                            T.wait_flag("v", "mte2", nxt)
-                            if nxt == 0:
-                                T.copy(bmm2Res[bz, s1_id, 0:Nidx1, next_n * n_block:(next_n + 1) * n_block], bmm2_0)
-                            if nxt == 1:
-                                T.copy(bmm2Res[bz, s1_id, 0:Nidx1, next_n * n_block:(next_n + 1) * n_block], bmm2_1)
-                            T.set_flag("mte2", "v", nxt)
+                        # ReduceSumY: Double-Buffer K-block loop
+                        T.tile.fill(rsy_max_ub, -T.infinity(calc_dtype))
+                        T.set_flag("v", "mte2", 0)
+                        T.set_flag("v", "mte2", 1)
 
-                    # Clear: drain remaining WAR events
-                    T.wait_flag("v", "mte2", 0)
-                    T.wait_flag("v", "mte2", 1)
+                        T.wait_flag("v", "mte2", 0)
+                        T.copy(bmm2Res[bz, s1_id, 0:Nidx1, 0:n_block], bmm2_0)
+                        T.set_flag("mte2", "v", 0)
 
-                    # Broadcast rsy_max to vector once (softmax_i_chunk_ub free, p_reduced_tmp refill 1.0)
-                    # WAR: p_reduced_tmp 前面被 reduce_sum 覆盖，refill 前等 mte3 drain 完成
-                    T.set_flag("mte3", "v", 0)
-                    T.wait_flag("mte3", "v", 0)
-                    T.tile.fill(p_reduced_tmp_ub, 1.0)
-                    T.pipe_barrier("v")
-                    T.tile.mul(softmax_i_chunk_ub, p_reduced_tmp_ub, rsy_max_ub[0])
+                        for n_rsy in T.serial(n_num):
+                            cur = n_rsy % 2
+                            nxt = (n_rsy + 1) % 2
 
-                    # GlobalSoftmaxI: compute global sum from UB-held ReduceSumY (no GM reads)
-                    T.tile.fill(rsy_sum_ub, 0)
-                    for n_idx_iter in T.serial(n_num):
-                        T.copy(rsy_all_ub[n_idx_iter, :], rsy_chunk_ub)
+                            T.wait_flag("mte2", "v", cur)
+                            T.pipe_barrier("v")
+                            if cur == 0:
+                                T.tile.mul(bmm2_0, bmm2_0, weight_2d_ub)
+                            if cur == 1:
+                                T.tile.mul(bmm2_1, bmm2_1, weight_2d_ub)
+                            T.pipe_barrier("v")
+                            if cur == 0:
+                                T.reduce_sum(bmm2_0, rsy_reduce_ub, 0)
+                            if cur == 1:
+                                T.reduce_sum(bmm2_1, rsy_reduce_ub, 0)
+                            T.pipe_barrier("v")
+                            T.copy(rsy_reduce_ub, rsy_all_ub[n_rsy, :])
+                            T.pipe_barrier("mte3")
+                            T.copy(rsy_reduce_ub, ReduceSumY[bz, s1_id, n_rsy * n_block:(n_rsy + 1) * n_block])
+                            T.tile.mul(rsy_bc_ub[0, :], rsy_reduce_ub, 1.0)
+                            T.pipe_barrier("v")
+                            T.reduce_max(rsy_bc_ub, rsy_chunk_max_ub, 1)
+                            T.pipe_barrier("v")
+                            T.tile.max(rsy_max_ub, rsy_max_ub, rsy_chunk_max_ub)
+                            T.set_flag("v", "mte2", cur)
+
+                            if n_rsy + 1 < n_num:
+                                next_n = n_rsy + 1
+                                T.wait_flag("v", "mte2", nxt)
+                                if nxt == 0:
+                                    T.copy(bmm2Res[bz, s1_id, 0:Nidx1, next_n * n_block:(next_n + 1) * n_block], bmm2_0)
+                                if nxt == 1:
+                                    T.copy(bmm2Res[bz, s1_id, 0:Nidx1, next_n * n_block:(next_n + 1) * n_block], bmm2_1)
+                                T.set_flag("mte2", "v", nxt)
+
+                        T.wait_flag("v", "mte2", 0)
+                        T.wait_flag("v", "mte2", 1)
+
+                        # SoftmaxI: global rsy_sum from UB-held rsy_all_ub (no GM re-reads)
+                        T.set_flag("mte3", "v", 0)
+                        T.wait_flag("mte3", "v", 0)
+                        T.tile.fill(p_reduced_tmp_ub, 1.0)
+                        T.pipe_barrier("v")
+                        T.tile.mul(softmax_i_chunk_ub, p_reduced_tmp_ub, rsy_max_ub[0])
+
+                        T.tile.fill(rsy_sum_ub, 0)
+                        for n_idx_iter in T.serial(n_num):
+                            T.copy(rsy_all_ub[n_idx_iter, :], rsy_chunk_ub)
+                            T.pipe_barrier("v")
+                            T.tile.sub(rsy_chunk_ub, rsy_chunk_ub, softmax_i_chunk_ub)
+                            T.pipe_barrier("v")
+                            T.tile.exp(rsy_chunk_ub, rsy_chunk_ub)
+                            T.pipe_barrier("v")
+                            T.tile.mul(rsy_bc_ub[0, :], rsy_chunk_ub, 1.0)
+                            T.pipe_barrier("v")
+                            T.reduce_sum(rsy_bc_ub, rsy_chunk_sum_ub, 1)
+                            T.pipe_barrier("v")
+                            T.tile.add(rsy_sum_ub, rsy_sum_ub, rsy_chunk_sum_ub)
+
+                        T.tile.fill(eps_sum_ub, 1e-8)
+                        T.pipe_barrier("v")
+                        T.tile.max(rsy_sum_ub, rsy_sum_ub, eps_sum_ub)
+
+                        T.copy(rsy_all_ub[n_idx_k, :], rsy_chunk_ub)
                         T.pipe_barrier("v")
                         T.tile.sub(rsy_chunk_ub, rsy_chunk_ub, softmax_i_chunk_ub)
                         T.pipe_barrier("v")
                         T.tile.exp(rsy_chunk_ub, rsy_chunk_ub)
                         T.pipe_barrier("v")
-                        T.tile.mul(rsy_bc_ub[0, :], rsy_chunk_ub, 1.0)
-                        T.pipe_barrier("v")
-                        T.reduce_sum(rsy_bc_ub, rsy_chunk_sum_ub, 1)
-                        T.pipe_barrier("v")
-                        T.tile.add(rsy_sum_ub, rsy_sum_ub, rsy_chunk_sum_ub)
+                        T.tile.div(rsy_chunk_ub, rsy_chunk_ub, rsy_sum_ub[0])
+                        T.set_flag("v", "mte3", 4)
+                        T.wait_flag("v", "mte3", 4)
+                        T.copy(rsy_chunk_ub, SoftmaxI[bz, s1_id, n_idx_k * n_block:(n_idx_k + 1) * n_block])
 
-                    T.tile.fill(eps_sum_ub, 1e-8)
-                    T.pipe_barrier("v")
-                    T.tile.max(rsy_sum_ub, rsy_sum_ub, eps_sum_ub)
+                    # ============================================================
+                    # Sync 1→2: drain MTE3 then barrier — AIV1 now sees AIV0's
+                    # PReduced / SoftmaxI / ReduceSumY writes in GM
+                    # ============================================================
+                    T.pipe_barrier("mte3")
+                    T.barrier_all()
 
-                    # Per-core SoftmaxI: use UB-held ReduceSumY + broadcast rsy_max (no GM reads)
-                    T.copy(rsy_all_ub[n_idx_k, :], rsy_chunk_ub)
-                    T.pipe_barrier("v")
-                    T.tile.sub(rsy_chunk_ub, rsy_chunk_ub, softmax_i_chunk_ub)
-                    T.pipe_barrier("v")
-                    T.tile.exp(rsy_chunk_ub, rsy_chunk_ub)
-                    T.pipe_barrier("v")
-                    T.tile.div(rsy_chunk_ub, rsy_chunk_ub, rsy_sum_ub[0])
-                    T.set_flag("v", "mte3", 4)
-                    T.wait_flag("v", "mte3", 4)
-                    T.copy(rsy_chunk_ub, SoftmaxI[bz, s1_id, n_idx_k * n_block:(n_idx_k + 1) * n_block])
-
-                    # dWeight, reluGrad for MY K block (same V scope, no cross flag)
-                    # Strategy: per-row 1D ops + per-chunk GM load (avoids UB range slicing bug)
-                    #   - diff_ub (128,) used directly in 1D muls (no diff_2d needed)
-                    #   - weight_2d_ub[idx,:] read directly (scalar idx, no UB range slice)
-                    #   - bmm2 loaded per-chunk from GM → dw_chunk_ub (no UB→UB copy)
-                    diff_ub = T.alloc_ub(n_block, calc_dtype)
-                    dw_chunk_ub = T.alloc_ub((vector_baseg, n_block), calc_dtype)
-                    dw_reduce_ub = T.alloc_ub(vector_baseg, calc_dtype)
-                    rg_chunk_ub = T.alloc_ub((vector_baseg, n_block), calc_dtype)
-                    ones_2d_ub = T.alloc_ub((vector_baseg, n_block), calc_dtype)
-                    rg_half_ub = T.alloc_ub((vector_baseg, n_block), input_dtype)
-                    dw_half_ub = T.alloc_ub(vector_baseg, input_dtype)
-                    eps_ub = T.alloc_ub(n_block, calc_dtype)
-                    loss_chunk_ub = T.alloc_ub(n_block, calc_dtype)
-                    loss_log_p_ub = T.alloc_ub(n_block, calc_dtype)
-                    loss_log_si_ub = T.alloc_ub(n_block, calc_dtype)
-                    loss_val_ub = T.alloc_ub(n_block, calc_dtype)
-
+                    # ============================================================
+                    # Phase 2: Both AIVs — dWeight/reluGrad split
+                    # AIV0: rows [0, vector_baseg), AIV1: rows [vector_baseg, 2*vector_baseg)
+                    # Each writes non-overlapping regions → no GM write conflict
+                    # ============================================================
                     T.tile.fill(ones_2d_ub, 1.0)
                     T.tile.fill(eps_ub, 1e-8)
 
-                    # dWeight, reluGrad for MY K block
-                    # RAW: SoftmaxI 刚由 mte3 写，mte2 读回前等 mte3 完成
                     T.set_flag("mte3", "mte2", 5)
                     T.wait_flag("mte3", "mte2", 5)
                     T.copy(SoftmaxI[bz, s1_id, n_idx_k * n_block:(n_idx_k + 1) * n_block], softmax_i_chunk_ub)
@@ -575,23 +575,18 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.wait_flag("mte2", "v", 6)
                     T.tile.sub(diff_ub, softmax_i_chunk_ub, p_reduced_tmp_ub)
 
-                    # vid=0 → g_start=0, vid=1 → g_start=vector_baseg (32)
-                    # 每 AIV 只执行一次，无 for/if，避免跨核分支
                     g_start = vid * vector_baseg
 
                     T.pipe_barrier("v")
                     T.tile.fill(weight_ub, 0)
 
-                    # Load bmm2 chunk directly from GM
                     T.set_flag("mte3", "mte2", 2)
                     T.wait_flag("mte3", "mte2", 2)
                     T.copy(bmm2Res[bz, s1_id, g_start:g_start + vector_baseg, n_idx_k * n_block:(n_idx_k + 1) * n_block], dw_chunk_ub)
 
-                    # RAW: dw_chunk 由 mte2 载入全 chunk
                     T.set_flag("mte2", "v", 7)
                     T.wait_flag("mte2", "v", 7)
 
-                    # Mask 计算：全 2D (vector_baseg, n_block)
                     T.pipe_barrier("v")
                     T.tile.mul(rsy_tmp_ub, dw_chunk_ub, -10000.0)
                     T.pipe_barrier("v")
@@ -600,7 +595,6 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.tile.sub(rsy_tmp_ub, ones_2d_ub, rsy_tmp_ub)
                     T.pipe_barrier("v")
 
-                    # Per-row dWeight/reluGrad
                     for i in range(vector_baseg):
                         idx = g_start + i
                         T.tile.mul(rg_chunk_ub[i, :], weight_2d_ub[idx, :], diff_ub)
@@ -612,7 +606,6 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.pipe_barrier("v")
                     T.tile.add(weight_ub, weight_ub, dw_reduce_ub)
 
-                    # Write reluGrad for MY K block only
                     T.tile.cast(rg_half_ub, rg_chunk_ub, "CAST_ROUND", vector_baseg * n_block)
                     T.pipe_barrier("v")
                     T.set_flag("v", "mte3", 0)
@@ -625,66 +618,65 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.pipe_barrier("v")
                     T.set_flag("v", "mte3", 1)
                     T.wait_flag("v", "mte3", 1)
-                    # Write partial dWeight for MY K block only
                     T.copy(dw_half_ub, dWeight_partial[bz, s1_id, n_idx_k, vid * vector_baseg:(vid + 1) * vector_baseg])
 
-                    # Compute partial Loss for MY K block only (n_idx_k)
-                    T.copy(PReduced[bz, s1_id, n_idx_k * n_block:(n_idx_k + 1) * n_block], loss_chunk_ub)
-                    T.set_flag("mte2", "v", 0)
-                    T.wait_flag("mte2", "v", 0)
-                    T.tile.max(loss_chunk_ub, loss_chunk_ub, eps_ub)
-                    T.pipe_barrier("v")
-                    T.tile.ln(loss_log_p_ub, loss_chunk_ub)
-                    # WAR: loss_chunk 复用，下轮 mte2 覆盖前等本轮 ln 读完
-                    T.set_flag("v", "mte2", 1)
-                    T.wait_flag("v", "mte2", 1)
-
-                    T.copy(SoftmaxI[bz, s1_id, n_idx_k * n_block:(n_idx_k + 1) * n_block], loss_chunk_ub)
-                    T.set_flag("mte2", "v", 2)
-                    T.wait_flag("mte2", "v", 2)
-                    T.tile.max(loss_chunk_ub, loss_chunk_ub, eps_ub)
-                    T.pipe_barrier("v")
-                    T.tile.ln(loss_log_si_ub, loss_chunk_ub)
-                    T.set_flag("v", "mte2", 3)
-                    T.wait_flag("v", "mte2", 3)
-
-                    T.copy(PReduced[bz, s1_id, n_idx_k * n_block:(n_idx_k + 1) * n_block], loss_chunk_ub)
-                    T.pipe_barrier("v")
-                    T.tile.sub(loss_val_ub, loss_log_p_ub, loss_log_si_ub)
-                    # RAW: loss_chunk 刚 mte2 载入，mul 读前等
-                    T.set_flag("mte2", "v", 4)
-                    T.wait_flag("mte2", "v", 4)
-                    T.pipe_barrier("v")
-                    T.tile.mul(loss_val_ub, loss_chunk_ub, loss_val_ub)
-
-                    T.pipe_barrier("v")
-                    T.tile.mul(rsy_bc_ub[0, :], loss_val_ub, 1.0)
-                    T.pipe_barrier("v")
-                    loss_sum_ub = T.alloc_ub((1,), calc_dtype)
-                    T.reduce_sum(rsy_bc_ub, loss_sum_ub, 1)
-                    T.set_flag("v", "mte3", 5)
-                    T.wait_flag("v", "mte3", 5)
-
-                    # Write partial Loss for MY K block only (single value)
-                    T.copy(loss_sum_ub, LossOut[bz, s1_id, n_idx_k:n_idx_k + 1])
-
-                    # 跨 AIV 同步：先排空 MTE3 写回（确保 reluGradRes DMA 已落地 GM），
-                    # 再 barrier_all 等对端 AIV 也完成写回，之后读全量 (0:Nidx1) 才是完整数据
+                    # ============================================================
+                    # Sync 2→3: drain MTE3 then barrier — both AIVs' reluGradRes
+                    # halves are now visible in GM for Phase 3 to read full [0:Nidx1]
+                    # ============================================================
                     T.pipe_barrier("mte3")
                     T.barrier_all()
 
-                    # dKeyIndex 融合：预转置 reluGrad[my block] (Nidx1,n_block)→(n_block,Nidx1) 写 reluGradT_ws
-                    # 供 C2 用 (F,F) gemm 算部分积，规避手动同步下产零的 transpose_A（cube L1→L0A 转置 load）
-                    # reluGradRes[my block] 已由本 scope 上面的 MTE3 写完，读回前排空 MTE3
-                    T.set_flag("mte3", "mte2", 6)
-                    T.wait_flag("mte3", "mte2", 6)
-                    T.copy(reluGradRes[bz, s1_id, 0:Nidx1, n_idx_k * n_block:(n_idx_k + 1) * n_block], rg_full_ub)
-                    T.set_flag("mte2", "v", 8)
-                    T.wait_flag("mte2", "v", 8)
-                    T.tile.transpose(rgt_ub, rg_full_ub)
-                    T.set_flag("v", "mte3", 6)
-                    T.wait_flag("v", "mte3", 6)
-                    T.copy(rgt_ub, reluGradT_ws[bz, s1_id, n_idx_k * n_block:(n_idx_k + 1) * n_block, 0:Nidx1])
+                    # ============================================================
+                    # Phase 3: AIV0 only — Loss, Pre-transpose
+                    # Reads full reluGradRes[0:Nidx1] (both halves visible after barrier)
+                    # Writes LossOut, reluGradT_ws (single writer)
+                    # ============================================================
+                    if vid == 0:
+                        T.copy(PReduced[bz, s1_id, n_idx_k * n_block:(n_idx_k + 1) * n_block], loss_chunk_ub)
+                        T.set_flag("mte2", "v", 0)
+                        T.wait_flag("mte2", "v", 0)
+                        T.tile.max(loss_chunk_ub, loss_chunk_ub, eps_ub)
+                        T.pipe_barrier("v")
+                        T.tile.ln(loss_log_p_ub, loss_chunk_ub)
+                        T.set_flag("v", "mte2", 1)
+                        T.wait_flag("v", "mte2", 1)
+
+                        T.copy(SoftmaxI[bz, s1_id, n_idx_k * n_block:(n_idx_k + 1) * n_block], loss_chunk_ub)
+                        T.set_flag("mte2", "v", 2)
+                        T.wait_flag("mte2", "v", 2)
+                        T.tile.max(loss_chunk_ub, loss_chunk_ub, eps_ub)
+                        T.pipe_barrier("v")
+                        T.tile.ln(loss_log_si_ub, loss_chunk_ub)
+                        T.set_flag("v", "mte2", 3)
+                        T.wait_flag("v", "mte2", 3)
+
+                        T.copy(PReduced[bz, s1_id, n_idx_k * n_block:(n_idx_k + 1) * n_block], loss_chunk_ub)
+                        T.pipe_barrier("v")
+                        T.tile.sub(loss_val_ub, loss_log_p_ub, loss_log_si_ub)
+                        T.set_flag("mte2", "v", 4)
+                        T.wait_flag("mte2", "v", 4)
+                        T.pipe_barrier("v")
+                        T.tile.mul(loss_val_ub, loss_chunk_ub, loss_val_ub)
+
+                        T.pipe_barrier("v")
+                        T.tile.mul(rsy_bc_ub[0, :], loss_val_ub, 1.0)
+                        T.pipe_barrier("v")
+                        T.reduce_sum(rsy_bc_ub, loss_sum_ub, 1)
+                        T.set_flag("v", "mte3", 5)
+                        T.wait_flag("v", "mte3", 5)
+                        T.copy(loss_sum_ub, LossOut[bz, s1_id, n_idx_k:n_idx_k + 1])
+
+                        # Pre-transpose: read full reluGradRes (both AIV halves), write reluGradT_ws
+                        T.set_flag("mte3", "mte2", 6)
+                        T.wait_flag("mte3", "mte2", 6)
+                        T.copy(reluGradRes[bz, s1_id, 0:Nidx1, n_idx_k * n_block:(n_idx_k + 1) * n_block], rg_full_ub)
+                        T.set_flag("mte2", "v", 8)
+                        T.wait_flag("mte2", "v", 8)
+                        T.tile.transpose(rgt_ub, rg_full_ub)
+                        T.set_flag("v", "mte3", 6)
+                        T.wait_flag("v", "mte3", 6)
+                        T.copy(rgt_ub, reluGradT_ws[bz, s1_id, n_idx_k * n_block:(n_idx_k + 1) * n_block, 0:Nidx1])
 
                 T.set_cross_flag("V", 12)
 
