@@ -13,9 +13,9 @@ if (BUILD_OPEN_PROJECT)  # custom
         inplace_matmul_all_reduce_add_rms_norm_def.cpp
     )
     add_modules_sources_with_soc(
-        OP_API_INDEPENDENT ON 
-        OP_API_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../op_api 
-        OP_MC2_ENABLE ON 
+        OP_API_INDEPENDENT ON
+        OP_API_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../op_api
+        OP_MC2_ENABLE ON
         OPTYPE inplace_matmul_all_reduce_add_rms_norm inplace_matmul_all_reduce_add_rms_norm ACLNNTYPE aclnn aclnn_inner)
     set(SUB_MC2_COMPILE TRUE PARENT_SCOPE)
     set(MC2_OPT ON PARENT_SCOPE)

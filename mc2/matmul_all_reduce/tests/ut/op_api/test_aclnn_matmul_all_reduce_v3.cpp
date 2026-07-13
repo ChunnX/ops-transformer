@@ -18,22 +18,19 @@ namespace MatmulAllReduceUT {
 
 namespace {
 
-void RunMatmulAllReduceV3Ut(
-    op::SocVersion soc, const TensorDesc& x1, const TensorDesc& x2, const aclTensor* bias, const aclTensor* x3,
-    const TensorDesc& output, const char* commMode, aclnnStatus expectResult)
+void RunMatmulAllReduceV3Ut(op::SocVersion soc, const TensorDesc &x1, const TensorDesc &x2, const aclTensor *bias,
+                            const aclTensor *x3, const TensorDesc &output, const char *commMode,
+                            aclnnStatus expectResult)
 {
     op::SetPlatformSocVersion(soc);
-    const char* group = "group";
-    const char* reduceOp = "sum";
+    const char *group = "group";
+    const char *reduceOp = "sum";
     int64_t commTurn = 0;
     int64_t streamMode = 1;
     uint64_t workspace_size = 0;
-    aclOpExecutor* executor = nullptr;
-    auto ut = OP_API_UT(
-        aclnnMatmulAllReduceV3,
-        INPUT(x1, x2, bias, x3, group, reduceOp, commMode, commTurn, streamMode),
-        OUTPUT(output)
-    );
+    aclOpExecutor *executor = nullptr;
+    auto ut = OP_API_UT(aclnnMatmulAllReduceV3,
+                        INPUT(x1, x2, bias, x3, group, reduceOp, commMode, commTurn, streamMode), OUTPUT(output));
     auto aclnnRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor);
     if (expectResult == ACLNN_SUCCESS) {
         EXPECT_NE(ACLNN_ERR_PARAM_INVALID, aclnnRet);
@@ -64,14 +61,12 @@ TEST_P(AclnnMatmulAllReduceV3Test, param)
 {
     auto param = GetParam();
     op::SetPlatformSocVersion(param.soc);
-    auto ut = OP_API_UT(
-        aclnnMatmulAllReduceV3,
-        INPUT(param.x1, param.x2, param.bias, param.x3, param.group.c_str(), param.reduceOp.c_str(),
-              param.commMode.c_str(), param.commTurn, param.streamMode),
-        OUTPUT(param.output)
-    );
+    auto ut = OP_API_UT(aclnnMatmulAllReduceV3,
+                        INPUT(param.x1, param.x2, param.bias, param.x3, param.group.c_str(), param.reduceOp.c_str(),
+                              param.commMode.c_str(), param.commTurn, param.streamMode),
+                        OUTPUT(param.output));
     uint64_t workspace_size = 0;
-    aclOpExecutor* executor = nullptr;
+    aclOpExecutor *executor = nullptr;
     auto aclnnRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor);
     if (param.expectResult == ACLNN_SUCCESS) {
         EXPECT_NE(ACLNN_ERR_PARAM_INVALID, aclnnRet);
@@ -84,11 +79,9 @@ TEST_P(AclnnMatmulAllReduceV3Test, param)
 }
 
 INSTANTIATE_TEST_SUITE_P(
-    MatmulAllReduce,
-    AclnnMatmulAllReduceV3Test,
+    MatmulAllReduce, AclnnMatmulAllReduceV3Test,
     testing::ValuesIn(GetCasesFromCsv<MatmulAllReduceApiUtParam>(ReplaceFileExtension2Csv(__FILE__))),
-    PrintCaseInfoString<MatmulAllReduceApiUtParam>
-);
+    PrintCaseInfoString<MatmulAllReduceApiUtParam>);
 
 class AclnnMatmulAllReduceV3ExtraTest : public testing::Test {};
 
@@ -98,8 +91,8 @@ TEST_F(AclnnMatmulAllReduceV3ExtraTest, Ascend310PWithoutX3)
     TensorDesc x2 = {{32, 16}, ACL_FLOAT16, ACL_FORMAT_ND};
     TensorDesc bias = {{16}, ACL_FLOAT16, ACL_FORMAT_ND};
     TensorDesc output = {{16, 16}, ACL_FLOAT16, ACL_FORMAT_ND};
-    RunMatmulAllReduceV3Ut(
-        op::SocVersion::ASCEND310P, x1, x2, bias.ToAclTypeRawPtr(), nullptr, output, "ai_cpu", ACLNN_SUCCESS);
+    RunMatmulAllReduceV3Ut(op::SocVersion::ASCEND310P, x1, x2, bias.ToAclTypeRawPtr(), nullptr, output, "ai_cpu",
+                           ACLNN_SUCCESS);
 }
 
 TEST_F(AclnnMatmulAllReduceV3ExtraTest, TransposedX2)
@@ -107,8 +100,7 @@ TEST_F(AclnnMatmulAllReduceV3ExtraTest, TransposedX2)
     TensorDesc x1 = {{16, 32}, ACL_FLOAT16, ACL_FORMAT_ND};
     TensorDesc x2 = {{32, 16}, ACL_FLOAT16, ACL_FORMAT_ND, {1, 32}};
     TensorDesc output = {{16, 16}, ACL_FLOAT16, ACL_FORMAT_ND};
-    RunMatmulAllReduceV3Ut(
-        op::SocVersion::ASCEND910B, x1, x2, nullptr, nullptr, output, "ai_cpu", ACLNN_SUCCESS);
+    RunMatmulAllReduceV3Ut(op::SocVersion::ASCEND910B, x1, x2, nullptr, nullptr, output, "ai_cpu", ACLNN_SUCCESS);
 }
 
 TEST_F(AclnnMatmulAllReduceV3ExtraTest, LaunchApiNullExecutor)
@@ -121,8 +113,7 @@ TEST_F(AclnnMatmulAllReduceV3ExtraTest, InvalidNonContiguousX2)
     TensorDesc x1 = {{16, 32}, ACL_FLOAT16, ACL_FORMAT_ND};
     TensorDesc x2 = {{32, 16}, ACL_FLOAT16, ACL_FORMAT_ND, {16, 2}};
     TensorDesc output = {{16, 16}, ACL_FLOAT16, ACL_FORMAT_ND};
-    RunMatmulAllReduceV3Ut(
-        op::SocVersion::ASCEND910B, x1, x2, nullptr, nullptr, output, "", ACLNN_ERR_PARAM_INVALID);
+    RunMatmulAllReduceV3Ut(op::SocVersion::ASCEND910B, x1, x2, nullptr, nullptr, output, "", ACLNN_ERR_PARAM_INVALID);
 }
 
 TEST_F(AclnnMatmulAllReduceV3ExtraTest, Ascend950NullCommMode)
@@ -131,17 +122,15 @@ TEST_F(AclnnMatmulAllReduceV3ExtraTest, Ascend950NullCommMode)
     TensorDesc x1 = {{16, 32}, ACL_FLOAT16, ACL_FORMAT_ND};
     TensorDesc x2 = {{32, 16}, ACL_FLOAT16, ACL_FORMAT_ND};
     TensorDesc output = {{16, 16}, ACL_FLOAT16, ACL_FORMAT_ND};
-    const char* group = "group";
-    const char* reduceOp = "sum";
+    const char *group = "group";
+    const char *reduceOp = "sum";
     int64_t commTurn = 0;
     int64_t streamMode = 1;
     uint64_t workspace_size = 0;
-    aclOpExecutor* executor = nullptr;
-    auto ut = OP_API_UT(
-        aclnnMatmulAllReduceV3,
-        INPUT(x1, x2, nullptr, nullptr, group, reduceOp, nullptr, commTurn, streamMode),
-        OUTPUT(output)
-    );
+    aclOpExecutor *executor = nullptr;
+    auto ut =
+        OP_API_UT(aclnnMatmulAllReduceV3,
+                  INPUT(x1, x2, nullptr, nullptr, group, reduceOp, nullptr, commTurn, streamMode), OUTPUT(output));
     EXPECT_EQ(ACLNN_ERR_PARAM_INVALID, ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor));
 }
 

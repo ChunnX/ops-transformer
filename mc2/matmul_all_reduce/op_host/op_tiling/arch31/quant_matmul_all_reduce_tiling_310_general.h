@@ -18,16 +18,15 @@
 #include "../matmul_all_reduce_tiling_base.h"
 #include "../arch22/quant_matmul_all_reduce_tiling.h"
 namespace optiling {
-class QuantMatmulAllReduceTiling310General : public MatmulAllReduceTilingBase
-{
-    class QuantTilingTransferHelper : public Mc2QuantBatchMatmulV3Tiling
-    {
+class QuantMatmulAllReduceTiling310General : public MatmulAllReduceTilingBase {
+    class QuantTilingTransferHelper : public Mc2QuantBatchMatmulV3Tiling {
     public:
-        QuantTilingTransferHelper(
-            QuantMatmulAllReduceTiling310General& quantMatmulAllReduceTiling, Mc2QuantBatchMatmulV3TilingData& data)
+        QuantTilingTransferHelper(QuantMatmulAllReduceTiling310General &quantMatmulAllReduceTiling,
+                                  Mc2QuantBatchMatmulV3TilingData &data)
             : Mc2QuantBatchMatmulV3Tiling(quantMatmulAllReduceTiling.context_, &data),
               tilingProcesser_(quantMatmulAllReduceTiling)
-        {}
+        {
+        }
 
         ge::graphStatus CheckInputInfo()
         {
@@ -35,39 +34,35 @@ class QuantMatmulAllReduceTiling310General : public MatmulAllReduceTilingBase
             OP_TILING_CHECK(
                 !transposeMatch,
                 OP_LOGE_FOR_INVALID_VALUE(tilingProcesser_.opName_, "transA and transB",
-                    (std::string("transA=") + std::to_string(tilingProcesser_.args_.isATrans) +
-                     ", transB=" + std::to_string(tilingProcesser_.args_.isBTrans)).c_str(),
-                    "transA=false, transB=true"),
+                                          (std::string("transA=") + std::to_string(tilingProcesser_.args_.isATrans) +
+                                           ", transB=" + std::to_string(tilingProcesser_.args_.isBTrans))
+                                              .c_str(),
+                                          "transA=false, transB=true"),
                 return ge::GRAPH_FAILED);
             constexpr int64_t K_ALIGN_SIZE_A8W8_310 = 32;
             bool kAligned = (tilingProcesser_.args_.kValue % K_ALIGN_SIZE_A8W8_310 == 0);
-            OP_TILING_CHECK(
-                !kAligned,
-                OP_LOGE_FOR_INVALID_VALUE(tilingProcesser_.opName_, "x1",
-                    std::to_string(tilingProcesser_.args_.kValue).c_str(),
-                    "should be 32 bytes aligned"),
-                return ge::GRAPH_FAILED);
+            OP_TILING_CHECK(!kAligned,
+                            OP_LOGE_FOR_INVALID_VALUE(tilingProcesser_.opName_, "x1",
+                                                      std::to_string(tilingProcesser_.args_.kValue).c_str(),
+                                                      "should be 32 bytes aligned"),
+                            return ge::GRAPH_FAILED);
             constexpr int64_t N_ALIGN_SIZE_A8W8_310 = 16;
             bool nAligned = (tilingProcesser_.args_.nValue % N_ALIGN_SIZE_A8W8_310 == 0);
-            OP_TILING_CHECK(
-                !nAligned,
-                OP_LOGE_FOR_INVALID_VALUE(tilingProcesser_.opName_, "x2",
-                    std::to_string(tilingProcesser_.args_.nValue).c_str(),
-                    "should be 16 aligned"),
-                return ge::GRAPH_FAILED);
+            OP_TILING_CHECK(!nAligned,
+                            OP_LOGE_FOR_INVALID_VALUE(tilingProcesser_.opName_, "x2",
+                                                      std::to_string(tilingProcesser_.args_.nValue).c_str(),
+                                                      "should be 16 aligned"),
+                            return ge::GRAPH_FAILED);
             auto weightTensor = context_->GetInputDesc(static_cast<size_t>(ParamValue::WEIGHT));
-            OP_TILING_CHECK(
-                weightTensor == nullptr,
-                OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "weight"),
-                return ge::GRAPH_FAILED);
+            OP_TILING_CHECK(weightTensor == nullptr, OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "weight"),
+                            return ge::GRAPH_FAILED);
             auto format = weightTensor->GetStorageFormat();
             bool isWeightNZ = GetPrimaryFormat(format) == ge::Format::FORMAT_FRACTAL_NZ;
-            OP_TILING_CHECK(
-                !isWeightNZ,
-                OP_LOGE_FOR_INVALID_FORMAT(tilingProcesser_.opName_, "x2",
-                    std::to_string(static_cast<int32_t>(format)).c_str(),
-                    std::to_string(static_cast<int32_t>(ge::Format::FORMAT_FRACTAL_NZ)).c_str()),
-                return ge::GRAPH_FAILED);
+            OP_TILING_CHECK(!isWeightNZ,
+                            OP_LOGE_FOR_INVALID_FORMAT(
+                                tilingProcesser_.opName_, "x2", std::to_string(static_cast<int32_t>(format)).c_str(),
+                                std::to_string(static_cast<int32_t>(ge::Format::FORMAT_FRACTAL_NZ)).c_str()),
+                            return ge::GRAPH_FAILED);
             return ge::GRAPH_SUCCESS;
         }
 
@@ -77,7 +72,7 @@ class QuantMatmulAllReduceTiling310General : public MatmulAllReduceTilingBase
             if (CheckInputInfo() == ge::GRAPH_FAILED) {
                 return ge::GRAPH_FAILED;
             }
-            auto&& tilingArgs = tilingProcesser_.args_;
+            auto &&tilingArgs = tilingProcesser_.args_;
             inputParams_.opName = tilingProcesser_.opName_;
             inputParams_.transA = tilingArgs.isATrans;
             inputParams_.transB = tilingArgs.isBTrans;
@@ -102,17 +97,14 @@ class QuantMatmulAllReduceTiling310General : public MatmulAllReduceTilingBase
             return ge::GRAPH_SUCCESS;
         }
 
-        void PrintTilingInputParam(Mc2QuantBatchMatmulInfo& info)
+        void PrintTilingInputParam(Mc2QuantBatchMatmulInfo &info)
         {
-            OP_LOGD(
-                tilingProcesser_.opName_, " transA %d transB %d, hasBias %d, mSize %ld, kSize %ld, nSize %ld ",
-                info.transA, info.transB, info.hasBias, info.mSize, info.kSize, info.nSize);
-            OP_LOGD(
-                tilingProcesser_.opName_, " aDtype %d bDtype %d cDtype %d biasDtype %d isPerTensor %d ", info.aDtype,
-                info.bDtype, info.cDtype, info.biasDtype, info.isPerTensor);
-            OP_LOGD(
-                tilingProcesser_.opName_, " outDtype %ld libApiWorkSpaceSize %u bf16ExtreWorkSpaceSize %lu ",
-                info.outDtype, info.libApiWorkSpaceSize, info.bf16ExtreWorkSpaceSize);
+            OP_LOGD(tilingProcesser_.opName_, " transA %d transB %d, hasBias %d, mSize %ld, kSize %ld, nSize %ld ",
+                    info.transA, info.transB, info.hasBias, info.mSize, info.kSize, info.nSize);
+            OP_LOGD(tilingProcesser_.opName_, " aDtype %d bDtype %d cDtype %d biasDtype %d isPerTensor %d ",
+                    info.aDtype, info.bDtype, info.cDtype, info.biasDtype, info.isPerTensor);
+            OP_LOGD(tilingProcesser_.opName_, " outDtype %ld libApiWorkSpaceSize %u bf16ExtreWorkSpaceSize %lu ",
+                    info.outDtype, info.libApiWorkSpaceSize, info.bf16ExtreWorkSpaceSize);
         }
 
         ge::graphStatus PostTiling() override
@@ -124,11 +116,11 @@ class QuantMatmulAllReduceTiling310General : public MatmulAllReduceTilingBase
         }
 
     private:
-        QuantMatmulAllReduceTiling310General& tilingProcesser_;
+        QuantMatmulAllReduceTiling310General &tilingProcesser_;
     };
 
 public:
-    explicit QuantMatmulAllReduceTiling310General(gert::TilingContext* context) : MatmulAllReduceTilingBase(context)
+    explicit QuantMatmulAllReduceTiling310General(gert::TilingContext *context) : MatmulAllReduceTilingBase(context)
     {
     }
     ~QuantMatmulAllReduceTiling310General() override = default;
@@ -144,14 +136,14 @@ protected:
 
     ge::graphStatus PostTiling() override;
 
-    Mc2Tiling::Mc2Msg& MutableMc2MsgData() override;
+    Mc2Tiling::Mc2Msg &MutableMc2MsgData() override;
 
-    Mc2Tiling::RCSTiling& MutableRCSTilingData() override;
+    Mc2Tiling::RCSTiling &MutableRCSTilingData() override;
 
-    AscendC::tiling::TCubeTiling& MutableTCubeTileTilingData() override;
+    AscendC::tiling::TCubeTiling &MutableTCubeTileTilingData() override;
 
-    AscendC::tiling::TCubeTiling& MutableTCubeTailTilingData() override;
-    
+    AscendC::tiling::TCubeTiling &MutableTCubeTailTilingData() override;
+
     CutResult GetTilingResult() override;
 
     ge::graphStatus DoQuantTiling();
