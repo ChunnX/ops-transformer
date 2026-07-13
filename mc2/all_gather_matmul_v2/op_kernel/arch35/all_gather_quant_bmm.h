@@ -246,7 +246,6 @@ __aicore__ inline void AllGatherQuantBmm<AType, BType, BiasType, X2ScaleType, CT
         // Workspace偏移留出scale目的地址
         workspaceGM += DequantBmm::Align(CeilDiv(tilingKa, MX_BLOCK_SIZE), EVEN_ALIGN) *
                        static_cast<uint64_t>(cfg.rankM) * sizeof(X2ScaleType) * static_cast<uint64_t>(cfg.rankDim);
-        workspaceGM += cfg.gatherLen;
     }
     op.Init(aGM_, bGM_, biasGM_, dequantGM2_, localDequantGM1_, cGM, workspaceGM, &qBMMLocalTiling, tPipe_);
     op.Process();
@@ -296,7 +295,6 @@ AllGatherQuantBmm<AType, BType, BiasType, X2ScaleType, CType, ATrans, BTrans, Is
         // Workspace偏移留出scale1目的地址
         workspaceGM += DequantBmm::Align(CeilDiv(qMmv3Tiling.matmulTiling.Ka, MX_BLOCK_SIZE), EVEN_ALIGN) *
                        static_cast<uint64_t>(cfg.rankM) * sizeof(X2ScaleType) * static_cast<uint64_t>(cfg.rankDim);
-        workspaceGM += cfg.gatherLen;
         mmv3.Init(
             aGM, bGM_, biasGM_, dequantGM2_, gatherDequantGM1_, cGM_, workspaceGM, &qMmv3Tiling, GetTPipePtr(), cfg,
             isTail, true, preCoreNum_);
