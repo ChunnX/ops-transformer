@@ -108,6 +108,7 @@ private:
     GM_ADDR yGM_;
     GM_ADDR gmExpertTokenNums_;
     GM_ADDR workspaceGM_;
+    GM_ADDR tilingGM_{nullptr};
 
     GM_ADDR moeInitRoutingQuantV2Scale_ = nullptr;
     GM_ADDR moeInitRoutingQuantV2Offset_ = nullptr;
@@ -162,6 +163,7 @@ __aicore__ inline void MegaMoeA2<MegaMoeFuncA2>::Init(
     yGM_ = yGM;
     gmExpertTokenNums_ = expertTokenNumsGM;
     workspaceGM_ = workspaceGM;
+    tilingGM_ = tilingGM;
 
     if constexpr (kRoutingIsQuant) {
         auto tiling = (__gm__ MegaMoeTilingDataQuant *)tilingGM;
@@ -348,7 +350,7 @@ __aicore__ inline void MegaMoeA2<MegaMoeFuncA2>::Process()
             expertTokensBeforeCapacity_, topkWeightsGM_,
             workspaceGM_, gmExpertTokenNums_, xActiveMaskGM_, scalesGM_,
             moeInitRoutingQuantV2TilingData,
-            epilogueGranularity, activationClamp_};
+            epilogueGranularity, activationClamp_, tilingGM_};
         MatmulKernel kernel(params);
         kernel(params);
     }
@@ -373,7 +375,7 @@ __aicore__ inline void MegaMoeA2<MegaMoeFuncA2>::Process()
             expertTokensBeforeCapacity_, topkWeightsGM_,
             workspaceGM_, gmExpertTokenNums_, xActiveMaskGM_, scalesGM_,
             moeInitRoutingQuantV2TilingData,
-            epilogueGranularity, activationClamp_};
+            epilogueGranularity, activationClamp_, tilingGM_};
 
         MatmulKernel kernel(params);
         kernel(params);
@@ -397,7 +399,7 @@ __aicore__ inline void MegaMoeA2<MegaMoeFuncA2>::Process()
             expertTokensBeforeCapacity_, topkWeightsGM_,
             workspaceGM_, gmExpertTokenNums_, xActiveMaskGM_, scalesGM_,
             moeInitRoutingV2TilingData,
-            epilogueGranularity, activationClamp_};
+            epilogueGranularity, activationClamp_, tilingGM_};
 
         MatmulKernel kernel(params);
         kernel(params);

@@ -37,6 +37,7 @@
 #include "moe_init_routing_quant_v2/moe_v2_fullload_dynamic_quant.h"
 #include "unpermute/moe_token_unpermute.h"
 #include "utils/get_tensor_addr.hpp"
+#include "mega_moe_exception_dump_policy.h"
 
 namespace Catlass::Gemm::Kernel {
 
@@ -123,6 +124,7 @@ public:
         uint32_t epilogueGranularity{0};
         float swigluLimit;
         GM_ADDR contextGM{nullptr};
+        GM_ADDR tilingGM{nullptr};
         MoeInitRoutingQuantV2TilingData moeInitRoutingQuantV2TilingData;
 
         CATLASS_HOST_DEVICE
@@ -141,11 +143,12 @@ public:
                GM_ADDR ptrXActiveMask_, GM_ADDR ptrScales_,
                MoeInitRoutingQuantV2TilingData moeInitRoutingQuantV2TilingData_,
                uint32_t epilogueGranularity_ = 0,
-               float swigluLimit_ = std::numeric_limits<float>::infinity())
+               float swigluLimit_ = std::numeric_limits<float>::infinity(), GM_ADDR tilingGM_ = nullptr)
             : problemShape(problemShape_), EP(EP_), listLen(listLen_),
               expertPerRank(expertPerRank_), maxOutputSize(maxOutputSize_), topK(topK_),
               initRoutingQuantTilingKey(initRoutingQuantTilingKey_), epilogueCoreNum(epilogueCoreNum_),
               epilogueGranularity(epilogueGranularity_), swigluLimit(swigluLimit_), contextGM(contextGM_),
+              tilingGM(tilingGM_),
               ptrA(reinterpret_cast<__gm__ ElementABefore *>(ptrA_)),
               layoutA(layoutA_), layoutA2(layoutA2_),
               ptrB1(reinterpret_cast<__gm__ ElementB *>(ptrB1_)), layoutB1(layoutB1_),
@@ -226,6 +229,10 @@ private:
     {
         auto tmpContext = reinterpret_cast<__gm__ Mc2Aclnn::Mc2MoeContext *>(params.contextGM);
         shmem.initShmem(tmpContext);
+        if ASCEND_IS_AIV {
+            GM_ADDR dumpBase = shmem();
+            exceptionDump_.Init(dumpBase, params.tilingGM);
+        }
         qp_info_ = reinterpret_cast<__gm__ HcclAiRMAInfo *>(
             reinterpret_cast<__gm__ HcclA2CombineOpParam *>(shmem.WinContext_)->aiRMAInfo);
         serverId_ = static_cast<int32_t>(RuntimeRank(params) / SERVER_RANK_SIZE_A2);
@@ -696,21 +703,6 @@ private:
     }
 
     CATLASS_DEVICE
-    void InitArithProgress(Params const &params)
-    {
-        AscendC::LocalTensor<float> tmpBuffer1 = resource.ubBuf.template GetBufferByByte<float>(0);
-        AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID0);
-        AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID0);
-        AscendC::Duplicate(tmpBuffer1, 0.0f, (params.EP + 1) * FLAGSTRIDE);
-        AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
-        AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
-
-        AscendC::GlobalTensor<float> flagGlobalBase;
-        flagGlobalBase.SetGlobalBuffer(workspaceInfo.ptrSoftFlagBase);
-        AscendC::DataCopy(flagGlobalBase, tmpBuffer1, (params.EP + 1) * FLAGSTRIDE);
-    }
-
-    CATLASS_DEVICE
     void CalculateTaskInfoEachCore(uint32_t &curCoreTaskNum_, uint32_t &curCoreStartOffset_, uint32_t totalM)
     {
         // 均分任务数
@@ -862,49 +854,6 @@ private:
         AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
         AscendC::DataCopy(tokenPerExpert, tmp, num);
-    }
-
-    CATLASS_DEVICE
-    void UpdateAicFlags(const Params &params)
-    {
-        float flagBase = 1.0f * params.expertPerRank;
-        __gm__ float *aicFinishPtr = workspaceInfo.ptrSoftFlagBase + params.EP * FLAGSTRIDE;
-        float flag = 0.0f;
-        float lastflag = -1.0f;
-        AscendC::LocalTensor<float> tmpBuffer1 = resource.ubBuf.template GetBufferByByte<float>(0);
-        __gm__ float *flagPtr = workspaceInfo.ptrSoftFlagBase;
-        AscendC::GlobalTensor<float> flagGM;
-        flagGM.SetGlobalBuffer(flagPtr);
-        int32_t flagBufferSize = max(4, params.EP) * FLAGSTRIDE;
-        AscendC::LocalTensor<float> dstValueBuffer = resource.ubBuf.template GetBufferByByte<float>(flagBufferSize);
-        AscendC::LocalTensor<float> sharedTmpBuffer =
-            resource.ubBuf.template GetBufferByByte<float>((flagBufferSize + 64));
-        uint64_t mask[1] = {0};
-        uint32_t repeatNum = (flagBufferSize / (4 * FLAGSTRIDE));
-        for (int32_t i = 0; i < 4; i++) {
-            if (i < params.EP) {
-                mask[0] |= 1ull * (1ull << (i * 16));
-            }
-        }
-        AscendC::SetFlag<AscendC::HardEvent::S_V>(EVENT_ID0);
-        AscendC::WaitFlag<AscendC::HardEvent::S_V>(EVENT_ID0);
-        while (flag < flagBase) {
-            flag = flagBase;
-            AscendC::DataCopy(tmpBuffer1, flagGM, params.EP * FLAGSTRIDE);
-            AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
-            AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
-
-            AscendC::ReduceMin<float>(dstValueBuffer, tmpBuffer1, sharedTmpBuffer, mask, repeatNum, 8, false);
-
-            AscendC::SetFlag<AscendC::HardEvent::V_S>(EVENT_ID0);
-            AscendC::WaitFlag<AscendC::HardEvent::V_S>(EVENT_ID0);
-            flag = min(flag, dstValueBuffer.GetValue(0));
-            if (flag > lastflag) {
-                *aicFinishPtr = flag;
-                gm_dcci(aicFinishPtr);
-                lastflag = flag;
-            }
-        }
     }
 
     CATLASS_DEVICE
@@ -1119,6 +1068,10 @@ private:
     void DispatchAndCombine(Params const &params)
     {
         icache_preload(8);
+        exceptionDump_.Dump(shmem() + peermemInfo.offsetPeerTokenPerExpert,
+                            static_cast<size_t>(paddedExpertNumAligned) * params.expertPerRank *
+                            static_cast<uint32_t>(shmem.RankSize()) * sizeof(int32_t));
+        shmem.DumpSyncRegions(exceptionDump_);
         int64_t localTokenPerExpertOffset = peermemInfo.offsetPeerTokenPerExpert +
                                             tokenPerExpertLayout(RuntimeRank(params), 0, 0) * sizeof(int32_t);
         int64_t localTokenPerExpertWinOutOffset = peermemInfo.offsetWinOutPeerTokenPerExpert +
@@ -1127,9 +1080,11 @@ private:
             shmem.windowsOutAddr() + localTokenPerExpertWinOutOffset;
         uint32_t expandedRowIdxOffset = AlignUp(params.problemShape.m(), 256) * params.topK * sizeof(int32_t);
 
+        exceptionDump_.UpdateStage(MC2MegaMoeAdump::Stage::APPLY_XACTIVE_MASK);
         ApplyXActiveMask(params);
 
         //---initRouting------
+        exceptionDump_.UpdateStage(MC2MegaMoeAdump::Stage::MOE_INIT_ROUTING);
         moe_init_routing_quant_v2<ElementD2>(
             reinterpret_cast<GM_ADDR>(params.ptrA), params.expertIdx, params.moeInitRoutingQuantV2Scale,
             params.moeInitRoutingQuantV2Offset, shmem.windowsOutAddr() + peermemInfo.offsetWinOutA,
@@ -1138,9 +1093,11 @@ private:
             params.ptrWorkspace + expandedRowIdxOffset, &params.moeInitRoutingQuantV2TilingData,
             params.initRoutingQuantTilingKey, 512);
         AscendC::SyncAll<true>();
+        exceptionDump_.UpdateStage(MC2MegaMoeAdump::Stage::ALLGATHER_TOKEN_PER_EXPERT);
         CrossRankSyncAndlocalTokenPerExpertAllGatherAndGetSumPreRankV2(params, localTokenPerExpertOffset);
 
         if (coreIdx == 0) {
+            exceptionDump_.UpdateStage(MC2MegaMoeAdump::Stage::CUMSUM_TOKEN_PER_EXPERT);
             GetCumsumForMMAIV(tokenPerExpert, cumsumMM, params.expertPerRank, params.EP);
         }
 
@@ -1165,6 +1122,7 @@ private:
         uint32_t dequantSumTemp = 0;
 
         icache_preload(8);
+        exceptionDump_.UpdateStage(MC2MegaMoeAdump::Stage::DISPATCH);
         for (int32_t groupIdx = 0; groupIdx < params.expertPerRank; ++groupIdx) {
             uint32_t currentMRecv = static_cast<uint32_t>(
                 cumsumMM(tokenPerExpertLayout(params.EP - 1, RuntimeRank(params), groupIdx)));
@@ -1263,6 +1221,7 @@ private:
         BlockEpilogue2 blockEpilogue2(resource, epilogueParams);
         BlockEpilogue1 blockEpilogue1(resource, n);
 
+        exceptionDump_.UpdateStage(MC2MegaMoeAdump::Stage::SWIGLU);
         for (int32_t syncIdx = 0; syncIdx < nSyncSwiglu; syncIdx++) {
             AscendC::CrossCoreWaitFlag<0x2>(SYNCFLAGC2V);
             AscendC::SyncAll<true>();
@@ -1286,11 +1245,14 @@ private:
             AscendC::CrossCoreSetFlag<0x2, PIPE_MTE3>(SYNCFLAGV2C);
         }
         blockEpilogue1.Finalize();
+        exceptionDump_.UpdateStage(MC2MegaMoeAdump::Stage::COMBINE);
 
         CombineV2(params, blockEpilogue2);
 
         AscendC::SyncAll<true>();
+        exceptionDump_.UpdateStage(MC2MegaMoeAdump::Stage::RESET_TOKEN_PER_EXPERT);
         ResetTokenPerExpert(params.EP * paddedExpertNumAligned);
+        exceptionDump_.UpdateStage(MC2MegaMoeAdump::Stage::CROSS_RANK_SYNC);
         shmem.InitStatusTargetSum();
         if (get_subblockid() == 0) {
             AscendC::LocalTensor<int32_t> ctrBuffer = resource.ubBuf.template GetBufferByByte<int32_t>(0);
@@ -1314,6 +1276,8 @@ private:
             AscendC::LocalTensor<float> statusSumOutTensor = resource.ubBuf.template GetBufferByByte<float>(uboffset);
             uboffset += AlignUp(sizeof(float), 32);
             shmem.CrossRankSyncV2Wait(statusTensor, gatherMaskOutTensor, gatherTmpTensor, statusSumOutTensor);
+
+            exceptionDump_.UpdateStage(MC2MegaMoeAdump::Stage::UNPERMUTE);
             MoeTokenUnpermuteTilingData tilingData;
             MoeTokenUnpermuteTiling(params.problemShape.m() * params.topK, n2, params.topK, tilingData, coreNum / 2);
             KernelMoeTokenUnpermute<ElementD2, int32_t, float, true> kernelMoeTokenUnpermuteOp;
@@ -1618,6 +1582,10 @@ private:
     // A2 state.
     __gm__ HcclAiRMAInfo *qp_info_{nullptr};
     int32_t serverId_{0};
+
+    // ExceptionDump引擎：记录执行阶段时间戳，并提供Dump接口由host侧dump指定GM地址内容。
+    static constexpr bool kRoutingIsQuant = true;
+    MC2MegaMoeAdump::ExceptionDumpEngine<kRoutingIsQuant, ArchTag> exceptionDump_;
 };
 }  // namespace Catlass::Gemm::Kernel
 

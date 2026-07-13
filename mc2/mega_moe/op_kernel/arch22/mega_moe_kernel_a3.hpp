@@ -55,6 +55,7 @@
 #include "moe_init_routing_quant_v2/moe_v2_fullload_dynamic_quant.h"
 #include "unpermute/moe_token_unpermute.h"
 #include "utils/get_tensor_addr.hpp"
+#include "mega_moe_exception_dump_policy.h"
 
 namespace Catlass::Gemm::Kernel {
 
@@ -147,6 +148,8 @@ public:
         uint32_t epilogueGranularity{0};
         float swigluLimit;
         GM_ADDR contextGM{nullptr};
+        // 算子tiling数据地址（GM），ADump启动时由0核dump到Tiling段
+        GM_ADDR tilingGM{nullptr};
         union {
             MoeInitRoutingQuantV2TilingData moeInitRoutingQuantV2TilingData;
             MoeInitRoutingV2TilingData moeInitRoutingV2TilingData;
@@ -170,11 +173,12 @@ public:
                GM_ADDR expertTokensBeforeCapacity_, GM_ADDR probs_, GM_ADDR ptrWorkspace_, GM_ADDR gmExpertTokenNums_,
                GM_ADDR ptrXActiveMask_, GM_ADDR ptrScales_,
                MoeInitRoutingQuantV2TilingData moeInitRoutingQuantV2TilingData_, uint32_t epilogueGranularity_ = 0,
-               float swigluLimit_ = std::numeric_limits<float>::infinity())
+               float swigluLimit_ = std::numeric_limits<float>::infinity(), GM_ADDR tilingGM_ = nullptr)
             : problemShape(problemShape_), EP(EP_), listLen(listLen_), expertPerRank(expertPerRank_),
               maxOutputSize(maxOutputSize_), topK(topK_), initRoutingQuantTilingKey(initRoutingQuantTilingKey_),
               epilogueCoreNum(epilogueCoreNum_), epilogueGranularity(epilogueGranularity_), swigluLimit(swigluLimit_),
-              contextGM(contextGM_), ptrA(reinterpret_cast<__gm__ ElementABefore *>(ptrA_)), layoutA(layoutA_),
+              contextGM(contextGM_), tilingGM(tilingGM_),
+              ptrA(reinterpret_cast<__gm__ ElementABefore *>(ptrA_)), layoutA(layoutA_),
               layoutA2(layoutA2_), ptrB1(reinterpret_cast<__gm__ ElementB *>(ptrB1_)), layoutB1(layoutB1_),
               ptrBias1(reinterpret_cast<__gm__ float *>(ptrBias1_)), ptrB2(reinterpret_cast<__gm__ ElementB *>(ptrB2_)),
               layoutB2(layoutB2_), ptrBias2(reinterpret_cast<__gm__ float *>(ptrBias2_)),
@@ -211,11 +215,13 @@ public:
                GM_ADDR moeInitRoutingQuantV2Scale_, GM_ADDR moeInitRoutingQuantV2Offset_,
                GM_ADDR expertTokensBeforeCapacity_, GM_ADDR probs_, GM_ADDR ptrWorkspace_, GM_ADDR gmExpertTokenNums_,
                GM_ADDR ptrXActiveMask_, GM_ADDR ptrScales_, MoeInitRoutingV2TilingData moeInitRoutingV2TilingData_,
-               uint32_t epilogueGranularity_ = 0, float swigluLimit_ = std::numeric_limits<float>::infinity())
+               uint32_t epilogueGranularity_ = 0, float swigluLimit_ = std::numeric_limits<float>::infinity(),
+               GM_ADDR tilingGM_ = nullptr)
             : problemShape(problemShape_), EP(EP_), listLen(listLen_), expertPerRank(expertPerRank_),
               maxOutputSize(maxOutputSize_), topK(topK_), initRoutingQuantTilingKey(initRoutingQuantTilingKey_),
               epilogueCoreNum(epilogueCoreNum_), epilogueGranularity(epilogueGranularity_), swigluLimit(swigluLimit_),
-              contextGM(contextGM_), ptrA(reinterpret_cast<__gm__ ElementABefore *>(ptrA_)), layoutA(layoutA_),
+              contextGM(contextGM_), tilingGM(tilingGM_),
+              ptrA(reinterpret_cast<__gm__ ElementABefore *>(ptrA_)), layoutA(layoutA_),
               layoutA2(layoutA2_), ptrB1(reinterpret_cast<__gm__ ElementB *>(ptrB1_)), layoutB1(layoutB1_),
               ptrBias1(reinterpret_cast<__gm__ float *>(ptrBias1_)), ptrB2(reinterpret_cast<__gm__ ElementB *>(ptrB2_)),
               layoutB2(layoutB2_), ptrBias2(reinterpret_cast<__gm__ float *>(ptrBias2_)),
@@ -288,6 +294,10 @@ private:
     {
         auto tmpContext = reinterpret_cast<__gm__ Mc2Aclnn::Mc2MoeContext *>(params.contextGM);
         shmem.initShmem(tmpContext);
+        if ASCEND_IS_AIV {
+            GM_ADDR dumpBase = shmem();
+            exceptionDump_.Init(dumpBase, params.tilingGM);
+        }
         workspaceInfo = WorkspaceInfo(params);
         peermemInfo = PeermemInfo(params, shmem);
 
@@ -860,21 +870,6 @@ private:
     }
 
     CATLASS_DEVICE
-    void InitArithProgress(Params const &params)
-    {
-        AscendC::LocalTensor<float> tmpBuffer1 = resource.ubBuf.template GetBufferByByte<float>(0);
-        AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID0);
-        AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID0);
-        AscendC::Duplicate(tmpBuffer1, 0.0f, (params.EP + 1) * FLAGSTRIDE);
-        AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
-        AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
-
-        AscendC::GlobalTensor<float> flagGlobalBase;
-        flagGlobalBase.SetGlobalBuffer(workspaceInfo.ptrSoftFlagBase);
-        AscendC::DataCopy(flagGlobalBase, tmpBuffer1, (params.EP + 1) * FLAGSTRIDE);
-    }
-
-    CATLASS_DEVICE
     void CalculateTaskInfoEachCore(uint32_t &curCoreTaskNum_, uint32_t &curCoreStartOffset_, uint32_t totalM)
     {
         // 均分任务数
@@ -988,49 +983,6 @@ private:
     }
 
     CATLASS_DEVICE
-    void UpdateAicFlags(const Params &params)
-    {
-        float flagBase = 1.0f * params.expertPerRank;
-        __gm__ float *aicFinishPtr = workspaceInfo.ptrSoftFlagBase + params.EP * FLAGSTRIDE;
-        float flag = 0.0f;
-        float lastflag = -1.0f;
-        AscendC::LocalTensor<float> tmpBuffer1 = resource.ubBuf.template GetBufferByByte<float>(0);
-        __gm__ float *flagPtr = workspaceInfo.ptrSoftFlagBase;
-        AscendC::GlobalTensor<float> flagGM;
-        flagGM.SetGlobalBuffer(flagPtr);
-        int32_t flagBufferSize = max(4, params.EP) * FLAGSTRIDE;
-        AscendC::LocalTensor<float> dstValueBuffer = resource.ubBuf.template GetBufferByByte<float>(flagBufferSize);
-        AscendC::LocalTensor<float> sharedTmpBuffer =
-            resource.ubBuf.template GetBufferByByte<float>((flagBufferSize + 64));
-        uint64_t mask[1] = {0};
-        uint32_t repeatNum = (flagBufferSize / (4 * FLAGSTRIDE));
-        for (int32_t i = 0; i < 4; i++) {
-            if (i < params.EP) {
-                mask[0] |= 1ull * (1ull << (i * 16));
-            }
-        }
-        AscendC::SetFlag<AscendC::HardEvent::S_V>(EVENT_ID0);
-        AscendC::WaitFlag<AscendC::HardEvent::S_V>(EVENT_ID0);
-        while (flag < flagBase) {
-            flag = flagBase;
-            AscendC::DataCopy(tmpBuffer1, flagGM, params.EP * FLAGSTRIDE);
-            AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
-            AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
-
-            AscendC::ReduceMin<float>(dstValueBuffer, tmpBuffer1, sharedTmpBuffer, mask, repeatNum, 8, false);
-
-            AscendC::SetFlag<AscendC::HardEvent::V_S>(EVENT_ID0);
-            AscendC::WaitFlag<AscendC::HardEvent::V_S>(EVENT_ID0);
-            flag = min(flag, dstValueBuffer.GetValue(0));
-            if (flag > lastflag) {
-                *aicFinishPtr = flag;
-                gm_dcci(aicFinishPtr);
-                lastflag = flag;
-            }
-        }
-    }
-
-    CATLASS_DEVICE
     bool IsSyncTask(int32_t task_id, int32_t n_tasks)
     {
         int32_t offset = n_tasks - task_id;
@@ -1124,6 +1076,10 @@ private:
     void DispatchAndCombine(Params const &params)
     {
         icache_preload(8);
+        exceptionDump_.Dump(shmem() + peermemInfo.offsetPeerTokenPerExpert,
+                            static_cast<size_t>(paddedExpertNumAligned) * params.expertPerRank *
+                            static_cast<uint32_t>(shmem.RankSize()) * sizeof(int32_t));
+        shmem.DumpSyncRegions(exceptionDump_);
         int32_t runtimeRank = RuntimeRank(params);
         int64_t localTokenPerExpertOffset =
             peermemInfo.offsetPeerTokenPerExpert + tokenPerExpertLayout(runtimeRank, 0, 0) * sizeof(int32_t);
@@ -1131,13 +1087,12 @@ private:
             shmem() + localTokenPerExpertOffset; // Place the entire communication matrix in peermem
         uint32_t expandedRowIdxOffset = AlignUp(params.problemShape.m(), 256) * params.topK * sizeof(int32_t);
 
+        exceptionDump_.UpdateStage(MC2MegaMoeAdump::Stage::APPLY_XACTIVE_MASK);
         ApplyXActiveMask(params);
 
-        constexpr bool kRoutingIsQuant = std::is_same_v<ElementB, AscendC::int4b_t> || std::is_same_v<ElementB, int8_t>;
-        // expandedX row stride alignment: INT4 needs 512-byte padding for the
-        // int8→int4 conversion scratch; INT8/BF16 needs UB_ALIGN for per-token scale.
         constexpr int64_t colsAlign =
             std::is_same_v<ElementB, AscendC::int4b_t> ? int64_t{512} : static_cast<int64_t>(UB_ALIGN);
+        exceptionDump_.UpdateStage(MC2MegaMoeAdump::Stage::MOE_INIT_ROUTING);
         if constexpr (kRoutingIsQuant) {
             moe_init_routing_quant_v2<ElementD2>(
                 reinterpret_cast<GM_ADDR>(params.ptrA), params.expertIdx, params.moeInitRoutingQuantV2Scale,
@@ -1157,9 +1112,11 @@ private:
 
         AscendC::SyncAll<true>();
 
+        exceptionDump_.UpdateStage(MC2MegaMoeAdump::Stage::ALLGATHER_TOKEN_PER_EXPERT);
         CrossRankSyncAndlocalTokenPerExpertAllGatherAndGetSumPreRankV2(params, localTokenPerExpertOffset);
 
         if (coreIdx == 0) {
+            exceptionDump_.UpdateStage(MC2MegaMoeAdump::Stage::CUMSUM_TOKEN_PER_EXPERT);
             GetCumsumForMMAIV(tokenPerExpert, cumsumMM, params.expertPerRank, runtimeRank, params.EP);
         }
 
@@ -1188,6 +1145,7 @@ private:
             AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
             AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
         }
+        exceptionDump_.UpdateStage(MC2MegaMoeAdump::Stage::DISPATCH);
         for (int32_t groupIdx = 0; groupIdx < params.expertPerRank; ++groupIdx) {
             // ----------------------------------------------------------
             // Each core pulls its `dstEpIdx`'s tokens out of the remote
@@ -1291,6 +1249,7 @@ private:
         uint32_t n = params.problemShape.n();
         BlockEpilogue2 blockEpilogue2(resource, epilogueParams2);
         BlockEpilogue3 blockEpilogue3(resource, epilogueParams3);
+        exceptionDump_.UpdateStage(MC2MegaMoeAdump::Stage::SWIGLU);
         BlockEpilogue1 blockEpilogue1(resource, n);
         if constexpr (std::is_same_v<ElementB, AscendC::int4b_t>) {
             for (int32_t syncIdx = 0; syncIdx < nSyncSwiglu; syncIdx++) {
@@ -1362,6 +1321,7 @@ private:
             }
         }
         blockEpilogue1.Finalize();
+        exceptionDump_.UpdateStage(MC2MegaMoeAdump::Stage::COMBINE);
         if constexpr (std::is_same_v<ElementB, AscendC::int4b_t>) {
             blockEpilogue3.InitFlag();
             CombineV2(params, blockEpilogue3);
@@ -1374,8 +1334,10 @@ private:
         }
 
         AscendC::SyncAll<true>();
+        exceptionDump_.UpdateStage(MC2MegaMoeAdump::Stage::RESET_TOKEN_PER_EXPERT);
         ResetTokenPerExpert(params.EP * paddedExpertNumAligned);
 
+        exceptionDump_.UpdateStage(MC2MegaMoeAdump::Stage::CROSS_RANK_SYNC);
         if constexpr (!std::is_same_v<ElementB, int8_t>) {
             shmem.InitStatusTargetSum();
             if (get_subblockid() == 0) {
@@ -1403,6 +1365,7 @@ private:
                 uboffset += AlignUp(sizeof(float), 32);
                 shmem.CrossRankSyncV2Wait(statusTensor, gatherMaskOutTensor, gatherTmpTensor, statusSumOutTensor);
 
+                exceptionDump_.UpdateStage(MC2MegaMoeAdump::Stage::UNPERMUTE);
                 MoeTokenUnpermuteTilingData tilingData;
                 MoeTokenUnpermuteTiling(params.problemShape.m() * params.topK, n2, params.topK, tilingData,
                                         coreNum / 2);
@@ -1414,6 +1377,7 @@ private:
         } else {
             shmem.CrossRankSync();
 
+            exceptionDump_.UpdateStage(MC2MegaMoeAdump::Stage::UNPERMUTE);
             MoeTokenUnpermuteTilingData tilingData;
             MoeTokenUnpermuteTiling(params.problemShape.m() * params.topK, n2, params.topK, tilingData, coreNum);
             KernelMoeTokenUnpermute<ElementD2, int32_t, float, true> kernelMoeTokenUnpermuteOp;
@@ -1722,6 +1686,12 @@ private:
     HcclShmem<false> shmem;
     int32_t paddedExpertNumAligned;
     bool isCombineV1;
+    // ExceptionDump引擎：记录执行阶段时间戳，并提供Dump接口由host侧dump指定GM地址内容。
+    // 基址取通信域首地址（shmem()()），根据kRoutingIsQuant选择对应tiling结构体的Policy，
+    // ArchTag传入Policy供架构差异扩展。
+    static constexpr bool kRoutingIsQuant =
+        std::is_same_v<ElementB, AscendC::int4b_t> || std::is_same_v<ElementB, int8_t>;
+    MC2MegaMoeAdump::ExceptionDumpEngine<kRoutingIsQuant, ArchTag> exceptionDump_;
 
     AscendC::GlobalTensor<ElementScale> gmS;
     AscendC::GlobalTensor<ElementScale> gmS2;
