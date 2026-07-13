@@ -214,16 +214,27 @@ __aicore__ inline T CeilDiv(T num, T rnd)
 }  // namespace QLIV2Common
 
 // bank冲突优化
-// david 256KB bank layout
-// shape  (             bank_depth  (            banks  bank_groups  block))  (512  (  2   8  32))
-// stride (banks*bank_groups*block  (bank_groups*block        block      1))  (512  (256  32   1))
+// A6 bank layout: 8 bank groups × 4 banks/group × 32B/bank = 1024B 循环周期
+// 每个 bank: 2 sub banks × 16B = 32B (950 是 4 sub banks × 8B)
+// 1KB 内: bank0=0~255B, bank1=256~511B, bank2=512~767B, bank3=768~1023B
 #define UB_BLOCK              32   // 32B
 #define UB_BANK_GROUPS        8
-#define UB_BANKS              2
-#define UB_BANK_DEPTH         512
+#define UB_BANKS              4
+#define UB_BANK_DEPTH         256
 
 #define UB_BANK_GROUP_STRIDE  UB_BLOCK                                   // 32B
 #define UB_BANK_STRIDE        (UB_BANK_GROUPS * UB_BLOCK)               // 256B
-#define UB_BANK_DEPTH_STRIDE  (UB_BANKS * UB_BANK_GROUPS * UB_BLOCK)    // 512B
+#define UB_BANK_DEPTH_STRIDE  (UB_BANKS * UB_BANK_GROUPS * UB_BLOCK)    // 1024B (A6 bank 周期，仅用于bank冲突分析)
+
+// 行间 stride: 保持 950 兼容的 512B (2 bank groups)
+// 不用 UB_BANK_DEPTH_STRIDE，因为行间 stride 不需要等于 bank 周期
+#define UB_ROW_STRIDE         (2 * UB_BANK_GROUPS * UB_BLOCK)           // 512B
+
+// VL padding: 在 VL 之间插入 256B 空隙，消除 VL 间同 bank 冲突
+// mBaseSize(256) × sizeof(float)(4) = 1024B = A6 bank 周期
+// VL stride = mBaseSize × (UB_ROW_STRIDE/sizeof(float)) = 256×128 = 32768 float = 131072B
+// 131072 % 1024 = 0 → 同 bank 冲突
+// 加 VL_PAD_STRIDE(64元素=256B) → VL stride = 131328B, 131328%1024=256 → 同 group 不同 bank
+#define VL_PAD_STRIDE         (UB_BANK_STRIDE / sizeof(float))          // 64 元素 = 256B
 
 #endif  // QUANT_LIGHTNING_INDEXER_V2_COMMON_H
