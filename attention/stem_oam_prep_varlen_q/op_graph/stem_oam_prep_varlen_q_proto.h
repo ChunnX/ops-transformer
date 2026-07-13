@@ -31,8 +31,8 @@ namespace ge {
  * @li q: Variable-length Q tensor (all batch tokens concatenated). Shape [total_tokens, H_q, D].
  *        Last dim D must equal stemBlockSize (default 128).
  *        Supported data types: DT_FLOAT8_E4M3FN, DT_BF16, DT_FLOAT16.
- * @li qSeqLens: Per-batch Q sequence lengths. Shape [batch]. Data type: DT_INT32.
- * @li cuSeqLensQ: Cumulative sequence-length offsets for varlen indexing. Shape [batch + 1]. Data type: DT_INT32.
+ * @li qSeqLens: Per-batch Q sequence lengths. Shape [batch]. Data type: DT_INT64.
+ * @li cuSeqLensQ: Cumulative sequence-length offsets for varlen indexing. Shape [batch + 1]. Data type: DT_INT64.
  *                cuSeqLensQ[0] must be 0; cuSeqLensQ[batch] must equal total_tokens; monotonically increasing.
  * @li qScale: Optional. Per-token scale factor for Q. Shape [total_tokens, H_q]. Data type: DT_FLOAT.
  *             Required when q is FP8; pass nullptr when q is BF16 or FP16.
@@ -61,8 +61,8 @@ namespace ge {
 
 REG_OP(StemOamPrepVarlenQ)
     .INPUT(q, TensorType({DT_FLOAT8_E4M3FN, DT_BF16, DT_FLOAT16}))
-    .INPUT(qSeqLens, TensorType({DT_INT32}))
-    .INPUT(cuSeqLensQ, TensorType({DT_INT32}))
+    .INPUT(qSeqLens, TensorType({DT_INT64}))
+    .INPUT(cuSeqLensQ, TensorType({DT_INT64}))
     .OPTIONAL_INPUT(qScale, TensorType({DT_FLOAT}))
     .ATTR(stemBlockSize, Int, 128)
     .ATTR(stemStride, Int, 16)
