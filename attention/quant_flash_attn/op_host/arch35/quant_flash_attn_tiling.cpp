@@ -202,7 +202,9 @@ void QuantFlashAttnTilingImpl::UpdateTilingKeyInfo()
 
 void QuantFlashAttnTilingImpl::UpdateTilingKeyQuantMode()
 {
-    tilingKeyInfo_.quantMode = static_cast<uint64_t>(QfaQuantMode::MXFP8_FP32);
+    tilingKeyInfo_.quantMode = decodeS1GMerge_
+        ? static_cast<uint64_t>(QFA_MXFP8_FP32_DECODE)
+        : static_cast<uint64_t>(QFA_MXFP8_FP32_PREFILL);
 }
 
 void QuantFlashAttnTilingImpl::GenTilingKey()
@@ -314,10 +316,8 @@ void QuantFlashAttnTilingImpl::SetQFATilingData()
     tilingData_.baseTiling.quantFlashAttnBaseParams.bSize = qfaInfo_->bSize;
     tilingData_.baseTiling.quantFlashAttnBaseParams.t1Size = qfaInfo_->qTSize;
     tilingData_.baseTiling.quantFlashAttnBaseParams.t2Size = qfaInfo_->kTSize;
-    tilingData_.baseTiling.quantFlashAttnBaseParams.n2Size =
-        decodeS1GMerge_ ? qfaInfo_->n2Size : qfaInfo_->n1Size;
-    tilingData_.baseTiling.quantFlashAttnBaseParams.gSize =
-        decodeS1GMerge_ ? qfaInfo_->gSize : 1;
+    tilingData_.baseTiling.quantFlashAttnBaseParams.n2Size = qfaInfo_->n2Size;
+    tilingData_.baseTiling.quantFlashAttnBaseParams.gSize = qfaInfo_->gSize;
     tilingData_.baseTiling.quantFlashAttnBaseParams.s1Size = qfaInfo_->s1Size;
     tilingData_.baseTiling.quantFlashAttnBaseParams.s2Size = qfaInfo_->s2Size;
     tilingData_.baseTiling.quantFlashAttnBaseParams.dSize = qfaInfo_->qkHeadDim;

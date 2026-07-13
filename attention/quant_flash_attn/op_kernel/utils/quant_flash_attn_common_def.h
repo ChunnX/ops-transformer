@@ -135,7 +135,8 @@ static constexpr ConfigParams ConfigValue[] = {
 #define Config_S1Aligned128_S2Aligned512_DAligned64_DVAligned64 0
 #define Config_S1Aligned128_S2Aligned512_DAligned128_DVAligned128 1
 
-#define QFA_MXFP8_FP32 1
+#define QFA_MXFP8_FP32_PREFILL 1
+#define QFA_MXFP8_FP32_DECODE 2
 
 #define false 0
 #define true 1
