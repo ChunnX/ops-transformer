@@ -165,12 +165,3 @@ bash batch_isolated_run.sh ./pt_path 1 graph   # graph模式 + 性能采集
 | `batch_summary.log` | 批量执行详细日志 |
 | `batch_fail_list.log` | 失败用例清单 |
 | `PROF_*/` | msprof性能原始数据目录 |
-
-## 已知限制
-
-1. `dequant_dtype`在Ascend950上仅支持`FP32`（算子不支持FP16的w/qDescale/kDescale）
-2. JIT编译残留锁文件（`~/.cache/torch_extensions/py310_cpu/*/lock`）会导致导入卡死，如遇此问题执行：
-   ```bash
-   find ~/.cache/torch_extensions/py310_cpu -name "lock" -delete
-   ```
-3. **graph模式**依赖`torchair`编译器后端，部分设备/配置可能不支持

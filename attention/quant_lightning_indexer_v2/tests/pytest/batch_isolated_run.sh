@@ -15,6 +15,16 @@
 
 set -o pipefail
 
+# Ctrl+C / SIGTERM 中断处理: 递归杀所有子进程后退出
+_cleanup_on_interrupt() {
+    echo -e "\n\n[中断] 收到终止信号，正在清理子进程..." | tee -a "$SUMMARY_LOG"
+    pkill -TERM -P $$ 2>/dev/null
+    sleep 2
+    pkill -KILL -P $$ 2>/dev/null
+    exit 130
+}
+trap _cleanup_on_interrupt SIGINT SIGTERM
+
 TEST_SCRIPT="test_quant_lightning_indexer_v2_batch.py"
 TESTCASE_DIR="${1:-./pt_path}"
 USE_MSPROF="${2:-0}"
@@ -61,14 +71,13 @@ for case_file in "${CASE_FILES[@]}"; do
     case_name=$(basename "$case_file")
     echo -e "\n===== [$i/$TOTAL] 执行用例: $case_name =====" | tee -a "$SUMMARY_LOG"
 
-    PYTEST_CMD="QLIV2_RUN_MODE=\"${RUN_MODE}\" python3 -m pytest -rA -s ${TEST_SCRIPT} -v -m ci -W ignore::UserWarning -W ignore::DeprecationWarning"
     if [ "$USE_MSPROF" = "1" ]; then
-        RUN_CMD="QLIV2_TESTCASE_PATH=\"${case_file}\" msprof ${PYTEST_CMD}"
+        RUN_CMD="QLIV2_TESTCASE_PATH=\"${case_file}\" QLIV2_RUN_MODE=\"${RUN_MODE}\" msprof python3 -m pytest -rA -s ${TEST_SCRIPT} -v -m ci -W ignore::UserWarning -W ignore::DeprecationWarning"
     else
-        RUN_CMD="QLIV2_TESTCASE_PATH=\"${case_file}\" ${PYTEST_CMD}"
+        RUN_CMD="QLIV2_TESTCASE_PATH=\"${case_file}\" QLIV2_RUN_MODE=\"${RUN_MODE}\" python3 -m pytest -rA -s ${TEST_SCRIPT} -v -m ci -W ignore::UserWarning -W ignore::DeprecationWarning"
     fi
 
-    eval "$RUN_CMD" 2>&1 | tee -a "$SUMMARY_LOG"
+    eval "$RUN_CMD" 2>&1 | grep -v "^ninja: no work to do\.$" | tee -a "$SUMMARY_LOG"
     status=${PIPESTATUS[0]}
 
     if [ "$status" -eq 0 ]; then
