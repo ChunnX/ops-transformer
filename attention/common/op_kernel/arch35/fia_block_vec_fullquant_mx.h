@@ -306,11 +306,12 @@ public:
         int64_t maskLine = 0;
         if constexpr (HAS_MASK) {
             attenMaskUb = this->attenMaskInQue[0].template AllocTensor<uint8_t>();
-            maskLine = AttenMaskCopyInDn(attenMaskUb, )
+            maskLine = AttenMaskCopyInDn(attenMaskUb, 0, runInfo.actVecMSize, runInfo, subLoop);
         }
         if (isSkipCompute) {
             bmm1ResBuf.SetCrossCore();
             outputBuf.SetCrossCore();
+            this->attenMaskInQue[0].template FreeTensor(attenMaskUb);
             runInfo.actSingleLoopS2Size = s2SplitSize;
             return;
         }
@@ -1113,7 +1114,7 @@ public:
         }
     }
 
-    __aicore__ inline void AttenMaskCopyInDn(LocalTensor<uint8_t> attenMaskUb,
+    __aicore__ inline int64_t AttenMaskCopyInDn(LocalTensor<uint8_t> attenMaskUb,
                                            uint32_t vecMIdx, uint32_t mDealSize, RunInfoX &runInfo, uint32_t subLoop)
     {
         uint32_t s2RealSize = runInfo.actSingleLoopS2Size;
