@@ -141,7 +141,7 @@ def _dtype_to_int(dtype):
     raise TypeError(f"dispatch_quant_out_dtype must be torch.dtype or int, got {type(dtype)}.")
 
 
-def get_mega_moe_ccl_buffer_size(
+def _get_mega_moe_ccl_buffer_size(
     ep_world_size: int, moe_expert_num: int, num_max_tokens_per_rank: int,
     num_topk: int, hidden: int,
     max_recv_token_num: int = 0,
@@ -168,8 +168,7 @@ def get_symm_buffer_for_mega_moe(
     dispatch_quant_mode: int = 0,
     dispatch_quant_out_dtype: Optional[torch.dtype] = None,
     combine_quant_mode: int = 0,
-    comm_alg: str = "",
-    use_ccl_buffer: bool = True
+    comm_alg: str = ""
 ) -> SymmBuffer:
 
     return SymmBuffer(
@@ -205,6 +204,26 @@ def mega_moe(
     weight1_type: Optional[int] = None,
     weight2_type: Optional[int] = None,
 ):
+    required_ccl_buffer_size = _get_mega_moe_ccl_buffer_size(
+            sym_buffer.ep_world_size,
+            sym_buffer.num_experts,
+            sym_buffer.num_max_tokens_per_rank,
+            sym_buffer.num_topk,
+            sym_buffer.hidden,
+            sym_buffer.max_recv_token_num,
+            sym_buffer.dispatch_quant_mode,
+            sym_buffer.dispatch_quant_out_dtype,
+            sym_buffer.combine_quant_mode,
+            sym_buffer.comm_alg,
+        )
+    torch._check(
+        sym_buffer.ccl_buffer_size >= required_ccl_buffer_size,
+        lambda: (
+            f"HCCL buffer size is insufficient for MegaMoe, got {sym_buffer.ccl_buffer_size}, "
+            f"but at least {required_ccl_buffer_size} is required. "
+            "Please set a larger HCCL_BUFFSIZE before initializing the communication group."
+        ),
+    )
     return torch.ops.cann_ops_transformer.npu_mega_moe(
         sym_buffer.context,
         x,
