@@ -1133,13 +1133,12 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
       optionsep = torch_npu._C._distributed_c10d.ProcessGroupHCCL.Options()
       # 使用时hccl_buffer_size的值需根据算子接口文档中给出的通信域缓存区大小的约束进行配置
       optionsep.hccl_config = {"hccl_buffer_size": 200}
-      dist.init_process_group(backend="hccl", rank=rank, world_size=world_size, init_method=f'tcp://{master_ip}:50001',
-                             hccl_config=optionsep.hccl_config)
+      dist.init_process_group(backend="hccl", rank=rank, world_size=world_size, init_method=f'tcp://{master_ip}:50001')
       print(f"device_{rank} init_process_group success")
 
       print(f"device {rank} 初始化EP域")
       for ep_ranks in ep_ranks_list:
-          tmp_group = dist.new_group(backend="hccl", ranks=ep_ranks)
+          tmp_group = dist.new_group(backend="hccl", ranks=ep_ranks, pg_options=optionsep.hccl_config)
           if rank in ep_ranks:
               ep_group = tmp_group
 
