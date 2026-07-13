@@ -443,7 +443,11 @@ protected:
 
         if (transposeWeightScale && transposeWeight) {
             gmmDsqParams_.transposeWeight = true;
-            if (!IsMultiTensorWeight()) {
+            // The newly supported MX WeightNZ multi-tensor path needs to defer the
+            // conversion until the original shapes have been prepared. Existing
+            // multi-tensor paths (including MxA8W4) still require the conversion
+            // here, before output-shape inference.
+            if (!IsMxWeightNzMultiTensorSupported()) {
                 auto uniqueExecutor = CREATE_EXECUTOR();
                 CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
                 aclOpExecutor *executorPtr = uniqueExecutor.get();
