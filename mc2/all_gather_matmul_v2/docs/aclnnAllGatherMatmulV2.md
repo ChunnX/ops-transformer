@@ -49,7 +49,7 @@
     gatherOut=AllGather(x1)
     $$
 
-    -   情形3：如果x1和x2数据类型为FLOAT8_E4M3FN/FLOAT8_E5M2/HIFLOAT8的perblock场景，且不输出amaxOut,当x1为(m, k)、x2为(k, n)时， x1Scale为(ceilDiv(m, 128)， ceilDiv(k, 128))、x2Scale为(ceilDiv(k, 128), ceilDiv(n, 128))时，入参x1和x1Scale进行AllGather后，对x1、x2进行perblock量化MatMul计算，然后进行dequant操作。
+    - 情形3：如果x1和x2数据类型为FLOAT8_E4M3FN/FLOAT8_E5M2/HIFLOAT8的perblock场景，且不输出amaxOut,当x1为(m, k)、x2为(k, n)时， x1Scale为(ceilDiv(m, 128)， ceilDiv(k, 128))、x2Scale为(ceilDiv(k, 128), ceilDiv(n, 128))时，入参x1和x1Scale进行AllGather后，对x1、x2进行perblock量化MatMul计算，然后进行dequant操作。
 
         $$
         output=\sum_{0}^{\left \lfloor \frac{k}{blockSize=128} \right \rfloor} (AllGather(x1)_{pr}@x2_{rq}*(AllGather(x1Scale)_{pr}*x2Scale_{rq}))
@@ -428,7 +428,7 @@ aclnnStatus aclnnAllGatherMatmulV2(
     - 当groupSize取值为549764202624，bias必须为空。
     - 支持2、4、8、16、32、64卡。
     - 支持CCU通信引擎和AICPU通信引擎，CCU仅支持单机UB域内互联，AICPU可支持跨机UB域内互联。
-    - 使用CCU通信引擎时，单个通信域内allgather(x1)集合通信数据总量不能超过63*256MB，集合通信数据总量计算方式为：m * k * sizeof(x1_dtype) * 卡数。由于shape不同，算子内部实现可能存在差异，实际支持的总通信量可能略小于该值。
+    - 使用CCU通信引擎时，单个通信域内allgather(x1)集合通信数据总量不能超过63 \* 256MB，集合通信数据总量计算方式为：m \* k \* sizeof(x1_dtype) \* 卡数。由于shape不同，算子内部实现可能存在差异，实际支持的总通信量可能略小于该值。
 
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
     - 只支持x2矩阵转置/不转置，x1矩阵仅支持不转置场景。
@@ -443,12 +443,13 @@ aclnnStatus aclnnAllGatherMatmulV2(
 
 ## 调用示例
 
-说明：本示例代码调用了部分HCCL集合通信库接口：HcclGetCommName、HcclCommInitAll、HcclCommDestroy,请参考[ <<HCCL API (C)>>](https://hiascend.com/document/redirect/CannCommunityHcclCppApi)。
+说明：本示例代码调用了部分HCCL集合通信库接口：HcclGetCommName、HcclCommInitAll、HcclCommDestroy,请参考[<<HCCL API (C)>>](https://hiascend.com/document/redirect/CannCommunityHcclCppApi)。
 
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>
-    ```c++
+
+    ```Cpp
     #include <iostream>
     #include <vector>
     #include <thread>
