@@ -20,7 +20,7 @@
 #include "mc2_tiling_case_executor.h"
 
 namespace GroupedMatMulAllReduceUT {
-    
+
 class GroupedMatMulAllReduceArch22TilingTest : public testing::Test {
 protected:
     static void SetUpTestCase()
@@ -40,36 +40,30 @@ struct GroupedMatMulAllReduceCompileInfo {
 
 TEST_F(GroupedMatMulAllReduceArch22TilingTest, Float16Test1)
 {
-    GroupedMatMulAllReduceCompileInfo compileInfo {20, 196608};
+    GroupedMatMulAllReduceCompileInfo compileInfo{20, 196608};
     const std::string socVersion = "Ascend910B";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
     uint64_t tilingDataSize = 40960;
     std::string group("group");
     std::string reduceOp("sum");
-    gert::TilingContextPara tilingContextPara("GroupedMatMulAllReduce",
+    gert::TilingContextPara tilingContextPara(
+        "GroupedMatMulAllReduce",
         // input info
         {
             {{{8192, 1536}, {8192, 1536}}, ge::DT_FLOAT16, ge::FORMAT_ND},
             {{{1536, 12288}, {1536, 12288}}, ge::DT_FLOAT16, ge::FORMAT_ND},
         },
         // output info
-        {
-            {{{8192, 12288}, {8192, 12288}}, ge::DT_FLOAT16, ge::FORMAT_ND}
-        },
+        {{{{8192, 12288}, {8192, 12288}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
         // attr
-        {   
+        {
             {"splitItem", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"group", Ops::Transformer::AnyValue::CreateFrom<std::string>(group)},
             {"reduceOp", Ops::Transformer::AnyValue::CreateFrom<std::string>(reduceOp)},
             {"commTurn", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
         },
-        &compileInfo,
-        socVersion,
-        coreNum,
-        ubSize,
-        tilingDataSize
-        );
+        &compileInfo, socVersion, coreNum, ubSize, tilingDataSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     int64_t expectTilingKey = 0;
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
@@ -77,35 +71,30 @@ TEST_F(GroupedMatMulAllReduceArch22TilingTest, Float16Test1)
 
 TEST_F(GroupedMatMulAllReduceArch22TilingTest, McutFloat16In910BTest1)
 {
-    GroupedMatMulAllReduceCompileInfo compileInfo {20, 196608};
+    GroupedMatMulAllReduceCompileInfo compileInfo{20, 196608};
     const std::string socVersion = "Ascend910B";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
     uint64_t tilingDataSize = 40960;
     std::string group("group");
     std::string reduceOp("sum");
-    gert::TilingContextPara tilingContextPara("GroupedMatMulAllReduce",
+    gert::TilingContextPara tilingContextPara(
+        "GroupedMatMulAllReduce",
         // input info
         {
             {{{12290, 15360}, {12290, 15360}}, ge::DT_FLOAT16, ge::FORMAT_ND},
             {{{15360, 12288}, {15360, 12288}}, ge::DT_FLOAT16, ge::FORMAT_ND},
         },
         // output info
-        {
-            {{{12290, 12288}, {12290, 12288}}, ge::DT_FLOAT16, ge::FORMAT_ND}
-        },
+        {{{{12290, 12288}, {12290, 12288}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
         // attr
-        {   
+        {
             {"splitItem", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"group", Ops::Transformer::AnyValue::CreateFrom<std::string>(group)},
             {"reduceOp", Ops::Transformer::AnyValue::CreateFrom<std::string>(reduceOp)},
             {"commTurn", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
         },
-        &compileInfo,
-        socVersion,
-        coreNum,
-        ubSize,
-        tilingDataSize);
+        &compileInfo, socVersion, coreNum, ubSize, tilingDataSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     int64_t expectTilingKey = 0;
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
@@ -113,35 +102,30 @@ TEST_F(GroupedMatMulAllReduceArch22TilingTest, McutFloat16In910BTest1)
 
 TEST_F(GroupedMatMulAllReduceArch22TilingTest, McutFloat16In910BTest2)
 {
-    GroupedMatMulAllReduceCompileInfo compileInfo {20, 196608};
+    GroupedMatMulAllReduceCompileInfo compileInfo{20, 196608};
     const std::string socVersion = "Ascend910B";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
     uint64_t tilingDataSize = 40960;
     std::string group("group");
     std::string reduceOp("sum");
-    gert::TilingContextPara tilingContextPara("GroupedMatMulAllReduce",
+    gert::TilingContextPara tilingContextPara(
+        "GroupedMatMulAllReduce",
         // input info
         {
             {{{20, 2}, {20, 2}}, ge::DT_FLOAT16, ge::FORMAT_ND},
             {{{2, 2}, {2, 2}}, ge::DT_FLOAT16, ge::FORMAT_ND},
         },
         // output info
-        {
-            {{{20, 2}, {20, 2}}, ge::DT_FLOAT16, ge::FORMAT_ND}
-        },
+        {{{{20, 2}, {20, 2}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
         // attr
-        {   
+        {
             {"splitItem", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"group", Ops::Transformer::AnyValue::CreateFrom<std::string>(group)},
             {"reduceOp", Ops::Transformer::AnyValue::CreateFrom<std::string>(reduceOp)},
             {"commTurn", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
         },
-        &compileInfo,
-        socVersion,
-        coreNum,
-        ubSize,
-        tilingDataSize);
+        &compileInfo, socVersion, coreNum, ubSize, tilingDataSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 2}};
     int64_t expectTilingKey = 0;
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
@@ -149,35 +133,30 @@ TEST_F(GroupedMatMulAllReduceArch22TilingTest, McutFloat16In910BTest2)
 
 TEST_F(GroupedMatMulAllReduceArch22TilingTest, McutFloat16In910BTestwin2win)
 {
-    GroupedMatMulAllReduceCompileInfo compileInfo {20, 196608};
+    GroupedMatMulAllReduceCompileInfo compileInfo{20, 196608};
     const std::string socVersion = "Ascend910B";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
     uint64_t tilingDataSize = 40960;
     std::string group("group");
     std::string reduceOp("sum");
-    gert::TilingContextPara tilingContextPara("GroupedMatMulAllReduce",
+    gert::TilingContextPara tilingContextPara(
+        "GroupedMatMulAllReduce",
         // input info
         {
             {{{12290, 15360}, {12290, 15360}}, ge::DT_FLOAT16, ge::FORMAT_ND},
             {{{15360, 12288}, {15360, 12288}}, ge::DT_FLOAT16, ge::FORMAT_ND},
         },
         // output info
-        {
-            {{{12290, 12288}, {12290, 12288}}, ge::DT_FLOAT16, ge::FORMAT_ND}
-        },
+        {{{{12290, 12288}, {12290, 12288}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
         // attr
-        {   
+        {
             {"splitItem", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"group", Ops::Transformer::AnyValue::CreateFrom<std::string>(group)},
             {"reduceOp", Ops::Transformer::AnyValue::CreateFrom<std::string>(reduceOp)},
             {"commTurn", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
         },
-        &compileInfo,
-        socVersion,
-        coreNum,
-        ubSize,
-        tilingDataSize);
+        &compileInfo, socVersion, coreNum, ubSize, tilingDataSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     int64_t expectTilingKey = 0;
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
@@ -185,35 +164,30 @@ TEST_F(GroupedMatMulAllReduceArch22TilingTest, McutFloat16In910BTestwin2win)
 
 TEST_F(GroupedMatMulAllReduceArch22TilingTest, Float16Test2)
 {
-    GroupedMatMulAllReduceCompileInfo compileInfo {20, 196608};
+    GroupedMatMulAllReduceCompileInfo compileInfo{20, 196608};
     const std::string socVersion = "Ascend910B";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
     uint64_t tilingDataSize = 40960;
     std::string group("group");
     std::string reduceOp("sum");
-    gert::TilingContextPara tilingContextPara("GroupedMatMulAllReduce",
+    gert::TilingContextPara tilingContextPara(
+        "GroupedMatMulAllReduce",
         // input info
         {
             {{{8192, 1536}, {8192, 1536}}, ge::DT_FLOAT16, ge::FORMAT_ND},
             {{{1536, 12288}, {1536, 12288}}, ge::DT_FLOAT16, ge::FORMAT_ND},
         },
         // output info
-        {
-            {{{8192, 12288}, {8192, 12288}}, ge::DT_FLOAT16, ge::FORMAT_ND}
-        },
+        {{{{8192, 12288}, {8192, 12288}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
         // attr
-        {   
+        {
             {"splitItem", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"group", Ops::Transformer::AnyValue::CreateFrom<std::string>(group)},
             {"reduceOp", Ops::Transformer::AnyValue::CreateFrom<std::string>(reduceOp)},
             {"commTurn", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
         },
-        &compileInfo,
-        socVersion,
-        coreNum,
-        ubSize,
-        tilingDataSize);
+        &compileInfo, socVersion, coreNum, ubSize, tilingDataSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     int64_t expectTilingKey = 0;
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
@@ -221,35 +195,30 @@ TEST_F(GroupedMatMulAllReduceArch22TilingTest, Float16Test2)
 
 TEST_F(GroupedMatMulAllReduceArch22TilingTest, Float16Test3)
 {
-    GroupedMatMulAllReduceCompileInfo compileInfo {20, 196608};
+    GroupedMatMulAllReduceCompileInfo compileInfo{20, 196608};
     const std::string socVersion = "Ascend910B";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
     uint64_t tilingDataSize = 40960;
     std::string group("group");
     std::string reduceOp("sum");
-    gert::TilingContextPara tilingContextPara("GroupedMatMulAllReduce",
+    gert::TilingContextPara tilingContextPara(
+        "GroupedMatMulAllReduce",
         // input info
         {
             {{{128, 1536}, {128, 1536}}, ge::DT_FLOAT16, ge::FORMAT_ND},
             {{{1536, 8192}, {1536, 8192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
         },
         // output info
-        {
-            {{{8192, 12288}, {8192, 12288}}, ge::DT_FLOAT16, ge::FORMAT_ND}
-        },
+        {{{{8192, 12288}, {8192, 12288}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
         // attr
-        {   
+        {
             {"splitItem", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"group", Ops::Transformer::AnyValue::CreateFrom<std::string>(group)},
             {"reduceOp", Ops::Transformer::AnyValue::CreateFrom<std::string>(reduceOp)},
             {"commTurn", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
         },
-        &compileInfo,
-        socVersion,
-        coreNum,
-        ubSize,
-        tilingDataSize);
+        &compileInfo, socVersion, coreNum, ubSize, tilingDataSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     int64_t expectTilingKey = 0;
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
@@ -257,35 +226,30 @@ TEST_F(GroupedMatMulAllReduceArch22TilingTest, Float16Test3)
 
 TEST_F(GroupedMatMulAllReduceArch22TilingTest, Float16Test4)
 {
-    GroupedMatMulAllReduceCompileInfo compileInfo {20, 196608};
+    GroupedMatMulAllReduceCompileInfo compileInfo{20, 196608};
     const std::string socVersion = "Ascend910B";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
     uint64_t tilingDataSize = 40960;
     std::string group("group");
     std::string reduceOp("sum");
-    gert::TilingContextPara tilingContextPara("GroupedMatMulAllReduce",
+    gert::TilingContextPara tilingContextPara(
+        "GroupedMatMulAllReduce",
         // input info
         {
             {{{1024, 1536}, {1024, 1536}}, ge::DT_FLOAT16, ge::FORMAT_ND},
             {{{1536, 8192}, {1536, 8192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
         },
         // output info
-        {
-            {{{8192, 12288}, {8192, 12288}}, ge::DT_FLOAT16, ge::FORMAT_ND}
-        },
+        {{{{8192, 12288}, {8192, 12288}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
         // attr
-        {   
+        {
             {"splitItem", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"group", Ops::Transformer::AnyValue::CreateFrom<std::string>(group)},
             {"reduceOp", Ops::Transformer::AnyValue::CreateFrom<std::string>(reduceOp)},
             {"commTurn", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
         },
-        &compileInfo,
-        socVersion,
-        coreNum,
-        ubSize,
-        tilingDataSize);
+        &compileInfo, socVersion, coreNum, ubSize, tilingDataSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     int64_t expectTilingKey = 0;
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
@@ -293,35 +257,30 @@ TEST_F(GroupedMatMulAllReduceArch22TilingTest, Float16Test4)
 
 TEST_F(GroupedMatMulAllReduceArch22TilingTest, Float16Test5)
 {
-    GroupedMatMulAllReduceCompileInfo compileInfo {20, 196608};
+    GroupedMatMulAllReduceCompileInfo compileInfo{20, 196608};
     const std::string socVersion = "Ascend910B";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
     uint64_t tilingDataSize = 40960;
     std::string group("group");
     std::string reduceOp("sum");
-    gert::TilingContextPara tilingContextPara("GroupedMatMulAllReduce",
+    gert::TilingContextPara tilingContextPara(
+        "GroupedMatMulAllReduce",
         // input info
         {
             {{{256, 1536}, {256, 1536}}, ge::DT_FLOAT16, ge::FORMAT_ND},
             {{{1536, 8192}, {1536, 8192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
         },
         // output info
-        {
-            {{{8192, 12288}, {8192, 12288}}, ge::DT_FLOAT16, ge::FORMAT_ND}
-        },
+        {{{{8192, 12288}, {8192, 12288}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
         // attr
-        {   
+        {
             {"splitItem", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"group", Ops::Transformer::AnyValue::CreateFrom<std::string>(group)},
             {"reduceOp", Ops::Transformer::AnyValue::CreateFrom<std::string>(reduceOp)},
             {"commTurn", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
         },
-        &compileInfo,
-        socVersion,
-        coreNum,
-        ubSize,
-        tilingDataSize);
+        &compileInfo, socVersion, coreNum, ubSize, tilingDataSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     int64_t expectTilingKey = 0;
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
@@ -329,35 +288,30 @@ TEST_F(GroupedMatMulAllReduceArch22TilingTest, Float16Test5)
 
 TEST_F(GroupedMatMulAllReduceArch22TilingTest, Float16Support3Dim)
 {
-    GroupedMatMulAllReduceCompileInfo compileInfo {20, 196608};
+    GroupedMatMulAllReduceCompileInfo compileInfo{20, 196608};
     const std::string socVersion = "Ascend910B";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
     uint64_t tilingDataSize = 40960;
     std::string group("group");
     std::string reduceOp("sum");
-    gert::TilingContextPara tilingContextPara("GroupedMatMulAllReduce",
+    gert::TilingContextPara tilingContextPara(
+        "GroupedMatMulAllReduce",
         // input info
         {
             {{{1, 8192, 1536}, {1, 8192, 1536}}, ge::DT_FLOAT16, ge::FORMAT_ND},
             {{{1536, 12288}, {1536, 12288}}, ge::DT_FLOAT16, ge::FORMAT_ND},
         },
         // output info
-        {
-            {{{1, 8192, 12288}, {1, 8192, 12288}}, ge::DT_FLOAT16, ge::FORMAT_ND}
-        },
+        {{{{1, 8192, 12288}, {1, 8192, 12288}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
         // attr
-        {   
+        {
             {"splitItem", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"group", Ops::Transformer::AnyValue::CreateFrom<std::string>(group)},
             {"reduceOp", Ops::Transformer::AnyValue::CreateFrom<std::string>(reduceOp)},
             {"commTurn", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
         },
-        &compileInfo,
-        socVersion,
-        coreNum,
-        ubSize,
-        tilingDataSize);
+        &compileInfo, socVersion, coreNum, ubSize, tilingDataSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     int64_t expectTilingKey = 0;
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
@@ -365,37 +319,32 @@ TEST_F(GroupedMatMulAllReduceArch22TilingTest, Float16Support3Dim)
 
 TEST_F(GroupedMatMulAllReduceArch22TilingTest, Bfloat16)
 {
-    GroupedMatMulAllReduceCompileInfo compileInfo {20, 196608};
+    GroupedMatMulAllReduceCompileInfo compileInfo{20, 196608};
     const std::string socVersion = "Ascend910B";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
     uint64_t tilingDataSize = 40960;
     std::string group("group");
     std::string reduceOp("sum");
-    gert::TilingContextPara tilingContextPara("GroupedMatMulAllReduce",
+    gert::TilingContextPara tilingContextPara(
+        "GroupedMatMulAllReduce",
         // input info
         {
             {{{8192, 1536}, {8192, 1536}}, ge::DT_BF16, ge::FORMAT_ND},
             {{{1536, 12288}, {1536, 12288}}, ge::DT_BF16, ge::FORMAT_ND},
         },
         // output info
-        {
-            {{{8192, 12288}, {8192, 12288}}, ge::DT_BF16, ge::FORMAT_ND}
-        },
+        {{{{8192, 12288}, {8192, 12288}}, ge::DT_BF16, ge::FORMAT_ND}},
         // attr
-        {   
+        {
             {"splitItem", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"group", Ops::Transformer::AnyValue::CreateFrom<std::string>(group)},
             {"reduceOp", Ops::Transformer::AnyValue::CreateFrom<std::string>(reduceOp)},
             {"commTurn", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
         },
-        &compileInfo,
-        socVersion,
-        coreNum,
-        ubSize,
-        tilingDataSize);
+        &compileInfo, socVersion, coreNum, ubSize, tilingDataSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     int64_t expectTilingKey = 0;
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
 }
-}
+} // namespace GroupedMatMulAllReduceUT
