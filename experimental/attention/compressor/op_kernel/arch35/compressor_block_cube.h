@@ -245,40 +245,63 @@ __aicore__ inline void CompressorBlockCube<COMP>::CopyXGmToL1(const RunInfo &inf
     uint32_t srcDValue = constInfo_.hSize;
     uint32_t dstNzC0Stride = (copySeqCnt + 15) / 16 * 16;    // 1行变2行的行方向的偏移，需要16对齐
     if (isExistXCache_) {
-        // Compose grouped decode input from cached history and the current x tensor
-        // inside the operator.  Cache rows may wrap around the ring buffer, while
-        // the tail rows come from the one-token x input of this decode call.
-        uint32_t seqUsed = tools_.isExistSeqUsed_ ? tools_.GetSeqUsed(info.bStart) : constInfo_.xCacheReadSize;
-        uint32_t currentInputSeqSize = min(constInfo_.sSize, seqUsed);
-        uint32_t currentStart = seqUsed - currentInputSeqSize;
-        uint32_t sliceStart = info.sStart;
-        uint32_t sliceEnd = info.sStart + copySeqCnt;
-        uint32_t cacheCopyEnd = min(sliceEnd, currentStart);
-        if (sliceStart < cacheCopyEnd) {
-            uint32_t cacheCopyRows = cacheCopyEnd - sliceStart;
-            uint64_t cacheStart = (tools_.GetStartPos(info.bStart) + sliceStart) % constInfo_.xCacheSize;
-            uint32_t firstCopySeqCnt = min(cacheCopyRows, constInfo_.xCacheSize - static_cast<uint32_t>(cacheStart));
-            uint64_t firstGmOffset = (info.bStart * constInfo_.xCacheSize + cacheStart) * constInfo_.hSize + hIdx;
-            CopySingleMatrixNDToNZ(xL1Tensor[xL1Offset], xCacheGm_[firstGmOffset], firstCopySeqCnt, dValue, srcDValue,
-                                   dstNzC0Stride);
-            if (firstCopySeqCnt < cacheCopyRows) {
-                uint64_t secondGmOffset = info.bStart * constInfo_.xCacheSize * constInfo_.hSize + hIdx;
-                uint32_t secondL1Offset = xL1Offset + firstCopySeqCnt * (32 / sizeof(X_T));
-                CopySingleMatrixNDToNZ(xL1Tensor[secondL1Offset], xCacheGm_[secondGmOffset],
-                                       cacheCopyRows - firstCopySeqCnt, dValue, srcDValue, dstNzC0Stride);
+        // SkipOneLoop packs the flattened M axis into one tile, so a tile can cover
+        // multiple batches. x_cache is batch-local ring storage; compose each batch
+        // segment separately into the same L1 tile.
+        uint32_t localRow = 0;
+        uint32_t remainRows = copySeqCnt;
+        uint32_t curB = info.bStart;
+        uint32_t curS = info.sStart;
+        while (remainRows > 0 && curB < constInfo_.projectionBatchSize) {
+            uint32_t curSeqLen = tools_.GetSeqLength(curB);
+            uint32_t curSeqUsed = tools_.isExistSeqUsed_ ? tools_.GetSeqUsed(curB) : curSeqLen;
+            if (curSeqLen == 0 || curSeqUsed == 0 || curS >= curSeqLen) {
+                curB++;
+                curS = 0;
+                continue;
             }
-        }
-        uint32_t currentCopyStart = max(sliceStart, currentStart);
-        uint32_t currentCopyEnd = min(sliceEnd, seqUsed);
-        if (currentCopyStart < currentCopyEnd) {
-            uint32_t currentLocalRow = currentCopyStart - sliceStart;
-            uint32_t currentXRow = currentCopyStart - currentStart;
-            uint32_t currentCopyRows = currentCopyEnd - currentCopyStart;
-            uint32_t currentL1Offset = xL1Offset + currentLocalRow * (32 / sizeof(X_T));
-            uint64_t currentGmOffset =
-                (static_cast<uint64_t>(info.bStart) * constInfo_.sSize + currentXRow) * constInfo_.hSize + hIdx;
-            CopySingleMatrixNDToNZ(xL1Tensor[currentL1Offset], xGm_[currentGmOffset], currentCopyRows, dValue,
-                                   srcDValue, dstNzC0Stride);
+
+            uint32_t segmentRows = min(remainRows, curSeqLen - curS);
+            uint32_t segmentL1Offset = xL1Offset + localRow * (32 / sizeof(X_T));
+            uint32_t currentInputSeqSize = min(constInfo_.sSize, curSeqUsed);
+            uint32_t currentStart = curSeqUsed - currentInputSeqSize;
+            uint32_t sliceStart = curS;
+            uint32_t sliceEnd = curS + segmentRows;
+            uint32_t cacheCopyEnd = min(sliceEnd, currentStart);
+            if (sliceStart < cacheCopyEnd) {
+                uint32_t cacheCopyRows = cacheCopyEnd - sliceStart;
+                uint64_t cacheStart = (tools_.GetStartPos(curB) + sliceStart) % constInfo_.xCacheSize;
+                uint32_t firstCopySeqCnt = min(cacheCopyRows, constInfo_.xCacheSize - static_cast<uint32_t>(cacheStart));
+                uint64_t firstGmOffset = (curB * constInfo_.xCacheSize + cacheStart) * constInfo_.hSize + hIdx;
+                CopySingleMatrixNDToNZ(xL1Tensor[segmentL1Offset], xCacheGm_[firstGmOffset], firstCopySeqCnt, dValue,
+                                       srcDValue, dstNzC0Stride);
+                if (firstCopySeqCnt < cacheCopyRows) {
+                    uint64_t secondGmOffset = curB * constInfo_.xCacheSize * constInfo_.hSize + hIdx;
+                    uint32_t secondL1Offset = segmentL1Offset + firstCopySeqCnt * (32 / sizeof(X_T));
+                    CopySingleMatrixNDToNZ(xL1Tensor[secondL1Offset], xCacheGm_[secondGmOffset],
+                                           cacheCopyRows - firstCopySeqCnt, dValue, srcDValue, dstNzC0Stride);
+                }
+            }
+            uint32_t currentCopyStart = max(sliceStart, currentStart);
+            uint32_t currentCopyEnd = min(sliceEnd, curSeqUsed);
+            if (currentCopyStart < currentCopyEnd) {
+                uint32_t currentLocalRow = currentCopyStart - sliceStart;
+                uint32_t currentXRow = currentCopyStart - currentStart;
+                uint32_t currentCopyRows = currentCopyEnd - currentCopyStart;
+                uint32_t currentL1Offset = segmentL1Offset + currentLocalRow * (32 / sizeof(X_T));
+                uint64_t currentGmOffset =
+                    (static_cast<uint64_t>(curB) * constInfo_.sSize + currentXRow) * constInfo_.hSize + hIdx;
+                CopySingleMatrixNDToNZ(xL1Tensor[currentL1Offset], xGm_[currentGmOffset], currentCopyRows, dValue,
+                                       srcDValue, dstNzC0Stride);
+            }
+
+            localRow += segmentRows;
+            remainRows -= segmentRows;
+            curS += segmentRows;
+            if (curS >= curSeqLen) {
+                curB++;
+                curS = 0;
+            }
         }
     } else {
         uint64_t sIdx = tStart;    // 起始s在整个T的起始点

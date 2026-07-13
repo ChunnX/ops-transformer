@@ -172,25 +172,25 @@ __aicore__ inline void CompressorKernel<COMP>::Init(
         }
     }
 
+    const bool hasProjectionWork = constInfo.projectionBatchSize > 0;
+    const bool isXCacheUpdateOnly = isExistXCache_ && !hasProjectionWork && constInfo.xCacheUpdateBatchSize > 0;
     if ASCEND_IS_AIV {
         if (isExistXCache_) {
             blockVec_.InitParams(constInfo, tools_);
             blockVec_.Init(x, wKv, wGate, stateCache, ape, normWeight, ropeSin, ropeCos, stateBlockTable,
                             cuSeqlens, seqUsed, startPos, xCache, xCacheSlotMapping, cmpKvOut);
-            if (constInfo.projectionBatchSize == 0) {
-                if (constInfo.xCacheUpdateBatchSize > 0) {
-                    // Inactive grouped-decode rounds still need to persist current x.
-                    // They skip compression, so only the update buffer is required.
-                    blockVec_.InitXCacheUpdateBuffers(pipe_);
-                }
-            } else {
+            if (hasProjectionWork) {
                 blockVec_.InitBuffers(pipe_);
+            } else if (isXCacheUpdateOnly) {
+                // UpdateXCache still needs InitParams/Init for constInfo and GM tensor bindings,
+                // but only this small buffer is used when no projection work remains.
+                blockVec_.InitXCacheUpdateBuffers(pipe_);
             }
         }
     }
 
     // 所有batch的有效序列都为0时, 直接退出
-    if (constInfo.projectionBatchSize == 0) {
+    if (!hasProjectionWork) {
         return;
     }
 
