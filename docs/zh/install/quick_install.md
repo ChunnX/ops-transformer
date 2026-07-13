@@ -111,12 +111,13 @@ docker run --name cann_container --device /dev/davinci0 --device /dev/davinci_ma
             ```bash
             bash ./Ascend-cann-${soc_name}-ops_${cann_version}_linux-${arch}.run --install --install-path=${install_path}
             ```
+
         变量含义说明：
 
         - \$\{cann\_version\}：表示CANN包版本号。
- 	    - \$\{arch\}：表示CPU架构，可通过`uname -m`查询，例如aarch64、x86_64。
- 	    - \$\{soc\_name\}：表示NPU型号名称。
- 	    - \$\{install\_path\}：表示指定安装路径，ops包需与toolkit包安装在相同路径，root用户默认安装在`/usr/local/Ascend`目录。
+      - \$\{arch\}：表示CPU架构，可通过`uname -m`查询，例如aarch64、x86_64。
+      - \$\{soc\_name\}：表示NPU型号名称。
+      - \$\{install\_path\}：表示指定安装路径，ops包需与toolkit包安装在相同路径，root用户默认安装在`/usr/local/Ascend`目录。
 
 - **场景2：体验已发布版本能力或基于已发布版本进行开发**
 
@@ -140,11 +141,11 @@ docker run --name cann_container --device /dev/davinci0 --device /dev/davinci_ma
 1. 下载源码。
 
     下载与CANN版本配套的分支源码，命令如下，\$\{tag\_version\}替换为分支标签名。
-   
+
     ```bash
     git clone -b ${tag_version} https://gitcode.com/cann/ops-transformer.git
     ```
-    
+
 2. 安装依赖。
 
     先通过项目根目录install\_deps.sh一键安装上述依赖，命令如下，若遇到不支持系统，请参考该文件自行适配。
@@ -174,11 +175,11 @@ docker run --name cann_container --device /dev/davinci0 --device /dev/davinci_ma
 
     ```bash
     # 查看CANN toolkit包版本信息（默认路径安装）
- 	cat /usr/local/Ascend/cann/${arch}-linux/ascend_toolkit_install.info # docker和手动安装场景
- 	cat /home/developer/Ascend/cann/${arch}-linux/ascend_toolkit_install.info # CANNLab场景
- 	# 查看CANN ops包版本信息（默认路径安装）
- 	cat /usr/local/Ascend/cann/${arch}-linux/ascend_ops_install.info # docker和手动安装场景
- 	cat /home/developer/Ascend/cann/${arch}-linux/ascend_ops_install.info # CANNLab场景
+    cat /usr/local/Ascend/cann/${arch}-linux/ascend_toolkit_install.info # docker和手动安装场景
+    cat /home/developer/Ascend/cann/${arch}-linux/ascend_toolkit_install.info # CANNLab场景
+    # 查看CANN ops包版本信息（默认路径安装）
+    cat /usr/local/Ascend/cann/${arch}-linux/ascend_ops_install.info # docker和手动安装场景
+    cat /home/developer/Ascend/cann/${arch}-linux/ascend_ops_install.info # CANNLab场景
     ```
 
     其中\$\{arch\}可通过`uname -m`查询当前架构，如aarch64、x86_64。
@@ -193,4 +194,3 @@ source /usr/local/Ascend/cann/set_env.sh
 # 指定路径安装
 # source ${install_path}/cann/set_env.sh
 ```
-

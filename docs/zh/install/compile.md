@@ -43,7 +43,7 @@
 
 若在有互联网的环境下编译，编译过程中会自动安装第三方依赖，无需手动安装。不同场景下源码编译和部署命令如下：
 
-#### 自定义算子包
+### 自定义算子包
 
 1. **编译自定义算子包**
 
@@ -77,14 +77,14 @@
     ```
 
     自定义算子包安装路径为```${ASCEND_HOME_PATH}/opp/vendors```，\$\{ASCEND\_HOME\_PATH\}已通过环境变量配置，表示CANN toolkit包安装路径，一般为\$\{install\_path\}/cann。
-    
+
     如果部署算子包时通过配置--install-path参数指定了算子包的安装目录，则在使用自定义算子前，需要执行```source ${install-path}/vendors/${vendor_name}/bin/set_env.bash```命令，set_env.bash脚本中将自定义算子包的安装路径追加到环境变量ASCEND_CUSTOM_OPP_PATH中，使自定义算子在当前环境中生效。
 
 3. **（可选）删除自定义算子包**
 
     注意自定义算子包不支持卸载，如需卸载，请删除vendors\/\$\{vendor\_name}目录，并删除vendors/config.ini中load_priority对应\$\{vendor\_name\}的配置项。
 
-#### ops-transformer包
+### ops-transformer包
 
 1. **编译ops-transformer包**
 
@@ -124,7 +124,7 @@
     ./${install_path}/cann/share/info/ops_transformer/script/uninstall.sh
     ```
 
-#### ops-transformer静态库
+### ops-transformer静态库
 
 > 说明：静态库仅支持Atlas A2、Atlas A3、Atlas A5系列产品。experimental算子暂不支持使用静态库。
 
@@ -156,7 +156,7 @@
 
     \$\{static\_lib\_path\}表示静态库解压路径。解压后目录结构如下：
 
-    ```
+    ```text
     ├── cann-${soc_name}-ops-transformer-static_${cann_version}_linux-${arch}
     │   ├── lib64
     │   │   ├── libcann_transformer_static.a        # 静态库文件
@@ -164,7 +164,7 @@
     |       ├── ...                                 # aclnn接口头文件
     ```
 
-### 未联网编译
+## 未联网编译
 
 若在没有连接互联网的环境下编译，需要提前准备好依赖的第三方软件，再进行源码编译。具体过程如下：
 
@@ -176,13 +176,13 @@
     - 连接离线环境，上传源码至您指定的目录下。若下载的是源码压缩包，请先进行解压。
 
 2. **下载第三方软件依赖**
-  
+
     在联网环境中提前下载第三方软件，目前有如下方式，请按需选择：
 
-    - 方式1：根据[第三方软件依赖](#第三方软件依赖)提供的表格手动下载，若从其他地址下载，请确保版本号一致。
-    
+    - 方式1：根据[第三方软件依赖](#安装第三方依赖)提供的表格手动下载，若从其他地址下载，请确保版本号一致。
+
     - 方式2：通过[third_lib_download.py](../../../scripts/tools/third_lib_download.py)脚本一键下载，该脚本在本项目`scripts/tools/`目录，下载该脚本并执行如下命令：
-    
+
         ```bash
         python ${scripts_dir}/third_lib_download.py
         ```
@@ -194,46 +194,46 @@
    将下载好的第三方软件上传至离线环境，可存放在`third_party`目录或自定义目录下。**推荐前者，其编译命令与联网编译场景下的命令一致。**
 
     - **third\_party目录**（推荐）
-      
+
       请在本项目根目录创建`third_party`目录（若有则无需创建），将第三方软件拷贝到该指定目录。此时编译命令与联网编译命令一致，具体参考[联网编译](#联网编译)。
-      
+
     - **自定义目录**
-      
+
       在离线环境的任意位置新建`${cann_3rd_lib_path}`目录，将第三方软件拷贝到该目录，请确保该目录有权限访问。
 
         ```bash
       mkdir -p ${cann_3rd_lib_path}
         ```
-      
+
       此时编译命令需在联网编译命令基础上额外增加`--cann_3rd_lib_path=${cann_3rd_lib_path}`用于指定第三方软件所在路径。假设存放路径为`/path/cann_3rd_lib_path`，不同编译方式对应的命令如下：
-      
+
       - 自定义算子包
-      
+
         ```bash
         bash build.sh --pkg --soc=${soc_version} [--vendor_name=${vendor_name}] [--ops=${op_list}] --cann_3rd_lib_path=${cann_3rd_lib_path}
         # 以FlashAttentionScore算子编译为例
         # bash build.sh --pkg --soc=ascend910b --ops=flash_attention_score --cann_3rd_lib_path=/path/cann_3rd_lib_path
         ```
-        
+
       - ops-transformer整包
-      
+
         ```bash
         bash build.sh --pkg --soc=${soc_version} --cann_3rd_lib_path=${cann_3rd_lib_path}
         # bash build.sh --pkg --soc=ascend910b --cann_3rd_lib_path=/path/cann_3rd_lib_path
         ```
-        
+
       - ops-transformer静态库
-      
+
         ```bash
         bash build.sh --pkg --static --soc=${soc_version} --cann_3rd_lib_path=${cann_3rd_lib_path}
         # bash build.sh --pkg --static --soc=ascend910b --cann_3rd_lib_path=/path/cann_3rd_lib_path
         ```
 
 4. **安装/卸载算子包**
-   
+
     未联网和联网场景下编译得到算子包结果一样，默认存放于项目根目录build_out目录下，并且安装和卸载的操作命令也一样，具体参见[联网编译](#联网编译)。
 
-## 本地验证 
+## 本地验证
 
 源码包部署后，可通过项目根目录build.sh执行UT用例，验证项目功能是否正常。
 
@@ -278,13 +278,12 @@ Global Environment TearDown
 
 ### 本地编译报错"ERROR: No matching distribution found for setuptools>=40.8.0"
 
-```
+```bash
 Could not fetch URL XXX (Caused by SSLError(SSLCertVerificationError))
 ERROR: Could not find a version that satisfies the requirement setuptools>=40.8.0 (from versions: none)
 ERROR: No matching distribution found for setuptools>=40.8.0
 ```
+
 1、检查[环境部署](./quick_install.md)中根目录requirements.txt中python三方库依赖是否齐全
 
 2、检查环境~/.pip/pip.conf或~/.config/pip/pip.conf指定的pip源是否可用
-
-
