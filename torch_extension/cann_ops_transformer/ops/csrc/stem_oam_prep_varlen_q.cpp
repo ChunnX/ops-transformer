@@ -13,7 +13,6 @@
 * \brief
 */
 
-#include <algorithm>
 #include <torch/extension.h>
 #include "aclnn_common.h"
 
@@ -23,8 +22,8 @@ static constexpr int64_t DIM_QK = 128;
 
 at::Tensor npu_stem_oam_prep_varlen_q(
     const at::Tensor &q,
-    at::IntArrayRef qSeqLens,
-    at::IntArrayRef cuSeqLensQ,
+    const at::Tensor &qSeqLens,
+    const at::Tensor &cuSeqLensQ,
     const c10::optional<at::Tensor> &qScale,
     const c10::optional<at::Tensor> &kScale,
     int64_t stemBlockSize,
@@ -39,9 +38,9 @@ at::Tensor npu_stem_oam_prep_varlen_q(
     TORCH_CHECK(stemStride <= 64, "stemStride must be <= 64");
 
     int64_t H_q = q.size(1);
-    int64_t batch = static_cast<int64_t>(qSeqLens.size());
+    int64_t batch = qSeqLens.size(0);
 
-    int64_t maxQLen = *std::max_element(qSeqLens.begin(), qSeqLens.end());
+    int64_t maxQLen = qSeqLens.max().item<int64_t>();
     int64_t maxQPadded = ((maxQLen + stemBlockSize - 1) / stemBlockSize) * stemBlockSize;
     int64_t maxQb = maxQPadded / stemBlockSize;
     int64_t qflat_dim = stemStride * DIM_QK;
@@ -49,7 +48,17 @@ at::Tensor npu_stem_oam_prep_varlen_q(
     at::Tensor qFlat = at::empty({batch, H_q, maxQb, qflat_dim},
                                   q.options().dtype(at::kBFloat16));
 
-    ACLNN_CMD(aclnnStemOamPrepVarlenQ, q, qSeqLens, cuSeqLensQ, qScale,
+    auto qSeqLensCpu = qSeqLens.cpu().to(at::kLong).contiguous();
+    std::vector<int64_t> qSeqLensVec(qSeqLensCpu.data_ptr<int64_t>(),
+                                     qSeqLensCpu.data_ptr<int64_t>() + qSeqLensCpu.numel());
+    at::IntArrayRef qSeqLensArr(qSeqLensVec);
+
+    auto cuSeqLensQCpu = cuSeqLensQ.cpu().to(at::kLong).contiguous();
+    std::vector<int64_t> cuSeqLensQVec(cuSeqLensQCpu.data_ptr<int64_t>(),
+                                        cuSeqLensQCpu.data_ptr<int64_t>() + cuSeqLensQCpu.numel());
+    at::IntArrayRef cuSeqLensQArr(cuSeqLensQVec);
+
+    ACLNN_CMD(aclnnStemOamPrepVarlenQ, q, qSeqLensArr, cuSeqLensQArr, qScale,
               stemBlockSize, stemStride, qFlat);
 
     return qFlat;

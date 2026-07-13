@@ -58,8 +58,8 @@ def prep_q_reference(q_fp8, q_scale, q_seq_lens, cu_seqlens_q,
     Args:
         q_fp8:          [total_tokens, H_q, D]  FP8_E4M3FN
         q_scale:        [total_tokens, H_q]     FP32 (per-token-per-head scale)
-        q_seq_lens:     list[batch]             int
-        cu_seqlens_q:   list[batch+1]           int
+        q_seq_lens:     [batch]                 INT32 tensor
+        cu_seqlens_q:   [batch+1]               INT32 tensor
         stem_block_size: int (default 128)
         stem_stride:    int (default 16)
 
@@ -68,14 +68,14 @@ def prep_q_reference(q_fp8, q_scale, q_seq_lens, cu_seqlens_q,
     """
     num_head_q = q_fp8.shape[1]
     dim_qk = q_fp8.shape[2]
-    num_batch = len(q_seq_lens)
+    num_batch = q_seq_lens.shape[0]
     R = stem_block_size // stem_stride
 
-    q_padded_lens = [
-        ((ql + stem_block_size - 1) // stem_block_size) * stem_block_size
-        for ql in q_seq_lens
-    ]
-    max_q_padded = max(q_padded_lens)
+    q_padded_lens = (
+        (q_seq_lens.to(torch.int64) + stem_block_size - 1)
+        // stem_block_size * stem_block_size
+    )
+    max_q_padded = q_padded_lens.max().item()
     max_Qb = max_q_padded // stem_block_size
 
     qflat_out = torch.zeros(
@@ -86,10 +86,10 @@ def prep_q_reference(q_fp8, q_scale, q_seq_lens, cu_seqlens_q,
     total_tokens = q_fp8.shape[0]
 
     for b in range(num_batch):
-        q_len = q_seq_lens[b]
-        q_padded = q_padded_lens[b]
+        q_len = q_seq_lens[b].item()
+        q_padded = q_padded_lens[b].item()
         num_q_blocks = q_padded // stem_block_size
-        cu_off = cu_seqlens_q[b]
+        cu_off = cu_seqlens_q[b].item()
 
         q_dense = torch.zeros(q_padded, num_head_q, dim_qk, dtype=torch.float32)
         q_dense[:q_len] = q_fp8[cu_off:cu_off + q_len].float()
@@ -170,8 +170,8 @@ def main():
     q_len = 128
     q_fp8 = (torch.randn(q_len, 1, DIM_QK) * 0.1).to(torch.float8_e4m3fn)
     q_scale = torch.ones(q_len, 1, dtype=torch.float32)
-    q_seq_lens = [q_len]
-    cu_seqlens_q = [0, q_len]
+    q_seq_lens = torch.tensor([q_len], dtype=torch.int32)
+    cu_seqlens_q = torch.tensor([0, q_len], dtype=torch.int32)
     results.append(run_test("P1 single_block_1head_scale1", q_fp8, q_scale,
                             q_seq_lens, cu_seqlens_q, B, S, device))
 
@@ -185,8 +185,8 @@ def main():
     q_len = 256
     q_fp8 = (torch.randn(q_len, 2, DIM_QK) * 0.1).to(torch.float8_e4m3fn)
     q_scale = torch.ones(q_len, 2, dtype=torch.float32)
-    q_seq_lens = [q_len]
-    cu_seqlens_q = [0, q_len]
+    q_seq_lens = torch.tensor([q_len], dtype=torch.int32)
+    cu_seqlens_q = torch.tensor([0, q_len], dtype=torch.int32)
     results.append(run_test("P3 two_blocks_2heads_scale1", q_fp8, q_scale,
                             q_seq_lens, cu_seqlens_q, B, S, device))
 
@@ -195,8 +195,8 @@ def main():
     total = sum(q_lens)
     q_fp8 = (torch.randn(total, 2, DIM_QK) * 0.1).to(torch.float8_e4m3fn)
     q_scale = torch.randn(total, 2, dtype=torch.float32).abs() + 0.5
-    q_seq_lens = q_lens
-    cu_seqlens_q = [0, q_lens[0], total]
+    q_seq_lens = torch.tensor(q_lens, dtype=torch.int32)
+    cu_seqlens_q = torch.tensor([0, q_lens[0], total], dtype=torch.int32)
     results.append(run_test("P4 varlen_2batch_2head_rand", q_fp8, q_scale,
                             q_seq_lens, cu_seqlens_q, B, S, device))
 
@@ -205,8 +205,8 @@ def main():
     total = sum(q_lens)
     q_fp8 = (torch.randn(total, 4, DIM_QK) * 0.1).to(torch.float8_e4m3fn)
     q_scale = torch.randn(total, 4, dtype=torch.float32).abs() + 0.5
-    q_seq_lens = q_lens
-    cu_seqlens_q = [0, q_lens[0], q_lens[0] + q_lens[1], total]
+    q_seq_lens = torch.tensor(q_lens, dtype=torch.int32)
+    cu_seqlens_q = torch.tensor([0, q_lens[0], q_lens[0] + q_lens[1], total], dtype=torch.int32)
     results.append(run_test("P5 varlen_3batch_4head_unaligned", q_fp8, q_scale,
                             q_seq_lens, cu_seqlens_q, B, S, device))
 
@@ -214,8 +214,8 @@ def main():
     q_len = 512
     q_fp8 = (torch.randn(q_len, 2, DIM_QK) * 0.1).to(torch.float8_e4m3fn)
     q_scale = torch.randn(q_len, 2, dtype=torch.float32).abs() + 0.5
-    q_seq_lens = [q_len]
-    cu_seqlens_q = [0, q_len]
+    q_seq_lens = torch.tensor([q_len], dtype=torch.int32)
+    cu_seqlens_q = torch.tensor([0, q_len], dtype=torch.int32)
     results.append(run_test("P6 B256_S32_single_batch", q_fp8, q_scale,
                             q_seq_lens, cu_seqlens_q, 256, 32, device))
 
@@ -224,8 +224,8 @@ def main():
     total = sum(q_lens)
     q_fp8 = (torch.randn(total, 2, DIM_QK) * 0.1).to(torch.float8_e4m3fn)
     q_scale = torch.randn(total, 2, dtype=torch.float32).abs() + 0.5
-    q_seq_lens = q_lens
-    cu_seqlens_q = [0, q_lens[0], total]
+    q_seq_lens = torch.tensor(q_lens, dtype=torch.int32)
+    cu_seqlens_q = torch.tensor([0, q_lens[0], total], dtype=torch.int32)
     results.append(run_test("P7 B64_S16_varlen_2batch", q_fp8, q_scale,
                             q_seq_lens, cu_seqlens_q, 64, 16, device))
 
@@ -233,8 +233,8 @@ def main():
     q_len = 256
     q_fp8 = (torch.randn(q_len, 1, DIM_QK) * 0.1).to(torch.float8_e4m3fn)
     q_scale = torch.randn(q_len, 1, dtype=torch.float32).abs() + 0.5
-    q_seq_lens = [q_len]
-    cu_seqlens_q = [0, q_len]
+    q_seq_lens = torch.tensor([q_len], dtype=torch.int32)
+    cu_seqlens_q = torch.tensor([0, q_len], dtype=torch.int32)
     results.append(run_test("P8 B128_S64_single_batch", q_fp8, q_scale,
                             q_seq_lens, cu_seqlens_q, 128, 64, device))
 
@@ -243,11 +243,11 @@ def main():
     total = sum(q_lens)
     q_fp8 = (torch.randn(total, 8, DIM_QK) * 0.1).to(torch.float8_e4m3fn)
     q_scale = torch.randn(total, 8, dtype=torch.float32).abs() + 0.5
-    q_seq_lens = q_lens
+    q_seq_lens = torch.tensor(q_lens, dtype=torch.int32)
     cu = [0]
     for ql in q_lens:
         cu.append(cu[-1] + ql)
-    cu_seqlens_q = cu
+    cu_seqlens_q = torch.tensor(cu, dtype=torch.int32)
     results.append(run_test("P9 large_varlen_4batch_8head", q_fp8, q_scale,
                             q_seq_lens, cu_seqlens_q, B, S, device))
 
