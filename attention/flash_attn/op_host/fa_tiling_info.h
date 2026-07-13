@@ -258,11 +258,15 @@ public:
     bool sinksFlag = false;
     bool emptyTensorFlag = false;
 
-    // kvcache strides (tensor v2 view inputs). isTensorV1 == true means old opbase
+    // kvcache strides (tensor v2 view inputs). hasViewStride == false means old opbase
     // without view info, key/value are guaranteed contiguous.
-    const gert::Stride *keyStrides = nullptr;
-    const gert::Stride *valueStrides = nullptr;
-    bool isTensorV1 = false;
+    // const gert::Stride *keyStrides = nullptr;
+    // const gert::Stride *valueStrides = nullptr;
+    uint64_t keyBnStride = 0;
+    uint64_t keyN2Stride = 0;
+    uint64_t valueBnStride = 0;
+    uint64_t valueN2Stride = 0;
+    bool hasViewStride = true;
     // 非连续场景下首个非连续维, -1表示连续, 由parser计算供checker复用
     int32_t keyNonContigDim = -1;
     int32_t valueNonContigDim = -1;

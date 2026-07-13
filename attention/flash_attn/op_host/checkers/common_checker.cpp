@@ -420,20 +420,20 @@ ge::graphStatus CommonChecker::CheckShapeConsistency(const FaTilingInfo &faInfo)
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus CommonChecker::CheckNonPAKvContiguous(const FaTilingInfo &faInfo) const
-{
-    if (faInfo.pageAttentionFlag || faInfo.isTensorV1) {
-        return ge::GRAPH_SUCCESS;
-    }
+// ge::graphStatus CommonChecker::CheckNonPAKvContiguous(const FaTilingInfo &faInfo) const
+// {
+//     if (faInfo.pageAttentionFlag || !faInfo.hasViewStride) {
+//         return ge::GRAPH_SUCCESS;
+//     }
     
-    OP_CHECK_IF(faInfo.keyNonContigDim != -1,
-                OP_LOGE(faInfo.opName, "In non-PA scenarios, key tensors must be contiguous."),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(faInfo.valueNonContigDim != -1,
-                OP_LOGE(faInfo.opName, "In non-PA scenarios, value tensors must be contiguous."),
-                return ge::GRAPH_FAILED);
-    return ge::GRAPH_SUCCESS;
-}
+//     OP_CHECK_IF(faInfo.keyNonContigDim != -1,
+//                 OP_LOGE(faInfo.opName, "In non-PA scenarios, key tensors must be contiguous."),
+//                 return ge::GRAPH_FAILED);
+//     OP_CHECK_IF(faInfo.valueNonContigDim != -1,
+//                 OP_LOGE(faInfo.opName, "In non-PA scenarios, value tensors must be contiguous."),
+//                 return ge::GRAPH_FAILED);
+//     return ge::GRAPH_SUCCESS;
+// }
 
 // ============================================================================
 // MultiPara — combined
@@ -462,9 +462,9 @@ ge::graphStatus CommonChecker::CheckMultiPara(const FaTilingInfo &faInfo)
     if (CheckAttnOutShape(faInfo) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
-    if (CheckNonPAKvContiguous(faInfo) != ge::GRAPH_SUCCESS) {
-        return ge::GRAPH_FAILED;
-    }
+    // if (CheckNonPAKvContiguous(faInfo) != ge::GRAPH_SUCCESS) {
+    //     return ge::GRAPH_FAILED;
+    // }
     return ge::GRAPH_SUCCESS;
 }
 

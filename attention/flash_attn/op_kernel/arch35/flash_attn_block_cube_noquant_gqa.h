@@ -388,9 +388,9 @@ public:
         valuePtr = value;
         if (constInfo.isKvContinuous) {
             InitKVBuffer(constInfo.bSize, constInfo.s2Size, constInfo.n2Size, constInfo.blockSize, constInfo.dSize,
-                         keyGm, key, constInfo.keyStrides.bnStride, constInfo.keyStrides.n2Stride);
+                         keyGm, key, constInfo.keyBnStride, constInfo.keyN2Stride);
             InitKVBuffer(constInfo.bSize, constInfo.s2Size, constInfo.n2Size, constInfo.blockSize, constInfo.dSizeV,
-                         valueGm, value, constInfo.valueStrides.bnStride, constInfo.valueStrides.n2Stride);
+                         valueGm, value, constInfo.valueBnStride, constInfo.valueN2Stride);
         }
     }
 

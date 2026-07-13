@@ -195,7 +195,7 @@ ge::graphStatus FaInfoParser::GetStrides()
 {
     // 用opbase版本判断：老版本opbase的输入非view, 视为tensorv1, key/value必然连续
     if (context_->InputIsView(KEY_INDEX) == false) {
-        isTensorV1_ = true;
+        hasViewStride_ = false;
         return ge::GRAPH_SUCCESS;
     }
     keyStrides_ = context_->GetInputStride(KEY_INDEX);
@@ -332,7 +332,7 @@ ge::graphStatus FaInfoParser::GetS1Size()
 void FaInfoParser::GetKvIsContiguous()
 {
     // 老版本opbase不支持strides, 无法判NC, 放过
-    if (isTensorV1_) {
+    if (!hasViewStride_) {
         return;
     }
 
@@ -352,6 +352,26 @@ void FaInfoParser::GetKvIsContiguous()
         valContig = (CheckTensorContiguous(valueShape.GetDimNum(), valueShape, valueStrides_, valDimIdx) ==
                         ge::GRAPH_SUCCESS);
         valueNonContigDim_ = valContig ? -1 : valDimIdx;
+    }
+    
+    if (layoutKV_ == PA_BBND) {
+        if(keyStrides_ != nullptr) {
+            keyBnStride_ = keyStrides_->GetStride(0);
+            keyN2Stride_ = keyStrides_->GetStride(2);
+        }
+        if(valueStrides_ != nullptr) {
+            valueBnStride_ = valueStrides_->GetStride(0);
+            valueN2Stride_ = valueStrides_->GetStride(2);
+        }
+    } else if (layoutKV_ == PA_BNBD || layoutKV_ == PA_NZ) {
+        if(keyStrides_ != nullptr) {
+            keyBnStride_ = keyStrides_->GetStride(0);
+            keyN2Stride_ = keyStrides_->GetStride(1);
+        }
+        if(valueStrides_ != nullptr) {
+            valueBnStride_ = valueStrides_->GetStride(0);
+            valueN2Stride_ = valueStrides_->GetStride(1);
+        }
     }
 }
 
@@ -577,9 +597,12 @@ void FaInfoParser::GenerateInfo(FaTilingInfo &faInfo)
     faInfo.softmaxScale = softmaxScale_;
     faInfo.maxBlockNumPerBatch = maxBlockNumPerBatch_;
 
-    faInfo.keyStrides = keyStrides_;
-    faInfo.valueStrides = valueStrides_;
-    faInfo.isTensorV1 = isTensorV1_;
+    faInfo.keyBnStride = keyBnStride_;
+    faInfo.keyN2Stride = keyN2Stride_;
+    faInfo.valueBnStride = valueBnStride_;
+    faInfo.valueN2Stride = valueN2Stride_;
+
+    faInfo.hasViewStride = hasViewStride_;
     faInfo.keyNonContigDim = keyNonContigDim_;
     faInfo.valueNonContigDim = valueNonContigDim_;
 
