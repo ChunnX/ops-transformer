@@ -139,8 +139,10 @@ public:
 
 public:
     __aicore__ inline void Init(Params const &params);
+    __aicore__ inline auto GetL0c2UbTensor();
     __aicore__ inline auto GetFirstL0c2UbTensor();
     __aicore__ inline auto GetSecondL0c2UbTensor();
+    __aicore__ inline void SetConcatL0c2Ub(bool isConcatL0c2Ub);
     __aicore__ inline void operator()(const BlockShape &blockShape, const BlockCoord &blockCoord);
     __aicore__ inline void UpdateGlobalAddr(const BlockCoord &baseOffset);
     __aicore__ inline void UpdateNextProblem(const ProblemShape &problemShape);
@@ -152,7 +154,8 @@ private:
     template <Gmmsg::QuantMode quantMode>
     __aicore__ inline void VFDoSwigluAndQuantForMX(__ubuf__ int8_t *outputDst, __ubuf__ uint16_t *scaleDst,
                                                    __ubuf__ DataTypeIn *firstSrc, __ubuf__ DataTypeIn *secondSrc,
-                                                   uint16_t mSize, uint16_t nSize);
+                                                   uint16_t mSize, uint16_t nSize, uint32_t srcRowStride,
+                                                   uint32_t secondSrcOffset);
 
     __aicore__ inline void ComputeScale(__ubuf__ uint16_t *maxExpAddr, __ubuf__ uint16_t *mxScaleLocalAddr,
                                         __ubuf__ uint16_t *halfScaleLocalAddr, uint32_t totalScaleInUB,
@@ -179,6 +182,7 @@ private:
     AscendC::GlobalTensor<int8_t> quantScaleGlobal_;
 
     // UB ADDR
+    AscendC::LocalTensor<DataTypeIn> l0cOutUb_{AscendC::TPosition::VECIN, 0, 2 * MAX_SINGLE_MN};
     AscendC::LocalTensor<DataTypeIn> l0cOutUbFirst_{AscendC::TPosition::VECIN, 0, MAX_SINGLE_MN};
     AscendC::LocalTensor<DataTypeIn> l0cOutUbSecond_{AscendC::TPosition::VECIN, MAX_SINGLE_MN * sizeof(DataTypeIn),
                                                      MAX_SINGLE_MN};
@@ -198,6 +202,7 @@ private:
     uint32_t singleM_; // cur singleShapeM
     uint32_t singleN_;
     bool isBiasEpilogue_ = false;
+    bool isConcatL0c2Ub_ = false;
 
     int64_t UBBlockSize_ = 0;
     uint32_t vlForHalfNumber_ = 0;
@@ -537,12 +542,12 @@ QMM_BLOCK_EPILOGUE_SWIGLU_QUANT_CLASS_LOCAL_PARAMS
 template <Gmmsg::QuantMode quantMode>
 __aicore__ inline void BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::VFDoSwigluAndQuantForMX(
     __ubuf__ int8_t *outputDst, __ubuf__ uint16_t *scaleDst, __ubuf__ DataTypeIn *firstSrc,
-    __ubuf__ DataTypeIn *secondSrc, uint16_t mSize, uint16_t nSize)
+    __ubuf__ DataTypeIn *secondSrc, uint16_t mSize, uint16_t nSize, uint32_t srcRowStride,
+    uint32_t secondSrcOffset)
 {
     constexpr uint16_t sizePerRepeat = AscendC::VECTOR_REG_WIDTH / sizeof(DataTypeIn);
     uint16_t OneRowRepeatTimes =
         CeilDiv(static_cast<uint64_t>(nSize), static_cast<uint64_t>(sizePerRepeat)); // 一行需要循环的次数，等于n/64
-    uint32_t nSrcUbAligned = CeilAlign(nSize, AscendC::ONE_BLK_SIZE / sizeof(DataTypeIn));
     uint32_t nDstUbAligned64 = Align64(nSize); // 64 对齐
     
     const float scalarOne = 1.0;
@@ -564,7 +569,7 @@ __aicore__ inline void BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_
                 AscendC::MicroAPI::RegTensor<float> swishInput, gateInput;
                 AscendC::MicroAPI::RegTensor<float> verg1, verg2, verg3, verg4, verg5, verg6, swishOutput;
 
-                uint32_t l0cOutOffset = mIdx * nSrcUbAligned + vfBlockIdx * sizePerRepeat;
+                uint32_t l0cOutOffset = mIdx * srcRowStride + vfBlockIdx * sizePerRepeat;
                 AscendC::MicroAPI::DataCopy(swishInput, firstSrc + l0cOutOffset);
                 // swish
                 AscendC::MicroAPI::Muls(verg2, swishInput, -(scalarOne), mask);
@@ -573,7 +578,7 @@ __aicore__ inline void BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_
                 AscendC::MicroAPI::Div<float, &DIV_MODE>(swishOutput, swishInput, verg4, mask);
 
                 // load gate data to regbase
-                AscendC::MicroAPI::DataCopy(gateInput, secondSrc + l0cOutOffset);
+                AscendC::MicroAPI::DataCopy(gateInput, secondSrc + l0cOutOffset + secondSrcOffset);
 
                 // swish * gate
                 AscendC::MicroAPI::Mul(verg6, swishOutput, gateInput, mask);
@@ -611,10 +616,16 @@ BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::VFDoSwig
 {
     __ubuf__ int8_t *quantOutputInUbAddr = (__ubuf__ int8_t *)quantOutput_.GetPhyAddr();
     __ubuf__ uint16_t *quantScaleOutputInUbAddr = (__ubuf__ uint16_t *)quantScaleOutput_.GetPhyAddr();
-    __ubuf__ DataTypeIn *l0cOutUbFirstAddr = (__ubuf__ DataTypeIn *)l0cOutUbFirst_.GetPhyAddr();
-    __ubuf__ DataTypeIn *l0cOutUbSecondAddr = (__ubuf__ DataTypeIn *)l0cOutUbSecond_.GetPhyAddr();
+    const uint32_t nSrcUbAligned = CeilAlign(singleN_, AscendC::ONE_BLK_SIZE / sizeof(DataTypeIn));
+    const uint32_t srcRowStride = isConcatL0c2Ub_ ? (nSrcUbAligned << 1) : nSrcUbAligned;
+    const uint32_t secondSrcOffset = isConcatL0c2Ub_ ? nSrcUbAligned : 0;
+    __ubuf__ DataTypeIn *l0cOutUbFirstAddr = isConcatL0c2Ub_ ?
+        (__ubuf__ DataTypeIn *)l0cOutUb_.GetPhyAddr() : (__ubuf__ DataTypeIn *)l0cOutUbFirst_.GetPhyAddr();
+    __ubuf__ DataTypeIn *l0cOutUbSecondAddr = isConcatL0c2Ub_ ?
+        (__ubuf__ DataTypeIn *)l0cOutUb_.GetPhyAddr() : (__ubuf__ DataTypeIn *)l0cOutUbSecond_.GetPhyAddr();
     VFDoSwigluAndQuantForMX<Gmmsg::QuantMode::MX_PERGROUP_MODE>(quantOutputInUbAddr, quantScaleOutputInUbAddr,
-                                                                l0cOutUbFirstAddr, l0cOutUbSecondAddr, mSize, singleN_);
+                                                                l0cOutUbFirstAddr, l0cOutUbSecondAddr, mSize,
+                                                                singleN_, srcRowStride, secondSrcOffset);
 }
 
 QMM_BLOCK_EPILOGUE_SWIGLU_QUANT_CLASS_LOCAL_PARAMS
@@ -642,6 +653,12 @@ BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::TransMxS
 }
 
 QMM_BLOCK_EPILOGUE_SWIGLU_QUANT_CLASS_LOCAL_PARAMS
+__aicore__ inline auto BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::GetL0c2UbTensor()
+{
+    return l0cOutUb_;
+}
+
+QMM_BLOCK_EPILOGUE_SWIGLU_QUANT_CLASS_LOCAL_PARAMS
 __aicore__ inline auto BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::GetFirstL0c2UbTensor()
 {
     return l0cOutUbFirst_;
@@ -651,6 +668,13 @@ QMM_BLOCK_EPILOGUE_SWIGLU_QUANT_CLASS_LOCAL_PARAMS
 __aicore__ inline auto BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::GetSecondL0c2UbTensor()
 {
     return l0cOutUbSecond_;
+}
+
+QMM_BLOCK_EPILOGUE_SWIGLU_QUANT_CLASS_LOCAL_PARAMS
+__aicore__ inline void BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::SetConcatL0c2Ub(
+    bool isConcatL0c2Ub)
+{
+    isConcatL0c2Ub_ = isConcatL0c2Ub;
 }
 
 QMM_BLOCK_EPILOGUE_SWIGLU_QUANT_CLASS_LOCAL_PARAMS

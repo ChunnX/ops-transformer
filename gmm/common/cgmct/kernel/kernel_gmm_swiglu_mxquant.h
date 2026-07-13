@@ -64,6 +64,16 @@ constexpr uint16_t AIV_SYNC_AIC_FLAG = 6;
 constexpr uint64_t SWIGLU_N_HALF = 2;
 } // namespace
 
+template <class BlockMmadBuilder, typename Enable = void>
+struct UseSingleL0c2Ub {
+    static constexpr bool value = false;
+};
+
+template <class BlockMmadBuilder>
+struct UseSingleL0c2Ub<BlockMmadBuilder, AscendC::Std::enable_if_t<BlockMmadBuilder::useSingleL0c2Ub>> {
+    static constexpr bool value = true;
+};
+
 template <class ProblemShape_, class BlockMmadBuilder_, class BlockEpilogue_, class BlockScheduler_,
           typename Enable_ = void>
 class KernelGmmSwiGluMixOnlineDynamic {
@@ -117,6 +127,7 @@ public:
     // coordinate
     using CoordClass =
         Coordinate<transA, transB, formatA, formatB, BlockMmadBuilder::formatC>;
+    static constexpr bool useSingleL0c2Ub = UseSingleL0c2Ub<BlockMmadBuilder>::value;
 
     // attribute
     AscendC::GlobalTensor<AType> aGlobal_;
@@ -134,6 +145,7 @@ public:
     int64_t x2ScaleRightOffsetStep_ = 0;
     BlockMmadOp mmadOp_;
     BlockEpilogue epilogueOp_;
+    AscendC::LocalTensor<CType> l0cOutUb_;
     AscendC::LocalTensor<CType> l0cOutUbFirst_;
     AscendC::LocalTensor<CType> l0cOutUbSecond_;
     bool isVecSetSyncCom_ = false;
@@ -342,6 +354,30 @@ public:
         }
     }
 
+    template <typename SingleShape>
+    __aicore__ inline void RunSwigluMmadOnce(const SingleShape& mmSingleShape)
+    {
+        int64_t aOffset = Get<IDX_A_OFFSET>(blockOffset_);
+        int64_t bLeftOffset = Get<IDX_B_OFFSET>(blockOffset_);
+        int64_t bRightOffset = bLeftOffset + bRightOffsetStep_;
+        int64_t x1ScaleOffset = Get<IDX_X1SCALE_OFFSET>(blockOffset_);
+        int64_t x2ScaleLeftOffset = Get<IDX_X2SCALE_OFFSET>(blockOffset_);
+        int64_t x2ScaleRightOffset = x2ScaleLeftOffset + x2ScaleRightOffsetStep_;
+
+        if constexpr (useSingleL0c2Ub) {
+            // MXFP8 weight ND: concatenate two B windows in L1 and issue one MMAD.
+            mmadOp_.RunSwigluConcat(aGlobal_, bGlobal_, x1ScaleGlobal_, x2ScaleGlobal_, aOffset, bLeftOffset,
+                                    bRightOffset, x1ScaleOffset, x2ScaleLeftOffset, x2ScaleRightOffset, l0cOutUb_,
+                                    mmSingleShape, transA, transB);
+        } else {
+            // Original paths keep two independent MMADs and two UB outputs.
+            mmadOp_(aGlobal_[aOffset], bGlobal_[bLeftOffset], x1ScaleGlobal_[x1ScaleOffset],
+                    x2ScaleGlobal_[x2ScaleLeftOffset], l0cOutUbFirst_, mmSingleShape, transA, transB);
+            mmadOp_(aGlobal_[aOffset], bGlobal_[bRightOffset], x1ScaleGlobal_[x1ScaleOffset],
+                    x2ScaleGlobal_[x2ScaleRightOffset], l0cOutUbSecond_, mmSingleShape, transA, transB);
+        }
+    }
+
     __aicore__ inline void ProcessSingleGroup(const Params& params, BlockSchedulerOp& bs, uint32_t groupIdx)
     {
         int64_t m = Get<M_VALUE>(problemShape_);
@@ -368,17 +404,7 @@ public:
                 }
                 AscendC::Std::tuple<int32_t, int32_t, int32_t> mmSingleShape{Get<M_VALUE>(singleShape),
                                                                              Get<N_VALUE>(singleShape), k};
-                // left block
-                mmadOp_(aGlobal_[Get<IDX_A_OFFSET>(blockOffset_)], bGlobal_[Get<IDX_B_OFFSET>(blockOffset_)],
-                        x1ScaleGlobal_[Get<IDX_X1SCALE_OFFSET>(blockOffset_)],
-                        x2ScaleGlobal_[Get<IDX_X2SCALE_OFFSET>(blockOffset_)], l0cOutUbFirst_, mmSingleShape, transA,
-                        transB);
-                // right block
-                int64_t bRightOffset = Get<IDX_B_OFFSET>(blockOffset_) + bRightOffsetStep_;
-                int64_t x2ScaleRightOffset = Get<IDX_X2SCALE_OFFSET>(blockOffset_) + x2ScaleRightOffsetStep_;
-                mmadOp_(aGlobal_[Get<IDX_A_OFFSET>(blockOffset_)], bGlobal_[bRightOffset],
-                        x1ScaleGlobal_[Get<IDX_X1SCALE_OFFSET>(blockOffset_)], x2ScaleGlobal_[x2ScaleRightOffset],
-                        l0cOutUbSecond_, mmSingleShape, transA, transB);
+                RunSwigluMmadOnce(mmSingleShape);
                 NotifyVector();
             }
             isVecSetSyncCom_ = true;
@@ -412,8 +438,13 @@ public:
                 bs.SetTailAlign(1, c0Size);
             }
         }
-        l0cOutUbFirst_ = epilogueOp_.GetFirstL0c2UbTensor();
-        l0cOutUbSecond_ = epilogueOp_.GetSecondL0c2UbTensor();
+        if constexpr (useSingleL0c2Ub) {
+            epilogueOp_.SetConcatL0c2Ub(true);
+            l0cOutUb_ = epilogueOp_.GetL0c2UbTensor();
+        } else {
+            l0cOutUbFirst_ = epilogueOp_.GetFirstL0c2UbTensor();
+            l0cOutUbSecond_ = epilogueOp_.GetSecondL0c2UbTensor();
+        }
         for (uint32_t groupIdx = 0; groupIdx < groupNum; groupIdx++) {
             if (!UpdateGroupParams(params, groupIdx)) {
                 continue;
