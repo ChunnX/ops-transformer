@@ -767,37 +767,26 @@ def tilelang_grad_kl_loss_single_kernel(
                 T.set_cross_flag("FIX", 3)
 
             # ============================================================
-            # V scope 3: Cast dQueryIndex (minimal buffers)
-            #   g_id 区间切半：vid0 做前半 [0, _v3_half)，vid1 做后半 [_v3_half, v3_chunks)
+            # V scope 3: Cast dQueryIndex (向量化大块 copy→cast→copy)
+            #   每个 AIV 一次性搬运全部连续行，无需循环、buffer 不复用、无 flag 同步。
+            #   vid0 → 前半 [0, _v3_half)，vid1 → 后半 [_v3_half, v3_chunks)
             # ============================================================
             with T.Scope("V"):
                 T.wait_cross_flag(3)
 
-                dq_fp32_ub = T.alloc_ub((4, BLOCK_K), calc_dtype)
-                dq_fp16_ub = T.alloc_ub((4, BLOCK_K), input_dtype)
+                _v3_half = v3_chunks // 2  # 编译期常量: 8
+                _v3_my_rows = _v3_half * 4  # 编译期常量: 32
+                _v3_my_g_start = vid * _v3_half * 4  # vid=0→0, vid=1→32
 
-                _v3_half = v3_chunks // 2  # 编译期常量
-                _v3_my_start = vid * _v3_half
-                _v3_my_end = (vid + 1) * _v3_half if vid == 0 else v3_chunks
+                dq_fp32_ub = T.alloc_ub((_v3_my_rows, DQueryIndex), calc_dtype)
+                dq_fp16_ub = T.alloc_ub((_v3_my_rows, DQueryIndex), input_dtype)
 
                 for s1_row in T.serial(s1_start, s1_end):
-                    for g_id in T.serial(v3_chunks):
-                        if g_id >= _v3_my_start and g_id < _v3_my_end:
-                            for d_idx in T.serial(d_num_query_index):
-                                # WAR: dq_fp32 复用，mte2 覆盖前等上轮 cast 读完
-                                T.set_flag("v", "mte2", 2)
-                                T.wait_flag("v", "mte2", 2)
-                                T.copy(dQueryIndexAccum[bz, s1_row, g_id * 4:(g_id + 1) * 4, d_idx * BLOCK_K:(d_idx + 1) * BLOCK_K], dq_fp32_ub)
-                                T.set_flag("mte2", "v", 0)
-                                T.wait_flag("mte2", "v", 0)
-                                # WAR: dq_fp16 复用，cast 覆盖前等上轮 mte3 读完
-                                T.set_flag("mte3", "v", 4)
-                                T.wait_flag("mte3", "v", 4)
-                                T.tile.cast(dq_fp16_ub, dq_fp32_ub, "CAST_ROUND", 4 * BLOCK_K)
-                                T.set_flag("v", "mte3", 1)
-                                T.wait_flag("v", "mte3", 1)
-                                T.pipe_barrier("mte3")
-                                T.copy(dq_fp16_ub, dQueryIndex[bz, s1_row, g_id * 4:(g_id + 1) * 4, d_idx * BLOCK_K:(d_idx + 1) * BLOCK_K])
+                    T.copy(dQueryIndexAccum[bz, s1_row, _v3_my_g_start:_v3_my_g_start + _v3_my_rows, 0:DQueryIndex],
+                           dq_fp32_ub)
+                    T.tile.cast(dq_fp16_ub, dq_fp32_ub, "CAST_ROUND", _v3_my_rows * DQueryIndex)
+                    T.copy(dq_fp16_ub,
+                           dQueryIndex[bz, s1_row, _v3_my_g_start:_v3_my_g_start + _v3_my_rows, 0:DQueryIndex])
 
             # ============================================================
             # V scope 4: Scatter dk_matmul_partial → dKeyIndex（按 sparse idx）
