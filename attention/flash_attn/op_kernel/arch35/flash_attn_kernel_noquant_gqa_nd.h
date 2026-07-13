@@ -580,12 +580,9 @@ public:
         GetFDSectionInfo(sectionIdx);
         vecFdBlock.InitBuffers();
         AscendC::ICachePreLoad(2);
-        vecFdBlock.AllocEventID();
-        vecFdBlock.InitDecodeParams();
         AscendC::SyncAll();
         vecFdBlock.FlashDecode(fdParams_);
         AscendC::SyncAll();
-        vecFdBlock.FreeEventID();
     }
 
     __aicore__ inline void GetFASectionInfo(uint32_t sectionIdx)
@@ -626,6 +623,12 @@ public:
                 cubeBlock.InitBuffers();
             }
         }
+
+        if ASCEND_IS_AIV {
+            vecFaBlock.InitCrossCoreSync();
+        } else {
+            cubeBlock.InitCrossCoreSync();
+        }
         for (uint32_t sectionIdx = 0; sectionIdx < sectionNum_; sectionIdx++) {
             if (constInfo.aicIdx < constInfo.coreNum) {
                 if ASCEND_IS_AIV {
@@ -643,6 +646,11 @@ public:
             if ASCEND_IS_AIV {
                 FlashDecode(sectionIdx);
             }
+        }
+        if ASCEND_IS_AIV {
+            vecFaBlock.UnInitCrossCoreSync();
+        } else {
+            cubeBlock.UnInitCrossCoreSync();
         }
     }
 }; // FlashAttentionNoQuantGqaKernelNd

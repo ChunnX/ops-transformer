@@ -22,66 +22,66 @@
 // Q复用 KV复用
 // 申请单块buffer
 namespace fa_base_matmul {
-template<BufferType bufferType, SyncType syncType = SyncType::INNER_CORE_SYNC, EventIdMode eventIdMode = EventIdMode::TPIPE_AUTO>
+template<BufferType bufferType, SyncType syncType = SyncType::INNER_CORE_SYNC, SyncMode syncMode = SyncMode::SET_WAIT_FLAG, IdSource idSource = IdSource::INTERNAL>
 class BuffersPolicySingleBuffer {
 public:
     __aicore__ inline void Init(BufferManager<bufferType> &bufferManager, uint32_t size,
-                                uint32_t eventId = 0U) {
-        buffer_ = bufferManager.template AllocBuffer<syncType>(size);
-        if constexpr (eventIdMode == EventIdMode::TPIPE_AUTO) {
-            buffer_.template Init<eventIdMode>();
-        } else if constexpr (eventIdMode == EventIdMode::USER_DEFINED) {
-            buffer_.template Init<eventIdMode>(eventId);
+                                uint32_t id = 0U) {
+        buffer_ = bufferManager.template AllocBuffer<syncType, syncMode>(size);
+        if constexpr (idSource == IdSource::INTERNAL) {
+            buffer_.template Init<idSource>();
+        } else if constexpr (idSource == IdSource::EXTERNAL) {
+            buffer_.template Init<idSource>(id);
         }
     }
 
     __aicore__ inline void Uninit(BufferManager<bufferType> &bufferManager){
-        buffer_.template UnInit<eventIdMode>();
-        bufferManager.FreeBuffer(buffer_);
+        buffer_.template UnInit<idSource>();
+        bufferManager.template FreeBuffer<syncType, syncMode>(buffer_);
     }
  
-    __aicore__ inline Buffer<bufferType, syncType> &Get(){
+    __aicore__ inline Buffer<bufferType, syncType, syncMode> &Get(){
         return buffer_;
     }
  
-    __aicore__ inline Buffer<bufferType, syncType> &GetPre(){
+    __aicore__ inline Buffer<bufferType, syncType, syncMode> &GetPre(){
         return Get();
     }
  
-    __aicore__ inline Buffer<bufferType, syncType> &GetReused(){
+    __aicore__ inline Buffer<bufferType, syncType, syncMode> &GetReused(){
         return Get();
     }
 private:
-    Buffer<bufferType, syncType> buffer_;
+    Buffer<bufferType, syncType, syncMode> buffer_;
 };
 
 // 申请2个buffer，乒乓轮转
-template<BufferType bufferType, SyncType syncType = SyncType::INNER_CORE_SYNC, EventIdMode eventIdMode = EventIdMode::TPIPE_AUTO>
+template<BufferType bufferType, SyncType syncType = SyncType::INNER_CORE_SYNC, SyncMode syncMode = SyncMode::SET_WAIT_FLAG, IdSource idSource = IdSource::INTERNAL>
 class BuffersPolicyDB {
 public:
     __aicore__ inline void Init(BufferManager<bufferType> &bufferManager, uint32_t size,
-                                uint32_t pingEventId = 0U, uint32_t pongEventId = 0U) {
-        ping_ = bufferManager.template AllocBuffer<syncType>(size);
-        pong_ = bufferManager.template AllocBuffer<syncType>(size);
+                                uint32_t pingId = 0U, uint32_t pongId = 0U) {
+        ping_ = bufferManager.template AllocBuffer<syncType, syncMode>(size);
+        pong_ = bufferManager.template AllocBuffer<syncType, syncMode>(size);
 
-        if constexpr (eventIdMode == EventIdMode::TPIPE_AUTO) {
-            ping_.template Init<eventIdMode>();
-            pong_.template Init<eventIdMode>();
-        } else if constexpr (eventIdMode == EventIdMode::USER_DEFINED) {
-            ping_.template Init<eventIdMode>(pingEventId);
-            pong_.template Init<eventIdMode>(pongEventId);
+        if constexpr (idSource == IdSource::INTERNAL) {
+            ping_.template Init<idSource>();
+            pong_.template Init<idSource>();
+        } else if constexpr (idSource == IdSource::EXTERNAL) {
+            ping_.template Init<idSource>(pingId);
+            pong_.template Init<idSource>(pongId);
         }
     }
 
     __aicore__ inline void Uninit(BufferManager<bufferType> &bufferManager){
-        ping_.template UnInit<eventIdMode>();
-        pong_.template UnInit<eventIdMode>();
+        ping_.template UnInit<idSource>();
+        pong_.template UnInit<idSource>();
 
-        bufferManager.FreeBuffer(ping_);
-        bufferManager.FreeBuffer(pong_);
+        bufferManager.template FreeBuffer<syncType, syncMode>(ping_);
+        bufferManager.template FreeBuffer<syncType, syncMode>(pong_);
     }
 
-    __aicore__ inline Buffer<bufferType, syncType> &Get() {
+    __aicore__ inline Buffer<bufferType, syncType, syncMode> &Get() {
         if (flag1_) { // 1
             flag1_ = 0;
             return ping_;
@@ -92,7 +92,7 @@ public:
     }
 
     // 需要与Get联用， 首次调用Get，第二次调用GetPre(Q复用)
-    __aicore__ inline Buffer<bufferType, syncType> &GetPre() {
+    __aicore__ inline Buffer<bufferType, syncType, syncMode> &GetPre() {
         if (flag1_) { // 0->1
             return pong_;
         } else { // 1->0
@@ -101,7 +101,7 @@ public:
     }
 
     // 需要与Get,GetPre联用， 首次调用Get，第二次调用GetPre,第三次复用时GetReused(KV复用)
-    __aicore__ inline Buffer<bufferType, syncType> &GetReused() {
+    __aicore__ inline Buffer<bufferType, syncType, syncMode> &GetReused() {
         if (flag2_ == 0) {
             flag2_ = 1;
             return pong_;
@@ -111,7 +111,7 @@ public:
         }
     }
  
-    __aicore__ inline Buffer<bufferType, syncType> &GetReused(bool isNextS2IdxNoChange) {
+    __aicore__ inline Buffer<bufferType, syncType, syncMode> &GetReused(bool isNextS2IdxNoChange) {
         if (isNextS2IdxNoChange) {
             if (flag2_ == 0) {
                 return pong_;
@@ -124,45 +124,45 @@ public:
     }
  
 private:
-    Buffer<bufferType, syncType> ping_;
-    Buffer<bufferType, syncType> pong_;
+    Buffer<bufferType, syncType, syncMode> ping_;
+    Buffer<bufferType, syncType, syncMode> pong_;
     uint32_t flag1_ = 0;
     uint32_t flag2_ = 0;
 };
 
 // 申请3个buffer, 轮转
-template<BufferType bufferType, SyncType syncType = SyncType::INNER_CORE_SYNC, EventIdMode eventIdMode = EventIdMode::TPIPE_AUTO>
+template<BufferType bufferType, SyncType syncType = SyncType::INNER_CORE_SYNC, SyncMode syncMode = SyncMode::SET_WAIT_FLAG, IdSource idSource = IdSource::INTERNAL>
 class BuffersPolicy3buff {
 public:
     __aicore__ inline void Init(BufferManager<bufferType> &bufferManager, uint32_t size,
-                                uint32_t aEventId = 0U, uint32_t bEventId = 0U,
-                                uint32_t cEventId = 0U) {
-        a_ = bufferManager.template AllocBuffer<syncType>(size);
-        b_ = bufferManager.template AllocBuffer<syncType>(size);
-        c_ = bufferManager.template AllocBuffer<syncType>(size);
+                                uint32_t aId = 0U, uint32_t bId = 0U,
+                                uint32_t cId = 0U) {
+        a_ = bufferManager.template AllocBuffer<syncType, syncMode>(size);
+        b_ = bufferManager.template AllocBuffer<syncType, syncMode>(size);
+        c_ = bufferManager.template AllocBuffer<syncType, syncMode>(size);
 
-        if constexpr (eventIdMode == EventIdMode::TPIPE_AUTO) {
-            a_.template Init<eventIdMode>();
-            b_.template Init<eventIdMode>();
-            c_.template Init<eventIdMode>();
-        } else if constexpr (eventIdMode == EventIdMode::USER_DEFINED) {
-            a_.template Init<eventIdMode>(aEventId);
-            b_.template Init<eventIdMode>(bEventId);
-            c_.template Init<eventIdMode>(cEventId);
+        if constexpr (idSource == IdSource::INTERNAL) {
+            a_.template Init<idSource>();
+            b_.template Init<idSource>();
+            c_.template Init<idSource>();
+        } else if constexpr (idSource == IdSource::EXTERNAL) {
+            a_.template Init<idSource>(aId);
+            b_.template Init<idSource>(bId);
+            c_.template Init<idSource>(cId);
         }
     }
 
     __aicore__ inline void Uninit(BufferManager<bufferType> &bufferManager) {
-        a_.template UnInit<eventIdMode>();
-        b_.template UnInit<eventIdMode>();
-        c_.template UnInit<eventIdMode>();
+        a_.template UnInit<idSource>();
+        b_.template UnInit<idSource>();
+        c_.template UnInit<idSource>();
 
-        bufferManager.FreeBuffer(a_);
-        bufferManager.FreeBuffer(b_);
-        bufferManager.FreeBuffer(c_);
+        bufferManager.template FreeBuffer<syncType, syncMode>(a_);
+        bufferManager.template FreeBuffer<syncType, syncMode>(b_);
+        bufferManager.template FreeBuffer<syncType, syncMode>(c_);
     }
 
-    __aicore__ inline Buffer<bufferType, syncType> &Get() {
+    __aicore__ inline Buffer<bufferType, syncType, syncMode> &Get() {
         if (flag1_ == 0) {
             flag1_ = 1;
             return a_;
@@ -175,7 +175,7 @@ public:
         }
     }
 
-    __aicore__ inline Buffer<bufferType, syncType> &GetVec() { // mixcore architecture
+    __aicore__ inline Buffer<bufferType, syncType, syncMode> &GetVec() { // mixcore architecture
         if (flag1_vec1_ == 0) {
             flag1_vec1_ = 1;
             return a_;
@@ -188,7 +188,7 @@ public:
         }
     }
 
-    __aicore__ inline Buffer<bufferType, syncType> &GetCube() { // mixcore architecture
+    __aicore__ inline Buffer<bufferType, syncType, syncMode> &GetCube() { // mixcore architecture
         if (flag1_bmm2_ == 0) {
             flag1_bmm2_ = 1;
             return a_;
@@ -202,7 +202,7 @@ public:
     }
 
     // Q复用
-    __aicore__ inline Buffer<bufferType, syncType> &GetPre() {
+    __aicore__ inline Buffer<bufferType, syncType, syncMode> &GetPre() {
         if (flag1_ == 0) {
             return c_;
         } else if (flag1_ == 1) { 
@@ -213,7 +213,7 @@ public:
     }
 
     // KV复用
-    __aicore__ inline Buffer<bufferType, syncType> &GetReused() {
+    __aicore__ inline Buffer<bufferType, syncType, syncMode> &GetReused() {
         if (flag2_ == 0) { 
             flag2_ = 1;
             return a_;
@@ -226,9 +226,9 @@ public:
         }
     }
 private:
-    Buffer<bufferType, syncType> a_;
-    Buffer<bufferType, syncType> b_;
-    Buffer<bufferType, syncType> c_;
+    Buffer<bufferType, syncType, syncMode> a_;
+    Buffer<bufferType, syncType, syncMode> b_;
+    Buffer<bufferType, syncType, syncMode> c_;
     uint32_t flag1_ = 0;
     uint32_t flag1_vec1_ = 0;
     uint32_t flag1_bmm2_ = 0;
@@ -236,43 +236,43 @@ private:
 };
 
 // 申请4个buffer + kv复用
-template<BufferType bufferType, SyncType syncType = SyncType::INNER_CORE_SYNC, EventIdMode eventIdMode = EventIdMode::TPIPE_AUTO>
+template<BufferType bufferType, SyncType syncType = SyncType::INNER_CORE_SYNC, SyncMode syncMode = SyncMode::SET_WAIT_FLAG, IdSource idSource = IdSource::INTERNAL>
 class BuffersPolicy4buff {
 public:
     __aicore__ inline void Init(BufferManager<bufferType> &bufferManager, uint32_t size,
-                                uint32_t aEventId = 0U, uint32_t bEventId = 0U,
-                                uint32_t cEventId = 0U, uint32_t dEventId = 0U) {
-        a_ = bufferManager.template AllocBuffer<syncType>(size);
-        b_ = bufferManager.template AllocBuffer<syncType>(size);
-        c_ = bufferManager.template AllocBuffer<syncType>(size);
-        d_ = bufferManager.template AllocBuffer<syncType>(size);
+                                uint32_t aId = 0U, uint32_t bId = 0U,
+                                uint32_t cId = 0U, uint32_t dId = 0U) {
+        a_ = bufferManager.template AllocBuffer<syncType, syncMode>(size);
+        b_ = bufferManager.template AllocBuffer<syncType, syncMode>(size);
+        c_ = bufferManager.template AllocBuffer<syncType, syncMode>(size);
+        d_ = bufferManager.template AllocBuffer<syncType, syncMode>(size);
 
-        if constexpr (eventIdMode == EventIdMode::TPIPE_AUTO) {
-            a_.template Init<eventIdMode>();
-            b_.template Init<eventIdMode>();
-            c_.template Init<eventIdMode>();
-            d_.template Init<eventIdMode>();
-        } else if constexpr (eventIdMode == EventIdMode::USER_DEFINED) {
-            a_.template Init<eventIdMode>(aEventId);
-            b_.template Init<eventIdMode>(bEventId);
-            c_.template Init<eventIdMode>(cEventId);
-            d_.template Init<eventIdMode>(dEventId);
+        if constexpr (idSource == IdSource::INTERNAL) {
+            a_.template Init<idSource>();
+            b_.template Init<idSource>();
+            c_.template Init<idSource>();
+            d_.template Init<idSource>();
+        } else if constexpr (idSource == IdSource::EXTERNAL) {
+            a_.template Init<idSource>(aId);
+            b_.template Init<idSource>(bId);
+            c_.template Init<idSource>(cId);
+            d_.template Init<idSource>(dId);
         }
     }
 
     __aicore__ inline void Uninit(BufferManager<bufferType> &bufferManager) {
-        a_.template UnInit<eventIdMode>();
-        b_.template UnInit<eventIdMode>();
-        c_.template UnInit<eventIdMode>();
-        d_.template UnInit<eventIdMode>();
+        a_.template UnInit<idSource>();
+        b_.template UnInit<idSource>();
+        c_.template UnInit<idSource>();
+        d_.template UnInit<idSource>();
 
-        bufferManager.FreeBuffer(a_);
-        bufferManager.FreeBuffer(b_);
-        bufferManager.FreeBuffer(c_);
-        bufferManager.FreeBuffer(d_);
+        bufferManager.template FreeBuffer<syncType, syncMode>(a_);
+        bufferManager.template FreeBuffer<syncType, syncMode>(b_);
+        bufferManager.template FreeBuffer<syncType, syncMode>(c_);
+        bufferManager.template FreeBuffer<syncType, syncMode>(d_);
     }
 
-    __aicore__ inline Buffer<bufferType, syncType> &Get(uint32_t id) {
+    __aicore__ inline Buffer<bufferType, syncType, syncMode> &Get(uint32_t id) {
         uint32_t flag = id % 4;
         if (flag == 0) {
             return a_;
@@ -285,19 +285,19 @@ public:
         }
     }
 
-    __aicore__ inline Buffer<bufferType, syncType> &Get() {
+    __aicore__ inline Buffer<bufferType, syncType, syncMode> &Get() {
         auto& buffer = Get(head_);
         head_++;
         return buffer;
     }
 
-    __aicore__ inline Buffer<bufferType, syncType> &GetReused() {
+    __aicore__ inline Buffer<bufferType, syncType, syncMode> &GetReused() {
         auto& buffer = Get(used_);
         used_ = (used_ - tail_ + 1) % (head_ - tail_) + tail_;
         return buffer;
     }
 
-    __aicore__ inline Buffer<bufferType, syncType> &GetFree() {
+    __aicore__ inline Buffer<bufferType, syncType, syncMode> &GetFree() {
         if (tail_ == used_) {
             used_++;
         }
@@ -306,10 +306,10 @@ public:
         return buffer;
     }
 private:
-    Buffer<bufferType, syncType> a_;
-    Buffer<bufferType, syncType> b_;
-    Buffer<bufferType, syncType> c_;
-    Buffer<bufferType, syncType> d_;
+    Buffer<bufferType, syncType, syncMode> a_;
+    Buffer<bufferType, syncType, syncMode> b_;
+    Buffer<bufferType, syncType, syncMode> c_;
+    Buffer<bufferType, syncType, syncMode> d_;
     uint32_t tail_ = 0; // 表示当前正在使用的buffer队列队尾
     uint32_t head_ = 0; // 表示当前正在使用的buffer队列队首+1
     uint32_t used_ = 0; // 表示当前正在使用的buffer，于首尾间，左闭右开
@@ -328,24 +328,17 @@ public:
         bufferM1k0_ = bufferManager.template AllocBuffer<syncType>(size);
         bufferM1k1_ = bufferManager.template AllocBuffer<syncType>(size);
 
-        if constexpr (eventIdMode == EventIdMode::TPIPE_AUTO) {
-            bufferM0k0_.template Init<eventIdMode>();
-            bufferM0k1_.template Init<eventIdMode>();
-            bufferM1k0_.template Init<eventIdMode>();
-            bufferM1k1_.template Init<eventIdMode>();
-        } else if constexpr (eventIdMode == EventIdMode::USER_DEFINED) {
-            bufferM0k0_.template Init<eventIdMode>(m0k0EventId);
-            bufferM0k1_.template Init<eventIdMode>(m0k1EventId);
-            bufferM1k0_.template Init<eventIdMode>(m1k0EventId);
-            bufferM1k1_.template Init<eventIdMode>(m1k1EventId);
-        }
+        bufferM0k0_.template Init<IdSource::INTERNAL>();
+        bufferM0k1_.template Init<IdSource::INTERNAL>();
+        bufferM1k0_.template Init<IdSource::INTERNAL>();
+        bufferM1k1_.template Init<IdSource::INTERNAL>();
     }
 
     __aicore__ inline void Uninit(BufferManager<bufferType> &bufferManager) {
-        bufferM0k0_.template UnInit<eventIdMode>();
-        bufferM0k1_.template UnInit<eventIdMode>();
-        bufferM1k0_.template UnInit<eventIdMode>();
-        bufferM1k1_.template UnInit<eventIdMode>();
+        bufferM0k0_.template UnInit<IdSource::INTERNAL>();
+        bufferM0k1_.template UnInit<IdSource::INTERNAL>();
+        bufferM1k0_.template UnInit<IdSource::INTERNAL>();
+        bufferM1k1_.template UnInit<IdSource::INTERNAL>();
 
         bufferManager.FreeBuffer(bufferM0k0_);
         bufferManager.FreeBuffer(bufferM0k1_);

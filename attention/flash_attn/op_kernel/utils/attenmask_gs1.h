@@ -289,6 +289,7 @@ __aicore__ inline void AttentionmaskCopyInForGsLayout(LocalTensor<T> &attenMaskU
     int32_t s1EndIdx = (info.gs1StartIdx + info.gs1dealNum - 1) % info.s1Size + 1;
     uint32_t attenMaskS2Stride = AttentionCommon::Align(info.s2dealNum, 32U) + 32 * info.attenMaskDstStride;
     if (info.gs1dealNum <= info.s1Size) {
+        Mutex::Lock<PIPE_MTE2>(mte2ToVEventId);
         if (s1StartIdx + info.gs1dealNum > info.s1Size) {
             AttentionmaskDataCopy(attenMaskUb, srcGmAddr, info, s1StartIdx, info.s1Size, isPre);
             LocalTensor<T> attenMaskSecUb = attenMaskUb[(info.s1Size - s1StartIdx) * attenMaskS2Stride];
@@ -296,10 +297,7 @@ __aicore__ inline void AttentionmaskCopyInForGsLayout(LocalTensor<T> &attenMaskU
         } else {
             AttentionmaskDataCopy(attenMaskUb, srcGmAddr, info, s1StartIdx, s1EndIdx, isPre);
         }
-        // 静态Tensor：ping/pong 各 slot 独立 MTE2_V event，与 MM2_IN_BUF_READY(=2) / SINK_BUF_READY(=4) 错开
-        const event_t enQueEvtID = static_cast<event_t>(mte2ToVEventId);
-        SetFlag<HardEvent::MTE2_V>(enQueEvtID);
-        WaitFlag<HardEvent::MTE2_V>(enQueEvtID);
+        Mutex::Unlock<PIPE_MTE2>(mte2ToVEventId);
     } else {
         uint32_t headS1Count = info.s1Size - s1StartIdx;
         uint32_t remainRowCount = info.gs1dealNum - headS1Count;
@@ -307,12 +305,12 @@ __aicore__ inline void AttentionmaskCopyInForGsLayout(LocalTensor<T> &attenMaskU
         uint32_t tailS1Size = remainRowCount % info.s1Size;
 
         // 第一块完整的mask
+        Mutex::Lock<PIPE_MTE2>(mte2ToVEventId);
         LocalTensor<T> attenMaskSecUb = attenMaskUb[headS1Count * attenMaskS2Stride];
         AttentionmaskDataCopy(attenMaskSecUb, srcGmAddr, info, 0, info.s1Size, isPre);
-        const event_t enQueEvtID = static_cast<event_t>(mte2ToVEventId);
-        SetFlag<HardEvent::MTE2_V>(enQueEvtID);
-        WaitFlag<HardEvent::MTE2_V>(enQueEvtID);
+        Mutex::Unlock<PIPE_MTE2>(mte2ToVEventId);
 
+        Mutex::Lock<PIPE_V>(mte2ToVEventId);
         // head
         DataCopy(attenMaskUb, attenMaskUb[info.s1Size * attenMaskS2Stride], headS1Count * attenMaskS2Stride);
         // mid
@@ -325,8 +323,8 @@ __aicore__ inline void AttentionmaskCopyInForGsLayout(LocalTensor<T> &attenMaskU
             DataCopy(attenMaskUb[(headS1Count + midGCount * info.s1Size) * attenMaskS2Stride], attenMaskSecUb,
                      tailS1Size * attenMaskS2Stride);
         }
-        SetFlag<HardEvent::MTE2_V>(enQueEvtID);
-        WaitFlag<HardEvent::MTE2_V>(enQueEvtID);
+        Mutex::Unlock<PIPE_V>(mte2ToVEventId);
+        
     }
     PipeBarrier<PIPE_MTE2>();
     PipeBarrier<PIPE_V>();
@@ -349,6 +347,7 @@ __aicore__ inline void AttentionmaskCopyInForSgLayout(LocalTensor<T> &attenMaskU
     uint32_t attenMaskSizeAlign = AttentionCommon::Align(info.s2dealNum, 32U);
     uint32_t attenMaskS2Stride = attenMaskSizeAlign + 32 * info.attenMaskDstStride;
 
+    Mutex::Lock<PIPE_MTE2>(mte2ToVEventId);
     // ub-head
     if (headGSize > 0) {
         AttentionmaskDataCopy(attenMaskUb, srcGmAddr, info, s1StartIdx, s1StartIdx + 1, isPre);
@@ -367,14 +366,11 @@ __aicore__ inline void AttentionmaskCopyInForSgLayout(LocalTensor<T> &attenMaskU
         DataCopyPadExtParams<T> padParams{true, 0, static_cast<uint8_t>(attenMaskSizeAlign - info.s2dealNum), 1U};
         DataCopyPad(attenMaskUb[headGSize * attenMaskS2Stride], srcGmAddr[maskOffset], dataCopyParams, padParams);
     }
+    Mutex::Unlock<PIPE_MTE2>(mte2ToVEventId);
 
-    // 静态Tensor：ping/pong 各 slot 独立 MTE2_V event
-    const event_t enQueEvtID = static_cast<event_t>(mte2ToVEventId);
-    SetFlag<HardEvent::MTE2_V>(enQueEvtID);
-    WaitFlag<HardEvent::MTE2_V>(enQueEvtID);
-
+    Mutex::Lock<PIPE_V>(mte2ToVEventId);
     MaskUbCopyS1G<T, s2BaseSize>(attenMaskUb, headGSize, info.gSize, tailGSize, midS1Count);
-    PipeBarrier<PIPE_MTE2>();
+    Mutex::Unlock<PIPE_V>(mte2ToVEventId);
     PipeBarrier<PIPE_V>();
 }
 

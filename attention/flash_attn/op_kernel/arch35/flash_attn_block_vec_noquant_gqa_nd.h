@@ -72,14 +72,14 @@ public:
 
     // 核内同步ID
     // MTE3<->V, 输出buffer
-    static constexpr uint32_t UB_OUT_VEC2_RES_EVENT0 = EVENT_ID0;
-    static constexpr uint32_t UB_OUT_VEC1_RES_EVENT0 = EVENT_ID2;
-    static constexpr uint32_t UB_OUT_VEC1_RES_EVENT1 = EVENT_ID3;
-    static constexpr uint32_t UB_OUT_LSE_OUT_EVENT0 = EVENT_ID4;
-    static constexpr uint32_t UB_OUT_LSE_OUT_EVENT1 = EVENT_ID5;
+    static constexpr uint32_t UB_OUT_VEC2_RES_EVENT0 = 0;
+    static constexpr uint32_t UB_OUT_VEC1_RES_EVENT0 = 2;
+    static constexpr uint32_t UB_OUT_VEC1_RES_EVENT1 = 3;
+    static constexpr uint32_t UB_OUT_LSE_OUT_EVENT0 = 4;
+    static constexpr uint32_t UB_OUT_LSE_OUT_EVENT1 = 5;
     // MTE2<->V, 输入buffer
-    static constexpr uint32_t UB_IN_MASK_EVENT0 = EVENT_ID0;
-    static constexpr uint32_t UB_IN_MASK_EVENT1 = EVENT_ID1;
+    static constexpr uint32_t UB_IN_MASK_EVENT0 = 6;
+    static constexpr uint32_t UB_IN_MASK_EVENT1 = 7;
 
     // L1
     static constexpr uint32_t L1_P_BUFCNT = 3U;
@@ -142,7 +142,7 @@ public:
     GlobalTensor<float> softmaxFDSumGm;
     GlobalTensor<float> softmaxFDMaxGm;
 
-    static constexpr MaskFormat MASK_LAYOUT = (LAYOUT_T == FA_LAYOUT::BSH || LAYOUT_T == FA_LAYOUT::TND) ? MaskFormat::SG : MaskFormat::GS;
+    static constexpr LAYOUT_Q MASK_LAYOUT = (LAYOUT_T == FA_LAYOUT::BSH || LAYOUT_T == FA_LAYOUT::TND) ? LAYOUT_Q::SG : LAYOUT_Q::GS;
     static constexpr T BOOL_ATTEN_MASK_SCALAR_VALUE = -1000000000000.0; // 用于mask为bool类型
     uint32_t negativeIntScalar = *((uint32_t *)&BOOL_ATTEN_MASK_SCALAR_VALUE);
     T negativeFloatScalar;
@@ -213,35 +213,24 @@ public:
         addrUb += 512U;
     }
 
-    __aicore__ inline void AllocEventID()
+    __aicore__ inline void InitCrossCoreSync()
     {
-        SetFlag<HardEvent::MTE3_V>(UB_OUT_VEC2_RES_EVENT0);
-        SetFlag<HardEvent::MTE3_V>(UB_OUT_VEC1_RES_EVENT0);
-        SetFlag<HardEvent::MTE3_V>(UB_OUT_VEC1_RES_EVENT1);
-        SetFlag<HardEvent::MTE3_V>(UB_OUT_LSE_OUT_EVENT0);
-        SetFlag<HardEvent::MTE3_V>(UB_OUT_LSE_OUT_EVENT1);
-        if constexpr (HAS_MASK) {
-            SetFlag<HardEvent::V_MTE2>(UB_IN_MASK_EVENT0);
-            SetFlag<HardEvent::V_MTE2>(UB_IN_MASK_EVENT1);
-        }
-
         CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CC_BMM2_0);
         CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CC_BMM2_1);
         CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CC_BMM1_0);
         CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CC_BMM1_1);
     }
 
+    __aicore__ inline void UnInitCrossCoreSync()
+    {
+    }
+
+    __aicore__ inline void AllocEventID()
+    {
+    }
+
     __aicore__ inline void FreeEventID()
     {
-        WaitFlag<AscendC::HardEvent::MTE3_V>(UB_OUT_VEC2_RES_EVENT0);
-        WaitFlag<AscendC::HardEvent::MTE3_V>(UB_OUT_VEC1_RES_EVENT0);
-        WaitFlag<AscendC::HardEvent::MTE3_V>(UB_OUT_VEC1_RES_EVENT1);
-        WaitFlag<AscendC::HardEvent::MTE3_V>(UB_OUT_LSE_OUT_EVENT0);
-        WaitFlag<AscendC::HardEvent::MTE3_V>(UB_OUT_LSE_OUT_EVENT1);
-        if constexpr (HAS_MASK) {
-            WaitFlag<AscendC::HardEvent::V_MTE2>(UB_IN_MASK_EVENT0);
-            WaitFlag<AscendC::HardEvent::V_MTE2>(UB_IN_MASK_EVENT1);
-        }
     }
 
     __aicore__ inline void ProcessVec1(RunInfoX runInfo)
@@ -273,7 +262,7 @@ public:
             static constexpr OUTPUT_T ATTEN_OUT_INIT_VAL = 0;
             static constexpr uint32_t ATTEN_OUT_POP_BUF_START_ADDR = 0;
             static constexpr uint32_t ATTEN_OUT_POP_BUF_ELE_SIZE = BUFFER_SIZE_BYTE_32K / sizeof(OUTPUT_T);
-            AttentionCommon::InitOutput<OUTPUT_T, EVENT_ID0, ATTEN_OUT_POP_BUF_START_ADDR, ATTEN_OUT_POP_BUF_ELE_SIZE>(
+            AttentionCommon::InitOutput<OUTPUT_T, EVENT_ID0, ATTEN_OUT_POP_BUF_START_ADDR, ATTEN_OUT_POP_BUF_ELE_SIZE, true>(
                 attentionOutGm, attenOutTotalSize, vecCoreNum, ATTEN_OUT_INIT_VAL);
 
             if (constInfo.isSoftmaxLseEnable) {
@@ -282,7 +271,7 @@ public:
                 static constexpr float LSE_INIT_VAL = 3e+99;
                 static constexpr uint32_t LSE_POP_BUF_START_ADDR = BUFFER_SIZE_BYTE_32K;
                 static constexpr uint32_t LSE_POP_BUF_ELE_SIZE = BUFFER_SIZE_BYTE_32K / sizeof(float);
-                AttentionCommon::InitOutput<float, EVENT_ID1, LSE_POP_BUF_START_ADDR, LSE_POP_BUF_ELE_SIZE>(
+                AttentionCommon::InitOutput<float, EVENT_ID1, LSE_POP_BUF_START_ADDR, LSE_POP_BUF_ELE_SIZE, true>(
                     softmaxLseGm, lseTotalSize, vecCoreNum, LSE_INIT_VAL);
             }
 
@@ -300,8 +289,6 @@ public:
             outGmTensor.offsetCalculator.Init(n2Size, gSize, headDim, qSeqLensTool.cuSeqLensParser);
         }
     }
-
-    // =================================Private Functions=================================
 
     __aicore__ inline void SoftmaxDataCopyOut(RunInfoX runInfo, LocalTensor<float> &sumUb, LocalTensor<float> &maxUb)
     {
@@ -329,12 +316,12 @@ public:
             return;
         }
 
-        WaitFlag<HardEvent::MTE3_V>(UB_OUT_LSE_OUT_EVENT0 + lseOutUbBufId);
+        Mutex::Lock<PIPE_V>(UB_OUT_LSE_OUT_EVENT0 + lseOutUbBufId);
         uint32_t vecMIdx = runInfo.gS1Idx + runInfo.vecMbaseIdx;
         LocalTensor<float> lseUb = ubLseOutBuffers[lseOutUbBufId * UB_LSE_OUT_BUF_BYTES].template ReinterpretCast<float>();
         ComputeLseOutputVF(lseUb, softmaxSumTmp, softmaxMaxTmp, runInfo.actVecMSize);
-        SetFlag<HardEvent::V_MTE3>(UB_OUT_LSE_OUT_EVENT0 + lseOutUbBufId);
-        WaitFlag<HardEvent::V_MTE3>(UB_OUT_LSE_OUT_EVENT0 + lseOutUbBufId);
+        Mutex::Unlock<PIPE_V>(UB_OUT_LSE_OUT_EVENT0 + lseOutUbBufId);
+        Mutex::Lock<PIPE_MTE3>(UB_OUT_LSE_OUT_EVENT0 + lseOutUbBufId);
         if constexpr (LAYOUT_T == FA_LAYOUT::TND) {
             uint32_t prefixBS1 = qSeqLensTool.cuSeqLensParser.GetTBase(runInfo.bIdx);
             uint64_t bN2Offset = runInfo.n2Idx * constInfo.gSize * constInfo.t1Size + prefixBS1;
@@ -353,7 +340,7 @@ public:
             DataCopySoftmaxLseBNSDArch35<T, ConstInfoX>(softmaxLseGm, lseUb, bN2Offset, vecMIdx, runInfo.actVecMSize,
                                                         constInfo, qActSeqLens);
         }
-        SetFlag<HardEvent::MTE3_V>(UB_OUT_LSE_OUT_EVENT0 + lseOutUbBufId);
+        Mutex::Unlock<PIPE_MTE3>(UB_OUT_LSE_OUT_EVENT0 + lseOutUbBufId);
         lseOutUbBufId = (lseOutUbBufId + 1) % UB_LSE_OUT_BUFCNT;
     }
 
@@ -370,24 +357,22 @@ public:
         LocalTensor<INPUT_T> nonePseUb; // PSE不支持，占位
         LocalTensor<uint8_t> attenMaskUb;
         LocalTensor<uint8_t> attenMaskUbPre;
-        if constexpr (HAS_MASK == true) {
-            const uint32_t maskBufId = runInfo.loop & (DB - 1);
-            attenMaskUb = ubMaskBuffers[maskBufId * UB_MASK_BUF_BYTES];
-            WaitFlag<HardEvent::V_MTE2>(UB_IN_MASK_EVENT0 + maskBufId);
-            AttenMaskCopyIn(attenMaskUb, 0, runInfo.actVecMSize, runInfo);
-        }
-
+        LocalTensor<T> pScaleUb;
+        LocalTensor<T> queryScaleUb;
+        float descaleQK = 1.0;
+        float deSCaleKValue = 1.0;
         LocalTensor<T> sumUb = softmaxSumBuf[(runInfo.mloop % UB_SOFTMAX_SUM_BUFCNT) * (UB_SOFTMAX_SUM_BUF_BYTES / sizeof(T))];
         LocalTensor<T> maxUb = softmaxMaxBuf[(runInfo.mloop % UB_SOFTMAX_MAX_BUFCNT) * (UB_SOFTMAX_MAX_BUF_BYTES / sizeof(T))];
         LocalTensor<T> expUb = softmaxExpBuf[(runInfo.loop % UB_SOFTMAX_EXP_BUFCNT) * (UB_SOFTMAX_EXP_BUF_BYTES / sizeof(T))];
-        LocalTensor<T> pScaleUb;
-        LocalTensor<T> queryScaleUb;
 
-        WaitFlag<HardEvent::MTE3_V>(UB_OUT_VEC1_RES_EVENT0 + vec1ResUbBufId);
+        const uint32_t maskBufId = runInfo.loop & (DB - 1);
+        if constexpr (HAS_MASK) {
+            attenMaskUb = ubMaskBuffers[maskBufId * UB_MASK_BUF_BYTES];
+            AttenMaskCopyIn(attenMaskUb, 0, runInfo.actVecMSize, runInfo);
+            Mutex::Lock<PIPE_V>(UB_IN_MASK_EVENT0 + maskBufId);
+        }
 
-        float descaleQK = 1.0;
-        float deSCaleKValue = 1.0;
-
+        Mutex::Lock<PIPE_V>(UB_OUT_VEC1_RES_EVENT0 + vec1ResUbBufId);
         LocalTensor<INPUT_T> stage1CastTensor = ubVec1ResBuffers[vec1ResUbBufId * UB_VEC1_RES_BUF_BYTES].template ReinterpretCast<INPUT_T>();
         if (runInfo.isFirstS2Loop) {
             if (likely(runInfo.actSingleLoopS2Size == 128)) {
@@ -454,15 +439,14 @@ public:
                 }
             }
         }
+        Mutex::Unlock<PIPE_V>(UB_OUT_VEC1_RES_EVENT0 + vec1ResUbBufId);
+
         if constexpr (HAS_MASK) {
-            const uint32_t maskBufId = runInfo.loop & (DB - 1);
-            SetFlag<HardEvent::V_MTE2>(UB_IN_MASK_EVENT0 + maskBufId);
+            Mutex::Unlock<PIPE_V>(UB_IN_MASK_EVENT0 + maskBufId);
         }
 
-        SetFlag<HardEvent::V_MTE3>(UB_OUT_VEC1_RES_EVENT0 + vec1ResUbBufId);
-        WaitFlag<HardEvent::V_MTE3>(UB_OUT_VEC1_RES_EVENT0 + vec1ResUbBufId);
+        Mutex::Lock<PIPE_MTE3>(UB_OUT_VEC1_RES_EVENT0 + vec1ResUbBufId);
         LocalTensor<INPUT_T> mm2AL1Tensor= pL1Tensor;
-
         if (likely(runInfo.actVecMSize != 0)) {
             static constexpr uint32_t VEC1_SRC_STRIDE = (mBaseSize >> 1) + 1;
             DataCopy(mm2AL1Tensor[constInfo.subBlockIdx * (blockBytes / sizeof(INPUT_T)) *
@@ -471,8 +455,7 @@ public:
                      {s2BaseSize / 16, (uint16_t)runInfo.actVecMSize, (uint16_t)(VEC1_SRC_STRIDE - runInfo.actVecMSize),
                       (uint16_t)(mBaseSize - runInfo.actVecMSize)});
         }
-
-        SetFlag<HardEvent::MTE3_V>(UB_OUT_VEC1_RES_EVENT0 + vec1ResUbBufId);
+        Mutex::Unlock<PIPE_MTE3>(UB_OUT_VEC1_RES_EVENT0 + vec1ResUbBufId);
         vec1ResUbBufId = (vec1ResUbBufId + 1U) % UB_VEC1_RES_BUFCNT;
     }
 
@@ -566,21 +549,21 @@ public:
                                                LocalTensor<float> &maxUb, int64_t gmOffset, int64_t calculateSize)
     {
         LocalTensor<float> sumBrdcstBuf = ubLseOutBuffers[lseOutUbBufId * UB_LSE_OUT_BUF_BYTES].template ReinterpretCast<float>();
-        WaitFlag<HardEvent::MTE3_V>(UB_OUT_LSE_OUT_EVENT0 + lseOutUbBufId);
+        Mutex::Lock<PIPE_V>(UB_OUT_LSE_OUT_EVENT0 + lseOutUbBufId);
         FaVectorApi::BroadcastMaxSum(sumBrdcstBuf, sumUb, runInfo.actVecMSize);
-        SetFlag<HardEvent::V_MTE3>(UB_OUT_LSE_OUT_EVENT0 + lseOutUbBufId);
-        WaitFlag<HardEvent::V_MTE3>(UB_OUT_LSE_OUT_EVENT0 + lseOutUbBufId);
+        Mutex::Unlock<PIPE_V>(UB_OUT_LSE_OUT_EVENT0 + lseOutUbBufId);
+        Mutex::Lock<PIPE_MTE3>(UB_OUT_LSE_OUT_EVENT0 + lseOutUbBufId);
         DataCopy(softmaxFDSumGm[gmOffset], sumBrdcstBuf, calculateSize);
-        SetFlag<HardEvent::MTE3_V>(UB_OUT_LSE_OUT_EVENT0 + lseOutUbBufId);
+        Mutex::Unlock<PIPE_MTE3>(UB_OUT_LSE_OUT_EVENT0 + lseOutUbBufId);
         lseOutUbBufId = (lseOutUbBufId + 1U) % UB_LSE_OUT_BUFCNT;
 
         LocalTensor<float> maxBrdcstBuf = ubLseOutBuffers[lseOutUbBufId * UB_LSE_OUT_BUF_BYTES].template ReinterpretCast<float>();
-        WaitFlag<HardEvent::MTE3_V>(UB_OUT_LSE_OUT_EVENT0 + lseOutUbBufId);
+        Mutex::Lock<PIPE_V>(UB_OUT_LSE_OUT_EVENT0 + lseOutUbBufId);
         FaVectorApi::BroadcastMaxSum(maxBrdcstBuf, maxUb, runInfo.actVecMSize);
-        SetFlag<HardEvent::V_MTE3>(UB_OUT_LSE_OUT_EVENT0 + lseOutUbBufId);
-        WaitFlag<HardEvent::V_MTE3>(UB_OUT_LSE_OUT_EVENT0 + lseOutUbBufId);
+        Mutex::Unlock<PIPE_V>(UB_OUT_LSE_OUT_EVENT0 + lseOutUbBufId);
+        Mutex::Lock<PIPE_MTE3>(UB_OUT_LSE_OUT_EVENT0 + lseOutUbBufId);
         DataCopy(softmaxFDMaxGm[gmOffset], maxBrdcstBuf, calculateSize);
-        SetFlag<HardEvent::MTE3_V>(UB_OUT_LSE_OUT_EVENT0 + lseOutUbBufId);
+        Mutex::Unlock<PIPE_MTE3>(UB_OUT_LSE_OUT_EVENT0 + lseOutUbBufId);
         lseOutUbBufId = (lseOutUbBufId + 1U) % UB_LSE_OUT_BUFCNT;
     }
 
@@ -622,9 +605,9 @@ public:
             return;
         }
 
-        WaitFlag<HardEvent::MTE3_V>(UB_OUT_VEC2_RES_EVENT0);
+        CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(c2v2CrossCoreSyncIdx);
         {
-            CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(c2v2CrossCoreSyncIdx);
+            Mutex::Lock<PIPE_V>(UB_OUT_VEC2_RES_EVENT0);
             LocalTensor<T> mm2ResUbTensor = ubMm2ResBuffers[mm2ResUbBufId * UB_MM2_RES_BUF_BYTES].template ReinterpretCast<T>();
             if (unlikely(runInfo.isFirstS2Loop)) {
                 uint32_t vec2CalcSize = runInfo.actVecMSize * dTemplateAlign64;
@@ -644,37 +627,41 @@ public:
                         1.0);
                 }
             }
-            CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(c2v2CrossCoreSyncIdx); // mmRes在之后不能使用, 否则与C2的FIXPIPE读写数据冲突
+            Mutex::Unlock<PIPE_V>(UB_OUT_VEC2_RES_EVENT0);
         }
+        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(c2v2CrossCoreSyncIdx); // mmRes在之后不能使用, 否则与C2的FIXPIPE读写数据冲突
 
         if (runInfo.isLastS2Loop) {
             if (unlikely(runInfo.isFirstS2Loop)) {
+                Mutex::Lock<PIPE_V>(UB_OUT_VEC2_RES_EVENT0);
                 LocalTensor<float> sumUb = softmaxSumBuf[(runInfo.mloop % UB_SOFTMAX_SUM_BUFCNT) * (UB_SOFTMAX_SUM_BUF_BYTES / sizeof(T))];
                 LastDivNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64, false>(
                     ubVec2Res, ubVec2Res, sumUb, runInfo.actVecMSize, (uint16_t)dTemplateAlign64, 0.0F);
+                Mutex::Unlock<PIPE_V>(UB_OUT_VEC2_RES_EVENT0);
             }
             uint32_t mStartVec = 0;
             uint32_t mDealSize = runInfo.actVecMSize;
-            if (constInfo.enableFlashDecode && runInfo.isS2SplitCore) {
-                SetFlag<HardEvent::V_MTE3>(UB_OUT_VEC2_RES_EVENT0);
-                WaitFlag<HardEvent::V_MTE3>(UB_OUT_VEC2_RES_EVENT0);
-
+            bool isNeedFd = (constInfo.enableFlashDecode && runInfo.isS2SplitCore);
+            if (isNeedFd) {
+                Mutex::Lock<PIPE_MTE3>(UB_OUT_VEC2_RES_EVENT0);
                 Bmm2ResForFDCopyOut(runInfo, ubVec2Res, mStartVec, mDealSize);
+                Mutex::Unlock<PIPE_MTE3>(UB_OUT_VEC2_RES_EVENT0);
             } else {
                 LocalTensor<OUTPUT_T> attenOut;
                 int64_t dSizeAligned64 = (int64_t)dVBaseSize;
 
                 attenOut.SetAddr(ubVec2Res.address_);
 
+                Mutex::Lock<PIPE_V>(UB_OUT_VEC2_RES_EVENT0);
                 RowInvalid(ubVec2Res, mStartVec, mDealSize, runInfo, dSizeAligned64);
                 Cast(attenOut, ubVec2Res, RoundMode::CAST_ROUND, mDealSize * dSizeAligned64);
+                Mutex::Unlock<PIPE_V>(UB_OUT_VEC2_RES_EVENT0);
 
-                SetFlag<HardEvent::V_MTE3>(UB_OUT_VEC2_RES_EVENT0);
-                WaitFlag<HardEvent::V_MTE3>(UB_OUT_VEC2_RES_EVENT0);
+                Mutex::Lock<PIPE_MTE3>(UB_OUT_VEC2_RES_EVENT0);
                 Bmm2DataCopyOutTrans(runInfo, attenOut, mStartVec, mDealSize);
+                Mutex::Unlock<PIPE_MTE3>(UB_OUT_VEC2_RES_EVENT0);
             }
         }
-        SetFlag<HardEvent::MTE3_V>(UB_OUT_VEC2_RES_EVENT0);
     }
 
     __aicore__ inline void AttenMaskCopyIn(LocalTensor<uint8_t> attenMaskUb, uint32_t vecMIdx, uint32_t mDealSize,
@@ -707,7 +694,9 @@ public:
         bool IsSkipMaskForPre = IsSkipAttentionmaskForPre(maskInfo);
 
         if (IsSkipMask && IsSkipMaskForPre) {
+            Mutex::Lock<PIPE_V>(UB_IN_MASK_EVENT0 + bufIdx);
             Duplicate(attenMaskUb, static_cast<uint8_t>(0U), maskInfo.gs1dealNum * s2BaseSize);
+            Mutex::Unlock<PIPE_V>(UB_IN_MASK_EVENT0 + bufIdx);
             return;
         }
 
@@ -716,18 +705,20 @@ public:
             AttentionmaskCopyIn<uint8_t, MASK_LAYOUT, true, s2BaseSize>(
                 attenMaskUb, attenMaskGmInt, maskInfo, false, mte2ToVId);
         } else {
+            Mutex::Lock<PIPE_V>(UB_IN_MASK_EVENT0 + bufIdx);
             Duplicate(attenMaskUb, static_cast<uint8_t>(0U), maskInfo.gs1dealNum * s2BaseSize);
+            Mutex::Unlock<PIPE_V>(UB_IN_MASK_EVENT0 + bufIdx);
         }
 
         if (!IsSkipMaskForPre) {
             const uint32_t preBufId = bufIdx ^ 1U;
             const uint32_t preMte2ToVId = UB_IN_MASK_EVENT0 + preBufId;
-            WaitFlag<HardEvent::V_MTE2>(preMte2ToVId);
             LocalTensor<uint8_t> attenMaskUbPre = ubMaskBuffers[preBufId * UB_MASK_BUF_BYTES];
             AttentionmaskCopyIn<uint8_t, MASK_LAYOUT, true, s2BaseSize>(
                 attenMaskUbPre, attenMaskGmInt, maskInfo, true, preMte2ToVId);
+            Mutex::Lock<PIPE_V>(preMte2ToVId);
             MergeMask(attenMaskUb, attenMaskUbPre, maskInfo.gs1dealNum, s2BaseSize);
-            SetFlag<HardEvent::V_MTE2>(preMte2ToVId);
+            Mutex::Unlock<PIPE_V>(preMte2ToVId);
         }
     }
 };

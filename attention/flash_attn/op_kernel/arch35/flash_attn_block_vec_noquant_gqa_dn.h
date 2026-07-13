@@ -72,11 +72,11 @@ public:
 
     // 核内同步ID
     // MTE3<->V, 输出buffer
-    static constexpr uint32_t UB_OUT_VEC2_RES_EVENT0 = EVENT_ID0;
-    static constexpr uint32_t UB_OUT_VEC1_RES_EVENT0 = EVENT_ID2;
-    static constexpr uint32_t UB_OUT_VEC1_RES_EVENT1 = EVENT_ID3;
-    static constexpr uint32_t UB_OUT_LSE_OUT_EVENT0 = EVENT_ID4;
-    static constexpr uint32_t UB_OUT_LSE_OUT_EVENT1 = EVENT_ID5;
+    static constexpr uint32_t UB_OUT_VEC2_RES_EVENT0 = 0;
+    static constexpr uint32_t UB_OUT_VEC1_RES_EVENT0 = 2;
+    static constexpr uint32_t UB_OUT_VEC1_RES_EVENT1 = 3;
+    static constexpr uint32_t UB_OUT_LSE_OUT_EVENT0 = 4;
+    static constexpr uint32_t UB_OUT_LSE_OUT_EVENT1 = 5;
 
     // L1
     static constexpr uint32_t L1_P_BUFCNT = 3U;
@@ -191,27 +191,24 @@ public:
         addrUb += UB_LSE_OUT_BUFCNT * UB_LSE_OUT_BUF_BYTES;
     }
 
-    __aicore__ inline void AllocEventID()
+    __aicore__ inline void InitCrossCoreSync()
     {
-        SetFlag<HardEvent::MTE3_V>(UB_OUT_VEC2_RES_EVENT0);
-        SetFlag<HardEvent::MTE3_V>(UB_OUT_VEC1_RES_EVENT0);
-        SetFlag<HardEvent::MTE3_V>(UB_OUT_VEC1_RES_EVENT1);
-        SetFlag<HardEvent::MTE3_V>(UB_OUT_LSE_OUT_EVENT0);
-        SetFlag<HardEvent::MTE3_V>(UB_OUT_LSE_OUT_EVENT1);
-
         CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CC_BMM2_0);
         CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CC_BMM2_1);
         CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CC_BMM1_0);
         CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CC_BMM1_1);
     }
 
+    __aicore__ inline void UnInitCrossCoreSync()
+    {
+    }
+
+    __aicore__ inline void AllocEventID()
+    {
+    }
+
     __aicore__ inline void FreeEventID()
     {
-        WaitFlag<AscendC::HardEvent::MTE3_V>(UB_OUT_VEC2_RES_EVENT0);
-        WaitFlag<AscendC::HardEvent::MTE3_V>(UB_OUT_VEC1_RES_EVENT0);
-        WaitFlag<AscendC::HardEvent::MTE3_V>(UB_OUT_VEC1_RES_EVENT1);
-        WaitFlag<AscendC::HardEvent::MTE3_V>(UB_OUT_LSE_OUT_EVENT0);
-        WaitFlag<AscendC::HardEvent::MTE3_V>(UB_OUT_LSE_OUT_EVENT1);
     }
 
     __aicore__ inline void ProcessVec1(RunInfoX runInfo)
@@ -243,7 +240,7 @@ public:
             static constexpr OUTPUT_T ATTEN_OUT_INIT_VAL = 0;
             static constexpr uint32_t ATTEN_OUT_POP_BUF_START_ADDR = 0;
             static constexpr uint32_t ATTEN_OUT_POP_BUF_ELE_SIZE = BUFFER_SIZE_BYTE_32K / sizeof(OUTPUT_T);
-            AttentionCommon::InitOutput<OUTPUT_T, EVENT_ID0, ATTEN_OUT_POP_BUF_START_ADDR, ATTEN_OUT_POP_BUF_ELE_SIZE>(
+            AttentionCommon::InitOutput<OUTPUT_T, EVENT_ID0, ATTEN_OUT_POP_BUF_START_ADDR, ATTEN_OUT_POP_BUF_ELE_SIZE, true>(
                 attentionOutGm, attenOutTotalSize, vecCoreNum, ATTEN_OUT_INIT_VAL);
 
             if (constInfo.isSoftmaxLseEnable) {
@@ -252,7 +249,7 @@ public:
                 static constexpr float LSE_INIT_VAL = 3e+99;
                 static constexpr uint32_t LSE_POP_BUF_START_ADDR = BUFFER_SIZE_BYTE_32K;
                 static constexpr uint32_t LSE_POP_BUF_ELE_SIZE = BUFFER_SIZE_BYTE_32K / sizeof(float);
-                AttentionCommon::InitOutput<float, EVENT_ID1, LSE_POP_BUF_START_ADDR, LSE_POP_BUF_ELE_SIZE>(
+                AttentionCommon::InitOutput<float, EVENT_ID1, LSE_POP_BUF_START_ADDR, LSE_POP_BUF_ELE_SIZE, true>(
                     softmaxLseGm, lseTotalSize, vecCoreNum, LSE_INIT_VAL);
             }
 
@@ -297,12 +294,12 @@ public:
             return;
         }
 
-        WaitFlag<HardEvent::MTE3_V>(UB_OUT_LSE_OUT_EVENT0 + lseOutUbBufId);
+        Mutex::Lock<PIPE_V>(UB_OUT_LSE_OUT_EVENT0 + lseOutUbBufId);
         uint32_t vecMIdx = runInfo.gS1Idx + runInfo.vecMbaseIdx;
         LocalTensor<float> lseUb = ubLseOutBuffers[lseOutUbBufId * UB_LSE_OUT_BUF_BYTES].template ReinterpretCast<float>();
         ComputeLseOutputVF(lseUb, softmaxSumTmp, softmaxMaxTmp, runInfo.actVecMSize);
-        SetFlag<HardEvent::V_MTE3>(UB_OUT_LSE_OUT_EVENT0 + lseOutUbBufId);
-        WaitFlag<HardEvent::V_MTE3>(UB_OUT_LSE_OUT_EVENT0 + lseOutUbBufId);
+        Mutex::Unlock<PIPE_V>(UB_OUT_LSE_OUT_EVENT0 + lseOutUbBufId);
+        Mutex::Lock<PIPE_MTE3>(UB_OUT_LSE_OUT_EVENT0 + lseOutUbBufId);
         if constexpr (LAYOUT_T == FA_LAYOUT::TND) {
             uint32_t prefixBS1 = qSeqLensTool.cuSeqLensParser.GetTBase(runInfo.bIdx);
             uint64_t bN2Offset = runInfo.n2Idx * constInfo.gSize * constInfo.t1Size + prefixBS1;
@@ -321,7 +318,7 @@ public:
             DataCopySoftmaxLseBNSDArch35<T, ConstInfoX>(softmaxLseGm, lseUb, bN2Offset, vecMIdx, runInfo.actVecMSize,
                                                         constInfo, qActSeqLens);
         }
-        SetFlag<HardEvent::MTE3_V>(UB_OUT_LSE_OUT_EVENT0 + lseOutUbBufId);
+        Mutex::Unlock<PIPE_MTE3>(UB_OUT_LSE_OUT_EVENT0 + lseOutUbBufId);
         lseOutUbBufId = (lseOutUbBufId + 1) % UB_LSE_OUT_BUFCNT;
     }
 
@@ -343,25 +340,25 @@ public:
         LocalTensor<T> maxUb = softmaxMaxBuf[(runInfo.mloop % UB_SOFTMAX_MAX_BUFCNT) * (UB_SOFTMAX_MAX_BUF_BYTES / sizeof(T))];
         LocalTensor<T> expUb = softmaxExpBuf[(runInfo.loop % UB_SOFTMAX_EXP_BUFCNT) * (UB_SOFTMAX_EXP_BUF_BYTES / sizeof(T))];
 
-        WaitFlag<HardEvent::MTE3_V>(UB_OUT_VEC1_RES_EVENT0 + vec1ResUbBufId);
+        Mutex::Lock<PIPE_V>(UB_OUT_VEC1_RES_EVENT0 + vec1ResUbBufId);
 
         float descaleQK = 1.0;
 
         LocalTensor<INPUT_T> stage1CastTensor = ubVec1ResBuffers[vec1ResUbBufId * UB_VEC1_RES_BUF_BYTES].template ReinterpretCast<INPUT_T>();
         if (unlikely(runInfo.isFirstS2Loop)) {
-            FaVectorApi::ProcessVec1VfDnStatic<T, INPUT_T, false, false, s2BaseSize>(
+            FaVectorApi::ProcessVec1VfDn<T, INPUT_T, false, false, s2BaseSize>(
                 stage1CastTensor, sumUb, maxUb, mm1ResUbTensor, expUb, vselrIndexesBuf, attenMaskUb,
                 runInfo.actMSizeAlign32 >> 1, runInfo.actSingleLoopS2SizeAlign, runInfo.actSingleLoopS2Size,
                 static_cast<T>(constInfo.scaleValue), descaleQK, negativeFloatScalar, 0.0F, false);
         } else {
-            FaVectorApi::ProcessVec1VfDnStatic<T, INPUT_T, true, false, s2BaseSize>(
+            FaVectorApi::ProcessVec1VfDn<T, INPUT_T, true, false, s2BaseSize>(
                 stage1CastTensor, sumUb, maxUb, mm1ResUbTensor, expUb, vselrIndexesBuf, attenMaskUb,
                 runInfo.actMSizeAlign32 >> 1, runInfo.actSingleLoopS2SizeAlign, runInfo.actSingleLoopS2Size,
                 static_cast<T>(constInfo.scaleValue), descaleQK, negativeFloatScalar, 0.0F, false);
         }
 
-        SetFlag<HardEvent::V_MTE3>(UB_OUT_VEC1_RES_EVENT0 + vec1ResUbBufId);
-        WaitFlag<HardEvent::V_MTE3>(UB_OUT_VEC1_RES_EVENT0 + vec1ResUbBufId);
+        Mutex::Unlock<PIPE_V>(UB_OUT_VEC1_RES_EVENT0 + vec1ResUbBufId);
+        Mutex::Lock<PIPE_MTE3>(UB_OUT_VEC1_RES_EVENT0 + vec1ResUbBufId);
         LocalTensor<INPUT_T> mm2AL1Tensor = pL1Tensor;
 
         if (runInfo.actSingleLoopS2Size > vec1S2CopyLenDn) {
@@ -381,7 +378,7 @@ public:
                       static_cast<uint16_t>(vec1S2CopyLenDn - runInfo.actSingleLoopS2SizeAlign + 1), 0});
         }
 
-        SetFlag<HardEvent::MTE3_V>(UB_OUT_VEC1_RES_EVENT0 + vec1ResUbBufId);
+        Mutex::Unlock<PIPE_MTE3>(UB_OUT_VEC1_RES_EVENT0 + vec1ResUbBufId);
         vec1ResUbBufId = (vec1ResUbBufId + 1U) % UB_VEC1_RES_BUFCNT;
     }
 
@@ -414,21 +411,21 @@ public:
                                                LocalTensor<float> &maxUb, int64_t gmOffset, int64_t calculateSize)
     {
         LocalTensor<float> sumBrdcstBuf = ubLseOutBuffers[lseOutUbBufId * UB_LSE_OUT_BUF_BYTES].template ReinterpretCast<float>();
-        WaitFlag<HardEvent::MTE3_V>(UB_OUT_LSE_OUT_EVENT0 + lseOutUbBufId);
+        Mutex::Lock<PIPE_V>(UB_OUT_LSE_OUT_EVENT0 + lseOutUbBufId);
         FaVectorApi::BroadcastMaxSum(sumBrdcstBuf, sumUb, runInfo.actVecMSize);
-        SetFlag<HardEvent::V_MTE3>(UB_OUT_LSE_OUT_EVENT0 + lseOutUbBufId);
-        WaitFlag<HardEvent::V_MTE3>(UB_OUT_LSE_OUT_EVENT0 + lseOutUbBufId);
+        Mutex::Unlock<PIPE_V>(UB_OUT_LSE_OUT_EVENT0 + lseOutUbBufId);
+        Mutex::Lock<PIPE_MTE3>(UB_OUT_LSE_OUT_EVENT0 + lseOutUbBufId);
         DataCopy(softmaxFDSumGm[gmOffset], sumBrdcstBuf, calculateSize);
-        SetFlag<HardEvent::MTE3_V>(UB_OUT_LSE_OUT_EVENT0 + lseOutUbBufId);
+        Mutex::Unlock<PIPE_MTE3>(UB_OUT_LSE_OUT_EVENT0 + lseOutUbBufId);
         lseOutUbBufId = (lseOutUbBufId + 1U) % UB_LSE_OUT_BUFCNT;
 
         LocalTensor<float> maxBrdcstBuf = ubLseOutBuffers[lseOutUbBufId * UB_LSE_OUT_BUF_BYTES].template ReinterpretCast<float>();
-        WaitFlag<HardEvent::MTE3_V>(UB_OUT_LSE_OUT_EVENT0 + lseOutUbBufId);
+        Mutex::Lock<PIPE_V>(UB_OUT_LSE_OUT_EVENT0 + lseOutUbBufId);
         FaVectorApi::BroadcastMaxSum(maxBrdcstBuf, maxUb, runInfo.actVecMSize);
-        SetFlag<HardEvent::V_MTE3>(UB_OUT_LSE_OUT_EVENT0 + lseOutUbBufId);
-        WaitFlag<HardEvent::V_MTE3>(UB_OUT_LSE_OUT_EVENT0 + lseOutUbBufId);
+        Mutex::Unlock<PIPE_V>(UB_OUT_LSE_OUT_EVENT0 + lseOutUbBufId);
+        Mutex::Lock<PIPE_MTE3>(UB_OUT_LSE_OUT_EVENT0 + lseOutUbBufId);
         DataCopy(softmaxFDMaxGm[gmOffset], maxBrdcstBuf, calculateSize);
-        SetFlag<HardEvent::MTE3_V>(UB_OUT_LSE_OUT_EVENT0 + lseOutUbBufId);
+        Mutex::Unlock<PIPE_MTE3>(UB_OUT_LSE_OUT_EVENT0 + lseOutUbBufId);
         lseOutUbBufId = (lseOutUbBufId + 1U) % UB_LSE_OUT_BUFCNT;
     }
 
@@ -470,9 +467,9 @@ public:
             return;
         }
 
-        WaitFlag<HardEvent::MTE3_V>(UB_OUT_VEC2_RES_EVENT0);
+        CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(c2v2CrossCoreSyncIdx);
         {
-            CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(c2v2CrossCoreSyncIdx);
+            Mutex::Lock<PIPE_V>(UB_OUT_VEC2_RES_EVENT0);
             LocalTensor<T> mm2ResUbTensor = ubMm2ResBuffers[mm2ResUbBufId * UB_MM2_RES_BUF_BYTES].template ReinterpretCast<T>();
             if (unlikely(runInfo.isFirstS2Loop)) {
                 uint32_t vec2CalcSize = runInfo.actVecMSize * dTemplateAlign64;
@@ -492,36 +489,38 @@ public:
                         1.0);
                 }
             }
-            CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(c2v2CrossCoreSyncIdx); // mmRes在之后不能使用, 否则与C2的FIXPIPE读写数据冲突
+            Mutex::Unlock<PIPE_V>(UB_OUT_VEC2_RES_EVENT0);
         }
+        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(c2v2CrossCoreSyncIdx); // mmRes在之后不能使用, 否则与C2的FIXPIPE读写数据冲突
 
         if (runInfo.isLastS2Loop) {
             if (unlikely(runInfo.isFirstS2Loop)) {
+                Mutex::Lock<PIPE_V>(UB_OUT_VEC2_RES_EVENT0);
                 LocalTensor<float> sumUb = softmaxSumBuf[(runInfo.mloop % UB_SOFTMAX_SUM_BUFCNT) * (UB_SOFTMAX_SUM_BUF_BYTES / sizeof(T))];
                 LastDivNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64, false>(
                     ubVec2Res, ubVec2Res, sumUb, runInfo.actVecMSize, (uint16_t)dTemplateAlign64, 0.0F);
+                Mutex::Unlock<PIPE_V>(UB_OUT_VEC2_RES_EVENT0);
             }
             uint32_t mStartVec = 0;
             uint32_t mDealSize = runInfo.actVecMSize;
             if (constInfo.enableFlashDecode && runInfo.isS2SplitCore) {
-                SetFlag<HardEvent::V_MTE3>(UB_OUT_VEC2_RES_EVENT0);
-                WaitFlag<HardEvent::V_MTE3>(UB_OUT_VEC2_RES_EVENT0);
-
+                Mutex::Lock<PIPE_MTE3>(UB_OUT_VEC2_RES_EVENT0);
                 Bmm2ResForFDCopyOut(runInfo, ubVec2Res, mStartVec, mDealSize);
+                Mutex::Unlock<PIPE_MTE3>(UB_OUT_VEC2_RES_EVENT0);
             } else {
                 LocalTensor<OUTPUT_T> attenOut;
                 int64_t dSizeAligned64 = (int64_t)dVBaseSize;
 
                 attenOut.SetAddr(ubVec2Res.address_);
-
+                Mutex::Lock<PIPE_V>(UB_OUT_VEC2_RES_EVENT0);
                 Cast(attenOut, ubVec2Res, RoundMode::CAST_ROUND, mDealSize * dSizeAligned64);
+                Mutex::Unlock<PIPE_V>(UB_OUT_VEC2_RES_EVENT0);
 
-                SetFlag<HardEvent::V_MTE3>(UB_OUT_VEC2_RES_EVENT0);
-                WaitFlag<HardEvent::V_MTE3>(UB_OUT_VEC2_RES_EVENT0);
+                Mutex::Lock<PIPE_MTE3>(UB_OUT_VEC2_RES_EVENT0);
                 Bmm2DataCopyOutTrans(runInfo, attenOut, mStartVec, mDealSize);
+                Mutex::Unlock<PIPE_MTE3>(UB_OUT_VEC2_RES_EVENT0);
             }
         }
-        SetFlag<HardEvent::MTE3_V>(UB_OUT_VEC2_RES_EVENT0);
     }
 };
 

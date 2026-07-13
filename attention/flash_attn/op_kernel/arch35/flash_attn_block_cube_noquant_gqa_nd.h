@@ -68,20 +68,20 @@ public:
     static constexpr uint32_t CC_L1P_2  = 7U;
 
     // 核内同步ID
-    static constexpr uint32_t Q_L1_EVENT0 = EVENT_ID0;
-    static constexpr uint32_t Q_L1_EVENT1 = EVENT_ID1;
-    static constexpr uint32_t KV_L1_EVENT0 = EVENT_ID2;
-    static constexpr uint32_t KV_L1_EVENT1 = EVENT_ID3;
-    static constexpr uint32_t KV_L1_EVENT2 = EVENT_ID4;
-    static constexpr uint32_t KV_L1_EVENT3 = EVENT_ID5;
-    static constexpr uint32_t L0A_EVENT0 = EVENT_ID0;
-    static constexpr uint32_t L0A_EVENT1 = EVENT_ID1;
-    static constexpr uint32_t L0B_EVENT0 = EVENT_ID2;
-    static constexpr uint32_t L0B_EVENT1 = EVENT_ID3;
-    static constexpr uint32_t L0C_EVENT0 = EVENT_ID0;
-    static constexpr uint32_t L0C_EVENT1 = EVENT_ID1;
-    static constexpr uint32_t L0C_EVENT2 = EVENT_ID2;
-    static constexpr uint32_t L0C_EVENT3 = EVENT_ID3;
+    static constexpr uint32_t Q_L1_EVENT0 = 0;
+    static constexpr uint32_t Q_L1_EVENT1 = 1;
+    static constexpr uint32_t KV_L1_EVENT0 = 2;
+    static constexpr uint32_t KV_L1_EVENT1 = 3;
+    static constexpr uint32_t KV_L1_EVENT2 = 4;
+    static constexpr uint32_t KV_L1_EVENT3 = 5;
+    static constexpr uint32_t L0A_EVENT0 = 6;
+    static constexpr uint32_t L0A_EVENT1 = 7;
+    static constexpr uint32_t L0B_EVENT0 = 8;
+    static constexpr uint32_t L0B_EVENT1 = 9;
+    static constexpr uint32_t L0C_EVENT0 = 10;
+    static constexpr uint32_t L0C_EVENT1 = 11;
+    static constexpr uint32_t L0C_EVENT2 = 12;
+    static constexpr uint32_t L0C_EVENT3 = 13;
 
     // UB
     static constexpr uint32_t UB_MM1_RES_BUFCNT = 2U;
@@ -111,10 +111,10 @@ public:
     // L0A/B
     fa_base_matmul::BufferManager<fa_base_matmul::BufferType::L0A> l0aBufferManager;
     fa_base_matmul::BufferManager<fa_base_matmul::BufferType::L0B> l0bBufferManager;
-    using L0APolicyType = BuffersPolicyDB<BufferType::L0A, SyncType::INNER_CORE_SYNC, EventIdMode::USER_DEFINED>;
+    using L0APolicyType = BuffersPolicyDB<BufferType::L0A, SyncType::INNER_CORE_SYNC, SyncMode::LOCK_UNLOCK, IdSource::EXTERNAL>;
     using L0BPolicyType = std::conditional_t<L1KV_IS_SINGLE,
-        BuffersPolicySingleBuffer<BufferType::L0B, SyncType::INNER_CORE_SYNC, EventIdMode::USER_DEFINED>,
-        BuffersPolicyDB<BufferType::L0B, SyncType::INNER_CORE_SYNC, EventIdMode::USER_DEFINED>>;
+        BuffersPolicySingleBuffer<BufferType::L0B, SyncType::INNER_CORE_SYNC, SyncMode::LOCK_UNLOCK, IdSource::EXTERNAL>,
+        BuffersPolicyDB<BufferType::L0B, SyncType::INNER_CORE_SYNC, SyncMode::LOCK_UNLOCK, IdSource::EXTERNAL>>;
     L0APolicyType mmL0APolicy;
     L0BPolicyType mmL0BPolicy;
 
@@ -196,42 +196,12 @@ public:
         }
     }
 
-    __aicore__ inline void AllocEventID()
+    __aicore__ inline void InitCrossCoreSync()
     {
-        SetFlag<HardEvent::MTE1_MTE2>(Q_L1_EVENT0);
-        SetFlag<HardEvent::MTE1_MTE2>(Q_L1_EVENT1);
-        SetFlag<HardEvent::MTE1_MTE2>(KV_L1_EVENT0);
-        SetFlag<HardEvent::MTE1_MTE2>(KV_L1_EVENT1);
-        SetFlag<HardEvent::MTE1_MTE2>(KV_L1_EVENT2);
-        SetFlag<HardEvent::MTE1_MTE2>(KV_L1_EVENT3);
-        mmL0APolicy.Init(l0aBufferManager, BUFFER_SIZE_BYTE_32K, L0A_EVENT0, L0A_EVENT1);
-        if constexpr (L1KV_IS_SINGLE) {
-            mmL0BPolicy.Init(l0bBufferManager, BUFFER_SIZE_BYTE_32K, L0B_EVENT0);
-        } else {
-            mmL0BPolicy.Init(l0bBufferManager, BUFFER_SIZE_BYTE_32K, L0B_EVENT0, L0B_EVENT1);
-        }
-        SetFlag<HardEvent::FIX_M>(L0C_EVENT0);
-        SetFlag<HardEvent::FIX_M>(L0C_EVENT1);
-        SetFlag<HardEvent::FIX_M>(L0C_EVENT2);
-        SetFlag<HardEvent::FIX_M>(L0C_EVENT3);
     }
 
-    __aicore__ inline void FreeEventID()
+    __aicore__ inline void UnInitCrossCoreSync()
     {
-        WaitFlag<HardEvent::MTE1_MTE2>(Q_L1_EVENT0);
-        WaitFlag<HardEvent::MTE1_MTE2>(Q_L1_EVENT1);
-        WaitFlag<HardEvent::MTE1_MTE2>(KV_L1_EVENT0);
-        WaitFlag<HardEvent::MTE1_MTE2>(KV_L1_EVENT1);
-        WaitFlag<HardEvent::MTE1_MTE2>(KV_L1_EVENT2);
-        WaitFlag<HardEvent::MTE1_MTE2>(KV_L1_EVENT3);
-        mmL0APolicy.Uninit(l0aBufferManager);
-        mmL0BPolicy.Uninit(l0bBufferManager);
-        WaitFlag<HardEvent::FIX_M>(L0C_EVENT0);
-        WaitFlag<HardEvent::FIX_M>(L0C_EVENT1);
-        WaitFlag<HardEvent::FIX_M>(L0C_EVENT2);
-        WaitFlag<HardEvent::FIX_M>(L0C_EVENT3);
-
-        /*--------------------------------------CrossCore--------------------------------------------*/
         CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CC_BMM1_0);
         CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CC_BMM1_0 + AIV0_AIV1_OFFSET);
         CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CC_BMM1_1);
@@ -240,6 +210,22 @@ public:
         CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CC_BMM2_0 + AIV0_AIV1_OFFSET);
         CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CC_BMM2_1);
         CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CC_BMM2_1 + AIV0_AIV1_OFFSET);
+    }
+
+    __aicore__ inline void AllocEventID()
+    {
+        mmL0APolicy.Init(l0aBufferManager, BUFFER_SIZE_BYTE_32K, L0A_EVENT0, L0A_EVENT1);
+        if constexpr (L1KV_IS_SINGLE) {
+            mmL0BPolicy.Init(l0bBufferManager, BUFFER_SIZE_BYTE_32K, L0B_EVENT0);
+        } else {
+            mmL0BPolicy.Init(l0bBufferManager, BUFFER_SIZE_BYTE_32K, L0B_EVENT0, L0B_EVENT1);
+        }
+    }
+
+    __aicore__ inline void FreeEventID()
+    {
+        mmL0APolicy.Uninit(l0aBufferManager);
+        mmL0BPolicy.Uninit(l0bBufferManager);
     }
 
     __aicore__ inline void CopyQuerySlice(const LocalTensor<Q_T> &dstTensor, uint32_t dOffset, uint32_t dRealSize,
@@ -338,19 +324,19 @@ public:
     {
         LocalTensor<Q_T> qL1Tensor = l1QBuffers[qBufId * L1_Q_BUF_BYTES].template ReinterpretCast<Q_T>();
         if (unlikely(runInfo.isFirstS2Loop)) {
-            WaitFlag<HardEvent::MTE1_MTE2>(Q_L1_EVENT0 + qBufId);
+            Mutex::Lock<PIPE_MTE2>(Q_L1_EVENT0 + qBufId);
             CopyQueryTile(qL1Tensor, runInfo);
-            SetFlag<HardEvent::MTE2_MTE1>(Q_L1_EVENT0 + qBufId);
-            WaitFlag<HardEvent::MTE2_MTE1>(Q_L1_EVENT0 + qBufId);
+            Mutex::Unlock<PIPE_MTE2>(Q_L1_EVENT0 + qBufId);
+            Mutex::Lock<PIPE_MTE1>(Q_L1_EVENT0 + qBufId);
         }
 
         LocalTensor<KV_T> kL1Tensor = l1KvBuffers[kvBufId * L1_KV_BUF_BYTES].template ReinterpretCast<KV_T>();
-        WaitFlag<HardEvent::MTE1_MTE2>(KV_L1_EVENT0 + kvBufId);
+        Mutex::Lock<PIPE_MTE2>(KV_L1_EVENT0 + kvBufId);
         CopyKeyTile(kL1Tensor, runInfo);
-        SetFlag<HardEvent::MTE2_MTE1>(KV_L1_EVENT0 + kvBufId);
-        WaitFlag<HardEvent::MTE2_MTE1>(KV_L1_EVENT0 + kvBufId);
+        Mutex::Unlock<PIPE_MTE2>(KV_L1_EVENT0 + kvBufId);
+        Mutex::Lock<PIPE_MTE1>(KV_L1_EVENT0 + kvBufId);
         {
-            WaitFlag<HardEvent::FIX_M>(L0C_EVENT0 + l0cBufId);
+            Mutex::Lock<PIPE_M>(L0C_EVENT0 + l0cBufId);
             LocalTensor<MM_T> l0CSubTensor = l0CBuffers[l0cBufId * L0C_BUF_BYTES].template ReinterpretCast<MM_T>();
             MMParam param = MakeMMParam((uint32_t)runInfo.actMSize, (uint32_t)runInfo.actSingleLoopS2Size,
                                         (uint32_t)(constInfo.dSize), false, true);
@@ -367,19 +353,19 @@ public:
                     qL1Tensor, kL1Tensor, mmL0APolicy, mmL0BPolicy, l0CSubTensor, param);
             }
 
-            SetFlag<HardEvent::M_FIX>(L0C_EVENT0 + l0cBufId);
-            WaitFlag<HardEvent::M_FIX>(L0C_EVENT0 + l0cBufId);
+            Mutex::Unlock<PIPE_M>(L0C_EVENT0 + l0cBufId);
+            Mutex::Lock<PIPE_FIX>(L0C_EVENT0 + l0cBufId);
 
             FixpipeMm1(mm1ResUbTensor, l0CSubTensor, runInfo);
 
-            SetFlag<HardEvent::FIX_M>(L0C_EVENT0 + l0cBufId);
+            Mutex::Unlock<PIPE_FIX>(L0C_EVENT0 + l0cBufId);
             l0cBufId = (l0cBufId + 1) % L0C_BUFCNT;
         }
-        SetFlag<HardEvent::MTE1_MTE2>(KV_L1_EVENT0 + kvBufId);
+        Mutex::Unlock<PIPE_MTE1>(KV_L1_EVENT0 + kvBufId);
         kvBufId = (kvBufId + 1) % L1_KV_BUFCNT;
 
         if (unlikely(runInfo.isLastS2Loop)) {
-            SetFlag<HardEvent::MTE1_MTE2>(Q_L1_EVENT0 + qBufId);
+            Mutex::Unlock<PIPE_MTE1>(Q_L1_EVENT0 + qBufId);
             qBufId = (qBufId + 1) % L1_Q_BUFCNT;
         }
     }
@@ -423,12 +409,12 @@ public:
     __aicore__ inline void IterateBmm2l0Split(LocalTensor<MM_T> &mm2ResUbTensor, LocalTensor<Q_T> &pL1Tensor, RunInfoX &runInfo)
     {
         LocalTensor<KV_T> vL1Tensor = l1KvBuffers[kvBufId * L1_KV_BUF_BYTES].template ReinterpretCast<KV_T>();
-        WaitFlag<HardEvent::MTE1_MTE2>(KV_L1_EVENT0 + kvBufId);
+        Mutex::Lock<PIPE_MTE2>(KV_L1_EVENT0 + kvBufId);
         CopyValueTile(vL1Tensor, runInfo);
-        SetFlag<HardEvent::MTE2_MTE1>(KV_L1_EVENT0 + kvBufId);
-        WaitFlag<HardEvent::MTE2_MTE1>(KV_L1_EVENT0 + kvBufId);
+        Mutex::Unlock<PIPE_MTE2>(KV_L1_EVENT0 + kvBufId);
+        Mutex::Lock<PIPE_MTE1>(KV_L1_EVENT0 + kvBufId);
         {
-            WaitFlag<HardEvent::FIX_M>(L0C_EVENT0 + l0cBufId);
+            Mutex::Lock<PIPE_M>(L0C_EVENT0 + l0cBufId);
             LocalTensor<MM_T> l0CSubTensor = l0CBuffers[l0cBufId * L0C_BUF_BYTES].template ReinterpretCast<MM_T>();
             MMParam param = {
                 (uint32_t)mBaseSize,                   // singleM 128
@@ -451,15 +437,15 @@ public:
                         pL1Tensor, vL1Tensor, mmL0APolicy, mmL0BPolicy, l0CSubTensor, param);
                 }
             }
-            SetFlag<HardEvent::M_FIX>(L0C_EVENT0 + l0cBufId);
-            WaitFlag<HardEvent::M_FIX>(L0C_EVENT0 + l0cBufId);
+            Mutex::Unlock<PIPE_M>(L0C_EVENT0 + l0cBufId);
+            Mutex::Lock<PIPE_FIX>(L0C_EVENT0 + l0cBufId);
 
             FixpipeMm2PartialN(mm2ResUbTensor, l0CSubTensor, constInfo.dSizeV, runInfo);
 
-            SetFlag<HardEvent::FIX_M>(L0C_EVENT0 + l0cBufId);
+            Mutex::Unlock<PIPE_FIX>(L0C_EVENT0 + l0cBufId);
             l0cBufId = (l0cBufId + 1) % L0C_BUFCNT;
         }
-        SetFlag<HardEvent::MTE1_MTE2>(KV_L1_EVENT0 + kvBufId);
+        Mutex::Unlock<PIPE_MTE1>(KV_L1_EVENT0 + kvBufId);
         kvBufId = (kvBufId + 1) % L1_KV_BUFCNT;
     }
 

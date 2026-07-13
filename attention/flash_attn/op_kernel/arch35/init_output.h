@@ -25,7 +25,7 @@
 
 namespace AttentionCommon {
 
-template <typename T, uint32_t SYNC_EVENT_ID, uint32_t POP_BUF_START_ADDR, uint32_t POP_BUF_ELE_SIZE>
+template <typename T, uint32_t SYNC_ID, uint32_t POP_BUF_START_ADDR, uint32_t POP_BUF_ELE_SIZE, bool ENABLE_LOCK = false>
 __aicore__ inline void InitOutput(GlobalTensor<T> outGm, uint64_t totalElementNum, uint32_t vecCoreNum, T initValue)
 {
     if ASCEND_IS_AIV {
@@ -35,13 +35,25 @@ __aicore__ inline void InitOutput(GlobalTensor<T> outGm, uint64_t totalElementNu
         if (gmOffset < totalElementNum) {
             LocalTensor<T> popBuffer = AscendC::LocalTensor<uint8_t>(TPosition::VECIN, POP_BUF_START_ADDR, POP_BUF_ELE_SIZE * sizeof(T)).template ReinterpretCast<T>();
 
-            AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(SYNC_EVENT_ID);
+            if constexpr (ENABLE_LOCK) {
+                Mutex::Lock<PIPE_V>(SYNC_ID);
+            } else {
+                AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(SYNC_ID);
 
-            AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(SYNC_EVENT_ID);
+                AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(SYNC_ID);
+            }
             AscendC::Duplicate(popBuffer, initValue, POP_BUF_ELE_SIZE);
-            AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(SYNC_EVENT_ID);
+            if constexpr (ENABLE_LOCK) {
+                Mutex::Unlock<PIPE_V>(SYNC_ID);
+            } else {
+                AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(SYNC_ID);
+            }
 
-            AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(SYNC_EVENT_ID);
+            if constexpr (ENABLE_LOCK) {
+                Mutex::Lock<PIPE_MTE3>(SYNC_ID);
+            } else {
+                AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(SYNC_ID);
+            }
             uint64_t loopCnt = singleCoreElementNum / POP_BUF_ELE_SIZE;
             uint64_t tailSize = singleCoreElementNum - loopCnt * POP_BUF_ELE_SIZE;
             for (uint64_t loop = 0; loop < loopCnt; loop++) {
@@ -70,9 +82,13 @@ __aicore__ inline void InitOutput(GlobalTensor<T> outGm, uint64_t totalElementNu
                 //     AscendC::DataCopyPad(outGm[gmOffset], popBuffer, dataCopyParams);
                 // }
             }
-            AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(SYNC_EVENT_ID);
+            if constexpr (ENABLE_LOCK) {
+                Mutex::Unlock<PIPE_MTE3>(SYNC_ID);
+            } else {
+                AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(SYNC_ID);
 
-            AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(SYNC_EVENT_ID);
+                AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(SYNC_ID);
+            }
         }
     }
 }

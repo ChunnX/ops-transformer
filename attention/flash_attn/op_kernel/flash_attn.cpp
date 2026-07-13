@@ -146,7 +146,6 @@ flash_attn(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __
         (const __gm__ FlashAttnNoQuantTilingArch35 *__restrict)(tiling + offset);
 
     InitSocState();
-    AscendC::SyncAll();
 
     using FA_T = BaseApi::FAType<INPUT_T, OUT_T, pageAttention, qLayout, kvLayout, outLayout, s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType, hasAttenMask>;
 
@@ -183,5 +182,5 @@ flash_attn(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __
     }
 #endif
 
-    // AscendC::PipeBarrier<PIPE_ALL>();
+    AscendC::PipeBarrier<PIPE_ALL>();
 }
