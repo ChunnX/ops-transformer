@@ -315,7 +315,7 @@ private:
     uint32_t used_ = 0; // 表示当前正在使用的buffer，于首尾间，左闭右开
 };
 
-template<BufferType bufferType, SyncType syncType = SyncType::INNER_CORE_SYNC, EventIdMode eventIdMode = EventIdMode::TPIPE_AUTO>
+template<BufferType bufferType, SyncType syncType = SyncType::INNER_CORE_SYNC>
 class Matrix2x2BufferPolicy { // 4buffer
 // 二维buffer管理，地址行优先，使用列优先
 // MracBuffer:memory address with row first, alloc/use/free with column first

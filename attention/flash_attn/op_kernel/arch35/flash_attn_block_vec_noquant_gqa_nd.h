@@ -142,7 +142,7 @@ public:
     GlobalTensor<float> softmaxFDSumGm;
     GlobalTensor<float> softmaxFDMaxGm;
 
-    static constexpr LAYOUT_Q MASK_LAYOUT = (LAYOUT_T == FA_LAYOUT::BSH || LAYOUT_T == FA_LAYOUT::TND) ? LAYOUT_Q::SG : LAYOUT_Q::GS;
+    static constexpr MaskFormat MASK_LAYOUT = (LAYOUT_T == FA_LAYOUT::BSH || LAYOUT_T == FA_LAYOUT::TND) ? MaskFormat::SG : MaskFormat::GS;
     static constexpr T BOOL_ATTEN_MASK_SCALAR_VALUE = -1000000000000.0; // 用于mask为bool类型
     uint32_t negativeIntScalar = *((uint32_t *)&BOOL_ATTEN_MASK_SCALAR_VALUE);
     T negativeFloatScalar;
