@@ -247,6 +247,7 @@ __aicore__ inline void AllGatherQuantBmm<AType, BType, BiasType, X2ScaleType, CT
         // Workspace偏移留出scale目的地址
         workspaceGM += DequantBmm::Align(CeilDiv(tilingKa, MX_BLOCK_SIZE), EVEN_ALIGN) *
                        static_cast<uint64_t>(cfg.rankM) * sizeof(X2ScaleType) * static_cast<uint64_t>(cfg.rankDim);
+        workspaceGM += cfg.gatherLen;
     }
     op.Init(aGM_, bGM_, biasGM_, dequantGM2_, localDequantGM1_, cGM, workspaceGM, &qBMMLocalTiling, tPipe_);
     op.Process();
