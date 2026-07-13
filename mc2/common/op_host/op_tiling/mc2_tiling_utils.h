@@ -50,8 +50,8 @@ constexpr uint8_t MC2_DEBUG_ONLY_AICPU = 4;  // 只通信不计算
 constexpr char HCCL_DETERMINISTIC[] = "HCCL_DETERMINISTIC";
 /**
 当前通信API未提供枚举，后续会提供
-0：默认值 1：HOST_TS 2：AICPU_TS
-3：AIV 4：AIV_ONLY 5：CCU_MS
+0：默认值 1：HOST_TS 2：AICPU_TS 
+3：AIV 4：AIV_ONLY 5：CCU_MS 
 6：CCU_SCHED 7：AICPU_UB/ROCE
 **/
 constexpr uint8_t A5_AICPU_TS_ENGINE = 2;
