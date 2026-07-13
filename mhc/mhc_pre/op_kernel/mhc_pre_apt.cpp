@@ -54,12 +54,13 @@ __global__ __aicore__ void mhc_pre(GM_ADDR x, GM_ADDR phi, GM_ADDR alpha, GM_ADD
     } else if constexpr (TILING_MODE == MHC_PRE_LOW_API_BS) {
         InitParams initParams{x,     phi,     alpha, bias,  gamma, hin,   h_post,
                               h_res, inv_rms, h_mix, h_pre, user,  &pipe, &tilingData};
+        MT mm;
         if constexpr (HAS_RESI == MHC_PRE_HAS_RESI) {
-            MhcPreKernelSplitBSLowApi<DTYPE_X, float32_t, MHC_PRE_HAS_RESI> op;
+            MhcPreKernelSplitBSLowApi<DTYPE_X, float32_t, MHC_PRE_HAS_RESI> op(mm);
             op.Init(initParams);
             op.Process();
         } else {
-            MhcPreKernelSplitBSLowApi<DTYPE_X, float32_t, MHC_PRE_NO_RESI> op;
+            MhcPreKernelSplitBSLowApi<DTYPE_X, float32_t, MHC_PRE_NO_RESI> op(mm);
             op.Init(initParams);
             op.Process();
         }
