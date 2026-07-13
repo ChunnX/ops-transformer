@@ -34,7 +34,7 @@ public:
             .FormatList({ge::FORMAT_ND});
         this->Input("attenMask")
             .ParamType(OPTIONAL)
-            .DataTypeList({ge::DT_INT8})
+            .DataTypeList({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND});
         this->Input("blockShape")
             .ParamType(OPTIONAL)
