@@ -261,6 +261,11 @@ int64_t GetMegaMoeCclBufferSize(int64_t epWorldSize, int64_t moeExpertNum,
             "dispatch_quant_mode only support {0, 2, 4} on A2/A3, but got ", dispatchQuantMode);
 
         bool isQuantRouting = (dispatchQuantMode == 4);
+        // max_recv_token_num 为 0 时自动计算为 bs * epWorldSize * min(topK, expertPerRank)，
+        if (maxRecvTokenNum == 0) {
+            int64_t expertPerRank = moeExpertNum / epWorldSize;
+            maxRecvTokenNum = numMaxTokensPerRank * epWorldSize * std::min(numTopk, expertPerRank);
+        }
         if (isA3) {
             return CalcLeastCclBufferSizeA3(
                 hidden, epWorldSize, isQuantRouting,

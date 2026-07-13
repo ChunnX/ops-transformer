@@ -31,7 +31,7 @@
 
     $$x_{out} = x_{slice} \cdot \cos + x_{rotate} \cdot \sin$$
 
-    最终将$x_{out}$原地写回`x[..., start:end]`。其中，$x$表示参数`x`，$\cos$表示参数`r1`，$\sin$表示参数`r2`。当`start`与`end`相等时，不执行旋转位置编码，`x`保持不变。
+    最终将$x_{out}$原地写回`x[..., start:end]`。其中，$x$表示参数`x`，$\cos$表示参数`r1`，$\sin$表示参数`r2`。当`start`与`end`相等时，不执行旋转位置编码，`x`保持不变。注意：若后续需要通过自动微分计算梯度，则仍需满足反向算子`inplace_partial_rotary_mul_backward`的约定，即不支持空Tensor和切片长度为零的场景（详见[约束说明](#约束说明)）。
 
 **说明**
 - 输入`x`采用BSND维度格式，其中B（Batch）表示批量大小，S（Seq-Length）表示序列长度，N（Head-Num）表示多头数，D（Head-Dim）表示每个头的隐藏维度大小。
@@ -57,7 +57,7 @@ cann_ops_transformer.inplace_partial_rotary_mul(x, r1, r2, *, rotary_mode="inter
 
 该接口无返回值（`None`）。计算结果直接 inplace 写回输入张量 `x`，`x` 在计算后 shape 和数据类型保持不变，`partial_slice` 指定范围以外的数据保持原值。
 
-> **自动微分说明**：当 `x.requires_grad` 为 True 时，对 loss 执行 `.backward()` 即自动触发 `inplace_partial_rotary_mul_backward`，无需手动调用反向算子。`r1`（cos）、`r2`（sin）的梯度**不计算**，始终为 None。
+> **自动微分说明**：当 `x.requires_grad` 为 True 时，对 loss 执行 `.backward()` 即自动触发 `inplace_partial_rotary_mul_backward`，无需手动调用反向算子。`r1`（cos）、`r2`（sin）的梯度**不计算**，始终为 None。由于反向算子不支持空Tensor和切片长度为零的场景，使用自动微分时正向调用也须遵守此约定。
 
 ## 约束说明
 
@@ -66,13 +66,13 @@ cann_ops_transformer.inplace_partial_rotary_mul(x, r1, r2, *, rotary_mode="inter
 - 不支持非连续Tensor。
 - `x`最后一维D大小不超过1024，且D必须为2的倍数。
 - `partial_slice`必须包含两个整数，满足`start >= 0`、`end >= 0`、`end <= D`、`end - start >= 0`。
-- `partial_slice`切片长度（即`end - start`）必须为2的倍数。当`end`和`start`相等时，不做旋转位置编码，直接返回。
+- `partial_slice`切片长度（即`end - start`）必须为2的倍数。当`end`和`start`相等时，正向计算直接返回；但若使用自动微分，反向算子不支持切片长度为零，此时须确保`end > start`且各输入维度均大于0。
 - `r1`、`r2`最后一维大小必须相同，且必须等于`partial_slice`的切片长度（即`end - start`）。
 - `r1`、`r2`的shape必须与`x[..., start:end]`满足广播关系，且存在如下约束：
     - <term>Ascend 950PR/Ascend 950DT</term>：`r1`、`r2`的shape当前只支持BSND、B1ND、B11D、111D排布。
     - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：`r1`、`r2`的shape当前只支持BS1D、B11D排布。
 - `x`的各维度值必须大于0；当`partial_slice`不是空切片时，`r1`、`r2`参与计算的维度值必须大于0。
-- **自动微分约束**：仅计算 `x` 的梯度；`r1`、`r2` 的梯度不计算，始终为 None。因算子为 inplace 操作，`x` 不能是 `requires_grad=True` 的叶子张量。
+- **自动微分约束**：仅计算 `x` 的梯度；`r1`、`r2` 的梯度不计算，始终为 None。因算子为 inplace 操作，`x` 不能是 `requires_grad=True` 的叶子张量。此外，反向算子 `inplace_partial_rotary_mul_backward` 不支持空Tensor和切片长度为零的场景，因此使用自动微分时正向调用也须确保各输入维度均大于0且 `end > start`。
 
 ## 确定性计算
 

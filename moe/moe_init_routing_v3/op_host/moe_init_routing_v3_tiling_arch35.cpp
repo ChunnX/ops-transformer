@@ -270,6 +270,7 @@ private:
     void SetPerLoopParams4NoQuantDropLess(PerLoopParams &perLoopParams,
                                           const int64_t perCoreIndicesElements);
     void Tiling4GatherOutCompute();
+    void Tiling4GatherOutMxFP8NoQuantCompute();
     void Tiling4GatherOutMxQuant();
     void Tiling4GatherOutFP8Quant();
     void Tiling4SortOutCompute();
@@ -314,6 +315,12 @@ private:
     {
         return (quantMode_ == QUANT_MODE_UNQUANT && !isMXFPXNoQuantCase(quantMode_, xDtype_)) ||
                 (quantMode_ == QUANT_MODE_STATIC) || IsAnyDynamicQuantCase();
+    }
+
+    bool isMXFP8NoQuantCase(int64_t quantMode, ge::DataType xDtype) const
+    {
+        return quantMode == QUANT_MODE_UNQUANT && (xDtype == ge::DataType::DT_FLOAT8_E5M2 ||
+               xDtype == ge::DataType::DT_FLOAT8_E4M3FN);
     }
 
     bool IsInt8DynamicQuantCase() const
@@ -535,6 +542,8 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::DoOpTiling()
     } else if (dropPadMode_ == DROP_PAD_MODE_DROPPAD && !isFullload_) {
         Tiling4SrcToDstDropPadCompute();
         Tiling4GatherOutDropPadCompute();
+    } else if (isMXFP8NoQuantCase(quantMode_, xDtype_)) {
+        Tiling4GatherOutMxFP8NoQuantCompute();
     } else {
         Tiling4GatherOutCompute();
     }
@@ -1566,6 +1575,7 @@ void MoeInitRoutingV3Arch35TilingClass::LogGatherOutTilingData()
     ss << "lastLoopCols = " << gatherOutTiling->lastLoopCols << "\n";
     ss << "activeNum = " << gatherOutTiling->activeNum << "\n";
     ss << "useCompactGatherOutDropPad = " << gatherOutTiling->useCompactGatherOutDropPad << "\n";
+    ss << "xCopyInQueueBufferNum = " << gatherOutTiling->xCopyInQueueBufferNum << "\n";
     OP_LOGI(context_, "%s", ss.str().c_str());
 }
 
@@ -1920,6 +1930,64 @@ void MoeInitRoutingV3Arch35TilingClass::Tiling4GatherOutCompute()
     return;
 }
 
+void MoeInitRoutingV3Arch35TilingClass::Tiling4GatherOutMxFP8NoQuantCompute()
+{
+    OP_LOGD(context_, "Entered MoeInitRoutingV3Arch35TilingClass::Tiling4GatherOutMxFP8NoQuantCompute()");
+
+    auto *gatherOutTiling = &(tilingDataPtr_->gatherOutComputeParamsOp);
+    int64_t perCoreIndicesElements = Ops::Base::CeilDiv(totalLength_, aivCoreNum_);
+    if (perCoreIndicesElements <= 0) {
+        gatherOutTiling->needCoreNum = 0;
+        return;
+    }
+    int64_t needCoreNum = Ops::Base::CeilDiv(totalLength_, perCoreIndicesElements);
+    int64_t lastCoreIndicesElements = totalLength_ - (needCoreNum - 1) * perCoreIndicesElements;
+
+    PerLoopParams perLoopParams;
+    perLoopParams.perLoopCols = tilingDataPtr_->cols;
+
+    perLoopParams.perLoopCols = Ops::Base::CeilAlign(perLoopParams.perLoopCols, MXFPX_SCALE_BLOCK_SIZE);
+    perLoopParams.perLoopMaxIndicesElements =
+        (availUbSize_ - Align(perLoopParams.perLoopCols, inputXDtypeSize_) * inputXDtypeSize_ * NUM_TWO -
+            Align(perLoopParams.perLoopCols / SCALE_FACTOR_WITH_X, inputScaleDTypeSize_) * inputScaleDTypeSize_ *
+                NUM_TWO) / NUM_TWO / static_cast<int64_t>(sizeof(int32_t));
+
+    perLoopParams.xCopyInQueueBufferNum = 2;
+    // 当能搬入一整行时，ub才可能充足，才可能适合匹配多buffers的场景
+    if (perLoopParams.perLoopMaxIndicesElements > 0) {
+        int64_t rowIdxSize = NUM_TWO * static_cast<int64_t>(sizeof(int32_t)) *
+            std::min(perLoopParams.perLoopMaxIndicesElements, perCoreIndicesElements);
+        int64_t oneRowSize = Align(perLoopParams.perLoopCols, inputXDtypeSize_) * inputXDtypeSize_ * NUM_TWO +
+            Align(perLoopParams.perLoopCols / SCALE_FACTOR_WITH_X, inputScaleDTypeSize_) * inputScaleDTypeSize_ *
+            NUM_TWO;
+        perLoopParams.xCopyInQueueBufferNum = std::min(MAX_QUEUE_BUFFER_NUM,
+            (availUbSize_ - rowIdxSize) / oneRowSize * NUM_TWO);
+    }
+
+    while (perLoopParams.perLoopMaxIndicesElements <= 0) {
+        perLoopParams.perLoopCols = Ops::Base::CeilAlign(Ops::Base::CeilDiv(perLoopParams.perLoopCols, NUM_TWO),
+                                                         MXFPX_SCALE_BLOCK_SIZE);
+        perLoopParams.perLoopMaxIndicesElements =
+            (availUbSize_ - Align(perLoopParams.perLoopCols, inputXDtypeSize_) * inputXDtypeSize_ * NUM_TWO -
+                Align(perLoopParams.perLoopCols / SCALE_FACTOR_WITH_X, inputScaleDTypeSize_) * inputScaleDTypeSize_ *
+                    NUM_TWO) / NUM_TWO / static_cast<int64_t>(sizeof(int32_t));
+    }
+
+    int64_t colsLoops = Ops::Base::CeilDiv(tilingDataPtr_->cols, perLoopParams.perLoopCols);
+    int64_t lastLoopCols = tilingDataPtr_->cols - (colsLoops - 1) * perLoopParams.perLoopCols;
+    gatherOutTiling->colsLoops = colsLoops;
+    gatherOutTiling->perLoopCols = perLoopParams.perLoopCols;
+    gatherOutTiling->lastLoopCols = lastLoopCols;
+    gatherOutTiling->xCopyInQueueBufferNum = perLoopParams.xCopyInQueueBufferNum;
+
+    int64_t perCorePerLoopIndicesElements = std::min(perLoopParams.perLoopMaxIndicesElements, perCoreIndicesElements);
+    gatherOutTiling->perCorePerLoopIndicesElements = perCorePerLoopIndicesElements;
+    SetLastCoreIndicesTiling(gatherOutTiling, lastCoreIndicesElements, perLoopParams.perLoopMaxIndicesElements);
+
+    LogGatherOutTilingData();
+    return;
+}
+
 int64_t MoeInitRoutingV3Arch35TilingClass::CalcMaxRowIdxPerLoopMxQuant(int64_t perLoopCols)
 {
     OP_LOGD(context_, "Entered MoeInitRoutingV3Arch35TilingClass::CalcMaxRowIdxPerLoopMxQuant(...)");
@@ -1932,7 +2000,7 @@ int64_t MoeInitRoutingV3Arch35TilingClass::CalcMaxRowIdxPerLoopMxQuant(int64_t p
     // 输出xOut[cols]所占大小：
     int64_t xOutSize = Align(perLoopCols / 4, sizeof(int8_t)) * 4;
     // 返回的是(availUbSize-每行输入x、输出scale、输出xOut所占的大小)/sizeof(int32)，应该是留给sortedRowIdx元素的数目
-    return (availUbSize_ - (xInSize + scaleSize + xOutSize)) / static_cast<int64_t>(sizeof(int32_t));
+    return (availUbSize_ / 2 - (xInSize + scaleSize + xOutSize)) / static_cast<int64_t>(sizeof(int32_t));
 }
 
 void MoeInitRoutingV3Arch35TilingClass::SetIndicesLoopParams4GatherOut(

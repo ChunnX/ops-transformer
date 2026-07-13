@@ -51,7 +51,7 @@ const static int64_t MAX_TOPK = 16LL;
 const static int64_t MIN_BS = 1LL;
 const static int64_t NUM_8 = 8LL;
 const static int64_t NUM_64 = 64LL;
-const static int64_t USED_BUUFER_SIZE = 48 * 1024LL;
+const static int64_t USED_BUFFER_SIZE = 48 * 1024LL;
 const static int64_t MIN_EXPERT_PER_RANK = 1LL;
 const static int64_t MAX_EXPERT_PER_RANK = 1024LL;
 const static int64_t H_BASE = 1024LL;
@@ -83,7 +83,7 @@ void PrintMegaMoeTilingData(const MegaMoeTilingData *tilingData, const char *nod
     OP_LOGD(nodeName, "clampLimit is %f", tilingData->clampLimit);
 }
 
-void printWorkspaceInfo(const struct WorkspaceInfo *info, const char *nodeName)
+void PrintWorkspaceInfo(const struct WorkspaceInfo *info, const char *nodeName)
 {
     OP_LOGD(nodeName, "dispatchRevDataPtr:         %ld\n", info->dispatchRevDataPtr);
     OP_LOGD(nodeName, "dispatchRevScalePtr:        %ld\n", info->dispatchRevScalePtr);
@@ -96,7 +96,7 @@ void printWorkspaceInfo(const struct WorkspaceInfo *info, const char *nodeName)
     OP_LOGD(nodeName, "flagSendCntCalToUpdParamsPtr:      %ld\n", info->flagSendCntCalToUpdParamsPtr);
 }
 
-void printPeermemInfo(const MegaMoeTilingData *tilingData, const char *nodeName)
+void PrintPeermemInfo(const MegaMoeTilingData *tilingData, const char *nodeName)
 {
     OP_LOGD(nodeName, "========== PeermemInfo ==========");
     int64_t rankSyncInWorldSize = PEERMEM_DATA_OFFSET;
@@ -354,7 +354,7 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, MegaM
 
     auto commAlgPtr = attrs->GetAttrPointer<char>(static_cast<int>(config.attrCommAlgIndex));
     OP_TILING_CHECK(std::strcmp(commAlgPtr, "") != 0,
-                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "commAlg", commAlgPtr, "empty string"),
+                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "commAlg", commAlgPtr, "not support, need empty string"),
                     return ge::GRAPH_FAILED);
 
     auto numMaxTokensPerRankPtr = attrs->GetAttrPointer<int64_t>((config.attrNumMaxTokensPerRankIndex));
@@ -963,7 +963,7 @@ static ge::graphStatus CheckInputParam(const gert::TilingContext *context, MegaM
     auto epWorldSizePtr = attrs->GetAttrPointer<int64_t>((config.attrEpWorldSizeIndex));
     int64_t worldSize = static_cast<int64_t>(*epWorldSizePtr);
     // 当前最大bs根据ub剩余空间反算得来，bsMax = (8*(UB_SIZE-48K))/(topK*(64+worldSize))
-    int64_t maxBs = NUM_8 * (ubSize - USED_BUUFER_SIZE) / (topkIdsDim1 * (NUM_64 + worldSize));
+    int64_t maxBs = NUM_8 * (ubSize - USED_BUFFER_SIZE) / (topkIdsDim1 * (NUM_64 + worldSize));
     OP_TILING_CHECK(
         xDim0 < MIN_BS || xDim0 > maxBs,
         OP_LOGE_FOR_INVALID_VALUE(nodeName, "BS", std::to_string(xDim0).c_str(),
@@ -1094,8 +1094,8 @@ ge::graphStatus MegaMoeTilingFuncImplPublic(gert::TilingContext *context, MegaMo
 
     // Print Info
     PrintMegaMoeTilingData(tilingData, nodeName);
-    printWorkspaceInfo(&workspaceInfo, nodeName);
-    printPeermemInfo(tilingData, nodeName);
+    PrintWorkspaceInfo(&workspaceInfo, nodeName);
+    PrintPeermemInfo(tilingData, nodeName);
 
     return ge::GRAPH_SUCCESS;
 }

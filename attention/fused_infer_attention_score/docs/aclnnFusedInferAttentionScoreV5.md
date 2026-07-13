@@ -154,15 +154,13 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         <td>公式中的输入K。</td>
         <td>
         <ul>
-            <li>MXFP8 PagedAttention场景下，kv cache排布为BnNBsD/NZ时支持0轴和1轴非连续。</li>
-            <li>GQA全量化PagedAttention场景下，kv cache排布为BnNBsD时支持0轴和1轴非连续。</li>
-            <li>其他场景均不支持非连续tensor。</li>
+            <li>不支持非连续tensor。</li>
         </ul>
         </td>
         <td>FLOAT16、BFLOAT16、INT8、HIFLOAT8、FLOAT8_E4M3FN、INT4(INT32)、FLOAT4_E2M1</td>
         <td>ND</td>
         <td>见参数inputLayout</td>
-        <td>-</td>
+        <td>×</td>
     </tr>
     <tr>
         <td>value</td>
@@ -170,15 +168,13 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         <td>公式中的输入V。</td>
         <td>
         <ul>
-            <li>MXFP8 PagedAttention场景下，kv cache排布为BnNBsD/NZ时支持0轴和1轴非连续。</li>
-            <li>GQA全量化PagedAttention场景下，kv cache排布为BnNBsD时支持0轴和1轴非连续。</li>
-            <li>其他场景均不支持非连续tensor。</li>
+            <li>不支持非连续tensor。</li>
         </ul>
         </td>
         <td>FLOAT16、BFLOAT16、INT8、HIFLOAT8、FLOAT8_E4M3FN、INT4(INT32)、FLOAT4_E2M1</td>
         <td>ND</td>
         <td>见参数inputLayout</td>
-        <td>-</td>
+        <td>×</td>
     </tr>
     <tr>
         <td>pseShiftOptional</td>
@@ -405,9 +401,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         <ul>
             <li>不支持空Tensor。</li>
             <li>不使用该功能时可传入nullptr。</li>
-            <li>MXFP8 PagedAttention场景下，kv cache排布为BnNBsD/NZ时支持0轴和1轴非连续。</li>
-            <li>GQA全量化PagedAttention场景下，kv cache排布为BnNBsD时支持0轴和1轴非连续。</li>
-            <li>其他场景均不支持非连续tensor。</li>
+            <li>不支持非连续tensor。</li>
             <li>支持per-tensor，per-channel，per-token，per-token-group，per-tensor叠加per-head，per-token叠加per-head，per-token叠加使用page attention模式管理scale/offset、per-token叠加per-head并使用page attention模式管理scale/offset和per-token-group。</li>
             <li>综合约束请见<a href="#约束说明">约束说明</a>。</li>
         </ul>
@@ -415,7 +409,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         <td>FLOAT16、BFLOAT16、FLOAT32、FLOAT8_E8M0</td>
         <td>ND</td>
         <td>见<a href="#约束说明">约束说明</a></td>
-        <td>-</td>
+        <td>×</td>
     </tr>
     <tr> 
         <td>keyAntiquantOffsetOptional</td>
@@ -443,7 +437,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         <ul>
             <li>不支持空Tensor。</li>
             <li>不使用该功能时可传入nullptr。</li>
-            <li>MXFP8 PagedAttention场景下，kv cache排布为BnNBsD/NZ时支持0轴和1轴非连续。其他场景均不支持非连续tensor。</li>
+            <li>不支持非连续tensor。</li>
             <li>支持per-tensor，per-channel，per-token，per-tensor叠加per-head，per-token叠加per-head，per-token叠加使用page attention模式管理scale/offset、per-token叠加per head并使用page attention模式管理scale/offset和per-token-group。</li>
             <li>综合约束请见<a href="#约束说明">约束说明</a>。</li>
         </ul>
@@ -451,7 +445,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         <td>FLOAT16、BFLOAT16、FLOAT32、FLOAT8_E8M0</td>
         <td>ND</td>
         <td>见<a href="#约束说明">约束说明</a></td>
-        <td>-</td>
+        <td>×</td>
     </tr>
     <tr> 
         <td>valueAntiquantOffsetOptional</td>
@@ -553,14 +547,14 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         <td>
         <ul>
             <li>不支持空Tensor。</li>
-            <li>MXFP8 PagedAttention场景下，kv cache排布为BnNBsD/NZ时支持0轴和1轴非连续。其他场景均不支持非连续tensor。</li>
+            <li>不支持非连续tensor。</li>
             <li>综合约束请见<a href="#约束说明">约束说明</a>。</li>
         </ul>
         </td>
         <td>FLOAT16、BFLOAT16</td>
         <td>ND</td>
         <td>keyRope的shape中d为64，其余维度与key一致</td>
-        <td>-</td>
+        <td>×</td>
     </tr>
     <tr>
         <td>keyRopeAntiquantScaleOptional</td>
