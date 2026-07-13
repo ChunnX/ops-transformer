@@ -24,7 +24,7 @@ ge::graphStatus CheckSoftmaxMaxShape(const gert::TilingContext *context, int64_t
                                      bool isQuant)
 {
     auto softmaxMaxShape = context->GetOptionalInputShape(static_cast<size_t>(InputIndex::SOFTMAX_MAX));
-    if (softmaxMaxShape == nullptr) {
+    if (softmaxMaxShape == nullptr) { 
         return ge::GRAPH_SUCCESS;
     }
     auto softmaxMaxShapeDim = softmaxMaxShape->GetStorageShape().GetDimNum();
