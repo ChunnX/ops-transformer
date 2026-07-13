@@ -142,12 +142,13 @@ static aclnnStatus ValidateParams(const aclTensor *query,
 }
 
 static aclnnStatus MakeContiguous(const aclTensor *&query,
-                                  const aclTensor *&key,
-                                  const aclTensor *&value,
-                                  const aclTensor *&blockSparseMaskOptional,
-                                  const aclTensor *&attenMaskOptional,
-                                  const aclTensor *&blockTableOptional,
-                                  aclOpExecutor *executor)
+                                   const aclTensor *&key,
+                                   const aclTensor *&value,
+                                   const aclTensor *&blockSparseMaskOptional,
+                                   const aclTensor *&attenMaskOptional,
+                                   const aclTensor *&blockTableOptional,
+                                   const aclTensor *&blockEffRowsOptional,
+                                   aclOpExecutor *executor)
 {
     query = l0op::Contiguous(query, executor);
     CHECK_RET(query != nullptr, ACLNN_ERR_PARAM_NULLPTR);
@@ -157,7 +158,6 @@ static aclnnStatus MakeContiguous(const aclTensor *&query,
 
     value = l0op::Contiguous(value, executor);
     CHECK_RET(value != nullptr, ACLNN_ERR_PARAM_NULLPTR);
-    // 新增blockSparseMaskOptional非空校验且必须为四维
     if (blockSparseMaskOptional != nullptr) {
         blockSparseMaskOptional = l0op::Contiguous(blockSparseMaskOptional, executor);
         CHECK_RET(blockSparseMaskOptional != nullptr, ACLNN_ERR_INNER_NULLPTR);
@@ -175,6 +175,23 @@ static aclnnStatus MakeContiguous(const aclTensor *&query,
     if (blockTableOptional != nullptr) {
         blockTableOptional = l0op::Contiguous(blockTableOptional, executor);
         CHECK_RET(blockTableOptional != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    }
+
+    if (blockEffRowsOptional != nullptr) {
+        blockEffRowsOptional = l0op::Contiguous(blockEffRowsOptional, executor);
+        CHECK_RET(blockEffRowsOptional != nullptr, ACLNN_ERR_INNER_NULLPTR);
+        if (blockEffRowsOptional->GetStorageShape().GetDimNum() != 4) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "blockEffRows must be 4D tensor");
+            return ACLNN_ERR_PARAM_INVALID;
+        }
+        if (blockEffRowsOptional->GetDataType() != DataType::DT_INT32) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "blockEffRows must be INT32");
+            return ACLNN_ERR_PARAM_INVALID;
+        }
+        if (blockSparseMaskOptional == nullptr) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "blockEffRows depends on blockSparseMask, which is not provided");
+            return ACLNN_ERR_PARAM_INVALID;
+        }
     }
 
     return ACLNN_SUCCESS;
@@ -215,6 +232,7 @@ __attribute__((visibility("default"))) aclnnStatus aclnnBlockSparseAttentionGetW
     const aclIntArray *actualSeqLengthsOptional,
     const aclIntArray *actualSeqLengthsKvOptional,
     const aclTensor *blockTableOptional,
+    const aclTensor *blockEffRowsOptional,
     char *qInputLayout,
     char *kvInputLayout,
     int64_t numKeyValueHeads,
@@ -240,29 +258,27 @@ __attribute__((visibility("default"))) aclnnStatus aclnnBlockSparseAttentionGetW
     if (ret != ACLNN_SUCCESS) {
         return ret;
     }
-    // 去掉了idx ,idxnums
     L2_DFX_PHASE_1(aclnnBlockSparseAttention,
                    DFX_IN(query, key, value, blockSparseMask, attenMaskOptional, blockShape, actualSeqLengthsOptional,
-                          actualSeqLengthsKvOptional, blockTableOptional, qInputLayout, kvInputLayout, numKeyValueHeads,
+                          actualSeqLengthsKvOptional, blockTableOptional, blockEffRowsOptional, qInputLayout, kvInputLayout, numKeyValueHeads,
                           maskType, scaleValue, innerPrecise, blockSize, preTokens, nextTokens, softmaxLseFlag),
                    DFX_OUT(attentionOut, softmaxLseOptional));
 
     auto uniqueExecutor = CREATE_EXECUTOR();
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_NULLPTR);
     auto *executorImpl = uniqueExecutor.get();
-    // 新增blockSparseMaskOptional参数
     ret = MakeContiguous(query, key, value, blockSparseMask, attenMaskOptional, blockTableOptional,
-                         executorImpl);
+                         blockEffRowsOptional, executorImpl);
     if (ret != ACLNN_SUCCESS) {
         return ret;
     }
     
     string qInputLayoutStr = ConvertLayoutString(qInputLayout);
     string kvInputLayoutStr = ConvertLayoutString(kvInputLayout);
-    // 新增blockSparseMaskOptional参数
     auto outputs = l0op::BlockSparseAttention(
         query, key, value, blockSparseMask, attenMaskOptional, blockShape, actualSeqLengthsOptional,
-        actualSeqLengthsKvOptional, blockTableOptional, nullptr, nullptr, nullptr, qInputLayoutStr.c_str(),
+        actualSeqLengthsKvOptional, blockTableOptional, nullptr, nullptr, nullptr, blockEffRowsOptional,
+        qInputLayoutStr.c_str(),
         kvInputLayoutStr.c_str(), numKeyValueHeads, maskType, scaleValue, innerPrecise, blockSize, preTokens,
         nextTokens, softmaxLseFlag, attentionOut, executorImpl);
     if (outputs[0] == nullptr || outputs[1] == nullptr) {
