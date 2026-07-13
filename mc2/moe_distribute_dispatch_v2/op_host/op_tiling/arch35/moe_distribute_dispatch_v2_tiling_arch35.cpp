@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file moe_distribute_dispatch_tiling_arch35.cpp
+ * \file moe_distribute_dispatch_v2_tiling_arch35.cpp
  * \brief
  */
 
@@ -33,7 +33,6 @@
 #include "register/tilingdata_base.h"
 #include "op_host/op_tiling/mc2_tiling_utils.h"
 #include "../../../op_kernel/moe_distribute_dispatch_v2_tiling.h"
-#include "../../../op_kernel/moe_distribute_dispatch_v2_tiling_key.h"
 #include "mc2_log_compat.h"
 using namespace Mc2Tiling;
 using namespace AscendC;
@@ -384,7 +383,8 @@ inline uint32_t CheckQuantModeAndExpandXType(const gert::TilingContext *context,
 static ge::graphStatus CheckQuantModeAndScales(const gert::TilingContext *context, const char *nodeName,
     bool isScales, const uint32_t quantMode)
 {
-    if (isScales && (quantMode == static_cast<uint32_t>(QuantModeA5::MX_QUANT))) {
+    if (isScales && ((quantMode == static_cast<uint32_t>(QuantModeA5::MX_QUANT)) ||
+        (quantMode == static_cast<uint32_t>(QuantModeA5::MX_QUANT_CLIP)))) {
         std::string reason = "scales must be nullptr when quantMode is MX_QUANT";
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "scales",
             "provided", reason.c_str());
@@ -1117,7 +1117,8 @@ static bool CheckDistinctTensorDataType(const gert::TilingContext *context, cons
     if (quantMode == static_cast<uint32_t>(QuantModeA5::NON_QUANT)) {
         OP_TILING_CHECK(!CheckTensorDataTypeNonQuant(context, nodeName, isScales, config),
             OP_LOGE(nodeName, "CheckTensorDataType for nonquant mode failed."), return false);
-    } else if (quantMode == static_cast<uint32_t>(QuantModeA5::MX_QUANT)) {
+    } else if ((quantMode == static_cast<uint32_t>(QuantModeA5::MX_QUANT)) ||
+        (quantMode == static_cast<uint32_t>(QuantModeA5::MX_QUANT_CLIP))) {
         OP_TILING_CHECK(!CheckTensorDataTypeMxfp8(context, nodeName, config),
             OP_LOGE(nodeName, "CheckTensorDataType for mx quant mode failed."), return false);
     } else {
@@ -1265,11 +1266,19 @@ ge::graphStatus MoeDistributeDispatchV2TilingFuncA5::CheckQuantModePtr(
     const int64_t* quantModePtr, const char *nodeName)
 {
     OP_TILING_CHECK((*quantModePtr < static_cast<int64_t>(QuantModeA5::NON_QUANT)) ||
-    (*quantModePtr > static_cast<int64_t>(QuantModeA5::MX_QUANT)),
+    (*quantModePtr > static_cast<int64_t>(QuantModeA5::MX_QUANT_CLIP)),
     OP_LOGE_FOR_INVALID_VALUE(nodeName, "quantMode", std::to_string(*quantModePtr).c_str(),
         std::string("[") + std::to_string(static_cast<int64_t>(QuantModeA5::NON_QUANT)) + "," +
-        std::to_string(static_cast<int64_t>(QuantModeA5::MX_QUANT)) + std::string("]").c_str()), return ge::GRAPH_FAILED);
+        std::to_string(static_cast<int64_t>(QuantModeA5::MX_QUANT_CLIP)) + std::string("]").c_str()),
+        return ge::GRAPH_FAILED);
 
+    return ge::GRAPH_SUCCESS;
+}
+
+struct MoeDistributeDispatchCompileInfo {};
+static ge::graphStatus TilingParseForMoeDistributeDispatchV2(gert::TilingParseContext *context)
+{
+    (void)context;
     return ge::GRAPH_SUCCESS;
 }
 
@@ -1280,5 +1289,6 @@ static ge::graphStatus MoeDistributeDispatchV2TilingFuncImpl(gert::TilingContext
 }
 
 IMPL_OP_OPTILING(MoeDistributeDispatchV2)
-    .Tiling(MoeDistributeDispatchV2TilingFuncImpl);
+    .Tiling(MoeDistributeDispatchV2TilingFuncImpl)
+    .TilingParse<MoeDistributeDispatchCompileInfo>(TilingParseForMoeDistributeDispatchV2);
 } // namespace optiling

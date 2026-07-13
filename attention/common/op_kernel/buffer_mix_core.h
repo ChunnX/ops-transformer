@@ -23,11 +23,11 @@
 #endif
 using namespace AscendC;
 namespace fa_base_matmul {
-__BLOCK_LOCAL__ __inline__ uint32_t idCounterNum;
-#define MAKE_ID ((++idCounterNum) % 11)
-
 // 核间同步中，AIC(flagId 0-10)对应AIV0(flagId 0-10)，对应AIV1(flagId 16-26)
 #define AIV0_AIV1_OFFSET 16
+
+__BLOCK_LOCAL__ __inline__ uint32_t idCounterNum;
+#define MAKE_ID ((++idCounterNum) % 11)
 
 enum class BufferType {
     L1 = 0,
@@ -192,16 +192,16 @@ public:
     }
 
     template <typename T>
-    __aicore__ inline TargetTensorType<T> GetTensor()
-    {
-        return tensor_.template ReinterpretCast<T>();
-    }
-
-    template <typename T>
     __aicore__ inline TargetTensorType<T> GetTensor(uint64_t startindex)
     {
         TargetTensorType<T> tmpTensor = tensor_.template ReinterpretCast<T>();
         return tmpTensor[startindex];
+    }
+
+    template <typename T>
+    __aicore__ inline TargetTensorType<T> GetTensor()
+    {
+        return tensor_.template ReinterpretCast<T>();
     }
 
 private:

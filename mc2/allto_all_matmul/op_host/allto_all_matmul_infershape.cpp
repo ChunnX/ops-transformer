@@ -62,7 +62,6 @@ constexpr int64_t OUTPUT_INFER_SHAPE = 2;
 constexpr int64_t SCALE_LAST_DIM = 2;
 constexpr int64_t AXIS_K_UPPER_LIMIT = 65535;
 const std::vector<int64_t> SUPPORT_RANK_NUM{2, 4, 8, 16};
-constexpr int64_t UINT8_TO_FLOAT4_FACTOR = 2;
 
 static const char *INNER_DEBUG = "MC2: AlltoAllMatmul InferShape Debug";
 
@@ -201,12 +200,7 @@ static ge::graphStatus InferAllToAllOutShapeAlltoAllMatmul(gert::InferShapeConte
             int64_t allToAllOutFirstDim = CeilDiv(shape.m, shape.rankNum);
             int64_t allToAllOutSecondDim = shape.k1 * shape.rankNum;
             allToAllOut->SetDim(0U, allToAllOutFirstDim);
-            // 与_meta_registration中推导的all_to_all_out的shape和dtype对应，这里需要针对float4类型做处理
-            if (x1Type == ge::DataType::DT_FLOAT4_E2M1 || x1Type == ge::DataType::DT_FLOAT4_E1M2) {
-                allToAllOut->SetDim(1U, static_cast<int64_t>(CeilDiv(allToAllOutSecondDim, UINT8_TO_FLOAT4_FACTOR)));
-            } else {
-                allToAllOut->SetDim(1U, allToAllOutSecondDim);
-            }
+            allToAllOut->SetDim(1U, allToAllOutSecondDim);
             OP_LOGI(INNER_DEBUG,
                     "Allto all matmul all_to_all_out shape after infer shape, outputDim: %ld, m: %ld n: %ld.",
                     OUTPUT_INFER_SHAPE, allToAllOutFirstDim, allToAllOutSecondDim);

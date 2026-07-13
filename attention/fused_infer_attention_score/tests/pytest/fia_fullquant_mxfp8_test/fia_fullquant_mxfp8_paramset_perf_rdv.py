@@ -807,7 +807,7 @@ TEST_PARAMS = {
     # ======================================================================
     # Decode: B=1,2,4,8,16,32,64,128  N_q=64  N_kv=8  QS=4  KVS=10240
     # ======================================================================
-    "PA_NZ_B1_QS4_KVS10240_Nq64_Nkv8_D128_SP0_Decode": {
+    "PA_NZ_B1_QS4_KVS10240_Nq64_Nkv8_D128_SP3_Decode": {
         "B": [1],
         "N_q": [64],
         "N_kv": [8],
@@ -817,13 +817,13 @@ TEST_PARAMS = {
         "enable_pa": [True],
         "kv_cache_layout": ["PA_NZ"],
         "block_size": [512],
-        "sparse_mode": [0],
+        "sparse_mode": [3],
         "q_scale_layout": ["N2TGD"],
         "p_scale": [1.0],
         "enable_lse": [False],
         "enable_rope": [False],
     },
-    "PA_NZ_B2_QS4_KVS10240_Nq64_Nkv8_D128_SP0_Decode": {
+    "PA_NZ_B2_QS4_KVS10240_Nq64_Nkv8_D128_SP3_Decode": {
         "B": [2],
         "N_q": [64],
         "N_kv": [8],
@@ -833,13 +833,13 @@ TEST_PARAMS = {
         "enable_pa": [True],
         "kv_cache_layout": ["PA_NZ"],
         "block_size": [512],
-        "sparse_mode": [0],
+        "sparse_mode": [3],
         "q_scale_layout": ["N2TGD"],
         "p_scale": [1.0],
         "enable_lse": [False],
         "enable_rope": [False],
     },
-    "PA_NZ_B4_QS4_KVS10240_Nq64_Nkv8_D128_SP0_Decode": {
+    "PA_NZ_B4_QS4_KVS10240_Nq64_Nkv8_D128_SP3_Decode": {
         "B": [4],
         "N_q": [64],
         "N_kv": [8],
@@ -849,13 +849,13 @@ TEST_PARAMS = {
         "enable_pa": [True],
         "kv_cache_layout": ["PA_NZ"],
         "block_size": [512],
-        "sparse_mode": [0],
+        "sparse_mode": [3],
         "q_scale_layout": ["N2TGD"],
         "p_scale": [1.0],
         "enable_lse": [False],
         "enable_rope": [False],
     },
-    "PA_NZ_B8_QS4_KVS10240_Nq64_Nkv8_D128_SP0_Decode": {
+    "PA_NZ_B8_QS4_KVS10240_Nq64_Nkv8_D128_SP3_Decode": {
         "B": [8],
         "N_q": [64],
         "N_kv": [8],
@@ -865,13 +865,13 @@ TEST_PARAMS = {
         "enable_pa": [True],
         "kv_cache_layout": ["PA_NZ"],
         "block_size": [512],
-        "sparse_mode": [0],
+        "sparse_mode": [3],
         "q_scale_layout": ["N2TGD"],
         "p_scale": [1.0],
         "enable_lse": [False],
         "enable_rope": [False],
     },
-    "PA_NZ_B16_QS4_KVS10240_Nq64_Nkv8_D128_SP0_Decode": {
+    "PA_NZ_B16_QS4_KVS10240_Nq64_Nkv8_D128_SP3_Decode": {
         "B": [16],
         "N_q": [64],
         "N_kv": [8],
@@ -881,13 +881,13 @@ TEST_PARAMS = {
         "enable_pa": [True],
         "kv_cache_layout": ["PA_NZ"],
         "block_size": [512],
-        "sparse_mode": [0],
+        "sparse_mode": [3],
         "q_scale_layout": ["N2TGD"],
         "p_scale": [1.0],
         "enable_lse": [False],
         "enable_rope": [False],
     },
-    "PA_NZ_B32_QS4_KVS10240_Nq64_Nkv8_D128_SP0_Decode": {
+    "PA_NZ_B32_QS4_KVS10240_Nq64_Nkv8_D128_SP3_Decode": {
         "B": [32],
         "N_q": [64],
         "N_kv": [8],
@@ -897,13 +897,13 @@ TEST_PARAMS = {
         "enable_pa": [True],
         "kv_cache_layout": ["PA_NZ"],
         "block_size": [512],
-        "sparse_mode": [0],
+        "sparse_mode": [3],
         "q_scale_layout": ["N2TGD"],
         "p_scale": [1.0],
         "enable_lse": [False],
         "enable_rope": [False],
     },
-    "PA_NZ_B64_QS4_KVS10240_Nq64_Nkv8_D128_SP0_Decode": {
+    "PA_NZ_B64_QS4_KVS10240_Nq64_Nkv8_D128_SP3_Decode": {
         "B": [64],
         "N_q": [64],
         "N_kv": [8],
@@ -913,13 +913,13 @@ TEST_PARAMS = {
         "enable_pa": [True],
         "kv_cache_layout": ["PA_NZ"],
         "block_size": [512],
-        "sparse_mode": [0],
+        "sparse_mode": [3],
         "q_scale_layout": ["N2TGD"],
         "p_scale": [1.0],
         "enable_lse": [False],
         "enable_rope": [False],
     },
-    "PA_NZ_B128_QS4_KVS10240_Nq64_Nkv8_D128_SP0_Decode": {
+    "PA_NZ_B128_QS4_KVS10240_Nq64_Nkv8_D128_SP3_Decode": {
         "B": [128],
         "N_q": [64],
         "N_kv": [8],
@@ -929,7 +929,7 @@ TEST_PARAMS = {
         "enable_pa": [True],
         "kv_cache_layout": ["PA_NZ"],
         "block_size": [512],
-        "sparse_mode": [0],
+        "sparse_mode": [3],
         "q_scale_layout": ["N2TGD"],
         "p_scale": [1.0],
         "enable_lse": [False],
@@ -938,7 +938,7 @@ TEST_PARAMS = {
     # ======================================================================
     # Decode: B=1,2,4,8,16,32,64  N_q=80  N_kv=8  QS=3  KVS=10240
     # ======================================================================
-    "PA_NZ_B1_QS3_KVS10240_Nq80_Nkv8_D128_SP0_Decode": {
+    "PA_NZ_B1_QS3_KVS10240_Nq80_Nkv8_D128_SP3_Decode": {
         "B": [1],
         "N_q": [80],
         "N_kv": [8],
@@ -948,13 +948,13 @@ TEST_PARAMS = {
         "enable_pa": [True],
         "kv_cache_layout": ["PA_NZ"],
         "block_size": [512],
-        "sparse_mode": [0],
+        "sparse_mode": [3],
         "q_scale_layout": ["N2TGD"],
         "p_scale": [1.0],
         "enable_lse": [False],
         "enable_rope": [False],
     },
-    "PA_NZ_B2_QS3_KVS10240_Nq80_Nkv8_D128_SP0_Decode": {
+    "PA_NZ_B2_QS3_KVS10240_Nq80_Nkv8_D128_SP3_Decode": {
         "B": [2],
         "N_q": [80],
         "N_kv": [8],
@@ -964,13 +964,13 @@ TEST_PARAMS = {
         "enable_pa": [True],
         "kv_cache_layout": ["PA_NZ"],
         "block_size": [512],
-        "sparse_mode": [0],
+        "sparse_mode": [3],
         "q_scale_layout": ["N2TGD"],
         "p_scale": [1.0],
         "enable_lse": [False],
         "enable_rope": [False],
     },
-    "PA_NZ_B4_QS3_KVS10240_Nq80_Nkv8_D128_SP0_Decode": {
+    "PA_NZ_B4_QS3_KVS10240_Nq80_Nkv8_D128_SP3_Decode": {
         "B": [4],
         "N_q": [80],
         "N_kv": [8],
@@ -980,13 +980,13 @@ TEST_PARAMS = {
         "enable_pa": [True],
         "kv_cache_layout": ["PA_NZ"],
         "block_size": [512],
-        "sparse_mode": [0],
+        "sparse_mode": [3],
         "q_scale_layout": ["N2TGD"],
         "p_scale": [1.0],
         "enable_lse": [False],
         "enable_rope": [False],
     },
-    "PA_NZ_B8_QS3_KVS10240_Nq80_Nkv8_D128_SP0_Decode": {
+    "PA_NZ_B8_QS3_KVS10240_Nq80_Nkv8_D128_SP3_Decode": {
         "B": [8],
         "N_q": [80],
         "N_kv": [8],
@@ -996,13 +996,13 @@ TEST_PARAMS = {
         "enable_pa": [True],
         "kv_cache_layout": ["PA_NZ"],
         "block_size": [512],
-        "sparse_mode": [0],
+        "sparse_mode": [3],
         "q_scale_layout": ["N2TGD"],
         "p_scale": [1.0],
         "enable_lse": [False],
         "enable_rope": [False],
     },
-    "PA_NZ_B16_QS3_KVS10240_Nq80_Nkv8_D128_SP0_Decode": {
+    "PA_NZ_B16_QS3_KVS10240_Nq80_Nkv8_D128_SP3_Decode": {
         "B": [16],
         "N_q": [80],
         "N_kv": [8],
@@ -1012,13 +1012,13 @@ TEST_PARAMS = {
         "enable_pa": [True],
         "kv_cache_layout": ["PA_NZ"],
         "block_size": [512],
-        "sparse_mode": [0],
+        "sparse_mode": [3],
         "q_scale_layout": ["N2TGD"],
         "p_scale": [1.0],
         "enable_lse": [False],
         "enable_rope": [False],
     },
-    "PA_NZ_B32_QS3_KVS10240_Nq80_Nkv8_D128_SP0_Decode": {
+    "PA_NZ_B32_QS3_KVS10240_Nq80_Nkv8_D128_SP3_Decode": {
         "B": [32],
         "N_q": [80],
         "N_kv": [8],
@@ -1028,13 +1028,13 @@ TEST_PARAMS = {
         "enable_pa": [True],
         "kv_cache_layout": ["PA_NZ"],
         "block_size": [512],
-        "sparse_mode": [0],
+        "sparse_mode": [3],
         "q_scale_layout": ["N2TGD"],
         "p_scale": [1.0],
         "enable_lse": [False],
         "enable_rope": [False],
     },
-    "PA_NZ_B64_QS3_KVS10240_Nq80_Nkv8_D128_SP0_Decode": {
+    "PA_NZ_B64_QS3_KVS10240_Nq80_Nkv8_D128_SP3_Decode": {
         "B": [64],
         "N_q": [80],
         "N_kv": [8],
@@ -1044,7 +1044,7 @@ TEST_PARAMS = {
         "enable_pa": [True],
         "kv_cache_layout": ["PA_NZ"],
         "block_size": [512],
-        "sparse_mode": [0],
+        "sparse_mode": [3],
         "q_scale_layout": ["N2TGD"],
         "p_scale": [1.0],
         "enable_lse": [False],
@@ -1053,7 +1053,7 @@ TEST_PARAMS = {
     # ======================================================================
     # Decode: B=1,2,4,8,16,32,64  N_q=40  N_kv=8  QS=2  KVS=16384
     # ======================================================================
-    "PA_NZ_B1_QS2_KVS16384_Nq40_Nkv8_D128_SP0_Decode": {
+    "PA_NZ_B1_QS2_KVS16384_Nq40_Nkv8_D128_SP3_Decode": {
         "B": [1],
         "N_q": [40],
         "N_kv": [8],
@@ -1063,13 +1063,13 @@ TEST_PARAMS = {
         "enable_pa": [True],
         "kv_cache_layout": ["PA_NZ"],
         "block_size": [512],
-        "sparse_mode": [0],
+        "sparse_mode": [3],
         "q_scale_layout": ["N2TGD"],
         "p_scale": [1.0],
         "enable_lse": [False],
         "enable_rope": [False],
     },
-    "PA_NZ_B2_QS2_KVS16384_Nq40_Nkv8_D128_SP0_Decode": {
+    "PA_NZ_B2_QS2_KVS16384_Nq40_Nkv8_D128_SP3_Decode": {
         "B": [2],
         "N_q": [40],
         "N_kv": [8],
@@ -1079,13 +1079,13 @@ TEST_PARAMS = {
         "enable_pa": [True],
         "kv_cache_layout": ["PA_NZ"],
         "block_size": [512],
-        "sparse_mode": [0],
+        "sparse_mode": [3],
         "q_scale_layout": ["N2TGD"],
         "p_scale": [1.0],
         "enable_lse": [False],
         "enable_rope": [False],
     },
-    "PA_NZ_B4_QS2_KVS16384_Nq40_Nkv8_D128_SP0_Decode": {
+    "PA_NZ_B4_QS2_KVS16384_Nq40_Nkv8_D128_SP3_Decode": {
         "B": [4],
         "N_q": [40],
         "N_kv": [8],
@@ -1095,13 +1095,13 @@ TEST_PARAMS = {
         "enable_pa": [True],
         "kv_cache_layout": ["PA_NZ"],
         "block_size": [512],
-        "sparse_mode": [0],
+        "sparse_mode": [3],
         "q_scale_layout": ["N2TGD"],
         "p_scale": [1.0],
         "enable_lse": [False],
         "enable_rope": [False],
     },
-    "PA_NZ_B8_QS2_KVS16384_Nq40_Nkv8_D128_SP0_Decode": {
+    "PA_NZ_B8_QS2_KVS16384_Nq40_Nkv8_D128_SP3_Decode": {
         "B": [8],
         "N_q": [40],
         "N_kv": [8],
@@ -1111,13 +1111,13 @@ TEST_PARAMS = {
         "enable_pa": [True],
         "kv_cache_layout": ["PA_NZ"],
         "block_size": [512],
-        "sparse_mode": [0],
+        "sparse_mode": [3],
         "q_scale_layout": ["N2TGD"],
         "p_scale": [1.0],
         "enable_lse": [False],
         "enable_rope": [False],
     },
-    "PA_NZ_B16_QS2_KVS16384_Nq40_Nkv8_D128_SP0_Decode": {
+    "PA_NZ_B16_QS2_KVS16384_Nq40_Nkv8_D128_SP3_Decode": {
         "B": [16],
         "N_q": [40],
         "N_kv": [8],
@@ -1127,13 +1127,13 @@ TEST_PARAMS = {
         "enable_pa": [True],
         "kv_cache_layout": ["PA_NZ"],
         "block_size": [512],
-        "sparse_mode": [0],
+        "sparse_mode": [3],
         "q_scale_layout": ["N2TGD"],
         "p_scale": [1.0],
         "enable_lse": [False],
         "enable_rope": [False],
     },
-    "PA_NZ_B32_QS2_KVS16384_Nq40_Nkv8_D128_SP0_Decode": {
+    "PA_NZ_B32_QS2_KVS16384_Nq40_Nkv8_D128_SP3_Decode": {
         "B": [32],
         "N_q": [40],
         "N_kv": [8],
@@ -1143,13 +1143,13 @@ TEST_PARAMS = {
         "enable_pa": [True],
         "kv_cache_layout": ["PA_NZ"],
         "block_size": [512],
-        "sparse_mode": [0],
+        "sparse_mode": [3],
         "q_scale_layout": ["N2TGD"],
         "p_scale": [1.0],
         "enable_lse": [False],
         "enable_rope": [False],
     },
-    "PA_NZ_B64_QS2_KVS16384_Nq40_Nkv8_D128_SP0_Decode": {
+    "PA_NZ_B64_QS2_KVS16384_Nq40_Nkv8_D128_SP3_Decode": {
         "B": [64],
         "N_q": [40],
         "N_kv": [8],
@@ -1159,7 +1159,7 @@ TEST_PARAMS = {
         "enable_pa": [True],
         "kv_cache_layout": ["PA_NZ"],
         "block_size": [512],
-        "sparse_mode": [0],
+        "sparse_mode": [3],
         "q_scale_layout": ["N2TGD"],
         "p_scale": [1.0],
         "enable_lse": [False],
@@ -1168,7 +1168,7 @@ TEST_PARAMS = {
     # ======================================================================
     # Decode: B=1,2,4,8,16,32,64  N_q=8  N_kv=8  QS=1  KVS=16384
     # ======================================================================
-    "PA_NZ_B1_QS1_KVS16384_Nq8_Nkv8_D128_SP0_Decode": {
+    "PA_NZ_B1_QS1_KVS16384_Nq8_Nkv8_D128_SP3_Decode": {
         "B": [1],
         "N_q": [8],
         "N_kv": [8],
@@ -1178,13 +1178,13 @@ TEST_PARAMS = {
         "enable_pa": [True],
         "kv_cache_layout": ["PA_NZ"],
         "block_size": [512],
-        "sparse_mode": [0],
+        "sparse_mode": [3],
         "q_scale_layout": ["N2TGD"],
         "p_scale": [1.0],
         "enable_lse": [False],
         "enable_rope": [False],
     },
-    "PA_NZ_B2_QS1_KVS16384_Nq8_Nkv8_D128_SP0_Decode": {
+    "PA_NZ_B2_QS1_KVS16384_Nq8_Nkv8_D128_SP3_Decode": {
         "B": [2],
         "N_q": [8],
         "N_kv": [8],
@@ -1194,13 +1194,13 @@ TEST_PARAMS = {
         "enable_pa": [True],
         "kv_cache_layout": ["PA_NZ"],
         "block_size": [512],
-        "sparse_mode": [0],
+        "sparse_mode": [3],
         "q_scale_layout": ["N2TGD"],
         "p_scale": [1.0],
         "enable_lse": [False],
         "enable_rope": [False],
     },
-    "PA_NZ_B4_QS1_KVS16384_Nq8_Nkv8_D128_SP0_Decode": {
+    "PA_NZ_B4_QS1_KVS16384_Nq8_Nkv8_D128_SP3_Decode": {
         "B": [4],
         "N_q": [8],
         "N_kv": [8],
@@ -1210,13 +1210,13 @@ TEST_PARAMS = {
         "enable_pa": [True],
         "kv_cache_layout": ["PA_NZ"],
         "block_size": [512],
-        "sparse_mode": [0],
+        "sparse_mode": [3],
         "q_scale_layout": ["N2TGD"],
         "p_scale": [1.0],
         "enable_lse": [False],
         "enable_rope": [False],
     },
-    "PA_NZ_B8_QS1_KVS16384_Nq8_Nkv8_D128_SP0_Decode": {
+    "PA_NZ_B8_QS1_KVS16384_Nq8_Nkv8_D128_SP3_Decode": {
         "B": [8],
         "N_q": [8],
         "N_kv": [8],
@@ -1226,13 +1226,13 @@ TEST_PARAMS = {
         "enable_pa": [True],
         "kv_cache_layout": ["PA_NZ"],
         "block_size": [512],
-        "sparse_mode": [0],
+        "sparse_mode": [3],
         "q_scale_layout": ["N2TGD"],
         "p_scale": [1.0],
         "enable_lse": [False],
         "enable_rope": [False],
     },
-    "PA_NZ_B16_QS1_KVS16384_Nq8_Nkv8_D128_SP0_Decode": {
+    "PA_NZ_B16_QS1_KVS16384_Nq8_Nkv8_D128_SP3_Decode": {
         "B": [16],
         "N_q": [8],
         "N_kv": [8],
@@ -1242,13 +1242,13 @@ TEST_PARAMS = {
         "enable_pa": [True],
         "kv_cache_layout": ["PA_NZ"],
         "block_size": [512],
-        "sparse_mode": [0],
+        "sparse_mode": [3],
         "q_scale_layout": ["N2TGD"],
         "p_scale": [1.0],
         "enable_lse": [False],
         "enable_rope": [False],
     },
-    "PA_NZ_B32_QS1_KVS16384_Nq8_Nkv8_D128_SP0_Decode": {
+    "PA_NZ_B32_QS1_KVS16384_Nq8_Nkv8_D128_SP3_Decode": {
         "B": [32],
         "N_q": [8],
         "N_kv": [8],
@@ -1258,13 +1258,13 @@ TEST_PARAMS = {
         "enable_pa": [True],
         "kv_cache_layout": ["PA_NZ"],
         "block_size": [512],
-        "sparse_mode": [0],
+        "sparse_mode": [3],
         "q_scale_layout": ["N2TGD"],
         "p_scale": [1.0],
         "enable_lse": [False],
         "enable_rope": [False],
     },
-    "PA_NZ_B64_QS1_KVS16384_Nq8_Nkv8_D128_SP0_Decode": {
+    "PA_NZ_B64_QS1_KVS16384_Nq8_Nkv8_D128_SP3_Decode": {
         "B": [64],
         "N_q": [8],
         "N_kv": [8],
@@ -1274,7 +1274,7 @@ TEST_PARAMS = {
         "enable_pa": [True],
         "kv_cache_layout": ["PA_NZ"],
         "block_size": [512],
-        "sparse_mode": [0],
+        "sparse_mode": [3],
         "q_scale_layout": ["N2TGD"],
         "p_scale": [1.0],
         "enable_lse": [False],
@@ -1283,7 +1283,7 @@ TEST_PARAMS = {
     # ======================================================================
     # Decode: B=32  N_q=64  N_kv=8  QS=1/2/3/4  KVS=10240
     # ======================================================================
-    "PA_NZ_B32_QS1_KVS10240_Nq64_Nkv8_D128_SP0_Decode": {
+    "PA_NZ_B32_QS1_KVS10240_Nq64_Nkv8_D128_SP3_Decode": {
         "B": [32],
         "N_q": [64],
         "N_kv": [8],
@@ -1293,13 +1293,13 @@ TEST_PARAMS = {
         "enable_pa": [True],
         "kv_cache_layout": ["PA_NZ"],
         "block_size": [512],
-        "sparse_mode": [0],
+        "sparse_mode": [3],
         "q_scale_layout": ["N2TGD"],
         "p_scale": [1.0],
         "enable_lse": [False],
         "enable_rope": [False],
     },
-    "PA_NZ_B32_QS2_KVS10240_Nq64_Nkv8_D128_SP0_Decode": {
+    "PA_NZ_B32_QS2_KVS10240_Nq64_Nkv8_D128_SP3_Decode": {
         "B": [32],
         "N_q": [64],
         "N_kv": [8],
@@ -1309,13 +1309,13 @@ TEST_PARAMS = {
         "enable_pa": [True],
         "kv_cache_layout": ["PA_NZ"],
         "block_size": [512],
-        "sparse_mode": [0],
+        "sparse_mode": [3],
         "q_scale_layout": ["N2TGD"],
         "p_scale": [1.0],
         "enable_lse": [False],
         "enable_rope": [False],
     },
-    "PA_NZ_B32_QS3_KVS10240_Nq64_Nkv8_D128_SP0_Decode": {
+    "PA_NZ_B32_QS3_KVS10240_Nq64_Nkv8_D128_SP3_Decode": {
         "B": [32],
         "N_q": [64],
         "N_kv": [8],
@@ -1325,13 +1325,13 @@ TEST_PARAMS = {
         "enable_pa": [True],
         "kv_cache_layout": ["PA_NZ"],
         "block_size": [512],
-        "sparse_mode": [0],
+        "sparse_mode": [3],
         "q_scale_layout": ["N2TGD"],
         "p_scale": [1.0],
         "enable_lse": [False],
         "enable_rope": [False],
     },
-    "PA_NZ_B32_QS4_KVS10240_Nq64_Nkv8_D128_SP0_Decode": {
+    "PA_NZ_B32_QS4_KVS10240_Nq64_Nkv8_D128_SP3_Decode": {
         "B": [32],
         "N_q": [64],
         "N_kv": [8],
@@ -1341,7 +1341,7 @@ TEST_PARAMS = {
         "enable_pa": [True],
         "kv_cache_layout": ["PA_NZ"],
         "block_size": [512],
-        "sparse_mode": [0],
+        "sparse_mode": [3],
         "q_scale_layout": ["N2TGD"],
         "p_scale": [1.0],
         "enable_lse": [False],
@@ -1350,7 +1350,7 @@ TEST_PARAMS = {
     # ======================================================================
     # Decode: B=32  N_q=80  N_kv=8  QS=1/2/3/4  KVS unequal (1K,2K,...,32K)
     # ======================================================================
-    "PA_NZ_B32_QS1_KVS_unequal_Nq80_Nkv8_D128_SP0_Decode": {
+    "PA_NZ_B32_QS1_KVS_unequal_Nq80_Nkv8_D128_SP3_Decode": {
         "B": [32],
         "N_q": [80],
         "N_kv": [8],
@@ -1363,13 +1363,13 @@ TEST_PARAMS = {
         "enable_pa": [True],
         "kv_cache_layout": ["PA_NZ"],
         "block_size": [512],
-        "sparse_mode": [0],
+        "sparse_mode": [3],
         "q_scale_layout": ["N2TGD"],
         "p_scale": [1.0],
         "enable_lse": [False],
         "enable_rope": [False],
     },
-    "PA_NZ_B32_QS2_KVS_unequal_Nq80_Nkv8_D128_SP0_Decode": {
+    "PA_NZ_B32_QS2_KVS_unequal_Nq80_Nkv8_D128_SP3_Decode": {
         "B": [32],
         "N_q": [80],
         "N_kv": [8],
@@ -1382,13 +1382,13 @@ TEST_PARAMS = {
         "enable_pa": [True],
         "kv_cache_layout": ["PA_NZ"],
         "block_size": [512],
-        "sparse_mode": [0],
+        "sparse_mode": [3],
         "q_scale_layout": ["N2TGD"],
         "p_scale": [1.0],
         "enable_lse": [False],
         "enable_rope": [False],
     },
-    "PA_NZ_B32_QS3_KVS_unequal_Nq80_Nkv8_D128_SP0_Decode": {
+    "PA_NZ_B32_QS3_KVS_unequal_Nq80_Nkv8_D128_SP3_Decode": {
         "B": [32],
         "N_q": [80],
         "N_kv": [8],
@@ -1401,13 +1401,13 @@ TEST_PARAMS = {
         "enable_pa": [True],
         "kv_cache_layout": ["PA_NZ"],
         "block_size": [512],
-        "sparse_mode": [0],
+        "sparse_mode": [3],
         "q_scale_layout": ["N2TGD"],
         "p_scale": [1.0],
         "enable_lse": [False],
         "enable_rope": [False],
     },
-    "PA_NZ_B32_QS4_KVS_unequal_Nq80_Nkv8_D128_SP0_Decode": {
+    "PA_NZ_B32_QS4_KVS_unequal_Nq80_Nkv8_D128_SP3_Decode": {
         "B": [32],
         "N_q": [80],
         "N_kv": [8],
@@ -1420,7 +1420,7 @@ TEST_PARAMS = {
         "enable_pa": [True],
         "kv_cache_layout": ["PA_NZ"],
         "block_size": [512],
-        "sparse_mode": [0],
+        "sparse_mode": [3],
         "q_scale_layout": ["N2TGD"],
         "p_scale": [1.0],
         "enable_lse": [False],
@@ -1431,7 +1431,7 @@ TEST_PARAMS = {
     # 5 groups with different per-batch KVS distributions
     # ======================================================================
     # Group 1: Linear (step=1024, 512→32256)
-    "PA_NZ_B32_QS2_KVS524288sum_Nq80_Nkv8_D128_SP0_Decode_Linear": {
+    "PA_NZ_B32_QS2_KVS524288sum_Nq80_Nkv8_D128_SP3_Decode_Linear": {
         "B": [32],
         "N_q": [80],
         "N_kv": [8],
@@ -1444,14 +1444,14 @@ TEST_PARAMS = {
         "enable_pa": [True],
         "kv_cache_layout": ["PA_NZ"],
         "block_size": [512],
-        "sparse_mode": [0],
+        "sparse_mode": [3],
         "q_scale_layout": ["N2TGD"],
         "p_scale": [1.0],
         "enable_lse": [False],
         "enable_rope": [False],
     },
     # Group 2: TwoTier (16×8192 + 16×24576)
-    "PA_NZ_B32_QS2_KVS524288sum_Nq80_Nkv8_D128_SP0_Decode_TwoTier": {
+    "PA_NZ_B32_QS2_KVS524288sum_Nq80_Nkv8_D128_SP3_Decode_TwoTier": {
         "B": [32],
         "N_q": [80],
         "N_kv": [8],
@@ -1464,14 +1464,14 @@ TEST_PARAMS = {
         "enable_pa": [True],
         "kv_cache_layout": ["PA_NZ"],
         "block_size": [512],
-        "sparse_mode": [0],
+        "sparse_mode": [3],
         "q_scale_layout": ["N2TGD"],
         "p_scale": [1.0],
         "enable_lse": [False],
         "enable_rope": [False],
     },
     # Group 3: Skewed (24×8192 + 8×40960, ratio 1:5)
-    "PA_NZ_B32_QS2_KVS524288sum_Nq80_Nkv8_D128_SP0_Decode_Skewed": {
+    "PA_NZ_B32_QS2_KVS524288sum_Nq80_Nkv8_D128_SP3_Decode_Skewed": {
         "B": [32],
         "N_q": [80],
         "N_kv": [8],
@@ -1484,14 +1484,14 @@ TEST_PARAMS = {
         "enable_pa": [True],
         "kv_cache_layout": ["PA_NZ"],
         "block_size": [512],
-        "sparse_mode": [0],
+        "sparse_mode": [3],
         "q_scale_layout": ["N2TGD"],
         "p_scale": [1.0],
         "enable_lse": [False],
         "enable_rope": [False],
     },
     # Group 4: LongTail (2×131584 + 30 descending step=512, 16128→1280)
-    "PA_NZ_B32_QS2_KVS524288sum_Nq80_Nkv8_D128_SP0_Decode_LongTail": {
+    "PA_NZ_B32_QS2_KVS524288sum_Nq80_Nkv8_D128_SP3_Decode_LongTail": {
         "B": [32],
         "N_q": [80],
         "N_kv": [8],
@@ -1504,14 +1504,14 @@ TEST_PARAMS = {
         "enable_pa": [True],
         "kv_cache_layout": ["PA_NZ"],
         "block_size": [512],
-        "sparse_mode": [0],
+        "sparse_mode": [3],
         "q_scale_layout": ["N2TGD"],
         "p_scale": [1.0],
         "enable_lse": [False],
         "enable_rope": [False],
     },
     # Group 5: 3Tier (8×8192 + 16×16384 + 8×24576)
-    "PA_NZ_B32_QS2_KVS524288sum_Nq80_Nkv8_D128_SP0_Decode_3Tier": {
+    "PA_NZ_B32_QS2_KVS524288sum_Nq80_Nkv8_D128_SP3_Decode_3Tier": {
         "B": [32],
         "N_q": [80],
         "N_kv": [8],
@@ -1524,7 +1524,7 @@ TEST_PARAMS = {
         "enable_pa": [True],
         "kv_cache_layout": ["PA_NZ"],
         "block_size": [512],
-        "sparse_mode": [0],
+        "sparse_mode": [3],
         "q_scale_layout": ["N2TGD"],
         "p_scale": [1.0],
         "enable_lse": [False],
@@ -1535,7 +1535,7 @@ TEST_PARAMS = {
     # 5 groups with different per-batch KVS distributions
     # ======================================================================
     # Group 1: Linear (step=2048, 17408→48128)
-    "PA_NZ_B16_QS3_KVS524288sum_Nq80_Nkv8_D128_SP0_Decode_Linear": {
+    "PA_NZ_B16_QS3_KVS524288sum_Nq80_Nkv8_D128_SP3_Decode_Linear": {
         "B": [16],
         "N_q": [80],
         "N_kv": [8],
@@ -1546,14 +1546,14 @@ TEST_PARAMS = {
         "enable_pa": [True],
         "kv_cache_layout": ["PA_NZ"],
         "block_size": [512],
-        "sparse_mode": [0],
+        "sparse_mode": [3],
         "q_scale_layout": ["N2TGD"],
         "p_scale": [1.0],
         "enable_lse": [False],
         "enable_rope": [False],
     },
     # Group 2: TwoTier (8×16384 + 8×49152)
-    "PA_NZ_B16_QS3_KVS524288sum_Nq80_Nkv8_D128_SP0_Decode_TwoTier": {
+    "PA_NZ_B16_QS3_KVS524288sum_Nq80_Nkv8_D128_SP3_Decode_TwoTier": {
         "B": [16],
         "N_q": [80],
         "N_kv": [8],
@@ -1564,14 +1564,14 @@ TEST_PARAMS = {
         "enable_pa": [True],
         "kv_cache_layout": ["PA_NZ"],
         "block_size": [512],
-        "sparse_mode": [0],
+        "sparse_mode": [3],
         "q_scale_layout": ["N2TGD"],
         "p_scale": [1.0],
         "enable_lse": [False],
         "enable_rope": [False],
     },
     # Group 3: Skewed (12×16384 + 4×81920, ratio 1:5)
-    "PA_NZ_B16_QS3_KVS524288sum_Nq80_Nkv8_D128_SP0_Decode_Skewed": {
+    "PA_NZ_B16_QS3_KVS524288sum_Nq80_Nkv8_D128_SP3_Decode_Skewed": {
         "B": [16],
         "N_q": [80],
         "N_kv": [8],
@@ -1582,14 +1582,14 @@ TEST_PARAMS = {
         "enable_pa": [True],
         "kv_cache_layout": ["PA_NZ"],
         "block_size": [512],
-        "sparse_mode": [0],
+        "sparse_mode": [3],
         "q_scale_layout": ["N2TGD"],
         "p_scale": [1.0],
         "enable_lse": [False],
         "enable_rope": [False],
     },
     # Group 4: LongTail (1×201728 + 15 descending step=1024, 28672→14336)
-    "PA_NZ_B16_QS3_KVS524288sum_Nq80_Nkv8_D128_SP0_Decode_LongTail": {
+    "PA_NZ_B16_QS3_KVS524288sum_Nq80_Nkv8_D128_SP3_Decode_LongTail": {
         "B": [16],
         "N_q": [80],
         "N_kv": [8],
@@ -1600,14 +1600,14 @@ TEST_PARAMS = {
         "enable_pa": [True],
         "kv_cache_layout": ["PA_NZ"],
         "block_size": [512],
-        "sparse_mode": [0],
+        "sparse_mode": [3],
         "q_scale_layout": ["N2TGD"],
         "p_scale": [1.0],
         "enable_lse": [False],
         "enable_rope": [False],
     },
     # Group 5: 3Tier (4×16384 + 8×32768 + 4×49152)
-    "PA_NZ_B16_QS3_KVS524288sum_Nq80_Nkv8_D128_SP0_Decode_3Tier": {
+    "PA_NZ_B16_QS3_KVS524288sum_Nq80_Nkv8_D128_SP3_Decode_3Tier": {
         "B": [16],
         "N_q": [80],
         "N_kv": [8],
@@ -1619,7 +1619,7 @@ TEST_PARAMS = {
         "enable_pa": [True],
         "kv_cache_layout": ["PA_NZ"],
         "block_size": [512],
-        "sparse_mode": [0],
+        "sparse_mode": [3],
         "q_scale_layout": ["N2TGD"],
         "p_scale": [1.0],
         "enable_lse": [False],
@@ -1629,7 +1629,7 @@ TEST_PARAMS = {
     # Decode: small cases for head overhead verification
     # QS < 16, KVS in (512, 4096), B < 8
     # ======================================================================
-    "PA_NZ_B1_QS1_KVS512_Nq8_Nkv1_D128_SP0_Decode": {
+    "PA_NZ_B1_QS1_KVS512_Nq8_Nkv1_D128_SP3_Decode": {
         "B": [1],
         "N_q": [8],
         "N_kv": [1],
@@ -1639,13 +1639,13 @@ TEST_PARAMS = {
         "enable_pa": [True],
         "kv_cache_layout": ["PA_NZ"],
         "block_size": [512],
-        "sparse_mode": [0],
+        "sparse_mode": [3],
         "q_scale_layout": ["N2TGD"],
         "p_scale": [1.0],
         "enable_lse": [False],
         "enable_rope": [False],
     },
-    "PA_NZ_B2_QS4_KVS1024_Nq20_Nkv2_D128_SP0_Decode": {
+    "PA_NZ_B2_QS4_KVS1024_Nq20_Nkv2_D128_SP3_Decode": {
         "B": [2],
         "N_q": [20],
         "N_kv": [2],
@@ -1655,13 +1655,13 @@ TEST_PARAMS = {
         "enable_pa": [True],
         "kv_cache_layout": ["PA_NZ"],
         "block_size": [512],
-        "sparse_mode": [0],
+        "sparse_mode": [3],
         "q_scale_layout": ["N2TGD"],
         "p_scale": [1.0],
         "enable_lse": [False],
         "enable_rope": [False],
     },
-    "PA_NZ_B4_QS8_KVS2048_Nq64_Nkv8_D128_SP0_Decode": {
+    "PA_NZ_B4_QS8_KVS2048_Nq64_Nkv8_D128_SP3_Decode": {
         "B": [4],
         "N_q": [64],
         "N_kv": [8],
@@ -1671,13 +1671,13 @@ TEST_PARAMS = {
         "enable_pa": [True],
         "kv_cache_layout": ["PA_NZ"],
         "block_size": [512],
-        "sparse_mode": [0],
+        "sparse_mode": [3],
         "q_scale_layout": ["N2TGD"],
         "p_scale": [1.0],
         "enable_lse": [False],
         "enable_rope": [False],
     },
-    "PA_NZ_B3_QS2_KVS768_Nq32_Nkv4_D128_SP0_Decode": {
+    "PA_NZ_B3_QS2_KVS768_Nq32_Nkv4_D128_SP3_Decode": {
         "B": [3],
         "N_q": [32],
         "N_kv": [4],
@@ -1687,13 +1687,13 @@ TEST_PARAMS = {
         "enable_pa": [True],
         "kv_cache_layout": ["PA_NZ"],
         "block_size": [512],
-        "sparse_mode": [0],
+        "sparse_mode": [3],
         "q_scale_layout": ["N2TGD"],
         "p_scale": [1.0],
         "enable_lse": [False],
         "enable_rope": [False],
     },
-    "PA_NZ_B7_QS15_KVS3584_Nq16_Nkv2_D128_SP0_Decode": {
+    "PA_NZ_B7_QS15_KVS3584_Nq16_Nkv2_D128_SP3_Decode": {
         "B": [7],
         "N_q": [16],
         "N_kv": [2],
@@ -1703,7 +1703,7 @@ TEST_PARAMS = {
         "enable_pa": [True],
         "kv_cache_layout": ["PA_NZ"],
         "block_size": [512],
-        "sparse_mode": [0],
+        "sparse_mode": [3],
         "q_scale_layout": ["N2TGD"],
         "p_scale": [1.0],
         "enable_lse": [False],
@@ -1714,7 +1714,7 @@ TEST_PARAMS = {
 SKIP_CASES = {
     "PA_BnNBsD_B128_QS10240_KVS10240_Nq20_Nkv2_D128_SP3_Prefill",
     "PA_BnNBsD_B128_QS4096_KVS16384_Nq8_Nkv1_D128_SP3_Prefill",
-    "PA_NZ_B128_QS4_KVS10240_Nq64_Nkv8_D128_SP0_Decode",
+    "PA_NZ_B128_QS4_KVS10240_Nq64_Nkv8_D128_SP3_Decode",
 }
 
 CASES = expand_paramset_to_cases(TEST_PARAMS)

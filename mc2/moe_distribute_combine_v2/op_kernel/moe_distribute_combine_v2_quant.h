@@ -16,14 +16,13 @@
 #ifndef MOE_DISTRIBUTE_COMBINE_V2_QUANT_H
 #define MOE_DISTRIBUTE_COMBINE_V2_QUANT_H
 
-#if __has_include("../moe_distribute_dispatch_v2/check_winsize.h")
+#if __has_include("../moe_distribute_dispatch_v2/moe_distribute_v2_constant.h")
 #include "../moe_distribute_dispatch_v2/moe_distribute_v2_constant.h"
 #include "../moe_distribute_dispatch_v2/moe_distribute_v2_base.h"
 #else
 #include "../../moe_distribute_dispatch_v2/op_kernel/moe_distribute_v2_constant.h"
 #include "../../moe_distribute_dispatch_v2/op_kernel/moe_distribute_v2_base.h"
 #endif
-
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
 #if __has_include("../moe_distribute_dispatch_v2/quantize_functions.h")
 #include "../moe_distribute_dispatch_v2/quantize_functions.h"
@@ -112,7 +111,6 @@ public:
 
     __aicore__ inline void Int8QuantProcess(LocalTensor<ExpandXType> &outLocal, LocalTensor<ExpandXType> &inLocal)
     {
-        SyncFunc<AscendC::HardEvent::MTE2_V>();
         castLocalTensor_ = outLocal.template ReinterpretCast<int8_t>(); // 长度为int8H_Align + scaleNum
         scaleDivTensor_ = castLocalTensor_[hAlign32Size_].template ReinterpretCast<ExpandXType>(); // 偏移前面的int8
 
@@ -138,7 +136,6 @@ public:
 
     __aicore__ inline void Int8DequantProcess(LocalTensor<XType>& inLocal, LocalTensor<XType>& outLocal)
     {
-        SyncFunc<AscendC::HardEvent::MTE2_V>();
         castLocalTensor_ = inLocal.template ReinterpretCast<int8_t>();
         scaleDivTensor_ = inLocal[hAlign32Size_ / INT8_DIVIVE];
         SyncFunc<AscendC::HardEvent::S_V>();
@@ -158,7 +155,6 @@ public:
     __aicore__ inline void Int8DequantProcessA5(LocalTensor<XType>& inLocal,
         LocalTensor<float>& sumFinalTensor, float scaleVal)
     {
-        SyncFunc<AscendC::HardEvent::MTE2_V>();
         LocalTensor<int8_t> tokenInt8Tensor = inLocal.template ReinterpretCast<int8_t>();
         scaleDivTensor_ = inLocal[hAlign32Size_ / INT8_DIVIVE];
         SyncFunc<AscendC::HardEvent::S_V>();
@@ -171,7 +167,7 @@ public:
         __ubuf__ float* dyScaleFp32Ptr = (__ubuf__ float*)scaleDupLocalTensor_.GetPhyAddr();
         __ubuf__ float* sumFinalDstPtr = (__ubuf__ float*)sumFinalTensor.GetPhyAddr();
 
-        uint32_t fp32RepeatSize = quant::GetVRegSizeDispatch() / sizeof(float);
+        uint32_t fp32RepeatSize = Quant::GetVRegSizeDispatch() / sizeof(float);
         uint32_t elementsPerRepeat = fp32RepeatSize * INT8_DIVIVE;
         uint16_t fp32RepeatTimes = Ceil(axisH_, elementsPerRepeat);
         uint32_t tailElements = axisH_ % elementsPerRepeat;
@@ -262,7 +258,6 @@ public:
     }
     __aicore__ inline void QuantMxFp8(LocalTensor<ExpandXType>& outLocal, LocalTensor<ExpandXType>& inLocal)
     {
-        SyncFunc<AscendC::HardEvent::MTE2_V>();
         uint32_t mxScaleNum = Align2(Ceil32(axisH_));
         __ubuf__ ExpandXType* srcAddr = (__ubuf__ ExpandXType*)inLocal.GetPhyAddr();
         __ubuf__ uint16_t* maxExpAddr = (__ubuf__ uint16_t*)floatLocalTemp_.GetPhyAddr();
@@ -270,17 +265,17 @@ public:
         __ubuf__ int8_t* outLocalAddr = (__ubuf__ int8_t*)outLocal.GetPhyAddr();
         __ubuf__ uint16_t* mxScaleLocalAddr =
             (__ubuf__ uint16_t*)outLocal[Align256<uint32_t>(axisH_) / INT8_DIVIVE].GetPhyAddr();
-        quant::ComputeMaxExp(srcAddr, maxExpAddr, axisH_); // 计算最大Exp
+        Quant::ComputeMaxExp(srcAddr, maxExpAddr, axisH_); // 计算最大Exp
         if constexpr (QuantMode == MXFP8_E5M2_COMM_QUANT) {
             // 计算scales并填充
-            quant::ComputeScale<fp8_e5m2_t>(maxExpAddr, mxScaleLocalAddr, halfScaleLocalAddr, mxScaleNum);
-            quant::ComputeFp8Data<ExpandXType, fp8_e5m2_t,
+            Quant::ComputeScale<fp8_e5m2_t>(maxExpAddr, mxScaleLocalAddr, halfScaleLocalAddr, mxScaleNum);
+            Quant::ComputeFp8Data<ExpandXType, fp8_e5m2_t,
                 AscendC::RoundMode::CAST_TRUNC, AscendC::RoundMode::CAST_RINT>(
                 srcAddr, halfScaleLocalAddr, outLocalAddr, axisH_); // 计算量化后的expandx并填充
         } else if constexpr (QuantMode == MXFP8_E4M3_COMM_QUANT) {
             // 计算scales并填充
-            quant::ComputeScale<fp8_e4m3fn_t>(maxExpAddr, mxScaleLocalAddr, halfScaleLocalAddr, mxScaleNum);
-            quant::ComputeFp8Data<ExpandXType, fp8_e4m3fn_t,
+            Quant::ComputeScale<fp8_e4m3fn_t>(maxExpAddr, mxScaleLocalAddr, halfScaleLocalAddr, mxScaleNum);
+            Quant::ComputeFp8Data<ExpandXType, fp8_e4m3fn_t,
                 AscendC::RoundMode::CAST_TRUNC, AscendC::RoundMode::CAST_RINT>(
                 srcAddr, halfScaleLocalAddr, outLocalAddr, axisH_); // 计算量化后的expandx并填充
         }
@@ -298,7 +293,7 @@ public:
         __ubuf__ fp8_e8m0_t* srcPtr0 = (__ubuf__ fp8_e8m0_t*)scaleDivFp8Tensor_.GetPhyAddr();
         __ubuf__ T* tokenPtr0 = (__ubuf__ T*)castFp8LocalTensor_.GetPhyAddr();
         __ubuf__ float* sumFinalDstPtr = (__ubuf__ float*)sumFinalTensor.GetPhyAddr();
-        uint32_t fp32RepeatSize = quant::GetVRegSizeDispatch() / sizeof(float); // 64
+        uint32_t fp32RepeatSize = Quant::GetVRegSizeDispatch() / sizeof(float); // 64
         uint16_t repeatTimes = Ceil(quantScaleNum_, fp32RepeatSize);
         uint16_t fp32RepeatTimes = Ceil(axisH_, fp32RepeatSize * INT8_DIVIVE);
         uint32_t axisHx4 = 4 * axisH_; // 4为fp32与fp8字节数比例，用于换算fp8 mask粒度

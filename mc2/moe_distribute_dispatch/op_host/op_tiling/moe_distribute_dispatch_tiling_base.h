@@ -26,7 +26,7 @@
 #include "register/op_def_registry.h"
 #include "platform/platform_infos_def.h"
 #include "../../../moe_distribute_dispatch_v2/op_kernel/moe_distribute_dispatch_tiling.h"
-#include "../../op_kernel/moe_distribute_dispatch_tiling_key.h"
+#include "../../op_kernel/moe_distribute_dispatch_tiling_key_decl.h"
 #include "op_host/tiling_templates_registry.h"
 #include "mc2_hcom_topo_info.h"
 

@@ -265,10 +265,10 @@ aclnnStatus aclnnMhcPreSinkhornBackwardGetWorkspaceSize(
     const aclTensor  *sumOut,
     const aclTensor  *normOut,
     double            hcEps,
-    aclTensor        *gradX,
-    aclTensor        *gradPhi,
-    aclTensor        *gradAlpha,
-    aclTensor        *gradBias,
+    const aclTensor  *gradX,
+    const aclTensor  *gradPhi,
+    const aclTensor  *gradAlpha,
+    const aclTensor  *gradBias,
     uint64_t         *workspaceSize,
     aclOpExecutor   **executor)
 ```

@@ -36,6 +36,14 @@ constexpr size_t MX_SPLIT_K_SINGLE_X_DIM = 2UL;
 constexpr size_t MX_SPLIT_K_SINGLE_WEIGHT_DIM = 2UL;
 constexpr size_t MX_SPLIT_K_SCALE_DIM = 3UL;
 constexpr size_t MX_SPLIT_K_PER_TOKEN_SCALE_DIM = 3UL;
+constexpr size_t MX_MULTI_ANTIQUANT_SCALE_DIM = 3UL;
+constexpr size_t MX_SINGLE_ANTIQUANT_SCALE_DIM = 4UL;
+constexpr size_t MX_MULTI_BIAS_DIM = 1UL;
+constexpr size_t MX_SINGLE_BIAS_DIM = 2UL;
+
+// mx dim num
+constexpr size_t PERGROUP_MULTI_ANTIQUANT_SCALE_DIM = 2UL;
+constexpr size_t PERGROUP_SINGLE_ANTIQUANT_SCALE_DIM = 3UL;
 
 constexpr size_t MX_TUPLE_X_DIM_INDEX = 0UL;
 constexpr size_t MX_TUPLE_WEIGHT_DIM_INDEX = 1UL;
@@ -60,6 +68,7 @@ constexpr size_t LAST_SECOND_DIM_INDEX = 2;
 constexpr size_t LAST_THIRD_DIM_INDEX = 3;
 constexpr size_t LAST_FOURTH_DIM_INDEX = 4;
 constexpr size_t QUANT_WEIGHTNZ_STORAGE_DIM = 5;
+constexpr size_t WEIGHTNZ_MULTI_TENSOR_STORAGE_DIM = 4;
 
 enum class GMMApiVersion : uint32_t {
     V1 = 1U,

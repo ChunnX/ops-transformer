@@ -4,7 +4,7 @@
 
 | 产品                                                     | 是否支持 |
 | :------------------------------------------------------- | :------: |
-| <term>Ascend 950PR/Ascend 950DT</term>                   |    x    |
+| <term>Ascend 950PR/Ascend 950DT</term>                   |    √    |
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term> |    √    |
 | <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √    |
 | <term>Atlas 200I/500 A2 推理产品</term>                  |    ×    |
@@ -132,7 +132,7 @@
         <td>-</td>
       </tr>
       <tr>
-        <td>needGrad</td>
+        <td>needBackward</td>
         <td>可选输入</td>
         <td>是否需要输出额外属性。</td>
         <td>BOOL</td>
@@ -200,11 +200,14 @@
 ## 约束说明
 
 - n目前支持4。
-- 输入x的最后一维需要满足128对齐。
+- numIters目前仅支持20。
+- 输入x的最后一维c的取值约束：
+    - <term>Ascend 950PR/Ascend 950DT</term>：c仅支持4096、7168。
+    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：c需满足128对齐，且取值范围为[1, 100000]。
 
 ## 调用说明
 
 | 调用方式      | 调用样例                 | 说明                                                         |
 |--------------|-------------------------|--------------------------------------------------------------|
 | aclnn调用 | [test_aclnn_mhc_pre_sinkhorn](examples/test_aclnn_mhc_pre_sinkhorn.cpp) | 通过[aclnnMhcPreSinkhorn](docs/aclnnMhcPreSinkhorn.md)接口方式调用MhcPreSinkhorn算子。 |
-| PyTorch API | - | 通过[mhc_pre_sinkhorn](../../torch_extension/cann_ops_transformer/docs/zh/mhc_pre_sinkhorn.md)接口方式调用MhcPreSinkhorn算子。 |
+| PyTorch API | - | 通过[cann_ops_transformer.mhc_pre_sinkhorn](../../torch_extension/cann_ops_transformer/docs/zh/mhc_pre_sinkhorn.md)接口方式调用MhcPreSinkhorn算子。 |

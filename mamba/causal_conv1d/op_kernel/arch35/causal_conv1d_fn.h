@@ -173,7 +173,7 @@ protected:
             const bool hasInit = this->ResolveBatchHasInit(batchIdx * coBatch, hasInitialStateMode);
 
             this->InitRing(cacheIdx, hasInit, curSeqStart, curSeqFlatPos, dimStart, curBaseDim, dim);
-            this->RunSeq(curSeqFlatPos, runLen, dimStart, curBaseDim, hasInit, curSeqStart);
+            this->RunSeq(curSeqFlatPos, runLen, dimStart, curBaseDim);
 
             if (cursor + runLen >= curSeqEnd) {
                 this->WriteBackState(cacheIdx, runLen, dimStart, curBaseDim, dim);
@@ -337,8 +337,7 @@ protected:
         return true;
     }
 
-    __aicore__ inline void RunSeq(int32_t start, int32_t len, int32_t dimStart, int32_t baseDim, bool hasInit = true,
-                                  int32_t seqStart = 0)
+    __aicore__ inline void RunSeq(int32_t start, int32_t len, int32_t dimStart, int32_t baseDim)
     {
         const int32_t dim = static_cast<int32_t>(this->tilingData_->dim);
         const int32_t kernelWidth = static_cast<int32_t>(this->tilingData_->kernelWidth);
@@ -369,11 +368,7 @@ protected:
             }
 
             LocalTensor<T> outSlotT = outT[outSlot * this->dimBufferSize_];
-            if (!hasInit && (start + idx) - seqStart < kernelWidth - 1) {
-                Duplicate(outSlotT, static_cast<T>(0), this->dimBufferSize_);
-            } else {
-                this->ComputeConv1d(ring, this->pool_.weight, this->pool_.bias, outSlotT, this->dimBufferSize_, idx);
-            }
+            this->ComputeConv1d(ring, this->pool_.weight, this->pool_.bias, outSlotT, this->dimBufferSize_, idx);
 
             SetFlag<HardEvent::V_MTE3>((idx & 1) ? EVENT_ID0 : EVENT_ID1);
             WaitFlag<HardEvent::V_MTE3>((idx & 1) ? EVENT_ID0 : EVENT_ID1);

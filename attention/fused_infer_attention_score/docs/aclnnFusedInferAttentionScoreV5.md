@@ -833,7 +833,8 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         <td>value的反量化的方式。</td>
         <td>
         <ul>
-            <li>模式编号与keyAntiquantMode一致。</li>
+            <li>valueAntiquantMode模式编号0-6与keyAntiquantMode一致。</li>
+            <li>valueAntiquantMode为8时，代表per-channel-group模式。
             <li>用户不特意指定时建议传入0。</li>
             <li>综合约束请见<a href="#约束说明">约束说明</a>。</li>
         </ul>
@@ -896,7 +897,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         </td>
         <td>FLOAT32</td>
         <td>ND</td>
-        <td>softmaxLseFlag为True时，一般情况下，shape必须为[B, N, Q_S, 1]，当inputLayout为TND/NTD_TND/TND_NTD时，shape必须为[T, N, 1]。</td>
+        <td>softmaxLseFlag为True时，一般情况下，shape必须为[B, N, Q_S, 1]，当inputLayout为TND/NTD/NTD_TND/TND_NTD时，shape必须为[T, N, 1]。</td>
         <td>-</td>
     </tr>
     <tr>
@@ -1744,7 +1745,6 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
     - MxFP8全量化
       - query、key、value的dtype为FLOAT8_E4M3FN
       - attentionOut的dtype支持FLOAT16、BFLOAT16
-      - Q_S、KV_S仅支持64对齐
       - inputLayout仅支持TND
       - 支持PagedAttention场景和非PagedAttention场景，PagedAttention场景仅支持BnNBsD（blocknum, KV_N, blocksize, D）和NZ (blocknum，KV_N，D/D0，blocksize，D0)
       - 支持传入独立Rope，若传入Rope，Rope和attentionOut的dtype仅支持BFLOAT16
@@ -1802,7 +1802,7 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
     - 入参blockSize需要满足以下条件：需要根据key、value dtype size 32B对齐，最大支持512。即当key、value dtype为INT8/HIFLOAT8/FLOAT8_E4M3FN时，blockSize需要32对齐，即当key、value dtype为INT4(INT32)、FLOAT4_E2M1时，blockSize需要64对齐
   - 全量化
     - Decode MLA全量化场景下，仅支持blockSize取值128
-    - MxFP8全量化场景下，仅支持blockSize取值512
+    - MxFP8全量化场景下，仅支持blockSize取值512或1024
     - GQA全量化场景下，仅支持blockSize取值128
 - 存在性约束
   - 公共

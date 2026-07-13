@@ -43,12 +43,20 @@ else:
     print(f"错误: 输出目录不存在: {pt_dir}")
 
 def qliv2(testcase_files):   # 初始化参数和tensor
-    cpu_result, npu_result, topk_value, params = quant_lightning_indexer_v2_pt_loadprocess.test_qliv2_process(testcase_files, device_id=0)
+    cpu_result, npu_result, topk_value, cpu_topk_value, npu_topk_value, output_idx_offset, params = quant_lightning_indexer_v2_pt_loadprocess.test_qliv2_process(testcase_files, device_id=0)
     if npu_result != None:
-        result, fulfill_percent = result_compare_method.check_result(cpu_result, npu_result, topk_value, params)
+        result, fulfill_percent = result_compare_method.check_result(cpu_result, npu_result, topk_value, output_idx_offset, params)
     else:
         result = "Failed"
         fulfill_percent = 0
+    return_value = params[30]
+    if return_value:
+        result_return_value, fulfill_precent_return_value = result_compare_method.check_result_return_value(cpu_topk_value, npu_topk_value, params)
+        print(f"result_return_value: {result_return_value}")
+        print(f"fulfill_precent_return_value: {fulfill_precent_return_value}")
+    else:
+        result_return_value = "N/A"
+        fulfill_precent_return_value = 0
     
     row_data = {
         "Testcase_Name": Path(testcase_files).stem,
@@ -81,8 +89,11 @@ def qliv2(testcase_files):   # 初始化参数和tensor
         "q_scale_datarange":params[26],
         "k_scale_datarange":params[27],
         "cmp_ratio":params[28],
+        "output_idx_offset": params[29],
         "result":result,
-        "fulfill_percent":fulfill_percent
+        "fulfill_percent":fulfill_percent,
+        "result_return_value": result_return_value,
+        "fulfill_precent_return_value": fulfill_precent_return_value
     }
 
     # 检查文件是否存在

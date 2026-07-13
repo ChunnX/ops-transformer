@@ -22,6 +22,10 @@ import copy
 import ast
 import cann_ops_transformer
 
+DISCONTINUOUS_KEYS = True      # key非连续
+DEFAULT_SPLIT_S1 = False       # golden切分S1Flag
+DEFAULT_S1SIZE = 2048          # s1切分基本块大小
+
 FP32_FRACTION_BITS = 23        # fp32尾数位数
 
 HIF8_EXP_ZERO_THRESHOLD = -23  # 边界值
@@ -89,7 +93,7 @@ class GeneralizedQLIV2:
                  block_num, qk_dtype, dequant_dtype, actual_seq_dtype, cu_seqlens_q, cu_seqlens_k, act_seq_q,
                  act_seq_k, cmp_residual_k, max_seqlen_q, quant_mode, layout_query, layout_key, sparse_count,
                  sparse_mode, query_datarange, key_datarange, weights_datarange, q_scale_datarange,
-                 k_scale_datarange, cmp_ratio, return_value):
+                 k_scale_datarange, cmp_ratio, return_value, split_s1 = DEFAULT_SPLIT_S1, s1size = DEFAULT_S1SIZE):
         self.batch_size = batch_size
         self.q_seq = q_seq
         self.k_seq = k_seq
@@ -120,6 +124,8 @@ class GeneralizedQLIV2:
         self.cmp_ratio = cmp_ratio
         self.w_dtype = dequant_dtype
         self.return_value = return_value
+        self.split_s1 = split_s1    # 是否切分S1轴 / Whether to split the S1 axis
+        self.s1size = s1size        # S1轴切分块大小 / S1 axis chunk size
 
         if layout_query == "BSND":
             self.q_shape = [batch_size, q_seq, q_head_num, head_dim]
@@ -204,40 +210,76 @@ class GeneralizedQLIV2:
             self.cur_actseq_q = curr_actualSeq_q
             self.cur_actseq_k = curr_actualSeq_k
             
-            self.cur_q = q_bnsd_tensor[b_idx:(b_idx + 1), :, :curr_actualSeq_q, :]
-            self.cur_k = k_bnsd_tensor[b_idx:(b_idx + 1), :, :curr_actualSeq_k, :]
-            self.cur_wt = wt_bnsd_tensor[b_idx:(b_idx + 1), :, :curr_actualSeq_q, :]
-            self.cur_q_scale = q_scale_bnsd_tensor[b_idx:(b_idx + 1), :, :curr_actualSeq_q, :]
-            self.cur_k_scale = k_scale_bnsd_tensor[b_idx:(b_idx + 1), :, :curr_actualSeq_k]
-            if self.sparse_mode != 0:
-                self.cur_m = mask_tensor[b_idx:(b_idx + 1), :curr_actualSeq_q, :curr_actualSeq_k]
             self.cur_b_idx = b_idx
 
-            if curr_actualSeq_q != 0:
-                actual_selected_count = min(curr_actualSeq_k, self.sparse_count)
-                if self.qk_dtype == torch.int8:
-                    y[b_idx:(b_idx + 1), :, :curr_actualSeq_q, :actual_selected_count], y_value[b_idx:(b_idx + 1), :,
-                                                                                        :curr_actualSeq_q,
-                                                                                        :curr_actualSeq_k] = self.cal_atten_per_batch_int8(b_idx)
-                elif self.qk_dtype == torch.float8_e4m3fn:
-                    y[b_idx:(b_idx + 1), :, :curr_actualSeq_q, :actual_selected_count], y_value[b_idx:(b_idx + 1), :,
-                                                                                        :curr_actualSeq_q,
-                                                                                        :curr_actualSeq_k] = self.cal_atten_per_batch_fp8(b_idx)
-                elif self.qk_dtype == torch.uint8:
-                    y[b_idx:(b_idx + 1), :, :curr_actualSeq_q, :actual_selected_count], y_value[b_idx:(b_idx + 1), :,
-                                                                                        :curr_actualSeq_q,
-                                                                                        :curr_actualSeq_k] = self.cal_atten_per_batch_hifp8(b_idx)
-                y[b_idx: (b_idx + 1), :, curr_actualSeq_q:, :actual_selected_count] = -1
-                if output_idx_offset is not None:
-                    if self.layout_query == "TND":
-                        offset = output_idx_offset.flatten()[prefix : prefix + curr_actualSeq_q].reshape(1, -1, 1)
-                    else:
-                        offset = output_idx_offset.flatten()[b_idx * qs : b_idx * qs + curr_actualSeq_q].reshape(1, -1, 1)
-                    offset_mask = (y[b_idx:(b_idx + 1), :, :curr_actualSeq_q, :actual_selected_count] != -1)
-                    y[b_idx:(b_idx + 1), :, :curr_actualSeq_q, :actual_selected_count] += offset * offset_mask
-                y_value_np[b_idx:(b_idx + 1), :, :curr_actualSeq_q, :actual_selected_count] = -np.sort(-y_value.numpy())[b_idx:(b_idx + 1), :, :curr_actualSeq_q, :actual_selected_count]
+            if self.split_s1:
+                # 切分S1轴以减小中间结果内存占用
+                # Split S1 axis to reduce intermediate result memory usage
+                num_s1_chunks = math.ceil(curr_actualSeq_q / self.s1size) if curr_actualSeq_q > 0 else 1
+                for s1_chunk_idx in range(num_s1_chunks):
+                    s1_start = s1_chunk_idx * self.s1size
+                    s1_end = min(s1_start + self.s1size, curr_actualSeq_q)
+                    cur_chunk_s1 = s1_end - s1_start
+
+                    self.cur_q = q_bnsd_tensor[b_idx:(b_idx + 1), :, s1_start:s1_end, :]
+                    self.cur_k = k_bnsd_tensor[b_idx:(b_idx + 1), :, :curr_actualSeq_k, :]
+                    self.cur_wt = wt_bnsd_tensor[b_idx:(b_idx + 1), :, s1_start:s1_end, :]
+                    self.cur_q_scale = q_scale_bnsd_tensor[b_idx:(b_idx + 1), :, s1_start:s1_end, :]
+                    self.cur_k_scale = k_scale_bnsd_tensor[b_idx:(b_idx + 1), :, :curr_actualSeq_k]
+                    if self.sparse_mode != 0:
+                        self.cur_m = mask_tensor[b_idx:(b_idx + 1), s1_start:s1_end, :curr_actualSeq_k]
+
+                    if cur_chunk_s1 != 0:
+                        actual_selected_count = min(curr_actualSeq_k, self.sparse_count)
+                        if self.qk_dtype == torch.int8:
+                            y[b_idx:(b_idx + 1), :, s1_start:s1_end, :actual_selected_count], y_value[b_idx:(b_idx + 1), :, s1_start:s1_end, :curr_actualSeq_k] = self.cal_atten_per_batch_int8(b_idx)
+                        elif self.qk_dtype == torch.float8_e4m3fn:
+                            y[b_idx:(b_idx + 1), :, s1_start:s1_end, :actual_selected_count], y_value[b_idx:(b_idx + 1), :, s1_start:s1_end, :curr_actualSeq_k] = self.cal_atten_per_batch_fp8(b_idx)
+                        elif self.qk_dtype == torch.uint8:
+                            y[b_idx:(b_idx + 1), :, s1_start:s1_end, :actual_selected_count], y_value[b_idx:(b_idx + 1), :, s1_start:s1_end, :curr_actualSeq_k] = self.cal_atten_per_batch_hifp8(b_idx)
+                        if output_idx_offset is not None:
+                            if self.layout_query == "TND":
+                                offset = output_idx_offset.flatten()[prefix + s1_start : prefix + s1_end].reshape(1, -1, 1)
+                            else:
+                                offset = output_idx_offset.flatten()[b_idx * qs + s1_start : b_idx * qs + s1_end].reshape(1, -1, 1)
+                            offset_mask = (y[b_idx:(b_idx + 1), :, s1_start:s1_end, :actual_selected_count] != -1)
+                            y[b_idx:(b_idx + 1), :, s1_start:s1_end, :actual_selected_count] += offset * offset_mask
+                        y_value_np[b_idx:(b_idx + 1), :, s1_start:s1_end, :actual_selected_count] = -np.sort(-y_value.numpy())[b_idx:(b_idx + 1), :, s1_start:s1_end, :actual_selected_count]
+                y[b_idx:(b_idx + 1), :, curr_actualSeq_q:, :min(curr_actualSeq_k, self.sparse_count)] = -1
             else:
-                pass
+                self.cur_q = q_bnsd_tensor[b_idx:(b_idx + 1), :, :curr_actualSeq_q, :]
+                self.cur_k = k_bnsd_tensor[b_idx:(b_idx + 1), :, :curr_actualSeq_k, :]
+                self.cur_wt = wt_bnsd_tensor[b_idx:(b_idx + 1), :, :curr_actualSeq_q, :]
+                self.cur_q_scale = q_scale_bnsd_tensor[b_idx:(b_idx + 1), :, :curr_actualSeq_q, :]
+                self.cur_k_scale = k_scale_bnsd_tensor[b_idx:(b_idx + 1), :, :curr_actualSeq_k]
+                if self.sparse_mode != 0:
+                    self.cur_m = mask_tensor[b_idx:(b_idx + 1), :curr_actualSeq_q, :curr_actualSeq_k]
+
+                if curr_actualSeq_q != 0:
+                    actual_selected_count = min(curr_actualSeq_k, self.sparse_count)
+                    if self.qk_dtype == torch.int8:
+                        y[b_idx:(b_idx + 1), :, :curr_actualSeq_q, :actual_selected_count], y_value[b_idx:(b_idx + 1), :,
+                                                                                                    :curr_actualSeq_q,
+                                                                                                    :curr_actualSeq_k] = self.cal_atten_per_batch_int8(b_idx)
+                    elif self.qk_dtype == torch.float8_e4m3fn:
+                        y[b_idx:(b_idx + 1), :, :curr_actualSeq_q, :actual_selected_count], y_value[b_idx:(b_idx + 1), :,
+                                                                                                    :curr_actualSeq_q,
+                                                                                                    :curr_actualSeq_k] = self.cal_atten_per_batch_fp8(b_idx)
+                    elif self.qk_dtype == torch.uint8:
+                        y[b_idx:(b_idx + 1), :, :curr_actualSeq_q, :actual_selected_count], y_value[b_idx:(b_idx + 1), :,
+                                                                                                    :curr_actualSeq_q,
+                                                                                                    :curr_actualSeq_k] = self.cal_atten_per_batch_hifp8(b_idx)
+                    y[b_idx: (b_idx + 1), :, curr_actualSeq_q:, :actual_selected_count] = -1
+                    if output_idx_offset is not None:
+                        if self.layout_query == "TND":
+                            offset = output_idx_offset.flatten()[prefix : prefix + curr_actualSeq_q].reshape(1, -1, 1)
+                        else:
+                            offset = output_idx_offset.flatten()[b_idx * qs : b_idx * qs + curr_actualSeq_q].reshape(1, -1, 1)
+                        offset_mask = (y[b_idx:(b_idx + 1), :, :curr_actualSeq_q, :actual_selected_count] != -1)
+                        y[b_idx:(b_idx + 1), :, :curr_actualSeq_q, :actual_selected_count] += offset * offset_mask
+                    y_value_np[b_idx:(b_idx + 1), :, :curr_actualSeq_q, :actual_selected_count] = -np.sort(-y_value.numpy())[b_idx:(b_idx + 1), :, :curr_actualSeq_q, :actual_selected_count]
+                else:
+                    pass
             if self.layout_query == "TND":
                 prefix += cu_seqlens_q[b_idx]
         return y, y_value, y_value_np
@@ -641,7 +683,7 @@ class GeneralizedQLIV2:
                 actual_seq_lengths_query = seqused_q
                 self.has_seqused_q = True
             else:
-                actual_seq_lengths_query = torch.tensor(np.random.uniform(q_seq, q_seq, batch_size).to(torch.int32))
+                actual_seq_lengths_query = torch.tensor(np.random.uniform(q_seq, q_seq, batch_size)).to(torch.int32)
             actualSeqLengths_q = actual_seq_lengths_query
 
         if layout_key == "TND":
@@ -663,7 +705,7 @@ class GeneralizedQLIV2:
                 actual_seq_lengths_key = seqused_k
                 self.has_seqused_k = True
             else:
-                actual_seq_lengths_key = torch.tensor(np.random.uniform(k_seq, k_seq, batch_size).to(torch.int32))
+                actual_seq_lengths_key = torch.tensor(np.random.uniform(k_seq, k_seq, batch_size)).to(torch.int32)
             actualSeqLengths_k = actual_seq_lengths_key
 
         elif layout_key == "PA_BBND":
@@ -774,7 +816,7 @@ def trans_prefix_actseq(self,list):
                 raise ValueError(f'PA场景下act seq 为非递减数列 act_seq ={list}')
         return list_new
 
-def qliv2_output_single(params, is_batch = False):
+def qliv2_output_single(params, is_batch = False, split_s1 = DEFAULT_SPLIT_S1, s1size = DEFAULT_S1SIZE):
     batch_size, q_seq, k_seq, q_t_size, k_t_size, q_head_num, k_head_num, head_dim, block_size,\
     block_num, qk_dtype, dequant_dtype, actual_seq_dtype, cu_seqlens_q, cu_seqlens_k, seqused_q,\
     seqused_k, cmp_residual_k, max_seqlen_q, quant_mode, layout_query, layout_key, sparse_count,\
@@ -782,10 +824,49 @@ def qliv2_output_single(params, is_batch = False):
     k_scale_datarange, cmp_ratio, return_value, output_idx_offset = params
 
     if is_batch:
+        if q_t_size is None:
+            q_t_size = 0
+        if k_t_size is None:
+            k_t_size = 0
+        if block_size is None:
+            block_size = 0
+        if block_num is None:
+            block_num = 0
+
+        batch_size = int(batch_size)
+        q_seq = int(q_seq)
+        k_seq = int(k_seq)
+        q_t_size = int(q_t_size)
+        k_t_size = int(k_t_size)
+        q_head_num = int(q_head_num)
+        k_head_num = int(k_head_num)
+        head_dim = int(head_dim)
+        block_size = int(block_size)
+        block_num = int(block_num)
+        if max_seqlen_q is None:
+            max_seqlen_q = -1
+        max_seqlen_q = int(max_seqlen_q)
+        if quant_mode is None:
+            quant_mode = 1
+        quant_mode = int(quant_mode)
+        sparse_count = int(sparse_count)
+        sparse_mode = int(sparse_mode)
+        return_value = int(return_value)
+
+        params = (batch_size, q_seq, k_seq, q_t_size, k_t_size, q_head_num, k_head_num, head_dim, block_size,
+                  block_num, qk_dtype, dequant_dtype, actual_seq_dtype,
+                  cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k, cmp_residual_k,
+                  max_seqlen_q, quant_mode, layout_query, layout_key,
+                  sparse_count, sparse_mode,
+                  query_datarange, key_datarange, weights_datarange, q_scale_datarange, k_scale_datarange,
+                  cmp_ratio, return_value, output_idx_offset)
+
         if qk_dtype == 'INT8':
             qk_dtype = torch.int8
         elif qk_dtype == 'FLOAT8_E4M3FN':
             qk_dtype = torch.float8_e4m3fn
+        elif qk_dtype == 'HIFLOAT8':
+            qk_dtype = torch.uint8
 
         if dequant_dtype == 'FP16':
             dequant_dtype = torch.float16
@@ -794,7 +875,7 @@ def qliv2_output_single(params, is_batch = False):
 
         if actual_seq_dtype == 'INT32':
             actual_seq_dtype = torch.int32
-
+        
         if cu_seqlens_q is not None:
             cu_seqlens_q = ast.literal_eval(cu_seqlens_q)
         if cu_seqlens_k is not None:
@@ -803,8 +884,6 @@ def qliv2_output_single(params, is_batch = False):
             seqused_q = ast.literal_eval(seqused_q)
         if seqused_k is not None:
             seqused_k = ast.literal_eval(seqused_k)
-        if output_idx_offset is not None:
-            output_idx_offset = ast.literal_eval(output_idx_offset)
         if cmp_residual_k is not None:
             cmp_residual_k = ast.literal_eval(cmp_residual_k)
         if query_datarange is not None:
@@ -813,10 +892,20 @@ def qliv2_output_single(params, is_batch = False):
             key_datarange = ast.literal_eval(key_datarange)
         if weights_datarange is not None:
             weights_datarange = ast.literal_eval(weights_datarange)
-        if q_scale_datarange is not None:
+        if output_idx_offset is not None:
+            output_idx_offset = ast.literal_eval(output_idx_offset)
+            output_idx_offset = [int(x) for x in output_idx_offset]
+            if layout_query == "TND":
+                output_idx_offset_size = q_t_size * 1
+            else:
+                output_idx_offset_size = batch_size * q_seq * 1
+            output_idx_offset = [[random.randint(output_idx_offset[0], output_idx_offset[1]) for _ in range(output_idx_offset_size)] for _ in range(1)]
+        if isinstance(q_scale_datarange, str):
             q_scale_datarange = ast.literal_eval(q_scale_datarange)
-        if k_scale_datarange is not None:
+        if isinstance(k_scale_datarange, str):
             k_scale_datarange = ast.literal_eval(k_scale_datarange)
+
+
 
     if qk_dtype == torch.uint8:
         hifp8mode = 1
@@ -931,7 +1020,8 @@ def qliv2_output_single(params, is_batch = False):
                     lengths_q_list, lengths_k_list, cmp_residual_k_for_cpu, max_seqlen_q, quant_mode,
                     layout_query, layout_key, sparse_count,
                     sparse_mode, query_datarange, key_datarange, weights_datarange, q_scale_datarange,
-                    k_scale_datarange, cmp_ratio, return_value)
+                    k_scale_datarange, cmp_ratio, return_value,
+                    split_s1 = split_s1, s1size = s1size)
 
 
     if layout_query == "BSND":
@@ -946,7 +1036,7 @@ def qliv2_output_single(params, is_batch = False):
             query_dequant_scale = torch.tensor([q_scale]).to(dequant_dtype).npu()
             query_dequant_scale_cpu = torch.tensor(np.random.uniform(q_scale, q_scale, (batch_size, q_seq, q_head_num))).to(dequant_dtype).npu()
         else:
-            query_dequant_scale = torch.tensor(np.random.uniform(q_scale, q_scale, (batch_size, q_seq, q_head_num))).to(dequant_dtype).npu()
+            query_dequant_scale = torch.tensor(np.random.uniform(q_scale_datarange[0], q_scale_datarange[1], (batch_size, q_seq, q_head_num))).to(dequant_dtype).npu()
             query_dequant_scale_cpu = query_dequant_scale
         
         weights = torch.tensor(np.random.uniform(weights_datarange[0], weights_datarange[1], (batch_size, q_seq, q_head_num))).to(dequant_dtype).npu()
@@ -964,13 +1054,14 @@ def qliv2_output_single(params, is_batch = False):
             query_dequant_scale = torch.tensor([q_scale]).to(dequant_dtype).npu()
             query_dequant_scale_cpu = torch.tensor(np.random.uniform(q_scale, q_scale, (q_t_size, q_head_num))).to(dequant_dtype).npu()
         else:
-            query_dequant_scale = torch.tensor(np.random.uniform(q_scale, q_scale, (q_t_size, q_head_num))).to(dequant_dtype).npu()
+            query_dequant_scale = torch.tensor(np.random.uniform(q_scale_datarange[0], q_scale_datarange[1], (q_t_size, q_head_num))).to(dequant_dtype).npu()
             query_dequant_scale_cpu = query_dequant_scale
         
         weights = torch.tensor(np.random.uniform(weights_datarange[0], weights_datarange[1], (q_t_size, q_head_num))).to(dequant_dtype).npu()
         if output_idx_offset is not None:
             output_idx_offset = torch.tensor(output_idx_offset).reshape(q_t_size, 1).to(torch.int32).npu()
     properties = torch.npu.get_device_properties()
+    blockFusion = None
     if layout_key == "BSND":
         key = torch.tensor(np.random.uniform(key_datarange[0], key_datarange[1], (batch_size, k_seq, k_head_num, head_dim))).to(torch.float)
         if hifp8mode == 1:
@@ -1078,7 +1169,7 @@ def qliv2_output_single(params, is_batch = False):
                         key_dequant_scale_block[cur_block_id, :, i_n] = key_dequant_scale_expand[i_batch, i_n,block_start_pos:block_start_pos+block_size]
         # kv_cache 0轴非连续：将key和key_dequant_scale融合到blockFusion (ref v1 commit keyStride0)
         properties = torch.npu.get_device_properties()
-        if quant_mode != 4 and "Ascend950" in properties.name:
+        if quant_mode != 4 and "Ascend950" in properties.name and DEFAULT_SPLIT_S1:
             bytes_per_token = head_dim + key_dequant_scale_block.element_size() // key.element_size()
             blockFusion = torch.zeros((block_num, block_size * k_head_num * bytes_per_token), dtype=qk_dtype)
             key_flat = key.view(block_num, block_size * k_head_num * head_dim)
@@ -1103,7 +1194,46 @@ def qliv2_output_single(params, is_batch = False):
     # max_seqlen 从个体长度中取
     max_seqlen_q_meta = actual_seq_lengths_query.max().item()
     max_seqlen_k_meta = actual_seq_lengths_key.max().item()
-    metadata = torch.ops.cann_ops_transformer.quant_lightning_indexer_metadata(
+
+    if is_batch:
+        if qk_dtype == torch.float8_e4m3fn:
+            query = query.to(dtype=torch.float16)
+            key = key.to(dtype=torch.float16)
+            if blockFusion is not None:
+                blockFusion = blockFusion.to(dtype=torch.float16)
+
+        output_tensors = {
+            "params":params,
+            "cpu_result": cpu_result,
+            "topk_value": topk_value,
+            "cpu_topk_value": cpu_topk_value,
+            "query": query,
+            "key":key,
+            "weights": weights,
+            "query_dequant_scale": query_dequant_scale,
+            "key_dequant_scale": key_dequant_scale,
+            "blockFusion": blockFusion,
+            "cu_seqlens_query": cu_seqlens_query,
+            "cu_seqlens_key": cu_seqlens_key,
+            "seqused_q": seqused_q_tensor,
+            "seqused_k": seqused_k_tensor,
+            "output_idx_offset": output_idx_offset,
+            "actual_seq_lengths_query": actual_seq_lengths_query,
+            "actual_seq_lengths_key": actual_seq_lengths_key,
+            "cmp_residual_k_for_npu": cmp_residual_k_for_npu,
+            "block_table": block_table,
+            "max_seqlen_q_meta": max_seqlen_q_meta,
+            "max_seqlen_k_meta": max_seqlen_k_meta,
+            "quant_mode":quant_mode,
+            "layout_query":layout_query,
+            "layout_key":layout_key,
+            "sparse_count":sparse_count,
+            "sparse_mode":sparse_mode,
+            "cmp_ratio":cmp_ratio
+        }
+        return output_tensors
+    else:
+        metadata = torch.ops.cann_ops_transformer.quant_lightning_indexer_metadata(
                                     cu_seqlens_q = cu_seqlens_query,
                                     cu_seqlens_k = cu_seqlens_key,
                                     seqused_q = seqused_q_tensor,
@@ -1121,39 +1251,7 @@ def qliv2_output_single(params, is_batch = False):
                                     layout_q = layout_query,
                                     layout_k = layout_key,
                                     cmp_ratio = cmp_ratio)
-
-    metadata = metadata.npu()
-    if is_batch:
-        if qk_dtype == torch.float8_e4m3fn:
-            query = query.to(dtype=torch.float16)
-            key = key.to(dtype=torch.float16)
-
-        output_tensors = {
-            "params":params,
-            "cpu_result": cpu_result,
-            "topk_value": topk_value,
-            "query": query,
-            "key":key,
-            "weights": weights,
-            "query_dequant_scale": query_dequant_scale,
-            "key_dequant_scale": key_dequant_scale,
-            "cu_seqlens_query": cu_seqlens_query,
-            "cu_seqlens_key": cu_seqlens_key,
-            "output_idx_offset": output_idx_offset,
-            "actual_seq_lengths_query": actual_seq_lengths_query,
-            "actual_seq_lengths_key": actual_seq_lengths_key,
-            "cmp_residual_k_for_npu": cmp_residual_k_for_npu,
-            "block_table": block_table,
-            "metadata": metadata,
-            "quant_mode":quant_mode,
-            "layout_query":layout_query,
-            "layout_key":layout_key,
-            "sparse_count":sparse_count,
-            "sparse_mode":sparse_mode,
-            "cmp_ratio":cmp_ratio
-        }
-        return output_tensors
-    else:
+        metadata = metadata.npu()
         npu_result, npu_topk_value = torch.ops.cann_ops_transformer.quant_lightning_indexer(query, key, weights,
                                                     query_dequant_scale,
                                                     key_dequant_scale,
@@ -1307,19 +1405,216 @@ def cvt_float32_to_hifuint8(x, round_mode = "round", over_mode = True):
         hif8_int_value = sign_int_value + dot_int_value + sig_exp + exponent_int_value + hif8_frac_value
     return hif8_int_value
 
-def trans_float_tensor_to_hifuint8(in_tensor, round_mode = "round", over_mode = True):
-    tensor_shape = in_tensor.shape
-    tensor_shape_size = in_tensor.numel()
-    if tensor_shape_size == 1.0:
-        tensor_shape_size = int(tensor_shape_size)
+def trans_float_tensor_to_hifuint8(in_tensor, round_mode="round", over_mode=True):
+    """
+    通过向量操作，将 float32 Tensor 批量转换为 HiF8 编码的 uint8 Tensor
+    """
+
+    shape = in_tensor.shape
+    x = in_tensor.reshape(-1).to(torch.float32)
     
-    out_tensor = torch.zeros(tensor_shape_size).to(torch.uint8)
-    in_tensor = in_tensor.reshape(tensor_shape_size)
-    for i in range(tensor_shape_size):
-        out_tensor[i] = cvt_float32_to_hifuint8(in_tensor[i], round_mode, over_mode)
-    out_tensor = out_tensor.view(torch.uint8)
-    out_tensor = out_tensor.reshape(tensor_shape)
-    return out_tensor
+    # 先用int32作为输出类型，避免出现赋值错误
+    out = torch.zeros_like(x, dtype=torch.int32)
+    
+    # 1. 符号位与绝对值提取
+    sign_mask = (x < 0.0)
+    sign_int_value = torch.where(sign_mask, HIF8_SIGN_MASK, 0)
+    x_abs = torch.abs(x)
+    
+    # 2. 溢出与边界条件判断 (Masks)
+    over_value = HIF8_OVERFLOW_SCALE * (2.0 ** HIF8_EXP_D4_MAX)
+    mask_inf_or_over = torch.isinf(x) | (x_abs >= over_value)
+    mask_nan = torch.isnan(x)
+    mask_zero = (x_abs == 0.0)
+    
+    # 处理特殊边界填值
+    if over_mode:
+        out = torch.where(mask_inf_or_over, torch.where(sign_mask, HIF8_NEG_INF, HIF8_POS_INF), out)
+        out = torch.where(mask_nan, HIF8_NAN, out)
+    else:
+        out = torch.where(mask_inf_or_over, torch.where(sign_mask, HIF8_NEG_MAX, HIF8_POS_MAX), out)
+        out = torch.where(mask_nan, 0, out)
+    out = torch.where(mask_zero, 0, out)
+    
+    # 提取正常数字的 Mask
+    mask_normal = ~(mask_inf_or_over | mask_nan | mask_zero)
+    if not mask_normal.any():
+        return out.reshape(shape).to(torch.uint8)
+        
+    x_norm = x_abs[mask_normal]
+    sign_norm = sign_int_value[mask_normal]
+    
+    # 计算基本指数
+    exponent = torch.floor(torch.log2(x_norm)).to(torch.int32)
+    
+    # 确定截断模式 (TA / SSR)
+    if round_mode == "hybrid":
+        cut_bit_is_ta = (torch.abs(exponent) < HYBRID_ROUND_EXP_THRESHOLD)
+    elif round_mode == "round":
+        cut_bit_is_ta = torch.ones_like(exponent, dtype=torch.bool)
+    elif round_mode == "storound":
+        cut_bit_is_ta = torch.zeros_like(exponent, dtype=torch.bool)
+    else:
+        cut_bit_is_ta = torch.ones_like(exponent, dtype=torch.bool)
+        
+    # 计算 fraction_int
+    fraction_int = (x_norm * (2.0 ** FP32_FRACTION_BITS) * torch.pow(2.0, -exponent.float()) - (2.0 ** FP32_FRACTION_BITS)).to(torch.int32)
+    
+    # 批量获取档位属性 (根据 exponent 映射)
+    abs_exp = torch.abs(exponent)
+    
+    dot = torch.full_like(exponent, HIF8_DOT_INVALID)
+    exp_bits = torch.zeros_like(exponent)
+    frac_bits = torch.zeros_like(exponent)
+    
+    # 条件区间映射
+    m1 = (exponent < HIF8_EXP_DML_MIN)
+    dot = torch.where(m1, HIF8_DOT_INVALID, dot)
+    exp_bits = torch.where(m1, HIF8_EXP_BITS_DML, exp_bits)
+    frac_bits = torch.where(m1, HIF8_FRAC_BITS_DML, frac_bits)
+    
+    m2 = (~m1) & (exponent >= HIF8_EXP_DML_MIN) & (exponent < HIF8_EXP_DML_MAX)
+    dot = torch.where(m2, HIF8_DOT_DML, dot)
+    exp_bits = torch.where(m2, HIF8_EXP_BITS_DML, exp_bits)
+    frac_bits = torch.where(m2, HIF8_FRAC_BITS_DML, frac_bits)
+    
+    m3 = (exponent == HIF8_EXP_D0)
+    dot = torch.where(m3, HIF8_DOT_D0, dot)
+    exp_bits = torch.where(m3, HIF8_EXP_BITS_D0, exp_bits)
+    frac_bits = torch.where(m3, HIF8_FRAC_BITS_D0, frac_bits)
+    
+    m4 = (abs_exp == HIF8_EXP_D1_BOUNDARY)
+    dot = torch.where(m4, HIF8_DOT_D1, dot)
+    exp_bits = torch.where(m4, HIF8_EXP_BITS_D1, exp_bits)
+    frac_bits = torch.where(m4, HIF8_FRAC_BITS_D1, frac_bits)
+    
+    m5 = (abs_exp >= HIF8_EXP_D2_MIN) & (abs_exp <= HIF8_EXP_D2_MAX)
+    dot = torch.where(m5, HIF8_DOT_D2, dot)
+    exp_bits = torch.where(m5, HIF8_EXP_BITS_D2, exp_bits)
+    frac_bits = torch.where(m5, HIF8_FRAC_BITS_D2, frac_bits)
+    
+    m6 = (abs_exp >= HIF8_EXP_D3_MIN) & (abs_exp <= HIF8_EXP_D3_MAX)
+    dot = torch.where(m6, HIF8_DOT_D3, dot)
+    exp_bits = torch.where(m6, HIF8_EXP_BITS_D3, exp_bits)
+    frac_bits = torch.where(m6, HIF8_FRAC_BITS_D3, frac_bits)
+    
+    m7 = (abs_exp >= HIF8_EXP_D4_MIN) & (abs_exp <= HIF8_EXP_D4_MAX)
+    dot = torch.where(m7, HIF8_DOT_D4, dot)
+    exp_bits = torch.where(m7, HIF8_EXP_BITS_D4, exp_bits)
+    frac_bits = torch.where(m7, HIF8_FRAC_BITS_D4, frac_bits)
+    
+    m8 = (exponent > HIF8_EXP_D4_MAX)
+    dot = torch.where(m8, HIF8_DOT_D4, dot)
+    exp_bits = torch.where(m8, HIF8_EXP_BITS_D4, exp_bits)
+    frac_bits = torch.where(m8, HIF8_DOT_INVALID, frac_bits)
+
+    # ------------------ TA 舍入分支 ------------------
+    carry_ta = torch.zeros_like(exponent, dtype=torch.bool)
+    frac_val_ta = torch.zeros_like(exponent)
+    
+    m_zero_thresh = (exponent == HIF8_EXP_ZERO_THRESHOLD)
+    carry_ta = torch.where(m_zero_thresh, True, carry_ta)
+    
+    m_ta_norm = ~m_zero_thresh
+    shift_bits = torch.clamp(FP32_FRACTION_BITS - (frac_bits + 1), min=0)
+    hif8_val_tmp = fraction_int >> shift_bits
+    
+    pow_frac = torch.pow(2, frac_bits + 1) - 1
+    m_carry = m_ta_norm & (hif8_val_tmp == pow_frac)
+    carry_ta = torch.where(m_carry, True, carry_ta)
+    
+    m_odd = m_ta_norm & (~m_carry) & (hif8_val_tmp != 0) & (hif8_val_tmp % 2 == 1)
+    frac_val_ta = torch.where(m_odd, (hif8_val_tmp + 1) >> 1, frac_val_ta)
+    
+    m_even = m_ta_norm & (~m_carry) & (hif8_val_tmp != 0) & (hif8_val_tmp % 2 == 0)
+    frac_val_ta = torch.where(m_even, hif8_val_tmp >> 1, frac_val_ta)
+
+    # ------------------ SSR 舍入分支 ------------------
+    carry_ssr = torch.zeros_like(exponent, dtype=torch.bool)
+    frac_val_ssr = torch.zeros_like(exponent)
+    
+    f14_v1 = (fraction_int >> SSR_DML_SHIFT) + SSR_F14_OFFSET
+    t14_v1 = fraction_int & SSR_T14_MASK
+    hif8_v1 = torch.zeros_like(fraction_int)
+    
+    s_bits = torch.clamp(FP32_FRACTION_BITS - frac_bits, min=0)
+    hif8_v2 = fraction_int >> s_bits
+    f14_t14 = fraction_int - (hif8_v2 << s_bits)
+    s_bits_f14 = torch.clamp(FP32_FRACTION_BITS - frac_bits - SSR_RESERVED_BITS, min=0)
+    f14_v2 = f14_t14 >> s_bits_f14
+    t14_v2 = f14_t14 & SSR_T14_MASK
+    
+    f14_values = torch.where(m_zero_thresh, f14_v1, f14_v2)
+    t14_values = torch.where(m_zero_thresh, t14_v1, t14_v2)
+    hif8_value = torch.where(m_zero_thresh, hif8_v1, hif8_v2)
+    
+    m_ge = (f14_values >= t14_values)
+    pow_frac_ssr = torch.pow(2, frac_bits) - 1
+    m_ssr_carry = m_ge & (hif8_value == pow_frac_ssr)
+    carry_ssr = torch.where(m_ssr_carry, True, carry_ssr)
+    frac_val_ssr = torch.where(m_ge & (~m_ssr_carry), hif8_value + 1, frac_val_ssr)
+    frac_val_ssr = torch.where(~m_ge, hif8_value, frac_val_ssr)
+
+    # ------------------ 合并舍入结果 ------------------
+    carry_exp_status = torch.where(cut_bit_is_ta, carry_ta, carry_ssr)
+    hif8_frac_value = torch.where(cut_bit_is_ta, frac_val_ta, frac_val_ssr)
+    
+    exponent = torch.where(carry_exp_status, exponent + 1, exponent)
+    abs_exp = torch.abs(exponent)
+    
+    dot = torch.where(carry_exp_status, torch.where(exponent < HIF8_EXP_DML_MIN, HIF8_DOT_INVALID, dot), dot)
+    dot = torch.where(carry_exp_status, torch.where((exponent >= HIF8_EXP_DML_MIN) & (exponent < HIF8_EXP_DML_MAX), HIF8_DOT_DML, dot), dot)
+    dot = torch.where(carry_exp_status, torch.where(exponent == HIF8_EXP_D0, HIF8_DOT_D0, dot), dot)
+    dot = torch.where(carry_exp_status, torch.where(abs_exp == HIF8_EXP_D1_BOUNDARY, HIF8_DOT_D1, dot), dot)
+    dot = torch.where(carry_exp_status, torch.where((abs_exp >= HIF8_EXP_D2_MIN) & (abs_exp <= HIF8_EXP_D2_MAX), HIF8_DOT_D2, dot), dot)
+    dot = torch.where(carry_exp_status, torch.where((abs_exp >= HIF8_EXP_D3_MIN) & (abs_exp <= HIF8_EXP_D3_MAX), HIF8_DOT_D3, dot), dot)
+    dot = torch.where(carry_exp_status, torch.where((abs_exp >= HIF8_EXP_D4_MIN) & (abs_exp <= HIF8_EXP_D4_MAX), HIF8_DOT_D4, dot), dot)
+    
+    frac_bits = torch.where(carry_exp_status, torch.where(exponent < HIF8_EXP_DML_MIN, HIF8_FRAC_BITS_DML, frac_bits), frac_bits)
+    frac_bits = torch.where(carry_exp_status, torch.where((exponent >= HIF8_EXP_DML_MIN) & (exponent < HIF8_EXP_DML_MAX), HIF8_FRAC_BITS_DML, frac_bits), frac_bits)
+    frac_bits = torch.where(carry_exp_status, torch.where(exponent == HIF8_EXP_D0, HIF8_FRAC_BITS_D0, frac_bits), frac_bits)
+    frac_bits = torch.where(carry_exp_status, torch.where(abs_exp == HIF8_EXP_D1_BOUNDARY, HIF8_FRAC_BITS_D1, frac_bits), frac_bits)
+    frac_bits = torch.where(carry_exp_status, torch.where((abs_exp >= HIF8_EXP_D2_MIN) & (abs_exp <= HIF8_EXP_D2_MAX), HIF8_FRAC_BITS_D2, frac_bits), frac_bits)
+    frac_bits = torch.where(carry_exp_status, torch.where((abs_exp >= HIF8_EXP_D3_MIN) & (abs_exp <= HIF8_EXP_D3_MAX), HIF8_FRAC_BITS_D3, frac_bits), frac_bits)
+    frac_bits = torch.where(carry_exp_status, torch.where((abs_exp >= HIF8_EXP_D4_MIN) & (abs_exp <= HIF8_EXP_D4_MAX), HIF8_FRAC_BITS_D4, frac_bits), frac_bits)
+    
+    exp_bits = torch.where(carry_exp_status, torch.where(exponent < HIF8_EXP_DML_MIN, HIF8_EXP_BITS_DML, exp_bits), exp_bits)
+    exp_bits = torch.where(carry_exp_status, torch.where((exponent >= HIF8_EXP_DML_MIN) & (exponent < HIF8_EXP_DML_MAX), HIF8_EXP_BITS_DML, exp_bits), exp_bits)
+    exp_bits = torch.where(carry_exp_status, torch.where(exponent == HIF8_EXP_D0, HIF8_EXP_BITS_D0, exp_bits), exp_bits)
+    exp_bits = torch.where(carry_exp_status, torch.where(abs_exp == HIF8_EXP_D1_BOUNDARY, HIF8_EXP_BITS_D1, exp_bits), exp_bits)
+    exp_bits = torch.where(carry_exp_status, torch.where((abs_exp >= HIF8_EXP_D2_MIN) & (abs_exp <= HIF8_EXP_D2_MAX), HIF8_EXP_BITS_D2, exp_bits), exp_bits)
+    exp_bits = torch.where(carry_exp_status, torch.where((abs_exp >= HIF8_EXP_D3_MIN) & (abs_exp <= HIF8_EXP_D3_MAX), HIF8_EXP_BITS_D3, exp_bits), exp_bits)
+    exp_bits = torch.where(carry_exp_status, torch.where((abs_exp >= HIF8_EXP_D4_MIN) & (abs_exp <= HIF8_EXP_D4_MAX), HIF8_EXP_BITS_D4, exp_bits), exp_bits)
+
+    # ------------------ 组合输出编码 ------------------
+    hif8_int_value = torch.zeros_like(exponent)
+    sig_exp = torch.where(exponent < 0, 1, 0)
+    
+    # 分支 A: dot <= 0
+    m_a = (dot <= 0)
+    val_a = torch.where(exponent <= HIF8_EXP_ZERO_THRESHOLD, 0, sign_norm + exponent + HIF8_DML_EXP_OFFSET)
+    hif8_int_value = torch.where(m_a, val_a, hif8_int_value)
+    
+    # 分支 B: dot == 1
+    m_b = (dot == 1)
+    val_b = sign_norm + (dot << HIF8_DOT_BIT_SHIFT) + hif8_frac_value
+    hif8_int_value = torch.where(m_b, val_b, hif8_int_value)
+    
+    # 分支 C: dot > 1
+    m_c = (dot > 1)
+    abs_exponent = torch.abs(exponent)
+    abs_exponent = abs_exponent - torch.pow(2, exp_bits - 1)
+    exponent_int_value = abs_exponent << frac_bits
+    sig_exp_shifted = sig_exp << (exp_bits - 1 + frac_bits)
+    dot_int_value = dot << HIF8_DOT_BIT_SHIFT
+    val_c = sign_norm + dot_int_value + sig_exp_shifted + exponent_int_value + hif8_frac_value
+    hif8_int_value = torch.where(m_c, val_c, hif8_int_value)
+    
+    hif8_int_value = torch.where(exponent < HIF8_EXP_ZERO_THRESHOLD, 0, hif8_int_value)
+    
+    out[mask_normal] = hif8_int_value
+    
+    return out.reshape(shape).to(torch.uint8)
 
 def cvt_hifuint8_to_float32(x, over_mode = True):
     x = int(x)
@@ -1400,13 +1695,89 @@ def cvt_hifuint8_to_float32(x, over_mode = True):
             exponent_value = 0
         return sign * pow(2.0, exponent_value) * m_value
 
-def trans_hifuint8_tensor_to_float(in_tensor):
-    tensor_shape = in_tensor.shape
-    tensor_shape_size = in_tensor.numel()
+def trans_hifuint8_tensor_to_float(in_tensor, over_mode=True):
+    """
+    将 HiF8 编码的 uint8 Tensor 批量转换为 float32 Tensor (支持 CPU/GPU 矢量化)
+    """
+    shape = in_tensor.shape
+    x = in_tensor.reshape(-1).to(torch.int32)
+    out = torch.zeros_like(x, dtype=torch.float32)
+
+    # 1. 特殊值处理 (Masks)
+    mask_zero = (x == HIF8_ZERO)
+    mask_nan  = (x == HIF8_NAN)
+    mask_ninf = (x == HIF8_NEG_INF)
+    mask_pinf = (x == HIF8_POS_INF)
     
-    out_tensor = torch.zeros(tensor_shape_size).to(torch.float)
-    in_tensor = in_tensor.reshape(tensor_shape_size)
-    for i in range(tensor_shape_size):
-        out_tensor[i] = cvt_hifuint8_to_float32(in_tensor[i])
-    out_tensor = out_tensor.reshape(tensor_shape).to(torch.float)
-    return out_tensor
+    if over_mode:
+        out = torch.where(mask_nan, torch.tensor(float('nan'), device=x.device), out)
+        out = torch.where(mask_ninf, torch.tensor(-torch.inf, device=x.device), out)
+        out = torch.where(mask_pinf, torch.tensor(torch.inf, device=x.device), out)
+    else:
+        out = torch.where(mask_nan, 0.0, out)
+        out = torch.where(mask_ninf, float(-HIF8_MAX_FINITE_VALUE), out)
+        out = torch.where(mask_pinf, float(HIF8_MAX_FINITE_VALUE), out)
+        
+    # 正常数值的 Mask (排除特殊值)
+    mask_normal = ~(mask_zero | mask_nan | mask_ninf | mask_pinf)
+    if not mask_normal.any():
+        return out.reshape(shape)
+
+    # 提取正常数值子集进行计算
+    x_norm = x[mask_normal]
+    
+    # 符号位计算
+    sign = torch.where(x_norm >= HIF8_NAN, -1.0, 1.0)
+    
+    # 提取 dot 档位
+    dot_4_value = (x_norm & HIF8_DOT_MASK) >> 3
+    
+    # 初始化指数和尾数乘子
+    exponent_value = torch.zeros_like(x_norm, dtype=torch.float32)
+    m_value = torch.zeros_like(x_norm, dtype=torch.float32)
+    
+    # --- 档位 D4 ---
+    m_d4 = (dot_4_value >= HIF8_DOT_D4)
+    if m_d4.any():
+        exp_int = (x_norm & HIF8_EXP_MASK_D4) >> 1
+        exponent_value = torch.where(m_d4, torch.where(exp_int >= 8, -exp_int, exp_int + 8).float(), exponent_value)
+        m_value = torch.where(m_d4, 1.0 + (x_norm & HIF8_FRAC_MASK_1BIT) * 0.5, m_value)
+        
+    # --- 档位 D3 ---
+    m_d3 = (~m_d4) & (dot_4_value >= HIF8_DOT_D3)
+    if m_d3.any():
+        exp_int = (x_norm & HIF8_EXP_MASK_D3) >> 2
+        exponent_value = torch.where(m_d3, torch.where(exp_int >= 4, -exp_int, exp_int + 4).float(), exponent_value)
+        m_value = torch.where(m_d3, 1.0 + (x_norm & HIF8_FRAC_MASK_2BIT) * 0.25, m_value)
+        
+    # --- 档位 D2 ---
+    m_d2 = (~(m_d4 | m_d3)) & (dot_4_value >= HIF8_DOT_D2)
+    if m_d2.any():
+        exp_int = (x_norm & HIF8_EXP_MASK_D2) >> 3
+        exponent_value = torch.where(m_d2, torch.where(exp_int >= 2, -exp_int, exp_int + 2).float(), exponent_value)
+        m_value = torch.where(m_d2, 1.0 + (x_norm & HIF8_FRAC_MASK_3BIT) * 0.125, m_value)
+        
+    # --- 档位 D1 ---
+    m_d1 = (~(m_d4 | m_d3 | m_d2)) & (dot_4_value >= HIF8_DOT_D1)
+    if m_d1.any():
+        exp_sign = (x_norm & HIF8_EXP_SIGN_MASK_D1) >> 3
+        exponent_value = torch.where(m_d1, torch.where(exp_sign >= 1, -1.0, 1.0), exponent_value)
+        m_value = torch.where(m_d1, 1.0 + (x_norm & HIF8_FRAC_MASK_3BIT) * 0.125, m_value)
+        
+    # --- 档位 D0 ---
+    m_d0 = (dot_4_value == HIF8_DOT_D0)
+    if m_d0.any():
+        exponent_value = torch.where(m_d0, 0.0, exponent_value)
+        m_value = torch.where(m_d0, 1.0 + (x_norm & HIF8_FRAC_MASK_3BIT) * 0.125, m_value)
+        
+    # --- 档位 DML ---
+    m_dml = (dot_4_value == HIF8_DOT_DML)
+    if m_dml.any():
+        exponent_value = torch.where(m_dml, ((x_norm & HIF8_EXP_MASK_DML) - HIF8_DML_EXP_OFFSET).float(), exponent_value)
+        m_value = torch.where(m_dml, 1.0, m_value)
+        
+    # 计算正常值结果并写回
+    norm_res = sign * torch.pow(2.0, exponent_value) * m_value
+    out[mask_normal] = norm_res
+    
+    return out.reshape(shape)

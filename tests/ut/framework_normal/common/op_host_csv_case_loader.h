@@ -181,6 +181,43 @@ inline int GetTensorGE(const csv_map& csvMap, const std::string& shapeKey, const
     return 1;
 }
 
+inline std::vector<std::string> SplitByDelim(const std::string& str, char delim)
+{
+    std::vector<std::string> parts;
+    if (str.empty()) return parts;
+    std::istringstream iss(str);
+    std::string part;
+    while (std::getline(iss, part, delim)) {
+        parts.push_back(part);
+    }
+    return parts;
+}
+
+template<typename T>
+inline std::vector<T> GetTensorListGE(const csv_map& csvMap, const std::string& shapeKey,
+    const std::string& dtypeKey, const std::string& formatKey)
+{
+    std::string shapeStr = ReadMap(csvMap, shapeKey);
+    if (shapeStr.empty()) return {};
+
+    auto shapeParts = SplitByDelim(shapeStr, '|');
+    auto dtypeParts = SplitByDelim(ReadMap(csvMap, dtypeKey), '|');
+    auto formatParts = SplitByDelim(ReadMap(csvMap, formatKey), '|');
+
+    std::vector<T> result;
+    for (size_t i = 0; i < shapeParts.size(); i++) {
+        gert::StorageShape shape = GetStorageShape(shapeParts[i]);
+        ge::DataType dtype = ReadMap(GE_DTYPE,
+            i < dtypeParts.size() ? dtypeParts[i] : (dtypeParts.empty() ? "" : dtypeParts[0]),
+            ge::DT_UNDEFINED);
+        ge::Format format = ReadMap(GE_FORMAT,
+            i < formatParts.size() ? formatParts[i] : (formatParts.empty() ? "" : formatParts[0]),
+            ge::FORMAT_NULL);
+        result.emplace_back(shape, dtype, format);
+    }
+    return result;
+}
+
 inline int GetDataTypeGE(const csv_map& csvMap, const std::string& dtypeKey, ge::DataType& out)
 {
     std::string dtypeStr = ReadMap(csvMap, dtypeKey);

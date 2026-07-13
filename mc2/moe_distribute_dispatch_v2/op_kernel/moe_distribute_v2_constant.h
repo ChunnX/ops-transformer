@@ -77,6 +77,7 @@ constexpr uint32_t STATIC_QUANT = 1;
 constexpr uint32_t PERTOKEN_DYNAMIC_QUANT = 2;
 constexpr uint32_t PERGROUP_DYNAMIC_QUANT = 3;
 constexpr uint32_t MX_QUANT = 4;
+constexpr uint32_t MX_QUANT_CLIP = 5;
 constexpr uint32_t CACHEWRITESIZE = 8U;
 constexpr uint32_t FP4_ELEMS_PER_BYTE = 2;
 

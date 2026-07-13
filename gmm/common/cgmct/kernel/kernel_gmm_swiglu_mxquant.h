@@ -145,11 +145,13 @@ public:
         int32_t baseM;
         int32_t baseN;
         int32_t baseK;
+        uint8_t isMxWeightNzMultiTensor;
         const TCubeTiling* __restrict matmulTiling;
         __aicore__ GMMTiling() {}
         __aicore__ GMMTiling(uint32_t groupNum_, uint8_t groupListType_, int32_t baseM_, int32_t baseN_,
-                             int32_t baseK_) :
-            groupNum(groupNum_), groupListType(groupListType_), baseM(baseM_), baseN(baseN_), baseK(baseK_)
+                             int32_t baseK_, uint8_t isMxWeightNzMultiTensor_ = 0)
+            : groupNum(groupNum_), groupListType(groupListType_), baseM(baseM_), baseN(baseN_), baseK(baseK_),
+              isMxWeightNzMultiTensor(isMxWeightNzMultiTensor_)
         {}
     };
 
@@ -242,13 +244,20 @@ public:
         return splitValue;
     }
 
-    __aicore__ inline void UpdateGlobalBuffer(const Params& params)
+    __aicore__ inline void UpdateGlobalBuffer(const Params& params, uint32_t groupIdx)
     {
         if ASCEND_IS_AIC {
+            bool isMxWeightNzMultiTensor = params.gmmParams.isMxWeightNzMultiTensor != 0;
             aGlobal_.SetGlobalBuffer((__gm__ AType*)params.mmadParams.aGmAddr + Get<IDX_A_OFFSET>(baseOffset_));
-            bGlobal_.SetGlobalBuffer(GetTensorAddr<BType>(0, params.mmadParams.bGmAddr) + Get<IDX_B_OFFSET>(baseOffset_));
-            x1ScaleGlobal_.SetGlobalBuffer((__gm__ AscendC::fp8_e8m0_t*)params.mmadParams.x1ScaleGmAddr + Get<IDX_X1SCALE_OFFSET>(baseOffset_));
-            x2ScaleGlobal_.SetGlobalBuffer(GetTensorAddr<AscendC::fp8_e8m0_t>(0, params.mmadParams.x2ScaleGmAddr) + Get<IDX_X2SCALE_OFFSET>(baseOffset_));
+            bGlobal_.SetGlobalBuffer(GetTensorAddr<BType>(isMxWeightNzMultiTensor ? groupIdx : 0,
+                                                          params.mmadParams.bGmAddr) +
+                                     Get<IDX_B_OFFSET>(baseOffset_));
+            x1ScaleGlobal_.SetGlobalBuffer((__gm__ AscendC::fp8_e8m0_t*)params.mmadParams.x1ScaleGmAddr +
+                                           Get<IDX_X1SCALE_OFFSET>(baseOffset_));
+            x2ScaleGlobal_.SetGlobalBuffer(GetTensorAddr<AscendC::fp8_e8m0_t>(
+                                               isMxWeightNzMultiTensor ? groupIdx : 0,
+                                               params.mmadParams.x2ScaleGmAddr) +
+                                           Get<IDX_X2SCALE_OFFSET>(baseOffset_));
         }
         if ASCEND_IS_AIV {
             AscendC::Coord<int64_t, int64_t, int64_t, int64_t, int64_t> vecBaseOffset{
@@ -257,7 +266,7 @@ public:
         }
     }
 
-    __aicore__ inline void UpdateOffset(uint32_t groupIdx)
+    __aicore__ inline void UpdateOffset(const Params& params, uint32_t groupIdx)
     {
         // baseOffset is 0 when groupIdx = 0
         if (groupIdx == 0) {
@@ -266,20 +275,24 @@ public:
         uint64_t m = Get<M_VALUE>(problemShape_);
         uint64_t n = Get<N_VALUE>(problemShape_);
         uint64_t k = Get<K_VALUE>(problemShape_);
+        bool isMxWeightNzMultiTensor = params.gmmParams.isMxWeightNzMultiTensor != 0;
         
         if constexpr (IS_FP4) {
             Get<IDX_A_OFFSET>(baseOffset_) = ((preOffset_ - m) * k) >> 1;
-            Get<IDX_B_OFFSET>(baseOffset_) = (perGroupBOffset_ * static_cast<int64_t>(groupIdx)) >> 1;
+            Get<IDX_B_OFFSET>(baseOffset_) =
+                isMxWeightNzMultiTensor ? 0 : ((perGroupBOffset_ * static_cast<int64_t>(groupIdx)) >> 1);
         } else {
             Get<IDX_A_OFFSET>(baseOffset_) = (preOffset_ - m) * k;
-            Get<IDX_B_OFFSET>(baseOffset_) = perGroupBOffset_ * static_cast<int64_t>(groupIdx);
+            Get<IDX_B_OFFSET>(baseOffset_) =
+                isMxWeightNzMultiTensor ? 0 : perGroupBOffset_ * static_cast<int64_t>(groupIdx);
         }
 
         auto scaleK = CeilDiv(k, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
         // scaleAAxisBaseOffset (m, ceil(k,64), 2)
         Get<IDX_X1SCALE_OFFSET>(baseOffset_) = (preOffset_ - m) * scaleK;
         // scaleBAxisBaseOffset (g, n, ceil(k,64), 2) or (g, ceil(k,64), n, 2)
-        Get<IDX_X2SCALE_OFFSET>(baseOffset_) = static_cast<int64_t>(groupIdx) * n * scaleK;
+        Get<IDX_X2SCALE_OFFSET>(baseOffset_) =
+            isMxWeightNzMultiTensor ? 0 : static_cast<int64_t>(groupIdx) * n * scaleK;
         if (AscendC::IsSameTypeV<DataTypeOut, fp4x2_e2m1_t> || AscendC::IsSameTypeV<DataTypeOut, fp4x2_e1m2_t>) {
             Get<IDX_C_OFFSET>(baseOffset_) = ((preOffset_ - m) * (n / SWIGLU_N_HALF)) >> 1;
         } else {
@@ -352,8 +365,8 @@ public:
         while (bs.GetTileIdx(tileIdx)) {
             BlockShape singleShape = bs.GetBlockShape(tileIdx);
             if (initSingleGroup_) {
-                UpdateOffset(groupIdx);
-                UpdateGlobalBuffer(params);
+                UpdateOffset(params, groupIdx);
+                UpdateGlobalBuffer(params, groupIdx);
                 SetL2CacheDisableIfNeeded(Get<M_VALUE>(problemShape_), static_cast<int64_t>(params.gmmParams.baseM),
                                           static_cast<int64_t>(params.gmmParams.baseN));
                 initSingleGroup_ = false;

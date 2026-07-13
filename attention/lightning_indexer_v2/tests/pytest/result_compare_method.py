@@ -17,6 +17,7 @@ import torch
 import datetime
 import os
 import sys
+import ast
 import numpy as np
 from time import time
 logging.basicConfig(level=logging.INFO, format='%(message)s', force=True)
@@ -252,9 +253,9 @@ def trans_tnd_actseq(list):
             raise ValueError(f'TND情况下 act_seq_len 为非递减数列 act_seq_len={list}')
     return list_new
 
-def check_result(expect, result, topk_value, params):
+def check_result(expect, result, topk_value, output_idx_offset, params):
     batch_size, q_seq, k_seq, q_t_size, k_t_size, q_head_num, k_head_num, head_dim, block_size, block_num, \
-    qk_dtype, cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k, cmp_residual_k, output_idx_offset, \
+    qk_dtype, cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k, cmp_residual_k, _, \
     layout_query, layout_key, topk, mask_mode, query_datarange, key_datarange, weights_datarange, \
     cmp_ratio, return_value, max_seqlen_q = params
 
@@ -263,28 +264,28 @@ def check_result(expect, result, topk_value, params):
     elif isinstance(cu_seqlens_q, list):
         cu_seqlens_q = cu_seqlens_q
     elif cu_seqlens_q is not None:
-        cu_seqlens_q = [int(x.strip()) for x in cu_seqlens_q.split(',')]
+        cu_seqlens_q = ast.literal_eval(cu_seqlens_q)
     
     if isinstance(cu_seqlens_k, int):
         cu_seqlens_k = [cu_seqlens_k]
     elif isinstance(cu_seqlens_k, list):
         cu_seqlens_k = cu_seqlens_k
     elif cu_seqlens_k is not None:
-        cu_seqlens_k = [int(x.strip()) for x in cu_seqlens_k.split(',')]
+        cu_seqlens_k = ast.literal_eval(cu_seqlens_k)
 
     if isinstance(seqused_q, int):
         seqused_q = [seqused_q]
     elif isinstance(seqused_q, list):
         seqused_q = seqused_q
     elif seqused_q is not None:
-        seqused_q = [int(x.strip()) for x in seqused_q.split(',')]
+        seqused_q = ast.literal_eval(seqused_q)
     
     if isinstance(seqused_k, int):
         seqused_k = [seqused_k]
     elif isinstance(seqused_k, list):
         seqused_k = seqused_k
     elif seqused_k is not None:
-        seqused_k = [int(x.strip()) for x in seqused_k.split(',')]
+        seqused_k = ast.literal_eval(seqused_k)
 
     npu_pass = True
     max_error = 0
@@ -410,28 +411,28 @@ def check_result_return_value(expect, result, params):
     elif isinstance(cu_seqlens_q, list):
         cu_seqlens_q = cu_seqlens_q
     elif cu_seqlens_q is not None:
-        cu_seqlens_q = [int(x.strip()) for x in cu_seqlens_q.split(',')]
+        cu_seqlens_q = ast.literal_eval(cu_seqlens_q)
     
     if isinstance(cu_seqlens_k, int):
         cu_seqlens_k = [cu_seqlens_k]
     elif isinstance(cu_seqlens_k, list):
         cu_seqlens_k = cu_seqlens_k
     elif cu_seqlens_k is not None:
-        cu_seqlens_k = [int(x.strip()) for x in cu_seqlens_k.split(',')]
+        cu_seqlens_k = ast.literal_eval(cu_seqlens_k)
 
     if isinstance(seqused_q, int):
         seqused_q = [seqused_q]
     elif isinstance(seqused_q, list):
         seqused_q = seqused_q
     elif seqused_q is not None:
-        seqused_q = [int(x.strip()) for x in seqused_q.split(',')]
+        seqused_q = ast.literal_eval(seqused_q)
     
     if isinstance(seqused_k, int):
         seqused_k = [seqused_k]
     elif isinstance(seqused_k, list):
         seqused_k = seqused_k
     elif seqused_k is not None:
-        seqused_k = [int(x.strip()) for x in seqused_k.split(',')]
+        seqused_k = ast.literal_eval(seqused_k)
 
     if layout_query == 'TND':
         if len(cu_seqlens_q) == batch_size + 1:
