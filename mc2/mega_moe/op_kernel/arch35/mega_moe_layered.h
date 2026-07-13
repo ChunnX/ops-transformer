@@ -1304,17 +1304,15 @@ template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ProcessCombine(
     const GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &gmm2State, uint32_t expertIdx)
 {
-    uint32_t groupTileId = aivCoreIdx_;
-    uint32_t totalGroupTiles = blockAivNum_;
+    uint32_t groupTileStride = 1;
     if constexpr (ENABLE_A8W4) {
         if (subBlockIdx_ != 1) {
             return;
         }
-        groupTileId = aivCoreIdx_ / 2;
-        totalGroupTiles = blockAivNum_ / 2;
+        groupTileStride = 2;
     }
     MegaMoeCombineImpl::CombineTileSchedule tileSchedule{
-        groupTileId, totalGroupTiles, aivCoreIdx_, blockAivNum_};
+        aivCoreIdx_, blockAivNum_, groupTileStride};
     MegaMoeCombineImpl::CombineExpertContext expertContext{
         expertIdx, rankId_, k_, gmm2State.expertBeforeCnt, Get<M_VALUE>(gmm2State.problemShape)};
     MegaMoeCombineImpl::CombineBufferContext bufferContext{
