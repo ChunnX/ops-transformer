@@ -24,8 +24,7 @@ NpuMegaMoe(const at::Tensor &context, const at::Tensor &x, const at::Tensor &top
            const c10::optional<at::Tensor> &xActiveMask, int64_t maxRecvTokenNum, int64_t dispatchQuantMode,
            int64_t combineQuantMode, std::string commAlg, int64_t numMaxTokensPerRank, std::string activation,
            c10::optional<float> activationClamp, c10::optional<int64_t> dispatchQuantOutDtype,
-           c10::optional<int64_t> weight1Type, c10::optional<int64_t> weight2Type, c10::optional<int64_t> topoType,
-           c10::optional<int64_t> rankNumPerServer)
+           c10::optional<int64_t> weight1Type, c10::optional<int64_t> weight2Type, c10::optional<int64_t> topoType)
 {
     TORCH_CHECK((epWorldSize > 0), "The ep_world_sizes should be greater than 0, current is: ", epWorldSize);
     TORCH_CHECK((x.dim() == DIM_TWO) && (topkIds.dim() == DIM_TWO), "The x and topk_ids should be 2D");
@@ -106,7 +105,6 @@ NpuMegaMoe(const at::Tensor &context, const at::Tensor &x, const at::Tensor &top
 
     float activationClampValue = activationClamp.value_or(std::numeric_limits<float>::max());
     int64_t topoTypeValue = topoType.value_or(0);
-    int64_t rankNumPerServerValue = rankNumPerServer.value_or(2);
 
     int64_t dispatchQuantResultType =
         dispatchQuantOutDtype.has_value() ? static_cast<int64_t>(GetAclDataType(dispatchQuantOutDtype.value())) : 28;
@@ -124,8 +122,7 @@ NpuMegaMoe(const at::Tensor &context, const at::Tensor &x, const at::Tensor &top
     ACLNN_CMD(aclnnMegaMoe, context, x, topkIds, topkWeights, weight1Wrapper, weight2Wrapper, weightScales1Wrapper,
               weightScales2Wrapper, bias1Wrapper, bias2Wrapper, xActiveMask, moeExpertNum, epWorldSize, cclBufferSize,
               maxRecvTokenNum, dispatchQuantMode, dispatchQuantResultType, combineQuantMode, commAlgPtr,
-              numMaxTokensPerRank, activationPtr, activationClampValue, topoTypeValue,
-              rankNumPerServerValue, y, expertTokenNums);
+              numMaxTokensPerRank, activationPtr, activationClampValue, topoTypeValue, y, expertTokenNums);
 
     return std::tie(y, expertTokenNums);
 }

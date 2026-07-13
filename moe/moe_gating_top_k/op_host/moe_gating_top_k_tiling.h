@@ -51,7 +51,6 @@ TILING_DATA_FIELD_DEF(int64_t, vmsCount);
 TILING_DATA_FIELD_DEF(float, routedScalingFactor);
 TILING_DATA_FIELD_DEF(float, eps);
 TILING_DATA_FIELD_DEF(int64_t, calTmpBufUbSize);
-TILING_DATA_FIELD_DEF(bool, hashFlag);
 END_TILING_DATA_DEF;
 REGISTER_TILING_DATA_CLASS(MoeGatingTopK, MoeGatingTopKTilingData)
 

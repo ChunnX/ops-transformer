@@ -74,10 +74,7 @@ protected:
                                           const int64_t mm345Addr, const RunInfo &runInfo);
     __aicore__ inline void CalSub(LocalTensor<float> &dstTensor, LocalTensor<float> &srcTensor, int32_t baseM,
                                   int32_t baseN);
-    __aicore__ inline void NzToNd(Nz2NdInfo &nz2NdInfo, const GlobalTensor<float> &bmmResGm,
-                                  LocalTensor<float> &tempUb, LocalTensor<float> &bmmResUb,
-                                  event_t eventIdMte2ToV, event_t backEventTmp, event_t backEvent,
-                                  bool isBackEvent = false);
+    __aicore__ inline void NzToNd(Nz2NdInfo &nz2NdInfo, const GlobalTensor<float> &bmmResGm, LocalTensor<float> &tempUb, LocalTensor<float> &bmmResUb, event_t eventIdMte2ToV, event_t backEventTmp, event_t backEvent, bool isDk = false);
 protected:
     // core info
     int64_t usedCoreNum;
@@ -642,7 +639,6 @@ __aicore__ inline void VecOp<SFAGT>::CalRowsumAndSftCopyIn(const int64_t dyGmOff
     
     WAIT_FLAG(MTE2, V, vWaitMte2);
     Brcb(maxTensor, maxTmp, CeilDiv(params.sftBaseM, BLOCK_FP32), {1, 8});
-    PIPE_BARRIER(PIPE_V);
     Brcb(sumTensor, sumTmp, CeilDiv(params.sftBaseM, BLOCK_FP32), {1, 8});
     PIPE_BARRIER(PIPE_V);
 }
@@ -1316,9 +1312,8 @@ __aicore__ inline void VecOp<SFAGT>::Process(const RunInfo &runInfo)
 }
 
 template <typename SFAGT>
-__aicore__ inline void VecOp<SFAGT>::NzToNd(Nz2NdInfo &nz2NdInfo, const GlobalTensor<float> &bmmResGm,
-                              LocalTensor<float> &tempUb, LocalTensor<float> &bmmResUb,
-                              event_t eventIdMte2ToV, event_t backEventTmp, event_t backEvent, bool isBackEvent)
+__aicore__ inline void VecOp<SFAGT>::NzToNd(Nz2NdInfo &nz2NdInfo, const GlobalTensor<float> &bmmResGm, LocalTensor<float> &tempUb,
+                              LocalTensor<float> &bmmResUb, event_t eventIdMte2ToV, event_t backEventTmp, event_t backEvent, bool isDk)
 {
     // 1.将bmm1结果由GM搬至UB，每块数据在UB上间隔1个block，防止BANK冲突
     DataCopyParams dataCopyParams;
@@ -1347,7 +1342,7 @@ __aicore__ inline void VecOp<SFAGT>::NzToNd(Nz2NdInfo &nz2NdInfo, const GlobalTe
     // 2.使用vcopy进行transpose，[S2/16, vec1S1Base * 16 + 8] -> [vec1S1Base, S2/16 , 16]
     SetFlag<HardEvent::MTE2_V>(eventIdMte2ToV);
     WaitFlag<HardEvent::MTE2_V>(eventIdMte2ToV);
-    if (isBackEvent) {
+    if (isDk) {
         WaitFlag<HardEvent::MTE3_V>(backEvent);
     }
     if (likely(outerRemain)) {
@@ -1578,12 +1573,13 @@ __aicore__ inline void VecOp<SFAGT>::ScatterAddUnDeter(const RunInfo &runInfo)
         event_t backEventTmpK = pingPongIdx == 0 ? runInfo.scatterTmpKMte2WaitV: runInfo.scatterTmpKMte2WaitVPong;
         event_t backEventTmpV = pingPongIdx == 0 ? runInfo.scatterTmpVMte2WaitV: runInfo.scatterTmpVMte2WaitVPong;
 
+        WaitFlag<HardEvent::MTE3_V>(backEvent);
         nz2NdInfo.ndLastAxis = dimD2Align;
-        NzToNd(nz2NdInfo, dvSrcGm, tmpV, dvInUb, event, backEventTmpV, backEvent, !KV_MERGE);
+        NzToNd(nz2NdInfo, dvSrcGm, tmpV, dvInUb, event, backEventTmpV, backEvent);
         PIPE_BARRIER(PIPE_V);
 
         nz2NdInfo.ndLastAxis = dimDAlign;
-        NzToNd(nz2NdInfo, dkSrcGm, tmpK, dkInUb, event, backEventTmpK, backEvent, KV_MERGE);
+        NzToNd(nz2NdInfo, dkSrcGm, tmpK, dkInUb, event, backEventTmpK, backEvent);
         PIPE_BARRIER(PIPE_V);
         Muls(dkInUb, dkInUb, (float)tilingData->postTilingData.scaleValue, curUbRowSizeDAlign);
         PIPE_BARRIER(PIPE_V);

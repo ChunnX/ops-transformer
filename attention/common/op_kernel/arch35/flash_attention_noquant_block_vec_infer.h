@@ -113,7 +113,7 @@ private:
     __aicore__ inline void MlaBnsdWithActqLseCopyOut(LocalTensor<float> &lseUb, RunInfo<isInfer> &runInfo, ConstInfo<isInfer, hasRope> &constInfo, DataCopyExtParams &intriParams1);
     __aicore__ inline void SoftmaxLseCopyOut(LocalTensor<float> &softmaxSumTmp, LocalTensor<float> &softmaxMaxTmp,
                                              RunInfo<isInfer> &runInfo, ConstInfo<isInfer, hasRope> &constInfo);
-    __aicore__ inline void CombineSplitKVRes(ConstInfo<isInfer, hasRope> &constInfo, uint64_t attenOutOffset, uint32_t bIdx, uint32_t n2Idx, uint64_t lseBatchOffset);
+    __aicore__ inline void CombineSplitKVRes(ConstInfo<isInfer, hasRope> &constInfo, uint64_t attenOutOffset, uint32_t bIdx, uint32_t n2Idx);
 
     __aicore__ inline void ComputeScaleValue(LocalTensor<T> lseMaxUb, LocalTensor<T> lseSumUb, 
         ConstInfo<isInfer, hasRope> &constInfo, uint32_t splitSize, uint64_t lseOffset, uint64_t sinkOffset);
@@ -412,15 +412,13 @@ __aicore__ inline void FANoQuantBlockVecInfer<TEMPLATE_ARGS>::FlashDecodeCompute
         return;
     }
     uint64_t attenOutOffset = (uint64_t)bIdx * constInfo.n2GDv + n2Idx * constInfo.gDv;
-    uint64_t lseBatchOffset = (uint64_t)bIdx;
     if constexpr ((layout == LayOutTypeEnum::LAYOUT_TND || layout == LayOutTypeEnum::LAYOUT_NTD)) {
         if (bIdx > 0) {
             attenOutOffset = (uint64_t)actualSeqQlenAddr[bIdx - 1] * constInfo.n2GDv + n2Idx * constInfo.gDv;
-            lseBatchOffset = (uint64_t)actualSeqQlenAddr[bIdx - 1];
         }
     }
     constInfo.actualCombineLoopSize = (actualSeqLenKv + constInfo.sInnerLoopSize - 1) / constInfo.sInnerLoopSize;
-    CombineSplitKVRes(constInfo, attenOutOffset, bIdx, n2Idx, lseBatchOffset);
+    CombineSplitKVRes(constInfo, attenOutOffset, bIdx, n2Idx);
 }
 
 TEMPLATES_DEF_NO_DEFAULT
@@ -746,7 +744,7 @@ __aicore__ inline void FANoQuantBlockVecInfer<TEMPLATE_ARGS>::InitLseOutputSingl
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void FANoQuantBlockVecInfer<TEMPLATE_ARGS>::CombineSplitKVRes(
-    ConstInfo<isInfer, hasRope> &constInfo, uint64_t attenOutOffset, uint32_t bIdx, uint32_t n2Idx, uint64_t lseBatchOffset)
+    ConstInfo<isInfer, hasRope> &constInfo, uint64_t attenOutOffset, uint32_t bIdx, uint32_t n2Idx)
 {
     uint32_t gSplitSizeLse =
         bufferSizeByte32K / (FA_BYTE_BLOCK * constInfo.splitKVNum); // 32K / (splitKVNum * 32B)
@@ -777,7 +775,7 @@ __aicore__ inline void FANoQuantBlockVecInfer<TEMPLATE_ARGS>::CombineSplitKVRes(
         // 内存复用，同时作为输出 scale 值
         LocalTensor<T> softmaxSumLocal = softmaxSumInputQue.DeQue<T>();
 
-        lseOffset = (lseBatchOffset * constInfo.n2Size + n2Idx) * constInfo.gSize + i * gSplitSize;
+        lseOffset = (bIdx * constInfo.n2Size + n2Idx) * constInfo.gSize + i * gSplitSize;
         sinkOffset = n2Idx * constInfo.gSize + i * gSplitSize;
         ComputeScaleValue(softmaxMaxLocal, softmaxSumLocal, constInfo, gSplitSize, lseOffset, sinkOffset);
 
@@ -796,7 +794,7 @@ __aicore__ inline void FANoQuantBlockVecInfer<TEMPLATE_ARGS>::CombineSplitKVRes(
         // 内存复用，同时作为输出 scale 值
         LocalTensor<T> softmaxSumLocal = softmaxSumInputQue.DeQue<T>();
 
-        lseOffset = (lseBatchOffset * constInfo.n2Size + n2Idx) * constInfo.gSize + (loopCount - 1) * gSplitSize;
+        lseOffset = (bIdx * constInfo.n2Size + n2Idx) * constInfo.gSize + (loopCount - 1) * gSplitSize;
         sinkOffset = n2Idx * constInfo.gSize + (loopCount - 1) * gSplitSize;
         ComputeScaleValue(softmaxMaxLocal, softmaxSumLocal, constInfo, tailSplitSize, lseOffset, sinkOffset);
 

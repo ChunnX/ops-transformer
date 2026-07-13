@@ -53,7 +53,6 @@ constexpr size_t COMM_MODE_INDEX = 11;
 
 constexpr uint64_t PERBLOCK_SCALE_SIZE = 128;
 constexpr uint32_t COMM_VERSION3 = 3U;
-constexpr uint64_t HCCL_MAX_COMM_TILES = 62; // 总通信次数上限63, tile+tail最大62, 1个保留给x1Scale通信的情况
 
 class AllGatherMatmulTilingBase : public TilingBaseClass {
 public:
@@ -97,7 +96,6 @@ protected:
     mc2tiling::HcclDataType GetDataType(ge::DataType type);
     uint32_t AllGatherSplitM(mc2tiling::TilingArgs& args, uint32_t maxTileCnt);
     uint64_t GetStorageA(Mc2Tiling::RCSTiling& rcsCfg);
-    uint64_t CalcGatherLen(uint32_t dimA, uint32_t dimB, uint64_t alignAddrLen);
     bool CheckInputParaEmptyPointer();
     bool CheckInputScale();
     bool CheckGroupSize();

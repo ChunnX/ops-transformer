@@ -38,16 +38,6 @@
   </tr>
   <tr>
     <td>attention</td>
-    <td><a href="../../attention/attention_worker_combine/README.md">attention_worker_combine</a></td>
-    <td>✓</td>
-    <td>✓</td>
-    <td>✓</td>
-    <td>✓</td>
-    <td>AI Core</td>
-    <td>将多个计算单元处理的注意力token数据进行融合，结合专家权重对结果进行加权，输出最终的注意力融合结果。</td>
-  </tr>
-  <tr>
-    <td>attention</td>
     <td><a href="../../attention/attention_worker_scheduler/README.md">attention_worker_scheduler</a></td>
     <td>✓</td>
     <td>✓</td>
@@ -635,16 +625,6 @@
     <td>✗</td>
     <td>AI Core</td>
     <td>实现分组矩阵乘计算，每组矩阵乘的维度大小可以不同。</td>
-  </tr>
-  <tr>
-    <td>gmm</td>
-    <td><a href="../../gmm/grouped_matmul_activation_quant/README.md">grouped_matmul_activation_quant</a></td>
-    <td>✓</td>
-    <td>✓</td>
-    <td>✓</td>
-    <td>✗</td>
-    <td>AI Core</td>
-    <td>融合GMM、激活函数和量化算子，完成分组矩阵乘、激活和量化计算，输出量化结果及量化因子。</td>
   </tr>
   <tr>
     <td>gmm</td>

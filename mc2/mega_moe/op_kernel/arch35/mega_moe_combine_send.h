@@ -30,7 +30,7 @@
 using namespace AscendC;
 
 namespace MegaMoeCombineImpl {
-constexpr uint32_t COMBINE_SEND_ADDR = 140 * 1024U;  // triple tensor 在 UB 中的起始地址
+constexpr uint32_t COMBINE_SEND_ADDR = 130 * 1024U;  // triple tensor 在 UB 中的起始地址
 constexpr uint32_t rankIdIndex = 0;
 constexpr uint32_t tokenIdxIndex = 1;
 constexpr uint32_t topkIdxIndex = 2;
@@ -153,9 +153,9 @@ __aicore__ inline uint32_t ComputeRecvTokenCounts(
                 static_cast<uint64_t>(expertIdx) * worldSize * maskSlotSize +
                 static_cast<uint64_t>(index) * maskSlotSize));
             AscendC::DataCopy(slotCopyTensor, maskSrcGlobal, slotCopyStride);
-            SyncFuncStatic<AscendC::HardEvent::MTE2_S, SYNC_EVENT_ID2>();
+            AscendC::SetFlag<AscendC::HardEvent::MTE2_S>(0);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(0);
             cnt += slotReadTensor.GetValue(countWordIdx);
-            SyncFuncStatic<AscendC::HardEvent::S_MTE2, SYNC_EVENT_ID2>();
         }
         uint32_t totalDataBlockCnt = cnt * static_cast<uint32_t>(Ops::Base::CeilDiv(
             static_cast<int64_t>(params.tilingData->h), static_cast<int64_t>(MegaMoeImpl::L1_TILE_N)));
@@ -205,7 +205,8 @@ __aicore__ inline void PollNotifyAndSendData(
                     slotIdx * (maxDataLengthPerBlock + ALIGN_32);
                 gmLocalDTriple.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(dataAddr + maxDataLengthPerBlock));
                 AscendC::DataCopy(sendTensor, gmLocalDTriple, 8);
-                SyncFuncStatic<AscendC::HardEvent::MTE2_S, SYNC_EVENT_ID2>();
+                AscendC::SetFlag<AscendC::HardEvent::MTE2_S>(0);
+                AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(0);
                 if (sendTensor.GetValue(flagIndex) == 1) {
                     uint32_t toRankId = sendTensor.GetValue(rankIdIndex);
                     uint32_t tokenIdx = sendTensor.GetValue(tokenIdxIndex);
@@ -341,10 +342,10 @@ __aicore__ inline void QuantMxFp8(LocalTensor<ExpandXType>& outLocal, LocalTenso
     __ubuf__ int8_t* outLocalAddr = (__ubuf__ int8_t*)castFp8LocalTensor.GetPhyAddr();
     __ubuf__ uint16_t* mxScaleLocalAddr =
         (__ubuf__ uint16_t*)castFp8LocalTensor[processLen].GetPhyAddr();
-    Quant::ComputeMaxExp(srcAddr, maxExpAddr, processLen); // 计算最大Exp
+    quant::ComputeMaxExp(srcAddr, maxExpAddr, processLen); // 计算最大Exp
     // 计算scales并填充
-    Quant::ComputeScale<Fp8Type>(maxExpAddr, mxScaleLocalAddr, halfScaleLocalAddr, mxScaleNum);
-    Quant::ComputeFp8Data<ExpandXType, Fp8Type,
+    quant::ComputeScale<Fp8Type>(maxExpAddr, mxScaleLocalAddr, halfScaleLocalAddr, mxScaleNum);
+    quant::ComputeFp8Data<ExpandXType, Fp8Type,
         AscendC::RoundMode::CAST_TRUNC, AscendC::RoundMode::CAST_RINT>(
         srcAddr, halfScaleLocalAddr, outLocalAddr, processLen); // 计算量化后的expandx并填充
 }
@@ -365,8 +366,8 @@ __aicore__ inline void DeQuantMxFp8(LocalTensor<XType>& inLocal, LocalTensor<flo
     __ubuf__ fp8_e8m0_t *srcPtr0 = (__ubuf__ fp8_e8m0_t *)scaleDivFp8Tensor_.GetPhyAddr();
     __ubuf__ T *tokenPtr0 = (__ubuf__ T *)castFp8LocalTensor_.GetPhyAddr();
     __ubuf__ float *sumDstPtr = (__ubuf__ float *)sumTensor.GetPhyAddr();
-    uint32_t bf16RepeatSize = Quant::GetVRegSizeDispatch() / sizeof(bfloat16_t);
-    uint32_t fp32RepeatSize = Quant::GetVRegSizeDispatch() / sizeof(float);
+    uint32_t bf16RepeatSize = quant::GetVRegSizeDispatch() / sizeof(bfloat16_t);
+    uint32_t fp32RepeatSize = quant::GetVRegSizeDispatch() / sizeof(float);
     uint16_t repeatTimes = Ceil(scaleLen, bf16RepeatSize);
     uint16_t fp32RepeatTimes = Ceil(tokenLen, fp32RepeatSize);
     uint16_t repeatTimes2 = Ceil(scaleLen * 2, fp32RepeatSize);
