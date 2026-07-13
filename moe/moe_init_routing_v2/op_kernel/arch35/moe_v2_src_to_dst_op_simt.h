@@ -20,6 +20,7 @@
 
 namespace MoeInitRoutingV2 {
 using namespace AscendC;
+constexpr int64_t SIMT_WARP_SIZE = 32;
 
 class MoeV2SrcToDstOpSimt {
 public:
@@ -69,7 +70,8 @@ __aicore__ inline void MoeV2SrcToDstOpSimt::Init(GM_ADDR expandedRowIdx, GM_ADDR
         this->coreRows_ = this->srcToDstTilingData_->perCoreRows;
     }
     startIndex_ = this->blockIdx_ * this->perCoreRows_;
-    this->threadNum_ = THREAD_NUM < this->coreRows_ ? THREAD_NUM : this->coreRows_;
+    int64_t activeThreadNum = THREAD_NUM < this->coreRows_ ? THREAD_NUM : this->coreRows_;
+    this->threadNum_ = (activeThreadNum + SIMT_WARP_SIZE - 1) / SIMT_WARP_SIZE * SIMT_WARP_SIZE;
 
     expandedRowIdxGm_ = (__gm__ int32_t *)expandedRowIdx;
     expandDstToSrcRowGm_ = (__gm__ int32_t *)expandDstToSrcRow + Align(this->totalLength_, sizeof(int32_t));
