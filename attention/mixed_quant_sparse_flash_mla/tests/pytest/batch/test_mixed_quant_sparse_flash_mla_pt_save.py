@@ -49,6 +49,8 @@ for _, params in enumerate(ENABLED_PARAMS):
     for key in ["seqused_q", "cu_seqlens_q", "seqused_ori_kv", "seqused_cmp_kv",
                 "cu_seqlens_ori_kv", "cu_seqlens_cmp_kv", "cmp_residual_kv"]:
         normalized_params[key] = utils.parse_list_param(params.get(key))
+    for key in ["q_datarange", "ori_kv_datarange", "cmp_kv_datarange"]:
+        normalized_params[key] = utils.parse_datarange_param(params.get(key))
     template_run_mode = normalized_params["template_run_mode"]
     if isinstance(template_run_mode, list):
         template_run_mode = template_run_mode[0]
@@ -59,7 +61,8 @@ for _, params in enumerate(ENABLED_PARAMS):
         "ori_win_left", "ori_win_right", "quant_mode", "tile_size", "rope_head_dim", "template_run_mode", \
         "actlen_mode", "S1EQS2", "topk_value_mode", "return_softmax_lse", \
         "seqused_q", "cu_seqlens_q", "seqused_ori_kv", "seqused_cmp_kv", \
-        "cu_seqlens_ori_kv", "cu_seqlens_cmp_kv", "cmp_residual_kv"
+        "cu_seqlens_ori_kv", "cu_seqlens_cmp_kv", "cmp_residual_kv", \
+        "q_datarange", "ori_kv_datarange", "cmp_kv_datarange"
     ]
 
     param_values = [
@@ -99,6 +102,9 @@ for _, params in enumerate(ENABLED_PARAMS):
         [normalized_params["cu_seqlens_ori_kv"]],
         [normalized_params["cu_seqlens_cmp_kv"]],
         [normalized_params["cmp_residual_kv"]],
+        [normalized_params["q_datarange"]],
+        [normalized_params["ori_kv_datarange"]],
+        [normalized_params["cmp_kv_datarange"]],
     ]
 
     # 生成所有的组合，并转换为字典列表
