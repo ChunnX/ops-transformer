@@ -135,7 +135,7 @@ def run_test(name, q_fp8, q_scale, q_seq_lens, cu_seqlens_q,
     qscale_npu = q_scale.to(device) if q_scale is not None else None
 
     qflat = op_fn(q_npu, q_seq_lens, cu_seqlens_q,
-                  qScale=qscale_npu, kScale=None,
+                  qScale=qscale_npu,
                   stemBlockSize=stem_block_size, stemStride=stem_stride)
     torch.npu.synchronize()
 

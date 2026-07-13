@@ -23,13 +23,13 @@ class StemOamPrepVarlenQOpBuilder(OpBuilder):
 
     def schema(self) -> str:
         return "npu_stem_oam_prep_varlen_q(Tensor q, Tensor qSeqLens, Tensor cuSeqLensQ, *, " \
-               "Tensor? qScale=None, Tensor? kScale=None, " \
+               "Tensor? qScale=None, " \
                "int stemBlockSize=128, int stemStride=16) -> Tensor"
 
     def register_meta(self):
         @impl(AS_LIBRARY, self.name, "Meta")
         def npu_stem_oam_prep_varlen_q_meta(q, qSeqLens, cuSeqLensQ, *,
-                                             qScale=None, kScale=None,
+                                             qScale=None,
                                              stemBlockSize=128, stemStride=16):
             S = stemStride
             qflat_dim = S * 128
@@ -48,8 +48,8 @@ op_module = npu_stem_oam_prep_varlen_q_op_builder.load()
 
 @impl(AS_LIBRARY, npu_stem_oam_prep_varlen_q_op_builder.name, "PrivateUse1")
 def npu_stem_oam_prep_varlen_q(q, qSeqLens, cuSeqLensQ, *,
-                               qScale=None, kScale=None,
+                               qScale=None,
                                stemBlockSize=128, stemStride=16):
     return op_module.npu_stem_oam_prep_varlen_q(q, qSeqLens, cuSeqLensQ,
-                                                qScale, kScale,
+                                                qScale,
                                                 stemBlockSize, stemStride)
