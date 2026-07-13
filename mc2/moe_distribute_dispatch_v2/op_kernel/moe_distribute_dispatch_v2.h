@@ -1440,10 +1440,12 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Loca
                 xTmpTensorFloat = tripleLocal.template ReinterpretCast<float>();
                 expandScalesOutGlobal.SetGlobalBuffer(
                     (__gm__ float*)(expandScalesOutGM_) + beginIdx + tokenCopiedNumThisExpert);
-                uint32_t srcStrideExpandScales = (hOutAlignUbSize_ - sizeof(float)) / UB_ALIGN;
-                DataCopyExtParams dataCopyParamsExpandScales{
-                    blockCount, static_cast<uint32_t>(sizeof(float)), srcStrideExpandScales, 0U, 0U};
-                DataCopyPad(expandScalesOutGlobal, xTmpTensorFloat[expertScaleAlign_], dataCopyParamsExpandScales);
+                SyncFunc<AscendC::HardEvent::MTE2_S>();
+                uint32_t tokenStride = hOutAlignUbSize_ / sizeof(float);
+                for (uint32_t scaleIdx = 0; scaleIdx < blockCount; ++scaleIdx) {
+                    expandScalesOutGlobal.SetValue(
+                        scaleIdx, xTmpTensorFloat.GetValue(scaleIdx * tokenStride + expertScaleAlign_));
+                }
             }
             tripleQueue.FreeTensor(tripleLocal);
         }

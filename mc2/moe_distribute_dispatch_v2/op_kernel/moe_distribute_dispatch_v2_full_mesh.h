@@ -1819,9 +1819,12 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
     if (hasExpertScalesFlag_) {
         LocalTensor<float> xOutFloatTensor = xTmpTensor_.template ReinterpretCast<float>();
         expandScalesOutGlobal.SetGlobalBuffer((__gm__ float *)(expandScalesOutGM_) + dstPosition);
-        DataCopyExtParams expandScalesCopyParams{uint16_t(arriveCount), static_cast<uint32_t>(sizeof(float)),
-            static_cast<uint32_t>((blockCntPerToken_ * SPLIT_BLOCK_DATA_SIZE - sizeof(float)) / UB_ALIGN), 0U, 0U};
-        DataCopyPad(expandScalesOutGlobal, xOutFloatTensor[expertScaleAlign_], expandScalesCopyParams);
+        SyncFunc<AscendC::HardEvent::MTE2_S>();
+        uint32_t tokenStride = blockCntPerToken_ * SPLIT_BLOCK_DATA_SIZE / sizeof(float);
+        for (uint32_t scaleIdx = 0; scaleIdx < arriveCount; ++scaleIdx) {
+            expandScalesOutGlobal.SetValue(
+                scaleIdx, xOutFloatTensor.GetValue(scaleIdx * tokenStride + expertScaleAlign_));
+        }
     }
 }
 
