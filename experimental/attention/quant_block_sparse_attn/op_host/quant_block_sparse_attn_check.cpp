@@ -309,17 +309,11 @@ ge::graphStatus QuantBlockSparseAttnCheck::CheckShapeConsistency() const
 
 ge::graphStatus QuantBlockSparseAttnCheck::CheckMaskMode() const
 {
-    // zyh 暂时屏蔽mask check
-    // if (tilingInfo_.quantModeVal == BSA_QUANT_MODE_MXFP8_FULL_QUANT &&
-    //     tilingInfo_.maskModeVal != BSA_MASK_MODE_CAUSAL) {
-    //     OP_LOGE_WITH_INVALID_ATTR(kOpName, "mask_mode", std::to_string(tilingInfo_.maskModeVal),
-    //                               std::to_string(BSA_MASK_MODE_CAUSAL));
-    //     return ge::GRAPH_FAILED;
-    // }
-    if (tilingInfo_.quantModeVal == BSA_QUANT_MODE_FP8 && tilingInfo_.maskModeVal != BSA_MASK_MODE_NONE &&
-        tilingInfo_.maskModeVal != BSA_MASK_MODE_CAUSAL) {
+    if ((tilingInfo_.quantModeVal == BSA_QUANT_MODE_FP8 ||
+         tilingInfo_.quantModeVal == BSA_QUANT_MODE_MXFP8_FULL_QUANT) &&
+        tilingInfo_.maskModeVal != BSA_MASK_MODE_NONE && tilingInfo_.maskModeVal != BSA_MASK_MODE_CAUSAL) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(kOpName, "mask_mode", std::to_string(tilingInfo_.maskModeVal),
-                                              "must be 0 or 3 in quant_mode=1 FP8 scenario");
+                                              "must be 0 or 3 in quant_mode=1 FP8 or quant_mode=2 MXFP8 scenario");
         return ge::GRAPH_FAILED;
     }
     if (tilingInfo_.maskModeVal > BSA_MASK_MODE_MAX) {

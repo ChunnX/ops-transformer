@@ -69,11 +69,11 @@ ASCENDC_TPL_SEL(
                                               Config_S1Aligned128_S2Aligned256_DAligned128_DVAligned128),
                          ASCENDC_TPL_UINT_SEL(QUANT_MODE, ASCENDC_TPL_UI_LIST, FP8QuantMode)),
     // MXFP8 全量化有意收敛到 host check 要求的特性约束：
-    // TND + PA BNBD + causal sparse mode + S2=512 + quant_mode=2。
+    // TND + PA BNBD + mask none/causal + S2=512 + quant_mode=2。
     ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_UINT_SEL(QKV_DTYPE, ASCENDC_TPL_UI_LIST, BSA_DTYPE_FP8_E4M3FN),
                          ASCENDC_TPL_UINT_SEL(LAYOUT_T, ASCENDC_TPL_UI_LIST, BSA_LAYOUT_TND),
                          ASCENDC_TPL_UINT_SEL(KV_LAYOUT_T, ASCENDC_TPL_UI_LIST, BSA_KV_LAYOUT_PA_BNSD),
-                         ASCENDC_TPL_UINT_SEL(MASK_MODE, ASCENDC_TPL_UI_LIST, BSA_MASK_CAUSAL),
+                         ASCENDC_TPL_UINT_SEL(MASK_MODE, ASCENDC_TPL_UI_LIST, BSA_MASK_NONE, BSA_MASK_CAUSAL),
                          ASCENDC_TPL_BOOL_SEL(RETURN_SOFTMAX_LSE, 0, 1),
                          ASCENDC_TPL_UINT_SEL(Config, ASCENDC_TPL_UI_LIST,
                                               Config_S1Aligned128_S2Aligned512_DAligned128_DVAligned128),
