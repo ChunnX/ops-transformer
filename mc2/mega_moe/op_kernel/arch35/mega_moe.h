@@ -666,9 +666,9 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SendCntCal(int32_t loca
 // ============================================================================
 // CopyGMToGMPerToken：6-buffer 软流水 + ring buffer triple 即时写 GM
 // ----------------------------------------------------------------------------
-//   Phase 1+prime: 逐槽组装 triple → 立即发 MTE2（共 primeCount 个）
-//   Phase 2 steady: MTE3(token + scale + triple) → 组装下条 triple → issueMTE2
-//   Phase 2 drain: 收尾不再发新 MTE2, 只等 MTE3
+//   Phase 1 prime:  前 primeCount 个槽 — MTE2 取远程 token + S 侧同步组装 triple，各就绪后 set 标志位
+//   Phase 2 steady: Wait MTE2 到数 → MTE3 写 token/scale/triple 到 GM → 释放 buffer → 预取下一条
+//   Phase 2 drain:  不再发新 MTE2，只等 tail 槽 MTE3 收尾（避免 copyNum < BufferNum 时死等未填充槽）
 // ============================================================================
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::CopyGMToGMPerToken(
