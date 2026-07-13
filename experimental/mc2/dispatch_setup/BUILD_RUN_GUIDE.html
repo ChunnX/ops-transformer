@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>dispatch_setup(CCU) + dispatch_teardown(AIV) 集成 · 构建运行指南</title>
+<style>
+  :root{
+    --bg:#0f1419; --panel:#171c23; --panel2:#1e252e; --line:#2b3440;
+    --fg:#d7dde5; --muted:#8b97a6; --accent:#5db0ff; --green:#5ad17f;
+    --amber:#f5c451; --red:#ff6b6b; --mono:"SF Mono",Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);
+    font-family:-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+    line-height:1.65;font-size:15px;}
+  .wrap{max-width:1040px;margin:0 auto;padding:32px 22px 80px;}
+  h1{font-size:25px;margin:0 0 6px;line-height:1.3}
+  h2{font-size:19px;margin:34px 0 12px;padding-bottom:7px;border-bottom:1px solid var(--line);color:var(--accent)}
+  h3{font-size:16px;margin:20px 0 8px;color:#bcd2ea}
+  p{margin:9px 0}
+  code{font-family:var(--mono);background:var(--panel2);padding:1px 6px;border-radius:4px;font-size:13px;
+    word-break:break-word;}
+  pre{background:#0b0e12;border:1px solid var(--line);border-radius:8px;padding:14px 16px;overflow-x:auto;
+    font-family:var(--mono);font-size:13px;line-height:1.55;color:#cfe3f5;margin:10px 0}
+  pre .c{color:#6b7785}
+  .sub{color:var(--muted);font-size:14px;margin-top:0}
+  .badges{margin:14px 0 4px;display:flex;flex-wrap:wrap;gap:8px}
+  .badge{display:inline-block;padding:3px 11px;border-radius:20px;font-size:12.5px;font-weight:600;
+    border:1px solid var(--line)}
+  .b-green{background:rgba(90,209,127,.12);color:var(--green);border-color:rgba(90,209,127,.35)}
+  .b-amber{background:rgba(245,196,81,.12);color:var(--amber);border-color:rgba(245,196,81,.35)}
+  .b-blue{background:rgba(93,176,255,.12);color:var(--accent);border-color:rgba(93,176,255,.35)}
+  table{width:100%;border-collapse:collapse;margin:12px 0;font-size:13.5px}
+  th,td{border:1px solid var(--line);padding:8px 11px;text-align:left;vertical-align:top;
+    word-break:break-word;overflow-wrap:anywhere}
+  th{background:var(--panel2);color:#bcd2ea;font-weight:600}
+  td.ok{color:var(--green)} td.todo{color:var(--amber)}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px 18px;margin:14px 0}
+  .note{border-left:3px solid var(--accent);background:var(--panel2);padding:10px 14px;border-radius:0 8px 8px 0;margin:12px 0}
+  .warn{border-left:3px solid var(--amber);background:rgba(245,196,81,.06);padding:10px 14px;border-radius:0 8px 8px 0;margin:12px 0}
+  ul{margin:8px 0;padding-left:22px} li{margin:4px 0}
+  .flow{display:flex;flex-wrap:wrap;align-items:stretch;gap:10px;margin:14px 0}
+  .step{flex:1 1 200px;min-width:180px;background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:11px 13px}
+  .step .n{color:var(--accent);font-weight:700;font-size:12px}
+  .step .t{font-size:13.5px;margin-top:3px}
+  .foot{color:var(--muted);font-size:12.5px;margin-top:40px;border-top:1px solid var(--line);padding-top:14px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>CCU + AIV 自定义算子集成 · 构建运行指南</h1>
+  <p class="sub">工程目录 <code>ops-transformer/experimental/mc2/dispatch_setup</code> · 最终目标：在 <b>a6</b> 上编译跑通</p>
+  <div class="badges">
+    <span class="badge b-green">a5 结构编译门禁 全绿</span>
+    <span class="badge b-blue">2 die / 2 rank (MPI)</span>
+    <span class="badge b-amber">a6 运行待核实（见末表）</span>
+  </div>
+
+  <div class="note">
+    <b>一句话</b>：把 <b>dispatch_setup(CCU 语义，写状态位)</b> 与 <b>dispatch_teardown(AIV，等状态位)</b> 两个算子，
+    集成在同一工程里、一起编译、串行跑——两条流靠"写状态位 / 等状态位"同步。本机为 <b>a5（权宜工作台）</b>，
+    a6-only 代码用 <code>#ifdef DISPATCH_CCU_A6</code> 隔离；<b>所有代码以 a6 视角写</b>，a6 真值靠上板 + 实测校准。
+  </div>
+
+  <div class="note" style="border-left-color:var(--amber,#f5c451)">
+    <b>⚠ 重大变更（2026-06-24）：CCU 写端 本地 LocalCopyNb → 跨卡 WriteNbWithArriveNotify</b><br>
+    a6 上板诊断坐实：旧的"本卡 CCU 用 6 参 <code>LocalCopyNb</code> 写自己状态区"——CCU 跑完<b>无 fault</b>、但 statusGm 全 0
+    （<code>[DIAG] statusGm[0..3]=0,0,0,0</code>），即 a6 那个新开发、未验证的 6 参 LocalCopyNb <b>静默失效</b>。
+    改用 a6 已验证功能正常的 <b>0.5RTT 跨卡写</b>：卡0 的状态区由卡1 写、卡1 的由卡0 写（<code>WriteNbWithArriveNotify</code>）。
+    kernel 基类改继承 <code>Mc2CcuKernelBase</code>（新增 <code>dispatch_setup_ccu_api.h</code> facade），裁剪自已验证参考
+    <code>moe_distribute_dispatch_ccu_setup.cpp</code>。下文 §1/§3/§6/§8 已据此更新。
+  </div>
+
+  <h2>1 · 架构与数据流</h2>
+  <p><b>dispatch_setup(CCU)</b> = 独立 host 驱动 <code>dispatch_min_driver</code>（registry build 里 <code>if(BUILD_OPEN_PROJECT) return()</code> 自跳过，单独 cmake 构建）：自建 2-rank CCU comm → 注册/拉起 CCU kernel（<b>跨卡 <code>WriteNbWithArriveNotify</code> 把就绪值写进对端状态区</b>）。<br>
+  <b>dispatch_teardown(AIV)</b> = 标准 registry aclnn 算子（<code>build.sh --pkg</code> 编）：blockDim=1 忙等轮询本卡状态位（现由对端写）→ 写 done。</p>
+  <div class="flow">
+    <div class="step"><div class="n">1 · MPI</div><div class="t">mpirun -n 2，每进程一个 rank（dev=rank）</div></div>
+    <div class="step"><div class="n">2 · 建链</div><div class="t">root 取 RootInfo → MPI_Bcast → <code>HcclCommInitRootInfoConfig(rank=2, hcclOpExpansionMode=CCU)</code> → <b>建出 ccuContainer</b></div></div>
+    <div class="step"><div class="n">3 · 流1 CCU（0.5RTT 跨卡写）</div><div class="t">建 channel → clear → <b>PreSync</b> 换对端 status 地址/token → <b>RecordExpectCount</b> → 跨卡 <code>WriteNbWithArriveNotify</code> 写<b>对端</b> status → <code>Waitallpeersarrive(R-1)</code> 等本卡被对端写好</div></div>
+    <div class="step"><div class="n">4 · 流2 AIV</div><div class="t">aclnn teardown 忙等本卡 statusGm[0]==1（对端写的）→ 写 doneGm[0]=1</div></div>
+    <div class="step"><div class="n">5 · 校验</div><div class="t">同步两流 → host 读 done==1 → 两 rank 各自 PASS</div></div>
+  </div>
+  <p class="sub">teardown 的忙等轮询<b>本身</b>就是跨流同步。两 rank 对称：各自把就绪值跨卡写给对端、各自等对端写好本卡 status，再由本卡 teardown 轮询 slot0。状态写是<b>真跨卡（0.5RTT）</b>，但 payload 极小（仅就绪标志 32B）。不死锁：先各自非阻塞 Write 再各自 Wait，两写都已发射→两等都能解。</p>
+
+  <h2>2 · 为什么必须 2 die</h2>
+  <div class="panel">
+    a6 报 <code>[HcclCcuKernelRegister] ptr [ccuContainer] is nullptr</code> 的根因：<b>CCU 容器不是 new 出来的，是 HCCL/HCOMM 库在【CCU 扩展模式 + rank_size&ge;2】下建 comm 时副作用式创建的</b>（基线 <code>hccl_test_common.cc:861-941</code> 即此路径，<code>mpirun -n 2</code> 跑通）。单 rank 不建容器（a5 实测 1-rank CCU 实例不可用）→ 故最小验证也必须 <b>2 die</b>。
+  </div>
+
+  <h2>3 · 文件清单</h2>
+  <table>
+    <tr><th>文件</th><th>作用</th><th>a5/a6</th></tr>
+    <tr><td><code>dispatch_min_driver.cpp</code></td><td>集成驱动：MPI 2-rank 建 CCU comm + 注册/拉起 CCU kernel + 调 teardown aclnn + 校验</td><td>驱动外壳 a5/a6 都编；CCU 拉起段 a6-only</td></tr>
+    <tr><td><code>dispatch_setup_ccu_api.h</code></td><td><b>新增</b> facade：<code>Mc2CcuKernelBase</code> 声明 4 个 0.5RTT 数据面 API（impl 由 SE 链接期补全），逐字复刻参考</td><td>头声明 a5 编得过；impl a6-only</td></tr>
+    <tr><td><code>dispatch_setup_ccu.{h,cpp}</code></td><td>CCU kernel：继承 <code>Mc2CcuKernelBase</code>，<code>Algorithm()</code> 跑 0.5RTT 跨卡写（clear→PreSync→RecordExpectCount→WriteNbWithArriveNotify→Waitallpeersarrive）写<b>对端</b> status</td><td class="todo">.cpp Algorithm 体 a6-only（CMake 仅 a6 编入 .cpp）；.h 声明 a5 编得过</td></tr>
+    <tr><td><code>CMakeLists.txt</code></td><td>驱动 standalone cmake（MPI + CCU include/link 自动定位）</td><td>a5/a6</td></tr>
+    <tr><td><code>run.sh</code></td><td>一键：编 teardown 算子包 + 编驱动（TARGET=a5|a6）</td><td>a5/a6</td></tr>
+    <tr><td><code>../dispatch_teardown/</code></td><td>AIV registry 算子（op_api/op_host/op_tiling/op_kernel）</td><td class="ok">a5/a6 都编</td></tr>
+  </table>
+
+  <h2>4 · 编译 &amp; 运行</h2>
+  <h3>a6（最终目标）</h3>
+<pre><span class="c"># 1) 编 teardown 算子包 + 装包 + 编驱动（开 -DDISPATCH_CCU_A6=ON）</span>
+cd /home/developer/ops-transformer/experimental/mc2/dispatch_setup
+TARGET=a6 ./run.sh
+<span class="c"># 2) §8 清场（2 die 用 dev0/dev1）</span>
+npu-smi info; pkill -9 python; sleep 3; npu-smi info
+<span class="c"># 3) 跑：2 die / 2 rank</span>
+mpirun --allow-run-as-root -n 2 build/dispatch_min_driver
+<span class="c"># 期望: [rank 0] PASS ... (done=1)  且  [rank 1] PASS ... (done=1)</span></pre>
+  <h3>a5（仅结构编译门禁，不上板）</h3>
+<pre>TARGET=a5 ./run.sh   <span class="c"># CCU 宏关：只编 teardown 算子 + 驱动外壳，验证结构无编译错</span></pre>
+  <div class="warn">a5 跑驱动无意义（CCU 段桩掉、teardown 会死等状态位）；a5 只做"编得过吗"的结构门禁。</div>
+
+  <h2>5 · a5 验证状态（结构门禁 · 已实测全绿）</h2>
+  <table>
+    <tr><th>验证项</th><th>结果</th><th>证据</th></tr>
+    <tr><td>teardown AIV 算子（ascend950）</td><td class="ok">✅ 编出</td><td><code>.run</code> 包 1.7MB + <code>libcust_opapi.so</code> + <code>DispatchTeardown_*.o</code></td></tr>
+    <tr><td>驱动外壳（CCU 宏关）编译+链接</td><td class="ok">✅ 编出</td><td><code>build/dispatch_min_driver</code> 531KB；MPI 自动落到 <code>MPI::MPI_CXX</code></td></tr>
+    <tr><td><code>BUILD_OPEN_PROJECT</code> 在 <code>--pkg</code> 置真</td><td class="ok">✅ 证伪 blocker</td><td>teardown 算子真在 <code>--pkg</code> 下编出 → gate 工作正常</td></tr>
+    <tr><td>MPI 链接（该机仅 MPI_CXX 无 MPI_C）</td><td class="ok">✅ 兜底生效</td><td>CMake 自动选 <code>MPI::MPI_CXX</code>，原 <code>MPI::MPI_C</code> 硬链 bug 已修</td></tr>
+  </table>
+
+  <h2>6 · 已坐实事实（从猜变证 · 标注来源）</h2>
+  <table>
+    <tr><th>事实</th><th>来源</th></tr>
+    <tr><td><s><code>LocalCopyNb</code> a6 6 参</s> → <b>已弃用</b>：a6 诊断该未验证的 6 参 LocalCopyNb 静默不写，改跨卡 <code>WriteNbWithArriveNotify</code>（见顶部变更）</td><td class="ok">诊断：CCU 无 fault 但 statusGm 全 0</td></tr>
+    <tr><td><code>WaitEvent</code> 是 <b>1 参</b>；<code>CompletedEvent::SetMask(uint32_t)</code> 存在</td><td class="ok">a5 <code>ccu_kernel.h:124</code> / <code>ccu_datatype_v1.h:158</code>（旧注"a5 2 参"系误记，已纠）</td></tr>
+    <tr><td>跨卡写需 <code>Mc2CcuKernelBase</code> 的 4 个数据面 API → kernel 继承它；<code>channels_</code>/<code>CreateRemoteAddr</code>/<code>CreateVariable(channel,XN)</code>/<code>NotifyRecord</code> 来自 CcuKernel 基类</td><td class="ok">a5 <code>ccu_kernel.h:109/113/132/134</code> 有这些；4 数据面 API impl a6-only（SE 补全）</td></tr>
+    <tr><td>comm 建链逐参对齐已跑通基线</td><td class="ok"><code>hccl_test_common.cc:874</code> 同序同型</td></tr>
+    <tr><td>状态位字节契约自洽（status/done/oneBuf 均 32B，slot0 int32，CCU 跨卡<b>整块写 32B</b>：oneBuf=[1,0..]→对端 status[0]=1）</td><td class="ok">三处（驱动/CCU 跨卡写/AIV 读）一致；32B 整块为 dispatch_setup 独占就绪区</td></tr>
+  </table>
+  <p class="sub">本轮审查修复：config 零初始化、<code>aclrtSetStreamFailureMode</code>、rankSize&lt;2 硬失败、<code>MPI_Bcast</code> 兜底、teardown 写 done 前清 0 UB。</p>
+
+  <h2>7 · a6 待核实清单（运行/构建参数 · 非编译阻断）</h2>
+  <p class="sub">下列只能在 a6 上跑出来或实测确认；编译结构问题已在 a5 全部清掉。</p>
+
+  <h3>T 编号总表（全局唯一 · 每号只指一件事 · 代码注释统一引用）</h3>
+  <table>
+    <tr><th>号</th><th>含义</th><th>状态</th></tr>
+    <tr><td>T1</td><td>LocalCopyNb 6 参 + CreateBlockCcuBuf</td><td class="ok">✓ 已坐实</td></tr>
+    <tr><td>T2</td><td>WaitEvent 1 参 + CompletedEvent::SetMask</td><td class="ok">✓ 已坐实</td></tr>
+    <tr><td>T3</td><td>跨流 cache 可见性</td><td class="todo">待 a6</td></tr>
+    <tr><td>T4</td><td>忙等超时熔断</td><td class="ok">✓ 已加</td></tr>
+    <tr><td>T5</td><td>CCU 扩展模式值 (5/6)</td><td class="todo">待 a6</td></tr>
+    <tr><td>T6</td><td>HCOMM 拉起 API 头</td><td class="ok">✓ 已坐实</td></tr>
+    <tr><td>T7</td><td>dev_id↔die 映射 (2-die)</td><td class="todo">待 a6</td></tr>
+    <tr><td>T8</td><td>SoC 串 + build.sh 白名单一致</td><td class="ok">✓ ascend910_96（已坐实）</td></tr>
+    <tr><td>T9</td><td>teardown opapi 库名</td><td class="todo">待 a6</td></tr>
+    <tr><td>T10</td><td>最小本地 kernel 是否需建 channel</td><td class="todo">待 a6</td></tr>
+    <tr><td>T11</td><td>CcuKernelSignature 是否需唯一键（原借 T3，已拆出）</td><td class="todo">待 a6</td></tr>
+    <tr><td>T12</td><td>PRINTF 设备符号 (AscendC::printf vs PRINTF，原借 T5，已拆出)</td><td class="todo">待 a6</td></tr>
+  </table>
+
+  <h3>下表 = 仍待 a6 的项 · 核验细节</h3>
+  <table>
+    <tr><th>项</th><th>怎么查 / 实测</th><th>影响</th></tr>
+    <tr><td class="todo">CCU 扩展模式值 [T5]</td><td>看基线 dispatch/combine 实际 <code>-a</code> 是 ccu_ms(5) 还是 ccu_sched(6)；默认 6，不对则 <code>-DDISPATCH_CCU_EXPANSION_MODE=5</code></td><td>值错 → ccuContainer 仍 null</td></tr>
+    <tr><td class="todo">dev_id↔die 映射 [T7]</td><td><code>npu-smi</code> 看 2 die 是否 dev0/dev1；不是则改 <code>driver:devId</code> 映射</td><td>错 → 绑错卡</td></tr>
+    <tr><td class="todo">channel 是否必需 [T10]</td><td>测纯本地 kernel 的 register/launch 不建 channel 能否成功；能则删 channel 段</td><td>多余建链（功能不破）</td></tr>
+    <tr><td class="todo">跨流 cache 可见性 [T3]</td><td>AIV 能否及时观测 CCU 写；不行则开 <code>--cce-auto-sync</code>/<code>dcci</code> flags</td><td>不可见 → teardown 死等</td></tr>
+    <tr><td class="todo">SoC 串 [T8]</td><td><code>ascend950pr_9599</code> / <code>ascend_910_96</code> 是否 a6 真值 + 与 <code>build.sh</code> 白名单逐字一致</td><td>错 → 算子不 emit / mis-target</td></tr>
+    <tr><td class="todo">ABI flag</td><td>a6 CANN 库的 <code>_GLIBCXX_USE_CXX11_ABI</code>（0 还是 1）</td><td>不匹配 → 链接 undefined</td></tr>
+    <tr><td class="todo">CcuKernelSignature [T11]</td><td>a6 是否需 name/attrs 唯一键</td><td>多 kernel 可能 alias</td></tr>
+  </table>
+
+  <h2>8 · a6 报错链排错总表（编译→运行逐关 · 本轮实战已平 6 关，第 7 关诊断中）</h2>
+  <p class="sub">a6 上从"编不过"到"两算子握手"按序撞了 7 关。下表"报错关键串 → 根因 → 修法"照着对号入座。<b>6 关里 5 关根因在环境契约</b>（链接/MPI/cmake/context/opp 装包），非算子逻辑。</p>
+  <table>
+    <tr><th style="width:5%">关</th><th style="width:26%">报错关键串</th><th style="width:28%">根因</th><th style="width:33%">修法</th><th style="width:8%">状态</th></tr>
+    <tr><td><b>编1</b></td><td><code>memset_s undefined</code> / <code>libc_sec.so DSO missing</code></td><td>CCU 头内联用 memset_s（在 libc_sec），ld 默认不传递间接 DT_NEEDED 依赖</td><td>显式链 <code>libc_sec</code> + <code>-Wl,--copy-dt-needed-entries</code></td><td class="ok">✓ 平</td></tr>
+    <tr><td><b>编2</b></td><td><code>_ZN3MPI8Datatype4FreeEv</code> / <code>ompi_mpi_cxx_op_intercept</code> / <code>MPI_Init</code> undefined</td><td>mpi.h 拖进 OpenMPI 废弃 C++ bindings；又错链 libmpi_cxx</td><td><code>-DOMPI_SKIP_MPICXX</code> 关 C++ binding + <b>只链 C 库 libmpi</b></td><td class="ok">✓ 平</td></tr>
+    <tr><td><b>编3</b></td><td><code>MPI::MPI_CXX includes non-existent path /mnt/mpich/include</code></td><td>find_package(MPI) 信了 wrapper 自报脏路径（安装位≠挂载位）</td><td>弃 find_package，<code>find_path(mpi.h)</code>+<code>find_library(mpi)</code> 从 <code>-DMPI_HOME</code> 直接定位</td><td class="ok">✓ 平</td></tr>
+    <tr><td><b>运1</b></td><td><code>rtCCULaunch 107003 stream not in current context</code></td><td>显式 aclrtCreateContext 建独立 context，stream 与 CCU launch 的默认 context 对不上</td><td>删 aclrtCreateContext，全程用 <code>aclrtSetDevice</code> 隐式默认 context</td><td class="ok">✓ 平</td></tr>
+    <tr><td><b>运2</b></td><td><code>NnopbaseInit 161002</code> / <code>basePath.empty</code> / <code>ASCEND_CUSTOM_OPP_PATH</code></td><td>teardown 设备二进制没装到 opp（手动 cmake 只编驱动没装算子包）</td><td><code>.run --force</code> 装包 + <code>export ASCEND_CUSTOM_OPP_PATH=$ASCEND_OPP_PATH/vendors/custom_transformer</code></td><td class="ok">✓ 平</td></tr>
+    <tr><td><b>运3</b></td><td><code>rtsFuncGetByEntry 107000</code> / <code>funcEntry=1 invalid</code></td><td>单 kernel 无 TILING_KEY 分支，host 却 <code>SetTilingKey(1)</code> → 取不到 key1 变体</td><td><code>SetTilingKey(0)</code>（单变体算子注册在 key 0）</td><td class="ok">✓ 平</td></tr>
+    <tr><td><b>运4</b></td><td>teardown <code>start poll</code> 后<b>卡死</b>；DIAG 回 <code>statusGm[0..3]=0,0,0,0</code></td><td>诊断坐实：CCU 无 fault 但状态区全 0 → 未验证的 6 参 <b>LocalCopyNb 静默不写</b>（非非法地址、非 cache）</td><td>弃 LocalCopyNb，改 a6 已验证的 0.5RTT 跨卡写 <code>WriteNbWithArriveNotify</code>（对端写本卡 status，见顶部变更）</td><td class="ok">✓ 已诊断+改方案+a5门禁过</td></tr>
+    <tr><td><b>运5</b></td><td>跨卡写后 DIAG <code>statusGm[0]=?</code> / teardown 是否见 1（新方案）</td><td>跨卡写能否落地 + [T3] 跨流 cache 可见性——均 a6 运行期事实，a5 给不了</td><td>新代码 a5 编译门禁已过、已同步；待 a6 跑：DIAG=1=写成功；DIAG=1 但 teardown TIMEOUT=cache→poll 前加 dcci</td><td class="todo">待 a6</td></tr>
+  </table>
+  <div class="panel"><b>第 7 关诊断已出结论</b>：a6 跑回 <code>statusGm[0..3]=0,0,0,0</code>（CCU 无 fault）→ 三选一中坐实<b>"CCU 没写进 1"</b>，即未验证的 6 参 LocalCopyNb 写端静默失效。<b>修复</b>：弃 LocalCopyNb，改 a6 已验证的 0.5RTT 跨卡写——对端用 <code>WriteNbWithArriveNotify</code> 写本卡 status。
+    <p class="sub"><b>新方案 a6 跑起来看（按概率）</b>：① 启动行 <code>build: DISPATCH_CCU_A6=ON</code> 确认编进；② DIAG <code>statusGm[0]=1</code> = 跨卡写落地 = 修复奏效（旧 LocalCopyNb 是 0）；③ 若 DIAG=1 但 teardown TIMEOUT = [T3] cache 可见性，修法 poll 前加 dcci；④ 不死锁（先各自非阻塞 Write 再各自 Wait）。a5 编译门禁已过（<code>Built target</code> EXIT=0）、4 文件已同步远端 md5 ✓。</p>
+  </div>
+
+  <h2>9 · a6 上手核验三步（编过 + 链上）</h2>
+  <div class="panel">
+    <p><b>① 核 CCU API 签名</b>（跨卡写的 4 数据面 API + PreSync；a5 已核 CcuKernel 侧存在，4 数据面 API impl 由 SE 在 a6 libhcomm 补全）：</p>
+<pre>grep -n "RecordExpectCount\|WriteNbWithArriveNotify\|Waitallpeersarrive\|clearallpeersarrive" &lt;a6&gt;/.../moe_dispatch_ccu_api.h
+grep -n "NotifyRecord\|NotifyWait\|CreateRemoteAddr\|CreateVariable" &lt;a6&gt;/.../hcomm/ccu/ccu_kernel.h</pre>
+    <p class="sub">facade <code>dispatch_setup_ccu_api.h</code> 的 <code>Mc2CcuKernelBase</code> 4 个签名须与参考逐字一致（否则链不到 SE 实现）；其它别动。</p>
+    <p><b>② build 顺序</b>（驱动要链 teardown 的 <code>libcust_opapi</code>，<b>先算子后驱动</b>）：</p>
+<pre>bash build.sh --pkg --experimental --soc=&lt;a6 token&gt; --ops=dispatch_teardown -j16
+cd experimental/mc2/dispatch_setup &amp;&amp; cmake -B build -DDISPATCH_CCU_A6=ON \
+  -DASCEND_CANN_PACKAGE_PATH=&lt;a6 CANN&gt; ... &amp;&amp; cmake --build build -j16</pre>
+    <p><b>③ nm 核 CCU 符号导出</b>（a6 libhcomm 须导出，a5 为空才链不了）：</p>
+<pre>nm -D &lt;a6&gt;/.../libhcomm.so | grep -iE "HcclCcuKernelLaunch|HcclCcuKernelRegister|HcclThreadAcquireWithStream|CcuKernel"</pre>
+    <p class="sub">非空 → 能链；空 → 该 a6 libhcomm 没编出 CCU 符号（换库 / 确认 CCU 特性已开），非改码能解决。</p>
+  </div>
+
+  <h2>10 · 编译期已修 bug 速查（编译器/链接器才逮得到，对抗审查看不见）</h2>
+  <table>
+    <tr><th>现象</th><th>根因</th><th>修法</th></tr>
+    <tr><td><code>MPI::MPI_C ... target not found</code>（a5）→ a6 上 <code>MPI::MPI_CXX 脏路径</code></td><td>find_package(MPI) 信 wrapper 自报路径，a5/a6 各暴露一种坏法</td><td class="ok">a6 已弃 find_package：直接 <code>find_path</code>/<code>find_library</code> 从 MPI_HOME 定位 + <code>OMPI_SKIP_MPICXX</code>（见 §8 编2/编3）</td></tr>
+    <tr><td><code>ACLNN_SUCCESS not declared</code></td><td>本 CANN 公共 aclnn 头未导出该宏</td><td>驱动 <code>#ifndef</code> 兜底定义</td></tr>
+    <tr><td><code>hccl_types.h: No such file</code></td><td><code>ccu_kernel.h</code> 内部 plain include</td><td>include 加 <code>${HCOMM_INT_INC}/hccl</code></td></tr>
+    <tr><td><code>undefined HcclCcuKernel* / CcuKernel</code></td><td><b>a5 libhcomm 无 CCU 符号 = a6-only</b>（库代际边界，非代码缺陷）</td><td>CCU 侧整体 <code>#ifdef DISPATCH_CCU_A6</code>；a6 上开 + a6 libhcomm</td></tr>
+  </table>
+
+  <div class="foot">本机 a5（cann-9.1.0 @ /home/0617/env）为权宜工作台；最终目标 a6 上 <code>TARGET=a6 ./run.sh</code> + <code>mpirun -n 2</code> 跑通。a6 真值经上板 + 实测迭代校准。<br>（旧 <code>BUILD_RUN_GUIDE.md</code> 单 die 内容已迁并退役，本 HTML 为唯一权威。）</div>
+
+</div>
+</body>
+</html>
