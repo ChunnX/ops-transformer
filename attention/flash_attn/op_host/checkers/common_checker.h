@@ -54,8 +54,6 @@ private:
     ge::graphStatus CheckAxis(const FaTilingInfo &faInfo);
     ge::graphStatus CheckShapeConsistency(const FaTilingInfo &faInfo);
 
-    // ge::graphStatus CheckNonPAKvContiguous(const FaTilingInfo &faInfo) const;
-
     ge::graphStatus CheckKVShapeForContinuous(const FaTilingInfo &faInfo) const;
     ge::graphStatus CheckKVShapeForPageAttention(const FaTilingInfo &faInfo) const;
 

@@ -260,8 +260,6 @@ public:
 
     // kvcache strides (tensor v2 view inputs). hasViewStride == false means old opbase
     // without view info, key/value are guaranteed contiguous.
-    // const gert::Stride *keyStrides = nullptr;
-    // const gert::Stride *valueStrides = nullptr;
     uint64_t keyBnStride = 0;
     uint64_t keyN2Stride = 0;
     uint64_t valueBnStride = 0;
