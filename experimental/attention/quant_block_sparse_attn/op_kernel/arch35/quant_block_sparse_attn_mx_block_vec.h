@@ -167,23 +167,37 @@ public:
         if constexpr (HAS_ATTEN) {
             attenMaskUb = CopyAttenMaskToUb(runInfo, subLoop, s2CalcSize);
             // zyhPrint
-            // if (s2CalcSize != 0U && runInfo.loop == 0U && runInfo.mLoop == 0U && subLoop == 0U &&
-            //     constInfo.subBlockIdx == 0U) {
-            //     uint32_t maskShape[] = {s2CalcSize, VEC_M_BASE};
-            //     AscendC::ShapeInfo maskShapeInfo(2, maskShape);
-            //     AscendC::DumpTensor(attenMaskUb, 100U + subLoop * 10U + constInfo.subBlockIdx,
-            //                         s2CalcSize * VEC_M_BASE, maskShapeInfo);
+            // if (s2CalcSize != 0U && runInfo.loop == 0U && runInfo.mLoop == 0U) {
+            //     constexpr uint32_t dumpRowsPerBlock = 64U;
+            //     const uint32_t dumpBlockCount = (s2CalcSize + dumpRowsPerBlock - 1U) / dumpRowsPerBlock;
+            //     for (uint32_t i = 0U; i < dumpBlockCount; ++i) {
+            //         const uint32_t rowOffset = i * dumpRowsPerBlock;
+            //         const uint32_t rows =
+            //             rowOffset + dumpRowsPerBlock <= s2CalcSize ? dumpRowsPerBlock : s2CalcSize - rowOffset;
+            //         uint32_t maskShape[] = {rows, VEC_M_BASE};
+            //         AscendC::ShapeInfo maskShapeInfo(2, maskShape);
+            //         AscendC::DumpTensor(attenMaskUb[rowOffset * VEC_M_BASE],
+            //                             1000U + subLoop * 100U + constInfo.subBlockIdx * 10U + i,
+            //                             rows * VEC_M_BASE, maskShapeInfo);
+            //     }
             // }
         }
         // 先搬 mask，再等待 C1，以重叠 MTE2 与 BMM1。
         bmm1ResBuf.WaitCrossCore();
         // zyhPrint
-        // if (s2CalcSize != 0U && runInfo.loop == 0U && runInfo.mLoop == 0U && subLoop == 0U &&
-        //     constInfo.subBlockIdx == 0U) {
-        //     uint32_t bmm1Shape[] = {s2CalcSize, VEC_M_BASE};
-        //     AscendC::ShapeInfo bmm1ShapeInfo(2, bmm1Shape);
-        //     AscendC::DumpTensor(mmRes, 200U + subLoop * 10U + constInfo.subBlockIdx,
-        //                         s2CalcSize * VEC_M_BASE, bmm1ShapeInfo);
+        // if (s2CalcSize != 0U && runInfo.loop == 0U && runInfo.mLoop == 0U) {
+        //     constexpr uint32_t dumpRowsPerBlock = 64U;
+        //     const uint32_t dumpBlockCount = (s2CalcSize + dumpRowsPerBlock - 1U) / dumpRowsPerBlock;
+        //     for (uint32_t i = 0U; i < dumpBlockCount; ++i) {
+        //         const uint32_t rowOffset = i * dumpRowsPerBlock;
+        //         const uint32_t rows =
+        //             rowOffset + dumpRowsPerBlock <= s2CalcSize ? dumpRowsPerBlock : s2CalcSize - rowOffset;
+        //         uint32_t mmResShape[] = {rows, VEC_M_BASE};
+        //         AscendC::ShapeInfo mmResShapeInfo(2, mmResShape);
+        //         AscendC::DumpTensor(mmRes[rowOffset * VEC_M_BASE],
+        //                             2000U + subLoop * 100U + constInfo.subBlockIdx * 10U + i,
+        //                             rows * VEC_M_BASE, mmResShapeInfo);
+        //     }
         // }
         constexpr float descaleQK = 1.0f;
         // Q/K scale 已在 C1 随路消费，因此 descaleQK=1。
@@ -208,14 +222,21 @@ public:
                                   "use_dn=false is reserved for future extension");
         }
         // zyhPrint
-        // if (runInfo.actVecMSize != 0U && runInfo.loop == 0U && runInfo.mLoop == 0U && subLoop == 0U &&
-        //     constInfo.subBlockIdx == 0U) {
+        // if (runInfo.actVecMSize != 0U && runInfo.loop == 0U && runInfo.mLoop == 0U) {
         //     uint32_t softmaxStateShape[] = {1U, runInfo.actVecMSize};
         //     AscendC::ShapeInfo softmaxStateShapeInfo(2, softmaxStateShape);
-        //     AscendC::DumpTensor(maxUb, 300U + subLoop * 10U + constInfo.subBlockIdx, runInfo.actVecMSize,
-        //                         softmaxStateShapeInfo);
-        //     AscendC::DumpTensor(sumUb, 400U + subLoop * 10U + constInfo.subBlockIdx, runInfo.actVecMSize,
-        //                         softmaxStateShapeInfo);
+        //     AscendC::DumpTensor(maxUb, 3000U + subLoop * 100U + constInfo.subBlockIdx * 10U,
+        //                         runInfo.actVecMSize, softmaxStateShapeInfo);
+        //     AscendC::DumpTensor(sumUb, 4000U + subLoop * 100U + constInfo.subBlockIdx * 10U,
+        //                         runInfo.actVecMSize, softmaxStateShapeInfo);
+        // }
+        // zyhPrint
+        // if (runInfo.actVecMSize != 0U && runInfo.loop == 0U && runInfo.mLoop == 0U && subLoop == 0U) {
+        //     Duplicate<float>(preLoopMaxUb, constInfo.scaleValue, runInfo.actVecMSize);
+        //     uint32_t scaleShape[] = {1U, runInfo.actVecMSize};
+        //     AscendC::ShapeInfo scaleShapeInfo(2, scaleShape);
+        //     AscendC::DumpTensor(preLoopMaxUb, 6000U + constInfo.subBlockIdx * 10U, runInfo.actVecMSize,
+        //                         scaleShapeInfo);
         // }
         bmm1ResBuf.SetCrossCore();
         if constexpr (HAS_ATTEN) {
@@ -349,18 +370,29 @@ private:
             static_cast<int64_t>(runInfo.vecMbaseIdx), USE_DN);
     }
 
-    __aicore__ inline void CopyAttenMaskSegment(LocalTensor<uint8_t> &attenMaskUb, const MxRunInfo &runInfo,
+    __aicore__ inline int64_t ComputeNoCompressMaskOffset(const MxRunInfo &runInfo,
+                                                          int64_t segmentS2TokenOffset) const
+    {
+        const int64_t batchOffset = static_cast<int64_t>(runInfo.bIdx) * attenMaskInfo_.attenMaskS1Size *
+                                    attenMaskInfo_.attenMaskS2Size;
+        const int64_t qOffset = static_cast<int64_t>(runInfo.s1Idx + runInfo.vecMbaseIdx) *
+                                attenMaskInfo_.attenMaskS2Size;
+        return batchOffset + qOffset + segmentS2TokenOffset;
+    }
+
+    __aicore__ inline bool CopyAttenMaskSegment(LocalTensor<uint8_t> &attenMaskUb, const MxRunInfo &runInfo,
                                                 uint32_t dstS2Offset, uint32_t segmentS2Len,
                                                 int64_t sparseBlkIdx, int64_t segmentS2TokenOffset,
                                                 bool needAtten)
     {
+        // 返回值仅表示本段是否发起了 GM->UB 的 MTE2 搬运；Duplicate 写 UB 不需要 MTE2_V 同步。
         const uint32_t dstOffset = dstS2Offset * VEC_M_BASE;
         if (segmentS2Len == 0U) {
-            return;
+            return false;
         }
         if (sparseBlkIdx < 0) {
             Duplicate<uint8_t>(attenMaskUb[dstOffset], 0, segmentS2Len * VEC_M_BASE);
-            return;
+            return false;
         }
 
         // 完全可见段填 1，其余段搬 right-down causal mask。
@@ -369,21 +401,23 @@ private:
             static_cast<uint8_t>(regbaseutil::AttenMaskCompressMode::RIGHT_DOWN_CAUSAL_MODE);
         if (isRightDownCausal && !needAtten) {
             Duplicate<uint8_t>(attenMaskUb[dstOffset], 1, segmentS2Len * VEC_M_BASE);
-            return;
+            return false;
         }
 
-        const int64_t maskOffset = isRightDownCausal ? ComputeCausalMaskOffset(runInfo, segmentS2TokenOffset) : 0;
+        const int64_t maskOffset = isRightDownCausal ? ComputeCausalMaskOffset(runInfo, segmentS2TokenOffset) :
+                                                       ComputeNoCompressMaskOffset(runInfo, segmentS2TokenOffset);
         BoolCopyInMxMask(attenMaskUb[dstOffset], maskOffset, segmentS2Len, VEC_M_BASE);
+        return true;
     }
 
     __aicore__ inline LocalTensor<uint8_t> CopyAttenMaskToUb(const MxRunInfo &runInfo, uint32_t subLoop,
                                                              uint32_t s2CalcSize)
     {
         LocalTensor<uint8_t> attenMaskUb = attenMaskInQue_.template AllocTensor<uint8_t>();
-        // 只写有效 segment；VF 会将 originN 后的 C1 tail 置为最小值。
 
         const uint32_t subLoopStart = subLoop * S2_SPLIT;
         const uint32_t subLoopEnd = subLoopStart + s2CalcSize;
+        bool needMte2ToVSync = false;
         for (uint32_t i = 0U; i < runInfo.sparseBlockCount; ++i) {
             const uint32_t blockS2Len = runInfo.sparseBlockRealSize[i];
             const uint32_t blockTileStart = runInfo.sparseBlockTileOffset[i];
@@ -397,9 +431,16 @@ private:
             const uint32_t segmentOffsetInBlock = overlapStart - blockTileStart;
             const int64_t segmentS2TokenOffset =
                 runInfo.sparseBlockTokenOffset[i] + static_cast<int64_t>(segmentOffsetInBlock);
-            CopyAttenMaskSegment(attenMaskUb, runInfo, overlapStart - subLoopStart, segmentS2Len,
-                                 runInfo.sparseBlockIdx[i], segmentS2TokenOffset,
-                                 runInfo.sparseBlockPartialMask[i]);
+            const bool hasMte2Copy =
+                CopyAttenMaskSegment(attenMaskUb, runInfo, overlapStart - subLoopStart, segmentS2Len,
+                                     runInfo.sparseBlockIdx[i], segmentS2TokenOffset,
+                                     runInfo.sparseBlockPartialMask[i]);
+            needMte2ToVSync = needMte2ToVSync || hasMte2Copy;
+        }
+        if (needMte2ToVSync) {
+            event_t eventId = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_V));
+            SetFlag<HardEvent::MTE2_V>(eventId);
+            WaitFlag<HardEvent::MTE2_V>(eventId);
         }
         attenMaskInQue_.template EnQue(attenMaskUb);
         return attenMaskInQue_.template DeQue<uint8_t>();
