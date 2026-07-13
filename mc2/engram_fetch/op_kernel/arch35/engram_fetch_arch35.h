@@ -328,7 +328,6 @@ __aicore__ inline void EngramFetchArch35::RemoteFetchRank(uint32_t ownerRank, ui
             threshold = READ_COMMIT_THRESHOLD;
         }
     }
-
     if (pendingReadCount > 0) {
         int32_t ret = hcomm_.Commit(hcommHandleLocal(ownerRank));
         ascendc_assert(ret == 0, "Urma commit failed, ret=%d, ownerRank=%u", ret, ownerRank);
