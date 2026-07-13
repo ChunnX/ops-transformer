@@ -312,11 +312,12 @@ public:
         int64_t maskLine = 0;
         if constexpr (HAS_MASK) {
             attenMaskUb = this->attenMaskInQue[0].template AllocTensor<uint8_t>();
-            maskLine = AttenMaskCopyInDn(attenMaskUb, )
+            maskLine = AttenMaskCopyInDn(attenMaskUb, 0, runInfo.actVecMSize, runInfo, subLoop);
         }
         if (isSkipCompute) {
             bmm1ResBuf.SetCrossCore();
             outputBuf.SetCrossCore();
+            this->attenMaskInQue[0].template FreeTensor(attenMaskUb);
             runInfo.actSingleLoopS2Size = s2SplitSize;
             return;
         }
