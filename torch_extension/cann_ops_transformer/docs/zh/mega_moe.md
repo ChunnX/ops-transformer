@@ -586,7 +586,7 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
         <td>num_max_tokens_per_rank</td>
         <td>int</td>
         <td>必选</td>
-        <td>每张卡上的token数量，当每个rank的num_tokens不同时，为最大的num_tokens大小。</td>
+        <td>每张卡上的token数量，当前仅支持各卡token数一致。</td>
     </tr>
     <tr>
         <td>num_topk</td>
@@ -1060,7 +1060,7 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
 
 - **参数一致性约束**：
     - mega_moe 接口的所有输入参数及其对应的张量维度，必须与 get_symm_buffer_for_mega_moe 的同名参数（例如 `num_experts`、`hidden`、`intermediate_hidden` 等）保持一致。
-    - 调用算子过程中使用的`moe_expert_num`、`max_recv_token_num`、`dispatch_quant_mode`、`dispatch_quant_out_dtype`、`global_bs`等参数取值，所有卡需保持一致，网络中不同层中也需保持一致。
+    - 调用算子过程中使用的`moe_expert_num`、`max_recv_token_num`、`dispatch_quant_mode`、`dispatch_quant_out_dtype`、`num_max_tokens_per_rank`等参数取值，所有卡需保持一致，网络中不同层中也需保持一致。
 
 - **通信域和组网约束**：
     - 仅支持`EP`域，无`TP`域，不支持`groupTp`、`tpWorldSize`、`tpRankId`属性。
