@@ -10,8 +10,7 @@
 
 /*!
  * \file all_to_all_udma_put.h
- * \brief AllToAll PUT 模式实现 - 基于 hcomm WriteNbi (UDMA non-blocking)
- *        用 comm_.WriteNbi 将本地数据推送到远端 rank 的 win buffer
+ * \brief AllToAll PUT 模式实现 - 基于 hcomm WriteNbi
  */
 
 #pragma once

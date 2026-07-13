@@ -11,7 +11,6 @@
 /*!
  * \file collective_comm_base.h
  * \brief 基于 hcomm 的集合通信基类 - CRTP 模式 + 统一状态管理
- *        不依赖 shmem，使用 Hcomm<COMM_PROTOCOL_UBC_CTP> 实现点对点通信
  */
 
 #pragma once

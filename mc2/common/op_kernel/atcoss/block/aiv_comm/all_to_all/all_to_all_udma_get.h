@@ -10,8 +10,7 @@
 
 /*!
  * \file all_to_all_udma_get.h
- * \brief AllToAll GET 模式实现 - 基于 hcomm ReadNbi (UDMA non-blocking)
- *        对应原 all_to_all_udma_get.h，用 comm_.ReadNbi 替代 aclshmemx_udma_get_nbi
+ * \brief AllToAll GET 模式实现 - 基于 hcomm ReadNbi
  */
 
 #pragma once

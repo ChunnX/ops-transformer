@@ -10,8 +10,7 @@
 
 /*!
  * \file collective_comm_api.h
- * \brief Hcomm 集合通信统一 API - 四段式编程范式
- *        对应原 collective_comm_udma_api.h，路由到 hcomm 实现
+ * \brief Hcomm 集合通信统一 API
  */
 
 #pragma once
