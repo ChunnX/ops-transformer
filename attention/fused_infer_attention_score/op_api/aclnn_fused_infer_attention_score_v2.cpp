@@ -24,8 +24,6 @@ extern "C" {
 #endif
 
 namespace {
-extern "C" aclnnStatus __attribute__((weak)) NnopbaseDisableOptionalInput(void *executor, const size_t irIndex);
-
 __attribute__((visibility("default"))) aclnnStatus aclnnFusedInferAttentionScoreV2GetMaxWorkspaceSize(
     const aclTensor *query, const aclTensorList *tensorListKey, const aclTensorList *tensorListValue, const aclTensor *pseShiftOptional,
     const aclTensor *attenMaskOptional, const aclIntArray *actualSeqLengthsOptional,
@@ -189,17 +187,6 @@ aclnnStatus aclnnFusedInferAttentionScoreV2GetWorkspaceSize(
         numHeads, scaleValue, preTokens, nextTokens,
         inputLayout, numKeyValueHeads, sparseMode, innerPrecise, blockSize, antiquantMode, softmaxLseFlag,
         keyAntiquantMode, valueAntiquantMode, 0, 0, 0, attentionOut, placeHolder, workspaceSize, executor);
-    if (ret == 0) {
-        if (NnopbaseDisableOptionalInput != nullptr) {
-            NnopbaseDisableOptionalInput(*executor, 24U); // 24 is input irIndex
-            NnopbaseDisableOptionalInput(*executor, 25U); // 25 is input irIndex
-            NnopbaseDisableOptionalInput(*executor, 26U); // 26 is input irIndex
-            NnopbaseDisableOptionalInput(*executor, 27U); // 27 is input irIndex
-            NnopbaseDisableOptionalInput(*executor, 28U); // 28 is input irIndex
-            NnopbaseDisableOptionalInput(*executor, 29U); // 29 is input irIndex，占位符
-            NnopbaseDisableOptionalInput(*executor, 30U); // 30 is input irIndex，占位符
-        }
-    }
     if (softmaxLseFlag == false) {
         aclDestroyTensor(tempTensor);
     }

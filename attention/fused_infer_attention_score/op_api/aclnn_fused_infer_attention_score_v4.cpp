@@ -48,8 +48,6 @@ __attribute__((visibility("default"))) aclnnStatus aclnnFusedInferAttentionScore
     int64_t keyAntiquantMode, int64_t valueAntiquantMode, int64_t queryQuantMode,
     const aclTensor *attentionOut, const aclTensor *softmaxLse, uint64_t *workspaceSize, aclOpExecutor **executor);
 
-extern "C" aclnnStatus __attribute__((weak)) NnopbaseDisableOptionalInput(void *executor, const size_t irIndex);
-
 aclnnStatus aclnnFusedInferAttentionScoreV4GetMaxWorkspaceSize(
     const aclTensor *query, const aclTensorList *tensorListKey, const aclTensorList *tensorListValue,
     const aclTensor *pseShiftOptional,
@@ -204,12 +202,6 @@ aclnnStatus aclnnFusedInferAttentionScoreV4GetWorkspaceSize(
         keyAntiquantMode, valueAntiquantMode, queryQuantMode, 0, 0, attentionOut, placeHolder, workspaceSize, executor);
     if (softmaxLseFlag == false) {
         aclDestroyTensor(tempTensor);
-    }
-    if (ret == 0) {
-        if (NnopbaseDisableOptionalInput != nullptr) {
-            NnopbaseDisableOptionalInput(*executor, 29U); // 29 is input irIndex，占位符
-            NnopbaseDisableOptionalInput(*executor, 30U); // 30 is input irIndex，占位符
-        }
     }
     return ret;
 }
