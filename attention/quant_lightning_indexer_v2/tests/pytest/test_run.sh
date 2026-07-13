@@ -30,8 +30,12 @@ run_single() {
 }
 
 # 用例批量生成调试
+# 用法: run_batch [eager|graph]
+#   eager - 直接调用算子（默认）
+#   graph - 通过 torch.compile + torchair 后端执行
 run_batch() {
-    echo "===== 执行用例批量生成测试 ====="
+    local run_mode="${1:-eager}"
+    echo "===== 执行用例批量生成测试 (模式: ${run_mode}) ====="
 
     echo -e "\n===== 第一步：执行quant_lightning_indexer_v2_pt_save.py ====="
     python3 $QLIV2_PT_SAVE_SCRIPT $PATH1 $PATH2
@@ -47,8 +51,8 @@ run_batch() {
         exit 1
     fi
 
-    echo -e "\n===== 第三步：执行pytest命令 ====="
-    python3 -m pytest -rA -s $TEST_QLIV2_BATCH_SCRIPT -v -m ci
+    echo -e "\n===== 第三步：执行pytest命令 (QLIV2_RUN_MODE=${run_mode}) ====="
+    QLIV2_RUN_MODE="${run_mode}" python3 -m pytest -rA -s $TEST_QLIV2_BATCH_SCRIPT -v -m ci
     if [ $? -ne 0 ]; then
         echo "pytest执行失败"
         exit 1
@@ -61,37 +65,48 @@ run_batch() {
 
 # 显示帮助信息
 show_help() {
-    echo "用法: $0 [参数]"
-    echo "参数说明："
-    echo "  single    执行单算子用例调测"
-    echo "  batch     执行用例批量生成调试"
-    echo "  help      显示本帮助信息"
+    echo "用法: $0 <command> [run_mode]"
+    echo "命令说明："
+    echo "  single              执行单算子用例调测"
+    echo "  batch [eager|graph] 执行用例批量生成调试"
+    echo "                        eager - 直接调用算子（默认）"
+    echo "                        graph - torch.compile + torchair 后端"
+    echo "  help                显示本帮助信息"
     echo "示例："
-    echo "  $0 single  # 执行single模式"
-    echo "  $0 batch   # 执行batch模式"
+    echo "  $0 single        # 执行single模式"
+    echo "  $0 batch         # 执行batch模式（默认eager）"
+    echo "  $0 batch eager   # 显式指定eager模式"
+    echo "  $0 batch graph   # 使用graph模式"
 }
 
 # ====================== 主逻辑 ======================
-# 检查传入的参数数量
-if [ $# -ne 1 ]; then
-    echo "错误：必须传入且仅传入一个参数（single/batch/help）"
+if [ $# -lt 1 ]; then
+    echo "错误：必须传入至少一个参数"
     show_help
     exit 1
 fi
 
+COMMAND="$1"
+RUN_MODE="${2:-eager}"
+
 # 根据参数执行对应函数
-case "$1" in
+case "$COMMAND" in
     single)
         run_single
         ;;
     batch)
-        run_batch
+        if [[ "$RUN_MODE" != "eager" && "$RUN_MODE" != "graph" ]]; then
+            echo "错误：batch 模式仅支持 eager/graph，当前值: $RUN_MODE"
+            show_help
+            exit 1
+        fi
+        run_batch "$RUN_MODE"
         ;;
     help)
         show_help
         ;;
     *)
-        echo "错误：未知参数 '$1'，仅支持 single/batch/help"
+        echo "错误：未知命令 '$COMMAND'"
         show_help
         exit 1
         ;;
