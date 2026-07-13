@@ -38,27 +38,26 @@ struct MhcPreSinkhornBackwardArch35TilingData {
 };
 
 struct MhcPreSinkhornBackwardArch35DeterminiticTilingData {
-    int64_t batchSize = 0;
-    int64_t seqLength = 0;
-    int64_t c = 0;
-    int64_t n = 0;
-    int64_t usedAivNum = 0;
-    int64_t aicNum = 0;
-    int64_t cLoopDataLen = 0;
-    int64_t bsLoopDataLen = 0;
-    int64_t skIterCount = 0;
-    int64_t bsTaskCount = 0;
-    int64_t tailBsTaskCount = 0;
-    //reset后
-    int64_t cBlockLoops = 0; // B*S*N*C，切核，总循环次数
-    int64_t cBlockTailLoops = 0; // B*S*N*C，切核，尾核循环次数
-    int64_t cBlockCount = 0; // B*S*N*C，切核，普通核尾循环处理元素个数
-    int64_t cBlockTailCount = 0; // B*S*N*C，切核，普通核尾核循环次数
-    int64_t cBlockTailTailCount = 0; // B*S*N*C，切核，尾核尾循环处理个数
-    int64_t finalUsedAivNum = 0;
-    float eps = 0;
-    TCubeTiling mm1TilingData;
-    TCubeTiling mm2TilingData;
+    // === shape: 算子输入张量维度 ===
+    int64_t b = 0;                  // batch_size
+    int64_t s = 0;                  // seq_length
+    int64_t c = 0;                  // C 维度 (hidden_dim)
+    int64_t n = 0;                  // N 维度 (head_dim, n ≤ 8)
+    // === core allocation: 多核任务分配 ===
+    int64_t usedCoreNum = 0;        // AIV 实际使用核数 (含 reset 后修正)
+    int64_t aicCoreNum = 0;         // AIC 核数 (用于 MatMul 并行)
+    // === UB factors: UB 单次处理元素数 (控制 UB buffer 分配粒度) ===
+    int64_t ubFactorBS = 0;         // UB 单次处理 B*S 维元素数
+    int64_t ubFactorC = 0;          // UB 单次处理 C 维元素数 (= c 时不切, < c 时切 C)
+    int64_t skIterCount = 0;        // Sinkhorn-Knopp 迭代次数 (正向反向共用)
+    // === block factors: 每核分配的 BS 工作量 (C 切分由 Kernel 内部处理，不在此处) ===
+    int64_t blockFactorBS = 0;      // 普通核处理的 B*S 数 (≈ total_bs / usedCoreNum)
+    int64_t blockTailBS = 0;        // 尾核处理的 B*S 数 (≤ blockFactorBS)
+    // === 业务参数 ===
+    float eps = 0.0f;               // 数值稳定常数 (hc_eps)
+    // === MatMul Tiling ===
+    TCubeTiling mm1TilingData;      // MatMul1: gradHcBeforeNorm[B*S, k_] × phi[k_, n*c]
+    TCubeTiling mm2TilingData;      // MatMul2: gradHcBeforeNorm^T[k_, B*S] × xFp32[B*S, n*c]
 };
 
 #endif // MHC_PRE_SINKHORN_BACKWARD_DATA_ARCH35_H

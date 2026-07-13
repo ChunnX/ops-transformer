@@ -37,7 +37,6 @@ public:
 
 protected:
     bool IsCapable() override;
-    // ge::graphStatus GetShapeAttrsInfo() override;
     ge::graphStatus DoOpTiling() override;
     uint64_t GetTilingKey() const override;
     ge::graphStatus PostTiling() override;
@@ -50,18 +49,14 @@ private:
     void DoUbTiling();
 
 private:
-    int64_t bsTaskCount_{0};
-    int64_t tailBsTaskCount_{0};
-    int64_t bsLoopDataLen_{0};
-    int64_t cLoopDataLen_{0};
-    int64_t ubBlock_{0};
-    int64_t usedAivNum_{0};
-    int64_t cBlockLoops_{0};
-    int64_t cBlockTailLoops_{0};
-    int64_t cBlockCount_{0};
-    int64_t cBlockTailCount_{0};
-    int64_t cBlockTailTailCount_{0};
-    int64_t finalUsedAivNum_{0};
+    // BS 分核参数
+    int64_t blockFactorBS_{0};   // 普通核处理 BS 数
+    int64_t blockTailBS_{0};     // 尾核 BS 数
+    int64_t usedCoreNum_{0};     // 实际使用 AIV 核数
+    // UB 因子
+    int64_t ubFactorBS_{0};      // UB 单次处理 BS 数
+    int64_t ubFactorC_{0};       // UB 单次处理 C 数 (=c 不切, <c 切)
+    int64_t ubBlockSize_{0};     // UB block 字节数
 };
 
 } // namespace optiling
