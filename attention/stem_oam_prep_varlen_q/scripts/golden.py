@@ -1,7 +1,27 @@
 #!/usr/bin/env python3
 # -*- coding: UTF-8 -*-
 """
-Special golden data generation function for stem_oam_prep_varlen_q
+Golden reference variants for stem_oam_prep_varlen_q.
+
+Three implementations are provided, all returning a BF16 numpy array with
+shape [batch, H_q, max_Qb, S*D]:
+
+  golden_seq                 - Sequential sum, pure numpy (math baseline).
+  golden_torch_vectorized    - Sequential sum, PyTorch vectorized on GPU
+                               (no Python loops over batch/head/qb).
+                               Mathematically identical to golden_seq.
+                               Requires PyTorch.
+  golden_binary_reduce       - Binary reduce algorithm, numpy. Mirrors the
+                               current kernel implementation exactly:
+                                 Phase 1: Muls each row by its scale
+                                 Phase 2: binary-decompose R (MSB->LSB);
+                                          for each chunk of size 2^p, do a
+                                          p-layer pairwise reduce over r,
+                                          then add-merge into the accumulator
+                                          row[g] (first chunk skips merge).
+                               Expected FP32 difference vs golden_seq < 1e-6.
+
+Switch between them by uncommenting exactly one SELECTED_GOLDEN line below.
 """
 import math
 import numpy as np
@@ -10,24 +30,13 @@ import tbetoolkits
 from .registry import register_golden
 
 
-@register_golden(["stem_oam_prep_varlen_q"])
-def stem_oam_prep_varlen_q(context: "tbetoolkits.UniversalTestcaseStructure"):
+# ============================================================
+# Golden variants
+# ============================================================
+
+def golden_seq(context: "tbetoolkits.UniversalTestcaseStructure"):
     """
-    Compute golden reference for stem_oam_prep_varlen_q.
-
-    Args:
-        context: Contains input arrays and compilation params.
-                 input_arrays[0]: q          [total_tokens, H_q, D]  FP8 (uint8 storage)
-                 input_arrays[1]: qscale     [total_tokens, H_q]     FP32
-                 input_arrays[2]: q_seq_lens [batch]                 INT32
-                 input_arrays[3]: cu_seqlens_q [batch+1]             INT32
-·
-                 attributes:
-                 - stemBlockSize: stem_block_size (default 128)
-                 - stemStride: stem_stride (default 16)
-
-    Returns:
-        qflat: [batch, H_q, max_Qb, S*D] BF16 (as numpy array)
+    Sequential sum, numpy + for-loop (math baseline).
     """
     q_np = context.input_arrays[0]
     qscale_np = context.input_arrays[3] if len(context.input_arrays) > 3 else None
@@ -42,10 +51,10 @@ def stem_oam_prep_varlen_q(context: "tbetoolkits.UniversalTestcaseStructure"):
     R = B // S
     batch = len(q_seq_lens_np)
 
-    print(f"[golden] B={B}, S={S}, D={D}, H_q={H_q}, batch={batch}")
-    print(f"[golden] q_seq_lens={q_seq_lens_np}")
-    print(f"[golden] cu_seqlens_q={cu_seqlens_q_np}")
-    print(f"[golden] qscale_shape={qscale_np.shape if qscale_np is not None else None}")
+    print(f"[golden_seq] B={B}, S={S}, D={D}, H_q={H_q}, batch={batch}")
+    print(f"[golden_seq] q_seq_lens={q_seq_lens_np}")
+    print(f"[golden_seq] cu_seqlens_q={cu_seqlens_q_np}")
+    print(f"[golden_seq] qscale_shape={qscale_np.shape if qscale_np is not None else None}")
 
     q_fp32 = q_np.astype(np.float32)
     if qscale_np is not None:
@@ -54,6 +63,9 @@ def stem_oam_prep_varlen_q(context: "tbetoolkits.UniversalTestcaseStructure"):
             qscale = qscale.reshape(-1, 1)
     else:
         qscale = None
+
+    if batch == 0:
+        return np.zeros((0, H_q, 0, S * D), dtype=np.float32).astype(ml_dtypes.bfloat16)
 
     max_Qb = max(math.ceil(int(sl) / B) for sl in q_seq_lens_np)
 
@@ -92,3 +104,208 @@ def stem_oam_prep_varlen_q(context: "tbetoolkits.UniversalTestcaseStructure"):
                 qflat[b, h, qb, :] = Q_group_sum[qb].reshape(S * D)
 
     return qflat.astype(ml_dtypes.bfloat16)
+
+
+def golden_torch_vectorized(context: "tbetoolkits.UniversalTestcaseStructure"):
+    """
+    Sequential sum, PyTorch vectorized (no Python loop over batch/head/qb).
+
+    Mathematically equivalent to golden_seq; runs on GPU if CUDA is available.
+    """
+    import torch
+
+    q_np = context.input_arrays[0]
+    qscale_np = context.input_arrays[3] if len(context.input_arrays) > 3 else None
+    q_seq_lens_np = context.input_arrays[1]
+    cu_seqlens_q_np = context.input_arrays[2]
+
+    B = context.other_runtime_params['stemBlockSize']
+    S = context.other_runtime_params['stemStride']
+
+    D = q_np.shape[-1]
+    H_q = q_np.shape[1]
+    R = B // S
+    batch = len(q_seq_lens_np)
+
+    print(f"[golden_torch] B={B}, S={S}, D={D}, H_q={H_q}, batch={batch}")
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    q = torch.from_numpy(q_np.astype(np.float32)).to(device)
+    if qscale_np is not None:
+        q_t = torch.from_numpy(qscale_np.astype(np.float32).reshape(-1, 1)
+                               if qscale_np.ndim == 1 else qscale_np.astype(np.float32)).to(device)
+    else:
+        q_t = None
+    q_len_t = torch.from_numpy(q_seq_lens_np.astype(np.int64)).to(device)
+    cu_off_t = torch.from_numpy(cu_seqlens_q_np.astype(np.int64)).to(device)
+
+    if batch == 0:
+        return torch.zeros(0, H_q, 0, S * D, dtype=torch.bfloat16,
+                           device=device).cpu().numpy()
+
+    q_padded_lens = ((q_len_t + B - 1) // B) * B
+    max_Qb = int(q_padded_lens.max().item()) // B
+    max_q_padded = max_Qb * B
+
+    if max_Qb == 0:
+        return np.zeros((batch, H_q, 0, S * D), dtype=np.float32).astype(ml_dtypes.bfloat16)
+
+    # Global positions + valid mask (handles q_len not aligned to B)
+    positions = torch.arange(max_q_padded, device=device).unsqueeze(0)        # [1, max_q_padded]
+    global_pos = cu_off_t.unsqueeze(1) + positions                             # [batch, max_q_padded]
+    valid_mask = positions < q_len_t.unsqueeze(1)                              # [batch, max_q_padded]
+    gp_safe = torch.where(valid_mask, global_pos, torch.zeros_like(global_pos))
+
+    # De-page Q + reshape to [batch, H_q, max_Qb, R, S, D]
+    Q_padded = q[gp_safe]                                                      # [batch, max_q_padded, H_q, D]
+    Q_padded = Q_padded * valid_mask.unsqueeze(-1).unsqueeze(-1).float()
+    Q_blocks = Q_padded.permute(0, 2, 1, 3).reshape(batch, H_q, max_Qb, R, S, D)
+
+    # Scale fusion + weighted group sum along R
+    if q_t is not None:
+        scale_padded = q_t[gp_safe]                                            # [batch, max_q_padded, H_q]
+        scale_padded = scale_padded * valid_mask.unsqueeze(-1).float()
+        scales = scale_padded.permute(0, 2, 1).reshape(batch, H_q, max_Qb, R, S)
+        Q_weighted = Q_blocks * scales.unsqueeze(-1)
+        Q_group_sum = Q_weighted.sum(dim=3)                                    # [batch, H_q, max_Qb, S, D]
+    else:
+        Q_group_sum = Q_blocks.sum(dim=3)
+
+    qflat = Q_group_sum.reshape(batch, H_q, max_Qb, S * D).to(torch.bfloat16)
+    return qflat.cpu().numpy()
+
+
+def golden_binary_reduce(context: "tbetoolkits.UniversalTestcaseStructure"):
+    """
+    Binary reduce algorithm, numpy (matches current kernel exactly).
+
+    Per block (qb) at a given head h, working on Q_q[r, g, :] with shape
+    [R, S, D]:
+
+      Phase 1: Muls each row by its scale
+               Q_q[r, g, :] *= scales[r, g]
+
+      Phase 2: binary-decompose R (MSB to LSB).
+               For each chunk of size 2^p starting at base_r:
+                 - p-layer pairwise reduce on rows base_r..base_r+chunk-1
+                   (after this, row[base_r, g, :] holds the intra-chunk sum)
+                 - add-merge the chunk result into the accumulator row[0, g, :]
+                   (the first chunk, where base_r=0, is NOT merged because
+                    its reduce result already lives in row[0, g, :])
+               After the loop, row[0, g, :] holds the full group sum.
+    """
+    q_np = context.input_arrays[0]
+    qscale_np = context.input_arrays[3] if len(context.input_arrays) > 3 else None
+    q_seq_lens_np = context.input_arrays[1]
+    cu_seqlens_q_np = context.input_arrays[2]
+
+    B = context.other_runtime_params['stemBlockSize']
+    S = context.other_runtime_params['stemStride']
+
+    D = q_np.shape[-1]
+    H_q = q_np.shape[1]
+    R = B // S
+    batch = len(q_seq_lens_np)
+
+    print(f"[golden_binary] B={B}, S={S}, D={D}, H_q={H_q}, batch={batch}")
+    print(f"[golden_binary] q_seq_lens={q_seq_lens_np}")
+    print(f"[golden_binary] cu_seqlens_q={cu_seqlens_q_np}")
+    print(f"[golden_binary] qscale_shape={qscale_np.shape if qscale_np is not None else None}")
+
+    q_fp32 = q_np.astype(np.float32)
+    if qscale_np is not None:
+        qscale = qscale_np.astype(np.float32)
+        if qscale.ndim == 1:
+            qscale = qscale.reshape(-1, 1)
+    else:
+        qscale = None
+
+    if batch == 0:
+        return np.zeros((0, H_q, 0, S * D), dtype=np.float32).astype(ml_dtypes.bfloat16)
+
+    max_Qb = max(math.ceil(int(sl) / B) for sl in q_seq_lens_np)
+
+    qflat = np.zeros((batch, H_q, max_Qb, S * D), dtype=np.float32)
+
+    for b in range(batch):
+        q_len = int(q_seq_lens_np[b].item())
+        cu_off = int(cu_seqlens_q_np[b].item())
+        q_padded = math.ceil(q_len / B) * B
+        num_Qb = q_padded // B
+
+        if num_Qb == 0:
+            continue
+
+        Q_segment = q_fp32[cu_off:cu_off + q_len]
+        Q_dense = np.zeros((q_padded, H_q, D), dtype=np.float32)
+        Q_dense[:Q_segment.shape[0]] = Q_segment
+
+        for h in range(H_q):
+            if qscale is not None:
+                positions = np.arange(num_Qb * B).reshape(num_Qb, R, S)
+                global_positions = cu_off + positions
+                valid_mask = global_positions < len(qscale)
+                scales = np.zeros((num_Qb, R, S), dtype=np.float32)
+                scales[valid_mask] = qscale[global_positions[valid_mask], h]
+            else:
+                scales = None
+
+            for qb in range(num_Qb):
+                # Q_q: [R, S, D] — this block, this head
+                Q_q = Q_dense[qb * B:(qb + 1) * B, h, :].reshape(R, S, D).copy()
+
+                # Phase 1: Muls each (r, g) row by scales[r, g]
+                if scales is not None:
+                    Q_q = Q_q * scales[qb, :, :, np.newaxis]
+
+                # Phase 2: binary reduce over r-axis (MSB to LSB)
+                base_r = 0
+                R_rem = R
+                is_first = True
+                while R_rem > 0:
+                    # floor_log2
+                    p = 0
+                    tmp = R_rem
+                    while tmp >= 2:
+                        tmp >>= 1
+                        p += 1
+                    chunk = 1 << p
+
+                    # p-layer pairwise reduce (vectorized over g, D)
+                    for k in range(p):
+                        stride = 1 << k
+                        step = stride << 1
+                        for r_local in range(0, chunk, step):
+                            r_dst = base_r + r_local
+                            r_src = base_r + r_local + stride
+                            Q_q[r_dst] += Q_q[r_src]
+
+                    # merge: accumulator row[0] += chunk-reduced row[base_r]
+                    if not is_first:
+                        Q_q[0] += Q_q[base_r]
+                    is_first = False
+
+                    base_r += chunk
+                    R_rem -= chunk
+
+                # row[0, g, :] now holds groupSum[g, :]
+                qflat[b, h, qb, :] = Q_q[0].reshape(S * D)
+
+    return qflat.astype(ml_dtypes.bfloat16)
+
+
+# ============================================================
+# Switch: uncomment exactly ONE of the three lines below.
+# ============================================================
+SELECTED_GOLDEN = golden_seq
+# SELECTED_GOLDEN = golden_torch_vectorized    # requires PyTorch
+# SELECTED_GOLDEN = golden_binary_reduce       # matches current kernel algorithm
+
+
+# ============================================================
+# Unified entry point (registered under the operator name)
+# ============================================================
+@register_golden(["stem_oam_prep_varlen_q"])
+def stem_oam_prep_varlen_q(context: "tbetoolkits.UniversalTestcaseStructure"):
+    return SELECTED_GOLDEN(context)
