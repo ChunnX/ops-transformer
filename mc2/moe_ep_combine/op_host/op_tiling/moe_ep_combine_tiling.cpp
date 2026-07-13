@@ -40,8 +40,6 @@ constexpr uint32_t TOPK_IDX_INDEX = 2U;
 constexpr uint32_t RECV_SRC_METADATA_INDEX = 3U;
 constexpr uint32_t NUM_RECV_PER_EXPERT_INDEX = 4U;
 constexpr uint32_t TOPK_WEIGHTS_INDEX = 5U;
-constexpr uint32_t BIAS_0_INDEX = 6U;
-constexpr uint32_t BIAS_1_INDEX = 7U;
 
 constexpr uint32_t ATTR_EP_WORLD_SIZE_INDEX = 0;
 constexpr uint32_t ATTR_EP_RANK_ID_INDEX = 1;
@@ -51,7 +49,7 @@ constexpr uint32_t ATTR_CCL_BUFFER_SIZE_INDEX = 4;
 
 constexpr uint32_t ONE_DIMS = 1U;
 constexpr uint32_t TWO_DIMS = 2U;
-constexpr int64_t MAX_EP_WORLD_SIZE = 128;
+constexpr int64_t MAX_EP_WORLD_SIZE = 1024;
 constexpr int64_t MIN_EP_WORLD_SIZE = 2;
 constexpr uint32_t SYSTEM_NEED_WORKSPACE = 16U * 1024U * 1024U;
 constexpr uint64_t MB_SIZE = 1024UL * 1024UL;
@@ -147,22 +145,6 @@ static ge::graphStatus CheckInputTensorShape(const gert::TilingContext *context,
             OP_LOGE(nodeName, "topkWeightsShape dims must be 1."), return ge::GRAPH_FAILED);
     }
     info.hasTopkWeights = hasTopkWeights ? 1 : 0;
-
-    bool hasBias0 = (context->GetInputShape(BIAS_0_INDEX) != nullptr);
-    if (hasBias0) {
-        const gert::StorageShape *bias0Shape = context->GetInputShape(BIAS_0_INDEX);
-        OP_CHECK_NULL_WITH_CONTEXT(context, bias0Shape);
-        OP_TILING_CHECK(bias0Shape->GetStorageShape().GetDimNum() != TWO_DIMS,
-            OP_LOGE(nodeName, "bias0Shape dims must be 2."), return ge::GRAPH_FAILED);
-    }
-
-    bool hasBias1 = (context->GetInputShape(BIAS_1_INDEX) != nullptr);
-    if (hasBias1) {
-        const gert::StorageShape *bias1Shape = context->GetInputShape(BIAS_1_INDEX);
-        OP_CHECK_NULL_WITH_CONTEXT(context, bias1Shape);
-        OP_TILING_CHECK(bias1Shape->GetStorageShape().GetDimNum() != TWO_DIMS,
-            OP_LOGE(nodeName, "bias1Shape dims must be 2."), return ge::GRAPH_FAILED);
-    }
 
     return ge::GRAPH_SUCCESS;
 }
