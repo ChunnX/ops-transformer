@@ -135,14 +135,14 @@
     <tr>
         <td>seqUsedQOptional</td>
         <td>可选输入</td>
-        <td>预留字段，表示每个batch实际使用的q长度。</td>
+        <td>表示每个batch实际使用的q长度。</td>
         <td>INT32</td>
         <td>ND</td>
     </tr>
     <tr>
         <td>seqUsedKOptional</td>
         <td>可选输入</td>
-        <td>预留字段，表示每个batch实际使用的k长度。</td>
+        <td>表示每个batch实际使用的k长度。</td>
         <td>INT32</td>
         <td>ND</td>
     </tr>
@@ -221,6 +221,7 @@
 
 - Atlas A2训练系列产品/Atlas A2推理系列产品、Atlas A3训练系列产品/Atlas A3推理系列产品：
   - T1支持大于等于cuSeqLensQOptional的最后一个元素，T2支持大于等于cuSeqLensKOptional的最后一个元素。
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：暂不支持seqUsedQOptional、seqUsedKOptional字段。
 
 ## 约束说明
 
@@ -333,16 +334,16 @@
     </table>
 
   - 参数B的支持情况:
-    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：B支持1~256。
+    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：B支持1~256。
     - <term>Ascend 950PR/Ascend 950DT</term>：B>0。
   - 参数S1、S2的支持情况:
-    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：S1支持1~8K，S2支持1~512K。
+    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：S1支持1~8K，S2支持1~512K。
     - <term>Ascend 950PR/Ascend 950DT</term>：S1>0，S2>0。
   - 参数N1的支持情况:
-    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：N1支持8、16、32、64。
+    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：N1支持8、16、32、64。
     - <term>Ascend 950PR/Ascend 950DT</term>：N1支持1~128。
   - 参数K的支持情况:
-    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：K支持512、1024、2048、4096、8192。
+    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：K支持512、1024、2048、4096、8192。
     - <term>Ascend 950PR/Ascend 950DT</term>：K支持0~2048。
     
 - 典型值

@@ -319,6 +319,8 @@
     </tbody>
 </table>
 
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：暂不支持sequsedQOptional、sequsedOriKvOptional、sequsedCmpKvOptional、oriTopkLengthOptional、cmpTopkLengthOptional、metadataOptional字段。
+
 ## 约束说明
 
 - 仅支持BSND或TND layout；关于数据shape的约束如下：
