@@ -55,6 +55,12 @@
 - ./batch/replace_path.py                                # test_quant_lightning_indexer_v2_batch.py占位符替换
 
 
+## 架构说明
+
+- **single 模式**：`qliv2_output_acl_graph` 调用 `qliv2_output_single(is_batch=True)` 即时生成数据 → `torch.compile` + `torchair` 执行
+- **batch 模式**：`qliv2_output_acl_graph_from_pt` 直接从 .pt 文件读取 pre-computed 数据 → 共用同一 `torch.compile` 路径，跳过重复生成
+- 两路共用 `_qliv2_prepare_tensors_and_metadata` 和 `_qliv2_run_compiled_graph`，统一使用 `fullgraph=False`
+
 ## 使用方法
 在pytest文件夹路径下执行：
 
