@@ -96,7 +96,7 @@ public:
 
     ConstInfoX constInfo;
 
-    const __gm__ FlashAttnNoQuantTilingArch35 *__restrict tilingData;
+    __tiling_data_ptr__ FlashAttnNoQuantTilingArch35* tilingData = nullptr;
     TPipe *pipe;
     CubeBlockType cubeBlock;
     VecFaBlockType vecFaBlock;
@@ -164,7 +164,7 @@ public:
                                 __gm__ uint8_t *blockTable, __gm__ uint8_t *learnableSink, __gm__ uint8_t *softmaxLse,
                                 __gm__ uint8_t *attentionOut, __gm__ uint8_t *workspace, __gm__ uint8_t *fiaMetaData,
                                 __gm__ uint8_t *seqUsedQ, __gm__ uint8_t *seqUsedKv,
-                                const __gm__ FlashAttnNoQuantTilingArch35 *__restrict tiling, TPipe *tPipe)
+                                __tiling_data_ptr__ FlashAttnNoQuantTilingArch35* tiling, TPipe *tPipe)
     {
         this->pipe = tPipe;
         this->tilingData = tiling;
