@@ -19,9 +19,13 @@
 #include "cgmct/kernel/kernel_gmm_swiglu_mxquant.h"
 #include "cgmct/block/block_mx_mm_aic_to_aiv_builder.h"
 #include "cgmct/block/block_scheduler_gmm_aswt_with_tail_split.h"
+#include "blaze/gemm/block/block_mmad_qgmm_mx.h"
+#include "blaze/gemm/policy/dispatch_policy.h"
+#include "tensor_api/tensor.h"
 
 using namespace Cgmct::Gemm;
 using namespace Cgmct::Gemm::Kernel;
+
 
 template <typename layoutA, typename layoutB>
 __aicore__ inline void GmmSwigluAswt(GM_ADDR x, GM_ADDR weight, GM_ADDR weightScale, GM_ADDR xScale,
@@ -69,6 +73,51 @@ __aicore__ inline void GmmSwigluAswt(GM_ADDR x, GM_ADDR weight, GM_ADDR weightSc
                         static_cast<uint32_t>(mmTilingData_.baseN)},
                     // gmm tiling data
                     gmmParams};
+    QGmmKernel op;
+    op(params);
+}
+
+template <typename layoutA, typename layoutB>
+__aicore__ inline void GmmSwigluMxFp8NdTensorApi(GM_ADDR x, GM_ADDR weight, GM_ADDR weightScale, GM_ADDR xScale,
+                                                 GM_ADDR weightAssistanceMatrix, GM_ADDR smoothScale,
+                                                 GM_ADDR groupList, GM_ADDR y, GM_ADDR yScale, GM_ADDR workspace,
+                                                 GM_ADDR tiling)
+{
+    GET_TILING_DATA_MEMBER(GMMSwigluQuantTilingDataParams, gmmSwigluQuantParams, gmmSwigluQuantParams_, tiling);       \
+    GET_TILING_DATA_MEMBER(GMMSwigluQuantTilingDataParams, mmTilingData, mmTilingData_, tiling);                       \
+    using L0TileShape = AscendC::Shape<_0, _0, _0>;
+    using AType = DTYPE_X;
+    using BType = DTYPE_WEIGHT;
+    using CType = DTYPE_Y;
+    using LayoutA = layoutA;
+    using LayoutB = layoutB;
+    using TensorLayoutA = AscendC::Std::conditional_t<TagToTrans<LayoutA>::value, AscendC::Te::DNExtLayoutPtn,
+                                                      AscendC::Te::NDExtLayoutPtn>;
+    using TensorLayoutB = AscendC::Std::conditional_t<TagToTrans<LayoutB>::value, AscendC::Te::DNExtLayoutPtn,
+                                                      AscendC::Te::NDExtLayoutPtn>;
+    using TensorLayoutC = AscendC::Te::NDExtLayoutPtn;
+    using WeightScaleType = AscendC::fp8_e8m0_t;
+    using BiasType = float;
+    using BlockScheduler = GroupedMatmulAswtWithTailSplitScheduler;
+    using C1Type = float;
+    using BlockEpilogue = Block::BlockEpilogueSwigluQuant<L0TileShape, CType, C1Type, WeightScaleType,
+                                                          WeightScaleType, true>;
+    using ProblemShape = MatmulShape;
+    using TensorBlockMmadPolicy = Blaze::Gemm::GroupedMatmulWithScaleMx<0>;
+    using BlockMmad = Blaze::Gemm::Block::BlockMmad<TensorBlockMmadPolicy, AType, TensorLayoutA, BType,
+                                                    TensorLayoutB, C1Type, TensorLayoutC, BiasType, TensorLayoutC>;
+    using QGmmKernel =
+        Kernel::KernelGmmSwiGluMixOnlineDynamic<ProblemShape, BlockMmad, BlockEpilogue, BlockScheduler>;
+    using Params = typename QGmmKernel::Params;
+    using GMMTiling = typename QGmmKernel::GMMTiling;
+    GMMTiling gmmParams{gmmSwigluQuantParams_.groupNum, gmmSwigluQuantParams_.groupListType, mmTilingData_.baseM,
+                        mmTilingData_.baseN, mmTilingData_.baseK};
+    gmmParams.matmulTiling = &mmTilingData_;
+    Params params = {{1, 1, 1, 1},
+                     {x, weight, weightScale, xScale, y, groupList},
+                     {y, yScale, nullptr, nullptr, nullptr, static_cast<uint32_t>(mmTilingData_.baseM),
+                      static_cast<uint32_t>(mmTilingData_.baseN)},
+                     gmmParams};
     QGmmKernel op;
     op(params);
 }
