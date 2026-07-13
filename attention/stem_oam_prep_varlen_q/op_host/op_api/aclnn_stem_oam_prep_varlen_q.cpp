@@ -208,16 +208,25 @@ aclnnStatus aclnnStemOamPrepVarlenQGetWorkspaceSize(
 
     auto uniqueExecutor = CREATE_EXECUTOR();
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
+    auto *executorImpl = uniqueExecutor.get();
+
+    q = l0op::Contiguous(q, executorImpl);
+    CHECK_RET(q != nullptr, ACLNN_ERR_INNER_NULLPTR);
+
+    if (qScale != nullptr) {
+        qScale = l0op::Contiguous(qScale, executorImpl);
+        CHECK_RET(qScale != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    }
 
     auto output = l0op::StemOamPrepVarlenQ(q, qSeqLens, cuSeqLensQ, qScale,
                                            stemBlockSize, stemStride,
-                                           uniqueExecutor.get());
+                                           executorImpl);
     CHECK_RET(output != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
-    auto viewCopyResult = l0op::ViewCopy(output, qFlat, uniqueExecutor.get());
+    auto viewCopyResult = l0op::ViewCopy(output, qFlat, executorImpl);
     CHECK_RET(viewCopyResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
-    *workspaceSize = uniqueExecutor->GetWorkspaceSize();
+    *workspaceSize = executorImpl->GetWorkspaceSize();
     uniqueExecutor.ReleaseTo(executor);
     return ACLNN_SUCCESS;
 }
