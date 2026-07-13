@@ -13,12 +13,21 @@ from typing import Callable, Optional, Tuple, Union
 
 import torch
 import torch.distributed as dist
+from torch.library import impl
 
 from cann_ops_transformer.op_builder.builder import OpBuilder
+from cann_ops_transformer.op_builder.builder import AS_LIBRARY
 from .comm_context import CommContextManager
 
 
 _MOE_DISPATCH_COMBINE_CONTEXT = "moe_dispatch_combine"
+
+_ENGRAM_DTYPE_TO_INT = {
+    torch.float16: 5,
+    torch.float32: 6,
+    torch.bfloat16: 15,
+}
+_ENGRAM_INT_TO_DTYPE = {v: k for k, v in _ENGRAM_DTYPE_TO_INT.items()}
 
 
 class ElasticBufferOpBuilder(OpBuilder):
@@ -33,11 +42,22 @@ class ElasticBufferOpBuilder(OpBuilder):
 
     def schema(self):
         """PyTorch operator signature."""
-        return None
+        return [
+            "npu_engram_fetch(Tensor context, Tensor indices, int hidden_size, "
+            "int num_entries, int dtype) -> Tensor",
+            "npu_engram_fetch_wait(Tensor context, Tensor fetched) -> Tensor",
+        ]
 
     def register_meta(self):
-        """Meta implementation (optional for JIT compiled ops)."""
-        pass
+        """Meta implementation for FakeTensor / torch.compile graph tracing."""
+        @impl(AS_LIBRARY, "npu_engram_fetch", "Meta")
+        def npu_engram_fetch_meta(context, indices, hidden_size, num_entries, dtype):
+            return torch.empty((indices.size(0), hidden_size),
+                               dtype=_ENGRAM_INT_TO_DTYPE[dtype], device="meta")
+
+        @impl(AS_LIBRARY, "npu_engram_fetch_wait", "Meta")
+        def npu_engram_fetch_wait_meta(context, fetched):
+            return torch.empty_like(fetched, device="meta")
 
     def extra_ldflags(self):
         """Extra link flags for HCCL and ACL libraries."""
@@ -59,6 +79,17 @@ class ElasticBufferOpBuilder(OpBuilder):
 
 
 _elastic_buffer_op_builder = ElasticBufferOpBuilder()
+_elastic_buffer_ops = _elastic_buffer_op_builder.load()
+
+
+@impl(AS_LIBRARY, "npu_engram_fetch", "PrivateUse1")
+def npu_engram_fetch(context, indices, hidden_size, num_entries, dtype):
+    return _elastic_buffer_ops.ElasticBuffer.npu_engram_fetch(context, indices, hidden_size, num_entries, dtype)
+
+
+@impl(AS_LIBRARY, "npu_engram_fetch_wait", "PrivateUse1")
+def npu_engram_fetch_wait(context, fetched):
+    return _elastic_buffer_ops.ElasticBuffer.npu_engram_fetch_wait(context, fetched)
 
 
 @dataclass
@@ -245,7 +276,12 @@ class ElasticBuffer:
                      lambda: f"storage dtype must be bfloat16/float16/float32, got: {storage.dtype}")
         torch._check(storage.size(1) % 128 == 0,
                      lambda: f"storage second dimension must be 128-aligned, got: {storage.size(1)}")
-        self._ensure_runtime().engram_write(storage)
+        runtime = self._ensure_runtime()
+        runtime.engram_write(storage)
+        self._engram_context_tensor = runtime.get_context_tensor()
+        self._engram_hidden_size = storage.size(1)
+        self._engram_num_entries = storage.size(0)
+        self._engram_dtype_int = _ENGRAM_DTYPE_TO_INT[storage.dtype]
 
     def engram_fetch(self, indices: torch.Tensor) -> Callable[[], torch.Tensor]:
         """
@@ -257,13 +293,26 @@ class ElasticBuffer:
         Returns:
             wait_callable: a callable that returns the fetched tensor when invoked.
         """
-        torch._check(indices.device.type == torch.device("npu").type,
-                     lambda: f"indices must be on NPU, got device: {indices.device}")
-        torch._check(indices.dim() == 1,
-                     lambda: f"indices must be 1D, got dimensions: {indices.dim()}")
-        torch._check(indices.dtype == torch.int32,
-                     lambda: f"indices dtype must be int32, got: {indices.dtype}")
-        return self.runtime.engram_fetch(indices)
+        if indices.device.type != torch.device("npu").type:
+            raise RuntimeError(f"indices must be on NPU, got device: {indices.device}")
+        if indices.dim() != 1:
+            raise RuntimeError(f"indices must be 1D, got dimensions: {indices.dim()}")
+        if indices.dtype != torch.int32:
+            raise RuntimeError(f"indices dtype must be int32, got: {indices.dtype}")
+        if self.runtime is None:
+            raise RuntimeError(
+                "engram_fetch cannot be called after destroy, please create a new ElasticBuffer instance")
+        if self._engram_context_tensor is None:
+            raise RuntimeError("engram_fetch must be called after at least one engram_write")
+        fetched = torch.ops.cann_ops_transformer.npu_engram_fetch(
+            self._engram_context_tensor, indices,
+            self._engram_hidden_size, self._engram_num_entries, self._engram_dtype_int
+        )
+        context = self._engram_context_tensor
+        def _wait():
+            result = torch.ops.cann_ops_transformer.npu_engram_fetch_wait(context, fetched)
+            return result
+        return _wait
 
     def dispatch(
         self,
@@ -341,7 +390,11 @@ class ElasticBuffer:
             self.runtime = None
         if self._host_pinned_counter is not None:
             del self._host_pinned_counter
-            self._host_pinned_counter = None
+        self._host_pinned_counter = None
+        self._engram_context_tensor = None
+        self._engram_hidden_size = None
+        self._engram_num_entries = None
+        self._engram_dtype_int = None
         self.context = None
         self._contexts.clear()
         self._ctx_managers.clear()
