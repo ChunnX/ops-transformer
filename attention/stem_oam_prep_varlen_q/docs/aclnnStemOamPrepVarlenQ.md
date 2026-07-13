@@ -42,9 +42,9 @@
 ```cpp
 aclnnStatus aclnnStemOamPrepVarlenQGetWorkspaceSize(
   const aclTensor   *q,
-  const aclTensor   *qScale,
   const aclIntArray *qSeqLens,
   const aclIntArray *cuSeqLensQ,
+  const aclTensor   *qScale,
   const int64_t      stemBlockSize,
   const int64_t      stemStride,
   aclTensor         *qFlat,
@@ -296,7 +296,7 @@ aclTensor *qFlat = aclCreateTensor(nullptr, 4, {batch, H_q, max_Qb, 2048}, ACL_B
 uint64_t workspaceSize = 0;
 aclOpExecutor *executor = nullptr;
 aclnnStatus ret = aclnnStemOamPrepVarlenQGetWorkspaceSize(
-    q, qScale, qSeqLens, cuSeqLensQ,
+    q, qSeqLens, cuSeqLensQ, qScale,
     stemBlockSize, stemStride, qFlat,
     &workspaceSize, &executor);
 
