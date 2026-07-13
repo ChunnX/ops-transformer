@@ -202,7 +202,9 @@ void QuantFlashAttnTilingImpl::UpdateTilingKeyInfo()
 
 void QuantFlashAttnTilingImpl::UpdateTilingKeyQuantMode()
 {
-    tilingKeyInfo_.quantMode = static_cast<uint64_t>(QfaQuantMode::MXFP8_FP32);
+    tilingKeyInfo_.quantMode = decodeS1GMerge_
+        ? static_cast<uint64_t>(QFA_MXFP8_FP32_DECODE)
+        : static_cast<uint64_t>(QFA_MXFP8_FP32_PREFILL);
 }
 
 void QuantFlashAttnTilingImpl::GenTilingKey()

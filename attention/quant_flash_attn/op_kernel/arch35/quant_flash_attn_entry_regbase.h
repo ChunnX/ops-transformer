@@ -13,7 +13,7 @@
  * \brief QuantFlashAttn arch35 kernel类型推导与实例化（MXFP8_FP32量化场景）
  *
  * 4字段 tiling key → 模板参数: inOutLayoutType, KvLayoutType, hasAttenMask, config
- * 其余参数硬编码: quantMode=QFA_MXFP8_FP32, isFd=false, hasRope=false, pseMode=PSE_NONE_TYPE, ...
+ * quantMode区分: QFA_MXFP8_FP32_PREFILL(prefill, isFd=false) / QFA_MXFP8_FP32_DECODE(decode, isFd=true)
  */
 
 #ifndef QUANT_FLASH_ATTN_ENTRY_REGBASE_H_
@@ -36,7 +36,7 @@
 // quant_flash_attn_kernel_run: 4字段 tiling key → layout / s1 / s2 / d / dv
 // ─────────────────────────────────────────────────────────────────────────────
 template <typename INPUT_T, typename OUT_T, uint8_t inOutLayoutType, uint8_t KvLayoutType, bool hasAttenMask,
-          uint8_t config>
+          uint8_t config, uint8_t quantMode>
 inline __aicore__ void
 quant_flash_attn_kernel_run(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
                             __gm__ uint8_t *qDescale, __gm__ uint8_t *kDescale, __gm__ uint8_t *vDescale,
@@ -72,8 +72,8 @@ quant_flash_attn_kernel_run(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ u
                                BaseApi::UbOutCondition<INPUT_T>(false, pseModeConst, hasAttenMask, false, hasRopeConst,
                                                                 (uint32_t)s1TemplateType == 64),
                                ((uint32_t)s2TemplateType == 256 && (uint32_t)s1TemplateType == 64), false);
-    // prefill(isFd=false) → useDn=true; decode(isFd=true) → useDn=false
-    constexpr bool useDn = !isFdConst;
+    // prefill(quantMode==QFA_MXFP8_FP32_PREFILL) → useDn=true; decode(quantMode==QFA_MXFP8_FP32_DECODE) → useDn=false
+    constexpr bool useDn = (quantMode == QFA_MXFP8_FP32_PREFILL);
     constexpr bool bmm2Write2Ub = (bmm2OutPos == TPosition::VECCALC);
     constexpr bool splitD = ((uint16_t)dVTemplateType > (uint16_t)DTemplateType::Aligned256);
 

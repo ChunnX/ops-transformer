@@ -36,7 +36,8 @@ quant_flash_attn(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *val
     __gm__ uint8_t *user = GetUserWorkspace(workspace);
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
 #if (ORIG_DTYPE_Q == DT_FLOAT8_E4M3FN)
-    quant_flash_attn_kernel_run<fp8_e4m3fn_t, bfloat16_t, inOutLayoutType, KvLayoutType, hasAttenMask, config>(
+    quant_flash_attn_kernel_run<fp8_e4m3fn_t, bfloat16_t, inOutLayoutType, KvLayoutType, hasAttenMask, config,
+                                quantMode>(
         query, key, value, dequantScaleQuery, dequantScaleKey, dequantScaleValue, blockTable, pScale, cuSeqLensQ, cuSeqLensKv, sequsedQ, sequsedKv, sinks,
         attnMask, metadata, attnOut, softmaxLse, user, tiling);
 #endif
