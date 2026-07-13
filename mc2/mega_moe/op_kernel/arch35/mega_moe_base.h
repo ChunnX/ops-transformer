@@ -148,17 +148,17 @@ __aicore__ inline void WaitForAicGmTileReady(uint16_t value = 0)
     CrossCoreWaitFlag<SYNC_AIC_AIV_MODE, PIPE_MTE2>(AIC_SYNC_AIV_EPILOGUE_FLAG + value);
 }
 
-// AIV1 returns one credit after accepting a bounded window of AIC-to-AIV1 GM tile notifications.
+// AIV1 acknowledges that it has accepted the AIC-to-AIV1 GM tile notification.
 // On DAV_3510, an AIV1 flag ID maps to the AIC flag ID plus FLAG_ID_MAX_PER_V.
-__aicore__ inline void NotifyAicGmTileCreditReturned()
+__aicore__ inline void NotifyAicGmTileAccepted()
 {
-    CrossCoreSetFlag<SYNC_AIC_AIV_MODE, PIPE_MTE2>(AIV1_SYNC_AIC_EPILOGUE_CREDIT_FLAG);
+    CrossCoreSetFlag<SYNC_AIC_AIV_MODE, PIPE_MTE2>(AIV1_SYNC_AIC_EPILOGUE_ACK_FLAG);
 }
 
-__aicore__ inline void WaitForAiv1GmTileCredit()
+__aicore__ inline void WaitForAiv1GmTileAccepted()
 {
     CrossCoreWaitFlag<SYNC_AIC_AIV_MODE, PIPE_FIX>(
-        AIV1_SYNC_AIC_EPILOGUE_CREDIT_FLAG + FLAG_ID_MAX_PER_V);
+        AIV1_SYNC_AIC_EPILOGUE_ACK_FLAG + FLAG_ID_MAX_PER_V);
 }
 
 __aicore__ inline void EndSync(int32_t& vecSetSyncCom)
