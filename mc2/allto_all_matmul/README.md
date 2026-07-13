@@ -17,16 +17,16 @@
 - 计算公式：假设x1输入shape为(BS, H)，mx量化场景下x1Scale输入shape为(BS, ceil(H/64), 2)，rankSize为NPU卡数
 
     - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
-      - 非量化场景： 
-        
+      - 非量化场景：
+
         $$
         commOut = AlltoAll(x1.view(rankSize, BS/rankSize, H)) \\
         permutedOut = commOut.permute(1, 0, 2).view(BS/rankSize, rankSize*H) \\
         output = permutedOut @ x2 + bias \\
         $$
-      
+
       - K-C量化场景：
-        
+
         $$
         commOut = AlltoAll(x1.view(rankSize, BS/rankSize, H)) \\
         permutedOut = commOut.permute(1, 0, 2).view(BS/rankSize, rankSize*H) \\
@@ -34,9 +34,9 @@
         output = output_{quant} \times x1_{scale} \times x2_{scale} \\
         output = output + bias
         $$
-      
+
       - K-C动态量化场景：
-        
+
         $$
         commOut = AlltoAll(x1.view(rankSize, BS/rankSize, H)) \\
         permutedOut = commOut.permute(1, 0, 2).view(BS/rankSize, rankSize*H) \\
@@ -72,7 +72,7 @@
         dynQuantX1, dynQuantX1Scale = dynamicQuant(permutedOut) \\
         output = (dynQuantX1@x2 + bias) \times dynQuantX1Scale \times x2Scale
         $$
-        
+
       - mx量化场景：
 
         $$
@@ -82,7 +82,7 @@
         permutedScale = commScale.permute(1, 0, 2, 3).view(BS/rankSize, ceil(H/64)*rankSize, 2) \\
         output = \sum_{0}^{\left \lfloor \frac{k}{blockSize=32} \right \rfloor} (permutedOut @ x2 * (permutedScale * x2Scale)) + bias
         $$
-        
+
 ## 参数说明​
 
  <table style="undefined;table-layout: fixed; width: 1576px"><colgroup>
