@@ -22,7 +22,7 @@
 using namespace AscendC;
 
 // Keep phase-1 batches bounded so dispatch cannot run too far ahead of the
-// GMM2 AIV1 consumer. The mode-4 UB release itself is acknowledged every batch.
+// GMM2 AIV1 consumer. AIV1 publishes dispatch UB release once per batch.
 constexpr uint32_t MEGA_MOE_MAX_EXPERTS_PER_BATCH = 14U;
 // Flag regions scale with maxOutputSize. Clear them in a bounded UB window
 // so extreme legal shapes do not turn the reset scratch into a full copy.

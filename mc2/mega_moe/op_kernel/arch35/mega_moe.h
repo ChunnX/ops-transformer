@@ -1366,7 +1366,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::GroupMatmulWithCombine(
     if constexpr (ENABLE_A8W4 || ENABLE_A4W4) {
         MegaMoeImpl::GroupMatmul2CombineA8W4<CombineQuantMode,
             SwigluQuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType,
-            QuantScaleOutType, GMM1_INTERLEAVED>(
+            QuantScaleOutType, GMM1_INTERLEAVED, ENABLE_A8W4>(
             params_, state.problemShape, gmmAddrInfo, startBlockIdx_, gmm2SyncCom_,
             state.expertBeforeCnt, gmm2PingPongIdx_, expertIdx);
     } else {
