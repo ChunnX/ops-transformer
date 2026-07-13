@@ -105,6 +105,7 @@ private:
     GM_ADDR yGM_;
     GM_ADDR gmExpertTokenNums_;
     GM_ADDR workspaceGM_;
+    GM_ADDR tilingGM_;
 
     GM_ADDR moeInitRoutingQuantV2Scale = nullptr;
     GM_ADDR moeInitRoutingQuantV2Offset = nullptr;
@@ -157,6 +158,7 @@ __aicore__ inline void MegaMoe<MegaMoeFunc>::Init(GM_ADDR contextGM, GM_ADDR xGM
     yGM_ = yGM;
     gmExpertTokenNums_ = expertTokenNumsGM;
     workspaceGM_ = workspaceGM;
+    tilingGM_ = tilingGM;
 
     if constexpr (kRoutingIsQuant) {
         GET_TILING_DATA_WITH_STRUCT(MegaMoeTilingDataQuant, tilingData, tilingGM);
@@ -352,7 +354,8 @@ __aicore__ inline void MegaMoe<MegaMoeFunc>::Process()
                                                scalesGM_,
                                                moeInitRoutingQuantV2TilingData,
                                                epilogueGranularity,
-                                               activationClamp};
+                                               activationClamp,
+                                               tilingGM_};
     } else {
         params = typename MatmulKernel::Params{problemShape,
                                                static_cast<uint32_t>(EP),
@@ -390,7 +393,8 @@ __aicore__ inline void MegaMoe<MegaMoeFunc>::Process()
                                                scalesGM_,
                                                moeInitRoutingV2TilingData,
                                                epilogueGranularity,
-                                               activationClamp};
+                                               activationClamp,
+                                               tilingGM_};
     }
 
     MatmulKernel kernel(params);
