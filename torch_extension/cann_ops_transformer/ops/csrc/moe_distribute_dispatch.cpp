@@ -26,6 +26,7 @@ const int DIM_ONE = 1;
 const int DIM_TWO = 2;
 const int64_t RANK_NUM_PER_NODE = 8;
 const int64_t SEND_COUNT_MEMORY_SIZE = 2;
+const int64_t PACKED_FLOAT4_ELEMENTS_PER_BYTE = 2;
 
 bool HasTensor(const c10::optional<at::Tensor> &tensor)
 {
@@ -213,9 +214,10 @@ tensor_list NpuMoeDistributeDispatch(
         const c10::OptionalDeviceGuard deviceGuard(localDevice);
         expandX = at::empty({std::max(a, a * tpWorldSize), h}, x.options().dtype(outputDtype));
         if (yDtype.has_value() && IsPackedFloat4(outputAclDtype) && !HasTensor(scales)) {
-            TORCH_CHECK(h % 2 == 0,
+            TORCH_CHECK(h % PACKED_FLOAT4_ELEMENTS_PER_BYTE == 0,
                         "The last dim input shape must be divisible by 2 if y dtype is packed float4.");
-            expandX = at::empty({std::max(a, a * tpWorldSize), h / 2}, x.options().dtype(outputDtype));
+            expandX = at::empty({std::max(a, a * tpWorldSize), h / PACKED_FLOAT4_ELEMENTS_PER_BYTE},
+                                x.options().dtype(outputDtype));
         }
 
         aclDataType dynamicScalesAclDtype = GetDynamicScalesDtype(x, scales, scalesDtype, quantMode);
