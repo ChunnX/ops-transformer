@@ -20,7 +20,7 @@ namespace op_api {
 
 static constexpr int64_t DIM_QK = 128;
 
-at::Tensor npu_stem_oam_prep_varlen_q(
+at::Tensor stem_oam_prep_varlen_q(
     const at::Tensor &q,
     const at::Tensor &qSeqLens,
     const at::Tensor &cuSeqLensQ,
@@ -61,7 +61,7 @@ at::Tensor npu_stem_oam_prep_varlen_q(
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
-    m.def("npu_stem_oam_prep_varlen_q", &npu_stem_oam_prep_varlen_q, "stem_oam_prep_varlen_q");
+    m.def("stem_oam_prep_varlen_q", &stem_oam_prep_varlen_q, "stem_oam_prep_varlen_q");
 }
 
 } // namespace op_api
