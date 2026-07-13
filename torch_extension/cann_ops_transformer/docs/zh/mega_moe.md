@@ -1071,7 +1071,7 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
 
         **Atlas A2 训练系列产品/Atlas A2 推理系列产品：**
 
-        ```
+        ```Cpp
         offsetTokenPerExpert = ep_world_size × CeilAlign(ep_world_size × maxExpertPerRank + 1, 128) × 4B
 
         // winIn
@@ -1095,7 +1095,7 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
 
         **Atlas A3 训练系列产品/Atlas A3 推理系列产品：**
 
-        ```
+        ```Cpp
         offsetTokenPerExpert = ep_world_size × CeilAlign(ep_world_size × maxExpertPerRank + 1, 128) × 4B
 
         // winIn（A3 仅 winIn，无 winOut）
@@ -1197,7 +1197,7 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
         </tfoot>
         </table>
     - **Ascend 950PR/Ascend 950DT：**
-        - num_tokens（x.dim0）范围 [1, maxBs], maxBs = (8 * (totalUbSize - 48 * 1024)) / (num_topk * (64 + ep_world_size)), 其中totalUbSize为UB总大小，950系列产品该值为256K。
+        - num_tokens（x.dim0）范围 [1, maxBs], maxBs = (8 \* (totalUbSize - 48 \* 1024)) / (num_topk \* (64 + ep_world_size)), 其中totalUbSize为UB总大小，950系列产品该值为256K。
         - hidden（x.dim1）仅支持1024、2048、3072、4096、5120、6144、7168、8192。
         - num_topk（topk_ids.dim1）支持[1, 16]。
         - num_experts_per_rank（weight1.dim0）范围 [1, 1024]。
