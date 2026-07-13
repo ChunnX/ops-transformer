@@ -236,71 +236,33 @@ def tilelang_grad_kl_loss_single_kernel(
 
             # ============================================================
             # V scope 0: Gather Key/KeyIndex/KeyRope → workspace
-            # 手动同步（auto-sync 关）：chunk 级 double buffer，MTE2 fill ∥ MTE3 drain
-            #   预取下一 chunk 的 fill 与本 chunk 的 drain 并发，隐藏 burst 写延迟
-            # 标量 idx 从 GM 读，依赖 GetValue 同步语义（watch-point）
+            #   [回退] 仅 vid==0 执行，单 buffer 无 DB。
             # ============================================================
             with T.Scope("V"):
-                # Double-buffered chunked gather：MTE2 fill ∥ MTE3 drain（ping-pong）
-                # 两 AIV 按 k_id 区间对半：vid0 做前半 [k_start, k_mid)，vid1 做后半 [k_mid, k_end)
-                # 写不同 GM workspace 区域，无竞争。
-                key_chunk_ub = T.alloc_ub((2, GATHER_CHUNK_SIZE, DQuery), input_dtype)
-                ki_chunk_ub = T.alloc_ub((2, GATHER_CHUNK_SIZE, DQueryIndex), input_dtype)
-                kr_chunk_ub = T.alloc_ub((2, GATHER_CHUNK_SIZE, max(d_rope, 1)), input_dtype)
+                key_chunk_ub = T.alloc_ub((GATHER_CHUNK_SIZE, DQuery), input_dtype)
+                ki_chunk_ub = T.alloc_ub((GATHER_CHUNK_SIZE, DQueryIndex), input_dtype)
+                kr_chunk_ub = T.alloc_ub((GATHER_CHUNK_SIZE, max(d_rope, 1)), input_dtype)
 
-                # k_id 区间对半：n_block 保证整除 GATHER_CHUNK_SIZE（host 端约束）
-                _v0_chunks_per_vid = n_block // GATHER_CHUNK_SIZE // 2  # 编译期常量
-                _v0_k_per_vid = _v0_chunks_per_vid * GATHER_CHUNK_SIZE
-                my_start = k_start + vid * _v0_k_per_vid
-
-                # 预置：两个 slot 都标记为"已 drain（可 fill）"
-                T.set_flag("mte3", "mte2", 0)
-                T.set_flag("mte3", "mte2", 1)
-
-                for s1_id in T.serial(s1_start, s1_end):
-                    # prologue：fill my first chunk → slot 0（MTE2 逐行随机读）
-                    T.wait_flag("mte3", "mte2", 0)
-                    for i in T.serial(GATHER_CHUNK_SIZE):
-                        k_id = my_start + i
-                        idx = SparseIndices[bz, s1_id, 0, k_id]
-                        if idx >= 0:
-                            T.copy(Key[bz, idx, 0, 0:DQuery], key_chunk_ub[0, i, 0:DQuery])
-                            T.copy(KeyIndex[bz, idx, 0, 0:DQueryIndex], ki_chunk_ub[0, i, 0:DQueryIndex])
-                            if d_rope > 0:
-                                T.copy(KeyRope[bz, idx, 0, 0:d_rope], kr_chunk_ub[0, i, 0:d_rope])
-                    T.set_flag("mte2", "mte3", 0)
-
-                    for chunk_id in T.serial(_v0_chunks_per_vid):
-                        cur = chunk_id % 2
-                        nxt = (chunk_id + 1) % 2
-                        # 预取下一 chunk → slot nxt（MTE2，与本 chunk 的 MTE3 drain 并发）
-                        if chunk_id + 1 < _v0_chunks_per_vid:
-                            next_start = my_start + (chunk_id + 1) * GATHER_CHUNK_SIZE
-                            T.wait_flag("mte3", "mte2", nxt)   # WAR：slot nxt 上轮已 drain
+                if vid == 0:
+                    for s1_id in T.serial(s1_start, s1_end):
+                        num_chunks = n_block // GATHER_CHUNK_SIZE
+                        for chunk_id in T.serial(num_chunks):
+                            chunk_start = k_start + chunk_id * GATHER_CHUNK_SIZE
                             for i in T.serial(GATHER_CHUNK_SIZE):
-                                k_id = next_start + i
+                                k_id = chunk_start + i
                                 idx = SparseIndices[bz, s1_id, 0, k_id]
                                 if idx >= 0:
-                                    T.copy(Key[bz, idx, 0, 0:DQuery], key_chunk_ub[nxt, i, 0:DQuery])
-                                    T.copy(KeyIndex[bz, idx, 0, 0:DQueryIndex], ki_chunk_ub[nxt, i, 0:DQueryIndex])
+                                    T.copy(Key[bz, idx, 0, 0:DQuery], key_chunk_ub[i, 0:DQuery])
+                                    T.copy(KeyIndex[bz, idx, 0, 0:DQueryIndex], ki_chunk_ub[i, 0:DQueryIndex])
                                     if d_rope > 0:
-                                        T.copy(KeyRope[bz, idx, 0, 0:d_rope], kr_chunk_ub[nxt, i, 0:d_rope])
-                            T.set_flag("mte2", "mte3", nxt)    # RAW：slot nxt 已 fill
-                        # drain 本 chunk（MTE3 整块 burst 写出）
-                        T.wait_flag("mte2", "mte3", cur)       # RAW：slot cur 已 fill
-                        cur_start = my_start + chunk_id * GATHER_CHUNK_SIZE
-                        T.copy(key_chunk_ub[cur, 0:GATHER_CHUNK_SIZE, 0:DQuery],
-                               GatherKey_ws[bz, s1_id, cur_start:cur_start + GATHER_CHUNK_SIZE, 0:DQuery])
-                        T.copy(ki_chunk_ub[cur, 0:GATHER_CHUNK_SIZE, 0:DQueryIndex],
-                               GatherKeyIndex_ws[bz, s1_id, cur_start:cur_start + GATHER_CHUNK_SIZE, 0:DQueryIndex])
-                        if d_rope > 0:
-                            T.copy(kr_chunk_ub[cur, 0:GATHER_CHUNK_SIZE, 0:d_rope],
-                                   GatherKeyRope_ws[bz, s1_id, cur_start:cur_start + GATHER_CHUNK_SIZE, 0:d_rope])
-                        T.set_flag("mte3", "mte2", cur)        # WAR：slot cur 已 drain，可复用
-
-                # clear：排空剩余 2 个 WAR set（保持 event 平衡）
-                T.wait_flag("mte3", "mte2", 0)
-                T.wait_flag("mte3", "mte2", 1)
+                                        T.copy(KeyRope[bz, idx, 0, 0:d_rope], kr_chunk_ub[i, 0:d_rope])
+                            T.copy(key_chunk_ub[0:GATHER_CHUNK_SIZE, 0:DQuery],
+                                   GatherKey_ws[bz, s1_id, chunk_start:chunk_start + GATHER_CHUNK_SIZE, 0:DQuery])
+                            T.copy(ki_chunk_ub[0:GATHER_CHUNK_SIZE, 0:DQueryIndex],
+                                   GatherKeyIndex_ws[bz, s1_id, chunk_start:chunk_start + GATHER_CHUNK_SIZE, 0:DQueryIndex])
+                            if d_rope > 0:
+                                T.copy(kr_chunk_ub[0:GATHER_CHUNK_SIZE, 0:d_rope],
+                                       GatherKeyRope_ws[bz, s1_id, chunk_start:chunk_start + GATHER_CHUNK_SIZE, 0:d_rope])
 
                 T.set_cross_flag("V", 10)
 
