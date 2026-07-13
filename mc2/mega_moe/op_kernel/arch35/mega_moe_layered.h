@@ -510,10 +510,10 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::SendAndQuantBuff
     // Tensor大小：roundCompareCount_ 个 int32（256B 对齐）；
     uint32_t topkIdsTensorAddr = ALIGN_512;
     uint32_t topkIdsTensorSize = roundCompareCount_ * sizeof(int32_t); //16K * 4 = 64K
-    topkIdsTensor_ = LocalTensor<int32_t>(TPosition::VECCALC, topkIdsTensorAddr, topkIdsTensorSize / sizeof(int32_t)); // 64K / 4 = 16k
+    topkIdsTensor_ = LocalTensor<int32_t>(TPosition::VECCALC, topkIdsTensorAddr, topkIdsTensorSize / sizeof(int32_t));
 
     uint32_t resetTensorAddr = topkIdsTensorAddr + topkIdsTensorSize; // 512 + 64K
-    resetTensor_ = LocalTensor<int32_t>(TPosition::VECCALC, resetTensorAddr, resetTensorSize / sizeof(int32_t)); // 3296 / 4 = 824
+    resetTensor_ = LocalTensor<int32_t>(TPosition::VECCALC, resetTensorAddr, resetTensorSize / sizeof(int32_t));
     Duplicate<int32_t>(resetTensor_, 0, (resetTensorSize / sizeof(int32_t)));
     // Tensor用处：SendMaskCal 每轮存储部分 mask 位；DOUBLE_BUFFER 双缓冲；
     // Tensor大小：roundMaskSlotSize_（每轮部分 [mask|count] 槽位大小）；
@@ -525,10 +525,10 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::SendAndQuantBuff
 
     // Tensor用处：SendMaskCal 每轮 GatherMask 计 count 的废弃输出 scratch；
     // Tensor大小：roundCompareCount_ 个 int32（256B 对齐）；
-    uint32_t sendGatherOutAddr = sendMaskAddr + static_cast<uint32_t>(DOUBLE_BUFFER) * roundMaskSlotSize_; // 512 + 64K + 3296 + 2 * (2K + 32B)
-    uint32_t sendGatherOutSize = roundCompareCount_ * sizeof(int32_t); // 16k * 4 = 64K
+    uint32_t sendGatherOutAddr = sendMaskAddr + static_cast<uint32_t>(DOUBLE_BUFFER) * roundMaskSlotSize_;
+    uint32_t sendGatherOutSize = roundCompareCount_ * sizeof(int32_t);
     sendGatherOutTensor_ = LocalTensor<int32_t>(TPosition::VECCALC, sendGatherOutAddr,
-        sendGatherOutSize / sizeof(int32_t)); // 16K
+        sendGatherOutSize / sizeof(int32_t));
 }
 
 // ===============================================================================================
