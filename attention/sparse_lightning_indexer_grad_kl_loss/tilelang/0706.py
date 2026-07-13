@@ -654,7 +654,7 @@ def tilelang_grad_kl_loss_single_kernel(
 
                             # Write reluGrad for MY K block only
                             T.tile.cast(rg_half_ub, rg_chunk_ub, "CAST_ROUND", vector_baseg * n_block)
-                            T.barrier_all()
+                            T.pipe_barrier("v")
                             T.set_flag("v", "mte3", 0)
                             T.wait_flag("v", "mte3", 0)
                             T.pipe_barrier("mte3")
@@ -662,7 +662,7 @@ def tilelang_grad_kl_loss_single_kernel(
 
                             T.pipe_barrier("v")
                             T.tile.cast(dw_half_ub, weight_ub, "CAST_ROUND", vector_baseg)
-                            T.barrier_all()
+                            T.pipe_barrier("v")
                             T.set_flag("v", "mte3", 1)
                             T.wait_flag("v", "mte3", 1)
                             # Write partial dWeight for MY K block only
@@ -822,12 +822,11 @@ def tilelang_grad_kl_loss_single_kernel(
                 dk_chunk_0 = T.alloc_ub((1, DQueryIndex), calc_dtype)
                 dk_chunk_1 = T.alloc_ub((1, DQueryIndex), calc_dtype)
 
-                # k_id 区间对半分配给两个 AIV
-                # vid=0: [k_start, k_start+k_half),  vid=1: [k_start+k_half, k_end)
-                k_len = k_end - k_start
-                k_half = k_len >> 1  # floor(k_len/2), 避免 runtime //
-                my_start = k_start + vid * k_half
-                my_end = k_start + k_half + vid * (k_len - k_half)
+                # k_id 区间对半分配给两个 AIV（用编译期 n_block//2，避免 runtime 除法）
+                # vid=0: [k_start, k_start + _v4_half),  vid=1: [k_start+_v4_half, k_end)
+                _v4_half = n_block // 2  # 编译期常量: 32
+                my_start = k_start + vid * _v4_half
+                my_end = k_start + _v4_half + vid * (k_end - k_start - _v4_half)
 
                 for s1_row in T.serial(s1_start, s1_end):
                     if my_start < my_end:
