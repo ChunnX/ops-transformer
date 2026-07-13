@@ -786,9 +786,7 @@ __aicore__ inline bool ComputeS2LoopInfo(RunParamStr<isInfer>& runParam, const C
         runParam.s2LineEndIdx = ClipSInnerTokenCube<TEMPLATE_INTF_ARGS>(
             runParam.cubeSOuterOffset + runParam.nextTokensPerBatch + runParam.s1RealSize, 0,
             runParam.actualS2Size + constInfo.actualKVPrefixSize);
-        runParam.s2LoopEndIdx = (constInfo.actualKVPrefixSize + s2BaseSize - 1) / s2BaseSize +
-                                (runParam.s2LineEndIdx - constInfo.actualKVPrefixSize + s2BaseSize - 1) / s2BaseSize -
-                                sInnerFirstToken / s2BaseSize;
+        runParam.s2LoopEndIdx = (runParam.s2LineEndIdx + s2BaseSize - 1) / s2BaseSize - sInnerFirstToken / s2BaseSize;
     }
     if (runParam.s2LoopEndIdx <= 0) {
         return true;
