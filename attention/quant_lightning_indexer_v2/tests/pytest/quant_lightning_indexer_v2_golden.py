@@ -1195,6 +1195,7 @@ def qliv2_output_single(params, is_batch = False, split_s1 = DEFAULT_SPLIT_S1, s
     max_seqlen_q_meta = actual_seq_lengths_query.max().item()
     max_seqlen_k_meta = actual_seq_lengths_key.max().item()
 
+
     if is_batch:
         if qk_dtype == torch.float8_e4m3fn:
             query = query.to(dtype=torch.float16)
@@ -1234,23 +1235,23 @@ def qliv2_output_single(params, is_batch = False, split_s1 = DEFAULT_SPLIT_S1, s
         return output_tensors
     else:
         metadata = torch.ops.cann_ops_transformer.quant_lightning_indexer_metadata(
-                                    cu_seqlens_q = cu_seqlens_query,
-                                    cu_seqlens_k = cu_seqlens_key,
-                                    seqused_q = seqused_q_tensor,
-                                    seqused_k = seqused_k_tensor,
-                                    cmp_residual_k = cmp_residual_k_for_npu,
-                                    batch_size = batch_size,
-                                    max_seqlen_q = max_seqlen_q_meta,
-                                    max_seqlen_k = max_seqlen_k_meta,
-                                    num_heads_q = q_head_num,
-                                    num_heads_k = k_head_num,
-                                    head_dim = head_dim,
-                                    topk = sparse_count,
-                                    quant_mode = quant_mode,
-                                    mask_mode = sparse_mode,
-                                    layout_q = layout_query,
-                                    layout_k = layout_key,
-                                    cmp_ratio = cmp_ratio)
+                                cu_seqlens_q = cu_seqlens_query,
+                                cu_seqlens_k = cu_seqlens_key,
+                                seqused_q = seqused_q_tensor,
+                                seqused_k = seqused_k_tensor,
+                                cmp_residual_k = cmp_residual_k_for_npu,
+                                batch_size = batch_size,
+                                max_seqlen_q = max_seqlen_q_meta,
+                                max_seqlen_k = max_seqlen_k_meta,
+                                num_heads_q = q_head_num,
+                                num_heads_k = k_head_num,
+                                head_dim = head_dim,
+                                topk = sparse_count,
+                                quant_mode = quant_mode,
+                                mask_mode = sparse_mode,
+                                layout_q = layout_query,
+                                layout_k = layout_key,
+                                cmp_ratio = cmp_ratio)
         metadata = metadata.npu()
         npu_result, npu_topk_value = torch.ops.cann_ops_transformer.quant_lightning_indexer(query, key, weights,
                                                     query_dequant_scale,
