@@ -44,17 +44,6 @@ namespace BaseApi {
 template <typename FA_T, typename CubeBlockType, typename VecFaBlockType, typename VecFdBlockType>
 class FlashAttentionNoQuantGqaKernelDn {
 public:
-<<<<<<< HEAD:attention/flash_attn/op_kernel/arch35/flash_attn_kernel_noquant_gqa.h
-    static constexpr uint32_t s2BaseSize = CubeBlockType::s2BaseSize;
-    static constexpr uint32_t mBaseSize = CubeBlockType::mBaseSize;
-    static constexpr uint32_t dBaseSize = CubeBlockType::dBaseSize;
-    static constexpr uint32_t dVBaseSize = CubeBlockType::dVBaseSize;
-
-    static constexpr bool USE_DN = CubeBlockType::USE_DN;
-    static constexpr bool BMM2_TOUB = CubeBlockType::BMM2_TOUB;
-    static constexpr bool HAS_PREFIX = CubeBlockType::HAS_PREFIX;
-    static constexpr bool HAS_MASK = VecFaBlockType::HAS_MASK;
-=======
     using T = float;
     using SEQLEN_T = uint32_t;
     using INPUT_T = typename FA_T::inputType;
@@ -64,7 +53,6 @@ public:
     static constexpr FA_LAYOUT LAYOUT_KV = FA_T::kvLayout;
     static constexpr bool PAGE_ATTENTION = FA_T::pageAttention;
     static constexpr bool HAS_MASK = FA_T::hasMask;
->>>>>>> fda0ace6b (静态tensor):attention/flash_attn/op_kernel/arch35/flash_attn_kernel_noquant_gqa_dn.h
 
     static constexpr uint32_t PRELOAD_N = 2; // C1 C1 C1 C2
     // task ring buffer 至少需要 PRELOAD_N+1(=3) 个slot；为了用位掩码(loop & MASK)代替取模(loop % SIZE)，
@@ -469,14 +457,11 @@ public:
         cubeBlock.IterateBmm2(runInfo);
     }
 
-<<<<<<< HEAD:attention/flash_attn/op_kernel/arch35/flash_attn_kernel_noquant_gqa.h
-=======
     __aicore__ inline void ComputeVec1(RunInfoX &runInfo)
     {
         vecFaBlock.ProcessVec1(runInfo);
     }
 
->>>>>>> fda0ace6b (静态tensor):attention/flash_attn/op_kernel/arch35/flash_attn_kernel_noquant_gqa_dn.h
     __aicore__ inline void ComputeVec2(RunInfoX &runInfo)
     {
         vecFaBlock.ProcessVec2(runInfo);
@@ -519,8 +504,6 @@ public:
         info.isChangeBatch = false;
         info.actSingleLoopS2SizeAlign =
             AttentionCommon::Align((uint32_t)info.actSingleLoopS2Size, (uint32_t)(FA_BYTE_BLOCK / sizeof(INPUT_T)));
-<<<<<<< HEAD:attention/flash_attn/op_kernel/arch35/flash_attn_kernel_noquant_gqa.h
-=======
         if (constInfo.isKvContinuous) {
             info.isChangeBatch = false;
         } else {
@@ -531,7 +514,6 @@ public:
                 info.isChangeBatch = (info.n2Idx == 0 && s2Cur == curS2Start);
             }
         }
->>>>>>> fda0ace6b (静态tensor):attention/flash_attn/op_kernel/arch35/flash_attn_kernel_noquant_gqa_dn.h
 
         GetPreNextTokenLeftUp(actSeqLensQ, actSeqLensKv, info.preTokensLeftUp, info.nextTokensLeftUp);
 
@@ -543,18 +525,8 @@ public:
         info.isS2SplitCore = false;
         info.faTmpOutWsPos = coreFirstTmpOutWsPos_;
         info.isLastS2Loop = (s2Cur + 1 == curS2End);
-<<<<<<< HEAD:attention/flash_attn/op_kernel/arch35/flash_attn_kernel_noquant_gqa.h
-
-        if constexpr (USE_DN) {
-            info.actMSizeAlign32 = ((info.actMSize + 31) >> 5) << 5;
-            info.actVecMSize = info.actMSize <= 16 ? info.actMSize : (info.actMSizeAlign32 >> 1);
-        } else {
-            info.actVecMSize = (info.actMSize + 1) >> 1;
-        }
-=======
         info.actMSizeAlign32 = (info.actMSize + 31) >> 5 << 5;
         info.actVecMSize = info.actMSize <= 16 ? info.actMSize : (info.actMSizeAlign32 >> 1);
->>>>>>> fda0ace6b (静态tensor):attention/flash_attn/op_kernel/arch35/flash_attn_kernel_noquant_gqa_dn.h
         info.vecMbaseIdx = 0;
         if (constInfo.subBlockIdx == 1) {
             info.vecMbaseIdx = info.actVecMSize;
