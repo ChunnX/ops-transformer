@@ -168,7 +168,6 @@ __aicore__ inline void MoeV2SortOneCore::Init(
     pipe->InitBuffer(sortDataCopyOutQueue, bufferNum, buffSize);
     pipe->InitBuffer(tempBuffer, buffSize);
     pipe->InitBuffer(sortedBuffer, buffSize);
-    
 }
 
 __aicore__ inline void MoeV2SortOneCore::Process()
