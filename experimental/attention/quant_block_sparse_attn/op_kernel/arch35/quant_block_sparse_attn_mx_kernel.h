@@ -283,7 +283,7 @@ private:
 
     __aicore__ inline void FillRunInfo(MxRunInfo &runInfo, uint64_t loop, uint32_t mLoop, uint32_t bn1Idx,
                                        uint32_t s1OuterIdx, uint32_t s2LoopIdx, uint32_t s2LoopEnd,
-                                       uint32_t sparseBlockCount, uint64_t sparseBase)
+                                       uint32_t sparseBlockCount, uint64_t sparseBase, bool isFirstValidS2Loop)
     {
         // 构造一个 512-token logical S2 tile 的运行参数。
         runInfo = {};
@@ -351,7 +351,7 @@ private:
             runInfo.actSingleLoopS2Size += sparseBlockRealSize;
         }
         runInfo.actSingleLoopS2SizeAlign = (runInfo.actSingleLoopS2Size + 63U) >> 6 << 6;
-        runInfo.isFirstS2Loop = s2LoopIdx == 0U;
+        runInfo.isFirstS2Loop = isFirstValidS2Loop;
         runInfo.isLastS2Loop = s2LoopIdx + runInfo.sparseBlockCount - 1U >= s2LoopEnd;
         runInfo.queryOffset =
             (runInfo.queryTokenBase + runInfo.s1Idx) * constInfo.n2GD + runInfo.realN2Idx * constInfo.dSize;
@@ -434,15 +434,17 @@ private:
                     static_cast<uint64_t>(s1OuterIdx) * constInfo.maxKb;
                 const uint32_t s2LoopEnd = static_cast<uint32_t>(sparseLen - 1);
                 const uint32_t sparseBlocksPerTask = GetSparseBlocksPerTask();
+                bool hasValidS2Task = false;
                 for (uint32_t s2LoopIdx = 0U; s2LoopIdx <= s2LoopEnd; s2LoopIdx += sparseBlocksPerTask) {
                     MxRunInfo &runInfo = taskRunInfo[loop % PRELOAD_TASK_CACHE_SIZE];
                     const uint32_t remainSparseBlockCount = static_cast<uint32_t>(sparseLen) - s2LoopIdx;
                     const uint32_t sparseBlockCount =
                         remainSparseBlockCount > sparseBlocksPerTask ? sparseBlocksPerTask : remainSparseBlockCount;
                     FillRunInfo(runInfo, loop, mLoop, bn1Idx, s1OuterIdx, s2LoopIdx, s2LoopEnd, sparseBlockCount,
-                                sparseBase);
+                                sparseBase, !hasValidS2Task);
                     if (runInfo.actSingleLoopS2Size != 0U && runInfo.actMSize != 0U) {
                         ExecuteTask(loop, taskRunInfo);
+                        hasValidS2Task = true;
                         ++loop;
                     } else {
                         runInfo.isValid = false;
