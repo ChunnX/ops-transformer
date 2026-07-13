@@ -47,8 +47,11 @@ constexpr uint8_t SYNC_AIC_AIV_MODE = 4;
 constexpr uint16_t AIC_SYNC_AIV_FLAG = 4;
 constexpr uint16_t AIV_SYNC_AIC_FLAG = 6;
 constexpr uint16_t AIC_SYNC_AIV_EPILOGUE_FLAG = 8;
-constexpr uint16_t AIV1_SYNC_AIC_EPILOGUE_ACK_FLAG = 9;
+constexpr uint16_t AIV1_SYNC_AIC_EPILOGUE_CREDIT_FLAG = 9;
 constexpr uint16_t FLAG_ID_MAX_PER_V = 16;
+constexpr uint32_t AIC_AIV1_GM_TILE_CREDIT_WINDOW = 8U;
+static_assert(AIC_AIV1_GM_TILE_CREDIT_WINDOW > 0U && AIC_AIV1_GM_TILE_CREDIT_WINDOW <= 15U,
+    "AIC-to-AIV1 credit window must fit in the CrossCore flag counter");
 constexpr uint32_t SWIGLU_N_HALF = 2U;
 constexpr int32_t MXFP_DIVISOR_SIZE = 64;
 constexpr int32_t MXFP_SCALE_GROUP_NUM = 32;

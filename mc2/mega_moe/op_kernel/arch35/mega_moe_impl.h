@@ -647,6 +647,7 @@ __aicore__ inline void AicComputeA8W4(
     uint32_t groupIdx = 0, __gm__ int32_t* gmm2CombineSyncCounterPtr = nullptr)
 {
     uint32_t lastWaveWaited = static_cast<uint32_t>(-1);
+    uint32_t readyTilesInWindow = 0;
     for (uint32_t loopIdx = startLoopIdx; loopIdx < tileNum; loopIdx += config.blockNum) {
         auto blockCoord = scheduler.GetBlockCoord(loopIdx);
         auto actualShape = scheduler.GetBlockShape(blockCoord);
@@ -695,9 +696,14 @@ __aicore__ inline void AicComputeA8W4(
         }
         constexpr bool hasAiv1GmEpilogue = Policy::IS_GMM1 || CombineQuantMode == COMBINE_NO_QUANT;
         if constexpr (hasAiv1GmEpilogue) {
-            // Bound the reused AIC-to-AIV1 flag counter to one outstanding tile.
+            // Keep at most one credit window of ready notifications outstanding.
             NotifyAiv1GmTileReady();
-            WaitForAiv1GmTileAccepted();
+            ++readyTilesInWindow;
+            bool isLastLocalTile = tileNum - loopIdx <= config.blockNum;
+            if (readyTilesInWindow == AIC_AIV1_GM_TILE_CREDIT_WINDOW || isLastLocalTile) {
+                WaitForAiv1GmTileCredit();
+                readyTilesInWindow = 0;
+            }
         }
     }
 }
@@ -729,6 +735,7 @@ template <typename ElementC, typename MakeLayoutC, typename Scheduler, typename 
 __aicore__ inline void AivGmm1PostA8W4(SwigluQuantOp& swigluQuantOp, Scheduler& scheduler,
     TensorC& l0cOutGm, const Config& config, uint32_t startLoopIdx, uint32_t tileNum)
 {
+    uint32_t acceptedTilesInWindow = 0;
     for (uint32_t loopIdx = startLoopIdx; loopIdx < tileNum; loopIdx += config.blockNum) {
         auto blockCoord = scheduler.GetBlockCoord(loopIdx);
         auto actualShape = scheduler.GetBlockShape(blockCoord);
@@ -736,8 +743,12 @@ __aicore__ inline void AivGmm1PostA8W4(SwigluQuantOp& swigluQuantOp, Scheduler& 
         uint32_t nLoc = Get<N_VALUE>(blockCoord);
 
         WaitForAicGmTileReady();
-        // Let AIC issue the next tile after this notification has been consumed.
-        NotifyAicGmTileAccepted();
+        ++acceptedTilesInWindow;
+        bool isLastLocalTile = tileNum - loopIdx <= config.blockNum;
+        if (acceptedTilesInWindow == AIC_AIV1_GM_TILE_CREDIT_WINDOW || isLastLocalTile) {
+            NotifyAicGmTileCreditReturned();
+            acceptedTilesInWindow = 0;
+        }
         AscendC::SetFlag<AscendC::HardEvent::S_MTE2>(0);
         AscendC::WaitFlag<AscendC::HardEvent::S_MTE2>(0);
         auto tensorBlockGmFirst = l0cOutGm.Slice(
@@ -776,6 +787,7 @@ template <typename ElementC, typename MakeLayoutC, typename Scheduler, typename 
 __aicore__ inline void AivGmm2PostA8W4(Scheduler& scheduler, TensorC& l0cOutGm, const Params& params,
     uint32_t groupCnt, const Config& config, uint32_t startLoopIdx, uint32_t tileNum)
 {
+    uint32_t acceptedTilesInWindow = 0;
     for (uint32_t loopIdx = startLoopIdx; loopIdx < tileNum; loopIdx += config.blockNum) {
         auto blockCoord = scheduler.GetBlockCoord(loopIdx);
         auto actualShape = scheduler.GetBlockShape(blockCoord);
@@ -783,8 +795,12 @@ __aicore__ inline void AivGmm2PostA8W4(Scheduler& scheduler, TensorC& l0cOutGm, 
         uint32_t nLoc = Get<N_VALUE>(blockCoord);
 
         WaitForAicGmTileReady();
-        // Let AIC issue the next tile after this notification has been consumed.
-        NotifyAicGmTileAccepted();
+        ++acceptedTilesInWindow;
+        bool isLastLocalTile = tileNum - loopIdx <= config.blockNum;
+        if (acceptedTilesInWindow == AIC_AIV1_GM_TILE_CREDIT_WINDOW || isLastLocalTile) {
+            NotifyAicGmTileCreditReturned();
+            acceptedTilesInWindow = 0;
+        }
         auto tensorBlockGm = l0cOutGm.Slice(
             Te::MakeCoord(mLoc, nLoc), Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
         auto layoutL0cUB = MakeLayoutC{}(L1_TILE_M_256, L1_TILE_N);
