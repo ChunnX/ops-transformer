@@ -85,7 +85,7 @@ private:
 
     GlobalTensor<CommBufType> sendGlobalBuffer_;
     GlobalTensor<CommBufType> recvGlobalBuffer_;
-    GlobalTensor<CommBufType> permuteOutBuffer_;
+    
     GlobalTensor<fp8_e8m0_t> sendScaleGlobalBuffer_;
     GlobalTensor<fp8_e8m0_t> recvScaleGlobalBuffer_;
     GlobalTensor<fp8_e8m0_t> scalePermuteOutBuffer_;
@@ -112,7 +112,7 @@ private:
     uint32_t aivCoreNum_ = 40U;
     bool permuteBufInitialized_ = false;
 
-    uint64_t permuteBaseOffset_ = 0UL;
+    
     uint64_t scalePermuteBaseOffset_ = 0UL;
 };
 
@@ -134,7 +134,7 @@ __aicore__ inline void HcclA2avOp<hcclDataType, commBeforeComputeFlag, commMode>
     bufferLen_ = PERMUTE_BUF_SIZE;
     sendGlobalBuffer_.SetGlobalBuffer((__gm__ CommBufType *)sendBuffer);
     recvGlobalBuffer_.SetGlobalBuffer((__gm__ CommBufType *)recvBuffer);
-    permuteOutBuffer_.SetGlobalBuffer((__gm__ CommBufType *)permuteBuffer);
+    
     for (int i = 0; i < e_ * rankDim_; i++) {
         recvCounts_[i] = taskTilingInfo_->recvCnt[i];
         sendCounts_[i] = taskTilingInfo_->sendCnt[i];
