@@ -161,6 +161,7 @@ public:
     T negativeFloatScalar;
     float pScaleValue{1.0f};
     bool isSkipMask{false};
+    bool isSkipCompute{false};
     uint32_t minValue{NEGATIVE_MIN_VALUE_FP32_LN2};
 
     // ==================== Functions ======================
@@ -317,6 +318,7 @@ public:
             bmm1ResBuf.SetCrossCore();
             outputBuf.SetCrossCore();
             runInfo.actSingleLoopS2Size = s2SplitSize;
+            return;
         }
         uint32_t softmaxBufIdx = runInfo.mloop % (PRELOAD_N + 1);
         uint32_t expBufIdx = runInfo.loop % (PRELOAD_N + 1);
