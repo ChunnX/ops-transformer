@@ -39,7 +39,7 @@ struct MoeDistributeDispatchV2Info {
     bool isQuant;                        // whether quant or not
     bool isMc2Context;
     bool hasExpertScales;               // has expertScales or not
-    bool reserved2;
+    bool reserved1;
     uint64_t totalUbSize;                // epWorldSize
     uint64_t totalWinSizeEp;
     uint32_t expertTokenNumsType;        // expert token nums type, support 0: cumsum mode, 1: count mode
