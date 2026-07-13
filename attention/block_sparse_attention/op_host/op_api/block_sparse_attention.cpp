@@ -89,7 +89,6 @@ const std::array<const aclTensor *, 2> BlockSparseAttention(
     auto attentionOutTensor = executor->AllocTensor(attentionOut->GetDataType(), Format::FORMAT_ND, Format::FORMAT_ND);
     auto softmaxLseTensor = executor->AllocTensor(DataType::DT_FLOAT, Format::FORMAT_ND, Format::FORMAT_ND);
 
-    // scaleValue is already float type, no need for cast
     auto ret = INFER_SHAPE(BlockSparseAttention,
                            OP_INPUT(query, key, value, blockSparseMaskOptional, attenMaskOptional,
                                     blockShapeOptionalTensor, actualSeqTensor, actualSeqKvTensor, blockTableOptional,

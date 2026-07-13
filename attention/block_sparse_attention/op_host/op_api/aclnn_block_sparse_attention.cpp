@@ -142,12 +142,12 @@ static aclnnStatus ValidateParams(const aclTensor *query,
 }
 
 static aclnnStatus MakeContiguous(const aclTensor *&query,
-                                  const aclTensor *&key,
-                                  const aclTensor *&value,
-                                  const aclTensor *&blockSparseMaskOptional,
-                                  const aclTensor *&attenMaskOptional,
-                                  const aclTensor *&blockTableOptional,
-                                  aclOpExecutor *executor)
+                                   const aclTensor *&key,
+                                   const aclTensor *&value,
+                                   const aclTensor *&blockSparseMaskOptional,
+                                   const aclTensor *&attenMaskOptional,
+                                   const aclTensor *&blockTableOptional,
+                                   aclOpExecutor *executor)
 {
     query = l0op::Contiguous(query, executor);
     CHECK_RET(query != nullptr, ACLNN_ERR_PARAM_NULLPTR);
@@ -157,7 +157,6 @@ static aclnnStatus MakeContiguous(const aclTensor *&query,
 
     value = l0op::Contiguous(value, executor);
     CHECK_RET(value != nullptr, ACLNN_ERR_PARAM_NULLPTR);
-    // 新增blockSparseMaskOptional非空校验且必须为四维
     if (blockSparseMaskOptional != nullptr) {
         blockSparseMaskOptional = l0op::Contiguous(blockSparseMaskOptional, executor);
         CHECK_RET(blockSparseMaskOptional != nullptr, ACLNN_ERR_INNER_NULLPTR);
@@ -170,6 +169,14 @@ static aclnnStatus MakeContiguous(const aclTensor *&query,
     if (attenMaskOptional != nullptr) {
         attenMaskOptional = l0op::Contiguous(attenMaskOptional, executor);
         CHECK_RET(attenMaskOptional != nullptr, ACLNN_ERR_INNER_NULLPTR);
+        if (attenMaskOptional->GetDataType() != DataType::DT_INT32) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "attenMask (blockEffRows) must be INT32");
+            return ACLNN_ERR_PARAM_INVALID;
+        }
+        if (blockSparseMaskOptional == nullptr) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "attenMask (blockEffRows) depends on blockSparseMask, which is not provided");
+            return ACLNN_ERR_PARAM_INVALID;
+        }
     }
 
     if (blockTableOptional != nullptr) {
@@ -240,7 +247,6 @@ __attribute__((visibility("default"))) aclnnStatus aclnnBlockSparseAttentionGetW
     if (ret != ACLNN_SUCCESS) {
         return ret;
     }
-    // 去掉了idx ,idxnums
     L2_DFX_PHASE_1(aclnnBlockSparseAttention,
                    DFX_IN(query, key, value, blockSparseMask, attenMaskOptional, blockShape, actualSeqLengthsOptional,
                           actualSeqLengthsKvOptional, blockTableOptional, qInputLayout, kvInputLayout, numKeyValueHeads,
@@ -250,7 +256,6 @@ __attribute__((visibility("default"))) aclnnStatus aclnnBlockSparseAttentionGetW
     auto uniqueExecutor = CREATE_EXECUTOR();
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_NULLPTR);
     auto *executorImpl = uniqueExecutor.get();
-    // 新增blockSparseMaskOptional参数
     ret = MakeContiguous(query, key, value, blockSparseMask, attenMaskOptional, blockTableOptional,
                          executorImpl);
     if (ret != ACLNN_SUCCESS) {
@@ -259,10 +264,10 @@ __attribute__((visibility("default"))) aclnnStatus aclnnBlockSparseAttentionGetW
     
     string qInputLayoutStr = ConvertLayoutString(qInputLayout);
     string kvInputLayoutStr = ConvertLayoutString(kvInputLayout);
-    // 新增blockSparseMaskOptional参数
     auto outputs = l0op::BlockSparseAttention(
         query, key, value, blockSparseMask, attenMaskOptional, blockShape, actualSeqLengthsOptional,
-        actualSeqLengthsKvOptional, blockTableOptional, nullptr, nullptr, nullptr, qInputLayoutStr.c_str(),
+        actualSeqLengthsKvOptional, blockTableOptional, nullptr, nullptr, nullptr,
+        qInputLayoutStr.c_str(),
         kvInputLayoutStr.c_str(), numKeyValueHeads, maskType, scaleValue, innerPrecise, blockSize, preTokens,
         nextTokens, softmaxLseFlag, attentionOut, executorImpl);
     if (outputs[0] == nullptr || outputs[1] == nullptr) {

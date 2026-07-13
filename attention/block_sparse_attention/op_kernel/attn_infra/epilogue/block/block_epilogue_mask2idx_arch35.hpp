@@ -76,7 +76,15 @@ public:
         uint32_t totalRowNumBlockMask,
         uint32_t yBlockNumAligned,
         uint32_t avgRowPerSubCore,
-        uint32_t preActiveSubCoreNum)
+        uint32_t preActiveSubCoreNum,
+        AscendC::GlobalTensor<int32_t> gBlockEffRows = AscendC::GlobalTensor<int32_t>(),
+        AscendC::GlobalTensor<int32_t> gEffectiveYOut = AscendC::GlobalTensor<int32_t>(),
+        AscendC::GlobalTensor<int32_t> gPrefixSumOut = AscendC::GlobalTensor<int32_t>(),
+        bool useEffRows = false,
+        uint32_t numHeads = 0,
+        uint32_t xBlockNumAligned = 0,
+        uint32_t maxBlockNumEff = 0,
+        uint32_t maxKvBlockNumAlignedPlus1 = 0)
     {
         uint32_t subCoreIdx = AscendC::GetBlockIdx();
         uint32_t curSubCoreRowOffset = subCoreIdx * avgRowPerSubCore;
@@ -178,6 +186,33 @@ public:
                     sparseCountUb[CountPingPongFlag],
                     AscendC::DataCopyExtParams(1, actDealtRowCurLoop * sizeof(ElementSparseCount), 0, 0, 0));
                 AscendC::SetFlag<AscendC::HardEvent::MTE3_S>(CountPingPongFlag);
+
+                if (useEffRows) {
+                    AscendC::PipeBarrier<PIPE_ALL>();
+                    for (uint32_t k = 0; k < actDealtRowCurLoop; k++) {
+                        uint32_t curGlobalRow = globalRowOffset + k;
+                        uint32_t count = static_cast<uint32_t>(rsvdCountPerRow[k]);
+                        uint32_t batch = curGlobalRow / (numHeads * xBlockNumAligned);
+                        uint32_t remainder = curGlobalRow % (numHeads * xBlockNumAligned);
+                        uint32_t head = remainder / xBlockNumAligned;
+                        uint64_t effRowsBase =
+                            (static_cast<uint64_t>(batch) * numHeads + head) * maxBlockNumEff * 2;
+                        uint64_t effYOutBase = static_cast<uint64_t>(curGlobalRow) * yBlockNumAligned;
+                        uint64_t prefixSumOutBase =
+                            static_cast<uint64_t>(curGlobalRow) * maxKvBlockNumAlignedPlus1;
+                        int32_t prefixSum = 0;
+                        gPrefixSumOut.SetValue(prefixSumOutBase, prefixSum);
+                        for (uint32_t i = 0; i < count; i++) {
+                            int32_t origBlockIdx = gSparseIdx.GetValue(effYOutBase + i);
+                            int32_t effY = gBlockEffRows.GetValue(
+                                effRowsBase + static_cast<uint64_t>(origBlockIdx) * 2 + 1);
+                            gEffectiveYOut.SetValue(effYOutBase + i, effY);
+                            prefixSum += effY;
+                            gPrefixSumOut.SetValue(prefixSumOutBase + i + 1, prefixSum);
+                        }
+                    }
+                    AscendC::PipeBarrier<PIPE_ALL>();
+                }
 
                 CountPingPongFlag = 1 - CountPingPongFlag;
             }

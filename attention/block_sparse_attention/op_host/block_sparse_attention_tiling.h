@@ -93,6 +93,12 @@ TILING_DATA_FIELD_DEF(uint32_t, useUniformKvSeqlen);  // 是否使用统一的kv
 TILING_DATA_FIELD_DEF(uint64_t, tilingKey);
 TILING_DATA_FIELD_DEF(uint64_t, selectNumIdxSize);
 TILING_DATA_FIELD_DEF(uint64_t, selectIdxSize);
+// effectiveRows related
+TILING_DATA_FIELD_DEF(uint32_t, useEffRows);
+TILING_DATA_FIELD_DEF(uint32_t, maxKvBlockNumAlignedPlus1);
+TILING_DATA_FIELD_DEF(uint32_t, maxBlockNumEff);
+TILING_DATA_FIELD_DEF(uint64_t, effYSize);
+TILING_DATA_FIELD_DEF(uint64_t, prefixSumSize);
 // Workspace大小
 TILING_DATA_FIELD_DEF(uint64_t, mm1OutSize);
 TILING_DATA_FIELD_DEF(uint64_t, smOnlineOutSize);
@@ -182,7 +188,7 @@ private:
     ge::graphStatus ParseSeqlensInNonTND(gert::TilingContext *bsaContext);
     ge::graphStatus ParseSeqlens(gert::TilingContext *bsaContext);
     ge::graphStatus ParseSparsePattern(gert::TilingContext *bsaContext);
-    ge::graphStatus ParseAttenMask(gert::TilingContext *bsaContext);
+    ge::graphStatus ParseEffRows(gert::TilingContext *bsaContext);
     ge::graphStatus ParseBlockTable(gert::TilingContext *bsaContext);
     ge::graphStatus CheckSparsePattern(gert::TilingContext *bsaContext, const int64_t defaultShape);
     ge::graphStatus ValidateGenericDequantScale(gert::TilingContext *bsaContext, const int parameterIndex);
@@ -242,6 +248,12 @@ private:
     uint64_t updateSize_ = 0;
     uint64_t selectNumIdxSize_ = 0;
     uint64_t selectIdxSize_ = 0;
+    // effectiveRows related
+    bool useEffRows_ = false;
+    uint32_t maxKvBlockNumAlignedPlus1_ = 0;
+    uint32_t maxBlockNumEff_ = 0;
+    uint64_t effYSize_ = 0;
+    uint64_t prefixSumSize_ = 0;
     
     BSAQInputLayout qInputLayout_ = BSAQInputLayout::TND_Q;
     BSAKvCacheLayout kvCacheLayout_ = BSAKvCacheLayout::TND_KV;

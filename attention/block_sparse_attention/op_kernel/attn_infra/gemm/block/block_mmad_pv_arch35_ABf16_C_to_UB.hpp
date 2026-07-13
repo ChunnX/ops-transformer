@@ -189,10 +189,44 @@ public:
                                    uint32_t gatheredKvSTileIdx, uint32_t kvSeqlen,
                                    uint32_t kvSBaseTile, uint32_t blockShapeY,
                                    uint32_t yBlockNumAval, uint32_t yBlockNumRsvd,
-                                   uint32_t curBaseTileSize, uint32_t embed)
+                                   uint32_t curBaseTileSize, uint32_t embed,
+                                   AscendC::GlobalTensor<int32_t> gEffectiveY = AscendC::GlobalTensor<int32_t>(),
+                                   uint64_t gmOffsetEffectiveY = 0,
+                                   bool useEffRows = false,
+                                   uint32_t *ioCurBlockIdx = nullptr,
+                                   uint32_t *ioCurBlockCopied = nullptr)
     {
         using CopyGmToL1B = typename TileCopy_::template CopyGmToL1B<TensorB>;
         CopyGmToL1B copyGmToL1B;
+        if (useEffRows && ioCurBlockIdx != nullptr && ioCurBlockCopied != nullptr) {
+            uint32_t dealtLenAccum = 0;
+            while (dealtLenAccum < curBaseTileSize && (*ioCurBlockIdx) < yBlockNumRsvd) {
+                uint32_t oriYBlockIdx = gSparseBlockIdx.GetValue(*ioCurBlockIdx);
+                uint32_t effectiveY = gEffectiveY.GetValue(gmOffsetEffectiveY + (*ioCurBlockIdx));
+                uint32_t tailBlockSize = (kvSeqlen > oriYBlockIdx * blockShapeY) ?
+                    (kvSeqlen - oriYBlockIdx * blockShapeY) : 0;
+                effectiveY = (effectiveY < tailBlockSize) ? effectiveY : tailBlockSize;
+                uint32_t remaining = (effectiveY > (*ioCurBlockCopied)) ?
+                    (effectiveY - (*ioCurBlockCopied)) : 0;
+                uint32_t toCopy = (remaining < (curBaseTileSize - dealtLenAccum)) ?
+                    remaining : (curBaseTileSize - dealtLenAccum);
+                if (toCopy > 0) {
+                    uint32_t oriStartOffset = oriYBlockIdx * blockShapeY + (*ioCurBlockCopied);
+                    auto l1BTensorTlaTile = GetTile(l1BTensorTla,
+                        tla::MakeCoord(dealtLenAccum, 0), tla::MakeShape(toCopy, embed));
+                    auto gBTensorTlaTile = GetTile(gBTensor,
+                        tla::MakeCoord(oriStartOffset, 0), tla::MakeShape(toCopy, embed));
+                    copyGmToL1B(l1BTensorTlaTile, gBTensorTlaTile);
+                    dealtLenAccum += toCopy;
+                    (*ioCurBlockCopied) += toCopy;
+                }
+                if ((*ioCurBlockCopied) >= effectiveY) {
+                    (*ioCurBlockIdx)++;
+                    (*ioCurBlockCopied) = 0;
+                }
+            }
+            return;
+        }
         uint32_t baseTileStartOffset = gatheredKvSTileIdx * kvSBaseTile;
         uint32_t baseTileEndOffset = baseTileStartOffset + curBaseTileSize;
         // 稀疏情况下对实际选中的部分gather后进行基本块切分
@@ -251,7 +285,12 @@ public:
                     uint32_t yBlockNumAval, uint32_t yBlockNumRsvd,
                     uint64_t prefixSumL0AStages, uint64_t prefixSumL0BStages,
                     Arch::CrossCoreFlag smToMm2Flag, Arch::CrossCoreFlag mm2ToReFlag,
-                    uint64_t deqScalar = 0)
+                    uint64_t deqScalar = 0,
+                    AscendC::GlobalTensor<int32_t> gEffectiveY = AscendC::GlobalTensor<int32_t>(),
+                    uint64_t gmOffsetEffectiveY = 0,
+                    bool useEffRows = false,
+                    uint32_t *ioCurBlockIdx = nullptr,
+                    uint32_t *ioCurBlockCopied = nullptr)
     {
         using CopyL0CToDst = typename TileCopy_::template CopyL0CToDst<TensorC>;
 
@@ -271,7 +310,8 @@ public:
         AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(l1BEventId);
         SparseVBaseTileL1FullLoad(
             gBTensor, l1BTensorTla, gSparseBlockIdx, gatheredKvSTileIdx, kvSeqlen, kvSBaseTile, blockShapeY,
-            yBlockNumAval, yBlockNumRsvd, curBaseTileSize, embed);
+            yBlockNumAval, yBlockNumRsvd, curBaseTileSize, embed,
+            gEffectiveY, gmOffsetEffectiveY, useEffRows, ioCurBlockIdx, ioCurBlockCopied);
         AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(l1BEventId);
         AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(l1BEventId);
         // fwd crossCoreSync from online sm to mm2
