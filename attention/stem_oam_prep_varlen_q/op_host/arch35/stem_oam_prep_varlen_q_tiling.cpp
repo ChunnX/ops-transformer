@@ -53,7 +53,7 @@ static constexpr int64_t STEM_STRIDE_MAX   = 64;
 
 // UB sizing
 static constexpr uint32_t UB_SIZE_BYTES           = 248 * 1024;
-static constexpr uint32_t VARLEN_BUF_SIZE_BYTES   = MAX_BATCH_SIZE * sizeof(int32_t) * 2;
+static constexpr uint32_t VARLEN_BUF_SIZE_BYTES   = MAX_BATCH_SIZE * sizeof(int64_t) * 2;
 
 // Buffer element sizes (for per-block UB accounting)
 static constexpr uint32_t SIZEOF_FP8         = 1;
@@ -237,16 +237,16 @@ static ge::graphStatus ValidateDtypes(gert::TilingContext* context,
         return ge::GRAPH_FAILED;
     }
 
-    if (qSeqLensDesc->GetDataType() != ge::DT_INT32) {
+    if (qSeqLensDesc->GetDataType() != ge::DT_INT64) {
         OP_LOGE_WITH_INVALID_INPUT_DTYPE(nodeName, "qSeqLens",
             std::to_string(static_cast<int>(qSeqLensDesc->GetDataType())).c_str(),
-            "DT_INT32");
+            "DT_INT64");
         return ge::GRAPH_FAILED;
     }
-    if (cuSeqLensQDesc->GetDataType() != ge::DT_INT32) {
+    if (cuSeqLensQDesc->GetDataType() != ge::DT_INT64) {
         OP_LOGE_WITH_INVALID_INPUT_DTYPE(nodeName, "cuSeqLensQ",
             std::to_string(static_cast<int>(cuSeqLensQDesc->GetDataType())).c_str(),
-            "DT_INT32");
+            "DT_INT64");
         return ge::GRAPH_FAILED;
     }
 
@@ -341,13 +341,13 @@ static ge::graphStatus CalcSequenceInfo(gert::TilingContext* context,
     uint32_t batchU32 = tiling->batch_size;
 
     auto qSeqLensTensor = context->GetInputTensor(INPUT_QSEQLENS);
-    const int32_t *qSeqLensData = (qSeqLensTensor != nullptr) ?
-        qSeqLensTensor->GetData<int32_t>() : nullptr;
+    const int64_t *qSeqLensData = (qSeqLensTensor != nullptr) ?
+        qSeqLensTensor->GetData<int64_t>() : nullptr;
 
     if (qSeqLensData != nullptr) {
         auto cuSeqLensTensor = context->GetInputTensor(INPUT_CUSEQLENS);
-        const int32_t *cuSeqLensData = (cuSeqLensTensor != nullptr) ?
-            cuSeqLensTensor->GetData<int32_t>() : nullptr;
+        const int64_t *cuSeqLensData = (cuSeqLensTensor != nullptr) ?
+            cuSeqLensTensor->GetData<int64_t>() : nullptr;
 
         if (cuSeqLensData != nullptr) {
             if (cuSeqLensData[0] != 0) {
@@ -357,20 +357,20 @@ static ge::graphStatus CalcSequenceInfo(gert::TilingContext* context,
             for (uint32_t b = 0; b < batchU32; b++) {
                 if (cuSeqLensData[b + 1] - cuSeqLensData[b] != qSeqLensData[b]) {
                     OP_LOGE(nodeName, "cuSeqLensQ prefix sum mismatch at batch %u: "
-                        "cuSeqLensQ[%u]-cuSeqLensQ[%u]=%d, qSeqLens[%u]=%d",
+                        "cuSeqLensQ[%u]-cuSeqLensQ[%u]=%ld, qSeqLens[%u]=%ld",
                         b, b + 1, b,
-                        cuSeqLensData[b + 1] - cuSeqLensData[b], b, qSeqLensData[b]);
+                        static_cast<long>(cuSeqLensData[b + 1] - cuSeqLensData[b]), b, static_cast<long>(qSeqLensData[b]));
                     return ge::GRAPH_FAILED;
                 }
             }
             // Validate final prefix sum: cuSeqLensQ[batch] == sum(qSeqLens)
-            int32_t sum_qSeqLens = 0;
+            int64_t sum_qSeqLens = 0;
             for (uint32_t b = 0; b < batchU32; b++) {
                 sum_qSeqLens += qSeqLensData[b];
             }
             if (cuSeqLensData[batchU32] != sum_qSeqLens) {
-                OP_LOGE(nodeName, "cuSeqLensQ[%u]=%d does not equal sum(qSeqLens)=%d",
-                    batchU32, cuSeqLensData[batchU32], sum_qSeqLens);
+                OP_LOGE(nodeName, "cuSeqLensQ[%u]=%ld does not equal sum(qSeqLens)=%ld",
+                    batchU32, static_cast<long>(cuSeqLensData[batchU32]), static_cast<long>(sum_qSeqLens));
                 return ge::GRAPH_FAILED;
             }
         }

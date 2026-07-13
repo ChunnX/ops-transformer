@@ -14,8 +14,8 @@
  * GM 输入:
  *   q:           [total_tokens, H_q, D]       FP8_e4m3fn
  *   qscale:      [total_tokens, H_q]          FP32
- *   qSeqLens:    [batch]                       INT32
- *   cuSeqLensQ:  [batch+1]                     INT32
+ *   qSeqLens:    [batch]                       INT64
+ *   cuSeqLensQ:  [batch+1]                     INT64
  *
  * GM 输出:
  *   qFlat:       [batch, H_q, max_Qb, S*D]    BF16
@@ -65,6 +65,15 @@ constexpr uint32_t MAX_STEM_STRIDE = 64;
 constexpr uint32_t MAX_QFLAT_DIM = MAX_STEM_STRIDE * DIM_QK;
 constexpr uint32_t MAX_BATCH_SIZE = 1024;
 constexpr uint32_t VARLEN_READ_ALIGN = 8;
+
+// N-buffer scheme: N = tiling->ub_factor (capped at N_MAX)
+// Each pp slot owns its own set of UB buffers and event IDs.
+constexpr uint32_t N_MAX = 4;
+
+// Event ID layout per pp slot (2 IDs per slot, total 8 for N_MAX=4):
+//   pp*2 + 0: V_MTE2 for Duplicate done
+//   pp*2 + 1: MTE2_V for MTE2 load done
+constexpr uint32_t EVT_STRIDE = 2;
 
 constexpr static AscendC::MicroAPI::CastTrait CAST_FP8_TO_FP32 = {
     AscendC::MicroAPI::RegLayout::ZERO,
@@ -292,7 +301,6 @@ public:
         R_ = tiling->R_val;
         qflat_dim_ = tiling->kflat_dim;
 
-        qSeqLensBase_ = q_seq_lens;
         cuSeqLensBase_ = cu_seqlens_q;
 
         // qb 粒度切核: 总任务 = H_q × Σ_b ceil(qSeqLens[b]/B)
@@ -314,110 +322,79 @@ public:
         qflatBase_ = qflat;
 
         // UB Buffer 分配:
-        // qBlockBuf_:     [B, D] FP8  = 128×128×1 = 16 KB
-        // qBlockFP32Buf_: [B, D] FP32 = 128×128×4 = 64 KB  (also stores binary-reduced result in first S rows)
-        // scalesBuf_:     [B]    FP32 = 128×4          = 0.5 KB  (只存当前 head 的 scale)
-        // outQueueQflat_: [S*D]  BF16 = 2048×2    = 4 KB
-        // varlenInfoBuf_: [MAX_BATCH_SIZE] INT32 = 4 KB
+        // qBlockBuf_:      [B, D] FP8   = 128×128×1 = 16 KB
+        // qBlockFP32Buf_:  [B, D] FP32  = 128×128×4 = 64 KB (also stores binary-reduced results)
+        // scalesBuf_:      [B, H_q] FP32 = 128×H_q×4
+        // outQueueQflat_:  [S*D] BF16   = 2048×2 = 4 KB
+        // cuSeqLensQBuf_:  [batch+1] INT64 (dynamically sized)
         pipe_.InitBuffer(qBlockBuf_, B_ * dim_qk_ * sizeof(fp8_e4m3fn_t));
         pipe_.InitBuffer(qBlockFP32Buf_, B_ * dim_qk_ * sizeof(float));
-        pipe_.InitBuffer(scalesBuf_, B_ * sizeof(float));
+        pipe_.InitBuffer(scalesBuf_, B_ * num_q_heads_ * sizeof(float));
         pipe_.InitBuffer(outQueueQflat_, 1, qflat_dim_ * sizeof(bfloat16_t));
-        pipe_.InitBuffer(varlenInfoBuf_, MAX_BATCH_SIZE * sizeof(int32_t));
-
-        // 一次性把 qSeqLens[0..batch-1] 搬到 UB
-        LocalTensor<int32_t> varlenLocal = varlenInfoBuf_.Get<int32_t>();
-        uint32_t batchBytes = tiling->batch_size * sizeof(int32_t);
-        qSeqLensGm_.SetGlobalBuffer((__gm__ int32_t*)qSeqLensBase_, tiling->batch_size);
-        DataCopyPad(varlenLocal, qSeqLensGm_,
-            {1, static_cast<uint16_t>(batchBytes), 0, 0},
-            {false, 0, 0, 0});
-        SetFlag<HardEvent::MTE2_S>(EVENT_ID0);
-        WaitFlag<HardEvent::MTE2_S>(EVENT_ID0);
+        
+        // 分配 cuSeqLensQBuf_：动态大小，只存实际需要的 batch+1 个 INT64
+        uint32_t cuSeqLensQCount = tiling_->batch_size + 1;
+        pipe_.InitBuffer(cuSeqLensQBuf_, cuSeqLensQCount * sizeof(int64_t));
+        LocalTensor<int64_t> cuSeqLensQLocal = cuSeqLensQBuf_.Get<int64_t>();
+        cuSeqLensGm_.SetGlobalBuffer((__gm__ int64_t*)cuSeqLensBase_, cuSeqLensQCount);
+        DataCopyPad(cuSeqLensQLocal, cuSeqLensGm_, 
+                    {1, static_cast<uint16_t>(cuSeqLensQCount * sizeof(int64_t)), 0, 0},
+                    {0, 0, 0, 0});
+        PipeBarrier<PIPE_MTE2>();
+        AscendC::PRINTF("[I]cuSeqLensQ loaded: batch_size=%u, count=%u\n",
+            tiling_->batch_size, cuSeqLensQCount);
+        uint32_t printCount = tiling_->batch_size + 1;
+        if (printCount > 8) printCount = 8;
+        for (uint32_t i = 0; i < printCount; i++) {
+            AscendC::PRINTF("[I]cuSeqLensQ[%u]=%ld\n", i,
+                static_cast<int64_t>(cuSeqLensQLocal.GetValue(i)));
+        }
     }
 
     __aicore__ inline void Process()
     {
+        AscendC::PRINTF("[P]Enter task_id=%u used_core_num=%u qb_start=%u qb_end=%u "
+            "batch_size=%u num_q_heads=%u max_Qb=%u B=%u S=%u R=%u\n",
+            task_id_, tiling_->used_core_num, qb_start_, qb_end_,
+            tiling_->batch_size, tiling_->num_q_heads, tiling_->max_Qb,
+            tiling_->stem_block_size, tiling_->stem_stride, tiling_->R_val);
         if (task_id_ >= tiling_->used_core_num) return;
 
         for (uint32_t task_idx = qb_start_; task_idx < qb_end_; task_idx++) {
             DecodeTaskId(task_idx);
             ProcessOneBlock(task_idx);
         }
+        AscendC::PRINTF("[P]Exit task_id=%u\n", task_id_);
     }
 
-    /**
-     * DecodeTaskId: 从全局 task_idx 反解 (batch, head, qb_local)
-     *
-     * task_idx 的排列顺序:
-     *   (b=0,h=0,qb=0), (b=0,h=0,qb=1), ..., (b=0,h=0,qb=N0-1),
-     *   (b=0,h=1,qb=0), ..., (b=0,h=1,qb=N0-1),
-     *   ...
-     *   (b=1,h=0,qb=0), ..., (b=1,h=H_q-1,qb=N1-1),
-     *   ...
-     * 其中 Nb = ceil(qSeqLens[b] / B)
-     */
     __aicore__ inline void DecodeTaskId(uint32_t task_idx)
     {
         uint32_t total_qb = 0;
-        uint32_t acc_cu_off = 0;
-        LocalTensor<int32_t> varlenLocal = varlenInfoBuf_.Get<int32_t>();
+        uint32_t max_Qb = tiling_->max_Qb;
+        LocalTensor<int64_t> cuSeqLensQ = cuSeqLensQBuf_.Get<int64_t>();
+
         for (uint32_t b = 0; b < tiling_->batch_size; b++) {
-            uint32_t q_len_b = static_cast<uint32_t>(varlenLocal.GetValue(b));
+            int64_t cu_start = cuSeqLensQ.GetValue(b);
+            int64_t cu_end = cuSeqLensQ.GetValue(b + 1);
+            uint32_t q_len_b = static_cast<uint32_t>(cu_end - cu_start);
+            uint32_t num_Qb_b = (q_len_b + B_ - 1) / B_;
+            uint32_t tasks_in_batch = max_Qb * num_q_heads_;
 
-            uint32_t q_padded_b = ((q_len_b + B_ - 1) / B_) * B_;
-            uint32_t num_Qb_b = q_padded_b / B_;
-
-            for (uint32_t h = 0; h < num_q_heads_; h++) {
-                if (task_idx < total_qb + num_Qb_b) {
-                    batch_idx_ = b;
-                    head_idx_ = h;
-                    qb_local_ = task_idx - total_qb;
-                    cu_off_ = acc_cu_off;
-                    q_len_ = q_len_b;
-                    q_padded_ = q_padded_b;
-                    num_Qb_ = num_Qb_b;
-                    AscendC::PRINTF("[D]task=%u b=%u h=%u qb=%u cu=%u qlen=%u\n",
-                        task_idx, b, h, qb_local_, cu_off_, q_len_);
-                    return;
-                }
-                total_qb += num_Qb_b;
+            if (task_idx < total_qb + tasks_in_batch) {
+                uint32_t in_batch = task_idx - total_qb;
+                batch_idx_ = b;
+                head_idx_ = in_batch / max_Qb;
+                qb_local_ = in_batch % max_Qb;
+                cu_off_ = static_cast<uint32_t>(cu_start);
+                q_len_ = q_len_b;
+                q_padded_ = num_Qb_b * B_;
+                num_Qb_ = num_Qb_b;
+                AscendC::PRINTF("[D]task=%u b=%u h=%u qb=%u cu=%u qlen=%u num_Qb=%u\n",
+                    task_idx, b, head_idx_, qb_local_, cu_off_, q_len_, num_Qb_b);
+                return;
             }
-            acc_cu_off += q_len_b;
+            total_qb += tasks_in_batch;
         }
-    }
-
-private:
-    /**
-     * ReadVarlenInfo: 读取 varlen 元信息
-     *
-     * 从 GM 读取:
-     *   qSeqLens[b]  → q_len_:  该 batch 的 Q 序列长度
-     *   cuSeqLensQ[b] → cu_off_: 该 batch 在 q 中的起始 token 偏移
-     *
-     * 计算:
-     *   q_padded_ = ceil(q_len / B) × B
-     *   num_Qb_   = q_padded / B
-     */
-    __aicore__ inline void ReadVarlenInfo(uint32_t b)
-    {
-        LocalTensor<int32_t> varlenLocal = varlenInfoBuf_.Get<int32_t>();
-        qSeqLensGm_.SetGlobalBuffer((__gm__ int32_t*)qSeqLensBase_ + b, VARLEN_READ_ALIGN);
-        DataCopyPad(varlenLocal, qSeqLensGm_,
-            {1, static_cast<uint16_t>(VARLEN_READ_ALIGN * sizeof(int32_t)), 0, 0},
-            {false, 0, 0, 0});
-        PipeBarrier<PIPE_MTE2>();
-        q_len_ = static_cast<uint32_t>(varlenLocal.GetValue(0));
-
-        cuSeqLensGm_.SetGlobalBuffer((__gm__ int32_t*)cuSeqLensBase_ + b, VARLEN_READ_ALIGN);
-        DataCopyPad(varlenLocal, cuSeqLensGm_,
-            {1, static_cast<uint16_t>(VARLEN_READ_ALIGN * sizeof(int32_t)), 0, 0},
-            {false, 0, 0, 0});
-        PipeBarrier<PIPE_MTE2>();
-        cu_off_ = static_cast<uint32_t>(varlenLocal.GetValue(0));
-
-        q_padded_ = ((q_len_ + B_ - 1) / B_) * B_;
-        num_Qb_   = q_padded_ / B_;
     }
 
     __aicore__ inline void ProcessOneBlock(uint32_t task_idx)
@@ -688,7 +665,6 @@ private:
     uint32_t core_in_bh_ = 0;
     uint32_t cores_per_bh_this_ = 1;
 
-    GM_ADDR qSeqLensBase_ = nullptr;
     GM_ADDR cuSeqLensBase_ = nullptr;
     GM_ADDR qBase_ = nullptr;
     GM_ADDR qscaleBase_ = nullptr;
@@ -696,15 +672,14 @@ private:
 
     GlobalTensor<fp8_e4m3fn_t> qGm_;
     GlobalTensor<float> qscaleGm_;
-    GlobalTensor<int32_t> qSeqLensGm_;
-    GlobalTensor<int32_t> cuSeqLensGm_;
+    GlobalTensor<int64_t> cuSeqLensGm_;
     GlobalTensor<bfloat16_t> qflatGm_;
 
     TBuf<TPosition::VECCALC> qBlockBuf_;
     TBuf<TPosition::VECCALC> qBlockFP32Buf_;
     TBuf<TPosition::VECCALC> scalesBuf_;
     TQue<TPosition::VECOUT, 1> outQueueQflat_;
-    TBuf<TPosition::VECCALC> varlenInfoBuf_;
+    TBuf<TPosition::VECCALC> cuSeqLensQBuf_;
 };
 
 #endif
