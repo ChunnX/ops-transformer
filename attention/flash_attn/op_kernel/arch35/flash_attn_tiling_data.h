@@ -44,6 +44,7 @@ constexpr uint32_t FA_FD_WORKSPACE_NUM_INDEX = 3;
 constexpr uint32_t FA_FD_M_START_INDEX = 4;
 constexpr uint32_t FA_FD_M_NUM_INDEX = 5;
 
+
 struct FlashAttnBaseParams {
     uint32_t bSize;
     uint32_t t1Size;
@@ -67,6 +68,11 @@ struct FlashAttnBaseParams {
     uint32_t coreNum;
     uint32_t outputLayout;
     bool needInitOutput;
+    // kvcache non-contiguous strides (valid only for tensor v2 view inputs)
+    uint64_t keyBnStride = 0;
+    uint64_t keyN2Stride = 0;
+    uint64_t valueBnStride = 0;
+    uint64_t valueN2Stride = 0;
 };
 
 struct FlashAttnAttenMaskParams {
