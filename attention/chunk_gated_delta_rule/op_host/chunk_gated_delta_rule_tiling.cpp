@@ -193,6 +193,34 @@ ge::graphStatus ChunkGatedDeltaRuleTiling::DoMatmulTiling()
     tilingData_.matmulTilingFp32.depthB1 = 1;
     tilingData_.matmulTilingFp32.stepM = 1;
     tilingData_.matmulTilingFp32.stepN = 1;
+
+    // ========== MT_FP32C: BF16 -> BF16 -> FP32 (for FP32 state path) ==========
+    if (tilingData_.stateIsFp32) {
+        matmul_tiling::MultiCoreMatmulTiling mmFp32C;
+        mmFp32C.SetBufferSpace(l1Size, l0CSize, ubSize);
+        mmFp32C.SetAType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND,
+                         matmul_tiling::DataType::DT_BFLOAT16, true);
+        mmFp32C.SetBType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND,
+                         matmul_tiling::DataType::DT_BFLOAT16, true);
+        mmFp32C.SetCType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND,
+                         matmul_tiling::DataType::DT_FLOAT);
+        mmFp32C.SetBias(false);
+        mmFp32C.SetDim(1);
+        mmFp32C.SetShape(baseM, baseN, baseK);
+        mmFp32C.SetOrgShape(baseM, baseN, baseK);
+        mmFp32C.SetFixSplit(baseM, baseN, baseK);
+        if (mmFp32C.GetTiling(tilingData_.matmulTilingFp32C) == -1) {
+            OP_LOGE(context_->GetNodeName(), "CGDR: Get Tiling Fp32C Failed!");
+            return ge::GRAPH_FAILED;
+        }
+        tilingData_.matmulTilingFp32C.dbL0C = 1;
+        tilingData_.matmulTilingFp32C.stepKa = 1;
+        tilingData_.matmulTilingFp32C.stepKb = 1;
+        tilingData_.matmulTilingFp32C.depthA1 = 1;
+        tilingData_.matmulTilingFp32C.depthB1 = 1;
+        tilingData_.matmulTilingFp32C.stepM = 1;
+        tilingData_.matmulTilingFp32C.stepN = 1;
+    }
     return ge::GRAPH_SUCCESS;
 }
 

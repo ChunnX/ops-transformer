@@ -58,10 +58,14 @@ public:
     {
         if ASCEND_IS_AIC {
             stage1MTBf16_.Init(&tiling_->matmulTilingFp32, pipe_);
-            stage1MM_.Init(&tiling_->matmulTilingFp32, pipe_);
+            if constexpr (kStateIsFp32) {
+                stage1MM_.Init(&tiling_->matmulTilingFp32C, pipe_);
+            } else {
+                stage1MM_.Init(&tiling_->matmulTilingFp32, pipe_);
+            }
             stage2MT_.Init(&tiling_->matmulTilingFp32, pipe_);
             if constexpr (kStateIsFp32) {
-                stage2MTFp32C_.Init(&tiling_->matmulTilingFp32, pipe_);
+                stage2MTFp32C_.Init(&tiling_->matmulTilingFp32C, pipe_);
             }
             stage3MT_.Init(&tiling_->matmulTilingFp32, pipe_);
         }
