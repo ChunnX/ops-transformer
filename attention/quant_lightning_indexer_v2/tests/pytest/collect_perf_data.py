@@ -63,10 +63,21 @@ def collect_and_save_incremental(prof_folder, test_result_path):
 
     if os.path.exists(perf_path):
         df_perf = pd.read_excel(perf_path)
-        df_perf = df_perf.reindex(range(df_result.shape[0]))
+        # 以 df_result 为基准重建，保留已有 perf 列，追加新行
+        perf_cols = [c for c in df_perf.columns if c not in df_result.columns]
+        df_merged = df_result.copy()
+        for col in perf_cols:
+            df_merged[col] = None
+            for idx in range(min(len(df_result), len(df_perf))):
+                if col in df_perf.columns and idx < len(df_perf):
+                    val = df_perf.at[idx, col]
+                    if not (isinstance(val, float) and pd.isna(val)):
+                        df_merged.at[idx, col] = val
         for col in perf_df.columns:
-            df_perf.loc[last_idx, col] = perf_df.loc[last_idx, col]
-        df_perf.to_excel(perf_path, index=False)
+            if col not in df_merged.columns:
+                df_merged[col] = None
+            df_merged.loc[last_idx, col] = perf_df.loc[last_idx, col]
+        df_merged.to_excel(perf_path, index=False)
     else:
         df_result_with_perf = pd.concat([df_result, perf_df], axis=1)
         df_result_with_perf.to_excel(perf_path, index=False)
@@ -173,8 +184,26 @@ def collect_all(test_result_path, is_compare=False, perf_golden_path="perf_golde
 
     new_path = test_result_path.replace(".xlsx", "_perf.xlsx")
     if os.path.exists(new_path):
-        print(f"增量模式已收集性能数据: {new_path}，跳过批量补采")
+        existing = pd.read_excel(new_path)
+        op_cols = [c for c in existing.columns if c.startswith("op_") or c == "Task Duration(us)"]
+        filled_count = existing[op_cols].dropna(how='all').shape[0] if op_cols else 0
+        if filled_count >= len(perf_rows):
+            print(f"增量模式已收集 {filled_count}/{len(perf_rows)} 条性能数据，跳过批量补采")
+            return
+        print(f"增量模式仅 {filled_count}/{len(perf_rows)} 条，批量补采覆盖")
+        # 合并已有数据：保留增量已填的行，空缺行用批量采集结果填充
+        for col in perf_df.columns:
+            if col in existing.columns:
+                for idx in perf_rows:
+                    if pd.isna(existing.at[idx, col]):
+                        existing.at[idx, col] = perf_df.at[idx, col]
+            else:
+                existing[col] = None
+                for idx in perf_rows:
+                    existing.at[idx, col] = perf_df.at[idx, col]
+        existing.to_excel(new_path, index=False)
         return
+
     df_b.to_excel(new_path, index=False)
 
     print(f"\n性能数据已保存: {new_path}")

@@ -40,6 +40,7 @@ FAIL_LOG="batch_fail_list.log"
 : > "$FAIL_LOG"
 
 # 清理旧的 PROF 文件夹, 避免与本次运行的数据混淆
+# 匹配 PROF_* 和 PROF_*_test_case_* 两种命名格式
 for _prof_dir in PROF_*/; do
     [ -d "$_prof_dir" ] && rm -rf "$_prof_dir"
 done
@@ -85,7 +86,14 @@ for case_file in "${CASE_FILES[@]}"; do
         echo "[PASS] $case_name" | tee -a "$SUMMARY_LOG"
         # 增量收集性能数据（每条用例跑完立即写入 result_perf.xlsx）
         if [ "$USE_MSPROF" = "1" ]; then
+            sync
             python3 collect_perf_data.py --incremental --test_result_path "$RESULT_XLSX" 2>&1 | tee -a "$SUMMARY_LOG"
+            # 重命名 PROF 文件夹，防止下一条用例的 msprof 覆盖
+            _latest_prof=$(ls -dt PROF_*/ 2>/dev/null | head -1)
+            if [ -n "$_latest_prof" ]; then
+                _new_name="${_latest_prof%/}_${case_name%.pt}"
+                mv "$_latest_prof" "$_new_name" 2>/dev/null
+            fi
         fi
     else
         FAIL=$((FAIL+1))
