@@ -240,27 +240,28 @@ def tilelang_grad_kl_loss_single_kernel(
             #   预取下一 chunk 的 fill 与本 chunk 的 drain 并发，隐藏 burst 写延迟
             # 标量 idx 从 GM 读，依赖 GetValue 同步语义（watch-point）
             # ============================================================
-            num_chunks = n_block // GATHER_CHUNK_SIZE
             with T.Scope("V"):
                 # Double-buffered chunked gather：MTE2 fill ∥ MTE3 drain（ping-pong）
-                # 照抄官方 examples/elementwise/elementwise_add_pipeline.py 的 WAR-safe 结构：
-                #   MTE3_MTE2 = "slot 可写" WAR 事件（预置两个 slot，末尾 clear 排空）
-                #   MTE2_MTE3 = "slot 已填" RAW 事件（drain 等 fill）
-                # 数据 copy 全部内联（官方范例同样内联，prim_func 内不能用未装饰的嵌套函数）
-                # 3D 前导索引 buf[slot, i, :] 由官方范例验证可用。
+                # 两 AIV 按 k_id 区间对半：vid0 做前半 [k_start, k_mid)，vid1 做后半 [k_mid, k_end)
+                # 写不同 GM workspace 区域，无竞争。
                 key_chunk_ub = T.alloc_ub((2, GATHER_CHUNK_SIZE, DQuery), input_dtype)
                 ki_chunk_ub = T.alloc_ub((2, GATHER_CHUNK_SIZE, DQueryIndex), input_dtype)
                 kr_chunk_ub = T.alloc_ub((2, GATHER_CHUNK_SIZE, max(d_rope, 1)), input_dtype)
+
+                # k_id 区间对半：n_block 保证整除 GATHER_CHUNK_SIZE（host 端约束）
+                _v0_chunks_per_vid = n_block // GATHER_CHUNK_SIZE // 2  # 编译期常量
+                _v0_k_per_vid = _v0_chunks_per_vid * GATHER_CHUNK_SIZE
+                my_start = k_start + vid * _v0_k_per_vid
 
                 # 预置：两个 slot 都标记为"已 drain（可 fill）"
                 T.set_flag("mte3", "mte2", 0)
                 T.set_flag("mte3", "mte2", 1)
 
                 for s1_id in T.serial(s1_start, s1_end):
-                    # prologue：fill chunk 0 → slot 0（MTE2 逐行随机读 16 行）
+                    # prologue：fill my first chunk → slot 0（MTE2 逐行随机读）
                     T.wait_flag("mte3", "mte2", 0)
                     for i in T.serial(GATHER_CHUNK_SIZE):
-                        k_id = k_start + i
+                        k_id = my_start + i
                         idx = SparseIndices[bz, s1_id, 0, k_id]
                         if idx >= 0:
                             T.copy(Key[bz, idx, 0, 0:DQuery], key_chunk_ub[0, i, 0:DQuery])
@@ -269,12 +270,12 @@ def tilelang_grad_kl_loss_single_kernel(
                                 T.copy(KeyRope[bz, idx, 0, 0:d_rope], kr_chunk_ub[0, i, 0:d_rope])
                     T.set_flag("mte2", "mte3", 0)
 
-                    for chunk_id in T.serial(num_chunks):
+                    for chunk_id in T.serial(_v0_chunks_per_vid):
                         cur = chunk_id % 2
                         nxt = (chunk_id + 1) % 2
                         # 预取下一 chunk → slot nxt（MTE2，与本 chunk 的 MTE3 drain 并发）
-                        if chunk_id + 1 < num_chunks:
-                            next_start = k_start + (chunk_id + 1) * GATHER_CHUNK_SIZE
+                        if chunk_id + 1 < _v0_chunks_per_vid:
+                            next_start = my_start + (chunk_id + 1) * GATHER_CHUNK_SIZE
                             T.wait_flag("mte3", "mte2", nxt)   # WAR：slot nxt 上轮已 drain
                             for i in T.serial(GATHER_CHUNK_SIZE):
                                 k_id = next_start + i
@@ -287,7 +288,7 @@ def tilelang_grad_kl_loss_single_kernel(
                             T.set_flag("mte2", "mte3", nxt)    # RAW：slot nxt 已 fill
                         # drain 本 chunk（MTE3 整块 burst 写出）
                         T.wait_flag("mte2", "mte3", cur)       # RAW：slot cur 已 fill
-                        cur_start = k_start + chunk_id * GATHER_CHUNK_SIZE
+                        cur_start = my_start + chunk_id * GATHER_CHUNK_SIZE
                         T.copy(key_chunk_ub[cur, 0:GATHER_CHUNK_SIZE, 0:DQuery],
                                GatherKey_ws[bz, s1_id, cur_start:cur_start + GATHER_CHUNK_SIZE, 0:DQuery])
                         T.copy(ki_chunk_ub[cur, 0:GATHER_CHUNK_SIZE, 0:DQueryIndex],
@@ -613,6 +614,10 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.tile.sub(diff_ub, softmax_i_chunk_ub, p_reduced_tmp_ub)
 
                     for g_id in range(g_num):
+                        # g_id 拆分：vid0 做 g_id=0，vid1 做 g_id=1
+                        # 两 AIV 因 g_id 不同而读写不同 GM 区域，无冲突
+                        if g_id != vid:
+                            continue
                         g_start = g_id * vector_baseg
 
                         T.pipe_barrier("v")
@@ -767,6 +772,7 @@ def tilelang_grad_kl_loss_single_kernel(
 
             # ============================================================
             # V scope 3: Cast dQueryIndex (minimal buffers)
+            #   g_id 区间切半：vid0 做前半 [0, _v3_half)，vid1 做后半 [_v3_half, v3_chunks)
             # ============================================================
             with T.Scope("V"):
                 T.wait_cross_flag(3)
@@ -774,8 +780,14 @@ def tilelang_grad_kl_loss_single_kernel(
                 dq_fp32_ub = T.alloc_ub((4, BLOCK_K), calc_dtype)
                 dq_fp16_ub = T.alloc_ub((4, BLOCK_K), input_dtype)
 
+                _v3_half = v3_chunks // 2  # 编译期常量
+                _v3_my_start = vid * _v3_half
+                _v3_my_end = (vid + 1) * _v3_half if vid == 0 else v3_chunks
+
                 for s1_row in T.serial(s1_start, s1_end):
                     for g_id in T.serial(v3_chunks):
+                        if g_id < _v3_my_start or g_id >= _v3_my_end:
+                            continue
                         for d_idx in T.serial(d_num_query_index):
                             # WAR: dq_fp32 复用，mte2 覆盖前等上轮 cast 读完
                             T.set_flag("v", "mte2", 2)
@@ -794,28 +806,35 @@ def tilelang_grad_kl_loss_single_kernel(
 
             # ============================================================
             # V scope 4: Scatter dk_matmul_partial → dKeyIndex（按 sparse idx）
-            #   MIX_AIC_1_2 有 2 AIV 核/cid，atomic_add 非幂等 → 必须 if vid==0 防 double
-            #   Double-buffer: overlap MTE2 copy[k+1] ∥ MTE3 atomic_add[k]
-            #   WAR-safe ping-pong: MTE2_MTE3{2,3} (RAW) / MTE3_MTE2{2,3} (WAR)
+            #   两 AIV 按 k_id 区间切半：vid0 做前半 [k_start, k_mid)，
+            #   vid1 做后半 [k_mid, k_end)。atomic_add 原子保证并发安全。
+            #   每个 AIV 独立 Double-buffer: MTE2_MTE3{2,3} (RAW) / MTE3_MTE2{2,3} (WAR)
+            #   flags 在 per-AIV namespace 内，两个 AIV 用相同 ID 不冲突。
             # ============================================================
             with T.Scope("V"):
                 dk_chunk_0 = T.alloc_ub((1, DQueryIndex), calc_dtype)
                 dk_chunk_1 = T.alloc_ub((1, DQueryIndex), calc_dtype)
 
-                if vid == 0:
-                    for s1_row in T.serial(s1_start, s1_end):
+                # k_id 区间对半分配给两个 AIV
+                k_len = k_end - k_start
+                k_half = k_len // 2
+                my_start = k_start + vid * k_half
+                my_end = k_start + (vid + 1) * k_half if vid == 0 else k_end
+
+                for s1_row in T.serial(s1_start, s1_end):
+                    if my_start < my_end:
                         # Pre-fill WAR: both slots initially writable
                         T.set_flag("mte3", "mte2", 2)
                         T.set_flag("mte3", "mte2", 3)
 
-                        # Prologue: load k_start → slot 0
+                        # Prologue: load my_start → slot 0
                         T.wait_flag("mte3", "mte2", 2)
-                        T.copy(dk_matmul_partial[bz, s1_row, k_start:k_start + 1, 0:DQueryIndex], dk_chunk_0)
+                        T.copy(dk_matmul_partial[bz, s1_row, my_start:my_start + 1, 0:DQueryIndex], dk_chunk_0)
                         T.set_flag("mte2", "mte3", 2)
 
-                        for k_id in T.serial(k_start, k_end):
-                            cur = (k_id - k_start) % 2
-                            nxt = (k_id - k_start + 1) % 2
+                        for k_id in T.serial(my_start, my_end):
+                            cur = (k_id - my_start) % 2
+                            nxt = (k_id - my_start + 1) % 2
 
                             # Compute current slot
                             T.wait_flag("mte2", "mte3", cur + 2)
@@ -830,7 +849,7 @@ def tilelang_grad_kl_loss_single_kernel(
 
                             # Prefetch next iteration (MTE2 load ∥ MTE3 atomic of current)
                             next_k = k_id + 1
-                            if next_k < k_end:
+                            if next_k < my_end:
                                 T.wait_flag("mte3", "mte2", nxt + 2)
                                 if nxt == 0:
                                     T.copy(dk_matmul_partial[bz, s1_row, next_k:next_k + 1, 0:DQueryIndex], dk_chunk_0)
