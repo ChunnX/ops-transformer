@@ -152,20 +152,20 @@ __aicore__ inline void CompressorKernelFullLoad<COMP>::Init(
     tools_.Init(startPos, seqUsed, cuSeqlens);
 
     // 剔除尾部的无效batch
-    for (; constInfo.batchSize > 0; --constInfo.batchSize) {
-        uint32_t bSeqUsed = tools_.GetSeqLength(constInfo.batchSize - 1);
+    for (; constInfo.projectionBatchSize > 0; --constInfo.projectionBatchSize) {
+        uint32_t bSeqUsed = tools_.GetSeqLength(constInfo.projectionBatchSize - 1);
         if (bSeqUsed > 0) {
             break;
         }
     }
 
     // 所有batch的有效序列都为0时, 直接退出
-    if (constInfo.batchSize == 0) {
+    if (constInfo.projectionBatchSize == 0) {
         return;
     }
 
     // 0. 计算最后一个Tc块的起始位置
-    constInfo.bIdxOfLastTc = constInfo.batchSize - 1;
+    constInfo.bIdxOfLastTc = constInfo.projectionBatchSize - 1;
     // 1. 计算head_dim的切分大小, 构建ConstInfo的其他信息
     CalcSplitCoreInfo();
     // 2. 计算循环次数
@@ -191,7 +191,7 @@ __aicore__ inline void CompressorKernelFullLoad<COMP>::Init(
 template <typename COMP>
 __aicore__ inline void CompressorKernelFullLoad<COMP>::InitTilingData() {
     constInfo.cmpRatio = tilingData_->baseParams.cmpRatio;
-    constInfo.batchSize = tilingData_->baseParams.batchSize;
+    constInfo.projectionBatchSize = tilingData_->baseParams.batchSize;
     constInfo.mBaseSize = tilingData_->innerSplitParams.mBaseSize;
     constInfo.dBaseSize = tilingData_->innerSplitParams.dBaseSize;
     constInfo.headDim = tilingData_->baseParams.headDim;
@@ -225,7 +225,7 @@ __aicore__ inline void CompressorKernelFullLoad<COMP>::InitTilingData() {
 template <typename COMP>
 __aicore__ inline void CompressorKernelFullLoad<COMP>::SkipInvalidBatch(BatchInfo &batchInfo)
 {
-    for (; batchInfo.bIdx < constInfo.batchSize; ++batchInfo.bIdx) {
+    for (; batchInfo.bIdx < constInfo.projectionBatchSize; ++batchInfo.bIdx) {
         batchInfo.seqCnt = tools_.GetSeqLength(batchInfo.bIdx);
         if (batchInfo.seqCnt > 0) {
             break;
@@ -237,7 +237,7 @@ __aicore__ inline void CompressorKernelFullLoad<COMP>::SkipInvalidBatch(BatchInf
     } else {
         batchInfo.seqUsedCnt = batchInfo.seqCnt;
     }
-    if (batchInfo.bIdx < constInfo.batchSize) {
+    if (batchInfo.bIdx < constInfo.projectionBatchSize) {
         batchInfo.bStartPos = tools_.GetStartPos(batchInfo.bIdx);
         batchInfo.sIdx = 0;
         batchInfo.headHolderSeq = batchInfo.bStartPos & (constInfo.cmpRatio - 1);
@@ -363,7 +363,7 @@ template <typename COMP>
 __aicore__ inline bool CompressorKernelFullLoad<COMP>::IsNeedExcuteC1(RunInfo info)
 {
     // B超出范围则cube不执行
-    return info.bStart < constInfo.batchSize;
+    return info.bStart < constInfo.projectionBatchSize;
 }
 
 template <typename COMP>
@@ -381,7 +381,7 @@ __aicore__ inline void CompressorKernelFullLoad<COMP>::CalcV1Params(Vec1RunInfo 
     vec1Info.resetResFlag = false;
     vec1Info.c1v1DbIdx = (vec1Loop++ & (constInfo.dbWorkspaceRatio - 1));
     vec1Info.v1v2DbIdx = (vec2Loop & (constInfo.dbWorkspaceRatio - 1));
-    for (uint32_t bIdx = 0; bIdx < constInfo.batchSize; ++bIdx) {
+    for (uint32_t bIdx = 0; bIdx < constInfo.projectionBatchSize; ++bIdx) {
         uint64_t bSeqCnt = tools_.GetSeqLength(bIdx);
         if (bSeqCnt == 0) {
             continue;
@@ -444,7 +444,7 @@ template <typename COMP>
 __aicore__ inline void CompressorKernelFullLoad<COMP>::Process()
 {
     // 所有batch的有效序列都为0时, 直接退出
-    if (constInfo.batchSize == 0) {
+    if (constInfo.projectionBatchSize == 0) {
         return;
     }
     AllocEventID();
