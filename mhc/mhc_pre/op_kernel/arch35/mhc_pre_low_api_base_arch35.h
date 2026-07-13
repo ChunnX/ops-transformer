@@ -8,7 +8,7 @@ namespace MhcPre {
 using namespace AscendC;
 
 constexpr uint32_t MHC_PRE_LOW_API_BLOCK_SIZE = 32;
-constexpr uint32_t MHC_PRE_LOW_API_C0_SIZE = 16;
+constexpr uint32_t MHC_PRE_LOW_API_C0_SIZE = 8;
 constexpr uint32_t MHC_PRE_LOW_API_N4 = 4;
 constexpr uint32_t MHC_PRE_LOW_API_PRE_OFFSET = 0;
 constexpr uint32_t MHC_PRE_LOW_API_POST_OFFSET_N4 = 4;

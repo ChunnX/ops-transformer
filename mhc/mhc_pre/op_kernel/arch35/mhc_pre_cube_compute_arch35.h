@@ -41,6 +41,23 @@ public:
         return bL1BufferID_;
     }
 
+    __aicore__ inline void CopyInA1Nd2Nz(uint64_t m, uint64_t currentK,
+        const AscendC::GlobalTensor<float>& aGlobal, const AscendC::LocalTensor<float>& al1Local)
+    {
+        AscendC::Nd2NzParams nd2nzParam;
+        nd2nzParam.ndNum = 1;
+        nd2nzParam.nValue = m;
+        nd2nzParam.dValue = currentK;
+        nd2nzParam.srcNdMatrixStride = 1;
+        nd2nzParam.srcDValue = currentK;
+        nd2nzParam.dstNzC0Stride = LowApiAlign(m, AscendC::BLOCK_CUBE);
+        nd2nzParam.dstNzNStride = 1;
+        nd2nzParam.dstNzMatrixStride = 1;
+        AscendC::DataCopy(al1Local, aGlobal, nd2nzParam);
+        AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(2);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(2);
+    }
+
     __aicore__ inline void Init()
     {
         uint32_t aL0OneBuffer = 256 * 32;
@@ -58,9 +75,13 @@ public:
         AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(1);
         AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(3);
         AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(4);
+        AscendC::SetFlag<AscendC::HardEvent::FIX_M>(0);
+        AscendC::SetFlag<AscendC::HardEvent::FIX_M>(1);
 
-        AscendC::SetHF32Mode(1);
-        AscendC::SetHF32TransMode(1);
+        if ASCEND_IS_AIC {
+            AscendC::SetHF32Mode(1);
+            AscendC::SetHF32TransMode(1);
+        }
     }
 
     __aicore__ inline void CopyInB1Nd2Nz(uint64_t k, uint64_t currentK, uint64_t baseN,
@@ -74,9 +95,11 @@ public:
         nd2nzParam.ndNum = 1;
         nd2nzParam.nValue = baseN_;
         nd2nzParam.dValue = kL1_;
-        nd2nzParam.srcNdMatrixStride = 0;
+        nd2nzParam.srcNdMatrixStride = 1;
         nd2nzParam.srcDValue = k_;
         nd2nzParam.dstNzC0Stride = LowApiAlign(baseN_, AscendC::BLOCK_CUBE);
+        nd2nzParam.dstNzNStride = 1;
+        nd2nzParam.dstNzMatrixStride = 1;
         AscendC::DataCopy(bl1Local, bGlobal, nd2nzParam);
         AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(bL1BufferID_);
         AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(bL1BufferID_);
@@ -90,6 +113,9 @@ public:
         n_ = n;
         baseM_ = baseM;
         baseK_ = baseK;
+        if (isFirstKL1) {
+            AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(cl0PingPongID_);
+        }
         uint64_t kL1Offset = 0;
         for (uint64_t kb = 0; kb < kL1_; kb += baseK_) {
             bool isLastKL0 = (kb + baseK_) >= kL1_;
@@ -157,6 +183,7 @@ public:
         AscendC::Mmad(cl0PingPongID_ == 0 ? cL0Ping_ : cL0Pong_,
             l0PingPongID_ == 0 ? aL0Ping_ : aL0Pong_,
             l0PingPongID_ == 0 ? bL0Ping_ : bL0Pong_, params);
+        AscendC::PipeBarrier<PIPE_M>();
     }
 
     __aicore__ inline void CopyOut(const AscendC::LocalTensor<float>& dstLocal)
@@ -178,12 +205,35 @@ public:
             cl0PingPongID_ == 0 ? cL0Ping_ : cL0Pong_, fixpipeParams);
         cl0PingPongID_ ^= 1;
     }
+
+    __aicore__ inline void CopyOut(const AscendC::GlobalTensor<float>& dstGlobal, uint32_t dstStride)
+    {
+        AscendC::SetFlag<AscendC::HardEvent::M_FIX>(cl0PingPongID_);
+        AscendC::WaitFlag<AscendC::HardEvent::M_FIX>(cl0PingPongID_);
+        AscendC::DataCopyCO12DstParams copyParams;
+        copyParams.nSize = baseN_;
+        copyParams.mSize = baseM_;
+        copyParams.dstStride = dstStride;
+        copyParams.srcStride = LowApiAlign(baseM_, AscendC::BLOCK_CUBE);
+        copyParams.quantPre = QuantMode_t::NoQuant;
+        copyParams.nz2ndEn = true;
+        copyParams.unitFlag = FINAL_ACCUMULATION;
+        AscendC::SetFixpipeNz2ndFlag(1, 1, 1);
+        AscendC::DataCopy(dstGlobal, cl0PingPongID_ == 0 ? cL0Ping_ : cL0Pong_, copyParams);
+        AscendC::SetFlag<AscendC::HardEvent::FIX_M>(cl0PingPongID_);
+        cl0PingPongID_ ^= 1;
+    }
     __aicore__ inline void End()
     {
         AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(0);
         AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(1);
         AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(3);
         AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(4);
+        AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(0);
+        AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(1);
+        if ASCEND_IS_AIC {
+            AscendC::SetHF32Mode(0);
+        }
     }
 };
 
