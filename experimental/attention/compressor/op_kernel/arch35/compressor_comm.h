@@ -181,7 +181,9 @@ struct ConstInfo {
     uint32_t mCurGroupIdx = 0;
 
     // shape及参数
-    uint32_t batchSize = 0;
+    // Batch upper bound that participates in projection/compression work after
+    // invalid or inactive tail batches are trimmed in kernel init.
+    uint32_t projectionBatchSize = 0;
     uint32_t xCacheUpdateBatchSize = 0;
     uint32_t xCacheReadSize = 0;
     uint32_t hSize = 0;
