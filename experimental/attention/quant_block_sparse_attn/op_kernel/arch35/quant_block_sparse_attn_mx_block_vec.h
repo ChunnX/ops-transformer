@@ -166,18 +166,25 @@ public:
         LocalTensor<uint8_t> attenMaskUb;
         if constexpr (HAS_ATTEN) {
             attenMaskUb = CopyAttenMaskToUb(runInfo, subLoop, s2CalcSize);
-            // int array_x = 64;
-            // int array_y = 64;
-            // int desc_index = 100;
-            // uint32_t array[] = {static_cast<uint32_t>(array_x), static_cast<uint32_t>(array_y)};
-            // AscendC::ShapeInfo shapeinfo(2, array);
-            // AscendC::DumpTensor(attenMaskUb, desc_index, array_x * array_y, shapeinfo);
-            // AscendC::DumpTensor(attenMaskUb[array_x * array_y], desc_index + 1, array_x * array_y, shapeinfo);
-            // AscendC::DumpTensor(attenMaskUb[array_x * array_y * 2], desc_index + 2, array_x * array_y, shapeinfo);
-            // AscendC::DumpTensor(attenMaskUb[array_x * array_y * 3], desc_index + 3, array_x * array_y, shapeinfo);
+            // zyhPrint
+            // if (s2CalcSize != 0U && runInfo.loop == 0U && runInfo.mLoop == 0U && subLoop == 0U &&
+            //     constInfo.subBlockIdx == 0U) {
+            //     uint32_t maskShape[] = {s2CalcSize, VEC_M_BASE};
+            //     AscendC::ShapeInfo maskShapeInfo(2, maskShape);
+            //     AscendC::DumpTensor(attenMaskUb, 100U + subLoop * 10U + constInfo.subBlockIdx,
+            //                         s2CalcSize * VEC_M_BASE, maskShapeInfo);
+            // }
         }
         // 先搬 mask，再等待 C1，以重叠 MTE2 与 BMM1。
         bmm1ResBuf.WaitCrossCore();
+        // zyhPrint
+        // if (s2CalcSize != 0U && runInfo.loop == 0U && runInfo.mLoop == 0U && subLoop == 0U &&
+        //     constInfo.subBlockIdx == 0U) {
+        //     uint32_t bmm1Shape[] = {s2CalcSize, VEC_M_BASE};
+        //     AscendC::ShapeInfo bmm1ShapeInfo(2, bmm1Shape);
+        //     AscendC::DumpTensor(mmRes, 200U + subLoop * 10U + constInfo.subBlockIdx,
+        //                         s2CalcSize * VEC_M_BASE, bmm1ShapeInfo);
+        // }
         constexpr float descaleQK = 1.0f;
         // Q/K scale 已在 C1 随路消费，因此 descaleQK=1。
         if constexpr (USE_DN) {
@@ -200,6 +207,16 @@ public:
             static_assert(USE_DN, "MXFullQuantMode vector currently implements DN VF only; "
                                   "use_dn=false is reserved for future extension");
         }
+        // zyhPrint
+        // if (runInfo.actVecMSize != 0U && runInfo.loop == 0U && runInfo.mLoop == 0U && subLoop == 0U &&
+        //     constInfo.subBlockIdx == 0U) {
+        //     uint32_t softmaxStateShape[] = {1U, runInfo.actVecMSize};
+        //     AscendC::ShapeInfo softmaxStateShapeInfo(2, softmaxStateShape);
+        //     AscendC::DumpTensor(maxUb, 300U + subLoop * 10U + constInfo.subBlockIdx, runInfo.actVecMSize,
+        //                         softmaxStateShapeInfo);
+        //     AscendC::DumpTensor(sumUb, 400U + subLoop * 10U + constInfo.subBlockIdx, runInfo.actVecMSize,
+        //                         softmaxStateShapeInfo);
+        // }
         bmm1ResBuf.SetCrossCore();
         if constexpr (HAS_ATTEN) {
             attenMaskInQue_.template FreeTensor(attenMaskUb);
@@ -236,6 +253,13 @@ public:
         const int64_t vec2CalcSize = static_cast<int64_t>(vecMSize) * dTemplateAlign64;
         LocalTensor<MM_T> vec2ResUb = stage2OutBuf_.template Get<MM_T>();
         LocalTensor<MM_T> mmRes = bmm2ResBuf.template GetTensor<MM_T>();
+        // zyhPrint
+        // if (runInfo.loop == 0U && runInfo.mLoop == 0U && constInfo.subBlockIdx == 0U) {
+        //     uint32_t bmm2Shape[] = {vecMSize, dTemplateAlign64};
+        //     AscendC::ShapeInfo bmm2ShapeInfo(2, bmm2Shape);
+        //     AscendC::DumpTensor(mmRes, 500U + constInfo.subBlockIdx, static_cast<uint32_t>(vec2CalcSize),
+        //                         bmm2ShapeInfo);
+        // }
         WaitFlag<HardEvent::MTE3_V>(mte3ToVId_[0]);
         if (unlikely(runInfo.isFirstS2Loop)) {
             // 首个 S2 tile 直接作为累计值。
