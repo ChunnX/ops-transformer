@@ -1825,7 +1825,7 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
             expertFinishNumTensor_(index) * hCommuSize_ + expertScaleWinOffset));
         expandScalesOutGlobal.SetGlobalBuffer((__gm__ float *)(expandScalesOutGM_) + dstPosition);
         DataCopyExtParams expertScaleCopyInParams{uint16_t(arriveCount), static_cast<uint32_t>(sizeof(float)),
-            hCommuSize_ - sizeof(float), 0U, 0U};
+            static_cast<uint32_t>(hCommuSize_ - sizeof(float)), 0U, 0U};
         DataCopyPadExtParams<float> expertScalePadParams{false, 0U, 0U, 0.0f};
         DataCopyExtParams expertScaleCopyOutParams{
             uint16_t(arriveCount), static_cast<uint32_t>(sizeof(float)), 0U, 0U, 0U};
