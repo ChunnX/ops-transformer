@@ -92,11 +92,9 @@ public:
             pipe_->InitBuffer(inQueue_, BUFFER_NUM_ONE, Std::max(Std::max(inSize, deltaSize), vInnerCastInSize));
             uint64_t outSize = Std::max(Std::max(inSize, deltaSize), vInnerCastOutSize);
             pipe_->InitBuffer(outQueue_, BUFFER_NUM_ONE, outSize);
-            pipe_->InitBuffer(tmpBuff_, (Dv_ * curDk_ * 2 + BLOCK_FLOAT_NUM) * sizeof(float));
+            pipe_->InitBuffer(tmpBuff_, (Dv_ * curDk_ + BLOCK_FLOAT_NUM) * sizeof(float));
             uint32_t buffOffset = 0;
             stateFp32Ub_ = tmpBuff_.GetWithOffset<float>(static_cast<uint32_t>(Dv_ * curDk_), buffOffset);
-            buffOffset += Ceil(Dv_ * curDk_ * sizeof(float), BLOCK_SIZE) * BLOCK_SIZE;
-            undecayedState_ = tmpBuff_.GetWithOffset<float>(static_cast<uint32_t>(Dv_ * curDk_), buffOffset);
             buffOffset += Ceil(Dv_ * curDk_ * sizeof(float), BLOCK_SIZE) * BLOCK_SIZE;
             lastGCum_ = tmpBuff_.GetWithOffset<float>(static_cast<uint32_t>(NUM_ONE), buffOffset);
         } else {
@@ -143,19 +141,16 @@ public:
                             auto stateIn = inQueue_.DeQue<float>();
                             DataCopy(stateFp32Ub_, stateIn, Dv_ * curDk_);
                             inQueue_.FreeTensor(stateIn);
-                            DataCopy(undecayedState_, stateFp32Ub_, Dv_ * curDk_);
                             CalGCumExp(sTP_->gCum[nvId * Sp_ + length]);
                             auto bf16State = outQueue_.AllocTensor<bfloat16_t>();
                             Cast(bf16State, stateFp32Ub_, RoundMode::CAST_RINT, Dv_ * curDk_);
                             outQueue_.EnQue(bf16State);
                             CopyOut<bfloat16_t>(sTP_->curStateBf16[nvId * Dv_ * Dk_], Dv_, Dk_, false, curDk_);
                             PipeBarrier<PIPE_MTE3>();
-                            auto fp32Decayed = outQueue_.AllocTensor<float>();
-                            DataCopy(fp32Decayed, stateFp32Ub_, Dv_ * curDk_);
-                            outQueue_.EnQue(fp32Decayed);
+                            auto fp32Local = outQueue_.AllocTensor<float>();
+                            DataCopy(fp32Local, stateFp32Ub_, Dv_ * curDk_);
+                            outQueue_.EnQue(fp32Local);
                             CopyOut<float>(sTP_->stateOut[nvId * Dv_ * Dk_], Dv_, Dk_, false, curDk_);
-                            PipeBarrier<PIPE_MTE3>();
-                            DataCopy(stateFp32Ub_, undecayedState_, Dv_ * curDk_);
                         }
                         CrossCoreSetFlag<0x2, PIPE_MTE3>(0x3);
                         CrossCoreWaitFlag(0x2);
@@ -423,7 +418,6 @@ private:
     LocalTensor<float> tmpBuffer1_;
     LocalTensor<float> lastGCum_;
     LocalTensor<float> stateFp32Ub_;
-    LocalTensor<float> undecayedState_;
     int64_t Nk_;
     int64_t Nv_;
     int64_t Dk_;
