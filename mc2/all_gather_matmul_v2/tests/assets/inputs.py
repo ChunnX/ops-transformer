@@ -9,13 +9,8 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # ----------------------------------------------------------------------------
-__input__ = {
-    "kernel": {
-        "all_gather_matmul_v2": "all_gather_matmul_v2_inputs"
-    }
-}
+__input__ = {"kernel": {"all_gather_matmul_v2": "all_gather_matmul_v2_inputs"}}
 
-import numpy as np
 
 def all_gather_matmul_v2_inputs(
     x1,
@@ -36,11 +31,11 @@ def all_gather_matmul_v2_inputs(
     is_amax_out: bool = False,
     y_dtype: int = -1,
     comm_mode: str = "ai_cpu",
-    **kwargs
+    **kwargs,
 ):
     """
     AllGatherMatmulV2 inputs validation and adjustment
-    
+
     Args:
         x1: Input tensor 1
         x2: Input tensor 2
@@ -61,12 +56,30 @@ def all_gather_matmul_v2_inputs(
         y_dtype: Output data type
         comm_mode: Communication mode
         **kwargs: Additional arguments
-    
+
     Returns:
         Processed inputs
     """
     if is_trans_b:
         x2 = x2.transpose()
-    
-    return x1, x2, bias, x1_scale, x2_scale, quant_scale, group, is_trans_a, is_trans_b, \
-           gather_index, comm_turn, rank_size, block_size, group_size, is_gather_out, is_amax_out, y_dtype, comm_mode
+
+    return (
+        x1,
+        x2,
+        bias,
+        x1_scale,
+        x2_scale,
+        quant_scale,
+        group,
+        is_trans_a,
+        is_trans_b,
+        gather_index,
+        comm_turn,
+        rank_size,
+        block_size,
+        group_size,
+        is_gather_out,
+        is_amax_out,
+        y_dtype,
+        comm_mode,
+    )
