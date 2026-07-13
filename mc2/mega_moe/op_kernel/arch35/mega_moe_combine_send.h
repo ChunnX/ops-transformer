@@ -61,6 +61,9 @@ __aicore__ inline void CombineTokens(
         uint64_t gmDstOffset = (tokenIdx * params.tilingData->topK + topkIdx) * n + nLoc;
         AscendC::DataCopyPad(gmRemoteD[gmDstOffset],
             l0cOutUbGMM2[tileIdx * Get<N_VALUE>(actualBlockShape)], ub2GmParams);
+        // [CLAUDE-DIAG] 逐写排空跨卡 MTE3: 每核在途远端写从 ≤256 压到 1, 验证大bs卡死是否为在途写累积→流控饱和
+        AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(0);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(0);
     }
 }
 
