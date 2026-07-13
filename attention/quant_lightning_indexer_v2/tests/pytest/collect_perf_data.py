@@ -60,16 +60,30 @@ def collect_and_save_incremental(prof_folder, test_result_path):
         perf_df = perf_df.rename(columns=rename_map)
 
     perf_path = test_result_path.replace(".xlsx", "_perf.xlsx")
+    tmp_path = perf_path + ".tmp.xlsx"
 
     if os.path.exists(perf_path):
         df_perf = pd.read_excel(perf_path)
-        df_perf = df_perf.reindex(range(df_result.shape[0]))
+        # 以 df_result 为基准重建，保留已有 perf 列，追加新行
+        perf_cols = [c for c in df_perf.columns if c not in df_result.columns]
+        df_merged = df_result.copy()
+        for col in perf_cols:
+            df_merged[col] = None
+            for idx in range(min(len(df_result), len(df_perf))):
+                if col in df_perf.columns and idx < len(df_perf):
+                    val = df_perf.at[idx, col]
+                    if not (isinstance(val, float) and pd.isna(val)):
+                        df_merged.at[idx, col] = val
         for col in perf_df.columns:
-            df_perf.loc[last_idx, col] = perf_df.loc[last_idx, col]
-        df_perf.to_excel(perf_path, index=False)
+            if col not in df_merged.columns:
+                df_merged[col] = None
+            df_merged.loc[last_idx, col] = perf_df.loc[last_idx, col]
+        df_merged.to_excel(tmp_path, index=False)
+        os.replace(tmp_path, perf_path)
     else:
         df_result_with_perf = pd.concat([df_result, perf_df], axis=1)
-        df_result_with_perf.to_excel(perf_path, index=False)
+        df_result_with_perf.to_excel(tmp_path, index=False)
+        os.replace(tmp_path, perf_path)
 
     print(f"  [perf] {case_name} Task Duration: {row_data['Task Duration(us)']}us -> {perf_path}")
     return row_data
@@ -172,10 +186,35 @@ def collect_all(test_result_path, is_compare=False, perf_golden_path="perf_golde
             print(f"性能不达标用例: {perf_fail_list}")
 
     new_path = test_result_path.replace(".xlsx", "_perf.xlsx")
+    tmp_path = new_path + ".tmp.xlsx"
     if os.path.exists(new_path):
-        print(f"增量模式已收集性能数据: {new_path}，跳过批量补采")
+        existing = pd.read_excel(new_path)
+        existing = existing.reindex(range(df_b.shape[0]))
+        for col in df_b.columns:
+            for idx in range(df_b.shape[0]):
+                if pd.isna(existing.at[idx, col]):
+                    existing.at[idx, col] = df_b.at[idx, col]
+        op_cols = [c for c in existing.columns if c.startswith("op_") or c == "Task Duration(us)"]
+        filled_count = existing[op_cols].dropna(how='all').shape[0] if op_cols else 0
+        if filled_count >= len(perf_rows):
+            print(f"增量模式已收集 {filled_count}/{len(perf_rows)} 条性能数据，跳过批量补采")
+            return
+        print(f"增量模式仅 {filled_count}/{len(perf_rows)} 条，批量补采覆盖")
+        for col in perf_df.columns:
+            if col in existing.columns:
+                for idx in perf_rows:
+                    if pd.isna(existing.at[idx, col]):
+                        existing.at[idx, col] = perf_df.at[idx, col]
+            else:
+                existing[col] = None
+                for idx in perf_rows:
+                    existing.at[idx, col] = perf_df.at[idx, col]
+        existing.to_excel(tmp_path, index=False)
+        os.replace(tmp_path, new_path)
         return
-    df_b.to_excel(new_path, index=False)
+
+    df_b.to_excel(tmp_path, index=False)
+    os.replace(tmp_path, new_path)
 
     print(f"\n性能数据已保存: {new_path}")
     print(f"共拼接 {len(perf_rows)} 条用例的 op_summary 全字段数据")

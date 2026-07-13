@@ -84,11 +84,10 @@ def qliv2(testcase_files):
         fulfill_percent = 0
         result_return_value = "N/A"
         fulfill_precent_return_value = 0
-        params = [None] * 31
+        params = [None] * 32
 
     row_data = {
         "case_name": Path(testcase_files).stem,
-        "Testcase_Name": Path(testcase_files).stem,
         "batch_size": params[0],
         "q_seq": params[1],
         "k_seq": params[2],
@@ -107,22 +106,23 @@ def qliv2(testcase_files):
         "act_seq_q": params[15],
         "act_seq_k": params[16],
         "cmp_residual_k": params[17],
-        "quant_mode": params[18],
-        "layout_query": params[19],
-        "layout_key": params[20],
-        "sparse_count": params[21],
-        "sparse_mode": params[22],
-        "query_datarange": params[23],
-        "key_datarange": params[24],
-        "weights_datarange": params[25],
-        "q_scale_datarange": params[26],
-        "k_scale_datarange": params[27],
-        "cmp_ratio": params[28],
-        "output_idx_offset": params[29],
+        "max_seqlen_q": params[18],
+        "quant_mode": params[19],
+        "layout_query": params[20],
+        "layout_key": params[21],
+        "sparse_count": params[22],
+        "sparse_mode": params[23],
+        "query_datarange": params[24],
+        "key_datarange": params[25],
+        "weights_datarange": params[26],
+        "q_scale_datarange": params[27],
+        "k_scale_datarange": params[28],
+        "cmp_ratio": params[29],
+        "output_idx_offset": params[31],
         "result": result,
         "fulfill_percent": fulfill_percent,
         "result_return_value": result_return_value,
-        "fulfill_precent_return_value": fulfill_precent_return_value
+        "fulfill_percent_return_value": fulfill_precent_return_value
     }
 
     if result_path.exists():
