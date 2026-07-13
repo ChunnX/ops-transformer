@@ -27,5 +27,17 @@ protected:
 };
 
 } // namespace ops
+
+namespace ge {
+namespace fusion {
+class GraphFuseInspectorUtils {
+public:
+    static bool CanFuse(const std::vector<GNode>& nodesBeforeFuse, AscendString& failedReason)
+        __attribute__((weak));
+    static Status ReportFuse(const std::vector<GNode>& nodesBeforeFuse,
+        const std::vector<GNode>& nodesAfterFuse, CustomPassContext& ctx) __attribute__((weak));
+};
+} // namespace fusion
+} // namespace ge
 #endif // CANN_VERSION_NUM >= GROUPED_MATMUL_GRAPH_FUSION_SUPPORT_VERSION
 #endif // TRANSFORMER_GROUPED_MATMUL_TRANSPOSE_FUSION_PASS_H
