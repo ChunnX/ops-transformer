@@ -6,8 +6,18 @@
 
 - **软件包说明**
 
-  `torch_extension`接口定义于`cann_ops_transformer`包中。更多接口说明及使用示例正在完善中，敬请期待。如有疑问或建议，欢迎通过Issue反馈。
+  调用torch\_extension接口时，请确保已安装CANN Toolkit包、ops-transformer包、Ascend for PyTorch包。
 
+- **调用方式**：
+
+  调用torch\_extension接口时，依赖`cann-ops-transformer`模块，定义在`${INSTALL_DIR}/python/sitepackage/cann-ops-transformer`，\$\{INSTALL\_DIR\}表示CANN安装后文件路径。
+
+  ```python
+  import torch
+  import torch_npu
+  import cann-ops-transformer
+  ```
+  
 - **V版本演进说明**
 
   请注意，部分API存在多个V版本，使用时选择最高V版本即可（高版本API已兼容低版本API的所有能力）。
