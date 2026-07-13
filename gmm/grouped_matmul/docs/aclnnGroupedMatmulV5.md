@@ -11,8 +11,6 @@ abbr {
 
 ---
 
-<a id="1-产品支持情况"></a>
-
 ## 产品支持情况
 
 |产品      | 是否支持 |
@@ -31,8 +29,8 @@ abbr {
 | 术语 | 简要说明 |
 |------|----------|
 | 非量化 | x和weight均为浮点类型直接计算 |
-| 伪量化 | weight低精度存储，通过antiquantScale/Offset反量化后计算 |
 | 全量化 | x和weight均为低精度计算，通过scale还原 |
+| 伪量化 | weight低精度存储，通过antiquantScale/Offset反量化后计算 |
 | A8W4 | A8 表示 Activation 采用 8bit 量化，W4 表示 weight 采用 4bit 量化，同理还有 A8W8、A4W4 |
 | A16W8 | A16 表示 Activation 采用 16bit 非量化，W8 表示 weight 采用 8bit 量化，同理还有 A16W4 |
 | perchannel | 每列独立缩放因子，详见[《量化介绍》](../../../docs/zh/context/量化介绍.md) |
@@ -65,74 +63,78 @@ abbr {
 
 ### 计算公式
 
-#### 非量化场景
+<details>
+<summary>非量化场景</summary>
 
-- **x=FP16/BF16/FLOAT32，weight同dtype，bias=可选**（常规矩阵乘，不涉及任何缩放/偏移）
+$$
+y_i=x_i\times weight_i + bias_i
+$$
 
-  $$y_i = x_i \times weight_i + bias_i$$
+</details>
 
-#### 伪量化场景
+<details>
+<summary>全量化场景</summary>
 
-> weight 以低精度存储，计算时反量化为浮点。
+- **量化场景（静态量化，T-C && T-T量化，无perTokenScaleOptional）：**
+  $$
+    y_i=(x_i\times weight_i) * scale_i + offset_i
+  $$
+  - x为INT8，bias为INT32
+    $$
+      y_i=(x_i\times weight_i + bias_i) * scale_i + offset_i
+    $$
+  - x为INT8，bias为BFLOAT16/FLOAT16/FLOAT32，无offset
+    $$
+      y_i=(x_i\times weight_i) * scale_i + bias_i
+    $$
+- **量化场景（动态量化，T-T && T-C && K-T && K-C量化）：**
+  $$
+   y_i=(x_i\times weight_i) * scale_i * per\_token\_scale_i
+  $$
+  - x为INT8，bias为INT32
+    $$
+      y_i=(x_i\times weight_i + bias_i) * scale_i * per\_token\_scale_i
+    $$
+  - x为INT8，bias为BFLOAT16/FLOAT16/FLOAT32
+    $$
+      y_i=(x_i\times weight_i) * scale_i * per\_token\_scale_i  + bias_i
+    $$
+- **量化场景（动态量化，MX && G-B量化）：**
+  $$
+  y_i[m,n] = \sum_{j=0}^{kLoops-1} ((\sum_{k=0}^{gsK-1} (xSlice_i * weightSlice_i)) * (per\_token\_scale_i[m/gsM, j] * scale_i[j, n/gsN])) + bias_i[n]
+  $$
+  其中，gsM,gsN和gsK分别代表M/N/K轴的量化的block size，$xSlice_i$代表$x_i$第m行长度为gsK的向量，$weightSlice_i$代表$weight_i$第n列长度为gsK的向量，K轴均从j * gsK起始切片，j的取值范围[0, kLoops), kLoops=ceil($K_i$ / gsK)，支持最后的切片长度不足gsK。
 
-- **A16W4/A16W8：x=FP16/BF16，weight=INT4/INT8，bias=可选**（仅支持 x、weight、y 均为单Tensor）
+</details>
 
-  $$y_i = x_i \times (weight_i + antiquant\\_offset_i) \times antiquant\\_scale_i + bias_i$$
+<details>
+<summary>伪量化场景</summary>
 
-- **A8W4 (S8S4)：x=INT8，weight=INT4，bias=必选 (FLOAT32)**（仅支持单Tensor）
+- x为Float16、BFloat16，weight为INT4、INT8（仅支持x、weight、y均为单tensor的场景）。
 
-  $$y_i = ((x_i - 8) \times weight_i \times scale_i + bias_i) \times per\\_token\\_scale_i$$
+  $$
+  y_i=x_i\times (weight_i + antiquant\_offset_i) * antiquant\_scale_i + bias_i
+  $$
 
-  其中 $bias_i = 8 \times weight_i \times scale_i$ 沿K轴规约。
+- x为INT8，weight为INT4（仅支持x、weight、y均为单tensor的场景）。其中$bias$为必选参数，是离线计算的辅助结果，且 $bias_i=8\times weight_i  * scale_i$ ，并沿k轴规约。
 
-#### 全量化场景
+  $$
+  y_i=((x_i - 8) \times weight_i * scale_i+bias_i ) * per\_token\_scale_i
+  $$
 
-#### 静态量化
-
-- **T-C / T-T：x=INT8，weight=INT8，bias=无**（基础公式，无 perTokenScaleOptional）
-
-  $$y_i = (x_i \times weight_i) \times scale_i + offset_i$$
-
-- **T-C / T-T：x=INT8，weight=INT8，bias=INT32**（bias在 scale之前累加）
-
-  $$y_i = (x_i \times weight_i + bias_i) \times scale_i + offset_i$$
-
-- **T-C / T-T：x=INT8，weight=INT8，bias=FP16/BF16/FP32**（无 offset时适用）
-
-  $$y_i = (x_i \times weight_i) \times scale_i + bias_i$$
-
-#### 动态量化
-
-- **T-T / T-C / K-T / K-C：x=INT8，weight=INT8，bias=无**（基础公式）
-
-  $$y_i = (x_i \times weight_i) \times scale_i \times per\\_token\\_scale_i$$
-
-- **T-T / T-C / K-T / K-C：x=INT8，weight=INT8，bias=INT32**（bias在 scale之前累加）
-
-  $$y_i = (x_i \times weight_i + bias_i) \times scale_i \times per\\_token\\_scale_i$$
-
-- **T-T / T-C / K-T / K-C：x=INT8，weight=INT8，bias=FP16/BF16/FP32**（bias在 perTokenScale之后累加）
-
-  $$y_i = (x_i \times weight_i) \times scale_i \times per\\_token\\_scale_i + bias_i$$
-
-#### 特殊 pergroup量化
-
-- **<a id="mx量化"></a>MX：gsM=1，gsN=1，gsK=32**（特殊的 pergroup量化）
-
-  $$y_i[m,n] = \sum_{j=0}^{kLoops-1} \bigg( \Big( \sum_{k=0}^{gsK-1} xSlice_i \times weightSlice_i \Big) \times \big( per\\_token\\_scale_i[m/gsM, j] \times scale_i[j, n/gsN] \big) \bigg) + bias_i[n]$$
-
-- **<a id="gb量化"></a>G-B：gsM=1，gsN=gsK=128**（pergroup-perblock量化）
-
-  $$y_i[m,n] = \sum_{j=0}^{kLoops-1} \bigg( \Big( \sum_{k=0}^{gsK-1} xSlice_i \times weightSlice_i \Big) \times \big( per\\_token\\_scale_i[m/gsM, j] \times scale_i[j, n/gsN] \big) \bigg) + bias_i[n]$$
-
-> 其中 $xSlice_i$ 为 $x_i$ 第 $m$ 行长度为 gsK 的向量，$weightSlice_i$ 为 $weight_i$ 第 $n$ 列长度为 gsK 的向量，$kLoops = \lceil K_i / gsK \rceil$，支持末尾切片长度不足 gsK。
+</details>
 
 ### 版本演进
 
-| 版本变化 | Ascend 950PR/Ascend 950DT | Atlas A3/A2 系列产品 |
-|---------|----------------|----------|
-| V4 → V5 | — | 增加可选参数 `tuningConfigOptional`，数组中第一个值表示各专家处理的 token数预期值，tiling时按该值进行最优切分 |
-| V1 → V4 | 支持分组轴（groupType）；非量化支持 x/weight转置；支持静态量化（T-C/T-T）BFLOAT16/FLOAT16/FLOAT32 输出 + bias；支持动态量化（K-C/K-T/T-T/T-C/MX/G-B）BFLOAT16/FLOAT16/FLOAT32 输出 + bias；支持伪量化 weight为 INT4、FLOAT8_E5M2、FLOAT8_E4M3FN、HIFLOAT8（INT4 支持 perchannel 和 pergroup，其余仅 perchannel） | 支持分组轴（groupType）；非量化支持 x/weight转置；支持 x/weight/y 均为单Tensor 非量化 FLOAT32 输入；支持伪量化 weight=INT4（perchannel/pergroup 模式） |
+#### Ascend 950PR/Ascend 950DT
+
+- V1 → V4：支持分组轴（groupType）；非量化支持 x/weight转置；支持静态量化（T-C/T-T）BFLOAT16/FLOAT16/FLOAT32 输出 + bias；支持动态量化（K-C/K-T/T-T/T-C/MX/G-B）BFLOAT16/FLOAT16/FLOAT32 输出 + bias；支持伪量化 weight为 INT4、FLOAT8_E5M2、FLOAT8_E4M3FN、HIFLOAT8（INT4 支持 perchannel 和 pergroup，其余仅 perchannel）。
+- V4 → V5：无变化。
+
+#### Atlas A3/A2 系列产品
+
+- V1 → V4：支持分组轴（groupType）；非量化支持 x/weight转置；支持 x/weight/y 均为单Tensor 非量化 FLOAT32 输入；支持伪量化 weight=INT4（perchannel/pergroup 模式）。
+- V4 → V5：增加可选参数 `tuningConfigOptional`，数组中第一个值表示各专家处理的 token数预期值，tiling时按该值进行最优切分。
 
 **确定性计算**：GroupedMatmul默认提供确定性实现。
 
@@ -183,7 +185,7 @@ aclnnStatus aclnnGroupedMatmulV5(
 
   | 参数名 | 输入/输出 | 描述 | 使用说明 | 数据类型 | 数据格式 | 维度(shape) | 非连续Tensor |
   |--------|:---:|------|------|----------|:---:|:---|:---:|
-  | x | 输入 | 公式中的输入 $x$ | TensorList长度 [1,128] 或 [1,1024]（A5 非量化） | FLOAT、FLOAT16、INT16<span title="Ascend 950PR/950DT 不支持"><sup>1</sup></span>、INT8、INT4<span title="Ascend 950PR/950DT 不支持"><sup>1</sup></span>、BFLOAT16、FLOAT8_E5M2<span title="Atlas A3/A2 不支持"><sup>2</sup></span>、FLOAT8_E4M3FN<span title="Atlas A3/A2 不支持"><sup>2</sup></span>、HIFLOAT8<span title="Atlas A3/A2 不支持"><sup>2</sup></span>、FLOAT4_E2M1<span title="Atlas A3/A2 不支持"><sup>2</sup></span> | <abbr title="常规连续排布">ND</abbr> | 2~6 | √ |
+  | x | 输入 | 公式中的输入 $x$ | TensorList长度 [1,128] 或 [1,1024] | FLOAT、FLOAT16、INT16<span title="Ascend 950PR/950DT 不支持"><sup>1</sup></span>、INT8、INT4<span title="Ascend 950PR/950DT 不支持"><sup>1</sup></span>、BFLOAT16、FLOAT8_E5M2<span title="Atlas A3/A2 不支持"><sup>2</sup></span>、FLOAT8_E4M3FN<span title="Atlas A3/A2 不支持"><sup>2</sup></span>、HIFLOAT8<span title="Atlas A3/A2 不支持"><sup>2</sup></span>、FLOAT4_E2M1<span title="Atlas A3/A2 不支持"><sup>2</sup></span> | <abbr title="常规连续排布">ND</abbr> | 2~6 | √ |
   | weight | 输入 | 公式中的 $weight$ | TensorList长度 [1,128] 或 [1,1024] | FLOAT、FLOAT16、INT16<span title="Ascend 950PR/950DT 不支持"><sup>1</sup></span>、INT8、INT4、BFLOAT16、FLOAT8_E5M2<span title="Atlas A3/A2 不支持"><sup>2</sup></span>、FLOAT8_E4M3FN<span title="Atlas A3/A2 不支持"><sup>2</sup></span>、HIFLOAT8<span title="Atlas A3/A2 不支持"><sup>2</sup></span>、FLOAT4_E2M1<span title="Atlas A3/A2 不支持"><sup>2</sup></span> | ND/<abbr title="FRACTAL_NZ格式（亲核排布）">NZ</abbr> | 2~3 | √ |
   | biasOptional | 可选输入 | 公式中的 $bias$ | 长度与weight相同 | FLOAT、FLOAT16、INT32、BFLOAT16<span title="Atlas A3/A2 不支持"><sup>2</sup></span> | ND | 1~2 | √ |
   | scaleOptional | 可选输入 | 公式中的 $scale$，代表量化参数中的缩放因子 | 一般情况下，长度与weight相同。综合约束请参见 [约束说明](#7-约束说明) | FLOAT、UINT64、BFLOAT16、FLOAT8_E8M0<span title="Atlas A3/A2 不支持"><sup>2</sup></span>、INT64<span title="Atlas A3/A2 不支持"><sup>2</sup></span> | ND | 1~4 | √ |

@@ -48,8 +48,8 @@ graph LR
 | 术语 | 简要说明 |
 |------|----------|
 | 非量化 | x和 weight 均为浮点类型直接计算 |
-| 伪量化 | weight低精度存储，通过 antiquantScale/Offset反量化后计算 |
 | 全量化 | x和 weight 均为低精度计算，通过 scale还原 |
+| 伪量化 | weight低精度存储，通过 antiquantScale/Offset反量化后计算 |
 | perchannel | 每列独立缩放因子，详见[《量化介绍》](../../docs/zh/context/量化介绍.md) |
 | pertensor | 一个 Tensor统一缩放因子 |
 | pertoken | 每行独立缩放因子 |
