@@ -109,9 +109,9 @@ static ge::graphStatus ValidateInputs(gert::TilingContext* context,
             std::to_string(static_cast<int>(qDesc->GetDataType())).c_str(), "DT_FLOAT8_E4M3FN");
         return ge::GRAPH_FAILED;
     }
-    if (qSeqLensDesc->GetDataType() != ge::DT_INT32) {
+    if (qSeqLensDesc->GetDataType() != ge::DT_INT64) {
         OP_LOGE_WITH_INVALID_INPUT_DTYPE(nodeName, "qSeqLens", 
-            std::to_string(static_cast<int>(qSeqLensDesc->GetDataType())).c_str(), "DT_INT32");
+            std::to_string(static_cast<int>(qSeqLensDesc->GetDataType())).c_str(), "DT_INT64");
         return ge::GRAPH_FAILED;
     }
 
@@ -151,8 +151,8 @@ static ge::graphStatus CalcSequenceInfo(gert::TilingContext* context,
     uint32_t batchU32 = tiling->batch_size;
 
     auto qSeqLensTensor = context->GetInputTensor(1);
-    const int32_t *qSeqLensData = (qSeqLensTensor != nullptr) ?
-        qSeqLensTensor->GetData<int32_t>() : nullptr;
+    const int64_t *qSeqLensData = (qSeqLensTensor != nullptr) ?
+        qSeqLensTensor->GetData<int64_t>() : nullptr;
 
     if (qSeqLensData != nullptr) {
         uint32_t max_Qb = 0;

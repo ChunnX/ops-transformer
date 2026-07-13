@@ -95,7 +95,7 @@ struct StemPrepQTilingUtParam : public StemPrepQHostUtParamBase {
     uint64_t expectTilingKey = 0;
     std::string expectTilingDataHash;
 
-    std::vector<int32_t> qSeqLensData;
+    std::vector<int64_t> qSeqLensData;
 
     StemPrepQCompileInfo compileInfo = {64};
 
@@ -117,7 +117,7 @@ struct StemPrepQTilingUtParam : public StemPrepQHostUtParamBase {
             std::istringstream iss(dataStr);
             std::string token;
             while (std::getline(iss, token, '|')) {
-                qSeqLensData.push_back(std::stoi(token));
+                qSeqLensData.push_back(std::stoll(token));
             }
             if (!qSeqLensData.empty()) {
                 this->qSeqLens = gert::TilingContextPara::TensorDescription(

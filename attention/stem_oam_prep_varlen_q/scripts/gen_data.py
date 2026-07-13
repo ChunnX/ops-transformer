@@ -23,12 +23,12 @@ def stem_oam_prep_varlen_q_input(context: "tbetoolkits.UniversalTestcaseStructur
     batch = q_seq_lens.shape[0]
 
     avg = total_tokens // batch
-    q_seq_lens = np.full(batch, avg, dtype=np.int32)
+    q_seq_lens = np.full(batch, avg, dtype=np.int64)
     remainder = total_tokens - avg * batch
     if remainder > 0:
         q_seq_lens[:remainder] += 1
 
-    cu_seq_lens_q = np.zeros(batch + 1, dtype=np.int32) 
+    cu_seq_lens_q = np.zeros(batch + 1, dtype=np.int64) 
     cu_seq_lens_q[1:] = np.cumsum(q_seq_lens)
 
     if q_scale is None:
