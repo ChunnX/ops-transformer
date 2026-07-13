@@ -20,6 +20,6 @@ const aclTensor *GatherV2(const aclTensor *self, int64_t axis, const aclTensor *
 const aclTensor *GatherV2WithImplMode(const aclTensor *self, int64_t axis, const aclTensor *indices, int64_t implMode,
                                       aclOpExecutor *executor, int batchDims = 0, bool negativeIndexSupport = false);
 
-}
+} // namespace l0op
 
 #endif // OP_API_INC_LEVEL0_OP_GATHER_V2_H_

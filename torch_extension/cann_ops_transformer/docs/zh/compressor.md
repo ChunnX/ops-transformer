@@ -194,7 +194,7 @@ cann_ops_transformer.compressor(
     cache_mode = 1
     head_dim = 512
     cu_seqlens = [0, 1]
-    # ------------- 
+    # -------------
     B = 1
     S = 1
     S_max = 0
@@ -225,7 +225,7 @@ cann_ops_transformer.compressor(
             cu_seqlens = torch.tensor(cu_seqlens).to(torch.int32)
         for i in range(B):
             if start_pos[i] + cu_seqlens[i + 1] - cu_seqlens[i] > S_max:
-                S_max = start_pos[i] + cu_seqlens[i + 1] - cu_seqlens[i] 
+                S_max = start_pos[i] + cu_seqlens[i + 1] - cu_seqlens[i]
     else:
         cu_seqlens = None
         S_max = max(start_pos) + S
@@ -363,7 +363,7 @@ cann_ops_transformer.compressor(
     cache_mode = 1
     head_dim = 512
     cu_seqlens = [0, 1]
-    # ------------- 
+    # -------------
     B = 1
     S = 1
     S_max = 0
@@ -394,7 +394,7 @@ cann_ops_transformer.compressor(
             cu_seqlens = torch.tensor(cu_seqlens).to(torch.int32)
         for i in range(B):
             if start_pos[i] + cu_seqlens[i + 1] - cu_seqlens[i] > S_max:
-                S_max = start_pos[i] + cu_seqlens[i + 1] - cu_seqlens[i] 
+                S_max = start_pos[i] + cu_seqlens[i + 1] - cu_seqlens[i]
     else:
         cu_seqlens = None
         S_max = max(start_pos) + S
@@ -492,7 +492,7 @@ cann_ops_transformer.compressor(
         def __init__(self):
             super(CompressorNetwork, self).__init__()
 
-        def forward(self, x, wkv, wgate, state_cache, ape, cmp_ratio, state_block_table = None, cu_seqlens = None, 
+        def forward(self, x, wkv, wgate, state_cache, ape, cmp_ratio, state_block_table = None, cu_seqlens = None,
                     seqused = None, start_pos = None, coff = 1, cache_mode = 1):
             cmp_kv = (
                 torch.ops.cann_ops_transformer.compressor(
