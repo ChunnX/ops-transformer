@@ -100,7 +100,8 @@ public:
 private:
     __aicore__ inline void PhaseA_CLoop(int64_t idxBs, int64_t lenBs);
     __aicore__ inline void PhaseB_KDim(int64_t idxBs, int64_t lenBs);
-    __aicore__ inline void PhaseD_MatMul();
+    __aicore__ inline void PhaseD_Mm1();
+    __aicore__ inline void PhaseD_Mm2();
     __aicore__ inline void PhaseE_CLoop(int64_t idxBs, int64_t lenBs);
     __aicore__ inline void ReduceBiasAlpha();
     __aicore__ inline void GetAlphaAndBias();
@@ -406,14 +407,13 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::P
         }
         SyncAll();
 
+        CrossCoreSetFlag<AIV_AIC_MODE, PIPE_MTE3>(PIPE_MTE3_FLAG);
+
         if (blockIdx_ == 0) {
             ReduceBiasAlpha();
         }
-        SyncAll();
 
-        CrossCoreSetFlag<AIV_AIC_MODE, PIPE_MTE3>(PIPE_MTE3_FLAG);
         CrossCoreWaitFlag<AIV_AIC_MODE>(PIPE_FIX_FLAG);
-        SyncAll();
 
         if (blockIdx_ < usedCoreNum_) {
             int64_t numLoopBs = Ops::Base::CeilDiv(bsPerCore_, ubFactorBS_);
@@ -428,9 +428,12 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::P
     if ASCEND_IS_AIC {
         CrossCoreWaitFlag<AIV_AIC_MODE>(PIPE_MTE3_FLAG);
         if (blockIdx_ < aicCoreNum_) {
-            PhaseD_MatMul();
+            PhaseD_Mm1();
         }
         CrossCoreSetFlag<AIV_AIC_MODE, PIPE_FIX>(PIPE_FIX_FLAG);
+        if (blockIdx_ < aicCoreNum_) {
+            PhaseD_Mm2();
+        }
     }
 }
 
@@ -766,7 +769,7 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::P
 }
 
 template <typename X_T, typename GRADHIN_T, typename U>
-__aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::PhaseD_MatMul()
+__aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::PhaseD_Mm1()
 {
     int64_t totalSize = td_->b * td_->s;
     int64_t taskNumPerCore = Ops::Base::CeilDiv(totalSize, aicCoreNum_);
@@ -782,7 +785,11 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::P
         mm1_.template IterateAll<false>(gradXFromMatmulWs_[taskOffset * (n_ * c_)], 0);
         mm1_.End();
     }
+}
 
+template <typename X_T, typename GRADHIN_T, typename U>
+__aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::PhaseD_Mm2()
+{
     int64_t totalN = n_ * c_;
     int64_t taskNCount = Ops::Base::CeilDiv(totalN, aicCoreNum_);
     taskNCount = min(taskNCount, CUBE_MAX_N_SIZE);
@@ -821,8 +828,6 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::P
             int64_t cLen = (idxC == cNumPerBS_ - 1) ? cTailPerBS_ : ubFactorCAlignFp32_;
             int64_t ofsCalc = ofsNC + idxC * ubFactorC_;
 
-            // Read xFp32, gradXFromHin, gradXFromMatmul per-BS per-C-slice
-            // WS layout: [B*S, n, c] with row stride c_ per (bs, n)
             int64_t alignUCSlice = Ops::Base::CeilAlign(cLen * uSize_, blockSize_) / uSize_;
             CopyInQue(xQue_, xFp32Ws_[ofsCalc], n_, cLen, (c_ - cLen) * uSize_, alignUCSlice);
             CopyInQue(gradHinQue_, gradXFromHinWs_[ofsCalc], n_, cLen, (c_ - cLen) * uSize_, alignUCSlice);
