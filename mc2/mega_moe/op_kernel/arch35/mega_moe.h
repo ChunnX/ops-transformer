@@ -156,7 +156,10 @@ private:
     static constexpr bool ENABLE_A4W4 = Std::IsSame<Weight1Type, fp4x2_e2m1_t>::value &&
                                             Std::IsSame<QuantOutType, fp4x2_e2m1_t>::value;
     static constexpr int32_t DISPATCH_BUFFER_NUM = 6;
-    static constexpr int32_t UNPERMUTE_BATCH_LEN = 1024;  // k∈[1,8192], topK∈[2,8], 每 token topK×6B
+    static constexpr int32_t UNPERMUTE_BASE_TOPK = 8;
+    static constexpr int32_t UNPERMUTE_BATCH_LEN = 1024;  // 以 UNPERMUTE_BASE_TOPK 为 UB 占用基准
+    static constexpr int32_t DISPATCH_SEND_BATCH_LEN = 12288;  // SendMaskCal 每 batch route item 数
+    static constexpr int32_t DISPATCH_RECV_BATCH_LEN = 12288;  // TripleInfoCalAndDispatch 每 batch route item 数
     LocalTensor<int32_t> topkIndexTensor_;
     LocalTensor<int32_t> sendCntTensor_;            // SendCntCal stride 只读 ws 个 count
     LocalTensor<uint8_t> maskBatchTensor_;          // TripleInfoCalAndDispatch 当前 batch 的 mask 切片
@@ -1182,6 +1185,10 @@ __aicore__ inline int32_t MegaMoe<TemplateMegaMoeTypeFunc>::UnpermuteBuffInit(in
 
     // ── batchLen（后续以模板参数形式传入）──
     int32_t batchLen = UNPERMUTE_BATCH_LEN;
+    if (topK_ > UNPERMUTE_BASE_TOPK) {
+        // 保持 batchLen * topK_ 不超过基准 topK 时的 UB 预算。
+        batchLen = batchLen * UNPERMUTE_BASE_TOPK / topK_;
+    }
     if (batchLen > coreLen) { batchLen = coreLen; }
 
     // ── weight buffer（在 scale 之前，与 master 顺序一致）──
