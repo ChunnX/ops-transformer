@@ -1000,7 +1000,7 @@ __aicore__ inline void FABlockCube<TEMPLATE_ARGS>::IterateBmm1NdL0Split(
             } else {
                 runInfo.keyOffset = this->keyGm.offsetCalculator.GetOffset(
                     coordInfo[runInfo.taskIdMod3].curBIdx, runInfo.n2oIdx,
-                    coordInfo[runInfo.taskIdMod3].s2Coord - constInfo.prefixLoopCount * s2BaseSize, 0);
+                    coordInfo[runInfo.taskIdMod3].s2Coord - constInfo.actualKVPrefixSize, 0);
                 CopyToL1Nd2Nz<INPUT_T>(mm1BTensor, GetKeyGm(runInfo, constInfo)[runInfo.keyOffset], runInfo.s2RealSize,
                                        constInfo.dSize, constInfo.mm1Kb);
             }
@@ -1529,7 +1529,7 @@ __aicore__ inline void FABlockCube<TEMPLATE_ARGS>::IterateBmm1Nd(
             } else {
                 runInfo.keyOffset = this->keyGm.offsetCalculator.GetOffset(
                     coordInfo[runInfo.taskIdMod3].curBIdx, runInfo.n2oIdx,
-                    coordInfo[runInfo.taskIdMod3].s2Coord - constInfo.prefixLoopCount * s2BaseSize, 0);
+                    coordInfo[runInfo.taskIdMod3].s2Coord - constInfo.actualKVPrefixSize, 0);
                 CopyToL1Nd2Nz<INPUT_T>(mm1BTensor, GetKeyGm(runInfo, constInfo)[runInfo.keyOffset], runInfo.s2RealSize,
                                        constInfo.dSize, constInfo.mm1Kb);
             }
@@ -1617,7 +1617,7 @@ __aicore__ inline void FABlockCube<TEMPLATE_ARGS>::IterateBmm1NdL1SplitK(
         } else {
             runInfo.keyOffset = this->keyGm.offsetCalculator.GetOffset(
                 coordInfo[runInfo.taskIdMod3].curBIdx, runInfo.n2oIdx,
-                coordInfo[runInfo.taskIdMod3].s2Coord - constInfo.prefixLoopCount * s2BaseSize, 0);
+                coordInfo[runInfo.taskIdMod3].s2Coord - constInfo.actualKVPrefixSize, 0);
         }
     } else {
         runInfo.keyOffset = this->keyGm.offsetCalculator.GetOffset(
