@@ -188,6 +188,8 @@ public:
 
     __aicore__ inline void CopyOut(const AscendC::LocalTensor<float>& dstLocal)
     {
+        AscendC::SetFlag<AscendC::HardEvent::M_FIX>(cl0PingPongID_);
+        AscendC::WaitFlag<AscendC::HardEvent::M_FIX>(cl0PingPongID_);
         AscendC::FixpipeParamsC310<AscendC::CO2Layout::ROW_MAJOR> fixpipeParams;
         uint64_t c0 = AscendC::AuxGetC0Size<float>();
         fixpipeParams.nSize = LowApiAlign(baseN_, c0);
@@ -203,6 +205,7 @@ public:
         fixpipeParams.params.dstNdStride = 1;
         AscendC::Fixpipe<float, float, AscendC::Impl::CFG_ROW_MAJOR_UB>(dstLocal,
             cl0PingPongID_ == 0 ? cL0Ping_ : cL0Pong_, fixpipeParams);
+        AscendC::SetFlag<AscendC::HardEvent::FIX_M>(cl0PingPongID_);
         cl0PingPongID_ ^= 1;
     }
 
