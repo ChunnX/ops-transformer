@@ -161,6 +161,16 @@ public:
                             CastGmToGm<float, bfloat16_t>(sTP_->vInner[mm_offset1],
                                                           vInnerBf16[mm_offset1],
                                                           curChunkSize_ * Dv_);
+                            if (nvId == 0 && cId == 0) {
+                                DataCopyExtParams dbgExt{1, static_cast<uint32_t>(8 * sizeof(bfloat16_t)), 0, 0, 0};
+                                auto dbgLocal = outQueue_.AllocTensor<bfloat16_t>();
+                                DataCopyPad(dbgLocal, vInnerBf16[mm_offset1], dbgExt);
+                                outQueue_.EnQue(dbgLocal);
+                                PipeBarrier<PIPE_MTE3>();
+                                dbgLocal = outQueue_.DeQue<bfloat16_t>();
+                                DataCopyPad(sTP_->curStateBf16[Dv_ * Dk_], dbgLocal, dbgExt);
+                                outQueue_.FreeTensor(dbgLocal);
+                            }
                         }
                         CrossCoreSetFlag<0x2, PIPE_MTE3>(0x5);
                         CrossCoreWaitFlag(0x4);
