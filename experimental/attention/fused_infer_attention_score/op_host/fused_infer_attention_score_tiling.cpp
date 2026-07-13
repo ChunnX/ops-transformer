@@ -42,13 +42,12 @@ ge::graphStatus TilingFusedInferAttentionScore(gert::TilingContext *context)
 
 FIA_EXTERN_C ge::graphStatus DoOpTilingFusedInferAttentionScore(gert::TilingContext *context)
 {
-    OP_CHECK_IF(context == nullptr,
-        OPS_REPORT_VECTOR_INNER_ERR("FusedInferAttentionScore", "Tiling context is null."),
-        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(context == nullptr, OPS_REPORT_VECTOR_INNER_ERR("FusedInferAttentionScore", "Tiling context is null."),
+                return ge::GRAPH_FAILED);
     auto platformInfoPtr = context->GetPlatformInfo();
     OP_CHECK_IF(platformInfoPtr == nullptr,
-        OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "platformInfoPtr is null"),
-        return ge::GRAPH_FAILED);
+                OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "platformInfoPtr is null"),
+                return ge::GRAPH_FAILED);
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
     if (ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_3510) {
         return TilingFusedInferAttentionScoreV4(context);
@@ -61,10 +60,9 @@ FIA_EXTERN_C ge::graphStatus DoOpTilingFusedInferAttentionScore(gert::TilingCont
 extern "C" {
 __attribute__((visibility("default"))) ge::graphStatus DeviceDoOpTilingIncreFlashAttention(gert::TilingContext *context)
 {
-
 }
-__attribute__((visibility("default"))) ge::graphStatus DeviceDoOpTilingFusedInferAttentionScore(
-    gert::TilingContext *context)
+__attribute__((visibility("default"))) ge::graphStatus
+DeviceDoOpTilingFusedInferAttentionScore(gert::TilingContext *context)
 {
     return DoOpTilingFusedInferAttentionScore(context);
 }

@@ -17,8 +17,6 @@ torch_npu = pytest.importorskip("torch_npu")
 
 import result_compare_method
 import stem_indexer_golden
-import os
-import custom_ops  # 注册 torch.ops.custom.npu_stem_indexer(_metadata)
 from test_stem_indexer_paramset import ENABLED_PARAMS
 
 
@@ -65,15 +63,21 @@ def run_stem_indexer_case(case):
 
     if case["expected_result"] == "FAIL":
         if case["testcase_name"] == "invalid_sparse_indices_shape":
-            pytest.skip("Torch custom op API does not expose output tensor shape injection.")
+            pytest.skip(
+                "Torch custom op API does not expose output tensor shape injection."
+            )
         with pytest.raises(Exception):
             call_stem_indexer(case, inputs)
         return
 
-    expected_indices, expected_seq_len = stem_indexer_golden.stem_indexer_golden(case, inputs)
+    expected_indices, expected_seq_len = stem_indexer_golden.stem_indexer_golden(
+        case, inputs
+    )
     npu_result = call_stem_indexer(case, inputs)
     torch_npu.npu.synchronize()
-    result_compare_method.assert_stem_indexer_result(expected_indices, expected_seq_len, npu_result, case, inputs)
+    result_compare_method.assert_stem_indexer_result(
+        expected_indices, expected_seq_len, npu_result, case, inputs
+    )
 
 
 @pytest.mark.ci

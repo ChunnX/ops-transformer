@@ -17,32 +17,18 @@ namespace l0op {
 
 OP_TYPE_REGISTER(NsaCompressAttentionInfer);
 
-const std::array<const aclTensor *, 2>
-NsaCompressAttentionInfer(const aclTensor *query,
-    const aclTensor *key,
-    const aclTensor *value,
-    const aclTensor *attentionMaskOptional,
-    const aclTensor *blockTableOptional,
-    const aclIntArray *actualQSeqLenOptional,
-    const aclIntArray *actualCmpKvSeqLenOptional,
-    const aclIntArray *actualSelKvSeqLenOptional,
-    const aclTensor *topKMaskOptional,
-    int64_t numHeads,
-    int64_t numKeyValueHeads,
-    int64_t selectBlockSize,
-    int64_t selectBlockCount,
-    int64_t compressBlockSize,
-    int64_t compressBlockStride,
-    double scaleValue,
-    const char *layoutOptional,
-    int64_t pageBlockSize,
-    int64_t sparseMode,
-    aclOpExecutor *executor)
+const std::array<const aclTensor *, 2> NsaCompressAttentionInfer(
+    const aclTensor *query, const aclTensor *key, const aclTensor *value, const aclTensor *attentionMaskOptional,
+    const aclTensor *blockTableOptional, const aclIntArray *actualQSeqLenOptional,
+    const aclIntArray *actualCmpKvSeqLenOptional, const aclIntArray *actualSelKvSeqLenOptional,
+    const aclTensor *topKMaskOptional, int64_t numHeads, int64_t numKeyValueHeads, int64_t selectBlockSize,
+    int64_t selectBlockCount, int64_t compressBlockSize, int64_t compressBlockStride, double scaleValue,
+    const char *layoutOptional, int64_t pageBlockSize, int64_t sparseMode, aclOpExecutor *executor)
 {
     L0_DFX(NsaCompressAttentionInfer, query, key, value, attentionMaskOptional, blockTableOptional,
-        actualQSeqLenOptional, actualCmpKvSeqLenOptional, actualSelKvSeqLenOptional, topKMaskOptional, numHeads,
-        numKeyValueHeads, selectBlockSize, selectBlockCount, compressBlockSize, compressBlockStride, scaleValue,
-        layoutOptional, pageBlockSize, sparseMode);
+           actualQSeqLenOptional, actualCmpKvSeqLenOptional, actualSelKvSeqLenOptional, topKMaskOptional, numHeads,
+           numKeyValueHeads, selectBlockSize, selectBlockCount, compressBlockSize, compressBlockStride, scaleValue,
+           layoutOptional, pageBlockSize, sparseMode);
 
     if (attentionMaskOptional == nullptr) {
         attentionMaskOptional = executor->AllocTensor(DataType::DT_BOOL, Format::FORMAT_ND, Format::FORMAT_ND);

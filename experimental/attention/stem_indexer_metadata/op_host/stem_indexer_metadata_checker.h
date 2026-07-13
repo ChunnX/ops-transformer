@@ -22,15 +22,12 @@ static constexpr int64_t STEM_BLOCK_SIZE_128 = 128;
 
 static bool IsTensorExist(const aclTensor *tensor)
 {
-    return (tensor != nullptr) &&
-            (tensor->GetViewShape().GetDimNum() > 0) &&
-            (tensor->GetViewShape().GetDim(0) > 0) &&
-            (tensor->GetData() != nullptr);
+    return (tensor != nullptr) && (tensor->GetViewShape().GetDimNum() > 0) && (tensor->GetViewShape().GetDim(0) > 0) &&
+           (tensor->GetData() != nullptr);
 }
 
-static aclnnStatus ParamsCheck(const aclTensor *qSeqLens, const aclTensor *kvSeqLens,
-                               int64_t qHeads, int64_t kvHeads, int64_t stemBlockSize, int64_t dimQkflat,
-                               int64_t windowSize)
+static aclnnStatus ParamsCheck(const aclTensor *qSeqLens, const aclTensor *kvSeqLens, int64_t qHeads, int64_t kvHeads,
+                               int64_t stemBlockSize, int64_t dimQkflat, int64_t windowSize)
 {
     if (!IsTensorExist(qSeqLens)) {
         OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "qSeqLens does not exists");
@@ -44,7 +41,7 @@ static aclnnStatus ParamsCheck(const aclTensor *qSeqLens, const aclTensor *kvSeq
 
     if (qSeqLens->GetViewShape().GetDim(0) != kvSeqLens->GetViewShape().GetDim(0)) {
         OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "qSeqLens must have the same length as kvSeqLens, but got %ld and %ld",
-            qSeqLens->GetViewShape().GetDim(0), kvSeqLens->GetViewShape().GetDim(0));
+                qSeqLens->GetViewShape().GetDim(0), kvSeqLens->GetViewShape().GetDim(0));
         return ACLNN_ERR_PARAM_INVALID;
     }
 

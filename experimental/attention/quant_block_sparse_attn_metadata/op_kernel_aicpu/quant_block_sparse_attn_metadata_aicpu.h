@@ -31,36 +31,35 @@ namespace aicpu {
 static const int64_t NUM_128 = 128L;
 
 struct CoreCache {
-    uint64_t blockLimit { 0U };
-    uint64_t block { 0U };
+    uint64_t blockLimit{0U};
+    uint64_t block{0U};
 };
 
 struct AssignContext {
-    uint32_t curCoreIdx { 0U };
-    uint32_t curBIdx { 0U };
-    uint32_t curN1Idx { 0U };
-    uint32_t curBN1Idx { 0U };
-    uint32_t curS1Idx { 0U };
-    uint32_t curS2Idx { 0U };
-    uint64_t unassignedBlock { 0U };
-    uint64_t bN1Block { 0U };
-    CoreCache coreCache {};
-    bool isFinished { false };
+    uint32_t curCoreIdx{0U};
+    uint32_t curBIdx{0U};
+    uint32_t curN1Idx{0U};
+    uint32_t curBN1Idx{0U};
+    uint32_t curS1Idx{0U};
+    uint32_t curS2Idx{0U};
+    uint64_t unassignedBlock{0U};
+    uint64_t bN1Block{0U};
+    CoreCache coreCache{};
+    bool isFinished{false};
 };
 
 struct SplitResult {
-    uint32_t usedCoreNum { 0U };
-    uint64_t maxBlock { 0U };
-    std::vector<uint32_t> bN1End {};
-    std::vector<uint32_t> s1End {};
-    std::vector<uint32_t> s2End {};
-    std::vector<uint32_t> firstFdDataWorkspaceIdx {};
+    uint32_t usedCoreNum{0U};
+    uint64_t maxBlock{0U};
+    std::vector<uint32_t> bN1End{};
+    std::vector<uint32_t> s1End{};
+    std::vector<uint32_t> s2End{};
+    std::vector<uint32_t> firstFdDataWorkspaceIdx{};
 
     explicit SplitResult(uint32_t aicNum)
-        : bN1End(aicNum),
-          s1End(aicNum),
-          s2End(aicNum),
-          firstFdDataWorkspaceIdx(aicNum) {}
+        : bN1End(aicNum), s1End(aicNum), s2End(aicNum), firstFdDataWorkspaceIdx(aicNum)
+    {
+    }
 };
 
 class QuantBlockSparseAttnMetadataCpuKernel : public CpuKernel {

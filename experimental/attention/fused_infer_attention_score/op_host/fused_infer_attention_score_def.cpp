@@ -45,7 +45,7 @@ public:
             .AutoContiguous();
         this->Input("atten_mask")
             .ParamType(OPTIONAL)
-            .DataType({ge::DT_FLOAT16,  ge::DT_BOOL})
+            .DataType({ge::DT_FLOAT16, ge::DT_BOOL})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("actual_seq_lengths")
@@ -190,7 +190,7 @@ public:
         this->Output("softmax_lse").ParamType(REQUIRED).DataTypeList({ge::DT_FLOAT}).FormatList({ge::FORMAT_ND});
         this->Attr("num_heads").AttrType(REQUIRED).Int(1);
         this->Attr("scale").AttrType(OPTIONAL).Float(1.0);
-        this->Attr("pre_tokens").AttrType(OPTIONAL).Int(2147483647); // 2147483647: Maximum value of int32_t.
+        this->Attr("pre_tokens").AttrType(OPTIONAL).Int(2147483647);  // 2147483647: Maximum value of int32_t.
         this->Attr("next_tokens").AttrType(OPTIONAL).Int(2147483647); // 2147483647: Maximum value of int32_t.
         this->Attr("input_layout").AttrType(OPTIONAL).String("BSH");
         this->Attr("num_key_value_heads").AttrType(OPTIONAL).Int(0);

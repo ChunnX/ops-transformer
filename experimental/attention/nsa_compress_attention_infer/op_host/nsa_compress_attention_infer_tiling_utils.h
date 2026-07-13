@@ -70,6 +70,6 @@ constexpr uint32_t IMP_SCORE_PARAM_ROW = 128;
 constexpr int64_t MAX_ACTUALQSEQLEN = 4;
 constexpr int64_t MIN_ACTUALQSEQLEN = 1;
 
-}  // namespace optiling
+} // namespace optiling
 
-#endif  // NSA_COMPRESS_ATTENTION_INFER_TILING_UTILS_H
+#endif // NSA_COMPRESS_ATTENTION_INFER_TILING_UTILS_H

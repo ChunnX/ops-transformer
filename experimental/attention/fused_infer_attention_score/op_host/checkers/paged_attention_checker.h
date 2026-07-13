@@ -25,8 +25,10 @@ namespace optiling {
 
 class PagedAttentionChecker : public BaseChecker {
 public:
-    PagedAttentionChecker(bool enableNonQuant, bool enableFullQuant, bool enableAntiQuant) :
-        BaseChecker(enableNonQuant, enableFullQuant, enableAntiQuant) {}
+    PagedAttentionChecker(bool enableNonQuant, bool enableFullQuant, bool enableAntiQuant)
+        : BaseChecker(enableNonQuant, enableFullQuant, enableAntiQuant)
+    {
+    }
     ~PagedAttentionChecker() override = default;
 
     ge::graphStatus CheckSinglePara(const FiaTilingInfo &fiaInfo) override;
@@ -55,7 +57,7 @@ private:
     ge::graphStatus CheckKVLayout(const FiaTilingInfo &fiaInfo);
 
     ge::graphStatus CheckPACacheShape(const FiaTilingInfo &fiaInfo, const gert::Shape tempShape,
-        const std::string& inputName);
+                                      const std::string &inputName);
     ge::graphStatus CheckFeatureQueryS(const FiaTilingInfo &fiaInfo);
 };
 

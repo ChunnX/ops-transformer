@@ -27,35 +27,35 @@ constexpr size_t IN_WEIGHT = 1;
 constexpr size_t OUT_Y = 0;
 constexpr size_t ATTR_TRANSPOSE_WEIGHT = 0;
 constexpr int64_t SPLIT_NUM = 2;
-}  // namespace
+} // namespace
 
-static ge::graphStatus InferShapeMatmulSwiglu(gert::InferShapeContext* context)
+static ge::graphStatus InferShapeMatmulSwiglu(gert::InferShapeContext *context)
 {
     OP_LOGD(context->GetNodeName(), "Begin InferShapeMatmulSwiglu");
 
-    const gert::Shape* xShape = context->GetInputShape(IN_X);
+    const gert::Shape *xShape = context->GetInputShape(IN_X);
     OP_CHECK_NULL_WITH_CONTEXT(context, xShape);
-    const gert::Shape* wShape = context->GetInputShape(IN_WEIGHT);
+    const gert::Shape *wShape = context->GetInputShape(IN_WEIGHT);
     OP_CHECK_NULL_WITH_CONTEXT(context, wShape);
-    gert::Shape* yShape = context->GetOutputShape(OUT_Y);
+    gert::Shape *yShape = context->GetOutputShape(OUT_Y);
     OP_CHECK_NULL_WITH_CONTEXT(context, yShape);
 
     const auto attrs = context->GetAttrs();
-    const bool* transW = (attrs == nullptr) ? nullptr : attrs->GetAttrPointer<bool>(ATTR_TRANSPOSE_WEIGHT);
+    const bool *transW = (attrs == nullptr) ? nullptr : attrs->GetAttrPointer<bool>(ATTR_TRANSPOSE_WEIGHT);
     const bool transposeWeight = (transW == nullptr) ? false : *transW;
 
     const size_t xDimNum = xShape->GetDimNum();
     const size_t wDimNum = wShape->GetDimNum();
-    OP_CHECK_IF(xDimNum < 2 || wDimNum != 2,
-        OP_LOGE(context, "MatmulSwiglu: x dim must be >=2 and weight dim must be 2, got x=%zu w=%zu",
-                xDimNum, wDimNum),
+    OP_CHECK_IF(
+        xDimNum < 2 || wDimNum != 2,
+        OP_LOGE(context, "MatmulSwiglu: x dim must be >=2 and weight dim must be 2, got x=%zu w=%zu", xDimNum, wDimNum),
         return ge::GRAPH_FAILED);
 
     // weight 为 [K, 2N] (默认) 或 [2N, K] (transpose)
     const int64_t twoN = transposeWeight ? wShape->GetDim(0) : wShape->GetDim(1);
     OP_CHECK_IF(twoN > 0 && twoN % SPLIT_NUM != 0,
-        OP_LOGE(context, "MatmulSwiglu: weight 2N dim [%ld] must be divisible by 2", twoN),
-        return ge::GRAPH_FAILED);
+                OP_LOGE(context, "MatmulSwiglu: weight 2N dim [%ld] must be divisible by 2", twoN),
+                return ge::GRAPH_FAILED);
     const int64_t n = (twoN < 0) ? -1 : twoN / SPLIT_NUM;
 
     // y 与 x 同 rank, 最后一维替换为 N, 其余沿用 x
@@ -69,14 +69,12 @@ static ge::graphStatus InferShapeMatmulSwiglu(gert::InferShapeContext* context)
     return GRAPH_SUCCESS;
 }
 
-static ge::graphStatus InferDataTypeMatmulSwiglu(gert::InferDataTypeContext* context)
+static ge::graphStatus InferDataTypeMatmulSwiglu(gert::InferDataTypeContext *context)
 {
     const ge::DataType dtype = context->GetInputDataType(IN_X);
     context->SetOutputDataType(OUT_Y, dtype);
     return GRAPH_SUCCESS;
 }
 
-IMPL_OP_INFERSHAPE(MatmulSwiglu)
-    .InferShape(InferShapeMatmulSwiglu)
-    .InferDataType(InferDataTypeMatmulSwiglu);
-}  // namespace ops
+IMPL_OP_INFERSHAPE(MatmulSwiglu).InferShape(InferShapeMatmulSwiglu).InferDataType(InferDataTypeMatmulSwiglu);
+} // namespace ops

@@ -38,11 +38,11 @@
 using namespace std;
 
 extern "C" __global__ __aicore__ void matmul_swiglu(GM_ADDR x, GM_ADDR weight, GM_ADDR bias, GM_ADDR y,
-                                                       GM_ADDR workspace, GM_ADDR tiling);
+                                                    GM_ADDR workspace, GM_ADDR tiling);
 
 namespace {
 // 手填单边 [M,N,K] 的 TCubeTiling(单块, base 覆盖整个 shape)。字段参照 mat_mul_v3 UT。
-void FillCubeTiling(TCubeTiling& t, int64_t M, int64_t N, int64_t K)
+void FillCubeTiling(TCubeTiling &t, int64_t M, int64_t N, int64_t K)
 {
     t.usedCoreNum = 1;
     t.M = static_cast<int32_t>(M);
@@ -87,15 +87,15 @@ void RunKernelSmoke(int64_t M, int64_t K, int64_t N)
     const size_t yBytes = static_cast<size_t>(M * N) * sizeof(half);
 
     AscendC::SetKernelMode(KernelMode::MIX_MODE);
-    uint8_t* xGM = (uint8_t*)AscendC::GmAlloc(xBytes);
-    uint8_t* wGM = (uint8_t*)AscendC::GmAlloc(wBytes);
-    uint8_t* biasGM = (uint8_t*)AscendC::GmAlloc(twoN * sizeof(float));  // 无 bias, 占位
-    uint8_t* yGM = (uint8_t*)AscendC::GmAlloc(yBytes);
-    uint8_t* workspace = (uint8_t*)AscendC::GmAlloc(16 * 1024 * 1024);
-    uint8_t* tiling = (uint8_t*)AscendC::GmAlloc(sizeof(optiling::MatmulSwigluTilingData));
+    uint8_t *xGM = (uint8_t *)AscendC::GmAlloc(xBytes);
+    uint8_t *wGM = (uint8_t *)AscendC::GmAlloc(wBytes);
+    uint8_t *biasGM = (uint8_t *)AscendC::GmAlloc(twoN * sizeof(float)); // 无 bias, 占位
+    uint8_t *yGM = (uint8_t *)AscendC::GmAlloc(yBytes);
+    uint8_t *workspace = (uint8_t *)AscendC::GmAlloc(16 * 1024 * 1024);
+    uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(sizeof(optiling::MatmulSwigluTilingData));
 
-    half* xh = reinterpret_cast<half*>(xGM);
-    half* wh = reinterpret_cast<half*>(wGM);
+    half *xh = reinterpret_cast<half *>(xGM);
+    half *wh = reinterpret_cast<half *>(wGM);
     for (int i = 0; i < static_cast<int>(M * K); ++i) {
         xh[i] = static_cast<half>(static_cast<float>((i % 7) - 3) * 0.1f);
     }
@@ -105,28 +105,34 @@ void RunKernelSmoke(int64_t M, int64_t K, int64_t N)
     memset(biasGM, 0, twoN * sizeof(float));
     memset(yGM, 0, yBytes);
 
-    auto* td = reinterpret_cast<optiling::MatmulSwigluTilingData*>(tiling);
+    auto *td = reinterpret_cast<optiling::MatmulSwigluTilingData *>(tiling);
     memset(td, 0, sizeof(optiling::MatmulSwigluTilingData));
     td->hasBias = 0;
-    td->tileN = static_cast<uint32_t>(N);  // 小 N: 整行不切分。transpose 经 TilingKey(默认 0=非转置)
+    td->tileN = static_cast<uint32_t>(N); // 小 N: 整行不切分。transpose 经 TilingKey(默认 0=非转置)
     // m/k/2N 由 kernel 从 mmTiling 派生, 故 mmTiling.N 需为 2N(matmul 输出宽度)
     FillCubeTiling(td->mmTiling, M, twoN, K);
 
     ICPU_RUN_KF(matmul_swiglu, 1, xGM, wGM, biasGM, yGM, workspace, tiling);
 
-    AscendC::GmFree((void*)xGM);
-    AscendC::GmFree((void*)wGM);
-    AscendC::GmFree((void*)biasGM);
-    AscendC::GmFree((void*)yGM);
-    AscendC::GmFree((void*)workspace);
-    AscendC::GmFree((void*)tiling);
+    AscendC::GmFree((void *)xGM);
+    AscendC::GmFree((void *)wGM);
+    AscendC::GmFree((void *)biasGM);
+    AscendC::GmFree((void *)yGM);
+    AscendC::GmFree((void *)workspace);
+    AscendC::GmFree((void *)tiling);
 }
-}  // namespace
+} // namespace
 
 class matmul_swiglu_kernel_run : public testing::Test {
 protected:
-    static void SetUpTestCase() { cout << "matmul_swiglu_kernel_run SetUp\n" << endl; }
-    static void TearDownTestCase() { cout << "matmul_swiglu_kernel_run TearDown\n" << endl; }
+    static void SetUpTestCase()
+    {
+        cout << "matmul_swiglu_kernel_run SetUp\n" << endl;
+    }
+    static void TearDownTestCase()
+    {
+        cout << "matmul_swiglu_kernel_run TearDown\n" << endl;
+    }
 };
 
 // packed weight, 无 bias, 单块, fp16: 真跑 kernel 路径, 不崩溃即通过。

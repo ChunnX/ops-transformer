@@ -23,8 +23,8 @@
 
 namespace optiling {
 using std::map;
-using std::string;
 using std::pair;
+using std::string;
 using namespace ge;
 using namespace AscendC;
 
@@ -238,4 +238,4 @@ ge::graphStatus FIAChecker::Process(const FiaTilingInfo &fiaInfo)
     return ge::GRAPH_SUCCESS;
 }
 
-}  // namespace optiling
+} // namespace optiling

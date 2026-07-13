@@ -15,19 +15,16 @@
 
 namespace Catlass::Epilogue::Block {
 
-template <
-    class DispatchPolicy,
-    class... Args
->
+template <class DispatchPolicy, class... Args>
 class BlockEpilogue {
     static_assert(DEPENDENT_FALSE<DispatchPolicy>, "Could not find an epilogue specialization");
 };
 
-}  // namespace Catlass::Epilogue::Block
+} // namespace Catlass::Epilogue::Block
 
 #include "block_epilogue_mla_softmax.hpp"
 #include "block_epilogue_mla_rescal_o.hpp"
 #include "block_epilogue_mla_fd_rescal_o.hpp"
 #include "block_epilogue_mla_tp1_softmax.hpp"
 #include "block_epilogue_mla_tp1_rescal_o.hpp"
-#endif  // CATLASS_EPILOGUE_BLOCK_BLOCK_EPILOGUE_HPP
+#endif // CATLASS_EPILOGUE_BLOCK_BLOCK_EPILOGUE_HPP

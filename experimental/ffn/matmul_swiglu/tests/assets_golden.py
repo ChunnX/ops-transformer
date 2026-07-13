@@ -2,8 +2,10 @@
 # MatmulSwiglu golden reference (numpy)
 import numpy as np
 
+
 def silu(x):
     return x / (1.0 + np.exp(-x))
+
 
 def matmul_swiglu_golden(x, weight, bias=None, transpose_weight=False):
     """
@@ -13,7 +15,7 @@ def matmul_swiglu_golden(x, weight, bias=None, transpose_weight=False):
     return y: [M, N], y = SiLU(gate) * up, [gate|up] = x@weight (+bias)
     """
     w = weight.T if transpose_weight else weight
-    mm = x.astype(np.float32) @ w.astype(np.float32)   # [M, 2N], fp32 accumulate
+    mm = x.astype(np.float32) @ w.astype(np.float32)  # [M, 2N], fp32 accumulate
     if bias is not None:
         mm = mm + bias.astype(np.float32)
     two_n = mm.shape[-1]
@@ -23,6 +25,7 @@ def matmul_swiglu_golden(x, weight, bias=None, transpose_weight=False):
     y = silu(gate) * up
     return y
 
+
 def gen_data(M=32, K=128, N=64, dtype=np.float16, seed=0, with_bias=False):
     rng = np.random.default_rng(seed)
     x = rng.standard_normal((M, K)).astype(dtype)
@@ -30,6 +33,7 @@ def gen_data(M=32, K=128, N=64, dtype=np.float16, seed=0, with_bias=False):
     b = rng.standard_normal((2 * N,)).astype(dtype) if with_bias else None
     y = matmul_swiglu_golden(x, w, b).astype(dtype)
     return x, w, b, y
+
 
 if __name__ == "__main__":
     # 自检: 与"打包权重一次GEMM + swi_glu(dim=-1)"基线等价

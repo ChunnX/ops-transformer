@@ -20,7 +20,7 @@ namespace ops {
 
 class MatmulSwiglu : public OpDef {
 public:
-    explicit MatmulSwiglu(const char* name) : OpDef(name)
+    explicit MatmulSwiglu(const char *name) : OpDef(name)
     {
         // 输入 x: [M, K]
         this->Input("x")
@@ -52,9 +52,7 @@ public:
             .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
         // 属性: weight 是否转置
-        this->Attr("transpose_weight")
-            .AttrType(OPTIONAL)
-            .Bool(false);
+        this->Attr("transpose_weight").AttrType(OPTIONAL).Bool(false);
 
         // AI Core 编译配置
         OpAICoreConfig aicoreConfig;
@@ -64,7 +62,7 @@ public:
             .DynamicShapeSupportFlag(true)
             .NeedCheckSupportFlag(false)
             .PrecisionReduceFlag(true)
-            .ExtendCfgInfo("opFile.value", "matmul_swiglu");  // kernel 入口文件名
+            .ExtendCfgInfo("opFile.value", "matmul_swiglu"); // kernel 入口文件名
 
         this->AICore().AddConfig("ascend910b", aicoreConfig);
         this->AICore().AddConfig("ascend910_93", aicoreConfig);
@@ -72,4 +70,4 @@ public:
 };
 
 OP_ADD(MatmulSwiglu);
-}  // namespace ops
+} // namespace ops

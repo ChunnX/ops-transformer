@@ -32,12 +32,8 @@
 using namespace op;
 
 namespace Ops::NN {
-const aclTensor* ExecMmOp(
-    const aclTensor* self,
-    const aclTensor* mat2,
-    int8_t cubeMathType,
-    aclOpExecutor* executor);
-}  // namespace Ops::NN
+const aclTensor *ExecMmOp(const aclTensor *self, const aclTensor *mat2, int8_t cubeMathType, aclOpExecutor *executor);
+} // namespace Ops::NN
 
 namespace l0op {
 
@@ -52,7 +48,7 @@ op::Shape Make2DShape(int64_t dim0, int64_t dim1)
     return shape;
 }
 
-int64_t FlattenLeadingDims(const op::Shape& shape)
+int64_t FlattenLeadingDims(const op::Shape &shape)
 {
     int64_t rows = 1;
     for (size_t i = 0; i + 1 < shape.GetDimNum(); ++i) {
@@ -72,63 +68,40 @@ int64_t MakeStageAttr(int64_t stage, op::DataType dtype)
     return stage;
 }
 
-const aclTensor* AddSelfKernelStage(
-    const aclTensor* x,
-    const aclTensor* weight,
-    const aclTensor* auxWeight,
-    aclTensor* out,
-    int64_t stage,
-    aclOpExecutor* executor)
+const aclTensor *AddSelfKernelStage(const aclTensor *x, const aclTensor *weight, const aclTensor *auxWeight,
+                                    aclTensor *out, int64_t stage, aclOpExecutor *executor)
 {
     if (out == nullptr) {
         OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "SwigluGatedMlp stage output is null.");
         return nullptr;
     }
 
-    auto ret = INFER_SHAPE(
-        SwigluGatedMlp,
-        OP_INPUT(x, weight, auxWeight),
-        OP_OUTPUT(out),
-        OP_ATTR(stage));
+    auto ret = INFER_SHAPE(SwigluGatedMlp, OP_INPUT(x, weight, auxWeight), OP_OUTPUT(out), OP_ATTR(stage));
     if (ret != ACLNN_SUCCESS) {
-        OP_LOGE(ACLNN_ERR_INNER_INFERSHAPE_ERROR, "SwigluGatedMlp stage infer failed, stage=%ld ret=%d.",
-                stage, ret);
+        OP_LOGE(ACLNN_ERR_INNER_INFERSHAPE_ERROR, "SwigluGatedMlp stage infer failed, stage=%ld ret=%d.", stage, ret);
         return nullptr;
     }
 
-    ret = ADD_TO_LAUNCHER_LIST_AICORE(
-        SwigluGatedMlp,
-        OP_INPUT(x, weight, auxWeight),
-        OP_OUTPUT(out),
-        OP_ATTR(stage));
-    OP_CHECK_ADD_TO_LAUNCHER_LIST_AICORE(
-        ret != ACLNN_SUCCESS, return nullptr, "SwigluGatedMlp stage add to launcher list failed.");
+    ret = ADD_TO_LAUNCHER_LIST_AICORE(SwigluGatedMlp, OP_INPUT(x, weight, auxWeight), OP_OUTPUT(out), OP_ATTR(stage));
+    OP_CHECK_ADD_TO_LAUNCHER_LIST_AICORE(ret != ACLNN_SUCCESS, return nullptr,
+                                         "SwigluGatedMlp stage add to launcher list failed.");
     return out;
 }
 
-const aclTensor* AddSwigluStage(
-    const aclTensor* gateUp,
-    const aclTensor* gateUpWeight,
-    const aclTensor* downWeight,
-    aclTensor* hidden,
-    op::DataType dtype,
-    aclOpExecutor* executor)
+const aclTensor *AddSwigluStage(const aclTensor *gateUp, const aclTensor *gateUpWeight, const aclTensor *downWeight,
+                                aclTensor *hidden, op::DataType dtype, aclOpExecutor *executor)
 {
-    return AddSelfKernelStage(
-        gateUp, gateUpWeight, downWeight, hidden, MakeStageAttr(WG_MLP_STAGE_SWIGLU, dtype), executor);
+    return AddSelfKernelStage(gateUp, gateUpWeight, downWeight, hidden, MakeStageAttr(WG_MLP_STAGE_SWIGLU, dtype),
+                              executor);
 }
-}  // namespace
+} // namespace
 
-const aclTensor* SwigluGatedMlp(
-    const aclTensor* x,
-    const aclTensor* gateUpWeight,
-    const aclTensor* downWeight,
-    int64_t cubeMathType,
-    aclOpExecutor* executor)
+const aclTensor *SwigluGatedMlp(const aclTensor *x, const aclTensor *gateUpWeight, const aclTensor *downWeight,
+                                int64_t cubeMathType, aclOpExecutor *executor)
 {
     L0_DFX(SwigluGatedMlp, x, gateUpWeight, downWeight, cubeMathType);
-    const auto& xShape = x->GetViewShape();
-    const auto& gateUpShape = gateUpWeight->GetViewShape();
+    const auto &xShape = x->GetViewShape();
+    const auto &gateUpShape = gateUpWeight->GetViewShape();
     const int64_t rows = FlattenLeadingDims(xShape);
     const int64_t hiddenSize = xShape.GetDim(xShape.GetDimNum() - 1);
     const int64_t gateUpCols = gateUpShape.GetDim(1);
@@ -142,7 +115,7 @@ const aclTensor* SwigluGatedMlp(
     }
 
     const auto matmulCubeMathType = static_cast<int8_t>(cubeMathType);
-    const aclTensor* gateUp = Ops::NN::ExecMmOp(x2d, gateUpWeight, matmulCubeMathType, executor);
+    const aclTensor *gateUp = Ops::NN::ExecMmOp(x2d, gateUpWeight, matmulCubeMathType, executor);
     if (gateUp == nullptr) {
         OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "SwigluGatedMlp ExecMmOp MM1 failed.");
         return nullptr;
@@ -152,7 +125,7 @@ const aclTensor* SwigluGatedMlp(
         return nullptr;
     }
 
-    const aclTensor* nativeOut = Ops::NN::ExecMmOp(hidden, downWeight, matmulCubeMathType, executor);
+    const aclTensor *nativeOut = Ops::NN::ExecMmOp(hidden, downWeight, matmulCubeMathType, executor);
     if (nativeOut == nullptr) {
         OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "SwigluGatedMlp ExecMmOp MM2 failed.");
         return nullptr;
@@ -161,4 +134,4 @@ const aclTensor* SwigluGatedMlp(
     return nativeOut;
 }
 
-}  // namespace l0op
+} // namespace l0op

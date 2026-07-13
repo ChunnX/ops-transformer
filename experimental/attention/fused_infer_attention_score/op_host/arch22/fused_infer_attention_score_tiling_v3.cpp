@@ -50,22 +50,21 @@ bool CheckSpecConditions(const gert::TilingContext *context)
     int32_t headNum = *(attrs->GetAttrPointer<int32_t>(ATTR_N_INDEX));
     int32_t kvHeadNum = *(attrs->GetAttrPointer<int32_t>(ATTR_NUM_KV_HEADS_INDEX));
     int32_t innerPrecise = *(attrs->GetAttrPointer<int32_t>(ATTR_INNER_PRECISE_INDEX));
-    
+
     bool isLayoutSupported = (inputLayoutStr == "TND") ? true : false;
     bool isRopeSplitMla = (qRope != nullptr) && (kRope != nullptr);
-    
+
     bool isMha = (kvHeadNum == 0) || (headNum == kvHeadNum);
-    bool mhaConditions = isMha  && (qDataType == ge::DT_FLOAT16) && (innerPrecise == 1);
+    bool mhaConditions = isMha && (qDataType == ge::DT_FLOAT16) && (innerPrecise == 1);
     bool nonMhaConditions = !isMha && (innerPrecise == 0);
     bool specConditionFlag = false;
 
     if (isLayoutSupported && !isRopeSplitMla && (nonMhaConditions || mhaConditions)) {
         int64_t tempQD = tempQ->GetStorageShape().GetDim(DIM_2);
-        
+
         int64_t tempKD = tempK->GetStorageShape().GetDim(DIM_2);
         int64_t tempVD = tempV->GetStorageShape().GetDim(DIM_2);
-        bool isFAIDSize = (tempQD <= 256 && tempKD <= 256 && tempVD <= 256) &&
-                (tempQD == tempKD && tempQD == tempVD);
+        bool isFAIDSize = (tempQD <= 256 && tempKD <= 256 && tempVD <= 256) && (tempQD == tempKD && tempQD == tempVD);
         if (isFAIDSize) {
             specConditionFlag = true;
         }
@@ -75,8 +74,7 @@ bool CheckSpecConditions(const gert::TilingContext *context)
 
 bool RouteToFia(gert::TilingContext *context)
 {
-    if ((context == nullptr) || context->GetAttrs() == nullptr ||
-        (context->GetInputDesc(QUERY_INDEX) == nullptr) ||
+    if ((context == nullptr) || context->GetAttrs() == nullptr || (context->GetInputDesc(QUERY_INDEX) == nullptr) ||
         (context->GetInputDesc(KEY_INDEX) == nullptr)) {
         return false;
     }
@@ -85,7 +83,7 @@ bool RouteToFia(gert::TilingContext *context)
 
     uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
     uint32_t aicNum = ascendcPlatform.GetCoreNumAic();
-    if((aicNum != aivNum) && (aicNum * 2U != aivNum)) {
+    if ((aicNum != aivNum) && (aicNum * 2U != aivNum)) {
         OP_LOGI(context->GetNodeName(), "aicNum(%u):aivNum(%u) only support 1:1 or 1:2.", aicNum, aivNum);
         return false;
     }
@@ -93,14 +91,15 @@ bool RouteToFia(gert::TilingContext *context)
     ge::DataType qDataType = context->GetInputDesc(QUERY_INDEX)->GetDataType();
     ge::DataType kDataType = context->GetInputDesc(KEY_INDEX)->GetDataType();
     bool isRopeSplit = (context->GetOptionalInputTensor(QUERY_ROPE_INDEX) != nullptr &&
-        context->GetOptionalInputTensor(KEY_ROPE_INDEX) != nullptr);
+                        context->GetOptionalInputTensor(KEY_ROPE_INDEX) != nullptr);
     if ((qDataType == ge::DT_FLOAT16 || qDataType == ge::DT_BF16) && (qDataType == kDataType)) {
         if (!isRopeSplit) {
             if (CheckSpecConditions(context)) {
                 return false;
             }
         }
-        const std::string inputLayoutStr = std::string(context->GetAttrs()->GetAttrPointer<char>(ATTR_INPUT_LAYOUT_INDEX));
+        const std::string inputLayoutStr =
+            std::string(context->GetAttrs()->GetAttrPointer<char>(ATTR_INPUT_LAYOUT_INDEX));
         if (inputLayoutStr == "NSD") {
             return false;
         }

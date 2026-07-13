@@ -20,18 +20,18 @@ using namespace AscendC;
 #define DTYPE_X half
 #endif
 
-extern "C" __global__ __aicore__ void matmul_swiglu(GM_ADDR x, GM_ADDR weight, GM_ADDR bias,
-                                                       GM_ADDR y, GM_ADDR workspace, GM_ADDR tiling)
+extern "C" __global__ __aicore__ void matmul_swiglu(GM_ADDR x, GM_ADDR weight, GM_ADDR bias, GM_ADDR y,
+                                                    GM_ADDR workspace, GM_ADDR tiling)
 {
     if (workspace == nullptr) {
         return;
     }
-    GM_ADDR userWs = GetUserWorkspace(workspace);  // 用户 workspace: 存 [M,2N] fp32 中间结果
+    GM_ADDR userWs = GetUserWorkspace(workspace); // 用户 workspace: 存 [M,2N] fp32 中间结果
     if (userWs == nullptr) {
         return;
     }
     GET_TILING_DATA_WITH_STRUCT(optiling::MatmulSwigluTilingData, tilingDataIn, tiling);
-    const optiling::MatmulSwigluTilingData* __restrict__ tilingData = &tilingDataIn;
+    const optiling::MatmulSwigluTilingData *__restrict__ tilingData = &tilingDataIn;
     // 数据类型由编译期 DTYPE_X 决定; cube 累加固定 fp32。方案一: 单 matmul + 向量 SwiGLU。
     // transpose_weight 经 TilingKey 选择编译期模板分支(0=非转置, 1=转置), 避免运行时判断。
     // 注: 每个 key 需显式 TILING_KEY_IS(编译期据此为各 key 登记 kernel 函数入口), 不能用 else 兜底。

@@ -11,7 +11,7 @@
 /*!
  * \file split_core_v2.cpp
  * \brief
-*/
+ */
 
 #include "split_core_v2.h"
 #include <cstdio>
@@ -470,7 +470,7 @@ void AssignByBlock(const SplitContext &splitContext, AssignContext &assignContex
 
     while (IsWithinTolerance(assignContext.coreCache.costLimit, curCost / FA_TOLERANCE_RATIO,
                              assignContext.coreCache.cost +
-                             curCost)) { // (costLimit - curCostOnCore) * FA_TOLERANCE_RATIO > curCost；至少分配1块
+                                 curCost)) { // (costLimit - curCostOnCore) * FA_TOLERANCE_RATIO > curCost；至少分配1块
         assignContext.coreCache.cost += curCost;
         assignContext.coreCache.block++;
         assignContext.curS2Idx++;
@@ -730,7 +730,7 @@ void SplitCore(uint32_t coreNum, const BaseInfo &baseInfo, const SplitParam &par
             BatchCache bCache;
             CalcBatchCache(bIdx, splitContext, bCache);
             uint32_t batchS1GNum = splitContext.splitInfo.s1GBaseNum[bIdx];
-            uint32_t batchValidStart = batchS1GNum;  // default: all invalid
+            uint32_t batchValidStart = batchS1GNum; // default: all invalid
             for (uint32_t s1GIdx = 0; s1GIdx < batchS1GNum; s1GIdx++) {
                 auto s2Range = CalcS2Range(s1GIdx, baseInfo, param, bCache);
                 if (s2Range.second > s2Range.first) {
@@ -763,7 +763,7 @@ void SplitCore(uint32_t coreNum, const BaseInfo &baseInfo, const SplitParam &par
             uint32_t bIdx = bN2Idx / baseInfo.n2Size;
             for (uint32_t s1GIdx = 0; s1GIdx < splitContext.splitInfo.s1GBaseNum[bIdx]; s1GIdx++) {
                 if (s1GIdx < validStartPerBatch[bIdx]) {
-                    continue;  // 无效行不计入负载
+                    continue; // 无效行不计入负载
                 }
                 accumBaseNum += 1;
                 uint32_t targetBaseNum = (currCoreIdx + 1) * avgBaseNum + 1;
@@ -845,16 +845,16 @@ void SplitCore(uint32_t coreNum, const BaseInfo &baseInfo, const SplitParam &par
         OP_LOGI("FusedInferAttentionScore", "outerSplitParams.bN2End[%d]: %d \n", i, result.bN2End[i]);
         OP_LOGI("FusedInferAttentionScore", "outerSplitParams.mEnd[%d]: %d \n", i, result.mEnd[i]);
         OP_LOGI("FusedInferAttentionScore", "outerSplitParams.s2End[%d]: %d \n", i, result.s2End[i]);
-        OP_LOGI("FusedInferAttentionScore", "fDParams.firstFdDataWorkspaceIdx[%d]: %d \n",
-                i, result.firstFdDataWorkspaceIdx[i]);
+        OP_LOGI("FusedInferAttentionScore", "fDParams.firstFdDataWorkspaceIdx[%d]: %d \n", i,
+                result.firstFdDataWorkspaceIdx[i]);
     }
 
     for (uint32_t i = 0; i < result.fdRes.fdNum; i++) {
         OP_LOGI("FusedInferAttentionScore", "fDParams.fdRes.fdBN2Idx[%d]: %d \n", i, result.fdRes.fdBN2Idx[i]);
         OP_LOGI("FusedInferAttentionScore", "fDParams.fdRes.fdMIdx[%d]: %d \n", i, result.fdRes.fdMIdx[i]);
         OP_LOGI("FusedInferAttentionScore", "fDParams.fdRes.fdS2SplitNum[%d]: %d \n", i, result.fdRes.fdS2SplitNum[i]);
-        OP_LOGI("FusedInferAttentionScore", "fDParams.fdRes.fdWorkspaceIdx[%d]: %d \n",
-                i, result.fdRes.fdWorkspaceIdx[i]);
+        OP_LOGI("FusedInferAttentionScore", "fDParams.fdRes.fdWorkspaceIdx[%d]: %d \n", i,
+                result.fdRes.fdWorkspaceIdx[i]);
         OP_LOGI("FusedInferAttentionScore", "fDParams.fdRes.mSize[%d]: %d \n", i, result.fdRes.mSize[i]);
     }
 

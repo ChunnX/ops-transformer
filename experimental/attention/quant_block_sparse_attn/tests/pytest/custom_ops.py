@@ -30,7 +30,11 @@ def _prepend_env_path(env_name, paths):
 def _append_env_path(env_name, paths):
     current = os.environ.get(env_name, "")
     current_parts = [part for part in current.split(":") if part]
-    new_parts = [str(path) for path in paths if path and path.exists() and str(path) not in current_parts]
+    new_parts = [
+        str(path)
+        for path in paths
+        if path and path.exists() and str(path) not in current_parts
+    ]
     if new_parts:
         os.environ[env_name] = ":".join(current_parts + new_parts)
 
@@ -56,11 +60,18 @@ def _load_shared_libraries(root):
     if root.is_file() and root.suffix == ".so":
         candidates = [root]
     else:
-        candidates = [Path(path) for path in glob.glob(str(root / "**" / "custom_ops_lib*.so"), recursive=True)]
+        candidates = [
+            Path(path)
+            for path in glob.glob(
+                str(root / "**" / "custom_ops_lib*.so"), recursive=True
+            )
+        ]
     for lib_path in candidates[:1]:
         try:
             torch.ops.load_library(str(lib_path))
-        except Exception as error:  # pragma: no cover - depends on local extension environment
+        except (
+            Exception
+        ) as error:  # pragma: no cover - depends on local extension environment
             _LOAD_ERRORS.append(f"{lib_path}: {error}")
 
 
@@ -79,7 +90,9 @@ def _load_python_package(root):
         module = importlib.util.module_from_spec(spec)
         sys.modules[spec.name] = module
         spec.loader.exec_module(module)
-    except Exception as error:  # pragma: no cover - depends on local extension environment
+    except (
+        Exception
+    ) as error:  # pragma: no cover - depends on local extension environment
         _LOAD_ERRORS.append(f"{init_file}: {error}")
 
 
@@ -102,14 +115,17 @@ def _load_converter(root):
             module = importlib.util.module_from_spec(spec)
             sys.modules[spec.name] = module
             spec.loader.exec_module(module)
-        except Exception as error:  # pragma: no cover - depends on local extension environment
+        except (
+            Exception
+        ) as error:  # pragma: no cover - depends on local extension environment
             _LOAD_ERRORS.append(f"{converter_file}: {error}")
 
 
 def _custom_opp_roots():
     repo_root = Path(__file__).resolve().parents[5]
     build_candidates = [
-        repo_root / "build/_CPack_Packages/Linux/External/cann-ops-transformer-custom_linux-x86_64.run"
+        repo_root
+        / "build/_CPack_Packages/Linux/External/cann-ops-transformer-custom_linux-x86_64.run"
         / "packages/vendors/custom_transformer",
     ]
     build_roots = [path for path in build_candidates if path.exists()]
@@ -125,7 +141,9 @@ def _custom_opp_roots():
 def _configure_custom_opp_paths():
     custom_opp_roots = _custom_opp_roots()
     _prepend_env_path("ASCEND_CUSTOM_OPP_PATH", custom_opp_roots)
-    _prepend_env_path("LD_LIBRARY_PATH", [root / "op_api" / "lib" for root in custom_opp_roots])
+    _prepend_env_path(
+        "LD_LIBRARY_PATH", [root / "op_api" / "lib" for root in custom_opp_roots]
+    )
 
 
 def _load_custom_ops():
@@ -140,11 +158,17 @@ def _load_custom_ops():
         if not root.exists():
             continue
         _load_shared_libraries(root)
-        if has_quant_block_sparse_attn_op() and has_quant_block_sparse_attn_metadata_op():
+        if (
+            has_quant_block_sparse_attn_op()
+            and has_quant_block_sparse_attn_metadata_op()
+        ):
             _load_converter(root)
             return
         _load_python_package(root)
-        if has_quant_block_sparse_attn_op() and has_quant_block_sparse_attn_metadata_op():
+        if (
+            has_quant_block_sparse_attn_op()
+            and has_quant_block_sparse_attn_metadata_op()
+        ):
             return
 
 

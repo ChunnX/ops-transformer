@@ -327,7 +327,7 @@ public:
     bool isSameSeqAllKVTensor = true;
     bool isSameActualseq = true;
     uint32_t actualLenDims = 0;
-    std::vector<int64_t> kvListSeqLens {};
+    std::vector<int64_t> kvListSeqLens{};
     bool isAccumKVSeq = false;
 
     // PSE
@@ -388,5 +388,5 @@ public:
     FiaLayout outLayout = FiaLayout::BSND;
     FiaLayout kvLayout = FiaLayout::BSND;
 };
-} // optiling
+} // namespace optiling
 #endif // FIA_TILING_INFO_H

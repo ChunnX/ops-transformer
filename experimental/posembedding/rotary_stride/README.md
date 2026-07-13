@@ -87,4 +87,3 @@
 ```
 torch.ops.npu_ops_transformer_ext.rotary_stride(blockDim, in, sin, cos, out, gbD)
 ```
-

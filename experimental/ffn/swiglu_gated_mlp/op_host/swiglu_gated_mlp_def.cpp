@@ -26,7 +26,7 @@ namespace ops {
 
 class SwigluGatedMlp : public OpDef {
 public:
-    explicit SwigluGatedMlp(const char* name) : OpDef(name)
+    explicit SwigluGatedMlp(const char *name) : OpDef(name)
     {
         this->Input("x")
             .ParamType(REQUIRED)
@@ -55,16 +55,14 @@ public:
             .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
 
-        this->Attr("cube_math_type")
-            .AttrType(OPTIONAL)
-            .Int(1);
+        this->Attr("cube_math_type").AttrType(OPTIONAL).Int(1);
 
         OpAICoreConfig aicConfig;
         aicConfig.DynamicCompileStaticFlag(true)
-                 .DynamicFormatFlag(false)
-                 .DynamicRankSupportFlag(true)
-                 .DynamicShapeSupportFlag(true)
-                 .NeedCheckSupportFlag(false);
+            .DynamicFormatFlag(false)
+            .DynamicRankSupportFlag(true)
+            .DynamicShapeSupportFlag(true)
+            .NeedCheckSupportFlag(false);
 
         this->AICore().AddConfig("ascend910b", aicConfig);
         this->AICore().AddConfig("ascend910_93", aicConfig);
@@ -73,4 +71,4 @@ public:
 
 OP_ADD(SwigluGatedMlp);
 
-}  // namespace ops
+} // namespace ops

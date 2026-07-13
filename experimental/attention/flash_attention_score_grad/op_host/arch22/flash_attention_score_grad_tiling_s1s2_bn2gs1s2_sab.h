@@ -128,7 +128,8 @@ public:
     {
         tilingData->reset();
     }
-    FlashAttentionScoreGradTilingDataS1s2Bn2gs1s2SameAb *tilingData = context_->GetTilingData<FlashAttentionScoreGradTilingDataS1s2Bn2gs1s2SameAb>();
+    FlashAttentionScoreGradTilingDataS1s2Bn2gs1s2SameAb *tilingData =
+        context_->GetTilingData<FlashAttentionScoreGradTilingDataS1s2Bn2gs1s2SameAb>();
 
 protected:
     bool IsCapable() override;
@@ -141,7 +142,7 @@ protected:
     ge::graphStatus PostTiling() override;
 
     ge::graphStatus DoSplit();
-    void SetMatmulTilingBufferInfo(AscendC::tiling::TCubeTiling* mmTiling);
+    void SetMatmulTilingBufferInfo(AscendC::tiling::TCubeTiling *mmTiling);
     ge::graphStatus DoPreTiling();
     ge::graphStatus DoPostTiling();
     void DetermineMode();

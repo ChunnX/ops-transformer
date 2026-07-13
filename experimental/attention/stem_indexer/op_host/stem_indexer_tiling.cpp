@@ -49,14 +49,12 @@ ge::graphStatus StemIndexerInfoParser::GetOpName()
 ge::graphStatus StemIndexerInfoParser::GetNpuInfo()
 {
     platformInfo_ = context_->GetPlatformInfo();
-    OP_CHECK_IF(platformInfo_ == nullptr, OP_LOGE(opName_, "GetPlatformInfo is nullptr."),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(platformInfo_ == nullptr, OP_LOGE(opName_, "GetPlatformInfo is nullptr."), return ge::GRAPH_FAILED);
 
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo_);
     uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
     uint32_t aicNum = ascendcPlatform.GetCoreNumAic();
-    OP_CHECK_IF(aicNum == 0 || aivNum == 0, OP_LOGE(opName_, "num of core obtained is 0."),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(aicNum == 0 || aivNum == 0, OP_LOGE(opName_, "num of core obtained is 0."), return ge::GRAPH_FAILED);
 
     socVersion_ = ascendcPlatform.GetSocVersion();
     // 当前仅适配 A5（ASCEND950），A2/A3 暂未适配
@@ -121,25 +119,23 @@ ge::graphStatus StemIndexerInfoParser::GetAndCheckAttrParaInfo()
     }
 
     OP_CHECK_IF(*opParamInfo_.stemBlockSize != STEM_BLOCK_SIZE_LIMIT,
-                OP_LOGE(opName_, "stem_block_size only support %u.", STEM_BLOCK_SIZE_LIMIT),
-                return ge::GRAPH_FAILED);
+                OP_LOGE(opName_, "stem_block_size only support %u.", STEM_BLOCK_SIZE_LIMIT), return ge::GRAPH_FAILED);
     OP_CHECK_IF(*opParamInfo_.stemStride != STEM_STRIDE_LIMIT,
                 OP_LOGE(opName_, "stem_stride only support %u.", STEM_STRIDE_LIMIT), return ge::GRAPH_FAILED);
     OP_CHECK_IF(*opParamInfo_.initialBlocks != INITIAL_BLOCKS_LIMIT,
-                OP_LOGE(opName_, "initial_blocks only support %u.", INITIAL_BLOCKS_LIMIT),
-                return ge::GRAPH_FAILED);
+                OP_LOGE(opName_, "initial_blocks only support %u.", INITIAL_BLOCKS_LIMIT), return ge::GRAPH_FAILED);
     OP_CHECK_IF(*opParamInfo_.windowSize != WINDOW_SIZE_LIMIT,
                 OP_LOGE(opName_, "window_size only support %u.", WINDOW_SIZE_LIMIT), return ge::GRAPH_FAILED);
     OP_CHECK_IF((*opParamInfo_.alpha <= ALPHA_MIN) || (*opParamInfo_.alpha > 1.0f),
                 OP_LOGE(opName_, "alpha should be in (0, 1]."), return ge::GRAPH_FAILED);
     OP_CHECK_IF(!IsFloatEqual(*opParamInfo_.kBlockNumRateMedium, K_BLOCK_NUM_RATE_MEDIUM_LIMIT),
                 OP_LOGE(opName_, "k_block_num_rate_medium only support 0.2."), return ge::GRAPH_FAILED);
-    OP_CHECK_IF(*opParamInfo_.kBlockNumBiasMedium != 30,
-                OP_LOGE(opName_, "k_block_num_bias_medium only support 30."), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(*opParamInfo_.kBlockNumBiasMedium != 30, OP_LOGE(opName_, "k_block_num_bias_medium only support 30."),
+                return ge::GRAPH_FAILED);
     OP_CHECK_IF(!IsFloatEqual(*opParamInfo_.kBlockNumRateLarge, K_BLOCK_NUM_RATE_LARGE_LIMIT),
                 OP_LOGE(opName_, "k_block_num_rate_large only support 0.1."), return ge::GRAPH_FAILED);
-    OP_CHECK_IF(*opParamInfo_.kBlockNumBiasLarge != 30,
-                OP_LOGE(opName_, "k_block_num_bias_large only support 30."), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(*opParamInfo_.kBlockNumBiasLarge != 30, OP_LOGE(opName_, "k_block_num_bias_large only support 30."),
+                return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -167,33 +163,31 @@ ge::graphStatus StemIndexerInfoParser::CheckRequiredInOutExistence() const
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.numPromptTokens.shape == nullptr,
                 OP_LOGE(opName_, "shape of num_prompt_tokens is nullptr"), return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.numPromptTokens.desc == nullptr,
-                OP_LOGE(opName_, "desc of num_prompt_tokens is nullptr"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(opParamInfo_.numPromptTokens.desc == nullptr, OP_LOGE(opName_, "desc of num_prompt_tokens is nullptr"),
+                return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.metadata.shape == nullptr, OP_LOGE(opName_, "shape of metadata is nullptr"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.metadata.desc == nullptr, OP_LOGE(opName_, "desc of metadata is nullptr"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.sparseIndicesOut.shape == nullptr,
-                OP_LOGE(opName_, "shape of sparse_indices is nullptr"), return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.sparseIndicesOut.desc == nullptr,
-                OP_LOGE(opName_, "desc of sparse_indices is nullptr"), return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.sparseSeqLenOut.shape == nullptr,
-                OP_LOGE(opName_, "shape of sparse_seq_len is nullptr"), return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.sparseSeqLenOut.desc == nullptr,
-                OP_LOGE(opName_, "desc of sparse_seq_len is nullptr"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(opParamInfo_.sparseIndicesOut.shape == nullptr, OP_LOGE(opName_, "shape of sparse_indices is nullptr"),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(opParamInfo_.sparseIndicesOut.desc == nullptr, OP_LOGE(opName_, "desc of sparse_indices is nullptr"),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(opParamInfo_.sparseSeqLenOut.shape == nullptr, OP_LOGE(opName_, "shape of sparse_seq_len is nullptr"),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(opParamInfo_.sparseSeqLenOut.desc == nullptr, OP_LOGE(opName_, "desc of sparse_seq_len is nullptr"),
+                return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus StemIndexerInfoParser::CheckRequiredAttrExistence() const
 {
-    OP_CHECK_IF(opParamInfo_.causal == nullptr, OP_LOGE(opName_, "attr causal is nullptr"),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(opParamInfo_.causal == nullptr, OP_LOGE(opName_, "attr causal is nullptr"), return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.stemBlockSize == nullptr, OP_LOGE(opName_, "attr stem_block_size is nullptr"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.stemStride == nullptr, OP_LOGE(opName_, "attr stem_stride is nullptr"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.alpha == nullptr, OP_LOGE(opName_, "attr alpha is nullptr"),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(opParamInfo_.alpha == nullptr, OP_LOGE(opName_, "attr alpha is nullptr"), return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.initialBlocks == nullptr, OP_LOGE(opName_, "attr initial_blocks is nullptr"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.windowSize == nullptr, OP_LOGE(opName_, "attr window_size is nullptr"),
@@ -202,10 +196,10 @@ ge::graphStatus StemIndexerInfoParser::CheckRequiredAttrExistence() const
                 OP_LOGE(opName_, "attr k_block_num_rate_medium is nullptr"), return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.kBlockNumBiasMedium == nullptr,
                 OP_LOGE(opName_, "attr k_block_num_bias_medium is nullptr"), return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.kBlockNumRateLarge == nullptr,
-                OP_LOGE(opName_, "attr k_block_num_rate_large is nullptr"), return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.kBlockNumBiasLarge == nullptr,
-                OP_LOGE(opName_, "attr k_block_num_bias_large is nullptr"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(opParamInfo_.kBlockNumRateLarge == nullptr, OP_LOGE(opName_, "attr k_block_num_rate_large is nullptr"),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(opParamInfo_.kBlockNumBiasLarge == nullptr, OP_LOGE(opName_, "attr k_block_num_bias_large is nullptr"),
+                return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -222,8 +216,7 @@ ge::graphStatus StemIndexerInfoParser::GetAndCheckInOutDataType()
                 OP_LOGE(opName_, "qflat and kflat only support bfloat16."), return ge::GRAPH_FAILED);
     OP_CHECK_IF(inputQType_ != inputKType_, OP_LOGE(opName_, "qflat and kflat dtype should be same."),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(vbiasType_ != ge::DT_FLOAT, OP_LOGE(opName_, "vbias only support float32."),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(vbiasType_ != ge::DT_FLOAT, OP_LOGE(opName_, "vbias only support float32."), return ge::GRAPH_FAILED);
     OP_CHECK_IF(seqLenType_ != ge::DT_INT32 || opParamInfo_.kvSeqLens.desc->GetDataType() != ge::DT_INT32 ||
                     opParamInfo_.numPromptTokens.desc->GetDataType() != ge::DT_INT32,
                 OP_LOGE(opName_, "q_seq_lens, kv_seq_lens and num_prompt_tokens only support int32."),
@@ -276,8 +269,8 @@ ge::graphStatus StemIndexerInfoParser::GetBaseShapeInfo()
     OP_CHECK_IF(qHeadNum_ % kvHeadNum_ != 0, OP_LOGE(opName_, "q_heads should be divisible by kv_heads."),
                 return ge::GRAPH_FAILED);
     gSize_ = qHeadNum_ / kvHeadNum_;
-    OP_CHECK_IF(headDim_ != HEAD_DIM_LIMIT,
-                OP_LOGE(opName_, "qflat last dim only support %u.", HEAD_DIM_LIMIT), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(headDim_ != HEAD_DIM_LIMIT, OP_LOGE(opName_, "qflat last dim only support %u.", HEAD_DIM_LIMIT),
+                return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -299,24 +292,20 @@ ge::graphStatus StemIndexerInfoParser::ValidateInputShapesMatch()
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(vShape.GetDim(DIM_IDX_ZERO) != bSize_ || vShape.GetDim(DIM_IDX_ONE) != kvHeadNum_ ||
                     vShape.GetDim(DIM_IDX_TWO) != maxKb_,
-                OP_LOGE(opName_, "vbias shape should be [batch, kv_heads, max_Kb]."),
-                return ge::GRAPH_FAILED);
+                OP_LOGE(opName_, "vbias shape should be [batch, kv_heads, max_Kb]."), return ge::GRAPH_FAILED);
     OP_CHECK_IF(qSeqShape.GetDim(DIM_IDX_ZERO) != bSize_ || kvSeqShape.GetDim(DIM_IDX_ZERO) != bSize_ ||
                     numPromptShape.GetDim(DIM_IDX_ZERO) != bSize_,
                 OP_LOGE(opName_, "seq length input shape should be [batch]."), return ge::GRAPH_FAILED);
     OP_CHECK_IF(metadataShape.GetDim(DIM_IDX_ZERO) != METADATA_LIMIT,
                 OP_LOGE(opName_, "metadata shape dim0 should be %u.", METADATA_LIMIT), return ge::GRAPH_FAILED);
-    OP_CHECK_IF(sparseIndicesShape.GetDim(DIM_IDX_ZERO) != bSize_ ||
-                    sparseIndicesShape.GetDim(DIM_IDX_ONE) != qHeadNum_ ||
-                    sparseIndicesShape.GetDim(DIM_IDX_TWO) != maxQb_ ||
-                    sparseIndicesShape.GetDim(DIM_IDX_THREE) != maxKb_,
-                OP_LOGE(opName_, "sparse_indices shape should be [batch, q_heads, max_Qb, max_Kb]."),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        sparseIndicesShape.GetDim(DIM_IDX_ZERO) != bSize_ || sparseIndicesShape.GetDim(DIM_IDX_ONE) != qHeadNum_ ||
+            sparseIndicesShape.GetDim(DIM_IDX_TWO) != maxQb_ || sparseIndicesShape.GetDim(DIM_IDX_THREE) != maxKb_,
+        OP_LOGE(opName_, "sparse_indices shape should be [batch, q_heads, max_Qb, max_Kb]."), return ge::GRAPH_FAILED);
     OP_CHECK_IF(sparseSeqLenShape.GetDim(DIM_IDX_ZERO) != bSize_ ||
                     sparseSeqLenShape.GetDim(DIM_IDX_ONE) != qHeadNum_ ||
                     sparseSeqLenShape.GetDim(DIM_IDX_TWO) != maxQb_,
-                OP_LOGE(opName_, "sparse_seq_len shape should be [batch, q_heads, max_Qb]."),
-                return ge::GRAPH_FAILED);
+                OP_LOGE(opName_, "sparse_seq_len shape should be [batch, q_heads, max_Qb]."), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
