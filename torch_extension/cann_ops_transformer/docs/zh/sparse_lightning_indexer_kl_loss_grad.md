@@ -117,23 +117,23 @@ sparse_lightning_indexer_kl_loss_grad(
 
 ### sparse_lightning_indexer_kl_loss_grad
 
-| 参数名 | 输入/输出 | 描述 | 数据类型 | 维度 |
-| :--- | :--- | :--- | :--- | :--- |
-| q | 必选输入 | Lightning Indexer 分支的 query 输入。D：固定为 128。 | `float16`、`bfloat16` | `layout_q="BSND"` 时为 `[B, S1, N1, D]`；`layout_q="TND"` 时为 `[T1, N1, D]`。 |
-| k | 必选输入 | Lightning Indexer 分支的 key 输入。N2 仅支持 1。D：固定为 128。 | 与 `q` 一致 | `layout_k="BSND"` 时为 `[B, S2, N2, D]`；`layout_k="TND"` 时为 `[T2, N2, D]`。 |
-| w | 必选输入 | Indexer logits 的 head 权重。 | `float32` | `layout_q="BSND"` 时为 `[B, S1, N1]`；`layout_q="TND"` 时为 `[T1, N1]`。 |
-| sparse_indices | 必选输入 | 每个 query 对应的 top-k key 下标。有效位置填 key 下标，无效位置填 `-1`。 | `int32` | `layout_q="BSND"` 时为 `[B, S1, N2, K]`；`layout_q="TND"` 时为 `[T1, N2, K]`。 |
-| attn_softmax_l1_norm | 必选输入 | 主 Attention 分支预先计算得到的目标分布 `p`，无效 top-k 位置建议置 0。 | `float32` | 与 `sparse_indices` 一致。 |
-| cu_seqlens_q | 可选输入 | TND 场景中 query 的前缀和序列长度，首元素为 0。 | `int32` | `[B + 1]`。 |
-| cu_seqlens_k | 可选输入 | TND 场景中 key 的前缀和序列长度，首元素为 0。 | `int32` | `[B + 1]`。 |
-| seqused_q | 可选输入 | 表示每个 batch 实际使用的 query 长度。 | `int32` | `[B]`。 |
-| seqused_k | 可选输入 | 表示每个 batch 实际使用的 key 长度。 | `int32` | `[B]`。 |
-| cmp_residual_k | 可选输入 | 压缩 key 场景下的残差长度。`mask_mode=3` 且 `cmp_ratio!=1` 时，用于还原压缩前 key 长度。 | `int32` | `[B]`。 |
-| metadata | 可选输入 | `sparse_lightning_indexer_kl_loss_grad_metadata` 生成的任务切分结果，建议传入。 | `int32` | `[64]`。 |
-| layout_q | 可选属性 | `q` 侧 layout。 | `str` | 支持 `"BSND"`、`"TND"`，默认 `"TND"`。 |
-| layout_k | 可选属性 | `k` 侧 layout。 | `str` | 支持 `"BSND"`、`"TND"`，默认 `"TND"`。 |
-| mask_mode | 可选属性 | sparse mask 模式。 | `int` | 当前支持 `0` 和 `3`，默认 `3`。 |
-| cmp_ratio | 可选属性 | key 压缩比例。 | `int` | 取值范围 `[1, 128]`，默认 `1`。 |
+| 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 维度(shape) |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| q | Tensor | 必选 | Lightning Indexer 分支的 query 输入。D：固定为 128。 | FLOAT16、BFLOAT16 | `layout_q="BSND"` 时为 `[B, S1, N1, D]`；`layout_q="TND"` 时为 `[T1, N1, D]` |
+| k | Tensor | 必选 | Lightning Indexer 分支的 key 输入。N2 仅支持 1。D：固定为 128。 | FLOAT16、BFLOAT16 | `layout_k="BSND"` 时为 `[B, S2, N2, D]`；`layout_k="TND"` 时为 `[T2, N2, D]` |
+| w | Tensor | 必选 | Indexer logits 的 head 权重。 | FLOAT32 | `layout_q="BSND"` 时为 `[B, S1, N1]`；`layout_q="TND"` 时为 `[T1, N1]` |
+| sparse_indices | Tensor | 必选 | 每个 query 对应的 top-k key 下标。有效位置填 key 下标，无效位置填 `-1`。 | INT32 | `layout_q="BSND"` 时为 `[B, S1, N2, K]`；`layout_q="TND"` 时为 `[T1, N2, K]` |
+| attn_softmax_l1_norm | Tensor | 必选 | 主 Attention 分支预先计算得到的目标分布 `p`，无效 top-k 位置建议置 0。 | FLOAT32 | 与 `sparse_indices` 一致 |
+| cu_seqlens_q | Tensor | 可选 | TND 场景中 query 的前缀和序列长度，首元素为 0。 | INT32 | `[B + 1]` |
+| cu_seqlens_k | Tensor | 可选 | TND 场景中 key 的前缀和序列长度，首元素为 0。 | INT32 | `[B + 1]` |
+| seqused_q | Tensor | 可选 | 表示每个 batch 实际使用的 query 长度。 | INT32 | `[B]` |
+| seqused_k | Tensor | 可选 | 表示每个 batch 实际使用的 key 长度。 | INT32 | `[B]` |
+| cmp_residual_k | Tensor | 可选 | 压缩 key 场景下的残差长度。`mask_mode=3` 且 `cmp_ratio!=1` 时，用于还原压缩前 key 长度。 | INT32 | `[B]` |
+| metadata | Tensor | 可选 | `sparse_lightning_indexer_kl_loss_grad_metadata` 生成的任务切分结果，建议传入。 | INT32 | `[64]` |
+| layout_q | str | 可选 | `q` 侧 layout。支持 `"BSND"`、`"TND"`，默认 `"TND"`。 | STRING | - |
+| layout_k | str | 可选 | `k` 侧 layout。支持 `"BSND"`、`"TND"`，默认 `"TND"`。 | STRING | - |
+| mask_mode | int | 可选 | sparse mask 模式。当前支持 `0` 和 `3`，默认 `3`。 | INT | - |
+| cmp_ratio | int | 可选 | key 压缩比例。取值范围 `[1, 128]`，默认 `1`。 | INT | - |
 
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：暂不支持seqUsedQOptional、seqUsedKOptional字段。
 
@@ -166,10 +166,12 @@ sparse_lightning_indexer_kl_loss_grad(
 
 ### sparse_lightning_indexer_kl_loss_grad
 
-- **dq**：`q` 的梯度，shape 和数据类型与 `q` 一致。
-- **dk**：`k` 的梯度，shape 和数据类型与 `k` 一致。
-- **dw**：`w` 的梯度，shape 与 `w` 一致，数据类型为 `float32`。
-- **softmax_out**：Lightning Indexer 分支的 softmax 输出，shape 与 `attn_softmax_l1_norm` 一致，数据类型为 `float32`。
+| 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 维度(shape) |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| dq | Tensor | 必选 | `q` 的梯度，shape 和数据类型与 `q` 一致。 | 与 q 一致 | 与 q 一致 |
+| dk | Tensor | 必选 | `k` 的梯度，shape 和数据类型与 `k` 一致。 | 与 k 一致 | 与 k 一致 |
+| dw | Tensor | 必选 | `w` 的梯度，shape 与 `w` 一致。 | FLOAT32 | 与 w 一致 |
+| softmax_out | Tensor | 必选 | Lightning Indexer 分支的 softmax 输出，shape 与 `attn_softmax_l1_norm` 一致。 | FLOAT32 | 与 attn_softmax_l1_norm 一致 |
 
 ### sparse_lightning_indexer_kl_loss_grad_metadata
 
@@ -179,45 +181,43 @@ sparse_lightning_indexer_kl_loss_grad(
 
 ## 约束说明
 
-- 该接口支持训练场景。
-- 该接口支持单算子模式和aclgraph模式。
-- `q`、`k` 的数据类型必须保持一致，支持 `float16` 和 `bfloat16`。
-- `w`、`attn_softmax_l1_norm`、`dw`、`softmax_out` 的数据类型应为 `float32`。
-- `sparse_indices`、`cu_seqlens_q`、`cu_seqlens_k`、`seqused_q`、`seqused_k`、`cmp_residual_k`、`metadata` 的数据类型应为 `int32`。
-- `layout_q` 和 `layout_k` 支持 `BSND` 和 `TND`。
-- `layout_q="TND"` 时需要传入 `cu_seqlens_q`；`layout_k="TND"` 时需要传入 `cu_seqlens_k`。
-- 当前 `num_heads_k` 仅支持 1。
-- `sparse_indices` 中有效位置必须位于当前 batch 的 key 序列范围内，无效位置使用 `-1` 填充。
-- `attn_softmax_l1_norm` 的无效 top-k 位置建议置 0，并与 `sparse_indices` 的有效位置保持一致。
-- `mask_mode` 当前支持 `0` 和 `3`。
-- `cmp_ratio` 取值范围为 `[1, 128]`。
-- 压缩 key 且 `mask_mode=3` 时，压缩前 key 长度通过 `compressed_k_len * cmp_ratio + cmp_residual_k[b]` 计算。CP 切分场景中，每个 CP shard 单独调用时，`q` 传入当前 shard 的 query 长度，`k` 传入该 shard 对应的压缩后 key 前缀长度，并按该公式传入对应的 `cmp_residual_k`。
-- **确定性计算**：Ascend 950PR/Ascend 950DT 默认非确定性计算，支持通过 `aclrtCtxSetSysParamOpt` 开启确定性计算；Atlas A2/A3 不支持开启确定性计算。
-- **规格约束**：
+- 公共约束：
+  - 适用场景：该接口支持训练场景。
+  - 调用方式：该接口支持单算子模式和aclgraph模式。
+  - `q`、`k` 的数据类型必须保持一致，支持 `float16` 和 `bfloat16`。
+  - `w`、`attn_softmax_l1_norm`、`dw`、`softmax_out` 的数据类型应为 `float32`。
+  - `sparse_indices`、`cu_seqlens_q`、`cu_seqlens_k`、`seqused_q`、`seqused_k`、`cmp_residual_k`、`metadata` 的数据类型应为 `int32`。
+  - `layout_q` 和 `layout_k` 支持 `BSND` 和 `TND`。
+  - `layout_q="TND"` 时需要传入 `cu_seqlens_q`；`layout_k="TND"` 时需要传入 `cu_seqlens_k`。
+  - 当前 `num_heads_k` 仅支持 1。
+  - `sparse_indices` 中有效位置必须位于当前 batch 的 key 序列范围内，无效位置使用 `-1` 填充。
+  - `attn_softmax_l1_norm` 的无效 top-k 位置建议置 0，并与 `sparse_indices` 的有效位置保持一致。
+  - `mask_mode` 当前支持 `0` 和 `3`。
+  - `cmp_ratio` 取值范围为 `[1, 128]`。
+  - 压缩 key 且 `mask_mode=3` 时，压缩前 key 长度通过 `compressed_k_len * cmp_ratio + cmp_residual_k[b]` 计算。CP 切分场景中，每个 CP shard 单独调用时，`q` 传入当前 shard 的 query 长度，`k` 传入该 shard 对应的压缩后 key 前缀长度，并按该公式传入对应的 `cmp_residual_k`。
 
-    | 规格项 | 规格 | 规格说明 |
-    | :--- | :--- | :--- |
-    | N2 | 1 | 当前仅支持N2=1。 |
-    | D | 128 | q和k最后一维需保持一致。 |
-    | cmp_ratio | 1~128 | - |
-    | mask_mode | 0、3 | - |
+- 规格约束：
+  - 公共参数约束：
+    - `num_heads_k` 仅支持1，`head_dim` 仅支持128。
+    - `cmp_ratio` 取值范围1~128，`mask_mode` 仅支持0、3。
 
-  - 参数B的支持情况:
-    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：B支持1~256。
-    - <term>Ascend 950PR/Ascend 950DT</term>：B>0。
-  - 参数S1、S2的支持情况:
-    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：S1支持1~8192，S2支持1~524288。
-    - <term>Ascend 950PR/Ascend 950DT</term>：S1>0，S2>0。
-  - 参数N1的支持情况:
-    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：N1支持8、16、32、64。
-    - <term>Ascend 950PR/Ascend 950DT</term>：N1支持1~128。
-  - 参数K的支持情况:
-    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：K支持512、1024、2048、4096、8192。
-    - <term>Ascend 950PR/Ascend 950DT</term>：K支持1~2048。
+  - 产品型号约束如下：
+    - 参数B的支持情况:
+      - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：B支持1~256。
+      - <term>Ascend 950PR/Ascend 950DT</term>：B>0。
+    - 参数S1、S2的支持情况:
+      - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：S1支持1~8192，S2支持1~524288。
+      - <term>Ascend 950PR/Ascend 950DT</term>：S1>0，S2>0。
+    - 参数N1的支持情况:
+      - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：N1支持8、16、32、64。
+      - <term>Ascend 950PR/Ascend 950DT</term>：N1支持1~128。
+    - 参数K的支持情况:
+      - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：K支持512、1024、2048、4096、8192。
+      - <term>Ascend 950PR/Ascend 950DT</term>：K支持1~2048。
 
 ## 确定性计算
 
-- 默认支持确定性计算
+- Ascend 950PR/Ascend 950DT 默认非确定性计算，支持通过 `aclrtCtxSetSysParamOpt` 开启确定性计算；Atlas A2/A3 不支持开启确定性计算。
 
 ## 调用示例
 
