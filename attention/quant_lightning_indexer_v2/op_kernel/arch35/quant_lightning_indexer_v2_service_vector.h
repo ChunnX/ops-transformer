@@ -136,8 +136,6 @@ private:
     TBuf<TPosition::VECCALC> topkSharedTmpBuf_;
     LocalTensor<uint32_t> topkSharedTmpLocal_;
 
-    LocalTensor<int32_t> outInvalidLocal_;
-
     LocalTensor<uint32_t> ldIndexLocal_;
 
     int32_t blockId_ = -1;
@@ -175,16 +173,16 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::InitBuffers(TPipe *pipe)
     resMm1UB_ = resMm1Buf_.Get<QK_T>(); // qk
     // 大小：2(开dB) * 2 * 64 * 2 = 0.5KB
     pipe->InitBuffer(weightBuf_,
-        2 * CeilDiv(s1BaseSize_, 2) * UB_BANK_DEPTH_STRIDE * sizeof(float));
+        2 * CeilDiv(s1BaseSize_, 2) * UB_BANK_DEPTH_STRIDE);
     weightUB_ = weightBuf_.Get<float>(); // weight
-    pipe->InitBuffer(weightTempBuf_, 2 * CeilDiv(s1BaseSize_, 2) * UB_BANK_DEPTH_STRIDE);
+    pipe->InitBuffer(weightTempBuf_, 2 * CeilDiv(s1BaseSize_, 2) * UB_BANK_DEPTH_STRIDE); 
     weightTempUB_ = weightTempBuf_.Get<float>();
     // 大小：2(开dB) * 128 * 4 = 1KB
     pipe->InitBuffer(kScaleBuf_, 2 * s2BaseSize_ * 16 * sizeof(float));
     kScaleUB_ = kScaleBuf_.Get<float>(); // kScale
     // 大小：2(开dB) * 2 * 64 * 4 = 1KB
     pipe->InitBuffer(qScaleBuf_,
-        2 * CeilDiv(s1BaseSize_, 2) * UB_BANK_DEPTH_STRIDE * sizeof(float));
+        2 * CeilDiv(s1BaseSize_, 2) * UB_BANK_DEPTH_STRIDE);
     qScaleUB_ = qScaleBuf_.Get<float>(); // qScale
     // 大小：2(开dB) * 2 * 128 * 4 = 2KB
     pipe->InitBuffer(outBuf_,
@@ -196,7 +194,7 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::InitBuffers(TPipe *pipe)
         (topkCountAlign256_ + trunkLen_) * sizeof(SCORE_T));
     // 大小：(topkCountAlign256_ + 每次排序长度) * sizeof(SCORE_T)
     mrgValueLocal_ = mrgValueBuf_.Get<SCORE_T>();
-    outInvalidLocal_ = mrgValueBuf_.Get<int32_t>();
+    valueOutLocal_ = mrgValueBuf_.Get<bfloat16_t>();
 
     pipe->InitBuffer(indicesOutBuf_,
         (topkCountAlign256_ + 64) * sizeof(uint32_t));
@@ -207,12 +205,10 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::InitBuffers(TPipe *pipe)
         // (topkCountAlign256_ + 64) * sizeof(SCORE_T) 64:duplicate刷-1额外空间
     scoreOutLocal_ = scoreOutBuf_.Get<SCORE_T>();
 
-    pipe->InitBuffer(valueOutBuf_, topkCountAlign256_ * sizeof(bfloat16_t));
-    valueOutLocal_ = valueOutBuf_.Get<bfloat16_t>();
     uint64_t topkSharedTmpSize = topkOp_.GetSharedTmpBufferSize();
     pipe->InitBuffer(topkSharedTmpBuf_, topkSharedTmpSize);
     topkSharedTmpLocal_ = topkSharedTmpBuf_.Get<uint32_t>();
-    topkOp_.InitBuffers(topkSharedTmpLocal_);
+    topkOp_.InitBuffers(topkSharedTmpLocal_, indicesOutLocal_);
 
     // 刷-1
     Duplicate(kScaleUB_, float(0), 2 * s2BaseSize_ * 16);
@@ -318,17 +314,9 @@ template <typename QLIV2T>
 __aicore__ inline void QLIV2Vector<QLIV2T>::CleanInvalidOutput(int64_t invalidS1Offset)
 {
     // init -1 and copy to output
-    Duplicate(outInvalidLocal_, constInfo_.INVALID_IDX, constInfo_.sparseCount);
-
-    SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
-    WaitFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
-
-    AscendC::DataCopyParams dataCopyOutParams;
-    dataCopyOutParams.blockCount = 1;
-    dataCopyOutParams.blockLen = constInfo_.sparseCount * sizeof(int32_t);
-    dataCopyOutParams.srcStride = 0;
-    dataCopyOutParams.dstStride = 0;
-    AscendC::DataCopyPad(indiceOutGm[invalidS1Offset], outInvalidLocal_, dataCopyOutParams);
+    uint64_t dealSize = constInfo_.sparseCount;
+    GlobalTensor<int32_t> indexOutput = indiceOutGm[invalidS1Offset];
+    AscendC::InitGlobalMemory(indexOutput, dealSize, constInfo_.INVALID_IDX);
 
     if (returnValueFlag) {
         SetFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
@@ -492,7 +480,7 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessVec1(const QLIV2Common::RunIn
     static_assert(std::is_same_v<SCORE_T, uint16_t>);
     auto outBase = vec1OutUB_[pingpong * (UB_BANK_STRIDE / sizeof(SCORE_T))];
     auto weightBase = weightUB_[qScalepingpong * (UB_BANK_STRIDE / sizeof(float))];
-    auto weightTempBase = weightTempUB_[qScalepingpong * (UB_BANK_STRIDE / sizeof(float))];
+    auto weightTempBase = weightTempUB_[qScalepingpong * (UB_BANK_STRIDE / sizeof(float))]; // 预留接口，weight为FP16使用
 
     auto qkBase = resMm1UB_[pingpong * (UB_BANK_STRIDE / sizeof(QK_T))];
     auto qkVLstride = (UB_BANK_DEPTH_STRIDE / sizeof(QK_T)) / 2 * constInfo_.mBaseSize;
