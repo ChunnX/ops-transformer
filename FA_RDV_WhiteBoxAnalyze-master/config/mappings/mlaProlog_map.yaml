@@ -1,0 +1,90 @@
+# mlaProlog_v1的json文件输入与参数映射关系
+mlaProlog_v1:
+  inputs:
+    0: x
+    1: w_dq
+    2: w_uq_qr
+    3: w_uk
+    4: w_dkv_kr
+    5: gamma_cq
+    6: gamma_ckv
+    7: sin
+    8: cos
+    9: cache_index
+    10: kv_cache
+    11: kr_cache
+    12: dequant_scale_x
+    13: dequant_scale_w_dq
+    14: dequant_scale_w_uq_qr
+    15: dequant_scale_w_dkv_kr
+    16: quant_scale_ckv
+    17: quant_scale_ckr
+    18: smooth_scales_cq
+  outputs:
+    0: out_q
+    1: out_qrope
+    2: out_kv_cache
+    3: out_kr_cache
+
+# mlaProlog_v2的json文件输入与参数映射关系
+mlaProlog_v2:
+  inputs:
+    0: x
+    1: w_dq
+    2: w_uq_qr
+    3: w_uk
+    4: w_dkv_kr
+    5: gamma_cq
+    6: gamma_ckv
+    7: sin
+    8: cos
+    9: cache_index
+    10: kv_cache
+    11: kr_cache
+    12: dequant_scale_x
+    13: dequant_scale_w_dq
+    14: dequant_scale_w_uq_qr
+    15: dequant_scale_w_dkv_kr
+    16: quant_scale_ckv
+    17: quant_scale_ckr
+    18: smooth_scales_cq
+  outputs:
+    0: out_q
+    1: out_qrope
+    2: out_kv_cache
+    3: out_kr_cache
+    4: out_dequant_scale_q_nope
+
+# mlaProlog_v3的json文件输入与参数映射关系
+mlaProlog_v3:
+  inputs:
+    0: x
+    1: w_dq
+    2: w_uq_qr
+    3: w_uk
+    4: w_dkv_kr
+    5: gamma_cq
+    6: gamma_ckv
+    7: sin
+    8: cos
+    9: cache_index
+    10: kv_cache
+    11: kr_cache
+    12: dequant_scale_x
+    13: dequant_scale_w_dq
+    14: dequant_scale_w_uq_qr
+    15: dequant_scale_w_dkv_kr
+    16: quant_scale_ckv
+    17: quant_scale_ckr
+    18: smooth_scales_cq
+    19: actual_seq_len
+    20: k_nope_clip_alpha
+  outputs:
+    0: out_q
+    1: out_qrope
+    2: out_kv_cache
+    3: out_kr_cache
+    4: out_dequant_scale_q_nope
+    5: out_qnorm
+    6: out_dequant_scale_q_norm
+

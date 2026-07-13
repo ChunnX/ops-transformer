@@ -1,0 +1,11 @@
+aclnnQuantLightningIndexer:
+  inputs:
+    0: query
+    1: key
+    2: weights
+    3: block_table
+    4: key(PA)
+    5: q_scale
+    6: k_scale
+    7: k_scale(PA)
+  outputs:

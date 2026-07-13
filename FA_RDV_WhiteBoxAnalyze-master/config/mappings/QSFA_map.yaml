@@ -1,0 +1,15 @@
+aclnnKvQuantSparseFlashAttention:
+  inputs:
+    0: q_none
+    1: k_none
+    2: v_none
+    3: sparse_indices
+    4: block_table
+    5: query
+    6: key
+    7: value
+    8: none1
+    9: none2
+    10: none3
+    11: none4
+  outputs:
