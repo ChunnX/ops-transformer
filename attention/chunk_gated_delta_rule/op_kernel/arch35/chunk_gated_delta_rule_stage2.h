@@ -141,11 +141,11 @@ public:
                             auto stateIn = inQueue_.DeQue<float>();
                             DataCopy(stateFp32Ub_, stateIn, Dv_ * curDk_);
                             inQueue_.FreeTensor(stateIn);
-                            CalGCumExp(sTP_->gCum[nvId * Sp_ + length]);
                             auto bf16State = outQueue_.AllocTensor<bfloat16_t>();
                             Cast(bf16State, stateFp32Ub_, RoundMode::CAST_RINT, Dv_ * curDk_);
                             outQueue_.EnQue(bf16State);
                             CopyOut<bfloat16_t>(sTP_->curStateBf16[nvId * Dv_ * Dk_], Dv_, Dk_, false, curDk_);
+                            CalGCumExp(sTP_->gCum[nvId * Sp_ + length]);
                             PipeBarrier<PIPE_MTE3>();
                             auto fp32Local = outQueue_.AllocTensor<float>();
                             DataCopy(fp32Local, stateFp32Ub_, Dv_ * curDk_);
