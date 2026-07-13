@@ -109,12 +109,13 @@ static constexpr AscendC::MicroAPI::CastTrait CAST_32_TO_83 = {
     AscendC::MicroAPI::MaskMergeMode::ZEROING, AscendC::RoundMode::CAST_RINT};
 #define BLOCK_EPILOGUE_SWIGLU_QUANT_CLASS_LOCAL_PARAMS                                                             \
     template <typename DataTypeOut_, typename DataTypeIn_, typename DataTypeX2Scale_,                              \
-              typename DataTypeX1Scale_, bool IsTensorList_, bool IsInterleaved_>
+              typename DataTypeX1Scale_, bool IsTensorList_, bool IsInterleaved_, bool EnablePingPong_>
 #define BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS                                                                   \
-    DataTypeOut_, DataTypeIn_, DataTypeX2Scale_, DataTypeX1Scale_, IsTensorList_, IsInterleaved_
+    DataTypeOut_, DataTypeIn_, DataTypeX2Scale_, DataTypeX1Scale_, IsTensorList_, IsInterleaved_, EnablePingPong_
 
 template <typename DataTypeOut_, typename DataTypeIn_, typename DataTypeX2Scale_,
-          typename DataTypeX1Scale_, bool IsTensorList_, bool IsInterleaved_ = false>
+          typename DataTypeX1Scale_, bool IsTensorList_, bool IsInterleaved_ = false,
+          bool EnablePingPong_ = IsInterleaved_>
 class BlockEpilogueSwigluMxQuant {
 public:
     __aicore__ inline BlockEpilogueSwigluMxQuant()
@@ -155,7 +156,7 @@ public:
     __aicore__ inline auto GetSecondL0c2UbTensor();
     __aicore__ inline void operator()(const BlockShape &blockShape, const BlockCoord &blockCoord,
                                        uint16_t pingpongIdx = 0);
-    __aicore__ inline void UpdateGlobalAddr(const BlockCoord &baseOffset);
+    __aicore__ inline void UpdateGlobalAddr(const BlockCoord &baseOffset, uint32_t flagElementOffset = 0U);
     __aicore__ inline void UpdateNextProblem(const ProblemShape &problemShape);
 
 private:
@@ -244,8 +245,11 @@ BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::Init(Param
     }
 
     // 重构UB内存
-    // 当前master默认非interleaved，保留完整256x256空间；interleaved预留按half tile + pingpong偏移使用。
-    constexpr uint32_t MAX_SINGLE_MN_ALIAS = IsInterleaved_ ? MAX_SINGLE_MN / SWIGLU_N_HALF : MAX_SINGLE_MN;
+    // Generic GMM1 always uses two 128KB slots. Both source layouts produce a
+    // 256x128 post-SwiGLU tile, so all scratch must stay inside the active slot.
+    // The A8W4 GM-staged path keeps the original full-tile alias contract.
+    constexpr uint32_t MAX_SINGLE_MN_ALIAS =
+        EnablePingPong_ ? MAX_SINGLE_MN / SWIGLU_N_HALF : MAX_SINGLE_MN;
     constexpr uint32_t gluResOffset = 0;
     gluRes_ = AscendC::LocalTensor<bfloat16_t>(AscendC::TPosition::VECCALC, gluResOffset, MAX_SINGLE_MN_ALIAS);
     constexpr uint32_t quantOutputOffset = gluResOffset + MAX_SINGLE_MN_ALIAS * sizeof(bfloat16_t);
@@ -263,13 +267,14 @@ BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::Init(Param
 
 BLOCK_EPILOGUE_SWIGLU_QUANT_CLASS_LOCAL_PARAMS
 __aicore__ inline void
-BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::UpdateGlobalAddr(const BlockCoord &baseOffset)
+BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::UpdateGlobalAddr(
+    const BlockCoord &baseOffset, uint32_t flagElementOffset)
 {
     if constexpr(g_coreType == AscendC::AIV) {
         quantOutputGlobal_.SetGlobalBuffer((__gm__ int8_t *)params_->yGmAddr + Get<Y_IDX>(baseOffset));
         quantScaleGlobal_.SetGlobalBuffer((__gm__ int8_t *)params_->yScaleGmAddr + Get<Y_SCALE_IDX>(baseOffset));
         groupFlagListGmAddr_ = (__gm__ int32_t *)params_->groupFlagListGmAddr +
-        Get<GROUP_FLAG_IDX>(baseOffset) * INT_CACHELINE;
+        Get<GROUP_FLAG_IDX>(baseOffset) * INT_CACHELINE + flagElementOffset;
     }
 }
 
@@ -688,8 +693,7 @@ BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::VFDoSwiglu
     constexpr uint32_t pongElemOf_bf16 = MAX_SINGLE_MN * sizeof(DataTypeIn) / sizeof(bfloat16_t);
     constexpr uint32_t pongElemOf_int8 = MAX_SINGLE_MN * sizeof(DataTypeIn);
     constexpr uint32_t pongElemOf_uint16 = MAX_SINGLE_MN * sizeof(DataTypeIn) / sizeof(uint16_t);
-    // 当前master调用不传pingpongIdx，默认走非interleaved/idx0；interleaved接入后只在入口切当前half UB。
-    const uint32_t pongMul = (IsInterleaved_ && pingpongIdx == 1U) ? 1U : 0U;
+    const uint32_t pongMul = (EnablePingPong_ && pingpongIdx == 1U) ? 1U : 0U;
 
     __ubuf__ DataTypeIn *l0cOutUbBase =
         (__ubuf__ DataTypeIn *)l0cOutUbFirst_.GetPhyAddr() + pongMul * pongElemOf_DataTypeIn;
@@ -712,8 +716,11 @@ BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::VFDoSwiglu
             l0cOutUbBase, l0cOutUbSecondAddr,
             gluResAddr, maxExpAddr, halfScaleAddr, mSize, singleN_);
     } else {
-        // 非interleaved保留upstream/master的两块UB输入布局。
-        __ubuf__ DataTypeIn *l0cOutUbSecondAddr = (__ubuf__ DataTypeIn *)l0cOutUbSecond_.GetPhyAddr();
+        // Generic non-interleaved: each 128KB slot stores independent
+        // 256x128 gate/up matrices back-to-back. A8W4 retains two full GM-copy tiles.
+        __ubuf__ DataTypeIn *l0cOutUbSecondAddr = EnablePingPong_ ?
+            l0cOutUbBase + MAX_SINGLE_MN / SWIGLU_N_HALF :
+            (__ubuf__ DataTypeIn *)l0cOutUbSecond_.GetPhyAddr();
         VFDoSwigluAndQuantForMX<SwigluQuantMsg::QuantMode::MX_PERGROUP_MODE, false>(
             quantOutputInUbAddr, quantScaleOutputInUbAddr,
             l0cOutUbBase, l0cOutUbSecondAddr,
@@ -757,7 +764,7 @@ BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::operator()
     AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(0);
     AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(0);
     // scale已按compact布局生成，直接copy到GM，省掉原先TransMxScaleLayout重排scale。
-    if constexpr (IsInterleaved_) {
+    if constexpr (EnablePingPong_) {
         constexpr uint32_t PONG_INT8_ELEMS = MAX_SINGLE_MN * sizeof(DataTypeIn);
         if (pingpongIdx == 1U) {
             AscendC::LocalTensor<int8_t> quantOutputPong = quantOutput_[PONG_INT8_ELEMS];
@@ -776,7 +783,11 @@ BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::operator()
     AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(0);
     AscendC::SetFlag<AscendC::HardEvent::MTE3_S>(0);
     AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(0);
-    AscendC::AtomicAdd(groupFlagListGmAddr_, 1);
+    // Publish readiness per 256-row wave. GMM2 may consume an early wave while
+    // later SwiGLU tiles of the same expert are still in flight.
+    uint64_t rowIdx = yOffset / static_cast<uint64_t>(n_);
+    uint64_t waveIdx = rowIdx / static_cast<uint64_t>(DISPATCH_WAVE_TILE_M);
+    AscendC::AtomicAdd(groupFlagListGmAddr_ + waveIdx, 1);
     return;
 }
 
