@@ -57,6 +57,9 @@ const static int64_t MAX_EXPERT_PER_RANK = 1024LL;
 const static int64_t H_BASE = 1024LL;
 const static int64_t MAX_H = 8LL * 1024LL; // 8K
 const static int64_t HIDDEN_DIM_BASE = 1024LL;
+const static uint32_t GMM1_TILE_M = 256U;
+const static uint32_t GMM2_TILE_M = 128U;
+const static uint32_t GMM_TILE_N = 256U;
 const static int64_t MIN_EP_WORLD_SIZE = 2LL;
 const static int64_t MAX_EP_WORLD_SIZE = 1024LL;
 const static int64_t MAX_MOE_EXPERT_NUM = 2048LL;
@@ -81,6 +84,7 @@ void PrintMegaMoeTilingData(const MegaMoeTilingData *tilingData, const char *nod
     OP_LOGD(nodeName, "epWorldSize is %u", tilingData->epWorldSize);
     OP_LOGD(nodeName, "maxOutputSize is %u", tilingData->maxOutputSize);
     OP_LOGD(nodeName, "clampLimit is %f", tilingData->clampLimit);
+    OP_LOGD(nodeName, "expertsPerBatch is %u", tilingData->expertsPerBatch);
 }
 
 void PrintWorkspaceInfo(const struct WorkspaceInfo *info, const char *nodeName)
@@ -94,6 +98,7 @@ void PrintWorkspaceInfo(const struct WorkspaceInfo *info, const char *nodeName)
     OP_LOGD(nodeName, "flagSwiGluToGmm2Ptr:        %ld\n", info->flagSwiGluToGmm2Ptr);
     OP_LOGD(nodeName, "flagDispatchToGmm1Ptr:      %ld\n", info->flagDispatchToGmm1Ptr);
     OP_LOGD(nodeName, "flagSendCntCalToUpdParamsPtr:      %ld\n", info->flagSendCntCalToUpdParamsPtr);
+    OP_LOGD(nodeName, "flagDispatchBatchToGmm2Ptr:        %ld\n", info->flagDispatchBatchToGmm2Ptr);
 }
 
 void PrintPeermemInfo(const MegaMoeTilingData *tilingData, const char *nodeName)
@@ -166,8 +171,7 @@ static int64_t GetCombineQuantModeByAttr(const gert::TilingContext *context, Meg
     return static_cast<int64_t>(*combineQuantModePtr);
 }
 
-static uint64_t CalTilingKey(const gert::TilingContext *context, MegaMoeConfig &config, MegaMoeTilingData *tilingData,
-                             const char *nodeName)
+static uint64_t CalTilingKey(const gert::TilingContext *context, MegaMoeConfig &config, const char *nodeName)
 {
     auto attrs = context->GetAttrs();
 
@@ -413,6 +417,27 @@ static ge::graphStatus SetAttrParams(const gert::TilingContext *context, MegaMoe
         tilingData->groupedMatmulMode = GROUPED_MATMUL_MODE_GENERAL;
     }
 
+    // Estimate the average work of one local expert and choose the smallest consecutive
+    // expert batch that fills all AICs in the less-parallel GMM stage. The public/default
+    // non-interleaved GMM1 path matches upstream: one scheduler tile computes 256 gate
+    // columns plus 256 up columns.
+    uint64_t expectedTokens = ops::CeilDiv(
+        static_cast<uint64_t>(tilingData->bs) * static_cast<uint64_t>(tilingData->topK),
+        static_cast<uint64_t>(tilingData->expertPerRank));
+    uint64_t expectedWaves = std::max<uint64_t>(1U, ops::CeilDiv(expectedTokens,
+        static_cast<uint64_t>(GMM1_TILE_M)));
+    uint64_t gmm1TilesPerExpert = expectedWaves * ops::CeilDiv(
+        static_cast<uint64_t>(tilingData->hiddenDim), static_cast<uint64_t>(GMM_TILE_N * 2U));
+    uint64_t gmm2TilesPerExpert = ops::CeilDiv(expectedTokens,
+        static_cast<uint64_t>(GMM2_TILE_M)) * ops::CeilDiv(
+        static_cast<uint64_t>(tilingData->h), static_cast<uint64_t>(GMM_TILE_N));
+    uint64_t limitingTilesPerExpert = std::max<uint64_t>(1U,
+        std::min(gmm1TilesPerExpert, gmm2TilesPerExpert));
+    uint64_t expertsToFillAic = ops::CeilDiv(static_cast<uint64_t>(aicNum), limitingTilesPerExpert);
+    tilingData->expertsPerBatch = static_cast<uint32_t>(std::max<uint64_t>(1U,
+        std::min<uint64_t>(MEGA_MOE_MAX_EXPERTS_PER_BATCH,
+            std::min<uint64_t>(tilingData->expertPerRank, expertsToFillAic))));
+
     return ge::GRAPH_SUCCESS;
 }
 
@@ -643,13 +668,25 @@ static ge::graphStatus CheckWeightScalesTensorDim(const gert::TilingContext *con
     OP_LOGD(nodeName, "weightScalesTwo dim2 = %ld", weightScalesTwoDim2);
     OP_LOGD(nodeName, "weightScalesTwo dim3 = %ld", weightScalesTwoDim3);
 
+    auto weightOneStorageShape = context->GetDynamicInputShape(config.weight1Index, 0);
+    auto weightTwoStorageShape = context->GetDynamicInputShape(config.weight2Index, 0);
+    OP_CHECK_NULL_WITH_CONTEXT(context, weightOneStorageShape);
+    OP_CHECK_NULL_WITH_CONTEXT(context, weightTwoStorageShape);
+    const int64_t weightOneDim0 = weightOneStorageShape->GetStorageShape().GetDim(0);
+    const int64_t weightOneDim1 = weightOneStorageShape->GetStorageShape().GetDim(1);
+    const int64_t weightOneDim2 = weightOneStorageShape->GetStorageShape().GetDim(2);
+    const int64_t weightTwoDim0 = weightTwoStorageShape->GetStorageShape().GetDim(0);
+    const int64_t weightTwoDim1 = weightTwoStorageShape->GetStorageShape().GetDim(1);
+    const int64_t weightTwoDim2 = weightTwoStorageShape->GetStorageShape().GetDim(2);
+
     OP_TILING_CHECK(
-        weightScalesOneDim0 != weightScalesTwoDim0,
+        weightScalesOneDim0 != weightOneDim0 || weightScalesTwoDim0 != weightTwoDim0,
         OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
-            nodeName, "weightScalesOne, weightScalesTwo",
-            (std::string("[") + std::to_string(weightScalesOneDim0) + ", " + std::to_string(weightScalesTwoDim0) + "]")
+            nodeName, "weightScalesOne, weightOne, weightScalesTwo, weightTwo",
+            (std::string("[") + std::to_string(weightScalesOneDim0) + ", " + std::to_string(weightOneDim0) +
+             ", " + std::to_string(weightScalesTwoDim0) + ", " + std::to_string(weightTwoDim0) + "]")
                 .c_str(),
-            "The shape [dim0] of weightScalesOne and weightScalesTwo must be equal."),
+            "The expert dimension (dim0) of each weight scale must equal that of its weight."),
         return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK(
@@ -661,33 +698,36 @@ static ge::graphStatus CheckWeightScalesTensorDim(const gert::TilingContext *con
             "The shape [dim3] of weightScalesOne and weightScalesTwo must be 2."),
         return ge::GRAPH_FAILED);
 
-    const gert::StorageShape *xStorageShape = context->GetInputShape(config.xIndex);
-    int64_t h = xStorageShape->GetStorageShape().GetDim(1);
     OP_TILING_CHECK(
-        weightScalesTwoDim1 != h,
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-            nodeName, "weightScalesTwo", (std::string("dim1=") + std::to_string(weightScalesTwoDim1)).c_str(),
-            (std::string("The shape [dim1] of weightScalesTwo must be equal to h(") + std::to_string(h) + ").")
-                .c_str()),
+        weightScalesOneDim1 != weightOneDim1 || weightScalesTwoDim1 != weightTwoDim1,
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
+            nodeName, "weightScalesOne, weightOne, weightScalesTwo, weightTwo",
+            (std::string("[") + std::to_string(weightScalesOneDim1) + ", " + std::to_string(weightOneDim1) +
+             ", " + std::to_string(weightScalesTwoDim1) + ", " + std::to_string(weightTwoDim1) + "]")
+                .c_str(),
+            "The output-channel dimension (dim1) of each weight scale must equal that of its weight."),
         return ge::GRAPH_FAILED);
+
+    const int64_t expectedWeightScalesOneDim2 =
+        ops::CeilDiv(weightOneDim2, INPUT_WEIGHT_SCALES_CEIL_ALIGN);
     OP_TILING_CHECK(
-        weightScalesOneDim2 != ops::CeilDiv(h, INPUT_WEIGHT_SCALES_CEIL_ALIGN),
+        weightScalesOneDim2 != expectedWeightScalesOneDim2,
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
             nodeName, "weightScalesOne", (std::string("dim2=") + std::to_string(weightScalesOneDim2)).c_str(),
-            (std::string(
-                 "The shape [dim2] of weightScalesOne must be equal to CeilDiv(h, INPUT_WEIGHT_SCALES_CEIL_ALIGN) = ") +
-             std::to_string(ops::CeilDiv(h, INPUT_WEIGHT_SCALES_CEIL_ALIGN)) + ".")
+            (std::string("The shape [dim2] of weightScalesOne must equal CeilDiv(weightOne.dim2, ") +
+             "INPUT_WEIGHT_SCALES_CEIL_ALIGN) = " + std::to_string(expectedWeightScalesOneDim2) + ".")
                 .c_str()),
         return ge::GRAPH_FAILED);
 
-    const int64_t n = weightScalesOneDim1;
-    OP_TILING_CHECK(weightScalesTwoDim2 != ops::CeilDiv(n / NUM_TWO, INPUT_WEIGHT_SCALES_CEIL_ALIGN),
+    const int64_t expectedWeightScalesTwoDim2 =
+        ops::CeilDiv(weightTwoDim2, INPUT_WEIGHT_SCALES_CEIL_ALIGN);
+    OP_TILING_CHECK(weightScalesTwoDim2 != expectedWeightScalesTwoDim2,
                     OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
                         nodeName, "weightScalesTwo",
                         (std::string("dim2=") + std::to_string(weightScalesTwoDim2)).c_str(),
-                        (std::string("The shape [dim2] of weightScalesTwo must be equal to CeilDiv(n / 2, "
+                        (std::string("The shape [dim2] of weightScalesTwo must equal CeilDiv(weightTwo.dim2, "
                                      "INPUT_WEIGHT_SCALES_CEIL_ALIGN) = ") +
-                         std::to_string(ops::CeilDiv(n / NUM_TWO, INPUT_WEIGHT_SCALES_CEIL_ALIGN)) + ".")
+                         std::to_string(expectedWeightScalesTwoDim2) + ".")
                             .c_str()),
                     return ge::GRAPH_FAILED);
 
@@ -1086,7 +1126,7 @@ ge::graphStatus MegaMoeTilingFuncImplPublic(gert::TilingContext *context, MegaMo
                     OP_LOGE(nodeName, "Getting attr failed."), return ge::GRAPH_FAILED);
 
     // Cal TilingKey
-    uint64_t tilingKey = CalTilingKey(context, config, tilingData, nodeName);
+    uint64_t tilingKey = CalTilingKey(context, config, nodeName);
     OP_LOGI(nodeName, "OP TilingKey is %lu", tilingKey);
     context->SetTilingKey(tilingKey);
 
