@@ -75,7 +75,7 @@ __aicore__ inline void EngramFetchWaitArch35::Process()
             if (channelIdx == rankId_) {
                 continue;
             }
-            hcomm_.Drain(ctxPtr_->hcommHandle_[channelIdx]);
+            hcomm_.Drain(ctxPtr_->hcommHandle[channelIdx]);
         }
     }
 }

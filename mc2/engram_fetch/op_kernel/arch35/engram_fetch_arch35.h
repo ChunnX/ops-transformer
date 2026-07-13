@@ -167,7 +167,7 @@ __aicore__ inline void EngramFetchArch35::CopyContextToUb()
 
     LocalTensor<uint64_t> hcommHandleLocal = hcommHandleBuf_.Get<uint64_t>();
     GlobalTensor<uint64_t> hcommHandleGm;
-    hcommHandleGm.SetGlobalBuffer((__gm__ uint64_t *)&ctxPtr_->hcommHandle_[0]);
+    hcommHandleGm.SetGlobalBuffer((__gm__ uint64_t *)&ctxPtr_->hcommHandle[0]);
     DataCopyExtParams cpHandle{1U, numRanks_ * static_cast<uint32_t>(sizeof(uint64_t)), 0U, 0U, 0U};
     DataCopyPadExtParams<uint64_t> padHandle{false, 0, 0, 0};
     DataCopyPad(hcommHandleLocal, hcommHandleGm, cpHandle, padHandle);

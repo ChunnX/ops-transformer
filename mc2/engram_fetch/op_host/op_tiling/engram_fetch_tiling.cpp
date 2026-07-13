@@ -532,31 +532,34 @@ static ge::graphStatus SetWorkSpace(gert::TilingContext *context,
     int64_t numRanks = static_cast<int64_t>(tilingData.rankSize);
     int64_t numTokens = tilingData.numTokens;
     int64_t hiddenBytes = tilingData.hiddenBytes;
-    int64_t totalRecv = tilingData.numMaxTokensPerRank;
-
-    int64_t wsSendCounts = numRanks * static_cast<int64_t>(sizeof(int32_t));
-    int64_t wsRecvCounts = numRanks * static_cast<int64_t>(sizeof(int32_t));
-    int64_t wsSendPrefixSum = numRanks * static_cast<int64_t>(sizeof(int64_t));
-    int64_t wsRecvPrefixSum = numRanks * static_cast<int64_t>(sizeof(int64_t));
-    int64_t wsSortedIndices = numTokens * static_cast<int64_t>(sizeof(int32_t));
-    int64_t wsTokenIdxRank = numTokens * static_cast<int64_t>(sizeof(int32_t));
-    int64_t wsRecvIndices = totalRecv * static_cast<int64_t>(sizeof(int32_t));
-    int64_t wsLocalData = totalRecv * hiddenBytes;
+    int64_t totalRecv = tilingData.numMaxTokensPerRank * numRanks;
 
     OP_TILING_CHECK(numTokens > 0 && hiddenBytes > INT64_MAX / numTokens,
         OP_LOGE(nodeName, "workspace overflow: numTokens=%ld, hiddenBytes=%ld", numTokens, hiddenBytes),
         return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(totalRecv > 0 && hiddenBytes > INT64_MAX / totalRecv,
+        OP_LOGE(nodeName, "workspace overflow: totalRecv=%ld, hiddenBytes=%ld", totalRecv, hiddenBytes),
+        return ge::GRAPH_FAILED);
 
-    int64_t wsTotal = wsSendCounts + wsRecvCounts + wsSendPrefixSum + wsRecvPrefixSum
-                    + wsSortedIndices + wsTokenIdxRank + wsRecvIndices + wsLocalData;
+    int64_t wsSdispls = numRanks * static_cast<int64_t>(sizeof(int64_t));
+    int64_t wsRdispls = numRanks * static_cast<int64_t>(sizeof(int64_t));
+    int64_t wsSortedIndices = numTokens * static_cast<int64_t>(sizeof(int32_t));
+    int64_t wsTokenIdxRank = numTokens * static_cast<int64_t>(sizeof(int32_t));
+    int64_t wsRecvIndices = totalRecv * static_cast<int64_t>(sizeof(int32_t));
+    int64_t wsLocalData = totalRecv * hiddenBytes;
+    int64_t wsRecvData = numTokens * hiddenBytes;
+    int64_t wsFlagScratch = 32;
+
+    int64_t wsTotal = wsSdispls + wsRdispls + wsSortedIndices + wsTokenIdxRank
+                    + wsRecvIndices + wsLocalData + wsRecvData + wsFlagScratch;
     wsTotal = AlignTo(wsTotal, BUFFER_ALIGNMENT);
     wsTotal += SYSTEM_NEED_WORKSPACE;
 
     workSpaces[0] = static_cast<size_t>(wsTotal);
-    OP_LOGD(nodeName, "training workspace: sendCounts=%ld, recvCounts=%ld, sendPrefix=%ld, recvPrefix=%ld, "
-            "sortedIndices=%ld, tokenIdxRank=%ld, recvIndices=%ld, localData=%ld, total=%zu",
-            wsSendCounts, wsRecvCounts, wsSendPrefixSum, wsRecvPrefixSum,
-            wsSortedIndices, wsTokenIdxRank, wsRecvIndices, wsLocalData, workSpaces[0]);
+    OP_LOGD(nodeName, "training workspace: sdispls=%ld, rdispls=%ld, sortedIndices=%ld, tokenIdxRank=%ld, "
+            "recvIndices=%ld, localData=%ld, recvData=%ld, flagScratch=%ld, total=%zu",
+            wsSdispls, wsRdispls, wsSortedIndices, wsTokenIdxRank,
+            wsRecvIndices, wsLocalData, wsRecvData, wsFlagScratch, workSpaces[0]);
     return ge::GRAPH_SUCCESS;
 }
 

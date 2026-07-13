@@ -56,7 +56,7 @@ __global__ __aicore__ void engram_fetch(GM_ADDR commContext, GM_ADDR indices, GM
         // ① 桶排序: indices → perm, sendCounts, sortedLocalEntry
         // ② a2a(sortedLocalEntry) → recvLocalEntry, recvCounts
         // ③ gather: commBuffer[rankId][recvLocalEntry] → recvTokens
-        // ④ a2a(recvTokens) → gathered (用 gmCommBuffer)
+        // ④ a2a(recvTokens) → gathered (用 epHcclBuffer)
         // ⑤ 还原在 wait kernel 内完成
         printf("hello engram_fetch WITH_GRAD_MODE\n");
     }

@@ -5,7 +5,7 @@
 
 ---
 
-## 一、数据流
+## 一、数据流 kernel侧关注
 
 ### 1.1 前向训练态（EngramFetch，5 步融合在 issue kernel 内，无 wait kernel）
 
@@ -34,7 +34,7 @@ gradFetched(T,H) + perm/sendCounts/recvCounts/recvLocalEntry/numRecv
 
 ---
 
-## 二、共享基础设施
+## 二、PTA
 
 ### 2.1 EngramFetchCtx
 
@@ -49,7 +49,8 @@ class EngramFetchCtx:
 ```
 
 ### 2.2 ElasticBuffer 构造函数
-
+TO DO:疑问点1：num_max_tokens_per_rank --- MOE 和 num_max_tokens_per_rank -- engram  是否是一个
+TO DO:疑问点2：num_max_tokens_per_rank 的大小限定问题
 ```python
 ElasticBuffer(group, *, num_cpu_bytes=0, with_grad=False,
               num_max_tokens_per_rank=0, ...)
@@ -60,42 +61,71 @@ ElasticBuffer(group, *, num_cpu_bytes=0, with_grad=False,
 | `group` | ProcessGroup | 分布式通信组 |
 | `num_cpu_bytes` | int | CPU 锁页内存大小（2MB 对齐） |
 | `with_grad` | bool | True=训练模式（all-to-all + save-for-backward） |
-| `num_max_tokens_per_rank` | int | 每 rank 最大 token 数，决定 GM 通信缓冲区大小 |
+| `num_max_tokens_per_rank` | Optional[int] | 每 rank 最大 token 数（训练 GM 缓冲区 + MoE dispatch 共用） |
 
 ### 2.3 GM 生命周期
 
-GM 在 `EngramWrite` 末尾一次性申请，`Destroy` 时释放（前向/反向共用）：
+GM 在 `EngramWrite` 阶段申请，`Destroy` 时释放（前向/反向共用）。
+
+GM 大小由 `GetEngramStorageSizeHint` 同时计算（返回 `(numCpuBytes, numNpuBytes)`），
+经 Python 构造函数 `num_npu_bytes` 参数传入 C++ `numNpuBytes_` 成员：
+```
+numNpuBytes = AlignTo(numMaxTokensPerRank * hiddenSize * sizeof(float), 2MB)
+```
 
 ```
-EngramWrite 末尾 (训练态首次):
-  ├─ gmBytes = AlignTo(maxR * hiddenSize * sizeof(float), 2MB)
-  │   maxR = numMaxTokensPerRank * rankSize
-  ├─ aclrtMalloc(HUGE_FIRST) → gmBufPtr_
-  ├─ HcclCommMemReg(tag="...engram_embedding_gm")
-  ├─ EngramBarrier(true)
-  ├─ HcclChannelGetRemoteMems → gmAddrList[peer]
-  ├─ UpdateContextTensor()
-  └─ EngramBarrier(true)
+EngramWrite :
+  ├─ ... HCCL context 建立 ...
+  ├─ EnsureEngramContext -> AllocateAndExchangeGm(numNpuBytes_)
+  │   ├─ aclrtMalloc(HUGE_FIRST) → epHcclBufferPtr_
+  │   ├─ HcclCommMemReg(tag="...engram_embedding_gm")
+  │   ├─ EngramBarrier(true)
+  │   ├─ HcclChannelGetRemoteMems → epHcclBuffer[peer]
+  │   ├─ UpdateContextTensor()
+  │   └─ EngramBarrier(true)
 
 Destroy:
-  └─ aclrtFree(gmBufPtr_)
+  └─ aclrtFree(epHcclBufferPtr_)
 ```
 
-### 2.4 通信上下文（前向/反向共用）
+### 2.4 通信Context
 
 ```cpp
 struct EngramCommContext {
     uint32_t rankId;
     uint32_t rankSize;
     uint64_t commBuffer[1024];      // host pinned 设备映射地址（推理+训练）
-    uint64_t hcommHandle_[1024];    // UBC channel 句柄（推理+训练）
-    uint64_t gmCommBuffer[1024];    // GM 缓冲区地址（仅训练 a2a）
+    uint64_t hcommHandle[1024];     // UBC channel 句柄（推理+训练）
+    uint64_t epHcclBuffer[1024];    // GM 缓冲区地址（仅训练 a2a）
 };
 ```
 
 ### 2.5 EngramContextBuilder
 
-`withGrad` 作为成员变量，`Build()` 入口设置一次，下游方法通过 `withGrad_` 访问：
+`withGrad` 作为成员变量，`Build()` 入口设置一次。
+`withGrad_` 仅影响 `EnsureEngramContext` 末尾是否触发 GM 申请，不影响 channel 创建参数。
+
+**channel 创建（推理/训练一致）：**
+- `HcclChannelDescInit(&desc, 1)` — 始终初始化 1 个 descriptor
+- `desc.memHandleNum = 1` — 绑定 host pinned buffer（用于远端地址交换）
+- `desc.memHandles = &memHandle` — host buffer 句柄
+
+**训练 GM 注册路径（channel 创建之后，复用同一 channel）：**
+
+| 步骤 | 时机 | API | 说明 |
+|------|------|-----|------|
+| ① host buffer 注册 | BuildChannelDescs 前 | `HcclCommMemReg(tag="..._buffer")` | 注册 host pinned 内存 |
+| ② channel 创建 | BuildChannelDescs 内 | `HcclChannelAcquire(memHandleNum=1)` | 创建 channel，绑定 host buffer |
+| ③ 远端 host 地址交换 | GetHcclCommResource 内 | `HcclChannelGetRemoteMems(tag="..._buffer")` | 按 tag 查远端 host 地址 |
+| ④ GM 注册 | AllocateAndExchangeGm 内 | `HcclCommMemReg(tag="..._gm")` | 注册 GM 到 comm 域 |
+| ⑤ 远端 GM 地址交换 | AllocateAndExchangeGm 内 | `HcclChannelGetRemoteMems(tag="..._gm")` | 复用同一 channel，按 tag 查远端 GM 地址 |
+
+> `HcclChannelGetRemoteMems` 按 memTag 字符串匹配返回远端内存，不要求 memHandle 在 channel 创建时绑定。
+> 因此步骤④⑤复用步骤②创建的 channel，无需额外槽位。
+
+**训练前向数据流与 channel 的关系：**
+- 步骤③（本地 gather）：从 `commBuffer[rankId]` 设备映射地址直接读，**不经过 channel**
+- 步骤②④（a2a）：通过 GM（`epHcclBuffer`）做 all-to-all，使用 channel，但 GM 通过 tag 查询路径工作
 
 ```cpp
 class EngramContextBuilder {
@@ -103,16 +133,17 @@ public:
     EngramContextResources Build(..., bool withGrad = false);
 private:
     bool withGrad_ = false;
-    // BuildChannelDescs: HcclChannelDescInit(&desc, withGrad_ ? 2 : 1)
+    BuildChannelDescs: HcclChannelDescInit(&desc, 1), memHandleNum = 1
 };
 ```
 
 ### 2.6 pybind 绑定
 
 ```cpp
-.def(pybind11::init<const string&, int64_t, bool, int64_t>(),
+.def(pybind11::init<const string&, int64_t, bool, int64_t, int64_t>(),
      pybind11::arg("groupName"), pybind11::arg("numCpuBytes"),
-     pybind11::arg("withGrad") = false, pybind11::arg("numMaxTokensPerRank") = 0)
+     pybind11::arg("withGrad") = false, pybind11::arg("numMaxTokensPerRank") = 0,
+     pybind11::arg("numNpuBytes") = 0)
 .def("engram_fetch",
     [](ElasticBuffer &self, const at::Tensor &indices) -> py::object {
         auto hook = self.EngramFetch(indices);
@@ -167,13 +198,13 @@ Python 无分支，C++ pybind lambda 根据 `withGrad` 决定返回值：
 ```
 EngramFetch(indices)
   ├─ if withGrad_:
-  │   ├─ TORCH_CHECK(gmBufPtr_ != nullptr)         ← GM 已在 write 阶段申请
+  │   ├─ TORCH_CHECK(epHcclBufferPtr_ != nullptr)         ← GM 已在 EnsureEngramContext 阶段申请
   │   ├─ savedPerm_ = at::empty({numTokens}, ...)
   │   ├─ savedSendCounts_ = at::empty({rankSize}, ...)
   │   ├─ savedRecvCounts_ = at::empty({rankSize}, ...)
-  │   ├─ savedRecvLocalEntry_ = at::empty({maxR}, ...)
+  │   ├─ savedRecvLocalEntry_ = at::empty({maxR}, ...)   // maxR = num_max_token_per_rank * rankSize
   │   ├─ savedNumRecv_ = at::empty({1}, ...)
-  │   ├─ ACLNN_CMD(aclnnEngramFetch, ..., 5 outputs)  ← 同步, 无 wait
+  │   ├─ ACLNN_CMD(aclnnEngramFetch, ..., 5 outputs)
   │   └─ return [fetched]() { return fetched; }
   │
   └─ else:
@@ -224,21 +255,24 @@ ENGRAM_FETCH_WITH_GRAD_MODE = 1 // 训练（all-to-all）
 ### 3.6 Workspace 布局（训练态）
 
 ```
-workspace = sendCounts + recvCounts + sendPrefixSum + recvPrefixSum
-          + sortedIndices + tokenIdxRank + recvIndices + localData
+workspace = sdispls + rdispls + sortedIndices + tokenIdxInRank
+          + recvIndices + localData + recvData + flagScratch
           + 16MB系统保留
 ```
 
-| 分项 | 大小 |
-|------|------|
-| sendCounts | rankSize × 4B |
-| recvCounts | rankSize × 4B |
-| sendPrefixSum | rankSize × 8B |
-| recvPrefixSum | rankSize × 8B |
-| sortedIndices | numTokens × 4B |
-| tokenIdxRank | numTokens × 4B |
-| recvIndices | totalRecv × 4B |
-| localData | totalRecv × hiddenBytes |
+| 分项 | 大小 | 说明 |
+|------|------|------|
+| sdispls | rankSize × 8B | send 前缀和（int64, 中间计算） |
+| rdispls | rankSize × 8B | recv 前缀和（int64, 中间计算） |
+| sortedIndices | numTokens × 4B | 按 rank 分组的 indices |
+| tokenIdxInRank | numTokens × 4B | 原始位置记录 |
+| recvIndices | totalRecv × 4B | 接收到的 indices |
+| localData | totalRecv × hiddenBytes | 本地读表输出 |
+| recvData | numTokens × hiddenBytes | 交换后的数据（还原前） |
+| flagScratch | 32B | WriteNbi flag 源地址 |
+
+> `totalRecv = numMaxTokensPerRank × rankSize`
+> 输出 tensor（fetched/permOut/sendCountsOut/recvCountsOut/recvLocalEntryOut/numRecvOut）
 
 推理态：固定 16MB。
 
@@ -267,7 +301,7 @@ __global__ __aicore__ void engram_fetch(
 ```
 
 - `INFER_MODE`: RDMA read（现有推理实现）
-- `WITH_GRAD_MODE`: all-to-all（5 步融合, 含还原, 无需 wait kernel）
+- `WITH_GRAD_MODE`: all-to-all
 
 ---
 
@@ -291,8 +325,8 @@ def engram_fetch_grad(self, grad_fetched: Tensor, fetch_ctx: EngramFetchCtx
 
 ```
 EngramFetchGrad(gradFetched, perm, sendCounts, recvCounts, recvLocalEntry, numRecv)
-  ├─ ACLNN_CMD(aclnnEngramFetchGrad, ..., 3 outputs)  ← GM 已在 write 阶段申请
-  ├─ actualK = numUnique.item<int32_t>()               ← D2H 读有效行数
+  ├─ ACLNN_CMD(aclnnEngramFetchGrad, ..., 3 outputs) 
+  ├─ actualK = numUnique.item<int32_t>()               ← 有效行数
   ├─ gradUnique.narrow(0, 0, actualK)                  ← 截取有效部分
   └─ return {gradUnique, uniqueLocalEntry}
 ```
@@ -314,15 +348,8 @@ EngramFetchGrad(gradFetched, perm, sendCounts, recvCounts, recvLocalEntry, numRe
 | hidden_size | Attr | int | — | REQUIRED |
 | num_entries_per_rank | Attr | int | — | REQUIRED |
 
-### 4.4 InferShape
 
-```
-gradUniqueOut = [-1, hiddenSize] fp32（动态 shape, dim0 运行时由 numUnique 决定）
-uniqueLocalEntryOut = [-1] int32
-numUniqueOut = [1] int32
-```
-
-### 4.5 TilingData
+### 4.4 TilingData
 
 ```cpp
 struct EngramFetchGradTilingData {
@@ -346,21 +373,22 @@ ENGRAM_FETCH_GRAD_DEFAULT_MODE = 0   // 单一模式
 ### 4.7 Workspace 布局
 
 ```
-workspace = sendCounts + recvCounts + sendPrefixSum + recvPrefixSum
-          + gradSorted + recvGrad + uniqueEntry + gradAccum
+workspace = gradSorted + recvGrad + sdispls + rdispls
+          + tokenIdxInRank + recvIndices + flagScratch
           + 16MB系统保留
 ```
 
 | 分项 | 大小 | 用途 |
 |------|------|------|
-| sendCounts | rankSize × 4B | a2a 发送计数 |
-| recvCounts | rankSize × 4B | a2a 接收计数 |
-| sendPrefixSum | rankSize × 8B | 发送前缀和 (int64) |
-| recvPrefixSum | rankSize × 8B | 接收前缀和 (int64) |
 | gradSorted | numTokens × hiddenBytes | 步骤① gradFetched[perm] (fp32) |
 | recvGrad | totalRecv × hiddenBytes | 步骤② a2a 接收梯度 (fp32) |
-| uniqueEntry | totalRecv × 4B | 步骤③ unique local entry 中间结果 (int32) |
-| gradAccum | totalRecv × hiddenBytes | 步骤③ scatter-add 累加器 (fp32) |
+| sdispls | rankSize × 8B | send 前缀和 (int64, 中间计算) |
+| rdispls | rankSize × 8B | recv 前缀和 (int64, 中间计算) |
+| tokenIdxInRank | numTokens × 4B | 原始位置记录 (int32, 从 forwardCtx 解析) |
+| recvIndices | totalRecv × 4B | 接收到的 indices (int32, 从 forwardCtx 解析) |
+| flagScratch | 32B | WriteNbi flag 源地址 |
+
+> 输入 tensor（sendCounts/recvCounts/perm/recvLocalEntry/numRecv）和输出 tensor（gradUniqueOut/uniqueLocalEntryOut/numUniqueOut）由 C++ `at::empty` 分配，不在 workspace 中。
 
 ### 4.8 aclnn 接口
 
@@ -395,13 +423,13 @@ __global__ __aicore__ void engram_fetch_grad(
 
 | 文件 | 修改 |
 |------|------|
-| `engram_fetch.h` | `EngramCommContext` 新增 `gmCommBuffer` |
+| `engram_fetch.h` | `EngramCommContext` 新增 `epHcclBuffer` |
 | `engram_fetch_def.cpp` | 5 个 OPTIONAL 输出 |
 | `engram_fetch_tiling_data.h` | 新增 `withGrad`/`numMaxTokensPerRank`/`rankSize` |
 | `engram_fetch_tiling_key.h` | `INFER_MODE` / `WITH_GRAD_MODE` |
 | `engram_fetch_tiling.cpp` | `GetWithGrad`；训练态可选输出校验；精确 workspace |
 | `aclnn_engram_fetch.cpp` | 5 个可选输出参数 |
-| `elastic_buffer.cpp` | `CommContext`+`gmAddrList`；`EngramContextBuilder`+`withGrad_`成员；GM write 阶段申请/destroy 释放；`EngramFetch` 简化+savedPerm_；`EngramFetchGrad`+numRecv；pybind lambda |
+| `elastic_buffer.cpp` | `CommContext`+`epHcclBuffer`；`EngramContextBuilder`+`withGrad_`成员；GM EnsureEngramContext 阶段申请/destroy 释放；`numNpuBytes_`成员；`GetEngramStorageSizeHint` 返回 tuple；`EngramFetch` 简化+savedPerm_；`EngramFetchGrad`+numRecv；pybind lambda+numNpuBytes |
 | `elastic_buffer.py` | `EngramFetchCtx`；`with_grad`/`num_max_tokens_per_rank` 构造参数；`engram_fetch` 无分支；`engram_fetch_grad` |
 
 ### 反向（新建文件）

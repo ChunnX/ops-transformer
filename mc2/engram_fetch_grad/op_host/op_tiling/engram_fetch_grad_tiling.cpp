@@ -536,25 +536,24 @@ static ge::graphStatus SetWorkSpace(gert::TilingContext *context,
         OP_LOGE(nodeName, "workspace overflow: totalRecv=%ld, hiddenBytes=%ld", totalRecv, hiddenBytes),
         return ge::GRAPH_FAILED);
 
-    int64_t wsSendCounts = numRanks * static_cast<int64_t>(sizeof(int32_t));
-    int64_t wsRecvCounts = numRanks * static_cast<int64_t>(sizeof(int32_t));
-    int64_t wsSendPrefixSum = numRanks * static_cast<int64_t>(sizeof(int64_t));
-    int64_t wsRecvPrefixSum = numRanks * static_cast<int64_t>(sizeof(int64_t));
     int64_t wsGradSorted = numTokens * hiddenBytes;
     int64_t wsRecvGrad = totalRecv * hiddenBytes;
-    int64_t wsUniqueEntry = totalRecv * static_cast<int64_t>(sizeof(int32_t));
-    int64_t wsGradAccum = totalRecv * hiddenBytes;
+    int64_t wsSdispls = numRanks * static_cast<int64_t>(sizeof(int64_t));
+    int64_t wsRdispls = numRanks * static_cast<int64_t>(sizeof(int64_t));
+    int64_t wsTokenIdxInRank = numTokens * static_cast<int64_t>(sizeof(int32_t));
+    int64_t wsRecvIndices = totalRecv * static_cast<int64_t>(sizeof(int32_t));
+    int64_t wsFlagScratch = 32;
 
-    int64_t wsTotal = wsSendCounts + wsRecvCounts + wsSendPrefixSum + wsRecvPrefixSum
-                    + wsGradSorted + wsRecvGrad + wsUniqueEntry + wsGradAccum;
+    int64_t wsTotal = wsGradSorted + wsRecvGrad + wsSdispls + wsRdispls
+                    + wsTokenIdxInRank + wsRecvIndices + wsFlagScratch;
     wsTotal = AlignTo(wsTotal, BUFFER_ALIGNMENT);
     wsTotal += SYSTEM_NEED_WORKSPACE;
 
     workSpaces[0] = static_cast<size_t>(wsTotal);
-    OP_LOGD(nodeName, "backward workspace: sendCounts=%ld, recvCounts=%ld, sendPrefix=%ld, recvPrefix=%ld, "
-            "gradSorted=%ld, recvGrad=%ld, uniqueEntry=%ld, gradAccum=%ld, total=%zu",
-            wsSendCounts, wsRecvCounts, wsSendPrefixSum, wsRecvPrefixSum,
-            wsGradSorted, wsRecvGrad, wsUniqueEntry, wsGradAccum, workSpaces[0]);
+    OP_LOGD(nodeName, "backward workspace: gradSorted=%ld, recvGrad=%ld, sdispls=%ld, rdispls=%ld, "
+            "tokenIdxInRank=%ld, recvIndices=%ld, flagScratch=%ld, total=%zu",
+            wsGradSorted, wsRecvGrad, wsSdispls, wsRdispls,
+            wsTokenIdxInRank, wsRecvIndices, wsFlagScratch, workSpaces[0]);
     return ge::GRAPH_SUCCESS;
 }
 
