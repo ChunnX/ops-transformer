@@ -9,9 +9,9 @@
  */
 
 /*!
-* \file engram_fetch.cpp
-* \brief engram_fetch 算子 kernel 入口
-*/
+ * \file engram_fetch.cpp
+ * \brief engram_fetch 算子 kernel 入口
+ */
 
 #if ASC_DEVKIT_MAJOR >= 9
 #include "basic_api/kernel_basic_intf.h"
@@ -25,7 +25,7 @@
 
 using namespace Mc2Kernel;
 
-template<uint32_t EngramFetchMode>
+template <uint32_t EngramFetchMode>
 __global__ __aicore__ void engram_fetch(GM_ADDR commContext, GM_ADDR indices, GM_ADDR fetched, GM_ADDR workspaceGM,
                                         GM_ADDR tilingGM)
 {

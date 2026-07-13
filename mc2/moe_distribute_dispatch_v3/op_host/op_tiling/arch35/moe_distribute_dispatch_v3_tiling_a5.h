@@ -23,5 +23,5 @@ public:
     ge::graphStatus MoeDistributeDispatchA3TilingFuncImplPublic(gert::TilingContext *context,
                                                                 DispatchV2Config &config) override;
 };
-}
+} // namespace optiling
 #endif

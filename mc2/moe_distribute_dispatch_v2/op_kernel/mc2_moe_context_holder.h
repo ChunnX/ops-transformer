@@ -34,7 +34,7 @@ using namespace AscendC;
 
 class Mc2MoeContextHolder {
 public:
-    __aicore__ inline Mc2MoeContextHolder() {};
+    __aicore__ inline Mc2MoeContextHolder(){};
 
     // mc2 ctx 路径无需 winsize 校验，Check 仅作为接口对齐的 no-op。
     // Mc2MoeContext 不携带 epWorldSize，由调用方从 tilingData 传入并暂存。

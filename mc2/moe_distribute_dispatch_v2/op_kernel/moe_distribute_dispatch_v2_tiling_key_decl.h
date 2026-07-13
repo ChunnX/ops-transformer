@@ -43,7 +43,6 @@ ASCENDC_TPL_ARGS_DECL(MoeDistributeDispatchV2,
                       ASCENDC_TPL_UINT_DECL(TILINGKEY_COMM_MODE, ASCENDC_TPL_2_BW, ASCENDC_TPL_UI_LIST,
                                             TILINGKEY_TPL_MTE, TILINGKEY_TPL_AICPU, TILINGKEY_TPL_CCU),
                       ASCENDC_TPL_UINT_DECL(ARCH_TAG, ASCENDC_TPL_2_BW, ASCENDC_TPL_UI_LIST, TILINGKEY_TPL_A2,
-                                            TILINGKEY_TPL_A3, TILINGKEY_TPL_A5),
-);
+                                            TILINGKEY_TPL_A3, TILINGKEY_TPL_A5), );
 } // namespace Mc2Tiling
 #endif
