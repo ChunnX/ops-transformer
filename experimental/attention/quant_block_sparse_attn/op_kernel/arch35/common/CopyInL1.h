@@ -212,7 +212,7 @@ __aicore__ inline void CopyToL1Nd2Nz(const LocalTensor<INPUT_T> &l1Tensor, const
 }
 
 template<typename INPUT_T>
-__aicore__ inline void CopyScaleToL1Nd2Nz(const LocalTensor<INPUT_T> &l1Tensor,
+__aicore__ inline void MxCopyScaleToL1Nd2Nz(const LocalTensor<INPUT_T> &l1Tensor,
     const GlobalTensor<INPUT_T> &gmTensor, uint32_t nValue, uint32_t dValue, uint32_t srcDValue,
     uint32_t dstNzC0Stride)
 {
@@ -236,7 +236,7 @@ __aicore__ inline void CopyScaleToL1Nd2Nz(const LocalTensor<INPUT_T> &l1Tensor,
 }
 
 template<typename INPUT_T>
-__aicore__ inline void CopyScaleToL1Dn2Nz(const LocalTensor<INPUT_T> &l1Tensor,
+__aicore__ inline void MxCopyScaleToL1Dn2Nz(const LocalTensor<INPUT_T> &l1Tensor,
     const GlobalTensor<INPUT_T> &gmTensor, uint32_t nValue, uint32_t dValue, uint32_t srcDValue)
 {
     // DN2NZ 版本用于跟随 BMM1 转置操作数的 scale。
@@ -260,7 +260,7 @@ __aicore__ inline void CopyScaleToL1Dn2Nz(const LocalTensor<INPUT_T> &l1Tensor,
 }
 
 template<typename L1Type>
-__aicore__ inline void GmFlatScaleCopyInToL1PAForDN(LocalTensor<L1Type>& l1Tensor,
+__aicore__ inline void MxGmFlatScaleCopyInToL1PAForDN(LocalTensor<L1Type>& l1Tensor,
     GlobalTensor<L1Type>& gmTensor, GlobalTensor<int32_t>& blockTableGm, const PAShape &shape,
     const Position &startPos)
 {
@@ -271,7 +271,6 @@ __aicore__ inline void GmFlatScaleCopyInToL1PAForDN(LocalTensor<L1Type>& l1Tenso
     uint32_t copyFinishRowCnt = 0;
     uint64_t blockTableBaseOffset = static_cast<uint64_t>(startPos.bIdx) * shape.maxblockNumPerBatch;
     uint32_t curS2Idx = startPos.s2Offset;
-    constexpr uint32_t blockElementCnt = 32U / sizeof(L1Type);
     while (copyFinishRowCnt < shape.copyRowNum) {
         uint64_t blockIdOffset = curS2Idx / shape.blockSize;
         uint32_t remainRowCnt = curS2Idx % shape.blockSize;
@@ -283,15 +282,15 @@ __aicore__ inline void GmFlatScaleCopyInToL1PAForDN(LocalTensor<L1Type>& l1Tenso
 
         uint64_t offset = idInBlockTable * shape.pageStride + static_cast<uint64_t>(remainRowCnt) * shape.rowStride +
                           static_cast<uint64_t>(startPos.n2Idx) * shape.headDim + startPos.dIdx;
-        CopyScaleToL1Dn2Nz(l1Tensor[copyFinishRowCnt * blockElementCnt], gmTensor[offset], shape.actHeadDim,
-                           copyRowCnt, shape.rowStride);
+        MxCopyScaleToL1Dn2Nz(l1Tensor[copyFinishRowCnt * shape.actHeadDim], gmTensor[offset], shape.actHeadDim,
+                             copyRowCnt, shape.rowStride);
         copyFinishRowCnt += copyRowCnt;
         curS2Idx += copyRowCnt;
     }
 }
 
 template<typename L1Type>
-__aicore__ inline void GmFlatScaleCopyInToL1PAForND(LocalTensor<L1Type>& l1Tensor,
+__aicore__ inline void MxGmFlatScaleCopyInToL1PAForND(LocalTensor<L1Type>& l1Tensor,
     GlobalTensor<L1Type>& gmTensor, GlobalTensor<int32_t>& blockTableGm, const PAShape &shape,
     const Position &startPos)
 {
@@ -314,8 +313,8 @@ __aicore__ inline void GmFlatScaleCopyInToL1PAForND(LocalTensor<L1Type>& l1Tenso
 
         uint64_t offset = idInBlockTable * shape.pageStride + static_cast<uint64_t>(remainRowCnt) * shape.rowStride +
                           static_cast<uint64_t>(startPos.n2Idx) * shape.headDim + startPos.dIdx;
-        CopyScaleToL1Nd2Nz(l1Tensor[copyFinishRowCnt * blockElementCnt], gmTensor[offset], copyRowCnt,
-                           shape.actHeadDim, shape.rowStride, shape.copyRowNumAlign);
+        MxCopyScaleToL1Nd2Nz(l1Tensor[copyFinishRowCnt * blockElementCnt], gmTensor[offset], copyRowCnt,
+                             shape.actHeadDim, shape.rowStride, shape.copyRowNumAlign);
         copyFinishRowCnt += copyRowCnt;
         curS2Idx += copyRowCnt;
     }
