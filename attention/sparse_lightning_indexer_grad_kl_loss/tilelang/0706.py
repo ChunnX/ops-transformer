@@ -399,6 +399,9 @@ def tilelang_grad_kl_loss_single_kernel(
                 rsy_all_ub = T.alloc_ub((n_num, n_block), calc_dtype)
                 # row_expand brcb 中转 buffer：(rows, elems_per_block=8 for fp32)
                 re_tmp_ub = T.alloc_ub((N1, 8), calc_dtype)
+                # UB 保存 Phase 1 结果 → Phase 2 从 UB 读，消除 GM 来回 & 跨核依赖
+                p_reduced_save_ub = T.alloc_ub(n_block, calc_dtype)
+                softmax_i_save_ub = T.alloc_ub(n_block, calc_dtype)
 
                 # dKeyIndex 融合：reluGrad 预转置 buffer（读回 + 转置结果，(64,64) fp16）
                 rg_full_ub = T.alloc_ub((Nidx1, n_block), input_dtype)
@@ -464,6 +467,8 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.reduce_sum(bmm1_ub, p_reduced_tmp_ub, 0)
                     T.pipe_barrier("v")
                     T.tile.mul(p_reduced_tmp_ub, p_reduced_tmp_ub, 1.0 / G)
+                    # 保存到 UB（Phase 2 从 UB 读，不读 GM）
+                    T.copy(p_reduced_tmp_ub, p_reduced_save_ub)
                     T.set_flag("v", "mte3", 6)
                     T.wait_flag("v", "mte3", 6)
                     T.copy(p_reduced_tmp_ub, PReduced[bz, s1_id, n_idx_k * n_block:(n_idx_k + 1) * n_block])
@@ -547,31 +552,25 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.tile.exp(rsy_chunk_ub, rsy_chunk_ub)
                     T.pipe_barrier("v")
                     T.tile.div(rsy_chunk_ub, rsy_chunk_ub, rsy_sum_ub[0])
+                    # 保存到 UB（Phase 2/3 从 UB 读，不读 GM）
+                    T.copy(rsy_chunk_ub, softmax_i_save_ub)
                     T.set_flag("v", "mte3", 4)
                     T.wait_flag("v", "mte3", 4)
                     T.copy(rsy_chunk_ub, SoftmaxI[bz, s1_id, n_idx_k * n_block:(n_idx_k + 1) * n_block])
 
                     # ============================================================
-                    # Sync 1→2: drain MTE3 then barrier — AIV1 now sees AIV0's
-                    # PReduced / SoftmaxI / ReduceSumY writes in GM
-                    # ============================================================
-                    T.pipe_barrier("mte3")
-                    T.barrier_all()
-
-                    # ============================================================
                     # Phase 2: Both AIVs — dWeight/reluGrad split
                     # AIV0: rows [0, vector_baseg), AIV1: rows [vector_baseg, 2*vector_baseg)
-                    # Each writes non-overlapping regions → no GM write conflict
+                    # Phase 1 results read from UB (p_reduced_save_ub / softmax_i_save_ub)
+                    # — each AIV reads its own UB → no cross-core dependency → no barrier needed
                     # ============================================================
                     T.tile.fill(ones_2d_ub, 1.0)
                     T.tile.fill(eps_ub, 1e-8)
 
-                    T.set_flag("mte3", "mte2", 5)
-                    T.wait_flag("mte3", "mte2", 5)
-                    T.copy(SoftmaxI[bz, s1_id, n_idx_k * n_block:(n_idx_k + 1) * n_block], softmax_i_chunk_ub)
-                    T.copy(PReduced[bz, s1_id, n_idx_k * n_block:(n_idx_k + 1) * n_block], p_reduced_tmp_ub)
-                    T.set_flag("mte2", "v", 6)
-                    T.wait_flag("mte2", "v", 6)
+                    # diff = softmax_i - p_reduced（直接从 UB 读，无 GM 来回）
+                    T.copy(softmax_i_save_ub, softmax_i_chunk_ub)
+                    T.copy(p_reduced_save_ub, p_reduced_tmp_ub)
+                    T.pipe_barrier("v")
                     T.tile.sub(diff_ub, softmax_i_chunk_ub, p_reduced_tmp_ub)
 
                     g_start = vid * vector_baseg
@@ -632,29 +631,24 @@ def tilelang_grad_kl_loss_single_kernel(
                     # Writes LossOut, reluGradT_ws (single writer)
                     # ============================================================
                     if vid == 0:
-                        T.copy(PReduced[bz, s1_id, n_idx_k * n_block:(n_idx_k + 1) * n_block], loss_chunk_ub)
-                        T.set_flag("mte2", "v", 0)
-                        T.wait_flag("mte2", "v", 0)
+                        # Loss: 从 UB 读 P_reduced/SoftmaxI（无 GM 来回）
+                        T.copy(p_reduced_save_ub, loss_chunk_ub)
+                        T.pipe_barrier("v")
                         T.tile.max(loss_chunk_ub, loss_chunk_ub, eps_ub)
                         T.pipe_barrier("v")
                         T.tile.ln(loss_log_p_ub, loss_chunk_ub)
-                        T.set_flag("v", "mte2", 1)
-                        T.wait_flag("v", "mte2", 1)
+                        T.pipe_barrier("v")
 
-                        T.copy(SoftmaxI[bz, s1_id, n_idx_k * n_block:(n_idx_k + 1) * n_block], loss_chunk_ub)
-                        T.set_flag("mte2", "v", 2)
-                        T.wait_flag("mte2", "v", 2)
+                        T.copy(softmax_i_save_ub, loss_chunk_ub)
+                        T.pipe_barrier("v")
                         T.tile.max(loss_chunk_ub, loss_chunk_ub, eps_ub)
                         T.pipe_barrier("v")
                         T.tile.ln(loss_log_si_ub, loss_chunk_ub)
-                        T.set_flag("v", "mte2", 3)
-                        T.wait_flag("v", "mte2", 3)
+                        T.pipe_barrier("v")
 
-                        T.copy(PReduced[bz, s1_id, n_idx_k * n_block:(n_idx_k + 1) * n_block], loss_chunk_ub)
+                        T.copy(p_reduced_save_ub, loss_chunk_ub)
                         T.pipe_barrier("v")
                         T.tile.sub(loss_val_ub, loss_log_p_ub, loss_log_si_ub)
-                        T.set_flag("mte2", "v", 4)
-                        T.wait_flag("mte2", "v", 4)
                         T.pipe_barrier("v")
                         T.tile.mul(loss_val_ub, loss_chunk_ub, loss_val_ub)
 
