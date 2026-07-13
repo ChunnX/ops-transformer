@@ -213,19 +213,19 @@ __aicore__ inline void CopyToL1Nd2Nz(const LocalTensor<INPUT_T> &l1Tensor, const
 
 template<typename INPUT_T>
 __aicore__ inline void CopyScaleToL1Nd2Nz(const LocalTensor<INPUT_T> &l1Tensor,
-    const GlobalTensor<INPUT_T> &gmTensor, uint32_t nValue, uint32_t dValue, uint32_t srcDValue)
+    const GlobalTensor<INPUT_T> &gmTensor, uint32_t nValue, uint32_t dValue, uint32_t srcDValue,
+    uint32_t dstNzC0Stride)
 {
     // MXFP8 scale 为 fp8_e8m0，但 scale 搬运路径按 bf16 粒度执行。
-    // 两个 e8m0 元素 reinterpret 成一个 bf16 元素，因此构造 ND2NZ 参数时
-    // nValue/srcDValue 需要除以 2。
-    // 主要用于 value scale：GM [T/64, N, DV, 2] -> L1 NZ-like scale layout。
+    // value scale 的 GM shape 是 [T/64, N, DV, 2]，最后一维两个 e8m0
+    // reinterpret 成一个 bf16 lane，因此压缩的是 D 方向，token group 行数不能除以 2。
     Nd2NzParams gm2L1Nd2NzParams;
     gm2L1Nd2NzParams.ndNum = 1;
-    gm2L1Nd2NzParams.nValue = nValue / 2;
-    gm2L1Nd2NzParams.dValue = dValue;
+    gm2L1Nd2NzParams.nValue = nValue;
+    gm2L1Nd2NzParams.dValue = dValue / 2;
     gm2L1Nd2NzParams.srcNdMatrixStride = 0;
-    gm2L1Nd2NzParams.srcDValue = srcDValue;
-    gm2L1Nd2NzParams.dstNzC0Stride = nValue / 2;
+    gm2L1Nd2NzParams.srcDValue = srcDValue / 2;
+    gm2L1Nd2NzParams.dstNzC0Stride = dstNzC0Stride;
     gm2L1Nd2NzParams.dstNzNStride = 1;
     gm2L1Nd2NzParams.dstNzMatrixStride = gm2L1Nd2NzParams.nValue;
 
@@ -315,7 +315,7 @@ __aicore__ inline void GmFlatScaleCopyInToL1PAForND(LocalTensor<L1Type>& l1Tenso
         uint64_t offset = idInBlockTable * shape.pageStride + static_cast<uint64_t>(remainRowCnt) * shape.rowStride +
                           static_cast<uint64_t>(startPos.n2Idx) * shape.headDim + startPos.dIdx;
         CopyScaleToL1Nd2Nz(l1Tensor[copyFinishRowCnt * blockElementCnt], gmTensor[offset], copyRowCnt,
-                           shape.actHeadDim, shape.rowStride);
+                           shape.actHeadDim, shape.rowStride, shape.copyRowNumAlign);
         copyFinishRowCnt += copyRowCnt;
         curS2Idx += copyRowCnt;
     }
