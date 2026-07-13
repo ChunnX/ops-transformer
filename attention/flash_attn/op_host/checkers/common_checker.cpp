@@ -450,6 +450,5 @@ ge::graphStatus CommonChecker::CheckMultiPara(const FaTilingInfo &faInfo)
     return ge::GRAPH_SUCCESS;
 }
 
-
 } // namespace flash_attn
 } // namespace optiling

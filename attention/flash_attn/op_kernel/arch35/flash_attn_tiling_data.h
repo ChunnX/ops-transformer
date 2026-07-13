@@ -44,7 +44,6 @@ constexpr uint32_t FA_FD_WORKSPACE_NUM_INDEX = 3;
 constexpr uint32_t FA_FD_M_START_INDEX = 4;
 constexpr uint32_t FA_FD_M_NUM_INDEX = 5;
 
-
 struct FlashAttnBaseParams {
     uint32_t bSize;
     uint32_t t1Size;

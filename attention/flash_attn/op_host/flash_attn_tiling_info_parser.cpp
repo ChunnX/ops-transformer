@@ -355,20 +355,20 @@ void FaInfoParser::GetKvIsContiguous()
     }
     
     if (layoutKV_ == FaLayout::PA_BBND) {
-        if(keyStrides_ != nullptr) {
+        if (keyStrides_ != nullptr) {
             keyBnStride_ = keyStrides_->GetStride(0);
             keyN2Stride_ = keyStrides_->GetStride(2);
         }
-        if(valueStrides_ != nullptr) {
+        if (valueStrides_ != nullptr) {
             valueBnStride_ = valueStrides_->GetStride(0);
             valueN2Stride_ = valueStrides_->GetStride(2);
         }
     } else if (layoutKV_ == FaLayout::PA_BNBD || layoutKV_ == FaLayout::PA_NZ) {
-        if(keyStrides_ != nullptr) {
+        if (keyStrides_ != nullptr) {
             keyBnStride_ = keyStrides_->GetStride(0);
             keyN2Stride_ = keyStrides_->GetStride(1);
         }
-        if(valueStrides_ != nullptr) {
+        if (valueStrides_ != nullptr) {
             valueBnStride_ = valueStrides_->GetStride(0);
             valueN2Stride_ = valueStrides_->GetStride(1);
         }

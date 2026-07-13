@@ -340,7 +340,6 @@ struct CommonConstInfo {
     bool needInitOutput;
 };
 
-
 struct PAConstInfo {
     uint32_t blockSize;
     uint32_t maxBlockNumPerBatch;
