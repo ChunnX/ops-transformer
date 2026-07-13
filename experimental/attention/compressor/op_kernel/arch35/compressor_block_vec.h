@@ -306,7 +306,7 @@ __aicore__ inline void CompressorBlockVector<COMP>::UpdateXCache()
         uint64_t srcOffset = static_cast<uint64_t>(bIdx) * constInfo_.hSize + hStart;
         uint64_t dstOffset = static_cast<uint64_t>(slot) * constInfo_.hSize + hStart;
         LocalTensor<X_T> inputUb =
-            constInfo_.batchSize > 0 ? tmpBuff1.Get<X_T>() : xCacheUpdateBuf.Get<X_T>();
+            constInfo_.projectionBatchSize > 0 ? tmpBuff1.Get<X_T>() : xCacheUpdateBuf.Get<X_T>();
         DataCopy(inputUb, xGm_[srcOffset], hDealSize);
         event_t eventMte2ToMte3 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_MTE3));
         SetFlag<HardEvent::MTE2_MTE3>(eventMte2ToMte3);
@@ -1011,7 +1011,7 @@ __aicore__ inline void CompressorBlockVector<COMP>::OverLapScoreKv(
     uint32_t dBaseSize, uint32_t needDealTcSize)
 {
     CompressorVec1SliceIterator overLapSliceIterator(tools_);
-    overLapSliceIterator.SetMaxBatchSize(constInfo_.batchSize);
+    overLapSliceIterator.SetMaxBatchSize(constInfo_.projectionBatchSize);
     Vec1SliceInfo &overLapSliceInfo = overLapSliceIterator.GetSlice();
 
     GlobalTensor<T> scoreDBMm1ResGm = scoreMm1ResGm_[info.c1v1DbIdx * constInfo_.dbSize];
@@ -1129,7 +1129,7 @@ __aicore__ inline void CompressorBlockVector<COMP>::UpdateIteratorState(const Ve
                                                                         Vec1SplitInfo &splitInfo)
 {
     CompressorVec1SliceIterator sliceIterator(tools_);
-    sliceIterator.SetMaxBatchSize(constInfo_.batchSize);
+    sliceIterator.SetMaxBatchSize(constInfo_.projectionBatchSize);
     sliceIterator.Reset(info.bStart, info.sStart, 0U, 0U);
     Vec1SliceInfo &sliceInfo = sliceIterator.GetSlice();
 
@@ -1223,7 +1223,7 @@ __aicore__ inline void CompressorBlockVector<COMP>::ComputeVec1(const Vec1RunInf
 
 
     CompressorVec1SliceIterator sliceIterator(tools_);
-    sliceIterator.SetMaxBatchSize(constInfo_.batchSize);
+    sliceIterator.SetMaxBatchSize(constInfo_.projectionBatchSize);
     // 切块循环
     uint64_t baseOffset = loopInfo.coreColIdx * splitInfo.dBaseSize;
     for (uint32_t dLoopIdx = 0; dLoopIdx < splitInfo.dLoopCount; dLoopIdx++) {
@@ -1269,7 +1269,7 @@ __aicore__ inline Vec2SplitInfo CompressorBlockVector<COMP>::SplitCoreV2(const V
     }
 
     uint32_t preScCnt = splitInfo.preScCnt;
-    for (uint32_t curB = info.bStart, curSc = info.bCompressedId; curB < constInfo_.batchSize; curB++, curSc = 0) {
+    for (uint32_t curB = info.bStart, curSc = info.bCompressedId; curB < constInfo_.projectionBatchSize; curB++, curSc = 0) {
         uint32_t startPos = GetStartPos(curB);
         uint32_t seqUsed = GetSeqUsed(curB);
         uint32_t curScNum = ((startPos + seqUsed) / cmpRatio_) - (startPos / cmpRatio_) - curSc;
@@ -1294,7 +1294,7 @@ __aicore__ inline void CompressorBlockVector<COMP>::ComputeVec2(const Vec2RunInf
         return;
     }
     CompressorVec2SliceIterator sliceIterator(tools_);
-    sliceIterator.SetMaxBatchSize(constInfo_.batchSize);
+    sliceIterator.SetMaxBatchSize(constInfo_.projectionBatchSize);
     sliceIterator.Reset(splitInfo.curBStart, splitInfo.curScStart, splitInfo.dealedScCnt + splitInfo.preScCnt);
 
     uint32_t singleLoopScNum = BUFFER_SIZE_BYTE_32K / (constInfo_.headDim * sizeof(T));
@@ -1367,7 +1367,7 @@ __aicore__ inline void CompressorBlockVector<COMP>::CalRope(const LocalTensor<X_
                                                             const Vec2SliceInfo &originSliceInfo, uint32_t dealRowCount)
 {
     CompressorVec2SliceIterator<COMP> ropeSliceIterator(tools_);
-    ropeSliceIterator.SetMaxBatchSize(constInfo_.batchSize);
+    ropeSliceIterator.SetMaxBatchSize(constInfo_.projectionBatchSize);
     ropeSliceIterator.Reset(originSliceInfo.bIdx, originSliceInfo.scIdx, originSliceInfo.dealedScCnt);
     Vec2SliceInfo &sliceInfo = ropeSliceIterator.GetSlice();
 
