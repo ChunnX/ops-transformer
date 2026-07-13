@@ -668,6 +668,9 @@ def tilelang_grad_kl_loss_single_kernel(
                     # Write partial Loss for MY K block only (single value)
                     T.copy(loss_sum_ub, LossOut[bz, s1_id, n_idx_k:n_idx_k + 1])
 
+                    # 跨 AIV 同步：等两 AIV 都写完 reluGradRes 再读全量 (0:Nidx1)
+                    T.barrier_all()
+
                     # dKeyIndex 融合：预转置 reluGrad[my block] (Nidx1,n_block)→(n_block,Nidx1) 写 reluGradT_ws
                     # 供 C2 用 (F,F) gemm 算部分积，规避手动同步下产零的 transpose_A（cube L1→L0A 转置 load）
                     # reluGradRes[my block] 已由本 scope 上面的 MTE3 写完，读回前排空 MTE3
