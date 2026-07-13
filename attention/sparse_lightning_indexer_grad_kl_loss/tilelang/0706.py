@@ -633,10 +633,17 @@ def tilelang_grad_kl_loss_single_kernel(
                         T.tile.sub(rsy_tmp_ub, ones_2d_ub, rsy_tmp_ub)
                         T.pipe_barrier("v")
 
-                        for i in T.serial(vector_baseg):
-                            T.tile.mul(rg_chunk_ub[i, :], weight_2d_ub[g_start + i, :], diff_ub)
-                            T.tile.mul(rg_chunk_ub[i, :], rg_chunk_ub[i, :], rsy_tmp_ub[i, :])
-                            T.tile.mul(dw_chunk_ub[i, :], dw_chunk_ub[i, :], diff_ub)
+                        T.copy(weight_2d_ub[g_start:g_start + vector_baseg, :], rg_chunk_ub)
+                        T.pipe_barrier("v")
+                        for row in T.serial(vector_baseg):
+                            T.copy(ones_2d_ub[row, :], diff_ub)
+                        T.pipe_barrier("v")
+
+                        T.tile.mul(rg_chunk_ub, rg_chunk_ub, ones_2d_ub)
+                        T.pipe_barrier("v")
+                        T.tile.mul(rg_chunk_ub, rg_chunk_ub, rsy_tmp_ub)
+                        T.pipe_barrier("v")
+                        T.tile.mul(dw_chunk_ub, dw_chunk_ub, ones_2d_ub)
 
                         T.pipe_barrier("v")
                         T.reduce_sum(dw_chunk_ub, dw_reduce_ub, 1)
