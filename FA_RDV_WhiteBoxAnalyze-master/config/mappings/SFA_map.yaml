@@ -1,0 +1,13 @@
+aclnnSparseFlashAttention:
+  inputs:
+    0: query
+    1: key
+    2: value
+    3: sparse_indices
+    4: block_table
+    5: key(PA)
+    6: value(PA)
+    7: qrope
+    8: krope
+    9: krope(PA)
+  outputs:

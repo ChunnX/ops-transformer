@@ -1,0 +1,590 @@
+{
+    "acl_name": "aclnnMlaPrologV3WeightNz",
+    "case_name": "aclnnMlaPrologV3WeightNz_mlaprolog_L0_64_8_1_1_256_128_PA_BSND_1",
+    "input": [
+        {
+            "name": "input0",
+            "type": "tensor",
+            "data_range": [
+                -100,
+                100
+            ],
+            "shape": [
+                64,
+                1,
+                7168
+            ],
+            "dtype": "bf16",
+            "acl_format": "ND",
+            "bin_path": "aclnnMlaPrologV3WeightNz_mlaprolog_L0_64_8_1_1_256_128_PA_BSND_1_input_0.bin",
+            "data_distribution": "uniform"
+        },
+        {
+            "name": "input1",
+            "type": "tensor",
+            "data_range": [
+                -100,
+                100
+            ],
+            "shape": [
+                7168,
+                1536
+            ],
+            "dtype": "bf16",
+            "acl_format": "FRACTAL_NZ",
+            "bin_path": "aclnnMlaPrologV3WeightNz_mlaprolog_L0_64_8_1_1_256_128_PA_BSND_1_input_1.bin",
+            "data_distribution": "uniform"
+        },
+        {
+            "name": "input2",
+            "type": "tensor",
+            "data_range": [
+                -1,
+                1
+            ],
+            "shape": [
+                1536,
+                1536
+            ],
+            "dtype": "bf16",
+            "acl_format": "FRACTAL_NZ",
+            "bin_path": "aclnnMlaPrologV3WeightNz_mlaprolog_L0_64_8_1_1_256_128_PA_BSND_1_input_2.bin",
+            "data_distribution": "uniform"
+        },
+        {
+            "name": "input3",
+            "type": "tensor",
+            "data_range": [
+                -10,
+                10
+            ],
+            "shape": [
+                8,
+                128,
+                512
+            ],
+            "dtype": "bf16",
+            "acl_format": "ND",
+            "bin_path": "aclnnMlaPrologV3WeightNz_mlaprolog_L0_64_8_1_1_256_128_PA_BSND_1_input_3.bin",
+            "data_distribution": "uniform"
+        },
+        {
+            "name": "input4",
+            "type": "tensor",
+            "data_range": [
+                -1000,
+                1000
+            ],
+            "shape": [
+                7168,
+                576
+            ],
+            "dtype": "bf16",
+            "acl_format": "FRACTAL_NZ",
+            "bin_path": "aclnnMlaPrologV3WeightNz_mlaprolog_L0_64_8_1_1_256_128_PA_BSND_1_input_4.bin",
+            "data_distribution": "uniform"
+        },
+        {
+            "name": "input5",
+            "type": "tensor",
+            "data_range": [
+                -100,
+                100
+            ],
+            "shape": [
+                1536
+            ],
+            "dtype": "bf16",
+            "acl_format": "ND",
+            "bin_path": "aclnnMlaPrologV3WeightNz_mlaprolog_L0_64_8_1_1_256_128_PA_BSND_1_input_5.bin",
+            "data_distribution": "uniform"
+        },
+        {
+            "name": "input6",
+            "type": "tensor",
+            "data_range": [
+                -10,
+                10
+            ],
+            "shape": [
+                512
+            ],
+            "dtype": "bf16",
+            "acl_format": "ND",
+            "bin_path": "aclnnMlaPrologV3WeightNz_mlaprolog_L0_64_8_1_1_256_128_PA_BSND_1_input_6.bin",
+            "data_distribution": "uniform"
+        },
+        {
+            "name": "input7",
+            "type": "tensor",
+            "data_range": [
+                -1,
+                1
+            ],
+            "shape": [
+                64,
+                1,
+                64
+            ],
+            "dtype": "bf16",
+            "acl_format": "ND",
+            "bin_path": "aclnnMlaPrologV3WeightNz_mlaprolog_L0_64_8_1_1_256_128_PA_BSND_1_input_7.bin",
+            "data_distribution": "uniform"
+        },
+        {
+            "name": "input8",
+            "type": "tensor",
+            "data_range": [
+                -1,
+                1
+            ],
+            "shape": [
+                64,
+                1,
+                64
+            ],
+            "dtype": "bf16",
+            "acl_format": "ND",
+            "bin_path": "aclnnMlaPrologV3WeightNz_mlaprolog_L0_64_8_1_1_256_128_PA_BSND_1_input_8.bin",
+            "data_distribution": "uniform"
+        },
+        {
+            "name": "input9",
+            "type": "tensor",
+            "acl_format": "ND",
+            "data_distribution": "uniform",
+            "bin_path": "aclnnMlaPrologV3WeightNz_mlaprolog_L0_64_8_1_1_256_128_PA_BSND_1_input_9.bin",
+            "data_range": [
+                -10.0,
+                10.0
+            ],
+            "shape": [
+                64,
+                1
+            ],
+            "dtype": "int64"
+        },
+        {
+            "name": "input10",
+            "type": "tensor",
+            "data_range": [
+                -100,
+                100
+            ],
+            "shape": [
+                1,
+                128,
+                1,
+                512
+            ],
+            "dtype": "bf16",
+            "acl_format": "ND",
+            "bin_path": "aclnnMlaPrologV3WeightNz_mlaprolog_L0_64_8_1_1_256_128_PA_BSND_1_input_10.bin",
+            "data_distribution": "uniform"
+        },
+        {
+            "name": "input11",
+            "type": "tensor",
+            "data_range": [
+                -50,
+                50
+            ],
+            "shape": [
+                1,
+                128,
+                1,
+                64
+            ],
+            "dtype": "bf16",
+            "acl_format": "ND",
+            "bin_path": "aclnnMlaPrologV3WeightNz_mlaprolog_L0_64_8_1_1_256_128_PA_BSND_1_input_11.bin",
+            "data_distribution": "uniform"
+        },
+        {
+            "name": "input12",
+            "type": "tensor",
+            "data_range": [
+                "null",
+                "null"
+            ],
+            "shape": [
+                1
+            ],
+            "dtype": "fp16",
+            "acl_format": "ND",
+            "bin_path": "aclnnMlaPrologV3WeightNz_mlaprolog_L0_64_8_1_1_256_128_PA_BSND_1_input_12.bin",
+            "data_distribution": "uniform"
+        },
+        {
+            "name": "input13",
+            "type": "tensor",
+            "data_range": [
+                "null",
+                "null"
+            ],
+            "shape": [
+                1
+            ],
+            "dtype": "fp16",
+            "acl_format": "ND",
+            "bin_path": "aclnnMlaPrologV3WeightNz_mlaprolog_L0_64_8_1_1_256_128_PA_BSND_1_input_13.bin",
+            "data_distribution": "uniform"
+        },
+        {
+            "name": "input14",
+            "type": "tensor",
+            "data_range": [
+                "null",
+                "null"
+            ],
+            "shape": [
+                1
+            ],
+            "dtype": "fp16",
+            "acl_format": "ND",
+            "bin_path": "aclnnMlaPrologV3WeightNz_mlaprolog_L0_64_8_1_1_256_128_PA_BSND_1_input_14.bin",
+            "data_distribution": "uniform"
+        },
+        {
+            "name": "input15",
+            "type": "tensor",
+            "data_range": [
+                "null",
+                "null"
+            ],
+            "shape": [
+                1
+            ],
+            "dtype": "fp16",
+            "acl_format": "ND",
+            "bin_path": "aclnnMlaPrologV3WeightNz_mlaprolog_L0_64_8_1_1_256_128_PA_BSND_1_input_15.bin",
+            "data_distribution": "uniform"
+        },
+        {
+            "name": "input16",
+            "type": "tensor",
+            "data_range": [
+                "null",
+                "null"
+            ],
+            "shape": [
+                1
+            ],
+            "dtype": "fp16",
+            "acl_format": "ND",
+            "bin_path": "aclnnMlaPrologV3WeightNz_mlaprolog_L0_64_8_1_1_256_128_PA_BSND_1_input_16.bin",
+            "data_distribution": "uniform"
+        },
+        {
+            "name": "input17",
+            "type": "tensor",
+            "data_range": [
+                "null",
+                "null"
+            ],
+            "shape": [
+                1
+            ],
+            "dtype": "fp16",
+            "acl_format": "ND",
+            "bin_path": "aclnnMlaPrologV3WeightNz_mlaprolog_L0_64_8_1_1_256_128_PA_BSND_1_input_17.bin",
+            "data_distribution": "uniform"
+        },
+        {
+            "name": "input18",
+            "type": "tensor",
+            "data_range": [
+                "null",
+                "null"
+            ],
+            "shape": [
+                1
+            ],
+            "dtype": "fp16",
+            "acl_format": "ND",
+            "bin_path": "aclnnMlaPrologV3WeightNz_mlaprolog_L0_64_8_1_1_256_128_PA_BSND_1_input_18.bin",
+            "data_distribution": "uniform"
+        },
+        {
+            "name": "input19",
+            "type": "tensor",
+            "data_range": [
+                1,
+                1
+            ],
+            "shape": [
+                1
+            ],
+            "dtype": "fp16",
+            "acl_format": "ND",
+            "bin_path": "aclnnMlaPrologV3WeightNz_mlaprolog_L0_64_8_1_1_256_128_PA_BSND_1_input_19.bin",
+            "data_distribution": "uniform"
+        },
+        {
+            "name": "input20",
+            "type": "tensor",
+            "data_range": [
+                "null",
+                "null"
+            ],
+            "shape": [
+                1
+            ],
+            "dtype": "fp16",
+            "acl_format": "ND",
+            "bin_path": "aclnnMlaPrologV3WeightNz_mlaprolog_L0_64_8_1_1_256_128_PA_BSND_1_input_20.bin",
+            "data_distribution": "uniform"
+        },
+        {
+            "name": "cache_mode",
+            "type": "buildins",
+            "dtype": "string",
+            "value": "PA_BSND"
+        },
+        {
+            "name": "b",
+            "type": "buildins",
+            "dtype": "int64_t",
+            "value": 64
+        },
+        {
+            "name": "n1",
+            "type": "buildins",
+            "dtype": "int64_t",
+            "value": 8
+        },
+        {
+            "name": "n2",
+            "type": "buildins",
+            "dtype": "int64_t",
+            "value": 1
+        },
+        {
+            "name": "d",
+            "type": "buildins",
+            "dtype": "int64_t",
+            "value": 128
+        },
+        {
+            "name": "dr",
+            "type": "buildins",
+            "dtype": "int64_t",
+            "value": 64
+        },
+        {
+            "name": "s1",
+            "type": "buildins",
+            "dtype": "int64_t",
+            "value": 1
+        },
+        {
+            "name": "s2",
+            "type": "buildins",
+            "dtype": "int64_t",
+            "value": 1
+        },
+        {
+            "name": "he",
+            "type": "buildins",
+            "dtype": "int64_t",
+            "value": 7168
+        },
+        {
+            "name": "hcq",
+            "type": "buildins",
+            "dtype": "int64_t",
+            "value": 1536
+        },
+        {
+            "name": "hckv",
+            "type": "buildins",
+            "dtype": "int64_t",
+            "value": 512
+        },
+        {
+            "name": "t",
+            "type": "buildins",
+            "dtype": "int64_t",
+            "value": ""
+        },
+        {
+            "name": "block_size",
+            "type": "buildins",
+            "dtype": "int64_t",
+            "value": 128
+        },
+        {
+            "name": "weight_quant_mode",
+            "type": "buildins",
+            "dtype": "int64_t",
+            "value": 0
+        },
+        {
+            "name": "kv_quant_mode",
+            "type": "buildins",
+            "dtype": "int64_t",
+            "value": 0
+        },
+        {
+            "name": "query_quant_mode",
+            "type": "buildins",
+            "dtype": "int64_t",
+            "value": 0
+        },
+        {
+            "name": "ckvkr_repo_mode",
+            "type": "buildins",
+            "dtype": "int64_t",
+            "value": 0
+        },
+        {
+            "name": "quant_scale_repo_mode",
+            "type": "buildins",
+            "dtype": "int64_t",
+            "value": 0
+        },
+        {
+            "name": "tile_size",
+            "type": "buildins",
+            "dtype": "int64_t",
+            "value": 128
+        },
+        {
+            "name": "qc_qr_scale",
+            "type": "buildins",
+            "dtype": "double",
+            "value": 1
+        },
+        {
+            "name": "kc_scale",
+            "type": "buildins",
+            "dtype": "double",
+            "value": 1
+        },
+        {
+            "name": "epsilon_cq",
+            "type": "buildins",
+            "dtype": "double",
+            "value": 0.10284879565239224
+        },
+        {
+            "name": "epsilon_ckv",
+            "type": "buildins",
+            "dtype": "double",
+            "value": 0.6816397272917034
+        },
+        {
+            "name": "flaglist",
+            "type": "int_array",
+            "dtype": "",
+            "value": [
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+            ]
+        },
+        {
+            "name": "mla_flag",
+            "type": "buildins",
+            "dtype": "string",
+            "value": "no"
+        },
+        {
+            "name": "qnorm_flag",
+            "type": "buildins",
+            "dtype": "bool",
+            "value": false
+        },
+        {
+            "name": "actual_seq_value",
+            "type": "int_array",
+            "dtype": "",
+            "value": []
+        }
+    ],
+    "output": [
+        {
+            "name": "output0",
+            "type": "tensor",
+            "shape": [
+                64,
+                1,
+                8,
+                512
+            ],
+            "dtype": "bf16",
+            "acl_format": "ND",
+            "data_range": "",
+            "golden_path": "aclnnMlaPrologV3WeightNz_mlaprolog_L0_64_8_1_1_256_128_PA_BSND_1_cpu_output_0.bin",
+            "bin_path": "aclnnMlaPrologV3WeightNz_mlaprolog_L0_64_8_1_1_256_128_PA_BSND_1_output_0.bin"
+        },
+        {
+            "name": "output1",
+            "type": "tensor",
+            "shape": [
+                64,
+                1,
+                8,
+                64
+            ],
+            "dtype": "bf16",
+            "acl_format": "ND",
+            "data_range": "",
+            "golden_path": "aclnnMlaPrologV3WeightNz_mlaprolog_L0_64_8_1_1_256_128_PA_BSND_1_cpu_output_1.bin",
+            "bin_path": "aclnnMlaPrologV3WeightNz_mlaprolog_L0_64_8_1_1_256_128_PA_BSND_1_output_1.bin"
+        },
+        {
+            "name": "output2",
+            "type": "tensor",
+            "shape": [
+                1,
+                128,
+                1,
+                512
+            ],
+            "dtype": "bf16",
+            "acl_format": "ND",
+            "data_range": "",
+            "golden_path": "aclnnMlaPrologV3WeightNz_mlaprolog_L0_64_8_1_1_256_128_PA_BSND_1_cpu_output_2.bin",
+            "bin_path": "aclnnMlaPrologV3WeightNz_mlaprolog_L0_64_8_1_1_256_128_PA_BSND_1_output_2.bin"
+        },
+        {
+            "name": "output3",
+            "type": "tensor",
+            "shape": [
+                1,
+                128,
+                1,
+                64
+            ],
+            "dtype": "bf16",
+            "acl_format": "ND",
+            "data_range": "",
+            "golden_path": "aclnnMlaPrologV3WeightNz_mlaprolog_L0_64_8_1_1_256_128_PA_BSND_1_cpu_output_3.bin",
+            "bin_path": "aclnnMlaPrologV3WeightNz_mlaprolog_L0_64_8_1_1_256_128_PA_BSND_1_output_3.bin"
+        }
+    ]
+}
