@@ -5,6 +5,8 @@
 
 namespace MhcPre {
 
+constexpr static uint32_t FINAL_ACCUMULATION = 3;
+constexpr static uint32_t NON_FINAL_ACCUMULATION = 2;
 constexpr static bool MHC_PRE_LOW_API_SPLIT_M = true;
 constexpr static uint64_t MHC_PRE_LOW_API_SPLIT_M_ALIGN = 2;
 constexpr static uint64_t MHC_PRE_LOW_API_L1_ALLOC_SIZE = 512 * 1024;
@@ -113,8 +115,8 @@ public:
         AscendC::LoadData2DParamsV2 loadData2dParams;
         uint64_t currM = baseM_;
         uint64_t currK = AscendC::Std::min(baseK_, kL1_ - kOffset);
-        loadData2dParams.startIndex = 0;
-        loadData2dParams.repeatTimes = LowApiCeilDiv(currK, MHC_PRE_LOW_API_C0_SIZE);
+        loadData2dParams.mStartPosition = 0;
+        loadData2dParams.kStartPosition = 0;
         loadData2dParams.mStep = LowApiCeilDiv(currM, AscendC::BLOCK_CUBE);
         loadData2dParams.kStep = LowApiCeilDiv(currK, MHC_PRE_LOW_API_C0_SIZE);
         loadData2dParams.srcStride = LowApiCeilDiv(currM, AscendC::BLOCK_CUBE);
@@ -131,8 +133,8 @@ public:
         AscendC::LoadData2DParamsV2 loadData2dParams;
         uint64_t currN = baseN_;
         uint64_t currK = AscendC::Std::min(baseK_, kL1_ - kOffset);
-        loadData2dParams.startIndex = 0;
-        loadData2dParams.repeatTimes = LowApiCeilDiv(currK, MHC_PRE_LOW_API_C0_SIZE);
+        loadData2dParams.mStartPosition = 0;
+        loadData2dParams.kStartPosition = 0;
         loadData2dParams.mStep = LowApiCeilDiv(currN, AscendC::BLOCK_CUBE);
         loadData2dParams.kStep = LowApiCeilDiv(currK, MHC_PRE_LOW_API_C0_SIZE);
         loadData2dParams.srcStride = LowApiCeilDiv(currN, AscendC::BLOCK_CUBE);
@@ -165,11 +167,10 @@ public:
         fixpipeParams.mSize = MHC_PRE_LOW_API_SPLIT_M ? LowApiAlign(baseM_, MHC_PRE_LOW_API_SPLIT_M_ALIGN) : baseM_;
         fixpipeParams.dstStride = fixpipeParams.nSize;
         fixpipeParams.srcStride = LowApiAlign(baseM_, AscendC::BLOCK_CUBE);
-        fixpipeParams.params.nz2ndParams.ndNum = 1;
-        fixpipeParams.params.nz2ndParams.nValue = baseN_;
-        fixpipeParams.params.nz2ndParams.dValue = baseM_;
-        fixpipeParams.params.nz2ndParams.srcNdMatrixStride = 1;
-        fixpipeParams.params.nz2ndParams.srcDValue = LowApiAlign(baseM_, AscendC::BLOCK_CUBE);
+        fixpipeParams.quantPre = QuantMode_t::NoQuant;
+        fixpipeParams.dualDstCtl = MHC_PRE_LOW_API_SPLIT_M ?
+            static_cast<uint8_t>(AscendC::McgShfMode::DUAL_DST_SPLIT_M) : 0;
+        fixpipeParams.unitFlag = FINAL_ACCUMULATION;
         fixpipeParams.params.ndNum = 1;
         fixpipeParams.params.srcNdStride = 1;
         fixpipeParams.params.dstNdStride = 1;

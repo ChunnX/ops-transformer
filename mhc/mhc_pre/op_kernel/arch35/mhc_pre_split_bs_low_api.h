@@ -165,7 +165,7 @@ private:
     {
         uint32_t kTAlign = LowApiRoundUp<T>(tiling_->kUbSize);
         uint32_t kFAlign = LowApiRoundUp<float>(tiling_->kUbSize);
-        Cast(xCastLocal_, xLocal_, RoundMode::CAST_NONE, curRows * kReal);
+        MhcPreLowApiCastToFloat(xCastLocal_, xLocal_, curRows, kReal);
         for (uint32_t row = 0; row < curRows; ++row) {
             float sum = rmsNormLocal_.GetValue(rowOffsetInPart + row);
             for (uint32_t k = 0; k < kReal; ++k) {
