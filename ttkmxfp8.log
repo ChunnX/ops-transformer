@@ -1,56 +1,326 @@
-(fzx_py311) root@aa:/home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test# python3 -m pytest test_fia_fullquant_mxfp8_func_rdv.py -v -k "PA_BnNBsD_B1_QS15_KVS0_Nq20_Nkv4_D128_SP0" -s
-================================================================================= test session starts =================================================================================
+fzx_py311) root@aa:/home/z00954345/Ascendfzxttk/cann/ops-test-kit# PYTHONPATH=/home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test python3 -m ttk e2e -i /home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test/fia_mxfp8_perf.csv --plugin /home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test/assets --backend npu -o perf_result.csv -t PA_BnNBsD_B1_QS10240_KVS10240_Nq20_Nkv2_D128_SP3_Prefill
+2026-07-13 07:25:07,561 [INFO] [2596021 MP MT] [bridge.py:198]: Command: ttk framework-api -i /home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test/fia_mxfp8_perf.csv 
+2026-07-13 07:25:11,897 [INFO] [2596021 MP MT] [patch_getenv.py:15]: get env ASCEND_HOME_PATH = /home/z00954345/Ascendfzxttk/cann 
+2026-07-13 07:25:12,445 [INFO] [2596021 MP MT] [instance.py:33]: Framework API mode: backend=npu 
+2026-07-13 07:25:12,445 [INFO] [2596021 MP MT] [instance_base.py:100]: TTK Profiling Start! 
+2026-07-13 07:25:12,446 [INFO] [2596021 MP MT] [instance_base.py:101]: Mode: ASCEND_ONBOARD 
+2026-07-13 07:25:12,446 [INFO] [2596021 MP MT] [patch_getenv.py:15]: get env PATH = /home/z00954345/Ascendfzxttk/cann/bin:/home/z00954345/Ascendfzxttk/cann/tools/ccec_compiler/bin:/home/z00954345/Ascendfzxttk/cann/tools/profiler/bin:/home/z00954345/Ascendfzxttk/cann/tools/ascend_system_advisor/asys:/home/z00954345/Ascendfzxttk/cann/tools/show_kernel_debug_data:/home/z00954345/Ascendfzxttk/cann/tools/msobjdump:/usr/local/bin:/root/.remotedev-server/bin/54b7d5e655f755d970eae443dec651dc57c16686/1.96.67/bin/remote-cli:/root/miniconda3/envs/fzx_py311/bin:/root/miniconda3/condabin:/usr/local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin:/root/.remotedev-server/bin/54b7d5e655f755d970eae443dec651dc57c16686/1.96.67 
+2026-07-13 07:25:13,585 [INFO] [2596021 MP MT] [patch_getenv.py:15]: get env ASCEND_OPP_PATH = /home/z00954345/Ascendfzxttk/cann/opp 
+2026-07-13 07:25:13,590 [INFO] [2596021 MP MT] [instance.py:49]: Device platform: Ascend950DT_9592 
+2026-07-13 07:25:13,590 [INFO] [2596021 MP MT] [instance_base.py:104]: Device Platform: Ascend950DT_9592 
+2026-07-13 07:25:14,727 [INFO] [2596021 MP MT] [instance.py:42]: Device count: 1 
+2026-07-13 07:25:14,727 [INFO] [2596021 MP MT] [instance_base.py:111]: Device Count: 1 
+2026-07-13 07:25:14,727 [INFO] [2596021 MP MT] [instance_base.py:231]: Preparing testcases ... 
+2026-07-13 07:25:14,727 [INFO] [2596021 MP MT] [instance_base.py:233]: Reading testcase file /home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test/fia_mxfp8_perf.csv ... 
+2026-07-13 07:25:14,728 [INFO] [2596021 MP MT] [instance_base.py:296]: Input testcase file is not a valid zip file, switch to normal csv mode... 
+2026-07-13 07:25:14,728 [INFO] [2596021 MP MT] [instance_base.py:461]: Reading normal csv testcases... 
+Checking testcase name...
+Case number: 1
+Initialize output csv file...
+Process per device: 1
+Preparing Task Executors...
+
++-------------------------------------------------------------------------------------------------------+
+| Version: 3.0.0 Summary (Device Total: 1) Progress: 0% 0 / 1 ET: 3s Rev: 7f1d28b                       |
++-------------------------------------------------------------------------------------------------------+
+| npu:0                                    | 2596374 D0P0             UNKNOWN              IDLE     0s  |
++-------------------------------------------------------------------------------------------------------+
+2026-07-13 07:25:20,282 [INFO] [2596374 D0P0 MainThread] [patch_getenv.py:15]: get env ASCEND_HOME_PATH = /home/z00954345/Ascendfzxttk/cann 
+
+----------------------------------------------------------------------------------------------------
+API Name: fia_mxfp8_wrapper.npu_fia_mxfp8
+Golden API: 
+Backend: npu
+////////////// Tensors //////////////
+Input View Shapes: ((1, 20, 10240, 128), (1, 2, 10240, 128), (1, 2, 10240, 128), (1, 20, 10240, 4), (1, 2, 10240, 4), (1, 2, 320, 128), (1,), (1, 20))
+Input Dtypes: ('float16', 'float16', 'float16', 'float32', 'float32', 'float32', 'float32', 'int32')
+Input Storage Shapes: ()
+Input Formats: ()
+Input View Offsets: ()
+Input View Strides: ()
+//////////// Output Info //////////
+Output Tensor Indexes: ()
+//////////// Attributes //////////
+B: 1
+N_q: 20
+N_kv: 2
+D: 128
+actual_seq_q: [10240]
+actual_seq_kv: [10240]
+enable_pa: True
+kv_cache_layout: BnNBsD
+block_size: 512
+sparse_mode: 3
+q_scale_layout: TND
+p_scale_value: 1.0
+data_range_q: 1.0
+data_range_k: 1.0
+data_range_v: 1.0
+enable_lse: False
+enable_rope: False
+D_rope: 64
+graph_path: 0
+input_layout: TND
+is_contiguous: True
+device_id: 0
+//////////// Test Config //////////
+Input Data Range: ((None, None), (None, None), (None, None), (None, None), (None, None), (None, None), (None, None), (None, None))
+Precision Tolerance: None
+Absolute Precision: (1e-08,)
+Mode: ASCEND_ONBOARD
+PID: 2596374
+Device: 0
+----------------------------------------------------------------------------------------------------
+
++-------------------------------------------------------------------------------------------------------+
+| Version: 3.0.0 Summary (Device Total: 1) Progress: 0% 0 / 1 ET: 13s Rev: 7f1d28b                      |
++-------------------------------------------------------------------------------------------------------+
+| npu:0                                    | 2596374 D128_SP3_Prefill OnEagerProfiling     RUNNING  1s  |
++-------------------------------------------------------------------------------------------------------+
+[WRAPPER] 使用 customize_inputs 缓存的真实 FP8 数据
+[NPU] Q layout auto: G=10, S1=10240, G*S1=102400, q_layout=TND
+[NPU TND] q=torch.Size([10240, 20, 128])
+[NPU] Q scale layout=TND, shape=torch.Size([10240, 20, 2, 2])
+[NPU PA] kv_layout=BnNBsD
+[NPU PA] k=torch.Size([20, 2, 512, 128]), v=torch.Size([20, 2, 512, 128])
+[NPU PA] deq_k=torch.Size([20, 2, 512, 2, 2]), deq_v=torch.Size([20, 2, 8, 128, 2])
+[NPU] 调用 PA 模式...
+[NPU] 调用单算子模式...
+[NPU] output=torch.Size([10240, 20, 128])
+[WRAPPER] 使用 customize_inputs 缓存的真实 FP8 数据
+[NPU] Q layout auto: G=10, S1=10240, G*S1=102400, q_layout=TND
+[NPU TND] q=torch.Size([10240, 20, 128])
+[NPU] Q scale layout=TND, shape=torch.Size([10240, 20, 2, 2])
+[NPU PA] kv_layout=BnNBsD
+[NPU PA] k=torch.Size([20, 2, 512, 128]), v=torch.Size([20, 2, 512, 128])
+[NPU PA] deq_k=torch.Size([20, 2, 512, 2, 2]), deq_v=torch.Size([20, 2, 8, 128, 2])
+[NPU] 调用 PA 模式...
+[NPU] 调用单算子模式...
+[NPU] output=torch.Size([10240, 20, 128])
+[WRAPPER] 使用 customize_inputs 缓存的真实 FP8 数据
+[NPU] Q layout auto: G=10, S1=10240, G*S1=102400, q_layout=TND
+[NPU TND] q=torch.Size([10240, 20, 128])
+[NPU] Q scale layout=TND, shape=torch.Size([10240, 20, 2, 2])
+[NPU PA] kv_layout=BnNBsD
+[NPU PA] k=torch.Size([20, 2, 512, 128]), v=torch.Size([20, 2, 512, 128])
+[NPU PA] deq_k=torch.Size([20, 2, 512, 2, 2]), deq_v=torch.Size([20, 2, 8, 128, 2])
+[NPU] 调用 PA 模式...
+[NPU] 调用单算子模式...
+[NPU] output=torch.Size([10240, 20, 128])
+[WRAPPER] 使用 customize_inputs 缓存的真实 FP8 数据
+[NPU] Q layout auto: G=10, S1=10240, G*S1=102400, q_layout=TND
+[NPU TND] q=torch.Size([10240, 20, 128])
+[NPU] Q scale layout=TND, shape=torch.Size([10240, 20, 2, 2])
+[NPU PA] kv_layout=BnNBsD
+[NPU PA] k=torch.Size([20, 2, 512, 128]), v=torch.Size([20, 2, 512, 128])
+[NPU PA] deq_k=torch.Size([20, 2, 512, 2, 2]), deq_v=torch.Size([20, 2, 8, 128, 2])
+[NPU] 调用 PA 模式...
+[NPU] 调用单算子模式...
+[NPU] output=torch.Size([10240, 20, 128])
+[WRAPPER] 使用 customize_inputs 缓存的真实 FP8 数据
+[NPU] Q layout auto: G=10, S1=10240, G*S1=102400, q_layout=TND
+[NPU TND] q=torch.Size([10240, 20, 128])
+[NPU] Q scale layout=TND, shape=torch.Size([10240, 20, 2, 2])
+[NPU PA] kv_layout=BnNBsD
+[NPU PA] k=torch.Size([20, 2, 512, 128]), v=torch.Size([20, 2, 512, 128])
+[NPU PA] deq_k=torch.Size([20, 2, 512, 2, 2]), deq_v=torch.Size([20, 2, 8, 128, 2])
+[NPU] 调用 PA 模式...
+[NPU] 调用单算子模式...
+[NPU] output=torch.Size([10240, 20, 128])
+[WRAPPER] 使用 customize_inputs 缓存的真实 FP8 数据
+[NPU] Q layout auto: G=10, S1=10240, G*S1=102400, q_layout=TND
+[NPU TND] q=torch.Size([10240, 20, 128])
+[NPU] Q scale layout=TND, shape=torch.Size([10240, 20, 2, 2])
+[NPU PA] kv_layout=BnNBsD
+[NPU PA] k=torch.Size([20, 2, 512, 128]), v=torch.Size([20, 2, 512, 128])
+[NPU PA] deq_k=torch.Size([20, 2, 512, 2, 2]), deq_v=torch.Size([20, 2, 8, 128, 2])
+[NPU] 调用 PA 模式...
+[NPU] 调用单算子模式...
+[NPU] output=torch.Size([10240, 20, 128])
+[WRAPPER] 使用 customize_inputs 缓存的真实 FP8 数据
+[NPU] Q layout auto: G=10, S1=10240, G*S1=102400, q_layout=TND
+[NPU TND] q=torch.Size([10240, 20, 128])
+[NPU] Q scale layout=TND, shape=torch.Size([10240, 20, 2, 2])
+[NPU PA] kv_layout=BnNBsD
+[NPU PA] k=torch.Size([20, 2, 512, 128]), v=torch.Size([20, 2, 512, 128])
+[NPU PA] deq_k=torch.Size([20, 2, 512, 2, 2]), deq_v=torch.Size([20, 2, 8, 128, 2])
+[NPU] 调用 PA 模式...
+[NPU] 调用单算子模式...
+[NPU] output=torch.Size([10240, 20, 128])
+[WRAPPER] 使用 customize_inputs 缓存的真实 FP8 数据
+[NPU] Q layout auto: G=10, S1=10240, G*S1=102400, q_layout=TND
+[NPU TND] q=torch.Size([10240, 20, 128])
+[NPU] Q scale layout=TND, shape=torch.Size([10240, 20, 2, 2])
+[NPU PA] kv_layout=BnNBsD
+[NPU PA] k=torch.Size([20, 2, 512, 128]), v=torch.Size([20, 2, 512, 128])
+[NPU PA] deq_k=torch.Size([20, 2, 512, 2, 2]), deq_v=torch.Size([20, 2, 8, 128, 2])
+[NPU] 调用 PA 模式...
+[NPU] 调用单算子模式...
+[NPU] output=torch.Size([10240, 20, 128])
+[INFO] GQA 广播
+[CPU Golden] TILES_Q=80, TILES_KV=40, Sq=10240, Skv=10240
+
++-------------------------------------------------------------------------------------------------------+
+| Version: 3.0.0 Summary (Device Total: 1) Progress: 0% 0 / 1 ET: 23s Rev: 7f1d28b                      |
++-------------------------------------------------------------------------------------------------------+
+| npu:0                                    | 2596374 D128_SP3_Prefill OnGenGolden          RUNNING  8s  |
++-------------------------------------------------------------------------------------------------------+
+[CPU Golden] output=torch.Size([1, 20, 10240, 128])
+split_count:26214400.0; max_diff_hd:10;
+---------------------------------------------------------------------------------------
+Loop     ExpectOut       RealOut         FpDiff          RateDiff
+---------------------------------------------------------------------------------------
+00000001         0.1129147       0.1129150       0.0000003       0.0000028
+00000002         -0.7828755      -0.7827148      0.0001606       0.0002052
+00000003         -0.5419907      -0.5419922      0.0000015       0.0000027
+00000004         -0.3011059      -0.3010254      0.0000806       0.0002675
+00000005         0.8430967       0.8432617       0.0001650       0.0001958
+00000006         -0.6022119      -0.6020508      0.0001611       0.0002675
+00000007         0.5419907       0.5419922       0.0000015       0.0000027
+00000008         -0.5419907      -0.5419922      0.0000015       0.0000027
+00000009         -0.1957189      -0.1956787      0.0000402       0.0002052
+00000010         -0.6022119      -0.6020508      0.0001611       0.0002675
+...        ...             ...             ...             ...
+26214391         -0.0013891      -0.0013895      0.0000004       0.0002680
+26214392         0.0041383       0.0041389       0.0000007       0.0001633
+26214393         0.0010081       0.0010080       0.0000001       0.0000625
+26214394         0.0048014       0.0048027       0.0000013       0.0002645
+26214395         -0.0020235      -0.0020237      0.0000002       0.0000746
+26214396         -0.0062255      -0.0062256      0.0000001       0.0000123
+26214397         -0.0064241      -0.0064240      0.0000002       0.0000238
+26214398         0.0002006       0.0002006       0.0000000       0.0000962
+26214399         0.0026946       0.0026951       0.0000005       0.0001684
+26214400         -0.0067995      -0.0067978      0.0000017       0.0002444
+---------------------------------------------------------------------------------------
+Rtol     Atol            PctThd          PctRlt          Result
+---------------------------------------------------------------------------------------
+0.0050           0.000025        99.50%          99.999893%      Pass
+Max-RelativeError is: 0.00625064829364419. Threshold is: 10.
+
+ ####################################### Eager Result Summary  ######################################## 
+EAGER:       99.99989318847656%
+  DEVICE: 19502.401 us
+  CPU:    None us
+STATUS: PASS
+Golden Shapes: ((10240, 20, 128),)
+Golden Dtypes: ('float32',)
+#######################################################################################################
+ttk Profiling complete
+(fzx_py311) root@aa:/home/z00954345/Ascendfzxttk/cann/ops-test-kit# cd /home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test/
+(fzx_py311) root@aa:/home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test# python3 -m pytest test_fia_fullquant_mxfp8_perf_rdv.py -v -k "PA_BnNBsD_B1_QS10240_KVS10240_Nq20_Nkv2_D128_SP3_Prefill" -s --msprof
+[msprof] Running: msprof /root/miniconda3/envs/fzx_py311/bin/python3 -m pytest test_fia_fullquant_mxfp8_perf_rdv.py -v -k PA_BnNBsD_B1_QS10240_KVS10240_Nq20_Nkv2_D128_SP3_Prefill -s
+[msprof] Working directory: /home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test
+
+get env PATH = /home/z00954345/Ascendfzxttk/cann/bin:/home/z00954345/Ascendfzxttk/cann/tools/ccec_compiler/bin:/home/z00954345/Ascendfzxttk/cann/tools/profiler/bin:/home/z00954345/Ascendfzxttk/cann/tools/ascend_system_advisor/asys:/home/z00954345/Ascendfzxttk/cann/tools/show_kernel_debug_data:/home/z00954345/Ascendfzxttk/cann/tools/msobjdump:/usr/local/bin:/root/.remotedev-server/bin/54b7d5e655f755d970eae443dec651dc57c16686/1.96.67/bin/remote-cli:/root/miniconda3/envs/fzx_py311/bin:/root/miniconda3/condabin:/usr/local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin:/root/.remotedev-server/bin/54b7d5e655f755d970eae443dec651dc57c16686/1.96.67
+[INFO] Start profiling....
+===================================================================================== test session starts ======================================================================================
 platform linux -- Python 3.11.15, pytest-9.1.1, pluggy-1.6.0 -- /root/miniconda3/envs/fzx_py311/bin/python3
 cachedir: .pytest_cache
 rootdir: /home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test
 configfile: pytest.ini
-collected 151 items / 150 deselected / 1 selected                                                                                                                                     
+collected 97 items / 96 deselected / 1 selected                                                                                                                                                
 
-test_fia_fullquant_mxfp8_func_rdv.py::test_fia_fullquant_mxfp8[PA_BnNBsD_B1_QS15_KVS0_Nq20_Nkv4_D128_SP0] [INFO] max_sq=15, max_skv=0
-[INFO] q_fp16=torch.Size([1, 20, 15, 128]), k_fp16=torch.Size([1, 4, 0, 128]), v_fp16=torch.Size([1, 4, 0, 128])
-[INFO] V scale Sg=0, 是否奇数=False
-[CACHE] save input → /home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test/common/golden_cache/PA_BnNBsD_B1_QS15_KVS0_Nq20_Nkv4_D128_SP0_input.pt
+test_fia_fullquant_mxfp8_perf_rdv.py::test_fia_fullquant_mxfp8[PA_BnNBsD_B1_QS10240_KVS10240_Nq20_Nkv2_D128_SP3_Prefill] [INFO] max_sq=10240, max_skv=10240
+[INFO] q_fp16=torch.Size([1, 20, 10240, 128]), k_fp16=torch.Size([1, 2, 10240, 128]), v_fp16=torch.Size([1, 2, 10240, 128])
+[INFO] V scale Sg=320, 是否奇数=False
+[CACHE] save input → /home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test/common/golden_cache/PA_BnNBsD_B1_QS10240_KVS10240_Nq20_Nkv2_D128_SP3_Prefill_input.pt
 [INFO] GQA 广播
-[CPU Golden] TILES_Q=1, TILES_KV=0, Sq=15, Skv=0
-[CPU Golden] output=torch.Size([1, 20, 15, 128])
-[CACHE] save CPU output → /home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test/common/golden_cache/PA_BnNBsD_B1_QS15_KVS0_Nq20_Nkv4_D128_SP0_cpu_output.pt
-[NPU] Q layout auto: G=5, S1=15, G*S1=75, q_layout=TND
-[NPU TND] q=torch.Size([15, 20, 128])
-[NPU] Q scale layout=TND, shape=torch.Size([15, 20, 2, 2])
+[CPU Golden] TILES_Q=80, TILES_KV=40, Sq=10240, Skv=10240
+[CPU Golden] output=torch.Size([1, 20, 10240, 128])
+[CACHE] save CPU output → /home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test/common/golden_cache/PA_BnNBsD_B1_QS10240_KVS10240_Nq20_Nkv2_D128_SP3_Prefill_cpu_output.pt
+[NPU] Q layout auto: G=10, S1=10240, G*S1=102400, q_layout=TND
+[NPU TND] q=torch.Size([10240, 20, 128])
+[NPU] Q scale layout=TND, shape=torch.Size([10240, 20, 2, 2])
 [NPU PA] kv_layout=BnNBsD
-[NPU PA] k=torch.Size([0, 4, 512, 128]), v=torch.Size([0, 4, 512, 128])
-[NPU PA] deq_k=torch.Size([0, 4, 512, 2, 2]), deq_v=torch.Size([0, 4, 8, 128, 2])
+[NPU PA] k=torch.Size([20, 2, 512, 128]), v=torch.Size([20, 2, 512, 128])
+[NPU PA] deq_k=torch.Size([20, 2, 512, 2, 2]), deq_v=torch.Size([20, 2, 8, 128, 2])
 [NPU] 调用 PA 模式...
 [NPU] 调用单算子模式...
-[NPU] output=torch.Size([15, 20, 128])
-[CACHE] save NPU output → /home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test/common/golden_cache/PA_BnNBsD_B1_QS15_KVS0_Nq20_Nkv4_D128_SP0_npu_output.pt
-split_count:38400.0; max_diff_hd:10;
+[NPU] output=torch.Size([10240, 20, 128])
+[CACHE] save NPU output → /home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test/common/golden_cache/PA_BnNBsD_B1_QS10240_KVS10240_Nq20_Nkv2_D128_SP3_Prefill_npu_output.pt
+split_count:26214400.0; max_diff_hd:10;
 ---------------------------------------------------------------------------------------
 Loop     ExpectOut       RealOut         FpDiff          RateDiff
 ---------------------------------------------------------------------------------------
-00000001         0.0000000       0.0000000       0.0000000       0.0000000
-00000002         0.0000000       0.0000000       0.0000000       0.0000000
-00000003         0.0000000       0.0000000       0.0000000       0.0000000
-00000004         0.0000000       0.0000000       0.0000000       0.0000000
-00000005         0.0000000       0.0000000       0.0000000       0.0000000
-00000006         0.0000000       0.0000000       0.0000000       0.0000000
-00000007         0.0000000       0.0000000       0.0000000       0.0000000
-00000008         0.0000000       0.0000000       0.0000000       0.0000000
-00000009         0.0000000       0.0000000       0.0000000       0.0000000
-00000010         0.0000000       0.0000000       0.0000000       0.0000000
+00000001         0.1129147       0.1129150       0.0000003       0.0000028
+00000002         -0.7828755      -0.7827148      0.0001606       0.0002052
+00000003         -0.5419907      -0.5419922      0.0000015       0.0000027
+00000004         -0.3011059      -0.3010254      0.0000806       0.0002675
+00000005         0.8430967       0.8432617       0.0001650       0.0001958
+00000006         -0.6022119      -0.6020508      0.0001611       0.0002675
+00000007         0.5419907       0.5419922       0.0000015       0.0000027
+00000008         -0.5419907      -0.5419922      0.0000015       0.0000027
+00000009         -0.1957189      -0.1956787      0.0000402       0.0002052
+00000010         -0.6022119      -0.6020508      0.0001611       0.0002675
 ...        ...             ...             ...             ...
-00038391         0.0000000       0.0000000       0.0000000       0.0000000
-00038392         0.0000000       0.0000000       0.0000000       0.0000000
-00038393         0.0000000       0.0000000       0.0000000       0.0000000
-00038394         0.0000000       0.0000000       0.0000000       0.0000000
-00038395         0.0000000       0.0000000       0.0000000       0.0000000
-00038396         0.0000000       0.0000000       0.0000000       0.0000000
-00038397         0.0000000       0.0000000       0.0000000       0.0000000
-00038398         0.0000000       0.0000000       0.0000000       0.0000000
-00038399         0.0000000       0.0000000       0.0000000       0.0000000
-00038400         0.0000000       0.0000000       0.0000000       0.0000000
+26214391         -0.0013891      -0.0013895      0.0000004       0.0002680
+26214392         0.0041383       0.0041389       0.0000007       0.0001633
+26214393         0.0010081       0.0010080       0.0000001       0.0000625
+26214394         0.0048014       0.0048027       0.0000013       0.0002645
+26214395         -0.0020235      -0.0020237      0.0000002       0.0000746
+26214396         -0.0062255      -0.0062256      0.0000001       0.0000123
+26214397         -0.0064241      -0.0064240      0.0000002       0.0000238
+26214398         0.0002006       0.0002006       0.0000000       0.0000962
+26214399         0.0026946       0.0026951       0.0000005       0.0001684
+26214400         -0.0067995      -0.0067978      0.0000017       0.0002444
 ---------------------------------------------------------------------------------------
 Rtol     Atol            PctThd          PctRlt          Result
 ---------------------------------------------------------------------------------------
-0.0050           0.000025        99.50%          100.000000%     Pass
+0.0050           0.000025        99.50%          99.999893%      Pass
+Max-RelativeError is: 0.00625064829364419. Threshold is: 10.
 PASSED
+
+======================================================================================= warnings summary =======================================================================================
+../../../../../../../../../../root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/torch/jit/_script.py:365: 14 warnings
+  /root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/torch/jit/_script.py:365: DeprecationWarning: `torch.jit.script_method` is deprecated. Please switch to `torch.compile` or `torch.export`.
+    warnings.warn(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+======================================================================== 1 passed, 96 deselected, 14 warnings in 18.58s ========================================================================
+[INFO] Start export data in PROF_000001_20260713074357731_02612846BCKPMBKA.
+Mon 13 Jul 2026 07:44:06 [WARNING] [MSVP] [2613370] msprof_entrance.py: Msprof analysis is parsing data as root, which may cause potential system security risks.
+Mon 13 Jul 2026 07:44:06 [INFO] [MSVP] [2613374] msprof_common.py: Start analyzing data in "/home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test/PROF_000001_20260713074357731_02612846BCKPMBKA/host" ...
+Mon 13 Jul 2026 07:44:06 [INFO] [MSVP] [2613374] msprof_common.py: It may take few minutes, please be patient ...
+Mon 13 Jul 2026 07:44:06 [INFO] [MSVP] [2613374] msprof_common.py: Analysis data in "/home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test/PROF_000001_20260713074357731_02612846BCKPMBKA/host" finished.
+Mon 13 Jul 2026 07:44:06 [INFO] [MSVP] [2613374] msprof_common.py: Start analyzing data in "/home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test/PROF_000001_20260713074357731_02612846BCKPMBKA/device_0" ...
+Mon 13 Jul 2026 07:44:06 [INFO] [MSVP] [2613374] msprof_common.py: It may take few minutes, please be patient ...
+Mon 13 Jul 2026 07:44:06 [INFO] [MSVP] [2613374] msprof_common.py: Analysis data in "/home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test/PROF_000001_20260713074357731_02612846BCKPMBKA/device_0" finished.
+Mon 13 Jul 2026 07:44:06 [INFO] [MSVP] [2613374] msprof_export.py: All collected data will be exported, path is: /home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test/PROF_000001_20260713074357731_02612846BCKPMBKA/device_0.
+Mon 13 Jul 2026 07:44:06 [INFO] [MSVP] [2613374] msprof_export.py: All collected data will be exported, path is: /home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test/PROF_000001_20260713074357731_02612846BCKPMBKA/device_0.
+Mon 13 Jul 2026 07:44:06 [INFO] [MSVP] [2613374] msprof_common.py: Start exporting timeline output_file.
+Mon 13 Jul 2026 07:44:06 [INFO] [MSVP] [2613374] msprof_common.py: End exporting timeline output_file.The file is stored in the /home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test/PROF_000001_20260713074357731_02612846BCKPMBKA/mindstudio_profiler_output path.
+Mon 13 Jul 2026 07:44:07 [WARNING] [MSVP] [2613491] msprof_entrance.py: Msprof analysis is parsing data as root, which may cause potential system security risks.
+Mon 13 Jul 2026 07:44:07 [INFO] [MSVP] [2613495] msprof_export.py: The data in "/home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test/PROF_000001_20260713074357731_02612846BCKPMBKA/host" has been analyzed. Parsing phase will be skipped.
+Mon 13 Jul 2026 07:44:07 [INFO] [MSVP] [2613495] msprof_export.py: The data in "/home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test/PROF_000001_20260713074357731_02612846BCKPMBKA/device_0" has been analyzed. Parsing phase will be skipped.
+Mon 13 Jul 2026 07:44:07 [INFO] [MSVP] [2613495] msprof_export.py: All collected data will be exported, path is: /home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test/PROF_000001_20260713074357731_02612846BCKPMBKA/device_0.
+Mon 13 Jul 2026 07:44:07 [INFO] [MSVP] [2613495] msprof_export.py: There is no summary data to export for "/home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test/PROF_000001_20260713074357731_02612846BCKPMBKA/host"
+Mon 13 Jul 2026 07:44:07 [INFO] [MSVP] [2613495] msprof_export.py: All collected data will be exported, path is: /home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test/PROF_000001_20260713074357731_02612846BCKPMBKA/device_0.
+Mon 13 Jul 2026 07:44:07 [INFO] [MSVP] [2613495] msprof_common.py: Start exporting summary output_file.
+Mon 13 Jul 2026 07:44:07 [INFO] [MSVP] [2613495] msprof_common.py: End exporting summary output_file.The file is stored in the /home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test/PROF_000001_20260713074357731_02612846BCKPMBKA/mindstudio_profiler_output path.
+[INFO] Export all data in PROF_000001_20260713074357731_02612846BCKPMBKA done.
+[INFO] Start query data in PROF_000001_20260713074357731_02612846BCKPMBKA.
+Mon 13 Jul 2026 07:44:08 [WARNING] [MSVP] [2613533] msprof_entrance.py: Msprof analysis is parsing data as root, which may cause potential system security risks.
+Job Info        Device ID       Dir Name        Collection Time                 Model ID        Iteration Number        Top Time Iteration      Rank ID
+
+NA                              host            2026-07-13 07:43:58.447462      N/A             N/A                     N/A                     -1     
+
+NA              0               device_0        2026-07-13 07:43:58.452287      N/A             N/A                     N/A                     -1     
+
+[INFO] Query all data in PROF_000001_20260713074357731_02612846BCKPMBKA done.
+[INFO] Profiling finished.
+[INFO] Process profiling data complete. Data is saved in /home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test/PROF_000001_20260713074357731_02612846BCKPMBKA
+
+[msprof] Tests finished (exit code: 0)
+[msprof] Parsing: /home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test/PROF_000001_20260713074357731_02612846BCKPMBKA
+[perf] Found 1 FusedInferAttentionScore entries in op_summary_20260713074407.csv
+
+========================================================================================================================
+  #    Duration    AI Core   Cube%  Input Shapes
+------------------------------------------------------------------------------------------------------------------------
+  1     953.1us    952.4us   94.3%  Q=[10240, 20, 128]  K=[20, 2, 512, 128]  V=[20, 2, 512, 128]
+========================================================================================================================
+
+Total: 1 entries
+[msprof] Report saved: /home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test/perf_output/perf_report_20260713074407.log
+Exit: msprof profiling complete
+(fzx_py311) root@aa:/home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test# 
