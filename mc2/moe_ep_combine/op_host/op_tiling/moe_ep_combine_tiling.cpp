@@ -40,8 +40,6 @@ constexpr uint32_t TOPK_IDX_INDEX = 2U;
 constexpr uint32_t RECV_SRC_METADATA_INDEX = 3U;
 constexpr uint32_t NUM_RECV_PER_EXPERT_INDEX = 4U;
 constexpr uint32_t TOPK_WEIGHTS_INDEX = 5U;
-constexpr uint32_t BIAS_0_INDEX = 6U;
-constexpr uint32_t BIAS_1_INDEX = 7U;
 
 constexpr uint32_t ATTR_EP_WORLD_SIZE_INDEX = 0;
 constexpr uint32_t ATTR_EP_RANK_ID_INDEX = 1;
@@ -51,7 +49,7 @@ constexpr uint32_t ATTR_CCL_BUFFER_SIZE_INDEX = 4;
 
 constexpr uint32_t ONE_DIMS = 1U;
 constexpr uint32_t TWO_DIMS = 2U;
-constexpr int64_t MAX_EP_WORLD_SIZE = 128;
+constexpr int64_t MAX_EP_WORLD_SIZE = 1024;
 constexpr int64_t MIN_EP_WORLD_SIZE = 2;
 constexpr int64_t MAX_NUM_EXPERTS = 2048;
 constexpr int64_t MIN_NUM_EXPERTS = 2;
@@ -180,22 +178,6 @@ static ge::graphStatus CheckInputTensorShape(const gert::TilingContext *context,
     }
     info.hasTopkWeights = hasTopkWeights ? 1 : 0;
 
-    const gert::StorageShape *bias0Shape = context->GetInputShape(BIAS_0_INDEX);
-    if (bias0Shape != nullptr) {
-        OP_TILING_CHECK(bias0Shape->GetStorageShape().GetDimNum() != TWO_DIMS,
-                        OP_LOGE(nodeName, "bias_optional_0 dims must be 2, but got %lu.",
-                                bias0Shape->GetStorageShape().GetDimNum()),
-                        return ge::GRAPH_FAILED);
-    }
-
-    const gert::StorageShape *bias1Shape = context->GetInputShape(BIAS_1_INDEX);
-    if (bias1Shape != nullptr) {
-        OP_TILING_CHECK(bias1Shape->GetStorageShape().GetDimNum() != TWO_DIMS,
-                        OP_LOGE(nodeName, "bias_optional_1 dims must be 2, but got %lu.",
-                                bias1Shape->GetStorageShape().GetDimNum()),
-                        return ge::GRAPH_FAILED);
-    }
-
     return ge::GRAPH_SUCCESS;
 }
 
@@ -241,22 +223,6 @@ static ge::graphStatus CheckInputDataType(const gert::TilingContext *context, co
         OP_TILING_CHECK(topkWeightsDesc->GetDataType() != ge::DT_FLOAT,
                         OP_LOGE(nodeName, "topk_weights dtype must be DT_FLOAT, but got %s.",
                                 ge::TypeUtils::DataTypeToSerialString(topkWeightsDesc->GetDataType()).c_str()),
-                        return ge::GRAPH_FAILED);
-    }
-
-    auto bias0Desc = context->GetOptionalInputDesc(BIAS_0_INDEX);
-    if (bias0Desc != nullptr) {
-        OP_TILING_CHECK(bias0Desc->GetDataType() != ge::DT_BF16,
-                        OP_LOGE(nodeName, "bias_optional_0 dtype must be DT_BF16, but got %s.",
-                                ge::TypeUtils::DataTypeToSerialString(bias0Desc->GetDataType()).c_str()),
-                        return ge::GRAPH_FAILED);
-    }
-
-    auto bias1Desc = context->GetOptionalInputDesc(BIAS_1_INDEX);
-    if (bias1Desc != nullptr) {
-        OP_TILING_CHECK(bias1Desc->GetDataType() != ge::DT_BF16,
-                        OP_LOGE(nodeName, "bias_optional_1 dtype must be DT_BF16, but got %s.",
-                                ge::TypeUtils::DataTypeToSerialString(bias1Desc->GetDataType()).c_str()),
                         return ge::GRAPH_FAILED);
     }
 
