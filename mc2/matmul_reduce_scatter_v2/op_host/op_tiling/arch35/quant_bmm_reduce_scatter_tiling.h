@@ -96,6 +96,7 @@ private:
     Mc2Tiling::QuantBatchMatmulV3ReduceScatterTilingData* quantBmmMatmulReducescatterTilingData_;
     uint64_t myWorkSpaceSize_{0U};
     mc2tiling::Mc2QuantMode quantMode_{mc2tiling::Mc2QuantMode::DEFAULT};
+    bool isMxfp4_{false};  // MXFP4场景标志位
 };
 
 class QuantBmmReduceScatterHelper : public Mc2AdaptiveSlidingWindowTiling {
