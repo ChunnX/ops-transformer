@@ -452,11 +452,6 @@ public:
         cubeBlock.IterateBmm1(runInfo);
     }
 
-    __aicore__ inline void ComputeVec1(RunInfoX &runInfo)
-    {
-        vecFaBlock.ProcessVec1(this->l1PBuffers.Get(), this->bmm1Buffers.Get(), runInfo);
-    }
-
     __aicore__ inline void ComputeMm2(RunInfoX &runInfo)
     {
         cubeBlock.IterateBmm2(runInfo);
