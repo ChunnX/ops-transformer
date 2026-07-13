@@ -592,8 +592,8 @@ ge::graphStatus SFATilingCheck::CompareShape(SFATilingShapeCompareParam &param, 
 
     for (size_t i = 0; i < shape.GetDimNum(); i++) {
         if (shape.GetDim(i) != sfaShapeExpected.GetDim(i)) {
-            OP_LOGE_FOR_INVALID_SHAPE(opName_, name.c_str(), GetShapeStr(shape).c_str(),
-                                      GetShapeStr(sfaShapeExpected).c_str());
+            OP_LOGE_FOR_INVALID_SHAPE(opName_, name.c_str(), Ops::Base::ToString(shape).c_str(),
+                                      Ops::Base::ToString(sfaShapeExpected).c_str());
             return ge::GRAPH_FAILED;
         }
     }
