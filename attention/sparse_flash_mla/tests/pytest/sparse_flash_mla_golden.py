@@ -978,7 +978,6 @@ def gen_data(params, template_mode=None):
     properties = torch.npu.get_device_properties()
     if "Ascend950" in properties.name and layout_kv == "PA_BBND":
         key_stride = 10  # 0轴非连续增加stride
-        bytes_per_token = D + key_stride # 整个非连续的长度
         blocksize_per_token = block_size1 + key_stride # 整个非连续的长度
         blockFusion1 = torch.zeros((block_num1, blocksize_per_token * N2 * D), dtype=ori_kv_type)
         ori_key_flat = ori_k_in_pa_shape.view(block_num1, block_size1 * N2 * D)
