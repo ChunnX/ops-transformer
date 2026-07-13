@@ -46,9 +46,14 @@ __aicore__ inline void CalcA2avCommBeforeParams(
         params.sendOffset[0] += static_cast<uint64_t>(rawSendCounts[j]) * axis;
     }
     for (uint32_t i = 1U; i < rankDim; i++) {
-        params.sendOffset[i] = params.sendOffset[i - 1U];
-        for (uint32_t j = 0U; j < e; j++) {
-            params.sendOffset[i] += static_cast<uint64_t>(rawSendCounts[startExpertIdx + (i - 1U) * e + j]) * axis;
+        params.sendOffset[i] = 0UL;
+        for (uint32_t k = 0U; k < i; k++) {
+            for (uint32_t j = 0U; j < e; j++) {
+                params.sendOffset[i] += static_cast<uint64_t>(rawSendCounts[j + k * e]) * axis;
+            }
+        }
+        for (uint32_t j = 0U; j < startExpertIdx; j++) {
+            params.sendOffset[i] += static_cast<uint64_t>(rawSendCounts[j + i * e]) * axis;
         }
     }
 
