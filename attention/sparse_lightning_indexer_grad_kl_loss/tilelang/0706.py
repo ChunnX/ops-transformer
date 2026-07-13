@@ -449,108 +449,107 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.tile.row_expand_mul_experiment(weight_2d_ub, weight_2d_ub, weight_all_ub, re_tmp_ub)
 
                     # ============================================================
-                    # Phase 1: AIV0 only — P_reduced, ReduceSumY DB, SoftmaxI
-                    # Single writer to GM (PReduced, ReduceSumY, SoftmaxI) — no conflict
-                    # AIV1 skips this block and falls through to barrier
+                    # Phase 1: Both AIVs — P_reduced, ReduceSumY DB, SoftmaxI
+                    # Both compute identical values and write to same GM addresses.
+                    # MTE3 write conflict possible but same data → no NaN.
                     # ============================================================
-                    if vid == 0:
-                        T.tile.fill(p_reduced_tmp_ub, 1.0)
+                    T.tile.fill(p_reduced_tmp_ub, 1.0)
+                    T.pipe_barrier("v")
+                    T.tile.row_expand_sub_experiment(bmm1_ub, bmm1_ub, sm_max_ub, re_tmp_ub)
+                    T.pipe_barrier("v")
+                    T.tile.exp(bmm1_ub, bmm1_ub)
+                    T.pipe_barrier("v")
+                    T.tile.row_expand_div_experiment(bmm1_ub, bmm1_ub, sm_sum_ub, re_tmp_ub)
+                    T.pipe_barrier("v")
+                    T.reduce_sum(bmm1_ub, p_reduced_tmp_ub, 0)
+                    T.pipe_barrier("v")
+                    T.tile.mul(p_reduced_tmp_ub, p_reduced_tmp_ub, 1.0 / G)
+                    T.set_flag("v", "mte3", 6)
+                    T.wait_flag("v", "mte3", 6)
+                    T.copy(p_reduced_tmp_ub, PReduced[bz, s1_id, n_idx_k * n_block:(n_idx_k + 1) * n_block])
+
+                    # ReduceSumY: Double-Buffer K-block loop
+                    T.tile.fill(rsy_max_ub, -T.infinity(calc_dtype))
+                    T.set_flag("v", "mte2", 0)
+                    T.set_flag("v", "mte2", 1)
+
+                    T.wait_flag("v", "mte2", 0)
+                    T.copy(bmm2Res[bz, s1_id, 0:Nidx1, 0:n_block], bmm2_0)
+                    T.set_flag("mte2", "v", 0)
+
+                    for n_rsy in T.serial(n_num):
+                        cur = n_rsy % 2
+                        nxt = (n_rsy + 1) % 2
+
+                        T.wait_flag("mte2", "v", cur)
                         T.pipe_barrier("v")
-                        T.tile.row_expand_sub_experiment(bmm1_ub, bmm1_ub, sm_max_ub, re_tmp_ub)
+                        if cur == 0:
+                            T.tile.mul(bmm2_0, bmm2_0, weight_2d_ub)
+                        if cur == 1:
+                            T.tile.mul(bmm2_1, bmm2_1, weight_2d_ub)
                         T.pipe_barrier("v")
-                        T.tile.exp(bmm1_ub, bmm1_ub)
+                        if cur == 0:
+                            T.reduce_sum(bmm2_0, rsy_reduce_ub, 0)
+                        if cur == 1:
+                            T.reduce_sum(bmm2_1, rsy_reduce_ub, 0)
                         T.pipe_barrier("v")
-                        T.tile.row_expand_div_experiment(bmm1_ub, bmm1_ub, sm_sum_ub, re_tmp_ub)
+                        T.copy(rsy_reduce_ub, rsy_all_ub[n_rsy, :])
+                        T.pipe_barrier("mte3")
+                        T.copy(rsy_reduce_ub, ReduceSumY[bz, s1_id, n_rsy * n_block:(n_rsy + 1) * n_block])
+                        T.tile.mul(rsy_bc_ub[0, :], rsy_reduce_ub, 1.0)
                         T.pipe_barrier("v")
-                        T.reduce_sum(bmm1_ub, p_reduced_tmp_ub, 0)
+                        T.reduce_max(rsy_bc_ub, rsy_chunk_max_ub, 1)
                         T.pipe_barrier("v")
-                        T.tile.mul(p_reduced_tmp_ub, p_reduced_tmp_ub, 1.0 / G)
-                        T.set_flag("v", "mte3", 6)
-                        T.wait_flag("v", "mte3", 6)
-                        T.copy(p_reduced_tmp_ub, PReduced[bz, s1_id, n_idx_k * n_block:(n_idx_k + 1) * n_block])
+                        T.tile.max(rsy_max_ub, rsy_max_ub, rsy_chunk_max_ub)
+                        T.set_flag("v", "mte2", cur)
 
-                        # ReduceSumY: Double-Buffer K-block loop
-                        T.tile.fill(rsy_max_ub, -T.infinity(calc_dtype))
-                        T.set_flag("v", "mte2", 0)
-                        T.set_flag("v", "mte2", 1)
+                        if n_rsy + 1 < n_num:
+                            next_n = n_rsy + 1
+                            T.wait_flag("v", "mte2", nxt)
+                            if nxt == 0:
+                                T.copy(bmm2Res[bz, s1_id, 0:Nidx1, next_n * n_block:(next_n + 1) * n_block], bmm2_0)
+                            if nxt == 1:
+                                T.copy(bmm2Res[bz, s1_id, 0:Nidx1, next_n * n_block:(next_n + 1) * n_block], bmm2_1)
+                            T.set_flag("mte2", "v", nxt)
 
-                        T.wait_flag("v", "mte2", 0)
-                        T.copy(bmm2Res[bz, s1_id, 0:Nidx1, 0:n_block], bmm2_0)
-                        T.set_flag("mte2", "v", 0)
+                    T.wait_flag("v", "mte2", 0)
+                    T.wait_flag("v", "mte2", 1)
 
-                        for n_rsy in T.serial(n_num):
-                            cur = n_rsy % 2
-                            nxt = (n_rsy + 1) % 2
+                    # SoftmaxI: global rsy_sum from UB-held rsy_all_ub (no GM re-reads)
+                    T.set_flag("mte3", "v", 0)
+                    T.wait_flag("mte3", "v", 0)
+                    T.tile.fill(p_reduced_tmp_ub, 1.0)
+                    T.pipe_barrier("v")
+                    T.tile.mul(softmax_i_chunk_ub, p_reduced_tmp_ub, rsy_max_ub[0])
 
-                            T.wait_flag("mte2", "v", cur)
-                            T.pipe_barrier("v")
-                            if cur == 0:
-                                T.tile.mul(bmm2_0, bmm2_0, weight_2d_ub)
-                            if cur == 1:
-                                T.tile.mul(bmm2_1, bmm2_1, weight_2d_ub)
-                            T.pipe_barrier("v")
-                            if cur == 0:
-                                T.reduce_sum(bmm2_0, rsy_reduce_ub, 0)
-                            if cur == 1:
-                                T.reduce_sum(bmm2_1, rsy_reduce_ub, 0)
-                            T.pipe_barrier("v")
-                            T.copy(rsy_reduce_ub, rsy_all_ub[n_rsy, :])
-                            T.pipe_barrier("mte3")
-                            T.copy(rsy_reduce_ub, ReduceSumY[bz, s1_id, n_rsy * n_block:(n_rsy + 1) * n_block])
-                            T.tile.mul(rsy_bc_ub[0, :], rsy_reduce_ub, 1.0)
-                            T.pipe_barrier("v")
-                            T.reduce_max(rsy_bc_ub, rsy_chunk_max_ub, 1)
-                            T.pipe_barrier("v")
-                            T.tile.max(rsy_max_ub, rsy_max_ub, rsy_chunk_max_ub)
-                            T.set_flag("v", "mte2", cur)
-
-                            if n_rsy + 1 < n_num:
-                                next_n = n_rsy + 1
-                                T.wait_flag("v", "mte2", nxt)
-                                if nxt == 0:
-                                    T.copy(bmm2Res[bz, s1_id, 0:Nidx1, next_n * n_block:(next_n + 1) * n_block], bmm2_0)
-                                if nxt == 1:
-                                    T.copy(bmm2Res[bz, s1_id, 0:Nidx1, next_n * n_block:(next_n + 1) * n_block], bmm2_1)
-                                T.set_flag("mte2", "v", nxt)
-
-                        T.wait_flag("v", "mte2", 0)
-                        T.wait_flag("v", "mte2", 1)
-
-                        # SoftmaxI: global rsy_sum from UB-held rsy_all_ub (no GM re-reads)
-                        T.set_flag("mte3", "v", 0)
-                        T.wait_flag("mte3", "v", 0)
-                        T.tile.fill(p_reduced_tmp_ub, 1.0)
-                        T.pipe_barrier("v")
-                        T.tile.mul(softmax_i_chunk_ub, p_reduced_tmp_ub, rsy_max_ub[0])
-
-                        T.tile.fill(rsy_sum_ub, 0)
-                        for n_idx_iter in T.serial(n_num):
-                            T.copy(rsy_all_ub[n_idx_iter, :], rsy_chunk_ub)
-                            T.pipe_barrier("v")
-                            T.tile.sub(rsy_chunk_ub, rsy_chunk_ub, softmax_i_chunk_ub)
-                            T.pipe_barrier("v")
-                            T.tile.exp(rsy_chunk_ub, rsy_chunk_ub)
-                            T.pipe_barrier("v")
-                            T.tile.mul(rsy_bc_ub[0, :], rsy_chunk_ub, 1.0)
-                            T.pipe_barrier("v")
-                            T.reduce_sum(rsy_bc_ub, rsy_chunk_sum_ub, 1)
-                            T.pipe_barrier("v")
-                            T.tile.add(rsy_sum_ub, rsy_sum_ub, rsy_chunk_sum_ub)
-
-                        T.tile.fill(eps_sum_ub, 1e-8)
-                        T.pipe_barrier("v")
-                        T.tile.max(rsy_sum_ub, rsy_sum_ub, eps_sum_ub)
-
-                        T.copy(rsy_all_ub[n_idx_k, :], rsy_chunk_ub)
+                    T.tile.fill(rsy_sum_ub, 0)
+                    for n_idx_iter in T.serial(n_num):
+                        T.copy(rsy_all_ub[n_idx_iter, :], rsy_chunk_ub)
                         T.pipe_barrier("v")
                         T.tile.sub(rsy_chunk_ub, rsy_chunk_ub, softmax_i_chunk_ub)
                         T.pipe_barrier("v")
                         T.tile.exp(rsy_chunk_ub, rsy_chunk_ub)
                         T.pipe_barrier("v")
-                        T.tile.div(rsy_chunk_ub, rsy_chunk_ub, rsy_sum_ub[0])
-                        T.set_flag("v", "mte3", 4)
-                        T.wait_flag("v", "mte3", 4)
-                        T.copy(rsy_chunk_ub, SoftmaxI[bz, s1_id, n_idx_k * n_block:(n_idx_k + 1) * n_block])
+                        T.tile.mul(rsy_bc_ub[0, :], rsy_chunk_ub, 1.0)
+                        T.pipe_barrier("v")
+                        T.reduce_sum(rsy_bc_ub, rsy_chunk_sum_ub, 1)
+                        T.pipe_barrier("v")
+                        T.tile.add(rsy_sum_ub, rsy_sum_ub, rsy_chunk_sum_ub)
+
+                    T.tile.fill(eps_sum_ub, 1e-8)
+                    T.pipe_barrier("v")
+                    T.tile.max(rsy_sum_ub, rsy_sum_ub, eps_sum_ub)
+
+                    T.copy(rsy_all_ub[n_idx_k, :], rsy_chunk_ub)
+                    T.pipe_barrier("v")
+                    T.tile.sub(rsy_chunk_ub, rsy_chunk_ub, softmax_i_chunk_ub)
+                    T.pipe_barrier("v")
+                    T.tile.exp(rsy_chunk_ub, rsy_chunk_ub)
+                    T.pipe_barrier("v")
+                    T.tile.div(rsy_chunk_ub, rsy_chunk_ub, rsy_sum_ub[0])
+                    T.set_flag("v", "mte3", 4)
+                    T.wait_flag("v", "mte3", 4)
+                    T.copy(rsy_chunk_ub, SoftmaxI[bz, s1_id, n_idx_k * n_block:(n_idx_k + 1) * n_block])
 
                     # ============================================================
                     # Sync 1→2: drain MTE3 then barrier — AIV1 now sees AIV0's
