@@ -1668,13 +1668,6 @@ if [ -n "${CMAKE_BUILD_MODE}" ];then
     CUSTOM_OPTION="${CUSTOM_OPTION} -DCMAKE_BUILD_MODE=${CMAKE_BUILD_MODE}"
 fi
 CUSTOM_OPTION="${CUSTOM_OPTION} -DCANN_3RD_LIB_PATH=${CANN_3RD_LIB_PATH}"
-# Force local ES wheel builds to reuse the current Python environment.  This avoids
-# build-isolation dependency downloads on offline boards while leaving other Python calls unchanged.
-PYTHON_NO_BUILD_ISOLATION_WRAPPER="${CURRENT_DIR}/scripts/tools/python_no_build_isolation.sh"
-if [ -x "${PYTHON_NO_BUILD_ISOLATION_WRAPPER}" ]; then
-    export OPS_REAL_PYTHON="${OPS_REAL_PYTHON:-$(command -v python3)}"
-    CUSTOM_OPTION="${CUSTOM_OPTION} -DPython3_EXECUTABLE=${PYTHON_NO_BUILD_ISOLATION_WRAPPER}"
-fi
 
 if [ -n "${BISHENG_FLAGS}" ];then
     CUSTOM_OPTION="${CUSTOM_OPTION} -DBISHENG_FLAGS=${BISHENG_FLAGS}"
