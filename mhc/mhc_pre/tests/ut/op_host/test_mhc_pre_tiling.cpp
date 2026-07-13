@@ -1536,6 +1536,11 @@ TEST_F(MhcPreTiling, Ut_Check_LowApi_N4_SplitBS_HasResi_Gamma)
 
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey,
                     expectTilingDataStr, expectWorkspaces, 0, TilingData2Str<int32_t>);
+
+    TilingInfo tilingInfo;
+    ASSERT_TRUE(ExecuteTiling(tilingContextPara, tilingInfo));
+    ASSERT_FALSE(tilingInfo.workspaceSizes.empty());
+    EXPECT_GT(tilingInfo.workspaceSizes[0], 20 * 1024 * 1024);
 }
 
 /*
