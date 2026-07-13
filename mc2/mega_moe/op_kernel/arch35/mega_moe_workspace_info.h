@@ -246,12 +246,10 @@ struct WorkspaceInfo {
 
             combineCommDataPtr = base + workspaceSize;
             int64_t maxDataLengthPerBlock = Ops::Base::CeilAlign(static_cast<int64_t>(MegaMoeImpl::L1_TILE_N *
-                                                                  sizeof(uint32_t) / 2), (int64_t)ALIGN_32);
+                sizeof(uint32_t) / 2), (int64_t)ALIGN_32);
             // 每个 token 含数据+三元组(32B)
             int64_t maxDataSizePerToken = Ops::Base::CeilDiv(static_cast<int64_t>(tilingData->h),
                 (int64_t)MegaMoeImpl::L1_TILE_N) * (ALIGN_32 + maxDataLengthPerBlock);
-            // 注意: 乘法必须在 64 位域进行, 否则 bs * maxDataSizePerToken * expertPerRank * epWorldSize
-            // 在 uint32_t 域会溢出回绕(8P 场景乘积可达 ~8GB), 导致申请不足而 kernel 越界。
             int64_t maxDataSize = Ops::Base::CeilAlign(
                 static_cast<int64_t>(tilingData->bs) * maxDataSizePerToken *
                 static_cast<int64_t>(tilingData->expertPerRank) *
