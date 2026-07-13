@@ -39,6 +39,16 @@ static constexpr uint32_t UB_ALIGN = 32U;
 static constexpr uint32_t WIN_ADDR_ALIGN = 512;
 static constexpr uint32_t RECV_META_FIELDS = 4;
 static constexpr uint8_t BUFFER_NUM = 2;
+static constexpr uint32_t ELEM_ALIGN = 8U;
+static constexpr uint32_t META_TOPK_SECTION = 2U;
+static constexpr uint32_t META_EXTRA_FIELDS = 2U;
+static constexpr uint32_t META_SRC_RANK_OFFSET = 0U;
+static constexpr uint32_t META_TOKEN_IDX_OFFSET = 1U;
+static constexpr uint32_t META_TOPK_IDX_OFFSET = 2U;
+static constexpr uint32_t META_SLOT_IDX_OFFSET = 3U;
+static constexpr uint32_t HIT_ROW_OFFSET = 0U;
+static constexpr uint32_t HIT_TOPK_OFFSET = 1U;
+static constexpr uint32_t HIT_ENTRY_SIZE = 2U;
 
 template <typename XType, typename ScalesType, uint32_t IsCached, bool HasTopkWeights>
 class MoeEpDispatchEpilogue {
@@ -114,7 +124,6 @@ private:
     TBuf<QuePosition::VECIN> ubHitListBuf_;
 
     uint32_t expertSum_{0};
-    uint32_t maxSlotsPerAiv_{0};
     GM_ADDR workspaceGM_{nullptr};
     GM_ADDR localWinAddr_{nullptr};
     uint32_t scalesOffset_{0};
@@ -127,7 +136,6 @@ private:
     uint32_t paddedMetaElems_{0};
     uint32_t axisKAlign_{0};
     uint32_t paddedTopkElems_{0};
-    uint32_t ubMetaCapElems_{0};   // ubMeta_ 容纳的 int32 元素数（用于 cached 路径分块拷贝）
     uint32_t numLocalExperts_{0};
     uint32_t hitCountStride_{0};   // 对齐到 32B 的 hitCount 存储步长 (int32 元素数)
     uint32_t aivNum_{0};
@@ -192,38 +200,32 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
         recvTopkWeightsGm_.SetGlobalBuffer((__gm__ float*)recvTopkWeights);
     }
 
-    // hitCountStride_: 每 aiv 的 hitCount 存储步长，对齐到 8 个 int32 (32 bytes)
-    // 确保 CopyFromWindowByExpert 中 Cast 读取地址始终 32B 对齐
-    hitCountStride_ = Ceil(numLocalExperts_, 8U) * 8U;
-
     hitCountGm_.SetGlobalBuffer((__gm__ int32_t*)(workspace));
 
-    uint32_t ubHitCountBytes  = Ceil((uint32_t)(numLocalExperts_ * sizeof(int32_t)), UB_ALIGN) * UB_ALIGN;
-    uint32_t ubRowStartBytes  = Ceil((uint32_t)(numLocalExperts_ * sizeof(int64_t)), UB_ALIGN) * UB_ALIGN;
+    axisKAlign_ = Ceil(axisK_, ELEM_ALIGN) * ELEM_ALIGN;
+    metaBytes_ = (META_TOPK_SECTION * axisKAlign_) * (uint32_t)sizeof(int32_t) + UB_ALIGN;
 
-    axisKAlign_ = Ceil(axisK_, 8U) * 8U;
-    metaBytes_ = (2 * axisKAlign_) * (uint32_t)sizeof(int32_t) + UB_ALIGN;
-    paddedMetaElems_ = Ceil(2 * axisKAlign_ + 2, 8U) * 8U;
-    paddedTopkElems_ = axisKAlign_;
-    uint32_t maxSlotsPerAiv = Ceil(numMaxTokensPerRank_, aivNum_);
-    uint32_t ubMetaBytes = Ceil((uint32_t)(maxSlotsPerAiv * paddedMetaElems_ * sizeof(int32_t)), UB_ALIGN) * UB_ALIGN;
-    uint32_t ubTopkIdsBytes = Ceil((uint32_t)(maxSlotsPerAiv * paddedTopkElems_ * sizeof(int32_t)),
-        UB_ALIGN) * UB_ALIGN;
-    ubMetaCapElems_ = ubMetaBytes / sizeof(int32_t);
-    uint32_t ubRecvCntBytes = Ceil((uint32_t)(epWorldSize_ * sizeof(int32_t)), UB_ALIGN) * UB_ALIGN;
     uint32_t ubExpertPfxBytes = Ceil((uint32_t)(numLocalExperts_ * sizeof(int64_t)), UB_ALIGN) * UB_ALIGN;
-    uint32_t ubHitCountFullBytes = Ceil((uint32_t)(aivNum_ * hitCountStride_ * sizeof(int32_t)), UB_ALIGN) * UB_ALIGN;
-    uint32_t ubHitCountRowI64Bytes = Ceil((uint32_t)(numLocalExperts_ * sizeof(int64_t)), UB_ALIGN) * UB_ALIGN;
-    maxSlotsPerAiv_ = maxSlotsPerAiv * epWorldSize_;
-    uint32_t ubStageWeightsBytes = Ceil((uint32_t)(maxSlotsPerAiv_ * sizeof(float)), UB_ALIGN) * UB_ALIGN;
-    uint32_t ubStageMetaBytes =
-        Ceil((uint32_t)(maxSlotsPerAiv_ * RECV_META_FIELDS * sizeof(int32_t)), UB_ALIGN) * UB_ALIGN;
-
     tpipe_->InitBuffer(ubExpertPfxBuf_, ubExpertPfxBytes);
-
     ubExpertPfx_ = ubExpertPfxBuf_.Get<int64_t>();
-    
+
     if constexpr (!IsCached) {
+        hitCountStride_ = Ceil(numLocalExperts_, ELEM_ALIGN) * ELEM_ALIGN;
+        paddedMetaElems_ = Ceil(META_TOPK_SECTION * axisKAlign_ + META_EXTRA_FIELDS, ELEM_ALIGN) * ELEM_ALIGN;
+        paddedTopkElems_ = axisKAlign_;
+
+        uint32_t ubHitCountBytes  = Ceil((uint32_t)(numLocalExperts_ * sizeof(int32_t)), UB_ALIGN) * UB_ALIGN;
+        uint32_t ubRowStartBytes  = Ceil((uint32_t)(numLocalExperts_ * sizeof(int64_t)), UB_ALIGN) * UB_ALIGN;
+        uint32_t maxSlotsPerAiv = Ceil(numMaxTokensPerRank_, aivNum_);
+        uint32_t ubMetaBytes = Ceil((uint32_t)(maxSlotsPerAiv * paddedMetaElems_ * sizeof(int32_t)), UB_ALIGN) * UB_ALIGN;
+        uint32_t ubTopkIdsBytes = Ceil((uint32_t)(maxSlotsPerAiv * paddedTopkElems_ * sizeof(int32_t)),
+            UB_ALIGN) * UB_ALIGN;
+        uint32_t ubRecvCntBytes = Ceil((uint32_t)(epWorldSize_ * sizeof(int32_t)), UB_ALIGN) * UB_ALIGN;
+        uint32_t ubHitCountFullBytes = Ceil((uint32_t)(aivNum_ * hitCountStride_ * sizeof(int32_t)), UB_ALIGN) * UB_ALIGN;
+        uint32_t ubHitCountRowI64Bytes = Ceil((uint32_t)(numLocalExperts_ * sizeof(int64_t)), UB_ALIGN) * UB_ALIGN;
+        uint32_t ubStageMetaBytes = axisK_ * UB_ALIGN;
+        uint32_t ubStageWeightsBytes = axisK_ * UB_ALIGN;
+
         tpipe_->InitBuffer(ubRecvCntBuf_, ubRecvCntBytes);
         tpipe_->InitBuffer(ubHitCountBuf_, ubHitCountBytes);
         tpipe_->InitBuffer(ubRowStartBuf_, ubRowStartBytes);
@@ -233,10 +235,10 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
         tpipe_->InitBuffer(ubSubExpertIdBuf_, ubTopkIdsBytes);
         tpipe_->InitBuffer(ubHitCountFullBuf_, ubHitCountFullBytes);
         tpipe_->InitBuffer(ubHitCountRowI64Buf_, ubHitCountRowI64Bytes);
-        tpipe_->InitBuffer(ubStageWeightsBuf_, ubStageWeightsBytes);
         tpipe_->InitBuffer(ubStageMetaBuf_, ubStageMetaBytes);
+        tpipe_->InitBuffer(ubStageWeightsBuf_, ubStageWeightsBytes);
 
-        uint32_t ubHitListBytes = Ceil((uint32_t)(axisK_ * sizeof(int32_t)), UB_ALIGN) * UB_ALIGN;
+        uint32_t ubHitListBytes = Ceil((uint32_t)(axisK_ * HIT_ENTRY_SIZE * sizeof(int32_t)), UB_ALIGN) * UB_ALIGN;
         tpipe_->InitBuffer(ubHitListBuf_, ubHitListBytes);
         uint32_t ubLocalCursorBytes = Ceil((uint32_t)(numLocalExperts_ * sizeof(int32_t)), UB_ALIGN) * UB_ALIGN;
         tpipe_->InitBuffer(ubLocalCursorBuf_, ubLocalCursorBytes);
@@ -249,8 +251,8 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
         ubSubExpertId_ = ubSubExpertIdBuf_.Get<int32_t>();
         ubHitCountFull_ = ubHitCountFullBuf_.Get<int32_t>();
         ubHitCountRowI64_ = ubHitCountRowI64Buf_.Get<int64_t>();
-        ubStageWeights_ = ubStageWeightsBuf_.Get<float>();
         ubStageMeta_    = ubStageMetaBuf_.Get<int32_t>();
+        ubStageWeights_ = ubStageWeightsBuf_.Get<float>();
         ubHitList_    = ubHitListBuf_.Get<int32_t>();
         ubLocalCursor_    = ubLocalCursorBuf_.Get<int32_t>();
     }
@@ -384,10 +386,8 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
         Cast(ubHitCountRowI64_, ubHitCountFull_[aiv * hitCountStride_], RoundMode::CAST_NONE, numLocalExperts_);
         Add(ubRowStart_, ubRowStart_, ubHitCountRowI64_, numLocalExperts_);
     }
-    SyncFunc<AscendC::HardEvent::V_S>();
-
     Duplicate(ubLocalCursor_, (int32_t)0, numLocalExperts_);
-    SyncFunc<AscendC::HardEvent::S_V>();
+    SyncFunc<AscendC::HardEvent::V_S>();
 
     int32_t rankExpertBase = static_cast<int32_t>(epRankId_ * numLocalExperts_);
     int32_t rankExpertEnd = rankExpertBase + static_cast<int32_t>(numLocalExperts_);
@@ -429,7 +429,13 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
                 if (expertId < rankExpertBase || expertId >= rankExpertEnd) {
                     continue;
                 }
-                ubHitList_.SetValue(hitCnt, static_cast<int32_t>(topkIdx));
+                uint32_t localExpertId = static_cast<uint32_t>(expertId - rankExpertBase);
+                int64_t expertRowStart = ubRowStart_.GetValue(localExpertId);
+                int32_t cursor = ubLocalCursor_.GetValue(localExpertId);
+                ubLocalCursor_.SetValue(localExpertId, cursor + 1);
+                uint32_t globalRow = static_cast<uint32_t>(expertRowStart + cursor);
+                ubHitList_.SetValue(hitCnt * HIT_ENTRY_SIZE + HIT_ROW_OFFSET, static_cast<int32_t>(globalRow));
+                ubHitList_.SetValue(hitCnt * HIT_ENTRY_SIZE + HIT_TOPK_OFFSET, static_cast<int32_t>(topkIdx));
                 hitCnt++;
             }
             if (hitCnt == 0) {
@@ -455,13 +461,8 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
             LocalTensor<XType> tokenOut = tokenQueue_.DeQue<XType>();
 
             for (uint32_t i = 0; i < hitCnt; i++) {
-                uint32_t topkIdx = static_cast<uint32_t>(ubHitList_.GetValue(i));
-                int32_t expertId = ubMeta_.GetValue(metaBase + topkIdx);
-                uint32_t localExpertId = static_cast<uint32_t>(expertId - rankExpertBase);
-                int64_t expertRowStart = ubRowStart_.GetValue(localExpertId);
-                int32_t cursor = ubLocalCursor_.GetValue(localExpertId);
-                ubLocalCursor_.SetValue(localExpertId, cursor + 1);
-                uint32_t globalRow = static_cast<uint32_t>(expertRowStart + cursor);
+                uint32_t globalRow = static_cast<uint32_t>(ubHitList_.GetValue(i * HIT_ENTRY_SIZE + HIT_ROW_OFFSET));
+                uint32_t topkIdx = static_cast<uint32_t>(ubHitList_.GetValue(i * HIT_ENTRY_SIZE + HIT_TOPK_OFFSET));
 
                 DataCopyPad(recvXGm_[(int64_t)globalRow * axisH_], tokenOut, tokenCopyParams);
                 if constexpr (Std::IsSame<XType, fp8_e5m2_t>::value || Std::IsSame<XType, fp8_e4m3fn_t>::value) {
@@ -474,22 +475,28 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
 
                 if constexpr (HasTopkWeights) {
                     float weights = ubMeta_.ReinterpretCast<float>().GetValue(metaBase + axisKAlign_ + topkIdx);
-                    ubStageMeta_.ReinterpretCast<float>().SetValue(8, weights);
+                    ubStageWeights_.SetValue(i * ELEM_ALIGN, weights);
                 }
-                ubStageMeta_.SetValue(0, ubMeta_.GetValue(metaBase + 2 * axisKAlign_));
-                ubStageMeta_.SetValue(1, ubMeta_.GetValue(metaBase + 2 * axisKAlign_ + 1));
-                ubStageMeta_.SetValue(2, static_cast<int32_t>(topkIdx));
-                ubStageMeta_.SetValue(3, static_cast<int32_t>(slotStart + localSlot));
-                SyncFunc<AscendC::HardEvent::S_MTE3>();
-
-                if constexpr (HasTopkWeights) {
-                    DataCopyPad(recvTopkWeightsGm_[globalRow], ubStageMeta_.ReinterpretCast<float>()[8],
-                                weightOutParams);
-                }
-                DataCopyPad(recvSrcMetadataGm_[globalRow * RECV_META_FIELDS], ubStageMeta_, metaOutParams);
-                SyncFunc<AscendC::HardEvent::MTE3_S>();
+                ubStageMeta_.SetValue(i * ELEM_ALIGN + META_SRC_RANK_OFFSET,
+                    ubMeta_.GetValue(metaBase + META_TOPK_SECTION * axisKAlign_));
+                ubStageMeta_.SetValue(i * ELEM_ALIGN + META_TOKEN_IDX_OFFSET,
+                    ubMeta_.GetValue(metaBase + META_TOPK_SECTION * axisKAlign_ + 1));
+                ubStageMeta_.SetValue(i * ELEM_ALIGN + META_TOPK_IDX_OFFSET, static_cast<int32_t>(topkIdx));
+                ubStageMeta_.SetValue(i * ELEM_ALIGN + META_SLOT_IDX_OFFSET,
+                    static_cast<int32_t>(slotStart + localSlot));
             }
             tokenQueue_.FreeTensor(tokenOut);
+
+            SyncFunc<AscendC::HardEvent::S_MTE3>();
+            for (uint32_t i = 0; i < hitCnt; i++) {
+                uint32_t globalRow = static_cast<uint32_t>(ubHitList_.GetValue(i * HIT_ENTRY_SIZE + HIT_ROW_OFFSET));
+                if constexpr (HasTopkWeights) {
+                    DataCopyPad(recvTopkWeightsGm_[globalRow], ubStageWeights_[i * ELEM_ALIGN], weightOutParams);
+                }
+                DataCopyPad(recvSrcMetadataGm_[globalRow * RECV_META_FIELDS],
+                            ubStageMeta_[i * ELEM_ALIGN], metaOutParams);
+            }
+            SyncFunc<AscendC::HardEvent::MTE3_S>();
         }
         SyncFunc<AscendC::HardEvent::S_MTE2>();
     }
@@ -522,9 +529,9 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
 
     for (uint32_t i = 0; i < cnt; ++i) {
         uint32_t metaBase = i * RECV_META_FIELDS;
-        int32_t srcRankId   = ubStageMeta_.GetValue(metaBase + 0);
-        int32_t srcTopkIdx  = ubStageMeta_.GetValue(metaBase + 2);
-        int32_t slotIdx     = ubStageMeta_.GetValue(metaBase + 3);
+        int32_t srcRankId   = ubStageMeta_.GetValue(metaBase + META_SRC_RANK_OFFSET);
+        int32_t srcTopkIdx  = ubStageMeta_.GetValue(metaBase + META_TOPK_IDX_OFFSET);
+        int32_t slotIdx     = ubStageMeta_.GetValue(metaBase + META_SLOT_IDX_OFFSET);
 
         GM_ADDR slotAddr = localWinAddr_
             + (int64_t)srcRankId * numMaxTokensPerRank_ * perSlotBytes_
