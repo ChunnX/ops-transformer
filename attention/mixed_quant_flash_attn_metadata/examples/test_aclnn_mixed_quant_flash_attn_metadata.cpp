@@ -193,7 +193,7 @@ int main() {
     char socVersion[] = "ascend950";
     printf("start aclnnMixedQuantFlashAttnMetadata\n");
     ret = aclnnMixedQuantFlashAttnMetadataGetWorkspaceSize(
-        nullptr, nullptr,
+        nullptr,
         nullptr, nullptr,
         batchSize, qS, kvS,
         numHeads, numKeyValueHeads,
