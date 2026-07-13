@@ -16,4 +16,4 @@
 #include "../../template_linear_algebra_v2/layout/vector.hpp"
 #include "../../template_linear_algebra_v2/layout/tensor.hpp"
 
-#endif  // CATLASS_LAYOUT_LAYOUT_HPP
+#endif // CATLASS_LAYOUT_LAYOUT_HPP
