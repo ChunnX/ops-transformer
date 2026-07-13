@@ -114,6 +114,21 @@ macro(add_modules_sources)
     add_tiling_modules()
     target_sources(${OPHOST_NAME}_tiling_obj PRIVATE ${OPTILING_SRCS} ${SUB_OPTILING_SRC})
     # target_include_directories(${OPHOST_NAME}_tiling_obj PRIVATE ${SOURCE_DIR}/../../ ${SOURCE_DIR})
+    # 本 op 标记了 pypto kernel（enable_pypto_kernel 设置了 PYPTO_GEN_DIR）：对本 op 的 tiling cpp
+    # force-include 生成头，源码里无需显式 include。按文件列表 scope（只命中本 op 的 tiling 源，
+    # 不波及共享 ${OPHOST_NAME}_tiling_obj 上其它算子）。顺序：*_tilingkey.h 在前（其
+    # template_argument.h 带 <cstdint>），*_tiling.h 在后（用 int64_t）。
+    if (DEFINED PYPTO_GEN_DIR)
+        file(GLOB _pypto_key_h  ${PYPTO_GEN_DIR}/*_tilingkey.h)
+        file(GLOB _pypto_data_h ${PYPTO_GEN_DIR}/*_tiling.h)
+        set(_pypto_force_opts "")
+        foreach (_h ${_pypto_key_h} ${_pypto_data_h})
+            list(APPEND _pypto_force_opts -include ${_h})
+        endforeach ()
+        set_source_files_properties(${OPTILING_SRCS} ${SUB_OPTILING_SRC}
+            TARGET_DIRECTORY ${OPHOST_NAME}_tiling_obj
+            PROPERTIES COMPILE_OPTIONS "${_pypto_force_opts}")
+    endif()
   endif()
 
   file(GLOB FALLBACK_SRCS ${SOURCE_DIR}/../op_graph/*fallback*.cpp)
@@ -288,6 +303,21 @@ macro(add_modules_sources_with_soc)
     add_tiling_modules()
     target_sources(${OPHOST_NAME}_tiling_obj PRIVATE ${OPTILING_SRCS} ${SUB_OPTILING_SRC})
     # target_include_directories(${OPHOST_NAME}_tiling_obj PRIVATE ${SOURCE_DIR}/../../ ${SOURCE_DIR})
+    # 本 op 标记了 pypto kernel（enable_pypto_kernel 设置了 PYPTO_GEN_DIR）：对本 op 的 tiling cpp
+    # force-include 生成头，源码里无需显式 include。按文件列表 scope（只命中本 op 的 tiling 源，
+    # 不波及共享 ${OPHOST_NAME}_tiling_obj 上其它算子）。顺序：*_tilingkey.h 在前（其
+    # template_argument.h 带 <cstdint>），*_tiling.h 在后（用 int64_t）。
+    if (DEFINED PYPTO_GEN_DIR)
+        file(GLOB _pypto_key_h  ${PYPTO_GEN_DIR}/*_tilingkey.h)
+        file(GLOB _pypto_data_h ${PYPTO_GEN_DIR}/*_tiling.h)
+        set(_pypto_force_opts "")
+        foreach (_h ${_pypto_key_h} ${_pypto_data_h})
+            list(APPEND _pypto_force_opts -include ${_h})
+        endforeach ()
+        set_source_files_properties(${OPTILING_SRCS} ${SUB_OPTILING_SRC}
+            TARGET_DIRECTORY ${OPHOST_NAME}_tiling_obj
+            PROPERTIES COMPILE_OPTIONS "${_pypto_force_opts}")
+    endif()
   endif()
 
   file(GLOB FALLBACK_SRCS ${SOURCE_DIR}/../op_graph/*fallback*.cpp)

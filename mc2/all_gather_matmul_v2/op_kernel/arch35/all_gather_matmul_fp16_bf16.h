@@ -79,7 +79,7 @@ private:
     uint8_t debugMode_;
     bool notifyFlag_{false};
     typename HcclTypeSelector<ServerMode>::type hccl_;
-    AscendC::HcclHandle hHandles_[MAX_HANDLE];  // 最大支持16个handleID
+    AscendC::HcclHandle hHandles_[MAX_HANDLE];  // 最大支持63个handleID
 };
 
 template <typename AType, typename BType, typename BiasType, typename CType, uint8_t ServerMode>
