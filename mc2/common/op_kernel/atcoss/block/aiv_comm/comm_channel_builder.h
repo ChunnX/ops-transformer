@@ -31,27 +31,31 @@ constexpr uint32_t CHANNEL_NOTIFY_NUM = 3U;
 
 #define ASC_CHECK(call) do { if (!(call)) { return false; } } while(0)
 
-enum class ChannelModel {
+enum class ChannelMode {
     URMA,
     UBMEM
 };
 
 class CommChannelBuilder {
 public:
-    CommChannelContext context;
-
     explicit CommChannelBuilder(HcclComm comm) : comm_(comm)
     {
         HcclGetRankId(comm_, &rankId_);
         HcclGetRankSize(comm_, &rankNum_);
-        context = {};
-        context.rankId = rankId_;
-        context.rankSize = rankNum_;
-        context.notifyNum = CHANNEL_NOTIFY_NUM;
     }
 
     /*!
-     * \brief 申请+注册+建链一块 buffer，填充 context 对应字段
+     * \brief 获取 rankId
+     */
+    uint32_t GetRankId() const { return rankId_; }
+
+    /*!
+     * \brief 获取 rankNum
+     */
+    uint32_t GetRankSize() const { return rankNum_; }
+
+    /*!
+     * \brief 申请+注册+建链一块 buffer，填充外部 context 对应字段
      * \param [in]  mode         通信方式 (URMA / UBMEM)
      * \param [in]  useHcclBuf   是否使用 HCCL 内置 buffer (false 则自己 malloc)
      * \param [in]  bufSize      buffer 大小 (useHcclBuf=false 时有效)
@@ -62,10 +66,10 @@ public:
      * \return true 成功, false 失败
      */
     bool AllocRegAndBuildChannels(
-        ChannelModel mode, bool useHcclBuf, uint64_t bufSize, const char* memTag,
+        ChannelMode mode, bool useHcclBuf, uint64_t bufSize, const char* memTag,
         uint64_t& localAddr, uint64_t* channels, uint64_t* remoteAddrs)
     {
-        ::CommProtocol protocol = (mode == ChannelModel::URMA) ? ::CommProtocol::COMM_PROTOCOL_UBC_CTP
+        ::CommProtocol protocol = (mode == ChannelMode::URMA) ? ::CommProtocol::COMM_PROTOCOL_UBC_CTP
                                                            : ::CommProtocol::COMM_PROTOCOL_UB_MEM;
 
         void* buf = nullptr;
@@ -84,11 +88,6 @@ public:
         localAddr = reinterpret_cast<uint64_t>(buf);
 
         return BuildChannels(mode, useHcclBuf, protocol, memHandle, memTag, channels, remoteAddrs);
-    }
-
-    const CommChannelContext& GetContext() const
-    {
-        return context;
     }
 
 private:
@@ -118,7 +117,7 @@ private:
         return true;
     }
 
-    bool BuildChannels(ChannelModel mode, bool useHcclBuf,
+    bool BuildChannels(ChannelMode mode, bool useHcclBuf,
                        ::CommProtocol protocol, HcclMemHandle memHandle,
                        const char* memTag, uint64_t* channels, uint64_t* remoteAddrs)
     {
