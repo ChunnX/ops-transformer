@@ -17,7 +17,7 @@
 #include "mc2_log.h"
 #include "graph/utils/type_utils.h"
 #include "register/op_def_registry.h"
-#include "../../op_kernel/engram_fetch_wait_tiling_data.h"
+#include "../../../op_kernel/engram_fetch_wait_tiling_data.h"
 
 using namespace AscendC;
 using namespace ge;
@@ -76,7 +76,7 @@ static ge::graphStatus EngramFetchWaitTilingFunc(gert::TilingContext *context)
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
     uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
     uint32_t aicNum = ascendcPlatform.GetCoreNumAic();
-    uint32_t numBlocks = ascendcPlatform.CalcTschNumBlocks(aivNum, 0, aivNum);
+    uint32_t numBlocks = ascendcPlatform.CalcTschBlockDim(aivNum, 0, aivNum);
     context->SetBlockDim(numBlocks);
     OP_LOGD(nodeName, "aicNum=%u, aivNum=%u, numBlocks=%u", aicNum, aivNum, numBlocks);
 
@@ -85,14 +85,6 @@ static ge::graphStatus EngramFetchWaitTilingFunc(gert::TilingContext *context)
     SetTilingKey(context);
 
     OP_LOGD(nodeName, "EngramFetchWait tiling end.");
-    return ge::GRAPH_SUCCESS;
-}
-
-struct EngramFetchWaitCompileInfo {};
-
-ge::graphStatus TilingParseForEngramFetchWait(gert::TilingParseContext *context)
-{
-    (void)context;
     return ge::GRAPH_SUCCESS;
 }
 
