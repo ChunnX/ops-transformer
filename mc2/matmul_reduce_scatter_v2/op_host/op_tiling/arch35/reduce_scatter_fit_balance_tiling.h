@@ -18,6 +18,8 @@
 #pragma once
 #include "op_host/op_tiling/mc2_fit_based_balance_tiling.h"
 
+constexpr double RS_FP4_COMPUTE_PER_CYCLE_RATIO = 4;
+
 class MMReduceScatterFitBalanceTiling : public Mc2FitBasedBalanceTiling
 {
 public:
@@ -29,6 +31,16 @@ public:
     {
         commPerf_.SetCommShapeLen(args.nValue);
         commPerf_.SetCommDTypeSize(mmInfo_.outMatrixCDtypeSize);
+        if (args.geAType == ge::DataType::DT_FLOAT4_E2M1) {
+            matmulPerf_.mmShapeInfo_.inMatrixADtypeSize = 1;
+            matmulPerf_.mmShapeInfo_.inMatrixBDtypeSize = 1;
+            mmInfo_.inMatrixADtypeSize = 1;
+            mmInfo_.inMatrixBDtypeSize = 1;
+            matmulPerf_.calcType_ = MatmulCalcType::QUANT;
+            matmulPerf_.mmShapeInfo_.computesPerCycle =
+                RS_FP4_COMPUTE_PER_CYCLE_RATIO * MatmulPerformance::COMPUTES_PER_CYCLE;
+            mmInfo_.computesPerCycle = matmulPerf_.mmShapeInfo_.computesPerCycle;
+        }
         tilingM_.SetMinLenByMax(matmulPerf_.GetBaseM());
         tilingM_.SetAlignLength(matmulPerf_.GetBaseM());
         isQuantMatmul_ = (mmInfo_.inMatrixADtypeSize == 1) && (mmInfo_.inMatrixBDtypeSize == 1);
