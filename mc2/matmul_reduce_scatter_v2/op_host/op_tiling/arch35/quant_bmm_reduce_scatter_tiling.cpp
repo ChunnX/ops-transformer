@@ -144,7 +144,7 @@ ge::graphStatus QuantBmmReduceScatterTiling::CheckGroupSize() const
         OP_TILING_CHECK((groupSizeM != MXFP8_SIZE_M) || (groupSizeN != MXFP8_SIZE_N) || (groupSizeK != MXFP8_SIZE_K),
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "groupSize",
                 ("[groupSizeM=" + std::to_string(groupSizeM) + ", groupSizeN=" + std::to_string(groupSizeN) + ", groupSizeK=" + std::to_string(groupSizeK) + "]").c_str(),
-                "The value of groupSize must be [1, 1, 32] in mxfp8 scene"),
+                "The value of groupSize must be [1, 1, 32] in mxfp scene"),
             return ge::GRAPH_FAILED);
     } else if (quantMode_ == mc2tiling::Mc2QuantMode::PERTENSOR_MODE) {
         OP_TILING_CHECK(*groupSizePtr != 0,
