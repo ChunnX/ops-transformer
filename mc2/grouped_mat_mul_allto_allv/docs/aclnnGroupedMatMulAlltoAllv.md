@@ -43,7 +43,7 @@ aclnnStatus aclnnGroupedMatMulAlltoAllvGetWorkspaceSize(
     const aclTensor*   gmmWeight,
     const aclTensor*   sendCountsTensorOptional,
     const aclTensor*   recvCountsTensorOptional,
-    const aclTensor*   mmXOptional,            
+    const aclTensor*   mmXOptional,
     const aclTensor*   mmWeightOptional,
     const char*        group,
     int64_t            epWorldSize,
@@ -538,7 +538,7 @@ aclnnStatus aclnnGroupedMatMulAlltoAllv(
                 return ret);
         //（固定写法）同步等待任务执行结束
         ret = aclrtSynchronizeStreamWithTimeout(args.stream, 10000000);
-        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtSynchronizeStreamWithTimeout failed. ret = %d \n", ret); 
+        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtSynchronizeStreamWithTimeout failed. ret = %d \n", ret);
                 return ret);
         // 释放device资源，需要根据具体API的接口定义修改
         if (args.rankId == 0) {
@@ -591,7 +591,7 @@ aclnnStatus aclnnGroupedMatMulAlltoAllv(
         return 0;
     }
 
-    int main(int argc, char *argv[]) 
+    int main(int argc, char *argv[])
     {
         int ret = aclInit(nullptr);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclInit failed. ret = %d \n", ret); return ret);
