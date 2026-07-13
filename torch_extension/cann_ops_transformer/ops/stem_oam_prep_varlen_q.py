@@ -22,7 +22,7 @@ class StemOamPrepVarlenQOpBuilder(OpBuilder):
         return ['ops/csrc/stem_oam_prep_varlen_q.cpp']
 
     def schema(self) -> str:
-        return "stem_oam_prep_varlen_q(Tensor q, Tensor qSeqLens, Tensor cuSeqLensQ, *, " \
+        return "stem_oam_prep_varlen_q(Tensor q, int[] qSeqLens, int[] cuSeqLensQ, *, " \
                "Tensor? qScale=None, " \
                "int stemBlockSize=128, int stemStride=16) -> Tensor"
 
@@ -33,9 +33,9 @@ class StemOamPrepVarlenQOpBuilder(OpBuilder):
                                              stemBlockSize=128, stemStride=16):
             S = stemStride
             qflat_dim = S * 128
-            batch = qSeqLens.size(0)
+            batch = len(qSeqLens)
             H_q = q.size(1)
-            maxQLen = qSeqLens.max().item()
+            maxQLen = max(qSeqLens)
             B = stemBlockSize
             maxQPadded = ((maxQLen + B - 1) // B) * B
             maxQb = maxQPadded // B
