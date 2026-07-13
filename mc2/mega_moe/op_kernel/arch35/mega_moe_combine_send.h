@@ -517,15 +517,13 @@ __aicore__ inline void ComputeCombineTileGrouping(uint32_t tileId, uint32_t numG
 }
 
 // ProcessCombineSingleCore has three independent input groups:
-// 1) tile scheduling: the physical tile and its mapping to a logical grouping tile;
+// 1) tile scheduling: the continuous logical tile id and tile count;
 // 2) expert context: expert/rank/shape values used to locate triple records and tile counts;
 // 3) buffer context: GM/UB storage used by the combine implementation.
 // Keeping them separate avoids passing a long mixed list where tile ids can be mistaken for physical core ids.
 struct CombineTileSchedule {
     uint32_t tileId;
     uint32_t tileNum;
-    // groupTileId = tileId / groupTileStride; totalGroupTiles uses the same mapping.
-    uint32_t groupTileStride;
 };
 
 struct CombineExpertContext {
@@ -538,6 +536,7 @@ struct CombineExpertContext {
 
 struct CombineBufferContext {
     GM_ADDR gmm2OutAddr;
+    GM_ADDR gmm2SyncCounterAddr;
     int64_t combineUbTensorSize;
 };
 
@@ -546,30 +545,21 @@ __aicore__ inline void ProcessCombineSingleCore(const CombineTileSchedule& tileS
     const CombineExpertContext& expertContext, const CombineBufferContext& bufferContext, const Params& params)
 {
     uint32_t tokenGroupsThisExpert = Ops::Base::CeilDiv(expertContext.mExpert, MegaMoeImpl::L1_TILE_M_256);
-    if (tokenGroupsThisExpert == 0 || tileSchedule.tileNum == 0 || tileSchedule.groupTileStride == 0) {
+    if (tokenGroupsThisExpert == 0 || tileSchedule.tileNum == 0) {
         return;
     }
 
-    uint32_t groupTileId = tileSchedule.tileId / tileSchedule.groupTileStride;
-    uint32_t totalGroupTiles = tileSchedule.tileNum / tileSchedule.groupTileStride;
-    if (totalGroupTiles == 0) {
-        return;
-    }
     uint32_t myGroup = 0;
     uint32_t myIdxInGrp = 0;
     uint32_t myGrpSize = 0;
-    ComputeCombineTileGrouping(groupTileId, tokenGroupsThisExpert, totalGroupTiles,
+    ComputeCombineTileGrouping(tileSchedule.tileId, tokenGroupsThisExpert, tileSchedule.tileNum,
         myGroup, myIdxInGrp, myGrpSize);
     if (myGroup >= tokenGroupsThisExpert || myGrpSize == 0) {
         return;
     }
 
     uint32_t nTilesPerGroup = Ops::Base::CeilDiv(expertContext.k, MegaMoeImpl::L1_TILE_N);
-    AscendC::GlobalTensor<int32_t> gmm2CombineSyncCounter;
-    gmm2CombineSyncCounter.SetGlobalBuffer((__gm__ int32_t*)params.workspaceInfo.gmm2CombineSyncCounterPtr);
-    __gm__ int32_t* myCounterAddr = (__gm__ int32_t*)gmm2CombineSyncCounter.GetPhyAddr()
-        + expertContext.expertIdx * tileSchedule.tileNum * INT_CACHELINE
-        + tileSchedule.tileId * INT_CACHELINE;
+    __gm__ int32_t* myCounterAddr = reinterpret_cast<__gm__ int32_t*>(bufferContext.gmm2SyncCounterAddr);
     while (AscendC::ReadGmByPassDCache(myCounterAddr) != nTilesPerGroup) {
         int64_t st = AscendC::GetSystemCycle();
         while (AscendC::GetSystemCycle() - st < 100) {

@@ -1304,19 +1304,23 @@ template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ProcessCombine(
     const GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &gmm2State, uint32_t expertIdx)
 {
-    uint32_t groupTileStride = 1;
+    uint32_t tileId = aivCoreIdx_;
+    uint32_t tileNum = blockAivNum_;
     if constexpr (ENABLE_A8W4) {
         if (subBlockIdx_ != 1) {
             return;
         }
-        groupTileStride = 2;
+        tileId = aivCoreIdx_ / 2;
+        tileNum = blockAivNum_ / 2;
     }
-    MegaMoeCombineImpl::CombineTileSchedule tileSchedule{
-        aivCoreIdx_, blockAivNum_, groupTileStride};
+    MegaMoeCombineImpl::CombineTileSchedule tileSchedule{tileId, tileNum};
     MegaMoeCombineImpl::CombineExpertContext expertContext{
         expertIdx, rankId_, k_, gmm2State.expertBeforeCnt, Get<M_VALUE>(gmm2State.problemShape)};
+    uint64_t syncCounterOffset = (static_cast<uint64_t>(expertIdx) * blockAivNum_ + aivCoreIdx_)
+        * INT_CACHELINE * sizeof(int32_t);
     MegaMoeCombineImpl::CombineBufferContext bufferContext{
-        gmmAddrInfo.gmm2OutGlobal, combineUbTensorSize_};
+        gmmAddrInfo.gmm2OutGlobal, params_.workspaceInfo.gmm2CombineSyncCounterPtr + syncCounterOffset,
+        combineUbTensorSize_};
     MegaMoeCombineImpl::ProcessCombineSingleCore<CombineQuantMode>(
         tileSchedule, expertContext, bufferContext, params_);
 }
