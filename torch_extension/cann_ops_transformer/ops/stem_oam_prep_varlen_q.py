@@ -16,19 +16,19 @@ from cann_ops_transformer.op_builder.builder import AS_LIBRARY
 
 class StemOamPrepVarlenQOpBuilder(OpBuilder):
     def __init__(self):
-        super(StemOamPrepVarlenQOpBuilder, self).__init__("npu_stem_oam_prep_varlen_q")
+        super(StemOamPrepVarlenQOpBuilder, self).__init__("stem_oam_prep_varlen_q")
 
     def sources(self):
         return ['ops/csrc/stem_oam_prep_varlen_q.cpp']
 
     def schema(self) -> str:
-        return "npu_stem_oam_prep_varlen_q(Tensor q, Tensor qSeqLens, Tensor cuSeqLensQ, *, " \
+        return "stem_oam_prep_varlen_q(Tensor q, Tensor qSeqLens, Tensor cuSeqLensQ, *, " \
                "Tensor? qScale=None, " \
                "int stemBlockSize=128, int stemStride=16) -> Tensor"
 
     def register_meta(self):
         @impl(AS_LIBRARY, self.name, "Meta")
-        def npu_stem_oam_prep_varlen_q_meta(q, qSeqLens, cuSeqLensQ, *,
+        def stem_oam_prep_varlen_q_meta(q, qSeqLens, cuSeqLensQ, *,
                                              qScale=None,
                                              stemBlockSize=128, stemStride=16):
             S = stemStride
@@ -42,14 +42,14 @@ class StemOamPrepVarlenQOpBuilder(OpBuilder):
             return torch.empty(batch, H_q, maxQb, qflat_dim, dtype=torch.bfloat16, device='meta')
 
 
-npu_stem_oam_prep_varlen_q_op_builder = StemOamPrepVarlenQOpBuilder()
-op_module = npu_stem_oam_prep_varlen_q_op_builder.load()
+stem_oam_prep_varlen_q_op_builder = StemOamPrepVarlenQOpBuilder()
+op_module = stem_oam_prep_varlen_q_op_builder.load()
 
 
-@impl(AS_LIBRARY, npu_stem_oam_prep_varlen_q_op_builder.name, "PrivateUse1")
-def npu_stem_oam_prep_varlen_q(q, qSeqLens, cuSeqLensQ, *,
-                               qScale=None,
-                               stemBlockSize=128, stemStride=16):
-    return op_module.npu_stem_oam_prep_varlen_q(q, qSeqLens, cuSeqLensQ,
-                                                qScale,
-                                                stemBlockSize, stemStride)
+@impl(AS_LIBRARY, stem_oam_prep_varlen_q_op_builder.name, "PrivateUse1")
+def stem_oam_prep_varlen_q(q, qSeqLens, cuSeqLensQ, *,
+                           qScale=None,
+                           stemBlockSize=128, stemStride=16):
+    return op_module.stem_oam_prep_varlen_q(q, qSeqLens, cuSeqLensQ,
+                                            qScale,
+                                            stemBlockSize, stemStride)
