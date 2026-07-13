@@ -19,8 +19,7 @@
 #include "kernel_tiling/kernel_tiling.h"
 
 #pragma pack(push, 8)
-struct alignas(8) Mc2WeightQuantBatchMatmulV2CustomNzSplitKTilingData
-{
+struct alignas(8) Mc2WeightQuantBatchMatmulV2CustomNzSplitKTilingData {
     uint8_t hasBias;
     uint8_t reverse1;
     uint16_t reverse2;
@@ -59,8 +58,7 @@ struct alignas(8) Mc2WeightQuantBatchMatmulV2CustomNzSplitKTilingData
 #pragma pack(pop)
 
 #pragma pack(push, 8)
-struct alignas(8) Mc2WeightQuantBatchMatmulV2TilingData
-{
+struct alignas(8) Mc2WeightQuantBatchMatmulV2TilingData {
     uint8_t vecBlockDimN;
     uint8_t vecBlockDimK;
     uint8_t cubeBlockDimN;
@@ -124,8 +122,7 @@ struct alignas(8) Mc2WeightQuantBatchMatmulV2TilingData
 #pragma pack(pop)
 
 #pragma pack(push, 8)
-struct alignas(8) Mc2WeightQuantBatchMatmulV2FixpipeTilingData
-{
+struct alignas(8) Mc2WeightQuantBatchMatmulV2FixpipeTilingData {
     uint8_t hasBias;
     uint8_t nBlockNum;
     uint16_t baseK;
@@ -140,8 +137,7 @@ struct alignas(8) Mc2WeightQuantBatchMatmulV2FixpipeTilingData
 #pragma pack(pop)
 
 #pragma pack(push, 8)
-struct alignas(8) Mc2WeightQuantBatchMatmulV2MsdGroupTilingData
-{
+struct alignas(8) Mc2WeightQuantBatchMatmulV2MsdGroupTilingData {
     uint8_t vecBlockDimN;
     uint8_t cubeBlockDimK;
     uint8_t cubeBlockDimN;
@@ -162,8 +158,7 @@ struct alignas(8) Mc2WeightQuantBatchMatmulV2MsdGroupTilingData
 #pragma pack(pop)
 
 #pragma pack(push, 8)
-struct alignas(8) Mc2WeightQuantBatchMatmulV2MsdTilingData
-{
+struct alignas(8) Mc2WeightQuantBatchMatmulV2MsdTilingData {
     uint8_t cubeBlockDimN;
     uint8_t cubeBlockDimM;
     uint8_t cubeBlockDimK;
@@ -186,8 +181,7 @@ struct alignas(8) Mc2WeightQuantBatchMatmulV2MsdTilingData
 #pragma pack(pop)
 
 #pragma pack(push, 8)
-struct alignas(8) Mc2WeightQuantBatchMatmulV2NzTilingData
-{
+struct alignas(8) Mc2WeightQuantBatchMatmulV2NzTilingData {
     uint8_t cubeBlockDimN;
     uint8_t cubeBlockDimM;
     uint16_t AL1Pingpong;

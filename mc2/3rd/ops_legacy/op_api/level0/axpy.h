@@ -13,8 +13,8 @@
 #include "opdev/op_executor.h"
 
 namespace l0op {
-const aclTensor* Axpy(const aclTensor* self, const aclTensor* other, float alpha, aclOpExecutor* executor);
+const aclTensor *Axpy(const aclTensor *self, const aclTensor *other, float alpha, aclOpExecutor *executor);
 
 }
 
-#endif  // OP_API_INC_LEVEL0_OP_AXPY_OP_H_
+#endif // OP_API_INC_LEVEL0_OP_AXPY_OP_H_
