@@ -159,11 +159,15 @@ __aicore__ inline void CompressorKernel<COMP>::Init(
     tools_.toolParams_.cmpRatio = tilingData_->baseParams.cmpRatio;
     tools_.Init(startPos, seqUsed, cuSeqlens);
 
-    // 剔除尾部的无效batch
+    // Trim only the compression work range. For grouped decode, GetSeqUsed()
+    // returns the logical compression length derived from raw start_pos/seq_used:
+    // xCacheReadSize for batches crossing a compression boundary, otherwise 0.
+    // The caller no longer passes 0/ratio as an active flag. x_cache update is
+    // still controlled by xCacheUpdateBatchSize.
     for (; constInfo.batchSize > 0; --constInfo.batchSize) {
-        uint32_t bSeqUsed = tools_.isExistSeqUsed_ ? tools_.GetSeqUsed(constInfo.batchSize - 1) :
-                                                    tools_.GetSeqLength(constInfo.batchSize - 1);
-        if (bSeqUsed > 0) {
+        uint32_t logicalSeqUsed = tools_.isExistSeqUsed_ ? tools_.GetSeqUsed(constInfo.batchSize - 1) :
+                                                          tools_.GetSeqLength(constInfo.batchSize - 1);
+        if (logicalSeqUsed > 0) {
             break;
         }
     }

@@ -102,6 +102,12 @@ active = (start_pos + seq_used) / cmp_ratio > start_pos / cmp_ratio
 ```
 
 每个 batch 可以有不同 decode position；只要该 batch 跨过压缩边界，就使用完整 `x_cache` 窗口参与投影。未跨边界时 `GetSeqUsed()` 返回 0，该 batch 不执行投影。
+这里的 `seq_used` 是模型传入的原始 query 长度，非 MTP decode 通常为 1，MTP decode
+通常为 `next_n + 1`；它不再是模型侧构造的 `0/ratio` active flag。kernel 内部
+`GetSeqUsed()` 会把原始长度转换成逻辑压缩长度：active batch 返回 `xCacheReadSize`，
+inactive batch 返回 0。`compressor_kernel.h` 中按尾部 `GetSeqUsed()==0` 裁剪
+`constInfo.batchSize` 只影响后续投影/压缩工作范围。当前 token 写入由
+`xCacheUpdateBatchSize` 控制。
 
 ### 读取完整窗口
 
