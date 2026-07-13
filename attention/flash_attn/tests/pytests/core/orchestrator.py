@@ -9,7 +9,7 @@ import torch
 from core.data import InputSpec, flash_attn_inputs
 from core.backends.base import Backend
 from utils.compare import check_result, get_tolerance
-from utils.data import trans_bnsd_to_layout
+from utils.data import trans_bnsd_to_layout, make_noncontiguous
 
 
 # ─── Golden 持久化 ───────────────────────────────────────────────────────────
@@ -119,8 +119,48 @@ def run_case(params: dict,
     primary_out_raw = primary.compute(dev_inputs, params)
     primary_out = {k: v.cpu() if isinstance(v, torch.Tensor) else v
                    for k, v in primary_out_raw.items()}
-    del dev_inputs, primary_out_raw
+    del primary_out_raw
     primary.clear_cache()
+
+    # --- kvcache 非连续 self-consistency check ---
+    nc_kv_dims = params.get("nc_kv_dims")
+    nc_attn_result = None
+    if nc_kv_dims is not None:
+        # FIA做法: 连续tensor传NPU后, 在NPU上直接构造NC, 避免.to(npu)碾连续
+        nc_dev_inputs = {}
+        for k, v in dev_inputs.items():
+            if isinstance(v, torch.Tensor) and k in ("k", "v"):
+                nc_dev_inputs[k] = make_noncontiguous(v, nc_kv_dims)
+            else:
+                nc_dev_inputs[k] = v
+        assert torch.equal(nc_dev_inputs["k"], dev_inputs["k"]), "k NC后数据与连续时不一致"
+        assert torch.equal(nc_dev_inputs["v"], dev_inputs["v"]), "v NC后数据与连续时不一致"
+        print(f"  [nc_check] nc_kv_dims={nc_kv_dims} "
+              f"k_contig={nc_dev_inputs['k'].is_contiguous()} "
+              f"k_stride={nc_dev_inputs['k'].stride()} "
+              f"v_contig={nc_dev_inputs['v'].is_contiguous()} "
+              f"v_stride={nc_dev_inputs['v'].stride()}")
+        nc_raw = primary.compute(nc_dev_inputs, params)
+        nc_cpu = nc_raw["out"].cpu() if isinstance(nc_raw["out"], torch.Tensor) else nc_raw["out"]
+        del nc_dev_inputs, nc_raw
+        primary.clear_cache()
+        contig_f = primary_out["out"].float()
+        nc_f = nc_cpu.float()
+        exact_match = torch.equal(contig_f, nc_f)
+        diff = (contig_f - nc_f).abs()
+        max_abs = diff.max().item()
+        print(f"  [nc_check] NC vs Contiguous  exact_match={exact_match}  max_abs={max_abs:.8e}")
+        nc_attn_result = {
+            "passed": exact_match,
+            "max_abs": max_abs,
+            "mean_abs": diff.mean().item(),
+            "fail_cnt": 0 if exact_match else int((diff > 0).sum().item()),
+            "total": contig_f.numel(),
+            "fail_ratio": 0.0 if exact_match else float((diff > 0).sum().item()) / contig_f.numel(),
+        }
+        del nc_cpu
+
+    del dev_inputs
 
     dev_raw = primary_out["out"]
     dev_out = dev_raw
@@ -217,6 +257,8 @@ def run_case(params: dict,
                          atol=atol, rtol=rtol)
 
     ret = {"attn": _to_stats(attn_result), "lse": _to_stats(lse_result)}
+    if nc_attn_result is not None:
+        ret["nc_attn"] = _to_stats(nc_attn_result)
 
     if golden_dir and case_name:
         save_golden_case(case_name, cpu_inputs, golden_out, params, golden_dir,
