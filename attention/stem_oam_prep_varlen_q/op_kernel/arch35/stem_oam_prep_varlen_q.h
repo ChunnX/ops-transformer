@@ -136,7 +136,7 @@ __simd_vf__ inline void CastFP32ToBF16Vf(
 }
 
 /**
- * ComputeWeightedGroupSumVf: 在 VF 寄存器上完成 Weighted Group Sum
+ * ComputeWeightedGroupSumVf: 在 VF 寄存器上完成 Weighted Group Sum (顺序累加)
  *
  * 输入 (UB):
  *   qFP32Ptr:  [B, D] FP32 = [R*S, D] FP32  (qBlockFP32Buf)
@@ -147,7 +147,7 @@ __simd_vf__ inline void CastFP32ToBF16Vf(
  *
  * 对每个 g ∈ [0, S-1]:
  *   groupSum[g, :] = Σ_{r=0}^{R-1} qFP32[r*S+g, :] × scale[r*S+g]
- *                    ↑ 沿 R 轴累加
+ *                    ↑ 沿 R 轴顺序累加，single accReg
  *
  * UB 中数据布局:
  *   qFP32: row 0, row 1, ..., row B-1  (每行 D 个 FP32, 连续存储)
@@ -166,7 +166,6 @@ __simd_vf__ inline void ComputeWeightedGroupSumVf(
     uint16_t vlIterF = (dimQk + VL_F - 1) / VL_F;
 
     RegTensor<float> qReg;
-    RegTensor<float> scaleBrcReg;
     RegTensor<float> accReg;
     MaskReg maskAll = CreateMask<float, MaskPattern::ALL>();
 
@@ -175,11 +174,10 @@ __simd_vf__ inline void ComputeWeightedGroupSumVf(
             Duplicate(accReg, 0.0f, maskAll);
             for (uint16_t r = 0; r < R; r++) {
                 uint16_t row_idx = r * S + g;
-                DataCopy<float, LoadDist::DIST_BRC_B32>(
-                    scaleBrcReg, scalePtr + row_idx);
                 uint32_t qOffset = static_cast<uint32_t>(row_idx) * dimQk + vi * VL_F;
                 DataCopy(qReg, qFP32Ptr + qOffset);
-                Mul(qReg, qReg, scaleBrcReg, maskAll);
+                float scaleVal = scalePtr[row_idx];
+                Muls(qReg, qReg, scaleVal, maskAll);
                 Add(accReg, accReg, qReg, maskAll);
             }
             uint32_t outOffset = static_cast<uint32_t>(g) * dimQk + vi * VL_F;
@@ -341,6 +339,11 @@ private:
 
     __aicore__ inline void ProcessOneBlock(uint32_t task_idx)
     {
+        // 虚拟块：qb_local_ >= num_Qb_，输出补 0
+        if (qb_local_ >= num_Qb_) {
+            WriteZeroBlock();
+            return;
+        }
         CopyInQBlock();
         CastBlockToFP32();
         CopyInScalesBulk();
@@ -529,6 +532,30 @@ private:
         DataCopyPad(qflatGm_, qflatLocal,
             {1, static_cast<uint16_t>(qflat_dim_ * sizeof(bfloat16_t)), 0, 0});
         outQueueQflat_.FreeTensor(qflatLocal);
+    }
+
+    /**
+     * WriteZeroBlock: 虚拟块输出补 0
+     *
+     * 当 qb_local_ >= num_Qb_（含 q_len_b == 0 的情况），
+     * 向 GM 对应位置写入 qflat_dim_ 个 0（BF16）。
+     *
+     * GM 目标: qFlat[b, h, qb, :]
+     *          GM offset = b * (H_q * max_Qb * S*D) + h * (max_Qb * S*D) + qb * S*D
+     */
+    __aicore__ inline void WriteZeroBlock()
+    {
+        LocalTensor<bfloat16_t> qflatLocal = outQueueQflat_.AllocTensor<bfloat16_t>();
+        Duplicate(qflatLocal, (bfloat16_t)0, qflat_dim_);
+        outQueueQflat_.EnQue<bfloat16_t>(qflatLocal);
+        LocalTensor<bfloat16_t> qflatOut = outQueueQflat_.DeQue<bfloat16_t>();
+        uint32_t outOffset = batch_idx_ * (num_q_heads_ * tiling_->max_Qb * qflat_dim_)
+                           + head_idx_  * (tiling_->max_Qb * qflat_dim_)
+                           + qb_local_  * qflat_dim_;
+        qflatGm_.SetGlobalBuffer((__gm__ bfloat16_t*)qflatBase_ + outOffset, qflat_dim_);
+        DataCopyPad(qflatGm_, qflatOut,
+            {1, static_cast<uint16_t>(qflat_dim_ * sizeof(bfloat16_t)), 0, 0});
+        outQueueQflat_.FreeTensor(qflatOut);
     }
 
     TPipe pipe_;
