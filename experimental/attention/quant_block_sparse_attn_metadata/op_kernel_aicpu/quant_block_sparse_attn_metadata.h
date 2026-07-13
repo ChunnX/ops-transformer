@@ -29,7 +29,7 @@ constexpr uint32_t AIV_CORE_NUM = 72U;
 constexpr uint32_t QBSA_META_SIZE = 2048U;
 using QBSA_METADATA_T = uint32_t;
 
-constexpr uint32_t QBSA_HEAD_METADATA_SIZE = 16U;
+constexpr uint32_t QBSA_HEAD_METADATA_SIZE = 8U;
 constexpr uint32_t QBSA_HEAD_SECTION_NUM_INDEX = 0U;
 
 constexpr uint32_t QBSA_METADATA_SIZE = 8U;
