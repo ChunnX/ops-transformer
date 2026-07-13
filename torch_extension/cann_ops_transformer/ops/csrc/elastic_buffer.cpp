@@ -322,6 +322,15 @@ private:
     }
 };
 
+// 训练态前向 save-for-backward，随 EngramFetch 返回值输出（不存成员，避免多次 fetch 覆盖）
+struct EngramFetchCtx {
+    at::Tensor perm;
+    at::Tensor sendCounts;
+    at::Tensor recvCounts;
+    at::Tensor recvLocalEntry;
+    at::Tensor numRecv;
+};
+
 // ElasticBuffer class - unified interface for Engram storage and MoE EP kernels
 // 推理(with_grad=false): RDMA read (one-sided GET), 异步 fetch + wait callable
 // 训练(with_grad=true): all-to-all (桶排序→a2a→gather→a2a→还原), save-for-backward 输出 + EngramFetchGrad
@@ -332,10 +341,11 @@ public:
     ~ElasticBuffer();
 
     // EngramFetch: 推理/训练共用前向接口
-    // 推理(with_grad=false): RDMA read, 返回 callable 内调 wait（异步）
-    // 训练(with_grad=true): all-to-all, 同步返回 fetched, save-for-backward 存成员
+    // 推理(with_grad=false): RDMA read, 返回 callable 内调 wait（异步）, ctxOut=nullptr
+    // 训练(with_grad=true): all-to-all, 同步返回 fetched, save-for-backward 通过 ctxOut 输出
     void EngramWrite(const at::Tensor &storage);
-    std::function<at::Tensor()> EngramFetch(const at::Tensor &indices);
+    std::function<at::Tensor()> EngramFetch(const at::Tensor &indices,
+                                            EngramFetchCtx *ctxOut = nullptr);
     // EngramFetchGrad: 训练反向
     std::tuple<at::Tensor, at::Tensor> EngramFetchGrad(
         const at::Tensor &gradFetched,
@@ -350,17 +360,6 @@ public:
     int64_t GetHostBufPtr() const
     {
         return reinterpret_cast<int64_t>(hostBufPtr_);
-    }
-
-    const at::Tensor &GetSavedPerm() const { return savedPerm_; }
-    const at::Tensor &GetSavedSendCounts() const { return savedSendCounts_; }
-    const at::Tensor &GetSavedRecvCounts() const { return savedRecvCounts_; }
-    const at::Tensor &GetSavedRecvLocalEntry() const { return savedRecvLocalEntry_; }
-    const at::Tensor &GetSavedNumRecv() const { return savedNumRecv_; }
-
-    std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor> GetFetchCtx() const
-    {
-        return {savedPerm_, savedSendCounts_, savedRecvCounts_, savedRecvLocalEntry_, savedNumRecv_};
     }
 
     static std::tuple<int64_t, int64_t> GetEngramStorageSizeHint(int64_t numEntries, int64_t hiddenSize,
@@ -428,12 +427,6 @@ private:
     bool destroyed_ = false;
     bool writeCalled_ = false;
     std::atomic<bool> fetchInProgress_{false};
-
-    at::Tensor savedPerm_;
-    at::Tensor savedSendCounts_;
-    at::Tensor savedRecvCounts_;
-    at::Tensor savedRecvLocalEntry_;
-    at::Tensor savedNumRecv_;
 };
 
 // Constructor
@@ -539,8 +532,9 @@ void ElasticBuffer::EngramWrite(const at::Tensor &storage)
 
 // EngramFetch - fetch data using stored metadata (inference/training shared)
 // 推理: ACLNN_CMD(aclnnEngramFetch, nullptr×5) → return callable { aclnnEngramFetchWait }（异步）
-// 训练: ACLNN_CMD(aclnnEngramFetch, 5 outputs) → save-for-backward 存成员 → return [fetched]()（同步, 无 wait）
-std::function<at::Tensor()> ElasticBuffer::EngramFetch(const at::Tensor &indices)
+// 训练: ACLNN_CMD(aclnnEngramFetch, 5 outputs) → save-for-backward 通过 ctxOut 输出 → return [fetched]()（同步, 无 wait）
+std::function<at::Tensor()> ElasticBuffer::EngramFetch(const at::Tensor &indices,
+                                                       EngramFetchCtx *ctxOut)
 {
     EnsureEngramContext();
     TORCH_CHECK(!destroyed_, "engram_fetch cannot be called after destroy, please create a new ElasticBuffer instance");
@@ -550,17 +544,10 @@ std::function<at::Tensor()> ElasticBuffer::EngramFetch(const at::Tensor &indices
                 "please invoke the callback function returned by the previous engram_fetch first");
 
     int64_t numTokens = indices.size(0);
-    if (numTokens == 0) {
-        auto emptyTensor =
-            at::empty({0, hiddenSize_}, at::TensorOptions().dtype(engramDtype_).device(indices.device()));
-        return [=]() { return emptyTensor; };
-    }
-
-    fetchInProgress_.store(true);
-
     auto fetched =
         at::empty({numTokens, hiddenSize_}, at::TensorOptions().dtype(engramDtype_).device(indices.device()));
 
+    // 训练态: save-for-backward 通过 ctxOut 输出（局部变量, 不存成员）
     if (withGrad_) {
         TORCH_CHECK(epHcclBufferPtr_ != nullptr,
                     "GM not allocated, engram_write must be called first with with_grad=True "
@@ -568,20 +555,34 @@ std::function<at::Tensor()> ElasticBuffer::EngramFetch(const at::Tensor &indices
 
         uint32_t rankSize = commContext_.rankSize;
         int64_t maxR = numTokens * static_cast<int64_t>(rankSize);
+        auto opts = indices.options();
 
-        savedPerm_ = at::empty({numTokens}, indices.options());
-        savedSendCounts_ = at::empty({static_cast<int64_t>(rankSize)}, indices.options());
-        savedRecvCounts_ = at::empty({static_cast<int64_t>(rankSize)}, indices.options());
-        savedRecvLocalEntry_ = at::empty({maxR}, indices.options());
-        savedNumRecv_ = at::empty({1}, indices.options());
+        EngramFetchCtx ctx{
+            at::empty({numTokens}, opts),
+            at::empty({static_cast<int64_t>(rankSize)}, opts),
+            at::empty({static_cast<int64_t>(rankSize)}, opts),
+            at::empty({maxR}, opts),
+            at::empty({1}, opts)};
 
-        ACLNN_CMD(aclnnEngramFetch, contextTensor_, indices,
-                  hiddenSize_, numEngramEntries_, fetched,
-                  savedPerm_, savedSendCounts_, savedRecvCounts_, savedRecvLocalEntry_, savedNumRecv_);
-
-        fetchInProgress_.store(false);
+        if (numTokens > 0) {
+            fetchInProgress_.store(true);
+            ACLNN_CMD(aclnnEngramFetch, contextTensor_, indices,
+                      hiddenSize_, numEngramEntries_, fetched,
+                      ctx.perm, ctx.sendCounts, ctx.recvCounts, ctx.recvLocalEntry, ctx.numRecv);
+            fetchInProgress_.store(false);
+        }
+        if (ctxOut != nullptr) {
+            *ctxOut = std::move(ctx);
+        }
         return [fetched]() { return fetched; };
     }
+
+    // 推理态: 原逻辑不变
+    if (numTokens == 0) {
+        return [=]() { return fetched; };
+    }
+
+    fetchInProgress_.store(true);
 
     c10::optional<at::Tensor> nullOpt;
     ACLNN_CMD(aclnnEngramFetch, contextTensor_, indices,
@@ -972,6 +973,13 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
         .def("device_ptr", &OpApi::HostPinnedCounter::DevicePtr)
         .def("host_ptr", &OpApi::HostPinnedCounter::HostPtr);
 
+    pybind11::class_<Mc2Api::EngramFetchCtx>(m, "EngramFetchCtx")
+        .def_readwrite("perm", &Mc2Api::EngramFetchCtx::perm)
+        .def_readwrite("sendCounts", &Mc2Api::EngramFetchCtx::sendCounts)
+        .def_readwrite("recvCounts", &Mc2Api::EngramFetchCtx::recvCounts)
+        .def_readwrite("recvLocalEntry", &Mc2Api::EngramFetchCtx::recvLocalEntry)
+        .def_readwrite("numRecv", &Mc2Api::EngramFetchCtx::numRecv);
+
     pybind11::class_<Mc2Api::ElasticBuffer>(m, "ElasticBuffer")
         .def(pybind11::init<const std::string &, int64_t, bool, int64_t, int64_t>(),
              pybind11::arg("groupName"), pybind11::arg("numCpuBytes"),
@@ -981,17 +989,15 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
         .def("engram_write", &Mc2Api::ElasticBuffer::EngramWrite, pybind11::arg("storage").noconvert())
         .def("engram_fetch",
             [](Mc2Api::ElasticBuffer &self, const at::Tensor &indices) -> pybind11::object {
-                auto hook = self.EngramFetch(indices);
                 if (self.IsWithGrad()) {
-                    auto ctx = self.GetFetchCtx();
+                    Mc2Api::EngramFetchCtx ctx;
+                    auto hook = self.EngramFetch(indices, &ctx);
                     return pybind11::cpp_function(
                         [hook = std::move(hook), ctx = std::move(ctx)]() mutable -> pybind11::object {
-                            return pybind11::make_tuple(hook(),
-                                std::get<0>(ctx), std::get<1>(ctx),
-                                std::get<2>(ctx), std::get<3>(ctx), std::get<4>(ctx));
+                            return pybind11::make_tuple(hook(), pybind11::cast(ctx));
                         });
                 }
-                return pybind11::cast(std::move(hook));
+                return pybind11::cast(self.EngramFetch(indices));
             },
             pybind11::arg("indices").noconvert())
         .def("engram_fetch_grad", &Mc2Api::ElasticBuffer::EngramFetchGrad,

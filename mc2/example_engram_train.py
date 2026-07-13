@@ -74,10 +74,12 @@ def train_worker(rank):
         print(f"[rank {rank}] storage shape={storage.shape}, fetch_golden shape={fetch_golden.shape}")
 
         # ==================== 创建 ElasticBuffer（with_grad=True）====================
-        num_cpu_bytes = ElasticBuffer.get_engram_storage_size_hint(
-            num_entries=num_entries_per_rank, hidden_size=hidden_size, dtype=storage_type)
+        num_cpu_bytes, num_npu_bytes = ElasticBuffer.get_engram_storage_size_hint(
+            num_entries=num_entries_per_rank, hidden_size=hidden_size, dtype=storage_type,
+            num_max_tokens_per_rank=num_tokens)
 
-        buffer = ElasticBuffer(group=group, num_cpu_bytes=num_cpu_bytes, with_grad=True)
+        buffer = ElasticBuffer(group=group, num_cpu_bytes=num_cpu_bytes, with_grad=True,
+                               num_max_tokens_per_rank=num_tokens, num_npu_bytes=num_npu_bytes)
         print(f"[rank {rank}] ElasticBuffer created (with_grad=True), num_cpu_bytes={num_cpu_bytes}")
 
         # ==================== write ====================
@@ -88,8 +90,7 @@ def train_worker(rank):
 
         # ==================== 训练前向 ====================
         indices_npu = indices.to(device)
-        hook = buffer.engram_fetch(indices_npu)
-        fetched, fetch_ctx = hook()
+        fetched, fetch_ctx = buffer.engram_fetch(indices_npu)()
 
         print(f"[rank {rank}] forward: fetched shape={fetched.shape}")
         print(f"[rank {rank}] forward: fetch_ctx.perm shape={fetch_ctx.perm.shape}, "

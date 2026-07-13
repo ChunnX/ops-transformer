@@ -119,12 +119,12 @@ class ElasticBuffer:
         *,
         num_cpu_bytes: int = 0,
         with_grad: bool = False,
-        num_max_tokens_per_rank: int = 0,
-        num_max_tokens_per_rank_moe: Optional[int] = None,
+        num_max_tokens_per_rank: Optional[int] = None,
         hidden: Optional[int] = None,
         num_topk: Optional[int] = None,
         num_experts: Optional[int] = None,
         expert_alignment: int = 1,
+        num_npu_bytes: int = 0,
     ):
         """
         Initialize the ElasticBuffer.
@@ -133,8 +133,7 @@ class ElasticBuffer:
             group: the distributed process group.
             num_cpu_bytes: the CPU buffer size in bytes (must be 2MB-aligned).
             with_grad: if True, enable training mode (all-to-all + save-for-backward).
-            num_max_tokens_per_rank: max tokens per rank for GM allocation (training mode).
-            num_max_tokens_per_rank_moe: maximum MoE dispatch tokens per rank.
+            num_max_tokens_per_rank: max tokens per rank (training GM allocation + MoE dispatch).
             hidden: hidden dimension for MoE dispatch/combine.
             num_topk: top-k value for MoE dispatch/combine.
             num_experts: number of MoE experts.
@@ -147,7 +146,7 @@ class ElasticBuffer:
         torch._check((num_cpu_bytes % buffer_alignment == 0),
                      lambda: (f"num_cpu_bytes must be 2MB-aligned, got {num_cpu_bytes=}, "
                               f"which is not divisible by {buffer_alignment=}."))
-        moe_args = (num_max_tokens_per_rank_moe, hidden, num_topk, num_experts)
+        moe_args = (num_max_tokens_per_rank, hidden, num_topk, num_experts)
         torch._check(
             all(arg is None for arg in moe_args) or all(arg is not None for arg in moe_args),
             lambda: (
@@ -170,9 +169,11 @@ class ElasticBuffer:
                      lambda: "HCCL comm name is empty, please check HCCL group initialization.")
         _elastic_buffer_ops = _elastic_buffer_op_builder.load()
         self._runtime = _elastic_buffer_ops.ElasticBuffer(
-            self._group_name, self._num_cpu_bytes, self._with_grad, num_max_tokens_per_rank)
+            self._group_name, self._num_cpu_bytes, self._with_grad,
+            num_max_tokens_per_rank if num_max_tokens_per_rank is not None else 0,
+            num_npu_bytes)
 
-        self._num_max_tokens_per_rank = num_max_tokens_per_rank_moe
+        self._num_max_tokens_per_rank = num_max_tokens_per_rank
         self._hidden = hidden
         self._num_topk = num_topk
         self._num_experts = num_experts
@@ -182,10 +183,10 @@ class ElasticBuffer:
     @staticmethod
     def get_engram_storage_size_hint(num_entries: int, hidden_size: int,
                                      dtype: torch.dtype = torch.bfloat16,
-                                     num_max_tokens_per_rank: int = 0) -> int:
+                                     num_max_tokens_per_rank: int = 0) -> Tuple[int, int]:
         """
-        Get the minimum CPU buffer size required for Engram storage.
-        The returned value is aligned to 2 MB.
+        Get the minimum CPU buffer size and GM buffer size for Engram storage.
+        Both returned values are aligned to 2 MB.
 
         Arguments:
             num_entries: the number of entries in the Engram storage (must be non-negative).
@@ -195,6 +196,8 @@ class ElasticBuffer:
 
         Returns:
             num_cpu_bytes: the recommended CPU buffer size in bytes (2 MB-aligned).
+            num_npu_bytes: the recommended GM buffer size in bytes (2 MB-aligned, 0 if
+                           num_max_tokens_per_rank is 0).
         """
         torch._check(num_entries >= 0,
                      lambda: f"num_entries must be non-negative, got {num_entries}")
@@ -276,8 +279,8 @@ class ElasticBuffer:
 
         推理/训练共用同一方法，由 C++ 侧根据 with_grad 决定 hook() 返回值：
         - 推理 (with_grad=False): hook() → fetched (T,H)
-        - 训练 (with_grad=True):  hook() → (fetched, perm, sendCounts, recvCounts, recvLocalEntry, numRecv)
-          用户可通过 EngramFetchCtx(*result[1:]) 包装为 EngramFetchCtx 传给 engram_fetch_grad
+        - 训练 (with_grad=True):  hook() → (fetched, fetch_ctx)
+          fetch_ctx 为 EngramFetchCtx（C++ bound class），可直接传给 engram_fetch_grad
         """
         torch._check(indices.device.type == torch.device("npu").type,
                      lambda: f"indices must be on NPU, got device: {indices.device}")
