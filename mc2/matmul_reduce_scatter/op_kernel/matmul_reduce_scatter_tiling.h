@@ -22,7 +22,7 @@
 
 struct ReduceScatterSoc {
     uint32_t commAlg;
-	uint32_t isA3;
+    uint32_t isA3;
     uint32_t isStep;
     uint32_t isND2NZ;
     uint32_t baseBD;
@@ -40,7 +40,7 @@ public:
     Mc2Tiling::TileL2Tiling tileL2Tiling;
     Mc2Tiling::TileL2Tiling tailL2Tiling;
     Mc2Tiling::TileL2Tiling localL2Tiling;
-	ReduceScatterSoc socParam;
+    ReduceScatterSoc socParam;
     Mc2L2cacheUseInfo l2cacheUseInfo;
 };
 

@@ -18,26 +18,24 @@ namespace MatmulAllReduceUT {
 
 namespace {
 
-void RunQuantMatmulAllReduceV5Ut(
-    op::SocVersion soc, const TensorDesc& x1, const TensorDesc& x2, const aclTensor* bias, const aclTensor* x3,
-    const aclTensor* x1Scale, const TensorDesc& x2Scale, const aclTensor* commQuantScale1,
-    const aclTensor* commQuantScale2, const TensorDesc& output, const char* commMode, int64_t commQuantMode,
-    aclnnStatus expectResult)
+void RunQuantMatmulAllReduceV5Ut(op::SocVersion soc, const TensorDesc &x1, const TensorDesc &x2, const aclTensor *bias,
+                                 const aclTensor *x3, const aclTensor *x1Scale, const TensorDesc &x2Scale,
+                                 const aclTensor *commQuantScale1, const aclTensor *commQuantScale2,
+                                 const TensorDesc &output, const char *commMode, int64_t commQuantMode,
+                                 aclnnStatus expectResult)
 {
     op::SetPlatformSocVersion(soc);
-    const char* group = "group";
-    const char* reduceOp = "sum";
+    const char *group = "group";
+    const char *reduceOp = "sum";
     int64_t commTurn = 0;
     int64_t streamMode = 1;
     int64_t groupSize = 0;
     uint64_t workspace_size = 0;
-    aclOpExecutor* executor = nullptr;
-    auto ut = OP_API_UT(
-        aclnnQuantMatmulAllReduceV5,
-        INPUT(x1, x2, bias, x3, x1Scale, x2Scale, commQuantScale1, commQuantScale2, group, reduceOp, commMode, commTurn,
-              streamMode, groupSize, commQuantMode),
-        OUTPUT(output)
-    );
+    aclOpExecutor *executor = nullptr;
+    auto ut = OP_API_UT(aclnnQuantMatmulAllReduceV5,
+                        INPUT(x1, x2, bias, x3, x1Scale, x2Scale, commQuantScale1, commQuantScale2, group, reduceOp,
+                              commMode, commTurn, streamMode, groupSize, commQuantMode),
+                        OUTPUT(output));
     auto aclnnRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor);
     if (expectResult == ACLNN_SUCCESS) {
         EXPECT_NE(ACLNN_ERR_PARAM_INVALID, aclnnRet);
@@ -68,15 +66,14 @@ TEST_P(AclnnQuantMatmulAllReduceV5Test, param)
 {
     auto param = GetParam();
     op::SetPlatformSocVersion(param.soc);
-    auto ut = OP_API_UT(
-        aclnnQuantMatmulAllReduceV5,
-        INPUT(param.x1, param.x2, param.bias, param.x3, param.x1Scale, param.x2Scale, param.commQuantScale1,
-              param.commQuantScale2, param.group.c_str(), param.reduceOp.c_str(), param.commMode.c_str(), param.commTurn,
-              param.streamMode, param.groupSize, param.commQuantMode),
-        OUTPUT(param.output)
-    );
+    auto ut =
+        OP_API_UT(aclnnQuantMatmulAllReduceV5,
+                  INPUT(param.x1, param.x2, param.bias, param.x3, param.x1Scale, param.x2Scale, param.commQuantScale1,
+                        param.commQuantScale2, param.group.c_str(), param.reduceOp.c_str(), param.commMode.c_str(),
+                        param.commTurn, param.streamMode, param.groupSize, param.commQuantMode),
+                  OUTPUT(param.output));
     uint64_t workspace_size = 0;
-    aclOpExecutor* executor = nullptr;
+    aclOpExecutor *executor = nullptr;
     auto aclnnRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor);
     if (param.expectResult == ACLNN_SUCCESS) {
         EXPECT_NE(ACLNN_ERR_PARAM_INVALID, aclnnRet);
@@ -89,11 +86,9 @@ TEST_P(AclnnQuantMatmulAllReduceV5Test, param)
 }
 
 INSTANTIATE_TEST_SUITE_P(
-    MatmulAllReduce,
-    AclnnQuantMatmulAllReduceV5Test,
+    MatmulAllReduce, AclnnQuantMatmulAllReduceV5Test,
     testing::ValuesIn(GetCasesFromCsv<MatmulAllReduceApiUtParam>(ReplaceFileExtension2Csv(__FILE__))),
-    PrintCaseInfoString<MatmulAllReduceApiUtParam>
-);
+    PrintCaseInfoString<MatmulAllReduceApiUtParam>);
 
 class AclnnQuantMatmulAllReduceV5ExtraTest : public testing::Test {};
 
@@ -103,9 +98,8 @@ TEST_F(AclnnQuantMatmulAllReduceV5ExtraTest, NzFormatWeightX2)
     TensorDesc x2 = {{64, 128}, ACL_INT8, ACL_FORMAT_FRACTAL_NZ, {}, 0, {1, 1, 64, 128}};
     TensorDesc x2Scale = {{128}, ACL_FLOAT, ACL_FORMAT_ND};
     TensorDesc output = {{32, 128}, ACL_FLOAT16, ACL_FORMAT_ND};
-    RunQuantMatmulAllReduceV5Ut(
-        op::SocVersion::ASCEND910B, x1, x2, nullptr, nullptr, nullptr, x2Scale, nullptr, nullptr, output, "ai_cpu", 0,
-        ACLNN_SUCCESS);
+    RunQuantMatmulAllReduceV5Ut(op::SocVersion::ASCEND910B, x1, x2, nullptr, nullptr, nullptr, x2Scale, nullptr,
+                                nullptr, output, "ai_cpu", 0, ACLNN_SUCCESS);
 }
 
 TEST_F(AclnnQuantMatmulAllReduceV5ExtraTest, Ascend950LaunchCcuCommMode)
@@ -114,9 +108,8 @@ TEST_F(AclnnQuantMatmulAllReduceV5ExtraTest, Ascend950LaunchCcuCommMode)
     TensorDesc x2 = {{64, 128}, ACL_INT8, ACL_FORMAT_ND};
     TensorDesc x2Scale = {{128}, ACL_FLOAT, ACL_FORMAT_ND};
     TensorDesc output = {{32, 128}, ACL_FLOAT16, ACL_FORMAT_ND};
-    RunQuantMatmulAllReduceV5Ut(
-        op::SocVersion::ASCEND950, x1, x2, nullptr, nullptr, nullptr, x2Scale, nullptr, nullptr, output, "ccu", 0,
-        ACLNN_SUCCESS);
+    RunQuantMatmulAllReduceV5Ut(op::SocVersion::ASCEND950, x1, x2, nullptr, nullptr, nullptr, x2Scale, nullptr, nullptr,
+                                output, "ccu", 0, ACLNN_SUCCESS);
 }
 
 TEST_F(AclnnQuantMatmulAllReduceV5ExtraTest, Fp8Float32Output)
@@ -128,9 +121,9 @@ TEST_F(AclnnQuantMatmulAllReduceV5ExtraTest, Fp8Float32Output)
     TensorDesc x1Scale = {{32}, ACL_FLOAT, ACL_FORMAT_ND};
     TensorDesc x2Scale = {{128}, ACL_FLOAT, ACL_FORMAT_ND};
     TensorDesc output = {{32, 128}, ACL_FLOAT, ACL_FORMAT_ND};
-    RunQuantMatmulAllReduceV5Ut(
-        op::SocVersion::ASCEND910B, x1, x2, bias.ToAclTypeRawPtr(), x3.ToAclTypeRawPtr(), x1Scale.ToAclTypeRawPtr(),
-        x2Scale, nullptr, nullptr, output, "ai_cpu", 0, ACLNN_SUCCESS);
+    RunQuantMatmulAllReduceV5Ut(op::SocVersion::ASCEND910B, x1, x2, bias.ToAclTypeRawPtr(), x3.ToAclTypeRawPtr(),
+                                x1Scale.ToAclTypeRawPtr(), x2Scale, nullptr, nullptr, output, "ai_cpu", 0,
+                                ACLNN_SUCCESS);
 }
 
 TEST_F(AclnnQuantMatmulAllReduceV5ExtraTest, TransposedX2Int8)
@@ -140,21 +133,19 @@ TEST_F(AclnnQuantMatmulAllReduceV5ExtraTest, TransposedX2Int8)
     TensorDesc x2 = {{64, 128}, ACL_INT8, ACL_FORMAT_ND, {1, 64}};
     TensorDesc x2Scale = {{128}, ACL_FLOAT, ACL_FORMAT_ND};
     TensorDesc output = {{32, 128}, ACL_FLOAT16, ACL_FORMAT_ND};
-    const char* group = "group";
-    const char* reduceOp = "sum";
-    const char* commMode = "ai_cpu";
+    const char *group = "group";
+    const char *reduceOp = "sum";
+    const char *commMode = "ai_cpu";
     int64_t commTurn = 0;
     int64_t streamMode = 1;
     int64_t groupSize = 0;
     int64_t commQuantMode = 0;
     uint64_t workspace_size = 0;
-    aclOpExecutor* executor = nullptr;
-    auto ut = OP_API_UT(
-        aclnnQuantMatmulAllReduceV5,
-        INPUT(x1, x2, nullptr, nullptr, nullptr, x2Scale, nullptr, nullptr, group, reduceOp, commMode, commTurn,
-              streamMode, groupSize, commQuantMode),
-        OUTPUT(output)
-    );
+    aclOpExecutor *executor = nullptr;
+    auto ut = OP_API_UT(aclnnQuantMatmulAllReduceV5,
+                        INPUT(x1, x2, nullptr, nullptr, nullptr, x2Scale, nullptr, nullptr, group, reduceOp, commMode,
+                              commTurn, streamMode, groupSize, commQuantMode),
+                        OUTPUT(output));
     auto aclnnRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor);
     EXPECT_NE(ACLNN_ERR_PARAM_INVALID, aclnnRet);
 }
@@ -166,19 +157,17 @@ TEST_F(AclnnQuantMatmulAllReduceV5ExtraTest, ReduceOpNullptr)
     TensorDesc x2 = {{64, 128}, ACL_INT8, ACL_FORMAT_ND};
     TensorDesc x2Scale = {{128}, ACL_FLOAT, ACL_FORMAT_ND};
     TensorDesc output = {{32, 128}, ACL_FLOAT16, ACL_FORMAT_ND};
-    const char* group = "group";
+    const char *group = "group";
     int64_t commTurn = 0;
     int64_t streamMode = 1;
     int64_t groupSize = 0;
     int64_t commQuantMode = 0;
     uint64_t workspace_size = 0;
-    aclOpExecutor* executor = nullptr;
-    auto ut = OP_API_UT(
-        aclnnQuantMatmulAllReduceV5,
-        INPUT(x1, x2, nullptr, nullptr, nullptr, x2Scale, nullptr, nullptr, group, nullptr, "", commTurn, streamMode,
-              groupSize, commQuantMode),
-        OUTPUT(output)
-    );
+    aclOpExecutor *executor = nullptr;
+    auto ut = OP_API_UT(aclnnQuantMatmulAllReduceV5,
+                        INPUT(x1, x2, nullptr, nullptr, nullptr, x2Scale, nullptr, nullptr, group, nullptr, "",
+                              commTurn, streamMode, groupSize, commQuantMode),
+                        OUTPUT(output));
     EXPECT_EQ(ACLNN_ERR_PARAM_NULLPTR, ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor));
 }
 
@@ -188,9 +177,8 @@ TEST_F(AclnnQuantMatmulAllReduceV5ExtraTest, TransposedX2With2DScale)
     TensorDesc x2 = {{64, 128}, ACL_INT8, ACL_FORMAT_ND, {1, 64}};
     TensorDesc x2Scale = {{2, 128}, ACL_FLOAT, ACL_FORMAT_ND, {1, 2}};
     TensorDesc output = {{32, 128}, ACL_FLOAT16, ACL_FORMAT_ND};
-    RunQuantMatmulAllReduceV5Ut(
-        op::SocVersion::ASCEND910B, x1, x2, nullptr, nullptr, nullptr, x2Scale, nullptr, nullptr, output, "ai_cpu", 0,
-        ACLNN_SUCCESS);
+    RunQuantMatmulAllReduceV5Ut(op::SocVersion::ASCEND910B, x1, x2, nullptr, nullptr, nullptr, x2Scale, nullptr,
+                                nullptr, output, "ai_cpu", 0, ACLNN_SUCCESS);
 }
 
 TEST_F(AclnnQuantMatmulAllReduceV5ExtraTest, TransposedFloat4WithMxScale)
@@ -200,9 +188,8 @@ TEST_F(AclnnQuantMatmulAllReduceV5ExtraTest, TransposedFloat4WithMxScale)
     TensorDesc x1Scale = {{2, 1, 2}, ACL_FLOAT8_E8M0, ACL_FORMAT_ND};
     TensorDesc x2Scale = {{128, 2, 2}, ACL_FLOAT8_E8M0, ACL_FORMAT_ND, {2, 256, 1}};
     TensorDesc output = {{32, 128}, ACL_FLOAT16, ACL_FORMAT_ND};
-    RunQuantMatmulAllReduceV5Ut(
-        op::SocVersion::ASCEND910B, x1, x2, nullptr, nullptr, x1Scale.ToAclTypeRawPtr(), x2Scale, nullptr, nullptr,
-        output, "ai_cpu", 0, ACLNN_SUCCESS);
+    RunQuantMatmulAllReduceV5Ut(op::SocVersion::ASCEND910B, x1, x2, nullptr, nullptr, x1Scale.ToAclTypeRawPtr(),
+                                x2Scale, nullptr, nullptr, output, "ai_cpu", 0, ACLNN_SUCCESS);
 }
 
 TEST_F(AclnnQuantMatmulAllReduceV5ExtraTest, Ascend310PPreTransposedWeight)
@@ -211,9 +198,8 @@ TEST_F(AclnnQuantMatmulAllReduceV5ExtraTest, Ascend310PPreTransposedWeight)
     TensorDesc x2 = {{64, 128}, ACL_INT8, ACL_FORMAT_ND, {}, 0, {1, 1, 64, 128}};
     TensorDesc x2Scale = {{128}, ACL_FLOAT, ACL_FORMAT_ND};
     TensorDesc output = {{32, 128}, ACL_FLOAT16, ACL_FORMAT_ND};
-    RunQuantMatmulAllReduceV5Ut(
-        op::SocVersion::ASCEND310P, x1, x2, nullptr, nullptr, nullptr, x2Scale, nullptr, nullptr, output, "ai_cpu", 0,
-        ACLNN_SUCCESS);
+    RunQuantMatmulAllReduceV5Ut(op::SocVersion::ASCEND310P, x1, x2, nullptr, nullptr, nullptr, x2Scale, nullptr,
+                                nullptr, output, "ai_cpu", 0, ACLNN_SUCCESS);
 }
 
 TEST_F(AclnnQuantMatmulAllReduceV5ExtraTest, Ascend950LaunchAicpuCommMode)
@@ -222,9 +208,8 @@ TEST_F(AclnnQuantMatmulAllReduceV5ExtraTest, Ascend950LaunchAicpuCommMode)
     TensorDesc x2 = {{64, 128}, ACL_INT8, ACL_FORMAT_ND};
     TensorDesc x2Scale = {{128}, ACL_FLOAT, ACL_FORMAT_ND};
     TensorDesc output = {{32, 128}, ACL_FLOAT16, ACL_FORMAT_ND};
-    RunQuantMatmulAllReduceV5Ut(
-        op::SocVersion::ASCEND950, x1, x2, nullptr, nullptr, nullptr, x2Scale, nullptr, nullptr, output, "ai_cpu", 0,
-        ACLNN_SUCCESS);
+    RunQuantMatmulAllReduceV5Ut(op::SocVersion::ASCEND950, x1, x2, nullptr, nullptr, nullptr, x2Scale, nullptr, nullptr,
+                                output, "ai_cpu", 0, ACLNN_SUCCESS);
 }
 
 TEST_F(AclnnQuantMatmulAllReduceV5ExtraTest, LaunchApiNullExecutor)

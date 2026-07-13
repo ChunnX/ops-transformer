@@ -109,7 +109,7 @@
       $$
 
   - 情形7：
-  
+
     $$
     output = Allreduce(x1 @ ((x2 + antiquantOffset) *antiquantScale) + bias+ x3) 
     $$
