@@ -110,24 +110,64 @@ static ge::graphStatus ValidateInputs(gert::TilingContext* context,
         OP_LOGE_WITH_INVALID_INPUT(nodeName, "q/qSeqLens descriptor");
         return ge::GRAPH_FAILED;
     }
-    if (qDesc->GetDataType() != ge::DT_FLOAT8_E4M3FN) {
-        OP_LOGE_WITH_INVALID_INPUT_DTYPE(nodeName, "q", 
-            std::to_string(static_cast<int>(qDesc->GetDataType())).c_str(), "DT_FLOAT8_E4M3FN");
+
+    auto qDtype = qDesc->GetDataType();
+    if (qDtype != ge::DT_FLOAT8_E4M3FN && qDtype != ge::DT_BF16 && qDtype != ge::DT_FLOAT16) {
+        OP_LOGE_WITH_INVALID_INPUT_DTYPE(nodeName, "q",
+            std::to_string(static_cast<int>(qDtype)).c_str(), "DT_FLOAT8_E4M3FN/DT_BF16/DT_FLOAT16");
         return ge::GRAPH_FAILED;
     }
 
+    // cuSeqLensQ shape and dtype validation
+    auto cuSeqLensQShape = context->GetInputShape(2);
+    auto cuSeqLensQDesc = context->GetInputDesc(2);
+    if (cuSeqLensQShape == nullptr || cuSeqLensQDesc == nullptr) {
+        OP_LOGE_WITH_INVALID_INPUT(nodeName, "cuSeqLensQ");
+        return ge::GRAPH_FAILED;
+    }
+    if (cuSeqLensQShape->GetStorageShape().GetDimNum() != 1) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM(nodeName, "cuSeqLensQ",
+            std::to_string(cuSeqLensQShape->GetStorageShape().GetDimNum()).c_str(), "1");
+        return ge::GRAPH_FAILED;
+    }
+    if (cuSeqLensQDesc->GetDataType() != ge::DT_INT32) {
+        OP_LOGE_WITH_INVALID_INPUT_DTYPE(nodeName, "cuSeqLensQ",
+            std::to_string(static_cast<int>(cuSeqLensQDesc->GetDataType())).c_str(), "DT_INT32");
+        return ge::GRAPH_FAILED;
+    }
+
+    // qScale validation: required when q is FP8, must be null when q is BF16/FP16
     auto qScaleDesc = context->GetOptionalInputDesc(3);
-    if (qScaleDesc == nullptr) {
-        OP_LOGE_WITH_INVALID_INPUT(nodeName, "qScale is required for FP8 input");
-        return ge::GRAPH_FAILED;
+    if (qDtype == ge::DT_FLOAT8_E4M3FN) {
+        if (qScaleDesc == nullptr) {
+            OP_LOGE_WITH_INVALID_INPUT(nodeName, "qScale is required when q is DT_FLOAT8_E4M3FN");
+            return ge::GRAPH_FAILED;
+        }
+        if (qScaleDesc->GetDataType() != ge::DT_FLOAT) {
+            OP_LOGE_WITH_INVALID_INPUT_DTYPE(nodeName, "qScale",
+                std::to_string(static_cast<int>(qScaleDesc->GetDataType())).c_str(), "DT_FLOAT");
+            return ge::GRAPH_FAILED;
+        }
+        auto qScaleShape = context->GetInputShape(3);
+        if (qScaleShape == nullptr) {
+            OP_LOGE_WITH_INVALID_INPUT(nodeName, "qScale");
+            return ge::GRAPH_FAILED;
+        }
+        if (qScaleShape->GetStorageShape().GetDimNum() != 2) {
+            OP_LOGE_FOR_INVALID_SHAPEDIM(nodeName, "qScale",
+                std::to_string(qScaleShape->GetStorageShape().GetDimNum()).c_str(), "2");
+            return ge::GRAPH_FAILED;
+        }
+    } else {
+        if (qScaleDesc != nullptr) {
+            OP_LOGE(nodeName, "qScale must be null when q is %s (not DT_FLOAT8_E4M3FN)",
+                (qDtype == ge::DT_BF16 ? "DT_BF16" : "DT_FLOAT16"));
+            return ge::GRAPH_FAILED;
+        }
     }
-    if (qScaleDesc->GetDataType() != ge::DT_FLOAT) {
-        OP_LOGE_WITH_INVALID_INPUT_DTYPE(nodeName, "qScale",
-            std::to_string(static_cast<int>(qScaleDesc->GetDataType())).c_str(), "DT_FLOAT");
-        return ge::GRAPH_FAILED;
-    }
+
     if (qSeqLensDesc->GetDataType() != ge::DT_INT32) {
-        OP_LOGE_WITH_INVALID_INPUT_DTYPE(nodeName, "qSeqLens", 
+        OP_LOGE_WITH_INVALID_INPUT_DTYPE(nodeName, "qSeqLens",
             std::to_string(static_cast<int>(qSeqLensDesc->GetDataType())).c_str(), "DT_INT32");
         return ge::GRAPH_FAILED;
     }
@@ -135,21 +175,59 @@ static ge::graphStatus ValidateInputs(gert::TilingContext* context,
     numQHeads = qShape->GetStorageShape().GetDim(1);
     int64_t D = qShape->GetStorageShape().GetDim(2);
     if (D != DIM_QK_HOST) {
-        OP_LOGE_WITH_INVALID_INPUT_SHAPESIZE(nodeName, 0, 
+        OP_LOGE_WITH_INVALID_INPUT_SHAPESIZE(nodeName, 0,
             std::to_string(D).c_str(), std::to_string(DIM_QK_HOST).c_str());
         return ge::GRAPH_FAILED;
     }
 
     batch = qSeqLensShape->GetStorageShape().GetDim(0);
-    if (batch < 0 || batch > MAX_BATCH_SIZE || numQHeads <= 0) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "batch/numQHeads", 
-            ("batch=" + std::to_string(batch) + ", numQHeads=" + std::to_string(numQHeads)).c_str(),
-            ("batch must be in [0, " + std::to_string(MAX_BATCH_SIZE) + "], numQHeads must be > 0").c_str());
+    int64_t cuSeqLensSize = cuSeqLensQShape->GetStorageShape().GetDim(0);
+    int64_t qSeqLensSize = qSeqLensShape->GetStorageShape().GetDim(0);
+    int64_t total_tokens = qShape->GetStorageShape().GetDim(0);
+
+    if (cuSeqLensSize != batch + 1) {
+        OP_LOGE(nodeName, "cuSeqLensQ size mismatch: expected batch+1=%ld, got %ld",
+                batch + 1, cuSeqLensSize);
+        return ge::GRAPH_FAILED;
+    }
+    if (qSeqLensSize != batch) {
+        OP_LOGE(nodeName, "qSeqLens size mismatch: expected batch=%ld, got %ld",
+                batch, qSeqLensSize);
         return ge::GRAPH_FAILED;
     }
 
-    if (batch == 0) {
-        OP_LOGI(nodeName, "Empty input: batch=0, skip computation");
+    // qScale shape consistency: [total_tokens, H_q]
+    if (qDtype == ge::DT_FLOAT8_E4M3FN) {
+        auto qScaleShape = context->GetInputShape(3);
+        int64_t scaleTokens = qScaleShape->GetStorageShape().GetDim(0);
+        int64_t scaleHeads = qScaleShape->GetStorageShape().GetDim(1);
+        if (scaleTokens != total_tokens) {
+            OP_LOGE(nodeName, "qScale shape dim 0 mismatch: expected total_tokens=%ld, got %ld",
+                    total_tokens, scaleTokens);
+            return ge::GRAPH_FAILED;
+        }
+        if (scaleHeads != numQHeads) {
+            OP_LOGE(nodeName, "qScale shape dim 1 mismatch: expected H_q=%ld, got %ld",
+                    numQHeads, scaleHeads);
+            return ge::GRAPH_FAILED;
+        }
+    }
+
+    if (batch < 0 || batch > MAX_BATCH_SIZE) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "batch", 
+            std::to_string(batch).c_str(),
+            ("batch must be in [0, " + std::to_string(MAX_BATCH_SIZE) + "]").c_str());
+        return ge::GRAPH_FAILED;
+    }
+    if (numQHeads < 0) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "numQHeads",
+            std::to_string(numQHeads).c_str(),
+            "numQHeads must be >= 0");
+        return ge::GRAPH_FAILED;
+    }
+
+    if (batch == 0 || numQHeads == 0) {
+        OP_LOGI(nodeName, "Empty input: batch=%ld, numQHeads=%ld, skip computation", batch, numQHeads);
         return ge::GRAPH_SUCCESS;
     }
 
@@ -188,9 +266,22 @@ static ge::graphStatus CalcSequenceInfo(gert::TilingContext* context,
             }
             for (uint32_t b = 0; b < batchU32; b++) {
                 if (cuSeqLensData[b + 1] - cuSeqLensData[b] != qSeqLensData[b]) {
-                    OP_LOGE(nodeName, "cuSeqLensQ prefix sum mismatch at batch %u", b);
+                    OP_LOGE(nodeName, "cuSeqLensQ prefix sum mismatch at batch %u: "
+                        "cuSeqLensQ[%u]-cuSeqLensQ[%u]=%d, qSeqLens[%u]=%d",
+                        b, b + 1, b,
+                        cuSeqLensData[b + 1] - cuSeqLensData[b], b, qSeqLensData[b]);
                     return ge::GRAPH_FAILED;
                 }
+            }
+            // Validate final prefix sum: cuSeqLensQ[batch] == sum(qSeqLens)
+            int32_t sum_qSeqLens = 0;
+            for (uint32_t b = 0; b < batchU32; b++) {
+                sum_qSeqLens += qSeqLensData[b];
+            }
+            if (cuSeqLensData[batchU32] != sum_qSeqLens) {
+                OP_LOGE(nodeName, "cuSeqLensQ[%u]=%d does not equal sum(qSeqLens)=%d",
+                    batchU32, cuSeqLensData[batchU32], sum_qSeqLens);
+                return ge::GRAPH_FAILED;
             }
         }
 
@@ -209,12 +300,86 @@ static ge::graphStatus CalcSequenceInfo(gert::TilingContext* context,
         uint32_t max_q_padded = ((max_q_len + B - 1) / B) * B;
         tiling->max_Qb = max_q_padded / B;
         totalBlocks = H_q * tiling->max_Qb * batchU32;
+
         OP_LOGD(nodeName, "qSeqLens data not available, using conservative estimate: max_q_len=%u",
                 max_q_len);
     }
 
     OP_LOGI(nodeName, "CalcSequenceInfo: max_Qb=%u, totalBlocks=%u",
             tiling->max_Qb, totalBlocks);
+
+    return ge::GRAPH_SUCCESS;
+}
+
+static ge::graphStatus ValidateOutputShape(gert::TilingContext* context,
+                                            const StemPrepQTilingData* tiling,
+                                            uint32_t S)
+{
+    const char* nodeName = context->GetNodeName();
+
+    auto qFlatShape = context->GetOutputShape(0);
+    auto qFlatDesc = context->GetOutputDesc(0);
+    if (qFlatShape == nullptr || qFlatDesc == nullptr) {
+        OP_LOGE_WITH_INVALID_INPUT(nodeName, "qFlat output");
+        return ge::GRAPH_FAILED;
+    }
+
+    auto& shape = qFlatShape->GetStorageShape();
+    if (shape.GetDimNum() != 4) {
+        OP_LOGE(nodeName, "qFlat output must be 4D [batch, H_q, max_Qb, kflat_dim], got %ld dims",
+                static_cast<long>(shape.GetDimNum()));
+        return ge::GRAPH_FAILED;
+    }
+
+    uint32_t expected_batch = tiling->batch_size;
+    uint32_t expected_heads = tiling->num_q_heads;
+    uint32_t expected_maxQb = tiling->max_Qb;
+    uint32_t expected_kflat = S * DIM_QK_HOST;
+
+    int64_t actual_dim0 = shape.GetDim(0);
+    int64_t actual_dim1 = shape.GetDim(1);
+    int64_t actual_dim2 = shape.GetDim(2);
+    int64_t actual_dim3 = shape.GetDim(3);
+
+    if (actual_dim0 != static_cast<int64_t>(expected_batch)) {
+        OP_LOGE(nodeName, "qFlat shape mismatch dim 0: expected batch=%u, got %ld",
+                expected_batch, actual_dim0);
+        return ge::GRAPH_FAILED;
+    }
+    if (actual_dim1 != static_cast<int64_t>(expected_heads)) {
+        OP_LOGE(nodeName, "qFlat shape mismatch dim 1: expected H_q=%u, got %ld",
+                expected_heads, actual_dim1);
+        return ge::GRAPH_FAILED;
+    }
+    if (actual_dim2 < static_cast<int64_t>(expected_maxQb)) {
+        OP_LOGE(nodeName, "qFlat shape dim 2 too small: need max_Qb=%u, got %ld",
+                expected_maxQb, actual_dim2);
+        return ge::GRAPH_FAILED;
+    }
+    if (actual_dim3 < static_cast<int64_t>(expected_kflat)) {
+        OP_LOGE(nodeName, "qFlat shape dim 3 too small: need kflat_dim=%u (S*%d=%u*%d), got %ld",
+                expected_kflat, static_cast<int>(DIM_QK_HOST), S, static_cast<int>(DIM_QK_HOST), actual_dim3);
+        return ge::GRAPH_FAILED;
+    }
+
+    // Validate output dtype
+    auto qDtype = context->GetInputDesc(0)->GetDataType();
+    auto outDtype = qFlatDesc->GetDataType();
+    ge::DataType expectedOutDtype = (qDtype == ge::DT_FLOAT16) ? ge::DT_FLOAT16 : ge::DT_BF16;
+    if (outDtype != expectedOutDtype) {
+        OP_LOGE(nodeName, "qFlat output dtype mismatch: expected %s for input %s, got %s",
+                (expectedOutDtype == ge::DT_BF16 ? "DT_BF16" : "DT_FLOAT16"),
+                (qDtype == ge::DT_FLOAT8_E4M3FN ? "DT_FLOAT8_E4M3FN" :
+                 (qDtype == ge::DT_BF16 ? "DT_BF16" : "DT_FLOAT16")),
+                (outDtype == ge::DT_BF16 ? "DT_BF16" :
+                 (outDtype == ge::DT_FLOAT16 ? "DT_FLOAT16" : "other")));
+        return ge::GRAPH_FAILED;
+    }
+
+    OP_LOGI(nodeName, "qFlat output shape validated: [%u, %u, %u(max_Qb=%u), %ld(kflat=%u)]",
+            expected_batch, expected_heads,
+            static_cast<uint32_t>(actual_dim2), expected_maxQb,
+            actual_dim3, expected_kflat);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -273,11 +438,19 @@ ge::graphStatus Tiling4StemOamPrepVarlenQ(gert::TilingContext* context) {
     tiling->R_val = B / S;
     tiling->kflat_dim = S * DIM_QK_HOST;
     tiling->dim_qk = DIM_QK_HOST;
+    if (tiling->dim_qk != 128) {
+        OP_LOGE(nodeName, "dim_qk=%u is not supported, must be 128", tiling->dim_qk);
+        return ge::GRAPH_FAILED;
+    }
     tiling->batch_size = static_cast<uint32_t>(batch);
     tiling->num_q_heads = static_cast<uint32_t>(numQHeads);
 
     uint32_t totalBlocks = 0;
     if (CalcSequenceInfo(context, tiling, B, totalBlocks) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+
+    if (ValidateOutputShape(context, tiling, S) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
 
