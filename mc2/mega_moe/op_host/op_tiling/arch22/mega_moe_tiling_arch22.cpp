@@ -184,8 +184,8 @@ static ge::graphStatus CheckMaxRecvTokenNumAttr(const int64_t *ptr)
     OP_TILING_CHECK(ptr == nullptr,
         OP_LOGE(K_INNER_DEBUG, "maxRecvTokenNum is nullptr."), return GRAPH_FAILED);
     OP_TILING_CHECK(*ptr < 0,
-        OP_LOGE(K_INNER_DEBUG, "maxRecvTokenNum is invalid, should be >= 0, but got %ld.",
-            *ptr), return GRAPH_FAILED);
+        OP_LOGE(K_INNER_DEBUG, "maxRecvTokenNum is invalid, should be >= 0, but got %ld.", *ptr),
+            return GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -354,36 +354,52 @@ static ge::graphStatus MegaMoeA2A3CheckAttrAndSetTiling(gert::TilingContext *con
     OP_TILING_CHECK(CheckMoeExpertNumAttr(moeExpertNumPtr) != ge::GRAPH_SUCCESS,
         OP_LOGE(K_INNER_DEBUG, "CheckMoeExpertNumAttr failed."),
         return GRAPH_FAILED);
+    info.moeExpertNum = static_cast<uint32_t>(*moeExpertNumPtr);
 
     // 2. ep_world_size
     OP_TILING_CHECK(CheckEpWorldSizeAttr(epWorldSizePtr) != ge::GRAPH_SUCCESS,
         OP_LOGE(K_INNER_DEBUG, "CheckEpWorldSizeAttr failed."),
         return GRAPH_FAILED);
+    info.epWorldSize = static_cast<uint32_t>(*epWorldSizePtr);
 
     // 3. ccl_buffer_size
     OP_TILING_CHECK(cclBufferSizePtr == nullptr,
         OP_LOGE(K_INNER_DEBUG, "ccl_buffer_size is nullptr."), return GRAPH_FAILED);
+    info.cclBufferSize = static_cast<int64_t>(*cclBufferSizePtr);
     
     // 4. max_recv_token_num
     OP_TILING_CHECK(CheckMaxRecvTokenNumAttr(maxRecvTokenNumPtr) != ge::GRAPH_SUCCESS,
         OP_LOGE(K_INNER_DEBUG, "CheckMaxRecvTokenNumAttr failed."),
         return GRAPH_FAILED);
+    info.maxRecvTokenNum = static_cast<uint64_t>(*maxRecvTokenNumPtr);
+    // max_recv_token_num 为 0 时赋值为最大值；
+    if (info.maxRecvTokenNum == 0U) {
+        info.maxRecvTokenNum = static_cast<uint64_t>(info.M) * info.epWorldSize *
+                std::min(info.topK, info.expertPerRank);
+        OP_LOGD(K_INNER_DEBUG,
+                "maxRecvTokenNum auto-calculated to %u (bs=%u * ep=%u * min(topK=%u, expertPerRank=%u))",
+                info.maxRecvTokenNum, info.M, info.epWorldSize, info.topK, info.expertPerRank);
+    }
 
     // 5-6. dispatch_quant_mode && dispatch_quant_out_dtype
     OP_TILING_CHECK(CheckDispatchQuantAttrs(context, dispatchQuantModePtr,
         dispatchQuantOutDtypePtr) != ge::GRAPH_SUCCESS,
         OP_LOGE(K_INNER_DEBUG, "CheckDispatchQuantAttrs failed."),
         return GRAPH_FAILED);
+    info.dispatchQuantMode = static_cast<uint32_t>(*dispatchQuantModePtr);
+    info.dispatchQuantOutDtype = static_cast<uint32_t>(*dispatchQuantOutDtypePtr);
 
     // 7. combine_quant_mode
     OP_TILING_CHECK(CheckCombineQuantModeAttr(combineQuantModePtr) != ge::GRAPH_SUCCESS,
         OP_LOGE(K_INNER_DEBUG, "CheckCombineQuantModeAttr failed."),
         return GRAPH_FAILED);
+    info.combineQuantMode = static_cast<uint32_t>(*combineQuantModePtr);
 
     // 8. num_max_token_per_rank
     OP_TILING_CHECK(CheckNumMaxTokensPerRankAttr(context, numMaxTokensPerRankPtr) != ge::GRAPH_SUCCESS,
         OP_LOGE(K_INNER_DEBUG, "CheckNumMaxTokensPerRankAttr failed."),
         return GRAPH_FAILED);
+    info.numMaxTokensPerRank = static_cast<uint32_t>(*numMaxTokensPerRankPtr);
 
     // 9. activation
     OP_TILING_CHECK(CheckActivationAttr(activationPtr) != ge::GRAPH_SUCCESS,
@@ -399,30 +415,21 @@ static ge::graphStatus MegaMoeA2A3CheckAttrAndSetTiling(gert::TilingContext *con
     OP_TILING_CHECK(CheckActivationOutDtypeAttr(activationOutDtypePtr) != ge::GRAPH_SUCCESS,
         OP_LOGE(K_INNER_DEBUG, "CheckActivationOutDtypeAttr failed."),
         return GRAPH_FAILED);
+    info.activationOutDtype = activationOutDtypePtr != nullptr ?
+        static_cast<uint32_t>(*activationOutDtypePtr) :
+        static_cast<uint32_t>(ge::DT_UNDEFINED);
 
     // 12. transpose_weight1/2
     OP_TILING_CHECK(CheckTransposeWeightAttr(transposeWeight1Ptr, transposeWeight2Ptr) != ge::GRAPH_SUCCESS,
         OP_LOGE(K_INNER_DEBUG, "CheckTransposeWeightAttr failed."),
         return GRAPH_FAILED);
+    info.isTransposeW1 = *transposeWeight1Ptr ? 1U : 0U;
+    info.isTransposeW2 = *transposeWeight2Ptr ? 1U : 0U;
 
     // 13. weight1_interleave
     OP_TILING_CHECK(CheckWeight1InterleaveAttr(context, weight1InterleavePtr) != ge::GRAPH_SUCCESS,
         OP_LOGE(K_INNER_DEBUG, "CheckWeight1InterleaveAttr failed."),
         return GRAPH_FAILED);
-
-    info.moeExpertNum = static_cast<uint32_t>(*moeExpertNumPtr);
-    info.epWorldSize = static_cast<uint32_t>(*epWorldSizePtr);
-    info.cclBufferSize = static_cast<int64_t>(*cclBufferSizePtr);
-    info.maxRecvTokenNum = static_cast<uint64_t>(*maxRecvTokenNumPtr);
-    info.dispatchQuantMode = static_cast<uint32_t>(*dispatchQuantModePtr);
-    info.dispatchQuantOutDtype = static_cast<uint32_t>(*dispatchQuantOutDtypePtr);
-    info.combineQuantMode = static_cast<uint32_t>(*combineQuantModePtr);
-    info.numMaxTokensPerRank = static_cast<uint32_t>(*numMaxTokensPerRankPtr);
-    info.activationOutDtype = activationOutDtypePtr != nullptr ?
-        static_cast<uint32_t>(*activationOutDtypePtr) :
-        static_cast<uint32_t>(ge::DT_UNDEFINED);
-    info.isTransposeW1 = *transposeWeight1Ptr ? 1U : 0U;
-    info.isTransposeW2 = *transposeWeight2Ptr ? 1U : 0U;
     info.weight1Interleave = static_cast<uint32_t>(*weight1InterleavePtr);
 
     info.worldSize = info.epWorldSize;

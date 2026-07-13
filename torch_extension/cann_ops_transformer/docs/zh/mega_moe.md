@@ -1118,11 +1118,12 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
 - **参数约束**：
     - **公共约束**：
         - `moe_expert_num`：取值范围为 `[ep_world_size, 1024]`（get_mega_moe_ccl_buffer_size）或 `[world_size, 1024]`（get_symm_buffer_for_mega_moe），且 `moe_expert_num % ep_world_size == 0`（或 `moe_expert_num % world_size == 0`）。
-        - `max_recv_token_num`：取值范围为 `[0, num_max_tokens_per_rank × world_size × min(num_topk, num_experts_per_rank)]`。
     - **Atlas A2 训练系列产品/Atlas A2 推理系列产品、Atlas A3 训练系列产品/Atlas A3 推理系列产品：**
+        - 各卡 `num_tokens` 需保持一致。
         - `ep_world_size`：取值为 `2`、`4`、`8`、`16`、`32`。
         - `num_experts_per_rank`：取值范围为 `1 ≤ num_experts_per_rank ≤ 128`，且 `num_experts_per_rank = moe_expert_num / world_size`。
         - `num_max_tokens_per_rank`：取值范围为 `1 ≤ num_max_tokens_per_rank ≤ 4096`。
+        - `max_recv_token_num` 需大于0，输入0表示自动计算，公式为 `num_tokens × ep_world_size × min(num_topk, num_experts_per_rank)`。
         - `num_topk`：取值范围为 `1 ≤ num_topk ≤ 16`。
         - `hidden`：取值范围为 `1024 ≤ hidden ≤ 8192`，且 `hidden % 512 == 0`。
         - `intermediate_hidden`：取值范围为 `1024 ≤ intermediate_hidden ≤ 8192`，且 `intermediate_hidden % 512 == 0`。

@@ -128,6 +128,7 @@ private:
             HcclResult ret = static_cast<HcclResult>(HcclGetHcclBufferFunc(comm, &remoteAddr, &commSize));
             TORCH_CHECK((ret == HCCL_SUCCESS), "Get HcclBufferSize failed, ret=", ret);
             cclBufferSize = static_cast<int64_t>(commSize);
+            mc2Context.epHcclBuffer_[rankId] = (uint64_t)remoteAddr;
             return;
         }
         for (uint64_t remoteRankId = 0; remoteRankId < worldSize; remoteRankId++) {
