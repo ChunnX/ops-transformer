@@ -218,8 +218,9 @@ bool BSASelectBlockMaskTilingBase::AnalyzeLayout()
     yBlocks = BSACeilDivision(maxKvSeqlen, static_cast<uint32_t>(blockShapeY));
 
     uint64_t totalXY = static_cast<uint64_t>(xBlocks) * yBlocks;
-    OP_CHECK_IF(totalXY <= 1,
-        OP_LOGE(opName, "xBlocks[%u] * yBlocks[%u] must be greater than 1 for TopK selection.",
+    bool isTnd = tilingKeyLayoutQ == LayoutType::LAYOUT_TND || tilingKeyLayoutKV == LayoutType::LAYOUT_TND;
+    OP_CHECK_IF(totalXY == 0 || (totalXY == 1 && !isTnd),
+        OP_LOGE(opName, "xBlocks[%u] * yBlocks[%u] must be positive, and greater than 1 for BNSD TopK selection.",
                 xBlocks, yBlocks), return false);
 
     if (sparsityMode == static_cast<uint8_t>(SparsityMode::TOP_K)) {
