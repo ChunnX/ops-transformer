@@ -148,13 +148,27 @@ __aicore__ inline void WaitForCubeFinishCopyout(uint16_t value = 0)
     CrossCoreWaitFlag<SYNC_AIC_AIV_MODE, PIPE_MTE2>(AIC_SYNC_AIV_EPILOGUE_FLAG + value);
 }
 
-__aicore__ inline void EndSync(int32_t& vecSetSyncCom)
+template <bool IsPingPong = false>
+__aicore__ inline void EndSync(int32_t& vecSetSyncCom, uint16_t pingpongIdx = 0)
 {
     if (vecSetSyncCom == 0) {
         return;
     }
     if constexpr(g_coreType == AIC) {
-        WaitForVector();
+        if constexpr (IsPingPong) {
+            if (vecSetSyncCom == 1) {
+                // pingpongIdx has already advanced to the next slot; the
+                // single outstanding tile occupies the other slot.
+                WaitForVector(1U - pingpongIdx);
+            } else {
+                // pingpongIdx is the next buffer to reuse, hence the oldest
+                // of the two outstanding AIV acknowledgements.
+                WaitForVector(pingpongIdx);
+                WaitForVector(1U - pingpongIdx);
+            }
+        } else {
+            WaitForVector();
+        }
     }
 }
 
@@ -166,10 +180,10 @@ __aicore__ inline void EndGMM2Sync(int32_t& vecSetSyncCom, uint16_t gmm2PingPong
     if (vecSetSyncCom <= 0) {
         return;
     } else if (vecSetSyncCom == 1) {
-        WaitForVector();
+        WaitForVector(FLAG_ID_MAX_PER_V);
     } else {
-        WaitForVector(gmm2PingPongIdx);
-        WaitForVector(1 - gmm2PingPongIdx);
+        WaitForVector(FLAG_ID_MAX_PER_V + gmm2PingPongIdx);
+        WaitForVector(FLAG_ID_MAX_PER_V + 1U - gmm2PingPongIdx);
     }
 }
 
