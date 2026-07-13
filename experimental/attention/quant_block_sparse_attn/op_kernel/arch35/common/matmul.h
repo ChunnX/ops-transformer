@@ -52,9 +52,9 @@ struct MMParam {
     uint32_t realM = 0; // bmm2以s1realsize为M轴，不赋值时不影响现有代码逻辑
 };
 
-__aicore__ inline MMParam MakeMMParam(uint32_t singleM, uint32_t singleN, uint32_t singleK, bool isLeftTranspose,
-                                      bool isRightTranspose, bool cmatrixInitVal = true, bool isOutKFisrt = true,
-                                      uint32_t unitFlag = 0, uint32_t realM = 0)
+__aicore__ inline MMParam MxMakeMMParam(uint32_t singleM, uint32_t singleN, uint32_t singleK, bool isLeftTranspose,
+                                        bool isRightTranspose, bool cmatrixInitVal = true, bool isOutKFisrt = true,
+                                        uint32_t unitFlag = 0, uint32_t realM = 0)
 {
     // MX 调用点使用的小型构造函数，用于让 matmul 维度和转置标志更易读。
     // 在 MX 路径中，这些标志描述的是 LoadDataToL0*Mx 消费的 L1 视图，
@@ -525,7 +525,7 @@ __aicore__ inline void MatmulFull(const LocalTensor<A> &aL1Tensor,
 template <typename A, typename B, typename C, uint32_t baseM, uint32_t baseN, uint32_t baseK, ABLayout AL, ABLayout BL,
           typename L0AType, typename L0BType, typename AScaleType = fp8_e8m0_t, typename BScaleType = fp8_e8m0_t,
           typename L0ADType = A, typename L0BDType = B>
-__aicore__ inline void MatmulFullMX(const LocalTensor<A> &aL1Tensor, const LocalTensor<B> &bL1Tensor,
+__aicore__ inline void MxMatmulFull(const LocalTensor<A> &aL1Tensor, const LocalTensor<B> &bL1Tensor,
                                     L0AType &aL0BuffsDb, L0BType &bL0BuffsDb,
                                     const LocalTensor<C> &cL0Tensor, MMParam &param,
                                     const LocalTensor<AScaleType> &aScaleL1Tensor = LocalTensor<AScaleType>(),
