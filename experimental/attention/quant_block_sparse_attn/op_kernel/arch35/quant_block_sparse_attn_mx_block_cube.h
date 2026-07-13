@@ -97,13 +97,13 @@ public:
             l1KVBuffers_.Init(*l1BufferManager_, kvSize + kvScaleSize);
             l1VBuffers_.Init(*l1BufferManager_, kvSize + valueScaleSize);
 
-            // L0A/L0B 双 buffer，L0C 每块保存一个 fp32 结果 tile。
+            // L0A/L0B 双 buffer；L0C 双 buffer。C1 最大输出为 [256,128] fp32，需要 128KB。
             l0aBufferManager_.Init(tPipe_, 64U * 1024U);
             l0bBufferManager_.Init(tPipe_, 64U * 1024U);
             l0cBufferManager_.Init(tPipe_, 256U * 1024U);
             mmL0ABuffers_.Init(l0aBufferManager_, 32U * 1024U);
             mmL0BBuffers_.Init(l0bBufferManager_, 32U * 1024U);
-            mmL0CBuffers_.Init(l0cBufferManager_, 64U * 1024U);
+            mmL0CBuffers_.Init(l0cBufferManager_, 128U * 1024U);
         }
     }
 
@@ -507,7 +507,7 @@ private:
     BuffersPolicyDB<BufferType::L1> l1VBuffers_;
     BuffersPolicyDB<BufferType::L0A> mmL0ABuffers_;
     BuffersPolicyDB<BufferType::L0B> mmL0BBuffers_;
-    BuffersPolicy4buff<BufferType::L0C> mmL0CBuffers_;
+    BuffersPolicyDB<BufferType::L0C> mmL0CBuffers_;
 };
 } // namespace BaseApi
 
