@@ -957,6 +957,23 @@ private:
         AscendC::DataCopy(flagWinOut, tmp, dispatchFlagInts);
         AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
+
+        // 5) Allgather Flag winIn（EP × kFlagSlotI32 个 int32）
+        int32_t allgatherFlagInts = params.EP * PeermemInfo::kFlagSlotI32;
+        AscendC::GlobalTensor<int32_t> agFlagWinIn;
+        agFlagWinIn.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(
+            shmem() + peermemInfo.offsetAllgatherFlag));
+        AscendC::DataCopy(agFlagWinIn, tmp, allgatherFlagInts);
+        AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
+
+        // 6) Allgather Flag winOut
+        AscendC::GlobalTensor<int32_t> agFlagWinOut;
+        agFlagWinOut.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(
+            shmem.windowsOutAddr() + peermemInfo.offsetAllgatherFlag));
+        AscendC::DataCopy(agFlagWinOut, tmp, allgatherFlagInts);
+        AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
     }
 
     CATLASS_DEVICE
