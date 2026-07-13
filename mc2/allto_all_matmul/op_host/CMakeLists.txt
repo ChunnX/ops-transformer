@@ -30,6 +30,9 @@ if (BUILD_OPEN_PROJECT)  # custom
                     -mllvm
                     -cce-aicore-dcci-before-kernel-end=false
                     -DENABLE_CV_COMM_VIA_SSBUF=true
+            OPTIONS -I${OPTENSOR_INCLUDE_ROOT}
+            OPTIONS -I${TENSOR_API_INCLUDE_ROOT}
+            OPTIONS -I${TENSOR_API_IMPL_INCLUDE_ROOT}
         )
     elseif("${CONDITION_UNIT}" STREQUAL "ascend910_93")
         add_ops_compile_options(

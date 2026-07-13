@@ -24,6 +24,7 @@
 #include "allto_all_kc_quant_matmul_pipeline.h"
 #include "allto_all_mx_quant_matmul_arch35.h"
 #include "allto_all_mx_quant_matmul_pipeline.h"
+#include "../../../common/op_kernel/atcoss/kernel/all_to_all_matmul/all_to_all_mx_quant_matmul_arch35.h"
 
 using AscendC::HcclServerType;
 using AscendC::TPipe;
@@ -132,9 +133,17 @@ __global__ __aicore__ void allto_all_matmul(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias
     if constexpr (AscendC::IsSameType<DTYPE_X1, float8_e5m2_t>::value) {
         hcclDataType = AscendC::HCCL_DATA_TYPE_FP8E5M2;
     }
-    ALLTO_ALL_MX_QUANT_MATMUL_IMPL(tilingData, pipe, hcclServerType, hcclDataType, DTYPE_X1, false);
+    Dista::Kernel::AlltoAllMxQuantMatmulArch35<DTYPE_X1, DTYPE_X2, DTYPE_Y, DTYPE_X1,
+        AlltoAllMxQuantMatmulTilingData, false>
+        op(&tilingData, &pipe, hcclDataType);
+    op.Init(x1, x2, bias, y, all2all_out, x1_scale, x2_scale, workspaceGM);
+    op.Process();
 #elif ((ORIG_DTYPE_X1 == DT_FLOAT4_E2M1) && (ORIG_DTYPE_X2 == DT_FLOAT4_E2M1))
-    ALLTO_ALL_MX_QUANT_MATMUL_IMPL(tilingData, pipe, hcclServerType, AscendC::HCCL_DATA_TYPE_UINT8, uint8_t, true);
+    Dista::Kernel::AlltoAllMxQuantMatmulArch35<DTYPE_X1, DTYPE_X2, DTYPE_Y, uint8_t,
+        AlltoAllMxQuantMatmulTilingData, true>
+        op(&tilingData, &pipe, AscendC::HCCL_DATA_TYPE_UINT8);
+    op.Init(x1, x2, bias, y, all2all_out, x1_scale, x2_scale, workspaceGM);
+    op.Process();
 #else
     if constexpr (QUANTMODE == KC_QUANT_FP8E5M2_MODE) {
         ALLTO_ALL_KC_QUANT_MATMUL_IMPL(tilingData, pipe, hcclServerType, float8_e5m2_t, ISSMALLK);
