@@ -268,6 +268,20 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::I
     blockSize_   = Ops::Base::GetUbBlockSize();
     bsPerCore_   = (blockIdx_ == usedCoreNum_ - 1) ? td_->blockTailBS : td_->blockFactorBS;
 
+    // === [DEBUG] 打印 tiling 原始字段 ===
+    AscendC::printf("[DBG-INIT] === Tiling Raw Fields ===\n");
+    AscendC::printf("[DBG-INIT] td addr=%llu\n", (uint64_t)td_);
+    AscendC::printf("[DBG-INIT] b=%d s=%d c=%d n=%d\n",
+                    (int32_t)td_->b, (int32_t)td_->s, (int32_t)td_->c, (int32_t)td_->n);
+    AscendC::printf("[DBG-INIT] usedCoreNum=%d aicCoreNum=%d\n",
+                    (int32_t)td_->usedCoreNum, (int32_t)td_->aicCoreNum);
+    AscendC::printf("[DBG-INIT] ubFactorBS=%d ubFactorC=%d skIterCount=%d\n",
+                    (int32_t)td_->ubFactorBS, (int32_t)td_->ubFactorC, (int32_t)td_->skIterCount);
+    AscendC::printf("[DBG-INIT] blockFactorBS=%d blockTailBS=%d\n",
+                    (int32_t)td_->blockFactorBS, (int32_t)td_->blockTailBS);
+    AscendC::printf("[DBG-INIT] eps=%d (x1e6)\n", (int32_t)(td_->eps * 1e6f));
+    AscendC::printf("[DBG-INIT] blockIdx=%d blockSize=%d\n", (int32_t)blockIdx_, (int32_t)blockSize_);
+
     uSize_ = sizeof(U);
     xSize_ = sizeof(X_T);
     ghSize_ = sizeof(GRADHIN_T);
@@ -284,6 +298,16 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::I
 
     cNumPerBS_  = Ops::Base::CeilDiv(c_, ubFactorCAlignFp32_);
     cTailPerBS_ = c_ - (cNumPerBS_ - 1) * ubFactorCAlignFp32_;
+
+    AscendC::printf("[DBG-INIT] === Derived Vars ===\n");
+    AscendC::printf("[DBG-INIT] uSize=%d xSize=%d ghSize=%d\n", (int32_t)uSize_, (int32_t)xSize_, (int32_t)ghSize_);
+    AscendC::printf("[DBG-INIT] n=%d nn=%d kDim=%d\n", (int32_t)n_, (int32_t)nn_, (int32_t)kDim_);
+    AscendC::printf("[DBG-INIT] nAlign=%d nnAlign=%d kAlign=%d\n", (int32_t)nAlign_, (int32_t)nnAlign_, (int32_t)kAlign_);
+    AscendC::printf("[DBG-INIT] bsAlign=%d bsnAlign=%d bsnnAlign=%d\n", (int32_t)bsAlign_, (int32_t)bsnAlign_, (int32_t)bsnnAlign_);
+    AscendC::printf("[DBG-INIT] cAlignFp32=%d cAlignFp16=%d\n", (int32_t)cAlignFp32_, (int32_t)cAlignFp16_);
+    AscendC::printf("[DBG-INIT] ubFCAlign32=%d ubFCAlign16=%d\n", (int32_t)ubFactorCAlignFp32_, (int32_t)ubFactorCAlignFp16_);
+    AscendC::printf("[DBG-INIT] cNumPerBS=%d cTailPerBS=%d\n", (int32_t)cNumPerBS_, (int32_t)cTailPerBS_);
+    AscendC::printf("[DBG-INIT] bsPerCore=%d ubFactorBS=%d ubFactorC=%d\n", (int32_t)bsPerCore_, (int32_t)ubFactorBS_, (int32_t)ubFactorC_);
 
     gradXGm_.SetGlobalBuffer(reinterpret_cast<__gm__ X_T *>(gradX));
     gradPhiGm_.SetGlobalBuffer(reinterpret_cast<__gm__ U *>(gradPhi));
@@ -316,6 +340,22 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::I
     gradHcBeforeNormWs_.SetGlobalBuffer(ws + gradHcBeforeNormOfs);
     gradXFromMatmulWs_.SetGlobalBuffer(ws + gradXFromMatmulOfs);
     gradAlphaBiasWs_.SetGlobalBuffer(ws + gradAlphaBiasOfs);
+
+    AscendC::printf("[DBG-INIT] === WS Layout ===\n");
+    AscendC::printf("[DBG-INIT] totalBs=%d wsInterval=%d\n", (int32_t)totalBs, (int32_t)WS_INTERVAL);
+    AscendC::printf("[DBG-INIT] xFp32Ofs=%d\n", (int32_t)0);
+    AscendC::printf("[DBG-INIT] gradXFromHinOfs=%d\n", (int32_t)gradXFromHinOfs);
+    AscendC::printf("[DBG-INIT] gradHcBNOfs=%d\n", (int32_t)gradHcBeforeNormOfs);
+    AscendC::printf("[DBG-INIT] gradXFromMmOfs=%d\n", (int32_t)gradXFromMatmulOfs);
+    AscendC::printf("[DBG-INIT] gradAlphaBiasOfs=%d\n", (int32_t)gradAlphaBiasOfs);
+    AscendC::printf("[DBG-INIT] ws total elems=%d\n", (int32_t)(gradAlphaBiasOfs + usedCoreNum_ * perCoreElem));
+    AscendC::printf("[DBG-INIT] biasBaseElem=%d perCoreElem=%d\n", (int32_t)biasBaseElem, (int32_t)perCoreElem);
+    AscendC::printf("[DBG-INIT] GM addrs: x=%llu phi=%llu alpha=%llu bias=%llu\n",
+                    (uint64_t)x, (uint64_t)phi, (uint64_t)alpha, (uint64_t)bias);
+    AscendC::printf("[DBG-INIT] GM addrs: hPre=%llu hcBN=%llu invRms=%llu\n",
+                    (uint64_t)hPre, (uint64_t)hcBeforeNorm, (uint64_t)invRms);
+    AscendC::printf("[DBG-INIT] GM addrs: sumOut=%llu normOut=%llu ws=%llu\n",
+                    (uint64_t)sumOut, (uint64_t)normOut, (uint64_t)workspace);
 
     if ASCEND_IS_AIV {
 
@@ -350,6 +390,39 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::I
         pipe_->InitBuffer(gradInvRmsBuf_, bsPerCore_ * uSize_);
         pipe_->InitBuffer(gradXCalcBuf_, ubFactorCAlignFp32_ * n_ * uSize_);
 
+        AscendC::printf("[DBG-INIT-AIV] === UB Buffer Sizes (bytes) ===\n");
+        AscendC::printf("[DBG-INIT-AIV] xQue=%d\n", (int32_t)(ubFactorCAlignFp32_ * n_ * ubFactorBS_ * uSize_));
+        AscendC::printf("[DBG-INIT-AIV] gradHinQue=%d\n", (int32_t)(ubFactorCAlignFp32_ * n_ * ubFactorBS_ * uSize_));
+        AscendC::printf("[DBG-INIT-AIV] hPreGHPostQ=%d\n", (int32_t)(bsnAlign_ * uSize_));
+        AscendC::printf("[DBG-INIT-AIV] gradXFromMmQ=%d\n", (int32_t)(ubFactorCAlignFp32_ * n_ * ubFactorBS_ * uSize_));
+        AscendC::printf("[DBG-INIT-AIV] hcBNQue=%d\n", (int32_t)(ubFactorBS_ * kAlign_ * uSize_));
+        AscendC::printf("[DBG-INIT-AIV] invRmsQue=%d\n", (int32_t)(bsAlign_ * uSize_));
+        AscendC::printf("[DBG-INIT-AIV] gradHResQue=%d\n", (int32_t)(ubFactorBS_ * nnAlign_ * uSize_));
+        AscendC::printf("[DBG-INIT-AIV] xFp32Que=%d\n", (int32_t)(ubFactorCAlignFp32_ * n_ * ubFactorBS_ * uSize_));
+        AscendC::printf("[DBG-INIT-AIV] gradXFromHinQ=%d\n", (int32_t)(ubFactorCAlignFp32_ * n_ * ubFactorBS_ * uSize_));
+        AscendC::printf("[DBG-INIT-AIV] gradAlphaBiasQ=%d\n", (int32_t)((2 * nAlign_ + nnAlign_ + nAlign_) * uSize_ + blockSize_));
+        AscendC::printf("[DBG-INIT-AIV] --- TBufs ---\n");
+        AscendC::printf("[DBG-INIT-AIV] gradHPreBuf=%d\n", (int32_t)(bsnAlign_ * uSize_));
+        AscendC::printf("[DBG-INIT-AIV] gradZBuf=%d\n", (int32_t)(ubFactorBS_ * kAlign_ * uSize_));
+        AscendC::printf("[DBG-INIT-AIV] biasBuf=%d\n", (int32_t)(kAlign_ * uSize_));
+        AscendC::printf("[DBG-INIT-AIV] normOutFwdBuf=%d\n", (int32_t)(ubFactorBS_ * kAlign_ * uSize_));
+        AscendC::printf("[DBG-INIT-AIV] zBuf=%d\n", (int32_t)(ubFactorBS_ * kAlign_ * uSize_));
+        AscendC::printf("[DBG-INIT-AIV] gradCalcBuf1=%d\n", (int32_t)((kAlign_ + 2 * nAlign_) * uSize_));
+        AscendC::printf("[DBG-INIT-AIV] gradCalcBuf2=%d\n", (int32_t)(kAlign_ * uSize_));
+        AscendC::printf("[DBG-INIT-AIV] tmpDivBuf=%d\n", (int32_t)(bsnnAlign_ * uSize_));
+        AscendC::printf("[DBG-INIT-AIV] tmpDiv3Buf=%d\n", (int32_t)(bsnnAlign_ * uSize_));
+        AscendC::printf("[DBG-INIT-AIV] tmpMulBuf=%d\n", (int32_t)(bsnnAlign_ * uSize_));
+        AscendC::printf("[DBG-INIT-AIV] sumOutRowBuf=%d\n", (int32_t)(skIterCount_ * ubFactorBS_ * nAlign_ * uSize_));
+        AscendC::printf("[DBG-INIT-AIV] sumOutColBuf=%d\n", (int32_t)(skIterCount_ * ubFactorBS_ * nAlign_ * uSize_));
+        AscendC::printf("[DBG-INIT-AIV] normOutBuf=%d\n", (int32_t)(skIterCount_ * ubFactorBS_ * nnAlign_ * uSize_));
+        AscendC::printf("[DBG-INIT-AIV] zResMaxBuf=%d\n", (int32_t)(ubFactorBS_ * nnAlign_ * uSize_));
+        AscendC::printf("[DBG-INIT-AIV] zResMaxIdxBuf=%d\n", (int32_t)(ubFactorBS_ * nnAlign_ * uSize_));
+        AscendC::printf("[DBG-INIT-AIV] tmpBuf=%d\n", (int32_t)(ubFactorBS_ * nnAlign_ * uSize_));
+        AscendC::printf("[DBG-INIT-AIV] isMaxBuf=%d\n", (int32_t)(ubFactorBS_ * nnAlign_ * uSize_));
+        AscendC::printf("[DBG-INIT-AIV] gradInvRmsBuf=%d\n", (int32_t)(bsPerCore_ * uSize_));
+        AscendC::printf("[DBG-INIT-AIV] gradXCalcBuf=%d\n", (int32_t)(ubFactorCAlignFp32_ * n_ * uSize_));
+        AscendC::printf("[DBG-INIT-AIV] InitBuffer DONE\n");
+
         if (blockIdx_ == 0) {
             InitOutput<U>(gradAlphaGm_, 3, U(0));
             InitOutput<U>(gradBiasGm_, kDim_, U(0));
@@ -376,8 +449,12 @@ template <typename X_T, typename GRADHIN_T, typename U>
 __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::Process()
 {
     if ASCEND_IS_AIV {
+        AscendC::printf("[DBG-PROC-AIV] enter Process blockIdx=%d usedCoreNum=%d\n",
+                        (int32_t)blockIdx_, (int32_t)usedCoreNum_);
         if (blockIdx_ < usedCoreNum_) {
+            AscendC::printf("[DBG-PROC-AIV] before GetAlphaAndBias\n");
             GetAlphaAndBias();
+            AscendC::printf("[DBG-PROC-AIV] after GetAlphaAndBias\n");
             auto gradInvRmsUb = gradInvRmsBuf_.template Get<U>();
             Duplicate(gradInvRmsUb, U(0), bsPerCore_);
 
@@ -444,11 +521,23 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::P
 template <typename X_T, typename GRADHIN_T, typename U>
 __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::GetAlphaAndBias()
 {
+    AscendC::printf("[DBG-GAAB] enter GetAlphaAndBias blockIdx=%d\n", (int32_t)blockIdx_);
+    AscendC::printf("[DBG-GAAB] alphaGm phyAddr=%llu biasGm phyAddr=%llu\n",
+                    (uint64_t)alphaGm_.GetPhyAddr(), (uint64_t)biasGm_.GetPhyAddr());
+    AscendC::printf("[DBG-GAAB] before GetValue(0)\n");
     alphaPre_  = alphaGm_.GetValue(0);
+    AscendC::printf("[DBG-GAAB] after GetValue(0) alphaPre=%d(x1e6)\n", (int32_t)(alphaPre_ * 1e6f));
+    AscendC::printf("[DBG-GAAB] before GetValue(1)\n");
     alphaPost_ = alphaGm_.GetValue(1);
+    AscendC::printf("[DBG-GAAB] after GetValue(1) alphaPost=%d(x1e6)\n", (int32_t)(alphaPost_ * 1e6f));
+    AscendC::printf("[DBG-GAAB] before GetValue(2)\n");
     alphaRes_  = alphaGm_.GetValue(2);
+    AscendC::printf("[DBG-GAAB] after GetValue(2) alphaRes=%d(x1e6)\n", (int32_t)(alphaRes_ * 1e6f));
 
+    AscendC::printf("[DBG-GAAB] before CopyInBuf: kAlign=%d n=%d nAlign=%d\n",
+                    (int32_t)kAlign_, (int32_t)n_, (int32_t)nAlign_);
     CopyInBuf(biasBuf_, biasGm_, (2 + n_), n_, 0, nAlign_);
+    AscendC::printf("[DBG-GAAB] after CopyInBuf, GetAlphaAndBias DONE\n");
 }
 
 template <typename X_T, typename GRADHIN_T, typename U>
@@ -914,7 +1003,7 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::R
                 MicroAPI::Add(accReg, accReg, inReg, mask);
                 MicroAPI::StoreAlign(accPtr + offset, accReg, mask);
             }
-            MicroAPI::LocalMemBar<MicroAPI::MemType::VEC_STORE, MicroAPI::MemType::VEC_LOAD>();
+            // MicroAPI::LocalMemBar<MicroAPI::MemType::VEC_STORE, MicroAPI::MemType::VEC_LOAD>();
         }
 
         gradXFromMatmulQue_.FreeTensor(tmpUb);
@@ -1010,7 +1099,7 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::S
             }
             MicroAPI::StoreAlign(tmpPtr + bsOffN, reduceSumReg, maskN);
         }
-        MicroAPI::LocalMemBar<MicroAPI::MemType::VEC_STORE, MicroAPI::MemType::VEC_LOAD>();
+        // MicroAPI::LocalMemBar<MicroAPI::MemType::VEC_STORE, MicroAPI::MemType::VEC_LOAD>();
     }
 }
 
@@ -1059,7 +1148,7 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::S
                 MicroAPI::StoreAlign(skGradPtr + bsOff + k * nAlign_, skGradReg, maskN);
             }
         }
-        MicroAPI::LocalMemBar<MicroAPI::MemType::VEC_STORE, MicroAPI::MemType::VEC_LOAD>();
+        // MicroAPI::LocalMemBar<MicroAPI::MemType::VEC_STORE, MicroAPI::MemType::VEC_LOAD>();
     }
 }
 
@@ -1127,7 +1216,7 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::E
                 MicroAPI::StoreAlign(zResMaxPtr + rowOffSk, zResMaxBcastReg, maskN);
                 MicroAPI::StoreAlign(isMaxPtr + rowOffSk, isMaxReg, maskN);
             }
-            MicroAPI::LocalMemBar<MicroAPI::MemType::VEC_STORE, MicroAPI::MemType::VEC_LOAD>();
+            // MicroAPI::LocalMemBar<MicroAPI::MemType::VEC_STORE, MicroAPI::MemType::VEC_LOAD>();
 
             // Step 2: exp(z - max) * skGrad → tmpMul
             for (uint16_t j = 0; j < static_cast<uint16_t>(n_); j++) {
@@ -1141,7 +1230,7 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::E
                 MicroAPI::Mul(tmpMulReg, tmpExpReg, skGradReg, maskN);
                 MicroAPI::StoreAlign(tmpMulPtr + rowOffSk, tmpMulReg, maskN);
             }
-            MicroAPI::LocalMemBar<MicroAPI::MemType::VEC_STORE, MicroAPI::MemType::VEC_LOAD>();
+            // MicroAPI::LocalMemBar<MicroAPI::MemType::VEC_STORE, MicroAPI::MemType::VEC_LOAD>();
 
             // Step 3: expGrad = tmpMul - isMax * sum(tmpMul)
             for (uint16_t j = 0; j < static_cast<uint16_t>(n_); j++) {
@@ -1158,7 +1247,7 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::E
 
                 MicroAPI::StoreAlign(expGradPtr + rowOut, expGradReg, maskN);
             }
-            MicroAPI::LocalMemBar<MicroAPI::MemType::VEC_STORE, MicroAPI::MemType::VEC_LOAD>();
+            // MicroAPI::LocalMemBar<MicroAPI::MemType::VEC_STORE, MicroAPI::MemType::VEC_LOAD>();
         }
     }
 }

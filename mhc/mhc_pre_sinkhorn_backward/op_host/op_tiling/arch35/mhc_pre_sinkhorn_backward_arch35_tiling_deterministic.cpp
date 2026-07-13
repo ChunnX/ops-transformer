@@ -211,11 +211,12 @@ void MhcPreSinkhornBackwardArch35DeterminiticTiling::DoUbTiling()
       + nnAlignB * NUM_NORM_OUT_BUFS * skIterCount_;         // normOutBuf (n_×nAlign × skIter)
 
     // 每 BS 的 C 相关开销 (C 全量)
+    // xQue_/gradHinQue_ 跨 PhaseA(bf16) 和 PhaseE(fp32) 复用，kernel 按 fp32 分配
     int64_t perBsCostC_full =
-        DOUBLE_BUFFER * n_ * cFp16AlignFull                 // xQue_
+        DOUBLE_BUFFER * n_ * cFp32AlignFull                 // xQue_ (fp32, 跨阶段复用)
       + DOUBLE_BUFFER * n_ * cFp32AlignFull * 2             // xFp32Que_ + gradXFromHinQue_
-      + DOUBLE_BUFFER * cFp16AlignFull                       // gradHinQue_
-      + DOUBLE_BUFFER * n_ * cFp32AlignFull;                 // gradXFromMatmulQue_ (PhaseE)
+      + DOUBLE_BUFFER * n_ * cFp32AlignFull                 // gradHinQue_ (fp32, 跨阶段复用)
+      + DOUBLE_BUFFER * n_ * cFp32AlignFull;                // gradXFromMatmulQue_ (PhaseE)
 
     // --- 场景判断 ---
     int64_t perBsCostC;
@@ -232,9 +233,9 @@ void MhcPreSinkhornBackwardArch35DeterminiticTiling::DoUbTiling()
         int64_t cFp16Align = AlignB32(ubFactorC_ * BF16_BYTE_SIZE);
         int64_t cFp32Align = AlignB32(ubFactorC_ * FP32_BYTE_SIZE);
         perBsCostC =
-            DOUBLE_BUFFER * n_ * cFp16Align
+            DOUBLE_BUFFER * n_ * cFp32Align
           + DOUBLE_BUFFER * n_ * cFp32Align * 2
-          + DOUBLE_BUFFER * cFp16Align
+          + DOUBLE_BUFFER * n_ * cFp32Align
           + DOUBLE_BUFFER * n_ * cFp32Align;
     }
 
