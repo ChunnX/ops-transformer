@@ -768,8 +768,10 @@ def tilelang_grad_kl_loss_single_kernel(
 
             # ============================================================
             # V scope 3: Cast dQueryIndex (向量化大块 copy→cast→copy)
-            #   每个 AIV 一次性搬运全部连续行，无需循环、buffer 不复用、无 flag 同步。
+            #   每个 AIV 一次性搬运全部连续行。无 g_id/d_idx 循环，无 if 分支。
             #   vid0 → 前半 [0, _v3_half)，vid1 → 后半 [_v3_half, v3_chunks)
+            #   同步: mte2→v{0} (RAW copy→cast), v→mte3{1} (RAW cast→copy)
+            #         v→mte2{2} (WAR cast读完→copy写), mte3→v{4} (WAR copy读完→cast写)
             # ============================================================
             with T.Scope("V"):
                 T.wait_cross_flag(3)
@@ -781,12 +783,33 @@ def tilelang_grad_kl_loss_single_kernel(
                 dq_fp32_ub = T.alloc_ub((_v3_my_rows, DQueryIndex), calc_dtype)
                 dq_fp16_ub = T.alloc_ub((_v3_my_rows, DQueryIndex), input_dtype)
 
+                # Pre-fill WAR: buffer 初始可写
+                T.set_flag("v", "mte2", 2)
+                T.set_flag("mte3", "v", 4)
+
                 for s1_row in T.serial(s1_start, s1_end):
+                    # --- copy gm→ub (MTE2) ---
+                    T.wait_flag("v", "mte2", 2)   # WAR: 上轮 cast 已读完 dq_fp32_ub
                     T.copy(dQueryIndexAccum[bz, s1_row, _v3_my_g_start:_v3_my_g_start + _v3_my_rows, 0:DQueryIndex],
                            dq_fp32_ub)
+                    T.set_flag("mte2", "v", 0)     # RAW: copy 完成 → cast 可读
+
+                    # --- cast fp32→fp16 (Vector) ---
+                    T.wait_flag("mte2", "v", 0)    # RAW: copy 完成
+                    T.wait_flag("mte3", "v", 4)    # WAR: 上轮 mte3 copy 已读完 dq_fp16_ub
                     T.tile.cast(dq_fp16_ub, dq_fp32_ub, "CAST_ROUND", _v3_my_rows * DQueryIndex)
+                    T.set_flag("v", "mte2", 2)     # WAR: cast 读完 dq_fp32_ub → 下轮 copy 可写
+                    T.set_flag("v", "mte3", 1)     # RAW: cast 完成 → mte3 copy 可读
+
+                    # --- copy ub→gm (MTE3) ---
+                    T.wait_flag("v", "mte3", 1)    # RAW: cast 完成
                     T.copy(dq_fp16_ub,
                            dQueryIndex[bz, s1_row, _v3_my_g_start:_v3_my_g_start + _v3_my_rows, 0:DQueryIndex])
+                    T.set_flag("mte3", "v", 4)     # WAR: copy 读完 dq_fp16_ub → 下轮 cast 可写
+
+                # Clear: 排空残留 WAR
+                T.wait_flag("v", "mte2", 2)
+                T.wait_flag("mte3", "v", 4)
 
             # ============================================================
             # V scope 4: Scatter dk_matmul_partial → dKeyIndex（按 sparse idx）
@@ -802,7 +825,7 @@ def tilelang_grad_kl_loss_single_kernel(
                 # k_id 区间对半分配给两个 AIV
                 # vid=0: [k_start, k_start+k_half),  vid=1: [k_start+k_half, k_end)
                 k_len = k_end - k_start
-                k_half = k_len // 2
+                k_half = k_len >> 1  # floor(k_len/2), 避免 runtime //
                 my_start = k_start + vid * k_half
                 my_end = k_start + k_half + vid * (k_len - k_half)
 
