@@ -38,9 +38,9 @@
 > [!NOTE]
 >
 > q、k、v数据排布格式支持从多种维度解读，其中B（Batch）表示输入样本批量大小batch_size、S（Seq-Length）表示输入样本序列长度、N（Head-Num）表示多头数、D（Head-Dim）表示隐藏层最小的单元尺寸headdim。
-> Q_S表示seqlen_q，Q_N表示nheads_q，KV_S表示seqlen_kv，KV_N表示nheads_kv。
+> Q_S表示seqlen_q，Q_N表示nheads_q，Q_D表示dheads_q，KV_S表示seqlen_kv，KV_N表示nheads_kv，KV_D表示dheads_kv。
 >
-> `cmp_residual_kv`同时是`mixed_quant_sparse_flash_mla`和`mixed_quant_sparse_flash_mla_metadata`的可选输入。该参数用于恢复压缩前KV长度：`ori_len_for_cmp_mask = cmp_len * cmp_ratio + cmp_residual_kv[b]`。
+> `cmp_residual_kv`同时是`mixed_quant_sparse_flash_mla`和`mixed_quant_sparse_flash_mla_metadata`的可选输入。该参数用于恢复压缩前KV长度：`ori_len_for_cmp_mask[b] = cmp_len[b] * cmp_ratio + cmp_residual_kv[b]`。
 
 ## 函数原型
 
@@ -142,12 +142,12 @@ cann_ops_transformer.ops.mixed_quant_sparse_flash_mla(
 | max_seqlen_q | int | 可选 | 指定查询q序列的长度上限 | int32 | - | - | - |
 | max_seqlen_ori_kv | int | 可选 | 指定ori_kv序列的长度上限 | int32 | - | - | - |
 | max_seqlen_cmp_kv | int | 可选 | 指定cmp_kv序列的长度上限 | int32 | - | - | - |
-| ori_topk | int | 可选 | 预留参数，当前不生效，表示ori_kv中筛选出的关键稀疏token的个数，0表示非稀疏场景。默认值为0 | int32 | - | - | - |
-| cmp_topk | int | 可选 | 表示cmp_kv中筛选出的关键稀疏token的个数。默认值为0 | int32 | - | - | - |
+| ori_topk | int | 可选 | 表示ori_kv中筛选出的关键稀疏token的个数，0表示非稀疏场景。默认值为0 | int32 | - | - | - |
+| cmp_topk | int | 可选 | 表示cmp_kv中筛选出的关键稀疏token的个数。0表示非稀疏场景。默认值为0 | int32 | - | - | - |
 | rope_head_dim | int | 可选 | rope头的维度。默认值为64 | int32 | - | - | - |
 | cmp_ratio | int | 可选 | 表示对cmp_kv的压缩率。默认值为1 | int32 | - | - | - |
-| ori_mask_mode | int | 可选 | 表示q和ori_kv计算的mask模式。0：No mask。3：rightDownCausal模式。4：sliding window模式。默认值为0 | int32 | - | - | - |
-| cmp_mask_mode | int | 可选 | 表示q和cmp_kv计算的mask模式。0：No mask。3：rightDownCausal模式。默认值为0 | int32 | - | - | - |
+| ori_mask_mode | int | 可选 | 表示ori_kv计算的mask模式。0：No mask。3：rightDownCausal模式。4：sliding window模式。默认值为0 | int32 | - | - | - |
+| cmp_mask_mode | int | 可选 | 表示cmp_kv计算的mask模式。0：No mask。3：rightDownCausal模式。默认值为0 | int32 | - | - | - |
 | ori_win_left | int | 可选 | 表示q和ori_kv计算中q对过去token计算的数量，-1表示无穷大。默认值为-1 | int32 | - | - | - |
 | ori_win_right | int | 可选 | 表示q和ori_kv计算中q对未来token计算的数量，-1表示无穷大。默认值为-1 | int32 | - | - | - |
 | layout_q | string | 可选 | 定义输入q张量的布局格式 | string | - | - | - |
@@ -160,7 +160,7 @@ cann_ops_transformer.ops.mixed_quant_sparse_flash_mla(
 | 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 数据格式 | 维度 | 非连续Tensor |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | q | Tensor | 必选 | 公式中的q | bfloat16 | ND |  <ul><li>(B, Q_N, Q_S, D)</li><li>(Q_T, Q_N, D)</li></ul> | × |
-| quant_mode | int | 必选 | 表示量化模式。量化模式1表示K、V nope为per-token-group量化，K、V依次由rope（64，bfloat16）、nope（448，FLOAT8_E4M3FN）、scale（7，bfloat16）、pad（18B）拼接而成；量化模式2表示K、V nope为per-token-group量化，K、V依次由nope（448，FLOAT8_E4M3FN）、rope（64，bfloat16）、scale（7，FLOAT8_E8M0）、pad（1B）拼接而成。当前仅支持1和2 | int32 | - | - | - |
+| quant_mode | int | 必选 | 表示量化模式。当前仅支持1和2 | int32 | - | - | - |
 | ori_kv | Tensor | 可选 | 原始量化KV输入，Key和Value共享同一份数据。 | fp8_e4m3 | ND | <ul><li>(B, KV_S, KV_N, D)</li><li>(B, KV_N, KV_S, D)</li><li>(KV_T, KV_N, D)</li><li>(block_nums, block_size, KV_N, D)</li></ul> | × |
 | cmp_kv | Tensor | 可选 | 压缩量化KV输入，Key和Value共享同一份数据。 | fp8_e4m3 | ND | <ul><li>(B, KV_S, KV_N, D)</li><li>(B, KV_N, KV_S, D)</li><li>(KV_T, KV_N, D)</li><li>(block_nums, block_size, KV_N, D)</li></ul> | × |
 | ori_sparse_indices | Tensor | 可选 | 原始KV稀疏索引，无效位置填-1 | int32 | ND | <ul><li>(Q_T, KV_N, K)</li><li>(B, Q_S, KV_N, K)</li></ul> | × |
@@ -270,6 +270,14 @@ cann_ops_transformer.ops.mixed_quant_sparse_flash_mla(
 |      Q_D      |          输入q tensor以及输出attention_out隐藏层最小的单元尺寸headdim         |
 |      KV_D      |          输入ori_kv/cmp_kv tensor隐藏层最小的单元尺寸headdim         |
 
+### 典型场景说明
+|    命名    |                            必传参数                           |
+| :---------: | :---------------------------------------------------------: |
+|      SWA      |                ori_kv                |
+|      HCA      |                ori_kv、cmp_kv                |
+|      CSA      |                ori_kv、cmp_kv、cmp_sparse_indices                |
+|      ALL_CSA      |                ori_kv、cmp_kv、cmp_sparse_indices、ori_sparse_indices                |
+
 ### 参数组约束
 
 #### 公共参数组
@@ -376,14 +384,10 @@ cann_ops_transformer.ops.mixed_quant_sparse_flash_mla(
 </table>
 layout匹配关系表：
 <table style="undefined;table-layout: fixed; width:1625px"><colgroup>
-<col style="width: 247px">
-<col style="width: 132px">
-<col style="width: 232px">
-<col style="width: 293px">
-<col style="width: 185px">
-<col style="width: 119px">
-<col style="width: 272px">
-<col style="width: 145px">
+<col style="width: 400px">
+<col style="width: 400px">
+<col style="width: 400px">
+<col style="width: 400px">
 </colgroup>
 <thead>
 <tr>
@@ -446,6 +450,385 @@ metadata校验
             <td>可选参数</td>
             <td>无</td>
             <td>传入时需与flash_attn_metadata生成的结果一致</td>
+        </tr>
+    </tbody>
+</table>
+
+#### mask_mode参数组
+<ul>
+    <li>ori_mask_mode/cmp_mask_mode=0，全计算模式（默认值）</li>
+    <li>ori_mask_mode/cmp_mask_mode=3，Causal模式</li>
+    <li>ori_mask_mode=4，SlidingWindow模式</li>
+</ul>
+
+<table style="undefined;table-layout: fixed; width:1625px">
+    <colgroup>
+        <col style="width: 147px">
+        <col style="width: 232px">
+        <col style="width: 200px">
+        <col style="width: 100px">
+        <col style="width: 200px">
+    </colgroup>
+    <thead>
+        <tr>
+            <th>参数</th>
+            <th>单参数校验</th>
+            <th>存在性校验</th>
+            <th>一致性校验</th>
+            <th>特性交叉校验</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+            <td>ori_mask_mode</td>
+            <td>
+                <ul>
+                    <li>data_type支持INT</li>
+                    <li>支持输入范围仅为0、3、4，默认值为0</li>
+                </ul>
+            </td>
+            <td>
+                可选输入，如果不传该参数，默认值为0
+            </td>
+            <td>
+                <ul>
+                    无
+                </ul>
+            </td>
+            <td>
+                <ul>
+                    <li>只有ALL_CSA情景下，cmp_mask_mode为0和ori_mask_mode必须为0</li>
+                    <li>SWA场景下，ori_mask_mode为3、4</li>
+                </ul>
+            </td>
+        </tr>
+        <tr>
+            <td>cmp_mask_mode</td>
+            <td>
+                <ul>
+                    <li>data_type支持INT</li>
+                    <li>支持输入范围仅为0、3，默认值为0</li>
+                </ul>
+            </td>
+            <td>
+                可选输入，如果不传该参数，默认值为0
+            </td>
+            <td>
+                <ul>
+                    无
+                </ul>
+            </td>
+            <td>
+                    <li>只有ALL_CSA情景下，cmp_mask_mode为0和ori_mask_mode必须为0</li>
+                    <li>SWA情景下，cmp_mask_mode必须为默认值0</li>
+                    <li>当ori_mask_mode为3时，cmp_mask_mode必须为3</li>
+                    <li>当ori_mask_mode为4时，cmp_mask_mode必须为3</li>
+            </td>
+        </tr>
+        <tr>
+            <td>ori_win_left</td>
+            <td>
+                <ul>
+                    <li>data_type支持INT</li>
+                    <li>支持输入范围仅为-1，>=0</li>
+                </ul>
+            </td>
+            <td>
+                可选输入，如果不传该参数，默认值为-1
+            </td>
+            <td>
+                <ul>
+                    无
+                </ul>
+            </td>
+            <td>
+                    <li>只有ori_mask_mode为4时，ori_win_left可以>=0</li>
+            </td>
+        </tr>
+        <tr>
+            <td>ori_win_right</td>
+            <td>
+                <ul>
+                    <li>data_type支持INT</li>
+                    <li>支持输入范围仅为-1，>=0</li>
+                </ul>
+            </td>
+            <td>
+                可选输入，如果不传该参数，默认值为-1
+            </td>
+            <td>
+                <ul>
+                    无
+                </ul>
+            </td>
+            <td>
+                    <li>只有ori_mask_mode为4时，ori_win_right可以>=0</li>
+            </td>
+        </tr>
+    </tbody>
+</table>
+
+
+#### SeqLens参数组
+
+<table style="undefined;table-layout: fixed; width:1625px">
+    <colgroup>
+        <col style="width: 147px">
+        <col style="width: 232px">
+        <col style="width: 232px">
+        <col style="width: 293px">
+        <col style="width: 185px">
+    </colgroup>
+    <thead>
+        <tr>
+            <th>参数</th>
+            <th>单参数校验</th>
+            <th>存在性校验</th>
+            <th>一致性校验</th>
+            <th>特性交叉校验</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+            <td>seqused_q</td>
+            <td >
+                <ul>
+                    <li>tensor_type支持INT32</li>
+                    <li>tensor_shape为(B,)</li>
+                    <li>仅支持非负整数</li>
+                    <li>seqused_q中的值需小于等于Q_S</li>
+                </ul>
+            </td>
+            <td>当layout_q为BSND时，必须传入</td>
+            <td>无</td>
+            <td>无</td>
+        </tr>
+        <tr>
+            <td>seqused_ori_kv</td>
+            <td >
+                <ul>
+                    <li>tensor_type支持INT32</li>
+                    <li>tensor_shape为(B,)</li>
+                    <li>仅支持非负整数</li>
+                    <li>seqused_ori_kv中的值需小于等于KV_S</li>
+                </ul>
+            </td>
+            <td >
+                <ul>
+                    <li>当layout_kv为BSND时，必须传入(待确认，可以不传，S为每个batch)</li>
+                    <li>当layout_kv为PA_BBND时，必须传入</li>
+                </ul>
+            </td>
+            <td>无</td>
+            <td>无</td>
+        </tr>
+        <tr>
+            <td>seqused_cmp_kv</td>
+            <td >
+                <ul>
+                    <li>tensor_type支持INT32</li>
+                    <li>tensor_shape为(B,)</li>
+                    <li>仅支持非负整数</li>
+                    <li>seqused_ori_kv中的值需小于等于KV_S</li>
+                </ul>
+            </td>
+            <td>当layout_kv为BSND时且非SWA场景下，必须传入</td>
+            <td>无</td>
+            <td>无</td>
+        </tr>
+        <tr>
+            <td>cu_seqlens_q</td>
+            <td>
+                <ul>
+                    <li>tensor_type支持INT32</li>
+                    <li>tensor_shape为(B+1,)</li>
+                    <li>值仅支持非负整数</li>
+                    <li>其值应非递减（大于等于前一个值）排列，第一个元素为0且最后一个元素等于Q_T</li>
+                </ul>
+            </td>
+            <td>
+                <ul>
+                    <li>当layout_q为TND时，必须传入</li>
+                    <li>当layout_q不为TND时，不支持传入</li>
+                </ul>
+            </td>
+            <td>无</td>
+            <td>无</td>
+        </tr>
+        <tr>
+            <td>cu_seqlens_ori_kv</td>
+            <td>
+                <ul>
+                    <li>tensor_type支持INT32</li>
+                    <li>tensor_shape为(B+1,)</li>
+                    <li>值仅支持非负整数</li>
+                    <li>其值应非递减（大于等于前一个值）排列，第一个元素为0且最后一个元素等于KV_T</li>
+                </ul>
+            </td>
+            <td>
+                <ul>
+                    <li>当layout_kv为TND时，必须传入</li>
+                    <li>当layout_kv不为TND时，不支持传入</li>
+                </ul>
+            </td>
+            <td>无</td>
+            <td>无</td>
+        </tr>
+        <tr>
+            <td>cu_seqlens_cmp_kv</td>
+            <td>
+                <ul>
+                    <li>tensor_type支持INT32</li>
+                    <li>tensor_shape为(B+1,)</li>
+                    <li>值仅支持非负整数</li>
+                    <li>其值应非递减（大于等于前一个值）排列，第一个元素为0且最后一个元素等于KV_T</li>
+                </ul>
+            </td>
+            <td>
+                <ul>
+                    <li>当layout_kv为TND时，必须传入</li>
+                    <li>当layout_kv不为TND时，不支持传入</li>
+                </ul>
+            </td>
+            <td>无</td>
+            <td>无</td>
+        </tr>
+    </tbody>
+</table>
+
+#### 稀疏压缩参数组
+
+<table style="undefined;table-layout: fixed; width:1625px">
+    <colgroup>
+        <col style="width: 147px">
+        <col style="width: 232px">
+        <col style="width: 232px">
+        <col style="width: 293px">
+        <col style="width: 185px">
+    </colgroup>
+    <thead>
+        <tr>
+            <th>参数</th>
+            <th>单参数校验</th>
+            <th>存在性校验</th>
+            <th>一致性校验</th>
+            <th>特性交叉校验</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+            <td>cmp_ratio</td>
+            <td>
+                <ul>
+                    <li>data_type支持INT</li>
+                    <li>表示cmp_kv相对于压缩前KV长度的压缩倍率，需大于0</li>
+                    <li>默认值为1</li>
+                </ul>
+            </td>
+            <td>可选属性，默认值为1</td>
+            <td>无</td>
+            <td>
+                <ul>
+                    <li>配合cmp_residual_kv使用，用于恢复cmp侧mask使用的压缩前KV长度</li>
+                    <li>在SWA场景，仅支持默认值1。</li>
+                    <li>在CSA\HCA场景，支持1-128。</li>
+                </ul>
+            </td>
+        </tr>
+        <tr>
+            <td>cmp_residual_kv</td>
+            <td>
+                <ul>
+                    <li>tensor_type支持INT32</li>
+                    <li>tensor_shape为(B,)</li>
+                    <li>值仅支持非负整数</li>
+                </ul>
+            </td>
+            <td>无</td>
+            <td>
+                <ul>
+                    <li>配合cmp_ratio使用，用于恢复压缩前KV长度</li>
+                </ul>
+            </td>
+            <td>无</td>
+        </tr>
+        <tr>
+            <td>ori_sparse_indices</td>
+            <td>
+                <ul>
+                    <li>tensor_type支持INT32</li>
+                    <li>tensor_shape为(Q_T, KV_N, K1)或(B, Q_S, KV_N, K1)</li>
+                    <li>无效位置填-1，其余为非负整数</li>
+                </ul>
+            </td>
+            <td>
+                <ul>
+                    <li>可选参数</li>
+                    <li>在CSA情景下，该参数必传。</li>
+                </ul>
+            </td>
+            <td>
+                <ul>
+                    <li>当layout_q为TND时，该tensor_shape为(Q_T, KV_N, K1)</li>
+                    <li>当layout_q为BSND时，该tensor_shape为(B, Q_S, KV_N, K1)</li>
+                </ul>
+            </td>
+            <td>无</td>
+        </tr>
+        <tr>
+            <td>cmp_sparse_indices</td>
+            <td>
+                <ul>
+                    <li>tensor_type支持INT32</li>
+                    <li>tensor_shape为(Q_T, KV_N, K2)或(B, Q_S, KV_N, K2)</li>
+                    <li>无效位置填-1，其余为非负整数</li>
+                </ul>
+            </td>
+            <td>
+                <ul>
+                    <li>可选参数</li>
+                    <li>在CSA情景下，该参数必传。</li>
+                </ul>
+            </td>
+            <td>
+                <ul>
+                    <li>当layout_q为TND时，该tensor_shape为(Q_T, KV_N, K2)</li>
+                    <li>当layout_q为BSND时，该tensor_shape为(B, Q_S, KV_N, K2)</li>
+                </ul>
+            </td>
+            <td>无</td>
+        </tr>
+        <tr>
+            <td>ori_topk_length</td>
+            <td rowspan="2">
+                <ul>
+                    <li>tensor_type支持INT32</li>
+                    <li>tensor_shape为(B, Q_S, KV_N)或(Q_T, KV_N)</li>
+                </ul>
+            </td>
+            <td rowspan="2">可选参数</td>
+            <td rowspan="2">
+                <ul>
+                    <li>当layout_q为TND时，该tensor_shape为(Q_T, KV_N)</li>
+                    <li>当layout_q为BSND时，该tensor_shape为(B, Q_S, KV_N)</li>
+                </ul>
+            </td>
+            <td rowspan="2">无</td>
+        </tr>
+        <tr>
+            <td>cmp_topk_length</td>
+        </tr>
+        <tr>
+            <td>topk_value_mode</td>
+            <td>
+                <ul>
+                    <li>data_type支持INT</li>
+                    <li>TopK索引取值模式，默认值为1</li>
+                </ul>
+            </td>
+            <td>可选属性，默认值为1</td>
+            <td>无</td>
+            <td>无</td>
         </tr>
     </tbody>
 </table>
