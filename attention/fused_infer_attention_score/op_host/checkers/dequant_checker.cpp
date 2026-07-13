@@ -1669,82 +1669,59 @@ ge::graphStatus DequantChecker::CheckStrideFP8GQAFullquant(const FiaTilingInfo &
     if (fiaInfo.isTensorV1) {
         return ge::GRAPH_SUCCESS;
     }
-  
-    const uint64_t scaleRows = (static_cast<uint64_t>(fiaInfo.blockSize) * sizeof(float)) /
-        (static_cast<uint64_t>(fiaInfo.qkHeadDim) * sizeof(uint8_t));
-    const uint64_t kCacheBlockRows = static_cast<uint64_t>(fiaInfo.blockSize) + scaleRows;
-    const uint64_t vCacheBlockRows = static_cast<uint64_t>(fiaInfo.blockSize) + scaleRows;
 
-    // key_antiquant_scale BnNBs
+    // key_antiquant_scale BnNBs: 只校验BS轴 stride[2]==1
     OP_CHECK_IF(fiaInfo.kScaleStrides == nullptr,
                 OP_LOGE(fiaInfo.opName,
-                        "In FP8 GQA fullquant scenario, key_antiquant_scale stride is nullptr"),
+                        "In FP8 GQA fullquant scenario, dequant_scale_key stride is nullptr"),
                 return ge::GRAPH_FAILED);
-    uint64_t kScaleStride1 = kCacheBlockRows * static_cast<uint64_t>(fiaInfo.qkHeadDim) / sizeof(float);
-    uint64_t kScaleStride0 = static_cast<uint64_t>(fiaInfo.n2Size) * kScaleStride1;
-    if (fiaInfo.kScaleStrides->GetDimNum() != 3 ||
-        fiaInfo.kScaleStrides->GetStride(2) != 1 ||
-        fiaInfo.kScaleStrides->GetStride(1) != kScaleStride1 ||
-        fiaInfo.kScaleStrides->GetStride(0) != kScaleStride0) {
-        std::string expStr = "(" + std::to_string(kScaleStride0) + ", " +
-            std::to_string(kScaleStride1) + ", 1)";
-        std::string actStr = "(" +
-            std::to_string(fiaInfo.kScaleStrides->GetStride(0)) + ", " +
-            std::to_string(fiaInfo.kScaleStrides->GetStride(1)) + ", " +
-            std::to_string(fiaInfo.kScaleStrides->GetStride(2)) + ")";
-        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "key_antiquant_scale",
-            ("stride is " + actStr + ", should be " + expStr).c_str());
-        return ge::GRAPH_FAILED;
+    if (fiaInfo.kScaleStrides->GetDimNum() >= 2) {
+        if (fiaInfo.kScaleStrides->GetStride(2) != 1) {
+            std::string expStr = "(..., ..., 1)";
+            std::string actStr = "(..., ..., " +
+                std::to_string(fiaInfo.kScaleStrides->GetStride(2)) + ")";
+            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "dequant_scale_key",
+                ("dequant_scale_key stride is " + actStr + ", expected " + expStr).c_str());
+            return ge::GRAPH_FAILED;
+        }
     }
 
-    // key BNBD
+    // key BnNBsD: 只校验BS轴 stride[2]==qkHeadDim 和 D轴 stride[3]==1
     OP_CHECK_IF(fiaInfo.keyStrides == nullptr,
                 OP_LOGE(fiaInfo.opName,
                         "In FP8 GQA fullquant scenario, key stride is nullptr"),
                 return ge::GRAPH_FAILED);
-    uint64_t keyStride1 = kCacheBlockRows * static_cast<uint64_t>(fiaInfo.qkHeadDim);
-    uint64_t keyStride0 = static_cast<uint64_t>(fiaInfo.n2Size) * keyStride1;
-    if (fiaInfo.keyStrides->GetDimNum() != 4 ||
-        fiaInfo.keyStrides->GetStride(3) != 1 ||
-        fiaInfo.keyStrides->GetStride(2) != static_cast<uint64_t>(fiaInfo.qkHeadDim) ||
-        fiaInfo.keyStrides->GetStride(1) != keyStride1 ||
-        fiaInfo.keyStrides->GetStride(0) != keyStride0) {
-        std::string expStr = "(" + std::to_string(keyStride0) + ", " +
-            std::to_string(keyStride1) + ", " +
-            std::to_string(fiaInfo.qkHeadDim) + ", 1)";
-        std::string actStr = "(" +
-            std::to_string(fiaInfo.keyStrides->GetStride(0)) + ", " +
-            std::to_string(fiaInfo.keyStrides->GetStride(1)) + ", " +
-            std::to_string(fiaInfo.keyStrides->GetStride(2)) + ", " +
-            std::to_string(fiaInfo.keyStrides->GetStride(3)) + ")";
-        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "key",
-            ("stride is " + actStr + ", should be " + expStr).c_str());
-        return ge::GRAPH_FAILED;
+    if (fiaInfo.keyStrides->GetDimNum() >= 4) {
+        const uint64_t expectedBs = static_cast<uint64_t>(fiaInfo.qkHeadDim);
+        if (fiaInfo.keyStrides->GetStride(3) != 1 ||
+            fiaInfo.keyStrides->GetStride(2) != expectedBs) {
+            std::string expStr = "(..., ..., " + std::to_string(expectedBs) + ", 1)";
+            std::string actStr = "(..., ..., " +
+                std::to_string(fiaInfo.keyStrides->GetStride(2)) + ", " +
+                std::to_string(fiaInfo.keyStrides->GetStride(3)) + ")";
+            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "key",
+                ("key stride is " + actStr + ", expected " + expStr).c_str());
+            return ge::GRAPH_FAILED;
+        }
     }
 
-    // value BNBD
+    // value BnNBsD: 只校验BS轴 stride[2]==vHeadDim 和 D轴 stride[3]==1
     OP_CHECK_IF(fiaInfo.valueStrides == nullptr,
                 OP_LOGE(fiaInfo.opName,
                         "In FP8 GQA fullquant scenario, value stride is nullptr"),
                 return ge::GRAPH_FAILED);
-    uint64_t valStride1 = vCacheBlockRows * static_cast<uint64_t>(fiaInfo.vHeadDim);
-    uint64_t valStride0 = static_cast<uint64_t>(fiaInfo.n2Size) * valStride1;
-    if (fiaInfo.valueStrides->GetDimNum() != 4 ||
-        fiaInfo.valueStrides->GetStride(3) != 1 ||
-        fiaInfo.valueStrides->GetStride(2) != static_cast<uint64_t>(fiaInfo.vHeadDim) ||
-        fiaInfo.valueStrides->GetStride(1) != valStride1 ||
-        fiaInfo.valueStrides->GetStride(0) != valStride0) {
-        std::string expStr = "(" + std::to_string(valStride0) + ", " +
-            std::to_string(valStride1) + ", " +
-            std::to_string(fiaInfo.vHeadDim) + ", 1)";
-        std::string actStr = "(" +
-            std::to_string(fiaInfo.valueStrides->GetStride(0)) + ", " +
-            std::to_string(fiaInfo.valueStrides->GetStride(1)) + ", " +
-            std::to_string(fiaInfo.valueStrides->GetStride(2)) + ", " +
-            std::to_string(fiaInfo.valueStrides->GetStride(3)) + ")";
-        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "value",
-            ("stride is " + actStr + ", should be " + expStr).c_str());
-        return ge::GRAPH_FAILED;
+    if (fiaInfo.valueStrides->GetDimNum() >= 4) {
+        const uint64_t expectedBs = static_cast<uint64_t>(fiaInfo.vHeadDim);
+        if (fiaInfo.valueStrides->GetStride(3) != 1 ||
+            fiaInfo.valueStrides->GetStride(2) != expectedBs) {
+            std::string expStr = "(..., ..., " + std::to_string(expectedBs) + ", 1)";
+            std::string actStr = "(..., ..., " +
+                std::to_string(fiaInfo.valueStrides->GetStride(2)) + ", " +
+                std::to_string(fiaInfo.valueStrides->GetStride(3)) + ")";
+            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "value",
+                ("value stride is " + actStr + ", expected " + expStr).c_str());
+            return ge::GRAPH_FAILED;
+        }
     }
 
     return ge::GRAPH_SUCCESS;
