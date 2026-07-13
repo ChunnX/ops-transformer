@@ -22,7 +22,6 @@
 #include "../common/a2av_common_tiling.h"
 #include "a2av_comm_guard.h"
 #include "a2av_comm_params.h"
-#include "a2av_permute_engine.h"
 
 using namespace AscendC;
 
@@ -64,8 +63,6 @@ public:
     __aicore__ inline void InitScaleBuffer(GM_ADDR sendBuffer, GM_ADDR commOutBuffer, GM_ADDR permuteOutBuffer);
     __aicore__ inline void LaunchCommScale(uint32_t startExpertIdx, uint32_t expertNum);
     __aicore__ inline void LaunchCommData(uint32_t startExpertIdx, uint32_t expertNum);
-    __aicore__ inline void PermuteScale(uint32_t startExpertIdx, uint32_t expertNum);
-    __aicore__ inline void PermuteScale();
     __aicore__ inline void Launch(uint32_t startExpertIdx, uint32_t expertNum);
     __aicore__ inline void LaunchScaleBeforeCompute(uint32_t startExpertIdx, uint32_t expertNum);
     __aicore__ inline void WaitScale(uint32_t startExpertIdx);
@@ -105,15 +102,7 @@ private:
     HcclHandle alltoAllvScaleHandleId_[MAX_HANDLE_ID_NUM] = {INVALID_HANDLE_ID};
     HcclDataType hcclDataType_ = HCCL_DATA_TYPE_FP16;
 
-    TBuf<QuePosition::VECIN> permuteTBuf_;
-    TBuf<QuePosition::VECIN> permuteTBuf2_;
-    int32_t eventID_ = 0;
-
     uint32_t aivCoreNum_ = 40U;
-    bool permuteBufInitialized_ = false;
-
-    uint64_t permuteBaseOffset_ = 0UL;
-    uint64_t scalePermuteBaseOffset_ = 0UL;
 };
 
 template <typename hcclDataType, bool commBeforeComputeFlag, int commMode>
@@ -198,31 +187,6 @@ __aicore__ inline void HcclA2avOp<hcclDataType, commBeforeComputeFlag, commMode>
             dataCommParams_.sendOffset, hcclDataType_,
         (__gm__ uint8_t *)recvGlobalBuffer_.GetPhyAddr(), dataCommParams_.recvCnt,
             dataCommParams_.recvOffset, hcclDataType_);
-}
-
-template <typename hcclDataType, bool commBeforeComputeFlag, int commMode>
-__aicore__ inline void HcclA2avOp<hcclDataType, commBeforeComputeFlag, commMode>::PermuteScale(
-    uint32_t startExpertIdx, uint32_t expertNum)
-{
-    A2AV_AIV_ALL();
-    if (!permuteBufInitialized_) {
-        TPipe *pipe = GetTPipePtr();
-        pipe->InitBuffer(permuteTBuf_, bufferLen_);
-        pipe->InitBuffer(permuteTBuf2_, bufferLen_);
-        permuteBufInitialized_ = true;
-    }
-    uint64_t axis = CeilDiv(H1_, SCALE_ALIGNMENT_BLOCK_SIZE) * 2;
-    PermuteImplParallel<fp8_e8m0_t, false, true>(
-        recvScaleGlobalBuffer_, scalePermuteOutBuffer_,
-        recvCounts_, e_, rankDim_, startExpertIdx, expertNum,
-        axis, scalePermuteBaseOffset_, permuteTBuf_, permuteTBuf2_, bufferLen_, eventID_,
-        aivCoreNum_);
-}
-
-template <typename hcclDataType, bool commBeforeComputeFlag, int commMode>
-__aicore__ inline void HcclA2avOp<hcclDataType, commBeforeComputeFlag, commMode>::PermuteScale()
-{
-    PermuteScale(0, e_);
 }
 
 template <typename hcclDataType, bool commBeforeComputeFlag, int commMode>
