@@ -239,8 +239,62 @@ run_script_load() {
         exit 1
     fi
 
-    # 运行脚本，传递环境变量
-    python3 -m pytest -rA -s test_sparse_flash_mla_batch.py  -v -m ci
+    # 获取用例目录
+    LOAD_DIR="${SMLA_PT_LOAD_PATH:-./data}"
+    if [ ! -d "$LOAD_DIR" ]; then
+        echo "错误: 用例目录不存在: $LOAD_DIR"
+        exit 1
+    fi
+
+    mapfile -t CASE_FILES < <(find "$LOAD_DIR" -maxdepth 1 -name "*.pt" | sort)
+    TOTAL=${#CASE_FILES[@]}
+    if [ "$TOTAL" -eq 0 ]; then
+        echo "错误: 目录 $LOAD_DIR 下未找到 .pt 用例"
+        exit 1
+    fi
+
+    echo "共发现 $TOTAL 条用例, 目录: $LOAD_DIR"
+    echo "开始隔离批量执行（每条用例独立 pytest 进程）..."
+
+    PASS=0
+    FAIL=0
+    FAIL_LIST=()
+    SUMMARY_LOG="batch_summary.log"
+    FAIL_LOG="batch_fail_list.log"
+    : > "$SUMMARY_LOG"
+    : > "$FAIL_LOG"
+
+    i=0
+    for case_file in "${CASE_FILES[@]}"; do
+        i=$((i+1))
+        case_name=$(basename "$case_file")
+        echo -e "\n===== [$i/$TOTAL] 执行用例: $case_name =====" | tee -a "$SUMMARY_LOG"
+
+        QSAS_TESTCASE_PATH="$case_file" python3 -m pytest -rA -s test_sparse_flash_mla_batch.py -v -m ci 2>&1 | tee -a "$SUMMARY_LOG"
+        status=${PIPESTATUS[0]}
+
+        if [ "$status" -eq 0 ]; then
+            PASS=$((PASS+1))
+            echo "[PASS] $case_name" | tee -a "$SUMMARY_LOG"
+        else
+            FAIL=$((FAIL+1))
+            FAIL_LIST+=("$case_name")
+            echo "[FAIL] $case_name" | tee -a "$SUMMARY_LOG"
+            echo "$case_name" >> "$FAIL_LOG"
+        fi
+    done
+
+    echo -e "\n========== 批量执行汇总 ==========" | tee -a "$SUMMARY_LOG"
+    echo "总计: $TOTAL  通过: $PASS  失败: $FAIL" | tee -a "$SUMMARY_LOG"
+    if [ "$FAIL" -gt 0 ]; then
+        echo "失败用例:" | tee -a "$SUMMARY_LOG"
+        for f in "${FAIL_LIST[@]}"; do
+            echo "  - $f" | tee -a "$SUMMARY_LOG"
+        done
+    fi
+    echo "详细日志:  $SUMMARY_LOG"
+    echo "失败清单:  $FAIL_LOG"
+    echo "结果表格:  ${SMLA_RESULT_SAVE_PATH:-./result/smla_result.xlsx}"
 }
 
 # 根据脚本类型调用相应的函数
