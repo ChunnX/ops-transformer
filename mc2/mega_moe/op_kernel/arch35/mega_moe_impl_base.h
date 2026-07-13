@@ -21,6 +21,7 @@ constexpr uint32_t ALIGN32 = 32U;
 constexpr uint32_t L1_TILE_M_256 = 256;
 constexpr uint32_t L1_TILE_M_128 = 128;
 constexpr uint32_t L1_TILE_N = 256;
+constexpr uint32_t GMM1_NON_INTERLEAVED_TILE_N = 128;
 constexpr uint32_t L1_TILE_K = 256;
 constexpr uint32_t L0_TILE_K = 128;
 constexpr uint32_t SCALE_K_L1_RATE = 2;
