@@ -114,6 +114,7 @@ struct WorkspaceInfo {
     GM_ADDR flagSwiGluToGmm2Ptr;
     GM_ADDR flagDispatchToGmm1Ptr;
     GM_ADDR flagSendCntCalToUpdParamsPtr;
+    GM_ADDR flagDispatchBatchToGmm2Ptr;
     GM_ADDR cumsumInfoPtr;
     GM_ADDR gmm1MmadResPtr;
     GM_ADDR gmm2MmadResPtr;
@@ -155,13 +156,18 @@ struct WorkspaceInfo {
         workspaceSize += Ops::Base::CeilAlign(tilingData->maxOutputSize * ALIGN_32, ALIGN_512);
 
         flagSwiGluToGmm2Ptr = base + workspaceSize;
-        workspaceSize += SIZE_INT_32 * tilingData->expertPerRank * INT_CACHELINE;
+        // GMM2 may start from an early 256-row wave while later SwiGLU waves
+        // are still running. Give every expert one cache-line-aligned slot
+        // range, matching the dispatch-ready layout below.
+        int64_t maxWavesPerExpert = Ops::Base::CeilDiv(
+            static_cast<int64_t>(tilingData->maxOutputSize), DISPATCH_WAVE_TILE_M);
+        int64_t waveFlagSlotsPerExpert = Ops::Base::CeilAlign(maxWavesPerExpert,
+            static_cast<int64_t>(INT_CACHELINE));
+        workspaceSize += SIZE_INT_32 * tilingData->expertPerRank * waveFlagSlotsPerExpert;
 
         flagDispatchToGmm1Ptr = base + workspaceSize;
         // wave-grain dispatch flag: per expert allocate one slot per wave (L1_TILE_M=256 rows),
         // aligned up to INT_CACHELINE so each expert's slot block stays cache-line clean.
-        int64_t maxWavesPerExpert = Ops::Base::CeilDiv(
-            static_cast<int64_t>(tilingData->maxOutputSize), DISPATCH_WAVE_TILE_M);
         int64_t dispatchFlagSlotsPerExpert = Ops::Base::CeilAlign(maxWavesPerExpert,
             static_cast<int64_t>(INT_CACHELINE));
         workspaceSize += SIZE_INT_32 * tilingData->expertPerRank * dispatchFlagSlotsPerExpert;
@@ -169,6 +175,11 @@ struct WorkspaceInfo {
         // 每(expert, aiCore)单独占一个cache_line
         flagSendCntCalToUpdParamsPtr = base + workspaceSize;
         workspaceSize += SIZE_INT_32 * INT_CACHELINE * tilingData->expertPerRank * tilingData->aicNum;
+
+        // AIV1 dispatch publishes a monotonic batch generation to its paired AIC.
+        // Each pair owns one cache line to avoid false sharing while AIC polls.
+        flagDispatchBatchToGmm2Ptr = base + workspaceSize;
+        workspaceSize += SIZE_INT_32 * INT_CACHELINE * tilingData->aicNum;
 
         // Conditional allocation for A8W4 / combine-quant paths.
         // 以下条件分配与 mega_moe.h 编译期守卫 (ENABLE_A8W4 / ENABLE_A4W4 / CombineQuantMode) 一致，

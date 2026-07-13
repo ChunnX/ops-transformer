@@ -17,6 +17,7 @@
 
 #include "tensor_api/tensor.h"
 #include "basic_api/kernel_basic_intf.h"
+#include "blaze/gemm/utils/common_utils.h"
 
 namespace Blaze {
 namespace Gemm {
@@ -39,12 +40,16 @@ public:
     {
         if constexpr (SwizzleDirection == 0) {
             // m first
-            loopFirst_ = AscendC::Std::ceil_division(Get<IDX_M_IDX>(problemShape_), Get<IDX_M_IDX>(tileShape_));
-            loopSecond_ = AscendC::Std::ceil_division(Get<IDX_N_IDX>(problemShape_), Get<IDX_N_IDX>(tileShape_));
+            loopFirst_ = AscendC::Std::ceil_division(
+                AscendC::Te::Get<IDX_M_IDX>(problemShape_), AscendC::Te::Get<IDX_M_IDX>(tileShape_));
+            loopSecond_ = AscendC::Std::ceil_division(
+                AscendC::Te::Get<IDX_N_IDX>(problemShape_), AscendC::Te::Get<IDX_N_IDX>(tileShape_));
         } else if constexpr (SwizzleDirection == 1) {
             // n first
-            loopSecond_ = AscendC::Std::ceil_division(Get<IDX_M_IDX>(problemShape_), Get<IDX_M_IDX>(tileShape_));
-            loopFirst_ = AscendC::Std::ceil_division(Get<IDX_N_IDX>(problemShape_), Get<IDX_N_IDX>(tileShape_));
+            loopSecond_ = AscendC::Std::ceil_division(
+                AscendC::Te::Get<IDX_M_IDX>(problemShape_), AscendC::Te::Get<IDX_M_IDX>(tileShape_));
+            loopFirst_ = AscendC::Std::ceil_division(
+                AscendC::Te::Get<IDX_N_IDX>(problemShape_), AscendC::Te::Get<IDX_N_IDX>(tileShape_));
         }
     }
 
@@ -56,9 +61,11 @@ public:
     __aicore__ inline BlockShape GetBlockShape(const BlockCoord& blockCoord)
     {
         return {
-            min(Get<IDX_M_IDX>(tileShape_), Get<IDX_M_IDX>(problemShape_) - Get<IDX_M_IDX>(blockCoord)),
-            min(Get<IDX_N_IDX>(tileShape_), Get<IDX_N_IDX>(problemShape_) - Get<IDX_N_IDX>(blockCoord)),
-            Get<IDX_K_IDX>(problemShape_)};
+            Blaze::Gemm::Min(AscendC::Te::Get<IDX_M_IDX>(tileShape_),
+                AscendC::Te::Get<IDX_M_IDX>(problemShape_) - AscendC::Te::Get<IDX_M_IDX>(blockCoord)),
+            Blaze::Gemm::Min(AscendC::Te::Get<IDX_N_IDX>(tileShape_),
+                AscendC::Te::Get<IDX_N_IDX>(problemShape_) - AscendC::Te::Get<IDX_N_IDX>(blockCoord)),
+            AscendC::Te::Get<IDX_K_IDX>(problemShape_)};
     }
 
     __aicore__ inline BlockCoord GetBlockCoord(int tileIdx)
@@ -67,7 +74,8 @@ public:
         int64_t blockIdx = tileIdx / blockSpan;
         int64_t inBlockIdx = tileIdx % blockSpan;
 
-        int64_t firstValid = Min(loopFirst_ - blockIdx * SwizzleOffset, static_cast<int64_t>(SwizzleOffset));
+        int64_t firstValid = Blaze::Gemm::Min(
+            loopFirst_ - blockIdx * SwizzleOffset, static_cast<int64_t>(SwizzleOffset));
         // Defensive: firstValid is always >= 1 by construction, this silences static analyzer divide-by-zero warnings.
         if (firstValid == 0) {
             firstValid = 1;
@@ -79,9 +87,11 @@ public:
         }
 
         if constexpr (SwizzleDirection == 0) {
-            return {firstIdx * Get<IDX_M_IDX>(tileShape_), secondIdx * Get<IDX_N_IDX>(tileShape_), 0};
+            return {firstIdx * AscendC::Te::Get<IDX_M_IDX>(tileShape_),
+                secondIdx * AscendC::Te::Get<IDX_N_IDX>(tileShape_), 0};
         } else {
-            return {secondIdx * Get<IDX_M_IDX>(tileShape_), firstIdx * Get<IDX_N_IDX>(tileShape_), 0};
+            return {secondIdx * AscendC::Te::Get<IDX_M_IDX>(tileShape_),
+                firstIdx * AscendC::Te::Get<IDX_N_IDX>(tileShape_), 0};
         }
     }
 
