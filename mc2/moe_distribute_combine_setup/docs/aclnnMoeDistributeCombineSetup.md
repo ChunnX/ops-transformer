@@ -652,9 +652,11 @@ aclnnStatus aclnnMoeDistributeCombineSetupTeardownCalcOutputSize(
 - 机器数量设置：
 
     两机16卡场景中，需将参数MACHINE_NUM设置为2，即
+
     ```Cpp
     const uint32_t MACHINE_NUM = 2;
     ```
+
     单机16卡场景则无需修改。
 
 - Ascend 950DT：
