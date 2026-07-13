@@ -182,7 +182,7 @@ def check_result(expect, npu_result):
 
     display_output_np_isclose(real_data, data_compe, start, end)
     pct_thd = (1 - pct_thd) * 100.0
-    result = "Pass" if (fulfill_percent >= pct_thd) else "Failed"
+    result = "Passed" if (fulfill_percent >= pct_thd) else "Failed"
     if len(err_diff) > 0:
         max_error = max(err_diff[0:max_error_idx])
         if max_error >= max_diff_hd:
