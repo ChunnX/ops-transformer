@@ -235,7 +235,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case04_B2_S4096_n4_d1536_BF16)
         &compileInfo
     );
 
-    int64_t expectTilingKey = 0;
+    int64_t expectTilingKey = 2;
     string expectTilingDataStr = "";
     std::vector<size_t> expectWorkspaces = {};
 
@@ -397,7 +397,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case07_B256_S1024_n4_d2048_BF16)
         &compileInfo
     );
 
-    int64_t expectTilingKey = 0;
+    int64_t expectTilingKey = 2;
     string expectTilingDataStr = "";
     std::vector<size_t> expectWorkspaces = {};
 
@@ -559,7 +559,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case10_B32_S256_n4_d512_BF16)
         &compileInfo
     );
 
-    int64_t expectTilingKey = 0;
+    int64_t expectTilingKey = 2;
     string expectTilingDataStr = "";
     std::vector<size_t> expectWorkspaces = {};
 
@@ -721,7 +721,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case13_B4_S2048_n4_d3072_FP16)
         &compileInfo
     );
 
-    int64_t expectTilingKey = 0;
+    int64_t expectTilingKey = 2;
     string expectTilingDataStr = "";
     std::vector<size_t> expectWorkspaces = {};
 
@@ -883,7 +883,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case16_B2_S32768_n4_d512_BF16)
         &compileInfo
     );
 
-    int64_t expectTilingKey = 0;
+    int64_t expectTilingKey = 2;
     string expectTilingDataStr = "";
     std::vector<size_t> expectWorkspaces = {};
 
@@ -1206,7 +1206,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case22_B2_S4096_n4_d1536_NoGamma)
         &compileInfo
     );
 
-    int64_t expectTilingKey = 0;
+    int64_t expectTilingKey = 2;
     string expectTilingDataStr = "";
     std::vector<size_t> expectWorkspaces = {};
 
@@ -1261,7 +1261,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case23_OutFlag1_SplitBS_BSND_BF16)
         &compileInfo
     );
 
-    int64_t expectTilingKey = 0;
+    int64_t expectTilingKey = 2;
     string expectTilingDataStr = "";
     std::vector<size_t> expectWorkspaces = {};
 
@@ -1370,7 +1370,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case25_OutFlag1_SplitBS_TND_BF16)
         &compileInfo
     );
 
-    int64_t expectTilingKey = 0;
+    int64_t expectTilingKey = 2;
     string expectTilingDataStr = "";
     std::vector<size_t> expectWorkspaces = {};
 
@@ -1469,6 +1469,108 @@ TEST_F(MhcPreTiling, Ut_Check_Case27_OutFlag1_LongSeq_BSND_BF16)
             {{{B, S, n, n}, {B, S, n, n}}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{{B, S}, {B, S}}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{{B, S, phi_dim1}, {B, S, phi_dim1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND}
+        },
+        {
+            {"out_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(outFlag)},
+            {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(normEps)},
+            {"hc_eps", Ops::Transformer::AnyValue::CreateFrom<float>(hcEps)}
+        },
+        &compileInfo
+    );
+
+    int64_t expectTilingKey = 2;
+    string expectTilingDataStr = "";
+    std::vector<size_t> expectWorkspaces = {};
+
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey,
+                    expectTilingDataStr, expectWorkspaces, 0, TilingData2Str<int32_t>);
+}
+/*
+* Low-api fast path: N=4, SPLIT_BS, hasResi, gamma present.
+* totalLength=8192 > 512 should select MHC_PRE_LOW_API_BS.
+*/
+TEST_F(MhcPreTiling, Ut_Check_LowApi_N4_SplitBS_HasResi_Gamma)
+{
+    uint32_t B = 2;
+    uint32_t S = 4096;
+    uint32_t n = 4;
+    uint32_t d = 1536;
+    uint32_t phi_dim0 = n * n + 2 * n;
+    uint32_t phi_dim1 = n * d;
+    uint32_t bias_dim = phi_dim0;
+    float normEps = 0.000001f;
+    float hcEps = 0.000001f;
+    uint32_t outFlag = 0;
+
+    optiling::MhcPreCompileInfo compileInfo = {};
+
+    gert::TilingContextPara tilingContextPara(
+        "MhcPre",
+        {
+            {{{B, S, n, d}, {B, S, n, d}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{phi_dim0, phi_dim1}, {phi_dim0, phi_dim1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{3}, {3}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{bias_dim}, {bias_dim}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{phi_dim1}, {phi_dim1}}, ge::DT_FLOAT, ge::FORMAT_ND}
+        },
+        {
+            {{{B, S, d}, {B, S, d}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, n, n}, {B, S, n, n}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S}, {B, S}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, phi_dim0}, {B, S, phi_dim0}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND}
+        },
+        {
+            {"out_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(outFlag)},
+            {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(normEps)},
+            {"hc_eps", Ops::Transformer::AnyValue::CreateFrom<float>(hcEps)}
+        },
+        &compileInfo
+    );
+
+    int64_t expectTilingKey = 2;
+    string expectTilingDataStr = "";
+    std::vector<size_t> expectWorkspaces = {};
+
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey,
+                    expectTilingDataStr, expectWorkspaces, 0, TilingData2Str<int32_t>);
+}
+
+/*
+* Low-api fast path fallback: N=6 is supported by existing SPLIT_BS only.
+*/
+TEST_F(MhcPreTiling, Ut_Check_LowApi_Fallback_N6_SplitBS)
+{
+    uint32_t B = 2;
+    uint32_t S = 4096;
+    uint32_t n = 6;
+    uint32_t d = 1024;
+    uint32_t phi_dim0 = n * n + 2 * n;
+    uint32_t phi_dim1 = n * d;
+    uint32_t bias_dim = phi_dim0;
+    float normEps = 0.000001f;
+    float hcEps = 0.000001f;
+    uint32_t outFlag = 0;
+
+    optiling::MhcPreCompileInfo compileInfo = {};
+
+    gert::TilingContextPara tilingContextPara(
+        "MhcPre",
+        {
+            {{{B, S, n, d}, {B, S, n, d}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{phi_dim0, phi_dim1}, {phi_dim0, phi_dim1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{3}, {3}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{bias_dim}, {bias_dim}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{phi_dim1}, {phi_dim1}}, ge::DT_FLOAT, ge::FORMAT_ND}
+        },
+        {
+            {{{B, S, d}, {B, S, d}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, n, n}, {B, S, n, n}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S}, {B, S}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, phi_dim0}, {B, S, phi_dim0}}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND}
         },
         {
