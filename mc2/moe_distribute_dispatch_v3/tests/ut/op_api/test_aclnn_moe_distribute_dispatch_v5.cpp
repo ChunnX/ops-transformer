@@ -63,18 +63,20 @@ TEST_F(L2AclnnMoeDistributeDispatchV5Test, TestAclnnMoeDistributeDispatchFirstAp
 
     TensorDesc expandX = TensorDesc({8, 7168}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc dynamicScales = TensorDesc({8 * 256}, ACL_FLOAT, ACL_FORMAT_ND);
-    TensorDesc expandIdx = TensorDesc({8*8}, ACL_INT32, ACL_FORMAT_ND);
+    TensorDesc expandIdx = TensorDesc({8 * 8}, ACL_INT32, ACL_FORMAT_ND);
     TensorDesc expertTokensNums = TensorDesc({1}, ACL_INT32, ACL_FORMAT_ND);
     TensorDesc epRecvCounts = TensorDesc({288}, ACL_INT32, ACL_FORMAT_ND);
     TensorDesc tpRecvCounts = TensorDesc({2}, ACL_INT32, ACL_FORMAT_ND);
     TensorDesc expandScales = TensorDesc({8}, ACL_FLOAT, ACL_FORMAT_ND);
 
-    auto ut = OP_API_UT(aclnnMoeDistributeDispatchV5, INPUT(context, x, expertIds, scales, xActiveMask, expertScales, "test_moe_distribute_dispatch_ep",
-                                                            epWorldSize, epRankId, moeExpertNum, "test_moe_distribute_dispatch_tp",
-                                                            tpWorldSize, tpRankId, expertShardType, sharedExpertNum, shareExpertRankNum, quantMode, globalBs, expertTokenNumsType, "test"),
-                        OUTPUT(expandX, dynamicScales, expandIdx, expertTokensNums, epRecvCounts, tpRecvCounts, expandScales));
+    auto ut = OP_API_UT(
+        aclnnMoeDistributeDispatchV5,
+        INPUT(context, x, expertIds, scales, xActiveMask, expertScales, "test_moe_distribute_dispatch_ep", epWorldSize,
+              epRankId, moeExpertNum, "test_moe_distribute_dispatch_tp", tpWorldSize, tpRankId, expertShardType,
+              sharedExpertNum, shareExpertRankNum, quantMode, globalBs, expertTokenNumsType, "test"),
+        OUTPUT(expandX, dynamicScales, expandIdx, expertTokensNums, epRecvCounts, tpRecvCounts, expandScales));
     uint64_t workspaceSize = 0;
-    aclOpExecutor* executor = nullptr;
+    aclOpExecutor *executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
@@ -108,22 +110,22 @@ TEST_F(L2AclnnMoeDistributeDispatchV5Test, TestAclnnMoeDistributeDispatchExecute
     TensorDesc tpRecvCounts = TensorDesc({2}, ACL_INT32, ACL_FORMAT_ND);
     TensorDesc expandScales = TensorDesc({8}, ACL_FLOAT, ACL_FORMAT_ND);
 
-    auto ut = OP_API_UT(aclnnMoeDistributeDispatchV5, INPUT(context, x, expertIds, scales, xActiveMask, expertScales,
-                                                            "test_moe_distribute_dispatch_ep", epWorldSize, epRankId,
-                                                            moeExpertNum, "test_moe_distribute_dispatch_tp", tpWorldSize,
-                                                            tpRankId, expertShardType, sharedExpertNum, shareExpertRankNum,
-                                                            quantMode, globalBs, expertTokenNumsType, "test"),
-                        OUTPUT(expandX, dynamicScales, expandIdx, expertTokensNums, epRecvCounts, tpRecvCounts,
-                               expandScales));
+    auto ut = OP_API_UT(
+        aclnnMoeDistributeDispatchV5,
+        INPUT(context, x, expertIds, scales, xActiveMask, expertScales, "test_moe_distribute_dispatch_ep", epWorldSize,
+              epRankId, moeExpertNum, "test_moe_distribute_dispatch_tp", tpWorldSize, tpRankId, expertShardType,
+              sharedExpertNum, shareExpertRankNum, quantMode, globalBs, expertTokenNumsType, "test"),
+        OUTPUT(expandX, dynamicScales, expandIdx, expertTokensNums, epRecvCounts, tpRecvCounts, expandScales));
 
     uint64_t workspaceSize = 0;
-    aclOpExecutor* executor = nullptr;
+    aclOpExecutor *executor = nullptr;
     aclnnStatus wsRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     EXPECT_NE(wsRet, ACLNN_ERR_PARAM_INVALID);
 
-    // 覆盖 aclnn_moe_distribute_dispatch_v5.cpp 中 aclnnMoeDistributeDispatchV5；UT 侧设备内存桩返回 nullptr，与 OpApiUt::TestPrecision 行为一致
+    // 覆盖 aclnn_moe_distribute_dispatch_v5.cpp 中 aclnnMoeDistributeDispatchV5；UT 侧设备内存桩返回 nullptr，与
+    // OpApiUt::TestPrecision 行为一致
     aclnnStatus execRet = aclnnMoeDistributeDispatchV5(nullptr, workspaceSize, executor, nullptr);
     EXPECT_THAT(execRet, testing::AnyOf(testing::Eq(ACLNN_SUCCESS), testing::Eq(ACLNN_ERR_PARAM_NULLPTR),
-                                         testing::Eq(ACLNN_ERR_PARAM_INVALID)));
+                                        testing::Eq(ACLNN_ERR_PARAM_INVALID)));
 }
-} // MoeDistributeDispatchV3
+} // namespace MoeDistributeDispatchV3
