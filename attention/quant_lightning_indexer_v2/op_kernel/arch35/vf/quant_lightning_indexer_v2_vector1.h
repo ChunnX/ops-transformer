@@ -340,9 +340,8 @@ __aicore__ inline void MulWeightAndReduceSum(const LocalTensor<uint16_t> &out_, 
         MicroAPI::LoadAlign<float>(regKScale[0], kScale);
         MicroAPI::LoadAlign<float>(regKScale[1], kScale + 64);
 
-        // unroll2，奇数 G 尾部单独处理
-        uint16_t gSizeEven = (uint16_t)(gSize) & 0xFFFE;
-        for (uint16_t i = (uint16_t)(0); i < gSizeEven; i += 2) {
+        // unroll2
+        for (uint16_t i = (uint16_t)(0); i < (uint16_t)(gSize); i += 2) {
             MicroAPI::LoadAlign<float>(regQK[0], qk + 128 * i); // RowStride是128, 行都落在一个bank上
             MicroAPI::LoadAlign<float>(regQK[1], qk + 128 * i + qkVLStride);
             BroadcastLane(regwBrc, regW, i);
@@ -352,14 +351,6 @@ __aicore__ inline void MulWeightAndReduceSum(const LocalTensor<uint16_t> &out_, 
             MicroAPI::LoadAlign<float>(regQK[1], qk + 128 * i + 128 + qkVLStride);
             BroadcastLane(regwBrc, regW, i + 1);
             WeightedAccum<float, 2, false>(regSum1, regQK, regwBrc, maskAllB32);
-        }
-        // 奇数 G 尾部：最后一个元素累加到 regSum0（regSum1 保持 0，Add 后不影响）
-        if ((uint16_t)(gSize) & 1) {
-            uint16_t i = gSizeEven;
-            MicroAPI::LoadAlign<float>(regQK[0], qk + 128 * i);
-            MicroAPI::LoadAlign<float>(regQK[1], qk + 128 * i + qkVLStride);
-            BroadcastLane(regwBrc, regW, i);
-            WeightedAccum<float, 2, false>(regSum0, regQK, regwBrc, maskAllB32);
         }
 
         AscendC::MicroAPI::Add(regSum0[0], regSum0[0], regSum1[0], maskAllB32);
@@ -793,9 +784,8 @@ __aicore__ inline void MulWeightAndReduceSum_MxFP8(__ubuf__ uint16_t* out,
         DuplicateZero(regSum0, maskAllB32);
         DuplicateZero(regSum1, maskAllB32);
 
-        // unroll2: 不乘 kScale，奇数 G 尾部单独处理
-        uint16_t gSizeEven = (uint16_t)(gSize) & 0xFFFE;
-        for (uint16_t i = (uint16_t)(0); i < gSizeEven; i += 2) {
+        // unroll2: 不乘 kScale
+        for (uint16_t i = (uint16_t)(0); i < (uint16_t)(gSize); i += 2) {
             MicroAPI::LoadAlign<float>(regQK[0], qk + 128 * i);
             MicroAPI::LoadAlign<float>(regQK[1], qk + 128 * i + qkVLStride);
             BroadcastLane(regwBrc, regW, i);
@@ -805,14 +795,6 @@ __aicore__ inline void MulWeightAndReduceSum_MxFP8(__ubuf__ uint16_t* out,
             MicroAPI::LoadAlign<float>(regQK[1], qk + 128 * i + 128 + qkVLStride);
             BroadcastLane(regwBrc, regW, i + 1);
             WeightedAccum<float, 2, false>(regSum1, regQK, regwBrc, maskAllB32);
-        }
-        // 奇数 G 尾部：最后一个元素累加到 regSum0
-        if ((uint16_t)(gSize) & 1) {
-            uint16_t i = gSizeEven;
-            MicroAPI::LoadAlign<float>(regQK[0], qk + 128 * i);
-            MicroAPI::LoadAlign<float>(regQK[1], qk + 128 * i + qkVLStride);
-            BroadcastLane(regwBrc, regW, i);
-            WeightedAccum<float, 2, false>(regSum0, regQK, regwBrc, maskAllB32);
         }
 
         AscendC::MicroAPI::Add(regSum0[0], regSum0[0], regSum1[0], maskAllB32);
@@ -876,8 +858,7 @@ __aicore__ inline void MulWeightAndReduceSum_MxFP8(const LocalTensor<uint16_t> &
         DuplicateZero(regSum0, maskAllB32);
         DuplicateZero(regSum1, maskAllB32);
 
-        uint16_t gSizeEven = (uint16_t)(gSize) & 0xFFFE;
-        for (uint16_t i = (uint16_t)(0); i < gSizeEven; i += 2) {
+        for (uint16_t i = (uint16_t)(0); i < (uint16_t)(gSize); i += 2) {
             MicroAPI::LoadAlign<float>(regQK[0], qk + 128 * i);
             MicroAPI::LoadAlign<float>(regQK[1], qk + 128 * i + qkVLStride);
             BroadcastLane(regwBrc, regW, i);
@@ -887,14 +868,6 @@ __aicore__ inline void MulWeightAndReduceSum_MxFP8(const LocalTensor<uint16_t> &
             MicroAPI::LoadAlign<float>(regQK[1], qk + 128 * i + 128 + qkVLStride);
             BroadcastLane(regwBrc, regW, i + 1);
             WeightedAccum<float, 2, false>(regSum1, regQK, regwBrc, maskAllB32);
-        }
-        // 奇数 G 尾部：最后一个元素累加到 regSum0
-        if ((uint16_t)(gSize) & 1) {
-            uint16_t i = gSizeEven;
-            MicroAPI::LoadAlign<float>(regQK[0], qk + 128 * i);
-            MicroAPI::LoadAlign<float>(regQK[1], qk + 128 * i + qkVLStride);
-            BroadcastLane(regwBrc, regW, i);
-            WeightedAccum<float, 2, false>(regSum0, regQK, regwBrc, maskAllB32);
         }
 
         AscendC::MicroAPI::Add(regSum0[0], regSum0[0], regSum1[0], maskAllB32);
@@ -1079,8 +1052,7 @@ __aicore__ inline void MulWeightAndReduceSumPerTensor(
         DuplicateZero(regSum0, maskAllB32);
         DuplicateZero(regSum1, maskAllB32);
 
-        uint16_t gSizeEven = (uint16_t)(gSize) & 0xFFFE;
-        for (uint16_t i = (uint16_t)(0); i < gSizeEven; i += 2) {
+        for (uint16_t i = (uint16_t)(0); i < (uint16_t)(gSize); i += 2) {
             MicroAPI::LoadAlign<float>(regQK[0], qk + 128 * i);
             MicroAPI::LoadAlign<float>(regQK[1], qk + 128 * i + qkVLStride);
             BroadcastLane(regwBrc, regW, i);
@@ -1090,14 +1062,6 @@ __aicore__ inline void MulWeightAndReduceSumPerTensor(
             MicroAPI::LoadAlign<float>(regQK[1], qk + 128 * i + 128 + qkVLStride);
             BroadcastLane(regwBrc, regW, i + 1);
             WeightedAccum(regSum1, regQK, regwBrc, maskAllB32);
-        }
-        // 奇数 G 尾部：最后一个元素累加到 regSum0
-        if ((uint16_t)(gSize) & 1) {
-            uint16_t i = gSizeEven;
-            MicroAPI::LoadAlign<float>(regQK[0], qk + 128 * i);
-            MicroAPI::LoadAlign<float>(regQK[1], qk + 128 * i + qkVLStride);
-            BroadcastLane(regwBrc, regW, i);
-            WeightedAccum(regSum0, regQK, regwBrc, maskAllB32);
         }
 
         AscendC::MicroAPI::Add(regSum0[0], regSum0[0], regSum1[0], maskAllB32);

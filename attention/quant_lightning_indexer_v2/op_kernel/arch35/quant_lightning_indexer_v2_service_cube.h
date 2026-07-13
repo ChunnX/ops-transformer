@@ -58,7 +58,10 @@ public:
     static constexpr uint32_t FIX_M_EVENT = EVENT_ID2;
     static constexpr uint32_t M_FIX_EVENT = EVENT_ID3;
 
+    static constexpr uint64_t M_BASIC_BLOCK = 256;
     static constexpr uint64_t D_BASIC_BLOCK = 128;
+
+    static constexpr uint64_t M_BASIC_BLOCK_L0 = 256;
     static constexpr uint64_t D_BASIC_BLOCK_L0 = 128;
     static constexpr uint64_t S2_BASIC_BLOCK_L0 = 128;
 
@@ -67,17 +70,11 @@ public:
         // ROW_MAJOR: 使能NZ2ND，输出ND格式; true: 用户指定目的地址是否是UB
         true};
 
-    // KSCALE_L1_SIZE 只依赖 S2/D 维，与 M 无关，保持 constexpr
+    static constexpr uint64_t QUERY_BUFFER_OFFSET = M_BASIC_BLOCK * D_BASIC_BLOCK;
+    static constexpr uint64_t QSCALE_L1_PINGPONG_SIZE = M_BASIC_BLOCK * D_BASIC_BLOCK / 32;
     static constexpr uint64_t KSCALE_L1_SIZE = S2_BASIC_BLOCK_L0 * D_BASIC_BLOCK / 32;
-
-    // M_BASIC_BLOCK / M_BASIC_BLOCK_L0 改为运行时变量（支持 topk>2048 时 mBaseSize=192）
-    uint64_t mBasicBlock_ = 256;       // M维基本块（L1），运行时由 InitParams 赋值
-    uint64_t mBasicBlockL0_ = 256;     // M维基本块（L0），运行时由 InitParams 赋值
-    // 衍生 offset，运行时计算
-    uint64_t queryBufferOffset_ = 256 * 128;       // mBasicBlock_ * D_BASIC_BLOCK
-    uint64_t qscaleL1PingpongSize_ = 256 * 128 / 32; // mBasicBlock_ * D_BASIC_BLOCK / 32
-    uint64_t l0abBufferOffset_ = 256 * 128;        // mBasicBlockL0_ * D_BASIC_BLOCK_L0
-    uint64_t l0cBufferOffset_ = 256 * 128;         // mBasicBlockL0_ * S2_BASIC_BLOCK_L0
+    static constexpr uint64_t L0AB_BUFFER_OFFSET = M_BASIC_BLOCK_L0 * D_BASIC_BLOCK_L0;
+    static constexpr uint64_t L0C_BUFFER_OFFSET = M_BASIC_BLOCK_L0 * S2_BASIC_BLOCK_L0;
 
 protected:
     __aicore__ inline void Fixp(uint64_t s1gGmOffset, uint64_t s2GmOffset, uint64_t s1gL0RealSize,
@@ -144,13 +141,6 @@ template <typename QLIV2T>
 __aicore__ inline void QLIV2Matmul<QLIV2T>::InitParams(const ConstInfo &constInfo)
 {
     constInfo_ = constInfo;
-    mBasicBlock_ = constInfo.mBaseSize;        // 循环步进，保持 mBaseSize
-    mBasicBlockL0_ = constInfo.mBaseSize;      // 循环步进，保持 mBaseSize
-    uint64_t mAlign16 = constInfo.mBaseSizeAlign16;  // NZ 对齐后大小，用于 Buffer 分配
-    queryBufferOffset_ = mAlign16 * D_BASIC_BLOCK;
-    qscaleL1PingpongSize_ = mAlign16 * D_BASIC_BLOCK / 32;
-    l0abBufferOffset_ = mAlign16 * D_BASIC_BLOCK_L0;
-    l0cBufferOffset_ = mAlign16 * S2_BASIC_BLOCK_L0;
     s2BasicBlock_ = 128;
     keyBufferOffset_ = s2BasicBlock_ * D_BASIC_BLOCK;
 }
@@ -158,27 +148,27 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::InitParams(const ConstInfo &constInf
 template <typename QLIV2T>
 __aicore__ inline void QLIV2Matmul<QLIV2T>::InitBuffers(TPipe *pipe)
 {
-    pipe->InitBuffer(bufUB_, 2 * CeilDiv(constInfo_.mBaseSizeAlign16, 2) * constInfo_.s2BaseSize * sizeof(float));
+    pipe->InitBuffer(bufUB_, 2 * CeilDiv(constInfo_.mBaseSize, 2) * constInfo_.s2BaseSize * sizeof(float));
         // 大小：2(开dB) * 2 * 64 * 128 * 4 = 128KB
     mm1ResUB_ = bufUB_.Get<QK_T>();
-    pipe->InitBuffer(bufQL1_, QUERY_BUF_NUM * queryBufferOffset_ * sizeof(Q_T));
+    pipe->InitBuffer(bufQL1_, QUERY_BUF_NUM * QUERY_BUFFER_OFFSET * sizeof(Q_T));
     queryL1_ = bufQL1_.Get<Q_T>();
     pipe->InitBuffer(bufKeyL1_, KEY_BUF_NUM * s2BasicBlock_ * D_BASIC_BLOCK * sizeof(K_T));
     keyL1_ = bufKeyL1_.Get<K_T>();
     // MXFP8: qScale 使用独立 L1 buffer
     if constexpr (IS_MXFP8) {
-        pipe->InitBuffer(bufQScaleL1_, QUERY_BUF_NUM * qscaleL1PingpongSize_ * sizeof(SCALE_T));
+        pipe->InitBuffer(bufQScaleL1_, QUERY_BUF_NUM * QSCALE_L1_PINGPONG_SIZE * sizeof(SCALE_T));
         qScaleL1_ = bufQScaleL1_.Get<SCALE_T>();
         pipe->InitBuffer(bufKScaleL1_, KEY_BUF_NUM * KSCALE_L1_SIZE * sizeof(SCALE_T));
         kScaleL1_ = bufKScaleL1_.Get<SCALE_T>();
     }
 
-    pipe->InitBuffer(bufQL0_, L0_BUF_NUM * l0abBufferOffset_ * sizeof(Q_T));
+    pipe->InitBuffer(bufQL0_, L0_BUF_NUM * M_BASIC_BLOCK_L0 * D_BASIC_BLOCK_L0 * sizeof(Q_T));
     queryL0_ = bufQL0_.Get<Q_T>();
     pipe->InitBuffer(bufKeyL0_, L0_BUF_NUM * D_BASIC_BLOCK_L0 * S2_BASIC_BLOCK_L0 * sizeof(K_T));
     keyL0_ = bufKeyL0_.Get<K_T>();
 
-    pipe->InitBuffer(bufL0C_, L0_BUF_NUM * l0cBufferOffset_ * sizeof(float));
+    pipe->InitBuffer(bufL0C_, L0_BUF_NUM * M_BASIC_BLOCK_L0 * S2_BASIC_BLOCK_L0 * sizeof(float));
     cL0_ = bufL0C_.Get<float>();
 }
 
@@ -230,10 +220,10 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::ComputeMm1(const QLIV2Common::RunInf
             SetFlag<HardEvent::MTE2_MTE1>(MTE2_MTE1_EVENT);
             WaitFlag<HardEvent::MTE2_MTE1>(MTE2_MTE1_EVENT);
             // s1gProcessSize当前必定不会超过2倍的s1g basic block
-            for (uint64_t s1gGmOffset = 0; s1gGmOffset < s1gProcessSize; s1gGmOffset += mBasicBlock_) {
+            for (uint64_t s1gGmOffset = 0; s1gGmOffset < s1gProcessSize; s1gGmOffset += M_BASIC_BLOCK) {
                 uint64_t s1gL1RealSize =
-                    s1gGmOffset + mBasicBlock_ > s1gProcessSize ? s1gProcessSize - s1gGmOffset : mBasicBlock_;
-                uint64_t s1gL1SizeAlign2G = CeilAlign(s1gL1RealSize, constInfo_.gSize);
+                    s1gGmOffset + M_BASIC_BLOCK > s1gProcessSize ? s1gProcessSize - s1gGmOffset : M_BASIC_BLOCK;
+                uint64_t s1gL1SizeAlign2G = CeilAlign(s1gL1RealSize, 2 * constInfo_.gSize);
                 if (runInfo.isFirstS2InnerLoop && s2GmOffset == 0) {
                     queryL1Mte2BufIdx_++;
                     queryL1Mte1BufIdx_ = queryL1Mte2BufIdx_;
@@ -246,16 +236,16 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::ComputeMm1(const QLIV2Common::RunInf
                     WaitFlag<HardEvent::MTE2_MTE1>(MTE2_MTE1_EVENT);
                 } else {
                     queryL1Mte1BufIdx_ =
-                        queryL1Mte2BufIdx_ - (CeilDiv(s1gProcessSize, mBasicBlock_) - 1 - (s1gGmOffset > 0));
+                        queryL1Mte2BufIdx_ - (CeilDiv(s1gProcessSize, M_BASIC_BLOCK) - 1 - (s1gGmOffset > 0));
                 }
                 for (uint64_t s2L1Offset = 0; s2L1Offset < s2L1RealSize; s2L1Offset += S2_BASIC_BLOCK_L0) {
                     uint64_t s2L0RealSize =
                         s2L1Offset + S2_BASIC_BLOCK_L0 > s2L1RealSize ? s2L1RealSize - s2L1Offset : S2_BASIC_BLOCK_L0;
-                    for (uint64_t s1gL1Offset = 0; s1gL1Offset < s1gL1SizeAlign2G; s1gL1Offset += mBasicBlockL0_) {
+                    for (uint64_t s1gL1Offset = 0; s1gL1Offset < s1gL1SizeAlign2G; s1gL1Offset += M_BASIC_BLOCK_L0) {
                         WaitFlag<HardEvent::M_MTE1>(M_MTE1_EVENT + l0BufIdx_ % L0_BUF_NUM);
                         uint64_t s1gL0RealSize =
-                            s1gL1Offset + mBasicBlockL0_ > s1gL1SizeAlign2G
-                                ? s1gL1SizeAlign2G - s1gL1Offset : mBasicBlockL0_;
+                            s1gL1Offset + M_BASIC_BLOCK_L0 > s1gL1SizeAlign2G
+                                ? s1gL1SizeAlign2G - s1gL1Offset : M_BASIC_BLOCK_L0;
                         LoadQueryToL0a(s1gGmOffset, s1gL1Offset, s1gL1SizeAlign2G, s1gL0RealSize, runInfo);
                         LoadKeyToL0b(s2L1Offset, s2L1RealSize, s2L0RealSize, runInfo);
 
@@ -309,12 +299,12 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::ComputeMm1(const QLIV2Common::RunInf
             uint64_t l1S2Offset = s2GmBaseOffset - keyGmStart_;
             uint64_t l1TotalSize = keyLoadedSize_;
             // s1gProcessSize当前必定不会超过2倍的s1g basic block
-            for (uint64_t s1gGmOffset = 0; s1gGmOffset < s1gProcessSize; s1gGmOffset += mBasicBlock_) {
+            for (uint64_t s1gGmOffset = 0; s1gGmOffset < s1gProcessSize; s1gGmOffset += M_BASIC_BLOCK) {
                 uint64_t s1gL1RealSize =
-                    s1gGmOffset + mBasicBlock_ > s1gProcessSize ?
+                    s1gGmOffset + M_BASIC_BLOCK > s1gProcessSize ?
                                            s1gProcessSize - s1gGmOffset :
-                                           mBasicBlock_;
-                uint64_t s1gL1SizeAlign2G = CeilAlign(s1gL1RealSize, constInfo_.gSize);
+                                           M_BASIC_BLOCK;
+                uint64_t s1gL1SizeAlign2G = CeilAlign(s1gL1RealSize, 2 * constInfo_.gSize);
                 if (runInfo.isFirstS2InnerLoop && s2GmOffset == 0) {
                     queryL1Mte2BufIdx_++;
                     queryL1Mte1BufIdx_ = queryL1Mte2BufIdx_;
@@ -324,7 +314,7 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::ComputeMm1(const QLIV2Common::RunInf
                     WaitFlag<HardEvent::MTE2_MTE1>(MTE2_MTE1_EVENT);
                 } else {
                     queryL1Mte1BufIdx_ =
-                        queryL1Mte2BufIdx_ - (CeilDiv(s1gProcessSize, mBasicBlock_) - 1 - (s1gGmOffset > 0));
+                        queryL1Mte2BufIdx_ - (CeilDiv(s1gProcessSize, M_BASIC_BLOCK) - 1 - (s1gGmOffset > 0));
                 }
                 uint64_t s2Boundry = l1S2Offset + s2ProcessSize;
                 for (uint64_t s2L1Offset = l1S2Offset; s2L1Offset < s2Boundry; s2L1Offset += S2_BASIC_BLOCK_L0) {
@@ -332,12 +322,12 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::ComputeMm1(const QLIV2Common::RunInf
                         s2L1Offset + S2_BASIC_BLOCK_L0 > l1S2Offset + s2ProcessSize ?
                                             l1S2Offset + s2ProcessSize - s2L1Offset :
                                             S2_BASIC_BLOCK_L0;
-                    for (uint64_t s1gOffset = 0; s1gOffset < s1gL1SizeAlign2G; s1gOffset += mBasicBlockL0_) {
+                    for (uint64_t s1gOffset = 0; s1gOffset < s1gL1SizeAlign2G; s1gOffset += M_BASIC_BLOCK_L0) {
                         WaitFlag<HardEvent::M_MTE1>(M_MTE1_EVENT + l0BufIdx_ % L0_BUF_NUM);
                         uint64_t s1gL0RealSize =
-                            s1gOffset + mBasicBlockL0_ > s1gL1SizeAlign2G ?
+                            s1gOffset + M_BASIC_BLOCK_L0 > s1gL1SizeAlign2G ?
                                                     s1gL1SizeAlign2G - s1gOffset :
-                                                    mBasicBlockL0_;
+                                                    M_BASIC_BLOCK_L0;
                         LoadQueryToL0a(s1gGmOffset, s1gOffset, s1gL1SizeAlign2G, s1gL0RealSize, runInfo);
                         LoadKeyToL0b(s2L1Offset, l1TotalSize, s2L0RealSize, runInfo);
 
@@ -433,7 +423,7 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::LoadQScaleToL1(uint64_t s1gL1RealSiz
                                                          const QLIV2Common::RunInfo &runInfo)
 {
     // qScale 存储在独立的 bufQScaleL1_ 中
-    uint64_t scaleOffsetInBuf = (queryL1Mte2BufIdx_ % QUERY_BUF_NUM) * qscaleL1PingpongSize_;
+    uint64_t scaleOffsetInBuf = (queryL1Mte2BufIdx_ % QUERY_BUF_NUM) * QSCALE_L1_PINGPONG_SIZE;
     LocalTensor<bfloat16_t> scaleL1 = qScaleL1_[scaleOffsetInBuf].template ReinterpretCast<bfloat16_t>();
     GlobalTensor<bfloat16_t> scaleGmCast;
     scaleGmCast.SetGlobalBuffer((__gm__ bfloat16_t *)(qScaleGm_.GetPhyAddr()));
@@ -514,7 +504,7 @@ template <typename QLIV2T>
 __aicore__ inline void QLIV2Matmul<QLIV2T>::QueryNd2Nz(uint64_t s1gL1RealSize, uint64_t s1gGmOffset,
                                                  const QLIV2Common::RunInfo &runInfo)
 {
-    uint64_t dstNzC0Stride = CeilAlign(s1gL1RealSize, constInfo_.gSize);
+    uint64_t dstNzC0Stride = CeilAlign(s1gL1RealSize, 2 * constInfo_.gSize);
     Nd2NzParams nd2nzPara;
     nd2nzPara.ndNum = 1;
     nd2nzPara.nValue = s1gL1RealSize; // 行数
@@ -525,7 +515,7 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::QueryNd2Nz(uint64_t s1gL1RealSize, u
     nd2nzPara.srcNdMatrixStride = 0;
     nd2nzPara.dstNzMatrixStride = 0;
     // 默认一块buf最多放两份
-    DataCopy(queryL1_[(queryL1Mte2BufIdx_ % QUERY_BUF_NUM) * queryBufferOffset_],
+    DataCopy(queryL1_[(queryL1Mte2BufIdx_ % QUERY_BUF_NUM) * QUERY_BUFFER_OFFSET],
              queryGm_[runInfo.tensorQueryOffset + s1gGmOffset * constInfo_.headDim], nd2nzPara);
 }
 
@@ -547,9 +537,9 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::LoadQueryToL0a(uint64_t s1gGmOffset,
     if constexpr (IS_MXFP8) {
         // MXFP8: 使用 LoadData Mx 变体，同时加载数据和 scale 到 L0
         LocalTensor<mx_fp8_e4m3_t> dstTensor =
-            queryL0_[(l0BufIdx_ % L0_BUF_NUM) * l0abBufferOffset_].template ReinterpretCast<mx_fp8_e4m3_t>();
+            queryL0_[(l0BufIdx_ % L0_BUF_NUM) * L0AB_BUFFER_OFFSET].template ReinterpretCast<mx_fp8_e4m3_t>();
         // qScale 从独立的 bufQScaleL1_ 读取
-        uint64_t scaleOffsetInBuf = (queryL1Mte1BufIdx_ % QUERY_BUF_NUM) * qscaleL1PingpongSize_;
+        uint64_t scaleOffsetInBuf = (queryL1Mte1BufIdx_ % QUERY_BUF_NUM) * QSCALE_L1_PINGPONG_SIZE;
         LocalTensor<fp8_e8m0_t> scaleL1 = qScaleL1_[scaleOffsetInBuf].template ReinterpretCast<fp8_e8m0_t>();
 
         LoadData2DMxParams loadDataMxParams;
@@ -560,11 +550,11 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::LoadQueryToL0a(uint64_t s1gGmOffset,
         loadDataMxParams.srcStride = CeilDiv(constInfo_.headDim, MXFP8_BLOCK_SIZE * FP8_TWO);
         loadDataMxParams.dstStride = loadDataMxParams.yStep;
         LoadData(dstTensor,
-                 queryL1_[(queryL1Mte1BufIdx_ % QUERY_BUF_NUM) * queryBufferOffset_],
+                 queryL1_[(queryL1Mte1BufIdx_ % QUERY_BUF_NUM) * QUERY_BUFFER_OFFSET],
                  scaleL1, loadData2DParams, loadDataMxParams);
     } else {
-        LoadData(queryL0_[(l0BufIdx_ % L0_BUF_NUM) * l0abBufferOffset_],
-                 queryL1_[(queryL1Mte1BufIdx_ % QUERY_BUF_NUM) * queryBufferOffset_], loadData2DParams);
+        LoadData(queryL0_[(l0BufIdx_ % L0_BUF_NUM) * L0AB_BUFFER_OFFSET],
+                 queryL1_[(queryL1Mte1BufIdx_ % QUERY_BUF_NUM) * QUERY_BUFFER_OFFSET], loadData2DParams);
     }
 }
 
@@ -586,7 +576,7 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::LoadKeyToL0b(uint64_t s2L1Offset, ui
     if constexpr (IS_MXFP8) {
         // MXFP8: 使用 LoadData Mx 变体，同时加载数据和 scale 到 L0
         LocalTensor<mx_fp8_e4m3_t> dstTensor =
-            keyL0_[(l0BufIdx_ % L0_BUF_NUM) * l0abBufferOffset_].template ReinterpretCast<mx_fp8_e4m3_t>();
+            keyL0_[(l0BufIdx_ % L0_BUF_NUM) * L0AB_BUFFER_OFFSET].template ReinterpretCast<mx_fp8_e4m3_t>();
         // kScale 从独立的 bufKScaleL1_ 读取，使用 triple buffer
         uint64_t scaleOffsetInBuf = (keyL1BufIdx_ % KEY_BUF_NUM) * KSCALE_L1_SIZE;
         LocalTensor<fp8_e8m0_t> scaleL1 = kScaleL1_[scaleOffsetInBuf].template ReinterpretCast<fp8_e8m0_t>();
@@ -602,7 +592,7 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::LoadKeyToL0b(uint64_t s2L1Offset, ui
                  keyL1_[(keyL1BufIdx_ % KEY_BUF_NUM) * keyBufferOffset_],
                  scaleL1, loadData2DParams, loadDataMxParams);
     } else {
-        LoadData(keyL0_[(l0BufIdx_ % L0_BUF_NUM) * l0abBufferOffset_],
+        LoadData(keyL0_[(l0BufIdx_ % L0_BUF_NUM) * L0AB_BUFFER_OFFSET],
                  keyL1_[(keyL1BufIdx_ % KEY_BUF_NUM) * keyBufferOffset_], loadData2DParams);
     }
 }
@@ -620,13 +610,13 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::ComputeL0c(uint64_t s1gL0RealSize, u
     if constexpr (IS_MXFP8) {
         // MXFP8: 使用 mx_fp8_e4m3_t 类型触发 mmad_mx 硬件指令
         LocalTensor<mx_fp8_e4m3_t> qL0Mx =
-            queryL0_[(l0BufIdx_ % L0_BUF_NUM) * l0abBufferOffset_].template ReinterpretCast<mx_fp8_e4m3_t>();
+            queryL0_[(l0BufIdx_ % L0_BUF_NUM) * L0AB_BUFFER_OFFSET].template ReinterpretCast<mx_fp8_e4m3_t>();
         LocalTensor<mx_fp8_e4m3_t> kL0Mx =
-            keyL0_[(l0BufIdx_ % L0_BUF_NUM) * l0abBufferOffset_].template ReinterpretCast<mx_fp8_e4m3_t>();
-        Mmad(cL0_[(l0BufIdx_ % L0_BUF_NUM) * l0cBufferOffset_], qL0Mx, kL0Mx, mmadParams);
+            keyL0_[(l0BufIdx_ % L0_BUF_NUM) * L0AB_BUFFER_OFFSET].template ReinterpretCast<mx_fp8_e4m3_t>();
+        Mmad(cL0_[(l0BufIdx_ % L0_BUF_NUM) * L0C_BUFFER_OFFSET], qL0Mx, kL0Mx, mmadParams);
     } else {
-        Mmad(cL0_[(l0BufIdx_ % L0_BUF_NUM) * l0cBufferOffset_], queryL0_[(l0BufIdx_ % L0_BUF_NUM) * l0abBufferOffset_],
-             keyL0_[(l0BufIdx_ % L0_BUF_NUM) * l0abBufferOffset_], mmadParams);
+        Mmad(cL0_[(l0BufIdx_ % L0_BUF_NUM) * L0C_BUFFER_OFFSET], queryL0_[(l0BufIdx_ % L0_BUF_NUM) * L0AB_BUFFER_OFFSET],
+             keyL0_[(l0BufIdx_ % L0_BUF_NUM) * L0AB_BUFFER_OFFSET], mmadParams);
     }
     PipeBarrier<PIPE_M>();
 }
@@ -639,10 +629,10 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::Fixp(uint64_t s1gGmOffset, uint64_t 
     WaitFlag<HardEvent::M_FIX>(M_FIX_EVENT + l0BufIdx_ % L0_BUF_NUM);
 
     if constexpr (std::is_same_v<QK_T, float>) {
-        // s1gL0RealSize：L0C NZ格式按16行tile存储，mSize需16对齐
+        // s1gL0RealSize：2*gSize(128)对齐, 最大256
         // s2L0RealSize <= S2_BASIC_BLOCK_L0, 未约束
         uint32_t nSize = (s2L0RealSize + 7) >> 3 << 3; // 32B对齐
-        uint32_t mSize = ((s1gL0RealSize + 15) / 16) * 16; // CeilAlign到16
+        uint32_t mSize = (s1gL0RealSize + 1) >> 1 << 1;
         FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams;
         // 固定参数
         fixpipeParams.mSize = mSize;
@@ -669,15 +659,15 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::Fixp(uint64_t s1gGmOffset, uint64_t 
         }
         Fixpipe<QK_T, float, QLIV2_CFG_ROW_MAJOR_UB>(mm1ResUB_[(runInfo.loop % 2) * constInfo_.s2BaseSize / 2],
         // 未考虑s1gGmOffset和s2GmOffset，将matmul结果从L0C搬运到UB
-            cL0_[(l0BufIdx_ % L0_BUF_NUM) * l0cBufferOffset_],
+            cL0_[(l0BufIdx_ % L0_BUF_NUM) * L0C_BUFFER_OFFSET],
             fixpipeParams);
     } else {
         // nSize * sizeof(QT) <= 256B, 小于一个UB bank大小(VL)
         uint32_t nSize = (s2L0RealSize + 7) >> 3 << 3; // 8个元素（32B)对齐
-        // L0C NZ格式按16行tile存储，mSize需16对齐
-        uint32_t mSize = ((s1gL0RealSize + 15) / 16) * 16; // CeilAlign到16
+        // 有效数据不足16行，只需输出部分行即可; L0C上bmm1结果矩阵M方向size必须是偶数
+        uint32_t mSize = (s1gL0RealSize + 1) >> 1 << 1;
         // L0C上matmul结果相邻连续数据片断间隔, 单位为16 * sizeof(T)
-        uint32_t srcStride = mSize; // 已16对齐
+        uint32_t srcStride = ((mSize + 15) / 16) * 16;
         FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams; // L0C->UB
         fixpipeParams.nSize = nSize; // N方向全部输出
         fixpipeParams.mSize = mSize / 2; // M方向每个AIV一半
@@ -692,13 +682,13 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::Fixp(uint64_t s1gGmOffset, uint64_t 
         fixpipeParams.subBlockId = 0;
         Fixpipe<QK_T, float, QLIV2_CFG_ROW_MAJOR_UB>(mm1ResUB_[(runInfo.loop % 2) * (UB_BANK_STRIDE / sizeof(QK_T))],
         // 未考虑s1gGmOffset和s2GmOffset，将matmul结果从L0C搬运到UB
-            cL0_[(l0BufIdx_ % L0_BUF_NUM) * l0cBufferOffset_],
+            cL0_[(l0BufIdx_ % L0_BUF_NUM) * L0C_BUFFER_OFFSET],
             fixpipeParams);
 
         fixpipeParams.subBlockId = 1;
         Fixpipe<QK_T, float, QLIV2_CFG_ROW_MAJOR_UB>(mm1ResUB_[(runInfo.loop % 2) * (UB_BANK_STRIDE / sizeof(QK_T))],
             // 未考虑s1gGmOffset和s2GmOffset
-                                                    cL0_[(l0BufIdx_ % L0_BUF_NUM) * l0cBufferOffset_ + mSize / 2 * 16],
+                                                    cL0_[(l0BufIdx_ % L0_BUF_NUM) * L0C_BUFFER_OFFSET + mSize / 2 * 16],
                                                         fixpipeParams); // 将matmul结果从L0C搬运到UB
     }
 }

@@ -23,9 +23,6 @@ using FP8E8M0 = fp8_e8m0_t;
 constexpr uint32_t MXFP8_BLOCK_SIZE = 32;  // 每32个D维度元素一个scale
 constexpr uint32_t FP8_TWO = 2;            // 2个fp8_e8m0打包成1个bf16
 
-// topk 阈值：<=2048 使用 mBaseSize=256/s1BaseSize=4；>2048 使用 mBaseSize=192/s1BaseSize=3
-constexpr uint32_t TOPK_THRESHOLD = 2048;
-
 // ===================== AIC:AIV核数比值宏定义 =====================
 // CUBE与VEC核数比值（AIC:AIV Ratio）
 #define CVRATIO 1
@@ -137,7 +134,6 @@ struct ConstInfo {
 
     // 基本块大小
     uint32_t mBaseSize = 1ULL;
-    uint32_t mBaseSizeAlign16 = 1ULL;  // mBaseSize 按16向上对齐（NZ格式要求），用于Buffer分配
     uint32_t s1BaseSize = 1ULL;
     uint32_t s2BaseSize = 1ULL;
 
