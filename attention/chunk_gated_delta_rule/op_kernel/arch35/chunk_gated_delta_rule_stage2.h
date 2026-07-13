@@ -174,6 +174,8 @@ public:
                             DataCopy(fp32Out, stateFp32Ub_, Dv_ * curDk_);
                             outQueue_.EnQue(fp32Out);
                             CopyOut<float>(sTP_->stateOut[nvId * Dv_ * Dk_], Dv_, Dk_, false, curDk_);
+                            SetFlag<HardEvent::MTE3_MTE2>(MTE3_MTE2_EVENT);
+                            WaitFlag<HardEvent::MTE3_MTE2>(MTE3_MTE2_EVENT);
                         }
                     } else {
                         auto curState = (cId == 0) ? sTP_->curStateBf16[nvId * Dv_ * Dk_]
