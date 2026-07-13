@@ -47,8 +47,6 @@ __attribute__((visibility("default"))) aclnnStatus aclnnFusedInferAttentionScore
     int64_t blockSize, int64_t antiquantMode, bool softmaxLseFlag, int64_t keyAntiquantMode, int64_t valueAntiquantMode,
     const aclTensor *attentionOut, const aclTensor *softmaxLse, uint64_t *workspaceSize, aclOpExecutor **executor);
 
-extern "C" aclnnStatus __attribute__((weak)) NnopbaseDisableOptionalInput(void *executor, const size_t irIndex);
-
 struct FiaActualSeqInArrays {
     const aclIntArray *actualSeqLengthsOptional = nullptr;
     const aclIntArray *actualSeqLengthsKvOptional = nullptr;
@@ -220,14 +218,6 @@ aclnnStatus aclnnFusedInferAttentionScoreV3GetWorkspaceSize(
         keyAntiquantMode, valueAntiquantMode, 0, 0, 0, attentionOut, placeHolder, workspaceSize, executor);
     if (softmaxLseFlag == false) {
         aclDestroyTensor(tempTensor);
-    }
-    if (ret == 0) {
-        if (NnopbaseDisableOptionalInput != nullptr) {
-            NnopbaseDisableOptionalInput(*executor, 27U); // 27 is input irIndex
-            NnopbaseDisableOptionalInput(*executor, 28U); // 28 is input irIndex
-            NnopbaseDisableOptionalInput(*executor, 29U); // 29 is input irIndex，占位符
-            NnopbaseDisableOptionalInput(*executor, 30U); // 30 is input irIndex
-        }
     }
     return ret;
 }
