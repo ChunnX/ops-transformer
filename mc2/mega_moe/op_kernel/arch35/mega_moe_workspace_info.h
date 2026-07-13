@@ -47,6 +47,13 @@ constexpr uint8_t SYNC_AIC_AIV_MODE = 4;
 constexpr uint16_t AIC_SYNC_AIV_FLAG = 4;
 constexpr uint16_t AIV_SYNC_AIC_FLAG = 6;
 constexpr uint16_t AIC_SYNC_AIV_EPILOGUE_FLAG = 8;
+// The 3510 mode-4 flag ID range is [0, 10]. ID 9 carries the pair-local
+// AIC -> AIV1 acknowledgement; ID 10 carries the forward AIV1 -> AIC
+// dispatch-batch release.
+constexpr uint16_t AIC_SYNC_AIV_DISPATCH_BATCH_ACK_FLAG = 9;
+// AIV1 dispatch publishes one completion per rolling expert batch. Keep this
+// channel separate from the A8W4 copy-out handshake above.
+constexpr uint16_t AIV_SYNC_AIC_DISPATCH_BATCH_FLAG = 10;
 constexpr uint16_t FLAG_ID_MAX_PER_V = 16;
 constexpr uint32_t SWIGLU_N_HALF = 2U;
 constexpr int32_t MXFP_DIVISOR_SIZE = 64;
@@ -155,13 +162,18 @@ struct WorkspaceInfo {
         workspaceSize += Ops::Base::CeilAlign(tilingData->maxOutputSize * ALIGN_32, ALIGN_512);
 
         flagSwiGluToGmm2Ptr = base + workspaceSize;
-        workspaceSize += SIZE_INT_32 * tilingData->expertPerRank * INT_CACHELINE;
+        // GMM2 may start from an early 256-row wave while later SwiGLU waves
+        // are still running. Give every expert one cache-line-aligned slot
+        // range, matching the dispatch-ready layout below.
+        int64_t maxWavesPerExpert = Ops::Base::CeilDiv(
+            static_cast<int64_t>(tilingData->maxOutputSize), DISPATCH_WAVE_TILE_M);
+        int64_t waveFlagSlotsPerExpert = Ops::Base::CeilAlign(maxWavesPerExpert,
+            static_cast<int64_t>(INT_CACHELINE));
+        workspaceSize += SIZE_INT_32 * tilingData->expertPerRank * waveFlagSlotsPerExpert;
 
         flagDispatchToGmm1Ptr = base + workspaceSize;
         // wave-grain dispatch flag: per expert allocate one slot per wave (L1_TILE_M=256 rows),
         // aligned up to INT_CACHELINE so each expert's slot block stays cache-line clean.
-        int64_t maxWavesPerExpert = Ops::Base::CeilDiv(
-            static_cast<int64_t>(tilingData->maxOutputSize), DISPATCH_WAVE_TILE_M);
         int64_t dispatchFlagSlotsPerExpert = Ops::Base::CeilAlign(maxWavesPerExpert,
             static_cast<int64_t>(INT_CACHELINE));
         workspaceSize += SIZE_INT_32 * tilingData->expertPerRank * dispatchFlagSlotsPerExpert;
