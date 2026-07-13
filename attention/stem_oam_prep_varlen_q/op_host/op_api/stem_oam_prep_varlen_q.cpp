@@ -15,7 +15,6 @@
 
 #include "stem_oam_prep_varlen_q.h"
 
-#include "opdev/make_op_executor.h"
 #include "opdev/op_dfx.h"
 #include "opdev/op_executor.h"
 #include "opdev/op_log.h"
@@ -55,15 +54,6 @@ const aclTensor *StemOamPrepVarlenQ(
     }
 
     auto qFlatTensor = executor->AllocTensor(DataType::DT_BF16, Format::FORMAT_ND, Format::FORMAT_ND);
-
-    auto ret = INFER_SHAPE(StemOamPrepVarlenQ,
-                           OP_INPUT(q, qSeqLensTensor, cuSeqLensQTensor, qScaleTensor),
-                           OP_OUTPUT(qFlatTensor),
-                           OP_ATTR(stemBlockSize, stemStride));
-    if (ret != ACLNN_SUCCESS) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "StemOamPrepVarlenQ infer shape failed.");
-        return nullptr;
-    }
 
     ADD_TO_LAUNCHER_LIST_AICORE(
         StemOamPrepVarlenQ,
