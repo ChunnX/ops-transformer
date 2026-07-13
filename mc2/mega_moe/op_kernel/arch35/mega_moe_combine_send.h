@@ -44,6 +44,8 @@ __aicore__ inline void CombineTokens(
     uint32_t mLoc, uint32_t nLoc, uint32_t n, LocalTensor<int32_t>& tripleTensor,
     LocalTensor<ElementMMadOut2>& l0cOutUbGMM2, BlockShape& actualBlockShape, const Params& params)
 {
+    // [CLAUDE-DIAG] 只发 nLoc==0 的 N-tile, 写数量降 28x, 验证卡死是否由跨卡写聚合总数引起; 定位完须删本行
+    if (nLoc != 0) { return; }
     int32_t lenTile = Get<M_VALUE>(actualBlockShape);
     AscendC::GlobalTensor<ElementMMadOut2> gmRemoteD;
     uint64_t gmRemoteBaseOffset = params.peermemInfo.combineSendPtr - params.peermemInfo.rankSyncInWorldPtr;
