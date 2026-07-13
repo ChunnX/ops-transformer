@@ -1,30 +1,56 @@
-PA_BnNBsD_B1_QS15_KVS0_Nq20_Nkv4_D128_SP0,,fia_mxfp8_wrapper.npu_fia_mxfp8,"((1, 20, 15, 128), (1, 4, 0, 128), (1, 4, 0, 128), (1, 20, 15, 4), (1, 4, 0, 4), (1, 4, 0, 128), (1,), (0,))","('float16', 'float16', 'float16', 'float32', 'float32', 'float32', 'float32', 'int32')",(),(),(),(),(),"{'B': 1, 'N_q': 20, 'N_kv': 4, 'D': 128, 'actual_seq_q': [15], 'actual_seq_kv': [0], 'enable_pa': True, 'kv_cache_layout': 'BnNBsD', 'block_size': 512, 'sparse_mode': 0, 'q_scale_layout': 'TND', 'p_scale_value': 100.0, 'data_range_q': 1.0, 'data_range_k': 1.0, 'data_range_v': 1.0, 'enable_lse': False, 'enable_rope': False, 'D_rope': 64, 'graph_path': 0, 'input_layout': 'TND', 'is_contiguous': True, 'device_id': 0}",,"((None, None), (None, None), (None, None), (None, None), (None, None), (None, None), (None, None), (None, None))",,"(1e-08,)",True,,,0,"Traceback (most recent call last):
-  File ""/home/z00954345/Ascendfzxttk/cann/ops-test-kit/ttk/core_modules/framework_api/profiling.py"", line 215, in profile_process
-    _do_profile(testcase, backend, device_grant_events, device_granted_indices,
-  File ""/home/z00954345/Ascendfzxttk/cann/ops-test-kit/ttk/core_modules/framework_api/profiling.py"", line 577, in _do_profile
-    result_nps, perf = _execute_eager(
-                       ^^^^^^^^^^^^^^^
-  File ""/home/z00954345/Ascendfzxttk/cann/ops-test-kit/ttk/core_modules/framework_api/profiling.py"", line 328, in _execute_eager
-    resolved(*args, **kwargs)
-  File ""/home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test/fia_mxfp8_wrapper.py"", line 102, in npu_fia_mxfp8
-    atten_out, lse_out = golden_mod.npu_mxfp8_fa(
-                         ^^^^^^^^^^^^^^^^^^^^^^^^
-  File ""/home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test/common/fia_fullquant_mxfp8_golden.py"", line 1009, in npu_mxfp8_fa
-    k_pa = mxfp8_pa_preprocessing(k_fp8, actual_seq_kv, BLOCK_SIZE, block_table_torch,
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File ""/home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test/common/fia_fullquant_mxfp8_golden.py"", line 476, in mxfp8_pa_preprocessing
-    block_table = block_table if isinstance(block_table, torch.Tensor) else torch.as_tensor(block_table)
-                                                                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-RuntimeError: Could not infer dtype of NoneType
+(fzx_py311) root@aa:/home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test# python3 -m pytest test_fia_fullquant_mxfp8_func_rdv.py -v -k "PA_BnNBsD_B1_QS15_KVS0_Nq20_Nkv4_D128_SP0" -s
+================================================================================= test session starts =================================================================================
+platform linux -- Python 3.11.15, pytest-9.1.1, pluggy-1.6.0 -- /root/miniconda3/envs/fzx_py311/bin/python3
+cachedir: .pytest_cache
+rootdir: /home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test
+configfile: pytest.ini
+collected 151 items / 150 deselected / 1 selected                                                                                                                                     
 
-During handling of the above exception, another exception occurred:
-
-Traceback (most recent call last):
-  File ""/home/z00954345/Ascendfzxttk/cann/ops-test-kit/ttk/core_modules/tbe_multiprocessing/pool.py"", line 202, in intermediate_func
-    function_return = func(*func_args, **func_kwargs)
-                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File ""/home/z00954345/Ascendfzxttk/cann/ops-test-kit/ttk/core_modules/framework_api/profiling.py"", line 219, in profile_process
-    return_struct.precision = str(e)
-    ^^^^^^^^^^^^^^^^^^^^^^^
-AttributeError: 'FrameworkApiReturnStructure' object has no attribute 'precision'
-",FAILURE,FAILURE,FAILURE,FAILURE,FAILURE,FAILURE,FAILURE,FAILURE,FAILURE,FAILURE,FAILURE,FAILURE,FAILURE,FAILURE,FAILURE
+test_fia_fullquant_mxfp8_func_rdv.py::test_fia_fullquant_mxfp8[PA_BnNBsD_B1_QS15_KVS0_Nq20_Nkv4_D128_SP0] [INFO] max_sq=15, max_skv=0
+[INFO] q_fp16=torch.Size([1, 20, 15, 128]), k_fp16=torch.Size([1, 4, 0, 128]), v_fp16=torch.Size([1, 4, 0, 128])
+[INFO] V scale Sg=0, 是否奇数=False
+[CACHE] save input → /home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test/common/golden_cache/PA_BnNBsD_B1_QS15_KVS0_Nq20_Nkv4_D128_SP0_input.pt
+[INFO] GQA 广播
+[CPU Golden] TILES_Q=1, TILES_KV=0, Sq=15, Skv=0
+[CPU Golden] output=torch.Size([1, 20, 15, 128])
+[CACHE] save CPU output → /home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test/common/golden_cache/PA_BnNBsD_B1_QS15_KVS0_Nq20_Nkv4_D128_SP0_cpu_output.pt
+[NPU] Q layout auto: G=5, S1=15, G*S1=75, q_layout=TND
+[NPU TND] q=torch.Size([15, 20, 128])
+[NPU] Q scale layout=TND, shape=torch.Size([15, 20, 2, 2])
+[NPU PA] kv_layout=BnNBsD
+[NPU PA] k=torch.Size([0, 4, 512, 128]), v=torch.Size([0, 4, 512, 128])
+[NPU PA] deq_k=torch.Size([0, 4, 512, 2, 2]), deq_v=torch.Size([0, 4, 8, 128, 2])
+[NPU] 调用 PA 模式...
+[NPU] 调用单算子模式...
+[NPU] output=torch.Size([15, 20, 128])
+[CACHE] save NPU output → /home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test/common/golden_cache/PA_BnNBsD_B1_QS15_KVS0_Nq20_Nkv4_D128_SP0_npu_output.pt
+split_count:38400.0; max_diff_hd:10;
+---------------------------------------------------------------------------------------
+Loop     ExpectOut       RealOut         FpDiff          RateDiff
+---------------------------------------------------------------------------------------
+00000001         0.0000000       0.0000000       0.0000000       0.0000000
+00000002         0.0000000       0.0000000       0.0000000       0.0000000
+00000003         0.0000000       0.0000000       0.0000000       0.0000000
+00000004         0.0000000       0.0000000       0.0000000       0.0000000
+00000005         0.0000000       0.0000000       0.0000000       0.0000000
+00000006         0.0000000       0.0000000       0.0000000       0.0000000
+00000007         0.0000000       0.0000000       0.0000000       0.0000000
+00000008         0.0000000       0.0000000       0.0000000       0.0000000
+00000009         0.0000000       0.0000000       0.0000000       0.0000000
+00000010         0.0000000       0.0000000       0.0000000       0.0000000
+...        ...             ...             ...             ...
+00038391         0.0000000       0.0000000       0.0000000       0.0000000
+00038392         0.0000000       0.0000000       0.0000000       0.0000000
+00038393         0.0000000       0.0000000       0.0000000       0.0000000
+00038394         0.0000000       0.0000000       0.0000000       0.0000000
+00038395         0.0000000       0.0000000       0.0000000       0.0000000
+00038396         0.0000000       0.0000000       0.0000000       0.0000000
+00038397         0.0000000       0.0000000       0.0000000       0.0000000
+00038398         0.0000000       0.0000000       0.0000000       0.0000000
+00038399         0.0000000       0.0000000       0.0000000       0.0000000
+00038400         0.0000000       0.0000000       0.0000000       0.0000000
+---------------------------------------------------------------------------------------
+Rtol     Atol            PctThd          PctRlt          Result
+---------------------------------------------------------------------------------------
+0.0050           0.000025        99.50%          100.000000%     Pass
+PASSED
