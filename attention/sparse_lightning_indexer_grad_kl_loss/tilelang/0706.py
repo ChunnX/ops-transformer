@@ -616,61 +616,57 @@ def tilelang_grad_kl_loss_single_kernel(
                     for g_id in range(g_num):
                         # g_id 拆分：vid0 做 g_id=0，vid1 做 g_id=1
                         # 两 AIV 因 g_id 不同而读写不同 GM 区域，无冲突
-                        if g_id != vid:
-                            continue
-                        g_start = g_id * vector_baseg
+                        if g_id == vid:
+                            g_start = g_id * vector_baseg
 
-                        T.pipe_barrier("v")
-                        T.tile.fill(weight_ub, 0)
+                            T.pipe_barrier("v")
+                            T.tile.fill(weight_ub, 0)
 
-                        # Load bmm2 chunk directly from GM (avoids UB→UB range copy bug)
-                        # WAR/ordering: dw_chunk 复用，mte2 覆盖前等前面 mte3 写完
-                        T.set_flag("mte3", "mte2", 2)
-                        T.wait_flag("mte3", "mte2", 2)
-                        T.copy(bmm2Res[bz, s1_id, g_start:g_start + vector_baseg, n_idx_k * n_block:(n_idx_k + 1) * n_block], dw_chunk_ub)
+                            # Load bmm2 chunk directly from GM
+                            T.set_flag("mte3", "mte2", 2)
+                            T.wait_flag("mte3", "mte2", 2)
+                            T.copy(bmm2Res[bz, s1_id, g_start:g_start + vector_baseg, n_idx_k * n_block:(n_idx_k + 1) * n_block], dw_chunk_ub)
 
-                        # RAW: dw_chunk 由 mte2 载入全 chunk，flag 只设一次（消除 per-row 重发）
-                        T.set_flag("mte2", "v", 7)
-                        T.wait_flag("mte2", "v", 7)
+                            # RAW: dw_chunk 由 mte2 载入全 chunk
+                            T.set_flag("mte2", "v", 7)
+                            T.wait_flag("mte2", "v", 7)
 
-                        # Mask 计算：全 2D (vector_baseg, n_block) — 替代 per-row 1D 循环
-                        # mask = 1 - exp(dw_chunk * (-10000))
-                        T.pipe_barrier("v")
-                        T.tile.mul(rsy_tmp_ub, dw_chunk_ub, -10000.0)
-                        T.pipe_barrier("v")
-                        T.tile.exp(rsy_tmp_ub, rsy_tmp_ub)
-                        T.pipe_barrier("v")
-                        T.tile.sub(rsy_tmp_ub, ones_2d_ub, rsy_tmp_ub)
-                        T.pipe_barrier("v")
+                            # Mask 计算：全 2D (vector_baseg, n_block)
+                            T.pipe_barrier("v")
+                            T.tile.mul(rsy_tmp_ub, dw_chunk_ub, -10000.0)
+                            T.pipe_barrier("v")
+                            T.tile.exp(rsy_tmp_ub, rsy_tmp_ub)
+                            T.pipe_barrier("v")
+                            T.tile.sub(rsy_tmp_ub, ones_2d_ub, rsy_tmp_ub)
+                            T.pipe_barrier("v")
 
-                        # Per-row dWeight/reluGrad：weight_2d 逐行不同，保持 per-row
-                        # （rg_chunk[i,:] = weight_2d[idx,:] * diff * mask_i → dw[i,:] = dw[i,:] * diff）
-                        for i in range(vector_baseg):
-                            idx = g_start + i
-                            T.tile.mul(rg_chunk_ub[i, :], weight_2d_ub[idx, :], diff_ub)
-                            T.tile.mul(rg_chunk_ub[i, :], rg_chunk_ub[i, :], rsy_tmp_ub[i, :])
-                            T.tile.mul(dw_chunk_ub[i, :], dw_chunk_ub[i, :], diff_ub)
+                            # Per-row dWeight/reluGrad
+                            for i in range(vector_baseg):
+                                idx = g_start + i
+                                T.tile.mul(rg_chunk_ub[i, :], weight_2d_ub[idx, :], diff_ub)
+                                T.tile.mul(rg_chunk_ub[i, :], rg_chunk_ub[i, :], rsy_tmp_ub[i, :])
+                                T.tile.mul(dw_chunk_ub[i, :], dw_chunk_ub[i, :], diff_ub)
 
-                        T.pipe_barrier("v")
-                        T.reduce_sum(dw_chunk_ub, dw_reduce_ub, 1)
-                        T.pipe_barrier("v")
-                        T.tile.add(weight_ub, weight_ub, dw_reduce_ub)
+                            T.pipe_barrier("v")
+                            T.reduce_sum(dw_chunk_ub, dw_reduce_ub, 1)
+                            T.pipe_barrier("v")
+                            T.tile.add(weight_ub, weight_ub, dw_reduce_ub)
 
-                        # Write reluGrad for MY K block only
-                        T.tile.cast(rg_half_ub, rg_chunk_ub, "CAST_ROUND", vector_baseg * n_block)
-                        T.barrier_all()  # 保留：cast rg_half 与 dw_chunk 别名，兜底
-                        T.set_flag("v", "mte3", 0)
-                        T.wait_flag("v", "mte3", 0)
-                        T.pipe_barrier("mte3")
-                        T.copy(rg_half_ub, reluGradRes[bz, s1_id, g_id * vector_baseg:(g_id + 1) * vector_baseg, n_idx_k * n_block:(n_idx_k + 1) * n_block])
+                            # Write reluGrad for MY K block only
+                            T.tile.cast(rg_half_ub, rg_chunk_ub, "CAST_ROUND", vector_baseg * n_block)
+                            T.barrier_all()
+                            T.set_flag("v", "mte3", 0)
+                            T.wait_flag("v", "mte3", 0)
+                            T.pipe_barrier("mte3")
+                            T.copy(rg_half_ub, reluGradRes[bz, s1_id, g_id * vector_baseg:(g_id + 1) * vector_baseg, n_idx_k * n_block:(n_idx_k + 1) * n_block])
 
-                        T.pipe_barrier("v")
-                        T.tile.cast(dw_half_ub, weight_ub, "CAST_ROUND", vector_baseg)
-                        T.barrier_all()  # 保留：cast dw_half 别名，兜底
-                        T.set_flag("v", "mte3", 1)
-                        T.wait_flag("v", "mte3", 1)
-                        # Write partial dWeight for MY K block only
-                        T.copy(dw_half_ub, dWeight_partial[bz, s1_id, n_idx_k, g_id * vector_baseg:(g_id + 1) * vector_baseg])
+                            T.pipe_barrier("v")
+                            T.tile.cast(dw_half_ub, weight_ub, "CAST_ROUND", vector_baseg)
+                            T.barrier_all()
+                            T.set_flag("v", "mte3", 1)
+                            T.wait_flag("v", "mte3", 1)
+                            # Write partial dWeight for MY K block only
+                            T.copy(dw_half_ub, dWeight_partial[bz, s1_id, n_idx_k, g_id * vector_baseg:(g_id + 1) * vector_baseg])
 
                     # Compute partial Loss for MY K block only (n_idx_k)
                     T.copy(PReduced[bz, s1_id, n_idx_k * n_block:(n_idx_k + 1) * n_block], loss_chunk_ub)
@@ -786,23 +782,22 @@ def tilelang_grad_kl_loss_single_kernel(
 
                 for s1_row in T.serial(s1_start, s1_end):
                     for g_id in T.serial(v3_chunks):
-                        if g_id < _v3_my_start or g_id >= _v3_my_end:
-                            continue
-                        for d_idx in T.serial(d_num_query_index):
-                            # WAR: dq_fp32 复用，mte2 覆盖前等上轮 cast 读完
-                            T.set_flag("v", "mte2", 2)
-                            T.wait_flag("v", "mte2", 2)
-                            T.copy(dQueryIndexAccum[bz, s1_row, g_id * 4:(g_id + 1) * 4, d_idx * BLOCK_K:(d_idx + 1) * BLOCK_K], dq_fp32_ub)
-                            T.set_flag("mte2", "v", 0)
-                            T.wait_flag("mte2", "v", 0)
-                            # WAR: dq_fp16 复用，cast 覆盖前等上轮 mte3 读完
-                            T.set_flag("mte3", "v", 4)
-                            T.wait_flag("mte3", "v", 4)
-                            T.tile.cast(dq_fp16_ub, dq_fp32_ub, "CAST_ROUND", 4 * BLOCK_K)
-                            T.set_flag("v", "mte3", 1)
-                            T.wait_flag("v", "mte3", 1)
-                            T.pipe_barrier("mte3")
-                            T.copy(dq_fp16_ub, dQueryIndex[bz, s1_row, g_id * 4:(g_id + 1) * 4, d_idx * BLOCK_K:(d_idx + 1) * BLOCK_K])
+                        if g_id >= _v3_my_start and g_id < _v3_my_end:
+                            for d_idx in T.serial(d_num_query_index):
+                                # WAR: dq_fp32 复用，mte2 覆盖前等上轮 cast 读完
+                                T.set_flag("v", "mte2", 2)
+                                T.wait_flag("v", "mte2", 2)
+                                T.copy(dQueryIndexAccum[bz, s1_row, g_id * 4:(g_id + 1) * 4, d_idx * BLOCK_K:(d_idx + 1) * BLOCK_K], dq_fp32_ub)
+                                T.set_flag("mte2", "v", 0)
+                                T.wait_flag("mte2", "v", 0)
+                                # WAR: dq_fp16 复用，cast 覆盖前等上轮 mte3 读完
+                                T.set_flag("mte3", "v", 4)
+                                T.wait_flag("mte3", "v", 4)
+                                T.tile.cast(dq_fp16_ub, dq_fp32_ub, "CAST_ROUND", 4 * BLOCK_K)
+                                T.set_flag("v", "mte3", 1)
+                                T.wait_flag("v", "mte3", 1)
+                                T.pipe_barrier("mte3")
+                                T.copy(dq_fp16_ub, dQueryIndex[bz, s1_row, g_id * 4:(g_id + 1) * 4, d_idx * BLOCK_K:(d_idx + 1) * BLOCK_K])
 
             # ============================================================
             # V scope 4: Scatter dk_matmul_partial → dKeyIndex（按 sparse idx）
