@@ -289,7 +289,8 @@ __aicore__ inline void CopyOutQueEx(
 // ============================================================
 template <typename U, bool ISPRE>
 __aicore__ inline void SigmoidGrad(__local_mem__ U *gradHAddr, __local_mem__ U *zAddr, __local_mem__ U *gradZAddr,
-                                   uint64_t bsLen, uint64_t n, uint64_t rowStride, uint64_t vRegSize, float hcEps)
+                                   uint64_t bsLen, uint64_t n, uint64_t rowStride, uint64_t gradHStride,
+                                   uint64_t vRegSize, float hcEps)
 {
     uint32_t vfLen = vRegSize / sizeof(U);
     uint16_t vfLoopCnt = (n + vfLen - 1) / vfLen;
@@ -301,7 +302,7 @@ __aicore__ inline void SigmoidGrad(__local_mem__ U *gradHAddr, __local_mem__ U *
         uint32_t maskLen = static_cast<uint32_t>(n);
         for (uint16_t bs = 0; bs < static_cast<uint16_t>(bsLen); bs++) {
             __local_mem__ U *zRow = zAddr + bs * rowStride;
-            __local_mem__ U *gradHRow = gradHAddr + bs * n;
+            __local_mem__ U *gradHRow = gradHAddr + bs * gradHStride;
             __local_mem__ U *gradZRow = gradZAddr + bs * rowStride;
             for (uint16_t i = 0; i < vfLoopCnt; i++) {
                 maskReg = AscendC::MicroAPI::UpdateMask<U>(maskLen);
