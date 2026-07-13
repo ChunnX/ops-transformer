@@ -11,6 +11,7 @@
 #include "block_sparse_attention_tiling.h"
 #include <cmath>
 #include <cstring>
+#include <algorithm>
 #include "log/log.h"
 
 #include <cstdint>
@@ -689,11 +690,62 @@ ge::graphStatus BSATiling::ParseSparsePattern(gert::TilingContext *bsaContext)
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus BSATiling::ParseAttenMask(gert::TilingContext *bsaContext)
+ge::graphStatus BSATiling::ParseEffRows(gert::TilingContext *bsaContext)
 {
     const auto *attenMaskTensor = bsaContext->GetOptionalInputTensor(ATTEN_MASK_INDEX);
-    if (attenMaskTensor != nullptr) {
-        OP_LOGE(bsaContext->GetNodeName(), "AttenMask is NOT YET supported.");
+    if (attenMaskTensor == nullptr) {
+        useEffRows_ = false;
+        maxBlockNumEff_ = 0;
+        return ge::GRAPH_SUCCESS;
+    }
+    if (socVer_ != SOC_VER_950_CODE) {
+        OP_LOGE(bsaContext->GetNodeName(), "attenMask (blockEffRows) is only supported on chip 950.");
+        return ge::GRAPH_FAILED;
+    }
+    if (dataType_ == ge::DT_FLOAT8_E4M3FN) {
+        OP_LOGE(bsaContext->GetNodeName(), "attenMask (blockEffRows) is not supported with float8_e4m3fn dtype.");
+        return ge::GRAPH_FAILED;
+    }
+
+    useEffRows_ = true;
+    auto effRowsDtype = attenMaskTensor->GetDataType();
+    if (effRowsDtype != ge::DT_INT32) {
+        OP_LOGE(bsaContext->GetNodeName(), "attenMask (blockEffRows) must be INT32, but got %s.",
+                DataTypeToString(effRowsDtype).c_str());
+        return ge::GRAPH_FAILED;
+    }
+    auto &effRowsShape = attenMaskTensor->GetStorageShape();
+    if (effRowsShape.GetDimNum() != DIM_NUM_4) {
+        OP_LOGE(bsaContext->GetNodeName(), "attenMask (blockEffRows) must be 4D, but got dimNum %zu.",
+                effRowsShape.GetDimNum());
+        return ge::GRAPH_FAILED;
+    }
+    if (effRowsShape.GetDim(DIM_3) != 2) {
+        OP_LOGE(bsaContext->GetNodeName(), "attenMask (blockEffRows) last dim must be 2, but got %ld.",
+                effRowsShape.GetDim(DIM_3));
+        return ge::GRAPH_FAILED;
+    }
+    uint32_t effRowsBatch = static_cast<uint32_t>(effRowsShape.GetDim(DIM_0));
+    uint32_t effRowsNumHeads = static_cast<uint32_t>(effRowsShape.GetDim(DIM_1));
+    uint32_t effRowsMaxBlockNum = static_cast<uint32_t>(effRowsShape.GetDim(DIM_2));
+    if (effRowsBatch != batch_ || effRowsNumHeads != numHeads_) {
+        OP_LOGE(bsaContext->GetNodeName(),
+                "attenMask (blockEffRows) batch/numHeads mismatch: expected (%u, %u), got (%u, %u).",
+                batch_, numHeads_, effRowsBatch, effRowsNumHeads);
+        return ge::GRAPH_FAILED;
+    }
+    if (effRowsNumHeads != kvHeads_) {
+        OP_LOGE(bsaContext->GetNodeName(),
+                "attenMask (blockEffRows) requires numHeads == kvHeads (no GQA/MQA), but numHeads=%u, kvHeads=%u.",
+                numHeads_, kvHeads_);
+        return ge::GRAPH_FAILED;
+    }
+    maxBlockNumEff_ = effRowsMaxBlockNum;
+    uint32_t expectedMaxBlockNum = std::max(maxQBlockNum_, maxKvBlockNum_);
+    if (effRowsMaxBlockNum < expectedMaxBlockNum) {
+        OP_LOGE(bsaContext->GetNodeName(),
+                "attenMask (blockEffRows) dim2 (%u) must be >= max(maxQBlockNum, maxKvBlockNum) = %u.",
+                effRowsMaxBlockNum, expectedMaxBlockNum);
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -824,7 +876,7 @@ ge::graphStatus BSATiling::ParseOptionalTensors(gert::TilingContext *bsaContext)
 {
     if (ParseSeqlens(bsaContext) != ge::GRAPH_SUCCESS ||
         ParseSparsePattern(bsaContext) != ge::GRAPH_SUCCESS ||
-        ParseAttenMask(bsaContext) != ge::GRAPH_SUCCESS ||
+        ParseEffRows(bsaContext) != ge::GRAPH_SUCCESS ||
         ParseBlockTable(bsaContext)  != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
@@ -1137,6 +1189,8 @@ ge::graphStatus BSATiling::FillTilingData(gert::TilingContext *bsaContext)
     tilingData_->set_scaleValue(scaleValue_);
     tilingData_->set_selectNumIdxSize(selectNumIdxSize_);
     tilingData_->set_selectIdxSize(selectIdxSize_);
+    tilingData_->set_useEffRows(useEffRows_ ? 1 : 0);
+    tilingData_->set_maxBlockNumEff(maxBlockNumEff_);
     // fill 950 mask2idx tile info
     tilingData_->BsaMask2IdxTileInfo.set_xBlockNumAligned(xBlockNumAligned_);
     tilingData_->BsaMask2IdxTileInfo.set_yBlockNumAligned(yBlockNumAligned_);
