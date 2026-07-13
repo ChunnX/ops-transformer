@@ -57,7 +57,6 @@ class StemOamPrepVarlenQ : public OpDef {
         .NeedCheckSupportFlag(false)
         .PrecisionReduceFlag(true)
         .ExtendCfgInfo("opFile.value", "stem_oam_prep_varlen_q_apt")
-        .ExtendCfgInfo("aclnnSupport.value", "support_aclnn")
         .ExtendCfgInfo("jitCompile.flag", "static_false,dynamic_false");
     this->AICore().AddConfig("ascend950", aicore_config);
   }
