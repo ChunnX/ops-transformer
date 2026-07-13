@@ -193,8 +193,8 @@ int CreateOppInGraph(DataType inDtype, std::vector<ge::Tensor> &input, std::vect
     std::vector<int64_t> qFlatShape = {batch, H_q, max_Qb, kflat_dim};
 
     ADD_INPUT(1, q, inDtype, qShape);
-    ADD_INPUT(2, q_seq_lens, DT_INT32, qSeqLensShape);
-    ADD_INPUT(3, cu_seq_lens_q, DT_INT32, cuSeqLensQShape);
+    ADD_INPUT(2, q_seq_lens, DT_INT64, qSeqLensShape);
+    ADD_INPUT(3, cu_seq_lens_q, DT_INT64, cuSeqLensQShape);
     ADD_OPTIONAL_INPUT(4, q_scale, DT_FLOAT, qScaleShape);
 
     ADD_OUTPUT(1, q_flat, DT_BF16, qFlatShape);

@@ -111,7 +111,7 @@ aclnnStatus aclnnStemOamPrepVarlenQ(
       <td>输入</td>
       <td>表示每个batch的Q序列长度。对应公式中q_seq_lens。</td>
       <td><ul><li>长度等于batch。</li><li>每个值≥0。</li><li>不支持空Array。</li><li>batch最大值为1024。</li></ul></td>
-      <td>INT32</td>
+      <td>INT64</td>
       <td>-</td>
       <td>1 ([batch])</td>
       <td>-</td>
@@ -121,7 +121,7 @@ aclnnStatus aclnnStemOamPrepVarlenQ(
       <td>输入</td>
       <td>表示Q的累积序列长度偏移量，用于varlen索引。对应公式中cu_seqlens_q。</td>
       <td><ul><li>长度等于batch+1。</li><li>cuSeqLensQ[0]必须为0。</li><li>cuSeqLensQ[batch]必须等于total_tokens。</li><li>单调递增。</li></ul></td>
-      <td>INT32</td>
+      <td>INT64</td>
       <td>-</td>
       <td>1 ([batch+1])</td>
       <td>-</td>
@@ -281,8 +281,8 @@ int64_t max_seqlen_pad_stemBlockSize = 128;  // = ceil(max_seqlen/stemBlockSize)
 aclTensor *q = aclCreateTensor(nullptr, 3, {total_tokens, H_q, D}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND, nullptr, 0);
 aclTensor *qScale = aclCreateTensor(nullptr, 3, {batch, H_q, max_seqlen_pad_stemBlockSize}, ACL_FLOAT, ACL_FORMAT_ND, nullptr, 0);
 
-int32_t qSeqLens_data[] = {128, 128};
-int32_t cuSeqLensQ_data[] = {0, 128, 256};
+int64_t qSeqLens_data[] = {128, 128};
+int64_t cuSeqLensQ_data[] = {0, 128, 256};
 aclIntArray *qSeqLens = aclCreateIntArray(qSeqLens_data, 2);
 aclIntArray *cuSeqLensQ = aclCreateIntArray(cuSeqLensQ_data, 3);
 

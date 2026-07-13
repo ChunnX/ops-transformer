@@ -22,13 +22,15 @@ class StemOamPrepVarlenQ : public OpDef {
         .AutoContiguous();
     this->Input("qSeqLens")
         .ParamType(REQUIRED)
-        .DataType({ge::DT_INT32})
+        .DataType({ge::DT_INT64})
         .Format({ge::FORMAT_ND})
+        .ValueDepend(OPTIONAL)
         .AutoContiguous();
     this->Input("cuSeqLensQ")
         .ParamType(REQUIRED)
-        .DataType({ge::DT_INT32})
+        .DataType({ge::DT_INT64})
         .Format({ge::FORMAT_ND})
+        .ValueDepend(OPTIONAL)
         .AutoContiguous();
     this->Input("qScale")
         .ParamType(OPTIONAL)

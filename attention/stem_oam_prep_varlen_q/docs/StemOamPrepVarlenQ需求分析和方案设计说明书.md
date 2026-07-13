@@ -47,7 +47,7 @@ def _prep_q_reference(
     q_padded_lens = (
         (q_seq_lens.to(torch.int64) + stem_block_size - 1)
         // stem_block_size * stem_block_size
-    ).to(torch.int32)
+    ).to(torch.int64)
     max_q_padded = q_padded_lens.max().item()
     max_Qb = max_q_padded // stem_block_size
 
@@ -92,8 +92,8 @@ def _prep_q_reference(
 | 参数 | Shape | Dtype | 说明 |
 |------|-------|-------|------|
 | q | `[total_tokens, H_q, D=128]` | FP8_e4m3fn | 变长 Q tensor |
-| qSeqLens | `[batch]` | INT32 | 每 batch Q 序列长度 |
-| cuSeqLensQ | `[batch+1]` | INT32 | Q 偏移前缀和 |
+| qSeqLens | `[batch]` | INT64 | 每 batch Q 序列长度 |
+| cuSeqLensQ | `[batch+1]` | INT64 | Q 偏移前缀和 |
 | qScale | `[total_tokens, H_q]` | FP32 | Q per-token scale  |
 | stemBlockSize (B) | scalar | INT | %32==0, ≤256 |
 | stemStride (S) | scalar | INT | %16==0, ≤64, S≤B |
@@ -205,8 +205,8 @@ aclnnStatus aclnnStemOamPrepVarlenQ(
 | 参数名 | 输入/输出 | 描述 | 数据类型 | 维度(shape) |
 |-------|---------|------|---------|-----------|
 | q | 输入 | 变长 Q tensor，所有 batch 的 token 拼接存储 | FLOAT8_E4M3FN | [total_tokens, H_q, D] |
-| qSeqLens | 输入 | 每个 batch 的 Q 序列长度 | INT32 | [batch] |
-| cuSeqLensQ | 输入 | Q 的累积序列长度偏移量 | INT32 | [batch+1] |
+| qSeqLens | 输入 | 每个 batch 的 Q 序列长度 | INT64 | [batch] |
+| cuSeqLensQ | 输入 | Q 的累积序列长度偏移量 | INT64 | [batch+1] |
 | qScale | 输入(OPTIONAL) | Q 的 per-token scale factor，FP8 必填 | FLOAT | [total_tokens, H_q] |
 | stemBlockSize | 输入 | stem block 大小，推荐默认 128 | INT64 | scalar |
 | stemStride | 输入 | stem stride 大小，推荐默认 16 | INT64 | scalar |
@@ -234,8 +234,8 @@ aclnnStatus aclnnStemOamPrepVarlenQ(
 | 类别 | 名称 | 类型 | 类型范围 | 默认值 | Shape | 说明 |
 |------|------|------|---------|--------|-------|------|
 | INPUT | q | Tensor | FP8_E4M3FN | NA | [total_tokens, H_q, D] | 变长 Q tensor |
-| INPUT | qSeqLens | IntArray | INT32 | NA | [batch] | Q 序列长度 |
-| INPUT | cuSeqLensQ | IntArray | INT32 | NA | [batch+1] | Q 累积序列长度 |
+| INPUT | qSeqLens | IntArray | INT64 | NA | [batch] | Q 序列长度 |
+| INPUT | cuSeqLensQ | IntArray | INT64 | NA | [batch+1] | Q 累积序列长度 |
 | OPTIONAL_INPUT | qScale | Tensor | FP32 | NA | [total_tokens, H_q] | Q per-token scale, FP8必填 |
 | ATTR | stemBlockSize | INT64 | {32,...,256} | 128 | NA | Stem block 大小，当前仅支持128 |
 | ATTR | stemStride | INT64 | {16,...,64} | 16 | NA | Stride 大小，当前仅支持16 |
@@ -279,11 +279,11 @@ class StemOamPrepVarlenQ : public OpDef {
         .UnknownShapeFormat({ge::FORMAT_ND});
     this->Input("qSeqLens")
         .ParamType(REQUIRED)
-        .DataType({ge::DT_INT32})
+        .DataType({ge::DT_INT64})
         .Format({ge::FORMAT_ND});
     this->Input("cuSeqLensQ")
         .ParamType(REQUIRED)
-        .DataType({ge::DT_INT32})
+        .DataType({ge::DT_INT64})
         .Format({ge::FORMAT_ND});
     // * optional inputs
     this->Input("qScale")
@@ -377,8 +377,8 @@ namespace ge {
  * @brief Stem OAM Varlen Q Prep: 从变长 Q tensor 提取 qFlat (weighted group sum).
  * @par Inputs:
  * @li q: [total_tokens, H_q, D] FP8_e4m3fn varlen Q tensor
- * @li qSeqLens: [batch] INT32, Q sequence lengths
- * @li cuSeqLensQ: [batch+1] INT32, cumulative Q sequence lengths
+ * @li qSeqLens: [batch] INT64, Q sequence lengths
+ * @li cuSeqLensQ: [batch+1] INT64, cumulative Q sequence lengths
  * @par Optional Inputs (*):
  * @li qScale: [total_tokens, H_q] FP32, per-token scale (FP8 required)
  * @par Attributes:
@@ -392,8 +392,8 @@ namespace ge {
  */
 REG_OP(StemOamPrepVarlenQ)
     .INPUT(q, TensorType({DT_FLOAT8_E4M3FN}))
-    .INPUT(qSeqLens, TensorType({DT_INT32}))
-    .INPUT(cuSeqLensQ, TensorType({DT_INT32}))
+    .INPUT(qSeqLens, TensorType({DT_INT64}))
+    .INPUT(cuSeqLensQ, TensorType({DT_INT64}))
     .OPTIONAL_INPUT(qScale, TensorType({DT_FLOAT}))
     .ATTR(stemBlockSize, Int, 128)
     .ATTR(stemStride, Int, 16)
@@ -674,29 +674,29 @@ total_blocks = 287136, N=40, blocks_per_core ≈ 7178
 
 ```cpp
 struct StemPrepQTilingData {
-    uint32_t batch_size = 0;
-    uint32_t num_q_heads = 0;
-    uint32_t dim_qk = 128;
-    uint32_t stem_block_size = 128;
-    uint32_t stem_stride = 16;
-    uint32_t R_val = 8;
-    uint32_t kflat_dim = 2048;
-    uint32_t max_q_padded = 0;
-    uint32_t max_Qb = 0;
-    uint32_t total_tokens = 0;
-    uint32_t total_tasks = 0;
-    uint32_t used_core_num = 0;
-    uint32_t split_mode = 0;           // 0=(b,h), 1=(b,h,qb_range), 2=flat block
-    uint32_t cores_per_bh_base = 1;    // mode1: base cores per (b,h)
-    uint32_t remainder_bh = 0;         // mode1: first remainder_bh bh-pairs get +1 core
-    uint32_t total_blocks = 0;         // mode2: total block count
-    uint32_t blocks_per_core_base = 0; // mode2: base blocks per core
-    uint32_t blocks_remainder = 0;     // mode2: first remainder cores get +1 block
-    uint32_t num_Qb_per_batch[256] = {}; // mode2: num_Qb for each batch
-    uint32_t core_batch_idx[64] = {};  // mode2: per-core starting batch
-    uint32_t core_head_idx[64] = {};   // mode2: per-core starting head
-    uint32_t core_block_idx[64] = {};  // mode2: per-core starting qb
-    uint32_t core_block_num[64] = {};  // mode2: per-core block count
+    uint64_t batch_size = 0;
+    uint64_t num_q_heads = 0;
+    uint64_t dim_qk = 128;
+    uint64_t stem_block_size = 128;
+    uint64_t stem_stride = 16;
+    uint64_t R_val = 8;
+    uint64_t kflat_dim = 2048;
+    uint64_t max_q_padded = 0;
+    uint64_t max_Qb = 0;
+    uint64_t total_tokens = 0;
+    uint64_t total_tasks = 0;
+    uint64_t used_core_num = 0;
+    uint64_t split_mode = 0;           // 0=(b,h), 1=(b,h,qb_range), 2=flat block
+    uint64_t cores_per_bh_base = 1;    // mode1: base cores per (b,h)
+    uint64_t remainder_bh = 0;         // mode1: first remainder_bh bh-pairs get +1 core
+    uint64_t total_blocks = 0;         // mode2: total block count
+    uint64_t blocks_per_core_base = 0; // mode2: base blocks per core
+    uint64_t blocks_remainder = 0;     // mode2: first remainder cores get +1 block
+    uint64_t num_Qb_per_batch[256] = {}; // mode2: num_Qb for each batch
+    uint64_t core_batch_idx[64] = {};  // mode2: per-core starting batch
+    uint64_t core_head_idx[64] = {};   // mode2: per-core starting head
+    uint64_t core_block_idx[64] = {};  // mode2: per-core starting qb
+    uint64_t core_block_num[64] = {};  // mode2: per-core block count
 };
 ```
 
@@ -713,7 +713,7 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
 {
     auto qDesc = context->GetInputDesc(0);
     ge::DataType dtype_q = qDesc->GetDataType();
-    uint32_t INPUT_TYPE = 0;
+    uint64_t INPUT_TYPE = 0;
     if (dtype_q == ge::DT_BFLOAT16) INPUT_TYPE = 1;
     else if (dtype_q == ge::DT_FLOAT16) INPUT_TYPE = 2;
     ASCENDC_TPL_SEL_PARAM(context, INPUT_TYPE);
@@ -996,8 +996,8 @@ import torch_npu
 
 qFlat = torch.ops.npu.stem_oam_prep_varlen_q(
     q,              # [total_tokens, H_q, 128] NPU Tensor
-    qSeqLens,       # [batch] INT32
-    cuSeqLensQ,     # [batch+1] INT32
+    qSeqLens,       # [batch] INT64
+    cuSeqLensQ,     # [batch+1] INT64
     qScale=qScale,  # [batch, H_q, max_seqlen_pad_stemBlockSize] FP32
     stemBlockSize=128,
     stemStride=16

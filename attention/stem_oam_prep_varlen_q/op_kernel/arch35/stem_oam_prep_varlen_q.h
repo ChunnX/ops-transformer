@@ -14,8 +14,8 @@
  * GM 输入:
  *   q:           [total_tokens, H_q, D]       FP8_e4m3fn
  *   qscale:      [total_tokens, H_q]          FP32
- *   qSeqLens:    [batch]                       INT32
- *   cuSeqLensQ:  [batch+1]                     INT32
+ *   qSeqLens:    [batch]                       INT64
+ *   cuSeqLensQ:  [batch+1]                     INT64
  *
  * GM 输出:
  *   qFlat:       [batch, H_q, max_Qb, S*D]    BF16
@@ -238,18 +238,18 @@ public:
         // scalesBuf_:     [B,Hq] FP32 = 128×Hq×4
         // groupSumBuf_:   [S*D]  FP32 = 2048×4    = 8 KB
         // outQueueQflat_: [S*D]  BF16 = 2048×2    = 4 KB
-        // varlenInfoBuf_: [MAX_BATCH_SIZE] INT32 = 4 KB
+        // varlenInfoBuf_: [MAX_BATCH_SIZE] INT64 = 8 KB
         pipe_.InitBuffer(qBlockBuf_, B_ * dim_qk_ * sizeof(fp8_e4m3fn_t));
         pipe_.InitBuffer(qBlockFP32Buf_, B_ * dim_qk_ * sizeof(float));
         pipe_.InitBuffer(scalesBuf_, B_ * num_q_heads_ * sizeof(float));
         pipe_.InitBuffer(groupSumBuf_, qflat_dim_ * sizeof(float));
         pipe_.InitBuffer(outQueueQflat_, 1, qflat_dim_ * sizeof(bfloat16_t));
-        pipe_.InitBuffer(varlenInfoBuf_, MAX_BATCH_SIZE * sizeof(int32_t));
+        pipe_.InitBuffer(varlenInfoBuf_, MAX_BATCH_SIZE * sizeof(int64_t));
 
         // 一次性把 qSeqLens[0..batch-1] 搬到 UB
-        LocalTensor<int32_t> varlenLocal = varlenInfoBuf_.Get<int32_t>();
-        uint32_t batchBytes = tiling->batch_size * sizeof(int32_t);
-        qSeqLensGm_.SetGlobalBuffer((__gm__ int32_t*)qSeqLensBase_, tiling->batch_size);
+        LocalTensor<int64_t> varlenLocal = varlenInfoBuf_.Get<int64_t>();
+        uint32_t batchBytes = tiling->batch_size * sizeof(int64_t);
+        qSeqLensGm_.SetGlobalBuffer((__gm__ int64_t*)qSeqLensBase_, tiling->batch_size);
         DataCopyPad(varlenLocal, qSeqLensGm_,
             {1, static_cast<uint16_t>(batchBytes), 0, 0},
             {false, 0, 0, 0});
@@ -282,7 +282,7 @@ public:
     {
         uint32_t total_qb = 0;
         uint32_t acc_cu_off = 0;
-        LocalTensor<int32_t> varlenLocal = varlenInfoBuf_.Get<int32_t>();
+        LocalTensor<int64_t> varlenLocal = varlenInfoBuf_.Get<int64_t>();
         for (uint32_t b = 0; b < tiling_->batch_size; b++) {
             uint32_t q_len_b = static_cast<uint32_t>(varlenLocal.GetValue(b));
 
@@ -320,17 +320,17 @@ private:
      */
     __aicore__ inline void ReadVarlenInfo(uint32_t b)
     {
-        LocalTensor<int32_t> varlenLocal = varlenInfoBuf_.Get<int32_t>();
-        qSeqLensGm_.SetGlobalBuffer((__gm__ int32_t*)qSeqLensBase_ + b, VARLEN_READ_ALIGN);
+        LocalTensor<int64_t> varlenLocal = varlenInfoBuf_.Get<int64_t>();
+        qSeqLensGm_.SetGlobalBuffer((__gm__ int64_t*)qSeqLensBase_ + b, VARLEN_READ_ALIGN);
         DataCopyPad(varlenLocal, qSeqLensGm_,
-            {1, static_cast<uint16_t>(VARLEN_READ_ALIGN * sizeof(int32_t)), 0, 0},
+            {1, static_cast<uint16_t>(VARLEN_READ_ALIGN * sizeof(int64_t)), 0, 0},
             {false, 0, 0, 0});
         PipeBarrier<PIPE_MTE2>();
         q_len_ = static_cast<uint32_t>(varlenLocal.GetValue(0));
 
-        cuSeqLensGm_.SetGlobalBuffer((__gm__ int32_t*)cuSeqLensBase_ + b, VARLEN_READ_ALIGN);
+        cuSeqLensGm_.SetGlobalBuffer((__gm__ int64_t*)cuSeqLensBase_ + b, VARLEN_READ_ALIGN);
         DataCopyPad(varlenLocal, cuSeqLensGm_,
-            {1, static_cast<uint16_t>(VARLEN_READ_ALIGN * sizeof(int32_t)), 0, 0},
+            {1, static_cast<uint16_t>(VARLEN_READ_ALIGN * sizeof(int64_t)), 0, 0},
             {false, 0, 0, 0});
         PipeBarrier<PIPE_MTE2>();
         cu_off_ = static_cast<uint32_t>(varlenLocal.GetValue(0));
@@ -547,8 +547,8 @@ private:
 
     GlobalTensor<fp8_e4m3fn_t> qGm_;
     GlobalTensor<float> qscaleGm_;
-    GlobalTensor<int32_t> qSeqLensGm_;
-    GlobalTensor<int32_t> cuSeqLensGm_;
+    GlobalTensor<int64_t> qSeqLensGm_;
+    GlobalTensor<int64_t> cuSeqLensGm_;
     GlobalTensor<bfloat16_t> qflatGm_;
 
     TBuf<TPosition::VECCALC> qBlockBuf_;
