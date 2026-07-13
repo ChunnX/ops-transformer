@@ -76,7 +76,7 @@ private:
     aclnnStatus CheckInputShapeForV3Version() const;
     aclnnStatus CheckInputAndOutputDtypeForV3Version() const;
     bool CheckTensorListSizeForEachInput() const;
-    bool IsSpecialMXCase(const T *tensorList) const;
+    bool IsSpecialMXCase(const aclTensor *tensor) const;
     bool IsMxfp4() const;
     bool IsMultiTensorWeight() const;
     bool IsWeightNzMultiTensorLayout() const;
