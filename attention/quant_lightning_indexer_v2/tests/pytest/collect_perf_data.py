@@ -34,18 +34,56 @@ def extract_qliv2_row(prof_folder):
     return row
 
 
-def main():
-    parser = argparse.ArgumentParser(description='批量收集性能数据')
-    parser.add_argument('--test_result_path', type=str, default="result.xlsx")
-    parser.add_argument('--is_compare', action='store_true', default=False)
-    parser.add_argument('--perf_golden_path', type=str, default="perf_golden.xlsx")
-    args = parser.parse_args()
+def collect_and_save_incremental(prof_folder, test_result_path):
+    """增量模式：读取单条用例的性能数据，追加到 result_perf.xlsx"""
+    if not os.path.exists(test_result_path):
+        print(f"结果文件不存在: {test_result_path}")
+        return None
 
-    if not os.path.exists(args.test_result_path):
-        print(f"结果文件不存在: {args.test_result_path}")
+    df_result = pd.read_excel(test_result_path)
+    if df_result.empty:
+        return None
+
+    row_data = extract_qliv2_row(prof_folder)
+    if row_data is None:
+        return None
+
+    last_idx = df_result.shape[0] - 1
+    case_name = df_result.iloc[last_idx]["case_name"]
+
+    perf_dict = {last_idx: row_data}
+    perf_df = pd.DataFrame.from_dict(perf_dict, orient='index')
+
+    overlap = set(df_result.columns) & set(perf_df.columns)
+    if overlap:
+        rename_map = {col: f"op_{col}" for col in overlap}
+        perf_df = perf_df.rename(columns=rename_map)
+
+    perf_path = test_result_path.replace(".xlsx", "_perf.xlsx")
+
+    if os.path.exists(perf_path):
+        df_perf = pd.read_excel(perf_path)
+        if df_perf.shape[0] == df_result.shape[0]:
+            for col in perf_df.columns:
+                df_perf.loc[last_idx, col] = perf_df.loc[last_idx, col]
+        else:
+            df_perf = pd.concat([df_perf, perf_df], axis=1)
+        df_perf.to_excel(perf_path, index=False)
+    else:
+        df_result_with_perf = pd.concat([df_result, perf_df], axis=1)
+        df_result_with_perf.to_excel(perf_path, index=False)
+
+    print(f"  [perf] {case_name} Task Duration: {row_data['Task Duration(us)']}us -> {perf_path}")
+    return row_data
+
+
+def collect_all(test_result_path, is_compare=False, perf_golden_path="perf_golden.xlsx"):
+    """批量模式：收集所有 PROF 文件夹的性能数据"""
+    if not os.path.exists(test_result_path):
+        print(f"结果文件不存在: {test_result_path}")
         return
 
-    df_b = pd.read_excel(args.test_result_path)
+    df_b = pd.read_excel(test_result_path)
     valid_mask = df_b["result"] != "NPU ERROR"
     valid_count = valid_mask.sum()
 
@@ -104,14 +142,14 @@ def main():
 
     df_b = pd.concat([df_b, perf_df], axis=1)
 
-    if args.is_compare:
+    if is_compare:
         try:
-            df_c = pd.read_excel(args.perf_golden_path)
+            df_c = pd.read_excel(perf_golden_path)
         except Exception as e:
             print(f"读取基线数据失败: {e}")
-            args.is_compare = False
+            is_compare = False
 
-    if args.is_compare:
+    if is_compare:
         perf_threshold = 10
         perf_fail_list = []
         df_b["qliv2_perf_diff"] = ""
@@ -135,7 +173,7 @@ def main():
         if perf_fail_list:
             print(f"性能不达标用例: {perf_fail_list}")
 
-    new_path = args.test_result_path.replace(".xlsx", "_perf.xlsx")
+    new_path = test_result_path.replace(".xlsx", "_perf.xlsx")
     if os.path.exists(new_path):
         os.remove(new_path)
     df_b.to_excel(new_path, index=False)
@@ -143,6 +181,35 @@ def main():
     print(f"\n性能数据已保存: {new_path}")
     print(f"共拼接 {len(perf_rows)} 条用例的 op_summary 全字段数据")
     print(f"============= 性能数据收集完成 =============")
+
+
+def main():
+    parser = argparse.ArgumentParser(description='收集性能数据')
+    parser.add_argument('--test_result_path', type=str, default="result.xlsx")
+    parser.add_argument('--incremental', action='store_true', default=False,
+                        help='增量模式：只收集最新一条用例的性能数据')
+    parser.add_argument('--prof_folder', type=str, default=None,
+                        help='增量模式下指定 PROF 文件夹路径')
+    parser.add_argument('--is_compare', action='store_true', default=False)
+    parser.add_argument('--perf_golden_path', type=str, default="perf_golden.xlsx")
+    args = parser.parse_args()
+
+    if args.incremental:
+        if args.prof_folder:
+            prof = args.prof_folder
+        else:
+            prof_folders = sorted(
+                [d for d in os.listdir('.') if os.path.isdir(d) and d.startswith('PROF')],
+                key=lambda x: os.path.getmtime(x)
+            )
+            if not prof_folders:
+                print("未找到PROF文件夹")
+                return
+            prof = prof_folders[-1]
+
+        collect_and_save_incremental(prof, args.test_result_path)
+    else:
+        collect_all(args.test_result_path, args.is_compare, args.perf_golden_path)
 
 
 if __name__ == "__main__":

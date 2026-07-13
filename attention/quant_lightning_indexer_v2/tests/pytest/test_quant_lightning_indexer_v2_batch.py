@@ -23,7 +23,7 @@ import math
 import os
 import concurrent.futures
 
-TEST_INPUT_PATH = "__PATH__"
+TEST_INPUT_PATH = "pt_path"
 pt_dir = TEST_INPUT_PATH
 result_path = Path('result.xlsx')
 device_id = 0
@@ -34,6 +34,8 @@ device_id = 0
 _single_case_path = os.environ.get("QLIV2_TESTCASE_PATH", "").strip()
 # flag：是否处于批量隔离模式（由 batch_isolated_run.sh 设置 QLIV2_TESTCASE_PATH 触发）
 _is_isolated_mode = bool(_single_case_path)
+# flag：运行模式 eager / graph（通过环境变量 QLIV2_RUN_MODE 或命令行参数设置，默认 eager）
+_run_mode = os.environ.get("QLIV2_RUN_MODE", "eager").strip().lower()
 
 # 生成所有的组合，并转换为字典列表
 locals()["testcase_files"] = []
@@ -57,7 +59,12 @@ else:
 
 def qliv2(testcase_files):
     try:
-        cpu_result, npu_result, topk_value, cpu_topk_value, npu_topk_value, output_idx_offset, params = quant_lightning_indexer_v2_pt_loadprocess.test_qliv2_process(testcase_files, device_id=device_id)
+        if _run_mode == "graph":
+            cpu_result, npu_result, topk_value, cpu_topk_value, npu_topk_value, output_idx_offset, params = \
+                quant_lightning_indexer_v2_pt_loadprocess.test_qliv2_process_graph(testcase_files, device_id=device_id)
+        else:
+            cpu_result, npu_result, topk_value, cpu_topk_value, npu_topk_value, output_idx_offset, params = \
+                quant_lightning_indexer_v2_pt_loadprocess.test_qliv2_process(testcase_files, device_id=device_id)
         if npu_result != None:
             result, fulfill_percent = result_compare_method.check_result(cpu_result, npu_result, topk_value, output_idx_offset, params)
         else:

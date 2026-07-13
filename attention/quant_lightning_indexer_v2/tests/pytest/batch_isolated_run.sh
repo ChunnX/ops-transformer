@@ -6,10 +6,11 @@
 #      - 某条用例 device 越界/崩溃不会影响后续用例
 #      - msprof 挂载在单用例进程上, 性能数据采集互不干扰
 # 用法:
-#   bash batch_isolated_run.sh [用例目录] [是否msprof采集: 0|1]
+#   bash batch_isolated_run.sh [用例目录] [是否msprof采集: 0|1] [运行模式: eager|graph]
 # 示例:
-#   bash batch_isolated_run.sh                       # 默认 pt_path 目录, 不采集性能
-#   bash batch_isolated_run.sh pt_path 1             # 启用 msprof 采集性能
+#   bash batch_isolated_run.sh                       # 默认 pt_path 目录, 不采集性能, eager模式
+#   bash batch_isolated_run.sh pt_path 1             # 启用 msprof 采集性能, eager模式
+#   bash batch_isolated_run.sh pt_path 0 graph       # graph模式, 不采集性能
 # -----------------------------------------------------------------------------------------------------------
 
 set -o pipefail
@@ -17,6 +18,7 @@ set -o pipefail
 TEST_SCRIPT="test_quant_lightning_indexer_v2_batch.py"
 TESTCASE_DIR="${1:-./pt_path}"
 USE_MSPROF="${2:-0}"
+RUN_MODE="${3:-eager}"
 RESULT_XLSX="result.xlsx"
 SUMMARY_LOG="batch_summary.log"
 FAIL_LOG="batch_fail_list.log"
@@ -45,7 +47,7 @@ if [ "$TOTAL" -eq 0 ]; then
     exit 1
 fi
 
-echo "共发现 $TOTAL 条用例, 目录: $TESTCASE_DIR , msprof采集: $USE_MSPROF"
+echo "共发现 $TOTAL 条用例, 目录: $TESTCASE_DIR , msprof采集: $USE_MSPROF , 运行模式: $RUN_MODE"
 echo "开始隔离批量执行..." | tee -a "$SUMMARY_LOG"
 
 PASS=0
@@ -59,7 +61,7 @@ for case_file in "${CASE_FILES[@]}"; do
     case_name=$(basename "$case_file")
     echo -e "\n===== [$i/$TOTAL] 执行用例: $case_name =====" | tee -a "$SUMMARY_LOG"
 
-    PYTEST_CMD="python3 -m pytest -rA -s ${TEST_SCRIPT} -v -m ci -W ignore::UserWarning -W ignore::DeprecationWarning"
+    PYTEST_CMD="QLIV2_RUN_MODE=\"${RUN_MODE}\" python3 -m pytest -rA -s ${TEST_SCRIPT} -v -m ci -W ignore::UserWarning -W ignore::DeprecationWarning"
     if [ "$USE_MSPROF" = "1" ]; then
         RUN_CMD="QLIV2_TESTCASE_PATH=\"${case_file}\" msprof ${PYTEST_CMD}"
     else
@@ -72,6 +74,10 @@ for case_file in "${CASE_FILES[@]}"; do
     if [ "$status" -eq 0 ]; then
         PASS=$((PASS+1))
         echo "[PASS] $case_name" | tee -a "$SUMMARY_LOG"
+        # 增量收集性能数据（每条用例跑完立即写入 result_perf.xlsx）
+        if [ "$USE_MSPROF" = "1" ]; then
+            python3 collect_perf_data.py --incremental --test_result_path "$RESULT_XLSX" 2>&1 | tee -a "$SUMMARY_LOG"
+        fi
     else
         FAIL=$((FAIL+1))
         FAIL_LIST+=("$case_name")
@@ -80,9 +86,9 @@ for case_file in "${CASE_FILES[@]}"; do
     fi
 done
 
-# 3. 收集性能数据（仅当启用 msprof 采集时）
+# 3. 最终汇总（批量模式兜底，确保所有用例的性能数据都已收集）
 if [ "$USE_MSPROF" = "1" ]; then
-    echo -e "\n========== 收集性能数据 ==========" | tee -a "$SUMMARY_LOG"
+    echo -e "\n========== 性能数据汇总校验 ==========" | tee -a "$SUMMARY_LOG"
     python3 collect_perf_data.py --test_result_path "$RESULT_XLSX" 2>&1 | tee -a "$SUMMARY_LOG"
 fi
 
