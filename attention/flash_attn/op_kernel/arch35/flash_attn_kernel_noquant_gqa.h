@@ -340,6 +340,11 @@ public:
             constInfo.maxBlockNumPerBatch = this->tilingData->flashAttnPageAttentionParams.maxBlockNumPerBatch;
             constInfo.blockSize = this->tilingData->flashAttnPageAttentionParams.blockSize;
             constInfo.paLayoutType = this->tilingData->flashAttnPageAttentionParams.paLayoutType;
+            // kvcache非连续场景的strides, 透传给offsetCalculator
+            constInfo.keyBnStride = this->tilingData->flashAttnBaseParams.keyBnStride;
+            constInfo.keyN2Stride = this->tilingData->flashAttnBaseParams.keyN2Stride;
+            constInfo.valueBnStride = this->tilingData->flashAttnBaseParams.valueBnStride;
+            constInfo.valueN2Stride = this->tilingData->flashAttnBaseParams.valueN2Stride;
         }
         // LSE
         constInfo.isSoftmaxLseEnable = this->tilingData->flashAttnBaseParams.isSoftMaxLseEnable;
