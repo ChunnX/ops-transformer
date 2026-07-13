@@ -131,8 +131,11 @@ class GeneralizedSFAQuant:
         self.rope_head_dim = rope_head_dim
         self.template_run_mode = template_run_mode
 
-    def calculate_by_bnsd(self, q_bnsd, ori_k_bnsd, cmp_k_bnsd, cmp_sparse_indices_bnsd, cu_seqlens_q, seqused_ori_kv, seqused_cmp_kv, cmp_residual_kv, sinks):
+    def calculate_by_bnsd(self, q_bnsd, ori_k_bnsd, cmp_k_bnsd, cmp_sparse_indices_bnsd, cu_seqlens_q, seqused_ori_kv, seqused_cmp_kv, cmp_residual_kv, sinks, return_softmax_lse=False):
         attn_out = torch.zeros(q_bnsd.shape, dtype=q_bnsd.dtype)
+        softmax_lse = None
+        if return_softmax_lse:
+            softmax_lse = torch.zeros((q_bnsd.shape[0], ori_k_bnsd.shape[1], q_bnsd.shape[2], q_bnsd.shape[1] // ori_k_bnsd.shape[1]), dtype=torch.float32)
         B = q_bnsd.shape[0]
         act_q = self.seqused_q
         G = int(self.N1 / self.N2)
@@ -239,7 +242,9 @@ class GeneralizedSFAQuant:
                             cur_attn_out = cur_attn_out * update_mul_expand + cur_o
                         row_sum_expand = row_sum.unsqueeze(1)
                         attn_out[i_B, i_N2 * G: (i_N2 + 1) * G, i_S1, :] = (cur_attn_out / row_sum_expand).to(dtype=q_bnsd.dtype)
-        return attn_out
+                        if return_softmax_lse:
+                            softmax_lse[i_B, i_N2, i_S1, :] = row_max + torch.log(row_sum + 1e-10)
+        return attn_out, softmax_lse
 
     def gather_cmp_kv(self, k_tensor, topk_id, i_B, i_N2, i_S1, cur_act_kv, cur_act_q, sparse_block_size=1):
         s2_sparse = list()
@@ -339,7 +344,30 @@ class GeneralizedSFAQuant:
         else:
             return tensor
 
-    def forward(self, q, ori_k_bnsd, cmp_k_bnsd, cmp_sparse_indices, cu_seqlens_q, seqused_ori_kv, seqused_cmp_kv, cmp_residual_kv, sinks):
+    def lse_trans_bnsd_to_target_layout(self, tensor, layout, cu_seqlens_q=None, seqused_q=None):
+        if layout in ["BSND"]:
+            return tensor
+        elif layout in ["TND"]:
+            T = cu_seqlens_q[-1]
+            B = tensor.shape[0]
+            N2 = tensor.shape[1]
+            G = tensor.shape[3]
+            output = torch.zeros((N2, T, G), dtype=torch.float)
+            t_start = 0
+            seqused_per_batch = seqused_q if seqused_q is not None else prefix_sum_to_original(cu_seqlens_q)
+            for b_index in range(B):
+                cur_seqused = int(seqused_per_batch[b_index])
+                if cur_seqused == 0:
+                    continue
+                for n_index in range(N2):
+                    output[n_index, t_start:t_start + cur_seqused, :] = tensor[b_index, n_index, :cur_seqused, :]
+                t_start += cur_seqused
+            output = output.transpose(0, 1).contiguous()
+            return output
+        else:
+            return tensor
+
+    def forward(self, q, ori_k_bnsd, cmp_k_bnsd, cmp_sparse_indices, cu_seqlens_q, seqused_ori_kv, seqused_cmp_kv, cmp_residual_kv, sinks, return_softmax_lse=False):
         print("cpu执行中...")
         print(f"template_run_mode = {self.template_run_mode}")
 
@@ -350,11 +378,13 @@ class GeneralizedSFAQuant:
             cmp_sparse_indices_bnsd, cmp_sparse_indices_bnsd_shape = self.trans_shape_to_bnsd(cmp_sparse_indices,
                                                                     cmp_sparse_indices.shape, self.layout_q, cu_seqlens_q, self.seqused_q)
 
-        attn_out = self.calculate_by_bnsd(q_bnsd, ori_k_bnsd, cmp_k_bnsd, cmp_sparse_indices_bnsd, cu_seqlens_q,
-                                         seqused_ori_kv, seqused_cmp_kv, cmp_residual_kv, sinks)
+        attn_out, softmax_lse = self.calculate_by_bnsd(q_bnsd, ori_k_bnsd, cmp_k_bnsd, cmp_sparse_indices_bnsd, cu_seqlens_q,
+                                         seqused_ori_kv, seqused_cmp_kv, cmp_residual_kv, sinks, return_softmax_lse)
 
         attn_out = self.trans_bnsd_to_target_layout(attn_out, self.layout_q, cu_seqlens_q, self.seqused_q)
-        return attn_out
+        if return_softmax_lse:
+            softmax_lse = self.lse_trans_bnsd_to_target_layout(softmax_lse, self.layout_q, cu_seqlens_q, self.seqused_q)
+        return attn_out, softmax_lse
 
 def prefix_sum_to_original(cu_seqlens_q):
     """
@@ -1225,7 +1255,7 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
         block_num1, block_num2, block_size1, block_size2, cu_seqlens_q, seqused_q, seqused_ori_kv, seqused_cmp_kv,
         cu_seqlens_ori_kv, cu_seqlens_cmp_kv, cmp_residual_kv, softmax_scale, cmp_ratio,
         ori_mask_mode, cmp_mask_mode, ori_win_left, ori_win_right, quant_mode, tile_size, rope_head_dim, template_run_mode)
-    cpu_result = test_qsmla.forward(q, ori_k_bnsd, cmp_k_bnsd, cmp_sparse_indices, cu_seqlens_q, seqused_ori_kv, seqused_cmp_kv, cmp_residual_kv, sinks)
+    cpu_result, softmax_lse = test_qsmla.forward(q, ori_k_bnsd, cmp_k_bnsd, cmp_sparse_indices, cu_seqlens_q, seqused_ori_kv, seqused_cmp_kv, cmp_residual_kv, sinks, return_softmax_lse)
 
     print("mode:%s\n",template_run_mode)
 
@@ -1307,7 +1337,8 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
             'return_softmax_lse': return_softmax_lse
         },
 
-        'cpu_output': cpu_result
+        'cpu_output': cpu_result,
+        'softmax_lse': softmax_lse
     }
 
     if save_pt:

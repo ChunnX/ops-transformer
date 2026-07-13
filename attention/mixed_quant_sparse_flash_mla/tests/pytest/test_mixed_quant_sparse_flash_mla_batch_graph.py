@@ -47,9 +47,11 @@ def qsmla_aclgraph(testcase_files):
     test_data = torch.load(testcase_files, map_location="cpu")
     npu_error_msg = None
     try:
-        npu_result, cpu_quant_result = mixed_quant_sparse_flash_mla_process.test_qsmla_quant_process_graph(
+        npu_result, softmax_lse, cpu_quant_result = mixed_quant_sparse_flash_mla_process.test_qsmla_quant_process_graph(
             test_data, device_id=device_id)
         result, fulfill_percent = result_compare_method.check_result(cpu_quant_result, npu_result)
+        if test_data['params'].get('return_softmax_lse'):
+            result, fulfill_percent = result_compare_method.check_result(test_data['softmax_lse'], softmax_lse)
     except Exception as e:
         npu_error_msg = str(e)
         print("NPU ERROR：", npu_error_msg)
