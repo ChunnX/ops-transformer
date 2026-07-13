@@ -75,10 +75,12 @@ protected:
                                       TilingContextInfo &contextInfo);
 
     void SetTilingInfo(AlltoAllMatmulTilingInfo &tilingInfo) const;
-    void PrintAlltoAllMxQuantMatmulTilingData(AlltoAllQuantMatmulTilingData &outTilingData);
+    void PrintAlltoAllMxQuantMatmulTilingData(AlltoAllMxQuantMatmulTilingData &outTilingData);
 
 private:
-    AlltoAllQuantMatmulTilingData localTilingData_;
+    void ConvertToBlazeTilingData(const DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams &src,
+                                  uint32_t mmM, QuantBatchMatmulTilingData &dst);
+    AlltoAllMxQuantMatmulTilingData localTilingData_;
     bool isMxFp4_ = false;
     uint64_t mmMvalueLen_ = 0;
     QuantType matmulQuantType_ = QuantType::MXFP8_QUANT;
