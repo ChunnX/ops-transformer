@@ -193,13 +193,25 @@ def _softmax_p_from_scores_fp32(s_fp32):
   return p_bf16, row_max_fp32, row_sum_fp32
 
 
-def _bf16_block_qk_sm_pv(q_group_bf16, k_bf16, v_bf16, scale_value):
+def _bf16_block_qk_sm_pv(q_group_bf16, k_bf16, v_bf16, scale_value, q, h, t):
   """Single KV block: QK -> SM -> PV. Returns unnormalized O_partial, rowMax, rowSum."""
   s_fp32 = torch.matmul(q_group_bf16.float(), k_bf16.float().t()) * scale_value
+  #if q ==0 and h == 0 and t == 0:
+  #  print("s_fp32:", torch.matmul(q_group_bf16.float(), k_bf16.float().t()))
   p_bf16, row_max_fp32, row_sum_fp32 = _softmax_p_from_scores_fp32(s_fp32)
+  # if q ==0 and h == 0 and t == 0:
+  #   print("p_bf16[0][0]:", p_bf16[0][:16])
+  #   print("p_bf16[0][1]:", p_bf16[0][16:32])
+  #   print("p_bf16[0][2]:", p_bf16[0][32:48])
+  #   print("p_bf16[0][3]:", p_bf16[0][48:64])
+  #   print("p_bf16[0][4]:", p_bf16[0][64:80])
+  #   print("p_bf16[0][5]:", p_bf16[0][80:96])
+  #   print("p_bf16[0][6]:", p_bf16[0][96:])
   #print("s_fp32:", torch.matmul(q_group_bf16.float(), k_bf16.float().t())[0][:128])
   #print("p_bf16:", p_bf16.shape, p_bf16[0][:128])
   o_unnorm_fp32 = torch.matmul(p_bf16.float(), v_bf16.float())
+  #if q ==0 and h == 0 and t == 0:
+  #  print("o_unnorm_fp32:", o_unnorm_fp32)
   row_max_fp32 = torch.where(
       row_sum_fp32 > 0, row_max_fp32, torch.full_like(row_max_fp32, float('-inf')))
   row_sum_fp32 = torch.where(row_sum_fp32 > 0, row_sum_fp32, torch.zeros_like(row_sum_fp32))
@@ -228,15 +240,17 @@ def _compute_scale_weights(max_slots, sum_slots):
   return scaled / total
 
 
-def _combine_partials_max_sum_ws(o_partial_slots, max_slots, sum_slots, debug=False):
+def _combine_partials_max_sum_ws(o_partial_slots, max_slots, sum_slots):
   """Combine topK workspace partials via IFA ComputeScaleValue + ReduceFinalRes.
 
   Phase1 stores unnormalized O_partial = P*V and per-row rowMax/rowSum.
   Phase2 CopyAccumOutIn: O_norm = O_partial / rowSum (invalid rowSum<=0 -> 0).
   ReduceFinalRes: out = sum(scale[k] * O_norm[k]).
   """
+  #print("max_slots:", max_slots)
+  #print("sum_slots:", sum_slots)
   scale = _compute_scale_weights(max_slots, sum_slots)
-  print("scale:", scale)
+  #print("scale:", scale)
   if scale.sum() <= 0:
     return None
 
@@ -694,7 +708,7 @@ def cpu_golden_prefill_phase1(
         continue
 
       o_partial, row_max, row_sum = _bf16_block_qk_sm_pv(
-          q_row_bf16, k_block[:causal_valid_len], v_block[:causal_valid_len], scale_value)
+          q_row_bf16, k_block[:causal_valid_len], v_block[:causal_valid_len], scale_value, q_token, kv_head_idx, slot_k)
 
       ws_o[q_token, kv_head_idx, slot_k] = o_partial
       ws_max[q_token, kv_head_idx, slot_k] = row_max
@@ -703,7 +717,7 @@ def cpu_golden_prefill_phase1(
   return ws_o, ws_max, ws_sum
 
 
-def cpu_golden_prefill_phase2(ws_o, ws_max, ws_sum, top_k, kv_heads, group_size, d, debug=False):
+def cpu_golden_prefill_phase2(ws_o, ws_max, ws_sum, top_k, kv_heads, group_size, d):
   """Phase2: O/rowSum + ComputeScaleValue scale + ReduceFinalRes over topK partials."""
   total_q_tokens = ws_o.shape[0]
   num_q_heads = kv_heads * group_size
@@ -718,10 +732,7 @@ def cpu_golden_prefill_phase2(ws_o, ws_max, ws_sum, top_k, kv_heads, group_size,
       slot_o = ws_o[q_token, kv_head_idx, :, gh, :]
       slot_max = ws_max[q_token, kv_head_idx, :, gh]
       slot_sum = ws_sum[q_token, kv_head_idx, :, gh]
-      if debug:
-        print(f"[phase2] q={q_token} kvHead={kv_head_idx} gh={gh}")
-      combined = _combine_partials_max_sum_ws(
-          slot_o, slot_max, slot_sum, debug=debug)
+      combined = _combine_partials_max_sum_ws(slot_o, slot_max, slot_sum)
       if combined is not None:
         output[q_token, q_head_start + gh, :] = combined.to(torch.bfloat16)
 
@@ -829,8 +840,7 @@ def cpu_golden_prefill_qcentric_bf16(
 def cpu_golden_prefill_bf16(
     query, key, value, k2q_row_ptr, k2q_q_indices, k2q_slot_indices,
     block_table, actual_seq_lengths, actual_seq_lengths_kv,
-    block_size, top_k, scale_value,
-    debug_phase2=False,
+    block_size, top_k, scale_value
 ):
   """Full two-phase prefill golden: Phase1 QK/SM/PV -> workspace; Phase2 IFA combine."""
   kv_heads = key.shape[2]
@@ -844,8 +854,7 @@ def cpu_golden_prefill_bf16(
   group_size = query.shape[1] // kv_heads
   d = query.shape[2]
   return cpu_golden_prefill_phase2(
-      ws_o, ws_max, ws_sum, top_k, kv_heads, group_size, d,
-      debug=debug_phase2)
+      ws_o, ws_max, ws_sum, top_k, kv_heads, group_size, d)
 
 
 def make_case(batch, q_seqlens, kv_seqlens, q_heads, kv_heads, head_dim=128,
