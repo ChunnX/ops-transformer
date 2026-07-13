@@ -22,6 +22,7 @@
 #endif
 #include "kernel_operator_list_tensor_intf.h"
 #include "lib/matmul_intf.h"
+#include "tensor_api/tensor.h"
 
 #include "./semaphore.h"
 
@@ -62,7 +63,79 @@ constexpr uint16_t FLAG_ID_MAX = 16;
 constexpr uint16_t AIC_SYNC_AIV_FLAG = 4;
 constexpr uint16_t AIV_SYNC_AIC_FLAG = 6;
 constexpr uint64_t SWIGLU_N_HALF = 2;
+constexpr uint64_t GMMSQ_MX_SCALE_FACTOR_BIT = 8UL;
+constexpr uint64_t GMMSQ_MX_SCALE_FACTOR_MASK = 0xFFUL;
+constexpr uint64_t TENSOR_API_MX_SCALE_C0 = 2UL;
 } // namespace
+
+template <class BlockMmadBuilder, typename Enable = void>
+struct SwigluMmadKernelTraits {
+    using AType = typename BlockMmadBuilder::AType;
+    using BType = typename BlockMmadBuilder::BType;
+    using CType = typename BlockMmadBuilder::CType;
+    using BlockMmadOp = typename BlockMmadBuilder::BlockMmadOp;
+    using Arguments = typename BlockMmadBuilder::Arguments;
+    using Params = typename BlockMmadBuilder::Params;
+    using L1TileShape = typename BlockMmadBuilder::L1TileShape;
+    using L0TileShape = typename BlockMmadBuilder::L0TileShape;
+    static constexpr bool transA = BlockMmadBuilder::transA;
+    static constexpr bool transB = BlockMmadBuilder::transB;
+    static constexpr CubeFormat formatA = BlockMmadBuilder::formatA;
+    static constexpr CubeFormat formatB = BlockMmadBuilder::formatB;
+    static constexpr CubeFormat formatC = BlockMmadBuilder::formatC;
+    static constexpr int64_t l1M = BlockMmadBuilder::l1M;
+    static constexpr int64_t l1N = BlockMmadBuilder::l1N;
+    static constexpr int64_t l1K = BlockMmadBuilder::l1K;
+    static constexpr bool useTensorApiConcatMmad = false;
+    static constexpr bool useSingleL0c2Ub = false;
+};
+
+template <class TensorBlockMmad>
+struct SwigluMmadKernelTraits<
+    TensorBlockMmad,
+    AscendC::Std::enable_if_t<
+        AscendC::Std::is_same_v<typename TensorBlockMmad::ProblemShape, typename TensorBlockMmad::ProblemShape>>> {
+    using AType = typename TensorBlockMmad::AType;
+    using BType = typename TensorBlockMmad::BType;
+    using CType = typename TensorBlockMmad::CType;
+    using BlockMmadOp = TensorBlockMmad;
+    using L1TileShape = AscendC::Shape<_0, _0, _0>;
+    using L0TileShape = AscendC::Shape<_0, _0, _0>;
+    static constexpr bool transA = TensorBlockMmad::transA;
+    static constexpr bool transB = TensorBlockMmad::transB;
+    static constexpr CubeFormat formatA = CubeFormat::ND;
+    static constexpr CubeFormat formatB = CubeFormat::ND;
+    static constexpr CubeFormat formatC = CubeFormat::ND_ALIGN;
+    static constexpr int64_t l1M = 0;
+    static constexpr int64_t l1N = 0;
+    static constexpr int64_t l1K = 0;
+    static constexpr bool useTensorApiConcatMmad = true;
+    static constexpr bool useSingleL0c2Ub = true;
+    static constexpr uint32_t c0Size = TensorBlockMmad::C0_SIZE;
+
+    using MakeLayoutA = AscendC::Te::FrameLayoutFormat<typename TensorBlockMmad::LayoutA, AscendC::Std::Int<c0Size>>;
+    using MakeLayoutB = AscendC::Te::FrameLayoutFormat<typename TensorBlockMmad::LayoutB, AscendC::Std::Int<c0Size>>;
+    using MakeLayoutScaleA = AscendC::Std::conditional_t<
+        transA,
+        AscendC::Te::FrameLayoutFormat<AscendC::Te::ScaleADNLayoutPtn, AscendC::Std::Int<TENSOR_API_MX_SCALE_C0>>,
+        AscendC::Te::FrameLayoutFormat<AscendC::Te::ScaleANDLayoutPtn, AscendC::Std::Int<TENSOR_API_MX_SCALE_C0>>>;
+    using MakeLayoutScaleB = AscendC::Std::conditional_t<
+        transB,
+        AscendC::Te::FrameLayoutFormat<AscendC::Te::ScaleBDNLayoutPtn, AscendC::Std::Int<TENSOR_API_MX_SCALE_C0>>,
+        AscendC::Te::FrameLayoutFormat<AscendC::Te::ScaleBNDLayoutPtn, AscendC::Std::Int<TENSOR_API_MX_SCALE_C0>>>;
+
+    struct Arguments {
+        GM_ADDR aGmAddr{nullptr};
+        GM_ADDR bGmAddr{nullptr};
+        GM_ADDR x2ScaleGmAddr{nullptr};
+        GM_ADDR x1ScaleGmAddr{nullptr};
+        GM_ADDR cGmAddr{nullptr};
+        GM_ADDR groupListGmAddr{nullptr};
+        GM_ADDR biasGmAddr{nullptr};
+    };
+
+    using Params = Arguments;
+};
 
 template <class ProblemShape_, class BlockMmadBuilder_, class BlockEpilogue_, class BlockScheduler_,
           typename Enable_ = void>
@@ -82,30 +155,31 @@ public:
 
     using BlockEpilogue = BlockEpilogue_;
     using BlockMmadBuilder = BlockMmadBuilder_;
+    using MmadTraits = SwigluMmadKernelTraits<BlockMmadBuilder>;
     using ProblemShape = ProblemShape_;
     using BlockScheduler = BlockScheduler_;
-    static constexpr bool transA = BlockMmadBuilder::transA;
-    static constexpr bool transB = BlockMmadBuilder::transB;
-    static constexpr auto formatA = BlockMmadBuilder::formatA;
-    static constexpr auto formatB = BlockMmadBuilder::formatB;
-    static constexpr int64_t l1M = BlockMmadBuilder::l1M;
-    static constexpr int64_t l1N = BlockMmadBuilder::l1N;
-    static constexpr int64_t l1K = BlockMmadBuilder::l1K;
+    static constexpr bool transA = MmadTraits::transA;
+    static constexpr bool transB = MmadTraits::transB;
+    static constexpr auto formatA = MmadTraits::formatA;
+    static constexpr auto formatB = MmadTraits::formatB;
+    static constexpr int64_t l1M = MmadTraits::l1M;
+    static constexpr int64_t l1N = MmadTraits::l1N;
+    static constexpr int64_t l1K = MmadTraits::l1K;
     // schedulerOp
     using BlockSchedulerOp =
-        typename Block::BlockSchedulerSelector<ProblemShape, typename BlockMmadBuilder::L1TileShape,
-                                               typename BlockMmadBuilder::L0TileShape, BlockScheduler, transA,
+        typename Block::BlockSchedulerSelector<ProblemShape, typename MmadTraits::L1TileShape,
+                                               typename MmadTraits::L0TileShape, BlockScheduler, transA,
                                                transB>::SchedulerOp;
     // mmadOp
-    using BlockMmadOp = typename BlockMmadBuilder::BlockMmadOp;
-    using BlockMmadArguments = typename BlockMmadBuilder::Arguments;
+    using BlockMmadOp = typename MmadTraits::BlockMmadOp;
+    using BlockMmadArguments = typename MmadTraits::Arguments;
     using BlockEpilogueArguments = typename BlockEpilogue::Arguments;
-    using BlockMmadParams = typename BlockMmadBuilder::Params;
+    using BlockMmadParams = typename MmadTraits::Params;
     using BlockEpilogueParams = typename BlockEpilogue::Params;
     using DataTypeOut = typename BlockEpilogue::DataTypeOut;
-    using AType = typename BlockMmadBuilder::AType;
-    using BType = typename BlockMmadBuilder::BType;
-    using CType = typename BlockMmadBuilder::CType;
+    using AType = typename MmadTraits::AType;
+    using BType = typename MmadTraits::BType;
+    using CType = typename MmadTraits::CType;
     using TupleShape = AscendC::Shape<int64_t, int64_t, int64_t>;
     static constexpr bool IS_FP4 = AscendC::IsSameTypeV<AType, fp4x2_e2m1_t> ||
                                    AscendC::IsSameTypeV<AType, fp4x2_e1m2_t>;
@@ -116,7 +190,9 @@ public:
     using BlockOffset = AscendC::Shape<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t>;
     // coordinate
     using CoordClass =
-        Coordinate<transA, transB, formatA, formatB, BlockMmadBuilder::formatC>;
+        Coordinate<transA, transB, formatA, formatB, MmadTraits::formatC>;
+    static constexpr bool useTensorApiConcatMmad = MmadTraits::useTensorApiConcatMmad;
+    static constexpr bool useSingleL0c2Ub = MmadTraits::useSingleL0c2Ub;
 
     // attribute
     AscendC::GlobalTensor<AType> aGlobal_;
@@ -132,8 +208,10 @@ public:
     int64_t perGroupBOffset_ = 0;
     int64_t bRightOffsetStep_ = 0;
     int64_t x2ScaleRightOffsetStep_ = 0;
+    int64_t scaleK_ = 0;
     BlockMmadOp mmadOp_;
     BlockEpilogue epilogueOp_;
+    AscendC::LocalTensor<CType> l0cOutUb_;
     AscendC::LocalTensor<CType> l0cOutUbFirst_;
     AscendC::LocalTensor<CType> l0cOutUbSecond_;
     bool isVecSetSyncCom_ = false;
@@ -355,6 +433,101 @@ public:
         }
     }
 
+    __aicore__ inline int64_t GetScaleK(int64_t k) const
+    {
+        return CeilDiv(k, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
+    }
+
+    __aicore__ inline void InitMmadOp(const Params& params)
+    {
+        if constexpr (useTensorApiConcatMmad) {
+            const TCubeTiling* __restrict matmulTiling = params.gmmParams.matmulTiling;
+            scaleK_ = GetScaleK(matmulTiling->Ka);
+            uint64_t scaleFactorA = matmulTiling->mxTypePara & GMMSQ_MX_SCALE_FACTOR_MASK;
+            uint64_t scaleFactorB =
+                (matmulTiling->mxTypePara >> GMMSQ_MX_SCALE_FACTOR_BIT) & GMMSQ_MX_SCALE_FACTOR_MASK;
+            uint64_t kAL1 = static_cast<uint64_t>(matmulTiling->stepKa) * static_cast<uint64_t>(matmulTiling->baseK);
+            uint64_t kBL1 = static_cast<uint64_t>(matmulTiling->stepKb) * static_cast<uint64_t>(matmulTiling->baseK);
+            uint64_t scaleKL1 = Min(Max(scaleFactorA * kAL1, scaleFactorB * kBL1),
+                                    static_cast<uint64_t>(matmulTiling->Ka));
+            uint64_t concatBaseN = Min(static_cast<uint64_t>(matmulTiling->baseN) * SWIGLU_N_HALF,
+                                       static_cast<uint64_t>(matmulTiling->N));
+            typename BlockMmadOp::BlockShape l0TileShape{static_cast<int64_t>(matmulTiling->baseM),
+                                                         static_cast<int64_t>(concatBaseN),
+                                                         static_cast<int64_t>(matmulTiling->baseK), 0};
+            typename BlockMmadOp::L1Params l1Params{kAL1, kBL1, scaleKL1};
+            typename BlockMmadOp::MmadParams mmParams{l0TileShape, l1Params, false, false};
+            typename BlockMmadOp::ProblemShape mmProblemShape{matmulTiling->M, matmulTiling->N,
+                                                              matmulTiling->Ka, 0};
+            if ASCEND_IS_AIC {
+                this->mmadOp_.Init(mmProblemShape, mmParams);
+            }
+        } else {
+            this->mmadOp_.Init(const_cast<TCubeTiling* __restrict>(params.gmmParams.matmulTiling), GetTPipePtr());
+        }
+    }
+
+    template <typename SingleShape>
+    __aicore__ inline void RunTensorApiSwigluConcat(int64_t aOffset, int64_t bLeftOffset, int64_t bRightOffset,
+                                                    int64_t x1ScaleOffset, int64_t x2ScaleLeftOffset,
+                                                    int64_t x2ScaleRightOffset, const SingleShape& mmSingleShape)
+    {
+        int64_t curM = Get<0>(mmSingleShape);
+        int64_t curN = Get<1>(mmSingleShape);
+        int64_t curK = Get<2>(mmSingleShape);
+        int64_t k = Get<K_VALUE>(problemShape_);
+        int64_t n = Get<N_VALUE>(problemShape_);
+        using MakeLayoutA = typename MmadTraits::MakeLayoutA;
+        using MakeLayoutB = typename MmadTraits::MakeLayoutB;
+        using MakeLayoutScaleA = typename MmadTraits::MakeLayoutScaleA;
+        using MakeLayoutScaleB = typename MmadTraits::MakeLayoutScaleB;
+        auto layoutA = MakeLayoutA{}(curM, k);
+        auto layoutB = MakeLayoutB{}(k, n);
+        auto layoutScaleA = MakeLayoutScaleA{}(curM, scaleK_);
+        auto layoutScaleB = MakeLayoutScaleB{}(scaleK_, n);
+        auto gmA = AscendC::Te::MakeTensor(AscendC::Te::MakeMemPtr<AscendC::Te::Location::GM>(
+            reinterpret_cast<__gm__ AType *>(aGlobal_[aOffset].GetPhyAddr())), layoutA);
+        auto gmBLeft = AscendC::Te::MakeTensor(AscendC::Te::MakeMemPtr<AscendC::Te::Location::GM>(
+            reinterpret_cast<__gm__ BType *>(bGlobal_[bLeftOffset].GetPhyAddr())), layoutB);
+        auto gmBRight = AscendC::Te::MakeTensor(AscendC::Te::MakeMemPtr<AscendC::Te::Location::GM>(
+            reinterpret_cast<__gm__ BType *>(bGlobal_[bRightOffset].GetPhyAddr())), layoutB);
+        auto gmScaleA = AscendC::Te::MakeTensor(AscendC::Te::MakeMemPtr<AscendC::Te::Location::GM>(
+            reinterpret_cast<__gm__ AscendC::fp8_e8m0_t *>(x1ScaleGlobal_[x1ScaleOffset].GetPhyAddr())),
+            layoutScaleA);
+        auto gmScaleBLeft = AscendC::Te::MakeTensor(AscendC::Te::MakeMemPtr<AscendC::Te::Location::GM>(
+            reinterpret_cast<__gm__ AscendC::fp8_e8m0_t *>(x2ScaleGlobal_[x2ScaleLeftOffset].GetPhyAddr())),
+            layoutScaleB);
+        auto gmScaleBRight = AscendC::Te::MakeTensor(AscendC::Te::MakeMemPtr<AscendC::Te::Location::GM>(
+            reinterpret_cast<__gm__ AscendC::fp8_e8m0_t *>(x2ScaleGlobal_[x2ScaleRightOffset].GetPhyAddr())),
+            layoutScaleB);
+        typename BlockMmadOp::BlockShape blockShape{curM, curN, curK, 0};
+        this->mmadOp_.RunSwigluConcat(gmA, gmBLeft, gmBRight, gmScaleA, gmScaleBLeft, gmScaleBRight, l0cOutUb_,
+                                      blockShape);
+    }
+
+    template <typename SingleShape>
+    __aicore__ inline void RunMmadForCurrentTile(const SingleShape& mmSingleShape)
+    {
+        int64_t aOffset = Get<IDX_A_OFFSET>(blockOffset_);
+        int64_t bLeftOffset = Get<IDX_B_OFFSET>(blockOffset_);
+        int64_t bRightOffset = bLeftOffset + bRightOffsetStep_;
+        int64_t x1ScaleOffset = Get<IDX_X1SCALE_OFFSET>(blockOffset_);
+        int64_t x2ScaleLeftOffset = Get<IDX_X2SCALE_OFFSET>(blockOffset_);
+        int64_t x2ScaleRightOffset = x2ScaleLeftOffset + x2ScaleRightOffsetStep_;
+
+        if constexpr (useSingleL0c2Ub) {
+            // MXFP8 weight ND: concatenate two B windows in L1 and issue one MMAD.
+            RunTensorApiSwigluConcat(aOffset, bLeftOffset, bRightOffset, x1ScaleOffset, x2ScaleLeftOffset,
+                                     x2ScaleRightOffset, mmSingleShape);
+        } else {
+            // Original paths keep two independent MMADs and two UB outputs.
+            mmadOp_(aGlobal_[aOffset], bGlobal_[bLeftOffset], x1ScaleGlobal_[x1ScaleOffset],
+                    x2ScaleGlobal_[x2ScaleLeftOffset], l0cOutUbFirst_, mmSingleShape, transA, transB);
+            mmadOp_(aGlobal_[aOffset], bGlobal_[bRightOffset], x1ScaleGlobal_[x1ScaleOffset],
+                    x2ScaleGlobal_[x2ScaleRightOffset], l0cOutUbSecond_, mmSingleShape, transA, transB);
+        }
+    }
+
     __aicore__ inline void ProcessSingleGroup(const Params& params, BlockSchedulerOp& bs, uint32_t groupIdx)
     {
         int64_t m = Get<M_VALUE>(problemShape_);
@@ -381,17 +554,7 @@ public:
                 }
                 AscendC::Std::tuple<int32_t, int32_t, int32_t> mmSingleShape{Get<M_VALUE>(singleShape),
                                                                              Get<N_VALUE>(singleShape), k};
-                // left block
-                mmadOp_(aGlobal_[Get<IDX_A_OFFSET>(blockOffset_)], bGlobal_[Get<IDX_B_OFFSET>(blockOffset_)],
-                        x1ScaleGlobal_[Get<IDX_X1SCALE_OFFSET>(blockOffset_)],
-                        x2ScaleGlobal_[Get<IDX_X2SCALE_OFFSET>(blockOffset_)], l0cOutUbFirst_, mmSingleShape, transA,
-                        transB);
-                // right block
-                int64_t bRightOffset = Get<IDX_B_OFFSET>(blockOffset_) + bRightOffsetStep_;
-                int64_t x2ScaleRightOffset = Get<IDX_X2SCALE_OFFSET>(blockOffset_) + x2ScaleRightOffsetStep_;
-                mmadOp_(aGlobal_[Get<IDX_A_OFFSET>(blockOffset_)], bGlobal_[bRightOffset],
-                        x1ScaleGlobal_[Get<IDX_X1SCALE_OFFSET>(blockOffset_)], x2ScaleGlobal_[x2ScaleRightOffset],
-                        l0cOutUbSecond_, mmSingleShape, transA, transB);
+                RunMmadForCurrentTile(mmSingleShape);
                 NotifyVector();
             }
             isVecSetSyncCom_ = true;
@@ -413,7 +576,7 @@ public:
     __aicore__ inline void operator()(const Params& params)
     {
         // Init mmadOp epilogue
-        mmadOp_.Init(const_cast<TCubeTiling* __restrict>(params.gmmParams.matmulTiling), GetTPipePtr());
+        InitMmadOp(params);
         InitParamsAndTensor(params);
         epilogueOp_.Init(params.epilogueParams);
         uint32_t groupNum = params.gmmParams.groupNum;
@@ -425,8 +588,13 @@ public:
                 bs.SetTailAlign(1, c0Size);
             }
         }
-        l0cOutUbFirst_ = epilogueOp_.GetFirstL0c2UbTensor();
-        l0cOutUbSecond_ = epilogueOp_.GetSecondL0c2UbTensor();
+        if constexpr (useSingleL0c2Ub) {
+            epilogueOp_.SetConcatL0c2Ub(true);
+            l0cOutUb_ = epilogueOp_.GetL0c2UbTensor();
+        } else {
+            l0cOutUbFirst_ = epilogueOp_.GetFirstL0c2UbTensor();
+            l0cOutUbSecond_ = epilogueOp_.GetSecondL0c2UbTensor();
+        }
         for (uint32_t groupIdx = 0; groupIdx < groupNum; groupIdx++) {
             if (!UpdateGroupParams(params, groupIdx)) {
                 continue;
