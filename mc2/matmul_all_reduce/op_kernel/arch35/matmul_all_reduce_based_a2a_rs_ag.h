@@ -22,11 +22,10 @@ using namespace AiVReduceSumImpl;
 constexpr uint32_t A2A_VSUM_AG_MAX_HANDLE_ID_NUM = 16;
 constexpr uint64_t FIVE_ONE_TWO = 512;
 template <typename XType, typename YType, Mc2CoreType CoreType, int commMode>
-class MatmulAllReduceBase<XType, YType, CoreType, true, commMode>
-{
+class MatmulAllReduceBase<XType, YType, CoreType, true, commMode> {
 public:
-    __aicore__ inline MatmulAllReduceBase(
-        MC2GmAddrs* addrs, QuantGmAddrs* quantAddrs, ArnGmAddrs* arnAddrs, MC2TilingHeader* tilingData, TPipe* tPipe)
+    __aicore__ inline MatmulAllReduceBase(MC2GmAddrs *addrs, QuantGmAddrs *quantAddrs, ArnGmAddrs *arnAddrs,
+                                          MC2TilingHeader *tilingData, TPipe *tPipe)
         : addrs_(addrs), quantAddrs_(quantAddrs), arnAddrs_(arnAddrs), tilingData_(tilingData), tPipe_(tPipe)
     {
         paramInTiling_ = &tilingData->param;
@@ -40,7 +39,7 @@ public:
         hccl_.SetCcTilingV2(offsetof(MC2TilingHeader, mc2CcTiling));
         hccl_.SetCcTilingV2(offsetof(MC2TilingHeader, mc2CcTilingComm));
 
-        __gm__ HcclCombinOpParam* context = (__gm__ HcclCombinOpParam*)(GetHcclContext<0>());
+        __gm__ HcclCombinOpParam *context = (__gm__ HcclCombinOpParam *)(GetHcclContext<0>());
         OOMInit(context);
 #if defined(__DAV_C310__)
         addrs_->cGM = addrs_->workspaceGM + paramInTiling_->nd2NzWorkLen + paramInTiling_->biasLen;
@@ -52,7 +51,7 @@ public:
 #endif
         tailFlag_ = (paramInTiling_->tailCnt != 0U);
         addFlag_ = (paramInTiling_->isAdd != 0U);
-        isOneTileFlag_ = (paramInTiling_->tileCnt==1U) && (paramInTiling_->tailCnt==0U);
+        isOneTileFlag_ = (paramInTiling_->tileCnt == 1U) && (paramInTiling_->tailCnt == 0U);
 
         const uint64_t mVal = isOneTileFlag_ ? ((uint64_t)paramInTiling_->rankM) : (uint64_t)tileInfo_.mmTiling->M;
         tileInfo_.aOffset = mVal * (uint64_t)tileInfo_.mmTiling->Ka;
@@ -87,17 +86,17 @@ public:
     __aicore__ inline void CalcGMAddr()
     {
         tileAndTailNum_ = paramInTiling_->tileCnt + paramInTiling_->tailCnt;
-        uint64_t padLen = CalcCeilAlignGMSize(tileInfo_.cOffset, paramInTiling_->tileCnt) + 
+        uint64_t padLen = CalcCeilAlignGMSize(tileInfo_.cOffset, paramInTiling_->tileCnt) +
                           CalcCeilAlignGMSize(tailInfo_.cOffset, paramInTiling_->tailCnt);
         uint64_t padAddrSize = padLen * sizeof(YType);
         cgmAddr_ = tileInfo_.cAddrOffset * paramInTiling_->tileCnt + tailInfo_.cAddrOffset * paramInTiling_->tailCnt;
         cgmLen_ = tileInfo_.cOffset * paramInTiling_->tileCnt + tailInfo_.cOffset * paramInTiling_->tailCnt;
         all2allInGM_ = addrs_->cGM;
-        all2allOutGM_ = all2allInGM_ + cgmAddr_ + padAddrSize;       // MM结果
+        all2allOutGM_ = all2allInGM_ + cgmAddr_ + padAddrSize; // MM结果
         reduceSumInGM_ = all2allOutGM_;
-        reduceSumOutGM_ = reduceSumInGM_ + cgmAddr_ + padAddrSize;   // alltoall结果
+        reduceSumOutGM_ = reduceSumInGM_ + cgmAddr_ + padAddrSize; // alltoall结果
         allgatherInGM_ = reduceSumOutGM_;
-        if (!needPad_) {         // 是否需要内存拷贝
+        if (!needPad_) { // 是否需要内存拷贝
             allgatherOutGM_ = addrs_->outputGM;
         } else {
             allgatherOutGM_ = reduceSumOutGM_ + (cgmAddr_ + padAddrSize) / rankNum_; // reduceSum结果
@@ -117,35 +116,36 @@ public:
         for (uint32_t i = 0U; i < paramInTiling_->tileCnt; i++) {
             uint64_t indexOffsetTile = tileInfo_.cAddrOffset * i;
             uint64_t alignedIndexOffsetTile = tileAddrAlign_ * i;
-            all2allSendGM_[i] = all2allInGM_ + indexOffsetTile;                         // all2allSendBuff 切块之间是连续的
-            all2allRecvGM_[i] = all2allOutGM_ + alignedIndexOffsetTile;                 // all2allRecvBuff 切块之间是非连续的
-            allgatherSendGM_[i] = allgatherInGM_ + alignedIndexOffsetTile / rankNum_;   // allgatherInBuff 切块之间是非连续的
-            allgatherRecvGM_[i] = allgatherOutGM_ + indexOffsetTile;                    // allgatherOutBuff 切块之间是连续的
+            all2allSendGM_[i] = all2allInGM_ + indexOffsetTile;         // all2allSendBuff 切块之间是连续的
+            all2allRecvGM_[i] = all2allOutGM_ + alignedIndexOffsetTile; // all2allRecvBuff 切块之间是非连续的
+            allgatherSendGM_[i] =
+                allgatherInGM_ + alignedIndexOffsetTile / rankNum_;  // allgatherInBuff 切块之间是非连续的
+            allgatherRecvGM_[i] = allgatherOutGM_ + indexOffsetTile; // allgatherOutBuff 切块之间是连续的
             uint64_t ceilDataCount = CeilDiv(tileInfo_.cOffset, rankNum_);
 
-            all2allHandleId_[i] = hccl_.template AlltoAll<false>(
-                all2allSendGM_[i], all2allRecvGM_[i], ceilDataCount, HCCL_DATA_TYPE);
+            all2allHandleId_[i] =
+                hccl_.template AlltoAll<false>(all2allSendGM_[i], all2allRecvGM_[i], ceilDataCount, HCCL_DATA_TYPE);
         }
 
         for (uint32_t i = 0U; i < paramInTiling_->tailCnt; i++) {
             uint64_t indexOffsetTail = tileInfo_.cAddrOffset * paramInTiling_->tileCnt + tailInfo_.cAddrOffset * i;
-            uint64_t alignedIndexOffsetTail = tileAddrAlign_ * paramInTiling_->tileCnt 
-                                            + tailAddrAlign_ * i;
+            uint64_t alignedIndexOffsetTail = tileAddrAlign_ * paramInTiling_->tileCnt + tailAddrAlign_ * i;
             uint64_t index = paramInTiling_->tileCnt + i;
-            all2allSendGM_[index] = all2allInGM_ + indexOffsetTail;                             // all2allSendBuff 切块之间是连续的
-            all2allRecvGM_[index] = all2allOutGM_ + alignedIndexOffsetTail;                     // all2allRecvBuff 切块之间是非连续的
-            allgatherSendGM_[index] = allgatherInGM_ + alignedIndexOffsetTail / rankNum_;       // allgatherInBuff 切块之间是非连续的
-            allgatherRecvGM_[index] = allgatherOutGM_ + indexOffsetTail;                        // allgatherOutBuff 切块之间是连续的
+            all2allSendGM_[index] = all2allInGM_ + indexOffsetTail;         // all2allSendBuff 切块之间是连续的
+            all2allRecvGM_[index] = all2allOutGM_ + alignedIndexOffsetTail; // all2allRecvBuff 切块之间是非连续的
+            allgatherSendGM_[index] =
+                allgatherInGM_ + alignedIndexOffsetTail / rankNum_;      // allgatherInBuff 切块之间是非连续的
+            allgatherRecvGM_[index] = allgatherOutGM_ + indexOffsetTail; // allgatherOutBuff 切块之间是连续的
             uint64_t ceilDataCount = CeilDiv(tailInfo_.cOffset, rankNum_);
-            
-            all2allHandleId_[index] = hccl_.template AlltoAll<false>(
-                all2allSendGM_[index], all2allRecvGM_[index], ceilDataCount, HCCL_DATA_TYPE);
+
+            all2allHandleId_[index] = hccl_.template AlltoAll<false>(all2allSendGM_[index], all2allRecvGM_[index],
+                                                                     ceilDataCount, HCCL_DATA_TYPE);
         }
 
         for (uint32_t i = 0U; i < paramInTiling_->tileCnt; i++) {
             uint64_t ceilDataCount = CeilDiv(tileInfo_.cOffset, rankNum_);
-            allgatherHandleId_[i] = hccl_.template AllGather<false>(
-                allgatherSendGM_[i], allgatherRecvGM_[i], ceilDataCount, HCCL_DATA_TYPE, 0, 1);
+            allgatherHandleId_[i] = hccl_.template AllGather<false>(allgatherSendGM_[i], allgatherRecvGM_[i],
+                                                                    ceilDataCount, HCCL_DATA_TYPE, 0, 1);
         }
 
         for (uint32_t i = 0U; i < paramInTiling_->tailCnt; i++) {
@@ -164,12 +164,13 @@ protected:
         needPad_ = (tilePad != 0 || tailPad != 0);
     }
 
-    __aicore__ inline void PostProcEachTurn(AscendC::HcclHandle handleId, uint64_t aOffset, uint64_t cOffset, uint64_t index = 0)
+    __aicore__ inline void PostProcEachTurn(AscendC::HcclHandle handleId, uint64_t aOffset, uint64_t cOffset,
+                                            uint64_t index = 0)
     {
         if (addFlag_ && addrs_->cGM != addrs_->addGM) {
             SyncAll<false>();
-            MatmulAllReduceAddX3Kernel<YType>(
-                addrs_->cGM, addrs_->addGM, cOffset / sizeof(YType), paramInTiling_->addX3UbCnt, tPipe_);
+            MatmulAllReduceAddX3Kernel<YType>(addrs_->cGM, addrs_->addGM, cOffset / sizeof(YType),
+                                              paramInTiling_->addX3UbCnt, tPipe_);
             addrs_->addGM += cOffset;
         }
 
@@ -190,13 +191,13 @@ protected:
                     uint64_t ceilDataCount = CeilDiv(tileInfo_.cOffset, rankNum_);
                     reduceSum_.Init(ceilDataCount, 0, rankNum_, aivNum_, reduceSumInGM_, reduceSumOutGM_, tPipe_);
                     reduceSum_.ExecuteReduceSum();
-                    reduceSumInGM_ += tileAddrAlign_;                       // reduceSumIn 切块之间是非连续的
-                    reduceSumOutGM_ += tileAddrAlign_ / rankNum_;           // reduceSumOut 切块之间是非连续的
+                    reduceSumInGM_ += tileAddrAlign_;             // reduceSumIn 切块之间是非连续的
+                    reduceSumOutGM_ += tileAddrAlign_ / rankNum_; // reduceSumOut 切块之间是非连续的
                 }
                 if (notifyFlag_) {
                     hccl_.Wait(all2allHandleId_[index]);
                 }
-                SyncAll();          // 如果不加同步  可能第一轮通信未完成情况下，非零卡可能会进行后续ReduceSum计算造成精度问题
+                SyncAll(); // 如果不加同步  可能第一轮通信未完成情况下，非零卡可能会进行后续ReduceSum计算造成精度问题
             }
         }
     }
@@ -205,7 +206,7 @@ protected:
     {
         if ASCEND_IS_AIV {
             for (int i = 0; i < paramInTiling_->tileCnt; i++) {
-                SyncAll();      // allgather通信前需要确保ReduceSum计算完成，否则0卡快的情况下 allgather通信会有精度问题
+                SyncAll(); // allgather通信前需要确保ReduceSum计算完成，否则0卡快的情况下 allgather通信会有精度问题
                 if (notifyFlag_) {
                     if (i >= 1) {
                         // 第一块ReduceSum会和A2A掩盖
@@ -220,12 +221,12 @@ protected:
                     uint64_t ceilDataCount = CeilDiv(tileInfo_.cOffset, rankNum_);
                     reduceSum_.Init(ceilDataCount, 0, rankNum_, aivNum_, reduceSumInGM_, reduceSumOutGM_, tPipe_);
                     reduceSum_.ExecuteReduceSum();
-                    reduceSumInGM_ += tileAddrAlign_;                       // reduceSumIn 切块之间是非连续的
-                    reduceSumOutGM_ += tileAddrAlign_ / rankNum_;           // reduceSumOut 切块之间是非连续的
+                    reduceSumInGM_ += tileAddrAlign_;             // reduceSumIn 切块之间是非连续的
+                    reduceSumOutGM_ += tileAddrAlign_ / rankNum_; // reduceSumOut 切块之间是非连续的
                 }
             }
             for (int i = 0; i < paramInTiling_->tailCnt; i++) {
-                SyncAll();      // allgather通信前需要确保ReduceSum计算完成，否则0卡快的情况下 allgather通信会有精度问题
+                SyncAll(); // allgather通信前需要确保ReduceSum计算完成，否则0卡快的情况下 allgather通信会有精度问题
                 if (notifyFlag_) {
                     uint64_t index = paramInTiling_->tileCnt + i;
                     hccl_.Commit(allgatherHandleId_[index - 1]);
@@ -234,10 +235,10 @@ protected:
                 uint64_t ceilDataCount = CeilDiv(tailInfo_.cOffset, rankNum_);
                 reduceSum_.Init(ceilDataCount, 0, rankNum_, aivNum_, reduceSumInGM_, reduceSumOutGM_, tPipe_);
                 reduceSum_.ExecuteReduceSum();
-                reduceSumInGM_ += tailAddrAlign_;                       // reduceSumIn 切块之间是非连续的
-                reduceSumOutGM_ += tailAddrAlign_ / rankNum_;           // reduceSumOut 切块之间是非连续的
+                reduceSumInGM_ += tailAddrAlign_;             // reduceSumIn 切块之间是非连续的
+                reduceSumOutGM_ += tailAddrAlign_ / rankNum_; // reduceSumOut 切块之间是非连续的
             }
-            SyncAll();      // allgather通信前需要确保ReduceSum计算完成，否则0卡快的情况下 allgather通信会有精度问题
+            SyncAll(); // allgather通信前需要确保ReduceSum计算完成，否则0卡快的情况下 allgather通信会有精度问题
             if (notifyFlag_) {
                 hccl_.Commit(allgatherHandleId_[tileAndTailNum_ - 1]);
             }
@@ -280,17 +281,17 @@ protected:
     bool isOneTileFlag_;
     bool addFlag_;
     bool needPad_;
-    
-    QuantGmAddrs* quantAddrs_;
-    MC2GmAddrs* addrs_;
-    ArnGmAddrs* arnAddrs_;
-    Mc2Tiling::RCSTiling* paramInTiling_;
-    Mc2Tiling::Mc2Msg* msgInTiling_;
-    MC2TilingHeader* tilingData_;
+
+    QuantGmAddrs *quantAddrs_;
+    MC2GmAddrs *addrs_;
+    ArnGmAddrs *arnAddrs_;
+    Mc2Tiling::RCSTiling *paramInTiling_;
+    Mc2Tiling::Mc2Msg *msgInTiling_;
+    MC2TilingHeader *tilingData_;
     MC2TileInfo tileInfo_, tailInfo_;
-    TPipe* tPipe_;
+    TPipe *tPipe_;
     typename HcclTypeSelector<commMode>::type hccl_;
-    
+
     AscendC::HcclHandle all2allHandleId_[A2A_VSUM_AG_MAX_HANDLE_ID_NUM] = {0};
     AscendC::HcclHandle allgatherHandleId_[A2A_VSUM_AG_MAX_HANDLE_ID_NUM] = {0};
     GM_ADDR all2allSendGM_[A2A_VSUM_AG_MAX_HANDLE_ID_NUM] = {0};
@@ -303,9 +304,10 @@ protected:
     GM_ADDR reduceSumOutGM_;
     GM_ADDR allgatherInGM_;
     GM_ADDR allgatherOutGM_;
+
 private:
-    ReduceSumForAlltoAll<YType> reduceSum_;     // AIV ReduceSum相关实现
-    GmUbGmCopy<YType> dataCopy_;        // dataCopy实现
+    ReduceSumForAlltoAll<YType> reduceSum_; // AIV ReduceSum相关实现
+    GmUbGmCopy<YType> dataCopy_;            // dataCopy实现
 };
 } // namespace MatmulAllReduceImpl
 #endif // MATMUL_ALL_REDUCE_BASED_A2A_RS_AG_H

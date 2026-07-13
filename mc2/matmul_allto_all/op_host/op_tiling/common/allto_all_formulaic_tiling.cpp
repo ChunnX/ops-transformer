@@ -62,13 +62,11 @@ void AlltoAllMM::SetCommTimeFactor()
 {
     if (socVersion_ == SocVersion::SOC910_93) {
         OP_LOGD("AlltoAllMatmul, Current socVersion is SOC910_93.");
-        tilingM_.SetMaxTileCnt(MAX_TILE_CNT_A3);  // 最多切8轮
+        tilingM_.SetMaxTileCnt(MAX_TILE_CNT_A3);                                        // 最多切8轮
         uint64_t rankDim = std::max(static_cast<uint64_t>(rankDim_), MIN_COMM_RANKDIM); // 并行维度最小为2
         // 采用 8 die拟合，通信查表使用总数据量，实际时间 = 总数据量 * 2 * (rankDim - 1) / rankDim
-        double fittingRatio = (static_cast<double>(FITTING_RANK) - 1.0) /
-                               static_cast<double>(FITTING_RANK);
-        double currentRatio = (static_cast<double>(rankDim) - 1.0) /
-                               static_cast<double>(rankDim);
+        double fittingRatio = (static_cast<double>(FITTING_RANK) - 1.0) / static_cast<double>(FITTING_RANK);
+        double currentRatio = (static_cast<double>(rankDim) - 1.0) / static_cast<double>(rankDim);
         double CommTimeFactor = FULL_MESH_TIME_FACTOR * (fittingRatio / currentRatio) * COMM_TIME_SCALE_FACTOR;
         OP_LOGD("AlltoAllMatmul", "Current commTimeFactor is %f", CommTimeFactor);
         commPerf_.ChangeCommTimeFactorByDivision(CommTimeFactor);

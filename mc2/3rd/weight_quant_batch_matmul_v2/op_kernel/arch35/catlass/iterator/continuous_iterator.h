@@ -26,10 +26,12 @@ struct ContinuousIterator {
     Index size = 1; // 避免重复计算
 
     DEVICE ContinuousIterator()
-    {}
+    {
+    }
 
     DEVICE ContinuousIterator(Index stop) : stop(stop)
-    {}
+    {
+    }
 
     DEVICE ContinuousIterator(Index stop, Index step) : step(step), stop(stop)
     {
@@ -108,9 +110,8 @@ struct ContinuousIterator {
     DEVICE void Print(int32_t signal) const
     {
 #if defined(__CCE_KT_TEST__)
-        X_LOG(
-            "%d Iterator curr %d start %d step %d stop %d size %d offset %d", signal, curr, start, step, stop, size,
-            offset);
+        X_LOG("%d Iterator curr %d start %d step %d stop %d size %d offset %d", signal, curr, start, step, stop, size,
+              offset);
 #endif
     }
 

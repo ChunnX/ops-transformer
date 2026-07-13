@@ -12,7 +12,7 @@
  * \file bandwidth_test_tiling_key.h
  * \brief
  */
- 
+
 #ifndef BANDWIDTH_TEST_TILING_KEY_H
 #define BANDWIDTH_TEST_TILING_KEY_H
 #include "ascendc/host_api/tiling/template_argument.h"
@@ -21,14 +21,10 @@ namespace BandwidthTestTiling {
 #define TILINGKEY_TPL_A5 2
 
 ASCENDC_TPL_ARGS_DECL(BandwidthTest,
-    ASCENDC_TPL_UINT_DECL(ARCH_TAG, ASCENDC_TPL_2_BW, ASCENDC_TPL_UI_LIST, TILINGKEY_TPL_A5),
-);
+                      ASCENDC_TPL_UINT_DECL(ARCH_TAG, ASCENDC_TPL_2_BW, ASCENDC_TPL_UI_LIST, TILINGKEY_TPL_A5), );
 ASCENDC_TPL_SEL(
     // A5
-    ASCENDC_TPL_ARGS_SEL(
-        ASCENDC_TPL_UINT_SEL(ARCH_TAG, ASCENDC_TPL_UI_LIST, TILINGKEY_TPL_A5),
-        ASCENDC_TPL_TILING_STRUCT_SEL(BandwidthTestTilingData)
-    ),
-);
+    ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_UINT_SEL(ARCH_TAG, ASCENDC_TPL_UI_LIST, TILINGKEY_TPL_A5),
+                         ASCENDC_TPL_TILING_STRUCT_SEL(BandwidthTestTilingData)), );
 } // namespace BandwidthTestTiling
 #endif

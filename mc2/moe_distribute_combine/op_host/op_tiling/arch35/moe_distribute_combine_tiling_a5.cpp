@@ -36,8 +36,8 @@ constexpr uint32_t INT8_COMM_QUANT = 2U;
 
 namespace optiling {
 
-ge::graphStatus MoeDistributeCombineTilingA5::MoeDistributeCombineA5TilingCheckAttr(
-    gert::TilingContext *context, uint32_t &commQuantMode)
+ge::graphStatus MoeDistributeCombineTilingA5::MoeDistributeCombineA5TilingCheckAttr(gert::TilingContext *context,
+                                                                                    uint32_t &commQuantMode)
 {
     const char *nodeName = context->GetNodeName();
     MoeDistributeCombineTilingData *tilingData = context->GetTilingData<MoeDistributeCombineTilingData>();
@@ -49,18 +49,18 @@ ge::graphStatus MoeDistributeCombineTilingA5::MoeDistributeCombineA5TilingCheckA
     commQuantMode = 0U;
 
     // 获取入参属性
-    OP_TILING_CHECK(
-        GetAttrAndSetTilingData(context, *tilingData, nodeName, groupEp, groupTp, commQuantMode) ==
-        ge::GRAPH_FAILED, OP_LOGE(nodeName, "Getting attr failed."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(GetAttrAndSetTilingData(context, *tilingData, nodeName, groupEp, groupTp, commQuantMode) ==
+                        ge::GRAPH_FAILED,
+                    OP_LOGE(nodeName, "Getting attr failed."), return ge::GRAPH_FAILED);
 
     // 检查输入输出的dim、format、dataType
-    OP_TILING_CHECK(
-        MoeDistributeCombineTilingHelper::TilingCheckMoeDistributeCombine(context, nodeName) !=
-        ge::GRAPH_SUCCESS, OP_LOGE(nodeName, "Tiling check params failed"), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(MoeDistributeCombineTilingHelper::TilingCheckMoeDistributeCombine(context, nodeName) !=
+                        ge::GRAPH_SUCCESS,
+                    OP_LOGE(nodeName, "Tiling check params failed"), return ge::GRAPH_FAILED);
 
     // 检查属性的取值是否合法
     OP_TILING_CHECK(!CheckAttrs(context, *tilingData, nodeName, localMoeExpertNum),
-        OP_LOGE(nodeName, "attr check failed."), return ge::GRAPH_FAILED);
+                    OP_LOGE(nodeName, "attr check failed."), return ge::GRAPH_FAILED);
 
     uint32_t sharedExpertRankNum = tilingData->moeDistributeCombineInfo.sharedExpertRankNum;
     uint32_t epRankId = tilingData->moeDistributeCombineInfo.epRankId;
@@ -70,18 +70,17 @@ ge::graphStatus MoeDistributeCombineTilingA5::MoeDistributeCombineA5TilingCheckA
 
     // 检查shape各维度并赋值h,k
     OP_TILING_CHECK(!CheckTensorShape(context, *tilingData, nodeName, isShared, localMoeExpertNum),
-        OP_LOGE(nodeName, "param dim check failed."), return ge::GRAPH_FAILED);
+                    OP_LOGE(nodeName, "param dim check failed."), return ge::GRAPH_FAILED);
 
     // 校验win区大小
     OP_TILING_CHECK(CheckWinSize(context, tilingData, nodeName, localMoeExpertNum) != ge::GRAPH_SUCCESS,
-        OP_LOGE(nodeName, "Tiling check window size failed."), return ge::GRAPH_FAILED);
+                    OP_LOGE(nodeName, "Tiling check window size failed."), return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK(SetWorkspace(context, nodeName) != ge::GRAPH_SUCCESS,
-        OP_LOGE(context->GetNodeName(), "Tiling set workspace Failed"),
-        return ge::GRAPH_FAILED);
+                    OP_LOGE(context->GetNodeName(), "Tiling set workspace Failed"), return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK(SetHCommCfg(context, tilingData, groupEp, groupTp, tpWorldSize) != ge::GRAPH_SUCCESS,
-        OP_LOGE(nodeName, "SetHCommCfg failed."), return ge::GRAPH_FAILED);
+                    OP_LOGE(nodeName, "SetHCommCfg failed."), return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -92,7 +91,7 @@ ge::graphStatus MoeDistributeCombineTilingA5::MoeDistributeCombineA5TilingFuncIm
     uint32_t batch_mode = 1U;
     auto ret = context->SetScheduleMode(batch_mode);
     MC2_CHECK_LOG_RET(context->GetNodeName(), ret);
-    
+
     const char *nodeName = context->GetNodeName();
     OP_LOGD(nodeName, "Enter MoeDistributeCombine Tiling func");
     MoeDistributeCombineTilingData *tilingData = context->GetTilingData<MoeDistributeCombineTilingData>();
@@ -101,10 +100,10 @@ ge::graphStatus MoeDistributeCombineTilingA5::MoeDistributeCombineA5TilingFuncIm
 
     // 统一调用所有校验逻辑
     OP_TILING_CHECK(MoeDistributeCombineA5TilingCheckAttr(context, commQuantMode) != ge::GRAPH_SUCCESS,
-        OP_LOGE(nodeName, "CombineSA5Tiling attr check failed."), return ge::GRAPH_FAILED);
+                    OP_LOGE(nodeName, "CombineSA5Tiling attr check failed."), return ge::GRAPH_FAILED);
 
     uint32_t quantMode = TILINGKEY_NO_QUANT;
-    uint32_t layeredMode = TILINGKEY_TPL_MTE;  // A2
+    uint32_t layeredMode = TILINGKEY_TPL_MTE; // A2
     if (commQuantMode == INT8_COMM_QUANT) {
         quantMode = TILINGKEY_INT8_QUANT;
     }
@@ -132,16 +131,20 @@ bool MoeDistributeCombineTilingA5::CheckEpWorldSize(const char *nodeName, uint32
 {
     // 为支持在 A5 上的验证，放开 epWorldSize 为 2 或 4 的校验
     // 检验epWorldSize是否是2的倍数
-    OP_TILING_CHECK(epWorldSize % 2 != 0, OP_LOGE(nodeName,
-        "epWorldSize should be divisible by 2, but got epWorldSize = %u.", epWorldSize), return false);
+    OP_TILING_CHECK(epWorldSize % 2 != 0,
+                    OP_LOGE(nodeName, "epWorldSize should be divisible by 2, but got epWorldSize = %u.", epWorldSize),
+                    return false);
 
-    OP_TILING_CHECK((256 % epWorldSize != 0) && (epWorldSize % 144 != 0), OP_LOGE_FOR_INVALID_VALUE(nodeName, "epWorldSize", std::to_string(epWorldSize).c_str(), "2, 4, 8, 16, 32, 64, 128, 144, 256, or 288"), return false);
+    OP_TILING_CHECK((256 % epWorldSize != 0) && (epWorldSize % 144 != 0),
+                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "epWorldSize", std::to_string(epWorldSize).c_str(),
+                                              "2, 4, 8, 16, 32, 64, 128, 144, 256, or 288"),
+                    return false);
 
     return true;
 }
 
-ge::graphStatus MoeDistributeCombineTilingA5::MoeDistributeCombineTilingFuncImpl(
-    std::string& socVersion, gert::TilingContext *context)
+ge::graphStatus MoeDistributeCombineTilingA5::MoeDistributeCombineTilingFuncImpl(std::string &socVersion,
+                                                                                 gert::TilingContext *context)
 {
     ge::graphStatus ret = MoeDistributeCombineA5TilingFuncImpl(context);
     return ret;
@@ -150,4 +153,4 @@ ge::graphStatus MoeDistributeCombineTilingA5::MoeDistributeCombineTilingFuncImpl
 // A5 采用 MTE 方式通信，复用 A3 tiling
 REGISTER_OPS_TILING_TEMPLATE(MoeDistributeCombine, MoeDistributeCombineTilingA5, 0);
 
-}
+} // namespace optiling
