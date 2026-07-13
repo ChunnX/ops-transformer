@@ -40,6 +40,7 @@ struct MoeEpDispatchInfo {
     uint32_t isTopkWeights;
     uint32_t isMxQuant;
     uint32_t networkMode;
+    uint32_t rankSizePerServer;
     uint32_t numScaleupRanks;
     uint32_t numScaleoutRanks;
     uint32_t numAivStage1;
@@ -57,4 +58,4 @@ struct MoeEpDispatchTilingData {
     MoeEpDispatchInfo moeEpDispatchInfo;
 };
 
-#endif // MOE_EP_DISPATCH_TILING_H
+#endif  // MOE_EP_DISPATCH_TILING_H
