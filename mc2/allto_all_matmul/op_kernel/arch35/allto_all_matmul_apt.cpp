@@ -22,8 +22,6 @@
 #include "allto_all_matmul_tiling_data.h"
 #include "allto_all_kc_quant_matmul_arch35.h"
 #include "allto_all_kc_quant_matmul_pipeline.h"
-#include "allto_all_mx_quant_matmul_arch35.h"
-#include "allto_all_mx_quant_matmul_pipeline.h"
 #include "../../../common/op_kernel/atcoss/kernel/all_to_all_matmul/all_to_all_mx_quant_matmul_arch35.h"
 
 using AscendC::HcclServerType;
@@ -56,7 +54,7 @@ using MC2KernelTemplate::MC2AlltoAllPrimitives;
 #ifndef ALLTO_ALL_KC_QUANT_MATMUL_IMPL
 #define ALLTO_ALL_KC_QUANT_MATMUL_IMPL(tilingData, pipe, hcclServerType, MMDataTypeX1, isSmallK)                       \
     do {                                                                                                               \
-        DEFINE_MC2_HCCL_FOR_COMMUNICATION(false, hcclServerType, MC2AlltoAllContext, AlltoAllQuantMatmulTilingData,    \
+        DEFINE_MC2_HCCL_FOR_COMMUNICATION(false, hcclServerType, MC2AlltoAllContext, AlltoAllMxQuantMatmulTilingData,    \
                                           MC2AlltoAllPrimitives, 0, 1, CommunicationType);                             \
         CommunicationType commImplName(&tilingData);                                                                   \
         DEFINE_MC2_FP8_DYNAMIC_QUANT_PERTOKEN(DTYPE_X1, MMDataTypeX1, TransAndDynamicQuantType, isSmallK);             \
@@ -68,35 +66,9 @@ using MC2KernelTemplate::MC2AlltoAllPrimitives;
         using SchedulerType = Mc2Kernel::AlltoAllKCQuantMatmulPipeLine<CommunicationType, TransAndDynamicQuantType,    \
                                                                        ComputationType, SchedulerContextType>;         \
         SchedulerType SchedulerImpl(&commImplName, &dynamicQuantImplName, &matmulImplName);                            \
-        Mc2Kernel::AlltoAllKcQuantMatmulArch35<SchedulerType, SchedulerContextType, AlltoAllQuantMatmulTilingData> op( \
+        Mc2Kernel::AlltoAllKcQuantMatmulArch35<SchedulerType, SchedulerContextType, AlltoAllMxQuantMatmulTilingData> op( \
             &SchedulerImpl);                                                                                           \
         op.Init(x1, x2, bias, y, all2all_out, x1_scale, x2_scale, x2_offset, workspaceGM, &tilingData, &pipe);         \
-        op.Process();                                                                                                  \
-    } while (0)
-#endif
-
-#ifndef ALLTO_ALL_MX_QUANT_MATMUL_IMPL
-#define ALLTO_ALL_MX_QUANT_MATMUL_IMPL(tilingData, pipe, hcclServerType, hcclDataType, commDataTypeX1, isMxFp4)        \
-    do {                                                                                                               \
-        DEFINE_MC2_HCCL_FOR_COMMUNICATION(false, hcclServerType, MC2AlltoAllContext, AlltoAllQuantMatmulTilingData,    \
-                                          MC2AlltoAllPrimitives, 0, 1, CommunicationType);                             \
-        CommunicationType commImplName(&tilingData);                                                                   \
-        DEFINE_MC2_TRANSPOSE_FOR_MATH_COMPUTATION(commDataTypeX1, TransposeType);                                      \
-        TransposeType transposeImplName(&pipe);                                                                        \
-        DEFINE_MC2_TRANSPOSE_FOR_MATH_COMPUTATION(AscendC::fp8_e8m0_t, ScaleTransposeType);                            \
-        ScaleTransposeType scaleTransposeImplName(&pipe);                                                              \
-        DEFINE_MC2_MATMUL_CONTEXT_FOR_MATMUL_COMPUTATION_MX_QUANT(ComputationContextType);                             \
-        DEFINE_MC2_MATMUL_FOR_MATMUL_COMPUTATION_MX_QUANT(ComputationType);                                            \
-        ComputationType matmulImplName(&pipe);                                                                         \
-        using SchedulerContextType = Mc2Kernel::AlltoAllMXQmmPipelineContext<ComputationContextType>;                  \
-        using SchedulerType =                                                                                          \
-            Mc2Kernel::AlltoAllMXQuantMatmulPipeLine<CommunicationType, TransposeType, ScaleTransposeType,             \
-                                                     ComputationType, SchedulerContextType>;                           \
-        SchedulerType SchedulerImpl(&commImplName, &transposeImplName, &scaleTransposeImplName, &matmulImplName);      \
-        Mc2Kernel::AlltoAllMxQuantMatmulArch35<SchedulerType, SchedulerContextType, AlltoAllQuantMatmulTilingData,     \
-                                               isMxFp4>                                                                \
-            op(&SchedulerImpl, hcclDataType);                                                                          \
-        op.Init(x1, x2, bias, y, all2all_out, x1_scale, x2_scale, workspaceGM, &tilingData, &pipe);                    \
         op.Process();                                                                                                  \
     } while (0)
 #endif
@@ -125,8 +97,8 @@ __global__ __aicore__ void allto_all_matmul(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias
     }
 
 #else
-    REGISTER_TILING_DEFAULT(AlltoAllQuantMatmulTilingData);
-    GET_TILING_DATA_WITH_STRUCT(AlltoAllQuantMatmulTilingData, tilingData, tilingGM);
+    REGISTER_TILING_DEFAULT(AlltoAllMxQuantMatmulTilingData);
+    GET_TILING_DATA_WITH_STRUCT(AlltoAllMxQuantMatmulTilingData, tilingData, tilingGM);
 #if (((ORIG_DTYPE_X1 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X1 == DT_FLOAT8_E5M2)) && \
      ((ORIG_DTYPE_X2 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X2 == DT_FLOAT8_E5M2)))
     AscendC::HcclDataType hcclDataType = AscendC::HCCL_DATA_TYPE_FP8E4M3;

@@ -20,6 +20,7 @@
 #include "../../../common/op_kernel/mc2_tiling_struct.h"
 #include "../../../3rd/mat_mul_v3/op_kernel/arch35/mat_mul_tiling_data.h"
 #include "../../../3rd/quant_batch_matmul_v3/op_kernel/arch35/quant_batch_matmul_v3_tiling_data.h"
+#include "../../../common/op_kernel/atcoss/utils/qbmm_tiling_data.h"
 
 struct AlltoAllMatmulTilingInfo {
     uint32_t rankDim;            // 卡数:kernel能通过hccl接口获取到就直接删除
@@ -48,13 +49,24 @@ struct AlltoAllMatmulTilingData {
     Mc2MatMulV3TilingData mc2MmV3TailTilingData; // 通算切分尾块matmul tiling数据
 };
 
-// MX量化tiling结构体
+// MX量化tiling结构体（旧版，使用MatMulASWKernel）
 struct AlltoAllQuantMatmulTilingData {
     Mc2InitTiling mc2InitTiling;                                                // 初始化通信任务配置
     Mc2CcTiling mc2CcTiling;                                                    // 具体每个通信任务的参数配置
     AlltoAllMatmulTilingInfo alltoAllQuantMatmulTilingInfo;                     // 传递给kernel的tiling info
     DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams mc2QuantMmTileTilingData; // 通算切分头块matmul tiling数据
     DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams mc2QuantMmTailTilingData; // 通算切分尾块matmul tiling数据
+};
+
+// MX量化tiling结构体（新版，使用Blaze QBMM；同时兼容KC Quant路径）
+struct AlltoAllMxQuantMatmulTilingData {
+    Mc2InitTiling mc2InitTiling;
+    Mc2CcTiling mc2CcTiling;
+    AlltoAllMatmulTilingInfo alltoAllQuantMatmulTilingInfo;
+    QuantBatchMatmulTilingData blazeMmTileTilingData;
+    QuantBatchMatmulTilingData blazeMmTailTilingData;
+    DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams mc2QuantMmTileTilingData;
+    DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams mc2QuantMmTailTilingData;
 };
 
 #endif // ALLTO_ALL_MATMUL_TILING_H
