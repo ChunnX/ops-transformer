@@ -136,7 +136,6 @@ public:
     flashdecodeGmType softmaxFDMaxGm;
 
     CopyQueryScaleGmToUb<float, Q_SCALE_FORMAT> copyQueryScaleGmToUb;
-    CopyKeyScaleGmToUb<float, K_SCALE_FORMAT> copyKeyScaleGmToUb;
     // ub
     TBuf<> commonTBuf; // common的复用空间
     TQue<QuePosition::VECOUT, 1> stage1OutQue[2];
@@ -157,8 +156,6 @@ public:
     TQue<QuePosition::VECOUT, 1> softmaxLseQueue;
     TQue<QuePosition::VECOUT, 1> FDResOutputQue;
     TQue<QuePosition::VECIN, 1> accumOutInputQue;
-    TQue<QuePosition::VECIN, 1> postQuantScaleQue;  // postQuant
-    TQue<QuePosition::VECIN, 1> postQuantOffsetQue; // postQuant
 
     TQue<QuePosition::VECIN, 1> queryAntiqScaleInputQue;
     TQue<QuePosition::VECIN, 1> keyAntiqScaleInputQue;
@@ -385,12 +382,53 @@ public:
             .s2Idx = runInfo.s2Idx,
             .s2DealSize = runInfo.actSingleLoopS2Size
         };
-        copyKeyScaleGmToUb(ubTensor, keyScaleGm, antiqGmCoord);
+        ProcessAntiqPA(ubTensor, keyScaleGm, antiqGmCoord);
     }
 
     __aicore__ inline void CopyKeyScaleTile(const LocalTensor<float> &dstTensor, RunInfoX &runInfo)
     {
         CopyKeyScaleSlice(dstTensor, 0, 1, runInfo);
+    }
+
+    __aicore__ inline void ProcessAntiqPA(FaUbTensor<T> &dstTensor, FaGmTensor<float, K_SCALE_FORMAT> &srcTensor,
+                                          AntiqGmCoord &antiqGmCoord)
+    {
+        OffsetCalculator<K_SCALE_FORMAT> &offsetCal = srcTensor.offsetCalculator;
+
+        uint64_t dstOffset = 0;
+        uint32_t copyFinishElmeCnt = 0;
+        uint32_t curS2Idx = antiqGmCoord.s2Idx;
+
+        while (copyFinishElmeCnt < antiqGmCoord.s2DealSize) {
+            uint32_t copyElemCnt = offsetCal.GetDimBlockSize() -
+                                   curS2Idx % offsetCal.GetDimBlockSize(); // 一次只能处理一个block
+            if (copyFinishElmeCnt + copyElemCnt > antiqGmCoord.s2DealSize) {
+                copyElemCnt = antiqGmCoord.s2DealSize - copyFinishElmeCnt; // 一个block未拷满
+            }
+
+            uint64_t srcOffset = offsetCal.GetOffset(antiqGmCoord.bIdx, antiqGmCoord.n2Idx, curS2Idx);
+            CopyKeyScaleNDToND(dstTensor.tensor[dstOffset], srcTensor.gmTensor[srcOffset], copyElemCnt);
+
+            dstOffset += copyElemCnt;
+            copyFinishElmeCnt += copyElemCnt;
+            curS2Idx += copyElemCnt;
+        }
+    }
+
+    __aicore__ inline void CopyKeyScaleNDToND(LocalTensor<T> ubTensor, const GlobalTensor<T> gmTensor,
+                                              uint32_t actDataLen)
+    {
+        uint32_t blockElemNum = FA_BYTE_BLOCK / sizeof(T);
+
+        DataCopyExtParams dataCopyParams;
+        dataCopyParams.blockCount = static_cast<uint16_t>(4); // 4: 4份，用于解bank冲突
+        dataCopyParams.blockLen = actDataLen * sizeof(T);
+        dataCopyParams.srcStride = -static_cast<int64_t>(dataCopyParams.blockLen);
+        dataCopyParams.dstStride = (s2BaseSize + blockElemNum - actDataLen) * sizeof(T) / FA_BYTE_BLOCK;
+
+        DataCopyPadExtParams<T> dataCopyPadParams;
+        DataCopyPad(ubTensor, gmTensor, dataCopyParams, dataCopyPadParams);
+
     }
 
     // =================================Private Functions=================================
@@ -435,14 +473,14 @@ public:
                     this->vselrIndexesBuf, attenMaskUb, qScaleUbTensor, kScaleUbTensor,
                     ((runInfo.actMSizeAlign32 >> 1) + 63) >> 6 << 6, runInfo.actSingleLoopS2SizeAlign,
                     runInfo.actSingleLoopS2Size, static_cast<T>(constInfo.scaleValue), descaleQK,
-                    pScaleValue, negativeFloatScalar, 0.0F, true);
+                    pScaleValue, negativeFloatScalar, 0.0F);
             } else {
                 FaVectorApi::ProcessVec1VfDnPerTokenHead<T, INPUT_T, true, false, s2BaseSize, true>(
                     stage1CastTensor, sumUb, maxUb, mmRes, expUb,
                     this->vselrIndexesBuf, attenMaskUb, qScaleUbTensor, kScaleUbTensor,
                     ((runInfo.actMSizeAlign32 >> 1) + 63) >> 6 << 6, runInfo.actSingleLoopS2SizeAlign,
                     runInfo.actSingleLoopS2Size, static_cast<T>(constInfo.scaleValue), descaleQK,
-                    pScaleValue, negativeFloatScalar, 0.0F, true);
+                    pScaleValue, negativeFloatScalar, 0.0F);
             }
         } else if (unlikely(runInfo.isFirstS2Loop)) {
             if (!isSkipMask) {
@@ -451,14 +489,14 @@ public:
                     this->vselrIndexesBuf, attenMaskUb, qScaleUbTensor, kScaleUbTensor,
                     ((runInfo.actMSizeAlign32 >> 1) + 63) >> 6 << 6, runInfo.actSingleLoopS2SizeAlign,
                     runInfo.actSingleLoopS2Size, static_cast<T>(constInfo.scaleValue), descaleQK,
-                    pScaleValue, negativeFloatScalar, 0.0F, true);
+                    pScaleValue, negativeFloatScalar, 0.0F);
             } else {
                 FaVectorApi::ProcessVec1VfDnPerTokenHead<T, INPUT_T, false, false, s2BaseSize, true>(
                     stage1CastTensor, sumUb, maxUb, mmRes, expUb,
                     this->vselrIndexesBuf, attenMaskUb, qScaleUbTensor, kScaleUbTensor,
                     ((runInfo.actMSizeAlign32 >> 1) + 63) >> 6 << 6, runInfo.actSingleLoopS2SizeAlign,
                     runInfo.actSingleLoopS2Size, static_cast<T>(constInfo.scaleValue), descaleQK,
-                    pScaleValue, negativeFloatScalar, 0.0F, true);
+                    pScaleValue, negativeFloatScalar, 0.0F);
             }
         } else {
             if (!isSkipMask) {
@@ -467,14 +505,14 @@ public:
                     this->vselrIndexesBuf, attenMaskUb, qScaleUbTensor, kScaleUbTensor,
                     ((runInfo.actMSizeAlign32 >> 1) + 63) >> 6 << 6, runInfo.actSingleLoopS2SizeAlign,
                     runInfo.actSingleLoopS2Size, static_cast<T>(constInfo.scaleValue), descaleQK,
-                    pScaleValue, negativeFloatScalar, 0.0F, true);
+                    pScaleValue, negativeFloatScalar, 0.0F);
             } else {
                 FaVectorApi::ProcessVec1VfDnPerTokenHead<T, INPUT_T, true, false, s2BaseSize>(
                     stage1CastTensor, sumUb, maxUb, mmRes, expUb,
                     this->vselrIndexesBuf, attenMaskUb, qScaleUbTensor, kScaleUbTensor,
                     ((runInfo.actMSizeAlign32 >> 1) + 63) >> 6 << 6, runInfo.actSingleLoopS2SizeAlign,
                     runInfo.actSingleLoopS2Size, static_cast<T>(constInfo.scaleValue), descaleQK,
-                    pScaleValue, negativeFloatScalar, 0.0F, true);
+                    pScaleValue, negativeFloatScalar, 0.0F);
             }
         }
         if (unlikely(runInfo.isLastS2Loop)) {
@@ -890,7 +928,7 @@ public:
         }
         SoftmaxInitBuffer();
         tPipe->InitBuffer(queryAntiqScaleInputQue, 1, (mBaseSize >> 1U) * sizeof(float));
-        tPipe->InitBuffer(keyAntiqScaleInputQue, 1, s2BaseSize * sizeof(float));
+        tPipe->InitBuffer(keyAntiqScaleInputQue, 1, (s2BaseSize + (FA_BYTE_BLOCK / sizeof(T))) * sizeof(float) * 4); // 4: 4份解bank冲突
         tPipe->InitBuffer(stage2OutBuf, 64 * dTemplateAlign64 * sizeof(T));
         tPipe->InitBuffer(stage1OutQue[0], 1, 16640); // (32 + 1) * (256 / 32) * 64
         tPipe->InitBuffer(stage1OutQue[1], 1, 16640);
