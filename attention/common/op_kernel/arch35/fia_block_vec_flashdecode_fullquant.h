@@ -646,7 +646,7 @@ public:
                     uint64_t bN2Offset =
                         prefixBS1 * constInfo.realGSize * constInfo.realN2Size + taskInfo.n2Idx * constInfo.realGSize;
                     DataCopySoftmaxLseTNDArch35NoGS1Merge<T, ConstInfoX>(softmaxLseGm, maxLseUb, bN2Offset, mOffset,
-                                                        actualGSplitSize, constInfo);
+                                                                         actualGSplitSize, constInfo);
                 } else if constexpr (layout == LayOutTypeEnum::LAYOUT_NTD) {
                     uint32_t prefixBS1 = qActSeqLensParser.GetTBase(taskInfo.bIdx);
                     uint32_t s1Size = qActSeqLensParser.GetActualSeqLength(taskInfo.bIdx);

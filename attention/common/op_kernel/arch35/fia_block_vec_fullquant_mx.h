@@ -422,9 +422,6 @@ public:
 
     __aicore__ inline void SoftmaxDataCopyOut(RunInfoX runInfo, LocalTensor<float> &sumUb, LocalTensor<float> &maxUb)
     {
-        printf("[fzj] runInfo.isS2SplitCore = %d\n", runInfo.isS2SplitCore);
-        printf("[fzj] constInfo.isSoftmaxLseEnable = %d\n", constInfo.isSoftmaxLseEnable);
-        printf("[fzj] FLASH_DECODE = %d\n", FLASH_DECODE);
         if constexpr (FLASH_DECODE) {
             if (runInfo.isS2SplitCore) {
                 ComputeLogSumExpAndCopyToGm(runInfo, sumUb, maxUb);
@@ -485,9 +482,6 @@ public:
 
         uint32_t vecMIdx = runInfo.gS1Idx + runInfo.vecMbaseIdx;
         LocalTensor<float> lseUb = this->softmaxLseQueue.template AllocTensor<float>();
-        set_mark(0xaaaaaaaa);
-        set_mark(vecMSize);
-        set_mark(minValue);
         ComputeLseOutputVF(lseUb, softmaxSumTmp, softmaxMaxTmp, vecMSize, minValue);
         softmaxLseQueue.template EnQue(lseUb);
         softmaxLseQueue.DeQue<float>();
@@ -968,7 +962,7 @@ public:
         uint64_t gmOffset =
             runInfo.faTmpOutWsPos * mBaseSize * constInfo.dSizeV + (runInfo.vecMbaseIdx + mStartVec) * constInfo.dSizeV;
         DataCopyExtParams dataCopyParams;
-        dataCopyParams.blockCount = gmDealRowCount;  // 修改为实际拷出的行数
+        dataCopyParams.blockCount = gmDealRowCount;
         dataCopyParams.blockLen = constInfo.dSizeV * sizeof(T);
         dataCopyParams.srcStride = (dSizeAligned64 - constInfo.dSizeV) / (FA_BYTE_BLOCK / sizeof(T));
         dataCopyParams.dstStride = 0;
