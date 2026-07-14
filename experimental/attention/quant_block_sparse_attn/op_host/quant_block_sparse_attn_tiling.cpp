@@ -73,6 +73,7 @@ QuantBlockSparseAttnMxStrideParams MakePaBnbdStride(uint32_t n2Size, uint32_t bl
     stride.bnStride = static_cast<uint64_t>(n2Size) * stride.n2Stride;
     return stride;
 }
+
 } // namespace
 
 QuantBlockSparseAttnTiling::QuantBlockSparseAttnTiling(gert::TilingContext *context) : context_(context)
@@ -255,7 +256,7 @@ void QuantBlockSparseAttnTiling::FillMxTilingData()
     const uint32_t dSizeV = info.dSizeV == 0U ? BSA_D_SIZE : info.dSizeV;
     const uint32_t queryScaleDSize = CalcMxScaleDSize(dSize);
     const uint32_t keyScaleDSize = CalcMxScaleDSize(dSize);
-    // 每个 PA block 的 VScale 为 [ceil(blockSize/64),N,DV,2]。
+    // 每个 PA block 的 VScale 为 [N,ceil(blockSize/64),DV,2]。
     const uint32_t valueScaleBlockSize = BSACeilDiv(info.kvBlockSizeVal, BSA_MXFP8_SCALE_GROUP_SIZE);
     const uint32_t valueScaleDSize = dSizeV * BSA_MXFP8_VALUE_SCALE_LAST_DIM;
     const bool actualSeqQNull = info.opParamInfo.seqUsedQ.tensor == nullptr;
@@ -289,7 +290,7 @@ void QuantBlockSparseAttnTiling::FillMxTilingData()
     baseParams.isActualSeqLengthsKVNull = actualSeqKVNull ? 1U : 0U;
     baseParams.coreNum = usedCoreNum_;
     baseParams.outputLayout = info.layoutQValue;
-    // KScale 按 token，VScale 按 64-token group。
+    // K/V 数据与 K/V scale 均按 PA BNBD 映射。
     baseParams.keyStrides = MakePaBnbdStride(info.n2Size, info.kvBlockSizeVal, dSize);
     baseParams.valueStrides = MakePaBnbdStride(info.n2Size, info.kvBlockSizeVal, dSizeV);
     baseParams.kScaleStrides =

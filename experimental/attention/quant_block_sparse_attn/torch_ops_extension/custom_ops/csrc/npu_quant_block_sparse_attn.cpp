@@ -18,8 +18,11 @@ using namespace at_npu::native;
 // npu tensor max size
 const int SIZE = 8;
 const int64_t DIM_THREE = 3;
+const int64_t DIM_FIVE = 5;
 const int64_t FP32_BYTES = 4;
 const int64_t BSA_MXFP8_FULL_QUANT_MODE = 2;
+const int64_t BSA_MXFP8_SCALE_GROUP_SIZE = 64;
+const int64_t BSA_MXFP8_SCALE_LAST_DIM = 2;
 
 // 工具函数，推导输出 attention_out / softmax_lse 的 shape 与 dtype
 //   - attention_out: BF16，shape 跟随 query 布局（BSND/TND），head-dim 取自 value
@@ -99,15 +102,44 @@ std::tuple<at::Tensor, at::Tensor> npu_quant_block_sparse_attn_npu(
             "value should use segmented PA_BNSD stride [paBlockStride, blockSize * headDim, headDim, 1], but got ",
             value.strides());
         if (quant_mode == BSA_MXFP8_FULL_QUANT_MODE) {
-            TORCH_CHECK(k_descale.dim() == 4,
-                        "k_descale should be 4D [Tkv, Nkv, D / 64, 2] in quant_mode=2 MXFP8 full-quant "
-                        "scenario, but got dim=",
+            const int64_t keyScaleDSize =
+                (key.size(3) + BSA_MXFP8_SCALE_GROUP_SIZE - 1) / BSA_MXFP8_SCALE_GROUP_SIZE;
+            const int64_t valueScaleBlockSize =
+                (value.size(2) + BSA_MXFP8_SCALE_GROUP_SIZE - 1) / BSA_MXFP8_SCALE_GROUP_SIZE;
+            TORCH_CHECK(k_descale.dim() == DIM_FIVE,
+                        "k_descale should be 5D [blockNum, Nkv, blockSize, D / 64, 2] in quant_mode=2 MXFP8 "
+                        "full-quant scenario, but got dim=",
                         k_descale.dim());
-            TORCH_CHECK(k_descale.stride(3) == 1 && k_descale.stride(2) == k_descale.size(3) &&
-                            k_descale.stride(1) == k_descale.size(2) * k_descale.size(3),
-                        "k_descale should use contiguous [Tkv, Nkv, D / 64, 2] stride in quant_mode=2 MXFP8 "
-                        "full-quant scenario, but got ",
+            TORCH_CHECK(k_descale.size(0) == key.size(0) && k_descale.size(1) == key.size(1) &&
+                            k_descale.size(2) == key.size(2) && k_descale.size(3) == keyScaleDSize &&
+                            k_descale.size(4) == BSA_MXFP8_SCALE_LAST_DIM,
+                        "k_descale should be [blockNum, Nkv, blockSize, D / 64, 2] and match key PA_BNSD "
+                        "shape, but got k_descale sizes ",
+                        k_descale.sizes(), " and key sizes ", key.sizes());
+            TORCH_CHECK(k_descale.stride(4) == 1 && k_descale.stride(3) == k_descale.size(4) &&
+                            k_descale.stride(2) == k_descale.size(3) * k_descale.size(4) &&
+                            k_descale.stride(1) == k_descale.size(2) * k_descale.size(3) * k_descale.size(4) &&
+                            k_descale.stride(0) == k_descale.size(1) * k_descale.stride(1),
+                        "k_descale should use contiguous [blockNum, Nkv, blockSize, D / 64, 2] stride in "
+                        "quant_mode=2 MXFP8 full-quant scenario, but got ",
                         k_descale.strides());
+            TORCH_CHECK(v_descale.dim() == DIM_FIVE,
+                        "v_descale should be 5D [blockNum, Nkv, blockSize / 64, DV, 2] in quant_mode=2 MXFP8 "
+                        "scenario, but got dim=",
+                        v_descale.dim());
+            TORCH_CHECK(v_descale.size(0) == value.size(0) && v_descale.size(1) == value.size(1) &&
+                            v_descale.size(2) == valueScaleBlockSize && v_descale.size(3) == value.size(3) &&
+                            v_descale.size(4) == BSA_MXFP8_SCALE_LAST_DIM,
+                        "v_descale should be [blockNum, Nkv, blockSize / 64, DV, 2] and match value PA_BNSD "
+                        "shape, but got v_descale sizes ",
+                        v_descale.sizes(), " and value sizes ", value.sizes());
+            TORCH_CHECK(v_descale.stride(4) == 1 && v_descale.stride(3) == v_descale.size(4) &&
+                            v_descale.stride(2) == v_descale.size(3) * v_descale.size(4) &&
+                            v_descale.stride(1) == v_descale.size(2) * v_descale.size(3) * v_descale.size(4) &&
+                            v_descale.stride(0) == v_descale.size(1) * v_descale.stride(1),
+                        "v_descale should use contiguous [blockNum, Nkv, blockSize / 64, DV, 2] stride in "
+                        "quant_mode=2 MXFP8 full-quant scenario, but got ",
+                        v_descale.strides());
         } else {
             TORCH_CHECK(k_descale.stride(0) * FP32_BYTES == paBlockStride, "k_descale.stride(0) * ", FP32_BYTES,
                         " should equal key.stride(0), but got k_descale.stride(0)=", k_descale.stride(0),

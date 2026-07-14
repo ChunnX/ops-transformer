@@ -26,6 +26,7 @@ namespace {
 constexpr const char *kOpName = "QuantBlockSparseAttn";
 constexpr size_t DIM_NUM_1 = 1U;
 constexpr size_t DIM_NUM_4 = 4U;
+constexpr size_t DIM_NUM_5 = 5U;
 constexpr int64_t BSA_MXFP8_P_SCALE_SIZE = 1;
 
 template <size_t N>
@@ -344,13 +345,10 @@ ge::graphStatus QuantBlockSparseAttnCheck::CheckMXFP8FullQuantShape() const
     }
 
     const int64_t scaleDSize = static_cast<int64_t>(BSACeilDiv(tilingInfo_.dSize, BSA_MXFP8_SCALE_GROUP_SIZE));
-    const int64_t kvTokenNum =
-        static_cast<int64_t>(tilingInfo_.paBlockNumSum) * static_cast<int64_t>(tilingInfo_.kvBlockSizeVal);
-    // VScale 首维为 64-token group 数。
-    const int64_t valueScaleTokenGroups =
-        (kvTokenNum + static_cast<int64_t>(BSA_MXFP8_SCALE_GROUP_SIZE) - 1) /
-        static_cast<int64_t>(BSA_MXFP8_SCALE_GROUP_SIZE);
-    // PScale:[1]；Q/K scale:[T,N,D/64,2]；V scale:[T/64,N,DV,2]。
+    const int64_t valueScaleBlockSize =
+        static_cast<int64_t>(BSACeilDiv(tilingInfo_.kvBlockSizeVal, BSA_MXFP8_SCALE_GROUP_SIZE));
+    // PScale:[1]；Q scale:[T,N,D/64,2]；
+    // KScale:[blockNum,N,blockSize,D/64,2]；VScale:[blockNum,N,blockSize/64,DV,2]。
     const std::array<int64_t, DIM_NUM_1> pScaleShape = {BSA_MXFP8_P_SCALE_SIZE};
     const std::array<int64_t, DIM_NUM_4> queryAntiquantScaleShape = {
         static_cast<int64_t>(tilingInfo_.qTokenNum), static_cast<int64_t>(tilingInfo_.n1Size), scaleDSize,
@@ -363,10 +361,12 @@ ge::graphStatus QuantBlockSparseAttnCheck::CheckMXFP8FullQuantShape() const
                                                              static_cast<int64_t>(tilingInfo_.n2Size),
                                                              static_cast<int64_t>(tilingInfo_.kvBlockSizeVal),
                                                              static_cast<int64_t>(tilingInfo_.dSizeV)};
-    const std::array<int64_t, DIM_NUM_4> keyAntiquantScaleShape = {
-        kvTokenNum, static_cast<int64_t>(tilingInfo_.n2Size), scaleDSize, BSA_MXFP8_SCALE_LAST_DIM};
-    const std::array<int64_t, DIM_NUM_4> valueAntiquantScaleShape = {
-        valueScaleTokenGroups, static_cast<int64_t>(tilingInfo_.n2Size), static_cast<int64_t>(tilingInfo_.dSizeV),
+    const std::array<int64_t, DIM_NUM_5> keyAntiquantScaleShape = {
+        static_cast<int64_t>(tilingInfo_.paBlockNumSum), static_cast<int64_t>(tilingInfo_.n2Size),
+        static_cast<int64_t>(tilingInfo_.kvBlockSizeVal), scaleDSize, BSA_MXFP8_SCALE_LAST_DIM};
+    const std::array<int64_t, DIM_NUM_5> valueAntiquantScaleShape = {
+        static_cast<int64_t>(tilingInfo_.paBlockNumSum), static_cast<int64_t>(tilingInfo_.n2Size),
+        valueScaleBlockSize, static_cast<int64_t>(tilingInfo_.dSizeV),
         BSA_MXFP8_SCALE_LAST_DIM};
 
     if (CheckInputShape(opParamInfo.pScale, "quantScale1", pScaleShape) != ge::GRAPH_SUCCESS ||
