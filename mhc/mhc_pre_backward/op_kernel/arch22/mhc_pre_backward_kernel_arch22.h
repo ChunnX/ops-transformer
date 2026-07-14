@@ -1033,8 +1033,8 @@ __aicore__ inline void MhcPreBackwardKernelArch22<TYPE_X, T, DETERMINISTIC>::Pro
 
         for (int64_t taskOffset = blkIdx_ * tileCoreBS_; taskOffset < totalTasksAligned_;
              taskOffset += aivNum_ * tileCoreBS_) {
-            printf("totalTasksAligned_ = %d\n", totalTasksAligned_);
-            printf("taskOffset = %d\n", taskOffset);
+            // printf("totalTasksAligned_ = %d\n", totalTasksAligned_);
+            // printf("taskOffset = %d\n", taskOffset);
 
             int32_t tileTaskCount =
                 min(static_cast<int32_t>(tileCoreBS_), static_cast<int32_t>(totalTasks_ - taskOffset));
@@ -1148,7 +1148,7 @@ __aicore__ inline void MhcPreBackwardKernelArch22<TYPE_X, T, DETERMINISTIC>::Pro
     }
     // --- Deterministic 模式: 多核归约 ---
     if constexpr (DETERMINISTIC == true) {
-        printf("DETERMINISTIC = true\n");
+        // printf("DETERMINISTIC = true\n");
         SyncAll<false>();
         if ASCEND_IS_AIV {
             int64_t useCoreNum = min(Ops::Base::CeilDiv(totalTasks_, tileCoreBS_), aivNum_);
@@ -1178,7 +1178,7 @@ __aicore__ inline void MhcPreBackwardKernelArch22<TYPE_X, T, DETERMINISTIC>::Pro
     // mm1_.SetHF32(true, 1);
     mm1_.SetOrgShape(mm1M, mm1N_, mm1K_);
     mm1_.SetSingleShape(mm1M, mm1N_, mm1K_);
-    mm1_.template IterateAll<false>(gradXCubeGlobal_[taskOffset * (n_ * c_)]);
+    mm1_.template IterateAll<true>(gradXCubeGlobal_[taskOffset * (n_ * c_)]);
     mm1_.End();
 }
 
@@ -1196,30 +1196,30 @@ __aicore__ inline void MhcPreBackwardKernelArch22<TYPE_X, T, DETERMINISTIC>::Pro
     // DumpTensor(gradH2Global_[taskOffset * mm2M_], 1, tileCoreBS_ * 32);
     // DumpTensor(xWorkspaceGlobal_[taskOffset * mm2M_], 2, tileCoreBS_ * 32);
 
-    if (blkIdx_ == 0) {
-        printf("gradH2Global_ value is \n");
-        for(int i = 0; i < 16; i++) {
-            // int index = i * 32 + 26;
-            int index = i * 32;
-            printf("[%d] %x\t", index, gradH2Global_.GetValue(index));
-        }
-        printf("-----------------------\n");
+    // if (blkIdx_ == 0) {
+    //     printf("gradH2Global_ value is \n");
+    //     for(int i = 0; i < 16; i++) {
+    //         // int index = i * 32 + 26;
+    //         int index = i * 32;
+    //         printf("[%d] %x\t", index, gradH2Global_.GetValue(index));
+    //     }
+    //     printf("-----------------------\n");
 
-        // printf("gradH2Global_ value 2 is \n");
-        // for(int i = 0; i < 16; i++) {
-        //     int index = 26*16 + i;
-        //     printf("[%d] %x\t", index, gradH2Global_.GetValue(index));
-        // }
-        // printf("-----------------------\n");
+    //     // printf("gradH2Global_ value 2 is \n");
+    //     // for(int i = 0; i < 16; i++) {
+    //     //     int index = 26*16 + i;
+    //     //     printf("[%d] %x\t", index, gradH2Global_.GetValue(index));
+    //     // }
+    //     // printf("-----------------------\n");
 
-        printf("xWorkspaceGlobal_ value is \n");
-        for(int i = 0; i < 16; i++) {
-            // int index = i * 2560 + 2021;
-            int index = i * 2560;
-            printf("[%d] %x\t", index, xWorkspaceGlobal_.GetValue(index));
-        }
-        printf("-----------------------\n");
-    }
+    //     printf("xWorkspaceGlobal_ value is \n");
+    //     for(int i = 0; i < 16; i++) {
+    //         // int index = i * 2560 + 2021;
+    //         int index = i * 2560;
+    //         printf("[%d] %x\t", index, xWorkspaceGlobal_.GetValue(index));
+    //     }
+    //     printf("-----------------------\n");
+    // }
 
     mm2_.SetTensorA(gradH2Global_[taskOffset * mm2M_], true); // [B * S, 2N + N!]
     mm2_.SetTensorB(xWorkspaceGlobal_[taskOffset * mm2N_]); // [B * S, N * D]
@@ -1236,11 +1236,11 @@ __aicore__ inline void MhcPreBackwardKernelArch22<TYPE_X, T, DETERMINISTIC>::Pro
         needAdd = 1;
     }
 
-    if (blkIdx_ == 0) {
-        DumpTensor(gradWeightGlobal_[68581], 1, 16);
-        // printf("gradWeightWSGlobal_ value is %x\n", gradWeightGlobal_.GetValue(68581));
-        printf("gradWeightWSGlobal_ value is %x\n", gradWeightGlobal_.GetValue(0));
-    }
+    // if (blkIdx_ == 0) {
+    //     DumpTensor(gradWeightGlobal_[68581], 1, 16);
+    //     // printf("gradWeightWSGlobal_ value is %x\n", gradWeightGlobal_.GetValue(68581));
+    //     printf("gradWeightWSGlobal_ value is %x\n", gradWeightGlobal_.GetValue(0));
+    // }
 
 
     // DumpTensor(gradH2Global_[taskOffset * mm2M_], 3, 32, *);
