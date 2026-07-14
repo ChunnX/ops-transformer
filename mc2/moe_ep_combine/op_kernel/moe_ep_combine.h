@@ -83,7 +83,7 @@ private:
     __aicore__ inline void ProcessTopKToken(uint32_t tokenIndex);
     __aicore__ inline void SendPhaseExpertToToken();
     __aicore__ inline void BuffInit();
-    __aicore__ inline void MaskAlign(LocalTensor<half> maskCalcSelectedTensor);
+    __aicore__ inline void MaskAlign();
     __aicore__ inline void MaskCheck();
     __aicore__ inline void RecvPhaseReduce();
 
@@ -142,6 +142,7 @@ private:
     uint32_t tPerCore_{0};
     uint32_t ubXBytes_{0};
     uint32_t stateOffset_{0};
+    uint64_t mask_calc_workspace_offset_{0};
 
     uint32_t mask_tokenNum_{0};
     uint32_t bsKCastCnt_{0};
@@ -165,7 +166,7 @@ private:
     LocalTensor<uint8_t> hcommTensor_;
     LocalTensor<float> stateResetTensor_;
 
-    LocalTensor<half> maskGenerateTensor_;
+    LocalTensor<bool> maskGenerateTensor_;
     LocalTensor<bool> maskStrideTensor_;
     LocalTensor<half> tokenTargetTensor_;
 
@@ -205,7 +206,6 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::Init(
     tilingData_ = tilingData;
     aivId_ = GetBlockIdx();
     localUrmaWorkspace_ = workspace;
-    maskCalcWorkspaceGM_ = workspace + aivId_ * MASK_CALC_NEED_WORKSPACE;
     epWorldSize_ = tilingData_->cfg.epWorldSize;
     numMaxTokensPerRank_ = tilingData_->cfg.numMaxTokensPerRank;
     numTokens_ = tilingData_->cfg.numTokens;
@@ -222,7 +222,9 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::Init(
     hAlignSize_ = Ceil(axisH_ * sizeof(XType), UB_ALIGN) * UB_ALIGN; // UB 32字节对齐
     hWeightAlignSize_ = hAlignSize_ + UB_ALIGN; // UB 32字节对齐
     stateOffset_ = STATE_OFFSET;
-    
+    mask_calc_workspace_offset_ = epWorldSize_ * (localWsSizeStatusPerRank_ + localWsSizeDataPerRank_);
+    maskCalcWorkspaceGM_ = (GM_ADDR)workspace + mask_calc_workspace_offset_;
+
     tpipe_->InitBuffer(hcommBuf_, HCOMM_INIT_SIZE);
     hcommTensor_ = hcommBuf_.Get<uint8_t>();
     hcomm_.Init(hcommTensor_, HCOMM_INIT_SIZE);
@@ -386,25 +388,6 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::BuffInit()
     tpipe_->Reset();
     SplitToCore(numTokens_, aivNum_, tStart_, tEnd_, tPerCore_);
     if (tStart_ >= numTokens_) {return;}
-
-    mask_tokenNum_ = tPerCore_ * topK_;
-    uint32_t bsKInt32Align = Ceil(mask_tokenNum_ * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
-    uint32_t bsKFloatAlign = Ceil(mask_tokenNum_ * sizeof(float), UB_ALIGN) * UB_ALIGN;
-    uint32_t bsKHalfAlign = Ceil(mask_tokenNum_ * sizeof(half), UB_ALIGN) * UB_ALIGN;
-    uint32_t bsHalfAlign = Ceil(tPerCore_ * sizeof(half), UB_ALIGN) * UB_ALIGN;
-
-    bsKCastCnt_ = Ceil(mask_tokenNum_ * sizeof(int32_t), ALIGNED_LEN_256) * ALIGNED_LEN_256;
-    activeMaskAlignSize_ = tPerCore_ * Ceil(topK_ * sizeof(half), UB_ALIGN) * UB_ALIGN;
-    bsKInt32Align = (bsKInt32Align > bsKCastCnt_ ? bsKInt32Align : bsKCastCnt_);
-    bsKHalfAlign = (bsKHalfAlign > activeMaskAlignSize_ ? bsKHalfAlign : activeMaskAlignSize_);
-    bsKFloatAlign = (bsKFloatAlign > bsKCastCnt_ ? bsKFloatAlign : bsKCastCnt_);
-    bsKFloatAlign = (bsKFloatAlign > activeMaskAlignSize_ ? bsKFloatAlign : activeMaskAlignSize_);
-
-    tpipe_->InitBuffer(tokenTargetTBuf_, bsHalfAlign);
-    tpipe_->InitBuffer(compareBuf_, bsKInt32Align);
-    tpipe_->InitBuffer(rowTmpFloatBuf_, bsKFloatAlign);
-    tpipe_->InitBuffer(tokenBuf_, bsKHalfAlign);
-
     if constexpr (HasTopkWeight == 1) {
         tpipe_->InitBuffer(ubWeightedBuf_, sizeof(float));
         ubWeighted_ = ubWeightedBuf_.Get<float>();
@@ -450,6 +433,86 @@ __aicore__ inline bool MoeEpCombine<TemplateMoeEpCombineTypeFunc>::WaitDispatch(
 }
 
 template <TemplateMoeEpCombineTypeClass>
+__aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::MaskAlign()
+{
+    // 扩展后的二维mask通过GM对齐内轴元素个数
+    uint32_t calcCntSize = Ceil(tPerCore_ * topK_ * sizeof(bool), ALIGNED_LEN_256) * ALIGNED_LEN_256;
+    GlobalTensor<bool> MaskGMTensor;
+    maskCalcWorkspaceGM_ = maskCalcWorkspaceGM_ + aivId_ * calcCntSize;
+    MaskGMTensor.SetGlobalBuffer((__gm__ bool*)maskCalcWorkspaceGM_);
+    DataCopyExtParams maskCalcParams = {1U, static_cast<uint32_t>(calcCntSize), 0U, 0U, 0U};
+    SyncFunc<AscendC::HardEvent::V_MTE3>();
+    DataCopyPad(MaskGMTensor, maskGenerateTensor_, maskCalcParams);
+    SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
+    DataCopyExtParams xActiveMaskCopyParams{
+        static_cast<uint16_t>(tPerCore_), static_cast<uint32_t>(topK_ * sizeof(bool)), 0U, 0U, 0U};
+    uint8_t rightPad = static_cast<uint8_t>(UB_ALIGN - topK_);
+    DataCopyPadExtParams<bool> xActiveMaskCopyPadParams{true, 0U, rightPad, 0U};
+    DataCopyPad(maskStrideTensor_, MaskGMTensor, xActiveMaskCopyParams, xActiveMaskCopyPadParams);
+    SyncFunc<AscendC::HardEvent::MTE2_V>();
+    SyncFunc<AscendC::HardEvent::MTE2_S>();
+}
+
+template <TemplateMoeEpCombineTypeClass>
+__aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::MaskCheck()
+{
+    mask_tokenNum_ = tPerCore_ * topK_;
+    uint32_t bsKInt32Align = Ceil(mask_tokenNum_ * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
+    uint32_t bsKFloatAlign = Ceil(mask_tokenNum_ * sizeof(float), UB_ALIGN) * UB_ALIGN;
+    uint32_t bsKHalfAlign = Ceil(mask_tokenNum_ * sizeof(half), UB_ALIGN) * UB_ALIGN;
+    uint32_t bsHalfAlign = Ceil(tPerCore_ * sizeof(half), UB_ALIGN) * UB_ALIGN;
+
+    bsKCastCnt_ = Ceil(mask_tokenNum_ * sizeof(int32_t), ALIGNED_LEN_256) * ALIGNED_LEN_256;
+    activeMaskAlignSize_ = tPerCore_ * Ceil(topK_ * sizeof(bool), UB_ALIGN) * UB_ALIGN * sizeof(half);
+    bsKInt32Align = (bsKInt32Align > bsKCastCnt_ ? bsKInt32Align : bsKCastCnt_);
+    bsKHalfAlign = (bsKHalfAlign > activeMaskAlignSize_ ? bsKHalfAlign : activeMaskAlignSize_);
+    bsKFloatAlign = (bsKFloatAlign > bsKCastCnt_ ? bsKFloatAlign : bsKCastCnt_);
+    bsKFloatAlign = (bsKFloatAlign > activeMaskAlignSize_ ? bsKFloatAlign : activeMaskAlignSize_);
+
+    tpipe_->InitBuffer(tokenBuf_, bsKHalfAlign);
+    tpipe_->InitBuffer(compareBuf_, bsKInt32Align);
+    tpipe_->InitBuffer(rowTmpFloatBuf_, bsKFloatAlign);
+    tpipe_->InitBuffer(tokenTargetTBuf_, bsHalfAlign);
+
+    LocalTensor<half> maskCalcTensor = tokenBuf_.Get<half>();
+    LocalTensor<int32_t> topkIdsTensor = compareBuf_.Get<int32_t>();
+    LocalTensor<float> topkIdsFloatTensor = rowTmpFloatBuf_.Get<float>();
+    LocalTensor<uint8_t> maskTensor = compareBuf_.Get<uint8_t>();
+    LocalTensor<half> maskCalcSelectedTensor = rowTmpFloatBuf_.Get<half>();
+    maskGenerateTensor_ = compareBuf_.Get<bool>();
+    LocalTensor<half> tempTensor = rowTmpFloatBuf_.Get<half>();
+    maskStrideTensor_ = tokenBuf_.Get<bool>();
+    tokenTargetTensor_ = tokenTargetTBuf_.Get<half>();
+
+    // 构造二维全true的mask
+    Duplicate<half>(maskCalcTensor, static_cast<half>(1),
+                    Ceil(mask_tokenNum_ * sizeof(half), UB_ALIGN) * UB_ALIGN / sizeof(half));
+    // 拷入topkIds
+    DataCopyExtParams topkIdsCntParams = {1U, static_cast<uint32_t>(mask_tokenNum_ * sizeof(int32_t)), 0U, 0U, 0U};
+    DataCopyPadExtParams<int32_t> topkIdsCntCopyPadParams{false, 0U, 0U, 0U};
+    DataCopyPad(topkIdsTensor, topkIdxGm_[tStart_ * topK_], topkIdsCntParams, topkIdsCntCopyPadParams);
+    SyncFunc<AscendC::HardEvent::MTE2_V>();
+    SyncFunc<AscendC::HardEvent::MTE2_S>();
+    // 根据topkIds大于0，得到考虑(-1专家) 后的mask
+    uint32_t calcCnt = bsKCastCnt_ / sizeof(int32_t);
+    Cast(topkIdsFloatTensor, topkIdsTensor, RoundMode::CAST_NONE, calcCnt);
+    CompareScalar(maskTensor, topkIdsFloatTensor, static_cast<float>(0), AscendC::CMPMODE::GE, calcCnt);
+    Select(maskCalcSelectedTensor, maskTensor, maskCalcTensor, static_cast<half>(0), SELMODE::VSEL_TENSOR_SCALAR_MODE,
+        calcCnt);
+    Cast(maskGenerateTensor_.ReinterpretCast<uint8_t>(), maskCalcSelectedTensor, RoundMode::CAST_NONE, calcCnt);
+    // 通过GM对齐内轴元素个数
+    MaskAlign();
+    // 更新考虑特殊专家后的
+    LocalTensor<int8_t> maskStrideInt8Tensor = maskStrideTensor_.ReinterpretCast<int8_t>();
+    activeMaskAlignSize_ = tPerCore_ * Ceil(topK_ * sizeof(bool), UB_ALIGN) * UB_ALIGN;
+    Cast(tempTensor, maskStrideInt8Tensor, RoundMode::CAST_NONE, activeMaskAlignSize_);
+    uint32_t innerAlign = UB_ALIGN;
+    SumParams axisKSumParams{tPerCore_, innerAlign, topK_};
+    Sum(tokenTargetTensor_, tempTensor, axisKSumParams);
+    SyncFunc<AscendC::HardEvent::V_S>();
+}
+
+template <TemplateMoeEpCombineTypeClass>
 __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::ProcessTopKToken(uint32_t tokenIndex)
 {
     Duplicate<float>(ubAccFp32_, (float)0, axisH_);
@@ -463,6 +526,10 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::ProcessTopKTo
                 slotOffset;
         GlobalTensor<XType> srcTokenTensor;
         srcTokenTensor.SetGlobalBuffer(reinterpret_cast<__gm__ XType *>(wAddr));
+        bool maskExpertFlag = maskGenerateTensor_.GetValue((tokenIndex - tStart_) * topK_ + topkId);
+        if (!maskExpertFlag) {
+            continue;
+        }
         DataCopyPad(ubX_, srcTokenTensor, xCopyParams, padParams);
         SyncFunc<AscendC::HardEvent::MTE2_V>();
         Cast(ubTmpFp32_, ubX_, AscendC::RoundMode::CAST_NONE, axisH_);
@@ -497,9 +564,11 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::RecvPhaseRedu
     uint32_t copyCount = topK_ * FLOAT_PER_UB_ALIGN;
     while (CompletedtokenNum != tPerCore_) {
         for (uint32_t tokenIdx = tStart_; tokenIdx < tEnd_; ++tokenIdx) {
-            if (tokenStatusTensor(tokenIdx - tStart_) == 1) {
+            if (tokenStatusTensor.GetValue(tokenIdx - tStart_) == 1) {
                 continue;
             }
+            int32_t tokenTarget = static_cast<int32_t>(tokenTargetTensor_.GetValue(tokenIdx - tStart_));
+            copyCount = tokenTarget * FLOAT_PER_UB_ALIGN;
             if (!WaitDispatch(tokenIdx, copyCount, tStart_)) {
                 continue;
             }
@@ -520,6 +589,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::Process()
     SendPhaseExpertToToken();
     PipeBarrier<PIPE_ALL>();  // MaskCheck中包含reset操作，需确保前面操作完成
     BuffInit();
+    MaskCheck();
     RecvPhaseReduce();
 }
 
