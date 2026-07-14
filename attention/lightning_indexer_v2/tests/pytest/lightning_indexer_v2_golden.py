@@ -669,6 +669,7 @@ def liv2_output_single(params, is_batch = False, split_s1 = DEFAULT_SPLIT_S1, s1
         topk = int(topk)
         mask_mode = int(mask_mode)
         return_value = int(return_value)
+        blockFusion = None
 
         params = batch_size, q_seq, k_seq, q_t_size, k_t_size, q_head_num, k_head_num, head_dim, block_size, block_num, \
                  qk_dtype, cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k, cmp_residual_k, output_idx_offset, \
@@ -782,7 +783,6 @@ def liv2_output_single(params, is_batch = False, split_s1 = DEFAULT_SPLIT_S1, s1
                         key[cur_block_id, :, i_n, :] = key_expand[i_batch, i_n, block_start_pos:block_start_pos+block_size,:]
         # kv_cache 0轴非连续：将key和key_dequant_scale融合到blockFusion (ref v1 commit keyStride0)
         properties = torch.npu.get_device_properties()
-        blockFusion = None
         if "Ascend950" in properties.name:
             key_stride = 10  # 0轴非连续增加stride
             bytes_per_token = head_dim + key_stride # 整个非连续的长度
@@ -831,7 +831,6 @@ def liv2_output_single(params, is_batch = False, split_s1 = DEFAULT_SPLIT_S1, s1
     if blockFusion is not None:
         blockFusion = blockFusion.npu()
         key = blockFusion[:, :block_size * k_head_num * head_dim].view(block_num, block_size, k_head_num, head_dim)
-        key_dequant_scale_block = blockFusion[:, block_size * k_head_num * head_dim:].view(dequant_dtype).view(block_num, block_size, k_head_num)
     else:
         key = key.npu()
     if is_batch:
