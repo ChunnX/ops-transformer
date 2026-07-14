@@ -360,7 +360,8 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::DispatchBuffInit
             + SEND_DEDUP_MASK_UB_BYTES + MX_QUANT_TEMP_UB_BYTES
             + mxQuantTokenScaleAlignBytes_ + static_cast<uint32_t>(ALIGN_32)
             + Ops::Base::CeilAlign(k_, static_cast<uint32_t>(ALIGN_128)) * sizeof(bfloat16_t)
-            + Ops::Base::CeilAlign(static_cast<int64_t>(expertPerRank_ * sizeof(int32_t)), static_cast<int64_t>(ALIGN_32))
+            + Ops::Base::CeilAlign(static_cast<int64_t>(expertPerRank_ * sizeof(int32_t)),
+            static_cast<int64_t>(ALIGN_32))
             + static_cast<uint32_t>(DISPATCH_WAVE_TILE_M) * static_cast<uint32_t>(ALIGN_32);
     }
     uint32_t fixedBefore = cumsumInfoTensorAddr + cumsumInfoTensorSize;
@@ -1592,14 +1593,15 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Unpermute()
     output.SetGlobalBuffer((__gm__ bfloat16_t *)params_.y2GmAddr);
     SetFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID0);
     SetFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID1);
-    for (int32_t chunkStart = coreOffset; chunkStart < coreLen + coreOffset; ) {
+    for (int32_t chunkStart = coreOffset; chunkStart < coreLen + coreOffset;) {
         int32_t chunkEnd = chunkStart + static_cast<int32_t>(topKWeightsChunkLen_);
         if (chunkEnd > coreLen + coreOffset) { chunkEnd = coreLen + coreOffset; }
         int32_t chunkTokenCnt = chunkEnd - chunkStart;
         if constexpr (Std::IsSame<TopkWeightsType, float>::value) {
             GlobalTensor<float> topKWeightsGlobalTensor_;
             topKWeightsGlobalTensor_.SetGlobalBuffer((__gm__ float*)params_.probsGmAddr);
-            DataCopyExtParams copyParams = {1U, static_cast<uint32_t>(chunkTokenCnt * topK_ * sizeof(float)), 0U, 0U, 0U};
+            DataCopyExtParams copyParams = {1U, static_cast<uint32_t>(chunkTokenCnt * topK_ * sizeof(float)),
+                                            0U, 0U, 0U};
             DataCopyPadExtParams<float> copyPadParams{false, 0U, 0U, 0U};
             DataCopyPad(topKWeightsTensor_, topKWeightsGlobalTensor_[chunkStart * topK_], copyParams, copyPadParams);
             SyncFuncStatic<AscendC::HardEvent::MTE2_S, SYNC_EVENT_ID2>();
@@ -1611,7 +1613,8 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Unpermute()
                 tempBufAlign / sizeof(bfloat16_t));
             GlobalTensor<bfloat16_t> topkWeightsGlobalTensor;
             topkWeightsGlobalTensor.SetGlobalBuffer((__gm__ bfloat16_t*)params_.probsGmAddr);
-            DataCopyExtParams copyParams = {1U, static_cast<uint32_t>(chunkTokenCnt * topK_ * sizeof(bfloat16_t)), 0U, 0U, 0U};
+            DataCopyExtParams copyParams = {1U, static_cast<uint32_t>(chunkTokenCnt * topK_ * sizeof(bfloat16_t)),
+                                            0U, 0U, 0U};
             DataCopyPadExtParams<bfloat16_t> copyPadParams{false, 0U, 0U, 0U};
             DataCopyPad(tempLocal, topkWeightsGlobalTensor[chunkStart * topK_], copyParams, copyPadParams);
             SyncFuncStatic<AscendC::HardEvent::MTE2_V, SYNC_EVENT_ID2>();
