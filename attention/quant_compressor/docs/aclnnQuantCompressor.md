@@ -13,21 +13,30 @@
 
 ## 功能说明
 
-- 接口功能：QuantCompressor是推理场景下SMLA和QLI的前处理算子，是[Compressor](../../compressor/docs/aclnnCompressor.md)的量化版本。用于将每4或128个token的KV cache压缩成一个，然后每个token与这些压缩的KV cache进行DSA计算。在长序列的情况下，QuantCompressor可以有效地减少计算开销。与Compressor的区别在于：输入$x$、$W^{KV}$、$W^{Gate}$为HIFLOAT8量化数据，通过x_descale、wkv_descale、wgate_descale缩放因子进行反量化后参与计算，从而降低显存占用与搬运开销。主要计算过程为：
-    1. 将输入$X$与$W^{KV}$做Matmul运算得到$kv\_state$，将输入$X$与$W^{Gate}$做Matmul运算后再与$Ape$做Add运算得到$score\_state$，$kv\_state$与$score\_state$根据输入的start_pos及cu_seqlens完成更新。
-    2. 在coff为2的情况下对$kv\_state$和$score\_state$进行数据重排。
-    3. 对$score\_state$进行softmax运算将softmax结果与$kv\_state$做Mul计算，后进行ReduceSum运算。
+- 接口功能：QuantCompressor是推理场景下SMLA和QLI的前处理算子，是[Compressor](../../compressor/docs/aclnnCompressor.md)的量化版本。用于将每4或128个token的KV cache压缩成一个，然后每个token与这些压缩的KV cache进行DSA计算。在长序列的情况下，QuantCompressor可以有效地减少计算开销。与Compressor的区别在于：输入$x$、$W^{KV}$、$W^{Gate}$为HIFLOAT8量化数据，需先通过x_descale、wkv_descale、wgate_descale缩放因子进行反量化还原为FLOAT32后再参与计算，从而降低显存占用与搬运开销。主要计算过程为：
+    1. 反量化：将HIFLOAT8量化的输入$X$、$W^{KV}$、$W^{Gate}$分别乘以对应的缩放因子x_descale、wkv_descale、wgate_descale，还原为FLOAT32数据。其中x_descale为per-tensor缩放（单个标量），wkv_descale与wgate_descale为per-channel缩放（通道数为coff\*D）。
+    2. 将反量化后的$X$与$W^{KV}$做Matmul运算得到$kv\_state$，将反量化后的$X$与$W^{Gate}$做Matmul运算后再与$Ape$做Add运算得到$score\_state$，$kv\_state$与$score\_state$根据输入的start_pos及cu_seqlens完成更新。
+    3. 在coff为2的情况下对$kv\_state$和$score\_state$进行数据重排。
+    4. 对$score\_state$进行softmax运算将softmax结果与$kv\_state$做Mul计算，后进行ReduceSum运算。
 
 - 计算公式：
 
-    1. 计算矩阵乘法：
+    0. 反量化（quant_mode=1，HIF8_XPERTENSOR_WPERCHANNEL）：
 
     $$
-    C4A：\left[kv\_state^a, score\_state^a\right] = X @ \left[W^{aKV}, W^{aGate}\right], \left[kv\_state^b, score\_state^b\right] = X @ \left[W^{bKV}, W^{bGate}\right];
+    X_{fp32} = X_{hif8} \cdot x\_descale,\quad W^{KV}_{fp32} = W^{KV}_{hif8} \cdot wkv\_descale,\quad W^{Gate}_{fp32} = W^{Gate}_{hif8} \cdot wgate\_descale
+    $$
+
+    其中x_descale为per-tensor标量（shape为[1]），wkv_descale、wgate_descale为per-channel向量（shape为[coff\*D]，沿权重输出通道维度缩放）。
+
+    1. 计算矩阵乘法（使用反量化后的FP32数据）：
+
+    $$
+    C4A：\left[kv\_state^a, score\_state^a\right] = X_{fp32} @ \left[W^{aKV}_{fp32}, W^{aGate}_{fp32}\right], \left[kv\_state^b, score\_state^b\right] = X_{fp32} @ \left[W^{bKV}_{fp32}, W^{bGate}_{fp32}\right];
     $$
 
     $$
-    C128A：\left[kv\_state, score\_state\right] = X @ \left[W^{KV}, W^{Gate}\right]
+    C128A：\left[kv\_state, score\_state\right] = X_{fp32} @ \left[W^{KV}_{fp32}, W^{Gate}_{fp32}\right]
     $$
 
     2. 计算分组加法：
@@ -114,14 +123,14 @@ aclnnStatus aclnnQuantCompressor(
     | wgate | 输入 | 公式中的$W^{Gate}$，表示gate压缩权重，HIFLOAT8量化输入。 |不支持空Tensor。| HIFLOAT8 | ND |[coff* D,H]|×|
     | stateCacheRef | 输入 | 公式中的$\left[kv\_state, score\_state\right]$, 表示kv\_state和score\_state的历史数据。 |不支持空Tensor| FLOAT32     | ND         |[block_num,block_size,2* coff* D]|支持0轴非连续|
     | ape | 输入 | 公式中的$Ape$，表示positional biases。 | 不支持空Tensor。|FLOAT32       | ND         |[cmp_ratio,coff* D]|×|
-    | xDescale | 可选输入 | x的反量化缩放因子。 | -|FLOAT32       | ND         |-|×|
-    | wkvDescale | 可选输入 | wkv的反量化缩放因子。 | -|FLOAT32       | ND         |-|×|
-    | wgateDescale | 可选输入 | wgate的反量化缩放因子。 | -|FLOAT32       | ND         |-|×|
+    | xDescale | 可选输入 | x的反量化缩放因子，per-tensor缩放。quant_mode=1时必选。 |FLOAT32       | ND         |[1]|×|
+    | wkvDescale | 可选输入 | wkv的反量化缩放因子，per-channel缩放，通道数为coff\*D。quant_mode=1时必选。 |FLOAT32       | ND         |[coff* D]|×|
+    | wgateDescale | 可选输入 | wgate的反量化缩放因子，per-channel缩放，通道数为coff\*D。quant_mode=1时必选。 |FLOAT32       | ND         |[coff* D]|×|
     | stateBlockTable | 可选输入 | 表示state\_cache存储使用的block映射表。|当其中元素的值为0时，表示当前位置无需进行更新state\_cache操作；支持S=0,T=0的空Tensor。| INT32 | ND         |cache_mode=1时，shape为[B,ceil(Smax/block_size)]，Smax为每个Batch中最大的Sequence Length，当x的shape为[B,S,H]时，Smax=max(start_pos)+S。当x的shape为[T,H]时，Smax=max(start_pos)+max(cu_seqlens[n+1] - cu_seqlens[n])。cache_mode=2时，shape为[B]。当其中元素的值为0时，表示当前位置无需进行更新state_cache操作|×|
     | cuSeqlens | 可选输入 | 表示不同Batch中的有效token数。  |支持B=0,S=0,T=0的空Tensor；当x的shape为[B,S,H]时，参数必须为空。| INT32          | ND         |当x的shape为[T,H]时，输入shape为[B+1,]|×|
     | seqused | 可选输入 | 表示不同Batch中实际参与压缩的token数。 |如果指定为None时，表示和每个Batch上的Sequence Length长度相同；支持B=0的空Tensor；如果指定为None时，表示和每个Batch上的Sequence Length长度相同。该入参中每个Batch的有效token数要求小于等于对应Sequence Length长度。当x的shape为[B,S,H]时，要求seqused[n] <= S，且不小于0；当x的shape为[T,H]时，要求seqused[n] <= cu\_seqlens[n+1] - cu\_seqlens[n]，且不小于0。| INT32          | ND         |[B,]|×|
     | startPos | 可选输入 | 表示计算起始位置。 |支持B=0,T=0的空Tensor；当输入为None时，表示从0开始进行计算。| INT32          | ND         |[B,]|×|
-    | quantMode | 输入 | 量化模式。 |取值范围为[1]，1表示静态量化。| INT32          | -         |-|-|
+    | quantMode | 输入 | 量化模式。 |取值范围为[1]，1表示HIF8_XPERTENSOR_WPERCHANNEL（HIFLOAT8输入，x按per-tensor缩放、wkv/wgate按per-channel缩放反量化）。| INT32          | -         |-|-|
     | cmpRatio | 输入 | 用于稀疏计算，表示数据压缩率。 |取值范围为[2, 4, 8, 16, 32, 64, 128]。| INT32          | -         |-|-|
     | coff | 可选输入 | 表示是否进行overlap数据重排。 |取值范围为[1, 2]。当coff=1时，无需进行overlap数据重排。当coff=2时，需要进行overlap数据重排。| INT32          | -         |-|-|
     | cacheMode | 可选输入 | 表示state_cache的存储模式。 |取值范围为[1, 2]；1表示连续buffer，2表示循环buffer。| INT32          | -         |-|-|
@@ -222,6 +231,9 @@ aclnnStatus aclnnQuantCompressor(
     - wgate支持输入shape[coff* D,H]
     - stateCache支持输入shape[block_num,block_size,2* coff* D]，要求blockNum>0，cacheMode=2时，需要满足blockSize >= coff * cmp_ratio + S - 1。
     - ape支持输入shape[cmp_ratio,coff* D]
+    - xDescale支持输入shape[1]，per-tensor缩放。
+    - wkvDescale支持输入shape[coff* D]，per-channel缩放。
+    - wgateDescale支持输入shape[coff* D]，per-channel缩放。
     - startPos支持输入shape[B,]
     - 若x的维度采用BS合轴，即x的输入shape为[T,H]
         - cuSeqlens输入shape必须为[B+1,]。该参数中每个元素的值表示当前batch与之前所有batch的token数总和，即前缀和，因此后一个元素的值必须大于等于前一个元素的值，且第一位必须位0。
@@ -273,6 +285,7 @@ aclnnStatus aclnnQuantCompressor(
       </div>
 - 该接口支持B、S、T取0，即shape与B、S、T值相关的入参允许传入空tensor，其余入参不支持传入空tensor。该场景下stateCache不做更新，输出cmpKv为空tensor。
 - 输入属性限制：
+  - quantMode取值为1（HIF8_XPERTENSOR_WPERCHANNEL），此时xDescale、wkvDescale、wgateDescale为必选输入。
   - 支持D为128/512。
   - 支持H为1K~10K，512对齐。
   - 支持blockSize为1~1024。
