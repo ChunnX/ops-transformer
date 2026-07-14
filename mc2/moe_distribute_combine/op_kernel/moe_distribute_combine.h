@@ -31,8 +31,8 @@
 #include "../../moe_distribute_combine_v2/op_kernel/moe_distribute_combine_tiling.h"
 #endif
 namespace MoeDistributeCombineImpl {
-constexpr uint8_t BUFFER_NUM = 2; // 多buf
-constexpr uint32_t STATE_OFFSET = 512; // 状态空间偏移地址
+constexpr uint8_t BUFFER_NUM = 2;            // 多buf
+constexpr uint32_t STATE_OFFSET = 512;       // 状态空间偏移地址
 constexpr uint32_t STATE_SIZE = 1024 * 1024; // 1M
 constexpr uint32_t RANK_SIZE_ON_WIN_512 = 512 * 1024;
 constexpr uint32_t RANK_SIZE_ON_WIN_256 = 256 * 1024;
@@ -45,7 +45,7 @@ constexpr uint64_t WIN_STATE_OFFSET = 512 * 1024;
 constexpr uint64_t STATE_WIN_OFFSET = 900 * 1024;
 constexpr uint32_t VEC_LEN = 256U;
 constexpr float SCALE_PARAM = 127.0;
-constexpr uint32_t BLOCK_NUM = 256U / UB_ALIGN;     // BlockReduceMax 256字节对齐，计算每256字节block数量
+constexpr uint32_t BLOCK_NUM = 256U / UB_ALIGN; // BlockReduceMax 256字节对齐，计算每256字节block数量
 
 #define TemplateCombineTypeClass typename ExpandXType, typename ExpandIdxType, bool IsQuant
 #define TemplateCombineTypeFunc ExpandXType, ExpandIdxType, IsQuant
@@ -53,19 +53,20 @@ using namespace AscendC;
 template <TemplateCombineTypeClass>
 class MoeDistributeCombine {
 public:
-    __aicore__ inline MoeDistributeCombine() {};
+    __aicore__ inline MoeDistributeCombine(){};
     __aicore__ inline void Init(GM_ADDR expandX, GM_ADDR expertIds, GM_ADDR expandIdx, GM_ADDR epSendCount,
-        GM_ADDR scales, GM_ADDR XOut, GM_ADDR workspaceGM, TPipe *pipe,
-        const MoeDistributeCombineTilingData *tilingData);
+                                GM_ADDR scales, GM_ADDR XOut, GM_ADDR workspaceGM, TPipe *pipe,
+                                const MoeDistributeCombineTilingData *tilingData);
     __aicore__ inline void Process();
+
 private:
     __aicore__ inline void InitStatusTargetSum();
     __aicore__ inline void AlltoAllBuffInit();
     __aicore__ inline void ExpertAlltoAllDispatchCopyAdd();
     __aicore__ inline void ExpertAlltoAllDispatchInnerCopyAdd(uint32_t tokenNumLoop, uint32_t srcStartTokenIdx,
-        uint32_t ep, uint32_t expertIdx);
+                                                              uint32_t ep, uint32_t expertIdx);
     __aicore__ inline void QuantProcess();
-    __aicore__ inline void DequantProcess(LocalTensor<ExpandXType>& src);
+    __aicore__ inline void DequantProcess(LocalTensor<ExpandXType> &src);
     __aicore__ inline void LocalWindowCopy();
     __aicore__ inline void BuffInit();
     __aicore__ inline void SplitCoreCal();
@@ -95,8 +96,8 @@ private:
     GlobalTensor<ExpandIdxType> epSendCountGM_;
     GlobalTensor<float> expandScalesGM_;
     GlobalTensor<ExpandXType> expandOutGlobal_;
-    GlobalTensor<ExpandXType> rankWindow_; // 用于存对端window的变量
-    GlobalTensor<int32_t> rankStates_; // 用于存对端状态window的变量
+    GlobalTensor<ExpandXType> rankWindow_;          // 用于存对端window的变量
+    GlobalTensor<int32_t> rankStates_;              // 用于存对端状态window的变量
     GlobalTensor<float> epStatusSpaceGlobalTensor_; // win区状态位置拷入相关参数
     GlobalTensor<ExpandXType> rowTmpGlobal_;
     GM_ADDR workspaceGM_;
@@ -116,11 +117,11 @@ private:
     uint32_t aivNum_{0};
     uint32_t epWorldSize_{0};
     uint32_t epRankId_{0};
-    uint32_t coreIdx_{0}; // aiv id
+    uint32_t coreIdx_{0};             // aiv id
     uint32_t sharedExpertRankNum_{0}; // 共享专家卡数
-    uint32_t moeExpertNum_{0}; // moe专家数
+    uint32_t moeExpertNum_{0};        // moe专家数
     uint32_t moeExpertPerRankNum_{0}; // 每张卡部署的moe专家数
-    uint32_t moeSendNum_{0}; // moeExpertPerRankNum_ * epWorldSize_
+    uint32_t moeSendNum_{0};          // moeExpertPerRankNum_ * epWorldSize_
     __gm__ Mc2Kernel::HcclOpParam *epWinContext_{nullptr};
     uint64_t epDataOffsetOnWin_{0};
     uint32_t epStateOffsetOnWin_{0};
@@ -153,7 +154,7 @@ private:
     TBuf<> tokenBuf_;
     TBuf<> statusBuf_;
     TBuf<> gatherMaskOutBuf_; // gather mask输出buf
-    TBuf<> gatherTmpBuf_; // 辅助gather tensor定义
+    TBuf<> gatherTmpBuf_;     // 辅助gather tensor定义
     TBuf<> statusSumOutBuf_;
     float sumTarget_{0.0};
     int32_t epStateValue_;
@@ -189,9 +190,9 @@ private:
 };
 
 template <TemplateCombineTypeClass>
-__aicore__ inline void MoeDistributeCombine<TemplateCombineTypeFunc>::Init(GM_ADDR expandX, GM_ADDR expertIds,
-    GM_ADDR expandIdx, GM_ADDR epSendCount, GM_ADDR scales, GM_ADDR XOut, GM_ADDR workspaceGM,
-    TPipe *pipe, const MoeDistributeCombineTilingData *tilingData)
+__aicore__ inline void MoeDistributeCombine<TemplateCombineTypeFunc>::Init(
+    GM_ADDR expandX, GM_ADDR expertIds, GM_ADDR expandIdx, GM_ADDR epSendCount, GM_ADDR scales, GM_ADDR XOut,
+    GM_ADDR workspaceGM, TPipe *pipe, const MoeDistributeCombineTilingData *tilingData)
 {
     tpipe_ = pipe;
     coreIdx_ = GetBlockIdx();
@@ -200,7 +201,7 @@ __aicore__ inline void MoeDistributeCombine<TemplateCombineTypeFunc>::Init(GM_AD
     epWinContext_ = (__gm__ Mc2Kernel::HcclOpParam *)contextGM0;
     GlobalTensor<int32_t> selfDataStatusTensor;
     GM_ADDR statusDataSpaceGm = Mc2Kernel::GetStatusDataSpaceGm(epWinContext_);
-    selfDataStatusTensor.SetGlobalBuffer((__gm__ int32_t*)(statusDataSpaceGm + STATE_WIN_OFFSET));
+    selfDataStatusTensor.SetGlobalBuffer((__gm__ int32_t *)(statusDataSpaceGm + STATE_WIN_OFFSET));
     DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(
         selfDataStatusTensor[coreIdx_ * STATE_ALIGN]);
     dataState_ = selfDataStatusTensor(coreIdx_ * STATE_ALIGN);
@@ -233,13 +234,14 @@ __aicore__ inline void MoeDistributeCombine<TemplateCombineTypeFunc>::Init(GM_AD
     moeSendNum_ = epWorldSize_ * moeExpertPerRankNum_;
     totalWinSizeEp_ = tilingData->moeDistributeCombineInfo.totalWinSizeEp;
     stateOffset_ = (moeSendNum_ > 512) ? (STATE_OFFSET / 2) : STATE_OFFSET;
-    expertPerSizeOnWin_ = static_cast<uint64_t>(axisMaxBS_) * static_cast<uint64_t>(axisH_) * static_cast<uint64_t>(sizeof(ExpandXType));
+    expertPerSizeOnWin_ =
+        static_cast<uint64_t>(axisMaxBS_) * static_cast<uint64_t>(axisH_) * static_cast<uint64_t>(sizeof(ExpandXType));
     winDataSizeOffsetEp_ = static_cast<uint64_t>(dataState_) * static_cast<uint64_t>(moeSendNum_) * expertPerSizeOnWin_;
     epWindowGM_ = GetWinAddrByRankId(epRankId_);
     epStatusSpaceGm_ = GetWinStateAddrByRankId(epRankId_);
 #if defined(ASCENDC_OOM) && ASCENDC_OOM == 1
-    OOMCheckAddrRange<ExpandXType>((__gm__ ExpandXType*)(epWindowGM_), totalWinSizeEp_);
-    OOMCheckAddrRange<float>((__gm__ float*)(epStatusSpaceGm_), STATE_SIZE);
+    OOMCheckAddrRange<ExpandXType>((__gm__ ExpandXType *)(epWindowGM_), totalWinSizeEp_);
+    OOMCheckAddrRange<float>((__gm__ float *)(epStatusSpaceGm_), STATE_SIZE);
 #endif
     epStatusSpaceGlobalTensor_.SetGlobalBuffer((__gm__ float *)epStatusSpaceGm_);
     epDataOffsetOnWin_ = static_cast<uint64_t>(epRankId_) * moeExpertPerRankNum_ * expertPerSizeOnWin_;
@@ -251,7 +253,7 @@ __aicore__ inline void MoeDistributeCombine<TemplateCombineTypeFunc>::Init(GM_AD
 
     if constexpr (IsQuant) {
         scaleValFloat_ = static_cast<float>(1.0f / SCALE_PARAM);
-        scaleGranu_ = UB_ALIGN / static_cast<uint32_t>(sizeof(float));         // 计算每个block得到的reducemax结果数量
+        scaleGranu_ = UB_ALIGN / static_cast<uint32_t>(sizeof(float)); // 计算每个block得到的reducemax结果数量
         scaleNum_ = axisH_ / scaleGranu_;
         scaleLen_ = scaleNum_;
         repeatNum_ = static_cast<uint32_t>(axisH_ / (VEC_LEN / sizeof(float)));
@@ -290,17 +292,17 @@ template <TemplateCombineTypeClass>
 __aicore__ inline void MoeDistributeCombine<TemplateCombineTypeFunc>::BuffInit()
 {
     tpipe_->Reset();
-    tpipe_->InitBuffer(readStateBuf_, UB_ALIGN); // 32
+    tpipe_->InitBuffer(readStateBuf_, UB_ALIGN);                                      // 32
     uint32_t sendNumAlign = Ceil(moeSendNum_ * sizeof(int32_t), UB_ALIGN) * UB_ALIGN; // 32B向上取整
     tpipe_->InitBuffer(sendCountBuf_, sendNumAlign); // epWorldSize_ * moeExpertPerRankNum_ * 4，且32B向上取整
     tpipe_->InitBuffer(gmTpSendCountQueue_, BUFFER_NUM, axisHExpandXTypeSize_); // 28K
     if constexpr (IsQuant) {
-        tpipe_->InitBuffer(gmQuantInQueue_, BUFFER_NUM, axisHExpandXTypeSize_); // 28K
-        tpipe_->InitBuffer(xOutQueue_, BUFFER_NUM, axisHExpandXTypeSize_); // 28K
-        tpipe_->InitBuffer(xAbsBuf_, axisHFloatSize_); // 28K
+        tpipe_->InitBuffer(gmQuantInQueue_, BUFFER_NUM, axisHExpandXTypeSize_);     // 28K
+        tpipe_->InitBuffer(xOutQueue_, BUFFER_NUM, axisHExpandXTypeSize_);          // 28K
+        tpipe_->InitBuffer(xAbsBuf_, axisHFloatSize_);                              // 28K
         tpipe_->InitBuffer(xMaxBuf_, axisHFloatSize_ / (UB_ALIGN / sizeof(float))); // 28K
-        tpipe_->InitBuffer(xScaleMulBuf_, axisHFloatSize_); // 28K
-        tpipe_->InitBuffer(winTpSendCountFloatBuf_, axisHFloatSize_); // 28K
+        tpipe_->InitBuffer(xScaleMulBuf_, axisHFloatSize_);                         // 28K
+        tpipe_->InitBuffer(winTpSendCountFloatBuf_, axisHFloatSize_);               // 28K
 
         winTpSendCountFloatTensor_ = winTpSendCountFloatBuf_.Get<float>();
         absFloatTensor_ = xAbsBuf_.Get<float>();
@@ -315,19 +317,19 @@ template <TemplateCombineTypeClass>
 __aicore__ inline void MoeDistributeCombine<TemplateCombineTypeFunc>::AlltoAllBuffInit()
 {
     tpipe_->Reset();
-    tpipe_->InitBuffer(readStateBuf_, UB_ALIGN); // 32 * moeExpertPerRankNum_
-    tpipe_->InitBuffer(statusBuf_, sendRankNum_ * UB_ALIGN); // 288 * 32 = 9216
-    tpipe_->InitBuffer(expertIdsBuf_, axisBS_ * axisK_ * sizeof(int32_t)); // 32 * 8 * 4 = 1024
-    tpipe_->InitBuffer(expandScalesBuf_, axisBS_ * axisK_ * sizeof(float)); // 32 * 8 * 4 = 1024
-    tpipe_->InitBuffer(tokenBuf_, axisH_ * sizeof(ExpandXType)); // 7168 * 2 = 14336
-    tpipe_->InitBuffer(rowTmpFloatBuf_, axisHFloatSize_); // 7168 * 4 = 28672
-    tpipe_->InitBuffer(mulBuf_, axisHFloatSize_); // 7168 * 4 = 28672
-    tpipe_->InitBuffer(sumFloatBuf_, axisHFloatSize_); // 7168 * 4 = 28672
+    tpipe_->InitBuffer(readStateBuf_, UB_ALIGN);                             // 32 * moeExpertPerRankNum_
+    tpipe_->InitBuffer(statusBuf_, sendRankNum_ * UB_ALIGN);                 // 288 * 32 = 9216
+    tpipe_->InitBuffer(expertIdsBuf_, axisBS_ * axisK_ * sizeof(int32_t));   // 32 * 8 * 4 = 1024
+    tpipe_->InitBuffer(expandScalesBuf_, axisBS_ * axisK_ * sizeof(float));  // 32 * 8 * 4 = 1024
+    tpipe_->InitBuffer(tokenBuf_, axisH_ * sizeof(ExpandXType));             // 7168 * 2 = 14336
+    tpipe_->InitBuffer(rowTmpFloatBuf_, axisHFloatSize_);                    // 7168 * 4 = 28672
+    tpipe_->InitBuffer(mulBuf_, axisHFloatSize_);                            // 7168 * 4 = 28672
+    tpipe_->InitBuffer(sumFloatBuf_, axisHFloatSize_);                       // 7168 * 4 = 28672
     tpipe_->InitBuffer(indexCountsBuf_, axisBS_ * axisK_ * sizeof(int32_t)); // 32 * 8 * 4 = 1024
-    tpipe_->InitBuffer(moeSumQueue_, BUFFER_NUM, axisHExpandXTypeSize_); // 7168 * 2 * 2 = 28672
-    tpipe_->InitBuffer(gatherMaskOutBuf_, epWorldSize_ * sizeof(float)); // 288 * 4 = 1152
-    tpipe_->InitBuffer(gatherTmpBuf_, sizeof(uint32_t)); // 4
-    tpipe_->InitBuffer(statusSumOutBuf_, sizeof(float)); // 4
+    tpipe_->InitBuffer(moeSumQueue_, BUFFER_NUM, axisHExpandXTypeSize_);     // 7168 * 2 * 2 = 28672
+    tpipe_->InitBuffer(gatherMaskOutBuf_, epWorldSize_ * sizeof(float));     // 288 * 4 = 1152
+    tpipe_->InitBuffer(gatherTmpBuf_, sizeof(uint32_t));                     // 4
+    tpipe_->InitBuffer(statusSumOutBuf_, sizeof(float));                     // 4
 
     if constexpr (IsQuant) {
         tpipe_->InitBuffer(xAbsBuf_, axisHFloatSize_); // 28K
@@ -377,7 +379,7 @@ __aicore__ inline void MoeDistributeCombine<TemplateCombineTypeFunc>::ExpertAllt
     uint32_t curTokenNum = 0;
     // 分核是按照卡数去分的，先循环单卡上每个专家，再循环处理当前核处理的卡号，因为网络中一个专家的放在一起处理
     for (uint32_t expertIdx = 0U; expertIdx < curRankExpertNum; expertIdx++) {
-        for (uint32_t ep = startRankId_ ; ep < endRankId_; ep++) {
+        for (uint32_t ep = startRankId_; ep < endRankId_; ep++) {
             if ((ep > 0) || (expertIdx > 0)) {
                 preCount = epSendCountLocal_.GetValue(expertIdx * epWorldSize_ + ep - 1);
             }
@@ -428,12 +430,12 @@ __aicore__ inline void MoeDistributeCombine<TemplateCombineTypeFunc>::ExpertAllt
     // 获取对应卡上 window 的首地址
     GM_ADDR rankGM = GetWinAddrByRankId(ep, expertIdx) + epDataOffsetOnWin_;
 #if defined(ASCENDC_OOM) && ASCENDC_OOM == 1
-    OOMCheckAddrRange<ExpandXType>((__gm__ ExpandXType*)(GetWinAddrByRankId(ep)), totalWinSizeEp_);
+    OOMCheckAddrRange<ExpandXType>((__gm__ ExpandXType *)(GetWinAddrByRankId(ep)), totalWinSizeEp_);
 #endif
     if ((isShardExpert_) && (ep < sharedExpertRankNum_)) { // 这部分数据为本卡数据，模拟为ep发过来的
         rankGM = GetWinAddrByRankId(epRankId_, expertIdx) + ep * moeExpertPerRankNum_ * expertPerSizeOnWin_;
 #if defined(ASCENDC_OOM) && ASCENDC_OOM == 1
-        OOMCheckAddrRange<ExpandXType>((__gm__ ExpandXType*)(GetWinAddrByRankId(epRankId_)), totalWinSizeEp_);
+        OOMCheckAddrRange<ExpandXType>((__gm__ ExpandXType *)(GetWinAddrByRankId(epRankId_)), totalWinSizeEp_);
 #endif
     }
     rankWindow_.SetGlobalBuffer((__gm__ ExpandXType *)rankGM);
@@ -482,16 +484,16 @@ __aicore__ inline void MoeDistributeCombine<TemplateCombineTypeFunc>::SetStatus(
     for (uint32_t epIdx = startRankId_; epIdx < endRankId_; epIdx++) {
         stateGM_ = GetWinStateAddrByRankId(epIdx) + epStateOffsetOnWin_;
 #if defined(ASCENDC_OOM) && ASCENDC_OOM == 1
-        OOMCheckAddrRange<int32_t>((__gm__ int32_t*)(GetWinStateAddrByRankId(epIdx)), STATE_SIZE);
+        OOMCheckAddrRange<int32_t>((__gm__ int32_t *)(GetWinStateAddrByRankId(epIdx)), STATE_SIZE);
 #endif
         rankStates_.SetGlobalBuffer((__gm__ int32_t *)stateGM_);
         DataCopy(rankStates_, statusFlagUb, 8);
     }
-}  
-  
+}
+
 template <TemplateCombineTypeClass>
 __aicore__ inline void MoeDistributeCombine<TemplateCombineTypeFunc>::WaitDispatch()
-{  
+{
     if (startRankId_ >= epWorldSize_) {
         SyncAll<true>();
         return;
@@ -504,19 +506,19 @@ __aicore__ inline void MoeDistributeCombine<TemplateCombineTypeFunc>::WaitDispat
     gatherTmpTensor.SetValue(0, 1);
     uint32_t mask = 1; // gatherMask + sum 相关参数
     uint64_t rsvdCnt = 0;
-    DataCopyParams intriParams{static_cast<uint16_t>(sendRankNum_), 1, 
-        static_cast<uint16_t>((moeSendNum_ > 512) ? 7 : 15), 0}; // srcStride为15个block
+    DataCopyParams intriParams{static_cast<uint16_t>(sendRankNum_), 1,
+                               static_cast<uint16_t>((moeSendNum_ > 512) ? 7 : 15), 0}; // srcStride为15个block
     float sumOfFlag = static_cast<float>(-1.0);
     float minTarget = (sumTarget_ * sendRankNum_) - (float)0.5;
     float maxTarget = (sumTarget_ * sendRankNum_) + (float)0.5;
     SumParams sumParams{1, sendRankNum_, sendRankNum_};
     SyncFunc<AscendC::HardEvent::S_V>();
-    while((sumOfFlag < minTarget) || (sumOfFlag > maxTarget)) {
+    while ((sumOfFlag < minTarget) || (sumOfFlag > maxTarget)) {
         DataCopy<float>(statusTensor, epStatusSpaceGlobalTensor_[startRankId_ * stateOffset_ / sizeof(float)],
-            intriParams);
+                        intriParams);
         SyncFunc<AscendC::HardEvent::MTE2_V>();
-        GatherMask(gatherMaskOutTensor, statusTensor, gatherTmpTensor, true, mask,
-            {1, (uint16_t)sendRankNum_, 1, 0}, rsvdCnt);
+        GatherMask(gatherMaskOutTensor, statusTensor, gatherTmpTensor, true, mask, {1, (uint16_t)sendRankNum_, 1, 0},
+                   rsvdCnt);
         PipeBarrier<PIPE_V>();
         Sum(statusSumOutTensor, gatherMaskOutTensor, sumParams);
         SyncFunc<AscendC::HardEvent::V_S>();
@@ -529,7 +531,7 @@ __aicore__ inline void MoeDistributeCombine<TemplateCombineTypeFunc>::WaitDispat
     接口功能：将量化后的int8 token反量化
 */
 template <TemplateCombineTypeClass>
-__aicore__ inline void MoeDistributeCombine<TemplateCombineTypeFunc>::DequantProcess(LocalTensor<ExpandXType>& src)
+__aicore__ inline void MoeDistributeCombine<TemplateCombineTypeFunc>::DequantProcess(LocalTensor<ExpandXType> &src)
 {
     SyncFunc<AscendC::HardEvent::MTE2_V>();
     castLocal_ = src.template ReinterpretCast<int8_t>();
@@ -555,12 +557,12 @@ __aicore__ inline void MoeDistributeCombine<TemplateCombineTypeFunc>::LocalWindo
     uint32_t endIndex = 0;
     uint32_t processLen = 0;
     uint32_t tokenOffset = 0;
-    uint32_t quantCopyLen = axisH_ / 2U + scaleLen_;             // int8量化时，1个token对应长度
+    uint32_t quantCopyLen = axisH_ / 2U + scaleLen_; // int8量化时，1个token对应长度
 
     if (axisBS_ < aivNum_) {
         uint32_t aivNumPerToken = aivNum_ / axisBS_; // 需要约束axisBS_ < aivNum_
         if constexpr (IsQuant) {
-            aivNumPerToken = 1U;             // int8量化时不需要切H
+            aivNumPerToken = 1U; // int8量化时不需要切H
         }
         if (coreIdx_ >= (axisBS_ * aivNumPerToken)) {
             return;
@@ -568,7 +570,7 @@ __aicore__ inline void MoeDistributeCombine<TemplateCombineTypeFunc>::LocalWindo
         uint32_t tokenIndex = coreIdx_ / aivNumPerToken; // 处理第几个token
         // 切H，按UB_ALIGN对齐
         processLen = ((axisH_ / UB_ALIGN) / aivNumPerToken) * UB_ALIGN;
-        tokenOffset = processLen * (coreIdx_ % aivNumPerToken); // 偏移位置
+        tokenOffset = processLen * (coreIdx_ % aivNumPerToken);    // 偏移位置
         if ((coreIdx_ % aivNumPerToken) == (aivNumPerToken - 1)) { // aivNumPerToken中的最后一个核处理剩余的
             processLen = axisH_ - ((aivNumPerToken - 1) * processLen);
         }
@@ -591,9 +593,9 @@ __aicore__ inline void MoeDistributeCombine<TemplateCombineTypeFunc>::LocalWindo
     LocalTensor<ExpandIdxType> expertIdsLocal = expertIdsBuf_.Get<ExpandIdxType>();
     LocalTensor<float> expandScalesLocal = expandScalesBuf_.Get<float>();
 
-    LocalTensor<float>rowTmpFloatLocal = rowTmpFloatBuf_.Get<float>();
-    LocalTensor<float>mulBufLocal = mulBuf_.Get<float>();
-    LocalTensor<float>sumFloatBufLocal = sumFloatBuf_.Get<float>();
+    LocalTensor<float> rowTmpFloatLocal = rowTmpFloatBuf_.Get<float>();
+    LocalTensor<float> mulBufLocal = mulBuf_.Get<float>();
+    LocalTensor<float> sumFloatBufLocal = sumFloatBuf_.Get<float>();
 
     LocalTensor<ExpandIdxType> indexCountsLocal = indexCountsBuf_.Get<ExpandIdxType>();
     const DataCopyExtParams bskParams = {1U, static_cast<uint32_t>(bsKNum_ * sizeof(uint32_t)), 0U, 0U, 0U};
@@ -616,9 +618,10 @@ __aicore__ inline void MoeDistributeCombine<TemplateCombineTypeFunc>::LocalWindo
         for (uint32_t i = 0; i < axisK_; i++) {
             moeExpert = expertIdsLocal.GetValue(index);
             scaleVal = expandScalesLocal.GetValue(index);
-            wAddr = (__gm__ uint8_t *)(epWindowGM_) + expertPerSizeOnWin_ * moeExpertPerRankNum_ *
-                sharedExpertRankNum_ + expertPerSizeOnWin_ * moeExpert +
-                indexCountsLocal.GetValue(index) * axisHExpandXTypeSize_ + tokenOffset * sizeof(ExpandXType);
+            wAddr = (__gm__ uint8_t *)(epWindowGM_) +
+                    expertPerSizeOnWin_ * moeExpertPerRankNum_ * sharedExpertRankNum_ +
+                    expertPerSizeOnWin_ * moeExpert + indexCountsLocal.GetValue(index) * axisHExpandXTypeSize_ +
+                    tokenOffset * sizeof(ExpandXType);
             rowTmpGlobal_.SetGlobalBuffer((__gm__ ExpandXType *)wAddr);
             tmpUb = moeSumQueue_.AllocTensor<ExpandXType>();
             if constexpr (IsQuant) {
@@ -648,9 +651,10 @@ __aicore__ inline void MoeDistributeCombine<TemplateCombineTypeFunc>::LocalWindo
             uint32_t temp = (epRankId_ * axisBS_) / sharedExpertRankNum_;
             uint32_t moeOnShareRank = Ceil((tokenIndex + 1 + temp) * sharedExpertRankNum_, axisBS_) - 1 - epRankId_;
             uint32_t preCnt = (moeOnShareRank + epRankId_) * axisBS_ / sharedExpertRankNum_ -
-                epRankId_ * axisBS_ / sharedExpertRankNum_;
-            __gm__ ExpandXType* shareAddr = (__gm__ ExpandXType *)(epWindowGM_ + moeOnShareRank * expertPerSizeOnWin_
-                * moeExpertPerRankNum_) + (tokenIndex - preCnt) * axisH_ + tokenOffset;
+                              epRankId_ * axisBS_ / sharedExpertRankNum_;
+            __gm__ ExpandXType *shareAddr =
+                (__gm__ ExpandXType *)(epWindowGM_ + moeOnShareRank * expertPerSizeOnWin_ * moeExpertPerRankNum_) +
+                (tokenIndex - preCnt) * axisH_ + tokenOffset;
             GlobalTensor<ExpandXType> shareTokGlobal;
             shareTokGlobal.SetGlobalBuffer((__gm__ ExpandXType *)(shareAddr));
             SyncFunc<AscendC::HardEvent::V_MTE2>(); // 与结果搬出Cast同地址
@@ -687,5 +691,5 @@ __aicore__ inline void MoeDistributeCombine<TemplateCombineTypeFunc>::Process()
     WaitDispatch();
     LocalWindowCopy();
 }
-} // MoeDistributeCombineImpl
+} // namespace MoeDistributeCombineImpl
 #endif // MOE_DISTRIBUTE_COMBINE_IMPL_H

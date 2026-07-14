@@ -6,8 +6,18 @@
 
 - **软件包说明**
 
-  `torch_extension`接口定义于`cann_ops_transformer`包中。更多接口说明及使用示例正在完善中，敬请期待。如有疑问或建议，欢迎通过Issue反馈。
+  调用torch\_extension接口时，请确保已安装CANN Toolkit包、ops-transformer包、Ascend for PyTorch包。
 
+- **调用方式**：
+
+  调用torch\_extension接口时，依赖`cann-ops-transformer`模块，定义在`${INSTALL_DIR}/python/sitepackage/cann-ops-transformer`，\$\{INSTALL\_DIR\}表示CANN安装后文件路径。
+
+  ```python
+  import torch
+  import torch_npu
+  import cann-ops-transformer
+  ```
+  
 - **V版本演进说明**
 
   请注意，部分API存在多个V版本，使用时选择最高V版本即可（高版本API已兼容低版本API的所有能力）。
@@ -32,6 +42,8 @@
 |[scatter_pa_kv_cache_with_k_scale](../../torch_extension/cann_ops_transformer/docs/zh/scatter_pa_kv_cache_with_k_scale.md)|训练场景下，更新KvCache中指定位置的key和value，同时更新key的scale值。|-|默认支持确定性计算|
 |[sparse_flash_mla](../../torch_extension/cann_ops_transformer/docs/zh/sparse_flash_mla.md)|基于共享KV完成SparseFlashMla稀疏注意力计算。|默认确定性实现|默认确定性实现|
 |[sparse_flash_mla_metadata](../../torch_extension/cann_ops_transformer/docs/zh/sparse_flash_mla.md)|生成SparseFlashMla主算子使用的任务切分metadata。|默认支持确定性计算；默认支持batch invariance。|
+|[sparse_flash_mla_grad_metadata](../../torch_extension/cann_ops_transformer/docs/zh/sparse_flash_mla_grad.md)|sparse_flash_mla_grad接口的前置接口，用于计算sparse_flash_mla_grad的负载均衡。|-|默认确定性实现|
+|[sparse_lightning_indexer_kl_loss_grad_metadata](../../torch_extension/cann_ops_transformer/docs/zh/sparse_lightning_indexer_kl_loss_grad.md)|sparse_lightning_indexer_kl_loss_grad接口的前置接口，用于计算sparse_lightning_indexer_kl_loss_grad的负载均衡。|默认确定性实现|默认确定性实现|
 |[moe_token_permute](../../torch_extension/cann_ops_transformer/docs/zh/moe_token_permute.md)|根据专家索引扩展并排序token，Ascend 950支持MXFP8和MXFP4量化输出。|默认支持确定性计算。|
 |[inplace_partial_rotary_mul](../../torch_extension/cann_ops_transformer/docs/zh/inplace_partial_rotary_mul.md)|执行单路旋转位置编码的Inplace计算，直接修改输入张量，不产生新的输出张量。|默认确定性实现|默认确定性实现|
 |[inplace_partial_rotary_mul_backward](../../torch_extension/cann_ops_transformer/docs/zh/inplace_partial_rotary_mul_backward.md)|执行`inplace_partial_rotary_mul`的反向计算，对输入梯度张量执行inplace更新，切片内替换为RoPE梯度，切片外保持不变。|-|默认支持确定性计算|

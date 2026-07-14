@@ -25,7 +25,9 @@ GE_DTYPE_FLOAT8_E8M0 = 37
 ACL_DTYPE_OFFSET = 256
 DEFAULT_Y_DTYPE = GE_DTYPE_FLOAT8_E4M3FN
 
-FLOAT8_E8M0_DTYPE = getattr(torch_npu, "float8_e8m0fnu", getattr(torch, "float8_e8m0fnu", torch.uint8))
+FLOAT8_E8M0_DTYPE = getattr(
+    torch_npu, "float8_e8m0fnu", getattr(torch, "float8_e8m0fnu", torch.uint8)
+)
 
 _TORCH_DTYPE_TO_GE_DTYPE = {
     torch.float32: GE_DTYPE_FLOAT,
@@ -43,13 +45,19 @@ _GE_DTYPE_TO_TORCH_DTYPE = {
 
 def _normalize_tensor_list(value, name):
     if isinstance(value, torch.Tensor):
-        raise TypeError(f"{name} must be a TensorList (list of Tensor), but got a single Tensor.")
+        raise TypeError(
+            f"{name} must be a TensorList (list of Tensor), but got a single Tensor."
+        )
     if isinstance(value, list):
         for index, tensor in enumerate(value):
             if not isinstance(tensor, torch.Tensor):
-                raise TypeError(f"{name}[{index}] must be a Tensor, but got {type(tensor)}.")
+                raise TypeError(
+                    f"{name}[{index}] must be a Tensor, but got {type(tensor)}."
+                )
         return value
-    raise TypeError(f"{name} must be a TensorList (list of Tensor), but got {type(value)}.")
+    raise TypeError(
+        f"{name} must be a TensorList (list of Tensor), but got {type(value)}."
+    )
 
 
 def _normalize_bias(bias):
@@ -76,7 +84,12 @@ def _normalize_wrapper_dtype(dtype):
     if dtype is None:
         return None
     ge_dtype = _normalize_attr_dtype(dtype)
-    if ge_dtype in (GE_DTYPE_FLOAT, GE_DTYPE_FLOAT8_E5M2, GE_DTYPE_FLOAT8_E4M3FN, GE_DTYPE_FLOAT8_E8M0):
+    if ge_dtype in (
+        GE_DTYPE_FLOAT,
+        GE_DTYPE_FLOAT8_E5M2,
+        GE_DTYPE_FLOAT8_E4M3FN,
+        GE_DTYPE_FLOAT8_E8M0,
+    ):
         return ge_dtype + ACL_DTYPE_OFFSET
     return dtype
 
@@ -111,47 +124,73 @@ def _infer_nz_logical_n(weight_scale):
 
 class GroupedMatmulActivationQuantOpBuilder(OpBuilder):
     def __init__(self):
-        super(GroupedMatmulActivationQuantOpBuilder, self).__init__("grouped_matmul_activation_quant")
+        super(GroupedMatmulActivationQuantOpBuilder, self).__init__(
+            "grouped_matmul_activation_quant"
+        )
 
     def sources(self):
         return ["ops/csrc/grouped_matmul_activation_quant.cpp"]
 
     def schema(self) -> str:
-        return "grouped_matmul_activation_quant(" \
-            "Tensor x, Tensor group_list, Tensor[] weight, Tensor[] weight_scale, str activation_type, " \
-            "*, Tensor[]? bias=None, Tensor? x_scale=None, " \
-            "int group_list_type=0, int[]? tuning_config=None, " \
-            "str? quant_mode=None, int? y_dtype=None, str round_mode=\"rint\", int scale_alg=0, " \
-            "float dst_type_max=0.0, int? x_dtype=None, int? weight_dtype=None, " \
+        return (
+            "grouped_matmul_activation_quant("
+            "Tensor x, Tensor group_list, Tensor[] weight, Tensor[] weight_scale, str activation_type, "
+            "*, Tensor[]? bias=None, Tensor? x_scale=None, "
+            "int group_list_type=0, int[]? tuning_config=None, "
+            'str? quant_mode=None, int? y_dtype=None, str round_mode="rint", int scale_alg=0, '
+            "float dst_type_max=0.0, int? x_dtype=None, int? weight_dtype=None, "
             "int? weight_scale_dtype=None, int? x_scale_dtype=None) -> (Tensor, Tensor)"
+        )
 
     def register_meta(self):
         @impl(AS_LIBRARY, self.name, "Meta")
-        def grouped_matmul_activation_quant_meta(x, group_list, weight, weight_scale, activation_type,
-                                                 bias=None, x_scale=None,
-                                                 group_list_type=0, tuning_config=None,
-                                                 quant_mode=None, y_dtype=None,
-                                                 round_mode="rint", scale_alg=0,
-                                                 dst_type_max=0.0, x_dtype=None,
-                                                 weight_dtype=None, weight_scale_dtype=None,
-                                                 x_scale_dtype=None):
+        def grouped_matmul_activation_quant_meta(
+            x,
+            group_list,
+            weight,
+            weight_scale,
+            activation_type,
+            bias=None,
+            x_scale=None,
+            group_list_type=0,
+            tuning_config=None,
+            quant_mode=None,
+            y_dtype=None,
+            round_mode="rint",
+            scale_alg=0,
+            dst_type_max=0.0,
+            x_dtype=None,
+            weight_dtype=None,
+            weight_scale_dtype=None,
+            x_scale_dtype=None,
+        ):
             if len(weight) == 0 or weight[0] is None:
-                raise ValueError("weight must contain at least one non-null tensor for meta output inference.")
+                raise ValueError(
+                    "weight must contain at least one non-null tensor for meta output inference."
+                )
             if len(weight_scale) == 0 or weight_scale[0] is None:
-                raise ValueError("weight_scale must contain at least one non-null tensor for meta output inference.")
+                raise ValueError(
+                    "weight_scale must contain at least one non-null tensor for meta output inference."
+                )
             if x_scale is None:
                 raise ValueError("x_scale must be provided for meta output inference.")
             if x.dim() <= 0:
-                raise ValueError("x must have at least one dimension for meta output inference.")
+                raise ValueError(
+                    "x must have at least one dimension for meta output inference."
+                )
             if weight_scale[0].dim() <= 2:
-                raise ValueError("weight_scale must have at least 3 dimensions for meta output inference.")
+                raise ValueError(
+                    "weight_scale must have at least 3 dimensions for meta output inference."
+                )
 
             m = x.shape[0]
             n = _infer_nz_logical_n(weight_scale[0])
 
             y_dtype_value = _to_torch_dtype(_resolve_y_dtype(y_dtype, x, x_dtype))
             y = torch.empty((m, n), dtype=y_dtype_value, device="meta")
-            y_scale = torch.empty((m, math.ceil(n / 64), 2), dtype=FLOAT8_E8M0_DTYPE, device="meta")
+            y_scale = torch.empty(
+                (m, math.ceil(n / 64), 2), dtype=FLOAT8_E8M0_DTYPE, device="meta"
+            )
             return (y, y_scale)
 
 
@@ -159,19 +198,47 @@ _grouped_matmul_activation_quant_op_builder = GroupedMatmulActivationQuantOpBuil
 
 
 @impl(AS_LIBRARY, _grouped_matmul_activation_quant_op_builder.name, "PrivateUse1")
-def _grouped_matmul_activation_quant(x, group_list, weight, weight_scale, activation_type,
-                                     bias=None, x_scale=None,
-                                     group_list_type=0, tuning_config=None,
-                                     quant_mode=None, y_dtype=None,
-                                     round_mode="rint", scale_alg=0,
-                                     dst_type_max=0.0, x_dtype=None,
-                                     weight_dtype=None, weight_scale_dtype=None,
-                                     x_scale_dtype=None):
+def _grouped_matmul_activation_quant(
+    x,
+    group_list,
+    weight,
+    weight_scale,
+    activation_type,
+    bias=None,
+    x_scale=None,
+    group_list_type=0,
+    tuning_config=None,
+    quant_mode=None,
+    y_dtype=None,
+    round_mode="rint",
+    scale_alg=0,
+    dst_type_max=0.0,
+    x_dtype=None,
+    weight_dtype=None,
+    weight_scale_dtype=None,
+    x_scale_dtype=None,
+):
     _op_module = _grouped_matmul_activation_quant_op_builder.load()
     return _op_module.grouped_matmul_activation_quant(
-        x, group_list, weight, weight_scale, activation_type, bias, x_scale, group_list_type, tuning_config,
-        quant_mode, y_dtype, round_mode,
-        scale_alg, dst_type_max, x_dtype, weight_dtype, weight_scale_dtype, x_scale_dtype)
+        x,
+        group_list,
+        weight,
+        weight_scale,
+        activation_type,
+        bias,
+        x_scale,
+        group_list_type,
+        tuning_config,
+        quant_mode,
+        y_dtype,
+        round_mode,
+        scale_alg,
+        dst_type_max,
+        x_dtype,
+        weight_dtype,
+        weight_scale_dtype,
+        x_scale_dtype,
+    )
 
 
 def grouped_matmul_activation_quant(
@@ -231,11 +298,28 @@ def grouped_matmul_activation_quant(
     weight = _normalize_tensor_list(weight, "weight")
     weight_scale = _normalize_tensor_list(weight_scale, "weight_scale")
     bias = _normalize_bias(bias)
-    y_dtype = None if y_dtype is None else _normalize_wrapper_dtype(y_dtype) - ACL_DTYPE_OFFSET
+    y_dtype = (
+        None
+        if y_dtype is None
+        else _normalize_wrapper_dtype(y_dtype) - ACL_DTYPE_OFFSET
+    )
     return torch.ops.cann_ops_transformer.grouped_matmul_activation_quant(
-        x, group_list, weight, weight_scale, activation_type, bias=bias, x_scale=x_scale,
+        x,
+        group_list,
+        weight,
+        weight_scale,
+        activation_type,
+        bias=bias,
+        x_scale=x_scale,
         group_list_type=group_list_type,
-        tuning_config=tuning_config, quant_mode=quant_mode, y_dtype=y_dtype,
-        round_mode=round_mode, scale_alg=scale_alg, dst_type_max=dst_type_max,
-        x_dtype=x_dtype, weight_dtype=weight_dtype, weight_scale_dtype=weight_scale_dtype,
-        x_scale_dtype=x_scale_dtype)
+        tuning_config=tuning_config,
+        quant_mode=quant_mode,
+        y_dtype=y_dtype,
+        round_mode=round_mode,
+        scale_alg=scale_alg,
+        dst_type_max=dst_type_max,
+        x_dtype=x_dtype,
+        weight_dtype=weight_dtype,
+        weight_scale_dtype=weight_scale_dtype,
+        x_scale_dtype=x_scale_dtype,
+    )

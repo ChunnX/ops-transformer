@@ -18,9 +18,9 @@
 
 namespace fallback {
 
-const char* QuantAllReduceInfo = "QuantAllReduceFallback";
+const char *QuantAllReduceInfo = "QuantAllReduceFallback";
 
-static ge::graphStatus QuantAllReduceExecuteFunc(gert::OpExecuteContext* host_api_ctx)
+static ge::graphStatus QuantAllReduceExecuteFunc(gert::OpExecuteContext *host_api_ctx)
 {
     OPS_LOG_D(QuantAllReduceInfo, "Start to fallback for quant_all_reduce.");
     OPS_ERR_IF(host_api_ctx == nullptr, OPS_LOG_E(QuantAllReduceInfo, "host_api_ctx is null"), return ge::GRAPH_FAILED);
@@ -43,8 +43,7 @@ static ge::graphStatus QuantAllReduceExecuteFunc(gert::OpExecuteContext* host_ap
 
     // 执行回调
     const auto ret = EXEC_OPAPI_CMD(aclnnQuantAllReduce, x, scales, group, reduce_op, output);
-    OPS_ERR_IF(ret != ge::GRAPH_SUCCESS,
-               OPS_LOG_E(QuantAllReduceInfo, "Aclnn api error code %d", ret),
+    OPS_ERR_IF(ret != ge::GRAPH_SUCCESS, OPS_LOG_E(QuantAllReduceInfo, "Aclnn api error code %d", ret),
                return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }

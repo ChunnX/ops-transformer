@@ -18,12 +18,15 @@
 
 class StaticSpaceInitializer {
 public:
-    static StaticSpaceInitializer& GetInstance() {
+    static StaticSpaceInitializer &GetInstance()
+    {
         static StaticSpaceInitializer instance;
         return instance;
     }
+
 private:
-    StaticSpaceInitializer () {
+    StaticSpaceInitializer()
+    {
         auto space_registry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
         if (space_registry == nullptr) {
             space_registry = std::make_shared<gert::OpImplSpaceRegistryV2>();

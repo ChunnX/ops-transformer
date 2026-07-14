@@ -16,34 +16,23 @@
 
 namespace ops {
 class AllGatherAdd : public OpDef {
- public:
-  explicit AllGatherAdd(const char *name) : OpDef(name) {
-    this->Input("a")
-        .ParamType(REQUIRED)
-        .DataType({ge::DT_FLOAT16})
-        .Format({ge::FORMAT_ND});
-    this->Input("b")
-        .ParamType(REQUIRED)
-        .DataType({ge::DT_FLOAT16})
-        .Format({ge::FORMAT_ND});
-    
-    this->Output("c")
-        .ParamType(REQUIRED)
-        .DataType({ge::DT_FLOAT16})
-        .Format({ge::FORMAT_ND});
-    this->Output("gather_out")
-        .ParamType(REQUIRED)
-        .DataType({ge::DT_FLOAT16})
-        .Format({ge::FORMAT_ND});
+public:
+    explicit AllGatherAdd(const char *name) : OpDef(name)
+    {
+        this->Input("a").ParamType(REQUIRED).DataType({ge::DT_FLOAT16}).Format({ge::FORMAT_ND});
+        this->Input("b").ParamType(REQUIRED).DataType({ge::DT_FLOAT16}).Format({ge::FORMAT_ND});
 
-    this->Attr("group").AttrType(REQUIRED).String(); // 通算融合算子属性，表示通信域名称
-    this->Attr("rank_size").AttrType(REQUIRED).Int(0);
+        this->Output("c").ParamType(REQUIRED).DataType({ge::DT_FLOAT16}).Format({ge::FORMAT_ND});
+        this->Output("gather_out").ParamType(REQUIRED).DataType({ge::DT_FLOAT16}).Format({ge::FORMAT_ND});
 
-    this->AICore().AddConfig("ascend910b");
-    this->AICore().AddConfig("ascend910_93");
-    this->MC2().HcclGroup("group"); // group 属性配置为该算子的通信域名称
-  }
+        this->Attr("group").AttrType(REQUIRED).String(); // 通算融合算子属性，表示通信域名称
+        this->Attr("rank_size").AttrType(REQUIRED).Int(0);
+
+        this->AICore().AddConfig("ascend910b");
+        this->AICore().AddConfig("ascend910_93");
+        this->MC2().HcclGroup("group"); // group 属性配置为该算子的通信域名称
+    }
 };
 
 OP_ADD(AllGatherAdd);
-}  // namespace ops
+} // namespace ops

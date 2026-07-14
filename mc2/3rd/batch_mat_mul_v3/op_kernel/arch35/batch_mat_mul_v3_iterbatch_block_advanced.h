@@ -51,7 +51,9 @@ struct Mc2MatMulMultiBatchBaseBlockArgs {
 
 class Mc2BatchMatMulMultiBatchBaseBlock {
 public:
-    __aicore__ inline Mc2BatchMatMulMultiBatchBaseBlock() {}
+    __aicore__ inline Mc2BatchMatMulMultiBatchBaseBlock()
+    {
+    }
     __aicore__ inline void Init(const void *tilingData);
     __aicore__ inline void GetMultiBatchInfo(uint64_t loopIndex);
     __aicore__ inline void CalcGMOffset();
@@ -67,29 +69,26 @@ __aicore__ inline void Mc2BatchMatMulMultiBatchBaseBlock::Init(const void *tilin
     batchMatmulTilingData_ = static_cast<const BatchMatMulV3TilingData *>(tilingData);
     params_.isHf32 = batchMatmulTilingData_->matMulTilingData.isHf32;
 
-    params_.singleASize =
-        static_cast<uint64_t>(batchMatmulTilingData_->matMulTilingData.tCubeTiling.M) *
-        static_cast<uint64_t>(batchMatmulTilingData_->matMulTilingData.tCubeTiling.Ka);
-    params_.singleBSize =
-        static_cast<uint64_t>(batchMatmulTilingData_->matMulTilingData.tCubeTiling.N) *
-        static_cast<uint64_t>(batchMatmulTilingData_->matMulTilingData.tCubeTiling.Kb);
-    params_.singleCSize =
-        static_cast<uint64_t>(batchMatmulTilingData_->matMulTilingData.tCubeTiling.M) *
-        static_cast<uint64_t>(batchMatmulTilingData_->matMulTilingData.tCubeTiling.N);
+    params_.singleASize = static_cast<uint64_t>(batchMatmulTilingData_->matMulTilingData.tCubeTiling.M) *
+                          static_cast<uint64_t>(batchMatmulTilingData_->matMulTilingData.tCubeTiling.Ka);
+    params_.singleBSize = static_cast<uint64_t>(batchMatmulTilingData_->matMulTilingData.tCubeTiling.N) *
+                          static_cast<uint64_t>(batchMatmulTilingData_->matMulTilingData.tCubeTiling.Kb);
+    params_.singleCSize = static_cast<uint64_t>(batchMatmulTilingData_->matMulTilingData.tCubeTiling.M) *
+                          static_cast<uint64_t>(batchMatmulTilingData_->matMulTilingData.tCubeTiling.N);
 
-	params_.useCoreNum = batchMatmulTilingData_->matMulTilingData.tCubeTiling.usedCoreNum;
+    params_.useCoreNum = batchMatmulTilingData_->matMulTilingData.tCubeTiling.usedCoreNum;
     params_.mainLoopPreCoreBatchNum = batchMatmulTilingData_->iterBatch;
 
-    params_.LoopTimes = MMV3DivCeil(batchMatmulTilingData_->cBatchDimAll,
-        params_.mainLoopPreCoreBatchNum * params_.useCoreNum);
+    params_.LoopTimes =
+        MMV3DivCeil(batchMatmulTilingData_->cBatchDimAll, params_.mainLoopPreCoreBatchNum * params_.useCoreNum);
 
-    params_.lastLoopAllBatchNum = batchMatmulTilingData_->cBatchDimAll %
-     (params_.mainLoopPreCoreBatchNum * params_.useCoreNum);
     params_.lastLoopAllBatchNum =
-        params_.lastLoopAllBatchNum == 0 ? params_.mainLoopPreCoreBatchNum * params_.useCoreNum: params_.lastLoopAllBatchNum;
+        batchMatmulTilingData_->cBatchDimAll % (params_.mainLoopPreCoreBatchNum * params_.useCoreNum);
+    params_.lastLoopAllBatchNum = params_.lastLoopAllBatchNum == 0 ?
+                                      params_.mainLoopPreCoreBatchNum * params_.useCoreNum :
+                                      params_.lastLoopAllBatchNum;
 
-    params_.lastLoopPreCoreBatchNum = MMV3DivFloor(params_.lastLoopAllBatchNum,
-        params_.useCoreNum);
+    params_.lastLoopPreCoreBatchNum = MMV3DivFloor(params_.lastLoopAllBatchNum, params_.useCoreNum);
     params_.lastLoopBlockNum = params_.lastLoopAllBatchNum % params_.useCoreNum;
     params_.batchIndex = 0;
     params_.batchANum = 1;
@@ -103,7 +102,7 @@ __aicore__ inline void Mc2BatchMatMulMultiBatchBaseBlock::GetMultiBatchInfo(uint
         params_.batchANum = params_.mainLoopPreCoreBatchNum;
         params_.batchBNum = params_.mainLoopPreCoreBatchNum;
         params_.batchIndex = loopIndex * params_.mainLoopPreCoreBatchNum * params_.useCoreNum +
-            GetCurrentBlockIdx() * params_.mainLoopPreCoreBatchNum;
+                             GetCurrentBlockIdx() * params_.mainLoopPreCoreBatchNum;
         return;
     }
 
@@ -112,13 +111,13 @@ __aicore__ inline void Mc2BatchMatMulMultiBatchBaseBlock::GetMultiBatchInfo(uint
         params_.batchANum = params_.lastLoopPreCoreBatchNum + 1;
         params_.batchBNum = params_.lastLoopPreCoreBatchNum + 1;
         params_.batchIndex = loopIndex * params_.mainLoopPreCoreBatchNum * params_.useCoreNum +
-            GetCurrentBlockIdx() * (params_.lastLoopPreCoreBatchNum + 1);
+                             GetCurrentBlockIdx() * (params_.lastLoopPreCoreBatchNum + 1);
     } else {
         params_.batchANum = params_.lastLoopPreCoreBatchNum;
         params_.batchBNum = params_.lastLoopPreCoreBatchNum;
         params_.batchIndex = loopIndex * params_.mainLoopPreCoreBatchNum * params_.useCoreNum +
-            params_.lastLoopBlockNum * (params_.lastLoopPreCoreBatchNum + 1)  +
-            (GetCurrentBlockIdx() - params_.lastLoopBlockNum) * params_.lastLoopPreCoreBatchNum;
+                             params_.lastLoopBlockNum * (params_.lastLoopPreCoreBatchNum + 1) +
+                             (GetCurrentBlockIdx() - params_.lastLoopBlockNum) * params_.lastLoopPreCoreBatchNum;
     }
 }
 
@@ -130,6 +129,6 @@ __aicore__ inline void Mc2BatchMatMulMultiBatchBaseBlock::CalcGMOffset()
     offset_.offsetBias = (params_.batchIndex % batchMatmulTilingData_->biasBatchDimAll) *
                          static_cast<uint64_t>(batchMatmulTilingData_->matMulTilingData.tCubeTiling.N);
 }
-}
+} // namespace Mc2BatchMatMulV3Advanced
 
 #endif // BATCH_MATMUL_V3_ITERBATCH_BLOCK_ADVANCED_H

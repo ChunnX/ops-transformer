@@ -21,10 +21,7 @@
 namespace Catlass::Gemv::Kernel {
 
 // tmeplate for gemv kernle, Compute z = αAx + βy
-template <
-    class BlockGemv_,
-    class BlockEpilogue_
->
+template <class BlockGemv_, class BlockEpilogue_>
 class KernelGemvAic {
 public:
     using BlockGemv = BlockGemv_;
@@ -45,7 +42,8 @@ public:
     using LayoutZ = typename BlockEpilogue::LayoutZ;
     using EpilogueParams = typename BlockEpilogue::Params;
 
-    using ElementAccumulator = typename Gemm::helper::ElementAccumulatorSelector<ElementA, ElementX>::ElementAccumulator;
+    using ElementAccumulator =
+        typename Gemm::helper::ElementAccumulatorSelector<ElementA, ElementX>::ElementAccumulator;
 
 
     struct Params {
@@ -60,42 +58,41 @@ public:
 
         // Methods
         CATLASS_HOST_DEVICE
-        Params() {}
+        Params()
+        {
+        }
 
         CATLASS_HOST_DEVICE
-        Params(
-            GemvCoord const& problemShape_,
-            GM_ADDR ptrX_,
-            LayoutX layoutX_,
-            GM_ADDR ptrA_,
-            LayoutA layoutA_,
-            GM_ADDR ptrWorkspace_,
-            EpilogueParams const& epilogueParams_)
-            : problemShape(problemShape_), ptrX(ptrX_), layoutX(layoutX_), ptrA(ptrA_), layoutA(layoutA_), ptrWorkspace(ptrWorkspace_), epilogueParams(epilogueParams_) {}
+        Params(GemvCoord const &problemShape_, GM_ADDR ptrX_, LayoutX layoutX_, GM_ADDR ptrA_, LayoutA layoutA_,
+               GM_ADDR ptrWorkspace_, EpilogueParams const &epilogueParams_)
+            : problemShape(problemShape_), ptrX(ptrX_), layoutX(layoutX_), ptrA(ptrA_), layoutA(layoutA_),
+              ptrWorkspace(ptrWorkspace_), epilogueParams(epilogueParams_)
+        {
+        }
     };
 
     // Methods
     CATLASS_DEVICE
-    KernelGemvAic() {}
+    KernelGemvAic()
+    {
+    }
 
     template <int32_t CORE_TYPE = g_coreType>
-    CATLASS_DEVICE 
-    void operator()(Params const& params);
+    CATLASS_DEVICE void operator()(Params const &params);
 
     template <>
-    CATLASS_DEVICE 
-    void operator()<AscendC::AIC>(Params const& params) 
+    CATLASS_DEVICE void operator()<AscendC::AIC>(Params const &params)
     {
         BlockGemv blockGemv(resource);
         // Represent the full gm
         AscendC::GlobalTensor<ElementX> gmX;
-        gmX.SetGlobalBuffer((__gm__ ElementX*)params.ptrX);
+        gmX.SetGlobalBuffer((__gm__ ElementX *)params.ptrX);
 
         AscendC::GlobalTensor<ElementA> gmA;
-        gmA.SetGlobalBuffer((__gm__ ElementA*)params.ptrA);
+        gmA.SetGlobalBuffer((__gm__ ElementA *)params.ptrA);
 
         AscendC::GlobalTensor<ElementY> gmY;
-        gmY.SetGlobalBuffer((__gm__ ElementY*)params.ptrWorkspace);
+        gmY.SetGlobalBuffer((__gm__ ElementY *)params.ptrWorkspace);
 
         layout::RowMajor layoutY(1, params.problemShape.m());
 
@@ -112,7 +109,7 @@ public:
         static constexpr uint32_t L0C_TILE_SIZE = L0TileShape::M * L0TileShape::N;
         static constexpr uint32_t L0C_TILE_NUM = L0C_SIZE / L0C_TILE_SIZE / sizeof(ElementAccumulator);
 
-        #pragma unroll
+#pragma unroll
         for (uint32_t i = 0; i < L0C_TILE_NUM; i++) {
             AscendC::SetFlag<AscendC::HardEvent::FIX_M>((event_t)i);
         }
@@ -148,7 +145,8 @@ public:
                 hasNextBlock = true;
                 uint32_t nextLoopIdx = loopIdx + AscendC::GetBlockNum();
                 MNextGmBlockIdx = nextLoopIdx;
-                uint32_t MNextGmActual = (MNextGmBlockIdx == MLoops - 1) ? (M - MNextGmBlockIdx * maxMPerBlock) : maxMPerBlock;
+                uint32_t MNextGmActual =
+                    (MNextGmBlockIdx == MLoops - 1) ? (M - MNextGmBlockIdx * maxMPerBlock) : maxMPerBlock;
                 uint32_t NNextGmActual = N;
                 nextActualBlockShape = GemvCoord(MNextGmActual, NNextGmActual);
             }
@@ -169,13 +167,9 @@ public:
             AscendC::WaitFlag<AscendC::HardEvent::FIX_M>((event_t)singleIdx % L0C_TILE_NUM);
 
             // Compute block-scoped matrix multiply-add
-            blockGemv(gmX[gmOffsetX], params.layoutX,
-                      gmA[gmOffsetA], params.layoutA,
-                      gmY[gmOffsetY], layoutY,
-                      gmX[gmOffsetNextX],
-                      gmA[gmOffsetNextA],
-                      actualBlockShape, nextActualBlockShape, isFirstBlock, hasNextBlock,
-                      singleIdx);
+            blockGemv(gmX[gmOffsetX], params.layoutX, gmA[gmOffsetA], params.layoutA, gmY[gmOffsetY], layoutY,
+                      gmX[gmOffsetNextX], gmA[gmOffsetNextA], actualBlockShape, nextActualBlockShape, isFirstBlock,
+                      hasNextBlock, singleIdx);
 
             Arch::CrossCoreSetFlagWithReverse<0x2, PIPE_FIX>(flagAicFinishStore);
             AscendC::SetFlag<AscendC::HardEvent::FIX_M>((event_t)singleIdx % L0C_TILE_NUM);
@@ -183,21 +177,20 @@ public:
             singleIdx++;
         }
 
-        #pragma unroll
+#pragma unroll
         for (uint32_t i = 0; i < L0C_TILE_NUM; i++) {
             AscendC::WaitFlag<AscendC::HardEvent::FIX_M>((event_t)i);
         }
     }
 
     template <>
-    CATLASS_DEVICE 
-    void operator()<AscendC::AIV>(Params const& params) 
+    CATLASS_DEVICE void operator()<AscendC::AIV>(Params const &params)
     {
         BlockEpilogue blockEpilogue(resource, params.epilogueParams);
 
         // Represent the full gm
         AscendC::GlobalTensor<ElementY> gmY;
-        gmY.SetGlobalBuffer((__gm__ ElementY*)params.ptrWorkspace);
+        gmY.SetGlobalBuffer((__gm__ ElementY *)params.ptrWorkspace);
 
         layout::VectorLayout layoutY(params.problemShape.m());
 
@@ -247,6 +240,6 @@ private:
     Arch::CrossCoreFlag flagAivFinishPadding{FLAG_AIV_FINISH_STORE};
 };
 
-}  // namespace Catlass::Gemv::kernel
+} // namespace Catlass::Gemv::Kernel
 
-#endif  // CATLASS_GEMV_KERNLE_GEMV_EPILOGUE_HPP
+#endif // CATLASS_GEMV_KERNLE_GEMV_EPILOGUE_HPP
