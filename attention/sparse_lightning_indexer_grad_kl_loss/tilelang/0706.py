@@ -165,7 +165,8 @@ def check_param_valid(
 # C scope 1: Matmul1 (query @ gatherKey^T) + Matmul2 (queryIndex @ gatherKeyIndex^T)
 # V scope 1: softmaxI, P_reduced, dWeight, reluGrad computation
 # C scope 2: Matmul4 (reluGrad @ gatherKeyIndex → dQueryIndex)
-# V scope 3: cast dQueryIndex FP32→FP16
+# V scope 2: Cast dQueryIndex FP32→FP16 + Scatter dk_matmul_partial → dKeyIndex
+#   Both operations split across AIV0/AIV1 for load balance
 # ==============================================================================
 @tilelang.jit(
     out_idx=[-4, -3, -2, -1],
@@ -767,81 +768,101 @@ def tilelang_grad_kl_loss_single_kernel(
                 T.set_cross_flag("FIX", 3)
 
             # ============================================================
-            # V scope 3: Cast dQueryIndex (minimal buffers)
+            # V scope 2: Cast dQueryIndex FP32→FP16 + Scatter → dKeyIndex
+            #   AIV0/AIV1 split: cast by g_id range, scatter by k_id range
+            #   Both ops independent → merged into single V scope
             # ============================================================
             with T.Scope("V"):
                 T.wait_cross_flag(3)
 
                 dq_fp32_ub = T.alloc_ub((4, BLOCK_K), calc_dtype)
                 dq_fp16_ub = T.alloc_ub((4, BLOCK_K), input_dtype)
-
-                for s1_row in T.serial(s1_start, s1_end):
-                    for g_id in T.serial(v3_chunks):
-                        for d_idx in T.serial(d_num_query_index):
-                            # WAR: dq_fp32 复用，mte2 覆盖前等上轮 cast 读完
-                            T.set_flag("v", "mte2", 2)
-                            T.wait_flag("v", "mte2", 2)
-                            T.copy(dQueryIndexAccum[bz, s1_row, g_id * 4:(g_id + 1) * 4, d_idx * BLOCK_K:(d_idx + 1) * BLOCK_K], dq_fp32_ub)
-                            T.set_flag("mte2", "v", 0)
-                            T.wait_flag("mte2", "v", 0)
-                            # WAR: dq_fp16 复用，cast 覆盖前等上轮 mte3 读完
-                            T.set_flag("mte3", "v", 4)
-                            T.wait_flag("mte3", "v", 4)
-                            T.tile.cast(dq_fp16_ub, dq_fp32_ub, "CAST_ROUND", 4 * BLOCK_K)
-                            T.set_flag("v", "mte3", 1)
-                            T.wait_flag("v", "mte3", 1)
-                            T.pipe_barrier("mte3")
-                            T.copy(dq_fp16_ub, dQueryIndex[bz, s1_row, g_id * 4:(g_id + 1) * 4, d_idx * BLOCK_K:(d_idx + 1) * BLOCK_K])
-
-            # ============================================================
-            # V scope 4: Scatter dk_matmul_partial → dKeyIndex（按 sparse idx）
-            #   MIX_AIC_1_2 有 2 AIV 核/cid，atomic_add 非幂等 → 必须 if vid==0 防 double
-            #   Double-buffer: overlap MTE2 copy[k+1] ∥ MTE3 atomic_add[k]
-            #   WAR-safe ping-pong: MTE2_MTE3{2,3} (RAW) / MTE3_MTE2{2,3} (WAR)
-            # ============================================================
-            with T.Scope("V"):
                 dk_chunk_0 = T.alloc_ub((1, DQueryIndex), calc_dtype)
                 dk_chunk_1 = T.alloc_ub((1, DQueryIndex), calc_dtype)
 
-                if vid == 0:
-                    for s1_row in T.serial(s1_start, s1_end):
-                        # Pre-fill WAR: both slots initially writable
-                        T.set_flag("mte3", "mte2", 2)
-                        T.set_flag("mte3", "mte2", 3)
+                g_per_aiv = v3_chunks // 2
+                half_block = n_block // 2
 
-                        # Prologue: load k_start → slot 0
-                        T.wait_flag("mte3", "mte2", 2)
-                        T.copy(dk_matmul_partial[bz, s1_row, k_start:k_start + 1, 0:DQueryIndex], dk_chunk_0)
-                        T.set_flag("mte2", "mte3", 2)
+                for s1_row in T.serial(s1_start, s1_end):
+                    # ---- Part 1: Cast dQueryIndex FP32→FP16 (split g_id across AIVs) ----
+                    if vid == 0:
+                        for g_id in T.serial(0, g_per_aiv):
+                            for d_idx in T.serial(d_num_query_index):
+                                T.set_flag("v", "mte2", 2)
+                                T.wait_flag("v", "mte2", 2)
+                                T.copy(dQueryIndexAccum[bz, s1_row, g_id * 4:(g_id + 1) * 4, d_idx * BLOCK_K:(d_idx + 1) * BLOCK_K], dq_fp32_ub)
+                                T.set_flag("mte2", "v", 0)
+                                T.wait_flag("mte2", "v", 0)
+                                T.set_flag("mte3", "v", 4)
+                                T.wait_flag("mte3", "v", 4)
+                                T.tile.cast(dq_fp16_ub, dq_fp32_ub, "CAST_ROUND", 4 * BLOCK_K)
+                                T.set_flag("v", "mte3", 1)
+                                T.wait_flag("v", "mte3", 1)
+                                T.pipe_barrier("mte3")
+                                T.copy(dq_fp16_ub, dQueryIndex[bz, s1_row, g_id * 4:(g_id + 1) * 4, d_idx * BLOCK_K:(d_idx + 1) * BLOCK_K])
+                    else:
+                        for g_id in T.serial(g_per_aiv, v3_chunks):
+                            for d_idx in T.serial(d_num_query_index):
+                                T.set_flag("v", "mte2", 2)
+                                T.wait_flag("v", "mte2", 2)
+                                T.copy(dQueryIndexAccum[bz, s1_row, g_id * 4:(g_id + 1) * 4, d_idx * BLOCK_K:(d_idx + 1) * BLOCK_K], dq_fp32_ub)
+                                T.set_flag("mte2", "v", 0)
+                                T.wait_flag("mte2", "v", 0)
+                                T.set_flag("mte3", "v", 4)
+                                T.wait_flag("mte3", "v", 4)
+                                T.tile.cast(dq_fp16_ub, dq_fp32_ub, "CAST_ROUND", 4 * BLOCK_K)
+                                T.set_flag("v", "mte3", 1)
+                                T.wait_flag("v", "mte3", 1)
+                                T.pipe_barrier("mte3")
+                                T.copy(dq_fp16_ub, dQueryIndex[bz, s1_row, g_id * 4:(g_id + 1) * 4, d_idx * BLOCK_K:(d_idx + 1) * BLOCK_K])
 
-                        for k_id in T.serial(k_start, k_end):
-                            cur = (k_id - k_start) % 2
-                            nxt = (k_id - k_start + 1) % 2
+                    # ---- Part 2: Scatter dk_matmul_partial → dKeyIndex (split k_id across AIVs) ----
+                    # WAR-safe ping-pong DB: overlap MTE2 copy[k+1] ∥ MTE3 atomic_add[k]
+                    # Events: MTE2_MTE3{5,6} (RAW) / MTE3_MTE2{5,6} (WAR)
+                    if vid == 0:
+                        my_start = k_start
+                        my_end = T.min(k_start + half_block, k_end)
+                    else:
+                        my_start = T.min(k_start + half_block, k_end)
+                        my_end = k_end
 
-                            # Compute current slot
-                            T.wait_flag("mte2", "mte3", cur + 2)
-                            idx = SparseIndices[bz, s1_row, 0, k_id]
-                            if idx >= 0:
-                                if cur == 0:
-                                    T.tile.atomic_add(dKeyIndex[bz, idx, 0, 0], dk_chunk_0)
-                                if cur == 1:
-                                    T.tile.atomic_add(dKeyIndex[bz, idx, 0, 0], dk_chunk_1)
-                            # WAR: current slot consumed → safe to refill
-                            T.set_flag("mte3", "mte2", cur + 2)
+                    # Pre-fill WAR: both slots initially writable
+                    T.set_flag("mte3", "mte2", 5)
+                    T.set_flag("mte3", "mte2", 6)
 
-                            # Prefetch next iteration (MTE2 load ∥ MTE3 atomic of current)
-                            next_k = k_id + 1
-                            if next_k < k_end:
-                                T.wait_flag("mte3", "mte2", nxt + 2)
-                                if nxt == 0:
-                                    T.copy(dk_matmul_partial[bz, s1_row, next_k:next_k + 1, 0:DQueryIndex], dk_chunk_0)
-                                if nxt == 1:
-                                    T.copy(dk_matmul_partial[bz, s1_row, next_k:next_k + 1, 0:DQueryIndex], dk_chunk_1)
-                                T.set_flag("mte2", "mte3", nxt + 2)
+                    # Prologue: load my_start → slot 0
+                    T.wait_flag("mte3", "mte2", 5)
+                    T.copy(dk_matmul_partial[bz, s1_row, my_start:my_start + 1, 0:DQueryIndex], dk_chunk_0)
+                    T.set_flag("mte2", "mte3", 5)
 
-                        # Clear: drain remaining WAR events
-                        T.wait_flag("mte3", "mte2", 2)
-                        T.wait_flag("mte3", "mte2", 3)
+                    for k_id in T.serial(my_start, my_end):
+                        cur = (k_id - my_start) % 2
+                        nxt = (k_id - my_start + 1) % 2
+
+                        # Compute current slot
+                        T.wait_flag("mte2", "mte3", cur + 5)
+                        idx = SparseIndices[bz, s1_row, 0, k_id]
+                        if idx >= 0:
+                            if cur == 0:
+                                T.tile.atomic_add(dKeyIndex[bz, idx, 0, 0], dk_chunk_0)
+                            if cur == 1:
+                                T.tile.atomic_add(dKeyIndex[bz, idx, 0, 0], dk_chunk_1)
+                        # WAR: current slot consumed → safe to refill
+                        T.set_flag("mte3", "mte2", cur + 5)
+
+                        # Prefetch next iteration
+                        next_k = k_id + 1
+                        if next_k < my_end:
+                            T.wait_flag("mte3", "mte2", nxt + 5)
+                            if nxt == 0:
+                                T.copy(dk_matmul_partial[bz, s1_row, next_k:next_k + 1, 0:DQueryIndex], dk_chunk_0)
+                            if nxt == 1:
+                                T.copy(dk_matmul_partial[bz, s1_row, next_k:next_k + 1, 0:DQueryIndex], dk_chunk_1)
+                            T.set_flag("mte2", "mte3", nxt + 5)
+
+                    # Clear: drain remaining WAR events
+                    T.wait_flag("mte3", "mte2", 5)
+                    T.wait_flag("mte3", "mte2", 6)
 
     return main
 
