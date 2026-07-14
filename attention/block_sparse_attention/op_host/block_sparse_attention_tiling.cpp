@@ -541,14 +541,20 @@ ge::graphStatus BSATiling::CheckSparsePattern(gert::TilingContext *bsaContext, c
             "but got elem0: %ld, elem1: %ld.", blockShapeX_, blockShapeY_);
         return ge::GRAPH_FAILED;
     }
-    if (blockShapeX_ % defaultShape != 0) {
-        OP_LOGE(bsaContext->GetNodeName(), "BlockShape elem0 must be a multiple of %ld, "
-            "but got elem0: %ld.", defaultShape, blockShapeX_);
-        return ge::GRAPH_FAILED;
-    }
     if (blockShapeY_ % defaultShape != 0) {
         OP_LOGE(bsaContext->GetNodeName(), "BlockShape elem1 must be a multiple of %ld, "
             "but got elem1: %ld.", defaultShape, blockShapeY_);
+        return ge::GRAPH_FAILED;
+    }
+    // A950 fine-grain path: when blockShapeY > 256 and not a multiple of 128, kvBaseTile
+    // equals blockShapeY and L1 round-up overflows AtlasA5::L1_SIZE (512KB), e.g. Y=528.
+    // Allow Y <= 256 (e.g. 144/160/192) or Y that is a multiple of 128 (tile split path).
+    if (blockShapeY_ > static_cast<int64_t>(TILE_SIZE_256) &&
+        blockShapeY_ % static_cast<int64_t>(TILE_SIZE_128) != 0) {
+        OP_LOGE(bsaContext->GetNodeName(),
+            "BlockShape elem1 (%ld) > %u must be a multiple of %u to avoid L1 overflow "
+            "(got a value that is a multiple of %ld but not of %u).",
+            blockShapeY_, TILE_SIZE_256, TILE_SIZE_128, defaultShape, TILE_SIZE_128);
         return ge::GRAPH_FAILED;
     }
     if (blockSparseMaskShape->GetStorageShape().GetDimNum() != 4) {
@@ -681,8 +687,8 @@ ge::graphStatus BSATiling::ValidateGenericDequantScale(gert::TilingContext *bsaC
         uint32_t specificNumHeads = parameterIndex == Q_DEQUANT_SCALE_INDEX ? numHeads_ : kvHeads_;
         uint32_t specificMaxBlockNum = parameterIndex == Q_DEQUANT_SCALE_INDEX ? maxQBlockNum_ : maxKvBlockNum_;
         std::string shapeDescription = parameterIndex == Q_DEQUANT_SCALE_INDEX ?
-                                           "(totalQToken, numHeads, maxQBlockNum, 1)" :
-                                           "(totalKVToken, numKVHeads, maxKVBlockNum, 1)";
+                                           "(batch, numHeads, CeilDiv(maxQSeqlen, blockShapeX), 1)" :
+                                           "(batch, numKVHeads, CeilDiv(maxKvSeqlen, blockShapeY), 1)";
 
         if (dequantScaleBatch != batch_ || dequantScaleNumHeads != specificNumHeads ||
             dequantScaleBlockNum != specificMaxBlockNum || dequantScaleLastDim != NUM_1) {
@@ -719,29 +725,6 @@ ge::graphStatus BSATiling::ValidateVDequantScale(gert::TilingContext *bsaContext
     return ValidateGenericDequantScale(bsaContext, V_DEQUANT_SCALE_INDEX);
 }
 
-ge::graphStatus BSATiling::CheckBlockShapeQuantConstraint(gert::TilingContext *bsaContext)
-{
-    if (dataType_ == ge::DT_FLOAT8_E4M3FN) {
-        constexpr int64_t SUPPORTED_BLOCK_SHAPE_X = 128;
-        constexpr int64_t SUPPORTED_MULTIPLE_OF_BLOCK_SHAPE_Y = 256;
-        if (blockShapeX_ != SUPPORTED_BLOCK_SHAPE_X) {
-            OP_LOGE(bsaContext->GetNodeName(),
-                    "In the float8_e4m3fn full-quant scenario, blockShape element 0 must be consistent with %ld, but "
-                    "now it is %ld.",
-                    SUPPORTED_BLOCK_SHAPE_X, blockShapeX_);
-            return ge::GRAPH_FAILED;
-        }
-        if (blockShapeY_ % SUPPORTED_MULTIPLE_OF_BLOCK_SHAPE_Y != 0) {
-            OP_LOGE(bsaContext->GetNodeName(),
-                    "In the float8_e4m3fn full-quant scenario, blockShape element 1 must be a multiple of %ld, but now "
-                    "it is %ld.",
-                    SUPPORTED_MULTIPLE_OF_BLOCK_SHAPE_Y, blockShapeY_);
-            return ge::GRAPH_FAILED;
-        }
-    }
-    return ge::GRAPH_SUCCESS;
-}
-
 ge::graphStatus BSATiling::ParseOptionalTensors(gert::TilingContext *bsaContext)
 {
     if (ParseSeqlens(bsaContext) != ge::GRAPH_SUCCESS ||
@@ -754,8 +737,7 @@ ge::graphStatus BSATiling::ParseOptionalTensors(gert::TilingContext *bsaContext)
     if (socVer_ == SOC_VER_950_CODE) {
         if (ValidateQDequantScale(bsaContext) != ge::GRAPH_SUCCESS ||
             ValidateKDequantScale(bsaContext) != ge::GRAPH_SUCCESS ||
-            ValidateVDequantScale(bsaContext) != ge::GRAPH_SUCCESS ||
-            CheckBlockShapeQuantConstraint(bsaContext) != ge::GRAPH_SUCCESS) {
+            ValidateVDequantScale(bsaContext) != ge::GRAPH_SUCCESS) {
             return ge::GRAPH_FAILED;
         }
     }
