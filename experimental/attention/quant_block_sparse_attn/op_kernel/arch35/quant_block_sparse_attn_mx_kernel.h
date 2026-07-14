@@ -146,14 +146,14 @@ private:
         constInfo.maxQb = sparseParams.maxQb;
         constInfo.maxKb = sparseParams.maxKb;
 
-        // Q/K scale 为 [T,N,D/64,2]，V scale 为 [T/64,N,DV,2]。
+        // QScale 为 [T,N,D/64,2]；K/V scale 在 PA 场景按 BNBD 映射。
         constInfo.scaleLastDim = scaleParams.scaleLastDim;
         constInfo.queryScaleDSize = scaleParams.queryScaleDSize;
         constInfo.keyScaleDSize = scaleParams.keyScaleDSize;
         constInfo.valueScaleDSize = scaleParams.valueScaleDSize;
         constInfo.qScaleN1D = constInfo.realN2Size * constInfo.queryScaleDSize * constInfo.scaleLastDim;
-        constInfo.kScaleN2D = constInfo.n2Size * constInfo.keyScaleDSize * constInfo.scaleLastDim;
-        constInfo.valueScaleN2D = constInfo.n2Size * constInfo.valueScaleDSize;
+        constInfo.kScaleN2D = static_cast<uint32_t>(baseParams.kScaleStrides.n2Stride);
+        constInfo.valueScaleN2D = static_cast<uint32_t>(baseParams.vScaleStrides.n2Stride);
     }
 
     __aicore__ inline void InitAttenMaskInfo()
