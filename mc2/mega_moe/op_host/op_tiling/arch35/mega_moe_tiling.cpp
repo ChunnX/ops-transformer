@@ -972,11 +972,12 @@ static ge::graphStatus CheckInputParam(const gert::TilingContext *context, MegaM
         // 当前最大bs根据ub剩余空间反算得来，bsMax = (8*(UB_SIZE-48K))/(topK*(64+worldSize))
         int64_t maxBs = NUM_8 * (ubSize - USED_BUFFER_SIZE) / (topkIdsDim1 * (NUM_64 + worldSize));
         OP_TILING_CHECK(xDim0 < MIN_BS || xDim0 > maxBs,
-            OP_LOGE_FOR_INVALID_VALUE(nodeName, "BS", std::to_string(xDim0).c_str(),
-                (std::string("should in [") + std::to_string(MIN_BS) + ", " +
-                 std::to_string(maxBs) + "]" + ", "
-                 + "maxBs = (8 * (TOTAL_UB_SIZE - 48K)) / (topK * (64 + worldSize))").c_str()),
-            return ge::GRAPH_FAILED);
+                        OP_LOGE_FOR_INVALID_VALUE(nodeName, "BS", std::to_string(xDim0).c_str(),
+                                                  (std::string("should in [") + std::to_string(MIN_BS) + ", " +
+                                                   std::to_string(maxBs) + "]" + ", " +
+                                                   "maxBs = (8 * (TOTAL_UB_SIZE - 48K)) / (topK * (64 + worldSize))")
+                                                      .c_str()),
+                        return ge::GRAPH_FAILED);
     }
 
     int64_t xDim1 = xStorageShape->GetStorageShape().GetDim(1);
