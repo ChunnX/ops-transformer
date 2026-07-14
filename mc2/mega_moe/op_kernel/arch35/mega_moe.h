@@ -107,8 +107,7 @@ private:
     int64_t hiddenDim_ = 0;
     uint64_t maxOutputSize_ = 0;
     int32_t vecSetSyncCom_ = 0;
-    uint32_t gmm1StartBlockIdx_ = 0;
-    uint32_t gmm2StartBlockIdx_ = 0;
+    uint32_t startBlockIdx_ = 0;
     uint32_t blockNumPerRank_ = 2;
     int32_t dispatchFlagSlotsPerExpert_ = 0;
     int32_t maxWavesPerExpert_ = 0;
@@ -185,8 +184,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Init(
     expertPerRank_ = tilingData->expertPerRank;
     blockNumPerRank_ = tilingData->blockNumPerEP;
     maxOutputSize_ = tilingData->maxOutputSize;
-    gmm1StartBlockIdx_ = 0;
-    gmm2StartBlockIdx_ = 0;
+    startBlockIdx_ = 0;
     vecSetSyncCom_ = 0;
     gmm2PingPongIdx_ = 0;
     // 与 WorkspaceInfo 构造里 flagDispatchToGmm1Ptr 的分配公式保持一致。
@@ -256,7 +254,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Init(
         params_.bGmAddr, params_.bScaleGmAddr, params_.workspaceInfo.flagSwiGluToGmm2Ptr,
         params_.workspaceInfo.flagDispatchToGmm1Ptr,
         params_.workspaceInfo.flagSendCntCalToUpdParamsPtr,
-        &gmm1StartBlockIdx_, &vecSetSyncCom_};
+        &startBlockIdx_, &vecSetSyncCom_};
     sendMaskArgs_ = {
         params_.expertIdxGmAddr, ::winRankAddr_, compareCount_, maskAlignSize_, maskSlotSize_, maskWinOffset_};
     int32_t resetFlagNum = static_cast<int32_t>(expertPerRank_) *
@@ -753,19 +751,19 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::GroupMatmulWithCombine(
     if constexpr (ENABLE_A8W4 || ENABLE_A4W4) {
         MegaMoeImpl::GroupMatmul2CombineA8W4<CombineQuantMode,
             SwigluQuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType, QuantScaleOutType>(
-            params_, state.problemShape, gmmAddrInfo, gmm2StartBlockIdx_, vecSetSyncCom_,
+            params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_,
             state.expertBeforeCnt, gmm2PingPongIdx_, expertIdx);
     } else {
         // A8W8_NZ / Generic: both use the same GroupMatmul2 template, only LayoutB differs (ZN vs ND).
         if (params_.tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ) {
             MegaMoeImpl::GroupMatmul2<CombineQuantMode, QuantOutType, QuantOutType, bfloat16_t,
                 QuantScaleOutType, QuantScaleOutType, true>(
-                params_, state.problemShape, gmmAddrInfo, gmm2StartBlockIdx_, vecSetSyncCom_,
+                params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_,
                 state.expertBeforeCnt, gmm2PingPongIdx_, expertIdx);
         } else {
             MegaMoeImpl::GroupMatmul2<CombineQuantMode, QuantOutType, QuantOutType, bfloat16_t,
                 QuantScaleOutType, QuantScaleOutType>(
-                params_, state.problemShape, gmmAddrInfo, gmm2StartBlockIdx_, vecSetSyncCom_,
+                params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_,
                 state.expertBeforeCnt, gmm2PingPongIdx_, expertIdx);
         }
     }
@@ -807,9 +805,6 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
     }
 
     // 3. 本卡专家接收数据GroupMatmul2 & Combine
-    // Preserve the original cross-stage rotation when the block counts match,
-    // and normalize it before GMM2 when GMM1 used another logical block count.
-    gmm2StartBlockIdx_ = blockNum_ == 0U ? 0U : gmm1StartBlockIdx_ % blockNum_;
     vecSetSyncCom_ = 0;
     GMMAddrInfo gmm2AddrInfo;
     TupleShape initShape;

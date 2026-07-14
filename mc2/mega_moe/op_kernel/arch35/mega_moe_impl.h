@@ -288,6 +288,33 @@ struct Config {
         return config;
     }
 
+    // Physical full-core path retained for operators whose scheduling follows
+    // the launched block layout exactly.
+    __aicore__ static inline ProblemConfig BuildProblemConfig(const ProblemShape& problemShape)
+    {
+        ProblemConfig config;
+        config.m = Get<M_VALUE>(problemShape);
+        if constexpr (Policy::IS_GMM1) {
+            config.n = Get<N_VALUE>(problemShape);
+            config.k = Get<K_VALUE>(problemShape);
+        } else {
+            config.n = Get<K_VALUE>(problemShape);
+            config.k = Get<N_VALUE>(problemShape) / SWIGLU_N_HALF;
+        }
+        config.outputN = Policy::IS_GMM1 ? config.n / SWIGLU_N_HALF : config.n;
+        config.blockNum = GetBlockNum();
+        config.blockIdx = GetBlockIdx() / GetTaskRation();
+        config.scaleK = CeilDiv(config.k, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
+        if constexpr (!IsA8W4) {
+            if constexpr (Policy::IS_GMM1) {
+                config.tileM = L1_TILE_M_256;
+            } else {
+                config.tileM = (CombineQuantMode == COMBINE_NO_QUANT) ? L1_TILE_M_128 : L1_TILE_M_256;
+            }
+        }
+        return config;
+    }
+
     __aicore__ static inline LayoutBundle BuildLayouts(const ProblemConfig& config)
     {
         LayoutBundle layouts;
@@ -588,6 +615,67 @@ __aicore__ inline void GroupMatmulImplGeneric(
 
     startBlockIdx = (startBlockIdx + tileNum) % config.blockNum;
 }
+
+template <typename Policy, uint8_t CombineQuantMode, typename ElementA, typename ElementB,
+    typename ElementC, typename ElementMxScaleA, typename ElementMxScaleB, bool IsWeightNZ = false,
+    bool IsLayered = false, typename ExtraArgs>
+__aicore__ inline void GroupMatmulImplGeneric(
+    const Params& params, const AscendC::Shape<int64_t, int64_t, int64_t, int64_t>& problemShape,
+    const GMMAddrInfo& gmmAddrInfo, uint32_t& startBlockIdx, ExtraArgs& args)
+{
+    using Config = Config<false, Policy, CombineQuantMode, ElementA, ElementB, ElementC,
+        ElementMxScaleA, ElementMxScaleB, IsWeightNZ>;
+    auto config = Config::BuildProblemConfig(problemShape);
+
+    BlockScheduler scheduler(
+        {config.m, config.outputN, config.k},
+        BlockScheduler::Params{Te::MakeCoord(static_cast<int64_t>(config.tileM), static_cast<int64_t>(L1_TILE_N))});
+    uint32_t tileNum = scheduler.GetTileNum();
+    uint32_t startLoopIdx =
+        (config.blockIdx < startBlockIdx ? config.blockIdx + config.blockNum : config.blockIdx) - startBlockIdx;
+
+    auto layouts = Config::BuildLayouts(config);
+
+    if constexpr (Policy::IS_GMM1) {
+        if (GetSubBlockIdx() != 0) {
+            startBlockIdx = (startBlockIdx + tileNum) % config.blockNum;
+            return;
+        }
+        args.swigluQuantOp.UpdateNextProblem({config.m, config.outputN, config.k, 0});
+    } else if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
+        if (GetSubBlockIdx() != 0) return;
+    }
+
+    using BlockMmad = typename Config::BlockMmad;
+    using BiasType = typename Config::BiasType;
+
+    auto gmA = Te::MakeTensor(
+        Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementA*>(gmmAddrInfo.aGlobal)), layouts.a);
+    auto gmB = Te::MakeTensor(
+        Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementB*>(gmmAddrInfo.bGlobal)), layouts.b);
+    auto gmScaleA = Te::MakeTensor(
+        Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementMxScaleA*>(gmmAddrInfo.aScaleGlobal)),
+        layouts.scaleA);
+    auto gmScaleB = Te::MakeTensor(
+        Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementMxScaleB*>(gmmAddrInfo.bScaleGlobal)),
+        layouts.scaleB);
+    auto gmBias = Te::MakeTensor(
+        Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ BiasType*>(0UL)), layouts.bias);
+
+    using WorkSetType = WorkSetGeneric<BlockScheduler, decltype(gmA), decltype(gmB),
+        decltype(gmScaleA), decltype(gmScaleB), decltype(gmBias),
+        decltype(config), decltype(layouts)>;
+    WorkSetType workSet{
+        scheduler, gmA, gmB, gmScaleA, gmScaleB, gmBias,
+        gmmAddrInfo, params, config, layouts
+    };
+
+    GroupMatmulExecGeneric<Policy, CombineQuantMode, BlockMmad, ElementC, IsLayered>(
+        workSet, startLoopIdx, tileNum, args);
+
+    startBlockIdx = (startBlockIdx + tileNum) % config.blockNum;
+}
+
 } // namespace Detail
 
 // =================================================================================================
@@ -615,12 +703,11 @@ __aicore__ inline void GroupMatmulSwigluQuant(
     const Params& params, const AscendC::Shape<int64_t, int64_t, int64_t, int64_t>& problemShape,
     const GMMAddrInfo& gmmAddrInfo, uint32_t& startBlockIdx, int32_t& vecSetSyncCom)
 {
-    ThreadBlockContext blockContext{
-        static_cast<uint32_t>(GetBlockIdx() / GetTaskRation()),
-        static_cast<uint32_t>(GetBlockNum())};
-    GroupMatmulSwigluQuant<ElementA, EpilogueElementA, ElementB, ElementC, ElementMxScaleA,
-        ElementMxScaleB, IsWeightNZ>(
-            epilogueOp, params, problemShape, gmmAddrInfo, startBlockIdx, vecSetSyncCom, blockContext);
+    using SwigluQuantOpType = std::remove_reference_t<decltype(epilogueOp)>;
+    Detail::Gmm1ArgsGeneric<SwigluQuantOpType> args{epilogueOp, vecSetSyncCom};
+    Detail::GroupMatmulImplGeneric<Detail::Gmm1Policy, COMBINE_NO_QUANT, ElementA, ElementB, ElementC,
+        ElementMxScaleA, ElementMxScaleB, IsWeightNZ>(
+            params, problemShape, gmmAddrInfo, startBlockIdx, args);
 }
 
 // =================================================================================================
@@ -635,12 +722,9 @@ __aicore__ inline void GroupMatmul2(
     int32_t& vecSetSyncCom2, uint32_t groupCnt, uint16_t& pingpongIdx, uint32_t groupIdx)
 {
     Detail::Gmm2ArgsGeneric args{vecSetSyncCom2, groupCnt, pingpongIdx, groupIdx};
-    ThreadBlockContext blockContext{
-        static_cast<uint32_t>(GetBlockIdx() / GetTaskRation()),
-        static_cast<uint32_t>(GetBlockNum())};
     Detail::GroupMatmulImplGeneric<Detail::Gmm2Policy, CombineQuantMode, ElementA, ElementB, ElementC,
         ElementMxScaleA, ElementMxScaleB, IsWeightNZ, IsLayered>(
-        params, problemShape, gmmAddrInfo, startBlockIdx, blockContext, args);
+        params, problemShape, gmmAddrInfo, startBlockIdx, args);
 }
 
 // ==================================================================================
@@ -921,6 +1005,63 @@ __aicore__ inline void GroupMatmulImplA8W4(const Params& params,
 
     startBlockIdx = (startBlockIdx + tileNum) % config.blockNum;
 }
+
+template <uint8_t CombineQuantMode, typename Policy, typename ElementA, typename ElementB, typename ElementC,
+    typename ElementMxScaleA, typename ElementMxScaleB, typename ExtraArgs>
+__aicore__ inline void GroupMatmulImplA8W4(const Params& params,
+    const AscendC::Shape<int64_t, int64_t, int64_t, int64_t>& problemShape, const GMMAddrInfo& gmmAddrInfo,
+    uint32_t& startBlockIdx, ExtraArgs& args)
+{
+    static_assert(std::is_same_v<ElementA, __fp8e4m3>, "Activation must be __fp8e4m3");
+    static_assert(std::is_same_v<ElementB, __fp4e2m1x2>, "Weight must be __fp4e2m1x2");
+
+    using Config = Config<true, Policy, 0, ElementA, ElementB, ElementC, ElementMxScaleA,
+        ElementMxScaleB, false>;
+    auto config = Config::BuildProblemConfig(problemShape);
+
+    if constexpr (Policy::IS_GMM1) {
+        args.swigluQuantOp.UpdateNextProblem({config.m, config.outputN, config.k, 0});
+    }
+
+    auto layouts = Config::BuildLayouts(config);
+    using BlockMmad = typename Config::BlockMmad;
+    using BlockPrologue = typename Config::BlockPrologue;
+    using MakeLayoutC = typename Config::MakeLayoutC;
+
+    auto l0cOutGm = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementC*>(
+        Policy::IS_GMM1 ? gmmAddrInfo.gmm1OutGlobal : gmmAddrInfo.gmm2OutGlobal)), layouts.c);
+    auto gmA = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(
+        reinterpret_cast<__gm__ ElementA*>(gmmAddrInfo.aGlobal)), layouts.a);
+    auto gmB = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(
+        reinterpret_cast<__gm__ ElementB*>(gmmAddrInfo.bGlobal)), layouts.b);
+    auto gmScaleA = Te::MakeTensor(
+        Te::MakeMemPtr<Te::Location::GM>(
+            reinterpret_cast<__gm__ ElementMxScaleA*>(gmmAddrInfo.aScaleGlobal)),
+        layouts.scaleA);
+    auto gmScaleB = Te::MakeTensor(
+        Te::MakeMemPtr<Te::Location::GM>(
+            reinterpret_cast<__gm__ ElementMxScaleB*>(gmmAddrInfo.bScaleGlobal)),
+        layouts.scaleB);
+
+    BlockScheduler scheduler(
+        {config.m, config.outputN, config.k},
+        BlockScheduler::Params{Te::MakeCoord(static_cast<int64_t>(L1_TILE_M_256), static_cast<int64_t>(L1_TILE_N))});
+    uint32_t tileNum = scheduler.GetTileNum();
+    uint32_t startLoopIdx =
+        (config.blockIdx < startBlockIdx ? config.blockIdx + config.blockNum : config.blockIdx) - startBlockIdx;
+    if (startLoopIdx >= tileNum) {
+        startBlockIdx = (startBlockIdx + tileNum) % config.blockNum;
+        return;
+    }
+
+    using WorkSetType = WorkSetA8W4<
+        BlockScheduler, decltype(gmA), decltype(gmB), decltype(gmScaleA), decltype(gmScaleB), decltype(l0cOutGm)>;
+    WorkSetType workSet{scheduler, gmA, gmB, gmScaleA, gmScaleB, l0cOutGm};
+    GroupMatmulExecA8W4<CombineQuantMode, Policy, BlockMmad, BlockPrologue, ElementC, MakeLayoutC>(
+        workSet, params, gmmAddrInfo, config, startLoopIdx, tileNum, args);
+
+    startBlockIdx = (startBlockIdx + tileNum) % config.blockNum;
+}
 } // namespace Detail
 
 // GroupMatmulSwigluQuantA8W4 — A8W4 prologue（W4→W8）+ GMM1 + SwiGLU + 量化
@@ -945,11 +1086,12 @@ __aicore__ inline void GroupMatmulSwigluQuantA8W4(
     const Params& params, const AscendC::Shape<int64_t, int64_t, int64_t, int64_t>& problemShape,
     const GMMAddrInfo& gmmAddrInfo, uint32_t& startBlockIdx, int32_t& vecSetSyncCom)
 {
-    ThreadBlockContext blockContext{
-        static_cast<uint32_t>(GetBlockIdx() / GetTaskRation()),
-        static_cast<uint32_t>(GetBlockNum())};
-    GroupMatmulSwigluQuantA8W4<ElementA, ElementB, ElementC, ElementMxScaleA, ElementMxScaleB>(
-        swigluQuantOp, params, problemShape, gmmAddrInfo, startBlockIdx, vecSetSyncCom, blockContext);
+    (void)vecSetSyncCom;
+    using SwigluQuantOpType = std::remove_reference_t<decltype(swigluQuantOp)>;
+    Detail::Gmm1ArgsA8W4<SwigluQuantOpType> args{swigluQuantOp};
+    Detail::GroupMatmulImplA8W4<COMBINE_NO_QUANT, Detail::Gmm1Policy, ElementA, ElementB, ElementC,
+        ElementMxScaleA, ElementMxScaleB>(
+            params, problemShape, gmmAddrInfo, startBlockIdx, args);
 }
 
 // GroupMatmul2CombineA8W4 — A8W4 prologue（W4→W8）+ GMM2 + Combine
@@ -962,12 +1104,9 @@ __aicore__ inline void GroupMatmul2CombineA8W4(
 {
     (void)vecSetSyncCom2;
     Detail::Gmm2ArgsA8W4 args{groupCnt, pingpongIdx, groupIdx};
-    ThreadBlockContext blockContext{
-        static_cast<uint32_t>(GetBlockIdx() / GetTaskRation()),
-        static_cast<uint32_t>(GetBlockNum())};
     Detail::GroupMatmulImplA8W4<CombineQuantMode, Detail::Gmm2Policy, ElementA, ElementB, ElementC,
         ElementMxScaleA, ElementMxScaleB>(
-            params, problemShape, gmmAddrInfo, startBlockIdx, blockContext, args);
+            params, problemShape, gmmAddrInfo, startBlockIdx, args);
 }
 
 } // namespace MegaMoeImpl
