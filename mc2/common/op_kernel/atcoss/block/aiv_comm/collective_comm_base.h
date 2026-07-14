@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software; you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file collective_comm_base.h
@@ -28,36 +28,6 @@ using Utils::CommTilingData;
 template<typename Impl, typename Dtype>
 class CollectiveCommBase {
     friend Impl;
-protected:
-    __gm__ CommUdmaContext* udmaCtx_;
-    __gm__ CommUbmemContext* ubmemCtx_;
-    const CommTilingData* tilingData_;
-
-    Hcomm<AscendC::COMM_PROTOCOL_UBC_CTP> comm_;
-    GM_ADDR localAddr_;
-    __ubuf__ uint8_t* commBuf_;
-    __ubuf__ uint8_t* syncBuf_;
-
-    ChannelHandle channels_[COMM_MAX_RANK_NUM];
-    GM_ADDR commBufferAddrs_[COMM_MAX_RANK_NUM];
-
-    uint64_t chunkSize_;
-    uint64_t nonSplitAxisBytes_;
-    uint64_t chunkBytes_;
-
-    uint64_t totalTiles_;
-    uint64_t slotStride_;
-    uint64_t myRankOffset_;
-    uint64_t currentTileIdx_;
-    uint64_t currentTileOffset_;
-    uint64_t remainingChunkSize_;
-
-    uint32_t targetRankStart_;
-    uint32_t targetRankCnt_;
-
-    uint32_t useCoreNum_;
-    uint32_t curCoreId_;
-
 public:
     __aicore__ inline CollectiveCommBase() {}
 
@@ -152,7 +122,8 @@ public:
         remainingChunkSize_ -= currentTileSize;
     }
 
-    __aicore__ inline void Wait(bool waitLast=false) {
+    __aicore__ inline void Wait(bool waitLast=false)
+    {
         if (waitLast) {
             return;
         }
@@ -163,9 +134,40 @@ public:
         }
     }
 
-    __aicore__ inline void Finalize() {
+    __aicore__ inline void Finalize()
+    {
         static_cast<Impl*>(this)->DoFinalize();
     }
+
+protected:
+    __gm__ CommUdmaContext* udmaCtx_;
+    __gm__ CommUbmemContext* ubmemCtx_;
+    const CommTilingData* tilingData_;
+
+    Hcomm<AscendC::COMM_PROTOCOL_UBC_CTP> comm_;
+    GM_ADDR localAddr_;
+    __ubuf__ uint8_t* commBuf_;
+    __ubuf__ uint8_t* syncBuf_;
+
+    ChannelHandle channels_[COMM_MAX_RANK_NUM];
+    GM_ADDR commBufferAddrs_[COMM_MAX_RANK_NUM];
+
+    uint64_t chunkSize_;
+    uint64_t nonSplitAxisBytes_;
+    uint64_t chunkBytes_;
+
+    uint64_t totalTiles_;
+    uint64_t slotStride_;
+    uint64_t myRankOffset_;
+    uint64_t currentTileIdx_;
+    uint64_t currentTileOffset_;
+    uint64_t remainingChunkSize_;
+
+    uint32_t targetRankStart_;
+    uint32_t targetRankCnt_;
+
+    uint32_t useCoreNum_;
+    uint32_t curCoreId_;
 };
 
 } // namespace AivComm
