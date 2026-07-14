@@ -40,6 +40,14 @@ int64_t RoundUp(int64_t x, int64_t y)
 {
     return CeilDiv(x, y) * y;
 }
+int64_t Factorial(int64_t n)
+{
+    int64_t r = 1;
+    for (int64_t i = 2; i <= n; ++i) {
+        r *= i;
+    }
+    return r;
+}
 
 constexpr int64_t BLOCK_SIZE = 32;
 constexpr int64_t REPEAT_SIZE = 256;
@@ -441,7 +449,7 @@ ge::graphStatus MhcPreMembaseTiling::CalcStage1Tiling()
     tilingData_.set_stage1TailNcFactor(tailNcFactor);
 
     int64_t mm1M = bsFactor * 2;
-    int64_t mm1N = hcMult_ * hcMult_ + 2 * hcMult_;
+    int64_t mm1N = Factorial(hcMult_) + 2 * hcMult_;
     int64_t mm1K = hcMult_ * d_;
 
     auto platformInfo = context_->GetPlatformInfo();
@@ -475,7 +483,7 @@ ge::graphStatus MhcPreMembaseTiling::CalcStage1Tiling()
         // invRms: bs * sizeof(float)
         int64_t invRmsWsSize = bs_ * sizeof(float);
         // hcBeforeNorm: bs * hcMix * sizeof(float)
-        int64_t hcMix = hcMult_ * hcMult_ + 2 * hcMult_;
+        int64_t hcMix = Factorial(hcMult_) + 2 * hcMult_;
         int64_t hcBeforeNormWsSize = bs_ * hcMix * sizeof(float);
         
         workspaceSize_ += invRmsWsSize + hcBeforeNormWsSize;
