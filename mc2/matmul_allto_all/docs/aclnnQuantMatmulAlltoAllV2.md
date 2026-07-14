@@ -679,7 +679,7 @@ aclnnStatus aclnnQuantMatmulAlltoAllV2(
         CHECK_RET(ret == ACL_SUCCESS, return ret);
         // 调用第一段接口
         ret = aclnnQuantMatmulAlltoAllV2GetWorkspaceSize(x1, x2, bias, x1Scale, x2Scale, nullptr, nullptr, nullptr,
-                                                      alltoAllAxesOptional, hcom_name, "default", x1QuantMode, x2QuantMode, 
+                                                      alltoAllAxesOptional, hcom_name, "default", x1QuantMode, x2QuantMode,
                                                       commQuantMode, commQuantDtype, groupSize, false, false,
                                                       out, &workspaceSize, &executor);
         CHECK_RET(ret == ACL_SUCCESS,
@@ -793,21 +793,21 @@ aclnnStatus aclnnQuantMatmulAlltoAllV2(
     #include <acl/acl.h>
     #include <hccl/hccl.h>
     #include "aclnnop/aclnn_quant_matmul_allto_all_v2.h"
-  
+
     int ndev = 2;
-  
+
     #define CHECK_RET(cond, return_expr) \
     do {                               \
         if (!(cond)) {                   \
         return_expr;                   \
         }                                \
     } while (0)
-  
+
     #define LOG_PRINT(message, ...)     \
     do {                              \
         printf(message, ##__VA_ARGS__); \
     } while (0)
-  
+
     int64_t GetShapeSize(const std::vector<int64_t> &shape) {
         int64_t shapeSize = 1;
         for (auto i: shape) {
@@ -815,7 +815,7 @@ aclnnStatus aclnnQuantMatmulAlltoAllV2(
         }
         return shapeSize;
     }
-  
+
     template<typename T>
     int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &shape, void **deviceAddr,
                         aclDataType dataType, aclTensor **tensor) {
@@ -836,14 +836,14 @@ aclnnStatus aclnnQuantMatmulAlltoAllV2(
                                 shape.data(), shape.size(), *deviceAddr);
         return 0;
     }
-  
+
     struct Args {
         uint32_t rankId;
         HcclComm hcclComm;
         aclrtStream stream;
         aclrtContext context;
     };
-  
+
     int launchOneThreadQuantMatmulAlltoAllV2(Args &args) {
         int ret;
         ret = aclrtSetCurrentContext(args.context);
@@ -853,7 +853,7 @@ aclnnStatus aclnnQuantMatmulAlltoAllV2(
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] HcclGetCommName failed. ret = %d \n", ret); return -1);
         LOG_PRINT("[INFO] rank %d hcom: %s stream: %p, context : %p\n", args.rankId, hcom_name, args.stream,
                 args.context);
-  
+
         std::vector<int64_t> x1Shape = {32, 64};
         std::vector<int64_t> x2Shape = {64, 128};
         std::vector<int64_t> biasShape = {128};
@@ -872,19 +872,19 @@ aclnnStatus aclnnQuantMatmulAlltoAllV2(
         aclTensor *x1Scale = nullptr;
         aclTensor *x2Scale = nullptr;
         aclTensor *out = nullptr;
-  
+
         int64_t x1QuantMode = 3;
         int64_t x2QuantMode = 2;
         int64_t commQuantMode = 0;
         int64_t commQuantDtype = -1;
         int64_t groupSize = 0;
-  
+
         int64_t a2aAxes[2] = {-1, -2};
         aclIntArray* alltoAllAxesOptional = aclCreateIntArray(a2aAxes, static_cast<uint64_t>(2));
         uint64_t workspaceSize = 0;
         aclOpExecutor *executor;
         void *workspaceAddr = nullptr;
-  
+
         long long x1ShapeSize = GetShapeSize(x1Shape);
         long long x2ShapeSize = GetShapeSize(x2Shape);
         long long biasShapeSize = GetShapeSize(biasShape);
@@ -912,7 +912,7 @@ aclnnStatus aclnnQuantMatmulAlltoAllV2(
         CHECK_RET(ret == ACL_SUCCESS, return ret);
         // 调用第一段接口
         ret = aclnnQuantMatmulAlltoAllV2GetWorkspaceSize(x1, x2, bias, x1Scale, x2Scale, nullptr, nullptr, nullptr,
-                                                       alltoAllAxesOptional, hcom_name, "default", x1QuantMode, x2QuantMode, 
+                                                       alltoAllAxesOptional, hcom_name, "default", x1QuantMode, x2QuantMode,
                                                        commQuantMode, commQuantDtype, groupSize, false, false,
                                                        out, &workspaceSize, &executor);
         CHECK_RET(ret == ACL_SUCCESS,
@@ -969,7 +969,7 @@ aclnnStatus aclnnQuantMatmulAlltoAllV2(
         aclrtResetDevice(args.rankId);
         return 0;
     }
-  
+
     int main(int argc, char *argv[]) {
         // 本样例基于<term>Ascend 950PR/Ascend 950DT</term>实现，必须在<term>Ascend 950PR/Ascend 950DT</term>上运行
         int ret;
@@ -1014,4 +1014,3 @@ aclnnStatus aclnnQuantMatmulAlltoAllV2(
         return 0;
     }
     ```
-  

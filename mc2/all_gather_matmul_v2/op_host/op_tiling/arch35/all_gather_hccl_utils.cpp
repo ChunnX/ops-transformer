@@ -1,12 +1,12 @@
 /**
-* Copyright (c) 2026 Huawei Technologies Co., Ltd.
-* This program is free software, you can redistribute it and/or modify it under the terms and conditions of
-* CANN Open Software License Agreement Version 2.0 (the "License").
-* Please refer to the License for details. You may not use this file except in compliance with the License.
-* THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
-* INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
-* See LICENSE in the root of the software repository for the full text of the License.
-*/
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file all_gather_hccl_utils.cpp
@@ -40,41 +40,37 @@ namespace optiling {
  *   4. 若 maxTileM < 256（最小对齐长度），返回 HCCL_UNSUPPORTED
  *   5. 返回 maxTileM，表示需要调整
  */
-uint64_t CalcMaxTileMFromHcclLimit(const CutResult& cutRes,
-                                   uint64_t kValue, uint64_t dtypeSize, uint64_t rankDim,
-                                   const std::string& opName)
+uint64_t CalcMaxTileMFromHcclLimit(const CutResult &cutRes, uint64_t kValue, uint64_t dtypeSize, uint64_t rankDim,
+                                   const std::string &opName)
 {
     uint64_t singleRowSize = kValue * dtypeSize * rankDim;
     if (singleRowSize == 0) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName.c_str(), "singleRowSize", std::to_string(singleRowSize).c_str(),
-            "The value of singleRowSize must not be zero");
+                                              "The value of singleRowSize must not be zero");
         return HCCL_UNSUPPORTED;
     }
 
     uint64_t tileMKBytes = cutRes.longTileLen * kValue;
     if (cutRes.longTileLen != 0 && tileMKBytes / cutRes.longTileLen != kValue) {
-        OP_LOGE(opName.c_str(), "Multiplication overflow: longTileLen=%lu * kValue=%lu",
-                cutRes.longTileLen, kValue);
+        OP_LOGE(opName.c_str(), "Multiplication overflow: longTileLen=%lu * kValue=%lu", cutRes.longTileLen, kValue);
         return HCCL_UNSUPPORTED;
     }
     uint64_t tileBytesPerRank = tileMKBytes * dtypeSize;
     if (tileMKBytes != 0 && tileBytesPerRank / tileMKBytes != dtypeSize) {
-        OP_LOGE(opName.c_str(), "Multiplication overflow: tileMKBytes * dtypeSize=%lu",
-                dtypeSize);
+        OP_LOGE(opName.c_str(), "Multiplication overflow: tileMKBytes * dtypeSize=%lu", dtypeSize);
         return HCCL_UNSUPPORTED;
     }
     uint64_t originalCommSize = tileBytesPerRank * rankDim;
     if (tileBytesPerRank != 0 && originalCommSize / tileBytesPerRank != rankDim) {
-        OP_LOGE(opName.c_str(), "Multiplication overflow: tileBytesPerRank * rankDim=%lu",
-                rankDim);
+        OP_LOGE(opName.c_str(), "Multiplication overflow: tileBytesPerRank * rankDim=%lu", rankDim);
         return HCCL_UNSUPPORTED;
     }
 
     double originalCommMB = static_cast<double>(originalCommSize) / (1024.0 * 1024.0);
-    OP_LOGD(opName.c_str(), "Formulaic original cut: tileM=%lu, tileCnt=%lu, tailM=%lu, "
+    OP_LOGD(opName.c_str(),
+            "Formulaic original cut: tileM=%lu, tileCnt=%lu, tailM=%lu, "
             "shortTileAtBack=%d, commSize=%.2fMB",
-            cutRes.longTileLen, cutRes.numLongTile, cutRes.shortTileLen,
-            cutRes.shortTileAtBack, originalCommMB);
+            cutRes.longTileLen, cutRes.numLongTile, cutRes.shortTileLen, cutRes.shortTileAtBack, originalCommMB);
 
     if (originalCommSize <= HCCL_MEM_LIMIT) {
         OP_LOGD(opName.c_str(), "HCCL limit satisfied, no adjustment needed");
@@ -83,8 +79,8 @@ uint64_t CalcMaxTileMFromHcclLimit(const CutResult& cutRes,
 
     uint64_t maxTileM = HCCL_MEM_LIMIT / singleRowSize;
     if (maxTileM < ALIGN_LEN) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName.c_str(), "maxTileM",
-            std::to_string(maxTileM).c_str(), "The value of maxTileM must satisfy the HCCL memory limit");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName.c_str(), "maxTileM", std::to_string(maxTileM).c_str(),
+                                              "The value of maxTileM must satisfy the HCCL memory limit");
         return HCCL_UNSUPPORTED;
     }
 
@@ -148,18 +144,18 @@ uint64_t SelectOptimalCandidateTileM(uint64_t maxTileM)
  *   - 大数据量：扩展到最多HCCL_MAX_TOTAL_TILES次通信处理
  *   - 超大数据量：报错提示不支持
  */
-uint64_t DetermineFinalTileMWithLimit(uint64_t mValue, uint64_t candidateTileM, uint64_t maxTileM,
-                                      uint64_t kValue, uint64_t dtypeSize, uint64_t rankDim,
-                                      const std::string& opName)
+uint64_t DetermineFinalTileMWithLimit(uint64_t mValue, uint64_t candidateTileM, uint64_t maxTileM, uint64_t kValue,
+                                      uint64_t dtypeSize, uint64_t rankDim, const std::string &opName)
 {
     uint64_t totalTileCnt = (mValue + candidateTileM - 1) / candidateTileM;
     if (totalTileCnt <= HCCL_MAX_TOTAL_TILES) {
-        OP_LOGD(opName.c_str(), "Candidate tileM=%lu satisfies limit: totalTileCnt=%lu ≤ %lu",
-                candidateTileM, totalTileCnt, HCCL_MAX_TOTAL_TILES);
+        OP_LOGD(opName.c_str(), "Candidate tileM=%lu satisfies limit: totalTileCnt=%lu ≤ %lu", candidateTileM,
+                totalTileCnt, HCCL_MAX_TOTAL_TILES);
         return candidateTileM;
     }
 
-    OP_LOGD(opName.c_str(), "Candidate tileM=%lu requires too many tiles: totalTileCnt=%lu > %lu, "
+    OP_LOGD(opName.c_str(),
+            "Candidate tileM=%lu requires too many tiles: totalTileCnt=%lu > %lu, "
             "recalculating...",
             candidateTileM, totalTileCnt, HCCL_MAX_TOTAL_TILES);
 
@@ -179,13 +175,12 @@ uint64_t DetermineFinalTileMWithLimit(uint64_t mValue, uint64_t candidateTileM, 
     }
 
     if (finalTileM > maxTileM) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName.c_str(), "HCCL tile size",
-            std::to_string(finalTileM).c_str(), "The value of HCCL tile size must satisfy the HCCL 256MB limit");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName.c_str(), "HCCL tile size", std::to_string(finalTileM).c_str(),
+                                              "The value of HCCL tile size must satisfy the HCCL 256MB limit");
         return HCCL_UNSUPPORTED;
     }
 
-    OP_LOGD(opName.c_str(), "Recalculated tileM=%lu to satisfy %lu tile limit",
-            finalTileM, HCCL_MAX_TOTAL_TILES);
+    OP_LOGD(opName.c_str(), "Recalculated tileM=%lu to satisfy %lu tile limit", finalTileM, HCCL_MAX_TOTAL_TILES);
     return finalTileM;
 }
 
@@ -213,9 +208,8 @@ uint64_t DetermineFinalTileMWithLimit(uint64_t mValue, uint64_t candidateTileM, 
  *      - shortTileAtBack 保持原始值
  *   5. 打印调整后的切分结果
  */
-void ApplyTileSplit(CutResult& cutRes, uint64_t mValue, uint64_t tileM,
-                    uint64_t kValue, uint64_t dtypeSize, uint64_t rankDim,
-                    const std::string& opName)
+void ApplyTileSplit(CutResult &cutRes, uint64_t mValue, uint64_t tileM, uint64_t kValue, uint64_t dtypeSize,
+                    uint64_t rankDim, const std::string &opName)
 {
     uint64_t numLongTile = mValue / tileM;
     uint64_t tailM = mValue - numLongTile * tileM;
@@ -226,8 +220,8 @@ void ApplyTileSplit(CutResult& cutRes, uint64_t mValue, uint64_t tileM,
 
         uint64_t newCommSize = tileM * kValue * dtypeSize * rankDim;
         if (newCommSize > HCCL_MEM_LIMIT) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName.c_str(), "newCommSize",
-                std::to_string(newCommSize).c_str(), "The value of newCommSize must not exceed the HCCL limit");
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName.c_str(), "newCommSize", std::to_string(newCommSize).c_str(),
+                                                  "The value of newCommSize must not exceed the HCCL limit");
             return;
         }
     }
@@ -270,10 +264,8 @@ void ApplyTileSplit(CutResult& cutRes, uint64_t mValue, uint64_t tileM,
  *   - 大数据量：扩展到最多HCCL_MAX_TOTAL_TILES次通信，仍优先使用优选候选值
  *   - 超大数据量：报错，无法同时满足256MB单次限制和HCCL_MAX_TOTAL_TILES次总限制
  */
-void AdjustCutResultForHCCL(CutResult& cutRes,
-                            uint64_t mValue, uint64_t kValue,
-                            uint64_t dtypeSize, uint64_t rankDim,
-                            const std::string& opName)
+void AdjustCutResultForHCCL(CutResult &cutRes, uint64_t mValue, uint64_t kValue, uint64_t dtypeSize, uint64_t rankDim,
+                            const std::string &opName)
 {
     uint64_t maxTileM = CalcMaxTileMFromHcclLimit(cutRes, kValue, dtypeSize, rankDim, opName);
     if (maxTileM == HCCL_NO_ADJUSTMENT) {
@@ -287,8 +279,7 @@ void AdjustCutResultForHCCL(CutResult& cutRes,
     uint64_t candidateTileM = SelectOptimalCandidateTileM(maxTileM);
     OP_LOGD(opName.c_str(), "Selected optimal candidate tileM=%lu", candidateTileM);
 
-    uint64_t tileM = DetermineFinalTileMWithLimit(mValue, candidateTileM, maxTileM,
-                                                  kValue, dtypeSize, rankDim, opName);
+    uint64_t tileM = DetermineFinalTileMWithLimit(mValue, candidateTileM, maxTileM, kValue, dtypeSize, rankDim, opName);
     if (tileM == HCCL_UNSUPPORTED) {
         return;
     }
@@ -296,4 +287,4 @@ void AdjustCutResultForHCCL(CutResult& cutRes,
     ApplyTileSplit(cutRes, mValue, tileM, kValue, dtypeSize, rankDim, opName);
 }
 
-}  // namespace optiling
+} // namespace optiling

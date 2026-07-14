@@ -129,8 +129,9 @@ void DealTilingParamByBuffSize(CoCTiling &cocTilingData)
     int64_t maxPValue = maxPeerMemPerRank / cocTilingData.m0 / cocTilingData.k0 / cocTilingData.kLoop;
     cocTilingData.pValue = ClampValue(cocTilingData.pValue, MIN_P_VALUE, maxPValue);
 
-    if (cocTilingData.m0 == DEFAULT_COL && static_cast<int64_t>(cocTilingData.pValue) * cocTilingData.m0
-            * cocTilingData.k0 * cocTilingData.kLoop >= maxPeerMemPerRank) {
+    if (cocTilingData.m0 == DEFAULT_COL &&
+        static_cast<int64_t>(cocTilingData.pValue) * cocTilingData.m0 * cocTilingData.k0 * cocTilingData.kLoop >=
+            maxPeerMemPerRank) {
         cocTilingData.m0 = DEFAULT_ROW;
         cocTilingData.n0 = DEFAULT_COL;
         cocTilingData.mLoop = CeilDev(cocTilingData.m, cocTilingData.m0);
@@ -292,12 +293,9 @@ static ge::graphStatus AllGatherMatmulAIVModeCheckAttrAndSetTiling(gert::TilingC
     auto isTransposeX2 = attrs->GetAttrPointer<bool>(ATTR_IS_TRANS_X2);
 
     OP_TILING_CHECK(groupPtr == nullptr || strlen(groupPtr) == 0,
-                    OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "group"),
+                    OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "group"), return GRAPH_FAILED);
+    OP_TILING_CHECK(isTransposeX2 == nullptr, OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "isTransposeX2"),
                     return GRAPH_FAILED);
-    OP_TILING_CHECK(
-        isTransposeX2 == nullptr,
-        OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "isTransposeX2"),
-        return GRAPH_FAILED);
 
     info.isTransposeX1 = *isTransposeX1 ? *isTransposeX1 : false;
     info.isTransposeX2 = *isTransposeX2 ? *isTransposeX2 : false;
@@ -322,12 +320,14 @@ static ge::graphStatus AllGatherMatmulAIVModeCheckShapeAndSetTiling(gert::Tiling
     const auto bType = context->GetInputTensor(B_INDEX)->GetDataType();
     OP_TILING_CHECK(aType != bType,
                     OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(context->GetNodeName(), "x1/x2",
-                        Ops::Base::ToString(aType).c_str(), "The dtypes of x1 and x2 must be the same"),
+                                                          Ops::Base::ToString(aType).c_str(),
+                                                          "The dtypes of x1 and x2 must be the same"),
                     return GRAPH_FAILED);
 
     if (aType == ge::DT_INT4 && bType == ge::DT_INT4) {
         OP_TILING_CHECK(K % 2 != 0 || N % 2 != 0,
-                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "K/N",
+                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                            context->GetNodeName(), "K/N",
                             (std::string("K=") + std::to_string(K) + " N=" + std::to_string(N)).c_str(),
                             "The value of K/N must be divisible by 2 for int4"),
                         return GRAPH_FAILED);
@@ -347,8 +347,8 @@ static ge::graphStatus AllGatherMatmulAIVModeCheckShapeAndSetTiling(gert::Tiling
 
     const gert::StorageShape *matrixBias = context->GetOptionalInputShape(BIAS_INDEX);
     OP_TILING_CHECK(matrixBias != nullptr,
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "bias",
-                        "not nullptr", "The value of bias must be nullptr in AivMode"),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "bias", "not nullptr",
+                                                          "The value of bias must be nullptr in AivMode"),
                     return GRAPH_FAILED);
 
     // shape相关校验与约束写在这里
@@ -402,10 +402,10 @@ static ge::graphStatus PrintfTilingData(gert::TilingContext *context, AllGatherM
 }
 
 void GetUsrWorkSpaceSize(uint32_t nElemAlign, uint32_t elementSize, uint64_t &userWorkSpaceSize, int64_t rankSize,
-    AllGatherMatmulAIVModeTilingData* tilingData)
+                         AllGatherMatmulAIVModeTilingData *tilingData)
 {
-    auto& info = tilingData->allGatherMatmulInfo;
-    const auto& cocTiling = tilingData->cocTiling;
+    auto &info = tilingData->allGatherMatmulInfo;
+    const auto &cocTiling = tilingData->cocTiling;
     bool hasAAlign = (!IsMatrixAligned(info.M, info.K, info.isTransposeX1, nElemAlign) && info.M != 1);
     bool hasBAlign = !IsMatrixAligned(info.K, info.N, info.isTransposeX2, nElemAlign);
     uint64_t mAlign = AlignUp<uint64_t>(info.M, nElemAlign);
@@ -418,21 +418,25 @@ void GetUsrWorkSpaceSize(uint32_t nElemAlign, uint32_t elementSize, uint64_t &us
     info.hasBAlign = hasBAlign;
     if (info.hasAAlign) {
         if (elementSize != 0) {
-            info.aAlignSize = (info.isTransposeX1 ?
-                static_cast<uint64_t>(info.K) * mAlign : static_cast<uint64_t>(info.M) * kAlign) * elementSize;
+            info.aAlignSize =
+                (info.isTransposeX1 ? static_cast<uint64_t>(info.K) * mAlign : static_cast<uint64_t>(info.M) * kAlign) *
+                elementSize;
         } else {
-            info.aAlignSize = (info.isTransposeX1 ?
-                static_cast<uint64_t>(info.K) * mAlign : static_cast<uint64_t>(info.M) * kAlign) / 2;
+            info.aAlignSize =
+                (info.isTransposeX1 ? static_cast<uint64_t>(info.K) * mAlign : static_cast<uint64_t>(info.M) * kAlign) /
+                2;
         }
         userWorkSpaceSize += info.aAlignSize;
     }
     if (info.hasBAlign) {
         if (elementSize != 0) {
-            info.bAlignSize = (info.isTransposeX2 ?
-                static_cast<uint64_t>(info.N) * kAlign : static_cast<uint64_t>(info.K) * nAlign) * elementSize;
+            info.bAlignSize =
+                (info.isTransposeX2 ? static_cast<uint64_t>(info.N) * kAlign : static_cast<uint64_t>(info.K) * nAlign) *
+                elementSize;
         } else {
-            info.bAlignSize = (info.isTransposeX2 ?
-                static_cast<uint64_t>(info.N) * kAlign : static_cast<uint64_t>(info.K) * nAlign) / 2;
+            info.bAlignSize =
+                (info.isTransposeX2 ? static_cast<uint64_t>(info.N) * kAlign : static_cast<uint64_t>(info.K) * nAlign) /
+                2;
         }
         userWorkSpaceSize += info.bAlignSize;
     }
@@ -545,25 +549,21 @@ ge::graphStatus AllGatherMatmulTilingAIVModeFunc(gert::TilingContext *context)
 
     // 1. tilingData
     AllGatherMatmulAIVModeTilingData *tilingData = context->GetTilingData<AllGatherMatmulAIVModeTilingData>();
-    OP_TILING_CHECK(tilingData == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "tilingData"),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(tilingData == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "tilingData"), return ge::GRAPH_FAILED);
     OP_LOGI(nodeName, "AllGatherMatmulAIVMode get tilingData.");
     AllGatherMatmulAIVModeInfo &info = tilingData->allGatherMatmulInfo;
     OP_LOGI(nodeName, "AllGatherMatmulAIVMode get tilingData info.");
     CoCTiling &coctiling = tilingData->cocTiling;
     OP_LOGI(nodeName, "AllGatherMatmulAIVMode get CoCTiling info.");
 
-    OP_TILING_CHECK(
-        AllGatherMatmulAIVModeCheckAttrAndSetTiling(context, info, coctiling) != ge::GRAPH_SUCCESS,
-        OP_LOGE(context->GetNodeName(), "AllGatherMatmulAIVMode CheckShapeAndSetTiling Failed"),
-        return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(
-        AllGatherMatmulAIVModeCheckShapeAndSetTiling(context, info, coctiling) != ge::GRAPH_SUCCESS,
-        OP_LOGE(context->GetNodeName(), "AllGatherMatmulAIVMode CheckAttrAndSetTiling Failed"),
-        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(AllGatherMatmulAIVModeCheckAttrAndSetTiling(context, info, coctiling) != ge::GRAPH_SUCCESS,
+                    OP_LOGE(context->GetNodeName(), "AllGatherMatmulAIVMode CheckShapeAndSetTiling Failed"),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(AllGatherMatmulAIVModeCheckShapeAndSetTiling(context, info, coctiling) != ge::GRAPH_SUCCESS,
+                    OP_LOGE(context->GetNodeName(), "AllGatherMatmulAIVMode CheckAttrAndSetTiling Failed"),
+                    return ge::GRAPH_FAILED);
     OP_TILING_CHECK(AllGatherMatmulAIVModeGetPlatformInfoAndSetTiling(context, info, coctiling) != ge::GRAPH_SUCCESS,
-                    OP_LOGE(context->GetNodeName(),
-                                                   "AllGatherMatmulAIVMode GetPlatformInfoAndSetTiling Failed"),
+                    OP_LOGE(context->GetNodeName(), "AllGatherMatmulAIVMode GetPlatformInfoAndSetTiling Failed"),
                     return ge::GRAPH_FAILED);
 
     auto attrs = context->GetAttrs();
@@ -572,11 +572,10 @@ ge::graphStatus AllGatherMatmulTilingAIVModeFunc(gert::TilingContext *context)
     int64_t rankSize = 0;
     mc2tiling::GetRankSize(opName, group, rankSize);
     coctiling.rankSize = rankSize;
-    OP_TILING_CHECK(rankSize != 2 && rankSize != 4 && rankSize != 8,
-                    OP_LOGE(context->GetNodeName(),
-                                                   "Unsupported rankSize %d. Supported rankSizes are 2, 4 and 8.",
-                                                   rankSize),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        rankSize != 2 && rankSize != 4 && rankSize != 8,
+        OP_LOGE(context->GetNodeName(), "Unsupported rankSize %d. Supported rankSizes are 2, 4 and 8.", rankSize),
+        return ge::GRAPH_FAILED);
 
     // 2. set numBlocks
     uint32_t numBlocks = 1U;
@@ -596,11 +595,10 @@ ge::graphStatus AllGatherMatmulTilingAIVModeFunc(gert::TilingContext *context)
     bool isOutputTypeValid = (cType == ge::DT_BF16 || cType == ge::DT_FLOAT16);
     info.quantFlag = (isA4W4 || isA8W8) && isOutputTypeValid;
     if (info.quantFlag) {
-        OP_TILING_CHECK(
-            !CheckDtypeX2(context, info, cType),
-            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(context->GetNodeName(), "x2Scale", "invalid dtype",
-                "The dtype of x2Scale must be float or int64"),
-            return ge::GRAPH_FAILED);
+        OP_TILING_CHECK(!CheckDtypeX2(context, info, cType),
+                        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(context->GetNodeName(), "x2Scale", "invalid dtype",
+                                                              "The dtype of x2Scale must be float or int64"),
+                        return ge::GRAPH_FAILED);
         info.dequantType = DequantType::PER_CHANNEL;
         if (CheckDtypeX1(context)) {
             info.dequantType = DequantType::PER_TOKEN;
@@ -614,8 +612,7 @@ ge::graphStatus AllGatherMatmulTilingAIVModeFunc(gert::TilingContext *context)
 
     // 4. workspace
     size_t *workSpaces = context->GetWorkspaceSizes(1);
-    OP_TILING_CHECK(workSpaces == nullptr, OP_LOGE(nodeName, "workSpaces is nullptr."),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(workSpaces == nullptr, OP_LOGE(nodeName, "workSpaces is nullptr."), return ge::GRAPH_FAILED);
 
     info.is910C = false;
     fe::PlatFormInfos *platformInfoPtr = context->GetPlatformInfo();

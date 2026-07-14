@@ -12,7 +12,7 @@
  * \file quant_grouped_matmul.h
  * \brief
  */
- 
+
 #ifndef MC2_QUANT_GROUPED_MATMUL_H
 #define MC2_QUANT_GROUPED_MATMUL_H
 
@@ -27,15 +27,16 @@ namespace MC2KernelTemplate {
 constexpr uint64_t GROUP_LIST_INDEX = 0;
 
 template <typename TilingDataType, typename GmmTilingDataType, class xType, class wType, class scaleType, class yType,
-    CubeFormat wFormat, bool aTrans, bool bTrans, bool isLocal, bool isA2avGmm>
+          CubeFormat wFormat, bool aTrans, bool bTrans, bool isLocal, bool isA2avGmm>
 class QuantGroupedMatmul {
 public:
     __aicore__ inline void Init(GM_ADDR xGM, GM_ADDR weightGM, GM_ADDR xScaleGM, GM_ADDR weightScaleGM, GM_ADDR yGM,
-        GM_ADDR workspaceGM, const TilingDataType *tilingData,
-        const GmmTilingDataType *gmmTilingData, TILING_TYPE *gmmArrayAddrIn, TPipe *tPipe, bool isA2avGmmFlag)
+                                GM_ADDR workspaceGM, const TilingDataType *tilingData,
+                                const GmmTilingDataType *gmmTilingData, TILING_TYPE *gmmArrayAddrIn, TPipe *tPipe,
+                                bool isA2avGmmFlag)
     {
         if ASCEND_IS_AIV {
-            return ;
+            return;
         }
         xGM_ = xGM;
         wGM_ = weightGM;
@@ -69,7 +70,8 @@ public:
             wScaleGlobalBuffer_.SetGlobalBuffer((__gm__ scaleType *)weightScaleGM);
         }
 
-        const auto *opCnt = isA2avGmmFlag ? &tilingData_->taskTilingInfo.recvCnt[0] : &tilingData_->taskTilingInfo.sendCnt[0];
+        const auto *opCnt =
+            isA2avGmmFlag ? &tilingData_->taskTilingInfo.recvCnt[0] : &tilingData_->taskTilingInfo.sendCnt[0];
         for (uint32_t e = 0U; e < expertNumInOneRank_; e++) {
             for (uint32_t i = 0U; i < epWorldSize_; i++) {
                 expertTokenNum_[e] += static_cast<uint64_t>(opCnt[e + i * expertNumInOneRank_]);
@@ -80,10 +82,10 @@ public:
     __aicore__ inline void Process(uint32_t expertIdx)
     {
         if ASCEND_IS_AIV {
-            return ;
+            return;
         }
         if (!isLocal && expertTokenNum_[expertIdx] == 0) {
-            return ;
+            return;
         }
         this->UpdateAddr(expertIdx);
         __gm__ uint8_t *xAddr = reinterpret_cast<__gm__ uint8_t *>(xGM_);
@@ -98,17 +100,19 @@ public:
         groupListGlobalBuffer_.SetValue(GROUP_LIST_INDEX, groupListToken);
         // flush groupList到GM确保Cube引擎读到最新数据（不能用SyncAll，AIV不会执行SyncAll会死锁）
         AscendC::DataCacheCleanAndInvalid<int64_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
-            AscendC::DcciDst::CACHELINE_OUT>(groupListGlobalBuffer_);
-        Mc2GroupedMatmul::Mc2GmmASWKernel<xType, wType, biasType, scaleType, yType, wFormat, aTrans, bTrans> gmmASWKernel;
+                                          AscendC::DcciDst::CACHELINE_OUT>(groupListGlobalBuffer_);
+        Mc2GroupedMatmul::Mc2GmmASWKernel<xType, wType, biasType, scaleType, yType, wFormat, aTrans, bTrans>
+            gmmASWKernel;
         tPipe_->Reset();
         gmmASWKernel.Init(xPtr, wPtr, nullptr, scaleBPtr, groupListGm_, xScaleGM_, yPtr, workspaceGM_,
-            &gmmTilingData_->gmmQuantParams, &gmmTilingData_->mmTilingData, gmmArrayAddrIn_, tPipe_);
+                          &gmmTilingData_->gmmQuantParams, &gmmTilingData_->mmTilingData, gmmArrayAddrIn_, tPipe_);
         gmmASWKernel.Process();
     }
 
-    __aicore__ inline void End() {
+    __aicore__ inline void End()
+    {
         if ASCEND_IS_AIV {
-            return ;
+            return;
         }
     }
 
@@ -124,7 +128,7 @@ protected:
         // wScaleGlobalBuffer_ = weight scale, shape [ep, n1, scaleK]
         if constexpr (Mc2QuantUtils::IsMxType<scaleType>()) {
             uint64_t scaleK = Mc2QuantUtils::MXFP_MULTI_BASE_SIZE *
-                Mc2QuantUtils::CeilDiv(h1_, static_cast<uint64_t>(Mc2QuantUtils::MXFP_DIVISOR_SIZE));
+                              Mc2QuantUtils::CeilDiv(h1_, static_cast<uint64_t>(Mc2QuantUtils::MXFP_DIVISOR_SIZE));
             // x_scale (activation): per-token 偏移
             xScaleGM_ = (GM_ADDR)xScaleGlobalBuffer_.GetPhyAddr(expertTokenOffset_ * scaleK);
             // weight_scale: per-expert 偏移
@@ -142,10 +146,10 @@ protected:
     __aicore__ inline GM_ADDR BuildPtrTable(GM_ADDR dataAddr, uint32_t slotIdx)
     {
         // 每个 slot 占 16 bytes (2 * uint64_t)
-        __gm__ uint64_t *slot = reinterpret_cast<__gm__ uint64_t *>(
-            reinterpret_cast<__gm__ uint8_t *>(ptrTableBase_) + slotIdx * 16);
-        slot[0] = sizeof(uint64_t);  // byteOffset
-        slot[1] = reinterpret_cast<uint64_t>(dataAddr);  // 实际数据地址
+        __gm__ uint64_t *slot =
+            reinterpret_cast<__gm__ uint64_t *>(reinterpret_cast<__gm__ uint8_t *>(ptrTableBase_) + slotIdx * 16);
+        slot[0] = sizeof(uint64_t);                     // byteOffset
+        slot[1] = reinterpret_cast<uint64_t>(dataAddr); // 实际数据地址
         return reinterpret_cast<GM_ADDR>(slot);
     }
 

@@ -35,7 +35,8 @@ namespace Catlass::Gemm::Kernel {
 constexpr static int32_t AIC_WAIT_AIV_FINISH_ALIGN_FLAG_ID = 12;
 constexpr static int32_t MAX_BLOCK_COUNT = 2;
 
-template <class PrologueA, class PrologueB, class BlockMmad_> class AllGatherMatmulV2 {
+template <class PrologueA, class PrologueB, class BlockMmad_>
+class AllGatherMatmulV2 {
 public:
     using BlockMmad = BlockMmad_;
     using DispatchPolicy = typename BlockMmad::DispatchPolicy;
@@ -108,7 +109,8 @@ public:
     {
     }
 
-    template <int32_t CORE_TYPE = g_coreType> CATLASS_DEVICE void operator()(Params const &params);
+    template <int32_t CORE_TYPE = g_coreType>
+    CATLASS_DEVICE void operator()(Params const &params);
 
     inline __aicore__ void InitArgs(Params const &params)
     {
@@ -298,10 +300,10 @@ public:
                 int64_t gmOffsetC = dstBlockIdx * mnSize + calIdx * outputBlockSize + params.layoutC.GetOffset(offsetC);
 
                 AscendC::GlobalTensor<ElementAInt8> gmAIn = gmPeerMemInt8;
- 	            if (dstBlockIdx == params.rankIdx) { // 从gmA里面取
- 	                gmAIn = gmAInt8;
- 	                gmOffsetA = calIdx * blockSize + params.layoutA.GetOffset(offsetA);
-                }    
+                if (dstBlockIdx == params.rankIdx) { // 从gmA里面取
+                    gmAIn = gmAInt8;
+                    gmOffsetA = calIdx * blockSize + params.layoutA.GetOffset(offsetA);
+                }
 
                 bool isFirstBlock = (loopOffset < coreNum);
                 bool hasNextBlock = false;
@@ -326,16 +328,16 @@ public:
                 uint64_t gmOffsetNextB = params.layoutB.GetOffset(offsetNextB);
 
                 AscendC::GlobalTensor<ElementAInt8> gmANextIn = gmPeerMemInt8;
- 	            if (nextDstBlockIdx == params.rankIdx) { // 从gmA里面取
- 	                gmANextIn = gmAInt8;
- 	                gmOffsetNextA = calIdx * blockSize + params.layoutA.GetOffset(offsetNextA);
- 	            }
+                if (nextDstBlockIdx == params.rankIdx) { // 从gmA里面取
+                    gmANextIn = gmAInt8;
+                    gmOffsetNextA = calIdx * blockSize + params.layoutA.GetOffset(offsetNextA);
+                }
 
                 uint64_t gmOffsetScale = blockLocCoord.n();
                 fixpipeBlockMmad(gmAIn[gmOffsetA], params.layoutPeerMem, gmBInt8[gmOffsetB], params.layoutB,
- 	                                gmCHalf[gmOffsetC], params.layoutC, gmScale[gmOffsetScale], params.layoutScale,
- 	                                gmANextIn[gmOffsetNextA], gmBInt8[gmOffsetNextB], blockSizeCoord,
- 	                                nextBlockSizeCoord, isFirstBlock, hasNextBlock);
+                                 gmCHalf[gmOffsetC], params.layoutC, gmScale[gmOffsetScale], params.layoutScale,
+                                 gmANextIn[gmOffsetNextA], gmBInt8[gmOffsetNextB], blockSizeCoord, nextBlockSizeCoord,
+                                 isFirstBlock, hasNextBlock);
             }
             FFTSCrossCoreSync<PIPE_FIX, 2>(flagIdx);
         }
@@ -383,15 +385,15 @@ public:
                 uint64_t gmOffsetB = params.layoutB.GetOffset(offsetB);
                 int64_t gmOffsetC = dstBlockIdx * mnSize + calIdx * outputBlockSize + params.layoutC.GetOffset(offsetC);
                 if (params.accumWorkSpacePingPong) {
-                    gmOffsetC = static_cast<int64_t>(dstBlockIdx + flagIdx * params.rankSize) * outputBlockSize
-                                        + params.layoutC.GetOffset(offsetC);
+                    gmOffsetC = static_cast<int64_t>(dstBlockIdx + flagIdx * params.rankSize) * outputBlockSize +
+                                params.layoutC.GetOffset(offsetC);
                 }
 
                 AscendC::GlobalTensor<ElementA> gmAIn = gmPeerMem;
- 	            if (dstBlockIdx == params.rankIdx) { // 从gmA里面取
- 	                gmAIn = gmA;
- 	                gmOffsetA = calIdx * blockSize + params.layoutA.GetOffset(offsetA);
- 	            }
+                if (dstBlockIdx == params.rankIdx) { // 从gmA里面取
+                    gmAIn = gmA;
+                    gmOffsetA = calIdx * blockSize + params.layoutA.GetOffset(offsetA);
+                }
 
                 bool isFirstBlock = (loopOffset < coreNum);
                 bool hasNextBlock = false;
@@ -416,20 +418,21 @@ public:
                 uint64_t gmOffsetNextB = params.layoutB.GetOffset(offsetNextB);
 
                 AscendC::GlobalTensor<ElementA> gmAInNext = gmPeerMem;
- 	            if (nextDstBlockIdx == params.rankIdx) { // 从gmA里面取
- 	                gmAInNext = gmA;
- 	                gmOffsetNextA = calIdx * blockSize + params.layoutA.GetOffset(offsetNextA);
- 	            }
- 	 
- 	            blockMmad(gmAIn[gmOffsetA], params.layoutPeerMem, gmB[gmOffsetB], params.layoutB, gmDst[gmOffsetC],
- 	                    params.layoutC, gmAInNext[gmOffsetNextA], gmB[gmOffsetNextB], blockSizeCoord,
-                        nextBlockSizeCoord, isFirstBlock, hasNextBlock);
+                if (nextDstBlockIdx == params.rankIdx) { // 从gmA里面取
+                    gmAInNext = gmA;
+                    gmOffsetNextA = calIdx * blockSize + params.layoutA.GetOffset(offsetNextA);
+                }
+
+                blockMmad(gmAIn[gmOffsetA], params.layoutPeerMem, gmB[gmOffsetB], params.layoutB, gmDst[gmOffsetC],
+                          params.layoutC, gmAInNext[gmOffsetNextA], gmB[gmOffsetNextB], blockSizeCoord,
+                          nextBlockSizeCoord, isFirstBlock, hasNextBlock);
             }
             FFTSCrossCoreSync<PIPE_FIX, 2>(flagIdx);
         }
     }
 
-    template <> CATLASS_DEVICE void operator()<AscendC::AIC>(Params const &params)
+    template <>
+    CATLASS_DEVICE void operator()<AscendC::AIC>(Params const &params)
     {
         Catlass::Arch::CrossCoreWaitFlag(flagAivFinishPadding);
 

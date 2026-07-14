@@ -18,13 +18,13 @@
 - **接口功能**：
 
     `aclnnAllGatherMatmulV2`接口是对`aclnnAllGatherMatmul`接口的功能拓展，在支持x1和x2输入类型为FLOAT16/BFLOAT16的基础上，新增功能如下：
-    
+
     - <term>Ascend 950PR/Ascend 950DT</term>：
-        
+
         新增了对低精度数据类型FLOAT8_E4M3FN/FLOAT8_E5M2/HIFLOAT8的支持。支持pertensor、perblock、mx[量化方式](../../../docs/zh/context/量化介绍.md)。
-    
+
     - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
-        
+
         新增了对低精度数据类型INT8/INT4的支持。支持pertoken/perchannel[量化方式](../../../docs/zh/context/量化介绍.md)。
 
 - **计算公式**：
@@ -75,31 +75,31 @@
 
 ```cpp
 aclnnStatus aclnnAllGatherMatmulV2GetWorkspaceSize(
-    const aclTensor* x1, 
-    const aclTensor* x2, 
-    const aclTensor* bias, 
-    const aclTensor* x1Scale, 
-    const aclTensor* x2Scale, 
-    const aclTensor* quantScale, 
-    int64_t          blockSize, 
-    const char*      group, 
-    int64_t          gatherIndex, 
-    int64_t          commTurn, 
-    int64_t          streamMode, 
-    int64_t          groupSize, 
-    const char*      commMode, 
-    aclTensor*       output, 
-    aclTensor*       gatherOut, 
-    aclTensor*       amaxOut, 
-    uint64_t*        workspaceSize, 
+    const aclTensor* x1,
+    const aclTensor* x2,
+    const aclTensor* bias,
+    const aclTensor* x1Scale,
+    const aclTensor* x2Scale,
+    const aclTensor* quantScale,
+    int64_t          blockSize,
+    const char*      group,
+    int64_t          gatherIndex,
+    int64_t          commTurn,
+    int64_t          streamMode,
+    int64_t          groupSize,
+    const char*      commMode,
+    aclTensor*       output,
+    aclTensor*       gatherOut,
+    aclTensor*       amaxOut,
+    uint64_t*        workspaceSize,
     aclOpExecutor**  executor)
 ```
 
 ```cpp
 aclnnStatus aclnnAllGatherMatmulV2(
-    void*          workspace, 
-    uint64_t       workspaceSize, 
-    aclOpExecutor* executor, 
+    void*          workspace,
+    uint64_t       workspaceSize,
+    aclOpExecutor* executor,
     aclrtStream    stream)
 ```
 

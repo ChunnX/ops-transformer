@@ -38,30 +38,30 @@ struct HcclA2avTilingInfo {
 
 struct TaskTilingInfo {
     // Tensor维度参数（对应aclnn接口的输入输出shape）
-    uint64_t BSK;           // 参考各个算子aclnn接口
-    uint64_t BS;            // mmXOptional的第一维: (BS, H)，batch*seq
-    uint64_t H1;            // gmmX和gmmWeight的隐藏层维度H
-    uint64_t H2;            // mmWeightOptional的隐藏层维度H
-    uint64_t A;             // 参考各个算子aclnn接口
-    uint64_t N1;            // gmmWeight/gmmY的输出维度N1
-    uint64_t N2;            // mmWeightOptional/mmYOptional的输出维度N2
-    
+    uint64_t BSK; // 参考各个算子aclnn接口
+    uint64_t BS;  // mmXOptional的第一维: (BS, H)，batch*seq
+    uint64_t H1;  // gmmX和gmmWeight的隐藏层维度H
+    uint64_t H2;  // mmWeightOptional的隐藏层维度H
+    uint64_t A;   // 参考各个算子aclnn接口
+    uint64_t N1;  // gmmWeight/gmmY的输出维度N1
+    uint64_t N2;  // mmWeightOptional/mmYOptional的输出维度N2
+
     // Expert并行参数
-    uint64_t epWorldSize;   // expert parallel world size (EP并行域大小)
-    uint64_t e;             // 单卡上的专家数量
-    
+    uint64_t epWorldSize; // expert parallel world size (EP并行域大小)
+    uint64_t e;           // 单卡上的专家数量
+
     // 平台信息
-    uint64_t ubSize;        // UB大小
+    uint64_t ubSize; // UB大小
 
     // 循环调度参数
-    uint32_t mainLoopExpertNum;  // 主循环每次处理的expert数量
-    uint32_t tailLoopExpertNum;  // 尾循环处理的expert数量
-    uint32_t totalLoopCount;     // 总循环次数
-    
+    uint32_t mainLoopExpertNum; // 主循环每次处理的expert数量
+    uint32_t tailLoopExpertNum; // 尾循环处理的expert数量
+    uint32_t totalLoopCount;    // 总循环次数
+
     // 通信参数（对应sendCounts和recvCounts）
-    int32_t sendCnt[MAX_EXPERT_SIZE];  // 每个expert的发送计数
-    int32_t recvCnt[MAX_EXPERT_SIZE];  // 每个expert的接收计数
+    int32_t sendCnt[MAX_EXPERT_SIZE]; // 每个expert的发送计数
+    int32_t recvCnt[MAX_EXPERT_SIZE]; // 每个expert的接收计数
 };
 
-}
+} // namespace MC2KernelTemplate
 #endif // A2AV_COMMON_H
