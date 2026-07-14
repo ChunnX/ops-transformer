@@ -247,7 +247,6 @@ ge::graphStatus MhcPreMembaseTiling::CalcMKSplitCoreMembasePart2Tiling()
     tilingData_.set_d(d_);
     tilingData_.set_hcMultAlign(hcMultAlign_);
     tilingData_.set_rowOfFormerBlock(rowOfFormerBlock_);
-    tilingData_.set_rowOfTailBlock(rowOfTailBlock_);
     tilingData_.set_rowLoopOfFormerBlock(rowLoopOfFormerBlock_);
     tilingData_.set_rowLoopOfTailBlock(rowLoopOfTailBlock_);
     tilingData_.set_stage2RowFactor(rowFactor_);
@@ -257,7 +256,6 @@ ge::graphStatus MhcPreMembaseTiling::CalcMKSplitCoreMembasePart2Tiling()
     tilingData_.set_dLoop(dLoop_);
     tilingData_.set_dFactor(dFactor_);
     tilingData_.set_tailDFactor(tailDFactor_);
-    tilingData_.set_iterTimes(iterTimes_);
     tilingData_.set_hcEps(hcEps_);
     tilingData_.set_normEps(normEps_);
     tilingData_.set_needGrad(needGrad_ ? 1 : 0);
@@ -268,20 +266,13 @@ ge::graphStatus MhcPreMembaseTiling::CalcMKSplitCoreMembasePart2Tiling()
 ge::graphStatus MhcPreMembaseTiling::CalcBsSplit()
 {
     tailBs_ = bs_;
-    curBsSplit_ = bs_;
     if (bs_ > BS_SPLIT_THRESHOLD) {
-        bsLoop_ = CeilDiv(bs_, BS_SPLIT_THRESHOLD);
         tailBs_ = bs_ % BS_SPLIT_THRESHOLD;
         if (tailBs_ == 0) {
             tailBs_ = BS_SPLIT_THRESHOLD;
         }
-        curBsSplit_ = BS_SPLIT_THRESHOLD;
     }
-    tilingData_.set_bsSplitThreshold(BS_SPLIT_THRESHOLD);
-    tilingData_.set_bsLoop(bsLoop_);
-    tilingData_.set_tailBs(tailBs_);
-    tilingData_.set_curBsSplit(curBsSplit_);
-    
+
     return ge::GRAPH_SUCCESS;
 }
 
@@ -289,7 +280,6 @@ ge::graphStatus MhcPreMembaseTiling::CalcTailBsTiling()
 {
     if (tailBs_ == BS_SPLIT_THRESHOLD || tailBs_ == bs_) {
         tilingData_.set_tailBsRowOfFormerBlock(tilingData_.get_rowOfFormerBlock());
-        tilingData_.set_tailBsRowOfTailBlock(tilingData_.get_rowOfTailBlock());
         tilingData_.set_tailBsRowLoopOfFormerBlock(tilingData_.get_rowLoopOfFormerBlock());
         tilingData_.set_tailBsRowLoopOfTailBlock(tilingData_.get_rowLoopOfTailBlock());
         tilingData_.set_tailBsUsedCoreNum(tilingData_.get_secondUsedCoreNum());
@@ -297,20 +287,14 @@ ge::graphStatus MhcPreMembaseTiling::CalcTailBsTiling()
         tilingData_.set_tailBsTailRowFactorOfFormerBlock(tilingData_.get_tailRowFactorOfFormerBlock());
         tilingData_.set_tailBsTailRowFactorOfTailBlock(tilingData_.get_tailRowFactorOfTailBlock());
         tilingData_.set_tailBsML1Size(tilingData_.get_mL1Size());
-        tilingData_.set_tailBsKL1Size(tilingData_.get_kL1Size());
-        tilingData_.set_tailBsMultCoreSplitMSize(tilingData_.get_multCoreSplitMSize());
-        tilingData_.set_tailBsCubeBlockDimM(tilingData_.get_cubeBlockDimM());
         return ge::GRAPH_SUCCESS;
     }
     
     uint64_t tailMDimNum = std::min(aicCoreNum_, static_cast<uint64_t>(CeilDiv(tailBs_, M_L1_MAX_SIZE)));
     uint64_t tailSingleCoreM = RoundUp(CeilDiv(tailBs_, tailMDimNum), AscendC::BLOCK_CUBE);
     
-    tailBsCubeBlockDimM_ = static_cast<int64_t>(tailMDimNum);
-    tailBsMultCoreSplitMSize_ = static_cast<int64_t>(tailSingleCoreM);
     tailBsML1Size_ = std::min(M_L1_MAX_SIZE, tailSingleCoreM);
-    tailBsKL1Size_ = std::min(A_L1_SIZE / tailSingleCoreM, static_cast<uint64_t>(K_L1_MAX_SIZE)) / 128 * 128;
-    
+
     tailBsRowOfFormerBlock_ = CeilDiv(tailBs_, static_cast<int64_t>(aivCoreNum_));
     tailBsUsedCoreNum_ = std::min(CeilDiv(tailBs_, tailBsRowOfFormerBlock_), static_cast<int64_t>(aivCoreNum_));
     tailBsRowOfTailBlock_ = tailBs_ - (tailBsUsedCoreNum_ - 1) * tailBsRowOfFormerBlock_;
@@ -326,7 +310,6 @@ ge::graphStatus MhcPreMembaseTiling::CalcTailBsTiling()
                                        tailBsRowFactor_ : tailBsRowOfTailBlock_ % tailBsRowFactor_;
     
     tilingData_.set_tailBsRowOfFormerBlock(tailBsRowOfFormerBlock_);
-    tilingData_.set_tailBsRowOfTailBlock(tailBsRowOfTailBlock_);
     tilingData_.set_tailBsRowLoopOfFormerBlock(tailBsRowLoopOfFormerBlock_);
     tilingData_.set_tailBsRowLoopOfTailBlock(tailBsRowLoopOfTailBlock_);
     tilingData_.set_tailBsUsedCoreNum(tailBsUsedCoreNum_);
@@ -334,9 +317,6 @@ ge::graphStatus MhcPreMembaseTiling::CalcTailBsTiling()
     tilingData_.set_tailBsTailRowFactorOfFormerBlock(tailBsTailRowFactorOfFormerBlock_);
     tilingData_.set_tailBsTailRowFactorOfTailBlock(tailBsTailRowFactorOfTailBlock_);
     tilingData_.set_tailBsML1Size(tailBsML1Size_);
-    tilingData_.set_tailBsKL1Size(tailBsKL1Size_);
-    tilingData_.set_tailBsMultCoreSplitMSize(tailBsMultCoreSplitMSize_);
-    tilingData_.set_tailBsCubeBlockDimM(tailBsCubeBlockDimM_);
     
     return ge::GRAPH_SUCCESS;
 }
@@ -347,7 +327,6 @@ ge::graphStatus MhcPreMembaseTiling::CalcOpTiling()
         return ge::GRAPH_FAILED;
     }
     uint64_t kSize = hcMult_ * d_;
-    tilingData_.set_k(kSize);
     // 切K计算stage1
     uint64_t mDimNum = std::min(aicCoreNum_, static_cast<uint64_t>(CeilDiv(bs_, M_L1_MAX_SIZE)));
     uint64_t singleCoreM = RoundUp(CeilDiv(bs_, mDimNum), AscendC::BLOCK_CUBE);
@@ -355,19 +334,12 @@ ge::graphStatus MhcPreMembaseTiling::CalcOpTiling()
     uint64_t kDimNum = aicCoreNum_ / mDimNum;
     uint64_t splitKSize = RoundUp(CeilDiv(kSize, kDimNum), K_MULIT_CORE_SPLIT_BASE_SIZE);
     
-    tilingData_.set_cubeBlockDimM(mDimNum);
     tilingData_.set_cubeBlockDimK(CeilDiv(kSize, splitKSize));
-    tilingData_.set_multCoreSplitMSize(singleCoreM);
     tilingData_.set_mL1Size(std::min(M_L1_MAX_SIZE, singleCoreM));
-    tilingData_.set_multCoreSplitKSize(splitKSize);
-    tilingData_.set_kL1Size(std::min(A_L1_SIZE / singleCoreM, static_cast<uint64_t>(K_L1_MAX_SIZE)) / 128 * 128);
     
     tilingData_.set_cvLoopKSize(1024);
 
     tilingData_.set_cubeCoreNum(static_cast<int64_t>(aicCoreNum_));
-    int64_t lineByteSize = (sizeof(int16_t) + sizeof(int32_t)) * DOUBLE_BUFFER * tilingData_.get_cvLoopKSize();
-    int64_t stage1MFactorValue = ubSize_ / lineByteSize;
-    tilingData_.set_stage1MFactor(stage1MFactorValue);
     return CalcMKSplitCoreMembasePart2Tiling();
 }
 
@@ -409,58 +381,23 @@ static void PrintTilingData(const gert::TilingContext* context, MhcPreMembaseTil
     OP_LOGD(context->GetNodeName(), "MhcPre_tiling: d is %ld.", tiling.get_d());
     OP_LOGD(context->GetNodeName(), "MhcPre_tiling: hcMultAlign is %ld.", tiling.get_hcMultAlign());
     OP_LOGD(context->GetNodeName(), "MhcPre_tiling: rowOfFormerBlock is %ld.", tiling.get_rowOfFormerBlock());
-    OP_LOGD(context->GetNodeName(), "MhcPre_tiling: rowOfTailBlock is %ld.", tiling.get_rowOfTailBlock());
     OP_LOGD(context->GetNodeName(), "MhcPre_tiling: rowLoopOfFormerBlock is %ld.", tiling.get_rowLoopOfFormerBlock());
     OP_LOGD(context->GetNodeName(), "MhcPre_tiling: rowLoopOfTailBlock is %ld.", tiling.get_rowLoopOfTailBlock());
-    OP_LOGD(context->GetNodeName(), "MhcPre_tiling: rowFactor is %ld.", tiling.get_rowFactor());
     OP_LOGD(context->GetNodeName(), "MhcPre_tiling: tailRowFactorOfFormerBlock is %ld.", tiling.get_tailRowFactorOfFormerBlock());
     OP_LOGD(context->GetNodeName(), "MhcPre_tiling: tailRowFactorOfTailBlock is %ld.", tiling.get_tailRowFactorOfTailBlock());
     OP_LOGD(context->GetNodeName(), "MhcPre_tiling: dLoop is %ld.", tiling.get_dLoop());
     OP_LOGD(context->GetNodeName(), "MhcPre_tiling: dFactor is %ld.", tiling.get_dFactor());
     OP_LOGD(context->GetNodeName(), "MhcPre_tiling: tailDFactor is %ld.", tiling.get_tailDFactor());
-    OP_LOGD(context->GetNodeName(), "MhcPre_tiling: iterTimes is %ld.", tiling.get_iterTimes());
     OP_LOGD(context->GetNodeName(), "MhcPre_tiling: hcEps is %f.", tiling.get_hcEps());
     OP_LOGD(context->GetNodeName(), "MhcPre_tiling: normEps is %f.", tiling.get_normEps());
-    OP_LOGD(context->GetNodeName(), "MhcPre_tiling: kBlockFactor is %ld.", tiling.get_kBlockFactor());
-    OP_LOGD(context->GetNodeName(), "MhcPre_tiling: kFactor is %ld.", tiling.get_kFactor());
-    OP_LOGD(context->GetNodeName(), "MhcPre_tiling: tailKFactor is %ld.", tiling.get_tailKFactor());
-    OP_LOGD(context->GetNodeName(), "MhcPre_tiling: kLoop is %ld.", tiling.get_kLoop());
     OP_LOGD(context->GetNodeName(), "MhcPre_tiling: stage2RowFactor is %ld.", tiling.get_stage2RowFactor());
-    OP_LOGD(context->GetNodeName(), "MhcPre_tiling: k is %ld.", tiling.get_k());
-    OP_LOGD(context->GetNodeName(), "MhcPre_tiling: kLoopOfFormerBlock is %ld.", tiling.get_kLoopOfFormerBlock());
-    OP_LOGD(context->GetNodeName(), "MhcPre_tiling: kLoopOfTailBlock is %ld.", tiling.get_kLoopOfTailBlock());
-    OP_LOGD(context->GetNodeName(), "MhcPre_tiling: stage1KFactor is %ld.", tiling.get_stage1KFactor());
-    OP_LOGD(context->GetNodeName(), "MhcPre_tiling: kFactorOfFormerBlock is %ld.", tiling.get_kFactorOfFormerBlock());
-    OP_LOGD(context->GetNodeName(), "MhcPre_tiling: kL1Size is %ld.", tiling.get_kL1Size());
     OP_LOGD(context->GetNodeName(), "MhcPre_tiling: mL1Size is %ld.", tiling.get_mL1Size());
-    OP_LOGD(context->GetNodeName(), "MhcPre_tiling: cubeBlockDimM is %ld.", tiling.get_cubeBlockDimM());
     OP_LOGD(context->GetNodeName(), "MhcPre_tiling: cubeBlockDimK is %ld.", tiling.get_cubeBlockDimK());
-    OP_LOGD(context->GetNodeName(), "MhcPre_tiling: kUbSize is %ld.", tiling.get_kUbSize());
     OP_LOGD(context->GetNodeName(), "MhcPre_tiling: cvLoopKSize is %ld.", tiling.get_cvLoopKSize());
-    OP_LOGD(context->GetNodeName(), "MhcPre_tiling: multCoreSplitKSize is %ld.", tiling.get_multCoreSplitKSize());
-    OP_LOGD(context->GetNodeName(), "MhcPre_tiling: multCoreSplitMSize is %ld.", tiling.get_multCoreSplitMSize());
-    OP_LOGD(context->GetNodeName(), "MhcPre_tiling: tailKSizeOfFormerBlock is %ld.", tiling.get_tailKSizeOfFormerBlock());
-    OP_LOGD(context->GetNodeName(), "MhcPre_tiling: tailKSizeOfTailBlock is %ld.", tiling.get_tailKSizeOfTailBlock());
-    OP_LOGD(context->GetNodeName(), "MhcPre_tiling: mLoopOfFormerBlock is %ld.", tiling.get_mLoopOfFormerBlock());
-    OP_LOGD(context->GetNodeName(), "MhcPre_tiling: mLoopOfTailBlock is %ld.", tiling.get_mLoopOfTailBlock());
-    OP_LOGD(context->GetNodeName(), "MhcPre_tiling: formerMSize is %ld.", tiling.get_formerMSize());
-    OP_LOGD(context->GetNodeName(), "MhcPre_tiling: tailMSizeOfFormerBlock is %ld.", tiling.get_tailMSizeOfFormerBlock());
-    OP_LOGD(context->GetNodeName(), "MhcPre_tiling: tailMSizeOfTailBlock is %ld.", tiling.get_tailMSizeOfTailBlock());
-    OP_LOGD(context->GetNodeName(), "MhcPre_tiling: firstUsedCoreNum is %ld.", tiling.get_firstUsedCoreNum());
     OP_LOGD(context->GetNodeName(), "MhcPre_tiling: secondUsedCoreNum is %ld.", tiling.get_secondUsedCoreNum());
-    OP_LOGD(context->GetNodeName(), "MhcPre_tiling: rowInnerFactor is %ld.", tiling.get_rowInnerFactor());
     OP_LOGD(context->GetNodeName(), "MhcPre_tiling: cubeCoreNum is %ld.", tiling.get_cubeCoreNum());
-    OP_LOGD(context->GetNodeName(), "MhcPre_tiling: stage1MFactor is %ld.", tiling.get_stage1MFactor());
-    OP_LOGD(context->GetNodeName(), "MhcPre_tiling: bufferPool0Size is %ld.", tiling.get_bufferPool0Size());
-    OP_LOGD(context->GetNodeName(), "MhcPre_tiling: bufferPool1Size is %ld.", tiling.get_bufferPool1Size());
-    OP_LOGD(context->GetNodeName(), "MhcPre_tiling: mUbSize is %ld.", tiling.get_mUbSize());
     OP_LOGD(context->GetNodeName(), "MhcPre_tiling: needGrad is %ld.", tiling.get_needGrad());
-    OP_LOGD(context->GetNodeName(), "MhcPre_tiling: bsLoop is %ld.", tiling.get_bsLoop());
-    OP_LOGD(context->GetNodeName(), "MhcPre_tiling: tailBs is %ld.", tiling.get_tailBs());
-    OP_LOGD(context->GetNodeName(), "MhcPre_tiling: bsSplitThreshold is %ld.", tiling.get_bsSplitThreshold());
-    OP_LOGD(context->GetNodeName(), "MhcPre_tiling: curBsSplit is %ld.", tiling.get_curBsSplit());
     OP_LOGD(context->GetNodeName(), "MhcPre_tiling: tailBsRowOfFormerBlock is %ld.", tiling.get_tailBsRowOfFormerBlock());
-    OP_LOGD(context->GetNodeName(), "MhcPre_tiling: tailBsRowOfTailBlock is %ld.", tiling.get_tailBsRowOfTailBlock());
     OP_LOGD(context->GetNodeName(), "MhcPre_tiling: tailBsRowLoopOfFormerBlock is %ld.", tiling.get_tailBsRowLoopOfFormerBlock());
     OP_LOGD(context->GetNodeName(), "MhcPre_tiling: tailBsRowLoopOfTailBlock is %ld.", tiling.get_tailBsRowLoopOfTailBlock());
     OP_LOGD(context->GetNodeName(), "MhcPre_tiling: tailBsUsedCoreNum is %ld.", tiling.get_tailBsUsedCoreNum());
@@ -468,14 +405,8 @@ static void PrintTilingData(const gert::TilingContext* context, MhcPreMembaseTil
     OP_LOGD(context->GetNodeName(), "MhcPre_tiling: tailBsTailRowFactorOfFormerBlock is %ld.", tiling.get_tailBsTailRowFactorOfFormerBlock());
     OP_LOGD(context->GetNodeName(), "MhcPre_tiling: tailBsTailRowFactorOfTailBlock is %ld.", tiling.get_tailBsTailRowFactorOfTailBlock());
     OP_LOGD(context->GetNodeName(), "MhcPre_tiling: tailBsML1Size is %ld.", tiling.get_tailBsML1Size());
-    OP_LOGD(context->GetNodeName(), "MhcPre_tiling: tailBsKL1Size is %ld.", tiling.get_tailBsKL1Size());
-    OP_LOGD(context->GetNodeName(), "MhcPre_tiling: tailBsMultCoreSplitMSize is %ld.", tiling.get_tailBsMultCoreSplitMSize());
-    OP_LOGD(context->GetNodeName(), "MhcPre_tiling: tailBsCubeBlockDimM is %ld.", tiling.get_tailBsCubeBlockDimM());
     OP_LOGD(context->GetNodeName(), "MhcPre_tiling: stage1VecCoreNum is %ld.", tiling.get_stage1VecCoreNum());
     OP_LOGD(context->GetNodeName(), "MhcPre_tiling: stage1CubeCoreNum is %ld.", tiling.get_stage1CubeCoreNum());
-    OP_LOGD(context->GetNodeName(), "MhcPre_tiling: stage1BsPerVecCore is %ld.", tiling.get_stage1BsPerVecCore());
-    OP_LOGD(context->GetNodeName(), "MhcPre_tiling: stage1TailBsPerVecCore is %ld.", tiling.get_stage1TailBsPerVecCore());
-    OP_LOGD(context->GetNodeName(), "MhcPre_tiling: stage1BsLoop is %ld.", tiling.get_stage1BsLoop());
     OP_LOGD(context->GetNodeName(), "MhcPre_tiling: stage1BsFactor is %ld.", tiling.get_stage1BsFactor());
     OP_LOGD(context->GetNodeName(), "MhcPre_tiling: stage1NcLoop is %ld.", tiling.get_stage1NcLoop());
     OP_LOGD(context->GetNodeName(), "MhcPre_tiling: stage1NcFactor is %ld.", tiling.get_stage1NcFactor());
@@ -491,22 +422,9 @@ ge::graphStatus MhcPreMembaseTiling::CalcStage1Tiling()
     
     tilingData_.set_stage1VecCoreNum(vecCoreNum);
     tilingData_.set_stage1CubeCoreNum(cubeCoreNum);
-    
-    // 2. 计算 BS 分核
-    int64_t bsPerVecCore = CeilDiv(bs_, vecCoreNum);
-    int64_t tailBsPerVecCore = bs_ - (vecCoreNum - 1) * bsPerVecCore;
-    if (tailBsPerVecCore <= 0) {
-        tailBsPerVecCore = bsPerVecCore;
-    }
-    
-    tilingData_.set_stage1BsPerVecCore(bsPerVecCore);
-    tilingData_.set_stage1TailBsPerVecCore(tailBsPerVecCore);
-    
-    // 3. 计算 BS 循环（每轮最多 32 个 BS）
-    int64_t bsLoop = CeilDiv(bsPerVecCore, MAX_BS_PER_LOOP);
+
     int64_t bsFactor = MAX_BS_PER_LOOP;
-    
-    tilingData_.set_stage1BsLoop(bsLoop);
+
     tilingData_.set_stage1BsFactor(bsFactor);
     
     // 4. 计算 ReduceSum 切分（每次最多 256 个元素）
