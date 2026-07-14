@@ -893,8 +893,8 @@ def _call_npu_fa_op(q, k, v, mask, q_lengths, kv_lengths, cu_seqlens_q, cu_seqle
 
 def _build_causal_mask():
     if MASK_MODE == 0:
-        return torch.empty((0,), dtype=torch.bool).npu()
-    return torch.triu(torch.ones(2048, 2048, dtype=torch.bool), diagonal=1).npu()
+        return torch.empty((0,), dtype=torch.uint8).npu()
+    return torch.triu(torch.ones(2048, 2048, dtype=torch.uint8), diagonal=1).npu()
 
 
 def npu_mxfp8_fa(q_fp8, k_fp8, v_fp8,
