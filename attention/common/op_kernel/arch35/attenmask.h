@@ -554,6 +554,12 @@ __aicore__ inline void AttenMaskCopyIn(TQue<QuePosition::VECIN, 1> &attenMaskInQ
     if constexpr (hasAtten == true) {
         LocalTensor<uint8_t> attenMaskUb = attenMaskInQue.template AllocTensor<uint8_t>();
         int64_t maskOffset = ComputeAttenMaskOffset<hasAtten, enableKVPrefix, isFd>(runInfo, constInfo, attenMaskInfo);
+        if constexpr (enableKVPrefix) {
+            PRINTF("[COPYIN-offset] s2L=%lld maskOff=%lld preOff=%lld computeMode=%d compressMode=%d s2R=%lld hS1R=%lld maskS2Size=%d\n",
+                   (long long)runInfo.s2LoopCount, (long long)maskOffset, (long long)attenMaskInfo.attenMaskOffsetPre,
+                   (int)attenMaskInfo.computeMode, (int)attenMaskInfo.compressMode,
+                   (long long)runInfo.s2RealSize, (long long)runInfo.halfS1RealSize, (int)attenMaskInfo.attenMaskS2Size);
+        }
         if (attenMaskInfo.compressMode == static_cast<uint8_t>(AttenMaskCompressMode::PREFIX_MODE)) {
             if (attenMaskInfo.computeMode == AttenMaskComputeMode::NO_NEED_COMPUTE_MODE) {
                 maskOffset = 4194304; // 2048*2048

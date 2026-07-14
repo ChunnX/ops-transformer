@@ -917,12 +917,21 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1Nd(
 
     LocalTensor<uint8_t> attenMaskUb;
     if constexpr (hasAtten == true) {
+        if (enableKVPrefix && runInfo.s2LoopCount < 8) { PRINTF("[MASK-entry] s2L=%lld s2S=%lld s2R=%lld hS1R=%lld gS1M=%d isGqa=%d isMla=%d compM=%d preT=%lld nextT=%lld s1oIdx=%lld actS1=%lld actS2=%lld prefSz=%lld pLC=%lld\n",
+            (long long)runInfo.s2LoopCount, (long long)runInfo.s2StartIdx, (long long)runInfo.s2RealSize,
+            (long long)runInfo.halfS1RealSize, (int)constInfo.isPfaGS1Merge, (int)isGqaNoQuant,
+            (int)(isMlaFullQuant || isMlaNoQuant), (int)attenMaskInfoPtr->compressMode,
+            (long long)attenMaskInfoPtr->preTokens, (long long)attenMaskInfoPtr->nextTokens,
+            (long long)runInfo.s1oIdx, (long long)runInfo.actualS1Size, (long long)runInfo.actualS2Size,
+            (long long)constInfo.actualKVPrefixSize, (long long)constInfo.prefixLoopCount); }
         if constexpr (isMlaFullQuant || isMlaNoQuant) {
             this->MlaAttenMaskCopyIn(this->attenMaskInQue[runInfo.taskIdMod2], this->attenMaskInQue[1 - runInfo.taskIdMod2],
                 this->attenMaskGmInt, runInfo, constInfo, *attenMaskInfoPtr);
             attenMaskUb = this->attenMaskInQue[runInfo.taskIdMod2].template DeQue<uint8_t>();
         } else if constexpr (isGqaNoQuant) {
             if (constInfo.isPfaGS1Merge) {
+                if (enableKVPrefix && runInfo.s2LoopCount < 8) { PRINTF("[MASK-gs1merge] s2L=%lld isPref=%d\n",
+                    (long long)runInfo.s2LoopCount, (int)((runInfo.s2StartIdx + runInfo.s2LoopCount * s2BaseSize) < constInfo.actualKVPrefixSize)); }
                 MaskInfo maskInfo;
                 maskInfo.gs1StartIdx = runInfo.gS1Idx + constInfo.subBlockIdx * runInfo.firstHalfS1RealSize;
                 if constexpr (layout == LayOutTypeEnum::LAYOUT_TND ||
@@ -972,6 +981,8 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1Nd(
                 }
                 this->attenMaskInQue[runInfo.taskIdMod2].template EnQue(attenMaskUb);
                 this->attenMaskInQue[runInfo.taskIdMod2].template DeQue<uint8_t>();
+                if (enableKVPrefix && runInfo.s2LoopCount < 8) { PRINTF("[MASK-gs1-post] s2L=%lld isPref=%d mask[0]=%x mask[1]=%x\n",
+                    (long long)runInfo.s2LoopCount, (int)isPrefixMaskBlock, (int)attenMaskUb.GetValue(0), (int)attenMaskUb.GetValue(1)); }
                 if (attenMaskInfoPtr->compressMode == static_cast<uint8_t>(AttenMaskCompressMode::BAND_MODE)) {
                     LocalTensor<uint8_t> preAttenMaskUb;
                     preAttenMaskUb = this->attenMaskInQue[1 - runInfo.taskIdMod2].template AllocTensor<uint8_t>();
@@ -991,6 +1002,8 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1Nd(
                     this->attenMaskInQue[runInfo.taskIdMod2].template DeQue<uint8_t>();
                 }
             } else {
+                if (enableKVPrefix && runInfo.s2LoopCount < 8) { PRINTF("[MASK-gqa-nonmerge] s2L=%lld isPref=%d\n",
+                    (long long)runInfo.s2LoopCount, (int)((runInfo.s2LoopCount + runInfo.s2StartIdx / s2BaseSize) < constInfo.prefixLoopCount)); }
                 bool isPrefixMaskBlockGqa = false;
                 if constexpr (enableKVPrefix) {
                     isPrefixMaskBlockGqa = (runInfo.s2LoopCount + runInfo.s2StartIdx / s2BaseSize) < constInfo.prefixLoopCount;
@@ -1002,10 +1015,12 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1Nd(
                     }
                     this->attenMaskInQue[runInfo.taskIdMod2].template EnQue(attenMaskUb);
                     this->attenMaskInQue[runInfo.taskIdMod2].template DeQue<uint8_t>();
+                    if (enableKVPrefix && runInfo.s2LoopCount < 8) { PRINTF("[MASK-gqa-pref] s2L=%lld fill=0xFF mask[0]=%x\n", (long long)runInfo.s2LoopCount, (int)attenMaskUb.GetValue(0)); }
                 } else {
                     AttenMaskCopyIn<hasAtten, isFd, enableKVPrefix>(this->attenMaskInQue[runInfo.taskIdMod2], this->attenMaskInQue[1 - runInfo.taskIdMod2],
                         this->attenMaskGmInt, runInfo, constInfo, *attenMaskInfoPtr);
                     attenMaskUb = this->attenMaskInQue[runInfo.taskIdMod2].template DeQue<uint8_t>();
+                    if (enableKVPrefix && runInfo.s2LoopCount < 8) { PRINTF("[MASK-gqa-nonpref] s2L=%lld mask[0]=%x mask[1]=%x\n", (long long)runInfo.s2LoopCount, (int)attenMaskUb.GetValue(0), (int)attenMaskUb.GetValue(1)); }
                 }
             }
         } else {
@@ -1088,7 +1103,7 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1Nd(
 
     LocalTensor<T> mmRes = bmm1ResBuf.template GetTensor<T>();
     
-    if (enableKVPrefix && runInfo.s2LoopCount < 8) { PRINTF("[VEC-Nd-info] s2L=%lld s2LL=%lld s2S=%lld s2E=%lld prefSz=%lld pLC=%lld isPref=%lld\n", (long long)runInfo.s2LoopCount, (long long)runInfo.s2LoopLimit, (long long)runInfo.s2StartIdx, (long long)runInfo.s2EndIdx, (long long)constInfo.actualKVPrefixSize, (long long)constInfo.prefixLoopCount, (long long)((runInfo.s2LoopCount + runInfo.s2StartIdx / s2BaseSize) < constInfo.prefixLoopCount)); }
+    if (enableKVPrefix && runInfo.s2LoopCount < 8) { PRINTF("[VEC-Nd-info] s2L=%lld s2LL=%lld s2S=%lld s2E=%lld prefSz=%lld pLC=%lld isPref=%lld s1oIdx=%lld actS1=%lld actS2=%lld preT=%lld nextT=%lld compM=%d\n", (long long)runInfo.s2LoopCount, (long long)runInfo.s2LoopLimit, (long long)runInfo.s2StartIdx, (long long)runInfo.s2EndIdx, (long long)constInfo.actualKVPrefixSize, (long long)constInfo.prefixLoopCount, (long long)((runInfo.s2LoopCount + runInfo.s2StartIdx / s2BaseSize) < constInfo.prefixLoopCount), (long long)runInfo.s1oIdx, (long long)runInfo.actualS1Size, (long long)runInfo.actualS2Size, (long long)attenMaskInfoPtr->preTokens, (long long)attenMaskInfoPtr->nextTokens, (int)attenMaskInfoPtr->compressMode); }
     if (enableKVPrefix && runInfo.s2LoopCount < 8) {
     PRINTF("[VEC-Nd-allmax] mx0=%f mx1=%f mx2=%f mx3=%f sum0=%f",
            (float)maxUb.GetValue(0), (float)maxUb.GetValue(1),
@@ -1261,10 +1276,10 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1Nd(
     }
 
 if (enableKVPrefix && runInfo.s2LoopCount < 8) {
-    PRINTF("[VEC-Nd-post] mx0=%f sm0=%f mx1=%f sm1=%f maxPhy=%llx\n",
+    PRINTF("[VEC-Nd-post] s2L=%lld mx0=%f sm0=%f mx1=%f sm1=%f\n",
+           (long long)runInfo.s2LoopCount,
            (float)maxUb.GetValue(0), (float)sumUb.GetValue(0),
-           (float)maxUb.GetValue(1), (float)sumUb.GetValue(1),
-           (unsigned long long)maxUb.GetPhyAddr());
+           (float)maxUb.GetValue(1), (float)sumUb.GetValue(1));
 }
     bmm1ResBuf.SetCrossCore();
     if constexpr (hasAtten) {
