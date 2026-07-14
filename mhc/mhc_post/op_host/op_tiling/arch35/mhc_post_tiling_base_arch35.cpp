@@ -560,7 +560,7 @@ ge::graphStatus MhcPostTilingBaseArch35::PostTiling()
 uint64_t MhcPostTilingBaseArch35::GetTilingKey() const
 {
     OP_LOGI(context_, "Tiling: usePermanentX_=%u", usePermanentX_);
-    return GET_TPL_TILING_KEY(usePermanentX_, 0);
+    return GET_TPL_TILING_KEY(usePermanentX_, 0, 1);
 }
 
 REGISTER_TILING_TEMPLATE_WITH_ARCH(MhcPost, MhcPostTilingBaseArch35,
