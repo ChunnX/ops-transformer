@@ -129,9 +129,9 @@ public:
                                    constInfo.n2GD);
 
             LocalTensor<SCALE_T> qScaleTensor = qBuf.GetTensor<SCALE_T>(qScaleOffset);
-            CopyScaleToL1Dn2Nz<SCALE_T>(qScaleTensor, qScaleGm_[runInfo.queryScaleOffset],
-                                        constInfo.queryScaleDSize * constInfo.scaleLastDim, runInfo.actMSize,
-                                        constInfo.qScaleN1D);
+            MxCopyScaleToL1Dn2Nz<SCALE_T>(qScaleTensor, qScaleGm_[runInfo.queryScaleOffset],
+                                          constInfo.queryScaleDSize * constInfo.scaleLastDim, runInfo.actMSize,
+                                          constInfo.qScaleN1D);
             qBuf.Set<HardEvent::MTE2_MTE1>();
         } else {
             qBuf = l1QBuffers_.GetPre();
@@ -155,9 +155,9 @@ public:
 
         Buffer<BufferType::L0C> mm1ResL0C = mmL0CBuffers_.Get();
         mm1ResL0C.Wait<HardEvent::FIX_M>();
-        // MatmulFullMX 同时消费 fp8 data 与 e8m0 scale。
-        MMParam param = MakeMMParam(s2CalcSize, runInfo.actMSize, constInfo.dSize, false, true);
-        MatmulFullMX<INPUT_T, INPUT_T, MM_T, S2_SPLIT, M_BASE, D_BASE, ABLayout::MK, ABLayout::KN,
+        // MxMatmulFull 同时消费 fp8 data 与 e8m0 scale。
+        MMParam param = MxMakeMMParam(s2CalcSize, runInfo.actMSize, constInfo.dSize, false, true);
+        MxMatmulFull<INPUT_T, INPUT_T, MM_T, S2_SPLIT, M_BASE, D_BASE, ABLayout::MK, ABLayout::KN,
                      BuffersPolicyDB<BufferType::L0A>, BuffersPolicyDB<BufferType::L0B>, SCALE_T, SCALE_T,
                      mx_fp8_e4m3_t, mx_fp8_e4m3_t>(kTensor, qBuf.GetTensor<INPUT_T>(), mmL0ABuffers_,
                                                    mmL0BBuffers_, mm1ResL0C.GetTensor<MM_T>(), param,
@@ -217,10 +217,10 @@ public:
             vBuf.Set<HardEvent::MTE2_MTE1>();
             vBuf.Wait<HardEvent::MTE2_MTE1>();
 
-            MMParam param = MakeMMParam(M_BASE, constInfo.dSizeV, AlignUp64(realK), true, false, kIdx == 0U,
-                                        kIdx == 0U);
+            MMParam param = MxMakeMMParam(M_BASE, constInfo.dSizeV, AlignUp64(realK), true, false, kIdx == 0U,
+                                          kIdx == 0U);
             // P 转置，V 保持 KN。
-            MatmulFullMX<INPUT_T, INPUT_T, MM_T, M_BASE, DV_BASE, baseK, ABLayout::MK, ABLayout::KN,
+            MxMatmulFull<INPUT_T, INPUT_T, MM_T, M_BASE, DV_BASE, baseK, ABLayout::MK, ABLayout::KN,
                          BuffersPolicyDB<BufferType::L0A>, BuffersPolicyDB<BufferType::L0B>, SCALE_T, SCALE_T,
                          mx_fp8_e4m3_t, mx_fp8_e4m3_t>(pBuf.GetTensor<INPUT_T>()[kIdx * l1BaseKOffset], vTensor,
                                                        mmL0ABuffers_, mmL0BBuffers_, mm2ResL0C.GetTensor<MM_T>(),
@@ -317,7 +317,6 @@ private:
         // KScale 使用与 K 相同的拼接顺序。
         const uint32_t tileStart = subLoop * S2_SPLIT;
         const uint32_t tileEnd = tileStart + s2CalcSize;
-        constexpr uint32_t blockElementCnt = 32U / sizeof(SCALE_T);
         for (uint32_t i = 0U; i < runInfo.sparseBlockCount; ++i) {
             const uint32_t blockRealSize = runInfo.sparseBlockRealSize[i];
             const uint32_t blockStart = runInfo.sparseBlockTileOffset[i];
@@ -347,8 +346,8 @@ private:
             shape.copyRowNumAlign = AlignUp32(s2CalcSize);
             shape.pageStride = constInfo.kvSparseBlockSize * constInfo.kScaleN2D;
             shape.rowStride = constInfo.kScaleN2D;
-            LocalTensor<SCALE_T> keyScaleDstTensor = dstTensor[(overlapStart - tileStart) * blockElementCnt];
-            GmFlatScaleCopyInToL1PAForDN<SCALE_T>(keyScaleDstTensor, kScaleGm_, blockTableGm_, shape, startPos);
+            LocalTensor<SCALE_T> keyScaleDstTensor = dstTensor[(overlapStart - tileStart) * shape.actHeadDim];
+            MxGmFlatScaleCopyInToL1PAForDN<SCALE_T>(keyScaleDstTensor, kScaleGm_, blockTableGm_, shape, startPos);
         }
     }
 
@@ -437,7 +436,7 @@ private:
             shape.pageStride = scaleBlockSize * constInfo.valueScaleN2D;
             shape.rowStride = constInfo.valueScaleN2D;
             LocalTensor<SCALE_T> valueScaleDstTensor = dstTensor[copiedGroupCount * blockElementCnt];
-            GmFlatScaleCopyInToL1PAForND<SCALE_T>(valueScaleDstTensor, vScaleGm_, blockTableGm_, shape, startPos);
+            MxGmFlatScaleCopyInToL1PAForND<SCALE_T>(valueScaleDstTensor, vScaleGm_, blockTableGm_, shape, startPos);
             copiedGroupCount += copyGroupNum;
         }
     }
