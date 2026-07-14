@@ -175,7 +175,7 @@ public:
                                       GlobalTensor<bfloat16_t>attnInter)
     {
         // masked_qkt @ v_inner
-        sTP_->mm3->SetOrgShape(curChunkSize_, Dv_, chunkSize_, chunkSize_, Nv_ * Dv_);    // MNK
+        sTP_->mm3->SetOrgShape(curChunkSize_, Dv_, curChunkSize_, curChunkSize_, Nv_ * Dv_);    // MNK
         sTP_->mm3->SetSingleShape(curChunkSize_, Dv_, curChunkSize_); // SingleCoreMNK
         sTP_->mm3->SetTensorA(tmpGM);
         sTP_->mm3->SetTensorB(vInner);
