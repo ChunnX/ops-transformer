@@ -25,7 +25,7 @@ import sparse_flash_mla_golden
 import torch
 
 excel_path = os.getenv("SMLA_EXCEL_PATH", "./excel/example.xlsx")
-excel_sheet = os.getenv("SMLA_EXCEL_SHEET", "CSA")
+excel_sheet = os.getenv("SMLA_EXCEL_SHEET", "SCFA")
 ENABLED_PARAMS_FROM_FILE = utils.load_excel_test_cases(excel_path, excel_sheet)
 save_path = os.getenv("SMLA_PT_SAVE_PATH", "./data")
 
@@ -34,7 +34,7 @@ param_combinations = utils.generate_param_combinations(ENABLED_PARAMS_FROM_FILE,
 @pytest.mark.ci
 @pytest.mark.parametrize("param_combinations", param_combinations)
 def test_sparse_flash_mla(param_combinations):   # 初始化参数和tensor
-    test_data = utils.generate_case_with_default_param(param_combinations)
+    test_data = utils.fill_none_params(param_combinations)
     print("data parsed.", test_data)
     print("strat to generate data")
     # 生成测试数据
