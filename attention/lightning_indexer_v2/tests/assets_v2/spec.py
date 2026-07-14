@@ -21,7 +21,7 @@ inputs_module = load_impl_module("inputs")
 compare_module = load_impl_module("compare")
 
 
-class LightningIndexerV2MetadataInputSpec:
+class LightningIndexerV2Spec:
     golden = golden_module.cpu_lightning_indexer_v2
     customize_inputs = inputs_module.generate_li_v2_inputs
     tolerance = {
@@ -38,5 +38,5 @@ class LightningIndexerV2MetadataInputSpec:
 
 
 __spec__ = {
-    "li_v2_metadata_input_ttk_ops.lightning_indexer_v2": "LightningIndexerV2MetadataInputSpec",
+    "li_v2_ttk_ops.lightning_indexer_v2": "LightningIndexerV2Spec",
 }

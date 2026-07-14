@@ -70,7 +70,14 @@ def _case_params(q, ori_kv, cmp_kv, cmp_sparse_indices, layout_q, layout_kv, kwa
         block_num1, block_size1, kv_heads, _ = [int(x) for x in ori_kv.shape]
         kv_seq = max(_prefix_lengths(cu_ori) or seq_ori or [block_size1])
 
-    if cmp_kv is None:
+    metadata_cmp_topk = int(kwargs.get("metadata_cmp_topk") or 0)
+    if metadata_cmp_topk > 0:
+        mode = "CSA"
+        if layout_kv == "PA_BBND" and cmp_kv is not None:
+            block_num2, block_size2 = int(cmp_kv.shape[0]), int(cmp_kv.shape[1])
+        else:
+            block_num2, block_size2 = None, block_size1
+    elif cmp_kv is None:
         mode = "SWA"
         block_num2, block_size2 = 0, block_size1
     elif layout_kv == "PA_BBND":
@@ -94,7 +101,9 @@ def _case_params(q, ori_kv, cmp_kv, cmp_sparse_indices, layout_q, layout_kv, kwa
         "N1": q_heads,
         "N2": kv_heads,
         "D": head_dim,
-        "K": int(cmp_sparse_indices.shape[-1]) if cmp_sparse_indices is not None else 0,
+        "K": metadata_cmp_topk or (
+            int(cmp_sparse_indices.shape[-1]) if cmp_sparse_indices is not None else 0
+        ),
         "block_num1": block_num1,
         "block_num2": block_num2,
         "block_size1": block_size1,
@@ -108,6 +117,7 @@ def _case_params(q, ori_kv, cmp_kv, cmp_sparse_indices, layout_q, layout_kv, kwa
         "cmp_residual_kv": residual,
         "template_run_mode": mode,
         "cmp_ratio": 1 if mode == "SWA" else int(kwargs.get("cmp_ratio", 1)),
+        "cmp_mask_mode": 0 if mode == "SWA" else int(kwargs.get("cmp_mask_mode", 3)),
         "tile_size": 64,
         "actlen_mode": "full",
         "S1EQS2": False,

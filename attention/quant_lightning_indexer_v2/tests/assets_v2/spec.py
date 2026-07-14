@@ -21,7 +21,7 @@ inputs_module = load_impl_module("inputs")
 compare_module = load_impl_module("compare")
 
 
-class QuantLightningIndexerV2MetadataInputSpec:
+class QuantLightningIndexerV2Spec:
     golden = golden_module.cpu_quant_lightning_indexer_v2
     customize_inputs = inputs_module.generate_qli_v2_inputs
     tolerance = {
@@ -39,5 +39,5 @@ class QuantLightningIndexerV2MetadataInputSpec:
 
 
 __spec__ = {
-    "qli_v2_metadata_input_ttk_ops.quant_lightning_indexer_v2": "QuantLightningIndexerV2MetadataInputSpec",
+    "qli_v2_ttk_ops.quant_lightning_indexer_v2": "QuantLightningIndexerV2Spec",
 }

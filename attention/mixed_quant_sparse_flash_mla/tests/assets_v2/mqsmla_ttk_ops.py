@@ -41,9 +41,11 @@ def mixed_quant_sparse_flash_mla_ttk(
     layout_kv: str = "BSND",
     topk_value_mode: int = 1,
     return_softmax_lse: bool = False,
+    metadata_cmp_topk: Optional[int] = None,
     key_dtype: Optional[int] = None,
     value_dtype: Optional[int] = None,
 ):
+    del metadata_cmp_topk
     return torch.ops.cann_ops_transformer.mixed_quant_sparse_flash_mla(
         q,
         ori_kv=ori_kv,

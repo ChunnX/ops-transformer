@@ -65,6 +65,7 @@ def mixed_quant_sparse_flash_mla_ttk(
     return_softmax_lse: bool = False,
     has_ori_kv: Optional[bool] = None,
     has_cmp_kv: Optional[bool] = None,
+    metadata_cmp_topk: Optional[int] = None,
     key_dtype: Optional[int] = None,
     value_dtype: Optional[int] = None,
 ):
@@ -81,7 +82,11 @@ def mixed_quant_sparse_flash_mla_ttk(
     max_seqlen_ori_kv = _max_seq(cu_seqlens_ori_kv, seqused_ori_kv, ori_fallback)
     max_seqlen_cmp_kv = _max_seq(cu_seqlens_cmp_kv, seqused_cmp_kv, cmp_fallback)
     ori_topk = int(ori_sparse_indices.shape[-1]) if ori_sparse_indices is not None else 0
-    cmp_topk = int(cmp_sparse_indices.shape[-1]) if cmp_sparse_indices is not None else 0
+    cmp_topk = (
+        int(metadata_cmp_topk)
+        if metadata_cmp_topk is not None
+        else (int(cmp_sparse_indices.shape[-1]) if cmp_sparse_indices is not None else 0)
+    )
     if has_ori_kv is None:
         has_ori_kv = ori_kv is not None
     if has_cmp_kv is None:

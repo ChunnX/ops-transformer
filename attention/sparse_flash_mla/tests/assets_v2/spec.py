@@ -29,7 +29,7 @@ golden_module = load_impl_module("golden")
 inputs_module = load_impl_module("inputs")
 
 
-class SparseFlashMlaMetadataInputSpec:
+class SparseFlashMlaSpec:
     golden = golden_module.cpu_sparse_flash_mla
     customize_inputs = inputs_module.generate_sparse_flash_mla_inputs
     tolerance = {
@@ -39,5 +39,5 @@ class SparseFlashMlaMetadataInputSpec:
 
 
 __spec__ = {
-    "smla_metadata_input_ttk_ops.sparse_flash_mla_ttk": "SparseFlashMlaMetadataInputSpec",
+    "smla_ttk_ops.sparse_flash_mla_ttk": "SparseFlashMlaSpec",
 }

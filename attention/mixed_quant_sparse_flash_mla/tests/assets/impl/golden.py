@@ -159,14 +159,13 @@ def prepare_case(kwargs):
 
 
 def cpu_mixed_quant_sparse_flash_mla(q, *, return_softmax_lse=False, testcase_name=None, **kwargs):
-    del q, return_softmax_lse, kwargs
+    del q, kwargs
     data = _CASE_DATA.get(str(testcase_name)) if testcase_name is not None else None
     if data is None:
         raise RuntimeError(
             "MixedQuantSparseFlashMla TTK golden requires customize_inputs "
             "to generate pytest data first"
         )
-    # Current pytest generator only produces attention_out. Keep the second output
-    # as the extension's documented empty placeholder when LSE is not requested.
-    lse = torch.zeros(0, dtype=torch.float32)
-    return data["cpu_output"], lse
+    if bool(return_softmax_lse):
+        raise RuntimeError("MQSMLA pytest golden does not provide softmax_lse")
+    return data["cpu_output"], None
