@@ -2150,7 +2150,7 @@ TEST_F(block_sparse_attention_tiling_ut, A5_fp8_small_blockShape_64_64_tnd_norma
             {"softmaxLseFlag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}
         },
         &compileInfo, "Ascend950", 56, 262144, 16384);
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 9050000030400012);
 }
 
 // ============================================================================
