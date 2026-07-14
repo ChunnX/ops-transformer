@@ -251,7 +251,7 @@ ge::graphStatus FiaInfoParser::GetStrides()
 {
     // 用opbase版本判断，老版本opbase为tensorv1
     if (context_->InputIsView(KEY_INDEX) == false) {
-        isTensorV1_ = true;
+        hasViewStride_ = false;
         return ge::GRAPH_SUCCESS;
     }
     keyStrides_ = context_->GetDynamicInputStride(KEY_INDEX, 0);
@@ -267,35 +267,30 @@ ge::graphStatus FiaInfoParser::GetStrides()
 }
 
 void FiaInfoParser::GetKvIsContiguous(){
-    if (isTensorV1_ ){
+    if (!hasViewStride_ ){
         return ;
     }
-
-    // 检测kv是否非连续，是则标记NON_CONTIGUOUS并记dimIndex供checker复用
-    int32_t keyDimIdx = 0;
-    int32_t valDimIdx = 0;
-    int32_t keyRopeDimIdx = 0;
-    bool keyContig = false;
-    bool valContig = false;
-    bool keyRopeContig = false;
-    
-    if (keyStrides_ != nullptr) {
-        const gert::Shape &keyShape = opParamInfo_.key.shape->GetStorageShape();
-        keyContig = (CheckTensorContiguousLocal(keyShape.GetDimNum(), keyShape, keyStrides_, keyDimIdx) == ge::GRAPH_SUCCESS);
-        keyNonContigDim_ = keyContig ? -1 : keyDimIdx;
-
+    for (int i = 0; i < kStrideCache_.size(); ++i) {
+        int32_t dim = 0;
+        if (CheckTensorContiguousLocal(kCache_[i]->GetStorageShape().GetDimNum(),
+                                       kCache_[i]->GetStorageShape(),
+                                       kStrideCache_[i], dim) != ge::GRAPH_SUCCESS) {
+            keyNonContigDim_ = dim;
+        }
+        dim = 0;
+        if (CheckTensorContiguousLocal(vCache_[i]->GetStorageShape().GetDimNum(),
+                                       vCache_[i]->GetStorageShape(),
+                                       vStrideCache_[i], dim) != ge::GRAPH_SUCCESS) {
+            valueNonContigDim_ = dim;
+        }
     }
-
-    if (valueStrides_ != nullptr) {
-        const gert::Shape &valueShape = opParamInfo_.value.shape->GetStorageShape();
-        valContig = (CheckTensorContiguousLocal(valueShape.GetDimNum(), valueShape, valueStrides_, valDimIdx) == ge::GRAPH_SUCCESS);
-        valueNonContigDim_ = valContig ? -1 : valDimIdx;
-    }
-
     if (kRopeStrides_ != nullptr) {
-        const gert::Shape &keyRopeShape = opParamInfo_.keyRope.tensor->GetStorageShape();
-        keyRopeContig = (CheckTensorContiguousLocal(keyRopeShape.GetDimNum(), keyRopeShape, kRopeStrides_, keyRopeDimIdx) == ge::GRAPH_SUCCESS);
-        keyRopeNonContigDim_ = keyRopeContig ? -1 : keyRopeDimIdx;
+        int32_t dim = 0;
+        if (CheckTensorContiguousLocal(opParamInfo_.keyRope.tensor->GetStorageShape().GetDimNum(),
+                                       opParamInfo_.keyRope.tensor->GetStorageShape(),
+                                       kRopeStrides_, dim) != ge::GRAPH_SUCCESS) {
+            keyRopeNonContigDim_ = dim;
+        }
     }
 }
 
@@ -557,12 +552,15 @@ void FiaInfoParser::GetPreNextToken()
 }
 
 ge::graphStatus FiaInfoParser::GetTensorListCache(uint32_t index, const std::string &name,
-                                                  std::vector<gert::StorageShape *> &cache)
+                                                  std::vector<gert::StorageShape *> &cache,
+                                                  std::vector<gert::Stride *> &strides)
 {
     cache.clear();
+    strides.clear();
     uint32_t bIdx = 0;
     while ((context_->GetDynamicInputShape(index, bIdx)) != nullptr) {
         cache.push_back(const_cast<gert::StorageShape *>(context_->GetDynamicInputShape(index, bIdx)));
+        strides.push_back(const_cast<gert::Stride *>(context_->GetDynamicInputStride(index, bIdx)));
         bIdx++;
     }
     if (bIdx == 0) {
@@ -570,15 +568,16 @@ ge::graphStatus FiaInfoParser::GetTensorListCache(uint32_t index, const std::str
         return ge::GRAPH_FAILED;
     }
     cache.resize(bIdx);
+    strides.resize(bIdx);
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus FiaInfoParser::GetKvCache()
 {
-    if (GetTensorListCache(KEY_INDEX, KEY_NAME, kCache_) != ge::GRAPH_SUCCESS) {
+    if (GetTensorListCache(KEY_INDEX, KEY_NAME, kCache_, kStrideCache_) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
-    if (GetTensorListCache(VALUE_INDEX, VALUE_NAME, vCache_) != ge::GRAPH_SUCCESS) {
+    if (GetTensorListCache(VALUE_INDEX, VALUE_NAME, vCache_, vStrideCache_) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
 
@@ -1563,7 +1562,7 @@ void FiaInfoParser::GenerateInfo(FiaTilingInfo &fiaInfo)
     fiaInfo.kRopeStrides = kRopeStrides_;
     fiaInfo.kScaleStrides = kScaleStrides_;
     fiaInfo.vScaleStrides = vScaleStrides_;
-    fiaInfo.isTensorV1 = isTensorV1_;
+    fiaInfo.hasViewStride = hasViewStride_;
 
     fiaInfo.totalOutputSize = opParamInfo_.attenOut.shape->GetStorageShape().GetShapeSize();
 

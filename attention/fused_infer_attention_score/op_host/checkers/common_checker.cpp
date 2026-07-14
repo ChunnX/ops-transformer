@@ -1395,28 +1395,6 @@ ge::graphStatus CommonChecker::CheckCrossFeature(const FiaTilingInfo &fiaInfo)
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus CommonChecker::CheckNonKVContiguous(const FiaTilingInfo &fiaInfo) const
-{
-    if (fiaInfo.isTensorV1 ||
-        fiaInfo.kvStorageMode == KvStorageMode::TENSOR_LIST ||
-        fiaInfo.pageAttentionFlag) {
-        return ge::GRAPH_SUCCESS;
-    }
-
-
-    OP_CHECK_IF(fiaInfo.keyNonContigDim != -1,
-                OP_LOGE(fiaInfo.opName,
-                        "In non-PA scenarios, key tensors must be contiguous."),
-                return ge::GRAPH_FAILED);
-
-    OP_CHECK_IF(fiaInfo.valueNonContigDim != -1,
-                OP_LOGE(fiaInfo.opName,
-                        "In non-PA scenarios, value tensors must be contiguous."),
-                return ge::GRAPH_FAILED);
-
-    return ge::GRAPH_SUCCESS;
-}
-
 ge::graphStatus CommonChecker::CheckKVStorageConsistency(const FiaTilingInfo &fiaInfo)
 {
     if (fiaInfo.kvStorageMode == KvStorageMode::PAGE_ATTENTION) {
@@ -1475,10 +1453,6 @@ ge::graphStatus CommonChecker::CheckMultiParaConsistency(const FiaTilingInfo &fi
         return ge::GRAPH_FAILED;
     }
 
-    if (fiaInfo.socVersion != platform_ascendc::SocVersion::ASCEND910B &&
-        enableNonQuant_ && CheckNonKVContiguous(fiaInfo) != ge::GRAPH_SUCCESS) {
-        return ge::GRAPH_FAILED;
-    }
     return ge::GRAPH_SUCCESS;
 }
 

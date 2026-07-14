@@ -238,7 +238,7 @@ public:
     const gert::Stride *kRopeStrides = nullptr;
     const gert::Stride *kScaleStrides = nullptr;
     const gert::Stride *vScaleStrides = nullptr;
-    bool isTensorV1 = false;
+    bool hasViewStride = true;
     // empty Tensor
     bool emptyTensorFlag = false;
     uint64_t totalOutputSize = 0;

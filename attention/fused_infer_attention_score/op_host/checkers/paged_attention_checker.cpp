@@ -643,7 +643,7 @@ ge::graphStatus PagedAttentionChecker::CheckBlockSizeSupport(const FiaTilingInfo
 
 ge::graphStatus PagedAttentionChecker::CheckNonContiguousSupport(const FiaTilingInfo &fiaInfo)
 {
-    if (fiaInfo.isTensorV1) {
+    if (!fiaInfo.hasViewStride) {
         return ge::GRAPH_SUCCESS;
     }
     
@@ -821,8 +821,18 @@ ge::graphStatus PagedAttentionChecker::CheckCrossFeature(const FiaTilingInfo &fi
 ge::graphStatus PagedAttentionChecker::CheckMultiParaConsistency(const FiaTilingInfo &fiaInfo)
 {
     if (fiaInfo.kvStorageMode != KvStorageMode::PAGE_ATTENTION) {
+        OP_CHECK_IF(fiaInfo.keyNonContigDim != -1,
+            OP_LOGE(fiaInfo.opName,
+                    "In non-PA scenarios, key tensors must be contiguous."),
+            return ge::GRAPH_FAILED);
+
+        OP_CHECK_IF(fiaInfo.valueNonContigDim != -1,
+                    OP_LOGE(fiaInfo.opName,
+                            "In non-PA scenarios, value tensors must be contiguous."),
+                    return ge::GRAPH_FAILED);
         return ge::GRAPH_SUCCESS;
     }
+    // PA 场景
     if (ge::GRAPH_SUCCESS != CheckBlockSizeSupport(fiaInfo) ||
         ge::GRAPH_SUCCESS != CheckBlockTableShape(fiaInfo) ||
         ge::GRAPH_SUCCESS != CheckNonContiguousSupport(fiaInfo)) {
