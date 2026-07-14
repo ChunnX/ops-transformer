@@ -140,7 +140,7 @@ ge::graphStatus QSMLAInfoParser::GetAttrParaInfo()
                return ge::GRAPH_FAILED);
 
     OP_LOGI(context_->GetNodeName(), "GetAttrParaInfo start");
-    opParamInfo_.qkvQuantMode = attrs->GetAttrPointer<int64_t>(ATTR_QKV_QUANT_MODE_INDEX);
+    opParamInfo_.quantMode = attrs->GetAttrPointer<int64_t>(ATTR_QUANT_MODE_INDEX);
     opParamInfo_.softmaxScale = attrs->GetAttrPointer<float>(ATTR_SOFTMAX_SCALE_INDEX);
     opParamInfo_.cmpRatio = attrs->GetAttrPointer<int64_t>(ATTR_CMP_RATIO_INDEX);
     opParamInfo_.oriMaskMode = attrs->GetAttrPointer<uint32_t>(ATTR_ORI_MASK_MODE_INDEX);
@@ -520,7 +520,7 @@ void QSMLAInfoParser::GenerateInfo(QSMLATilingInfo &qsmlaInfo)
 
     qsmlaInfo.isSameSeqAllKVTensor = isSameSeqAllKVTensor_;
 
-    qsmlaInfo.qkvQuantMode = *opParamInfo_.qkvQuantMode;
+    qsmlaInfo.quantMode = *opParamInfo_.quantMode;
     qsmlaInfo.softmaxScale = *opParamInfo_.softmaxScale;
     qsmlaInfo.oriKvStride = oriKvStride_;
     qsmlaInfo.cmpKvStride = cmpKvStride_;
@@ -624,6 +624,7 @@ ge::graphStatus QuantSparseFlashMlaTiling::DoOpTiling(QSMLATilingInfo *tilingInf
         workspaceSize += (S2_BASE_SIZE * D_SIZE * VEC_RES_ELEM_SIZE * TRIPLE_BUFFER_NUM * (aicNum >> 1));
     }
     size_t *workSpaces = context_->GetWorkspaceSizes(1);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, workSpaces);
     workSpaces[0] = workspaceSize;
 
     // -------------set tilingdata-----------------

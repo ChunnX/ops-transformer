@@ -133,7 +133,7 @@ constexpr uint32_t ATTN_OUT_INDEX = 0;
 constexpr uint32_t SOFTMAX_LSE_INDEX = 1;
 
 // Attributes Index
-constexpr uint32_t ATTR_QKV_QUANT_MODE_INDEX = 0;
+constexpr uint32_t ATTR_QUANT_MODE_INDEX = 0;
 constexpr uint32_t ATTR_SOFTMAX_SCALE_INDEX = 1;
 constexpr uint32_t ATTR_CMP_RATIO_INDEX = 2;
 constexpr uint32_t ATTR_ORI_MASK_MODE_INDEX = 3;
@@ -247,7 +247,7 @@ struct QSMLAParaInfo {
     QSMLATilingOptionalParaInfo metadata = {nullptr, nullptr};
     QSMLATilingRequiredParaInfo attnOut = {nullptr, nullptr};
 
-    const int64_t *qkvQuantMode = nullptr;
+    const int64_t *quantMode = nullptr;
     const float *softmaxScale = nullptr;
     const int64_t *oriKvStride = nullptr;
     const int64_t *cmpKvStride = nullptr;
@@ -285,7 +285,7 @@ public:
     bool actualSeqLenFlag = false;
     bool isSameSeqAllKVTensor = true;
 
-    int64_t qkvQuantMode = 0;
+    int64_t quantMode = 0;
     uint32_t dSize = 0;
     uint32_t dSizeV = 0;
     uint32_t dSizeVInput = 0;
@@ -572,7 +572,7 @@ private:
     uint32_t cmpBlockSize_ = 0;
     uint32_t oriBlockTable_ = 0;
     uint32_t cmpBlockTable_ = 0;
-    int64_t qkv_quant_mode_ = 0;
+    int64_t quant_mode_ = 0;
 
     int64_t oriWinLeft_ = 0;
     int64_t oriWinRight_ = 0;
