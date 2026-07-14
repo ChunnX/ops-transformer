@@ -148,9 +148,9 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::InitParams(const ConstInfo &constInf
 template <typename QLIV2T>
 __aicore__ inline void QLIV2Matmul<QLIV2T>::InitBuffers(TPipe *pipe)
 {
-    // 2(pingpong) * (mBaseSize*s2BaseSize + VL_PAD) * sizeof(float), slot 间 padding 消除 bank 冲突
-    pipe->InitBuffer(bufUB_, 2 * (constInfo_.mBaseSize * constInfo_.s2BaseSize * sizeof(float)
-        + VL_PAD_STRIDE * sizeof(float)));
+    // 2*mBaseSize*s2BaseSize + VL_PAD (修正 CeilDiv→mBaseSize + ping-pong 偏移加 padding)
+    pipe->InitBuffer(bufUB_, 2 * constInfo_.mBaseSize * constInfo_.s2BaseSize * sizeof(float)
+        + VL_PAD_STRIDE * sizeof(float));
     mm1ResUB_ = bufUB_.Get<QK_T>();
     pipe->InitBuffer(bufQL1_, QUERY_BUF_NUM * QUERY_BUFFER_OFFSET * sizeof(Q_T));
     queryL1_ = bufQL1_.Get<Q_T>();
@@ -638,7 +638,7 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::Fixp(uint64_t s1gGmOffset, uint64_t 
         // 固定参数
         fixpipeParams.mSize = mSize;
         fixpipeParams.srcStride = mSize; // 已16对齐
-        fixpipeParams.dstStride = constInfo_.s2BaseSize; // 行间stride = s2BaseSize
+        fixpipeParams.dstStride = constInfo_.s2BaseSize; // 行间stride
         // 单目标模式（CVRATIO=1，不需要拆M）
         fixpipeParams.dualDstCtl = 0;
         fixpipeParams.reluEn = true;   // 启用随路ReLU
@@ -655,12 +655,11 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::Fixp(uint64_t s1gGmOffset, uint64_t 
             fixpipeParams.nSize = S2_BASIC_BLOCK_L0 / 2; // 分2个ND搬
             fixpipeParams.params.ndNum = 2;
             fixpipeParams.params.srcNdStride = ((fixpipeParams.mSize + 15) / 16) * fixpipeParams.nSize;
-            // dstNdStride = 第一个ND块的总占用 = mSize × dstStride（含每行padding）
             fixpipeParams.params.dstNdStride = fixpipeParams.mSize * fixpipeParams.dstStride;
         }
-        // ping-pong 偏移 = slot_size + VL_PAD, slot1 相对 slot0 错开 256B 消除 bank 冲突
+        // ping-pong 偏移 = s2BaseSize/2 + VL_PAD, slot1 相对 slot0 错开 256B 消除 bank 冲突
         Fixpipe<QK_T, float, QLIV2_CFG_ROW_MAJOR_UB>(mm1ResUB_[(runInfo.loop % 2)
-            * (constInfo_.mBaseSize * constInfo_.s2BaseSize + VL_PAD_STRIDE)],
+            * (constInfo_.s2BaseSize / 2 + VL_PAD_STRIDE)],
             cL0_[(l0BufIdx_ % L0_BUF_NUM) * L0C_BUFFER_OFFSET],
             fixpipeParams);
     } else {
