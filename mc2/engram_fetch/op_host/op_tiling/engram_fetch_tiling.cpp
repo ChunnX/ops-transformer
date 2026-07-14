@@ -323,7 +323,7 @@ static ge::graphStatus SetTilingData(gert::TilingContext *context, EngramFetchTi
 static void SetTilingKey(gert::TilingContext *context)
 {
     const char *nodeName = context->GetNodeName();
-    const uint64_t tilingKey = GET_TPL_TILING_KEY(ENGRAM_FETCH_INFER_MODE);
+    const uint64_t tilingKey = ENGRAM_FETCH_INFER_MODE;
     context->SetTilingKey(tilingKey);
     OP_LOGD(nodeName, "tilingKey is [%lu] in engram_fetch.", tilingKey);
 }

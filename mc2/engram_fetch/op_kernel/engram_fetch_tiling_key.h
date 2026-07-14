@@ -16,20 +16,6 @@
 #ifndef ENGRAM_FETCH_TILING_KEY_H
 #define ENGRAM_FETCH_TILING_KEY_H
 
-#include "ascendc/host_api/tiling/template_argument.h"
-
 #define ENGRAM_FETCH_INFER_MODE 0
-
-ASCENDC_TPL_ARGS_DECL(EngramFetch,
-    ASCENDC_TPL_UINT_DECL(EngramFetchMode, ASCENDC_TPL_8_BW,
-        ASCENDC_TPL_UI_LIST, ENGRAM_FETCH_INFER_MODE),
-);
-
-ASCENDC_TPL_SEL(
-    ASCENDC_TPL_ARGS_SEL(
-        ASCENDC_TPL_UINT_SEL(EngramFetchMode, ASCENDC_TPL_UI_LIST,
-            ENGRAM_FETCH_INFER_MODE),
-    ),
-);
 
 #endif // ENGRAM_FETCH_TILING_KEY_H

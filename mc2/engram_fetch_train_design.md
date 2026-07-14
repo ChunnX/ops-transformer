@@ -42,17 +42,31 @@
 
 ### 1.2 aclnn 层
 
-**`aclnnEngramFetchGetWorkspaceSize`（修改）**：新增 5 个可选输出（插在 `fetched` 与 `workspaceSize` 间）
+**推理 `aclnnEngramFetchGetWorkspaceSize`（修改）**：删除 5 个可选输出参数，回归纯推理
 
-| 参数 | 变化 | 类型 | 测试关注 |
-|------|------|------|---------|
-| ★ `permOut` | 新增 | aclTensor* | 训练非空 / 推理 nullOpt |
-| ★ `sendCountsOut` | 新增 | aclTensor* | 同上 |
-| ★ `recvCountsOut` | 新增 | aclTensor* | 同上 |
-| ★ `recvLocalEntryOut` | 新增 | aclTensor* | 同上 |
-| ★ `numRecvOut` | 新增 | aclTensor* | 同上 |
+```cpp
+aclnnEngramFetchGetWorkspaceSize(commContext, indices,
+    hiddenSize, numEntriesPerRank, fetched,
+    workspaceSize, executor)
+```
 
-**`aclnnEngramFetchGradGetWorkspaceSize`（★新增）**
+**训练 `aclnnEngramFetchTrainGetWorkspaceSize`（★新增）**
+
+| 方向 | 参数 | dtype/shape | 测试关注 |
+|------|------|-------------|---------|
+| Input | commContext | int32 1D | REQUIRED |
+| Input | indices | int32 (T,) | REQUIRED |
+| Attr | hiddenSize | int32 | REQUIRED |
+| Attr | numEntriesPerRank | int64 | REQUIRED |
+| ★ Attr | localStorageAddr | int64 | host-pinned 设备映射地址（gather 源，即 `deviceBufPtr_`） |
+| Output | fetched | bf16/fp16/fp32 (T,H) | REQUIRED |
+| Output | permOut | int32 (T,) | REQUIRED |
+| Output | sendCountsOut | int32 (W,) | REQUIRED, dim0==rankSize |
+| Output | recvCountsOut | int32 (W,) | REQUIRED, dim0==rankSize |
+| Output | recvLocalEntryOut | int32 (R_max,) | REQUIRED, dim0==totalRecv |
+| Output | numRecvOut | int32 (1,) | REQUIRED |
+
+**反向 `aclnnEngramFetchGradGetWorkspaceSize`（★新增）**
 
 | 方向 | 参数 | dtype/shape | 测试关注 |
 |------|------|-------------|---------|
@@ -70,15 +84,15 @@
 
 ### 1.3 TilingData 层
 
-**前向 `EngramFetchTilingData`（修改）**
+**推理 `EngramFetchTilingData`（修改）**：删除 `withGrad`/`numMaxTokensPerRank`/`rankSize`，回归 6 字段纯推理。
 
-| 字段 | 变化 | 类型 | 测试关注 |
-|------|------|------|---------|
-| ★ `withGrad` | 新增 | int32 | 0=推理/1=训练，决定 TilingKey |
-| ★ `numMaxTokensPerRank` | 新增 | int64 | workspace 计算用 |
-| ★ `rankSize` | 新增 | uint32 | 从 sendCountsOut.dim0 获取 |
+**训练 `EngramFetchTrainTilingData`（★新增）**：10 字段。关键：
+- `rankSize` ← sendCountsOut.dim0
+- `totalRecv` ← recvLocalEntryOut.dim0
+- `localStorageAddr` ← attr（本地 storage GM 地址）
+- `numMaxTokensPerRank` ← totalRecv / rankSize
 
-**反向 `EngramFetchGradTilingData`（★新增）**：8 字段全新增。关键交叉校验：
+**反向 `EngramFetchGradTilingData`（★新增）**：8 字段。关键交叉校验：
 - `rankSize` ← sendCounts.dim0
 - `totalRecv` ← recvLocalEntry.dim0
 
@@ -86,8 +100,9 @@
 
 | 算子 | 变化 | 值 | 测试关注 |
 |------|------|----|---------|
-| 前向 | ▽ DEFAULT_MODE → 二值 | INFER_MODE=0 / WITH_GRAD_MODE=1 | 按 withGrad 选分支 |
-| 反向 | ★ 新增 | GRAD_DEFAULT_MODE=0 | 单一模式 |
+| 推理 engram_fetch | ▽ 二值 → 单值 | INFER_MODE=0 | 纯推理，无 WITH_GRAD |
+| 训练 engram_fetch_train | ★ 新增 | TRAIN_DEFAULT_MODE=0 | 单一模式 |
+| 反向 engram_fetch_grad | ★ 新增 | GRAD_DEFAULT_MODE=0 | 单一模式 |
 
 ---
 
@@ -107,23 +122,35 @@ class EngramFetchCtx:
 
 ### 2.2 GM 生命周期
 
-GM 在 `EngramWrite` 阶段申请，`Destroy` 时释放（前向/反向共用）。
+训练态数据存储与通信缓冲：
 
-GM 大小固定 **200MB**（内部常量，不依赖 `num_max_tokens_per_rank` / `hiddenSize`）：
+| 缓冲 | 大小 | 用途 | 位置 |
+|------|------|------|------|
+| host-pinned (`deviceBufPtr_`) | `numCpuBytes` | embedding 表存储（推理RDMA read源 / 训练gather源） | `EngramContextBuilder` 申请 |
+| a2a GM (`epHcclBufferPtr_`) | 固定 200MB | all-to-all 收发缓冲（仅训练） | `EnsureEngramContext` 申请 |
+
+storage 始终在 host-pinned，训练态 gather 从 `deviceBufPtr_`（host-pinned 设备映射地址）读取。
+200MB a2a GM 仅做 all-to-all 通信的 send/recv 缓冲，不存 storage。
+`deviceBufPtr_` 作为 `local_storage_addr` attr 透传给 `aclnnEngramFetchTrain`。
 
 ```
-EngramWrite :
-  ├─ ... HCCL context 建立 ...
-  ├─ EnsureEngramContext -> AllocateAndExchangeGm(200MB)
+EnsureEngramContext :
+  ├─ AllocateAndRegisterBuffer → hostBufPtr_ / deviceBufPtr_   ← host-pinned（推理+训练共用）
+  ├─ AllocateAndExchangeGm(200MB)
   │   ├─ aclrtMalloc(HUGE_FIRST) → epHcclBufferPtr_
   │   ├─ HcclCommMemReg(tag="...engram_embedding_gm")
   │   ├─ EngramBarrier(true)
-  │   ├─ HcclChannelGetRemoteMems → epHcclBuffer[peer]
+  │   ├─ HcclChannelGetRemoteMems → virtualAddrList[peer]  ← 覆盖 host-pinned 地址
   │   ├─ UpdateContextTensor()
   │   └─ EngramBarrier(true)
 
+EngramWrite (推理+训练统一):
+  ├─ memcpy_s(storage → hostBufPtr_)
+  └─ EngramBarrier(true)
+
 Destroy:
-  └─ aclrtFree(epHcclBufferPtr_)
+  ├─ aclrtFree(epHcclBufferPtr_)       ← a2a GM
+  └─ aclrtFreeHost(hostBufPtr_)         ← host-pinned
 ```
 
 ### 2.3 通信Context
@@ -132,11 +159,13 @@ Destroy:
 struct EngramCommContext {
     uint32_t rankId;
     uint32_t rankSize;
-    uint64_t commBuffer[1024];      // host pinned 设备映射地址（推理+训练）
-    uint64_t hcommHandle[1024];     // UBC channel 句柄（推理+训练）
-    uint64_t epHcclBuffer[1024];    // GM 缓冲区地址（仅训练 a2a）
+    uint64_t commBuffer[1024];   // 推理=host-pinned地址 / 训练=a2a GM地址
+    uint64_t hcommHandle[1024];  // UBC channel句柄（推理+训练共用）
 };
 ```
+
+> `epHcclBuffer[]` 已删除——训练态 a2a GM 地址复用 `commBuffer[]`（由 `AllocateAndExchangeGm` 覆盖）。
+> `localStorageAddr` 作为 aclnn attr 参数传入，不放在 commContext 内。
 
 ### 2.4 pybind 绑定
 
@@ -209,7 +238,7 @@ Python 无分支，`return self._runtime.engram_fetch(indices)`；C++ pybind lam
 ```
 EngramFetch(indices, ctxOut=nullptr)
   ├─ if withGrad_:
-  │   ├─ TORCH_CHECK(epHcclBufferPtr_ != nullptr)         ← GM 已在 EnsureEngramContext 阶段申请
+  │   ├─ TORCH_CHECK(epHcclBufferPtr_ != nullptr)         ← a2a GM 已在 EnsureEngramContext 阶段申请
   │   ├─ opts = indices.options()                          ← 携带 device, int32
   │   ├─ EngramFetchCtx ctx{                               ← 局部变量, 不存成员
   │   │       at::empty({numTokens}, opts),                // perm
@@ -217,53 +246,79 @@ EngramFetch(indices, ctxOut=nullptr)
   │   │       at::empty({rankSize}, opts),                 // recvCounts
   │   │       at::empty({maxR}, opts),                     // recvLocalEntry, maxR = numTokens * rankSize
   │   │       at::empty({1}, opts)}                        // numRecv
-  │   ├─ ACLNN_CMD(aclnnEngramFetch, ..., ctx.perm, ctx.sendCounts, ...)
+  │   ├─ ACLNN_CMD(aclnnEngramFetchTrain, ..., deviceBufPtr_, ..., ctx.perm, ...)
+  │   │       ↑ local_storage_addr = deviceBufPtr_（host-pinned 设备映射地址, gather 源）
   │   ├─ *ctxOut = std::move(ctx)                          ← 输出给调用方（pybind lambda 捕获）
   │   └─ return [fetched]() { return fetched; }
   │
   └─ else:
-      ├─ ACLNN_CMD(aclnnEngramFetch, ..., nullOpt×5)  ← 异步
+      ├─ ACLNN_CMD(aclnnEngramFetch, ..., fetched)     ← 异步
       └─ return [fetched]() { ACLNN_CMD(aclnnEngramFetchWait, ...); }
 ```
 
-### 3.3 算子定义（`engram_fetch_def.cpp`）
+### 3.3 算子定义
+
+**推理 `engram_fetch_def.cpp`（修改）**：2 input + 1 output + 2 attr
 
 | 接口 | 方向 | dtype | shape | ParamType |
 |------|------|-------|-------|-----------|
 | commContext | Input 0 | int32 | 1D | REQUIRED |
 | indices | Input 1 | int32 | (T,) | REQUIRED |
 | fetched | Output 0 | bf16/fp16/fp32 | (T, H) | REQUIRED |
-| permOut | Output 1 | int32 | (T,) | OPTIONAL |
-| sendCountsOut | Output 2 | int32 | (W,) | OPTIONAL |
-| recvCountsOut | Output 3 | int32 | (W,) | OPTIONAL |
-| recvLocalEntryOut | Output 4 | int32 | (R_max,) | OPTIONAL |
-| numRecvOut | Output 5 | int32 | (1,) | OPTIONAL |
 | hidden_size | Attr | int | — | REQUIRED |
 | num_entries_per_rank | Attr | int | — | REQUIRED |
 
-训练模式判断：`GetWithGrad(context)` 检查 `permOut` 是否非空。
+**训练 `engram_fetch_train_def.cpp`（★新增）**：2 input + 6 output + 3 attr
+
+| 接口 | 方向 | dtype | shape | ParamType |
+|------|------|-------|-------|-----------|
+| commContext | Input 0 | int32 | 1D | REQUIRED |
+| indices | Input 1 | int32 | (T,) | REQUIRED |
+| fetched | Output 0 | bf16/fp16/fp32 | (T, H) | REQUIRED |
+| permOut | Output 1 | int32 | (T,) | REQUIRED |
+| sendCountsOut | Output 2 | int32 | (W,) | REQUIRED |
+| recvCountsOut | Output 3 | int32 | (W,) | REQUIRED |
+| recvLocalEntryOut | Output 4 | int32 | (R_max,) | REQUIRED |
+| numRecvOut | Output 5 | int32 | (1,) | REQUIRED |
+| hidden_size | Attr | int | — | REQUIRED |
+| num_entries_per_rank | Attr | int | — | REQUIRED |
+| ★ local_storage_addr | Attr | int | — | REQUIRED |
 
 ### 3.4 TilingData
 
+**推理 `EngramFetchTilingData`（修改）**：纯推理，6 字段
 ```cpp
 struct EngramFetchTilingData {
     int64_t numTokens;
     int32_t numEntriesPerRank;
     int64_t hiddenDim;
-    int64_t hiddenBytes;          // hiddenDim * dtypeSize
+    int64_t hiddenBytes;
     uint32_t aivNum;
     uint64_t ubSize;
-    int32_t withGrad;             // 0=推理, 1=训练
-    int64_t numMaxTokensPerRank;  // 训练态 workspace 计算用
+};
+```
+
+**训练 `EngramFetchTrainTilingData`（★新增）**：10 字段
+```cpp
+struct EngramFetchTrainTilingData {
+    int64_t numTokens;
+    int32_t numEntriesPerRank;
+    int64_t hiddenDim;
+    int64_t hiddenBytes;
+    uint32_t aivNum;
+    uint64_t ubSize;
     uint32_t rankSize;            // 从 sendCountsOut dim0 获取
+    int64_t numMaxTokensPerRank;  // totalRecv / rankSize
+    int64_t totalRecv;            // 从 recvLocalEntryOut dim0 获取
+    int64_t localStorageAddr;   // 从 attr 获取（host-pinned 设备映射地址, gather 源）
 };
 ```
 
 ### 3.5 TilingKey
 
 ```
-ENGRAM_FETCH_INFER_MODE = 0     // 推理（RDMA read）
-ENGRAM_FETCH_WITH_GRAD_MODE = 1 // 训练（all-to-all）
+engram_fetch:         ENGRAM_FETCH_INFER_MODE = 0         // 推理（单一模式）
+engram_fetch_train:   ENGRAM_FETCH_TRAIN_DEFAULT_MODE = 0 // 训练（单一模式）
 ```
 
 ### 3.6 Workspace 布局（训练态）
@@ -292,30 +347,46 @@ workspace = sdispls + rdispls + sortedIndices + tokenIdxInRank
 
 ### 3.7 aclnn 接口
 
+**推理（修改）**
 ```cpp
 aclnnStatus aclnnEngramFetchGetWorkspaceSize(
     const aclTensor *commContext, const aclTensor *indices,
     int32_t hiddenSize, int64_t numEntriesPerRank,
     aclTensor *fetched,
-    aclTensor *permOut, aclTensor *sendCountsOut,
-    aclTensor *recvCountsOut, aclTensor *recvLocalEntryOut,
-    aclTensor *numRecvOut,
+    uint64_t *workspaceSize, aclOpExecutor **executor);
+```
+
+**训练（★新增）**
+```cpp
+aclnnStatus aclnnEngramFetchTrainGetWorkspaceSize(
+    const aclTensor *commContext, const aclTensor *indices,
+    int32_t hiddenSize, int64_t numEntriesPerRank, int64_t localStorageAddr,
+    aclTensor *fetched, aclTensor *permOut, aclTensor *sendCountsOut,
+    aclTensor *recvCountsOut, aclTensor *recvLocalEntryOut, aclTensor *numRecvOut,
     uint64_t *workspaceSize, aclOpExecutor **executor);
 ```
 
 ### 3.8 Kernel
 
+**推理（修改，无模板）**
 ```cpp
-template<uint32_t EngramFetchMode>
 __global__ __aicore__ void engram_fetch(
+    GM_ADDR commContext, GM_ADDR indices, GM_ADDR fetched,
+    GM_ADDR workspaceGM, GM_ADDR tilingGM)
+```
+
+**训练（★新增，单一模板）**
+```cpp
+template<uint32_t EngramFetchTrainMode>
+__global__ __aicore__ void engram_fetch_train(
     GM_ADDR commContext, GM_ADDR indices, GM_ADDR fetched,
     GM_ADDR permOut, GM_ADDR sendCountsOut,
     GM_ADDR recvCountsOut, GM_ADDR recvLocalEntryOut,
     GM_ADDR numRecvOut, GM_ADDR workspaceGM, GM_ADDR tilingGM)
 ```
 
-- `INFER_MODE`: RDMA read（现有推理实现）
-- `WITH_GRAD_MODE`: all-to-all
+- 推理: RDMA read（`commBuffer[peer]` = host-pinned）
+- 训练: all-to-all（`commBuffer[peer]` = a2a GM；`localStorageAddr` = gather 源）
 
 ---
 
@@ -433,20 +504,38 @@ __global__ __aicore__ void engram_fetch_grad(
 
 ## 五、修改文件清单
 
-### 前向（修改现有文件）
+### 推理 engram_fetch（修改现有文件）
 
 | 文件 | 修改 |
 |------|------|
-| `engram_fetch.h` | `EngramCommContext` 新增 `epHcclBuffer` |
-| `engram_fetch_def.cpp` | 5 个 OPTIONAL 输出 |
-| `engram_fetch_tiling_data.h` | 新增 `withGrad`/`numMaxTokensPerRank`/`rankSize` |
-| `engram_fetch_tiling_key.h` | `INFER_MODE` / `WITH_GRAD_MODE` |
-| `engram_fetch_tiling.cpp` | `GetWithGrad`；训练态可选输出校验；精确 workspace |
-| `aclnn_engram_fetch.cpp` | 5 个可选输出参数 |
-| `elastic_buffer.cpp` | `CommContext`+`epHcclBuffer`；`EngramContextBuilder`+`withGrad_`成员；GM 固定 200MB，EnsureEngramContext 阶段申请/destroy 释放；新增 `EngramFetchCtx` 结构体；`EngramFetch` 加 `ctxOut` 输出参数（局部 ctx, 不存成员）；删 `savedXxx_`×5 + `GetFetchCtx`；pybind 注册 `EngramFetchCtx` class + 训练返回 2-tuple；`EngramFetchGrad`+numRecv |
-| `elastic_buffer.py` | `EngramFetchCtx` dataclass（保留, duck typing 兼容 C++ bound class）；`with_grad` 构造参数；`engram_fetch` 无分支（`return self._runtime.engram_fetch(indices)`）；`engram_fetch_grad` |
+| `engram_fetch.h` | `EngramCommContext` 删除 `epHcclBuffer[]`；`commBuffer` 语义双用 |
+| `engram_fetch_def.cpp` | 删除 5 个 OPTIONAL 输出，回归 2 in + 1 out |
+| `engram_fetch_tiling_data.h` | 删除 `withGrad`/`numMaxTokensPerRank`/`rankSize`，回归 6 字段 |
+| `engram_fetch_tiling_key.h` | 删除 `WITH_GRAD_MODE`，单一 `INFER_MODE` |
+| `engram_fetch_tiling.cpp` | 删除 `GetWithGrad`/withGrad 分支；纯推理 tiling；固定 16MB workspace |
+| `aclnn_engram_fetch.cpp` | 删除 5 个可选输出参数 |
+| `engram_fetch.cpp` kernel | 删除 template + `constexpr if`；纯推理 kernel |
 
-### 反向（新建文件）
+### 训练 engram_fetch_train（★新建目录）
+
+| 文件 | 内容 |
+|------|------|
+| `engram_fetch_train_def.cpp` | 2 in + 6 out + 3 attr（含 `local_storage_addr`） |
+| `engram_fetch_train_infershape.cpp` | fetched(T,H) + permOut(T,) + sendCountsOut/recvCountsOut(W) + recvLocalEntryOut(R_max) + numRecvOut(1) |
+| `engram_fetch_train_tiling.cpp` | 校验 2 in + 6 out；rankSize←sendCountsOut.dim0；totalRecv←recvLocalEntryOut.dim0；精确 workspace |
+| `engram_fetch_train_tiling_data.h` | 10 字段（含 rankSize/totalRecv/localStorageAddr） |
+| `engram_fetch_train_tiling_key.h` | `ENGRAM_FETCH_TRAIN_DEFAULT_MODE` |
+| `aclnn_engram_fetch_train.cpp` | `aclnnEngramFetchTrain`（含 localStorageAddr 参数） |
+| `engram_fetch_train.cpp` | kernel 入口（单一模板，stub） |
+
+### C++ / Python（修改现有文件）
+
+| 文件 | 修改 |
+|------|------|
+| `elastic_buffer.cpp` | `CommContext` 删 `epHcclBuffer[]`；`AllocateAndExchangeGm` 填 `virtualAddrList`；`EngramFetch` 训练态调 `aclnnEngramFetchTrain`（透传 `deviceBufPtr_` 作为 `local_storage_addr`）；`EngramWrite` 推理/训练统一（storage 拷 host-pinned）；200MB GM 仅做 a2a 收发缓冲 |
+| `elastic_buffer.py` | 无签名变更（`engram_fetch` 通过 `IsWithGrad()` 分支，pybind lambda 路由两算子） |
+
+### 反向 engram_fetch_grad（新建文件，不变）
 
 | 文件 | 内容 |
 |------|------|
@@ -462,14 +551,14 @@ __global__ __aicore__ void engram_fetch_grad(
 
 ## 六、逻辑验证示例
 
-### 6.1 前向训练态（EngramFetch，5 步融合在 issue kernel 内，无 wait kernel）
+### 6.1 前向训练态（EngramFetchTrain，5 步融合 kernel）
 
 ```
 indices[T]
    │ ① 桶排序: owner=idx//E, local=idx%E → perm[T], sendCounts[W], sortedLocalEntry[T]
-   │ ② a2a(sortedLocalEntry) → recvLocalEntry[R], recvCounts[W]
-   │ ③ 本地 gather: storage[recvLocalEntry] → recvTokens(R,H)
-   │ ④ a2a(recvTokens) → gathered(T,H) sorted 序
+   │ ② a2a(sortedLocalEntry) → recvLocalEntry[R], recvCounts[W]   (用 commBuffer[peer] = a2a GM)
+   │ ③ 本地 gather: localStorageAddr[recvLocalEntry] → recvTokens(R,H)
+   │ ④ a2a(recvTokens) → gathered(T,H) sorted 序                     (用 commBuffer[peer] = a2a GM)
    │ ⑤ 还原: fetched[perm] = gathered
    ├─→ fetched (T,H) bf16
    └─→ save-for-backward: perm, sendCounts, recvCounts, recvLocalEntry, numRecv
@@ -480,7 +569,7 @@ indices[T]
 ```
 gradFetched(T,H) + perm/sendCounts/recvCounts/recvLocalEntry/numRecv
    │ ① grad_sorted = gradFetched[perm]
-   │ ② a2a(grad_sorted; sendCounts↔recvCounts) → recvGrad(R,H)
+   │ ② a2a(grad_sorted; sendCounts↔recvCounts) → recvGrad(R,H)   (用 commBuffer[peer] = a2a GM)
    │ ③ owner unique + fp32 scatter-add → gradUnique + uniqueLocalEntry + numUnique
    ├─→ gradUniqueOut (R_max,H) fp32     前 numUnique 有效
    ├─→ uniqueLocalEntryOut (R_max,) int32

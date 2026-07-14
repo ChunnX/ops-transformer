@@ -42,9 +42,9 @@ static ge::graphStatus InferShapeEngramFetchTrain(gert::InferShapeContext *conte
     auto hiddenSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_HIDDEN_SIZE);
     OPS_CHECK_NULL_WITH_CONTEXT(context, hiddenSizePtr);
 
-    const gert::StorageShape *indicesShape = context->GetInputShape(IN_INDICES);
+    const gert::Shape *indicesShape = context->GetInputShape(IN_INDICES);
     OPS_CHECK_NULL_WITH_CONTEXT(context, indicesShape);
-    int64_t numTokens = indicesShape->GetStorageShape().GetDim(0);
+    int64_t numTokens = indicesShape->GetDim(0);
 
     // fetched: [T, hiddenSize]
     auto *fetchedShape = context->GetOutputShape(OUT_FETCHED);
