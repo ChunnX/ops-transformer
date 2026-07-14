@@ -290,7 +290,6 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Communica
     LocalTensor<int32_t> assistInfoForCombineLocal = assistInfoQueue_.DeQue<int32_t>();
     AscendC::SyncFunc<AscendC::HardEvent::MTE2_S>(); // 等assistInfoQueue_的GM->Local，后续标量读
 
-    bool hasWrite = false;  // 是否commit
     for (uint32_t expertIdx = startExpertId_; expertIdx < endExpertId_; ++expertIdx) {
         // 计算当前处理的token块应发送到哪个卡的哪个专家
         uint32_t sendRankId = expertIdx % moeDistributeCombineSetupInfo_->epWorldSize;
@@ -320,15 +319,12 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Communica
             continue;
         }
         // 发送token和notify
-        if (likely(curTokenNum > 0U)) {
-            auto channelId = GetCommHandle(sendRankId);
-            //hcomm_.WriteNbi<false>(channelId, dstAddr, srcAddr, length);
-            hcomm_.WriteWithNotifyNbi<false>(channelId, (GM_ADDR)notify.srcAddr, (GM_ADDR)notify.dstAddr, notify.length, (GM_ADDR)notify.notifyAddr, notify.notifyVal);
-            hasWrite = true;
-        }
+        hcomm_.WriteWithNotifyNbi<false>(GetCommHandle(sendRankId), (GM_ADDR)notify.srcAddr, (GM_ADDR)notify.dstAddr, notify.length, (GM_ADDR)notify.notifyAddr, notify.notifyVal);
     }
+    assistInfoQueue_.FreeTensor<int32_t>(assistInfoForCombineLocal);
+
     SyncAll<true>();
-    // 发送状态
+    //敲doorbell
     for (uint32_t rankId = startRankId_; rankId < endRankId_; ++rankId) {
         // 本卡回环通信：写状态
         if (unlikely(rankId == epRankId_)) {
@@ -337,11 +333,10 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Communica
             selfStatusTensor.SetValue(0, 0x3f800000);
             DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(selfStatusTensor);
         }
-        else if(hasWrite) {
+        else {
             hcomm_.Commit(GetCommHandle(rankId));
         }
     }
-    assistInfoQueue_.FreeTensor<int32_t>(assistInfoForCombineLocal);
 }
 
 template <TemplateMC2TypeClass>
