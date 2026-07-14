@@ -908,7 +908,7 @@ ProcessVec1DnNoUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf__ float *input_x_local_U
                    IsSameType<T2, hifloat8_t>::value) &&
                   hasAtten) {
         Arrange(vreg_chunk0, (float)maskLine);
-        Duplicate(vreg_thresh, 1.0f);
+        Duplicate(vreg_thresh, 0.0f);
         for (uint16_t iter_m = 0; iter_m < uint16_t(ubN / 4); ++iter_m) {
             LoadAlign(src0, src_ub0 + iter_m * m * 4);
             LoadAlign(src1, src_ub1 + iter_m * m * 4);
@@ -1322,7 +1322,7 @@ ProcessVec1DnUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf__ float *input_x_local_UB,
                    IsSameType<T2, hifloat8_t>::value) &&
                   hasAtten) {
         Arrange(vreg_chunk0, (float)maskLine);
-        Duplicate(vreg_thresh, 1.0f);
+        Duplicate(vreg_thresh, 0.0f);
         for (uint16_t iter_m = 0; iter_m < uint16_t(ubN / 4); ++iter_m) {
             LoadAlign(src0, src_ub0 + iter_m * m * 4);
             LoadAlign(src1, src_ub1 + iter_m * m * 4);
