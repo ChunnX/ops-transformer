@@ -127,7 +127,7 @@ def save_test_case(test_cases, file_path):
             print(f"错误详情: {e}")
 
 def main():
-    parser = argparse.ArgumentParser(description='qliv2_pt_save.py 接收路径参数')
+    parser = argparse.ArgumentParser(description='liv2_pt_save.py 接收路径参数')
     parser.add_argument('path1', type=str, help='第一个路径')
     parser.add_argument('path2', type=str, help='第二个路径')
     args = parser.parse_args()
