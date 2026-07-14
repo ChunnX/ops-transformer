@@ -14,9 +14,11 @@ from torch.library import impl
 from cann_ops_transformer.op_builder.builder import OpBuilder
 from cann_ops_transformer.op_builder.builder import AS_LIBRARY
 
+
 class CacheMode(IntEnum):
     LINEAR_BUFFER = 1
     RING_BUFFER = 2
+
 
 class CompressorOpBuilder(OpBuilder):
     def __init__(self):
