@@ -397,7 +397,9 @@ __aicore__ inline void ProcessVec1NoUpdateGeneralImpl256(
         for (int di=0;di<(int)m;di++) {
             PRINTF(" mx[%d]=%.4e", di, (float)((__ubuf__ float*)maxUb)[di]);
         }
-        PRINTF(" sum0=%.4e\n", (float)((__ubuf__ float*)expSumUb)[0]);
+        PRINTF(" sum0=%.4e", (float)((__ubuf__ float*)expSumUb)[0]);
+        PRINTF(" srcPost[0..3]=%f %f %f %f", (float)((__ubuf__ float*)srcUb)[0], (float)((__ubuf__ float*)srcUb)[1], (float)((__ubuf__ float*)srcUb)[2], (float)((__ubuf__ float*)srcUb)[3]);
+        PRINTF(" srcPost[64/128/192/255]=%f %f %f %f\n", (float)((__ubuf__ float*)srcUb)[64], (float)((__ubuf__ float*)srcUb)[128], (float)((__ubuf__ float*)srcUb)[192], (float)((__ubuf__ float*)srcUb)[255]);
     }
 }
 } // namespace
