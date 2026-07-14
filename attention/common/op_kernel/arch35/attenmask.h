@@ -554,6 +554,12 @@ __aicore__ inline void AttenMaskCopyIn(TQue<QuePosition::VECIN, 1> &attenMaskInQ
     if constexpr (hasAtten == true) {
         LocalTensor<uint8_t> attenMaskUb = attenMaskInQue.template AllocTensor<uint8_t>();
         int64_t maskOffset = ComputeAttenMaskOffset<hasAtten, enableKVPrefix, isFd>(runInfo, constInfo, attenMaskInfo);
+        if constexpr (enableKVPrefix) {
+            PRINTF("[COPYIN-entry] s2L=%lld maskOff=%lld preOff=%lld computeMode=%d compressMode=%d s2R=%lld hS1R=%lld maskS2Size=%d\n",
+                   (long long)runInfo.s2LoopCount, (long long)maskOffset, (long long)attenMaskInfo.attenMaskOffsetPre,
+                   (int)attenMaskInfo.computeMode, (int)attenMaskInfo.compressMode,
+                   (long long)runInfo.s2RealSize, (long long)runInfo.halfS1RealSize, (int)attenMaskInfo.attenMaskS2Size);
+        }
         if (attenMaskInfo.compressMode == static_cast<uint8_t>(AttenMaskCompressMode::PREFIX_MODE)) {
             if (attenMaskInfo.computeMode == AttenMaskComputeMode::NO_NEED_COMPUTE_MODE) {
                 maskOffset = 4194304; // 2048*2048
@@ -581,6 +587,12 @@ __aicore__ inline void AttenMaskCopyIn(TQue<QuePosition::VECIN, 1> &attenMaskInQ
         BoolCopyInRegbase<isInfer>(attenMaskUb, srcTensor, maskOffset, runInfo.halfS1RealSize, runInfo.s2RealSize,
             attenMaskInfo.attenMaskS2Size, constInfo.s2BaseSize, constInfo);
         attenMaskInQue.template EnQue(attenMaskUb);
+        if constexpr (enableKVPrefix) {
+            PRINTF("[COPYIN-post-copy] s2L=%lld maskOff=%lld mask[0]=%x mask[1]=%x mask[2]=%x mask[3]=%x\n",
+                   (long long)runInfo.s2LoopCount, (long long)maskOffset,
+                   (int)attenMaskUb.GetValue(0), (int)attenMaskUb.GetValue(1),
+                   (int)attenMaskUb.GetValue(2), (int)attenMaskUb.GetValue(3));
+        }
         if (((attenMaskInfo.compressMode == static_cast<uint8_t>(AttenMaskCompressMode::BAND_MODE)) ||
             (attenMaskInfo.compressMode == static_cast<uint8_t>(AttenMaskCompressMode::RIGHT_DOWN_CAUSAL_BAND_MODE) &&
                 runInfo.boIdx == attenMaskInfo.bandIndex) ||
@@ -595,6 +607,12 @@ __aicore__ inline void AttenMaskCopyIn(TQue<QuePosition::VECIN, 1> &attenMaskInQ
             attenMaskInQuePre.template DeQue<uint8_t>();
             attenMaskInQue.template DeQue<uint8_t>();
             MergeBandModeMask<hasAtten>(attenMaskUbPre, attenMaskUb, runInfo.halfS1RealSize, constInfo.s2BaseSize);
+            if constexpr (enableKVPrefix) {
+                PRINTF("[COPYIN-post-merge] s2L=%lld mask[0]=%x mask[1]=%x mask[2]=%x mask[3]=%x\n",
+                       (long long)runInfo.s2LoopCount,
+                       (int)attenMaskUb.GetValue(0), (int)attenMaskUb.GetValue(1),
+                       (int)attenMaskUb.GetValue(2), (int)attenMaskUb.GetValue(3));
+            }
             attenMaskInQuePre.template FreeTensor(attenMaskUbPre);
             attenMaskInQue.template EnQue(attenMaskUb);
         }
