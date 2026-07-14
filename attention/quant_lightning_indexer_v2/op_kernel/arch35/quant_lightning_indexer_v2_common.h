@@ -231,8 +231,9 @@ __aicore__ inline T CeilDiv(T num, T rnd)
 #define UB_BANK_STRIDE        (UB_BANK_GROUPS * UB_BLOCK)               // 256B
 #define UB_BANK_DEPTH_STRIDE  (UB_BANKS * UB_BANK_GROUPS * UB_BLOCK)    // 1024B (A6 bank 周期)
 
-// VL padding: ping-pong slot 间 256B 空隙, 消除 slot 间同 bank 冲突
-#define VL_PAD_STRIDE         (UB_BANK_STRIDE / sizeof(float))          // 64 元素 = 256B
+// VL padding: ping-pong slot 间 512B 空隙, 消除 slot 间同 bank 冲突
+// 512B 对齐满足 fixpipe 目标地址对齐要求; 512%1024=512≠0 → 同 group 不同 bank
+#define VL_PAD_STRIDE         (UB_VEC_STRIDE / sizeof(float))           // 128 元素 = 512B
 
 // vector buffer 行间 stride (weight/out 等，不经过 fixpipe)
 #define UB_VEC_STRIDE         (2 * UB_BANK_GROUPS * UB_BLOCK)           // 512B
