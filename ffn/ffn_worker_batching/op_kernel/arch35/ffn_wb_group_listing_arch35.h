@@ -28,9 +28,9 @@
 namespace FfnWbBatchingArch35 {
 using namespace AscendC;
 
-class KernelFfnWBGroupListingArch35 {
+class FfnWbGroupListingArch35 {
 public:
-    __aicore__ inline KernelFfnWBGroupListingArch35(){};
+    __aicore__ inline FfnWbGroupListingArch35(){};
     __aicore__ inline void Init(GM_ADDR x, GM_ADDR groupList, GM_ADDR groupListTmp,
                                 ScheduleContextInfo *scheduleContext, TPipe *tPipe, int64_t groupListingDealFlag);
     __aicore__ inline void Process(int64_t groupListingDealFlag);
@@ -85,9 +85,9 @@ private:
     int64_t actualExpertTotalNum = 0;
 };
 
-__aicore__ inline void KernelFfnWBGroupListingArch35::Init(GM_ADDR x, GM_ADDR groupList, GM_ADDR groupListTmp,
-                                                           ScheduleContextInfo *scheduleContext, TPipe *tPipe,
-                                                           int64_t groupListingDealFlag)
+__aicore__ inline void FfnWbGroupListingArch35::Init(GM_ADDR x, GM_ADDR groupList, GM_ADDR groupListTmp,
+                                                     ScheduleContextInfo *scheduleContext, TPipe *tPipe,
+                                                     int64_t groupListingDealFlag)
 {
     pipe_ = tPipe;
     blockIdx = GetBlockIdx();
@@ -140,7 +140,7 @@ __aicore__ inline void KernelFfnWBGroupListingArch35::Init(GM_ADDR x, GM_ADDR gr
     pipe_->InitBuffer(expertIdxCountOutQueue, 1, cntSize);
 }
 
-__aicore__ inline void KernelFfnWBGroupListingArch35::Process(int64_t groupListingDealFlag)
+__aicore__ inline void FfnWbGroupListingArch35::Process(int64_t groupListingDealFlag)
 {
     if ((blockIdx >= coreNum - GROUP_LISTING_MULTI_AIV_NUM) && (blockIdx < coreNum) && (groupListingDealFlag == 1)) {
         for (int64_t i = 0; i < curcoreLoopsNum; i++) {
@@ -182,7 +182,7 @@ __aicore__ inline void KernelFfnWBGroupListingArch35::Process(int64_t groupListi
     }
 }
 
-__aicore__ inline void KernelFfnWBGroupListingArch35::ProcessExpertCount()
+__aicore__ inline void FfnWbGroupListingArch35::ProcessExpertCount()
 {
     if (blockIdx == coreNum - 1) {
         expertCountCopyIn();
@@ -191,7 +191,7 @@ __aicore__ inline void KernelFfnWBGroupListingArch35::ProcessExpertCount()
     }
 }
 
-__aicore__ inline void KernelFfnWBGroupListingArch35::CopyIn(int64_t loop, int64_t curLoopElements)
+__aicore__ inline void FfnWbGroupListingArch35::CopyIn(int64_t loop, int64_t curLoopElements)
 {
     LocalTensor<int32_t> sortedExpertIdxInLocal = sortedExpertIdxInQueue.AllocTensor<int32_t>();
     DataCopyExtParams dataCopyParams{static_cast<uint16_t>(1), static_cast<uint32_t>(curLoopElements * sizeof(int32_t)),
@@ -203,7 +203,7 @@ __aicore__ inline void KernelFfnWBGroupListingArch35::CopyIn(int64_t loop, int64
     sortedExpertIdxInQueue.EnQue(sortedExpertIdxInLocal);
 }
 
-__aicore__ inline void KernelFfnWBGroupListingArch35::Compute(int64_t curLoopElements)
+__aicore__ inline void FfnWbGroupListingArch35::Compute(int64_t curLoopElements)
 {
     LocalTensor<int32_t> sortedExpertIdxInLocal = sortedExpertIdxInQueue.DeQue<int32_t>();
     LocalTensor<int32_t> expertCountOutLocal = expertIdxCountOutQueue.AllocTensor<int32_t>();
@@ -232,7 +232,7 @@ __aicore__ inline void KernelFfnWBGroupListingArch35::Compute(int64_t curLoopEle
     sortedExpertIdxInQueue.FreeTensor(sortedExpertIdxInLocal);
 }
 
-__aicore__ inline void KernelFfnWBGroupListingArch35::CopyOut()
+__aicore__ inline void FfnWbGroupListingArch35::CopyOut()
 {
     LocalTensor<int32_t> expertCountOutLocal = expertIdxCountOutQueue.DeQue<int32_t>();
 
@@ -245,7 +245,7 @@ __aicore__ inline void KernelFfnWBGroupListingArch35::CopyOut()
     expertIdxCountOutQueue.FreeTensor(expertCountOutLocal);
 }
 
-__aicore__ inline void KernelFfnWBGroupListingArch35::expertCountCopyIn()
+__aicore__ inline void FfnWbGroupListingArch35::expertCountCopyIn()
 {
     LocalTensor<int32_t> expertCountTempInLocal = sortedExpertIdxInQueue.AllocTensor<int32_t>();
 
@@ -257,7 +257,7 @@ __aicore__ inline void KernelFfnWBGroupListingArch35::expertCountCopyIn()
     sortedExpertIdxInQueue.EnQue(expertCountTempInLocal);
 }
 
-__aicore__ inline void KernelFfnWBGroupListingArch35::expertCountCompute()
+__aicore__ inline void FfnWbGroupListingArch35::expertCountCompute()
 {
     LocalTensor<int32_t> expertCountTempInLocal = sortedExpertIdxInQueue.DeQue<int32_t>();
 
@@ -285,7 +285,7 @@ __aicore__ inline void KernelFfnWBGroupListingArch35::expertCountCompute()
     sortedExpertIdxInQueue.FreeTensor(expertCountTempInLocal);
 }
 
-__aicore__ inline void KernelFfnWBGroupListingArch35::expertCountCopyOut()
+__aicore__ inline void FfnWbGroupListingArch35::expertCountCopyOut()
 {
     LocalTensor<int64_t> expertCountOutLocal = expertIdxCountOutQueue.DeQue<int64_t>();
     DataCopyExtParams copyParams{static_cast<uint16_t>(1), static_cast<uint32_t>(expertNum * NUM_TWO * sizeof(int64_t)),
@@ -295,7 +295,7 @@ __aicore__ inline void KernelFfnWBGroupListingArch35::expertCountCopyOut()
     expertIdxCountOutQueue.FreeTensor(expertCountOutLocal);
 }
 
-__aicore__ inline void KernelFfnWBGroupListingArch35::CopyInOneCore(int64_t inputNum)
+__aicore__ inline void FfnWbGroupListingArch35::CopyInOneCore(int64_t inputNum)
 {
     LocalTensor<int32_t> inLocal = sortedExpertIdxInQueue.AllocTensor<int32_t>();
     DataCopyExtParams dataCopyParams{static_cast<uint16_t>(1), static_cast<uint32_t>(inputNum * sizeof(int32_t)), 0, 0,
@@ -305,7 +305,7 @@ __aicore__ inline void KernelFfnWBGroupListingArch35::CopyInOneCore(int64_t inpu
     sortedExpertIdxInQueue.EnQue<int32_t>(inLocal);
 }
 
-__aicore__ inline void KernelFfnWBGroupListingArch35::ComputeOneCore(int64_t inputNum)
+__aicore__ inline void FfnWbGroupListingArch35::ComputeOneCore(int64_t inputNum)
 {
     LocalTensor<int32_t> inLocal = sortedExpertIdxInQueue.DeQue<int32_t>();
     SetWaitFlag<HardEvent::MTE2_S>(HardEvent::MTE2_S);
