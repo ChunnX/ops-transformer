@@ -187,3 +187,4 @@ __aicore__ inline void PermuteImplParallel(
 } // namespace MC2KernelTemplate
 
 #endif // A2AV_PERMUTE_ENGINE_H
+

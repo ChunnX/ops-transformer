@@ -268,3 +268,4 @@ __aicore__ inline void HcclA2avOp<hcclDataType, commBeforeComputeFlag, commMode>
 }; // namespace MC2KernelTemplate
 
 #endif
+

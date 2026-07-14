@@ -105,3 +105,4 @@ __aicore__ inline void CalcA2avCommAfterParams(
 } // namespace MC2KernelTemplate
 
 #endif // A2AV_COMM_PARAMS_H
+
