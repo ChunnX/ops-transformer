@@ -16,13 +16,21 @@ try:
     from torch.library import impl
     from torchair._ge_concrete_graph import ge_apis as ge
     from torchair.ge._ge_graph import Tensor, TensorSpec
-    from torchair._ge_concrete_graph.fx2ge_converter import declare_supported, register_fx_node_ge_converter
+    from torchair._ge_concrete_graph.fx2ge_converter import (
+        declare_supported,
+        register_fx_node_ge_converter,
+    )
     from torchair._ge_concrete_graph.supported_declaration import Support
     from typing import Any, Dict, List, Tuple, Union, Callable, Optional
-    from torchair._ge_concrete_graph.ge_ir_pb2 import GraphDef, OpDef, TensorDescriptor, TensorDef
+    from torchair._ge_concrete_graph.ge_ir_pb2 import (
+        GraphDef,
+        OpDef,
+        TensorDescriptor,
+        TensorDef,
+    )
     from torchair.ge._ge_graph import get_default_ge_graph, next_unique_name
     from torchair.ge._ge_graph import auto_convert_to_tensor
-    from torchair.ge._ge_graph import Tensor, TensorSpec, DataType, TensorType
+    from torchair.ge._ge_graph import DataType, TensorType
     from torchair.ge._ge_graph import torch_dtype_value_to_ge_proto_type, torch_dtype_value_to_ge_type
     from torchair.ge._ge_graph import _ge_dtype_to_ge_proto_dtype as ge_dtype_to_ge_proto_dtype
     from torchair.ge._ge_graph import compat_as_bytes, compat_as_bytes_list
@@ -30,22 +38,47 @@ try:
     from torchair.ge._ge_graph import get_invalid_desc
     from torchair._ge_concrete_graph.compat_ir import ge_op, IrDef
     from torchair.ge import attr
+
     _TORCHAIR_AVAILABLE = True
 except ImportError:
     _TORCHAIR_AVAILABLE = False
 
 if _TORCHAIR_AVAILABLE:
-    @auto_convert_to_tensor([False, False, False, False, False, False, False, False],
-        [False, False, False, True, True, True, True, True])
-    def MoeDistributeDispatch(context: Tensor, x: Tensor, expert_ids: Tensor, scales: Optional[Tensor],
-                                x_active_mask: Optional[Tensor], expert_scales: Optional[Tensor], 
-                                elastic_info: Optional[Tensor], performance_info: Optional[Tensor], *, 
-                                ep_world_size: int, ep_rank_id: int, moe_expert_num: int, ccl_buffer_size: int,
-                                tp_world_size: int = 0, tp_rank_id: int = 0, expert_shard_type: int = 0,
-                                shared_expert_num: int = 1, shared_expert_rank_num: int = 0, 
-                                quant_mode: int = 0, global_bs: int = 0, expert_token_nums_type: int = 1,
-                                comm_alg: str = "", zero_expert_num: int = 0, copy_expert_num: int = 0,
-                                const_expert_num: int = 0, y_dtype: int = 28, dependencies=[], node_name=None):
+
+    @auto_convert_to_tensor(
+        [False, False, False, False, False, False, False, False],
+        [False, False, False, True, True, True, True, True],
+    )
+    def MoeDistributeDispatch(
+        context: Tensor,
+        x: Tensor,
+        expert_ids: Tensor,
+        scales: Optional[Tensor],
+        x_active_mask: Optional[Tensor],
+        expert_scales: Optional[Tensor],
+        elastic_info: Optional[Tensor],
+        performance_info: Optional[Tensor],
+        *,
+        ep_world_size: int,
+        ep_rank_id: int,
+        moe_expert_num: int,
+        ccl_buffer_size: int,
+        tp_world_size: int = 0,
+        tp_rank_id: int = 0,
+        expert_shard_type: int = 0,
+        shared_expert_num: int = 1,
+        shared_expert_rank_num: int = 0,
+        quant_mode: int = 0,
+        global_bs: int = 0,
+        expert_token_nums_type: int = 1,
+        comm_alg: str = "",
+        zero_expert_num: int = 0,
+        copy_expert_num: int = 0,
+        const_expert_num: int = 0,
+        y_dtype: int = 28,
+        dependencies=[],
+        node_name=None,
+    ):
         """REG_OP(MoeDistributeDispatchV3)\n
         .INPUT(context, TensorType({DT_INT32}))\n
         .INPUT(x, TensorType({DT_BF16, DT_FLOAT16, DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN, DT_HIFLOAT8,

@@ -16,7 +16,7 @@
 #ifndef MC2_MOE_DISPATCH_COMM_H
 #define MC2_MOE_DISPATCH_COMM_H
 
-namespace Mc2Kernel{
+namespace Mc2Kernel {
 constexpr uint32_t NEED_ONE_HUNDRED_AND_TWENTY_SEVEN = 127;
 constexpr uint32_t RIGHT_SHIFT_BIT_SEVEN = 7;
 constexpr uint32_t NEED_THIRTY_FIRST = 31;
@@ -29,7 +29,7 @@ constexpr uint32_t ALIGN_UP_TO_512_MASK = 511;
 constexpr uint32_t RIGHT_SHIFT_BIT_FIVE = 5;
 constexpr uint32_t FIVE_HUNDRED_AND_ELEVEN = 511;
 constexpr uint32_t RIGHT_SHIFT_BIT_NINE = 9;
-}
+} // namespace Mc2Kernel
 
 namespace AscendC {
 template <typename T1, typename T2>
@@ -99,7 +99,7 @@ __aicore__ inline T Align512(T x)
 }
 
 template <MicroAPI::HistogramsType htype, typename T, typename U>
-static __aicore__ inline void HistogramsVf(__local_mem__ U* dst, __local_mem__ T* src, uint16_t repeatElm,
+static __aicore__ inline void HistogramsVf(__local_mem__ U *dst, __local_mem__ T *src, uint16_t repeatElm,
                                            uint16_t halfRepeat, uint32_t totalElm, uint16_t repeatTimes)
 {
     AscendC::MicroAPI::RegTensor<T> srcReg;
@@ -118,18 +118,18 @@ static __aicore__ inline void HistogramsVf(__local_mem__ U* dst, __local_mem__ T
     MicroAPI::DataCopy(dst + halfRepeat, dst1Reg, pregOut);
 }
 
-__aicore__ inline void GetExpertFreq(LocalTensor<uint16_t>& dstLocal, LocalTensor<uint8_t>& srcLocal, uint32_t totalElm)
+__aicore__ inline void GetExpertFreq(LocalTensor<uint16_t> &dstLocal, LocalTensor<uint8_t> &srcLocal, uint32_t totalElm)
 {
     uint32_t repeatElm = GetVecLen();
     uint16_t repeatTimes = Ceil<uint32_t, uint16_t>(totalElm, repeatElm);
-    __local_mem__ uint8_t* src = (__local_mem__ uint8_t*)srcLocal.GetPhyAddr();
-    __local_mem__ uint16_t* dst = (__local_mem__ uint16_t*)dstLocal.GetPhyAddr();
+    __local_mem__ uint8_t *src = (__local_mem__ uint8_t *)srcLocal.GetPhyAddr();
+    __local_mem__ uint16_t *dst = (__local_mem__ uint16_t *)dstLocal.GetPhyAddr();
     VF_CALL<HistogramsVf<MicroAPI::HistogramsType::FREQUENCY, uint8_t, uint16_t>>(dst, src, repeatElm, repeatElm >> 1,
                                                                                   totalElm, repeatTimes);
     PipeBarrier<PIPE_V>();
 }
 
-__aicore__ inline void GetExpertCumSum(LocalTensor<uint16_t>& dstLocal, LocalTensor<uint8_t>& srcLocal,
+__aicore__ inline void GetExpertCumSum(LocalTensor<uint16_t> &dstLocal, LocalTensor<uint8_t> &srcLocal,
                                        uint32_t totalElm)
 {
     uint32_t repeatElm = GetVecLen();
@@ -141,7 +141,7 @@ __aicore__ inline void GetExpertCumSum(LocalTensor<uint16_t>& dstLocal, LocalTen
     PipeBarrier<PIPE_V>();
 }
 
-static __aicore__ inline void ReduceLoop(__local_mem__ int32_t* dst, __local_mem__ int32_t* src, uint16_t repeat0Times,
+static __aicore__ inline void ReduceLoop(__local_mem__ int32_t *dst, __local_mem__ int32_t *src, uint16_t repeat0Times,
                                          uint32_t repeat0SrcStride, uint16_t repeat1Times, uint32_t repeat1Stride,
                                          uint32_t repeat1Element, uint32_t repeat0DstStride)
 {
@@ -163,7 +163,7 @@ static __aicore__ inline void ReduceLoop(__local_mem__ int32_t* dst, __local_mem
     }
 }
 
-__aicore__ inline void GetReduceSum(LocalTensor<int32_t>& dstLocal, LocalTensor<int32_t>& srcLocal,
+__aicore__ inline void GetReduceSum(LocalTensor<int32_t> &dstLocal, LocalTensor<int32_t> &srcLocal,
                                     uint16_t repeat0Times, uint32_t repeat0SrcStride, uint32_t repeat1Element,
                                     uint32_t repeat0DstStride)
 {
@@ -173,13 +173,13 @@ __aicore__ inline void GetReduceSum(LocalTensor<int32_t>& dstLocal, LocalTensor<
 
     uint32_t repeat1Stride = GetVecLen() / sizeof(int32_t);
     uint16_t repeat1Times = Ceil<uint32_t, uint16_t>(repeat1Element, repeat1Stride);
-    __local_mem__ int32_t* src = (__local_mem__ int32_t*)srcLocal.GetPhyAddr();
-    __local_mem__ int32_t* dst = (__local_mem__ int32_t*)dstLocal.GetPhyAddr();
+    __local_mem__ int32_t *src = (__local_mem__ int32_t *)srcLocal.GetPhyAddr();
+    __local_mem__ int32_t *dst = (__local_mem__ int32_t *)dstLocal.GetPhyAddr();
     VF_CALL<ReduceLoop>(dst, src, repeat0Times, repeat0SrcStride, repeat1Times, repeat1Stride, repeat1Element,
                         repeat0DstStride);
     PipeBarrier<PIPE_V>();
 }
 
-}  // namespace AscendC
+} // namespace AscendC
 
 #endif

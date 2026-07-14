@@ -148,3 +148,21 @@ def test_qliv2_process(filepath, device_id=0):
     npu_topk_value, _ = npu_value.sort(dim=-1, descending=True)
     return cpu_result, npu_result, topk_value, cpu_topk_value, npu_topk_value, output_idx_offset, params
 
+
+def test_qliv2_process_graph(filepath, device_id=0):
+    """
+    graph 模式：从 .pt 文件加载 pre-computed tensor，走 torch.compile + torchair 后端执行算子，
+    跳过 qliv2_output_single(is_batch=True) 的随机数据重新生成和 CPU golden 重算。
+    与 eager 模式共用相同的 .pt 数据，仅算子调用路径不同（compile vs eager）。
+    """
+    import quant_lightning_indexer_v2_acl_graph
+    test_data = torch.load(filepath, map_location="cpu")
+    params = test_data['params']
+    output_idx_offset = test_data.get('output_idx_offset', None)
+
+    torch_npu.npu.set_device(device_id)
+    cpu_result, npu_result, topk_value, cpu_topk_value, npu_topk_value = \
+        quant_lightning_indexer_v2_acl_graph.qliv2_output_acl_graph_from_pt(params, test_data)
+
+    return cpu_result, npu_result, topk_value, cpu_topk_value, npu_topk_value, output_idx_offset, params
+

@@ -9,9 +9,9 @@
  */
 
 /*!
-* \file engram_fetch.cpp
-* \brief engram_fetch 算子 kernel 入口
-*/
+ * \file engram_fetch.cpp
+ * \brief engram_fetch 算子 kernel 入口
+ */
 
 #if ASC_DEVKIT_MAJOR >= 9
 #include "basic_api/kernel_basic_intf.h"
@@ -19,14 +19,13 @@
 #include "kernel_operator.h"
 #endif
 #include "kernel_tiling/kernel_tiling.h"
-#include "engram_fetch_tiling_data.h"
-#include "engram_fetch_tiling_key.h"
-#include "arch35/engram_fetch_arch35.h"
+#include "../engram_fetch_tiling_data.h"
+#include "../engram_fetch_tiling_key.h"
+#include "engram_fetch_arch35.h"
 
-using namespace AscendC;
 using namespace Mc2Kernel;
 
-template<uint32_t EngramFetchMode>
+template <uint32_t EngramFetchMode>
 __global__ __aicore__ void engram_fetch(GM_ADDR commContext, GM_ADDR indices, GM_ADDR fetched, GM_ADDR workspaceGM,
                                         GM_ADDR tilingGM)
 {
@@ -34,7 +33,7 @@ __global__ __aicore__ void engram_fetch(GM_ADDR commContext, GM_ADDR indices, GM
     GET_TILING_DATA_WITH_STRUCT(EngramFetchTilingData, tilingData, tilingGM);
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY);
     if constexpr (EngramFetchMode == ENGRAM_FETCH_DEFAULT_MODE) {
-        TPipe pipe;
+        AscendC::TPipe pipe;
         EngramFetchArch35 op;
         op.Init(commContext, indices, fetched, workspaceGM, &pipe, &tilingData);
         op.Process();

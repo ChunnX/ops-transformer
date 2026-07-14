@@ -9,9 +9,9 @@
  */
 
 /*!
-* \file maximum.h
-* \brief
-*/
+ * \file maximum.h
+ * \brief
+ */
 
 #ifndef OP_API_INC_LEVEL0_OP_MAXIMUM_OP_H_
 #define OP_API_INC_LEVEL0_OP_MAXIMUM_OP_H_
@@ -19,7 +19,7 @@
 #include "opdev/op_executor.h"
 
 namespace l0op {
-const aclTensor* Maximum(const aclTensor* self, const aclTensor* other, aclOpExecutor* executor);
+const aclTensor *Maximum(const aclTensor *self, const aclTensor *other, aclOpExecutor *executor);
 
 }
 

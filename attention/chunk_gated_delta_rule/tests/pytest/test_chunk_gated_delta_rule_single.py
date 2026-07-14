@@ -9,60 +9,80 @@
 # -----------------------------------------------------------------------------------------------------------
 
 import itertools
+import os
+import logging
+
 import torch
 import torch_npu
 
 # ******入参调用
 from test_chunk_gated_delta_rule_paramset import ENABLED_PARAMS
+from test_chunk_gated_delta_rule_paramset_rdv import ENABLED_PARAMS_RDV
 
 # ******CPU侧算子逻辑实现获取golden与npu算子直调结果
 import chunk_gated_delta_rule_operator_single
 import pytest
 
-locals()["param_combinations"] = []
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-for _, params in enumerate(ENABLED_PARAMS):
-    # 将params的所有字段注册为局部变量
-    for key, value in params.items():
-        locals()[f"param_{key}"] = value
+TEST_MODE = os.environ.get('TEST_MODE', 'single')
 
-    # 生成所有参数组合
+if TEST_MODE not in ['single', 'rdv']:
+    raise ValueError(f"Invalid TEST_MODE: {TEST_MODE}, must be 'single' or 'rdv'")
+
+if TEST_MODE == 'rdv':
+    PARAM_SET = ENABLED_PARAMS_RDV
+else:
+    PARAM_SET = ENABLED_PARAMS
+
+logger.info(f"TEST_MODE: {TEST_MODE}")
+
+param_combinations = []
+
+for _, params in enumerate(PARAM_SET):
     param_names = [
-        "B", "seqlen", "nk", "nv", "dk", "dv", "chunk_size", "data_type"
+        "B", "seqlen", "nk", "nv", "dk", "dv", "chunk_size", "data_type", "state_data_type", "has_g"
     ]
 
     param_values = [
-        locals()["param_B"],
-        locals()["param_seqlen"],
-        locals()["param_nk"],
-        locals()["param_nv"],
-        locals()["param_dk"],
-        locals()["param_dv"],
-        locals()["param_chunk_size"],
-        locals()["param_data_type"],
+        params["B"],
+        params["seqlen"],
+        params["nk"],
+        params["nv"],
+        params["dk"],
+        params["dv"],
+        params["chunk_size"],
+        params["data_type"],
+        params["state_data_type"],
+        params["has_g"],
     ]
 
-    # 生成所有的组合，并转换为字典列表
     for combo in itertools.product(*param_values):
         param_dict = dict(zip(param_names, combo))
-        locals()["param_combinations"].append(param_dict)
+        param_combinations.append(param_dict)
 
-    @pytest.mark.ci
-    @pytest.mark.parametrize("param_combinations", locals()["param_combinations"])
-    def test_chunk_gated_delta_rule(param_combinations):
-        # 初始化参数和tensor
-        B = param_combinations['B']
-        seqlen = param_combinations['seqlen']
-        nk = param_combinations['nk']
-        nv = param_combinations['nv']
-        dk = param_combinations['dk']
-        dv = param_combinations['dv']
-        chunk_size = param_combinations['chunk_size']
-        data_type = param_combinations['data_type']
+logger.info(f"Total test cases: {len(param_combinations)}")
 
-        test_data = B, seqlen, nk, nv, dk, dv, chunk_size, data_type
 
-        torch_npu.npu.set_device(0)
+@pytest.mark.ci
+@pytest.mark.parametrize("param_combinations", param_combinations)
+def test_chunk_gated_delta_rule(param_combinations):
+    # 初始化参数和tensor
+    B = param_combinations['B']
+    seqlen = param_combinations['seqlen']
+    nk = param_combinations['nk']
+    nv = param_combinations['nv']
+    dk = param_combinations['dk']
+    dv = param_combinations['dv']
+    chunk_size = param_combinations['chunk_size']
+    data_type = param_combinations['data_type']
+    state_data_type = param_combinations['state_data_type']
+    has_g = param_combinations['has_g']
 
-        # 豀得cpu结果(真值)和算子结果（测试值)
-        chunk_gated_delta_rule_operator_single.run_precision_test(test_data)
+    test_data = B, seqlen, nk, nv, dk, dv, chunk_size, data_type, state_data_type, has_g
+
+    torch_npu.npu.set_device(0)
+
+    # 获取cpu结果(真值)和算子结果（测试值)
+    chunk_gated_delta_rule_operator_single.run_precision_test(test_data)
