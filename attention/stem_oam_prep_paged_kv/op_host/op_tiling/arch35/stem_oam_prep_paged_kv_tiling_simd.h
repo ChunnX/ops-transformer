@@ -26,7 +26,7 @@
 
 namespace optiling {
 
-constexpr uint64_t MAX_Kv_PADDED = 262144;
+constexpr uint64_t MAX_KV_PADDED = 262144;
 
 struct StemOamPrepPagedKvCompileInfo {
     uint32_t coreNum = 0;

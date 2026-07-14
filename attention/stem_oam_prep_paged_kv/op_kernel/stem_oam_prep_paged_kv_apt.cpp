@@ -20,7 +20,7 @@
 template <bool TILINGKEY>
 __global__ __aicore__ void stem_oam_prep_paged_kv(GM_ADDR kCache, GM_ADDR vCache, GM_ADDR kvIndices, GM_ADDR kvSeqLens,
                                                   GM_ADDR kScaleCache, GM_ADDR vScale, GM_ADDR kFlat, GM_ADDR vBias,
-                                                  GM_ADDR shape_out GM_ADDR workspace, GM_ADDR tiling)
+                                                  GM_ADDR shape_out, GM_ADDR workspace, GM_ADDR tiling)
 {
     if (workspace == nullptr) {
         return;

@@ -35,8 +35,8 @@ public:
     __aicore__ inline StemOamPrepPagedKvSimd() = default;
     __aicore__ inline void Process(void);
     __aicore__ inline void Init(GM_ADDR kCache, GM_ADDR vCache, GM_ADDR kvIndices, GM_ADDR kvSeqLens,
-                                GM_ADDR kScaleCache, GM_ADDR vScale, GM_ADDR kFlat, GM_ADDR vBias, GM_ADDR shapeOut, GM_ADDR workspace,
-                                const StemOamPrepPagedKvTilingData *tilingData, TPipe *pipe);
+                                GM_ADDR kScaleCache, GM_ADDR vScale, GM_ADDR kFlat, GM_ADDR vBias, GM_ADDR shapeOut,
+                                GM_ADDR workspace, const StemOamPrepPagedKvTilingData *tilingData, TPipe *pipe);
 
 private:
     __aicore__ inline void CopyInKVCache(int32_t batchIdx, int32_t headIDx, int32_t stemBlockIdx, int64_t actualRows);
@@ -49,9 +49,9 @@ private:
                                         __local_mem__ float *vFLatOutAddr);
     template <bool KDownLenFlag>
     __aicore__ inline void ComputeVStd(int64_t numStemBlocks, __local_mem__ float *vBiasOutAddr,
-                                       __local_mem__ float *logValsAddr);
+                                       __local_mem__ float *logValsAddr, float vMean);
     __aicore__ inline void ComputeVBias(int64_t numStemBlocks, __local_mem__ float *vBiasOutAddr,
-                                        __local_mem__ float *logValsAddr);
+                                        __local_mem__ float *logValsAddr, float vMean, float vSTd);
     __aicore__ inline void ComputeVBiasOut(int32_t batchIdx, int32_t headIdx, int64_t kDownLen, int64_t numStemBlocks);
     __aicore__ inline void ProcessVBias(void);
     __aicore__ inline void ProcessKVFlat(void);
@@ -112,7 +112,8 @@ private:
     int64_t vCacheOffset_ = 0;
     int64_t totalStemBlockNum_ = 0;
     int64_t curCoreProcessStemBlock_ = 0;
-    int64_t complateCoreNum_ = 0;
+    int64_t tailCoreProcessStemBlock_ = 0;
+    int64_t kvUsedCoreNum_ = 0;
 
     constexpr static int64_t V_REG_SIZE = Ops::Base::GetVRegSize();
 };
@@ -130,7 +131,7 @@ __aicore__ inline void StemOamPrepPagedKvSimd::Init(GM_ADDR kCache, GM_ADDR vCac
     vScaleGm_.SetGlobalBuffer((__gm__ float *)vScale);
     kFlatGm_.SetGlobalBuffer((__gm__ bfloat16_t *)kFlat);
     vBiasGm_.SetGlobalBuffer((__gm__ float *)vBias);
-    outShapeGm_.SetGlobalBuffer((__gm__ uint64_t*)shapeOut);
+    outShapeGm_.SetGlobalBuffer((__gm__ uint64_t *)shapeOut);
 
     vFlatOutWs_.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(workspace));
     pipe_ = pipe;
@@ -160,21 +161,12 @@ __aicore__ inline void StemOamPrepPagedKvSimd::Init(GM_ADDR kCache, GM_ADDR vCac
     pipe_->InitBuffer(kCacheQue_, 1, stemBlockSize_ * dimQk_ * sizeof(fp8_e4m3fn_t)); // 32K
     pipe_->InitBuffer(vCacheQue_, 1, stemBlockSize_ * dimQk_ * sizeof(fp8_e4m3fn_t)); // 32K
     pipe_->InitBuffer(kvSeqLensQue_, 1, batchSize_ * sizeof(int32_t));                //
-    pipe_->InitBuffer(vFLatOutQue_, 1, maxKb_ * r_ * sizeof(float));                  // 64k
 
     pipe_->InitBuffer(groupSumQue_, 1, stemStride_ * dimQk_ * sizeof(bfloat16_t)); // 16K
     pipe_->InitBuffer(vNormDownQue_, 1, stemBlockSize_ * sizeof(float));           // 1K
-    pipe_->InitBuffer(vBiasOutQue_, 1, maxKb_ * sizeof(float));                    // 32K
 
     pipe_->InitBuffer(kScalarBuf_, stemBlockSize_ * sizeof(float));             // 1K
     pipe_->InitBuffer(totalStemBlockIndexBuf_, maxStemlockNum * sizeof(float)); // 24K
-
-    // init OutPut 0
-    if (blockIdx_ == 0) {
-        InitOutput<bfloat16_t>(kFlatGm_, batchSize_ * hKv_ * maxKb_ * kflatDim_, bfloat16_t(0));
-        InitOutput<float>(vBiasGm_, batchSize_ * hKv_ * maxKb_, float(0));
-    }
-    SyncAll();
 }
 
 __aicore__ inline void StemOamPrepPagedKvSimd::ComputTotalStemBlockIndex(void)
@@ -193,6 +185,7 @@ __aicore__ inline void StemOamPrepPagedKvSimd::ComputTotalStemBlockIndex(void)
         AscendC::MicroAPI::RegTensor<int32_t> kvSeqLensReg;
         AscendC::MicroAPI::RegTensor<int32_t> divNumReg;
         AscendC::MicroAPI::RegTensor<int32_t> kvstemBlockReg;
+        AscendC::MicroAPI::RegTensor<int32_t> kvstemBlockAllReg;
         AscendC::MicroAPI::RegTensor<int32_t> stemBlockNumReg;
         AscendC::MicroAPI::RegTensor<int32_t> stemBlockSumNumReg;
         AscendC::MicroAPI::RegTensor<int32_t> maxKbReg;
@@ -215,62 +208,81 @@ __aicore__ inline void StemOamPrepPagedKvSimd::ComputTotalStemBlockIndex(void)
             AscendC::MicroAPI::Adds(kvstemBlockReg, kvSeqLensReg, int32_t(stemBlockSize_ - 1), valueMaskReg);
             AscendC::MicroAPI::Div(kvstemBlockReg, kvstemBlockReg, divNumReg, valueMaskReg);
             AscendC::MicroAPI::Muls(kPaddedLensReg, kvstemBlockReg, int32_t(stemBlockSize_), valueMaskReg);
-            AscendC::MicroAPI::Muls(kvstemBlockReg, kvstemBlockReg, int32_t(hKv_), valueMaskReg);
+            AscendC::MicroAPI::Muls(kvstemBlockAllReg, kvstemBlockReg, int32_t(hKv_), valueMaskReg);
             AscendC::MicroAPI::Reduce<MicroAPI::ReduceType::MAX, int32_t, int32_t>(kPaddedLensReg, kPaddedLensReg,
                                                                                    valueMaskReg);
-            AscendC::MicroAPI::Reduce<MicroAPI::ReduceType::SUM, int32_t, int32_t>(stemBlockNumReg, kvstemBlockReg,
+            AscendC::MicroAPI::Reduce<MicroAPI::ReduceType::SUM, int32_t, int32_t>(stemBlockNumReg, kvstemBlockAllReg,
                                                                                    valueMaskReg);
-            AscendC::MicroAPI::Compare<float, AscendC::CMPMODE::GT>(maxMaskReg, kPaddedLensReg, maxKbReg, oneMaskReg);
+            AscendC::MicroAPI::Compare<int32_t, AscendC::CMPMODE::GT>(maxMaskReg, kPaddedLensReg, maxKbReg, oneMaskReg);
             AscendC::MicroAPI::Select(maxKbReg, kPaddedLensReg, maxKbReg, maxMaskReg);
             AscendC::MicroAPI::Add(stemBlockSumNumReg, stemBlockSumNumReg, stemBlockNumReg, oneMaskReg);
             AscendC::MicroAPI::StoreAlign(kvStemBlockAddr + i * vfLen, kvstemBlockReg, valueMaskReg);
         }
+        AscendC::MicroAPI::Div(maxKbReg, maxKbReg, divNumReg, oneMaskReg);
         AscendC::MicroAPI::Store(stemBlockSumNumAddr, stemBlockSumNumReg, 1);
-        AscendC::MicroAPI::Store(stemBlockSumNumAddr, maxKbReg, 1);
+        AscendC::MicroAPI::Store(stemBlockSumNumAddr + 1, maxKbReg, 1);
     }
-
-    printf("totalStemBlockNum=%ld, maxKB=%ld\n", *(totalStemBlockIndexAddr), *(totalStemBlockIndexAddr + 1));
+    EventMsg<HardEvent::V_S>();
     int32_t batchIdx = 0;
     int32_t hKvIdx = 0;
     int32_t stemBlockIdx = 0;
     int32_t baseStemBlockNum = 0;
-    totalStemBlockNum_ = *(totalStemBlockIndexAddr);
-    maxKb_ = *(totalStemBlockIndexAddr + 1);
+    totalStemBlockNum_ = totalStemBlockIndexLocal.GetValue(0);
+    maxKb_ = totalStemBlockIndexLocal.GetValue(1);
     int32_t blockFlag = 0;
     int32_t setN = 0;
-    complateCoreNum_ = totalStemBlockNum_ % blockNum_;
-    curCoreProcessStemBlock_ = totalStemBlockNum_ / blockNum_;
-    for (int32_t i = 0; i < totalStemBlockNum_; i++) {
-        stemBlockIdx = i - baseStemBlockNum;
-        if (stemBlockIdx >= kvStemBlockAddr[batchIdx]) {
-            baseStemBlockNum += kvStemBlockAddr[batchIdx];
-            hKvIdx++;
-            stemBlockIdx = 0;
-        }
-        if (hKvIdx >= hKv_) {
-            batchIdx++;
-            hKvIdx = 0;
-        }
-        blockFlag++;
-        if (blockFlag == blockIdx_) {
-            totalStemBlockIndexLocal.SetValue(setN * 3, batchIdx);
-            totalStemBlockIndexLocal.SetValue(setN * 3 + 1, hKvIdx);
-            totalStemBlockIndexLocal.SetValue(setN * 3 + 2, stemBlockIdx);
-            setN++;
-        }
-        if (blockFlag == blockNum_ - 1) {
-            blockFlag = 0;
+    curCoreProcessStemBlock_ = Ops::Base::CeilDiv(totalStemBlockNum_, blockNum_);
+    kvUsedCoreNum_ = totalStemBlockNum_ / curCoreProcessStemBlock_;
+    tailCoreProcessStemBlock_ = totalStemBlockNum_ - (kvUsedCoreNum_ - 1) * curCoreProcessStemBlock_;
+    if (blockIdx_ < kvUsedCoreNum_) {
+        auto startStemBlock = blockIdx_ * curCoreProcessStemBlock_;
+        auto endStemBlock = (blockIdx_ * curCoreProcessStemBlock_ >= totalStemBlockNum_) ?
+                                totalStemBlockNum_ - 1 :
+                                (startStemBlock + curCoreProcessStemBlock_);
+        for (int32_t i = 0; i < totalStemBlockNum_; i++) {
+            stemBlockIdx = i - baseStemBlockNum;
+            if (stemBlockIdx >= kvSeqLensLocal.GetValue(batchIdx)) {
+                baseStemBlockNum += kvSeqLensLocal.GetValue(batchIdx);
+                hKvIdx++;
+                stemBlockIdx = 0;
+            }
+            if (hKvIdx >= hKv_) {
+                batchIdx++;
+                hKvIdx = 0;
+            }
+            if (i >= startStemBlock && i <= endStemBlock) {
+                totalStemBlockIndexLocal.SetValue(setN * 3, batchIdx);
+                totalStemBlockIndexLocal.SetValue(setN * 3 + 1, hKvIdx);
+                totalStemBlockIndexLocal.SetValue(setN * 3 + 2, stemBlockIdx);
+                setN++;
+            }
+            if (i == endStemBlock) {
+                break;
+            }
         }
     }
-    outShapeGM[0] = 0x80000002;
-    outShapeGM[1 + 0] = static_cast<uint64_t>(batchSize_);
-    outShapeGM[1 + 2] = static_cast<uint64_t>(hKv_);
-    outShapeGM[1 + 3] = static_cast<uint64_t>(maxKb_);
-    outShapeGM[1 + 4] = static_cast<uint64_t>(kflatDim_);
-    outShapeGM[1 + 8 + 0] = static_cast<uint64_t>(batchSize_);
-    outShapeGM[1 + 8 + 1] = static_cast<uint64_t>(hKv_);
-    outShapeGM[1 + 8 + 2] = static_cast<uint64_t>(maxKb_);
+
+    if (blockIdx_ == 0) {
+        auto outShapeGmAddr = (__gm__ uint64_t *)(outShapeGm_.GetPhyAddr());
+        outShapeGmAddr[0] = 0x80000004;
+        outShapeGmAddr[1 + 0] = static_cast<uint64_t>(batchSize_);
+        outShapeGmAddr[1 + 1] = static_cast<uint64_t>(hKv_);
+        outShapeGmAddr[1 + 2] = static_cast<uint64_t>(maxKb_);
+        outShapeGmAddr[1 + 3] = static_cast<uint64_t>(kflatDim_);
+        outShapeGmAddr[1 + 8 + 0] = static_cast<uint64_t>(3);
+        outShapeGmAddr[1 + 9 + 0] = static_cast<uint64_t>(batchSize_);
+        outShapeGmAddr[1 + 9 + 1] = static_cast<uint64_t>(hKv_);
+        outShapeGmAddr[1 + 9 + 2] = static_cast<uint64_t>(maxKb_);
+    }
+    pipe_->InitBuffer(vFLatOutQue_, 1, maxKb_ * r_ * sizeof(float));                  // 64k
+    pipe_->InitBuffer(vBiasOutQue_, 1, maxKb_ * sizeof(float));                    // 32K
+    // init OutPut 0
+    if (blockIdx_ == 0) {
+        InitOutput<bfloat16_t>(kFlatGm_, batchSize_ * hKv_ * maxKb_ * kflatDim_, bfloat16_t(0));
+        InitOutput<float>(vBiasGm_, batchSize_ * hKv_ * maxKb_, float(0));
+    }
     kvSeqLensQue_.FreeTensor(kvSeqLensLocal);
+    SyncAll();
 }
 
 __aicore__ inline void StemOamPrepPagedKvSimd::CopyInKvSeqLens(void)
@@ -364,6 +376,7 @@ __aicore__ inline void StemOamPrepPagedKvSimd::ComputeKFlat(void)
 
     uint32_t vfLen = V_REG_SIZE / sizeof(float);
     uint16_t loopCnt = (dimQk_ + vfLen - 1) / vfLen;
+
     __VEC_SCOPE__
     {
         AscendC::MicroAPI::RegTensor<fp8_e4m3fn_t> kCacheReg;
@@ -378,11 +391,11 @@ __aicore__ inline void StemOamPrepPagedKvSimd::ComputeKFlat(void)
                 auto kGropSumAddrStart = kGropSumAddr + (stemStride_ - i - 1) * dimQk_ + j * vfLen;
                 valueMaskReg = AscendC::MicroAPI::UpdateMask<float>(maskLen);
                 MicroAPI::Duplicate(kGropSumReg, float(0), valueMaskReg);
-                AscendC::MicroAPI::AddrReg kCacheAddrOfst = AscendC::MicroAPI::CreateAddrReg<float>(j, vfLen);
                 for (uint16_t k = 0; k < r_; k++) {
-                    float kScalarValue = *(kScalarAddr + k * stemStride_ + j);
+                    auto kCacheAddrStart = kCacheAddr + k * stemStride_ * dimQk_ + i * dimQk_ + j * vfLen;
+                    float kScalarValue = *(kScalarAddr + k * stemStride_ + i);
                     AscendC::MicroAPI::LoadAlign<fp8_e4m3fn_t, AscendC::MicroAPI::LoadDist::DIST_UNPACK4_B8>(
-                        kCacheReg, kCacheAddr, kCacheAddrOfst);
+                        kCacheReg, kCacheAddrStart);
                     AscendC::MicroAPI::Cast<float, fp8_e4m3fn_t, castTraitFp8ToFloat>(kCacheFp32Reg, kCacheReg,
                                                                                       valueMaskReg);
                     AscendC::MicroAPI::Muls(kHReg, kCacheFp32Reg, kScalarValue, valueMaskReg);
@@ -434,26 +447,24 @@ __aicore__ inline void StemOamPrepPagedKvSimd::ComputeVFlat(int64_t headIdx, int
         AscendC::MicroAPI::MaskReg allMaskReg =
             AscendC::MicroAPI::CreateMask<float, AscendC::MicroAPI::MaskPattern::ALL>();
         MicroAPI::Duplicate(zerosReg, float(0), allMaskReg);
-        MicroAPI::Duplicate(normsMaxReg, float(FLT_MIN), allMaskReg);
         auto normsAddrStart = normsAddr;
         for (uint16_t i = 0; i < r_ * stemStride_; i++) {
-            auto vCacheAddrStart = vCacheAddr + i * dimV_;
             uint32_t maskLen = static_cast<uint32_t>(dimV_);
             MicroAPI::Duplicate(normsReg, float(0), oneMaskReg);
             for (uint16_t j = 0; j < loopCnt; j++) {
                 valueMaskReg = AscendC::MicroAPI::UpdateMask<float>(maskLen);
-                AscendC::MicroAPI::AddrReg vCacheAddrOfst = AscendC::MicroAPI::CreateAddrReg<float>(j, vfLen);
+                auto vCacheAddrStart = vCacheAddr + i * dimV_ + j * vfLen; 
                 AscendC::MicroAPI::LoadAlign<fp8_e4m3fn_t, AscendC::MicroAPI::LoadDist::DIST_UNPACK4_B8>(
-                    vCacheReg, vCacheAddrStart, vCacheAddrOfst);
+                    vCacheReg, vCacheAddrStart);
                 AscendC::MicroAPI::Cast<float, fp8_e4m3fn_t, castTraitFp8ToFloat>(vCacheFp32Reg, vCacheReg,
                                                                                   valueMaskReg);
                 AscendC::MicroAPI::Muls(vHReg, vCacheFp32Reg, vScaleH, valueMaskReg);
                 AscendC::MicroAPI::Mul(vH2Reg, vHReg, vHReg, valueMaskReg);
-                AscendC::MicroAPI::Sqrt(vRowsSqrtReg, vH2Reg, valueMaskReg);
-                AscendC::MicroAPI::Reduce<MicroAPI::ReduceType::SUM, float, float>(vHSumReg, vHReg, valueMaskReg);
+                AscendC::MicroAPI::Reduce<MicroAPI::ReduceType::SUM, float, float>(vHSumReg, vH2Reg, valueMaskReg);
                 AscendC::MicroAPI::Add(normsReg, normsReg, vHSumReg, oneMaskReg);
             }
-            AscendC::MicroAPI::Store(normsAddr, normsReg, 1); //  norms sum(dim=-1)   [R, StemStride]
+            AscendC::MicroAPI::Sqrt(vRowsSqrtReg, normsReg, valueMaskReg);
+            AscendC::MicroAPI::Store(normsAddrStart + i, vRowsSqrtReg, 1); //  norms sum(dim=-1)   [R, StemStride]
         }
         Reg::LocalMemBar<Reg::MemType::VEC_STORE, Reg::MemType::VEC_LOAD>();
 
@@ -461,8 +472,7 @@ __aicore__ inline void StemOamPrepPagedKvSimd::ComputeVFlat(int64_t headIdx, int
         uint32_t maskLen = static_cast<uint32_t>(r_ * stemStride_);
         for (uint16_t i = 0; i < loopCntWhere; i++) {
             valueMaskReg = AscendC::MicroAPI::UpdateMask<float>(maskLen);
-            AscendC::MicroAPI::AddrReg normsAddrOfst = AscendC::MicroAPI::CreateAddrReg<float>(i, vfLen);
-            AscendC::MicroAPI::LoadAlign(normsReg, normsAddrStart, normsAddrOfst);
+            AscendC::MicroAPI::LoadAlign(normsReg, normsAddrStart + i * vfLen);
             AscendC::MicroAPI::Arange(rowIdxsReg, rowIdsStart + i * vfLen);
             AscendC::MicroAPI::Compares<int32_t, AscendC::CMPMODE::LT>(whereMaskReg, rowIdxsReg, kvLen, valueMaskReg);
             AscendC::MicroAPI::Select(normsWhereReg, normsReg, zerosReg, whereMaskReg);
@@ -473,16 +483,16 @@ __aicore__ inline void StemOamPrepPagedKvSimd::ComputeVFlat(int64_t headIdx, int
         auto vNormDownAddr = normsAddr;
         for (uint16_t i = 0; i < r_; i++) {
             uint32_t maskLen = static_cast<uint32_t>(stemStride_);
-            normsAddrStart = normsAddr + i * stemStride_;
+            MicroAPI::Duplicate(normsMaxReg, float(FLT_MIN), allMaskReg);
             for (uint16_t j = 0; j < loopCntMax; j++) {
                 valueMaskReg = AscendC::MicroAPI::UpdateMask<float>(maskLen);
-                AscendC::MicroAPI::AddrReg normsAddrOfst = AscendC::MicroAPI::CreateAddrReg<float>(j, vfLen);
-                AscendC::MicroAPI::LoadAlign(normsReg, normsAddrStart, normsAddrOfst);
+                auto normsWhereAddrStart = normsAddr + i * stemStride_ + j * vfLen;
+                AscendC::MicroAPI::LoadAlign(normsReg, normsWhereAddrStart);
                 AscendC::MicroAPI::Reduce<MicroAPI::ReduceType::MAX, float, float>(normsReg, normsReg, valueMaskReg);
                 AscendC::MicroAPI::Compare<float, AscendC::CMPMODE::GT>(maxMaskReg, normsReg, normsMaxReg, oneMaskReg);
                 AscendC::MicroAPI::Select(normsMaxReg, normsReg, normsMaxReg, maxMaskReg);
             }
-            AscendC::MicroAPI::Store(vNormDownAddr, normsMaxReg, 1); // v_norm_down    [R]
+            AscendC::MicroAPI::Store(vNormDownAddr + i, normsMaxReg, 1); // v_norm_down    [R]
         }
     }
     vNormDownQue_.EnQue(vNormDownLocal);
@@ -525,12 +535,12 @@ __aicore__ inline void StemOamPrepPagedKvSimd::ComputeVMean(int64_t numStemBlock
 
 template <bool KDownLenFlag>
 __aicore__ inline void StemOamPrepPagedKvSimd::ComputeVStd(int64_t numStemBlocks, __local_mem__ float *vBiasOutAddr,
-                                                           __local_mem__ float *logValsAddr)
+                                                           __local_mem__ float *logValsAddr, float vMean)
 {
     uint32_t vfLen = V_REG_SIZE / sizeof(float);
     uint16_t loopCnt = (numStemBlocks * r_ + vfLen - 1) / vfLen;
     float divNum = 1 / float(numStemBlocks * r_ - 1);
-    float vMean = *(vBiasOutAddr) * (-1);
+    float vMeanNum = vMean * (-1);
 
     __VEC_SCOPE__
     {
@@ -551,7 +561,7 @@ __aicore__ inline void StemOamPrepPagedKvSimd::ComputeVStd(int64_t numStemBlocks
                 valueMaskReg = AscendC::MicroAPI::UpdateMask<float>(maskLen);
                 AscendC::MicroAPI::AddrReg logValsAddrOfst = AscendC::MicroAPI::CreateAddrReg<float>(i, vfLen);
                 AscendC::MicroAPI::LoadAlign(logValsReg, logValsAddrStart, logValsAddrOfst);
-                AscendC::MicroAPI::Adds(subReg, logValsReg, vMean, valueMaskReg);
+                AscendC::MicroAPI::Adds(subReg, logValsReg, vMeanNum, valueMaskReg);
                 AscendC::MicroAPI::Mul(squareReg, subReg, subReg, valueMaskReg);
                 AscendC::MicroAPI::Reduce<MicroAPI::ReduceType::SUM, float, float>(squareReg, squareReg, valueMaskReg);
                 AscendC::MicroAPI::Add(sumReg, sumReg, squareReg, oneMaskReg);
@@ -566,10 +576,9 @@ __aicore__ inline void StemOamPrepPagedKvSimd::ComputeVStd(int64_t numStemBlocks
 }
 
 __aicore__ inline void StemOamPrepPagedKvSimd::ComputeVBias(int64_t numStemBlocks, __local_mem__ float *vBiasOutAddr,
-                                                            __local_mem__ float *logValsAddr)
+                                                            __local_mem__ float *logValsAddr, float vMean, float vSTd)
 {
-    float vMean = *(vBiasOutAddr) * (-1);
-    float vSTd = *(vBiasOutAddr + 1);
+    float vMeanNum = vMean * (-1);
     float invStd = float(1.0) / (vSTd + float(1e-6));
     float divNum = 1 / float(r_);
 
@@ -598,7 +607,7 @@ __aicore__ inline void StemOamPrepPagedKvSimd::ComputeVBias(int64_t numStemBlock
             valueMaskReg = AscendC::MicroAPI::UpdateMask<float>(maskLen);
             AscendC::MicroAPI::AddrReg vFLatOutAddrOfst = AscendC::MicroAPI::CreateAddrReg<float>(i, vfLen);
             AscendC::MicroAPI::LoadAlign(logValsReg, logValsAddrStart, vFLatOutAddrOfst);
-            AscendC::MicroAPI::Adds(normalizedReg, logValsReg, vMean, valueMaskReg);
+            AscendC::MicroAPI::Adds(normalizedReg, logValsReg, vMeanNum, valueMaskReg);
             AscendC::MicroAPI::Muls(normalizedReg, normalizedReg, invStd, valueMaskReg);
             AscendC::MicroAPI::Relu(reluReg, normalizedReg, valueMaskReg);
             AscendC::MicroAPI::Muls(vFinalReg, reluReg, lambdaMag_, valueMaskReg);
@@ -620,7 +629,7 @@ __aicore__ inline void StemOamPrepPagedKvSimd::ComputeVBias(int64_t numStemBlock
                 AscendC::MicroAPI::Add(vFinalBlockSumReg, vFinalBlockSumReg, vFinalBlockReg, oneMaskReg);
             }
             AscendC::MicroAPI::Muls(vFinalBlockMeanReg, vFinalBlockSumReg, divNum, oneMaskReg);
-            AscendC::MicroAPI::Store(vBiasOutAddrStart, vFinalBlockMeanReg, 1);
+            AscendC::MicroAPI::Store(vBiasOutAddrStart + i, vFinalBlockMeanReg, 1);
         }
     }
 }
@@ -635,19 +644,23 @@ __aicore__ inline void StemOamPrepPagedKvSimd::ComputeVBiasOut(int32_t batchIdx,
     __local_mem__ float *vFLatOutAddr = (__ubuf__ float *)vFLatOutLocal.GetPhyAddr();
 
     ComputeVMean(numStemBlocks, vBiasOutAddr, vFLatOutAddr); //  保存在vBiasOutAddr第一个位置,vFLatOutAddr保存LogVals
+    EventMsg<HardEvent::V_S>();
+    float vMean = vBiasOutLocal.GetValue(0);
     if (kDownLen > 1) {
-        ComputeVStd<true>(numStemBlocks, vBiasOutAddr, vFLatOutAddr); //  保存在vBiasOutAddr第二个位置
+        ComputeVStd<true>(numStemBlocks, vBiasOutAddr, vFLatOutAddr, vMean); //  保存在vBiasOutAddr第二个位置
     } else {
-        ComputeVStd<false>(numStemBlocks, vBiasOutAddr, vFLatOutAddr);
+        ComputeVStd<false>(numStemBlocks, vBiasOutAddr, vFLatOutAddr, vMean);
     }
-    ComputeVBias(numStemBlocks, vBiasOutAddr, vFLatOutAddr);
+    EventMsg<HardEvent::V_S>();
+    float vSTd = vBiasOutLocal.GetValue(1);
+    ComputeVBias(numStemBlocks, vBiasOutAddr, vFLatOutAddr, vMean, vSTd);
     vBiasOutQue_.EnQue(vBiasOutLocal);
     vFLatOutQue_.FreeTensor(vFLatOutLocal);
 }
 
 __aicore__ inline void StemOamPrepPagedKvSimd::ProcessVBias(void)
 {
-    for (int32_t bhIdx_ = 0; bhIdx_ < totalBh_; bhIdx_ += blockNum_) {
+    for (int32_t bhIdx_ = blockIdx_; bhIdx_ < totalBh_; bhIdx_ += blockNum_) {
         int32_t batchIdx = bhIdx_ / hKv_;
         int32_t headIdx = bhIdx_ % hKv_;
         int32_t kvLen = kvSeqLensGm_.GetValue(batchIdx);
@@ -662,9 +675,12 @@ __aicore__ inline void StemOamPrepPagedKvSimd::ProcessVBias(void)
 
 __aicore__ inline void StemOamPrepPagedKvSimd::ProcessKVFlat(void)
 {
+    if (blockIdx_ >= kvUsedCoreNum_) {
+        return;
+    }
     LocalTensor<int32_t> totalStemBlockIndexLocal = totalStemBlockIndexBuf_.Get<int32_t>();
-    auto stemBlockNum = (blockIdx_ < complateCoreNum_) ? curCoreProcessStemBlock_ + 1 : curCoreProcessStemBlock_;
-    for (int32_t idx = blockIdx_; idx < stemBlockNum; idx++) {
+    auto stemBlockNum = (blockIdx_ == kvUsedCoreNum_ - 1) ? tailCoreProcessStemBlock_ + 1 : curCoreProcessStemBlock_;
+    for (int32_t idx = 0; idx < stemBlockNum; idx++) {
         int32_t batchIdx = totalStemBlockIndexLocal.GetValue(idx * 3);
         int32_t headIdx = totalStemBlockIndexLocal.GetValue(idx * 3 + 1);
         int32_t stemBlockIdx = totalStemBlockIndexLocal.GetValue(idx * 3 + 2);

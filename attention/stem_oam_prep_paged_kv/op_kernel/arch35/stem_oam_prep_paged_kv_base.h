@@ -55,5 +55,13 @@ __aicore__ inline void CopyOut(const GlobalTensor<PARAM_T> &dstTensor, const Loc
     DataCopyPad(dstTensor, srcTensor, copyParams);
 }
 
+template <AscendC::HardEvent VAR_T>
+__aicore__ inline void EventMsg()
+{
+    event_t event = static_cast<event_t>(GetTPipePtr()->FetchEventID(VAR_T));
+    SetFlag<VAR_T>(event);
+    WaitFlag<VAR_T>(event);
+}
+
 
 #endif //  STEM_OAM_PREP_PAGED_KV_BASE_H

@@ -136,9 +136,9 @@ ge::graphStatus StemPrepKvTiling::GetWorkspaceSize()
 {
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context_->GetPlatformInfo());
     uint32_t sysWorkspaceSize = ascendcPlatform.GetLibApiWorkSpaceSize();
-    uint64_t maxKvPadded = MAX_Kv_PADDED;
+    uint64_t maxKvPadded = MAX_KV_PADDED;
     uint64_t vFlatSize = static_cast<uint64_t>(batchSize_) * static_cast<uint64_t>(numKvHeads_) *
-                         (maxKvPadded / static_cast<uint64_t>(stemStride_)) * sizeof(float);
+                         (8192 * rVal_) * sizeof(float);
     workspaceSize_ = vFlatSize;
 
     auto workspaces = context_->GetWorkspaceSizes(1);
@@ -172,6 +172,7 @@ ge::graphStatus StemPrepKvTiling::PostTiling()
     tilingData_->rVal = rVal_;
 
     context_->SetBlockDim(usedCoreNum);
+    context_->SetScheduleMode(1);
     return ge::GRAPH_SUCCESS;
 }
 
