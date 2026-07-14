@@ -398,8 +398,14 @@ public:
         DataCopyExtParams copyParams;
         copyParams.blockCount = static_cast<uint16_t>(row);
         copyParams.blockLen = static_cast<uint32_t>(col * sizeof(outType));
-        if (srcCol > col && ((srcCol - col) * sizeof(outType)) % BLOCK_SIZE == 0) {
-            copyParams.srcStride = static_cast<uint32_t>((srcCol - col) * sizeof(outType) / BLOCK_SIZE);
+        if (srcCol > col) {
+            uint32_t actualReadBytes = Ceil(col * sizeof(outType), BLOCK_SIZE) * BLOCK_SIZE;
+            uint32_t srcRowBytes = srcCol * sizeof(outType);
+            if (srcRowBytes >= actualReadBytes && (srcRowBytes - actualReadBytes) % BLOCK_SIZE == 0) {
+                copyParams.srcStride = (srcRowBytes - actualReadBytes) / BLOCK_SIZE;
+            } else {
+                copyParams.srcStride = 0;
+            }
         } else {
             copyParams.srcStride = static_cast<uint32_t>(0);
         }
