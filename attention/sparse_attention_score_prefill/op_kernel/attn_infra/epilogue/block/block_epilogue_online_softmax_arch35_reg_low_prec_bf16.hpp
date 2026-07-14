@@ -75,6 +75,7 @@ public:
     static constexpr uint32_t REPEAT_STRIDE = 1;
     static constexpr uint32_t SM_ROW_MAX_ELEM_NUM = 64;
     static constexpr uint32_t SM_COL_MAX_ELEM_NUM = 256;
+    static constexpr uint32_t SM_UB_STAGES = 2;  // gmUb/glUb 2-deep by ubSBufId
     static constexpr uint32_t SM_VREG_SIZE = 256 / sizeof(ElementInput);
 
     static constexpr bool FULL_QUANT_FP8 = AscendC::IsSameType<ElementOutput, fp8_e4m3fn_t>::value;
@@ -82,15 +83,20 @@ public:
     __aicore__ inline
     BlockEpilogue(Arch::Resource<ArchTag> &resource, float scaleValue_)
     {
-        // Allocate UB space
+        // Prefill local copy: multi-block online recursion stripped (each block computes
+        // its own rowMax/rowSum and outputs gl/gm to GM per-slot; cross-block combine is
+        // done by Phase2 FlashDecode). So lmUb/dmUb/llUb (used only by UpdateMax/
+        // UpdateExpSumAndExpMax) are gone, and gmUb/glUb are 2-deep by ubSBufId to kill
+        // the single-buffer reuse race (prefill rotates different qTokens on one AIV and
+        // reads gmUb out via CopyPartialStatsToGm every block).
         constexpr uint32_t LS_UB_TENSOR_OFFSET = 0;
         constexpr uint32_t LP_UB_TENSOR_OFFSET = 2 * UB_UINT8_BLOCK_SIZE;
 
-        constexpr uint32_t LM_UB_TENSOR_OFFSET = 7 * UB_UINT8_BLOCK_SIZE;
-        constexpr uint32_t GM_UB_TENSOR_OFFSET = LM_UB_TENSOR_OFFSET + 64 * sizeof(float);
-        constexpr uint32_t DM_UB_TENSOR_OFFSET = GM_UB_TENSOR_OFFSET + 64 * sizeof(float);
-        constexpr uint32_t LL_UB_TENSOR_OFFSET = DM_UB_TENSOR_OFFSET + 3 * 64 * sizeof(float);
-        constexpr uint32_t GL_UB_TENSOR_OFFSET = LL_UB_TENSOR_OFFSET +  64 * sizeof(float);
+        // 2-deep stats staging. Stage stride = 64 floats (per-AIV rowMax/rowSum cap,
+        // SM_ROW_MAX_ELEM_NUM=64). gmUb[0..1] then glUb[0..1], packed in the freed tail.
+        constexpr uint32_t STATS_UB_STAGE_BYTES = SM_ROW_MAX_ELEM_NUM * sizeof(float);
+        constexpr uint32_t GM_UB_TENSOR_OFFSET = 7 * UB_UINT8_BLOCK_SIZE;          // 229376
+        constexpr uint32_t GL_UB_TENSOR_OFFSET = GM_UB_TENSOR_OFFSET + 2 * STATS_UB_STAGE_BYTES; // 229888
 
         subBlockIdx_ = AscendC::GetSubBlockIdx();
         scaleValue = AscendC::ToBfloat16(scaleValue_);
@@ -98,13 +104,12 @@ public:
 
         lsUbTensor = resource.ubBuf.template GetBufferByByte<ElementInput>(LS_UB_TENSOR_OFFSET);
         lpUbTensor = resource.ubBuf.template GetBufferByByte<ElementOutput>(LP_UB_TENSOR_OFFSET);
-        gmUbTensor = resource.ubBuf.template GetBufferByByte<float>(GM_UB_TENSOR_OFFSET);
-        glUbTensor = resource.ubBuf.template GetBufferByByte<float>(GL_UB_TENSOR_OFFSET);
-        dmUbTensor = resource.ubBuf.template GetBufferByByte<float>(DM_UB_TENSOR_OFFSET);
-        lmUbTensor = resource.ubBuf.template GetBufferByByte<ElementInput>(LM_UB_TENSOR_OFFSET);
-        llUbTensor = resource.ubBuf.template GetBufferByByte<ElementInput>(LL_UB_TENSOR_OFFSET);
-        lmUbFloatTensor = resource.ubBuf.template GetBufferByByte<float>(LM_UB_TENSOR_OFFSET);
-        llUbFloatTensor = resource.ubBuf.template GetBufferByByte<float>(LL_UB_TENSOR_OFFSET);
+        for (uint32_t i = 0; i < SM_UB_STAGES; i++) {
+            gmUbTensor[i] = resource.ubBuf.template GetBufferByByte<float>(
+                GM_UB_TENSOR_OFFSET + i * STATS_UB_STAGE_BYTES);
+            glUbTensor[i] = resource.ubBuf.template GetBufferByByte<float>(
+                GL_UB_TENSOR_OFFSET + i * STATS_UB_STAGE_BYTES);
+        }
     }
 
     __aicore__ inline
@@ -162,8 +167,9 @@ public:
     template <class TensorP>
     __aicore__ inline
     void operator()(TensorP &l1PTensorTla, GemmCoord actualBlockShape,
-        uint32_t isFirstKvSTile, uint32_t ubSBufId, uint32_t l1PBufId,
-        Arch::CrossCoreFlag mm1ToSmFlag, Arch::CrossCoreFlag smToMm2Flag)
+        uint32_t ubSBufId, uint32_t l1PBufId,
+        Arch::CrossCoreFlag mm1ToSmFlag, Arch::CrossCoreFlag smToMm2Flag,
+        uint32_t causalValidLen)
     {
         uint32_t mCopyOffset = RoundUp(actualBlockShape.m(), 8) / 2;
         uint32_t m = actualBlockShape.m() < mCopyOffset ? actualBlockShape.m() : mCopyOffset;
@@ -179,28 +185,24 @@ public:
         uint16_t mRound = RoundUp(m, C0_NUM_PER_FRACTAL);
         uint16_t nRound = RoundUp(n, ELE_NUM_PER_C0);
         uint32_t blockStride = mRound;
-        constexpr int16_t vlSize = static_cast<int16_t>(AscendC::GetVecLen() / sizeof(ElementInput));
-        constexpr int16_t vlFloatSize = static_cast<int16_t>(AscendC::GetVecLen() / sizeof(float));
-        int16_t nLoops = AscendC::CeilDivision(n, vlSize) - 1;
-        uint32_t tailN = (n - 1) % vlSize + 1;
-        int16_t mLoops = AscendC::CeilDivision(m, vlFloatSize) - 1;
-        uint32_t tailM = (m - 1) % vlFloatSize + 1;
+        // Prefill decoupling: n=validSize drives the S read stride (nRound) and the
+        // L0C->UB Fixpipe layout; tailN drives the causal/padding MIN mask (pregTailN /
+        // tailNOdd / tailNEven). QK writes validSize cols (K is nZ-fractal resident at
+        // validSize, so QK N must == validSize), but only [0, causalValidLen) are
+        // causal-valid for this qToken -> mask [causalValidLen, n) to MIN here.
+        uint32_t tailN = causalValidLen;
         uint32_t nPadding = (tailN + BLOCK_SIZE_IN_BYTE - 1) / BLOCK_SIZE_IN_BYTE * BLOCK_SIZE_IN_BYTE;
         __ubuf__ ElementOutput *pAddr = (__ubuf__ ElementOutput*) lpUbTensor[ubSBufId * MAX_UB_S_ELEM_NUM].GetPhyAddr();
         __ubuf__ ElementInput *sAddr = (__ubuf__ ElementInput*) lsUbTensor[ubSBufId * MAX_UB_S_ELEM_NUM].GetPhyAddr();
-        __ubuf__ float *lastMaxAddr = (__ubuf__ float *)gmUbTensor.GetPhyAddr();
-        __ubuf__ float *lastSumAddr = (__ubuf__ float*) glUbTensor.GetPhyAddr();
-        __ubuf__ ElementInput *nowMaxAddr = (__ubuf__ ElementInput*) lmUbTensor.GetPhyAddr();
-        __ubuf__ float *nowMaxFloatAddr = (__ubuf__ float*) lmUbFloatTensor.GetPhyAddr();
-        __ubuf__ float *nowSumAddr = (__ubuf__ float*) llUbFloatTensor.GetPhyAddr();
-        __ubuf__ float *expMaxUbAddr = (__ubuf__ float *)dmUbTensor[l1PBufId * DM_UB_GLOBAL_ELEM_NUM].GetPhyAddr();
+        // Prefill: each block computes its own rowMax/rowSum independently (no cross-block
+        // online recursion). gmUb/glUb are 2-deep by ubSBufId; this AIV's rowMax/rowSum
+        // land in gmUb[ubSBufId]/glUb[ubSBufId] and are copied to GM per-slot by the
+        // kernel's CopyPartialStatsToGm right after this returns.
+        __ubuf__ float *nowMaxFloatAddr = (__ubuf__ float *)gmUbTensor[ubSBufId].GetPhyAddr();
+        __ubuf__ float *nowSumAddr = (__ubuf__ float*) glUbTensor[ubSBufId].GetPhyAddr();
 
-        // wait QK Fixpipe finsh
+        // wait QK Fixpipe finish
         WaitCrossCoreSync<4, PIPE_V>(mm1ToSmFlag);
-        if (isFirstKvSTile) {
-            nowMaxFloatAddr = lastMaxAddr;
-            nowSumAddr = lastSumAddr;
-        }
         uint32_t kvBaseTileRegStages = CeilDiv(n, SM_VREG_SIZE);
         if (kvBaseTileRegStages == 1) {
             ComputeScaleAndMax<KvBaseTileRegSplitStagesBf16::ONE>(
@@ -208,10 +210,6 @@ public:
         } else if (kvBaseTileRegStages == 2) {
             ComputeScaleAndMax<KvBaseTileRegSplitStagesBf16::TWO>(
                 sAddr, nowMaxFloatAddr, m, tailN, nPadding, scaleValue, nRound);
-        }
-
-        if (!isFirstKvSTile) {
-            UpdateMax(nowMaxFloatAddr, lastMaxAddr, mLoops, tailM);
         }
 
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(ubSBufId + 2);
@@ -243,20 +241,20 @@ public:
         auto ubPLayoutTla = tla::MakeLayout<ElementOutput, LayoutOutput>(mRound, curNRound);
         auto ubPTensorTla = tla::MakeTensor(lpUbTensor[ubSBufId * MAX_UB_S_ELEM_NUM],
             ubPLayoutTla, Arch::PositionUB{});
+        // P output extent = causalValidLen, NOT n (=validSize). The masked store above only
+        // persisted P[0, causalValidLen) (cols [causalValidLen, n) are stale in UB); copying n
+        // would push stale P into L1 and PV (which reduces over causalValidLen) would read it.
+        // Mirror decode: softmax-written cols == PV-reduced cols == causal-valid extent.
         auto ubPTensorTlaTile = GetTile(ubPTensorTla,
-                tla::MakeCoord(0, 0), tla::MakeShape(m, n));
+                tla::MakeCoord(0, 0), tla::MakeShape(m, causalValidLen));
         auto l1PTensorTlaTile = GetTile(l1PTensorTla,
-                tla::MakeCoord(subBlockIdx_ * mCopyOffset, 0), tla::MakeShape(m, n));
+                tla::MakeCoord(subBlockIdx_ * mCopyOffset, 0), tla::MakeShape(m, causalValidLen));
         WaitCrossCoreSync<4, PIPE_MTE3>(smToMm2Flag);
 
         CopyPUbToPL1(l1PTensorTlaTile, ubPTensorTlaTile, m);
         AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(ubSBufId + 2);
         // crossCoreSync after PIPE_MTE1 move
         SetCrossCoreSync<4, PIPE_MTE3>(smToMm2Flag);
-        if (!isFirstKvSTile) {
-            UpdateExpSumAndExpMax(
-                lastSumAddr, expMaxUbAddr, lastMaxAddr, nowSumAddr, nowMaxFloatAddr, mLoops, tailM);
-        }
         AscendC::PipeBarrier<PIPE_V>();
     }
 
@@ -264,13 +262,8 @@ private:
     ElementInput scaleValue;
     AscendC::LocalTensor<ElementInput> lsUbTensor;
     AscendC::LocalTensor<ElementOutput> lpUbTensor;
-    AscendC::LocalTensor<float> gmUbTensor;
-    AscendC::LocalTensor<float> glUbTensor;
-    AscendC::LocalTensor<float> dmUbTensor;
-    AscendC::LocalTensor<ElementInput> lmUbTensor;
-    AscendC::LocalTensor<ElementInput> llUbTensor;
-    AscendC::LocalTensor<float> lmUbFloatTensor;
-    AscendC::LocalTensor<float> llUbFloatTensor;
+    AscendC::LocalTensor<float> gmUbTensor[SM_UB_STAGES];
+    AscendC::LocalTensor<float> glUbTensor[SM_UB_STAGES];
     uint32_t subBlockIdx_;
     ElementInput MIN_VALUE;
 
