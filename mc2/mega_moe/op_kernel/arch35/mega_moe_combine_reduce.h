@@ -99,7 +99,8 @@ __aicore__ inline int32_t InitCombineReduceWorkspace(int32_t tileLength,
         dataResFp32BufAlign / sizeof(float));
     uint32_t tempAddr = dataResFp32Addr + dataResFp32BufAlign;
 
-    // 权重 buffer 按 batch 分配；topK 超过基准值时缩小 batch，保持 UB 占用不超过基准预算。
+    // 权重 buffer 按 batch 分配；topK 超过基准值时缩小 batch，
+    // 保持 UB 占用不超过基准预算。
     int32_t batchLength = UNPERMUTE_BASE_TOKENS_PER_BATCH;
     if (shapeContext.topK > static_cast<uint32_t>(UNPERMUTE_BASE_TOPK)) {
         batchLength = batchLength * UNPERMUTE_BASE_TOPK / shapeContext.topK;
