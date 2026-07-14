@@ -46,7 +46,7 @@ static void PrintTilingDataInfo(const gert::TilingContext *context, QuantAllRedu
  * @return
  */
 static ge::graphStatus SetHcommCfg(const gert::TilingContext *context, QuantAllReduceTilingData *tilingData,
-                        const TilingRunInfo &runInfo)
+                                   const TilingRunInfo &runInfo)
 {
     const char *nodeName = context->GetNodeName();
     OP_LOGD(nodeName, "group is %s in quant_all_reduce.", runInfo.group.c_str());
@@ -55,9 +55,9 @@ static ge::graphStatus SetHcommCfg(const gert::TilingContext *context, QuantAllR
     // MTE方式必须适配，且要在getTiling之前
     mc2CcTilingConfig.SetCommEngine(AIV_TYPE);
     OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(tilingData->mc2InitTiling) != 0,
-        OP_LOGE(nodeName, "mc2CcTilingConfig mc2InitTiling GetTiling failed"), return ge::GRAPH_FAILED);
+                    OP_LOGE(nodeName, "mc2CcTilingConfig mc2InitTiling GetTiling failed"), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(tilingData->mc2CcTiling) != 0,
-        OP_LOGE(nodeName, "mc2CcTilingConfig mc2CcTiling GetTiling failed"), return ge::GRAPH_FAILED);
+                    OP_LOGE(nodeName, "mc2CcTilingConfig mc2CcTiling GetTiling failed"), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -94,7 +94,7 @@ static void SetTilingData(gert::TilingContext *context, QuantAllReduceTilingData
 static void SetXPerBlock(QuantAllReduceTilingData &tilingData)
 {
     constexpr uint32_t TARGET_ITER = 3U;  // T=3 命中 DoubleBuffer 甜点
-    constexpr uint32_t MIN_BLOCK = 2048U;  // 与 QRS MIN 统一，QAR per_core 够大不会被 MIN 主导
+    constexpr uint32_t MIN_BLOCK = 2048U; // 与 QRS MIN 统一，QAR per_core 够大不会被 MIN 主导
     constexpr uint32_t ALIGN_BLOCK = 1024U;
     uint64_t xNums = tilingData.quantAllReduceTilingInfo.bs * tilingData.quantAllReduceTilingInfo.hiddenSize;
     uint64_t aivNum = tilingData.quantAllReduceTilingInfo.aivNum;
@@ -126,26 +126,25 @@ static void SetTilingKey(gert::TilingContext *context)
  */
 static ge::graphStatus QuantAllReduceTilingFunc(gert::TilingContext *context)
 {
-    OP_TILING_CHECK(context == nullptr,
-                    OP_LOGE_WITH_INVALID_INPUT("quant_all_reduce", "context"),
+    OP_TILING_CHECK(context == nullptr, OP_LOGE_WITH_INVALID_INPUT("quant_all_reduce", "context"),
                     return ge::GRAPH_FAILED);
     const char *nodeName = context->GetNodeName();
     OP_TILING_CHECK(nodeName == nullptr, OP_LOGE_WITH_INVALID_INPUT("quant_all_reduce", "nodeName"),
                     return ge::GRAPH_FAILED);
 
     QuantAllReduceTilingData *tilingData = context->GetTilingData<QuantAllReduceTilingData>();
-    OP_TILING_CHECK(tilingData == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "tilingData"),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(tilingData == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "tilingData"), return ge::GRAPH_FAILED);
 
     TilingRunInfo runInfo = {};
     OP_TILING_CHECK(QuantReduceScatterUtilTiling::CheckNpuArch(context) != ge::GRAPH_SUCCESS,
- 	                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "npuArch", "non-DAV_3510", "The value of npuArch must be DAV_3510"),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "npuArch", "non-DAV_3510",
+                                                          "The value of npuArch must be DAV_3510"),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(QuantReduceScatterUtilTiling::CheckTilingFunc(context, runInfo, OpType::OP_QUANT_ALL_REDUCE) !=
                         ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "tiling check failed in quant_all_reduce."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(SetHcommCfg(context, tilingData, runInfo) != ge::GRAPH_SUCCESS,
-        OP_LOGE(nodeName, "SetHCommCfg failed."), return ge::GRAPH_FAILED);
+                    OP_LOGE(nodeName, "SetHCommCfg failed."), return ge::GRAPH_FAILED);
     SetTilingData(context, *tilingData);
     SetXPerBlock(*tilingData);
     SetTilingKey(context);

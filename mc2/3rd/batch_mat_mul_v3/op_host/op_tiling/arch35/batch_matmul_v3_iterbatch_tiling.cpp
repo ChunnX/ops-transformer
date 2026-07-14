@@ -21,14 +21,14 @@ namespace optiling {
 namespace Mc2batch_matmul_v3_advanced {
 using namespace strategy;
 MC2_MM_REGISTER_TILING_TEMPLATE(Mc2BatchMatMulV3, Mc2BatchMatMulV3IterBatchTiling, DAV_3510, ITER_BATCH);
-//supportMmadS8S4平台
+// supportMmadS8S4平台
 MC2_MM_REGISTER_TILING_TEMPLATE(Mc2BatchMatMulV3, Mc2BatchMatMulV3IterBatchTiling, DAV_RESV, ITER_BATCH);
 
 bool Mc2BatchMatMulV3IterBatchTiling::IsCapable()
 {
     bool isNotEqualBatch = batchInfo_->batchA0 != batchInfo_->batchB0 || batchInfo_->batchA1 != batchInfo_->batchB1 ||
                            batchInfo_->batchA2 != batchInfo_->batchB2 || batchInfo_->batchA3 != batchInfo_->batchB3;
-    if (isNotEqualBatch)  {
+    if (isNotEqualBatch) {
         return false;
     }
     // get align m,k,n value
@@ -69,10 +69,9 @@ ge::graphStatus Mc2BatchMatMulV3IterBatchTiling::DoOpTiling()
     uint64_t baseKb = compileInfo_.l0BSize / DB_SIZE / runInfo_.baseN / args_.bDtypeSize;
     uint64_t baseK = std::min(baseKa, baseKb) / BASIC_BLOCK_SIZE_16 * BASIC_BLOCK_SIZE_16;
     uint64_t singleCoreK = (baseK < runInfo_.singleCoreK || iterBatch_ <= 4UL) ? // 4 avoid issueque
-        runInfo_.singleCoreK / DB_SIZE : runInfo_.singleCoreK;
-    runInfo_.baseK = std::max(ops::CeilAlign(
-                              std::min(singleCoreK, baseK), BASIC_BLOCK_SIZE_16),
-                              runInfo_.baseK);
+                               runInfo_.singleCoreK / DB_SIZE :
+                               runInfo_.singleCoreK;
+    runInfo_.baseK = std::max(ops::CeilAlign(std::min(singleCoreK, baseK), BASIC_BLOCK_SIZE_16), runInfo_.baseK);
     runInfo_.stepKa = ops::CeilDiv(runInfo_.singleCoreK, runInfo_.baseK);
     runInfo_.stepKb = runInfo_.stepKa;
     runInfo_.stepM = ops::CeilDiv(runInfo_.singleCoreM, runInfo_.baseM);
@@ -83,29 +82,30 @@ ge::graphStatus Mc2BatchMatMulV3IterBatchTiling::DoOpTiling()
 
     // need align to 2 for db in api
     iterBatch_ = ops::FloorAlign(iterBatch_, 2UL);
-    batchOutNum_ = isEnableMultiBatch ? std::min(ops::FloorDiv(compileInfo_.l0CSize,
-        (runInfo_.baseM * runInfo_.baseN * runInfo_.dbL0C * sizeof(float))), iterBatch_) : 1UL;
+    batchOutNum_ = isEnableMultiBatch ?
+                       std::min(ops::FloorDiv(compileInfo_.l0CSize,
+                                              (runInfo_.baseM * runInfo_.baseN * runInfo_.dbL0C * sizeof(float))),
+                                iterBatch_) :
+                       1UL;
     if (iterBatch_ == batchOutNum_) {
         batchOutNum_ = iterBatch_ >> 1;
     }
     runInfo_.bmmRunInfo.iterBatch = iterBatch_;
     runInfo_.bmmRunInfo.batchOutNum = batchOutNum_;
     iterBatchBiasModel_ = (args_.hasBias && (args_.batchInfo->batchBias == 1UL)) ?
-                          Mc2MatMulV3Model::ITER_BATCH_SINGLE_BIAS : Mc2MatMulV3Model::ITER_BATCH_BATCH_BIAS;
+                              Mc2MatMulV3Model::ITER_BATCH_SINGLE_BIAS :
+                              Mc2MatMulV3Model::ITER_BATCH_BATCH_BIAS;
     return ge::GRAPH_SUCCESS;
 }
 
 uint64_t Mc2BatchMatMulV3IterBatchTiling::GetTilingKey() const
 {
-    return Mc2MatMulV3TilingKey()
-        .SetTrans(args_.isATrans, args_.isBTrans)
-        .SetModel(iterBatchBiasModel_)
-        .GetTilingKey();
+    return Mc2MatMulV3TilingKey().SetTrans(args_.isATrans, args_.isBTrans).SetModel(iterBatchBiasModel_).GetTilingKey();
 }
 
 uint64_t Mc2BatchMatMulV3IterBatchTiling::GetBlockDim() const
 {
     return compileInfo_.aicNum;
 }
-}
-}
+} // namespace Mc2batch_matmul_v3_advanced
+} // namespace optiling

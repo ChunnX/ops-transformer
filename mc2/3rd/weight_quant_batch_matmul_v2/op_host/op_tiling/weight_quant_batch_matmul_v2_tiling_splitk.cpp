@@ -34,9 +34,8 @@ const std::set<Mc2WhiteListShape> MIX_SPLIT_K_WHITE_LIST = {
 void Mc2WeightQuantBatchMatmulV2TilingSplitK::Reset()
 {
     Mc2WeightQuantBatchMatmulV2Tiling::Reset();
-    OP_TILING_CHECK(memset_s(
-                        context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity(), 0,
-                        context_->GetRawTilingData()->GetCapacity()) != EOK,
+    OP_TILING_CHECK(memset_s(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity(), 0,
+                             context_->GetRawTilingData()->GetCapacity()) != EOK,
                     OP_LOGE(opName_, "fail to memset tiling data"), return;);
 }
 
@@ -56,27 +55,23 @@ bool Mc2WeightQuantBatchMatmulV2TilingSplitK::IsCapable()
     // 当前仅支持bf16*int8=>bf16
     if (matmulInfoPtr_->aDtype != ge::DT_BF16 || matmulInfoPtr_->bDtype != ge::DT_INT8 ||
         matmulInfoPtr_->cDtype != ge::DT_BF16) {
-        OP_LOGI(
-            opName_, "SplitK only support bf16*int8=bf16, current aDtype: [%s], bDtype: [%s], cDtype: [%s]",
-            ge::TypeUtils::DataTypeToAscendString(matmulInfoPtr_->aDtype).GetString(),
-            ge::TypeUtils::DataTypeToAscendString(matmulInfoPtr_->bDtype).GetString(),
-            ge::TypeUtils::DataTypeToAscendString(matmulInfoPtr_->cDtype).GetString());
+        OP_LOGI(opName_, "SplitK only support bf16*int8=bf16, current aDtype: [%s], bDtype: [%s], cDtype: [%s]",
+                ge::TypeUtils::DataTypeToAscendString(matmulInfoPtr_->aDtype).GetString(),
+                ge::TypeUtils::DataTypeToAscendString(matmulInfoPtr_->bDtype).GetString(),
+                ge::TypeUtils::DataTypeToAscendString(matmulInfoPtr_->cDtype).GetString());
         return false;
     }
-    OP_TILING_CHECK(
-        matmulInfoPtr_->antiQuantScaleDtype == ge::DT_UINT64 || matmulInfoPtr_->antiQuantScaleDtype == ge::DT_INT64,
-        OP_LOGI(opName_, "SplitK done not support antiquant scale dtype is uint64 or int64"), return false);
+    OP_TILING_CHECK(matmulInfoPtr_->antiQuantScaleDtype == ge::DT_UINT64 ||
+                        matmulInfoPtr_->antiQuantScaleDtype == ge::DT_INT64,
+                    OP_LOGI(opName_, "SplitK done not support antiquant scale dtype is uint64 or int64"), return false);
     // only support jyxc case
     if (matmulInfoPtr_->antiQuantType == Mc2QuantType::PER_GROUP && matmulInfoPtr_->bFormat != ge::FORMAT_FRACTAL_NZ) {
-        Mc2WhiteListShape shape(
-            {matmulInfoPtr_->mSize, matmulInfoPtr_->kSize, matmulInfoPtr_->nSize, matmulInfoPtr_->hasBias,
-             matmulInfoPtr_->transA, matmulInfoPtr_->transB, 1});
-        OP_TILING_CHECK(
-            MIX_SPLIT_K_WHITE_LIST.find(shape) == MIX_SPLIT_K_WHITE_LIST.end(),
-            OP_LOGI(opName_, "the case is not match white case for split k"), return false);
-        OP_TILING_CHECK(
-            !matmulInfoPtr_->hasAntiQuantOffset, OP_LOGI(opName_, "the white case must with antiquant offset"),
-            return false);
+        Mc2WhiteListShape shape({matmulInfoPtr_->mSize, matmulInfoPtr_->kSize, matmulInfoPtr_->nSize,
+                                 matmulInfoPtr_->hasBias, matmulInfoPtr_->transA, matmulInfoPtr_->transB, 1});
+        OP_TILING_CHECK(MIX_SPLIT_K_WHITE_LIST.find(shape) == MIX_SPLIT_K_WHITE_LIST.end(),
+                        OP_LOGI(opName_, "the case is not match white case for split k"), return false);
+        OP_TILING_CHECK(!matmulInfoPtr_->hasAntiQuantOffset,
+                        OP_LOGI(opName_, "the white case must with antiquant offset"), return false);
         OP_LOGI(opName_, "Check SplitK succ");
         return true;
     }
@@ -87,11 +82,12 @@ bool Mc2WeightQuantBatchMatmulV2TilingSplitK::GetMatMulTiling()
 {
     matmul_tiling::DataType mmInputDtype = Mc2GetMatmulTilingDtype(matmulInfoPtr_->aDtype);
     matmul_tiling::MatmulApiTiling mmTiling;
-    mmTiling.SetAType(
-        matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, mmInputDtype, matmulInfoPtr_->transA);
-    mmTiling.SetBType(
-        matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, mmInputDtype, matmulInfoPtr_->transB);
-    mmTiling.SetCType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, Mc2GetMatmulTilingDtype(ge::DT_FLOAT));
+    mmTiling.SetAType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, mmInputDtype,
+                      matmulInfoPtr_->transA);
+    mmTiling.SetBType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, mmInputDtype,
+                      matmulInfoPtr_->transB);
+    mmTiling.SetCType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND,
+                      Mc2GetMatmulTilingDtype(ge::DT_FLOAT));
     mmTiling.SetBias(matmulInfoPtr_->hasBias);
     mmTiling.SetOrgShape(matmulInfoPtr_->mSize, matmulInfoPtr_->nSize, matmulInfoPtr_->kSize);
 
@@ -99,11 +95,10 @@ bool Mc2WeightQuantBatchMatmulV2TilingSplitK::GetMatMulTiling()
     uint64_t cubeSingleCoreK = 64;
     mmTiling.SetShape(matmulInfoPtr_->mSize, cubeSingleCoreN, cubeSingleCoreK);
     mmTiling.SetBufferSpace(aicoreParams_.l1Size, aicoreParams_.l0cSize);
-    mmTiling.SetFixSplit(
-        ops::CeilAlign(static_cast<uint32_t>(matmulInfoPtr_->mSize), BLOCK_CUBE), BASIC_BLOCK, cubeSingleCoreK);
-    OP_TILING_CHECK(
-        mmTiling.GetTiling(tilingData_->matmulTiling) == -1,
-        OP_LOGE(opName_, "failed to get matmul tiling"), return false);
+    mmTiling.SetFixSplit(ops::CeilAlign(static_cast<uint32_t>(matmulInfoPtr_->mSize), BLOCK_CUBE), BASIC_BLOCK,
+                         cubeSingleCoreK);
+    OP_TILING_CHECK(mmTiling.GetTiling(tilingData_->matmulTiling) == -1,
+                    OP_LOGE(opName_, "failed to get matmul tiling"), return false);
     tilingData_->matmulTiling.shareL1Size = 0;
     tilingData_->matmulTiling.dbL0C = 2; // 2: db on
 
@@ -112,9 +107,8 @@ bool Mc2WeightQuantBatchMatmulV2TilingSplitK::GetMatMulTiling()
 
 ge::graphStatus Mc2WeightQuantBatchMatmulV2TilingSplitK::DoOpTiling()
 {
-    OP_TILING_CHECK(
-        InstantiateTilingData() == ge::GRAPH_FAILED,
-        OP_LOGE(opName_, "Unable to get pointer of tiling data"), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(InstantiateTilingData() == ge::GRAPH_FAILED,
+                    OP_LOGE(opName_, "Unable to get pointer of tiling data"), return ge::GRAPH_FAILED);
 
     tilingData_->groupSize = matmulInfoPtr_->groupSize;
     uint64_t weightBlockAlignSize = Mc2GetBlockAlignSizeByDataType(matmulInfoPtr_->bDtype);
@@ -150,21 +144,18 @@ ge::graphStatus Mc2WeightQuantBatchMatmulV2TilingSplitK::DoOpTiling()
     }
     tilingData_->cubeBlockDimM = 1;
     tilingData_->vecBlockDimK = tilingData_->cubeBlockDimK;
-    tilingData_->vecSingleK =
-        static_cast<uint32_t>(ops::CeilAlign(
-            ops::CeilDiv(matmulInfoPtr_->kSize, static_cast<uint64_t>(tilingData_->cubeBlockDimK)),
-            static_cast<uint64_t>(matmulInfoPtr_->groupSize)));
+    tilingData_->vecSingleK = static_cast<uint32_t>(
+        ops::CeilAlign(ops::CeilDiv(matmulInfoPtr_->kSize, static_cast<uint64_t>(tilingData_->cubeBlockDimK)),
+                       static_cast<uint64_t>(matmulInfoPtr_->groupSize)));
     tilingData_->vecSingleN = static_cast<uint32_t>(vecSingleN);
     // vec固定保持2倍cube的方式切分
     tilingData_->vecBlockDimN = tilingData_->cubeBlockDimN * 2;
     tilingData_->vecSingleKGroupNum =
         ops::CeilDiv(static_cast<uint64_t>(tilingData_->vecSingleK), matmulInfoPtr_->groupSize);
-    OP_TILING_CHECK(
-        !GetMatMulTiling(),
-        OP_LOGE(
-            opName_, "Failed to get mm tiling for mnk[%lu, %lu, %lu]", matmulInfoPtr_->mSize, matmulInfoPtr_->nSize,
-            matmulInfoPtr_->kSize),
-        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(!GetMatMulTiling(),
+                    OP_LOGE(opName_, "Failed to get mm tiling for mnk[%lu, %lu, %lu]", matmulInfoPtr_->mSize,
+                            matmulInfoPtr_->nSize, matmulInfoPtr_->kSize),
+                    return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -175,24 +166,19 @@ ge::graphStatus Mc2WeightQuantBatchMatmulV2TilingSplitK::InstantiateTilingData()
     if (tilingData_ == nullptr) {
         tilingData_ = std::make_unique<Mc2WeightQuantBatchMatmulV2TilingData>();
     }
-    OP_TILING_CHECK(
-        tilingData_ == nullptr, OP_LOGE(opName_, "failed to instantiate tilingData"),
-        return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(
-        context_->GetRawTilingData()->GetCapacity() < tilingDataSize,
-        OP_LOGE(
-            opName_, "tiling data capacity %zu < actual tiling data size %zu",
-            context_->GetRawTilingData()->GetCapacity(), tilingDataSize),
-        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(tilingData_ == nullptr, OP_LOGE(opName_, "failed to instantiate tilingData"),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(context_->GetRawTilingData()->GetCapacity() < tilingDataSize,
+                    OP_LOGE(opName_, "tiling data capacity %zu < actual tiling data size %zu",
+                            context_->GetRawTilingData()->GetCapacity(), tilingDataSize),
+                    return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus Mc2WeightQuantBatchMatmulV2TilingSplitK::DoLibApiTiling()
 {
-    tilingData_->cubeSingleNTailLoop =
-        ops::CeilDiv(
-            matmulInfoPtr_->nSize % tilingData_->matmulTiling.singleCoreN,
-            static_cast<uint64_t>(tilingData_->matmulTiling.singleCoreN));
+    tilingData_->cubeSingleNTailLoop = ops::CeilDiv(matmulInfoPtr_->nSize % tilingData_->matmulTiling.singleCoreN,
+                                                    static_cast<uint64_t>(tilingData_->matmulTiling.singleCoreN));
     tilingData_->cubeTailM =
         Mc2CalcTailSize(matmulInfoPtr_->mSize, static_cast<uint64_t>(tilingData_->matmulTiling.singleCoreM));
     tilingData_->cubeTailN =
@@ -218,21 +204,20 @@ ge::graphStatus Mc2WeightQuantBatchMatmulV2TilingSplitK::PostTiling()
     size_t tilingDataSize = sizeof(Mc2WeightQuantBatchMatmulV2TilingData);
     OP_LOGD(opName_, "final tiling data size: %zu", tilingDataSize);
 
-    OP_TILING_CHECK(
-        tilingDataSize % sizeof(uint64_t) != 0,
-        OP_LOGE(opName_, "tiling data size[%zu] not aligned to 8", tilingDataSize),
-        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(tilingDataSize % sizeof(uint64_t) != 0,
+                    OP_LOGE(opName_, "tiling data size[%zu] not aligned to 8", tilingDataSize),
+                    return ge::GRAPH_FAILED);
     context_->GetRawTilingData()->SetDataSize(tilingDataSize);
     uint32_t usedAicNum = tilingData_->cubeBlockDimM * tilingData_->cubeBlockDimN;
     uint32_t usedAivNum = tilingData_->vecBlockDimK * tilingData_->vecBlockDimN;
     context_->SetBlockDim(
         std::max(usedAicNum, CalcTschBlockDim(usedAivNum, compileInfoPtr_->aicNum, compileInfoPtr_->aivNum)));
-    size_t* workspaces = context_->GetWorkspaceSizes(1); // set workspace
+    size_t *workspaces = context_->GetWorkspaceSizes(1); // set workspace
     workspaces[0] = workspaceSize_;
 
     errno_t ret = memcpy_s(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity(),
-        tilingData_.get(), tilingDataSize);
-    if (ret != EOK){
+                           tilingData_.get(), tilingDataSize);
+    if (ret != EOK) {
         OP_LOGE(context_->GetNodeName(), "memcpy_s failed, ret=%d", ret);
         return ge::GRAPH_FAILED;
     }
@@ -259,12 +244,12 @@ uint64_t Mc2WeightQuantBatchMatmulV2TilingSplitK::GetTilingKey() const
     bool isBiasFp32 = false;
     bool isWeightNz = false;
     uint64_t templateExtra = 3UL; // 3 means TEMPLATE_EXTRA_NOT_USED
-    uint64_t fullLoadMode = 5UL; // 5 means FULL_LOAD_MODE_NOT_USED
+    uint64_t fullLoadMode = 5UL;  // 5 means FULL_LOAD_MODE_NOT_USED
     uint64_t batch = 0UL;
-    uint64_t tilingKey_ = GET_TPL_TILING_KEY(
-        socVersionType, subSocVersionType, antiquantScenario, algorithm, subAlgorithm, subAlgorithmCustom,
-        innerPrecise, templateCustom, apiConstexpr, transA, transB, antiquantType, quantType, hasAntiquantOffset,
-        hasBias, isBiasFp32, isWeightNz, templateExtra, fullLoadMode, batch);
+    uint64_t tilingKey_ = GET_TPL_TILING_KEY(socVersionType, subSocVersionType, antiquantScenario, algorithm,
+                                             subAlgorithm, subAlgorithmCustom, innerPrecise, templateCustom,
+                                             apiConstexpr, transA, transB, antiquantType, quantType, hasAntiquantOffset,
+                                             hasBias, isBiasFp32, isWeightNz, templateExtra, fullLoadMode, batch);
     return tilingKey_;
 }
 

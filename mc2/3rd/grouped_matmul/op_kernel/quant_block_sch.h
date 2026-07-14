@@ -60,14 +60,19 @@ struct ASWOffsetParam {
 
 class QuantASWBlockSch {
 public:
-    __aicore__ inline QuantASWBlockSch() {}
-    template <bool isGmm> __aicore__ inline void Init(const TCubeTiling *__restrict &tilingData, uint32_t blockIdx);
+    __aicore__ inline QuantASWBlockSch()
+    {
+    }
+    template <bool isGmm>
+    __aicore__ inline void Init(const TCubeTiling *__restrict &tilingData, uint32_t blockIdx);
     // 每一个group需要更新mm的group偏移和MNK
     template <bool aTrans, bool bTrans, class xType, class scaleType, CubeFormat wFormat = CubeFormat::ND>
     __aicore__ inline void UpdateGroupOffset(int32_t m, int32_t n, int32_t k, uint32_t groupIdx);
-    template <bool isGmm> __aicore__ inline void UpdateGroupParams(); // 每一个group需要更新mm的参数
+    template <bool isGmm>
+    __aicore__ inline void UpdateGroupParams(); // 每一个group需要更新mm的参数
     __aicore__ inline void UpdateTailTile();
-    template <bool isGmm> __aicore__ inline void UpdateBasicIndex(uint64_t roundIdx, bool isLastGroupRound);
+    template <bool isGmm>
+    __aicore__ inline void UpdateBasicIndex(uint64_t roundIdx, bool isLastGroupRound);
     template <bool aTrans, bool bTrans, CubeFormat wFormat = CubeFormat::ND>
     __aicore__ inline void UpdateBlockParams(uint64_t roundIdx, bool isLastGroupRound = true);
     template <bool aTrans, bool bTrans, class scaleType = AscendC::fp8_e8m0_t, CubeFormat wFormat = CubeFormat::ND>
@@ -124,7 +129,7 @@ template <bool aTrans, bool bTrans, class xType, class scaleType, CubeFormat wFo
 __aicore__ inline void QuantASWBlockSch::UpdateGroupOffset(int32_t m, int32_t n, int32_t k, uint32_t groupIdx)
 {
     // 用初始化或上个group的mm的m,k,n值更新group矩阵的偏移量。group内2维mm。
-    if (groupIdx > 0) {                             // groupIdx==0时，起始点均为0，无需计算，减少scalar
+    if (groupIdx > 0) { // groupIdx==0时，起始点均为0，无需计算，减少scalar
         if constexpr (Mc2QuantUtils::IsFp4<xType>()) { // 2: fp4为半个字节
             params_.aGroupAddrOffset += params_.m * params_.k / 2;
             params_.bGroupAddrOffset += params_.n * params_.k / 2;
@@ -133,10 +138,12 @@ __aicore__ inline void QuantASWBlockSch::UpdateGroupOffset(int32_t m, int32_t n,
             if constexpr (wFormat == CubeFormat::NZ) {
                 if constexpr (bTrans) {
                     params_.bGroupAddrOffset += Mc2QuantUtils::CeilDiv(params_.k, Mc2QuantUtils::WEIGHTNZ_K0_32) *
-                        Mc2QuantUtils::CeilDiv(params_.n, Mc2QuantUtils::WEIGHTNZ_N0_16) * Mc2QuantUtils::WEIGHTNZ_N0_K0;
+                                                Mc2QuantUtils::CeilDiv(params_.n, Mc2QuantUtils::WEIGHTNZ_N0_16) *
+                                                Mc2QuantUtils::WEIGHTNZ_N0_K0;
                 } else {
                     params_.bGroupAddrOffset += Mc2QuantUtils::CeilDiv(params_.n, Mc2QuantUtils::WEIGHTNZ_N0_32) *
-                        Mc2QuantUtils::CeilDiv(params_.k, Mc2QuantUtils::WEIGHTNZ_K0_16) * Mc2QuantUtils::WEIGHTNZ_N0_K0;
+                                                Mc2QuantUtils::CeilDiv(params_.k, Mc2QuantUtils::WEIGHTNZ_K0_16) *
+                                                Mc2QuantUtils::WEIGHTNZ_N0_K0;
                 }
             } else {
                 params_.bGroupAddrOffset += params_.n * params_.k;
@@ -170,7 +177,8 @@ __aicore__ inline void QuantASWBlockSch::UpdateGroupOffset(int32_t m, int32_t n,
 }
 
 // 兼容GMM和MM的更新
-template <bool isGmm> __aicore__ inline void QuantASWBlockSch::UpdateGroupParams()
+template <bool isGmm>
+__aicore__ inline void QuantASWBlockSch::UpdateGroupParams()
 {
     params_.mCnt = Mc2QuantUtils::CeilDiv(params_.m, tilingData_->baseM);
     params_.nCnt = Mc2QuantUtils::CeilDiv(params_.n, tilingData_->baseN);
@@ -316,8 +324,8 @@ __aicore__ inline void QuantASWBlockSch::CalcGMOffset()
         if constexpr (bTrans) {
             offset_.offsetB = nOffset * Mc2QuantUtils::WEIGHTNZ_K0_32;
         } else {
-            offset_.offsetB =
-                nOffset * Mc2QuantUtils::CeilDiv(params_.k, Mc2QuantUtils::WEIGHTNZ_K0_16) * Mc2QuantUtils::WEIGHTNZ_K0_16;
+            offset_.offsetB = nOffset * Mc2QuantUtils::CeilDiv(params_.k, Mc2QuantUtils::WEIGHTNZ_K0_16) *
+                              Mc2QuantUtils::WEIGHTNZ_K0_16;
         }
     } else {
         if constexpr (bTrans) {

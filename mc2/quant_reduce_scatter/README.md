@@ -4,7 +4,7 @@
 
 | 产品                                                                            | 是否支持 |
 | :------------------------------------------------------------------------------ | :------: |
-| <term>Ascend 950DT</term>                                                | √       | 
+| <term>Ascend 950DT</term>                                                | √       |
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>                        | ×       |
 | <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> | ×       |
 | <term>Atlas 200I/500 A2 推理产品</term>                                         | ×       |
@@ -29,7 +29,7 @@
     $$
     AllToAllScales=AllToAll(scales)
     $$
-    
+
     其中的Reduce计算是将来自不同rank的数据进行reduce计算。
     $$
 
@@ -37,10 +37,10 @@
     <table style="undefined;table-layout: fixed; width: 1567px"><colgroup>
     <col style="width: 170px">
     <col style="width: 120px">
-    <col style="width: 300px">  
-    <col style="width: 330px">  
-    <col style="width: 212px">  
-    <col style="width: 100px"> 
+    <col style="width: 300px">
+    <col style="width: 330px">
+    <col style="width: 212px">
+    <col style="width: 100px">
     <col style="width: 190px">
     <col style="width: 145px">
     </colgroup>

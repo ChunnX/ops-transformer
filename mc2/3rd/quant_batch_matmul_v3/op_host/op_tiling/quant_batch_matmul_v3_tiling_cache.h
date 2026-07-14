@@ -21,20 +21,21 @@
 namespace optiling {
 struct Mc2QuantBatchMatmulV3BitField {
     // 这里要保证是32bit
-    uint16_t transA : 1;
-    uint16_t transB : 1;
-    uint16_t hasBias : 1;
-    uint16_t aFormatNd : 1;
-    uint16_t bFormatNd : 1;
-    uint16_t cFormatNd : 1;
+    uint16_t transA      : 1;
+    uint16_t transB      : 1;
+    uint16_t hasBias     : 1;
+    uint16_t aFormatNd   : 1;
+    uint16_t bFormatNd   : 1;
+    uint16_t cFormatNd   : 1;
     uint16_t isPerTensor : 1;
-    uint16_t isPertoken : 1;
-    uint32_t reserved : 24;
+    uint16_t isPertoken  : 1;
+    uint32_t reserved    : 24;
 };
 
 class Mc2QuantBatchMatmulV3HashInput {
 public:
-    explicit Mc2QuantBatchMatmulV3HashInput(const Mc2QuantBatchMatmulInfo &params, const Ops::Transformer::OpTiling::AiCoreParams &aicoreParams);
+    explicit Mc2QuantBatchMatmulV3HashInput(const Mc2QuantBatchMatmulInfo &params,
+                                            const Ops::Transformer::OpTiling::AiCoreParams &aicoreParams);
     ~Mc2QuantBatchMatmulV3HashInput() = default;
     bool operator==(const Mc2QuantBatchMatmulV3HashInput &params) const
     {
@@ -69,13 +70,23 @@ private:
 
 class Mc2QuantBatchMatmulV3HashItem {
 public:
-    explicit Mc2QuantBatchMatmulV3HashItem(const Mc2QuantBatchMatmulInfo &params, const Ops::Transformer::OpTiling::AiCoreParams &aicoreParams)
+    explicit Mc2QuantBatchMatmulV3HashItem(const Mc2QuantBatchMatmulInfo &params,
+                                           const Ops::Transformer::OpTiling::AiCoreParams &aicoreParams)
         : hashKey_(params, aicoreParams)
     {
     }
-    const Mc2QuantBatchMatmulV3HashInput &input() const { return hashKey_; }
-    const BasicTiling &GetTiling() const { return tiling_; }
-    void SetTiling(const BasicTiling &tiling) { tiling_ = tiling; }
+    const Mc2QuantBatchMatmulV3HashInput &input() const
+    {
+        return hashKey_;
+    }
+    const BasicTiling &GetTiling() const
+    {
+        return tiling_;
+    }
+    void SetTiling(const BasicTiling &tiling)
+    {
+        tiling_ = tiling;
+    }
 
 private:
     Mc2QuantBatchMatmulV3HashInput hashKey_;
@@ -83,5 +94,5 @@ private:
 };
 
 using MMBasicTilingHash = Ops::Transformer::TilingCache<Mc2QuantBatchMatmulV3HashInput, Mc2QuantBatchMatmulV3HashItem>;
-}  // namespace optiling
-#endif  // QUANT_BATCH_MATMUL_V3_TILING_CACHE_H
+} // namespace optiling
+#endif // QUANT_BATCH_MATMUL_V3_TILING_CACHE_H

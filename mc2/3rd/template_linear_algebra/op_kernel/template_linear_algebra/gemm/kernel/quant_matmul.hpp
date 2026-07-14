@@ -21,11 +21,7 @@
 
 namespace Catlass::Gemm::Kernel {
 
-template <
-    class BlockMmad_,
-    class BlockEpilogue_,
-    class BlockScheduler_
->
+template <class BlockMmad_, class BlockEpilogue_, class BlockScheduler_>
 class QuantMatmul {
 public:
     using BlockMmad = BlockMmad_;
@@ -95,39 +91,36 @@ public:
 
         // Methods
         CATLASS_DEVICE
-        Params() {}
+        Params()
+        {
+        }
 
         CATLASS_DEVICE
-        Params(
-            GemmCoord problemShape_,
-            GM_ADDR ptrA_, LayoutA layoutA_,
-            GM_ADDR ptrB_, LayoutB layoutB_,
-            GM_ADDR ptrScale_, LayoutScale layoutScale_,
-            GM_ADDR ptrPerTokenScale_, LayoutPerTokenScale layoutPerTokenScale_,
-            GM_ADDR ptrD_, LayoutD layoutD_,
-            GM_ADDR ptrWorkspace_
-        ) : problemShape(problemShape_),
-            ptrA(reinterpret_cast<__gm__ ElementA *>(ptrA_)), layoutA(layoutA_),
-            ptrB(reinterpret_cast<__gm__ ElementB *>(ptrB_)), layoutB(layoutB_),
-            ptrScale(reinterpret_cast<__gm__ ElementScale *>(ptrScale_)), layoutScale(layoutScale_),
-            ptrPerTokenScale(reinterpret_cast<__gm__ ElementPerTokenScale *>(ptrPerTokenScale_)),
-            layoutPerTokenScale(layoutPerTokenScale_),
-            ptrD(reinterpret_cast<__gm__ ElementD *>(ptrD_)), layoutD(layoutD_),
-            ptrWorkspace(ptrWorkspace_) {}
+        Params(GemmCoord problemShape_, GM_ADDR ptrA_, LayoutA layoutA_, GM_ADDR ptrB_, LayoutB layoutB_,
+               GM_ADDR ptrScale_, LayoutScale layoutScale_, GM_ADDR ptrPerTokenScale_,
+               LayoutPerTokenScale layoutPerTokenScale_, GM_ADDR ptrD_, LayoutD layoutD_, GM_ADDR ptrWorkspace_)
+            : problemShape(problemShape_), ptrA(reinterpret_cast<__gm__ ElementA *>(ptrA_)), layoutA(layoutA_),
+              ptrB(reinterpret_cast<__gm__ ElementB *>(ptrB_)), layoutB(layoutB_),
+              ptrScale(reinterpret_cast<__gm__ ElementScale *>(ptrScale_)), layoutScale(layoutScale_),
+              ptrPerTokenScale(reinterpret_cast<__gm__ ElementPerTokenScale *>(ptrPerTokenScale_)),
+              layoutPerTokenScale(layoutPerTokenScale_), ptrD(reinterpret_cast<__gm__ ElementD *>(ptrD_)),
+              layoutD(layoutD_), ptrWorkspace(ptrWorkspace_)
+        {
+        }
     };
 
     // Methods
     CATLASS_DEVICE
-    QuantMatmul() {}
+    QuantMatmul()
+    {
+    }
 
     template <int32_t CORE_TYPE = g_coreType>
-    CATLASS_DEVICE
-    void operator()(Params const &params);
+    CATLASS_DEVICE void operator()(Params const &params);
 
     /// Executes matmul
     template <>
-    CATLASS_DEVICE
-    void operator()<AscendC::AIC>(Params const &params)
+    CATLASS_DEVICE void operator()<AscendC::AIC>(Params const &params)
     {
         BlockScheduler blockScheduler;
         blockScheduler.Update(params.problemShape, MakeCoord(L1TileShape::M, L1TileShape::N));
@@ -164,19 +157,11 @@ public:
 
             // Compute block-scoped matrix multiply-add
             if constexpr (BlockMmad::DispatchPolicy::ASYNC) {
-                blockMmad(
-                    gmA[gmOffsetA], params.layoutA,
-                    gmB[gmOffsetB], params.layoutB,
-                    gmC[gmOffsetC], layoutC,
-                    actualBlockShape, MakeCallback(&aicFinishSync)
-                );
+                blockMmad(gmA[gmOffsetA], params.layoutA, gmB[gmOffsetB], params.layoutB, gmC[gmOffsetC], layoutC,
+                          actualBlockShape, MakeCallback(&aicFinishSync));
             } else {
-                blockMmad(
-                    gmA[gmOffsetA], params.layoutA,
-                    gmB[gmOffsetB], params.layoutB,
-                    gmC[gmOffsetC], layoutC,
-                    actualBlockShape
-                );
+                blockMmad(gmA[gmOffsetA], params.layoutA, gmB[gmOffsetB], params.layoutB, gmC[gmOffsetC], layoutC,
+                          actualBlockShape);
                 aicFinishSync();
             }
         }
@@ -187,8 +172,7 @@ public:
     }
 
     template <>
-    CATLASS_DEVICE
-    void operator()<AscendC::AIV>(Params const &params)
+    CATLASS_DEVICE void operator()<AscendC::AIV>(Params const &params)
     {
         BlockScheduler blockScheduler;
         BlockEpilogue blockEpilogue(resource);
@@ -208,11 +192,8 @@ public:
             params.layoutPerTokenScale.GetTileLayout(params.problemShape.template GetCoordByAxis<0>());
         LayoutD layoutD = params.layoutD.GetTileLayout(params.problemShape.GetCoordMN());
 
-        EpilogueParams epilogueParams{
-            params.ptrScale, layoutScale,
-            params.ptrPerTokenScale, layoutPerTokenScale,
-            params.ptrD, layoutD
-        };
+        EpilogueParams epilogueParams{params.ptrScale,     layoutScale, params.ptrPerTokenScale,
+                                      layoutPerTokenScale, params.ptrD, layoutD};
 
         blockScheduler.Update(params.problemShape, L1TileShape::ToCoordMN());
         blockEpilogue.UpdateParams(epilogueParams);
@@ -226,11 +207,8 @@ public:
             auto gmBlockC = gmC[layoutC.GetOffset(blockCoordMNK.GetCoordMN() * blockShapeMNK.GetCoordMN())];
             auto layoutBlockC = layoutC.GetTileLayout(actualBlockShapeMNK.GetCoordMN());
 
-            blockEpilogue(
-                    blockShapeMNK, blockCoordMNK,
-                    actualBlockShapeMNK, gmBlockC,
-                    layoutBlockC, MakeCallback(&aicFinishSync)
-                );
+            blockEpilogue(blockShapeMNK, blockCoordMNK, actualBlockShapeMNK, gmBlockC, layoutBlockC,
+                          MakeCallback(&aicFinishSync));
         }
     }
 

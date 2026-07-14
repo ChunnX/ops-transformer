@@ -45,58 +45,53 @@ using matmul::MatmulImpl;
 using matmul::MatmulType;
 
 namespace Mc2WeightQuantBatchMatmulV2 {
-template <
-    typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    Mc2QuantType antiQuantType, bool hasAntiQuantOffset>
-class Mc2WeightQuantBatchMatmulV2WeightNzBasePerformanceKernel
-{
+template <typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
+          Mc2QuantType antiQuantType, bool hasAntiQuantOffset>
+class Mc2WeightQuantBatchMatmulV2WeightNzBasePerformanceKernel {
 public:
     __aicore__ inline Mc2WeightQuantBatchMatmulV2WeightNzBasePerformanceKernel(){};
 
-    __aicore__ inline void InitInputs(
-        GM_ADDR x, GM_ADDR weight, GM_ADDR antiquantScale, GM_ADDR antiquantOffset, GM_ADDR quantScale,
-        GM_ADDR quantOffset, GM_ADDR bias, GM_ADDR y);
+    __aicore__ inline void InitInputs(GM_ADDR x, GM_ADDR weight, GM_ADDR antiquantScale, GM_ADDR antiquantOffset,
+                                      GM_ADDR quantScale, GM_ADDR quantOffset, GM_ADDR bias, GM_ADDR y);
     __aicore__ inline void InitUbOffset();
     __aicore__ inline void InitTilingData();
-    __aicore__ inline void Init(
-        GM_ADDR x, GM_ADDR weight, GM_ADDR antiquantScale, GM_ADDR antiquantOffset, GM_ADDR quantScale,
-        GM_ADDR quantOffset, GM_ADDR bias, GM_ADDR y, GM_ADDR workspace,
-        const Mc2WeightQuantBatchMatmulV2NzTilingData* tilingData, TPipe* tPipe);
-    __aicore__ inline void CopyInBias(
-        LocalTensor<xType> biasLocal, int64_t biasSrcOffset, int32_t biasDstOffset, int32_t biasLen);
+    __aicore__ inline void Init(GM_ADDR x, GM_ADDR weight, GM_ADDR antiquantScale, GM_ADDR antiquantOffset,
+                                GM_ADDR quantScale, GM_ADDR quantOffset, GM_ADDR bias, GM_ADDR y, GM_ADDR workspace,
+                                const Mc2WeightQuantBatchMatmulV2NzTilingData *tilingData, TPipe *tPipe);
+    __aicore__ inline void CopyInBias(LocalTensor<xType> biasLocal, int64_t biasSrcOffset, int32_t biasDstOffset,
+                                      int32_t biasLen);
     __aicore__ inline void CopyInAddMul(int64_t addOffset, int32_t realNLen, int64_t groupIdx);
-    __aicore__ inline void CopyInTensorAub(
-        int64_t ubOffset, int32_t blockCount, int32_t blockLen, int32_t srcStride, LocalTensor<xType> xLocal);
-    __aicore__ inline void AntiQuantCompute(
-        int32_t bubNLen, int32_t bubKLen, int32_t antiquanOffset, LocalTensor<half> weight, int64_t bubKOffset);
-    __aicore__ inline void TransNd2Nz(
-        LocalTensor<xType> srcUbLocal, LocalTensor<xType> dstUbLocal, int32_t outerDim, int32_t innerDim,
-        int32_t innerLen);
-    __aicore__ inline void CopyVecOut2L1(
-        LocalTensor<xType> l1Local, LocalTensor<xType> ubLocal, int32_t blockCount, int32_t blockLen,
-        int32_t dstStride);
+    __aicore__ inline void CopyInTensorAub(int64_t ubOffset, int32_t blockCount, int32_t blockLen, int32_t srcStride,
+                                           LocalTensor<xType> xLocal);
+    __aicore__ inline void AntiQuantCompute(int32_t bubNLen, int32_t bubKLen, int32_t antiquanOffset,
+                                            LocalTensor<half> weight, int64_t bubKOffset);
+    __aicore__ inline void TransNd2Nz(LocalTensor<xType> srcUbLocal, LocalTensor<xType> dstUbLocal, int32_t outerDim,
+                                      int32_t innerDim, int32_t innerLen);
+    __aicore__ inline void CopyVecOut2L1(LocalTensor<xType> l1Local, LocalTensor<xType> ubLocal, int32_t blockCount,
+                                         int32_t blockLen, int32_t dstStride);
     __aicore__ inline void PostProcess(int32_t mL0Len, int32_t nL0Len, int32_t mAL1Offset, int32_t nBL1Offset);
     __aicore__ inline void CopyVec2Out(int64_t yGmOffset, int64_t mReal, int64_t nReal, LocalTensor<yType> resCNd);
     __aicore__ inline void TransNz2Nd(LocalTensor<xType> cubLocal);
     __aicore__ inline void BiasProcess(LocalTensor<float> biasFp32Local, int64_t nBlockOffset);
-    __aicore__ inline void AL1Process(
-        LocalTensor<xType> aL1Local, int64_t mAL1Offset, int64_t kBlockOffset, int32_t kL1Len, int32_t mL0Len);
-    __aicore__ inline void BL1Process(
-        LocalTensor<xType> bL1Local, int64_t nBL1Offset, int64_t kBlockOffset, int32_t kL1Len, int32_t nL0Len);
-    __aicore__ inline void BL1TailProcess(
-        LocalTensor<xType> bL1Local, int64_t nBL1Offset, int64_t kBlockOffset, int32_t nL0Len, int32_t bubNLoopIdx,
-        int32_t kLoopNum, LocalTensor<wType> wLocalPing, LocalTensor<wType> wLocalPong, LocalTensor<half> weight16Ping,
-        LocalTensor<half> weight16Pong);
-    __aicore__ inline void BL1SubProcess(
-        LocalTensor<wType> wLocalPing, LocalTensor<half> weight16Ping, LocalTensor<xType> bL1Local, int64_t bubKOffset,
-        int64_t bubNOffset, int32_t blockCount, int32_t blockLen, int32_t srcStride, int32_t bubNLen, int32_t bubKLen,
-        int32_t loopIdx, int32_t loopMax, int32_t bubNLoopIdx, int32_t bubKLoopIdx);
-    __aicore__ inline void CubeProcess(
-        LocalTensor<xType> aL1Local, LocalTensor<xType> bL1Local, LocalTensor<float> biasFp32Local, int32_t mL0Len,
-        int32_t nL0Len, int32_t kL1Len, int32_t kFactorIdx);
-    __aicore__ inline void UpdateGlobalAddr(
-        GM_ADDR x, GM_ADDR weight, GM_ADDR antiquantScale, GM_ADDR antiquantOffset, GM_ADDR quantScale,
-        GM_ADDR quantOffset, GM_ADDR bias, GM_ADDR y, GM_ADDR workspace);
+    __aicore__ inline void AL1Process(LocalTensor<xType> aL1Local, int64_t mAL1Offset, int64_t kBlockOffset,
+                                      int32_t kL1Len, int32_t mL0Len);
+    __aicore__ inline void BL1Process(LocalTensor<xType> bL1Local, int64_t nBL1Offset, int64_t kBlockOffset,
+                                      int32_t kL1Len, int32_t nL0Len);
+    __aicore__ inline void BL1TailProcess(LocalTensor<xType> bL1Local, int64_t nBL1Offset, int64_t kBlockOffset,
+                                          int32_t nL0Len, int32_t bubNLoopIdx, int32_t kLoopNum,
+                                          LocalTensor<wType> wLocalPing, LocalTensor<wType> wLocalPong,
+                                          LocalTensor<half> weight16Ping, LocalTensor<half> weight16Pong);
+    __aicore__ inline void BL1SubProcess(LocalTensor<wType> wLocalPing, LocalTensor<half> weight16Ping,
+                                         LocalTensor<xType> bL1Local, int64_t bubKOffset, int64_t bubNOffset,
+                                         int32_t blockCount, int32_t blockLen, int32_t srcStride, int32_t bubNLen,
+                                         int32_t bubKLen, int32_t loopIdx, int32_t loopMax, int32_t bubNLoopIdx,
+                                         int32_t bubKLoopIdx);
+    __aicore__ inline void CubeProcess(LocalTensor<xType> aL1Local, LocalTensor<xType> bL1Local,
+                                       LocalTensor<float> biasFp32Local, int32_t mL0Len, int32_t nL0Len, int32_t kL1Len,
+                                       int32_t kFactorIdx);
+    __aicore__ inline void UpdateGlobalAddr(GM_ADDR x, GM_ADDR weight, GM_ADDR antiquantScale, GM_ADDR antiquantOffset,
+                                            GM_ADDR quantScale, GM_ADDR quantOffset, GM_ADDR bias, GM_ADDR y,
+                                            GM_ADDR workspace);
     __aicore__ inline int64_t CeilDiv(int64_t x, int64_t y);
     __aicore__ inline int32_t max(int32_t x, int32_t y);
     __aicore__ inline int32_t min(int32_t x, int32_t y);
@@ -107,8 +102,8 @@ public:
     using inputBiasType = MatmulType<TPosition::VECOUT, CubeFormat::ND, float>;
     MatmulImpl<inputXType, inputWType, outputYType, inputBiasType, CFG_MDL> mmObj_;
 
-    TPipe* pipe_;
-    const Mc2WeightQuantBatchMatmulV2NzTilingData* tiling_;
+    TPipe *pipe_;
+    const Mc2WeightQuantBatchMatmulV2NzTilingData *tiling_;
 
     bool biasFlag_ = false;
     bool isTailNBlock_;
@@ -253,31 +248,33 @@ protected:
     static constexpr int32_t FOUR_BANK = 128 * 128;
 };
 
-template <
-    typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    Mc2QuantType antiQuantType, bool hasAntiQuantOffset>
-__aicore__ inline void Mc2WeightQuantBatchMatmulV2WeightNzBasePerformanceKernel<
-    xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset>::
-    InitInputs(
-        GM_ADDR x, GM_ADDR weight, GM_ADDR antiquantScale, GM_ADDR antiquantOffset, GM_ADDR quantScale,
-        GM_ADDR quantOffset, GM_ADDR bias, GM_ADDR y)
+template <typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
+          Mc2QuantType antiQuantType, bool hasAntiQuantOffset>
+__aicore__ inline void
+Mc2WeightQuantBatchMatmulV2WeightNzBasePerformanceKernel<xType, wType, biasType, yType, aTrans, bTrans, antiQuantType,
+                                                         hasAntiQuantOffset>::InitInputs(GM_ADDR x, GM_ADDR weight,
+                                                                                         GM_ADDR antiquantScale,
+                                                                                         GM_ADDR antiquantOffset,
+                                                                                         GM_ADDR quantScale,
+                                                                                         GM_ADDR quantOffset,
+                                                                                         GM_ADDR bias, GM_ADDR y)
 {
     xGM_ = x;
     weightGM_ = weight;
     biasGM_ = bias;
     yGM_ = y;
 
-    xGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ xType*>(x), tiling_->mSize * tiling_->kSize);
-    wGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ wType*>(weight), tiling_->kSize * tiling_->nSize);
-    yGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ yType*>(y), tiling_->mSize * tiling_->nSize);
-    biasGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ biasType*>(bias), tiling_->nSize);
+    xGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ xType *>(x), tiling_->mSize * tiling_->kSize);
+    wGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ wType *>(weight), tiling_->kSize * tiling_->nSize);
+    yGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ yType *>(y), tiling_->mSize * tiling_->nSize);
+    biasGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ biasType *>(bias), tiling_->nSize);
 
     groupNum_ = 1;
     if constexpr (antiQuantType == Mc2QuantType::PER_GROUP) {
         groupNum_ = CeilDiv(tiling_->kSize, tiling_->groupSize);
     }
-    mulGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ xType*>(antiquantScale), groupNum_ * tiling_->nSize);
-    addGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ xType*>(antiquantOffset), groupNum_ * tiling_->nSize);
+    mulGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ xType *>(antiquantScale), groupNum_ * tiling_->nSize);
+    addGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ xType *>(antiquantOffset), groupNum_ * tiling_->nSize);
 
     if constexpr (antiQuantType == Mc2QuantType::PER_TENSOR) {
         scaleValue_ = mulGlobal_.GetValue(0);
@@ -287,11 +284,11 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2WeightNzBasePerformanceKernel<
     }
 }
 
-template <
-    typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    Mc2QuantType antiQuantType, bool hasAntiQuantOffset>
-__aicore__ inline void Mc2WeightQuantBatchMatmulV2WeightNzBasePerformanceKernel<
-    xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset>::InitUbOffset()
+template <typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
+          Mc2QuantType antiQuantType, bool hasAntiQuantOffset>
+__aicore__ inline void
+Mc2WeightQuantBatchMatmulV2WeightNzBasePerformanceKernel<xType, wType, biasType, yType, aTrans, bTrans, antiQuantType,
+                                                         hasAntiQuantOffset>::InitUbOffset()
 {
     elemsAubCopyInPing_ = aubDataSize_;
     offsetAubCopyInPing_ = 0;
@@ -360,11 +357,11 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2WeightNzBasePerformanceKernel<
     int64_t endOffset = resCNdOffset_ + resCNdElem_ * sizeof(yType);
 }
 
-template <
-    typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    Mc2QuantType antiQuantType, bool hasAntiQuantOffset>
-__aicore__ inline void Mc2WeightQuantBatchMatmulV2WeightNzBasePerformanceKernel<
-    xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset>::InitTilingData()
+template <typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
+          Mc2QuantType antiQuantType, bool hasAntiQuantOffset>
+__aicore__ inline void
+Mc2WeightQuantBatchMatmulV2WeightNzBasePerformanceKernel<xType, wType, biasType, yType, aTrans, bTrans, antiQuantType,
+                                                         hasAntiQuantOffset>::InitTilingData()
 {
     // core tiling_ data
     mSingleCore_ = CeilDiv(tiling_->mSize, tiling_->cubeBlockDimM * tiling_->mAL1Size);
@@ -421,15 +418,13 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2WeightNzBasePerformanceKernel<
     nBlockOffset_ = nDimIdx_ * nSingleCore_ * tiling_->nBL1Size;
 }
 
-template <
-    typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    Mc2QuantType antiQuantType, bool hasAntiQuantOffset>
+template <typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
+          Mc2QuantType antiQuantType, bool hasAntiQuantOffset>
 __aicore__ inline void Mc2WeightQuantBatchMatmulV2WeightNzBasePerformanceKernel<
-    xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset>::
-    Init(
-        GM_ADDR x, GM_ADDR weight, GM_ADDR antiquantScale, GM_ADDR antiquantOffset, GM_ADDR quantScale,
-        GM_ADDR quantOffset, GM_ADDR bias, GM_ADDR y, GM_ADDR workspace,
-        const Mc2WeightQuantBatchMatmulV2NzTilingData* tilingData, TPipe* tPipe)
+    xType, wType, biasType, yType, aTrans, bTrans, antiQuantType,
+    hasAntiQuantOffset>::Init(GM_ADDR x, GM_ADDR weight, GM_ADDR antiquantScale, GM_ADDR antiquantOffset,
+                              GM_ADDR quantScale, GM_ADDR quantOffset, GM_ADDR bias, GM_ADDR y, GM_ADDR workspace,
+                              const Mc2WeightQuantBatchMatmulV2NzTilingData *tilingData, TPipe *tPipe)
 {
     tiling_ = tilingData;
     pipe_ = tPipe;
@@ -463,12 +458,14 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2WeightNzBasePerformanceKernel<
     mmObj_.Init(&tiling_->matmulTiling, tPipe);
 }
 
-template <
-    typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    Mc2QuantType antiQuantType, bool hasAntiQuantOffset>
-__aicore__ inline void Mc2WeightQuantBatchMatmulV2WeightNzBasePerformanceKernel<
-    xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset>::
-    CopyInBias(LocalTensor<xType> biasLocal, int64_t biasSrcOffset, int32_t biasDstOffset, int32_t biasLen)
+template <typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
+          Mc2QuantType antiQuantType, bool hasAntiQuantOffset>
+__aicore__ inline void
+Mc2WeightQuantBatchMatmulV2WeightNzBasePerformanceKernel<xType, wType, biasType, yType, aTrans, bTrans, antiQuantType,
+                                                         hasAntiQuantOffset>::CopyInBias(LocalTensor<xType> biasLocal,
+                                                                                         int64_t biasSrcOffset,
+                                                                                         int32_t biasDstOffset,
+                                                                                         int32_t biasLen)
 {
     DataCopyParams intriParamsBias;
     intriParamsBias.blockCount = 1;
@@ -478,12 +475,13 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2WeightNzBasePerformanceKernel<
     DataCopy(biasLocal[biasDstOffset], biasGlobal_[biasSrcOffset], intriParamsBias);
 }
 
-template <
-    typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    Mc2QuantType antiQuantType, bool hasAntiQuantOffset>
-__aicore__ inline void Mc2WeightQuantBatchMatmulV2WeightNzBasePerformanceKernel<
-    xType, wType, biasType, yType, aTrans, bTrans, antiQuantType,
-    hasAntiQuantOffset>::CopyInAddMul(int64_t addOffset, int32_t realNLen, int64_t groupIdx)
+template <typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
+          Mc2QuantType antiQuantType, bool hasAntiQuantOffset>
+__aicore__ inline void
+Mc2WeightQuantBatchMatmulV2WeightNzBasePerformanceKernel<xType, wType, biasType, yType, aTrans, bTrans, antiQuantType,
+                                                         hasAntiQuantOffset>::CopyInAddMul(int64_t addOffset,
+                                                                                           int32_t realNLen,
+                                                                                           int64_t groupIdx)
 {
     DataCopyParams intriParamsAdd;
     intriParamsAdd.blockCount = 1;
@@ -522,13 +520,15 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2WeightNzBasePerformanceKernel<
     }
 }
 
-template <
-    typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    Mc2QuantType antiQuantType, bool hasAntiQuantOffset>
-__aicore__ inline void Mc2WeightQuantBatchMatmulV2WeightNzBasePerformanceKernel<
-    xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset>::
-    CopyInTensorAub(
-        int64_t ubOffset, int32_t blockCount, int32_t blockLen, int32_t srcStride, LocalTensor<xType> xLocal)
+template <typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
+          Mc2QuantType antiQuantType, bool hasAntiQuantOffset>
+__aicore__ inline void
+Mc2WeightQuantBatchMatmulV2WeightNzBasePerformanceKernel<xType, wType, biasType, yType, aTrans, bTrans, antiQuantType,
+                                                         hasAntiQuantOffset>::CopyInTensorAub(int64_t ubOffset,
+                                                                                              int32_t blockCount,
+                                                                                              int32_t blockLen,
+                                                                                              int32_t srcStride,
+                                                                                              LocalTensor<xType> xLocal)
 {
     DataCopyParams intriParams;
     intriParams.dstStride = 0;
@@ -548,13 +548,15 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2WeightNzBasePerformanceKernel<
     }
 }
 
-template <
-    typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    Mc2QuantType antiQuantType, bool hasAntiQuantOffset>
-__aicore__ inline void Mc2WeightQuantBatchMatmulV2WeightNzBasePerformanceKernel<
-    xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset>::
-    AntiQuantCompute(
-        int32_t bubNLen, int32_t bubKLen, int32_t antiquantOffset, LocalTensor<half> weight, int64_t bubKOffset)
+template <typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
+          Mc2QuantType antiQuantType, bool hasAntiQuantOffset>
+__aicore__ inline void
+Mc2WeightQuantBatchMatmulV2WeightNzBasePerformanceKernel<xType, wType, biasType, yType, aTrans, bTrans, antiQuantType,
+                                                         hasAntiQuantOffset>::AntiQuantCompute(int32_t bubNLen,
+                                                                                               int32_t bubKLen,
+                                                                                               int32_t antiquantOffset,
+                                                                                               LocalTensor<half> weight,
+                                                                                               int64_t bubKOffset)
 {
     if constexpr (antiQuantType == Mc2QuantType::PER_TENSOR) {
         if constexpr (hasAntiQuantOffset) {
@@ -617,14 +619,15 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2WeightNzBasePerformanceKernel<
     }
 }
 
-template <
-    typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    Mc2QuantType antiQuantType, bool hasAntiQuantOffset>
-inline __aicore__ void Mc2WeightQuantBatchMatmulV2WeightNzBasePerformanceKernel<
-    xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset>::
-    TransNd2Nz(
-        LocalTensor<xType> srcUbLocal, LocalTensor<xType> dstUbLocal, int32_t outerDim, int32_t innerDim,
-        int32_t innerLen)
+template <typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
+          Mc2QuantType antiQuantType, bool hasAntiQuantOffset>
+inline __aicore__ void
+Mc2WeightQuantBatchMatmulV2WeightNzBasePerformanceKernel<xType, wType, biasType, yType, aTrans, bTrans, antiQuantType,
+                                                         hasAntiQuantOffset>::TransNd2Nz(LocalTensor<xType> srcUbLocal,
+                                                                                         LocalTensor<xType> dstUbLocal,
+                                                                                         int32_t outerDim,
+                                                                                         int32_t innerDim,
+                                                                                         int32_t innerLen)
 {
     int64_t mask = 128;
     int32_t repeatCnt = 2 * outerDim;
@@ -651,12 +654,11 @@ inline __aicore__ void Mc2WeightQuantBatchMatmulV2WeightNzBasePerformanceKernel<
     }
 }
 
-template <
-    typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    Mc2QuantType antiQuantType, bool hasAntiQuantOffset>
-__aicore__ inline void Mc2WeightQuantBatchMatmulV2WeightNzBasePerformanceKernel<
-    xType, wType, biasType, yType, aTrans, bTrans, antiQuantType,
-    hasAntiQuantOffset>::TransNz2Nd(LocalTensor<xType> cubLocal)
+template <typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
+          Mc2QuantType antiQuantType, bool hasAntiQuantOffset>
+__aicore__ inline void
+Mc2WeightQuantBatchMatmulV2WeightNzBasePerformanceKernel<xType, wType, biasType, yType, aTrans, bTrans, antiQuantType,
+                                                         hasAntiQuantOffset>::TransNz2Nd(LocalTensor<xType> cubLocal)
 {
     uint64_t mask = min(128, nCubSize_);
     uint8_t repeat = min(255, mCubSize_);
@@ -702,13 +704,15 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2WeightNzBasePerformanceKernel<
     }
 }
 
-template <
-    typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    Mc2QuantType antiQuantType, bool hasAntiQuantOffset>
-__aicore__ inline void Mc2WeightQuantBatchMatmulV2WeightNzBasePerformanceKernel<
-    xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset>::
-    CopyVecOut2L1(
-        LocalTensor<xType> l1Local, LocalTensor<xType> ubLocal, int32_t blockCount, int32_t blockLen, int32_t dstStride)
+template <typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
+          Mc2QuantType antiQuantType, bool hasAntiQuantOffset>
+__aicore__ inline void
+Mc2WeightQuantBatchMatmulV2WeightNzBasePerformanceKernel<xType, wType, biasType, yType, aTrans, bTrans, antiQuantType,
+                                                         hasAntiQuantOffset>::CopyVecOut2L1(LocalTensor<xType> l1Local,
+                                                                                            LocalTensor<xType> ubLocal,
+                                                                                            int32_t blockCount,
+                                                                                            int32_t blockLen,
+                                                                                            int32_t dstStride)
 {
     DataCopyParams intriParams;
     intriParams.blockLen = blockLen;
@@ -718,9 +722,8 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2WeightNzBasePerformanceKernel<
     DataCopy(l1Local, ubLocal, intriParams);
 }
 
-template <
-    typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    Mc2QuantType antiQuantType, bool hasAntiQuantOffset>
+template <typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
+          Mc2QuantType antiQuantType, bool hasAntiQuantOffset>
 __aicore__ inline void Mc2WeightQuantBatchMatmulV2WeightNzBasePerformanceKernel<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType,
     hasAntiQuantOffset>::BiasProcess(LocalTensor<float> biasFp32Local, int64_t nBlockOffset)
@@ -740,12 +743,14 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2WeightNzBasePerformanceKernel<
     Cast(biasFp32Local, biasLocal, RoundMode::CAST_NONE, nBL1Size_);
 }
 
-template <
-    typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    Mc2QuantType antiQuantType, bool hasAntiQuantOffset>
-__aicore__ inline void Mc2WeightQuantBatchMatmulV2WeightNzBasePerformanceKernel<
-    xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset>::
-    AL1Process(LocalTensor<xType> aL1Local, int64_t mAL1Offset, int64_t kBlockOffset, int32_t kL1Len, int32_t mL0Len)
+template <typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
+          Mc2QuantType antiQuantType, bool hasAntiQuantOffset>
+__aicore__ inline void
+Mc2WeightQuantBatchMatmulV2WeightNzBasePerformanceKernel<xType, wType, biasType, yType, aTrans, bTrans, antiQuantType,
+                                                         hasAntiQuantOffset>::AL1Process(LocalTensor<xType> aL1Local,
+                                                                                         int64_t mAL1Offset,
+                                                                                         int64_t kBlockOffset,
+                                                                                         int32_t kL1Len, int32_t mL0Len)
 {
     LocalTensor<xType> xLocalPing = apiTmpBuf_.template GetWithOffset<xType>(elemsAubCopyInPing_, offsetAubCopyInPing_);
     LocalTensor<xType> xLocalPong = apiTmpBuf_.template GetWithOffset<xType>(elemsAubCopyInPong_, offsetAubCopyInPong_);
@@ -863,12 +868,14 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2WeightNzBasePerformanceKernel<
     }
 }
 
-template <
-    typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    Mc2QuantType antiQuantType, bool hasAntiQuantOffset>
-__aicore__ inline void Mc2WeightQuantBatchMatmulV2WeightNzBasePerformanceKernel<
-    xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset>::
-    BL1Process(LocalTensor<xType> bL1Local, int64_t nBL1Offset, int64_t kBlockOffset, int32_t kL1Len, int32_t nL0Len)
+template <typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
+          Mc2QuantType antiQuantType, bool hasAntiQuantOffset>
+__aicore__ inline void
+Mc2WeightQuantBatchMatmulV2WeightNzBasePerformanceKernel<xType, wType, biasType, yType, aTrans, bTrans, antiQuantType,
+                                                         hasAntiQuantOffset>::BL1Process(LocalTensor<xType> bL1Local,
+                                                                                         int64_t nBL1Offset,
+                                                                                         int64_t kBlockOffset,
+                                                                                         int32_t kL1Len, int32_t nL0Len)
 {
     int32_t nL0Align = CeilDiv(nL0Len, BLOCK_CUBE) * BLOCK_CUBE;
 
@@ -898,39 +905,34 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2WeightNzBasePerformanceKernel<
             int32_t blockCount = CeilDiv(bubKLen, 32);
             int64_t srcStrideSize = CeilDiv(tiling_->nSize, BLOCK_CUBE) * BLOCK_CUBE - bubNLen;
 #if defined(__CCE_KT_TEST__)
-            ASCENDC_ASSERT(srcStrideSize > 65535, {
-                KERNEL_LOG(KERNEL_ERROR, "srcStride must <= 65535, actual is %ld", srcStrideSize);
-            });
+            ASCENDC_ASSERT(srcStrideSize > 65535,
+                           { KERNEL_LOG(KERNEL_ERROR, "srcStride must <= 65535, actual is %ld", srcStrideSize); });
 #endif
             int32_t srcStride = static_cast<int32_t>(srcStrideSize);
             int32_t dstStride = nL0Align - CeilDiv(bubNLen, BLOCK_CUBE) * BLOCK_CUBE;
             int32_t blockLen = bubNLen;
 
             if (loopIdx % 2 == 0) {
-                BL1SubProcess(
-                    wLocalPing, weight16Ping, bL1Local, bubKOffset, bubNOffset, blockCount, blockLen, srcStride,
-                    bubNLen, bubKLen, loopIdx, loopMax, bubNLoopIdx, bubKLoopIdx);
+                BL1SubProcess(wLocalPing, weight16Ping, bL1Local, bubKOffset, bubNOffset, blockCount, blockLen,
+                              srcStride, bubNLen, bubKLen, loopIdx, loopMax, bubNLoopIdx, bubKLoopIdx);
             } else {
-                BL1SubProcess(
-                    wLocalPong, weight16Pong, bL1Local, bubKOffset, bubNOffset, blockCount, blockLen, srcStride,
-                    bubNLen, bubKLen, loopIdx, loopMax, bubNLoopIdx, bubKLoopIdx);
+                BL1SubProcess(wLocalPong, weight16Pong, bL1Local, bubKOffset, bubNOffset, blockCount, blockLen,
+                              srcStride, bubNLen, bubKLen, loopIdx, loopMax, bubNLoopIdx, bubKLoopIdx);
             }
         }
     }
-    BL1TailProcess(
-        bL1Local, nBL1Offset, kBlockOffset, nL0Len, bubNLoopIdx, kLoopNum, wLocalPing, wLocalPong, weight16Ping,
-        weight16Pong);
+    BL1TailProcess(bL1Local, nBL1Offset, kBlockOffset, nL0Len, bubNLoopIdx, kLoopNum, wLocalPing, wLocalPong,
+                   weight16Ping, weight16Pong);
 }
 
-template <
-    typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    Mc2QuantType antiQuantType, bool hasAntiQuantOffset>
+template <typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
+          Mc2QuantType antiQuantType, bool hasAntiQuantOffset>
 inline __aicore__ void Mc2WeightQuantBatchMatmulV2WeightNzBasePerformanceKernel<
-    xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset>::
-    BL1TailProcess(
-        LocalTensor<xType> bL1Local, int64_t nBL1Offset, int64_t kBlockOffset, int32_t nL0Len, int32_t bubNLoopIdx,
-        int32_t kLoopNum, LocalTensor<wType> wLocalPing, LocalTensor<wType> wLocalPong, LocalTensor<half> weight16Ping,
-        LocalTensor<half> weight16Pong)
+    xType, wType, biasType, yType, aTrans, bTrans, antiQuantType,
+    hasAntiQuantOffset>::BL1TailProcess(LocalTensor<xType> bL1Local, int64_t nBL1Offset, int64_t kBlockOffset,
+                                        int32_t nL0Len, int32_t bubNLoopIdx, int32_t kLoopNum,
+                                        LocalTensor<wType> wLocalPing, LocalTensor<wType> wLocalPong,
+                                        LocalTensor<half> weight16Ping, LocalTensor<half> weight16Pong)
 {
     int nBL1Tail = nL0Size_ % nBubSize_;
     if (likely(nBL1Tail == 0)) {
@@ -953,26 +955,24 @@ inline __aicore__ void Mc2WeightQuantBatchMatmulV2WeightNzBasePerformanceKernel<
         int32_t blockLen = nBL1Tail;
 
         if (bubKLoopIdx % 2 == 0) {
-            BL1SubProcess(
-                wLocalPing, weight16Ping, bL1Local, bubKOffset, bubNOffset, blockCount, blockLen, srcStride, nBL1Tail,
-                bubKLen, bubKLoopIdx, kLoopNum, bubNLoopIdx, bubKLoopIdx);
+            BL1SubProcess(wLocalPing, weight16Ping, bL1Local, bubKOffset, bubNOffset, blockCount, blockLen, srcStride,
+                          nBL1Tail, bubKLen, bubKLoopIdx, kLoopNum, bubNLoopIdx, bubKLoopIdx);
         } else {
-            BL1SubProcess(
-                wLocalPong, weight16Pong, bL1Local, bubKOffset, bubNOffset, blockCount, blockLen, srcStride, nBL1Tail,
-                bubKLen, bubKLoopIdx, kLoopNum, bubNLoopIdx, bubKLoopIdx);
+            BL1SubProcess(wLocalPong, weight16Pong, bL1Local, bubKOffset, bubNOffset, blockCount, blockLen, srcStride,
+                          nBL1Tail, bubKLen, bubKLoopIdx, kLoopNum, bubNLoopIdx, bubKLoopIdx);
         }
     }
 }
 
-template <
-    typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    Mc2QuantType antiQuantType, bool hasAntiQuantOffset>
+template <typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
+          Mc2QuantType antiQuantType, bool hasAntiQuantOffset>
 inline __aicore__ void Mc2WeightQuantBatchMatmulV2WeightNzBasePerformanceKernel<
-    xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset>::
-    BL1SubProcess(
-        LocalTensor<wType> wLocalPing, LocalTensor<half> weight16Ping, LocalTensor<xType> bL1Local, int64_t bubKOffset,
-        int64_t bubNOffset, int32_t blockCount, int32_t blockLen, int32_t srcStride, int32_t bubNLen, int32_t bubKLen,
-        int32_t loopIdx, int32_t loopMax, int32_t bubNLoopIdx, int32_t bubKLoopIdx)
+    xType, wType, biasType, yType, aTrans, bTrans, antiQuantType,
+    hasAntiQuantOffset>::BL1SubProcess(LocalTensor<wType> wLocalPing, LocalTensor<half> weight16Ping,
+                                       LocalTensor<xType> bL1Local, int64_t bubKOffset, int64_t bubNOffset,
+                                       int32_t blockCount, int32_t blockLen, int32_t srcStride, int32_t bubNLen,
+                                       int32_t bubKLen, int32_t loopIdx, int32_t loopMax, int32_t bubNLoopIdx,
+                                       int32_t bubKLoopIdx)
 {
     int64_t bubOffset = bubKOffset * CeilDiv(tiling_->nSize, BLOCK_CUBE) * BLOCK_CUBE + bubNOffset * 32;
 
@@ -1000,15 +1000,13 @@ inline __aicore__ void Mc2WeightQuantBatchMatmulV2WeightNzBasePerformanceKernel<
 
     if (bubKLen >= 128) {
         for (uint32_t i = 0; i < CeilDiv(bubKLen, 128); i++) {
-            Cast(
-                weight16Ping[bubNLen * 128 * i], wLocalPing[bubNLen * 128 * i], RoundMode::CAST_NONE, 128,
-                static_cast<uint8_t>(bubNLen), {static_cast<uint16_t>(bubNLen), static_cast<uint16_t>(bubNLen), 1, 1});
+            Cast(weight16Ping[bubNLen * 128 * i], wLocalPing[bubNLen * 128 * i], RoundMode::CAST_NONE, 128,
+                 static_cast<uint8_t>(bubNLen), {static_cast<uint16_t>(bubNLen), static_cast<uint16_t>(bubNLen), 1, 1});
         }
     } else {
         for (uint32_t i = 0; i < CeilDiv(bubKLen, 32); i++) {
-            Cast(
-                weight16Ping[bubNLen * 32 * i], wLocalPing[bubNLen * 32 * i], RoundMode::CAST_NONE, 32,
-                static_cast<uint8_t>(bubNLen), {static_cast<uint16_t>(bubNLen), 1, 1, 1});
+            Cast(weight16Ping[bubNLen * 32 * i], wLocalPing[bubNLen * 32 * i], RoundMode::CAST_NONE, 32,
+                 static_cast<uint8_t>(bubNLen), {static_cast<uint16_t>(bubNLen), 1, 1, 1});
         }
     }
 
@@ -1030,23 +1028,26 @@ inline __aicore__ void Mc2WeightQuantBatchMatmulV2WeightNzBasePerformanceKernel<
     CopyVecOut2L1(bL1Local[l1Offset], weight16Ping, CeilDiv(kBubSize_, BLOCK_CUBE), bubNLen, nBL1Size_ - bubNLen);
 }
 
-template <
-    typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    Mc2QuantType antiQuantType, bool hasAntiQuantOffset>
-__aicore__ inline void Mc2WeightQuantBatchMatmulV2WeightNzBasePerformanceKernel<
-    xType, wType, biasType, yType, aTrans, bTrans, antiQuantType,
-    hasAntiQuantOffset>::PostProcess(int32_t mL0Len, int32_t nL0Len, int32_t mAL1Offset, int32_t nBL1Offset)
+template <typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
+          Mc2QuantType antiQuantType, bool hasAntiQuantOffset>
+__aicore__ inline void
+Mc2WeightQuantBatchMatmulV2WeightNzBasePerformanceKernel<xType, wType, biasType, yType, aTrans, bTrans, antiQuantType,
+                                                         hasAntiQuantOffset>::PostProcess(int32_t mL0Len,
+                                                                                          int32_t nL0Len,
+                                                                                          int32_t mAL1Offset,
+                                                                                          int32_t nBL1Offset)
 {
     LocalTensor<xType> resCNz = apiTmpBuf_.template GetWithOffset<xType>(resCNzElem_, resCNzOffset_);
     TransNz2Nd(resCNz);
 }
 
-template <
-    typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    Mc2QuantType antiQuantType, bool hasAntiQuantOffset>
-__aicore__ inline void Mc2WeightQuantBatchMatmulV2WeightNzBasePerformanceKernel<
-    xType, wType, biasType, yType, aTrans, bTrans, antiQuantType,
-    hasAntiQuantOffset>::CopyVec2Out(int64_t yGmOffset, int64_t mReal, int64_t nReal, LocalTensor<yType> resCNd)
+template <typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
+          Mc2QuantType antiQuantType, bool hasAntiQuantOffset>
+__aicore__ inline void
+Mc2WeightQuantBatchMatmulV2WeightNzBasePerformanceKernel<xType, wType, biasType, yType, aTrans, bTrans, antiQuantType,
+                                                         hasAntiQuantOffset>::CopyVec2Out(int64_t yGmOffset,
+                                                                                          int64_t mReal, int64_t nReal,
+                                                                                          LocalTensor<yType> resCNd)
 {
     DataCopyParams dmaParam;
     dmaParam.blockCount = mReal;
@@ -1084,16 +1085,16 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2WeightNzBasePerformanceKernel<
 
             for (int mIdx = 0; mIdx < mReal; mIdx++) {
                 for (int elemIdx = 0; elemIdx < BLOCK_CUBE; elemIdx++) {
-                    resCNz.SetValue(
-                        mIdx * nCubSize_ + elemIdx, resCNd.GetValue(mIdx * nCubSize_ + tailOffset + elemIdx));
+                    resCNz.SetValue(mIdx * nCubSize_ + elemIdx,
+                                    resCNd.GetValue(mIdx * nCubSize_ + tailOffset + elemIdx));
                 }
 
                 event_t eventIdSToMte3 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::S_MTE3));
                 SetFlag<HardEvent::S_MTE3>(eventIdSToMte3);
                 WaitFlag<HardEvent::S_MTE3>(eventIdSToMte3);
 
-                DataCopy(
-                    yGlobal_[yGmOffset + mIdx * tiling_->nSize + tailOffset], resCNz[mIdx * nCubSize_], dmaTailParam);
+                DataCopy(yGlobal_[yGmOffset + mIdx * tiling_->nSize + tailOffset], resCNz[mIdx * nCubSize_],
+                         dmaTailParam);
             }
         }
     } else {
@@ -1104,14 +1105,13 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2WeightNzBasePerformanceKernel<
     }
 }
 
-template <
-    typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    Mc2QuantType antiQuantType, bool hasAntiQuantOffset>
+template <typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
+          Mc2QuantType antiQuantType, bool hasAntiQuantOffset>
 __aicore__ inline void Mc2WeightQuantBatchMatmulV2WeightNzBasePerformanceKernel<
-    xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset>::
-    CubeProcess(
-        LocalTensor<xType> aL1Local, LocalTensor<xType> bL1Local, LocalTensor<float> biasFp32Local, int32_t mL0Len,
-        int32_t nL0Len, int32_t kL1Len, int32_t kFactorIdx)
+    xType, wType, biasType, yType, aTrans, bTrans, antiQuantType,
+    hasAntiQuantOffset>::CubeProcess(LocalTensor<xType> aL1Local, LocalTensor<xType> bL1Local,
+                                     LocalTensor<float> biasFp32Local, int32_t mL0Len, int32_t nL0Len, int32_t kL1Len,
+                                     int32_t kFactorIdx)
 {
     int32_t offsetA = 0;
     int32_t offsetB = 0;
@@ -1130,23 +1130,27 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2WeightNzBasePerformanceKernel<
     mmObj_.Iterate(kFactorIdx != 0);
 }
 
-template <
-    typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    Mc2QuantType antiQuantType, bool hasAntiQuantOffset>
-__aicore__ inline void Mc2WeightQuantBatchMatmulV2WeightNzBasePerformanceKernel<
-    xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset>::
-    UpdateGlobalAddr(
-        GM_ADDR x, GM_ADDR weight, GM_ADDR antiquantScale, GM_ADDR antiquantOffset, GM_ADDR quantScale,
-        GM_ADDR quantOffset, GM_ADDR bias, GM_ADDR y, GM_ADDR workspace)
+template <typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
+          Mc2QuantType antiQuantType, bool hasAntiQuantOffset>
+__aicore__ inline void
+Mc2WeightQuantBatchMatmulV2WeightNzBasePerformanceKernel<xType, wType, biasType, yType, aTrans, bTrans, antiQuantType,
+                                                         hasAntiQuantOffset>::UpdateGlobalAddr(GM_ADDR x,
+                                                                                               GM_ADDR weight,
+                                                                                               GM_ADDR antiquantScale,
+                                                                                               GM_ADDR antiquantOffset,
+                                                                                               GM_ADDR quantScale,
+                                                                                               GM_ADDR quantOffset,
+                                                                                               GM_ADDR bias, GM_ADDR y,
+                                                                                               GM_ADDR workspace)
 {
     InitInputs(x, weight, antiquantScale, antiquantOffset, quantScale, quantOffset, bias, y);
 }
 
-template <
-    typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    Mc2QuantType antiQuantType, bool hasAntiQuantOffset>
-__aicore__ inline int64_t Mc2WeightQuantBatchMatmulV2WeightNzBasePerformanceKernel<
-    xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset>::CeilDiv(int64_t x, int64_t y)
+template <typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
+          Mc2QuantType antiQuantType, bool hasAntiQuantOffset>
+__aicore__ inline int64_t
+Mc2WeightQuantBatchMatmulV2WeightNzBasePerformanceKernel<xType, wType, biasType, yType, aTrans, bTrans, antiQuantType,
+                                                         hasAntiQuantOffset>::CeilDiv(int64_t x, int64_t y)
 {
     if (y == 0) {
         return 0;
@@ -1154,20 +1158,20 @@ __aicore__ inline int64_t Mc2WeightQuantBatchMatmulV2WeightNzBasePerformanceKern
     return (x + y - 1) / y;
 }
 
-template <
-    typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    Mc2QuantType antiQuantType, bool hasAntiQuantOffset>
-__aicore__ inline int32_t Mc2WeightQuantBatchMatmulV2WeightNzBasePerformanceKernel<
-    xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset>::max(int32_t a, int32_t b)
+template <typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
+          Mc2QuantType antiQuantType, bool hasAntiQuantOffset>
+__aicore__ inline int32_t
+Mc2WeightQuantBatchMatmulV2WeightNzBasePerformanceKernel<xType, wType, biasType, yType, aTrans, bTrans, antiQuantType,
+                                                         hasAntiQuantOffset>::max(int32_t a, int32_t b)
 {
     return a > b ? a : b;
 }
 
-template <
-    typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    Mc2QuantType antiQuantType, bool hasAntiQuantOffset>
-__aicore__ inline int32_t Mc2WeightQuantBatchMatmulV2WeightNzBasePerformanceKernel<
-    xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset>::min(int32_t a, int32_t b)
+template <typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
+          Mc2QuantType antiQuantType, bool hasAntiQuantOffset>
+__aicore__ inline int32_t
+Mc2WeightQuantBatchMatmulV2WeightNzBasePerformanceKernel<xType, wType, biasType, yType, aTrans, bTrans, antiQuantType,
+                                                         hasAntiQuantOffset>::min(int32_t a, int32_t b)
 {
     return a > b ? b : a;
 }

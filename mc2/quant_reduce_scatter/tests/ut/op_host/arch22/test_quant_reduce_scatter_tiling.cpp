@@ -53,7 +53,7 @@ struct QuantReduceScatterTestParam {
     uint64_t mc2TilingDataReservedLen;
 };
 
-inline std::ostream& operator<<(std::ostream& os, const QuantReduceScatterTestParam& param)
+inline std::ostream &operator<<(std::ostream &os, const QuantReduceScatterTestParam &param)
 {
     return os << param.caseName;
 }
@@ -61,11 +61,25 @@ inline std::ostream& operator<<(std::ostream& os, const QuantReduceScatterTestPa
 // 构造ut用例：这里可以按照正常用例/异常用例分开声明
 static QuantReduceScatterTestParam g_testCases[] = {
     {"quant_reduce_scatter_abuse_case_tg_10",
-    {1024, 5120}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND,
-    {1024, 80, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND,
-    {128, 5120}, ge::DT_FLOAT16, ge::FORMAT_ND,
-    "group", "sum", ge::DT_FLOAT16, 8, "Ascend910_93",
-    ge::GRAPH_FAILED, 0UL, "", {}, 0},
+     {1024, 5120},
+     ge::DT_FLOAT8_E4M3FN,
+     ge::FORMAT_ND,
+     {1024, 80, 2},
+     ge::DT_FLOAT8_E8M0,
+     ge::FORMAT_ND,
+     {128, 5120},
+     ge::DT_FLOAT16,
+     ge::FORMAT_ND,
+     "group",
+     "sum",
+     ge::DT_FLOAT16,
+     8,
+     "Ascend910_93",
+     ge::GRAPH_FAILED,
+     0UL,
+     "",
+     {},
+     0},
 };
 
 class QuantReduceScatterArch22TilingTest : public testing::TestWithParam<QuantReduceScatterTestParam> {
@@ -81,7 +95,8 @@ protected:
     }
 };
 
-static struct QuantReduceScatterCompileInfo {} compileInfo;
+static struct QuantReduceScatterCompileInfo {
+} compileInfo;
 
 static gert::TilingContextPara BuildTilingContextPara(const QuantReduceScatterTestParam &param)
 {
@@ -90,18 +105,15 @@ static gert::TilingContextPara BuildTilingContextPara(const QuantReduceScatterTe
     gert::StorageShape xShape = {param.xShape, param.xShape};
     gert::StorageShape scalesShape = {param.scalesShape, param.scalesShape};
     gert::StorageShape outputShape = {param.outputShape, param.outputShape};
-    std::vector<gert::TilingContextPara::TensorDescription> inputTensorDesc_({
-        {xShape, param.xDtype, param.xFormat},
-        {scalesShape, param.scalesDtype, param.scalesFormat}
-    });
-    std::vector<gert::TilingContextPara::TensorDescription> outputTensorDesc_({
-        {outputShape, param.outputDtype, param.outputFormat}
-    });
-    std::vector<gert::TilingContextPara::OpAttr> attrs_({
-        {"group", Ops::Transformer::AnyValue::CreateFrom<std::string>(param.groupAttr)},
-        {"reduce_op", Ops::Transformer::AnyValue::CreateFrom<std::string>(param.reduceOpAttr)},
-        {"output_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int64_t>(param.outputDtypeAttr))}
-    });
+    std::vector<gert::TilingContextPara::TensorDescription> inputTensorDesc_(
+        {{xShape, param.xDtype, param.xFormat}, {scalesShape, param.scalesDtype, param.scalesFormat}});
+    std::vector<gert::TilingContextPara::TensorDescription> outputTensorDesc_(
+        {{outputShape, param.outputDtype, param.outputFormat}});
+    std::vector<gert::TilingContextPara::OpAttr> attrs_(
+        {{"group", Ops::Transformer::AnyValue::CreateFrom<std::string>(param.groupAttr)},
+         {"reduce_op", Ops::Transformer::AnyValue::CreateFrom<std::string>(param.reduceOpAttr)},
+         {"output_dtype",
+          Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int64_t>(param.outputDtypeAttr))}});
     return gert::TilingContextPara(OP_NAME, inputTensorDesc_, outputTensorDesc_, attrs_, &compileInfo,
                                    param.socVersion);
 }
@@ -144,4 +156,4 @@ TEST_F(QuantReduceScatterArch22TilingTest, GeneralCasesMultiThreadTest)
 
 INSTANTIATE_TEST_CASE_P(QuantReduceScatterTilingUT, QuantReduceScatterArch22TilingTest, testing::ValuesIn(g_testCases));
 
-} // namespace
+} // namespace QuantReduceScatterUT
