@@ -844,7 +844,7 @@ __aicore__ inline void ComputeOffsetPrefixAIC(const RunParamStr<isInfer>& runPar
             runInfo.keyOffset = 0;
         } else {
             runInfo.prefixOffset = 0;
-            runInfo.valueOffset = runParam.valueCoreOffset + sInnerLoopIdx * constInfo.s2BaseN2Dv;
+            runInfo.valueOffset = runParam.valueCoreOffset + (sInnerLoopIdx - constInfo.prefixLoopCount) * constInfo.s2BaseN2Dv;
             runInfo.keyOffset = runInfo.valueOffset;
         }
     } else {
@@ -854,7 +854,7 @@ __aicore__ inline void ComputeOffsetPrefixAIC(const RunParamStr<isInfer>& runPar
             runInfo.keyOffset = 0;
         } else {
             runInfo.prefixOffset = 0;
-            runInfo.valueOffset = runParam.valueCoreOffset + sInnerLoopIdx * constInfo.s2BaseDv;
+            runInfo.valueOffset = runParam.valueCoreOffset + (sInnerLoopIdx - constInfo.prefixLoopCount) * constInfo.s2BaseDv;
             runInfo.keyOffset = runInfo.valueOffset;
         }
     }

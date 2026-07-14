@@ -746,7 +746,7 @@ __aicore__ inline void ComputeOffset(const RunParamStr<isInfer>& runParam,
                 } else {
                     // 普通 KV 循环：维持原 K/V 计算，prefixOffset 置 0 
                     runInfo.prefixOffset = 0;
-                    runInfo.valueOffset = runParam.valueCoreOffset + sInnerLoopIdx * constInfo.s2BaseN2Dv;
+                    runInfo.valueOffset = runParam.valueCoreOffset + (sInnerLoopIdx - constInfo.prefixLoopCount) * constInfo.s2BaseN2Dv;
                     runInfo.keyOffset = runInfo.valueOffset;
                 }
             } else {
@@ -758,7 +758,7 @@ __aicore__ inline void ComputeOffset(const RunParamStr<isInfer>& runParam,
                 } else {
                     // 普通 KV 循环：维持原 K/V 计算，prefixOffset 置 0 
                     runInfo.prefixOffset = 0;
-                    runInfo.valueOffset = runParam.valueCoreOffset + sInnerLoopIdx * constInfo.s2BaseDv;
+                    runInfo.valueOffset = runParam.valueCoreOffset + (sInnerLoopIdx - constInfo.prefixLoopCount) * constInfo.s2BaseDv;
                     runInfo.keyOffset = runInfo.valueOffset;
                 }
             }
