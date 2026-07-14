@@ -17,7 +17,7 @@
 #include "mc2_platform_info.h"
 #include "mc2_common_log.h"
 #include "ge/ge_utils.h"
-#include <dlfcn.h> // dlopen 动态加载
+#include <dlfcn.h>      // dlopen 动态加载
 #include "acl/acl_rt.h" // 运行时判断cann ver
 
 namespace ops {
@@ -50,43 +50,42 @@ struct ReplaceGraphInputs {
 
 // 加载 EsTranspose 符号
 namespace {
-    typedef EsCTensorHolder* (*EsTransposeFunc)(EsCTensorHolder*, EsCTensorHolder*);
-    
-    EsTransposeFunc GetEsTransposeFunc()
-    {
-        void* handle = dlopen("libes_math.so", RTLD_LAZY | RTLD_GLOBAL);
-        if (!handle) {
-            OPS_LOG_E("MatmulAllToAllTransposeA5FusionPass", "dlopen failed: %s", dlerror());
-            return nullptr;
-        }
-        dlerror();
-        auto func = reinterpret_cast<EsTransposeFunc>(dlsym(handle, "EsTranspose"));
-        if (dlerror() != nullptr) {
-            OPS_LOG_E("MatmulAllToAllTransposeA5FusionPass", "dlsym EsTranspose failed");
-            return nullptr;
-        }
-        return func;
-    }
-    
-    ge::es::EsTensorHolder TransposeDL(const ge::es::EsTensorLike& x, const ge::es::EsTensorLike& perm)
-    {
-        static EsTransposeFunc func = GetEsTransposeFunc();
-        auto* builder = ge::es::ResolveBuilder(x, perm);
-        auto result = func(x.ToTensorHolder(builder).GetCTensorHolder(),
-            perm.ToTensorHolder(builder).GetCTensorHolder());
-        return result;
-    }
+typedef EsCTensorHolder *(*EsTransposeFunc)(EsCTensorHolder *, EsCTensorHolder *);
 
-    ge::CustomPassStage GetMatmulAlltoAllTransposeA5FusionPassStage()
-    {
-        int32_t version = 0;
-        aclsysGetVersionNum("ge_compiler", &version);
-        if (version >= GRAPH_FUSION_SUPPORT_VERSION) {
-            return ge::CustomPassStage::kCompatibleInherited;
-        }
-        return ge::CustomPassStage::kBeforeInferShape;
+EsTransposeFunc GetEsTransposeFunc()
+{
+    void *handle = dlopen("libes_math.so", RTLD_LAZY | RTLD_GLOBAL);
+    if (!handle) {
+        OPS_LOG_E("MatmulAllToAllTransposeA5FusionPass", "dlopen failed: %s", dlerror());
+        return nullptr;
     }
+    dlerror();
+    auto func = reinterpret_cast<EsTransposeFunc>(dlsym(handle, "EsTranspose"));
+    if (dlerror() != nullptr) {
+        OPS_LOG_E("MatmulAllToAllTransposeA5FusionPass", "dlsym EsTranspose failed");
+        return nullptr;
+    }
+    return func;
 }
+
+ge::es::EsTensorHolder TransposeDL(const ge::es::EsTensorLike &x, const ge::es::EsTensorLike &perm)
+{
+    static EsTransposeFunc func = GetEsTransposeFunc();
+    auto *builder = ge::es::ResolveBuilder(x, perm);
+    auto result = func(x.ToTensorHolder(builder).GetCTensorHolder(), perm.ToTensorHolder(builder).GetCTensorHolder());
+    return result;
+}
+
+ge::CustomPassStage GetMatmulAlltoAllTransposeA5FusionPassStage()
+{
+    int32_t version = 0;
+    aclsysGetVersionNum("ge_compiler", &version);
+    if (version >= GRAPH_FUSION_SUPPORT_VERSION) {
+        return ge::CustomPassStage::kCompatibleInherited;
+    }
+    return ge::CustomPassStage::kBeforeInferShape;
+}
+} // namespace
 
 static ge::fusion::PatternUniqPtr MakePatternForTranspose(bool hasBias)
 {
@@ -469,7 +468,6 @@ MatmulAllToAllTransposeA5FusionPass::Replacement(const std::unique_ptr<ge::fusio
     return std::move(replaceGraph);
 }
 
-REG_FUSION_PASS(MatmulAllToAllTransposeA5FusionPass)
-    .Stage(GetMatmulAlltoAllTransposeA5FusionPassStage());
+REG_FUSION_PASS(MatmulAllToAllTransposeA5FusionPass).Stage(GetMatmulAlltoAllTransposeA5FusionPassStage());
 } // namespace ops
 #endif // GRAPH_FUSION_SUPPORT_VERSION

@@ -63,7 +63,8 @@ public:
     AlltoAllAllGatherBatchMatMulTiling(gert::TilingContext *context, Mc2BatchMatmulTilingData &bmmTilingData,
                                        AlltoAllAllGatherBatchInfo &BMMV3BatchInfo,
                                        AlltoAllAllGatherMatmulInfo &MMV3ArgsInfo)
-        : Mc2BatchMatmulV3BaseTiling(context, bmmTilingData), BMMV3BatchInfo_(BMMV3BatchInfo), MMV3ArgsInfo_(MMV3ArgsInfo)
+        : Mc2BatchMatmulV3BaseTiling(context, bmmTilingData), BMMV3BatchInfo_(BMMV3BatchInfo),
+          MMV3ArgsInfo_(MMV3ArgsInfo)
     {
     }
 

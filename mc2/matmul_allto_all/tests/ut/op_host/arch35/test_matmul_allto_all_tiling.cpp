@@ -13,9 +13,9 @@
 #include "../matmul_allto_all_host_ut_param.h"
 #include "tiling_case_executor.h"
 
-static std::string GetCsvPath(const char* file)
+static std::string GetCsvPath(const char *file)
 {
-    const char* envPath = std::getenv("CSV_CASE_PATH");
+    const char *envPath = std::getenv("CSV_CASE_PATH");
     if (envPath != nullptr && strlen(envPath) > 0) {
         return std::string(envPath);
     }
@@ -26,7 +26,8 @@ namespace MatmulAlltoAllUT {
 
 static const std::string OP_NAME = "MatmulAlltoAll";
 
-struct MatmulAlltoAllCompileInfo {} compileInfo;
+struct MatmulAlltoAllCompileInfo {
+} compileInfo;
 
 class MatmulAlltoAllArch35TilingTest : public testing::TestWithParam<MatmulAlltoAllTilingUtParam> {
 protected:
@@ -47,17 +48,15 @@ TEST_P(MatmulAlltoAllArch35TilingTest, param)
     std::cout << "[TEST_CASE] " << param.case_name << std::endl;
 
     std::vector<gert::TilingContextPara::TensorDescription> inputTensorDesc_(
-        {param.x1, param.x2, param.bias, param.x1Scale, param.x2Scale,
-         param.commScale, param.x1Offset, param.x2Offset});
+        {param.x1, param.x2, param.bias, param.x1Scale, param.x2Scale, param.commScale, param.x1Offset,
+         param.x2Offset});
 
-    std::vector<gert::TilingContextPara::TensorDescription> outputTensorDesc_(
-        {param.y});
+    std::vector<gert::TilingContextPara::TensorDescription> outputTensorDesc_({param.y});
 
     std::vector<gert::TilingContextPara::OpAttr> attrs_(
         {{"group", Ops::Transformer::AnyValue::CreateFrom<std::string>(param.group)},
          {"world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.worldSize)},
-         {"all2all_axes",
-          Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int64_t>(param.all2allAxes))},
+         {"all2all_axes", Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int64_t>(param.all2allAxes))},
          {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int64_t>(param.yDtypeAttr))},
          {"x1_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.x1QuantMode)},
          {"x2_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.x2QuantMode)},
@@ -69,16 +68,13 @@ TEST_P(MatmulAlltoAllArch35TilingTest, param)
          {"comm_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>(param.commMode)}});
 
     gert::TilingContextPara tilingContextPara(OP_NAME, inputTensorDesc_, outputTensorDesc_, attrs_, &compileInfo,
-                                               param.soc);
+                                              param.soc);
     ExecuteTestCase(tilingContextPara, param.expectResult, param.expectTilingKey, param.expectTilingData,
-                        param.expectWorkspaces, param.mc2TilingDataReservedLen);
+                    param.expectWorkspaces, param.mc2TilingDataReservedLen);
 }
 
-INSTANTIATE_TEST_SUITE_P(
-    MatmulAlltoAllTilingUT,
-    MatmulAlltoAllArch35TilingTest,
-    testing::ValuesIn(GetCasesFromCsv<MatmulAlltoAllTilingUtParam>(GetCsvPath(__FILE__))),
-    PrintCaseInfoString<MatmulAlltoAllTilingUtParam>
-);
+INSTANTIATE_TEST_SUITE_P(MatmulAlltoAllTilingUT, MatmulAlltoAllArch35TilingTest,
+                         testing::ValuesIn(GetCasesFromCsv<MatmulAlltoAllTilingUtParam>(GetCsvPath(__FILE__))),
+                         PrintCaseInfoString<MatmulAlltoAllTilingUtParam>);
 
-} // namespace
+} // namespace MatmulAlltoAllUT

@@ -33,20 +33,20 @@
 #include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/gemm_type.hpp"
 #include "all_gather_matmul_aiv_mode_block_epilogue_dequant.h"
 
-#define DEQUANT_ARGS_CALL() \
-    rowNum, colNum, perChannelScale, perTokenScale, workspace, reinterpret_cast<GM_ADDR>(output), \
-    tileM0, tileN0, pValue, swizzlDirect, swizzlCount, blockSt, blockSize, blockStInWorkspace,    \
-    blockSizeInWorkspace, blockIdx, coreNum, worldSize, resource, needPerChannel, needPerToken, isInt4Type
+#define DEQUANT_ARGS_CALL()                                                                                            \
+    rowNum, colNum, perChannelScale, perTokenScale, workspace, reinterpret_cast<GM_ADDR>(output), tileM0, tileN0,      \
+        pValue, swizzlDirect, swizzlCount, blockSt, blockSize, blockStInWorkspace, blockSizeInWorkspace, blockIdx,     \
+        coreNum, worldSize, resource, needPerChannel, needPerToken, isInt4Type
 
-#define DEQUANT_ARGS_FUN() \
-    uint32_t rowNum, uint32_t colNum, __gm__ float32_t *perChannelScale, __gm__ float32_t *perTokenScale, \
-    __gm__ int32_t *workspace, GM_ADDR output,                                                            \
-    uint32_t tileM0, uint32_t tileN0, uint32_t pValue, uint32_t swizzlDirect, uint32_t swizzlCount,       \
-    uint64_t blockSt, uint64_t blockSize, uint64_t blockStInWorkspace, uint64_t blockSizeInWorkspace,     \
-    uint32_t blockIdx, uint32_t coreNum, uint32_t worldSize, Arch::Resource<Arch::AtlasA2> resource,      \
-    bool needPerChannel = false, bool needPerToken = false, bool isInt4Type = false
+#define DEQUANT_ARGS_FUN()                                                                                             \
+    uint32_t rowNum, uint32_t colNum, __gm__ float32_t *perChannelScale, __gm__ float32_t *perTokenScale,              \
+        __gm__ int32_t *workspace, GM_ADDR output, uint32_t tileM0, uint32_t tileN0, uint32_t pValue,                  \
+        uint32_t swizzlDirect, uint32_t swizzlCount, uint64_t blockSt, uint64_t blockSize,                             \
+        uint64_t blockStInWorkspace, uint64_t blockSizeInWorkspace, uint32_t blockIdx, uint32_t coreNum,               \
+        uint32_t worldSize, Arch::Resource<Arch::AtlasA2> resource,                                                    \
+        bool needPerChannel = false, bool needPerToken = false, bool isInt4Type = false
 
-template <typename OutputType> 
+template <typename OutputType>
 class DequantRunner {
 public:
     using ArchTag = Arch::AtlasA2;
@@ -108,7 +108,7 @@ public:
         uint32_t mLoop = DivCeil(m, m0);
         uint32_t nLoop = DivCeil(n, n0);
         uint32_t blockLoop = mLoop * nLoop;
- 	    uint32_t totalLoop = blockLoop * worldSize;
+        uint32_t totalLoop = blockLoop * worldSize;
 
         if (needPerChannel && !needPerToken) {
             DefaultSwizzleDirect = 0;
@@ -121,27 +121,27 @@ public:
         __gm__ OutputType *gmD = reinterpret_cast<__gm__ OutputType *>(output);
         for (uint32_t loopIdx = blockIdx; loopIdx < totalLoop; loopIdx += coreNum) {
             uint32_t dataBlockIdx = loopIdx / blockLoop;
- 	        uint32_t blockLoopIdx = loopIdx % blockLoop;
- 	        GemmCoord blockIdxCoord = GetBlockIdCoord(blockLoopIdx, mLoop, nLoop, DefaultSwizzleDirect, DefaultSwizzleCount);
+            uint32_t blockLoopIdx = loopIdx % blockLoop;
+            GemmCoord blockIdxCoord =
+                GetBlockIdCoord(blockLoopIdx, mLoop, nLoop, DefaultSwizzleDirect, DefaultSwizzleCount);
             GemmCoord blockLocCoord = GetBlockLocCoord(blockIdxCoord);
             GemmCoord blockSizeCoord = GetBlockSizeCoord(blockIdxCoord, blockLocCoord, mLoop, m, nLoop, n, 0);
 
             MatrixCoord offsetC{blockLocCoord.m(), blockLocCoord.n()};
             uint32_t outputDataOffset = dataBlockIdx * blockSize + blockSt + layoutC.GetOffset(offsetC);
-            uint32_t workspaceDataOffset = dataBlockIdx * blockSizeInWorkspace + blockStInWorkspace
-                                            + layoutC.GetOffset(offsetC);
- 	        uint32_t perTokenScaleOffset = (dataBlockIdx * blockSize + blockSt) / n + blockLocCoord.m();
+            uint32_t workspaceDataOffset =
+                dataBlockIdx * blockSizeInWorkspace + blockStInWorkspace + layoutC.GetOffset(offsetC);
+            uint32_t perTokenScaleOffset = (dataBlockIdx * blockSize + blockSt) / n + blockLocCoord.m();
             layout::VectorLayout layoutPerChannelScale{blockSizeCoord.n()};
             layout::VectorLayout layoutPerTokenScale{blockSizeCoord.m()};
             if (needPerChannel && needPerToken) {
                 blockEpilogue(perChannelScale + blockLocCoord.n(), layoutPerChannelScale,
-                              perTokenScale + perTokenScaleOffset, layoutPerTokenScale,
-                              workspace + workspaceDataOffset, layoutC, gmD + outputDataOffset,
-                              layoutC, blockSizeCoord, isInt4Type);
+                              perTokenScale + perTokenScaleOffset, layoutPerTokenScale, workspace + workspaceDataOffset,
+                              layoutC, gmD + outputDataOffset, layoutC, blockSizeCoord, isInt4Type);
             } else if (needPerChannel) {
                 blockEpilogue(perChannelScale + blockLocCoord.n(), layoutPerChannelScale,
-                              workspace + workspaceDataOffset, layoutC, gmD + outputDataOffset, layoutC,
-                              blockSizeCoord, isInt4Type);
+                              workspace + workspaceDataOffset, layoutC, gmD + outputDataOffset, layoutC, blockSizeCoord,
+                              isInt4Type);
             } else if (needPerToken) {
                 blockEpilogue(perTokenScale + perTokenScaleOffset, layoutPerTokenScale, gmD + outputDataOffset, layoutC,
                               blockSizeCoord, isInt4Type);

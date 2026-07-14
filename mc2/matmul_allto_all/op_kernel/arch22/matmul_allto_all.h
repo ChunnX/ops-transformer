@@ -407,8 +407,7 @@ __aicore__ inline void MatmulAlltoAll<TemplateMMA2AFunc>::Process()
             for (int32_t commIdx = 0; commIdx < commCount; ++commIdx) {
                 int32_t actual_p_value = commUtil.p_value;
 
-                int64_t token_total =
-                    static_cast<int64_t>(commUtil.p_value) * commUtil.m0 * commUtil.n;
+                int64_t token_total = static_cast<int64_t>(commUtil.p_value) * commUtil.m0 * commUtil.n;
                 if (commIdx == commCount - 1) {
                     token_total = (commUtil.m - (commIdx * commUtil.m0 * commUtil.p_value)) * commUtil.n;
                 }
@@ -421,8 +420,7 @@ __aicore__ inline void MatmulAlltoAll<TemplateMMA2AFunc>::Process()
                 commUtil.CrossRankSyncV1(FLAG_ZERO_IDX, commIdx + 1);
                 commUtil.SetAndWaitAivSync(flag_idx);
 
-                int64_t rank_offset =
-                    static_cast<int64_t>(commUtil.m) * commUtil.n / rank_size;
+                int64_t rank_offset = static_cast<int64_t>(commUtil.m) * commUtil.n / rank_size;
                 if (commUtil.aiv_idx == 0 && commUtil.core_idx < rank_size) {
                     int64_t src_offset =
                         flag_idx * commUtil.gm_a_pingpong_size + commUtil.gm_a_pingpong_size / rank_size * rank;

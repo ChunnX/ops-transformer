@@ -84,6 +84,6 @@ struct AlltoAllAllGatherBatchMatMulTilingData {
     BMM_Mc2MatmulTilingData domesticTailTiling;
     BMM_Mc2MatmulTilingData domesticTailETiling;
 };
-}
+} // namespace optiling
 
 #endif

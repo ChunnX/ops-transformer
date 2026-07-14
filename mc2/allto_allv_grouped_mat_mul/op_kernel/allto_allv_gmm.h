@@ -45,26 +45,25 @@ struct MNConfig {
 /** @brief GroupMatmul operator Class
  */
 template <typename ComputeType>
-class GMMProcess
-{
+class GMMProcess {
 private:
-    ComputeType& computeOp; // inernal computation operator
+    ComputeType &computeOp; // inernal computation operator
     uint32_t blockIdx;
     uint32_t coreNum;
     uint32_t baseM;
     uint32_t baseN;
 
-    __aicore__ inline void MnBlockIdxCompute(
-        MNConfig& mnConfig, const uint32_t curBlock, const uint32_t count, const uint32_t thresholdM_dimN);
+    __aicore__ inline void MnBlockIdxCompute(MNConfig &mnConfig, const uint32_t curBlock, const uint32_t count,
+                                             const uint32_t thresholdM_dimN);
 
 public:
-    __aicore__ inline GMMProcess(ComputeType& computeOp_) : computeOp(computeOp_)
-    {}
+    __aicore__ inline GMMProcess(ComputeType &computeOp_) : computeOp(computeOp_)
+    {
+    }
 
     __aicore__ inline void Init(uint32_t curBaseM, uint32_t curBaseN, uint32_t curCoreNum);
-    __aicore__ inline void Process(
-        uint16_t rankId, uint32_t mmH, uint32_t mmN, uint64_t* inOffset, uint64_t* outOffset, uint32_t* tokenNum,
-        uint16_t computerNum, uint32_t wIndex);
+    __aicore__ inline void Process(uint16_t rankId, uint32_t mmH, uint32_t mmN, uint64_t *inOffset, uint64_t *outOffset,
+                                   uint32_t *tokenNum, uint16_t computerNum, uint32_t wIndex);
 };
 
 template <typename ComputeType>
@@ -77,22 +76,23 @@ __aicore__ inline void GMMProcess<ComputeType>::Init(uint32_t curBaseM, uint32_t
 }
 
 template <typename ComputeType>
-__aicore__ inline void GMMProcess<ComputeType>::MnBlockIdxCompute(
-    MNConfig& mnConfig, const uint32_t curBlock, const uint32_t count, const uint32_t thresholdM_dimN)
+__aicore__ inline void GMMProcess<ComputeType>::MnBlockIdxCompute(MNConfig &mnConfig, const uint32_t curBlock,
+                                                                  const uint32_t count, const uint32_t thresholdM_dimN)
 {
     if (mnConfig.numBlocksM <= thresholdDimM || thresholdDimM == 1) {
         mnConfig.mIdx = (curBlock - count) / mnConfig.numBlocksN;
         mnConfig.nIdx = (curBlock - count) % mnConfig.numBlocksN;
     } else {
         uint32_t relativeBlock = curBlock - count;
-        uint32_t curThresholdM = relativeBlock >= AlignDown(mnConfig.numBlocksM * mnConfig.numBlocksN, thresholdM_dimN) ?
-                                     mnConfig.numBlocksM % thresholdBlockNum :
-                                     thresholdBlockNum;
-        uint32_t curThresholdM_thresholdN = curThresholdM * thresholdBlockNum;
-        uint32_t curThresholdN =
-            relativeBlock % thresholdM_dimN >= AlignDown(curThresholdM * mnConfig.numBlocksN, curThresholdM_thresholdN) ?
-                mnConfig.numBlocksN % thresholdBlockNum :
+        uint32_t curThresholdM =
+            relativeBlock >= AlignDown(mnConfig.numBlocksM * mnConfig.numBlocksN, thresholdM_dimN) ?
+                mnConfig.numBlocksM % thresholdBlockNum :
                 thresholdBlockNum;
+        uint32_t curThresholdM_thresholdN = curThresholdM * thresholdBlockNum;
+        uint32_t curThresholdN = relativeBlock % thresholdM_dimN >=
+                                         AlignDown(curThresholdM * mnConfig.numBlocksN, curThresholdM_thresholdN) ?
+                                     mnConfig.numBlocksN % thresholdBlockNum :
+                                     thresholdBlockNum;
 
         uint32_t localRelativeBlock = relativeBlock % thresholdM_dimN % curThresholdM_thresholdN;
         mnConfig.mIdx = localRelativeBlock % curThresholdM + relativeBlock / thresholdM_dimN * thresholdBlockNum;
@@ -103,9 +103,9 @@ __aicore__ inline void GMMProcess<ComputeType>::MnBlockIdxCompute(
 }
 
 template <typename ComputeType>
-__aicore__ inline void GMMProcess<ComputeType>::Process(
-    uint16_t rankId, uint32_t mmH, uint32_t mmN, uint64_t* inOffset, uint64_t* outOffset, uint32_t* tokenNum,
-    uint16_t computerNum, uint32_t wIndex)
+__aicore__ inline void GMMProcess<ComputeType>::Process(uint16_t rankId, uint32_t mmH, uint32_t mmN, uint64_t *inOffset,
+                                                        uint64_t *outOffset, uint32_t *tokenNum, uint16_t computerNum,
+                                                        uint32_t wIndex)
 {
     // aicore function
     MNConfig mnConfig;
@@ -147,20 +147,20 @@ __aicore__ inline void GMMProcess<ComputeType>::Process(
 /** @brief intenal computation class
  */
 template <class mmType, bool sync = false>
-class GMMCompute
-{
+class GMMCompute {
 public:
     using AT = typename mmType::AT::T;
     using BT = typename mmType::BT::T;
     using CT = typename mmType::CT::T;
 
-    __aicore__ inline GMMCompute(typename mmType::MT& mm_) : mm(mm_)
-    {}
+    __aicore__ inline GMMCompute(typename mmType::MT &mm_) : mm(mm_)
+    {
+    }
     __aicore__ inline void Init(GM_ADDR x, GM_ADDR weight, GM_ADDR y);
-    __aicore__ inline void MMCompute(MNConfig& mnConfig, uint32_t wIndex, uint16_t rankId);
+    __aicore__ inline void MMCompute(MNConfig &mnConfig, uint32_t wIndex, uint16_t rankId);
 
 private:
-    typename mmType::MT& mm; // matmul operator
+    typename mmType::MT &mm; // matmul operator
     GM_ADDR xTensorPtr;
     GM_ADDR weightTensorPtr;
     GM_ADDR yTensorPtr;
@@ -178,7 +178,7 @@ __aicore__ inline void GMMCompute<mmType, sync>::Init(GM_ADDR x, GM_ADDR weight,
 }
 
 template <class mmType, bool sync>
-__aicore__ inline void GMMCompute<mmType, sync>::MMCompute(MNConfig& mnConfig, uint32_t wIndex, uint16_t rankId)
+__aicore__ inline void GMMCompute<mmType, sync>::MMCompute(MNConfig &mnConfig, uint32_t wIndex, uint16_t rankId)
 {
     uint32_t curSingleN = mnConfig.singleN;
     if (mnConfig.nIdx == mnConfig.numBlocksN - 1) {
@@ -197,9 +197,9 @@ __aicore__ inline void GMMCompute<mmType, sync>::MMCompute(MNConfig& mnConfig, u
     uint64_t outOffset = mnConfig.mIdx * mnConfig.singleM * mnConfig.n + mnConfig.nIdx * mnConfig.singleN;
 
     // Init global buffer
-    xGm.SetGlobalBuffer((__gm__ AT*)xTensorPtr + mnConfig.xBaseOffset);
-    weightGm.SetGlobalBuffer((__gm__ BT*)weightTensorPtr + wIndex * mnConfig.wBaseOffset);
-    yGm.SetGlobalBuffer((__gm__ CT*)yTensorPtr + mnConfig.yBaseOffset);
+    xGm.SetGlobalBuffer((__gm__ AT *)xTensorPtr + mnConfig.xBaseOffset);
+    weightGm.SetGlobalBuffer((__gm__ BT *)weightTensorPtr + wIndex * mnConfig.wBaseOffset);
+    yGm.SetGlobalBuffer((__gm__ CT *)yTensorPtr + mnConfig.yBaseOffset);
 
     mm.SetOrgShape(mnConfig.m, mnConfig.n, mnConfig.k);
     mm.SetSingleShape(curSingleM, curSingleN, mnConfig.k);

@@ -28,7 +28,7 @@ using namespace Mc2Kernel;
 
 #if ((ORIG_DTYPE_X1 == ORIG_DTYPE_X2) && (ORIG_DTYPE_X1 == DT_FLOAT16 || ORIG_DTYPE_X1 == DT_BF16))
 #define QUANT_TYPE MC2_NON_QUANT
-#elif ((ORIG_DTYPE_X1 == DT_FLOAT16 || ORIG_DTYPE_X1 == DT_BF16) && \
+#elif ((ORIG_DTYPE_X1 == DT_FLOAT16 || ORIG_DTYPE_X1 == DT_BF16) &&                                                    \
        (ORIG_DTYPE_X2 == DT_INT8 || ORIG_DTYPE_X2 == DT_INT4))
 #define QUANT_TYPE MC2_DYNAMIC_QUANT
 #else

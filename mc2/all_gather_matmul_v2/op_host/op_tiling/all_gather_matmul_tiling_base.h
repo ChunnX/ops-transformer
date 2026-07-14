@@ -57,12 +57,12 @@ constexpr uint64_t HCCL_MAX_COMM_TILES = 62; // 总通信次数上限63, tile+ta
 
 class AllGatherMatmulTilingBase : public TilingBaseClass {
 public:
-    explicit AllGatherMatmulTilingBase(gert::TilingContext* context) : TilingBaseClass(context)
+    explicit AllGatherMatmulTilingBase(gert::TilingContext *context) : TilingBaseClass(context)
     {
     }
     ~AllGatherMatmulTilingBase() override = default;
 
-    void Reset(gert::TilingContext* context) override
+    void Reset(gert::TilingContext *context) override
     {
         TilingBaseClass::Reset(context);
         Reset();
@@ -81,11 +81,11 @@ protected:
     bool AnalyzeInputs();
     bool SetCommAlgo();
     // tiling
-    void DoAllGatherTiling(Mc2Tiling::RCSTiling& rcsCfg, ::TCubeTiling& mmTiling, 
-                           ::TCubeTiling& tailTiling, uint32_t& debugMode, uint32_t& dataType);
-    void SetRcsTilingData(Mc2Tiling::RCSTiling& rcsCfg);
-    void DoSplitMTiling(Mc2Tiling::RCSTiling& rcfCfg);
-    void PostDoSplitMTiling(Mc2Tiling::RCSTiling& rcfCfg, mc2tiling::Mc2QuantMode quantMmMode);
+    void DoAllGatherTiling(Mc2Tiling::RCSTiling &rcsCfg, ::TCubeTiling &mmTiling, ::TCubeTiling &tailTiling,
+                           uint32_t &debugMode, uint32_t &dataType);
+    void SetRcsTilingData(Mc2Tiling::RCSTiling &rcsCfg);
+    void DoSplitMTiling(Mc2Tiling::RCSTiling &rcfCfg);
+    void PostDoSplitMTiling(Mc2Tiling::RCSTiling &rcfCfg, mc2tiling::Mc2QuantMode quantMmMode);
     virtual CutResult GetTilingResult();
     virtual ge::graphStatus CheckInput()
     {
@@ -95,8 +95,8 @@ protected:
     void Reset();
 
     mc2tiling::HcclDataType GetDataType(ge::DataType type);
-    uint32_t AllGatherSplitM(mc2tiling::TilingArgs& args, uint32_t maxTileCnt);
-    uint64_t GetStorageA(Mc2Tiling::RCSTiling& rcsCfg);
+    uint32_t AllGatherSplitM(mc2tiling::TilingArgs &args, uint32_t maxTileCnt);
+    uint64_t GetStorageA(Mc2Tiling::RCSTiling &rcsCfg);
     uint64_t CalcGatherLen(uint32_t dimA, uint32_t dimB, uint64_t alignAddrLen);
     bool CheckInputParaEmptyPointer();
     bool CheckInputScale();
@@ -110,15 +110,15 @@ protected:
     void SetTilingArgsDim();
     void SetTilingArgsDataType();
     void SetTilingArgsGatherStatus();
-    void SetMC2AllGatherDataInfo(Mc2Tiling::RCSTiling& rcsCfg, ::TCubeTiling& mmTiling, 
-                                 ::TCubeTiling& tailTiling, uint32_t debugMode);
+    void SetMC2AllGatherDataInfo(Mc2Tiling::RCSTiling &rcsCfg, ::TCubeTiling &mmTiling, ::TCubeTiling &tailTiling,
+                                 uint32_t debugMode);
     ge::graphStatus CheckHCCLSize();
 
     mc2tiling::TilingArgs args_;
     NpuArch npuArch_;
-    const char* opName_{nullptr};
-    const char* group_{nullptr};
-    const char* commMode_{nullptr};
+    const char *opName_{nullptr};
+    const char *group_{nullptr};
+    const char *commMode_{nullptr};
     uint64_t tileMValue_{0};
     uint64_t tailMValue_{0};
     uint64_t drMValue_{0};
@@ -133,6 +133,6 @@ protected:
     bool castBias_{false};
     uint32_t gatherIndex_{0};
 };
-}  // namespace optiling
+} // namespace optiling
 
-#endif  // __ALL_GATHER_MATMUL_TILING_BASE__
+#endif // __ALL_GATHER_MATMUL_TILING_BASE__

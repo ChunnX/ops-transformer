@@ -36,10 +36,10 @@ constexpr uint32_t EVENT_ID_4 = 4;
 constexpr uint32_t MOVE_LEFT_SIZE = 8;
 constexpr uint32_t UB_ALIGN_SIZE = 32;
 constexpr uint32_t MAX_HANDLE = 63;
-constexpr uint32_t MAX_HANDLE_WITH_SCALE1 = MAX_HANDLE + 1; // 包含x1Scale通信
+constexpr uint32_t MAX_HANDLE_WITH_SCALE1 = MAX_HANDLE + 1;        // 包含x1Scale通信
 constexpr uint32_t SCALE1_HANDLE_IDX = MAX_HANDLE_WITH_SCALE1 - 1; // x1Scale独立handle位
 constexpr uint32_t SCALE1_MULTIPLE = 4;
-constexpr uint8_t MC2_DEBUG_ONLY_CUBE = 1; // 只计算不通信
+constexpr uint8_t MC2_DEBUG_ONLY_CUBE = 1;  // 只计算不通信
 constexpr uint8_t MC2_DEBUG_ONLY_AICPU = 4; // 只通信不计算
 constexpr uint32_t MX_BLOCK_SIZE = 32;
 constexpr uint64_t EVEN_ALIGN = 2;
@@ -81,18 +81,16 @@ struct MC2GmAddrs {
     GM_ADDR workspaceGM;
 };
 
-struct QuantGmAddrs
-{
+struct QuantGmAddrs {
     GM_ADDR scale1GM;
     GM_ADDR scale2GM;
     GM_ADDR scaleGM;
 };
 
-enum Mc2CoreType
-{
+enum Mc2CoreType {
     ON_CUBE_AND_VECTOR = 0,
     ON_VECTOR,
-    ON_CUBE,  
+    ON_CUBE,
 };
 
 template <Mc2CoreType coreType>
@@ -108,5 +106,5 @@ __aicore__ inline void Mc2SyncAll()
     }
 }
 
-}
-#endif  // MC2_GATHER_COMM_H
+} // namespace AscendC
+#endif // MC2_GATHER_COMM_H

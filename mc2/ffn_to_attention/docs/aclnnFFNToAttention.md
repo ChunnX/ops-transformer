@@ -283,7 +283,7 @@ aclnnStatus aclnnFFNToAttention(
 
 ## 约束说明
 
-- **确定性约束**： 
+- **确定性约束**：
   - aclnnFFNToAttention默认确定性实现
 
 - **参数一致性约束**：
@@ -300,20 +300,20 @@ aclnnStatus aclnnFFNToAttention(
   | Bs           | 表示各Attention节点上的发送token数。<ul><li><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  ：<code>0 < Bs ≤ 512 </code>。</li></ul> |
   | H（hidden size） | 表示hidden size隐藏层大小。<ul><li><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  ：<code>1024 ≤  H ≤ 8192 </code>。</li></ul> |
   | HS（hidden and scale size） | 表示hidden与scale隐藏层大小。<ul><li><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  ：<code>1152 ≤  HS ≤ 8320 </code>。</li></ul>|
-  | MicroBatchNum    | 表示microBatch的大小，目前仅支持<code>MicroBatchNum = 1</code>。 |  
-  | ExpertNumPerToken    | 表示每个Token对应的发送的Expert数量，<code>ExpertNumPerToken = K + sharedExpertNum</code>。 |  
-  | K    | 表示选取topK个专家，取值范围为<code>0 < K ≤ 16 </code>。 |  
-  | ffnRankNum    | 表示选取ffnRankNum个卡作为FFnWorker，取值范围为<code>0 < ffnRankNum < worldSize </code>。 | 
-  | attnRankNum    | 表示选取attnRankNum个卡作为AttnWorker，取值范围为<code>0 < attnRankNum < worldSize </code>。 | 
-  | sharedExpertNum    | 表示共享专家数量（一个共享专家可以复制部署到多个ffnRank卡上），当前取值范围[0, 4]。 |  
-  
+  | MicroBatchNum    | 表示microBatch的大小，目前仅支持<code>MicroBatchNum = 1</code>。 |
+  | ExpertNumPerToken    | 表示每个Token对应的发送的Expert数量，<code>ExpertNumPerToken = K + sharedExpertNum</code>。 |
+  | K    | 表示选取topK个专家，取值范围为<code>0 < K ≤ 16 </code>。 |
+  | ffnRankNum    | 表示选取ffnRankNum个卡作为FFnWorker，取值范围为<code>0 < ffnRankNum < worldSize </code>。 |
+  | attnRankNum    | 表示选取attnRankNum个卡作为AttnWorker，取值范围为<code>0 < attnRankNum < worldSize </code>。 |
+  | sharedExpertNum    | 表示共享专家数量（一个共享专家可以复制部署到多个ffnRank卡上），当前取值范围[0, 4]。 |
+
 - **通信域使用约束**：
   - FFNToAttention算子的通信域中不允许有其他算子。
 
 ## 调用示例
 
 - 文件准备：
-  
+
   1.新建FFNtoAttentionDemo目录，按照下方指导在FFNtoAttentionDemo下新建aclnnFFNtoAttentionDemo.cpp，FFNtoAttention.sh文件并参考如下代码修改。
 
   2.安装cann包，并根据下方指导编译运行FFNtoAttentionDemo。
@@ -438,10 +438,10 @@ aclnnStatus aclnnFFNToAttention(
         aclTensor *expertOffsets = nullptr;
         aclTensor *actualTokenNum = nullptr;
         aclTensor *attnRankTable = nullptr;
-        aclIntArray *tokenInfoTableShape = aclCreateIntArray(Token_info_shape, 3);   
-        aclIntArray *tokenDataShape = aclCreateIntArray(Token_data_shape, 4);   
+        aclIntArray *tokenInfoTableShape = aclCreateIntArray(Token_info_shape, 3);
+        aclIntArray *tokenDataShape = aclCreateIntArray(Token_data_shape, 4);
 
-        
+
         //定义当前场景下各变量维度
         std::vector<int64_t> xShape{Y, H};
         std::vector<int64_t> sessionIdsShape{Y};
@@ -459,7 +459,7 @@ aclnnStatus aclnnFFNToAttention(
         int64_t expertOffsetsShapeSize = GetShapeSize(expertOffsetsShape);
         int64_t actualTokenNumShapeSize = GetShapeSize(actualTokenNumShape);
         int64_t attnRankTableShapeSize = GetShapeSize(attnRankTableShape);
-        
+
 
         std::vector<int16_t> xHostData(xShapeSize, 1);
         std::vector<int32_t> sessionIdsHostData(sessionIdsShapeSize, 0);
@@ -479,9 +479,9 @@ aclnnStatus aclnnFFNToAttention(
 
 
         ret = CreateAclTensor(xHostData, xShape, &xDeviceAddr, aclDataType::ACL_BF16, &x);
-        CHECK_RET(ret == ACL_SUCCESS, return ret);  
+        CHECK_RET(ret == ACL_SUCCESS, return ret);
         ret = CreateAclTensor(sessionIdsHostData, sessionIdsShape, &sessionIdsDeviceAddr, aclDataType::ACL_INT32, &sessionIds);
-        CHECK_RET(ret == ACL_SUCCESS, return ret);  
+        CHECK_RET(ret == ACL_SUCCESS, return ret);
         ret = CreateAclTensor(microBatchIdsHostData, microBatchIdsShape, &microBatchIdsDeviceAddr, aclDataType::ACL_INT32, &microBatchIds);
         CHECK_RET(ret == ACL_SUCCESS, return ret);
         ret = CreateAclTensor(tokenIdsHostData, tokenIdsShape, &tokenIdsDeviceAddr, aclDataType::ACL_INT32, &tokenIds);
@@ -497,7 +497,7 @@ aclnnStatus aclnnFFNToAttention(
         uint64_t FFN2AttentionWorkspaceSize = 0;
         aclOpExecutor *FFN2AttentionExecutor = nullptr;
         void *FFN2AttentionWorkspaceAddr = nullptr;
-        
+
         /**************************************** 调用FFN2Attention ********************************************/
         // 调用第一阶段接口
         ret = aclnnFFNToAttentionGetWorkspaceSize(x, sessionIds, microBatchIds, tokenIds,
@@ -526,7 +526,7 @@ aclnnStatus aclnnFFNToAttention(
             LOG_PRINT("[INFO] device_%d is AttentionWorker, sleeping 10 seconds...\n", args.rankId);
         }
 
-        
+
         // 释放device资源
         if (FFN2AttentionWorkspaceSize > 0) {
             aclrtFree(FFN2AttentionWorkspaceAddr);

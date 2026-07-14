@@ -68,8 +68,8 @@ ge::graphStatus FpMatmulAllToAllTilingBase::CheckOpInputInfo()
  */
 ge::graphStatus FpMatmulAllToAllTilingBase::InitTilingContextParameters()
 {
-    MC2_CHECK_LOG_RET(opName_, 
-        MatmulAlltoAllTilingUtil::SetAttrsInfo(context_, opName_, contextInfo, MATMUL_ALLTOALL_INDEX_SCHEMA));
+    MC2_CHECK_LOG_RET(
+        opName_, MatmulAlltoAllTilingUtil::SetAttrsInfo(context_, opName_, contextInfo, MATMUL_ALLTOALL_INDEX_SCHEMA));
     MC2_CHECK_LOG_RET(opName_, MatmulAlltoAllTilingUtil::SetDataTypeInfo(context_, opName_, contextInfo));
     MC2_CHECK_LOG_RET(opName_, MatmulAlltoAllTilingUtil::SetShapeInfo(context_, contextInfo));
     contextInfo.quantMode = QuantMode::NON_QUANT; // 在isCapable判断过，直接赋值即可
@@ -130,7 +130,8 @@ ge::graphStatus FpMatmulAllToAllTilingBase::DoMMTiling()
         mmV3Args_.mValue = inferredInfo.tailM;
         Mc2MatmulHelper::Mc2MatmulTilingCfg tailTilingCfg(reinterpret_cast<const void *>(&compileInfo_),
                                                           reinterpret_cast<const void *>(&mmV3Args_));
-        MC2_CHECK_LOG_RET(opName_, DoMatmulV3Tiling(tailTilingCfg, registerCfg, localTilingData_.mc2MmV3TailTilingData));
+        MC2_CHECK_LOG_RET(opName_,
+                          DoMatmulV3Tiling(tailTilingCfg, registerCfg, localTilingData_.mc2MmV3TailTilingData));
     }
 
     return ge::GRAPH_SUCCESS;
@@ -168,7 +169,7 @@ ge::graphStatus FpMatmulAllToAllTilingBase::SetHcclTiling()
     OP_TILING_CHECK(mc2tiling::ConvertGeTypeToHcclType(opName_, contextInfo.args_.geCType) ==
                         mc2tiling::HcclDataType::HCCL_DATA_TYPE_RESERVED,
                     OP_LOGE(opName_, "Cannot find HcclDataType according to ge datatype = %d.",
-                                                   static_cast<int32_t>(contextInfo.args_.geCType)),
+                            static_cast<int32_t>(contextInfo.args_.geCType)),
                     return ge::GRAPH_FAILED;);
 
     Mc2CcTilingConfigBuilder allToAllBuilder =
@@ -365,6 +366,6 @@ FpMatmulAllToAllTilingBase::FpMatmulAllToAllTilingBase(gert::TilingContext *cont
 }
 
 // 注册tiling类
-REGISTER_TILING_TEMPLATE_WITH_ARCH(MatmulAlltoAll, FpMatmulAllToAllTilingBase,
-                                   static_cast<int32_t>(NpuArch::DAV_3510), 0);
+REGISTER_TILING_TEMPLATE_WITH_ARCH(MatmulAlltoAll, FpMatmulAllToAllTilingBase, static_cast<int32_t>(NpuArch::DAV_3510),
+                                   0);
 } // namespace MC2Tiling

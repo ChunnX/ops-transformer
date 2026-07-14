@@ -98,7 +98,7 @@ constexpr uint32_t RANK_DIM_BOUNDARY = 8;
 class AlltoAllvQuantGmmTilingBase : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
     explicit AlltoAllvQuantGmmTilingBase(gert::TilingContext *context)
-        : Ops::Transformer::OpTiling::TilingBaseClass(context){};
+        : Ops::Transformer::OpTiling::TilingBaseClass(context) {};
 
 protected:
     ge::graphStatus GetCommonPlatformInfo();
@@ -140,13 +140,13 @@ protected:
     uint64_t n2_ = 0;
     uint64_t k_ = 0;
     // attr
-    const char* group_;
+    const char *group_;
     uint64_t epWorldSize_ = 0;
     bool transGmmWeight_ = false;
     bool transMmWeight_ = false;
     bool permuteOutFlag_ = false;
-    const int64_t* sendCounts = nullptr;
-    const int64_t* recvCounts = nullptr;
+    const int64_t *sendCounts = nullptr;
+    const int64_t *recvCounts = nullptr;
     // data type
     ge::DataType gmmXDataType_;
     ge::DataType gmmWeightDataType_;
@@ -183,4 +183,4 @@ private:
     ge::graphStatus CheckCommCountsValue();
     ge::graphStatus CheckFormat();
 };
-}  // namespace optiling
+} // namespace optiling

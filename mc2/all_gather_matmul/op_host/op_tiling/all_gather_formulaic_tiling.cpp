@@ -17,19 +17,20 @@
 
 void AllGatherPlusMM::PrintEstimateKernelTimeResult(double totalMatmulTime, double totalTpTime)
 {
-    OPS_LOG_D("AllGatherMatmul", "Input shape {M, N, K} = {%lu, %lu, %lu}, cubeUtil_ %f, "
-        "totalMatmulTime %f, totalCommTime %f, minTileSize %lu, mAlignLen %lu, commTimeFactor_ %f, "
-        "rankDim_ %lu, rankTile %lu",
-        clusterInfo_.mValue, clusterInfo_.nValue, clusterInfo_.kValue, matmulPerf_.cubeUtil_,
-        totalMatmulTime, totalTpTime, tilingM_.GetMinLen(), tilingM_.GetAlignLength(), commPerf_.commTimeFactor_,
-        rankDim_, rankTileNum_);
+    OPS_LOG_D("AllGatherMatmul",
+              "Input shape {M, N, K} = {%lu, %lu, %lu}, cubeUtil_ %f, "
+              "totalMatmulTime %f, totalCommTime %f, minTileSize %lu, mAlignLen %lu, commTimeFactor_ %f, "
+              "rankDim_ %lu, rankTile %lu",
+              clusterInfo_.mValue, clusterInfo_.nValue, clusterInfo_.kValue, matmulPerf_.cubeUtil_, totalMatmulTime,
+              totalTpTime, tilingM_.GetMinLen(), tilingM_.GetAlignLength(), commPerf_.commTimeFactor_, rankDim_,
+              rankTileNum_);
 }
 
 
 void AllGatherPlusMM::EstimateKernelTime()
 {
     SetCommTimeFactor();
-    
+
     // 预测计算、通信任务耗时
     double totalMatmulTime = EstimateTotalMatmulTime();
     double totalTpTime = EstimateTotalCommTime();
@@ -44,13 +45,13 @@ void AllGatherPlusMM::EstimateKernelTime()
     // 2x compute time
     strongTpBound_ = (totalTpTime > totalMatmulTime * 2U) && (clusterInfo_.kValue >= LARGE_K_BOUNDARY);
     // 2x matmulMinTileSize
-    bool smallMFlag = (clusterInfo_.mValue < tilingM_.GetMinLen() * 2U) &&
-                      (rankTileNum_ > MatmulPerformance::SMALL_RANKTILE);
+    bool smallMFlag =
+        (clusterInfo_.mValue < tilingM_.GetMinLen() * 2U) && (rankTileNum_ > MatmulPerformance::SMALL_RANKTILE);
     bool allowMoreCuts = GetAllowMoreCuts(smallMFlag);
     bool reduceAlignLen = clusterInfo_.nValue > SMALL_N_BOUNDARY && clusterInfo_.mValue <= TINY_M;
     if (allowMoreCuts) {
         if (reduceAlignLen) {
-            tilingM_.SetAlignLength(tilingM_.GetAlignLength() / TWO);  // 0.5 is half of mAlignLen
+            tilingM_.SetAlignLength(tilingM_.GetAlignLength() / TWO); // 0.5 is half of mAlignLen
         }
         tilingM_.SetMinLenByMin(tilingM_.GetAlignLength());
     }
@@ -62,7 +63,7 @@ void AllGatherPlusMM::EstimateKernelTime()
 }
 
 void AllGatherPlusMM::SelectTilingMethod()
-{    
+{
     if (tilingM_.SetShortTileLen(noCutFlag_)) { // 如果shape太小就不切
         return;
     }
@@ -83,11 +84,13 @@ void AllGatherPlusMM::SelectTilingMethod()
 
     // 生成切分
     bool smallDimAlignUp = (rankDim_ <= MIN_COMM_RANKDIM) && tilingM_.cutRes.shortTileAtBack &&
-        (clusterInfo_.nValue < SMALL_SHAPE_BAR || clusterInfo_.kValue < SMALL_SHAPE_BAR); // 2p，计算Bound，且N轴或者K轴很小
+                           (clusterInfo_.nValue < SMALL_SHAPE_BAR ||
+                            clusterInfo_.kValue < SMALL_SHAPE_BAR); // 2p，计算Bound，且N轴或者K轴很小
     bool goodLinearityShape = (clusterInfo_.kValue * clusterInfo_.nValue >= LARGE_NK_BAR_BASE * ONE_MBYTE);
     tilingM_.FitTileLengthDiscrete(smallDimAlignUp, goodLinearityShape, hasLocalAtFront_);
-    OPS_LOG_D("AllGatherMatmul", "Final cut: shortTileAtBack %d, longTileLen %lu"
-        ", numLongTile %lu, shortTileLen %lu, numShortTile %lu",
-        tilingM_.cutRes.shortTileAtBack, tilingM_.cutRes.longTileLen, tilingM_.cutRes.numLongTile,
-        tilingM_.cutRes.shortTileLen, tilingM_.cutRes.numShortTile);
+    OPS_LOG_D("AllGatherMatmul",
+              "Final cut: shortTileAtBack %d, longTileLen %lu"
+              ", numLongTile %lu, shortTileLen %lu, numShortTile %lu",
+              tilingM_.cutRes.shortTileAtBack, tilingM_.cutRes.longTileLen, tilingM_.cutRes.numLongTile,
+              tilingM_.cutRes.shortTileLen, tilingM_.cutRes.numShortTile);
 }

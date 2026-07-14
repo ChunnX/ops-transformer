@@ -10,12 +10,12 @@
 
 #ifndef OP_API_INC_FFN_TO_ATTENTION_H_
 #define OP_API_INC_FFN_TO_ATTENTION_H_
- 
+
 #include <string>
- 
+
 #include "aclnn/aclnn_base.h"
 #include "aclnn_util.h"
- 
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -29,7 +29,8 @@ extern "C" {
  * @param [in] tokenIds: 计算输入，Tensor，每个token对应的micro_batch中batch偏移
  * @param [in] expertOffsets: 计算输入，Tensor，表示topk中的第几个
  * @param [in] actualTokenNum: 计算输入，Tensor，所有专家有效token数之和，用于保证只发送有效数据
- * @param [in] attnRankTable: 计算输入，可选输入，Tensor，缺省场景attn_worker_id=rank_id，attn worker必须从0卡开始连续部署
+ * @param [in] attnRankTable: 计算输入，可选输入，Tensor，缺省场景attn_worker_id=rank_id，attn
+ * worker必须从0卡开始连续部署
  * @param [in] group: 计算输入，str，通信域名称，专家并行的通信域。
  * @param [in] worldSize: 计算输入，int，通信域size
  * @param [in] tokenInfoTableShape: 计算输入，list int，token信息表的shape
@@ -39,12 +40,12 @@ extern "C" {
  * @return aclnnStatus: 返回值，返回状态码。
  *
  */
-ACLNN_API aclnnStatus aclnnFFNToAttentionGetWorkspaceSize(const aclTensor* x, const aclTensor* sessionIds,
-                                                          const aclTensor* microBatchIds, const aclTensor* tokenIds, const aclTensor* expertOffsets,
-                                                          const aclTensor* actualTokenNum, const aclTensor* attnRankTable, const char* group, int64_t worldSize,
-                                                          const aclIntArray *tokenInfoTableShape, const aclIntArray *tokenDataShape,
-                                                          uint64_t* workspaceSize, aclOpExecutor** executor); 
- 
+ACLNN_API aclnnStatus aclnnFFNToAttentionGetWorkspaceSize(
+    const aclTensor *x, const aclTensor *sessionIds, const aclTensor *microBatchIds, const aclTensor *tokenIds,
+    const aclTensor *expertOffsets, const aclTensor *actualTokenNum, const aclTensor *attnRankTable, const char *group,
+    int64_t worldSize, const aclIntArray *tokenInfoTableShape, const aclIntArray *tokenDataShape,
+    uint64_t *workspaceSize, aclOpExecutor **executor);
+
 /**
  * @brief aclnnFFNToAttention的第二段接口，用于执行计算。
  * @param [in] workspace: 在npu device侧申请的workspace内存起址。
@@ -53,11 +54,11 @@ ACLNN_API aclnnStatus aclnnFFNToAttentionGetWorkspaceSize(const aclTensor* x, co
  * @param [in] stream: acl stream流。
  * @return aclnnStatus: 返回状态码
  */
-ACLNN_API aclnnStatus aclnnFFNToAttention(void* workspace, uint64_t workspaceSize,
-                                          aclOpExecutor* executor, aclrtStream stream);
- 
+ACLNN_API aclnnStatus aclnnFFNToAttention(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
+                                          aclrtStream stream);
+
 #ifdef __cplusplus
 }
 #endif
- 
-#endif  // OP_API_INC_ATTENTION_TO_MOE_
+
+#endif // OP_API_INC_ATTENTION_TO_MOE_

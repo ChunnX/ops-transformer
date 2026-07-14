@@ -20,7 +20,7 @@
 constexpr uint64_t LARGE_K_BOUNDARY = 8192;
 constexpr double COMPUTE_TIME_SCALE_FACTOR = 1.5;
 static constexpr double COMM_TIME_SCALE_FACTOR = 1.35; // A3设置通信膨胀系数
-static constexpr uint64_t MAX_TILE_CNT_A3 = 8; // A3设置最大切分8轮
+static constexpr uint64_t MAX_TILE_CNT_A3 = 8;         // A3设置最大切分8轮
 constexpr double TIME_LOWER_RATIO = 2.0;
 constexpr double TIME_UPPER_RATIO = 3.0;
 constexpr uint64_t EXPANSION_RATIO = 2;

@@ -20,15 +20,15 @@
 
 using namespace ge;
 namespace ops {
-static ge::graphStatus InferShapeAllGatherMatmul(gert::InferShapeContext* context)
+static ge::graphStatus InferShapeAllGatherMatmul(gert::InferShapeContext *context)
 {
-    OP_LOGE_IF(
-        AllGatherMatmulCommonInferShape(context, GATHER_OUT_V1) != GRAPH_SUCCESS, GRAPH_FAILED, context->GetNodeName(),
-        "infer shape excute failed.");
+    OP_LOGE_IF(AllGatherMatmulCommonInferShape(context, GATHER_OUT_V1) != GRAPH_SUCCESS, GRAPH_FAILED,
+               context->GetNodeName(), "infer shape excute failed.");
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus InferDataTypeAllGatherMatmul(gert::InferDataTypeContext* context) {
+static ge::graphStatus InferDataTypeAllGatherMatmul(gert::InferDataTypeContext *context)
+{
     auto d_type = context->GetInputDataType(0);
     context->SetOutputDataType(0, d_type);
     context->SetOutputDataType(1, d_type);

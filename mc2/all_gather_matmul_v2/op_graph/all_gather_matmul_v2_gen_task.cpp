@@ -37,9 +37,8 @@ static ge::Status GetCommModeFromAttrs(const gert::ExeResGenerationContext *cont
     } else if (commModeStr == ge::AscendString("ai_cpu")) {
         commMode = Mc2Comm::COMM_MODE_AICPU;
     } else {
-        OPS_LOG_E(context->GetNodeName(),
-            "comm_mode only support 'ccu' or 'ai_cpu', unsupported comm_mode: %s.",
-            commModeStr.GetString());
+        OPS_LOG_E(context->GetNodeName(), "comm_mode only support 'ccu' or 'ai_cpu', unsupported comm_mode: %s.",
+                  commModeStr.GetString());
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -66,7 +65,7 @@ static ge::Status AllGatherMatmulV2CalcOpParam(gert::ExeResGenerationContext *co
 }
 
 static ge::Status AllGatherMatmulV2GenTask(const gert::ExeResGenerationContext *context,
-    std::vector<std::vector<uint8_t>> &tasks)
+                                           std::vector<std::vector<uint8_t>> &tasks)
 {
     if (IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_A5)) {
         uint8_t commMode = Mc2Comm::COMM_MODE_CCU;

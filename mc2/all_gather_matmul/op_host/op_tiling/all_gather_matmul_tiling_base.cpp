@@ -20,10 +20,7 @@ using namespace ge;
 using namespace all_gather_matmul_tiling_key;
 
 namespace {
-const std::map<uint32_t, std::vector<uint32_t>> VALID_RANK = {
-    {0, {2, 4, 8}},
-    {1, {2, 4, 8, 16, 32}}
-    };
+const std::map<uint32_t, std::vector<uint32_t>> VALID_RANK = {{0, {2, 4, 8}}, {1, {2, 4, 8, 16, 32}}};
 
 constexpr size_t OUTPUT_IDX = 0;
 constexpr size_t GATHEROUT_IDX = 1;
@@ -35,7 +32,7 @@ constexpr size_t DIM1_IDX = 1;
 constexpr size_t GATHER_IDX = 3;
 constexpr size_t GROUP_IDX = 0;
 constexpr size_t IS_TRANS_A_IDX = 1;
-static void PrintTilingData(::TCubeTiling& tiling)
+static void PrintTilingData(::TCubeTiling &tiling)
 {
     OP_LOGD("AllGatherMatmul", " tiling.usedCoreNum %d", tiling.usedCoreNum);
     OP_LOGD("AllGatherMatmul", " tiling.M %d", tiling.M);
@@ -67,7 +64,7 @@ static void PrintTilingData(::TCubeTiling& tiling)
     OP_LOGD("AllGatherMatmul", " tiling.singleBatchN %d", tiling.singleBatchN);
 }
 
-static void PrintTilingData(Mc2Tiling::RCSTiling& rcsTiling)
+static void PrintTilingData(Mc2Tiling::RCSTiling &rcsTiling)
 {
     OP_LOGD("AllGatherMatmul", " rcsTiling.commtype %d", rcsTiling.commtype);
     OP_LOGD("AllGatherMatmul", " rcsTiling.subtype %d", rcsTiling.subtype);
@@ -87,7 +84,7 @@ static void PrintTilingData(Mc2Tiling::RCSTiling& rcsTiling)
     OP_LOGD("AllGatherMatmul", " rcsTiling.gatherLen %lu", rcsTiling.gatherLen);
 }
 
-static void PrintTilingData(Mc2Tiling::TileL2Tiling& tileL2Tiling)
+static void PrintTilingData(Mc2Tiling::TileL2Tiling &tileL2Tiling)
 {
     OP_LOGD("AllGatherMatmul", " tileL2Tiling.mL2TileCnt %d", tileL2Tiling.mL2TileCnt);
     OP_LOGD("AllGatherMatmul", " tileL2Tiling.nL2TileCnt %d", tileL2Tiling.nL2TileCnt);
@@ -99,17 +96,17 @@ static void PrintTilingData(Mc2Tiling::TileL2Tiling& tileL2Tiling)
     OP_LOGD("AllGatherMatmul", " tileL2Tiling.calcOrder %d", tileL2Tiling.calcOrder);
     OP_LOGD("AllGatherMatmul", " tileL2Tiling.enableL2Tile %d", tileL2Tiling.enableL2Tile);
 }
-}
+} // namespace
 
 namespace optiling {
 
-static ge::graphStatus CalcMatmulTiling(mc2tiling::TilingArgs& args, ::TCubeTiling& cubeTiling,
+static ge::graphStatus CalcMatmulTiling(mc2tiling::TilingArgs &args, ::TCubeTiling &cubeTiling,
                                         Mc2Tiling::TileL2Tiling &l2Tiling);
 
-static ge::graphStatus MC2SetWorkspace(gert::TilingContext* context, Mc2Tiling::AllGatherMatmulTilingData& tilingData,
-                                       mc2tiling::TilingArgs& args);
+static ge::graphStatus MC2SetWorkspace(gert::TilingContext *context, Mc2Tiling::AllGatherMatmulTilingData &tilingData,
+                                       mc2tiling::TilingArgs &args);
 
-static uint32_t MC2_Splite(mc2tiling::TilingArgs& args, uint32_t maxTileCnt = 64)
+static uint32_t MC2_Splite(mc2tiling::TilingArgs &args, uint32_t maxTileCnt = 64)
 {
     // 检查允许通信的最大次数
     if (args.commTurn >= maxTileCnt) {
@@ -118,12 +115,12 @@ static uint32_t MC2_Splite(mc2tiling::TilingArgs& args, uint32_t maxTileCnt = 64
 
     uint64_t tileLen = 1;
     if (args.mValue > args.commTurn) {
-        tileLen = args.mValue/ args.commTurn;
+        tileLen = args.mValue / args.commTurn;
     }
 
-    if (args.inputDtypeSize == 2) { // 数据长度为2, 则向 2*64 = 128，则向128对齐
+    if (args.inputDtypeSize == 2) {                          // 数据长度为2, 则向 2*64 = 128，则向128对齐
         tileLen = mc2tiling::AlignUp<uint64_t>(tileLen, 64); // align size
-    } else if (args.inputDtypeSize == 4) { // 4 is float32 type size
+    } else if (args.inputDtypeSize == 4) {                   // 4 is float32 type size
         tileLen = mc2tiling::AlignUp<uint64_t>(tileLen, 32); // align size
     }
     if (args.mValue > tileLen) {
@@ -132,42 +129,45 @@ static uint32_t MC2_Splite(mc2tiling::TilingArgs& args, uint32_t maxTileCnt = 64
     return args.mValue;
 }
 
-static bool CheckOutputParamDim0(const gert::TilingContext* context)
+static bool CheckOutputParamDim0(const gert::TilingContext *context)
 {
     auto outputShape = context->GetOutputShape(OUTPUT_IDX);
     uint64_t outputDim0 = outputShape->GetStorageShape().GetDim(DIM0_IDX);
-    const gert::StorageShape* x1Shape = context->GetInputShape(INPUT_X1_IDX);
+    const gert::StorageShape *x1Shape = context->GetInputShape(INPUT_X1_IDX);
     uint64_t x1Dim0 = x1Shape->GetStorageShape().GetDim(DIM0_IDX);
     auto group = context->GetAttrs()->GetAttrPointer<char>(GROUP_IDX);
     auto rankSize = mc2tiling::MatmulFormulaicTiling::GetRankSize(group);
     uint64_t mValue = x1Dim0 * static_cast<uint64_t>(rankSize);
 
     OP_TILING_CHECK(outputDim0 != mValue,
-        OP_LOGE_FOR_INVALID_SHAPE(context->GetNodeName(), "output",
-            (std::string("[") + std::to_string(outputDim0) + ",...]").c_str(),
-            (std::string("[") + std::to_string(mValue) + ",...]").c_str()),
-        return false);
+                    OP_LOGE_FOR_INVALID_SHAPE(context->GetNodeName(), "output",
+                                              (std::string("[") + std::to_string(outputDim0) + ",...]").c_str(),
+                                              (std::string("[") + std::to_string(mValue) + ",...]").c_str()),
+                    return false);
 
     return true;
 }
 
-static ge::graphStatus AllGatherParamsCheck(const gert::TilingContext* context)
+static ge::graphStatus AllGatherParamsCheck(const gert::TilingContext *context)
 {
     OP_TILING_CHECK(mc2tiling::Mc2TilingUtils::CommonParamCheck(context) != ge::GRAPH_SUCCESS,
-        OP_LOGE(context->GetNodeName(), "common check failed"), return ge::GRAPH_FAILED);
+                    OP_LOGE(context->GetNodeName(), "common check failed"), return ge::GRAPH_FAILED);
 
-    const gert::StorageShape* aShape = context->GetInputShape(INPUT_X1_IDX);
+    const gert::StorageShape *aShape = context->GetInputShape(INPUT_X1_IDX);
     uint64_t valueOne = aShape->GetStorageShape().GetDim(DIM0_IDX);
     uint64_t valueTwo = aShape->GetStorageShape().GetDim(DIM1_IDX);
 
-    OP_TILING_CHECK(valueOne == 0 || valueTwo == 0,
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "shape dim",
+    OP_TILING_CHECK(
+        valueOne == 0 || valueTwo == 0,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            context->GetNodeName(), "shape dim",
             (std::string("dim0=") + std::to_string(valueOne) + ", dim1=" + std::to_string(valueTwo)).c_str(),
             "The value of shape dim must not be 0"),
         return ge::GRAPH_FAILED);
 
     if (!CheckOutputParamDim0(context)) {
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context->GetNodeName(), "output", "output_dim0_mismatch", "output dim0 check failed");
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context->GetNodeName(), "output", "output_dim0_mismatch",
+                                              "output dim0 check failed");
         return ge::GRAPH_FAILED;
     }
 
@@ -175,19 +175,20 @@ static ge::graphStatus AllGatherParamsCheck(const gert::TilingContext* context)
         OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "attrs");
     } else {
         auto gatherIndex = context->GetAttrs()->GetAttrPointer<int64_t>(GATHER_IDX);
-        OP_TILING_CHECK(*gatherIndex != 0,
-            OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "gatherIndex",
-                std::to_string(*gatherIndex).c_str(), "0"),
+        OP_TILING_CHECK(
+            *gatherIndex != 0,
+            OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "gatherIndex", std::to_string(*gatherIndex).c_str(), "0"),
             return ge::GRAPH_FAILED);
 
         auto isTransA = context->GetAttrs()->GetAttrPointer<bool>(IS_TRANS_A_IDX);
-        OP_TILING_CHECK(*isTransA != false,
-            OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "isTransA",
-                std::to_string(*isTransA).c_str(), "false"),
+        OP_TILING_CHECK(
+            *isTransA != false,
+            OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "isTransA", std::to_string(*isTransA).c_str(), "false"),
             return ge::GRAPH_FAILED);
-        OP_TILING_CHECK((valueTwo < KVALUE_MIN || valueTwo >= KVALUE_MAX),
-            OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "k-axis",
-                std::to_string(valueTwo).c_str(),
+        OP_TILING_CHECK(
+            (valueTwo < KVALUE_MIN || valueTwo >= KVALUE_MAX),
+            OP_LOGE_FOR_INVALID_VALUE(
+                context->GetNodeName(), "k-axis", std::to_string(valueTwo).c_str(),
                 (std::string("[") + std::to_string(KVALUE_MIN) + ", " + std::to_string(KVALUE_MAX) + ")").c_str()),
             return ge::GRAPH_FAILED);
     }
@@ -205,8 +206,8 @@ static ge::graphStatus SetCommAlg(Mc2Tiling::AllGatherMatmulTilingData &tilingDa
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus AllGatherMatmulTilingBase::GetAllGatherFormulateTileCnt(const gert::TilingContext* ctx,
-    Mc2Tiling::AllGatherMatmulTilingData& tilingData, mc2tiling::TilingArgs& args)
+ge::graphStatus AllGatherMatmulTilingBase::GetAllGatherFormulateTileCnt(
+    const gert::TilingContext *ctx, Mc2Tiling::AllGatherMatmulTilingData &tilingData, mc2tiling::TilingArgs &args)
 {
     if (ctx->GetAttrs() == nullptr) {
         OP_LOGW(ctx->GetNodeName(), " ctx->GetAttrs is nullptr.");
@@ -234,9 +235,9 @@ ge::graphStatus AllGatherMatmulTilingBase::GetAllGatherFormulateTileCnt(const ge
 }
 
 // 第一个参数m
-ge::graphStatus AllGatherMatmulTilingBase::MCSpliteM(gert::TilingContext* ctx,
-    Mc2Tiling::AllGatherMatmulTilingData& tilingData,
-    mc2tiling::TilingArgs& args)
+ge::graphStatus AllGatherMatmulTilingBase::MCSpliteM(gert::TilingContext *ctx,
+                                                     Mc2Tiling::AllGatherMatmulTilingData &tilingData,
+                                                     mc2tiling::TilingArgs &args)
 {
     args.rankTileNum = args.rankDim - 1;
     // cmdType = HCCL_CMD_ALLGATHER, 是允许切K
@@ -250,7 +251,7 @@ ge::graphStatus AllGatherMatmulTilingBase::MCSpliteM(gert::TilingContext* ctx,
         uint64_t splite = MC2_Splite(args);
 
         // 现在找到1个合适的切分
-        auto tileCnt = args.mValue / splite; // 切的份数
+        auto tileCnt = args.mValue / splite;  // 切的份数
         auto tileTail = args.mValue % splite; // 尾巴
 
         tilingData.param.tileCnt = tileCnt;
@@ -272,7 +273,7 @@ ge::graphStatus AllGatherMatmulTilingBase::MCSpliteM(gert::TilingContext* ctx,
     return ge::GRAPH_SUCCESS;
 }
 
-static void UpdateTilingKey(uint64_t& tilingKey, const Mc2Tiling::AllGatherMatmulTilingData& tilingData, bool isBias)
+static void UpdateTilingKey(uint64_t &tilingKey, const Mc2Tiling::AllGatherMatmulTilingData &tilingData, bool isBias)
 {
     bool allGatherMatmulFullMesh = true;
     bool allGatherMatmulNd2nzOpt = false;
@@ -299,18 +300,17 @@ static void UpdateTilingKey(uint64_t& tilingKey, const Mc2Tiling::AllGatherMatmu
     tilingKey = GET_TPL_TILING_KEY(allGatherMatmulFullMesh, allGatherMatmulNd2nzOpt, allGatherMatmulBiasCast);
 }
 
-ge::graphStatus AllGatherMatmulTilingBase::SetMatmulTilingAllGatherMatmul(gert::TilingContext* context,
-    Mc2Tiling::AllGatherMatmulTilingData& tilingData,
-    mc2tiling::TilingArgs& args)
+ge::graphStatus AllGatherMatmulTilingBase::SetMatmulTilingAllGatherMatmul(
+    gert::TilingContext *context, Mc2Tiling::AllGatherMatmulTilingData &tilingData, mc2tiling::TilingArgs &args)
 {
-    ge::DataType  biasType;
+    ge::DataType biasType;
     bool isBias = true;
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     auto coreNum = ascendcPlatform.GetCoreNumAic();
     auto aType = context->GetInputDesc(INPUT_X1_IDX)->GetDataType();
     auto bType = context->GetInputDesc(INPUT_X2_IDX)->GetDataType();
     auto cType = aType;
-    const gert::StorageShape* matrixBias = context->GetOptionalInputShape(INPUT_BIAS_IDX);
+    const gert::StorageShape *matrixBias = context->GetOptionalInputShape(INPUT_BIAS_IDX);
     if (matrixBias == nullptr) {
         isBias = false;
         biasType = cType;
@@ -318,8 +318,8 @@ ge::graphStatus AllGatherMatmulTilingBase::SetMatmulTilingAllGatherMatmul(gert::
         biasType = context->GetInputDesc(INPUT_BIAS_IDX)->GetDataType();
     }
 
-    const gert::StorageShape* aShape = context->GetInputShape(INPUT_X1_IDX);
-    const gert::StorageShape* bShape = context->GetInputShape(INPUT_X2_IDX);
+    const gert::StorageShape *aShape = context->GetInputShape(INPUT_X1_IDX);
+    const gert::StorageShape *bShape = context->GetInputShape(INPUT_X2_IDX);
     uint64_t mValue = aShape->GetStorageShape().GetDim(DIM0_IDX);
     uint64_t kValue = aShape->GetStorageShape().GetDim(DIM1_IDX);
     uint64_t nValue = bShape->GetStorageShape().GetDim(DIM1_IDX);
@@ -379,8 +379,7 @@ ge::graphStatus AllGatherMatmulTilingBase::SetMatmulTilingAllGatherMatmul(gert::
     if ((tilingData.socParam.commAlg == COMM_ALG_DOUBLE_RING) && (tilingData.socParam.isStep == 1)) {
         args.mValue /= DOUBLE_RING_FACTOR;
         OP_LOGI(context->GetNodeName(),
-            " args.mValue is set to be %lu under double ring + step communication algorithm.",
-            args.mValue);
+                " args.mValue is set to be %lu under double ring + step communication algorithm.", args.mValue);
     }
 
     args.isLocal = false;
@@ -395,8 +394,8 @@ ge::graphStatus AllGatherMatmulTilingBase::SetMatmulTilingAllGatherMatmul(gert::
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus CalcMatmulTiling(mc2tiling::TilingArgs& args, ::TCubeTiling& cubeTiling,
-    Mc2Tiling::TileL2Tiling &l2Tiling)
+static ge::graphStatus CalcMatmulTiling(mc2tiling::TilingArgs &args, ::TCubeTiling &cubeTiling,
+                                        Mc2Tiling::TileL2Tiling &l2Tiling)
 {
     uint64_t mValue = args.mValue;
     uint64_t nValue = args.nValue;
@@ -424,8 +423,8 @@ static ge::graphStatus CalcMatmulTiling(mc2tiling::TilingArgs& args, ::TCubeTili
         cubeTiling.Kb = kValue;
     } else {
         if (mm.GetTiling(cubeTiling) == -1) {
-            OP_LOGE("AllGatherMatmul", "mValue %lu, nValue %lu, kValue %lu, aicCoreNum %lu",
-                    mValue, nValue, kValue, args.aicCoreNum);
+            OP_LOGE("AllGatherMatmul", "mValue %lu, nValue %lu, kValue %lu, aicCoreNum %lu", mValue, nValue, kValue,
+                    args.aicCoreNum);
             return ge::GRAPH_FAILED;
         }
     }
@@ -434,10 +433,10 @@ static ge::graphStatus CalcMatmulTiling(mc2tiling::TilingArgs& args, ::TCubeTili
     return ge::GRAPH_SUCCESS;
 }
 
-static uint64_t GetStorage_a(Mc2Tiling::AllGatherMatmulTilingData& tilingData, mc2tiling::TilingArgs& args)
+static uint64_t GetStorage_a(Mc2Tiling::AllGatherMatmulTilingData &tilingData, mc2tiling::TilingArgs &args)
 {
     constexpr uint64_t alignAddrLen = 512;
-    auto&& cfg = tilingData.param;
+    auto &&cfg = tilingData.param;
     uint32_t gatherIndex = cfg.gatherIndex;
     uint64_t nd2nzLen = 0;
     uint64_t storageA = 0;
@@ -445,7 +444,7 @@ static uint64_t GetStorage_a(Mc2Tiling::AllGatherMatmulTilingData& tilingData, m
     // step1: ND2NZ
     if (gatherIndex == 0) { // 转置B
         // 计算ND2NZ需使用空间方法保持与MMV3 tiling计算逻辑一致
-        uint64_t alignByte = 256 / args.inputDtypeSize;  // 256B 对齐shape
+        uint64_t alignByte = 256 / args.inputDtypeSize; // 256B 对齐shape
         uint64_t kALign = OpsUtils::CeilAlign(static_cast<uint64_t>(cfg.rankK), alignByte);
         uint64_t nALign = OpsUtils::CeilAlign(static_cast<uint64_t>(cfg.rankN), alignByte);
         nd2nzLen = kALign * nALign * args.inputDtypeSize;
@@ -491,13 +490,12 @@ struct KFCNotify {
     HcclAicpuOpParam msgCnt[16];
 };
 
-static ge::graphStatus MC2SetWorkspace(gert::TilingContext* context, Mc2Tiling::AllGatherMatmulTilingData& tilingData,
-                                       mc2tiling::TilingArgs& args)
+static ge::graphStatus MC2SetWorkspace(gert::TilingContext *context, Mc2Tiling::AllGatherMatmulTilingData &tilingData,
+                                       mc2tiling::TilingArgs &args)
 {
-    size_t* workspaces = context->GetWorkspaceSizes(1);
-    OP_TILING_CHECK(workspaces == nullptr,
-        OP_LOGE(context->GetNodeName(), "get workspace failed"),
-        return ge::GRAPH_FAILED);
+    size_t *workspaces = context->GetWorkspaceSizes(1);
+    OP_TILING_CHECK(workspaces == nullptr, OP_LOGE(context->GetNodeName(), "get workspace failed"),
+                    return ge::GRAPH_FAILED);
     uint64_t storageA = GetStorage_a(tilingData, args);
 
     int biasLen = 0;
@@ -526,9 +524,9 @@ static ge::graphStatus MC2SetWorkspace(gert::TilingContext* context, Mc2Tiling::
     return ge::GRAPH_SUCCESS;
 }
 
-static bool NeedGatherOut(const gert::TilingContext* context)
+static bool NeedGatherOut(const gert::TilingContext *context)
 {
-    const gert::StorageShape* gatherOut = context->GetOutputShape(GATHEROUT_IDX);
+    const gert::StorageShape *gatherOut = context->GetOutputShape(GATHEROUT_IDX);
     int64_t mulGatherShape = 1;
     if (gatherOut != nullptr) {
         for (unsigned int i = 0; i < gatherOut->GetStorageShape().GetDimNum(); i++) {
@@ -545,20 +543,21 @@ static bool NeedGatherOut(const gert::TilingContext* context)
 }
 
 ge::graphStatus AllGatherMatmulTilingBase::InitHcclParam(const gert::TilingContext *context,
-    Mc2Tiling::AllGatherMatmulTilingData* tilingData, const char* group)
+                                                         Mc2Tiling::AllGatherMatmulTilingData *tilingData,
+                                                         const char *group)
 {
     std::string algConfig = GetAlgConfig(tilingData);
     Mc2CcTilingConfig mc2CcTilingConfig(group, tilingData->param.commtype, algConfig);
     uint8_t skipBufferWindowCopy = (tilingData->param.gatherLen == 0) ?
-                                   static_cast<uint8_t>(mc2tiling::MC2_BUFFER_TYPE::MC2_BUFFER_TYPE_DEFAULT) :
-                                   static_cast<uint8_t>(mc2tiling::MC2_BUFFER_TYPE::MC2_BUFFER_TYPE_OUTPUT);
+                                       static_cast<uint8_t>(mc2tiling::MC2_BUFFER_TYPE::MC2_BUFFER_TYPE_DEFAULT) :
+                                       static_cast<uint8_t>(mc2tiling::MC2_BUFFER_TYPE::MC2_BUFFER_TYPE_OUTPUT);
     mc2CcTilingConfig.SetSkipBufferWindowCopy(skipBufferWindowCopy);
     OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(tilingData->mc2InitTiling) != 0,
-        OP_LOGE(context->GetNodeName(), "mc2CcTilingConfig mc2tiling GetTiling mc2InitTiling failed"),
-        return ge::GRAPH_FAILED);
+                    OP_LOGE(context->GetNodeName(), "mc2CcTilingConfig mc2tiling GetTiling mc2InitTiling failed"),
+                    return ge::GRAPH_FAILED);
     OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(tilingData->mc2CcTiling) != 0,
-        OP_LOGE(context->GetNodeName(), "mc2CcTilingConfig mc2tiling GetTiling mc2CcTiling failed"),
-        return ge::GRAPH_FAILED);
+                    OP_LOGE(context->GetNodeName(), "mc2CcTilingConfig mc2tiling GetTiling mc2CcTiling failed"),
+                    return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -566,8 +565,7 @@ ge::graphStatus AllGatherMatmulTilingBase::AllGatherMatmulTilingFunc(gert::Tilin
 {
     // 对参数进行校验
     int index = 0;
-    Mc2Tiling::AllGatherMatmulTilingData* tilingData =
-        context->GetTilingData<Mc2Tiling::AllGatherMatmulTilingData>();
+    Mc2Tiling::AllGatherMatmulTilingData *tilingData = context->GetTilingData<Mc2Tiling::AllGatherMatmulTilingData>();
     mc2tiling::TilingArgs args;
     auto group = context->GetAttrs()->GetAttrPointer<char>(index++);
     if (AllGatherParamsCheck(context) != ge::GRAPH_SUCCESS) {
@@ -581,13 +579,15 @@ ge::graphStatus AllGatherMatmulTilingBase::AllGatherMatmulTilingFunc(gert::Tilin
     auto commTurn = *context->GetAttrs()->GetAttrPointer<int64_t>(index++);
 
     auto rankSize = mc2tiling::MatmulFormulaicTiling::GetRankSize(group);
-    OP_TILING_CHECK(commTurn != 0,
-        OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "commTurn",
-            std::to_string(commTurn).c_str(), "0"),
+    OP_TILING_CHECK(
+        commTurn != 0,
+        OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "commTurn", std::to_string(commTurn).c_str(), "0"),
         return ge::GRAPH_FAILED);
 
-    OP_LOGD("AllGatherMatmul", " group is %s, rankSize is %u, isTransA is %d, isTransB is %d, gatherIndex is %d,"
-            "commTurn is %d.", group, rankSize, *isTransA, *isTransB, *gatherIndex, commTurn);
+    OP_LOGD("AllGatherMatmul",
+            " group is %s, rankSize is %u, isTransA is %d, isTransB is %d, gatherIndex is %d,"
+            "commTurn is %d.",
+            group, rankSize, *isTransA, *isTransB, *gatherIndex, commTurn);
     tilingData->param.rankDim = rankSize;
     tilingData->param.isTransposeA = isTransA ? *isTransA : 0;
     tilingData->param.isTransposeB = isTransB ? *isTransB : 0;
@@ -599,8 +599,7 @@ ge::graphStatus AllGatherMatmulTilingBase::AllGatherMatmulTilingFunc(gert::Tilin
     SetSocParam(tilingData, group);
 
     OP_TILING_CHECK(SetCommAlg(*tilingData) != ge::GRAPH_SUCCESS,
-        OP_LOGE(context->GetNodeName(), " Set comm algorithm failed."),
-        return ge::GRAPH_FAILED);
+                    OP_LOGE(context->GetNodeName(), " Set comm algorithm failed."), return ge::GRAPH_FAILED);
     OP_LOGI(context->GetNodeName(), " Communication algorithm is %u.", tilingData->socParam.commAlg);
 
     if (CheckValidRank(tilingData, VALID_RANK, context, rankSize) == ge::GRAPH_FAILED) {
@@ -623,7 +622,7 @@ ge::graphStatus AllGatherMatmulTilingBase::AllGatherMatmulTilingFunc(gert::Tilin
 
     SetMatmulTilingAllGatherMatmul(context, *tilingData, args);
     OP_TILING_CHECK(InitHcclParam(context, tilingData, group) != ge::GRAPH_SUCCESS,
-        OP_LOGE(context->GetNodeName(), "Tiling InitHcclParam failed."), return ge::GRAPH_FAILED);
+                    OP_LOGE(context->GetNodeName(), "Tiling InitHcclParam failed."), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
-}  // namespace optiling
+} // namespace optiling
