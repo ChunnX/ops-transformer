@@ -21,7 +21,6 @@
 #include "log/log.h"
 #include "tiling/platform/platform_ascendc.h"
 #include "../op_kernel/chunk_gated_delta_rule_tiling_key.h"
-#include <algorithm>
 
 namespace optiling {
 REGISTER_OPS_TILING_TEMPLATE(ChunkGatedDeltaRule, ChunkGatedDeltaRuleTiling, 0);
@@ -157,14 +156,10 @@ ge::graphStatus ChunkGatedDeltaRuleTiling::DoOpTiling()
 
 ge::graphStatus ChunkGatedDeltaRuleTiling::DoMatmulTiling()
 {
-    // baseM/baseN/baseK 根据实际维度动态调整，不超过 128
-    // matmul 各 stage 的 M 最大为 chunkSize, N 最大为 max(dk,dv,chunkSize), K 最大为 max(dk,chunkSize)
-    uint32_t maxDim = static_cast<uint32_t>(
-        std::max({tilingData_.dk, tilingData_.dv, tilingData_.chunkSize}));
-    uint32_t baseM = std::min(MATMUL_BASE_M, static_cast<uint32_t>(tilingData_.chunkSize));
-    uint32_t baseN = std::min(MATMUL_BASE_N, maxDim);
-    uint32_t baseK = std::min(MATMUL_BASE_K,
-                              static_cast<uint32_t>(std::max(tilingData_.dk, tilingData_.chunkSize)));
+    // 计算 baseM、baseN、baseK
+    uint32_t baseM = MATMUL_BASE_M;
+    uint32_t baseK = MATMUL_BASE_K;
+    uint32_t baseN = MATMUL_BASE_N;
 
     // ========== MT_FP32: FP32 -> FP32 ==========
     matmul_tiling::MultiCoreMatmulTiling mm_;
