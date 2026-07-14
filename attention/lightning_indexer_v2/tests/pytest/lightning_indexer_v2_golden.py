@@ -56,7 +56,7 @@ class GeneralizedLIV2:
         self.cmp_ratio = cmp_ratio
         self.return_value = return_value
         self.split_s1 = split_s1        # 是否切分S1轴 / Whether to split the S1 axis
- 	    self.s1size = s1size             # S1轴切分块大小 / S1 axis chunk size
+        self.s1size = s1size             # S1轴切分块大小 / S1 axis chunk size
 
         if layout_query == "BSND":
             self.q_shape = [batch_size, q_seq, q_head_num, head_dim]
