@@ -32,14 +32,7 @@
 #include "../../../common/op_kernel/memcopy/copy_ub_to_gm.h"
 
 template <inferFaLayOutTypeEnum LAYOUT>
-__aicore__ inline constexpr UbFormat GetOutUbFormatMQ()
-{
-    if constexpr (LAYOUT == inferFaLayOutTypeEnum::LAYOUT_BSND || LAYOUT == inferFaLayOutTypeEnum::LAYOUT_TND) {
-        return UbFormat::S1G;
-    } else if constexpr (LAYOUT == inferFaLayOutTypeEnum::LAYOUT_BNSD) {
-        return UbFormat::GS1;
-    }
-}
+__aicore__ inline constexpr UbFormat GetOutUbFormatMQ();
 
 using namespace FaVectorApi;
 
@@ -532,20 +525,26 @@ public:
     }
 
     using MM1_DBUF_T = Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>;
-    using MM2_ABUF_POLICY_T = BuffersPolicyDB<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD>;
+    using MM2_ABUF_T = Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD>;
 
-    __aicore__ inline void ProcessVec1(MM2_ABUF_POLICY_T &vec1ResBuf, MM1_DBUF_T &bmm1ResBuf, RunInfoX &runInfo)
+    __aicore__ inline void ProcessVec1(MM2_ABUF_T &vec1ResBuf, MM1_DBUF_T &bmm1ResBuf, RunInfoX &runInfo)
     {
+#ifdef SKIP_V1
+        bmm1ResBuf.WaitCrossCore();
+        bmm1ResBuf.SetCrossCore();
+        vec1ResBuf.SetCrossCore();
+        return;
+#endif
         bmm1ResBuf.WaitCrossCore();
         if (unlikely(runInfo.actVecMSize == 0)) {
             bmm1ResBuf.SetCrossCore();
-            vec1ResBuf.Get().SetCrossCore();
+            vec1ResBuf.SetCrossCore();
             return;
         }
         ProcessVec1Nd(vec1ResBuf, bmm1ResBuf, runInfo);
     }
 
-    __aicore__ inline void ProcessVec1Nd(MM2_ABUF_POLICY_T &vec1ResBuf, MM1_DBUF_T &bmm1ResBuf, RunInfoX runInfo)
+    __aicore__ inline void ProcessVec1Nd(MM2_ABUF_T &vec1ResBuf, MM1_DBUF_T &bmm1ResBuf, RunInfoX runInfo)
     {
         LocalTensor<uint8_t> dropMaskUb;
         LocalTensor<INPUT_T> nonePseUb;
@@ -639,10 +638,9 @@ public:
 
         stage1OutQue[stage1Offset].template EnQue(stage1CastTensor);
         stage1OutQue[stage1Offset].template DeQue<INPUT_T>();
-        auto &vec1L1Buf = vec1ResBuf.Get();
-        LocalTensor<INPUT_T> vec1L1ResTensor = vec1L1Buf.GetTensor<INPUT_T>();
+        LocalTensor<INPUT_T> vec1L1ResTensor = vec1ResBuf.GetTensor<INPUT_T>();
         if (likely(runInfo.actVecMSize != 0)) {
-            DataCopy(vec1L1ResTensor[constInfo.aivIdx * (blockBytes / sizeof(INPUT_T)) *
+            DataCopy(vec1L1ResTensor[constInfo.subBlockIdx * (blockBytes / sizeof(INPUT_T)) *
                                      (runInfo.actMSize - runInfo.actVecMSize)],
                      stage1CastTensor,
                      {s2BaseSize / 16, (uint16_t)runInfo.actVecMSize,
@@ -650,7 +648,7 @@ public:
                       (uint16_t)(mBaseSize - runInfo.actVecMSize)});
         }
         stage1OutQue[stage1Offset].template FreeTensor(stage1CastTensor);
-        vec1L1Buf.SetCrossCore();
+        vec1ResBuf.SetCrossCore();
 
         if (!runInfo.isFirstS2Loop) {
             UpdateExpSumAndExpMax<T>(sumUb, maxUb, expUb, sumUb, maxUb, apiTmpBuffer, runInfo.actVecMSize);
@@ -662,6 +660,11 @@ public:
 
     __aicore__ inline void ProcessVec2(MM1_DBUF_T &bmm2ResBuf, RunInfoX &runInfo)
     {
+#ifdef SKIP_V2
+        bmm2ResBuf.WaitCrossCore();
+        bmm2ResBuf.SetCrossCore();
+        return;
+#endif
         bmm2ResBuf.WaitCrossCore();
         ProcessVec2OnUb(bmm2ResBuf, runInfo);
     }

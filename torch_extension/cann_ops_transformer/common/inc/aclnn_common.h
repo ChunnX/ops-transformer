@@ -16,8 +16,6 @@
 #ifndef CANN_OPS_TRANSFORMER_ACLNN_COMMON_H
 #define CANN_OPS_TRANSFORMER_ACLNN_COMMON_H
 
-#include <acl/acl_base.h>
-#include <acl/acl_rt.h>
 #include <torch_npu/csrc/framework/utils/OpAdapter.h>
 #include <dlfcn.h>
 #include <vector>
@@ -29,6 +27,8 @@
 #include <type_traits>
 #include <unordered_map>
 #include <ATen/Tensor.h>
+#include <acl/acl_base.h>
+#include <acl/acl_rt.h>
 #include <c10/core/StorageImpl.h>
 #include <c10/util/Exception.h>
 #include "torch_npu/csrc/core/npu/NPUStream.h"
@@ -40,33 +40,6 @@
 #if __has_include("torch_npu/csrc/flopcount/FlopCount.h")
 #include "torch_npu/csrc/flopcount/FlopCount.h"
 #endif
-
-#include "graph/c_types.h"
-#ifndef ACL_FLOAT8_E5M2
-#define ACL_FLOAT8_E5M2 static_cast<aclDataType>(C_DT_FLOAT8_E5M2)
-#endif
-#ifndef ACL_FLOAT8_E4M3FN
-#define ACL_FLOAT8_E4M3FN static_cast<aclDataType>(C_DT_FLOAT8_E4M3FN)
-#endif
-#ifndef ACL_FLOAT8_E8M0
-#define ACL_FLOAT8_E8M0 static_cast<aclDataType>(C_DT_FLOAT8_E8M0)
-#endif
-#ifndef ACL_HIFLOAT8
-#define ACL_HIFLOAT8 static_cast<aclDataType>(C_DT_HIFLOAT8)
-#endif
-#ifndef ACL_FLOAT6_E3M2
-#define ACL_FLOAT6_E3M2 static_cast<aclDataType>(C_DT_FLOAT6_E3M2)
-#endif
-#ifndef ACL_FLOAT6_E2M3
-#define ACL_FLOAT6_E2M3 static_cast<aclDataType>(C_DT_FLOAT6_E2M3)
-#endif
-#ifndef ACL_FLOAT4_E2M1
-#define ACL_FLOAT4_E2M1 static_cast<aclDataType>(C_DT_FLOAT4_E2M1)
-#endif
-#ifndef ACL_FLOAT4_E1M2
-#define ACL_FLOAT4_E1M2 static_cast<aclDataType>(C_DT_FLOAT4_E1M2)
-#endif
-
 #define NPU_NAME_SPACE at_npu::native
 
 using aclOpExecutor = struct aclOpExecutor;

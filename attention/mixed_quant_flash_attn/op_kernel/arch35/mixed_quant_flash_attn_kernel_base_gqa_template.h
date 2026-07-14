@@ -223,6 +223,7 @@ public:
                                         workspace);
                 vecFaBlock.SetCuSeqLensParser(qSeqUsedParser);
             }
+            vecFaBlock.InitAntiquantGm(key, value, blocktable, kDescale, vDescale);
             vecFaBlock.ClearOutput();
         }
 
@@ -263,6 +264,7 @@ public:
         l1BufferManager.Init(pipe, 524288);
         l1PBuffers.Init(l1BufferManager, mm2LeftSize);
         ubBufferManager.Init(pipe, mm1ResultSize * 2);
+        bmm1Buffers.Init(ubBufferManager, mm1ResultSize);
         bmm2Buffers.Init(ubBufferManager, mm1ResultSize);
     }
 
@@ -655,12 +657,12 @@ public:
 
     __aicore__ inline void ComputeVec1(RunInfoX &runInfo)
     {
-        // TODO: 待后续填充实现
+        vecFaBlock.ProcessVec1(l1PBuffers.Get(), bmm1Buffers.Get(), runInfo);
     }
 
     __aicore__ inline void ComputeVec2(RunInfoX &runInfo)
     {
-        // TODO: 待后续填充实现
+        vecFaBlock.ProcessVec2(bmm2Buffers.Get(), runInfo);
     }
 
     __aicore__ inline void CreateTask(uint64_t loop, uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur,
