@@ -229,7 +229,7 @@ aclnnStatus aclnnMoeUpdateExpert(
 
 - **返回值**
 
-    aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。  
+    aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
     第一段接口完成入参校验，出现以下场景时报错：
 
@@ -316,17 +316,17 @@ aclnnStatus aclnnMoeUpdateExpert(
 1. 确定性计算：
      - aclnnMoeUpdateExpert默认确定性实现。
 
-2. **接口配套与调用顺序**：  
-    该接口必须与`aclnnMoeDistributeDispatchV2`及`aclnnMoeDistributeCombineV2`/`aclnnMoeDistributeCombineAddRmsNorm`接口配套使用，**调用顺序固定为**：  
+2. **接口配套与调用顺序**：
+    该接口必须与`aclnnMoeDistributeDispatchV2`及`aclnnMoeDistributeCombineV2`/`aclnnMoeDistributeCombineAddRmsNorm`接口配套使用，**调用顺序固定为**：
     `aclnnMoeUpdateExpert` → `aclnnMoeDistributeDispatchV2` → `aclnnMoeDistributeCombineV2`/`aclnnMoeDistributeCombineAddRmsNorm`；
 
-    或与`aclnnMoeDistributeDispatchV3`及`aclnnMoeDistributeCombineV3`/`aclnnMoeDistributeCombineAddRmsNormV2`接口配套使用，**调用顺序固定为**：  
+    或与`aclnnMoeDistributeDispatchV3`及`aclnnMoeDistributeCombineV3`/`aclnnMoeDistributeCombineAddRmsNormV2`接口配套使用，**调用顺序固定为**：
     `aclnnMoeUpdateExpert` → `aclnnMoeDistributeDispatchV3` → `aclnnMoeDistributeCombineV3`/`aclnnMoeDistributeCombineAddRmsNormV2`；具体参考[调用示例](#调用示例)。
 
-3. **参数一致性要求**：  
+3. **参数一致性要求**：
    调用过程中使用的`worldSize`、`moeExpertNum`参数取值，所有卡需保持一致，网络不同层中也需保持一致，且需与`aclnnMoeDistributeDispatchV2`、`aclnnMoeDistributeCombineV2`/`aclnnMoeDistributeCombineAddRmsNorm`的对应参数一致。
 
-4. **硬件相关定义**：  
+4. **硬件相关定义**：
    <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  ：单卡包含双DIE（“晶粒”或“裸片”），因此参数说明中的“本卡”均指**单DIE**。
 
 5. **参数shape格式约束**：
@@ -602,7 +602,7 @@ aclnnStatus aclnnMoeUpdateExpert(
         CHECK_RET(ret == ACL_SUCCESS, return ret);
         ret = CreateAclTensor(xOutHostData, xOutShape, &xOutDeviceAddr, aclDataType::ACL_BF16, &xOut);
         CHECK_RET(ret == ACL_SUCCESS, return ret);
-        
+
         /* 声明算子执行必需变量 */
         uint64_t eplbworkspaceSize = 0;
         aclOpExecutor *eplbexecutor = nullptr;
@@ -635,12 +635,12 @@ aclnnStatus aclnnMoeUpdateExpert(
 
         /**************************************** 调用dispatch ********************************************/
 
-        ret = aclnnMoeDistributeDispatchV2GetWorkspaceSize(x, balancedExpertIds, (quantMode > 0 ? scales : nullptr), nullptr, 
+        ret = aclnnMoeDistributeDispatchV2GetWorkspaceSize(x, balancedExpertIds, (quantMode > 0 ? scales : nullptr), nullptr,
                 expertScales, hcomEpName, EP_WORLD_SIZE, args.epRankId, moeExpertNum, hcomTpName, TP_WORLD_SIZE,
                 args.tpRankId, expertShardType, sharedExpertNum,sharedExpertRankNum, quantMode, globalBS,
                 expertTokenNumsType, nullptr, expandX, dynamicScales, expandIdx, expertTokenNums, epRecvCounts,
                 tpRecvCounts, expandScales, &dispatchWorkspaceSize, &dispatchExecutor);
-        
+
         CHECK_RET(ret == ACL_SUCCESS,
             LOG_PRINT("[ERROR] aclnnMoeDistributeDispatchV2GetWorkspaceSize failed. ret = %d \n", ret); return ret);
 
@@ -654,9 +654,9 @@ aclnnStatus aclnnMoeUpdateExpert(
         ret = aclrtSynchronizeStreamWithTimeout(args.dispatchStream, 10000);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclnnMoeDistributeDispatchV2 failed. ret = %d \n", ret);  \
             return ret);
-        
+
         /**************************************** 调用combine ********************************************/
-        
+
         //调用combine算子第一阶段接口
         ret = aclnnMoeDistributeCombineV2GetWorkspaceSize(expandX, expertIds, expandIdx, epRecvCounts, expertScales,
             tpRecvCounts, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
