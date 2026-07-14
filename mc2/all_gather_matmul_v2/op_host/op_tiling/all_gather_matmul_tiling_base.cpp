@@ -696,8 +696,8 @@ uint64_t AllGatherMatmulTilingBase::GetStorageA(Mc2Tiling::RCSTiling &rcsCfg)
             uint64_t nALign = ops::CeilAlign(static_cast<uint64_t>(rcsCfg.rankN), alignByte);
             nd2nzLen = kALign * nALign * args_.inputDtypeSize;
         } else {
-            auto alignM = rcsCfg.rankM + 16;
-            auto alignK = rcsCfg.rankK + 16;
+            uint64_t alignM = static_cast<uint64_t>(rcsCfg.rankM) + 16;
+            uint64_t alignK = static_cast<uint64_t>(rcsCfg.rankK) + 16;
             nd2nzLen = mc2tiling::AlignUp(alignM * alignK * args_.inputDtypeSize, alignAddrLen);
         }
     }
