@@ -1,0 +1,205 @@
+# This is a combination of 41 commits.
+# This is the 1st commit message:
+
+静态tensor实现——flash_attn
+
+# This is the commit message #2:
+
+init bug compete
+
+# This is the commit message #3:
+
+eventid修改
+
+# This is the commit message #4:
+
+模板参数修复
+
+# This is the commit message #5:
+
+Tbuf分析
+
+# This is the commit message #6:
+
+精度问题解决
+
+# This is the commit message #7:
+
+精度问题在此修复
+
+# This is the commit message #8:
+
+打印添加
+
+# This is the commit message #9:
+
+精度修复
+
+# This is the commit message #10:
+
+删除printf
+
+# This is the commit message #11:
+
+buffmanager 删除
+
+# This is the commit message #12:
+
+vf内实现静态tensor
+
+# This is the commit message #13:
+
+alloc方法删除
+
+# This is the commit message #14:
+
+vec侧修改适配
+
+# This is the commit message #15:
+
+buffmanager依赖删除
+
+# This is the commit message #16:
+
+编译问题修复
+
+# This is the commit message #17:
+
+精度问题解决
+
+# This is the commit message #18:
+
+精度修复尝试
+
+# This is the commit message #19:
+
+精度问题修复 第二弹
+
+# This is the commit message #20:
+
+精度修复 第三弹
+
+# This is the commit message #21:
+
+精度修复第四弹
+
+# This is the commit message #22:
+
+精度修复第五弹
+
+# This is the commit message #23:
+
+精度修复第六弹-attnmask
+
+# This is the commit message #24:
+
+批跑精度修复
+
+# This is the commit message #25:
+
+aicore 修复
+
+# This is the commit message #26:
+
+静态tensor适配
+
+# This is the commit message #27:
+
+卡死问题解决
+
+# This is the commit message #28:
+
+静态tensor进一步适配
+
+# This is the commit message #29:
+
+解决批跑aicore问题
+
+# This is the commit message #30:
+
+同步主线 编译修复
+
+# This is the commit message #31:
+
+最新aicore问题
+
+# This is the commit message #32:
+
+代码优化：eventid命名修改+vf接口迁移
+
+# This is the commit message #33:
+
+同步
+
+# This is the commit message #34:
+
+dn nd template
+
+# This is the commit message #35:
+
+vf 适配
+
+# This is the commit message #36:
+
+static_tensor
+# This is the commit message #37:
+
+编译修复
+
+# This is the commit message #38:
+
+aicore问题解决
+
+# This is the commit message #39:
+
+lock/unlock支持
+# This is the commit message #40:
+
+编译问题解决
+
+# This is the commit message #41:
+
+aicore
+问题解决
+
+# Please enter the commit message for your changes. Lines starting
+# with '#' will be ignored, and an empty message aborts the commit.
+#
+# Date:      Tue May 26 19:35:50 2026 +0800
+#
+# interactive rebase in progress; onto 1aa4e3877
+# Last commands done (41 commands done):
+#    squash 502e57f87 编译问题解决
+#    squash 3cf0d82de aicore 问题解决
+# No commands remaining.
+# You are currently rebasing branch 'static_tensor' on '1aa4e3877'.
+#
+# Changes to be committed:
+#	modified:   attention/common/op_kernel/arch35/vf/vf_mul_sel_softmaxflashv2_cast_nz.h
+#	modified:   attention/common/op_kernel/arch35/vf/vf_mul_sel_softmaxflashv2_cast_nz_dn.h
+#	modified:   attention/common/op_kernel/buffer.h
+#	modified:   attention/common/op_kernel/buffer_manager.h
+#	modified:   attention/common/op_kernel/buffer_mix_core.h
+#	modified:   attention/common/op_kernel/buffers_policy.h
+#	modified:   attention/common/op_kernel/matmul.h
+#	modified:   attention/common/op_kernel/memcopy/parser.h
+#	modified:   attention/flash_attn/op_host/arch35/flash_attn_tiling.cpp
+#	new file:   attention/flash_attn/op_kernel/arch35/fa_static_buffer.h
+#	new file:   attention/flash_attn/op_kernel/arch35/fa_static_init_output.h
+#	deleted:    attention/flash_attn/op_kernel/arch35/flash_attn_block_cube_noquant_gqa.h
+#	new file:   attention/flash_attn/op_kernel/arch35/flash_attn_block_cube_noquant_gqa_dn.h
+#	new file:   attention/flash_attn/op_kernel/arch35/flash_attn_block_cube_noquant_gqa_nd.h
+#	modified:   attention/flash_attn/op_kernel/arch35/flash_attn_block_vec_noquant_flashdecode.h
+#	deleted:    attention/flash_attn/op_kernel/arch35/flash_attn_block_vec_noquant_gqa.h
+#	new file:   attention/flash_attn/op_kernel/arch35/flash_attn_block_vec_noquant_gqa_dn.h
+#	new file:   attention/flash_attn/op_kernel/arch35/flash_attn_block_vec_noquant_gqa_nd.h
+#	deleted:    attention/flash_attn/op_kernel/arch35/flash_attn_entry_regbase.h
+#	renamed:    attention/flash_attn/op_kernel/arch35/flash_attn_kernel_noquant_gqa.h -> attention/flash_attn/op_kernel/arch35/flash_attn_kernel_noquant_gqa_dn.h
+#	new file:   attention/flash_attn/op_kernel/arch35/flash_attn_kernel_noquant_gqa_nd.h
+#	modified:   attention/flash_attn/op_kernel/arch35/flash_attn_template_tiling_key.h
+#	new file:   attention/flash_attn/op_kernel/arch35/init_output.h
+#	modified:   attention/flash_attn/op_kernel/flash_attn.cpp
+#	modified:   attention/flash_attn/op_kernel/utils/attenmask_gs1.h
+#	new file:   attention/flash_attn/op_kernel/utils/flash_attn_block_cube_noquant_gqa_comm.h
+#	modified:   attention/flash_attn/op_kernel/utils/flash_attn_common_def.h
+#
