@@ -191,7 +191,7 @@ __aicore__ inline void FANoQuantBlockVecInfer<TEMPLATE_ARGS>::InitCubeVecSharedP
     sharedParams.isRowInvalid = inputParamsRegbase.isRowInvalid;
     sharedParams.headNumRatio = inputParamsRegbase.headNumRatio;
     sharedParams.isGqa = inputParamsRegbase.isGqa;
-    sharedParams.isPfaGS1Merge = (inputParamsRegbase.isGqa && sharedParams.s1Size > 1);
+    sharedParams.isPfaGS1Merge = (inputParamsRegbase.isGqa && sharedParams.s1Size > 1); if constexpr (enableKVPrefix) { sharedParams.isPfaGS1Merge = false; }
     sharedParams.isKvContinuous = inputParamsRegbase.isKvContinuous;
     sharedParams.actualSeqLengthsSize = inputParamsRegbase.actualSeqLengthsSize;
     sharedParams.actualSeqLengthsKVSize = inputParamsRegbase.actualSeqLengthsKVSize;
