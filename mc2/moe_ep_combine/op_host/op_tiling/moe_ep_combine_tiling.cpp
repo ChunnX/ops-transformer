@@ -57,6 +57,7 @@ constexpr uint32_t SYSTEM_NEED_WORKSPACE = 16U * 1024U * 1024U;
 constexpr uint64_t MB_SIZE = 1024UL * 1024UL;
 constexpr uint64_t UB_ALIGN = 32UL;
 constexpr uint64_t COMM_ALIGN = 512UL;
+constexpr uint64_t MASK_ALIGN = 256UL;
 constexpr uint64_t MAX_OUT_DTYPE_SIZE = 2UL;
 constexpr uint64_t METADATA_DTYPE_SIZE = 4UL;
 constexpr int64_t H_MIN = 1;
@@ -272,6 +273,9 @@ static ge::graphStatus MoeEpCombineTilingFunc(gert::TilingContext *context)
     OP_TILING_CHECK(CheckWinSize(context, info, nodeName) != ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "Check window size failed."), return ge::GRAPH_FAILED);
 
+    auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
+    uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
+
     size_t *workSpaces = context->GetWorkspaceSizes(1);
     OP_TILING_CHECK(workSpaces == nullptr, OP_LOGE(nodeName, "workSpaces is nullptr."), return ge::GRAPH_FAILED);
     uint64_t perWinDataNeed = static_cast<uint64_t>(info.cfg.numMaxTokensPerRank) *
@@ -280,15 +284,17 @@ static ge::graphStatus MoeEpCombineTilingFunc(gert::TilingContext *context)
                                static_cast<uint64_t>(info.cfg.topK) * static_cast<uint64_t>(UB_ALIGN);
     info.localWsSizeDataPerRank = perWinDataNeed;
     info.localWsSizeStatusPerRank = perWinStateNeed;
+    uint64_t maskCalcWorkspaceSize = aivNum * (((static_cast<uint64_t>(info.cfg.numMaxTokensPerRank)
+                                    + aivNum - 1UL) / aivNum
+                                    * static_cast<uint64_t>(info.cfg.topK) * 2
+                                    + MASK_ALIGN - 1UL) / MASK_ALIGN * MASK_ALIGN);
     uint64_t stashBytes = static_cast<uint64_t>(info.cfg.epWorldSize) * (perWinDataNeed + perWinStateNeed);
-    workSpaces[0] = SYSTEM_NEED_WORKSPACE + stashBytes;
+    workSpaces[0] = SYSTEM_NEED_WORKSPACE + stashBytes + maskCalcWorkspaceSize;
 
     uint32_t tplHasTopkWeights = info.hasTopkWeights ? 1 : 0;
     uint64_t tilingKey = GET_TPL_TILING_KEY(tplHasTopkWeights, TILINGKEY_TPL_A5);
     context->SetTilingKey(tilingKey);
 
-    auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
-    uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
     uint64_t ubSize = 0UL;
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
     uint32_t blockDim = ascendcPlatform.CalcTschBlockDim(aivNum, 0, aivNum);
