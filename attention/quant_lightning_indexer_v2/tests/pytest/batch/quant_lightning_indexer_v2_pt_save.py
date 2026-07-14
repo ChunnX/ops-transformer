@@ -135,10 +135,11 @@ def main():
     parser = argparse.ArgumentParser(description='qliv2_pt_save.py 接收路径参数')
     parser.add_argument('path1', type=str, help='第一个路径')
     parser.add_argument('path2', type=str, help='第二个路径')
+    parser.add_argument('--sheet', '-S', type=str, default='Sheet1', help='Sheet 页名（默认: Sheet1）')
     args = parser.parse_args()
     path1 = args.path1
     path2 = args.path2
-    testcase =  load_excel_test_cases(path1, "Sheet1")
+    testcase =  load_excel_test_cases(path1, args.sheet)
     save_test_case(testcase, path2)
 
 if __name__ == "__main__":
