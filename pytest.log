@@ -1,0 +1,25 @@
+
+(fzx_py311) root@aa:/home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test# python3 -m pytest test_fia_fullquant_mxfp8_func_rdv.py -v -k "PA_BnNBsD_B1_QS0_KVS64_Nq1_Nkv1_D128_SP3" 
+=========================================================================== test session starts ===========================================================================
+platform linux -- Python 3.11.15, pytest-9.1.1, pluggy-1.6.0 -- /root/miniconda3/envs/fzx_py311/bin/python3
+cachedir: .pytest_cache
+rootdir: /home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test
+configfile: pytest.ini
+collected 151 items / 150 deselected / 1 selected                                                                                                                         
+
+test_fia_fullquant_mxfp8_func_rdv.py::test_fia_fullquant_mxfp8[PA_BnNBsD_B1_QS0_KVS64_Nq1_Nkv1_D128_SP3] PASSED                                                     [100%]
+
+============================================================================ warnings summary =============================================================================
+../../../../../../../../../../root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/torch/jit/_script.py:365: 14 warnings
+  /root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/torch/jit/_script.py:365: DeprecationWarning: `torch.jit.script_method` is deprecated. Please switch to `torch.compile` or `torch.export`.
+    warnings.warn(
+
+test_fia_fullquant_mxfp8_func_rdv.py::test_fia_fullquant_mxfp8[PA_BnNBsD_B1_QS0_KVS64_Nq1_Nkv1_D128_SP3]
+  /root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/torch_npu/dynamo/torchair/_acl_concrete_graph/acl_graph.py:1209: UserWarning: Cannot create tensor with interal format while allow_internel_format=False, tensor will be created with base format. (Triggered internally at ../torch_npu/csrc/aten/common/TensorFactories.cpp:348.)
+    args_list[input_idx] = torch.empty_like(args_list[input_idx], memory_format=torch.contiguous_format)
+
+test_fia_fullquant_mxfp8_func_rdv.py::test_fia_fullquant_mxfp8[PA_BnNBsD_B1_QS0_KVS64_Nq1_Nkv1_D128_SP3]
+  /root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/torch/_dynamo/eval_frame.py:1263: UserWarning: npu::npu_fused_infer_attention_score_v2.out (with implementation in ???): The output of this custom operator (1) must not also be an input to this custom operator and (2) may not alias any inputs to this custom operator or other returns. The most common way to trigger this error is if we have y = custom_op(x) and y and x are the same Tensor. Please instead return a clone of the offending output tensor(s) (e.g. return x.clone()) or refactor the custom operator to not return y. This is deprecated and will become an error in PyTorch 2.12.
+    return fn(*args, **kwargs)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
