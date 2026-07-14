@@ -22,18 +22,18 @@
 #include "../../../3rd/quant_batch_matmul_v3/op_kernel/arch35/quant_batch_matmul_v3_tiling_data.h"
 
 struct MatmulAlltoAllTilingInfo {
-    uint32_t rankDim;     // 卡数:kernel能通过hccl接口获取到就直接删除
-    uint32_t tileM;       // 头块大小
-    uint32_t tileCnt;     // 头块数量
-    uint32_t tailM;       // 尾块大小
-    uint32_t tailCnt;     // 尾块数量
-    uint32_t rankM;       // M轴大小
-    uint32_t rankN;       // N轴大小
-    uint32_t rankK;       // K轴大小
-    uint64_t mmResultLen; // 存储计算MM结果的地址大小
-    uint64_t permuteLen;  // 重排空间大小
-    uint32_t biasLen;     // bias地址大小
-    uint32_t aicCoreNum;  // 核数
+    uint32_t rankDim;      // 卡数:kernel能通过hccl接口获取到就直接删除
+    uint32_t tileM;        // 头块大小
+    uint32_t tileCnt;      // 头块数量
+    uint32_t tailM;        // 尾块大小
+    uint32_t tailCnt;      // 尾块数量
+    uint32_t rankM;        // M轴大小
+    uint32_t rankN;        // N轴大小
+    uint32_t rankK;        // K轴大小
+    uint64_t mmResultLen;  // 存储计算MM结果的地址大小
+    uint64_t permuteLen;   // 重排空间大小
+    uint32_t biasLen;      // bias地址大小
+    uint32_t aicCoreNum;   // 核数
     uint64_t hcclDataType; // hccl通信枚举值
 };
 
@@ -41,13 +41,13 @@ struct MatmulAlltoAllTilingData {
     Mc2InitTiling mc2InitTiling; // 初始化通信任务配置
     Mc2CcTiling mc2CcTiling;     // 具体每个通信任务的参数配置
     MatmulAlltoAllTilingInfo matmulAlltoAllTilingInfo;
-    Mc2MatMulV3TilingData mc2MmV3TileTilingData;  // 通算切分头块matmul tiling数据
-    Mc2MatMulV3TilingData mc2MmV3TailTilingData;  // 通算切分尾块matmul tiling数据
+    Mc2MatMulV3TilingData mc2MmV3TileTilingData; // 通算切分头块matmul tiling数据
+    Mc2MatMulV3TilingData mc2MmV3TailTilingData; // 通算切分尾块matmul tiling数据
 };
 
 struct QuantMatmulAlltoAllTilingData {
-    Mc2InitTiling mc2InitTiling; // 初始化通信任务配置
-    Mc2CcTiling mc2CcTiling;     // 具体每个通信任务的参数配置
+    Mc2InitTiling mc2InitTiling;                            // 初始化通信任务配置
+    Mc2CcTiling mc2CcTiling;                                // 具体每个通信任务的参数配置
     MatmulAlltoAllTilingInfo quantMatmulAlltoAllTilingInfo; // 传递给kernel的tiling info
     DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams mc2QuantBmmV3TileTilingData; // 通算切分头块matmul tiling数据
     DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams mc2QuantBmmV3TailTilingData; // 通算切分尾块matmul tiling数据

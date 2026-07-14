@@ -22,8 +22,10 @@ namespace ge {
  * @brief Fusion op of alltoall and matmul.
  * @par Inputs:
  * two inputs, including:
- * @li x1: A matrix Tensor. The type support bfloat16, float16, float8_e4m3fn, float8_e5m2, float4_e2m1. The format supports ND.
- * @li x2: A matrix Tensor. The type support bfloat16, float16, float8_e4m3fn, float8_e5m2, float4_e2m1. The format supports ND.
+ * @li x1: A matrix Tensor. The type support bfloat16, float16, float8_e4m3fn, float8_e5m2, float4_e2m1. The format
+ * supports ND.
+ * @li x2: A matrix Tensor. The type support bfloat16, float16, float8_e4m3fn, float8_e5m2, float4_e2m1. The format
+ * supports ND.
  * @li bias: A matrix Tensor. The type support bfloat16, float16, float. The format supports ND.
  * @li x1_scale: A matrix Tensor. The type support float, float8_e8m0. The format supports ND.
  * @li x2_scale: A matrix Tensor. The type support float, float8_e8m0. The format supports ND.
@@ -37,8 +39,10 @@ namespace ge {
  * @li world_size: An int.
  * @li all2all_axes: An ListInt. Indicate the data direction for All2All communication. Default: {-1, -2}.
  * @li y_dtype: An int. Declare the output dtype. Default: static_cast<int64_t>(ge::DT_UNDEFINED) 为28.
- * @li x1_quant_mode: An int. Quantization mode of x1, which support 0(non-quant), 3(pertoken-quant), 6(mx-quant). Default: 0.
- * @li x2_quant_mode: An int. Quantization mode of x2, which support 0(non-quant), 2(perchannel-quant), 6(mx-quant). Default: 0.
+ * @li x1_quant_mode: An int. Quantization mode of x1, which support 0(non-quant), 3(pertoken-quant), 6(mx-quant).
+ * Default: 0.
+ * @li x2_quant_mode: An int. Quantization mode of x2, which support 0(non-quant), 2(perchannel-quant), 6(mx-quant).
+ * Default: 0.
  * @li comm_quant_mode: An int. Quantitative types for communication. Default: 0.
  * @li comm_quant_dtype: An int. Communication accuracy. Default: static_cast<int64_t>(ge::DT_UNDEFINED) 为28.
  * @li transpose_x1: A bool. Whether x1 is transposed. Default: false.
