@@ -115,6 +115,7 @@ private:
     uint32_t isNAligned_ = 0;
     uint32_t isNNAligned_ = 0;
     uint32_t isDAligned_ = 0;
+    uint32_t isHRes_ = 0;
 
     const char *opName_ = "MhcPostBackward";
     ge::DataType dtype_ = ge::DT_UNDEFINED;
@@ -152,6 +153,10 @@ ge::graphStatus MhcPostBackwardTilingBaseArch35::GetShapeAttrsInfo()
 ge::graphStatus MhcPostBackwardTilingBaseArch35::CheckNullptr()
 {
     for (int64_t i = GRAD_OUTPUT_INPUT_INDEX; i <= H_POST_INPUT_INDEX; i++) {
+        if (i == H_RES_INPUT_INDEX && isHRes_ == 0) {
+            continue;
+        }
+
         auto desc = context_->GetInputDesc(i);
         if (desc == nullptr) {
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
@@ -208,6 +213,9 @@ ge::graphStatus MhcPostBackwardTilingBaseArch35::CheckShapeAllPositive(int64_t i
 ge::graphStatus MhcPostBackwardTilingBaseArch35::CheckShapeAllPositive()
 {
     for (int64_t i = GRAD_OUTPUT_INPUT_INDEX; i <= H_POST_INPUT_INDEX; i++) {
+        if (i == H_RES_INPUT_INDEX && isHRes_ == 0) {
+            continue;
+        }
         if (CheckShapeAllPositive(i) != ge::GRAPH_SUCCESS) {
             OP_LOGE(context_, "input %ld has non-positive shape", i);
             return ge::GRAPH_FAILED;
@@ -260,13 +268,15 @@ ge::graphStatus MhcPostBackwardTilingBaseArch35::CheckDataType()
         return ge::GRAPH_FAILED;
     }
 
-    auto hResType = context_->GetInputDesc(H_RES_INPUT_INDEX)->GetDataType();
-    if (hResType != ge::DT_FLOAT) {
-        std::string hResTypeStr = std::to_string(static_cast<int32_t>(hResType));
-        OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "dtype of h_res", hResTypeStr.c_str(), "[0(DT_FLOAT)]");
-        return ge::GRAPH_FAILED;
+    if (isHRes_) {
+        auto hResType = context_->GetInputDesc(H_RES_INPUT_INDEX)->GetDataType();
+        if (hResType != ge::DT_FLOAT) {
+            std::string hResTypeStr = std::to_string(static_cast<int32_t>(hResType));
+            OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "dtype of h_res", hResTypeStr.c_str(), "[0(DT_FLOAT)]");
+            return ge::GRAPH_FAILED;
+        }
     }
-
+    
     auto hPostType = context_->GetInputDesc(H_POST_INPUT_INDEX)->GetDataType();
     if (hPostType != ge::DT_FLOAT) {
         std::string hPostTypeStr = std::to_string(static_cast<int32_t>(hPostType));
@@ -370,23 +380,25 @@ ge::graphStatus MhcPostBackwardTilingBaseArch35::CheckShapeConsistency()
             return ge::GRAPH_FAILED;
         }
 
-        auto hResShapePtr = context_->GetInputShape(H_RES_INPUT_INDEX);
-        const gert::Shape *hResShape = &hResShapePtr->GetStorageShape();
-        if (hResShape->GetDimNum() != dimNum) {
-            OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "Dimension count of h_res",
-                                         std::to_string(hResShape->GetDimNum()).c_str(),
-                                         std::to_string(dimNum).c_str());
-            return ge::GRAPH_FAILED;
-        }
-        if (hResShape->GetDim(0) != B || hResShape->GetDim(1) != S || hResShape->GetDim(2) != n ||
-            hResShape->GetDim(3) != n) {
-            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
-                context_->GetNodeName(), "h_res, grad_output",
-                (std::to_string(hResShape->GetDim(0)) + "," + std::to_string(hResShape->GetDim(1)) + "," +
-                 std::to_string(hResShape->GetDim(2)) + "," + std::to_string(hResShape->GetDim(3)))
-                    .c_str(),
-                "h_res shape must be (B,S,n,n)");
-            return ge::GRAPH_FAILED;
+        if (isHRes_) {
+            auto hResShapePtr = context_->GetInputShape(H_RES_INPUT_INDEX);
+            const gert::Shape *hResShape = &hResShapePtr->GetStorageShape();
+            if (hResShape->GetDimNum() != dimNum) {
+                OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "Dimension count of h_res",
+                                            std::to_string(hResShape->GetDimNum()).c_str(),
+                                            std::to_string(dimNum).c_str());
+                return ge::GRAPH_FAILED;
+            }
+            if (hResShape->GetDim(0) != B || hResShape->GetDim(1) != S || hResShape->GetDim(2) != n ||
+                hResShape->GetDim(3) != n) {
+                OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
+                    context_->GetNodeName(), "h_res, grad_output",
+                    (std::to_string(hResShape->GetDim(0)) + "," + std::to_string(hResShape->GetDim(1)) + "," +
+                    std::to_string(hResShape->GetDim(2)) + "," + std::to_string(hResShape->GetDim(3)))
+                        .c_str(),
+                    "h_res shape must be (B,S,n,n)");
+                return ge::GRAPH_FAILED;
+            }
         }
 
         auto hOutShapePtr = context_->GetInputShape(H_OUT_INPUT_INDEX);
@@ -516,22 +528,24 @@ ge::graphStatus MhcPostBackwardTilingBaseArch35::CheckShapeConsistency()
             return ge::GRAPH_FAILED;
         }
 
-        auto hResShapePtr = context_->GetInputShape(H_RES_INPUT_INDEX);
-        const gert::Shape *hResShape = &hResShapePtr->GetStorageShape();
-        if (hResShape->GetDimNum() != dimNum) {
-            OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "Dimension count of h_res",
-                                         std::to_string(hResShape->GetDimNum()).c_str(),
-                                         std::to_string(dimNum).c_str());
-            return ge::GRAPH_FAILED;
-        }
-        if (hResShape->GetDim(0) != T || hResShape->GetDim(1) != n || hResShape->GetDim(2) != n) {
-            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context_->GetNodeName(), "h_res, grad_output",
-                                                   (std::to_string(hResShape->GetDim(0)) + "," +
-                                                    std::to_string(hResShape->GetDim(1)) + "," +
-                                                    std::to_string(hResShape->GetDim(2)))
-                                                       .c_str(),
-                                                   "h_res shape must be (T,n,n)");
-            return ge::GRAPH_FAILED;
+        if (isHRes_) {
+            auto hResShapePtr = context_->GetInputShape(H_RES_INPUT_INDEX);
+            const gert::Shape *hResShape = &hResShapePtr->GetStorageShape();
+            if (hResShape->GetDimNum() != dimNum) {
+                OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "Dimension count of h_res",
+                                            std::to_string(hResShape->GetDimNum()).c_str(),
+                                            std::to_string(dimNum).c_str());
+                return ge::GRAPH_FAILED;
+            }
+            if (hResShape->GetDim(0) != T || hResShape->GetDim(1) != n || hResShape->GetDim(2) != n) {
+                OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context_->GetNodeName(), "h_res, grad_output",
+                                                       (std::to_string(hResShape->GetDim(0)) + "," +
+                                                        std::to_string(hResShape->GetDim(1)) + "," +
+                                                        std::to_string(hResShape->GetDim(2)))
+                                                           .c_str(),
+                                                       "h_res shape must be (T,n,n)");
+                return ge::GRAPH_FAILED;
+            }
         }
 
         auto hOutShapePtr = context_->GetInputShape(H_OUT_INPUT_INDEX);
@@ -651,6 +665,11 @@ ge::graphStatus MhcPostBackwardTilingBaseArch35::CheckSpecConstraints()
 
 ge::graphStatus MhcPostBackwardTilingBaseArch35::CheckParam()
 {
+    auto desc = context_->GetInputDesc(H_RES_INPUT_INDEX);
+    if (desc != nullptr) {
+        isHRes_ = 1;
+    }
+
     if (CheckNullptr() != ge::GRAPH_SUCCESS) {
         OP_LOGE(context_, "CheckNullptr failed");
         return ge::GRAPH_FAILED;
@@ -803,7 +822,7 @@ ge::graphStatus MhcPostBackwardTilingBaseArch35::PostTiling()
 
 uint64_t MhcPostBackwardTilingBaseArch35::GetTilingKey() const
 {
-    return GET_TPL_TILING_KEY(1);
+    return GET_TPL_TILING_KEY(1, isHRes_);
 }
 
 void MhcPostBackwardTilingBaseArch35::Reset()
