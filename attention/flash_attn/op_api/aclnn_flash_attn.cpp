@@ -20,12 +20,22 @@
 #include "opdev/op_def.h"
 #include "opdev/op_log.h"
 #include "aclnn_flash_attn_inner.h"
+#include "opdev/tensor_view_utils.h"
 
 using namespace op;
 
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+aclnnStatus FlashAttnCheckTensorContiguous(const aclTensor *k, const aclTensor *v)
+{
+    if ((k != nullptr && !IsContiguous(k)) || (v != nullptr && !IsContiguous(v))) {
+        return ACLNN_ERR_INNER_TILING_ERROR;
+    }
+    return ACLNN_SUCCESS;
+}
+
 
 // 第一段接口：计算workspace大小
 aclnnStatus aclnnFlashAttnGetWorkspaceSize(
@@ -45,9 +55,15 @@ aclnnStatus aclnnFlashAttnGetWorkspaceSize(
     const aclTensor *placeHolder = nullptr;
     const aclTensor *tempTensor = nullptr;
 
+    aclnnStatus ret = FlashAttnCheckTensorContiguous(k, v);
+    if (ret != ACLNN_SUCCESS) {
+        OP_LOGE(ACLNN_ERR_INNER_TILING_ERROR, "flash attn do not support non-contiguous key/value");
+        return ret;
+    }
+
     FlashAttnProcessSoftmaxLse(returnSoftmaxLse, softmaxLseOptional, tempTensor, placeHolder);
 
-    aclnnStatus ret = aclnnInnerFlashAttnGetWorkspaceSize(
+    ret = aclnnInnerFlashAttnGetWorkspaceSize(
         q, k, v, blockTableOptional, cuSeqlensQOptional, cuSeqlensKvOptional, sequsedQOptional, sequsedKvOptional,
         sinksOptional, attnMaskOptional, metadataOptional, softmaxScale, maskMode, winLeft, winRight, maxSeqlenQ,
         maxSeqlenKV, layoutQ, layoutKv, layoutOut, returnSoftmaxLse, attnOut, placeHolder, workspaceSize,
