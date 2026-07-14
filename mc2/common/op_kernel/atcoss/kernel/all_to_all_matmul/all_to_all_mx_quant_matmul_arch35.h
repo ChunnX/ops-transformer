@@ -10,10 +10,15 @@
 
 /*!
  * \file all_to_all_mx_quant_matmul_arch35.h
- * \brief AlltoAll MX Quant Matmul without transpose stage.
+ * \brief AlltoAll MX Quant Matmul — simplified pipeline (arch35).
  *
- * A/ScaleA data read directly from CCU AlltoAll comm buffer by BlockMmad.
- * No AIV transpose stage — BlockMmad iterates per-rank in CopyAInL1/CopyScalesInL1.
+ * Pipeline design:
+ *   Process()
+ *     AIV: processScaleA_()  →  processA_()
+ *     AIC: computeLoop_()    →  setupComputeContext_(i) + BlazeMXQuantMatmul::Process(i)
+ *
+ * AIV side: pure communication, processScaleA_/processA_ independently replaceable.
+ * AIC side: pure computation, reuses BlazeMXQuantMatmul without modification.
  */
 
 #ifndef DISTA_ALL_TO_ALL_MX_QUANT_MATMUL_ARCH35_H
@@ -26,30 +31,6 @@ namespace Dista {
 namespace Kernel {
 
 __aicore__ inline uint64_t CeilDivU64(uint64_t a, uint64_t b) { return (a + b - 1) / b; }
-struct AlltoAllMxQuantTileContext {
-    uint32_t taskCnt;
-    GM_ADDR  sendBuffer;
-    GM_ADDR  recvBuffer;
-    uint64_t sendOffset;
-    uint64_t recvOffset;
-    uint64_t sendCount;
-    uint64_t strideCount;
-    uint64_t hcclDataType;
-
-    GM_ADDR  aGM;
-    GM_ADDR  bGM;
-    GM_ADDR  cGM;
-    uint64_t aOffset;
-    uint64_t bOffset;
-    uint64_t cOffset;
-    GM_ADDR  x1Scale;
-    GM_ADDR  x2Scale;
-    uint64_t x1ScaleOffset;
-    uint32_t computeRankDim;
-    uint32_t computeRankN;
-    uint32_t computeRankM;
-    uint32_t computeScaleKPerRank;
-};
 
 template <typename X1Type, typename X2Type, typename YType, typename CommDataTypeX1,
           typename AlltoAllMatmulTilingDataType, bool IsMxFp4>
@@ -64,13 +45,13 @@ private:
 
 public:
     __aicore__ inline AlltoAllMxQuantMatmulArch35(AlltoAllMatmulTilingDataType *tilingData,
-                                                    AscendC::TPipe *tPipe, uint64_t x1HcclDataType)
+                                                     AscendC::TPipe *tPipe, uint64_t x1HcclDataType)
         : commStage_(tilingData),
           computeStage_(), tilingData_(tilingData), tPipe_(tPipe),
           x1HcclDataType_(x1HcclDataType){};
 
     __aicore__ inline void Init(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias, GM_ADDR y, GM_ADDR all2all_out,
-                                GM_ADDR x1_scale, GM_ADDR x2_scale, GM_ADDR workspaceGM);
+                                 GM_ADDR x1_scale, GM_ADDR x2_scale, GM_ADDR workspaceGM);
     __aicore__ inline void Process();
 
 private:
@@ -78,7 +59,7 @@ private:
     ComputationType computeStage_;
     AlltoAllMatmulTilingDataType *tilingData_;
     AscendC::TPipe *tPipe_;
-    AlltoAllMxQuantTileContext tileCtx_;
+
     GM_ADDR x1_;
     GM_ADDR x2_;
     GM_ADDR y_;
@@ -88,6 +69,7 @@ private:
     GM_ADDR workspaceGM_;
     GM_ADDR commX1ScaleGM1_;
     GM_ADDR commOutGM_;
+
     uint64_t rankForComm_;
     uint32_t scaleKPerRank_;
     uint64_t mxScaleHcclDataType_ = AscendC::HCCL_DATA_TYPE_FP8E8M0;
@@ -97,19 +79,17 @@ private:
     static constexpr uint64_t NUM_TWO = 2UL;
     static constexpr uint64_t ALIGN_NUM = 512UL;
 
-    __aicore__ inline void ProcessTile(uint32_t taskCnt);
-    __aicore__ inline void ProcessTail(uint32_t taskCnt);
-    __aicore__ inline void ProcessScale();
-    __aicore__ inline void DispatchTileLoop();
-    __aicore__ inline void FillCommContext();
-    __aicore__ inline void FillComputeContext(typename ComputationType::TilingDataType *tilingDataPtr);
+    __aicore__ inline void processScaleA_();
+    __aicore__ inline void processA_();
+    __aicore__ inline void computeLoop_();
+    __aicore__ inline void setupComputeContext_(uint32_t loopIdx);
 };
 
 template <typename X1Type, typename X2Type, typename YType, typename CommDataTypeX1,
           typename AlltoAllMatmulTilingDataType, bool IsMxFp4>
 __aicore__ inline void
 AlltoAllMxQuantMatmulArch35<X1Type, X2Type, YType, CommDataTypeX1,
-                            AlltoAllMatmulTilingDataType, IsMxFp4>::Init(
+                             AlltoAllMatmulTilingDataType, IsMxFp4>::Init(
     GM_ADDR x1, GM_ADDR x2, GM_ADDR bias, GM_ADDR y, GM_ADDR all2all_out, GM_ADDR x1_scale, GM_ADDR x2_scale,
     GM_ADDR workspaceGM)
 {
@@ -145,88 +125,26 @@ template <typename X1Type, typename X2Type, typename YType, typename CommDataTyp
           typename AlltoAllMatmulTilingDataType, bool IsMxFp4>
 __aicore__ inline void
 AlltoAllMxQuantMatmulArch35<X1Type, X2Type, YType, CommDataTypeX1,
-                            AlltoAllMatmulTilingDataType, IsMxFp4>::FillCommContext()
-{
-    auto *ctx = commStage_.GetContextPtr();
-    ctx->taskCnt = tileCtx_.taskCnt;
-    ctx->sendBuffer = tileCtx_.sendBuffer;
-    ctx->recvBuffer = tileCtx_.recvBuffer;
-    ctx->sendOffset = tileCtx_.sendOffset;
-    ctx->recvOffset = tileCtx_.recvOffset;
-    ctx->sendCount = tileCtx_.sendCount;
-    ctx->strideCount = tileCtx_.strideCount;
-    ctx->hcclDataType = tileCtx_.hcclDataType;
-}
-
-template <typename X1Type, typename X2Type, typename YType, typename CommDataTypeX1,
-          typename AlltoAllMatmulTilingDataType, bool IsMxFp4>
-__aicore__ inline void
-AlltoAllMxQuantMatmulArch35<X1Type, X2Type, YType, CommDataTypeX1,
-                            AlltoAllMatmulTilingDataType, IsMxFp4>::FillComputeContext(
-    typename ComputationType::TilingDataType *tilingDataPtr)
-{
-    auto *ctx = computeStage_.GetContextPtr();
-    ctx->baseData.aGM = tileCtx_.aGM;
-    ctx->baseData.bGM = tileCtx_.bGM;
-    ctx->baseData.cGM = tileCtx_.cGM;
-    ctx->baseData.aOffset = tileCtx_.aOffset;
-    ctx->baseData.bOffset = tileCtx_.bOffset;
-    ctx->baseData.cOffset = tileCtx_.cOffset;
-    ctx->additionalData.x1Scale = tileCtx_.x1Scale;
-    ctx->additionalData.x1ScaleOffset = tileCtx_.x1ScaleOffset;
-    ctx->additionalData.x2Scale = tileCtx_.x2Scale;
-    ctx->additionalData.rankDim = tileCtx_.computeRankDim;
-    ctx->additionalData.rankN = tileCtx_.computeRankN;
-    ctx->additionalData.rankM = tileCtx_.computeRankM;
-    ctx->additionalData.scaleKPerRank = tileCtx_.computeScaleKPerRank;
-    ctx->tilingDataPtr = tilingDataPtr;
-}
-
-template <typename X1Type, typename X2Type, typename YType, typename CommDataTypeX1,
-          typename AlltoAllMatmulTilingDataType, bool IsMxFp4>
-__aicore__ inline void
-AlltoAllMxQuantMatmulArch35<X1Type, X2Type, YType, CommDataTypeX1,
-                            AlltoAllMatmulTilingDataType, IsMxFp4>::DispatchTileLoop()
-{
-    commStage_.PrepareAll(tileCtx_.taskCnt);
-    for (uint32_t index = 0; index < tileCtx_.taskCnt; index++) {
-        if ASCEND_IS_AIV {
-            commStage_.Process(index);
-            AscendC::CrossCoreSetFlag<0, PIPE_MTE3>(8);
-            AscendC::CrossCoreWaitFlag(8);
-            AscendC::CrossCoreSetFlag<2, PIPE_MTE3>(9);
-        }
-        if ASCEND_IS_AIC {
-            AscendC::CrossCoreWaitFlag(9);
-            computeStage_.Process(index);
-        }
-    }
-}
-
-template <typename X1Type, typename X2Type, typename YType, typename CommDataTypeX1,
-          typename AlltoAllMatmulTilingDataType, bool IsMxFp4>
-__aicore__ inline void
-AlltoAllMxQuantMatmulArch35<X1Type, X2Type, YType, CommDataTypeX1,
-                            AlltoAllMatmulTilingDataType, IsMxFp4>::Process()
+                             AlltoAllMatmulTilingDataType, IsMxFp4>::Process()
 {
     if (tilingData_ == nullptr) {
         return;
     }
-
     auto &&mc2Tiling_ = tilingData_->alltoAllQuantMatmulTilingInfo;
-
     if (mc2Tiling_.rankDim == 0) {
         return;
     }
-
-    ProcessScale();
-
-    if (mc2Tiling_.tileCnt > 0) {
-        ProcessTile(mc2Tiling_.tileCnt);
+    if (mc2Tiling_.tileCnt == 0 && mc2Tiling_.tailCnt == 0) {
+        return;
     }
 
-    if (mc2Tiling_.tailCnt > 0) {
-        ProcessTail(mc2Tiling_.tailCnt);
+    if ASCEND_IS_AIV {
+        processScaleA_();
+        processA_();
+    }
+
+    if ASCEND_IS_AIC {
+        computeLoop_();
     }
 
     commStage_.End();
@@ -237,23 +155,68 @@ template <typename X1Type, typename X2Type, typename YType, typename CommDataTyp
           typename AlltoAllMatmulTilingDataType, bool IsMxFp4>
 __aicore__ inline void
 AlltoAllMxQuantMatmulArch35<X1Type, X2Type, YType, CommDataTypeX1,
-                            AlltoAllMatmulTilingDataType, IsMxFp4>::ProcessScale()
+                             AlltoAllMatmulTilingDataType, IsMxFp4>::processScaleA_()
 {
     auto &&mc2Tiling_ = tilingData_->alltoAllQuantMatmulTilingInfo;
-
     uint64_t rankKdivByGroupSize = CeilDivU64(mc2Tiling_.rankK / mc2Tiling_.rankDim, MXFP_GROUP_SIZE) * NUM_TWO;
 
-    auto *commCtx = commStage_.GetContextPtr();
-    commCtx->taskCnt = 1;
-    commCtx->sendBuffer = x1Scale_;
-    commCtx->recvBuffer = commX1ScaleGM1_;
-    commCtx->sendCount = static_cast<uint64_t>(mc2Tiling_.rankM) * rankKdivByGroupSize;
-    commCtx->strideCount = commCtx->sendCount;
-    commCtx->hcclDataType = mxScaleHcclDataType_;
+    auto *ctx = commStage_.GetContextPtr();
+    ctx->taskCnt = 1;
+    ctx->sendBuffer = x1Scale_;
+    ctx->recvBuffer = commX1ScaleGM1_;
+    ctx->sendCount = static_cast<uint64_t>(mc2Tiling_.rankM) * rankKdivByGroupSize;
+    ctx->strideCount = ctx->sendCount;
+    ctx->hcclDataType = mxScaleHcclDataType_;
 
-    if ASCEND_IS_AIV {
-        commStage_.PrepareAll(1);
-        commStage_.Process(0);
+    commStage_.PrepareAll(1);
+    commStage_.Process(0);
+}
+
+template <typename X1Type, typename X2Type, typename YType, typename CommDataTypeX1,
+          typename AlltoAllMatmulTilingDataType, bool IsMxFp4>
+__aicore__ inline void
+AlltoAllMxQuantMatmulArch35<X1Type, X2Type, YType, CommDataTypeX1,
+                             AlltoAllMatmulTilingDataType, IsMxFp4>::processA_()
+{
+    auto &&mc2Tiling_ = tilingData_->alltoAllQuantMatmulTilingInfo;
+    uint64_t strideVal = static_cast<uint64_t>(mc2Tiling_.rankM) * rankForComm_;
+
+    auto *ctx = commStage_.GetContextPtr();
+    ctx->sendBuffer = x1_;
+    ctx->recvBuffer = commOutGM_;
+    ctx->strideCount = strideVal;
+    ctx->hcclDataType = x1HcclDataType_;
+
+    if (mc2Tiling_.tileCnt > 0) {
+        uint64_t tileMMultiRankK = static_cast<uint64_t>(mc2Tiling_.tileM) * rankForComm_;
+        ctx->taskCnt = mc2Tiling_.tileCnt;
+        ctx->sendOffset = tileMMultiRankK * sizeof(X1Type);
+        ctx->recvOffset = ctx->sendOffset;
+        ctx->sendCount = tileMMultiRankK;
+
+        commStage_.PrepareAll(mc2Tiling_.tileCnt);
+        for (uint32_t i = 0; i < mc2Tiling_.tileCnt; ++i) {
+            commStage_.Process(i);
+            AscendC::CrossCoreSetFlag<2, PIPE_MTE3>(i);
+        }
+    }
+
+    if (mc2Tiling_.tailCnt > 0) {
+        uint64_t tilePhaseSize = static_cast<uint64_t>(mc2Tiling_.tileCnt) * mc2Tiling_.tileM * rankForComm_ * sizeof(X1Type);
+        uint64_t tailMMultiRankK = static_cast<uint64_t>(mc2Tiling_.tailM) * rankForComm_;
+        ctx->taskCnt = mc2Tiling_.tailCnt;
+        ctx->sendBuffer = x1_ + tilePhaseSize;
+        ctx->recvBuffer = commOutGM_ + tilePhaseSize;
+        ctx->sendOffset = tailMMultiRankK * sizeof(X1Type);
+        ctx->recvOffset = ctx->sendOffset;
+        ctx->sendCount = tailMMultiRankK;
+
+        commStage_.PrepareAll(mc2Tiling_.tailCnt);
+        for (uint32_t i = 0; i < mc2Tiling_.tailCnt; ++i) {
+            uint32_t flagId = mc2Tiling_.tileCnt + i;
+            commStage_.Process(i);
+            AscendC::CrossCoreSetFlag<2, PIPE_MTE3>(flagId);
+        }
     }
 }
 
@@ -261,77 +224,53 @@ template <typename X1Type, typename X2Type, typename YType, typename CommDataTyp
           typename AlltoAllMatmulTilingDataType, bool IsMxFp4>
 __aicore__ inline void
 AlltoAllMxQuantMatmulArch35<X1Type, X2Type, YType, CommDataTypeX1,
-                            AlltoAllMatmulTilingDataType, IsMxFp4>::ProcessTile(uint32_t taskCnt)
+                             AlltoAllMatmulTilingDataType, IsMxFp4>::computeLoop_()
 {
     auto &&mc2Tiling_ = tilingData_->alltoAllQuantMatmulTilingInfo;
-    uint64_t tileMMultiRankK = static_cast<uint64_t>(mc2Tiling_.tileM) * rankForComm_;
+    uint32_t totalTileCnt = mc2Tiling_.tileCnt + mc2Tiling_.tailCnt;
 
-    tileCtx_.taskCnt = mc2Tiling_.tileCnt;
-    tileCtx_.sendBuffer = x1_;
-    tileCtx_.recvBuffer = commOutGM_;
-    tileCtx_.sendOffset = tileMMultiRankK * sizeof(DTYPE_X1);
-    tileCtx_.recvOffset = tileCtx_.sendOffset;
-    tileCtx_.sendCount = tileMMultiRankK;
-    tileCtx_.strideCount = static_cast<uint64_t>(mc2Tiling_.rankM) * rankForComm_;
-    tileCtx_.hcclDataType = x1HcclDataType_;
-
-    tileCtx_.aGM = commOutGM_;
-    tileCtx_.bGM = x2_;
-    tileCtx_.cGM = y_;
-    tileCtx_.aOffset = tileMMultiRankK * sizeof(DTYPE_X1);
-    tileCtx_.bOffset = 0UL;
-    tileCtx_.cOffset = static_cast<uint64_t>(mc2Tiling_.tileM * mc2Tiling_.rankN * sizeof(DTYPE_Y));
-    tileCtx_.x1Scale = commX1ScaleGM1_;
-    tileCtx_.x1ScaleOffset = static_cast<uint64_t>(mc2Tiling_.tileM) *
-        static_cast<uint64_t>(scaleKPerRank_) * sizeof(AscendC::fp8_e8m0_t);
-    tileCtx_.x2Scale = x2Scale_;
-    tileCtx_.computeRankDim = mc2Tiling_.rankDim;
-    tileCtx_.computeRankN = mc2Tiling_.rankN;
-    tileCtx_.computeRankM = mc2Tiling_.rankM;
-    tileCtx_.computeScaleKPerRank = scaleKPerRank_;
-
-    FillCommContext();
-    FillComputeContext(&(tilingData_->blazeMmTileTilingData));
-    DispatchTileLoop();
+    for (uint32_t i = 0; i < totalTileCnt; ++i) {
+        AscendC::CrossCoreWaitFlag(i);
+        setupComputeContext_(i);
+        uint32_t localIdx = (i < mc2Tiling_.tileCnt) ? i : (i - mc2Tiling_.tileCnt);
+        computeStage_.Process(localIdx);
+    }
 }
 
 template <typename X1Type, typename X2Type, typename YType, typename CommDataTypeX1,
           typename AlltoAllMatmulTilingDataType, bool IsMxFp4>
 __aicore__ inline void
 AlltoAllMxQuantMatmulArch35<X1Type, X2Type, YType, CommDataTypeX1,
-                            AlltoAllMatmulTilingDataType, IsMxFp4>::ProcessTail(uint32_t taskCnt)
+                             AlltoAllMatmulTilingDataType, IsMxFp4>::setupComputeContext_(uint32_t loopIdx)
 {
     auto &&mc2Tiling_ = tilingData_->alltoAllQuantMatmulTilingInfo;
-    uint64_t tailMMultiRankK = static_cast<uint64_t>(mc2Tiling_.tailM) * rankForComm_;
-    uint64_t tileCntMultitileMMultiRankK =
-        static_cast<uint64_t>(mc2Tiling_.tileCnt) * static_cast<uint64_t>(mc2Tiling_.tileM) * rankForComm_;
+    bool isHead = (loopIdx < mc2Tiling_.tileCnt);
+    uint32_t curM = isHead ? mc2Tiling_.tileM : mc2Tiling_.tailM;
 
-    tileCtx_.taskCnt = mc2Tiling_.tailCnt;
-    tileCtx_.sendBuffer = x1_ + tileCntMultitileMMultiRankK * sizeof(DTYPE_X1);
-    tileCtx_.recvBuffer = commOutGM_ + tileCntMultitileMMultiRankK * sizeof(DTYPE_X1);
-    tileCtx_.sendOffset = tailMMultiRankK * sizeof(DTYPE_X1);
-    tileCtx_.recvOffset = tileCtx_.sendOffset;
-    tileCtx_.sendCount = tailMMultiRankK;
-    tileCtx_.strideCount = static_cast<uint64_t>(mc2Tiling_.rankM) * rankForComm_;
-    tileCtx_.hcclDataType = x1HcclDataType_;
+    uint64_t headRows = static_cast<uint64_t>(mc2Tiling_.tileCnt) * mc2Tiling_.tileM;
 
-    tileCtx_.aGM = commOutGM_ + tileCntMultitileMMultiRankK * sizeof(DTYPE_X1);
-    tileCtx_.bGM = x2_;
-    tileCtx_.cGM = y_ + static_cast<uint64_t>(mc2Tiling_.tileCnt) * mc2Tiling_.tileM * mc2Tiling_.rankN * sizeof(DTYPE_Y);
-    tileCtx_.aOffset = tailMMultiRankK * sizeof(DTYPE_X1);
-    tileCtx_.bOffset = 0UL;
-    tileCtx_.cOffset = static_cast<uint64_t>(mc2Tiling_.tailM) * mc2Tiling_.rankN * sizeof(DTYPE_Y);
-    tileCtx_.x1Scale = commX1ScaleGM1_ + mc2Tiling_.tileCnt * mc2Tiling_.tileM * scaleKPerRank_ * sizeof(AscendC::fp8_e8m0_t);
-    tileCtx_.x1ScaleOffset = static_cast<uint64_t>(mc2Tiling_.tailM) * scaleKPerRank_ * sizeof(AscendC::fp8_e8m0_t);
-    tileCtx_.x2Scale = x2Scale_;
-    tileCtx_.computeRankDim = mc2Tiling_.rankDim;
-    tileCtx_.computeRankN = mc2Tiling_.rankN;
-    tileCtx_.computeRankM = mc2Tiling_.rankM;
-    tileCtx_.computeScaleKPerRank = scaleKPerRank_;
-
-    FillCommContext();
-    FillComputeContext(&(tilingData_->blazeMmTailTilingData));
-    DispatchTileLoop();
+    auto *ctx = computeStage_.GetContextPtr();
+    if (isHead) {
+        ctx->baseData.aGM = commOutGM_;
+        ctx->baseData.cGM = y_;
+        ctx->additionalData.x1Scale = commX1ScaleGM1_;
+    } else {
+        ctx->baseData.aGM = commOutGM_ + headRows * rankForComm_ * sizeof(X1Type);
+        ctx->baseData.cGM = y_ + headRows * mc2Tiling_.rankN * sizeof(YType);
+        ctx->additionalData.x1Scale =
+            commX1ScaleGM1_ + headRows * scaleKPerRank_ * sizeof(AscendC::fp8_e8m0_t);
+    }
+    ctx->baseData.bGM = x2_;
+    ctx->baseData.aOffset = static_cast<uint64_t>(curM) * rankForComm_ * sizeof(X1Type);
+    ctx->baseData.bOffset = 0UL;
+    ctx->baseData.cOffset = static_cast<uint64_t>(curM) * mc2Tiling_.rankN * sizeof(YType);
+    ctx->additionalData.x1ScaleOffset = static_cast<uint64_t>(curM) * scaleKPerRank_ * sizeof(AscendC::fp8_e8m0_t);
+    ctx->additionalData.x2Scale = x2Scale_;
+    ctx->additionalData.rankDim = mc2Tiling_.rankDim;
+    ctx->additionalData.rankN = mc2Tiling_.rankN;
+    ctx->additionalData.rankM = mc2Tiling_.rankM;
+    ctx->additionalData.scaleKPerRank = scaleKPerRank_;
+    ctx->tilingDataPtr = isHead ? &(tilingData_->blazeMmTileTilingData) : &(tilingData_->blazeMmTailTilingData);
 }
 
 } // namespace Kernel
