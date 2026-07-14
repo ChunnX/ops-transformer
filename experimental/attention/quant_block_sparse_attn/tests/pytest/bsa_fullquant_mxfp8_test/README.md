@@ -44,6 +44,8 @@ python experimental/attention/quant_block_sparse_attn/tests/pytest/bsa_fullquant
 - `npu`：调用 NPU 算子
 - `compare`：比较 CPU/NPU 输出
 
+每个 case 开始时会打印 `CASE START [idx/total]` 标志；一次运行多个 case 时，脚本末尾会输出 `QBSA MXFP8 CASE SUMMARY` 汇总表。
+
 ## 指定单个 Case
 
 通过 `--case_name` 指定 case 名称：
