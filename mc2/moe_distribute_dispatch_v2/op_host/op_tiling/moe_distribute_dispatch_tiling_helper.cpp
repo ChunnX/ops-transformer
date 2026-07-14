@@ -145,8 +145,6 @@ inline bool MoeDistributeDispatchTilingHelper::CheckEpTpRecvTensorDim(
     OP_TILING_CHECK(epRecvCountStorageShape->GetStorageShape().GetDimNum() != ONE_DIM,
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(nodeName, "epRecvCountShape", std::to_string(epRecvCountStorageShape->GetStorageShape().GetDimNum()).c_str(), "The shape dim of epRecvCountShape must be 1D."), return false);
     OP_LOGD(nodeName, "epRecvCount dim0 = %ld", epRecvCountStorageShape->GetStorageShape().GetDim(0));
-
-
     return true;
 }
 
