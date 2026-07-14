@@ -86,25 +86,6 @@ bool KvRmsNormRopeCacheRegbaseRecomputeTiling::CheckNzHalfDkAligned()
     return true;
 }
 
-// index 的取值语义：Norm 下是 batch 内的行号(< Scache)，PA 系下是全局槽位号(< BlockNum * BlockSize)。
-// Kernel 只能拿到 tiling 下发的上界，故这里算好下发，避免 kernel 用越界的 index 写 cache。
-bool KvRmsNormRopeCacheRegbaseRecomputeTiling::GetCacheRowLimit(int64_t& cacheRowLimit)
-{
-    if (currentCacheMode_ == CacheMode::Norm) {
-        cacheRowLimit = cacheLength_;
-        return true;
-    }
-    const gert::StorageShape* kCacheShapePtr = context_->GetInputShape(K_CACHE_INDEX);
-    OP_CHECK_NULL_WITH_CONTEXT(context_, kCacheShapePtr);
-    int64_t blockNum = kCacheShapePtr->GetStorageShape().GetDim(SHAPE_IDX_B);
-    OP_CHECK_IF(
-        blockNum <= 0 || blockSize_ <= 0,
-        OP_LOGE(context_->GetNodeName(), "invalid BlockNum(%ld) or BlockSize(%ld) of k_cache.", blockNum, blockSize_),
-        return false);
-    cacheRowLimit = blockNum * blockSize_;
-    return true;
-}
-
 bool KvRmsNormRopeCacheRegbaseRecomputeTiling::CheckScaleOffsetShape(
     const gert::StorageShape* inShape, int64_t lastDim, int64_t& brcFlag)
 {

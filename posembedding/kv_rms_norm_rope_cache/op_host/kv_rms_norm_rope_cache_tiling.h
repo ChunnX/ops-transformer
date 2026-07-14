@@ -104,6 +104,7 @@ TILING_DATA_FIELD_DEF(int64_t, ubFactor);
 TILING_DATA_FIELD_DEF(int64_t, inUbSize);
 TILING_DATA_FIELD_DEF(int64_t, outUbSize);
 TILING_DATA_FIELD_DEF(int64_t, rmsNormWspSize);
+TILING_DATA_FIELD_DEF(int64_t, cacheRowLimit);  // index 取值上界：Norm 为 Scache，PA 系为 BlockNum * BlockSize
 TILING_DATA_FIELD_DEF(float, epsilon);
 TILING_DATA_FIELD_DEF(float, reciprocal);
 END_TILING_DATA_DEF;
@@ -236,6 +237,10 @@ public:
 
     ge::DataType kvDtype_{ge::DataType::DT_FLOAT};
     int64_t kvDtypeSize_{0};
+    int64_t cacheRowLimit_ = 0;
+
+    // index 取值上界，FullLoad 与 Recompute 共用，避免两个模板对同一份 index 输入的防御口径分叉
+    bool GetCacheRowLimit(int64_t& cacheRowLimit);
 
 protected:
     bool IsCapable() override
@@ -352,11 +357,9 @@ public:
     int64_t kOffsetType_ = 0;
     int64_t vScaleType_ = 0;
     int64_t vOffsetType_ = 0;
-    int64_t cacheRowLimit_ = 0;
 
     int64_t GetCacheBlockElemNum(const ge::DataType cacheDtype) const;
     bool CheckNzHalfDkAligned();
-    bool GetCacheRowLimit(int64_t& cacheRowLimit);
 
 protected:
     bool IsCapable() override;
