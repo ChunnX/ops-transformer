@@ -27,18 +27,18 @@
 #include "aclnn/opdev/fp16_t.h"
 #include "../op_host/op_api/aclnn_all_gather_add.h"
 
-#define CHECK_RET(cond, return_expr) \
-    do {                             \
-        if (!(cond)) {               \
-            LOG_PRINT("Example failed.\n"); \
-            return_expr;             \
-        }                            \
+#define CHECK_RET(cond, return_expr)                                                                                   \
+    do {                                                                                                               \
+        if (!(cond)) {                                                                                                 \
+            LOG_PRINT("Example failed.\n");                                                                            \
+            return_expr;                                                                                               \
+        }                                                                                                              \
     } while (0)
 
-#define LOG_PRINT(message, ...)         \
-    do {                                \
-        printf(message, ##__VA_ARGS__); \
-    } while(0)
+#define LOG_PRINT(message, ...)                                                                                        \
+    do {                                                                                                               \
+        printf(message, ##__VA_ARGS__);                                                                                \
+    } while (0)
 
 constexpr int RANK_DIM = 2;
 typedef struct {
@@ -68,9 +68,9 @@ const std::vector<int64_t> bShape = {240 * RANK_DIM, 256};
 const long long aShapeSize = GetShapeSize(aShape);
 const long long bShapeSize = GetShapeSize(bShape);
 
-template<typename T>
+template <typename T>
 int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &shape, void **deviceAddr,
-    aclDataType dataType, aclTensor **tensor)
+                    aclDataType dataType, aclTensor **tensor)
 {
     auto size = GetShapeSize(shape) * sizeof(T);
     auto ret = aclrtMalloc(deviceAddr, size, ACL_MEM_MALLOC_HUGE_FIRST);
@@ -113,7 +113,7 @@ struct Args {
     int rankId;
     HcclComm hcclComm;
     aclrtStream stream;
-  };
+};
 
 int LaunchOneThreadAllGatherAdd(Args &args, const TestData &testData)
 {
@@ -159,19 +159,17 @@ int LaunchOneThreadAllGatherAdd(Args &args, const TestData &testData)
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclTensor(outHostData, bShape, &outDeviceAddr, aclDataType::ACL_FLOAT16, &out);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
-    ret = CreateAclTensor(gatherOutHostData, bShape, &gatherOutDeviceAddr,
-        aclDataType::ACL_FLOAT16, &gatherOut);
+    ret = CreateAclTensor(gatherOutHostData, bShape, &gatherOutDeviceAddr, aclDataType::ACL_FLOAT16, &gatherOut);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
 
     // 调用第一阶段接口
-    ret = aclnnAllGatherAddGetWorkspaceSize(
-        a, b, hcomName, RANK_DIM, out, gatherOut, &workspaceSize, &executor);
-    CHECK_RET(ret == ACL_SUCCESS,
-        LOG_PRINT("[ERROR] aclnnAllGatherAddGetWorkspaceSize failed. ret = %d \n", ret); return ret);
+    ret = aclnnAllGatherAddGetWorkspaceSize(a, b, hcomName, RANK_DIM, out, gatherOut, &workspaceSize, &executor);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclnnAllGatherAddGetWorkspaceSize failed. ret = %d \n", ret);
+              return ret);
     // 根据第一阶段接口计算出的workspaceSize申请device内存
     if (workspaceSize > 0) {
         ret = aclrtMalloc(&workspaceAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
-        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtMalloc workspace failed. ret = %d \n", ret);  return ret);
+        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtMalloc workspace failed. ret = %d \n", ret); return ret);
     }
     // 调用第二阶段接口
     ret = aclnnAllGatherAdd(workspaceAddr, workspaceSize, executor, args.stream);
@@ -179,7 +177,7 @@ int LaunchOneThreadAllGatherAdd(Args &args, const TestData &testData)
     // 同步等待任务执行结束
     ret = aclrtSynchronizeStreamWithTimeout(args.stream, 10000);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtSynchronizeStreamWithTimeout failed. ret = %d \n", ret);
-        return ret);
+              return ret);
     LOG_PRINT("[INFO] device_%d aclnnAllGatherAdd execute successfully.\n", args.rankId);
 
     // 算子计算结果与golden数据进行对比
@@ -247,7 +245,7 @@ int RandomVectorGenerator(std::vector<op::fp16_t> &vec, long long size)
     unsigned seed = static_cast<unsigned>(std::chrono::system_clock::now().time_since_epoch().count());
     std::mt19937 generator(seed);
     std::uniform_real_distribution<float> distribution(-5.0f, 5.0f);
-    for (auto& elem : vec) {
+    for (auto &elem : vec) {
         elem = static_cast<op::fp16_t>(distribution(generator));
     }
     return 0;
@@ -278,21 +276,25 @@ int GenerateTestData(TestData &testData)
 {
     // 随机生成输入
     int ret = RandomVectorGenerator(testData.rank0_a, testData.rank0_a.size());
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] RandomVectorGenerate rank0_a failed. ret = %d \n", ret);  return ret);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] RandomVectorGenerate rank0_a failed. ret = %d \n", ret);
+              return ret);
     ret = RandomVectorGenerator(testData.rank0_b, testData.rank0_b.size());
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] RandomVectorGenerate rank0_b failed. ret = %d \n", ret);  return ret);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] RandomVectorGenerate rank0_b failed. ret = %d \n", ret);
+              return ret);
     ret = RandomVectorGenerator(testData.rank1_a, testData.rank1_a.size());
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] RandomVectorGenerate rank1_a failed. ret = %d \n", ret);  return ret);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] RandomVectorGenerate rank1_a failed. ret = %d \n", ret);
+              return ret);
     ret = RandomVectorGenerator(testData.rank1_b, testData.rank1_b.size());
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] RandomVectorGenerate rank1_b failed. ret = %d \n", ret);  return ret);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] RandomVectorGenerate rank1_b failed. ret = %d \n", ret);
+              return ret);
 
     // 计算golden数据
     ret = GatherVectors(testData.rank0_a, testData.rank1_a, testData.gatherOut);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] Generate gatherOut failed. ret = %d \n", ret);  return ret);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] Generate gatherOut failed. ret = %d \n", ret); return ret);
     ret = AddVectors(testData.gatherOut, testData.rank0_b, testData.rank0_c);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] Generate rank0 output failed. ret = %d \n", ret);  return ret);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] Generate rank0 output failed. ret = %d \n", ret); return ret);
     ret = AddVectors(testData.gatherOut, testData.rank1_b, testData.rank1_c);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] Generate rank1 output failed. ret = %d \n", ret);  return ret);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] Generate rank1 output failed. ret = %d \n", ret); return ret);
 
     return 0;
 }
@@ -308,10 +310,10 @@ int main(int argc, char *argv[])
 
         std::vector<op::fp16_t>(bShapeSize, 0.0f), // gatherOut
         std::vector<op::fp16_t>(bShapeSize, 0.0f), // rank0_c
-        std::vector<op::fp16_t>(bShapeSize, 0.0f) // rank1_c
+        std::vector<op::fp16_t>(bShapeSize, 0.0f)  // rank1_c
     };
     int ret = GenerateTestData(testData);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] GenerateTestData failed. ret = %d \n", ret);  return ret);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] GenerateTestData failed. ret = %d \n", ret); return ret);
 
     // AscendCL初始化
     ret = aclInit(nullptr);
@@ -339,12 +341,12 @@ int main(int argc, char *argv[])
         args[rankId].rankId = rankId;
         args[rankId].hcclComm = comms[rankId];
         args[rankId].stream = stream[rankId];
-        futures.push_back(std::async(std::launch::async, &LaunchOneThreadAllGatherAdd,
-                                      std::ref(args[rankId]), std::ref(testData)));
+        futures.push_back(
+            std::async(std::launch::async, &LaunchOneThreadAllGatherAdd, std::ref(args[rankId]), std::ref(testData)));
     }
 
     int finalRet = 0;
-    for (auto& future : futures) {
+    for (auto &future : futures) {
         int ret = future.get();
         if (ret != 0) {
             finalRet = ret;
