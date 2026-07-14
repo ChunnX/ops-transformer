@@ -467,6 +467,54 @@ aclnnStatus ReshapeTensorListToViewShape(const aclTensorList *&tensorList, const
     return ACLNN_SUCCESS;
 }
 
+aclnnStatus NormalizeFAICacheTensorList(const aclTensorList *&tensorList, const char *name, aclOpExecutor *executor)
+{
+    if (tensorList == nullptr) {
+        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "%s tensorList is nullptr.", name);
+        return ACLNN_ERR_PARAM_NULLPTR;
+    }
+
+    std::vector<const aclTensor *> tensors;
+    tensors.reserve(tensorList->Size());
+    for (uint64_t i = 0; i < tensorList->Size(); ++i) {
+        auto tensor = (*tensorList)[i];
+        if (tensor == nullptr) {
+            tensors.emplace_back(nullptr);
+            continue;
+        }
+
+        const aclTensor *normalizedTensor = nullptr;
+        std::string itemName = std::string(name) + "[" + std::to_string(i) + "]";
+        if (IsContiguous(tensor)) {
+            normalizedTensor = l0op::Contiguous(tensor, executor);
+            if (normalizedTensor == nullptr) {
+                OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "Try normalize contiguous %s failed.", itemName.c_str());
+                return ACLNN_ERR_INNER_NULLPTR;
+            }
+            CHECK_RET(ReshapeTensorToViewShape(normalizedTensor, itemName.c_str(), executor) == ACLNN_SUCCESS,
+                      ACLNN_ERR_INNER_NULLPTR);
+        } else {
+            normalizedTensor = executor->CreateView(tensor, tensor->GetViewShape(), tensor->GetStorageShape(),
+                                                    tensor->GetViewStrides(), tensor->GetViewOffset());
+            if (normalizedTensor == nullptr) {
+                OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "Try create view for %s failed.", itemName.c_str());
+                return ACLNN_ERR_INNER_NULLPTR;
+            }
+        }
+        std::string normalizedName = itemName + ".normalized";
+        LogTensorDebugInfo(normalizedName.c_str(), normalizedTensor);
+        tensors.emplace_back(normalizedTensor);
+    }
+
+    auto normalizedList = executor->AllocTensorList(tensors.data(), tensors.size());
+    if (normalizedList == nullptr) {
+        OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "Try alloc normalized %s tensorList failed.", name);
+        return ACLNN_ERR_INNER_NULLPTR;
+    }
+    tensorList = normalizedList;
+    return ACLNN_SUCCESS;
+}
+
 aclnnStatus ProcessKVForL0Input(const aclTensorList *&key, const aclTensorList *&value,
                                 const aclTensor *blockTableOptional, bool isFAIRoutingCandidate,
                                 aclOpExecutor *executor)
@@ -497,6 +545,8 @@ aclnnStatus ProcessKVForL0Input(const aclTensorList *&key, const aclTensorList *
     if (supportTensorV2 && isFAIRoutingCandidate && isCacheScene) {
         CHECK_RET(CheckTensorListFirstAxisOnlyNonContiguous(key, "key") == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
         CHECK_RET(CheckTensorListFirstAxisOnlyNonContiguous(value, "value") == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
+        CHECK_RET(NormalizeFAICacheTensorList(key, "key", executor) == ACLNN_SUCCESS, ACLNN_ERR_INNER_NULLPTR);
+        CHECK_RET(NormalizeFAICacheTensorList(value, "value", executor) == ACLNN_SUCCESS, ACLNN_ERR_INNER_NULLPTR);
         return ACLNN_SUCCESS;
     }
 
@@ -608,6 +658,10 @@ aclnnStatus InnerFusedInferAttentionScoreGetWorkspaceSize(
     const aclTensorList *processedValue = value;
 
     aclOpExecutor *l0Executor = uniqueExecutor.get();
+    processedQuery = l0op::Contiguous(processedQuery, l0Executor);
+    CHECK_RET(processedQuery != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    CHECK_RET(ReshapeTensorToViewShape(processedQuery, "query", l0Executor) == ACLNN_SUCCESS,
+              ACLNN_ERR_INNER_NULLPTR);
     auto kvProcessRet = ProcessKVForL0Input(
         processedKey, processedValue, blockTableOptional, isFAIRoutingCandidate, l0Executor);
     CHECK_RET(kvProcessRet == ACLNN_SUCCESS, kvProcessRet);
