@@ -283,6 +283,12 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1(
         return;
     }
     if constexpr (!isInfer) {
+
+if (enableKVPrefix && runInfo.s2LoopCount < 2) {
+    PRINTF("[VEC-Nd-branch] learnSink=%d s2LC=%lld s2R=%lld s2BS=%d\n",
+           (int)constInfo.learnableSinkFlag, (long long)runInfo.s2LoopCount,
+           (long long)runInfo.s2RealSize, (int)s2BaseSize);
+}
         if (constInfo.learnableSinkFlag) {
             constInfo.sinkValue = this->sinkGm.GetValue(runInfo.n2oIdx * constInfo.gSize + runInfo.goIdx);
         }
@@ -1027,12 +1033,12 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1Nd(
     }
 
     LocalTensor<T> mmRes = bmm1ResBuf.template GetTensor<T>();
-
+    
     if (enableKVPrefix && runInfo.s2LoopCount < 1) {
-        PRINTF("[VEC-Nd-pre] s2L=%lld s2R=%lld hS1R=%lld s2S=%lld\n",
-               (long long)runInfo.s2LoopCount, (long long)runInfo.s2RealSize,
-               (long long)runInfo.halfS1RealSize, (long long)runInfo.s2StartIdx);
-        for (int di=0;di<4;di++) PRINTF("  mmRes[%d]=%f\n", di, (float)mmRes.GetValue(di));
+    PRINTF("[VEC-Nd-pre] s2L=%lld s2R=%lld hS1R=%lld s2S=%lld\n",
+           (long long)runInfo.s2LoopCount, (long long)runInfo.s2RealSize,
+           (long long)runInfo.halfS1RealSize, (long long)runInfo.s2StartIdx);
+    for (int di=0;di<4;di++) PRINTF("  mmRes[%d]=%f\n", di, (float)mmRes.GetValue(di));
     }
     auto stage1CastTensor = this->stage1OutQue[stage1Offset].template AllocTensor<INPUT_T>();
     constexpr bool useMlaSgdFlag = ((isMlaFullQuant) && layout != LayOutTypeEnum::LAYOUT_BNSD);
@@ -1047,11 +1053,6 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1Nd(
                     pseInfoPtr->pseStride, slopes, posShift, static_cast<T>(constInfo.scaleValue), descaleQK,
                     negativeFloatScalar, constInfo.keepProb, queryScaleUb, deSCaleKValue, pScale,
                     constInfo.sinkValue);
-
-            if (enableKVPrefix) {
-                PRINTF("[VEC-Nd-post] maxUb[1]=%f sumUb[1]=%f\n", (float)maxUb.GetValue(1), (float)sumUb.GetValue(1));
-                PRINTF("[VEC-Nd-post] maxUb[2]=%f sumUb[2]=%f\n", (float)maxUb.GetValue(2), (float)sumUb.GetValue(2));
-            }
             } else if (runInfo.s2RealSize <= 64) {
                 ProcessVec1Vf<T, INPUT_T, pseShiftType, false, s1BaseSize, s2BaseSize, GT_0_AND_LTE_64, hasAtten,
                     pseMode, hasDrop, useMlaSgdFlag, isMlaFullQuant, false, true>(
@@ -1191,6 +1192,12 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1Nd(
             }
         }
     }
+
+if (enableKVPrefix && runInfo.s2LoopCount < 2) {
+    PRINTF("[VEC-Nd-post] mx0=%f sm0=%f mx1=%f sm1=%f\n",
+           (float)maxUb.GetValue(0), (float)sumUb.GetValue(0),
+           (float)maxUb.GetValue(1), (float)sumUb.GetValue(1));
+}
     bmm1ResBuf.SetCrossCore();
     if constexpr (hasAtten) {
         this->attenMaskInQue[runInfo.taskIdMod2].template FreeTensor(attenMaskUb);

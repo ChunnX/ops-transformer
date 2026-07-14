@@ -716,13 +716,6 @@ __aicore__ inline void FlashAttentionNoQuantKernelBase<ChildClass, CubeBlockType
     } else {
         runInfo.s1RealSizeAlign32 = runParam.s1RealSizeAlign32;
     }
-
-    if (enableKVPrefix && runInfo.s2LoopCount < 1) {
-        PRINTF("[Bmm1Tail] s2L=%lld s2S=%lld s2E=%lld pLC=%lld s2R=%lld\n",
-               (long long)runInfo.s2LoopCount, (long long)runInfo.s2StartIdx,
-               (long long)runInfo.s2EndIdx, (long long)constInfo.prefixLoopCount,
-               (long long)runInfo.s2RealSize);
-    }
     runInfo.halfS1RealSize = runParam.halfS1RealSize;
     runInfo.firstHalfS1RealSize = runParam.firstHalfS1RealSize;
 
@@ -748,6 +741,13 @@ __aicore__ inline void FlashAttentionNoQuantKernelBase<ChildClass, CubeBlockType
             runInfo.s2RealSize = runInfo.s2EndIdx - runInfo.s2LoopCount * runInfo.s2RealSize - runInfo.s2StartIdx;
             runInfo.s2AlignedSize = Align(runInfo.s2RealSize);
         }
+    }
+    
+    if (enableKVPrefix && runInfo.s2LoopCount < 2) {
+    PRINTF("[Bmm1Tail-post] s2L=%lld s2S=%lld s2E=%lld pLC=%lld s2R=%lld\n",
+           (long long)runInfo.s2LoopCount, (long long)runInfo.s2StartIdx,
+           (long long)runInfo.s2EndIdx, (long long)constInfo.prefixLoopCount,
+           (long long)runInfo.s2RealSize);
     }
 }
 }
