@@ -11,11 +11,13 @@
 import torch
 import torch_npu
 
-from chunk_gated_delta_rule_golden import run_chunk_gated_delta_rule_eager
+from chunk_gated_delta_rule_main import run_chunk_gated_delta_rule_eager
 
 
 def run_precision_test(params):
     # 解包参数
-    B, seqlen, nk, nv, dk, dv, chunk_size, data_type = params
+    B, seqlen, nk, nv, dk, dv, chunk_size, data_type, state_data_type, has_g = params
     print(f"params = {params}")
-    run_chunk_gated_delta_rule_eager(B, seqlen, nk, nv, dk, dv, chunk_size=chunk_size, data_type=data_type)
+    run_chunk_gated_delta_rule_eager(B, seqlen, nk, nv, dk, dv, chunk_size=chunk_size,
+                                     data_type=data_type, state_data_type=state_data_type,
+                                     has_g=has_g)
