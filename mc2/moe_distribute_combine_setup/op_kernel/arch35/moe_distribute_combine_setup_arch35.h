@@ -36,10 +36,10 @@
 namespace MoeDistributeCombineSetupImpl {
 
 struct WriteWithNotifyInfo {
-    uint64_t srcAddr;
-    uint64_t dstAddr;
+    GM_ADDR srcAddr;
+    GM_ADDR dstAddr;
     uint32_t length;
-    uint64_t notifyAddr;
+    GM_ADDR notifyAddr;
     uint64_t notifyVal;
 };
 
@@ -303,10 +303,10 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Communica
         }
         // 当前要发送的token数量
         uint32_t curTokenNum = assistInfoForCombineLocal.GetValue(assistInfoIdx) - preCount;
-        uint64_t srcAddr = (uint64_t)(expandXGM_ + (likely(curTokenNum > 0U) ? static_cast<uint64_t>(preCount) * axisHExpandXTypeSize_ : 0U));
-        uint64_t dstAddr = (uint64_t)(GetUrmaAddrByRankId(sendRankId, sendExpertId) + epDataOffsetOnWin_);
+        GM_ADDR srcAddr = (GM_ADDR)(expandXGM_ + (likely(curTokenNum > 0U) ? static_cast<uint64_t>(preCount) * axisHExpandXTypeSize_ : 0U));
+        GM_ADDR dstAddr = (GM_ADDR)(GetUrmaAddrByRankId(sendRankId, sendExpertId) + epDataOffsetOnWin_);
         uint32_t length = static_cast<uint32_t>(axisHExpandXTypeSize_) * max(curTokenNum, 1U);
-        uint64_t notifyAddr = (uint64_t)(GetUrmaStateAddrByRankId(sendRankId) + epStateOffsetOnWin_ + sizeof(uint64_t));
+        GM_ADDR notifyAddr = (GM_ADDR)(GetUrmaStateAddrByRankId(sendRankId) + epStateOffsetOnWin_ + sizeof(uint64_t));
         WriteWithNotifyInfo notify = {srcAddr, dstAddr, length, notifyAddr, 0U};
         if (unlikely(sendExpertId == curRankExpertNum_ - 1U)) {
             notify.notifyAddr -= sizeof(uint64_t);
@@ -319,7 +319,7 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Communica
             continue;
         }
         // 发送token和notify
-        hcomm_.WriteWithNotifyNbi<false>(GetCommHandle(sendRankId), (GM_ADDR)notify.srcAddr, (GM_ADDR)notify.dstAddr, notify.length, (GM_ADDR)notify.notifyAddr, notify.notifyVal);
+        hcomm_.WriteWithNotifyNbi<false>(GetCommHandle(sendRankId), notify.srcAddr, notify.dstAddr, notify.length, notify.notifyAddr, notify.notifyVal);
     }
     assistInfoQueue_.FreeTensor<int32_t>(assistInfoForCombineLocal);
 
