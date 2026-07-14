@@ -1035,10 +1035,18 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1Nd(
     LocalTensor<T> mmRes = bmm1ResBuf.template GetTensor<T>();
     
     if (enableKVPrefix && runInfo.s2LoopCount < 1) {
-    PRINTF("[VEC-Nd-pre] s2L=%lld s2R=%lld hS1R=%lld s2S=%lld\n",
+    PRINTF("[VEC-Nd-pre] s2L=%lld s2R=%lld hS1R=%lld s2S=%lld phyAddr=%llx\n",
            (long long)runInfo.s2LoopCount, (long long)runInfo.s2RealSize,
-           (long long)runInfo.halfS1RealSize, (long long)runInfo.s2StartIdx);
+           (long long)runInfo.halfS1RealSize, (long long)runInfo.s2StartIdx,
+           (unsigned long long)mmRes.GetPhyAddr());
+    PRINTF("[VEC-Nd-pre-max] iniMax[0]=%f iniSum[0]=%f iniMax[1]=%f\n",
+           (float)maxUb.GetValue(0), (float)sumUb.GetValue(0), (float)maxUb.GetValue(1));
     for (int di=0;di<4;di++) PRINTF("  mmRes[%d]=%f\n", di, (float)mmRes.GetValue(di));
+    PRINTF("  mmRes[64]=%f mmRes[128]=%f mmRes[192]=%f mmRes[255]=%f\n",
+           (float)mmRes.GetValue(64), (float)mmRes.GetValue(128),
+           (float)mmRes.GetValue(192), (float)mmRes.GetValue(255));
+    if constexpr (enableKVPrefix && hasAtten) PRINTF("[VEC-Nd-mask] mask[0]=%x mask[1]=%x\n",
+           (int)attenMaskUb.GetValue(0), (int)attenMaskUb.GetValue(1));
     }
     auto stage1CastTensor = this->stage1OutQue[stage1Offset].template AllocTensor<INPUT_T>();
     constexpr bool useMlaSgdFlag = ((isMlaFullQuant) && layout != LayOutTypeEnum::LAYOUT_BNSD);
