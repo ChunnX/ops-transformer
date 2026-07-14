@@ -23,15 +23,15 @@
     ```Cpp
     x: [batch, seqLen, dim]，seqLen > 1
     weight: [K, dim]，其中K∈{2,3,4}
-    convStates: [batch, stateLen, dim]
-    bias: [dim] 或 nullptr
-    queryStartLoc: [batch+1] 或 nullptr
-    cacheIndices: [batch] 或 nullptr
-    initialStateMode: [batch] 或 nullptr
-    blockIdxFirstScheduledToken: [batch] 或 nullptr
-    blockIdxLastScheduledToken: [batch] 或 nullptr
-    initialStateIdx: [batch] 或 nullptr
-    numComputedTokens: [batch] 或 nullptr
+    convStatesRef: [numCacheLines, stateLen, dim]
+    biasOptional: [dim] 或 nullptr
+    queryStartLocOptional: [batch+1] 或 nullptr
+    cacheIndicesOptional: [batch] 或 nullptr
+    initialStateModeOptional: [batch] 或 nullptr
+    blockIdxFirstScheduledTokenOptional: [batch] 或 nullptr
+    blockIdxLastScheduledTokenOptional: [batch] 或 nullptr
+    initialStateIdxOptional: [batch] 或 nullptr
+    numComputedTokensOptional: [batch] 或 nullptr
     activation: "silu" or "none"
     nullBlockId: int64_t
     blockSizeToAlign: int64_t
@@ -43,15 +43,15 @@
     ```Cpp
     x: [cuSeqLen, dim]
     weight: [K, dim]，其中K∈{2,3,4}
-    convStates: [numCacheLines, stateLen, dim]
-    bias: [dim] 或 nullptr
-    queryStartLoc: [batch+1] （必须提供）
-    cacheIndices: [batch] 或 nullptr
-    initialStateMode: [batch] 或 nullptr
-    blockIdxFirstScheduledToken: [batch] 或 nullptr
-    blockIdxLastScheduledToken: [batch] 或 nullptr
-    initialStateIdx: [batch] 或 nullptr
-    numComputedTokens: [batch] 或 nullptr
+    convStatesRef: [numCacheLines, stateLen, dim]
+    biasOptional: [dim] 或 nullptr
+    queryStartLocOptional: [batch+1] （必须提供）
+    cacheIndicesOptional: [batch] 或 nullptr
+    initialStateModeOptional: [batch] 或 nullptr
+    blockIdxFirstScheduledTokenOptional: [batch] 或 nullptr
+    blockIdxLastScheduledTokenOptional: [batch] 或 nullptr
+    initialStateIdxOptional: [batch] 或 nullptr
+    numComputedTokensOptional: [batch] 或 nullptr
     activation: "silu" or "none"
     nullBlockId: int64_t
     blockSizeToAlign: int64_t
@@ -186,7 +186,7 @@ aclnnStatus aclnnCausalConv1dFn(
       <td>cacheIndicesOptional（aclTensor*）</td>
       <td>可选输入</td>
       <td>缓存索引，指定每个序列对应的缓存状态在convStates中的索引。不传时使用恒等映射。</td>
-      <td>shape为[batch]。值∈[0, numCacheLines)，或等于nullBlockId表示跳过该序列。</td>
+      <td>shape为[batch]。值∈[0, numCacheLines)，或等于nullBlockId表示跳过该序列。nullBlockId可被多个序列重复使用（padding场景）；除nullBlockId外的值不应重复，否则多个序列读写同一缓存槽位会导致历史状态错误和写入冲突。</td>
       <td>INT32</td>
       <td>ND</td>
       <td>1</td>
@@ -396,7 +396,7 @@ aclnnStatus aclnnCausalConv1dFn(
   - prefill场景（固定batch）：
     - x为3维[batch, seqLen, dim]，seqLen > 1。
     - weight为2维[K, dim]，K∈{2,3,4}。
-    - convStatesRef为3维[batch, stateLen, dim]，stateLen ≥ K-1。
+    - convStatesRef为3维[numCacheLines, stateLen, dim]，stateLen ≥ K-1，numCacheLines ≥ batch。
     - dim范围[64, 16384]且满足 (dim * dtypeSize) % 32 == 0，batch范围[1, 1024]，seqLen范围[2, 16384]。
   - prefill场景（变长序列）：
     - x为2维[cuSeqLen, dim]。
@@ -406,7 +406,7 @@ aclnnStatus aclnnCausalConv1dFn(
 
 - 输入值域限制：
   - queryStartLocOptional[0]必须为0，queryStartLocOptional[-1]必须等于cuSeqLen，值必须非递减。
-  - cacheIndicesOptional中的值∈[0, numCacheLines)，或等于nullBlockId表示跳过。
+  - cacheIndicesOptional中的值∈[0, numCacheLines)，或等于nullBlockId表示跳过。nullBlockId可重复；除nullBlockId外的值不应重复，否则多个序列读写同一缓存槽位会导致历史状态错误和写入冲突。
   - initialStateModeOptional值∈{0,1}。
 
 - 卷积核宽度K仅支持2、3、4。

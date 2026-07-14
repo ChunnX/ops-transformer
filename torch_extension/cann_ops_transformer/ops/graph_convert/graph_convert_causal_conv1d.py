@@ -34,8 +34,8 @@ _ACTIVATION_MAP = {
 if _TORCHAIR_AVAILABLE:
 
     @auto_convert_to_tensor(
-        [False, False, False, False, False, True, True, True, True],
-        [False, False, False, False, False, True, True, True, True],
+        [False, False, False, False, False, False, False, False],
+        [False, False, False, True, True, True, True, True],
     )
     def CausalConv1d(
         x: Tensor,
@@ -80,7 +80,7 @@ if _TORCHAIR_AVAILABLE:
             "num_accepted_tokens": num_accepted_tokens,
         }
         attrs = {
-            "activation_mode": attr.String(activation_mode),
+            "activation_mode": attr.Str(activation_mode),
             "null_block_id": attr.Int(null_block_id),
         }
         outputs = ["conv_states", "y"]
@@ -101,7 +101,7 @@ if _TORCHAIR_AVAILABLE:
             .optional_input("cache_indices", "DT_INT32")
             .optional_input("initial_state_mode", "DT_INT32")
             .optional_input("num_accepted_tokens", "DT_INT32")
-            .attr("activation_mode", attr.String("silu"))
+            .attr("activation_mode", attr.Str("silu"))
             .attr("null_block_id", attr.Int(0))
             .output("conv_states", "DT_BF16, DT_FLOAT16")
             .output("y", "DT_BF16, DT_FLOAT16"),
@@ -138,6 +138,7 @@ if _TORCHAIR_AVAILABLE:
             query_start_loc=query_start_loc,
             cache_indices=cache_indices,
             initial_state_mode=has_initial_state,
+            num_accepted_tokens=None,
             activation_mode=activation_mode,
             null_block_id=null_block_id,
         )
@@ -150,6 +151,7 @@ if _TORCHAIR_AVAILABLE:
         x: Tensor,
         conv_state: Tensor,
         weight: Tensor,
+        *,
         bias: Optional[Tensor] = None,
         activation: str = "silu",
         conv_state_indices: Optional[Tensor] = None,
@@ -169,6 +171,7 @@ if _TORCHAIR_AVAILABLE:
             bias=bias,
             query_start_loc=query_start_loc,
             cache_indices=conv_state_indices,
+            initial_state_mode=None,
             num_accepted_tokens=num_accepted_tokens,
             activation_mode=activation_mode,
             null_block_id=null_block_id,
