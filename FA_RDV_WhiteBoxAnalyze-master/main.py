@@ -87,6 +87,9 @@ def main():
             elif op_name == "QSFA":
                 from src.analysis.qsfa_coverage import QSFACoverageAnalyzer
                 analysis_results[op_name] = QSFACoverageAnalyzer(chipversion)
+            elif op_name == "MQSMLA":
+                from src.analysis.mqsmla_coverage import MQSMLACoverageAnalyzer
+                analysis_results[op_name] = MQSMLACoverageAnalyzer(chipversion)
             else:
                 # 对于其他算子，使用通用分析器
                 analysis_results[op_name] = CoverageAnalyzer(op_name)
@@ -102,6 +105,8 @@ def main():
         elif op_name == "SFA":
             analysis_results[op_name].add_case(case_name, dimensions_state, params)
         elif op_name == "QSFA":
+            analysis_results[op_name].add_case(case_name, dimensions_state, params)
+        elif op_name == "MQSMLA":
             analysis_results[op_name].add_case(case_name, dimensions_state, params)
         else:
             # 对于其他算子，需要提取参数（这里需要根据具体算子实现）

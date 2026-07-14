@@ -1,0 +1,23 @@
+aclnnMixedQuantSparseFlashMla:
+  inputs:
+    0: q
+    1: ori_kv
+    2: cmp_kv
+    3: ori_sparse_indices
+    4: cmp_sparse_indices
+    5: ori_block_table
+    6: cmp_block_table
+    7: cu_seqlens_q
+    8: cu_seqlens_ori_kv
+    9: cu_seqlens_cmp_kv
+    10: seqused_q
+    11: seqused_ori_kv
+    12: seqused_cmp_kv
+    13: cmp_residual_kv
+    14: ori_topk_length
+    15: cmp_topk_length
+    16: sinks
+    17: metadata
+  outputs:
+    0: attn_out
+    1: softmax_lse
