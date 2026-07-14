@@ -105,7 +105,7 @@ aclnnStatus aclnnMhcPre(
       <td>不能为空Tensor。</td>
       <td>FLOAT32</td>
       <td>ND</td>
-      <td>[n^2+2n, nD]或[2n, nD]</td>
+      <td>[n!+2n, nD]或[2n, nD]</td>
       <td>√</td>
   </tr>
   <tr>
@@ -125,7 +125,7 @@ aclnnStatus aclnnMhcPre(
       <td>不能为空Tensor。</td>
       <td>FLOAT32</td>
       <td>-</td>
-      <td>[n^2+2n]或[2n]</td>
+      <td>[n!+2n]或[2n]</td>
       <td>-</td>
   </tr>
   <tr>
@@ -185,7 +185,7 @@ aclnnStatus aclnnMhcPre(
       <td>不能为空Tensor，当alpha=2时为0。</td>
       <td>FLOAT32</td>
       <td>ND</td>
-      <td>[B,S,n,n] 或 [T,n,n]</td>
+      <td>[B,S,n!] 或 [T,n!]</td>
       <td>-</td>
   </tr>
   <tr>
@@ -205,7 +205,7 @@ aclnnStatus aclnnMhcPre(
       <td>-</td>
       <td>FLOAT32</td>
       <td>ND</td>
-      <td>[B,S,n^2+2n] 或 [T,n^2+2n] 或 [B,S,2n] 或 [T, 2n]</td>
+      <td>[B,S,n!+2n] 或 [T,n!+2n] 或 [B,S,2n] 或 [T, 2n]</td>
       <td>-</td>
   </tr>
   <tr>
