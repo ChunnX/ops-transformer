@@ -342,12 +342,19 @@ public:
 
     template <typename srcType, typename dstType>
     __aicore__ inline void CastGmToGm(GlobalTensor<srcType> srcGm, GlobalTensor<dstType> dstGm,
-                                      int32_t count)
+                                       int32_t count)
     {
         int32_t paddedCount = Ceil(count, BLOCK_SIZE / sizeof(dstType)) * (BLOCK_SIZE / sizeof(dstType));
-        int32_t padding = paddedCount - count;
+        int32_t srcAlign = BLOCK_SIZE / sizeof(srcType);
+        int32_t srcPadded = Ceil(count, srcAlign) * srcAlign;
+        int32_t padding = srcPadded - count;
 
         auto srcLocal = inQueue_.AllocTensor<srcType>();
+        if (paddedCount > srcPadded) {
+            Duplicate<srcType>(srcLocal, static_cast<srcType>(0), paddedCount);
+            SetFlag<HardEvent::V_MTE2>(V_MTE2_EVENT);
+            WaitFlag<HardEvent::V_MTE2>(V_MTE2_EVENT);
+        }
         DataCopyExtParams inParams{1, static_cast<uint32_t>(count * sizeof(srcType)), 0, 0, 0};
         DataCopyPadExtParams<srcType> inPadParams{true, 0, static_cast<uint8_t>(padding), 0};
         DataCopyPad(srcLocal, srcGm, inParams, inPadParams);
@@ -370,16 +377,26 @@ public:
     __aicore__ inline void CopyIn(GlobalTensor<inType> tmpGM, int32_t row, int32_t col)
     {
         LocalTensor<inType> inLocal = inQueue_.AllocTensor<inType>();
-        DataCopyExtParams inParams{static_cast<uint16_t>(row),
-                                   static_cast<uint32_t>(col * sizeof(inType)),
-                                   static_cast<uint32_t>(0),
-                                   0, 0};
         int padding;
+        uint32_t dstStride = 0;
         if constexpr (kIsFp32 && std::is_same_v<inType, float>) {
-            padding = curDk_ - col;
+            int32_t floatAligned = Ceil(col, BLOCK_FLOAT_NUM) * BLOCK_FLOAT_NUM;
+            padding = floatAligned - col;
+            if (floatAligned < curDk_) {
+                uint32_t dataBlocks = static_cast<uint32_t>(floatAligned * sizeof(float) / BLOCK_SIZE);
+                uint32_t rowBlocks = static_cast<uint32_t>(curDk_ * sizeof(float) / BLOCK_SIZE);
+                dstStride = rowBlocks - dataBlocks;
+                Duplicate<inType>(inLocal, static_cast<inType>(0), row * curDk_);
+                SetFlag<HardEvent::V_MTE2>(V_MTE2_EVENT);
+                WaitFlag<HardEvent::V_MTE2>(V_MTE2_EVENT);
+            }
         } else {
             padding = Ceil(col, BLOCK_SIZE / sizeof(inType)) * (BLOCK_SIZE / sizeof(inType)) - col;
         }
+        DataCopyExtParams inParams{static_cast<uint16_t>(row),
+                                   static_cast<uint32_t>(col * sizeof(inType)),
+                                   static_cast<uint32_t>(0),
+                                   dstStride, 0};
         DataCopyPadExtParams<inType> copyPadParams{true, 0, static_cast<uint8_t>(padding), 0};
         DataCopyPad(inLocal, tmpGM, inParams, copyPadParams);
         inQueue_.EnQue(inLocal);
