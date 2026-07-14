@@ -799,7 +799,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
     // 2.本卡专家接收数据dispatch & GroupMatmul1 & SwigluQuant
     DispatchGmm1SwigluOneCore<QuantOutType, ActivationType, Weight1Type,
         SwigluQuantOutType, QuantScaleOutType, ENABLE_A8W4>(
-            gmm1PipelineContext_, gmm1PipelineArgs_, gmm1PipelineScratch_);
+            gmm1PipelineContext_, gmm1PipelineArgs_, gmm1PipelineScratch_, subBlockIdx_);
     if constexpr(g_coreType == AIV) {
         if (subBlockIdx_ == 1) {
             ExpertTokenNumCopyOut(); // 本卡专家接受的tokenCnt总数搬出
@@ -807,9 +807,9 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
     }
 
     // 3. 本卡专家接收数据GroupMatmul2 & Combine
-    // Preserve the original cross-stage rotation when the block counts match,
-    // and normalize it before GMM2 when GMM1 used another logical block count.
-    gmm2StartBlockIdx_ = blockNum_ == 0U ? 0U : gmm1StartBlockIdx_ % blockNum_;
+    // MegaMoe uses the same full-core block count for GMM1 and GMM2, so the
+    // GMM1 rotation is already in the valid GMM2 range.
+    gmm2StartBlockIdx_ = gmm1StartBlockIdx_;
     vecSetSyncCom_ = 0;
     GMMAddrInfo gmm2AddrInfo;
     TupleShape initShape;
