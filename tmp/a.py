@@ -17,3 +17,18 @@
 [AIV Block 0/64]   mmRes[2]=12.855907
 [AIV Block 0/64]   mmRes[3]=107.858582
 [AIV Block 0/64] [Bmm1Tail] s2L=0 s2S=4864 s2E=5920 pLC=23 s2R=256
+
+[AIC Block 0/32] [Bmm1Tail] s2L=0 s2S=4864 s2E=5920 pLC=23 s2R=68
+[AIC Block 0/32] [CUBE-LoadKey] s2L=0 s2S=4864 s2Coord=4864 pLC=23 s2R=256
+[AIC Block 0/32] [Bmm1Tail] s2L=0 s2S=4864 s2E=5920 pLC=23 s2R=256
+[AIC Block 0/32] [CUBE-LoadKey] s2L=0 s2S=4864 s2Coord=4864 pLC=23 s2R=256
+[AIC Block 0/32] [Bmm1Tail] s2L=0 s2S=4864 s2E=5920 pLC=23 s2R=256
+[AIC Block 0/32] [CUBE-LoadKey] s2L=0 s2S=4864 s2Coord=4864 pLC=23 s2R=256
+[AIC Block 0/32] [Bmm1Tail] s2L=0 s2S=4864 s2E=5920 pLC=23 s2R=256
+[AIC Block 0/32] [CUBE-LoadKey] s2L=0 s2S=4864 s2Coord=4864 pLC=23 s2R=256
+[AIC Block 0/32] [Bmm1Tail] s2L=0 s2S=4864 s2E=5920 pLC=23 s2R=256
+[AIC Block 0/32] [CUBE-LoadKey] s2L=0 s2S=4864 s2Coord=4864 pLC=23 s2R=256
+[AIC Block 0/32] [Bmm1Tail] s2L=0 s2S=4864 s2E=5920 pLC=23 s2R=256
+[AIC Block 0/32] [CUBE-LoadKey] s2L=0 s2S=4864 s2Coord=4864 pLC=23 s2R=256
+[AIC Block 0/32] [Bmm1Tail] s2L=0 s2S=4864 s2E=5920 pLC=23 s2R=256
+[AIC Block 0/32] [CUBE-LoadKey] s2L=0 s2S=4864 s2Coord=4864 pLC=23 s2R=256
