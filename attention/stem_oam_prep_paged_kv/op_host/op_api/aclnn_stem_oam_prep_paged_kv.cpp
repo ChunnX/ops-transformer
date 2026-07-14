@@ -127,9 +127,10 @@ aclnnStatus aclnnStemOamPrepPagedKvGetWorkspaceSize(
     auto vScaleContiguous = l0op::Contiguous(vScale, executor);
 
     // 调用l0算子
-    l0op::StemOamPrepPagedKv(kCacheView, vCacheView, kvIndicesContiguous, kvSeqLensContiguous, kScaleCacheContiguous,
+    auto ret = l0op::StemOamPrepPagedKv(kCacheView, vCacheView, kvIndicesContiguous, kvSeqLensContiguous, kScaleCacheContiguous,
                              kScaleCacheContiguous, vScaleContiguous, lambdaMag, cacheLayout, kvBlockSize, stemBlockSize,
                              stemStride, kFlat, vBias, uniqueExecutor.get());
+    CHECK_RET(ret != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
     *workspaceSize = uniqueExecutor->GetWorkspaceSize();
     uniqueExecutor.ReleaseTo(executor);

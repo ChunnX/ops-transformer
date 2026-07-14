@@ -23,12 +23,12 @@ extern "C" {
 #endif
 
 /**
- * @brief aclnnIndex的第二段接口，用于执行计算。
+ * @brief aclnnStemOamPrepPagedKv的第二段接口，用于执行计算。
  */
 ACLNN_API aclnnStatus aclnnStemOamPrepPagedKv(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor, const aclrtStream stream);
 
 /**
- * @brief aclnnIndex的第一段接口，根据具体的计算流程，计算workspace大小。
+ * @brief aclnnStemOamPrepPagedKv的第一段接口，根据具体的计算流程，计算workspace大小。
  * @domain aclnn_ops_infer
  */
 ACLNN_API aclnnStatus aclnnStemOamPrepPagedKvGetWorkspaceSize(
