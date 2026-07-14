@@ -29,7 +29,7 @@ struct QSMLACompileInfo {
 };
 
 // --------------------------QSMLAInfoParser类成员函数定义-------------------------------------
-ge::graphStatus QSMLAInfoParser::CheckRequiredInOutExistence() const
+ge::graphStatus MQSMLAInfoParser::CheckRequiredInOutExistence() const
 {
     OP_CHECK_IF(opParamInfo_.q.shape == nullptr, OP_LOGE(opName_, "Shape of tensor q is nullptr"),
                 return ge::GRAPH_FAILED);
@@ -37,14 +37,14 @@ ge::graphStatus QSMLAInfoParser::CheckRequiredInOutExistence() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QSMLAInfoParser::CheckRequiredAttrExistence() const
+ge::graphStatus MQSMLAInfoParser::CheckRequiredAttrExistence() const
 {
     OP_CHECK_IF(opParamInfo_.quantMode == nullptr, OP_LOGE(opName_, "quantMode attr is nullptr."),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QSMLAInfoParser::CheckRequiredParaExistence() const
+ge::graphStatus MQSMLAInfoParser::CheckRequiredParaExistence() const
 {
     if (CheckRequiredInOutExistence() != ge::GRAPH_SUCCESS || CheckRequiredAttrExistence() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
@@ -53,7 +53,7 @@ ge::graphStatus QSMLAInfoParser::CheckRequiredParaExistence() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QSMLAInfoParser::GetOpName()
+ge::graphStatus MQSMLAInfoParser::GetOpName()
 {
     if (context_->GetNodeName() == nullptr) {
         OP_LOGE("MixedQuantSparseFlashMla", "opName got from TilingContext is nullptr");
@@ -63,7 +63,7 @@ ge::graphStatus QSMLAInfoParser::GetOpName()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QSMLAInfoParser::GetNpuInfo()
+ge::graphStatus MQSMLAInfoParser::GetNpuInfo()
 {
     platformInfo_ = context_->GetPlatformInfo();
     OP_CHECK_IF(platformInfo_ == nullptr, OP_LOGE(opName_, "GetPlatformInfo is nullptr."), return ge::GRAPH_FAILED);
@@ -83,7 +83,7 @@ ge::graphStatus QSMLAInfoParser::GetNpuInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-void QSMLAInfoParser::GetOptionalInputParaInfo()
+void MQSMLAInfoParser::GetOptionalInputParaInfo()
 {
     opParamInfo_.oriKv.tensor = context_->GetOptionalInputTensor(ORI_KV_INDEX);
     opParamInfo_.oriKv.desc = context_->GetOptionalInputDesc(ORI_KV_INDEX);
@@ -121,20 +121,20 @@ void QSMLAInfoParser::GetOptionalInputParaInfo()
     opParamInfo_.metadata.tensor = context_->GetOptionalInputTensor(METADATA_INDEX);
 }
 
-void QSMLAInfoParser::GetInputParaInfo()
+void MQSMLAInfoParser::GetInputParaInfo()
 {
     opParamInfo_.q.desc = context_->GetInputDesc(Q_INDEX);
     opParamInfo_.q.shape = context_->GetInputShape(Q_INDEX);
     GetOptionalInputParaInfo();
 }
 
-void QSMLAInfoParser::GetOutputParaInfo()
+void MQSMLAInfoParser::GetOutputParaInfo()
 {
     opParamInfo_.attnOut.desc = context_->GetOutputDesc(ATTN_OUT_INDEX);
     opParamInfo_.attnOut.shape = context_->GetOutputShape(ATTN_OUT_INDEX);
 }
 
-ge::graphStatus QSMLAInfoParser::GetAttrParaInfo()
+ge::graphStatus MQSMLAInfoParser::GetAttrParaInfo()
 {
     auto attrs = context_->GetAttrs();
     OP_CHECK_IF(attrs == nullptr, OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(), "attrs got from ge is nullptr"),
@@ -158,7 +158,7 @@ ge::graphStatus QSMLAInfoParser::GetAttrParaInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QSMLAInfoParser::GetOpParaInfo()
+ge::graphStatus MQSMLAInfoParser::GetOpParaInfo()
 {
     GetInputParaInfo();
     GetOutputParaInfo();
@@ -168,7 +168,7 @@ ge::graphStatus QSMLAInfoParser::GetOpParaInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QSMLAInfoParser::GetInOutDataType()
+ge::graphStatus MQSMLAInfoParser::GetInOutDataType()
 {
     qType_ = opParamInfo_.q.desc->GetDataType();
     outputType_ = opParamInfo_.attnOut.desc->GetDataType();
@@ -181,13 +181,13 @@ ge::graphStatus QSMLAInfoParser::GetInOutDataType()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QSMLAInfoParser::GetQueryAndOutLayout()
+ge::graphStatus MQSMLAInfoParser::GetQueryAndOutLayout()
 {
     // 获取q和attnOut的Layout基准值
     // layoutQuery: {qLayout, outLayout}
-    const map<string, pair<QSMLALayout, QSMLALayout>> layoutMap = {
-        {"BSND", {QSMLALayout::BSND, QSMLALayout::BSND}},
-        {"TND", {QSMLALayout::TND, QSMLALayout::TND}},
+    const map<string, pair<MQSMLALayout, MQSMLALayout>> layoutMap = {
+        {"BSND", {MQSMLALayout::BSND, MQSMLALayout::BSND}},
+        {"TND", {MQSMLALayout::TND, MQSMLALayout::TND}},
     };
 
     std::string layout(opParamInfo_.layoutQ);
@@ -202,12 +202,12 @@ ge::graphStatus QSMLAInfoParser::GetQueryAndOutLayout()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QSMLAInfoParser::GetKvLayout()
+ge::graphStatus MQSMLAInfoParser::GetKvLayout()
 {
-    const map<string, QSMLALayout> layoutKVMap = {
-        {"PA_BBND", QSMLALayout::PA_BBND},
-        {"TND", QSMLALayout::TND},
-        {"BSND", QSMLALayout::BSND},
+    const map<string, MQSMLALayout> layoutKVMap = {
+        {"PA_BBND", MQSMLALayout::PA_BBND},
+        {"TND", MQSMLALayout::TND},
+        {"BSND", MQSMLALayout::BSND},
     };
 
     std::string layout(opParamInfo_.layoutKv);
@@ -223,14 +223,14 @@ ge::graphStatus QSMLAInfoParser::GetKvLayout()
 
 // =============Parser function====================
 
-bool QSMLAInfoParser::HasAxis(const QSMLAAxis &axis, const QSMLALayout &layout, const gert::Shape &shape) const
+bool MQSMLAInfoParser::HasAxis(const MQSMLAAxis &axis, const MQSMLALayout &layout, const gert::Shape &shape) const
 {
     const auto &layoutIt = QSMLA_LAYOUT_AXIS_MAP.find(layout);
     if (layoutIt == QSMLA_LAYOUT_AXIS_MAP.end()) {
         return false;
     }
 
-    const std::vector<QSMLAAxis> &axes = layoutIt->second;
+    const std::vector<MQSMLAAxis> &axes = layoutIt->second;
     const auto &axisIt = std::find(axes.begin(), axes.end(), axis);
     if (axisIt == axes.end()) {
         return false;
@@ -242,19 +242,20 @@ bool QSMLAInfoParser::HasAxis(const QSMLAAxis &axis, const QSMLALayout &layout, 
     return true;
 }
 
-size_t QSMLAInfoParser::GetAxisIdx(const QSMLAAxis &axis, const QSMLALayout &layout) const
+size_t MQSMLAInfoParser::GetAxisIdx(const MQSMLAAxis &axis, const MQSMLALayout &layout) const
 {
-    const std::vector<QSMLAAxis> &axes = QSMLA_LAYOUT_AXIS_MAP.find(layout)->second;
+    const std::vector<MQSMLAAxis> &axes = QSMLA_LAYOUT_AXIS_MAP.find(layout)->second;
     const auto &axisIt = std::find(axes.begin(), axes.end(), axis);
     return std::distance(axes.begin(), axisIt);
 }
 
-uint32_t QSMLAInfoParser::GetAxisNum(const gert::Shape &shape, const QSMLAAxis &axis, const QSMLALayout &layout) const
+uint32_t MQSMLAInfoParser::GetAxisNum(const gert::Shape &shape, const MQSMLAAxis &axis,
+                                      const MQSMLALayout &layout) const
 {
     return HasAxis(axis, layout, shape) ? shape.GetDim(GetAxisIdx(axis, layout)) : invalidDimValue_;
 }
 
-void QSMLAInfoParser::SetQSMLAShape()
+void MQSMLAInfoParser::SetQSMLAShape()
 {
     qShape_ = opParamInfo_.q.shape->GetStorageShape();
     if (opParamInfo_.oriKv.tensor != nullptr) {
@@ -268,23 +269,23 @@ void QSMLAInfoParser::SetQSMLAShape()
     }
 }
 
-ge::graphStatus QSMLAInfoParser::GetN1Size()
+ge::graphStatus MQSMLAInfoParser::GetN1Size()
 {
-    n1Size_ = GetAxisNum(qShape_, QSMLAAxis::N, qLayout_);
+    n1Size_ = GetAxisNum(qShape_, MQSMLAAxis::N, qLayout_);
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QSMLAInfoParser::GetN2Size()
+ge::graphStatus MQSMLAInfoParser::GetN2Size()
 {
     if (opParamInfo_.oriKv.tensor != nullptr) {
-        n2Size_ = GetAxisNum(oriKvShape_, QSMLAAxis::N, kvLayout_);
+        n2Size_ = GetAxisNum(oriKvShape_, MQSMLAAxis::N, kvLayout_);
     } else if (opParamInfo_.cmpKv.tensor != nullptr) {
-        n2Size_ = GetAxisNum(cmpKvShape_, QSMLAAxis::N, kvLayout_);
+        n2Size_ = GetAxisNum(cmpKvShape_, MQSMLAAxis::N, kvLayout_);
     }
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QSMLAInfoParser::GetGSize()
+ge::graphStatus MQSMLAInfoParser::GetGSize()
 {
     if (n2Size_ != 0) {
         gSize_ = n1Size_ / n2Size_;
@@ -292,11 +293,11 @@ ge::graphStatus QSMLAInfoParser::GetGSize()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QSMLAInfoParser::GetActualSeqLenSize(uint32_t &size, const gert::Tensor *tensor, QSMLALayout &layout,
-                                                     const std::string &name) const
+ge::graphStatus MQSMLAInfoParser::GetActualSeqLenSize(uint32_t &size, const gert::Tensor *tensor, MQSMLALayout &layout,
+                                                      const std::string &name) const
 {
     if ((tensor == nullptr)) {
-        OP_LOGE(opName_, "when layout of q is %s, %s must be provided.", QSMLALayoutToSerialString(layout).c_str(),
+        OP_LOGE(opName_, "when layout of q is %s, %s must be provided.", MQSMLALayoutToSerialString(layout).c_str(),
                 name.c_str());
         return ge::GRAPH_FAILED;
     }
@@ -309,55 +310,55 @@ ge::graphStatus QSMLAInfoParser::GetActualSeqLenSize(uint32_t &size, const gert:
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QSMLAInfoParser::GetActualSeqLenQSize(uint32_t &size)
+ge::graphStatus MQSMLAInfoParser::GetActualSeqLenQSize(uint32_t &size)
 {
     return GetActualSeqLenSize(size, opParamInfo_.sequsedOriKv.tensor, qLayout_, "cuSeqLensQ");
 }
 
-ge::graphStatus QSMLAInfoParser::GetBatchSize()
+ge::graphStatus MQSMLAInfoParser::GetBatchSize()
 {
     // 获取B基准值
     // 1、非TND时, 以query的batch_size维度为基准;
     // 2、TND时, actual_seq_lens_q必须传入, 以actual_seq_lens_q数组的长度为B轴大小
-    if (qLayout_ == QSMLALayout::TND) {
+    if (qLayout_ == MQSMLALayout::TND) {
         return GetActualSeqLenQSize(bSize_);
     } else { // BSND
-        bSize_ = GetAxisNum(qShape_, QSMLAAxis::B, qLayout_);
+        bSize_ = GetAxisNum(qShape_, MQSMLAAxis::B, qLayout_);
         return ge::GRAPH_SUCCESS;
     }
 }
 
-ge::graphStatus QSMLAInfoParser::GetQTSize()
+ge::graphStatus MQSMLAInfoParser::GetQTSize()
 {
     // 获取query的T基准值
     // 1、非TND时, 以query的batch_size维度为基准;
     // 2、TND时, actual_seq_lens_q必须传入, 以actual_seq_lens_q数组的长度为B轴大小
-    qTSize_ = (qLayout_ == QSMLALayout::TND) ? GetAxisNum(qShape_, QSMLAAxis::T, qLayout_) : 0;
+    qTSize_ = (qLayout_ == MQSMLALayout::TND) ? GetAxisNum(qShape_, MQSMLAAxis::T, qLayout_) : 0;
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QSMLAInfoParser::GetS1Size()
+ge::graphStatus MQSMLAInfoParser::GetS1Size()
 {
     // 获取S1基准值
     // 1、非TND时, 以query的S维度为基准;
     // 2、TND时, actual_seq_lens_q必须传入, 以actual_seq_lens_q数组中的最大值为基准
-    if (qLayout_ == QSMLALayout::TND) {
-        s1Size_ = GetAxisNum(qShape_, QSMLAAxis::T, qLayout_);
+    if (qLayout_ == MQSMLALayout::TND) {
+        s1Size_ = GetAxisNum(qShape_, MQSMLAAxis::T, qLayout_);
         return ge::GRAPH_SUCCESS;
     } else { // BSND
-        s1Size_ = GetAxisNum(qShape_, QSMLAAxis::S, qLayout_);
+        s1Size_ = GetAxisNum(qShape_, MQSMLAAxis::S, qLayout_);
     }
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QSMLAInfoParser::GetMaxBlockNumPerBatch()
+ge::graphStatus MQSMLAInfoParser::GetMaxBlockNumPerBatch()
 {
-    if (kvLayout_ == QSMLALayout::TND || kvLayout_ == QSMLALayout::BSND) {
+    if (kvLayout_ == MQSMLALayout::TND || kvLayout_ == MQSMLALayout::BSND) {
         return ge::GRAPH_SUCCESS;
     }
     if (opParamInfo_.oriBlockTable.tensor == nullptr) {
         OP_LOGE(opName_, "the layout_kv is %s, blockTable must be provided.",
-                QSMLALayoutToSerialString(kvLayout_).c_str());
+                MQSMLALayoutToSerialString(kvLayout_).c_str());
         return ge::GRAPH_FAILED;
     }
     uint32_t oriDimNum = opParamInfo_.oriBlockTable.tensor->GetStorageShape().GetDimNum();
@@ -388,18 +389,18 @@ ge::graphStatus QSMLAInfoParser::GetMaxBlockNumPerBatch()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QSMLAInfoParser::GetBlockSize()
+ge::graphStatus MQSMLAInfoParser::GetBlockSize()
 {
     if (opParamInfo_.oriKv.tensor != nullptr) {
-        oriBlockSize_ = GetAxisNum(oriKvShape_, QSMLAAxis::Bs, kvLayout_);
+        oriBlockSize_ = GetAxisNum(oriKvShape_, MQSMLAAxis::Bs, kvLayout_);
     }
     if (opParamInfo_.cmpKv.tensor != nullptr) {
-        cmpBlockSize_ = GetAxisNum(cmpKvShape_, QSMLAAxis::Bs, kvLayout_);
+        cmpBlockSize_ = GetAxisNum(cmpKvShape_, MQSMLAAxis::Bs, kvLayout_);
     }
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QSMLAInfoParser::GetS2SizeForPageAttention()
+ge::graphStatus MQSMLAInfoParser::GetS2SizeForPageAttention()
 {
     if (GetMaxBlockNumPerBatch() != ge::GRAPH_SUCCESS || GetBlockSize() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
@@ -409,58 +410,58 @@ ge::graphStatus QSMLAInfoParser::GetS2SizeForPageAttention()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QSMLAInfoParser::GetS2Size()
+ge::graphStatus MQSMLAInfoParser::GetS2Size()
 {
-    if (kvLayout_ == QSMLALayout::TND) {
-        s2Size_ = GetAxisNum(oriKvShape_, QSMLAAxis::T, kvLayout_);
-        cmpS2Size_ = GetAxisNum(cmpKvShape_, QSMLAAxis::T, kvLayout_);
+    if (kvLayout_ == MQSMLALayout::TND) {
+        s2Size_ = GetAxisNum(oriKvShape_, MQSMLAAxis::T, kvLayout_);
+        cmpS2Size_ = GetAxisNum(cmpKvShape_, MQSMLAAxis::T, kvLayout_);
         return ge::GRAPH_SUCCESS;
-    } else if (kvLayout_ == QSMLALayout::BSND) {
-        s2Size_ = GetAxisNum(oriKvShape_, QSMLAAxis::S, kvLayout_);
-        cmpS2Size_ = GetAxisNum(cmpKvShape_, QSMLAAxis::S, kvLayout_);
+    } else if (kvLayout_ == MQSMLALayout::BSND) {
+        s2Size_ = GetAxisNum(oriKvShape_, MQSMLAAxis::S, kvLayout_);
+        cmpS2Size_ = GetAxisNum(cmpKvShape_, MQSMLAAxis::S, kvLayout_);
         return ge::GRAPH_SUCCESS;
-    } else if (kvLayout_ == QSMLALayout::PA_BBND) {
+    } else if (kvLayout_ == MQSMLALayout::PA_BBND) {
         return GetS2SizeForPageAttention();
     }
     return ge::GRAPH_FAILED;
 }
 
-ge::graphStatus QSMLAInfoParser::GetQkHeadDim()
+ge::graphStatus MQSMLAInfoParser::GetQkHeadDim()
 {
     // 获取qkHeadDim基准值
     // 以query的D维度为基准
-    qkHeadDim_ = GetAxisNum(qShape_, QSMLAAxis::D, qLayout_);
+    qkHeadDim_ = GetAxisNum(qShape_, MQSMLAAxis::D, qLayout_);
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QSMLAInfoParser::GetSparseBlockCount()
+ge::graphStatus MQSMLAInfoParser::GetSparseBlockCount()
 {
     if (opParamInfo_.cmpSparseIndices.tensor != nullptr) {
-        sparseBlockCount_ = GetAxisNum(cmpSparseIndicesShape_, QSMLAAxis::K, qLayout_);
+        sparseBlockCount_ = GetAxisNum(cmpSparseIndicesShape_, MQSMLAAxis::K, qLayout_);
     }
 
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QSMLAInfoParser::GetActualseqInfo()
+ge::graphStatus MQSMLAInfoParser::GetActualseqInfo()
 {
     maxActualseq_ = static_cast<uint32_t>(s2Size_);
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QSMLAInfoParser::GetDSizeQ()
+ge::graphStatus MQSMLAInfoParser::GetDSizeQ()
 {
-    dSizeQ_ = GetAxisNum(qShape_, QSMLAAxis::D, qLayout_);
+    dSizeQ_ = GetAxisNum(qShape_, MQSMLAAxis::D, qLayout_);
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QSMLAInfoParser::GetDSizeKV()
+ge::graphStatus MQSMLAInfoParser::GetDSizeKV()
 {
-    dSizeKV_ = GetAxisNum(oriKvShape_, QSMLAAxis::D, kvLayout_);
+    dSizeKV_ = GetAxisNum(oriKvShape_, MQSMLAAxis::D, kvLayout_);
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QSMLAInfoParser::GetKvstride()
+ge::graphStatus MQSMLAInfoParser::GetKvstride()
 {
     auto oriKvStrides = context_->GetDynamicInputStride(ORI_KV_INDEX, 0);
     auto cmpKvStrides = context_->GetDynamicInputStride(CMP_KV_INDEX, 0);
@@ -468,7 +469,7 @@ ge::graphStatus QSMLAInfoParser::GetKvstride()
         for (size_t i = 0; i < oriKvStrides->GetDimNum(); i++) {
             oriKvStridesVec_.push_back(oriKvStrides->GetStride(i));
         }
-        if (kvLayout_ == QSMLALayout::PA_BBND) {
+        if (kvLayout_ == MQSMLALayout::PA_BBND) {
             oriKvStride_ = oriKvStrides->GetStride(0);
         }
     }
@@ -476,14 +477,14 @@ ge::graphStatus QSMLAInfoParser::GetKvstride()
         for (size_t i = 0; i < cmpKvStrides->GetDimNum(); i++) {
             cmpKvStridesVec_.push_back(cmpKvStrides->GetStride(i));
         }
-        if (kvLayout_ == QSMLALayout::PA_BBND) {
+        if (kvLayout_ == MQSMLALayout::PA_BBND) {
             cmpKvStride_ = cmpKvStrides->GetStride(0);
         }
     }
     return ge::GRAPH_SUCCESS;
 }
 
-void QSMLAInfoParser::GenerateInfo(QSMLATilingInfo &qsmlaInfo)
+void MQSMLAInfoParser::GenerateInfo(MQSMLATilingInfo &qsmlaInfo)
 {
     qsmlaInfo.opName = opName_;
     qsmlaInfo.platformInfo = platformInfo_;
@@ -542,7 +543,7 @@ void QSMLAInfoParser::GenerateInfo(QSMLATilingInfo &qsmlaInfo)
     qsmlaInfo.outLayout = outLayout_;
 }
 
-ge::graphStatus QSMLAInfoParser::Parse(QSMLATilingInfo &qsmlaInfo)
+ge::graphStatus MQSMLAInfoParser::Parse(MQSMLATilingInfo &qsmlaInfo)
 {
     if (context_ == nullptr) {
         OP_LOGE("SparseFlashAttention", "tiling context is nullptr!");
@@ -583,7 +584,7 @@ static ge::graphStatus TilingPrepareForMixedQuantSparseFlashMla(gert::TilingPars
 }
 
 // --------------------------MixedQuantSparseFlashMlaTiling类成员函数定义-----------------------
-ge::graphStatus MixedQuantSparseFlashMlaTiling::DoOpTiling(QSMLATilingInfo *tilingInfo)
+ge::graphStatus MixedQuantSparseFlashMlaTiling::DoOpTiling(MQSMLATilingInfo *tilingInfo)
 {
     if (tilingInfo->opParamInfo.cmpKv.tensor == nullptr) {
         OP_CHECK_IF(tilingInfo->opParamInfo.cmpSparseIndices.tensor != nullptr,
@@ -677,13 +678,13 @@ ge::graphStatus TilingMixedQuantSparseFlashMla(gert::TilingContext *context)
 {
     OP_CHECK_IF(context == nullptr, OPS_REPORT_VECTOR_INNER_ERR("MixedQuantSparseFlashMla", "Tiling context is null."),
                 return ge::GRAPH_FAILED);
-    QSMLATilingInfo qsmlaInfo;
-    QSMLAInfoParser qsmlaInfoParser(context);
+    MQSMLATilingInfo qsmlaInfo;
+    MQSMLAInfoParser qsmlaInfoParser(context);
     if (qsmlaInfoParser.Parse(qsmlaInfo) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
 
-    QSMLATilingCheck qsmlaTilingChecker(qsmlaInfo);
+    MQSMLATilingCheck qsmlaTilingChecker(qsmlaInfo);
     if (qsmlaTilingChecker.Process() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }

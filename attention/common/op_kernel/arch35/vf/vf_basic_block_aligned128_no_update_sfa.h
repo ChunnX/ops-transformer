@@ -25,7 +25,7 @@ namespace FaVectorApi {
 template <typename T, typename T2, uint32_t s1BaseSize = 64, uint32_t s2BaseSize = 128>
 __simd_vf__ void ProcessVec1NoUpdateImpl128VF(
     __ubuf__ T2 * expUb, __ubuf__ T * expSumUb, __ubuf__ T * maxUb, __ubuf__ T * maxUbStart,
-    __ubuf__ T * srcUb, const uint32_t blockStride, const uint32_t repeatStride,
+    __ubuf__ T * srcUb, __ubuf__ uint8_t * indexesUb, const uint32_t blockStride, const uint32_t repeatStride,
     const uint16_t m, const T scale, const T minValue)
 {
     AscendC::MicroAPI::RegTensor<float> vreg_input_x;
@@ -71,7 +71,8 @@ __simd_vf__ void ProcessVec1NoUpdateImpl128VF(
         // x_sum = sum(x_exp, axis=-1, keepdims=True)
         ExpSumReduceStore128<T>(vreg_exp_sum, vreg_exp_even, vreg_exp_odd, ureg_exp_sum, expSumUb, preg_all);
 
-        CastStoreExp128<T, T2>(vreg_exp_even, vreg_exp_odd, expUb, blockStride, repeatStride, preg_all, preg_all_b16);
+        CastStoreExp128<T, T2>(vreg_exp_even, vreg_exp_odd, expUb, blockStride, repeatStride, preg_all, preg_all_b16,
+                               indexesUb);
     }
     AscendC::MicroAPI::StoreUnAlignPost<float, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
             ((__ubuf__ T *&)expSumUb), ureg_exp_sum, 0);
@@ -81,8 +82,8 @@ __simd_vf__ void ProcessVec1NoUpdateImpl128VF(
 template <typename T, typename T2, uint32_t s1BaseSize = 64, uint32_t s2BaseSize = 128>
 __aicore__ inline void ProcessVec1NoUpdateImpl128(const LocalTensor<T2>& dstTensor, const LocalTensor<T>& srcTensor,
     const LocalTensor<T>& expSumTensor, const LocalTensor<T>& maxTensor, const LocalTensor<T>& inMaxTensor,
-    const LocalTensor<T>& sharedTmpBuffer, const uint16_t m, const uint32_t originN,
-    const T scale, const T minValue)
+    const LocalTensor<T>& sharedTmpBuffer, const LocalTensor<uint8_t>& indexesTensor, const uint16_t m,
+    const uint32_t originN, const T scale, const T minValue)
 {
     // 写的时候固定用65或者33的stride去写，因为正向目前使能settail之后mm2的s1方向必须算满128或者64行
     // stride, high 16bits: blockStride (m*16*2/32), low 16bits: repeatStride (1)
@@ -93,9 +94,10 @@ __aicore__ inline void ProcessVec1NoUpdateImpl128(const LocalTensor<T2>& dstTens
     __ubuf__ T * maxUb = (__ubuf__ T*)maxTensor.GetPhyAddr();
     __ubuf__ T * maxUbStart = (__ubuf__ T*)maxTensor.GetPhyAddr();
     __ubuf__ T * srcUb = (__ubuf__ T*)srcTensor.GetPhyAddr();
+    __ubuf__ uint8_t * indexesUb = (__ubuf__ uint8_t*)indexesTensor.GetPhyAddr();
 
     ProcessVec1NoUpdateImpl128VF<T, T2, s1BaseSize, s2BaseSize>(
-        expUb, expSumUb, maxUb, maxUbStart, srcUb, blockStride, repeatStride, m, scale, minValue);
+        expUb, expSumUb, maxUb, maxUbStart, srcUb, indexesUb, blockStride, repeatStride, m, scale, minValue);
 }
 } // namespace
 
