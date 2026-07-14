@@ -84,10 +84,8 @@ private:
     LocalTensor<int32_t> ubTopkIds_;
     LocalTensor<int32_t> ubTargetExpertId_;
     LocalTensor<int32_t> ubSubExpertId_;
-    LocalTensor<int32_t> ubReduceWork_;
     LocalTensor<int32_t> ubRecvCnt_;
     LocalTensor<int64_t> ubExpertPfx_;
-    LocalTensor<int32_t> ubHitCountFull_;
     LocalTensor<int64_t> ubHitCountRowI64_;
     LocalTensor<float> ubStageWeights_;
     LocalTensor<int32_t> ubStageMeta_;
@@ -100,10 +98,8 @@ private:
     TBuf<QuePosition::VECIN> ubTopkIdsBuf_;
     TBuf<QuePosition::VECIN> ubTargetExpertIdBuf_;
     TBuf<QuePosition::VECIN> ubSubExpertIdBuf_;
-    TBuf<QuePosition::VECIN> ubReduceWorkBuf_;
     TBuf<QuePosition::VECIN> ubRecvCntBuf_;
     TBuf<QuePosition::VECIN> ubExpertPfxBuf_;
-    TBuf<QuePosition::VECIN> ubHitCountFullBuf_;
     TBuf<QuePosition::VECIN> ubHitCountRowI64Buf_;
     TBuf<QuePosition::VECIN> ubStageWeightsBuf_;
     TBuf<QuePosition::VECIN> ubStageMetaBuf_;
@@ -204,7 +200,6 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
     ubMetaCapElems_ = ubMetaBytes / sizeof(int32_t);
     uint32_t ubRecvCntBytes = Ceil((uint32_t)(epWorldSize_ * sizeof(int32_t)), UB_ALIGN) * UB_ALIGN;
     uint32_t ubExpertPfxBytes = Ceil((uint32_t)(numLocalExperts_ * sizeof(int64_t)), UB_ALIGN) * UB_ALIGN;
-    uint32_t ubHitCountFullBytes = Ceil((uint32_t)(aivNum_ * hitCountStride_ * sizeof(int32_t)), UB_ALIGN) * UB_ALIGN;
     uint32_t ubHitCountRowI64Bytes = Ceil((uint32_t)(numLocalExperts_ * sizeof(int64_t)), UB_ALIGN) * UB_ALIGN;
     maxSlotsPerAiv_ = maxSlotsPerAiv * epWorldSize_;
     uint32_t ubStageWeightsBytes = Ceil((uint32_t)(maxSlotsPerAiv_ * sizeof(float)), UB_ALIGN) * UB_ALIGN;
@@ -224,8 +219,6 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
         tpipe_->InitBuffer(ubTopkIdsBuf_, ubTopkIdsBytes);
         tpipe_->InitBuffer(ubTargetExpertIdBuf_, ubTopkIdsBytes);
         tpipe_->InitBuffer(ubSubExpertIdBuf_, ubTopkIdsBytes);
-        tpipe_->InitBuffer(ubReduceWorkBuf_, ubTopkIdsBytes);
-        tpipe_->InitBuffer(ubHitCountFullBuf_, ubHitCountFullBytes);
         tpipe_->InitBuffer(ubHitCountRowI64Buf_, ubHitCountRowI64Bytes);
         tpipe_->InitBuffer(ubStageWeightsBuf_, ubStageWeightsBytes);
         tpipe_->InitBuffer(ubStageMetaBuf_, ubStageMetaBytes);
@@ -236,9 +229,7 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
         ubTopkIds_ = ubTopkIdsBuf_.Get<int32_t>();
         ubTargetExpertId_ = ubTargetExpertIdBuf_.Get<int32_t>();
         ubSubExpertId_ = ubSubExpertIdBuf_.Get<int32_t>();
-        ubReduceWork_ = ubReduceWorkBuf_.Get<int32_t>();
 
-        ubHitCountFull_ = ubHitCountFullBuf_.Get<int32_t>();
         ubHitCountRowI64_ = ubHitCountRowI64Buf_.Get<int64_t>();
         ubStageWeights_ = ubStageWeightsBuf_.Get<float>();
         ubStageMeta_ = ubStageMetaBuf_.Get<int32_t>();
@@ -363,17 +354,17 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
 template <typename XType, typename ScalesType, uint32_t IsCached, bool HasTopkWeights>
 __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTopkWeights>::CopyFromWindowByExpert()
 {
-    DataCopyExtParams hitCountFullCopyParams{1U, static_cast<uint32_t>(aivNum_ * hitCountStride_ * sizeof(int32_t)), 0U,
-                                             0U, 0U};
-    DataCopyPadExtParams<int32_t> hitCountFullPadParams{false, 0U, 0U, 0};
+    DataCopyExtParams hitCountOneCopyParams{1U, static_cast<uint32_t>(numLocalExperts_ * sizeof(int32_t)), 0U, 0U, 0U};
+    DataCopyPadExtParams<int32_t> hitCountOnePadParams{false, 0U, 0U, 0};
     SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
-    DataCopyPad(ubHitCountFull_, hitCountGm_, hitCountFullCopyParams, hitCountFullPadParams);
-    SyncFunc<AscendC::HardEvent::MTE2_V>();
-
     Adds(ubRowStart_, ubExpertPfx_, static_cast<int64_t>(0), numLocalExperts_);
     for (uint32_t aiv = 0; aiv < aivId_; ++aiv) {
-        Cast(ubHitCountRowI64_, ubHitCountFull_[aiv * hitCountStride_], RoundMode::CAST_NONE, numLocalExperts_);
+        DataCopyPad(ubHitCount_, hitCountGm_[(int64_t)aiv * hitCountStride_], hitCountOneCopyParams,
+                    hitCountOnePadParams);
+        SyncFunc<AscendC::HardEvent::MTE2_V>();
+        Cast(ubHitCountRowI64_, ubHitCount_, RoundMode::CAST_NONE, numLocalExperts_);
         Add(ubRowStart_, ubRowStart_, ubHitCountRowI64_, numLocalExperts_);
+        SyncFunc<AscendC::HardEvent::V_MTE2>();
     }
     SyncFunc<AscendC::HardEvent::V_S>();
 
