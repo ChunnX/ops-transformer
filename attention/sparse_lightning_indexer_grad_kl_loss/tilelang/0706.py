@@ -421,7 +421,7 @@ def tilelang_grad_kl_loss_single_kernel(
                 weight_2d_ub = T.alloc_ub((Nidx1, n_block), calc_dtype)
                 p_reduced_tmp_ub = T.alloc_ub(n_block, calc_dtype)
                 rsy_tmp_ub = T.alloc_ub((vector_baseg, n_block), calc_dtype)
-                rsy_reduce_ub = T.alloc_ub(n_block, calc_dtype)
+                rsy_reduce_db = T.alloc_ub((2, n_block), calc_dtype)  # DB for MTE3 overlap
                 sm_max_ub = T.alloc_ub(G, calc_dtype)
                 sm_sum_ub = T.alloc_ub(G, calc_dtype)
                 eps_sm_ub = T.alloc_ub(G, calc_dtype)
@@ -486,10 +486,12 @@ def tilelang_grad_kl_loss_single_kernel(
                     # rsy_all_ub holds all ReduceSumY blocks (avoid GM re-reads)
                     T.tile.fill(rsy_max_ub, -T.infinity(calc_dtype))
                     # Double-buffer ReduceSumY loop: overlap copy[n_rsy+1] ∥ compute[n_rsy]
-                    # WAR-safe ping-pong, slot 0→bmm2_0, slot 1→bmm2_1
-                    # MTE2_V{0,1} (RAW) / V_MTE2{0,1} (WAR)
+                    # bmm2 DB: V_MTE2{0,1} (WAR) / MTE2_V{0,1} (RAW)
+                    # rsy_reduce DB: MTE3_V{9,10} (WAR: MTE3 done reading, V can overwrite)
                     T.set_flag("v", "mte2", 0)
                     T.set_flag("v", "mte2", 1)
+                    T.set_flag("mte3", "v", 9)
+                    T.set_flag("mte3", "v", 10)
 
                     # Prologue: load n_rsy=0 → slot 0
                     T.wait_flag("v", "mte2", 0)
@@ -509,16 +511,19 @@ def tilelang_grad_kl_loss_single_kernel(
                             T.tile.mul(bmm2_1, bmm2_1, weight_2d_ub)
                         T.pipe_barrier("v")
                         if cur == 0:
-                            T.reduce_sum(bmm2_0, rsy_reduce_ub, 0)
+                            T.reduce_sum(bmm2_0, rsy_reduce_db[cur], 0)
                         if cur == 1:
-                            T.reduce_sum(bmm2_1, rsy_reduce_ub, 0)
+                            T.reduce_sum(bmm2_1, rsy_reduce_db[cur], 0)
                         T.pipe_barrier("v")
                         # Save to UB (for sum) + write to GM (for workspace)
-                        T.copy(rsy_reduce_ub, rsy_all_ub[n_rsy, :])
-                        T.pipe_barrier("mte3")
-                        T.copy(rsy_reduce_ub, ReduceSumY[bz, s1_id, n_rsy * n_block:(n_rsy + 1) * n_block])
-                        # Fused: update global max from rsy_reduce_ub (still in UB, no GM round-trip)
-                        T.tile.mul(rsy_bc_ub[0, :], rsy_reduce_ub, 1.0)
+                        T.copy(rsy_reduce_db[cur], rsy_all_ub[n_rsy, :])
+                        # WAR: wait for MTE3 to finish reading rsy_reduce_db[cur] from 2 iters ago
+                        T.wait_flag("mte3", "v", cur + 9)
+                        # MTE3 copy: fire-and-forget, overlaps with V reduce_max below
+                        T.copy(rsy_reduce_db[cur], ReduceSumY[bz, s1_id, n_rsy * n_block:(n_rsy + 1) * n_block])
+                        T.set_flag("mte3", "v", cur + 9)
+                        # Fused: update global max from rsy_reduce_db[cur] (still in UB, ∥ MTE3 copy in flight)
+                        T.tile.mul(rsy_bc_ub[0, :], rsy_reduce_db[cur], 1.0)
                         T.pipe_barrier("v")
                         T.reduce_max(rsy_bc_ub, rsy_chunk_max_ub, 1)
                         T.pipe_barrier("v")
@@ -539,6 +544,8 @@ def tilelang_grad_kl_loss_single_kernel(
                     # Clear: drain remaining WAR events
                     T.wait_flag("v", "mte2", 0)
                     T.wait_flag("v", "mte2", 1)
+                    T.wait_flag("mte3", "v", 9)
+                    T.wait_flag("mte3", "v", 10)
 
                     # Broadcast rsy_max to vector once (softmax_i_chunk_ub free, p_reduced_tmp refill 1.0)
                     # WAR: p_reduced_tmp 前面被 reduce_sum 覆盖，refill 前等 mte3 drain 完成
@@ -775,8 +782,8 @@ def tilelang_grad_kl_loss_single_kernel(
             with T.Scope("V"):
                 T.wait_cross_flag(3)
 
-                dq_fp32_ub = T.alloc_ub((4, BLOCK_K), calc_dtype)
-                dq_fp16_ub = T.alloc_ub((4, BLOCK_K), input_dtype)
+                dq_fp32_db = T.alloc_ub((2, 4, BLOCK_K), calc_dtype)
+                dq_fp16_db = T.alloc_ub((2, 4, BLOCK_K), input_dtype)
                 dk_chunk_0 = T.alloc_ub((1, DQueryIndex), calc_dtype)
                 dk_chunk_1 = T.alloc_ub((1, DQueryIndex), calc_dtype)
 
@@ -784,37 +791,51 @@ def tilelang_grad_kl_loss_single_kernel(
                 half_block = n_block // 2
 
                 for s1_row in T.serial(s1_start, s1_end):
-                    # ---- Part 1: Cast dQueryIndex FP32→FP16 (split g_id across AIVs) ----
-                    if vid == 0:
-                        for g_id in T.serial(0, g_per_aiv):
+                    # ---- Part 1: Cast dQueryIndex FP32→FP16 (split g_id, WAR-safe ping-pong DB) ----
+                    # Pipeline: MTE2 fill ∥ (V cast → MTE3 write) ∥ MTE2 prefetch
+                    # Events: MTE2_V{7,8} (RAW), V_MTE3{7,8} (RAW), MTE3_MTE2{7,8} (WAR)
+                    # vid 是 Python int(0/1)，直接算术求 g_start/g_end，避免 if/else 跨分支变量
+                    g_start = vid * g_per_aiv           # 0 or 32
+                    g_end = g_start + g_per_aiv         # 32 or 64
+
+                    # Pre-fill WAR: both slots initially free
+                    T.set_flag("mte3", "mte2", 7)
+                    T.set_flag("mte3", "mte2", 8)
+
+                    # Prologue: MTE2 fill + V cast for slot 0 (MTE3 deferred to loop)
+                    T.wait_flag("mte3", "mte2", 7)
+                    for d_idx in T.serial(d_num_query_index):
+                        T.copy(dQueryIndexAccum[bz, s1_row, g_start * 4:(g_start + 1) * 4, d_idx * BLOCK_K:(d_idx + 1) * BLOCK_K], dq_fp32_db[0, :, :])
+                    T.set_flag("mte2", "v", 7)
+                    T.wait_flag("mte2", "v", 7)
+                    T.tile.cast(dq_fp16_db[0, :, :], dq_fp32_db[0, :, :], "CAST_ROUND", 4 * BLOCK_K)
+                    T.set_flag("v", "mte3", 7)
+
+                    for g_id in T.serial(g_start, g_end):
+                        cur = (g_id - g_start) % 2
+                        nxt = (g_id - g_start + 1) % 2
+
+                        # MTE3 write slot cur → GM (∥ MTE2+V prefetch of nxt)
+                        T.wait_flag("v", "mte3", cur + 7)
+                        for d_idx in T.serial(d_num_query_index):
+                            T.copy(dq_fp16_db[cur, :, :], dQueryIndex[bz, s1_row, g_id * 4:(g_id + 1) * 4, d_idx * BLOCK_K:(d_idx + 1) * BLOCK_K])
+                        # WAR: slot cur consumed → safe to refill
+                        T.set_flag("mte3", "mte2", cur + 7)
+
+                        # Prefetch next g_id → slot nxt (MTE2 fill + V cast)
+                        next_g = g_id + 1
+                        if next_g < g_end:
+                            T.wait_flag("mte3", "mte2", nxt + 7)
                             for d_idx in T.serial(d_num_query_index):
-                                T.set_flag("v", "mte2", 2)
-                                T.wait_flag("v", "mte2", 2)
-                                T.copy(dQueryIndexAccum[bz, s1_row, g_id * 4:(g_id + 1) * 4, d_idx * BLOCK_K:(d_idx + 1) * BLOCK_K], dq_fp32_ub)
-                                T.set_flag("mte2", "v", 0)
-                                T.wait_flag("mte2", "v", 0)
-                                T.set_flag("mte3", "v", 4)
-                                T.wait_flag("mte3", "v", 4)
-                                T.tile.cast(dq_fp16_ub, dq_fp32_ub, "CAST_ROUND", 4 * BLOCK_K)
-                                T.set_flag("v", "mte3", 1)
-                                T.wait_flag("v", "mte3", 1)
-                                T.pipe_barrier("mte3")
-                                T.copy(dq_fp16_ub, dQueryIndex[bz, s1_row, g_id * 4:(g_id + 1) * 4, d_idx * BLOCK_K:(d_idx + 1) * BLOCK_K])
-                    else:
-                        for g_id in T.serial(g_per_aiv, v3_chunks):
-                            for d_idx in T.serial(d_num_query_index):
-                                T.set_flag("v", "mte2", 2)
-                                T.wait_flag("v", "mte2", 2)
-                                T.copy(dQueryIndexAccum[bz, s1_row, g_id * 4:(g_id + 1) * 4, d_idx * BLOCK_K:(d_idx + 1) * BLOCK_K], dq_fp32_ub)
-                                T.set_flag("mte2", "v", 0)
-                                T.wait_flag("mte2", "v", 0)
-                                T.set_flag("mte3", "v", 4)
-                                T.wait_flag("mte3", "v", 4)
-                                T.tile.cast(dq_fp16_ub, dq_fp32_ub, "CAST_ROUND", 4 * BLOCK_K)
-                                T.set_flag("v", "mte3", 1)
-                                T.wait_flag("v", "mte3", 1)
-                                T.pipe_barrier("mte3")
-                                T.copy(dq_fp16_ub, dQueryIndex[bz, s1_row, g_id * 4:(g_id + 1) * 4, d_idx * BLOCK_K:(d_idx + 1) * BLOCK_K])
+                                T.copy(dQueryIndexAccum[bz, s1_row, next_g * 4:(next_g + 1) * 4, d_idx * BLOCK_K:(d_idx + 1) * BLOCK_K], dq_fp32_db[nxt, :, :])
+                            T.set_flag("mte2", "v", nxt + 7)
+                            T.wait_flag("mte2", "v", nxt + 7)
+                            T.tile.cast(dq_fp16_db[nxt, :, :], dq_fp32_db[nxt, :, :], "CAST_ROUND", 4 * BLOCK_K)
+                            T.set_flag("v", "mte3", nxt + 7)
+
+                    # Clear: drain remaining WAR events
+                    T.wait_flag("mte3", "mte2", 7)
+                    T.wait_flag("mte3", "mte2", 8)
 
                     # ---- Part 2: Scatter dk_matmul_partial → dKeyIndex (split k_id across AIVs) ----
                     # WAR-safe ping-pong DB: overlap MTE2 copy[k+1] ∥ MTE3 atomic_add[k]
