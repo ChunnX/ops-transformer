@@ -35,7 +35,7 @@ private:
     __aicore__ inline void DoCommit(uint32_t targetRankId, uint64_t tileOffset, uint64_t tileSize) {
         Barrier barrier;
         barrier.Execute(this->syncBuf_, this->ubmemCtx_, this->useCoreNum_, this->curCoreId_);
-        if ((this->curCoreId_ >= this->useCoreNum_) || (this->curCoreId_ == this->ctx_->myRankId)) {
+        if ((this->curCoreId_ >= this->useCoreNum_) || (this->curCoreId_ == this->udmaCtx_->rankId)) {
             return;
         }
         GM_ADDR srcAddr = this->commBufferAddrs_[targetRankId]
@@ -50,6 +50,9 @@ private:
     }
 
     __aicore__ inline void DoWait(uint32_t targetRankId) {
+        if ((this->curCoreId_ >= this->useCoreNum_) || (this->curCoreId_ == this->udmaCtx_->rankId)) {
+            return;
+        }
         this->comm_.Drain(this->channels_[targetRankId]);
     }
 

@@ -30,8 +30,8 @@ template<typename Impl, typename Dtype>
 class CollectiveCommBase {
     friend Impl;
 protected:
-    const CommUdmaContext* udmaCtx_;
-    const CommUbmemContext* ubmemCtx_;
+    __gm__ CommUdmaContext* udmaCtx_;
+    __gm__ CommUbmemContext* ubmemCtx_;
     const CommTilingData* tilingData_;
 
     Hcomm<AscendC::COMM_PROTOCOL_UBC_CTP> comm_;
@@ -39,8 +39,8 @@ protected:
     __ubuf__ uint8_t* commBuf_;
     __ubuf__ uint8_t* syncBuf_;
 
-    ChannelHandle channels_[HCOMM_MAX_RANK_NUM];
-    GM_ADDR commBufferAddrs_[HCOMM_MAX_RANK_NUM];
+    ChannelHandle channels_[COMM_MAX_RANK_NUM];
+    GM_ADDR commBufferAddrs_[COMM_MAX_RANK_NUM];
 
     uint64_t chunkSize_;
     uint64_t nonSplitAxisBytes_;
@@ -63,8 +63,8 @@ public:
     __aicore__ inline CollectiveCommBase() {}
 
     __aicore__ inline uint64_t Init(
-        const CommUdmaContext* udmaCtx,
-        const CommUbmemContext* ubmemCtx,
+        __gm__ CommUdmaContext* udmaCtx,
+        __gm__ CommUbmemContext* ubmemCtx,
         const CommTilingData& tilingData,
         GM_ADDR localAddr,
         __ubuf__ uint8_t* commbuf,
@@ -84,8 +84,8 @@ public:
             commBufferAddrs_[i] = reinterpret_cast<GM_ADDR>(udmaCtx_->commBufferAddrs[i]);
         }
 
-        comm_.Init(commBuf_, HCOMM_WORKSPACE_SIZE);
-        syncBuf_ = commBuf_ + HCOMM_WORKSPACE_SIZE;
+        comm_.Init(commBuf_, COMM_WORKSPACE_SIZE);
+        syncBuf_ = commBuf_ + COMM_WORKSPACE_SIZE;
 
         uint32_t rankSize = udmaCtx_->rankSize;
         uint32_t targetRankPerCore = (rankSize + useCoreNum - 1) / useCoreNum;
@@ -111,7 +111,7 @@ public:
         uint32_t tileMaxByteSize = (tilingData_->splitAxisTileSize > tilingData_->splitAxisTailSize ?
             tilingData_->splitAxisTileSize : tilingData_->splitAxisTailSize) * nonSplitAxisBytes_;
         slotStride_ = rankSize * tileMaxByteSize;
-        myRankOffset_ = udmaCtx_->myRankId * tileMaxByteSize;
+        myRankOffset_ = udmaCtx_->rankId * tileMaxByteSize;
         currentTileIdx_ = 0;
         currentTileOffset_ = 0;
         remainingChunkSize_ = chunkSize_;
@@ -137,7 +137,7 @@ public:
         }
 
         if (targetRankCnt_ > 0) {
-            const uint32_t myRankId = udmaCtx_->myRankId;
+            const uint32_t rankId = udmaCtx_->rankId;
             const uint32_t targetRankStart = targetRankStart_;
             const uint32_t targetRankCnt = targetRankCnt_;
 
@@ -157,12 +157,10 @@ public:
         if (waitLast) {
             return;
         }
-        const uint32_t myRankId = udmaCtx_->myRankId;
+        const uint32_t rankId = udmaCtx_->rankId;
         for (uint32_t i = 0; i < targetRankCnt_; i++) {
             uint32_t targetRankId = targetRankStart_ + i;
-            if (targetRankId != myRankId) {
-                static_cast<Impl*>(this)->DoWait(targetRankId);
-            }
+            static_cast<Impl*>(this)->DoWait(targetRankId);
         }
     }
 

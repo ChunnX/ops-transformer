@@ -47,7 +47,10 @@ private:
             static_cast<uint64_t>(tileSize * this->nonSplitAxisBytes_));
     }
 
-    __aicore__ inline void DoWait() {
+    __aicore__ inline void DoWait(uint32_t targetRankId) {
+        if ((this->curCoreId_ >= this->useCoreNum_) || (this->curCoreId_ == this->ctx_->myRankId)) {
+            return;
+        }
         this->comm_.Drain(this->channels_[targetRankId]);
     }
 
