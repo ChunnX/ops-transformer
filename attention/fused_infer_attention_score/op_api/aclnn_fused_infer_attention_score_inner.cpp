@@ -414,6 +414,17 @@ aclnnStatus MakeTensorListContiguous(const aclTensorList *&tensorList, const cha
     return ACLNN_SUCCESS;
 }
 
+void SetTensorFormatToND(const aclTensor *tensor)
+{
+    if (tensor == nullptr) {
+        return;
+    }
+    auto mutableTensor = const_cast<aclTensor *>(tensor);
+    mutableTensor->SetStorageFormat(Format::FORMAT_ND);
+    mutableTensor->SetViewFormat(Format::FORMAT_ND);
+    mutableTensor->SetOriginalFormat(Format::FORMAT_ND);
+}
+
 aclnnStatus ReshapeTensorToViewShape(const aclTensor *&tensor, const char *name, aclOpExecutor *executor)
 {
     if (tensor == nullptr) {
@@ -434,6 +445,7 @@ aclnnStatus ReshapeTensorToViewShape(const aclTensor *&tensor, const char *name,
         OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "Try reshape %s to view shape failed.", name);
         return ACLNN_ERR_INNER_NULLPTR;
     }
+    SetTensorFormatToND(tensor);
     std::string afterName = std::string(name) + ".afterReshape";
     LogTensorDebugInfo(afterName.c_str(), tensor);
     return ACLNN_SUCCESS;
@@ -500,6 +512,7 @@ aclnnStatus NormalizeFAICacheTensorList(const aclTensorList *&tensorList, const 
                 OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "Try create view for %s failed.", itemName.c_str());
                 return ACLNN_ERR_INNER_NULLPTR;
             }
+            SetTensorFormatToND(normalizedTensor);
         }
         std::string normalizedName = itemName + ".normalized";
         LogTensorDebugInfo(normalizedName.c_str(), normalizedTensor);
