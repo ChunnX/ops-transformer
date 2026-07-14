@@ -279,7 +279,7 @@ protected:
                 const uint32_t srcGapX = static_cast<uint32_t>(seqLen * dim - baseDim) * sizeof(T);
                 DataCopyPad(ring[slotNext * this->dimBufferSize_], this->xGm_[xGmBase],
                             {static_cast<uint16_t>(coBatch), blockBytes, srcGapX, 0, 0}, {false, 0, 0, 0});
-                SetFlag<HardEvent::MTE2_V>((t & 1) ? EVENT_ID1 : EVENT_ID0);
+                SetFlag<HardEvent::MTE2_V>((t & 1) ? EVENT_ID0 : EVENT_ID1);
             }
 
             // ---- 等 MTE3 释放 ring slot (t >= 2 的 state 写出) ----------
