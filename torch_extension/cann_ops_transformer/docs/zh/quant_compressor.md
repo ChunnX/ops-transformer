@@ -25,7 +25,7 @@
     X_{fp32} = X_{hif8} \cdot x\_descale,\quad W^{KV}_{fp32} = W^{KV}_{hif8} \cdot wkv\_descale,\quad W^{Gate}_{fp32} = W^{Gate}_{hif8} \cdot wgate\_descale
     $$
 
-    其中x_descale为per-tensor标量（shape为[1]），wkv_descale、wgate_descale为per-channel向量（shape为[coff\*D]，沿权重输出通道维度缩放）。
+    其中x_descale为per-tensor标量（shape为[1,]），wkv_descale、wgate_descale为per-channel向量（shape为[coff\*D,]，沿权重输出通道维度缩放）。
 
     1. 计算矩阵乘法（使用反量化后的FP32数据）：
 
@@ -111,9 +111,9 @@ cann_ops_transformer.quant_compressor(
 | ape | Tensor | 必选 | positional biases，对应公式中的 $Ape$。不支持非连续，数据格式支持ND。 | float32 | [cmp_ratio,coff* D] |
 | quant_mode | int | 必选 | 量化模式。取值范围为[1]，1表示HIF8_XPERTENSOR_WPERCHANNEL（HIFLOAT8输入，x按per-tensor缩放、wkv/wgate按per-channel缩放反量化）。 | - | - |
 | cmp_ratio | int | 必选 | 数据压缩率。默认值为4. | - | - |
-| x_descale | Tensor | 可选 | x的反量化缩放因子，per-tensor缩放。quant_mode=1时必选。不支持非连续，数据格式支持ND。 | float32 | [1] |
-| wkv_descale | Tensor | 可选 | wkv的反量化缩放因子，per-channel缩放，通道数为coff\*D。quant_mode=1时必选。不支持非连续，数据格式支持ND。 | float32 | [coff* D] |
-| wgate_descale | Tensor | 可选 | wgate的反量化缩放因子，per-channel缩放，通道数为coff\*D。quant_mode=1时必选。不支持非连续，数据格式支持ND。 | float32 | [coff* D] |
+| x_descale | Tensor | 可选 | x的反量化缩放因子，per-tensor缩放。quant_mode=1时必选。不支持非连续，数据格式支持ND。 | float32 | [1,] |
+| wkv_descale | Tensor | 可选 | wkv的反量化缩放因子，per-channel缩放，通道数为coff\*D。quant_mode=1时必选。不支持非连续，数据格式支持ND。 | float32 | [coff* D,] |
+| wgate_descale | Tensor | 可选 | wgate的反量化缩放因子，per-channel缩放，通道数为coff\*D。quant_mode=1时必选。不支持非连续，数据格式支持ND。 | float32 | [coff* D,] |
 | state_block_table | Tensor | 可选 | state_cache存储使用的block映射表。不支持非连续，数据格式支持ND。 | int32 | cache_mode=1时，shape为[B,ceil(Smax/block_size)]，Smax为每个Batch中最大的Sequence Length，当x的shape为[B,S,H]时，Smax=max(start_pos)+S。当x的shape为[T,H]时，Smax=max(start_pos)+max(cu_seqlens[n+1] - cu_seqlens[n])。cache_mode=2时，shape为[B]。当其中元素的值为0时，表示当前位置无需进行更新state_cache操作 |
 | cu_seqlens | Tensor | 可选 | 不同Batch上的有效token数。不支持非连续，数据格式支持ND。<br>当x的shape为[B,S,H]时，参数必须为空。<br>当x的shape为[T,H]时，输入shape必须为[B+1,]，该参数为前缀和数组，后一个元素≥前一个元素，第一位必须为0。 | int32 | [B+1,] |
 | seqused | Tensor | 可选 | 不同Batch中实际参与压缩的token数。不支持非连续，数据格式支持ND。<br>指定为None时，数值等于每个Batch上的Sequence Length。<br>[B,S,H]场景：0 ≤ seqused[n] ≤ S<br>[T,H]场景：0 ≤ seqused[n] ≤ cu_seqlens[n+1] - cu_seqlens[n]。 | int32 | [B,] |
@@ -172,7 +172,7 @@ cann_ops_transformer.quant_compressor(
 - 支持D为128/512。
 - 支持H为1K~10K，512对齐。
 - 支持block_size为1~1024。
-- quant_mode取值为1（HIF8_XPERTENSOR_WPERCHANNEL），此时x_descale、wkv_descale、wgate_descale为必选输入。其中x_descale shape为[1]（per-tensor缩放），wkv_descale、wgate_descale shape为[coff\*D]（per-channel缩放）。
+- quant_mode取值为1（HIF8_XPERTENSOR_WPERCHANNEL），此时x_descale、wkv_descale、wgate_descale为必选输入。其中x_descale shape为[1,]（per-tensor缩放），wkv_descale、wgate_descale shape为[coff\*D,]（per-channel缩放）。
 - 支持cmp_ratio为2/4/8/16/32/64/128。支持如下三种典型组合场景：
     - C4A: D=512, coff=2, cmp_ratio=4;
     - C4Li: D=128, coff=2, cmp_ratio=4;
