@@ -1519,3 +1519,128 @@ TEST_F(KvRmsNormRopeCacheTiling, kv_rms_norm_rope_cache_norm_cache_bn_too_small_
 
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
+
+// Recompute 模板（dv 大到 D 无法全载，走 TilingKey 20000）+ PA_NZ：dk / 2 是 dk0(fp16 为 16) 的整数倍，
+// RoPE 的前后半区都落在分形块边界上 → 放行
+TEST_F(KvRmsNormRopeCacheTiling, kv_rms_norm_rope_cache_recompute_nz_dk_aligned_tiling)
+{
+    optiling::KvRmsNormRopeCacheCompileInfo compileInfo;
+    compileInfo.coreNum = 48;
+    compileInfo.ubSize = 196608;
+    gert::TilingContextPara tilingContextPara(
+        "KvRmsNormRopeCache",
+        {
+            {{{4, 1, 1, 32832},{4, 1, 1, 32832}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{32768},{32768}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{4, 1, 1, 64},{4, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{4, 1, 1, 64},{4, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{4, 1},{4, 1}}, ge::DT_INT64, ge::FORMAT_ND},
+            {{{8, 128, 1, 64},{8, 128, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{8, 128, 1, 32768},{8, 128, 1, 32768}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            kOptionalInput,
+            kOptionalInput,
+            kOptionalInput,
+            kOptionalInput,
+            kOptionalInput
+        },
+        {
+            {{{8, 128, 1, 64},{8, 128, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{8, 128, 1, 32768},{8, 128, 1, 32768}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{4, 1, 1, 64},{4, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{4, 1, 1, 32768},{4, 1, 1, 32768}}, ge::DT_FLOAT16, ge::FORMAT_ND}
+        },
+        {
+            {"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
+            {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_NZ")},
+            {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+        },
+        &compileInfo,
+        "Ascend950",
+        64,
+        196608);
+
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 20000, "");
+}
+
+// 同上，但 dk = 16：满足 base 的 dk % dk0 == 0，却不满足 dk % (2 * dk0) == 0。
+// RoPE 后半区的偏移 gmOffset + dk / 2 * blockSize 落不到分形块边界上 → tiling 必须拦截
+TEST_F(KvRmsNormRopeCacheTiling, kv_rms_norm_rope_cache_recompute_nz_dk_half_unaligned_tiling)
+{
+    optiling::KvRmsNormRopeCacheCompileInfo compileInfo;
+    compileInfo.coreNum = 48;
+    compileInfo.ubSize = 196608;
+    gert::TilingContextPara tilingContextPara(
+        "KvRmsNormRopeCache",
+        {
+            {{{4, 1, 1, 32784},{4, 1, 1, 32784}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{32768},{32768}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{4, 1, 1, 16},{4, 1, 1, 16}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{4, 1, 1, 16},{4, 1, 1, 16}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{4, 1},{4, 1}}, ge::DT_INT64, ge::FORMAT_ND},
+            {{{8, 128, 1, 16},{8, 128, 1, 16}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{8, 128, 1, 32768},{8, 128, 1, 32768}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            kOptionalInput,
+            kOptionalInput,
+            kOptionalInput,
+            kOptionalInput,
+            kOptionalInput
+        },
+        {
+            {{{8, 128, 1, 16},{8, 128, 1, 16}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{8, 128, 1, 32768},{8, 128, 1, 32768}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{4, 1, 1, 16},{4, 1, 1, 16}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{4, 1, 1, 32768},{4, 1, 1, 32768}}, ge::DT_FLOAT16, ge::FORMAT_ND}
+        },
+        {
+            {"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
+            {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_NZ")},
+            {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+        },
+        &compileInfo,
+        "Ascend950",
+        64,
+        196608);
+
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
+}
+
+// epsilon 是 RmsNorm 分母的平滑项，非正数会让分母出现 0 或负数开方 → tiling 必须拦截
+TEST_F(KvRmsNormRopeCacheTiling, kv_rms_norm_rope_cache_non_positive_epsilon_tiling)
+{
+    optiling::KvRmsNormRopeCacheCompileInfo compileInfo;
+    compileInfo.coreNum = 48;
+    compileInfo.ubSize = 196608;
+    gert::TilingContextPara tilingContextPara(
+        "KvRmsNormRopeCache",
+        {
+            {{{4, 1, 1, 192},{4, 1, 1, 192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{128},{128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{4, 1, 1, 64},{4, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{4, 1, 1, 64},{4, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{4, 1},{4, 1}}, ge::DT_INT64, ge::FORMAT_ND},
+            {{{4, 1, 128, 64},{4, 1, 128, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{4, 1, 128, 128},{4, 1, 128, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            kOptionalInput,
+            kOptionalInput,
+            kOptionalInput,
+            kOptionalInput,
+            kOptionalInput
+        },
+        {
+            {{{4, 1, 128, 64},{4, 1, 128, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{4, 1, 128, 128},{4, 1, 128, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{4, 1, 1, 64},{4, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{4, 1, 1, 128},{4, 1, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}
+        },
+        {
+            {"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(0.0f)},
+            {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("Norm")},
+            {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+        },
+        &compileInfo,
+        "Ascend950",
+        64,
+        196608);
+
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
+}

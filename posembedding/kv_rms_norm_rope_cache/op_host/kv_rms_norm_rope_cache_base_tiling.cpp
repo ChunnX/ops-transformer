@@ -455,6 +455,12 @@ ge::graphStatus KvRmsNormRopeCacheTilingBase::GetShapeAttrsInfo()
     const float* epsilon = attrs->GetFloat(0);
     OP_CHECK_NULL_WITH_CONTEXT(context_, epsilon);
 
+    // epsilon 是 RmsNorm 分母 sqrt(mean(x^2) + epsilon) 的平滑项，非正数会让分母出现 0 或负数开方，
+    // 进而把 inf/nan 静默写进 cache
+    OP_CHECK_IF(
+        !(*epsilon > 0.0f),
+        OP_LOGE(context_->GetNodeName(), "attr epsilon should be positive, but got %f.", *epsilon),
+        return ge::GRAPH_FAILED);
     epsilon_ = *epsilon;
     const char* tmpmode = attrs->GetStr(CACHE_MODE_IDX);
     if (tmpmode != nullptr) {

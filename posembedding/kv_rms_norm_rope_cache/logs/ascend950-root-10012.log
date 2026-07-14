@@ -1,0 +1,90 @@
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[08:53:38] >>> [ascend950-root-10012] grep -n 'cacheLength + vCacheIdx' /home/qianzehong/workspace/cann/ops-transformer/posembedding/kv_rms_norm_rope_cache/op_kernel/arch35/kv_rms_norm_rope_cache_regbase_recompute.h | head -2; echo '=== vendor 里 kv_rms_norm_rope_cache 的 kernel 二进制:'; ls $ASCEND_OPP_PATH/vendors/custom_transformer/op_impl/ai_core/tbe/kernel/ascend950/kv_rms_norm_rope_cache*/ 2>/dev/null | head -12
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+983:                gmOffset = (batchIdx * tilingData_->cacheLength + vCacheIdx) * tilingData_->dv + this->ubFactor * ubIdx;
+=== vendor 里 kv_rms_norm_rope_cache 的 kernel 二进制:
+KvRmsNormRopeCache_0988af5c16f86d5a366f913b2e1c9ac7.json
+KvRmsNormRopeCache_0988af5c16f86d5a366f913b2e1c9ac7.o
+KvRmsNormRopeCache_1628ff5a0c14e452b4c63b2060658fa9.json
+KvRmsNormRopeCache_1628ff5a0c14e452b4c63b2060658fa9.o
+KvRmsNormRopeCache_1805a1558a5168707bf1147fd28213f5.json
+KvRmsNormRopeCache_1805a1558a5168707bf1147fd28213f5.o
+KvRmsNormRopeCache_1f26b0c5ba83fb78b6d3275934cc2aee.json
+KvRmsNormRopeCache_1f26b0c5ba83fb78b6d3275934cc2aee.o
+KvRmsNormRopeCache_22c8e9ba97946e6a5d231f32c2aafa1c.json
+KvRmsNormRopeCache_22c8e9ba97946e6a5d231f32c2aafa1c.o
+KvRmsNormRopeCache_2cebcdc621c774eb3b6a37cd98cc06c8.json
+KvRmsNormRopeCache_2cebcdc621c774eb3b6a37cd98cc06c8.o
+[08:53:40] <<< 完成 (exit: 0)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[08:53:54] >>> [ascend950-root-10012] V=$ASCEND_OPP_PATH/vendors; cp $V/config.ini.bak $V/config.ini; echo '[内置包]'; unset ASCEND_CUSTOM_OPP_PATH; cd /home/qianzehong/workspace/kvrms_probe && ./probe_quant 2>&1 | grep -E 'k_cache\[|非零行数'; echo 'load_priority=custom_transformer,custom_kvrope_transformer,custom_nn' > $V/config.ini; echo '[我们的 vendor]'; ./probe_quant 2>&1 | grep -E 'k_cache\[|非零行数'; cp $V/config.ini.bak $V/config.ini
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[内置包]
+k_cache[b=0][row= 10][0..3] =    8    8    8    8
+k_cache[b=0][row= 21][0..3] =   16   16   16   16
+k_cache[b=0][row= 32][0..3] =   24   24   24   24
+k_cache[b=0][row= 43][0..3] =   32   32   32   32
+k_cache 非零行数: 4 (期望 4，每个 batch 各一行)
+[我们的 vendor]
+k_cache[b=0][row= 10][0..3] =    8    8    8    8
+k_cache[b=1][row= 20][0..3] =   16   16   16   16
+k_cache[b=2][row= 30][0..3] =   24   24   24   24
+k_cache[b=3][row= 40][0..3] =   32   32   32   32
+k_cache 非零行数: 4 (期望 4，每个 batch 各一行)
+[08:54:24] <<< 完成 (exit: 0)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[08:54:53] >>> [ascend950-root-10012] cd /home/qianzehong/workspace/cann/ops-transformer/posembedding/kv_rms_norm_rope_cache/op_kernel/arch35 && cp kv_rms_norm_rope_cache_regbase_recompute.h /tmp/recompute_fixed.h && sed -i 's|pipe_->InitBuffer(xPowBuffer, BUFFER_COUNT_DOUBLE \* this->ubFactor \* sizeof(float));|pipe_->InitBuffer(xPowBuffer, BUFFER_COUNT_DOUBLE * this->ubFactor * sizeof(T_KV));  // TEST|' kv_rms_norm_rope_cache_regbase_recompute.h && grep -c 'sizeof(T_KV));  // TEST' kv_rms_norm_rope_cache_regbase_recompute.h; cd /home/qianzehong/workspace/cann/ops-transformer && bash build.sh --pkg --soc=ascend950 --ops=kv_rms_norm_rope_cache 2>&1 | grep -cE 'error:'; cd build_out && ./cann-ops-transformer-custom_linux-x86_64.run --quiet --install-path=$ASCEND_OPP_PATH >/dev/null 2>&1 && echo 'load_priority=custom_transformer,custom_kvrope_transformer,custom_nn' > $ASCEND_OPP_PATH/vendors/config.ini; unset ASCEND_CUSTOM_OPP_PATH; cd /home/qianzehong/workspace/kvrms_probe && echo '[xPow 半量分配 = 阳性对照]' && ./probe_quant 2>&1 | grep -E 'k_cache\[|非零行数|ckv_cache\[b=0'
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+1
+0
+[08:55:40] <<< 失败 (exit: 1)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[08:55:49] >>> [ascend950-root-10012] unset ASCEND_CUSTOM_OPP_PATH; cd /home/qianzehong/workspace/kvrms_probe && echo '[xPow 半量分配 = 阳性对照]'; ./probe_quant 2>&1 | grep -E 'k_cache\[|非零行数|ckv_cache\[b='
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[xPow 半量分配 = 阳性对照]
+k_cache[b=0][row= 10][0..3] =    8    8    8    8
+k_cache[b=0][row= 21][0..3] =   16   16   16   16
+k_cache[b=0][row= 32][0..3] =   24   24   24   24
+k_cache[b=0][row= 43][0..3] =   32   32   32   32
+k_cache 非零行数: 4 (期望 4，每个 batch 各一行)
+ckv_cache[b=0][row= 10]: min=  16 max=  16
+ckv_cache[b=1][row= 20]: min=   0 max=   0
+ckv_cache[b=2][row= 30]: min=   0 max=   0
+ckv_cache[b=3][row= 40]: min=   0 max=   0
+[08:56:10] <<< 完成 (exit: 0)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[08:56:26] >>> [ascend950-root-10012] V=$ASCEND_OPP_PATH/vendors; echo -n 'config.ini: '; cat $V/config.ini; echo -n 'vendor kernel 目录时间: '; stat -c %y $V/custom_transformer/op_impl/ai_core/tbe/kernel/ascend950/ 2>/dev/null | cut -d. -f1; echo -n '当前源码 xPow: '; grep -o 'InitBuffer(xPowBuffer.*' /home/qianzehong/workspace/cann/ops-transformer/posembedding/kv_rms_norm_rope_cache/op_kernel/arch35/kv_rms_norm_rope_cache_regbase_recompute.h
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+config.ini: load_priority=custom_kvrope_transformer,custom_nn
+vendor kernel 目录时间: 2026-07-14 20:28:52
+当前源码 xPow: InitBuffer(xPowBuffer, BUFFER_COUNT_DOUBLE * this->ubFactor * sizeof(T_KV));  // TEST
+[08:56:29] <<< 完成 (exit: 0)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[08:56:42] >>> [ascend950-root-10012] cd /home/qianzehong/workspace/cann/ops-transformer/build_out && ls -la *.run | tail -1 && ./cann-ops-transformer-custom_linux-x86_64.run --quiet --install-path=$ASCEND_OPP_PATH 2>&1 | tail -1; V=$ASCEND_OPP_PATH/vendors; echo 'load_priority=custom_transformer,custom_kvrope_transformer,custom_nn' > $V/config.ini; echo -n 'config: '; cat $V/config.ini; echo -n 'vendor 时间: '; stat -c %y $V/custom_transformer/op_impl/ai_core/tbe/kernel/ascend950/ | cut -d. -f1
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+-rwxr-xr-x 1 root root 2775205 Jul 14 20:55 cann-ops-transformer-custom_linux-x86_64.run
+SUCCESS
+config: load_priority=custom_transformer,custom_kvrope_transformer,custom_nn
+vendor 时间: 2026-07-14 20:56:44
+[08:56:45] <<< 完成 (exit: 0)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[08:56:53] >>> [ascend950-root-10012] unset ASCEND_CUSTOM_OPP_PATH; cd /home/qianzehong/workspace/kvrms_probe && echo '===== 阳性对照：xPow 半量分配（其余修复保留）=====' && ./probe_quant 2>&1 | grep -E 'k_cache\[|非零行数|ckv_cache\[b='
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+===== 阳性对照：xPow 半量分配（其余修复保留）=====
+k_cache[b=0][row= 10][0..3] =    8    8    8    8
+k_cache[b=1][row= 20][0..3] =   16   16   16   16
+k_cache[b=2][row= 30][0..3] =   24   24   24   24
+k_cache[b=3][row= 40][0..3] =   32   32   32   32
+k_cache 非零行数: 4 (期望 4，每个 batch 各一行)
+ckv_cache[b=0][row= 10]: min=  16 max=  16
+ckv_cache[b=1][row= 20]: min=  16 max=  16
+ckv_cache[b=2][row= 30]: min=  16 max=  16
+ckv_cache[b=3][row= 40]: min=  16 max=  16
+[08:57:15] <<< 完成 (exit: 0)
