@@ -437,9 +437,6 @@ def tilelang_grad_kl_loss_single_kernel(
                 # row_expand brcb 中转 buffer：(rows, elems_per_block=8 for fp32)
                 re_tmp_ub = T.alloc_ub((N1, 8), calc_dtype)
 
-                # dKeyIndex 融合：reluGrad 预转置 buffer（读回 + 转置结果，(64,64) fp16）
-                rg_full_ub = T.alloc_ub((Nidx1, n_block), input_dtype)
-                rgt_ub = T.alloc_ub((n_block, Nidx1), input_dtype)
 
                 for s1_id in T.serial(s1_start, s1_end):
                     T.copy(SoftmaxMax[bz, 0, s1_id, 0:G], sm_max_ub)
@@ -713,19 +710,6 @@ def tilelang_grad_kl_loss_single_kernel(
                     # Write partial Loss for MY K block only (single value)
                     T.copy(loss_sum_ub, LossOut[bz, s1_id, n_idx_k:n_idx_k + 1])
 
-                    # dKeyIndex 融合：预转置 reluGrad[my block] (Nidx1,n_block)→(n_block,Nidx1) 写 reluGradT_ws
-                    # 供 C2 用 (F,F) gemm 算部分积，规避手动同步下产零的 transpose_A（cube L1→L0A 转置 load）
-                    # reluGradRes[my block] 已由本 scope 上面的 MTE3 写完，读回前排空 MTE3
-                    T.set_flag("mte3", "mte2", 6)
-                    T.wait_flag("mte3", "mte2", 6)
-                    T.copy(reluGradRes[bz, s1_id, 0:Nidx1, n_idx_k * n_block:(n_idx_k + 1) * n_block], rg_full_ub)
-                    T.set_flag("mte2", "v", 8)
-                    T.wait_flag("mte2", "v", 8)
-                    T.tile.transpose(rgt_ub, rg_full_ub)
-                    T.set_flag("v", "mte3", 6)
-                    T.wait_flag("v", "mte3", 6)
-                    T.copy(rgt_ub, reluGradT_ws[bz, s1_id, n_idx_k * n_block:(n_idx_k + 1) * n_block, 0:Nidx1])
-
                 T.set_cross_flag("V", 12)
 
             # ============================================================
@@ -739,9 +723,11 @@ def tilelang_grad_kl_loss_single_kernel(
                 RG_L1 = T.alloc_L1((Nidx1, n_block), input_dtype)
                 GKI2_L1 = T.alloc_L1((n_block, k_block), input_dtype)
                 DQ_L0C = T.alloc_L0C((Nidx1, k_block), calc_dtype)
-                RGt_L1 = T.alloc_L1((n_block, Nidx1), input_dtype)         # dKeyIndex: reluGrad^T (M=n_block,K=Nidx1)
-                QI_L1_dk = T.alloc_L1((Nidx1, DQueryIndex), input_dtype)   # dKeyIndex: queryIndex (K=Nidx1,N=DQI)
-                DK_L0C = T.alloc_L0C((n_block, DQueryIndex), calc_dtype)   # dKeyIndex: part (M=n_block,N=DQI)
+                # dKeyIndex low-level MMA: L1→L0A transpose 替代 V1 预转置
+                QI_L1_dk = T.alloc_L1((Nidx1, DQueryIndex), input_dtype)
+                RG_L0A_dk = T.alloc_L0A((n_block, Nidx1), input_dtype)
+                QI_L0B_dk = T.alloc_L0B((Nidx1, DQueryIndex), input_dtype)
+                DK_L0C = T.alloc_L0C((n_block, DQueryIndex), calc_dtype)
 
                 for s1_row in T.serial(s1_start, s1_end):
                     for d_idx in T.serial(d_num_query_index):
@@ -756,17 +742,26 @@ def tilelang_grad_kl_loss_single_kernel(
                         T.wait_flag("m", "fix", 7)
                         T.tile.atomic_add(dQueryIndexAccum[bz, s1_row, 0:Nidx1, d_idx * k_block:(d_idx + 1) * k_block], DQ_L0C)
 
-                    # dKeyIndex 部分积：reluGrad^T @ queryIndex
-                    # 用预转置好的 reluGradT_ws + (F,F) gemm（规避手动同步下产零的 transpose_A：cube L1→L0A 转置 load）
-                    # (F,F): DK_L0C[k,d] = Σ_nidx reluGradT[k,nidx]·queryIndex[nidx,d] = Σ_nidx reluGrad[nidx,k]·queryIndex[nidx,d]
-                    T.copy(reluGradT_ws[bz, s1_row, n_idx_k * n_block:(n_idx_k + 1) * n_block, 0:Nidx1], RGt_L1)
+                    # dKeyIndex: L1→L0A transpose (硬件转置) + T.mma，替代 V1 预转置
+                    # DK = RG^T @ QI  = (n_block,Nidx1) @ (Nidx1,DQI) = (n_block,DQI)
+                    # GM→L1 (MTE2): 直接加载 reluGradRes，无需预转置
+                    T.copy(reluGradRes[bz, s1_row, 0:Nidx1, n_idx_k * n_block:(n_idx_k + 1) * n_block], RG_L1)
                     T.copy(QueryIndex[bz, s1_row, 0:Nidx1, 0:DQueryIndex], QI_L1_dk)
-                    T.set_flag("mte2", "m", 8)
-                    T.wait_flag("mte2", "m", 8)
-                    T.gemm_v0(RGt_L1, QI_L1_dk, DK_L0C, transpose_A=False, transpose_B=False, init=True)
+                    # MTE2→MTE1: L1 就绪，MTE1 可以开始搬运
+                    T.set_flag("mte2", "mte1", 10)
+                    T.wait_flag("mte2", "mte1", 10)
+                    # L1→L0 (MTE1): RG 转置搬运到 L0A，QI 正常搬运到 L0B
+                    T.copy(RG_L1, RG_L0A_dk, transpose=True)
+                    T.copy(QI_L1_dk, QI_L0B_dk)
+                    # MTE1→M: L0 就绪，Cube 可以开始 MMA
+                    T.set_flag("mte1", "m", 10)
+                    T.wait_flag("mte1", "m", 10)
+                    # MMA (Cube)
+                    T.mma(RG_L0A_dk, QI_L0B_dk, DK_L0C, init=True)
+                    # M→FIX: L0C 就绪，FIX 可以写出
                     T.set_flag("m", "fix", 9)
                     T.wait_flag("m", "fix", 9)
-                    # 每 core 独占自己的 K 行，只写一次 → 普通 copy_l0c_to_gm（不用 atomic，规避未清零 buffer）
+                    # 每 core 独占自己的 K 行，只写一次 → 普通 copy_l0c_to_gm
                     T.copy(DK_L0C, dk_matmul_partial[bz, s1_row, n_idx_k * n_block:(n_idx_k + 1) * n_block, 0:DQueryIndex])
 
                 T.set_cross_flag("FIX", 3)
