@@ -231,7 +231,7 @@ __aicore__ inline void QuantCompressorBlockVector<COMP>::Init(
     if (isExistStartPos_) {
         startPosGm_.SetGlobalBuffer((__gm__ int32_t *)startPos);
     }
-    if constexpr (COMP::quantMode == QUANT_MODE::HIFP8) {
+    if constexpr (COMP::quantMode == QUANT_MODE::HIF8_XPERTENSOR_WPERCHANNEL) {
         xDescaleGm_.SetGlobalBuffer((__gm__ T *)xDescale);
         xDescale_ = xDescaleGm_(0);
         wKvDescaleGm_.SetGlobalBuffer((__gm__ T *)wKvDescale);
@@ -254,7 +254,7 @@ __aicore__ inline void QuantCompressorBlockVector<COMP>::InitBuffers(TPipe *pipe
     apeUb = apeBuf.Get<T>();
     xWKvDescaleUb = wKvDescaleBuf.Get<T>();
     xWGateDescaleUb = wGateDescaleBuf.Get<T>();
-    if constexpr (COMP::quantMode == QUANT_MODE::HIFP8) {
+    if constexpr (COMP::quantMode == QUANT_MODE::HIF8_XPERTENSOR_WPERCHANNEL) {
         // 获取wKvDescale & wGateDescale，常驻
         LocalTensor<T> wDescale = inputQue3.AllocTensor<T>();
         DataCopy(wDescale, wKvDescaleGm_, coff_ * constInfo_.headDim);
@@ -629,7 +629,7 @@ __aicore__ inline void QuantCompressorBlockVector<COMP>::Dequant(const LocalTens
                                                                  const LocalTensor<float> &descale, uint32_t row,
                                                                  uint32_t col, uint32_t actualCol)
 {
-    if constexpr (COMP::quantMode == QUANT_MODE::HIFP8) {
+    if constexpr (COMP::quantMode == QUANT_MODE::HIF8_XPERTENSOR_WPERCHANNEL) {
         if constexpr (IS_SINGLE) {
             DequantVF<COFF::DISABLE>(dstLocal, dstLocal, descale, row, col, constInfo_.headDim, actualCol);
         } else {
@@ -735,7 +735,7 @@ QuantCompressorBlockVector<COMP>::ReadFromCacheState(const LocalTensor<T> &outpu
                                                      uint32_t startSeqIdx, uint32_t endSeqIdx, uint32_t dStartIdx,
                                                      uint32_t dDealSize, uint32_t stateIdx)
 {
-    if constexpr (COMP::cacheMode == CACHE_MODE::CONTINUOUS) {
+    if constexpr (COMP::cacheMode == CACHE_MODE::LINEAR_BUFFER) {
         uint64_t blockTablebaseOffset = batchIdx * constInfo_.maxBlockNumPerBatch;
         uint32_t curSeqIdx = startSeqIdx;
         uint32_t copyFinishRowCnt = 0;
@@ -788,7 +788,7 @@ __aicore__ inline void QuantCompressorBlockVector<COMP>::WriteToCacheState(const
                                                                            uint32_t endSeqIdx, uint32_t dStartIdx,
                                                                            uint32_t dDealSize, uint32_t stateIdx)
 {
-    if constexpr (COMP::cacheMode == CACHE_MODE::CONTINUOUS) {
+    if constexpr (COMP::cacheMode == CACHE_MODE::LINEAR_BUFFER) {
         uint64_t blockTablebaseOffset = batchIdx * constInfo_.maxBlockNumPerBatch;
         uint32_t curSeqIdx = startSeqIdx;
         uint32_t copyFinishRowCnt = 0;
@@ -845,7 +845,7 @@ QuantCompressorBlockVector<COMP>::SaveState(const LocalTensor<T> &srcLocal, cons
     uint32_t endSeqIdx = startSeqIdx + sliceInfo.validSeqCnt;
     uint64_t srcBaseOffset = sliceInfo.dealedSeqCnt * coff_ * dDealSize;
 
-    if constexpr (COMP::cacheMode == CACHE_MODE::CYCLE) {
+    if constexpr (COMP::cacheMode == CACHE_MODE::RING_BUFFER) {
         uint32_t compressSeqIdx = Trunc(sliceInfo.bStartPos + sliceInfo.bSeqUsed, cmpRatio_);
         uint32_t writeSeqStartIdx =
             compressSeqIdx > (coff_ - 1) * cmpRatio_ ? compressSeqIdx - (coff_ - 1) * cmpRatio_ : 0;

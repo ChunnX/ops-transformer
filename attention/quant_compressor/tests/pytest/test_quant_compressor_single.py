@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # Copyright (c) 2026 Huawei Technologies Co., Ltd.
 # This program is free software, you can redistribute it and/or modify it under the terms and conditions of
 # CANN Open Software License Agreement Version 2.0 (the "License").
@@ -12,10 +13,10 @@ import torch
 import torch_npu
 
 # ******入参调用
-from test_compressor_paramset import ENABLED_PARAMS
+from test_quant_compressor_paramset import ENABLED_PARAMS
 
 # ******CPU侧算子逻辑实现获取golden与npu算子直调结果
-import compressor_operator_single
+import quant_compressor_operator_single
 import pytest
 
 locals()["param_combinations"] = []
@@ -92,4 +93,4 @@ for _, params in enumerate(ENABLED_PARAMS):
         torch_npu.npu.set_device(0)
 
         # 获得cpu结果(真值)和算子结果（测试值）
-        compressor_operator_single.output_operator(test_data)
+        quant_compressor_operator_single.output_operator(test_data)

@@ -211,8 +211,8 @@ const std::vector<uint32_t> HEAD_DIM {128, 512};
 const std::vector<int> CACHE_MODE {1};
 
 enum class CACHE_MODE:uint8_t {
-    CONTINUOUS = 1,
-    CYCLE = 2
+    LINEAR_BUFFER = 1,
+    RING_BUFFER = 2
 };
 
 struct CompressorContext {

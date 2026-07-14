@@ -1,4 +1,13 @@
 #!/bin/bash
+# -----------------------------------------------------------------------------------------------------------
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+# -----------------------------------------------------------------------------------------------------------
 # ====================== 配置区======================
 # 需要读取的用例excel表格路径，如下：
 PATH1="./excel/*"
@@ -6,10 +15,10 @@ PATH1="./excel/*"
 PATH2="./pt_path"
 
 # 脚本路径
-Compressor_PT_SAVE_SCRIPT="./batch/compressor_pt_save.py"
-TEST_Compressor_BATCH_SCRIPT="test_compressor_batch.py"
+Compressor_PT_SAVE_SCRIPT="./batch/quant_compressor_pt_save.py"
+TEST_Compressor_BATCH_SCRIPT="test_quant_compressor_batch.py"
 REPLACE_PATH_SCRIPT="./batch/replace_path.py"
-TEST_Compressor_SINGLE_SCRIPT="test_compressor_single.py"
+TEST_Compressor_SINGLE_SCRIPT="test_quant_compressor_single.py"
 
 # ====================== 执行区======================
 
@@ -23,14 +32,14 @@ run_single() {
 run_batch() {
     echo "===== 执行用例批量生成测试 ====="
 
-    echo -e "\n===== 第一步：执行compressor_pt_save.py ====="
+    echo -e "\n===== 第一步：执行quant_compressor_pt_save.py ====="
     python3 $Compressor_PT_SAVE_SCRIPT $PATH1 $PATH2
     if [ $? -ne 0 ]; then
-        echo "compressor_pt_save.py 执行失败，退出"
+        echo "quant_compressor_pt_save.py 执行失败，退出"
         exit 1
     fi
 
-    echo -e "\n===== 第二步：替换test_compressor_batch.py中的路径 ====="
+    echo -e "\n===== 第二步：替换test_quant_compressor_batch.py中的路径 ====="
     python3 $REPLACE_PATH_SCRIPT $TEST_Compressor_BATCH_SCRIPT $PATH2
     if [ $? -ne 0 ]; then
         echo "替换路径失败，退出"
@@ -44,7 +53,7 @@ run_batch() {
         exit 1
     fi
 
-    cp test_compressor_batch.py.bak test_compressor_batch.py
+    cp test_quant_compressor_batch.py.bak test_quant_compressor_batch.py
 
     echo -e "\n=====执行完成！====="
 }

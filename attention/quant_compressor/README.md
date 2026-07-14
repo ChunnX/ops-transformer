@@ -4,8 +4,8 @@
 
 | 产品                                                         | 是否支持 |
 | ------------------------------------------------------------ | :------: |
-|<term>Ascend 950PR/Ascend 950DT</term>|      ×     |
-|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      √     |
+|<term>Ascend 950PR/Ascend 950DT</term>|      √     |
+|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      ×     |
 |<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      ×     |
 |<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
 |<term>Atlas 推理系列加速卡产品</term>|      ×     |
@@ -92,9 +92,6 @@
 | cache\_mode | 可选属性 | 表示state_cache的存储模式。<br>cache\_mode=1：连续buffer，cache\_mode=2：循环buffer。<br>默认值1。 | INT32          | -         |
 | state_cache_stride_dim0 | 可选属性 | 表示state_cache的0轴stride。默认值为0。 | INT32     | -         |
 | cmp\_kv | 输出 | 表示压缩后的数据。 | BFLOAT16         | ND          |
-
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
- cache_mode不支持输入2，且不支持0轴非连续。
 
 ## 约束说明
 

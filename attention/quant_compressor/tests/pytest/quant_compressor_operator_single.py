@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # Copyright (c) 2026 Huawei Technologies Co., Ltd.
 # This program is free software, you can redistribute it and/or modify it under the terms and conditions of
 # CANN Open Software License Agreement Version 2.0 (the "License").
@@ -22,7 +23,7 @@ import cann_ops_transformer
 import numpy as np
 import torch.nn as nn
 
-from compressor_golden import run_compressor_eager, cpu_compressor
+from quant_compressor_golden import run_compressor_eager, cpu_compressor
 
 class Generalized_operator():
     def forward(self,
