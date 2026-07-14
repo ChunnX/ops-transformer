@@ -16,8 +16,9 @@
 #pragma once
 
 #include "collective_comm_context.h"
-#include "../utils/comm_tiling_data.h"
+#include "../tiling/comm_tiling_data.h"
 #include "tensor_api/tensor/pointer.h"
+#include "barrier/barrier_ubmem.h"
 
 namespace Atcoss {
 namespace AivComm {
@@ -25,7 +26,7 @@ namespace AivComm {
 using namespace AscendC;
 using Utils::CommTilingData;
 
-template<typename Impl, typename Dtype>
+template<typename Impl, typename Dtype, typename Barrier>
 class CollectiveCommBase {
     friend Impl;
 public:
@@ -33,7 +34,7 @@ public:
 
     __aicore__ inline uint64_t Init(
         __gm__ CommUdmaContext* udmaCtx,
-        __gm__ CommUbmemContext* ubmemCtx,
+        Barrier& barrier,
         const CommTilingData& tilingData,
         GM_ADDR localAddr,
         __ubuf__ uint8_t* commbuf,
@@ -41,20 +42,14 @@ public:
         uint32_t curCoreId)
     {
         udmaCtx_ = udmaCtx;
-        ubmemCtx_ = ubmemCtx;
+        barrier_ = barrier;
         localAddr_ = localAddr;
         tilingData_ = &tilingData;
         useCoreNum_ = useCoreNum;
         curCoreId_ = curCoreId;
         commBuf_ = commbuf;
 
-        for (uint32_t i = 0; i < udmaCtx_->rankSize; i++) {
-            channels_[i] = static_cast<ChannelHandle>(udmaCtx_->channelHandles[i]);
-            commBufferAddrs_[i] = reinterpret_cast<GM_ADDR>(udmaCtx_->commBufferAddrs[i]);
-        }
-
         comm_.Init(commBuf_, COMM_WORKSPACE_SIZE);
-        syncBuf_ = commBuf_ + COMM_WORKSPACE_SIZE;
 
         uint32_t rankSize = udmaCtx_->rankSize;
         uint32_t targetRankPerCore = (rankSize + useCoreNum - 1) / useCoreNum;
@@ -106,7 +101,6 @@ public:
         }
 
         if (targetRankCnt_ > 0) {
-            const uint32_t rankId = udmaCtx_->rankId;
             const uint32_t targetRankStart = targetRankStart_;
             const uint32_t targetRankCnt = targetRankCnt_;
 
@@ -127,7 +121,6 @@ public:
         if (waitLast) {
             return;
         }
-        const uint32_t rankId = udmaCtx_->rankId;
         for (uint32_t i = 0; i < targetRankCnt_; i++) {
             uint32_t targetRankId = targetRankStart_ + i;
             static_cast<Impl*>(this)->DoWait(targetRankId);
@@ -141,16 +134,12 @@ public:
 
 protected:
     __gm__ CommUdmaContext* udmaCtx_;
-    __gm__ CommUbmemContext* ubmemCtx_;
     const CommTilingData* tilingData_;
+    Barrier barrier_;
 
     Hcomm<AscendC::COMM_PROTOCOL_UBC_CTP> comm_;
     GM_ADDR localAddr_;
     __ubuf__ uint8_t* commBuf_;
-    __ubuf__ uint8_t* syncBuf_;
-
-    ChannelHandle channels_[COMM_MAX_RANK_NUM];
-    GM_ADDR commBufferAddrs_[COMM_MAX_RANK_NUM];
 
     uint64_t chunkSize_;
     uint64_t nonSplitAxisBytes_;
