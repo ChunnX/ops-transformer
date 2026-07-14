@@ -93,7 +93,7 @@ aclnnStatus aclnnMoeDistributeDispatchV4(
     <col style="width: 300px">
     <col style="width: 330px">
     <col style="width: 212px">
-    <col style="width: 100px"> 
+    <col style="width: 100px">
     <col style="width: 190px">
     <col style="width: 145px">
     </colgroup>
@@ -522,7 +522,7 @@ aclnnStatus aclnnMoeDistributeDispatchV4(
 
 - **返回值**
 
-    aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。  
+    aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
     第一段接口完成入参校验，出现以下场景时报错：
 
@@ -689,7 +689,7 @@ aclnnStatus aclnnMoeDistributeDispatchV4(
       - <term>Ascend 950DT</term>：
         - 当commAlg为"fullmesh_v1"或空字符串或空指针时：要求取值满足 ≥ 2 \* (localExpertNum \* maxBS \* epWorldSize \* Align512(Align32(2 \* H) + 64) + (K + sharedExpertNum) \* maxBS \* Align512(2 \* H))。
         - 当commAlg为"fullmesh_v2"时：要求取值满足 ≥ 2 \* (localExpertNum \* maxBS \* epWorldSize \* 480Align512(Align32(2 \* H) + 64) + (K + sharedExpertNum) \* maxBS \* Align512(2 \* H))。
-        - 其中`480Align512(x) = ((x + 480 - 1) / 480) * 512`，`Align512(x) = ((x + 512 - 1) / 512) * 512`，`Align32(x) = ((x + 32 - 1) / 32) * 32`。             
+        - 其中`480Align512(x) = ((x + 480 - 1) / 480) * 512`，`Align512(x) = ((x + 512 - 1) / 512) * 512`，`Align32(x) = ((x + 32 - 1) / 32) * 32`。
 
   - **HCCL_INTRA_PCIE_ENABLE**和**HCCL_INTRA_ROCE_ENABLE**：
       - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：该环境变量不再推荐使用，建议commAlg配置"hierarchy"。
@@ -704,7 +704,7 @@ aclnnStatus aclnnMoeDistributeDispatchV4(
 
 - **通信方式约束**：
   - <term>Ascend 950DT</term>：仅支持UB Memory通信。
-  
+
 - **组网约束**：
   - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：多机场景仅支持交换机组网，不支持双机直连组网。
 
@@ -1165,7 +1165,7 @@ aclnnStatus aclnnMoeDistributeDispatchV4(
 - <term>Ascend 950DT</term> ：请参考[aclnnMoeDistributeDispatchV2](../docs/aclnnMoeDistributeDispatchV2.md)中调用示例的准备部分和示例代码，按照上文的约束说明重新设置涉及的变量，V3接口相较于V2接口新增的场景参数按上述参数说明传值即可。
 
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  ：
-       
+
     具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
 - 示例代码如下，仅供参考

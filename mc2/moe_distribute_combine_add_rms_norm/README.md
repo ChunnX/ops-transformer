@@ -422,7 +422,7 @@ $$
     - localExpertNum：表示本卡专家数量。
         - 对于共享专家卡，localExpertNum = 1
         - 对于MoE专家卡，localExpertNum = moeExpertNum / (epWorldSize - sharedExpertRankNum)，当前版本不支持TP域通信。
-  
+
 - HCCL_BUFFSIZE：
     调用本接口前需检查HCCL_BUFFSIZE环境变量取值是否合理，该环境变量表示单个通信域占用内存大小，单位MB，不配置时默认为200MB。要求 >= 2且满足1024 ^ 2 * (HCCL_BUFFSIZE - 2) / 2 >= (BS * 2 * (H + 128) * (epWorldSize * localExpertNum + K + 1))，localExpertNum需使用MoE专家卡的本卡专家数。
 
