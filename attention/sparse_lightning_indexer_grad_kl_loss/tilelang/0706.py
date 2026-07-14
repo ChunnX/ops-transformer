@@ -819,44 +819,72 @@ def tilelang_grad_kl_loss_single_kernel(
                     # ---- Part 2: Scatter dk_matmul_partial → dKeyIndex (split k_id across AIVs) ----
                     # WAR-safe ping-pong DB: overlap MTE2 copy[k+1] ∥ MTE3 atomic_add[k]
                     # Events: MTE2_MTE3{5,6} (RAW) / MTE3_MTE2{5,6} (WAR)
-                    # 用 vid 做列表索引选参，避免 if/else 分支和三元表达式（TileLang 均不支持跨分支变量）
+                    # TileLang 不支持 if/else 跨分支变量 → DB 逻辑在分支内各写一份
                     k_mid = k_start + half_block  # Python int
-                    loop_start = [k_start, T.min(k_mid, k_end)][vid]
-                    loop_end   = [T.min(k_mid, k_end), k_end][vid]
-                    offset     = [k_start, k_mid][vid]  # 始终 Python int
-                    prefetch_guard = loop_end
+                    if vid == 0:
+                        T.set_flag("mte3", "mte2", 5)
+                        T.set_flag("mte3", "mte2", 6)
 
-                    T.set_flag("mte3", "mte2", 5)
-                    T.set_flag("mte3", "mte2", 6)
+                        T.wait_flag("mte3", "mte2", 5)
+                        T.copy(dk_matmul_partial[bz, s1_row, k_start:k_start + 1, 0:DQueryIndex], dk_chunk_0)
+                        T.set_flag("mte2", "mte3", 5)
 
-                    T.wait_flag("mte3", "mte2", 5)
-                    T.copy(dk_matmul_partial[bz, s1_row, offset:offset + 1, 0:DQueryIndex], dk_chunk_0)
-                    T.set_flag("mte2", "mte3", 5)
+                        for k_id in T.serial(k_start, T.min(k_mid, k_end)):
+                            cur = (k_id - k_start) % 2
+                            nxt = (k_id - k_start + 1) % 2
 
-                    for k_id in T.serial(loop_start, loop_end):
-                        cur = (k_id - offset) % 2
-                        nxt = (k_id - offset + 1) % 2
+                            T.wait_flag("mte2", "mte3", cur + 5)
+                            idx = SparseIndices[bz, s1_row, 0, k_id]
+                            if idx >= 0:
+                                if cur == 0:
+                                    T.tile.atomic_add(dKeyIndex[bz, idx, 0, 0], dk_chunk_0)
+                                if cur == 1:
+                                    T.tile.atomic_add(dKeyIndex[bz, idx, 0, 0], dk_chunk_1)
+                            T.set_flag("mte3", "mte2", cur + 5)
 
-                        T.wait_flag("mte2", "mte3", cur + 5)
-                        idx = SparseIndices[bz, s1_row, 0, k_id]
-                        if idx >= 0:
-                            if cur == 0:
-                                T.tile.atomic_add(dKeyIndex[bz, idx, 0, 0], dk_chunk_0)
-                            if cur == 1:
-                                T.tile.atomic_add(dKeyIndex[bz, idx, 0, 0], dk_chunk_1)
-                        T.set_flag("mte3", "mte2", cur + 5)
+                            next_k = k_id + 1
+                            if next_k < T.min(k_mid, k_end):
+                                T.wait_flag("mte3", "mte2", nxt + 5)
+                                if nxt == 0:
+                                    T.copy(dk_matmul_partial[bz, s1_row, next_k:next_k + 1, 0:DQueryIndex], dk_chunk_0)
+                                if nxt == 1:
+                                    T.copy(dk_matmul_partial[bz, s1_row, next_k:next_k + 1, 0:DQueryIndex], dk_chunk_1)
+                                T.set_flag("mte2", "mte3", nxt + 5)
 
-                        next_k = k_id + 1
-                        if next_k < prefetch_guard:
-                            T.wait_flag("mte3", "mte2", nxt + 5)
-                            if nxt == 0:
-                                T.copy(dk_matmul_partial[bz, s1_row, next_k:next_k + 1, 0:DQueryIndex], dk_chunk_0)
-                            if nxt == 1:
-                                T.copy(dk_matmul_partial[bz, s1_row, next_k:next_k + 1, 0:DQueryIndex], dk_chunk_1)
-                            T.set_flag("mte2", "mte3", nxt + 5)
+                        T.wait_flag("mte3", "mte2", 5)
+                        T.wait_flag("mte3", "mte2", 6)
+                    else:
+                        T.set_flag("mte3", "mte2", 5)
+                        T.set_flag("mte3", "mte2", 6)
 
-                    T.wait_flag("mte3", "mte2", 5)
-                    T.wait_flag("mte3", "mte2", 6)
+                        T.wait_flag("mte3", "mte2", 5)
+                        T.copy(dk_matmul_partial[bz, s1_row, k_mid:k_mid + 1, 0:DQueryIndex], dk_chunk_0)
+                        T.set_flag("mte2", "mte3", 5)
+
+                        for k_id in T.serial(T.min(k_mid, k_end), k_end):
+                            cur = (k_id - k_mid) % 2
+                            nxt = (k_id - k_mid + 1) % 2
+
+                            T.wait_flag("mte2", "mte3", cur + 5)
+                            idx = SparseIndices[bz, s1_row, 0, k_id]
+                            if idx >= 0:
+                                if cur == 0:
+                                    T.tile.atomic_add(dKeyIndex[bz, idx, 0, 0], dk_chunk_0)
+                                if cur == 1:
+                                    T.tile.atomic_add(dKeyIndex[bz, idx, 0, 0], dk_chunk_1)
+                            T.set_flag("mte3", "mte2", cur + 5)
+
+                            next_k = k_id + 1
+                            if next_k < k_end:
+                                T.wait_flag("mte3", "mte2", nxt + 5)
+                                if nxt == 0:
+                                    T.copy(dk_matmul_partial[bz, s1_row, next_k:next_k + 1, 0:DQueryIndex], dk_chunk_0)
+                                if nxt == 1:
+                                    T.copy(dk_matmul_partial[bz, s1_row, next_k:next_k + 1, 0:DQueryIndex], dk_chunk_1)
+                                T.set_flag("mte2", "mte3", nxt + 5)
+
+                        T.wait_flag("mte3", "mte2", 5)
+                        T.wait_flag("mte3", "mte2", 6)
 
     return main
 
