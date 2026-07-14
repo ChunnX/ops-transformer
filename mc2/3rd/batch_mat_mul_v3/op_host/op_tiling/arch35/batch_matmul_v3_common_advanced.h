@@ -28,6 +28,6 @@ constexpr uint64_t THREE_BATCH_SHAPE_DIM = 5;
 constexpr uint64_t FOUR_BATCH_SHAPE_DIM = 6;
 constexpr uint64_t ND_NZ_DIM_DIFF = 2;
 constexpr uint64_t BATCH_DIM_MAX = 6;
-}
-}
+} // namespace Mc2batch_matmul_v3_advanced
+} // namespace optiling
 #endif // __OP_HOST_BATCH_MATMUL_V3_COMMON_ADVANCED_H__

@@ -11,12 +11,10 @@
 #define ARCH35_CATLASS_DISPATCH_POLICY_H
 
 namespace Mc2WeightQuantBatchMatmulV2::Arch35::Catlass {
-struct KernelWqbmm {
-};
+struct KernelWqbmm {};
 
-template <
-    int Stages_, typename TileShapeUb_, typename TileShapeReg_, int32_t CoreType_, int32_t SubBlockNum_,
-    uint8_t StageWeightIn_, uint8_t StageVfOut_, int32_t Kub_, typename KernelSchedule = KernelWqbmm>
+template <int Stages_, typename TileShapeUb_, typename TileShapeReg_, int32_t CoreType_, int32_t SubBlockNum_,
+          uint8_t StageWeightIn_, uint8_t StageVfOut_, int32_t Kub_, typename KernelSchedule = KernelWqbmm>
 struct MainloopDavidWqbmmUbAntiquantScmc {
     constexpr static int Stages = Stages_;
     constexpr static int32_t SubBlockNum = SubBlockNum_;

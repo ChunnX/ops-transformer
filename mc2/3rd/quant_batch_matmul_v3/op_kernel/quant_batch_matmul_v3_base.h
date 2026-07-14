@@ -26,8 +26,9 @@
 #include "lib/matmul_intf.h"
 #include "quant_batch_matmul_v3_tiling_data.h"
 
-#define TemplateBasicType typename x1Type, typename x2Type, typename scaleType, typename yType, int x1Format, \
-    int x2Format, bool aTrans, bool bTrans, class UPDATE_TYPE
+#define TemplateBasicType                                                                                              \
+    typename x1Type, typename x2Type, typename scaleType, typename yType, int x1Format, int x2Format, bool aTrans,     \
+        bool bTrans, class UPDATE_TYPE
 #define TemplateBasicValue x1Type, x2Type, scaleType, yType, x1Format, x2Format, aTrans, bTrans, UPDATE_TYPE
 
 constexpr uint32_t BMM_BLOCK_NUM = 16;
@@ -224,8 +225,8 @@ __aicore__ inline void CalcDequantParams(uint32_t curAivM, uint32_t curAivN, Asc
     if (!needUpdate) {
         return;
     }
-    uint32_t computedAivN = Align(curAivN, 8U);  // 8: 32B aligned for int32_t
-    uint32_t ubResAlignedN = Align(curAivN);     // 16: sizeof(yType) is 2, 32B / 2
+    uint32_t computedAivN = Align(curAivN, 8U); // 8: 32B aligned for int32_t
+    uint32_t ubResAlignedN = Align(curAivN);    // 16: sizeof(yType) is 2, 32B / 2
     if (computedAivN == ubResAlignedN) {
         // choose ddequat high performance
         dequantParams.m = 1;
@@ -246,7 +247,7 @@ __aicore__ inline void SetGm2UbParams(AscendC::DataCopyParams &gm2UbParams, uint
     gm2UbParams.srcStride = 0;
 }
 
-template<typename yType>
+template <typename yType>
 __aicore__ inline void SetUb2GmParams(AscendC::DataCopyExtParams &ub2GmParams, uint32_t curAivM, uint32_t curAivN,
                                       uint32_t n)
 {
@@ -255,7 +256,8 @@ __aicore__ inline void SetUb2GmParams(AscendC::DataCopyExtParams &ub2GmParams, u
     ub2GmParams.dstStride = (n - curAivN) * sizeof(yType);
 }
 
-__aicore__ inline void CopyMmOutToLocal(AscendC::LocalTensor<int32_t> &srcLocal, AscendC::GlobalTensor<int32_t> &curMmOutGm,
+__aicore__ inline void CopyMmOutToLocal(AscendC::LocalTensor<int32_t> &srcLocal,
+                                        AscendC::GlobalTensor<int32_t> &curMmOutGm,
                                         AscendC::DataCopyParams &gm2UbParams, AscendC::DataCopyPadParams &padParams,
                                         uint32_t curAicAivOffset)
 {
@@ -264,17 +266,19 @@ __aicore__ inline void CopyMmOutToLocal(AscendC::LocalTensor<int32_t> &srcLocal,
     AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
 }
 
-template<typename yType>
-__aicore__ inline void CopyUbToGm(uint64_t yGmOffset, AscendC::DataCopyExtParams &ub2GmParams, AscendC::LocalTensor<yType> &dstLocal,
-                                  AscendC::GlobalTensor<yType> &yGm, AscendC::TQue<AscendC::QuePosition::VECOUT, 1> &vecQueOut)
+template <typename yType>
+__aicore__ inline void CopyUbToGm(uint64_t yGmOffset, AscendC::DataCopyExtParams &ub2GmParams,
+                                  AscendC::LocalTensor<yType> &dstLocal, AscendC::GlobalTensor<yType> &yGm,
+                                  AscendC::TQue<AscendC::QuePosition::VECOUT, 1> &vecQueOut)
 {
     DataCopyPad(yGm[yGmOffset], dstLocal, ub2GmParams);
     vecQueOut.FreeTensor(dstLocal);
 }
 
-template<typename scaleType>
-__aicore__ inline void Bf16ScaleGm2Ub(AscendC::LocalTensor<scaleType> &scaleLocal, AscendC::GlobalTensor<scaleType> &scaleGm,
-                                      AscendC::DataCopyPadParams &padParams, uint32_t curAivN, uint64_t offsetScale)
+template <typename scaleType>
+__aicore__ inline void Bf16ScaleGm2Ub(AscendC::LocalTensor<scaleType> &scaleLocal,
+                                      AscendC::GlobalTensor<scaleType> &scaleGm, AscendC::DataCopyPadParams &padParams,
+                                      uint32_t curAivN, uint64_t offsetScale)
 {
     AscendC::DataCopyParams scale2UbParams{1, 0, 0, 0};
     scale2UbParams.blockLen = curAivN * sizeof(scaleType);
@@ -283,6 +287,6 @@ __aicore__ inline void Bf16ScaleGm2Ub(AscendC::LocalTensor<scaleType> &scaleLoca
     AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID1);
 }
 #endif
-}  // namespace DequantBmm
+} // namespace DequantBmm
 
-#endif  // QUANT_BATCH_MATMUL_V3_BASE_H
+#endif // QUANT_BATCH_MATMUL_V3_BASE_H
