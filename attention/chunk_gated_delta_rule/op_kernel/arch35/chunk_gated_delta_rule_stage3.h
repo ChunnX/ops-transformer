@@ -156,7 +156,7 @@ public:
         }
  
         // qkt
-        AlignedCopyIn(sTP_->qkt[nvId * Sp_ * chunkSize_ + chunkPos * chunkSize_], curChunkSize_, chunkSize_);
+        AlignedCopyIn(sTP_->qkt[nvId * Sp_ * chunkSize_ + chunkPos * chunkSize_], curChunkSize_, curChunkSize_);
         auto qkt = inQueue_.DeQue<bfloat16_t>();
         auto scale_qkt = outQueue_.AllocTensor<bfloat16_t>();
         Cast(tmpBuffer2_, qkt, RoundMode::CAST_NONE, curChunkSize_ * chunkSize_);
@@ -166,7 +166,7 @@ public:
         Mul(tmpBuffer2_, tmpBuffer2_, maskBuffer_, curChunkSize_ * chunkSize_);
         Cast(scale_qkt, tmpBuffer2_, RoundMode::CAST_RINT, curChunkSize_ * chunkSize_);
         outQueue_.EnQue(scale_qkt);
-        AlignedCopyOut(outGM, curChunkSize_, chunkSize_);
+        AlignedCopyOut(outGM, curChunkSize_, curChunkSize_);
         inQueue_.FreeTensor(qkt);
     }
 
