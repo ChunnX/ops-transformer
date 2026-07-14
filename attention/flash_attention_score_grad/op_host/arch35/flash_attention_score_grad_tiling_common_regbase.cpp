@@ -37,7 +37,7 @@ ge::graphStatus CheckSoftmaxMaxShape(const gert::TilingContext *context, int64_t
     auto dim1 = softmaxMaxShape->GetStorageShape().GetDim(1); // 1:n1
     auto dim2 = softmaxMaxShape->GetStorageShape().GetDim(2); // 2:s1
     auto dim3 = softmaxMaxShape->GetStorageShape().GetDim(3); // 3:8
-    int64_t validDim3 = isQuant ? 1 : 8;
+    int64_t validDim3 = isQuant ? 1 : 8; 
     std::string reasonMsg = "The shape of softmaxMaxOptional must be [" + std::to_string(b) + ", " +
                             std::to_string(n1) + ", " + std::to_string(s1) + ", " + std::to_string(validDim3) + "]";
     OP_CHECK_IF((dim0 != b || dim1 != n1 || dim2 != s1 || dim3 != validDim3),
