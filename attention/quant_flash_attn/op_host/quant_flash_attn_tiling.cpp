@@ -57,11 +57,6 @@ ASCENDC_EXTERN_C ge::graphStatus TilingQuantFlashAttn(gert::TilingContext *conte
         return ge::GRAPH_FAILED;
     }
 
-    if (qfaInfo.emptyTensorFlag) {
-        OP_LOGI(context, "QuantFlashAttn empty tensor, skip tiling.");
-        return ge::GRAPH_SUCCESS;
-    }
-
     QfaChecker qfaChecker;
     qfaChecker.Init(qfaInfo);
     if (qfaChecker.Process(qfaInfo) != ge::GRAPH_SUCCESS) {
