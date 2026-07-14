@@ -44,10 +44,8 @@ else:
 
 def qliv2(testcase_files):   # 初始化参数和tensor
     cpu_result, npu_result, topk_value, cpu_topk_value, npu_topk_value, params, output_idx_offset = quant_lightning_indexer_v2_pt_loadprocess.test_qliv2_process(testcase_files, device_id=0)
-    if npu_result != None:
+    if npu_result is not None:
         result, fulfill_percent = result_compare_method.check_result(cpu_result, npu_result, topk_value, params, output_idx_offset)
-    if npu_result != None:
-        result, fulfill_percent = result_compare_method.check_result(cpu_result, npu_result, topk_value, params)
     else:
         result = "Failed"
         fulfill_percent = 0

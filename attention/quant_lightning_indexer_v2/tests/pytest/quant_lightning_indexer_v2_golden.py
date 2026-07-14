@@ -26,6 +26,11 @@ import tempfile
 import struct
 import cann_ops_transformer
 
+# ======================== 场景开关 ========================
+# False: 场景一 — CPU 上跑仿真，用 cpu_test 二进制生成 metadata，再将所有数据搬到 NPU 调 QLI 算子
+# True : 场景二 — 先将所有数据搬到 NPU，再调用真正的 NPU metadata 算子，最后调 QLI 算子
+IS_NPU_NOW = False
+
 FP32_FRACTION_BITS = 23        # fp32尾数位数
 
 HIF8_EXP_ZERO_THRESHOLD = -23  # 边界值
@@ -951,7 +956,7 @@ def _load_metadata_from_cpu(batch_size, cu_seqlens_q, cu_seqlens_k,
         if os.path.exists(meta_out_path):
             os.unlink(meta_out_path)
 
-def qliv2_output_single(params, is_batch = False):
+def qliv2_output_single(params, is_batch = False, is_npu_now = IS_NPU_NOW):
     batch_size, q_seq, k_seq, q_t_size, k_t_size, q_head_num, k_head_num, head_dim, block_size,\
     block_num, qk_dtype, weight_dtype, dequant_dtype, actual_seq_dtype, cu_seqlens_q, cu_seqlens_k, seqused_q,\
     seqused_k, cmp_residual_k, max_seqlen_q, quant_mode, layout_query, layout_key, sparse_count,\
@@ -1332,33 +1337,36 @@ def qliv2_output_single(params, is_batch = False):
         max_seqlen_q_meta = actual_seq_lengths_query.max().item()
         max_seqlen_k_meta = actual_seq_lengths_key.max().item()
 
-        # Use cpu_test binary to generate metadata (instead of NPU op)
-        metadata = _load_metadata_from_cpu(
-            batch_size=batch_size,
-            cu_seqlens_q=cu_seqlens_q,
-            cu_seqlens_k=cu_seqlens_k,
-            seqused_q_list=lengths_q_list,
-            seqused_k_list=lengths_k_list,
-            cmp_residual_k_list=cmp_residual_k_for_cpu,
-            max_seqlen_q=max_seqlen_q_meta,
-            max_seqlen_k=max_seqlen_k_meta,
-            q_head_num=q_head_num,
-            k_head_num=k_head_num,
-            head_dim=head_dim,
-            topk=sparse_count,
-            quant_mode=quant_mode,
-            layout_query=layout_query,
-            layout_key=layout_key,
-            sparse_mode=sparse_mode,
-            cmp_ratio=cmp_ratio,
-        )
-        # 调试日志
+        # 调试日志 + 搬运到 NPU
         def log(tensor, name):
             if tensor != None:
                 print(name, tensor.shape, tensor.dtype)
                 return tensor.npu()
             return None
 
+        if not is_npu_now:
+            # 场景一：先在 CPU 上用 cpu_test 二进制生成 metadata
+            metadata = _load_metadata_from_cpu(
+                batch_size=batch_size,
+                cu_seqlens_q=cu_seqlens_q,
+                cu_seqlens_k=cu_seqlens_k,
+                seqused_q_list=lengths_q_list,
+                seqused_k_list=lengths_k_list,
+                cmp_residual_k_list=cmp_residual_k_for_cpu,
+                max_seqlen_q=max_seqlen_q_meta,
+                max_seqlen_k=max_seqlen_k_meta,
+                q_head_num=q_head_num,
+                k_head_num=k_head_num,
+                head_dim=head_dim,
+                topk=sparse_count,
+                quant_mode=quant_mode,
+                layout_query=layout_query,
+                layout_key=layout_key,
+                sparse_mode=sparse_mode,
+                cmp_ratio=cmp_ratio,
+            )
+
+        # 所有输入 tensor 搬到 NPU（两种场景公共）
         query = log(query, "query")
         key = log(key, "key")
         weights = log(weights, "weights")
@@ -1371,7 +1379,31 @@ def qliv2_output_single(params, is_batch = False):
         cmp_residual_k_for_npu = log(cmp_residual_k_for_npu, "cmp_residual_k_for_npu")
         output_idx_offset = log(output_idx_offset, "output_idx_offset")
         block_table = log(block_table, "block_table")
-        metadata = log(metadata, "metadata")
+
+        if is_npu_now:
+            # 场景二：tensor 已在 NPU 上，调用真正的 NPU metadata 算子
+            metadata = torch.ops.cann_ops_transformer.quant_lightning_indexer_metadata(
+                                            cu_seqlens_q = cu_seqlens_query,
+                                            cu_seqlens_k = cu_seqlens_key,
+                                            seqused_q = seqused_q_tensor,
+                                            seqused_k = seqused_k_tensor,
+                                            cmp_residual_k = cmp_residual_k_for_npu,
+                                            batch_size = batch_size,
+                                            max_seqlen_q = max_seqlen_q_meta,
+                                            max_seqlen_k = max_seqlen_k_meta,
+                                            num_heads_q = q_head_num,
+                                            num_heads_k = k_head_num,
+                                            head_dim = head_dim,
+                                            topk = sparse_count,
+                                            quant_mode = quant_mode,
+                                            mask_mode = sparse_mode,
+                                            layout_q = layout_query,
+                                            layout_k = layout_key,
+                                            cmp_ratio = cmp_ratio)
+            metadata = metadata.npu()
+        else:
+            # 场景一：metadata 在 CPU 上生成，搬到 NPU
+            metadata = log(metadata, "metadata")
 
         print("max_seqlen_q", max_seqlen_q)
         print("quant_mode", quant_mode)
