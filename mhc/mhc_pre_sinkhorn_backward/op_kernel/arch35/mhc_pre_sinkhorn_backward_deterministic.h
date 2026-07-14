@@ -1258,9 +1258,9 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::P
         pipe_->InitBuffer(gradHinQue_, DOUBLE_BUFFER, cBlockCount_ * sizeof(U));
         pipe_->InitBuffer(xFp32Que_, DOUBLE_BUFFER, max(cLenAlignFp32_, cBlockCount_) * sizeof(U));
 
-        event_t evtVToMte3 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_MTE3));
-        SetFlag<HardEvent::V_MTE3>(evtVToMte3);
-        WaitFlag<HardEvent::V_MTE3>(evtVToMte3);
+        event_t evtMte3ToMte2 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_MTE2));
+        SetFlag<HardEvent::MTE3_MTE2>(evtMte3ToMte2);
+        WaitFlag<HardEvent::MTE3_MTE2>(evtMte3ToMte2);
 
         CrossCoreSetFlag<AIV_AIC_MODE, PIPE_MTE3>(PIPE_MTE3_FLAG);
 
