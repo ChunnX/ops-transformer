@@ -1016,8 +1016,11 @@ if (NOT ENABLE_AICPU_KERNEL)
     install(DIRECTORY ${BLAZE}
             DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common
     )
-    install(DIRECTORY ${TENSOR_API}
-            DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common
+    install(DIRECTORY ${TENSOR_API}/impl/tensor_api
+            DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common/tensor_api/impl
+    )
+    install(DIRECTORY ${TENSOR_API}/include/tensor_api
+            DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common/tensor_api/include
     )
     # Shared kernel headers for whitelist deps (contents -> ascendc/common).
     install(DIRECTORY ${OPS_ADV_DIR}/mc2/common/op_kernel/
