@@ -819,27 +819,24 @@ def tilelang_grad_kl_loss_single_kernel(
                     # ---- Part 2: Scatter dk_matmul_partial → dKeyIndex (split k_id across AIVs) ----
                     # WAR-safe ping-pong DB: overlap MTE2 copy[k+1] ∥ MTE3 atomic_add[k]
                     # Events: MTE2_MTE3{5,6} (RAW) / MTE3_MTE2{5,6} (WAR)
-                    if vid == 0:
-                        my_start = k_start
-                        my_end = T.min(k_start + half_block, k_end)
-                    else:
-                        my_start = T.min(k_start + half_block, k_end)
-                        my_end = k_end
+                    # 用 vid 做列表索引选参，避免 if/else 分支和三元表达式（TileLang 均不支持跨分支变量）
+                    k_mid = k_start + half_block  # Python int
+                    loop_start = [k_start, T.min(k_mid, k_end)][vid]
+                    loop_end   = [T.min(k_mid, k_end), k_end][vid]
+                    offset     = [k_start, k_mid][vid]  # 始终 Python int
+                    prefetch_guard = loop_end
 
-                    # Pre-fill WAR: both slots initially writable
                     T.set_flag("mte3", "mte2", 5)
                     T.set_flag("mte3", "mte2", 6)
 
-                    # Prologue: load my_start → slot 0
                     T.wait_flag("mte3", "mte2", 5)
-                    T.copy(dk_matmul_partial[bz, s1_row, my_start:my_start + 1, 0:DQueryIndex], dk_chunk_0)
+                    T.copy(dk_matmul_partial[bz, s1_row, offset:offset + 1, 0:DQueryIndex], dk_chunk_0)
                     T.set_flag("mte2", "mte3", 5)
 
-                    for k_id in T.serial(my_start, my_end):
-                        cur = (k_id - my_start) % 2
-                        nxt = (k_id - my_start + 1) % 2
+                    for k_id in T.serial(loop_start, loop_end):
+                        cur = (k_id - offset) % 2
+                        nxt = (k_id - offset + 1) % 2
 
-                        # Compute current slot
                         T.wait_flag("mte2", "mte3", cur + 5)
                         idx = SparseIndices[bz, s1_row, 0, k_id]
                         if idx >= 0:
@@ -847,12 +844,10 @@ def tilelang_grad_kl_loss_single_kernel(
                                 T.tile.atomic_add(dKeyIndex[bz, idx, 0, 0], dk_chunk_0)
                             if cur == 1:
                                 T.tile.atomic_add(dKeyIndex[bz, idx, 0, 0], dk_chunk_1)
-                        # WAR: current slot consumed → safe to refill
                         T.set_flag("mte3", "mte2", cur + 5)
 
-                        # Prefetch next iteration
                         next_k = k_id + 1
-                        if next_k < my_end:
+                        if next_k < prefetch_guard:
                             T.wait_flag("mte3", "mte2", nxt + 5)
                             if nxt == 0:
                                 T.copy(dk_matmul_partial[bz, s1_row, next_k:next_k + 1, 0:DQueryIndex], dk_chunk_0)
@@ -860,7 +855,6 @@ def tilelang_grad_kl_loss_single_kernel(
                                 T.copy(dk_matmul_partial[bz, s1_row, next_k:next_k + 1, 0:DQueryIndex], dk_chunk_1)
                             T.set_flag("mte2", "mte3", nxt + 5)
 
-                    # Clear: drain remaining WAR events
                     T.wait_flag("mte3", "mte2", 5)
                     T.wait_flag("mte3", "mte2", 6)
 
