@@ -821,7 +821,7 @@ ge::graphStatus BSATiling::ValidateGenericDequantScale(gert::TilingContext *bsaC
         return ValidateMxfp4DequantScale(bsaContext, parameterIndex);
     } else {
         if (dequantScaleTensor != nullptr) {
-            OP_LOGE(bsaContext->GetNodeName(), "Parameter %s must be nullptr when the dtype is not float8_e4m3fn or float4_e2m1.",
+            OP_LOGE(bsaContext->GetNodeName(), "Parameter %s must be nullptr when quantMode is 0(NoQuant).",
                     parameterName.c_str());
             return ge::GRAPH_FAILED;
         }

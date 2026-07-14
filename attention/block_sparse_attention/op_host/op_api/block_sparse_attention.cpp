@@ -53,6 +53,7 @@ const std::array<const aclTensor *, 2> BlockSparseAttention(
     const aclTensor *qDequantScaleOptional,
     const aclTensor *kDequantScaleOptional,
     const aclTensor *vDequantScaleOptional,
+    const aclTensor *pDequantScaleOptional,
     const char *qInputLayout,
     const char *kvInputLayout,
     int64_t numKeyValueHeads,
@@ -72,7 +73,7 @@ const std::array<const aclTensor *, 2> BlockSparseAttention(
 
     L0_DFX(BlockSparseAttention, query, key, value, blockSparseMaskOptional, attenMaskOptional, blockShapeOptional,
            actualSeqLengthsOptional, actualSeqLengthsKvOptional, blockTableOptional, qDequantScaleOptional,
-           kDequantScaleOptional, vDequantScaleOptional, qInputLayout, safeKvInputLayout, numKeyValueHeads,
+           kDequantScaleOptional, vDequantScaleOptional, pDequantScaleOptional, qInputLayout, safeKvInputLayout, numKeyValueHeads,
            maskType, scaleValue, innerPrecise, blockSize, preTokens, nextTokens, softmaxLseFlag, quantMode, dstTypeMax);
     
     const aclTensor *blockShapeOptionalTensor = nullptr;
@@ -95,7 +96,7 @@ const std::array<const aclTensor *, 2> BlockSparseAttention(
     auto ret = INFER_SHAPE(BlockSparseAttention,
                            OP_INPUT(query, key, value, blockSparseMaskOptional, attenMaskOptional,
                                     blockShapeOptionalTensor, actualSeqTensor, actualSeqKvTensor, blockTableOptional,
-                                    qDequantScaleOptional, kDequantScaleOptional, vDequantScaleOptional),
+                                    qDequantScaleOptional, kDequantScaleOptional, vDequantScaleOptional, pDequantScaleOptional),
                            OP_OUTPUT(attentionOutTensor, softmaxLseTensor),
                            OP_ATTR(qInputLayout, safeKvInputLayout, static_cast<int64_t>(numKeyValueHeads),
                                    static_cast<int64_t>(maskType), static_cast<float>(scaleValue),
@@ -111,7 +112,7 @@ const std::array<const aclTensor *, 2> BlockSparseAttention(
         BlockSparseAttention,
         OP_INPUT(query, key, value, blockSparseMaskOptional, attenMaskOptional, blockShapeOptionalTensor,
                  actualSeqTensor, actualSeqKvTensor, blockTableOptional, qDequantScaleOptional, kDequantScaleOptional,
-                 vDequantScaleOptional),
+                 vDequantScaleOptional, pDequantScaleOptional),
         OP_OUTPUT(attentionOutTensor, softmaxLseTensor),
         OP_ATTR(qInputLayout, safeKvInputLayout, static_cast<int64_t>(numKeyValueHeads), static_cast<int64_t>(maskType),
                 static_cast<float>(scaleValue), static_cast<int64_t>(innerPrecise), static_cast<int64_t>(blockSize),

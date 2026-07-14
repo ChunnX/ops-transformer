@@ -262,7 +262,7 @@ __attribute__((visibility("default"))) aclnnStatus aclnnBlockSparseAttentionGetW
     // 新增blockSparseMaskOptional参数
     auto outputs = l0op::BlockSparseAttention(
         query, key, value, blockSparseMask, attenMaskOptional, blockShape, actualSeqLengthsOptional,
-        actualSeqLengthsKvOptional, blockTableOptional, nullptr, nullptr, nullptr, qInputLayoutStr.c_str(),
+        actualSeqLengthsKvOptional, blockTableOptional, nullptr, nullptr, nullptr,nullptr, qInputLayoutStr.c_str(),
         kvInputLayoutStr.c_str(), numKeyValueHeads, maskType, scaleValue, innerPrecise, blockSize, preTokens,
         nextTokens, softmaxLseFlag, 0, 0.0, attentionOut, executorImpl);
     if (outputs[0] == nullptr || outputs[1] == nullptr) {
