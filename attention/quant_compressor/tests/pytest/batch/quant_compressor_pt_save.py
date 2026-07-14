@@ -12,7 +12,7 @@
 
 import os
 from functools import partial
-from compressor_golden import cpu_compressor, get_seq_used_by_batch
+from quant_compressor_golden import cpu_compressor, get_seq_used_by_batch
 import pandas as pd
 import numpy as np
 import torch

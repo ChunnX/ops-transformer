@@ -147,7 +147,7 @@ ge::graphStatus QuantCompressorTiling::SetBaseInfo()
     baseParams_->stateCacheStrideDim0 = static_cast<uint64_t>(*context_->stateCacheStrideDim0);
     baseParams_->nSize = 2; // 2:每个核处理两个基本块后做全核同步
     baseParams_->usedCoreNum = aicNum_;
-    OP_LOGI(context_->opName, "[TILING] bSize:%u  tSize:%u cmpRatio:%u coff:%u, stateCacheStrideDim0:%u",
+    OP_LOGI(context_->opName, "[TILING] bSize:%u  tSize:%u cmpRatio:%u coff:%u, stateCacheStrideDim0:%llu",
             baseParams_->batchSize, baseParams_->tokenSize, baseParams_->cmpRatio, coff,
             baseParams_->stateCacheStrideDim0);
 
@@ -158,7 +158,7 @@ ge::graphStatus QuantCompressorTiling::SetPageAttentionInfo()
 {
     pageAttentionParams_->blockNum = context_->stateCache.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_0);
     pageAttentionParams_->blockSize = context_->stateCache.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_1);
-    if (static_cast<uint8_t>(*context_->cacheMode) == static_cast<uint8_t>(CACHE_MODE::CONTINUOUS)) {
+    if (static_cast<uint8_t>(*context_->cacheMode) == static_cast<uint8_t>(CACHE_MODE::LINEAR_BUFFER)) {
         pageAttentionParams_->maxBlockNumPerBatch =
             context_->stateBlockTable.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_1);
     }
@@ -251,7 +251,6 @@ ge::graphStatus QuantCompressorTiling::SetInnerSplitInfo()
 ge::graphStatus QuantCompressorTiling::CalcWorkSpace()
 {
     constexpr uint32_t MM1_RES_ELEM_SIZE = 4; // 4: fp32
-    constexpr uint32_t V1_RES_ELEM_SIZE = 4;  // 4: fp32
     uint32_t maxGroupNum = aicNum_ / (baseParams_->headDim / innerSplitParams_->dBaseSize);
     workspaceSize_ = libapiSize_;
     workspaceSize_ +=
@@ -271,12 +270,12 @@ ge::graphStatus QuantCompressorTiling::CalcWorkSpace()
 
 ge::graphStatus QuantCompressorTiling::CheckEmptyTensor() const
 {
-    if (context_->layout == LayoutType::LAYOUT_BSH &&
-            context_->x.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_0) == 0 ||
-        context_->layout == LayoutType::LAYOUT_BSH &&
-            context_->x.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_1) == 0 ||
-        context_->layout == LayoutType::LAYOUT_TH &&
-            context_->x.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_0) == 0) {
+    if ((context_->layout == LayoutType::LAYOUT_BSH &&
+            context_->x.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_0) == 0) ||
+        (context_->layout == LayoutType::LAYOUT_BSH &&
+            context_->x.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_1) == 0) ||
+        (context_->layout == LayoutType::LAYOUT_TH &&
+            context_->x.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_0) == 0)) {
         context_->templateId = TemplateId::EMPTY_X;
     } else {
         if (context_->x.shape->GetStorageShape().GetShapeSize() == 0 ||
@@ -345,7 +344,7 @@ ge::graphStatus QuantCompressorTiling::RunBigKernelTiling(QuantCompressorTilingD
 
 ge::graphStatus QuantCompressorTiling::GenTilingKey() const
 {
-    // 0:HIFP8
+    // 0:HIF8_XPERTENSOR_WPERCHANNEL
     uint8_t dtype = 0;
     // 0: BSH 1:TH
     uint8_t layout = 0;
@@ -441,7 +440,7 @@ void QuantCompressorTiling::LogErrorNumberSupport(const std::vector<T> &expectNu
             to_string(actualValue).c_str());
 }
 
-std::string LayoutTypeToStr(LayoutType layout)
+static std::string LayoutTypeToStr(LayoutType layout)
 {
     switch (layout) {
         case LayoutType::LAYOUT_BSH:
@@ -697,7 +696,7 @@ ge::graphStatus QuantCompressorTiling::CheckSingleParaWgateDescale() const
 
 ge::graphStatus QuantCompressorTiling::CheckSingleParaQuantMode() const
 {
-    const std::vector<int> QUANT_MODE_VAL_LIST{static_cast<int>(QUANT_MODE::HIFP8)};
+    const std::vector<int> QUANT_MODE_VAL_LIST{static_cast<int>(QUANT_MODE::HIF8_XPERTENSOR_WPERCHANNEL)};
     if (ge::GRAPH_SUCCESS != CheckAttrValueSupport(context_->quantMode, QUANT_MODE_VAL_LIST, QUANT_MODE_NAME)) {
         return ge::GRAPH_FAILED;
     }
@@ -741,7 +740,7 @@ ge::graphStatus QuantCompressorTiling::CheckRequiredInOutExistence() const
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(context_->cmpKv.desc == nullptr, OP_LOGE(context_->opName, "tensor cmpKv is nullptr"),
                 return ge::GRAPH_FAILED);
-    if (static_cast<uint8_t>(*context_->quantMode) == static_cast<uint8_t>(QUANT_MODE::HIFP8)) {
+    if (static_cast<uint8_t>(*context_->quantMode) == static_cast<uint8_t>(QUANT_MODE::HIF8_XPERTENSOR_WPERCHANNEL)) {
         OP_CHECK_IF(context_->xDescale.desc == nullptr,
                     OP_LOGE(context_->opName, "In quant_mode = 1, tensor xDescale should not be nullptr"),
                     return ge::GRAPH_FAILED);
@@ -773,7 +772,7 @@ ge::graphStatus QuantCompressorTiling::CheckRequiredInOutExistence() const
                     OP_LOGE(context_->opName, "In BSH layout, tensor cuSeqlens must be nullptr"),
                     return ge::GRAPH_FAILED);
         OP_CHECK_IF(context_->cuSeqlens.shape != nullptr,
-                    OP_LOGE(context_->opName, "In TH layout, tensor cuSeqlens must be nullptr"),
+                    OP_LOGE(context_->opName, "In BSH layout, tensor cuSeqlens must be nullptr"),
                     return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -802,12 +801,12 @@ ge::graphStatus QuantCompressorTiling::CheckFeature() const
         pageAttentionParams_->blockSize < MIN_BLOCK_SIZE,
         OP_LOGE(context_->opName, "blockSize should not be less than 1, but got %u", pageAttentionParams_->blockSize),
         return ge::GRAPH_FAILED);
-    if (static_cast<uint8_t>(*context_->cacheMode) == static_cast<uint8_t>(CACHE_MODE::CYCLE)) {
+    if (static_cast<uint8_t>(*context_->cacheMode) == static_cast<uint8_t>(CACHE_MODE::RING_BUFFER)) {
         OP_CHECK_IF(pageAttentionParams_->blockNum < baseParams_->batchSize,
                     OP_LOGE(context_->opName,
                             "when cacheMode is %u, blockNum should not be less than batchSize(%u), but got %u",
-                            static_cast<uint8_t>(CACHE_MODE::CYCLE), baseParams_->batchSize,
-                            pageAttentionParams_->blockSize),
+                            static_cast<uint8_t>(CACHE_MODE::RING_BUFFER), baseParams_->batchSize,
+                            pageAttentionParams_->blockNum),
                     return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -866,7 +865,7 @@ ge::graphStatus QuantCompressorTiling::CheckShapeConsistency() const
                                                       baseParams_->cmpRatio)) {
         return ge::GRAPH_FAILED;
     }
-    if (static_cast<uint8_t>(*context_->cacheMode) == static_cast<uint8_t>(CACHE_MODE::CONTINUOUS) &&
+    if (static_cast<uint8_t>(*context_->cacheMode) == static_cast<uint8_t>(CACHE_MODE::LINEAR_BUFFER) &&
         (ge::GRAPH_SUCCESS != LogErrorShapeConsistency("stateCache", context_->stateCache.shape, COMPRESSOR_DIM_INDEX_0,
                                                        "blockNum", pageAttentionParams_->blockNum) ||
          ge::GRAPH_SUCCESS != LogErrorShapeConsistency("stateCache", context_->stateCache.shape, COMPRESSOR_DIM_INDEX_1,
