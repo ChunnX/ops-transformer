@@ -8,7 +8,6 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 import torch
-import torch_npu
 from torch.library import impl
 from cann_ops_transformer.op_builder.builder import OpBuilder
 from cann_ops_transformer.op_builder.builder import AS_LIBRARY
@@ -19,11 +18,13 @@ class MhcPostBackwardOpBuilder(OpBuilder):
         super(MhcPostBackwardOpBuilder, self).__init__("mhc_post_backward")
 
     def sources(self):
-        return ['ops/csrc/mhc_post_backward.cpp']
+        return ["ops/csrc/mhc_post_backward.cpp"]
 
     def schema(self) -> str:
-        return "mhc_post_backward(Tensor gradOutput, Tensor x, Tensor hRes, Tensor hOut, Tensor hPost) -> " \
-               "(Tensor, Tensor, Tensor, Tensor)"
+        return (
+            "mhc_post_backward(Tensor gradOutput, Tensor x, Tensor hRes, Tensor hOut, Tensor hPost) -> "
+            "(Tensor, Tensor, Tensor, Tensor)"
+        )
 
     def register_meta(self):
         @impl(AS_LIBRARY, self.name, "Meta")

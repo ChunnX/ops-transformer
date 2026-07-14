@@ -280,7 +280,7 @@ cann_ops_transformer.lightning_indexer(
               mask_mode=3,
               cmp_ratio=cmp_ratio
           )
-          
+
           return torch.ops.cann_ops_transformer.lightning_indexer(
               q, k, w, topk,
               cmp_residual_k=cmp_residual_k,

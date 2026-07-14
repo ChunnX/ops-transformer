@@ -15,8 +15,11 @@ try:
     from torchair.ge._ge_graph import Tensor, TensorSpec
     from torchair.ge._ge_graph import auto_convert_to_tensor
     from torchair._ge_concrete_graph.compat_ir import ge_op, IrDef
-    from torchair._ge_concrete_graph.fx2ge_converter import register_fx_node_ge_converter
+    from torchair._ge_concrete_graph.fx2ge_converter import (
+        register_fx_node_ge_converter,
+    )
     from torchair.ge import attr
+
     _TORCHAIR_AVAILABLE = True
 except ImportError:
     _TORCHAIR_AVAILABLE = False
@@ -29,6 +32,7 @@ _ACTIVATION_MAP = {
 
 
 if _TORCHAIR_AVAILABLE:
+
     @auto_convert_to_tensor(
         [False, False, False, False, False, True, True, True, True],
         [False, False, False, False, False, True, True, True, True],
@@ -103,7 +107,9 @@ if _TORCHAIR_AVAILABLE:
             .output("y", "DT_BF16, DT_FLOAT16"),
         )
 
-    @register_fx_node_ge_converter(torch.ops.cann_ops_transformer.causal_conv1d_fn.default)
+    @register_fx_node_ge_converter(
+        torch.ops.cann_ops_transformer.causal_conv1d_fn.default
+    )
     def convert_causal_conv1d_fn(
         x: Tensor,
         weight: Tensor,
@@ -137,7 +143,9 @@ if _TORCHAIR_AVAILABLE:
         )
         return y
 
-    @register_fx_node_ge_converter(torch.ops.cann_ops_transformer.causal_conv1d_update.default)
+    @register_fx_node_ge_converter(
+        torch.ops.cann_ops_transformer.causal_conv1d_update.default
+    )
     def convert_causal_conv1d_update(
         x: Tensor,
         conv_state: Tensor,
@@ -168,8 +176,13 @@ if _TORCHAIR_AVAILABLE:
         return y
 
 else:
+
     def convert_causal_conv1d_fn(*args, **kwargs):
-        raise RuntimeError("GE converter requires torchair, but torchair is not available.")
+        raise RuntimeError(
+            "GE converter requires torchair, but torchair is not available."
+        )
 
     def convert_causal_conv1d_update(*args, **kwargs):
-        raise RuntimeError("GE converter requires torchair, but torchair is not available.")
+        raise RuntimeError(
+            "GE converter requires torchair, but torchair is not available."
+        )

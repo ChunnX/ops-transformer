@@ -41,7 +41,8 @@ using Platform = ops::adv::tests::utils::Platform;
 /**
  * 基础 TestSuite
  */
-template <class C> class Ts : public testing::Test {
+template <class C>
+class Ts : public testing::Test {
 protected:
     C *case_ = nullptr;
     Platform *platform_ = nullptr;
@@ -75,7 +76,8 @@ protected:
     }
 };
 
-template <class C> class Ts_Ascend910B1 : public Ts<C> {
+template <class C>
+class Ts_Ascend910B1 : public Ts<C> {
 protected:
     void SetUp() override
     {
@@ -84,7 +86,8 @@ protected:
     }
 };
 
-template <class C> class Ts_Ascend910B2 : public Ts<C> {
+template <class C>
+class Ts_Ascend910B2 : public Ts<C> {
 protected:
     void SetUp() override
     {
@@ -93,7 +96,8 @@ protected:
     }
 };
 
-template <class C> class Ts_Ascend910B3 : public Ts<C> {
+template <class C>
+class Ts_Ascend910B3 : public Ts<C> {
 protected:
     void SetUp() override
     {
@@ -102,7 +106,8 @@ protected:
     }
 };
 
-template <class C> class Ts_Ascend310P3 : public Ts<C> {
+template <class C>
+class Ts_Ascend310P3 : public Ts<C> {
 protected:
     void SetUp() override
     {
@@ -111,7 +116,8 @@ protected:
     }
 };
 
-template <class C> class Ts_Ascend910_9591 : public Ts<C> {
+template <class C>
+class Ts_Ascend910_9591 : public Ts<C> {
 protected:
     void SetUp() override
     {
@@ -124,7 +130,8 @@ protected:
 /**
  * 支持 TEST_P 类型用例的 TestSuite
  */
-template <class C> class Ts_WithParam : public Ts<C>, public ::testing::WithParamInterface<C> {
+template <class C>
+class Ts_WithParam : public Ts<C>, public ::testing::WithParamInterface<C> {
 protected:
     void SetUp() override
     {
@@ -135,7 +142,8 @@ protected:
     }
 };
 
-template <class C> class Ts_WithParam_Ascend910B1 : public Ts_WithParam<C> {
+template <class C>
+class Ts_WithParam_Ascend910B1 : public Ts_WithParam<C> {
 protected:
     void SetUp() override
     {
@@ -144,7 +152,8 @@ protected:
     }
 };
 
-template <class C> class Ts_WithParam_Ascend910B2 : public Ts_WithParam<C> {
+template <class C>
+class Ts_WithParam_Ascend910B2 : public Ts_WithParam<C> {
 protected:
     void SetUp() override
     {
@@ -153,7 +162,8 @@ protected:
     }
 };
 
-template <class C> class Ts_WithParam_Ascend910B3 : public Ts_WithParam<C> {
+template <class C>
+class Ts_WithParam_Ascend910B3 : public Ts_WithParam<C> {
 protected:
     void SetUp() override
     {
@@ -163,7 +173,8 @@ protected:
 };
 
 
-template <class C> class Ts_WithParam_Ascend310P3 : public Ts_WithParam<C> {
+template <class C>
+class Ts_WithParam_Ascend310P3 : public Ts_WithParam<C> {
 protected:
     void SetUp() override
     {
@@ -172,11 +183,12 @@ protected:
     }
 };
 
-template <class C> class Ts_WithParam_Ascend910_9591 : public Ts_WithParam<C> {
-    protected:
-        void SetUp() override
-        {
-            Ts_WithParam<C>::socVersion_ = Platform::SocVersion::Ascend910_9591;
-            Ts_WithParam<C>::SetUp();
-        }
-    };
+template <class C>
+class Ts_WithParam_Ascend910_9591 : public Ts_WithParam<C> {
+protected:
+    void SetUp() override
+    {
+        Ts_WithParam<C>::socVersion_ = Platform::SocVersion::Ascend910_9591;
+        Ts_WithParam<C>::SetUp();
+    }
+};

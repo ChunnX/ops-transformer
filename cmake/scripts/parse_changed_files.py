@@ -46,10 +46,10 @@ class Module:
     @staticmethod
     def _add_test_excludes(test_options, dst: List[str]):
         if isinstance(test_options, Dict):
-            if 'examples' in test_options and not test_options['examples']:
-                dst.append('examples')
-            if 'ut' in test_options and not test_options['ut']:
-                dst.append('ut')
+            if "examples" in test_options and not test_options["examples"]:
+                dst.append("examples")
+            if "ut" in test_options and not test_options["ut"]:
+                dst.append("ut")
         return True
 
     def update_classify_cfg(self, desc: Dict[str, Any]) -> bool:
@@ -64,7 +64,6 @@ class Module:
         return True
 
     def get_test_options(self, f: Path) -> List[str]:
-
         def is_excluded(e_f: Path):
             for e in self.src_exclude_files:
                 try:
@@ -92,10 +91,12 @@ class Module:
         return self.get_test_options(f)
 
     def print_details(self):
-        dbg_str = (f"Name={self.name} SrcLen={len(self.src_files)} "
-                   f"TestUtOpsTestSrcLen={len(self.tests_ut_ops_test_src_files)} "
-                   f"TestUtOpsTestOptions={self.options} "
-                   f"TestUtOpsTestOptions={self.tests_ut_ops_test_options}")
+        dbg_str = (
+            f"Name={self.name} SrcLen={len(self.src_files)} "
+            f"TestUtOpsTestSrcLen={len(self.tests_ut_ops_test_src_files)} "
+            f"TestUtOpsTestOptions={self.options} "
+            f"TestUtOpsTestOptions={self.tests_ut_ops_test_options}"
+        )
         logging.debug(dbg_str)
 
     def _add_rel_path(self, src, dst: List[Path]):
@@ -111,19 +112,21 @@ class Module:
         return True
 
     def _update_src(self, desc: Dict[str, Any]) -> bool:
-        src_paths = desc.get('src', [])
+        src_paths = desc.get("src", [])
         return self._add_rel_path(src=src_paths, dst=self.src_files)
 
     def _update_exclude_src(self, desc: Dict[str, Any]) -> bool:
-        src_paths = desc.get('exclude', [])
+        src_paths = desc.get("exclude", [])
         return self._add_rel_path(src=src_paths, dst=self.src_exclude_files)
 
     def _update_test_excludes(self, desc: Dict[str, Any]) -> bool:
-        test_options = desc.get('test', [])
-        return self._add_test_excludes(test_options=test_options, dst=self.test_excludes)
+        test_options = desc.get("test", [])
+        return self._add_test_excludes(
+            test_options=test_options, dst=self.test_excludes
+        )
 
     def _update_options(self, desc: Dict[str, Any]) -> bool:
-        options = desc.get('options', [])
+        options = desc.get("options", [])
         return self._add_str_cfg(src=options, dst=self.options)
 
 
@@ -132,26 +135,46 @@ class Parser:
     规则文件、修改文件列表文件解析.
     """
 
-    _Modules: List[Module] = []         # 保存规则文件(tests/test_config.yaml)内设置的模块列表
-    _ChangedPaths: List[Path] = []      # 修改文件列表文件(changed_file)内设置的修改文件列表
+    _Modules: List[Module] = []  # 保存规则文件(tests/test_config.yaml)内设置的模块列表
+    _ChangedPaths: List[Path] = []  # 修改文件列表文件(changed_file)内设置的修改文件列表
     _UTExcludes: List[str] = []
     _ExamplesExcludes: List[str] = []
 
     @staticmethod
     def main() -> str:
         # 参数注册
-        ps = argparse.ArgumentParser(description="Parse changed files", epilog="Best Regards!")
-        ps.add_argument("-c", "--classify", required=True, nargs=1, type=Path, help="tests/test_config.yaml")
-        ps.add_argument("-f", "--file", required=True, nargs=1, type=Path, help="changed files desc file.")
+        ps = argparse.ArgumentParser(
+            description="Parse changed files", epilog="Best Regards!"
+        )
+        ps.add_argument(
+            "-c",
+            "--classify",
+            required=True,
+            nargs=1,
+            type=Path,
+            help="tests/test_config.yaml",
+        )
+        ps.add_argument(
+            "-f",
+            "--file",
+            required=True,
+            nargs=1,
+            type=Path,
+            help="changed files desc file.",
+        )
         # 子命令行
         sub_ps = ps.add_subparsers(help="Sub-Command")
-        p_ut = sub_ps.add_parser('get_related_ut', help="Get related ut.")
+        p_ut = sub_ps.add_parser("get_related_ut", help="Get related ut.")
         p_ut.set_defaults(func=Parser.get_related_ut)
-        p_ut_mc2 = sub_ps.add_parser('get_related_ut_mc2', help="Get related ut mc2.")
+        p_ut_mc2 = sub_ps.add_parser("get_related_ut_mc2", help="Get related ut mc2.")
         p_ut_mc2.set_defaults(func=Parser.get_related_ut_mc2)
-        p_ut_exclude_mc2 = sub_ps.add_parser('get_related_ut_exclude_mc2', help="Get related ut exclude mc2.")
+        p_ut_exclude_mc2 = sub_ps.add_parser(
+            "get_related_ut_exclude_mc2", help="Get related ut exclude mc2."
+        )
         p_ut_exclude_mc2.set_defaults(func=Parser.get_related_ut_exclude_mc2)
-        p_examples = sub_ps.add_parser('get_related_examples', help="Get related examples.")
+        p_examples = sub_ps.add_parser(
+            "get_related_examples", help="Get related examples."
+        )
         p_examples.set_defaults(func=Parser.get_related_examples)
         # 处理
         args = ps.parse_args()
@@ -169,12 +192,12 @@ class Parser:
         """过滤不需要处理的文件"""
         path_str = str(file_path)
         # 排除文档文件
-        exclude_extensions = ['.md', '.json', '.ini']
+        exclude_extensions = [".md", ".json", ".ini"]
         for ext in exclude_extensions:
             if path_str.endswith(ext):
                 return False
         # 排除文档目录
-        exclude_keywords = ['docs/']
+        exclude_keywords = ["docs/"]
         for keyword in exclude_keywords:
             if keyword in path_str:
                 return False
@@ -186,16 +209,16 @@ class Parser:
         if not file.exists():
             logging.error("Classify file(%s) not exist.", file)
             return False
-        with open(file, 'r', encoding='utf-8') as f:
+        with open(file, "r", encoding="utf-8") as f:
             desc: Dict[str, Any] = yaml.load(f, Loader=yaml.SafeLoader)
 
-        def extract_from_dict(obj, current_key='root') -> bool:
+        def extract_from_dict(obj, current_key="root") -> bool:
             # 只看 dict 类型
             if not isinstance(obj, dict):
                 return True
 
             # 递归到 module 时说明到达最后一层
-            if 'module' in obj:
+            if "module" in obj:
                 return cls._parse_classify_item(current_key, desc)
 
             # 递归处理其他值
@@ -277,34 +300,37 @@ class Parser:
         return ops_test_option_lst
 
     @classmethod
-    def _parse_classify_item(cls, name: str, desc: Optional[Dict[str, Any]] = None) -> bool:
+    def _parse_classify_item(
+        cls, name: str, desc: Optional[Dict[str, Any]] = None
+    ) -> bool:
         if desc is None:
             logging.error("[%s]'s desc is None.", name)
             return False
-        if desc.get('module', False):
+        if desc.get("module", False):
             mod = Module(name=name)
             rst = mod.update_classify_cfg(desc=desc)
             if rst:
                 cls._Modules.append(mod)
-                short_name = name.split('/')[-1]
-                if 'examples' in mod.test_excludes:
+                short_name = name.split("/")[-1]
+                if "examples" in mod.test_excludes:
                     cls._ExamplesExcludes.append(short_name)
-                if 'ut' in mod.test_excludes:
+                if "ut" in mod.test_excludes:
                     cls._UTExcludes.append(short_name)
             return rst
         for k, sub_desc in desc.items():
-            if not cls._parse_classify_item(name=name + '/' + k, desc=sub_desc):
+            if not cls._parse_classify_item(name=name + "/" + k, desc=sub_desc):
                 return False
         return True
-    
+
     @classmethod
     def get_related_ut_mc2(cls):
         def ops_test_list_append(ops, ops_test_option_lst):
             if ops not in ops_test_option_lst:
                 ops_test_option_lst.append(ops)
+
         ops_test_option_lst: List[str] = []
         for p in cls._ChangedPaths:
-            if not ("mc2" in p.parts):
+            if "mc2" not in p.parts:
                 continue
             for m in cls._Modules:
                 new_options = m.get_test_options(f=p)
@@ -314,15 +340,16 @@ class Parser:
             logging.info("Don't trigger any mc2 UT.")
             return ""
         return cls.get_ops_test_ut_str(ops_test_option_lst)
-    
+
     @classmethod
     def get_related_ut_exclude_mc2(cls):
         def ops_test_list_append(ops, ops_test_option_lst):
             if ops not in ops_test_option_lst:
                 ops_test_option_lst.append(ops)
+
         ops_test_option_lst: List[str] = []
         for p in cls._ChangedPaths:
-            if ("mc2" in p.parts):
+            if "mc2" in p.parts:
                 continue
             for m in cls._Modules:
                 new_options = m.get_test_options(f=p)
@@ -332,7 +359,7 @@ class Parser:
             logging.info("Don't trigger any UT exclude mc2.")
             return ""
         return cls.get_ops_test_ut_str(ops_test_option_lst)
-    
+
     @classmethod
     def get_ops_test_ut_str(cls, ops_test_option_lst: List[str]) -> str:
         ops_test_ut_str: str = ""
@@ -346,7 +373,11 @@ class Parser:
         logging.info(f"Trigger UT: {ops_test_ut_str}")
         return ops_test_ut_str
 
-if __name__ == '__main__':
-    logging.basicConfig(format='[%(asctime)s][%(filename)s:%(lineno)d] %(message)s', datefmt='%Y-%m-%d %H:%M:%S',
-                        level=logging.INFO)
+
+if __name__ == "__main__":
+    logging.basicConfig(
+        format="[%(asctime)s][%(filename)s:%(lineno)d] %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+        level=logging.INFO,
+    )
     print(Parser.main())

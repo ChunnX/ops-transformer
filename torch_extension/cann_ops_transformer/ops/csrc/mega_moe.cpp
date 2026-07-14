@@ -125,8 +125,8 @@ NpuMegaMoe(const at::Tensor &context, const at::Tensor &x, const at::Tensor &top
     ACLNN_CMD(aclnnMegaMoe, context, x, topkIds, topkWeights, weight1Wrapper, weight2Wrapper, weightScales1Wrapper,
               weightScales2Wrapper, bias1Wrapper, bias2Wrapper, xActiveMask, moeExpertNum, epWorldSize, cclBufferSize,
               maxRecvTokenNum, dispatchQuantMode, dispatchQuantResultType, combineQuantMode, commAlgPtr,
-              numMaxTokensPerRank, activationPtr, activationClampValue, topoTypeValue,
-              rankNumPerServerValue, y, expertTokenNums);
+              numMaxTokensPerRank, activationPtr, activationClampValue, topoTypeValue, rankNumPerServerValue, y,
+              expertTokenNums);
 
     return std::tie(y, expertTokenNums);
 }
@@ -145,25 +145,23 @@ int64_t CeilAlign(int64_t val, int64_t align)
 
 // A2 minimum buffer size (MB).
 // Matches tiling_arch22.cpp CalcLeastCclBufferSize with isA3=false.
-int64_t CalcLeastCclBufferSizeA2(int64_t maxRecvTokenNum, int64_t h,
-    int64_t epWorldSize, bool isQuantRouting, int64_t bs, int64_t topK)
+int64_t CalcLeastCclBufferSizeA2(int64_t maxRecvTokenNum, int64_t h, int64_t epWorldSize, bool isQuantRouting,
+                                 int64_t bs, int64_t topK)
 {
     // Data block 1: TokenPerExpert
     // EP × CeilAlign(EP × MAX_EXPERTS_PER_RANK_A2A3 + 1, 128) × 4B
-    int64_t offsetTokenPerExpert = epWorldSize *
-        CeilAlign(epWorldSize * MAX_EXPERTS_PER_RANK_A2A3 + 1, ALIGN_128) *
-        static_cast<int64_t>(sizeof(int32_t));
+    int64_t offsetTokenPerExpert = epWorldSize * CeilAlign(epWorldSize * MAX_EXPERTS_PER_RANK_A2A3 + 1, ALIGN_128) *
+                                   static_cast<int64_t>(sizeof(int32_t));
 
     // Data block 2: tensors
     // ===== winIn =====
-    int64_t offsetAAfterDispatch = maxRecvTokenNum *
-        (isQuantRouting ? (h + ALIGN_512) : h * static_cast<int64_t>(sizeof(int16_t)));
+    int64_t offsetAAfterDispatch =
+        maxRecvTokenNum * (isQuantRouting ? (h + ALIGN_512) : h * static_cast<int64_t>(sizeof(int16_t)));
     int64_t offsetD = bs * topK * h * static_cast<int64_t>(sizeof(int16_t));
     int64_t winInTensorSize = offsetAAfterDispatch + offsetD;
 
     // ===== winOut =====
-    int64_t offsetA = bs * topK *
-        (!isQuantRouting ? h * static_cast<int64_t>(sizeof(int16_t)) : (h + ALIGN_512));
+    int64_t offsetA = bs * topK * (!isQuantRouting ? h * static_cast<int64_t>(sizeof(int16_t)) : (h + ALIGN_512));
     int64_t offsetC = maxRecvTokenNum * h * static_cast<int64_t>(sizeof(int16_t));
     int64_t winOutTensorSize = offsetA + offsetC;
     int64_t offsetTensor = std::max(winInTensorSize, winOutTensorSize);
@@ -172,27 +170,25 @@ int64_t CalcLeastCclBufferSizeA2(int64_t maxRecvTokenNum, int64_t h,
     }
 
     // Data block 3: sync flags
-    int64_t offsetFlag = epWorldSize * ALIGN_512;  // CrossRankSync
-    offsetFlag += epWorldSize * MAX_EXPERTS_PER_RANK_A2A3 * 64LL;  // DispatchFlag
-    offsetFlag += epWorldSize * 64LL;  // AllGatherFlag
+    int64_t offsetFlag = epWorldSize * ALIGN_512;                 // CrossRankSync
+    offsetFlag += epWorldSize * MAX_EXPERTS_PER_RANK_A2A3 * 64LL; // DispatchFlag
+    offsetFlag += epWorldSize * 64LL;                             // AllGatherFlag
 
     return (offsetTokenPerExpert + offsetTensor + offsetFlag + RESERVED_SPACE_SIZE + MB_SIZE) / MB_SIZE;
 }
 
 // A3 minimum buffer size (MB).
 // Matches tiling_arch22.cpp CalcLeastCclBufferSize with isA3=true.
-int64_t CalcLeastCclBufferSizeA3(int64_t h,
-    int64_t epWorldSize, bool isQuantRouting, int64_t bs, int64_t topK)
+int64_t CalcLeastCclBufferSizeA3(int64_t h, int64_t epWorldSize, bool isQuantRouting, int64_t bs, int64_t topK)
 {
     // Data block 1: TokenPerExpert
     // EP × CeilAlign(EP × MAX_EXPERTS_PER_RANK_A2A3 + 1, 128) × 4B
-    int64_t offsetTokenPerExpert = epWorldSize *
-        CeilAlign(epWorldSize * MAX_EXPERTS_PER_RANK_A2A3 + 1, ALIGN_128) *
-        static_cast<int64_t>(sizeof(int32_t));
+    int64_t offsetTokenPerExpert = epWorldSize * CeilAlign(epWorldSize * MAX_EXPERTS_PER_RANK_A2A3 + 1, ALIGN_128) *
+                                   static_cast<int64_t>(sizeof(int32_t));
 
     // Data block 2: tensors (winIn only, no winOut)
-    int64_t offsetAAfterDispatch = bs * topK *
-        (isQuantRouting ? (h + ALIGN_512) : h * static_cast<int64_t>(sizeof(int16_t)));
+    int64_t offsetAAfterDispatch =
+        bs * topK * (isQuantRouting ? (h + ALIGN_512) : h * static_cast<int64_t>(sizeof(int16_t)));
     int64_t offsetD = bs * topK * h * static_cast<int64_t>(sizeof(int16_t));
     int64_t offsetTensor = offsetAAfterDispatch + offsetD;
     if (isQuantRouting) {
@@ -206,8 +202,8 @@ int64_t CalcLeastCclBufferSizeA3(int64_t h,
 }
 
 // A5 half-buffer minimum size (MB). Ported 1:1 from the original Python implementation.
-int64_t CalcHalfBufferSizeMBA5(int64_t epWorldSize, int64_t moeExpertNum,
-    int64_t numMaxTokensPerRank, int64_t numTopk, int64_t hidden)
+int64_t CalcHalfBufferSizeMBA5(int64_t epWorldSize, int64_t moeExpertNum, int64_t numMaxTokensPerRank, int64_t numTopk,
+                               int64_t hidden)
 {
     int64_t expertPerRank = moeExpertNum / epWorldSize;
 
@@ -236,29 +232,26 @@ int64_t CalcHalfBufferSizeMBA5(int64_t epWorldSize, int64_t moeExpertNum,
 }
 } // namespace
 
-int64_t GetMegaMoeCclBufferSize(int64_t epWorldSize, int64_t moeExpertNum,
-    int64_t numMaxTokensPerRank, int64_t numTopk, int64_t hidden,
-    int64_t maxRecvTokenNum,
-    int64_t dispatchQuantMode, c10::optional<int64_t> dispatchQuantOutDtype,
-    int64_t combineQuantMode, std::string commAlg)
+int64_t GetMegaMoeCclBufferSize(int64_t epWorldSize, int64_t moeExpertNum, int64_t numMaxTokensPerRank, int64_t numTopk,
+                                int64_t hidden, int64_t maxRecvTokenNum, int64_t dispatchQuantMode,
+                                c10::optional<int64_t> dispatchQuantOutDtype, int64_t combineQuantMode,
+                                std::string commAlg)
 {
     const char *socName = aclrtGetSocName();
     bool isA2 = (socName != nullptr && std::strstr(socName, "Ascend910B") != nullptr);
     bool isA3 = (socName != nullptr && std::strstr(socName, "Ascend910_93") != nullptr);
     if (isA2 || isA3) {
-        TORCH_CHECK(epWorldSize == 2 || epWorldSize == 4 || epWorldSize == 8 ||
-                    epWorldSize == 16 || epWorldSize == 32,
-            "ep_world_size only support {2, 4, 8, 16, 32} on A2/A3, but got ", epWorldSize);
+        TORCH_CHECK(epWorldSize == 2 || epWorldSize == 4 || epWorldSize == 8 || epWorldSize == 16 || epWorldSize == 32,
+                    "ep_world_size only support {2, 4, 8, 16, 32} on A2/A3, but got ", epWorldSize);
         TORCH_CHECK(hidden >= 1024 && hidden <= 8192 && hidden % 512 == 0,
-            "hidden only support [1024, 8192] and hidden % 512 == 0 on A2/A3, but got ", hidden);
+                    "hidden only support [1024, 8192] and hidden % 512 == 0 on A2/A3, but got ", hidden);
         TORCH_CHECK(numMaxTokensPerRank >= 1 && numMaxTokensPerRank <= 4096,
-            "num_max_tokens_per_rank only support [1, 4096] on A2/A3, but got ", numMaxTokensPerRank);
+                    "num_max_tokens_per_rank only support [1, 4096] on A2/A3, but got ", numMaxTokensPerRank);
         TORCH_CHECK(moeExpertNum >= 1 && moeExpertNum <= 2048,
-            "moe_expert_num only support [1, 2048] on A2/A3, but got ", moeExpertNum);
-        TORCH_CHECK(numTopk >= 1 && numTopk <= 16,
-            "num_topk only support [1, 16] on A2/A3, but got ", numTopk);
+                    "moe_expert_num only support [1, 2048] on A2/A3, but got ", moeExpertNum);
+        TORCH_CHECK(numTopk >= 1 && numTopk <= 16, "num_topk only support [1, 16] on A2/A3, but got ", numTopk);
         TORCH_CHECK(dispatchQuantMode == 0 || dispatchQuantMode == 2 || dispatchQuantMode == 4,
-            "dispatch_quant_mode only support {0, 2, 4} on A2/A3, but got ", dispatchQuantMode);
+                    "dispatch_quant_mode only support {0, 2, 4} on A2/A3, but got ", dispatchQuantMode);
 
         bool isQuantRouting = (dispatchQuantMode == 4);
         // max_recv_token_num 为 0 时自动计算为 bs * epWorldSize * min(topK, expertPerRank)，
@@ -267,29 +260,22 @@ int64_t GetMegaMoeCclBufferSize(int64_t epWorldSize, int64_t moeExpertNum,
             maxRecvTokenNum = numMaxTokensPerRank * epWorldSize * std::min(numTopk, expertPerRank);
         }
         if (isA3) {
-            return CalcLeastCclBufferSizeA3(
-                hidden, epWorldSize, isQuantRouting,
-                numMaxTokensPerRank, numTopk);
+            return CalcLeastCclBufferSizeA3(hidden, epWorldSize, isQuantRouting, numMaxTokensPerRank, numTopk);
         }
-        return CalcLeastCclBufferSizeA2(
-            maxRecvTokenNum, hidden, epWorldSize, isQuantRouting,
-            numMaxTokensPerRank, numTopk);
+        return CalcLeastCclBufferSizeA2(maxRecvTokenNum, hidden, epWorldSize, isQuantRouting, numMaxTokensPerRank,
+                                        numTopk);
     }
 
     // A5 / 950 — 校验与原 Python get_mega_moe_ccl_buffer_size 对齐
-    TORCH_CHECK(epWorldSize >= 2 && epWorldSize <= 1024,
-        "ep_world_size only support in [2, 1024], but got ", epWorldSize);
-    TORCH_CHECK(hidden >= 1024 && hidden <= 8192,
-        "hidden only support in [1024, 8192], but got ", hidden);
-    TORCH_CHECK(numMaxTokensPerRank >= 1,
-        "num_max_tokens_per_rank should be >= 1, but got ", numMaxTokensPerRank);
-    TORCH_CHECK(moeExpertNum >= 1 && moeExpertNum <= 2048,
-        "moe_expert_num only support in [1, 2048], but got ", moeExpertNum);
-    TORCH_CHECK(numTopk >= 1 && numTopk <= 16,
-        "num_topk only support in [1, 16], but got ", numTopk);
+    TORCH_CHECK(epWorldSize >= 2 && epWorldSize <= 1024, "ep_world_size only support in [2, 1024], but got ",
+                epWorldSize);
+    TORCH_CHECK(hidden >= 1024 && hidden <= 8192, "hidden only support in [1024, 8192], but got ", hidden);
+    TORCH_CHECK(numMaxTokensPerRank >= 1, "num_max_tokens_per_rank should be >= 1, but got ", numMaxTokensPerRank);
+    TORCH_CHECK(moeExpertNum >= 1 && moeExpertNum <= 2048, "moe_expert_num only support in [1, 2048], but got ",
+                moeExpertNum);
+    TORCH_CHECK(numTopk >= 1 && numTopk <= 16, "num_topk only support in [1, 16], but got ", numTopk);
 
-    return CalcHalfBufferSizeMBA5(epWorldSize, moeExpertNum,
-        numMaxTokensPerRank, numTopk, hidden);
+    return CalcHalfBufferSizeMBA5(epWorldSize, moeExpertNum, numMaxTokensPerRank, numTopk, hidden);
 }
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)

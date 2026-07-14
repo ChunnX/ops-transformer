@@ -51,9 +51,15 @@ def _load_kernels(py_file: Path):
 def main():
     parser = argparse.ArgumentParser(description="PyPTO kernel codegen driver")
     parser.add_argument("--py-file", required=True, help="kernel python source file")
-    parser.add_argument("--out-dir", required=True, help="directory to place generated artifacts")
-    parser.add_argument("--op-file", required=True, help="op file stem (e.g. flash_attention_score_apt)")
-    parser.add_argument("--soc", required=True, help="ascend compute unit (e.g. ascend950)")
+    parser.add_argument(
+        "--out-dir", required=True, help="directory to place generated artifacts"
+    )
+    parser.add_argument(
+        "--op-file", required=True, help="op file stem (e.g. flash_attention_score_apt)"
+    )
+    parser.add_argument(
+        "--soc", required=True, help="ascend compute unit (e.g. ascend950)"
+    )
     args = parser.parse_args()
 
     soc = args.soc.strip().lower()
@@ -88,6 +94,9 @@ def main():
 
 
 if __name__ == "__main__":
-    logging.basicConfig(format='[%(asctime)s][%(filename)s:%(lineno)d] %(message)s',
-                        datefmt='%Y-%m-%d %H:%M:%S', level=logging.INFO)
+    logging.basicConfig(
+        format="[%(asctime)s][%(filename)s:%(lineno)d] %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+        level=logging.INFO,
+    )
     main()
