@@ -28,7 +28,7 @@ for _, params in enumerate(ENABLED_PARAMS):
 
     # 生成所有参数组合
     param_names = [
-        "B", "seqlen", "nk", "nv", "dk", "dv", "chunk_size", "data_type"
+        "B", "seqlen", "nk", "nv", "dk", "dv", "chunk_size", "data_type", "state_dtype"
     ]
 
     param_values = [
@@ -40,6 +40,7 @@ for _, params in enumerate(ENABLED_PARAMS):
         locals()["param_dv"],
         locals()["param_chunk_size"],
         locals()["param_data_type"],
+        locals()["param_state_dtype"],
     ]
 
     # 生成所有的组合，并转换为字典列表
@@ -59,8 +60,9 @@ for _, params in enumerate(ENABLED_PARAMS):
         dv = param_combinations['dv']
         chunk_size = param_combinations['chunk_size']
         data_type = param_combinations['data_type']
+        state_dtype = param_combinations['state_dtype']
 
-        test_data = B, seqlen, nk, nv, dk, dv, chunk_size, data_type
+        test_data = B, seqlen, nk, nv, dk, dv, chunk_size, data_type, state_dtype
 
         torch_npu.npu.set_device(0)
 
