@@ -95,6 +95,15 @@ const constexpr uint32_t LOW_API_ROW_INNER_FACTOR = 8;
 const constexpr uint32_t LOW_API_D_FACTOR = 1024;
 const constexpr uint32_t LOW_API_BUFFER_POOL0_SIZE = 64 * 1024;
 const constexpr uint32_t LOW_API_BUFFER_POOL1_SIZE = 96 * 1024;
+const constexpr uint64_t M_K_PERF_PROBE_TOTAL_LENGTH = 1024;
+const constexpr uint64_t M_K_PERF_PROBE_D = 5120;
+const constexpr TilingMode M_K_PERF_PROBE_MODE = TilingMode::SPLIT_M_K;
+const constexpr uint32_t M_K_M_L1_MAX_SIZE = 256;
+const constexpr uint32_t M_K_SPLIT_ALIGN = 256;
+const constexpr uint32_t M_K_A_L1_ELEMENT_COUNT = 128 * 256;
+const constexpr uint32_t M_K_K_L1_MAX_SIZE = 1024;
+const constexpr uint32_t M_K_K_L1_ALIGN = 128;
+const constexpr size_t M_K_WORKSPACE_ALIGN = 512;
 
 static constexpr size_t OUT_H_IN_INDEX = 0;
 static constexpr size_t OUT_H_POST_INDEX = 1;
@@ -566,6 +575,7 @@ ge::graphStatus MhcPreBaseTiling::InitPlatformMemory()
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L0_C, l0CSize);
     mm_.SetBufferSpace(l1Size, l0CSize, ubSize);
     blockDim_ = ascendcPlatform.GetCoreNumAic();
+    aivBlockDim_ = ascendcPlatform.GetCoreNumAiv();
 
     ubSize_ = ubSize; // Save UB size for later validation
 
@@ -610,6 +620,13 @@ bool MhcPreBaseTiling::CanUseLowApiBs() const
     return tilingMode_ == TilingMode::SPLIT_BS && N_ == 4;
 }
 
+bool MhcPreBaseTiling::IsMkPerfProbe() const
+{
+    return M_K_PERF_PROBE_MODE == TilingMode::SPLIT_M_K && N_ == 4 &&
+           totalLength_ == M_K_PERF_PROBE_TOTAL_LENGTH && D_ == M_K_PERF_PROBE_D &&
+           context_->GetDeterministicLevel() != 2;
+}
+
 void MhcPreBaseTiling::FillLowApiTilingData()
 {
     auto roundUp = [](uint64_t value, uint64_t align) -> uint32_t {
@@ -630,6 +647,48 @@ void MhcPreBaseTiling::FillLowApiTilingData()
     tilingData_.set_nAlign(nAlign);
     tilingData_.set_bufferPool0Size(LOW_API_BUFFER_POOL0_SIZE);
     tilingData_.set_bufferPool1Size(LOW_API_BUFFER_POOL1_SIZE);
+}
+
+void MhcPreBaseTiling::FillMkTilingData()
+{
+    auto ceilDiv = [](uint64_t value, uint64_t divisor) -> uint64_t {
+        return (value + divisor - 1U) / divisor;
+    };
+    auto roundUp = [&ceilDiv](uint64_t value, uint64_t align) -> uint64_t {
+        return ceilDiv(value, align) * align;
+    };
+
+    uint64_t activeCoreNum = std::min<uint64_t>(blockDim_, aivBlockDim_ / 2U);
+    uint64_t mDim = std::min<uint64_t>(activeCoreNum, ceilDiv(totalLength_, M_K_M_L1_MAX_SIZE));
+    uint64_t singleCoreM = roundUp(ceilDiv(totalLength_, mDim), AscendC::BLOCK_CUBE);
+    uint64_t kDim = activeCoreNum / mDim;
+    uint64_t splitK = roundUp(ceilDiv(matK_, kDim), M_K_SPLIT_ALIGN);
+    uint64_t actualKBlockNum = ceilDiv(matK_, splitK);
+    uint64_t mL1Size = std::min<uint64_t>(M_K_M_L1_MAX_SIZE, singleCoreM);
+    uint64_t kL1Size = std::min<uint64_t>(M_K_A_L1_ELEMENT_COUNT / mL1Size, M_K_K_L1_MAX_SIZE);
+    kL1Size = std::max<uint64_t>(M_K_K_L1_ALIGN,
+                                 kL1Size / M_K_K_L1_ALIGN * M_K_K_L1_ALIGN);
+
+    tilingData_.set_cubeBlockDimM(static_cast<uint32_t>(mDim));
+    tilingData_.set_cubeBlockDimK(static_cast<uint32_t>(actualKBlockNum));
+    tilingData_.set_multCoreSplitKSize(static_cast<uint32_t>(splitK));
+    tilingData_.set_mL1Size(static_cast<uint32_t>(mL1Size));
+    tilingData_.set_kL1Size(static_cast<uint32_t>(kL1Size));
+    tilingData_.set_mUbSize(static_cast<uint32_t>(ceilDiv(mL1Size, 2)));
+    tilingData_.set_kUbSize(static_cast<uint32_t>(kL1Size / 2));
+    tilingData_.set_fusionAlign(static_cast<uint32_t>(roundUp(matN_, LOW_API_FLOAT_ALIGN)));
+    tilingData_.set_nAlign(static_cast<uint32_t>(roundUp(N_, LOW_API_FLOAT_ALIGN)));
+    tilingData_.set_bufferPool0Size(LOW_API_BUFFER_POOL0_SIZE);
+    tilingData_.set_bufferPool1Size(LOW_API_BUFFER_POOL1_SIZE);
+
+    size_t partialMmBytes = static_cast<size_t>(actualKBlockNum) * totalLength_ * matN_ * sizeof(float);
+    size_t partialRmsBytes = static_cast<size_t>(actualKBlockNum) * totalLength_ * sizeof(float);
+    size_t mmOffset = 0;
+    size_t rmsOffset = roundUp(partialMmBytes, M_K_WORKSPACE_ALIGN);
+    size_t finalOffset = roundUp(rmsOffset + partialRmsBytes, M_K_WORKSPACE_ALIGN);
+    tilingData_.set_mkWorkspaceMmOffset(static_cast<uint32_t>(mmOffset));
+    tilingData_.set_mkWorkspaceRmsOffset(static_cast<uint32_t>(rmsOffset));
+    tilingData_.set_mkWorkspaceFinalOffset(static_cast<uint32_t>(finalOffset));
 }
 
 void MhcPreBaseTiling::FillTilingData()
@@ -662,7 +721,9 @@ void MhcPreBaseTiling::FillTilingData()
     tilingData_.matmulTiling.set_baseN(baseN);
     tilingData_.matmulTiling.set_baseK(baseK);
 
-    tilingData_.set_coreNum(blockDim_);
+    uint32_t coreNum = tilingMode_ == TilingMode::SPLIT_M_K ?
+        std::min(blockDim_, aivBlockDim_ / 2U) : blockDim_;
+    tilingData_.set_coreNum(coreNum);
     tilingData_.set_totalLength(totalLength_);
     tilingData_.set_nD(matK_);
     tilingData_.set_fusionSize(matN_);
@@ -681,6 +742,8 @@ void MhcPreBaseTiling::FillTilingData()
 
     if (tilingMode_ == TilingMode::LOW_API_BS) {
         FillLowApiTilingData();
+    } else if (tilingMode_ == TilingMode::SPLIT_M_K) {
+        FillMkTilingData();
     }
 }
 
@@ -690,8 +753,15 @@ ge::graphStatus MhcPreBaseTiling::TilingProcess()
     if (CanUseLowApiBs()) {
         tilingMode_ = TilingMode::LOW_API_BS;
     }
+    if (IsMkPerfProbe()) {
+        tilingMode_ = TilingMode::SPLIT_M_K;
+        FillMkTilingData();
+    }
 
-    if (tilingMode_ == TilingMode::SPLIT_ND) {
+    if (tilingMode_ == TilingMode::SPLIT_M_K) {
+        chunkTSize_ = tilingData_.get_mL1Size();
+        v1ChunkDSize_ = V1_CHUNK_D_SIZE;
+    } else if (tilingMode_ == TilingMode::SPLIT_ND) {
         chunkTSize_ = DECODE_CHUNK_T_SIZE;
         v1ChunkDSize_ = V1_CHUNK_D_SIZE;
     } else {
@@ -706,7 +776,10 @@ ge::graphStatus MhcPreBaseTiling::TilingProcess()
     size_t userWorkspaceSize;
     size_t systemWorkspaceSize = SYSTEM_WORKSPACE;
 
-    if (tilingMode_ == TilingMode::SPLIT_ND) {
+    if (tilingMode_ == TilingMode::SPLIT_M_K) {
+        size_t finalBytes = outFlag_ ? 0U : static_cast<size_t>(totalLength_) * matN_ * sizeof(float);
+        userWorkspaceSize = static_cast<size_t>(tilingData_.get_mkWorkspaceFinalOffset()) + finalBytes;
+    } else if (tilingMode_ == TilingMode::SPLIT_ND) {
         size_t xFloatWorkspaceSizeRaw = static_cast<size_t>(matM_) * static_cast<size_t>(matK_) * sizeof(float);
         size_t xFloatWorkspaceSize =
             (xFloatWorkspaceSizeRaw + DECODE_WORKSPACE_ALIGN - 1U) / DECODE_WORKSPACE_ALIGN * DECODE_WORKSPACE_ALIGN;
@@ -756,7 +829,7 @@ ge::graphStatus MhcPreBaseTiling::CheckUbBufferSize()
 
     if (tilingMode_ == TilingMode::SPLIT_BS) {
         fixedBufferSize = 80 * 1024 * doubleBufferCount + 20 * 1024 * doubleBufferCount + 40 * 1024;
-    } else if (tilingMode_ == TilingMode::LOW_API_BS) {
+    } else if (tilingMode_ == TilingMode::LOW_API_BS || tilingMode_ == TilingMode::SPLIT_M_K) {
         fixedBufferSize = LOW_API_BUFFER_POOL0_SIZE + LOW_API_BUFFER_POOL1_SIZE;
     } else {
         fixedBufferSize = 80 * 1024 * doubleBufferCount + 16 * 1024 * doubleBufferCount + 20 * 1024;
