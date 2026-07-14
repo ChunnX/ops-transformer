@@ -807,7 +807,7 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
     layout_q = params.get('layout_q')
     layout_kv = params.get('layout_kv')
     q_type = params.get('q_type') or torch.bfloat16
-    ori_kv_type = params.get('ori_kv_type') or torch.bfloat16
+    ori_kv_type = params.get('ori_kv_type') or torch.float8_e4m3fn
     cmp_kv_type = params.get('cmp_kv_type') or torch.bfloat16
     B = params.get('B')
     S1 = params.get('S1')
