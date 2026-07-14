@@ -25,6 +25,7 @@ import subprocess
 import tempfile
 import struct
 import cann_ops_transformer
+import npu_ops_transformer
 
 # ======================== 场景开关 ========================
 # False: 场景一 — CPU 上跑仿真，用 cpu_test 二进制生成 metadata，再将所有数据搬到 NPU 调 QLI 算子
@@ -1382,7 +1383,7 @@ def qliv2_output_single(params, is_batch = False, is_npu_now = IS_NPU_NOW):
 
         if is_npu_now:
             # 场景二：tensor 已在 NPU 上，调用真正的 NPU metadata 算子
-            metadata = torch.ops.cann_ops_transformer.quant_lightning_indexer_metadata(
+            metadata = torch.ops.npu_ops_transformer.npu_quant_lightning_indexer_metadata(
                                             cu_seqlens_q = cu_seqlens_query,
                                             cu_seqlens_k = cu_seqlens_key,
                                             seqused_q = seqused_q_tensor,
@@ -1414,7 +1415,28 @@ def qliv2_output_single(params, is_batch = False, is_npu_now = IS_NPU_NOW):
         print("cmp_ratio", cmp_ratio)
         print("return_value", return_value)
 
-        npu_result, npu_topk_value = torch.ops.cann_ops_transformer.quant_lightning_indexer(query, key, weights,
+        if is_npu_now:
+            npu_result, npu_topk_value = torch.ops.npu_ops_transformer.npu_quant_lightning_indexer(query, key, weights,
+                                                        query_dequant_scale,
+                                                        key_dequant_scale,
+                                                        cu_seqlens_q = cu_seqlens_query,
+                                                        cu_seqlens_k = cu_seqlens_key,
+                                                        seqused_q = seqused_q_tensor,
+                                                        seqused_k = seqused_k_tensor,
+                                                        cmp_residual_k = cmp_residual_k_for_npu,
+                                                        output_idx_offset = output_idx_offset,
+                                                        max_seqlen_q = max_seqlen_q,
+                                                        block_table = block_table,
+                                                        metadata = metadata,
+                                                        quant_mode = quant_mode,
+                                                        layout_q = layout_query,
+                                                        layout_k = layout_key,
+                                                        topk = sparse_count,
+                                                        mask_mode = sparse_mode,
+                                                        cmp_ratio = cmp_ratio,
+                                                        return_value = return_value)
+        else:
+            npu_result, npu_topk_value = torch.ops.cann_ops_transformer.quant_lightning_indexer(query, key, weights,
                                                         query_dequant_scale,
                                                         key_dequant_scale,
                                                         cu_seqlens_q = cu_seqlens_query,
