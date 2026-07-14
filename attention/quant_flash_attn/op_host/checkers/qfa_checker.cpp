@@ -29,6 +29,10 @@ ge::graphStatus QfaChecker::Init(const QfaTilingInfo &qfaInfo)
 
 ge::graphStatus QfaChecker::Process(const QfaTilingInfo &qfaInfo)
 {
+    if (qfaInfo.emptyTensorFlag) {
+        OP_LOGE(qfaInfo.opName, "Empty tensor detected: q, k, v, descale or attn_out has dimension with size 0");
+        return ge::GRAPH_FAILED;
+    }
     if (CheckParaExistence(qfaInfo) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }

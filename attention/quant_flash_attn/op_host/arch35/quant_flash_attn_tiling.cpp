@@ -324,9 +324,9 @@ void QuantFlashAttnTilingImpl::SetQFATilingData()
     tilingData_.baseTiling.quantFlashAttnBaseParams.dSizeV = qfaInfo_->vHeadDim;
     tilingData_.baseTiling.quantFlashAttnBaseParams.scaleValue = qfaInfo_->softmaxScale;
     tilingData_.baseTiling.quantFlashAttnBaseParams.cuSeqLensQSize =
-        (qfaInfo_->qLayout == QfaLayout::TND && cuSeqLenQFlag_) ? qfaInfo_->bSize + 1 : 0;
+        (qfaInfo_->qLayout == QfaLayout::TND && cuSeqLenQFlag_) ? qfaInfo_->bSize: 0;
     tilingData_.baseTiling.quantFlashAttnBaseParams.cuSeqLensKVSize =
-        (qfaInfo_->kvLayout == QfaLayout::TND && cuSeqLenKVFlag_) ? qfaInfo_->bSize + 1 : 0;
+        (qfaInfo_->kvLayout == QfaLayout::TND && cuSeqLenKVFlag_) ? qfaInfo_->bSize: 0;
     tilingData_.baseTiling.quantFlashAttnBaseParams.seqUsedQSize = seqUsedQFlag_ ? qfaInfo_->bSize : 0;
     tilingData_.baseTiling.quantFlashAttnBaseParams.seqUsedKvSize = seqUsedKvFlag_ ? qfaInfo_->bSize : 0;
     tilingData_.baseTiling.quantFlashAttnBaseParams.isKvContinuous = true;
