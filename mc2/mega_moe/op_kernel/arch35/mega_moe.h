@@ -93,7 +93,7 @@ private:
     __aicore__ inline void UpdateGlobalBuffer(GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &state);
     __aicore__ inline void Unpermute();
     __aicore__ inline int32_t UnpermuteBuffInit(int32_t coreLen);
-    __aicore__ inline void UnpermuteLoadWeights(int32_t coreOffset, int32_t batchStart, int32_t curTokens,
+    __aicore__ inline void UnpermuteLoadWeights(int32_t coreOffset, int32_t batchTokenOffset, int32_t batchTokenCount,
                                                 LocalTensor<bfloat16_t> &tempLocal);
     __aicore__ inline void UnpermuteProcessToken(int32_t tokenIdx, int32_t localIdx,
                                                  const GlobalTensor<bfloat16_t> &expandedX);
@@ -154,12 +154,12 @@ private:
     int32_t compareCount_ = 0;
     int64_t combineUbTensorSize_ = 0; // combineUbTensor 的大小（元素数）
 
-    // ── 大 bs route batch / ring buffer / reset batch 成员 ──
-    int32_t sendRouteBatchLen_ = 0; // SendMaskCal 每 batch 的 route item 数
-    int32_t sendRouteBatchNum_ = 0; // SendMaskCal batch 总数
-    int32_t recvRouteBatchLen_ = 0; // TripleInfoCalAndDispatch 每 batch 的 route item 数
-    int32_t recvRouteBatchNum_ = 0; // TripleInfoCalAndDispatch batch 总数
-    int32_t resetBatchNum_ = 0;     // reset 分批粒度（封顶到 DISPATCH_RESET_BATCH）
+    // 大 BS route batch、ring buffer 和 reset batch 成员
+    int32_t sendRouteItemsPerBatch_ = 0; // SendMaskCal 每个 batch 处理的 route item 数
+    int32_t sendRouteBatchCount_ = 0;    // SendMaskCal 的 batch 总数
+    int32_t recvRouteItemsPerBatch_ = 0; // TripleInfoCalAndDispatch 每个 batch 处理的 route item 数
+    int32_t recvRouteBatchCount_ = 0;    // TripleInfoCalAndDispatch 的 batch 总数
+    int32_t resetBatchElementCount_ = 0; // 每个 reset batch 清零的 int32 元素数（封顶到 DISPATCH_RESET_BATCH）
 
     static constexpr uint32_t A_ELEMS_PER_BYTE = Std::IsSame<QuantOutType, fp4x2_e2m1_t>::value ? 2U : 1U;
     static constexpr uint32_t B_ELEMS_PER_BYTE = Std::IsSame<Weight1Type, fp4x2_e2m1_t>::value ? 2U : 1U;
@@ -171,10 +171,6 @@ private:
     static constexpr bool ENABLE_A4W4 =
         Std::IsSame<Weight1Type, fp4x2_e2m1_t>::value && Std::IsSame<QuantOutType, fp4x2_e2m1_t>::value;
     static constexpr int32_t DISPATCH_BUFFER_NUM = 6;
-    static constexpr int32_t UNPERMUTE_BASE_TOPK = 8;
-    static constexpr int32_t UNPERMUTE_BATCH_LEN = 1024;      // 以 UNPERMUTE_BASE_TOPK 为 UB 占用基准
-    static constexpr int32_t DISPATCH_SEND_BATCH_LEN = 12288; // SendMaskCal 每 batch route item 数
-    static constexpr int32_t DISPATCH_RECV_BATCH_LEN = 12288; // TripleInfoCalAndDispatch 每 batch route item 数
     LocalTensor<int32_t> topkIndexTensor_;
     LocalTensor<int32_t> sendCntTensor_;       // SendCntCal stride 只读 ws 个 count
     LocalTensor<uint8_t> maskBatchTensor_;     // TripleInfoCalAndDispatch 当前 batch 的 mask 切片
@@ -291,7 +287,7 @@ MegaMoe<TemplateMegaMoeTypeFunc>::Init(GM_ADDR context, GM_ADDR x, GM_ADDR topkI
 
 // =================================================================================================
 // DispatchBuffInit：SendCntCal & TripleInfoCalAndDispatch & ExpertTokenNumCopyOut 中使用的 buffer 申请。
-//   topkIndex/validTopkIndex 按 recvRouteBatchLen_ 分配，tripleTensor_ 常驻 ring buffer。
+//   topkIndex/validTopkIndex 按 recvRouteItemsPerBatch_ 分配，tripleTensor_ 常驻 ring buffer。
 // =================================================================================================
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::DispatchBuffInit()
@@ -300,7 +296,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::DispatchBuffInit()
         return;
     }
 
-    // ── 与 route batch 无关的固定占用 ──
+    // 与 route batch 无关的固定占用
     uint32_t expertTokenCntTensorSize = ALIGN_32;
     uint32_t cumsumInfoTensorSize = Ops::Base::CeilAlign(
         static_cast<int64_t>(worldSize_ * expertPerRank_ * sizeof(int32_t)), static_cast<int64_t>(ALIGN_32));
@@ -317,17 +313,17 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::DispatchBuffInit()
     uint32_t tripleReserveSize =
         static_cast<uint32_t>(DISPATCH_BUFFER_NUM) * static_cast<uint32_t>(INT32_PER_256B) * sizeof(int32_t);
 
-    // ── 固定 batchLen ──
-    recvRouteBatchLen_ = DISPATCH_RECV_BATCH_LEN;
-    if (recvRouteBatchLen_ > static_cast<int32_t>(sendTotalNum_)) {
-        recvRouteBatchLen_ = static_cast<int32_t>(sendTotalNum_);
+    // 确定每个 recv batch 的 route item 数及 batch 总数
+    recvRouteItemsPerBatch_ = MAX_RECV_ROUTE_ITEMS_PER_BATCH;
+    if (recvRouteItemsPerBatch_ > static_cast<int32_t>(sendTotalNum_)) {
+        recvRouteItemsPerBatch_ = static_cast<int32_t>(sendTotalNum_);
     }
-    recvRouteBatchLen_ = static_cast<int32_t>(
-        Ops::Base::CeilAlign(static_cast<int64_t>(recvRouteBatchLen_), static_cast<int64_t>(ALIGN_256)));
-    recvRouteBatchNum_ =
-        static_cast<int32_t>(Ops::Base::CeilDiv(sendTotalNum_, static_cast<uint64_t>(recvRouteBatchLen_)));
+    recvRouteItemsPerBatch_ = static_cast<int32_t>(
+        Ops::Base::CeilAlign(static_cast<int64_t>(recvRouteItemsPerBatch_), static_cast<int64_t>(ALIGN_256)));
+    recvRouteBatchCount_ =
+        static_cast<int32_t>(Ops::Base::CeilDiv(sendTotalNum_, static_cast<uint64_t>(recvRouteItemsPerBatch_)));
 
-    // ── 按既定顺序落地址 ──
+    // 按既定顺序落地址
     // Tensor用处：SendCntCal 函数中记录本卡各专家收到的 token 总数；
     // Tensor大小：仅记录 count 值且各专家之间复用，申请大小为 32 字节；
     uint32_t expertTokenCntTensorAddr = 0;
@@ -343,20 +339,21 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::DispatchBuffInit()
     uint32_t sendCntTensorAddr = cumsumInfoTensorAddr + cumsumInfoTensorSize;
     sendCntTensor_ = LocalTensor<int32_t>(TPosition::VECCALC, sendCntTensorAddr, sendCntTensorSize / sizeof(int32_t));
     // Tensor用处：TripleInfoCalAndDispatch 函数中接收当前 batch 的 mask 切片；
-    // Tensor大小：recvRouteBatchLen_ / 8 字节，每 bit 对应一个 route item；
+    // Tensor大小：recvRouteItemsPerBatch_ / 8 字节，每 bit 对应一个 route item；
     uint32_t maskBatchAddr = sendCntTensorAddr + sendCntTensorSize;
-    uint32_t maskBatchSize = static_cast<uint32_t>(recvRouteBatchLen_ / 8) * static_cast<uint32_t>(sizeof(uint8_t));
+    uint32_t maskBatchSize =
+        static_cast<uint32_t>(recvRouteItemsPerBatch_ / 8) * static_cast<uint32_t>(sizeof(uint8_t));
     maskBatchTensor_ = LocalTensor<uint8_t>(TPosition::VECCALC, maskBatchAddr, maskBatchSize / sizeof(uint8_t));
     maskBatchU32Tensor_ = LocalTensor<uint32_t>(TPosition::VECCALC, maskBatchAddr, maskBatchSize / sizeof(uint32_t));
     // Tensor用处：TripleInfoCalAndDispatch 函数中 GatherMask 的 dst Tensor；
-    // Tensor大小：recvRouteBatchLen_ * sizeof(int32_t) align 至 32 字节对齐；
+    // Tensor大小：recvRouteItemsPerBatch_ * sizeof(int32_t) align 至 32 字节对齐；
     uint32_t validTopkIndexTensorAddr = maskBatchAddr + maskBatchSize;
-    uint32_t validTopkIndexTensorSize = Ops::Base::CeilAlign(static_cast<int64_t>(recvRouteBatchLen_ * sizeof(int32_t)),
-                                                             static_cast<int64_t>(ALIGN_32));
+    uint32_t validTopkIndexTensorSize = Ops::Base::CeilAlign(
+        static_cast<int64_t>(recvRouteItemsPerBatch_ * sizeof(int32_t)), static_cast<int64_t>(ALIGN_32));
     validTopkIndexTensor_ =
         LocalTensor<int32_t>(TPosition::VECCALC, validTopkIndexTensorAddr, validTopkIndexTensorSize / sizeof(int32_t));
     // Tensor用处：TripleInfoCalAndDispatch 函数中 GatherMask 的 src Tensor（本 batch 的全局 index）；
-    // Tensor大小：与 validTopkIndexTensor_ 一致，recvRouteBatchLen_ * sizeof(int32_t) align 至 32 字节对齐；
+    // Tensor大小：与 validTopkIndexTensor_ 一致，recvRouteItemsPerBatch_ * sizeof(int32_t) align 至 32 字节对齐；
     uint32_t topkIndexTensorAddr = validTopkIndexTensorAddr + validTopkIndexTensorSize;
     uint32_t topkIndexTensorSize = validTopkIndexTensorSize;
     topkIndexTensor_ =
@@ -385,7 +382,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::DispatchBuffInit()
 
 // ======================================================================================
 // SendAndQuantBuffInit：SendMaskCal & ResetFlagList & QuantProcessInRank 中使用的 buffer 申请。
-//   topkIds/sendMask/sendGatherOut 按 sendRouteBatchLen_ 分配，reset 封顶 DISPATCH_RESET_BATCH。
+//   topkIds/sendMask/sendGatherOut 按 sendRouteItemsPerBatch_ 分配，reset 封顶 DISPATCH_RESET_BATCH。
 // ======================================================================================
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SendAndQuantBuffInit()
@@ -394,7 +391,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SendAndQuantBuffInit()
         return;
     }
 
-    // ── 与 route batch 无关的固定占用 ──
+    // 与 route batch 无关的固定占用
     uint64_t totalFlagInt32 =
         static_cast<uint64_t>(expertPerRank_) *
         (static_cast<uint64_t>(INT_CACHELINE) + static_cast<uint64_t>(dispatchFlagSlotsPerExpert_) +
@@ -405,11 +402,12 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SendAndQuantBuffInit()
                              static_cast<int64_t>(totalFlagInt32) :
                              tokenGroupResetSize;
     }
-    uint32_t resetPerCore = Ops::Base::CeilDiv(totalFlagInt32, static_cast<uint64_t>(blockAivNum_));
-    resetBatchNum_ = resetPerCore < static_cast<uint32_t>(DISPATCH_RESET_BATCH) ? static_cast<int32_t>(resetPerCore) :
-                                                                                  DISPATCH_RESET_BATCH;
+    uint32_t resetElementCountPerCore = Ops::Base::CeilDiv(totalFlagInt32, static_cast<uint64_t>(blockAivNum_));
+    resetBatchElementCount_ = resetElementCountPerCore < static_cast<uint32_t>(DISPATCH_RESET_BATCH) ?
+                                  static_cast<int32_t>(resetElementCountPerCore) :
+                                  DISPATCH_RESET_BATCH;
     uint32_t resetTensorSize =
-        Ops::Base::CeilAlign(static_cast<uint64_t>(resetBatchNum_), static_cast<uint64_t>(INT32_PER_256B)) *
+        Ops::Base::CeilAlign(static_cast<uint64_t>(resetBatchElementCount_), static_cast<uint64_t>(INT32_PER_256B)) *
         sizeof(int32_t);
 
     uint32_t mxTempTensorSize = 2 * 1024;
@@ -421,20 +419,20 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SendAndQuantBuffInit()
     uint32_t sendCntAccSize =
         Ops::Base::CeilAlign(static_cast<int64_t>(expertPerCoreMax * sizeof(int32_t)), static_cast<int64_t>(ALIGN_32));
 
-    // ── 固定 batchLen（编译期常量 DISPATCH_SEND_BATCH_LEN）──
-    sendRouteBatchLen_ = DISPATCH_SEND_BATCH_LEN;
-    if (sendRouteBatchLen_ > static_cast<int32_t>(sendTotalNum_)) {
-        sendRouteBatchLen_ = static_cast<int32_t>(sendTotalNum_);
+    // 确定每个 send batch 的 route item 数及 batch 总数
+    sendRouteItemsPerBatch_ = MAX_SEND_ROUTE_ITEMS_PER_BATCH;
+    if (sendRouteItemsPerBatch_ > static_cast<int32_t>(sendTotalNum_)) {
+        sendRouteItemsPerBatch_ = static_cast<int32_t>(sendTotalNum_);
     }
-    sendRouteBatchLen_ = static_cast<int32_t>(
-        Ops::Base::CeilAlign(static_cast<int64_t>(sendRouteBatchLen_), static_cast<int64_t>(ALIGN_256)));
-    sendRouteBatchNum_ =
-        static_cast<int32_t>(Ops::Base::CeilDiv(sendTotalNum_, static_cast<uint64_t>(sendRouteBatchLen_)));
+    sendRouteItemsPerBatch_ = static_cast<int32_t>(
+        Ops::Base::CeilAlign(static_cast<int64_t>(sendRouteItemsPerBatch_), static_cast<int64_t>(ALIGN_256)));
+    sendRouteBatchCount_ =
+        static_cast<int32_t>(Ops::Base::CeilDiv(sendTotalNum_, static_cast<uint64_t>(sendRouteItemsPerBatch_)));
 
-    // ── 按既定顺序落地址 ──
+    // 按既定顺序落地址
     uint32_t topkIdsTensorAddr = 0;
     uint32_t topkIdsTensorSize =
-        Ops::Base::CeilAlign(static_cast<int64_t>(sendRouteBatchLen_) * static_cast<int64_t>(sizeof(int32_t)),
+        Ops::Base::CeilAlign(static_cast<int64_t>(sendRouteItemsPerBatch_) * static_cast<int64_t>(sizeof(int32_t)),
                              static_cast<int64_t>(ALIGN_256));
     topkIdsTensor_ = LocalTensor<int32_t>(TPosition::VECCALC, topkIdsTensorAddr, topkIdsTensorSize / sizeof(int32_t));
 
@@ -458,7 +456,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SendAndQuantBuffInit()
     xInTensor2_ = LocalTensor<bfloat16_t>(TPosition::VECCALC, xInAlignAddr2, xInAlignSize / sizeof(bfloat16_t));
 
     // sendMaskTensor_: 各 batch/8 mask 切片 + 32B（末块折叠 count），DOUBLE_BUFFER 双 buffer
-    uint32_t maskBufBytes = static_cast<uint32_t>(sendRouteBatchLen_ / 8) + static_cast<uint32_t>(ALIGN_32);
+    uint32_t maskBufBytes = static_cast<uint32_t>(sendRouteItemsPerBatch_ / 8) + static_cast<uint32_t>(ALIGN_32);
     uint32_t sendMaskAddr = xInAlignAddr2 + xInAlignSize;
     for (int32_t index = 0; index < DOUBLE_BUFFER; ++index) {
         sendMaskTensor_[index] = LocalTensor<uint8_t>(
@@ -466,7 +464,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SendAndQuantBuffInit()
     }
     uint32_t sendGatherOutAddr = sendMaskAddr + static_cast<uint32_t>(DOUBLE_BUFFER) * maskBufBytes;
     uint32_t sendGatherOutSize =
-        Ops::Base::CeilAlign(static_cast<int64_t>(sendRouteBatchLen_) * static_cast<int64_t>(sizeof(int32_t)),
+        Ops::Base::CeilAlign(static_cast<int64_t>(sendRouteItemsPerBatch_) * static_cast<int64_t>(sizeof(int32_t)),
                              static_cast<int64_t>(ALIGN_256));
     sendGatherOutTensor_ =
         LocalTensor<int32_t>(TPosition::VECCALC, sendGatherOutAddr, sendGatherOutSize / sizeof(int32_t));
@@ -496,10 +494,13 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ResetFlagList()
     TilingByCore(flagNum, coreLen, coreOffset, 1);
     SyncFuncStatic<AscendC::HardEvent::V_MTE3, SYNC_EVENT_ID2>();
 
-    for (int32_t off = 0; off < coreLen; off += resetBatchNum_) {
-        int32_t cur = coreLen - off < resetBatchNum_ ? coreLen - off : resetBatchNum_;
-        DataCopyExtParams rankSyncCopyParams{1U, static_cast<uint32_t>(cur * sizeof(int32_t)), 0U, 0U, 0U};
-        DataCopyPad(swigluToGmm2FlagGm_[coreOffset + off], resetTensor_, rankSyncCopyParams);
+    for (int32_t resetElementOffset = 0; resetElementOffset < coreLen; resetElementOffset += resetBatchElementCount_) {
+        int32_t currentBatchElementCount = coreLen - resetElementOffset < resetBatchElementCount_ ?
+                                               coreLen - resetElementOffset :
+                                               resetBatchElementCount_;
+        DataCopyExtParams rankSyncCopyParams{1U, static_cast<uint32_t>(currentBatchElementCount * sizeof(int32_t)), 0U,
+                                             0U, 0U};
+        DataCopyPad(swigluToGmm2FlagGm_[coreOffset + resetElementOffset], resetTensor_, rankSyncCopyParams);
     }
     // combine量化模式下TokenGroupCompleteFlag清零
     if constexpr (CombineQuantMode != COMBINE_NO_QUANT) {
@@ -559,7 +560,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SendMaskCal()
         return;
     }
 
-    // ── owned expert: 本 AIV core 负责的 global expert 子集 ──
+    // owned expert：本 AIV core 负责的 global expert 子集
     int32_t totalExperts = static_cast<int32_t>(worldSize_ * expertPerRank_);
     int32_t coreIdx = static_cast<int32_t>(aivCoreIdx_);
     int32_t ownedExpertNum =
@@ -568,29 +569,29 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SendMaskCal()
         return;
     }
 
-    // ── 准备 GM 读写句柄 ──
+    // 准备 GM 读写句柄
     GlobalTensor<int32_t> srcGlobalTensor;
     srcGlobalTensor.SetGlobalBuffer((__gm__ int32_t *)params_.expertIdxGmAddr);
     GlobalTensor<uint8_t> dstGlobalTensor;
-    int32_t maskSliceBytesFull = sendRouteBatchLen_ / 8;
+    int32_t maskSliceBytesFull = sendRouteItemsPerBatch_ / 8;
     DataCopyPadExtParams<int32_t> loadPad{false, 0U, 0U, 0};
 
-    // ── per-expert 跨 batch 累加器清零 ──
+    // per-expert 跨 batch 累加器清零
     Duplicate<int32_t>(sendCntAccTensor_, 0, ownedExpertNum);
     SyncFuncStatic<AscendC::HardEvent::V_S, SYNC_EVENT_ID2>();
 
-    // ── 双缓冲 mask push 事件：初始全部 set ──
+    // 双缓冲 mask push 事件：初始全部 set
     constexpr TEventID kBufEvents[DOUBLE_BUFFER] = {EVENT_ID0, EVENT_ID1};
     for (int32_t bufIdx = 0; bufIdx < static_cast<int32_t>(DOUBLE_BUFFER); ++bufIdx) {
         SetFlag<AscendC::HardEvent::MTE3_V>(kBufEvents[bufIdx]);
     }
 
     int32_t iter = 0;
-    // ═══════════════════ 外层：route batch 循环 ═══════════════════
-    for (int32_t batchIdx = 0; batchIdx < sendRouteBatchNum_; ++batchIdx) {
-        int32_t batchStart = batchIdx * sendRouteBatchLen_;
-        bool isLastBatch = (batchIdx == sendRouteBatchNum_ - 1);
-        int32_t validLen = sendRouteBatchLen_;
+    // 外层：route batch 循环
+    for (int32_t batchIdx = 0; batchIdx < sendRouteBatchCount_; ++batchIdx) {
+        int32_t batchStart = batchIdx * sendRouteItemsPerBatch_;
+        bool isLastBatch = (batchIdx == sendRouteBatchCount_ - 1);
+        int32_t validLen = sendRouteItemsPerBatch_;
         int32_t sliceBytes = maskSliceBytesFull;
         int32_t pushBytes = sliceBytes;
 
@@ -602,13 +603,13 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SendMaskCal()
             pushBytes = sliceBytes + static_cast<int32_t>(sizeof(int32_t));
         }
 
-        // ── 加载本 batch 的 topk ──
+        // 加载本 batch 的 topk
         SyncFuncStatic<AscendC::HardEvent::V_MTE2, SYNC_EVENT_ID1>();
         DataCopyExtParams loadParams{1U, static_cast<uint32_t>(validLen * sizeof(int32_t)), 0U, 0U, 0U};
         DataCopyPad(topkIdsTensor_, srcGlobalTensor[batchStart], loadParams, loadPad);
         SyncFuncStatic<AscendC::HardEvent::MTE2_V, SYNC_EVENT_ID1>();
 
-        // ═══════════════════ 内层：per-expert 循环 ═══════════════════
+        // 内层：per-expert 循环
         for (int32_t ownedIdx = 0; ownedIdx < ownedExpertNum; ++ownedIdx, ++iter) {
             int32_t globalExpertId = coreIdx + ownedIdx * static_cast<int32_t>(blockAivNum_);
             int32_t dstRank = globalExpertId / static_cast<int32_t>(expertPerRank_);
@@ -622,7 +623,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SendMaskCal()
             // DAV_3510 requires CompareScalar count * sizeof(int32_t) to be 256B-aligned, so the aligned batch
             // length is used instead of validLen. Both GatherMask consumers are bounded by validLen and ignore
             // the mask bits produced for the padded tail.
-            CompareScalar(maskBuf, topkIdsTensor_, globalExpertId, AscendC::CMPMODE::EQ, sendRouteBatchLen_);
+            CompareScalar(maskBuf, topkIdsTensor_, globalExpertId, AscendC::CMPMODE::EQ, sendRouteItemsPerBatch_);
             uint64_t batchMatchedRouteCount = 0;
             GatherMask(sendGatherOutTensor_, topkIdsTensor_, maskBufU32, true, static_cast<uint32_t>(validLen),
                        {1, 1, 0, 0}, batchMatchedRouteCount);
@@ -928,12 +929,12 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::TripleInfoCalAndDispatc
         GlobalTensor<uint8_t> remoteRankMaskGlobal; // 当前 expert/source rank 对应的 route mask GM 视图
         int32_t matchedRouteCount = 0;  // 已扫描 batch 的累计命中数，即下一 batch 的首个 match ordinal
         int32_t dispatchedRowCount = 0; // 当前 core 已实际 dispatch 的总行数
-        for (int32_t batchIdx = 0; batchIdx < recvRouteBatchNum_ && matchedRouteCount < coreMatchOrdinalEnd;
+        for (int32_t batchIdx = 0; batchIdx < recvRouteBatchCount_ && matchedRouteCount < coreMatchOrdinalEnd;
              ++batchIdx) {
-            int32_t batchRouteBegin = batchIdx * recvRouteBatchLen_; // 当前 batch 在原始 route 数组中的起始下标
-            bool isLastBatch = (batchIdx == recvRouteBatchNum_ - 1);
-            int32_t validRouteCount = recvRouteBatchLen_;    // 当前 batch 的有效 route item 数
-            int32_t maskSliceBytes = recvRouteBatchLen_ / 8; // 当前 batch 对应的 mask 搬运字节数
+            int32_t batchRouteBegin = batchIdx * recvRouteItemsPerBatch_; // 当前 batch 在原始 route 数组中的起始下标
+            bool isLastBatch = (batchIdx == recvRouteBatchCount_ - 1);
+            int32_t validRouteCount = recvRouteItemsPerBatch_;    // 当前 batch 的有效 route item 数
+            int32_t maskSliceBytes = recvRouteItemsPerBatch_ / 8; // 当前 batch 对应的 mask 搬运字节数
             if (isLastBatch) {
                 validRouteCount = static_cast<int32_t>(sendTotalNum_ - static_cast<uint64_t>(batchRouteBegin));
                 if (batchRouteBegin / 8 + maskSliceBytes > static_cast<int32_t>(maskAlignSize_)) {
@@ -947,7 +948,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::TripleInfoCalAndDispatc
             DataCopy(maskBatchTensor_, remoteRankMaskGlobal, static_cast<uint32_t>(maskSliceBytes));
             SyncFuncStatic<AscendC::HardEvent::MTE2_V, SYNC_EVENT_ID1>();
             // GatherMask 根据 mask 压缩本 batch 的全局 route index，并返回当前 batch 的命中数量。
-            CreateVecIndex(topkIndexTensor_, batchRouteBegin, recvRouteBatchLen_);
+            CreateVecIndex(topkIndexTensor_, batchRouteBegin, recvRouteItemsPerBatch_);
             uint64_t batchMatchedRouteCount = 0; // 当前 batch 中 mask=1 的 route item 数
             GatherMask(validTopkIndexTensor_, topkIndexTensor_, maskBatchU32Tensor_, true,
                        static_cast<uint32_t>(validRouteCount), {1, 1, 0, 0}, batchMatchedRouteCount);
@@ -1130,11 +1131,15 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ResetGmm2CombineSyncCou
         GlobalTensor<int32_t> gmm2CombineSyncCounterGm;
         gmm2CombineSyncCounterGm.SetGlobalBuffer((__gm__ int32_t *)params_.workspaceInfo.gmm2CombineSyncCounterPtr);
         if (coreLen > 0) {
-            Duplicate(resetTensor_, 0, resetBatchNum_);
+            Duplicate(resetTensor_, 0, resetBatchElementCount_);
             SyncFuncStatic<AscendC::HardEvent::V_MTE3, SYNC_EVENT_ID2>();
-            for (int32_t off = 0; off < coreLen; off += resetBatchNum_) {
-                int32_t cur = coreLen - off < resetBatchNum_ ? coreLen - off : resetBatchNum_;
-                DataCopy(gmm2CombineSyncCounterGm[coreOffset + off], resetTensor_, cur);
+            for (int32_t resetElementOffset = 0; resetElementOffset < coreLen;
+                 resetElementOffset += resetBatchElementCount_) {
+                int32_t currentBatchElementCount = coreLen - resetElementOffset < resetBatchElementCount_ ?
+                                                       coreLen - resetElementOffset :
+                                                       resetBatchElementCount_;
+                DataCopy(gmm2CombineSyncCounterGm[coreOffset + resetElementOffset], resetTensor_,
+                         currentBatchElementCount);
             }
         }
     }
@@ -1230,16 +1235,16 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessCombine(const GM
 // UnpermuteLoadWeights：加载一个 token batch 的权重到 UB
 // ===============================================================
 template <TemplateMegaMoeTypeClass>
-__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::UnpermuteLoadWeights(int32_t coreOffset, int32_t batchStart,
-                                                                              int32_t curTokens,
-                                                                              LocalTensor<bfloat16_t> &tempLocal)
+__aicore__ inline void
+MegaMoe<TemplateMegaMoeTypeFunc>::UnpermuteLoadWeights(int32_t coreOffset, int32_t batchTokenOffset,
+                                                       int32_t batchTokenCount, LocalTensor<bfloat16_t> &tempLocal)
 {
     if constexpr (Std::IsSame<TopkWeightsType, float>::value) {
         GlobalTensor<float> topKWeightsGlobalTensor_;
         topKWeightsGlobalTensor_.SetGlobalBuffer((__gm__ float *)params_.probsGmAddr);
-        DataCopyExtParams copyParams = {1U, static_cast<uint32_t>(curTokens * topK_ * sizeof(float)), 0U, 0U, 0U};
+        DataCopyExtParams copyParams = {1U, static_cast<uint32_t>(batchTokenCount * topK_ * sizeof(float)), 0U, 0U, 0U};
         DataCopyPadExtParams<float> copyPadParams{false, 0U, 0U, 0U};
-        DataCopyPad(topKWeightsTensor_, topKWeightsGlobalTensor_[(coreOffset + batchStart) * topK_], copyParams,
+        DataCopyPad(topKWeightsTensor_, topKWeightsGlobalTensor_[(coreOffset + batchTokenOffset) * topK_], copyParams,
                     copyPadParams);
         SetFlag<AscendC::HardEvent::MTE2_S>(0);
         WaitFlag<AscendC::HardEvent::MTE2_S>(0);
@@ -1247,11 +1252,13 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::UnpermuteLoadWeights(in
     if constexpr (Std::IsSame<TopkWeightsType, bfloat16_t>::value) {
         GlobalTensor<bfloat16_t> topkWeightsGlobalTensor;
         topkWeightsGlobalTensor.SetGlobalBuffer((__gm__ bfloat16_t *)params_.probsGmAddr);
-        DataCopyExtParams copyParams = {1U, static_cast<uint32_t>(curTokens * topK_ * sizeof(bfloat16_t)), 0U, 0U, 0U};
+        DataCopyExtParams copyParams = {1U, static_cast<uint32_t>(batchTokenCount * topK_ * sizeof(bfloat16_t)), 0U, 0U,
+                                        0U};
         DataCopyPadExtParams<bfloat16_t> copyPadParams{false, 0U, 0U, 0U};
-        DataCopyPad(tempLocal, topkWeightsGlobalTensor[(coreOffset + batchStart) * topK_], copyParams, copyPadParams);
+        DataCopyPad(tempLocal, topkWeightsGlobalTensor[(coreOffset + batchTokenOffset) * topK_], copyParams,
+                    copyPadParams);
         SyncFuncStatic<AscendC::HardEvent::MTE2_V, SYNC_EVENT_ID2>();
-        Cast(topKWeightsTensor_, tempLocal, AscendC::RoundMode::CAST_NONE, curTokens * topK_);
+        Cast(topKWeightsTensor_, tempLocal, AscendC::RoundMode::CAST_NONE, batchTokenCount * topK_);
         SetFlag<AscendC::HardEvent::V_S>(0);
         WaitFlag<AscendC::HardEvent::V_S>(0);
     }
@@ -1310,12 +1317,12 @@ MegaMoe<TemplateMegaMoeTypeFunc>::UnpermuteProcessToken(int32_t tokenIdx, int32_
 }
 
 // ===============================================================
-// UnpermuteBuffInit：分配 Unpermute 所需固定 buffer，返回 batchLen
+// UnpermuteBuffInit：分配 Unpermute 所需固定 buffer，返回每个 batch 处理的 token 数
 // ===============================================================
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline int32_t MegaMoe<TemplateMegaMoeTypeFunc>::UnpermuteBuffInit(int32_t coreLen)
 {
-    // ── 固定 buffer：dataRes + dataResFp32 (+ scales) ──
+    // 固定 buffer：dataRes + dataResFp32 (+ scales)
     uint32_t dataResBufAlign = Ops::Base::CeilAlign(static_cast<uint32_t>(UNPERMUTE_LIST_NUM * k_ * sizeof(bfloat16_t)),
                                                     static_cast<uint32_t>(ALIGN_32));
     uint32_t dataResFp32BufAlign = dataResBufAlign * HALF_TO_FP32;
@@ -1329,29 +1336,29 @@ __aicore__ inline int32_t MegaMoe<TemplateMegaMoeTypeFunc>::UnpermuteBuffInit(in
     dataResFp32Tensor_ = LocalTensor<float>(TPosition::VECCALC, dataResFp32Addr, dataResFp32BufAlign / sizeof(float));
     uint32_t tempAddr = dataResFp32Addr + dataResFp32BufAlign;
 
-    // ── batchLen（后续以模板参数形式传入）──
-    int32_t batchLen = UNPERMUTE_BATCH_LEN;
+    // 以 UNPERMUTE_BASE_TOPK 为基准确定每个 batch 处理的 token 数。
+    int32_t tokensPerBatch = UNPERMUTE_BASE_TOKENS_PER_BATCH;
     if (topK_ > UNPERMUTE_BASE_TOPK) {
-        // 保持 batchLen * topK_ 不超过基准 topK 时的 UB 预算。
-        batchLen = batchLen * UNPERMUTE_BASE_TOPK / topK_;
+        // 保持 tokensPerBatch * topK_ 不超过基准 topK 时的 UB 预算。
+        tokensPerBatch = tokensPerBatch * UNPERMUTE_BASE_TOPK / topK_;
     }
-    if (batchLen > coreLen) {
-        batchLen = coreLen;
+    if (tokensPerBatch > coreLen) {
+        tokensPerBatch = coreLen;
     }
 
-    // ── weight buffer（在 scale 之前，与 master 顺序一致）──
+    // weight buffer（在 scale 之前，与 master 顺序一致）
     // Tensor用处：用于存储 topKWeight；
-    // Tensor大小：batchLen × topK_ × sizeof(float) align 到 32 字节对齐；
-    uint32_t topKWeightsBufAlign =
-        Ops::Base::CeilAlign(static_cast<uint32_t>(batchLen * topK_ * sizeof(float)), static_cast<uint32_t>(ALIGN_32));
+    // Tensor大小：tokensPerBatch × topK_ × sizeof(float) align 到 32 字节对齐；
+    uint32_t topKWeightsBufAlign = Ops::Base::CeilAlign(static_cast<uint32_t>(tokensPerBatch * topK_ * sizeof(float)),
+                                                        static_cast<uint32_t>(ALIGN_32));
     topKWeightsTensor_ = LocalTensor<float>(TPosition::VECCALC, tempAddr, topKWeightsBufAlign / sizeof(float));
     tempAddr += topKWeightsBufAlign;
 
     if constexpr (Std::IsSame<TopkWeightsType, bfloat16_t>::value) {
         // Tensor用处：Unpermute 中 bf16 weight 搬运中转 buffer；
-        // Tensor大小：batchLen × topK_ × sizeof(bfloat16_t) align 到 32 字节；
-        uint32_t tempBufAlign =
-            Ops::Base::CeilAlign(static_cast<uint32_t>(batchLen * topK_ * sizeof(bfloat16_t)), uint32_t(ALIGN_32));
+        // Tensor大小：tokensPerBatch × topK_ × sizeof(bfloat16_t) align 到 32 字节；
+        uint32_t tempBufAlign = Ops::Base::CeilAlign(static_cast<uint32_t>(tokensPerBatch * topK_ * sizeof(bfloat16_t)),
+                                                     uint32_t(ALIGN_32));
         topKWeightsBf16Tensor_ =
             LocalTensor<bfloat16_t>(TPosition::VECCALC, tempAddr, tempBufAlign / sizeof(bfloat16_t));
         tempAddr += tempBufAlign;
@@ -1376,7 +1383,7 @@ __aicore__ inline int32_t MegaMoe<TemplateMegaMoeTypeFunc>::UnpermuteBuffInit(in
         tempAddr += fp32ScaleBufAlign;
     }
 
-    return batchLen;
+    return tokensPerBatch;
 }
 
 // ===============================================================
@@ -1390,24 +1397,25 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Unpermute()
     if (coreLen == 0) {
         return;
     }
-    int32_t batchLen = UnpermuteBuffInit(coreLen);
+    int32_t tokensPerBatch = UnpermuteBuffInit(coreLen);
 
     GlobalTensor<bfloat16_t> expandedX;
     expandedX.SetGlobalBuffer((__gm__ bfloat16_t *)params_.peermemInfo.combineSendPtr);
     GlobalTensor<bfloat16_t> output;
     output.SetGlobalBuffer((__gm__ bfloat16_t *)params_.y2GmAddr);
 
-    // ═══════════════════ 外层：token batch ═══════════════════
-    for (int32_t batchStart = 0; batchStart < coreLen; batchStart += batchLen) {
-        int32_t curTokens = (batchStart + batchLen > coreLen) ? (coreLen - batchStart) : batchLen;
+    // 外层：token batch
+    for (int32_t batchTokenOffset = 0; batchTokenOffset < coreLen; batchTokenOffset += tokensPerBatch) {
+        int32_t batchTokenCount =
+            (batchTokenOffset + tokensPerBatch > coreLen) ? (coreLen - batchTokenOffset) : tokensPerBatch;
 
-        UnpermuteLoadWeights(coreOffset, batchStart, curTokens, topKWeightsBf16Tensor_);
+        UnpermuteLoadWeights(coreOffset, batchTokenOffset, batchTokenCount, topKWeightsBf16Tensor_);
 
-        // ── 内层：token 循环 ──
+        // 内层：token 循环
         SetFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID0);
         SetFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID1);
-        for (int32_t localIdx = 0; localIdx < curTokens; localIdx++) {
-            int32_t tokenIdx = coreOffset + batchStart + localIdx;
+        for (int32_t localIdx = 0; localIdx < batchTokenCount; localIdx++) {
+            int32_t tokenIdx = coreOffset + batchTokenOffset + localIdx;
             SyncFuncStatic<AscendC::HardEvent::MTE3_MTE2, SYNC_EVENT_ID2>();
             UnpermuteProcessToken(tokenIdx, localIdx, expandedX);
             Cast(dataResTensor_, dataResFp32Tensor_, AscendC::RoundMode::CAST_RINT, k_);

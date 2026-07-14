@@ -255,11 +255,15 @@ __aicore__ inline void SyncFuncStatic()
     AscendC::WaitFlag<event>(static_cast<event_t>(eventId));
 }
 
-// ============================================================================
-// 大 bs dispatch 分块常量
-// ============================================================================
+// MegaMoe batch sizing constants
+constexpr int32_t UNPERMUTE_BASE_TOPK = 8;
+constexpr int32_t UNPERMUTE_BASE_TOKENS_PER_BATCH = 1024;
+constexpr int32_t MAX_SEND_ROUTE_ITEMS_PER_BATCH = 12288;
+constexpr int32_t MAX_RECV_ROUTE_ITEMS_PER_BATCH = 12288;
+
+// 大 BS dispatch 分块常量
 // DISPATCH_RESET_BATCH: ResetFlagList 分批清零的粒度（int32 个数）。
-//   本核 flag 份额超此值时，用同一片零 UB 分批推 GM，使 reset UB 恒 ≤ 8KB，与 bs 解耦。
+//   本核 flag 份额超此值时，用同一片零 UB 分批推 GM，使 reset UB 恒 ≤ 8KB，与 BS 解耦。
 constexpr int32_t DISPATCH_RESET_BATCH = 2048;
 
 // DISPATCH_UB_SAFETY: 反推 route batch 长度时从 UB 总量扣掉的保守余量，
