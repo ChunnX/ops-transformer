@@ -91,8 +91,8 @@ enum class COFF : std::uint8_t {
 };
 
 enum class CACHE_MODE : std::uint8_t {
-    CONTINUOUS = static_cast<std::uint8_t>(1),
-    CYCLE = static_cast<std::uint8_t>(2)
+    LINEAR_BUFFER = static_cast<std::uint8_t>(1),
+    RING_BUFFER = static_cast<std::uint8_t>(2)
 };
 
 enum class TEMPLATE_ID : uint8_t {

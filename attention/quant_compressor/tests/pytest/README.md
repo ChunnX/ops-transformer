@@ -1,6 +1,6 @@
-# Compressor算子测试框架 
+# QuantCompressor算子测试框架 
 ## 功能说明
-基于pytest测试框架，实现Compressor算子的功能验证：
+基于pytest测试框架，实现QuantCompressor算子的功能验证：
 - **CPU侧**：复现算子功能用以生成golden数据
 - **NPU侧**：通过torch_npu进行算子直调获取实际数据
 - **精度对比**：进行CPU与NPU结果的精度对比验证算子功能
@@ -21,25 +21,24 @@
 
 #### 前置要求
 1、 确认torch_npu为最新版本  
-2、 参考[Attention融合算子Experimental使用说明](../../../Attention融合算子Experimental使用说明.md)激活CANN包和自定义算子包
 #### custom包调用
 支持custom包调用
 
 ## 文件结构
 #### pytest文件结构说明
 - test_run.sh                               # 执行脚本
-- compressor_golden.py                      # cpu侧算子golden实现以及cpu golden与npu结果精度对比
+- quant_compressor_golden.py                # cpu侧算子golden实现以及cpu golden与npu结果精度对比
 - pytest.ini                                # 创建ci单算子和graph图模式的测试标记
 
 单用例测试:
-- test_compressor_single.py                 # 测试单用例运行主程序
-- compressor_operator_single.py             # CPU侧算子逻辑实现获取golden与npu算子直调
-- test_compressor_paramset.py               # 单用例入参配置
+- test_quant_compressor_single.py           # 测试单用例运行主程序
+- quant_compressor_operator_single.py       # CPU侧算子逻辑实现获取golden与npu算子直调
+- test_quant_compressor_paramset.py         # 单用例入参配置
 
 批量用例测试:
-- test_compressor_batch.py                  # 用例批量测试主程序并生成excel文件保存结果
-- ./batch/compressor_pt_loadprocess.py      # 读取pt文件并调用算子获取npu输出
-- ./batch/compressor_pt_save.py             # 读取excel表格批量生成用例pt文件
+- test_quant_compressor_batch.py            # 用例批量测试主程序并生成excel文件保存结果
+- ./batch/quant_compressor_pt_loadprocess.py # 读取pt文件并调用算子获取npu输出
+- ./batch/quant_compressor_pt_save.py       # 读取excel表格批量生成用例pt文件
 
 
 ## 使用方法
@@ -47,7 +46,7 @@
 
 ### 运行测试用例
 #### 单用例调测
-1、手动配置test_compressor_paramset.py的参数
+1、手动配置test_quant_compressor_paramset.py的参数
 
 2、执行指令：
 ``` bash

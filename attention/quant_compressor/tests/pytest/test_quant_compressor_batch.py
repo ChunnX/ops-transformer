@@ -11,7 +11,7 @@
 
 import itertools
 import torch
-from batch import compressor_pt_loadprocess
+from batch import quant_compressor_pt_loadprocess
 import pytest
 import random
 import pandas as pd
@@ -21,7 +21,7 @@ import math
 import os
 import multiprocessing as mp
 from concurrent.futures import ProcessPoolExecutor, as_completed
-from compressor_golden import check_result
+from quant_compressor_golden import check_result
 
 TEST_INPUT_PATH = "./pt_path"
 pt_dir = TEST_INPUT_PATH
@@ -42,7 +42,7 @@ else:
     print(f"错误: 输出目录不存在: {pt_dir}")
 
 def compressor(testcase_files):   # 初始化参数和tensor
-    cpu_result, kv_mask_result, npu_result ,cpu_kv_state, mask_cpu_kv_state, cpu_score_state, mask_cpu_score_state, state_cache, params = compressor_pt_loadprocess.test_compressor_process(testcase_files, device_id=0)
+    cpu_result, kv_mask_result, npu_result ,cpu_kv_state, mask_cpu_kv_state, cpu_score_state, mask_cpu_score_state, state_cache, params = quant_compressor_pt_loadprocess.test_compressor_process(testcase_files, device_id=0)
     if npu_result is not None:
         cpu_kv_state_update = cpu_kv_state[mask_cpu_kv_state]
         cpu_kv_state_origin =  cpu_kv_state[~mask_cpu_kv_state]

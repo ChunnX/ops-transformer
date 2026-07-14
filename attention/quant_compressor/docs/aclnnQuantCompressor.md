@@ -4,8 +4,8 @@
 
 | 产品                                                         | 是否支持 |
 | ------------------------------------------------------------ | :------: |
-|<term>Ascend 950PR/Ascend 950DT</term>|      ×     |
-|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      √     |
+|<term>Ascend 950PR/Ascend 950DT</term>|      √     |
+|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      ×     |
 |<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      ×     |
 |<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
 |<term>Atlas 推理系列加速卡产品</term>|      ×     |
@@ -13,7 +13,7 @@
 
 ## 功能说明
 
-- 接口功能：QuantCompressor是推理场景下SMLA和QLI的前处理算子，是[Compressor](./aclnnCompressor.md)的量化版本。用于将每4或128个token的KV cache压缩成一个，然后每个token与这些压缩的KV cache进行DSA计算。在长序列的情况下，QuantCompressor可以有效地减少计算开销。与Compressor的区别在于：输入$x$、$W^{KV}$、$W^{Gate}$为HIFLOAT8量化数据，通过x_descale、wkv_descale、wgate_descale缩放因子进行反量化后参与计算，从而降低显存占用与搬运开销。主要计算过程为：
+- 接口功能：QuantCompressor是推理场景下SMLA和QLI的前处理算子，是[Compressor](../../compressor/docs/aclnnCompressor.md)的量化版本。用于将每4或128个token的KV cache压缩成一个，然后每个token与这些压缩的KV cache进行DSA计算。在长序列的情况下，QuantCompressor可以有效地减少计算开销。与Compressor的区别在于：输入$x$、$W^{KV}$、$W^{Gate}$为HIFLOAT8量化数据，通过x_descale、wkv_descale、wgate_descale缩放因子进行反量化后参与计算，从而降低显存占用与搬运开销。主要计算过程为：
     1. 将输入$X$与$W^{KV}$做Matmul运算得到$kv\_state$，将输入$X$与$W^{Gate}$做Matmul运算后再与$Ape$做Add运算得到$score\_state$，$kv\_state$与$score\_state$根据输入的start_pos及cu_seqlens完成更新。
     2. 在coff为2的情况下对$kv\_state$和$score\_state$进行数据重排。
     3. 对$score\_state$进行softmax运算将softmax结果与$kv\_state$做Mul计算，后进行ReduceSum运算。
@@ -109,7 +109,7 @@ aclnnStatus aclnnQuantCompressor(
 
     | 参数名                      | 输入/输出 | 描述  |  使用说明  | 数据类型       | 数据格式   | 维度（shape） | 非连续Tensor |
     |----------------------------|-----------|----------------------------------------------------------------------|----------------|------------|-|-|-|
-    | x | 输入 | 公式中的$X$，表示原始不经压缩的数据，HIFLOAT8量化输入。 |  支持B=0,S=0,T=0的空Tensor。  | HIFLOAT8 | ND         | BS合轴：[B,S,H]、BS非合轴：[T,H]|×|
+    | x | 输入 | 公式中的$X$，表示原始不经压缩的数据，HIFLOAT8量化输入。 |  支持B=0,S=0,T=0的空Tensor。  | HIFLOAT8 | ND         | BS合轴：[T,H]、BS非合轴：[B,S,H]|×|
     | wkv | 输入 | 公式中的$W^{KV}$，表示kv压缩权重，HIFLOAT8量化输入。  |不支持空Tensor。| HIFLOAT8 | ND |[coff* D,H]|×|
     | wgate | 输入 | 公式中的$W^{Gate}$，表示gate压缩权重，HIFLOAT8量化输入。 |不支持空Tensor。| HIFLOAT8 | ND |[coff* D,H]|×|
     | stateCacheRef | 输入 | 公式中的$\left[kv\_state, score\_state\right]$, 表示kv\_state和score\_state的历史数据。 |不支持空Tensor| FLOAT32     | ND         |[block_num,block_size,2* coff* D]|支持0轴非连续|
@@ -126,11 +126,8 @@ aclnnStatus aclnnQuantCompressor(
     | coff | 可选输入 | 表示是否进行overlap数据重排。 |取值范围为[1, 2]。当coff=1时，无需进行overlap数据重排。当coff=2时，需要进行overlap数据重排。| INT32          | -         |-|-|
     | cacheMode | 可选输入 | 表示state_cache的存储模式。 |取值范围为[1, 2]；1表示连续buffer，2表示循环buffer。| INT32          | -         |-|-|
     | stateCacheStrideDim0 | 可选输入 | 表示state_cache的0轴stride。 |-| INT32     | -         |-|-|
-    | cmpKv | 输出 | 表示压缩后的数据。 |支持B=0,S=0,T=0的空Tensor。| BFLOAT16         | ND          |BS合轴：[B,ceil(S/cmp_ratio),D]、BS非合轴：[min(T,T//cmp_ratio+B),D]|×|
+    | cmpKv | 输出 | 表示压缩后的数据。 |支持B=0,S=0,T=0的空Tensor。| BFLOAT16         | ND          |BS合轴：[min(T,T//cmp_ratio+B),D]、BS非合轴：[B,ceil(S/cmp_ratio),D]|×|
     | stateCache | 输出 | 表示更新后的state_cache，与stateCacheRef为同一地址（inplace更新）。 |-| FLOAT32     | ND         |[block_num,block_size,2* coff* D]|支持0轴非连续|
-
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
- cacheMode不支持输入2，且不支持0轴非连续。
 
 - **返回值**
 
