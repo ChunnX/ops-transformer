@@ -1,0 +1,3 @@
+[2026-07-09 10:58:48] [2026-07-09 10:58:48] Start to run example,name:mhc_pre_sinkhorn mode:eager
+[2026-07-09 10:58:48] Start compile and run example file: ../mhc/mhc_pre_sinkhorn/examples/test_aclnn_mhc_pre_sinkhorn.cpp
+[2026-07-09 10:58:51] aclnnMhcPreSinkhornGetWorkspaceSize failed, error: 561103
