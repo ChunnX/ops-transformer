@@ -991,14 +991,42 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1Nd(
                     this->attenMaskInQue[runInfo.taskIdMod2].template DeQue<uint8_t>();
                 }
             } else {
+                bool isPrefixMaskBlockGqa = false;
+                if constexpr (enableKVPrefix) {
+                    isPrefixMaskBlockGqa = (runInfo.s2LoopCount + runInfo.s2StartIdx / s2BaseSize) < constInfo.prefixLoopCount;
+                }
+                if (isPrefixMaskBlockGqa) {
+                    attenMaskUb = this->attenMaskInQue[runInfo.taskIdMod2].template AllocTensor<uint8_t>();
+                    for (uint32_t i = 0; i < s2BaseSize / 8; i++) {
+                        attenMaskUb.SetValue(i, (uint8_t)0xFF);
+                    }
+                    this->attenMaskInQue[runInfo.taskIdMod2].template EnQue(attenMaskUb);
+                    this->attenMaskInQue[runInfo.taskIdMod2].template DeQue<uint8_t>();
+                } else {
+                    AttenMaskCopyIn<hasAtten, isFd, enableKVPrefix>(this->attenMaskInQue[runInfo.taskIdMod2], this->attenMaskInQue[1 - runInfo.taskIdMod2],
+                        this->attenMaskGmInt, runInfo, constInfo, *attenMaskInfoPtr);
+                    attenMaskUb = this->attenMaskInQue[runInfo.taskIdMod2].template DeQue<uint8_t>();
+                }
+            }
+        } else {
+            bool isPrefixMaskBlock = false;
+            if constexpr (enableKVPrefix) {
+                isPrefixMaskBlock = (runInfo.s2LoopCount + runInfo.s2StartIdx / s2BaseSize) < constInfo.prefixLoopCount;
+            }
+            if (isPrefixMaskBlock) {
+                attenMaskUb = this->attenMaskInQue[runInfo.taskIdMod2].template AllocTensor<uint8_t>();
+                for (uint32_t i = 0; i < s2BaseSize / 8; i++) {
+                    attenMaskUb.SetValue(i, (uint8_t)0xFF);
+                }
+                this->attenMaskInQue[runInfo.taskIdMod2].template EnQue(attenMaskUb);
+                this->attenMaskInQue[runInfo.taskIdMod2].template DeQue<uint8_t>();
+                if (enableKVPrefix) { PRINTF("[MASK-prefix] s2L=%lld s2R=%lld fill=0xFF\n", (long long)runInfo.s2LoopCount, (long long)runInfo.s2RealSize); }
+            } else {
                 AttenMaskCopyIn<hasAtten, isFd, enableKVPrefix>(this->attenMaskInQue[runInfo.taskIdMod2], this->attenMaskInQue[1 - runInfo.taskIdMod2],
                     this->attenMaskGmInt, runInfo, constInfo, *attenMaskInfoPtr);
                 attenMaskUb = this->attenMaskInQue[runInfo.taskIdMod2].template DeQue<uint8_t>();
+                if (enableKVPrefix) { PRINTF("[MASK-nonprefix] s2L=%lld s2R=%lld mask[0]=%x mask[1]=%x\n", (long long)runInfo.s2LoopCount, (long long)runInfo.s2RealSize, (int)attenMaskUb.GetValue(0), (int)attenMaskUb.GetValue(1)); }
             }
-        } else {
-            AttenMaskCopyIn<hasAtten, isFd, enableKVPrefix>(this->attenMaskInQue[runInfo.taskIdMod2], this->attenMaskInQue[1 - runInfo.taskIdMod2],
-                this->attenMaskGmInt, runInfo, constInfo, *attenMaskInfoPtr);
-            attenMaskUb = this->attenMaskInQue[runInfo.taskIdMod2].template DeQue<uint8_t>();
         }
     }
     LocalTensor<uint8_t> dropMaskUb;

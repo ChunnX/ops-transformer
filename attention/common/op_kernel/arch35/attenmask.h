@@ -200,7 +200,7 @@ __aicore__ inline int64_t ComputeOffsetForNoCompress(const RunInfo<isInfer> &run
             if ((runInfo.s2LoopCount + runInfo.s2StartIdx / constInfo.s2BaseSize) < constInfo.prefixLoopCount) {
                 s2Offset = runInfo.s2StartIdx + runInfo.s2LoopCount * constInfo.s2BaseSize;
             } else {
-                s2Offset = runInfo.s2StartIdx + (runInfo.s2LoopCount - constInfo.prefixLoopCount) * constInfo.s2BaseSize + constInfo.actualKVPrefixSize;
+                s2Offset = runInfo.s2StartIdx + runInfo.s2LoopCount * constInfo.s2BaseSize - constInfo.actualKVPrefixSize;
             }
         } else {
             s2Offset = runInfo.s2StartIdx + runInfo.s2LoopCount * constInfo.s2BaseSize;
@@ -433,7 +433,7 @@ __aicore__ inline int64_t ComputeAttenMaskOffset(const RunInfo<isInfer> &runInfo
         int64_t deltaPre = 0;
         int64_t deltaN = runInfo.actualS1Size - runInfo.actualS2Size;
         if constexpr (enableKVPrefix) {
-            deltaN -= constInfo.actualKVPrefixSize;
+            deltaN += constInfo.actualKVPrefixSize;
         }
         int64_t s1Offset = runInfo.s1oIdx * constInfo.s1BaseSize;
         if constexpr (isInfer) {
@@ -456,7 +456,7 @@ __aicore__ inline int64_t ComputeAttenMaskOffset(const RunInfo<isInfer> &runInfo
             if ((runInfo.s2LoopCount + runInfo.s2StartIdx / constInfo.s2BaseSize) < constInfo.prefixLoopCount) {
                 s2Offset = runInfo.s2StartIdx + runInfo.s2LoopCount * constInfo.s2BaseSize;
             } else {
-                s2Offset = runInfo.s2StartIdx + (runInfo.s2LoopCount - constInfo.prefixLoopCount) * constInfo.s2BaseSize + constInfo.actualKVPrefixSize;
+                s2Offset = runInfo.s2StartIdx + runInfo.s2LoopCount * constInfo.s2BaseSize - constInfo.actualKVPrefixSize;
             }
         } else {
             s2Offset = runInfo.s2StartIdx + runInfo.s2LoopCount * constInfo.s2BaseSize;
@@ -520,6 +520,12 @@ __aicore__ inline int64_t ComputeAttenMaskOffset(const RunInfo<isInfer> &runInfo
             }
             ret = ComputeOffsetForCausal(deltaCausalOrNext, constInfo.s1BaseSize, s2BaseSize,
                 attenMaskInfo.attenMaskS2Size, runInfo.vecCoreOffset, useDn);
+        }
+        if constexpr (enableKVPrefix) {
+            PRINTF("[MASK-offset] s2L=%lld s2Off=%lld deltaN=%lld deltaC=%lld deltaPre=%lld maskOff=%lld computeMode=%d s1Off=%lld\n",
+                   (long long)runInfo.s2LoopCount, (long long)s2Offset, (long long)deltaN,
+                   (long long)deltaCausalOrNext, (long long)deltaPre, (long long)ret,
+                   (int)attenMaskInfo.computeMode, (long long)s1Offset);
         }
         return ret;
     }
