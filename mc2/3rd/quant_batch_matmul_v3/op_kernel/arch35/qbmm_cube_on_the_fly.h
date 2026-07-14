@@ -38,11 +38,11 @@ public:
                                 GM_ADDR cGM, GM_ADDR workSpace, const void *tilingData, TPipe *que);
     __aicore__ inline void UpdateGlobalAddr(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR bias, GM_ADDR perTokenScale,
                                             GM_ADDR scale, GM_ADDR cGM, GM_ADDR workSpace);
-    __aicore__ inline void Process(bool isLast = true);
+    __aicore__ inline void Process();
 
 protected:
     __aicore__ inline void ComputeBmmOptiLoop();
-    __aicore__ inline void ComputeBasicOptiLoop(bool isLast = true);
+    __aicore__ inline void ComputeBasicOptiLoop();
     __aicore__ inline void SetMMParaAndCompute();
 
     uint32_t blockIdx_;
@@ -137,7 +137,7 @@ __aicore__ inline void MatMulASWKernel<LOCAL_TEMPLATE_FUNC_PARAMS>::UpdateGlobal
 }
 
 LOCAL_TEMPLATE_CLASS_PARAMS
-__aicore__ inline void MatMulASWKernel<LOCAL_TEMPLATE_FUNC_PARAMS>::Process(bool isLast)
+__aicore__ inline void MatMulASWKernel<LOCAL_TEMPLATE_FUNC_PARAMS>::Process()
 {
     if ASCEND_IS_AIV {
         return;
@@ -146,7 +146,7 @@ __aicore__ inline void MatMulASWKernel<LOCAL_TEMPLATE_FUNC_PARAMS>::Process(bool
         block_.offset_.batchCOffset = 0;
         block_.offset_.batchAOffset = 0;
         block_.offset_.batchBOffset = 0;
-        ComputeBasicOptiLoop(isLast);
+        ComputeBasicOptiLoop();
     } else {
         ComputeBmmOptiLoop();
     }
@@ -197,17 +197,12 @@ __aicore__ inline void MatMulASWKernel<LOCAL_TEMPLATE_FUNC_PARAMS>::ComputeBmmOp
 }
 
 LOCAL_TEMPLATE_CLASS_PARAMS
-__aicore__ inline void MatMulASWKernel<LOCAL_TEMPLATE_FUNC_PARAMS>::ComputeBasicOptiLoop(bool isLast)
+__aicore__ inline void MatMulASWKernel<LOCAL_TEMPLATE_FUNC_PARAMS>::ComputeBasicOptiLoop()
 {
     for (uint64_t roundIndex = 0; roundIndex < block_.params_.round; ++roundIndex) {
-        if (roundIndex + 1 == block_.params_.round && isLast) {
-            uint64_t lastRoundTileCnt = (block_.params_.totalCnt -
-                block_.tilingData_->matmulTiling.usedCoreNum * roundIndex) * block_.params_.totalTailTile;
-            block_.doTailTile_ = (lastRoundTileCnt <= block_.tilingData_->matmulTiling.usedCoreNum);
-        }
         block_.UpdateBasicIndex(roundIndex);
         // 1. Set single core param
-        block_.template UpdateBlockParams<bTrans, formatX2>(roundIndex, isLast);
+        block_.template UpdateBlockParams<bTrans, formatX2>(roundIndex);
         if (block_.params_.singleCoreM <= 0 || block_.params_.singleCoreN <= 0) {
             continue;
         }
