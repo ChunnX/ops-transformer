@@ -964,10 +964,17 @@ def qliv2_output_single(params, is_batch = False):
         elif qk_dtype == 'FLOAT8_E4M3FN':
             qk_dtype = torch.float8_e4m3fn
 
+        if weight_dtype == 'FP32' or weight_dtype == 'FLOAT':
+            weight_dtype = torch.float32
+        elif weight_dtype == 'FP16':
+            weight_dtype = torch.float16
+
         if dequant_dtype == 'FP16':
             dequant_dtype = torch.float16
         elif dequant_dtype == 'FP32':
             dequant_dtype = torch.float32
+        elif dequant_dtype == 'FLOAT8_E8M0FNU':
+            dequant_dtype = torch.float8_e8m0fnu
 
         if actual_seq_dtype == 'INT32':
             actual_seq_dtype = torch.int32

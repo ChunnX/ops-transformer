@@ -53,7 +53,7 @@ def load_excel_test_cases(excel_file_path: str, sheetname: str):
         required_columns = [
             'Testcase_Name', 'batch_size', 'q_seq','k_seq','q_t_size', 'k_t_size',
             'q_head_num', 'k_head_num', 'head_dim', 'block_size', 'block_num',
-            'qk_dtype', 'dequant_dtype', 'actual_seq_dtype', 'cu_seqlens_q', 'cu_seqlens_k',
+            'qk_dtype', 'weight_dtype', 'dequant_dtype', 'actual_seq_dtype', 'cu_seqlens_q', 'cu_seqlens_k',
             'seqused_q', 'seqused_k', 'cmp_residual_k', 'max_seqlen_q', 'quant_mode',
             'layout_query', 'layout_key', 'sparse_count', 'sparse_mode', 'query_datarange',
             'key_datarange', 'weights_datarange', 'q_scale_datarange',
@@ -81,6 +81,7 @@ def load_excel_test_cases(excel_file_path: str, sheetname: str):
                 row['block_size'],
                 row['block_num'],
                 row['qk_dtype'],
+                row['weight_dtype'],
                 row['dequant_dtype'],
                 row['actual_seq_dtype'],
                 row['cu_seqlens_q'],
