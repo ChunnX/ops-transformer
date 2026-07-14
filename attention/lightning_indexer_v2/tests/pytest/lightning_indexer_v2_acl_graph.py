@@ -22,7 +22,7 @@ import copy
 import torchair
 import torch.nn as nn
 from torchair.configs.compiler_config import CompilerConfig
-from lightning_indexer_v2_golden import *
+import lightning_indexer_v2_golden
 
 class LIV2Network(nn.Module):
     def __init__(self):
@@ -74,8 +74,8 @@ def _liv2_prepare_tensors_and_metadata(params, tensor_dict):
         k_head_num = int(params[6])
         key = blockFusion[:, :block_size * k_head_num * head_dim].view(block_num, block_size, k_head_num, head_dim)
 
-    cu_seqlens_query = tensor_dict["cu_seqlens_query"].npu() if tensor_dict["cu_seqlens_query"] is not None else None
-    cu_seqlens_key = tensor_dict["cu_seqlens_key"].npu() if tensor_dict["cu_seqlens_key"] is not None else None
+    cu_seqlens_query = tensor_dict["cu_seqlens_q"].npu() if tensor_dict["cu_seqlens_q"] is not None else None
+    cu_seqlens_key = tensor_dict["cu_seqlens_k"].npu() if tensor_dict["cu_seqlens_k"] is not None else None
     seqused_q = tensor_dict["seqused_q"].npu() if tensor_dict["seqused_q"] is not None else None
     seqused_k = tensor_dict["seqused_k"].npu() if tensor_dict["seqused_k"] is not None else None
     output_idx_offset = tensor_dict["output_idx_offset"].npu() if tensor_dict["output_idx_offset"] is not None else None

@@ -40,7 +40,7 @@ _run_mode = os.environ.get("LIV2_RUN_MODE", "eager").strip().lower()
 # 生成所有的组合，并转换为字典列表
 locals()["testcase_files"] = []
 if _single_case_path:
- 	if not os.path.isfile(_single_case_path):
+    if not os.path.isfile(_single_case_path):
         print(f"错误: 环境变量 LIV2_TESTCASE_PATH 指定的用例文件不存在: {_single_case_path}")
     else:
         print(f"单用例隔离模式, 仅执行: {_single_case_path}")
