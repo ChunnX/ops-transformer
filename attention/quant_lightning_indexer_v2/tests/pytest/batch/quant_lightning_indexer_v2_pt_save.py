@@ -16,7 +16,10 @@ from quant_lightning_indexer_v2_golden import *
 import pandas as pd
 import numpy as np
 import torch
-import torch_npu
+try:
+    import torch_npu
+except ImportError:
+    torch_npu = None
 import pytest
 import random
 import math
