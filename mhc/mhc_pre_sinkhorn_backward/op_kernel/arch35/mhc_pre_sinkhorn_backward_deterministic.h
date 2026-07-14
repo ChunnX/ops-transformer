@@ -1246,6 +1246,18 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::P
         }
         SyncAll();
 
+        pipe_->Reset();
+        auto aivNumAlign = Ops::Base::CeilAlign(int64_t(usedAivNum_ * uTypeSize_), blockSize_) / uTypeSize_;
+        pipe_->InitBuffer(gradAlphaQue_, DOUBLE_BUFFER, aivNumAlign * uTypeSize_);
+        pipe_->InitBuffer(gradAlphaSumQue_, 1, blockSize_);
+        pipe_->InitBuffer(gradBiasQue_, 1, usedAivNum_ * nnAlignFp32_ * uTypeSize_);
+        pipe_->InitBuffer(gradCalcBuf1_, kAlignFp32_ * uTypeSize_);
+        pipe_->InitBuffer(gradCalcBuf2_, kAlignFp32_ * uTypeSize_);
+        pipe_->InitBuffer(hPreAndGradHPostQue_, DOUBLE_BUFFER, cBlockCount_ * sizeof(U));
+        pipe_->InitBuffer(xQue_, DOUBLE_BUFFER, max(cLenAlignFp32_, cBlockCount_) * sizeof(U));
+        pipe_->InitBuffer(gradHinQue_, DOUBLE_BUFFER, cBlockCount_ * sizeof(U));
+        pipe_->InitBuffer(xFp32Que_, DOUBLE_BUFFER, max(cLenAlignFp32_, cBlockCount_) * sizeof(U));
+
         event_t evtVToMte3 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_MTE3));
         SetFlag<HardEvent::V_MTE3>(evtVToMte3);
         WaitFlag<HardEvent::V_MTE3>(evtVToMte3);
@@ -1261,19 +1273,6 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::P
                 ComputeGradXFromRms(gmOffset, bsLen);
             }
         }
-
-        SyncAll();
-
-        pipe_->Reset();
-
-        auto aivNumAlign = Ops::Base::CeilAlign(int64_t(usedAivNum_ * uTypeSize_), blockSize_) / uTypeSize_;
-        pipe_->InitBuffer(gradAlphaQue_, DOUBLE_BUFFER, aivNumAlign * uTypeSize_);
-        pipe_->InitBuffer(gradAlphaSumQue_, 1, blockSize_);
-        pipe_->InitBuffer(gradBiasQue_, 1, usedAivNum_ * nnAlignFp32_ * uTypeSize_);
-        pipe_->InitBuffer(hPreAndGradHPostQue_, DOUBLE_BUFFER, cBlockCount_ * sizeof(U));
-        pipe_->InitBuffer(xQue_, DOUBLE_BUFFER, cBlockCount_ * sizeof(U));
-        pipe_->InitBuffer(gradHinQue_, DOUBLE_BUFFER, cBlockCount_ * sizeof(U));
-        pipe_->InitBuffer(xFp32Que_, DOUBLE_BUFFER, cBlockCount_ * sizeof(U));
 
         if (blockIdx_ == 0) {
             AddAlphaAndBias();

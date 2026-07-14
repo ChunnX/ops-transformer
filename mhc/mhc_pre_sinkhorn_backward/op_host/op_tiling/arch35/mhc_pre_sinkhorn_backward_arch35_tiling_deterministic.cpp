@@ -199,7 +199,12 @@ void MhcPreSinkhornBackwardArch35DeterminiticTiling::DoUbTiling()
     cBlockTailCount_ = tailBsncTaskCount_;
     restSize = static_cast<int64_t>(-1);
     while (restSize <= 0) {
-        int64_t occupy = 4 * DOUBLE_BUFFER * Ops::Base::CeilAlign(cBlockCount_ * FP32_BYTE_SIZE, ubBlock_);
+        int64_t occupy = 4 * DOUBLE_BUFFER * Ops::Base::CeilAlign(cBlockCount_ * FP32_BYTE_SIZE, ubBlock_) +
+                         DOUBLE_BUFFER * Ops::Base::CeilAlign(usedAivNum_ * FP32_BYTE_SIZE, ubBlock_) +
+                         ubBlock_ +
+                         usedAivNum_ * Ops::Base::CeilAlign(n_ * n_ * FP32_BYTE_SIZE, ubBlock_) +
+                         2 * Ops::Base::CeilAlign((2 * n_ + n_ * n_) * FP32_BYTE_SIZE, ubBlock_) +
+                         2 * DOUBLE_BUFFER * Ops::Base::CeilAlign(cLoopDataLen_ * FP32_BYTE_SIZE, ubBlock_);
         restSize = ubSize_ - occupy;
         if (restSize <= 0 && cBlockCount_ > 1) {
             cBlockCount_--;
