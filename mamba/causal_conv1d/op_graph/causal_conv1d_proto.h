@@ -40,13 +40,14 @@ namespace ge {
  * @li bias: Optional. Convolution bias added after the weighted sum. shape [dim]. Same type as x.
 * @li query_start_loc: Optional. Cumulative token offset for varlen input. shape [batch+1]. int32.
 * Required when x is 2D; None when x is 3D batch.
-* @li cache_indices: Optional. Maps each sequence index to its cache slot in conv_states. shape [batch]. int32.
-* When None, cache slot i is used for sequence i.
+ * @li cache_indices: Optional. Maps each sequence to its cache slot in conv_states. shape [batch]. int32.
+ * Value range [0, num_cache_lines). Sequences with cache_indices[i] == null_block_id are skipped.
+ * When None, cache slot i is used for sequence i.
 * @li initial_state_mode: Optional. Per-sequence flag: 1 = use cached conv_states as history,
 * 0 = zero-initialize history (cold start). shape [batch]. int32.
 * @li num_accepted_tokens: Optional. Speculative decode support. Number of accepted tokens per sequence,
 * used to compute the correct history offset within conv_states. shape [batch]. int32.
-* Required in decode (run_mode=1) with speculative decoding; None otherwise.
+* Required in decode mode with speculative decoding; None otherwise.
 
 * @par Attributes:
  * @li activation_mode: An optional string. Activation type applied after convolution: "silu" or "none". Default:
@@ -55,7 +56,7 @@ namespace ge {
  * @par Outputs:
 * @li conv_states: Updated state cache tensor. Last state_len tokens of (history || x) written back per sequence.
 * Same shape and type as input conv_states.
-* @li y: Output sequence tensor. When run_mode=0, first (W-1) tokens are bias-only if initial_state_mode=0.
+* @li y: Output sequence tensor. In prefill mode, first (W-1) tokens are bias-only if initial_state_mode=0.
 * Same shape and type as x.
 */
 REG_OP(CausalConv1d)
