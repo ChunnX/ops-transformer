@@ -292,6 +292,35 @@ void FiaInfoParser::GetKvIsContiguous(){
             keyRopeNonContigDim_ = dim;
         }
     }
+
+    // PA场景下获取kvcache非连续stride偏移值
+    if (kvLayout_ == FiaLayout::BnBsH) {
+        if (keyStrides_ != nullptr) {
+            keyBnStride_ = keyStrides_->GetStride(0);
+            keyN2Stride_ = keyStrides_->GetStride(2);
+        }
+        if (valueStrides_ != nullptr) {
+            valueBnStride_ = valueStrides_->GetStride(0);
+            valueN2Stride_ = valueStrides_->GetStride(2);
+        }
+        if (opParamInfo_.keyRope.desc != nullptr) {
+            kRopeBnStride_ = kRopeStrides_->GetStride(0);
+            kRopeN2Stride_ = kRopeStrides_->GetStride(2);
+        }
+    } else if (kvLayout_ == FiaLayout::BnNBsD || kvLayout_ == FiaLayout::NZ) {
+        if (keyStrides_ != nullptr) {
+            keyBnStride_ = keyStrides_->GetStride(0);
+            keyN2Stride_ = keyStrides_->GetStride(1);
+        }
+        if (valueStrides_ != nullptr) {
+            valueBnStride_ = valueStrides_->GetStride(0);
+            valueN2Stride_ = valueStrides_->GetStride(1);
+        }
+        if (opParamInfo_.keyRope.desc != nullptr) {
+            kRopeBnStride_ = kRopeStrides_->GetStride(0);
+            kRopeN2Stride_ = kRopeStrides_->GetStride(1);
+        }
+    }
 }
 
 ge::graphStatus FiaInfoParser::GetNpuInfo()
@@ -1563,6 +1592,12 @@ void FiaInfoParser::GenerateInfo(FiaTilingInfo &fiaInfo)
     fiaInfo.kScaleStrides = kScaleStrides_;
     fiaInfo.vScaleStrides = vScaleStrides_;
     fiaInfo.hasViewStride = hasViewStride_;
+    fiaInfo.keyBnStride = keyBnStride_;
+    fiaInfo.keyN2Stride = keyN2Stride_;
+    fiaInfo.valueBnStride = valueBnStride_;
+    fiaInfo.valueN2Stride = valueN2Stride_;
+    fiaInfo.kRopeBnStride = kRopeBnStride_;
+    fiaInfo.kRopeN2Stride = kRopeN2Stride_;
 
     fiaInfo.totalOutputSize = opParamInfo_.attenOut.shape->GetStorageShape().GetShapeSize();
 

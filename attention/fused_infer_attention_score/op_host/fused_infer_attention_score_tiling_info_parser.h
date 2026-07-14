@@ -146,6 +146,12 @@ public:
     const gert::Stride *kScaleStrides_ = nullptr;
     const gert::Stride *vScaleStrides_ = nullptr;
     bool hasViewStride_ = true;
+    uint64_t keyBnStride_ = 0;
+    uint64_t keyN2Stride_ = 0;
+    uint64_t valueBnStride_ = 0;
+    uint64_t valueN2Stride_ = 0;
+    uint64_t kRopeBnStride_ = 0;
+    uint64_t kRopeN2Stride_ = 0;
     int32_t keyNonContigDim_ = -1;
     int32_t valueNonContigDim_ = -1;
     int32_t keyRopeNonContigDim_ = -1;
