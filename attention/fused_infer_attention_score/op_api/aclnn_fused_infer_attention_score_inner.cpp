@@ -204,6 +204,87 @@ bool IsCacheScene(const aclTensor *blockTableOptional)
     return blockTableOptional != nullptr && blockTableOptional->GetViewShape().GetShapeSize() != 0;
 }
 
+bool IsFAIRoutingCandidate(
+    const aclTensor *query, const aclTensorList *key, const aclTensorList *value,
+    const aclTensor *attenMaskOptional, const aclTensor *blockTableOptional,
+    const aclTensor *queryRopeOptional, const aclTensor *keyRopeOptional,
+    const aclTensor *learnableSinkOptional,
+    const char *inputLayout, int64_t numHeads, int64_t numKeyValueHeads,
+    int64_t sparseMode, int64_t innerPrecise)
+{
+    if (query == nullptr || key == nullptr || value == nullptr || key->Size() == 0 || value->Size() == 0 ||
+        (*key)[0] == nullptr || (*value)[0] == nullptr || inputLayout == nullptr) {
+        return false;
+    }
+
+    constexpr int64_t MAX_HEAD_DIM = 256;
+    constexpr int64_t MAX_BLOCK_SIZE = 512;
+    constexpr int64_t BLOCK_SIZE_ALIGNMENT = 16;
+    constexpr int64_t NZ_INNER_BLOCK = 16;
+    constexpr int64_t UNSUPPORTED_SINK_HEAD_DIM = 64;
+
+    const std::string inputLayoutStr(inputLayout);
+    const auto queryDtype = query->GetDataType();
+    const auto queryShape = query->GetViewShape();
+    const auto keyShape = (*key)[0]->GetViewShape();
+    const auto valueShape = (*value)[0]->GetViewShape();
+    if (queryShape.GetDimNum() <= 2) {
+        return false;
+    }
+    const int64_t queryHeadDim = queryShape.GetDim(2);
+
+    bool learnableSinkSupported = true;
+    if (learnableSinkOptional != nullptr && inputLayoutStr == "TND" &&
+        queryHeadDim == UNSUPPORTED_SINK_HEAD_DIM &&
+        learnableSinkOptional->GetDataType() == DataType::DT_BF16) {
+        learnableSinkSupported = false;
+    }
+    const bool isRopeSplitMla = queryRopeOptional != nullptr && keyRopeOptional != nullptr;
+    const bool sparseModeSupported = sparseMode == 0 || sparseMode == 3 || sparseMode == 4;
+    const bool isMha = numKeyValueHeads == 0 || numHeads == numKeyValueHeads;
+    const bool mhaConditions = isMha && !(queryDtype == DataType::DT_BF16 && innerPrecise == 1) &&
+        !(sparseMode == 0 && attenMaskOptional != nullptr);
+    const bool nonMhaConditions = !isMha && innerPrecise == 0;
+    if (inputLayoutStr != "TND" || !learnableSinkSupported || isRopeSplitMla || !sparseModeSupported ||
+        (!mhaConditions && !nonMhaConditions)) {
+        return false;
+    }
+
+    if (blockTableOptional == nullptr) {
+        if (keyShape.GetDimNum() <= 2 || valueShape.GetDimNum() <= 2) {
+            return false;
+        }
+        const int64_t keyHeadDim = keyShape.GetDim(2);
+        const int64_t valueHeadDim = valueShape.GetDim(2);
+        return queryHeadDim <= MAX_HEAD_DIM && keyHeadDim <= MAX_HEAD_DIM && valueHeadDim <= MAX_HEAD_DIM &&
+            queryHeadDim == keyHeadDim && queryHeadDim == valueHeadDim;
+    }
+    if (keyShape.GetDimNum() == 3) {
+        if (valueShape.GetDimNum() <= 2 || numKeyValueHeads == 0) {
+            return false;
+        }
+        const int64_t blockSize = keyShape.GetDim(1);
+        const int64_t keyHeadDim = keyShape.GetDim(2) / numKeyValueHeads;
+        const int64_t valueHeadDim = valueShape.GetDim(2) / numKeyValueHeads;
+        return queryHeadDim <= MAX_HEAD_DIM && keyHeadDim <= MAX_HEAD_DIM && valueHeadDim <= MAX_HEAD_DIM &&
+            queryHeadDim == keyHeadDim && queryHeadDim == valueHeadDim &&
+            blockSize % BLOCK_SIZE_ALIGNMENT == 0 && blockSize <= MAX_BLOCK_SIZE;
+    }
+    if (keyShape.GetDimNum() == 5) {
+        if (valueShape.GetDimNum() <= 3) {
+            return false;
+        }
+        const int64_t blockSize = keyShape.GetDim(3);
+        const int64_t keyHeadDim = keyShape.GetDim(2) * NZ_INNER_BLOCK;
+        const int64_t valueHeadDim = valueShape.GetDim(2) * NZ_INNER_BLOCK;
+        const bool headDimSupported = queryHeadDim <= MAX_HEAD_DIM && keyHeadDim <= MAX_HEAD_DIM &&
+            valueHeadDim <= MAX_HEAD_DIM && queryHeadDim == keyHeadDim && queryHeadDim == valueHeadDim &&
+            queryHeadDim != 64 && queryHeadDim != 128;
+        return headDimSupported && blockSize % BLOCK_SIZE_ALIGNMENT == 0 && blockSize <= MAX_BLOCK_SIZE;
+    }
+    return false;
+}
+
 bool GetAclTensorViewStrides(const aclTensor *tensor, int64_t *&stridesValue, uint64_t &stridesNum)
 {
     stridesValue = nullptr;
@@ -386,15 +467,12 @@ aclnnStatus ReshapeTensorListToViewShape(const aclTensorList *&tensorList, const
     return ACLNN_SUCCESS;
 }
 
-aclnnStatus ProcessQKVForL0Input(const aclTensor *&query, const aclTensorList *&key, const aclTensorList *&value,
-                                 const aclTensor *blockTableOptional, aclOpExecutor *executor)
+aclnnStatus ProcessKVForL0Input(const aclTensorList *&key, const aclTensorList *&value,
+                                const aclTensor *blockTableOptional, bool isFAIRoutingCandidate,
+                                aclOpExecutor *executor)
 {
     if (executor == nullptr) {
         OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "executor is nullptr.");
-        return ACLNN_ERR_PARAM_NULLPTR;
-    }
-    if (query == nullptr) {
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "query tensor is nullptr.");
         return ACLNN_ERR_PARAM_NULLPTR;
     }
     if (key == nullptr || value == nullptr) {
@@ -408,32 +486,30 @@ aclnnStatus ProcessQKVForL0Input(const aclTensor *&query, const aclTensorList *&
     }
 
     const bool isCacheScene = IsCacheScene(blockTableOptional);
-    FiaDebugPrintf("[FIA_DEBUG][INNER] ProcessQKVForL0Input cacheScene[%d].",
-                   static_cast<int32_t>(isCacheScene));
-    LogTensorDebugInfo("ProcessQKV.query.before", query);
-    LogTensorDebugInfo("ProcessQKV.blockTableOptional", blockTableOptional);
-    LogTensorListDebugInfo("ProcessQKV.key.before", key);
-    LogTensorListDebugInfo("ProcessQKV.value.before", value);
-    if (isCacheScene && NnopbaseSupportTensorV2 != nullptr) {
+    const bool supportTensorV2 = NnopbaseSupportTensorV2 != nullptr;
+    FiaDebugPrintf("[FIA_DEBUG][INNER] ProcessKVForL0Input cacheScene[%d] isFAIRoutingCandidate[%d] "
+                   "supportTensorV2[%d].",
+                   static_cast<int32_t>(isCacheScene), static_cast<int32_t>(isFAIRoutingCandidate),
+                   static_cast<int32_t>(supportTensorV2));
+    LogTensorDebugInfo("ProcessKV.blockTableOptional", blockTableOptional);
+    LogTensorListDebugInfo("ProcessKV.key.before", key);
+    LogTensorListDebugInfo("ProcessKV.value.before", value);
+    if (supportTensorV2 && isFAIRoutingCandidate && isCacheScene) {
         CHECK_RET(CheckTensorListFirstAxisOnlyNonContiguous(key, "key") == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
         CHECK_RET(CheckTensorListFirstAxisOnlyNonContiguous(value, "value") == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
         return ACLNN_SUCCESS;
     }
 
-    if (isCacheScene) {
-        OP_LOGW("Current opbase does not support TensorV2, make cache query, key and value contiguous.");
+    if (!supportTensorV2) {
+        OP_LOGW("Current opbase does not support TensorV2, make key and value contiguous.");
     }
 
-    query = l0op::Contiguous(query, executor);
-    CHECK_RET(query != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    CHECK_RET(ReshapeTensorToViewShape(query, "query", executor) == ACLNN_SUCCESS, ACLNN_ERR_INNER_NULLPTR);
     CHECK_RET(MakeTensorListContiguous(key, "key", executor) == ACLNN_SUCCESS, ACLNN_ERR_INNER_NULLPTR);
     CHECK_RET(MakeTensorListContiguous(value, "value", executor) == ACLNN_SUCCESS, ACLNN_ERR_INNER_NULLPTR);
     CHECK_RET(ReshapeTensorListToViewShape(key, "key", executor) == ACLNN_SUCCESS, ACLNN_ERR_INNER_NULLPTR);
     CHECK_RET(ReshapeTensorListToViewShape(value, "value", executor) == ACLNN_SUCCESS, ACLNN_ERR_INNER_NULLPTR);
-    LogTensorDebugInfo("ProcessQKV.query.after", query);
-    LogTensorListDebugInfo("ProcessQKV.key.after", key);
-    LogTensorListDebugInfo("ProcessQKV.value.after", value);
+    LogTensorListDebugInfo("ProcessKV.key.after", key);
+    LogTensorListDebugInfo("ProcessKV.value.after", value);
     return ACLNN_SUCCESS;
 }
 
@@ -483,9 +559,14 @@ aclnnStatus InnerFusedInferAttentionScoreGetWorkspaceSize(
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
 
     OP_CHECK_NULL(query, return ACLNN_ERR_PARAM_NULLPTR);
+    OP_CHECK_NULL(key, return ACLNN_ERR_PARAM_NULLPTR);
+    OP_CHECK_NULL(value, return ACLNN_ERR_PARAM_NULLPTR);
     OP_CHECK_NULL(attentionOut, return ACLNN_ERR_PARAM_NULLPTR);
     OP_CHECK_NULL(workspaceSize, return ACLNN_ERR_PARAM_NULLPTR);
     OP_CHECK_NULL(executor, return ACLNN_ERR_PARAM_NULLPTR);
+    if (softmaxLseFlag) {
+        OP_CHECK_NULL(softmaxLse, return ACLNN_ERR_PARAM_NULLPTR);
+    }
     if (inputLayout == nullptr) {
         OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "inputLayout is nullptr.");
         return ACLNN_ERR_PARAM_NULLPTR;
@@ -511,6 +592,11 @@ aclnnStatus InnerFusedInferAttentionScoreGetWorkspaceSize(
     LogIntArrayDebugInfo("inner.qStartIdxOptional", qStartIdxOptional);
     LogIntArrayDebugInfo("inner.kvStartIdxOptional", kvStartIdxOptional);
 
+    const bool isFAIRoutingCandidate = IsFAIRoutingCandidate(
+        query, key, value, attenMaskOptional, blockTableOptional, queryRopeOptional, keyRopeOptional,
+        learnableSinkOptional, inputLayout, numHeads, numKeyValueHeads, sparseMode, innerPrecise);
+    FiaDebugPrintf("[FIA_DEBUG][INNER] isFAIRoutingCandidate[%d].", static_cast<int32_t>(isFAIRoutingCandidate));
+
     if (attentionOut->IsEmpty()) {
         *workspaceSize = 0;
         uniqueExecutor.ReleaseTo(executor);
@@ -522,8 +608,9 @@ aclnnStatus InnerFusedInferAttentionScoreGetWorkspaceSize(
     const aclTensorList *processedValue = value;
 
     aclOpExecutor *l0Executor = uniqueExecutor.get();
-    auto qkvProcessRet = ProcessQKVForL0Input(processedQuery, processedKey, processedValue, blockTableOptional, l0Executor);
-    CHECK_RET(qkvProcessRet == ACLNN_SUCCESS, qkvProcessRet);
+    auto kvProcessRet = ProcessKVForL0Input(
+        processedKey, processedValue, blockTableOptional, isFAIRoutingCandidate, l0Executor);
+    CHECK_RET(kvProcessRet == ACLNN_SUCCESS, kvProcessRet);
     LogTensorDebugInfo("inner.query.processed", processedQuery);
     LogTensorListDebugInfo("inner.key.processed", processedKey);
     LogTensorListDebugInfo("inner.value.processed", processedValue);
