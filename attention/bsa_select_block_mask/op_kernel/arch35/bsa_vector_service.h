@@ -46,7 +46,6 @@ public:
                                    GlobalTensor<int64_t> &actualSeqLensQGm,
                                    GlobalTensor<int64_t> &actualSeqLensKVGm);
 
-
     __aicore__ inline void AllocEventID();
     __aicore__ inline void FreeEventID();
 
@@ -154,7 +153,8 @@ __aicore__ inline void BSAVectorService<BSAT>::SoftmaxSecondPassAndCast(
     uint32_t qChunkStart, uint32_t qChunkSize, uint32_t kChunkStart,
     uint32_t kChunkSize, uint32_t batchIdx, uint32_t headIdx, uint32_t validYBlocks)
 {
-    softmaxOP.SoftmaxSecondPassAndCast(qChunkStart, qChunkSize, kChunkStart, kChunkSize, batchIdx, headIdx, validYBlocks);
+    softmaxOP.SoftmaxSecondPassAndCast(qChunkStart, qChunkSize, kChunkStart,
+                                      kChunkSize, batchIdx, headIdx, validYBlocks);
 }
 
 #endif // BSA_VECTOR_SERVICE_H
