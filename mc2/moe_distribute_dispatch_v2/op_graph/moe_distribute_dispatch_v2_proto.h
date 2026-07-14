@@ -64,11 +64,12 @@ namespace ge {
 * @li expert_token_nums: A tensor. Tokens nums of expand_x. Support dtype: int64, support format: ND.
 * @li ep_recv_count: A tensor. Received token nums after dispatching. Support dtype: int32, support format: ND.
 * @li tp_recv_count: A tensor. Received token nums after allgather. Support dtype: int32, support format: ND.
-* @li expand_scales: A tensor. Scales of each token to sum for combine. Support dtype: float32. Shape supports (A, ), support format: ND.
+* @li expand_scales: A tensor. Scales of each token to sum for combine. Support dtype: float32. Shape supports (A, ),
+support format: ND.
 */
 REG_OP(MoeDistributeDispatchV2)
-    .INPUT(x, TensorType({DT_BF16, DT_FLOAT16, DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN, DT_HIFLOAT8,
-                DT_FLOAT4_E2M1, DT_FLOAT4_E1M2}))
+    .INPUT(x, TensorType({DT_BF16, DT_FLOAT16, DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN, DT_HIFLOAT8, DT_FLOAT4_E2M1,
+                          DT_FLOAT4_E1M2}))
     .INPUT(expert_ids, TensorType({DT_INT32}))
     .OPTIONAL_INPUT(scales, TensorType({DT_FLOAT, DT_FLOAT8_E8M0}))
     .OPTIONAL_INPUT(x_active_mask, TensorType({DT_BOOL}))
@@ -76,7 +77,7 @@ REG_OP(MoeDistributeDispatchV2)
     .OPTIONAL_INPUT(elastic_info, TensorType({DT_INT32}))
     .OPTIONAL_INPUT(performance_info, TensorType({DT_INT64}))
     .OUTPUT(expand_x, TensorType({DT_BF16, DT_INT8, DT_FLOAT16, DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN, DT_HIFLOAT8,
-                DT_FLOAT4_E2M1, DT_FLOAT4_E1M2}))
+                                  DT_FLOAT4_E2M1, DT_FLOAT4_E1M2}))
     .OUTPUT(dynamic_scales, TensorType({DT_FLOAT, DT_FLOAT8_E8M0}))
     .OUTPUT(assist_info_for_combine, TensorType({DT_INT32}))
     .OUTPUT(expert_token_nums, TensorType({DT_INT64}))
@@ -103,5 +104,5 @@ REG_OP(MoeDistributeDispatchV2)
     .ATTR(y_dtype, Int, 28)
     .OP_END_FACTORY_REG(MoeDistributeDispatchV2)
 
-}  // namespace ge
-#endif  // MOE_DISTRIBUTE_DISPATCH_V2_PROTO_H_
+} // namespace ge
+#endif // MOE_DISTRIBUTE_DISPATCH_V2_PROTO_H_

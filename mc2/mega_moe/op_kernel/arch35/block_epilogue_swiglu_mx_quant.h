@@ -87,34 +87,34 @@ static constexpr AscendC::MicroAPI::DivSpecificMode DIV_MODE = {
     true,
 };
 static constexpr AscendC::MicroAPI::CastTrait CAST_ZERO = {
-    AscendC::MicroAPI::RegLayout::ZERO, AscendC::MicroAPI::SatMode::UNKNOWN,
-    AscendC::MicroAPI::MaskMergeMode::ZEROING, AscendC::RoundMode::UNKNOWN};
+    AscendC::MicroAPI::RegLayout::ZERO, AscendC::MicroAPI::SatMode::UNKNOWN, AscendC::MicroAPI::MaskMergeMode::ZEROING,
+    AscendC::RoundMode::UNKNOWN};
 static constexpr AscendC::MicroAPI::CastTrait CAST_ONE = {
-    AscendC::MicroAPI::RegLayout::ONE, AscendC::MicroAPI::SatMode::UNKNOWN,
-    AscendC::MicroAPI::MaskMergeMode::ZEROING, AscendC::RoundMode::UNKNOWN};
+    AscendC::MicroAPI::RegLayout::ONE, AscendC::MicroAPI::SatMode::UNKNOWN, AscendC::MicroAPI::MaskMergeMode::ZEROING,
+    AscendC::RoundMode::UNKNOWN};
 static constexpr AscendC::MicroAPI::CastTrait CAST_FP32_TO_FP16_BF16 = {
-    AscendC::MicroAPI::RegLayout::ZERO, AscendC::MicroAPI::SatMode::NO_SAT,
-    AscendC::MicroAPI::MaskMergeMode::ZEROING, AscendC::RoundMode::CAST_RINT};
+    AscendC::MicroAPI::RegLayout::ZERO, AscendC::MicroAPI::SatMode::NO_SAT, AscendC::MicroAPI::MaskMergeMode::ZEROING,
+    AscendC::RoundMode::CAST_RINT};
 static constexpr AscendC::MicroAPI::CastTrait CAST_32_TO_80 = {
-    AscendC::MicroAPI::RegLayout::ZERO, AscendC::MicroAPI::SatMode::SAT,
-    AscendC::MicroAPI::MaskMergeMode::ZEROING, AscendC::RoundMode::CAST_RINT};
+    AscendC::MicroAPI::RegLayout::ZERO, AscendC::MicroAPI::SatMode::SAT, AscendC::MicroAPI::MaskMergeMode::ZEROING,
+    AscendC::RoundMode::CAST_RINT};
 static constexpr AscendC::MicroAPI::CastTrait CAST_32_TO_81 = {
-    AscendC::MicroAPI::RegLayout::ONE, AscendC::MicroAPI::SatMode::SAT,
-    AscendC::MicroAPI::MaskMergeMode::ZEROING, AscendC::RoundMode::CAST_RINT};
+    AscendC::MicroAPI::RegLayout::ONE, AscendC::MicroAPI::SatMode::SAT, AscendC::MicroAPI::MaskMergeMode::ZEROING,
+    AscendC::RoundMode::CAST_RINT};
 static constexpr AscendC::MicroAPI::CastTrait CAST_32_TO_82 = {
-    AscendC::MicroAPI::RegLayout::TWO, AscendC::MicroAPI::SatMode::SAT,
-    AscendC::MicroAPI::MaskMergeMode::ZEROING, AscendC::RoundMode::CAST_RINT};
+    AscendC::MicroAPI::RegLayout::TWO, AscendC::MicroAPI::SatMode::SAT, AscendC::MicroAPI::MaskMergeMode::ZEROING,
+    AscendC::RoundMode::CAST_RINT};
 static constexpr AscendC::MicroAPI::CastTrait CAST_32_TO_83 = {
-    AscendC::MicroAPI::RegLayout::THREE, AscendC::MicroAPI::SatMode::SAT,
-    AscendC::MicroAPI::MaskMergeMode::ZEROING, AscendC::RoundMode::CAST_RINT};
-#define BLOCK_EPILOGUE_SWIGLU_QUANT_CLASS_LOCAL_PARAMS                                                             \
-    template <typename DataTypeOut_, typename DataTypeIn_, typename DataTypeX2Scale_,                              \
-              typename DataTypeX1Scale_, bool IsTensorList_, bool IsInterleaved_>
-#define BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS                                                                   \
+    AscendC::MicroAPI::RegLayout::THREE, AscendC::MicroAPI::SatMode::SAT, AscendC::MicroAPI::MaskMergeMode::ZEROING,
+    AscendC::RoundMode::CAST_RINT};
+#define BLOCK_EPILOGUE_SWIGLU_QUANT_CLASS_LOCAL_PARAMS                                                                 \
+    template <typename DataTypeOut_, typename DataTypeIn_, typename DataTypeX2Scale_, typename DataTypeX1Scale_,       \
+              bool IsTensorList_, bool IsInterleaved_>
+#define BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS                                                                       \
     DataTypeOut_, DataTypeIn_, DataTypeX2Scale_, DataTypeX1Scale_, IsTensorList_, IsInterleaved_
 
-template <typename DataTypeOut_, typename DataTypeIn_, typename DataTypeX2Scale_,
-          typename DataTypeX1Scale_, bool IsTensorList_, bool IsInterleaved_ = false>
+template <typename DataTypeOut_, typename DataTypeIn_, typename DataTypeX2Scale_, typename DataTypeX1Scale_,
+          bool IsTensorList_, bool IsInterleaved_ = false>
 class BlockEpilogueSwigluMxQuant {
 public:
     __aicore__ inline BlockEpilogueSwigluMxQuant()
@@ -154,7 +154,7 @@ public:
     __aicore__ inline auto GetFirstL0c2UbTensor();
     __aicore__ inline auto GetSecondL0c2UbTensor();
     __aicore__ inline void operator()(const BlockShape &blockShape, const BlockCoord &blockCoord,
-                                       uint16_t pingpongIdx = 0);
+                                      uint16_t pingpongIdx = 0);
     __aicore__ inline void UpdateGlobalAddr(const BlockCoord &baseOffset);
     __aicore__ inline void UpdateNextProblem(const ProblemShape &problemShape);
 
@@ -164,10 +164,9 @@ private:
     template <SwigluQuantMsg::QuantMode quantMode, bool IsInterleavedSrc = false>
     __aicore__ inline void VFDoSwigluAndQuantForMX(__ubuf__ int8_t *outputDst, __ubuf__ uint16_t *scaleDst,
                                                    __ubuf__ DataTypeIn *firstSrc, __ubuf__ DataTypeIn *secondSrc,
-                                                   __ubuf__ bfloat16_t *gluResAddr,
-                                                   __ubuf__ uint16_t *maxExpAddr,
-                                                   __ubuf__ uint16_t *halfScaleLocalAddr,
-                                                   uint16_t mSize, uint16_t nSize);
+                                                   __ubuf__ bfloat16_t *gluResAddr, __ubuf__ uint16_t *maxExpAddr,
+                                                   __ubuf__ uint16_t *halfScaleLocalAddr, uint16_t mSize,
+                                                   uint16_t nSize);
 
     __aicore__ inline void ComputeScale(__ubuf__ uint16_t *maxExpAddr, __ubuf__ uint16_t *mxScaleLocalAddr,
                                         __ubuf__ uint16_t *halfScaleLocalAddr, uint32_t totalScaleInUB,
@@ -193,14 +192,12 @@ private:
     // GM ADDR
     AscendC::GlobalTensor<int8_t> quantOutputGlobal_;
     AscendC::GlobalTensor<int8_t> quantScaleGlobal_;
-    __gm__ int32_t* groupFlagListGmAddr_;
+    __gm__ int32_t *groupFlagListGmAddr_;
 
     // UB ADDR
     AscendC::LocalTensor<DataTypeIn> l0cOutUbFirst_{AscendC::TPosition::VECIN, 0, MAX_SINGLE_MN};
     static constexpr uint32_t kUbSecondOffset =
-        (MAX_SINGLE_MN * sizeof(DataTypeIn) * 2U <= 256U * 1024U)
-            ? (MAX_SINGLE_MN * sizeof(DataTypeIn))
-            : 0U;
+        (MAX_SINGLE_MN * sizeof(DataTypeIn) * 2U <= 256U * 1024U) ? (MAX_SINGLE_MN * sizeof(DataTypeIn)) : 0U;
     AscendC::LocalTensor<DataTypeIn> l0cOutUbSecond_{AscendC::TPosition::VECIN, kUbSecondOffset, MAX_SINGLE_MN};
     AscendC::LocalTensor<int8_t> quantOutput_;
     AscendC::LocalTensor<int8_t> quantScaleOutput_;
@@ -225,10 +222,9 @@ private:
 };
 
 BLOCK_EPILOGUE_SWIGLU_QUANT_CLASS_LOCAL_PARAMS
-__aicore__ inline void
-BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::Init(Params const &params)
+__aicore__ inline void BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::Init(Params const &params)
 {
-    if constexpr(g_coreType == AscendC::AIC) {
+    if constexpr (g_coreType == AscendC::AIC) {
         return;
     }
     params_ = &params;
@@ -251,25 +247,25 @@ BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::Init(Param
     constexpr uint32_t quantOutputOffset = gluResOffset + MAX_SINGLE_MN_ALIAS * sizeof(bfloat16_t);
     quantOutput_ = AscendC::LocalTensor<int8_t>(AscendC::TPosition::VECOUT, quantOutputOffset, MAX_SINGLE_MN_ALIAS);
     constexpr uint32_t quantScaleOffset = quantOutputOffset + MAX_SINGLE_MN_ALIAS * sizeof(int8_t);
-    quantScaleOutput_ = AscendC::LocalTensor<int8_t>(
-        AscendC::TPosition::VECOUT, quantScaleOffset, MAX_SINGLE_MN_ALIAS / AscendC::ONE_BLK_SIZE);
+    quantScaleOutput_ = AscendC::LocalTensor<int8_t>(AscendC::TPosition::VECOUT, quantScaleOffset,
+                                                     MAX_SINGLE_MN_ALIAS / AscendC::ONE_BLK_SIZE);
     constexpr uint32_t maxExpOffset = quantScaleOffset + MAX_SINGLE_MN_ALIAS / AscendC::ONE_BLK_SIZE * sizeof(int8_t);
-    maxExp_ = AscendC::LocalTensor<uint16_t>(
-        AscendC::TPosition::VECCALC, maxExpOffset, MAX_SINGLE_MN_ALIAS / AscendC::ONE_BLK_SIZE);
+    maxExp_ = AscendC::LocalTensor<uint16_t>(AscendC::TPosition::VECCALC, maxExpOffset,
+                                             MAX_SINGLE_MN_ALIAS / AscendC::ONE_BLK_SIZE);
     constexpr uint32_t halfScaleOffset = maxExpOffset + MAX_SINGLE_MN_ALIAS / AscendC::ONE_BLK_SIZE * sizeof(uint16_t);
-    halfScale_ = AscendC::LocalTensor<uint16_t>(
-        AscendC::TPosition::VECCALC, halfScaleOffset, MAX_SINGLE_MN_ALIAS / AscendC::ONE_BLK_SIZE);
+    halfScale_ = AscendC::LocalTensor<uint16_t>(AscendC::TPosition::VECCALC, halfScaleOffset,
+                                                MAX_SINGLE_MN_ALIAS / AscendC::ONE_BLK_SIZE);
 }
 
 BLOCK_EPILOGUE_SWIGLU_QUANT_CLASS_LOCAL_PARAMS
 __aicore__ inline void
 BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::UpdateGlobalAddr(const BlockCoord &baseOffset)
 {
-    if constexpr(g_coreType == AscendC::AIV) {
+    if constexpr (g_coreType == AscendC::AIV) {
         quantOutputGlobal_.SetGlobalBuffer((__gm__ int8_t *)params_->yGmAddr + Get<Y_IDX>(baseOffset));
         quantScaleGlobal_.SetGlobalBuffer((__gm__ int8_t *)params_->yScaleGmAddr + Get<Y_SCALE_IDX>(baseOffset));
-        groupFlagListGmAddr_ = (__gm__ int32_t *)params_->groupFlagListGmAddr +
-        Get<GROUP_FLAG_IDX>(baseOffset) * INT_CACHELINE;
+        groupFlagListGmAddr_ =
+            (__gm__ int32_t *)params_->groupFlagListGmAddr + Get<GROUP_FLAG_IDX>(baseOffset) * INT_CACHELINE;
     }
 }
 
@@ -278,8 +274,8 @@ __aicore__ inline void BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LO
     const ProblemShape &problemShape)
 {
     n_ = Get<N_VALUE>(problemShape); // n/2
-    scaleN_ = Ops::Base::CeilDiv(static_cast<uint64_t>(n_), static_cast<uint64_t>(MXFP_DIVISOR_SIZE))
-        * MXFP_MULTI_BASE_SIZE;
+    scaleN_ =
+        Ops::Base::CeilDiv(static_cast<uint64_t>(n_), static_cast<uint64_t>(MXFP_DIVISOR_SIZE)) * MXFP_MULTI_BASE_SIZE;
 }
 
 BLOCK_EPILOGUE_SWIGLU_QUANT_CLASS_LOCAL_PARAMS
@@ -294,8 +290,8 @@ __aicore__ inline void BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LO
         ub2GmParams.dstStride = (n_ - singleN_) >> 1;
         offset = offset >> 1;
     } else {
-        uint64_t nDstUbAligned = Ops::Base::CeilAlign(static_cast<uint64_t>(singleN_),
-            static_cast<uint64_t>(AscendC::ONE_BLK_SIZE));
+        uint64_t nDstUbAligned =
+            Ops::Base::CeilAlign(static_cast<uint64_t>(singleN_), static_cast<uint64_t>(AscendC::ONE_BLK_SIZE));
         ub2GmParams.blockLen = singleN_; // 256
         ub2GmParams.srcStride = (nDstUbAligned - singleN_) / AscendC::ONE_BLK_SIZE;
         ub2GmParams.dstStride = n_ - singleN_;
@@ -304,16 +300,15 @@ __aicore__ inline void BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LO
 }
 
 BLOCK_EPILOGUE_SWIGLU_QUANT_CLASS_LOCAL_PARAMS
-__aicore__ inline void
-BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::CopyScaleFromUb2GmCompact(
+__aicore__ inline void BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::CopyScaleFromUb2GmCompact(
     uint64_t blockCount, uint64_t offset, AscendC::LocalTensor<int8_t> &src)
 {
     AscendC::DataCopyExtParams ub2GmParams{0, 0, 0, 0, 0};
-    auto blockScaleN = Ops::Base::CeilDiv(static_cast<uint64_t>(singleN_), static_cast<uint64_t>(MXFP_DIVISOR_SIZE))
-        * MXFP_MULTI_BASE_SIZE; // 256 / 32 = 8
+    auto blockScaleN = Ops::Base::CeilDiv(static_cast<uint64_t>(singleN_), static_cast<uint64_t>(MXFP_DIVISOR_SIZE)) *
+                       MXFP_MULTI_BASE_SIZE; // 256 / 32 = 8
     // scale layout in UB is already compact: (mSize, blockScaleN). Compact copy avoids (mSize*8)->(mSize,32).
     ub2GmParams.blockCount = blockCount; // 128
-    ub2GmParams.blockLen = blockScaleN; // 8
+    ub2GmParams.blockLen = blockScaleN;  // 8
     ub2GmParams.srcStride = 0;
     ub2GmParams.dstStride = scaleN_ - blockScaleN;
     AscendC::DataCopyPad<int8_t, AscendC::PaddingMode::Compact>(quantScaleGlobal_[offset], src, ub2GmParams);
@@ -340,9 +335,9 @@ __aicore__ inline void BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LO
                                         AscendC::MicroAPI::LoadDist::DIST_DINTLV_B16>(
                 vdExp0, vdExp1, srcAddr, onceNum); // copy two chunks from srcAddr to regbase
             AscendC::MicroAPI::And(vdExpExtract0, (AscendC::MicroAPI::RegTensor<uint16_t> &)vdExp0, expMaskBF16,
-                                       scaleMask1);
+                                   scaleMask1);
             AscendC::MicroAPI::And(vdExpExtract1, (AscendC::MicroAPI::RegTensor<uint16_t> &)vdExp1, expMaskBF16,
-                                       scaleMask1);
+                                   scaleMask1);
             AscendC::MicroAPI::Max(vdMaxExp, vdExpExtract0, vdExpExtract1, scaleMask1);
             AscendC::MicroAPI::ReduceMaxWithDataBlock(vdMaxExp, vdMaxExp, scaleMask1);
             AscendC::MicroAPI::DataCopyUnAlign<uint16_t, AscendC::MicroAPI::PostLiteral::POST_MODE_UPDATE>(
@@ -366,16 +361,16 @@ __aicore__ inline void BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LO
         AscendC::MicroAPI::Duplicate(expMask, MAX_EXP_FOR_BF16); // MAX_EXP_FOR_BF16表示bf16正无穷 大小：128
         AscendC::MicroAPI::MaskReg cmpResult, zeroMask, cmpResultSub, preMaskScale;
         AscendC::MicroAPI::RegTensor<uint16_t> maxExpValue, sharedExp, scaleValue, scaleBias, halfScale;
-        AscendC::MicroAPI::Duplicate(maxExpValue, fpEmax_); // 0x0780 大小：128 对应bf16指数位后四位
+        AscendC::MicroAPI::Duplicate(maxExpValue, fpEmax_);     // 0x0780 大小：128 对应bf16指数位后四位
         AscendC::MicroAPI::Duplicate(scaleBias, BF16_EXP_BIAS); // 0x7f00 大小：128
         AscendC::MicroAPI::RegTensor<uint16_t> fp8NanRegTensor, zeroRegTensor, nanRegTensor;
         AscendC::MicroAPI::Duplicate(fp8NanRegTensor, MAX_EXP_FOR_FP8); // 0x00ff 大小：128
-        AscendC::MicroAPI::Duplicate(zeroRegTensor, 0); // 0 大小：128
-        AscendC::MicroAPI::Duplicate(nanRegTensor, NAN_CUSTOMIZATION); // 0x7f81 大小：128
+        AscendC::MicroAPI::Duplicate(zeroRegTensor, 0);                 // 0 大小：128
+        AscendC::MicroAPI::Duplicate(nanRegTensor, NAN_CUSTOMIZATION);  // 0x7f81 大小：128
         AscendC::MicroAPI::MaskReg invalidDataMask, specialDataMask;
         AscendC::MicroAPI::RegTensor<uint16_t> specialExpRegTensor;
-        AscendC::MicroAPI::Duplicate(specialExpRegTensor, SPECIAL_EXP_THRESHOLD); // 0x0040 大小：128
-        for (uint16_t i = 0; i < loopNumScale; i++) { // 8
+        AscendC::MicroAPI::Duplicate(specialExpRegTensor, SPECIAL_EXP_THRESHOLD);   // 0x0040 大小：128
+        for (uint16_t i = 0; i < loopNumScale; i++) {                               // 8
             preMaskScale = AscendC::MicroAPI::UpdateMask<uint16_t>(totalScaleInUB); // 128*8
             AscendC::MicroAPI::DataCopy<uint16_t, AscendC::MicroAPI::PostLiteral::POST_MODE_UPDATE>(
                 vdMaxExp, maxExpAddr, onceNum); // 每次搬运128个数到vdMaxExp
@@ -397,8 +392,8 @@ __aicore__ inline void BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LO
             AscendC::MicroAPI::Select<uint16_t>(scaleValue, scaleValue, zeroRegTensor, zeroMask);
             // 将scaleValue中数取低半部分，搬运到mxScaleLocalAddr uint16--int8
             AscendC::MicroAPI::DataCopy<uint16_t, AscendC::MicroAPI::PostLiteral::POST_MODE_UPDATE,
-                                        AscendC::MicroAPI::StoreDist::DIST_PACK_B16>(
-                mxScaleLocalAddr, scaleValue, onceNumMxScale, preMaskScale);
+                                        AscendC::MicroAPI::StoreDist::DIST_PACK_B16>(mxScaleLocalAddr, scaleValue,
+                                                                                     onceNumMxScale, preMaskScale);
             // 得到sharedExp等于0x7f00的结果掩码 specialDataMask
             AscendC::MicroAPI::Compare<uint16_t, AscendC::CMPMODE::EQ>(specialDataMask, sharedExp, scaleBias,
                                                                        preMaskScale);
@@ -443,8 +438,8 @@ BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::ComputeDat
         for (uint16_t i = 0; i < loopNum; i++) {
             // DIST_DINTLV_B16:双搬入模式，读取2*VL长度数据，将偶数索引的元素存入dst0，奇数索引的元素存入dst1
             AscendC::MicroAPI::DataCopy<T, AscendC::MicroAPI::PostLiteral::POST_MODE_UPDATE,
-                                        AscendC::MicroAPI::LoadDist::DIST_DINTLV_B16>(
-                vdExp0, vdExp1, srcAddr, onceXNum);
+                                        AscendC::MicroAPI::LoadDist::DIST_DINTLV_B16>(vdExp0, vdExp1, srcAddr,
+                                                                                      onceXNum);
             // 将halfScale中的8个数uint16广播到halfScaleForMul中，halfScale[0]*16 halfScale[1]*16...
             AscendC::MicroAPI::DataCopy<uint16_t, AscendC::MicroAPI::PostLiteral::POST_MODE_UPDATE,
                                         AscendC::MicroAPI::LoadDist::DIST_E2B_B16>(halfScaleForMul, halfScaleLocalAddr,
@@ -503,8 +498,8 @@ BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::ComputeDat
         for (uint16_t i = 0; i < loopNum; i++) {
             dataMask1 = AscendC::MicroAPI::UpdateMask<T>(totalCountInUB);
             AscendC::MicroAPI::DataCopy<T, AscendC::MicroAPI::PostLiteral::POST_MODE_UPDATE,
-                                        AscendC::MicroAPI::LoadDist::DIST_DINTLV_B16>(
-                vdExp0, vdExp1, srcAddr, onceXNum);
+                                        AscendC::MicroAPI::LoadDist::DIST_DINTLV_B16>(vdExp0, vdExp1, srcAddr,
+                                                                                      onceXNum);
             AscendC::MicroAPI::DataCopy<uint16_t, AscendC::MicroAPI::PostLiteral::POST_MODE_UPDATE,
                                         AscendC::MicroAPI::LoadDist::DIST_E2B_B16>(halfScaleForMul, halfScaleLocalAddr,
                                                                                    elementAfterReduce);
@@ -528,9 +523,8 @@ BLOCK_EPILOGUE_SWIGLU_QUANT_CLASS_LOCAL_PARAMS
 template <SwigluQuantMsg::QuantMode quantMode, bool IsInterleavedSrc>
 __aicore__ inline void BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::VFDoSwigluAndQuantForMX(
     __ubuf__ int8_t *outputDst, __ubuf__ uint16_t *scaleDst, __ubuf__ DataTypeIn *firstSrc,
-    __ubuf__ DataTypeIn *secondSrc, __ubuf__ bfloat16_t *gluResAddr,
-    __ubuf__ uint16_t *maxExpAddr, __ubuf__ uint16_t *halfScaleLocalAddr,
-    uint16_t mSize, uint16_t nSize)
+    __ubuf__ DataTypeIn *secondSrc, __ubuf__ bfloat16_t *gluResAddr, __ubuf__ uint16_t *maxExpAddr,
+    __ubuf__ uint16_t *halfScaleLocalAddr, uint16_t mSize, uint16_t nSize)
 {
     uint32_t nSrcUbAligned;
     if constexpr (IsInterleavedSrc) {
@@ -539,10 +533,10 @@ __aicore__ inline void BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LO
     } else {
         // 非interleaved源布局为两块独立UB，按原master逻辑只需要对齐单个nSize
         nSrcUbAligned = Ops::Base::CeilAlign(static_cast<uint32_t>(nSize),
-            static_cast<uint32_t>(AscendC::ONE_BLK_SIZE / sizeof(DataTypeIn)));
+                                             static_cast<uint32_t>(AscendC::ONE_BLK_SIZE / sizeof(DataTypeIn)));
     }
-    uint32_t nDstUbAligned = Ops::Base::CeilAlign(static_cast<uint32_t>(nSize),
-        static_cast<uint32_t>(AscendC::ONE_BLK_SIZE));
+    uint32_t nDstUbAligned =
+        Ops::Base::CeilAlign(static_cast<uint32_t>(nSize), static_cast<uint32_t>(AscendC::ONE_BLK_SIZE));
     uint16_t dim0VfTimes = mSize;
     uint16_t dim1VfTimes = nSize / VF_LEN_FP32;
     uint32_t dim1Tail = nSize % VF_LEN_FP32;
@@ -590,16 +584,14 @@ __aicore__ inline void BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LO
         AscendC::MicroAPI::RegTensor<float> outFReg;
         AscendC::MicroAPI::RegTensor<bfloat16_t> outTReg;
         AscendC::MicroAPI::RegTensor<bfloat16_t> zeroReg;
-        AscendC::MicroAPI::MaskReg mask =
-            AscendC::MicroAPI::CreateMask<float, AscendC::MicroAPI::MaskPattern::ALL>();
+        AscendC::MicroAPI::MaskReg mask = AscendC::MicroAPI::CreateMask<float, AscendC::MicroAPI::MaskPattern::ALL>();
         AscendC::MicroAPI::MaskReg mask1 = AscendC::MicroAPI::UpdateMask<float>(mask1Num);
         AscendC::MicroAPI::MaskReg mask2 = AscendC::MicroAPI::UpdateMask<float>(mask2Num);
         AscendC::MicroAPI::MaskReg mask3 = AscendC::MicroAPI::UpdateMask<bfloat16_t>(mask3Num);
         for (uint16_t dim0vfLoopIdx = 0; dim0vfLoopIdx < dim0VfTimes; dim0vfLoopIdx++) {
             for (uint16_t dim1vfLoopIdx = 0; dim1vfLoopIdx < dim1VfTimes; dim1vfLoopIdx++) {
-                AscendC::MicroAPI::AddrReg srcIdxOffset =
-                    AscendC::MicroAPI::CreateAddrReg<DataTypeIn>(dim0vfLoopIdx, nSrcUbAligned,
-                                                                 dim1vfLoopIdx, VF_LEN_FP32);
+                AscendC::MicroAPI::AddrReg srcIdxOffset = AscendC::MicroAPI::CreateAddrReg<DataTypeIn>(
+                    dim0vfLoopIdx, nSrcUbAligned, dim1vfLoopIdx, VF_LEN_FP32);
                 // 每次计算m=1, n=64的数据大小
                 AscendC::MicroAPI::DataCopy<DataTypeIn, AscendC::MicroAPI::LoadDist::DIST_UNPACK_B16>(
                     vregX1, firstSrc, srcIdxOffset); // swishInput:x bf16
@@ -615,15 +607,14 @@ __aicore__ inline void BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LO
 
                 // swish
                 AscendC::MicroAPI::Muls(negReg, vregX1F, negScalarOne, mask); // -x
-                AscendC::MicroAPI::Exp(expReg, negReg, mask); // exp(-x)
-                AscendC::MicroAPI::Adds(addsReg, expReg, scalarOne, mask); // exp(-x)+1
-                AscendC::MicroAPI::Div(sigmoidReg, vregX1F, addsReg, mask); // swish(x)=x/(exp(-x)+1)
-                AscendC::MicroAPI::Mul(outFReg, sigmoidReg, vregX2F, mask); // swish(x)*y
+                AscendC::MicroAPI::Exp(expReg, negReg, mask);                 // exp(-x)
+                AscendC::MicroAPI::Adds(addsReg, expReg, scalarOne, mask);    // exp(-x)+1
+                AscendC::MicroAPI::Div(sigmoidReg, vregX1F, addsReg, mask);   // swish(x)=x/(exp(-x)+1)
+                AscendC::MicroAPI::Mul(outFReg, sigmoidReg, vregX2F, mask);   // swish(x)*y
 
                 AscendC::MicroAPI::Cast<bfloat16_t, float, CAST_FP32_TO_FP16_BF16>(outTReg, outFReg, mask);
-                AscendC::MicroAPI::AddrReg outOffset =
-                    AscendC::MicroAPI::CreateAddrReg<bfloat16_t>(dim0vfLoopIdx, nDstUbAligned,
-                                                                  dim1vfLoopIdx, VF_LEN_FP32);
+                AscendC::MicroAPI::AddrReg outOffset = AscendC::MicroAPI::CreateAddrReg<bfloat16_t>(
+                    dim0vfLoopIdx, nDstUbAligned, dim1vfLoopIdx, VF_LEN_FP32);
                 AscendC::MicroAPI::DataCopy<bfloat16_t, AscendC::MicroAPI::StoreDist::DIST_PACK_B32>(
                     gluResAddr, outTReg, outOffset, mask); // gluRes:swish(x)*y 搬运到目标地址
             }
@@ -662,15 +653,16 @@ __aicore__ inline void BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LO
     }
 
     // quant
-    uint32_t totalDataInUb = mSize * nDstUbAligned; // 128*256
+    uint32_t totalDataInUb = mSize * nDstUbAligned;                  // 128*256
     uint32_t totalScaleInUb = totalDataInUb / AscendC::ONE_BLK_SIZE; // 128*256 / 32 = 128 * 8
     uint16_t loopDataNum = (totalDataInUb + vlForHalfNumber_ * 2 - 1) / (vlForHalfNumber_ * 2); // 128
-    uint16_t loopScaleNum = (totalScaleInUb + vlForHalfNumber_ - 1) / vlForHalfNumber_; // 8
-    ComputeMaxExp(gluResAddr, maxExpAddr, totalDataInUb, loopDataNum); // 获取最大值
+    uint16_t loopScaleNum = (totalScaleInUb + vlForHalfNumber_ - 1) / vlForHalfNumber_;         // 8
+    ComputeMaxExp(gluResAddr, maxExpAddr, totalDataInUb, loopDataNum);                          // 获取最大值
     ComputeScale(maxExpAddr, scaleDst, halfScaleLocalAddr, totalScaleInUb, loopScaleNum); // 计算scale和halfScale
     if constexpr (AscendC::IsSameType<DataTypeOut, fp8_e4m3fn_t>::value ||
                   AscendC::IsSameType<DataTypeOut, fp8_e5m2_t>::value) {
-        ComputeDataForQuantTargetFp8(gluResAddr, halfScaleLocalAddr, outputDst, totalDataInUb, loopDataNum); // 计算量化后的值
+        ComputeDataForQuantTargetFp8(gluResAddr, halfScaleLocalAddr, outputDst, totalDataInUb,
+                                     loopDataNum); // 计算量化后的值
     }
     if constexpr (AscendC::IsSameType<DataTypeOut, fp4x2_e2m1_t>::value ||
                   AscendC::IsSameType<DataTypeOut, fp4x2_e1m2_t>::value) {
@@ -682,7 +674,7 @@ __aicore__ inline void BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LO
 BLOCK_EPILOGUE_SWIGLU_QUANT_CLASS_LOCAL_PARAMS
 __aicore__ inline void
 BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::VFDoSwigluForMX(uint16_t mSize,
-                                                                                       uint16_t pingpongIdx)
+                                                                                      uint16_t pingpongIdx)
 {
     constexpr uint32_t pongElemOf_DataTypeIn = MAX_SINGLE_MN;
     constexpr uint32_t pongElemOf_bf16 = MAX_SINGLE_MN * sizeof(DataTypeIn) / sizeof(bfloat16_t);
@@ -693,31 +685,25 @@ BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::VFDoSwiglu
 
     __ubuf__ DataTypeIn *l0cOutUbBase =
         (__ubuf__ DataTypeIn *)l0cOutUbFirst_.GetPhyAddr() + pongMul * pongElemOf_DataTypeIn;
-    __ubuf__ bfloat16_t *gluResAddr =
-        (__ubuf__ bfloat16_t *)gluRes_.GetPhyAddr() + pongMul * pongElemOf_bf16;
-    __ubuf__ int8_t *quantOutputInUbAddr =
-        (__ubuf__ int8_t *)quantOutput_.GetPhyAddr() + pongMul * pongElemOf_int8;
+    __ubuf__ bfloat16_t *gluResAddr = (__ubuf__ bfloat16_t *)gluRes_.GetPhyAddr() + pongMul * pongElemOf_bf16;
+    __ubuf__ int8_t *quantOutputInUbAddr = (__ubuf__ int8_t *)quantOutput_.GetPhyAddr() + pongMul * pongElemOf_int8;
     __ubuf__ uint16_t *quantScaleOutputInUbAddr =
         (__ubuf__ uint16_t *)quantScaleOutput_.GetPhyAddr() + pongMul * pongElemOf_uint16;
-    __ubuf__ uint16_t *maxExpAddr =
-        (__ubuf__ uint16_t *)maxExp_.GetPhyAddr() + pongMul * pongElemOf_uint16;
-    __ubuf__ uint16_t *halfScaleAddr =
-        (__ubuf__ uint16_t *)halfScale_.GetPhyAddr() + pongMul * pongElemOf_uint16;
+    __ubuf__ uint16_t *maxExpAddr = (__ubuf__ uint16_t *)maxExp_.GetPhyAddr() + pongMul * pongElemOf_uint16;
+    __ubuf__ uint16_t *halfScaleAddr = (__ubuf__ uint16_t *)halfScale_.GetPhyAddr() + pongMul * pongElemOf_uint16;
 
     if constexpr (IsInterleaved_) {
         // interleaved布局中两半输入在同一行连续存放，第二半从singleN_之后开始。
         __ubuf__ DataTypeIn *l0cOutUbSecondAddr = l0cOutUbBase + singleN_;
         VFDoSwigluAndQuantForMX<SwigluQuantMsg::QuantMode::MX_PERGROUP_MODE, true>(
-            quantOutputInUbAddr, quantScaleOutputInUbAddr,
-            l0cOutUbBase, l0cOutUbSecondAddr,
-            gluResAddr, maxExpAddr, halfScaleAddr, mSize, singleN_);
+            quantOutputInUbAddr, quantScaleOutputInUbAddr, l0cOutUbBase, l0cOutUbSecondAddr, gluResAddr, maxExpAddr,
+            halfScaleAddr, mSize, singleN_);
     } else {
         // 非interleaved保留upstream/master的两块UB输入布局。
         __ubuf__ DataTypeIn *l0cOutUbSecondAddr = (__ubuf__ DataTypeIn *)l0cOutUbSecond_.GetPhyAddr();
         VFDoSwigluAndQuantForMX<SwigluQuantMsg::QuantMode::MX_PERGROUP_MODE, false>(
-            quantOutputInUbAddr, quantScaleOutputInUbAddr,
-            l0cOutUbBase, l0cOutUbSecondAddr,
-            gluResAddr, maxExpAddr, halfScaleAddr, mSize, singleN_);
+            quantOutputInUbAddr, quantScaleOutputInUbAddr, l0cOutUbBase, l0cOutUbSecondAddr, gluResAddr, maxExpAddr,
+            halfScaleAddr, mSize, singleN_);
     }
 }
 
@@ -734,10 +720,8 @@ __aicore__ inline auto BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LO
 }
 
 BLOCK_EPILOGUE_SWIGLU_QUANT_CLASS_LOCAL_PARAMS
-__aicore__ inline void
-BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::operator()(const BlockShape &blockShape,
-                                                                                   const BlockCoord &blockCoord,
-                                                                                   uint16_t pingpongIdx)
+__aicore__ inline void BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::operator()(
+    const BlockShape &blockShape, const BlockCoord &blockCoord, uint16_t pingpongIdx)
 {
     singleM_ = Get<M_VALUE>(blockShape); // 128
     singleN_ = Get<N_VALUE>(blockShape); // 256
@@ -748,8 +732,8 @@ BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::operator()
     }
 
     vlForHalfNumber_ = AscendC::VECTOR_REG_WIDTH / sizeof(bfloat16_t); // 256 / 2 = 128
-    UBBlockSize_ = BLOCK_SIZE; // 32
-    elementAfterReduce_ = AscendC::VECTOR_REG_WIDTH / UBBlockSize_; // 256 / 32 = 8
+    UBBlockSize_ = BLOCK_SIZE;                                         // 32
+    elementAfterReduce_ = AscendC::VECTOR_REG_WIDTH / UBBlockSize_;    // 256 / 32 = 8
 
     uint64_t yOffset = Get<Y_IDX>(blockCoord);
     uint64_t yScaleOffset = Get<Y_SCALE_IDX>(blockCoord);

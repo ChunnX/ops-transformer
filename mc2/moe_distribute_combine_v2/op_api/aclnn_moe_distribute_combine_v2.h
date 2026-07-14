@@ -28,11 +28,15 @@ extern "C" {
  * @param [in] assistInfoForCombine: 计算输入，Tensor，数据类型int32，必须为1维，数据格式支持ND。
  * @param [in] epSendCounts: 计算输入，Tensor，数据类型int32，必须为1维，数据格式支持ND。
  * @param [in] expertScales: 计算输入，Tensor，数据类型float32，必须为2维，数据格式支持ND。
- * @param [in] tpSendCountsOptional: 计算输入，Tensor，数据类型int32，必须为1维，数据格式支持ND。若有TP域通信需要传参，若无TP域通信，传空指针即可。
+ * @param [in] tpSendCountsOptional:
+ * 计算输入，Tensor，数据类型int32，必须为1维，数据格式支持ND。若有TP域通信需要传参，若无TP域通信，传空指针即可。
  * @param [in] xActiveMaskOptional: 计算输入，Tensor，数据类型bool，必须为1维，数据格式支持ND。
- * @param [in] activationScaleOptional: 计算输入，Tensor，数据类型float32，必须为1维，数据格式支持ND。预留参数，当前版本不支持，传空指针即可。
- * @param [in] weightScaleOptional: 计算输入，Tensor，数据类型float32，必须为2维，数据格式支持ND。预留参数，暂未使用，传空即可。
- * @param [in] groupListOptional: 计算输入，Tensor，数据类型int64，必须为1维，数据格式支持ND。预留参数，暂未使用，传空即可。
+ * @param [in] activationScaleOptional:
+ * 计算输入，Tensor，数据类型float32，必须为1维，数据格式支持ND。预留参数，当前版本不支持，传空指针即可。
+ * @param [in] weightScaleOptional:
+ * 计算输入，Tensor，数据类型float32，必须为2维，数据格式支持ND。预留参数，暂未使用，传空即可。
+ * @param [in] groupListOptional:
+ * 计算输入，Tensor，数据类型int64，必须为1维，数据格式支持ND。预留参数，暂未使用，传空即可。
  * @param [in] expandScalesOptional: 计算输入，Tensor，数据类型float32，必须为1维，数据格式支持ND。
  * @param [in] sharedExpertXOptional: 计算可选输入，Tensor，数据类型float16，bfloat16，必须为2维，数据格式支持ND。
  * @param [in] groupEp: 计算输入，str。ep通信域名称，专家并行的通信域。不能和groupTp相同。
@@ -56,33 +60,30 @@ extern "C" {
  * @return aclnnStatus: 返回值，返回状态码
  *
  */
-ACLNN_API aclnnStatus aclnnMoeDistributeCombineV2GetWorkspaceSize(const aclTensor* expandX, const aclTensor* expertIds,
-    const aclTensor* assistInfoForCombine, const aclTensor* epSendCounts,
-    const aclTensor* expertScales, const aclTensor* tpSendCountsOptional,
-    const aclTensor* xActiveMaskOptional, const aclTensor* activationScaleOptional,
-    const aclTensor* weightScaleOptional, const aclTensor* groupListOptional, const aclTensor* expandScalesOptional,
-    const aclTensor* sharedExpertXOptional,
-    const char* groupEp, int64_t epWorldSize, 
-    int64_t epRankId, int64_t moeExpertNum,
-    const char* groupTp, int64_t tpWorldSize, int64_t tpRankId,
-    int64_t expertShardType, int64_t sharedExpertNum, int64_t sharedExpertRankNum, 
-    int64_t globalBs, int64_t outDtype, int64_t commQuantMode,
-    int64_t groupListType, const char* commAlg, aclTensor* xOut, uint64_t* workspaceSize,
-    aclOpExecutor** executor);
+ACLNN_API aclnnStatus aclnnMoeDistributeCombineV2GetWorkspaceSize(
+    const aclTensor *expandX, const aclTensor *expertIds, const aclTensor *assistInfoForCombine,
+    const aclTensor *epSendCounts, const aclTensor *expertScales, const aclTensor *tpSendCountsOptional,
+    const aclTensor *xActiveMaskOptional, const aclTensor *activationScaleOptional,
+    const aclTensor *weightScaleOptional, const aclTensor *groupListOptional, const aclTensor *expandScalesOptional,
+    const aclTensor *sharedExpertXOptional, const char *groupEp, int64_t epWorldSize, int64_t epRankId,
+    int64_t moeExpertNum, const char *groupTp, int64_t tpWorldSize, int64_t tpRankId, int64_t expertShardType,
+    int64_t sharedExpertNum, int64_t sharedExpertRankNum, int64_t globalBs, int64_t outDtype, int64_t commQuantMode,
+    int64_t groupListType, const char *commAlg, aclTensor *xOut, uint64_t *workspaceSize, aclOpExecutor **executor);
 
 /**
  * @brief aclnnMoeDistributeCombine的第二段接口，用于执行计算。
  * @param [in] workspace: 在npu device侧申请的workspace内存起址。
- * @param [in] workspace_size: 在npu device侧申请的workspace大小，由第一段接口aclnnMoeDistributeCombineGetWorkspaceSize获取。
+ * @param [in] workspace_size: 在npu
+ * device侧申请的workspace大小，由第一段接口aclnnMoeDistributeCombineGetWorkspaceSize获取。
  * @param [in] executor: op执行器，包含了算子计算流程。
  * @param [in] stream: acl stream流。
  * @return aclnnStatus: 返回状态码
  */
-ACLNN_API aclnnStatus aclnnMoeDistributeCombineV2(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor,
-                                                aclrtStream stream);
+ACLNN_API aclnnStatus aclnnMoeDistributeCombineV2(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
+                                                  aclrtStream stream);
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif  // OP_API_INC_MOE_DISTRIBUTE_COMBINE_V2_
+#endif // OP_API_INC_MOE_DISTRIBUTE_COMBINE_V2_

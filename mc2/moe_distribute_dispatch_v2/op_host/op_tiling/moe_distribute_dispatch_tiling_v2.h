@@ -36,31 +36,31 @@
 namespace optiling {
 
 struct DispatchV2Config {
-    uint32_t contextIndex = 0U;  // 0: 根据dispatchV3算子原型标志位初始化context索引
-    uint32_t xIndex = 0U; // 0: 根据dispatchV2算子原型标志位初始化groupEp索引
-    uint32_t expertIdsIndex = 1U; // 1: 根据dispatchV2算子原型标志位初始化expertIds索引
-    uint32_t scalesIndex = 2U; // 2: 根据dispatchV2算子原型标志位初始化scales索引
-    uint32_t xActiveMaskIndex = 3U; // 3: 根据dispatchV2算子原型标志位初始化xActiveMask索引
-    uint32_t expertScalesIndex = 4U; // 4: 根据dispatchV2算子原型标志位初始化expertScales索引
-    uint32_t elasticInfoIndex = 5U; // 5: 根据dispatchV2算子原型标志位初始化elasticInfo索引
-    uint32_t performanceInfoIndex = 6U; // 6: 根据dispatchV2算子原型标志位初始化performanceInfo索引
-    uint32_t attrGroupEpIndex = 0; // 0: 根据dispatchV2算子原型标志位初始化groupEp索引
-    uint32_t attrEpWorldSizeIndex = 1; // 1: 根据dispatchV2算子原型标志位初始化epWorldSize索引
-    uint32_t attrEpRankIdIndex = 2; // 2: 根据dispatchV2算子原型标志位初始化epRankId索引
-    uint32_t attrMoeExpertNumIndex = 3;  // 3: 根据dispatchV2算子原型标志位初始化moeExpertNum索引
-    uint32_t attrCclBufferSizeIndex = 3; // 3: 根据dispatchV3算子原型标志位初始化cclBufferSize索引
-    uint32_t attrGroupTpIndex = 4; // 4: 根据dispatchV2算子原型标志位初始化groupTp索引
-    uint32_t attrTpWorldSizeIndex = 5; // 5: 根据dispatchV2算子原型标志位初始化tpWorldSize索引
-    uint32_t attrTpRankIdIndex = 6; // 6: 根据dispatchV2算子原型标志位初始化tpRankId索引
+    uint32_t contextIndex = 0U;             // 0: 根据dispatchV3算子原型标志位初始化context索引
+    uint32_t xIndex = 0U;                   // 0: 根据dispatchV2算子原型标志位初始化groupEp索引
+    uint32_t expertIdsIndex = 1U;           // 1: 根据dispatchV2算子原型标志位初始化expertIds索引
+    uint32_t scalesIndex = 2U;              // 2: 根据dispatchV2算子原型标志位初始化scales索引
+    uint32_t xActiveMaskIndex = 3U;         // 3: 根据dispatchV2算子原型标志位初始化xActiveMask索引
+    uint32_t expertScalesIndex = 4U;        // 4: 根据dispatchV2算子原型标志位初始化expertScales索引
+    uint32_t elasticInfoIndex = 5U;         // 5: 根据dispatchV2算子原型标志位初始化elasticInfo索引
+    uint32_t performanceInfoIndex = 6U;     // 6: 根据dispatchV2算子原型标志位初始化performanceInfo索引
+    uint32_t attrGroupEpIndex = 0;          // 0: 根据dispatchV2算子原型标志位初始化groupEp索引
+    uint32_t attrEpWorldSizeIndex = 1;      // 1: 根据dispatchV2算子原型标志位初始化epWorldSize索引
+    uint32_t attrEpRankIdIndex = 2;         // 2: 根据dispatchV2算子原型标志位初始化epRankId索引
+    uint32_t attrMoeExpertNumIndex = 3;     // 3: 根据dispatchV2算子原型标志位初始化moeExpertNum索引
+    uint32_t attrCclBufferSizeIndex = 3;    // 3: 根据dispatchV3算子原型标志位初始化cclBufferSize索引
+    uint32_t attrGroupTpIndex = 4;          // 4: 根据dispatchV2算子原型标志位初始化groupTp索引
+    uint32_t attrTpWorldSizeIndex = 5;      // 5: 根据dispatchV2算子原型标志位初始化tpWorldSize索引
+    uint32_t attrTpRankIdIndex = 6;         // 6: 根据dispatchV2算子原型标志位初始化tpRankId索引
     uint32_t attrExpertSharedTypeIndex = 7; // 7: 根据dispatchV2算子原型标志位初始化expertSharedType索引
-    uint32_t attrSharedExpertNumIndex = 8; // 8: 根据dispatchV2算子原型标志位初始化sharedExpertNum索引
+    uint32_t attrSharedExpertNumIndex = 8;  // 8: 根据dispatchV2算子原型标志位初始化sharedExpertNum索引
     uint32_t attrSharedExpertRankNumIndex = 9; // 9: 根据dispatchV2算子原型标志位初始化sharedExpertRankNum索引
-    uint32_t attrQuantModeIndex = 10; // 10: 根据dispatchV2算子原型标志位初始化quantMode索引
-    uint32_t attrGlobalBsIndex = 11; // 11: 根据dispatchV2算子原型标志位初始化globalBs索引
+    uint32_t attrQuantModeIndex = 10;          // 10: 根据dispatchV2算子原型标志位初始化quantMode索引
+    uint32_t attrGlobalBsIndex = 11;           // 11: 根据dispatchV2算子原型标志位初始化globalBs索引
     uint32_t attrExpertTokenNumsTypeIndex = 12; // 12: 根据dispatchV2算子原型标志位初始化expertTokenNumType索引
-    uint32_t attrCommAlgIndex = 13; // 13: 根据dispatchV2算子原型标志位初始化commAlg索引
-    uint32_t attrZeroExpertNumIndex = 14; // 14: 根据dispatchV2算子原型标志位初始化zeroExpertNumIndex索引
-    uint32_t attrCopyExpertNumIndex = 15; // 15: 根据dispatchV2算子原型标志位初始化copyExpertNumIndex索引
+    uint32_t attrCommAlgIndex = 13;             // 13: 根据dispatchV2算子原型标志位初始化commAlg索引
+    uint32_t attrZeroExpertNumIndex = 14;  // 14: 根据dispatchV2算子原型标志位初始化zeroExpertNumIndex索引
+    uint32_t attrCopyExpertNumIndex = 15;  // 15: 根据dispatchV2算子原型标志位初始化copyExpertNumIndex索引
     uint32_t attrConstExpertNumIndex = 16; // 16: 根据dispatchV2算子原型标志位初始化constExpertNumIndex索引
     bool isMc2Context = false;
 };
@@ -70,33 +70,36 @@ class MoeDistributeDispatchV2TilingFuncBase {
 public:
     ge::graphStatus MoeDistributeDispatchA3TilingFuncImplPublic(gert::TilingContext *context, DispatchV2Config &config);
     ge::graphStatus TilingCheckMoeDistributeDispatch(gert::TilingContext *context, const char *nodeName,
-        const bool isActiveMask, const bool isScales, const bool hasElasticInfo,
-        const bool isPerformance, const uint32_t quantMode,
-        const bool isLayered, DispatchV2Config &config);
+                                                     const bool isActiveMask, const bool isScales,
+                                                     const bool hasElasticInfo, const bool isPerformance,
+                                                     const uint32_t quantMode, const bool isLayered,
+                                                     DispatchV2Config &config);
     bool CheckCommomOtherInputTensorDataType(const gert::TilingContext *context, const char *nodeName,
-        const bool isActiveMask, const bool hasElasticInfo, const bool isPerformance, DispatchV2Config &config);
+                                             const bool isActiveMask, const bool hasElasticInfo,
+                                             const bool isPerformance, DispatchV2Config &config);
     bool CheckCommomOutputTensorDataType(const gert::TilingContext *context, const char *nodeName);
     ge::graphStatus CheckOtherAttrParams(const gert::TilingContext *context, const char *nodeName,
-        bool &isSetFullMeshV2, DispatchV2Config &config);
-    ge::graphStatus CheckCommAttrParams(const gert::TilingContext *context, const char *nodeName,
-        std::string &groupTp, bool &isSetFullMeshV2, bool &isLayered, DispatchV2Config &config);
+                                         bool &isSetFullMeshV2, DispatchV2Config &config);
+    ge::graphStatus CheckCommAttrParams(const gert::TilingContext *context, const char *nodeName, std::string &groupTp,
+                                        bool &isSetFullMeshV2, bool &isLayered, DispatchV2Config &config);
     ge::graphStatus GetAttrAndSetTilingData(const gert::TilingContext *context, const char *nodeName,
-        MoeDistributeDispatchV2TilingData &tilingData, std::string &groupEp, std::string &groupTp,
-        bool &isSetFullMeshV2, bool &isLayered, DispatchV2Config &config);
+                                            MoeDistributeDispatchV2TilingData &tilingData, std::string &groupEp,
+                                            std::string &groupTp, bool &isSetFullMeshV2, bool &isLayered,
+                                            DispatchV2Config &config);
 
-    virtual ge::graphStatus MoeDistributeDispatchV2TilingFunc(gert::TilingContext* context) = 0;
-    virtual ge::graphStatus MoeDistributeDispatchTilingFuncImpl(gert::TilingContext* context) = 0;
-    virtual bool CheckTensorDataType(const gert::TilingContext *context, const char *nodeName,
-        const bool isScales, const uint32_t quantMode, const bool isActiveMask, const bool hasElasticInfo,
-        const bool isPerformance, DispatchV2Config &config) = 0;
-    virtual uint64_t CalTilingKey(const bool isScales, const uint32_t quantMode,
-        const bool isSetFullMeshV2, bool isLayered) = 0;
+    virtual ge::graphStatus MoeDistributeDispatchV2TilingFunc(gert::TilingContext *context) = 0;
+    virtual ge::graphStatus MoeDistributeDispatchTilingFuncImpl(gert::TilingContext *context) = 0;
+    virtual bool CheckTensorDataType(const gert::TilingContext *context, const char *nodeName, const bool isScales,
+                                     const uint32_t quantMode, const bool isActiveMask, const bool hasElasticInfo,
+                                     const bool isPerformance, DispatchV2Config &config) = 0;
+    virtual uint64_t CalTilingKey(const bool isScales, const uint32_t quantMode, const bool isSetFullMeshV2,
+                                  bool isLayered) = 0;
     virtual ge::graphStatus CheckQuantModeMatchScales(gert::TilingContext *context, const char *nodeName, bool isScales,
-        uint32_t quantMode, DispatchV2Config &config) = 0;
-    virtual ge::graphStatus CheckCommAlgPtr(const char* commAlgPtr, const char *nodeName) = 0;
-    virtual ge::graphStatus CheckQuantModePtr(const int64_t* quantModePtr, const char *nodeName) = 0;
+                                                      uint32_t quantMode, DispatchV2Config &config) = 0;
+    virtual ge::graphStatus CheckCommAlgPtr(const char *commAlgPtr, const char *nodeName) = 0;
+    virtual ge::graphStatus CheckQuantModePtr(const int64_t *quantModePtr, const char *nodeName) = 0;
 };
 
-} // MOE_DISTRIBUTE_DISPATCH_TILING_V2_H
+} // namespace optiling
 
 #endif

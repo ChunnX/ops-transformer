@@ -26,15 +26,14 @@ using namespace Mc2Kernel;
 using namespace Mc2Tiling;
 using namespace AscendC;
 
-template<uint8_t QuantMode, uint8_t LayeredMode, uint8_t ArchTag>
-__global__ __aicore__ void moe_distribute_combine_v2(GM_ADDR expandX, GM_ADDR expertIds, GM_ADDR assistInfoForCombine,
-                                                    GM_ADDR epSendCount, GM_ADDR scales, GM_ADDR tpSendCounts,
-                                                    GM_ADDR xActiveMask, GM_ADDR activationScale, GM_ADDR weightScale,
-                                                    GM_ADDR groupList, GM_ADDR expandScales, GM_ADDR sharedExpertX,
-                                                    GM_ADDR elasticInfo, GM_ADDR oriX, GM_ADDR constExpertAlpha1,
-                                                    GM_ADDR constExpertAlpha2, GM_ADDR constExpertV,
-                                                    GM_ADDR performanceInfo, GM_ADDR XOut, GM_ADDR workspaceGM,
-                                                    GM_ADDR tilingGM)
+template <uint8_t QuantMode, uint8_t LayeredMode, uint8_t ArchTag>
+__global__ __aicore__ void
+moe_distribute_combine_v2(GM_ADDR expandX, GM_ADDR expertIds, GM_ADDR assistInfoForCombine, GM_ADDR epSendCount,
+                          GM_ADDR scales, GM_ADDR tpSendCounts, GM_ADDR xActiveMask, GM_ADDR activationScale,
+                          GM_ADDR weightScale, GM_ADDR groupList, GM_ADDR expandScales, GM_ADDR sharedExpertX,
+                          GM_ADDR elasticInfo, GM_ADDR oriX, GM_ADDR constExpertAlpha1, GM_ADDR constExpertAlpha2,
+                          GM_ADDR constExpertV, GM_ADDR performanceInfo, GM_ADDR XOut, GM_ADDR workspaceGM,
+                          GM_ADDR tilingGM)
 {
     REGISTER_TILING_DEFAULT(MoeDistributeCombineV2TilingData);
     GET_TILING_DATA_WITH_STRUCT(MoeDistributeCombineV2TilingData, tilingData, tilingGM);
@@ -43,22 +42,22 @@ __global__ __aicore__ void moe_distribute_combine_v2(GM_ADDR expandX, GM_ADDR ex
     if constexpr ((ArchTag == TILINGKEY_TPL_A3) && (LayeredMode == TILINGKEY_TPL_MTE)) {
         GM_ADDR contextGM0 = (GM_ADDR)AscendC::GetHcclContext<HCCL_GROUP_ID_0>();
         MoeDistributeCombineV2<Mc2Kernel::HcclContextHolder, DTYPE_EXPAND_X, DTYPE_X, int32_t, QuantMode, false> op;
-        op.Init(contextGM0, expandX, expertIds, assistInfoForCombine, epSendCount, nullptr, nullptr,
-                scales, xActiveMask, sharedExpertX, elasticInfo, oriX, constExpertAlpha1, constExpertAlpha2,
-                constExpertV, performanceInfo, nullptr, nullptr, XOut, workspaceGM, &pipe, &tilingData);
+        op.Init(contextGM0, expandX, expertIds, assistInfoForCombine, epSendCount, nullptr, nullptr, scales,
+                xActiveMask, sharedExpertX, elasticInfo, oriX, constExpertAlpha1, constExpertAlpha2, constExpertV,
+                performanceInfo, nullptr, nullptr, XOut, workspaceGM, &pipe, &tilingData);
         op.Process();
     } else if constexpr ((ArchTag == TILINGKEY_TPL_A3) && (LayeredMode == TILINGKEY_TPL_HIERARCHY)) {
         if constexpr (QuantMode == TILINGKEY_NO_QUANT) {
             auto contextGM0 = AscendC::GetHcclContext<HCCL_GROUP_ID_0>();
             MoeDistributeCombineV2Layered<DTYPE_EXPAND_X, int32_t, DTYPE_EXPAND_X> op;
-            op.Init(expandX, expertIds, assistInfoForCombine, epSendCount, expandScales, xActiveMask,
-                    XOut, workspaceGM, &pipe, &tilingData, contextGM0);
+            op.Init(expandX, expertIds, assistInfoForCombine, epSendCount, expandScales, xActiveMask, XOut, workspaceGM,
+                    &pipe, &tilingData, contextGM0);
             op.Process();
         } else if constexpr (QuantMode == TILINGKEY_INT8_QUANT) {
             auto contextGM0 = AscendC::GetHcclContext<HCCL_GROUP_ID_0>();
             MoeDistributeCombineV2Layered<DTYPE_EXPAND_X, int32_t, int8_t> op;
-            op.Init(expandX, expertIds, assistInfoForCombine, epSendCount, expandScales, xActiveMask,
-                    XOut, workspaceGM, &pipe, &tilingData, contextGM0);
+            op.Init(expandX, expertIds, assistInfoForCombine, epSendCount, expandScales, xActiveMask, XOut, workspaceGM,
+                    &pipe, &tilingData, contextGM0);
             op.Process();
         }
     }

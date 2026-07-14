@@ -89,7 +89,7 @@ aclnnStatus aclnnMoeDistributeCombineV2(
     <col style="width: 300px">
     <col style="width: 330px">
     <col style="width: 212px">
-    <col style="width: 100px"> 
+    <col style="width: 100px">
     <col style="width: 190px">
     <col style="width: 145px">
     </colgroup>
@@ -463,7 +463,7 @@ aclnnStatus aclnnMoeDistributeCombineV2(
 
 - **返回值**
 
-    aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。  
+    aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
     第一段接口完成入参校验，出现以下场景时报错：
 
@@ -623,7 +623,7 @@ aclnnStatus aclnnMoeDistributeCombineV2(
 
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
 
-    无需配置ranktable文件以及环境变量RANK_TABLE_FILE、FIRST_RANK_ID。 
+    无需配置ranktable文件以及环境变量RANK_TABLE_FILE、FIRST_RANK_ID。
 
     本示例支持A2算子运行在卡数为[2, 8]的单机环境中，运行前需要将示例代码中的IS_TEST_A2设置为true，确保执行A2分支。
     同时，用户可以根据需要在示例代码中设置EP_WORLD_SIZE_A2为卡数，并更改launchOneThreadDispatchV2AndCombineV2_A2函数中的moeExpertNum，使得moeExpertNum可以被EP_WORLD_SIZE_A2整除。
@@ -641,8 +641,8 @@ aclnnStatus aclnnMoeDistributeCombineV2(
     ```
 
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  、<term>Ascend 950DT</term>：
-    
-    无需配置ranktable文件以及环境变量RANK_TABLE_FILE、FIRST_RANK_ID。 
+
+    无需配置ranktable文件以及环境变量RANK_TABLE_FILE、FIRST_RANK_ID。
 
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
@@ -717,7 +717,7 @@ aclnnStatus aclnnMoeDistributeCombineV2(
             strides[i] = shape[i + 1] * strides[i + 1];
         }
         *tensor = aclCreateTensor(
-            shape.data(), shape.size(), dataType, strides.data(), 0, 
+            shape.data(), shape.size(), dataType, strides.data(), 0,
             aclFormat::ACL_FORMAT_ND, shape.data(), shape.size(), *deviceAddr
         );
         return 0;
@@ -768,7 +768,7 @@ aclnnStatus aclnnMoeDistributeCombineV2(
             // 共享专家卡
             localExpertNum = 1;
             A = globalBS / sharedExpertRankNum;
-        } else { 
+        } else {
             // Moe专家卡
             localExpertNum = moeExpertNum / (EP_WORLD_SIZE - sharedExpertRankNum);
             A = globalBS * (localExpertNum < K ? localExpertNum : K);
@@ -800,7 +800,7 @@ aclnnStatus aclnnMoeDistributeCombineV2(
         aclTensor *epRecvCounts = nullptr;
         aclTensor *tpRecvCounts = nullptr;
         aclTensor *expandScales = nullptr;
-        
+
         // 定义当前场景下各变量维度
         std::vector<int64_t> xShape{BS, H};
         std::vector<int64_t> expertIdsShape{BS, K};
@@ -850,25 +850,25 @@ aclnnStatus aclnnMoeDistributeCombineV2(
         CHECK_RET(ret == ACL_SUCCESS, return ret);
         ret = CreateAclTensor(expertIdsHostData, expertIdsShape, &expertIdsDeviceAddr, aclDataType::ACL_INT32, &expertIds);
         CHECK_RET(ret == ACL_SUCCESS, return ret);
-        ret = CreateAclTensor(scalesHostData, scalesShape, &scalesDeviceAddr, aclDataType::ACL_FLOAT, &scales);  
+        ret = CreateAclTensor(scalesHostData, scalesShape, &scalesDeviceAddr, aclDataType::ACL_FLOAT, &scales);
         CHECK_RET(ret == ACL_SUCCESS, return ret);
         ret = CreateAclTensor(expertScalesHostData, expertScalesShape, &expertScalesDeviceAddr, aclDataType::ACL_FLOAT, &expertScales);
         CHECK_RET(ret == ACL_SUCCESS, return ret);
         ret = CreateAclTensor(expandXHostData, expandXShape, &expandXDeviceAddr, (quantMode > 0) ? aclDataType::ACL_INT8 : aclDataType::ACL_BF16, &expandX);
         CHECK_RET(ret == ACL_SUCCESS, return ret);
-        ret = CreateAclTensor(dynamicScalesHostData, dynamicScalesShape, &dynamicScalesDeviceAddr, aclDataType::ACL_FLOAT, &dynamicScales);         
+        ret = CreateAclTensor(dynamicScalesHostData, dynamicScalesShape, &dynamicScalesDeviceAddr, aclDataType::ACL_FLOAT, &dynamicScales);
         CHECK_RET(ret == ACL_SUCCESS, return ret);
         ret = CreateAclTensor(expandIdxHostData, expandIdxShape, &expandIdxDeviceAddr, aclDataType::ACL_INT32, &expandIdx);
         CHECK_RET(ret == ACL_SUCCESS, return ret);
-        ret = CreateAclTensor(expertTokenNumsHostData, expertTokenNumsShape, &expertTokenNumsDeviceAddr, aclDataType::ACL_INT64, &expertTokenNums); 
+        ret = CreateAclTensor(expertTokenNumsHostData, expertTokenNumsShape, &expertTokenNumsDeviceAddr, aclDataType::ACL_INT64, &expertTokenNums);
         CHECK_RET(ret == ACL_SUCCESS, return ret);
         ret = CreateAclTensor(epRecvCountsHostData, epRecvCountsShape, &epRecvCountsDeviceAddr, aclDataType::ACL_INT32, &epRecvCounts);
         CHECK_RET(ret == ACL_SUCCESS, return ret);
         ret = CreateAclTensor(tpRecvCountsHostData, tpRecvCountsShape, &tpRecvCountsDeviceAddr, aclDataType::ACL_INT32, &tpRecvCounts);
         CHECK_RET(ret == ACL_SUCCESS, return ret);
-        ret = CreateAclTensor(expandScalesHostData, expandScalesShape, &expandScalesDeviceAddr, aclDataType::ACL_FLOAT, &expandScales);             
+        ret = CreateAclTensor(expandScalesHostData, expandScalesShape, &expandScalesDeviceAddr, aclDataType::ACL_FLOAT, &expandScales);
         CHECK_RET(ret == ACL_SUCCESS, return ret);
-        
+
         /* 声明算子执行必需变量 */
         uint64_t dispatchV2WorkspaceSize = 0;
         aclOpExecutor *dispatchV2Executor = nullptr;
@@ -876,14 +876,14 @@ aclnnStatus aclnnMoeDistributeCombineV2(
 
         uint64_t combineV2WorkspaceSize = 0;
         aclOpExecutor *combineV2Executor = nullptr;
-        void *combineV2WorkspaceAddr = nullptr;   
+        void *combineV2WorkspaceAddr = nullptr;
 
         /* 依次执行dispatchV2及combineV2算子 */
         // 调用dispatchV2算子第一阶段接口
         ret = aclnnMoeDistributeDispatchV2GetWorkspaceSize(
-            x, expertIds, 
-            (quantMode > 0 ? scales : nullptr), nullptr, 
-            expertScales, 
+            x, expertIds,
+            (quantMode > 0 ? scales : nullptr), nullptr,
+            expertScales,
             hcomEpName, EP_WORLD_SIZE, args.epRankId,
             moeExpertNum, "", 0,
             0, expertShardType, sharedExpertNum,
@@ -936,7 +936,7 @@ aclnnStatus aclnnMoeDistributeCombineV2(
         //（固定写法）同步等待任务执行结束
         ret = aclrtSynchronizeStreamWithTimeout(args.combineV2Stream, 10000);
         CHECK_RET(
-            ret == ACL_SUCCESS, 
+            ret == ACL_SUCCESS,
             LOG_PRINT("[ERROR] aclrtSynchronizeStreamWithTimeout failed. ret = %d\n", ret); return ret
         );
 
@@ -978,7 +978,7 @@ aclnnStatus aclnnMoeDistributeCombineV2(
         aclrtDestroyStream(args.combineV2Stream);
         aclrtDestroyContext(args.context);
         aclrtResetDevice(args.rankId);
-        
+
         return 0;
     }
 

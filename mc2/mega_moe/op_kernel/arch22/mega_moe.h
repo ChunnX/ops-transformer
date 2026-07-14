@@ -311,7 +311,7 @@ __aicore__ inline void MegaMoe<MegaMoeFunc>::Process()
         epilogueCoreNum = static_cast<uint32_t>(aivNum_); // INT8：所有 AIV 参与
         epilogueGranularity = (expertPerRank_ > 4) ? static_cast<uint32_t>(expertPerRank_ - 3) :
                               (expertPerRank_ > 1) ? static_cast<uint32_t>(expertPerRank_ - 1) :
-                                                    1u;
+                                                     1u;
     } else {
         epilogueCoreNum = static_cast<uint32_t>(aivNum_); // BF16/FP16：所有 AIV 参与
         epilogueGranularity = (expertPerRank_ > 2) ? static_cast<uint32_t>(expertPerRank_ - 2) : 1u;

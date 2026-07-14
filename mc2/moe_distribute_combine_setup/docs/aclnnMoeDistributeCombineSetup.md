@@ -83,7 +83,7 @@ aclnnStatus aclnnMoeDistributeCombineSetupTeardownCalcOutputSize(
 ## aclnnMoeDistributeCombineSetupGetWorkspaceSize
 
 - **参数说明**
-  
+
     <table style="undefined;table-layout: fixed; width: 1434px"><colgroup>
     <col style="width: 156px">
     <col style="width: 71px">
@@ -287,7 +287,7 @@ aclnnStatus aclnnMoeDistributeCombineSetupTeardownCalcOutputSize(
         <td>-</td>
     </tr>
     </tbody></table>
-  
+
   - Ascend 950DT：
     - 不支持共享专家场景。
     - epWorldSize当前取值仅支持2、8。
@@ -300,11 +300,11 @@ aclnnStatus aclnnMoeDistributeCombineSetupTeardownCalcOutputSize(
     - commAlg当前版本不支持，传空指针即可。
 
 - **返回值**
-  
+
     aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
     第一段接口完成入参校验，出现以下场景时报错：
-  
+
     <table style="undefined;table-layout: fixed; width: 1000px"><colgroup>
     <col style="width: 300px">
     <col style="width: 150px">
@@ -341,7 +341,7 @@ aclnnStatus aclnnMoeDistributeCombineSetupTeardownCalcOutputSize(
 ## aclnnMoeDistributeCombineSetup
 
 - **参数说明：**
-  
+
     <table style="undefined;table-layout: fixed; width: 1000px"><colgroup>
     <col style="width: 200px">
     <col style="width: 130px">
@@ -378,13 +378,13 @@ aclnnStatus aclnnMoeDistributeCombineSetupTeardownCalcOutputSize(
     </table>
 
 - **返回值：**
-  
+
     返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
 ## aclnnMoeDistributeCombineSetupTeardownCalcOutputSize
 
 - **参数说明**
-  
+
     <table style="undefined;table-layout: fixed; width: 1434px"><colgroup>
     <col style="width: 156px">
     <col style="width: 71px">
@@ -590,7 +590,7 @@ aclnnStatus aclnnMoeDistributeCombineSetupTeardownCalcOutputSize(
     </tbody></table>
 
 - **返回值**
-  
+
     aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
 ## 约束说明
@@ -625,9 +625,9 @@ aclnnStatus aclnnMoeDistributeCombineSetupTeardownCalcOutputSize(
 - 文件准备：
 
     1. 按照下方指导创建rank_table_m2.json文件并修改。
-    
+
     2. 将项目拷贝到两台服务器中，并根据机器的device ip配置rank_table_m2.json文件内容。注意两机rank_table_m2.json文件保持一致。
-    
+
     3. 安装cann包，并根据[算子调用](../../../docs/zh/invocation/quick_op_invocation.md)编译运行。
 
 - 关于rankTable:

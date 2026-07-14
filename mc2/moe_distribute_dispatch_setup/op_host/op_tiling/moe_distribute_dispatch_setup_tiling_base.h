@@ -21,31 +21,29 @@
 #include "../../op_kernel/moe_distribute_dispatch_setup_tiling.h"
 
 namespace optiling {
-class MoeDistributeDispatchSetupTilingBase : public MoeTilingBase
-{
+class MoeDistributeDispatchSetupTilingBase : public MoeTilingBase {
 public:
-    explicit MoeDistributeDispatchSetupTilingBase(gert::TilingContext* context)
-        : MoeTilingBase(context), nodeName_(context->GetNodeName()){};
-    enum class TensorType
-    {
+    explicit MoeDistributeDispatchSetupTilingBase(gert::TilingContext *context)
+        : MoeTilingBase(context), nodeName_(context->GetNodeName()) {};
+    enum class TensorType {
         INPUT = 0,
         OUTPUT = 1,
         OPTIONINPUT = 2
     };
 
 protected:
-    const char* socTilingName_;
+    const char *socTilingName_;
     std::string nodeName_;
-    MoeDistributeDispatchSetupTilingData* tilingData_ = nullptr;
+    MoeDistributeDispatchSetupTilingData *tilingData_ = nullptr;
     std::string groupEp_;
 
     uint64_t GetTilingKey() const;
     const void PrintTilingDataInfo();
-    
+
     const ge::graphStatus CheckRequiredAttrValue();
     ge::graphStatus GetRequiredAttrAndSetTilingData();
-    const ge::graphStatus CheckSharedExpertAttrValue(
-        const uint32_t sharedExpertNum, const uint32_t sharedExpertRankNum);
+    const ge::graphStatus CheckSharedExpertAttrValue(const uint32_t sharedExpertNum,
+                                                     const uint32_t sharedExpertRankNum);
     const ge::graphStatus CheckOptionalAttrValue();
     ge::graphStatus GetOptionalAttrAndSetTilingData();
     ge::graphStatus GetComplexAttrAndSetTilingData();
@@ -62,12 +60,12 @@ protected:
     ge::graphStatus CheckTensorShapeSizeAndSetTilingData();
     const ge::graphStatus CheckComplexTensorShapeSize();
     ge::graphStatus CheckCalcTensorShapeSizeAndSetTilingData();
-    
+
     void SetTilingKey();
     const ge::graphStatus CheckHcclBuffSize();
     ge::graphStatus SetWorkspace();
     void SetPlatformInfo();
-    
+
     virtual void SetHcommCfg();
     ge::graphStatus MoeDistributeDispatchSetupTilingFuncImpl();
 };

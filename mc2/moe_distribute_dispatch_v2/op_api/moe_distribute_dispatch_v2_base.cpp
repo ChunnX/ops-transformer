@@ -102,12 +102,14 @@ aclnnStatus DispatchCheckParams(const aclTensor *x, const aclTensor *expertIds, 
     }
     if (strnlen(groupEp, HCCL_GROUP_NAME_MAX) >= HCCL_GROUP_NAME_MAX) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnMoeDistributeDispatchV2", "groupEp",
-            "length exceeds " + std::to_string(HCCL_GROUP_NAME_MAX), "groupEp name too long");
+                                              "length exceeds " + std::to_string(HCCL_GROUP_NAME_MAX),
+                                              "groupEp name too long");
         return ACLNN_ERR_PARAM_NULLPTR;
     }
     if (strnlen(groupTp, HCCL_GROUP_NAME_MAX) >= HCCL_GROUP_NAME_MAX) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnMoeDistributeDispatchV2", "groupTp",
-            "length exceeds " + std::to_string(HCCL_GROUP_NAME_MAX), "groupTp name too long");
+                                              "length exceeds " + std::to_string(HCCL_GROUP_NAME_MAX),
+                                              "groupTp name too long");
         return ACLNN_ERR_PARAM_NULLPTR;
     }
     return ACLNN_SUCCESS;
@@ -178,8 +180,8 @@ aclnnStatus aclnnMoeDistributeDispatchGetWorkspaceSizeBase(
     // ccu暂时不支持performanceInfo
     if (commAlg != nullptr && std::strcmp(commAlg, "ccu") == 0) {
         if (performanceInfoOptional != nullptr) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("MoeDistributeDispatchV2", "performanceInfo",
-                "not nullptr", "performanceInfo not supported in ccu");
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("MoeDistributeDispatchV2", "performanceInfo", "not nullptr",
+                                                  "performanceInfo not supported in ccu");
             return ACLNN_ERR_PARAM_NULLPTR;
         }
     }
@@ -188,10 +190,9 @@ aclnnStatus aclnnMoeDistributeDispatchGetWorkspaceSizeBase(
     if (!is950 || (commAlg != nullptr && std::strcmp(commAlg, "ccu") == 0)) { // ccu暂时不支持mc2Context
         getWorkspaceSizesRes = aclnnInnerMoeDistributeDispatchV2GetWorkspaceSize(
             x, expertIds, scalesOptional, xActiveMaskOptional, expertScalesOptional, elasticInfoOptional,
-            performanceInfoOptional, groupEpBuf, epWorldSize, epRankId, moeExpertNum,
-            groupTpBuf, tpWorldSize, tpRankId, expertShardType, sharedExpertNum,
-            sharedExpertRankNum, quantMode, globalBs, expertTokenNumsType, commAlgBuf, zeroExpertNum,
-            copyExpertNum, constExpertNum, ydtype, expandXOut, dynamicScalesOut, assistInfoForCombineOut,
+            performanceInfoOptional, groupEpBuf, epWorldSize, epRankId, moeExpertNum, groupTpBuf, tpWorldSize, tpRankId,
+            expertShardType, sharedExpertNum, sharedExpertRankNum, quantMode, globalBs, expertTokenNumsType, commAlgBuf,
+            zeroExpertNum, copyExpertNum, constExpertNum, ydtype, expandXOut, dynamicScalesOut, assistInfoForCombineOut,
             expertTokenNumsOut, epRecvCountsOut, tpRecvCountsOut, expandScalesOut, workspaceSize, executor);
     } else {
 #if HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
@@ -201,11 +202,10 @@ aclnnStatus aclnnMoeDistributeDispatchGetWorkspaceSizeBase(
         CHECK_RET(aclnnRet == ACLNN_SUCCESS, aclnnRet);
         getWorkspaceSizesRes = aclnnInnerMoeDistributeDispatchV3GetWorkspaceSize(
             mc2Context, x, expertIds, scalesOptional, xActiveMaskOptional, expertScalesOptional, elasticInfoOptional,
-            performanceInfoOptional, epWorldSize, epRankId, moeExpertNum, hcclBuffSize, tpWorldSize,
-            tpRankId, expertShardType, sharedExpertNum, sharedExpertRankNum, quantMode, globalBs, expertTokenNumsType,
-            commAlgBuf, zeroExpertNum, copyExpertNum, constExpertNum, ydtype, expandXOut,
-            dynamicScalesOut, assistInfoForCombineOut, expertTokenNumsOut, epRecvCountsOut, tpRecvCountsOut,
-            expandScalesOut, workspaceSize, executor);
+            performanceInfoOptional, epWorldSize, epRankId, moeExpertNum, hcclBuffSize, tpWorldSize, tpRankId,
+            expertShardType, sharedExpertNum, sharedExpertRankNum, quantMode, globalBs, expertTokenNumsType, commAlgBuf,
+            zeroExpertNum, copyExpertNum, constExpertNum, ydtype, expandXOut, dynamicScalesOut, assistInfoForCombineOut,
+            expertTokenNumsOut, epRecvCountsOut, tpRecvCountsOut, expandScalesOut, workspaceSize, executor);
 #endif
     }
     SetCommArgs(is950, is910B, commAlg, executor);

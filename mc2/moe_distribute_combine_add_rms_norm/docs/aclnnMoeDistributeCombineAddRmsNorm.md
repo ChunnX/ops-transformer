@@ -822,7 +822,7 @@ aclnnStatus aclnnMoeDistributeCombineAddRmsNorm(
         CHECK_RET(ret == ACL_SUCCESS, return ret);
         ret = CreateAclTensor(xOutHostData, xOutShape, &xOutDeviceAddr, aclDataType::ACL_BF16, &xOut);
         CHECK_RET(ret == ACL_SUCCESS, return ret);
-        
+
         /* 声明算子执行必需变量 */
         uint64_t dispatchWorkspaceSize = 0;
         aclOpExecutor *dispatchExecutor = nullptr;
@@ -839,7 +839,7 @@ aclnnStatus aclnnMoeDistributeCombineAddRmsNorm(
                 0, expertShardType, sharedExpertNum,sharedExpertRankNum, quantMode, globalBS,
                 expertTokenNumsType, nullptr, expandX, dynamicScales, expandIdx, expertTokenNums, epRecvCounts,
                 tpRecvCounts, expandScales, &dispatchWorkspaceSize, &dispatchExecutor);
-        
+
         CHECK_RET(ret == ACL_SUCCESS,
             LOG_PRINT("[ERROR] aclnnMoeDistributeDispatchV2GetWorkspaceSize failed. ret = %d \n", ret); return ret);
 

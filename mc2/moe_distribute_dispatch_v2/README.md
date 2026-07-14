@@ -336,7 +336,7 @@ $$
 * <term>Ascend 950DT</term>：
     * 仅支持EP域，无TP域，不支持`groupTp`、`tpWorldSize`、`tpRankId`属性，且`tpRecvCounts`输出无有效内容。
     * 不支持`expandScalesOut`。
-    
+
 ## 约束说明
 
 - `MoeDistributeDispatchV2`与`CombineV2`系列算子必须配套使用，具体参考调用示例。

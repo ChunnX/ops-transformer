@@ -165,8 +165,8 @@ public:
         auto &ubD = ubDList[ubListId];
         auto &scaleUb = scaleUbList[ubListId];
         auto &ubweighAux = ubweighAuxList[ubListId];
-        int64_t gmCOffsetH = (static_cast<int64_t>(preSrcExpertSum) * params.n2 +
-            blockCoord.m() * params.n2) + blockCoord.n();
+        int64_t gmCOffsetH =
+            (static_cast<int64_t>(preSrcExpertSum) * params.n2 + blockCoord.m() * params.n2) + blockCoord.n();
         int64_t gmCOffsetL = gmCOffsetH + params.n2;
         auto gmTileCH = gmC[gmCOffsetH];
         auto gmTileCL = gmC[gmCOffsetL];
@@ -276,12 +276,12 @@ public:
                 bool isCrossServer = (dstEpIdx / SERVER_RANK_SIZE_A2) != (params.rank / SERVER_RANK_SIZE_A2);
                 if (isCrossServer) {
                     AscendC::GlobalTensor<ElementD> gmLocalWindowsOut;
-                    gmLocalWindowsOut.SetGlobalBuffer(reinterpret_cast<__gm__ ElementD*>(
-                        params.shmem.windowsOutAddr() + params.offsetWinOutD));
+                    gmLocalWindowsOut.SetGlobalBuffer(
+                        reinterpret_cast<__gm__ ElementD *>(params.shmem.windowsOutAddr() + params.offsetWinOutD));
                     MatrixCoord srcOffset{(uint32_t)(stData + preSrcExpertSum / 2), blockCoord.n()};
                     int64_t gmSrcOffset = params.layoutC.GetOffset(srcOffset);
                     auto gmTileLocal = gmLocalWindowsOut[gmSrcOffset];
-                    copyUbToGmD(gmTileLocal, ubD[tileOffset *  n0], layoutGM2, layoutUB2);
+                    copyUbToGmD(gmTileLocal, ubD[tileOffset * n0], layoutGM2, layoutUB2);
                 } else {
                     copyUbToGmD(gmTileD, ubD[tileOffset * n0], layoutGM2, layoutUB2);
                 }
