@@ -278,7 +278,11 @@ aclnnStatus aclnnMatmulAlltoAll(
   - <term>Ascend 950PR/Ascend 950DT</term>：支持2、4、8、16卡。
 * 参数说明中shape使用的变量H2必须整除NPU卡数。
 * H1范围仅支持[1, 65535]。
-* BS*rankSize和H2的值不得超过2147483647(INT32_MAX)，BS的值不得小于0，H2的值不得小于2。
+* H2的取值范围根据不同设备型号有不同的限制：
+  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：不得超过368640，不得小于2。
+  - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：不得超过2147483647(INT32_MAX)，不得小于2。
+  - <term>Ascend 950PR/Ascend 950DT</term>：不得超过2147483647(INT32_MAX)，不得小于2。
+* BS*rankSize的值不得超过2147483647(INT32_MAX)，不得小于0。
 * 空tensor的支持度根据不同设备型号有不同的限制：
   - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：不支持任何空tensor。
   - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：不支持任何空tensor。
