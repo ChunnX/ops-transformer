@@ -23,6 +23,7 @@
 #else
 #include "kernel_operator.h"
 #endif
+#include "../communication/a2av_permute_engine.h"
 
 using namespace AscendC;
 
@@ -46,17 +47,14 @@ public:
         gmmxScaleGm_ = gmmxScaleGM;
         // workspace偏移
         uint64_t workspaceOffset = 0;
-        // x通信输出区域：isPermuteOut=true时不占用workspace
-        if (!tilingData_->isPermuteOut) {
-            uint64_t commOutLen =
-                Align(CeilDiv((tilingData_->taskTilingInfo.A) * (tilingData_->taskTilingInfo.H1),
-                              PACK_FACTOR) * X_TYPE_SIZE,
-                      TENSOR_LIST_SIZE);
-            commOutGm_ = workspaceGM + workspaceOffset;
-            workspaceOffset += commOutLen;
-        } else {
-            commOutGm_ = permuteOutOptionalGM;
-        }
+        // x通信输出区域：isPermuteOut=true时通信结果写到workspace，AIV重排到permuteOut
+        uint64_t commOutLen =
+            Align(CeilDiv((tilingData_->taskTilingInfo.A) * (tilingData_->taskTilingInfo.H1),
+                          PACK_FACTOR) * X_TYPE_SIZE,
+                  TENSOR_LIST_SIZE);
+        commOutGm_ = workspaceGM + workspaceOffset;
+        workspaceOffset += commOutLen;
+        permuteOutGm_ = permuteOutOptionalGM;
         computeScaleGm_ = gmmxScaleGm_;
         // gmmX comm init
         const void *hcclInitTiling = &(tilingData_->hcclA2avTilingInfo.hcclInitTiling);
@@ -75,6 +73,7 @@ public:
             computeScaleGm_ = gmmxScalePermuteOutGm_;
         }
         computeWorkspaceGm_ = workspaceGM + workspaceOffset;
+        isPermuteOut_ = tilingData_->isPermuteOut;
         if (tilingData_->isNeedMM != 0) {
             localComputeOp.Init(mmxOptionalGM, mmweightOptionalGM, mmxScaleGM, mmWeightScaleGM, mmyOptionalGM,
                                 computeWorkspaceGm_, tilingData_,
@@ -114,12 +113,28 @@ private:
         }
         for (uint32_t start = 0; start < e_; start += expertNum_) {
             uint32_t actualExpertNum = (start + expertNum_ > e_) ? (e_ - start) : expertNum_;
-            if constexpr (MX_QUANT_MODE) {
-                commOp.WaitScale(start);
+            if ASCEND_IS_AIV {
+                if (GetBlockIdx() == 0) {
+                    if constexpr (MX_QUANT_MODE) {
+                        commOp.WaitScale(start);
+                    }
+                    commOp.Wait(start);
+                }
+                AscendC::CrossCoreSetFlag<2, PIPE_FIX>(8);
+                if (isPermuteOut_) {
+                    AscendC::CrossCoreWaitFlag(10);
+                    commOp.PermuteData(start, actualExpertNum, permuteOutGm_);
+                }
             }
-            commOp.Wait(start);
-            SyncAll<false>();
-            computeOp.Process(start, actualExpertNum);
+            if ASCEND_IS_AIC {
+                AscendC::CrossCoreWaitFlag(8);
+                AscendC::CrossCoreSetFlag<0, PIPE_FIX>(9);
+                AscendC::CrossCoreWaitFlag(9);
+                if (isPermuteOut_) {
+                    AscendC::CrossCoreSetFlag<2, PIPE_FIX>(10);
+                }
+                computeOp.Process(start, actualExpertNum);
+            }
         }
     }
 
@@ -127,6 +142,7 @@ private:
     ComputeOpType computeOp;
     LocalComputeOpType localComputeOp;
     GM_ADDR commOutGm_ = nullptr;
+    GM_ADDR permuteOutGm_ = nullptr;
     GM_ADDR gmmxScaleGm_ = nullptr;
     GM_ADDR gmmxScalePermuteOutGm_ = nullptr;
     GM_ADDR gmmxScaleCommOutGm_ = nullptr;
@@ -135,6 +151,7 @@ private:
     const TilingDataType *tilingData_ = nullptr;
     uint32_t e_ = 0U;
     uint32_t expertNum_ = 1U;
+    bool isPermuteOut_ = false;
 };
 }; // namespace MC2KernelTemplate
 #endif

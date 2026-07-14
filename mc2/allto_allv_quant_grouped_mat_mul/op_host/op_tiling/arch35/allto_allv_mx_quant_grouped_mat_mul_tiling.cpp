@@ -122,9 +122,13 @@ ge::graphStatus AlltoAllvMXQuantGmmTiling::CheckScaleShape() const
 ge::graphStatus AlltoAllvMXQuantGmmTiling::DoGmmTiling(uint64_t gmmxMSzie)
 {
     OP_LOGD(context_->GetNodeName(), "start DoGmmTiling.");
+    constexpr uint32_t FIXED_EXPERT_NUM = 4U;
+    uint32_t expertNum = (e_ <= FIXED_EXPERT_NUM) ? static_cast<uint32_t>(e_) : FIXED_EXPERT_NUM;
+    uint32_t gmmGroupNum = expertNum * static_cast<uint32_t>(epWorldSize_);
     // gmm group matmul tiling
     if (gmmxMSzie != 0) {
         AlltoAllvMXQuantGmmTilingHelper gmmHelper(*this);
+        gmmHelper.SetGroupNum(gmmGroupNum);
         MC2_CHECK_LOG_RET(context_->GetNodeName(), gmmHelper.SetInputParams(gmmxMSzie, n1_, h1_, transGmmWeight_));
         MC2_CHECK_LOG_RET(context_->GetNodeName(), gmmHelper.Process());
         tilingData->gmmQuantTilingData = gmmHelper.GetAlltoAllvQuantHelperData();
@@ -527,14 +531,14 @@ ge::graphStatus AlltoAllvMXQuantGmmTilingHelper::SetInputParams(uint64_t M, uint
     inputParams_.transA = 0;
     inputParams_.transB = transB;
     inputParams_.hasBias = 0;
-    inputParams_.isSingleX = 0;
-    inputParams_.isSingleW = 0;
-    inputParams_.isSingleY = 0;
+    inputParams_.isSingleX = 1;
+    inputParams_.isSingleW = 1;
+    inputParams_.isSingleY = 1;
 
     inputParams_.mSize = M;
     inputParams_.kSize = K;
     inputParams_.nSize = N;
-    inputParams_.groupNum = SINGLE_GROUP_NUM;
+    inputParams_.groupNum = gmmGroupNum_;
     inputParams_.aQuantMode = static_cast<Mc2GroupedMatmulTiling::QuantMode>(1U << QUANT_MODE_MAP[MX_MODE]);
     inputParams_.bQuantMode = static_cast<Mc2GroupedMatmulTiling::QuantMode>(1U << QUANT_MODE_MAP[MX_MODE]);
     // 是否做切分
@@ -547,7 +551,9 @@ ge::graphStatus AlltoAllvMXQuantGmmTilingHelper::SetInputParams(uint64_t M, uint
     inputParams_.scaleDtype = ge::DT_FLOAT8_E8M0;
     inputParams_.perTokenScaleDtype = ge::DT_FLOAT8_E8M0;
 
-    mList_[0] = static_cast<int32_t>(M);
+    for (uint32_t i = 0; i < gmmGroupNum_; i++) {
+        mList_[i] = static_cast<int32_t>(M);
+    }
     kList_[0] = static_cast<int32_t>(K);
     nList_[0] = static_cast<int32_t>(N);
     SetKernelType();
