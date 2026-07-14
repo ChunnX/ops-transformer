@@ -59,7 +59,7 @@
         gatherOut=AllGather(x1)
         $$
 
-    - 情形4：如果x1和x2数据类型为FLOAT8_E4M3FN/FLOAT8_E5M2的mx量化场景，x1为(m, k)、x2为(n, k)，且x1Scale为(m, ceilDiv(k, 64), 2)、x2Scale为(n, ceilDiv(k, 64), 2)，入参x1和x1Scale进行AllGather后，对x1、x2进行MatMul计算，然后进行dequant操作；
+    - 情形4：如果x1和x2数据类型为FLOAT8_E4M3FN/FLOAT8_E5M2/FLOAT4_E2M1的mx量化场景，x1为(m, k)、x2为(n, k)，且x1Scale为(m, ceilDiv(k, 64), 2)、x2Scale为(n, ceilDiv(k, 64), 2)，入参x1和x1Scale进行AllGather后，对x1、x2进行MatMul计算，然后进行dequant操作；
 
         $$
         output=\sum_{0}^{\left \lfloor \frac{k}{blockSize=32} \right \rfloor} (AllGather(x1)_{pr}@x2_{rq}*(AllGather(x1Scale)_{pr}*x2Scale_{rq}))
@@ -133,7 +133,7 @@ aclnnStatus aclnnAllGatherMatmulV2(
         <td>输入</td>
         <td>MM左矩阵，即计算公式中的x1。</td>
         <td>当前版本仅支持两维输入，shape为[m, k]，且仅支持不转置场景。</td>
-        <td>FLOAT16、BFLOAT16、FLOAT8_E4M3FN、FLOAT8_E5M2、HIFLOAT8、INT8、INT4</td>
+        <td>FLOAT16、BFLOAT16、FLOAT8_E4M3FN、FLOAT8_E5M2、HIFLOAT8、FLOAT4_E2M1、INT8、INT4</td>
         <td>ND</td>
         <td>2</td>
         <td>-</td>
@@ -143,7 +143,7 @@ aclnnStatus aclnnAllGatherMatmulV2(
         <td>输入</td>
         <td>MM右矩阵，即计算公式中的x2。</td>
         <td><ul><li>当前版本仅支持二维输入，shape为[k, n]，支持转置/不转置场景。</li><li>仅支持两根轴转置情况下的<a href="../../../docs/zh/context/非连续的Tensor.md">[非连续的Tensor]</a>。</li></ul></td>
-        <td>FLOAT16、BFLOAT16、FLOAT8_E4M3FN、FLOAT8_E5M2、HIFLOAT8、INT8、INT4</td>
+        <td>FLOAT16、BFLOAT16、FLOAT8_E4M3FN、FLOAT8_E5M2、HIFLOAT8、FLOAT4_E2M1、INT8、INT4</td>
         <td>ND</td>
         <td>2</td>
         <td>√（仅适用转置场景）</td>
@@ -273,7 +273,7 @@ aclnnStatus aclnnAllGatherMatmulV2(
         <td>输出</td>
         <td>仅输出all_gather通信后的结果。即公式中的gatherOut。</td>
         <td><ul><li><term>Ascend 950PR/Ascend 950DT</term>：支持空Tensor。</li><li><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：不支持空Tensor。</li><li>数据类型与x1的数据类型保持一致。</li></ul></td>
-        <td>FLOAT16、BFLOAT16、FLOAT8_E4M3FN、FLOAT8_E5M2、HIFLOAT8、INT8、INT4</td>
+        <td>FLOAT16、BFLOAT16、FLOAT8_E4M3FN、FLOAT8_E5M2、HIFLOAT8、FLOAT4_E2M1、INT8、INT4</td>
         <td>ND</td>
         <td>2</td>
         <td>-</td>
@@ -320,13 +320,13 @@ aclnnStatus aclnnAllGatherMatmulV2(
         - output：数据类型支持FLOAT16、BFLOAT16。如果x1类型为FLOAT16、BFLOAT16，则output类型与x1保持一致。
         - gatherOut：数据类型支持FLOAT16、BFLOAT16、INT8、INT4。
     - <term>Ascend 950PR/Ascend 950DT</term>：
-        - x1、x2：的数据类型支持FLOAT16、BFLOAT16、FLOAT8_E4M3FN、FLOAT8_E5M2、HIFLOAT8。
-        - bias：如果x1的数据类型是FLOAT16、BFLOAT16，则bias的数据类型必须为FLOAT16、BFLOAT16。如果x1的数据类型是FLOAT8_E4M3FN、FLOAT8_E5M2、HIFLOAT8时，在pertensor和mx量化场景下，bias的数据类型必须为FLOAT。在perblock场景下，仅支持输入为nullptr。
+        - x1、x2：的数据类型支持FLOAT16、BFLOAT16、FLOAT8_E4M3FN、FLOAT8_E5M2、HIFLOAT8、FLOAT4_E2M1。
+        - bias：如果x1的数据类型是FLOAT16、BFLOAT16，则bias的数据类型必须为FLOAT16、BFLOAT16。如果x1的数据类型是FLOAT8_E4M3FN、FLOAT8_E5M2、HIFLOAT8、FLOAT4_E2M1时，在pertensor和mx量化场景下，bias的数据类型必须为FLOAT。在perblock场景下，仅支持输入为nullptr。
         - x1Scale：当x1和x2数据类型为FLOAT16、BFLOAT16时，仅支持输入为nullptr。在pertensor场景下，shape为[1]。在perblock场景下，shape为[ceilDiv(m, 128), ceilDiv(k, 128)]。在pertensor和perblock场景下，数据类型支持FLOAT。在mx量化场景下，数据类型为FLOAT8_E8M0，shape为(m, ceilDiv(k, 64), 2)。
         - x2Scale：当x1和x2数据类型为FLOAT16、BFLOAT16时，仅支持输入为nullptr。在pertensor场景下，shape为[1]。在perblock场景下，shape为[ceilDiv(k, 128), ceilDiv(n, 128)]。在pertensor和perblock场景下，数据类型支持FLOAT。在mx场景下，数据类型为FLOAT8_E8M0，shape为(n, ceilDiv(k, 64), 2)，仅支持转置场景。
         - commMode：当前版本仅支持输入“ai_cpu”或“ccu”。
-        - output：如果x1类型为FLOAT16、BFLOAT16，则output类型与x1保持一致。如果x1类型为FLOAT8_E4M3FN、FLOAT8_E5M2、HIFLOAT8，则数据类型支持FLOAT16、BFLOAT16、FLOAT。
-        - gatherOut：数据类型支持FLOAT16、BFLOAT16、FLOAT8_E4M3FN、FLOAT8_E5M2、HIFLOAT8。
+        - output：如果x1类型为FLOAT16、BFLOAT16，则output类型与x1保持一致。如果x1类型为FLOAT8_E4M3FN、FLOAT8_E5M2、HIFLOAT8、FLOAT4_E2M1，则数据类型支持FLOAT16、BFLOAT16、FLOAT。
+        - gatherOut：数据类型支持FLOAT16、BFLOAT16、FLOAT8_E4M3FN、FLOAT8_E5M2、HIFLOAT8、FLOAT4_E2M1。
         - groupSize:
             - 仅当x1Scale和x2Scale输入都是2维及以上数据时，groupSize取值有效，其他场景需传入0。
             - groupSize值支持公式推导：传入的groupSize内部会按如下公式分解得到groupSizeM、groupSizeN、groupSizeK，当其中有1个或多个为0，会根据x1/x2/x1Scale/x2Scale输入shape重新设置groupSizeM、groupSizeN、groupSizeK用于计算。设置原理：如果groupSizeM=0，表示m方向量化分组值由接口推导，推导公式为groupSizeM = m / scaleM（需保证m能被scaleM整除），其中m与x1 shape中的m一致，scaleM与x1Scale shape中的m一致；如果groupSizeK=0，表示k方向量化分组值由接口推导，推导公式为groupSizeK = k / scaleK（需保证k能被scaleK整除），其中k与x1 shape中的k一致，scaleK与x1Scale shape中的k一致；如果groupSizeN=0，表示n方向量化分组值由接口推导，推导公式为groupSizeN = n / scaleN（需保证n能被scaleN整除），其中n与x2 shape中的n一致，scaleN与x2Scale shape中的n一致。
@@ -412,7 +412,7 @@ aclnnStatus aclnnAllGatherMatmulV2(
 - 确定性计算：
   - `aclnnAllGatherMatmulV2`默认确定性实现。
 - <term>Ascend 950PR/Ascend 950DT</term>：
-    - 输入x1为2维，其维度为\(m, k\)。x2必须是2维，其维度为\(k, n\)，轴满足mm算子入参要求，k轴相等，且k轴取值范围为\[256, 65535\)。
+    - 输入x1为2维，其维度为\(m, k\)。x2必须是2维，其维度为\(k, n\)，轴满足mm算子入参要求，k轴相等，且k轴取值范围为\[256, 65535\)。m和n的值不得超过2147483647（INT32_MAX）。
     - x1/x2支持的空tensor场景，m和n可以为空，k不可为空，且需要满足以下条件：
         - m为空，k不为空，n不为空；
         - m不为空，k不为空，n为空；
@@ -421,10 +421,11 @@ aclnnStatus aclnnAllGatherMatmulV2(
     - 输出output为2维，其维度为\(m*rank\_size, n\)，rank\_size为卡数。
     - 输出gatherout为2维，其维度为\(m*rank\_size, k\)，rank\_size为卡数。
     - 当x1、x2的数据类型为FLOAT16/BFLOAT16时，output计算输出数据类型和x1、x2保持一致。
-    - 当x1、x2的数据类型为FLOAT8_E4M3FN/FLOAT8_E5M2/HIFLOAT8时，output输出数据类型支持FLOAT16、BFLOAT16、FLOAT。
-    - 当x1、x2的数据类型为FLOAT16/BFLOAT16/HIFLOAT8时，x1和x2数据类型需要保持一致。
+    - 当x1、x2的数据类型为FLOAT8_E4M3FN/FLOAT8_E5M2/HIFLOAT8/FLOAT4_E2M1时，output输出数据类型支持FLOAT16、BFLOAT16、FLOAT。
+    - 当x1、x2的数据类型为FLOAT16/BFLOAT16/HIFLOAT8/FLOAT4_E2M1时，x1和x2数据类型需要保持一致。
     - 当x1、x2数据类型为FLOAT8_E4M3FN/FLOAT8_E5M2时，x1和x2数据类型可以为其中一种。
     - 当x1、x2数据类型为FLOAT16/BFLOAT16/HIFLOAT8/FLOAT8_E4M3FN/FLOAT8_E5M2时，x2矩阵支持转置/不转置场景，x1矩阵只支持不转置场景。
+    - 当x1、x2数据类型为FLOAT4_E2M1时，x2矩阵只支持转置场景，x1矩阵只支持不转置场景，且k轴需要为偶数。
     - 当groupSize取值为549764202624，bias必须为空。
     - 支持2、4、8、16、32、64卡。
     - 支持CCU通信引擎和AICPU通信引擎，CCU仅支持单机UB域内互联，AICPU可支持跨机UB域内互联。
