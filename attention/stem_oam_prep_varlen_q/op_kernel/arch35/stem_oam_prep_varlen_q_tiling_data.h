@@ -25,6 +25,7 @@ struct StemPrepQTilingData {
     uint32_t used_core_num;
     uint32_t blocks_per_core_base;
     uint32_t blocks_remainder;
+    uint32_t ub_factor;
 };
 
 #endif

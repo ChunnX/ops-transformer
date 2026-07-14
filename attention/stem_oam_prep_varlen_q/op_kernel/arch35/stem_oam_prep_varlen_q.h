@@ -35,18 +35,17 @@
  *      GM → UB: qscale[cu_off + qb*B : cu_off + qb*B + B, h]
  *      scalesBuf: [B] FP32
  *
- *   4. AccumulateBlock (Weighted Group Sum):
+ *   4. AccumulateBlock (Weighted Group Sum, in-place binary reduce):
  *      qBlockFP32Buf 逻辑 reshape 为 [R, S, D]
  *      scalesBuf 逻辑 reshape 为 [R, S]
  *
- *      对每个 g ∈ [0, S-1]:
- *        groupSum[g, :] = Σ_{r=0}^{R-1} qBlockFP32[r*S+g, :] × scales[r*S+g]
- *                         ↑ 沿 R 轴累加, 每行 D=128 个 FP32
- *
- *      groupSumBuf: [S, D] FP32 = [S*D] FP32
+ *      Phase 1: qBlockFP32Buf[(r*S+g)*D : (r*S+g+1)*D] *= scales[r*S+g]
+ *                对每个 (r, g) 的原地乘 scale
+ *      Phase 2: 沿 R 轴二进制分解 + 原地配对归约（任意 R 均支持）
+ *                结果保留在 qBlockFP32Buf 的前 S 行 (偏移 0..S*D-1)
  *
  *   5. FlattenAndCast:
- *      UB: groupSumBuf [S*D] FP32 → Cast → outQueueQflat [S*D] BF16
+ *      UB: qBlockFP32Buf[0 : S*D] FP32 → Cast → outQueueQflat [S*D] BF16
  *
  *   6. CopyOutBlock:
  *      UB → GM: qFlat[b, h, qb, :] = outQueueQflat [S*D] BF16
@@ -66,6 +65,15 @@ constexpr uint32_t MAX_STEM_STRIDE = 64;
 constexpr uint32_t MAX_QFLAT_DIM = MAX_STEM_STRIDE * DIM_QK;
 constexpr uint32_t MAX_BATCH_SIZE = 1024;
 constexpr uint32_t VARLEN_READ_ALIGN = 8;
+
+// N-buffer scheme: N = tiling->ub_factor (capped at N_MAX)
+// Each pp slot owns its own set of UB buffers and event IDs.
+constexpr uint32_t N_MAX = 4;
+
+// Event ID layout per pp slot (2 IDs per slot, total 8 for N_MAX=4):
+//   pp*2 + 0: V_MTE2 for Duplicate done
+//   pp*2 + 1: MTE2_V for MTE2 load done
+constexpr uint32_t EVT_STRIDE = 2;
 
 constexpr static AscendC::MicroAPI::CastTrait CAST_FP8_TO_FP32 = {
     AscendC::MicroAPI::RegLayout::ZERO,
@@ -136,57 +144,139 @@ __simd_vf__ inline void CastFP32ToBF16Vf(
 }
 
 /**
- * ComputeWeightedGroupSumVf: 在 VF 寄存器上完成 Weighted Group Sum
+ * __simd_callee__ helpers for WeightedBinaryReduceChunkVf.
  *
- * 输入 (UB):
- *   qFP32Ptr:  [B, D] FP32 = [R*S, D] FP32  (qBlockFP32Buf)
- *   scalePtr:  [B]    FP32 = [R*S]    FP32  (scalesBuf)
+ * Each helper is pure — uses MicroAPI directly, no if statements.
  *
- * 输出 (UB):
- *   groupSumPtr: [S*D] FP32 = [S, D] FP32   (groupSumBuf)
+ * MulsOnAllRows:
+ *   qFP32[(r*S + g)*D + d] *= scale[r*S + g]  for all r,g,d
  *
- * 对每个 g ∈ [0, S-1]:
- *   groupSum[g, :] = Σ_{r=0}^{R-1} qFP32[r*S+g, :] × scale[r*S+g]
- *                    ↑ 沿 R 轴累加
+ * ReduceChunkInPlace:
+ *   pair-wise reduce chunk (size 2^p, starting at base_r) so that
+ *   row[(base_r*S + g), :] holds the intra-chunk sum
  *
- * UB 中数据布局:
- *   qFP32: row 0, row 1, ..., row B-1  (每行 D 个 FP32, 连续存储)
- *   同一个 g 的 R 行: row g, row S+g, row 2S+g, ..., row (R-1)S+g
- *   行间隔: S*D = 16*128 = 2048 个 float
+ * AddMergeToAccumulator:
+ *   row[g, :] += row[(base_r*S + g), :]  for g in [0, S)
  */
-__simd_vf__ inline void ComputeWeightedGroupSumVf(
-    __ubuf__ float* qFP32Ptr,
-    __ubuf__ float* scalePtr,
-    __ubuf__ float* groupSumPtr,
-    uint16_t S, uint16_t R, uint16_t dimQk, uint16_t numQHeads, uint16_t headIdx)
+
+__simd_callee__ inline void MulsOnAllRows(__ubuf__ float* qFP32Ptr, __ubuf__ float* scalePtr,
+                                          uint16_t R, uint16_t S, uint16_t D)
 {
     using namespace AscendC::MicroAPI;
 
-    constexpr uint16_t FLOAT_REP_SIZE = 64;
-    uint16_t dLoops = dimQk / FLOAT_REP_SIZE;
+    constexpr uint16_t VL_F = VECTOR_REG_WIDTH / sizeof(float);
+    uint16_t vlIter = (D + VL_F - 1) / VL_F;
 
-    RegTensor<float> qReg;
-    RegTensor<float> scaleBrcReg;
-    RegTensor<float> accReg;
     MaskReg maskAll = CreateMask<float, MaskPattern::ALL>();
+    RegTensor<float> regScale;
+    RegTensor<float> regA;
+
+    for (uint16_t r = 0; r < R; r++) {
+        for (uint16_t g = 0; g < S; g++) {
+            uint16_t rowIdx = static_cast<uint16_t>(r * S + g);
+            uint32_t rowOff = static_cast<uint32_t>(rowIdx) * D;
+            DataCopy<float, LoadDist::DIST_BRC_B32>(regScale, scalePtr + rowIdx);
+            for (uint16_t vi = 0; vi < vlIter; vi++) {
+                uint32_t off = rowOff + static_cast<uint32_t>(vi) * VL_F;
+                DataCopy(regA, qFP32Ptr + off);
+                Mul(regA, regA, regScale, maskAll);
+                DataCopy(qFP32Ptr + off, regA, maskAll);
+            }
+        }
+    }
+}
+
+__simd_callee__ inline void ReduceChunkInPlace(__ubuf__ float* qFP32Ptr,
+                                               uint16_t base_r, uint16_t p,
+                                               uint16_t S, uint16_t D)
+{
+    using namespace AscendC::MicroAPI;
+
+    constexpr uint16_t VL_F = VECTOR_REG_WIDTH / sizeof(float);
+    uint16_t vlIter = (D + VL_F - 1) / VL_F;
+
+    MaskReg maskAll = CreateMask<float, MaskPattern::ALL>();
+    RegTensor<float> regA;
+    RegTensor<float> regB;
+
+    uint16_t chunk_size = 1;
+    for (uint16_t i = 0; i < p; i++) { chunk_size <<= 1; }
+
+    for (uint16_t k = 0; k < p; k++) {
+        uint16_t stride = static_cast<uint16_t>(1 << k);
+        uint16_t step = stride << 1;
+        for (uint16_t g = 0; g < S; g++) {
+            for (uint16_t r_local = 0; r_local < chunk_size; r_local += step) {
+                uint16_t r_dst = base_r + r_local;
+                uint16_t r_src = base_r + r_local + stride;
+                uint32_t offDst = static_cast<uint32_t>(r_dst * S + g) * D;
+                uint32_t offSrc = static_cast<uint32_t>(r_src * S + g) * D;
+                for (uint16_t vi = 0; vi < vlIter; vi++) {
+                    uint32_t d = static_cast<uint32_t>(vi) * VL_F;
+                    DataCopy(regA, qFP32Ptr + offDst + d);
+                    DataCopy(regB, qFP32Ptr + offSrc + d);
+                    Add(regA, regA, regB, maskAll);
+                    DataCopy(qFP32Ptr + offDst + d, regA, maskAll);
+                }
+            }
+        }
+    }
+}
+
+__simd_callee__ inline void AddMergeToAccumulator(__ubuf__ float* qFP32Ptr,
+                                                  uint16_t base_r,
+                                                  uint16_t S, uint16_t D)
+{
+    using namespace AscendC::MicroAPI;
+
+    constexpr uint16_t VL_F = VECTOR_REG_WIDTH / sizeof(float);
+    uint16_t vlIter = (D + VL_F - 1) / VL_F;
+
+    MaskReg maskAll = CreateMask<float, MaskPattern::ALL>();
+    RegTensor<float> regA;
+    RegTensor<float> regB;
 
     for (uint16_t g = 0; g < S; g++) {
-        for (uint16_t vi = 0; vi < dLoops; vi++) {
-            Duplicate(accReg, 0.0f, maskAll);
-            for (uint16_t r = 0; r < R; r++) {
-                uint16_t row_idx = r * S + g;
-                uint32_t scaleOffset = static_cast<uint32_t>(row_idx) * numQHeads + headIdx;
-                LoadAlign<float, LoadDist::DIST_BRC_B32>(
-                    scaleBrcReg, scalePtr + scaleOffset);
-                uint32_t qOffset = static_cast<uint32_t>(row_idx) * dimQk + vi * FLOAT_REP_SIZE;
-                LoadAlign(qReg, qFP32Ptr + qOffset);
-                Mul(qReg, qReg, scaleBrcReg, maskAll);
-                Add(accReg, accReg, qReg, maskAll);
-            }
-            uint32_t outOffset = static_cast<uint32_t>(g) * dimQk + vi * FLOAT_REP_SIZE;
-            StoreAlign<float, StoreDist::DIST_NORM_B32>(
-                (__ubuf__ float*&)groupSumPtr + outOffset, accReg, maskAll);
+        uint32_t offAcc   = static_cast<uint32_t>(g) * D;
+        uint32_t offChunk = static_cast<uint32_t>(base_r * S + g) * D;
+        for (uint16_t vi = 0; vi < vlIter; vi++) {
+            uint32_t d = static_cast<uint32_t>(vi) * VL_F;
+            DataCopy(regA, qFP32Ptr + offAcc + d);
+            DataCopy(regB, qFP32Ptr + offChunk + d);
+            Add(regA, regA, regB, maskAll);
+            DataCopy(qFP32Ptr + offAcc + d, regA, maskAll);
         }
+    }
+}
+
+/**
+ * WeightedBinaryReduceChunkVf: one chunk of the binary decomposition
+ *
+ * Single VF entry; no if inside. Control flow is bounded by uint16_t flags
+ * (do_muls / merge_count in {0,1}) via for-loop iteration counts.
+ *   - First chunk (base_r=0): do_muls=1, merge_count=0  → Muls all rows, reduce chunk, NO merge
+ *     (row[g] already holds the chunk sum after reduce, no merge needed)
+ *   - Later chunks (base_r>0): do_muls=0, merge_count=1 → reduce chunk, then Add merge
+ *     (row[g] is accumulator, just Add the new chunk in)
+ *
+ * Muls is fused into the same entry as reduce+merge, avoiding extra VF calls.
+ */
+__simd_vf__ inline void WeightedBinaryReduceChunkVf(
+    __ubuf__ float* qFP32Ptr,
+    __ubuf__ float* scalePtr,
+    uint16_t R,
+    uint16_t base_r, uint16_t p,
+    uint16_t S, uint16_t D,
+    uint16_t do_muls, uint16_t merge_count)
+{
+    for (uint16_t m = 0; m < do_muls; m++) {
+        MulsOnAllRows(qFP32Ptr, scalePtr, R, S, D);
+    }
+
+    ReduceChunkInPlace(qFP32Ptr, base_r, p, S, D);
+
+    for (uint16_t m = 0; m < merge_count; m++) {
+        AddMergeToAccumulator(qFP32Ptr, base_r, S, D);
     }
 }
 
@@ -211,7 +301,6 @@ public:
         R_ = tiling->R_val;
         qflat_dim_ = tiling->kflat_dim;
 
-        qSeqLensBase_ = q_seq_lens;
         cuSeqLensBase_ = cu_seqlens_q;
 
         // qb 粒度切核: 总任务 = H_q × Σ_b ceil(qSeqLens[b]/B)
@@ -233,114 +322,88 @@ public:
         qflatBase_ = qflat;
 
         // UB Buffer 分配:
-        // qBlockBuf_:     [B, D] FP8  = 128×128×1 = 16 KB
-        // qBlockFP32Buf_: [B, D] FP32 = 128×128×4 = 64 KB
-        // scalesBuf_:     [B,Hq] FP32 = 128×Hq×4
-        // groupSumBuf_:   [S*D]  FP32 = 2048×4    = 8 KB
-        // outQueueQflat_: [S*D]  BF16 = 2048×2    = 4 KB
-        // varlenInfoBuf_: [MAX_BATCH_SIZE] INT64 = 8 KB
+        // qBlockBuf_:      [B, D] FP8   = 128×128×1 = 16 KB
+        // qBlockFP32Buf_:  [B, D] FP32  = 128×128×4 = 64 KB (also stores binary-reduced results)
+        // scalesBuf_:      [B, H_q] FP32 = 128×H_q×4
+        // outQueueQflat_:  [S*D] BF16   = 2048×2 = 4 KB
+        // cuSeqLensQBuf_:  [batch+1] INT64 (dynamically sized)
         pipe_.InitBuffer(qBlockBuf_, B_ * dim_qk_ * sizeof(fp8_e4m3fn_t));
         pipe_.InitBuffer(qBlockFP32Buf_, B_ * dim_qk_ * sizeof(float));
         pipe_.InitBuffer(scalesBuf_, B_ * num_q_heads_ * sizeof(float));
-        pipe_.InitBuffer(groupSumBuf_, qflat_dim_ * sizeof(float));
         pipe_.InitBuffer(outQueueQflat_, 1, qflat_dim_ * sizeof(bfloat16_t));
-        pipe_.InitBuffer(varlenInfoBuf_, MAX_BATCH_SIZE * sizeof(int64_t));
-
-        // 一次性把 qSeqLens[0..batch-1] 搬到 UB
-        LocalTensor<int64_t> varlenLocal = varlenInfoBuf_.Get<int64_t>();
-        uint32_t batchBytes = tiling->batch_size * sizeof(int64_t);
-        qSeqLensGm_.SetGlobalBuffer((__gm__ int64_t*)qSeqLensBase_, tiling->batch_size);
-        DataCopyPad(varlenLocal, qSeqLensGm_,
-            {1, static_cast<uint16_t>(batchBytes), 0, 0},
-            {false, 0, 0, 0});
-        SetFlag<HardEvent::MTE2_S>(EVENT_ID0);
-        WaitFlag<HardEvent::MTE2_S>(EVENT_ID0);
+        
+        // 分配 cuSeqLensQBuf_：动态大小，只存实际需要的 batch+1 个 INT64
+        uint32_t cuSeqLensQCount = tiling_->batch_size + 1;
+        pipe_.InitBuffer(cuSeqLensQBuf_, cuSeqLensQCount * sizeof(int64_t));
+        LocalTensor<int64_t> cuSeqLensQLocal = cuSeqLensQBuf_.Get<int64_t>();
+        cuSeqLensGm_.SetGlobalBuffer((__gm__ int64_t*)cuSeqLensBase_, cuSeqLensQCount);
+        DataCopyPad(cuSeqLensQLocal, cuSeqLensGm_, 
+                    {1, static_cast<uint16_t>(cuSeqLensQCount * sizeof(int64_t)), 0, 0},
+                    {0, 0, 0, 0});
+        PipeBarrier<PIPE_MTE2>();
+        AscendC::PRINTF("[I]cuSeqLensQ loaded: batch_size=%u, count=%u\n",
+            tiling_->batch_size, cuSeqLensQCount);
+        uint32_t printCount = tiling_->batch_size + 1;
+        if (printCount > 8) printCount = 8;
+        for (uint32_t i = 0; i < printCount; i++) {
+            AscendC::PRINTF("[I]cuSeqLensQ[%u]=%ld\n", i,
+                static_cast<int64_t>(cuSeqLensQLocal.GetValue(i)));
+        }
     }
 
     __aicore__ inline void Process()
     {
+        AscendC::PRINTF("[P]Enter task_id=%u used_core_num=%u qb_start=%u qb_end=%u "
+            "batch_size=%u num_q_heads=%u max_Qb=%u B=%u S=%u R=%u\n",
+            task_id_, tiling_->used_core_num, qb_start_, qb_end_,
+            tiling_->batch_size, tiling_->num_q_heads, tiling_->max_Qb,
+            tiling_->stem_block_size, tiling_->stem_stride, tiling_->R_val);
         if (task_id_ >= tiling_->used_core_num) return;
 
         for (uint32_t task_idx = qb_start_; task_idx < qb_end_; task_idx++) {
             DecodeTaskId(task_idx);
             ProcessOneBlock(task_idx);
         }
+        AscendC::PRINTF("[P]Exit task_id=%u\n", task_id_);
     }
 
-    /**
-     * DecodeTaskId: 从全局 task_idx 反解 (batch, head, qb_local)
-     *
-     * task_idx 的排列顺序:
-     *   (b=0,h=0,qb=0), (b=0,h=0,qb=1), ..., (b=0,h=0,qb=N0-1),
-     *   (b=0,h=1,qb=0), ..., (b=0,h=1,qb=N0-1),
-     *   ...
-     *   (b=1,h=0,qb=0), ..., (b=1,h=H_q-1,qb=N1-1),
-     *   ...
-     * 其中 Nb = ceil(qSeqLens[b] / B)
-     */
     __aicore__ inline void DecodeTaskId(uint32_t task_idx)
     {
         uint32_t total_qb = 0;
-        uint32_t acc_cu_off = 0;
-        LocalTensor<int64_t> varlenLocal = varlenInfoBuf_.Get<int64_t>();
+        uint32_t max_Qb = tiling_->max_Qb;
+        LocalTensor<int64_t> cuSeqLensQ = cuSeqLensQBuf_.Get<int64_t>();
+
         for (uint32_t b = 0; b < tiling_->batch_size; b++) {
-            uint32_t q_len_b = static_cast<uint32_t>(varlenLocal.GetValue(b));
+            int64_t cu_start = cuSeqLensQ.GetValue(b);
+            int64_t cu_end = cuSeqLensQ.GetValue(b + 1);
+            uint32_t q_len_b = static_cast<uint32_t>(cu_end - cu_start);
+            uint32_t num_Qb_b = (q_len_b + B_ - 1) / B_;
+            uint32_t tasks_in_batch = max_Qb * num_q_heads_;
 
-            uint32_t q_padded_b = ((q_len_b + B_ - 1) / B_) * B_;
-            uint32_t num_Qb_b = q_padded_b / B_;
-
-            for (uint32_t h = 0; h < num_q_heads_; h++) {
-                if (task_idx < total_qb + num_Qb_b) {
-                    batch_idx_ = b;
-                    head_idx_ = h;
-                    qb_local_ = task_idx - total_qb;
-                    cu_off_ = acc_cu_off;
-                    q_len_ = q_len_b;
-                    q_padded_ = q_padded_b;
-                    num_Qb_ = num_Qb_b;
-                    return;
-                }
-                total_qb += num_Qb_b;
+            if (task_idx < total_qb + tasks_in_batch) {
+                uint32_t in_batch = task_idx - total_qb;
+                batch_idx_ = b;
+                head_idx_ = in_batch / max_Qb;
+                qb_local_ = in_batch % max_Qb;
+                cu_off_ = static_cast<uint32_t>(cu_start);
+                q_len_ = q_len_b;
+                q_padded_ = num_Qb_b * B_;
+                num_Qb_ = num_Qb_b;
+                AscendC::PRINTF("[D]task=%u b=%u h=%u qb=%u cu=%u qlen=%u num_Qb=%u\n",
+                    task_idx, b, head_idx_, qb_local_, cu_off_, q_len_, num_Qb_b);
+                return;
             }
-            acc_cu_off += q_len_b;
+            total_qb += tasks_in_batch;
         }
-    }
-
-private:
-    /**
-     * ReadVarlenInfo: 读取 varlen 元信息
-     *
-     * 从 GM 读取:
-     *   qSeqLens[b]  → q_len_:  该 batch 的 Q 序列长度
-     *   cuSeqLensQ[b] → cu_off_: 该 batch 在 q 中的起始 token 偏移
-     *
-     * 计算:
-     *   q_padded_ = ceil(q_len / B) × B
-     *   num_Qb_   = q_padded / B
-     */
-    __aicore__ inline void ReadVarlenInfo(uint32_t b)
-    {
-        LocalTensor<int64_t> varlenLocal = varlenInfoBuf_.Get<int64_t>();
-        qSeqLensGm_.SetGlobalBuffer((__gm__ int64_t*)qSeqLensBase_ + b, VARLEN_READ_ALIGN);
-        DataCopyPad(varlenLocal, qSeqLensGm_,
-            {1, static_cast<uint16_t>(VARLEN_READ_ALIGN * sizeof(int64_t)), 0, 0},
-            {false, 0, 0, 0});
-        PipeBarrier<PIPE_MTE2>();
-        q_len_ = static_cast<uint32_t>(varlenLocal.GetValue(0));
-
-        cuSeqLensGm_.SetGlobalBuffer((__gm__ int64_t*)cuSeqLensBase_ + b, VARLEN_READ_ALIGN);
-        DataCopyPad(varlenLocal, cuSeqLensGm_,
-            {1, static_cast<uint16_t>(VARLEN_READ_ALIGN * sizeof(int64_t)), 0, 0},
-            {false, 0, 0, 0});
-        PipeBarrier<PIPE_MTE2>();
-        cu_off_ = static_cast<uint32_t>(varlenLocal.GetValue(0));
-
-        q_padded_ = ((q_len_ + B_ - 1) / B_) * B_;
-        num_Qb_   = q_padded_ / B_;
     }
 
     __aicore__ inline void ProcessOneBlock(uint32_t task_idx)
     {
+        // 虚拟块：qb_local_ >= num_Qb_，输出补 0
+        if (qb_local_ >= num_Qb_) {
+            WriteZeroBlock();
+            return;
+        }
         CopyInQBlock();
         CastBlockToFP32();
         CopyInScalesBulk();
@@ -371,16 +434,22 @@ private:
                               (q_len_ > start_row ? q_len_ - start_row : 0);
 
         LocalTensor<fp8_e4m3fn_t> qBlockLocal = qBlockBuf_.Get<fp8_e4m3fn_t>();
-        for (uint32_t i = 0; i < valid_rows; i++) {
-            uint32_t globalPos = cu_off_ + start_row + i;
-            uint32_t qOffset = globalPos * num_q_heads_ * dim_qk_ + head_idx_ * dim_qk_;
-            qGm_.SetGlobalBuffer((__gm__ fp8_e4m3fn_t*)qBase_ + qOffset, dim_qk_);
-            DataCopyPad(qBlockLocal[i * dim_qk_], qGm_,
-                {1, static_cast<uint16_t>(dim_qk_ * sizeof(fp8_e4m3fn_t)), 0, 0},
-                {false, 0, 0, 0});
+        if (valid_rows > 0) {
+            uint32_t qOffset = (cu_off_ + start_row) * num_q_heads_ * dim_qk_
+                              + head_idx_ * dim_qk_;
+            DataCopyParams copyParams;
+            copyParams.blockCount = static_cast<uint16_t>(valid_rows);
+            copyParams.blockLen = static_cast<uint16_t>(dim_qk_ * sizeof(fp8_e4m3fn_t));
+            copyParams.srcStride = static_cast<uint16_t>((num_q_heads_ - 1) * dim_qk_ * sizeof(fp8_e4m3fn_t));
+            copyParams.dstStride = 0;
+            qGm_.SetGlobalBuffer((__gm__ fp8_e4m3fn_t*)qBase_ + qOffset,
+                                 valid_rows * num_q_heads_ * dim_qk_);
+            DataCopyPad(qBlockLocal, qGm_, copyParams,
+                        DataCopyPadParams{false, 0, 0, 0});
         }
         SetFlag<HardEvent::MTE2_V>(EVENT_ID0);
     }
+
 
     /**
      * CastBlockToFP32: UB 内 FP8 → FP32 类型转换
@@ -420,27 +489,41 @@ private:
     __aicore__ inline void CopyInScalesBulk()
     {
         LocalTensor<float> scalesLocal = scalesBuf_.Get<float>();
-        Duplicate(scalesLocal, 0.0f, B_ * num_q_heads_);
+        Duplicate(scalesLocal, 0.0f, B_);
         SetFlag<HardEvent::V_MTE2>(EVENT_ID0);
+        event_t vsEvent = static_cast<event_t>(pipe_.FetchEventID(HardEvent::V_S));
+        SetFlag<HardEvent::V_S>(vsEvent);
+        WaitFlag<HardEvent::V_S>(vsEvent);
         WaitFlag<HardEvent::V_MTE2>(EVENT_ID0);
 
         uint32_t start_row = qb_local_ * B_;
         uint32_t valid_rows = (start_row + B_ <= q_len_) ? B_ :
                               (q_len_ > start_row ? q_len_ - start_row : 0);
-        uint32_t scaleBase = (cu_off_ + start_row) * num_q_heads_;
         if (valid_rows > 0) {
+            uint32_t base_offset = (cu_off_ + start_row) * num_q_heads_ + head_idx_;
+            uint32_t gm_range = valid_rows * num_q_heads_;
             qscaleGm_.SetGlobalBuffer(
-                (__gm__ float*)qscaleBase_ + scaleBase,
-                valid_rows * num_q_heads_);
-            DataCopyPad(scalesLocal, qscaleGm_,
-                {1, static_cast<uint16_t>(valid_rows * num_q_heads_ * sizeof(float)), 0, 0},
-                {false, 0, 0, 0});
+                (__gm__ float*)qscaleBase_ + base_offset,
+                gm_range);
+            for (uint32_t i = 0; i < valid_rows; i++) {
+                scalesLocal.SetValue(i,
+                    qscaleGm_.GetValue(i * num_q_heads_));
+            }
+            event_t svEvent = static_cast<event_t>(pipe_.FetchEventID(HardEvent::S_V));
+            SetFlag<HardEvent::S_V>(svEvent);
+            WaitFlag<HardEvent::S_V>(svEvent);
+            if (valid_rows >= 4) {
+                AscendC::PRINTF("[SVAL]qb=%u b=%u h=%u s[0]=%f s[1]=%f s[vr-1]=%f s[vr-2]=%f\n",
+                    qb_local_, batch_idx_, head_idx_,
+                    scalesLocal.GetValue(0), scalesLocal.GetValue(1),
+                    scalesLocal.GetValue(valid_rows - 1), scalesLocal.GetValue(valid_rows - 2));
+            }
         }
         SetFlag<HardEvent::MTE2_V>(EVENT_ID1);
     }
 
     /**
-     * AccumulateBlock: Weighted Group Sum (沿 R 轴累加)
+     * AccumulateBlock: Binary-reduce based Weighted Group Sum (in-place)
      *
      * qBlockFP32Buf [B, D] 逻辑 reshape 为 [R, S, D]
      * scalesBuf     [B]    逻辑 reshape 为 [R, S]
@@ -448,47 +531,66 @@ private:
      * 对每个 g ∈ [0, S-1]:
      *   groupSum[g, :] = Σ_{r=0}^{R-1} qBlockFP32[r*S+g, :] × scales[r*S+g]
      *
-     * groupSumBuf: [S, D] FP32 = [S*D] FP32
+     * Binary decompose R (MSB→LSB) and dispatch one chunk per VF call.
+     * Each VF call fuses:
+     *   - Muls on all R*S rows   (only the first chunk, do_muls=1)
+     *   - Pairwise reduce in p layers on this chunk (always)
+     *   - Add-merge into row[g]  (only later chunks, merge_count=1)
+     *
+     * 结果留在 qBlockFP32Buf 的前 S 行 (行 g, 偏移 g*D, g in [0, S))
      */
     __aicore__ inline void AccumulateBlock()
     {
         WaitFlag<HardEvent::MTE2_V>(EVENT_ID1);
 
-        LocalTensor<float> qFP32Local = qBlockFP32Buf_.Get<float>();
-        LocalTensor<float> scalesLocal = scalesBuf_.Get<float>();
-        LocalTensor<float> groupSumLocal = groupSumBuf_.Get<float>();
+        __ubuf__ float* qFP32Ptr =
+            (__ubuf__ float*)qBlockFP32Buf_.Get<float>().GetPhyAddr();
+        __ubuf__ float* scalePtr =
+            (__ubuf__ float*)scalesBuf_.Get<float>().GetPhyAddr();
 
-        Duplicate(groupSumLocal, 0.0f, S_ * dim_qk_);
-        SetFlag<HardEvent::V_S>(EVENT_ID0);
-        WaitFlag<HardEvent::V_S>(EVENT_ID0);
-
-        for (uint16_t g = 0; g < S_; g++) {
-            for (uint16_t d = 0; d < dim_qk_; d++) {
-                float acc = 0.0f;
-                for (uint16_t r = 0; r < R_; r++) {
-                    uint16_t row_idx = r * S_ + g;
-                    uint32_t scaleOffset = static_cast<uint32_t>(row_idx) * num_q_heads_ + head_idx_;
-                    uint32_t qIdx = static_cast<uint32_t>(row_idx) * dim_qk_ + d;
-                    float qVal = qFP32Local.GetValue(qIdx);
-                    float sVal = scalesLocal.GetValue(scaleOffset);
-                    acc += qVal * sVal;
-                }
-                uint32_t outIdx = static_cast<uint32_t>(g) * dim_qk_ + d;
-                groupSumLocal.SetValue(outIdx, acc);
+        uint16_t base_r = 0;
+        uint16_t R_rem = static_cast<uint16_t>(R_);
+        while (R_rem > 0) {
+            // floor_log2(R_rem) — compute highest bit position
+            uint16_t p = 0;
+            uint16_t tmp = R_rem;
+            while (tmp >= 2) {
+                tmp >>= 1;
+                p++;
             }
+            uint16_t chunk = static_cast<uint16_t>(1 << p);
+
+            // First chunk: Muls all rows + reduce chunk + (no merge, row[g] already holds sum)
+            // Later chunks: reduce chunk + Add merge into accumulator row[g]
+            uint16_t do_muls     = (base_r == 0) ? 1 : 0;
+            uint16_t merge_count = (base_r > 0)  ? 1 : 0;
+
+            VF_CALL<WeightedBinaryReduceChunkVf>(
+                qFP32Ptr, scalePtr,
+                static_cast<uint16_t>(R_),
+                base_r, p,
+                static_cast<uint16_t>(S_),
+                static_cast<uint16_t>(dim_qk_),
+                do_muls, merge_count);
+            PipeBarrier<PIPE_V>();
+
+            base_r += chunk;
+            R_rem -= chunk;
         }
-        SetFlag<HardEvent::S_V>(EVENT_ID0);
-        WaitFlag<HardEvent::S_V>(EVENT_ID0);
+        // qBlockFP32Buf 的前 S*D 个 float (即 row[g] for g in [0,S))
+        // 保存了 groupSum[g, :] 的结果
     }
 
     /**
      * FlattenAndCast: UB 内 FP32 → BF16 类型转换
      *
-     * groupSumBuf [S*D] FP32 → Cast(RINT) → outQueueQflat [S*D] BF16
+     * qBlockFP32Buf 的前 S*D 个 FP32 元素
+     * (即 AccumulateBlock 后留在那里的 groupSum 结果)
+     * → Cast(RINT) → outQueueQflat [S*D] BF16
      */
     __aicore__ inline void FlattenAndCast()
     {
-        LocalTensor<float> groupSumLocal = groupSumBuf_.Get<float>();
+        LocalTensor<float> groupSumLocal = qBlockFP32Buf_.Get<float>();
         LocalTensor<bfloat16_t> qflatLocal = outQueueQflat_.AllocTensor<bfloat16_t>();
         Cast<bfloat16_t, float>(qflatLocal, groupSumLocal,
             RoundMode::CAST_RINT, qflat_dim_);
@@ -516,6 +618,30 @@ private:
         outQueueQflat_.FreeTensor(qflatLocal);
     }
 
+    /**
+     * WriteZeroBlock: 虚拟块输出补 0
+     *
+     * 当 qb_local_ >= num_Qb_（含 q_len_b == 0 的情况），
+     * 向 GM 对应位置写入 qflat_dim_ 个 0（BF16）。
+     *
+     * GM 目标: qFlat[b, h, qb, :]
+     *          GM offset = b * (H_q * max_Qb * S*D) + h * (max_Qb * S*D) + qb * S*D
+     */
+    __aicore__ inline void WriteZeroBlock()
+    {
+        LocalTensor<bfloat16_t> qflatLocal = outQueueQflat_.AllocTensor<bfloat16_t>();
+        Duplicate(qflatLocal, (bfloat16_t)0, qflat_dim_);
+        outQueueQflat_.EnQue<bfloat16_t>(qflatLocal);
+        LocalTensor<bfloat16_t> qflatOut = outQueueQflat_.DeQue<bfloat16_t>();
+        uint32_t outOffset = batch_idx_ * (num_q_heads_ * tiling_->max_Qb * qflat_dim_)
+                           + head_idx_  * (tiling_->max_Qb * qflat_dim_)
+                           + qb_local_  * qflat_dim_;
+        qflatGm_.SetGlobalBuffer((__gm__ bfloat16_t*)qflatBase_ + outOffset, qflat_dim_);
+        DataCopyPad(qflatGm_, qflatOut,
+            {1, static_cast<uint16_t>(qflat_dim_ * sizeof(bfloat16_t)), 0, 0});
+        outQueueQflat_.FreeTensor(qflatOut);
+    }
+
     TPipe pipe_;
     const StemPrepQTilingData* tiling_ = nullptr;
 
@@ -539,7 +665,6 @@ private:
     uint32_t core_in_bh_ = 0;
     uint32_t cores_per_bh_this_ = 1;
 
-    GM_ADDR qSeqLensBase_ = nullptr;
     GM_ADDR cuSeqLensBase_ = nullptr;
     GM_ADDR qBase_ = nullptr;
     GM_ADDR qscaleBase_ = nullptr;
@@ -547,16 +672,14 @@ private:
 
     GlobalTensor<fp8_e4m3fn_t> qGm_;
     GlobalTensor<float> qscaleGm_;
-    GlobalTensor<int64_t> qSeqLensGm_;
     GlobalTensor<int64_t> cuSeqLensGm_;
     GlobalTensor<bfloat16_t> qflatGm_;
 
     TBuf<TPosition::VECCALC> qBlockBuf_;
     TBuf<TPosition::VECCALC> qBlockFP32Buf_;
     TBuf<TPosition::VECCALC> scalesBuf_;
-    TBuf<TPosition::VECCALC> groupSumBuf_;
     TQue<TPosition::VECOUT, 1> outQueueQflat_;
-    TBuf<TPosition::VECCALC> varlenInfoBuf_;
+    TBuf<TPosition::VECCALC> cuSeqLensQBuf_;
 };
 
 #endif
