@@ -56,6 +56,13 @@ public:
             .PrecisionReduceFlag(true);
         this->AICore().AddConfig("ascend910b", aicore_config);
         this->AICore().AddConfig("ascend910_93", aicore_config);
+
+        OpAICoreConfig regbaseCfg;
+        regbaseCfg.DynamicCompileStaticFlag(true)
+            .DynamicRankSupportFlag(true)
+            .DynamicShapeSupportFlag(true)
+            .ExtendCfgInfo("opFile.value", "moe_gating_top_k_backward_apt");
+        this->AICore().AddConfig("ascend950", regbaseCfg);
     }
 };
 
