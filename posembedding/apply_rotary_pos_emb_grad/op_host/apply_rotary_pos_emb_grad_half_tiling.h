@@ -27,7 +27,7 @@ public:
 
     void Reset(gert::TilingContext* context) override
     {
-        TilingBase::Reset(context);
+        TilingBaseClass::Reset(context);
     }
 
 protected:

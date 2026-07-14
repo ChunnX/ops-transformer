@@ -782,7 +782,7 @@ ge::graphStatus ApplyRotaryPosEmbGradHalfTiling::ApplyRopeHalfGradInitSplitInfo(
                               (DTYPE_SIZE_FP16 * IN_OUT_TENSOR_SINGLE_NUM + DTYPE_SIZE_FP32 * TENSOR_CONV_SINGLE_NUM);
         }
     }
-    OP_CHECK_IF(ApplyRopeHalfGradSetTiling(availableUbSize, aicoreParams_.blockDim) != ge::GRAPH_SUCCESS,
+    OP_CHECK_IF(ApplyRopeHalfGradSetTiling(availableUbSize, aicoreParams_.numBlocks) != ge::GRAPH_SUCCESS,
                 OP_LOGE(context_->GetNodeName(), "ApplyRopeHalfGradInitSplitInfo failed."), return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;

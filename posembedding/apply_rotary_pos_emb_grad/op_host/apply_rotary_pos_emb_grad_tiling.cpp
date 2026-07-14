@@ -14,7 +14,7 @@
  */
 #include "apply_rotary_pos_emb_grad_tiling.h"
 #include "apply_rotary_pos_emb_grad_half_tiling.h"
-#include "tiling_base/tiling_templates_registry.h"
+#include "op_host/tiling_templates_registry.h"
 #include "platform/platform_info.h"
 #include "register/op_impl_registry.h"
 
@@ -45,7 +45,7 @@ ge::graphStatus ApplyRotaryPosEmbGradTiling::GetPlatformInfo()  // 获取硬件�
     auto platformInfo = context_->GetPlatformInfo();
     if (platformInfo != nullptr) {
         auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
-        aicoreParams_.blockDim = static_cast<uint64_t>(ascendcPlatform.GetCoreNumAiv());
+        aicoreParams_.numBlocks = static_cast<uint64_t>(ascendcPlatform.GetCoreNumAiv());
         uint64_t ubSizePlatForm;
         ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSizePlatForm);
         aicoreParams_.ubSize = ubSizePlatForm;
@@ -53,7 +53,7 @@ ge::graphStatus ApplyRotaryPosEmbGradTiling::GetPlatformInfo()  // 获取硬件�
     } else {
         auto compileInfoPtr = context_->GetCompileInfo<ApplyRotaryPosEmbGradCompileInfo>();
         OP_CHECK_IF(compileInfoPtr == nullptr, OP_LOGE(context_, "compile info is null"), return ge::GRAPH_FAILED);
-        aicoreParams_.blockDim = compileInfoPtr->numBlocks;
+        aicoreParams_.numBlocks = compileInfoPtr->numBlocks;
         aicoreParams_.ubSize = compileInfoPtr->ubSize;
         socVersion_ = compileInfoPtr->socVersion;
     }

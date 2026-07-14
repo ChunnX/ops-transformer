@@ -17,8 +17,9 @@
 
 #include <tiling/tiling_api.h>
 #include "register/tilingdata_base.h"
-#include "../../../common/include/tiling_base/tiling_base.h"
-#include "../../../common/include/err/ops_err.h"
+#include "platform/platform_infos_def.h"
+#include "op_host/tiling_base.h"
+#include "err/ops_err.h"
 
 namespace optiling {
 
@@ -87,14 +88,14 @@ enum class ApplyRotaryPosEmbGradTilingKey : uint32_t {
     TILING_KEY_LAYOUT_BSND = 1
 };
 
-class ApplyRotaryPosEmbGradTiling : public Ops::Transformer::OpTiling::TilingBase {
+class ApplyRotaryPosEmbGradTiling : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
-    explicit ApplyRotaryPosEmbGradTiling(gert::TilingContext *context) : TilingBase(context)
+    explicit ApplyRotaryPosEmbGradTiling(gert::TilingContext *context) : TilingBaseClass(context)
     {}
 
     void Reset(gert::TilingContext *context) override
     {
-        TilingBase::Reset(context);
+        TilingBaseClass::Reset(context);
     }
 
 protected:
