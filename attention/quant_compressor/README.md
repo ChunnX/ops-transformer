@@ -27,7 +27,7 @@
     X_{fp32} = X_{hif8} \cdot x\_descale,\quad W^{KV}_{fp32} = W^{KV}_{hif8} \cdot wkv\_descale,\quad W^{Gate}_{fp32} = W^{Gate}_{hif8} \cdot wgate\_descale
     $$
 
-    其中x_descale为per-tensor标量（shape为[1]），wkv_descale、wgate_descale为per-channel向量（shape为[coff\*D]，沿权重输出通道维度缩放）。
+    其中x_descale为per-tensor标量（shape为[1,]），wkv_descale、wgate_descale为per-channel向量（shape为[coff\*D,]，沿权重输出通道维度缩放）。
 
     1. 计算矩阵乘法（使用反量化后的FP32数据）：
 
@@ -110,9 +110,9 @@
     - wgate支持输入shape[coff* D,H]
     - state\_cache支持输入shape[block_num,block_size,2* coff* D]，要求block_num>0，cache_mode=2时，需要满足block_size >= coff * cmp_ratio + S - 1。
     - ape支持输入shape[cmp_ratio,coff* D]
-    - x\_descale支持输入shape[1]，per-tensor缩放。
-    - wkv\_descale支持输入shape[coff* D]，per-channel缩放。
-    - wgate\_descale支持输入shape[coff* D]，per-channel缩放。
+    - x\_descale支持输入shape[1,]，per-tensor缩放。
+    - wkv\_descale支持输入shape[coff* D,]，per-channel缩放。
+    - wgate\_descale支持输入shape[coff* D,]，per-channel缩放。
     - start\_pos支持输入shape[B,]
     - 若x的维度采用BS合轴，即x的输入shape为[T,H]
         - cu\_seqlens输入shape必须为[B+1,]。该参数中每个元素的值表示当前batch与之前所有batch的token数总和，即前缀和，因此后一个元素的值必须大于等于前一个元素的值，且第一位必须位0。
