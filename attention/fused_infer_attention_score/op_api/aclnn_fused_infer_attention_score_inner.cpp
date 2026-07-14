@@ -32,6 +32,9 @@ extern "C" {
 
 const uint64_t INT4_NUMS_IN_INT32 = 8;
 
+// The weak symbol is available when opbase supports TensorV2 view strides.
+bool NnopbaseSupportTensorV2() __attribute__((weak));
+
 void TensorPreProcess(const aclTensorList *&tensorListKey, const aclTensorList *&tensorListValue) {
     if (tensorListKey == nullptr) {
         OP_LOGD("TensorListKey is nullptr,TensorPreProcess exit.");
@@ -404,16 +407,21 @@ aclnnStatus ProcessQKVForL0Input(const aclTensor *&query, const aclTensorList *&
         return ACLNN_ERR_PARAM_INVALID;
     }
 
+    const bool isCacheScene = IsCacheScene(blockTableOptional);
     FiaDebugPrintf("[FIA_DEBUG][INNER] ProcessQKVForL0Input cacheScene[%d].",
-                   static_cast<int32_t>(IsCacheScene(blockTableOptional)));
+                   static_cast<int32_t>(isCacheScene));
     LogTensorDebugInfo("ProcessQKV.query.before", query);
     LogTensorDebugInfo("ProcessQKV.blockTableOptional", blockTableOptional);
     LogTensorListDebugInfo("ProcessQKV.key.before", key);
     LogTensorListDebugInfo("ProcessQKV.value.before", value);
-    if (IsCacheScene(blockTableOptional)) {
+    if (isCacheScene && NnopbaseSupportTensorV2 != nullptr) {
         CHECK_RET(CheckTensorListFirstAxisOnlyNonContiguous(key, "key") == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
         CHECK_RET(CheckTensorListFirstAxisOnlyNonContiguous(value, "value") == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
         return ACLNN_SUCCESS;
+    }
+
+    if (isCacheScene) {
+        OP_LOGW("Current opbase does not support TensorV2, make cache query, key and value contiguous.");
     }
 
     query = l0op::Contiguous(query, executor);
