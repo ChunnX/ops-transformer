@@ -979,6 +979,24 @@ def qliv2_output_single(params, is_batch = False):
         if actual_seq_dtype == 'INT32':
             actual_seq_dtype = torch.int32
 
+        # 标量数字字段：pandas 从 Excel 读出为 str，统一转 int
+        batch_size = int(batch_size)
+        q_seq = int(q_seq)
+        k_seq = int(k_seq)
+        q_t_size = int(q_t_size)
+        k_t_size = int(k_t_size)
+        q_head_num = int(q_head_num)
+        k_head_num = int(k_head_num)
+        head_dim = int(head_dim)
+        block_size = int(block_size)
+        block_num = int(block_num)
+        max_seqlen_q = int(max_seqlen_q)
+        quant_mode = int(quant_mode)
+        sparse_count = int(sparse_count)
+        sparse_mode = int(sparse_mode)
+        cmp_ratio = int(cmp_ratio)
+        return_value = int(return_value)
+
         def _safe_eval(val):
             """ast.literal_eval 安全包装：pandas 从 Excel 读取标量数字时返回 int/float
             而非 str，直接传给 ast.literal_eval 会抛 'malformed node or string'，

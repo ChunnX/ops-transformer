@@ -39,8 +39,9 @@ def test_qliv2_process(filepath, device_id=0):
         query = test_data['query'].cpu()
         key = test_data['key'].cpu()
 
-    max_seqlen_q = params[18]
-    return_value = params[30]
+    # params 含 weight_dtype 在 [11]，索引比旧版整体后移 1 位
+    max_seqlen_q = int(params[19])
+    return_value = int(params[31])
     weights =test_data['weights'].cpu()
     query_dequant_scale = test_data['query_dequant_scale'].cpu()
     key_dequant_scale = test_data['key_dequant_scale'].cpu()
