@@ -486,6 +486,7 @@ __aicore__ inline void CombineTokenGroup(uint32_t tokenStart, uint32_t tokenCoun
 __aicore__ inline void ComputeCombineTileGrouping(uint32_t tileId, uint32_t numGroups, uint32_t totalTiles,
     uint32_t& myGroup, uint32_t& myIdxInGrp, uint32_t& myGrpSize)
 {
+    // 将 totalTiles 尽量均匀分到 numGroups，前 remainder 个 group 多分配一个 tile。
     uint32_t baseSize = totalTiles / numGroups;
     uint32_t remainder = totalTiles % numGroups;
     uint32_t boundary = remainder * (baseSize + 1);
@@ -502,11 +503,11 @@ __aicore__ inline void ComputeCombineTileGrouping(uint32_t tileId, uint32_t numG
     }
 }
 
-// ProcessCombineSingleCore has three independent input groups:
-// 1) tile scheduling: the continuous logical tile id and tile count;
-// 2) expert context: expert/rank/shape values used to locate triple records and tile counts;
-// 3) buffer context: GM/UB storage used by the combine implementation.
-// Keeping them separate avoids passing a long mixed list where tile ids can be mistaken for physical core ids.
+// ProcessCombineSingleCore 将输入拆为三类独立上下文：
+// 1) tile 调度：连续逻辑 tile ID 和 tile 数；
+// 2) expert 上下文：定位 triple 与计算分组所需的 expert/rank/shape；
+// 3) buffer 上下文：Combine 使用的 GM/UB 地址。
+// 逻辑 tile ID 由外部计算，物理核对应的同步计数器地址也由外部映射后传入。
 struct CombineTileSchedule {
     uint32_t tileId;
     uint32_t tileNum;
@@ -526,6 +527,10 @@ struct CombineBufferContext {
     int64_t combineUbTensorSize;
 };
 
+// =============================================
+// ProcessCombineSingleCore：generic combine-quant 路径的单核后处理
+//                            等待本 expert 的 row-group 完成，再读取 triple 和 GMM2 输出
+// =============================================
 template <int32_t CombineQuantMode>
 __aicore__ inline void ProcessCombineSingleCore(const CombineTileSchedule& tileSchedule,
     const CombineExpertContext& expertContext, const CombineBufferContext& bufferContext, const Params& params)
@@ -535,6 +540,7 @@ __aicore__ inline void ProcessCombineSingleCore(const CombineTileSchedule& tileS
         return;
     }
 
+    // 按 token row-group 对逻辑 tile 分组，组内 tile 分担该 row-group 的 token。
     uint32_t myGroup = 0;
     uint32_t myIdxInGrp = 0;
     uint32_t myGrpSize = 0;
@@ -544,6 +550,8 @@ __aicore__ inline void ProcessCombineSingleCore(const CombineTileSchedule& tileS
         return;
     }
 
+    // 同步计数器地址已由调用方按 expert 和物理核映射完成。
+    // 计数达到 nTilesPerGroup 表示 GMM2 已产出当前 row-group 的全部 N tile。
     uint32_t nTilesPerGroup = Ops::Base::CeilDiv(expertContext.k, MegaMoeImpl::L1_TILE_N);
     __gm__ int32_t *myCounterAddr = reinterpret_cast<__gm__ int32_t *>(bufferContext.gmm2SyncCounterAddr);
     while (AscendC::ReadGmByPassDCache(myCounterAddr) != nTilesPerGroup) {
@@ -552,12 +560,14 @@ __aicore__ inline void ProcessCombineSingleCore(const CombineTileSchedule& tileS
         };
     }
 
+    // 量化 token 由 k 字节数据和 nScale 字节 scale 组成，每条记录按 32B 对齐。
     uint32_t nScale = Ops::Base::CeilDiv(expertContext.k, uint32_t(MXFP_SCALE_GROUP_NUM));
     uint32_t quantTokenSizeBytes = Ops::Base::CeilAlign(
         expertContext.k + nScale, static_cast<uint32_t>(ALIGN_32));
     uint32_t tokenStart = myGroup * MegaMoeImpl::L1_TILE_M_256;
     uint32_t tokenCount = (MegaMoeImpl::L1_TILE_M_256 < expertContext.mExpert - tokenStart) ?
         MegaMoeImpl::L1_TILE_M_256 : expertContext.mExpert - tokenStart;
+    // 组内再均分 token，尾 tile 可能少于 tokensPerTile 或无任务。
     uint32_t tokensPerTile = Ops::Base::CeilDiv(tokenCount, myGrpSize);
     int32_t myTokenOffset = myIdxInGrp * tokensPerTile;
     int32_t myTokenCount = 0;
@@ -569,6 +579,7 @@ __aicore__ inline void ProcessCombineSingleCore(const CombineTileSchedule& tileS
         return;
     }
 
+    // 从 workspace 搬入本 tile 对应的 (rank, tokenIndex, topkIndex) 三元组。
     AscendC::SetCtrlSpr<60, 60>(0);
     int64_t offset = 0;
     LocalTensor<int32_t> tripleTensor = LocalTensor<int32_t>(TPosition::VECIN, offset, myTokenCount * TRIPLE_SIZE);
@@ -578,6 +589,7 @@ __aicore__ inline void ProcessCombineSingleCore(const CombineTileSchedule& tileS
         + (expertContext.expertBeforeCnt + tokenStart + myTokenOffset) * TRIPLE_SIZE * sizeof(int32_t)));
     AscendC::DataCopy(tripleTensor, tripleGm, myTokenCount * TRIPLE_SIZE);
     PipeBarrier<PIPE_MTE2>();
+    // 读取 GMM2 结果，完成量化并按三元组发送到目标 rank。
     CombineTokenGroup<CombineQuantMode, bfloat16_t>(
         tokenStart + myTokenOffset, myTokenCount, expertContext.k, expertContext.expertIdx, expertContext.rankId,
         bufferContext.gmm2OutAddr, params, tripleTensor, bufferContext.combineUbTensorSize,
