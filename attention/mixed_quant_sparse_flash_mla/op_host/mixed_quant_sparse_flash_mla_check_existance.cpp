@@ -65,7 +65,7 @@ ge::graphStatus MQSMLATilingCheck::CheckUnrequiredParaExistence() const
 ge::graphStatus MQSMLATilingCheck::CheckCmpSparseIndicesExistence()
 {
     if (opParamInfo_.cmpSparseIndices.tensor != nullptr) {
-        if (qLayout_ == QSMLALayout::BSND) {
+        if (qLayout_ == MQSMLALayout::BSND) {
             if (opParamInfo_.cmpSparseIndices.tensor->GetStorageShape().GetDim(DIM_3) <= 0) {
                 OP_LOGE(opName_, "When qLayout is BSND, topK should be 512 or 1024, but got %ld",
                         opParamInfo_.cmpSparseIndices.tensor->GetStorageShape().GetDim(3));
