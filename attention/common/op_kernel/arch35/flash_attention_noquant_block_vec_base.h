@@ -1091,7 +1091,7 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1Nd(
     LocalTensor<T> mmRes = bmm1ResBuf.template GetTensor<T>();
     
     if (enableKVPrefix && runInfo.s2LoopCount < 8) { PRINTF("[VEC-Nd-info] s2L=%lld s2LL=%lld s2S=%lld s2E=%lld prefSz=%lld pLC=%lld isPref=%lld\n", (long long)runInfo.s2LoopCount, (long long)runInfo.s2LoopLimit, (long long)runInfo.s2StartIdx, (long long)runInfo.s2EndIdx, (long long)constInfo.actualKVPrefixSize, (long long)constInfo.prefixLoopCount, (long long)((runInfo.s2LoopCount + runInfo.s2StartIdx / s2BaseSize) < constInfo.prefixLoopCount)); }
-    if (enableKVPrefix && runInfo.s2LoopCount < 1) {
+    if (enableKVPrefix && runInfo.s2LoopCount < 8) {
     PRINTF("[VEC-Nd-allmax] mx0=%f mx1=%f mx2=%f mx3=%f sum0=%f",
            (float)maxUb.GetValue(0), (float)maxUb.GetValue(1),
            (float)maxUb.GetValue(2), (float)maxUb.GetValue(3),
@@ -1489,6 +1489,7 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec2OnU
     }
     bmm2ResBuf.SetCrossCore();
     if (runInfo.s2LoopCount == runInfo.s2LoopLimit) {
+        if (enableKVPrefix) { LocalTensor<float> fSumUb = this->softmaxSumBuf[runInfo.multiCoreIdxMod3].template Get<float>(); LocalTensor<float> fMaxUb = this->softmaxMaxBuf[runInfo.multiCoreIdxMod3].template Get<float>(); PRINTF("[VEC2-final] s2L=%lld sum=%f max=%f\n", (long long)runInfo.s2LoopCount, (float)fSumUb.GetValue(0), (float)fMaxUb.GetValue(0)); }
         if (unlikely(runInfo.s2LoopCount == 0)) {
             LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.multiCoreIdxMod3].template Get<float>();
             LastDivNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64, isMlaFullQuant>(
