@@ -27,6 +27,7 @@ import math
 import os
 import random
 import sys
+import time
 
 import torch
 import torch_npu
@@ -45,6 +46,7 @@ QBSA_ROOT = os.path.abspath(os.path.join(CURRENT_DIR, "../../.."))
 TORCH_OPS_EXTENSION_DIR = os.path.join(QBSA_ROOT, "torch_ops_extension")
 _CUSTOM_OPS_IMPORTED = False
 _DEFAULT_CASE_FILE = "qbsa_mxfp8_test_cases"
+_CASE_LOG_WIDTH = 100
 _DTYPE_MAP = {
     "float8_e4m3fn": torch.float8_e4m3fn,
     "float8_e8m0fnu": torch.float8_e8m0fnu,
@@ -1085,15 +1087,72 @@ def _cache_case_name(case_id, case_name_arg, total_case_num):
     return f"{case_name_arg}_{safe_case_id}"
 
 
-def run_one_case(case_id, case, mode, case_name, cache_dir):
+def _log_case_start(case_idx, total_case_num, case_id, mode, cache_case_name):
+    logger.info("")
+    logger.info("#" * _CASE_LOG_WIDTH)
+    logger.info("# CASE START [%d/%d]", case_idx, total_case_num)
+    logger.info("# case_name : %s", case_id)
+    logger.info("# cache_name: %s", cache_case_name)
+    logger.info("# mode      : %s", ",".join(sorted(mode)))
+    logger.info("#" * _CASE_LOG_WIDTH)
+
+
+def _make_case_result(case_id, status, elapsed, out_result=None, lse_result=None, error=None):
+    return {
+        "case": case_id,
+        "status": status,
+        "elapsed": elapsed,
+        "out": out_result,
+        "lse": lse_result,
+        "error": error,
+    }
+
+
+def _result_status(compare_result):
+    return compare_result[0] if compare_result is not None else "Skip"
+
+
+def _result_pct(compare_result):
+    return "-" if compare_result is None else f"{compare_result[1]:.6f}%"
+
+
+def _result_max_error(compare_result):
+    return "-" if compare_result is None else f"{compare_result[2]:.6g}"
+
+
+def _log_final_summary(results):
+    total = len(results)
+    passed = sum(1 for item in results if item["status"] == "Pass")
+    skipped = sum(1 for item in results if item["status"] in {"Generated", "CpuDone", "NpuDone"})
+    failed = total - passed - skipped
+
+    logger.info("")
+    logger.info("=" * _CASE_LOG_WIDTH)
+    logger.info("QBSA MXFP8 CASE SUMMARY")
+    logger.info("=" * _CASE_LOG_WIDTH)
+    logger.info("%-4s %-10s %-10s %-12s %-12s %-12s %-12s %s",
+                "No.", "Status", "Time(s)", "OutPct", "OutMaxErr", "LsePct", "LseMaxErr", "Case")
+    logger.info("-" * _CASE_LOG_WIDTH)
+    for idx, item in enumerate(results, 1):
+        logger.info("%-4d %-10s %-10.2f %-12s %-12s %-12s %-12s %s",
+                    idx, item["status"], item["elapsed"], _result_pct(item["out"]),
+                    _result_max_error(item["out"]), _result_pct(item["lse"]),
+                    _result_max_error(item["lse"]), item["case"])
+        if item["error"]:
+            logger.info("     error: %s", item["error"])
+    logger.info("-" * _CASE_LOG_WIDTH)
+    logger.info("Total: %d, Pass: %d, Failed/Error: %d, No-compare: %d", total, passed, failed, skipped)
+    logger.info("=" * _CASE_LOG_WIDTH)
+
+
+def run_one_case(case_id, case, mode, case_name, cache_dir, case_idx=1, total_case_num=1):
+    start_time = time.time()
     golden_cache = _load_golden_cache()
     set_active_case(case)
 
-    logger.info("=" * 60)
-    logger.info("MXFP8 Flash Attention Golden  [mode=%s, case=%s]", mode, case_id)
-    logger.info("cache case name: %s", case_name)
+    _log_case_start(case_idx, total_case_num, case_id, mode, case_name)
+    logger.info("MXFP8 Flash Attention Golden")
     logger.info("输出: 逐元素表格 + 统计汇总 (PctRlt 通过率)")
-    logger.info("=" * 60)
     logger.info("场景: PA")
     logger.info("Q_INPUT_LAYOUT=%s, QDescale layout=TND", Q_INPUT_LAYOUT)
     logger.info("KV_CACHE_LAYOUT=%s", KV_CACHE_LAYOUT)
@@ -1149,7 +1208,7 @@ def run_one_case(case_id, case, mode, case_name, cache_dir):
 
     if "gen" in mode and not (mode & {"cpu", "npu", "compare"}):
         logger.info("\n[Done] 数据已保存，退出")
-        return
+        return _make_case_result(case_id, "Generated", time.time() - start_time)
 
     if "cpu" in mode:
         logger.info("\n[Step 2] CPU Golden")
@@ -1162,7 +1221,7 @@ def run_one_case(case_id, case, mode, case_name, cache_dir):
 
     if "cpu" in mode and not (mode & {"npu", "compare"}):
         logger.info("\n[Done] CPU 输出已保存，退出")
-        return
+        return _make_case_result(case_id, "CpuDone", time.time() - start_time)
 
     if "npu" in mode:
         logger.info("\n[Step 3] NPU 调用")
@@ -1176,14 +1235,20 @@ def run_one_case(case_id, case, mode, case_name, cache_dir):
 
     if "npu" in mode and "compare" not in mode:
         logger.info("\n[Done] NPU 输出已保存，退出")
-        return
+        return _make_case_result(case_id, "NpuDone", time.time() - start_time)
 
     logger.info("\n[Step 4] Atten OUT 精度对比")
-    result_compare_method.check_result(cpu_out, atten_out)
+    out_result = result_compare_method.check_result(cpu_out, atten_out)
 
+    lse_result = None
     if ENABLE_LSE:
         logger.info("\n[Step 5] LSE 精度对比")
-        result_compare_method.check_result(cpu_lse, lse_out)
+        lse_result = result_compare_method.check_result(cpu_lse, lse_out)
+
+    status = "Pass"
+    if _result_status(out_result) != "Pass" or (lse_result is not None and _result_status(lse_result) != "Pass"):
+        status = "Failed"
+    return _make_case_result(case_id, status, time.time() - start_time, out_result, lse_result)
 
 
 if __name__ == '__main__':
@@ -1224,6 +1289,18 @@ if __name__ == '__main__':
     run_case_ids = resolve_case_names(selected_case_name, all_cases)
     if not run_case_ids:
         parser.error("No runnable case selected. Check enable fields or pass --case_name explicitly.")
-    for case_id in run_case_ids:
+    case_results = []
+    total_case_num = len(run_case_ids)
+    for case_idx, case_id in enumerate(run_case_ids, 1):
         case_name = _cache_case_name(case_id, args.cache_case_name, len(run_case_ids))
-        run_one_case(case_id, all_cases[case_id], mode, case_name, args.cache_dir)
+        case_start = time.time()
+        try:
+            case_results.append(
+                run_one_case(case_id, all_cases[case_id], mode, case_name, args.cache_dir, case_idx, total_case_num))
+        except Exception as err:  # pylint: disable=broad-except
+            logger.exception("CASE ERROR [%d/%d] %s", case_idx, total_case_num, case_id)
+            case_results.append(_make_case_result(case_id, "Error", time.time() - case_start, error=str(err)))
+
+    _log_final_summary(case_results)
+    if any(item["status"] in {"Failed", "Error"} for item in case_results):
+        sys.exit(1)
