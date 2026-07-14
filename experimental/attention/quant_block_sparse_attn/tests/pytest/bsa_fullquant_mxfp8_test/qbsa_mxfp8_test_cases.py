@@ -50,7 +50,7 @@ TestCases = [
     },
     {
         "name": "MIX_01",
-        "enable": False,
+        "enable": True,
         "B": 8,
         "N1": 64,
         "N2": 8,
