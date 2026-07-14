@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file aclnn_sparse_lightning_indexer_kl_loss_grad_metadata.h
+ * \file aclnn_stem_oam_prep_paged_kv.h
  * \brief
  */
 #ifndef ACLNN_STEM_OAM_PREP_PAGED_KV_H
@@ -17,18 +17,19 @@
 
 #include <string>
 #include "aclnn/aclnn_base.h"
+#include "aclnn_util.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 /**
- * @brief aclnnIndex的第二段接口，用于执行计算。
+ * @brief aclnnStemOamPrepPagedKv的第二段接口，用于执行计算。
  */
 ACLNN_API aclnnStatus aclnnStemOamPrepPagedKv(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor, const aclrtStream stream);
 
 /**
- * @brief aclnnIndex的第一段接口，根据具体的计算流程，计算workspace大小。
+ * @brief aclnnStemOamPrepPagedKv的第一段接口，根据具体的计算流程，计算workspace大小。
  * @domain aclnn_ops_infer
  */
 ACLNN_API aclnnStatus aclnnStemOamPrepPagedKvGetWorkspaceSize(
