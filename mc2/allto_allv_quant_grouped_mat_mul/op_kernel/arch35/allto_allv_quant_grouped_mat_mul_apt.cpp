@@ -83,6 +83,6 @@ __global__ __aicore__ void allto_allv_quant_grouped_mat_mul(GM_ADDR gmmxGM, GM_A
         gmmArray, mmArrayAddr_, tilingGM);
     a2avGmmScheduler.Init(gmmxGM, gmmweightGM, mmxOptionalGM, mmweightOptionalGM, gmmxScaleGM, gmmWeightScaleGM,
         mmxScaleGM, mmWeightScaleGM, gmmyGM, mmyOptionalGM, permuteOutOptionalGM, userWorkspace, tilingGM,
-        gmmArrayAddr_, mmArrayAddr_, &pipe, true);  // isA2avGmmFlag=true
+        gmmArrayAddr_, mmArrayAddr_, &pipe);
     a2avGmmScheduler.Process();
 }
