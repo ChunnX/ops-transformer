@@ -157,7 +157,7 @@ __aicore__ inline void QuantGroupedMatmul<TilingDataType, GmmTilingDataType, xTy
         return ;
     }
     uint64_t expertTokenNum = expertTokenNum_[startExpertIdx];
-    for (int expertIdx = startExpertIdx+1; expertIdx < startExpertIdx+expertNum; expertIdx++) {
+    for (uint32_t expertIdx = startExpertIdx + 1; expertIdx < startExpertIdx + expertNum; expertIdx++) {
         expertTokenNum += expertTokenNum_[expertIdx];
     }
     if (!isLocal && expertTokenNum == 0) {
