@@ -116,6 +116,8 @@ aclnnStatus RunMhcPreNoOptional(TensorDesc &x, TensorDesc &phi, TensorDesc &alph
 
 enum class RequiredTensor { X, Phi, Alpha, Bias, HIn, HPost, HRes };
 
+enum class RequiredPointer { None, WorkspaceSize, Executor };
+
 aclnnStatus RunMhcPreMissingRequired(MhcPreTensors &tensors, RequiredTensor missing)
 {
     auto x = tensors.x->ToAclType();
@@ -137,6 +139,28 @@ aclnnStatus RunMhcPreMissingRequired(MhcPreTensors &tensors, RequiredTensor miss
         NORM_EPS, HC_EPS, getRequired(RequiredTensor::HIn, hIn.get()),
         getRequired(RequiredTensor::HPost, hPost.get()), getRequired(RequiredTensor::HRes, hRes.get()), nullptr,
         nullptr, nullptr, &workspaceSize, &executor);
+}
+
+aclnnStatus RunMhcPreMissingRequiredPointer(MhcPreTensors &tensors, RequiredPointer missing)
+{
+    auto x = tensors.x->ToAclType();
+    auto phi = tensors.phi->ToAclType();
+    auto alpha = tensors.alpha->ToAclType();
+    auto bias = tensors.bias->ToAclType();
+    auto gamma = tensors.gamma->ToAclType();
+    auto hIn = tensors.hIn->ToAclType();
+    auto hPost = tensors.hPost->ToAclType();
+    auto hRes = tensors.hRes->ToAclType();
+    auto invRms = tensors.invRms->ToAclType();
+    auto hMix = tensors.hMix->ToAclType();
+    auto hPre = tensors.hPre->ToAclType();
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    auto workspaceSizePtr = missing == RequiredPointer::WorkspaceSize ? nullptr : &workspaceSize;
+    auto executorPtr = missing == RequiredPointer::Executor ? nullptr : &executor;
+    return aclnnMhcPreGetWorkspaceSize(x.get(), phi.get(), alpha.get(), bias.get(), gamma.get(), NORM_EPS, HC_EPS,
+                                       hIn.get(), hPost.get(), hRes.get(), invRms.get(), hMix.get(), hPre.get(),
+                                       workspaceSizePtr, executorPtr);
 }
 
 aclnnStatus RunMhcPrePartialOptional(TensorDesc &x, TensorDesc &phi, TensorDesc &alpha, TensorDesc &bias,
@@ -180,6 +204,25 @@ TEST_F(MhcPreOpapiUt, aclnn_mhc_pre_missing_required_tensor_cases)
     for (const auto &[name, missing] : cases) {
         auto tensors = MakeValidTensors();
         const auto actual = RunMhcPreMissingRequired(tensors, missing);
+        const auto result = actual == ACLNN_ERR_PARAM_NULLPTR ? "PASS" : "FAIL";
+        cout << "[" << result << "] case=" << name << ", expected=" << ACLNN_ERR_PARAM_NULLPTR
+             << ", actual=" << actual << endl;
+        EXPECT_EQ(actual, ACLNN_ERR_PARAM_NULLPTR) << name;
+    }
+}
+
+TEST_F(MhcPreOpapiUt, aclnn_mhc_pre_missing_required_pointer_cases)
+{
+    auto validTensors = MakeValidTensors();
+    ASSERT_EQ(RunMhcPreMissingRequiredPointer(validTensors, RequiredPointer::None), ACLNN_SUCCESS);
+
+    const std::vector<std::pair<const char *, RequiredPointer>> cases = {
+        {"missing_workspace_size", RequiredPointer::WorkspaceSize},
+        {"missing_executor", RequiredPointer::Executor},
+    };
+    for (const auto &[name, missing] : cases) {
+        auto tensors = MakeValidTensors();
+        const auto actual = RunMhcPreMissingRequiredPointer(tensors, missing);
         const auto result = actual == ACLNN_ERR_PARAM_NULLPTR ? "PASS" : "FAIL";
         cout << "[" << result << "] case=" << name << ", expected=" << ACLNN_ERR_PARAM_NULLPTR
              << ", actual=" << actual << endl;

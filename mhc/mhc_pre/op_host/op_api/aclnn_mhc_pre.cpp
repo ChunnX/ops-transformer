@@ -618,6 +618,16 @@ aclnnStatus aclnnMhcPreGetWorkspaceSize(const aclTensor *x, const aclTensor *phi
                                         aclTensor *invRmsOptional, aclTensor *hMixOptional, aclTensor *hPreOptional,
                                         uint64_t *workspaceSize, aclOpExecutor **executor)
 {
+    if (workspaceSize == nullptr) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_OP_NAME, "workspaceSize", "nullptr",
+                                              "output parameter must not be nullptr");
+        return ACLNN_ERR_PARAM_NULLPTR;
+    }
+    if (executor == nullptr) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_OP_NAME, "executor", "nullptr",
+                                              "output parameter must not be nullptr");
+        return ACLNN_ERR_PARAM_NULLPTR;
+    }
     L2_DFX_PHASE_1(aclnnMhcPre, DFX_IN(x, phi, alpha, bias, gammaOptional, normEps, hcEps),
                    DFX_OUT(hIn, hPost, hRes, invRmsOptional, hMixOptional, hPreOptional));
     auto uniqueExecutor = CREATE_EXECUTOR();
