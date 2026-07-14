@@ -1540,6 +1540,9 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
 
     // 3.5: 共享专家 GMM2 (MoE GMM2 之后, 复用 MoE 函数)
     if (sharedExpertNum_ > 0) {
+        if constexpr (g_coreType == AIV) {
+            SyncAll<true>();
+        }
         ProcessSharedExpertGmm2(initShape, initOffset);
     } else if constexpr(g_coreType == AIV) {
         PipeBarrier<PIPE_ALL>();
