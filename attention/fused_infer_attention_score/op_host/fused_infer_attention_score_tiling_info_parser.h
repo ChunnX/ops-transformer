@@ -50,7 +50,8 @@ public:
     ge::graphStatus GetAttrParaInfo();
     ge::graphStatus GetKvCache();
     ge::graphStatus GetTensorListCache(uint32_t index, const std::string &name,
-                                       std::vector<gert::StorageShape *> &cache);
+                                       std::vector<gert::StorageShape *> &cache,
+                                       std::vector<gert::Stride *> &strides);
     ge::graphStatus GetOpParaInfo();
 
     ge::graphStatus GetEmptyTensorFlag();
@@ -144,7 +145,7 @@ public:
     const gert::Stride *kRopeStrides_ = nullptr;
     const gert::Stride *kScaleStrides_ = nullptr;
     const gert::Stride *vScaleStrides_ = nullptr;
-    bool isTensorV1_ = false;
+    bool hasViewStride_ = true;
     int32_t keyNonContigDim_ = -1;
     int32_t valueNonContigDim_ = -1;
     int32_t keyRopeNonContigDim_ = -1;
@@ -177,6 +178,9 @@ public:
     uint64_t l2CacheSize_ = 0;
     std::vector<gert::StorageShape *> kCache_ = {};
     std::vector<gert::StorageShape *> vCache_ = {};
+    std::vector<gert::Stride *> kStrideCache_ = {};
+    std::vector<gert::Stride *> vStrideCache_ = {};
+    
     std::vector<int32_t> qSize_ = {};
     std::vector<int32_t> kvSize_ = {};
 
