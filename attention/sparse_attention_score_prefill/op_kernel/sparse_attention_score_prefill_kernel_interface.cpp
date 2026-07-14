@@ -27,10 +27,14 @@ __global__ __aicore__ void SasaPrefillInferIntf(
     GM_ADDR actualQseqlen, GM_ADDR actualKvseqlen,
     GM_ADDR o, GM_ADDR workspace, GM_ADDR tiling)
 {
-    using KernelBlockMmadQK = Gemm::Block::BlockMmadQKPrefillArch35<InDtype, InDtype, float>;
-    using DispatchPolicyOnlineSoftmax = Epilogue::EpilogueOnlineSoftmaxPrefillArch35;
+    using KernelBlockMmadQK = Gemm::Block::BlockMmadQKPrefillArch35<InDtype, InDtype, bfloat16_t>;
+    using LayoutS = layout::RowMajor;
+    using LayoutPDummy = layout::zN;
+    using PType = Gemm::GemmType<InDtype, LayoutPDummy>;
+    using SType = Gemm::GemmType<bfloat16_t, LayoutS>;
+    using DispatchPolicyOnlineSoftmax = Epilogue::EpilogueOnlineSoftmaxBsa;
     using KernelEpilogueSoftmax = Epilogue::Block::BlockEpilogue<
-        DispatchPolicyOnlineSoftmax, InDtype>;
+        DispatchPolicyOnlineSoftmax, PType, SType>;
     using KernelBlockMmadPV = Gemm::Block::BlockMmadPVPrefillArch35<InDtype, InDtype, float>;
     using DispatchPolicyRescaleO = Epilogue::EpilogueRescaleOPrefillArch35;
     using KernelEpilogueRescaleO = Epilogue::Block::BlockEpilogue<

@@ -30,7 +30,7 @@ public:
 
     using ElementQ = typename BlockMmadQK::ElementQ;
     using ElementK = typename BlockMmadQK::ElementK;
-    using ElementS = float;
+    using ElementS = bfloat16_t;
     using ElementP = typename BlockMmadPV::ElementP;
     using ElementV = typename BlockMmadPV::ElementV;
     using ElementO = typename BlockMmadQK::ElementQ;
@@ -56,6 +56,19 @@ public:
     static constexpr float WS_ROWSUM_INIT = 0.0f;
     static constexpr uint32_t WS_INIT_EVT = 5U;          // free V_MTE3/MTE3_V id on VEC
     static constexpr uint32_t WS_INIT_CHUNK = 4096U;      // fp32 elems per chunk (multiple of 8)
+
+    // gmUb/glUb are 2-deep by ubSBufId inside the prefill softmax epilogue (see
+    // reg_low_prec_bf16.hpp ctor). CopyPartialStatsToGm (MTE3) reads gmUb[ubSBufId]/
+    // glUb[ubSBufId] right after each softmax; the epilogue waits MTE3_V(ubSBufId)
+    // before overwriting the same stage, and this kernel sets MTE3_V(ubSBufId) after
+    // the copy. InitSyncFlags pre-sets MTE3_V(0,1) so the first block per stage is
+    // unblocked. No single-buffer reuse -> no race.
+    // Offsets alias the prefill softmax ctor's 2-deep gmUb/glUb regions (must stay
+    // byte-identical to that ctor). gmUb = this AIV's rowMax (fp32), glUb = rowSum.
+    static constexpr uint32_t SM_UB_BLOCK = 32768U;  // UB_UINT8_BLOCK_SIZE
+    static constexpr uint32_t SM_UB_GM_OFFSET = 7U * SM_UB_BLOCK;                       // 229376 rowMax base
+    static constexpr uint32_t SM_UB_GL_OFFSET = SM_UB_GM_OFFSET + 2U * 64U * sizeof(float);  // 229888 rowSum base
+    static constexpr uint32_t SM_UB_STAGE_BYTES = 64U * sizeof(float);  // 256, per-stage stride
 
     __aicore__ inline
     uint64_t TaskLinearIdx(uint32_t qToken, uint32_t kvHeadIdx) const
@@ -461,11 +474,9 @@ private:
         AscendC::GlobalTensor<float> &gSoftmaxSum)
     {
         uint32_t mPerSubCore = VecRowSplit(groupSize_);
-        uint32_t sColMax = blockSize_;
 
 #ifdef __DAV_CUBE__
         uint32_t mAligned = RoundUp(mPerSubCore, 16u);
-        uint32_t ubSStageElems = mAligned * sColMax;
 
         BlockMmadQK blockMmadQK;
         BlockMmadPV blockMmadPV;
@@ -475,44 +486,24 @@ private:
             + BlockMmadQK::L0_TILE_M * embed_ * sizeof(ElementQ);
         blockMmadPV.Init(resource, qkL1Used, blockSize_, embed_, groupSize_);
 
-        AscendC::LocalTensor<float> ubSTensor[UB_S_OTMP_BUF_STAGES];
+        // CUBE Fixpipe dst aliases decode softmax lsUbTensor (offset 0,
+        // MAX_UB_S_ELEM_NUM bf16 = 32768B/stage), shared cross-core with VEC softmax.
+        AscendC::LocalTensor<ElementS> ubSTensor[UB_S_OTMP_BUF_STAGES];
         for (uint32_t i = 0; i < UB_S_OTMP_BUF_STAGES; i++) {
-            ubSTensor[i] = resource.ubBuf.template GetBufferByByte<float>(ubSStageElems * sizeof(float) * i);
+            ubSTensor[i] = resource.ubBuf.template GetBufferByByte<ElementS>(
+                EpilogueOnlineSoftmax::MAX_UB_S_ELEM_NUM * sizeof(ElementS) * i);
         }
 
         int64_t strideKVRow = static_cast<int64_t>(kvHeads_) * embed_;
-        auto ubSLayout = tla::MakeLayout<ElementS, LayoutS>(mAligned, sColMax);
 #endif
 #ifdef __DAV_VEC__
         uint32_t vecRows = VecNumRows(groupSize_);
         uint32_t vecRowOffset = VecGlobalRowOffset(groupSize_);
-        uint32_t mAligned = RoundUp(VecRowSplit(groupSize_), 16u);
-        uint32_t ubSStageElems = mAligned * sColMax;
-        uint32_t vecUbPStageElems = (RoundUp(vecRows, 16U) + 1U) * sColMax;
 
-        AscendC::LocalTensor<float> ubSTensor[UB_S_OTMP_BUF_STAGES];
-        AscendC::LocalTensor<ElementP> ubPBuf[UB_S_OTMP_BUF_STAGES];
-        for (uint32_t i = 0; i < UB_S_OTMP_BUF_STAGES; i++) {
-            ubSTensor[i] = resource.ubBuf.template GetBufferByByte<float>(ubSStageElems * sizeof(float) * i);
-            ubPBuf[i] = resource.ubBuf.template GetBufferByByte<ElementP>(
-                ubSStageElems * sizeof(float) * UB_S_OTMP_BUF_STAGES
-                + vecUbPStageElems * sizeof(ElementP) * i);
-        }
-        uint32_t ubWsMetaOffset = ubSStageElems * sizeof(float) * UB_S_OTMP_BUF_STAGES
-            + vecUbPStageElems * sizeof(ElementP) * UB_S_OTMP_BUF_STAGES;
-        AscendC::LocalTensor<float> ubRowMaxStage[P_L1_BUF_NUM];
-        AscendC::LocalTensor<float> ubRowSumStage[P_L1_BUF_NUM];
-        AscendC::LocalTensor<float> ubTmpBuf =
-            resource.ubBuf.template GetBufferByByte<float>(
-                ubWsMetaOffset + RoundUp(vecRows, 16U) * sizeof(float) * 2U * P_L1_BUF_NUM);
-        for (uint32_t i = 0; i < P_L1_BUF_NUM; i++) {
-            ubRowMaxStage[i] = resource.ubBuf.template GetBufferByByte<float>(
-                ubWsMetaOffset + RoundUp(vecRows, 16U) * sizeof(float) * 2U * i);
-            ubRowSumStage[i] = ubRowMaxStage[i][RoundUp(vecRows, 16U)];
-        }
-
-        EpilogueOnlineSoftmax epilogueSoftmax;
-        epilogueSoftmax.SetScale(scaleValue_);
+        // decode bf16 regbase softmax self-allocates its UB (lsUb/lpUb/lmUb/gmUb/glUb/
+        // dmUb/llUb at fixed offsets, see reg_low_prec_bf16.hpp ctor). VEC no longer
+        // pre-allocates ubSTensor/ubPBuf/ubRowMax/ubRowSum/ubTmpBuf.
+        EpilogueOnlineSoftmax epilogueSoftmax(resource, scaleValue_);
 
         uint32_t qkL1Used = blockSize_ * embed_ * sizeof(ElementK)
             + BlockMmadQK::L0_TILE_M * embed_ * sizeof(ElementQ);
@@ -568,7 +559,6 @@ private:
             }
             
             uint64_t csrDataBase = static_cast<uint64_t>(kvHeadIdx) * k2qNnzUpperBound_;
-            uint32_t sColsAligned = sColMax;
             uint32_t kvStartPos = localBlockIdx * blockSize_;
 
 #ifdef __DAV_CUBE__
@@ -604,6 +594,9 @@ private:
                             + static_cast<uint64_t>(qHeadStart) * embed_;
 
 #ifdef __DAV_CUBE__
+                        // per-block S stride = nRound = RoundUp(validSize,16), matches the
+                        // decode softmax LoadAlign(srcUb + i*S2BaseSize) read stride.
+                        auto ubSLayout = tla::MakeLayout<ElementS, LayoutS>(mAligned, RoundUp(validSize, 16U));
                         auto ubSTensorTla = tla::MakeTensor(
                             ubSTensor[ubSBufId], ubSLayout, Arch::PositionUB{});
                         auto gmQLayout = tla::MakeLayout<ElementQ, LayoutQ>(groupSize_, embed_);
@@ -611,35 +604,36 @@ private:
                         blockMmadQK(gmQTensor, ubSTensorTla, groupSize_, validSize, embed_, mm1ToSmFlag);
 #endif
 #ifdef __DAV_VEC__
-                        epilogueSoftmax.Init(ubTmpBuf, ubRowMaxStage[l1PBufId], ubRowSumStage[l1PBufId]);
+                        // P L1 layout extent = causalValidLen (not validSize): softmax only
+                        // writes P[0, causalValidLen) and PV reduces over causalValidLenDe
+                        // (== causalValidLen for the same qToken). The L1 P zN N-fractal stride
+                        // must match the layout PV reads, so it must be causalValidLen here.
+                        // (V's L1 layout still uses the block valid size internally - see
+                        // BlockMmadPV residentValidSize_.)
                         auto l1PLayout = tla::MakeLayout<ElementP, layout::zN>(groupSize_, causalValidLen);
                         auto l1PTensor = tla::MakeTensor(l1PBuf[l1PBufId], l1PLayout, Arch::PositionL1{});
-                        //if (vecRows > 0)
-                        //    AscendC::DumpTensor(ubSTensor[ubSBufId], 12, 8);
                         epilogueSoftmax(
-                            ubSTensor[ubSBufId], ubPBuf[ubSBufId], l1PTensor, groupSize_, vecRows,
-                            causalValidLen, sColsAligned,
-                            mm1ToSmFlag, smToMm2Flag);
-                        //if (vecRows > 0)
-                        //    AscendC::DumpTensor(ubPBuf[ubSBufId], 34, 8);
+                            l1PTensor,
+                            GemmCoord{groupSize_, validSize, embed_},
+                            ubSBufId,
+                            l1PBufId,
+                            mm1ToSmFlag,
+                            smToMm2Flag,
+                            causalValidLen);
                         uint32_t slotK = static_cast<uint32_t>(
                             gK2qSlotIndices.GetValue(csrDataBase + csrIdx));
                         uint64_t lseOffset = SlotStatOffset(qToken, kvHeadIdx, slotK, vecRowOffset);
+                        // softmax wrote this AIV's rowMax/rowSum into its 2-deep
+                        // gmUb[ubSBufId]/glUb[ubSBufId]. Copy to GM per-slot for Phase2.
+                        AscendC::LocalTensor<float> gmUbAlias =
+                            resource.ubBuf.template GetBufferByByte<float>(
+                                SM_UB_GM_OFFSET + ubSBufId * SM_UB_STAGE_BYTES);
+                        AscendC::LocalTensor<float> glUbAlias =
+                            resource.ubBuf.template GetBufferByByte<float>(
+                                SM_UB_GL_OFFSET + ubSBufId * SM_UB_STAGE_BYTES);
                         CopyPartialStatsToGm(
-                            gSoftmaxMax, gSoftmaxSum, ubRowMaxStage[l1PBufId], ubRowSumStage[l1PBufId],
+                            gSoftmaxMax, gSoftmaxSum, gmUbAlias, glUbAlias,
                             lseOffset, 0U, vecRows);
-                        // if (qToken == 0 && kvHeadIdx == 0 && slotK == 0 && vecRows > 0) {
-                        //     AscendC::DumpTensor(ubPBuf[ubSBufId], 0, 16);
-                        //     AscendC::DumpTensor(ubPBuf[ubSBufId][17 * 16], 1, 16);
-                        //     AscendC::DumpTensor(ubPBuf[ubSBufId][17 * 16 * 2], 2, 16);
-                        //     AscendC::DumpTensor(ubPBuf[ubSBufId][17 * 16 * 3], 3, 16);
-                        //     AscendC::DumpTensor(ubPBuf[ubSBufId][17 * 16 * 4], 4, 16);
-                        //     AscendC::DumpTensor(ubPBuf[ubSBufId][17 * 16 * 5], 5, 16);
-                        //     AscendC::DumpTensor(ubPBuf[ubSBufId][17 * 16 * 6], 6, 16);
-                        //     AscendC::DumpTensor(ubPBuf[ubSBufId][17 * 16 * 7], 7, 16);
-                        //     AscendC::DumpTensor(ubRowMaxStage[l1PBufId], 8, 8); 
-                        //     AscendC::DumpTensor(ubRowSumStage[l1PBufId], 9, 8);
-                        // }
 #endif
                     }
                 }
@@ -667,6 +661,10 @@ private:
                         // if (qToken == 0 && kvHeadIdx == 0 && slotK == 0) {
                         //     AscendC::printf("1111111111111111111111 causalValidLenDe:%d\n", causalValidLenDe);
                         // }
+                        // PV reduces over causalValidLenDe: softmax wrote P[0, causalValidLen)
+                        // (== causalValidLenDe for this qToken) and the L1 P layout is scoped to
+                        // causalValidLen, so PV's K must be causalValidLenDe to match (reading
+                        // validSize would read the stale [causalValidLen, validSize) P tail).
                         blockMmadPV(gmOTensor, groupSize_, causalValidLenDe, embed_, smToMm2Flag);
                         // if (qToken == 0 && kvHeadIdx == 0 && slotK == 0) {
                         //     AscendC::DumpTensor(gV[kvBlockBase], 456, 16);

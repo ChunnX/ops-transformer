@@ -52,7 +52,7 @@ build_k2q_csr_torch_reference = prefill_golden.build_k2q_csr_torch_reference
 
 # ---- config ----
 KV_SEQLENS = [
-    1024,
+    16*1024,
     #32 * 1024, 64 * 1024, 128 * 1024
 ]  # KV cache length sweep
 Q_HEADS = 64
@@ -60,7 +60,7 @@ KV_HEADS = 4
 TOP_K = 16
 HEAD_DIM = 128
 BLOCK_SIZE = 128
-Q_SEQLEN = 1024        # long prefill q (not chunked); ~8GB prefill workspace
+Q_SEQLEN = 16*1024        # long prefill q (not chunked); ~8GB prefill workspace
 SEED = 42
 PREC = 1e-2                  # prefill vs decode consistency rtol (different reduction orders)
 
@@ -85,6 +85,7 @@ def _fast_causal_select_idx(q_seqlen, kv_seqlen, kv_heads, block_size, top_k):
     selected = torch.where(mask, selected, torch.full_like(selected, -1))
     select_idx = selected.unsqueeze(0).expand(kv_heads, total_q, top_k).contiguous().to(torch.int32)
     select_num = valid_k.unsqueeze(0).expand(kv_heads, total_q).contiguous().to(torch.int32)
+    print("select_idx:", select_idx)
     return select_idx, select_num
 
 
