@@ -31,9 +31,12 @@ public:
     {
     }
     __aicore__ inline void Init(GM_ADDR x, GM_ADDR weight, GM_ADDR bias, GM_ADDR scale, GM_ADDR groupList,
-                                GM_ADDR perTokenScale, GM_ADDR y, GM_ADDR workspace,
-                                const GMMQuantParams *__restrict gmmBaseParamsIn,
-                                const TCubeTiling *__restrict mmTilingDataIn, TILING_TYPE *gmmArrayAddrIn, TPipe *que);
+        GM_ADDR perTokenScale, GM_ADDR y, GM_ADDR workspace, const GMMQuantParams *__restrict gmmBaseParamsIn,
+        const TCubeTiling *__restrict mmTilingDataIn, TILING_TYPE *gmmArrayAddrIn, TPipe *que);
+    __aicore__ inline void Init(GM_ADDR x, GM_ADDR weight, GM_ADDR bias, GM_ADDR scale, GM_ADDR groupList,
+        GM_ADDR perTokenScale, GM_ADDR y, GM_ADDR workspace, const GMMQuantParams *__restrict gmmBaseParamsIn,
+        const TCubeTiling *__restrict mmTilingDataIn, TILING_TYPE *gmmArrayAddrIn, TPipe *que,
+        uint32_t rankDim, const __gm__ uint64_t *cGroupOffsetTableGm);
     __aicore__ inline void Process();
 
 protected:
@@ -48,6 +51,7 @@ protected:
 
     uint32_t blockIdx_;
     uint32_t groupNum_;
+    uint32_t rankDim_ = 1U;
     int8_t groupType_;
     uint8_t groupListType_;
     int32_t preOffset_;
@@ -115,6 +119,25 @@ __aicore__ inline void Mc2GmmASWKernel<LOCAL_TEMPLATE_FUNC_PARAMS>::Init(
 }
 
 LOCAL_TEMPLATE_CLASS_PARAMS
+__aicore__ inline void Mc2GmmASWKernel<LOCAL_TEMPLATE_FUNC_PARAMS>::Init(GM_ADDR x, GM_ADDR weight, GM_ADDR bias,
+    GM_ADDR scale, GM_ADDR groupList, GM_ADDR perTokenScale, GM_ADDR y, GM_ADDR workspace,
+    const GMMQuantParams *__restrict gmmBaseParamsIn, const TCubeTiling *__restrict mmTilingDataIn,
+    TILING_TYPE *gmmArrayAddrIn, TPipe *que, uint32_t rankDim, const __gm__ uint64_t *cGroupOffsetTableGm)
+{
+    if ASCEND_IS_AIV {
+        return;
+    }
+    rankDim_ = rankDim;
+    mmTilingData_ = mmTilingDataIn;
+    gmmQuantParams_ = gmmBaseParamsIn;
+    blockIdx_ = GetBlockIdx();
+    mm_.SetSubBlockIdx(0);
+    mm_.Init(mmTilingData_, que);
+    InitAddrAndParams(x, weight, bias, scale, groupList, perTokenScale, y, gmmArrayAddrIn);
+    block_.SetRankFirstLayout(rankDim, cGroupOffsetTableGm);
+}
+
+LOCAL_TEMPLATE_CLASS_PARAMS
 __aicore__ inline void Mc2GmmASWKernel<LOCAL_TEMPLATE_FUNC_PARAMS>::InitAddrAndParams(GM_ADDR x, GM_ADDR weight,
                                                                                       GM_ADDR bias, GM_ADDR scale,
                                                                                       GM_ADDR groupList,
@@ -154,11 +177,12 @@ __aicore__ inline void Mc2GmmASWKernel<LOCAL_TEMPLATE_FUNC_PARAMS>::UpdateMMGlob
         if (gmmQuantParams_->aQuantMode == static_cast<uint32_t>(Mc2QuantUtils::QuantMode::DEFAULT) &&
             gmmQuantParams_->bQuantMode == static_cast<uint32_t>(Mc2QuantUtils::QuantMode::DEFAULT)) {
         } else if (gmmQuantParams_->aQuantMode == static_cast<uint32_t>(Mc2QuantUtils::QuantMode::PERTENSOR_MODE) &&
-                   gmmQuantParams_->bQuantMode ==
-                       static_cast<uint32_t>(Mc2QuantUtils::QuantMode::PERTENSOR_MODE)) { // doubleScale, M_SPLIT
-            __gm__ scaleType *scaleB = MC2_GROUPED_MATMUL::GetTensorAddr<scaleType>(0, scaleTensorPtr_) + groupIdx;
+            gmmQuantParams_->bQuantMode ==
+            static_cast<uint32_t>(Mc2QuantUtils::QuantMode::PERTENSOR_MODE)) { // doubleScale, M_SPLIT
+            uint32_t scaleIdx = (rankDim_ > 1U) ? (groupIdx / rankDim_) : groupIdx;
+            __gm__ scaleType *scaleB = MC2_GROUPED_MATMUL::GetTensorAddr<scaleType>(0, scaleTensorPtr_) + scaleIdx;
             float scaleBValue = *((__gm__ float *)scaleB);
-            float scaleAValue = *((__gm__ float *)perTokenScalePtr_ + groupIdx);
+            float scaleAValue = *((__gm__ float *)perTokenScalePtr_ + scaleIdx);
             float deqScale = scaleBValue * scaleAValue;
             uint32_t uint32Scale = *(reinterpret_cast<uint32_t *>(&deqScale));
             scaleScalar_ = uint32Scale & DEQ_SCALE_MUL; // fixpipe只能取高19位
@@ -166,7 +190,8 @@ __aicore__ inline void Mc2GmmASWKernel<LOCAL_TEMPLATE_FUNC_PARAMS>::UpdateMMGlob
                    gmmQuantParams_->bQuantMode ==
                        static_cast<uint32_t>(Mc2QuantUtils::QuantMode::PERTENSOR_MODE)) { // pertensor, M_SPLIT
             if constexpr (!IsSameType<scaleType, uint64_t>::value && !IsSameType<scaleType, int64_t>::value) {
-                __gm__ scaleType *scaleB = MC2_GROUPED_MATMUL::GetTensorAddr<scaleType>(0, scaleTensorPtr_) + groupIdx;
+                uint32_t scaleIdx = (rankDim_ > 1U) ? (groupIdx / rankDim_) : groupIdx;
+                __gm__ scaleType *scaleB = MC2_GROUPED_MATMUL::GetTensorAddr<scaleType>(0, scaleTensorPtr_) + scaleIdx;
                 uint32_t uint32Scale = 0;
                 if constexpr (IsSameType<scaleType, bfloat16_t>::value) {
                     uint16_t uint16Scale = *((__gm__ uint16_t *)scaleB);
@@ -177,7 +202,8 @@ __aicore__ inline void Mc2GmmASWKernel<LOCAL_TEMPLATE_FUNC_PARAMS>::UpdateMMGlob
                 }
                 scaleScalar_ = uint32Scale & DEQ_SCALE_MUL;
             } else {
-                __gm__ scaleType *scaleB = MC2_GROUPED_MATMUL::GetTensorAddr<scaleType>(0, scaleTensorPtr_) + groupIdx;
+                uint32_t scaleIdx = (rankDim_ > 1U) ? (groupIdx / rankDim_) : groupIdx;
+                __gm__ scaleType *scaleB = MC2_GROUPED_MATMUL::GetTensorAddr<scaleType>(0, scaleTensorPtr_) + scaleIdx;
                 scaleScalar_ = *((__gm__ uint64_t *)scaleB);
             }
         } else if (gmmQuantParams_->bQuantMode ==
