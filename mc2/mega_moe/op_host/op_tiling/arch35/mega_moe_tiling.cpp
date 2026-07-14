@@ -47,7 +47,7 @@ const static int64_t THREE_DIMS = 3LL;
 const static int64_t TWO_DIMS = 2LL;
 const static int64_t ONE_DIM = 1LL;
 const static int64_t MIN_TOPK = 1LL;
-const static int64_t MAX_TOPK = 16LL;
+const static int64_t MAX_TOPK = 32LL;
 const static int64_t MIN_BS = 1LL;
 const static int64_t NUM_8 = 8LL;
 const static int64_t NUM_64 = 64LL;
@@ -955,7 +955,7 @@ static ge::graphStatus CheckInputParam(const gert::TilingContext *context, MegaM
     // topk范围
     OP_TILING_CHECK(
         topkIdsDim1 < MIN_TOPK || topkIdsDim1 > MAX_TOPK,
-        OP_LOGE_FOR_INVALID_VALUE(nodeName, "topK", std::to_string(topkIdsDim1).c_str(), "only support [1, 16]"),
+        OP_LOGE_FOR_INVALID_VALUE(nodeName, "topK", std::to_string(topkIdsDim1).c_str(), "only support [1, 32]"),
         return ge::GRAPH_FAILED);
 
     // layered(URMA) 路径未做 route-batch 改造，UB 占用随 bs 线性增长，保留 maxBs 上限校验；
