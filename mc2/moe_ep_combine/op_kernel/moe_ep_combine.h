@@ -406,6 +406,8 @@ __aicore__ inline bool MoeEpCombine<TemplateMoeEpCombineTypeFunc>::WaitDispatch(
      uint32_t copyCount, uint32_t beginIndex)
 {
     uint32_t targetCount = copyCount;
+    int32_t tokenTarget = static_cast<int32_t>(tokenTargetTensor_.GetValue(tokenIndex - beginIndex));
+    targetCount = tokenTarget * FLOAT_PER_UB_ALIGN;
     float target = (float)1.0 * targetCount;
     float minTarget = target - (float)0.5;
     float maxTarget = target + (float)0.5;
@@ -567,8 +569,6 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::RecvPhaseRedu
             if (tokenStatusTensor.GetValue(tokenIdx - tStart_) == 1) {
                 continue;
             }
-            int32_t tokenTarget = static_cast<int32_t>(tokenTargetTensor_.GetValue(tokenIdx - tStart_));
-            copyCount = tokenTarget * FLOAT_PER_UB_ALIGN;
             if (!WaitDispatch(tokenIdx, copyCount, tStart_)) {
                 continue;
             }
