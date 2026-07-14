@@ -295,7 +295,6 @@ static ge::graphStatus MoeEpCombineTilingFunc(gert::TilingContext *context)
     uint64_t tilingKey = GET_TPL_TILING_KEY(tplHasTopkWeights, TILINGKEY_TPL_A5);
     context->SetTilingKey(tilingKey);
 
-
     uint64_t ubSize = 0UL;
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
     uint32_t blockDim = ascendcPlatform.CalcTschBlockDim(aivNum, 0, aivNum);
