@@ -66,9 +66,9 @@ struct IncreFlashAttentionMetadataArgs {
     int64_t actSeqKvLenDim;
     int64_t *actSeqKvLen = nullptr;
     Layout layoutQuery = Layout::BUTT;
-    int8_t* metaData = nullptr;
+    int8_t *metaData = nullptr;
 };
 
-}
+} // namespace aicpu::kernels
 
 #endif
