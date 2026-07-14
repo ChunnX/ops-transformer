@@ -26,7 +26,7 @@ import multiprocessing as mp
 import concurrent.futures
 import utils
 
-pt_save_path = "qsmla_testcase"
+pt_save_path = "mqsmla_testcase"
 device_id = 0
 save_pt = False
 result_path = Path('result.xlsx')
@@ -34,15 +34,18 @@ result_path = Path('result.xlsx')
 param_combinations = []
 for params in ENABLED_PARAMS:
     param_values = {
-        "Testcase_Name": params.get("Testcase_Name", [None]),
+        "Testcase_Name": params.get("Testcase_Name", params.get("testcase_name", [None])),
         "layout_q": params.get("layout_q"),
         "layout_kv": params.get("layout_kv"),
-        "q_type": params.get("q_type"),
-        "ori_kv_type": params.get("ori_kv_type"),
-        "cmp_kv_type": params.get("cmp_kv_type", [None]),
+        "q_type": params.get("q_type", [torch.bfloat16]),
+        "ori_kv_type": params.get("ori_kv_type", [torch.float8_e4m3fn]),
+        "cmp_kv_type": params.get("cmp_kv_type", [torch.float8_e4m3fn]),
         "B": params.get("B"),
         "S1": params.get("S1"),
         "S2": params.get("S2", [None]),
+        "T1": params.get("T1", [None]),
+        "T2": params.get("T2", [None]),
+        "T3": params.get("T3", [None]),
         "N1": params.get("N1"),
         "N2": params.get("N2"),
         "D": params.get("D"),
@@ -70,6 +73,8 @@ for params in ENABLED_PARAMS:
         "template_run_mode": params.get("template_run_mode"),
         "actlen_mode": params.get("actlen_mode"),
         "S1EQS2": params.get("S1EQS2", [False]),
+        "topk_value_mode": params.get("topk_value_mode", [1]),
+        "return_softmax_lse": params.get("return_softmax_lse", [False]),
     }
 
     param_names = list(param_values.keys())
