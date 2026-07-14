@@ -124,7 +124,6 @@ struct WorkspaceInfo {
     GM_ADDR sharedExpertInputScalePtr{nullptr};
     GM_ADDR sharedExpertSwigluDataPtr{nullptr};
     GM_ADDR sharedExpertSwigluScalePtr{nullptr};
-    GM_ADDR sharedExpertGmm2DoneFlagPtr{nullptr};
 
     GM_ADDR maskSlotPtr{nullptr}; // urma发送mask临时GM
     GM_ADDR dispatchL1CommPtr{nullptr}; // dispatch L1 communication workspace
@@ -298,11 +297,6 @@ struct WorkspaceInfo {
                 SIZE_INT_8 * tilingData->bs * tilingData->sharedExpertNum * tilingData->hiddenDim /
                     SWIGLU_N_HALF / MXFP_SCALE_GROUP_NUM,
                 ALIGN_512);
-            // quantDoneFlag: AIV writes (AtomicAdd, 2 per block), AIC polls [aicNum × sizeof(int32_t)]
-            // sharedExpertGmm2DoneFlag: AIC writes after GMM2, AIV polls in Unpermute
-            sharedExpertGmm2DoneFlagPtr = base + workspaceSize;
-            workspaceSize += Ops::Base::CeilAlign(
-                static_cast<int64_t>(tilingData->aicNum) * SIZE_INT_32, ALIGN_32);
         }
     }
 };
