@@ -17,8 +17,16 @@
 
 - 计算公式：
 
+  当 h_res 提供时：
+
   $$
   x_{l+1} = (H_{l}^{res})^{T} \times x_l + h_{l}^{out} \otimes H_{t}^{post}
+  $$
+
+  当 h_res 缺省时（仅 Ascend 950 支持）：
+
+  $$
+  x_{l+1} = x_l + h_{l}^{out} \otimes H_{t}^{post}
   $$
 
 ## 参数说明
@@ -48,8 +56,8 @@
     </tr>
     <tr>
       <td>h_res</td>
-      <td>输入</td>
-      <td>mHC的h_res变换矩阵，是做完sinkhorn变换后的双随机矩阵。</td>
+      <td>输入（可选）</td>
+      <td>mHC的h_res变换矩阵，是做完sinkhorn变换后的双随机矩阵。缺省时退化为直接残差连接（仅 Ascend 950 支持）。</td>
       <td>FLOAT32</td>
       <td>ND</td>
     </tr>
@@ -79,7 +87,13 @@
 
 ## 约束说明
 
-无
+- <term>Ascend 950PR/Ascend 950DT</term>：h_res 支持传入 nullptr，此时退化为直接残差连接。
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：h_res 为必传参数，不支持传入 nullptr。
+
+  | 规格项   | 规格               | 规格说明                                |
+  | :------- | :----------------- | :------------------------------------- |
+  | n        | 4                  | 固定为4                              |
+  | d        | 范围1到100000       | 128的倍数                             |
 
 ## 调用说明
 
