@@ -82,6 +82,15 @@ static void SetShapeFromX(gert::Shape *dst, const gert::Shape *src)
     }
 }
 
+static uint64_t Factorial(uint64_t n)
+{
+    uint64_t r = 1;
+    for (uint64_t i = 2; i <= n; ++i) {
+        r *= i;
+    }
+    return r;
+}
+
 static ge::graphStatus InferShape4MhcPre(InferShapeContext *context)
 {
     OP_LOGD(context->GetNodeName(), "Begin to do InferShape MhcPre");
@@ -116,11 +125,11 @@ static ge::graphStatus InferShape4MhcPre(InferShapeContext *context)
         // b,s,n,d
         uint64_t b = xShape->GetDim(0), s = xShape->GetDim(1), n = xShape->GetDim(2), d = xShape->GetDim(3);
         // dim of phi,bias
-        uint64_t matN = hasResi ? (n * n + 2 * n) : (2 * n);
+        uint64_t matN = hasResi ? (Factorial(n) + 2 * n) : (2 * n);
         SetShape3D(outShapes[OUT_H_IN_INDEX], b, s, d);
         SetShape3D(outShapes[OUT_H_POST_INDEX], b, s, n);
         if (hasResi) {
-            SetShape4D(outShapes[OUT_H_RES_INDEX], b, s, n, n);
+            SetShape3D(outShapes[OUT_H_RES_INDEX], b, s, Factorial(n));
         } else {
             SetShape1D(outShapes[OUT_H_RES_INDEX], 0);
         }
@@ -131,11 +140,11 @@ static ge::graphStatus InferShape4MhcPre(InferShapeContext *context)
         // t,n,d
         uint64_t t = xShape->GetDim(0), n = xShape->GetDim(1), d = xShape->GetDim(2);
         // dim of phi,bias
-        uint64_t matN = hasResi ? (n * n + 2 * n) : (2 * n);
+        uint64_t matN = hasResi ? (Factorial(n) + 2 * n) : (2 * n);
         SetShape2D(outShapes[OUT_H_IN_INDEX], t, d);
         SetShape2D(outShapes[OUT_H_POST_INDEX], t, n);
         if (hasResi) {
-            SetShape3D(outShapes[OUT_H_RES_INDEX], t, n, n);
+            SetShape2D(outShapes[OUT_H_RES_INDEX], t, Factorial(n));
         } else {
             SetShape1D(outShapes[OUT_H_RES_INDEX], 0);
         }
