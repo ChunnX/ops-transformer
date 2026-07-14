@@ -582,11 +582,13 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.copy(rsy_chunk_ub, SoftmaxI[bz, s1_id, n_idx_k * n_block:(n_idx_k + 1) * n_block])
 
                     # dWeight, reluGrad for MY K block (same V scope, no cross flag)
-                    # Strategy: per-row 1D ops + per-chunk GM load (avoids UB range slicing bug)
-                    #   - diff_ub (128,) used directly in 1D muls (no diff_2d needed)
-                    #   - weight_2d_ub[idx,:] read directly (scalar idx, no UB range slice)
+                    # Strategy: 2D-vectorized per-row ops to eliminate scalar tile.mul
+                    #   - weight_2d_ub rows → rg_chunk_ub via T.copy (scalar idx, avoids UB range slicing bug)
+                    #   - diff_2d_ub broadcast once before g_id loop (32× UB→UB copy, amortized)
+                    #   - Op1/Op2/Op3 all use 2D tile.mul (3 ops per g_id vs 96 before)
                     #   - bmm2 loaded per-chunk from GM → dw_chunk_ub (no UB→UB copy)
                     diff_ub = T.alloc_ub(n_block, calc_dtype)
+                    diff_2d_ub = T.alloc_ub((vector_baseg, n_block), calc_dtype)
                     dw_chunk_ub = T.alloc_ub((vector_baseg, n_block), calc_dtype)
                     dw_reduce_ub = T.alloc_ub(vector_baseg, calc_dtype)
                     rg_chunk_ub = T.alloc_ub((vector_baseg, n_block), calc_dtype)
@@ -612,6 +614,11 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.wait_flag("mte2", "v", 6)
                     T.tile.sub(diff_ub, softmax_i_chunk_ub, p_reduced_tmp_ub)
 
+                    # Broadcast diff_ub → diff_2d_ub once (all rows = diff, for 2D vectorization below)
+                    # UB→UB copy per row, scalar index — avoids UB range slicing bug, cheaper than tile.mul
+                    for i in T.serial(vector_baseg):
+                        T.copy(diff_ub, diff_2d_ub[i, :])
+
                     for g_id in T.serial(g_num):
                         g_start = g_id * vector_baseg
 
@@ -633,13 +640,19 @@ def tilelang_grad_kl_loss_single_kernel(
                         T.tile.sub(rsy_tmp_ub, ones_2d_ub, rsy_tmp_ub)
                         T.pipe_barrier("v")
 
+                        # 2D-vectorized per-row ops (was 32×3=96 tile.mul → now 32 T.copy + 3 tile.mul)
+                        # Step 1: copy weight rows from weight_2d_ub to rg_chunk_ub (scalar index, no UB range slice)
                         for i in T.serial(vector_baseg):
-                            idx = g_start + i
-                            T.tile.mul(rg_chunk_ub[i, :], weight_2d_ub[idx, :], diff_ub)
-                            T.pipe_barrier("v")
-                            T.tile.mul(rg_chunk_ub[i, :], rg_chunk_ub[i, :], rsy_tmp_ub[i, :])
-                            T.pipe_barrier("v")
-                            T.tile.mul(dw_chunk_ub[i, :], dw_chunk_ub[i, :], diff_ub)
+                            T.copy(weight_2d_ub[g_start + i, :], rg_chunk_ub[i, :])
+                        # Op1: rg = weight_slice * diff (2D, was per-row 1D mul)
+                        T.pipe_barrier("v")
+                        T.tile.mul(rg_chunk_ub, rg_chunk_ub, diff_2d_ub)
+                        # Op2: rg *= rsy_tmp mask (2D, was per-row 1D mul)
+                        T.pipe_barrier("v")
+                        T.tile.mul(rg_chunk_ub, rg_chunk_ub, rsy_tmp_ub)
+                        # Op3: dw *= diff (2D, was per-row 1D mul)
+                        T.pipe_barrier("v")
+                        T.tile.mul(dw_chunk_ub, dw_chunk_ub, diff_2d_ub)
 
                         T.pipe_barrier("v")
                         T.reduce_sum(dw_chunk_ub, dw_reduce_ub, 1)
