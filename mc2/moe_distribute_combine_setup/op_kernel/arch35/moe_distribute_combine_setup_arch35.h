@@ -136,7 +136,7 @@ private:
 
     __aicore__ inline GM_ADDR GetUrmaStateAddrByRankId(const int32_t rankId)
     {
-        return (GM_ADDR)(mc2Context_->epHcclBuffer_[rankId] /*+ COMBINE_STATE_OFFSET*/ + dataState_ * WIN_STATE_OFFSET);
+        return (GM_ADDR)(mc2Context_->epHcclBuffer_[rankId] + COMBINE_STATE_OFFSET + dataState_ * WIN_STATE_OFFSET);
     }
     //=============================== Urma ===============================//
 
@@ -319,7 +319,7 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Communica
             continue;
         }
         // 发送token和notify
-        hcomm_.WriteWithNotifyNbi<false>(GetCommHandle(sendRankId), notify.srcAddr, notify.dstAddr, notify.length, notify.notifyAddr, notify.notifyVal);
+        hcomm_.WriteWithNotifyNbi<false>(GetCommHandle(sendRankId), notify.dstAddr, notify.srcAddr, notify.length, notify.notifyAddr, notify.notifyVal);
     }
     assistInfoQueue_.FreeTensor<int32_t>(assistInfoForCombineLocal);
 

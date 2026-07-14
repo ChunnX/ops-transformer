@@ -67,16 +67,14 @@ private:
     __aicore__ inline void TokenSplitCoreCal();
     __aicore__ inline void WaitDispatch();
 
-    __aicore__ GM_ADDR GetWinAddrByRankId(const int32_t rankId, const uint8_t expertLocalId = 0U)
+    __aicore__ GM_ADDR GetUrmaAddrByRankId(const int32_t rankId, const uint8_t expertLocalId = 0U)
     {
-        return (GM_ADDR)(mc2Context_->epHcclBuffer_[rankId]) + winDataSizeOffset_ +
-               expertPerSizeOnWin_ * static_cast<uint64_t>(expertLocalId);
+        return (GM_ADDR)(mc2Context_->epHcclBuffer_[rankId]) + STATE_SIZE + winDataSizeOffset_ + expertPerSizeOnWin_ * static_cast<uint64_t>(expertLocalId);
     }
 
-    __aicore__ GM_ADDR GetWinStateAddrByRankId(const int32_t rankId)
+    __aicore__ GM_ADDR GetUrmaStateAddrByRankId(const int32_t rankId)
     {
-        return (GM_ADDR)(mc2Context_->epHcclBuffer_[rankId]) + COMBINE_STATE_OFFSET +
-               WIN_STATE_OFFSET * static_cast<uint64_t>(dataState_);
+        return (GM_ADDR)(mc2Context_->epHcclBuffer_[rankId]) + COMBINE_STATE_OFFSET + WIN_STATE_OFFSET * static_cast<uint64_t>(dataState_);
     }
 
     TPipe *tpipe_{nullptr};
@@ -175,8 +173,8 @@ __aicore__ inline void MoeDistributeCombineTeardown<TemplateMC2TypeFunc>::Init(G
                          (static_cast<uint64_t>(moeDistributeCombineTeardownInfo_->totalWinSize) / 2ULL);
     stateOffset_ = (moeSendNum_ > STATE_COUNT_THRESHOLD) ? (STATE_OFFSET / 2ULL) : STATE_OFFSET;
 
-    epWindowGM_ = GetWinAddrByRankId(epRankId_);
-    epStatusSpaceGM_ = GetWinStateAddrByRankId(epRankId_);
+    epWindowGM_ = GetUrmaAddrByRankId(epRankId_);
+    epStatusSpaceGM_ = GetUrmaStateAddrByRankId(epRankId_);
 #if defined(ASCENDC_OOM) && ASCENDC_OOM == 1
     OOMCheckAddrRange<ExpandXType>((__gm__ ExpandXType *)(epWindowGM_),
                                    moeDistributeCombineTeardownInfo_->totalWinSize);
