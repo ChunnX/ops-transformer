@@ -5,6 +5,7 @@
 - **NPU侧**：通过torch_npu进行算子直调获取实际数据
 - **精度对比**：进行CPU与NPU结果的精度对比验证算子功能
 - **双模式执行隔离**：支持直接pytest多进程执行和shell层进程隔离两种批量模式
+- **batch_exec 模式**：根据 Excel 表格筛选已有 pt 文件直接执行 NPU 测试（跳过 pt 生成步骤）
 - **性能采集**：支持挂载msprof采集算子性能数据并汇总输出
 - **运行模式切换**：支持eager直接调用和graph（torch.compile + torchair）两种算子调用模式
 
@@ -36,7 +37,7 @@
 
 ## 文件结构
 #### pytest文件结构说明
-- test_run.sh                                  # 执行脚本，支持single/batch两种命令
+- test_run.sh                                  # 执行脚本，支持single/batch/batch_exec三种命令
 - batch_isolated_run.sh                        # 批量隔离执行脚本（shell层进程隔离+msprof性能采集）
 - quant_lightning_indexer_v2_golden.py         # cpu侧算子golden实现
 - quant_lightning_indexer_v2_acl_graph.py      # graph模式torchair后端实现
@@ -52,13 +53,15 @@
 - test_quant_lightning_indexer_v2_batch.py     # 用例批量测试主程序并生成excel文件保存结果
 - ./batch/quant_lightning_indexer_v2_pt_loadprocess.py   # 读取pt文件并调用算子获取npu输出
 - ./batch/quant_lightning_indexer_v2_pt_save.py          # 读取excel表格批量生成用例pt文件
+- ./batch/list_pt_from_excel.py                           # 从Excel提取Testcase_Name并按名匹配pt文件（batch_exec模式用）
 - ./batch/replace_path.py                                # test_quant_lightning_indexer_v2_batch.py占位符替换
 
 
 ## 架构说明
 
 - **single 模式**：`qliv2_output_acl_graph` 调用 `qliv2_output_single(is_batch=True)` 即时生成数据 → `torch.compile` + `torchair` 执行
-- **batch 模式**：`qliv2_output_acl_graph_from_pt` 直接从 .pt 文件读取 pre-computed 数据 → 共用同一 `torch.compile` 路径，跳过重复生成
+- **batch 模式**：从 Excel 生成 .pt 文件 → 读取 pt 执行 NPU 测试和精度对比 → 生成 result.xlsx
+- **batch_exec 模式**：从 Excel 筛选已有 .pt 文件 → 跳过 pt 生成 → 直接执行 NPU 测试和精度对比 → 生成 result.xlsx
 - 两路共用 `_qliv2_prepare_tensors_and_metadata` 和 `_qliv2_run_compiled_graph`，统一使用 `fullgraph=False`
 
 ## 使用方法
@@ -77,19 +80,58 @@ bash test_run.sh single
 ##### 方式A：test_run.sh 批量执行
 1、excel路径下存放用例excel表格
 
-2、test_run.sh中设置读取的用例excel表格路径（PATH1）和pt文件存放路径（PATH2）
+2、修改test_run.sh配置区中的DEFAULT_EXCEL（Excel表格路径）和DEFAULT_PT_PATH（pt文件存放路径），或通过命令行参数指定
 
 3、执行指令：
 ``` bash
-bash test_run.sh batch          # eager模式（默认）
-bash test_run.sh batch eager    # 显式指定eager模式
-bash test_run.sh batch graph    # graph模式
+bash test_run.sh batch                                    # 使用配置区默认值（eager 模式）
+bash test_run.sh batch -E ./excel/test_cases.xlsx        # 指定 Excel 路径
+bash test_run.sh batch -S Sheet1 -P ./pt_path            # 指定 Sheet 和 pt 目录
+bash test_run.sh batch -M graph                          # graph 模式
+bash test_run.sh batch -E ./excel/my.xlsx -S Sheet2 -M graph  # 组合使用
+bash test_run.sh batch graph                             # 兼容旧用法：直接跟 run_mode
 ```
+
+4、配置区默认值：
+| 变量 | 默认值 | 命令行参数 | 说明 |
+|---|---|---|---|
+| DEFAULT_EXCEL | `./excel/test_cases.xlsx` | `-E` | Excel 用例表格路径（**必须指定具体文件名**，不支持通配符如 `./excel/*`） |
+| DEFAULT_PT_PATH | `./pt_path` | `-P` | pt 文件存放目录 |
+| （无） | `Sheet1` | `-S` | Excel Sheet 页名 |
+| （无） | `eager` | `-M` | 运行模式（eager/graph） |
+
+#### 根据 Excel 表格筛选已有 pt 批量执行（batch_exec 模式）
+> 仅重新执行 NPU 测试和精度对比，不重新生成 pt 文件。适用于已有 pt 文件、只需更新精度结果的场景。
+
+1、确认 pt_path 下已有对应 .pt 文件（可通过 `batch` 模式或手工生成）
+
+2、执行指令：
+``` bash
+bash test_run.sh batch_exec                                    # 默认: excel/test_cases.xlsx, Sheet1, pt_path
+bash test_run.sh batch_exec -E ./excel/test_cases.xlsx         # 指定 Excel 路径
+bash test_run.sh batch_exec -S Sheet1 -P ./pt_path             # 指定 Sheet 和 pt 目录
+bash test_run.sh batch_exec -E ./excel/test_cases.xlsx -M graph  # graph 模式
+```
+
+3、执行流程：
+- 从 Excel 表格读取 `Testcase_Name` 列
+- 按 `<Testcase_Name>.pt` 在 pt_path 下匹配对应的 .pt 文件
+- 仅对匹配到的 .pt 文件执行 NPU 测试和精度对比
+- 生成 `result.xlsx` 测试结果表格
+- 如果 Excel 中某条用例无对应的 .pt 文件，会输出警告并跳过该用例
+
+4、与 `batch` 模式的区别：
+|  | `batch` | `batch_exec` |
+|---|---|---|
+| pt 生成 | 每次重新生成 | 跳过 |
+| 执行速度 | 较慢（含 pt 生成） | 较快 |
+| 适用场景 | 首次运行 / 参数变更 | 精度复测 / 仅 NPU 结果更新 |
 
 ##### 方式B：手工分步执行
 1、生成pt文件：
 ``` bash
 python3 batch/quant_lightning_indexer_v2_pt_save.py excel/test_cases.xlsx pt_path
+python3 batch/quant_lightning_indexer_v2_pt_save.py excel/test_cases.xlsx pt_path --sheet Sheet1  # 指定 Sheet 页
 ```
 
 2、替换测试脚本路径：
