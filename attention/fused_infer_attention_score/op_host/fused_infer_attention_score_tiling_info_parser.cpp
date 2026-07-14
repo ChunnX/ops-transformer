@@ -1,3 +1,4 @@
+#define OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName, fieldName, reason) OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, fieldName, "", reason)
 /**
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
