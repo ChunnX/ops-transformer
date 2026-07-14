@@ -30,7 +30,7 @@ ASCENDC_TPL_ARGS_DECL(quant_compressor, // 算子唯一标识，与opType保持�
     ASCENDC_TPL_UINT_DECL(X_DTYPE, ASCENDC_TPL_4_BW, ASCENDC_TPL_UI_LIST, 0, 1),
     // bit:5-6  coff 1:无需overlap 2:需要overlap
     ASCENDC_TPL_UINT_DECL(COFF, ASCENDC_TPL_2_BW, ASCENDC_TPL_UI_LIST, 1, 2),
-    // bit:7-8  cache_mode 1:CONTINUOUS 2:cycle
+    // bit:7-8  cache_mode 1:LINEAR_BUFFER 2:RING_BUFFER
     ASCENDC_TPL_UINT_DECL(CACHE_MODE, ASCENDC_TPL_2_BW, ASCENDC_TPL_UI_LIST, 1, 2),
     // bit:9  quant_mode 1:hifp8量化
     ASCENDC_TPL_UINT_DECL(QUANT_MODE, ASCENDC_TPL_1_BW, ASCENDC_TPL_UI_LIST, 1),

@@ -2,7 +2,7 @@
 
 ## 产品支持情况
 
-- <term>Ascend 950PR/Ascend 950DT</term>：不支持
+- <term>Ascend 950PR/Ascend 950DT</term>：支持
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：不支持
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：不支持
 - <term>Atlas 200I/500 A2 推理产品</term>：不支持
@@ -111,8 +111,7 @@ cann_ops_transformer.quant_compressor(
 | start_pos | Tensor | 可选 | 计算起始位置。不支持非连续，数据格式支持ND，输入为None时从0开始计算 | int32 | [B,] |
 | coff | int | 可选 | 默认值1，仅支持1/2。<br>coff=1：无需进行overlap数据重排<br>coff=2：需要进行overlap数据重排。 | int32 | - |
 | cache_mode | int | 可选 | state_cache的存储模式。<br>1：连续buffer<br>2：循环buffer<br>默认值1。 | int32 | - |
-| state_cache_stride_dim0 | int | 可选 |表示state_cache的0轴stride，默认值为0。| int32          |-|
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>： cache_mode不支持输入2，且不支持0轴非连续。
+- 该接口支持推理场景下使用。
 
 ## 返回值说明
 

@@ -31,7 +31,7 @@ ASCENDC_TPL_ARGS_DECL(compressor, // 算子唯一标识，与opType保持一致
     ASCENDC_TPL_UINT_DECL(X_DTYPE, ASCENDC_TPL_4_BW, ASCENDC_TPL_UI_LIST, 0, 1),
     // bit:5-6  coff 1:无需overlap 2:需要overlap
     ASCENDC_TPL_UINT_DECL(COFF, ASCENDC_TPL_2_BW, ASCENDC_TPL_UI_LIST, 1, 2),
-    // bit:7-8  cache_mode 1:CONTINUOUS 2:cycle
+    // bit:7-8  cache_mode 1:LINEAR_BUFFER 2:RING_BUFFER
     ASCENDC_TPL_UINT_DECL(CACHE_MODE, ASCENDC_TPL_2_BW, ASCENDC_TPL_UI_LIST, 1, 2),
     // bit:9-10  template_id 0:empty_tensor 1:normal 2:full load
     ASCENDC_TPL_UINT_DECL(TEMPLATE_ID, ASCENDC_TPL_2_BW, ASCENDC_TPL_UI_LIST, 0, 1, 2),

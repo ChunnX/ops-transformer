@@ -223,12 +223,12 @@ const std::vector<uint32_t> HEAD_DIM {128, 512};
 const std::vector<int> CACHE_MODE {1, 2};
 
 enum class CACHE_MODE:uint8_t {
-    CONTINUOUS = 1,
-    CYCLE = 2
+    LINEAR_BUFFER = 1,
+    RING_BUFFER = 2
 };
 
 enum class QUANT_MODE:uint8_t {
-    HIFP8 = 1
+    HIF8_XPERTENSOR_WPERCHANNEL = 1
 };
 
 struct QuantCompressorContext {
