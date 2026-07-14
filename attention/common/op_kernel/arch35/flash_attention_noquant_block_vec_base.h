@@ -1202,9 +1202,10 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1Nd(
     }
 
 if (enableKVPrefix && runInfo.s2LoopCount < 2) {
-    PRINTF("[VEC-Nd-post] mx0=%f sm0=%f mx1=%f sm1=%f\n",
+    PRINTF("[VEC-Nd-post] mx0=%f sm0=%f mx1=%f sm1=%f maxPhy=%llx\n",
            (float)maxUb.GetValue(0), (float)sumUb.GetValue(0),
-           (float)maxUb.GetValue(1), (float)sumUb.GetValue(1));
+           (float)maxUb.GetValue(1), (float)sumUb.GetValue(1),
+           (unsigned long long)maxUb.GetPhyAddr());
 }
     bmm1ResBuf.SetCrossCore();
     if constexpr (hasAtten) {
