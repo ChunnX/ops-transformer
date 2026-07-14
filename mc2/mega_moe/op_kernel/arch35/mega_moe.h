@@ -573,7 +573,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SendMaskCal()
     srcGlobalTensor.SetGlobalBuffer((__gm__ int32_t *)params_.expertIdxGmAddr);
     GlobalTensor<uint8_t> dstGlobalTensor;
     int32_t maskSliceBytesFull = sendRouteBatchLen_ / 8;
-    DataCopyPadExtParams<int32_t> loadPad{true, 0U, 0U, -1};
+    DataCopyPadExtParams<int32_t> loadPad{false, 0U, 0U, 0};
 
     // ── per-expert 跨 batch 累加器清零 ──
     Duplicate<int32_t>(sendCntAccTensor_, 0, ownedExpertNum);
@@ -600,7 +600,6 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SendMaskCal()
                 sliceBytes = static_cast<int32_t>(maskAlignSize_) - batchStart / 8;
             }
             pushBytes = sliceBytes + static_cast<int32_t>(sizeof(int32_t));
-            Duplicate<int32_t>(topkIdsTensor_, -1, sendRouteBatchLen_);
         }
 
         // ── 加载本 batch 的 topk ──
@@ -620,6 +619,9 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SendMaskCal()
             LocalTensor<uint32_t> maskBufU32 = maskBuf.template ReinterpretCast<uint32_t>();
 
             WaitFlag<AscendC::HardEvent::MTE3_V>(bufEvent);
+            // DAV_3510 requires CompareScalar count * sizeof(int32_t) to be 256B-aligned, so the aligned batch
+            // length is used instead of validLen. Both GatherMask consumers are bounded by validLen and ignore
+            // the mask bits produced for the padded tail.
             CompareScalar(maskBuf, topkIdsTensor_, globalExpertId, AscendC::CMPMODE::EQ, sendRouteBatchLen_);
             uint64_t sendCnt = 0;
             GatherMask(sendGatherOutTensor_, topkIdsTensor_, maskBufU32, true, static_cast<uint32_t>(validLen),
