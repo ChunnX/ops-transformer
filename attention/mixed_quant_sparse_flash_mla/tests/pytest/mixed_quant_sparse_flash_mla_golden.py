@@ -415,16 +415,16 @@ def get_max_adjacent_diff(cu_seqlens_q):
 
     return max_diff
 
-def gen_cmp_sparse_indices_bsnd(cmp_ratio, B, S1, N2, K, virtual_restored_len, cmp_mask_mode):
+def gen_cmp_sparse_indices_bsnd(cmp_ratio, B, S1, N2, K, kv_restored_len, cmp_mask_mode):
     # 有效索引在叠加了causal后有效tokens中选取，不足sparse_block_count，尾部填充-1
-    # 参数：virtual_restored_len为cmp还原后的虚拟ori长度列表（seqused_cmp_kv * cmp_ratio + cmp_residual）
+    # 参数：kv_restored_len为cmp还原后的ori长度列表（seqused_cmp_kv * cmp_ratio + cmp_residual）
     cmp_sparse_indices = torch.full((B, S1, N2, K), fill_value=-1, dtype=torch.int32)
     for i_B in range(B):
-        cur_restored = virtual_restored_len[i_B]  # cmp还原后的虚拟ori长度
+        cur_restored = kv_restored_len[i_B]  # cmp还原后的ori长度
         for i_N2 in range(N2):
             for i_S1 in range(S1):
                 if cmp_mask_mode == 3:
-                    # causal mask计算：虚拟ori长度中的可见长度转换为压缩block数量
+                    # causal mask计算：还原后的ori长度中的可见长度转换为压缩block数量
                     cur_valid_s2_max = math.floor((cur_restored - S1 + i_S1 + 1) / cmp_ratio)
                 else:
                     raise ValueError(f"cmp_mask_mode only support 3, which is {cmp_mask_mode}")
@@ -435,16 +435,16 @@ def gen_cmp_sparse_indices_bsnd(cmp_ratio, B, S1, N2, K, virtual_restored_len, c
                 cmp_sparse_indices[i_B, i_S1, i_N2, :valid_blocks_topk] = block_indices[0:valid_blocks_topk]
     return cmp_sparse_indices
 
-def gen_cmp_sparse_indices_tnd(cmp_ratio, B, T1, N2, K, cu_seqlens_q, seqused_q, virtual_restored_len, cmp_mask_mode):
+def gen_cmp_sparse_indices_tnd(cmp_ratio, B, T1, N2, K, cu_seqlens_q, seqused_q, kv_restored_len, cmp_mask_mode):
     cmp_sparse_indices = torch.full((T1, N2, K), fill_value=-1, dtype=torch.int32)
     for i_B in range(B):
         cur_act_q = seqused_q[i_B]
         s1_prefix = cu_seqlens_q[i_B]
-        cur_restored = virtual_restored_len[i_B]
+        cur_restored = kv_restored_len[i_B]
         for i_N2 in range(N2):
             for i_S1 in range(cur_act_q):
                 if cmp_mask_mode == 3:
-                    # causal mask计算：虚拟ori长度中的可见长度转换为压缩block数量
+                    # causal mask计算：还原后的ori长度中的可见长度转换为压缩block数量
                     cur_valid_s2_max = math.floor((cur_restored - cur_act_q + i_S1 + 1) / cmp_ratio)
 
                 valid_blocks_max = max(0, cur_valid_s2_max)
