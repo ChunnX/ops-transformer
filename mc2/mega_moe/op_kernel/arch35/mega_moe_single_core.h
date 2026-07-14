@@ -78,7 +78,6 @@ struct ResetWorkspaceArgs {
     bool resetCombineCounters;
 };
 
-// 原型函数：MegaMoe::ResetGmm2CombineSyncCounters；作用：按逻辑 AIV 线程清零 GMM2 combine 同步计数区。
 __aicore__ inline void ResetGmm2CombineSyncCountersOneCore(const AivThreadContext &thread,
     const ResetWorkspaceArgs &args, LocalTensor<int32_t> &resetTensor)
 {
@@ -99,7 +98,6 @@ __aicore__ inline void ResetGmm2CombineSyncCountersOneCore(const AivThreadContex
     }
 }
 
-// 原型函数：MegaMoe::ResetFlagList；作用：按逻辑 AIV 线程清零 dispatch、GMM1、swiglu 和 GMM2 使用的 workspace 同步标记。
 __aicore__ inline void ResetFlagListOneCore(const DispatchPrepareContext &context,
     const ResetWorkspaceArgs &args, LocalTensor<int32_t> &resetTensor)
 {
@@ -182,7 +180,6 @@ __aicore__ inline void SendMaskCalOneExpert(const DispatchPrepareContext &contex
     SetFlag<AscendC::HardEvent::MTE3_V>(eventId);
 }
 
-// 原型函数：MegaMoe::SendMaskCal；作用：按专家生成待发送 token 的 bitmap 和 count，并写入对应目标 rank 的共享窗口。
 __aicore__ inline void SendMaskCalOneCore(const DispatchPrepareContext &context, const SendMaskArgs &args,
     SendMaskScratch &scratch)
 {
@@ -239,7 +236,6 @@ struct QuantProcessScratch {
     LocalTensor<uint16_t> mxTempTensor;
 };
 
-// 原型函数：MegaMoe::QuantProcessInRank；作用：按逻辑 AIV 线程量化本卡 token，并写出量化数据和 scale。
 // QuantProcessInRankOneCore：量化当前逻辑线程负责的本卡 token。
 // 依赖项由 DispatchPrepareContext/QuantProcessArgs/QuantProcessScratch 显式传入，
 // 不读取物理核 ID 或 MegaMoe 成员。
@@ -521,7 +517,6 @@ __aicore__ inline bool UpdateGmm1GroupParams(
     return Get<M_VALUE>(state.problemShape) != 0;
 }
 
-// 原型函数：MegaMoe::SendCntCal；作用：汇总当前本地专家从各 rank 接收的 token 数，并通知同 block 的 GMM1 消费核。
 template <typename ActivationType, bool EnableA8W4, typename BlockEpilogue>
 __aicore__ inline void SendCntCalOneCore(
     const DispatchGmm1SwigluContext &context,
@@ -575,7 +570,6 @@ __aicore__ inline void SendCntCalOneCore(
     AscendC::AtomicAdd(sendCntFlag, static_cast<int32_t>(1));
 }
 
-// 原型函数：MegaMoe::CopyGMToGMPerToken；作用：通过六缓冲流水搬运指定 rank 的 token、scale 和 triple 元数据。
 template <typename ActivationType, typename QuantScaleType, typename BlockEpilogue>
 __aicore__ inline void CopyDispatchTokensOneCore(
     const DispatchGmm1SwigluContext &context,
@@ -665,7 +659,6 @@ __aicore__ inline void CopyDispatchTokensOneCore(
     }
 }
 
-// 原型函数：MegaMoe::TripleInfoCalAndDispatch；作用：按逻辑 block 分发当前专家 token，并按 GMM1 wave 粒度更新就绪计数。
 template <typename ActivationType, typename QuantScaleType, bool EnableA8W4, typename BlockEpilogue>
 __aicore__ inline void DispatchTokensOneCore(
     const DispatchGmm1SwigluContext &context,
@@ -768,35 +761,32 @@ __aicore__ inline void UpdateGmm1GlobalBuffer(
         Get<IDX_FLAG_OFFSET>(state.baseOffset) * context.dispatchFlagSlotsPerExpert;
 }
 
-// 原型函数：MegaMoe::GroupMatmulWithSwigluQuant；作用：按数据类型和权重布局执行当前专家的 GMM1、SwiGLU 和量化阶段。
 template <typename QuantOutType, typename ActivationType, typename WeightType,
     typename SwigluOutType, typename QuantScaleType, bool EnableA8W4, typename BlockEpilogue>
 __aicore__ inline void RunGmm1SwigluStageOneCore(
     const DispatchGmm1SwigluContext &context,
     const DispatchGmm1SwigluArgs<BlockEpilogue> &args,
-    const GMMAddrInfo &gmmAddrInfo, const Gmm1ExpertLoopState &state,
-    uint32_t &startBlockIdx, int32_t &vecSetSyncCom)
+    const GMMAddrInfo &gmmAddrInfo, const Gmm1ExpertLoopState &state)
 {
     if constexpr (EnableA8W4) {
         MegaMoeImpl::GroupMatmulSwigluQuantA8W4<
             QuantOutType, WeightType, bfloat16_t, QuantScaleType, QuantScaleType>(
             *args.epilogueOp, *args.gmmParams, state.problemShape, gmmAddrInfo,
-            startBlockIdx, vecSetSyncCom, context.threadBlock);
+            *args.startBlockIdx, *args.vecSetSyncCom, context.threadBlock);
     } else if (context.groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ ||
         context.groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4_NZ) {
         MegaMoeImpl::GroupMatmulSwigluQuant<
             QuantOutType, SwigluOutType, QuantOutType, bfloat16_t, QuantScaleType, QuantScaleType, true>(
             *args.epilogueOp, *args.gmmParams, state.problemShape, gmmAddrInfo,
-            startBlockIdx, vecSetSyncCom, context.threadBlock);
+            *args.startBlockIdx, *args.vecSetSyncCom, context.threadBlock);
     } else {
         MegaMoeImpl::GroupMatmulSwigluQuant<
             QuantOutType, SwigluOutType, QuantOutType, bfloat16_t, QuantScaleType, QuantScaleType>(
             *args.epilogueOp, *args.gmmParams, state.problemShape, gmmAddrInfo,
-            startBlockIdx, vecSetSyncCom, context.threadBlock);
+            *args.startBlockIdx, *args.vecSetSyncCom, context.threadBlock);
     }
 }
 
-// 原型流程：MegaMoe::Process 中 dispatch + GMM1 + SwiGLUQuant 段；作用：在同一逻辑 block 的 AIC、AIV0、AIV1 间维持预取、计算和同步流水。
 // Every physical core in one MIX_AIC_1_2 block calls this function with the
 // same logical threadBlock and countWorkspace contexts. The function preserves
 // dispatch(e + 1) prefetch and GMM1/Swiglu(e) consumption order.
@@ -815,9 +805,6 @@ __aicore__ inline void DispatchGmm1SwigluOneCore(
         return;
     }
     InitDispatchGmm1SwigluBuffers<ActivationType, EnableA8W4>(context, args, scratch);
-    // Keep mutable GMM state local across experts and commit it once after the pipeline.
-    uint32_t startBlockIdx = *args.startBlockIdx;
-    int32_t vecSetSyncCom = *args.vecSetSyncCom;
     Gmm1ExpertLoopState dispatchState = CreateGmm1ExpertLoopState(context);
     Gmm1ExpertLoopState gmm1State = CreateGmm1ExpertLoopState(context);
     GMMAddrInfo dispatchAddrInfo;
@@ -862,11 +849,9 @@ __aicore__ inline void DispatchGmm1SwigluOneCore(
             QuantScaleType, EnableA8W4>(context, args, gmm1AddrInfo, gmm1State);
         RunGmm1SwigluStageOneCore<QuantOutType, ActivationType, WeightType,
             SwigluOutType, QuantScaleType, EnableA8W4>(
-                context, args, gmm1AddrInfo, gmm1State, startBlockIdx, vecSetSyncCom);
+                context, args, gmm1AddrInfo, gmm1State);
     }
-    EndSync(vecSetSyncCom);
-    *args.startBlockIdx = startBlockIdx;
-    *args.vecSetSyncCom = vecSetSyncCom;
+    EndSync(*args.vecSetSyncCom);
 }
 
 } // namespace MegaMoeImpl
