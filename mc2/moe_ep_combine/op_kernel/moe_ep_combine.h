@@ -520,6 +520,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::Process()
     SendPhaseExpertToToken();
     PipeBarrier<PIPE_ALL>(); // MaskCheck中包含reset操作，需确保前面操作完成
     BuffInit();
+    MaskCheck();
     RecvPhaseReduce();
 }
 
