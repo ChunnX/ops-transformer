@@ -490,8 +490,14 @@ __aicore__ inline int64_t ComputeAttenMaskOffset(const RunInfo<isInfer> &runInfo
                         s1Offset -= runInfo.nextTokensPerBatch;
                     }
                 }
-                deltaPre = s1Offset - s2Offset - runInfo.preTokensPerBatch - 1;
-                deltaCausalOrNext = s1Offset - s2Offset + runInfo.nextTokensPerBatch;
+                int64_t preTokensPerBatchAdj = runInfo.preTokensPerBatch;
+                int64_t nextTokensPerBatchAdj = runInfo.nextTokensPerBatch;
+                if constexpr (enableKVPrefix) {
+                    preTokensPerBatchAdj += constInfo.actualKVPrefixSize;
+                    nextTokensPerBatchAdj -= constInfo.actualKVPrefixSize;
+                }
+                deltaPre = s1Offset - s2Offset - preTokensPerBatchAdj - 1;
+                deltaCausalOrNext = s1Offset - s2Offset + nextTokensPerBatchAdj;
                 attenMaskInfo.attenMaskOffsetPre = ComputeOffsetForCausal(deltaPre, constInfo.s1BaseSize,
                     constInfo.s2BaseSize, attenMaskInfo.attenMaskS2Size, runInfo.vecCoreOffset, useDn);
             }
