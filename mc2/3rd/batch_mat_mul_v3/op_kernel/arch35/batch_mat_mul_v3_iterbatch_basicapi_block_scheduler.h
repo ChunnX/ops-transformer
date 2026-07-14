@@ -25,11 +25,7 @@ namespace Act {
 namespace Gemm {
 namespace Block {
 
-template <
-    class ProblemShape_,
-    class L1TileShape_,
-    class L0TileShape_
->
+template <class ProblemShape_, class L1TileShape_, class L0TileShape_>
 class Mc2BlockSchedulerIterBatchBuiltIn {
 public:
     int64_t m_{0};
@@ -47,12 +43,12 @@ public:
     using ProblemShape = ProblemShape_;
 
     struct Params {
-        const BatchMatMulV3IterBatchBasicTilingData* tilingData;
+        const BatchMatMulV3IterBatchBasicTilingData *tilingData;
     };
 
 public:
-    __aicore__ inline Mc2BlockSchedulerIterBatchBuiltIn(const ProblemShape& shape, int64_t blockIdx, int64_t blockNum,
-                                                     const Params& params)
+    __aicore__ inline Mc2BlockSchedulerIterBatchBuiltIn(const ProblemShape &shape, int64_t blockIdx, int64_t blockNum,
+                                                        const Params &params)
     {
         m_ = shape.m;
         n_ = shape.n;
@@ -102,21 +98,10 @@ public:
     }
 };
 
-template <
-    class ProblemShape_,
-    class L1TileShape_,
-    class L0TileShape_,
-    bool TransA_,
-    bool TransB_>
-struct BlockSchedulerSelector<
-    ProblemShape_,
-    L1TileShape_,
-    L0TileShape_,
-    Act::Gemm::BuiltInIterBatchScheduler,
-    TransA_,
-    TransB_
-> {
-  using SchedulerOp = Mc2BlockSchedulerIterBatchBuiltIn<ProblemShape_, L1TileShape_, L0TileShape_>;
+template <class ProblemShape_, class L1TileShape_, class L0TileShape_, bool TransA_, bool TransB_>
+struct BlockSchedulerSelector<ProblemShape_, L1TileShape_, L0TileShape_, Act::Gemm::BuiltInIterBatchScheduler, TransA_,
+                              TransB_> {
+    using SchedulerOp = Mc2BlockSchedulerIterBatchBuiltIn<ProblemShape_, L1TileShape_, L0TileShape_>;
 };
 
 } // namespace Block

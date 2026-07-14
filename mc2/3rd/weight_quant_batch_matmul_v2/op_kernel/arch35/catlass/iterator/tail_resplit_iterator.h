@@ -24,12 +24,13 @@ struct TailResplitIterator {
     static constexpr int32_t STAGE_END = 3;
 
     DEVICE TailResplitIterator()
-    {}
+    {
+    }
 
     DEVICE
-    TailResplitIterator(
-        Index mainBlockCount, Index firstTailBlockCount, Index secondTailBlockCount, Index mainBlockSize,
-        Index firstTailBlockSize, Index secondTailBlockSize, Index blockDim, Index stop)
+    TailResplitIterator(Index mainBlockCount, Index firstTailBlockCount, Index secondTailBlockCount,
+                        Index mainBlockSize, Index firstTailBlockSize, Index secondTailBlockSize, Index blockDim,
+                        Index stop)
         : blockDim(blockDim), stop(stop)
     {
         sizes[STAGE_ONE] = mainBlockSize;
@@ -88,9 +89,8 @@ struct TailResplitIterator {
     DEVICE void Print(int32_t signal) const
     {
 #if defined(__CCE_KT_TEST__)
-        X_LOG(
-            "%d Iterator idx %d curr %d size %d stage %d count %d sizes %d", signal, idx, curr, size, stage,
-            counts[stage], sizes[stage]);
+        X_LOG("%d Iterator idx %d curr %d size %d stage %d count %d sizes %d", signal, idx, curr, size, stage,
+              counts[stage], sizes[stage]);
 #endif
     }
 

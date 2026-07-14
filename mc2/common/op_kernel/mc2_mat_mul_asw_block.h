@@ -19,26 +19,25 @@
 #include "../../3rd/mat_mul_v3/op_kernel/arch35/mat_mul_asw_block.h"
 #include "mc2_tiling_struct.h"
 
-namespace MC2MatmulV3
-{
+namespace MC2MatmulV3 {
 
-constexpr uint64_t DEVICE_NUM = 64;         // group 内卡数， 目前定义为64，后续根据情况扩展
-constexpr uint64_t SLIDING_WINDOW_LEN = 4;  // 滑窗m方向大小
+constexpr uint64_t DEVICE_NUM = 64;        // group 内卡数， 目前定义为64，后续根据情况扩展
+constexpr uint64_t SLIDING_WINDOW_LEN = 4; // 滑窗m方向大小
 
 using namespace AscendC;
 using namespace matmul;
 using namespace Mc2MatmulV3Advanced;
 
-class MC2MatmulAswBlockDerive : public Mc2MatmulAswBlock
-{
+class MC2MatmulAswBlockDerive : public Mc2MatmulAswBlock {
 public:
     // constructor
     __aicore__ inline MC2MatmulAswBlockDerive()
     {
     }
     template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE>
-    __aicore__ inline void Init(const void* tilingData);
-    __aicore__ inline void InitForMC2(const void* tilingData, const Mc2Tiling::RCSTiling& cfg, bool isTail, bool isGather = false);
+    __aicore__ inline void Init(const void *tilingData);
+    __aicore__ inline void InitForMC2(const void *tilingData, const Mc2Tiling::RCSTiling &cfg, bool isTail,
+                                      bool isGather = false);
     template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE>
     __aicore__ inline void CalcGMOffset();
     __aicore__ inline void UpdateOffset(uint32_t idx, bool isTail);
@@ -58,19 +57,19 @@ public:
     uint64_t rankK_ = 0;
     uint64_t rankN_ = 0;
     // 以下变量保存部分scalar计算值，避免重复计算
-    uint64_t preCoreNum_ = 0; // 前一轮计算除不尽基本快数
-    uint64_t rankMN_ = 0;   // rankMN_ = rankM_ * rankN_
-    uint64_t rankMK_ = 0;   // rankMK_ = rankM_ * rankK_
-    uint64_t rankKN_ = 0;   // rankKN_ = rankK_ * rankN_
-    uint64_t windowParams1_ = 0;    // 主滑窗的m方向基本块数
-    uint64_t windowParams2_ = 0;    // 主滑窗的m方向基本块数 * nCnt
-    uint64_t blockBaseMDotRankK_ = 0;   // blockBaseM * rankK_
+    uint64_t preCoreNum_ = 0;         // 前一轮计算除不尽基本快数
+    uint64_t rankMN_ = 0;             // rankMN_ = rankM_ * rankN_
+    uint64_t rankMK_ = 0;             // rankMK_ = rankM_ * rankK_
+    uint64_t rankKN_ = 0;             // rankKN_ = rankK_ * rankN_
+    uint64_t windowParams1_ = 0;      // 主滑窗的m方向基本块数
+    uint64_t windowParams2_ = 0;      // 主滑窗的m方向基本块数 * nCnt
+    uint64_t blockBaseMDotRankK_ = 0; // blockBaseM * rankK_
 };
 
 template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE>
-__aicore__ inline void MC2MatmulAswBlockDerive::Init(const void* tilingData)
+__aicore__ inline void MC2MatmulAswBlockDerive::Init(const void *tilingData)
 {
-    matmulTilingData_ = static_cast<const Mc2MatMulV3TilingData*>(tilingData);
+    matmulTilingData_ = static_cast<const Mc2MatMulV3TilingData *>(tilingData);
 
     params_.index = 0;
     params_.singleCoreM = 0;
@@ -85,8 +84,8 @@ __aicore__ inline void MC2MatmulAswBlockDerive::Init(const void* tilingData)
     params_.totalSplitCnt = params_.mBaseSplitCnt * params_.nBaseSplitCnt;
 }
 
-__aicore__ inline void MC2MatmulAswBlockDerive::InitForMC2(const void* tilingData, const Mc2Tiling::RCSTiling& cfg, bool isTail,
-                                                     bool isGather)
+__aicore__ inline void MC2MatmulAswBlockDerive::InitForMC2(const void *tilingData, const Mc2Tiling::RCSTiling &cfg,
+                                                           bool isTail, bool isGather)
 {
     cfg_ = cfg;
     rankM_ = isGather ? cfg.rankM : cfg.rankM / cfg.rankDim;
@@ -97,8 +96,8 @@ __aicore__ inline void MC2MatmulAswBlockDerive::InitForMC2(const void* tilingDat
     rankMK_ = rankM_ * rankK_;
     rankKN_ = rankK_ * rankN_;
 
-    headSliceM_ = (rankM_ - cfg.tailM * cfg.tailCnt) / cfg.tileCnt;  // 头块的shapeM
-    curSliceM_ = isTail ? cfg.tailM : headSliceM_;                   // 当前计算的shapeM
+    headSliceM_ = (rankM_ - cfg.tailM * cfg.tailCnt) / cfg.tileCnt; // 头块的shapeM
+    curSliceM_ = isTail ? cfg.tailM : headSliceM_;                  // 当前计算的shapeM
     mSliceCnt_ = MMV3DivCeil(curSliceM_, params_.blockBaseM);
 
     uint64_t calRankNum = isGather_ ? (cfg.rankDim - 1) : cfg.rankDim;
@@ -106,17 +105,17 @@ __aicore__ inline void MC2MatmulAswBlockDerive::InitForMC2(const void* tilingDat
     params_.totalCnt = params_.mCnt * params_.nCnt;
 
     // 重新计算
-    params_.mBaseTail = curSliceM_ - (mSliceCnt_ - 1) * params_.blockBaseM;  // m方向的 base 尾块
+    params_.mBaseTail = curSliceM_ - (mSliceCnt_ - 1) * params_.blockBaseM; // m方向的 base 尾块
     params_.nBaseTail = matmulTilingData_->tCubeTiling.N - (params_.nCnt - 1) * params_.blockBaseN; // n方向上的base尾块
 
     params_.round = (params_.totalCnt + matmulTilingData_->tCubeTiling.usedCoreNum - 1) /
                     matmulTilingData_->tCubeTiling.usedCoreNum;
 
-    params_.mainWindow = SLIDING_WINDOW_LEN < params_.mCnt ? SLIDING_WINDOW_LEN : params_.mCnt;  // 主滑窗m方向的块个数
-    params_.mainRow = params_.mCnt / params_.mainWindow - 1;                                     // 主滑窗数量
+    params_.mainWindow = SLIDING_WINDOW_LEN < params_.mCnt ? SLIDING_WINDOW_LEN : params_.mCnt; // 主滑窗m方向的块个数
+    params_.mainRow = params_.mCnt / params_.mainWindow - 1;                                    // 主滑窗数量
     windowParams1_ = params_.mainRow * params_.mainWindow;
     windowParams2_ = windowParams1_ * params_.nCnt;
-    params_.tailWindow = params_.mCnt - windowParams1_;                    // 尾滑窗m方向的块个数
+    params_.tailWindow = params_.mCnt - windowParams1_; // 尾滑窗m方向的块个数
     blockBaseMDotRankK_ = params_.blockBaseM * rankK_;
 }
 
@@ -235,6 +234,6 @@ __aicore__ inline void MC2MatmulAswBlockDerive::UpdateOffset(uint32_t idx, bool 
     }
 }
 
-}  // namespace MC2MatmulV3
+} // namespace MC2MatmulV3
 
-#endif  // MC2_MAT_MUL_ASW_BLOCK_H
+#endif // MC2_MAT_MUL_ASW_BLOCK_H

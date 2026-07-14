@@ -42,7 +42,7 @@ struct BasicTiling {
     uint64_t calOrder = 0;
 };
 
-enum class BasicTilingMode : uint32_t{
+enum class BasicTilingMode : uint32_t {
     BASIC_TILING_MODE = 0,
     L2_CACHE_TILING_MODE = 1
 };
@@ -50,9 +50,11 @@ enum class BasicTilingMode : uint32_t{
 class Mc2QuantBatchMatmulV3BasicTiling : public Mc2QuantBatchMatmulV3Tiling {
 public:
     explicit Mc2QuantBatchMatmulV3BasicTiling(gert::TilingContext *contextIn)
-     : Mc2QuantBatchMatmulV3Tiling(contextIn), context(contextIn) { }
+        : Mc2QuantBatchMatmulV3Tiling(contextIn), context(contextIn)
+    {
+    }
     Mc2QuantBatchMatmulV3BasicTiling(gert::TilingContext *contextIn, Mc2QuantBatchMatmulV3TilingData *out)
-     : Mc2QuantBatchMatmulV3Tiling(contextIn, out), context(contextIn)
+        : Mc2QuantBatchMatmulV3Tiling(contextIn, out), context(contextIn)
     {
     }
     ~Mc2QuantBatchMatmulV3BasicTiling() override = default;
@@ -90,8 +92,9 @@ protected:
     void SetMatmulTilingFromBasicTiling();
     void CalcUbBasicTiling();
     void CalcBasicTilingWorkspaceSize();
-    std::tuple<uint64_t, uint64_t, uint64_t, uint64_t> CalcCoreDistribution(
-        uint64_t mCnt, uint64_t nCnt, uint64_t calcOrder, uint64_t round, uint64_t usedCoreNum) const;  // 计算核的排布
+    std::tuple<uint64_t, uint64_t, uint64_t, uint64_t> CalcCoreDistribution(uint64_t mCnt, uint64_t nCnt,
+                                                                            uint64_t calcOrder, uint64_t round,
+                                                                            uint64_t usedCoreNum) const; // 计算核的排布
     bool SetBase(const std::vector<uint64_t> &mBases, const std::vector<uint64_t> &nBases);
     void CompareBase(std::vector<uint64_t> &basicMetrics, uint64_t baseM, uint64_t baseN);
     bool CheckCalcAndMemRatio(uint64_t baseM, uint64_t baseN) const;
@@ -124,8 +127,8 @@ protected:
     bool IsTilingDataInvalid() const;
     void ResetBase(const uint64_t l0CSize);
     uint64_t GetTotalSize(uint64_t m, uint64_t k, uint64_t n) const;
-    void CalcTileCnt(uint64_t outOriShape, uint64_t innerOriShape, uint64_t outBase,
-                     uint64_t innerBase, std::vector<std::tuple<uint64_t, uint64_t>> &tileCnt) const;
+    void CalcTileCnt(uint64_t outOriShape, uint64_t innerOriShape, uint64_t outBase, uint64_t innerBase,
+                     std::vector<std::tuple<uint64_t, uint64_t>> &tileCnt) const;
     bool IsTileClash(uint64_t outSplit, uint64_t innerSplit, std::tuple<uint64_t, uint64_t> &tileClash,
                      const std::tuple<uint64_t, uint64_t, uint64_t> &params) const;
     uint64_t GetCalcOrder(uint64_t mCnt, uint64_t nCnt, uint64_t mSize, uint64_t nSize, uint64_t usedCoreNum) const;
@@ -135,7 +138,7 @@ protected:
                         std::vector<std::tuple<uint64_t, uint64_t>> &tileClash) const;
     uint64_t CalcTile(uint64_t &outTile, uint64_t &innerTile, uint64_t &outL2Split, uint64_t &innerL2Split,
                       const std::tuple<uint64_t, uint64_t, double> &params) const;
-    void DivisibleCoreLayout(uint64_t mCnt, uint64_t nCnt, uint64_t& calcOrder, uint64_t round) const;
+    void DivisibleCoreLayout(uint64_t mCnt, uint64_t nCnt, uint64_t &calcOrder, uint64_t round) const;
     void DetermineCalcOrder();
     void SetCalcOrderinMNClashCase(uint64_t mTotalCnt, uint64_t nTotalCnt);
 
@@ -145,5 +148,5 @@ private:
     mutable bool isAicAiv1_2 = false;
 };
 
-}  // namespace optiling
-#endif  // QUANT_BATCH_MATMUL_V3_BASIC_TILING_H
+} // namespace optiling
+#endif // QUANT_BATCH_MATMUL_V3_BASIC_TILING_H

@@ -30,12 +30,15 @@ struct L2CacheTileArguments {
 
 class MatmulBaseBlockL2Cache : public MatmulBaseBlockMC2 {
 public:
-    __aicore__ inline MatmulBaseBlockL2Cache() {}
+    __aicore__ inline MatmulBaseBlockL2Cache()
+    {
+    }
     __aicore__ inline void UpdateBlockCnt(int32_t mTileIndex, int32_t nTileIndex);
-    __aicore__ inline void UpdateBlockParams(int32_t mTileIndex=0, int32_t nTileIndex=0);
-    __aicore__ inline void Init(Mc2Tiling::RCSTiling& cfg, TCubeTiling& tiling, Mc2Tiling::TileL2Tiling &l2Tiling, uint32_t rankID=0);
+    __aicore__ inline void UpdateBlockParams(int32_t mTileIndex = 0, int32_t nTileIndex = 0);
+    __aicore__ inline void Init(Mc2Tiling::RCSTiling &cfg, TCubeTiling &tiling, Mc2Tiling::TileL2Tiling &l2Tiling,
+                                uint32_t rankID = 0);
     __aicore__ inline void UpdateBlockOffset(int32_t mL2TileIndex, int32_t nL2TileIndex);
-    __aicore__ inline void InitBlockIndex(uint32_t index=0);
+    __aicore__ inline void InitBlockIndex(uint32_t index = 0);
 
 public:
     uint32_t rankID_;
@@ -43,8 +46,8 @@ public:
     Mc2Tiling::TileL2Tiling l2Tiling_;
 };
 
-__aicore__ inline void MatmulBaseBlockL2Cache::Init(Mc2Tiling::RCSTiling& cfg, TCubeTiling& tiling, Mc2Tiling::TileL2Tiling &l2Tiling,
-    uint32_t rankID)
+__aicore__ inline void MatmulBaseBlockL2Cache::Init(Mc2Tiling::RCSTiling &cfg, TCubeTiling &tiling,
+                                                    Mc2Tiling::TileL2Tiling &l2Tiling, uint32_t rankID)
 {
     MatmulBaseBlockMC2::Init(cfg, tiling, l2Tiling);
     l2Tiling_ = l2Tiling;
@@ -53,7 +56,7 @@ __aicore__ inline void MatmulBaseBlockL2Cache::Init(Mc2Tiling::RCSTiling& cfg, T
     if (tiling_.N > 2 * tiling_.M * l2Tiling_.rankTileNum) { // 2: ratio of rowOrder
         args_.isRowOrder = false;
     }
-    l2Args_.mOneTileBlockCnt = DivCeil(tiling_.M, tiling_.baseM);  //M方向分Base块个数
+    l2Args_.mOneTileBlockCnt = DivCeil(tiling_.M, tiling_.baseM); // M方向分Base块个数
 }
 
 __aicore__ inline void MatmulBaseBlockL2Cache::UpdateBlockCnt(int32_t mTileIndex, int32_t nTileIndex)
@@ -96,7 +99,7 @@ __aicore__ inline void MatmulBaseBlockL2Cache::UpdateBlockParams(int32_t mTileIn
     // M方向单片矩阵的最后一行为尾块
     if (l2Tiling_.rankTileNum > 1) {
         uint32_t rankMBlockIdx = mTileIndex * l2Tiling_.mTileBlocks + args_.blockCurrIdx / args_.nBlockCnt;
-         if ((rankMBlockIdx + 1) % l2Args_.mOneTileBlockCnt == 0) {
+        if ((rankMBlockIdx + 1) % l2Args_.mOneTileBlockCnt == 0) {
             args_.singleCoreM = args_.mBaseTail;
         }
     }
@@ -105,8 +108,8 @@ __aicore__ inline void MatmulBaseBlockL2Cache::UpdateBlockParams(int32_t mTileIn
 
 __aicore__ inline void MatmulBaseBlockL2Cache::UpdateBlockOffset(int32_t mL2TileIndex, int32_t nL2TileIndex)
 {
-    uint32_t mL2TileBlockIdx = args_.blockCurrIdx / args_.nBlockCnt;  // L2切分后矩阵的基本块所在的行索引
-    uint32_t nL2TileBlockIdx = args_.blockCurrIdx % args_.nBlockCnt;  // L2切分后矩阵的基本块所在的列索引
+    uint32_t mL2TileBlockIdx = args_.blockCurrIdx / args_.nBlockCnt; // L2切分后矩阵的基本块所在的行索引
+    uint32_t nL2TileBlockIdx = args_.blockCurrIdx % args_.nBlockCnt; // L2切分后矩阵的基本块所在的列索引
     uint32_t rankMBlockIdx = mL2TileIndex * l2Tiling_.mTileBlocks + mL2TileBlockIdx;
     auto mTileIndex = rankMBlockIdx / l2Args_.mOneTileBlockCnt;
     auto mBlockIndex = rankMBlockIdx % l2Args_.mOneTileBlockCnt;
@@ -139,27 +142,26 @@ __aicore__ inline void MatmulBaseBlockL2Cache::InitBlockIndex(uint32_t index)
     GetBlockStartIdx(startIdx, endIdx);
 }
 
-enum SplitType
-{
-    DEFAULT=0,
-    L2CACHE=1
+enum SplitType {
+    DEFAULT = 0,
+    L2CACHE = 1
 };
 
-template<SplitType T>
+template <SplitType T>
 struct BlockType {
-    __aicore__ inline BlockType() {};
+    __aicore__ inline BlockType(){};
 };
 
-template<>
+template <>
 struct BlockType<DEFAULT> {
-    __aicore__ inline BlockType() {};
+    __aicore__ inline BlockType(){};
     using PARAMS = MatmulBaseBlockMC2;
 };
 
-template<>
+template <>
 struct BlockType<L2CACHE> {
-    __aicore__ inline BlockType() {};
+    __aicore__ inline BlockType(){};
     using PARAMS = MatmulBaseBlockL2Cache;
 };
-}      // namespace ASCENDC
+} // namespace AscendC
 #endif // MC2_MATMUL_BLOCK_L2CACHE_H

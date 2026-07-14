@@ -27,7 +27,7 @@ class Mc2GenTaskOpsUtils {
 public:
     static bool IsComputationOnly();
     static int64_t GetAttachStreamIdByContext(const gert::ExeResGenerationContext *context, size_t idx = 0);
-    static ge::Status CommonKFCMc2CalcParamFunc(const gert::ExeResGenerationContext *context, 
+    static ge::Status CommonKFCMc2CalcParamFunc(const gert::ExeResGenerationContext *context,
                                                 const ge::AscendString &name, const ge::AscendString &reuse_key);
     static ge::Status CommonKFCMc2GenTask(const gert::ExeResGenerationContext *context,
                                           std::vector<std::vector<uint8_t>> &tasks);

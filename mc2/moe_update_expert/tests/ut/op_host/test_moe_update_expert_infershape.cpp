@@ -7,14 +7,14 @@
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
- 
+
 #include <gtest/gtest.h>
 #include <iostream>
 #include "mc2_infer_shape_case_executor.h"
 #include "infer_datatype_context_faker.h"
 #include "base/registry/op_impl_space_registry_v2.h"
 
-namespace MoeUpdateExpertInfershapeUT{
+namespace MoeUpdateExpertInfershapeUT {
 class MoeUpdateExpertInfershape : public testing::Test {
 protected:
     static void SetUpTestCase()
@@ -39,7 +39,8 @@ TEST_F(MoeUpdateExpertInfershape, MoeUpdateExpertTestShape)
     int64_t worldSize = 8;
     int64_t balanceMode = 0;
 
-    gert::InfershapeContextPara infershapeContextPara("MoeUpdateExpert",
+    gert::InfershapeContextPara infershapeContextPara(
+        "MoeUpdateExpert",
         {
             {expertIdsShape, ge::DT_INT64, ge::FORMAT_ND},
             {eplbTableShape, ge::DT_INT32, ge::FORMAT_ND},
@@ -52,11 +53,8 @@ TEST_F(MoeUpdateExpertInfershape, MoeUpdateExpertTestShape)
             {"localRankId", Ops::Transformer::AnyValue::CreateFrom<int64_t>(localRankId)},
             {"worldSize", Ops::Transformer::AnyValue::CreateFrom<int64_t>(worldSize)},
             {"balanceMode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(balanceMode)},
-        }
-    );
-    Mc2Hcom::MockValues hcomTopologyMockValues {
-        {"rankNum", 8}
-    };
+        });
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
 
     std::vector<std::vector<int64_t>> expertOutputShape = {{128, 8}};
     Mc2ExecuteTestCase(infershapeContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expertOutputShape);
@@ -67,8 +65,18 @@ TEST_F(MoeUpdateExpertInfershape, MoeUpdateExpertTestEnhancedShape)
     gert::StorageShape expertIdsShape = {{128, 8}, {128, 8}};
     gert::StorageShape eplbTableShape = {{56, 5}, {56, 5}};
     gert::StorageShape expertScalesShape = {{128, 8}, {128, 8}};
-    gert::StorageShape pruingThresholdShape = {{8, }, {8, }};
-    gert::StorageShape activeMaskShape = {{128,}, {128,}};
+    gert::StorageShape pruingThresholdShape = {{
+                                                   8,
+                                               },
+                                               {
+                                                   8,
+                                               }};
+    gert::StorageShape activeMaskShape = {{
+                                              128,
+                                          },
+                                          {
+                                              128,
+                                          }};
 
     gert::StorageShape balancedExpertIdsShape = {{128, 8}, {128, 8}};
     gert::StorageShape balancedActiveMaskShape = {{128, 8}, {128, 8}};
@@ -77,7 +85,8 @@ TEST_F(MoeUpdateExpertInfershape, MoeUpdateExpertTestEnhancedShape)
     int64_t worldSize = 8;
     int64_t balanceMode = 0;
 
-    gert::InfershapeContextPara infershapeContextPara("MoeUpdateExpert",
+    gert::InfershapeContextPara infershapeContextPara(
+        "MoeUpdateExpert",
         {
             {expertIdsShape, ge::DT_INT64, ge::FORMAT_ND},
             {eplbTableShape, ge::DT_INT32, ge::FORMAT_ND},
@@ -93,11 +102,8 @@ TEST_F(MoeUpdateExpertInfershape, MoeUpdateExpertTestEnhancedShape)
             {"localRankId", Ops::Transformer::AnyValue::CreateFrom<int64_t>(localRankId)},
             {"worldSize", Ops::Transformer::AnyValue::CreateFrom<int64_t>(worldSize)},
             {"balanceMode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(balanceMode)},
-        }
-    );
-    Mc2Hcom::MockValues hcomTopologyMockValues {
-        {"rankNum", 8}
-    };
+        });
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
 
     std::vector<std::vector<int64_t>> expertOutputShape = {{128, 8}};
     Mc2ExecuteTestCase(infershapeContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expertOutputShape);
@@ -110,11 +116,11 @@ TEST_F(MoeUpdateExpertInfershape, MoeUpdateExpertTestType)
     ge::DataType eplbTableType = ge::DT_INT32;
 
     auto contextHolder = gert::InferDataTypeContextFaker()
-                    .NodeIoNum(2, 2)
-                    .InputDataTypes({&expertIdsType, &eplbTableType})
-                    .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
-                    .NodeOutputTd(1, ge::FORMAT_ND, ge::FORMAT_ND)
-                    .Build();
+                             .NodeIoNum(2, 2)
+                             .InputDataTypes({&expertIdsType, &eplbTableType})
+                             .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
+                             .NodeOutputTd(1, ge::FORMAT_ND, ge::FORMAT_ND)
+                             .Build();
 
     auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
     auto inferDtypeFunc = spaceRegistry->GetOpImpl("MoeUpdateExpert")->infer_datatype;
@@ -132,13 +138,13 @@ TEST_F(MoeUpdateExpertInfershape, MoeUpdateExpertTestEnhancedType)
     ge::DataType pruningThresholdType = ge::DT_FLOAT;
     ge::DataType activeMaskType = ge::DT_BOOL;
 
-    auto contextHolder = gert::InferDataTypeContextFaker()
-                    .NodeIoNum(5, 2)
-                    .InputDataTypes({&expertIdsType, &eplbTableType, &expertScalesType,
-                                     &pruningThresholdType, &activeMaskType})
-                    .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
-                    .NodeOutputTd(1, ge::FORMAT_ND, ge::FORMAT_ND)
-                    .Build();
+    auto contextHolder =
+        gert::InferDataTypeContextFaker()
+            .NodeIoNum(5, 2)
+            .InputDataTypes({&expertIdsType, &eplbTableType, &expertScalesType, &pruningThresholdType, &activeMaskType})
+            .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
+            .NodeOutputTd(1, ge::FORMAT_ND, ge::FORMAT_ND)
+            .Build();
 
     auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
     auto inferDtypeFunc = spaceRegistry->GetOpImpl("MoeUpdateExpert")->infer_datatype;
@@ -147,4 +153,4 @@ TEST_F(MoeUpdateExpertInfershape, MoeUpdateExpertTestEnhancedType)
     EXPECT_EQ(contextHolder.GetContext<gert::InferDataTypeContext>()->GetOutputDataType(0), ge::DT_INT64);
     EXPECT_EQ(contextHolder.GetContext<gert::InferDataTypeContext>()->GetOutputDataType(1), ge::DT_BOOL);
 }
-}
+} // namespace MoeUpdateExpertInfershapeUT

@@ -37,13 +37,13 @@ DEVICE void CrossCoreSetFlag(uint16_t flagId)
 }
 #endif
 
-template <
-    pipe_t ProducerPipeline, pipe_t ConsumerPipeline, int32_t SubBlockDim, uint8_t SyncMode = 4, uint16_t FlagId = 1>
+template <pipe_t ProducerPipeline, pipe_t ConsumerPipeline, int32_t SubBlockDim, uint8_t SyncMode = 4,
+          uint16_t FlagId = 1>
 struct PipelineStageMixCore {
     static constexpr uint64_t FLAG_ID_MAX = 16;
 
     template <uint8_t Stages>
-    DEVICE static void ProducerWaitAfterStages(PipelineState<Stages> const& state)
+    DEVICE static void ProducerWaitAfterStages(PipelineState<Stages> const &state)
     {
         if (state.count() >= Stages) {
             CrossCoreWaitFlag<SyncMode, ProducerPipeline>(FlagId);
@@ -75,7 +75,7 @@ struct PipelineStageMixCore {
     }
 
     template <uint8_t Stages>
-    DEVICE static void Clear(PipelineState<Stages> const& state)
+    DEVICE static void Clear(PipelineState<Stages> const &state)
     {
         if ASCEND_IS_AIV {
             for (uint8_t i = 0; i < Min(static_cast<uint64_t>(Stages), state.count()); ++i) {

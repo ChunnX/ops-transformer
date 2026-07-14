@@ -80,25 +80,25 @@ class ContextTransfer {
 public:
     // MRN代表MatMulAllReduceAddResNorm的缩写
     static ge::graphStatus AssembleMMRCtxInfoFromMRNCtx(const gert::TilingContext *const context,
-                                             MMRCtxInfo &mmrCtxInfo);
+                                                        MMRCtxInfo &mmrCtxInfo);
 
     static ge::graphStatus AssembleARNCtxInfoFromMRNCtx(const gert::TilingContext *const context,
-                                             ARNCtxInfo &arnCtxInfo);
+                                                        ARNCtxInfo &arnCtxInfo);
 
     // IMRN代表InplaceMatMulAllReduceAddResNorm的缩写
     static ge::graphStatus AssembleMMRCtxInfoFromIMRNCtx(const gert::TilingContext *const context,
-                                             MMRCtxInfo &mmrCtxInfo);
+                                                         MMRCtxInfo &mmrCtxInfo);
 
     static ge::graphStatus AssembleARNCtxInfoFromIMRNCtx(const gert::TilingContext *const context,
-                                              ARNCtxInfo &arnCtxInfo);
+                                                         ARNCtxInfo &arnCtxInfo);
 
     static ge::graphStatus AssembleMRNCtxInfoFromMRNCtx(const gert::TilingContext *const context,
-                                                         MRNCtxInfo &mrnCtxInfo);
+                                                        MRNCtxInfo &mrnCtxInfo);
     static ge::graphStatus AssembleIMRNCtxInfoFromIMRNCtx(const gert::TilingContext *const context,
                                                           IMRNCtxInfo &imrnCtxInfo);
     static ge::graphStatus AssembleMMRCtxInfoFromMMRCtx(const gert::TilingContext *const context,
                                                         MMRCtxInfo &mmrCtxInfo);
     static ge::graphStatus CheckMRNCtxInfo(const gert::TilingContext *context, const MRNCtxInfo &mrnCtxInfo);
 };
-}
+} // namespace optiling
 #endif // _CONTEXT_TRANSFER_H_

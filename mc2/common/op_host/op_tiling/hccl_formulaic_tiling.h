@@ -44,22 +44,22 @@ constexpr double REDUCESCATTER_COMMTIME_FACTOR = 2.09136;
 // 切分和对齐
 class FormPartition {
 public:
-    CutResult cutRes;                             // 切分结果
-    TileArguments tileArgs;                       // 切分参数
-    uint64_t totalLen = ONE;                      // 待切分的长度
-    double backTileRatio = BACKTILE_ALIGN_RATIO;  // 计算长块个数使用的参数
+    CutResult cutRes;                            // 切分结果
+    TileArguments tileArgs;                      // 切分参数
+    uint64_t totalLen = ONE;                     // 待切分的长度
+    double backTileRatio = BACKTILE_ALIGN_RATIO; // 计算长块个数使用的参数
 
     // Constructor
     explicit FormPartition(const mc2tiling::TilingArgs &args)
     {
         totalLen = args.mValue;
-        tileArgs.mAlignLen = mc2tiling::BASE_BLOCK_M;  // 切分长度照顾mm性能，对齐baseM
+        tileArgs.mAlignLen = mc2tiling::BASE_BLOCK_M; // 切分长度照顾mm性能，对齐baseM
         tileArgs.minTileLen = tileArgs.mAlignLen;
         tileArgs.maxTileCnt = ONE;
         tileArgs.maxTileLen = totalLen;
 
-        cutRes.shortTileAtBack = false;  // 计算Bound时短块后置，通信bound时短块前置
-        NoCutTiling();                   // 初始化为不切分
+        cutRes.shortTileAtBack = false; // 计算Bound时短块后置，通信bound时短块前置
+        NoCutTiling();                  // 初始化为不切分
     };
 
     void SetBackTileRatio(double newRatio)
@@ -105,34 +105,35 @@ public:
     void FitTileLengthContinuous(bool kGreaterThanN, bool largeCalcCommRatio = true, bool soc310Flag = false);
 
     virtual ~FormPartition()
-    {}
+    {
+    }
 };
 
 // 单通信域算子通信轮次切分基类，每个算子各有一个派生类
 class OneCalcOneCommBase {
 public:
-    MatmulPerformanceModel matmulPerf_;  // 计算拟合
-    HCCLPerformanceModel commPerf_;      // 通信拟合
-    FormPartition tilingM_;              // 切分结果
+    MatmulPerformanceModel matmulPerf_; // 计算拟合
+    HCCLPerformanceModel commPerf_;     // 通信拟合
+    FormPartition tilingM_;             // 切分结果
     MatmulParameters clusterInfo_;
-    uint64_t rankDim_ = 2;  // Tp并行维度
+    uint64_t rankDim_ = 2; // Tp并行维度
     uint64_t rankTileNum_ = 1;
     double ratioCalcComm_ = 1.0;
     bool noCutFlag_ = false;
-    bool inferFlag_ = false;  // 部分逻辑只适配了推理或者训练算子，进行区分
+    bool inferFlag_ = false; // 部分逻辑只适配了推理或者训练算子，进行区分
 
     // Constructor
     explicit OneCalcOneCommBase(const mc2tiling::TilingArgs &args, uint32_t inputRankDim, KernelType inputKernelType,
-        SocVersion inputSocVersion = SocVersion::SOC910_B)
+                                SocVersion inputSocVersion = SocVersion::SOC910_B)
         : matmulPerf_(args, inputSocVersion), commPerf_(inputRankDim, inputKernelType, inputSocVersion), tilingM_(args)
     {
         rankDim_ = inputRankDim;
         clusterInfo_ = matmulPerf_.mmShapeInfo_;
-        tilingM_.SetMaxTileCnt(MAX_TILE_CNT);  // 受限ffts队列大小，最多切16轮
+        tilingM_.SetMaxTileCnt(MAX_TILE_CNT); // 受限ffts队列大小，最多切16轮
     };
 
-    virtual void EstimateKernelTime(){};
-    virtual void SelectTilingMethod(){};
+    virtual void EstimateKernelTime() {};
+    virtual void SelectTilingMethod() {};
     double EstimateTotalMatmulTime();
     double EstimateTotalCommTime();
 
@@ -144,7 +145,8 @@ public:
     void GetTiling();
 
     virtual ~OneCalcOneCommBase()
-    {}
+    {
+    }
 };
 
-#endif  // __HCCL_FORMULAIC_TILING_H__
+#endif // __HCCL_FORMULAIC_TILING_H__

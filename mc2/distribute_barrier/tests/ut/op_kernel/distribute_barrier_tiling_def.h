@@ -7,7 +7,7 @@
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
- 
+
 #ifndef DISTRIBUTE_BARRIER_TILING_DEF_H
 #define DISTRIBUTE_BARRIER_TILING_DEF_H
 
@@ -15,13 +15,13 @@
 #include "../../../../../tests/ut/framework_normal/common/hccl_stub.h"
 #include "../../../op_kernel/distribute_barrier_tiling.h"
 
-inline void InitDistributeBarrierTilingData(uint8_t* tiling, DistributeBarrierTilingData* constData)
+inline void InitDistributeBarrierTilingData(uint8_t *tiling, DistributeBarrierTilingData *constData)
 {
     memcpy(constData, tiling, sizeof(DistributeBarrierTilingData));
 }
 
-#define GET_TILING_DATA_WITH_STRUCT(DistributeBarrierTilingData, tilingData, tilingArg)       \
-    DistributeBarrierTilingData tilingData;                                                 \
+#define GET_TILING_DATA_WITH_STRUCT(DistributeBarrierTilingData, tilingData, tilingArg)                                \
+    DistributeBarrierTilingData tilingData;                                                                            \
     InitDistributeBarrierTilingData(tilingArg, &tilingData)
 
 #endif

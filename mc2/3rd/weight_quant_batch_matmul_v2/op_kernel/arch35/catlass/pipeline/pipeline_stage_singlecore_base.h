@@ -31,28 +31,29 @@ struct PipelineStageSingleCoreBase {
 
     DEVICE
     PipelineStageSingleCoreBase()
-    {}
+    {
+    }
 
     DEVICE
-    void ProducerWait(PipelineState<Stages> const& state) const
+    void ProducerWait(PipelineState<Stages> const &state) const
     {
         ProducerWait(state.index());
     }
 
     DEVICE
-    void ProducerRelease(PipelineState<Stages> const& state) const
+    void ProducerRelease(PipelineState<Stages> const &state) const
     {
-        static_cast<const Derived*>(this)->ProducerRelease(state.index());
+        static_cast<const Derived *>(this)->ProducerRelease(state.index());
     }
 
     DEVICE
-    void ConsumerWait(PipelineState<Stages> const& state) const
+    void ConsumerWait(PipelineState<Stages> const &state) const
     {
-        static_cast<const Derived*>(this)->ConsumerWait(state.index());
+        static_cast<const Derived *>(this)->ConsumerWait(state.index());
     }
 
     DEVICE
-    void ConsumerRelease(PipelineState<Stages> const& state) const
+    void ConsumerRelease(PipelineState<Stages> const &state) const
     {
         ConsumerRelease(state.index());
     }
@@ -71,8 +72,8 @@ struct PipelineStageSingleCoreBase {
 
     DEVICE void Clear() const
     {
-        // 多set需要wait掉
-        #pragma unroll
+// 多set需要wait掉
+#pragma unroll
         for (uint8_t i = 0; i < Stages; ++i) {
             ProducerWait(backwardEventId[i]);
         }
