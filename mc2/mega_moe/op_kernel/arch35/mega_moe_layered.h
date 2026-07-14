@@ -982,7 +982,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ReceiveTokenFrom
         GlobalTensor<ActivationType> relayGlobalTensor;
         relayGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ ActivationType*>(remoteRecordAddr));
         DataCopy(copyTmpTensors_[bufferIdx], relayGlobalTensor, copyInNum);
-        SyncFuncStatic<AscendC::HardEvent::MTE2_V, SYNC_EVENT_ID1>;
+        SyncFuncStatic<AscendC::HardEvent::MTE2_V, SYNC_EVENT_ID1>();
         return;
     }
     GM_ADDR scratchAddr = params_.workspaceInfo.dispatchL2CommPtr +
@@ -1007,7 +1007,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ReceiveTokenFrom
     GlobalTensor<ActivationType> scratchGlobalTensor;
     scratchGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ ActivationType*>(scratchAddr));
     DataCopy(copyTmpTensors_[bufferIdx], scratchGlobalTensor, copyInNum);
-    SyncFuncStatic<AscendC::HardEvent::MTE2_V, SYNC_EVENT_ID1>;
+    SyncFuncStatic<AscendC::HardEvent::MTE2_V, SYNC_EVENT_ID1>();
 }
 
 // ==================================================================================================
