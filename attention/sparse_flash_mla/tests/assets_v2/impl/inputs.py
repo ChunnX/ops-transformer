@@ -224,6 +224,12 @@ def generate_sparse_flash_mla_inputs(q, *, ori_kv=None, cmp_kv=None, ori_sparse_
     cmp_fallback = 0 if cmp_kv is None else int(
         cmp_kv.shape[0] if layout_kv == "TND" else cmp_kv.shape[1]
     )
+    has_ori_kv = kwargs.get("has_ori_kv")
+    has_cmp_kv = kwargs.get("has_cmp_kv")
+    if has_ori_kv is None:
+        has_ori_kv = ori_kv is not None
+    if has_cmp_kv is None:
+        has_cmp_kv = cmp_kv is not None
     generated = torch.ops.cann_ops_transformer.sparse_flash_mla_metadata(
         int(q.shape[1] if layout_q == "TND" else q.shape[2]),
         int(kv_ref.shape[1] if layout_kv == "TND" else kv_ref.shape[2]),
@@ -250,7 +256,7 @@ def generate_sparse_flash_mla_inputs(q, *, ori_kv=None, cmp_kv=None, ori_sparse_
         ori_win_right=int(kwargs.get("ori_win_right", 0)),
         layout_q=layout_q,
         layout_kv=layout_kv,
-        has_ori_kv=ori_kv is not None,
-        has_cmp_kv=cmp_kv is not None,
+        has_ori_kv=bool(has_ori_kv),
+        has_cmp_kv=bool(has_cmp_kv),
     )
     _fill_metadata(metadata, generated)

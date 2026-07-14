@@ -158,7 +158,6 @@ def generate_sparse_flash_mla_inputs(q, *, ori_kv=None, cmp_kv=None, ori_sparse_
                                      cmp_residual_kv=None, ori_topk_length=None,
                                      cmp_topk_length=None, sinks=None, **kwargs):
     """Reuse pytest generation to make TTK inputs byte-for-byte valid."""
-    del ori_topk_length, cmp_topk_length
     params = _case_params(
         q,
         ori_kv,
@@ -184,4 +183,6 @@ def generate_sparse_flash_mla_inputs(q, *, ori_kv=None, cmp_kv=None, ori_sparse_
     _copy_tensor(seqused_ori_kv, op_input.get("seqused_ori_kv"), "seqused_ori_kv")
     _copy_tensor(seqused_cmp_kv, op_input.get("seqused_cmp_kv"), "seqused_cmp_kv")
     _copy_tensor(cmp_residual_kv, op_input.get("cmp_residual_kv"), "cmp_residual_kv")
+    _copy_tensor(ori_topk_length, op_input.get("ori_topk_length"), "ori_topk_length")
+    _copy_tensor(cmp_topk_length, op_input.get("cmp_topk_length"), "cmp_topk_length")
     _copy_tensor(sinks, op_input.get("sinks"), "sinks")

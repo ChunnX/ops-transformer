@@ -147,7 +147,6 @@ def generate_mixed_quant_sparse_flash_mla_inputs(q, *, ori_kv=None, cmp_kv=None,
                                                  cmp_residual_kv=None, ori_topk_length=None,
                                                  cmp_topk_length=None, sinks=None, **kwargs):
     """Reuse pytest generation to make TTK inputs byte-for-byte valid."""
-    del ori_sparse_indices, ori_topk_length, cmp_topk_length
     params = _case_params(
         q,
         ori_kv,
@@ -162,6 +161,7 @@ def generate_mixed_quant_sparse_flash_mla_inputs(q, *, ori_kv=None, cmp_kv=None,
     _copy_tensor(q, op_input.get("q"), "q")
     _copy_tensor(ori_kv, op_input.get("ori_kv"), "ori_kv")
     _copy_tensor(cmp_kv, op_input.get("cmp_kv"), "cmp_kv")
+    _copy_tensor(ori_sparse_indices, op_input.get("ori_sparse_indices"), "ori_sparse_indices")
     _copy_tensor(cmp_sparse_indices, op_input.get("cmp_sparse_indices"), "cmp_sparse_indices")
     _copy_tensor(ori_block_table, op_input.get("ori_block_table"), "ori_block_table")
     _copy_tensor(cmp_block_table, op_input.get("cmp_block_table"), "cmp_block_table")
@@ -172,4 +172,6 @@ def generate_mixed_quant_sparse_flash_mla_inputs(q, *, ori_kv=None, cmp_kv=None,
     _copy_tensor(seqused_ori_kv, op_input.get("seqused_ori_kv"), "seqused_ori_kv")
     _copy_tensor(seqused_cmp_kv, op_input.get("seqused_cmp_kv"), "seqused_cmp_kv")
     _copy_tensor(cmp_residual_kv, op_input.get("cmp_residual_kv"), "cmp_residual_kv")
+    _copy_tensor(ori_topk_length, op_input.get("ori_topk_length"), "ori_topk_length")
+    _copy_tensor(cmp_topk_length, op_input.get("cmp_topk_length"), "cmp_topk_length")
     _copy_tensor(sinks, op_input.get("sinks"), "sinks")
