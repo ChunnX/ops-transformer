@@ -848,7 +848,7 @@ ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::SetTilingCommonInfo()
     if (expertNum_ == 0U) {
         expertNum_ = 1U;
     }
-    OP_LOGD(opName_, "SetTilingCommonInfo: ep=%lu, expertNum_=%u, targetCommRounds=%u",
+    OP_LOGD(opName_, "SetTilingCommonInfo: ep=%llu, expertNum_=%llu, targetCommRounds=%u",
             localParams_.ep, expertNum_, TARGET_COMM_ROUNDS);
     gmmQTilingCommonInfoPtr->expertNum = expertNum_;
     gmmQTilingCommonInfoPtr->mainLoopExpertNum = expertNum_;

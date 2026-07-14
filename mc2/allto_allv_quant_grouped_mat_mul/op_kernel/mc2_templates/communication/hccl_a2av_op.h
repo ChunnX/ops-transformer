@@ -104,7 +104,7 @@ private:
     TBuf<QuePosition::VECIN> permuteTBuf_;
     TBuf<QuePosition::VECIN> permuteTBuf2_;
 
-    uint32_t aivCoreNum_ = 40U;
+    uint32_t aivCoreNum_ = 1U;
     bool permuteBufInitialized_ = false;
 
     
