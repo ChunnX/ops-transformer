@@ -146,12 +146,14 @@ def run_gpu_benchmark(seq_lens, heads, warmup, iters, device_id, stem_block_size
     R = stem_block_size // stem_stride
 
     def gpu_prep_q(q_fp8, q_scale, seq_len, num_heads, stem_bs, stem_s):
-        q_dense = torch.zeros(stem_bs, num_heads, DIM_QK, dtype=torch.float32, device=device)
+        num_qb = (seq_len + stem_bs - 1) // stem_bs
+        q_padded = num_qb * stem_bs
+        q_dense = torch.zeros(q_padded, num_heads, DIM_QK, dtype=torch.float32, device=device)
         q_dense[:seq_len] = q_fp8[:seq_len].float()
-        q_blocks = q_dense.reshape(R, stem_s, DIM_QK, num_heads).permute(2, 0, 1, 3)
-        scales = q_scale[:stem_bs].reshape(R, stem_s, num_heads).permute(2, 0, 1)
+        q_blocks = q_dense.reshape(num_qb, R, stem_s, num_heads, DIM_QK)
+        scales = q_scale[:q_padded].reshape(num_qb, R, stem_s, num_heads)
         q_group_sum = (q_blocks * scales.unsqueeze(-1)).sum(dim=1)
-        return q_group_sum.reshape(stem_s * DIM_QK, num_heads).t().unsqueeze(0).to(torch.bfloat16)
+        return q_group_sum.reshape(num_qb, stem_s * DIM_QK, num_heads).permute(0, 2, 1).unsqueeze(0).to(torch.bfloat16)
 
     results = []
     for num_heads in heads:
