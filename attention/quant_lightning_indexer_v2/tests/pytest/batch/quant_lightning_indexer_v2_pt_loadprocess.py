@@ -72,6 +72,36 @@ def test_qliv2_process(filepath, device_id=0):
     else:
         cmp_residual_k_for_npu = None
 
+    # 调试日志
+        def log(tensor, name):
+            if tensor != None:
+                print(name, tensor.shape, tensor.dtype)
+                return tensor.npu()
+            return None
+
+    query = log(query, "query")
+    key = log(key, "key")
+    weights = log(weights, "weights")
+    query_dequant_scale = log(query_dequant_scale, "query_dequant_scale")
+    key_dequant_scale = log(key_dequant_scale, "key_dequant_scale")
+    cu_seqlens_query = log(cu_seqlens_query, "cu_seqlens_query")
+    cu_seqlens_key = log(cu_seqlens_key, "cu_seqlens_key")
+    seqused_q_tensor = log(seqused_q_tensor, "seqused_q_tensor")
+    seqused_k_tensor = log(seqused_k_tensor, "seqused_k_tensor")
+    cmp_residual_k_for_npu = log(cmp_residual_k_for_npu, "cmp_residual_k_for_npu")
+    output_idx_offset = log(output_idx_offset, "output_idx_offset")
+    block_table = log(block_table, "block_table")
+    metadata = log(metadata, "metadata")
+
+    print("max_seqlen_q", max_seqlen_q)
+    print("quant_mode", quant_mode)
+    print("layout_query", layout_query)
+    print("layout_key", layout_key)
+    print("sparse_count", sparse_count)
+    print("sparse_mode", sparse_mode)
+    print("cmp_ratio", cmp_ratio)
+    print("return_value", return_value)
+
     #调用SFA算子
     npu_result,_ = torch.ops.cann_ops_transformer.quant_lightning_indexer(query, key, weights, 
                                                     query_dequant_scale,
