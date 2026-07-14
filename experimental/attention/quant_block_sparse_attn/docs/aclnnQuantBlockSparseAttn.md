@@ -180,7 +180,7 @@ torch.ops.custom.npu_quant_block_sparse_attn(
       <td style="white-space: nowrap;"><code>INT32</code></td>
       <td style="white-space: nowrap;">ND</td>
       <td><code>(B,N1,max_Qb,max_Kb)</code></td>
-      <td><code>layout_sparse_indices</code> 当前仅支持 <code>B_N_Qb_Kb</code>。每个元素表示逻辑 KV block id。</td>
+      <td><code>layout_sparse_indices</code> 当前仅支持 <code>B_N_Qb_Kb</code>。有效元素表示逻辑 KV block id，取值范围为 <code>[0, max_Kb - 1]</code>。</td>
     </tr>
     <tr>
       <td style="white-space: nowrap;"><code>sparse_seq_len</code></td>
@@ -369,7 +369,7 @@ torch.ops.custom.npu_quant_block_sparse_attn(
       <td style="white-space: nowrap;"><code>BOOL</code></td>
       <td style="white-space: nowrap;">-</td>
       <td>-</td>
-      <td><code>True</code> 时返回有效 LSE；<code>False</code> 时 PyTorch 接入层返回空 Tensor。</td>
+      <td><code>True</code> 时返回有效 LSE；<code>False</code> 时不返回有效 LSE，PyTorch 接入层返回占位 Tensor。</td>
     </tr>
     <tr>
       <td style="white-space: nowrap;"><code>attention_out</code></td>
@@ -386,7 +386,7 @@ torch.ops.custom.npu_quant_block_sparse_attn(
       <td>softmax log-sum-exp。</td>
       <td style="white-space: nowrap;"><code>FLOAT32</code></td>
       <td style="white-space: nowrap;">ND</td>
-      <td><code>TND</code> 时为 <code>(N1,T1)</code>；<code>NTD</code> 时当前 host infer shape 为 <code>(T1,N1)</code>；<code>return_softmax_lse=False</code> 时为空 Tensor</td>
+      <td>有效 LSE 的逻辑维度为 Query head 和 Query token。PyTorch 接入层当前构造为 <code>(N1,T1)</code>；底层 ACLNN host infer shape 为 <code>(T1,N1)</code>；<code>return_softmax_lse=False</code> 时为占位 Tensor</td>
       <td>PyTorch 接口的第 2 个返回值。</td>
     </tr>
   </tbody>
@@ -396,8 +396,8 @@ torch.ops.custom.npu_quant_block_sparse_attn(
 
 PyTorch 接口返回 `(attention_out, softmax_lse)`：
 
-- `attention_out`：BF16 Tensor，最后一维为 `D_v`。`TND` 场景 shape 跟随输入布局，`NTD` 场景 host infer shape 转为 TND 输出。
-- `softmax_lse`：FLOAT32 Tensor。`return_softmax_lse=False` 时返回空 Tensor。
+- `attention_out`：BF16 Tensor，最后一维为 `D_v`。PyTorch 接入层按 TND 语义返回 `(T1,N1,D_v)`；`layout_q="NTD"` 输入不会使输出保持 NTD。
+- `softmax_lse`：FLOAT32 Tensor。`return_softmax_lse=True` 时，PyTorch 接入层返回 `(N1,T1)`；底层 ACLNN host infer shape 为 `(T1,N1)`。`return_softmax_lse=False` 时返回无有效 LSE 的占位 Tensor。
 
 底层 ACLNN 接口返回 `aclnnStatus`。第一段 GetWorkspaceSize 接口完成参数校验，必选输入为空、数据类型不支持、shape 与属性不匹配时返回参数错误。
 
@@ -609,7 +609,7 @@ QuantBlockSparseAttn 算子约束分为 4 个档位，按约束复杂程度递�
 | ValueHeadDim | Value head dim，当前固定为 128。 |
 | QueryBlockNumMax | Query block 最大数量，`ceil(QueryMaxSeqLen / sparse_q_block_size)`。 |
 | KeyValueBlockNumMax | KV block 最大数量，`ceil(KeyValueMaxSeqLen / sparse_kv_block_size)`。 |
-| SparseCount | 每个 Query block 最多关联的 KV block 数，对应 `sparse_indices` 第 3 维。 |
+| max_Kb | 每个 Query block 最多关联的 KV block 数，对应 `sparse_indices` 第 3 维，与 `KeyValueBlockNumMax` 含义一致。 |
 | PageBlockNum | PA KV Cache 物理 block 总数，对应 4D `key` 第 0 维，或 1D 组合 KV 存储长度除以 `pa_block_stride`。 |
 | MaxBlockNumPerBatch | 每个 batch 在 `block_table` 中可索引的最大逻辑 block 数，对应 `block_table` 第 1 维。 |
 | PaBlockStride | 相邻物理 PA block 的外步长；4D PA 输入下由 PyTorch 接入层使用 `key.stride(0)` 传给底层，1D 组合 KV 存储下必须由调用者显式传入。 |
@@ -686,7 +686,7 @@ QuantBlockSparseAttn 算子约束分为 4 个档位，按约束复杂程度递�
 
   - `sparse_indices`、`sparse_seq_len` 数据类型仅支持 `INT32`，数据格式仅支持 ND。
   - `layout_sparse_indices` 当前仅支持 `B_N_Qb_Kb`。
-  - `sparse_indices` 必须为 4D Tensor，shape 为 `(BatchSize, QueryNumHead, QueryBlockNumMax, SparseCount)`，其中 `SparseCount` 必须大于 0。
+  - `sparse_indices` 必须为 4D Tensor，shape 为 `(BatchSize, QueryNumHead, QueryBlockNumMax, max_Kb)`，其中 `max_Kb` 必须大于 0。
   - `sparse_seq_len` 必须为 3D Tensor，shape 为 `(BatchSize, QueryNumHead, QueryBlockNumMax)`。
 
 - 存在性约束
@@ -697,7 +697,7 @@ QuantBlockSparseAttn 算子约束分为 4 个档位，按约束复杂程度递�
 
   - `sparse_indices` 的 Batch、Query head、Query block 维度必须分别等于 `BatchSize`、`QueryNumHead`、`QueryBlockNumMax`。
   - `sparse_seq_len` 的 Batch、Query head、Query block 维度必须分别等于 `BatchSize`、`QueryNumHead`、`QueryBlockNumMax`。
-  - `sparse_seq_len[b,n,qb]` 表示对应 Query block 的有效 KV block 数，有效范围为 `[0, SparseCount]`；值为 0 时对应稀疏任务输出置零，LSE 置为 `-FLT_MAX`。
+  - `sparse_seq_len[b,n,qb]` 表示对应 Query block 的有效 KV block 数，有效范围为 `[0, max_Kb]`；值为 0 时对应稀疏任务输出置零，LSE 置为 `-FLT_MAX`。
   - `sparse_indices` 的有效元素表示逻辑 KV block id，应在 `[0, KeyValueBlockNumMax - 1]` 范围内。
 
 - 特性交叉约束
@@ -814,7 +814,7 @@ QuantBlockSparseAttn 算子约束分为 4 个档位，按约束复杂程度递�
 
 - 存在性约束
 
-  - `return_softmax_lse=False` 时，PyTorch 接入层返回空 `softmax_lse` Tensor。
+  - `return_softmax_lse=False` 时，PyTorch 接入层返回无有效 LSE 的占位 `softmax_lse` Tensor。
   - `return_softmax_lse=True` 时，返回有效 `softmax_lse` Tensor。
 
 - 一致性约束
