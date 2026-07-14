@@ -14,7 +14,6 @@
 | 参数 | 变化 | 类型 | 测试关注 |
 |------|------|------|---------|
 | ★ `with_grad` | 新增 | bool=False | True→训练态，触发 GM 申请 + save-for-backward |
-| ★ `num_npu_bytes` | 新增 | int=0 | GM 字节数，由 `get_engram_storage_size_hint` 返回 |
 
 **`engram_fetch`（修改，签名不变）**
 
@@ -40,13 +39,6 @@
 | `recvCounts` | (W,) | int32 | 每 rank 接收数，dim0==rankSize |
 | `recvLocalEntry` | (R_max,) | int32 | dim0==totalRecv |
 | `numRecv` | (1,) | int32 | 实际接收行数 R |
-
-**`get_engram_storage_size_hint`（修改）**
-
-| 项 | 变化 | 测试关注 |
-|----|------|---------|
-| ★ `num_max_tokens_per_rank` | 新增第 4 参 | 训练态 GM 大小计算 |
-| ▽ 返回类型 | `int → Tuple[int,int]` | (cpuBytes, npuBytes) |
 
 ### 1.2 aclnn 层
 
@@ -113,35 +105,16 @@ class EngramFetchCtx:
     numRecv: torch.Tensor         # (1,) int32 — 实际接收行数 R
 ```
 
-### 2.2 ElasticBuffer 构造函数
-TO DO:疑问点1：num_max_tokens_per_rank --- MOE 和 num_max_tokens_per_rank -- engram  是否是一个
-TO DO:疑问点2：num_max_tokens_per_rank 的大小限定问题
-```python
-ElasticBuffer(group, *, num_cpu_bytes=0, with_grad=False,
-              num_max_tokens_per_rank=0, ...)
-```
-
-| 参数 | 类型 | 说明 |
-|------|------|------|
-| `group` | ProcessGroup | 分布式通信组 |
-| `num_cpu_bytes` | int | CPU 锁页内存大小（2MB 对齐） |
-| `with_grad` | bool | True=训练模式（all-to-all + save-for-backward） |
-| `num_max_tokens_per_rank` | Optional[int] | 每 rank 最大 token 数（训练 GM 缓冲区 + MoE dispatch 共用） |
-
-### 2.3 GM 生命周期
+### 2.2 GM 生命周期
 
 GM 在 `EngramWrite` 阶段申请，`Destroy` 时释放（前向/反向共用）。
 
-GM 大小由 `GetEngramStorageSizeHint` 同时计算（返回 `(numCpuBytes, numNpuBytes)`），
-经 Python 构造函数 `num_npu_bytes` 参数传入 C++ `numNpuBytes_` 成员：
-```
-numNpuBytes = AlignTo(numMaxTokensPerRank * hiddenSize * sizeof(float), 2MB)
-```
+GM 大小固定 **200MB**（内部常量，不依赖 `num_max_tokens_per_rank` / `hiddenSize`）：
 
 ```
 EngramWrite :
   ├─ ... HCCL context 建立 ...
-  ├─ EnsureEngramContext -> AllocateAndExchangeGm(numNpuBytes_)
+  ├─ EnsureEngramContext -> AllocateAndExchangeGm(200MB)
   │   ├─ aclrtMalloc(HUGE_FIRST) → epHcclBufferPtr_
   │   ├─ HcclCommMemReg(tag="...engram_embedding_gm")
   │   ├─ EngramBarrier(true)
@@ -153,7 +126,7 @@ Destroy:
   └─ aclrtFree(epHcclBufferPtr_)
 ```
 
-### 2.4 通信Context
+### 2.3 通信Context
 
 ```cpp
 struct EngramCommContext {
@@ -165,7 +138,7 @@ struct EngramCommContext {
 };
 ```
 
-### 2.5 pybind 绑定
+### 2.4 pybind 绑定
 
 ```cpp
 // 注册 EngramFetchCtx 为 Python class（属性名与 Python dataclass 一致, duck typing 兼容）
@@ -176,10 +149,10 @@ pybind11::class_<Mc2Api::EngramFetchCtx>(m, "EngramFetchCtx")
     .def_readwrite("recvLocalEntry", &Mc2Api::EngramFetchCtx::recvLocalEntry)
     .def_readwrite("numRecv", &Mc2Api::EngramFetchCtx::numRecv);
 
-.def(pybind11::init<const string&, int64_t, bool, int64_t, int64_t>(),
+.def(pybind11::init<const string&, int64_t, int64_t, bool>(),
      pybind11::arg("groupName"), pybind11::arg("numCpuBytes"),
-     pybind11::arg("withGrad") = false, pybind11::arg("numMaxTokensPerRank") = 0,
-     pybind11::arg("numNpuBytes") = 0)
+     pybind11::arg("numMaxTokensPerRank") = 0,
+     pybind11::arg("withGrad") = false)
 .def("engram_fetch",
     [](ElasticBuffer &self, const at::Tensor &indices) -> py::object {
         if (self.IsWithGrad()) {
@@ -198,10 +171,10 @@ pybind11::class_<Mc2Api::EngramFetchCtx>(m, "EngramFetchCtx")
 > C++ `EngramFetch` 加可选输出参数 `EngramFetchCtx *ctxOut = nullptr`（推理 nullptr, 训练非空）。
 > ctx 为局部变量, move 进 pybind lambda 捕获, 不存成员——多次 fetch 不覆盖。
 
-### 2.6 使用示例
+### 2.5 使用示例
 
 ```python
-buf = ElasticBuffer(group, num_cpu_bytes=..., with_grad=True, num_max_tokens_per_rank=...)
+buf = ElasticBuffer(group, num_cpu_bytes=..., num_max_tokens_per_rank=..., with_grad=True)
 buf.engram_write(storage)
 
 # 前向
@@ -470,8 +443,8 @@ __global__ __aicore__ void engram_fetch_grad(
 | `engram_fetch_tiling_key.h` | `INFER_MODE` / `WITH_GRAD_MODE` |
 | `engram_fetch_tiling.cpp` | `GetWithGrad`；训练态可选输出校验；精确 workspace |
 | `aclnn_engram_fetch.cpp` | 5 个可选输出参数 |
-| `elastic_buffer.cpp` | `CommContext`+`epHcclBuffer`；`EngramContextBuilder`+`withGrad_`成员；GM EnsureEngramContext 阶段申请/destroy 释放；`numNpuBytes_`成员；`GetEngramStorageSizeHint` 返回 tuple；新增 `EngramFetchCtx` 结构体；`EngramFetch` 加 `ctxOut` 输出参数（局部 ctx, 不存成员）；删 `savedXxx_`×5 + `GetFetchCtx`；pybind 注册 `EngramFetchCtx` class + 训练返回 2-tuple；`EngramFetchGrad`+numRecv |
-| `elastic_buffer.py` | `EngramFetchCtx` dataclass（保留, duck typing 兼容 C++ bound class）；`with_grad`/`num_max_tokens_per_rank` 构造参数；`engram_fetch` 无分支（`return self._runtime.engram_fetch(indices)`）；`engram_fetch_grad` |
+| `elastic_buffer.cpp` | `CommContext`+`epHcclBuffer`；`EngramContextBuilder`+`withGrad_`成员；GM 固定 200MB，EnsureEngramContext 阶段申请/destroy 释放；新增 `EngramFetchCtx` 结构体；`EngramFetch` 加 `ctxOut` 输出参数（局部 ctx, 不存成员）；删 `savedXxx_`×5 + `GetFetchCtx`；pybind 注册 `EngramFetchCtx` class + 训练返回 2-tuple；`EngramFetchGrad`+numRecv |
+| `elastic_buffer.py` | `EngramFetchCtx` dataclass（保留, duck typing 兼容 C++ bound class）；`with_grad` 构造参数；`engram_fetch` 无分支（`return self._runtime.engram_fetch(indices)`）；`engram_fetch_grad` |
 
 ### 反向（新建文件）
 

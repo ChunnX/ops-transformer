@@ -35,31 +35,6 @@ public:
             .DataTypeList({ge::DT_BF16, ge::DT_FLOAT16, ge::DT_FLOAT})
             .FormatList({ge::FORMAT_ND});
 
-        this->Output("permOut")
-            .ParamType(OPTIONAL)
-            .DataTypeList({ge::DT_INT32})
-            .FormatList({ge::FORMAT_ND});
-
-        this->Output("sendCountsOut")
-            .ParamType(OPTIONAL)
-            .DataTypeList({ge::DT_INT32})
-            .FormatList({ge::FORMAT_ND});
-
-        this->Output("recvCountsOut")
-            .ParamType(OPTIONAL)
-            .DataTypeList({ge::DT_INT32})
-            .FormatList({ge::FORMAT_ND});
-
-        this->Output("recvLocalEntryOut")
-            .ParamType(OPTIONAL)
-            .DataTypeList({ge::DT_INT32})
-            .FormatList({ge::FORMAT_ND});
-
-        this->Output("numRecvOut")
-            .ParamType(OPTIONAL)
-            .DataTypeList({ge::DT_INT32})
-            .FormatList({ge::FORMAT_ND});
-
         this->Attr("hidden_size").AttrType(REQUIRED).Int();
         this->Attr("num_entries_per_rank").AttrType(REQUIRED).Int();
 

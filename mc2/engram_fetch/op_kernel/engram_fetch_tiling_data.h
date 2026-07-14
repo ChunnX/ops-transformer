@@ -10,8 +10,7 @@
 
 /*!
 * \file engram_fetch_tiling_data.h
-* \brief kernel侧tiling data结构
-*        withGrad 字段由 tiling 函数根据可选输出是否非空设置，kernel 据此选推理/训练分支
+* \brief kernel侧tiling data结构（推理路径）
 */
 
 #ifndef ASCENDC_ENGRAM_FETCH_TILING_H
@@ -26,8 +25,5 @@ struct EngramFetchTilingData {
     int64_t hiddenBytes;          // hiddenDim * dtypeSize
     uint32_t aivNum;              // AIV 核数
     uint64_t ubSize;              // UB 空间
-    int32_t withGrad;             // 0=推理(RDMA read), 1=训练(all-to-all); 由可选输出是否非空决定
-    int64_t numMaxTokensPerRank;  // 每 rank 最大 token 数（训练态 workspace 计算用）
-    uint32_t rankSize;            // 通信域 rank 数（训练态 workspace 计算用）
 };
 #endif

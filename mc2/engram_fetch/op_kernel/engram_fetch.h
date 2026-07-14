@@ -26,9 +26,8 @@ constexpr uint32_t  MAX_QP_SIZE = 1024;
 struct EngramCommContext {
     uint32_t rankId;
     uint32_t rankSize;
-    uint64_t commBuffer[MAX_QP_SIZE];
-    uint64_t hcommHandle[MAX_QP_SIZE];
-    uint64_t epHcclBuffer[MAX_QP_SIZE];
+    uint64_t commBuffer[MAX_QP_SIZE];   // 推理=host-pinned地址 / 训练=a2a GM地址
+    uint64_t hcommHandle[MAX_QP_SIZE];  // UBC channel句柄（推理+训练共用）
 };
 
 namespace Mc2Kernel {

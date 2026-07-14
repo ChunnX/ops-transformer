@@ -53,6 +53,7 @@ constexpr uint32_t HCCL_MIN_RANK_SIZE = 2;
 constexpr int COMM_PROTOCOL_UBC_CTP_VALUE = 4;
 constexpr int COMM_PROTOCOL_UBC_TP_VALUE = 5;
 constexpr int64_t BUFFER_ALIGNMENT = 2 * 1024 * 1024;
+constexpr int64_t ENGRAM_FETCH_GM_BYTES = 200 * 1024 * 1024; // 训练 a2a GM 缓冲区固定 200MB
 constexpr int DIM_TWO = 2;
 
 // RAII guard for multi-step host buffer allocation
@@ -94,13 +95,12 @@ static inline int64_t AlignTo(int64_t x, int64_t y)
 
 // CommContext structure for HCCL communication
 // 推理/训练共用：virtualAddrList + hcommHandle 由 EngramContextBuilder 一次性填充
-// 训练专用：epHcclBuffer 由 AllocateAndExchangeGm 每次 fetch 动态填充
+// 训练态：virtualAddrList 由 AllocateAndExchangeGm 覆盖为 a2a GM 地址
 struct CommContext {
     uint32_t epRankId = 0;
     uint32_t rankSize = 0;
-    uint64_t virtualAddrList[HCCL_MAX_RANK_SIZE] = {};   // → kernel commBuffer: 各 rank host pinned 设备映射地址
+    uint64_t virtualAddrList[HCCL_MAX_RANK_SIZE] = {};   // → kernel commBuffer: 推理=host-pinned / 训练=a2a GM
     uint64_t hcommHandle[HCCL_MAX_RANK_SIZE] = {};       // → kernel hcommHandle: 各 rank UBC channel 句柄
-    uint64_t epHcclBuffer[HCCL_MAX_RANK_SIZE] = {};      // → kernel epHcclBuffer: 各 rank GM 缓冲区地址（per-fetch 动态）
 };
 
 struct EngramContextResources {
@@ -336,8 +336,8 @@ struct EngramFetchCtx {
 // 训练(with_grad=true): all-to-all (桶排序→a2a→gather→a2a→还原), save-for-backward 输出 + EngramFetchGrad
 class ElasticBuffer {
 public:
-    ElasticBuffer(const std::string &groupName, int64_t numCpuBytes, bool withGrad = false,
-                  int64_t numMaxTokensPerRank = 0, int64_t numNpuBytes = 0);
+    ElasticBuffer(const std::string &groupName, int64_t numCpuBytes, int64_t numMaxTokensPerRank = 0,
+                  bool withGrad = false);
     ~ElasticBuffer();
 
     // EngramFetch: 推理/训练共用前向接口
@@ -362,9 +362,8 @@ public:
         return reinterpret_cast<int64_t>(hostBufPtr_);
     }
 
-    static std::tuple<int64_t, int64_t> GetEngramStorageSizeHint(int64_t numEntries, int64_t hiddenSize,
-                                             at::ScalarType dtype = at::kBFloat16,
-                                             int64_t numMaxTokensPerRank = 0);
+    static int64_t GetEngramStorageSizeHint(int64_t numEntries, int64_t hiddenSize,
+                                            at::ScalarType dtype = at::kBFloat16);
 
     using DispatchTensorList = std::tuple<at::Tensor, at::Tensor, at::Tensor>;
     using DispatchEpilogueTensorList =
@@ -403,12 +402,11 @@ private:
     int64_t numCpuBytes_;
     bool withGrad_ = false;
     int64_t numMaxTokensPerRank_ = 0;
-    int64_t numNpuBytes_ = 0;
 
     void *hostBufPtr_ = nullptr;
-    void *deviceBufPtr_ = nullptr;
+    void *deviceBufPtr_ = nullptr;          // host-pinned 设备映射地址（推理RDMA read源 / 训练gather源）
     HcclMemHandle memHandle_ = nullptr;
-    void *epHcclBufferPtr_ = nullptr;
+    void *epHcclBufferPtr_ = nullptr;       // a2a GM（200MB 固定，仅训练 all-to-all 收发缓冲）
     HcclMemHandle gmMemHandle_ = nullptr;
     std::string gmBufferTag_;
     HcclComm hcclComm_ = nullptr;
@@ -430,11 +428,10 @@ private:
 };
 
 // Constructor
-ElasticBuffer::ElasticBuffer(const std::string &groupName, int64_t numCpuBytes, bool withGrad,
-                             int64_t numMaxTokensPerRank, int64_t numNpuBytes)
-    : groupName_(groupName), numCpuBytes_(numCpuBytes), withGrad_(withGrad),
-      numMaxTokensPerRank_(numMaxTokensPerRank), numNpuBytes_(numNpuBytes),
-      destroyed_(false), writeCalled_(false)
+ElasticBuffer::ElasticBuffer(const std::string &groupName, int64_t numCpuBytes, int64_t numMaxTokensPerRank,
+                             bool withGrad)
+    : groupName_(groupName), numCpuBytes_(numCpuBytes), numMaxTokensPerRank_(numMaxTokensPerRank),
+      withGrad_(withGrad), destroyed_(false), writeCalled_(false)
 {
     InitHcclEngineCtxFunctions();
     InitHcclFunctions();
@@ -467,8 +464,8 @@ void ElasticBuffer::EnsureEngramContext()
     contextTensor_ = resources.contextTensor;
     engramContextInitialized_ = true;
 
-    if (withGrad_ && numNpuBytes_ > 0 && epHcclBufferPtr_ == nullptr) {
-        AllocateAndExchangeGm(numNpuBytes_);
+    if (withGrad_ && epHcclBufferPtr_ == nullptr) {
+        AllocateAndExchangeGm(ENGRAM_FETCH_GM_BYTES);
     }
 }
 
@@ -509,6 +506,8 @@ void ElasticBuffer::EngramWrite(const at::Tensor &storage)
     numEngramEntries_ = storage.size(0);
     engramDtype_ = storage.scalar_type();
 
+    // 推理/训练统一: storage 拷到 host-pinned（设备映射地址）
+    // 训练态 gather 从 deviceBufPtr_（host-pinned 设备映射地址）读取
     if (numEngramEntries_ > 0) {
         constexpr size_t MEMCPY_MAX_BYTES = 0x7fffffff;
         size_t totalBytes = storage.nbytes();
@@ -550,8 +549,7 @@ std::function<at::Tensor()> ElasticBuffer::EngramFetch(const at::Tensor &indices
     // 训练态: save-for-backward 通过 ctxOut 输出（局部变量, 不存成员）
     if (withGrad_) {
         TORCH_CHECK(epHcclBufferPtr_ != nullptr,
-                    "GM not allocated, engram_write must be called first with with_grad=True "
-                    "and num_max_tokens_per_rank > 0");
+                    "a2a GM not allocated, engram_write must be called first with with_grad=True");
 
         uint32_t rankSize = commContext_.rankSize;
         int64_t maxR = numTokens * static_cast<int64_t>(rankSize);
@@ -566,8 +564,10 @@ std::function<at::Tensor()> ElasticBuffer::EngramFetch(const at::Tensor &indices
 
         if (numTokens > 0) {
             fetchInProgress_.store(true);
-            ACLNN_CMD(aclnnEngramFetch, contextTensor_, indices,
-                      hiddenSize_, numEngramEntries_, fetched,
+            ACLNN_CMD(aclnnEngramFetchTrain, contextTensor_, indices,
+                      hiddenSize_, numEngramEntries_,
+                      reinterpret_cast<int64_t>(deviceBufPtr_),
+                      fetched,
                       ctx.perm, ctx.sendCounts, ctx.recvCounts, ctx.recvLocalEntry, ctx.numRecv);
             fetchInProgress_.store(false);
         }
@@ -584,10 +584,8 @@ std::function<at::Tensor()> ElasticBuffer::EngramFetch(const at::Tensor &indices
 
     fetchInProgress_.store(true);
 
-    c10::optional<at::Tensor> nullOpt;
     ACLNN_CMD(aclnnEngramFetch, contextTensor_, indices,
-              hiddenSize_, numEngramEntries_, fetched,
-              nullOpt, nullOpt, nullOpt, nullOpt, nullOpt);
+              hiddenSize_, numEngramEntries_, fetched);
 
     auto capturedContext = contextTensor_;
     auto fetchFlag = &fetchInProgress_;
@@ -665,7 +663,7 @@ void ElasticBuffer::AllocateAndExchangeGm(int64_t gmBytes)
 
     EngramBarrier(true);
 
-    commContext_.epHcclBuffer[commContext_.epRankId] = reinterpret_cast<uint64_t>(epHcclBufferPtr_);
+    commContext_.virtualAddrList[commContext_.epRankId] = reinterpret_cast<uint64_t>(epHcclBufferPtr_);
 
     for (uint32_t i = 0; i < commContext_.rankSize; ++i) {
         if (i == commContext_.epRankId)
@@ -683,7 +681,7 @@ void ElasticBuffer::AllocateAndExchangeGm(int64_t gmBytes)
                 break;
             }
             if (memTags[j] != nullptr && gmBufferTag_ == memTags[j]) {
-                commContext_.epHcclBuffer[i] = reinterpret_cast<uint64_t>(remoteMems[j].addr);
+                commContext_.virtualAddrList[i] = reinterpret_cast<uint64_t>(remoteMems[j].addr);
                 found = true;
                 break;
             }
@@ -755,9 +753,8 @@ void ElasticBuffer::Destroy()
     destroyed_ = true;
 }
 
-// GetEngramStorageSizeHint - calculate recommended CPU buffer size and GM buffer size
-std::tuple<int64_t, int64_t> ElasticBuffer::GetEngramStorageSizeHint(int64_t numEntries, int64_t hiddenSize,
-                                                at::ScalarType dtype, int64_t numMaxTokensPerRank)
+// GetEngramStorageSizeHint - calculate recommended CPU buffer size for Engram storage
+int64_t ElasticBuffer::GetEngramStorageSizeHint(int64_t numEntries, int64_t hiddenSize, at::ScalarType dtype)
 {
     int64_t dtypeSize = at::elementSize(dtype);
     TORCH_CHECK(hiddenSize <= INT64_MAX / dtypeSize, "hiddenSize * dtypeSize overflow");
@@ -768,15 +765,7 @@ std::tuple<int64_t, int64_t> ElasticBuffer::GetEngramStorageSizeHint(int64_t num
     TORCH_CHECK(numBytesPerEntry > 0 && numEntries <= INT64_MAX / numBytesPerEntry,
                 "numBytesPerEntry * numEntries overflow");
     int64_t numCpuBytes = AlignTo(numBytesPerEntry * numEntries, BUFFER_ALIGNMENT);
-
-    int64_t numNpuBytes = 0;
-    if (numMaxTokensPerRank > 0) {
-        TORCH_CHECK(hiddenSize <= INT64_MAX / static_cast<int64_t>(sizeof(float)),
-                    "hiddenSize * sizeof(float) overflow");
-        int64_t rawGm = numMaxTokensPerRank * hiddenSize * static_cast<int64_t>(sizeof(float));
-        numNpuBytes = AlignTo(rawGm, BUFFER_ALIGNMENT);
-    }
-    return {numCpuBytes, numNpuBytes};
+    return numCpuBytes;
 }
 
 } // namespace Mc2Api
@@ -981,11 +970,10 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
         .def_readwrite("numRecv", &Mc2Api::EngramFetchCtx::numRecv);
 
     pybind11::class_<Mc2Api::ElasticBuffer>(m, "ElasticBuffer")
-        .def(pybind11::init<const std::string &, int64_t, bool, int64_t, int64_t>(),
+        .def(pybind11::init<const std::string &, int64_t, int64_t, bool>(),
              pybind11::arg("groupName"), pybind11::arg("numCpuBytes"),
-             pybind11::arg("withGrad") = false,
              pybind11::arg("numMaxTokensPerRank") = 0,
-             pybind11::arg("numNpuBytes") = 0)
+             pybind11::arg("withGrad") = false)
         .def("engram_write", &Mc2Api::ElasticBuffer::EngramWrite, pybind11::arg("storage").noconvert())
         .def("engram_fetch",
             [](Mc2Api::ElasticBuffer &self, const at::Tensor &indices) -> pybind11::object {
@@ -1015,6 +1003,5 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
         .def("moe_ep_combine", &Mc2Api::ElasticBuffer::MoeEpCombine)
         .def_static("get_engram_storage_size_hint", &Mc2Api::ElasticBuffer::GetEngramStorageSizeHint,
                     pybind11::arg("numEntries"), pybind11::arg("hiddenSize"),
-                    pybind11::arg("dtype") = at::kBFloat16,
-                    pybind11::arg("numMaxTokensPerRank") = 0);
+                    pybind11::arg("dtype") = at::kBFloat16);
 }

@@ -118,13 +118,12 @@ class ElasticBuffer:
         group: torch.distributed.ProcessGroup,
         *,
         num_cpu_bytes: int = 0,
-        with_grad: bool = False,
         num_max_tokens_per_rank: Optional[int] = None,
         hidden: Optional[int] = None,
         num_topk: Optional[int] = None,
         num_experts: Optional[int] = None,
         expert_alignment: int = 1,
-        num_npu_bytes: int = 0,
+        with_grad: bool = False,
     ):
         """
         Initialize the ElasticBuffer.
@@ -132,12 +131,12 @@ class ElasticBuffer:
         Arguments:
             group: the distributed process group.
             num_cpu_bytes: the CPU buffer size in bytes (must be 2MB-aligned).
-            with_grad: if True, enable training mode (all-to-all + save-for-backward).
-            num_max_tokens_per_rank: max tokens per rank (training GM allocation + MoE dispatch).
+            num_max_tokens_per_rank: max tokens per rank (workspace calculation + MoE dispatch).
             hidden: hidden dimension for MoE dispatch/combine.
             num_topk: top-k value for MoE dispatch/combine.
             num_experts: number of MoE experts.
             expert_alignment: expert alignment value.
+            with_grad: if True, enable training mode (all-to-all + save-for-backward).
         """
         buffer_alignment = 2 * 1024 * 1024
         torch._check((group is not None), lambda: (f"group must not be None."))
@@ -169,9 +168,9 @@ class ElasticBuffer:
                      lambda: "HCCL comm name is empty, please check HCCL group initialization.")
         _elastic_buffer_ops = _elastic_buffer_op_builder.load()
         self._runtime = _elastic_buffer_ops.ElasticBuffer(
-            self._group_name, self._num_cpu_bytes, self._with_grad,
+            self._group_name, self._num_cpu_bytes,
             num_max_tokens_per_rank if num_max_tokens_per_rank is not None else 0,
-            num_npu_bytes)
+            self._with_grad)
 
         self._num_max_tokens_per_rank = num_max_tokens_per_rank
         self._hidden = hidden
@@ -182,22 +181,18 @@ class ElasticBuffer:
 
     @staticmethod
     def get_engram_storage_size_hint(num_entries: int, hidden_size: int,
-                                     dtype: torch.dtype = torch.bfloat16,
-                                     num_max_tokens_per_rank: int = 0) -> Tuple[int, int]:
+                                     dtype: torch.dtype = torch.bfloat16) -> int:
         """
-        Get the minimum CPU buffer size and GM buffer size for Engram storage.
-        Both returned values are aligned to 2 MB.
+        Get the minimum CPU buffer size for Engram storage.
+        The returned value is aligned to 2 MB.
 
         Arguments:
             num_entries: the number of entries in the Engram storage (must be non-negative).
             hidden_size: the hidden dimension of each entry (must be 128-aligned and non-negative).
             dtype: the data type, defaults to `torch.bfloat16`.
-            num_max_tokens_per_rank: max tokens per rank for GM allocation (training mode).
 
         Returns:
             num_cpu_bytes: the recommended CPU buffer size in bytes (2 MB-aligned).
-            num_npu_bytes: the recommended GM buffer size in bytes (2 MB-aligned, 0 if
-                           num_max_tokens_per_rank is 0).
         """
         torch._check(num_entries >= 0,
                      lambda: f"num_entries must be non-negative, got {num_entries}")
@@ -209,7 +204,7 @@ class ElasticBuffer:
                      lambda: f"dtype must be bfloat16/float16/float32, got {dtype}")
         _elastic_buffer_ops = _elastic_buffer_op_builder.load()
         return _elastic_buffer_ops.ElasticBuffer.get_engram_storage_size_hint(
-            num_entries, hidden_size, dtype, num_max_tokens_per_rank)
+            num_entries, hidden_size, dtype)
 
     @staticmethod
     def get_moe_ep_ccl_buffer_size(world_size: int, num_max_tokens_per_rank: int, hidden: int,

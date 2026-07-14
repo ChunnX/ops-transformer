@@ -74,12 +74,11 @@ def train_worker(rank):
         print(f"[rank {rank}] storage shape={storage.shape}, fetch_golden shape={fetch_golden.shape}")
 
         # ==================== 创建 ElasticBuffer（with_grad=True）====================
-        num_cpu_bytes, num_npu_bytes = ElasticBuffer.get_engram_storage_size_hint(
-            num_entries=num_entries_per_rank, hidden_size=hidden_size, dtype=storage_type,
-            num_max_tokens_per_rank=num_tokens)
+        num_cpu_bytes = ElasticBuffer.get_engram_storage_size_hint(
+            num_entries=num_entries_per_rank, hidden_size=hidden_size, dtype=storage_type)
 
-        buffer = ElasticBuffer(group=group, num_cpu_bytes=num_cpu_bytes, with_grad=True,
-                               num_max_tokens_per_rank=num_tokens, num_npu_bytes=num_npu_bytes)
+        buffer = ElasticBuffer(group=group, num_cpu_bytes=num_cpu_bytes,
+                               num_max_tokens_per_rank=num_tokens, with_grad=True)
         print(f"[rank {rank}] ElasticBuffer created (with_grad=True), num_cpu_bytes={num_cpu_bytes}")
 
         # ==================== write ====================

@@ -14,7 +14,7 @@
 *
 * 单融合 kernel，3 步:
 * ① grad_sorted = gradFetched[perm]
-* ② a2a(grad_sorted; sendCounts↔recvCounts) → recvGrad (用 epHcclBuffer)
+* ② a2a(grad_sorted; sendCounts↔recvCounts) → recvGrad (用 commBuffer[peer] = a2a GM)
 * ③ owner unique + fp32 scatter-add (recvLocalEntry, recvGrad)
 *    → gradUniqueOut (fp32) + uniqueLocalEntryOut (int32) + numUniqueOut (int32)
 *
@@ -47,7 +47,7 @@ __global__ __aicore__ void engram_fetch_grad(
 
     // 待实现:
     // ① grad_sorted = gradFetched[perm]
-    // ② a2a(grad_sorted; sendCounts↔recvCounts) → recvGrad (用 epHcclBuffer)
+    // ② a2a(grad_sorted; sendCounts↔recvCounts) → recvGrad (用 commBuffer[peer] = a2a GM)
     // ③ owner unique + fp32 scatter-add (recvLocalEntry, recvGrad)
     //    → gradUniqueOut + uniqueLocalEntryOut + numUniqueOut
     printf("hello engram_fetch_grad\n");
