@@ -11,7 +11,6 @@
 from typing import Optional, Tuple
 
 import torch
-import torch_npu
 from torch.library import impl
 from cann_ops_transformer.op_builder.builder import OpBuilder
 from cann_ops_transformer.op_builder.builder import AS_LIBRARY
@@ -20,9 +19,9 @@ from cann_ops_transformer.op_builder.builder import AS_LIBRARY
 class ScatterPaKvCacheWithKScaleOpBuilder(OpBuilder):
     """
     torch_npu适配：scatter_pa_kv_cache_with_k_scale算子
-    
+
     功能：将FP8格式的key/value和对应的key_scale更新到KV cache中
-    
+
     输入：
         key: [num_tokens, num_head, k_head_size] FP8格式
         value: [num_tokens, num_head, v_head_size] FP8格式
@@ -31,17 +30,19 @@ class ScatterPaKvCacheWithKScaleOpBuilder(OpBuilder):
         slot_mapping: [num_tokens] int32/int64
         key_scale: [num_tokens, num_head] float32
         key_scale_cache: [num_blocks, num_head, block_size, 1] float32
-    
+
     输出（inplace更新）：
         key_cache, value_cache, key_scale_cache
     """
-    
+
     def __init__(self):
-        super(ScatterPaKvCacheWithKScaleOpBuilder, self).__init__("scatter_pa_kv_cache_with_k_scale")
+        super(ScatterPaKvCacheWithKScaleOpBuilder, self).__init__(
+            "scatter_pa_kv_cache_with_k_scale"
+        )
 
     def sources(self):
         """C++源代码路径"""
-        return ['ops/csrc/scatter_pa_kv_cache_with_k_scale.cpp']
+        return ["ops/csrc/scatter_pa_kv_cache_with_k_scale.cpp"]
 
     def schema(self) -> str:
         """PyTorch算子签名"""
@@ -55,35 +56,36 @@ class ScatterPaKvCacheWithKScaleOpBuilder(OpBuilder):
     def register_meta(self):
         """
         Meta实现：Shape/Dtype推导
-        
+
         输出shape与输入cache相同（inplace更新）
         输出dtype与输入dtype相同
         """
+
         @impl(AS_LIBRARY, self.name, "Meta")
         def scatter_pa_kv_cache_with_k_scale_meta(
-            key, value, key_cache, value_cache,
-            slot_mapping, key_scale, key_scale_cache,
-            *, cache_layout='BNBD'
+            key,
+            value,
+            key_cache,
+            value_cache,
+            slot_mapping,
+            key_scale,
+            key_scale_cache,
+            *,
+            cache_layout="BNBD",
         ):
             # 输出shape与输入cache相同
             key_cache_out = torch.empty(
-                key_cache.size(),
-                dtype=key_cache.dtype,
-                device='meta'
+                key_cache.size(), dtype=key_cache.dtype, device="meta"
             )
-            
+
             value_cache_out = torch.empty(
-                value_cache.size(),
-                dtype=value_cache.dtype,
-                device='meta'
+                value_cache.size(), dtype=value_cache.dtype, device="meta"
             )
-            
+
             key_scale_cache_out = torch.empty(
-                key_scale_cache.size(),
-                dtype=key_scale_cache.dtype,
-                device='meta'
+                key_scale_cache.size(), dtype=key_scale_cache.dtype, device="meta"
             )
-            
+
             return (key_cache_out, value_cache_out, key_scale_cache_out)
 
 
@@ -101,11 +103,11 @@ def scatter_pa_kv_cache_with_k_scale(
     key_scale: torch.Tensor,
     key_scale_cache: torch.Tensor,
     *,
-    cache_layout: Optional[str] = 'BNBD',
+    cache_layout: Optional[str] = "BNBD",
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """
     torch_npu实现：scatter_pa_kv_cache_with_k_scale
-    
+
     Args:
         key: [num_tokens, num_head, k_head_size] FP8格式，需要更新的key
         value: [num_tokens, num_head, v_head_size] FP8格式，需要更新的value
@@ -115,10 +117,10 @@ def scatter_pa_kv_cache_with_k_scale(
         key_scale: [num_tokens, num_head] float32，需要更新的scale
         key_scale_cache: [num_blocks, num_head, block_size, 1] float32，被更新的scale cache
         cache_layout: str，cache布局格式（默认'BNBD'）
-    
+
     Returns:
         tuple: (key_cache_out, value_cache_out, key_scale_cache_out)
-        
+
     注意：
         1. 算子支持FP8_E5M2和FP8_E4M3FN两种dtype
         2. slot_mapping值必须在[0, num_blocks*block_size-1]范围内
@@ -126,7 +128,12 @@ def scatter_pa_kv_cache_with_k_scale(
     """
     op_module = scatter_pa_kv_cache_with_k_scale_op_builder.load()
     return op_module.scatter_pa_kv_cache_with_k_scale(
-        key, value, key_cache, value_cache,
-        slot_mapping, key_scale, key_scale_cache,
-        cache_layout
+        key,
+        value,
+        key_cache,
+        value_cache,
+        slot_mapping,
+        key_scale,
+        key_scale_cache,
+        cache_layout,
     )

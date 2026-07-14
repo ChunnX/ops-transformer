@@ -72,6 +72,11 @@ constexpr uint32_t OUTPUT_TYPE_FLOAT = 2;
 constexpr uint32_t BLOCKSIZE_INDEX = 6;
 constexpr uint32_t GROUPSIZE_INDEX = 7;
 constexpr uint32_t TRANSPOSEB_INDEX = 3;
+constexpr uint32_t COMMMODE_INDEX = 10;
+ // DataType
+constexpr std::initializer_list<ge::DataType> HIF8FP8FP4DTYPE_SUPPORT_LIST = {
+    ge::DataType::DT_FLOAT8_E4M3FN, ge::DataType::DT_FLOAT8_E5M2,
+    ge::DataType::DT_HIFLOAT8, ge::DataType::DT_FLOAT4_E2M1};
 }  // namespace
 
 bool QuantBmmReduceScatterTiling::IsCapable()
@@ -81,8 +86,8 @@ bool QuantBmmReduceScatterTiling::IsCapable()
         return false;
     }
     // geAType 和 geBType 为fp8e4m3/fp8e5m2/hif8时, 走该tiling流程
-    if (mc2tiling::CheckDataTypeVaild(args_.geAType, mc2tiling::FP8DTYPE_SUPPORT_LIST) &&
-        mc2tiling::CheckDataTypeVaild(args_.geBType, mc2tiling::FP8DTYPE_SUPPORT_LIST)) {
+    if (mc2tiling::CheckDataTypeVaild(args_.geAType, HIF8FP8FP4DTYPE_SUPPORT_LIST) &&
+        mc2tiling::CheckDataTypeVaild(args_.geBType, HIF8FP8FP4DTYPE_SUPPORT_LIST)) {
         OP_LOGI(opName_, "start with quantbmm reducescatter tiling.");
         return true;
     }
@@ -188,7 +193,7 @@ ge::graphStatus QuantBmmReduceScatterTiling::CheckMxScaleDim(const gert::Storage
                     (x1ScaleDim1 != x1Dim1DivMxFp8Size) || (x1ScaleDim2 != EVEN_ALIGN),
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "x1Scale",
             ("(" + std::to_string(x1ScaleDim0) + ", " + std::to_string(x1ScaleDim1) + ", " + std::to_string(x1ScaleDim2) + ")").c_str(),
-            "The shape of x1Scale must be (x1Dim0, x1Dim1DivMxFp8Size, EVEN_ALIGN)"), return ge::GRAPH_FAILED);
+            "The shape of x1Scale must be (x1Dim0, ceilDiv(x1Dim1, 64), EVEN_ALIGN)"), return ge::GRAPH_FAILED);
 
     bool isTransposeB = *context_->GetAttrs()->GetAttrPointer<bool>(TRANSPOSEB_INDEX);
     bool nIsOne = (x1Dim1 == x2Dim0)? (x2Dim1 == 1) : (x2Dim0 == 1);
@@ -199,13 +204,13 @@ ge::graphStatus QuantBmmReduceScatterTiling::CheckMxScaleDim(const gert::Storage
                             (x2ScaleDim1 != x2Dim1DivMxFp8Size) || (x2ScaleDim2 != EVEN_ALIGN),
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "x2Scale",
                 ("(" + std::to_string(x2ScaleDim0) + ", " + std::to_string(x2ScaleDim1) + ", " + std::to_string(x2ScaleDim2) + ")").c_str(),
-                "The shape of x2Scale must be (x2Dim0, x2Dim1DivMxFp8Size, EVEN_ALIGN)"), return ge::GRAPH_FAILED);
+                "The shape of x2Scale must be (x2Dim0, ceilDiv(x2Dim1, 64), EVEN_ALIGN)"), return ge::GRAPH_FAILED);
         } else {
             OP_TILING_CHECK((x2ScaleDim0 != x2Dim0DivMxFp8Size) ||
                             (x2ScaleDim1 != x2Dim1) || (x2ScaleDim2 != EVEN_ALIGN),
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "x2Scale",
                 ("(" + std::to_string(x2ScaleDim0) + ", " + std::to_string(x2ScaleDim1) + ", " + std::to_string(x2ScaleDim2) + ")").c_str(),
-                "The shape of x2Scale must be (x2Dim0DivMxFp8Size, x2Dim1, EVEN_ALIGN)"), return ge::GRAPH_FAILED);
+                "The shape of x2Scale must be (ceilDiv(x2Dim0, 64), x2Dim1, EVEN_ALIGN)"), return ge::GRAPH_FAILED);
         }
     }
     return ge::GRAPH_SUCCESS;
@@ -277,11 +282,22 @@ bool QuantBmmReduceScatterTiling::PerblockSceneParamCheck(const gert::StorageSha
 bool QuantBmmReduceScatterTiling::MxfpSceneParamCheck(const gert::StorageShape* x1ScaleShape,
                                                            const gert::StorageShape* x2ScaleShape)
 {
-    OP_TILING_CHECK(!mc2tiling::CheckDataTypeVaild(args_.geAType, mc2tiling::MXFP8DTYPE_SUPPORT_LIST) ||
-                    !mc2tiling::CheckDataTypeVaild(args_.geBType, mc2tiling::MXFP8DTYPE_SUPPORT_LIST),
+    OP_TILING_CHECK(!mc2tiling::CheckDataTypeVaild(args_.geAType, MXDTYPE_SUPPORT_LIST) ||
+                    !mc2tiling::CheckDataTypeVaild(args_.geBType, MXDTYPE_SUPPORT_LIST),
                     OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, "x1/x2",
                     (std::string(Ops::Base::ToString(args_.geAType).c_str()) + "/" + std::string(Ops::Base::ToString(args_.geBType).c_str())).c_str(),
-                    "The dtype of x1 and x2 must be float8_e4m3fn or float8_e5m2"), return false);
+                    "The dtype of x1 and x2 must be float8_e4m3fn, float8_e5m2 or float4_e2m1"), return false);
+    // MXFP4场景强制x1/x2类型相同
+    if (isMxfp4_) {
+        OP_TILING_CHECK(args_.geAType != args_.geBType,
+                        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, "x1/x2",
+                        (std::string(Ops::Base::ToString(args_.geAType).c_str()) + "/" + std::string(Ops::Base::ToString(args_.geBType).c_str())).c_str(),
+                        "In MXFP4 quant mode, the dtype of x1 and x2 must be the same (DT_FLOAT4_E2M1)"), return false);
+        OP_TILING_CHECK(args_.kValue % EVEN_ALIGN != 0,
+                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "kValue",
+                        std::to_string(args_.kValue).c_str(),
+                        "In MXFP4 quant mode, kValue must be even"), return false);
+    }
     OP_TILING_CHECK(CheckMxScaleDim(x1ScaleShape, x2ScaleShape) == ge::GRAPH_FAILED,
                     OP_LOGE(opName_, "CheckMxScaleDim failed!"), return false);
     return true;
@@ -402,6 +418,7 @@ ge::graphStatus QuantBmmReduceScatterTiling::SetMc2Hcomm()
 void QuantBmmReduceScatterTiling::SetScene()
 {
     quantMode_ = mc2tiling::Mc2QuantMode::INVALID_MODE;
+    isMxfp4_ = false;  // 初始化为false
     auto x1ScaleShape = context_->GetOptionalInputShape(X1SCALE_INDEX);
     auto x2ScaleShape = context_->GetOptionalInputShape(X2SCALE_INDEX);
     auto x1ScaleDesc = context_->GetOptionalInputDesc(X1SCALE_INDEX);
@@ -421,6 +438,12 @@ void QuantBmmReduceScatterTiling::SetScene()
                (x1ScaleDesc->GetDataType() == ge::DataType::DT_FLOAT8_E8M0) &&
                (x2ScaleDesc->GetDataType() == ge::DataType::DT_FLOAT8_E8M0)) {
         quantMode_ = mc2tiling::Mc2QuantMode::MXFP_MODE;
+        // MXFP4场景识别：当x1和x2均为FP4_E2M1时，设置isMxfp4_=true
+        if (args_.geAType == ge::DataType::DT_FLOAT4_E2M1 &&
+            args_.geBType == ge::DataType::DT_FLOAT4_E2M1) {
+            isMxfp4_ = true;
+            OP_LOGI(opName_, "MXFP4 quant scene detected: x1/x2 dtype is DT_FLOAT4_E2M1");
+        }
     } else if ((x1ScaleShape->GetStorageShape().GetDimNum() == PERBLOCK_SCALE_DIM) &&
                (x2ScaleShape->GetStorageShape().GetDimNum() == PERBLOCK_SCALE_DIM) &&
                (x1ScaleDesc->GetDataType() == ge::DataType::DT_FLOAT) &&
@@ -483,13 +506,20 @@ uint64_t QuantBmmReduceScatterTiling::GetTilingKey() const
         scaleType = static_cast<uint8_t>(0);
     }
 
+    // MXFP4场景设置inputType为INPUT_TYPE_IS_FP4
+    uint8_t inputType = INPUT_TYPE_IS_FP8;
+    if (isMxfp4_) {
+        inputType = INPUT_TYPE_IS_FP4;
+        OP_LOGD(opName_, "MXFP4 scene detected, setting inputType to INPUT_TYPE_IS_FP4 (2)");
+    }
+
     bool isPerBlock = quantMode_ == mc2tiling::Mc2QuantMode::PERBLOCK_MODE;
     uint8_t commAlg = isA2APath_ ? TPL_CCU_ALL2ALL_VEC_REDUCE : TPL_CCU_REDUCESUM;
     uint64_t tilingKey = GET_TPL_TILING_KEY(   \
-        isPerBlock, args_.isATrans, args_.isBTrans, INPUT_TYPE_IS_FP8, outputType, scaleType, commAlg, \
+        isPerBlock, args_.isATrans, args_.isBTrans, inputType, outputType, scaleType, commAlg, \
         commMode_);
     OP_LOGD(opName_, "isPerBlock, transA, transB is: [%d, %d, %d]", isPerBlock, args_.isATrans, args_.isBTrans);
-    OP_LOGD(opName_, "outputType, scaleType is: [%u, %u]", outputType, scaleType);
+    OP_LOGD(opName_, "inputType, outputType, scaleType is: [%u, %u, %u]", inputType, outputType, scaleType);
     return tilingKey;
 }
 
