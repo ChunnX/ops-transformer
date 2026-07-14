@@ -907,7 +907,7 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf_
     if constexpr ((IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value ||
                     IsSameType<T2, hifloat8_t>::value) && hasAtten) {
         Arange(vreg_chunk0, (float)maskLine);
-        Duplicate(vreg_thresh, 1.0f);
+        Duplicate(vreg_thresh, 0.0f);
         for (uint16_t iter_m = 0; iter_m < uint16_t(ubN / 4); ++iter_m) {
             LoadAlign(src0, src_ub0 + iter_m * m * 4);
             LoadAlign(src1, src_ub1 + iter_m * m * 4);
@@ -1324,7 +1324,7 @@ __simd_vf__ inline void ProcessVec1DnUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf__ 
     if constexpr ((IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value ||
                     IsSameType<T2, hifloat8_t>::value) && hasAtten) {
         Arange(vreg_chunk0, (float)maskLine);
-        Duplicate(vreg_thresh, 1.0f);
+        Duplicate(vreg_thresh, 0.0f);
         for (uint16_t iter_m = 0; iter_m < uint16_t(ubN / 4); ++iter_m) {
             LoadAlign(src0, src_ub0 + iter_m * m * 4);
             LoadAlign(src1, src_ub1 + iter_m * m * 4);
