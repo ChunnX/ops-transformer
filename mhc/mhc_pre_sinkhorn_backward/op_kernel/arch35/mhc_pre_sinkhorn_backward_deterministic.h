@@ -1264,14 +1264,13 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::P
             }
         }
         SyncAll(); // GradNormOut需全部存储完毕再进行RMSNormGrad的计算
-        // 计算GradXFromRms
         CrossCoreSetFlag<AIV_AIC_MODE, PIPE_MTE3>(PIPE_MTE3_FLAG); // GradHcBeforeNorm计算完成，可以进行matmul计算
-        CrossCoreWaitFlag<AIV_AIC_MODE>(PIPE_FIX_FLAG); // gradX matmul计算完成可以执行进行最后的计算
+
         if (blockIdx_ == 0) {
             AddAlphaAndBias();
         }
-        // 计算GradX,需添加等待matmul完成
-        SyncAll();
+
+        CrossCoreWaitFlag<AIV_AIC_MODE>(PIPE_FIX_FLAG); // mm1完成，可以执行gradX计算
         if (blockIdx_ < finalUsedAivNum_) {
             ComputeFinal();
         }
@@ -1285,6 +1284,8 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::P
         taskNumPerCore = min(taskNumPerCore, totalSize - blockIdx_ * taskNumPerCore);
         ComputeGradXMatmul(static_cast<int32_t>(taskOffset), static_cast<int32_t>(taskNumPerCore));
 
+        CrossCoreSetFlag<AIV_AIC_MODE, PIPE_FIX>(PIPE_FIX_FLAG);
+
         int64_t totalN = n_ * c_;
         int64_t taskNCount = Ops::Base::CeilDiv(totalN, aicNum_);
         taskNCount = min(taskNCount, CUBE_MAX_N_SIZE);
@@ -1295,7 +1296,6 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::P
             int32_t taskCount = taskLoop == (taskLoops - 1) ? taskNTailCount : taskNCount;
             ComputeGradPhiMatmul(taskOft, taskCount);
         }
-        CrossCoreSetFlag<AIV_AIC_MODE, PIPE_FIX>(PIPE_FIX_FLAG);
     }
 }
 
