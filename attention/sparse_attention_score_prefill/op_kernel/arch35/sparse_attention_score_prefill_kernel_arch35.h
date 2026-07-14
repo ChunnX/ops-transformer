@@ -420,6 +420,52 @@ private:
             {1, static_cast<uint16_t>(rowCount * sizeof(float)), 0, 0});
     }
 
+    // Batched stats scatter: the softmax wrote this AIV's rowMax/rowSum into gmUb/glUb
+    // (ubSBufId stage). Cores split by GROUP (not M/2): each AIV owns whole groups [gLo, gHi),
+    // no group straddles the two AIVs; every owned group has rowCount = groupRows (never 0).
+    // lseOff is computed on demand from the batch's qToken/slotK (== SlotStatOffset(qToken,
+    // kvHeadIdx, slotK,0)), so no lseOff array is marshalled. gmUbAlias/glUbAlias are declared
+    // outside the loop and re-bound per group. The rowMax/rowSum group base uses an 8-float-
+    // aligned stride (matches the softmax epilogue's statsOff): CopyPartialStatsToGm's DataCopyPad
+    // needs a 32B-aligned source; groupRows<8 (local groupSize=4) would otherwise misalign it.
+    // No-op for groupRows>=8 (production groupSize=16).
+    __aicore__ inline
+    void ScatterBatchStats(AscendC::GlobalTensor<float> &gSoftmaxMax,
+                           AscendC::GlobalTensor<float> &gSoftmaxSum,
+                           uint32_t ubSBufId, uint32_t batchM, uint32_t groupRows,
+                           const uint32_t *qTokens, const uint32_t *slotKs,
+                           uint32_t kvHeadIdx, uint32_t groupCount)
+    {
+        // mCopyOffset = AIV0's group count * groupRows (groupRows-aligned = AIV1 startRow).
+        // Matches BlockMmadQK's group-dim S split and the softmax epilogue's group-dim split.
+        uint32_t gSplit = CeilDiv(groupCount, 2U);
+        uint32_t mCopyOffset = gSplit * groupRows;
+        uint32_t mHalf = mCopyOffset < batchM ? mCopyOffset : batchM;
+        uint32_t m = (AscendC::GetSubBlockIdx() == 0U) ? mHalf : (batchM - mHalf);
+        if (m == 0U) {
+            return;
+        }
+        uint32_t startRow = AscendC::GetSubBlockIdx() * mCopyOffset;
+        uint32_t gLo = startRow / groupRows;
+        uint32_t gHi = gLo + m / groupRows;
+        // rowMax/rowSum group base stride = 8-float aligned (matches softmax epilogue's statsOff;
+        // DataCopyPad source must be 32B-aligned). No-op for groupRows>=8 (production 16).
+        uint32_t grpStride = RoundUp(groupRows, 8U);
+        AscendC::LocalTensor<float> gmUbAlias;
+        AscendC::LocalTensor<float> glUbAlias;
+
+        for (uint32_t g = gLo; g < gHi; g++) {
+            uint32_t localOff = (g - gLo) * grpStride;
+            uint64_t lseOff = SlotStatOffset(qTokens[g], kvHeadIdx, slotKs[g], 0U);
+            gmUbAlias = resource.ubBuf.template GetBufferByByte<float>(
+                SM_UB_GM_OFFSET + ubSBufId * SM_UB_STAGE_BYTES + localOff * sizeof(float));
+            glUbAlias = resource.ubBuf.template GetBufferByByte<float>(
+                SM_UB_GL_OFFSET + ubSBufId * SM_UB_STAGE_BYTES + localOff * sizeof(float));
+            CopyPartialStatsToGm(gSoftmaxMax, gSoftmaxSum, gmUbAlias, glUbAlias,
+                                 lseOff, 0U, groupRows);
+        }
+    }
+
     // Debug: copy O_partial / max / sum after Phase1 + SyncAll.
     __aicore__ inline
     void DumpPhase1OPartial(AscendC::GlobalTensor<ElementWorkspaceO> &gAccumOut,
@@ -440,18 +486,16 @@ private:
         AscendC::LocalTensor<float> ubDump =
             resource.ubBuf.template GetBufferByByte<float>(0);
         uint32_t totalQTokens = totalTaskNumP2_ / kvHeads_;
-        for (uint32_t qToken = 0U; qToken < 1; ++qToken) {
-            for (uint32_t kvHeadIdx = 0U; kvHeadIdx < 1; ++kvHeadIdx) {
+        for (uint32_t qToken = 0U; qToken < totalQTokens; ++qToken) {
+            for (uint32_t kvHeadIdx = 0U; kvHeadIdx < kvHeads_; ++kvHeadIdx) {
                 for (uint32_t slotK = 0U; slotK < topK_; ++slotK) {
                     uint64_t oOff = SlotOOffset(qToken, kvHeadIdx, slotK);
                     uint64_t lseOff = SlotStatOffset(qToken, kvHeadIdx, slotK, 0U);
-                    //AscendC::DumpTensor(gAccumOut[oOff], 123, 128);
-                    break;
-                    /*AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
-                    AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
-                    AscendC::DumpTensor(ubDump, 456U, PHASE1_O_DUMP_ELEMS);
-                    AscendC::DumpTensor(gSoftmaxMax[lseOff], 123U, PHASE1_STAT_DUMP_ELEMS);
-                    AscendC::DumpTensor(gSoftmaxSum[lseOff], 456U, PHASE1_STAT_DUMP_ELEMS);*/
+                    if (qToken == totalQTokens - 1) {
+                        AscendC::DumpTensor(gAccumOut[oOff], 123, 32);
+                        AscendC::DumpTensor(gSoftmaxMax[lseOff], 456U, PHASE1_STAT_DUMP_ELEMS);
+                        AscendC::DumpTensor(gSoftmaxSum[lseOff], 789U, PHASE1_STAT_DUMP_ELEMS);
+                    }
                 }
             }
         }
@@ -473,18 +517,24 @@ private:
         AscendC::GlobalTensor<float> &gSoftmaxMax,
         AscendC::GlobalTensor<float> &gSoftmaxSum)
     {
-        uint32_t mPerSubCore = VecRowSplit(groupSize_);
+        // Batched QK/softmax/PV: BATCH_GROUPS qTokens per batch -> M = groupCount*groupSize_
+        // (up to BlockMmadQK::L0_TILE_M=128). MAX_BATCH_GROUPS caps per-batch arrays; groupSize>=16
+        // fills the tile, smaller groupSize underfills but stays correct.
+        constexpr uint32_t MAX_BATCH_GROUPS = 8U;
+        uint32_t batchGroupsMax = BlockMmadQK::L0_TILE_M / groupSize_;
+        if (batchGroupsMax == 0U || batchGroupsMax > MAX_BATCH_GROUPS) {
+            batchGroupsMax = MAX_BATCH_GROUPS;
+        }
 
 #ifdef __DAV_CUBE__
-        uint32_t mAligned = RoundUp(mPerSubCore, 16u);
-
         BlockMmadQK blockMmadQK;
         BlockMmadPV blockMmadPV;
 
         blockMmadQK.Init(resource, blockSize_, embed_);
         uint32_t qkL1Used = blockSize_ * embed_ * sizeof(ElementK)
             + BlockMmadQK::L0_TILE_M * embed_ * sizeof(ElementQ);
-        blockMmadPV.Init(resource, qkL1Used, blockSize_, embed_, groupSize_);
+        // PV P L1 stage must hold the batched P [L0_TILE_M, blockSize_] (max batchM, K=validSize<=blockSize).
+        blockMmadPV.Init(resource, qkL1Used, blockSize_, embed_, BlockMmadQK::L0_TILE_M);
 
         // CUBE Fixpipe dst aliases decode softmax lsUbTensor (offset 0,
         // MAX_UB_S_ELEM_NUM bf16 = 32768B/stage), shared cross-core with VEC softmax.
@@ -497,9 +547,6 @@ private:
         int64_t strideKVRow = static_cast<int64_t>(kvHeads_) * embed_;
 #endif
 #ifdef __DAV_VEC__
-        uint32_t vecRows = VecNumRows(groupSize_);
-        uint32_t vecRowOffset = VecGlobalRowOffset(groupSize_);
-
         // decode bf16 regbase softmax self-allocates its UB (lsUb/lpUb/lmUb/gmUb/glUb/
         // dmUb/llUb at fixed offsets, see reg_low_prec_bf16.hpp ctor). VEC no longer
         // pre-allocates ubSTensor/ubPBuf/ubRowMax/ubRowSum/ubTmpBuf.
@@ -508,7 +555,7 @@ private:
         uint32_t qkL1Used = blockSize_ * embed_ * sizeof(ElementK)
             + BlockMmadQK::L0_TILE_M * embed_ * sizeof(ElementQ);
         uint32_t vBufBytes = blockSize_ * embed_ * sizeof(ElementV);
-        uint32_t l1PStageBytes = RoundUp(groupSize_, 16U) * RoundUp(blockSize_, 16U) * sizeof(ElementP);
+        uint32_t l1PStageBytes = RoundUp(BlockMmadQK::L0_TILE_M, 16U) * RoundUp(blockSize_, 16U) * sizeof(ElementP);
         AscendC::LocalTensor<ElementP> l1PBuf[P_L1_BUF_NUM];
         for (uint32_t i = 0; i < P_L1_BUF_NUM; i++) {
             l1PBuf[i] = resource.l1Buf.template GetBufferByByte<ElementP>(
@@ -560,6 +607,7 @@ private:
             
             uint64_t csrDataBase = static_cast<uint64_t>(kvHeadIdx) * k2qNnzUpperBound_;
             uint32_t kvStartPos = localBlockIdx * blockSize_;
+            //AscendC::printf("111111111111111111111111\n");
 
 #ifdef __DAV_CUBE__
             uint64_t kvBlockBase =
@@ -573,103 +621,130 @@ private:
             auto gmVLayout = tla::MakeLayout<ElementV, LayoutV>(blockSize_, strideKVRow);
             auto gmVTensor = tla::MakeTensor(gV[kvBlockBase], gmVLayout, Arch::PositionGM{});
             blockMmadPV.LoadVResident(gmVTensor, validSize, embed_);
+            //AscendC::printf("222222222222222222222222222\n");
 #endif
 
-            for (uint32_t qi = 0; qi < numQTokens + PRE_LAUNCH; qi++) {
-                if (qi < numQTokens) {
-                    uint32_t csrIdx = csrStart + qi;
-                    uint32_t qToken = static_cast<uint32_t>(
-                        gK2qQIndices.GetValue(csrDataBase + csrIdx));
-                    uint32_t causalValidLen = CalcCausalValidLen(qToken, validSize, kvStartPos);
-                    if (causalValidLen != 0U) {
-                        uint32_t ubSBufId = qi % UB_S_OTMP_BUF_STAGES;
-                        uint32_t l1PBufId = qi % P_L1_BUF_NUM;
-                        uint32_t mm1ToSmFlagId = ubSBufId;
-                        uint32_t smToMm2FlagId = l1PBufId + UB_S_OTMP_BUF_STAGES;
-                        Arch::CrossCoreFlag mm1ToSmFlag(mm1ToSmFlagId);
-                        Arch::CrossCoreFlag smToMm2Flag(smToMm2FlagId);
+            // --- Batched QK/softmax/PV: group numQTokens into batches of batchGroupsMax ---
+            // Input contract: every qToken listed for this kvBlock has causal overlap
+            // (causalValidLen >= 1), so numQTokens itself is the valid count -- no cvl==0
+            // pre-scan / skip needed. (numQTokens==0 already continued above.)
+            uint32_t numBatches = CeilDiv(numQTokens, batchGroupsMax);
 
-                        uint32_t qHeadStart = kvHeadIdx * groupSize_;
-                        uint64_t qBase = static_cast<uint64_t>(qToken) * qHeads_ * embed_
-                            + static_cast<uint64_t>(qHeadStart) * embed_;
+            // qHeadStart is shared by the CUBE QK qBase computation below.
+            uint32_t qHeadStart = kvHeadIdx * groupSize_;
+            // PV wsOOff arithmetic precomputes (== SlotOOffset terms), constant within this
+            // kvHead: perQTokenStride = kvHeads*topK*slotOElems, kvHeadBase = kvHeadIdx*topK*slotOElems.
+            uint64_t perQTokenStride = static_cast<uint64_t>(kvHeads_) * topK_ * slotOElems_;
+            uint64_t kvHeadBase = static_cast<uint64_t>(kvHeadIdx) * topK_ * slotOElems_;
+            // QK qBase arithmetic precomputes (== qToken*qHeads*embed + qHeadStart*embed),
+            // constant within this kvHead.
+            uint64_t perQTokenStrideQ = static_cast<uint64_t>(qHeads_) * embed_;
+            uint64_t qHeadStartBase = static_cast<uint64_t>(qHeadStart) * embed_;
+
+            // qToken/slotK ring: batch bi's identity is filled at bi and consumed by PV at
+            // bi+PRE_LAUNCH (reading the ring row, no GM re-read). PRE_LAUNCH+1 stages keep the
+            // row live across the 2-deep gap (slot s refilled at bi=s+3, PV reads it last at
+            // bi=s+2). Derived offsets (qBase/cvl/lseOff/wsOOff) are computed at their single use
+            // site from these values; only qToken/slotK -- used multiple times -- are stashed.
+            constexpr uint32_t BATCH_RING_STAGES = PRE_LAUNCH + 1U;
+            uint32_t batchQToken[BATCH_RING_STAGES][MAX_BATCH_GROUPS] = {};
+            uint32_t batchSlotK[BATCH_RING_STAGES][MAX_BATCH_GROUPS] = {};
+            //AscendC::printf("33333333333333333333333333333\n");
+
+            for (uint32_t bi = 0U; bi < numBatches + PRE_LAUNCH; bi++) {
+                uint32_t stage = bi % BATCH_RING_STAGES;
+
+                // QK + softmax for batch bi (collect + compute). Input guarantees every qToken
+                // has cvl>=1; batchGroupCount = batchGroupsMax except the tail batch (remainder).
+                //AscendC::printf("4444444444444444444444444444444\n");
+                if (bi < numBatches) {
+                    //AscendC::printf("55555555555555555555\n");
+                    uint32_t rem = numQTokens - bi * batchGroupsMax;
+                    uint32_t batchGroupCount = (rem < batchGroupsMax) ? rem : batchGroupsMax;
+                    uint32_t batchM = batchGroupCount * groupSize_;
+                    for (uint32_t g = 0U; g < batchGroupCount; g++) {
+                        uint32_t csrIdx = csrStart + bi * batchGroupsMax + g;
+                        batchQToken[stage][g] = static_cast<uint32_t>(
+                            gK2qQIndices.GetValue(csrDataBase + csrIdx));
+                        batchSlotK[stage][g] = static_cast<uint32_t>(
+                            gK2qSlotIndices.GetValue(csrDataBase + csrIdx));
+                    }
+                    //AscendC::printf("666666666666666666666666\n");
+
+                    uint32_t ubSBufId = bi % UB_S_OTMP_BUF_STAGES;
+                    uint32_t l1PBufId = bi % P_L1_BUF_NUM;
+                    uint32_t mm1ToSmFlagId = ubSBufId;
+                    uint32_t smToMm2FlagId = l1PBufId + UB_S_OTMP_BUF_STAGES;
+                    Arch::CrossCoreFlag mm1ToSmFlag(mm1ToSmFlagId);
+                    Arch::CrossCoreFlag smToMm2Flag(smToMm2FlagId);
 
 #ifdef __DAV_CUBE__
-                        // per-block S stride = nRound = RoundUp(validSize,16), matches the
-                        // decode softmax LoadAlign(srcUb + i*S2BaseSize) read stride.
-                        auto ubSLayout = tla::MakeLayout<ElementS, LayoutS>(mAligned, RoundUp(validSize, 16U));
-                        auto ubSTensorTla = tla::MakeTensor(
-                            ubSTensor[ubSBufId], ubSLayout, Arch::PositionUB{});
-                        auto gmQLayout = tla::MakeLayout<ElementQ, LayoutQ>(groupSize_, embed_);
-                        auto gmQTensor = tla::MakeTensor(gQ[qBase], gmQLayout, Arch::PositionGM{});
-                        blockMmadQK(gmQTensor, ubSTensorTla, groupSize_, validSize, embed_, mm1ToSmFlag);
+                    // per-block S stride = nRound = RoundUp(validSize,16), matches the softmax
+                    // LoadAlign(srcUb + i*S2BaseSize) read stride. mAligned per-batch (VecRowSplit).
+                    uint32_t mPerSubCoreB = VecRowSplit(batchM);
+                    uint32_t mAlignedB = RoundUp(mPerSubCoreB, 16u);
+                    auto ubSLayout = tla::MakeLayout<ElementS, LayoutS>(mAlignedB, RoundUp(validSize, 16U));
+                    auto ubSTensorTla = tla::MakeTensor(ubSTensor[ubSBufId], ubSLayout, Arch::PositionUB{});
+                    //AscendC::printf("77777777777777777777777777\n");
+                    blockMmadQK(gQ, batchQToken[stage], batchGroupCount, groupSize_,
+                                ubSTensorTla, validSize, embed_, perQTokenStrideQ, qHeadStartBase,
+                                mm1ToSmFlag);
+                    //AscendC::printf("888888888888888888888888\n");
 #endif
 #ifdef __DAV_VEC__
-                        // P L1 layout extent = causalValidLen (not validSize): softmax only
-                        // writes P[0, causalValidLen) and PV reduces over causalValidLenDe
-                        // (== causalValidLen for the same qToken). The L1 P zN N-fractal stride
-                        // must match the layout PV reads, so it must be causalValidLen here.
-                        // (V's L1 layout still uses the block valid size internally - see
-                        // BlockMmadPV residentValidSize_.)
-                        auto l1PLayout = tla::MakeLayout<ElementP, layout::zN>(groupSize_, causalValidLen);
-                        auto l1PTensor = tla::MakeTensor(l1PBuf[l1PBufId], l1PLayout, Arch::PositionL1{});
-                        epilogueSoftmax(
-                            l1PTensor,
-                            GemmCoord{groupSize_, validSize, embed_},
-                            ubSBufId,
-                            l1PBufId,
-                            mm1ToSmFlag,
-                            smToMm2Flag,
-                            causalValidLen);
-                        uint32_t slotK = static_cast<uint32_t>(
-                            gK2qSlotIndices.GetValue(csrDataBase + csrIdx));
-                        uint64_t lseOffset = SlotStatOffset(qToken, kvHeadIdx, slotK, vecRowOffset);
-                        // softmax wrote this AIV's rowMax/rowSum into its 2-deep
-                        // gmUb[ubSBufId]/glUb[ubSBufId]. Copy to GM per-slot for Phase2.
-                        AscendC::LocalTensor<float> gmUbAlias =
-                            resource.ubBuf.template GetBufferByByte<float>(
-                                SM_UB_GM_OFFSET + ubSBufId * SM_UB_STAGE_BYTES);
-                        AscendC::LocalTensor<float> glUbAlias =
-                            resource.ubBuf.template GetBufferByByte<float>(
-                                SM_UB_GL_OFFSET + ubSBufId * SM_UB_STAGE_BYTES);
-                        CopyPartialStatsToGm(
-                            gSoftmaxMax, gSoftmaxSum, gmUbAlias, glUbAlias,
-                            lseOffset, 0U, vecRows);
-#endif
+                    // P L1 layout extent = validSize (uniform batch K). softmax writes the
+                    // full [0, validSize) row per group (real [0, cvl[g]) + Select-zeroed
+                    // [cvl[g], validSize)); PV reduces over uniform K=validSize (= residentValidSize_).
+                    auto l1PLayout = tla::MakeLayout<ElementP, layout::zN>(batchM, validSize);
+                    auto l1PTensor = tla::MakeTensor(l1PBuf[l1PBufId], l1PLayout, Arch::PositionL1{});
+                    // cvl[g] computed on demand from qToken (used once here, by the softmax mask).
+                    uint32_t cvlArr[MAX_BATCH_GROUPS];
+                    //AscendC::printf("999999999999999999999999999\n");
+                    for (uint32_t g = 0U; g < batchGroupCount; g++) {
+                        cvlArr[g] = CalcCausalValidLen(batchQToken[stage][g], validSize, kvStartPos);
                     }
+                    //AscendC::printf("aaaaaaaaaaaaaaaaaaaaaaaaaaa\n");
+                    epilogueSoftmax(
+                        l1PTensor,
+                        GemmCoord{batchM, validSize, embed_},
+                        ubSBufId,
+                        l1PBufId,
+                        mm1ToSmFlag,
+                        smToMm2Flag,
+                        cvlArr,
+                        batchGroupCount,
+                        groupSize_);
+                    //AscendC::printf("bbbbbbbbbbbbbbbbbbbbbbbb\n");
+                    // softmax wrote this AIV's rowMax/rowSum into 2-deep gmUb/glUb[ubSBufId];
+                    // scatter to per-qToken GM stat slots (per-AIV group ownership may straddle).
+                    // lseOff computed on demand inside ScatterBatchStats from qToken/slotK.
+                    ScatterBatchStats(gSoftmaxMax, gSoftmaxSum, ubSBufId, batchM, groupSize_,
+                                      batchQToken[stage], batchSlotK[stage], kvHeadIdx,
+                                      batchGroupCount);
+                    //AscendC::printf("cccccccccccccccccccccccccc\n");
+#endif
                 }
 
-                if (qi >= PRE_LAUNCH && qi - PRE_LAUNCH < numQTokens) {
-                    uint32_t qiDe = qi - PRE_LAUNCH;
-                    uint32_t csrIdx = csrStart + qiDe;
-                    uint32_t qToken = static_cast<uint32_t>(
-                        gK2qQIndices.GetValue(csrDataBase + csrIdx));
-                    uint32_t slotK = static_cast<uint32_t>(
-                        gK2qSlotIndices.GetValue(csrDataBase + csrIdx));
-                    uint32_t causalValidLenDe = CalcCausalValidLen(qToken, validSize, kvStartPos);
-                    if (causalValidLenDe != 0U) {
-                        uint64_t wsOOff = SlotOOffset(qToken, kvHeadIdx, slotK);
-
-                        uint32_t l1PBufIdDe = qiDe % P_L1_BUF_NUM;
+                // PV for batch bi-PRE_LAUNCH. wsOOff computed on demand inside blockMmadPV
+                // from the batch's qToken/slotK, read from the ring row filled at bi=bDe (no GM
+                // re-read). The P-L1-buffer / smToMm2Flag pipeline (3-buffer, 2-deep) is
+                // independent of this metadata and stays as-is.
+                if (bi >= PRE_LAUNCH) {
+                    uint32_t bDe = bi - PRE_LAUNCH;
+                    if (bDe < numBatches) {
+                        //AscendC::printf("dddddddddddddddddddddddddddd\n");
+                        uint32_t l1PBufIdDe = bDe % P_L1_BUF_NUM;
                         uint32_t smToMm2FlagId = l1PBufIdDe + UB_S_OTMP_BUF_STAGES;
                         Arch::CrossCoreFlag smToMm2Flag(smToMm2FlagId);
-
+                        uint32_t stageDe = bDe % BATCH_RING_STAGES;
 #ifdef __DAV_CUBE__
-                        auto gmOLayout = tla::MakeLayout<ElementWorkspaceO, LayoutO>(groupSize_, embed_);
-                        auto gmOTensor = tla::MakeTensor(
-                            gAccumOut[wsOOff], gmOLayout, Arch::PositionGM{});
+                        uint32_t pvRem = numQTokens - bDe * batchGroupsMax;
+                        uint32_t pvGrpCnt = (pvRem < batchGroupsMax) ? pvRem : batchGroupsMax;
                         blockMmadPV.SetL1PBuf(l1PBufIdDe);
-                        // if (qToken == 0 && kvHeadIdx == 0 && slotK == 0) {
-                        //     AscendC::printf("1111111111111111111111 causalValidLenDe:%d\n", causalValidLenDe);
-                        // }
-                        // PV reduces over causalValidLenDe: softmax wrote P[0, causalValidLen)
-                        // (== causalValidLenDe for this qToken) and the L1 P layout is scoped to
-                        // causalValidLen, so PV's K must be causalValidLenDe to match (reading
-                        // validSize would read the stale [causalValidLen, validSize) P tail).
-                        blockMmadPV(gmOTensor, groupSize_, causalValidLenDe, embed_, smToMm2Flag);
-                        // if (qToken == 0 && kvHeadIdx == 0 && slotK == 0) {
-                        //     AscendC::DumpTensor(gV[kvBlockBase], 456, 16);
-                        //     AscendC::DumpTensor(gAccumOut[wsOOff], 789 + qiDe, 128);
-                        // }
+                        blockMmadPV(gAccumOut, batchQToken[stageDe], batchSlotK[stageDe], pvGrpCnt,
+                                   groupSize_, embed_, perQTokenStride, kvHeadBase, slotOElems_,
+                                   smToMm2Flag);
+                        //AscendC::printf("eeeeeeeeeeeeeeeeeeeeeeeeee\n");
 #endif
                     }
                 }

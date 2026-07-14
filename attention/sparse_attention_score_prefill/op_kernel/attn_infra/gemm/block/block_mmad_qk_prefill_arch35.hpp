@@ -137,18 +137,31 @@ struct BlockMmadQKPrefillArch35 {
         AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(EVENT_ID0);
     }
 
+    // Batched QK: M = groupCount * groupRows (up to 128 = 8 groups). groupCount scattered
+    // gmQ slabs [groupRows, K] are gathered into contiguous L1 Q rows [g*groupRows] (same total
+    // MTE2 volume as the old per-qToken path, now feeding one M=128 matmul instead of 8 M=16
+    // matmuls). qBase is computed on demand from qToken (== qToken*qHeads*embed + qHeadStart*embed
+    // = qToken*perQTokenStrideQ + qHeadStartBase); the kernel precomputes perQTokenStrideQ
+    // (=qHeads*embed) and qHeadStartBase (=qHeadStart*embed), constant within a kvHead. The
+    // matmul/fixpipe below are unchanged and already tile M via mL0Num.
     template <class TensorQ, class TensorS>
     __aicore__ inline
-    void operator()(TensorQ &gmQTensor, TensorS &ubSTensor,
-                    uint32_t groupSize, uint32_t validSize, uint32_t D,
+    void operator()(TensorQ &gQ, const uint32_t *qTokens,
+                    uint32_t groupCount, uint32_t groupRows,
+                    TensorS &ubSTensor,
+                    uint32_t validSize, uint32_t D,
+                    uint64_t perQTokenStrideQ, uint64_t qHeadStartBase,
                     Arch::CrossCoreFlag &mm1ToSmFlag)
     {
-        uint32_t M = groupSize;
+        uint32_t M = groupCount * groupRows;
         uint32_t N = validSize;
         uint32_t K = D;
 
-        using CopyGmToL1Q = typename TileCopy::template CopyGmToL1A<TensorQ>;
+        auto gmQLayout = tla::MakeLayout<ElementQ, LayoutTagQ>(groupRows, K);
+        auto gmQEx = tla::MakeTensor(gQ, gmQLayout, Arch::PositionGM{});
+        using CopyGmToL1Q = typename TileCopy::template CopyGmToL1A<decltype(gmQEx)>;
         CopyGmToL1Q copyGmToL1Q;
+        (void)gmQEx;
         using CopyL0CToDst = typename TileCopy::template CopyL0CToDst<TensorS>;
         CopyL0CToDst copyL0CToDstSub0;
         CopyL0CToDst copyL0CToDstSub1;
@@ -158,13 +171,16 @@ struct BlockMmadQKPrefillArch35 {
         auto l1KLayout = tla::MakeLayout<ElementK, LayoutTagL1B>(K, N);
         auto l1KTensorTla = tla::MakeTensor(l1KTensor_, l1KLayout, Arch::PositionL1{});
 
-        auto gmQTile = GetTile(gmQTensor,
-            tla::MakeCoord(0, 0), tla::MakeShape(M, K));
-        auto l1QTile = GetTile(l1QTensorTla,
-            tla::MakeCoord(0, 0), tla::MakeShape(M, K));
-
         AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(EVENT_ID1);
-        copyGmToL1Q(l1QTile, gmQTile);
+        for (uint32_t g = 0; g < groupCount; g++) {
+            uint64_t qBase = static_cast<uint64_t>(qTokens[g]) * perQTokenStrideQ + qHeadStartBase;
+            auto gmQTensor = tla::MakeTensor(gQ[qBase], gmQLayout, Arch::PositionGM{});
+            auto gmQTile = GetTile(gmQTensor,
+                tla::MakeCoord(0, 0), tla::MakeShape(groupRows, K));
+            auto l1QTile = GetTile(l1QTensorTla,
+                tla::MakeCoord(g * groupRows, 0), tla::MakeShape(groupRows, K));
+            copyGmToL1Q(l1QTile, gmQTile);
+        }
         AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(EVENT_ID1);
         AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(EVENT_ID1);
 
@@ -233,17 +249,25 @@ struct BlockMmadQKPrefillArch35 {
             AscendC::SetFlag<AscendC::HardEvent::M_FIX>(l0CEventId);
             AscendC::WaitFlag<AscendC::HardEvent::M_FIX>(l0CEventId);
 
-            uint32_t mFixPAligned8 = RoundUp(M, 8U);
-            uint32_t mPerSubCore = mFixPAligned8 / 2U;
             uint32_t nFixPAligned16 = RoundUp(nAct, 16U);
-            auto ubSTile = GetTile(ubSTensor,
-                tla::MakeCoord(0, nL0Itr * L0_TILE_N), tla::MakeShape(mPerSubCore, nFixPAligned16));
+            // Split S across the 2 AIVs by GROUP (not M/2) so no group straddles a sub-core
+            // (matches softmax/ScatterBatchStats group-dim split). groupRows-aligned; asymmetric
+            // for odd groupCount: AIV0 gets ceil(groupCount/2) groups, AIV1 the rest (0 if only 1).
+            uint32_t gSplit = CeilDiv(groupCount, 2U);
+            uint32_t mSub0 = gSplit * groupRows;
+            uint32_t mSub1 = (groupCount - gSplit) * groupRows;
+            auto ubSTileSub0 = GetTile(ubSTensor,
+                tla::MakeCoord(0, nL0Itr * L0_TILE_N), tla::MakeShape(mSub0, nFixPAligned16));
             auto l0CTileSub0 = GetTile(l0CTensorTla,
-                tla::MakeCoord(0, 0), tla::MakeShape(mPerSubCore, nAct));
-            auto l0CTileSub1 = GetTile(l0CTensorTla,
-                tla::MakeCoord(mPerSubCore, 0), tla::MakeShape(mPerSubCore, nAct));
-            copyL0CToDstSub0(ubSTile, l0CTileSub0, false);
-            copyL0CToDstSub1(ubSTile, l0CTileSub1, true);
+                tla::MakeCoord(0, 0), tla::MakeShape(mSub0, nAct));
+            copyL0CToDstSub0(ubSTileSub0, l0CTileSub0, false);
+            if (mSub1 > 0U) {
+                auto ubSTileSub1 = GetTile(ubSTensor,
+                    tla::MakeCoord(0, nL0Itr * L0_TILE_N), tla::MakeShape(mSub1, nFixPAligned16));
+                auto l0CTileSub1 = GetTile(l0CTensorTla,
+                    tla::MakeCoord(mSub0, 0), tla::MakeShape(mSub1, nAct));
+                copyL0CToDstSub1(ubSTileSub1, l0CTileSub1, true);
+            }
             AscendC::SetFlag<AscendC::HardEvent::FIX_M>(l0CEventId);
         }
         SetCrossCoreSync<4, PIPE_FIX>(mm1ToSmFlag);

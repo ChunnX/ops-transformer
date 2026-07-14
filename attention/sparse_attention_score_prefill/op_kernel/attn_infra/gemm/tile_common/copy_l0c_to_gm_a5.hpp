@@ -34,22 +34,44 @@ struct CopyL0CToGmTla<
     template <class TensorDst, class TensorSrc>
     __aicore__ inline void operator()(TensorDst const &dstTensor, TensorSrc const &srcTensor, uint8_t unitFlag = 0)
     {
-        AscendC::FixpipeParamsC310<AscendC::CO2Layout::ROW_MAJOR> intriParams;
+        // TODO: check why use fixpipe is not OK
+        // L0C->GM via AscendC::DataCopy (NZ2ND) + SetFixpipeNz2ndFlag, matching matmul_act
+        // block_mmad_pingpong CopyOut. The plain AscendC::Fixpipe<CFG_ROW_MAJOR_GM> path left
+        // the L0C->GM DMA uncommitted for cross-core (AIC->AIV) visibility after SyncAll, so
+        // the VEC-side post-SyncAll read saw 0 for the last-written slots. The DataCopy +
+        // SetFixpipeNz2ndFlag idiom is the reliable CANN L0C->GM path. quantPre/reluEn/unitFlag
+        // keep the current implementation's values (only the issuing primitive changes).
+        auto dstOffset = dstTensor.layout()(dstTensor.coord());
+        auto srcOffset = srcTensor.layout()(srcTensor.coord());
 
+        AscendC::SetFixpipeNz2ndFlag(1, 1, 1);
+        AscendC::DataCopyCO12DstParams intriParams;
         intriParams.nSize = tla::get<1>(dstTensor.shape());
         intriParams.mSize = tla::get<0>(dstTensor.shape());
         intriParams.srcStride = tla::get<1, 1>(srcTensor.stride()) / tla::get<0, 0>(srcTensor.stride());
         intriParams.dstStride = tla::get<0>(dstTensor.stride());
-
         intriParams.quantPre = quantPre;
-        intriParams.reluEn = reluEn;
+        intriParams.reluPre = reluEn ? 1 : 0;
         intriParams.unitFlag = unitFlag;
+        intriParams.nz2ndEn = true;
+        AscendC::DataCopy(dstTensor.data()[dstOffset], srcTensor.data()[srcOffset], intriParams);
 
-        auto dstOffset = dstTensor.layout()(dstTensor.coord());
-        auto srcOffset = srcTensor.layout()(srcTensor.coord());
+        // AscendC::FixpipeParamsC310<AscendC::CO2Layout::ROW_MAJOR> intriParams;
 
-        AscendC::Fixpipe<ElementDst, ElementSrc, CFG_ROW_MAJOR_GM>(
-            dstTensor.data()[dstOffset], srcTensor.data()[srcOffset], intriParams);
+        // intriParams.nSize = tla::get<1>(dstTensor.shape());
+        // intriParams.mSize = tla::get<0>(dstTensor.shape());
+        // intriParams.srcStride = tla::get<1, 1>(srcTensor.stride()) / tla::get<0, 0>(srcTensor.stride());
+        // intriParams.dstStride = tla::get<0>(dstTensor.stride());
+
+        // intriParams.quantPre = quantPre;
+        // intriParams.reluEn = reluEn;
+        // intriParams.unitFlag = unitFlag;
+
+        // auto dstOffset = dstTensor.layout()(dstTensor.coord());
+        // auto srcOffset = srcTensor.layout()(srcTensor.coord());
+
+        // AscendC::Fixpipe<ElementDst, ElementSrc, CFG_ROW_MAJOR_GM>(
+        //     dstTensor.data()[dstOffset], srcTensor.data()[srcOffset], intriParams);
     }
 
     template <class TensorDst, class TensorSrc>

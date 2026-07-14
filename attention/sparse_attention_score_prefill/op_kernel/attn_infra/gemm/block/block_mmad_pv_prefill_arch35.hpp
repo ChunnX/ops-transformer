@@ -155,25 +155,44 @@ struct BlockMmadPVPrefillArch35 {
         AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(EVENT_ID2);
     }
 
+    // Batched PV: M = groupCount * groupRows (up to 128 = 8 groups), K = validSize (the
+    // block's valid size, shared by every qToken in the batch), N=D. P is rectangular
+    // [batchM, validSize] with per-group causal tails [cvl[g], validSize) == 0 (softmax
+    // pre-zeros them), so reducing over the uniform K=validSize yields valid exp + zero tail.
+    // K equals residentValidSize_ (the V resident load's K), so PV reads it directly -- no
+    // separate K param, and P/V K strides are consistent by construction. One matmul produces
+    // O_partial[batchM, D] in L0C; then it is scattered to per-qToken GM workspace slots
+    // [groupRows, D] (each batched qToken has its own (qToken, slotK)). wsOOff is computed on
+    // demand from the batch's qToken/slotK ring row (== SlotOOffset(qToken,kvHeadIdx,slotK) =
+    // qToken*perQTokenStride + kvHeadBase + slotK*slotOElems); the kernel precomputes
+    // perQTokenStride (=kvHeads*topK*slotOElems) and kvHeadBase (=kvHeadIdx*topK*slotOElems),
+    // constant within a kvHead, so no wsOOff array is marshalled. M is derived from
+    // groupCount*groupRows (groupRows runtime constant), matching BlockMmadQK.
     template <class TensorO>
     __aicore__ inline
-    void operator()(TensorO &oTensor,
-                    uint32_t groupSize, uint32_t validSize, uint32_t D,
+    void operator()(TensorO &gAccumOut, const uint32_t *qTokens, const uint32_t *slotKs,
+                    uint32_t groupCount, uint32_t groupRows,
+                    uint32_t D,
+                    uint64_t perQTokenStride, uint64_t kvHeadBase, uint64_t slotOElems,
                     Arch::CrossCoreFlag &smToMm2Flag)
     {
-        uint32_t M = groupSize;
+        uint32_t M = groupCount * groupRows;
         uint32_t N = D;
-        uint32_t K = validSize;
+        uint32_t K = residentValidSize_;
         WaitCrossCoreSync<4, PIPE_MTE1>(smToMm2Flag);
 
-        using CopyL0CToGm = typename TileCopy::template CopyL0CToDst<TensorO>;
+        auto gmOLayout = tla::MakeLayout<ElementO, LayoutTagO>(groupRows, N);
+        auto gmOSlotEx = tla::MakeTensor(gAccumOut, gmOLayout, Arch::PositionGM{});
+        using CopyL0CToGm = typename TileCopy::template CopyL0CToDst<decltype(gmOSlotEx)>;
         CopyL0CToGm copyL0CToGm;
+        (void)gmOSlotEx;
 
         auto l1PLayout = tla::MakeLayout<ElementP, LayoutTagL1A>(M, K);
         auto l1PTensorTla = tla::MakeTensor(l1PTensor_, l1PLayout, Arch::PositionL1{});
-        // V L1 layout must describe the resident (K = block valid size), not the gemm's causalValidLen.
-        // The subtile below scopes the gemm K; the layout's K must match what LoadVResident wrote so
-        // zN N-fractal strides are correct (else srcStride in the L0B transpose copy is off -> N>=16 bad).
+        // V L1 layout must describe the resident (K = block valid size). The gemm K now equals
+        // residentValidSize_ (P was zero-padded to validSize by softmax), so P and V share the
+        // same K; zN N-fractal strides are consistent by construction (else srcStride in the
+        // L0B transpose copy is off -> N>=16 bad).
         auto l1VLayout = tla::MakeLayout<ElementV, LayoutTagL1B>(residentValidSize_, N);
         auto l1VTensorTla = tla::MakeTensor(l1VTensor_, l1VLayout, Arch::PositionL1{});
 
@@ -238,15 +257,22 @@ struct BlockMmadPVPrefillArch35 {
             }
             AscendC::SetFlag<AscendC::HardEvent::M_FIX>(l0CEventId);
             AscendC::WaitFlag<AscendC::HardEvent::M_FIX>(l0CEventId);
-            uint32_t mFixPAligned8 = RoundUp(M, 8U);
+            uint32_t mFixPAligned8Grp = RoundUp(groupRows, 8U);
             uint32_t nFixPAligned8 = RoundUp(nAct, 8U);
-            // GM O_partial layout is [groupSize, D]; only write valid M rows (not mFixPAligned8)
-            // to avoid fixpipe overflow into the next slot / softmaxMax buffer.
-            auto oTile = GetTile(oTensor,
-                tla::MakeCoord(0, nL0Itr * L0_TILE_N), tla::MakeShape(M, nFixPAligned8));
-            auto l0CTile = GetTile(l0CTensorTla,
-                tla::MakeCoord(0, 0), tla::MakeShape(mFixPAligned8, nAct));
-            copyL0CToGm(oTile, l0CTile);
+            // Scatter L0C[batchM, nAct] to per-qToken GM slots [groupRows, nAct]. wsOOff is
+            // computed on demand from the batch's qToken/slotK (see operator() comment).
+            // GM O_partial layout per slot is [groupRows, D]; only the valid groupRows rows are
+            // written (not mFixPAligned8Grp) to avoid fixpipe overflow into the next slot.
+            for (uint32_t g = 0; g < groupCount; g++) {
+                uint64_t wsOOff = static_cast<uint64_t>(qTokens[g]) * perQTokenStride + kvHeadBase
+                                + static_cast<uint64_t>(slotKs[g]) * slotOElems;
+                auto gmOSlot = tla::MakeTensor(gAccumOut[wsOOff], gmOLayout, Arch::PositionGM{});
+                auto oTile = GetTile(gmOSlot,
+                    tla::MakeCoord(0, nL0Itr * L0_TILE_N), tla::MakeShape(groupRows, nFixPAligned8));
+                auto l0CTile = GetTile(l0CTensorTla,
+                    tla::MakeCoord(g * groupRows, 0), tla::MakeShape(mFixPAligned8Grp, nAct));
+                copyL0CToGm(oTile, l0CTile);
+            }
             AscendC::SetFlag<AscendC::HardEvent::FIX_M>(l0CEventId);
         }
     }
