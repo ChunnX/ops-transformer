@@ -158,5 +158,5 @@ def cpu_sparse_flash_mla(q, *, return_softmax_lse=False, testcase_name=None, **k
         )
     lse = data.get("softmax_lse")
     if lse is None or not bool(return_softmax_lse):
-        lse = torch.zeros(0, dtype=torch.float32)
+        lse = None
     return data["cpu_output"], lse

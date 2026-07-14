@@ -27,9 +27,10 @@ def load_impl_module(stem):
 
 golden_module = load_impl_module("golden")
 inputs_module = load_impl_module("inputs")
+compare_module = load_impl_module("compare")
 
 
-class MixedQuantSparseFlashMlaMetadataInputSpec:
+class MixedQuantSparseFlashMlaSpec:
     golden = golden_module.cpu_mixed_quant_sparse_flash_mla
     customize_inputs = inputs_module.generate_mixed_quant_sparse_flash_mla_inputs
     tolerance = {
@@ -37,7 +38,9 @@ class MixedQuantSparseFlashMlaMetadataInputSpec:
         "float16": {"standard": "stat_rel_err"},
     }
 
+    compare = staticmethod(compare_module.compare)
+
 
 __spec__ = {
-    "mqsmla_metadata_input_ttk_ops.mixed_quant_sparse_flash_mla_ttk": "MixedQuantSparseFlashMlaMetadataInputSpec",
+    "mqsmla_ttk_ops.mixed_quant_sparse_flash_mla_ttk": "MixedQuantSparseFlashMlaSpec",
 }

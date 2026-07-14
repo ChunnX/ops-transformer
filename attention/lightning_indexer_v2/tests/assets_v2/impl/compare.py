@@ -20,13 +20,21 @@ _TOPK_ABS_TOL = 0.001
 _TOPK_FAIL_RATIO = 0.002
 _VALUE_RTOL = 0.005
 _VALUE_ATOL = 0.000025
-_VALUE_FAIL_RATIO = 0.05
+_BFLOAT16_VALUE_ATOL = 0.0001
+_VALUE_FAIL_RATIO = 0.005
 
 
 def as_numpy(value):
     if hasattr(value, "detach"):
-        value = value.detach().cpu().numpy()
+        value = value.detach().cpu()
+        if "bfloat16" in str(value.dtype):
+            value = value.float()
+        value = value.numpy()
     return np.asarray(value)
+
+
+def is_bfloat16(value):
+    return "bfloat16" in str(getattr(value, "dtype", ""))
 
 
 def row_set_diff_positions(output_row, golden_row):
@@ -193,44 +201,57 @@ def topk_index_compare(npu_out, golden_out, scores, index_offsets=None):
     }
 
 
-def expected_values_from_scores(scores, value_shape):
-    if scores is None:
-        return None
-    scores_np = as_numpy(scores).astype(np.float32)
-    if tuple(scores_np.shape[:-1]) != tuple(value_shape[:-1]):
-        return None
-    k_count = value_shape[-1]
-    sorted_scores = np.sort(scores_np, axis=-1)[..., ::-1]
-    if sorted_scores.shape[-1] < k_count:
-        pad_shape = sorted_scores.shape[:-1] + (k_count - sorted_scores.shape[-1],)
-        sorted_scores = np.concatenate(
-            [sorted_scores, np.full(pad_shape, -np.inf, dtype=np.float32)], axis=-1)
-    return sorted_scores[..., :k_count]
-
-
 def value_compare(npu_out, golden_out, scores=None):
-    npu = as_numpy(npu_out).astype(np.float32)
-    expected = expected_values_from_scores(scores, npu.shape)
-    if expected is None:
-        expected = np.sort(as_numpy(golden_out).astype(np.float32), axis=-1)
-        npu = np.sort(npu, axis=-1)
-    if npu.size != expected.size:
+    """Compare the returned sparse values against the pytest golden values."""
+    del scores
+    use_bfloat16_tolerance = is_bfloat16(npu_out) or is_bfloat16(golden_out)
+    npu_raw = as_numpy(npu_out)
+    golden_raw = as_numpy(golden_out)
+    if npu_raw.shape != golden_raw.shape:
         return {
             "pass": False,
-            "precision": "size_mismatch",
-            "error_info": f"value size mismatch: npu={npu.size}, golden={expected.size}",
+            "precision": "shape_mismatch",
+            "error_info": f"value shape mismatch: npu={npu_raw.shape}, golden={golden_raw.shape}",
         }
-    if expected.size == 0:
+    if golden_raw.size == 0:
         return {"pass": True, "precision": 100.0}
-    diff = ~np.isclose(npu.reshape(-1), expected.reshape(-1), rtol=_VALUE_RTOL, atol=_VALUE_ATOL, equal_nan=True)
-    diff_idx = np.where(diff)[0].tolist()
-    precision = (expected.size - len(diff_idx)) / expected.size * 100
+
+    atol = _BFLOAT16_VALUE_ATOL if use_bfloat16_tolerance else _VALUE_ATOL
+    row_width = golden_raw.shape[-1] if golden_raw.ndim else 1
+    npu_rows = npu_raw.astype(np.float32).reshape(-1, row_width)
+    golden_rows = golden_raw.astype(np.float32).reshape(-1, row_width)
+    diff_idx = []
+    valid_values = 0
+    for row_idx, (npu_row, golden_row) in enumerate(zip(npu_rows, golden_rows)):
+        # Pytest writes valid TopK values first and pads the remainder with -inf.
+        valid_count = int(np.count_nonzero(~np.isneginf(golden_row)))
+        if valid_count == 0:
+            continue
+        npu_valid = np.sort(npu_row[:valid_count])
+        golden_valid = np.sort(golden_row[:valid_count])
+        mismatch = ~np.isclose(
+            npu_valid, golden_valid, rtol=_VALUE_RTOL, atol=atol, equal_nan=True)
+        diff_idx.extend(row_idx * row_width + int(index) for index in np.where(mismatch)[0])
+        valid_values += valid_count
+
+    if valid_values == 0:
+        return {"pass": True, "precision": 100.0, "metrics": {"valid_values": 0}}
+    fail_ratio = len(diff_idx) / valid_values
+    precision = (valid_values - len(diff_idx)) / valid_values * 100
     return {
-        "pass": (len(diff_idx) / expected.size) <= _VALUE_FAIL_RATIO,
+        "pass": fail_ratio <= _VALUE_FAIL_RATIO,
         "precision": precision,
         "diff_indices": diff_idx[:1000],
-        "error_info": None if not diff_idx else f"value compare mismatches={len(diff_idx)}",
-        "metrics": {"rtol": _VALUE_RTOL, "atol": _VALUE_ATOL, "fail_ratio": _VALUE_FAIL_RATIO},
+        "error_info": None if not diff_idx else (
+            f"value compare mismatches={len(diff_idx)}, fail_ratio={fail_ratio:.6g}"
+        ),
+        "metrics": {
+            "rtol": _VALUE_RTOL,
+            "atol": atol,
+            "fail_ratio": fail_ratio,
+            "fail_ratio_limit": _VALUE_FAIL_RATIO,
+            "valid_values": valid_values,
+        },
     }
 
 

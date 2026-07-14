@@ -128,6 +128,7 @@ def _case_params(q, ori_kv, cmp_kv, cmp_sparse_indices, layout_q, layout_kv, kwa
         "cmp_residual_kv": residual,
         "template_mode": mode,
         "cmp_ratio": None if mode == "SWA" else int(kwargs.get("cmp_ratio", 1)),
+        "cmp_mask_mode": 0 if mode == "SWA" else int(kwargs.get("cmp_mask_mode", 3)),
         "q_datarange": _data_range(input_ranges, 0),
         "ori_kv_datarange": _data_range(input_ranges, 1),
         "cmp_kv_datarange": _data_range(input_ranges, 2),
