@@ -541,6 +541,11 @@ ge::graphStatus BSATiling::CheckSparsePattern(gert::TilingContext *bsaContext, c
             "but got elem0: %ld, elem1: %ld.", blockShapeX_, blockShapeY_);
         return ge::GRAPH_FAILED;
     }
+    if (blockShapeX_ % defaultShape != 0) {
+        OP_LOGE(bsaContext->GetNodeName(), "BlockShape elem0 must be a multiple of %ld, "
+            "but got elem0: %ld.", defaultShape, blockShapeX_);
+        return ge::GRAPH_FAILED;
+    }
     if (blockShapeY_ % defaultShape != 0) {
         OP_LOGE(bsaContext->GetNodeName(), "BlockShape elem1 must be a multiple of %ld, "
             "but got elem1: %ld.", defaultShape, blockShapeY_);
