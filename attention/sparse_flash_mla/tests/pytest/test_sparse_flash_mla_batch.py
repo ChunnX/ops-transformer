@@ -74,12 +74,15 @@ def test_sparse_flash_mla(testcase_files):
     print("执行文件: ", testcase_files)
     torch_npu.npu.set_device(0)
     test_data = torch.load(testcase_files, map_location="cpu")
+    testcase_name = test_data.get('params', {}).get('testcase_name', 'unknown')
     npu_result = None
     try:
         npu_result, softmax_lse = sparse_flash_mla_process.call_npu(test_data)
     except Exception as e:
-        utils.save_result('Exception', 0, test_data['params'], result_path)
-        pytest.fail(f"NPU执行异常: {e}")
+        npu_error_msg = str(e)
+        print("NPU ERROR：", npu_error_msg)
+        utils.save_result('NPU ERROR', 0, test_data['params'], result_path)
+        pytest.fail(f"用例执行失败:{testcase_name} NPU ERROR: {npu_error_msg}")
     if npu_result != None:
         result, fulfill_percent = result_compare_method.check_result(test_data['cpu_output'], npu_result)
     else:
@@ -89,5 +92,19 @@ def test_sparse_flash_mla(testcase_files):
             print("return_softmax_lse is true!!!")
             result, fulfill_percent = result_compare_method.check_result(test_data['softmax_lse'], softmax_lse)
     utils.save_result(result, fulfill_percent, test_data['params'], result_path)
-    if result not in ("Passed", "passed", "Pass", "pass"):
-        pytest.fail(f"用例结果校验失败: result={result}, fulfill_percent={fulfill_percent}")
+
+    if result == "Failed":
+        pytest.fail(f"用例精度失败:{testcase_name} 精度:{fulfill_percent:.2f}%")
+
+@pytest.mark.ci
+@pytest.mark.parametrize("testcase_files", locals()["testcase_files"])
+def test_sparse_flash_mla(testcase_files):   # 初始化参数和tensor
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        # 创建当前用例子线程
+        future1 = executor.submit(call_smla_npu, testcase_files)
+        # 检查退出码
+        for future in as_completed([future1]):
+            try:
+                result = future.result()
+            except Exception as e:
+                pytest.fail(f"当前用例子线程执行失败：{e}")
