@@ -98,6 +98,7 @@ std::tuple<at::Tensor, at::Tensor> npu_block_sparse_attention(
 	const c10::optional<at::Tensor> &q_dequant_scale,
 	const c10::optional<at::Tensor> &k_dequant_scale,
 	const c10::optional<at::Tensor> &v_dequant_scale,
+	const c10::optional<at::Tensor> &p_dequant_scale,
 	at::ScalarType attention_out_dtype)
 {
 	TORCH_CHECK(query.is_contiguous(),            "query must be contiguous");
@@ -228,6 +229,12 @@ std::tuple<at::Tensor, at::Tensor> npu_block_sparse_attention(
 					"v_dequant_scale must be float8_e8m0fnu for quant_mode in {2, 3} (mxfp4) inputs");
 	}
 
+	// pDequantScaleOptional: reserved for future quant modes (e.g. MxFP8).
+	// Must be nullptr for all current quant_modes (0=FP16/BF16, 1=FP8, 2/3=mxfp4).
+	TORCH_CHECK(!is_present(p_dequant_scale),
+				"p_dequant_scale must be None for quant_mode in {0, 1, 2, 3} "
+				"(not yet supported in any current quant mode)");
+
 	// Pre-allocate outputs. Use at::empty with explicit sizes+options instead
 	// of empty_like so torch_npu doesn't attempt to inherit `query`'s memory
 	// format and warn under allow_internal_format=False. attentionOut keeps
@@ -327,6 +334,7 @@ std::tuple<at::Tensor, at::Tensor> npu_block_sparse_attention(
 				q_descale_wrapper,              // MXFP4 descale (wrapped, ACL_FLOAT8_E8M0)
 				k_descale_wrapper,
 				v_descale_wrapper,
+				p_dequant_scale,                        // pDequantScaleOptional — MxFP8 only; nullptr for FP16/BF16/MXFP4
 				q_layout_ptr,
 				kv_layout_ptr,
 				num_key_value_heads,
@@ -354,6 +362,7 @@ std::tuple<at::Tensor, at::Tensor> npu_block_sparse_attention(
 				q_dequant_scale,                // qDequantScaleOptional — FP8 only; nullptr for FP16/BF16
 				k_dequant_scale,                // kDequantScaleOptional — FP8 only; nullptr for FP16/BF16
 				v_dequant_scale,                // vDequantScaleOptional — FP8 only; nullptr for FP16/BF16
+				p_dequant_scale,                // pDequantScaleOptional — MxFP8 only; nullptr for FP16/BF16/MXFP4
 				q_layout_ptr,
 				kv_layout_ptr,
 				num_key_value_heads,
