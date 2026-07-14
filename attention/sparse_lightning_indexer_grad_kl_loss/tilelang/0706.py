@@ -511,19 +511,19 @@ def tilelang_grad_kl_loss_single_kernel(
                             T.tile.mul(bmm2_1, bmm2_1, weight_2d_ub)
                         T.pipe_barrier("v")
                         if cur == 0:
-                            T.reduce_sum(bmm2_0, rsy_reduce_db[cur], 0)
+                            T.reduce_sum(bmm2_0, rsy_reduce_db[cur, :], 0)
                         if cur == 1:
-                            T.reduce_sum(bmm2_1, rsy_reduce_db[cur], 0)
+                            T.reduce_sum(bmm2_1, rsy_reduce_db[cur, :], 0)
                         T.pipe_barrier("v")
                         # Save to UB (for sum) + write to GM (for workspace)
-                        T.copy(rsy_reduce_db[cur], rsy_all_ub[n_rsy, :])
-                        # WAR: wait for MTE3 to finish reading rsy_reduce_db[cur] from 2 iters ago
+                        T.copy(rsy_reduce_db[cur, :], rsy_all_ub[n_rsy, :])
+                        # WAR: wait for MTE3 to finish reading rsy_reduce_db[cur, :] from 2 iters ago
                         T.wait_flag("mte3", "v", cur + 9)
                         # MTE3 copy: fire-and-forget, overlaps with V reduce_max below
-                        T.copy(rsy_reduce_db[cur], ReduceSumY[bz, s1_id, n_rsy * n_block:(n_rsy + 1) * n_block])
+                        T.copy(rsy_reduce_db[cur, :], ReduceSumY[bz, s1_id, n_rsy * n_block:(n_rsy + 1) * n_block])
                         T.set_flag("mte3", "v", cur + 9)
-                        # Fused: update global max from rsy_reduce_db[cur] (still in UB, ∥ MTE3 copy in flight)
-                        T.tile.mul(rsy_bc_ub[0, :], rsy_reduce_db[cur], 1.0)
+                        # Fused: update global max from rsy_reduce_db[cur, :] (still in UB, ∥ MTE3 copy in flight)
+                        T.tile.mul(rsy_bc_ub[0, :], rsy_reduce_db[cur, :], 1.0)
                         T.pipe_barrier("v")
                         T.reduce_max(rsy_bc_ub, rsy_chunk_max_ub, 1)
                         T.pipe_barrier("v")
