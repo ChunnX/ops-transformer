@@ -979,30 +979,38 @@ def qliv2_output_single(params, is_batch = False):
         if actual_seq_dtype == 'INT32':
             actual_seq_dtype = torch.int32
 
+        def _safe_eval(val):
+            """ast.literal_eval 安全包装：pandas 从 Excel 读取标量数字时返回 int/float
+            而非 str，直接传给 ast.literal_eval 会抛 'malformed node or string'，
+            对非 str 类型原样返回。"""
+            if isinstance(val, str):
+                return ast.literal_eval(val)
+            return val
+
         if cu_seqlens_q is not None:
-            cu_seqlens_q = ast.literal_eval(cu_seqlens_q)
+            cu_seqlens_q = _safe_eval(cu_seqlens_q)
         if cu_seqlens_k is not None:
-            cu_seqlens_k = ast.literal_eval(cu_seqlens_k)
+            cu_seqlens_k = _safe_eval(cu_seqlens_k)
         if seqused_q is not None:
-            seqused_q = ast.literal_eval(seqused_q)
+            seqused_q = _safe_eval(seqused_q)
         if seqused_k is not None:
-            seqused_k = ast.literal_eval(seqused_k)
+            seqused_k = _safe_eval(seqused_k)
         if output_idx_offset_enable is not None:
-            output_idx_offset_enable = ast.literal_eval(output_idx_offset_enable)
+            output_idx_offset_enable = _safe_eval(output_idx_offset_enable)
         if output_idx_offset_datarange is not None:
-            output_idx_offset_datarange = ast.literal_eval(output_idx_offset_datarange)
+            output_idx_offset_datarange = _safe_eval(output_idx_offset_datarange)
         if cmp_residual_k is not None:
-            cmp_residual_k = ast.literal_eval(cmp_residual_k)
+            cmp_residual_k = _safe_eval(cmp_residual_k)
         if query_datarange is not None:
-            query_datarange = ast.literal_eval(query_datarange)
+            query_datarange = _safe_eval(query_datarange)
         if key_datarange is not None:
-            key_datarange = ast.literal_eval(key_datarange)
+            key_datarange = _safe_eval(key_datarange)
         if weights_datarange is not None:
-            weights_datarange = ast.literal_eval(weights_datarange)
+            weights_datarange = _safe_eval(weights_datarange)
         if q_scale_datarange is not None:
-            q_scale_datarange = ast.literal_eval(q_scale_datarange)
+            q_scale_datarange = _safe_eval(q_scale_datarange)
         if k_scale_datarange is not None:
-            k_scale_datarange = ast.literal_eval(k_scale_datarange)
+            k_scale_datarange = _safe_eval(k_scale_datarange)
 
     # MXFP8 检测
     mxfp8_flag = 0
