@@ -8,7 +8,6 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 import torch
-import torch_npu
 from torch.library import impl
 from cann_ops_transformer.op_builder.builder import OpBuilder
 from cann_ops_transformer.op_builder.builder import AS_LIBRARY
@@ -26,6 +25,7 @@ class MhcPostFunction(torch.autograd.Function):
     def backward(ctx, grad_output):
         x, h_res, h_out, h_post = ctx.saved_tensors
         from cann_ops_transformer.ops.mhc_post_backward import mhc_post_backward
+
         grad_x, grad_h_res, grad_h_out, grad_h_post = mhc_post_backward(
             grad_output, x, h_res, h_out, h_post
         )
@@ -37,7 +37,7 @@ class MhcPostOpBuilder(OpBuilder):
         super(MhcPostOpBuilder, self).__init__("mhc_post")
 
     def sources(self):
-        return ['ops/csrc/mhc_post.cpp']
+        return ["ops/csrc/mhc_post.cpp"]
 
     def schema(self) -> str:
         return "mhc_post(Tensor x, Tensor hRes, Tensor hOut, Tensor hPost) -> Tensor"
@@ -46,6 +46,7 @@ class MhcPostOpBuilder(OpBuilder):
         @impl(AS_LIBRARY, self.name, "Meta")
         def mhc_post_meta(x, h_res, h_out, h_post):
             return torch.empty_like(x)
+
 
 mhc_post_op_builder = MhcPostOpBuilder()
 
@@ -57,7 +58,12 @@ def _mhc_post_dispatch(x, h_res, h_out, h_post):
 
 
 def mhc_post(x, h_res, h_out, h_post):
-    needs_grad = x.requires_grad or h_res.requires_grad or h_out.requires_grad or h_post.requires_grad
+    needs_grad = (
+        x.requires_grad
+        or h_res.requires_grad
+        or h_out.requires_grad
+        or h_post.requires_grad
+    )
 
     if needs_grad:
         return MhcPostFunction.apply(x, h_res, h_out, h_post)

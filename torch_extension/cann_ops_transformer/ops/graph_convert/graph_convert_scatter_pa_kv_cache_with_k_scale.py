@@ -17,24 +17,36 @@ try:
     from torch.library import impl
     from torchair._ge_concrete_graph import ge_apis as ge
     from torchair.ge._ge_graph import Tensor, TensorSpec
-    from torchair._ge_concrete_graph.fx2ge_converter import declare_supported, register_fx_node_ge_converter
+    from torchair._ge_concrete_graph.fx2ge_converter import (
+        declare_supported,
+        register_fx_node_ge_converter,
+    )
     from torchair._ge_concrete_graph.supported_declaration import Support
     from typing import Any, Dict, List, Tuple, Union, Callable, Optional
-    from torchair._ge_concrete_graph.ge_ir_pb2 import GraphDef, OpDef, TensorDescriptor, TensorDef
+    from torchair._ge_concrete_graph.ge_ir_pb2 import (
+        GraphDef,
+        OpDef,
+        TensorDescriptor,
+        TensorDef,
+    )
     from torchair.ge._ge_graph import get_default_ge_graph, next_unique_name
     from torchair.ge._ge_graph import auto_convert_to_tensor
-    from torchair.ge._ge_graph import Tensor, TensorSpec, DataType, TensorType
+    from torchair.ge._ge_graph import DataType, TensorType
     from torchair.ge._ge_graph import compat_as_bytes, compat_as_bytes_list
     from torchair.ge._ge_graph import trans_to_list_list_int, trans_to_list_list_float
     from torchair.ge._ge_graph import get_invalid_desc
     from torchair._ge_concrete_graph.compat_ir import ge_op, IrDef
     from torchair.ge import attr
+
     _TORCHAIR_AVAILABLE = True
 except ImportError:
     _TORCHAIR_AVAILABLE = False
 
 if _TORCHAIR_AVAILABLE:
-    @register_fx_node_ge_converter(torch.ops.cann_ops_transformer.scatter_pa_kv_cache_with_k_scale.default)
+
+    @register_fx_node_ge_converter(
+        torch.ops.cann_ops_transformer.scatter_pa_kv_cache_with_k_scale.default
+    )
     def converter_scatter_pa_kv_cache_with_k_scale(
         key: Tensor,
         value: Tensor,
@@ -44,14 +56,14 @@ if _TORCHAIR_AVAILABLE:
         key_scale: Tensor,
         key_scale_cache: Tensor,
         *,
-        cache_layout: str = 'BNBD',
-        meta_outputs: TensorSpec = None
+        cache_layout: str = "BNBD",
+        meta_outputs: TensorSpec = None,
     ):
         """
         torchair GE转换器：scatter_pa_kv_cache_with_k_scale
-        
+
         将PyTorch算子转换为GE图引擎算子，用于图模式执行
-        
+
         Args:
             key: GE Tensor，FP8格式的key输入
             value: GE Tensor，FP8格式的value输入
@@ -62,7 +74,7 @@ if _TORCHAIR_AVAILABLE:
             key_scale_cache: GE Tensor，float32格式的key scale cache
             cache_layout: str，cache布局格式
             meta_outputs: TensorSpec，输出的shape/dtype信息
-            
+
         Returns:
             tuple: (key_cache_out, value_cache_out, key_scale_cache_out)
         """
@@ -74,5 +86,5 @@ if _TORCHAIR_AVAILABLE:
             slot_mapping,
             key_scale,
             key_scale_cache,
-            cache_layout=cache_layout
+            cache_layout=cache_layout,
         )

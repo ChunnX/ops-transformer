@@ -19,7 +19,7 @@
 
 #define __gm__
 
-#define GM_ADDR uint8_t*
+#define GM_ADDR uint8_t *
 
 namespace AscendC {
 
@@ -59,13 +59,13 @@ enum HcclReduceOp {
     HCCL_REDUCE_RESERVED
 };
 
-enum class CoreType: uint8_t {
+enum class CoreType : uint8_t {
     DEFAULT,
     ON_AIV,
     ON_AIC
 };
 
-enum class ScopeType: uint8_t {
+enum class ScopeType : uint8_t {
     ALL,
     QUEUE,
     BLOCK,
@@ -102,36 +102,37 @@ template <HcclServerType serverType = HcclServerType::HCCL_SERVER_TYPE_AICPU, co
 class Hccl {
 public:
     template <bool commit = false>
-    __aicore__ HcclHandle AllReduce(
-        GM_ADDR sendBuf, GM_ADDR recvBuf, uint64_t count, HcclDataType dataType, HcclReduceOp op, uint8_t repeat = 1)
+    __aicore__ HcclHandle AllReduce(GM_ADDR sendBuf, GM_ADDR recvBuf, uint64_t count, HcclDataType dataType,
+                                    HcclReduceOp op, uint8_t repeat = 1)
     {
         return 0;
     }
 
     template <bool commit = false>
     __aicore__ HcclHandle AllGather(GM_ADDR sendBuf, GM_ADDR recvBuf, uint64_t sendCount, HcclDataType dataType,
-        uint64_t strideCount, uint8_t repeat = 1)
+                                    uint64_t strideCount, uint8_t repeat = 1)
     {
         return 0;
     }
 
     template <bool commit = false>
     __aicore__ HcclHandle AlltoAll(GM_ADDR sendBuf, GM_ADDR recvBuf, uint64_t dataCount, HcclDataType dataType,
-        uint64_t strideCount = 0, uint8_t repeat = 1)
+                                   uint64_t strideCount = 0, uint8_t repeat = 1)
     {
         return 0;
     }
 
     template <bool commit = false>
     __aicore__ HcclHandle AlltoAllV(GM_ADDR sendBuf, void *sendCounts, void *sdispls, HcclDataType sendType,
-        GM_ADDR recvBuf, void *recvCounts, void *rdispls, HcclDataType recvType, uint8_t repeat = 1)
+                                    GM_ADDR recvBuf, void *recvCounts, void *rdispls, HcclDataType recvType,
+                                    uint8_t repeat = 1)
     {
         return 0;
     }
 
     template <bool commit = false>
     __aicore__ HcclHandle ReduceScatter(GM_ADDR sendBuf, GM_ADDR recvBuf, uint64_t recvCount, HcclDataType dataType,
-        HcclReduceOp op, uint64_t strideCount, uint8_t repeat = 1)
+                                        HcclReduceOp op, uint64_t strideCount, uint8_t repeat = 1)
     {
         return 0;
     }
@@ -143,8 +144,8 @@ public:
     }
 
     template <bool commit = false>
-    __aicore__ HcclHandle AlltoAllvWrite(
-        GM_ADDR usrIn, GM_ADDR sendOffsets, GM_ADDR sendSizes, uint64_t remoteWinOffset, uint64_t localDataSize)
+    __aicore__ HcclHandle AlltoAllvWrite(GM_ADDR usrIn, GM_ADDR sendOffsets, GM_ADDR sendSizes,
+                                         uint64_t remoteWinOffset, uint64_t localDataSize)
     {
         return 0;
     }
@@ -162,7 +163,8 @@ public:
         return 0;
     }
 
-    __aicore__ int32_t SetCcTilingV2(uint64_t offset) {
+    __aicore__ int32_t SetCcTilingV2(uint64_t offset)
+    {
         return 0;
     }
 
@@ -190,7 +192,8 @@ public:
     }
 
     template <bool sync = true>
-    __aicore__ int32_t Iterate(HcclHandle handleId, uint16_t *seqSlices, uint16_t seqSliceLen) {
+    __aicore__ int32_t Iterate(HcclHandle handleId, uint16_t *seqSlices, uint16_t seqSliceLen)
+    {
         return 0;
     }
 
@@ -231,4 +234,4 @@ public:
 };
 } // namespace AscendC
 
-#endif  // LIB_HCCL_HCCL_H
+#endif // LIB_HCCL_HCCL_H

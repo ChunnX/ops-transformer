@@ -29,7 +29,7 @@ COMPUTE_UNIT = None
 ENABLE_EXPERIMENTAL = "OFF"
 
 if const_var.CHECK_ASC_DEVKIT_VERSION:
-    IMPORT_HEADER = '''
+    IMPORT_HEADER = """
 from asc_op_compile_base.common.platform import get_soc_spec
 from asc_op_compile_base.common.utils import para_check
 from asc_op_compile_base.asc_op_compiler import compile_op, replay_op, check_op_cap, generalize_op_params, get_code_channel, OpInfo
@@ -38,17 +38,17 @@ from asc_op_compile_base.common.buildcfg import get_default_build_config
 from asc_op_compile_base.common.buildcfg import get_current_build_config
 from asc_op_compile_base.common import register as tbe_register
 __version__ = '2.0.0'
-'''
+"""
 else:
-    IMPORT_HEADER = '''
-from tbe.common.platform import get_soc_spec	 
-from tbe.common.utils import para_check	 
-from tbe.tikcpp import compile_op, replay_op, check_op_cap, generalize_op_params, get_code_channel, OpInfo	 
-from tbe.tikcpp.compile_op import CommonUtility, AscendCLogLevel	 
-from tbe.common.buildcfg import get_default_build_config	 
-from tbe.common.buildcfg import get_current_build_config	 
+    IMPORT_HEADER = """
+from tbe.common.platform import get_soc_spec
+from tbe.common.utils import para_check
+from tbe.tikcpp import compile_op, replay_op, check_op_cap, generalize_op_params, get_code_channel, OpInfo
+from tbe.tikcpp.compile_op import CommonUtility, AscendCLogLevel
+from tbe.common.buildcfg import get_default_build_config
+from tbe.common.buildcfg import get_current_build_config
 import tbe.common.register as tbe_register
-'''
+"""
 
 IMPL_HEAD = '''#!/usr/bin/env python
 # -*- coding: UTF-8 -*-
@@ -188,7 +188,7 @@ def get_kernel_source(src_file, dir_snake, dir_ex):
 
 '''
 
-IMPL_API = '''
+IMPL_API = """
 @tbe_register.register_operator("{}", trans_bool_to_s8=False)
 @para_check.check_op_params({})
 def {}({}, kernel_name="{}"{}):
@@ -252,9 +252,9 @@ def {}({}, kernel_name="{}"{}):
     ascendc_src_dir = "{}"
     ascendc_src_file = "{}"
     src = get_kernel_source(ascendc_src_file, ascendc_src_dir, ascendc_src_dir_ex)
-'''
+"""
 
-REPLAY_OP_API = '''
+REPLAY_OP_API = """
     msg = "start replay Ascend C Operator {}, kernel name is {}"
     CommonUtility.print_compile_log("", msg, AscendCLogLevel.LOG_INFO)
     tikreplay_codegen_path = tikcpp_path + "/tikreplaylib/lib"
@@ -280,9 +280,9 @@ REPLAY_OP_API = '''
     if not res:
         print("call replay op failed for %s and get into call compile op" %(msg))
         compile_op(src, origin_func_name, op_info, options, code_channel, '{}')
-'''
+"""
 
-COMPILE_OP_API = '''
+COMPILE_OP_API = """
     msg = "start compile Ascend C Operator {}, kernel name is " + kernel_name
     CommonUtility.print_compile_log("", msg, AscendCLogLevel.LOG_INFO)
     op_type = "{}"
@@ -292,8 +292,8 @@ COMPILE_OP_API = '''
                 param_type_dynamic = {}, mc2_ctx = {}, param_type_list = {}, init_value_list = {},\\
                 output_shape_depend_on_compute = {})
     compile_op(src, origin_func_name, op_info, options, code_channel, '{}', {})
-'''
-COMPILE_OP_API_BUILT_IN = '''
+"""
+COMPILE_OP_API_BUILT_IN = """
     msg = "start compile Ascend C Operator {}, kernel name is " + kernel_name
     CommonUtility.print_compile_log("", msg, AscendCLogLevel.LOG_INFO)
     op_type = "{}"
@@ -315,7 +315,7 @@ COMPILE_OP_API_BUILT_IN = '''
             extend_options)
     else:
         raise RuntimeError("built-in opp compile, ascendc_impl.dat file path does not exist: %s" %(dat_path))
-'''
+"""
 
 # pypto-pro variant of COMPILE_OP_API: same OpInfo construction, but the kernel source is the pypto DSL
 # .py co-located with this wrapper (op_kernel/<op_file>.py, copied there by the src-copy step), no
@@ -323,7 +323,7 @@ COMPILE_OP_API_BUILT_IN = '''
 # compile_op. Deriving src from __file__ keeps the wrapper self-contained: the standard asc_opc flow
 # (op-store, SingleOpCompile build_config/op_context, SingleOpPostCompile) drives it unchanged; only this
 # leaf differs. pypto_compile_op does per-tilingkey codegen + reuses the asc_op_compiler backend.
-PYPTO_COMPILE_OP_API = '''
+PYPTO_COMPILE_OP_API = """
     msg = "start compile pypto Operator {}, kernel name is " + kernel_name
     CommonUtility.print_compile_log("", msg, AscendCLogLevel.LOG_INFO)
     op_type = "{}"
@@ -336,13 +336,15 @@ PYPTO_COMPILE_OP_API = '''
                 param_type_dynamic = {}, mc2_ctx = {}, param_type_list = {}, init_value_list = {},\\
                 output_shape_depend_on_compute = {})
     pypto_compile_op(src, origin_func_name, op_info, options, code_channel, '{}', {})
-'''
+"""
 
 # Extra import appended to the wrapper head for pypto ops (kept out of the default head so non-pypto
 # builds / environments without pypto_pro are unaffected).
-PYPTO_IMPORT_HEADER = "from pypto_pro.runtime.opc.pypto_compile import pypto_compile_op\n"
+PYPTO_IMPORT_HEADER = (
+    "from pypto_pro.runtime.opc.pypto_compile import pypto_compile_op\n"
+)
 
-SUP_API = '''
+SUP_API = """
 def {}({}{}):
     __inputs__, __outputs__, __attrs__ = _build_args({})
     ret_str = check_op_cap("{}", "{}", __inputs__, __outputs__, __attrs__)
@@ -361,28 +363,36 @@ def {}({}{}):
             sup = "Unknown"
             reason = ret_dict.get("reason")
     return sup, reason
-'''
-CAP_API = '''
+"""
+CAP_API = """
 def {}({}{}):
     __inputs__, __outputs__, __attrs__ = _build_args({})
     result = check_op_cap("{}", "{}", __inputs__, __outputs__, __attrs__)
     return result.decode("utf-8")
-'''
-GLZ_API = '''
+"""
+GLZ_API = """
 @tbe_register.register_param_generalization("{}")
 def {}_generalization({}, generalize_config=None):
     __inputs__, __outputs__, __attrs__ = _build_args({})
     ret_str = generalize_op_params("{}", __inputs__, __outputs__, __attrs__, generalize_config)
     return [json.loads(ret_str)]
-'''
+"""
 
-ATTR_DEFAULT = {'bool': 'False', 'int': '0', 'float': '0.0', 'list_int': '[]',
-                'list_float': '[]', 'list_bool': '[]', 'list_list_int': '[[]]', 'str': ''}
+ATTR_DEFAULT = {
+    "bool": "False",
+    "int": "0",
+    "float": "0.0",
+    "list_int": "[]",
+    "list_float": "[]",
+    "list_bool": "[]",
+    "list_list_int": "[[]]",
+    "str": "",
+}
 
 
 def optype_snake(origin_str):
     temp_str = origin_str[0].lower() + origin_str[1:]
-    new_str = re.sub(r'([A-Z])', r'_\1', temp_str).lower()
+    new_str = re.sub(r"([A-Z])", r"_\1", temp_str).lower()
     return new_str
 
 
@@ -392,7 +402,7 @@ def optype_snake_ex(s):
         if i == 0:
             snake_case += c.lower()
         elif c.isupper():
-            if s[i - 1] != '_':
+            if s[i - 1] != "_":
                 if not s[i - 1].isupper():
                     snake_case += "_"
                 elif s[i - 1].isupper() and (i + 1) < len(s) and s[i + 1].islower():
@@ -406,16 +416,20 @@ def optype_snake_ex(s):
 class AdpBuilder(opdesc_parser.OpDesc):
     def __init__(self: any, op_type: str):
         self.argsdefv = []
-        self.op_compile_option:str = '{}'
+        self.op_compile_option: str = "{}"
         # pypto-pro binary-delivery op: emit a wrapper that calls pypto_compile_op (src = the DSL .py
         # co-located at op_kernel/<op_file>.py) instead of the template compile_op. Set from --pypto-ops.
         self.is_pypto = False
         super().__init__(op_type)
 
-
-    def write_adapt(self: any, impl_path, path: str,
-                    op_compile_option_all: list = None, ini_soc: str = None,
-                    compute_unit: list = None):
+    def write_adapt(
+        self: any,
+        impl_path,
+        path: str,
+        op_compile_option_all: list = None,
+        ini_soc: str = None,
+        compute_unit: list = None,
+    ):
         # For MC2 ops, only process if ini_soc matches target compute_unit
         if len(self.mc2_ctx) > 0 and ini_soc and compute_unit:
             if ini_soc not in compute_unit:
@@ -423,31 +437,36 @@ class AdpBuilder(opdesc_parser.OpDesc):
         self._build_paradefault()
         # pypto ops have a DSL .py kernel (op_kernel/<op_file>.py), not a <op_file>.cpp — skip the
         # template .cpp existence check; the wrapper locates that DSL .py relative to itself.
-        if os.environ.get('BUILD_BUILTIN_OPP') != '1' and impl_path != "" and not self.is_pypto:
-            src_file = os.path.join(impl_path, self.op_file + '.cpp')
+        if (
+            os.environ.get("BUILD_BUILTIN_OPP") != "1"
+            and impl_path != ""
+            and not self.is_pypto
+        ):
+            src_file = os.path.join(impl_path, self.op_file + ".cpp")
             if not os.path.exists(src_file):
-                print(f"[ERROR]: operator: {self.op_file} source file: {src_file} does not found, please check.")
+                print(
+                    f"[ERROR]: operator: {self.op_file} source file: {src_file} does not found, please check."
+                )
                 return
         out_path = os.path.abspath(path)
-        if self.dynamic_shape and not out_path.endswith('dynamic'):
-            out_path = os.path.join(path, 'dynamic')
+        if self.dynamic_shape and not out_path.endswith("dynamic"):
+            out_path = os.path.join(path, "dynamic")
             os.makedirs(out_path, exist_ok=True)
-        adpfile = os.path.join(out_path, self.op_file + '.py')
+        adpfile = os.path.join(out_path, self.op_file + ".py")
         self._gen_op_compile_option(op_compile_option_all)
-        with os.fdopen(os.open(adpfile, const_var.WFLAGS, const_var.WMODES), 'w') as fd:
+        with os.fdopen(os.open(adpfile, const_var.WFLAGS, const_var.WMODES), "w") as fd:
             self._write_head(fd)
             self._write_argparse(fd)
             self._get_impl_mode()
             self._write_impl(fd, impl_path)
             if self.op_chk_support:
-                self._write_cap('check_supported', fd)
-                self._write_cap('get_op_support_info', fd)
+                self._write_cap("check_supported", fd)
+                self._write_cap("get_op_support_info", fd)
             if self.op_fmt_sel:
-                self._write_cap('op_select_format', fd)
-                self._write_cap('get_op_specific_info', fd)
-            if self.op_range_limit == 'limited' or self.op_range_limit == 'dynamic':
+                self._write_cap("op_select_format", fd)
+                self._write_cap("get_op_specific_info", fd)
+            if self.op_range_limit == "limited" or self.op_range_limit == "dynamic":
                 self._write_glz(fd)
-
 
     def _gen_op_compile_option(self: any, op_compile_option_all: list = None):
         if op_compile_option_all is not None:
@@ -456,13 +475,12 @@ class AdpBuilder(opdesc_parser.OpDesc):
             elif "__all__" in op_compile_option_all:
                 self.op_compile_option = op_compile_option_all["__all__"]
 
-
     def _ip_argpack(self: any, default: bool = True) -> list:
         args = []
         for i in range(len(self.input_name)):
             arg = self.input_name[i]
             if default and self.argsdefv[i] is not None:
-                arg += '=' + self.argsdefv[i]
+                arg += "=" + self.argsdefv[i]
             args.append(arg)
         return args
 
@@ -472,7 +490,7 @@ class AdpBuilder(opdesc_parser.OpDesc):
         for i in range(len(self.output_name)):
             arg = self.output_name[i]
             if default and self.argsdefv[i + argidx] is not None:
-                arg += '=' + self.argsdefv[i + argidx]
+                arg += "=" + self.argsdefv[i + argidx]
             args.append(arg)
         return args
 
@@ -483,15 +501,22 @@ class AdpBuilder(opdesc_parser.OpDesc):
             att = self.attr_list[i]
             arg = att
             if default and self.argsdefv[i + argidx] is not None:
-                if self.attr_val.get(att).get('type') == 'str':
+                if self.attr_val.get(att).get("type") == "str":
                     arg += '="' + self.argsdefv[i + argidx] + '"'
-                elif self.attr_val.get(att).get('type') == 'bool':
-                    arg += '=' + self.argsdefv[i + argidx].capitalize()
-                elif self.attr_val.get(att).get('type') == 'list_bool':
-                    arg += '=' + "[" + ", ".join(word.strip().capitalize() \
-                                for word in self.argsdefv[i + argidx].strip('[]').split(',')) + "]"
+                elif self.attr_val.get(att).get("type") == "bool":
+                    arg += "=" + self.argsdefv[i + argidx].capitalize()
+                elif self.attr_val.get(att).get("type") == "list_bool":
+                    arg += (
+                        "="
+                        + "["
+                        + ", ".join(
+                            word.strip().capitalize()
+                            for word in self.argsdefv[i + argidx].strip("[]").split(",")
+                        )
+                        + "]"
+                    )
                 else:
-                    arg += '=' + self.argsdefv[i + argidx]
+                    arg += "=" + self.argsdefv[i + argidx]
             args.append(arg)
         return args
 
@@ -500,32 +525,32 @@ class AdpBuilder(opdesc_parser.OpDesc):
         args.extend(self._ip_argpack(default))
         args.extend(self._op_argpack(default))
         args.extend(self._attr_argpack(default))
-        return ', '.join(args)
+        return ", ".join(args)
 
     def _io_parachk(self: any, types: list, type_name: str) -> list:
         chk = []
         for iot in types:
-            if iot == 'optional':
-                ptype = 'OPTION'
+            if iot == "optional":
+                ptype = "OPTION"
             else:
                 ptype = iot.upper()
-            chk.append('para_check.{}_{}'.format(ptype, type_name))
+            chk.append("para_check.{}_{}".format(ptype, type_name))
         return chk
 
     def _attr_parachk(self: any) -> list:
         chk = []
         for att in self.attr_list:
-            att_type = self.attr_val.get(att).get('type').upper()
-            chk.append('para_check.{}_ATTR_{}'.format('OPTION', att_type))
+            att_type = self.attr_val.get(att).get("type").upper()
+            chk.append("para_check.{}_ATTR_{}".format("OPTION", att_type))
         return chk
 
     def _build_parachk(self: any) -> str:
         chk = []
-        chk.extend(self._io_parachk(self.input_type, 'INPUT'))
-        chk.extend(self._io_parachk(self.output_type, 'OUTPUT'))
+        chk.extend(self._io_parachk(self.input_type, "INPUT"))
+        chk.extend(self._io_parachk(self.output_type, "OUTPUT"))
         chk.extend(self._attr_parachk())
-        chk.append('para_check.KERNEL_NAME')
-        return ', '.join(chk)
+        chk.append("para_check.KERNEL_NAME")
+        return ", ".join(chk)
 
     def _build_virtual(self: any) -> str:
         virt_exp = []
@@ -535,22 +560,24 @@ class AdpBuilder(opdesc_parser.OpDesc):
             val = []
             val.append('"param_name":"{}"'.format(self.input_name[index]))
             val.append('"index":{}'.format(index))
-            val.append('"dtype":"{}"'.format(self.input_dtype[index].split(',')[0]))
-            val.append('"format":"{}"'.format(self.input_fmt[index].split(',')[0]))
-            val.append('"ori_format":"{}"'.format(self.input_fmt[index].split(',')[0]))
+            val.append('"dtype":"{}"'.format(self.input_dtype[index].split(",")[0]))
+            val.append('"format":"{}"'.format(self.input_fmt[index].split(",")[0]))
+            val.append('"ori_format":"{}"'.format(self.input_fmt[index].split(",")[0]))
             val.append('"paramType":"optional"')
             val.append('"shape":[1]')
             val.append('"ori_shape":[1]')
-            virt_exp.append('    ' + self.input_name[index] + ' = {' + ','.join(val) + '}')
+            virt_exp.append(
+                "    " + self.input_name[index] + " = {" + ",".join(val) + "}"
+            )
         if len(virt_exp) > 0:
-            return '\n'.join(virt_exp)
+            return "\n".join(virt_exp)
         else:
-            return '    # do ascendc build step'
+            return "    # do ascendc build step"
 
     def _build_mc2_ctx(self: any):
         if len(self.mc2_ctx) != 0:
             return '["' + '", "'.join(self.mc2_ctx) + '"]'
-        return '[]'
+        return "[]"
 
     def _build_paradefault(self: any):
         optional = False
@@ -559,28 +586,30 @@ class AdpBuilder(opdesc_parser.OpDesc):
         argtypes.extend(self.output_type)
         in_idx = 0
         for atype in argtypes:
-            if atype == 'optional':
+            if atype == "optional":
                 optional = True
             if optional:
-                self.argsdefv.append('None')
+                self.argsdefv.append("None")
             else:
                 self.argsdefv.append(None)
             in_idx += 1
         for attr in self.attr_list:
-            atype = self.attr_val.get(attr).get('paramType')
-            if atype == 'optional':
+            atype = self.attr_val.get(attr).get("paramType")
+            if atype == "optional":
                 optional = True
-            attrval = self.attr_val.get(attr).get('defaultValue')
+            attrval = self.attr_val.get(attr).get("defaultValue")
             if attrval is not None:
                 optional = True
                 if type == "bool":
                     attrval = attrval.capitalize()
                 elif type == "str":
-                    attrval = "\"" + attrval + "\""
+                    attrval = '"' + attrval + '"'
                 self.argsdefv.append(attrval)
                 continue
             if optional:
-                self.argsdefv.append(ATTR_DEFAULT.get(self.attr_val.get(attr).get('type')))
+                self.argsdefv.append(
+                    ATTR_DEFAULT.get(self.attr_val.get(attr).get("type"))
+                )
             else:
                 self.argsdefv.append(None)
 
@@ -589,57 +618,73 @@ class AdpBuilder(opdesc_parser.OpDesc):
         curr_year = now.year
         former_year = curr_year - 1
         import_header = IMPORT_HEADER + (PYPTO_IMPORT_HEADER if self.is_pypto else "")
-        fd.write(IMPL_HEAD.format(former_year, curr_year, import_header, self.input_ori_name, self.output_ori_name))
+        fd.write(
+            IMPL_HEAD.format(
+                former_year,
+                curr_year,
+                import_header,
+                self.input_ori_name,
+                self.output_ori_name,
+            )
+        )
 
     def _write_argparse(self: any, fd: object):
         args = self._build_paralist(False)
-        fd.write('def _build_args({}):\n'.format(args))
-        fd.write('    __inputs__ = []\n')
-        fd.write('    for arg in [{}]:\n'.format(', '.join(self.input_name)))
-        fd.write('        if arg is not None:\n')
-        fd.write('            if isinstance(arg, (list, tuple)):\n')
-        fd.write('                if len(arg) == 0:\n')
-        fd.write('                    continue\n')
-        fd.write('                __inputs__.append(arg[0])\n')
-        fd.write('            else:\n')
-        fd.write('                __inputs__.append(arg)\n')
-        fd.write('        else:\n')
-        fd.write('            __inputs__.append(arg)\n')
-        fd.write('    __outputs__ = []\n')
-        fd.write('    for arg in [{}]:\n'.format(', '.join(self.output_name)))
-        fd.write('        if arg is not None:\n')
-        fd.write('            if isinstance(arg, (list, tuple)):\n')
-        fd.write('                if len(arg) == 0:\n')
-        fd.write('                    continue\n')
-        fd.write('                __outputs__.append(arg[0])\n')
-        fd.write('            else:\n')
-        fd.write('                __outputs__.append(arg)\n')
-        fd.write('        else:\n')
-        fd.write('            __outputs__.append(arg)\n')
-        fd.write('    __attrs__ = []\n')
+        fd.write("def _build_args({}):\n".format(args))
+        fd.write("    __inputs__ = []\n")
+        fd.write("    for arg in [{}]:\n".format(", ".join(self.input_name)))
+        fd.write("        if arg is not None:\n")
+        fd.write("            if isinstance(arg, (list, tuple)):\n")
+        fd.write("                if len(arg) == 0:\n")
+        fd.write("                    continue\n")
+        fd.write("                __inputs__.append(arg[0])\n")
+        fd.write("            else:\n")
+        fd.write("                __inputs__.append(arg)\n")
+        fd.write("        else:\n")
+        fd.write("            __inputs__.append(arg)\n")
+        fd.write("    __outputs__ = []\n")
+        fd.write("    for arg in [{}]:\n".format(", ".join(self.output_name)))
+        fd.write("        if arg is not None:\n")
+        fd.write("            if isinstance(arg, (list, tuple)):\n")
+        fd.write("                if len(arg) == 0:\n")
+        fd.write("                    continue\n")
+        fd.write("                __outputs__.append(arg[0])\n")
+        fd.write("            else:\n")
+        fd.write("                __outputs__.append(arg)\n")
+        fd.write("        else:\n")
+        fd.write("            __outputs__.append(arg)\n")
+        fd.write("    __attrs__ = []\n")
         for attr in self.attr_list:
-            fd.write('    if {} is not None:\n'.format(attr))
-            fd.write('        attr = {}\n')
+            fd.write("    if {} is not None:\n".format(attr))
+            fd.write("        attr = {}\n")
             fd.write('        attr["name"] = "{}"\n'.format(attr))
-            fd.write('        attr["dtype"] = "{}"\n'.format(self.attr_val.get(attr).get('type')))
+            fd.write(
+                '        attr["dtype"] = "{}"\n'.format(
+                    self.attr_val.get(attr).get("type")
+                )
+            )
             fd.write('        attr["value"] = {}\n'.format(attr))
-            fd.write('        __attrs__.append(attr)\n')
-        fd.write('    return __inputs__, __outputs__, __attrs__\n')
+            fd.write("        __attrs__.append(attr)\n")
+        fd.write("    return __inputs__, __outputs__, __attrs__\n")
 
     def _get_kernel_source(self: any, kernel_src_dir, src_file, dir_snake, dir_ex):
         src = os.path.join(kernel_src_dir, "op_kernel", src_file)
         if os.path.exists(src):
             return src
-        src = os.path.join(kernel_src_dir, "..", "ascendc", dir_snake, "op_kernel", src_file)
+        src = os.path.join(
+            kernel_src_dir, "..", "ascendc", dir_snake, "op_kernel", src_file
+        )
         if os.path.exists(src):
             return src
-        src_ex = os.path.join(kernel_src_dir, "..", "ascendc", dir_ex, "op_kernel", src_file)
+        src_ex = os.path.join(
+            kernel_src_dir, "..", "ascendc", dir_ex, "op_kernel", src_file
+        )
         if os.path.exists(src_ex):
             return src_ex
         src_ex = os.path.join(kernel_src_dir, dir_ex, src_file)
         if os.path.exists(src_ex):
             return src_ex
-        src = os.environ.get('BUILD_KERNEL_SRC')
+        src = os.environ.get("BUILD_KERNEL_SRC")
         if src and os.path.exists(src):
             return src
         src = os.path.join(kernel_src_dir, dir_snake, src_file)
@@ -662,25 +707,29 @@ class AdpBuilder(opdesc_parser.OpDesc):
     def _get_impl_mode(self: any):
         op_compile_options = json.loads(self.op_compile_option)
         if "impl_mode" in op_compile_options:
-            if op_compile_options['impl_mode'] == "":
+            if op_compile_options["impl_mode"] == "":
                 self.impl_mode = ""
                 self.impl_mode_op_info = ""
-                del op_compile_options['impl_mode']
+                del op_compile_options["impl_mode"]
                 self.op_compile_option = json.dumps(op_compile_options)
             else:
-                self.impl_mode = ", impl_mode ='" + op_compile_options["impl_mode"] + "'"
-                self.impl_mode_op_info = ", impl_mode ='" + op_compile_options["impl_mode"] + "'"
+                self.impl_mode = (
+                    ", impl_mode ='" + op_compile_options["impl_mode"] + "'"
+                )
+                self.impl_mode_op_info = (
+                    ", impl_mode ='" + op_compile_options["impl_mode"] + "'"
+                )
         else:
             self.impl_mode = ', impl_mode = ""'
             self.impl_mode_op_info = ", impl_mode = impl_mode"
-    
+
     def _get_src(self: any):
         search_dir = Path.cwd().parent
         if "build" in search_dir.parts:
             search_dir = search_dir.parent
         mc2_path = search_dir.joinpath("mc2")
         target_files = []
-        for file_path in mc2_path.rglob(self.op_file + '.cpp'):
+        for file_path in mc2_path.rglob(self.op_file + ".cpp"):
             target_files.append(str(file_path))
         target_file = None
         if len(target_files) == 1:
@@ -694,7 +743,7 @@ class AdpBuilder(opdesc_parser.OpDesc):
                 arch_version = "arch35"
             else:
                 arch_version = "arch22"
-            
+
             # 查找包含 arch_version 的文件路径
             for file_path in target_files:
                 if arch_version in file_path:
@@ -707,12 +756,12 @@ class AdpBuilder(opdesc_parser.OpDesc):
             if "op_kernel" in parts:
                 op_kernel_index = parts.index("op_kernel")
                 # 取 op_kernel 之后的部分
-                new_parts = parts[op_kernel_index + 1:]
+                new_parts = parts[op_kernel_index + 1 :]
                 src = str(Path(*new_parts))
             else:
-                src = self.op_file + '.cpp'
+                src = self.op_file + ".cpp"
         else:
-            src = self.op_file + '.cpp'
+            src = self.op_file + ".cpp"
         return src
 
     def _write_impl(self: any, fd: object, impl_path: str = ""):
@@ -723,60 +772,140 @@ class AdpBuilder(opdesc_parser.OpDesc):
             kern_name = self.kern_name
         else:
             kern_name = self.op_intf
-        
+
         src = self._get_src()
-    
+
         virt_exprs = self._build_virtual()
-        fd.write(IMPL_API.format(self.op_type, pchk, \
-                                 self.op_intf, argsdef, kern_name, self.impl_mode, virt_exprs, argsval,\
-                                 self.custom_compile_options, self.custom_all_compile_options, self.op_intf,\
-                                 optype_snake_ex(self.op_type), optype_snake(self.op_type), src))
+        fd.write(
+            IMPL_API.format(
+                self.op_type,
+                pchk,
+                self.op_intf,
+                argsdef,
+                kern_name,
+                self.impl_mode,
+                virt_exprs,
+                argsval,
+                self.custom_compile_options,
+                self.custom_all_compile_options,
+                self.op_intf,
+                optype_snake_ex(self.op_type),
+                optype_snake(self.op_type),
+                src,
+            )
+        )
         if self.op_replay_flag:
-            fd.write(REPLAY_OP_API.format(self.op_type, kern_name, self.op_file,\
-                self.op_type, self.op_file, self.param_type_dynamic, self.op_compile_option))
+            fd.write(
+                REPLAY_OP_API.format(
+                    self.op_type,
+                    kern_name,
+                    self.op_file,
+                    self.op_type,
+                    self.op_file,
+                    self.param_type_dynamic,
+                    self.op_compile_option,
+                )
+            )
         elif self.is_pypto:
-            value_depend_obj = {key: value for key, value in self.input_value_depend.items()}
+            value_depend_obj = {
+                key: value for key, value in self.input_value_depend.items()
+            }
             extend_opt = {"valueDepend": value_depend_obj}
-            fd.write(PYPTO_COMPILE_OP_API.format(self.op_type,
-                self.op_type, self.op_file, self.impl_mode_op_info, ', '.join(self.input_name), \
-                    ', '.join(self.output_name), self.param_type_dynamic, self._build_mc2_ctx(),\
-                    self.input_type + self.output_type, self.output_init_value, self.output_shape_depend_on_compute,\
-                    self.op_compile_option, repr(extend_opt)))
+            fd.write(
+                PYPTO_COMPILE_OP_API.format(
+                    self.op_type,
+                    self.op_type,
+                    self.op_file,
+                    self.impl_mode_op_info,
+                    ", ".join(self.input_name),
+                    ", ".join(self.output_name),
+                    self.param_type_dynamic,
+                    self._build_mc2_ctx(),
+                    self.input_type + self.output_type,
+                    self.output_init_value,
+                    self.output_shape_depend_on_compute,
+                    self.op_compile_option,
+                    repr(extend_opt),
+                )
+            )
         else:
-            value_depend_obj = {key: value for key, value in self.input_value_depend.items()}
+            value_depend_obj = {
+                key: value for key, value in self.input_value_depend.items()
+            }
             extend_opt = {"valueDepend": value_depend_obj}
-            if os.environ.get('BUILD_BUILTIN_OPP') == '1':
-                relative_kernel_src_path = os.path.realpath(self._get_kernel_source(impl_path, src,\
-                    optype_snake(self.op_type), optype_snake_ex(self.op_type)))
+            if os.environ.get("BUILD_BUILTIN_OPP") == "1":
+                relative_kernel_src_path = os.path.realpath(
+                    self._get_kernel_source(
+                        impl_path,
+                        src,
+                        optype_snake(self.op_type),
+                        optype_snake_ex(self.op_type),
+                    )
+                )
                 # to match src path in .dat file system, turn relative path into absolute path
-                abs_rel_kernel_src_path = os.path.join("/", os.path.relpath(relative_kernel_src_path, impl_path))
+                abs_rel_kernel_src_path = os.path.join(
+                    "/", os.path.relpath(relative_kernel_src_path, impl_path)
+                )
 
                 # compiling hidden src file requires src path before packaging .dat file,
                 # hard code such src path to <op_type>.py
-                fd.write(COMPILE_OP_API_BUILT_IN.format(self.op_type, self.op_type,\
-                    self.impl_mode_op_info, ', '.join(self.input_name), \
-                    ', '.join(self.output_name), self.param_type_dynamic,\
-                    self._build_mc2_ctx(), self.input_type + self.output_type, self.output_init_value,\
-                    self.output_shape_depend_on_compute, self.op_compile_option, abs_rel_kernel_src_path, repr(extend_opt)))
+                fd.write(
+                    COMPILE_OP_API_BUILT_IN.format(
+                        self.op_type,
+                        self.op_type,
+                        self.impl_mode_op_info,
+                        ", ".join(self.input_name),
+                        ", ".join(self.output_name),
+                        self.param_type_dynamic,
+                        self._build_mc2_ctx(),
+                        self.input_type + self.output_type,
+                        self.output_init_value,
+                        self.output_shape_depend_on_compute,
+                        self.op_compile_option,
+                        abs_rel_kernel_src_path,
+                        repr(extend_opt),
+                    )
+                )
             else:
-                fd.write(COMPILE_OP_API.format(self.op_type, 
-                self.op_type, self.impl_mode_op_info, ', '.join(self.input_name), \
-                    ', '.join(self.output_name), self.param_type_dynamic, self._build_mc2_ctx(),\
-                    self.input_type + self.output_type, self.output_init_value, self.output_shape_depend_on_compute,\
-                    self.op_compile_option, repr(extend_opt)))
+                fd.write(
+                    COMPILE_OP_API.format(
+                        self.op_type,
+                        self.op_type,
+                        self.impl_mode_op_info,
+                        ", ".join(self.input_name),
+                        ", ".join(self.output_name),
+                        self.param_type_dynamic,
+                        self._build_mc2_ctx(),
+                        self.input_type + self.output_type,
+                        self.output_init_value,
+                        self.output_shape_depend_on_compute,
+                        self.op_compile_option,
+                        repr(extend_opt),
+                    )
+                )
 
     def _write_cap(self: any, cap_name: str, fd: object):
         argsdef = self._build_paralist()
         argsval = self._build_paralist(False)
-        if cap_name == 'check_supported':
-            fd.write(SUP_API.format(cap_name, argsdef, self.impl_mode, argsval, cap_name, self.op_type))
+        if cap_name == "check_supported":
+            fd.write(
+                SUP_API.format(
+                    cap_name, argsdef, self.impl_mode, argsval, cap_name, self.op_type
+                )
+            )
         else:
-            fd.write(CAP_API.format(cap_name, argsdef, self.impl_mode, argsval, cap_name, self.op_type))
+            fd.write(
+                CAP_API.format(
+                    cap_name, argsdef, self.impl_mode, argsval, cap_name, self.op_type
+                )
+            )
 
     def _write_glz(self: any, fd: object):
         argsdef = self._build_paralist()
         argsval = self._build_paralist(False)
-        fd.write(GLZ_API.format(self.op_type, self.op_intf, argsdef, argsval, self.op_type))
+        fd.write(
+            GLZ_API.format(self.op_type, self.op_intf, argsdef, argsval, self.op_type)
+        )
 
 
 @dataclass
@@ -786,23 +915,34 @@ class CompileOptions:
     pypto_ops: Set[str] = None
 
 
-def write_scripts(cfgfile: str, cfgs: dict, dirs: dict, ops: list = None,
-                  compile_options: CompileOptions = None):
-    batch_lists = cfgs.get(const_var.REPLAY_BATCH).split(';')
-    iterator_lists = cfgs.get(const_var.REPLAY_ITERATE).split(';')
+def write_scripts(
+    cfgfile: str,
+    cfgs: dict,
+    dirs: dict,
+    ops: list = None,
+    compile_options: CompileOptions = None,
+):
+    batch_lists = cfgs.get(const_var.REPLAY_BATCH).split(";")
+    iterator_lists = cfgs.get(const_var.REPLAY_ITERATE).split(";")
     pypto_ops = compile_options.pypto_ops if compile_options else None
     pypto_ops = pypto_ops or set()
     file_map = {}
-    
+
     # extract SOC from ini filename: aic-ascend910b-ops-info.ini -> ascend910b
     ini_soc = None
     filename = os.path.basename(cfgfile)
-    match = re.match(r'aic-([\w]+)-ops-info\.ini', filename)
+    match = re.match(r"aic-([\w]+)-ops-info\.ini", filename)
     if match:
         ini_soc = match.group(1)
-    
-    op_descs = opdesc_parser.get_op_desc(cfgfile, batch_lists, iterator_lists, AdpBuilder,\
-                                         ops, dirs.get(const_var.AUTO_GEN_DIR))
+
+    op_descs = opdesc_parser.get_op_desc(
+        cfgfile,
+        batch_lists,
+        iterator_lists,
+        AdpBuilder,
+        ops,
+        dirs.get(const_var.AUTO_GEN_DIR),
+    )
     _op_compile_option = compile_options.op_compile_option if compile_options else None
     _compute_unit = compile_options.compute_unit if compile_options else None
     for op_desc in op_descs:
@@ -810,42 +950,49 @@ def write_scripts(cfgfile: str, cfgs: dict, dirs: dict, ops: list = None,
         # variant (calls pypto_compile_op). Non-pypto ops keep the template compile_op wrapper.
         op_desc.is_pypto = op_desc.op_file in pypto_ops
         op_desc.write_adapt(
-            dirs.get(const_var.CFG_IMPL_DIR), dirs.get(const_var.CFG_OUT_DIR),
-            _op_compile_option, ini_soc, _compute_unit)
+            dirs.get(const_var.CFG_IMPL_DIR),
+            dirs.get(const_var.CFG_OUT_DIR),
+            _op_compile_option,
+            ini_soc,
+            _compute_unit,
+        )
         file_map[op_desc.op_type] = op_desc.op_file
     return file_map
 
 
 class OpFileNotExistsError(Exception):
     """File does not exist error."""
+
     def __str__(self) -> str:
-        return f"File aic-*-ops-info.ini does not exist in directory {super().__str__()}"
+        return (
+            f"File aic-*-ops-info.ini does not exist in directory {super().__str__()}"
+        )
 
 
 def get_ops_info_files(opsinfo_dir: List[str]) -> List[str]:
     """Get all ops info files."""
     ops_info_files = []
     for _dir in opsinfo_dir:
-        ops_info_files.extend(glob.glob(f'{_dir}/aic-*-ops-info.ini'))
+        ops_info_files.extend(glob.glob(f"{_dir}/aic-*-ops-info.ini"))
     return sorted(ops_info_files)
 
 
 def parse_args(argv):
     """Command line parameter parsing"""
     parser = argparse.ArgumentParser()
-    parser.add_argument('argv', nargs='+')
-    parser.add_argument('--opsinfo-dir', nargs='*', default=None)
-    parser.add_argument('--compute-unit', nargs='*', default=['ascend910b'])
-    parser.add_argument('--enable-experimental', default="OFF")
-    parser.add_argument('--pypto-ops', nargs='?', const='', default='')
+    parser.add_argument("argv", nargs="+")
+    parser.add_argument("--opsinfo-dir", nargs="*", default=None)
+    parser.add_argument("--compute-unit", nargs="*", default=["ascend910b"])
+    parser.add_argument("--enable-experimental", default="OFF")
+    parser.add_argument("--pypto-ops", nargs="?", const="", default="")
     return parser.parse_args(argv)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     args = parse_args(sys.argv)
 
     if len(args.argv) <= 6:
-        raise RuntimeError('arguments must greater equal than 6')
+        raise RuntimeError("arguments must greater equal than 6")
 
     rep_cfg = {}
     rep_cfg[const_var.REPLAY_BATCH] = args.argv[2]
@@ -865,7 +1012,11 @@ if __name__ == '__main__':
         ops_infos.append(args.argv[1])
     COMPUTE_UNIT = args.compute_unit
     ENABLE_EXPERIMENTAL = args.enable_experimental
-    pypto_ops = {o for o in args.pypto_ops.replace(';', ',').split(',') if o}
+    pypto_ops = {o for o in args.pypto_ops.replace(";", ",").split(",") if o}
     for ops_info in ops_infos:
-        compile_opts = CompileOptions(compute_unit=args.compute_unit, pypto_ops=pypto_ops)
-        write_scripts(cfgfile=ops_info, cfgs=rep_cfg, dirs=cfg_dir, compile_options=compile_opts)
+        compile_opts = CompileOptions(
+            compute_unit=args.compute_unit, pypto_ops=pypto_ops
+        )
+        write_scripts(
+            cfgfile=ops_info, cfgs=rep_cfg, dirs=cfg_dir, compile_options=compile_opts
+        )

@@ -9,9 +9,9 @@
  */
 
 /*!
-* \file minimum.h
-* \brief
-*/
+ * \file minimum.h
+ * \brief
+ */
 
 #ifndef OP_API_INC_LEVEL0_OP_MINIMUM_OP_H_
 #define OP_API_INC_LEVEL0_OP_MINIMUM_OP_H_
@@ -19,7 +19,7 @@
 #include "opdev/op_executor.h"
 
 namespace l0op {
-const aclTensor* Minimum(const aclTensor* self, const aclTensor* other, aclOpExecutor* executor);
+const aclTensor *Minimum(const aclTensor *self, const aclTensor *other, aclOpExecutor *executor);
 }
 
 #endif // OP_API_INC_LEVEL0_OP_MINIMUM_OP_H_

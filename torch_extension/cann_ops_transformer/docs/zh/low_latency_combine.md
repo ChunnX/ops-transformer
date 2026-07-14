@@ -808,4 +808,3 @@ MoeDistributeBuffer.low_latency_combine(x, topk_idx, topk_weights, assist_info_f
 
         print("run npu success.")
     ```
-

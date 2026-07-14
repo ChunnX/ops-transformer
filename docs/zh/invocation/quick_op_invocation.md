@@ -355,18 +355,26 @@ int main()
         ${ASCEND_PATH}/include/aclnnop
     )
 
+<<<<<<< HEAD
     # 链接所需的动态库（自定义：替换为实际算子可执行文件）
+=======
+	# 链接所需的动态库（自定义：替换为实际算子可执行文件）
     target_link_libraries(${test_aclnn_op_name} PRIVATE
-        ${ASCEND_PATH}/lib64/libascendcl.so
-        ${ASCEND_PATH}/lib64/libnnopbase.so
-        ${ASCEND_PATH}/lib64/libopapi_transformer.so            # 链接内置算子库文件
     )
 
+<<<<<<< HEAD
     # 安装目标文件到bin目录（自定义：替换为实际算子可执行文件）
     install(TARGETS ${test_aclnn_op_name} DESTINATION ${CMAKE_RUNTIME_OUTPUT_DIRECTORY})
     ```
 
 1. 创建run.sh文件。
+=======
+	# 安装目标文件到bin目录（自定义：替换为实际算子可执行文件）
+    install(TARGETS ${test_aclnn_op_name} DESTINATION ${CMAKE_RUNTIME_OUTPUT_DIRECTORY})
+    ```
+
+4. 创建run.sh文件。
+>>>>>>> c029e9c61 (pre-commit 公共)
 
     在`${test_aclnn_op_name}.cpp`同级目录下创建run.sh文件，以`${test_aclnn_op_name}`算子为例，示例如下，请根据实际情况自行修改。
 
@@ -549,6 +557,10 @@ int main()
 
     默认在当前执行路径`/build/bin`下生成可执行文件${test_geir_op_name}，运行结果如下：
 
+<<<<<<< HEAD
     ```bash
+=======
+    ```
+>>>>>>> c029e9c61 (pre-commit 公共)
     INFO - [XIR]: Finalize ir graph session success
     ```

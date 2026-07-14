@@ -23,15 +23,18 @@ OpInfoWithSocversion::OpInfoWithSocversion() : OpInfoWithSocversion(ControlInfo(
 {
 }
 
-OpInfoWithSocversion::OpInfoWithSocversion(const ControlInfo &ctr) : OpInfoWithSocversion(ctr, ExpectInfoWithSocversion())
+OpInfoWithSocversion::OpInfoWithSocversion(const ControlInfo &ctr)
+    : OpInfoWithSocversion(ctr, ExpectInfoWithSocversion())
 {
 }
 
-OpInfoWithSocversion::OpInfoWithSocversion(const ControlInfo &ctr, const ExpectInfoWithSocversion &exp) : OpInfoWithSocversion("Undefined", ctr, exp)
+OpInfoWithSocversion::OpInfoWithSocversion(const ControlInfo &ctr, const ExpectInfoWithSocversion &exp)
+    : OpInfoWithSocversion("Undefined", ctr, exp)
 {
 }
 
-OpInfoWithSocversion::OpInfoWithSocversion(const char *name, const ControlInfo &ctr, const ExpectInfoWithSocversion &exp)
+OpInfoWithSocversion::OpInfoWithSocversion(const char *name, const ControlInfo &ctr,
+                                           const ExpectInfoWithSocversion &exp)
     : mName(name), mCtr(ctr), mExp(exp), mCtx(nullptr)
 {
 }

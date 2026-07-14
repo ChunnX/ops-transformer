@@ -117,8 +117,8 @@ void RunQkvKScaleAclnn(const at::Tensor &qkv, const at::Tensor &q_gamma, const a
     float epsilon_value = static_cast<float>(epsilon);
 
     ACLNN_CMD(aclnnQkvRmsNormRopeCacheWithKScale, qkv, q_gamma, k_gamma, cos_sin, slot_mapping, k_cache, v_cache,
-              k_scale_cache, query_start_loc, seq_lens, rotation, v_scale, head_nums, layout_qkv_ptr,
-              layout_q_out_ptr, epsilon_value, q_out, q_scale);
+              k_scale_cache, query_start_loc, seq_lens, rotation, v_scale, head_nums, layout_qkv_ptr, layout_q_out_ptr,
+              epsilon_value, q_out, q_scale);
 }
 } // namespace
 
@@ -132,15 +132,15 @@ std::tuple<at::Tensor, at::Tensor> qkv_rms_norm_rope_cache_with_k_scale_(
 {
     const std::string layout_qkv_str = ResolveLayout(layout_qkv, DEFAULT_QKV_LAYOUT);
     const std::string layout_q_out_str = ResolveLayout(layout_q_out, DEFAULT_Q_OUT_LAYOUT);
-    const QkvKScaleParams params = ValidateInputs(qkv, query_start_loc, seq_lens, head_nums, layout_qkv_str,
-                                                  layout_q_out_str, rotation, v_scale);
+    const QkvKScaleParams params =
+        ValidateInputs(qkv, query_start_loc, seq_lens, head_nums, layout_qkv_str, layout_q_out_str, rotation, v_scale);
     auto outputs = MakeOutputs(qkv, params);
     at::Tensor q_out = std::get<0>(outputs);
     at::Tensor q_scale = std::get<1>(outputs);
 
     RunQkvKScaleAclnn(qkv, q_gamma, k_gamma, cos_sin, slot_mapping, k_cache, v_cache, k_scale_cache, query_start_loc,
-                      seq_lens, head_nums, layout_qkv_str, layout_q_out_str, rotation.value(), v_scale.value(),
-                      epsilon, q_out, q_scale);
+                      seq_lens, head_nums, layout_qkv_str, layout_q_out_str, rotation.value(), v_scale.value(), epsilon,
+                      q_out, q_scale);
     return {q_out, q_scale};
 }
 
@@ -154,8 +154,8 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor> qkv_rms_n
 {
     const std::string layout_qkv_str = ResolveLayout(layout_qkv, DEFAULT_QKV_LAYOUT);
     const std::string layout_q_out_str = ResolveLayout(layout_q_out, DEFAULT_Q_OUT_LAYOUT);
-    const QkvKScaleParams params = ValidateInputs(qkv, query_start_loc, seq_lens, head_nums, layout_qkv_str,
-                                                  layout_q_out_str, rotation, v_scale);
+    const QkvKScaleParams params =
+        ValidateInputs(qkv, query_start_loc, seq_lens, head_nums, layout_qkv_str, layout_q_out_str, rotation, v_scale);
 
     at::Tensor k_cache_clone = k_cache.clone();
     at::Tensor v_cache_clone = v_cache.clone();

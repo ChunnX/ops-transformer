@@ -34,10 +34,10 @@ using namespace mock_hccl;
 // Test Configuration
 // ============================================================
 struct TestConfig {
-    int64_t M = 256;        // per-rank M dimension
-    int64_t K = 512;        // K dimension
-    int64_t N = 256;        // N dimension
-    uint32_t rankSize = 2;  // simulated rank count (context has rankNum=1 but tiling uses this)
+    int64_t M = 256;       // per-rank M dimension
+    int64_t K = 512;       // K dimension
+    int64_t N = 256;       // N dimension
+    uint32_t rankSize = 2; // simulated rank count (context has rankNum=1 but tiling uses this)
     bool isTransA = false;
     bool isTransB = false;
     int device = 0;
@@ -47,23 +47,34 @@ struct TestConfig {
 // Tensor utilities
 // ============================================================
 struct DevTensor {
-    void* data{nullptr};
+    void *data{nullptr};
     int64_t dims[2]{0, 0};
-    size_t elemSize{2};  // FP16
+    size_t elemSize{2}; // FP16
 
-    size_t ByteSize() const { return dims[0] * dims[1] * elemSize; }
+    size_t ByteSize() const
+    {
+        return dims[0] * dims[1] * elemSize;
+    }
 
-    bool Alloc(int64_t d0, int64_t d1, size_t eSize = 2) {
-        dims[0] = d0; dims[1] = d1; elemSize = eSize;
+    bool Alloc(int64_t d0, int64_t d1, size_t eSize = 2)
+    {
+        dims[0] = d0;
+        dims[1] = d1;
+        elemSize = eSize;
         data = DevMalloc(ByteSize());
         return data != nullptr;
     }
 
-    void Free() { DevFree(data); data = nullptr; }
+    void Free()
+    {
+        DevFree(data);
+        data = nullptr;
+    }
 };
 
 // Fill device tensor with pattern (host-side fill then copy)
-static bool FillPattern(DevTensor& t, uint8_t pattern) {
+static bool FillPattern(DevTensor &t, uint8_t pattern)
+{
     size_t sz = t.ByteSize();
     std::vector<uint8_t> host(sz, pattern);
     return aclrtMemcpy(t.data, sz, host.data(), sz, ACL_MEMCPY_HOST_TO_DEVICE) == 0;
@@ -72,7 +83,8 @@ static bool FillPattern(DevTensor& t, uint8_t pattern) {
 // ============================================================
 // Test: MockContextBuilder verification
 // ============================================================
-static bool TestContextBuilder() {
+static bool TestContextBuilder()
+{
     printf("\n=== Test 1: MockContextBuilder ===\n");
 
     MockContextBuilder ctx;
@@ -83,8 +95,8 @@ static bool TestContextBuilder() {
 
     // Readback verification
     MockHcclContext readBack;
-    if (aclrtMemcpy(&readBack, sizeof(readBack), ctx.GetContextAddr(), sizeof(readBack),
-                    ACL_MEMCPY_DEVICE_TO_HOST) != 0) {
+    if (aclrtMemcpy(&readBack, sizeof(readBack), ctx.GetContextAddr(), sizeof(readBack), ACL_MEMCPY_DEVICE_TO_HOST) !=
+        0) {
         printf("[FAIL] Context readback\n");
         return false;
     }
@@ -92,8 +104,7 @@ static bool TestContextBuilder() {
     bool ok = (readBack.rankId == 0) && (readBack.rankNum == 1) &&
               (readBack.workSpace == reinterpret_cast<uint64_t>(ctx.GetWorkspaceAligned()));
 
-    printf("  rankId=%u rankNum=%u workSpace=%p\n",
-           readBack.rankId, readBack.rankNum, (void*)readBack.workSpace);
+    printf("  rankId=%u rankNum=%u workSpace=%p\n", readBack.rankId, readBack.rankNum, (void *)readBack.workSpace);
     printf("[%s] Context builder\n", ok ? "PASS" : "FAIL");
     return ok;
 }
@@ -101,13 +112,15 @@ static bool TestContextBuilder() {
 // ============================================================
 // Test: MockHcclServer basic protocol
 // ============================================================
-static bool TestServerProtocol() {
+static bool TestServerProtocol()
+{
     printf("\n=== Test 2: MockHcclServer Protocol ===\n");
 
     MockContextBuilder ctx;
-    if (!ctx.Build(1, 0)) return false;
+    if (!ctx.Build(1, 0))
+        return false;
 
-    void* wsAligned = ctx.GetWorkspaceAligned();
+    void *wsAligned = ctx.GetWorkspaceAligned();
 
     // Manually write a commit message to slot 0
     // Simulate what the kernel's AllGather() would do:
@@ -120,11 +133,10 @@ static bool TestServerProtocol() {
     msg.sendBuffer = 0;
     msg.recvBuffer = 0;
     msg.dataCnt = 100;
-    msg.hcclDataType = 1;  // FP16
+    msg.hcclDataType = 1; // FP16
 
-    void* msgAddr = reinterpret_cast<uint8_t*>(wsAligned) + SEND_MSGS_OFFSET;
-    if (aclrtMemcpy(msgAddr, sizeof(msg), &msg, sizeof(msg),
-                    ACL_MEMCPY_HOST_TO_DEVICE) != 0) {
+    void *msgAddr = reinterpret_cast<uint8_t *>(wsAligned) + SEND_MSGS_OFFSET;
+    if (aclrtMemcpy(msgAddr, sizeof(msg), &msg, sizeof(msg), ACL_MEMCPY_HOST_TO_DEVICE) != 0) {
         printf("[FAIL] Write sendMsg\n");
         return false;
     }
@@ -135,9 +147,8 @@ static bool TestServerProtocol() {
     commit.valid = COMMIT_VALID_MASK;
     commit.cnt = 1;
 
-    void* commitAddr = reinterpret_cast<uint8_t*>(wsAligned) + COMMIT_TURNCNT_OFFSET;
-    if (aclrtMemcpy(commitAddr, sizeof(commit), &commit, sizeof(commit),
-                    ACL_MEMCPY_HOST_TO_DEVICE) != 0) {
+    void *commitAddr = reinterpret_cast<uint8_t *>(wsAligned) + COMMIT_TURNCNT_OFFSET;
+    if (aclrtMemcpy(commitAddr, sizeof(commit), &commit, sizeof(commit), ACL_MEMCPY_HOST_TO_DEVICE) != 0) {
         printf("[FAIL] Write commitTurnCnt\n");
         return false;
     }
@@ -145,10 +156,8 @@ static bool TestServerProtocol() {
     // 3. Verify commit data is on device (before starting server)
     {
         TurnCnt readCommit;
-        aclrtMemcpy(&readCommit, sizeof(readCommit), commitAddr, sizeof(readCommit),
-                     ACL_MEMCPY_DEVICE_TO_HOST);
-        printf("  [debug] commitTurnCnt[0] on device: valid=%lu cnt=%lu\n",
-               readCommit.valid, readCommit.cnt);
+        aclrtMemcpy(&readCommit, sizeof(readCommit), commitAddr, sizeof(readCommit), ACL_MEMCPY_DEVICE_TO_HOST);
+        printf("  [debug] commitTurnCnt[0] on device: valid=%lu cnt=%lu\n", readCommit.valid, readCommit.cnt);
         printf("  [debug] expected valid=%u\n", COMMIT_VALID_MASK);
     }
 
@@ -157,15 +166,14 @@ static bool TestServerProtocol() {
     server.Start();
 
     // Wait for processing
-    usleep(500000);  // 500ms
+    usleep(500000); // 500ms
 
     server.Stop();
 
     // 4. Check finishedTurnCnt[0]
     TurnCnt finish;
-    void* finishAddr = reinterpret_cast<uint8_t*>(wsAligned) + FINISH_TURNCNT_OFFSET;
-    if (aclrtMemcpy(&finish, sizeof(finish), finishAddr, sizeof(finish),
-                    ACL_MEMCPY_DEVICE_TO_HOST) != 0) {
+    void *finishAddr = reinterpret_cast<uint8_t *>(wsAligned) + FINISH_TURNCNT_OFFSET;
+    if (aclrtMemcpy(&finish, sizeof(finish), finishAddr, sizeof(finish), ACL_MEMCPY_DEVICE_TO_HOST) != 0) {
         printf("[FAIL] Read finishedTurnCnt\n");
         return false;
     }
@@ -179,24 +187,27 @@ static bool TestServerProtocol() {
 // ============================================================
 // Test: MockHcclServer data copy (AllGather simulation)
 // ============================================================
-static bool TestServerDataCopy() {
+static bool TestServerDataCopy()
+{
     printf("\n=== Test 3: MockHcclServer Data Copy ===\n");
 
     MockContextBuilder ctx;
-    if (!ctx.Build(1, 0)) return false;
+    if (!ctx.Build(1, 0))
+        return false;
 
-    void* wsAligned = ctx.GetWorkspaceAligned();
+    void *wsAligned = ctx.GetWorkspaceAligned();
 
     // Allocate source and destination buffers
     const size_t elemCount = 1024;
-    const size_t elemSize = 2;  // FP16
+    const size_t elemSize = 2; // FP16
     const size_t byteCount = elemCount * elemSize;
 
-    void* sendBuf = DevMalloc(byteCount);
-    void* recvBuf = DevMalloc(byteCount);
+    void *sendBuf = DevMalloc(byteCount);
+    void *recvBuf = DevMalloc(byteCount);
     if (!sendBuf || !recvBuf) {
         printf("[FAIL] Buffer alloc\n");
-        DevFree(sendBuf); DevFree(recvBuf);
+        DevFree(sendBuf);
+        DevFree(recvBuf);
         return false;
     }
 
@@ -211,16 +222,16 @@ static bool TestServerDataCopy() {
     msg.sendBuffer = reinterpret_cast<uint64_t>(sendBuf);
     msg.recvBuffer = reinterpret_cast<uint64_t>(recvBuf);
     msg.dataCnt = elemCount;
-    msg.hcclDataType = 1;  // FP16
+    msg.hcclDataType = 1; // FP16
 
-    void* msgAddr = reinterpret_cast<uint8_t*>(wsAligned) + SEND_MSGS_OFFSET;
+    void *msgAddr = reinterpret_cast<uint8_t *>(wsAligned) + SEND_MSGS_OFFSET;
     aclrtMemcpy(msgAddr, sizeof(msg), &msg, sizeof(msg), ACL_MEMCPY_HOST_TO_DEVICE);
 
     TurnCnt commit;
     memset(&commit, 0, sizeof(commit));
     commit.valid = COMMIT_VALID_MASK;
     commit.cnt = 1;
-    void* commitAddr = reinterpret_cast<uint8_t*>(wsAligned) + COMMIT_TURNCNT_OFFSET;
+    void *commitAddr = reinterpret_cast<uint8_t *>(wsAligned) + COMMIT_TURNCNT_OFFSET;
     aclrtMemcpy(commitAddr, sizeof(commit), &commit, sizeof(commit), ACL_MEMCPY_HOST_TO_DEVICE);
 
     // Start server
@@ -234,8 +245,7 @@ static bool TestServerDataCopy() {
     aclrtMemcpy(result.data(), byteCount, recvBuf, byteCount, ACL_MEMCPY_DEVICE_TO_HOST);
 
     bool ok = (memcmp(result.data(), pattern.data(), byteCount) == 0);
-    printf("  recvBuf[0..3] = 0x%02x 0x%02x 0x%02x 0x%02x (expect 0xAB)\n",
-           result[0], result[1], result[2], result[3]);
+    printf("  recvBuf[0..3] = 0x%02x 0x%02x 0x%02x 0x%02x (expect 0xAB)\n", result[0], result[1], result[2], result[3]);
     printf("[%s] Server data copy\n", ok ? "PASS" : "FAIL");
 
     DevFree(sendBuf);
@@ -246,13 +256,15 @@ static bool TestServerDataCopy() {
 // ============================================================
 // Test: Finalize protocol
 // ============================================================
-static bool TestFinalizeProtocol() {
+static bool TestFinalizeProtocol()
+{
     printf("\n=== Test 4: Finalize Protocol ===\n");
 
     MockContextBuilder ctx;
-    if (!ctx.Build(1, 0)) return false;
+    if (!ctx.Build(1, 0))
+        return false;
 
-    void* wsAligned = ctx.GetWorkspaceAligned();
+    void *wsAligned = ctx.GetWorkspaceAligned();
 
     // Start server
     MockHcclServer server(wsAligned);
@@ -266,17 +278,17 @@ static bool TestFinalizeProtocol() {
         msg.dataCnt = 64;
         msg.hcclDataType = 1;
 
-        void* msgAddr = reinterpret_cast<uint8_t*>(wsAligned) + SEND_MSGS_OFFSET;
+        void *msgAddr = reinterpret_cast<uint8_t *>(wsAligned) + SEND_MSGS_OFFSET;
         aclrtMemcpy(msgAddr, sizeof(msg), &msg, sizeof(msg), ACL_MEMCPY_HOST_TO_DEVICE);
 
         TurnCnt commit;
         memset(&commit, 0, sizeof(commit));
         commit.valid = COMMIT_VALID_MASK;
         commit.cnt = 1;
-        void* commitAddr = reinterpret_cast<uint8_t*>(wsAligned) + COMMIT_TURNCNT_OFFSET;
+        void *commitAddr = reinterpret_cast<uint8_t *>(wsAligned) + COMMIT_TURNCNT_OFFSET;
         aclrtMemcpy(commitAddr, sizeof(commit), &commit, sizeof(commit), ACL_MEMCPY_HOST_TO_DEVICE);
 
-        usleep(200000);  // let server process the regular message
+        usleep(200000); // let server process the regular message
     }
 
     printf("  Regular message processed: %u\n", server.GetMsgCount());
@@ -288,7 +300,7 @@ static bool TestFinalizeProtocol() {
         memset(&commit, 0, sizeof(commit));
         commit.valid = COMMIT_VALID_MASK;
         commit.cnt = 2;
-        void* commitAddr = reinterpret_cast<uint8_t*>(wsAligned) + COMMIT_TURNCNT_OFFSET;
+        void *commitAddr = reinterpret_cast<uint8_t *>(wsAligned) + COMMIT_TURNCNT_OFFSET;
         aclrtMemcpy(commitAddr, sizeof(commit), &commit, sizeof(commit), ACL_MEMCPY_HOST_TO_DEVICE);
     }
 
@@ -300,7 +312,7 @@ static bool TestFinalizeProtocol() {
 
     // Verify finishedTurnCnt[0].cnt == FINALIZE_FINISH_CNT
     TurnCnt finish;
-    void* finishAddr = reinterpret_cast<uint8_t*>(wsAligned) + FINISH_TURNCNT_OFFSET;
+    void *finishAddr = reinterpret_cast<uint8_t *>(wsAligned) + FINISH_TURNCNT_OFFSET;
     aclrtMemcpy(&finish, sizeof(finish), finishAddr, sizeof(finish), ACL_MEMCPY_DEVICE_TO_HOST);
 
     bool ok = finalizeOk && (finish.cnt == FINALIZE_FINISH_CNT);
@@ -314,17 +326,25 @@ static bool TestFinalizeProtocol() {
 // ============================================================
 // Main
 // ============================================================
-int main(int argc, char* argv[])
+int main(int argc, char *argv[])
 {
     printf("========================================\n");
     printf("  Mock HCCL Framework Test\n");
     printf("========================================\n");
 
     int device = 0;
-    if (argc > 1) device = atoi(argv[1]);
+    if (argc > 1)
+        device = atoi(argv[1]);
 
-    if (aclInit(nullptr) != 0) { printf("[FAIL] aclInit\n"); return 1; }
-    if (aclrtSetDevice(device) != 0) { printf("[FAIL] aclrtSetDevice(%d)\n", device); aclFinalize(); return 1; }
+    if (aclInit(nullptr) != 0) {
+        printf("[FAIL] aclInit\n");
+        return 1;
+    }
+    if (aclrtSetDevice(device) != 0) {
+        printf("[FAIL] aclrtSetDevice(%d)\n", device);
+        aclFinalize();
+        return 1;
+    }
 
     aclrtStream stream = nullptr;
     aclrtCreateStream(&stream);
@@ -332,16 +352,29 @@ int main(int argc, char* argv[])
 
     int passed = 0, failed = 0;
 
-    if (TestContextBuilder())    passed++; else failed++;
-    if (TestServerProtocol())    passed++; else failed++;
-    if (TestServerDataCopy())    passed++; else failed++;
-    if (TestFinalizeProtocol())  passed++; else failed++;
+    if (TestContextBuilder())
+        passed++;
+    else
+        failed++;
+    if (TestServerProtocol())
+        passed++;
+    else
+        failed++;
+    if (TestServerDataCopy())
+        passed++;
+    else
+        failed++;
+    if (TestFinalizeProtocol())
+        passed++;
+    else
+        failed++;
 
     printf("\n========================================\n");
     printf("  Results: %d passed, %d failed\n", passed, failed);
     printf("========================================\n");
 
-    if (stream) aclrtDestroyStream(stream);
+    if (stream)
+        aclrtDestroyStream(stream);
     aclrtResetDevice(device);
     aclFinalize();
     return failed > 0 ? 1 : 0;

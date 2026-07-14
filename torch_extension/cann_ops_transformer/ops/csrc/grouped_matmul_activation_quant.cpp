@@ -31,8 +31,8 @@ constexpr int64_t MX_GROUP_SIZE = 64L;
 
 bool IsKnownGeDtype(int64_t dtype)
 {
-    return dtype == GE_DTYPE_FLOAT || dtype == GE_DTYPE_FLOAT8_E5M2 ||
-        dtype == GE_DTYPE_FLOAT8_E4M3FN || dtype == GE_DTYPE_FLOAT8_E8M0;
+    return dtype == GE_DTYPE_FLOAT || dtype == GE_DTYPE_FLOAT8_E5M2 || dtype == GE_DTYPE_FLOAT8_E4M3FN ||
+           dtype == GE_DTYPE_FLOAT8_E8M0;
 }
 
 int64_t NormalizeGeDtype(int64_t dtype)
@@ -121,36 +121,25 @@ void CheckTensorListIndexable(const std::vector<at::Tensor> &tensorList, const c
 } // namespace
 
 std::tuple<at::Tensor, at::Tensor> grouped_matmul_activation_quant(
-    const at::Tensor &x,
-    const at::Tensor &groupList,
-    const std::vector<at::Tensor> &weight,
-    const std::vector<at::Tensor> &weightScale,
-    std::string activationType,
-    const c10::optional<std::vector<at::Tensor>> &biasOptional,
-    const c10::optional<at::Tensor> &xScaleOptional,
-    int64_t groupListType,
-    const c10::optional<std::vector<int64_t>> &tuningConfig,
-    c10::optional<c10::string_view> quantModeOptional,
-    c10::optional<int64_t> yDtype,
-    std::string roundMode,
-    int64_t scaleAlg,
-    float dstTypeMax,
-    c10::optional<int64_t> xDtype,
-    c10::optional<int64_t> weightDtype,
-    c10::optional<int64_t> weightScaleDtype,
-    c10::optional<int64_t> xScaleDtype)
+    const at::Tensor &x, const at::Tensor &groupList, const std::vector<at::Tensor> &weight,
+    const std::vector<at::Tensor> &weightScale, std::string activationType,
+    const c10::optional<std::vector<at::Tensor>> &biasOptional, const c10::optional<at::Tensor> &xScaleOptional,
+    int64_t groupListType, const c10::optional<std::vector<int64_t>> &tuningConfig,
+    c10::optional<c10::string_view> quantModeOptional, c10::optional<int64_t> yDtype, std::string roundMode,
+    int64_t scaleAlg, float dstTypeMax, c10::optional<int64_t> xDtype, c10::optional<int64_t> weightDtype,
+    c10::optional<int64_t> weightScaleDtype, c10::optional<int64_t> xScaleDtype)
 {
     CheckTensorListIndexable(weight, "weight");
     CheckTensorListIndexable(weightScale, "weight_scale");
     TORCH_CHECK(xScaleOptional.has_value() && xScaleOptional.value().defined(),
-        "x_scale must be provided for torch wrapper tensor conversion.");
+                "x_scale must be provided for torch wrapper tensor conversion.");
 
     const at::Tensor &weightTensor = weight[0];
     const at::Tensor &weightScaleTensor = weightScale[0];
     const at::Tensor &xScale = xScaleOptional.value();
     TORCH_CHECK(x.dim() > DIM_0, "x must have at least one dimension for torch output allocation.");
     TORCH_CHECK(weightScaleTensor.dim() > DIM_2,
-        "weight_scale must have at least 3 dimensions for torch output allocation.");
+                "weight_scale must have at least 3 dimensions for torch output allocation.");
 
     int64_t m = x.size(DIM_0);
     int64_t n = InferNzLogicalN(weightScaleTensor);
@@ -169,8 +158,7 @@ std::tuple<at::Tensor, at::Tensor> grouped_matmul_activation_quant(
         auto localDevice = c10::Device(x.device());
         const c10::OptionalDeviceGuard deviceGuard(localDevice);
         y = at::empty({m, n}, x.options().dtype(GetYScalarType(yDtypeValue)));
-        yScale = at::empty({m, CeilDiv(n, MX_GROUP_SIZE), 2},
-            x.options().dtype(at::ScalarType::Float8_e8m0fnu));
+        yScale = at::empty({m, CeilDiv(n, MX_GROUP_SIZE), 2}, x.options().dtype(at::ScalarType::Float8_e8m0fnu));
     }
 
     at::TensorList weightRef = weight;
@@ -193,16 +181,15 @@ std::tuple<at::Tensor, at::Tensor> grouped_matmul_activation_quant(
     char *quantModePtr = const_cast<char *>(quantMode.c_str());
     char *roundModePtr = const_cast<char *>(roundMode.c_str());
 
-    ACLNN_CMD(aclnnGroupedMatmulActivationQuantWeightNz,
-        xWrapper, groupList, weightWrapper, weightScaleWrapper, biasRef, xScaleWrapper,
-        activationTypePtr, groupListType, tuningConfigRef, quantModePtr,
-        roundModePtr, scaleAlg, dstTypeMax, yWrapper, yScaleWrapper);
+    ACLNN_CMD(aclnnGroupedMatmulActivationQuantWeightNz, xWrapper, groupList, weightWrapper, weightScaleWrapper,
+              biasRef, xScaleWrapper, activationTypePtr, groupListType, tuningConfigRef, quantModePtr, roundModePtr,
+              scaleAlg, dstTypeMax, yWrapper, yScaleWrapper);
     return std::tie(y, yScale);
 }
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
     m.def("grouped_matmul_activation_quant", &grouped_matmul_activation_quant,
-        "GroupedMatmulActivationQuant WeightNz torch wrapper");
+          "GroupedMatmulActivationQuant WeightNz torch wrapper");
 }
 } // namespace op_api

@@ -9,7 +9,6 @@
 # -----------------------------------------------------------------------------------------------------------
 from typing import Optional
 import torch
-import torch_npu
 from torch.library import impl
 from cann_ops_transformer.op_builder.builder import OpBuilder
 from cann_ops_transformer.op_builder.builder import AS_LIBRARY
@@ -21,28 +20,41 @@ class CompressorOpBuilder(OpBuilder):
 
     def sources(self):
         """Path to C++ source code."""
-        return ['ops/csrc/compressor.cpp']
+        return ["ops/csrc/compressor.cpp"]
 
     def schema(self):
         """PyTorch operator signature."""
-        return "compressor(Tensor x, Tensor wkv, Tensor wgate, Tensor(a!) state_cache, " \
-               "Tensor ape, " \
-               "int cmp_ratio=4, *, " \
-               "Tensor? state_block_table=None, Tensor? cu_seqlens=None, " \
-               "Tensor? seqused=None, Tensor? start_pos=None, " \
-               "int coff=1, int cache_mode=1) -> Tensor"
+        return (
+            "compressor(Tensor x, Tensor wkv, Tensor wgate, Tensor(a!) state_cache, "
+            "Tensor ape, "
+            "int cmp_ratio=4, *, "
+            "Tensor? state_block_table=None, Tensor? cu_seqlens=None, "
+            "Tensor? seqused=None, Tensor? start_pos=None, "
+            "int coff=1, int cache_mode=1) -> Tensor"
+        )
 
     def register_meta(self):
         """
         Registers the Meta implementation (Shape/Dtype inference).
         Essential for Autograd and FakeTensor support.
         """
+
         @impl(AS_LIBRARY, self.name, "Meta")
-        def compressor_meta(x, wkv, wgate, state_cache,
-                                ape, cmp_ratio=4, *,
-                                state_block_table=None, cu_seqlens=None,
-                                seqused=None, start_pos=None,
-                                coff=1, cache_mode=1):
+        def compressor_meta(
+            x,
+            wkv,
+            wgate,
+            state_cache,
+            ape,
+            cmp_ratio=4,
+            *,
+            state_block_table=None,
+            cu_seqlens=None,
+            seqused=None,
+            start_pos=None,
+            coff=1,
+            cache_mode=1,
+        ):
             if x.dim() == 3:
                 b = x.size(0)
                 s = x.size(1)
@@ -54,8 +66,8 @@ class CompressorOpBuilder(OpBuilder):
                 h = x.size(1)
                 sr = (t + cmp_ratio - 1) // cmp_ratio
                 cmp_kv_size = (sr, h)
-            
-            return torch.empty(cmp_kv_size, dtype=x.dtype, device='meta')
+
+            return torch.empty(cmp_kv_size, dtype=x.dtype, device="meta")
 
 
 compressor_op_builder = CompressorOpBuilder()
@@ -63,26 +75,36 @@ compressor_op_builder = CompressorOpBuilder()
 
 @impl(AS_LIBRARY, compressor_op_builder.name, "PrivateUse1")
 def compressor(
-            x: torch.Tensor,
-            wkv: torch.Tensor,
-            wgate: torch.Tensor,
-            state_cache: torch.Tensor,
-            ape: torch.Tensor,
-            cmp_ratio: int = 4,
-            *,
-            state_block_table: Optional[torch.Tensor] = None,
-            cu_seqlens: Optional[torch.Tensor] = None,
-            seqused: Optional[torch.Tensor] = None,
-            start_pos: Optional[torch.Tensor] = None,
-            coff: Optional[int] = 1,
-            cache_mode: Optional[int] = 1) -> torch.tensor:
+    x: torch.Tensor,
+    wkv: torch.Tensor,
+    wgate: torch.Tensor,
+    state_cache: torch.Tensor,
+    ape: torch.Tensor,
+    cmp_ratio: int = 4,
+    *,
+    state_block_table: Optional[torch.Tensor] = None,
+    cu_seqlens: Optional[torch.Tensor] = None,
+    seqused: Optional[torch.Tensor] = None,
+    start_pos: Optional[torch.Tensor] = None,
+    coff: Optional[int] = 1,
+    cache_mode: Optional[int] = 1,
+) -> torch.tensor:
     """
     dispatcher implementation for NPU.
     'PrivateUse1' is the combine key for custom NPU backends.
     """
     op_module = compressor_op_builder.load()
-    return op_module.compressor(x, wkv, wgate, state_cache,
-                                    ape, cmp_ratio,
-                                    state_block_table, cu_seqlens,
-                                    seqused, start_pos,
-                                    coff, cache_mode)
+    return op_module.compressor(
+        x,
+        wkv,
+        wgate,
+        state_cache,
+        ape,
+        cmp_ratio,
+        state_block_table,
+        cu_seqlens,
+        seqused,
+        start_pos,
+        coff,
+        cache_mode,
+    )

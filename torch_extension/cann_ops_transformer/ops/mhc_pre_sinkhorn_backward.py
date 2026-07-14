@@ -8,7 +8,6 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 import torch
-import torch_npu
 from torch.library import impl
 from cann_ops_transformer.op_builder.builder import OpBuilder
 from cann_ops_transformer.op_builder.builder import AS_LIBRARY
@@ -16,24 +15,39 @@ from cann_ops_transformer.op_builder.builder import AS_LIBRARY
 
 class MhcPreSinkhornBackwardOpBuilder(OpBuilder):
     def __init__(self):
-        super(MhcPreSinkhornBackwardOpBuilder, self).__init__("mhc_pre_sinkhorn_backward")
+        super(MhcPreSinkhornBackwardOpBuilder, self).__init__(
+            "mhc_pre_sinkhorn_backward"
+        )
 
     def sources(self):
-        return ['ops/csrc/mhc_pre_sinkhorn_backward.cpp']
+        return ["ops/csrc/mhc_pre_sinkhorn_backward.cpp"]
 
     def schema(self) -> str:
-        return "mhc_pre_sinkhorn_backward(Tensor gradHin, Tensor gradHPost, Tensor gradHRes, " \
-               "Tensor x, Tensor phi, Tensor alpha, Tensor bias, " \
-               "Tensor hPre, Tensor hcBeforeNorm, Tensor invRms, " \
-               "Tensor sumOut, Tensor normOut, float hcEps) -> " \
-               "(Tensor, Tensor, Tensor, Tensor)"
+        return (
+            "mhc_pre_sinkhorn_backward(Tensor gradHin, Tensor gradHPost, Tensor gradHRes, "
+            "Tensor x, Tensor phi, Tensor alpha, Tensor bias, "
+            "Tensor hPre, Tensor hcBeforeNorm, Tensor invRms, "
+            "Tensor sumOut, Tensor normOut, float hcEps) -> "
+            "(Tensor, Tensor, Tensor, Tensor)"
+        )
 
     def register_meta(self):
         @impl(AS_LIBRARY, self.name, "Meta")
-        def mhc_pre_sinkhorn_backward_meta(grad_hin, grad_h_post, grad_h_res,
-                                                x, phi, alpha, bias,
-                                                h_pre, hc_before_norm, inv_rms,
-                                                sum_out, norm_out, hc_eps):
+        def mhc_pre_sinkhorn_backward_meta(
+            grad_hin,
+            grad_h_post,
+            grad_h_res,
+            x,
+            phi,
+            alpha,
+            bias,
+            h_pre,
+            hc_before_norm,
+            inv_rms,
+            sum_out,
+            norm_out,
+            hc_eps,
+        ):
             grad_x = torch.empty_like(x)
             grad_phi = torch.empty_like(phi)
             grad_alpha = torch.empty_like(alpha)
@@ -45,12 +59,34 @@ mhc_pre_sinkhorn_backward_op_builder = MhcPreSinkhornBackwardOpBuilder()
 
 
 @impl(AS_LIBRARY, mhc_pre_sinkhorn_backward_op_builder.name, "PrivateUse1")
-def mhc_pre_sinkhorn_backward(grad_hin, grad_h_post, grad_h_res,
-                                    x, phi, alpha, bias,
-                                    h_pre, hc_before_norm, inv_rms,
-                                    sum_out, norm_out, hc_eps):
+def mhc_pre_sinkhorn_backward(
+    grad_hin,
+    grad_h_post,
+    grad_h_res,
+    x,
+    phi,
+    alpha,
+    bias,
+    h_pre,
+    hc_before_norm,
+    inv_rms,
+    sum_out,
+    norm_out,
+    hc_eps,
+):
     op_module = mhc_pre_sinkhorn_backward_op_builder.load()
-    return op_module.mhc_pre_sinkhorn_backward(grad_hin, grad_h_post, grad_h_res,
-                                                     x, phi, alpha, bias,
-                                                     h_pre, hc_before_norm, inv_rms,
-                                                     sum_out, norm_out, hc_eps)
+    return op_module.mhc_pre_sinkhorn_backward(
+        grad_hin,
+        grad_h_post,
+        grad_h_res,
+        x,
+        phi,
+        alpha,
+        bias,
+        h_pre,
+        hc_before_norm,
+        inv_rms,
+        sum_out,
+        norm_out,
+        hc_eps,
+    )

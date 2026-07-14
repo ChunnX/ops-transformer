@@ -117,9 +117,9 @@ cann_ops_transformer.sparse_flash_mla_grad(
     seqused_q=None,
     seqused_ori_kv=None,
     seqused_cmp_kv=None,
-    cmp_residual_kv=None, 
+    cmp_residual_kv=None,
     ori_topk_length=None,
-    cmp_topk_length=None, 
+    cmp_topk_length=None,
     sinks=None, metadata=None,
     softmax_scale=None,
     cmp_ratio=None,
@@ -355,7 +355,7 @@ cann_ops_transformer.sparse_flash_mla_grad(
     q = (torch.rand(q_shape).to(dtype)) * 2
     ori_kv = (torch.rand(ori_kv_shape).to(dtype)) * 2
     cmp_kv = (torch.rand(cmp_kv_shape).to(dtype)) * 2 if cmp_ratio != 1 else None
-    dy = (torch.rand(out_shape).to(dtype)) * 2 
+    dy = (torch.rand(out_shape).to(dtype)) * 2
     out = (torch.rand(out_shape).to(dtype)) * 2 # 实际使用场景中应使用前向输出attn_out
     sinks = (torch.rand(N1).to(torch.float32)) * (128)
     lse = (torch.rand(lse_shape).to(torch.float32)) # 实际使用场景中应使用前向输出lse
@@ -389,10 +389,10 @@ cann_ops_transformer.sparse_flash_mla_grad(
     metadata = cann_ops_transformer.ops.sparse_flash_mla_grad_metadata(N1, N2, D)
     npu_out = cann_ops_transformer.ops.sparse_flash_mla_grad(
             q.npu(), dy.npu(), out.npu(), lse.npu(),
-            ori_kv=ori_kv.npu(), cmp_kv=cmp_kv_npu, 
+            ori_kv=ori_kv.npu(), cmp_kv=cmp_kv_npu,
             cmp_sparse_indices=cmp_sparse_indices_npu,
-            cu_seqlens_q=cu_seq_qlen, 
-            cu_seqlens_ori_kv=cu_seq_ori_kvlen, 
+            cu_seqlens_q=cu_seq_qlen,
+            cu_seqlens_ori_kv=cu_seq_ori_kvlen,
             cu_seqlens_cmp_kv=cu_seq_cmp_kvlen,
             cmp_residual_kv=cmp_residual_kv,
             sinks=sinks.npu(),
