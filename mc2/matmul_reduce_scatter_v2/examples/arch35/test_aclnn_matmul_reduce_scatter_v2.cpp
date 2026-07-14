@@ -16,22 +16,24 @@
 #include <iostream>
 #include <vector>
 #include <thread>
+#include <cstring>
 #include "hccl/hccl.h"
 #include "aclnnop/aclnn_matmul_reduce_scatter_v2.h"
 
-#define CHECK_RET(cond, return_expr) \
-    do {                             \
-        if (!(cond)) {               \
-            return_expr;             \
-        }                            \
+#define CHECK_RET(cond, return_expr)                                                                                   \
+    do {                                                                                                               \
+        if (!(cond)) {                                                                                                 \
+            return_expr;                                                                                               \
+        }                                                                                                              \
     } while (0)
 
-#define LOG_PRINT(message, ...)         \
-    do {                                \
-        printf(message, ##__VA_ARGS__); \
-    } while(0)
+#define LOG_PRINT(message, ...)                                                                                        \
+    do {                                                                                                               \
+        printf(message, ##__VA_ARGS__);                                                                                \
+    } while (0)
 
 constexpr int DEV_NUM = 2;
+constexpr const char *COMM_MODE = "ccu";
 
 int64_t GetShapeSize(const std::vector<int64_t> &shape)
 {
@@ -42,9 +44,9 @@ int64_t GetShapeSize(const std::vector<int64_t> &shape)
     return shape_size;
 }
 
-template<typename T>
+template <typename T>
 int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &shape, void **deviceAddr,
-    aclDataType dataType, aclTensor **tensor)
+                    aclDataType dataType, aclTensor **tensor)
 {
     auto size = GetShapeSize(shape) * sizeof(T);
     auto ret = aclrtMalloc(deviceAddr, size, ACL_MEM_MALLOC_HUGE_FIRST);
@@ -53,10 +55,10 @@ int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtMemcpy failed. ret: %d\n", ret); return ret);
     std::vector<int64_t> strides(shape.size(), 1);
     for (int64_t i = shape.size() - 2; i >= 0; i--) {
-        strides[i] = shape[i +1] * strides[i + 1];
+        strides[i] = shape[i + 1] * strides[i + 1];
     }
     *tensor = aclCreateTensor(shape.data(), shape.size(), dataType, strides.data(), 0, aclFormat::ACL_FORMAT_ND,
-        shape.data(), shape.size(), *deviceAddr);
+                              shape.data(), shape.size(), *deviceAddr);
     return 0;
 }
 
@@ -65,7 +67,7 @@ struct Args {
     HcclComm hcclComm;
     aclrtStream stream;
     aclrtContext context;
-  };
+};
 
 int LaunchOneThreadMmReduceScatterV2(Args &args)
 {
@@ -132,11 +134,12 @@ int LaunchOneThreadMmReduceScatterV2(Args &args)
     CHECK_RET(ret == ACL_SUCCESS, return ret);
 
     // 调用第一阶段接口
-    ret = aclnnMatmulReduceScatterV2GetWorkspaceSize(
-        x1, x2, bias, x1Scale, x2Scale, quantScale, blockSize, hcomName, "sum", commTurn, streamMode, groupSize, "ccu",
-        out, amaxOut, &workspaceSize, &executor);
+    ret = aclnnMatmulReduceScatterV2GetWorkspaceSize(x1, x2, bias, x1Scale, x2Scale, quantScale, blockSize, hcomName,
+                                                     "sum", commTurn, streamMode, groupSize, "ccu", out, amaxOut,
+                                                     &workspaceSize, &executor);
     CHECK_RET(ret == ACL_SUCCESS,
-        LOG_PRINT("[ERROR] aclnnMatmulReduceScatterV2GetWorkspaceSize failed. ret = %d \n", ret); return ret);
+              LOG_PRINT("[ERROR] aclnnMatmulReduceScatterV2GetWorkspaceSize failed. ret = %d \n", ret);
+              return ret);
     // 根据第一阶段接口计算出的workspaceSize申请device内存
     if (workspaceSize > 0) {
         ret = aclrtMalloc(&workspaceAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
@@ -148,7 +151,7 @@ int LaunchOneThreadMmReduceScatterV2(Args &args)
     // （固定写法）同步等待任务执行结束
     ret = aclrtSynchronizeStreamWithTimeout(args.stream, 10000);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtSynchronizeStreamWithTimeout failed. ret = %d \n", ret);
-        return ret);
+              return ret);
     LOG_PRINT("[INFO] device_%d aclnnMatmulReduceScatterV2 execute successfully.\n", args.rankId);
     // 释放device资源，需要根据具体API的接口定义修改
     if (x1 != nullptr) {
@@ -221,14 +224,25 @@ int main(int argc, char *argv[])
         ret = aclrtCreateStream(&stream[rankId]);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtCreateStream failed. ret = %d \n", ret); return ret);
     }
-    int32_t devices[DEV_NUM];
-    for (int i = 0; i < DEV_NUM; i++) {
-        devices[i] = i;
+    const char *rankTableFile = getenv("RANK_TABLE_FILE");
+    CHECK_RET(rankTableFile != nullptr, LOG_PRINT("[ERROR] get RANK_TABLE_FILE failed.\n"); return -1);
+    HcclCommConfig config;
+    HcclCommConfigInit(&config);
+    if (strcmp(COMM_MODE, "ccu") == 0) {
+        config.hcclOpExpansionMode = 6;
+    } else if (strcmp(COMM_MODE, "ai_cpu") == 0) {
+        config.hcclOpExpansionMode = 0;
     }
     // 初始化集合通信域
     HcclComm comms[DEV_NUM];
-    ret = HcclCommInitAll(DEV_NUM, devices, comms);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] HcclCommInitAll failed. ret = %d \n", ret); return ret);
+    for (uint32_t rankId = 0; rankId < DEV_NUM; rankId++) {
+        ret = aclrtSetCurrentContext(context[rankId]);
+        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtSetCurrentContext failed. ret = %d \n", ret); return ret);
+        ret = HcclCommInitClusterInfoConfig(rankTableFile, rankId, &config, &comms[rankId]);
+        CHECK_RET(ret == ACL_SUCCESS,
+                  LOG_PRINT("[ERROR] HcclCommInitClusterInfoConfig rank %d failed. ret = %d \n", rankId, ret);
+                  return ret);
+    }
 
     Args args[DEV_NUM];
     // 启动多线程
@@ -238,7 +252,8 @@ int main(int argc, char *argv[])
         args[rankId].hcclComm = comms[rankId];
         args[rankId].context = context[rankId];
         args[rankId].stream = stream[rankId];
-        threads[rankId].reset(new(std::nothrow) std::thread(&LaunchOneThreadMmReduceScatterV2, std::ref(args[rankId])));
+        threads[rankId].reset(new (std::nothrow)
+                                  std::thread(&LaunchOneThreadMmReduceScatterV2, std::ref(args[rankId])));
     }
     for (uint32_t rankId = 0; rankId < DEV_NUM; rankId++) {
         threads[rankId]->join();
