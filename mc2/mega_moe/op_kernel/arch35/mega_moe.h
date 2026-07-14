@@ -315,7 +315,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::DispatchBuffInit()
 
     // 确定每个 recv batch 的 route item 数及 batch 总数
     recvRouteItemsPerBatch_ = MAX_RECV_ROUTE_ITEMS_PER_BATCH;
-    if (recvRouteItemsPerBatch_ > static_cast<int32_t>(sendTotalNum_)) {
+    if (sendTotalNum_ < static_cast<uint64_t>(recvRouteItemsPerBatch_)) {
         recvRouteItemsPerBatch_ = static_cast<int32_t>(sendTotalNum_);
     }
     recvRouteItemsPerBatch_ = static_cast<int32_t>(
@@ -421,7 +421,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SendAndQuantBuffInit()
 
     // 确定每个 send batch 的 route item 数及 batch 总数
     sendRouteItemsPerBatch_ = MAX_SEND_ROUTE_ITEMS_PER_BATCH;
-    if (sendRouteItemsPerBatch_ > static_cast<int32_t>(sendTotalNum_)) {
+    if (sendTotalNum_ < static_cast<uint64_t>(sendRouteItemsPerBatch_)) {
         sendRouteItemsPerBatch_ = static_cast<int32_t>(sendTotalNum_);
     }
     sendRouteItemsPerBatch_ = static_cast<int32_t>(
@@ -596,7 +596,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SendMaskCal()
         int32_t pushBytes = sliceBytes;
 
         if (isLastBatch) {
-            validLen = static_cast<int32_t>(sendTotalNum_) - batchStart;
+            validLen = static_cast<int32_t>(sendTotalNum_ - static_cast<uint64_t>(batchStart));
             if (batchStart / 8 + sliceBytes > static_cast<int32_t>(maskAlignSize_)) {
                 sliceBytes = static_cast<int32_t>(maskAlignSize_) - batchStart / 8;
             }
