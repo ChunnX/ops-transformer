@@ -393,13 +393,10 @@ __aicore__ inline void ProcessVec1NoUpdateGeneralImpl256(
         dropMaskUb2, nPadding, blockStride, repeatStride, oriTailN1, oriTailN2, tailN1, tailN2, pltOriTailN1,
         pltOriTailN2, pltTailN1, pltTailN2, divValue, m, pseStride, slopes, posShift, scale, minValue, sinkValue);
     if (m <= 16 && originN <= 300) {
-        PRINTF("[VF256-post] m=%d", (int)m);
-        for (int di=0;di<(int)m;di++) {
-            PRINTF(" mx[%d]=%.4e", di, (float)((__ubuf__ float*)maxUb)[di]);
-        }
-        PRINTF(" sum0=%.4e", (float)((__ubuf__ float*)expSumUb)[0]);
-        PRINTF(" srcPost[0..3]=%f %f %f %f", (float)((__ubuf__ float*)srcUb)[0], (float)((__ubuf__ float*)srcUb)[1], (float)((__ubuf__ float*)srcUb)[2], (float)((__ubuf__ float*)srcUb)[3]);
-        PRINTF(" srcPost[64/128/192/255]=%f %f %f %f\n", (float)((__ubuf__ float*)srcUb)[64], (float)((__ubuf__ float*)srcUb)[128], (float)((__ubuf__ float*)srcUb)[192], (float)((__ubuf__ float*)srcUb)[255]);
+        PRINTF("[VF256-post] m=%d mx0=%f sum0=%f srcPost0=%f srcPost1=%f\n",
+               (int)m,
+               (float)((__ubuf__ float*)maxUb)[0], (float)((__ubuf__ float*)expSumUb)[0],
+               (float)((__ubuf__ float*)srcUb)[0], (float)((__ubuf__ float*)srcUb)[1]);
     }
 }
 } // namespace
