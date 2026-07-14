@@ -975,7 +975,7 @@ __aicore__ inline void QuantCompressorBlockVector<COMP>::CopyOutVec1ResToOutput(
             uint32_t totalScSize = (GetSeqUsed(bIdx) + bStartPos) / cmpRatio_;
             if (preScSize < totalScSize) {
                 uint32_t curScSize = min(compressTcSize, (totalScSize - preScSize));
-                uint64_t padScIdx = bIdx * bOutputScLen + preScSize - (bStartPos / cmpRatio_);
+                uint64_t padScIdx = (uint64_t)bIdx * bOutputScLen + preScSize - (bStartPos / cmpRatio_);
                 uint64_t outGmOffset = padScIdx * constInfo_.headDim + dStartIdx;
                 DataCopyAlignUbToGm(cmpKvOutGm_[outGmOffset], outputUb[ubOffset], curScSize, dDealSize, dDealSize,
                                     constInfo_.headDim);
