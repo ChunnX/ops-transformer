@@ -6,8 +6,8 @@
 # CANN Open Software License Agreement Version 2.0 (the "License").
 # Please refer to the License for details. You may not use this file except in compliance with the License.
 # THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
-# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
-# See LICENSE in the root of the software repository for the full text of the License.
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE.
+# See the License in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
 import os
@@ -20,6 +20,7 @@ import random
 import math
 import ast
 import cann_ops_transformer
+from quant_lightning_indexer_v2_golden import _load_metadata_from_cpu
 
 
 def test_qliv2_process(filepath, device_id=0):
@@ -29,6 +30,7 @@ def test_qliv2_process(filepath, device_id=0):
     params = test_data['params']
     cpu_result = test_data['cpu_result']
     topk_value = test_data['topk_value']
+    cpu_topk_value = test_data.get('cpu_topk_value')
     print("执行用例：", filepath)
     torch_npu.npu.set_device(device_id)
 
@@ -40,9 +42,14 @@ def test_qliv2_process(filepath, device_id=0):
         key = test_data['key'].cpu()
 
     # params 含 weight_dtype 在 [11]，索引比旧版整体后移 1 位
+    batch_size = int(params[0])
+    q_head_num = int(params[5])
+    k_head_num = int(params[6])
+    head_dim = int(params[7])
     max_seqlen_q = int(params[19])
     return_value = int(params[31])
-    weights =test_data['weights'].cpu()
+
+    weights = test_data['weights'].cpu()
     query_dequant_scale = test_data['query_dequant_scale'].cpu()
     key_dequant_scale = test_data['key_dequant_scale'].cpu()
     actual_seq_lengths_query = test_data['actual_seq_lengths_query'].cpu()
@@ -60,7 +67,6 @@ def test_qliv2_process(filepath, device_id=0):
     else:
         cu_seqlens_key = None
     block_table = test_data['block_table'].cpu()
-    metadata = test_data['metadata'].cpu()
     quant_mode = test_data['quant_mode']
     layout_query = test_data['layout_query']
     layout_key = test_data['layout_key']
@@ -72,12 +78,61 @@ def test_qliv2_process(filepath, device_id=0):
     else:
         cmp_residual_k_for_npu = None
 
-    # 调试日志
-        def log(tensor, name):
-            if tensor != None:
-                print(name, tensor.shape, tensor.dtype)
-                return tensor.npu()
-            return None
+    # ======================== 运行时生成 metadata（与 golden.py 一致） ========================
+    # 从 .pt 中存的 tensor 还原 _load_metadata_from_cpu 所需的 list 参数
+
+    # cu_seqlens 还原为 list（TND: [B+1] 前缀和, 非TND: None）
+    cu_seqlens_q_list = cu_seqlens_query.tolist() if cu_seqlens_query is not None else None
+    cu_seqlens_k_list = cu_seqlens_key.tolist() if cu_seqlens_key is not None else None
+
+    # seqused (个体长度) 还原为 list
+    #   TND: 从 cu_seqlens 差分推导
+    #   非TND: actual_seq_lengths 就是个体长度
+    if cu_seqlens_q_list is not None:
+        lengths_q_list = [cu_seqlens_q_list[i+1] - cu_seqlens_q_list[i] for i in range(len(cu_seqlens_q_list) - 1)]
+    else:
+        lengths_q_list = actual_seq_lengths_query.tolist()
+
+    if cu_seqlens_k_list is not None:
+        lengths_k_list = [cu_seqlens_k_list[i+1] - cu_seqlens_k_list[i] for i in range(len(cu_seqlens_k_list) - 1)]
+    else:
+        lengths_k_list = actual_seq_lengths_key.tolist()
+
+    # cmp_residual_k_for_cpu 还原为 list
+    if cmp_residual_k_for_npu is not None:
+        cmp_residual_k_list = cmp_residual_k_for_npu.tolist()
+    else:
+        cmp_residual_k_list = [0] * batch_size
+
+    max_seqlen_q_meta = actual_seq_lengths_query.max().item()
+    max_seqlen_k_meta = actual_seq_lengths_key.max().item()
+
+    metadata = _load_metadata_from_cpu(
+        batch_size=batch_size,
+        cu_seqlens_q=cu_seqlens_q_list,
+        cu_seqlens_k=cu_seqlens_k_list,
+        seqused_q_list=lengths_q_list,
+        seqused_k_list=lengths_k_list,
+        cmp_residual_k_list=cmp_residual_k_list,
+        max_seqlen_q=max_seqlen_q_meta,
+        max_seqlen_k=max_seqlen_k_meta,
+        q_head_num=q_head_num,
+        k_head_num=k_head_num,
+        head_dim=head_dim,
+        topk=sparse_count,
+        quant_mode=quant_mode,
+        layout_query=layout_query,
+        layout_key=layout_key,
+        sparse_mode=sparse_mode,
+        cmp_ratio=cmp_ratio,
+    )
+
+    # ======================== tensor 搬运到 NPU ========================
+    def log(tensor, name):
+        if tensor is not None:
+            print(name, tensor.shape, tensor.dtype)
+            return tensor.npu()
+        return None
 
     query = log(query, "query")
     key = log(key, "key")
@@ -86,8 +141,15 @@ def test_qliv2_process(filepath, device_id=0):
     key_dequant_scale = log(key_dequant_scale, "key_dequant_scale")
     cu_seqlens_query = log(cu_seqlens_query, "cu_seqlens_query")
     cu_seqlens_key = log(cu_seqlens_key, "cu_seqlens_key")
-    seqused_q_tensor = log(seqused_q_tensor, "seqused_q_tensor")
-    seqused_k_tensor = log(seqused_k_tensor, "seqused_k_tensor")
+    # seqused_q/k: TND 布局下为 None（用 cu_seqlens），非 TND 用 actual_seq_lengths
+    if layout_query == "TND":
+        seqused_q_tensor = None
+    else:
+        seqused_q_tensor = log(actual_seq_lengths_query, "seqused_q")
+    if layout_key == "TND":
+        seqused_k_tensor = None
+    else:
+        seqused_k_tensor = log(actual_seq_lengths_key, "seqused_k")
     cmp_residual_k_for_npu = log(cmp_residual_k_for_npu, "cmp_residual_k_for_npu")
     output_idx_offset = log(output_idx_offset, "output_idx_offset")
     block_table = log(block_table, "block_table")
@@ -102,28 +164,35 @@ def test_qliv2_process(filepath, device_id=0):
     print("cmp_ratio", cmp_ratio)
     print("return_value", return_value)
 
-    #调用SFA算子
-    npu_result,_ = torch.ops.cann_ops_transformer.quant_lightning_indexer(query, key, weights, 
+    #调用QLI算子
+    npu_result, npu_topk_value = torch.ops.cann_ops_transformer.quant_lightning_indexer(query, key, weights,
                                                     query_dequant_scale,
                                                     key_dequant_scale,
                                                     cu_seqlens_q = cu_seqlens_query,
                                                     cu_seqlens_k = cu_seqlens_key,
-                                                    seqused_q = actual_seq_lengths_query,
-                                                    seqused_k = actual_seq_lengths_key,
+                                                    seqused_q = seqused_q_tensor,
+                                                    seqused_k = seqused_k_tensor,
                                                     cmp_residual_k = cmp_residual_k_for_npu,
                                                     output_idx_offset = output_idx_offset,
                                                     max_seqlen_q = max_seqlen_q,
-                                                    block_table=block_table,
+                                                    block_table = block_table,
                                                     metadata = metadata,
                                                     quant_mode = quant_mode,
                                                     layout_q = layout_query,
-                                                    layout_k = layout_key, 
+                                                    layout_k = layout_key,
                                                     topk = sparse_count,
                                                     mask_mode = sparse_mode,
                                                     cmp_ratio = cmp_ratio,
                                                     return_value = return_value)
-    
+
+    npu_result = npu_result.cpu()
+    npu_topk_value = npu_topk_value.cpu()
+    if output_idx_offset is not None:
+        output_idx_offset = output_idx_offset.cpu()
+    npu_result, _ = torch.sort(npu_result)
+    cpu_result, _ = torch.sort(cpu_result)
+    npu_topk_value, _ = npu_topk_value.sort(dim=-1, descending=True)
+
     torch.npu.synchronize()
 
-    return cpu_result, npu_result, topk_value, params, output_idx_offset
-
+    return cpu_result, npu_result, topk_value, cpu_topk_value, npu_topk_value, params, output_idx_offset

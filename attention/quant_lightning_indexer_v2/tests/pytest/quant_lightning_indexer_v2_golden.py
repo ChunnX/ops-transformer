@@ -1295,31 +1295,7 @@ def qliv2_output_single(params, is_batch = False):
     # ======================== cpu golden 生成 ========================
     cpu_result, topk_value, cpu_topk_value = test_qliv2.forward(query, key_cpu, weights, query_dequant_scale, key_dequant_scale_cpu, cu_seqlens_q_tensor, cu_seqlens_k_tensor, seqused_q_int, seqused_k_int, block_table, output_idx_offset, mxfp8_flag)
     cpu_result, _ = torch.sort(cpu_result)
-    # ======================== metadata 构造 ========================
-    # max_seqlen 从个体长度中取
-    max_seqlen_q_meta = actual_seq_lengths_query.max().item()
-    max_seqlen_k_meta = actual_seq_lengths_key.max().item()
 
-    # Use cpu_test binary to generate metadata (instead of NPU op)
-    metadata = _load_metadata_from_cpu(
-        batch_size=batch_size,
-        cu_seqlens_q=cu_seqlens_q,
-        cu_seqlens_k=cu_seqlens_k,
-        seqused_q_list=lengths_q_list,
-        seqused_k_list=lengths_k_list,
-        cmp_residual_k_list=cmp_residual_k_for_cpu,
-        max_seqlen_q=max_seqlen_q_meta,
-        max_seqlen_k=max_seqlen_k_meta,
-        q_head_num=q_head_num,
-        k_head_num=k_head_num,
-        head_dim=head_dim,
-        topk=sparse_count,
-        quant_mode=quant_mode,
-        layout_query=layout_query,
-        layout_key=layout_key,
-        sparse_mode=sparse_mode,
-        cmp_ratio=cmp_ratio,
-    )
     if is_batch:
         if qk_dtype == torch.float8_e4m3fn:
             query = query.to(dtype=torch.float16)
@@ -1329,6 +1305,7 @@ def qliv2_output_single(params, is_batch = False):
             "params":params,
             "cpu_result": cpu_result,
             "topk_value": topk_value,
+            "cpu_topk_value": cpu_topk_value,
             "query": query,
             "key":key,
             "weights": weights,
@@ -1341,7 +1318,6 @@ def qliv2_output_single(params, is_batch = False):
             "actual_seq_lengths_key": actual_seq_lengths_key,
             "cmp_residual_k_for_npu": cmp_residual_k_for_npu,
             "block_table": block_table,
-            "metadata": metadata,
             "quant_mode":quant_mode,
             "layout_query":layout_query,
             "layout_key":layout_key,
@@ -1351,6 +1327,31 @@ def qliv2_output_single(params, is_batch = False):
         }
         return output_tensors
     else:
+        # ======================== metadata 构造（仅非 batch 模式需要） ========================
+        # max_seqlen 从个体长度中取
+        max_seqlen_q_meta = actual_seq_lengths_query.max().item()
+        max_seqlen_k_meta = actual_seq_lengths_key.max().item()
+
+        # Use cpu_test binary to generate metadata (instead of NPU op)
+        metadata = _load_metadata_from_cpu(
+            batch_size=batch_size,
+            cu_seqlens_q=cu_seqlens_q,
+            cu_seqlens_k=cu_seqlens_k,
+            seqused_q_list=lengths_q_list,
+            seqused_k_list=lengths_k_list,
+            cmp_residual_k_list=cmp_residual_k_for_cpu,
+            max_seqlen_q=max_seqlen_q_meta,
+            max_seqlen_k=max_seqlen_k_meta,
+            q_head_num=q_head_num,
+            k_head_num=k_head_num,
+            head_dim=head_dim,
+            topk=sparse_count,
+            quant_mode=quant_mode,
+            layout_query=layout_query,
+            layout_key=layout_key,
+            sparse_mode=sparse_mode,
+            cmp_ratio=cmp_ratio,
+        )
         # 调试日志
         def log(tensor, name):
             if tensor != None:
