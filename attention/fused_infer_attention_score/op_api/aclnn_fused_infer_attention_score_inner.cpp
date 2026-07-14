@@ -656,24 +656,32 @@ aclnnStatus InnerFusedInferAttentionScoreGetWorkspaceSize(
     const aclTensor *processedQuery = query;
     const aclTensorList *processedKey = key;
     const aclTensorList *processedValue = value;
+    const aclTensor *processedBlockTable = blockTableOptional;
 
     aclOpExecutor *l0Executor = uniqueExecutor.get();
     processedQuery = l0op::Contiguous(processedQuery, l0Executor);
     CHECK_RET(processedQuery != nullptr, ACLNN_ERR_INNER_NULLPTR);
     CHECK_RET(ReshapeTensorToViewShape(processedQuery, "query", l0Executor) == ACLNN_SUCCESS,
               ACLNN_ERR_INNER_NULLPTR);
+    if (processedBlockTable != nullptr) {
+        processedBlockTable = l0op::Contiguous(processedBlockTable, l0Executor);
+        CHECK_RET(processedBlockTable != nullptr, ACLNN_ERR_INNER_NULLPTR);
+        CHECK_RET(ReshapeTensorToViewShape(processedBlockTable, "blockTable", l0Executor) == ACLNN_SUCCESS,
+                  ACLNN_ERR_INNER_NULLPTR);
+    }
     auto kvProcessRet = ProcessKVForL0Input(
-        processedKey, processedValue, blockTableOptional, isFAIRoutingCandidate, l0Executor);
+        processedKey, processedValue, processedBlockTable, isFAIRoutingCandidate, l0Executor);
     CHECK_RET(kvProcessRet == ACLNN_SUCCESS, kvProcessRet);
     LogTensorDebugInfo("inner.query.processed", processedQuery);
     LogTensorListDebugInfo("inner.key.processed", processedKey);
     LogTensorListDebugInfo("inner.value.processed", processedValue);
+    LogTensorDebugInfo("inner.blockTable.processed", processedBlockTable);
 
     FiaDebugPrintf("[FIA_DEBUG][INNER] before l0op::FusedInferAttentionScore.");
     auto l0Out = l0op::FusedInferAttentionScore(
         processedQuery, processedKey, processedValue, pseShiftOptional, attenMaskOptional, actualSeqLengthsOptional,
         actualSeqLengthsKvOptional, deqScale1Optional, quantScale1Optional, deqScale2Optional, quantScale2Optional,
-        quantOffset2Optional, antiquantScaleOptional, antiquantOffsetOptional, blockTableOptional,
+        quantOffset2Optional, antiquantScaleOptional, antiquantOffsetOptional, processedBlockTable,
         queryPaddingSizeOptional, kvPaddingSizeOptional, keyAntiquantScaleOptional, keyAntiquantOffsetOptional,
         valueAntiquantScaleOptional, valueAntiquantOffsetOptional, keySharedPrefixOptional,
         valueSharedPrefixOptional, actualSharedPrefixLenOptional, queryRopeOptional, keyRopeOptional,
