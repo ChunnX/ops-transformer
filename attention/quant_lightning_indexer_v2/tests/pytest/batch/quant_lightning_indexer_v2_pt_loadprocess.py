@@ -197,7 +197,7 @@ def test_qliv2_process(filepath, device_id=0):
     print("return_value", return_value)
 
     #调用QLI算子
-    if is_npu_now:
+    if IS_NPU_NOW:
         npu_result, npu_topk_value = torch.ops.npu_ops_transformer.npu_quant_lightning_indexer(query, key, weights,
                                                     query_dequant_scale,
                                                     key_dequant_scale,
