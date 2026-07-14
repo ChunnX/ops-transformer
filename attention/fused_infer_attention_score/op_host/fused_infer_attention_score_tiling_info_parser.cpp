@@ -266,11 +266,11 @@ ge::graphStatus FiaInfoParser::GetStrides()
     return ge::GRAPH_SUCCESS;
 }
 
-void FiaInfoParser::GetKvIsContiguous(){
-    if (!hasViewStride_ ){
+void FiaInfoParser::GetKvIsContiguous() {
+    if (!hasViewStride_) {
         return ;
     }
-    for (int i = 0; i < kStrideCache_.size(); ++i) {
+    for (size_t i = 0; i < kStrideCache_.size(); ++i) {
         int32_t dim = 0;
         if (CheckTensorContiguousLocal(kCache_[i]->GetStorageShape().GetDimNum(),
                                        kCache_[i]->GetStorageShape(),
@@ -292,8 +292,13 @@ void FiaInfoParser::GetKvIsContiguous(){
             keyRopeNonContigDim_ = dim;
         }
     }
+}
 
-    // PA场景下获取kvcache非连续stride偏移值
+void FiaInfoParser::GetKvStrideValues()
+{
+    if (!hasViewStride_) {
+        return;
+    }
     if (kvLayout_ == FiaLayout::BnBsH) {
         if (keyStrides_ != nullptr) {
             keyBnStride_ = keyStrides_->GetStride(0);
@@ -303,7 +308,7 @@ void FiaInfoParser::GetKvIsContiguous(){
             valueBnStride_ = valueStrides_->GetStride(0);
             valueN2Stride_ = valueStrides_->GetStride(2);
         }
-        if (opParamInfo_.keyRope.desc != nullptr) {
+        if (kRopeStrides_ != nullptr) {
             kRopeBnStride_ = kRopeStrides_->GetStride(0);
             kRopeN2Stride_ = kRopeStrides_->GetStride(2);
         }
@@ -316,7 +321,7 @@ void FiaInfoParser::GetKvIsContiguous(){
             valueBnStride_ = valueStrides_->GetStride(0);
             valueN2Stride_ = valueStrides_->GetStride(1);
         }
-        if (opParamInfo_.keyRope.desc != nullptr) {
+        if (kRopeStrides_ != nullptr) {
             kRopeBnStride_ = kRopeStrides_->GetStride(0);
             kRopeN2Stride_ = kRopeStrides_->GetStride(1);
         }
@@ -1661,7 +1666,7 @@ ge::graphStatus FiaInfoParser::Parse(FiaTilingInfo &fiaInfo)
         return ge::GRAPH_FAILED;
     }
     GetInOutDataType();
-    if (ge::GRAPH_SUCCESS != GetStrides()){
+    if (ge::GRAPH_SUCCESS != GetStrides()) {
         return ge::GRAPH_FAILED;
     }
     GetKvStorageMode();
@@ -1672,6 +1677,7 @@ ge::graphStatus FiaInfoParser::Parse(FiaTilingInfo &fiaInfo)
     if (ge::GRAPH_SUCCESS != GetQueryAndOutLayout() || ge::GRAPH_SUCCESS != GetKvLayout()) {
         return ge::GRAPH_FAILED;
     }
+    GetKvStrideValues();
     if (ge::GRAPH_SUCCESS != GetEmptyTensorFlag()) {
         return ge::GRAPH_FAILED;
     }
@@ -1708,9 +1714,6 @@ ge::graphStatus FiaInfoParser::ParseAxisInfo()
     }
     GetKeyTSize();
     if (ge::GRAPH_SUCCESS != GetGSize() || ge::GRAPH_SUCCESS != GetS2Size() || ge::GRAPH_SUCCESS != GetRopeHeadDim()) {
-        return ge::GRAPH_FAILED;
-    }
-    if (ge::GRAPH_SUCCESS != GetStrides()) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;

@@ -69,6 +69,7 @@ public:
     void GetQuantMode();
     ge::graphStatus GetKvLayout();
     void GetKvIsContiguous();
+    void GetKvStrideValues();
     void SetFiaShape();
     ge::graphStatus GetMaxActualSeq(const gert::Tensor *actualSeqLensTensor, FiaLayout layout,
                                     int64_t &maxActualSeqLen);
@@ -186,7 +187,7 @@ public:
     std::vector<gert::StorageShape *> vCache_ = {};
     std::vector<gert::Stride *> kStrideCache_ = {};
     std::vector<gert::Stride *> vStrideCache_ = {};
-    
+
     std::vector<int32_t> qSize_ = {};
     std::vector<int32_t> kvSize_ = {};
 
