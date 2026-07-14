@@ -693,6 +693,19 @@ ge::graphStatus AllGatherQuantBmmTiling::PostTiling()
         }
     }
 
+    auto &localT = MutableTCubeLocalTilingData();
+    auto &tileT = MutableTCubeTileTilingData();
+    auto &localW = allGatherMatmulTilingDataFp8_->quantBmmv3LocalTiling.adaptiveSlidingWin;
+    auto &tileW = allGatherMatmulTilingDataFp8_->quantBmmv3TileTiling.adaptiveSlidingWin;
+    OP_LOGI(opName_, "BI_DIFF LOCAL: M=%d N=%d Ka=%d baseM=%d baseN=%d baseK=%d usedCore=%d depthA1=%d depthB1=%d stepKa=%d stepKb=%d mTail=%d nTail=%d singleCoreM=%d dbL0C=%d",
+        localT.M, localT.N, localT.Ka, localT.baseM, localT.baseN, localT.baseK, localT.usedCoreNum,
+        localT.depthA1, localT.depthB1, localT.stepKa, localT.stepKb, localW.mTailTile, localW.nTailTile,
+        localT.singleCoreM, localT.dbL0C);
+    OP_LOGI(opName_, "BI_DIFF TILE:  M=%d N=%d Ka=%d baseM=%d baseN=%d baseK=%d usedCore=%d depthA1=%d depthB1=%d stepKa=%d stepKb=%d mTail=%d nTail=%d singleCoreM=%d dbL0C=%d",
+        tileT.M, tileT.N, tileT.Ka, tileT.baseM, tileT.baseN, tileT.baseK, tileT.usedCoreNum,
+        tileT.depthA1, tileT.depthB1, tileT.stepKa, tileT.stepKb, tileW.mTailTile, tileW.nTailTile,
+        tileT.singleCoreM, tileT.dbL0C);
+
     context_->SetBlockDim(args_.aicCoreNum);
     // 独占全核，设置以后会让所有核空闲以后才启动，有多核同步指令需要设置避免出现网络挂死
     context_->SetScheduleMode(1);
