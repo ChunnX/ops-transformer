@@ -954,15 +954,35 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1Nd(
                 maskInfo.s1LeftPaddingSize = runInfo.queryLeftPaddingSize;
                 maskInfo.s2LeftPaddingSize = runInfo.kvLeftPaddingSize;
 
+                bool isPrefixMaskBlock = false;
+                if constexpr (enableKVPrefix) {
+                    if (maskInfo.s2StartIdx >= constInfo.actualKVPrefixSize) {
+                        maskInfo.s2StartIdx -= constInfo.actualKVPrefixSize;
+                    } else {
+                        isPrefixMaskBlock = true;
+                    }
+                }
                 attenMaskUb = this->attenMaskInQue[runInfo.taskIdMod2].template AllocTensor<uint8_t>();
-                AttentionmaskCopyGS1<uint8_t, false, s2BaseSize>(attenMaskUb, this->attenMaskGmInt, maskInfo, false);
+                if (isPrefixMaskBlock) {
+                    for (uint32_t i = 0; i < s2BaseSize / 8; i++) {
+                        attenMaskUb.SetValue(i, (uint8_t)0xFF);
+                    }
+                } else {
+                    AttentionmaskCopyGS1<uint8_t, false, s2BaseSize>(attenMaskUb, this->attenMaskGmInt, maskInfo, false);
+                }
                 this->attenMaskInQue[runInfo.taskIdMod2].template EnQue(attenMaskUb);
                 this->attenMaskInQue[runInfo.taskIdMod2].template DeQue<uint8_t>();
                 if (attenMaskInfoPtr->compressMode == static_cast<uint8_t>(AttenMaskCompressMode::BAND_MODE)) {
                     LocalTensor<uint8_t> preAttenMaskUb;
                     preAttenMaskUb = this->attenMaskInQue[1 - runInfo.taskIdMod2].template AllocTensor<uint8_t>();
-                    AttentionmaskCopyGS1<uint8_t, false, s2BaseSize>(preAttenMaskUb, this->attenMaskGmInt,
-                        maskInfo, true);
+                    if (isPrefixMaskBlock) {
+                        for (uint32_t i = 0; i < s2BaseSize / 8; i++) {
+                            preAttenMaskUb.SetValue(i, (uint8_t)0xFF);
+                        }
+                    } else {
+                        AttentionmaskCopyGS1<uint8_t, false, s2BaseSize>(preAttenMaskUb, this->attenMaskGmInt,
+                            maskInfo, true);
+                    }
                     this->attenMaskInQue[1 - runInfo.taskIdMod2].template EnQue(preAttenMaskUb);
                     this->attenMaskInQue[1 - runInfo.taskIdMod2].template DeQue<uint8_t>();
                     MergeBandModeMask<hasAtten>(preAttenMaskUb, attenMaskUb, runInfo.halfS1RealSize, s2BaseSize);
