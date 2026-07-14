@@ -21,13 +21,16 @@
 #include "opdev/common_types.h"
 #include "opdev/data_type_utils.h"
 #include "opdev/format_utils.h"
+#include "opdev/make_op_executor.h"
 #include "opdev/op_dfx.h"
 #include "opdev/op_executor.h"
 #include "opdev/op_log.h"
 #include "opdev/shape_utils.h"
 #include "opdev/tensor_view_utils.h"
 #include "opdev/platform.h"
-#include "op_api/aclnn_util.h"
+#include "aclnn_util.h"
+
+using namespace op;
 
 #ifdef __cplusplus
 extern "C" {
@@ -50,7 +53,7 @@ inline static bool CheckNull(const aclTensor* kCache, const aclTensor* vCache, c
 }
 
 inline static bool CheckDtype(const aclTensor* kCache, const aclTensor* vCache, const aclTensor* kScaleCache,
-                                     const aclTensor* vScale)
+                              const aclTensor* vScale)
 {
     OP_CHECK_DTYPE_NOT_SUPPORT(kCache, KV_CACHE_DTYPE_SUPPORT_LIST, return false);
     OP_CHECK_DTYPE_NOT_SUPPORT(vCache, KV_CACHE_DTYPE_SUPPORT_LIST, return false);
@@ -68,9 +71,9 @@ inline static bool CheckShape(const aclTensor* kCache, const aclTensor* vCache, 
     if (kCacheShape.GetDimNum() != 4 || vCacheShape.GetDimNum() != 4 || kScaleCacheShape.GetDimNum() != 4) {
         return false;
     }
-    if (cacheLayout == 0 && kScaleCache.GetDim(1) != kvBlockSize && kScaleCache.GetDim(2) != vScale.GetDim(0)){
+    if (cacheLayout == 0 && kScaleCacheShape.GetDim(1) != kvBlockSize && kScaleCacheShape.GetDim(2) != vScale->GetViewShape().GetDim(0)) {
         return false;
-    } else if (cacheLayout == 1 && kScaleCache.GetDim(2) != kvBlockSize && kScaleCache.GetDim(1) != vScale.GetDim(0)) {
+    } else if (cacheLayout == 1 && kScaleCacheShape.GetDim(2) != kvBlockSize && kScaleCacheShape.GetDim(1) != vScale->GetViewShape().GetDim(0)) {
         return false;
     }
     return true;
@@ -93,9 +96,10 @@ inline static aclnnStatus CheckParams(const aclTensor* kCache, const aclTensor* 
                                       const aclTensor* kFlat, const aclTensor* vBias)
 {
     CHECK_RET(CheckNull(kCache, vCache, kvIndices, kvSeqLens, kScaleCache, vScale), ACLNN_ERR_PARAM_NULLPTR);
-    CHECK_RET(CheckDtype(kCache, vCache kScaleCache, vScale), ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(CheckDtype(kCache, vCache, kScaleCache, vScale), ACLNN_ERR_PARAM_INVALID);
     CHECK_RET(CheckShape(kCache, vCache, kScaleCache, vScale, cacheLayout, kvBlockSize), ACLNN_ERR_PARAM_INVALID);
     CHECK_RET(CheckAttr(stemBlockSize, stemStride), ACLNN_ERR_PARAM_INVALID);
+    return ACLNN_SUCCESS;
 }
 
 aclnnStatus aclnnStemOamPrepPagedKvGetWorkspaceSize(
@@ -104,32 +108,32 @@ aclnnStatus aclnnStemOamPrepPagedKvGetWorkspaceSize(
     int64_t cacheLayout, int64_t kvBlockSize, int64_t stemBlockSize, int64_t stemStride,
     const aclTensor* kFlat, const aclTensor* vBias, uint64_t* workspaceSize, aclOpExecutor** executor)
 {
-    L2_DFX_PHASE_1(aclnnNonzero, DFX_IN(kCache, vCache, kvIndices, kvSeqLens, kScaleCache, vScale, lambdaMag,
+    L2_DFX_PHASE_1(aclnnStemOamPrepPagedKv, DFX_IN(kCache, vCache, kvIndices, kvSeqLens, kScaleCache, vScale, lambdaMag,
                    cacheLayout, kvBlockSize, stemBlockSize, stemStride), DFX_OUT(kFlat, vBias));
-    // 固定写法，创建OpExecutor
     auto uniqueExecutor = CREATE_EXECUTOR();
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
 
-    // 参数检查
-    auto ret = CheckParams(kCache, vCache, kvIndices, kvSeqLens, kScaleCache, vScale, kFlat, vBias);
+    auto ret = CheckParams(kCache, vCache, kvIndices, kvSeqLens, kScaleCache, vScale,
+                           cacheLayout, kvBlockSize, stemBlockSize, stemStride, kFlat, vBias);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
 
-    auto kCacheView = executor->CreateView(
+    auto kCacheView = uniqueExecutor->CreateView(
         kCache, kCache->GetViewShape(), kCache->GetStorageShape(),
         kCache->GetViewStrides(), kCache->GetViewOffset());
-    auto vCacheView = executor->CreateView(
+    auto vCacheView = uniqueExecutor->CreateView(
         vCache, vCache->GetViewShape(), vCache->GetStorageShape(),
         vCache->GetViewStrides(), vCache->GetViewOffset());
 
-    auto kvIndicesContiguous = l0op::Contiguous(kvIndices, executor);
-    auto kvSeqLensContiguous = l0op::Contiguous(kvSeqLens, executor);
-    auto kScaleCacheContiguous = l0op::Contiguous(kScaleCache, executor);
-    auto vScaleContiguous = l0op::Contiguous(vScale, executor);
+    auto kvIndicesContiguous = l0op::Contiguous(kvIndices, uniqueExecutor.get());
+    auto kvSeqLensContiguous = l0op::Contiguous(kvSeqLens, uniqueExecutor.get());
+    auto kScaleCacheContiguous = l0op::Contiguous(kScaleCache, uniqueExecutor.get());
+    auto vScaleContiguous = l0op::Contiguous(vScale, uniqueExecutor.get());
 
-    // 调用l0算子
-    l0op::StemOamPrepPagedKv(kCacheView, vCacheView, kvIndicesContiguous, kvSeqLensContiguous, kScaleCacheContiguous,
-                             kScaleCacheContiguous, vScaleContiguous, lambdaMag, cacheLayout, kvBlockSize, stemBlockSize,
-                             stemStride, kFlat, vBias, uniqueExecutor.get());
+    auto result = l0op::StemOamPrepPagedKv(kCacheView, vCacheView, kvIndicesContiguous, kvSeqLensContiguous,
+                                           kScaleCacheContiguous, vScaleContiguous, lambdaMag,
+                                           cacheLayout, kvBlockSize, stemBlockSize, stemStride,
+                                           kFlat, vBias, uniqueExecutor.get());
+    CHECK_RET(std::get<0>(result) != nullptr && std::get<1>(result) != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
     *workspaceSize = uniqueExecutor->GetWorkspaceSize();
     uniqueExecutor.ReleaseTo(executor);
@@ -139,7 +143,6 @@ aclnnStatus aclnnStemOamPrepPagedKvGetWorkspaceSize(
 aclnnStatus aclnnStemOamPrepPagedKv(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor, const aclrtStream stream)
 {
     L2_DFX_PHASE_2(aclnnStemOamPrepPagedKv);
-    // 固定写法，调用框架能力，完成计算
     return CommonOpExecutorRun(workspace, workspaceSize, executor, stream);
 }
 

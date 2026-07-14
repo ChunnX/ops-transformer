@@ -14,43 +14,39 @@
  */
 
 #include "stem_oam_prep_paged_kv.h"
-#include "opdev/aicpu/aicpu_task.h"
 #include "opdev/make_op_executor.h"
 #include "opdev/op_def.h"
 #include "opdev/op_dfx.h"
-#include "opdev/op_executor.h"
 #include "opdev/op_log.h"
 #include "opdev/shape_utils.h"
-#include "opdev/platform.h"
-#include "op_api/aclnn_util.h"
 
 using namespace op;
 namespace l0op {
 OP_TYPE_REGISTER(StemOamPrepPagedKv);
 
-const aclTensor *StemOamPrepPagedKv(
+std::tuple<const aclTensor*, const aclTensor*> StemOamPrepPagedKv(
     const aclTensor *kCache, const aclTensor *vCache, const aclTensor *kvIndices,
     const aclTensor *kvSeqLens, const aclTensor *kScaleCache, const aclTensor *vScale, float lambdaMag,
-    int64_t *cacheLayout, int64_t *kvBlockSize, int64_t *stemBlockSize, int64_t *stemStride,
+    int64_t cacheLayout, int64_t kvBlockSize, int64_t stemBlockSize, int64_t stemStride,
     const aclTensor *kFlat, const aclTensor *vBias, aclOpExecutor *executor)
 {
     L0_DFX(StemOamPrepPagedKv, kCache, vCache, kvIndices, kvSeqLens, kScaleCache, vScale, lambdaMag,
-           cacheLayout, kvBlockSize, stemBlockSize, stemStride, kFlat, vBias);
+           cacheLayout, kvBlockSize, stemBlockSize, stemStride);
 
-    Shape outShapeShape{9};
-    auto kFlatShape = executor->AllocTensor(outShapeShape, DataType::DT_INT64, Format::FORMAT_ND);
-    auto vBiasShape = executor->AllocTensor(outShapeShape, DataType::DT_INT64, Format::FORMAT_ND);
+    Shape outShapeShape{18};
+    auto outShapes = executor->AllocTensor(outShapeShape, DataType::DT_INT64, Format::FORMAT_ND);
 
     auto ret = ADD_TO_LAUNCHER_LIST_AICORE(StemOamPrepPagedKv,
-        OP_INTPUT(kCache, vCache, kvIndices, kvSeqLens, kScaleCache, vScale),
-        OP_ATTR({lambdaMag, cacheLayout, kvBlockSize, stemBlockSize, stemStride}),
+        OP_INPUT(kCache, vCache, kvIndices, kvSeqLens, kScaleCache, vScale),
+        OP_ATTR(lambdaMag, cacheLayout, kvBlockSize, stemBlockSize, stemStride),
         OP_OUTPUT(kFlat, vBias),
-        OP_OUTSHAPE({kFlatShape, 0}),
-        OP_OUTSHAPE({vBiasShape, 1}));
+        OP_OUTSHAPE({outShapes, 0}),
+        OP_OUTSHAPE({outShapes, 1}));
 
-    OP_CHECK(ret == ACL_SUCCESS,
-        OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "SparseLightningIndexerKLLossGradMetadata ADD_TO_LAUNCHER_LIST_AICPU failed."),
-        return nullptr);
-    return {kFlat, vBias};
+    auto kNullResult = std::tuple<const aclTensor*, const aclTensor*>{nullptr, nullptr};
+    OP_CHECK(ret == ACLNN_SUCCESS,
+        OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "StemOamPrepPagedKv ADD_TO_LAUNCHER_LIST_AICORE failed."),
+        return kNullResult);
+    return std::tuple<const aclTensor*, const aclTensor*>(kFlat, vBias);
 }
 }  // namespace l0op
