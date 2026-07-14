@@ -59,13 +59,13 @@ constexpr int64_t TH_RECV_MIN_ROWS_PER_CORE = 64;
 constexpr uint64_t UB_SYS_RESERVED_SIZE = 32 * 1024;
 } // namespace
 
-class FfnWorkerBatchingArch35Tiling : public Ops::Transformer::OpTiling::TilingBaseClass {
+class FfnWorkerBatchingTilingArch35 : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
-    explicit FfnWorkerBatchingArch35Tiling(gert::TilingContext *context)
+    explicit FfnWorkerBatchingTilingArch35(gert::TilingContext *context)
         : Ops::Transformer::OpTiling::TilingBaseClass(context)
     {
     }
-    ~FfnWorkerBatchingArch35Tiling() override = default;
+    ~FfnWorkerBatchingTilingArch35() override = default;
 
 protected:
     bool IsCapable() override
@@ -100,7 +100,7 @@ private:
     uint32_t sysWorkspaceSize_ = 0;
 };
 
-ge::graphStatus FfnWorkerBatchingArch35Tiling::GetPlatformInfo()
+ge::graphStatus FfnWorkerBatchingTilingArch35::GetPlatformInfo()
 {
     auto platformInfo = context_->GetPlatformInfo();
     OP_CHECK_IF(platformInfo == nullptr, OP_LOGE(context_->GetNodeName(), "platformInfo is null"),
@@ -122,7 +122,7 @@ ge::graphStatus FfnWorkerBatchingArch35Tiling::GetPlatformInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus FfnWorkerBatchingArch35Tiling::CheckInputParam()
+ge::graphStatus FfnWorkerBatchingTilingArch35::CheckInputParam()
 {
     auto inputDesc = context_->GetInputDesc(0);
     OP_CHECK_NULL_WITH_CONTEXT(context_, inputDesc);
@@ -140,7 +140,7 @@ ge::graphStatus FfnWorkerBatchingArch35Tiling::CheckInputParam()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus FfnWorkerBatchingArch35Tiling::GetAttrsInfo()
+ge::graphStatus FfnWorkerBatchingTilingArch35::GetAttrsInfo()
 {
     auto attrs = context_->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context_, attrs);
@@ -203,7 +203,7 @@ ge::graphStatus FfnWorkerBatchingArch35Tiling::GetAttrsInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus FfnWorkerBatchingArch35Tiling::GetShapeAttrsInfo()
+ge::graphStatus FfnWorkerBatchingTilingArch35::GetShapeAttrsInfo()
 {
     OP_CHECK_IF(CheckInputParam() != ge::GRAPH_SUCCESS, OP_LOGE(context_->GetNodeName(), "CheckInputParam failed."),
                 return ge::GRAPH_FAILED);
@@ -212,7 +212,7 @@ ge::graphStatus FfnWorkerBatchingArch35Tiling::GetShapeAttrsInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus FfnWorkerBatchingArch35Tiling::DoOpTiling()
+ge::graphStatus FfnWorkerBatchingTilingArch35::DoOpTiling()
 {
     tilingDataPtr_ = context_->GetTilingData<FfnWorkerBatchingArch35TilingData>();
     OP_CHECK_NULL_WITH_CONTEXT(context_, tilingDataPtr_);
@@ -241,18 +241,18 @@ ge::graphStatus FfnWorkerBatchingArch35Tiling::DoOpTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus FfnWorkerBatchingArch35Tiling::DoLibApiTiling()
+ge::graphStatus FfnWorkerBatchingTilingArch35::DoLibApiTiling()
 {
     return ge::GRAPH_SUCCESS;
 }
 
-uint64_t FfnWorkerBatchingArch35Tiling::GetTilingKey() const
+uint64_t FfnWorkerBatchingTilingArch35::GetTilingKey() const
 {
     // TilingKey 只由 need_schedule 决定（token_dtype 正交，kernel 内处理）。
     return needSchedule_ == 0 ? static_cast<uint64_t>(TILING_KEY_NORM) : static_cast<uint64_t>(TILING_KEY_RECV);
 }
 
-ge::graphStatus FfnWorkerBatchingArch35Tiling::GetWorkspaceSize()
+ge::graphStatus FfnWorkerBatchingTilingArch35::GetWorkspaceSize()
 {
     // 与 A2 同公式；sysWorkspaceSize 经 GetLibApiWorkSpaceSize() 取 arch35 平台值。
     workspaceSize_ = MAX_RESERVE_WK_NUM * sizeof(int32_t) + Y_ * sizeof(int32_t) +
@@ -260,7 +260,7 @@ ge::graphStatus FfnWorkerBatchingArch35Tiling::GetWorkspaceSize()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus FfnWorkerBatchingArch35Tiling::PostTiling()
+ge::graphStatus FfnWorkerBatchingTilingArch35::PostTiling()
 {
     context_->SetBlockDim(coreNum_);
     context_->SetScheduleMode(BATCH_MODE);
@@ -278,5 +278,5 @@ ge::graphStatus FfnWorkerBatchingArch35Tiling::PostTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-REGISTER_OPS_TILING_TEMPLATE(FfnWorkerBatching, FfnWorkerBatchingArch35Tiling, 1000);
+REGISTER_OPS_TILING_TEMPLATE(FfnWorkerBatching, FfnWorkerBatchingTilingArch35, 1000);
 } // namespace optiling

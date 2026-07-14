@@ -26,9 +26,9 @@
 namespace FfnWbBatchingArch35 {
 using namespace AscendC;
 
-class KernelScanSortMaskMultiCoreArch35 : public SortMaskBase {
+class FfnWbScanSortMultiCoreArch35 : public SortMaskBase {
 public:
-    __aicore__ inline KernelScanSortMaskMultiCoreArch35(){};
+    __aicore__ inline FfnWbScanSortMultiCoreArch35(){};
     __aicore__ inline void Init(GM_ADDR tokenInfoGm, GM_ADDR workspace, SortCustomTilingDataKernel *tilingData,
                                 const ScheduleContextInfo *contextInfo, TPipe *tPipe);
     __aicore__ inline void Process();
@@ -94,8 +94,8 @@ private:
     static constexpr int64_t MAX_MRGSORT_LIST = 4;
 };
 
-__aicore__ inline void KernelScanSortMaskMultiCoreArch35::VBSCopyInAndClear(int64_t progress, int64_t size,
-                                                                            int64_t sortNum, int64_t loopSessionCnt)
+__aicore__ inline void FfnWbScanSortMultiCoreArch35::VBSCopyInAndClear(int64_t progress, int64_t size, int64_t sortNum,
+                                                                       int64_t loopSessionCnt)
 {
     LocalTensor<int32_t> inLocal = sortDataCopyInQueue.AllocTensor<int32_t>();
     // 根因修复(脏数据 bug)：AllocTensor 的 UB 未初始化，RECV 连跑复用残留脏值。整块预置 sentinel：
@@ -138,7 +138,7 @@ __aicore__ inline void KernelScanSortMaskMultiCoreArch35::VBSCopyInAndClear(int6
     sortDataCopyOutQueue.FreeTensor(clearLocal);
 }
 
-__aicore__ inline void KernelScanSortMaskMultiCoreArch35::UBSortCompute(int64_t progress, int64_t size, int64_t sortNum)
+__aicore__ inline void FfnWbScanSortMultiCoreArch35::UBSortCompute(int64_t progress, int64_t size, int64_t sortNum)
 {
     LocalTensor<int32_t> inLocal = sortDataCopyInQueue.DeQue<int32_t>();
     LocalTensor<int32_t> expertIdsLocal = inLocal[0];
@@ -198,7 +198,7 @@ __aicore__ inline void KernelScanSortMaskMultiCoreArch35::UBSortCompute(int64_t 
     sortDataCopyInQueue.FreeTensor(inLocal);
 }
 
-__aicore__ inline void KernelScanSortMaskMultiCoreArch35::VBSCopyOut(int64_t progress, int64_t size, int64_t sortNum)
+__aicore__ inline void FfnWbScanSortMultiCoreArch35::VBSCopyOut(int64_t progress, int64_t size, int64_t sortNum)
 {
     int64_t oneLoopMaxSessionNum =
         contextInfo_->sortLoopMaxElement / (contextInfo_->BS * contextInfo_->K + contextInfo_->BsKPaddingCount);
@@ -230,10 +230,9 @@ __aicore__ inline void KernelScanSortMaskMultiCoreArch35::VBSCopyOut(int64_t pro
                 copyParams1);
 }
 
-__aicore__ inline void KernelScanSortMaskMultiCoreArch35::InitSortMaskMrgSort(SortCustomMrgsort *sorter,
-                                                                              int64_t listNum, int64_t coreOffset,
-                                                                              int64_t sortNumCoreOffset,
-                                                                              int64_t loopOffset, int64_t loopIdxOffset)
+__aicore__ inline void FfnWbScanSortMultiCoreArch35::InitSortMaskMrgSort(SortCustomMrgsort *sorter, int64_t listNum,
+                                                                         int64_t coreOffset, int64_t sortNumCoreOffset,
+                                                                         int64_t loopOffset, int64_t loopIdxOffset)
 {
     GlobalTensor<float> srcWsGm = workspaceGms[srcWsIndex][blockIdx_ * coreOffset + loopOffset];
     GlobalTensor<int32_t> srcSortNumGm = workspaceSortNumGm_[blockIdx_ * sortNumCoreOffset + loopIdxOffset];
@@ -251,8 +250,8 @@ __aicore__ inline void KernelScanSortMaskMultiCoreArch35::InitSortMaskMrgSort(So
     tempBuffer.FreeTensor(outSortNumLocal);
 }
 
-__aicore__ inline void KernelScanSortMaskMultiCoreArch35::InitSortMaskMrgSortOut(SortCustomMrgsortOut *sorter,
-                                                                                 int64_t listNum, int64_t coreOffset)
+__aicore__ inline void FfnWbScanSortMultiCoreArch35::InitSortMaskMrgSortOut(SortCustomMrgsortOut *sorter,
+                                                                            int64_t listNum, int64_t coreOffset)
 {
     GlobalTensor<float> srcWsGm = workspaceGms[srcWsIndex];
     GlobalTensor<int32_t> srcSortNumGm = workspaceSortNumGm_;
@@ -274,8 +273,8 @@ __aicore__ inline void KernelScanSortMaskMultiCoreArch35::InitSortMaskMrgSortOut
     sortDataCopyOutQueue.FreeTensor(outLocal);
 }
 
-__aicore__ inline void KernelScanSortMaskMultiCoreArch35::OneCoreVMSProcess(int64_t listNum, int64_t perListElements,
-                                                                            int64_t lastListElements)
+__aicore__ inline void FfnWbScanSortMultiCoreArch35::OneCoreVMSProcess(int64_t listNum, int64_t perListElements,
+                                                                       int64_t lastListElements)
 {
     int64_t coreOffset = GetSortLen<float>(perCoreSortNum);
     int64_t sortNumCoreOffset = tilingData_->sortNumWorkSpacePerCore;
@@ -314,15 +313,15 @@ __aicore__ inline void KernelScanSortMaskMultiCoreArch35::OneCoreVMSProcess(int6
     }
 }
 
-__aicore__ inline void KernelScanSortMaskMultiCoreArch35::UBSortProcess(int64_t progress, int64_t size, int64_t sortNum,
-                                                                        int64_t loopSessionCnt)
+__aicore__ inline void FfnWbScanSortMultiCoreArch35::UBSortProcess(int64_t progress, int64_t size, int64_t sortNum,
+                                                                   int64_t loopSessionCnt)
 {
     VBSCopyInAndClear(progress, size, sortNum, loopSessionCnt);
     UBSortCompute(progress, size, sortNum);
     VBSCopyOut(progress, size, sortNum);
 }
 
-__aicore__ inline void KernelScanSortMaskMultiCoreArch35::VBSProcess()
+__aicore__ inline void FfnWbScanSortMultiCoreArch35::VBSProcess()
 {
     if (blockIdx_ < tilingData_->needCoreNum) {
         int64_t sortNum = Ceil(perLoopElements, ONE_REPEAT_SORT_NUM) * ONE_REPEAT_SORT_NUM;
@@ -342,7 +341,7 @@ __aicore__ inline void KernelScanSortMaskMultiCoreArch35::VBSProcess()
     SyncAll();
 }
 
-__aicore__ inline void KernelScanSortMaskMultiCoreArch35::VMSProcess()
+__aicore__ inline void FfnWbScanSortMultiCoreArch35::VMSProcess()
 {
     int64_t currentStageNeedCoreNum = tilingData_->needCoreNumMrg;
     perListElements = perCoreSortNum;
@@ -381,7 +380,7 @@ __aicore__ inline void KernelScanSortMaskMultiCoreArch35::VMSProcess()
     }
 }
 
-__aicore__ inline void KernelScanSortMaskMultiCoreArch35::SortOutProcess()
+__aicore__ inline void FfnWbScanSortMultiCoreArch35::SortOutProcess()
 {
     if (blockIdx_ < 1) {
         mrgsortParam.perListElements = perListElements;
@@ -397,7 +396,7 @@ __aicore__ inline void KernelScanSortMaskMultiCoreArch35::SortOutProcess()
     SyncAll();
 }
 
-__aicore__ inline void KernelScanSortMaskMultiCoreArch35::CopyOutValidCount()
+__aicore__ inline void FfnWbScanSortMultiCoreArch35::CopyOutValidCount()
 {
     LocalTensor<int32_t> outLocal = sortDataCopyOutQueue.AllocTensor<int32_t>();
     // 根因修复(脏数据 bug)：outLocal 的 UB 未初始化。整块(1*32B=8*int32)清零、仅 [0] 写计数，
@@ -414,9 +413,9 @@ __aicore__ inline void KernelScanSortMaskMultiCoreArch35::CopyOutValidCount()
     sortDataCopyOutQueue.FreeTensor(outLocal);
 }
 
-__aicore__ inline void KernelScanSortMaskMultiCoreArch35::Init(GM_ADDR tokenInfoGm, GM_ADDR workspace,
-                                                               SortCustomTilingDataKernel *tilingData,
-                                                               const ScheduleContextInfo *contextInfo, TPipe *tPipe)
+__aicore__ inline void FfnWbScanSortMultiCoreArch35::Init(GM_ADDR tokenInfoGm, GM_ADDR workspace,
+                                                          SortCustomTilingDataKernel *tilingData,
+                                                          const ScheduleContextInfo *contextInfo, TPipe *tPipe)
 {
     this->pipe = tPipe;
     tilingData_ = tilingData;
@@ -480,7 +479,7 @@ __aicore__ inline void KernelScanSortMaskMultiCoreArch35::Init(GM_ADDR tokenInfo
     pipe->InitBuffer(tempBuffer, bufferSize_);
 }
 
-__aicore__ inline void KernelScanSortMaskMultiCoreArch35::ClearTokenInfoFlag()
+__aicore__ inline void FfnWbScanSortMultiCoreArch35::ClearTokenInfoFlag()
 {
     // 用最后一个核清理flag. 一个block一个有效数(0, int32_t). 总共需要A个block.
     if (blockIdx_ == contextInfo_->coreNum - 1) {
@@ -507,7 +506,7 @@ __aicore__ inline void KernelScanSortMaskMultiCoreArch35::ClearTokenInfoFlag()
     }
 }
 
-__aicore__ inline void KernelScanSortMaskMultiCoreArch35::Process()
+__aicore__ inline void FfnWbScanSortMultiCoreArch35::Process()
 {
     VBSProcess();
     ClearTokenInfoFlag();

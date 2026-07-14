@@ -18,10 +18,10 @@
  * \file ffn_worker_batching_apt.cpp
  * \brief arch35 (Ascend950 / DAV_3510) kernel entry for FfnWorkerBatching.
  *        迭代二整合：NORM(100) + RECV(101) 双 TilingKey 完整整合，单/多核 sort 全路径打通。
- *        - NORM：单核 KernelSortMaskOneCore / 多核 KernelSortMaskMultiCoreArch35(+MrgSort 归并)。
+ *        - NORM：单核 KernelSortMaskOneCore / 多核 FfnWbSortMultiCoreArch35(+MrgSort 归并)。
  *        - RECV：scan_token_info 前置扫描 → 三种 sort 分支
- *                (KernelScanSortMaskOneCore / KernelScanSortMaskMultiCoreArch35 /
- *                 KernelScanSortMaskMultiCoreBsKArch35，由 isNormalBsK 分流)。
+ *                (KernelScanSortMaskOneCore / FfnWbScanSortMultiCoreArch35 /
+ *                 FfnWbScanSortMultiCoreBskArch35，由 isNormalBsK 分流)。
  *        三步算法照搬 A2（ffn_worker_batching.cpp），仅按运行时 UB/核数重算切分阈值。
  *        102(RECV_GATHER) 为 A2 保留分支，tiling 从不 SetTilingKey(102)，此处不分发。
  */
@@ -55,7 +55,7 @@ __aicore__ inline void GatherAndGroupListing(GM_ADDR gatherExpertIdxWS, GM_ADDR 
                                              GM_ADDR expert_offsets, GM_ADDR dynamic_scale, GM_ADDR userWS,
                                              ScheduleContextInfo &contextInfo, TPipe &ffnPipe)
 {
-    KernelFfnWBGroupListingArch35 expertTokenOutMultiOp;
+    FfnWbGroupListingArch35 expertTokenOutMultiOp;
     int64_t groupListingDealFlag = 0;
     uint32_t usedCoreNum = GROUP_LISTING_AIV_NUM;
     if (contextInfo.validGatherIdxLength > GROUP_LISTING_MULTI_CORE_LENGTH) {
@@ -105,7 +105,7 @@ FfnWorkerBatchingProcess(GM_ADDR schedule_context, GM_ADDR y, GM_ADDR group_list
         op.Process();
         ffnPipe.Reset();
     } else {
-        KernelSortMaskMultiCoreArch35 op;
+        FfnWbSortMultiCoreArch35 op;
         op.Init(reinterpret_cast<GM_ADDR>(contextInfo.bufferPtr.expertIdsBuf), userWS, &tilingdataSort, &contextInfo,
                 &ffnPipe);
         op.Process();
@@ -151,12 +151,12 @@ FfnWorkerBatchingRecvProcess(GM_ADDR schedule_context, GM_ADDR y, GM_ADDR group_
         op.Process();
         ffnPipe.Reset();
     } else if (tilingdataSort.isNormalBsK != NORMAL_BSK) {
-        KernelScanSortMaskMultiCoreBsKArch35 op;
+        FfnWbScanSortMultiCoreBskArch35 op;
         op.Init(tokenInfoGmAddr, userWS, &tilingdataSort, &contextInfo, &ffnPipe);
         op.Process();
         ffnPipe.Reset();
     } else {
-        KernelScanSortMaskMultiCoreArch35 op;
+        FfnWbScanSortMultiCoreArch35 op;
         op.Init(tokenInfoGmAddr, userWS, &tilingdataSort, &contextInfo, &ffnPipe);
         op.Process();
         ffnPipe.Reset();
