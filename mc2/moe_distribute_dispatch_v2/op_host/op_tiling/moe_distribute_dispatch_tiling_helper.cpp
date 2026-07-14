@@ -172,8 +172,6 @@ inline bool MoeDistributeDispatchTilingHelper::CheckEpTpRecvTensorDim(const gert
                         "The shape dim of epRecvCountShape must be 1D."),
                     return false);
     OP_LOGD(nodeName, "epRecvCount dim0 = %ld", epRecvCountStorageShape->GetStorageShape().GetDim(0));
-
-
     return true;
 }
 
