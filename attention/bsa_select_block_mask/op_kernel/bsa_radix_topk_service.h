@@ -1186,7 +1186,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::SubTopKAndWriteMaskGT(
     uint64_t alignLen = BSAAlignTo(curTileLen, static_cast<uint64_t>(VEC_ALIGN_SIZE));
 
     // The count overload of Compares only processes complete 256-byte blocks.
-    if (sortLen_ <= 64 || curTileLen != tileLen_ || tileLen_ % COMPARES_ALIGN_LEN != 0) {
+    if (sortLen_ <= 64 || alignLen % COMPARES_ALIGN_LEN != 0) {
         LocalTensor<uint8_t> maskLocal = maskLocalBuf_.Get<uint8_t>();
         uint8_t defaultValue = (constInfo.sparsityMode == BSASparseMode::TopK) ? 0 : 1;
         uint8_t writeValue = (constInfo.sparsityMode == BSASparseMode::TopK) ? 1 : 0;
@@ -1277,7 +1277,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::SubTopKAndWriteMaskEQ(
     uint64_t alignLen = BSAAlignTo(curTileLen, static_cast<uint64_t>(VEC_ALIGN_SIZE));
 
     // The count overload of Compares only processes complete 256-byte blocks.
-    if (sortLen_ <= 64 || curTileLen != tileLen_ || tileLen_ % COMPARES_ALIGN_LEN != 0) {
+    if (sortLen_ <= 64 || alignLen % COMPARES_ALIGN_LEN != 0) {
         LocalTensor<uint8_t> maskLocal = maskLocalBuf_.Get<uint8_t>();
         GlobalTensor<uint8_t> maskOutTileGm;
         maskOutTileGm.SetGlobalBuffer((__gm__ uint8_t *)(maskOutGmU8Local.GetPhyAddr() + outputGmOffset));
