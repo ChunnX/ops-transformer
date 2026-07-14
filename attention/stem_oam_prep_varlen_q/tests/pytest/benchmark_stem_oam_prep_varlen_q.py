@@ -275,31 +275,9 @@ def run_msprof(seq_lens, heads, warmup, iters, device_id, stem_block_size, stem_
     return results
 
 
-def print_comparison_table(npu_results, gpu_results):
-    print(f"\n{'=' * 90}")
-    print("  Performance Comparison: NPU vs GPU")
-    print(f"{'=' * 90}")
-    print(f"  {'SeqLen':>8}  {'Heads':>5}  {'NPU(ms)':>10}  {'GPU(ms)':>10}  {'Speedup':>8}")
-    print(f"  {'-' * 50}")
-
-    for nr in npu_results:
-        match = [gr for gr in gpu_results
-                 if gr['seq_len'] == nr['seq_len'] and gr['heads'] == nr['heads']]
-        if match:
-            gr = match[0]
-            speedup = gr['latency_ms'] / nr['latency_ms'] if nr['latency_ms'] > 0 else float('inf')
-            print(f"  {nr['seq_len']:>8}  {nr['heads']:>5}  "
-                  f"{nr['latency_ms']:>10.4f}  {gr['latency_ms']:>10.4f}  {speedup:>7.2f}x")
-        else:
-            print(f"  {nr['seq_len']:>8}  {nr['heads']:>5}  "
-                  f"{nr['latency_ms']:>10.4f}  {'N/A':>10}  {'N/A':>8}")
-
-    print(f"{'=' * 90}")
-
-
 def main():
     parser = argparse.ArgumentParser(description="Performance benchmark for stem_oam_prep_varlen_q")
-    parser.add_argument('--device', choices=['npu', 'gpu', 'both'], default='npu',
+    parser.add_argument('--device', choices=['npu', 'gpu'], default='npu',
                         help='Device to benchmark (default: npu)')
     parser.add_argument('--device-id', type=int, default=0, help='Device id')
     parser.add_argument('--warmup', type=int, default=10, help='Warmup iterations')
@@ -321,7 +299,7 @@ def main():
     npu_results = []
     gpu_results = []
 
-    if args.device in ('npu', 'both'):
+    if args.device == 'npu':
         print(f"\n{'=' * 90}")
         print(f"  NPU Benchmark: stem_oam_prep_varlen_q")
         print(f"  warmup={args.warmup}  iters={args.iters}  B={args.stem_block_size}  S={args.stem_stride}")
@@ -330,7 +308,7 @@ def main():
             args.seq_lens, args.heads, args.warmup, args.iters,
             args.device_id, args.stem_block_size, args.stem_stride)
 
-    if args.device in ('gpu', 'both'):
+    if args.device == 'gpu':
         print(f"\n{'=' * 90}")
         print(f"  GPU Benchmark: PyTorch reference (weighted group sum)")
         print(f"  warmup={args.warmup}  iters={args.iters}  B={args.stem_block_size}  S={args.stem_stride}")
@@ -339,10 +317,7 @@ def main():
             args.seq_lens, args.heads, args.warmup, args.iters,
             args.device_id, args.stem_block_size, args.stem_stride)
 
-    if args.device == 'both':
-        print_comparison_table(npu_results, gpu_results)
-
-    if args.msprof and args.device in ('npu', 'both'):
+    if args.msprof and args.device == 'npu':
         print(f"\n{'=' * 90}")
         print(f"  msprof Op-Level Profiling")
         print(f"{'=' * 90}")
