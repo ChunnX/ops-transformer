@@ -1835,9 +1835,6 @@ void MoeInitRoutingV3Arch35TilingClass::SetPerLoopParams4NoQuantDropPad(const Mu
         perLoopParams.perLoopMaxIndicesElements =
             CalcNoQuantDropPadMaxIndicesElements(multipleParams, perLoopParams.perLoopCols);
     }
-    AlignInt4DynamicQuantPerLoopCols(perLoopParams);
-    perLoopParams.perLoopMaxIndicesElements =
-        CalcNoQuantDropPadMaxIndicesElements(multipleParams, perLoopParams.perLoopCols);
     perLoopParams.perLoopMaxIndicesElements =
         std::min(perLoopParams.perLoopMaxIndicesElements, perCoreIndicesElements);
 
@@ -1897,6 +1894,12 @@ void MoeInitRoutingV3Arch35TilingClass::Tiling4GatherOutCompute()
 
     MultipleParams multipleParams = GetMultipleParams();
     PerLoopParams perLoopParams = GetPerLoopParams(multipleParams, perCoreIndicesElements);
+    int64_t originPerLoopCols = perLoopParams.perLoopCols;
+    AlignInt4DynamicQuantPerLoopCols(perLoopParams);
+    if (perLoopParams.perLoopCols != originPerLoopCols) {
+        SetPerLoopParams4NoQuantDropPad(multipleParams, perLoopParams, perCoreIndicesElements);
+        AlignInt4DynamicQuantPerLoopCols(perLoopParams);
+    }
 
     int64_t colsLoops = Ops::Base::CeilDiv(tilingDataPtr_->cols, perLoopParams.perLoopCols);
     int64_t lastLoopCols = tilingDataPtr_->cols - (colsLoops - 1) * perLoopParams.perLoopCols;
@@ -2107,8 +2110,8 @@ bool MoeInitRoutingV3Arch35TilingClass::IsFullLoad()
                                     BF16_TO_FP32_SIZE_FACTOR * AlignBytes(cols_, inputXDtypeSize_);
             inputXInSpace *= NUM_TWO;
             int64_t smoothInSpace = AlignBytes(cols_, sizeof(float));
-            // cols_ is validated as even for INT4, so two INT4 values are packed into each byte.
-            int64_t inputXOutSpace = AlignBytes(cols_ / NUM_TWO, sizeof(int8_t));
+            // INT4 output is cols/2 bytes (2 INT4 values packed per byte).
+            int64_t inputXOutSpace = AlignBytes(Ops::Base::CeilDiv(cols_, NUM_TWO), sizeof(int8_t));
             int64_t calcSpace = AlignBytes(cols_, sizeof(float));
             int64_t scaleOutSpace = UB_BLOCK_SIZE * NUM_TWO;
             remainUb -=
