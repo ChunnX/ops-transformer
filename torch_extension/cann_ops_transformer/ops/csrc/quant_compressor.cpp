@@ -24,12 +24,12 @@ const int64_t MAX_DIM_SIZE = 8;
 const int64_t VALUE_0 = 0;
 const int64_t VALUE_1 = 1;
 
-inline TensorWrapper make_wrapper(const at::Tensor &tensor, aclDataType tensor_acltype)
+inline TensorWrapper make_wrapper(const at::Tensor &tensor, aclDataType tensorAcltype)
 {
-    return {tensor, tensor_acltype};
+    return {tensor, tensorAcltype};
 }
 
-std::vector<bool> is_contiguous_axes(const at::Tensor &tensor)
+std::vector<bool> IsContiguousAxes(const at::Tensor &tensor)
 {
     auto sizes = tensor.sizes();
     auto strides = tensor.strides();
@@ -39,110 +39,102 @@ std::vector<bool> is_contiguous_axes(const at::Tensor &tensor)
     }
     std::vector<bool> result(ndim, false);
 
-    std::vector<int64_t> contiguous_stride(ndim, 1);
+    std::vector<int64_t> contiguousStride(ndim, 1);
     for (int64_t i = ndim - 2; i >= 0; i--) {
-        contiguous_stride[i] = contiguous_stride[i + 1] * sizes[i + 1];
+        contiguousStride[i] = contiguousStride[i + 1] * sizes[i + 1];
     }
 
     for (int64_t i = 0; i < ndim; i++) {
-        result[i] = (strides[i] == contiguous_stride[i]);
+        result[i] = (strides[i] == contiguousStride[i]);
     }
     return result;
 }
 
-at::Tensor construct_quant_compressor_output_tensor(const at::Tensor &x, const at::Tensor &wkv,
-                                                    const c10::optional<at::Tensor> &cu_seqlens,
-                                                    int64_t cmp_ratio, int64_t coff)
+at::Tensor ConstructQuantCompressorOutputTensor(const at::Tensor &x, const at::Tensor &wkv,
+                                                const c10::optional<at::Tensor> &cuSeqlens, int64_t cmpRatio,
+                                                int64_t coff)
 {
-    auto x_dim = x.dim();
-    at::SmallVector<int64_t, MAX_DIM_SIZE> cmp_kv_size;
-    at::Tensor cmp_kv;
-    int64_t cmp_s = 0;
+    auto xDim = x.dim();
+    at::SmallVector<int64_t, MAX_DIM_SIZE> cmpKvSize;
+    at::Tensor cmpKv;
+    int64_t cmpS = 0;
 
     TORCH_CHECK(wkv.defined(), "Check wkv != nullptr failed");
-    auto wkv_dim = wkv.dim();
-    TORCH_CHECK(wkv_dim == DIM_TWO, "wkv dim num[", wkv_dim, "] should be 2");
+    auto wkvDim = wkv.dim();
+    TORCH_CHECK(wkvDim == DIM_TWO, "wkv dim num[", wkvDim, "] should be 2");
 
     auto D = wkv.size(0) / coff;
-    if (x_dim == DIM_THREE) {
-        cmp_s = (x.size(1) + cmp_ratio - 1) / cmp_ratio;
-        cmp_kv_size = {x.size(0), cmp_s, D};
+    if (xDim == DIM_THREE) {
+        cmpS = (x.size(1) + cmpRatio - 1) / cmpRatio;
+        cmpKvSize = {x.size(0), cmpS, D};
     } else {
-        TORCH_CHECK(cu_seqlens.has_value(), "Check cu_seqlens != nullptr failed");
-        int64_t b_size = cu_seqlens->size(0) - 1;
-        cmp_s = std::min(x.size(0), x.size(0) / cmp_ratio + b_size);
-        cmp_kv_size = {cmp_s, D};
+        TORCH_CHECK(cuSeqlens.has_value(), "Check cu_seqlens != nullptr failed");
+        int64_t bSize = cuSeqlens->size(0) - 1;
+        cmpS = std::min(x.size(0), x.size(0) / cmpRatio + bSize);
+        cmpKvSize = {cmpS, D};
     }
 
-    cmp_kv = at::empty(cmp_kv_size, x.options().dtype(at::kBFloat16));
-    return cmp_kv;
+    cmpKv = at::empty(cmpKvSize, x.options().dtype(at::kBFloat16));
+    return cmpKv;
 }
 
-at::Tensor quant_compressor(const at::Tensor &x, const at::Tensor &wkv, const at::Tensor &wgate,
-                            at::Tensor &state_cache, const at::Tensor &ape,
-                            int64_t quant_mode, int64_t cmp_ratio,
-                            const c10::optional<at::Tensor> &x_descale,
-                            const c10::optional<at::Tensor> &wkv_descale,
-                            const c10::optional<at::Tensor> &wgate_descale,
-                            const c10::optional<at::Tensor> &state_block_table,
-                            const c10::optional<at::Tensor> &cu_seqlens,
-                            const c10::optional<at::Tensor> &seqused,
-                            const c10::optional<at::Tensor> &start_pos,
-                            int64_t coff, int64_t cache_mode)
+at::Tensor QuantCompressor(const at::Tensor &x, const at::Tensor &wkv, const at::Tensor &wgate,
+                           at::Tensor &stateCache, const at::Tensor &ape, int64_t quantMode, int64_t cmpRatio,
+                           const c10::optional<at::Tensor> &xDescale, const c10::optional<at::Tensor> &wkvDescale,
+                           const c10::optional<at::Tensor> &wgateDescale,
+                           const c10::optional<at::Tensor> &stateBlockTable,
+                           const c10::optional<at::Tensor> &cuSeqlens, const c10::optional<at::Tensor> &seqused,
+                           const c10::optional<at::Tensor> &startPos, int64_t coff, int64_t cacheMode)
 {
     TORCH_CHECK(x.defined(), "Check x != nullptr failed");
-    auto x_dim = x.dim();
-    TORCH_CHECK(x_dim == DIM_TWO || x_dim == DIM_THREE, "x dim num[", x_dim, "] should be 2 or 3");
+    auto xDim = x.dim();
+    TORCH_CHECK(xDim == DIM_TWO || xDim == DIM_THREE, "x dim num[", xDim, "] should be 2 or 3");
 
-    TORCH_CHECK(cmp_ratio > VALUE_0, "cmp_ratio should be greater than 0");
+    TORCH_CHECK(cmpRatio > VALUE_0, "cmp_ratio should be greater than 0");
     TORCH_CHECK(coff > VALUE_0, "coff should be greater than 0");
 
-    at::Tensor cmp_kv = construct_quant_compressor_output_tensor(x, wkv, cu_seqlens, cmp_ratio, coff);
+    at::Tensor cmpKv = ConstructQuantCompressorOutputTensor(x, wkv, cuSeqlens, cmpRatio, coff);
 
-    auto state_cache_dim = state_cache.dim();
-    TORCH_CHECK(state_cache_dim == DIM_THREE, "state_cache dim num[", state_cache_dim, "] should be 3");
+    auto stateCacheDim = stateCache.dim();
+    TORCH_CHECK(stateCacheDim == DIM_THREE, "state_cache dim num[", stateCacheDim, "] should be 3");
 
-    auto contiguous_axes_result = is_contiguous_axes(state_cache);
-    TORCH_CHECK(contiguous_axes_result[DIM_ONE] && contiguous_axes_result[DIM_TWO],
+    auto contiguousAxesResult = IsContiguousAxes(stateCache);
+    TORCH_CHECK(contiguousAxesResult[DIM_ONE] && contiguousAxesResult[DIM_TWO],
                 "state_cache must be contiguous on all axes except axis 0");
 
-    int64_t state_cache_stride_dim0 = state_cache.stride(0);
+    int64_t stateCacheStrideDim0 = stateCache.stride(0);
 
-    TensorWrapper x_wrapper = make_wrapper(x, ACL_HIFLOAT8);
-    TensorWrapper wkv_wrapper = make_wrapper(wkv, ACL_HIFLOAT8);
-    TensorWrapper wgate_wrapper = make_wrapper(wgate, ACL_HIFLOAT8);
+    TensorWrapper xWrapper = make_wrapper(x, ACL_HIFLOAT8);
+    TensorWrapper wkvWrapper = make_wrapper(wkv, ACL_HIFLOAT8);
+    TensorWrapper wgateWrapper = make_wrapper(wgate, ACL_HIFLOAT8);
 
-    ACLNN_CMD(aclnnQuantCompressor, x_wrapper, wkv_wrapper, wgate_wrapper, state_cache, ape, x_descale,
-              wkv_descale, wgate_descale, state_block_table, cu_seqlens, seqused, start_pos, quant_mode,
-              cmp_ratio, coff, cache_mode, state_cache_stride_dim0, cmp_kv);
+    ACLNN_CMD(aclnnQuantCompressor, xWrapper, wkvWrapper, wgateWrapper, stateCache, ape, xDescale, wkvDescale,
+              wgateDescale, stateBlockTable, cuSeqlens, seqused, startPos, quantMode, cmpRatio, coff, cacheMode,
+              stateCacheStrideDim0, cmpKv);
 
-    return cmp_kv;
+    return cmpKv;
 }
 
-at::Tensor quant_compressor_meta(const at::Tensor &x, const at::Tensor &wkv, const at::Tensor &wgate,
-                                 at::Tensor &state_cache, const at::Tensor &ape,
-                                 int64_t quant_mode, int64_t cmp_ratio,
-                                 const c10::optional<at::Tensor> &x_descale,
-                                 const c10::optional<at::Tensor> &wkv_descale,
-                                 const c10::optional<at::Tensor> &wgate_descale,
-                                 const c10::optional<at::Tensor> &state_block_table,
-                                 const c10::optional<at::Tensor> &cu_seqlens,
-                                 const c10::optional<at::Tensor> &seqused,
-                                 const c10::optional<at::Tensor> &start_pos,
-                                 int64_t coff, int64_t cache_mode)
+at::Tensor QuantCompressorMeta(const at::Tensor &x, const at::Tensor &wkv, const at::Tensor &wgate,
+                               at::Tensor &stateCache, const at::Tensor &ape, int64_t quantMode, int64_t cmpRatio,
+                               const c10::optional<at::Tensor> &xDescale, const c10::optional<at::Tensor> &wkvDescale,
+                               const c10::optional<at::Tensor> &wgateDescale,
+                               const c10::optional<at::Tensor> &stateBlockTable,
+                               const c10::optional<at::Tensor> &cuSeqlens, const c10::optional<at::Tensor> &seqused,
+                               const c10::optional<at::Tensor> &startPos, int64_t coff, int64_t cacheMode)
 {
     TORCH_CHECK(x.defined(), "Check x != nullptr failed");
-    auto x_dim = x.dim();
-    TORCH_CHECK(x_dim == DIM_TWO || x_dim == DIM_THREE, "x dim num[", x_dim, "] should be 2 or 3");
+    auto xDim = x.dim();
+    TORCH_CHECK(xDim == DIM_TWO || xDim == DIM_THREE, "x dim num[", xDim, "] should be 2 or 3");
 
-    TORCH_CHECK(cmp_ratio > VALUE_0, "cmp_ratio should be greater than 0");
+    TORCH_CHECK(cmpRatio > VALUE_0, "cmp_ratio should be greater than 0");
     TORCH_CHECK(coff > VALUE_0, "coff should be greater than 0");
 
-    return construct_quant_compressor_output_tensor(x, wkv, cu_seqlens, cmp_ratio, coff);
+    return ConstructQuantCompressorOutputTensor(x, wkv, cuSeqlens, cmpRatio, coff);
 }
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
-    m.def("quant_compressor", &quant_compressor, "quant_compressor");
+    m.def("quant_compressor", &QuantCompressor, "quant_compressor");
 }
 } // namespace op_api
