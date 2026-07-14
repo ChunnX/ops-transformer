@@ -309,11 +309,7 @@ public:
             maskLine = AttenMaskCopyInDn(attenMaskUb, 0, runInfo.actVecMSize, runInfo, subLoop);
         }
         if (isSkipCompute) {
-            bmm1ResBuf.SetCrossCore();
-            outputBuf.SetCrossCore();
-            this->attenMaskInQue[0].template FreeTensor(attenMaskUb);
-            runInfo.actSingleLoopS2Size = s2SplitSize;
-            return;
+            maskLine = -256;
         }
         uint32_t softmaxBufIdx = runInfo.mloop % (PRELOAD_N + 1);
         uint32_t expBufIdx = runInfo.loop % (PRELOAD_N + 1);
