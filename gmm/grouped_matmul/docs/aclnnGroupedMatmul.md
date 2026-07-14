@@ -9,6 +9,9 @@
 |<term>Ascend 950PR/Ascend 950DT</term>|      √     |
 |<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      √     |
 |<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      √     |
+|<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
+|<term>Atlas 推理系列产品</term>|      √     |
+|<term>Atlas 训练系列产品</term>|      ×     |
 
 ## 功能说明
 
@@ -79,7 +82,7 @@ aclnnStatus aclnnGroupedMatmul(
 - **参数说明：**
 
   <table style="undefined;table-layout: fixed;width: 1540px"><colgroup>
-    <col style="width: 170px">
+    <col style="width: 240px">
     <col style="width: 120px">
     <col style="width: 300px">
     <col style="width: 330px">
@@ -102,7 +105,7 @@ aclnnStatus aclnnGroupedMatmul(
     </thead>
     <tbody>
       <tr>
-        <td>x（aclTensorList）</td>
+        <td>x（aclTensorList *）</td>
         <td>输入</td>
         <td>公式中的输入x。</td>
         <td>
@@ -116,7 +119,7 @@ aclnnStatus aclnnGroupedMatmul(
         <td>-</td>
       </tr>
       <tr>
-        <td>weight（aclTensorList）</td>
+        <td>weight（aclTensorList *）</td>
         <td>输入</td>
         <td>公式中的weight。</td>
         <td>
@@ -130,7 +133,7 @@ aclnnStatus aclnnGroupedMatmul(
         <td>-</td>
       </tr>
       <tr>
-        <td>biasOptional（aclTensorList）</td>
+        <td>biasOptional（aclTensorList *）</td>
         <td>可选输入</td>
         <td>公式中的bias。</td>
         <td>
@@ -144,7 +147,7 @@ aclnnStatus aclnnGroupedMatmul(
         <td>-</td>
       </tr>
       <tr>
-        <td>scaleOptional（aclTensorList）</td>
+        <td>scaleOptional（aclTensorList *）</td>
         <td>可选输入</td>
         <td>代表量化参数中的缩放因子。</td>
         <td>
@@ -158,7 +161,7 @@ aclnnStatus aclnnGroupedMatmul(
         <td>-</td>
       </tr>
       <tr>
-        <td>offsetOptional（aclTensorList）</td>
+        <td>offsetOptional（aclTensorList *）</td>
         <td>可选输入</td>
         <td>代表量化参数中的偏移量。</td>
         <td>
@@ -172,7 +175,7 @@ aclnnStatus aclnnGroupedMatmul(
         <td>-</td>
       </tr>
       <tr>
-        <td>antiquantScaleOptional（aclTensorList）</td>
+        <td>antiquantScaleOptional（aclTensorList *）</td>
         <td>可选输入</td>
         <td>代表伪量化参数中的缩放因子。</td>
         <td>
@@ -186,7 +189,7 @@ aclnnStatus aclnnGroupedMatmul(
         <td>-</td>
       </tr>
       <tr>
-        <td>antiquantOffsetOptional（aclTensorList）</td>
+        <td>antiquantOffsetOptional（aclTensorList *）</td>
         <td>可选输入</td>
         <td>代表伪量化参数中的偏移量。</td>
         <td>
@@ -200,7 +203,7 @@ aclnnStatus aclnnGroupedMatmul(
         <td>-</td>
       </tr>
       <tr>
-        <td>groupListOptional（aclTensorList）</td>
+        <td>groupListOptional（aclIntArray *）</td>
         <td>可选输入</td>
         <td>代表输入和输出M方向的matmul索引情况。</td>
         <td>
@@ -229,7 +232,7 @@ aclnnStatus aclnnGroupedMatmul(
         <td>-</td>
       </tr>
       <tr>
-        <td>y（aclTensorList）</td>
+        <td>y（aclTensorList *）</td>
         <td>输出</td>
         <td>公式中的输出y。</td>
         <td>
