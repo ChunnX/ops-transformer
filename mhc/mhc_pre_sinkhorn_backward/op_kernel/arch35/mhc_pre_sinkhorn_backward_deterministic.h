@@ -79,7 +79,7 @@ private:
     __aicore__ inline void SinkhornGradSimdVf(const LocalTensor<float> &skGradLocal, uint64_t bsIdx, uint64_t bsLen);
     __aicore__ inline void ExpGradSimdVf(LocalTensor<float> skGrad, LocalTensor<float> expGrad,
                                          LocalTensor<float> zResLocal, uint64_t bsIdx, uint64_t bsLen);
-    __aicore__ inline void ComputeGNormOutAndGHcBeforeNorm(uint64_t bsOffset, uint64_t bsLen, U alphaScalar, 
+    __aicore__ inline void ComputeGNormOutAndGHcBeforeNorm(uint64_t bsOffset, uint64_t bsLen, U alphaScalar,
                                                             uint64_t count, uint64_t offset);
 
     __aicore__ inline void SinkhornGradStage2(__local_mem__ float *tmpDivLocalPtr, __local_mem__ float *tmpDiv3LocalPtr,
@@ -261,15 +261,15 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::I
     constexpr int64_t FP32_BYTE_SIZE = sizeof(U);
     int64_t gradAlphaOffset = batchSize_ * seqLength_ * c_ * n_ + WS_BUFFER_INTERVAL / FP32_BYTE_SIZE;
     int64_t gradBiasOffset = gradAlphaOffset + 3 * usedAivNum_ + WS_BUFFER_INTERVAL / FP32_BYTE_SIZE;
-    int64_t gradXFromHinOffset = 
+    int64_t gradXFromHinOffset =
         gradBiasOffset + (2 * usedAivNum_ * n_ + usedAivNum_ * n_ * n_) + WS_BUFFER_INTERVAL / FP32_BYTE_SIZE;
-    int64_t gradXFromRmsOffset = 
+    int64_t gradXFromRmsOffset =
         gradXFromHinOffset + batchSize_ * seqLength_ * n_ * c_ + WS_BUFFER_INTERVAL / FP32_BYTE_SIZE;
-    int64_t gradXFromMatmulOffset = 
+    int64_t gradXFromMatmulOffset =
         gradXFromRmsOffset + batchSize_ * seqLength_ * n_ * c_ + WS_BUFFER_INTERVAL / FP32_BYTE_SIZE;
-    int64_t gradHcBeforeNormOffset = 
+    int64_t gradHcBeforeNormOffset =
         gradXFromMatmulOffset + batchSize_ * seqLength_ * n_ * c_ + WS_BUFFER_INTERVAL / FP32_BYTE_SIZE;
-    int64_t gradNormOutOffset = 
+    int64_t gradNormOutOffset =
         gradHcBeforeNormOffset + batchSize_ * seqLength_ * (2 * n_ + n_ * n_) + WS_BUFFER_INTERVAL / FP32_BYTE_SIZE;
 
 
@@ -1274,13 +1274,13 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::P
             }
         }
 
-        event_t evtMte3ToMte2 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_MTE2));
-        SetFlag<HardEvent::MTE3_MTE2>(evtMte3ToMte2);
-        WaitFlag<HardEvent::MTE3_MTE2>(evtMte3ToMte2);
-
         if (blockIdx_ == 0) {
             AddAlphaAndBias();
         }
+
+        event_t evtMte3ToMte2 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_MTE2));
+        SetFlag<HardEvent::MTE3_MTE2>(evtMte3ToMte2);
+        WaitFlag<HardEvent::MTE3_MTE2>(evtMte3ToMte2);
 
         CrossCoreWaitFlag<AIV_AIC_MODE>(PIPE_FIX_FLAG);
         if (blockIdx_ < finalUsedAivNum_) {
