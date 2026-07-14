@@ -502,9 +502,6 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::C
         xFp32Que_.EnQue<U>(dstLocal);
         dstLocal = xFp32Que_.DeQue<U>();
         CopyOut(gradNormOutWs_[curBsIdx * k_ + offset], dstLocal, 1, count, 0, 0);
-        event_t eventIDMTE3ToV = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_V));
-        SetFlag<HardEvent::MTE3_V>(eventIDMTE3ToV);
-        WaitFlag<HardEvent::MTE3_V>(eventIDMTE3ToV);
         U invRms = invRmsGm_(curBsIdx);
         ComputeMulScalar(dstLocal, srcLocal, invRms * alphaScalar, count, bsLoop * count);
         xFp32Que_.EnQue<U>(dstLocal);
@@ -1164,9 +1161,6 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::C
         curInvRms = curInvRms * curInvRms * curInvRms;
         LocalTensor<U> gradNormOutLocal = gradCalcBuf1_.Get<U>();
         LocalTensor<U> hcBeforeNormLocal = gradCalcBuf2_.Get<U>();
-        event_t eventIDMTE3ToMTE2 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_MTE2));
-        SetFlag<HardEvent::MTE3_MTE2>(eventIDMTE3ToMTE2);
-        WaitFlag<HardEvent::MTE3_MTE2>(eventIDMTE3ToMTE2);
         CopyIn(gradNormOutLocal, gradNormOutWs_[curBSKOffset], 1, k_, 0, 0);
         CopyIn(hcBeforeNormLocal, hcBeforeNormGm_[curBSKOffset], 1, k_, 0, 0);
         event_t eventIDMTE2ToV = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_V));
@@ -1260,17 +1254,26 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::P
 
                 // 计算gradNormOut from gradZRes
                 ComputeGNormOutAndGHcBeforeNorm(gmOffset, bsLen, alphaRes_, n_ * n_, 2 * n_);
+            }
+        }
+        SyncAll();
+        CrossCoreSetFlag<AIV_AIC_MODE, PIPE_MTE3>(PIPE_MTE3_FLAG);
+
+        if (blockIdx_ < usedAivNum_) {
+            uint64_t bsLoopNum = Ops::Base::CeilDiv(curCoreProcessbsTask_, bsLoopDataLen_);
+            uint64_t bsTailDataLen = curCoreProcessbsTask_ - bsLoopDataLen_ * (bsLoopNum - 1);
+            for (uint64_t bsIdx = 0; bsIdx < bsLoopNum; bsIdx++) {
+                auto bsLen = bsIdx == bsLoopNum - 1 ? bsTailDataLen : bsLoopDataLen_;
+                int64_t gmOffset = blockIdx_ * tilingData_->bsTaskCount + bsIdx * bsLoopDataLen_;
                 ComputeGradXFromRms(gmOffset, bsLen);
             }
         }
-        SyncAll(); // GradNormOut需全部存储完毕再进行RMSNormGrad的计算
-        CrossCoreSetFlag<AIV_AIC_MODE, PIPE_MTE3>(PIPE_MTE3_FLAG); // GradHcBeforeNorm计算完成，可以进行matmul计算
 
         if (blockIdx_ == 0) {
             AddAlphaAndBias();
         }
 
-        CrossCoreWaitFlag<AIV_AIC_MODE>(PIPE_FIX_FLAG); // mm1完成，可以执行gradX计算
+        CrossCoreWaitFlag<AIV_AIC_MODE>(PIPE_FIX_FLAG);
         if (blockIdx_ < finalUsedAivNum_) {
             ComputeFinal();
         }
