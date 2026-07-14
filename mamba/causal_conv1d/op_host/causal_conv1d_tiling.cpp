@@ -540,8 +540,8 @@ ge::graphStatus CausalConv1dTiling::ParseInitialStateMode(bool isFnMode)
         return ge::GRAPH_SUCCESS;
     }
     OP_CHECK_IF(!isFnMode,
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "run_mode", "1 (decode/update)",
-                                                      "initial_state_mode only supported in run_mode=0 (prefill)"),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "initial_state_mode", "provided",
+                                                      "only supported in prefill mode"),
                 return ge::GRAPH_FAILED);
     auto initStShape = EnsureNotScalar(initStStorageShape);
     OP_CHECK_IF(initStShape.GetDimNum() != 1,
@@ -580,11 +580,10 @@ ge::graphStatus CausalConv1dTiling::ParseNumAcceptedTokens(bool isFnMode)
     if (!inputInfo_.hasNumAcceptedTokens) {
         return ge::GRAPH_SUCCESS;
     }
-    OP_CHECK_IF(
-        isFnMode,
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "run_mode", "0 (prefill)",
-                                              "num_accepted_tokens only supported in run_mode=1 (decode/update)"),
-        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(isFnMode,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "num_accepted_tokens", "provided",
+                                                      "only supported in decode/update mode"),
+                return ge::GRAPH_FAILED);
     OP_CHECK_IF(inputInfo_.kernelWidth != 4,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "kernel_width",
                                                       std::to_string(inputInfo_.kernelWidth).c_str(),
