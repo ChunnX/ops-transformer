@@ -263,7 +263,7 @@ struct Config {
     };
 
     __aicore__ static inline ProblemConfig BuildProblemConfig(
-        const ProblemShape& problemShape, const ThreadBlockContext &blockContext)
+        const ProblemShape& problemShape, ThreadBlockContext blockContext)
     {
         ProblemConfig config;
         config.m = Get<M_VALUE>(problemShape);
@@ -533,7 +533,7 @@ template <typename Policy, uint8_t CombineQuantMode, typename ElementA, typename
 __aicore__ inline void GroupMatmulImplGeneric(
     const Params& params, const AscendC::Shape<int64_t, int64_t, int64_t, int64_t>& problemShape,
     const GMMAddrInfo& gmmAddrInfo, uint32_t& startBlockIdx,
-    const ThreadBlockContext &blockContext, ExtraArgs& args)
+    ThreadBlockContext blockContext, ExtraArgs& args)
 {
     using Config = Config<false, Policy, CombineQuantMode, ElementA, ElementB, ElementC,
         ElementMxScaleA, ElementMxScaleB, IsWeightNZ>;
@@ -599,7 +599,7 @@ __aicore__ inline void GroupMatmulSwigluQuant(
     BlockEpilogueSwigluMxQuant<EpilogueElementA, ElementC, ElementMxScaleA, ElementMxScaleB, true>& epilogueOp,
     const Params& params, const AscendC::Shape<int64_t, int64_t, int64_t, int64_t>& problemShape,
     const GMMAddrInfo& gmmAddrInfo, uint32_t& startBlockIdx, int32_t& vecSetSyncCom,
-    const ThreadBlockContext &blockContext)
+    ThreadBlockContext blockContext)
 {
     using SwigluQuantOpType = std::remove_reference_t<decltype(epilogueOp)>;
     Detail::Gmm1ArgsGeneric<SwigluQuantOpType> args{epilogueOp, vecSetSyncCom};
@@ -869,7 +869,7 @@ template <uint8_t CombineQuantMode, typename Policy, typename ElementA, typename
     typename ElementMxScaleA, typename ElementMxScaleB, typename ExtraArgs>
 __aicore__ inline void GroupMatmulImplA8W4(const Params& params,
     const AscendC::Shape<int64_t, int64_t, int64_t, int64_t>& problemShape, const GMMAddrInfo& gmmAddrInfo,
-    uint32_t& startBlockIdx, const ThreadBlockContext &blockContext, ExtraArgs& args)
+    uint32_t& startBlockIdx, ThreadBlockContext blockContext, ExtraArgs& args)
 {
     static_assert(std::is_same_v<ElementA, __fp8e4m3>, "Activation must be __fp8e4m3");
     static_assert(std::is_same_v<ElementB, __fp4e2m1x2>, "Weight must be __fp4e2m1x2");
@@ -929,7 +929,7 @@ __aicore__ inline void GroupMatmulSwigluQuantA8W4(
     BlockEpilogueSwigluMxQuant<ElementA, ElementC, ElementMxScaleA, ElementMxScaleB, true>& swigluQuantOp,
     const Params& params, const AscendC::Shape<int64_t, int64_t, int64_t, int64_t>& problemShape,
     const GMMAddrInfo& gmmAddrInfo, uint32_t& startBlockIdx, int32_t& vecSetSyncCom,
-    const ThreadBlockContext &blockContext)
+    ThreadBlockContext blockContext)
 {
     (void)vecSetSyncCom;
     using SwigluQuantOpType = std::remove_reference_t<decltype(swigluQuantOp)>;

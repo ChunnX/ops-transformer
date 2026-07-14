@@ -89,7 +89,6 @@ private:
     __gm__ Mc2MoeContext* mc2Context_{nullptr};
     Params params_{};
     DispatchPrepareContext dispatchPrepareContext_{};
-    DispatchGmm1SwigluContext gmm1PipelineContext_{};
     SendMaskArgs sendMaskArgs_{};
     ResetWorkspaceArgs resetWorkspaceArgs_{};
     QuantProcessArgs quantProcessArgs_{};
@@ -163,7 +162,6 @@ private:
     using BlockEpilogue = BlockEpilogueSwigluMxQuant<SwigluQuantOutType, bfloat16_t,
         QuantScaleOutType, QuantScaleOutType, true>;
     BlockEpilogue epilogueOp_;
-    DispatchGmm1SwigluArgs<BlockEpilogue> gmm1PipelineArgs_{};
     DispatchGmm1SwigluScratch<ActivationType> gmm1PipelineScratch_{};
 };
 
@@ -239,24 +237,6 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Init(
     dispatchPrepareContext_ = {{aivCoreIdx_, blockAivNum_},
         {rankId_, worldSize_, expertPerRank_},
         {static_cast<int32_t>(m_), topK_, k_}};
-    // MegaMoe keeps its original physical mapping. Reusers may provide another
-    // zero-based logical threadBlock mapping to the standalone function.
-    gmm1PipelineContext_ = {
-        {blockIdx_, blockNum_},
-        {blockIdx_, aicNum_},
-        worldSize_, expertPerRank_, k_, static_cast<uint32_t>(hiddenDim_), topK_, blockNumPerRank_,
-        maxOutputSize_, sendTotalNum_, maskAlignSize_, maskSlotSize_, quantWinOffset_,
-        mxQuantTokenAlignBytes_, mxQuantScaleAlignBytes_, dispatchFlagSlotsPerExpert_,
-        tilingData->groupedMatmulMode};
-    gmm1PipelineArgs_ = {
-        &params_, &epilogueOp_, ::winRankAddr_, params_.peermemInfo.maskRecvPtr,
-        params_.workspaceInfo.expertRevTokenNumsPtr, params_.workspaceInfo.tripleInfoPtr,
-        params_.workspaceInfo.cumsumInfoPtr, params_.workspaceInfo.dispatchRevDataPtr,
-        params_.workspaceInfo.dispatchRevScalePtr, params_.workspaceInfo.gmm1MmadResPtr,
-        params_.bGmAddr, params_.bScaleGmAddr, params_.workspaceInfo.flagSwiGluToGmm2Ptr,
-        params_.workspaceInfo.flagDispatchToGmm1Ptr,
-        params_.workspaceInfo.flagSendCntCalToUpdParamsPtr,
-        &gmm1StartBlockIdx_, &vecSetSyncCom_};
     sendMaskArgs_ = {
         params_.expertIdxGmAddr, ::winRankAddr_, compareCount_, maskAlignSize_, maskSlotSize_, maskWinOffset_};
     int32_t resetFlagNum = static_cast<int32_t>(expertPerRank_) *
@@ -775,7 +755,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::GroupMatmulWithCombine(
 }
 
 // Process：MegaMoe 的完整算子入口。
-// 可复用单核模块的 Context/Args 已在 Init 中初始化，UB Scratch 由单核函数按阶段布局。
+// 可复用单核模块的 Context/Args 在对应阶段构造，UB Scratch 由单核函数按阶段布局。
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
 {
@@ -797,9 +777,27 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
     CrossRankSyncInWorldSize();  // 全卡同步
 
     // 2.本卡专家接收数据dispatch & GroupMatmul1 & SwigluQuant
+    // MegaMoe keeps its original physical mapping. Reusers may provide another
+    // zero-based logical threadBlock mapping to the standalone function.
+    const DispatchGmm1SwigluContext gmm1PipelineContext = {
+        {blockIdx_, blockNum_},
+        {blockIdx_, aicNum_},
+        worldSize_, expertPerRank_, k_, static_cast<uint32_t>(hiddenDim_), topK_, blockNumPerRank_,
+        maxOutputSize_, sendTotalNum_, maskAlignSize_, maskSlotSize_, quantWinOffset_,
+        mxQuantTokenAlignBytes_, mxQuantScaleAlignBytes_, dispatchFlagSlotsPerExpert_,
+        params_.tilingData->groupedMatmulMode};
+    const DispatchGmm1SwigluArgs<BlockEpilogue> gmm1PipelineArgs = {
+        &params_, &epilogueOp_, ::winRankAddr_, params_.peermemInfo.maskRecvPtr,
+        params_.workspaceInfo.expertRevTokenNumsPtr, params_.workspaceInfo.tripleInfoPtr,
+        params_.workspaceInfo.cumsumInfoPtr, params_.workspaceInfo.dispatchRevDataPtr,
+        params_.workspaceInfo.dispatchRevScalePtr, params_.workspaceInfo.gmm1MmadResPtr,
+        params_.bGmAddr, params_.bScaleGmAddr, params_.workspaceInfo.flagSwiGluToGmm2Ptr,
+        params_.workspaceInfo.flagDispatchToGmm1Ptr,
+        params_.workspaceInfo.flagSendCntCalToUpdParamsPtr,
+        &gmm1StartBlockIdx_, &vecSetSyncCom_};
     DispatchGmm1SwigluOneCore<QuantOutType, ActivationType, Weight1Type,
         SwigluQuantOutType, QuantScaleOutType, ENABLE_A8W4>(
-            gmm1PipelineContext_, gmm1PipelineArgs_, gmm1PipelineScratch_);
+            gmm1PipelineContext, gmm1PipelineArgs, gmm1PipelineScratch_);
     if constexpr(g_coreType == AIV) {
         if (subBlockIdx_ == 1) {
             ExpertTokenNumCopyOut(); // 本卡专家接受的tokenCnt总数搬出

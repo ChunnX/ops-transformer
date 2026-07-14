@@ -207,10 +207,11 @@ private:
     AscendC::LocalTensor<bfloat16_t> gluRes_;
     AscendC::LocalTensor<uint16_t> maxExp_;
     AscendC::LocalTensor<uint16_t> halfScale_;
-    // Keep an owned copy because callers may initialize the epilogue with a
-    // temporary Arguments object. Retaining &params would leave a dangling
-    // pointer as soon as Init returns.
-    Params params_{};
+    // Keep only the addresses used after Init. Callers may pass a temporary
+    // Arguments object, so retaining &params would leave a dangling pointer.
+    GM_ADDR yBaseGmAddr_{nullptr};
+    GM_ADDR yScaleBaseGmAddr_{nullptr};
+    GM_ADDR groupFlagListBaseGmAddr_{nullptr};
 
     int64_t n_;
     int64_t scaleN_;
@@ -234,7 +235,9 @@ BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::Init(Param
     if constexpr(g_coreType == AscendC::AIC) {
         return;
     }
-    params_ = params;
+    yBaseGmAddr_ = params.yGmAddr;
+    yScaleBaseGmAddr_ = params.yScaleGmAddr;
+    groupFlagListBaseGmAddr_ = params.groupFlagListGmAddr;
     clampLimit_ = params.clampLimit;
     if constexpr (AscendC::IsSameType<DataTypeOut, fp8_e4m3fn_t>::value) {
         fpEmax_ = FP8_E4M3_MAX_EXP;
@@ -269,9 +272,9 @@ __aicore__ inline void
 BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::UpdateGlobalAddr(const BlockCoord &baseOffset)
 {
     if constexpr(g_coreType == AscendC::AIV) {
-        quantOutputGlobal_.SetGlobalBuffer((__gm__ int8_t *)params_.yGmAddr + Get<Y_IDX>(baseOffset));
-        quantScaleGlobal_.SetGlobalBuffer((__gm__ int8_t *)params_.yScaleGmAddr + Get<Y_SCALE_IDX>(baseOffset));
-        groupFlagListGmAddr_ = (__gm__ int32_t *)params_.groupFlagListGmAddr +
+        quantOutputGlobal_.SetGlobalBuffer((__gm__ int8_t *)yBaseGmAddr_ + Get<Y_IDX>(baseOffset));
+        quantScaleGlobal_.SetGlobalBuffer((__gm__ int8_t *)yScaleBaseGmAddr_ + Get<Y_SCALE_IDX>(baseOffset));
+        groupFlagListGmAddr_ = (__gm__ int32_t *)groupFlagListBaseGmAddr_ +
         Get<GROUP_FLAG_IDX>(baseOffset) * INT_CACHELINE;
     }
 }
