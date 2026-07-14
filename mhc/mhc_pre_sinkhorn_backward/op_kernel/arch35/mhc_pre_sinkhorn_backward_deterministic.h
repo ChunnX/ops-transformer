@@ -447,13 +447,6 @@ MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::CopyOutAlphaAndBiasSum(i
 template <typename X_T, typename GRADHIN_T, typename U>
 __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::AddAlphaAndBias(void)
 {
-    pipe_->Reset();
-
-    auto aivNumAlign = Ops::Base::CeilAlign(int64_t(usedAivNum_ * uTypeSize_), blockSize_) / uTypeSize_;
-    pipe_->InitBuffer(gradAlphaQue_, DOUBLE_BUFFER, aivNumAlign * uTypeSize_);
-    pipe_->InitBuffer(gradAlphaSumQue_, 1, blockSize_);
-    pipe_->InitBuffer(gradBiasQue_, 1, usedAivNum_ * nnAlignFp32_ * uTypeSize_);
-
     for (uint16_t i = 0; i < 3; i++) {
         auto biasLen = (i == 2) ? n_ * n_ : n_;
         CopyInAlphaAndBias(i * usedAivNum_ * n_, i * usedAivNum_, biasLen);
@@ -1189,11 +1182,6 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::C
 template <typename X_T, typename GRADHIN_T, typename U>
 __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::ComputeFinal()
 {
-    pipe_->Reset();
-    pipe_->InitBuffer(hPreAndGradHPostQue_, DOUBLE_BUFFER, cBlockCount_ * sizeof(U));
-    pipe_->InitBuffer(xQue_, DOUBLE_BUFFER, cBlockCount_ * sizeof(U));
-    pipe_->InitBuffer(gradHinQue_, DOUBLE_BUFFER, cBlockCount_ * sizeof(U));
-    pipe_->InitBuffer(xFp32Que_, DOUBLE_BUFFER, cBlockCount_ * sizeof(U));
     for (int64_t dataLoop = 0; dataLoop < cBlockLoops_; dataLoop++) { // 切c
         int64_t calcCount = dataLoop == cBlockLoops_ - 1 ? cBlockTailCount_ : cBlockCount_;
         int64_t calcOffset = blockIdx_ * blockToTalNum_ + dataLoop * cBlockCount_;
@@ -1274,16 +1262,24 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::P
             }
         }
 
+        SyncAll();
+
+        pipe_->Reset();
+
         if (blockIdx_ == 0) {
+            auto aivNumAlign = Ops::Base::CeilAlign(int64_t(usedAivNum_ * uTypeSize_), blockSize_) / uTypeSize_;
+            pipe_->InitBuffer(gradAlphaQue_, DOUBLE_BUFFER, aivNumAlign * uTypeSize_);
+            pipe_->InitBuffer(gradAlphaSumQue_, 1, blockSize_);
+            pipe_->InitBuffer(gradBiasQue_, 1, usedAivNum_ * nnAlignFp32_ * uTypeSize_);
             AddAlphaAndBias();
         }
 
-        event_t evtMte3ToMte2 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_MTE2));
-        SetFlag<HardEvent::MTE3_MTE2>(evtMte3ToMte2);
-        WaitFlag<HardEvent::MTE3_MTE2>(evtMte3ToMte2);
-
         CrossCoreWaitFlag<AIV_AIC_MODE>(PIPE_FIX_FLAG);
         if (blockIdx_ < finalUsedAivNum_) {
+            pipe_->InitBuffer(hPreAndGradHPostQue_, DOUBLE_BUFFER, cBlockCount_ * sizeof(U));
+            pipe_->InitBuffer(xQue_, DOUBLE_BUFFER, cBlockCount_ * sizeof(U));
+            pipe_->InitBuffer(gradHinQue_, DOUBLE_BUFFER, cBlockCount_ * sizeof(U));
+            pipe_->InitBuffer(xFp32Que_, DOUBLE_BUFFER, cBlockCount_ * sizeof(U));
             ComputeFinal();
         }
     }
