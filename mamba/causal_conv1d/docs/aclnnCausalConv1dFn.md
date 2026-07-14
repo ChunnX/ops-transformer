@@ -23,15 +23,15 @@
     ```Cpp
     x: [batch, seqLen, dim]，seqLen > 1
     weight: [K, dim]，其中K∈{2,3,4}
-    convStates: [batch, stateLen, dim]
-    bias: [dim] 或 nullptr
-    queryStartLoc: [batch+1] 或 nullptr
-    cacheIndices: [batch] 或 nullptr
-    initialStateMode: [batch] 或 nullptr
-    blockIdxFirstScheduledToken: [batch] 或 nullptr
-    blockIdxLastScheduledToken: [batch] 或 nullptr
-    initialStateIdx: [batch] 或 nullptr
-    numComputedTokens: [batch] 或 nullptr
+    convStatesRef: [numCacheLines, stateLen, dim]
+    biasOptional: [dim] 或 nullptr
+    queryStartLocOptional: [batch+1] 或 nullptr
+    cacheIndicesOptional: [batch] 或 nullptr
+    initialStateModeOptional: [batch] 或 nullptr
+    blockIdxFirstScheduledTokenOptional: [batch] 或 nullptr
+    blockIdxLastScheduledTokenOptional: [batch] 或 nullptr
+    initialStateIdxOptional: [batch] 或 nullptr
+    numComputedTokensOptional: [batch] 或 nullptr
     activation: "silu" or "none"
     nullBlockId: int64_t
     blockSizeToAlign: int64_t
@@ -43,15 +43,15 @@
     ```Cpp
     x: [cuSeqLen, dim]
     weight: [K, dim]，其中K∈{2,3,4}
-    convStates: [numCacheLines, stateLen, dim]
-    bias: [dim] 或 nullptr
-    queryStartLoc: [batch+1] （必须提供）
-    cacheIndices: [batch] 或 nullptr
-    initialStateMode: [batch] 或 nullptr
-    blockIdxFirstScheduledToken: [batch] 或 nullptr
-    blockIdxLastScheduledToken: [batch] 或 nullptr
-    initialStateIdx: [batch] 或 nullptr
-    numComputedTokens: [batch] 或 nullptr
+    convStatesRef: [numCacheLines, stateLen, dim]
+    biasOptional: [dim] 或 nullptr
+    queryStartLocOptional: [batch+1] （必须提供）
+    cacheIndicesOptional: [batch] 或 nullptr
+    initialStateModeOptional: [batch] 或 nullptr
+    blockIdxFirstScheduledTokenOptional: [batch] 或 nullptr
+    blockIdxLastScheduledTokenOptional: [batch] 或 nullptr
+    initialStateIdxOptional: [batch] 或 nullptr
+    numComputedTokensOptional: [batch] 或 nullptr
     activation: "silu" or "none"
     nullBlockId: int64_t
     blockSizeToAlign: int64_t
@@ -396,7 +396,7 @@ aclnnStatus aclnnCausalConv1dFn(
   - prefill场景（固定batch）：
     - x为3维[batch, seqLen, dim]，seqLen > 1。
     - weight为2维[K, dim]，K∈{2,3,4}。
-    - convStatesRef为3维[batch, stateLen, dim]，stateLen ≥ K-1。
+    - convStatesRef为3维[numCacheLines, stateLen, dim]，stateLen ≥ K-1，numCacheLines ≥ batch。
     - dim范围[64, 16384]且满足 (dim * dtypeSize) % 32 == 0，batch范围[1, 1024]，seqLen范围[2, 16384]。
   - prefill场景（变长序列）：
     - x为2维[cuSeqLen, dim]。

@@ -25,7 +25,7 @@ def CausalConv1d_input(*input_arrays, **kwargs):
     """Custom input generator for causal_conv1d.
     
     Generates proper query_start_loc values (monotonically increasing sequence)
-    instead of random values.
+    and unique cache_indices to avoid duplicate cache slot mappings.
     """
     input_arrays = list(input_arrays)
 
@@ -63,6 +63,15 @@ def CausalConv1d_input(*input_arrays, **kwargs):
             # Generate query_start_loc: [0, seq_len, 2*seq_len, ..., total_tokens]
             qsl_values = np.arange(batch_size + 1, dtype=np.int32) * seq_len
             input_arrays[4] = qsl_values
+
+    # Generate unique cache_indices (6th input, index 5) to avoid duplicate cache slots
+    # Start from 1 to avoid colliding with null_block_id (default 0)
+    if len(input_arrays) > 5 and input_arrays[5] is not None:
+        ci = input_arrays[5]
+        if ci.ndim == 1 and ci.shape[0] > 0:
+            batch_size = ci.shape[0]
+            ci_values = np.arange(1, batch_size + 1, dtype=np.int32)
+            input_arrays[5] = ci_values
 
     return input_arrays
 
