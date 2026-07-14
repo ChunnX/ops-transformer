@@ -212,16 +212,10 @@ aclnnStatus aclnnMixedQuantSparseFlashMla(
       <td>oriSparseIndicesOptional（aclTensor*）</td>
       <td>输入</td>
       <td>代表离散取oriKvCache的索引。</td>
-      <td>-。</td>
+      <td>当前暂不支持，必须传入nullptr。</td>
       <td>INT32</td>
       <td>ND</td>
-      <td>
-        <ul>
-          <li>layoutQ为BSND时：(B, S1, N2, K1)</li>
-          <li>layoutQ为TND时：(T1, N2, K1)</li>
-        </ul>
-        其中K1为oriKv的TopK稀疏选择数。
-      </td>
+      <td>-</td>
       <td>√</td>
     </tr>
     <tr>

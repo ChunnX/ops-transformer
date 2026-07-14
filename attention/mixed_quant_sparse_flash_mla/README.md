@@ -289,13 +289,13 @@
   - `ori_topk_length`和`cmp_topk_length`为预留输入，全平台均不支持传入非空Tensor。
 - 当`layout_q`为TND时，功能使用限制如下：
   - `q`的shape需要为[T1,N1,D]。
-  - `ori_sparse_indices`的shape需要为[Q\_T, KV\_N, K1]，其中K1为对`ori_kv`一次离散选取的token数。
+  - `ori_sparse_indices`当前暂不支持。
   - `cmp_sparse_indices`的shape需要为[Q\_T, KV\_N, K2]，其中K2为对`cmp_kv`一次离散选取的token数。
   - `cu_seqlens_q`必须传入，输入维度为B+1，大小为参数中每个元素的值表示当前batch与之前所有batch的token数总和，即前缀和，因此后一个元素的值必须>=前一个元素的值。
 
 - 当`layout_q`为BSND时，功能使用限制如下：
   - `q`的shape需要为[B, Q\_S, N1, D]。
-  - `ori_sparse_indices`的shape需要为[B, Q\_S, KV\_N, K1]，其中K1为对`ori_kv`一次离散选取的token数。
+  - `ori_sparse_indices`当前暂不支持。
   - `cmp_sparse_indices`的shape需要为[B, Q\_S, KV\_N, K2]，其中K2为对`cmp_kv`一次离散选取的token数。
 
 - PageAttention场景下，功能使用限制如下：
