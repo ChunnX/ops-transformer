@@ -140,32 +140,58 @@ def gen_cu_seqlens_from_seqused(seqused):
         cu_seqlens.append(cu_seqlens[-1] + s)
     return cu_seqlens
 
-def calc_block_num(seqused_ori_kv, seqused_cmp_kv, block_size1, block_size2, cmp_ratio):
+def generate_seqused(cu_seqlens):
+    """从cu_seqlens作差得到seqused"""
+    return [cu_seqlens[i + 1] - cu_seqlens[i] for i in range(len(cu_seqlens) - 1)]
+
+def fill_random_cu_len(T, SMax, B, random_seq=False):
+    cu_seqlens = [0]
+    S = SMax if (SMax is not None and SMax > 0) else max(1, T // B)
+
+    can_fit = (S * B >= T) if random_seq else (S * B == T)
+    S_eq = min(S, T // B)
+    for i in range(B):
+        remaining_batches = B - i
+        remaining_T = T - cu_seqlens[-1]
+        if remaining_batches <= 0:
+            break
+        if random_seq:
+            max_len = min(S, remaining_T - (remaining_batches - 1))
+            min_len = max(0, remaining_T - (remaining_batches - 1) * S)
+            if max_len < min_len:
+                max_len = min_len
+            length = random.randint(min_len, max_len) if max_len > 0 else 0
+        else:
+            length = S_eq
+        cu_seqlens.append(cu_seqlens[-1] + length)
+
+    if cu_seqlens[-1] != T and can_fit:
+        raise ValueError(f"fill_random_cu_len: S*B>=T但末位({cu_seqlens[-1]})!=T({T})，生成异常")
+    return cu_seqlens
+
+def fill_random_used_len(SMax, B, random_seq=False):
+    used_lens = []
+    for i in range(B):
+        length = random.randint(0, SMax) if random_seq else SMax
+        used_lens.append(length)
+    return used_lens
+
+def calc_block_num(seqused_kv, block_size):
     """
-    计算block_num1和block_num2
+    计算block_num
 
     参数:
-        seqused_ori_kv: ori_kv真实长度列表
-        seqused_cmp_kv: cmp_kv真实长度列表
-        block_size1: ori block大小
-        block_size2: cmp block大小
-        cmp_ratio: 压缩率
+        seqused_kv: 真实长度列表
+        block_size: block大小
 
     返回:
-        tuple: (block_num1, block_num2)
+        int: block_num_sum
     """
-    ori_block_num_sum = 0
-    cmp_block_num_sum = 0
-
-    for cur_ori_act_kv in seqused_ori_kv:
-        cur_ori_kv_block_num = math.ceil(cur_ori_act_kv / block_size1)
-        ori_block_num_sum += cur_ori_kv_block_num
-
-        cur_cmp_act_kv = math.floor(cur_ori_act_kv / cmp_ratio)
-        cur_cmp_kv_block_num = math.ceil(cur_cmp_act_kv / block_size2)
-        cmp_block_num_sum += cur_cmp_kv_block_num
-
-    return ori_block_num_sum, cmp_block_num_sum
+    block_num_sum = 0
+    for cur_act_kv in seqused_kv:
+        cur_kv_block_num = math.ceil(cur_act_kv / block_size)
+        block_num_sum += cur_kv_block_num
+    return block_num_sum
 
 def fill_none_params(params_dict):
     """
@@ -177,14 +203,19 @@ def fill_none_params(params_dict):
     返回:
         dict: 填充后的完整参数字典
     """
-    layout_q = params_dict['layout_q']
-    B = params_dict['B']
-    S1 = params_dict['S1']
-    S2 = params_dict['S2']
-    ori_kv_type = params_dict['ori_kv_type']
-    block_size1 = params_dict['block_size1']
+    if params_dict.get('Testcase_Name') is None and params_dict.get('testcase_name') is not None:
+        params_dict['Testcase_Name'] = params_dict['testcase_name']
+    layout_q = params_dict.get('layout_q')
+    B = params_dict.get('B')
+    S1 = params_dict.get('S1')
+    S2 = params_dict.get('S2')
+    q_type = params_dict.get('q_type') or torch.bfloat16
+    ori_kv_type = params_dict.get('ori_kv_type') or torch.float8_e4m3fn
+    block_size1 = params_dict.get('block_size1')
     actlen_mode = params_dict.get('actlen_mode', 'full')
-    S1EQS2 = params_dict.get('S1EQS2', False)
+    S1EQS2 = params_dict.get('S1EQS2')
+    if S1EQS2 is None:
+        S1EQS2 = params_dict.get('qk_equal_len', False)
 
     # 1. 获取template_run_mode（优先从params_dict获取）
     template_run_mode = params_dict.get('template_run_mode')
@@ -229,7 +260,7 @@ def fill_none_params(params_dict):
         if K is None:
             K = 0
 
-    # 2. 获取需要填充的参数
+    # 2. 序列参数直接透传
     seqused_q = params_dict.get('seqused_q')
     cu_seqlens_q = params_dict.get('cu_seqlens_q')
     seqused_ori_kv = params_dict.get('seqused_ori_kv')
@@ -238,127 +269,171 @@ def fill_none_params(params_dict):
     cu_seqlens_cmp_kv = params_dict.get('cu_seqlens_cmp_kv')
     cmp_residual_kv = params_dict.get('cmp_residual_kv')
 
-    if seqused_q is not None and len(seqused_q) == 1:
-        seqused_q = seqused_q * B
-    if seqused_ori_kv is not None and len(seqused_ori_kv) == 1:
-        seqused_ori_kv = seqused_ori_kv * B
-    if seqused_cmp_kv is not None and len(seqused_cmp_kv) == 1:
-        seqused_cmp_kv = seqused_cmp_kv * B
-    if cmp_residual_kv is not None and len(cmp_residual_kv) == 1:
-        cmp_residual_kv = cmp_residual_kv * B
+    layout_kv = params_dict.get('layout_kv')
+    random_seq = (actlen_mode == 'random')
 
-    need_fill_q_ori = any(v is None for v in [seqused_q, cu_seqlens_q, seqused_ori_kv, cu_seqlens_ori_kv])
-
-    if need_fill_q_ori:
-        # 从cu推导seqused
-        if seqused_q is None and cu_seqlens_q is not None:
-            seqused_q = [cu_seqlens_q[i + 1] - cu_seqlens_q[i] for i in range(len(cu_seqlens_q) - 1)]
-        if seqused_ori_kv is None and cu_seqlens_ori_kv is not None:
-            seqused_ori_kv = [cu_seqlens_ori_kv[i + 1] - cu_seqlens_ori_kv[i] for i in range(len(cu_seqlens_ori_kv) - 1)]
-
-        # S1EQS2联动: seqused_q与seqused_ori_kv
-        if S1EQS2:
-            if seqused_q is None and seqused_ori_kv is not None:
-                seqused_q = list(seqused_ori_kv)
-            elif seqused_ori_kv is None and seqused_q is not None:
-                seqused_ori_kv = list(seqused_q)
-
-        # 独立生成seqused_q
+    # 2.1 Q侧: TND场景cu_seqlens_q生成
+    if layout_q == "TND":
+        if cu_seqlens_q is None:
+            T1 = params_dict.get('T1')
+            if T1 is None:
+                if S1 is None:
+                    raise ValueError("layout_q为TND时，cu_seqlens_q、T1和S1不能同时为None")
+                T1 = S1 * B
+            cu_seqlens_q = fill_random_cu_len(T1, S1, B, random_seq)
+            print("cu_seqlens_q auto set to: ", cu_seqlens_q)
+        T1 = cu_seqlens_q[-1]
+        if params_dict.get('T1') is not None and params_dict['T1'] != T1:
+            print(f"T1({params_dict['T1']})与cu_seqlens_q末位({T1})不一致，修正T1为{T1}")
         if seqused_q is None:
-            if layout_q == "TND" and actlen_mode == "random":
-                seqused_q = [S1 - random.randint(0, S1 - 1) for _ in range(B)]
+            seqused_q = generate_seqused(cu_seqlens_q)
+            print("seqused_q auto set to: ", seqused_q)
+    else:
+        T1 = params_dict.get('T1')
+        if seqused_q is None:
+            if cu_seqlens_q is not None:
+                seqused_q = generate_seqused(cu_seqlens_q)
             else:
-                seqused_q = [S1 for _ in range(B)]
+                seqused_q = [S1] * B
+            print("seqused_q auto set to: ", seqused_q)
 
-        # 再次S1EQS2联动 (seqused_q现已生成)
-        if S1EQS2 and seqused_ori_kv is None:
-            seqused_ori_kv = list(seqused_q)
-
-        # 独立生成seqused_ori_kv
+    # 2.2 ori_kv侧: TND场景cu_seqlens_ori_kv生成
+    T2 = params_dict.get('T2')
+    if layout_kv == "TND":
+        if cu_seqlens_ori_kv is None:
+            T2 = params_dict.get('T2')
+            if T2 is None:
+                if S2 is None:
+                    raise ValueError("layout_kv为TND时，cu_seqlens_ori_kv、T2和S2不能同时为None")
+                T2 = S2 * B
+            cu_seqlens_ori_kv = fill_random_cu_len(T2, S2, B, random_seq)
+            print("cu_seqlens_ori_kv auto set to: ", cu_seqlens_ori_kv)
+        T2 = cu_seqlens_ori_kv[-1]
+        if params_dict.get('T2') is not None and params_dict['T2'] != T2:
+            print(f"T2({params_dict['T2']})与cu_seqlens_ori_kv末位({T2})不一致，修正T2为{T2}")
         if seqused_ori_kv is None:
-            kv_full_len = S2 if S2 is not None else S1
-            if actlen_mode == "random":
-                seqused_ori_kv = [
-                    kv_full_len - random.randint(0, math.ceil(kv_full_len / 2) - 1)
-                    for _ in range(B)
-                ]
+            seqused_ori_kv = generate_seqused(cu_seqlens_ori_kv)
+            print("seqused_ori_kv auto set to: ", seqused_ori_kv)
+
+    # 2.3 S1EQS2联动: Q和ori_kv对应batch的真实长度一致
+    if S1EQS2 and layout_q == "TND" and layout_kv == "TND":
+        if cu_seqlens_q is not None and cu_seqlens_ori_kv is not None:
+            seqused_q_diffs = generate_seqused(cu_seqlens_q)
+            seqused_ori_diffs = generate_seqused(cu_seqlens_ori_kv)
+            if seqused_q_diffs != seqused_ori_diffs:
+                cu_seqlens_ori_kv = list(cu_seqlens_q)
+                T2 = T1
+                print(f"S1EQS2: cu_seqlens_ori_kv同步为cu_seqlens_q: {cu_seqlens_ori_kv}")
+
+    # 2.4 ori_kv侧: PA_BBND场景seqused_ori_kv生成
+    if layout_kv == "PA_BBND":
+        if seqused_ori_kv is None:
+            if S2 is not None:
+                seqused_ori_kv = fill_random_used_len(S2, B, random_seq)
+                print("seqused_ori_kv auto set to: ", seqused_ori_kv)
             else:
-                seqused_ori_kv = [kv_full_len for _ in range(B)]
+                raise ValueError("layout_kv为PA_BBND时，seqused_ori_kv和S2不能同时为None")
 
-    # 填充cu_seqlens_q和cu_seqlens_ori_kv (S1EQS2联动优先)
-    if cu_seqlens_q is None:
-        if S1EQS2 and cu_seqlens_ori_kv is not None:
-            cu_seqlens_q = list(cu_seqlens_ori_kv)
+    # 2.5 S1EQS2联动: BSND+PA_BBND场景下seqused_ori_kv同步seqused_q
+    if S1EQS2 and layout_q == "BSND" and layout_kv == "PA_BBND":
+        if seqused_q is not None and seqused_ori_kv is not None:
+            if seqused_q != seqused_ori_kv:
+                seqused_ori_kv = list(seqused_q)
+                print(f"S1EQS2: seqused_ori_kv同步为seqused_q: {seqused_ori_kv}")
+
+    # 2.6 S1EQS2联动: TND(Q)+PA_BBND(KV)场景下seqused_ori_kv同步cu_seqlens_q差值
+    if S1EQS2 and layout_q == "TND" and layout_kv == "PA_BBND":
+        if cu_seqlens_q is not None:
+            seqused_q_diffs = generate_seqused(cu_seqlens_q)
+            if seqused_ori_kv is not None:
+                if seqused_ori_kv != seqused_q_diffs:
+                    seqused_ori_kv = list(seqused_q_diffs)
+                    print(f"S1EQS2: seqused_ori_kv同步为cu_seqlens_q差值: {seqused_ori_kv}")
+            else:
+                seqused_ori_kv = list(seqused_q_diffs)
+                print(f"S1EQS2: seqused_ori_kv从cu_seqlens_q差值生成: {seqused_ori_kv}")
+
+    # 2.7 S1EQS2校验: Q每batch真实长度不能大于S2
+    if S1EQS2 and S2 is not None:
+        if layout_q == "TND" and cu_seqlens_q is not None:
+            seqused_q_diffs = generate_seqused(cu_seqlens_q)
+        elif layout_q == "BSND" and seqused_q is not None:
+            seqused_q_diffs = seqused_q
         else:
-            cu_seqlens_q = gen_cu_seqlens_from_seqused(seqused_q)
+            seqused_q_diffs = None
+        if seqused_q_diffs is not None:
+            for i in range(B):
+                if seqused_q_diffs[i] > S2:
+                    raise ValueError(f"S1EQS2模式下batch{i}的Q真实长度({seqused_q_diffs[i]})不能大于S2({S2})")
 
-    if cu_seqlens_ori_kv is None:
-        if S1EQS2 and cu_seqlens_q is not None:
-            cu_seqlens_ori_kv = list(cu_seqlens_q)
-        else:
-            cu_seqlens_ori_kv = gen_cu_seqlens_from_seqused(seqused_ori_kv)
-
-    for i in range(B):
-        slot_len = cu_seqlens_q[i + 1] - cu_seqlens_q[i]
-        if slot_len < seqused_q[i]:
-            raise ValueError(f"cu_seqlens_q slot ({slot_len}) at batch {i} must >= seqused_q ({seqused_q[i]})")
-
-    for i in range(B):
-        slot_len = cu_seqlens_ori_kv[i + 1] - cu_seqlens_ori_kv[i]
-        if slot_len < seqused_ori_kv[i]:
-            raise ValueError(f"cu_seqlens_ori_kv slot ({slot_len}) at batch {i} must >= seqused_ori_kv ({seqused_ori_kv[i]})")
-
-    # 3. 填充cmp参数 (SWA场景为None, 非SWA场景自动生成)
+    # 3. cmp参数 (SWA场景为None)
     if template_run_mode == "SWA":
         seqused_cmp_kv = None
         cu_seqlens_cmp_kv = None
         cmp_residual_kv = None
+        T3 = None
     else:
-        if seqused_cmp_kv is None:
-            seqused_cmp_kv = gen_seqused_cmp_kv(seqused_ori_kv, cmp_ratio)
-        if cu_seqlens_cmp_kv is None:
-            cu_seqlens_cmp_kv = [math.floor(c / cmp_ratio) for c in cu_seqlens_ori_kv]
-        if cmp_residual_kv is None:
-            cmp_residual_kv = [s % cmp_ratio for s in seqused_ori_kv]
-        for i in range(B):
-            slot_len = cu_seqlens_cmp_kv[i + 1] - cu_seqlens_cmp_kv[i]
-            if slot_len < seqused_cmp_kv[i]:
-                raise ValueError(f"cu_seqlens_cmp_kv slot ({slot_len}) at batch {i} must >= seqused_cmp_kv ({seqused_cmp_kv[i]})")
+        # cmp_kv侧: TND场景cu_seqlens_cmp_kv生成
+        if layout_kv == "TND":
+            if cu_seqlens_cmp_kv is None:
+                T3 = params_dict.get('T3')
+                S3 = S2 // cmp_ratio if (S2 is not None and cmp_ratio) else None
+                if T3 is None:
+                    if S3 is None:
+                        raise ValueError("layout_kv为TND且非SWA时，cu_seqlens_cmp_kv、T3和S2/cmp_ratio不能同时为None")
+                    T3 = S3 * B
+                cu_seqlens_cmp_kv = fill_random_cu_len(T3, S3, B, random_seq)
+                print("cu_seqlens_cmp_kv auto set to: ", cu_seqlens_cmp_kv)
+            T3 = cu_seqlens_cmp_kv[-1]
+            if params_dict.get('T3') is not None and params_dict['T3'] != T3:
+                print(f"T3({params_dict['T3']})与cu_seqlens_cmp_kv末位({T3})不一致，修正T3为{T3}")
+            if seqused_cmp_kv is None:
+                seqused_cmp_kv = generate_seqused(cu_seqlens_cmp_kv)
+                print("seqused_cmp_kv auto set to: ", seqused_cmp_kv)
+        else:
+            T3 = params_dict.get('T3')
 
-    # 6. 计算block_num
+        # cmp_kv侧: PA_BBND场景seqused_cmp_kv生成
+        if layout_kv == "PA_BBND":
+            if seqused_cmp_kv is None:
+                S3 = S2 // cmp_ratio if (S2 is not None and cmp_ratio) else None
+                if S3 is not None:
+                    seqused_cmp_kv = fill_random_used_len(S3, B, random_seq)
+                    print("seqused_cmp_kv auto set to: ", seqused_cmp_kv)
+                else:
+                    raise ValueError("layout_kv为PA_BBND且非SWA时，seqused_cmp_kv和S2/cmp_ratio不能同时为None")
+
+        if cmp_residual_kv is None:
+            cmp_residual_kv = [random.randint(0, cmp_ratio - 1) for _ in range(B)]
+
+    # 4. block_num
     block_num1 = params_dict.get('block_num1')
     block_num2 = params_dict.get('block_num2')
 
-    if block_num1 is None:
-        ori_block_num, _ = calc_block_num(
-            seqused_ori_kv, seqused_cmp_kv if seqused_cmp_kv is not None else [0] * B,
-            block_size1, block_size2, cmp_ratio
-        )
-        block_num1 = ori_block_num
+    if block_num1 is None and seqused_ori_kv is not None:
+        block_num1 = calc_block_num(seqused_ori_kv, block_size1)
     if block_num2 is None:
         if template_run_mode == "SWA":
             block_num2 = 0
-        else:
-            _, cmp_block_num = calc_block_num(
-                seqused_ori_kv, seqused_cmp_kv, block_size1, block_size2, cmp_ratio
-            )
-            block_num2 = cmp_block_num
+        elif seqused_cmp_kv is not None:
+            block_num2 = calc_block_num(seqused_cmp_kv, block_size2)
 
-    # 7. 计算T1
-    T1 = cu_seqlens_q[-1] if layout_q == "TND" else None
+    # 5. T1已在2.1中计算
 
     # 构建完整参数字典
     filled_params = {
-        'Testcase_Name': params_dict.get('Testcase_Name'),
+        'Testcase_Name': params_dict.get('Testcase_Name', params_dict.get('testcase_name')),
         'layout_q': layout_q,
-        'layout_kv': params_dict['layout_kv'],
-        'q_type': params_dict['q_type'],
+        'layout_kv': params_dict.get('layout_kv'),
+        'q_type': q_type,
         'ori_kv_type': ori_kv_type,
         'cmp_kv_type': cmp_kv_type,
         'B': B,
         'S1': S1,
         'S2': S2,
         'T1': T1,
+        'T2': T2,
+        'T3': T3,
         'N1': params_dict['N1'],
         'N2': params_dict['N2'],
         'D': params_dict['D'],
@@ -416,6 +491,8 @@ def load_excel_test_cases(excel_file_path: str, sheetname: str):
     try:
         # 读取 Excel 文件的指定 sheet
         df = pd.read_excel(excel_file_path, sheet_name=sheetname)
+        if 'testcase_name' in df.columns and 'Testcase_Name' not in df.columns:
+            df = df.rename(columns={'testcase_name': 'Testcase_Name'})
         df = df.replace({np.nan: None, pd.NA: None})
 
         # 定义必需的列名
