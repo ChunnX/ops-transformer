@@ -27,7 +27,7 @@
     X_{fp32} = X_{hif8} \cdot x\_descale,\quad W^{KV}_{fp32} = W^{KV}_{hif8} \cdot wkv\_descale,\quad W^{Gate}_{fp32} = W^{Gate}_{hif8} \cdot wgate\_descale
     $$
 
-    其中x_descale为per-tensor标量（shape为[1]），wkv_descale、wgate_descale为per-channel向量（shape为[coff\*D]，沿权重输出通道维度缩放）。
+    其中x_descale为per-tensor标量（shape为[1,]），wkv_descale、wgate_descale为per-channel向量（shape为[coff\*D,]，沿权重输出通道维度缩放）。
 
     1. 计算矩阵乘法（使用反量化后的FP32数据）：
 
@@ -123,9 +123,9 @@ aclnnStatus aclnnQuantCompressor(
     | wgate | 输入 | 公式中的$W^{Gate}$，表示gate压缩权重，HIFLOAT8量化输入。 |不支持空Tensor。| HIFLOAT8 | ND |[coff* D,H]|×|
     | stateCacheRef | 输入 | 公式中的$\left[kv\_state, score\_state\right]$, 表示kv\_state和score\_state的历史数据。 |不支持空Tensor| FLOAT32     | ND         |[block_num,block_size,2* coff* D]|支持0轴非连续|
     | ape | 输入 | 公式中的$Ape$，表示positional biases。 | 不支持空Tensor。|FLOAT32       | ND         |[cmp_ratio,coff* D]|×|
-    | xDescale | 可选输入 | x的反量化缩放因子，per-tensor缩放。quant_mode=1时必选。 |FLOAT32       | ND         |[1]|×|
-    | wkvDescale | 可选输入 | wkv的反量化缩放因子，per-channel缩放，通道数为coff\*D。quant_mode=1时必选。 |FLOAT32       | ND         |[coff* D]|×|
-    | wgateDescale | 可选输入 | wgate的反量化缩放因子，per-channel缩放，通道数为coff\*D。quant_mode=1时必选。 |FLOAT32       | ND         |[coff* D]|×|
+    | xDescale | 可选输入 | x的反量化缩放因子，per-tensor缩放。quant_mode=1时必选。 |FLOAT32       | ND         |[1,]|×|
+    | wkvDescale | 可选输入 | wkv的反量化缩放因子，per-channel缩放，通道数为coff\*D。quant_mode=1时必选。 |FLOAT32       | ND         |[coff* D,]|×|
+    | wgateDescale | 可选输入 | wgate的反量化缩放因子，per-channel缩放，通道数为coff\*D。quant_mode=1时必选。 |FLOAT32       | ND         |[coff* D,]|×|
     | stateBlockTable | 可选输入 | 表示state\_cache存储使用的block映射表。|当其中元素的值为0时，表示当前位置无需进行更新state\_cache操作；支持S=0,T=0的空Tensor。| INT32 | ND         |cache_mode=1时，shape为[B,ceil(Smax/block_size)]，Smax为每个Batch中最大的Sequence Length，当x的shape为[B,S,H]时，Smax=max(start_pos)+S。当x的shape为[T,H]时，Smax=max(start_pos)+max(cu_seqlens[n+1] - cu_seqlens[n])。cache_mode=2时，shape为[B]。当其中元素的值为0时，表示当前位置无需进行更新state_cache操作|×|
     | cuSeqlens | 可选输入 | 表示不同Batch中的有效token数。  |支持B=0,S=0,T=0的空Tensor；当x的shape为[B,S,H]时，参数必须为空。| INT32          | ND         |当x的shape为[T,H]时，输入shape为[B+1,]|×|
     | seqused | 可选输入 | 表示不同Batch中实际参与压缩的token数。 |如果指定为None时，表示和每个Batch上的Sequence Length长度相同；支持B=0的空Tensor；如果指定为None时，表示和每个Batch上的Sequence Length长度相同。该入参中每个Batch的有效token数要求小于等于对应Sequence Length长度。当x的shape为[B,S,H]时，要求seqused[n] <= S，且不小于0；当x的shape为[T,H]时，要求seqused[n] <= cu\_seqlens[n+1] - cu\_seqlens[n]，且不小于0。| INT32          | ND         |[B,]|×|
@@ -231,9 +231,9 @@ aclnnStatus aclnnQuantCompressor(
     - wgate支持输入shape[coff* D,H]
     - stateCache支持输入shape[block_num,block_size,2* coff* D]，要求blockNum>0，cacheMode=2时，需要满足blockSize >= coff * cmp_ratio + S - 1。
     - ape支持输入shape[cmp_ratio,coff* D]
-    - xDescale支持输入shape[1]，per-tensor缩放。
-    - wkvDescale支持输入shape[coff* D]，per-channel缩放。
-    - wgateDescale支持输入shape[coff* D]，per-channel缩放。
+    - xDescale支持输入shape[1,]，per-tensor缩放。
+    - wkvDescale支持输入shape[coff* D,]，per-channel缩放。
+    - wgateDescale支持输入shape[coff* D,]，per-channel缩放。
     - startPos支持输入shape[B,]
     - 若x的维度采用BS合轴，即x的输入shape为[T,H]
         - cuSeqlens输入shape必须为[B+1,]。该参数中每个元素的值表示当前batch与之前所有batch的token数总和，即前缀和，因此后一个元素的值必须大于等于前一个元素的值，且第一位必须位0。
