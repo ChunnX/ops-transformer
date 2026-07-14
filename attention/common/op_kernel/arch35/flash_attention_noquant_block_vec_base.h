@@ -423,6 +423,15 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1Dn(
     }
     LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.multiCoreIdxMod3].template Get<float>()[0];
     LocalTensor<float> maxUb = this->softmaxMaxBuf[runInfo.multiCoreIdxMod3].template Get<float>()[0];
+    if (enableKVPrefix && runInfo.s2LoopCount < 1) {
+        PRINTF("[VEC-Nd-layout] maxPhy=%llx maxRaw0=%f maxGet0=%f sumPhy=%llx sumRaw0=%f sumGet0=%f\n",
+               (unsigned long long)maxUb.GetPhyAddr(),
+               (float)*((float*)(unsigned long long)maxUb.GetPhyAddr()),
+               (float)maxUb.GetValue(0),
+               (unsigned long long)sumUb.GetPhyAddr(),
+               (float)*((float*)(unsigned long long)sumUb.GetPhyAddr()),
+               (float)sumUb.GetValue(0));
+    }
     auto expUb = this->softmaxExpBuf[runInfo.taskIdMod3].template Get<T>()[0];
     int64_t stage1Offset = runInfo.taskIdMod2;
      
@@ -993,6 +1002,9 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1Nd(
             } else {
                 if constexpr (enableKVPrefix) {
                     if ((runInfo.s2StartIdx + runInfo.s2LoopCount * s2BaseSize) < constInfo.actualKVPrefixSize) {
+                        if (runInfo.s2LoopCount < 1) PRINTF("[MASK-prefixFill] nonMergeGqa s2S=%lld s2L=%lld pfxSize=%lld\n",
+                               (long long)runInfo.s2StartIdx, (long long)runInfo.s2LoopCount,
+                               (long long)constInfo.actualKVPrefixSize);
                         attenMaskUb = this->attenMaskInQue[runInfo.taskIdMod2].template AllocTensor<uint8_t>();
                         for (uint32_t i = 0; i < s2BaseSize / 8; i++) {
                             attenMaskUb.SetValue(i, (uint8_t)0xFF);
@@ -1000,6 +1012,10 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1Nd(
                         this->attenMaskInQue[runInfo.taskIdMod2].template EnQue(attenMaskUb);
                         this->attenMaskInQue[runInfo.taskIdMod2].template DeQue<uint8_t>();
                     } else {
+                        if (runInfo.s2LoopCount < 1) PRINTF("[MASK-gmRead] nonMergeGqa s2S=%lld s2L=%lld pfxSize=%lld adjustedS2=%lld\n",
+                               (long long)runInfo.s2StartIdx, (long long)runInfo.s2LoopCount,
+                               (long long)constInfo.actualKVPrefixSize,
+                               (long long)(runInfo.s2StartIdx + runInfo.s2LoopCount * s2BaseSize - constInfo.actualKVPrefixSize));
                         AttenMaskCopyIn<hasAtten, isFd, enableKVPrefix>(this->attenMaskInQue[runInfo.taskIdMod2], this->attenMaskInQue[1 - runInfo.taskIdMod2],
                             this->attenMaskGmInt, runInfo, constInfo, *attenMaskInfoPtr);
                         attenMaskUb = this->attenMaskInQue[runInfo.taskIdMod2].template DeQue<uint8_t>();
@@ -1036,6 +1052,15 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1Nd(
 
     LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.multiCoreIdxMod3].template Get<float>()[0];
     LocalTensor<float> maxUb = this->softmaxMaxBuf[runInfo.multiCoreIdxMod3].template Get<float>()[0];
+    if (enableKVPrefix && runInfo.s2LoopCount < 1) {
+        PRINTF("[VEC-Nd-layout] maxPhy=%llx maxRaw0=%f maxGet0=%f sumPhy=%llx sumRaw0=%f sumGet0=%f\n",
+               (unsigned long long)maxUb.GetPhyAddr(),
+               (float)*((float*)(unsigned long long)maxUb.GetPhyAddr()),
+               (float)maxUb.GetValue(0),
+               (unsigned long long)sumUb.GetPhyAddr(),
+               (float)*((float*)(unsigned long long)sumUb.GetPhyAddr()),
+               (float)sumUb.GetValue(0));
+    }
     LocalTensor<float> expUb = this->softmaxExpBuf[runInfo.taskIdMod3].template Get<T>();
     LocalTensor<T> pScaleUb;
     LocalTensor<T> queryScaleUb;
