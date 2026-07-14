@@ -88,7 +88,6 @@ enum FaAttnMaskCompressMode : uint8_t {
 };
 
 struct ContextParamsForTiling {
-
     const at::Tensor *attentionMask = nullptr;
     const at::Tensor *actualSequenceLengthQ = nullptr;
     const at::Tensor *actualSequenceLengthKV = nullptr;

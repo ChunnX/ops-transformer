@@ -14,7 +14,7 @@
  * http://www.apache.org/licenses/LICENSE-2.0
  *
  */
- 
+
 #ifndef AICPU_ADD_EXAMPLE_CPU_KERNELS_H_
 #define AICPU_ADD_EXAMPLE_CPU_KERNELS_H_
 
@@ -22,11 +22,11 @@
 
 namespace aicpu {
 class AddExampleCpuKernel : public CpuKernel {
- public:
-  ~AddExampleCpuKernel() = default;
-  uint32_t Compute(CpuKernelContext &ctx) override;
-  template<typename T>
-  uint32_t AddCompute(CpuKernelContext &ctx);
+public:
+    ~AddExampleCpuKernel() = default;
+    uint32_t Compute(CpuKernelContext &ctx) override;
+    template <typename T>
+    uint32_t AddCompute(CpuKernelContext &ctx);
 };
-}  // namespace aicpu
+} // namespace aicpu
 #endif

@@ -73,7 +73,6 @@ void FaTiling::CreateSplitInput(split_core::BaseInfo &baseInfo, split_core::Spli
 
 void FaTiling::SetSplitOutput(const split_core::FAMetaData &splitRes)
 {
-
     for (size_t i = 0; i < optiling::NPU_AIC_CORE_NUM; ++i) {
         if (i >= splitRes.usedCoreNum) {
             tilingData_.faMetaData.FAMetadata[i][optiling::FA_CORE_ENABLE_INDEX] = 0;
@@ -98,10 +97,14 @@ void FaTiling::SetSplitOutput(const split_core::FAMetaData &splitRes)
         }
         tilingData_.faMetaData.CombineMetadata[i][optiling::COMBINE_CORE_ENABLE_INDEX] = 1;
         uint32_t curCombineIdx = combineRes.taskIdx[i];
-        tilingData_.faMetaData.CombineMetadata[i][optiling::COMBINE_BN2_IDX_INDEX] = combineRes.combineBN2Idx[curCombineIdx];
-        tilingData_.faMetaData.CombineMetadata[i][optiling::COMBINE_M_IDX_INDEX] = combineRes.combineMIdx[curCombineIdx];
-        tilingData_.faMetaData.CombineMetadata[i][optiling::COMBINE_S2_SPLIT_NUM_INDEX] = combineRes.combineS2SplitNum[curCombineIdx];
-        tilingData_.faMetaData.CombineMetadata[i][optiling::COMBINE_WORKSPACE_IDX_INDEX] = combineRes.combineWorkspaceIdx[curCombineIdx];
+        tilingData_.faMetaData.CombineMetadata[i][optiling::COMBINE_BN2_IDX_INDEX] =
+            combineRes.combineBN2Idx[curCombineIdx];
+        tilingData_.faMetaData.CombineMetadata[i][optiling::COMBINE_M_IDX_INDEX] =
+            combineRes.combineMIdx[curCombineIdx];
+        tilingData_.faMetaData.CombineMetadata[i][optiling::COMBINE_S2_SPLIT_NUM_INDEX] =
+            combineRes.combineS2SplitNum[curCombineIdx];
+        tilingData_.faMetaData.CombineMetadata[i][optiling::COMBINE_WORKSPACE_IDX_INDEX] =
+            combineRes.combineWorkspaceIdx[curCombineIdx];
         tilingData_.faMetaData.CombineMetadata[i][optiling::COMBINE_M_START_INDEX] = combineRes.mStart[i];
         tilingData_.faMetaData.CombineMetadata[i][optiling::COMBINE_M_NUM_INDEX] = combineRes.mLen[i];
     }
@@ -147,9 +150,9 @@ void FaTiling::UpdateTilingKeyInfo(ContextParamsForTiling &contextKeyParams)
 void FaTiling::GenTilingKey(ContextParamsForTiling &contextKeyParams)
 {
     UpdateTilingKeyInfo(contextKeyParams);
-    tilingKey_ = GET_TPL_TILING_KEY(tilingKeyInfo_.inputLayout, tilingKeyInfo_.config, tilingKeyInfo_.hasAttnMask,
-                                    tilingKeyInfo_.kvLayoutType, tilingKeyInfo_.isCombine,
-                                    tilingKeyInfo_.isReconstructTemp);
+    tilingKey_ =
+        GET_TPL_TILING_KEY(tilingKeyInfo_.inputLayout, tilingKeyInfo_.config, tilingKeyInfo_.hasAttnMask,
+                           tilingKeyInfo_.kvLayoutType, tilingKeyInfo_.isCombine, tilingKeyInfo_.isReconstructTemp);
 }
 
 void FaTiling::CalcNumBlocks(uint32_t coreNum, ContextParamsForTiling &contextKeyParams)

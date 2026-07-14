@@ -38,19 +38,19 @@ inline void InitTilingData(uint8_t *tiling, AddExampleTilingData *constData)
 }
 #endif // __NPU_TILING__
 
-#define CONVERT_TILING_DATA(tilingStruct, tilingDataPointer, tilingPointer) \
-    __ubuf__ tilingStruct *tilingDataPointer =                              \
+#define CONVERT_TILING_DATA(tilingStruct, tilingDataPointer, tilingPointer)                                            \
+    __ubuf__ tilingStruct *tilingDataPointer =                                                                         \
         reinterpret_cast<__ubuf__ tilingStruct *>((__ubuf__ uint8_t *)(tilingPointer));
 
-#define INIT_TILING_DATA(tilingStruct, tilingDataPointer, tilingPointer) \
+#define INIT_TILING_DATA(tilingStruct, tilingDataPointer, tilingPointer)                                               \
     CONVERT_TILING_DATA(tilingStruct, tilingDataPointer, tilingPointer);
 
-#define GET_TILING_DATA_WITH_STRUCT(tilingStruct, tilingData, tilingArg) \
-    tilingStruct tilingData;                                             \
+#define GET_TILING_DATA_WITH_STRUCT(tilingStruct, tilingData, tilingArg)                                               \
+    tilingStruct tilingData;                                                                                           \
     InitTilingData(tilingArg, &tilingData)
 
-#define GET_TILING_DATA(tilingData, tilingArg) \
-    AddExampleTilingData tilingData;    \
+#define GET_TILING_DATA(tilingData, tilingArg)                                                                         \
+    AddExampleTilingData tilingData;                                                                                   \
     InitTilingData(tilingArg, &tilingData)
 
 #endif // _I_ADD_EXAMPLE_TILING_H_

@@ -16,7 +16,6 @@ from pathlib import Path
 
 import pytest
 import torch
-import torch_npu
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
 if str(REPO_ROOT) not in sys.path:
@@ -34,16 +33,18 @@ BASE_TEST_CASES = [
     (1, 16, 1, 1024, 1024, 128),
 ]
 GENERALIZED_TEST_CASES = [
-    (2, 16, 1, 2, 1024, 128),       # B
-    (1, 16, 1, 64, 1024, 128),      # S1 / streamK row split
-    (1, 16, 1, 2, 2048, 128),       # S2
-    (1, 8, 1, 2, 1024, 128),        # N1
-    (1, 16, 2, 2, 1024, 128),       # N2/GQA ratio
-    (2, 32, 4, 2, 1024, 128),       # combined B/N1/N2
+    (2, 16, 1, 2, 1024, 128),  # B
+    (1, 16, 1, 64, 1024, 128),  # S1 / streamK row split
+    (1, 16, 1, 2, 2048, 128),  # S2
+    (1, 8, 1, 2, 1024, 128),  # N1
+    (1, 16, 2, 2, 1024, 128),  # N2/GQA ratio
+    (2, 32, 4, 2, 1024, 128),  # combined B/N1/N2
 ]
+
 
 def get_generalized_mode():
     return os.getenv(GENERALIZED_MODE_ENV, "0")
+
 
 def build_test_cases_gene():
     B_LIST = [1, 2, 4, 5, 7, 8, 48]
@@ -63,6 +64,7 @@ def build_test_cases_gene():
                         my_cases.append((b, n1, n2, s1, s2, d))
     return my_cases
 
+
 def build_test_cases():
     if get_generalized_mode() == "1":
         return BASE_TEST_CASES + GENERALIZED_TEST_CASES
@@ -70,6 +72,7 @@ def build_test_cases():
         return build_test_cases_gene()
     else:
         return BASE_TEST_CASES
+
 
 def case_id(case):
     b, n1, n2, sq, skv, d = case
@@ -86,13 +89,19 @@ def make_cpu_causal_mask(sq, skv):
 
 
 def make_npu_causal_mask():
-    allowed_mask = torch.tril(torch.ones(NPU_MASK_SIZE, NPU_MASK_SIZE, dtype=torch.bool))
+    allowed_mask = torch.tril(
+        torch.ones(NPU_MASK_SIZE, NPU_MASK_SIZE, dtype=torch.bool)
+    )
     return ~allowed_mask
 
 
-@pytest.mark.parametrize("b,n1,n2,sq,skv,d", TEST_CASES, ids=[case_id(case) for case in TEST_CASES])
+@pytest.mark.parametrize(
+    "b,n1,n2,sq,skv,d", TEST_CASES, ids=[case_id(case) for case in TEST_CASES]
+)
 def test_fa_causal(b, n1, n2, sq, skv, d):
-    print(f"testcase b = {b}, n1 = {n1}, n2 = {n2}, sq = {sq}, skv = {skv}, d = {d} start")
+    print(
+        f"testcase b = {b}, n1 = {n1}, n2 = {n2}, sq = {sq}, skv = {skv}, d = {d} start"
+    )
     if torch.npu.device_count() == 0:
         pytest.skip("NPU not available")
 
@@ -111,7 +120,13 @@ def test_fa_causal(b, n1, n2, sq, skv, d):
     k_bnsd = k.transpose(1, 2)
     v_bnsd = v.transpose(1, 2)
     cpu_out = torch.nn.functional.scaled_dot_product_attention(
-        q_bnsd, k_bnsd, v_bnsd, attn_mask=cpu_mask, scale=scale_value, enable_gqa=enable_gqa)
+        q_bnsd,
+        k_bnsd,
+        v_bnsd,
+        attn_mask=cpu_mask,
+        scale=scale_value,
+        enable_gqa=enable_gqa,
+    )
     cpu_out = cpu_out.transpose(1, 2).contiguous()
 
     q_npu = q.to("npu")
@@ -119,7 +134,8 @@ def test_fa_causal(b, n1, n2, sq, skv, d):
     v_npu = v.to("npu")
     mask_npu = npu_mask.to("npu")
     npu_out = ascend_ops.ops.flash_attn_example(
-        q_npu, k_npu, v_npu, mask_npu, scale_value, True)
+        q_npu, k_npu, v_npu, mask_npu, scale_value, True
+    )
     torch.npu.synchronize()
     npu_out_cpu = npu_out.to("cpu")
 
@@ -127,12 +143,18 @@ def test_fa_causal(b, n1, n2, sq, skv, d):
     assert npu_out_cpu.shape == cpu_out.shape
     assert npu_out_cpu.dtype == torch.bfloat16
 
-    compare_passed = compare(cpu_out.to(torch.float).numpy().flatten(),
-                             npu_out_cpu.to(torch.float).numpy().flatten())
+    compare_passed = compare(
+        cpu_out.to(torch.float).numpy().flatten(),
+        npu_out_cpu.to(torch.float).numpy().flatten(),
+    )
     if compare_passed == True:
-        print(f"testcase b = {b}, n1 = {n1}, n2 = {n2}, sq = {sq}, skv = {skv}, d = {d} Pass")
+        print(
+            f"testcase b = {b}, n1 = {n1}, n2 = {n2}, sq = {sq}, skv = {skv}, d = {d} Pass"
+        )
     else:
-        print(f"testcase b = {b}, n1 = {n1}, n2 = {n2}, sq = {sq}, skv = {skv}, d = {d} Failed")
+        print(
+            f"testcase b = {b}, n1 = {n1}, n2 = {n2}, sq = {sq}, skv = {skv}, d = {d} Failed"
+        )
 
 
 if __name__ == "__main__":

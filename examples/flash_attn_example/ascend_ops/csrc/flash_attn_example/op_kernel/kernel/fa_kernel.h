@@ -115,7 +115,7 @@ public:
         this->tilingData = tiling;
 
         faMetaDataGm.SetGlobalBuffer((__gm__ uint32_t *)faMetaData,
-                                      NPU_AIC_CORE_NUM * FA_METADATA_SIZE + NPU_AIV_CORE_NUM * COMBINE_METADATA_SIZE);
+                                     NPU_AIC_CORE_NUM * FA_METADATA_SIZE + NPU_AIV_CORE_NUM * COMBINE_METADATA_SIZE);
 
         InitConstInfo();
 
@@ -141,9 +141,10 @@ public:
         if constexpr (COMBINE) {
             if ASCEND_IS_AIV {
                 vecCombineBlock.InitParams();
-                vecCombineBlock.InitGlobalTensor(this->vecFaBlock.softmaxCombineMaxGm, this->vecFaBlock.softmaxCombineSumGm,
-                    this->vecFaBlock.accumOutGm, this->vecFaBlock.attentionOutGm,
-                    this->actualSeqLengthsGmQ, this->actualSeqLengthsGm, keyPtr);
+                vecCombineBlock.InitGlobalTensor(this->vecFaBlock.softmaxCombineMaxGm,
+                                                 this->vecFaBlock.softmaxCombineSumGm, this->vecFaBlock.accumOutGm,
+                                                 this->vecFaBlock.attentionOutGm, this->actualSeqLengthsGmQ,
+                                                 this->actualSeqLengthsGm, keyPtr);
             }
         }
     }
@@ -192,8 +193,7 @@ public:
         constInfo.coreNum = faBaseParams.coreNum;
         constInfo.outputLayout = static_cast<FA_LAYOUT>(faBaseParams.outputLayout);
 
-        constInfo.sparseMode =
-            faAttnMaskParams.sparseMode;
+        constInfo.sparseMode = faAttnMaskParams.sparseMode;
         constInfo.preTokens = faAttnMaskParams.preTokens;
         constInfo.nextTokens = faAttnMaskParams.nextTokens;
         constInfo.attnMaskBatch = faAttnMaskParams.attnMaskBatch;
@@ -544,8 +544,7 @@ public:
             if (headS2Split && (bN2Cur == constInfo.bN2Start) && (gS1Cur == constInfo.gS1OStart)) {
                 // 当前任务属于第一个S1G, 并且第一个S1G的S2被切分了
                 info.isS2SplitCore = true;
-            } else if (tailS2Split && (bN2Cur == constInfo.bN2End) &&
-                       (gS1Cur == constInfo.gS1OEnd)) {
+            } else if (tailS2Split && (bN2Cur == constInfo.bN2End) && (gS1Cur == constInfo.gS1OEnd)) {
                 // 当前任务属于最后一个S1G, 并且最后一个S1G的S2被切分了
                 info.isS2SplitCore = true;
                 info.faTmpOutWsPos = headS2Split ? (info.faTmpOutWsPos + 1) : info.faTmpOutWsPos;
@@ -581,15 +580,20 @@ public:
     {
         vecCombineBlock.InitBuffers(this->pipe);
         AscendC::ICachePreLoad(2);
-        uint32_t combineCoreEnable = faMetaDataGm.GetValue(GetCombineMetaDataIndex(constInfo.aivIdx, COMBINE_CORE_ENABLE_INDEX));
-        uint32_t combineBN2Idx = faMetaDataGm.GetValue(GetCombineMetaDataIndex(constInfo.aivIdx, COMBINE_BN2_IDX_INDEX));
+        uint32_t combineCoreEnable =
+            faMetaDataGm.GetValue(GetCombineMetaDataIndex(constInfo.aivIdx, COMBINE_CORE_ENABLE_INDEX));
+        uint32_t combineBN2Idx =
+            faMetaDataGm.GetValue(GetCombineMetaDataIndex(constInfo.aivIdx, COMBINE_BN2_IDX_INDEX));
         uint32_t combineMIdx = faMetaDataGm.GetValue(GetCombineMetaDataIndex(constInfo.aivIdx, COMBINE_M_IDX_INDEX));
-        uint32_t combineS2SplitNum = faMetaDataGm.GetValue(GetCombineMetaDataIndex(constInfo.aivIdx, COMBINE_S2_SPLIT_NUM_INDEX));
+        uint32_t combineS2SplitNum =
+            faMetaDataGm.GetValue(GetCombineMetaDataIndex(constInfo.aivIdx, COMBINE_S2_SPLIT_NUM_INDEX));
         uint32_t mStart = faMetaDataGm.GetValue(GetCombineMetaDataIndex(constInfo.aivIdx, COMBINE_M_START_INDEX));
         uint32_t mLen = faMetaDataGm.GetValue(GetCombineMetaDataIndex(constInfo.aivIdx, COMBINE_M_NUM_INDEX));
-        uint32_t combineWorkspaceIdx = faMetaDataGm.GetValue(GetCombineMetaDataIndex(constInfo.aivIdx, COMBINE_WORKSPACE_IDX_INDEX));
+        uint32_t combineWorkspaceIdx =
+            faMetaDataGm.GetValue(GetCombineMetaDataIndex(constInfo.aivIdx, COMBINE_WORKSPACE_IDX_INDEX));
 
-        CombineParamsX combineParams = {combineCoreEnable, combineBN2Idx, combineMIdx, combineS2SplitNum, mStart, mLen, combineWorkspaceIdx};
+        CombineParamsX combineParams = {combineCoreEnable,  combineBN2Idx, combineMIdx, combineS2SplitNum, mStart, mLen,
+                                        combineWorkspaceIdx};
         vecCombineBlock.AllocEventID();
         SyncAll();
         vecCombineBlock.Combine(combineParams);

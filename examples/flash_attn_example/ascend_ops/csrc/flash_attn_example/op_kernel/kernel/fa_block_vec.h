@@ -37,11 +37,11 @@ using namespace fa_base_vector;
 
 namespace BaseApi {
 
-template <
-    typename INPUT_T, typename T, typename OUTPUT_T, LayOutTypeEnum layout = LayOutTypeEnum::None,
-    LayOutTypeEnum outLayout = LayOutTypeEnum::None, S1TemplateType s1TemplateType = S1TemplateType::Aligned128,
-    S2TemplateType s2TemplateType = S2TemplateType::Aligned128, DTemplateType dTemplateType = DTemplateType::Aligned128,
-    DTemplateType dVTemplateType = DTemplateType::Aligned128, bool hasAttn = false, bool isCombine = false>
+template <typename INPUT_T, typename T, typename OUTPUT_T, LayOutTypeEnum layout = LayOutTypeEnum::None,
+          LayOutTypeEnum outLayout = LayOutTypeEnum::None, S1TemplateType s1TemplateType = S1TemplateType::Aligned128,
+          S2TemplateType s2TemplateType = S2TemplateType::Aligned128,
+          DTemplateType dTemplateType = DTemplateType::Aligned128,
+          DTemplateType dVTemplateType = DTemplateType::Aligned128, bool hasAttn = false, bool isCombine = false>
 class FABlockVec {
 public:
     /* =================编译期常量的基本块信息================= */
@@ -56,7 +56,7 @@ public:
     static constexpr bool HAS_MASK = hasAttn;
     static constexpr bool COMBINE = isCombine;
 
-    static constexpr uint32_t initOutputEventId = 0U;  // attnOut和lse，刷无效行会用到剩余ub，需要加同步
+    static constexpr uint32_t initOutputEventId = 0U; // attnOut和lse，刷无效行会用到剩余ub，需要加同步
 
     static constexpr LAYOUT_Q MASK_LAYOUT = LAYOUT_Q::SG;
 
@@ -119,9 +119,9 @@ public:
         InitVecInput(actualSeqQlenAddr, actualSeqKvlenAddr, attnMask, attentionOut, workspace);
     }
 
-    __aicore__ inline void InitVecInput(__gm__ uint8_t *actualSeqQlenAddr,
-                                        __gm__ uint8_t *actualSeqKvlenAddr, __gm__ uint8_t *attnMask,
-                                        __gm__ uint8_t *attentionOut, __gm__ uint8_t *workspace)
+    __aicore__ inline void InitVecInput(__gm__ uint8_t *actualSeqQlenAddr, __gm__ uint8_t *actualSeqKvlenAddr,
+                                        __gm__ uint8_t *attnMask, __gm__ uint8_t *attentionOut,
+                                        __gm__ uint8_t *workspace)
     {
         this->attentionOutGm.SetGlobalBuffer((__gm__ OUTPUT_T *)attentionOut);
 
@@ -134,7 +134,8 @@ public:
         if constexpr (COMBINE) {
             accumOutGm.SetGlobalBuffer((__gm__ float *)workspace);
             softmaxCombineSumGm.SetGlobalBuffer((__gm__ float *)workspace + constInfo.accumOutSize);
-            softmaxCombineMaxGm.SetGlobalBuffer((__gm__ float *)workspace + constInfo.accumOutSize + constInfo.logSumExpSize);
+            softmaxCombineMaxGm.SetGlobalBuffer((__gm__ float *)workspace + constInfo.accumOutSize +
+                                                constInfo.logSumExpSize);
         }
     }
 
@@ -154,7 +155,7 @@ public:
 
     __aicore__ inline void ClearOutput()
     {
-        SetFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);     // 释放剩余ub
+        SetFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId); // 释放剩余ub
         InitOutputSingleCore();
         WaitFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
         SyncAll();
@@ -257,9 +258,10 @@ public:
 
         if (likely(runInfo.actVecMSize != 0)) {
             DataCopy(mm2AL1Tensor[constInfo.subBlockIdx * (BLOCK_BYTES / sizeof(INPUT_T)) *
-                (runInfo.actMSize - runInfo.actVecMSize)], stage1CastTensor,
-                {s2BaseSize / 16, (uint16_t)runInfo.actVecMSize, (uint16_t)(vec1Srcstride - runInfo.actVecMSize),
-                (uint16_t)(mBaseSize - runInfo.actVecMSize)});
+                                  (runInfo.actMSize - runInfo.actVecMSize)],
+                     stage1CastTensor,
+                     {s2BaseSize / 16, (uint16_t)runInfo.actVecMSize, (uint16_t)(vec1Srcstride - runInfo.actVecMSize),
+                      (uint16_t)(mBaseSize - runInfo.actVecMSize)});
         }
         this->stage1OutQue[stage1Offset].template FreeTensor(stage1CastTensor);
 
@@ -299,17 +301,17 @@ public:
                     vec2ResUb, mmRes, vec2ResUb, expUb, pScaleUb, runInfo.actVecMSize, dTemplateAlign64, 1.0, 1.0);
             } else {
                 LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.mloop % (PRELOAD_N + 1)].template Get<float>();
-                FlashUpdateLastNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64, false>(
-                    vec2ResUb, mmRes, vec2ResUb, expUb, pScaleUb, sumUb, runInfo.actVecMSize, dTemplateAlign64, 1.0,
-                    1.0);
+                FlashUpdateLastNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64, false>(vec2ResUb, mmRes, vec2ResUb, expUb,
+                                                                                  pScaleUb, sumUb, runInfo.actVecMSize,
+                                                                                  dTemplateAlign64, 1.0, 1.0);
             }
         }
         bmm2ResBuf.SetCrossCore();
         if (runInfo.isLastS2Loop) {
             if (unlikely(runInfo.isFirstS2Loop)) {
                 LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.mloop % (PRELOAD_N + 1)].template Get<float>();
-                LastDivNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64>(
-                    vec2ResUb, vec2ResUb, sumUb, runInfo.actVecMSize, (uint16_t)dTemplateAlign64, 0.0F);
+                LastDivNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64>(vec2ResUb, vec2ResUb, sumUb, runInfo.actVecMSize,
+                                                                   (uint16_t)dTemplateAlign64, 0.0F);
             }
             CopyOutAttentionOut(runInfo, vec2ResUb, 0, runInfo.actVecMSize);
         }
@@ -393,9 +395,8 @@ public:
     __aicore__ inline void Bmm2DataCopyOutTrans(const RunInfoX &info, LocalTensor<OUTPUT_T> &attnOutUb,
                                                 uint32_t vecMIdx, uint32_t dealRowCount)
     {
-        FaUbTensor<OUTPUT_T> ubTensor{.tensor = attnOutUb,
-                                      .rowCount = dealRowCount,
-                                      .colCount = (uint32_t)(dTemplateAlign64)};
+        FaUbTensor<OUTPUT_T> ubTensor{
+            .tensor = attnOutUb, .rowCount = dealRowCount, .colCount = (uint32_t)(dTemplateAlign64)};
         GmCoord gmCoord{.bIdx = info.bIdx,
                         .n2Idx = info.n2Idx,
                         .gS1Idx = info.gS1Idx + info.vecMbaseIdx + vecMIdx,
@@ -449,8 +450,8 @@ public:
         BroadCastAndCopyOut(runInfo, sumUb, maxUb, gmOffset, calculateSize);
     }
 
-    __aicore__ inline void Bmm2ResForCombineCopyOut(const RunInfoX &runInfo, LocalTensor<T> &vec2ResUb, uint32_t mStartVec,
-                                               uint32_t mDealSize)
+    __aicore__ inline void Bmm2ResForCombineCopyOut(const RunInfoX &runInfo, LocalTensor<T> &vec2ResUb,
+                                                    uint32_t mStartVec, uint32_t mDealSize)
     {
         int64_t dSizeAligned64 = (int64_t)dVTemplateType;
         SetFlag<HardEvent::V_MTE3>(vToMte3Id[runInfo.loop % DB]);
@@ -530,7 +531,7 @@ public:
     }
 
     __aicore__ inline void AttnMaskCopyIn(LocalTensor<uint8_t> &attnMaskUb, uint32_t vecMIdx, uint32_t mDealSize,
-        RunInfoX &runInfo)
+                                          RunInfoX &runInfo)
     {
         MaskInfo maskInfo;
         maskInfo.gs1StartIdx = runInfo.gS1Idx + runInfo.vecMbaseIdx + vecMIdx;
@@ -547,8 +548,7 @@ public:
         maskInfo.batchIdx = (constInfo.attnMaskBatch == 1) ? 0 : runInfo.bIdx;
         maskInfo.attnMaskBatchStride = constInfo.attnMaskS1Size * constInfo.attnMaskS2Size;
         maskInfo.attnMaskS1Stride = constInfo.attnMaskS2Size;
-        maskInfo.attnMaskDstStride = (s2BaseSize - Align(maskInfo.s2dealNum, 32U)) /
-                                      32;
+        maskInfo.attnMaskDstStride = (s2BaseSize - Align(maskInfo.s2dealNum, 32U)) / 32;
         maskInfo.maskValue = negativeIntScalar;
         maskInfo.layout = MASK_LAYOUT;
         maskInfo.attnMaskType = MASK_BOOL; // compatible with int8/uint8
@@ -567,25 +567,23 @@ public:
         uint32_t n2Idx = bN2Cur % constInfo.n2Size;
         uint32_t bIdx = bN2Cur / constInfo.n2Size;
         BsngdOffsetInfo offsetInfo;
-        InitOffset(offsetInfo, constInfo.bSize, constInfo.n2Size, constInfo.gSize, constInfo.s1Size,
-                   constInfo.dSizeV);
+        InitOffset(offsetInfo, constInfo.bSize, constInfo.n2Size, constInfo.gSize, constInfo.s1Size, constInfo.dSizeV);
         DealActSeqLenIsZero<OUTPUT_T>(bIdx, n2Idx, offsetInfo, attentionOutGm);
     }
-
 };
 
-template <
-    typename INPUT_T, typename T, typename OUTPUT_T, LayOutTypeEnum layout = LayOutTypeEnum::None,
-    LayOutTypeEnum outLayout = LayOutTypeEnum::None, S1TemplateType s1TemplateType = S1TemplateType::Aligned128,
-    S2TemplateType s2TemplateType = S2TemplateType::Aligned128, DTemplateType dTemplateType = DTemplateType::Aligned128,
-    DTemplateType dVTemplateType = DTemplateType::Aligned128, bool hasAttn = false, bool isCombine = false>
+template <typename INPUT_T, typename T, typename OUTPUT_T, LayOutTypeEnum layout = LayOutTypeEnum::None,
+          LayOutTypeEnum outLayout = LayOutTypeEnum::None, S1TemplateType s1TemplateType = S1TemplateType::Aligned128,
+          S2TemplateType s2TemplateType = S2TemplateType::Aligned128,
+          DTemplateType dTemplateType = DTemplateType::Aligned128,
+          DTemplateType dVTemplateType = DTemplateType::Aligned128, bool hasAttn = false, bool isCombine = false>
 class FABlockVecDummy {
 public:
     static constexpr bool HAS_MASK = hasAttn;
     static constexpr bool COMBINE = isCombine;
     using OUT_T = OUTPUT_T;
     using ConstInfoX = ConstInfo_t<FaKernelType::NO_QUANT>;
-    __aicore__ inline FABlockVecDummy(ConstInfoX &constInfo) {};
+    __aicore__ inline FABlockVecDummy(ConstInfoX &constInfo){};
 };
 
 } // namespace BaseApi

@@ -46,12 +46,12 @@ using biasType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, DTYPE_BIAS>;
         using matmulType = MMImplType<xType<transA>, weightType<transB>, yType, biasType, cfg>;                        \
         matmulType::MT mm;                                                                                             \
         mm.SetSubBlockIdx(0);                                                                                          \
-        mm.Init(&tilingData->mmTilingData, &tPipe);                                                                     \
+        mm.Init(&tilingData->mmTilingData, &tPipe);                                                                    \
         GMMCompute<matmulType, sync> computeOp(mm);                                                                    \
         computeOp.Init(x, weight, bias, scale, offset, antiquantScale, antiquantOffset, groupList, perTokenScale, y,   \
-                       user1, &tilingData->gmmBaseParams, &tilingData->mmTilingData, &tPipe);                            \
+                       user1, &tilingData->gmmBaseParams, &tilingData->mmTilingData, &tPipe);                          \
         processClass<decltype(computeOp)> op(computeOp);                                                               \
-        op.Init(&tilingData->gmmBaseParams, &tilingData->mmTilingData, (int32_t *)&tilingData->gmmArray.mList[0],           \
+        op.Init(&tilingData->gmmBaseParams, &tilingData->mmTilingData, (int32_t *)&tilingData->gmmArray.mList[0],      \
                 groupList);                                                                                            \
         op.Process();                                                                                                  \
     } while (0)

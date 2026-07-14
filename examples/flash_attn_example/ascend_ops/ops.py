@@ -15,11 +15,15 @@ __all__ = ["flash_attn_example"]
 import torch
 from torch import Tensor
 
-def flash_attn_example(query: Tensor, key: Tensor, value: Tensor, attnMask: Tensor,
-    softmaxScale: float, isCausal: bool) -> Tensor:
-    return torch.ops.ascend_ops.flash_attn_example(query,
-                                           key,
-                                           value,
-                                           attnMask,
-                                           softmaxScale,
-                                           isCausal)
+
+def flash_attn_example(
+    query: Tensor,
+    key: Tensor,
+    value: Tensor,
+    attnMask: Tensor,
+    softmaxScale: float,
+    isCausal: bool,
+) -> Tensor:
+    return torch.ops.ascend_ops.flash_attn_example(
+        query, key, value, attnMask, softmaxScale, isCausal
+    )

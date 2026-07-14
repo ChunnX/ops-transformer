@@ -72,7 +72,7 @@ constexpr static AscendC::MicroAPI::CastTrait castTraitThree = {
     AscendC::MicroAPI::MaskMergeMode::ZEROING,
     AscendC::RoundMode::CAST_ROUND,
 };
- 
+
 constexpr static AscendC::MicroAPI::CastTrait castTraitRintZero = {
     AscendC::MicroAPI::RegLayout::ZERO,
     AscendC::MicroAPI::SatMode::SAT,
@@ -86,7 +86,7 @@ constexpr static AscendC::MicroAPI::CastTrait castTraitRintOne = {
     AscendC::MicroAPI::MaskMergeMode::ZEROING,
     AscendC::RoundMode::CAST_RINT,
 };
- 
+
 constexpr static AscendC::MicroAPI::CastTrait castTraitRintTwo = {
     AscendC::MicroAPI::RegLayout::TWO,
     AscendC::MicroAPI::SatMode::SAT,
@@ -101,24 +101,24 @@ constexpr static AscendC::MicroAPI::CastTrait castTraitRintThree = {
     AscendC::RoundMode::CAST_RINT,
 };
 
-#define USE_MLA_FULLQUANT_V1_P(vreg_exp, vreg_rowmax_p, MaskReg)    \
-    do {                                                            \
-        Muls(vreg_exp, vreg_exp, fp8e4m3MaxValue, MaskReg);         \
-        Div(vreg_exp, vreg_exp, vreg_rowmax_p, MaskReg);            \
-    } while (0)
-    
-#define USE_MLA_FULLQUANT_V1_P_INT8(vreg_exp, vreg_rowmax_p, MaskReg) \
-    do {                                                              \
-        Muls(vreg_exp, vreg_exp, int8MaxValue, MaskReg);              \
-        Div(vreg_exp, vreg_exp, vreg_rowmax_p, MaskReg);              \
+#define USE_MLA_FULLQUANT_V1_P(vreg_exp, vreg_rowmax_p, MaskReg)                                                       \
+    do {                                                                                                               \
+        Muls(vreg_exp, vreg_exp, fp8e4m3MaxValue, MaskReg);                                                            \
+        Div(vreg_exp, vreg_exp, vreg_rowmax_p, MaskReg);                                                               \
     } while (0)
 
-#define USE_MLA_FULLQUANT_V1_P_HIFP8(vreg_exp, vreg_rowmax_p, MaskReg)    \
-    do {                                                            \
-        Muls(vreg_exp, vreg_exp, hifp8MaxValue, MaskReg);         \
-        Div(vreg_exp, vreg_exp, vreg_rowmax_p, MaskReg);            \
+#define USE_MLA_FULLQUANT_V1_P_INT8(vreg_exp, vreg_rowmax_p, MaskReg)                                                  \
+    do {                                                                                                               \
+        Muls(vreg_exp, vreg_exp, int8MaxValue, MaskReg);                                                               \
+        Div(vreg_exp, vreg_exp, vreg_rowmax_p, MaskReg);                                                               \
+    } while (0)
+
+#define USE_MLA_FULLQUANT_V1_P_HIFP8(vreg_exp, vreg_rowmax_p, MaskReg)                                                 \
+    do {                                                                                                               \
+        Muls(vreg_exp, vreg_exp, hifp8MaxValue, MaskReg);                                                              \
+        Div(vreg_exp, vreg_exp, vreg_rowmax_p, MaskReg);                                                               \
     } while (0)
 #endif
-} // namespace
+} // namespace FaVectorApi
 #endif
 #endif // VF_SOFTMAX_CONST_H

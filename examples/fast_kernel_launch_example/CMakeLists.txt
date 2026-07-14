@@ -9,8 +9,8 @@
 # -----------------------------------------------------------------------------------------------------------
 
 cmake_minimum_required(VERSION 3.16)
-find_package(ASC REQUIRED) 
-find_package(AICPU REQUIRED) 
+find_package(ASC REQUIRED)
+find_package(AICPU REQUIRED)
 set(PKG_NAME AscendOps)
 project(${PKG_NAME} LANGUAGES ASC AICPU CXX VERSION 1.0.0)
 
