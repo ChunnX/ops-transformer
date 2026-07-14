@@ -159,6 +159,11 @@ public:
             uint64_t stateWkElemCnt = tiling_->nv * tiling_->dv * tiling_->dk;
             stateBf16Wk_.SetGlobalBuffer(reinterpret_cast<__gm__ lowType *>(user + offset), stateWkElemCnt);
             offset += sizeof(lowType) * stateWkElemCnt;
+        } else {
+            uint64_t stateWkStride = ((tiling_->dv * tiling_->dk + 15) / 16) * 16;
+            stateBf16Wk_.SetGlobalBuffer(reinterpret_cast<__gm__ lowType *>(user + offset),
+                                         tiling_->nv * stateWkStride);
+            offset += sizeof(lowType) * tiling_->nv * stateWkStride;
         }
 
         stageOneMask_.SetGlobalBuffer(reinterpret_cast<__gm__ highType *>(user + offset));
@@ -244,6 +249,7 @@ private:
         initStageTwoParams.Nk = tiling_->nk;
         initStageTwoParams.Dv = tiling_->dv;
         initStageTwoParams.Dk = tiling_->dk;
+        initStageTwoParams.stateWkStride = ((tiling_->dv * tiling_->dk + 15) / 16) * 16;
         initStageTwoParams.gOptional = gFlag_;
         initStageTwoParams.isFirstGroup = isFirstGroup;
         initStageTwoParams.stateIn = stateIn;
@@ -251,7 +257,7 @@ private:
         if constexpr (std::is_same_v<sType, float>) {
             initStageTwoParams.curStateBf16 = stateBf16Wk_;
         } else {
-            initStageTwoParams.curStateBf16 = stateIn;
+            initStageTwoParams.curStateBf16 = stateBf16Wk_;
         }
         stageTwoOp.Init(&initStageTwoParams, tiling_->aiCoreNum);
         stageTwoOp.Process();
