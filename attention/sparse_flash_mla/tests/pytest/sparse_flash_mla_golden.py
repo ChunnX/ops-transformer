@@ -851,7 +851,6 @@ def gen_data(params, template_mode=None):
     N1 = int(N1)
     N2 = int(N2)
     D = int(D)
-    K = int(K)
 
     if layout_q == "TND" and T1 == None:
         raise ValueError(f"T1 must be provided when layout_kv is TND")
