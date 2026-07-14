@@ -226,6 +226,9 @@ struct AssignContext {
     uint32_t bN2Block { 0U };
     int64_t bN2Cost { 0 };
     bool isFinished { false };
+    uint32_t bN2End { 0U };
+    uint32_t gS1End { 0U };
+    uint32_t s2End { 0U };
     BatchCache batchCache {};
     S1GCache s1GCache {};
     CoreCache coreCache {};
