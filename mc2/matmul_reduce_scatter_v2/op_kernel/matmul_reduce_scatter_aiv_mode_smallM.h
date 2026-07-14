@@ -267,7 +267,7 @@ __aicore__ inline void MatmulReduceScatterAivModeSmallM<TemplateMMReduceScatterV
             }
             GemmCoord comm_blockLocCoord = GetBlockLocCoord(comm_blockIdxCoord);
             MatrixCoord offsetC_comm{comm_blockLocCoord.m(), comm_blockLocCoord.n()};
-            gmOffsetC = n0 * n_st * m + layout_tmp.GetOffset(offsetC_comm);
+            gmOffsetC = static_cast<int64_t>(n0) * n_st * m + layout_tmp.GetOffset(offsetC_comm);
         } else {
             n_comm_block = n_nxt_ed - n_ed;
             int32_t comm_loopIdx = loopIdx - m_loop * n_ed;
@@ -279,7 +279,7 @@ __aicore__ inline void MatmulReduceScatterAivModeSmallM<TemplateMMReduceScatterV
             }
             GemmCoord comm_blockLocCoord = GetBlockLocCoord(comm_blockIdxCoord);
             MatrixCoord offsetC_comm{comm_blockLocCoord.m(), comm_blockLocCoord.n()};
-            gmOffsetC = n0 * n_ed * m + layout_tmp.GetOffset(offsetC_comm);
+            gmOffsetC = static_cast<int64_t>(n0) * n_ed * m + layout_tmp.GetOffset(offsetC_comm);
         }
 
         __gm__ cType *gmPeerMem = reinterpret_cast<__gm__ cType *>(buff[rank]);

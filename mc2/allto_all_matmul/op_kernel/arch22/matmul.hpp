@@ -192,13 +192,14 @@ public:
         int32_t coreNum = AscendC::GetBlockNum();
         int32_t mLoops = (params.problemShape.m() + L1TileShape::M - 1) / L1TileShape::M;
         uint32_t nLoops = (params.problemShape.n() + L1TileShape::N - 1) / L1TileShape::N;
-        int32_t pingPongBlockSize = L1TileShape::M * params.pValue * params.problemShape.k();
+        int64_t pingPongBlockSize =
+            static_cast<int64_t>(L1TileShape::M) * params.pValue * params.problemShape.k();
 
         int32_t commCount = (mLoops + params.pValue - 1) / params.pValue;
 
         for (int32_t commIdx = 0; commIdx < commCount; commIdx++) {
             uint64_t flagIdx = commIdx % params.pipeDepth;
-            int32_t peerMemBlockSt = flagIdx * pingPongBlockSize;
+            int64_t peerMemBlockSt = static_cast<int64_t>(flagIdx) * pingPongBlockSize;
 
             uint32_t actualPValue = params.pValue;
             int32_t mLoopStart = commIdx * params.pValue;
@@ -232,8 +233,8 @@ public:
 
                 int64_t gmOffsetA = params.layoutA.GetOffset(offsetA) + peerMemBlockSt;
                 int64_t gmOffsetB = params.layoutB.GetOffset(offsetB);
-                int64_t gmOffsetC =
-                    mLoopStart * L1TileShape::M * params.problemShape.n() + params.layoutC.GetOffset(offsetC);
+                int64_t gmOffsetC = static_cast<int64_t>(mLoopStart) * L1TileShape::M * params.problemShape.n() +
+                                    params.layoutC.GetOffset(offsetC);
 
                 if constexpr (HasBias) {
                     blockMmad(gmA[gmOffsetA], params.layoutA, gmB[gmOffsetB], params.layoutB, gmC[gmOffsetC],
