@@ -15,7 +15,6 @@
 
 #pragma once
 
-#include "kernel_operator.h"
 #include "collective_comm_context.h"
 #include "../utils/comm_tiling_data.h"
 #include "tensor_api/tensor/pointer.h"
@@ -108,7 +107,7 @@ public:
         nonSplitAxisBytes_ = tilingData.nonSplitAxisSize * sizeof(Dtype);
         chunkBytes_ = chunkSize_ * nonSplitAxisBytes_;
         totalTiles_ = tilingData_->splitAxisTileCnt + tilingData_->splitAxisTailCnt;
-        uint32_t tileMaxByteSize = (tilingData_->splitAxisTileSize > tilingData_->splitAxisTailSize ?
+        uint64_t tileMaxByteSize = (tilingData_->splitAxisTileSize > tilingData_->splitAxisTailSize ?
             tilingData_->splitAxisTileSize : tilingData_->splitAxisTailSize) * nonSplitAxisBytes_;
         slotStride_ = rankSize * tileMaxByteSize;
         myRankOffset_ = udmaCtx_->rankId * tileMaxByteSize;
