@@ -277,6 +277,13 @@ def check_result(expect, result, topk_value, params, output_idx_offset=None):
     # Q 侧个体长度
     def _cu_seqlens_to_lengths(cu_list):
         return [cu_list[i+1] - cu_list[i] for i in range(len(cu_list) - 1)]
+    # 辅助函数：将 seqused（可能为 str/list/None）统一转为 list
+    def _seqused_to_list(val):
+        if val is None:
+            return None
+        if isinstance(val, str):
+            return list(ast.literal_eval(val))
+        return list(val)
     if layout_query == "TND":
         # TND: 必传 cu_seqlens_q，从差分推导个体长度
         if isinstance(cu_seqlens_q, str):
@@ -286,7 +293,7 @@ def check_result(expect, result, topk_value, params, output_idx_offset=None):
     else:
         # BSND: 从 seqused_q 获取，若 None 则用 q_seq 填满
         if seqused_q is not None:
-            lengths_q_list = list(seqused_q)
+            lengths_q_list = _seqused_to_list(seqused_q)
         else:
             lengths_q_list = [q_seq] * batch_size
 
@@ -300,11 +307,11 @@ def check_result(expect, result, topk_value, params, output_idx_offset=None):
     elif layout_key == "PA_BBND":
         # PA_BBND: 从 seqused_k 获取
         assert seqused_k is not None, f"{layout_key} layout requires seqused_k"
-        lengths_k_list = list(seqused_k)
+        lengths_k_list = _seqused_to_list(seqused_k)
     else:
         # BSND: 从 seqused_k 获取，若 None 则用 q_seq 填满
         if seqused_k is not None:
-            lengths_k_list = list(seqused_k)
+            lengths_k_list = _seqused_to_list(seqused_k)
         else:
             lengths_k_list = [k_seq] * batch_size
 
@@ -316,41 +323,41 @@ def check_result(expect, result, topk_value, params, output_idx_offset=None):
     elif isinstance(act_seq_q, list):
         act_seq_q = act_seq_q
     else:
-        act_seq_q = [int(x.strip()) for x in act_seq_q.split(',')]
+        act_seq_q = list(ast.literal_eval(act_seq_q))
     if isinstance(act_seq_k, int):
         act_seq_k = [act_seq_k]
     elif isinstance(act_seq_k, list):
         act_seq_k = act_seq_k
     else:
-        act_seq_k = [int(x.strip()) for x in act_seq_k.split(',')]
+        act_seq_k = list(ast.literal_eval(act_seq_k))
     
     if isinstance(cu_seqlens_q, int):
         cu_seqlens_q = [cu_seqlens_q]
     elif isinstance(cu_seqlens_q, list):
         cu_seqlens_q = cu_seqlens_q
     elif cu_seqlens_q is not None:
-        cu_seqlens_q = [int(x.strip()) for x in cu_seqlens_q.split(',')]
+        cu_seqlens_q = list(ast.literal_eval(cu_seqlens_q))
     
     if isinstance(cu_seqlens_k, int):
         cu_seqlens_k = [cu_seqlens_k]
     elif isinstance(cu_seqlens_k, list):
         cu_seqlens_k = cu_seqlens_k
     elif cu_seqlens_k is not None:
-        cu_seqlens_k = [int(x.strip()) for x in cu_seqlens_k.split(',')]
+        cu_seqlens_k = list(ast.literal_eval(cu_seqlens_k))
 
     if isinstance(seqused_q, int):
         seqused_q = [seqused_q]
     elif isinstance(seqused_q, list):
         seqused_q = seqused_q
     elif seqused_q is not None:
-        seqused_q = [int(x.strip()) for x in seqused_q.split(',')]
+        seqused_q = list(ast.literal_eval(seqused_q))
     
     if isinstance(seqused_k, int):
         seqused_k = [seqused_k]
     elif isinstance(seqused_k, list):
         seqused_k = seqused_k
     elif seqused_k is not None:
-        seqused_k = [int(x.strip()) for x in seqused_k.split(',')]
+        seqused_k = list(ast.literal_eval(seqused_k))
 
     npu_pass = True
     max_error = 0
@@ -477,28 +484,28 @@ def check_result_return_value(expect, result, params):
     elif isinstance(cu_seqlens_q, list):
         cu_seqlens_q = cu_seqlens_q
     elif cu_seqlens_q is not None:
-        cu_seqlens_q = [int(x.strip()) for x in cu_seqlens_q.split(',')]
+        cu_seqlens_q = list(ast.literal_eval(cu_seqlens_q))
     
     if isinstance(cu_seqlens_k, int):
         cu_seqlens_k = [cu_seqlens_k]
     elif isinstance(cu_seqlens_k, list):
         cu_seqlens_k = cu_seqlens_k
     elif cu_seqlens_k is not None:
-        cu_seqlens_k = [int(x.strip()) for x in cu_seqlens_k.split(',')]
+        cu_seqlens_k = list(ast.literal_eval(cu_seqlens_k))
 
     if isinstance(seqused_q, int):
         seqused_q = [seqused_q]
     elif isinstance(seqused_q, list):
         seqused_q = seqused_q
     elif seqused_q is not None:
-        seqused_q = [int(x.strip()) for x in seqused_q.split(',')]
+        seqused_q = list(ast.literal_eval(seqused_q))
     
     if isinstance(seqused_k, int):
         seqused_k = [seqused_k]
     elif isinstance(seqused_k, list):
         seqused_k = seqused_k
     elif seqused_k is not None:
-        seqused_k = [int(x.strip()) for x in seqused_k.split(',')]
+        seqused_k = list(ast.literal_eval(seqused_k))
 
     if layout_query == 'TND':
         if len(cu_seqlens_q) == batch_size + 1:
