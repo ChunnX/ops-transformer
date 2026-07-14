@@ -802,10 +802,6 @@ ge::graphStatus AllGatherQuantBmmTiling::DoAdaptSlidWindowTiling()
     } else {
         MutableTCubeTileTilingData().M = tileMValue_ * (args_.rankDim - 1);
     }
-    if (args_.nValue != 0) {
-        MutableTCubeLocalTilingData().baseN = MutableTCubeTileTilingData().baseN;
-        MutableTCubeLocalTilingData().baseK = MutableTCubeTileTilingData().baseK;
-    }
     if (MutableRCSTilingDataA5().tailCnt == 0) {
         return ge::GRAPH_SUCCESS;
     }
@@ -821,10 +817,6 @@ ge::graphStatus AllGatherQuantBmmTiling::DoAdaptSlidWindowTiling()
         MutableTCubeTailTilingData().M = tailMValue_;
     } else {
         MutableTCubeTailTilingData().M = tailMValue_ * (args_.rankDim - 1);
-    }
-    if (args_.nValue != 0) {
-        MutableTCubeTailTilingData().baseN = MutableTCubeTileTilingData().baseN;
-        MutableTCubeTailTilingData().baseK = MutableTCubeTileTilingData().baseK;
     }
     return ge::GRAPH_SUCCESS;
 }
