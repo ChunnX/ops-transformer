@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file apply_rotary_pos_emb.cpp
@@ -15,6 +15,8 @@
 #include "apply_rotary_pos_emb_small.h"
 #include "apply_rotary_pos_emb_compute_ab.h"
 #include "apply_rotary_pos_emb_compute_ab_cast.h"
+#include "apply_rotary_pos_emb_compute_ab_perf.h"
+#include "apply_rotary_pos_emb_compute_ab_cast_perf.h"
 
 using namespace ApplyRotaryPosEmb;
 
@@ -32,17 +34,25 @@ extern "C" __global__ __aicore__ void apply_rotary_pos_emb(
     }
 
     GET_TILING_DATA(tilingData, tiling);
-#if ORIG_DTYPE_QUERY != DT_BF16
+#if ORIG_DTYPE_QUERY == DT_FLOAT
     if (TILING_KEY_IS(1)) {
-        ApplyRotaryPosEmb::ARPESmall<DTYPE_QUERY, DTYPE_QUERY> op;
+        AiInfraApplyRotaryPosEmb::ARPESmall<DTYPE_QUERY, DTYPE_QUERY> op;
         op.Init(q, k, cos, sin, q_out, k_out, userWS, &tilingData);
         op.Process(&tilingData);
     } else if (TILING_KEY_IS(3)) {
-        ApplyRotaryPosEmb::ARPEComputeAB<DTYPE_QUERY, DTYPE_QUERY> op;
+        AiInfraApplyRotaryPosEmb::ARPEComputeAB<DTYPE_QUERY, DTYPE_QUERY> op;
         op.Init(q, k, cos, sin, q_out, k_out, userWS, &tilingData);
         op.Process(&tilingData);
     } else if (TILING_KEY_IS(4)) {
-        ApplyRotaryPosEmb::ARPEComputeABCast<DTYPE_QUERY, DTYPE_QUERY> op;
+        AiInfraApplyRotaryPosEmb::ARPEComputeABCast<DTYPE_QUERY, DTYPE_QUERY> op;
+        op.Init(q, k, cos, sin, q_out, k_out, userWS, &tilingData);
+        op.Process(&tilingData);
+    } else if (TILING_KEY_IS(5)) {
+        AiInfraApplyRotaryPosEmb::ARPEComputeABPerf<DTYPE_QUERY, DTYPE_QUERY> op;
+        op.Init(q, k, cos, sin, q_out, k_out, userWS, &tilingData);
+        op.Process(&tilingData);
+    } else if (TILING_KEY_IS(6)) {
+        AiInfraApplyRotaryPosEmb::ARPEComputeABCastPerf<DTYPE_QUERY, DTYPE_QUERY> op;
         op.Init(q, k, cos, sin, q_out, k_out, userWS, &tilingData);
         op.Process(&tilingData);
     } else {
@@ -50,11 +60,15 @@ extern "C" __global__ __aicore__ void apply_rotary_pos_emb(
     }
 #else
     if (TILING_KEY_IS(1)) {
-        ApplyRotaryPosEmb::ARPESmall<DTYPE_QUERY, float> op;
+        AiInfraApplyRotaryPosEmb::ARPESmall<DTYPE_QUERY, float> op;
         op.Init(q, k, cos, sin, q_out, k_out, userWS, &tilingData);
         op.Process(&tilingData);
     } else if (TILING_KEY_IS(4)) {
-        ApplyRotaryPosEmb::ARPEComputeABCast<DTYPE_QUERY, float> op;
+        AiInfraApplyRotaryPosEmb::ARPEComputeABCast<DTYPE_QUERY, float> op;
+        op.Init(q, k, cos, sin, q_out, k_out, userWS, &tilingData);
+        op.Process(&tilingData);
+    } else if (TILING_KEY_IS(6)) {
+        AiInfraApplyRotaryPosEmb::ARPEComputeABCastPerf<DTYPE_QUERY, float> op;
         op.Init(q, k, cos, sin, q_out, k_out, userWS, &tilingData);
         op.Process(&tilingData);
     } else {
