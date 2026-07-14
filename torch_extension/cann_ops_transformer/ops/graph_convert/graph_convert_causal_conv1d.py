@@ -34,8 +34,8 @@ _ACTIVATION_MAP = {
 if _TORCHAIR_AVAILABLE:
 
     @auto_convert_to_tensor(
-        [False, False, False, False, False, True, True, True, True],
-        [False, False, False, False, False, True, True, True, True],
+        [False, False, False, False, False, False, False, False],
+        [False, False, False, True, True, True, True, True],
     )
     def CausalConv1d(
         x: Tensor,
@@ -138,6 +138,7 @@ if _TORCHAIR_AVAILABLE:
             query_start_loc=query_start_loc,
             cache_indices=cache_indices,
             initial_state_mode=has_initial_state,
+            num_accepted_tokens=None,
             activation_mode=activation_mode,
             null_block_id=null_block_id,
         )
@@ -150,6 +151,7 @@ if _TORCHAIR_AVAILABLE:
         x: Tensor,
         conv_state: Tensor,
         weight: Tensor,
+        *,
         bias: Optional[Tensor] = None,
         activation: str = "silu",
         conv_state_indices: Optional[Tensor] = None,
@@ -169,6 +171,7 @@ if _TORCHAIR_AVAILABLE:
             bias=bias,
             query_start_loc=query_start_loc,
             cache_indices=conv_state_indices,
+            initial_state_mode=None,
             num_accepted_tokens=num_accepted_tokens,
             activation_mode=activation_mode,
             null_block_id=null_block_id,

@@ -23,13 +23,13 @@
     ```Cpp
     x: [batch, 1, dim]
     weight: [K, dim]，其中K∈{2,3,4}
-    convStates: [batch, stateLen, dim]
-    bias: [dim] 或 nullptr
-    queryStartLoc: [batch+1] 或 nullptr
-    cacheIndices: [batch] 或 nullptr（默认使用恒等映射）
-    numAcceptedTokens: [batch] 或 nullptr（投机解码场景，仅K=4支持）
-    blockIdxLastScheduledToken: [batch] 或 nullptr
-    initialStateIdx: [batch] 或 nullptr
+    convStatesRef: [numCacheLines, stateLen, dim]
+    biasOptional: [dim] 或 nullptr
+    queryStartLocOptional: [batch+1] 或 nullptr
+    cacheIndicesOptional: [batch] 或 nullptr（默认使用恒等映射）
+    numAcceptedTokensOptional: [batch] 或 nullptr（投机解码场景，仅K=4支持）
+    blockIdxLastScheduledTokenOptional: [batch] 或 nullptr
+    initialStateIdxOptional: [batch] 或 nullptr
     activation: "silu" or "none"
     nullBlockId: int64_t
     maxQueryLen: int64_t
@@ -41,13 +41,13 @@
     ```Cpp
     x: [cuSeqLen, dim]
     weight: [K, dim]，其中K∈{2,3,4}
-    convStates: [numCacheLines, stateLen, dim]
-    bias: [dim] 或 nullptr
-    queryStartLoc: [batch+1] （必须提供）
-    cacheIndices: [batch] 或 nullptr
-    numAcceptedTokens: [batch] （必须提供，仅K=4支持）
-    blockIdxLastScheduledToken: [batch] 或 nullptr
-    initialStateIdx: [batch] 或 nullptr
+    convStatesRef: [numCacheLines, stateLen, dim]
+    biasOptional: [dim] 或 nullptr
+    queryStartLocOptional: [batch+1] （必须提供）
+    cacheIndicesOptional: [batch] 或 nullptr
+    numAcceptedTokensOptional: [batch] （必须提供，仅K=4支持）
+    blockIdxLastScheduledTokenOptional: [batch] 或 nullptr
+    initialStateIdxOptional: [batch] 或 nullptr
     activation: "silu" or "none"
     nullBlockId: int64_t
     maxQueryLen: int64_t
@@ -369,7 +369,7 @@ aclnnStatus aclnnCausalConv1dUpdate(
   - decode场景（固定batch）：
     - x为3维[batch, 1, dim]。
     - weight为2维[K, dim]，K∈{2,3,4}。
-    - convStatesRef为3维[batch, stateLen, dim]，stateLen ≥ K-1。
+    - convStatesRef为3维[numCacheLines, stateLen, dim]，stateLen ≥ K-1，numCacheLines ≥ batch。
     - dim范围[64, 16384]且满足 (dim * dtypeSize) % 32 == 0，batch范围[1, 1024]。
   - decode场景（投机解码变长序列）：
     - x为2维[cuSeqLen, dim]，必须同时提供numAcceptedTokens。
