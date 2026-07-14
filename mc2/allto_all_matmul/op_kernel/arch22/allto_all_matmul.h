@@ -77,9 +77,9 @@ private:
                                          LocalTensor<float> quantScaleTensor, int32_t actualMoveSize,
                                          int32_t actualMoveToken, int32_t tokenPerMove, int32_t moveIdx,
                                          event_t eventId);
-    __aicore__ inline void QuantToken(__gm__ AType *dataSrc, int32_t dataOffset, int32_t coreTokenOffset,
+    __aicore__ inline void QuantToken(__gm__ AType *dataSrc, uint64_t dataOffset, int32_t coreTokenOffset,
                                       int32_t dataLen, int32_t commIdx);
-    __aicore__ inline void QuantTokenSegment(__gm__ AType *dataSrc, int32_t dataOffset, int32_t coreTokenOffset,
+    __aicore__ inline void QuantTokenSegment(__gm__ AType *dataSrc, uint64_t dataOffset, int32_t coreTokenOffset,
                                              int32_t dataLen, int32_t commIdx);
     __aicore__ inline void SmoothQuantProc(event_t eventId, int32_t dataSegmentOffset, int32_t smoothScaleCastOffset,
                                            int32_t actualMoveSize, LocalTensor<float> copyTensor,
@@ -88,13 +88,13 @@ private:
                                              LocalTensor<float> absTensor0, LocalTensor<float> absTensor1,
                                              LocalTensor<float> smoothScaleTensor0,
                                              LocalTensor<float> smoothScaleTensor1, int32_t castOffset,
-                                             __gm__ AType *dataSrc, int32_t dataTokenOffset,
+                                             __gm__ AType *dataSrc, uint64_t dataTokenOffset,
                                              int32_t smoothScaleCastOffset, int32_t sizeScale,
                                              LocalTensor<float> reduceMaxTensor);
     __aicore__ inline void QuantPerSegment(LocalTensor<float> copyTensor0, LocalTensor<float> copyTensor1,
                                            LocalTensor<float> absTensor0, LocalTensor<float> absTensor1,
                                            LocalTensor<float> smoothScaleTensor0, LocalTensor<float> smoothScaleTensor1,
-                                           int32_t castOffset, __gm__ AType *dataSrc, int32_t dataTokenOffset,
+                                           int32_t castOffset, __gm__ AType *dataSrc, uint64_t dataTokenOffset,
                                            int32_t smoothScaleCastOffset, int32_t sizeScale, float quantScaleReciproal);
 
 private:
@@ -347,7 +347,7 @@ __aicore__ inline void AlltoAllMatmul<TemplateA2AMMFunc>::QuantPerToken(
 }
 
 template <TemplateA2AMMClass>
-__aicore__ inline void AlltoAllMatmul<TemplateA2AMMFunc>::QuantToken(__gm__ AType *dataSrc, int32_t dataOffset,
+__aicore__ inline void AlltoAllMatmul<TemplateA2AMMFunc>::QuantToken(__gm__ AType *dataSrc, uint64_t dataOffset,
                                                                      int32_t coreTokenOffset, int32_t dataLen,
                                                                      int32_t commIdx)
 {
@@ -461,7 +461,7 @@ template <TemplateA2AMMClass>
 __aicore__ inline void AlltoAllMatmul<TemplateA2AMMFunc>::CalcTokenMaxValue(
     LocalTensor<float> copyTensor0, LocalTensor<float> copyTensor1, LocalTensor<float> absTensor0,
     LocalTensor<float> absTensor1, LocalTensor<float> smoothScaleTensor0, LocalTensor<float> smoothScaleTensor1,
-    int32_t castOffset, __gm__ AType *dataSrc, int32_t dataTokenOffset, int32_t smoothScaleCastOffset,
+    int32_t castOffset, __gm__ AType *dataSrc, uint64_t dataTokenOffset, int32_t smoothScaleCastOffset,
     int32_t sizeScale, LocalTensor<float> reduceMaxTensor)
 {
     int32_t actualMoveSize = copyTensorSize;
@@ -507,7 +507,7 @@ template <TemplateA2AMMClass>
 __aicore__ inline void AlltoAllMatmul<TemplateA2AMMFunc>::QuantPerSegment(
     LocalTensor<float> copyTensor0, LocalTensor<float> copyTensor1, LocalTensor<float> absTensor0,
     LocalTensor<float> absTensor1, LocalTensor<float> smoothScaleTensor0, LocalTensor<float> smoothScaleTensor1,
-    int32_t castOffset, __gm__ AType *dataSrc, int32_t dataTokenOffset, int32_t smoothScaleCastOffset,
+    int32_t castOffset, __gm__ AType *dataSrc, uint64_t dataTokenOffset, int32_t smoothScaleCastOffset,
     int32_t sizeScale, float quantScaleReciproal)
 {
     int32_t actualMoveSize = copyTensorSize;
@@ -560,7 +560,7 @@ __aicore__ inline void AlltoAllMatmul<TemplateA2AMMFunc>::QuantPerSegment(
 }
 
 template <TemplateA2AMMClass>
-__aicore__ inline void AlltoAllMatmul<TemplateA2AMMFunc>::QuantTokenSegment(__gm__ AType *dataSrc, int32_t dataOffset,
+__aicore__ inline void AlltoAllMatmul<TemplateA2AMMFunc>::QuantTokenSegment(__gm__ AType *dataSrc, uint64_t dataOffset,
                                                                             int32_t coreTokenOffset, int32_t dataLen,
                                                                             int32_t commIdx)
 {
@@ -596,7 +596,7 @@ __aicore__ inline void AlltoAllMatmul<TemplateA2AMMFunc>::QuantTokenSegment(__gm
     SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID1);
 
     for (int32_t tokenLoop = 0; tokenLoop < tokenNum; tokenLoop++) {
-        int32_t dataTokenOffset = dataOffset + tokenLoop * tokenSize;
+        uint64_t dataTokenOffset = dataOffset + static_cast<uint64_t>(tokenLoop) * tokenSize;
         Duplicate<float>(reduceMaxTensor, static_cast<float>(0), 1);
         PipeBarrier<PIPE_V>();
         /* 获取当前token的max_abs_value */
@@ -648,8 +648,8 @@ __aicore__ inline void AlltoAllMatmul<TemplateA2AMMFunc>::Quant(uint64_t flagIdx
     if (dataLen <= 0) {
         return;
     }
-    int64_t dataSrcOffset = flagIdx * pingPongBlockSize;
-    int32_t dataOffset = dataSrcOffset + dataSrcCoreOffset;
+    uint64_t dataSrcOffset = static_cast<uint64_t>(flagIdx) * pingPongBlockSize;
+    uint64_t dataOffset = dataSrcOffset + dataSrcCoreOffset;
     if (isSegmentK) {
         // token过大，分段量化
         QuantTokenSegment(dataSrc, dataOffset, coreTokenOffset, dataLen, commIdx);
@@ -825,7 +825,8 @@ __aicore__ inline void AlltoAllMatmul<TemplateA2AMMFunc>::AlltoAll()
                                       allToAllSizePerRankPerLoop - coreOffset :
                                       allToAllSizePerCore;
                 uint64_t dataSrc = dstRank * allToAllSizePerRank + src_offset + coreOffset;
-                uint64_t dataDst = flagIdx * pingPongBlockSize + coreOffset * rankSize + rank * k;
+                uint64_t dataDst = flagIdx * pingPongBlockSize + static_cast<uint64_t>(coreOffset) * rankSize +
+                                   static_cast<uint64_t>(rank) * k;
                 uint32_t copyBytes = Catlass::BitsToBytes(dataLen * Catlass::SizeOfBits<AType>::value);
 
                 if (dataLen > 0) {

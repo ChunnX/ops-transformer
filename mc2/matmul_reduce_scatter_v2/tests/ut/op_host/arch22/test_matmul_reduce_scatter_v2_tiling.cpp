@@ -13,6 +13,7 @@
 #include <gtest/gtest.h>
 #include "../matmul_reduce_scatter_v2_host_ut_param.h"
 #include "mc2_tiling_case_executor.h"
+#include "matmul_reduce_scatter_v2_aiv_mode_smallm_tiling.h"
 
 namespace matmul_reduce_scatter_v2_ut {
 
@@ -63,6 +64,20 @@ TEST_P(MatmulReduceScatterV2Arch22TilingTest, param)
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", param.rank_size}};
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, param.expectResult, param.expectTilingKey,
                        param.expectTilingDataHash, {}, MC2_TILING_DATA_RESERVED_LEN, true);
+}
+
+TEST(MatmulReduceScatterV2SmallMTilingTest, PrecomputeFeaturesUsesWideProduct)
+{
+    constexpr int m = 50000;
+    constexpr int k = 1000;
+    constexpr int n = 50000;
+    float features[Tiling_Small_M::FEATURE_COUNT] = {};
+
+    Tiling_Small_M::PrecomputeFeatures(features, m, k, n, Tiling_Small_M::RANKSIZE_TWO);
+
+    const float expectedProduct = static_cast<float>(static_cast<int64_t>(m) * n);
+    EXPECT_FLOAT_EQ(features[static_cast<int>(Tiling_Small_M::FeatureType::M_MUL_N)], expectedProduct);
+    EXPECT_FLOAT_EQ(features[static_cast<int>(Tiling_Small_M::FeatureType::MN_DIV_K)], expectedProduct / k);
 }
 
 INSTANTIATE_TEST_SUITE_P(
