@@ -302,15 +302,12 @@ void FiaInfoParser::GetKvStrideValues()
     if (kvLayout_ == FiaLayout::BnBsH) {
         if (keyStrides_ != nullptr) {
             keyBnStride_ = keyStrides_->GetStride(0);
-            keyN2Stride_ = keyStrides_->GetStride(2);
         }
         if (valueStrides_ != nullptr) {
             valueBnStride_ = valueStrides_->GetStride(0);
-            valueN2Stride_ = valueStrides_->GetStride(2);
         }
         if (kRopeStrides_ != nullptr) {
             kRopeBnStride_ = kRopeStrides_->GetStride(0);
-            kRopeN2Stride_ = kRopeStrides_->GetStride(2);
         }
     } else if (kvLayout_ == FiaLayout::BnNBsD || kvLayout_ == FiaLayout::NZ) {
         if (keyStrides_ != nullptr) {

@@ -827,9 +827,9 @@ ge::graphStatus PagedAttentionChecker::CheckMultiParaConsistency(const FiaTiling
             return ge::GRAPH_FAILED);
 
         OP_CHECK_IF(fiaInfo.valueNonContigDim != -1,
-                    OP_LOGE(fiaInfo.opName,
-                            "In non-PA scenarios, value tensors must be contiguous."),
-                    return ge::GRAPH_FAILED);
+            OP_LOGE(fiaInfo.opName,
+                    "In non-PA scenarios, value tensors must be contiguous."),
+            return ge::GRAPH_FAILED);
         return ge::GRAPH_SUCCESS;
     }
     // PA 场景
