@@ -21,7 +21,6 @@ import math
 import ast
 from cann_ops_transformer.ops import lightning_indexer, lightning_indexer_metadata
 
-
 def test_liv2_process(filepath, device_id=0):
     # 加载测试数据
     test_data = torch.load(filepath, map_location="cpu")
@@ -29,20 +28,43 @@ def test_liv2_process(filepath, device_id=0):
     params = test_data['params']
     cpu_result = test_data['cpu_result']
     topk_value = test_data['topk_value']
-    output_idx_offset = test_data['output_idx_offset'].npu()
+    cpu_topk_value = test_data['cpu_topk_value']
     max_seqlen_q = test_data['max_seqlen_q']
     print("执行用例：", filepath)
     torch_npu.npu.set_device(device_id)
 
     query = test_data['query'].npu()
     key = test_data['key'].npu()
-
+    batch_size = int(params[0])
+    q_head_num = int(params[5])
+    k_head_num = int(params[6])
+    head_dim = int(params[7])
+    block_size = int(params[8])
+    block_num = int(params[9])
+    if params[10] == 'FP16':
+        if 'blockFusion' in test_data and test_data['blockFusion'] is not None:
+            blockFusion = test_data['blockFusion'].to(dtype=torch.float16).npu()
+    elif params[10] == 'BF16':
+        if 'blockFusion' in test_data and test_data['blockFusion'] is not None:
+            blockFusion = test_data['blockFusion'].to(dtype=torch.bfloat16).npu()
     topk = params[19]
     mask_mode = params[20]
     return_value = params[25]
-    weights =test_data['weights'].npu()
-    seqused_q = test_data['seqused_q'].npu()
-    seqused_k = test_data['seqused_k'].npu()
+    weights = test_data['weights'].npu()
+    if 'blockFusion' in test_data and test_data['blockFusion'] is not None:
+        key = blockFusion[:, :block_size * k_head_num * head_dim].view(block_num, block_size, k_head_num, head_dim)
+    if test_data['seqused_q'] is not None:
+        seqused_q = test_data['seqused_q'].npu()
+    else:
+        seqused_q = None
+    if test_data['seqused_k'] is not None:
+        seqused_k = test_data['seqused_k'].npu()
+    else:
+        seqused_k = None
+    if test_data['output_idx_offset'] is not None:
+        output_idx_offset = test_data['output_idx_offset'].npu()
+    else:
+        output_idx_offset = None
     if test_data['cu_seqlens_q'] is not None:
         cu_seqlens_q = test_data['cu_seqlens_q'].npu()
     else:
@@ -51,11 +73,10 @@ def test_liv2_process(filepath, device_id=0):
         cu_seqlens_k = test_data['cu_seqlens_k'].npu()
     else:
         cu_seqlens_k = None
-    block_table = test_data['block_table'].npu()
-    if test_data['metadata'] is not None:
-        metadata = test_data['metadata'].npu()
+    if test_data['block_table'] is not None:
+        block_table = test_data['block_table'].npu()
     else:
-        metadata = None
+        block_table = None
     layout_query = test_data['layout_query']
     layout_key = test_data['layout_key']
     cmp_ratio = test_data['cmp_ratio']
@@ -63,8 +84,29 @@ def test_liv2_process(filepath, device_id=0):
         cmp_residual_k = test_data['cmp_residual_k'].npu()
     else:
         cmp_residual_k = None
+    max_seqlen_q_meta = test_data['max_seqlen_q_meta']
+    max_seqlen_k_meta = test_data['max_seqlen_k_meta']
 
-    #调用SFA算子
+    metadata = lightning_indexer_metadata(
+                    num_heads_q = q_head_num,
+                    num_heads_k = k_head_num,
+                    head_dim = head_dim,
+                    topk = topk,
+                    cu_seqlens_q = cu_seqlens_q,
+                    cu_seqlens_k = cu_seqlens_k,
+                    seqused_q = seqused_q,
+                    seqused_k = seqused_k,
+                    cmp_residual_k = cmp_residual_k,
+                    batch_size = batch_size,
+                    max_seqlen_q = max_seqlen_q_meta,
+                    max_seqlen_k = max_seqlen_k_meta,
+                    layout_q = layout_query,
+                    layout_k = layout_key,
+                    mask_mode = mask_mode,
+                    cmp_ratio = cmp_ratio)
+
+    metadata = metadata.npu()
+    #调用li算子
     npu_result, npu_topk_value = lightning_indexer(query, key, weights,
                                              cu_seqlens_q = cu_seqlens_q,
                                              cu_seqlens_k = cu_seqlens_k,
@@ -82,6 +124,6 @@ def test_liv2_process(filepath, device_id=0):
                                              cmp_ratio = cmp_ratio,
                                              return_value = return_value)
     torch.npu.synchronize()
-
-    return cpu_result, npu_result, topk_value, output_idx_offset, params
+    npu_topk_value, _ = npu_topk_value.sort(dim=-1, descending=True)
+    return cpu_result, npu_result, topk_value, cpu_topk_value, npu_topk_value, output_idx_offset, params
 

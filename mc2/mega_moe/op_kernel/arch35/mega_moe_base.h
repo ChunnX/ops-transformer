@@ -73,7 +73,8 @@ struct PeermemInfo {
                 static_cast<uint32_t>(ALIGN_256)) * sizeof(int8_t);
             uint32_t scaleBytes = mxScaleNum * sizeof(int8_t);
             uint32_t tokenBytes = Ops::Base::CeilAlign(dataBytes + scaleBytes, static_cast<uint32_t>(ALIGN_32));
-            offset += Ops::Base::CeilAlign((int64_t)(tilingData->bs * tokenBytes * sizeof(int8_t)), (int64_t)ALIGN_512);
+            offset += Ops::Base::CeilAlign(
+                static_cast<int64_t>(tilingData->bs * tokenBytes * sizeof(int8_t)), (int64_t)ALIGN_512);
         } else {
             dispatchRecivePtr = base + offset;
             uint32_t mxScaleNum = Ops::Base::CeilDiv(tilingData->h, static_cast<uint32_t>(ALIGN_32));
@@ -82,8 +83,9 @@ struct PeermemInfo {
             uint32_t scaleBytes = mxScaleNum * sizeof(int8_t);
             uint32_t tokenBytes = Ops::Base::CeilAlign(static_cast<int64_t>(Ops::Base::CeilAlign(dataBytes + scaleBytes,
                 static_cast<uint32_t>(ALIGN_32)) + ALIGN_32), static_cast<int64_t>(ALIGN_512));
-            offset += Ops::Base::CeilAlign((int64_t)(tilingData->bs * tokenBytes * sizeof(int8_t) * serverNum),
-                (int64_t)ALIGN_512);
+            offset += Ops::Base::CeilAlign(
+                static_cast<int64_t>(tilingData->bs * tokenBytes * sizeof(int8_t)) *
+                static_cast<int64_t>(serverNum), (int64_t)ALIGN_512);
         }
         combineSendPtr = base + offset;
     }
@@ -112,8 +114,8 @@ struct Params {
 };
 
 enum class AddrUpdateMode : int32_t {
-    kGmm1,
-    kGmm2
+    GMM1,
+    GMM2
 };
 
 __aicore__ inline void NotifyCube(uint16_t value = 0)

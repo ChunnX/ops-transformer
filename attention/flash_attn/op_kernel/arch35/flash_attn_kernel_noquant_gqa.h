@@ -43,8 +43,8 @@ namespace BaseApi {
 template <typename CubeBlockType, typename VecFaBlockType, typename VecFdBlockType>
 class FlashAttentionNoQuantGqaKernel {
 public:
-    static constexpr uint32_t mBaseSize = CubeBlockType::mBaseSize;
     static constexpr uint32_t s2BaseSize = CubeBlockType::s2BaseSize;
+    static constexpr uint32_t mBaseSize = CubeBlockType::mBaseSize;
     static constexpr uint32_t dBaseSize = CubeBlockType::dBaseSize;
     static constexpr uint32_t dVBaseSize = CubeBlockType::dVBaseSize;
 
@@ -340,6 +340,11 @@ public:
             constInfo.maxBlockNumPerBatch = this->tilingData->flashAttnPageAttentionParams.maxBlockNumPerBatch;
             constInfo.blockSize = this->tilingData->flashAttnPageAttentionParams.blockSize;
             constInfo.paLayoutType = this->tilingData->flashAttnPageAttentionParams.paLayoutType;
+            // kvcache非连续场景的strides, 透传给offsetCalculator
+            constInfo.keyBnStride = this->tilingData->flashAttnBaseParams.keyBnStride;
+            constInfo.keyN2Stride = this->tilingData->flashAttnBaseParams.keyN2Stride;
+            constInfo.valueBnStride = this->tilingData->flashAttnBaseParams.valueBnStride;
+            constInfo.valueN2Stride = this->tilingData->flashAttnBaseParams.valueN2Stride;
         }
         // LSE
         constInfo.isSoftmaxLseEnable = this->tilingData->flashAttnBaseParams.isSoftMaxLseEnable;
@@ -475,14 +480,14 @@ public:
         uint64_t s2LoopTimes = (actSeqLensKv + s2BaseSize - 1) / s2BaseSize;
         uint64_t gS1Size = actSeqLensQ * constInfo.gSize;
         uint64_t gS1LoopTimes = (gS1Size + mBaseSize - 1) / mBaseSize;
-        if (s2LoopTimes == 0 || gS1LoopTimes == 0) {
+        if (gS1LoopTimes == 0 || s2LoopTimes == 0) {
             if (gS1Cur == 0 && s2Cur == 0) {
                 return TASK_DEAL_MODE::DEAL_ZERO;
             }
             return TASK_DEAL_MODE::SKIP_ZERO;
         }
         // 计算每一行的起止点，只有当换行时（bN2Cur、gS1Cur更新）才需要重新计算
-        if (isFirstTask || bN2Cur != prevBN2Idx || gS1Cur != prevGS1Idx) {
+        if (isFirstTask || gS1Cur != prevGS1Idx || bN2Cur != prevBN2Idx) {
             if constexpr (!HAS_MASK) {
                 CalcCurS2StartEndNoSparse(bN2Cur, gS1Cur);
             } else {
@@ -511,8 +516,8 @@ public:
     __aicore__ inline void GetPreNextTokenLeftUp(int64_t actSeqLensQ, int64_t actSeqLensKv, int64_t &preTokenLeftUp,
                                                  int64_t &nextTokenLeftUp)
     {
-        preTokenLeftUp = constInfo.preTokens;
         nextTokenLeftUp = constInfo.nextTokens;
+        preTokenLeftUp = constInfo.preTokens;
         fa_base_vector::GetSafeActToken(actSeqLensQ, actSeqLensKv, preTokenLeftUp, nextTokenLeftUp,
                                         constInfo.sparseMode);
 
@@ -634,6 +639,11 @@ public:
         cubeBlock.IterateBmm1(this->bmm1Buffers.Get(), runInfo);
     }
 
+    __aicore__ inline void ComputeVec1(RunInfoX &runInfo)
+    {
+        vecFaBlock.ProcessVec1(this->l1PBuffers.Get(), this->bmm1Buffers.Get(), runInfo);
+    }
+
     __aicore__ inline void ComputeMm2(RunInfoX &runInfo)
     {
         if constexpr (BMM2_TOUB) {
@@ -641,11 +651,6 @@ public:
         } else {
             cubeBlock.IterateBmm2(this->bmm2ResGmBuffers.Get(), this->l1PBuffers, runInfo);
         }
-    }
-
-    __aicore__ inline void ComputeVec1(RunInfoX &runInfo)
-    {
-        vecFaBlock.ProcessVec1(this->l1PBuffers.Get(), this->bmm1Buffers.Get(), runInfo);
     }
 
     __aicore__ inline void ComputeVec2(RunInfoX &runInfo)
@@ -691,9 +696,9 @@ public:
         if (((s2Cur + 1) * s2BaseSize) > info.actS2Size) {
             info.actSingleLoopS2Size = info.actS2Size - s2Cur * s2BaseSize;
         }
+        info.isChangeBatch = false;
         info.actSingleLoopS2SizeAlign =
             AttentionCommon::Align((uint32_t)info.actSingleLoopS2Size, (uint32_t)(FA_BYTE_BLOCK / sizeof(INPUT_T)));
-        info.isChangeBatch = false;
 
         GetPreNextTokenLeftUp(actSeqLensQ, actSeqLensKv, info.preTokensLeftUp, info.nextTokensLeftUp);
 
@@ -707,7 +712,7 @@ public:
         info.isLastS2Loop = (s2Cur + 1 == curS2End);
 
         if constexpr (USE_DN) {
-            info.actMSizeAlign32 = (info.actMSize + 31) >> 5 << 5;
+            info.actMSizeAlign32 = ((info.actMSize + 31) >> 5) << 5;
             info.actVecMSize = info.actMSize <= 16 ? info.actMSize : (info.actMSizeAlign32 >> 1);
         } else {
             info.actVecMSize = (info.actMSize + 1) >> 1;

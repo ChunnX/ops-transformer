@@ -585,7 +585,8 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Proc
         xInTensor_ = xInQueue_.AllocTensor<XInType>();
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
         LocalTensor<uint8_t> singleByteTok = xInTensor_.template ReinterpretCast<uint8_t>();
-        if constexpr ((QuantMode == MX_QUANT) || (QuantMode == PERGROUP_DYNAMIC_QUANT)) { // 提前填0，避免脏数据
+        if constexpr ((QuantMode == MX_QUANT) || (QuantMode == MX_QUANT_CLIP) ||
+            (QuantMode == PERGROUP_DYNAMIC_QUANT)) { // 提前填0，避免脏数据
             Duplicate(singleByteTok, QUANT_PADDING_VALUE, Align128(axisH_) * sizeof(XInType));
         }
 #endif
@@ -674,7 +675,11 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::CalT
     PipeBarrier<PIPE_V>();
     LocalTensor<float> tmpFp32 = subExpIdTensor_.ReinterpretCast<float>();
     LocalTensor<float> tmpoutFp32 = dstExpIdTensor_.ReinterpretCast<float>();
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 2201)
     Abs(tmpoutFp32, tmpFp32, calCnt);
+#else
+    Abs(dstExpIdTensor_, subExpIdTensor_, calCnt);
+#endif
     PipeBarrier<PIPE_V>();
     Mins(subExpIdTensor_, dstExpIdTensor_, 1, calCnt);
     PipeBarrier<PIPE_V>();
@@ -852,6 +857,7 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Mask
     PipeBarrier<PIPE_V>();
     SetDeqScale((half)1.000000e+00f);
     PipeBarrier<PIPE_V>();
+    // half类型最大可精准表示的整数是2048，当前dispatch最大可支持专家数为1024，大于该值的情况均为特殊专家，dispatch均不做发送即可，combine再分专家类型进行对应处理；
     Cast(expertIdsTensorCast, expertIdsTensor_, RoundMode::CAST_NONE, expertIdsCnt_);
     PipeBarrier<PIPE_V>();
     Duplicate<uint32_t>(maskTensorInt32, 0, Ceil(expertIdsCnt_, UB_ALIGN));

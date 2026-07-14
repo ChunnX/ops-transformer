@@ -27,7 +27,6 @@
 #include "graph/utils/type_utils.h"
 #include "ops_utils.h"
 #include "register/op_def_registry.h"
-#include "mc2_comm_utils.h"
 #include "op_host/op_tiling/mc2_tiling_utils.h"
 #include "matmul_reduce_scatter_tiling_base.h"
 #include "../../op_kernel/matmul_reduce_scatter_v2_apt_tiling_key.h"
@@ -50,6 +49,7 @@ constexpr uint32_t IS_TRANS_B = 3;
 constexpr uint32_t COMM_TURN = 4;
 constexpr int64_t AICPU_STRLEN = 6;
 const std::set<int> SUPPORT_RANK_SIZE{2, 4, 8, 16, 32, 64};
+const std::set<std::string> SUPPORT_COMM_MODE_A5{"ai_cpu", "ccu"};
 
 uint32_t MatmulReduceScatterTilingBase::ReduceScatterSpliteM(mc2tiling::TilingArgs& args, uint32_t maxTileCnt) const
 {
@@ -104,9 +104,9 @@ void MatmulReduceScatterTilingBase::DoFormulaticTiling(Mc2Tiling::RCSTiling &rcs
 
 /**
  * Due to communication constraints: 
- * 1. The maximum number of communication attempts is limited to 16
+ * 1. The maximum number of communication attempts is limited to 63
  * 2. The data volume of a single communication shall not exceed 256MB;
- * Thus, it is required to pre-intercept the x1 that still exceeds the limit after being evenly split into 16 parts
+ * Thus, it is required to pre-intercept the x1 that still exceeds the limit after being evenly split into 63 parts
  */
 ge::graphStatus MatmulReduceScatterTilingBase::CheckHCCLSize()
 {
@@ -116,10 +116,10 @@ ge::graphStatus MatmulReduceScatterTilingBase::CheckHCCLSize()
             "The value of matmulOutputSize must not exceed 256MB after splitting into (1, n)"),
                 return ge::GRAPH_FAILED);
 
-    uint64_t sizeOfSplitM = Ops::Base::CeilDiv(args_.mValue, mc2tiling::ALL_GATHER_HCCL_NUM_LIMIT) * sizeOfSingleM;
+    uint64_t sizeOfSplitM = Ops::Base::CeilDiv(args_.mValue, REDUCE_SCATTER_V2_HCCL_NUM_LIMIT) * sizeOfSingleM;
     OP_TILING_CHECK(sizeOfSplitM > mc2tiling::ALL_GATHER_HCCL_MEM_LIMIT,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "x1size", std::to_string(sizeOfSplitM).c_str(),
-            "The value of x1size must not exceed 256MB after splitting M into 16 parts"),
+            "The value of x1size must not exceed 256MB after splitting M into 63 parts"),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -278,9 +278,9 @@ ge::graphStatus MatmulReduceScatterTilingBase::GetPlatformInfo()
     // 根据入参commMode设置hccl通信方式
     auto commMode = context_->GetAttrs()->GetAttrPointer<char>(COMMMODE_INDEX);
     bool isAicpu = (strncmp(commMode, "ai_cpu", AICPU_STRLEN) == 0);
-    commMode_ = isAicpu ? Mc2Comm::COMM_MODE_AICPU : Mc2Comm::COMM_MODE_CCU;
+    commMode_ = isAicpu ? TPL_AICPU_COMM_MODE : TPL_CCU_COMM_MODE;
     // AICPU时不走All2All + Vec Reduce通路
-    if (commMode_ == Mc2Comm::COMM_MODE_AICPU) {
+    if (commMode_ == TPL_AICPU_COMM_MODE) {
         isA2APath_ = false;
     }
     libApiWorkSpaceSize_ = ascendcPlatform.GetLibApiWorkSpaceSize();
@@ -388,6 +388,10 @@ bool MatmulReduceScatterTilingBase::CheckAttrInfoValid(uint64_t kValue)
     OP_TILING_CHECK(
         commMode == nullptr,
         OP_LOGE_WITH_INVALID_ATTR(opName_, "commMode", "null", "not null"),
+        return false);
+    OP_TILING_CHECK(
+        SUPPORT_COMM_MODE_A5.find(commMode) == SUPPORT_COMM_MODE_A5.end(),
+        OP_LOGE_FOR_INVALID_VALUE(opName_, "commMode", commMode, "\"ai_cpu\" or \"ccu\""),
         return false);
     return CheckInputScale();
 }

@@ -487,7 +487,7 @@ extern "C" aclnnStatus aclnnQuantGroupedMatMulAlltoAllvGetWorkspaceSize(
             CHECK_RET(transRet == ACLNN_SUCCESS, transRet);
         }
     }
-    const char *commMode = "ccu";
+    const char *commMode = "ai_cpu";
     char *str_commMode = const_cast<char *>(commMode);
     aclnnStatus ret = aclnnInnerQuantGroupedMatMulAlltoAllvGetWorkspaceSize(
         gmmX, gmmWeight, gmmXScale, gmmWeightScale, sendCountsTensorOptional, recvCountsTensorOptional,
@@ -496,7 +496,7 @@ extern "C" aclnnStatus aclnnQuantGroupedMatMulAlltoAllvGetWorkspaceSize(
         transMmWeight, mmXQuantMode, mmWeightQuantMode, commQuantMode, groupSize, yDtype, mmDtype,
         commQuantDtypeOptional, str_commMode, y, mmYOptional, workspaceSize, executor);
     if (*executor != nullptr) {
-        void *args = reinterpret_cast<void *>(static_cast<uint8_t>(Mc2Comm::COMM_MODE_CCU));
+        void *args = reinterpret_cast<void *>(static_cast<uint8_t>(Mc2Comm::COMM_MODE_AICPU));
         NnopbaseSetUserHandle(*executor, args);
     }
     OP_LOGD("aclnnQuantGroupedMatMulAlltoAllv, aclnnInnerQuantGroupedMatMulAlltoAllvGetWorkspaceSize ret %d.", ret);

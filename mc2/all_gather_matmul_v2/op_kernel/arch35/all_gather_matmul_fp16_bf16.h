@@ -21,7 +21,7 @@
 #include "../../../common/op_kernel/mc2_mat_mul_asw_block.h"
 #include "../../../3rd/mat_mul_v3/op_kernel/mat_mul_v3_common.h"
 #include "../../../3rd/mat_mul_v3/op_kernel/arch35/mat_mul_asw_kernel.h"
-#include "all_gather_matmul_tiling_arch35.h"
+#include "../all_gather_matmul_tiling_arch35.h"
 #include "../common.h"
 
 namespace AllGatherMatmulImpl
@@ -79,7 +79,7 @@ private:
     uint8_t debugMode_;
     bool notifyFlag_{false};
     typename HcclTypeSelector<ServerMode>::type hccl_;
-    AscendC::HcclHandle hHandles_[MAX_HANDLE];  // 最大支持16个handleID
+    AscendC::HcclHandle hHandles_[MAX_HANDLE];  // 最大支持63个handleID
 };
 
 template <typename AType, typename BType, typename BiasType, typename CType, uint8_t ServerMode>

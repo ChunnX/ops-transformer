@@ -162,6 +162,93 @@ ge::graphStatus BSATiling::GetNpuInfo(gert::TilingContext *bsaContext)
     return ge::GRAPH_SUCCESS;
 }
 
+static ge::graphStatus CheckFormat(ge::Format format)
+{
+    if (format != ge::FORMAT_ND && format != ge::FORMAT_NCL &&
+        format != ge::FORMAT_NCHW && format != ge::FORMAT_NCDHW) {
+        return ge::GRAPH_FAILED;
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus BSATiling::CheckNDFormat(gert::TilingContext *bsaContext)
+{
+    auto queryFormat = static_cast<ge::Format>(
+        ge::GetPrimaryFormat(bsaContext->GetInputDesc(QUERY_INDEX)->GetStorageFormat()));
+    OP_CHECK_IF(CheckFormat(queryFormat) != ge::GRAPH_SUCCESS,
+               OP_LOGE(bsaContext->GetNodeName(), "query check format failed"),
+               return ge::GRAPH_FAILED);
+    auto keyFormat = static_cast<ge::Format>(
+        ge::GetPrimaryFormat(bsaContext->GetInputDesc(KEY_INDEX)->GetStorageFormat()));
+    OP_CHECK_IF(CheckFormat(keyFormat) != ge::GRAPH_SUCCESS,
+               OP_LOGE(bsaContext->GetNodeName(), "key check format failed"),
+               return ge::GRAPH_FAILED);
+    auto valueFormat = static_cast<ge::Format>(
+        ge::GetPrimaryFormat(bsaContext->GetInputDesc(VALUE_INDEX)->GetStorageFormat()));
+    OP_CHECK_IF(CheckFormat(valueFormat) != ge::GRAPH_SUCCESS,
+               OP_LOGE(bsaContext->GetNodeName(), "value check format failed"),
+               return ge::GRAPH_FAILED);
+
+    const auto *blockSparseMaskTensor = bsaContext->GetOptionalInputTensor(BLOCK_SPARSE_MASK_INDEX);
+    if (blockSparseMaskTensor != nullptr) {
+        auto blockSparseMaskFormat = static_cast<ge::Format>(
+            ge::GetPrimaryFormat(blockSparseMaskTensor->GetStorageFormat()));
+        OP_CHECK_IF(CheckFormat(blockSparseMaskFormat) != ge::GRAPH_SUCCESS,
+                   OP_LOGE(bsaContext->GetNodeName(), "blockSparseMask check format failed"),
+                   return ge::GRAPH_FAILED);
+    }
+
+    const auto *attenMaskTensor = bsaContext->GetOptionalInputTensor(ATTEN_MASK_INDEX);
+    if (attenMaskTensor != nullptr) {
+        auto attenMaskFormat = static_cast<ge::Format>(
+            ge::GetPrimaryFormat(attenMaskTensor->GetStorageFormat()));
+        OP_CHECK_IF(CheckFormat(attenMaskFormat) != ge::GRAPH_SUCCESS,
+                   OP_LOGE(bsaContext->GetNodeName(), "attenMask check format failed"),
+                   return ge::GRAPH_FAILED);
+    }
+
+    const auto *blockTableTensor = bsaContext->GetOptionalInputTensor(BLOCK_TABLE_INDEX);
+    if (blockTableTensor != nullptr) {
+        auto blockTableFormat = static_cast<ge::Format>(
+            ge::GetPrimaryFormat(blockTableTensor->GetStorageFormat()));
+        OP_CHECK_IF(CheckFormat(blockTableFormat) != ge::GRAPH_SUCCESS,
+                   OP_LOGE(bsaContext->GetNodeName(), "blockTable check format failed"),
+                   return ge::GRAPH_FAILED);
+    }
+
+    const auto *qDequantScaleTensor = bsaContext->GetOptionalInputTensor(Q_DEQUANT_SCALE_INDEX);
+    if (qDequantScaleTensor != nullptr) {
+        auto qDequantScaleFormat = static_cast<ge::Format>(
+            ge::GetPrimaryFormat(qDequantScaleTensor->GetStorageFormat()));
+        OP_CHECK_IF(CheckFormat(qDequantScaleFormat) != ge::GRAPH_SUCCESS,
+                   OP_LOGE(bsaContext->GetNodeName(), "qDequantScale check format failed"),
+                   return ge::GRAPH_FAILED);
+    }
+    const auto *kDequantScaleTensor = bsaContext->GetOptionalInputTensor(K_DEQUANT_SCALE_INDEX);
+    if (kDequantScaleTensor != nullptr) {
+        auto kDequantScaleFormat = static_cast<ge::Format>(
+            ge::GetPrimaryFormat(kDequantScaleTensor->GetStorageFormat()));
+        OP_CHECK_IF(CheckFormat(kDequantScaleFormat) != ge::GRAPH_SUCCESS,
+                   OP_LOGE(bsaContext->GetNodeName(), "kDequantScale check format failed"),
+                   return ge::GRAPH_FAILED);
+    }
+    const auto *vDequantScaleTensor = bsaContext->GetOptionalInputTensor(V_DEQUANT_SCALE_INDEX);
+    if (vDequantScaleTensor != nullptr) {
+        auto vDequantScaleFormat = static_cast<ge::Format>(
+            ge::GetPrimaryFormat(vDequantScaleTensor->GetStorageFormat()));
+        OP_CHECK_IF(CheckFormat(vDequantScaleFormat) != ge::GRAPH_SUCCESS,
+                   OP_LOGE(bsaContext->GetNodeName(), "vDequantScale check format failed"),
+                   return ge::GRAPH_FAILED);
+    }
+
+    auto attentionOutFormat = static_cast<ge::Format>(
+        ge::GetPrimaryFormat(bsaContext->GetOutputDesc(ATTENTION_OUT_INDEX)->GetStorageFormat()));
+    OP_CHECK_IF(CheckFormat(attentionOutFormat) != ge::GRAPH_SUCCESS,
+               OP_LOGE(bsaContext->GetNodeName(), "attentionOut check format failed"),
+               return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus BSATiling::ValidateTNDSeqlenSum(gert::TilingContext *bsaContext)
 {
     // 只在TND格式时进行校验
@@ -1163,6 +1250,13 @@ ge::graphStatus BSATiling::GetBsaTiling(gert::TilingContext *bsaContext, BlockSp
     if (ret != ge::GRAPH_SUCCESS) {
         OP_LOGE(bsaContext->GetNodeName(), "GetNpuInfo failed");
         return ret;
+    }
+    if (socVer_ == SOC_VER_950_CODE) {
+        ret = CheckNDFormat(bsaContext);
+        if (ret != ge::GRAPH_SUCCESS) {
+            OP_LOGE(bsaContext->GetNodeName(), "CheckNDFormat failed");
+            return ret;
+        }
     }
     if (GetInputLayout(bsaContext) != ge::GRAPH_SUCCESS ||
         ParseAttrs(bsaContext) != ge::GRAPH_SUCCESS ||

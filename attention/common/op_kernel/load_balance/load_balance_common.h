@@ -53,6 +53,7 @@ struct GeneralBalanceParam {
     bool fdOn { true };                     // Turn on to activate FD
     int64_t fdTolerance { 0U };             // if fd - full_block_cost * fdTolerance <= fd, then choose no fd,
                                             // full_block_cost is costFunc(mBaseSize, s2BaseSize)
+    int64_t fdLeastBlock { 0U };            // if noFd.maxCost <= fdLeastBlock * full_block_cost, then choose no fd
     CostFunc costFunc { nullptr };          // Customize cost func. Set nullptr to use default cost func
 };
 

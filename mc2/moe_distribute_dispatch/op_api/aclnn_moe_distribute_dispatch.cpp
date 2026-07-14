@@ -37,8 +37,7 @@ extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, 
 
 // check nullptr
 static bool CheckNotNull(const aclTensor* x, const aclTensor* expertIds, const char* groupEp, aclTensor* expandX,
-                         aclTensor* expandIdx, aclTensor* expertTokensNums, aclTensor* epRecvCounts,
-                         aclTensor* tpRecvCounts)
+                         aclTensor* expandIdx, aclTensor* expertTokensNums, aclTensor* epRecvCounts)
 {
     OP_LOGD("aclnn_moe_distribute_dispatch CheckNotNull start");
     OP_CHECK_NULL(x, return false);
@@ -46,7 +45,6 @@ static bool CheckNotNull(const aclTensor* x, const aclTensor* expertIds, const c
     OP_CHECK_NULL(expandX, return false);
     OP_CHECK_NULL(expandIdx, return false);
     OP_CHECK_NULL(expertTokensNums, return false);
-    OP_CHECK_NULL(tpRecvCounts, return false);
     OP_CHECK_NULL(epRecvCounts, return false);
     OP_LOGD("aclnn_moe_distribute_dispatch CheckNotNull success");
     if ((groupEp == nullptr)||(strnlen(groupEp, HCCL_GROUP_NAME_MAX) == 0)) {
@@ -56,15 +54,18 @@ static bool CheckNotNull(const aclTensor* x, const aclTensor* expertIds, const c
     return true;
 }
 
-// 入参教验
+// 入参校验
 static aclnnStatus CheckParams(const aclTensor* x, const aclTensor* expertIds, const char* groupEp,
                                const char* groupTp, int64_t quantMode, aclTensor* expandX, aclTensor* dynamicScales,
-                               aclTensor* expandIdx, aclTensor* expertTokensNums, aclTensor* epRecvCounts,
-                               aclTensor* tpRecvCounts)
+                               aclTensor* expandIdx, aclTensor* expertTokensNums, aclTensor* epRecvCounts)
 {
     OP_LOGD("aclnn_moe_distribute_dispatch CheckParams start");
-    CHECK_RET(CheckNotNull(x, expertIds, groupEp, expandX, expandIdx, expertTokensNums, epRecvCounts, tpRecvCounts),
+    CHECK_RET(CheckNotNull(x, expertIds, groupEp, expandX, expandIdx, expertTokensNums, epRecvCounts),
         ACLNN_ERR_PARAM_NULLPTR);
+    // groupTp为预留参数(当前版本不支持TP域通信)，nullptr视同空串，避免后续strnlen空指针解引用
+    if (groupTp == nullptr) {
+        groupTp = "";
+    }
     const static bool is910B = GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910B;
     if (is910B) {
         OP_LOGD("A2 platform, groupTp should be empty");
@@ -102,7 +103,7 @@ aclnnStatus MoeDistributeDispatchGetWorkspaceSize(const aclTensor* x, const aclT
 {
     OP_LOGD("aclnnMoeDistributeDispatchGetWorkspaceSize start");
     auto ret_param = CheckParams(x, expertIds, groupEp, groupTp, quantMode, expandX, dynamicScales, expandIdx,
-                                 expertTokensNums, epRecvCounts, tpRecvCounts);
+                                 expertTokensNums, epRecvCounts);
     CHECK_RET(ret_param == ACLNN_SUCCESS, ret_param);
 
     aclnnStatus ret = aclnnInnerMoeDistributeDispatchGetWorkspaceSize(x, expertIds, scales, xActiveMask, expertScales,

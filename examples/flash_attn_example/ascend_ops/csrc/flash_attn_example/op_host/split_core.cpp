@@ -56,9 +56,8 @@ uint32_t GetS2SeqSize(uint32_t bIdx, const BaseInfo &baseInfo)
         return static_cast<uint32_t>(baseInfo.actualSeqS2Size[bIdx]);
     }
 
-    return (bIdx == 0) ?
-               static_cast<uint32_t>(baseInfo.actualSeqS2Size[bIdx]) :
-               static_cast<uint32_t>(baseInfo.actualSeqS2Size[bIdx] - baseInfo.actualSeqS2Size[bIdx - 1U]);
+    return (bIdx == 0) ? static_cast<uint32_t>(baseInfo.actualSeqS2Size[bIdx]) :
+                         static_cast<uint32_t>(baseInfo.actualSeqS2Size[bIdx] - baseInfo.actualSeqS2Size[bIdx - 1U]);
 }
 
 int64_t CalcPreTokenLeftUp(uint32_t s1Size, uint32_t s2Size, const BaseInfo &baseInfo)
@@ -506,10 +505,12 @@ void RecordCombineInfo(const SplitContext &splitContext, const AssignContext &as
     uint32_t s1Size = GetS1SeqSize(splitBIdx, baseInfo);
 
     uint32_t curCombineS1gSize = (splitS1GIdx == splitInfo.s1GBaseNum[splitBIdx] - 1U) ?
-                                (s1Size * baseInfo.gSize - splitS1GIdx * splitParam.mBaseSize) :
-                                splitParam.mBaseSize;
-    uint32_t curCombineS1gSplitPart = (curCombineS1gSize + splitParam.gS1BaseSizeOfCombine - 1U) / splitParam.gS1BaseSizeOfCombine;
-    uint32_t curCombineS1gLastPartSize = curCombineS1gSize - (splitParam.gS1BaseSizeOfCombine * (curCombineS1gSplitPart - 1U));
+                                     (s1Size * baseInfo.gSize - splitS1GIdx * splitParam.mBaseSize) :
+                                     splitParam.mBaseSize;
+    uint32_t curCombineS1gSplitPart =
+        (curCombineS1gSize + splitParam.gS1BaseSizeOfCombine - 1U) / splitParam.gS1BaseSizeOfCombine;
+    uint32_t curCombineS1gLastPartSize =
+        curCombineS1gSize - (splitParam.gS1BaseSizeOfCombine * (curCombineS1gSplitPart - 1U));
 
     result.combineRes.combineBN2Idx[result.combineRes.combineNum] = result.bN2End[assignContext.curCoreIdx - 1U];
     result.combineRes.combineMIdx[result.combineRes.combineNum] = result.mEnd[assignContext.curCoreIdx - 1U];
@@ -606,7 +607,8 @@ void SplitCombine(FAMetaData &result)
         for (uint32_t vid = 0; vid < curCombineVectorNum; vid++) {
             combineRes.taskIdx[curCoreIndex] = i;
             combineRes.mStart[curCoreIndex] = vid * curAvgMSize;
-            combineRes.mLen[curCoreIndex] = (vid < curCombineVectorNum - 1) ? curAvgMSize : (combineRes.mSize[i] - vid * curAvgMSize);
+            combineRes.mLen[curCoreIndex] =
+                (vid < curCombineVectorNum - 1) ? curAvgMSize : (combineRes.mSize[i] - vid * curAvgMSize);
             curCoreIndex++;
         }
     }

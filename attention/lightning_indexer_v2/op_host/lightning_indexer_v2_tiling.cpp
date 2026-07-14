@@ -21,6 +21,7 @@ using namespace AscendC;
 using std::map;
 using std::string;
 namespace optiling {
+constexpr uint32_t BATCH_MODE_SCHEDULE = 1;
     // --------------------------LIV2InfoParser类成员函数定义-------------------------------------
 ge::graphStatus LIV2InfoParser::CheckRequiredInOutExistence() const
 {
@@ -207,6 +208,14 @@ ge::graphStatus LIV2InfoParser::GetAndCheckAttrParaInfo()
                     "but now layout_key is %s, layout_query is %s.",
             std::string(opParamInfo_.layOutKey).c_str(),
             std::string(opParamInfo_.layOut).c_str()), return ge::GRAPH_FAILED);
+        OP_CHECK_IF((*opParamInfo_.maxSeqlenQ < -1),
+                OP_LOGE(opName_, "input attr max_seqlens_q must >= -1, "
+                        "but now max_seqlen_q is %d.",
+                *opParamInfo_.maxSeqlenQ), return ge::GRAPH_FAILED);
+        OP_CHECK_IF((*opParamInfo_.returnValue != 0) && (*opParamInfo_.returnValue != 1),
+                OP_LOGE(opName_, "input attr return_value only support 0 or 1, "
+                        "but now return_value is %ld.",
+                *opParamInfo_.returnValue), return ge::GRAPH_FAILED);
     }
     OP_CHECK_IF((!((*opParamInfo_.topk > 0) && (*opParamInfo_.topk <= TOPK_MAX))),
  	                OP_LOGE(opName_, "input attr topk must > 0 and <= 8192."),
@@ -264,7 +273,7 @@ ge::graphStatus LIV2InfoParser::GetQueryKeyAndOutLayout()
     const map<string, DataLayout> layoutMap = {
         {"BSND", DataLayout::BSND},
         {"TND", DataLayout::TND},
-        {"PA_BBND", DataLayout::BnBsND}
+        {"PA_BBND", DataLayout::PA_BBND}
     };
 
     std::string layout(opParamInfo_.layOut);
@@ -284,7 +293,7 @@ ge::graphStatus LIV2InfoParser::GetQueryKeyAndOutLayout()
 
 ge::graphStatus LIV2InfoParser::GetAndCheckOptionalInput()
 {
-    if (kLayout_ == DataLayout::BnBsND) {
+    if (kLayout_ == DataLayout::PA_BBND) {
         OP_CHECK_IF(opParamInfo_.blockTable.tensor == nullptr,
                    OP_LOGE(opName_, "when layout_key is PA_BBND, input block_table must not be null"),
                    return ge::GRAPH_FAILED);
@@ -337,16 +346,28 @@ ge::graphStatus LIV2InfoParser::GetAndCheckOptionalInput()
                 OP_LOGE(opName_, "cmp_ratio is not 1 and mask_mode is not 0, "
                     "input cmp_residual_k must not be null"),
                 return ge::GRAPH_FAILED);
+            // cmpResidualK 传入时校验维度 & 数据类型
+            if (qLayout_ == DataLayout::BSND) {
+                OP_CHECK_IF(opParamInfo_.query.shape->GetStorageShape().GetDim(DIM_IDX_ZERO) !=
+                    opParamInfo_.cmpResidualK.tensor->GetStorageShape().GetShapeSize(),
+                    OP_LOGE(opName_, "when layout_q is BSND, input cmp_residual_k'shape must be (B,)"),
+                    return ge::GRAPH_FAILED);
+            } else if (qLayout_ == DataLayout::TND) {
+                OP_CHECK_IF(opParamInfo_.cmpResidualK.tensor->GetStorageShape().GetShapeSize() !=
+                    opParamInfo_.cuSeqlensQ.tensor->GetStorageShape().GetShapeSize() - 1,
+                    OP_LOGE(opName_, "when layout_q is TND, input cmp_residual_k's shape "
+                    "must equal input cu_seqlens_q's shape - 1"),
+                    return ge::GRAPH_FAILED);
+            }
+            if (opParamInfo_.cmpResidualK.tensor != nullptr) {
+                OP_CHECK_IF(opParamInfo_.cmpResidualK.desc->GetDataType() != ge::DT_INT32,
+                    OP_LOGE(opName_, "input cmp_residual_k data type only support int32"),
+                    return ge::GRAPH_FAILED);
+            }
         } else {
             OP_CHECK_IF(opParamInfo_.cmpResidualK.tensor != nullptr,
                 OP_LOGE(opName_, "cmp_ratio is 1 or mask_mode is 0, "
                     "input cmp_residual_k must be null"),
-                return ge::GRAPH_FAILED);
-        }
-        // cmpResidualK 传入时校验数据类型
-        if (opParamInfo_.cmpResidualK.tensor != nullptr) {
-            OP_CHECK_IF(opParamInfo_.cmpResidualK.desc->GetDataType() != ge::DT_INT32,
-                OP_LOGE(opName_, "input cmp_residual_k data type only support int32"),
                 return ge::GRAPH_FAILED);
         }
     }
@@ -354,7 +375,26 @@ ge::graphStatus LIV2InfoParser::GetAndCheckOptionalInput()
         OP_CHECK_IF(opParamInfo_.cuSeqlensQ.tensor == nullptr,
                 OP_LOGE(opName_, "when layout_query is TND, input cu_seqlens_q must not be null"),
                 return ge::GRAPH_FAILED);
+        // cuSeqlensQ 维度 & 类型校验
         if (npuArch_ == NpuArch::DAV_3510) {
+            if (kLayout_ == DataLayout::PA_BBND) {
+                // k为PA_BBND必传sequsedK, 用sequsedK的维度校验
+                OP_CHECK_IF(opParamInfo_.cuSeqlensQ.tensor->GetStorageShape().GetShapeSize() !=
+                    opParamInfo_.sequsedK.tensor->GetStorageShape().GetShapeSize() + 1,
+                    OP_LOGE(opName_, "when layout_q is TND and layout_k is PA_BBND, "
+                        "the dimension of input cu_seqlens_q should be 1 greater than "
+                        "that of input seqused_k, now they are %u and %u, respectively.",
+                        opParamInfo_.cuSeqlensQ.tensor->GetStorageShape().GetShapeSize(),
+                        opParamInfo_.sequsedK.tensor->GetStorageShape().GetShapeSize() + 1),
+                    return ge::GRAPH_FAILED);
+            } else if (kLayout_ == DataLayout::TND) {
+                // q、k都为TND, cuSeqlensQ与cuSeqlensK维度一致校验
+                OP_CHECK_IF(opParamInfo_.cuSeqlensQ.tensor->GetStorageShape().GetShapeSize() !=
+                    opParamInfo_.cuSeqlensK.tensor->GetStorageShape().GetShapeSize(),
+                    OP_LOGE(opName_, "when layout_q is TND and layout_k is TND, "
+                        "input cu_seqlens_q'shape must equal cu_seqlens_k's shape"),
+                    return ge::GRAPH_FAILED);
+            }
             OP_CHECK_IF(opParamInfo_.cuSeqlensQ.desc->GetDataType() != ge::DT_INT32,
                     OP_LOGE(opName_, "input cu_seqlens_q data type only support int32"),
                     return ge::GRAPH_FAILED);
@@ -380,13 +420,19 @@ ge::graphStatus LIV2InfoParser::GetAndCheckOptionalInput()
     }
 
     if (npuArch_ == NpuArch::DAV_3510) {
+        // outputIdxOffset数据类型校验
+        if (opParamInfo_.outputIdxOffset.tensor != nullptr) {
+                OP_CHECK_IF(opParamInfo_.outputIdxOffset.desc->GetDataType() != ge::DT_INT32,
+                    OP_LOGE(opName_, "input output_idx_offset data type only support int32"),
+                    return ge::GRAPH_FAILED);
+        }
         // metadata 必传
         OP_CHECK_IF(opParamInfo_.metadata.tensor == nullptr,
                 OP_LOGE(opName_, "input metadata must not be null"),
                 return ge::GRAPH_FAILED);
     }
 
-    OP_CHECK_IF(kLayout_ != DataLayout::BnBsND && opParamInfo_.blockTable.tensor != nullptr,
+    OP_CHECK_IF(kLayout_ != DataLayout::PA_BBND && opParamInfo_.blockTable.tensor != nullptr,
                  OP_LOGE(opName_, "when key layout is not PA_BBND, input block_table must be null"),
                  return ge::GRAPH_FAILED);
     
@@ -400,7 +446,7 @@ ge::graphStatus LIV2InfoParser::CheckShapeDim()
                OP_LOGE(opName_, "the dim num of block_table's shape should be 2"), return ge::GRAPH_FAILED);
     if (npuArch_ == NpuArch::DAV_3510) {
         OP_CHECK_IF(
-            ((kLayout_ == DataLayout::BnBsND)||(kLayout_ == DataLayout::BSND)) &&
+            ((kLayout_ == DataLayout::PA_BBND)||(kLayout_ == DataLayout::BSND)) &&
             (opParamInfo_.key.shape->GetStorageShape().GetDimNum() != DIM_NUM_FOUR),
             OP_LOGE(opName_, "the dim num of key's shape should be 4, but now is %u",
                     opParamInfo_.key.shape->GetStorageShape().GetDimNum()), return ge::GRAPH_FAILED);
@@ -428,6 +474,23 @@ ge::graphStatus LIV2InfoParser::CheckShapeDim()
                OP_LOGE(opName_, "the dim num of query's shape should be %u, but now is %u",
                 qExpectShapeDim, qShapeDim),
                return ge::GRAPH_FAILED);
+    if (npuArch_ == NpuArch::DAV_3510) {
+        if (opParamInfo_.outputIdxOffset.tensor != nullptr) {
+            uint32_t outputIdxOffsetShapeDim = opParamInfo_.outputIdxOffset.tensor->GetStorageShape().GetDimNum();
+            OP_CHECK_IF((outputIdxOffsetShapeDim != qExpectShapeDim - 1),
+                OP_LOGE(opName_, "the dim num of output_idx_offset's shape should be %u, but now is %u",
+                qExpectShapeDim - 1,
+                outputIdxOffsetShapeDim),
+                return ge::GRAPH_FAILED);
+        }
+        if (*opParamInfo_.returnValue == 1) {
+            uint32_t sparseValuesShapeDim = opParamInfo_.valuesOut.shape->GetStorageShape().GetDimNum();
+            OP_CHECK_IF(sparseValuesShapeDim != qExpectShapeDim,
+                OP_LOGE(opName_, "the dim num of sparse_values's shape should be %u, but now is %u",
+                    qExpectShapeDim, sparseValuesShapeDim),
+                return ge::GRAPH_FAILED);
+        }
+    }
     OP_CHECK_IF(outShapeDim != qExpectShapeDim,
                OP_LOGE(opName_, "the dim num of sparse_indices's shape should be %u, but now is %u",
                 qExpectShapeDim, outShapeDim),
@@ -449,11 +512,11 @@ ge::graphStatus LIV2InfoParser::CheckKeyContiguous() const
     // PA_BBND: 0轴允许非连续，从1轴开始检查；非PA_BBND: 从0轴开始检查
     // PA_BBND: axis 0 allows non-contiguous, check starts from axis 1
     // Non-PA_BBND: check starts from axis 0
-    size_t checkStartIdx = (kLayout_ == DataLayout::BnBsND) ? 1 : 0;
+    size_t checkStartIdx = (kLayout_ == DataLayout::PA_BBND) ? 1 : 0;
     if (!keyStridesVec_.empty() && opParamInfo_.key.shape != nullptr) {
         auto &shape = opParamInfo_.key.shape->GetStorageShape();
         std::vector<uint32_t> expectedStrides;
-        if (kLayout_ == DataLayout::BSND || kLayout_ == DataLayout::BnBsND) {
+        if (kLayout_ == DataLayout::BSND || kLayout_ == DataLayout::PA_BBND) {
             expectedStrides = {shape.GetDim(1) * shape.GetDim(2) * shape.GetDim(3),
                                shape.GetDim(2) * shape.GetDim(3), shape.GetDim(3), 1};
         } else if (kLayout_ == DataLayout::TND) {
@@ -536,10 +599,10 @@ ge::graphStatus LIV2InfoParser::GetBatchSize()
     } else {
         // TND
         uint32_t bSizeQuery;
-        GetActualSeqLenSize(bSizeQuery, opParamInfo_.cuSeqlensQ.tensor, "input cuSeqlensQ");
+        GetActualSeqLenSize(bSizeQuery, opParamInfo_.cuSeqlensQ.tensor, "input cu_seqlens_q");
         if (kLayout_ == DataLayout::TND) {
             uint32_t bSizeKey;
-            GetActualSeqLenSize(bSizeKey, opParamInfo_.cuSeqlensK.tensor, "input cuSeqlensK");
+            GetActualSeqLenSize(bSizeKey, opParamInfo_.cuSeqlensK.tensor, "input cu_seqlens_k");
             OP_CHECK_IF(bSizeQuery != bSizeKey,
                 OP_LOGE(opName_, "the lengths of cu_seqlens_q and cu_seqlens_k is %u, %u respectively, "
                         "they must be same.",
@@ -625,7 +688,7 @@ ge::graphStatus LIV2InfoParser::GetS2Size()
     // 获取S2基准值
     // 1、BATCH_CONTINUOUS时, 从key的S轴获取
     // 3、PAGE_ATTENTION时, S2 = block_table.dim1 * block_size
-    if (kLayout_ == DataLayout::BnBsND) {
+    if (kLayout_ == DataLayout::PA_BBND) {
         return GetS2SizeForPageAttention();
     } else if (kLayout_ == DataLayout::TND) {
         s2Size_ = opParamInfo_.key.shape->GetStorageShape().GetDim(0);
@@ -641,12 +704,30 @@ ge::graphStatus LIV2InfoParser::ValidateInputShapesMatchQtnd()
     uint32_t qTsize = opParamInfo_.query.shape->GetStorageShape().GetDim(0);
     OP_CHECK_IF((opParamInfo_.weights.shape->GetStorageShape().GetDim(0) != qTsize) ||
                 (opParamInfo_.attenOut.shape->GetStorageShape().GetDim(0) != qTsize),
-                OP_LOGE(opName_, "TND case input query, weights and sparse_indices dim 0 are %u, %ld, %ld "
+                OP_LOGE(opName_, "TND case input query, weights and sparse_indices "
+                    "dim 0 are %u, %ld, %ld "
                     "respectively, they must be same.",
                     qTsize, opParamInfo_.weights.shape->GetStorageShape().GetDim(0),
                     opParamInfo_.attenOut.shape->GetStorageShape().GetDim(0)),
                 return ge::GRAPH_FAILED);
-
+    if (npuArch_ == NpuArch::DAV_3510) {
+        if (*opParamInfo_.returnValue == 1) {
+            if (opParamInfo_.valuesOut.shape != nullptr) {
+                OP_CHECK_IF((opParamInfo_.valuesOut.shape->GetStorageShape().GetDim(0) != qTsize),
+                    OP_LOGE(opName_, "TND case input query and sparse_values dim 0 are %u, %ld "
+                        "respectively, they must be same.",
+                        opParamInfo_.valuesOut.shape->GetStorageShape().GetDim(0)),
+                    return ge::GRAPH_FAILED);
+            }
+        }
+        if (opParamInfo_.outputIdxOffset.tensor != nullptr) {
+            OP_CHECK_IF((opParamInfo_.outputIdxOffset.tensor->GetStorageShape().GetDim(0) != qTsize),
+                OP_LOGE(opName_, "TND case input query and output_idx_offset dim 0 are %u, %ld "
+                    "respectively, they must be same.",
+                    opParamInfo_.outputIdxOffset.tensor->GetStorageShape().GetDim(0)),
+                return ge::GRAPH_FAILED);
+        }
+    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -654,7 +735,7 @@ ge::graphStatus LIV2InfoParser::ValidateInputShapesMatchQbsnd()
 {
     // -----------------------check BatchSize-------------------
     // bSize_ 来源于query
-    if (kLayout_ == DataLayout::BnBsND) {
+    if (kLayout_ == DataLayout::PA_BBND) {
         OP_CHECK_IF((opParamInfo_.blockTable.tensor->GetStorageShape().GetDim(0) != bSize_) ||
                     (opParamInfo_.sequsedK.tensor->GetShapeSize() != bSize_),
                 OP_LOGE(opName_, "BSND case input query, seqused_k, block_table dim 0 are %u, %ld, %ld "
@@ -732,10 +813,28 @@ ge::graphStatus LIV2InfoParser::ValidateInputShapesMatch()
     OP_CHECK_IF((opParamInfo_.attenOut.shape->GetStorageShape().GetDim(outN2Dim) != n2Size_),
                OP_LOGE(opName_, "input query and output sparse_indices shape n2 dim must be same,"),
                return ge::GRAPH_FAILED);
+    // -----------------------check cmp_residual_k-------------------
+    if (npuArch_ == NpuArch::DAV_3510) {
+        if (opParamInfo_.cmpResidualK.tensor != nullptr) {
+            OP_CHECK_IF((opParamInfo_.cmpResidualK.tensor->GetShapeSize() != bSize_),
+                OP_LOGE(opName_, "input cmp_residual_k's shape size (%u) must be equal to batch_size (%u).",
+                        opParamInfo_.cmpResidualK.tensor->GetShapeSize(), bSize_),
+                return ge::GRAPH_FAILED);
+        }
+    }
     // -----------------------check sparse_count-------------------
     OP_CHECK_IF((opParamInfo_.attenOut.shape->GetStorageShape().GetDim(outN2Dim + 1) != *opParamInfo_.topk),
                OP_LOGE(opName_, "output sparse_indices shape last dim must be same as attr topk."),
                return ge::GRAPH_FAILED);
+    // -----------------------check sparse_values------------------
+    if (npuArch_ == NpuArch::DAV_3510 && *opParamInfo_.returnValue == 1) {
+        OP_CHECK_IF((opParamInfo_.valuesOut.shape->GetStorageShape().GetDim(outN2Dim) != n2Size_),
+            OP_LOGE(opName_, "input query and output sparse_values shape n2 dim must be same."),
+            return ge::GRAPH_FAILED);
+        OP_CHECK_IF((opParamInfo_.valuesOut.shape->GetStorageShape().GetDim(outN2Dim + 1) != *opParamInfo_.topk),
+            OP_LOGE(opName_, "input query and output sparse_values last dim must be same as attr topk."),
+            return ge::GRAPH_FAILED);
+    }
     // -----------------------check metadata-------------------
     OP_CHECK_IF(((opParamInfo_.metadata.tensor != nullptr) &&
                 (opParamInfo_.metadata.tensor->GetShapeSize() != METADATA_LIMIT)),
@@ -896,6 +995,7 @@ ge::graphStatus LightningIndexerV2Tiling::DoTiling(LIV2TilingInfo *tilingInfo)
                                             inputQLayout, inputKLayout, weightTypeFlag);
     context_->SetTilingKey(tilingKey);
 
+    context_->SetScheduleMode(BATCH_MODE_SCHEDULE);
     return ge::GRAPH_SUCCESS;
 }
 

@@ -26,11 +26,12 @@
 #include "graph/utils/type_utils.h"
 #include "register/op_def_registry.h"
 #include "op_host/op_tiling/mc2_tiling_utils.h"
-#include "mc2_comm_utils.h"
+#include "mc2_tiling_utils.h"
 #include "op_host/op_tiling/new_mc2_tiling_utils.h"
 #include "op_host/tiling_templates_registry.h"
 #include "reduce_scatter_fit_balance_tiling.h"
 #include "../reduce_scatter_formulaic_tiling.h"
+#include "../../../op_kernel/matmul_reduce_scatter_v2_apt_tiling_key.h"
 
 using namespace AscendC;
 using namespace ge;
@@ -111,12 +112,12 @@ ge::graphStatus MatmulReduceScatterV2Tiling::SetMc2Hcomm()
     AscendC::Mc2CcTilingConfig mc2CcTilingConfig(
         group, opType, rsConfig, reduceType, dataType, dataType
     );
-    if (commMode_ == Mc2Comm::COMM_MODE_AICPU) {
-        mc2CcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_AICPU);
-        OP_LOGD(opName_, "[COMM_MODE] Set CommEngine to AiCPU for matmul_reduce_scatter_v2");
+    if (commMode_ == TPL_AICPU_COMM_MODE) {
+        mc2CcTilingConfig.SetCommEngine(mc2tiling::A5_AICPU_TS_ENGINE);
+        OP_LOGD(opName_, "[SetCommEngine] Set CommEngine to AiCPU for matmul_reduce_scatter_v2_tiling.");
     } else {
-        mc2CcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_CCU);
-        OP_LOGD(opName_, "[COMM_MODE] Set CommEngine to CCU for matmul_reduce_scatter_v2");
+        mc2CcTilingConfig.SetCommEngine(mc2tiling::A5_CCU_ENGINE);
+        OP_LOGD(opName_, "[SetCommEngine] Set CommEngine to CCU for matmul_reduce_scatter_v2_tiling.");
     }
     OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(matmulReduceScatterV2TilingData_->mc2InitTiling) != 0,
         OP_LOGE(opName_, "mc2CcTilingConfig GetTiling mc2InitTiling failed"), return ge::GRAPH_FAILED);
@@ -218,11 +219,13 @@ CutResult MatmulReduceScatterV2Tiling::GetTilingResult()
         return scatterTiling.GetTiling();
     } else if (mc2tiling::Is8P(args_.rankDim, npuArch_)) {
         MMReduceScatterFitBalanceTiling scatterTiling(args_,
-            KernelType::REDUCE_SCATTER_VIA_ALL_TO_ALL, TopoType::EIGHT_P);
+            KernelType::REDUCE_SCATTER_VIA_ALL_TO_ALL, TopoType::EIGHT_P,
+            SocVersion::SOC950, (commMode_ == TPL_AICPU_COMM_MODE));
         return scatterTiling.GetTiling();
     } else {
         SocVersion inputSocVersion = (npuArch_ == NpuArch::DAV_3510) ? SocVersion::SOC950 : SocVersion::SOC910_B;
-        MMPlusReduceScatter scatterTiling(args_, args_.rankDim, KernelType::REDUCE_SCATTER, inputSocVersion);
+        MMPlusReduceScatter scatterTiling(args_, args_.rankDim, KernelType::REDUCE_SCATTER, inputSocVersion,
+            false, (commMode_ == TPL_AICPU_COMM_MODE));
         scatterTiling.GetTiling();
         return scatterTiling.tilingM_.cutRes;
     }

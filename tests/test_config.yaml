@@ -1218,7 +1218,7 @@ mc2:
         examples: False
       options:
         - allto_allv_grouped_mat_mul
-  
+
     allto_allv_quant_grouped_mat_mul:
       module: True
       src:
@@ -1441,7 +1441,6 @@ mc2:
         - mc2/mega_moe/op_kernel
       test:
         examples: False
-        ut: False
       options:
         - mega_moe
 
@@ -1634,7 +1633,7 @@ mc2:
         examples: False
       options:
         - moe_distribute_combine_setup
-      
+
     moe_distribute_combine_teardown:
       module: True
       src:
@@ -1651,7 +1650,7 @@ mc2:
         examples: False
       options:
         - moe_distribute_combine_teardown
-    
+
     moe_distribute_dispatch_setup:
       module: True
       src:
@@ -1747,7 +1746,7 @@ mc2:
       options:
         - moe_distribute_dispatch
         - moe_distribute_combine
-    
+
     moe_distribute_dispatch_setup:
       module: True
       src:

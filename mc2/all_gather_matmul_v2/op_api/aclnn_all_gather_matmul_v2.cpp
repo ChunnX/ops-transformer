@@ -27,14 +27,6 @@
 #include "aclnnInner_all_gather_matmul_v2.h"
 #include "mc2_comm_utils.h"
 
-#ifdef BUILD_OPEN_PROJECT
-#include "version/hcomm_version.h"
-#define HCCL_CHANNEL_SUPPORT_VERSION 89999300
-#if HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
-#include "common/op_api/mc2_context.h"
-#endif
-#endif
-
 using namespace op;
 using namespace Ops::Transformer;
 
@@ -80,14 +72,17 @@ static bool CheckNotNull(const aclTensor *x1, const aclTensor *x2, const aclTens
 }
 
 // 根据API定义，需要列出所能支持的所有dtype
-static const std::initializer_list<op::DataType> DTYPE_SUPPORT_LIST = { op::DataType::DT_FLOAT16, op::DataType::DT_BF16,
-    op::DataType::DT_FLOAT8_E4M3FN, op::DataType::DT_FLOAT8_E5M2, op::DataType::DT_HIFLOAT8 };
+static const std::initializer_list<op::DataType> DTYPE_SUPPORT_LIST = {
+    op::DataType::DT_FLOAT16,     op::DataType::DT_BF16,     op::DataType::DT_FLOAT8_E4M3FN,
+    op::DataType::DT_FLOAT8_E5M2, op::DataType::DT_HIFLOAT8, op::DataType::DT_FLOAT4_E2M1};
 
 static const std::initializer_list<op::DataType> BIAS_DTYPE_SUPPORT_LIST = { op::DataType::DT_FLOAT16,
     op::DataType::DT_BF16, op::DataType::DT_FLOAT };
 
 static const std::initializer_list<op::DataType> FP8_DTYPE_SUPPORT_LIST = { op::DataType::DT_FLOAT8_E4M3FN,
     op::DataType::DT_FLOAT8_E5M2, op::DataType::DT_HIFLOAT8 };
+
+static const std::initializer_list<op::DataType> FP4_DTYPE_SUPPORT_LIST = { op::DataType::DT_FLOAT4_E2M1 };
 
 static const std::initializer_list<op::DataType> OUT_DTYPE_SUPPORT_LIST = BIAS_DTYPE_SUPPORT_LIST;
 
@@ -120,9 +115,12 @@ static bool CheckDataTypeFp16Valid(const aclTensor *x1, const aclTensor *x2, con
     return true;
 }
 
-static bool CheckDataTypeFp8Valid(const aclTensor *x1, const aclTensor *x2, const aclTensor *bias)
+static bool CheckDataTypeFp8Fp4Valid(const aclTensor *x1, const aclTensor *x2, const aclTensor *bias)
 {
     if (x1->GetDataType() == op::DataType::DT_HIFLOAT8) {
+        OP_CHECK_DTYPE_NOT_SAME(x1, x2, return false);
+    }
+    if (x1->GetDataType() == op::DataType::DT_FLOAT4_E2M1) {
         OP_CHECK_DTYPE_NOT_SAME(x1, x2, return false);
     }
     if (bias != nullptr) {
@@ -153,8 +151,8 @@ static bool CheckDtypeValid(const aclTensor *x1, const aclTensor *x2, const aclT
 
     if (IsFp16orBf16Input(x1)) {
         return CheckDataTypeFp16Valid(x1, x2, bias, output);
-    } else if (CheckSupportDtype(x1, FP8_DTYPE_SUPPORT_LIST)) {
-        return CheckDataTypeFp8Valid(x1, x2, bias);
+    } else if (CheckSupportDtype(x1, FP8_DTYPE_SUPPORT_LIST) || CheckSupportDtype(x1, FP4_DTYPE_SUPPORT_LIST)) {
+        return CheckDataTypeFp8Fp4Valid(x1, x2, bias);
     }
     return true;
 }
@@ -506,22 +504,14 @@ static bool checkX1InputEmptyTensor(const aclTensor *x1, const aclTensor *x2)
 
 static aclnnStatus CheckAndHandleCommMode(const char *group, const char *commMode, uint8_t &commModeEnum)
 {
-    uint32_t rankSize = 0;
     // 获取通信引擎参数
     if (std::strncmp(commMode, "ai_cpu", CMP_MAX_LEN) == 0) {
         commModeEnum = Mc2Comm::COMM_MODE_AICPU;
     } else if (std::strncmp(commMode, "ccu", CMP_MAX_LEN) == 0) {
         commModeEnum = Mc2Comm::COMM_MODE_CCU;
-    } else if (std::strncmp(commMode, "", CMP_MAX_LEN) == 0) {
-        // 获取卡数
-#if defined(BUILD_OPEN_PROJECT) && HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
-        auto getRankSizeRet = Mc2Aclnn::Mc2Context::GetMc2RankSize(group, rankSize);
-        CHECK_RET(getRankSizeRet == ACLNN_SUCCESS, getRankSizeRet);
-#endif
-        commModeEnum = (rankSize <= COMM_MODE_RANKSIZE) ? Mc2Comm::COMM_MODE_CCU : Mc2Comm::COMM_MODE_AICPU;
     } else {
         OP_LOGE_WITH_INVALID_ATTR("aclnnAllGatherMatmulV2", "commMode",
-            commMode, "empty string, 'ccu' or 'ai_cpu'");
+            commMode, "'ccu' or 'ai_cpu'");
         return ACLNN_ERR_PARAM_INVALID;
     }
 
@@ -545,7 +535,7 @@ aclnnStatus allGatherMatmulV2GetWorkspaceSizeCCUMode(const aclTensor *x1, const 
     OP_LOGD("X1 is %s.", x1->ToString().GetString());
     OP_LOGD("X2 is %s.", x2->ToString().GetString());
 
-    if (CheckSupportDtype(x1, FP8_DTYPE_SUPPORT_LIST)) {
+    if (CheckSupportDtype(x1, FP8_DTYPE_SUPPORT_LIST) || CheckSupportDtype(x1, FP4_DTYPE_SUPPORT_LIST)) {
         auto retScaleChk = CheckScale(x1Scale, x2Scale, quantScale);
         CHECK_RET(retScaleChk == ACLNN_SUCCESS, retScaleChk);
     }
@@ -609,6 +599,11 @@ aclnnStatus allGatherMatmulV2GetWorkspaceSizeAIVMode(const aclTensor *x1, const 
     aclOpExecutor **executor)
 {
     OP_LOGD("allGatherMatmulV2GetWorkspaceSizeAIVMode start");
+    // 校验comm_mode取值
+    if (std::strncmp(commMode, "aiv", CMP_MAX_LEN) != 0) {
+        OP_LOGE_WITH_INVALID_ATTR("aclnnAllGatherMatmulV2", "commMode", commMode, "'aiv'");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
     bool transposeX1 = IsTransposeLastTwoDims(x1);
     bool viewTransposeX2 = IsViewTransposeX2(x1, x2, transposeX1);
     bool transposeX2 = viewTransposeX2 || IsTransposeLastTwoDims(x2);

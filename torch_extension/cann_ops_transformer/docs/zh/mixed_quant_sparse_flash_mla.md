@@ -123,13 +123,13 @@ cann_ops_transformer.mixed_quant_sparse_flash_mla(
 | num_heads_kv | int | 必选 | 表示Key和Value对应的多头数，仅支持1。 | int32 | - |
 | head_dim | int | 必选 | 表示注意力头的维度，仅支持512。 | int32 | - |
 | quant_mode | int | 必选 | 表示量化模式，1表示K、V nope为per-token-group量化，scale类型为bfloat16，2表示K、V nope为per-token-group量化，scale类型为FLOAT8_E8M0。当前仅支持1和2，量化模式2只支持layout_kv为PA_BBND。默认值为None。 | int32 | - |
-| cu_seqlens_q | Tensor | 可选 | 表示不同Batch中Query的有效Sequence Length，仅layout_q为TND场景需传入。数据格式为ND，支持非连续的Tensor。 | int32 | B+1 |
-| cu_seqlens_ori_kv | Tensor | 可选 | 表示不同Batch中ori_kv的有效Sequence Length，仅layout_kv为TND场景需传入。数据格式为ND，支持非连续的Tensor。 | int32 | B+1 |
-| cu_seqlens_cmp_kv | Tensor | 可选 | 表示不同Batch中cmp_kv的有效Sequence Length，仅layout_kv为TND场景需传入。数据格式为ND，支持非连续的Tensor。 | int32 | B+1 |
-| seqused_q | Tensor | 可选 | 表示不同Batch中Query实际参与运算的Sequence Length。数据格式为ND，支持非连续的Tensor。 | int32 | B |
-| seqused_ori_kv | Tensor | 可选 | 表示不同Batch中ori_kv实际参与运算的Sequence Length。数据格式为ND，支持非连续的Tensor。 | int32 | B |
-| seqused_cmp_kv | Tensor | 可选 | 表示不同Batch中cmp_kv实际参与运算的Sequence Length。数据格式为ND，支持非连续的Tensor。 | int32 | B |
-| cmp_residual_kv | Tensor | 可选 | 表示不同Batch中cmp_kv压缩后Sequence Length的余数，配合cmp_ratio实现cmp_kv部分的mask和负载计算。cmp_mask_mode=3且cmp_ratio≠1时必须传入。数据格式为ND，支持非连续的Tensor。 | int32 | B |
+| cu_seqlens_q | Tensor | 可选 | 表示不同Batch中Query的有效Sequence Length，仅layout_q为TND场景需传入。数据格式为ND，支持非连续的Tensor。 | int32 | (B+1, ) |
+| cu_seqlens_ori_kv | Tensor | 可选 | 表示不同Batch中ori_kv的有效Sequence Length，仅layout_kv为TND场景需传入。数据格式为ND，支持非连续的Tensor。 | int32 | (B+1, ) |
+| cu_seqlens_cmp_kv | Tensor | 可选 | 表示不同Batch中cmp_kv的有效Sequence Length，仅layout_kv为TND场景需传入。数据格式为ND，支持非连续的Tensor。 | int32 | (B+1, ) |
+| seqused_q | Tensor | 可选 | 表示不同Batch中Query实际参与运算的Sequence Length。数据格式为ND，支持非连续的Tensor。 | int32 | (B, ) |
+| seqused_ori_kv | Tensor | 可选 | 表示不同Batch中ori_kv实际参与运算的Sequence Length。数据格式为ND，支持非连续的Tensor。 | int32 | (B, ) |
+| seqused_cmp_kv | Tensor | 可选 | 表示不同Batch中cmp_kv实际参与运算的Sequence Length。数据格式为ND，支持非连续的Tensor。 | int32 | (B, ) |
+| cmp_residual_kv | Tensor | 可选 | 表示不同Batch中cmp_kv压缩后Sequence Length的余数，配合cmp_ratio实现cmp_kv部分的mask和负载计算。cmp_mask_mode=3且cmp_ratio≠1时必须传入。数据格式为ND，支持非连续的Tensor。 | int32 | (B, ) |
 | ori_topk_length | Tensor | 可选 | 预留参数，当前不生效。数据格式为ND，支持非连续的Tensor。 | int32 | (B, S1, N2)或(T1, N2) |
 | cmp_topk_length | Tensor | 可选 | 预留参数，当前不生效。数据格式为ND，支持非连续的Tensor。 | int32 | (B, S1, N2)或(T1, N2) |
 | batch_size | int | 可选 | 表示Batch数量，默认值为0。 | int32 | - |
@@ -192,7 +192,7 @@ cann_ops_transformer.mixed_quant_sparse_flash_mla(
 
 | 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 维度(shape) |
 |--------|----------|-----------|------|----------|-------------|
-| metadata | Tensor | 必选 | 每个cube核上FlashAttention计算任务的Batch、Head、以及 Q 和 K 的分块的索引，以及每个vector核上FlashDecode的规约任务索引。数据格式为ND，不支持非连续的Tensor。 | int32 | 1024 |
+| metadata | Tensor | 必选 | 每个cube核上FlashAttention计算任务的Batch、Head、以及 Q 和 K 的分块的索引，以及每个vector核上FlashDecode的规约任务索引。数据格式为ND，不支持非连续的Tensor。 | int32 | (1024, ) |
 
 ### mixed_quant_sparse_flash_mla
 

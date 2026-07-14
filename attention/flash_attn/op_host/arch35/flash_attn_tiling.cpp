@@ -79,10 +79,10 @@ ge::graphStatus FlashAttnTilingImpl::SetPlatMemoryInfo()
     platformInfo_.cvRatio = platformInfo_.aivNum / platformInfo_.aicNum;
     platformInfo_.coreNum = platformInfo_.aivNum;
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, platformInfo_.ubSize);
-    ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L1, platformInfo_.l1Size);
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L0_C, platformInfo_.l0cSize);
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L0_A, platformInfo_.l0aSize);
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L0_B, platformInfo_.l0bSize);
+    ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L1, platformInfo_.l1Size);
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L2, platformInfo_.l2Size);
 
     platformInfo_.defaultSysWorkspaceSize = ascendcPlatform.GetLibApiWorkSpaceSize();
@@ -331,6 +331,14 @@ void FlashAttnTilingImpl::SetFATilingData()
     }
     tilingData_.baseTiling.flashAttnPageAttentionParams.maxBlockNumPerBatch = maxBlockNumPerBatch;
     tilingData_.baseTiling.flashAttnBaseParams.needInitOutput = CheckNeedInitOutput();
+
+    // kvcache非连续场景: 从tensor stride取偏移值, 连续时stride值即默认值, 不影响
+    if (faInfo_->hasViewStride) {
+        tilingData_.baseTiling.flashAttnBaseParams.keyBnStride = faInfo_->keyBnStride;
+        tilingData_.baseTiling.flashAttnBaseParams.keyN2Stride = faInfo_->keyN2Stride;
+        tilingData_.baseTiling.flashAttnBaseParams.valueBnStride = faInfo_->valueBnStride;
+        tilingData_.baseTiling.flashAttnBaseParams.valueN2Stride = faInfo_->valueN2Stride;
+    }
 }
 
 bool FlashAttnTilingImpl::CheckNeedInitOutput() const
