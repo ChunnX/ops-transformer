@@ -51,7 +51,6 @@ struct StageTwoParams {
     int64_t Nk;
     int64_t Dv;
     int64_t Dk;
-    int64_t stateWkStride;  // aligned stride for curStateBf16 (in BF16 elements)
     bool gOptional;
     bool isFirstGroup;
 };
@@ -183,40 +182,32 @@ public:
                             WaitFlag<HardEvent::MTE3_MTE2>(MTE3_MTE2_EVENT);
                         }
                     } else {
-                        auto curState = (cId == 0) ? sTP_->stateIn[nvId * Dv_ * Dk_]
-                                                   : sTP_->curStateBf16[nvId * sTP_->stateWkStride];
-                        auto wkState = sTP_->curStateBf16[nvId * sTP_->stateWkStride];
+                        auto curState = (cId == 0) ? sTP_->curStateBf16[nvId * Dv_ * Dk_]
+                                                   : sTP_->stateOut[nvId * Dv_ * Dk_];
+                        auto finalState = sTP_->stateOut[nvId * Dv_ * Dk_];
                         if (GetSubBlockIdx() == 0) {
                             CopyIn(curState, Dv_, Dk_);
                             CalGCumExp(sTP_->gCum[nvId * Sp_ + length]);
                         }
                         CrossCoreWaitFlag(0x2);
                         if (GetSubBlockIdx() == 0) {
-                            CopyOutState(wkState);
+                            CopyOutState(finalState);
                         }
                         CrossCoreSetFlag<0x2, PIPE_MTE3>(0x5);
                         CrossCoreWaitFlag(0x4);
-                        if (GetSubBlockIdx() == 0 && cId == chunkNum_ - 1) {
-                            CopyIn(sTP_->curStateBf16[nvId * sTP_->stateWkStride], Dv_, Dk_);
-                            auto stateLocal = inQueue_.DeQue<bfloat16_t>();
-                            auto outLocal = outQueue_.AllocTensor<bfloat16_t>();
-                            DataCopy(outLocal, stateLocal, Dv_ * curDk_);
-                            inQueue_.FreeTensor(stateLocal);
-                            outQueue_.EnQue(outLocal);
-                            CopyOut<bfloat16_t>(sTP_->stateOut[nvId * Dv_ * Dk_], Dv_, Dk_, false);
-                        }
                     }
                 }
                 if ASCEND_IS_AIC {
                     uint64_t mm_offset0 = nvId * Sp_ * Dk_ + length * Dk_;
                     uint64_t mm_offset1 = nvId * Sp_ * Dv_ + length * Dv_;
-                    auto stateOut = sTP_->curStateBf16[nvId * sTP_->stateWkStride];
+                    auto stateOut = sTP_->stateOut[nvId * Dv_ * Dk_];
                     GlobalTensor<bfloat16_t> stateForAic;
                     if constexpr (kIsFp32) {
                         CrossCoreWaitFlag(0x3);
                         stateForAic = sTP_->curStateBf16[nvId * Dv_ * Dk_];
                     } else {
-                        stateForAic = sTP_->curStateBf16[nvId * sTP_->stateWkStride];
+                        stateForAic = (cId == 0) ? sTP_->curStateBf16[nvId * Dv_ * Dk_]
+                                                 : sTP_->stateOut[nvId * Dv_ * Dk_];
                     }
                     CalVPrime(sTP_->kCumdecay[mm_offset0], stateForAic, sTP_->vInner[mm_offset1]);
                     CalAttnInter(sTP_->qPrime[mm_offset0], stateForAic,
