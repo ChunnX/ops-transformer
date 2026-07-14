@@ -317,6 +317,16 @@ __aicore__ inline void CombineSendTokenToRemote(uint32_t tileId, uint32_t tileNu
     DrainUrmaConnections(startRankId, endRankId, rankId, params);
 }
 
+// 保留主线 layered 路径的单参数入口；该路径只由 subBlockIdx == 1 调用，
+// 因此每个 block 对应一个连续逻辑 tile。
+template <typename ElementMMadOut2>
+__aicore__ inline void CombineSendTokenToRemote(const Params &params)
+{
+    uint32_t tileId = GetBlockIdx() / GetTaskRation();
+    uint32_t tileNum = GetBlockNum();
+    CombineSendTokenToRemote<ElementMMadOut2>(tileId, tileNum, params);
+}
+
 
 // =============================================
 // QuantMxFp8：将 bf16 数据量化为 MXFP8 格式
