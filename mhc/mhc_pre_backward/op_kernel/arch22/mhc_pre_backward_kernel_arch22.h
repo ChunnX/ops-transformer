@@ -611,7 +611,7 @@ __aicore__ inline void MhcPreBackwardKernelArch22<TYPE_X, T, DETERMINISTIC>::Com
     Mul(dhat2Local[24], scaleLocal_[8], dhatBeforeNormLocal[24], ELEMENTS_SIZE_PER_REPEAT, tileRepeatTimes_,
         {4, 0, 4, static_cast<uint8_t>(fusionSize_), 0, static_cast<uint8_t>(fusionSize_)});
 
-        OutQueue.EnQue(dhat2Local);
+    OutQueue.EnQue(dhat2Local);
     dhat2Local = OutQueue.DeQue<T>();
     // 写入 gradH2Global_ (workspace)，AIC 核心读取此数据做 matmul
     DataCopyPad(gradH2Global_[taskOffset * fusionSize_], dhat2Local,
@@ -669,6 +669,12 @@ __aicore__ inline void MhcPreBackwardKernelArch22<TYPE_X, T, DETERMINISTIC>::Com
                      static_cast<uint32_t>((c_ - copyLen) * sizeof(T)), 0, 0},
                     {isPad, 0, padLen, 0});
 
+        // if (blkIdx_ == 0) {
+        //     int id = 365 + 3 * 640 + 5 * 4 * 640;
+        //     printf("gradXCubeGlobal_ id = %d\n", id);
+        //     printf("gradXCubeGlobal_ = %x\n", gradXCubeGlobal_.GetValue(id));
+        // }
+
         inputXInQueue.EnQue(xLocal_);
         inputXInQueue.DeQue();
         PipeBarrier<PIPE_V>();
@@ -710,11 +716,20 @@ __aicore__ inline void MhcPreBackwardKernelArch22<TYPE_X, T, DETERMINISTIC>::Com
                           {1, 1, 0, blkStride2, blkStride2, 1});
             }
         }
+
+        // if (blkIdx_ == 0) {
+        //     int id = 365 - 256 + 3 * 256 + 5 * 4 * 256;
+        //     printf("gradXCastLocal_ id = %d\n", id);
+        //     printf("gradXCastLocal_ = %x\n", gradXCastLocal_.GetValue(id));
+        // }
+
         PipeBarrier<PIPE_V>();
         // --- [公式6] x_grad = x_grad_vec3 + x_grad_vec1 + x_grad_mm ---
         // gradXCubeLocal_ = x_grad_mm (来自 AIC 侧 H_mix_grad @ phi，已含 gamma 融合)
         // gradXCastLocal_ = x_grad_vec3 + x_grad_vec1
         // 最终: gradXCastLocal_ = x_grad_mm + (x_grad_vec3 + x_grad_vec1)
+        // tileTaskCount = 2
+        // copyLen = 256 128
         Add(gradXCastLocal_, gradXCubeLocal_, gradXCastLocal_, ubAlignC * n_ * tileTaskCount);
         PipeBarrier<PIPE_V>();
         inputXInQueue.FreeTensor(xLocal_);
@@ -1018,6 +1033,9 @@ __aicore__ inline void MhcPreBackwardKernelArch22<TYPE_X, T, DETERMINISTIC>::Pro
 
         for (int64_t taskOffset = blkIdx_ * tileCoreBS_; taskOffset < totalTasksAligned_;
              taskOffset += aivNum_ * tileCoreBS_) {
+            printf("totalTasksAligned_ = %d\n", totalTasksAligned_);
+            printf("taskOffset = %d\n", taskOffset);
+
             int32_t tileTaskCount =
                 min(static_cast<int32_t>(tileCoreBS_), static_cast<int32_t>(totalTasks_ - taskOffset));
             tileRepeatTimes_ = Ops::Base::CeilDiv(static_cast<int64_t>(tileTaskCount) * 2 * n_,
@@ -1039,6 +1057,22 @@ __aicore__ inline void MhcPreBackwardKernelArch22<TYPE_X, T, DETERMINISTIC>::Pro
             // 通知 AIC: workspace 数据就绪，可以开始 matmul
             CrossCoreSetFlag<0x2, PIPE_MTE3>(0);
             CrossCoreWaitFlag<0x2>(1);
+
+            
+            // printf("gradH2Global_ value is \n");
+            // for(int i = 0; i < batchSize_ * seqLength_; i++) {
+            //     int index = i * 32 + 26;
+            //     printf("[%d] %x\t", index, gradH2Global_.GetValue(index));
+            // }
+            // printf("-----------------------\n");
+            // printf("xWorkspaceGlobal_ value is \n");
+            // for(int i = 0; i < batchSize_ * seqLength_; i++) {
+            //     int index = i * 2560 + 2021;
+            //     printf("[%d] %x\t", index, xWorkspaceGlobal_.GetValue(index));
+            // }
+            // printf("-----------------------\n");
+            // printf("gradWeightWSGlobal_ value is %x\n", gradWeightGlobal_.GetValue(68581));
+
             ping = (ping + 1) % 10;
             if (tileTaskCount > 0) {
                 int32_t innerId = 0;
@@ -1114,6 +1148,7 @@ __aicore__ inline void MhcPreBackwardKernelArch22<TYPE_X, T, DETERMINISTIC>::Pro
     }
     // --- Deterministic 模式: 多核归约 ---
     if constexpr (DETERMINISTIC == true) {
+        printf("DETERMINISTIC = true\n");
         SyncAll<false>();
         if ASCEND_IS_AIV {
             int64_t useCoreNum = min(Ops::Base::CeilDiv(totalTasks_, tileCoreBS_), aivNum_);
@@ -1140,7 +1175,7 @@ __aicore__ inline void MhcPreBackwardKernelArch22<TYPE_X, T, DETERMINISTIC>::Pro
 
     mm1_.SetTensorA(gradH2Global_[taskOffset * mm1K_]);
     mm1_.SetTensorB(weightGlobal_);
-    mm1_.SetHF32(true, 1);
+    // mm1_.SetHF32(true, 1);
     mm1_.SetOrgShape(mm1M, mm1N_, mm1K_);
     mm1_.SetSingleShape(mm1M, mm1N_, mm1K_);
     mm1_.template IterateAll<false>(gradXCubeGlobal_[taskOffset * (n_ * c_)]);
@@ -1158,17 +1193,57 @@ __aicore__ inline void MhcPreBackwardKernelArch22<TYPE_X, T, DETERMINISTIC>::Pro
     if (mm2K <= 0)
         return;
 
-    mm2_.SetTensorA(gradH2Global_[taskOffset * mm2M_], true);
-    mm2_.SetTensorB(xWorkspaceGlobal_[taskOffset * mm2N_]);
-    mm2_.SetHF32(true, 1);
+    // DumpTensor(gradH2Global_[taskOffset * mm2M_], 1, tileCoreBS_ * 32);
+    // DumpTensor(xWorkspaceGlobal_[taskOffset * mm2M_], 2, tileCoreBS_ * 32);
+
+    if (blkIdx_ == 0) {
+        printf("gradH2Global_ value is \n");
+        for(int i = 0; i < 16; i++) {
+            // int index = i * 32 + 26;
+            int index = i * 32;
+            printf("[%d] %x\t", index, gradH2Global_.GetValue(index));
+        }
+        printf("-----------------------\n");
+
+        // printf("gradH2Global_ value 2 is \n");
+        // for(int i = 0; i < 16; i++) {
+        //     int index = 26*16 + i;
+        //     printf("[%d] %x\t", index, gradH2Global_.GetValue(index));
+        // }
+        // printf("-----------------------\n");
+
+        printf("xWorkspaceGlobal_ value is \n");
+        for(int i = 0; i < 16; i++) {
+            // int index = i * 2560 + 2021;
+            int index = i * 2560;
+            printf("[%d] %x\t", index, xWorkspaceGlobal_.GetValue(index));
+        }
+        printf("-----------------------\n");
+    }
+
+    mm2_.SetTensorA(gradH2Global_[taskOffset * mm2M_], true); // [B * S, 2N + N!]
+    mm2_.SetTensorB(xWorkspaceGlobal_[taskOffset * mm2N_]); // [B * S, N * D]
+    // mm2_.SetHF32(true, 1);
     mm2_.SetOrgShape(mm2M_, mm2N_, mm2K);
     mm2_.SetSingleShape(mm2M_, mm2N_, mm2K);
     if constexpr (DETERMINISTIC == true) {
-        mm2_.template IterateAll<false>(gradWeightWSGlobal_[blkIdx_ * (mm2M_ * mm2N_)], needAdd);
+        // printf("DETERMINISTIC = true\n");
+        mm2_.template IterateAll<true>(gradWeightWSGlobal_[blkIdx_ * (mm2M_ * mm2N_)], needAdd);
         needAdd = 1;
     } else {
-        mm2_.template IterateAll<false>(gradWeightGlobal_, 1);
+        // printf("DETERMINISTIC = false\n");
+        mm2_.template IterateAll<true>(gradWeightGlobal_, needAdd);
+        needAdd = 1;
     }
+
+    if (blkIdx_ == 0) {
+        DumpTensor(gradWeightGlobal_[68581], 1, 16);
+        // printf("gradWeightWSGlobal_ value is %x\n", gradWeightGlobal_.GetValue(68581));
+        printf("gradWeightWSGlobal_ value is %x\n", gradWeightGlobal_.GetValue(0));
+    }
+
+
+    // DumpTensor(gradH2Global_[taskOffset * mm2M_], 3, 32, *);
     mm2_.End();
 }
 

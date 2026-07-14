@@ -30,7 +30,7 @@ __global__ __aicore__ void mhc_pre_backward(
     GM_ADDR grad_alpha, GM_ADDR grad_bias, GM_ADDR grad_gamma,
     GM_ADDR workspace, GM_ADDR tiling)
 {
-    // printf("mhc_pre_backward\n");
+    printf("mhc_pre_backward start.\n");
     REGISTER_TILING_DEFAULT(MhcPreBackwardArch22TilingData);
     GET_TILING_DATA_WITH_STRUCT(MhcPreBackwardArch22TilingData, tilingData, tiling);
     GM_ADDR usrWorkspace = GetUserWorkspace(workspace);
@@ -51,7 +51,7 @@ __global__ __aicore__ void mhc_pre_backward(
                 grad_x, grad_phi, grad_alpha, grad_bias, usrWorkspace, &tilingData, &pipe);
         op.Process();
     } else {
-        MhcPreBackwardKernelArch22<DTYPE_X, DTYPE_PHI, false> op;
+        MhcPreBackwardKernelArch22<DTYPE_X, DTYPE_PHI, true> op;
         op.mm1_.SetSubBlockIdx(0);
         op.mm1_.Init(&tilingData.mm1TilingData, &pipe);
         op.mm2_.SetSubBlockIdx(0);
