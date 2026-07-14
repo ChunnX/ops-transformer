@@ -164,16 +164,31 @@ public:
         }
     }
     
+    // Batched softmax: M = batchM (up to 128 = BATCH_GROUPS * groupSize). The batched QK
+    // produces one S[batchM, validSize]; the 8 qTokens in the batch share the same KV block
+    // (same validSize) but each group g (groupSize rows) has its own causalValidLens[g].
+    // PV reduces over a uniform K = validSize (the block's valid size, shared by every
+    // qToken in the batch), so P must be rectangular [batchM, validSize] with
+    // [cvl[g], validSize) == 0. The per-row compute writes the FULL row [0, validSize):
+    // FusedExpSub (masked by tailN=cvl[g]) produces real exp in [0, cvl[g]); a Select then
+    // zeroes [cvl[g], 128) in-register and StoreAlign persists [0, validSize) -- so the causal
+    // tail is 0 by construction. No pre-zero pass / maxK needed. validSize = actualBlockShape.n().
     template <class TensorP>
     __aicore__ inline
     void operator()(TensorP &l1PTensorTla, GemmCoord actualBlockShape,
         uint32_t ubSBufId, uint32_t l1PBufId,
         Arch::CrossCoreFlag mm1ToSmFlag, Arch::CrossCoreFlag smToMm2Flag,
-        uint32_t causalValidLen)
+        const uint32_t *causalValidLens, uint32_t groupCount, uint32_t groupRows)
     {
-        uint32_t mCopyOffset = RoundUp(actualBlockShape.m(), 8) / 2;
-        uint32_t m = actualBlockShape.m() < mCopyOffset ? actualBlockShape.m() : mCopyOffset;
-        m = subBlockIdx_ == 0 ? m : actualBlockShape.m() - m;
+        (void)l1PBufId;
+        uint32_t M = actualBlockShape.m();
+        // Split by GROUP (not M/2): each AIV owns whole groups, no group straddles a sub-core.
+        // mCopyOffset = AIV0's row count = ceil(groupCount/2)*groupRows (groupRows-aligned), which
+        // is also AIV1's L1-P zN write offset -- M/2 would misalign the zN fractal for odd
+        // groupCount tail batches. Matches BlockMmadQK's group-dim S split.
+        uint32_t mCopyOffset = CeilDiv(groupCount, 2U) * groupRows;
+        uint32_t mHalf = mCopyOffset < M ? mCopyOffset : M;
+        uint32_t m = subBlockIdx_ == 0 ? mHalf : (M - mHalf);
         if (m == 0) {
             WaitCrossCoreSync<4, PIPE_V>(mm1ToSmFlag);
             SetCrossCoreSync<4, PIPE_V>(mm1ToSmFlag);
@@ -185,51 +200,78 @@ public:
         uint16_t mRound = RoundUp(m, C0_NUM_PER_FRACTAL);
         uint16_t nRound = RoundUp(n, ELE_NUM_PER_C0);
         uint32_t blockStride = mRound;
-        // Prefill decoupling: n=validSize drives the S read stride (nRound) and the
-        // L0C->UB Fixpipe layout; tailN drives the causal/padding MIN mask (pregTailN /
-        // tailNOdd / tailNEven). QK writes validSize cols (K is nZ-fractal resident at
-        // validSize, so QK N must == validSize), but only [0, causalValidLen) are
-        // causal-valid for this qToken -> mask [causalValidLen, n) to MIN here.
-        uint32_t tailN = causalValidLen;
-        uint32_t nPadding = (tailN + BLOCK_SIZE_IN_BYTE - 1) / BLOCK_SIZE_IN_BYTE * BLOCK_SIZE_IN_BYTE;
+        uint32_t startRow = subBlockIdx_ * mCopyOffset;
+        uint32_t endRow = startRow + m;
         __ubuf__ ElementOutput *pAddr = (__ubuf__ ElementOutput*) lpUbTensor[ubSBufId * MAX_UB_S_ELEM_NUM].GetPhyAddr();
         __ubuf__ ElementInput *sAddr = (__ubuf__ ElementInput*) lsUbTensor[ubSBufId * MAX_UB_S_ELEM_NUM].GetPhyAddr();
-        // Prefill: each block computes its own rowMax/rowSum independently (no cross-block
-        // online recursion). gmUb/glUb are 2-deep by ubSBufId; this AIV's rowMax/rowSum
-        // land in gmUb[ubSBufId]/glUb[ubSBufId] and are copied to GM per-slot by the
-        // kernel's CopyPartialStatsToGm right after this returns.
+        // gmUb/glUb are 2-deep by ubSBufId; this AIV's rowMax/rowSum land in gmUb[ubSBufId]/
+        // glUb[ubSBufId] and are copied to GM per-slot by the kernel's CopyPartialStatsToGm.
         __ubuf__ float *nowMaxFloatAddr = (__ubuf__ float *)gmUbTensor[ubSBufId].GetPhyAddr();
         __ubuf__ float *nowSumAddr = (__ubuf__ float*) glUbTensor[ubSBufId].GetPhyAddr();
 
         // wait QK Fixpipe finish
         WaitCrossCoreSync<4, PIPE_V>(mm1ToSmFlag);
-        uint32_t kvBaseTileRegStages = CeilDiv(n, SM_VREG_SIZE);
-        if (kvBaseTileRegStages == 1) {
-            ComputeScaleAndMax<KvBaseTileRegSplitStagesBf16::ONE>(
-                sAddr, nowMaxFloatAddr, m, tailN, nPadding, scaleValue, nRound);
-        } else if (kvBaseTileRegStages == 2) {
-            ComputeScaleAndMax<KvBaseTileRegSplitStagesBf16::TWO>(
-                sAddr, nowMaxFloatAddr, m, tailN, nPadding, scaleValue, nRound);
-        }
 
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(ubSBufId + 2);
-        uint32_t tailNOdd = tailN / 2 ;
-        uint32_t tailNEven = tailNOdd + tailN % 2;
-        if (kvBaseTileRegStages == 1) {
-            if constexpr (FULL_QUANT_FP8) {
-                ComputeExpSubSum16FP8<KvBaseTileRegSplitStagesBf16::ONE>(
-                    pAddr, sAddr, nowMaxFloatAddr, nowSumAddr, m, tailN, blockStride, nRound, tailNOdd, tailNEven);
-            } else {
-                ComputeExpSubSum16<KvBaseTileRegSplitStagesBf16::ONE>(pAddr, sAddr, nowMaxFloatAddr, nowSumAddr, m,
-                                                                      tailN, blockStride, nRound, tailNOdd, tailNEven);
+
+        uint32_t gStart = startRow / groupRows;
+        uint32_t gEnd = (endRow == 0) ? 0 : (endRow - 1) / groupRows;
+        for (uint32_t g = gStart; g <= gEnd; g++) {
+            uint32_t grpLo = g * groupRows;
+            uint32_t grpHi = grpLo + groupRows;
+            uint32_t lo = grpLo > startRow ? grpLo : startRow;
+            uint32_t hi = grpHi < endRow ? grpHi : endRow;
+            uint32_t rows = hi - lo;
+            if (rows == 0) {
+                continue;
             }
-        } else if (kvBaseTileRegStages == 2) {
-            if constexpr (FULL_QUANT_FP8) {
-                ComputeExpSubSum16FP8<KvBaseTileRegSplitStagesBf16::TWO>(
-                    pAddr, sAddr, nowMaxFloatAddr, nowSumAddr, m, tailN, blockStride, nRound, tailNOdd, tailNEven);
-            } else {
-                ComputeExpSubSum16<KvBaseTileRegSplitStagesBf16::TWO>(pAddr, sAddr, nowMaxFloatAddr, nowSumAddr, m,
-                                                                      tailN, blockStride, nRound, tailNOdd, tailNEven);
+            // S/P are densely packed (QK fixpipe / CopyPUbToPL1 use contiguous mSub rows), so their
+            // slice base uses dense localOff = lo - startRow. rowMax/rowSum instead need a per-group
+            // 8-float-aligned base: the per-row store (StoreUnAlign) and the kernel's DataCopyPad
+            // read (CopyPartialStatsToGm) both require 32B-aligned group bases; with groupRows<8
+            // (local groupSize=4 cases) a dense groupRows stride would straddle an 8-float block and
+            // DataCopyPad would read from an unaligned UB address. grpStride = RoundUp(groupRows,8)
+            // is a no-op for groupRows>=8 (production groupSize=16 -> stride 16 == groupRows).
+            uint32_t localOff = lo - startRow;
+            uint32_t grpStride = RoundUp(groupRows, 8U);
+            uint32_t statsOff = (g - gStart) * grpStride;
+            uint32_t tailN = causalValidLens[g];
+            uint32_t nPadding = (tailN + BLOCK_SIZE_IN_BYTE - 1) / BLOCK_SIZE_IN_BYTE * BLOCK_SIZE_IN_BYTE;
+            uint32_t tailNOdd = tailN / 2;
+            uint32_t tailNEven = tailNOdd + tailN % 2;
+            __ubuf__ ElementInput *sSlice = sAddr + localOff * nRound;
+            __ubuf__ float *maxSlice = nowMaxFloatAddr + statsOff;
+            __ubuf__ float *sumSlice = nowSumAddr + statsOff;
+            __ubuf__ ElementOutput *pSlice = pAddr + localOff * ELE_NUM_PER_C0;
+
+            uint32_t kvBaseTileRegStages = CeilDiv(n, SM_VREG_SIZE);
+            if (kvBaseTileRegStages == 1) {
+                ComputeScaleAndMax<KvBaseTileRegSplitStagesBf16::ONE>(
+                    sSlice, maxSlice, static_cast<uint16_t>(rows), tailN, nPadding, scaleValue, nRound);
+            } else if (kvBaseTileRegStages == 2) {
+                ComputeScaleAndMax<KvBaseTileRegSplitStagesBf16::TWO>(
+                    sSlice, maxSlice, static_cast<uint16_t>(rows), tailN, nPadding, scaleValue, nRound);
+            }
+            if (kvBaseTileRegStages == 1) {
+                if constexpr (FULL_QUANT_FP8) {
+                    ComputeExpSubSum16FP8<KvBaseTileRegSplitStagesBf16::ONE>(
+                        pSlice, sSlice, maxSlice, sumSlice, static_cast<uint16_t>(rows),
+                        tailN, blockStride, nRound, tailNOdd, tailNEven);
+                } else {
+                    ComputeExpSubSum16<KvBaseTileRegSplitStagesBf16::ONE>(
+                        pSlice, sSlice, maxSlice, sumSlice, static_cast<uint16_t>(rows),
+                        tailN, blockStride, nRound, tailNOdd, tailNEven, n);
+                }
+            } else if (kvBaseTileRegStages == 2) {
+                if constexpr (FULL_QUANT_FP8) {
+                    ComputeExpSubSum16FP8<KvBaseTileRegSplitStagesBf16::TWO>(
+                        pSlice, sSlice, maxSlice, sumSlice, static_cast<uint16_t>(rows),
+                        tailN, blockStride, nRound, tailNOdd, tailNEven);
+                } else {
+                    ComputeExpSubSum16<KvBaseTileRegSplitStagesBf16::TWO>(
+                        pSlice, sSlice, maxSlice, sumSlice, static_cast<uint16_t>(rows),
+                        tailN, blockStride, nRound, tailNOdd, tailNEven, n);
+                }
             }
         }
 
@@ -241,14 +283,13 @@ public:
         auto ubPLayoutTla = tla::MakeLayout<ElementOutput, LayoutOutput>(mRound, curNRound);
         auto ubPTensorTla = tla::MakeTensor(lpUbTensor[ubSBufId * MAX_UB_S_ELEM_NUM],
             ubPLayoutTla, Arch::PositionUB{});
-        // P output extent = causalValidLen, NOT n (=validSize). The masked store above only
-        // persisted P[0, causalValidLen) (cols [causalValidLen, n) are stale in UB); copying n
-        // would push stale P into L1 and PV (which reduces over causalValidLen) would read it.
-        // Mirror decode: softmax-written cols == PV-reduced cols == causal-valid extent.
+        // P output extent = validSize (uniform batch K). Per-group compute wrote the full
+        // [0, validSize) row (real [0, cvl[g]) + Select-zeroed [cvl[g], validSize)), so PV
+        // (K=validSize) reads valid exp + zero tail.
         auto ubPTensorTlaTile = GetTile(ubPTensorTla,
-                tla::MakeCoord(0, 0), tla::MakeShape(m, causalValidLen));
+                tla::MakeCoord(0, 0), tla::MakeShape(m, n));
         auto l1PTensorTlaTile = GetTile(l1PTensorTla,
-                tla::MakeCoord(subBlockIdx_ * mCopyOffset, 0), tla::MakeShape(m, causalValidLen));
+                tla::MakeCoord(subBlockIdx_ * mCopyOffset, 0), tla::MakeShape(m, n));
         WaitCrossCoreSync<4, PIPE_MTE3>(smToMm2Flag);
 
         CopyPUbToPL1(l1PTensorTlaTile, ubPTensorTlaTile, m);
@@ -451,7 +492,7 @@ private:
     __simd_vf__ inline void ComputeExpSubSum16(__ubuf__ ElementOutput *expUb, __ubuf__ ElementInput *srcUb,
                                                __ubuf__ float *nowMaxUb, __ubuf__ float *expSumUb, uint16_t m,
                                                uint32_t tailN, uint32_t blockStride, uint16_t S2BaseSize,
-                                               uint32_t tailNOdd, uint32_t tailNEven)
+                                               uint32_t tailNOdd, uint32_t tailNEven, uint32_t storeN)
     {
         static_assert(kvBaseTileRegSplitStages == KvBaseTileRegSplitStagesBf16::ONE ||
                       kvBaseTileRegSplitStages == KvBaseTileRegSplitStagesBf16::TWO,
@@ -463,7 +504,7 @@ private:
         __ubuf__ ElementOutput *expUb, __ubuf__ ElementInput *srcUb,
         __ubuf__ float *nowMaxUb, __ubuf__ float *expSumUb,
         uint16_t m, uint32_t tailN, uint32_t blockStride,
-        uint16_t S2BaseSize, uint32_t tailNOdd, uint32_t tailNEven)
+        uint16_t S2BaseSize, uint32_t tailNOdd, uint32_t tailNEven, uint32_t storeN)
     {
         using namespace AscendC::MicroAPI;
         constexpr static CastTrait castTraitZero = {
@@ -507,11 +548,14 @@ private:
 
         UnalignReg expSumUreg;
 
+        RegTensor<ElementInput> zeroBf16Vreg;
         MaskReg pregFull = CreateMask<ElementInput, MaskPattern::ALL>();
         MaskReg pregFloatFull = CreateMask<float, MaskPattern::ALL>();
         MaskReg pregTailN = UpdateMask<ElementInput>(tailN);
         MaskReg pregtailNOdd= UpdateMask<float>(tailNOdd);
         MaskReg pregtailNEven = UpdateMask<float>(tailNEven);
+        MaskReg pregStoreN = UpdateMask<ElementOutput>(storeN);
+        Duplicate(zeroBf16Vreg, static_cast<ElementInput>(0));
         for (uint16_t i = 0; i < m; ++i) {
             LoadAlign<float, LoadDist::DIST_BRC_B32>(maxVreg, nowMaxUb + i);
             Duplicate(expSumVreg, 0);
@@ -527,9 +571,12 @@ private:
             Or((RegTensor<uint16_t>&)expDstVreg,
                 (RegTensor<uint16_t>&)expDstVreg0, (RegTensor<uint16_t>&)expDstVreg1,
                 pregFull);
+            // [0, cvl) holds real exp (FusedExpSub masked by tailN); zero [cvl, 128) so the
+            // store of [0, validSize) writes 0 into the per-group causal tail [cvl, validSize).
+            Select(expDstVreg, expDstVreg, zeroBf16Vreg, pregTailN);
             StoreAlign<ElementOutput, DataCopyMode::DATA_BLOCK_COPY>(
                 expUb + i * ELE_NUM_PER_C0,
-                expDstVreg, blockStride, pregTailN);
+                expDstVreg, blockStride, pregStoreN);
             ReduceSum(expSumVreg, expSumVreg, pregFull);
             StoreUnAlign<float, PostLiteral::POST_MODE_UPDATE>(expSumUb, expSumVreg, expSumUreg, 1);
         }
@@ -541,7 +588,7 @@ private:
         __ubuf__ ElementOutput *expUb, __ubuf__ ElementInput *srcUb,
         __ubuf__ float *nowMaxUb, __ubuf__ float *expSumUb,
         uint16_t m, uint32_t tailN, uint32_t blockStride,
-        uint16_t S2BaseSize, uint32_t tailNOdd, uint32_t tailNEven)
+        uint16_t S2BaseSize, uint32_t tailNOdd, uint32_t tailNEven, uint32_t storeN)
     {
         using namespace AscendC::MicroAPI;
         constexpr static CastTrait castTraitZero = {
@@ -593,11 +640,24 @@ private:
 
         UnalignReg expSumUreg;
 
+        // TWO stage: n (=validSize) in (128, 256]. First half covers cols [0,128), second
+        // half [128,256). Per-row P must be [0, storeN) with [cvl, storeN) == 0. Each half
+        // register is 128 bf16; zero the per-half causal tail in-register, then store the
+        // per-half slice of [0, storeN). firstHalfValid = min(cvl,128); secondHalfValid =
+        // max(cvl-128,0); secondStoreN = max(storeN-128,0) (storeN>128 in TWO stage).
+        uint32_t firstHalfValid = tailN < 128U ? tailN : 128U;
+        uint32_t secondHalfValid = tailN > 128U ? (tailN - 128U) : 0U;
+        uint32_t secondStoreN = storeN > 128U ? (storeN - 128U) : 0U;
+
+        RegTensor<ElementInput> zeroBf16Vreg;
         MaskReg pregFull = CreateMask<ElementInput, MaskPattern::ALL>();
         MaskReg pregFloatFull = CreateMask<float, MaskPattern::ALL>();
-        MaskReg pregTailN = UpdateMask<ElementInput>(tailN);
         MaskReg pregtailNOdd= UpdateMask<float>(tailNOdd);
         MaskReg pregtailNEven = UpdateMask<float>(tailNEven);
+        MaskReg pregFirstZero = UpdateMask<ElementInput>(firstHalfValid);
+        MaskReg pregSecondZero = UpdateMask<ElementOutput>(secondHalfValid);
+        MaskReg pregSecondStore = UpdateMask<ElementOutput>(secondStoreN);
+        Duplicate(zeroBf16Vreg, static_cast<ElementInput>(0));
         for (uint16_t i = 0; i < m; ++i) {
             LoadAlign<float, LoadDist::DIST_BRC_B32>(maxVreg, nowMaxUb + i);
             Duplicate(expSumVreg, 0);
@@ -625,12 +685,17 @@ private:
             Or((RegTensor<uint16_t>&)expOutVreg1,
                 (RegTensor<uint16_t>&)expDstVreg2, (RegTensor<uint16_t>&)expDstVreg3,
                 pregFull);
+            // Zero per-half causal tail: first half [min(cvl,128), 128), second half
+            // [cvl-128, 128). Then store first half full (storeN>128) and second half
+            // [0, storeN-128) -- together covering [0, storeN) with [cvl, storeN) == 0.
+            Select(expOutVreg0, expOutVreg0, zeroBf16Vreg, pregFirstZero);
+            Select(expOutVreg1, expOutVreg1, zeroBf16Vreg, pregSecondZero);
             StoreAlign<ElementOutput, DataCopyMode::DATA_BLOCK_COPY>(
                 expUb + i * ELE_NUM_PER_C0,
                 expOutVreg0, blockStride, pregFull);
             StoreAlign<ElementOutput, DataCopyMode::DATA_BLOCK_COPY>(
                 expUb + i * ELE_NUM_PER_C0 + blockStride * ELE_NUM_PER_C0 * BLOCK_REP_SIZE,
-                expOutVreg1, blockStride, pregTailN);
+                expOutVreg1, blockStride, pregSecondStore);
 
             ReduceSum(expSumVreg, expSumVreg, pregFull);
             StoreUnAlign<float, PostLiteral::POST_MODE_UPDATE>(expSumUb, expSumVreg, expSumUreg, 1);

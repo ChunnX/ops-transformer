@@ -728,6 +728,11 @@ def cpu_golden_prefill_phase2(ws_o, ws_max, ws_sum, top_k, kv_heads, group_size,
     q_token = task_idx // kv_heads
     kv_head_idx = task_idx % kv_heads
     q_head_start = kv_head_idx * group_size
+    if q_token == total_q_tokens - 1:
+     for slot_k in range(top_k):
+      print("slot_o:", ws_o[q_token, kv_head_idx, slot_k][0][:8])
+      print("slot_max:", ws_max[q_token, kv_head_idx, slot_k][:8])
+      print("slot_sum:", ws_sum[q_token, kv_head_idx, slot_k][:8])
     for gh in range(group_size):
       slot_o = ws_o[q_token, kv_head_idx, :, gh, :]
       slot_max = ws_max[q_token, kv_head_idx, :, gh]

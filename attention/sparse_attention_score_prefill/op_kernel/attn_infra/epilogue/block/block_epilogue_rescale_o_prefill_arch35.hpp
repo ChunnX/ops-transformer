@@ -61,6 +61,10 @@ public:
         dstBuf_ = ubBase[BUF_32K_FLOATS * 2U];
         accumOutBuf_ = ubBase[BUF_32K_FLOATS * 3U];
         broadCastTmpBuf_ = ubBase[BUF_32K_FLOATS * 4U];
+        // Dedicated bf16 cast-output buffer (separate from dstBuf_ so CopyFinalResOut's Cast is
+        // out-of-place, not the corrupting in-place float->bf16 alias). Size need is tiny
+        // (<=gSplitSize*headDimAlignFp32 bf16); carve a 32K-float slot to match the layout stride.
+        castOutBuf_ = ubBase[BUF_32K_FLOATS * 5U];
     }
 
     __aicore__ inline
@@ -94,6 +98,7 @@ private:
     AscendC::LocalTensor<T> dstBuf_;
     AscendC::LocalTensor<T> accumOutBuf_;
     AscendC::LocalTensor<T> broadCastTmpBuf_;
+    AscendC::LocalTensor<T> castOutBuf_;
 
     uint32_t D_ = 0;
     uint32_t groupSize_ = 0;
@@ -276,7 +281,11 @@ private:
                          uint32_t startRow,
                          uint32_t dealRowCount)
     {
-        AscendC::LocalTensor<ElementO> castBuf = dstBuf_.template ReinterpretCast<ElementO>();
+        // castBuf is a SEPARATE buffer from accumOutLocal (dstBuf_): the old code aliased them
+        // (castBuf = dstBuf_.ReinterpretCast) making the float->bf16 Cast in-place, which corrupts.
+        // accumOutLocal (= dstBuf_, the float combined result from ReduceFinalRes_VF) is READ by Cast;
+        // castOutBuf_ is the Cast OUTPUT (bf16). No aliasing -> Cast is a normal out-of-place cast.
+        AscendC::LocalTensor<ElementO> castBuf = castOutBuf_.template ReinterpretCast<ElementO>();
         uint32_t shapeArray[] = {dealRowCount, D_};
         castBuf.SetShapeInfo(AscendC::ShapeInfo(2, shapeArray, AscendC::DataFormat::ND));
         AscendC::PipeBarrier<PIPE_V>();
