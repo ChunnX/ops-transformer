@@ -258,14 +258,18 @@ def fill_none_params(params_dict):
     if layout_q == "TND":
         if cu_seqlens_q is None:
             T1 = params_dict.get('T1')
-            if T1 is not None:
-                cu_seqlens_q = fill_random_cu_len(T1, S1, B, random_seq)
-                print("cu_seqlens_q auto set to: ", cu_seqlens_q)
-            else:
-                raise ValueError("layout_q为TND时，cu_seqlens_q和T1不能同时为None")
+            if T1 is None:
+                if S1 is None:
+                    raise ValueError("layout_q为TND时，cu_seqlens_q、T1和S1不能同时为None")
+                T1 = S1 * B
+            cu_seqlens_q = fill_random_cu_len(T1, S1, B, random_seq)
+            print("cu_seqlens_q auto set to: ", cu_seqlens_q)
         T1 = cu_seqlens_q[-1]
         if params_dict.get('T1') is not None and params_dict['T1'] != T1:
             print(f"T1({params_dict['T1']})与cu_seqlens_q末位({T1})不一致，修正T1为{T1}")
+        if seqused_q is None:
+            seqused_q = generate_seqused(cu_seqlens_q)
+            print("seqused_q auto set to: ", seqused_q)
     else:
         T1 = params_dict.get('T1')
         if seqused_q is None:
@@ -280,14 +284,18 @@ def fill_none_params(params_dict):
     if layout_kv == "TND":
         if cu_seqlens_ori_kv is None:
             T2 = params_dict.get('T2')
-            if T2 is not None:
-                cu_seqlens_ori_kv = fill_random_cu_len(T2, S2, B, random_seq)
-                print("cu_seqlens_ori_kv auto set to: ", cu_seqlens_ori_kv)
-            else:
-                raise ValueError("layout_kv为TND时，cu_seqlens_ori_kv和T2不能同时为None")
+            if T2 is None:
+                if S2 is None:
+                    raise ValueError("layout_kv为TND时，cu_seqlens_ori_kv、T2和S2不能同时为None")
+                T2 = S2 * B
+            cu_seqlens_ori_kv = fill_random_cu_len(T2, S2, B, random_seq)
+            print("cu_seqlens_ori_kv auto set to: ", cu_seqlens_ori_kv)
         T2 = cu_seqlens_ori_kv[-1]
         if params_dict.get('T2') is not None and params_dict['T2'] != T2:
             print(f"T2({params_dict['T2']})与cu_seqlens_ori_kv末位({T2})不一致，修正T2为{T2}")
+        if seqused_ori_kv is None:
+            seqused_ori_kv = generate_seqused(cu_seqlens_ori_kv)
+            print("seqused_ori_kv auto set to: ", seqused_ori_kv)
 
     # 2.3 S1EQS2联动: Q和ori_kv对应batch的真实长度一致
     if S1EQS2 and layout_q == "TND" and layout_kv == "TND":
@@ -351,15 +359,19 @@ def fill_none_params(params_dict):
         if layout_kv == "TND":
             if cu_seqlens_cmp_kv is None:
                 T3 = params_dict.get('T3')
-                if T3 is not None:
-                    S3 = S2 // cmp_ratio if (S2 is not None and cmp_ratio) else None
-                    cu_seqlens_cmp_kv = fill_random_cu_len(T3, S3, B, random_seq)
-                    print("cu_seqlens_cmp_kv auto set to: ", cu_seqlens_cmp_kv)
-                else:
-                    raise ValueError("layout_kv为TND且非SWA时，cu_seqlens_cmp_kv和T3不能同时为None")
+                S3 = S2 // cmp_ratio if (S2 is not None and cmp_ratio) else None
+                if T3 is None:
+                    if S3 is None:
+                        raise ValueError("layout_kv为TND且非SWA时，cu_seqlens_cmp_kv、T3和S2/cmp_ratio不能同时为None")
+                    T3 = S3 * B
+                cu_seqlens_cmp_kv = fill_random_cu_len(T3, S3, B, random_seq)
+                print("cu_seqlens_cmp_kv auto set to: ", cu_seqlens_cmp_kv)
             T3 = cu_seqlens_cmp_kv[-1]
             if params_dict.get('T3') is not None and params_dict['T3'] != T3:
                 print(f"T3({params_dict['T3']})与cu_seqlens_cmp_kv末位({T3})不一致，修正T3为{T3}")
+            if seqused_cmp_kv is None:
+                seqused_cmp_kv = generate_seqused(cu_seqlens_cmp_kv)
+                print("seqused_cmp_kv auto set to: ", seqused_cmp_kv)
         else:
             T3 = params_dict.get('T3')
 
