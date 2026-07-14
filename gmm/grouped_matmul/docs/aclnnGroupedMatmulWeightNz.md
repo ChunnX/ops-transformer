@@ -154,16 +154,16 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
 
   - **参数说明：**
 
-    <table style="undefined;table-layout: fixed; width: 1550px;">
+    <table style="undefined;table-layout: fixed; width: 1483px;">
     <colgroup>
-    <col style="width: 190px">
+    <col style="width: 240px">
     <col style="width: 120px">
     <col style="width: 300px">
     <col style="width: 330px">
     <col style="width: 212px">
     <col style="width: 100px">
-    <col style="width: 190px">
-    <col style="width: 145px">
+    <col style="width: 92px">
+    <col style="width: 64px">
     </colgroup>
     <thead>
     <tr>
@@ -179,7 +179,7 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
     </thead>
     <tbody>
     <tr>
-    <td>x</td>
+    <td>x（aclTensorList *）</td>
     <td>输入</td>
     <td>公式中的输入<code>x</code>。</td>
     <td>tensorList长度支持[1, 128]或者[1, 1024]。</td>
@@ -189,7 +189,7 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
     <td>-</td>
     </tr>
     <tr>
-    <td>weight</td>
+    <td>weight（aclTensorList *）</td>
     <td>输入</td>
     <td>公式中的<code>weight</code>。</td>
     <td>tensorList长度支持[1, 128]或者[1, 1024]。接口会将该参数按昇腾亲和数据排布格式（FRACTAL_NZ）解析。</td>
@@ -200,7 +200,7 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
     <td>-</td>
     </tr>
     <tr>
-    <td>biasOptional</td>
+    <td>biasOptional（aclTensorList *）</td>
     <td>可选输入</td>
     <td>公式中的<code>bias</code>。</td>
     <td>长度与weight相同。</td>
@@ -210,7 +210,7 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
     <td>-</td>
     </tr>
     <tr>
-    <td>scaleOptional</td>
+    <td>scaleOptional（aclTensorList *）</td>
     <td>可选输入</td>
     <td>公式中的<code>scale</code>，代表量化参数中的缩放因子。</td>
     <td>一般情况下，长度与weight相同。综合约束请参见<a href="#约束说明">约束说明</a>。</td>
@@ -220,7 +220,7 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
     <td>-</td>
     </tr>
     <tr>
-    <td>offsetOptional</td>
+    <td>offsetOptional（aclTensorList *）</td>
     <td>可选输入</td>
     <td>公式中的<code>offset</code>，代表量化参数中的偏移量。</td>
     <td>长度与weight相同。</td>
@@ -230,7 +230,7 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
     <td>-</td>
     </tr>
     <tr>
-    <td>antiquantScaleOptional</td>
+    <td>antiquantScaleOptional（aclTensorList *）</td>
     <td>可选输入</td>
     <td>公式中的<code>antiquant_scale</code>，代表伪量化参数中的缩放因子。</td>
     <td>长度与weight相同。综合约束请参见<a href="#约束说明">约束说明</a>。</td>
@@ -240,7 +240,7 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
     <td>-</td>
     </tr>
     <tr>
-    <td>antiquantOffsetOptional</td>
+    <td>antiquantOffsetOptional（aclTensorList *）</td>
     <td>可选输入</td>
     <td>公式中的<code>antiquant_offset</code>，代表伪量化参数中的偏移量。</td>
     <td>长度与weight相同。综合约束请参见<a href="#约束说明">约束说明</a>。</td>
@@ -250,7 +250,7 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
     <td>-</td>
     </tr>
     <tr>
-    <td>perTokenScaleOptional</td>
+    <td>perTokenScaleOptional（aclTensorList *）</td>
     <td>可选输入</td>
     <td>公式中的<code>per_token_scale</code>，代表量化参数中的由x量化引入的缩放因子。</td>
     <td>仅支持x、out为单tensor场景；动态量化（mx量化）场景以及MxA8W4伪量化场景下weight可为多tensor。综合约束请参见<a href="#约束说明">约束说明</a>。</td>
@@ -260,7 +260,7 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
     <td>-</td>
     </tr>
     <tr>
-    <td>groupListOptional</td>
+    <td>groupListOptional（aclTensor *）</td>
     <td>可选输入</td>
     <td>代表输入和输出分组轴方向的matmul大小分布。</td>
     <td>根据groupListType输入不同格式数据。注意：当输出TensorList长度为1时，最后一个值约束了输出的有效部分。</td>
@@ -270,7 +270,7 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
     <td>-</td>
     </tr>
     <tr>
-    <td>activationInputOptional</td>
+    <td>activationInputOptional（aclTensorList *）</td>
     <td>可选输入</td>
     <td>代表激活函数的反向输入。</td>
     <td>当前只支持传入nullptr。</td>
@@ -280,7 +280,7 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
     <td>-</td>
     </tr>
     <tr>
-    <td>activationQuantScaleOptional</td>
+    <td>activationQuantScaleOptional（aclTensorList *）</td>
     <td>可选输入</td>
     <td>-</td>
     <td>当前只支持传入nullptr。</td>
@@ -290,7 +290,7 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
     <td>-</td>
     </tr>
     <tr>
-    <td>activationQuantOffsetOptional</td>
+    <td>activationQuantOffsetOptional（aclTensorList *）</td>
     <td>可选输入</td>
     <td>-</td>
     <td>当前只支持传入nullptr。</td>
@@ -346,7 +346,7 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
     <td>-</td>
     </tr>
     <tr>
-    <td>tuningConfigOptional</td>
+    <td>tuningConfigOptional（aclIntArray *）</td>
     <td>可选输入</td>
     <td>第一个数代表各个专家处理的token数的预期值，用于优化tiling。</td>
     <td>兼容历史版本，用户如不使用该参数，不传（即为nullptr）即可。</td>
@@ -366,7 +366,7 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
     <td>-</td>
     </tr>
     <tr>
-    <td>out</td>
+    <td>out（aclTensorList *）</td>
     <td>输出</td>
     <td>公式中的输出<code>y</code>。</td>
     <td>tensorList长度支持[1, 128]或者[1, 1024]。</td>
@@ -376,7 +376,7 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
     <td>-</td>
     </tr>
     <tr>
-    <td>activationFeatureOutOptional</td>
+    <td>activationFeatureOutOptional（aclTensorList *）</td>
     <td>输出</td>
     <td>激活函数的输入数据。</td>
     <td>当前只支持传入nullptr。</td>
@@ -386,7 +386,7 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
     <td>-</td>
     </tr>
     <tr>
-    <td>dynQuantScaleOutOptional</td>
+    <td>dynQuantScaleOutOptional（aclTensorList *）</td>
     <td>输出</td>
     <td>-</td>
     <td>当前只支持传入nullptr。</td>
@@ -396,7 +396,7 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
     <td>-</td>
     </tr>
     <tr>
-    <td>workspaceSize</td>
+    <td>workspaceSize（uint64_t *）</td>
     <td>输出</td>
     <td>返回需要在Device侧申请的workspace大小。</td>
     <td>-</td>
@@ -406,7 +406,7 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
     <td>-</td>
     </tr>
     <tr>
-    <td>executor</td>
+    <td>executor（aclOpExecutor **）</td>
     <td>输出</td>
     <td>返回op执行器，包含了算子计算流程。</td>
     <td>-</td>
