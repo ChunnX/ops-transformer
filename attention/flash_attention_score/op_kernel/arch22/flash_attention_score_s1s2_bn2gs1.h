@@ -319,8 +319,8 @@ protected:
     GM_ADDR prefixNAddr;
     GlobalTensor<INPUT_T> valueGm;
     GlobalTensor<INPUT_T> attentionOutGm;
-    GlobalTensor<float> softmaxMaxGm;
-    GlobalTensor<float> softmaxSumGm;
+    GlobalTensor<half> softmaxMaxGm;
+    GlobalTensor<half> softmaxSumGm;
     GlobalTensor<uint8_t> dropMaskGm;
     GlobalTensor<uint8_t> attenMaskGmInt;
     GlobalTensor<float> sinkGm;
@@ -2075,7 +2075,7 @@ FlashAttentionScoreS1s2Bn2gs1<implMode, layOutType, hasPse, hasAtten, hasDrop, I
                 static_cast<int64_t>(fp32BaseSize);
         }
         int64_t calculateSize = extraInfo.s1RealSize * fp32BaseSize;
-        LocalTensor<float> maxTensor = this->softmaxMaxBuf.template Get<float>();
+        LocalTensor<T> maxTensor = this->softmaxMaxBuf.template Get<T>();
         event_t eventIdVToMte3 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_MTE3));
         if (this->softmaxReduceSize == 1) {
             LocalTensor<T> softmaxTemp = this->softmaxTempBuf.template Get<T>();
@@ -2323,8 +2323,8 @@ FlashAttentionScoreS1s2Bn2gs1<implMode, layOutType, hasPse, hasAtten, hasDrop, I
     int32_t loop = d2SizeAlign16 / repeatMaxSize;
     int32_t remain = d2SizeAlign16 % repeatMaxSize;
 
-    LocalTensor<float> sumUb;
-    sumUb = softmaxSumBuf[extraInfo.multiCoreInnerIdxMod2].template Get<float>();
+    LocalTensor<T> sumUb;
+    sumUb = softmaxSumBuf[extraInfo.multiCoreInnerIdxMod2].template Get<T>();
 
     // 用optionalInputQueue的queue
     AscendC::PipeBarrier<PIPE_V>();
@@ -2454,8 +2454,8 @@ FlashAttentionScoreS1s2Bn2gs1<implMode, layOutType, hasPse, hasAtten, hasDrop, I
     } else {
         vec2GmS1Offset = s1oIdx * extraInfo.vec2S1BaseSize * 8;
     }
-    LocalTensor<float> sumTensor;
-    sumTensor = this->softmaxSumBuf[extraInfo.multiCoreInnerIdxMod2].template Get<float>()[vec2S1Offset];
+    LocalTensor<T> sumTensor;
+    sumTensor = this->softmaxSumBuf[extraInfo.multiCoreInnerIdxMod2].template Get<T>()[vec2S1Offset];
     if (this->softmaxReduceSize == 1) {
         LocalTensor<T> softmaxTemp = this->softmaxTempBuf.template Get<T>();
         Brcb(softmaxTemp, sumTensor, (extraInfo.vec2S1RealSize + 7) / 8, {1, 8});

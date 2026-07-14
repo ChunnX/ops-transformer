@@ -99,21 +99,21 @@ inline __aicore__ void flash_attention_score_regbase(__gm__ uint8_t *query, __gm
 #if __CCE_AICORE__ == 310
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
     #if (ORIG_DTYPE_QUERY == DT_FLOAT)
-        INVOKE_FA_OP_IMPL_BASEAPI(BaseApi::FlashAttentionScoreKernelTrain, float, float, float, ImplModeEnum(implMode),
+        INVOKE_FA_OP_IMPL_BASEAPI(BaseApi::FlashAttentionScoreKernelTrain, float, half, float, ImplModeEnum(implMode),
             LayOutTypeEnum(layout), S1TemplateType(s1TemplateType), S2TemplateType(s2TemplateType),
             DTemplateType(dTemplateType), DTemplateType(dvTemplateType == 0 ? dTemplateType : dvTemplateType),
             PseTypeEnum(pseMode), hasAtten, hasDrop, hasRope, false, false, false, false, false, optionalDn);
         return;
     #endif
     #if (ORIG_DTYPE_QUERY == DT_BF16)
-        INVOKE_FA_OP_IMPL_BASEAPI(BaseApi::FlashAttentionScoreKernelTrain, bfloat16_t, float, bfloat16_t, ImplModeEnum(implMode),
+        INVOKE_FA_OP_IMPL_BASEAPI(BaseApi::FlashAttentionScoreKernelTrain, bfloat16_t, half, bfloat16_t, ImplModeEnum(implMode),
             LayOutTypeEnum(layout), S1TemplateType(s1TemplateType), S2TemplateType(s2TemplateType),
             DTemplateType(dTemplateType), DTemplateType(dvTemplateType == 0 ? dTemplateType : dvTemplateType),
             PseTypeEnum(pseMode), hasAtten, hasDrop, hasRope, false, false, false, false, false, optionalDn);
         return;
     #endif
     #if (ORIG_DTYPE_QUERY == DT_FLOAT16)
-        INVOKE_FA_OP_IMPL_BASEAPI(BaseApi::FlashAttentionScoreKernelTrain, half, float, half, ImplModeEnum(implMode),
+        INVOKE_FA_OP_IMPL_BASEAPI(BaseApi::FlashAttentionScoreKernelTrain, half, half, half, ImplModeEnum(implMode),
             LayOutTypeEnum(layout), S1TemplateType(s1TemplateType), S2TemplateType(s2TemplateType),
             DTemplateType(dTemplateType), DTemplateType(dvTemplateType == 0 ? dTemplateType : dvTemplateType),
             PseTypeEnum(pseMode), hasAtten, hasDrop, hasRope, false, false, false, false, false, optionalDn);
@@ -122,7 +122,7 @@ inline __aicore__ void flash_attention_score_regbase(__gm__ uint8_t *query, __gm
 
     // fp8
     #if (ORIG_DTYPE_QUERY == DT_HIFLOAT8)
-        INVOKE_FA_OP_IMPL_BASEAPI(BaseApi::FlashAttentionScoreKernelTrain, hifloat8_t, float, bfloat16_t, ImplModeEnum(implMode),
+        INVOKE_FA_OP_IMPL_BASEAPI(BaseApi::FlashAttentionScoreKernelTrain, hifloat8_t, half, bfloat16_t, ImplModeEnum(implMode),
             LayOutTypeEnum(layout), S1TemplateType(s1TemplateType), S2TemplateType(s2TemplateType),
             DTemplateType(dTemplateType), DTemplateType(dvTemplateType == 0 ? dTemplateType : dvTemplateType),
             PseTypeEnum(pseMode), hasAtten, hasDrop, hasRope, false, false, false, false, false, optionalDn);

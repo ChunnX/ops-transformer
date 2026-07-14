@@ -297,11 +297,11 @@ __aicore__ inline void FlashAttentionScoreKernelBase<ChildClass, CubeBlockType, 
                         actualS1Len = s1SizeInner + (constInfo.aivIdx >= frontCoreNum ? 0 : splitFactor);
                     }
                     GlobalTensor<OUTPUT_T> attentionOutEodGm = this->vecBlock.attentionOutGm[accumSize * this->constInfo.n2GDv];
-                    GlobalTensor<float> softmaxMaxEodGm = this->vecBlock.softmaxMaxGm[accumSize * this->constInfo.n2G * 8];
-                    GlobalTensor<float> softmaxSumEodGm = this->vecBlock.softmaxSumGm[accumSize * this->constInfo.n2G * 8];
+                    GlobalTensor<half> softmaxMaxEodGm = this->vecBlock.softmaxMaxGm[accumSize * this->constInfo.n2G * 8];
+                    GlobalTensor<half> softmaxSumEodGm = this->vecBlock.softmaxSumGm[accumSize * this->constInfo.n2G * 8];
                     AscendC::Fill<OUTPUT_T>(attentionOutEodGm, actualS1Len * this->constInfo.n2GDv, static_cast<OUTPUT_T>(0.0));
-                    AscendC::Fill<float>(softmaxMaxEodGm, actualS1Len * this->constInfo.n2G * 8, static_cast<float>(0.0));
-                    AscendC::Fill<float>(softmaxSumEodGm, actualS1Len * this->constInfo.n2G * 8, static_cast<float>(0.0));
+                    AscendC::Fill<half>(softmaxMaxEodGm, actualS1Len * this->constInfo.n2G * 8, static_cast<half>(0.0));
+                    AscendC::Fill<half>(softmaxSumEodGm, actualS1Len * this->constInfo.n2G * 8, static_cast<half>(0.0));
                     SyncAll();
                 }
             }

@@ -370,7 +370,7 @@ __aicore__ inline void ProcessVec1Vf(const LocalTensor<T2>& dstTensor, TBuf<> *v
     if constexpr (useNz) {
         static_assert(IsSameType<T, half>::value, "VF mul_sel_softmaxflashv2_cast_nz, T must be half");
     } else {
-        static_assert(IsSameType<T, float>::value, "VF mul_sel_softmaxflashv2_cast_nz, T must be float");
+        static_assert(IsSameType<T, half>::value, "VF mul_sel_softmaxflashv2_cast_nz, T must be half");
     }
     static_assert(IsSameType<T2, half>::value || IsSameType<T2, bfloat16_t>::value || IsSameType<T2, float>::value ||
                   IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value ||
@@ -557,7 +557,7 @@ __aicore__ inline void ProcessVec1VfMxfp8(const LocalTensor<T2>& dstTensor, TBuf
     const LocalTensor<T>& queryScaleUb = LocalTensor<T>(), const float deSCaleKValue = 1.0f,
     const float pScale = 1.0f, float sinkValue = 0.0f)
 {
-    static_assert(IsSameType<T, float>::value, "VF mul_sel_softmaxflashv2_cast_nz, T must be float");
+    static_assert(IsSameType<T, half>::value, "VF mul_sel_softmaxflashv2_cast_nz, T must be half");
     static_assert(IsSameType<T2, half>::value || IsSameType<T2, bfloat16_t>::value || IsSameType<T2, float>::value ||
                   IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value ||
                   IsSameType<T2, hifloat8_t>::value || IsSameType<T2, int8_t>::value,

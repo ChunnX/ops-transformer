@@ -446,12 +446,9 @@ def cpu_fp8_fullquant_gqa_golden(q_fp8, k_fp8, v_fp8,
         return result, lse
 
     out = torch.zeros((batch, heads, q_seq, v_dim), dtype=torch.float32).contiguous()
-    o_sum = torch.zeros(q_tensor.shape[:-1], dtype=torch.float32)[..., None].contiguous()
-        # 修改1: 使用 NPU 对应的最小值初始化 (0xFF7FFFFF 对应 -FLT_MAX)
-    minValue = torch.tensor(-3.402823466e+38, dtype=torch.float32)
-    o_max = torch.full(q_tensor.shape[:-1], minValue.item(), dtype=torch.float32)[..., None].contiguous()
-    # o_max = torch.ones(q_tensor.shape[:-1], dtype=torch.float32)[..., None] * torch.finfo(torch.float32).min
-    # o_max = o_max.contiguous()
+    o_sum = torch.zeros(q_tensor.shape[:-1], dtype=torch.float16)[..., None].contiguous()
+    minValue = torch.tensor(torch.finfo(torch.float16).min, dtype=torch.float16)
+    o_max = torch.full(q_tensor.shape[:-1], minValue.item(), dtype=torch.float16)[..., None].contiguous()
 
     q_lens_t = torch.tensor(actual_seq_q, dtype=torch.int32).contiguous()
     k_lens_t = torch.tensor(actual_seq_kv, dtype=torch.int32).contiguous()
@@ -486,7 +483,7 @@ def cpu_fp8_fullquant_gqa_golden(q_fp8, k_fp8, v_fp8,
     deq_q_blocks = list(torch.split(deq_q, Q_BLOCK_SIZE, dim=2))
     deq_k_blocks = list(torch.split(deq_k, KV_BLOCK_SIZE, dim=2))
 
-    ln_p_scale = torch.tensor([math.log(p_scale.item())], dtype=torch.float32).contiguous()
+    ln_p_scale = torch.tensor([math.log(p_scale.item())], dtype=torch.float16).contiguous()
     
     for j, (kj, vj) in enumerate(zip(k_blocks, v_blocks)):
         kj = kj.contiguous()
@@ -508,35 +505,37 @@ def cpu_fp8_fullquant_gqa_golden(q_fp8, k_fp8, v_fp8,
             causal_mask = mask_blocks[i][j].contiguous()
             sij = sij.masked_fill(causal_mask, float('-inf'))
 
-            m_block, _ = torch.max(sij, dim=-1, keepdims=True)
+            sij_fp16 = sij.to(torch.float16)
+            m_block, _ = torch.max(sij_fp16, dim=-1, keepdims=True)
             m_block = m_block - ln_p_scale
             mi_new = torch.maximum(m_block, mi)
             all_masked_block = (m_block == float('-inf'))
             pij = torch.where(all_masked_block,
-                              torch.zeros_like(sij),
-                              torch.exp(sij - mi_new))
+                              torch.zeros_like(sij_fp16),
+                              torch.exp(sij_fp16 - mi_new))
             s_block = torch.sum(pij, dim=-1, keepdims=True)
-            pij_drop = pij.to(FP8_DTYPE).to(torch.float32)
+            pij_drop = pij.to(torch.float32).to(FP8_DTYPE).to(torch.float32)
             pij_v = torch.matmul(pij_drop, vj)
             pij_v = pij_v * deq_v
             scale = torch.where(mi_new == float('-inf'),
                                 torch.ones_like(mi_new),
                                 torch.exp(mi - mi_new))
             si_new = scale * si + s_block
-            o_blocks[i] = (si * torch.exp(mi - mi_new) * oi + pij_v) / (si_new + EPSILON)
+            o_blocks[i] = (si.to(torch.float32) * torch.exp(mi - mi_new).to(torch.float32) * oi + pij_v) / (si_new.to(torch.float32) + EPSILON)
             s_blocks[i] = si_new
             m_blocks[i] = mi_new
 
     result = torch.cat(o_blocks, dim=2).contiguous()
     out_sum = torch.cat(s_blocks, dim=2).contiguous()
     out_max = torch.cat(m_blocks, dim=2).contiguous()
-    lse = out_max + torch.log(out_sum + EPSILON).contiguous()
+    out_sum_f32 = out_sum.to(torch.float32)
+    out_max_f32 = out_max.to(torch.float32)
+    lse = out_max_f32 + torch.log(out_sum_f32 + EPSILON).contiguous()
 
-    # 当 out_max 等于 minValue (0xFF7FFFFF) 时，说明该位置被全 mask，输出 inf
     all_masked = (out_max <= minValue.item())
     lse = torch.where(all_masked, 
-                      torch.full_like(out_max, float('inf')),
-                      out_max + torch.log(out_sum + EPSILON)).contiguous()
+                      torch.full_like(out_max_f32, float('inf')),
+                      out_max_f32 + torch.log(out_sum_f32 + EPSILON)).contiguous()
     result = torch.where(all_masked, torch.zeros_like(result), result)
     return result, lse
 

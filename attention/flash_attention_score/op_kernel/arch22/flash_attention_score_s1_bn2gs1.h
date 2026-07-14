@@ -296,8 +296,8 @@ protected:
     GM_ADDR prefixNAddr;
     GlobalTensor<INPUT_T> valueGm;
     GlobalTensor<INPUT_T> attentionOutGm;
-    GlobalTensor<float> softmaxMaxGm;
-    GlobalTensor<float> softmaxSumGm;
+    GlobalTensor<half> softmaxMaxGm;
+    GlobalTensor<half> softmaxSumGm;
     GlobalTensor<uint8_t> dropMaskGm;
     GlobalTensor<uint8_t> attenMaskGmInt;
     GlobalTensor<float> sinkGm;
@@ -800,7 +800,7 @@ FlashAttentionScoreS1Bn2gs1<FA_S1BN2GS1_FUNCTION_PARAMS_TEMPLATE>::ProcessVec2(S
     LocalTensor<T> bmm2ResPingUb = this->stage1PingBuf.template Get<T>();
     LocalTensor<T> bmm2ResPongUb = this->stage1PongBuf.template Get<T>();
 
-    LocalTensor<T> softmaxSumPingUb = this->pseTBuf.template Get<float>();
+    LocalTensor<T> softmaxSumPingUb = this->pseTBuf.template Get<T>();
 
     // 使用common buf作为最后的输出的ping和pong，可以在common buf往外搬出的时候，用pseBuf向内搬运
     // 最后的输出结果是16KB，fp16，ping和pong分别是8192个fp32数
@@ -1718,10 +1718,10 @@ __aicore__ inline void FlashAttentionScoreS1Bn2gs1<FA_S1BN2GS1_FUNCTION_PARAMS_T
         AscendC::SetFlag<HardEvent::V_MTE3>(eventIdVToMte3);
         AscendC::WaitFlag<HardEvent::V_MTE3>(eventIdVToMte3);
         // 每次向外copy的时候都从Ub的起始位置开始copy
-        LocalTensor<float> sumUbStart;
-        LocalTensor<float> maxUbStart;
-        sumUbStart = this->softmaxSumBuf.template Get<float>()[0];
-        maxUbStart = this->softmaxMaxBuf.template Get<float>()[0];
+        LocalTensor<T> sumUbStart;
+        LocalTensor<T> maxUbStart;
+        sumUbStart = this->softmaxSumBuf.template Get<T>()[0];
+        maxUbStart = this->softmaxMaxBuf.template Get<T>()[0];
 
         DataCopy(this->softmaxSumGm[gmOffset], sumUbStart, calculateSize);
         DataCopy(this->softmaxMaxGm[gmOffset], maxUbStart, calculateSize);

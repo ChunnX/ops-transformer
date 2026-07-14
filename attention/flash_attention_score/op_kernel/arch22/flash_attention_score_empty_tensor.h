@@ -28,8 +28,8 @@ public:
     __aicore__ inline void Process();
 
 protected:
-    AscendC::GlobalTensor<float> softmaxMaxGm;
-    AscendC::GlobalTensor<float> softmaxSumGm;
+    AscendC::GlobalTensor<half> softmaxMaxGm;
+    AscendC::GlobalTensor<half> softmaxSumGm;
     AscendC::GlobalTensor<INPUT_T> attentionOutGm;
     uint32_t tmpBlockIdx;
     const FlashAttentionScoreTilingData *__restrict tilingData;

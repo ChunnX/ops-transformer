@@ -423,33 +423,33 @@ flash_attention_score(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t
             if constexpr (MatmulPolicyType == 1) {
                 INVOKE_FA_GENERAL_OP_IMPL_VAR_LEN_SAMEAB(FlashAttentionVarLenScoreSameAB,
                     LayOutTypeEnum::LAYOUT_TND, HasPse, HasAttenMask, HasDropOut,
-                    half, float, CubeFormat::NZ, MmPolicyType::UNSPLITK, ImplModeEnum(ImplMode), HasRope);
+                    half, half, CubeFormat::NZ, MmPolicyType::UNSPLITK, ImplModeEnum(ImplMode), HasRope);
             } else {
                 INVOKE_FA_GENERAL_OP_IMPL_VAR_LEN_SAMEAB(FlashAttentionVarLenScoreSameAB,
                     LayOutTypeEnum::LAYOUT_TND, HasPse, HasAttenMask, HasDropOut,
-                    half, float, CubeFormat::NZ, MmPolicyType::NORMAL, ImplModeEnum(ImplMode), HasRope);
+                    half, half, CubeFormat::NZ, MmPolicyType::NORMAL, ImplModeEnum(ImplMode), HasRope);
             }
         } else if constexpr (DataType == 2) {
 #if !(defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3003 || __NPU_ARCH__ == 3113))
             if constexpr (MatmulPolicyType == 1) {
                 INVOKE_FA_GENERAL_OP_IMPL_VAR_LEN_SAMEAB(FlashAttentionVarLenScoreSameAB,
                     LayOutTypeEnum::LAYOUT_TND, HasPse, HasAttenMask, HasDropOut,
-                    bfloat16_t, float, CubeFormat::NZ, MmPolicyType::UNSPLITK, ImplModeEnum(ImplMode), HasRope);
+                    bfloat16_t, half, CubeFormat::NZ, MmPolicyType::UNSPLITK, ImplModeEnum(ImplMode), HasRope);
             } else {
                 INVOKE_FA_GENERAL_OP_IMPL_VAR_LEN_SAMEAB(FlashAttentionVarLenScoreSameAB,
                     LayOutTypeEnum::LAYOUT_TND, HasPse, HasAttenMask, HasDropOut,
-                    bfloat16_t, float, CubeFormat::NZ, MmPolicyType::NORMAL, ImplModeEnum(ImplMode), HasRope);
+                    bfloat16_t, half, CubeFormat::NZ, MmPolicyType::NORMAL, ImplModeEnum(ImplMode), HasRope);
             }
 #endif
         } else if constexpr (DataType == 1){
             if constexpr (MatmulPolicyType == 1) {
                 INVOKE_FA_GENERAL_OP_IMPL_VAR_LEN_SAMEAB(FlashAttentionVarLenScoreSameAB,
                     LayOutTypeEnum::LAYOUT_TND, HasPse, HasAttenMask, HasDropOut,
-                    float, float, CubeFormat::NZ, MmPolicyType::UNSPLITK, ImplModeEnum(ImplMode), HasRope);
+                    float, half, CubeFormat::NZ, MmPolicyType::UNSPLITK, ImplModeEnum(ImplMode), HasRope);
             } else {
                 INVOKE_FA_GENERAL_OP_IMPL_VAR_LEN_SAMEAB(FlashAttentionVarLenScoreSameAB,
                     LayOutTypeEnum::LAYOUT_TND, HasPse, HasAttenMask, HasDropOut,
-                    float, float, CubeFormat::NZ, MmPolicyType::NORMAL, ImplModeEnum(ImplMode), HasRope);
+                    float, half, CubeFormat::NZ, MmPolicyType::NORMAL, ImplModeEnum(ImplMode), HasRope);
             }
         }
     }
@@ -460,17 +460,17 @@ flash_attention_score(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t
         if constexpr (DataType == 3) {  
             INVOKE_FA_GENERAL_OP_IMPL_VAR_LEN(FlashAttentionVarLenScore, ImplModeEnum(ImplMode),
                 LayOutTypeEnum::LAYOUT_TND, HasPse, HasAttenMask, HasDropOut,
-                half, float, true, CubeFormat::NZ, HasRope);
+                half, half, true, CubeFormat::NZ, HasRope);
         } else if constexpr (DataType == 2) {
 #if !(defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3003 || __NPU_ARCH__ == 3113))
             INVOKE_FA_GENERAL_OP_IMPL_VAR_LEN(FlashAttentionVarLenScore, ImplModeEnum(ImplMode),
                 LayOutTypeEnum::LAYOUT_TND, HasPse, HasAttenMask, HasDropOut,
-                bfloat16_t, float, true, CubeFormat::NZ, HasRope);
+                bfloat16_t, half, true, CubeFormat::NZ, HasRope);
 #endif
         } else if constexpr (DataType == 1) {
             INVOKE_FA_GENERAL_OP_IMPL_VAR_LEN(FlashAttentionVarLenScore, ImplModeEnum(ImplMode),
                 LayOutTypeEnum::LAYOUT_TND, HasPse, HasAttenMask, HasDropOut,
-                float, float, true, CubeFormat::NZ, HasRope);
+                float, half, true, CubeFormat::NZ, HasRope);
         }
     }
 
@@ -481,30 +481,30 @@ flash_attention_score(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t
             if constexpr (MatmulPolicyType == 1) {
                 INVOKE_FA_GENERAL_OP_IMPL_WITH_MMPOLICY(FlashAttentionScoreS1s2Bn2gs1SameAB, ImplModeEnum(ImplMode),
                     LayOutTypeEnum(Layout), HasPse, HasAttenMask, HasDropOut,
-                    half, float, CubeFormat::ND, MmPolicyType::UNSPLITK, HasRope);
+                    half, half, CubeFormat::ND, MmPolicyType::UNSPLITK, HasRope);
             } else if constexpr (Bmm1Format == 0) {
                 INVOKE_FA_GENERAL_OP_IMPL_SAMEAB(FlashAttentionScoreS1s2Bn2gs1SameAB, ImplModeEnum(ImplMode),
                     LayOutTypeEnum(Layout), HasPse, HasAttenMask, HasDropOut,
-                    half, float, CubeFormat::ND, MmPolicyType::NORMAL, HasRope);
+                    half, half, CubeFormat::ND, MmPolicyType::NORMAL, HasRope);
             } else if constexpr (Bmm1Format == 1) {
                 INVOKE_FA_GENERAL_OP_IMPL_BMM1NZ_SAMEAB(FlashAttentionScoreS1s2Bn2gs1SameAB, ImplModeEnum(ImplMode),
                     LayOutTypeEnum(Layout), HasPse, HasAttenMask, HasDropOut,
-                    half, float, CubeFormat::NZ, MmPolicyType::NORMAL, HasRope);
+                    half, half, CubeFormat::NZ, MmPolicyType::NORMAL, HasRope);
             }
         } else if (DataType == 2) {
 #if !(defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3003 || __NPU_ARCH__ == 3113))
             if constexpr (MatmulPolicyType == 1) {
                 INVOKE_FA_GENERAL_OP_IMPL_WITH_MMPOLICY(FlashAttentionScoreS1s2Bn2gs1SameAB, ImplModeEnum(ImplMode),
                     LayOutTypeEnum(Layout), HasPse, HasAttenMask, HasDropOut,
-                    bfloat16_t, float, CubeFormat::ND, MmPolicyType::UNSPLITK, HasRope);
+                    bfloat16_t, half, CubeFormat::ND, MmPolicyType::UNSPLITK, HasRope);
             } else if constexpr (Bmm1Format == 0) {
                 INVOKE_FA_GENERAL_OP_IMPL_SAMEAB(FlashAttentionScoreS1s2Bn2gs1SameAB, ImplModeEnum(ImplMode),
                     LayOutTypeEnum(Layout), HasPse, HasAttenMask, HasDropOut,
-                    bfloat16_t, float, CubeFormat::ND, MmPolicyType::NORMAL, HasRope);
+                    bfloat16_t, half, CubeFormat::ND, MmPolicyType::NORMAL, HasRope);
             } else if constexpr (Bmm1Format == 1) {
                 INVOKE_FA_GENERAL_OP_IMPL_BMM1NZ_SAMEAB(FlashAttentionScoreS1s2Bn2gs1SameAB, ImplModeEnum(ImplMode),
                     LayOutTypeEnum(Layout),  HasPse, HasAttenMask, HasDropOut,
-                    bfloat16_t, float, CubeFormat::NZ, MmPolicyType::NORMAL, HasRope);
+                    bfloat16_t, half, CubeFormat::NZ, MmPolicyType::NORMAL, HasRope);
             }
 #endif
         }
@@ -517,33 +517,33 @@ flash_attention_score(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t
             if constexpr (Bmm1Format == 0) {
                 INVOKE_FA_GENERAL_OP_IMPL(FlashAttentionScoreS1s2Bn2gs1, ImplModeEnum(ImplMode),
                     LayOutTypeEnum(Layout), bool(HasPse), bool(HasAttenMask), bool(HasDropOut),
-                    half, float, true, CubeFormat::ND, bool(EnableL1Reuse));
+                    half, half, true, CubeFormat::ND, bool(EnableL1Reuse));
             } else {
                 INVOKE_FA_GENERAL_OP_IMPL_BMM1NZ(FlashAttentionScoreS1s2Bn2gs1, ImplModeEnum(ImplMode),
                     LayOutTypeEnum(Layout), bool(HasPse), bool(HasAttenMask), bool(HasDropOut),
-                    half, float, true, CubeFormat::NZ, bool(EnableL1Reuse));
+                    half, half, true, CubeFormat::NZ, bool(EnableL1Reuse));
             }
         } else if constexpr (DataType == 2) {
 #if !(defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3003 || __NPU_ARCH__ == 3113))
             if constexpr (Bmm1Format == 0) {
                 INVOKE_FA_GENERAL_OP_IMPL(FlashAttentionScoreS1s2Bn2gs1, ImplModeEnum(ImplMode),
                     LayOutTypeEnum(Layout), bool(HasPse), bool(HasAttenMask), bool(HasDropOut),
-                    bfloat16_t, float, true, CubeFormat::ND, bool(EnableL1Reuse));
+                    bfloat16_t, half, true, CubeFormat::ND, bool(EnableL1Reuse));
             } else {
                 INVOKE_FA_GENERAL_OP_IMPL_BMM1NZ(FlashAttentionScoreS1s2Bn2gs1, ImplModeEnum(ImplMode),
                     LayOutTypeEnum(Layout), bool(HasPse), bool(HasAttenMask), bool(HasDropOut),
-                    bfloat16_t, float, true, CubeFormat::NZ, bool(EnableL1Reuse));
+                    bfloat16_t, half, true, CubeFormat::NZ, bool(EnableL1Reuse));
             }
 #endif
         } else if constexpr (DataType == 1) {
             if constexpr (Bmm1Format == 0) {
                 INVOKE_FA_GENERAL_OP_IMPL(FlashAttentionScoreS1s2Bn2gs1, ImplModeEnum(ImplMode),
                     LayOutTypeEnum(Layout), bool(HasPse), bool(HasAttenMask), bool(HasDropOut),
-                    float, float, true, CubeFormat::ND, bool(EnableL1Reuse));
+                    float, half, true, CubeFormat::ND, bool(EnableL1Reuse));
             } else {
                 INVOKE_FA_GENERAL_OP_IMPL_BMM1NZ(FlashAttentionScoreS1s2Bn2gs1, ImplModeEnum(ImplMode),
                     LayOutTypeEnum(Layout), bool(HasPse), bool(HasAttenMask), bool(HasDropOut),
-                    float, float, true, CubeFormat::NZ, bool(EnableL1Reuse));
+                    float, half, true, CubeFormat::NZ, bool(EnableL1Reuse));
             }
         }
     }
@@ -556,24 +556,24 @@ flash_attention_score(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t
                 if constexpr (Bmm2Source > 0) {
                     INVOKE_FA_GENERAL_OP_IMPL_BMM2NZ(FlashAttentionScoreS1Bn2gs1, ImplModeEnum(ImplMode),
                         LayOutTypeEnum(Layout), bool(HasPse), bool(HasAttenMask), bool(HasDropOut),
-                        half, float, true, CubeFormat::ND, TPosition::TSCM, CubeFormat::NZ, bool(EnableL1Reuse),
+                        half, half, true, CubeFormat::ND, TPosition::TSCM, CubeFormat::NZ, bool(EnableL1Reuse),
                         STemplateType(S1TemplateType * 16), STemplateType(S2TemplateType * 16), DTemplateType(dTemplateSize * 16));
                 } else {
                     INVOKE_FA_GENERAL_OP_IMPL_BMM2NZ(FlashAttentionScoreS1Bn2gs1, ImplModeEnum(ImplMode),
                         LayOutTypeEnum(Layout), bool(HasPse), bool(HasAttenMask), bool(HasDropOut),
-                        half, float, true, CubeFormat::ND, TPosition::GM, CubeFormat::ND, bool(EnableL1Reuse),
+                        half, half, true, CubeFormat::ND, TPosition::GM, CubeFormat::ND, bool(EnableL1Reuse),
                         STemplateType(S1TemplateType * 16), STemplateType(S2TemplateType * 16), DTemplateType(dTemplateSize * 16));
                 }
             } else {
                 if constexpr (Bmm2Source > 0) {
                     INVOKE_FA_GENERAL_OP_IMPL_BMM2NZ(FlashAttentionScoreS1Bn2gs1, ImplModeEnum(ImplMode),
                         LayOutTypeEnum(Layout), bool(HasPse), bool(HasAttenMask), bool(HasDropOut),
-                        half, float, true, CubeFormat::NZ, TPosition::TSCM, CubeFormat::NZ, bool(EnableL1Reuse),
+                        half, half, true, CubeFormat::NZ, TPosition::TSCM, CubeFormat::NZ, bool(EnableL1Reuse),
                         STemplateType(S1TemplateType * 16), STemplateType(S2TemplateType * 16), DTemplateType(dTemplateSize * 16));
                 } else {
                     INVOKE_FA_GENERAL_OP_IMPL_BMM2NZ(FlashAttentionScoreS1Bn2gs1, ImplModeEnum(ImplMode),
                         LayOutTypeEnum(Layout), bool(HasPse), bool(HasAttenMask), bool(HasDropOut),
-                        half, float, true, CubeFormat::NZ, TPosition::GM, CubeFormat::ND, bool(EnableL1Reuse),
+                        half, half, true, CubeFormat::NZ, TPosition::GM, CubeFormat::ND, bool(EnableL1Reuse),
                         STemplateType(S1TemplateType * 16), STemplateType(S2TemplateType * 16), DTemplateType(dTemplateSize * 16));
                 }
             }
@@ -583,24 +583,24 @@ flash_attention_score(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t
                 if constexpr (Bmm2Source > 0) {
                     INVOKE_FA_GENERAL_OP_IMPL_BMM2NZ(FlashAttentionScoreS1Bn2gs1, ImplModeEnum(ImplMode),
                         LayOutTypeEnum(Layout), bool(HasPse), bool(HasAttenMask), bool(HasDropOut),
-                        bfloat16_t, float, true, CubeFormat::ND, TPosition::TSCM, CubeFormat::NZ, bool(EnableL1Reuse),
+                        bfloat16_t, half, true, CubeFormat::ND, TPosition::TSCM, CubeFormat::NZ, bool(EnableL1Reuse),
                         STemplateType(S1TemplateType * 16), STemplateType(S2TemplateType * 16), DTemplateType(dTemplateSize * 16));
                 } else {
                     INVOKE_FA_GENERAL_OP_IMPL_BMM2NZ(FlashAttentionScoreS1Bn2gs1, ImplModeEnum(ImplMode),
                         LayOutTypeEnum(Layout), bool(HasPse), bool(HasAttenMask), bool(HasDropOut),
-                        bfloat16_t, float, true, CubeFormat::ND, TPosition::GM, CubeFormat::ND, bool(EnableL1Reuse),
+                        bfloat16_t, half, true, CubeFormat::ND, TPosition::GM, CubeFormat::ND, bool(EnableL1Reuse),
                         STemplateType(S1TemplateType * 16), STemplateType(S2TemplateType * 16), DTemplateType(dTemplateSize * 16));
                 }
             } else {
                 if constexpr (Bmm2Source > 0) {
                     INVOKE_FA_GENERAL_OP_IMPL_BMM2NZ(FlashAttentionScoreS1Bn2gs1, ImplModeEnum(ImplMode),
                         LayOutTypeEnum(Layout), bool(HasPse), bool(HasAttenMask), bool(HasDropOut),
-                        bfloat16_t, float, true, CubeFormat::NZ, TPosition::TSCM, CubeFormat::NZ, bool(EnableL1Reuse),
+                        bfloat16_t, half, true, CubeFormat::NZ, TPosition::TSCM, CubeFormat::NZ, bool(EnableL1Reuse),
                         STemplateType(S1TemplateType * 16), STemplateType(S2TemplateType * 16), DTemplateType(dTemplateSize * 16));
                 } else {
                     INVOKE_FA_GENERAL_OP_IMPL_BMM2NZ(FlashAttentionScoreS1Bn2gs1, ImplModeEnum(ImplMode),
                         LayOutTypeEnum(Layout), bool(HasPse), bool(HasAttenMask), bool(HasDropOut),
-                        bfloat16_t, float, true, CubeFormat::NZ, TPosition::GM, CubeFormat::ND, bool(EnableL1Reuse),
+                        bfloat16_t, half, true, CubeFormat::NZ, TPosition::GM, CubeFormat::ND, bool(EnableL1Reuse),
                         STemplateType(S1TemplateType * 16), STemplateType(S2TemplateType * 16), DTemplateType(dTemplateSize * 16));
                 }
             }
@@ -610,24 +610,24 @@ flash_attention_score(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t
                 if constexpr (Bmm2Source > 0) {
                     INVOKE_FA_GENERAL_OP_IMPL_BMM2NZ(FlashAttentionScoreS1Bn2gs1, ImplModeEnum(ImplMode),
                         LayOutTypeEnum(Layout), bool(HasPse), bool(HasAttenMask), bool(HasDropOut),
-                        float, float, true, CubeFormat::ND, TPosition::TSCM, CubeFormat::NZ, bool(EnableL1Reuse),
+                        float, half, true, CubeFormat::ND, TPosition::TSCM, CubeFormat::NZ, bool(EnableL1Reuse),
                         STemplateType(S1TemplateType * 16), STemplateType(S2TemplateType * 16), DTemplateType(dTemplateSize * 16));
                 } else {
                     INVOKE_FA_GENERAL_OP_IMPL_BMM2NZ(FlashAttentionScoreS1Bn2gs1, ImplModeEnum(ImplMode),
                         LayOutTypeEnum(Layout), bool(HasPse), bool(HasAttenMask), bool(HasDropOut),
-                        float, float, true, CubeFormat::ND, TPosition::GM, CubeFormat::ND, bool(EnableL1Reuse),
+                        float, half, true, CubeFormat::ND, TPosition::GM, CubeFormat::ND, bool(EnableL1Reuse),
                         STemplateType(S1TemplateType * 16), STemplateType(S2TemplateType * 16), DTemplateType(dTemplateSize * 16));
                 }
             } else {
                 if constexpr (Bmm2Source > 0) {
                     INVOKE_FA_GENERAL_OP_IMPL_BMM2NZ(FlashAttentionScoreS1Bn2gs1, ImplModeEnum(ImplMode),
                         LayOutTypeEnum(Layout), bool(HasPse), bool(HasAttenMask), bool(HasDropOut),
-                        float, float, true, CubeFormat::NZ, TPosition::TSCM, CubeFormat::NZ, bool(EnableL1Reuse),
+                        float, half, true, CubeFormat::NZ, TPosition::TSCM, CubeFormat::NZ, bool(EnableL1Reuse),
                         STemplateType(S1TemplateType * 16), STemplateType(S2TemplateType * 16), DTemplateType(dTemplateSize * 16));
                 } else {
                     INVOKE_FA_GENERAL_OP_IMPL_BMM2NZ(FlashAttentionScoreS1Bn2gs1, ImplModeEnum(ImplMode),
                         LayOutTypeEnum(Layout), bool(HasPse), bool(HasAttenMask), bool(HasDropOut),
-                        float, float, true, CubeFormat::NZ, TPosition::GM, CubeFormat::ND, bool(EnableL1Reuse),
+                        float, half, true, CubeFormat::NZ, TPosition::GM, CubeFormat::ND, bool(EnableL1Reuse),
                         STemplateType(S1TemplateType * 16), STemplateType(S2TemplateType * 16), DTemplateType(dTemplateSize * 16));
                 }
             }
@@ -641,17 +641,17 @@ flash_attention_score(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t
             if constexpr (Layout == 1) {
                 INVOKE_FA_GENERAL_OP_IMPL_BMM2NZ(FlashAttentionScoreBn2gs1s2B, ImplModeEnum(ImplMode),
                     LayOutTypeEnum(Layout), bool(HasPse), bool(HasAttenMask), bool(HasDropOut),
-                    half, float, true, LayoutMode::BSNGD,
+                    half, half, true, LayoutMode::BSNGD,
                     STemplateType(S1TemplateType * 16), STemplateType(S2TemplateType * 16), DTemplateType(dTemplateSize * 16));
             } else if constexpr (Layout == 2) {
                 INVOKE_FA_GENERAL_OP_IMPL_BMM2NZ(FlashAttentionScoreBn2gs1s2B, ImplModeEnum(ImplMode),
                     LayOutTypeEnum(Layout), bool(HasPse), bool(HasAttenMask), bool(HasDropOut),
-                    half, float, true, LayoutMode::SBNGD,
+                    half, half, true, LayoutMode::SBNGD,
                     STemplateType(S1TemplateType * 16), STemplateType(S2TemplateType * 16), DTemplateType(dTemplateSize * 16));
             } else if constexpr (Layout == 3) {
                 INVOKE_FA_GENERAL_OP_IMPL_BMM2NZ(FlashAttentionScoreBn2gs1s2B, ImplModeEnum(ImplMode),
                     LayOutTypeEnum(Layout), bool(HasPse), bool(HasAttenMask), bool(HasDropOut),
-                    half, float, true, LayoutMode::BNGS1S2,
+                    half, half, true, LayoutMode::BNGS1S2,
                     STemplateType(S1TemplateType * 16), STemplateType(S2TemplateType * 16), DTemplateType(dTemplateSize * 16));
             }
         } else if (DataType == 2) {
@@ -659,17 +659,17 @@ flash_attention_score(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t
             if constexpr (Layout == 1) {
                 INVOKE_FA_GENERAL_OP_IMPL_BMM2NZ(FlashAttentionScoreBn2gs1s2B, ImplModeEnum(ImplMode),
                     LayOutTypeEnum(Layout), bool(HasPse), bool(HasAttenMask), bool(HasDropOut),
-                    bfloat16_t, float, true, LayoutMode::BSNGD,
+                    bfloat16_t, half, true, LayoutMode::BSNGD,
                     STemplateType(S1TemplateType * 16), STemplateType(S2TemplateType * 16), DTemplateType(dTemplateSize * 16));
             } else if constexpr (Layout == 2) {
                 INVOKE_FA_GENERAL_OP_IMPL_BMM2NZ(FlashAttentionScoreBn2gs1s2B, ImplModeEnum(ImplMode),
                     LayOutTypeEnum(Layout), bool(HasPse), bool(HasAttenMask), bool(HasDropOut),
-                    bfloat16_t, float, true, LayoutMode::SBNGD,
+                    bfloat16_t, half, true, LayoutMode::SBNGD,
                     STemplateType(S1TemplateType * 16), STemplateType(S2TemplateType * 16), DTemplateType(dTemplateSize * 16));
             } else if constexpr (Layout == 3) {
                 INVOKE_FA_GENERAL_OP_IMPL_BMM2NZ(FlashAttentionScoreBn2gs1s2B, ImplModeEnum(ImplMode),
                     LayOutTypeEnum(Layout), bool(HasPse), bool(HasAttenMask), bool(HasDropOut),
-                    bfloat16_t, float, true, LayoutMode::BNGS1S2,
+                    bfloat16_t, half, true, LayoutMode::BNGS1S2,
                     STemplateType(S1TemplateType * 16), STemplateType(S2TemplateType * 16), DTemplateType(dTemplateSize * 16));
             }
 #endif
@@ -677,17 +677,17 @@ flash_attention_score(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t
             if constexpr (Layout == 1) {
                 INVOKE_FA_GENERAL_OP_IMPL_BMM2NZ(FlashAttentionScoreBn2gs1s2B, ImplModeEnum(ImplMode),
                     LayOutTypeEnum(Layout), bool(HasPse), bool(HasAttenMask), bool(HasDropOut),
-                    float, float, true, LayoutMode::BSNGD,
+                    float, half, true, LayoutMode::BSNGD,
                     STemplateType(S1TemplateType * 16), STemplateType(S2TemplateType * 16), DTemplateType(dTemplateSize * 16));
             } else if constexpr (Layout == 2) {
                 INVOKE_FA_GENERAL_OP_IMPL_BMM2NZ(FlashAttentionScoreBn2gs1s2B, ImplModeEnum(ImplMode),
                     LayOutTypeEnum(Layout), bool(HasPse), bool(HasAttenMask), bool(HasDropOut),
-                    float, float, true, LayoutMode::SBNGD,
+                    float, half, true, LayoutMode::SBNGD,
                     STemplateType(S1TemplateType * 16), STemplateType(S2TemplateType * 16), DTemplateType(dTemplateSize * 16));
             } else if constexpr (Layout == 3) {
                 INVOKE_FA_GENERAL_OP_IMPL_BMM2NZ(FlashAttentionScoreBn2gs1s2B, ImplModeEnum(ImplMode),
                     LayOutTypeEnum(Layout), bool(HasPse), bool(HasAttenMask), bool(HasDropOut),
-                    float, float, true, LayoutMode::BNGS1S2,
+                    float, half, true, LayoutMode::BNGS1S2,
                     STemplateType(S1TemplateType * 16), STemplateType(S2TemplateType * 16), DTemplateType(dTemplateSize * 16));
             }
         }

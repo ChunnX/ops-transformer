@@ -40,8 +40,8 @@ public:
         uint32_t aicIdx, ConstInfo<isInfer, hasRope> &constInfo);
     /* =====================GM变量==================== */
     GlobalTensor<uint8_t> dropMaskGm;
-    GlobalTensor<float> softmaxMaxGm;
-    GlobalTensor<float> softmaxSumGm;
+    GlobalTensor<half> softmaxMaxGm;
+    GlobalTensor<half> softmaxSumGm;
     /* =====================UB变量==================== */
     TBuf<> dropMaskBuf;
     TBuf<> dropMaskIndexBuf;
@@ -59,8 +59,8 @@ public:
     /* 多核切分根据cube核数做切分，因此这里需要传入aicIdx */
     __aicore__ inline void GetS1LoopRange(CVSharedParams<isInfer, isPa> &sharedParams, const int64_t &aicIdx);
     __aicore__ inline void GenerateDropoutMask(RunInfo<isInfer> &runInfo, ConstInfo<isInfer, hasRope> &constInfo, LocalTensor<uint8_t> &dropMaskUb);
-    __aicore__ inline void SoftmaxDataCopyOut(RunInfo<isInfer> &runInfo, ConstInfo<isInfer, hasRope> &constInfo, LocalTensor<float> &sumUb,
-                                              LocalTensor<float> &maxUb);
+    __aicore__ inline void SoftmaxDataCopyOut(RunInfo<isInfer> &runInfo, ConstInfo<isInfer, hasRope> &constInfo, LocalTensor<T> &sumUb,
+                                              LocalTensor<T> &maxUb);
     __aicore__ inline void SoftmaxDataCopyOutFp8(RunInfo<isInfer> &runInfo, ConstInfo<isInfer, hasRope> &constInfo,
         LocalTensor<half> &sumUb, LocalTensor<half> &maxUb);
     template <typename VEC2_RES_T>
@@ -94,8 +94,8 @@ __aicore__ inline void FANoQuantBlockVecTrain<TEMPLATE_ARGS>::InitGlobalBuffer(
 {
     BaseClass::InitCommonGlobalBuffer(pse, deqScaleQ, deqScaleK, deqScaleV, pScale, postQuantScale, prefix,
         attenMask, learnableSink, workspace, constInfo);
-    softmaxMaxGm.SetGlobalBuffer((__gm__ float *)softmaxMax);
-    softmaxSumGm.SetGlobalBuffer((__gm__ float *)softmaxSum);
+    softmaxMaxGm.SetGlobalBuffer((__gm__ half *)softmaxMax);
+    softmaxSumGm.SetGlobalBuffer((__gm__ half *)softmaxSum);
 }
 
 TEMPLATES_DEF_NO_DEFAULT
@@ -214,7 +214,7 @@ __aicore__ inline void FANoQuantBlockVecTrain<TEMPLATE_ARGS>::GenerateDropoutMas
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void FANoQuantBlockVecTrain<TEMPLATE_ARGS>::SoftmaxDataCopyOut(
-    RunInfo<isInfer> & runInfo, ConstInfo<isInfer, hasRope> &constInfo, LocalTensor<float> & sumUb, LocalTensor<float> & maxUb)
+    RunInfo<isInfer> & runInfo, ConstInfo<isInfer, hasRope> &constInfo, LocalTensor<T> & sumUb, LocalTensor<T> & maxUb)
 {
     if (unlikely(runInfo.halfS1RealSize == 0)) {
         return;
@@ -224,7 +224,7 @@ __aicore__ inline void FANoQuantBlockVecTrain<TEMPLATE_ARGS>::SoftmaxDataCopyOut
     int64_t gOffset;
     int64_t s1Offset;
     if (constInfo.learnableSinkFlag) {
-        SinkSubExpAddVF<float>(sumUb, maxUb, constInfo.sinkValue, runInfo.halfS1RealSize);
+        SinkSubExpAddVF<T>(sumUb, maxUb, constInfo.sinkValue, runInfo.halfS1RealSize);
     }
     if constexpr (layout == LayOutTypeEnum::LAYOUT_TND) {
         // tndSoftmaxOut=1时，softmaxMax、softMaxSum按(T, N, 8)格式存储

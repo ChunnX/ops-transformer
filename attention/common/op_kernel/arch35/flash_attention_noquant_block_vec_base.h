@@ -409,8 +409,8 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1Dn(
                                      (runInfo.s2LoopCount == runInfo.s2LoopLimit)));
         attenMaskUb = this->attenMaskInQue[0].template DeQue<uint8_t>();
     }
-    LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.multiCoreIdxMod3].template Get<float>()[0];
-    LocalTensor<float> maxUb = this->softmaxMaxBuf[runInfo.multiCoreIdxMod3].template Get<float>()[0];
+    LocalTensor<T> sumUb = this->softmaxSumBuf[runInfo.multiCoreIdxMod3].template Get<T>()[0];
+    LocalTensor<T> maxUb = this->softmaxMaxBuf[runInfo.multiCoreIdxMod3].template Get<T>()[0];
     auto expUb = this->softmaxExpBuf[runInfo.taskIdMod3].template Get<T>()[0];
     int64_t stage1Offset = runInfo.taskIdMod2;
      
@@ -662,17 +662,17 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::BroadCastAndCo
     GlobalTensor<T> &maxGm, int64_t gmOffset, int64_t calculateSize)
 {
     // Copy sum to gm
-    LocalTensor<float> sumTensor = softmaxSumBuf[runInfo.multiCoreIdxMod3].template Get<float>();
+    LocalTensor<T> sumTensor = softmaxSumBuf[runInfo.multiCoreIdxMod3].template Get<T>();
     if constexpr (useNz) {
         event_t v2Mte3Id = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_MTE3));
         SetFlag<HardEvent::V_MTE3>(v2Mte3Id);
         WaitFlag<HardEvent::V_MTE3>(v2Mte3Id);
         DataCopy(sumGm[gmOffset], sumTensor, calculateSize);
     } else {
-        LocalTensor<float> sumOutTensor = sumBrdcst.template AllocTensor<float>();
+        LocalTensor<T> sumOutTensor = sumBrdcst.template AllocTensor<T>();
         FaVectorApi::BroadcastMaxSum(sumOutTensor, sumTensor, runInfo.halfS1RealSize);
         sumBrdcst.template EnQue(sumOutTensor);
-        sumBrdcst.template DeQue<float>();
+        sumBrdcst.template DeQue<T>();
         if (this->tilingData->inputParamsRegbase.tndSoftmaxOut == 1) {
             DataCopy(sumGm[gmOffset], sumOutTensor, {static_cast<uint16_t>(runInfo.halfS1RealSize),
                 1, 0, static_cast<uint16_t>(constInfo.n2G - 1)});
@@ -683,19 +683,19 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::BroadCastAndCo
     }
 
     // Copy max to gm
-    LocalTensor<float> maxOutTensor = maxBrdcst.template AllocTensor<float>();
+    LocalTensor<T> maxOutTensor = maxBrdcst.template AllocTensor<T>();
     if constexpr (useNz) {
         LocalTensor<half> maxTensor = softmaxMaxBuf[runInfo.multiCoreIdxMod3].template Get<half>();
         Cast(maxOutTensor, maxTensor, RoundMode::CAST_NONE, calculateSize);
         maxBrdcst.template EnQue(maxOutTensor);
-        maxBrdcst.template DeQue<float>();
+        maxBrdcst.template DeQue<T>();
         DataCopy(maxGm[gmOffset], maxOutTensor, calculateSize);
         maxBrdcst.template FreeTensor(maxOutTensor);
     } else {
-        LocalTensor<float> maxTensor = softmaxMaxBuf[runInfo.multiCoreIdxMod3].template Get<float>();
+        LocalTensor<T> maxTensor = softmaxMaxBuf[runInfo.multiCoreIdxMod3].template Get<T>();
         FaVectorApi::BroadcastMaxSum(maxOutTensor, maxTensor, runInfo.halfS1RealSize);
         maxBrdcst.template EnQue(maxOutTensor);
-        maxBrdcst.template DeQue<float>();
+        maxBrdcst.template DeQue<T>();
         if (this->tilingData->inputParamsRegbase.tndSoftmaxOut == 1) {
             DataCopy(maxGm[gmOffset], maxOutTensor, {static_cast<uint16_t>(runInfo.halfS1RealSize),
                 1, 0, static_cast<uint16_t>(constInfo.n2G - 1)});
@@ -972,9 +972,9 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1Nd(
     LocalTensor<uint8_t> dropMaskUb;
     GetDerived()->GenerateDropoutMask(runInfo, constInfo, dropMaskUb);
 
-    LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.multiCoreIdxMod3].template Get<float>();
-    LocalTensor<float> maxUb = this->softmaxMaxBuf[runInfo.multiCoreIdxMod3].template Get<float>();
-    LocalTensor<float> expUb = this->softmaxExpBuf[runInfo.taskIdMod3].template Get<T>();
+    LocalTensor<T> sumUb = this->softmaxSumBuf[runInfo.multiCoreIdxMod3].template Get<T>();
+    LocalTensor<T> maxUb = this->softmaxMaxBuf[runInfo.multiCoreIdxMod3].template Get<T>();
+    LocalTensor<T> expUb = this->softmaxExpBuf[runInfo.taskIdMod3].template Get<T>();
     LocalTensor<T> pScaleUb;
     LocalTensor<T> queryScaleUb;
     LocalTensor<uint8_t> apiTmpBuffer;
@@ -1364,18 +1364,18 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec2OnU
         } else {
             if constexpr (isFp8 || isMlaNoQuant) {
                 if (unlikely(runInfo.s2LoopCount == 1)) {
-                    LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.multiCoreIdxMod3].template Get<float>();
+                    LocalTensor<T> sumUb = this->softmaxSumBuf[runInfo.multiCoreIdxMod3].template Get<T>();
                     FlashUpdateLastNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64, true, isMlaFullQuant>(
                         vec2ResUb, mmRes, vec2ResUb, expUb, pScaleUb, sumUb, runInfo.vec2S1RealSize, dTemplateAlign64,
                         deSCaleVValue, deSCalePreVValue);            
                 } else {
-                    LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.multiCoreIdxMod3].template Get<float>();
+                    LocalTensor<T> sumUb = this->softmaxSumBuf[runInfo.multiCoreIdxMod3].template Get<T>();
                     FlashUpdateLastNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64, false, isMlaFullQuant>(
                         vec2ResUb, mmRes, vec2ResUb, expUb, pScaleUb, sumUb, runInfo.vec2S1RealSize, dTemplateAlign64,
                         deSCaleVValue, deSCalePreVValue);
                 }
             } else {
-                LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.multiCoreIdxMod3].template Get<float>();
+                LocalTensor<T> sumUb = this->softmaxSumBuf[runInfo.multiCoreIdxMod3].template Get<T>();
                 FlashUpdateLastNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64, false, isMlaFullQuant>(
                     vec2ResUb, mmRes, vec2ResUb, expUb, pScaleUb, sumUb, runInfo.vec2S1RealSize, dTemplateAlign64,
                     1.0, 1.0);
@@ -1385,7 +1385,7 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec2OnU
     bmm2ResBuf.SetCrossCore();
     if (runInfo.s2LoopCount == runInfo.s2LoopLimit) {
         if (unlikely(runInfo.s2LoopCount == 0)) {
-            LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.multiCoreIdxMod3].template Get<float>();
+            LocalTensor<T> sumUb = this->softmaxSumBuf[runInfo.multiCoreIdxMod3].template Get<T>();
             LastDivNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64, isMlaFullQuant>(
                 vec2ResUb, vec2ResUb, sumUb, runInfo.vec2S1RealSize, (uint16_t)dTemplateAlign64, deSCaleVValue);
         }
@@ -1400,7 +1400,7 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec2NoG
     int64_t vec2CalcSize) {
     LocalTensor<INPUT_T> vec2ResUb = this->stage2OutBuf.template Get<INPUT_T>()[runInfo.taskIdMod2 * vec2CalcSize];
     WaitFlag<HardEvent::MTE3_V>(mte3ToVId[runInfo.taskIdMod2]);
-    LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.multiCoreIdxMod3].template Get<float>();
+    LocalTensor<T> sumUb = this->softmaxSumBuf[runInfo.multiCoreIdxMod3].template Get<T>();
     DivCast<T, INPUT_T, dTemplateAlign64>(vec2ResUb, bmm2ResBuf.template GetTensor<T>(), sumUb, runInfo.vec2S1RealSize);
     bmm2ResBuf.SetCrossCore();
     Bmm2DataCopyOut(runInfo, constInfo, vec2ResUb, 0);
@@ -1511,8 +1511,8 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec2DSp
                 }
             } else {
                 int64_t vec2SumBufOffset = ComputeOffsetForSoftmax(runInfo, vec2S1Idx);
-                LocalTensor<float> sumUb =
-                    this->softmaxSumBuf[runInfo.multiCoreIdxMod3].template Get<float>()[vec2SumBufOffset];
+                LocalTensor<T> sumUb =
+                    this->softmaxSumBuf[runInfo.multiCoreIdxMod3].template Get<T>()[vec2SumBufOffset];
                 if (unlikely(runInfo.s2LoopCount == 1)) {
                     FlashUpdateLastNew<T, INPUT_T, OUTPUT_T, 0xFF, true, isMlaFullQuant>(vec2ResUb, bmm2Ub,
                         vec2ResUb, expUb, expUb, sumUb, runInfo.vec2S1RealSize, constInfo.dBasicBlock,
@@ -1528,8 +1528,8 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec2DSp
         if (unlikely(runInfo.s2LoopCount == runInfo.s2LoopLimit)) {
             if (unlikely(runInfo.s2LoopCount == 0)) {
                 int64_t vec2SumBufOffset = ComputeOffsetForSoftmax(runInfo, vec2S1Idx);
-                LocalTensor<float> sumUb =
-                    this->softmaxSumBuf[runInfo.multiCoreIdxMod3].template Get<float>()[vec2SumBufOffset];
+                LocalTensor<T> sumUb =
+                    this->softmaxSumBuf[runInfo.multiCoreIdxMod3].template Get<T>()[vec2SumBufOffset];
                 LastDivNew<T, INPUT_T, OUTPUT_T, 0xFF, false>(
                     vec2ResUb, vec2ResUb, sumUb, runInfo.vec2S1RealSize, constInfo.dBasicBlock, deSCaleVValue);
             }
@@ -1651,8 +1651,8 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec2(
                     }
                 } else {
                     int64_t vec2SumBufOffset = ComputeOffsetForSoftmax(runInfo, vec2S1Idx);
-                    LocalTensor<float> sumUb =
-                        softmaxSumBuf[runInfo.multiCoreIdxMod3].template Get<float>()[vec2SumBufOffset];
+                    LocalTensor<T> sumUb =
+                        softmaxSumBuf[runInfo.multiCoreIdxMod3].template Get<T>()[vec2SumBufOffset];
                     if (unlikely(runInfo.s2LoopCount == 1)) {
                         FlashUpdateLastNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64, true, isMlaFullQuant>(vec2ResInner, bmm2Ub,
                             vec2ResInner, expUb, expUb, sumUb, runInfo.vec2S1RealSize, dTemplateAlign64, deSCaleVValue,
@@ -1668,8 +1668,8 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec2(
             if (unlikely(runInfo.s2LoopCount == runInfo.s2LoopLimit)) {
                 if (unlikely(runInfo.s2LoopCount == 0)) {
                     int64_t vec2SumBufOffset = ComputeOffsetForSoftmax(runInfo, vec2S1Idx);
-                    LocalTensor<float> sumUb =
-                        softmaxSumBuf[runInfo.multiCoreIdxMod3].template Get<float>()[vec2SumBufOffset];
+                    LocalTensor<T> sumUb =
+                        softmaxSumBuf[runInfo.multiCoreIdxMod3].template Get<T>()[vec2SumBufOffset];
                     LastDivNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64, false>(
                         vec2ResInner, vec2ResInner, sumUb, runInfo.vec2S1RealSize, dTemplateAlign64, deSCaleVValue);
                 }
@@ -1694,7 +1694,7 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::RowInvalid(Loc
             return;
         }
         int64_t vec2MaxBufOffset = ComputeOffsetForSoftmax(runInfo, vec2S1Idx);
-        LocalTensor<float> maxTensor = softmaxMaxBuf[runInfo.multiCoreIdxMod3].template Get<float>()[vec2MaxBufOffset];
+        LocalTensor<T> maxTensor = softmaxMaxBuf[runInfo.multiCoreIdxMod3].template Get<T>()[vec2MaxBufOffset];
         event_t eventIdVToS = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_S));
         SetFlag<HardEvent::V_S>(eventIdVToS);
         WaitFlag<HardEvent::V_S>(eventIdVToS);
@@ -1709,11 +1709,11 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::RowInvalid(Loc
         }
         if (isRowInvalidNeedUpdate) {
             if constexpr (!POST_QUANT) {
-                RowInvalidUpdateVF<float>(vec2ResUb, maxTensor,  runInfo.vec2S1RealSize, constInfo.dSizeV, static_cast<uint32_t>(dSizeAligned64));
+                RowInvalidUpdateVF<T>(vec2ResUb, maxTensor,  runInfo.vec2S1RealSize, constInfo.dSizeV, static_cast<uint32_t>(dSizeAligned64));
             } else {
                 uint32_t dStride = CeilDiv(static_cast<uint32_t>(static_cast<uint32_t>(dSizeAligned64)), sizeof(float));
                 uint16_t dSize = CeilDiv(constInfo.dSizeV, sizeof(float)); // w8后量化后的处理长度
-                RowInvalidUpdateVF<float>(*((LocalTensor<float>*)&vec2ResUb), maxTensor, runInfo.vec2S1RealSize, dSize, dStride);
+                RowInvalidUpdateVF<T>(*((LocalTensor<T>*)&vec2ResUb), maxTensor, runInfo.vec2S1RealSize, dSize, dStride);
             }
         }
     }
@@ -1930,7 +1930,7 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::Bmm2DataCopyOu
         if constexpr (implMode == ImplModeEnum::AA_INVALID_LINE_HIGH_PRECISION || IsSameType<INPUT_T, float>::value) {
             if (this->tilingData->inputParamsRegbase.implMode == static_cast<uint8_t>(ImplModeEnum::AA_INVALID_LINE_HIGH_PRECISION)) {
                 int64_t vec2MaxBufOffset = ComputeOffsetForSoftmax(runInfo, vec2S1Idx);
-                LocalTensor<float> maxTensor = softmaxMaxBuf[runInfo.multiCoreIdxMod3].template Get<float>()[vec2MaxBufOffset];
+                LocalTensor<T> maxTensor = softmaxMaxBuf[runInfo.multiCoreIdxMod3].template Get<T>()[vec2MaxBufOffset];
                 InvalidLineUpdate<T, dTemplateAlign64>(vec2ResUb, vec2ResUb, maxTensor, runInfo.vec2S1RealSize,
                     dSizeAligned64, this->negativeFloatScalar, 0.0);
             }

@@ -383,8 +383,8 @@ protected:
     GM_ADDR prefixNAddr;
     GlobalTensor<INPUT_T> valueGm;
     GlobalTensor<INPUT_T> attentionOutGm;
-    GlobalTensor<float> softmaxMaxGm;
-    GlobalTensor<float> softmaxSumGm;
+    GlobalTensor<half> softmaxMaxGm;
+    GlobalTensor<half> softmaxSumGm;
     GlobalTensor<uint8_t> dropMaskGm;
     GlobalTensor<uint8_t> attenMaskGmInt;
     GlobalTensor<float> sinkGm;
@@ -2240,7 +2240,7 @@ FlashAttentionScoreS1s2Bn2gs1SameAB<implMode, layOutType, hasPse, hasAtten, hasD
                 static_cast<int64_t>(fp32BaseSize);
         }
         int64_t calculateSize = extraInfo.s1RealSize * fp32BaseSize;
-        LocalTensor<float> maxTensor = this->softmaxMaxBuf.template Get<float>();
+        LocalTensor<T> maxTensor = this->softmaxMaxBuf.template Get<T>();
         event_t eventIdVToMte3 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_MTE3));
         if (this->softmaxReduceSize == 1) {
             LocalTensor<T> softmaxTemp = this->softmaxTempBuf.template Get<T>();
@@ -2522,7 +2522,7 @@ FlashAttentionScoreS1s2Bn2gs1SameAB<implMode, layOutType, hasPse, hasAtten, hasD
     int32_t loop = d2SizeAlign16 / repeatMaxSize;
     int32_t remain = d2SizeAlign16 % repeatMaxSize;
 
-    LocalTensor<float> sumUb = softmaxSumBuf[extraInfo.multiCoreInnerIdxMod2].template Get<float>();
+    LocalTensor<T> sumUb = softmaxSumBuf[extraInfo.multiCoreInnerIdxMod2].template Get<T>();
     int32_t calcSize = sumUb.GetSize();
     // 用optionalInputQueue的queue
     AscendC::PipeBarrier<PIPE_V>();
@@ -2540,7 +2540,7 @@ FlashAttentionScoreS1s2Bn2gs1SameAB<implMode, layOutType, hasPse, hasAtten, hasD
         }
     } else {
         if constexpr (IsSameType<T, half>::value) {
-            LocalTensor<float> commonBufTensor = this->commonTBuf.template Get<float>();
+            LocalTensor<T> commonBufTensor = this->commonTBuf.template Get<T>();
             Copy(commonBufTensor, sumUb, 64, calcSize / 64, {2, 1, 16, 8});
             Copy(commonBufTensor[8], sumUb, 64, calcSize / 64, {2, 1, 16, 8});
             LocalTensor<T> sumCastTensor =
@@ -2656,7 +2656,7 @@ __aicore__ inline void
 FlashAttentionScoreS1s2Bn2gs1SameAB<implMode, layOutType, hasPse, hasAtten, hasDrop, INPUT_T, T,
                                 bmm1Format, mmPolicyType, hasRope>::SoftmaxDataCopyOut(SplitSameABExtraInfo &extraInfo)
 {
-    LocalTensor<float> sumTensor = this->softmaxSumBuf[extraInfo.multiCoreInnerIdxMod2].template Get<float>();
+    LocalTensor<T> sumTensor = this->softmaxSumBuf[extraInfo.multiCoreInnerIdxMod2].template Get<T>();
     if (this->softmaxReduceSize == 1) {
         LocalTensor<T> softmaxTemp = this->softmaxTempBuf.template Get<T>();
         Brcb(softmaxTemp, sumTensor, (extraInfo.s1RealSize + 7) / 8, {1, 8});

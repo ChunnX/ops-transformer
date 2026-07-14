@@ -281,8 +281,8 @@ protected:
     GM_ADDR prefixNAddr;
     GlobalTensor<INPUT_T> valueGm;
     GlobalTensor<INPUT_T> attentionOutGm;
-    GlobalTensor<float> softmaxMaxGm;
-    GlobalTensor<float> softmaxSumGm;
+    GlobalTensor<half> softmaxMaxGm;
+    GlobalTensor<half> softmaxSumGm;
     GlobalTensor<uint8_t> dropMaskGm;
     GlobalTensor<uint8_t> attenMaskGmInt;
     GlobalTensor<float> sinkGm;
@@ -1093,8 +1093,8 @@ FlashAttentionScoreBn2gs1s2B<FA_BN2GS1S2B_FUNCTION_PARAMS_TEMPLATE>::ProcessVec2
         // 获取缓存bmm2的计算结果
         LocalTensor<T> bmm2ResPingUb = this->stage1PingBuf.template Get<T>();
         LocalTensor<T> bmm2ResPongUb = this->stage1PongBuf.template Get<T>();
-        LocalTensor<T> softmaxSumPingUb = this->pseTBuf.template Get<float>();
-        LocalTensor<T> softmaxSumPongUb = this->vecOut.template Get<float>();
+        LocalTensor<T> softmaxSumPingUb = this->pseTBuf.template Get<T>();
+        LocalTensor<T> softmaxSumPongUb = this->vecOut.template Get<T>();
 
         // pseTBuf和vecOut同时作为Softmax输入和最后attention out输出的ub
         LocalTensor<INPUT_T> attentionOutPingUb = this->pseTBuf.template Get<INPUT_T>();
@@ -1590,14 +1590,14 @@ __aicore__ inline void FlashAttentionScoreBn2gs1s2B<FA_BN2GS1S2B_FUNCTION_PARAMS
         int64_t gmOffset = bOffset + biN2GOffset + vS1Offset;
         int64_t calculateSize =
             Min(extraInfo.softmaxCopyOutSize * fp32BaseSize, this->s1Size * fp32BaseSize - extraInfo.softmaxOutOffset);
-        LocalTensor<float> sumUbStart;
-        LocalTensor<float> maxUbStart;
+        LocalTensor<T> sumUbStart;
+        LocalTensor<T> maxUbStart;
         if (extraInfo.boIdx % 2 == 0) {
-            sumUbStart = this->softmaxSumPingBuf.template Get<float>()[0];
-            maxUbStart = this->softmaxMaxPingBuf.template Get<float>()[0];
+            sumUbStart = this->softmaxSumPingBuf.template Get<T>()[0];
+            maxUbStart = this->softmaxMaxPingBuf.template Get<T>()[0];
         } else {
-            sumUbStart = this->softmaxSumPongBuf.template Get<float>()[0];
-            maxUbStart = this->softmaxMaxPongBuf.template Get<float>()[0];
+            sumUbStart = this->softmaxSumPongBuf.template Get<T>()[0];
+            maxUbStart = this->softmaxMaxPongBuf.template Get<T>()[0];
         }
 
         event_t eventIdVToMte3 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_MTE3));

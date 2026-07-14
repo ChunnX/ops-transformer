@@ -138,8 +138,8 @@ const std::array<const aclTensor *, 4> FlashAttentionScore(
         kvStartIdxOptionalTensor = executor->AllocTensor(DataType::DT_INT64, Format::FORMAT_ND, Format::FORMAT_ND);
     }
 
-    auto softmaxMaxOut = executor->AllocTensor(DataType::DT_FLOAT, Format::FORMAT_ND, Format::FORMAT_ND);
-    auto softmaxSumOut = executor->AllocTensor(DataType::DT_FLOAT, Format::FORMAT_ND, Format::FORMAT_ND);
+    auto softmaxMaxOut = executor->AllocTensor(DataType::DT_FLOAT16, Format::FORMAT_ND, Format::FORMAT_ND);
+    auto softmaxSumOut = executor->AllocTensor(DataType::DT_FLOAT16, Format::FORMAT_ND, Format::FORMAT_ND);
     DataType outputDtype = query->GetDataType();
     if (query->GetDataType() == DataType::DT_FLOAT8_E4M3FN ||
         query->GetDataType() == DataType::DT_FLOAT8_E5M2 ||

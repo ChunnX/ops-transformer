@@ -120,7 +120,7 @@ __aicore__ inline void ProcessVec1Vf(
     const LocalTensor<T>& maxTensor, const LocalTensor<T>& inMaxTensor, const LocalTensor<T>& sharedTmpBuffer,
     TBuf<> *vselrIndexesBuf, const uint16_t m, const uint32_t originN, const T scale, const T minValue)
 {
-    static_assert(IsSameType<T, float>::value, "VF mul_sel_softmaxflashv2_cast_nz, T must be float");
+    static_assert(IsSameType<T, half>::value, "VF mul_sel_softmaxflashv2_cast_nz, T must be half");
     static_assert(
         (IsSameType<T2, half>::value || IsSameType<T2, bfloat16_t>::value || IsSameType<T2, hifloat8_t>::value),
         "VF mul_sel_softmaxflashv2_cast_nz, T2 must be half, bfloat16 or hifloat8");
