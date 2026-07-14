@@ -21,50 +21,38 @@ public:
     {
         this->Input("x")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_INT8,          ge::DT_INT8,          ge::DT_INT8,
-                       ge::DT_HIFLOAT8,      ge::DT_HIFLOAT8,      ge::DT_HIFLOAT8,
-                       ge::DT_FLOAT8_E5M2,   ge::DT_FLOAT8_E5M2,   ge::DT_FLOAT8_E5M2,
-                       ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN,
-                       ge::DT_FLOAT8_E5M2,   ge::DT_FLOAT8_E5M2,   ge::DT_FLOAT8_E5M2,
-                       ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN,
-                       ge::DT_FLOAT4_E2M1,   ge::DT_FLOAT4_E2M1,   ge::DT_FLOAT4_E2M1,
-                       ge::DT_FLOAT4_E1M2,   ge::DT_FLOAT4_E1M2,   ge::DT_FLOAT4_E1M2,
-                       ge::DT_FLOAT4_E2M1,   ge::DT_FLOAT4_E2M1,   ge::DT_FLOAT4_E2M1,
-                       ge::DT_FLOAT4_E1M2,   ge::DT_FLOAT4_E1M2,   ge::DT_FLOAT4_E1M2})
+            .DataType({ge::DT_INT8,          ge::DT_INT8,          ge::DT_INT8,          ge::DT_HIFLOAT8,
+                       ge::DT_HIFLOAT8,      ge::DT_HIFLOAT8,      ge::DT_FLOAT8_E5M2,   ge::DT_FLOAT8_E5M2,
+                       ge::DT_FLOAT8_E5M2,   ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN,
+                       ge::DT_FLOAT8_E5M2,   ge::DT_FLOAT8_E5M2,   ge::DT_FLOAT8_E5M2,   ge::DT_FLOAT8_E4M3FN,
+                       ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT4_E2M1,   ge::DT_FLOAT4_E2M1,
+                       ge::DT_FLOAT4_E2M1,   ge::DT_FLOAT4_E1M2,   ge::DT_FLOAT4_E1M2,   ge::DT_FLOAT4_E1M2,
+                       ge::DT_FLOAT4_E2M1,   ge::DT_FLOAT4_E2M1,   ge::DT_FLOAT4_E2M1,   ge::DT_FLOAT4_E1M2,
+                       ge::DT_FLOAT4_E1M2,   ge::DT_FLOAT4_E1M2})
             .FormatList({ge::FORMAT_ND});
         this->Input("scales")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT,       ge::DT_FLOAT,       ge::DT_FLOAT,
-                       ge::DT_FLOAT,       ge::DT_FLOAT,       ge::DT_FLOAT,
-                       ge::DT_FLOAT,       ge::DT_FLOAT,       ge::DT_FLOAT,
-                       ge::DT_FLOAT,       ge::DT_FLOAT,       ge::DT_FLOAT,
-                       ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0,
-                       ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0,
-                       ge::DT_FLOAT,       ge::DT_FLOAT,       ge::DT_FLOAT,
-                       ge::DT_FLOAT,       ge::DT_FLOAT,       ge::DT_FLOAT,
-                       ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0,
-                       ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0})
+            .DataType(
+                {ge::DT_FLOAT,       ge::DT_FLOAT,       ge::DT_FLOAT,       ge::DT_FLOAT,       ge::DT_FLOAT,
+                 ge::DT_FLOAT,       ge::DT_FLOAT,       ge::DT_FLOAT,       ge::DT_FLOAT,       ge::DT_FLOAT,
+                 ge::DT_FLOAT,       ge::DT_FLOAT,       ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0,
+                 ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0, ge::DT_FLOAT,       ge::DT_FLOAT,
+                 ge::DT_FLOAT,       ge::DT_FLOAT,       ge::DT_FLOAT,       ge::DT_FLOAT,       ge::DT_FLOAT8_E8M0,
+                 ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0})
             .FormatList({ge::FORMAT_ND});
 
         this->Output("out_put")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT,
-                       ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT,
-                       ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT,
-                       ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT,
-                       ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT,
-                       ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT,
-                       ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT,
-                       ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT,
-                       ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT,
-                       ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT})
+            .DataType({ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT, ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT,
+                       ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT, ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT,
+                       ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT, ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT,
+                       ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT, ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT,
+                       ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT, ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT})
             .FormatList({ge::FORMAT_ND});
 
         this->Attr("group").AttrType(REQUIRED).String();
         this->Attr("reduce_op").AttrType(OPTIONAL).String("sum");
-        this->Attr("output_dtype")
-            .AttrType(OPTIONAL)
-            .Int(static_cast<int64_t>(ge::DT_BF16)); // 默认值为bf16
+        this->Attr("output_dtype").AttrType(OPTIONAL).Int(static_cast<int64_t>(ge::DT_BF16)); // 默认值为bf16
         this->Attr("world_size").AttrType(REQUIRED).Int();
 
         // ascend950 AI处理器定义OpAICoreConfig变量，定制化配置参数

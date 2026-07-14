@@ -49,16 +49,17 @@ static ge::graphStatus CheckAttrsInfo(const gert::TilingContext *context, Tiling
     // 校验reduce_op的类型是否为sum
     const char *reduceOpPtr = attrs->GetAttrPointer<char>(REDUCE_OP_INDEX);
     OP_TILING_CHECK(reduceOpPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "reduce_op"), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(
-        std::strcmp(reduceOpPtr, REDUCE_OP_TYPE.c_str()) != 0,
-        OP_LOGE_FOR_INVALID_VALUE(nodeName, "reduce_op", reduceOpPtr, REDUCE_OP_TYPE.c_str()),
-        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(std::strcmp(reduceOpPtr, REDUCE_OP_TYPE.c_str()) != 0,
+                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "reduce_op", reduceOpPtr, REDUCE_OP_TYPE.c_str()),
+                    return ge::GRAPH_FAILED);
     // 校验output_dtype
     const int64_t *outputTypePtr = attrs->GetAttrPointer<int64_t>(OUTPUT_DTYPE_INDEX);
-    OP_TILING_CHECK(outputTypePtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "outputType"), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(outputTypePtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "outputType"),
+                    return ge::GRAPH_FAILED);
     ge::DataType outputType = static_cast<ge::DataType>(*outputTypePtr);
     OP_TILING_CHECK(!IsContains(OUTPUT_DTYPE_LIST, outputType),
-                    OP_LOGE_FOR_INVALID_DTYPE(nodeName, "outputType", Ops::Base::ToString(outputType).c_str(), "bfloat16/float/float16"),
+                    OP_LOGE_FOR_INVALID_DTYPE(nodeName, "outputType", Ops::Base::ToString(outputType).c_str(),
+                                              "bfloat16/float/float16"),
                     return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -78,14 +79,14 @@ static ge::graphStatus SetRankSize(const gert::TilingContext *context, TilingRun
     if (rankSizePtr == nullptr || *rankSizePtr == RANK_SIZE_DEFAULT) {
         int64_t rankSize = 0;
         OP_TILING_CHECK(!mc2tiling::GetRankSize(nodeName, runInfo.groupPtr, rankSize),
-                        OP_LOGE(nodeName, "Get rankSize failed."),
-                        return ge::GRAPH_FAILED);
+                        OP_LOGE(nodeName, "Get rankSize failed."), return ge::GRAPH_FAILED);
         runInfo.rankSize = rankSize;
     } else {
         runInfo.rankSize = *rankSizePtr;
     }
     OP_TILING_CHECK(std::find(RANK_SIZE_LIST.begin(), RANK_SIZE_LIST.end(), runInfo.rankSize) >= RANK_SIZE_LIST.end(),
-                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "rankSize", std::to_string(runInfo.rankSize).c_str(), VectorToString(RANK_SIZE_LIST).c_str()),
+                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "rankSize", std::to_string(runInfo.rankSize).c_str(),
+                                              VectorToString(RANK_SIZE_LIST).c_str()),
                     return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -109,11 +110,14 @@ static bool SetQuantMode(const gert::TilingContext *context, TilingRunInfo &runI
     } else if ((xDtype == ge::DT_FLOAT8_E4M3FN || xDtype == ge::DT_FLOAT8_E5M2) && scalesDtype == ge::DT_FLOAT8_E8M0) {
         quantMode = MX_QUANT_MOD;
     }
-    OP_TILING_CHECK(!static_cast<bool>(quantMode),
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "quantMode",
-                        ("x=" + std::string(Ops::Base::ToString(xDtype).c_str()) + ", scales=" + std::string(Ops::Base::ToString(scalesDtype).c_str())).c_str(),
-                        "The value of quantMode must match a known quantization mode (TG or MX)"),
-                    return false);
+    OP_TILING_CHECK(
+        !static_cast<bool>(quantMode),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "quantMode",
+                                              ("x=" + std::string(Ops::Base::ToString(xDtype).c_str()) +
+                                               ", scales=" + std::string(Ops::Base::ToString(scalesDtype).c_str()))
+                                                  .c_str(),
+                                              "The value of quantMode must match a known quantization mode (TG or MX)"),
+        return false);
     // 设置quantMode
     runInfo.quantMode = quantMode;
     return true;
@@ -133,21 +137,24 @@ static bool CheckTensorDataType(const gert::TilingContext *context, TilingRunInf
     OP_TILING_CHECK(xDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "x"), return false);
     ge::DataType xDtype = context->GetInputDesc(X_INDEX)->GetDataType();
     OP_TILING_CHECK(!IsContains(X_DTYPE_LIST, xDtype),
-                    OP_LOGE_FOR_INVALID_DTYPE(nodeName, "x", Ops::Base::ToString(xDtype).c_str(), "int8/hifloat8/float8_e4m3fn/float8_e5m2"),
+                    OP_LOGE_FOR_INVALID_DTYPE(nodeName, "x", Ops::Base::ToString(xDtype).c_str(),
+                                              "int8/hifloat8/float8_e4m3fn/float8_e5m2"),
                     return false);
     // 校验scales的dtype
     auto scalesDesc = context->GetInputDesc(SCALES_INDEX);
     OP_TILING_CHECK(scalesDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "scales"), return false);
     ge::DataType scalesDtype = context->GetInputDesc(SCALES_INDEX)->GetDataType();
-    OP_TILING_CHECK(!IsContains(SCALES_DTYPE_LIST, scalesDtype),
-                    OP_LOGE_FOR_INVALID_DTYPE(nodeName, "scales", Ops::Base::ToString(scalesDtype).c_str(), "float/float8_e8m0"),
-                    return false);
+    OP_TILING_CHECK(
+        !IsContains(SCALES_DTYPE_LIST, scalesDtype),
+        OP_LOGE_FOR_INVALID_DTYPE(nodeName, "scales", Ops::Base::ToString(scalesDtype).c_str(), "float/float8_e8m0"),
+        return false);
     // 校验output的dtype
     auto outputDesc = context->GetOutputDesc(OUTPUT_INDEX);
     OP_TILING_CHECK(outputDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "output"), return false);
     ge::DataType outputType = outputDesc->GetDataType();
     OP_TILING_CHECK(!IsContains(OUTPUT_DTYPE_LIST, outputType),
-                    OP_LOGE_FOR_INVALID_DTYPE(nodeName, "output", Ops::Base::ToString(outputType).c_str(), "float16/bfloat16/float"),
+                    OP_LOGE_FOR_INVALID_DTYPE(nodeName, "output", Ops::Base::ToString(outputType).c_str(),
+                                              "float16/bfloat16/float"),
                     return false);
     // 设置量化模式
     OP_TILING_CHECK(!SetQuantMode(context, runInfo), OP_LOGE(nodeName, "get quantMode error."), return false);
@@ -207,25 +214,27 @@ static bool CheckXShapeValid(const gert::TilingContext *context, TilingRunInfo &
     // 校验x是否为空tensor
     OP_TILING_CHECK(emptyTensor,
                     OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "x",
-                        Ops::Base::ToString(xShape->GetStorageShape()).c_str(),
-                        "The shape of x must have all dimensions positive (>=1)"),
+                                                          Ops::Base::ToString(xShape->GetStorageShape()).c_str(),
+                                                          "The shape of x must have all dimensions positive (>=1)"),
                     return false);
 
     // 校验BS是否被worldSize整除
-    const char* dimDesc = (xDimNum == THREE_DIMS) ? "B*S" : "BS"; // 报错信息二维时为BS, 三维时为B*S
+    const char *dimDesc = (xDimNum == THREE_DIMS) ? "B*S" : "BS"; // 报错信息二维时为BS, 三维时为B*S
     OP_TILING_CHECK(xValueBS % runInfo.rankSize != 0,
                     OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "x",
-                        ("shape=" + Ops::Base::ToString(xShape->GetStorageShape()) + ", " + std::string(dimDesc) + "=" + std::to_string(xValueBS)).c_str(),
-                        (std::string(dimDesc) + " must be divisible by world_size (" + std::to_string(runInfo.rankSize) + ")").c_str()),
+                                                          ("shape=" + Ops::Base::ToString(xShape->GetStorageShape()) +
+                                                           ", " + std::string(dimDesc) + "=" + std::to_string(xValueBS))
+                                                              .c_str(),
+                                                          (std::string(dimDesc) + " must be divisible by world_size (" +
+                                                           std::to_string(runInfo.rankSize) + ")")
+                                                              .c_str()),
                     return false);
 
     // 校验H是否在[1024, 8192]之间，且能被128整除
-    OP_TILING_CHECK(
-        xValueH < H_VALUE_LOWER_LIMIT || xValueH > H_VALUE_UPPER_LIMIT || xValueH % TG_QUANT_NUMBER != 0,
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "x",
-            std::to_string(xValueH).c_str(),
-            "H dimension must be in [1024, 8192] and 128 multiple"),
-        return false);
+    OP_TILING_CHECK(xValueH < H_VALUE_LOWER_LIMIT || xValueH > H_VALUE_UPPER_LIMIT || xValueH % TG_QUANT_NUMBER != 0,
+                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "x", std::to_string(xValueH).c_str(),
+                                                          "H dimension must be in [1024, 8192] and 128 multiple"),
+                    return false);
     return true;
 }
 
@@ -235,21 +244,20 @@ static bool CheckXShapeValid(const gert::TilingContext *context, TilingRunInfo &
  * @param runInfo: 封装的doTiling所需要的参数
  * @return 计算出的正确scales维度向量
  */
-static std::vector<uint64_t> CalculateExpectedScalesShape(const gert::TilingContext *context, 
-                                                          TilingRunInfo &runInfo)
+static std::vector<uint64_t> CalculateExpectedScalesShape(const gert::TilingContext *context, TilingRunInfo &runInfo)
 {
     const gert::StorageShape *xShape = context->GetInputShape(X_INDEX);
-    
+
     // 获取x的维度和值
     size_t xDimNum = xShape->GetStorageShape().GetDimNum();
     std::vector<uint64_t> expectedScalesDims;
-    
+
     // 根据x的维度构建基础维度
     if (xDimNum == TWO_DIMS) {
         // x.shape = (BS, H)
         uint64_t bs = xShape->GetStorageShape().GetDim(DIM_ZERO);
         uint64_t h = xShape->GetStorageShape().GetDim(DIM_ONE);
-        
+
         if (runInfo.quantMode == TG_QUANT_MOD) {
             // TG量化: scales.shape(BS, H/128)
             expectedScalesDims.push_back(bs);
@@ -265,7 +273,7 @@ static std::vector<uint64_t> CalculateExpectedScalesShape(const gert::TilingCont
         uint64_t b = xShape->GetStorageShape().GetDim(DIM_ZERO);
         uint64_t s = xShape->GetStorageShape().GetDim(DIM_ONE);
         uint64_t h = xShape->GetStorageShape().GetDim(DIM_TWO);
-        
+
         if (runInfo.quantMode == TG_QUANT_MOD) {
             // TG量化: scales.shape(B, S, H/128)
             expectedScalesDims.push_back(b);
@@ -279,7 +287,7 @@ static std::vector<uint64_t> CalculateExpectedScalesShape(const gert::TilingCont
             expectedScalesDims.push_back(MX_SCALE_LAST_DIM);
         }
     }
-    
+
     return expectedScalesDims;
 }
 
@@ -289,7 +297,8 @@ static std::string FormatShape(const std::vector<uint64_t> &dims)
     std::stringstream ss;
     ss << "[";
     for (size_t i = 0; i < dims.size(); ++i) {
-        if (i > 0) ss << ", ";
+        if (i > 0)
+            ss << ", ";
         ss << dims[i];
     }
     ss << "]";
@@ -303,26 +312,25 @@ static std::string FormatShape(const std::vector<uint64_t> &dims)
  * @param runInfo: 封装的doTiling所需要的参数（包含quantMode信息）
  * @return true: 校验通过, false: 校验失败
  */
-static bool CheckScalesValid(const gert::TilingContext *context, 
-                             const std::vector<uint64_t> &expectedScalesDims,
+static bool CheckScalesValid(const gert::TilingContext *context, const std::vector<uint64_t> &expectedScalesDims,
                              const TilingRunInfo &runInfo)
 {
     const char *nodeName = context->GetNodeName();
     const gert::StorageShape *scalesShape = context->GetInputShape(SCALES_INDEX);
-    
+
     // 将quantMode转换为可读字符串
-    const char* quantModeStr = "";
+    const char *quantModeStr = "";
     if (runInfo.quantMode == TG_QUANT_MOD) {
         quantModeStr = "TG";
     } else if (runInfo.quantMode == MX_QUANT_MOD) {
         quantModeStr = "MX";
     }
-    
+
     // 检查维度数量是否一致
     size_t actualDimNum = scalesShape->GetStorageShape().GetDimNum();
     if (actualDimNum != expectedScalesDims.size()) {
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "scales",
-            FormatShape(expectedScalesDims).c_str(),
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            nodeName, "scales", FormatShape(expectedScalesDims).c_str(),
             ("The shape dim of scales must be " + std::to_string(expectedScalesDims.size()) + "D").c_str());
         return false;
     }
@@ -332,8 +340,8 @@ static bool CheckScalesValid(const gert::TilingContext *context,
         uint64_t expectedDim = expectedScalesDims[i];
         uint64_t actualDim = scalesShape->GetStorageShape().GetDim(i);
         if (expectedDim != actualDim) {
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "scales",
-                std::to_string(actualDim).c_str(),
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                nodeName, "scales", std::to_string(actualDim).c_str(),
                 ("The shape of scales dim " + std::to_string(i) + " must be " + std::to_string(expectedDim)).c_str());
             return false;
         }
@@ -383,8 +391,8 @@ static bool CheckInputTensorDim(const gert::TilingContext *context, TilingRunInf
 /**
  * @brief 检查输出维度大小的合法性
  */
-static bool CheckOutputDimSize(const gert::TilingContext *context, size_t outputDim, size_t xDimNum,
-                               OpType opType, const char *nodeName)
+static bool CheckOutputDimSize(const gert::TilingContext *context, size_t outputDim, size_t xDimNum, OpType opType,
+                               const char *nodeName)
 {
     (void)context; // Reserved for future extension
     bool invalidOutputDim = false;
@@ -392,14 +400,16 @@ static bool CheckOutputDimSize(const gert::TilingContext *context, size_t output
         // 对于quant_all_reduce，输出维度必须与与输入维度一致, 必须是2维或3维
         invalidOutputDim = outputDim != xDimNum;
         OP_TILING_CHECK(invalidOutputDim,
-                        OP_LOGE_FOR_INVALID_SHAPEDIM(nodeName, "output", (std::to_string(outputDim) + "D").c_str(), (std::to_string(xDimNum) + "D").c_str()),
+                        OP_LOGE_FOR_INVALID_SHAPEDIM(nodeName, "output", (std::to_string(outputDim) + "D").c_str(),
+                                                     (std::to_string(xDimNum) + "D").c_str()),
                         return false);
     } else {
         // 对于quant_reduce_scatter，输出维度必须是2维
         invalidOutputDim = outputDim != TWO_DIMS;
-        OP_TILING_CHECK(invalidOutputDim,
-                        OP_LOGE_FOR_INVALID_SHAPEDIM(nodeName, "output", (std::to_string(outputDim) + "D").c_str(), "2D"),
-                        return false);
+        OP_TILING_CHECK(
+            invalidOutputDim,
+            OP_LOGE_FOR_INVALID_SHAPEDIM(nodeName, "output", (std::to_string(outputDim) + "D").c_str(), "2D"),
+            return false);
     }
     return true;
 }
@@ -415,10 +425,10 @@ static bool CheckAllReduceOutputShape(const gert::TilingContext *context, const 
     uint64_t outputValueTwo = outputShape->GetStorageShape().GetDim(DIM_ONE);
     uint64_t xValueOne = context->GetInputShape(X_INDEX)->GetStorageShape().GetDim(DIM_ZERO);
     uint64_t xValueTwo = context->GetInputShape(X_INDEX)->GetStorageShape().GetDim(DIM_ONE);
-    
+
     // 对于quant_all_reduce算子，output.shape必须等于x.shape
     bool invalidShape = (xValueOne != outputValueOne) || (xValueTwo != outputValueTwo); // 校验前两维的大小
-    
+
     // quant_all_reduce算子支持三维，output可能需要校验第3维
     if (outputDim == THREE_DIMS) {
         uint64_t outputValueThree = outputShape->GetStorageShape().GetDim(DIM_TWO);
@@ -426,38 +436,49 @@ static bool CheckAllReduceOutputShape(const gert::TilingContext *context, const 
         OP_LOGI(nodeName, "output dim2 is %lu, x dim2 is %lu", outputValueThree, xValueThree);
         invalidShape = invalidShape || (xValueThree != outputValueThree); // 校验第三维的大小
         OP_TILING_CHECK(invalidShape,
-                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "output",
-                            ("(" + std::to_string(outputValueOne) + ", " + std::to_string(outputValueTwo) + ", " + std::to_string(outputValueThree) + ")").c_str(),
-                            ("The shape of output must match x shape (" + std::to_string(xValueOne) + ", " + std::to_string(xValueTwo) + ", " + std::to_string(xValueThree) + ")").c_str()),
+                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                            nodeName, "output",
+                            ("(" + std::to_string(outputValueOne) + ", " + std::to_string(outputValueTwo) + ", " +
+                             std::to_string(outputValueThree) + ")")
+                                .c_str(),
+                            ("The shape of output must match x shape (" + std::to_string(xValueOne) + ", " +
+                             std::to_string(xValueTwo) + ", " + std::to_string(xValueThree) + ")")
+                                .c_str()),
                         return false);
     } else {
-        OP_TILING_CHECK(invalidShape,
-                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "output",
-                            ("(" + std::to_string(outputValueOne) + ", " + std::to_string(outputValueTwo) + ")").c_str(),
-                            ("The shape of output must match x shape (" + std::to_string(xValueOne) + ", " + std::to_string(xValueTwo) + ")").c_str()),
-                        return false);
+        OP_TILING_CHECK(
+            invalidShape,
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                nodeName, "output",
+                ("(" + std::to_string(outputValueOne) + ", " + std::to_string(outputValueTwo) + ")").c_str(),
+                ("The shape of output must match x shape (" + std::to_string(xValueOne) + ", " +
+                 std::to_string(xValueTwo) + ")")
+                    .c_str()),
+            return false);
     }
-    
+
     return true;
 }
 
 /**
  * @brief 检查quant_reduce_scatter的输出形状, 当输入x为3D时
  */
-static bool CheckReduceScatter3DShape(const gert::TilingContext *context,
-                                      uint64_t outputValueOne, uint64_t outputValueTwo,
-                                      uint64_t xValueOne, uint64_t xValueTwo,
+static bool CheckReduceScatter3DShape(const gert::TilingContext *context, uint64_t outputValueOne,
+                                      uint64_t outputValueTwo, uint64_t xValueOne, uint64_t xValueTwo,
                                       TilingRunInfo &runInfo, const char *nodeName)
 {
     // 若X为3维，则要对b,s进行合轴，再与output判断是否合法
     uint64_t xValueBS = xValueOne * xValueTwo;
     uint64_t xValueThree = context->GetInputShape(X_INDEX)->GetStorageShape().GetDim(DIM_TWO);
     bool invalidShape = xValueBS / runInfo.rankSize != outputValueOne; // 校验bs轴
-    invalidShape = invalidShape || (xValueThree != outputValueTwo); // 校验h轴
+    invalidShape = invalidShape || (xValueThree != outputValueTwo);    // 校验h轴
     OP_TILING_CHECK(invalidShape,
-                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "output",
+                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                        nodeName, "output",
                         ("(" + std::to_string(outputValueOne) + ", " + std::to_string(outputValueTwo) + ")").c_str(),
-                        ("The shape of output must match x shape/rankSize (BS=" + std::to_string(xValueBS) + "/" + std::to_string(runInfo.rankSize) + ", H=" + std::to_string(xValueThree) + ")").c_str()),
+                        ("The shape of output must match x shape/rankSize (BS=" + std::to_string(xValueBS) + "/" +
+                         std::to_string(runInfo.rankSize) + ", H=" + std::to_string(xValueThree) + ")")
+                            .c_str()),
                     return false);
     return true;
 }
@@ -465,17 +486,19 @@ static bool CheckReduceScatter3DShape(const gert::TilingContext *context,
 /**
  * @brief 检查quant_reduce_scatter的的输出形状, 当输入x为2D时
  */
-static bool CheckReduceScatter2DShape(uint64_t outputValueOne, uint64_t outputValueTwo,
-                                      uint64_t xValueOne, uint64_t xValueTwo,
-                                      TilingRunInfo &runInfo, const char *nodeName)
+static bool CheckReduceScatter2DShape(uint64_t outputValueOne, uint64_t outputValueTwo, uint64_t xValueOne,
+                                      uint64_t xValueTwo, TilingRunInfo &runInfo, const char *nodeName)
 {
     // 若X为2维, 逐个校验即可
     bool invalidShape = xValueOne / runInfo.rankSize != outputValueOne; // 校验bs轴
-    invalidShape = invalidShape || (xValueTwo != outputValueTwo); // 校验h轴
+    invalidShape = invalidShape || (xValueTwo != outputValueTwo);       // 校验h轴
     OP_TILING_CHECK(invalidShape,
-                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "output",
+                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                        nodeName, "output",
                         ("(" + std::to_string(outputValueOne) + ", " + std::to_string(outputValueTwo) + ")").c_str(),
-                        ("The shape of output must match x shape/rankSize (BS=" + std::to_string(xValueOne) + "/" + std::to_string(runInfo.rankSize) + ", H=" + std::to_string(xValueTwo) + ")").c_str()),
+                        ("The shape of output must match x shape/rankSize (BS=" + std::to_string(xValueOne) + "/" +
+                         std::to_string(runInfo.rankSize) + ", H=" + std::to_string(xValueTwo) + ")")
+                            .c_str()),
                     return false);
     return true;
 }
@@ -484,21 +507,21 @@ static bool CheckReduceScatter2DShape(uint64_t outputValueOne, uint64_t outputVa
  * @brief 检查quant_reduce_scatter的输出形状
  */
 static bool CheckReduceScatterOutputShape(const gert::TilingContext *context, const gert::StorageShape *outputShape,
-                                          size_t outputDim, size_t xDimNum, TilingRunInfo &runInfo, const char *nodeName)
+                                          size_t outputDim, size_t xDimNum, TilingRunInfo &runInfo,
+                                          const char *nodeName)
 {
     (void)outputDim; // Reserved for future extension
     uint64_t outputValueOne = outputShape->GetStorageShape().GetDim(DIM_ZERO);
     uint64_t outputValueTwo = outputShape->GetStorageShape().GetDim(DIM_ONE);
     uint64_t xValueOne = context->GetInputShape(X_INDEX)->GetStorageShape().GetDim(DIM_ZERO);
     uint64_t xValueTwo = context->GetInputShape(X_INDEX)->GetStorageShape().GetDim(DIM_ONE);
-    
+
     // 对于quant_reduce_scatter算子, 输出output一定为2维，判断x维度大小决定是否b,s合轴
     if (xDimNum == THREE_DIMS) {
-        return CheckReduceScatter3DShape(context, outputValueOne, outputValueTwo, 
-                                         xValueOne, xValueTwo, runInfo, nodeName);
+        return CheckReduceScatter3DShape(context, outputValueOne, outputValueTwo, xValueOne, xValueTwo, runInfo,
+                                         nodeName);
     } else {
-        return CheckReduceScatter2DShape(outputValueOne, outputValueTwo, 
-                                         xValueOne, xValueTwo, runInfo, nodeName);
+        return CheckReduceScatter2DShape(outputValueOne, outputValueTwo, xValueOne, xValueTwo, runInfo, nodeName);
     }
 }
 
@@ -516,7 +539,7 @@ static bool CheckOutputDim(const gert::TilingContext *context, TilingRunInfo &ru
     size_t outputDim = outputShape->GetStorageShape().GetDimNum();
     // context->GetInputShape在函数CheckInputTensorDim中已经校验
     size_t xDimNum = context->GetInputShape(X_INDEX)->GetStorageShape().GetDimNum();
-    // 检查output的维度大小  
+    // 检查output的维度大小
     if (!CheckOutputDimSize(context, outputDim, xDimNum, opType, nodeName)) {
         return false;
     }
@@ -556,10 +579,9 @@ static bool CheckTensorFormat(const gert::TilingContext *context)
     // context->GetInputDesc在CheckTensorDataType函数中已经校验
     auto xDesc = context->GetInputDesc(X_INDEX);
     ge::Format xFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(xDesc->GetStorageFormat()));
-    OP_TILING_CHECK(
-        xFormat != ge::FORMAT_ND,
-        OP_LOGE_FOR_INVALID_FORMAT(nodeName, "x", Ops::Base::ToString(xFormat).c_str(), "ND"),
-        return false);
+    OP_TILING_CHECK(xFormat != ge::FORMAT_ND,
+                    OP_LOGE_FOR_INVALID_FORMAT(nodeName, "x", Ops::Base::ToString(xFormat).c_str(), "ND"),
+                    return false);
     auto scalesDesc = context->GetInputDesc(SCALES_INDEX);
     ge::Format scalesFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(scalesDesc->GetStorageFormat()));
     OP_TILING_CHECK(scalesFormat != ge::FORMAT_ND,
@@ -601,8 +623,7 @@ static bool CheckWindowSize(const gert::TilingContext *context, const TilingRunI
         scalesValue = scalesValue * scalesValueThree;
         scalesLastDim = DIM_THREE;
     }
-    uint64_t xDataSize =
-        ((xValue * X_DTYPE_SIZE_ONE + WIN_ADDR_ALIGN - 1UL) / WIN_ADDR_ALIGN) * WIN_ADDR_ALIGN;
+    uint64_t xDataSize = ((xValue * X_DTYPE_SIZE_ONE + WIN_ADDR_ALIGN - 1UL) / WIN_ADDR_ALIGN) * WIN_ADDR_ALIGN;
     OP_LOGD(nodeName, "current xDataSize is: [%lu]MB.", ops::CeilDiv(xDataSize, MB_SIZE));
 
     // 计算scalesDataSize
@@ -620,12 +641,13 @@ static bool CheckWindowSize(const gert::TilingContext *context, const TilingRunI
     // 实际的windowSize = 数据区（x和scales）+ 状态区（1Mb）
     uint64_t actualWinSize = xDataSize + scalesDataSize + MB_SIZE;
     uint64_t maxWinSize = mc2tiling::Mc2TilingUtils::GetMaxWindowSize();
-    OP_TILING_CHECK(HCCL_BUFFSIZE_FACTOR * actualWinSize > maxWinSize,
-                    OP_LOGE(nodeName,
-                            "The HCCL_BUFFERSIZE is too small. The current HCCL_BUFFERSIZE in the environment is [%lu] MB,"
-                            "but the NEED HCCL_BUFFERSIZE is [%lu] MB. Please check HCCL_BUFFERSIZE config.",
-                            ops::CeilDiv(maxWinSize, MB_SIZE), ops::CeilDiv(actualWinSize, MB_SIZE) * HCCL_BUFFSIZE_FACTOR),
-                    return false);
+    OP_TILING_CHECK(
+        HCCL_BUFFSIZE_FACTOR * actualWinSize > maxWinSize,
+        OP_LOGE(nodeName,
+                "The HCCL_BUFFERSIZE is too small. The current HCCL_BUFFERSIZE in the environment is [%lu] MB,"
+                "but the NEED HCCL_BUFFERSIZE is [%lu] MB. Please check HCCL_BUFFERSIZE config.",
+                ops::CeilDiv(maxWinSize, MB_SIZE), ops::CeilDiv(actualWinSize, MB_SIZE) * HCCL_BUFFSIZE_FACTOR),
+        return false);
     return true;
 }
 
@@ -653,12 +675,13 @@ ge::graphStatus QuantReduceScatterUtilTiling::CheckNpuArch(const gert::TilingCon
     const char *nodeName = context->GetNodeName();
     // 校验NpuArch
     fe::PlatFormInfos *platformInfoPtr = context->GetPlatformInfo();
-    OP_TILING_CHECK(platformInfoPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "platformInfoPtr"), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(platformInfoPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "platformInfoPtr"),
+                    return ge::GRAPH_FAILED);
     platform_ascendc::PlatformAscendC ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
     NpuArch npuArch = ascendcPlatform.GetCurNpuArch();
     OP_TILING_CHECK(npuArch != NpuArch::DAV_3510,
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "npuArch",
-                        "non-DAV_3510", "The value of npuArch must be DAV_3510"),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "npuArch", "non-DAV_3510",
+                                                          "The value of npuArch must be DAV_3510"),
                     return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -688,11 +711,13 @@ ge::graphStatus QuantReduceScatterUtilTiling::CheckTilingFunc(gert::TilingContex
         return ge::GRAPH_FAILED;
     }
     if (!CheckInputTensorDim(context, runInfo, opType)) {
-        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(nodeName, "input tensor", "input_dim_invalid", "check input dim failed");
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(nodeName, "input tensor", "input_dim_invalid",
+                                                 "check input dim failed");
         return ge::GRAPH_FAILED;
     }
     if (!CheckOutputTensorDim(context, runInfo, opType)) {
-        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(nodeName, "output tensor", "output_dim_invalid", "check output dim failed");
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(nodeName, "output tensor", "output_dim_invalid",
+                                                 "check output dim failed");
         return ge::GRAPH_FAILED;
     }
     if (!CheckTensorFormat(context)) {
