@@ -36,23 +36,23 @@ extern "C" __global__ __aicore__ void apply_rotary_pos_emb(
     GET_TILING_DATA(tilingData, tiling);
 #if ORIG_DTYPE_QUERY == DT_FLOAT
     if (TILING_KEY_IS(1)) {
-        AiInfraApplyRotaryPosEmb::ARPESmall<DTYPE_QUERY, DTYPE_QUERY> op;
+        ApplyRotaryPosEmb::ARPESmall<DTYPE_QUERY, DTYPE_QUERY> op;
         op.Init(q, k, cos, sin, q_out, k_out, userWS, &tilingData);
         op.Process(&tilingData);
     } else if (TILING_KEY_IS(3)) {
-        AiInfraApplyRotaryPosEmb::ARPEComputeAB<DTYPE_QUERY, DTYPE_QUERY> op;
+        ApplyRotaryPosEmb::ARPEComputeAB<DTYPE_QUERY, DTYPE_QUERY> op;
         op.Init(q, k, cos, sin, q_out, k_out, userWS, &tilingData);
         op.Process(&tilingData);
     } else if (TILING_KEY_IS(4)) {
-        AiInfraApplyRotaryPosEmb::ARPEComputeABCast<DTYPE_QUERY, DTYPE_QUERY> op;
+        ApplyRotaryPosEmb::ARPEComputeABCast<DTYPE_QUERY, DTYPE_QUERY> op;
         op.Init(q, k, cos, sin, q_out, k_out, userWS, &tilingData);
         op.Process(&tilingData);
     } else if (TILING_KEY_IS(5)) {
-        AiInfraApplyRotaryPosEmb::ARPEComputeABPerf<DTYPE_QUERY, DTYPE_QUERY> op;
+        ApplyRotaryPosEmb::ARPEComputeABPerf<DTYPE_QUERY, DTYPE_QUERY> op;
         op.Init(q, k, cos, sin, q_out, k_out, userWS, &tilingData);
         op.Process(&tilingData);
     } else if (TILING_KEY_IS(6)) {
-        AiInfraApplyRotaryPosEmb::ARPEComputeABCastPerf<DTYPE_QUERY, DTYPE_QUERY> op;
+        ApplyRotaryPosEmb::ARPEComputeABCastPerf<DTYPE_QUERY, DTYPE_QUERY> op;
         op.Init(q, k, cos, sin, q_out, k_out, userWS, &tilingData);
         op.Process(&tilingData);
     } else {
@@ -60,15 +60,15 @@ extern "C" __global__ __aicore__ void apply_rotary_pos_emb(
     }
 #else
     if (TILING_KEY_IS(1)) {
-        AiInfraApplyRotaryPosEmb::ARPESmall<DTYPE_QUERY, float> op;
+        ApplyRotaryPosEmb::ARPESmall<DTYPE_QUERY, float> op;
         op.Init(q, k, cos, sin, q_out, k_out, userWS, &tilingData);
         op.Process(&tilingData);
     } else if (TILING_KEY_IS(4)) {
-        AiInfraApplyRotaryPosEmb::ARPEComputeABCast<DTYPE_QUERY, float> op;
+        ApplyRotaryPosEmb::ARPEComputeABCast<DTYPE_QUERY, float> op;
         op.Init(q, k, cos, sin, q_out, k_out, userWS, &tilingData);
         op.Process(&tilingData);
     } else if (TILING_KEY_IS(6)) {
-        AiInfraApplyRotaryPosEmb::ARPEComputeABCastPerf<DTYPE_QUERY, float> op;
+        ApplyRotaryPosEmb::ARPEComputeABCastPerf<DTYPE_QUERY, float> op;
         op.Init(q, k, cos, sin, q_out, k_out, userWS, &tilingData);
         op.Process(&tilingData);
     } else {

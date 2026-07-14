@@ -271,42 +271,42 @@ __aicore__ inline void ARPEComputeAB<T1, T2>::CTotaryBF32(
 // #endif
 // }
 
-// template <typename T1, typename T2>
-// __aicore__ inline void ARPEComputeAB<T1, T2>::CopyOutPartialRotation(
-//     const int64_t coreBatchIndex, 
-//     const int64_t preCBatchB, 
-//     LocalTensor<T1>& qOutUbSize,
-//     const ApplyRotaryPosEmbTilingData* tilingData)
-// {
-//     copyOut1.blockCount = tilingData->qcNum;
-//     copyOut1.blockLen = tilingData->blockMoveQ;
-//     copyOut1.srcStride = 0;
-//     copyOut1.dstStride = tilingData->blockMoveQ;
-//     int64_t qBatchSize = tilingData->qcNum * tilingData->qDim3;    //每个批次的q元素数
-//     int64_t kBatchSize = tilingData->kcNum * tilingData->kDim3;    //每个批次的k元素数
-//     int64_t batchOffset = coreBatchIndex * tilingData->preCBatchB;    //批次的偏移量
+template <typename T1, typename T2>
+__aicore__ inline void ARPEComputeAB<T1, T2>::CopyOutPartialRotation(
+    const int64_t coreBatchIndex, 
+    const int64_t preCBatchB, 
+    LocalTensor<T1>& qOutUbSize,
+    const ApplyRotaryPosEmbTilingData* tilingData)
+{
+    copyOut1.blockCount = tilingData->qcNum;
+    copyOut1.blockLen = tilingData->blockMoveQ;
+    copyOut1.srcStride = 0;
+    copyOut1.dstStride = tilingData->blockMoveQ;
+    int64_t qBatchSize = tilingData->qcNum * tilingData->qDim3;    //每个批次的q元素数
+    int64_t kBatchSize = tilingData->kcNum * tilingData->kDim3;    //每个批次的k元素数
+    int64_t batchOffset = coreBatchIndex * tilingData->preCBatchB;    //批次的偏移量
 
-//     if ((tilingData->kcNum) == 1) {    // kn==1: 特殊情况，k可以非连续搬运，q根据批次循环非连续搬运
-//         for (int i = 0; i < preCBatchB; i++) {
-//             DataCopy(qGm[blockIdx * tilingData->qCoreOffset + batchOffset * qBatchSize + i * qBatchSize],
-//                 qOutUbSize[i * (tilingData->qcdNum + tilingData->kcdNum)], copyOut1);
-//         }
-//         copyOut2.dstStride = tilingData->srcStrideK;
-//         DataCopy(kGm[blockIdx * tilingData->kCoreOffset + batchOffset * kBatchSize],
-//                 qOutUbSize[tilingData->qcdNum], copyOut2);
-//     } else {    // kn!=1: q和k正常根据批次非连续搬运
-//         copyOut2.blockCount = tilingData->kcNum;
-//         copyOut2.blockLen = tilingData->blockMoveQ;
-//         copyOut2.srcStride = 0;
-//         copyOut2.dstStride = tilingData->blockMoveQ;
-//         for (int i = 0; i < preCBatchB; i++) {
-//             DataCopy(qGm[blockIdx * tilingData->qCoreOffset + batchOffset * qBatchSize + i * qBatchSize],
-//                 qOutUbSize[i * (tilingData->qcdNum + tilingData->kcdNum)], copyOut1);
-//             DataCopy(kGm[blockIdx * tilingData->kCoreOffset + batchOffset * kBatchSize + i * kBatchSize],
-//                 qOutUbSize[tilingData->qcdNum + i * (tilingData->qcdNum + tilingData->kcdNum)], copyOut2);
-//         }
-//     }
-// }
+    if ((tilingData->kcNum) == 1) {    // kn==1: 特殊情况，k可以非连续搬运，q根据批次循环非连续搬运
+        for (int i = 0; i < preCBatchB; i++) {
+            DataCopy(qGm[blockIdx * tilingData->qCoreOffset + batchOffset * qBatchSize + i * qBatchSize],
+                qOutUbSize[i * (tilingData->qcdNum + tilingData->kcdNum)], copyOut1);
+        }
+        copyOut2.dstStride = tilingData->srcStrideK;
+        DataCopy(kGm[blockIdx * tilingData->kCoreOffset + batchOffset * kBatchSize],
+                qOutUbSize[tilingData->qcdNum], copyOut2);
+    } else {    // kn!=1: q和k正常根据批次非连续搬运
+        copyOut2.blockCount = tilingData->kcNum;
+        copyOut2.blockLen = tilingData->blockMoveQ;
+        copyOut2.srcStride = 0;
+        copyOut2.dstStride = tilingData->blockMoveQ;
+        for (int i = 0; i < preCBatchB; i++) {
+            DataCopy(qGm[blockIdx * tilingData->qCoreOffset + batchOffset * qBatchSize + i * qBatchSize],
+                qOutUbSize[i * (tilingData->qcdNum + tilingData->kcdNum)], copyOut1);
+            DataCopy(kGm[blockIdx * tilingData->kCoreOffset + batchOffset * kBatchSize + i * kBatchSize],
+                qOutUbSize[tilingData->qcdNum + i * (tilingData->qcdNum + tilingData->kcdNum)], copyOut2);
+        }
+    }
+}
 
 template <typename T1, typename T2>
 __aicore__ inline void ARPEComputeAB<T1, T2>::CopyOut(
