@@ -355,7 +355,8 @@ ge::graphStatus AlltoAllvTTQuantGmmTiling::CheckScaleShape() const
 
 void AlltoAllvTTQuantGmmTiling::GetPermuteOutSize()
 {
-    permuteOutSize_ = permuteOutFlag_ ? 0 : (a_ * h1_ * GetSizeByDataType(gmmXDataType_));
+    // commOutSize: 通信输出区域，kernel始终从workspace偏移0分配此空间存放通信结果
+    permuteOutSize_ = a_ * h1_ * GetSizeByDataType(gmmXDataType_);
     // 将 permuteOutSize 对齐到 512 字节
     permuteOutSize_ = Ops::Base::CeilAlign(permuteOutSize_, static_cast<uint64_t>(BASIC_BLOCK_SIZE_512));
 }
