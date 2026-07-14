@@ -35,8 +35,7 @@ public:
                                 GM_ADDR gmmxScaleGM, GM_ADDR gmmWeightScaleGM, GM_ADDR mmxScaleGM,
                                 GM_ADDR mmWeightScaleGM, GM_ADDR gmmyGM, GM_ADDR mmyOptionalGM,
                                 GM_ADDR permuteOutOptionalGM, GM_ADDR workspaceGM, GM_ADDR tilingGM,
-                                GmmArrayAddrType *gmmArrayAddrIn, GmmArrayAddrType *mmArrayAddrIn, TPipe *tPipe,
-                                bool isA2avGmmFlag)
+                                GmmArrayAddrType *gmmArrayAddrIn, GmmArrayAddrType *mmArrayAddrIn, TPipe *tPipe)
     {
         // init member variables
         GET_TILING_DATA(tilingData, tilingGM);
@@ -84,11 +83,11 @@ public:
         if (tilingData_->isNeedMM != 0) {
             localComputeOp.Init(mmxOptionalGM, mmweightOptionalGM, mmxScaleGM, mmWeightScaleGM, mmyOptionalGM,
                                 computeWorkspaceGm_, tilingData_,
-                                &tilingData_->mmQuantTilingData, mmArrayAddrIn, tPipe, isA2avGmmFlag);
+                                &tilingData_->mmQuantTilingData, mmArrayAddrIn, tPipe);
         }
         computeOp.Init(commOutGm_, gmmweightGM, computeScaleGm_, gmmWeightScaleGM, gmmyGM,
                        computeWorkspaceGm_, tilingData_,
-                       &tilingData_->gmmQuantTilingData, gmmArrayAddrIn, tPipe, isA2avGmmFlag);
+                       &tilingData_->gmmQuantTilingData, gmmArrayAddrIn, tPipe);
     }
 
     __aicore__ inline void Process()
