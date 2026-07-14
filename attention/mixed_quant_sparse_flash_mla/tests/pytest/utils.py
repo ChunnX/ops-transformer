@@ -166,7 +166,8 @@ def fill_random_cu_len(T, SMax, B, random_seq=False):
         cu_seqlens.append(cu_seqlens[-1] + length)
 
     if cu_seqlens[-1] != T and can_fit:
-        raise ValueError(f"fill_random_cu_len: S*B>=T但末位({cu_seqlens[-1]})!=T({T})，生成异常")
+        raise ValueError(f"fill_random_cu_len: S*B>=T但末位({cu_seqlens[-1]})!=T({T})，生成异常；"
+                          f"非random_seq模式不支持T({T}) % B({B}) != 0，非整除场景需手动配置 cu_seqlen")
     return cu_seqlens
 
 def fill_random_used_len(SMax, B, random_seq=False):

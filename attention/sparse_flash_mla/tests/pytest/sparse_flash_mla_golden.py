@@ -883,9 +883,7 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
     is_swa = (template_mode == "SWA") or (cmp_ratio is None and (K is None or K == ['None']))
     seqused_cmp_kv_calc = seqused_cmp_kv
     if seqused_cmp_kv_calc is None and not is_swa:
-        if cu_seqlens_cmp_kv is not None:
-            seqused_cmp_kv_calc = cu_seqlens_cmp_kv[1:] - cu_seqlens_cmp_kv[:-1]
-        elif layout_kv == "BSND" and S2 is not None and cmp_ratio is not None:
+        if layout_kv == "BSND" and S2 is not None and cmp_ratio is not None:
             seqused_cmp_kv_calc = torch.tensor([S2 // cmp_ratio] * B, dtype=torch.int32)
     if seqused_cmp_kv_calc is not None:
         seqused_cmp_kv_calc = seqused_cmp_kv_calc.to(torch.int32)

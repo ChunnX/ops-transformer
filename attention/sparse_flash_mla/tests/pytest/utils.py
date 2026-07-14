@@ -360,9 +360,9 @@ def fill_none_params(params_dict):
             if cmp_ratio is None:
                 template_mode = 'SWA'
             else:
-                template_mode = 'CFA'
+                template_mode = 'HCA'
         else:
-            template_mode = 'SCFA'
+            template_mode = 'CSA'
 
     if template_mode == 'SWA':
         cmp_ratio = None
@@ -372,7 +372,7 @@ def fill_none_params(params_dict):
         block_size2 = None
     else:
         cmp_ratio = int(cmp_ratio) if cmp_ratio is not None else 1
-        K = int(K) if (template_mode == 'SCFA' and K is not None) else None
+        K = int(K) if (template_mode == 'CSA' and K is not None) else None
         cmp_kv_type = ori_kv_type if cmp_kv_type is None else cmp_kv_type
         cmp_mask_mode = 3 if cmp_mask_mode is None else cmp_mask_mode
         block_size2 = block_size1 if block_size2 is None else block_size2
