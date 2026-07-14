@@ -339,7 +339,7 @@ install_es_whl_package() {
  	  exit 1
  	fi
 }
- 	 
+
 install_es_whl() {
  	local es_whl_path="${OPS_SOURCE_DIR}/es_packages/whl/es_transformer-1.0.0-py3-none-any.whl"
  	local python_es_whl_name="es_transformer"

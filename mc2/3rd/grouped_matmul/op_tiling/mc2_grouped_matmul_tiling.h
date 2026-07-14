@@ -133,26 +133,26 @@ protected:
     ge::graphStatus PrepareTilingData(const gert::TilingContext *context);
     ge::graphStatus CheckWeightNZShape(const gert::TilingContext *context, int64_t numInOneBlk) const;
     ge::graphStatus GMMGetTensorShapeSplitM(const gert::TilingContext *context, const gert::Shape &xShape,
-        const gert::Shape &wShape);
+                                            const gert::Shape &wShape);
     ge::graphStatus GMMGetTensorShapeSplitK(const gert::TilingContext *context, const gert::Shape &xShape,
-        const gert::Shape &wShape);
+                                            const gert::Shape &wShape);
     ge::graphStatus SplitMSingleXSingleWeightSingleY(const gert::Shape &xShape, const gert::Shape &wShape);
     ge::graphStatus SplitMSingleXSeparatedWeight(const gert::TilingContext *context, const gert::Shape &xShape);
     ge::graphStatus SeparatedXSeparatedWeight(const gert::TilingContext *context);
     ge::graphStatus SeparatedXSingleWeight(const gert::TilingContext *context, const gert::Shape &wShape);
     ge::graphStatus SplitKSingleXSingleWeightSingleY(const gert::TilingContext *context, const gert::Shape &xShape,
-        const gert::Shape &wShape);
+                                                     const gert::Shape &wShape);
     ge::graphStatus SplitKSingleXSeparatedWeight(const gert::TilingContext *context, const gert::Shape &xShape,
-        const gert::Shape &wShape);
+                                                 const gert::Shape &wShape);
     ge::graphStatus DivideUbAndSetWorkspace(gert::TilingContext *context, const uint32_t &aicNum);
     ge::graphStatus DynamicTilingSingleN(gert::TilingContext *context, const uint32_t &aicNum,
-        const GMMCompileInfo *compileInfoPtr);
+                                         const GMMCompileInfo *compileInfoPtr);
     ge::graphStatus IsOutputDisableL2Cache(gert::TilingContext *context, const GMMCompileInfo *compileInfoPtr);
     int32_t FindBestSingleN(const uint32_t &aicNum);
     bool TryFullLoadA(int32_t baseM, const GMMCompileInfo *compileInfoPtr);
     void DivideUbAndSetWorkspaceAntiquant(size_t *workspaces, const uint32_t &aicNum, uint32_t &ubSize);
     ge::graphStatus CalcStepKaKb(const gert::TilingContext *context, const GMMCompileInfo *compileInfoPtr,
-        int64_t mInMM, uint32_t &mmStepKa, uint32_t &mmStepKb);
+                                 int64_t mInMM, uint32_t &mmStepKa, uint32_t &mmStepKb);
     ge::graphStatus SetBias(const gert::TilingContext *context, matmul_tiling::MultiCoreMatmulTiling &mm) const;
     int32_t FindBestSingleNPertoken(const uint32_t aicNum) const;
     void FindBestUsedCoreNumOneGroup(const uint32_t aicNum);
@@ -168,7 +168,7 @@ protected:
     void GMMSetTplTilingKey(gert::TilingContext *context);
     uint32_t GetTplDataType(const ge::DataType &dtype);
     ge::graphStatus CheckA16W4MsdEnable(uint64_t mSize, uint64_t antiquantGroupNum, const gert::TilingContext *context,
-        const GMMCompileInfo *compileInfoPtr);
+                                        const GMMCompileInfo *compileInfoPtr);
     uint64_t GetWithOffset(const gert::TilingContext *context);
     bool CheckTensorListLength(const gert::TilingContext *context);
 

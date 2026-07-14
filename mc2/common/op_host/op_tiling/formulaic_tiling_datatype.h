@@ -29,11 +29,11 @@ constexpr uint64_t ONE_MBYTE = ONE_KBYTE * ONE_KBYTE;
 constexpr uint64_t ONE_GBYTE = ONE_KBYTE * ONE_MBYTE;
 constexpr uint64_t TEN_GBYTE = 10 * ONE_GBYTE;
 constexpr uint64_t FOUR_MBYTE = 4 * ONE_MBYTE;
-constexpr double L2_SIZE_PART = 128; // soc 910B L2 comfort size
-constexpr double L2_SIZE_FULL = 192; // soc 910B L2 full size
+constexpr double L2_SIZE_PART = 128;  // soc 910B L2 comfort size
+constexpr double L2_SIZE_FULL = 192;  // soc 910B L2 full size
 constexpr double PART_L2_UTIL = 0.85; // cube utilization
 constexpr double FULL_L2_UTIL = 0.75; // cube utilization
-constexpr double NO_L2_UTIL = 0.65; // cube utilization
+constexpr double NO_L2_UTIL = 0.65;   // cube utilization
 constexpr uint64_t MIN_DATA_PAR1 = 4 * ONE_GBYTE;
 constexpr uint64_t MIN_DATA_PAR2 = 6 * ONE_MBYTE;
 constexpr uint64_t MIN_M_SIZE_SOC310P = 512;
@@ -80,8 +80,8 @@ struct MatmulParameters {
 };
 
 struct MinMatmulShapeParameters {
-    MinMatmulShapeParameters() :
-        mmMinDataSize1(MIN_DATA_PAR1), mmMinDataSize2(MIN_DATA_PAR2), minMSize(MIN_M_SIZE_SOC310P){};
+    MinMatmulShapeParameters()
+        : mmMinDataSize1(MIN_DATA_PAR1), mmMinDataSize2(MIN_DATA_PAR2), minMSize(MIN_M_SIZE_SOC310P) {};
     uint64_t mmMinDataSize1;
     uint64_t mmMinDataSize2;
     uint64_t minMSize;
@@ -104,8 +104,8 @@ enum class HCCLType {
 };
 
 enum class TopoType {
-    STANDARD_CARD,  // 0 - 标卡 4P
-    EIGHT_P,        // 1 - 8P场景（POD8P/Server8P）
+    STANDARD_CARD, // 0 - 标卡 4P
+    EIGHT_P,       // 1 - 8P场景（POD8P/Server8P）
 };
 
 struct HCCLInfo {
@@ -134,7 +134,7 @@ struct HCCLFittingParameters {
     // x = - sqrt(a' * (y + b')) + c'
     double timeToSizeParabolicPar1; // a'
     double timeToSizeParabolicPar2; // b'
-    double timeToSizeParabolicPar3;  // c'
+    double timeToSizeParabolicPar3; // c'
 };
 
 struct CutResult {

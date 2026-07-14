@@ -109,6 +109,7 @@ private:
     GM_ADDR yGM_;
     GM_ADDR gmExpertTokenNums_;
     GM_ADDR workspaceGM_;
+    GM_ADDR tilingGM_;
 
     GM_ADDR moeInitRoutingQuantV2Scale_ = nullptr;
     GM_ADDR moeInitRoutingQuantV2Offset_ = nullptr;
@@ -161,6 +162,7 @@ __aicore__ inline void MegaMoe<MegaMoeFunc>::Init(GM_ADDR contextGM, GM_ADDR xGM
     yGM_ = yGM;
     gmExpertTokenNums_ = expertTokenNumsGM;
     workspaceGM_ = workspaceGM;
+    tilingGM_ = tilingGM;
 
     if constexpr (kRoutingIsQuant) {
         GET_TILING_DATA_WITH_STRUCT(MegaMoeTilingDataQuant, tilingData, tilingGM);
@@ -309,7 +311,7 @@ __aicore__ inline void MegaMoe<MegaMoeFunc>::Process()
         epilogueCoreNum = static_cast<uint32_t>(aivNum_); // INT8：所有 AIV 参与
         epilogueGranularity = (expertPerRank_ > 4) ? static_cast<uint32_t>(expertPerRank_ - 3) :
                               (expertPerRank_ > 1) ? static_cast<uint32_t>(expertPerRank_ - 1) :
-                                                    1u;
+                                                     1u;
     } else {
         epilogueCoreNum = static_cast<uint32_t>(aivNum_); // BF16/FP16：所有 AIV 参与
         epilogueGranularity = (expertPerRank_ > 2) ? static_cast<uint32_t>(expertPerRank_ - 2) : 1u;
@@ -356,7 +358,8 @@ __aicore__ inline void MegaMoe<MegaMoeFunc>::Process()
                                                scalesGM_,
                                                moeInitRoutingQuantV2TilingData,
                                                epilogueGranularity,
-                                               activationClamp_};
+                                               activationClamp_,
+                                               tilingGM_};
     } else {
         params = typename MatmulKernel::Params{problemShape,
                                                static_cast<uint32_t>(epWorldSize_),
@@ -394,7 +397,8 @@ __aicore__ inline void MegaMoe<MegaMoeFunc>::Process()
                                                scalesGM_,
                                                moeInitRoutingV2TilingData,
                                                epilogueGranularity,
-                                               activationClamp_};
+                                               activationClamp_,
+                                               tilingGM_};
     }
 
     MatmulKernel kernel(params);
