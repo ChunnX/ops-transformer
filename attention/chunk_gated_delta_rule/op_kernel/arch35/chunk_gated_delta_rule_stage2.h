@@ -34,6 +34,7 @@ template <typename stateType>
 struct StageTwoParams {
     GlobalTensor<bfloat16_t> qPrime;        // (Nv, Sp, Dk)
     GlobalTensor<stateType> vInner;         // (Nv, Sp, Dv)
+    GlobalTensor<bfloat16_t> vInnerBf16;    // (Nv, Sp, Dv) BF16 vInner for stage3/CalStateNew (FP32 path)
     GlobalTensor<float> gCum;               // (Nv, Sp)
     GlobalTensor<bfloat16_t> kCumdecay;     // (Nv, Sp, Dk)
     GlobalTensor<bfloat16_t> curStateBf16;  // (Nv, Dv, Dk) BF16 state for AIC
@@ -161,9 +162,8 @@ public:
                         if (GetSubBlockIdx() == 0) {
                             PipeBarrier<PIPE_MTE3>();
                             uint64_t mm_offset1 = nvId * Sp_ * Dv_ + length * Dv_;
-                            auto vInnerBf16 = sTP_->vInner.template ReinterpretCast<bfloat16_t>();
                             CastGmToGm<float, bfloat16_t>(sTP_->vInner[mm_offset1],
-                                                          vInnerBf16[mm_offset1],
+                                                          sTP_->vInnerBf16[mm_offset1],
                                                           curChunkSize_ * Dv_);
                         }
                         CrossCoreSetFlag<0x2, PIPE_MTE3>(0x5);
@@ -215,8 +215,7 @@ public:
                     CrossCoreSetFlag<0x2, PIPE_FIX>(0x2);
                     CrossCoreWaitFlag(0x5);
                     if constexpr (kIsFp32) {
-                        auto vInnerBf16 = sTP_->vInner.template ReinterpretCast<bfloat16_t>();
-                        CalStateNew(vInnerBf16[mm_offset1],
+                        CalStateNew(sTP_->vInnerBf16[mm_offset1],
                                     sTP_->kg[mm_offset0], stateOut);
                     } else {
                         CalStateNew(sTP_->vInner[mm_offset1], sTP_->kg[mm_offset0], stateOut);

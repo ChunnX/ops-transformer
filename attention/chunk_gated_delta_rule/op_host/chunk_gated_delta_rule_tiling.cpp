@@ -130,6 +130,7 @@ ge::graphStatus ChunkGatedDeltaRuleTiling::DoOpTiling()
     tilingData_.interWorkspaceSz += sizeLow * nv * s * dk;                               // kCumDecay (BF16)
     if (tilingData_.stateIsFp32) {
         tilingData_.interWorkspaceSz += sizeHigh * nv * s * dv;                           // vInner (FP32)
+        tilingData_.interWorkspaceSz += sizeLow * nv * s * dv;                            // vInnerBf16 (BF16, for stage3)
     } else {
         tilingData_.interWorkspaceSz += sizeLow * nv * s * dv;                            // vInner (BF16)
     }

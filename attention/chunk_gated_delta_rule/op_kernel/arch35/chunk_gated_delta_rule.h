@@ -138,6 +138,11 @@ public:
         vInner_.SetGlobalBuffer(reinterpret_cast<__gm__ vInnerType *>(user + offset));
         offset += sizeof(vInnerType) * tiling_->nv * tiling_->maxGroupLength * tiling_->dv;
 
+        if constexpr (kStateIsFp32) {
+            vInnerBf16_.SetGlobalBuffer(reinterpret_cast<__gm__ lowType *>(user + offset));
+            offset += sizeof(lowType) * tiling_->nv * tiling_->maxGroupLength * tiling_->dv;
+        }
+
         qPrime_.SetGlobalBuffer(reinterpret_cast<__gm__ lowType *>(user + offset));
         offset += sizeof(lowType) * tiling_->nv * tiling_->maxGroupLength * tiling_->dk;
 
@@ -223,6 +228,9 @@ private:
         StageTwoParams<sType> initStageTwoParams;
         initStageTwoParams.qPrime = qPrime_;
         initStageTwoParams.vInner = vInner_;
+        if constexpr (std::is_same_v<sType, float>) {
+            initStageTwoParams.vInnerBf16 = vInnerBf16_;
+        }
         initStageTwoParams.gCum = gCum_;
         initStageTwoParams.kCumdecay = kCumDecay_;
         initStageTwoParams.kg = kg_;
@@ -253,7 +261,7 @@ private:
     __aicore__ inline GlobalTensor<lowType> GetVInnerBf16()
     {
         if constexpr (kStateIsFp32) {
-            return vInner_.template ReinterpretCast<lowType>();
+            return vInnerBf16_;
         } else {
             return vInner_;
         }
@@ -291,6 +299,7 @@ private:
     GlobalTensor<int32_t> actualSeqLens_;
 
     GlobalTensor<lowType> stateBf16Wk_;
+    GlobalTensor<lowType> vInnerBf16_;   // (Nv, maxGroupLength, Dv) BF16 vInner for stage3 (FP32 path only)
 
     GlobalTensor<highType> gCum_;      // (Nv, maxGroupLength)
     GlobalTensor<lowType> kCumDecay_;     // (Nv, maxGroupLength, Dk)
