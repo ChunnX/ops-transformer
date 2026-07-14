@@ -49,6 +49,7 @@ SHAPE_KEY_TO_INDEX = {
     "block_table": 4,
     "query_rope": 5,
     "key_rope": 6,
+    "sinks": 7,
 }
 
 

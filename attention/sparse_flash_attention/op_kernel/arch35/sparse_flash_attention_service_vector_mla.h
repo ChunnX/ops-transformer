@@ -100,7 +100,7 @@ public:
     __aicore__ inline void InitGlobalBuffer(__gm__ uint8_t *key, __gm__ uint8_t *value,
                                             __gm__ uint8_t *keyRope, __gm__ uint8_t *sparseIndices,
                                             __gm__ uint8_t *blockTable, __gm__ uint8_t *softmaxMax,
-                                            __gm__ uint8_t *softmaxSum);
+                                            __gm__ uint8_t *softmaxSum, __gm__ uint8_t *sinks);
     __aicore__ inline void InitOutputSingleCore(ConstInfo &constInfo);
     __aicore__ inline void ProcessVec0(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputL1,
         Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm,
@@ -160,6 +160,7 @@ private:
     GlobalTensor<int32_t> actualSeqLengthsKVGm;
     GlobalTensor<float> softmaxMaxGm;
     GlobalTensor<float> softmaxSumGm;
+    GlobalTensor<T> sinksGm;
     LocalTensor<float> lseUb;
 
     TBuf<> commonTBuf; // common的复用空间
@@ -505,7 +506,7 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>:
     this->stage1OutQue[stage1Offset].template FreeTensor(stage1CastTensor);
 
     outputBuf.SetCrossCore();
-    if (runInfo.s2LoopCount != 0) {
+    if (runInfo.s2LoopCount != 0 || (runInfo.s2LoopCount == 0 && isSinks)) {
         SFAUpdateExpSumAndExpMax<T>(sumUb, maxUb, sfaExpUb, sumUb, maxUb, apiTmpBuffer, runInfo.halfMRealSize);
     }
     if (constInfo.returnSoftmaxLse && runInfo.s2LoopCount == runInfo.s2LoopLimit) {
@@ -520,7 +521,7 @@ __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>::ProcessVec1SoftmaxDispat
     ConstInfo &constInfo)
 {
     // loopCount = 0 但传入sinks时走update分支，maxUb通过sinks初始化，sumUb初始化为1.0
-    if (runInfo.s2LoopCount == 0) { // sink 丢失首token信息，sink会增加首token信息，维度是n1
+    if (runInfo.s2LoopCount == 0 && !isSinks) { // sink 丢失首token信息，sink会增加首token信息，维度是n1
         if (likely(runInfo.s2RealSize == 128)) { // s2RealSize等于128分档, VF内常量化减少if判断
             ProcessVec1Vf<T, Q_T, false, s1BaseSize, s2BaseSize, FaVectorApi::OriginNRange::EQ_128_SFA>(
                 stage1CastTensor, mmRes, sumUb, maxUb, maxUb, apiTmpBuffer, vselrIndexesBuf, runInfo.halfMRealSize,
@@ -536,6 +537,15 @@ __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>::ProcessVec1SoftmaxDispat
                 runInfo.s2RealSize, static_cast<T>(constInfo.softmaxScale), negativeFloatScalar);
         }
     } else {
+        if (runInfo.s2LoopCount == 0 && isSinks) {
+            // vec0: 0 ~ halfMRealSize - 1, vec1: firstHalfMRealSize ~ gSize
+            int64_t sinksOffset = runInfo.goIdx;
+            if (constInfo.subBlockIdx == 1) {
+                sinksOffset += runInfo.firstHalfMRealSize;
+            }
+            LocalTensor<T> sinksUb = this->sinksBuf.template Get<T>();
+            InitSoftmaxFromSinks<T>(sumUb, maxUb, sinksUb, sinksOffset, R0, runInfo.halfMRealSize);
+        }
         if (likely(runInfo.s2RealSize == 128)) { // s2RealSize等于128分档, VF内常量化减少if判断
             ProcessVec1Vf<T, Q_T, true, s1BaseSize, s2BaseSize, FaVectorApi::OriginNRange::EQ_128_SFA>(
                 stage1CastTensor, mmRes, sumUb, maxUb, maxUb, apiTmpBuffer, vselrIndexesBuf, runInfo.halfMRealSize,
@@ -691,7 +701,7 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline
 void SFAVectorService<TEMPLATE_ARGS>::InitGlobalBuffer(__gm__ uint8_t *key, __gm__ uint8_t *value,
                                                        __gm__ uint8_t *keyRope, __gm__ uint8_t *sparseIndices,
                                                        __gm__ uint8_t *blockTable, __gm__ uint8_t *softmaxMax,
-                                                       __gm__ uint8_t *softmaxSum)
+                                                       __gm__ uint8_t *softmaxSum, __gm__ uint8_t *sinks)
 {
     keyGm.SetGlobalBuffer((__gm__ KV_T *)(key));
     if constexpr (isPa) {
@@ -699,6 +709,10 @@ void SFAVectorService<TEMPLATE_ARGS>::InitGlobalBuffer(__gm__ uint8_t *key, __gm
     }
     sparseIndicesGm.SetGlobalBuffer((__gm__ int32_t *)sparseIndices);
     keyRopeGm.SetGlobalBuffer((__gm__ KV_T *)(keyRope));
+    if (sinks != nullptr) {
+        sinksGm.SetGlobalBuffer((__gm__ T *)sinks);
+        this->isSinks = true;
+    }
 }
 
 TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>::SoftmaxInitBuffer()
@@ -791,6 +805,9 @@ void SFAVectorService<TEMPLATE_ARGS>::InitLocalBuffer(TPipe *pipe, ConstInfo &co
     SetFlag<HardEvent::MTE3_MTE2>(mte3ToMte2[1]);
     mte2ToMte3[0] = GetTPipePtr()->AllocEventID<HardEvent::MTE2_MTE3>();
     mte2ToMte3[1] = GetTPipePtr()->AllocEventID<HardEvent::MTE2_MTE3>();
+    if (this->isSinks) {
+        InitSinksBuffer(constInfo);
+    }
 }
 
 TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>::InitCubeVecSharedParams(
@@ -887,7 +904,7 @@ public:
     __aicore__ inline void InitGlobalBuffer(__gm__ uint8_t *key, __gm__ uint8_t *value,
                                             __gm__ uint8_t *keyRope, __gm__ uint8_t *sparseIndices,
                                             __gm__ uint8_t *blockTable, __gm__ uint8_t *softmaxMax,
-                                            __gm__ uint8_t *softmaxSum) {}
+                                            __gm__ uint8_t *softmaxSum, __gm__ uint8_t *sinks) {}
     __aicore__ inline void InitVecBlock(TPipe *pipe, const SparseFlashAttentionTilingDataMla *__restrict tiling,
         CVSharedParams &sharedParams, int32_t aicIdx, uint8_t subBlockIdx, __gm__ uint8_t *actualSeqLengthsQ,
         __gm__ uint8_t *actualSeqLengths) {};
