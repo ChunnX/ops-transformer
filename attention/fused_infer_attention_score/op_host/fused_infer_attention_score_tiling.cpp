@@ -1527,6 +1527,15 @@ static ge::graphStatus ConvertContextToParamsFAI(gert::TilingContext *context, F
     }
     faInfo.workspaces = context->GetWorkspaceSizes(1);
 
+    auto keyBlockStrides = context->GetDynamicInputStride(KEY_INDEX, 0);
+    if (keyBlockStrides != nullptr && keyBlockStrides->GetDimNum() > 0) {
+        faInfo.keyBnStride = keyBlockStrides->GetStride(0);
+    }
+    auto valueBlockStrides = context->GetDynamicInputStride(VALUE_INDEX, 0);
+    if (valueBlockStrides != nullptr && valueBlockStrides->GetDimNum() > 0) {
+        faInfo.valueBnStride = valueBlockStrides->GetStride(0);
+    }
+
     return ge::GRAPH_SUCCESS;
 }
 

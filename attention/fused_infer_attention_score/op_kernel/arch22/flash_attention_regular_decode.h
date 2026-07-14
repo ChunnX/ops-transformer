@@ -95,6 +95,8 @@ namespace SplitFuse {
             uint32_t sparseMode = fATilingData->sparseMode;
             int64_t preToken = fATilingData->preToken;
             int64_t nextToken = fATilingData->nextToken;
+            uint64_t keyBnStride = fATilingData->keyStrides.bnStride;
+            uint64_t valueBnStride = fATilingData->valueStrides.bnStride;
             AscendC::GlobalTensor<ElementQ> gQ;
             gQ.SetGlobalBuffer((__gm__ ElementQ *)params.q);
             AscendC::ListTensorDesc keyListTensorDescInit((__gm__ void*)params.k);
@@ -314,7 +316,8 @@ namespace SplitFuse {
                                 kvSLoopNumTotal,
                                 pagedBlockSize,
                                 strideK,
-                                kvNIncreIdx);
+                                kvNIncreIdx,
+                                keyBnStride);
                             if (kvNIncreIdx == kvNBlockSize - 1) {
                                 Arch::CrossCoreSetFlag<0x2, PIPE_FIX>(qkReady);
                             }
@@ -399,7 +402,8 @@ namespace SplitFuse {
                                 strideV,
                                 blockStackNum,
                                 softmaxReady,
-                                (kvNIncreIdx == 0));
+                                (kvNIncreIdx == 0),
+                                valueBnStride);
                             if (kvNIncreIdx == kvNBlockSize - 1) {
                                 Arch::CrossCoreSetFlag<0x2, PIPE_FIX>(pvReady);
                             }
@@ -567,7 +571,8 @@ namespace SplitFuse {
                                         kvSLoopNumTotal,
                                         pagedBlockSize,
                                         strideK,
-                                        kvNIncreIdx);
+                                        kvNIncreIdx,
+                                        keyBnStride);
                                 }
 
                                 if (kvNIncreIdx == tailKvNBlockSize - 1) {
@@ -652,7 +657,8 @@ namespace SplitFuse {
                                     strideV,
                                     blockStackNum,
                                     softmaxReady,
-                                    (kvNIncreIdx == 0));
+                                    (kvNIncreIdx == 0),
+                                    valueBnStride);
                                 if (kvNIncreIdx == tailKvNBlockSize - 1) {
                                     Arch::CrossCoreSetFlag<0x2, PIPE_FIX>(pvReady);
                                 }
