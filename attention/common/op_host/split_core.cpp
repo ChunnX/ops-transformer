@@ -417,9 +417,28 @@ void AssignByBatch(const SplitContext &splitContext, AssignContext &assignContex
     while (assignContext.bN2Cost == 0 || IsWithinTolerance(assignContext.coreCache.costLimit,
         costInfo.bN2LastBlockCostOfEachBatch[assignContext.curBIdx] / FA_TOLERANCE_RATIO,
         assignContext.coreCache.cost + assignContext.bN2Cost)) {
+        assignContext.curBN2Idx++;
+        if (assignContext.bN2Cost == 0) {
+            if (assignContext.curBN2Idx == baseInfo.bSize * baseInfo.n2Size) {
+                assignContext.isFinished = true;
+                assignContext.curS1GIdx = 0U;
+                assignContext.curS2Idx = 0U;
+                return;
+            }
+            if (assignContext.curBN2Idx / baseInfo.n2Size != assignContext.curBIdx) {
+                assignContext.curBIdx = assignContext.curBN2Idx / baseInfo.n2Size;
+                CalcBatchCache(assignContext.curBIdx, splitContext, assignContext.batchCache);
+            }
+            assignContext.bN2Cost = costInfo.bN2CostOfEachBatch[assignContext.curBIdx];
+            assignContext.bN2Block = costInfo.bN2BlockOfEachBatch[assignContext.curBIdx];
+            assignContext.curS1GIdx = 0U;
+            CalcS1GCache(assignContext.curS1GIdx, splitContext, assignContext.batchCache, assignContext.s1GCache);
+            assignContext.curS2Idx = assignContext.s1GCache.s2Start;
+            continue;
+        }
         assignContext.coreCache.cost += assignContext.bN2Cost;
         assignContext.coreCache.block += assignContext.bN2Block;
-        assignContext.curBN2Idx++;
+        assignContext.bN2End = assignContext.curBN2Idx;
 
         // to the end
         if (assignContext.curBN2Idx == baseInfo.bSize * baseInfo.n2Size) {
@@ -623,9 +642,9 @@ void CalcSplitPlan(uint32_t coreNum, int64_t costLimit, const SplitContext &spli
             LogAssignContext("FORCE", assignContext);
         }
 
-        result.bN2End[i] = assignContext.curBN2Idx;
-        result.gS1End[i] = assignContext.curS1GIdx;
-        result.s2End[i] = assignContext.curS2Idx;
+        result.bN2End[i] = assignContext.bN2End;
+        result.gS1End[i] = assignContext.gS1End;
+        result.s2End[i] = assignContext.s2End;
         result.maxCost = std::max(result.maxCost, assignContext.coreCache.cost);
 
         assignContext.unassignedCost -= assignContext.coreCache.cost;
