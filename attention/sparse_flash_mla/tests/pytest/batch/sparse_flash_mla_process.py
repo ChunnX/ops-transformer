@@ -143,7 +143,7 @@ def call_npu(input_data):
                                                             softmax_scale=softmax_scale,
                                                             cmp_ratio=cmp_ratio if cmp_ratio is not None else 1,
                                                             ori_mask_mode=ori_mask_mode,
-                                                            cmp_mask_mode=cmp_mask_mode if cmp_mask_mode is not None else 3,
+                                                            cmp_mask_mode=cmp_mask_mode if cmp_mask_mode is not None else 0,
                                                             ori_win_left=ori_win_left,
                                                             ori_win_right=ori_win_right,
                                                             layout_q=layout_q,
