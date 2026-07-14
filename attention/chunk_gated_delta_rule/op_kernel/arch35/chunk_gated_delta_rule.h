@@ -222,15 +222,16 @@ public:
                 } else {
                     cg.length = tiling_->maxGroupLength;
                 }
-                auto curState = (pos == seqStart) ?
-                                initState_[bid * tiling_->nv * tiling_->dv * tiling_->dk] :
+                bool useInitialState = (pos == seqStart);
+                auto curState = (useInitialState) ?
+                                initState_[bid * tiling_->stateStride0] :
                                 finalState_[bid * tiling_->nv * tiling_->dv * tiling_->dk];
                 // compute this chunk group
                 RunStage1(cg);
                 SyncAll<false>();
 
                 RunStage2(cg, curState,
-                          finalState_[bid * tiling_->nv * tiling_->dv * tiling_->dk]);
+                          finalState_[bid * tiling_->nv * tiling_->dv * tiling_->dk], useInitialState);
                 SyncAll<false>();
 
                 RunStage3(cg);
@@ -251,13 +252,13 @@ private:
     }
 
     __aicore__ inline void RunStage2(ChunkGroup& cg, GlobalTensor<lowType> stateIn,
-                                     GlobalTensor<lowType> stateOut)
+                                     GlobalTensor<lowType> stateOut, bool useInitialState)
     {
         Stage2 stageTwoOp;
         StageTwoParams initStageTwoParams{
             qPrime_, vInner_, gCum_, kCumDecay_, stateIn, stateOut, kg_,
             out_[cg.startPos * tiling_->nv * tiling_->dv], stageWsAddr_, &stage2MT_, pipe_, &cg,
-            tiling_->nv, tiling_->nk, tiling_->dv, tiling_->dk, gFlag_};
+            tiling_->nv, tiling_->nk, tiling_->dv, tiling_->dk, tiling_->stateStride1, useInitialState, gFlag_};
         stageTwoOp.Init(&initStageTwoParams, tiling_->aiCoreNum);
         stageTwoOp.Process();
         pipe_->Reset();
