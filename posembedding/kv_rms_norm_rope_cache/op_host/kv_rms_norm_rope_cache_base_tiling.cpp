@@ -202,13 +202,22 @@ bool KvRmsNormRopeCacheTilingBase::CheckCacheValid(
     auto cacheShapeTuple = GetShapeTuple(context, cacheIndex);
     int64_t cacheB = std::get<SHAPE_IDX_B>(cacheShapeTuple);
     int64_t cacheN = std::get<SHAPE_IDX_N>(cacheShapeTuple);
-    if (cacheB != batchSize) {
-        OP_LOGW(context_->GetNodeName(),
-            "In CacheMode::Norm, the B dimension of %s should be %ld, but got %ld.", cacheName, batchSize, cacheB);
+    // In CacheMode::Norm the cache is addressed linearly as (b * N + n) * cacheLen * headSize, so the B and N axes may
+    // be split or merged freely, but their product must cover every (batch, head) the kernel scatters to.
+    if (cacheB * cacheN < batchSize * numHead) {
+        auto cacheShape = context->GetInputShape(cacheIndex)->GetStorageShape();
+        std::string reasonMsg = "In CacheMode::Norm, the product of the B and N dimensions of " +
+            std::string(cacheName) + " should be no less than " + std::to_string(batchSize * numHead) +
+            " (B * N of input kv), but got " + std::to_string(cacheB * cacheN);
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), cacheName,
+            ToString(cacheShape).c_str(), reasonMsg.c_str());
+        return false;
     }
-    if (cacheN != numHead) {
+    if (cacheB != batchSize || cacheN != numHead) {
         OP_LOGW(context_->GetNodeName(),
-            "In CacheMode::Norm, the N dimension of %s should be %ld, but got %ld.", cacheName, numHead, cacheN);
+            "In CacheMode::Norm, the B and N dimensions of %s are expected to be %ld and %ld, but got %ld and %ld. "
+            "The cache is large enough, so it is addressed as if it were [%ld, %ld, %ld, %ld].",
+            cacheName, batchSize, numHead, cacheB, cacheN, batchSize, numHead, cacheLen, headSize);
     }
     bool isValid = true;
     isValid = isValid && (std::get<SHAPE_IDX_S>(cacheShapeTuple) == cacheLen);

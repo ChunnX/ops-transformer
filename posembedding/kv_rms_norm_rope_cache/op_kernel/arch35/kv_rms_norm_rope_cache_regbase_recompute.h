@@ -956,7 +956,7 @@ public:
 
         if (vCacheIdx >= 0) {
             if (tilingData_->cacheMode == NORM_CACHE_MODE) {
-                gmOffset = (batchIdx * tilingData_->seqLength + vCacheIdx) * tilingData_->dv + this->ubFactor * ubIdx;
+                gmOffset = (batchIdx * tilingData_->cacheLength + vCacheIdx) * tilingData_->dv + this->ubFactor * ubIdx;
                 if constexpr (IsSameType<T_V_CACHE, int8_t>::value || IsSameType<T_V_CACHE, hifloat8_t>::value ||
                               IsSameType<T_V_CACHE, fp8_e5m2_t>::value || IsSameType<T_V_CACHE, fp8_e4m3fn_t>::value) {
                     AscendC::DataCopyPad(this->vCacheGm[gmOffset], vQuantLocal, xDataCopyParams);
@@ -1818,7 +1818,7 @@ public:
 
         if (kCacheIdx >= 0) {
             if (tilingData_->cacheMode == NORM_CACHE_MODE) {
-                gmOffset1 = (batchIdx * tilingData_->seqLength + kCacheIdx) * tilingData_->dk + this->ubFactor * ubIdx / 2;
+                gmOffset1 = (batchIdx * tilingData_->cacheLength + kCacheIdx) * tilingData_->dk + this->ubFactor * ubIdx / 2;
                 gmOffset2 = gmOffset1 + tilingData_->dk / 2;
                 if constexpr (IsSameType<T_K_CACHE, int8_t>::value || IsSameType<T_K_CACHE, hifloat8_t>::value ||
                               IsSameType<T_K_CACHE, fp8_e5m2_t>::value || IsSameType<T_K_CACHE, fp8_e4m3fn_t>::value) {
