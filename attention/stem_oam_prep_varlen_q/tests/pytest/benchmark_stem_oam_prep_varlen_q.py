@@ -145,24 +145,49 @@ def run_gpu_benchmark(seq_lens, heads, warmup, iters, device_id, stem_block_size
 
     R = stem_block_size // stem_stride
 
-    def gpu_prep_q(q_fp8, q_scale, seq_len, num_heads, stem_bs, stem_s):
-        num_qb = (seq_len + stem_bs - 1) // stem_bs
-        q_padded = num_qb * stem_bs
-        q_dense = torch.zeros(q_padded, num_heads, DIM_QK, dtype=torch.float32, device=device)
-        q_dense[:seq_len] = q_fp8[:seq_len].float()
-        q_blocks = q_dense.reshape(num_qb, R, stem_s, num_heads, DIM_QK)
-        scales = q_scale[:q_padded].reshape(num_qb, R, stem_s, num_heads)
-        q_group_sum = (q_blocks * scales.unsqueeze(-1)).sum(dim=1)
-        return q_group_sum.reshape(num_qb, stem_s * DIM_QK, num_heads).permute(0, 2, 1).unsqueeze(0).to(torch.bfloat16)
+    def gpu_prep_q(q_fp8, q_scale, q_seq_lens, cu_seqlens_q, num_heads, stem_bs, stem_s):
+        num_batch = len(q_seq_lens)
+        R = stem_bs // stem_s
+        q_padded_lens = [((ql + stem_bs - 1) // stem_bs) * stem_bs for ql in q_seq_lens]
+        max_q_padded = max(q_padded_lens)
+        max_Qb = max_q_padded // stem_bs
+
+        qflat_out = torch.zeros(num_batch, num_heads, max_Qb, stem_s * DIM_QK,
+                                dtype=torch.bfloat16, device=device)
+
+        for b in range(num_batch):
+            q_len = q_seq_lens[b]
+            q_padded = q_padded_lens[b]
+            num_qb = q_padded // stem_bs
+            cu_off = cu_seqlens_q[b]
+
+            q_dense = torch.zeros(q_padded, num_heads, DIM_QK, dtype=torch.float32, device=device)
+            q_dense[:q_len] = q_fp8[cu_off:cu_off + q_len].float()
+
+            q_blocks = q_dense.reshape(num_qb, R, stem_s, num_heads, DIM_QK)
+
+            scales = torch.zeros(num_qb, R, stem_s, num_heads, dtype=torch.float32, device=device)
+            positions = torch.arange(num_qb * stem_bs, dtype=torch.long, device=device)
+            global_positions = cu_off + positions
+            valid_mask = global_positions < q_scale.shape[0]
+            scales.view(-1, num_heads)[valid_mask] = q_scale[global_positions[valid_mask]]
+
+            q_group_sum = (q_blocks * scales.unsqueeze(-1)).sum(dim=1)
+            qflat_out[b, :, :num_qb, :] = q_group_sum.reshape(num_qb, num_heads, stem_s * DIM_QK)
+
+        return qflat_out
 
     results = []
     for num_heads in heads:
         for seq_len in seq_lens:
             total_tokens = seq_len
             q_fp8, q_scale = generate_inputs(total_tokens, num_heads, device)
+            q_seq_lens = [seq_len]
+            cu_seqlens_q = [0, seq_len]
 
             def fn():
-                return gpu_prep_q(q_fp8, q_scale, seq_len, num_heads, stem_block_size, stem_stride)
+                return gpu_prep_q(q_fp8, q_scale, q_seq_lens, cu_seqlens_q,
+                                  num_heads, stem_block_size, stem_stride)
 
             latency_ms = benchmark_gpu_event(fn, warmup, iters)
             max_qb = (seq_len + stem_block_size - 1) // stem_block_size
