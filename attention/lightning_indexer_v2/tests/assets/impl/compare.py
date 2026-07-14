@@ -14,10 +14,8 @@
 
 import numpy as np
 
-# Keep thresholds aligned with the proven TTK v2 TopKIndicesComparison policy.
-_TOPK_REL_TOL = 0.01
-_TOPK_ABS_TOL = 0.001
-_TOPK_FAIL_RATIO = 0.002
+# Match the pytest boundary-score policy for non-identical TopK index sets.
+_TOPK_REL_TOL = 0.0001
 _VALUE_RTOL = 0.005
 _VALUE_ATOL = 0.000025
 _BFLOAT16_VALUE_ATOL = 0.0001
@@ -57,8 +55,7 @@ def score_relative_diff(score, boundary):
 
 
 def is_score_close_to_boundary(score, boundary):
-    score_diff = abs(float(score) - float(boundary))
-    return score_diff <= _TOPK_ABS_TOL or score_relative_diff(score, boundary) <= _TOPK_REL_TOL
+    return score_relative_diff(score, boundary) <= _TOPK_REL_TOL
 
 
 def row_score_diff_to_boundary(output_indices, golden_indices, score_row):
@@ -171,7 +168,7 @@ def topk_index_compare(npu_out, golden_out, scores, index_offsets=None):
 
     precision = (golden.size - len(diff_indices)) / golden.size * 100
     fail_ratio = len(diff_indices) / golden.size
-    passed = failed_rows == 0 or fail_ratio <= _TOPK_FAIL_RATIO
+    passed = failed_rows == 0
     error_info = None
     if failed_rows:
         verdict = "tolerated" if passed else "failed"
@@ -193,8 +190,6 @@ def topk_index_compare(npu_out, golden_out, scores, index_offsets=None):
             "diff_positions": len(diff_indices),
             "fail_ratio": fail_ratio,
             "topk_rel_tol": _TOPK_REL_TOL,
-            "topk_abs_tol": _TOPK_ABS_TOL,
-            "topk_fail_ratio": _TOPK_FAIL_RATIO,
             "max_failed_abs_score_diff": max_failed_abs_diff,
             "max_failed_rel_score_diff": max_failed_rel_diff,
         },
@@ -221,25 +216,22 @@ def value_compare(npu_out, golden_out, scores=None):
     npu_rows = npu_raw.astype(np.float32).reshape(-1, row_width)
     golden_rows = golden_raw.astype(np.float32).reshape(-1, row_width)
     diff_idx = []
-    valid_values = 0
+    failed_rows = 0
     for row_idx, (npu_row, golden_row) in enumerate(zip(npu_rows, golden_rows)):
-        # Pytest writes valid TopK values first and pads the remainder with -inf.
-        valid_count = int(np.count_nonzero(~np.isneginf(golden_row)))
-        if valid_count == 0:
-            continue
-        npu_valid = np.sort(npu_row[:valid_count])
-        golden_valid = np.sort(golden_row[:valid_count])
+        # Pytest sorts the NPU values before comparing each complete TopK row.
+        npu_valid = np.sort(npu_row)[::-1]
+        golden_valid = golden_row
         mismatch = ~np.isclose(
             npu_valid, golden_valid, rtol=_VALUE_RTOL, atol=atol, equal_nan=True)
-        diff_idx.extend(row_idx * row_width + int(index) for index in np.where(mismatch)[0])
-        valid_values += valid_count
+        mismatch_indices = np.where(mismatch)[0]
+        diff_idx.extend(row_idx * row_width + int(index) for index in mismatch_indices)
+        if mismatch_indices.size / row_width > _VALUE_FAIL_RATIO:
+            failed_rows += 1
 
-    if valid_values == 0:
-        return {"pass": True, "precision": 100.0, "metrics": {"valid_values": 0}}
-    fail_ratio = len(diff_idx) / valid_values
-    precision = (valid_values - len(diff_idx)) / valid_values * 100
+    fail_ratio = len(diff_idx) / golden_raw.size
+    precision = (golden_raw.size - len(diff_idx)) / golden_raw.size * 100
     return {
-        "pass": fail_ratio <= _VALUE_FAIL_RATIO,
+        "pass": failed_rows == 0,
         "precision": precision,
         "diff_indices": diff_idx[:1000],
         "error_info": None if not diff_idx else (
@@ -249,8 +241,8 @@ def value_compare(npu_out, golden_out, scores=None):
             "rtol": _VALUE_RTOL,
             "atol": atol,
             "fail_ratio": fail_ratio,
-            "fail_ratio_limit": _VALUE_FAIL_RATIO,
-            "valid_values": valid_values,
+            "row_fail_ratio_limit": _VALUE_FAIL_RATIO,
+            "failed_rows": failed_rows,
         },
     }
 

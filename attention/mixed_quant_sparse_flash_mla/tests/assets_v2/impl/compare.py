@@ -5,11 +5,27 @@
 import numpy as np
 
 
-_RTOL = 0.0078125
-_ATOL = 0.0001
+_DEFAULT_RTOL = 0.005
+_BFLOAT16_RTOL = 0.0078125
+_DEFAULT_ATOL = 0.000025
+_BFLOAT16_ATOL = 0.0001
 _FAIL_RATIO = 0.005
 _MAX_RELATIVE_ERROR = 10.0
 _RELATIVE_FLOOR = (1.0 / (1 << 14)) / 0.005
+_RELATIVE_EPSILON = 2e-9
+
+
+def _is_bfloat16(value):
+    return "bfloat16" in str(getattr(value, "dtype", ""))
+
+
+def _as_float32(value):
+    if hasattr(value, "detach"):
+        value = value.detach().cpu()
+        if _is_bfloat16(value):
+            value = value.float()
+        value = value.numpy()
+    return np.asarray(value).astype(np.float32)
 
 
 def _compare_output(npu_out, golden_out):
@@ -22,8 +38,11 @@ def _compare_output(npu_out, golden_out):
             "error_info": "NPU output is None",
         }
 
-    npu = np.asarray(npu_out).astype(np.float32)
-    golden = np.asarray(golden_out).astype(np.float32)
+    is_bfloat16 = _is_bfloat16(npu_out)
+    rtol = _BFLOAT16_RTOL if is_bfloat16 else _DEFAULT_RTOL
+    atol = _BFLOAT16_ATOL if is_bfloat16 else _DEFAULT_ATOL
+    npu = _as_float32(npu_out)
+    golden = _as_float32(golden_out)
     if npu.shape != golden.shape:
         return {
             "pass": False,
@@ -36,7 +55,7 @@ def _compare_output(npu_out, golden_out):
     npu_flat = npu.reshape(-1)
     golden_flat = golden.reshape(-1)
     mismatch = ~np.isclose(
-        npu_flat, golden_flat, rtol=_RTOL, atol=_ATOL, equal_nan=True)
+        npu_flat, golden_flat, rtol=rtol, atol=atol, equal_nan=True)
     diff_idx = np.where(mismatch)[0]
     fail_ratio = diff_idx.size / golden_flat.size
     max_relative_error = 0.0
@@ -44,7 +63,7 @@ def _compare_output(npu_out, golden_out):
         diff_abs = np.abs(golden_flat - npu_flat)
         denominator = np.maximum(
             np.maximum(np.abs(npu_flat), np.abs(golden_flat)), _RELATIVE_FLOOR)
-        relative_error = diff_abs / (denominator + 1e-10)
+        relative_error = diff_abs / (denominator + _RELATIVE_EPSILON)
         max_relative_error = float(np.max(relative_error[diff_idx]))
 
     passed = fail_ratio <= _FAIL_RATIO and max_relative_error < _MAX_RELATIVE_ERROR
@@ -61,8 +80,8 @@ def _compare_output(npu_out, golden_out):
         "diff_indices": diff_idx[:1000].tolist(),
         "error_info": error_info,
         "metrics": {
-            "rtol": _RTOL,
-            "atol": _ATOL,
+            "rtol": rtol,
+            "atol": atol,
             "fail_ratio": fail_ratio,
             "fail_ratio_limit": _FAIL_RATIO,
             "max_relative_error": max_relative_error,

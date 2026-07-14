@@ -136,8 +136,8 @@ def lengths_from_prefix(value):
 
 def cpu_lightning_indexer_v2(q, k, w, *, cu_seqlens_q=None, cu_seqlens_k=None,
                              seqused_q=None, seqused_k=None, cmp_residual_k=None,
-                             block_table=None, output_idx_offset=None,
-                             topk=0, max_seqlen_q=-1, layout_q="BSND",
+                             block_table=None, output_idx_offset=None, topk=0,
+                             max_seqlen_q=-1, layout_q="BSND",
                              layout_k="BSND", mask_mode=0, cmp_ratio=1,
                              return_value=0, **kwargs):
     del kwargs

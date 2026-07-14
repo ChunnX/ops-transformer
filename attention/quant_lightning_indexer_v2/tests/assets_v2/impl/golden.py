@@ -143,19 +143,14 @@ def infer_geometry(query, key, layout_query, layout_key, cu_q, cu_k, seq_q, seq_
     )
 
 
-def cpu_quant_lightning_indexer_v2(query, key, weights, query_dequant_scale, key_dequant_scale,
-                                    *,
-                                    cu_seqlens_q=None, cu_seqlens_k=None, seqused_q=None,
-                                    seqused_k=None, cmp_residual_k=None, block_table=None,
-                                    output_idx_offset=None, sparse_count=0, quant_mode=1,
-                                    max_seqlen_q=-1, layout_query="BSND",
-                                    layout_key="BSND", sparse_mode=0,
-                                    cmp_ratio=1, return_value=0, **kwargs):
+def cpu_quant_lightning_indexer_v2(query, key, weights, query_dequant_scale, key_dequant_scale, *,
+                                   cu_seqlens_q=None, cu_seqlens_k=None, seqused_q=None,
+                                   seqused_k=None, cmp_residual_k=None, block_table=None,
+                                   output_idx_offset=None, sparse_count=0, quant_mode=1,
+                                   max_seqlen_q=-1,
+                                   layout_query="BSND", layout_key="BSND", sparse_mode=0,
+                                   cmp_ratio=1, return_value=0, **kwargs):
     del kwargs
-    topk = sparse_count
-    layout_q = layout_query
-    layout_k = layout_key
-    mask_mode = sparse_mode
     set_topk_scores(None)
     set_index_offsets(to_cpu(output_idx_offset) if output_idx_offset is not None else None)
 
@@ -173,19 +168,19 @@ def cpu_quant_lightning_indexer_v2(query, key, weights, query_dequant_scale, key
     offsets_cpu = to_cpu(output_idx_offset)
 
     geometry = infer_geometry(
-        query_cpu, key_cpu, layout_q, layout_k,
+        query_cpu, key_cpu, layout_query, layout_key,
         cu_q_cpu, cu_k_cpu, seq_q_cpu, seq_k_cpu,
     )
     (batch_size, q_seq, k_seq, q_t_size, k_t_size,
      q_head_num, k_head_num, head_dim, block_size, block_num,
      lengths_q, lengths_k, q_capacity) = geometry
 
-    if int(cmp_ratio) == 1 or int(mask_mode) == 0:
+    if int(cmp_ratio) == 1 or int(sparse_mode) == 0:
         residual_for_cpu = [0] * int(batch_size)
     else:
         residual_for_cpu = to_list(residual_cpu)
 
-    if layout_k == "PA_BBND":
+    if layout_key == "PA_BBND":
         key_for_golden = restore_pa_bbnd(key_cpu, block_table_cpu, seq_k_cpu, int(block_size), has_head_dim=True)
         k_scale_for_golden = restore_pa_bbnd(k_scale_cpu, block_table_cpu, seq_k_cpu, int(block_size), has_head_dim=False)
     else:
@@ -203,14 +198,14 @@ def cpu_quant_lightning_indexer_v2(query, key, weights, query_dequant_scale, key
         query_cpu.dtype, q_scale_cpu.dtype,
         actual_seq_dtype, to_list(cu_q_cpu) or None, to_list(cu_k_cpu) or None,
         lengths_q, lengths_k, residual_for_cpu, int(max_seqlen_q), int(quant_mode),
-        layout_q, layout_k, int(topk), int(mask_mode),
+        layout_query, layout_key, int(sparse_count), int(sparse_mode),
         None, None, None, None, None, int(cmp_ratio), int(return_value),
     )
     indices, full_scores_bnsd, sparse_value = golden.forward(
         query_cpu, key_for_golden, weights_cpu, q_scale_cpu, k_scale_for_golden,
         cu_q_cpu, cu_k_cpu, seq_q_cpu, seq_k_cpu, block_table_cpu, offsets_cpu)
-    score_lengths = q_capacity if layout_q == "TND" else lengths_q
-    set_topk_scores(scores_to_layout(golden, full_scores_bnsd, layout_q, score_lengths))
+    score_lengths = q_capacity if layout_query == "TND" else lengths_q
+    set_topk_scores(scores_to_layout(golden, full_scores_bnsd, layout_query, score_lengths))
     if int(return_value):
         return indices, sparse_value
     return indices, torch.zeros(0, dtype=full_scores_bnsd.dtype)
