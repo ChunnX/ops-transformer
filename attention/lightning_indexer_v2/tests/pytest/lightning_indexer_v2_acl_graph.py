@@ -22,7 +22,7 @@ import copy
 import torchair
 import torch.nn as nn
 from torchair.configs.compiler_config import CompilerConfig
-from lightning_indexer_v2_golden import GeneralizedLIV2
+from lightning_indexer_v2_golden import *
 
 class LIV2Network(nn.Module):
     def __init__(self):
