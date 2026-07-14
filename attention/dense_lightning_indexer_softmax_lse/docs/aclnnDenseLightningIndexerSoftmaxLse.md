@@ -396,7 +396,7 @@ aclnnStatus aclnnDenseLightningIndexerSoftmaxLse(
     </tr>
     <tr>
       <td>S1、S2</td>
-      <td>0~128K</td>
+      <td>0~1M</td>
       <td>S1、S2支持不等长，当layout为BSND时，S1<=S2；layout为TND时，actualSeqLengthsQuery小于等于actualSeqLengthsKey相同索引位置的值，且相同索引位置S1<=S2。</td>
     </tr>
     <tr>
