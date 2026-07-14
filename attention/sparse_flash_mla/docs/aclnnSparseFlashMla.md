@@ -210,16 +210,10 @@ aclnnStatus aclnnSparseFlashMla(
       <td>oriSparseIndicesOptional（aclTensor*）</td>
       <td>输入</td>
       <td>代表离散取oriKvCache的索引。</td>
-      <td>-。</td>
+      <td>当前暂不支持，必须传入nullptr。</td>
       <td>INT32</td>
       <td>ND</td>
-      <td>
-        <ul>
-          <li>layoutQ为BSND时：(B, S1, N2, K1)</li>
-          <li>layoutQ为TND时：(T1, N2, K1)</li>
-        </ul>
-        其中K1为oriKv的TopK稀疏选择数。
-      </td>
+      <td>-</td>
       <td>√</td>
     </tr>
     <tr>
@@ -517,7 +511,7 @@ aclnnStatus aclnnSparseFlashMla(
   </tbody>
   </table>
 
-  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：N1/N2支持1、2、4、8、16、32、64、128；cmp_ratio仅支持1、4、128；block_size取值为16的倍数，最大支持1024；ori_sparse_indices当前暂不支持，cmp_sparse_indices的最后一维K2当前支持512或1024。
+  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：N1/N2支持1、2、4、8、16、32、64、128；cmp_ratio在SWA场景保持默认值1，CSA支持传入4，HCA支持传入128；block_size取值为16的倍数，最大支持1024；ori_sparse_indices当前暂不支持，cmp_sparse_indices的最后一维K2当前支持512或1024。
   - <term>Ascend 950PR/Ascend 950DT</term>：N1/N2支持2、4、8、16、32、64、128，不支持1；cmp_ratio支持1到128；block_size支持1到1024。
 
 - **返回值**
@@ -669,6 +663,7 @@ aclnnStatus aclnnSparseFlashMla(
 
 - 使用约束
 
+  - 资料支持范围内暂不支持对`oriKvOptional`进行稀疏计算，设置`oriSparseIndicesOptional`无效。
   - 除`oriTopkLengthOptional`和`cmpTopkLengthOptional`等预留输入可传入nullptr或空Tensor外，其余已传入Tensor不支持为空。
   - `metadataOptional`参数必须传入，由`aclnnSparseFlashMlaMetadata`算子生成，shape固定为(1024,)。
   - `cmpResidualKvOptional`为主算子和`aclnnSparseFlashMlaMetadata`的可选入参；传入后用于按`cmp_len * cmpRatio + residual`恢复cmp侧mask使用的压缩前长度。
