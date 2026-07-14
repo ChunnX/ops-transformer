@@ -21,6 +21,7 @@ MXFP8 Flash Attention Golden
 """
 
 import argparse
+import importlib.util
 import logging
 import math
 import os
@@ -40,9 +41,14 @@ logging.basicConfig(level=logging.INFO, format='%(message)s', force=True)
 logger = logging.getLogger(__name__)
 
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
-QBSA_ROOT = os.path.abspath(os.path.join(CURRENT_DIR, "../../../.."))
+QBSA_ROOT = os.path.abspath(os.path.join(CURRENT_DIR, "../../.."))
 TORCH_OPS_EXTENSION_DIR = os.path.join(QBSA_ROOT, "torch_ops_extension")
 _CUSTOM_OPS_IMPORTED = False
+_DEFAULT_CASE_FILE = "qbsa_mxfp8_test_cases"
+_DTYPE_MAP = {
+    "float8_e4m3fn": torch.float8_e4m3fn,
+    "float8_e8m0fnu": torch.float8_e8m0fnu,
+}
 
 
 def _ensure_custom_ops_registered():
@@ -74,71 +80,133 @@ def _ensure_custom_ops_registered():
     _CUSTOM_OPS_IMPORTED = True
 
 
-def _make_reference_style_mxfp8_case():
-    """Single configuration entry for MXFP8 full-quant golden generation and execution."""
-    return {
-        "B": 1,
-        "N1": 1,
-        "N2": 1,
-        "D": 128,
-        "actual_seq_q": [256],
-        "actual_seq_kv": [512],
-        "S1": 256,
-        "S2": 512,
-        "block_size": 128,
-        "mask_mode": 3,
-        "fp8_dtype": torch.float8_e4m3fn,
-        "scale_dtype": torch.float8_e8m0fnu,
-        "quant_group_size": 32,
-        "layout_q": "TND",
-        "p_scale_value": 1.0,
-        "kv_cache_layout": "BnNBsD",
-        "is_contiguous": True,
-        "return_softmax_lse": False,
-        "seed": 54,
-        "data_range_q": 1.0,
-        "data_range_k": 1.0,
-        "data_range_v": 1.0,
-        "device_id": 0,
-        "sparse_q_block_size": 128,
-        "sparse_kv_block_size": 128,
-        "sparse_count": 4,
-        "quant_mode": 2,
-        "layout_kv": "PA_BNSD",
-        "layout_sparse_indices": "B_N_Qb_Kb",
-        "layout_out": "TND",
-        "sparse_pattern": "sequential",
-        "block_table_pattern": "sequential",
-        "softmax_scale": 1.0 / math.sqrt(128.0),
-    }
+def _load_case_file_test_cases(case_file):
+    case_file = case_file.strip()
+    case_file_no_ext = os.path.splitext(os.path.basename(case_file))[0]
+    case_path = case_file
+    if not case_path.endswith(".py"):
+        case_path = f"{case_path}.py"
+    if not os.path.isabs(case_path):
+        case_path = os.path.join(CURRENT_DIR, case_path)
+    if not os.path.exists(case_path):
+        raise FileNotFoundError(f"case file not found: {case_path}")
 
-CASE = _make_reference_style_mxfp8_case()
+    module_name = f"_qbsa_mxfp8_cases_{case_file_no_ext}"
+    spec = importlib.util.spec_from_file_location(module_name, case_path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"load case file failed: {case_path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    if not hasattr(module, "TestCases"):
+        raise AttributeError(f"{case_path} must define TestCases")
+    return case_file_no_ext, module.TestCases
 
-# Backward-compatible aliases derived from CASE. Edit _make_reference_style_mxfp8_case() above for configuration.
-B = CASE["B"]
-N_q = CASE["N1"]
-N_kv = CASE["N2"]
-D = CASE["D"]
-ACTUAL_SEQ_Q = CASE["actual_seq_q"]
-ACTUAL_SEQ_KV = CASE["actual_seq_kv"]
-BLOCK_SIZE = CASE["block_size"]
-MASK_MODE = CASE["mask_mode"]
-FP8_DTYPE = CASE["fp8_dtype"]
-SCALE_DTYPE = CASE["scale_dtype"]
-QUANT_GROUP_SIZE = CASE["quant_group_size"]
-Q_INPUT_LAYOUT = CASE["layout_q"]
-KV_CACHE_LAYOUT = CASE["kv_cache_layout"]
-IS_CONTIGUOUS = CASE["is_contiguous"]
-ENABLE_LSE = CASE["return_softmax_lse"]
-DATA_RANGE_Q = CASE["data_range_q"]
-DATA_RANGE_K = CASE["data_range_k"]
-DATA_RANGE_V = CASE["data_range_v"]
-DEVICE_ID = CASE["device_id"]
-SPARSE_BLOCK_SIZE = CASE["sparse_q_block_size"]
-QUANT_MODE_MXFP8 = CASE["quant_mode"]
-KEY_LAYOUT = CASE["layout_kv"]
-SPARSE_INDICES_LAYOUT = CASE["layout_sparse_indices"]
-OUT_LAYOUT = CASE["layout_out"]
+
+def _iter_test_cases(test_cases):
+    if isinstance(test_cases, dict):
+        for case_name, case in test_cases.items():
+            item = dict(case)
+            item.setdefault("name", case_name)
+            yield item
+        return
+
+    for case in test_cases:
+        yield dict(case)
+
+
+def _resolve_dtype(value, field_name):
+    if not isinstance(value, str):
+        return value
+    if value not in _DTYPE_MAP:
+        raise ValueError(f"unsupported {field_name}: {value}")
+    return _DTYPE_MAP[value]
+
+
+def _normalize_case(case):
+    case = dict(case)
+    case["fp8_dtype"] = _resolve_dtype(case["fp8_dtype"], "fp8_dtype")
+    case["scale_dtype"] = _resolve_dtype(case["scale_dtype"], "scale_dtype")
+    case.setdefault("enable", True)
+    case["softmax_scale"] = case.get("softmax_scale") or (1.0 / math.sqrt(float(case["D"])))
+    return case
+
+
+def load_test_cases(case_files=None):
+    case_files = case_files or _DEFAULT_CASE_FILE
+    all_cases = {}
+    for case_file in [item.strip() for item in case_files.split(",") if item.strip()]:
+        _, test_cases = _load_case_file_test_cases(case_file)
+        for case in _iter_test_cases(test_cases):
+            case = _normalize_case(case)
+            case_name = case.get("name")
+            if not case_name:
+                raise ValueError(f"case in {case_file} must set name")
+            if case_name in all_cases:
+                raise ValueError(f"duplicate case name: {case_name}")
+            all_cases[case_name] = case
+    return all_cases
+
+
+def resolve_case_names(case_name_arg, all_cases):
+    if not case_name_arg or case_name_arg == "all":
+        return sorted([name for name, case in all_cases.items() if case.get("enable", True)])
+    result = []
+    missing = []
+    for case_name in [item.strip() for item in case_name_arg.split(",") if item.strip()]:
+        if case_name in all_cases:
+            result.append(case_name)
+        else:
+            missing.append(case_name)
+    if missing:
+        raise ValueError(f"Unknown case_name: {missing}. Available cases: {sorted(all_cases)}")
+    return result
+
+
+def _load_initial_case():
+    all_cases = load_test_cases(_DEFAULT_CASE_FILE)
+    enabled_cases = resolve_case_names(None, all_cases)
+    if enabled_cases:
+        return dict(all_cases[enabled_cases[0]])
+    if all_cases:
+        return dict(all_cases[sorted(all_cases.keys())[0]])
+    raise ValueError(f"{_DEFAULT_CASE_FILE}.py must define at least one case")
+
+
+def set_active_case(case):
+    global CASE, B, N_q, N_kv, D, ACTUAL_SEQ_Q, ACTUAL_SEQ_KV, BLOCK_SIZE, MASK_MODE
+    global FP8_DTYPE, SCALE_DTYPE, QUANT_GROUP_SIZE, Q_INPUT_LAYOUT, KV_CACHE_LAYOUT, IS_CONTIGUOUS
+    global ENABLE_LSE, DATA_RANGE_Q, DATA_RANGE_K, DATA_RANGE_V, DEVICE_ID, SPARSE_BLOCK_SIZE
+    global QUANT_MODE_MXFP8, KEY_LAYOUT, SPARSE_INDICES_LAYOUT, OUT_LAYOUT
+
+    CASE = dict(case)
+    B = CASE["B"]
+    N_q = CASE["N1"]
+    N_kv = CASE["N2"]
+    D = CASE["D"]
+    ACTUAL_SEQ_Q = CASE["actual_seq_q"]
+    ACTUAL_SEQ_KV = CASE["actual_seq_kv"]
+    BLOCK_SIZE = CASE["block_size"]
+    MASK_MODE = CASE["mask_mode"]
+    FP8_DTYPE = CASE["fp8_dtype"]
+    SCALE_DTYPE = CASE["scale_dtype"]
+    QUANT_GROUP_SIZE = CASE["quant_group_size"]
+    Q_INPUT_LAYOUT = CASE["layout_q"]
+    KV_CACHE_LAYOUT = CASE["kv_cache_layout"]
+    IS_CONTIGUOUS = CASE["is_contiguous"]
+    ENABLE_LSE = CASE["return_softmax_lse"]
+    DATA_RANGE_Q = CASE["data_range_q"]
+    DATA_RANGE_K = CASE["data_range_k"]
+    DATA_RANGE_V = CASE["data_range_v"]
+    DEVICE_ID = CASE["device_id"]
+    SPARSE_BLOCK_SIZE = CASE["sparse_q_block_size"]
+    QUANT_MODE_MXFP8 = CASE["quant_mode"]
+    KEY_LAYOUT = CASE["layout_kv"]
+    SPARSE_INDICES_LAYOUT = CASE["layout_sparse_indices"]
+    OUT_LAYOUT = CASE["layout_out"]
+
+
+CASE = _load_initial_case()
+set_active_case(CASE)
 
 # ==============================================================================
 # 固定运行常量
@@ -995,34 +1063,30 @@ def npu_mxfp8_fa(q_fp8, k_fp8, v_fp8,
 # Main
 # ==============================================================================
 
-if __name__ == '__main__':
+def _load_golden_cache():
     try:
         from . import golden_cache
     except ImportError:
         import golden_cache
+    return golden_cache
 
-    _VALID_MODES = {"all", "gen", "cpu", "npu", "compare"}
 
-    parser = argparse.ArgumentParser(description="MXFP8 Flash Attention Golden")
-    parser.add_argument("--mode", default="all",
-                        help="执行模式，支持逗号组合: all/gen/cpu/npu/compare. 例: --mode=npu,compare")
-    parser.add_argument("--case-name", default="default",
-                        help="case 名称，用于 .pt 文件命名")
-    parser.add_argument("--cache-dir", default=None,
-                        help="缓存目录路径（默认 golden_cache/）")
-    args = parser.parse_args()
+def _cache_case_name(case_id, case_name_arg, total_case_num):
+    safe_case_id = case_id.replace("/", "_")
+    if case_name_arg is None:
+        return safe_case_id
+    if total_case_num == 1:
+        return case_name_arg
+    return f"{case_name_arg}_{safe_case_id}"
 
-    raw_parts = {m.strip() for m in args.mode.split(",") if m.strip()}
-    invalid = raw_parts - _VALID_MODES
-    if invalid:
-        parser.error(f"Invalid mode: {invalid}. Valid: {_VALID_MODES}")
-    mode = {"gen", "cpu", "npu", "compare"} if "all" in raw_parts else raw_parts
 
-    case_name = args.case_name
-    cdir = args.cache_dir
+def run_one_case(case_id, case, mode, case_name, cache_dir):
+    golden_cache = _load_golden_cache()
+    set_active_case(case)
 
     logger.info("=" * 60)
-    logger.info("MXFP8 Flash Attention Golden  [mode=%s, case=%s]", mode, case_name)
+    logger.info("MXFP8 Flash Attention Golden  [mode=%s, case=%s]", mode, case_id)
+    logger.info("cache case name: %s", case_name)
     logger.info("输出: 逐元素表格 + 统计汇总 (PctRlt 通过率)")
     logger.info("=" * 60)
     logger.info("场景: PA")
@@ -1052,10 +1116,10 @@ if __name__ == '__main__':
             "kv_lengths": kv_lengths,
             "cu_seqlens_q": cu_seqlens_q,
             "cu_seqlens_kv": cu_seqlens_kv,
-        }, cache_dir=cdir)
+        }, cache_dir=cache_dir)
     else:
         logger.info("\n[Step 1] 加载已保存的输入数据")
-        input_path = golden_cache._path(case_name, "input", cdir)
+        input_path = golden_cache._path(case_name, "input", cache_dir)
         data = torch.load(input_path, weights_only=False)
         q_fp8 = data["q_fp8"]
         k_fp8 = data["k_fp8"]
@@ -1080,34 +1144,34 @@ if __name__ == '__main__':
 
     if "gen" in mode and not (mode & {"cpu", "npu", "compare"}):
         logger.info("\n[Done] 数据已保存，退出")
-        exit(0)
+        return
 
     if "cpu" in mode:
         logger.info("\n[Step 2] CPU Golden")
         cpu_out, cpu_lse = cpu_mxfp8_golden(q_fp8, k_fp8, v_fp8,
-                                   dequant_scale_q, dequant_scale_k, dequant_scale_v, p_scale,
-                                   q_lengths, kv_lengths, cu_seqlens_q, sparse_indices, sparse_seq_len)
-        golden_cache.save_cpu_output(case_name, cpu_out, cpu_lse, cache_dir=cdir)
+                                            dequant_scale_q, dequant_scale_k, dequant_scale_v, p_scale,
+                                            q_lengths, kv_lengths, cu_seqlens_q, sparse_indices, sparse_seq_len)
+        golden_cache.save_cpu_output(case_name, cpu_out, cpu_lse, cache_dir=cache_dir)
     else:
-        cpu_out, cpu_lse = golden_cache.load_cpu_output(case_name, cache_dir=cdir)
+        cpu_out, cpu_lse = golden_cache.load_cpu_output(case_name, cache_dir=cache_dir)
 
     if "cpu" in mode and not (mode & {"npu", "compare"}):
         logger.info("\n[Done] CPU 输出已保存，退出")
-        exit(0)
+        return
 
     if "npu" in mode:
         logger.info("\n[Step 3] NPU 调用")
         atten_out, lse_out = npu_mxfp8_fa(q_fp8, k_fp8, v_fp8,
-                               dequant_scale_q, dequant_scale_k, dequant_scale_v, p_scale,
-                               q_lengths, kv_lengths, cu_seqlens_q, cu_seqlens_kv,
-                               block_table_torch, sparse_indices, sparse_seq_len)
-        golden_cache.save_npu_output(case_name, atten_out, lse_out, cache_dir=cdir)
+                                          dequant_scale_q, dequant_scale_k, dequant_scale_v, p_scale,
+                                          q_lengths, kv_lengths, cu_seqlens_q, cu_seqlens_kv,
+                                          block_table_torch, sparse_indices, sparse_seq_len)
+        golden_cache.save_npu_output(case_name, atten_out, lse_out, cache_dir=cache_dir)
     else:
-        atten_out, lse_out = golden_cache.load_npu_output(case_name, cache_dir=cdir)
+        atten_out, lse_out = golden_cache.load_npu_output(case_name, cache_dir=cache_dir)
 
     if "npu" in mode and "compare" not in mode:
         logger.info("\n[Done] NPU 输出已保存，退出")
-        exit(0)
+        return
 
     logger.info("\n[Step 4] Atten OUT 精度对比")
     result_compare_method.check_result(cpu_out, atten_out)
@@ -1115,3 +1179,46 @@ if __name__ == '__main__':
     if ENABLE_LSE:
         logger.info("\n[Step 5] LSE 精度对比")
         result_compare_method.check_result(cpu_lse, lse_out)
+
+
+if __name__ == '__main__':
+    _VALID_MODES = {"all", "gen", "cpu", "npu", "compare"}
+
+    parser = argparse.ArgumentParser(description="MXFP8 QuantBlockSparseAttn Golden")
+    parser.add_argument("--case_files", default=_DEFAULT_CASE_FILE,
+                        help="testcase 文件名，支持逗号分隔；默认加载 qbsa_mxfp8_test_cases.py")
+    parser.add_argument("--mode", default="all",
+                        help="执行模式，支持逗号组合: all/gen/cpu/npu/compare. 例: --mode=npu,compare")
+    parser.add_argument("--case_name", "--case-name", dest="case_name", default=None,
+                        help="case 名称；不传时默认执行 enable=True 的 case，支持逗号分隔多个名称")
+    parser.add_argument("--case_id", default=None,
+                        help="兼容旧参数，等价于 --case_name")
+    parser.add_argument("--list_cases", action="store_true",
+                        help="只列出已加载 case_files 内的所有 case，不执行")
+    parser.add_argument("--cache_case_name", "--cache-case-name", dest="cache_case_name", default=None,
+                        help="缓存文件名前缀；默认使用 case name")
+    parser.add_argument("--cache-dir", default=None,
+                        help="缓存目录路径（默认 golden_cache/）")
+    args = parser.parse_args()
+    all_cases = load_test_cases(args.case_files)
+
+    if args.list_cases:
+        for case_id in sorted(all_cases):
+            print(f"{case_id} enable={all_cases[case_id].get('enable', True)}")
+        sys.exit(0)
+
+    raw_parts = {m.strip() for m in args.mode.split(",") if m.strip()}
+    invalid = raw_parts - _VALID_MODES
+    if invalid:
+        parser.error(f"Invalid mode: {invalid}. Valid: {_VALID_MODES}")
+    mode = {"gen", "cpu", "npu", "compare"} if "all" in raw_parts else raw_parts
+
+    if args.case_name and args.case_id:
+        parser.error("--case_name and --case_id cannot be set at the same time")
+    selected_case_name = args.case_name if args.case_name is not None else args.case_id
+    run_case_ids = resolve_case_names(selected_case_name, all_cases)
+    if not run_case_ids:
+        parser.error("No runnable case selected. Check enable fields or pass --case_name explicitly.")
+    for case_id in run_case_ids:
+        case_name = _cache_case_name(case_id, args.cache_case_name, len(run_case_ids))
+        run_one_case(case_id, all_cases[case_id], mode, case_name, args.cache_dir)
