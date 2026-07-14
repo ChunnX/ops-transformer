@@ -1266,20 +1266,21 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::P
 
         pipe_->Reset();
 
+        auto aivNumAlign = Ops::Base::CeilAlign(int64_t(usedAivNum_ * uTypeSize_), blockSize_) / uTypeSize_;
+        pipe_->InitBuffer(gradAlphaQue_, DOUBLE_BUFFER, aivNumAlign * uTypeSize_);
+        pipe_->InitBuffer(gradAlphaSumQue_, 1, blockSize_);
+        pipe_->InitBuffer(gradBiasQue_, 1, usedAivNum_ * nnAlignFp32_ * uTypeSize_);
+        pipe_->InitBuffer(hPreAndGradHPostQue_, DOUBLE_BUFFER, cBlockCount_ * sizeof(U));
+        pipe_->InitBuffer(xQue_, DOUBLE_BUFFER, cBlockCount_ * sizeof(U));
+        pipe_->InitBuffer(gradHinQue_, DOUBLE_BUFFER, cBlockCount_ * sizeof(U));
+        pipe_->InitBuffer(xFp32Que_, DOUBLE_BUFFER, cBlockCount_ * sizeof(U));
+
         if (blockIdx_ == 0) {
-            auto aivNumAlign = Ops::Base::CeilAlign(int64_t(usedAivNum_ * uTypeSize_), blockSize_) / uTypeSize_;
-            pipe_->InitBuffer(gradAlphaQue_, DOUBLE_BUFFER, aivNumAlign * uTypeSize_);
-            pipe_->InitBuffer(gradAlphaSumQue_, 1, blockSize_);
-            pipe_->InitBuffer(gradBiasQue_, 1, usedAivNum_ * nnAlignFp32_ * uTypeSize_);
             AddAlphaAndBias();
         }
 
         CrossCoreWaitFlag<AIV_AIC_MODE>(PIPE_FIX_FLAG);
         if (blockIdx_ < finalUsedAivNum_) {
-            pipe_->InitBuffer(hPreAndGradHPostQue_, DOUBLE_BUFFER, cBlockCount_ * sizeof(U));
-            pipe_->InitBuffer(xQue_, DOUBLE_BUFFER, cBlockCount_ * sizeof(U));
-            pipe_->InitBuffer(gradHinQue_, DOUBLE_BUFFER, cBlockCount_ * sizeof(U));
-            pipe_->InitBuffer(xFp32Que_, DOUBLE_BUFFER, cBlockCount_ * sizeof(U));
             ComputeFinal();
         }
     }
