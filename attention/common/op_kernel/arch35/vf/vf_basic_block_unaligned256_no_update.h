@@ -377,11 +377,11 @@ __aicore__ inline void ProcessVec1NoUpdateGeneralImpl256(
     float divValue = 1.0f / keepProb;
 
     if (m <= 1 && originN <= 300) {
-        PRINTF("[VF256-srcUb] m=%d oriN=%d src[0..3]=%.9e %.9e %.9e %.9e mask[0]=%x scale=%.9e\n",
+        PRINTF("[VF256-srcUb] m=%d oriN=%d src[0..3]=%f %f %f %f mask[0]=%x scale=%f\n",
                (int)m, (int)originN,
-               (double)((__ubuf__ float*)srcUb)[0], (double)((__ubuf__ float*)srcUb)[1],
-               (double)((__ubuf__ float*)srcUb)[2], (double)((__ubuf__ float*)srcUb)[3],
-               (int)(maskUb1[0]), (double)scale);
+               (float)((__ubuf__ float*)srcUb)[0], (float)((__ubuf__ float*)srcUb)[1],
+               (float)((__ubuf__ float*)srcUb)[2], (float)((__ubuf__ float*)srcUb)[3],
+               (int)(maskUb1[0]), (float)scale);
     }
     ProcessVec1NoUpdateGeneralImpl256VF<T, T2, pseShiftType, s1BaseSize, s2BaseSize, hasAtten,
         pseMode, hasDrop, hasSink>(
