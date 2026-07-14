@@ -35,14 +35,19 @@ constexpr static int64_t CONST_SEVEN = 7;
 constexpr static int64_t CONST_EIGHT = 8;
 constexpr static int64_t CONST_TEN = 10;
 constexpr static int64_t CONST_ELEVEN = 11;
+constexpr static int64_t CONST_TWELVE = 12;
 constexpr static int64_t CONST_SIXTY_THREE = 63;
 
 constexpr static int64_t CONST_BRCFLAG_ZERO = 0;
 constexpr static int64_t CONST_BRCFLAG_ONE = 1;
 constexpr static int64_t CONST_BRCFLAG_TWO = 2;
 constexpr static int64_t BLOCK_SIZE = 32;
-constexpr static int64_t RECOMPUTE_REDUCE_SUM_BUFFER_BTYES = 32;
-constexpr static int64_t RECOMPUTE_BINARY_CACHE_BTYES = 2048;
+// 与 Kernel 侧 kv_rms_norm_rope_cache_regbase_recompute.h 中同名常量保持一致：
+// 被 VF 直接 Load 的 buffer 需按 VReg(256B) 粒度留余量，x 与 cos/sin 另需 2 * VL_FP32 个元素的尾块余量
+constexpr static int64_t RECOMPUTE_VREG_BYTES = 256;
+constexpr static int64_t RECOMPUTE_REDUCE_SUM_BUFFER_BTYES = RECOMPUTE_VREG_BYTES;
+constexpr static int64_t RECOMPUTE_BINARY_CACHE_BTYES = 2048 + RECOMPUTE_VREG_BYTES;
+constexpr static int64_t RECOMPUTE_VF_LOAD_PAD_BYTES = 4 * RECOMPUTE_VREG_BYTES;
 
 static const std::vector<std::string> inputNames = {
     "kv", "gamma", "cos", "sin", "index", "k_cache", "ckv_cache",
@@ -54,6 +59,54 @@ using namespace Ops::Base;
 bool KvRmsNormRopeCacheRegbaseRecomputeTiling::IsCapable()
 {
     return isRegbase_;
+}
+
+int64_t KvRmsNormRopeCacheRegbaseRecomputeTiling::GetCacheBlockElemNum(const ge::DataType cacheDtype) const
+{
+    int64_t cacheDtypeSize = static_cast<int64_t>(ge::GetSizeByDataType(cacheDtype));
+    return (cacheDtypeSize > 0) ? (BLOCK_SIZE / cacheDtypeSize) : 0;
+}
+
+// NZ 场景下 cache 按 dk0(=32B) 分形排布，而本模板的 Rope 按 rotate-half 分前后半区分别搬出，
+// 后半区的偏移是 gmOffset + dk / 2 * blockSize，只有 dk / 2 是 dk0 的整数倍时该偏移才落在分形块边界上。
+bool KvRmsNormRopeCacheRegbaseRecomputeTiling::CheckNzHalfDkAligned()
+{
+    if (currentCacheMode_ != CacheMode::PA_NZ && currentCacheMode_ != CacheMode::PA_BLK_NZ) {
+        return true;
+    }
+    auto kCacheDesc = context_->GetInputDesc(K_CACHE_INDEX);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, kCacheDesc);
+    int64_t dk0 = GetCacheBlockElemNum(kCacheDesc->GetDataType());
+    OP_CHECK_IF(dk0 <= 0, OP_LOGE(context_->GetNodeName(), "invalid k_cache dtype."), return false);
+    if ((dk_ % (CONST_TWO * dk0)) != 0) {
+        auto cosShape = context_->GetInputShape(COS_INDEX)->GetStorageShape();
+        std::string reasonMsg = "In NZ cache mode, the D axis of input cos must be exactly divisible by " +
+            std::to_string(CONST_TWO * dk0) + ", because RoPE scatters the two half rows of Dk separately";
+        std::string cosShapeStr = ToString(cosShape);
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "cos",
+            cosShapeStr.c_str(), reasonMsg.c_str());
+        return false;
+    }
+    return true;
+}
+
+// index 的取值语义：Norm 下是 batch 内的行号(< Scache)，PA 系下是全局槽位号(< BlockNum * BlockSize)。
+// Kernel 只能拿到 tiling 下发的上界，故这里算好下发，避免 kernel 用越界的 index 写 cache。
+bool KvRmsNormRopeCacheRegbaseRecomputeTiling::GetCacheRowLimit(int64_t& cacheRowLimit)
+{
+    if (currentCacheMode_ == CacheMode::Norm) {
+        cacheRowLimit = cacheLength_;
+        return true;
+    }
+    const gert::StorageShape* kCacheShapePtr = context_->GetInputShape(K_CACHE_INDEX);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, kCacheShapePtr);
+    int64_t blockNum = kCacheShapePtr->GetStorageShape().GetDim(SHAPE_IDX_B);
+    OP_CHECK_IF(
+        blockNum <= 0 || blockSize_ <= 0,
+        OP_LOGE(context_->GetNodeName(), "invalid BlockNum(%ld) or BlockSize(%ld) of k_cache.", blockNum, blockSize_),
+        return false);
+    cacheRowLimit = blockNum * blockSize_;
+    return true;
 }
 
 bool KvRmsNormRopeCacheRegbaseRecomputeTiling::CheckScaleOffsetShape(
@@ -317,6 +370,12 @@ ge::graphStatus KvRmsNormRopeCacheRegbaseRecomputeTiling::DoOpTiling()
             !CheckVCacheValidPA(context_, numHead, dv_), OP_LOGE(context_->GetNodeName(), "ckv_cache shape invalid."),
             return ge::GRAPH_FAILED);
     }
+    OP_CHECK_IF(
+        !CheckNzHalfDkAligned(), OP_LOGE(context_->GetNodeName(), "dk is invalid for NZ cache in recompute template."),
+        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        !GetCacheRowLimit(cacheRowLimit_),
+        OP_LOGE(context_->GetNodeName(), "failed to get the row limit of cache."), return ge::GRAPH_FAILED);
 
     // N = 1
     int64_t bs = batchSize * seqLen * numHead;
@@ -336,9 +395,13 @@ ge::graphStatus KvRmsNormRopeCacheRegbaseRecomputeTiling::DoOpTiling()
     tilingData_.set_vScaleType(vScaleType_);
     tilingData_.set_vOffsetType(vOffsetType_);
     tilingData_.set_cacheMode(currentCacheMode_);
+    tilingData_.set_cacheRowLimit(cacheRowLimit_);
 
-    int64_t ubFlexible_ = ubSize_ - UB_RESERVED_BYTE - RECOMPUTE_REDUCE_SUM_BUFFER_BTYES - RECOMPUTE_BINARY_CACHE_BTYES;
-    int64_t ubFactor = FloorDiv(ubFlexible_, CONST_ELEVEN * DOUBLE_BUFFER * kvDtypeSize_);
+    int64_t ubFlexible_ = ubSize_ - UB_RESERVED_BYTE - RECOMPUTE_REDUCE_SUM_BUFFER_BTYES -
+        RECOMPUTE_BINARY_CACHE_BTYES - RECOMPUTE_VF_LOAD_PAD_BYTES;
+    // 弹性部分按 ubFactor 的份数记账（1 份 = ubFactor * sizeof(T_KV)）：gamma 2 + cosSin 4 + x 2 + out 4 +
+    // xPow 4(按 float 存两段) + kScaleOffset 4 + vScaleOffset 4 = 24 份 = CONST_TWELVE * DOUBLE_BUFFER 份
+    int64_t ubFactor = FloorDiv(ubFlexible_, CONST_TWELVE * DOUBLE_BUFFER * kvDtypeSize_);
 
     OP_CHECK_IF(
         (ubFactor <= 0),

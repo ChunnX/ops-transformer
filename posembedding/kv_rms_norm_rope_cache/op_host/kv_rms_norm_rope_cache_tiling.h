@@ -135,6 +135,7 @@ TILING_DATA_FIELD_DEF(int64_t, ubFactorDkTail);
 TILING_DATA_FIELD_DEF(int64_t, ubFactorDkLoopCountCeil);
 TILING_DATA_FIELD_DEF(int64_t, basicBlockLoop); // 二分累加：循环次数，折叠点左半部分的block数量
 TILING_DATA_FIELD_DEF(int64_t, mainFoldCount);  // 二分累加：折叠的块数，折叠点右半部分的block数量-1
+TILING_DATA_FIELD_DEF(int64_t, cacheRowLimit);  // index 取值上界：Norm 为 Scache，PA 系为 BlockNum * BlockSize
 TILING_DATA_FIELD_DEF(float, epsilon);
 TILING_DATA_FIELD_DEF(float, reciprocal);
 END_TILING_DATA_DEF;
@@ -351,6 +352,11 @@ public:
     int64_t kOffsetType_ = 0;
     int64_t vScaleType_ = 0;
     int64_t vOffsetType_ = 0;
+    int64_t cacheRowLimit_ = 0;
+
+    int64_t GetCacheBlockElemNum(const ge::DataType cacheDtype) const;
+    bool CheckNzHalfDkAligned();
+    bool GetCacheRowLimit(int64_t& cacheRowLimit);
 
 protected:
     bool IsCapable() override;

@@ -18,9 +18,13 @@
 #include "kv_rms_norm_rope_cache_regbase_base.h"
 
 namespace KvRmsNormRopeCache {
-static constexpr int64_t RECOMPUTE_BINARY_CACHE_BTYES = 2048;
-static constexpr int64_t RECOMPUTE_X_POWER_BUFFER_BTYES = 512;
-static constexpr int64_t RECOMPUTE_REDUCE_SUM_BUFFER_BTYES = 32;
+// Reg 侧的 Load 没有 mask 形参，恒按 LoadDist 读满一个 VReg（最大 256B）。凡是被 VF 直接 Load 的 buffer，
+// 尾块都可能读到有效数据之后的最多一个 VReg，故这些 buffer 需按 VReg 粒度留出余量。
+static constexpr int64_t RECOMPUTE_VREG_BYTES = static_cast<int64_t>(platform::GetVRegSize());
+static constexpr int64_t RECOMPUTE_BINARY_CACHE_BTYES = 2048 + RECOMPUTE_VREG_BYTES;
+static constexpr int64_t RECOMPUTE_REDUCE_SUM_BUFFER_BTYES = RECOMPUTE_VREG_BYTES;
+// Rope 的尾块按 2 个 VReg 成对解交织，最多读到有效数据之后的 2 * VL_FP32 个元素
+static constexpr int64_t RECOMPUTE_VF_LOAD_PAD_ELEMS = 2 * VL_FP32;
 static constexpr int64_t A_IN_IN = 1;
 static constexpr float FLOAT_ZERO = 0.0;
 
@@ -97,10 +101,14 @@ public:
         pipe_->InitBuffer(cacheBuffer, RECOMPUTE_BINARY_CACHE_BTYES);
         pipe_->InitBuffer(tmpReduceBuffer, RECOMPUTE_REDUCE_SUM_BUFFER_BTYES);
         pipe_->InitBuffer(inQueueGamma, BUFFER_COUNT_DOUBLE, this->ubFactor * sizeof(T_KV));
-        pipe_->InitBuffer(inQueueCosSin, BUFFER_COUNT_DOUBLE, BUFFER_COUNT_DOUBLE * this->ubFactor * sizeof(T_KV));
-        pipe_->InitBuffer(inQueueX, BUFFER_COUNT_DOUBLE, this->ubFactor * sizeof(T_KV));
+        // x 与 cos/sin 会被 Rope 的 VF 尾块成对 Load，最多多读 RECOMPUTE_VF_LOAD_PAD_ELEMS 个元素，故留出余量
+        pipe_->InitBuffer(inQueueCosSin, BUFFER_COUNT_DOUBLE,
+                          (BUFFER_COUNT_DOUBLE * this->ubFactor + RECOMPUTE_VF_LOAD_PAD_ELEMS) * sizeof(T_KV));
+        pipe_->InitBuffer(inQueueX, BUFFER_COUNT_DOUBLE,
+                          (this->ubFactor + RECOMPUTE_VF_LOAD_PAD_ELEMS) * sizeof(T_KV));
         pipe_->InitBuffer(outQueue, BUFFER_COUNT_DOUBLE, BUFFER_COUNT_DOUBLE * this->ubFactor * sizeof(T_KV));
-        pipe_->InitBuffer(xPowBuffer, BUFFER_COUNT_DOUBLE * this->ubFactor * sizeof(T_KV));
+        // xPowBuffer 按 float 存放二分折叠的两段中间结果（x1、x2），每段 ubFactor 个 float
+        pipe_->InitBuffer(xPowBuffer, BUFFER_COUNT_DOUBLE * this->ubFactor * sizeof(float));
         
         if constexpr (IsSameType<T_K_CACHE, int8_t>::value || IsSameType<T_K_CACHE, hifloat8_t>::value ||
                       IsSameType<T_K_CACHE, fp8_e5m2_t>::value || IsSameType<T_K_CACHE, fp8_e4m3fn_t>::value) {
@@ -136,13 +144,15 @@ public:
             }
 
             // 尾VL计算
-            width = regTailWidth;
-            mask = AscendC::MicroAPI::UpdateMask<float>(width);
-            auto xAddr = xPtr + repeatTimesFloor * VL_FP32;
-            auto xFp32Addr = xFp32Ptr + repeatTimesFloor * VL_FP32;
-            LoadDataAndCast2Fp32(vreg1, xAddr, mask);
-            AscendC::MicroAPI::Mul(vreg2, vreg1, vreg1, mask);
-            AscendC::MicroAPI::DataCopy(xFp32Addr, vreg2, mask);
+            if (regTailWidth > 0) {
+                width = regTailWidth;
+                mask = AscendC::MicroAPI::UpdateMask<float>(width);
+                auto xAddr = xPtr + repeatTimesFloor * VL_FP32;
+                auto xFp32Addr = xFp32Ptr + repeatTimesFloor * VL_FP32;
+                LoadDataAndCast2Fp32(vreg1, xAddr, mask);
+                AscendC::MicroAPI::Mul(vreg2, vreg1, vreg1, mask);
+                AscendC::MicroAPI::DataCopy(xFp32Addr, vreg2, mask);
+            }
         }
     }
 
@@ -169,14 +179,16 @@ public:
             }
 
             // 尾VL计算
-            width = regTailWidth;
-            mask = AscendC::MicroAPI::UpdateMask<float>(width);
-            auto x1Addr = x1Ptr + repeatTimesFloor * VL_FP32;
-            auto x2Addr = x2Ptr + repeatTimesFloor * VL_FP32;
-            LoadDataAndCast2Fp32<float>(vreg1, x1Addr, mask);
-            LoadDataAndCast2Fp32<float>(vreg2, x2Addr, mask);
-            AscendC::MicroAPI::Add(vreg3, vreg1, vreg2, mask);
-            AscendC::MicroAPI::DataCopy(x1Addr, vreg3, mask);
+            if (regTailWidth > 0) {
+                width = regTailWidth;
+                mask = AscendC::MicroAPI::UpdateMask<float>(width);
+                auto x1Addr = x1Ptr + repeatTimesFloor * VL_FP32;
+                auto x2Addr = x2Ptr + repeatTimesFloor * VL_FP32;
+                LoadDataAndCast2Fp32<float>(vreg1, x1Addr, mask);
+                LoadDataAndCast2Fp32<float>(vreg2, x2Addr, mask);
+                AscendC::MicroAPI::Add(vreg3, vreg1, vreg2, mask);
+                AscendC::MicroAPI::DataCopy(x1Addr, vreg3, mask);
+            }
         }
     }
 
@@ -251,16 +263,18 @@ public:
             }
 
             // 尾VL
-            width = regTailWidth;
-            mask = AscendC::MicroAPI::UpdateMask<float>(width);
-            auto xAddr = xPtr + repeatTimesFloor * VL_FP32;
-            auto yAddr = yPtr + repeatTimesFloor * VL_FP32;
-            auto gammaAddr = gammaPtr + repeatTimesFloor * VL_FP32;
-            LoadDataAndCast2Fp32(vregX, xAddr, mask);
-            LoadDataAndCast2Fp32(vregGamma, gammaAddr, mask);
-            AscendC::MicroAPI::Div(vregTmp, vregX, sumReg, mask);
-            AscendC::MicroAPI::Mul(vregTmp, vregTmp, vregGamma, mask);
-            StoreDataAndCastFromFp32(yAddr, vregTmp, uReg, mask, width);
+            if (regTailWidth > 0) {
+                width = regTailWidth;
+                mask = AscendC::MicroAPI::UpdateMask<float>(width);
+                auto xAddr = xPtr + repeatTimesFloor * VL_FP32;
+                auto yAddr = yPtr + repeatTimesFloor * VL_FP32;
+                auto gammaAddr = gammaPtr + repeatTimesFloor * VL_FP32;
+                LoadDataAndCast2Fp32(vregX, xAddr, mask);
+                LoadDataAndCast2Fp32(vregGamma, gammaAddr, mask);
+                AscendC::MicroAPI::Div(vregTmp, vregX, sumReg, mask);
+                AscendC::MicroAPI::Mul(vregTmp, vregTmp, vregGamma, mask);
+                StoreDataAndCastFromFp32(yAddr, vregTmp, uReg, mask, width);
+            }
         }
     }
 
@@ -495,25 +509,27 @@ public:
             }
 
             // 尾VL
-            width = regTailWidth;
-            mask = AscendC::MicroAPI::UpdateMask<float>(width);
-            auto xAddr = xPtr + repeatTimesFloor * VL_FP32;
-            auto gammaAddr = gammaPtr + repeatTimesFloor * VL_FP32;
-            auto vScaleAddr = vScalePtr + repeatTimesFloor * VL_FP32;
-            auto vOffsetAddr = vOffsetPtr + repeatTimesFloor * VL_FP32;
-            auto outAddr = outPtr + repeatTimesFloor * VL_FP32;
-            auto vQuantAddr = vQuantPtr + repeatTimesFloor * VL_FP32;
-            LoadDataAndCast2Fp32(vregX, xAddr, mask);
-            LoadDataAndCast2Fp32(vregGamma, gammaAddr, mask);
-            AscendC::MicroAPI::Div(vregTmp, vregX, sumReg, mask);
-            AscendC::MicroAPI::Mul(vregTmp, vregTmp, vregGamma, mask);
-            StoreDataAndCastFromFp32(outAddr, vregTmp, uReg, mask, width);
+            if (regTailWidth > 0) {
+                width = regTailWidth;
+                mask = AscendC::MicroAPI::UpdateMask<float>(width);
+                auto xAddr = xPtr + repeatTimesFloor * VL_FP32;
+                auto gammaAddr = gammaPtr + repeatTimesFloor * VL_FP32;
+                auto vScaleAddr = vScalePtr + repeatTimesFloor * VL_FP32;
+                auto vOffsetAddr = vOffsetPtr + repeatTimesFloor * VL_FP32;
+                auto outAddr = outPtr + repeatTimesFloor * VL_FP32;
+                auto vQuantAddr = vQuantPtr + repeatTimesFloor * VL_FP32;
+                LoadDataAndCast2Fp32(vregX, xAddr, mask);
+                LoadDataAndCast2Fp32(vregGamma, gammaAddr, mask);
+                AscendC::MicroAPI::Div(vregTmp, vregX, sumReg, mask);
+                AscendC::MicroAPI::Mul(vregTmp, vregTmp, vregGamma, mask);
+                StoreDataAndCastFromFp32(outAddr, vregTmp, uReg, mask, width);
 
-            LoadDataAndCast2Fp32<float>(vregScale, vScaleAddr, mask);
-            LoadDataAndCast2Fp32<float>(vregOffset, vOffsetAddr, mask);
-            AscendC::MicroAPI::Mul(vregTmp, vregTmp, vregScale, mask);
-            AscendC::MicroAPI::Add(vregTmp, vregTmp, vregOffset, mask);
-            StoreQuantAndCastFromFp32<T_V_CACHE>(vQuantAddr, vregTmp, mask);
+                LoadDataAndCast2Fp32<float>(vregScale, vScaleAddr, mask);
+                LoadDataAndCast2Fp32<float>(vregOffset, vOffsetAddr, mask);
+                AscendC::MicroAPI::Mul(vregTmp, vregTmp, vregScale, mask);
+                AscendC::MicroAPI::Add(vregTmp, vregTmp, vregOffset, mask);
+                StoreQuantAndCastFromFp32<T_V_CACHE>(vQuantAddr, vregTmp, mask);
+            }
         }
     }
     
@@ -655,22 +671,24 @@ public:
             }
 
             // 尾VL
-            width = regTailWidth;
-            mask = AscendC::MicroAPI::UpdateMask<float>(width);
-            auto xAddr = xPtr + repeatTimesFloor * VL_FP32;
-            auto gammaAddr = gammaPtr + repeatTimesFloor * VL_FP32;
-            auto vScaleAddr = vScalePtr + repeatTimesFloor * VL_FP32;
-            auto outAddr = outPtr + repeatTimesFloor * VL_FP32;
-            auto vQuantAddr = vQuantPtr + repeatTimesFloor * VL_FP32;
-            LoadDataAndCast2Fp32(vregX, xAddr, mask);
-            LoadDataAndCast2Fp32(vregGamma, gammaAddr, mask);
-            AscendC::MicroAPI::Div(vregTmp, vregX, sumReg, mask);
-            AscendC::MicroAPI::Mul(vregTmp, vregTmp, vregGamma, mask);
-            StoreDataAndCastFromFp32(outAddr, vregTmp, uReg, mask, width);
+            if (regTailWidth > 0) {
+                width = regTailWidth;
+                mask = AscendC::MicroAPI::UpdateMask<float>(width);
+                auto xAddr = xPtr + repeatTimesFloor * VL_FP32;
+                auto gammaAddr = gammaPtr + repeatTimesFloor * VL_FP32;
+                auto vScaleAddr = vScalePtr + repeatTimesFloor * VL_FP32;
+                auto outAddr = outPtr + repeatTimesFloor * VL_FP32;
+                auto vQuantAddr = vQuantPtr + repeatTimesFloor * VL_FP32;
+                LoadDataAndCast2Fp32(vregX, xAddr, mask);
+                LoadDataAndCast2Fp32(vregGamma, gammaAddr, mask);
+                AscendC::MicroAPI::Div(vregTmp, vregX, sumReg, mask);
+                AscendC::MicroAPI::Mul(vregTmp, vregTmp, vregGamma, mask);
+                StoreDataAndCastFromFp32(outAddr, vregTmp, uReg, mask, width);
 
-            LoadDataAndCast2Fp32<float>(vregScale, vScaleAddr, mask);
-            AscendC::MicroAPI::Mul(vregTmp, vregTmp, vregScale, mask);
-            StoreQuantAndCastFromFp32<T_V_CACHE>(vQuantAddr, vregTmp, mask);
+                LoadDataAndCast2Fp32<float>(vregScale, vScaleAddr, mask);
+                AscendC::MicroAPI::Mul(vregTmp, vregTmp, vregScale, mask);
+                StoreQuantAndCastFromFp32<T_V_CACHE>(vQuantAddr, vregTmp, mask);
+            }
         }
     }
     
@@ -798,23 +816,25 @@ public:
             }
 
             // 尾VL
-            width = regTailWidth;
-            mask = AscendC::MicroAPI::UpdateMask<float>(width);
-            auto xAddr = xPtr + repeatTimesFloor * VL_FP32;
-            auto gammaAddr = gammaPtr + repeatTimesFloor * VL_FP32;
-            auto vScaleAddr = vScalePtr + repeatTimesFloor * VL_FP32;
-            auto vOffsetAddr = vOffsetPtr + repeatTimesFloor * VL_FP32;
-            auto vQuantAddr = vQuantPtr + repeatTimesFloor * VL_FP32;
-            LoadDataAndCast2Fp32(vregX, xAddr, mask);
-            LoadDataAndCast2Fp32(vregGamma, gammaAddr, mask);
-            AscendC::MicroAPI::Div(vregTmp, vregX, sumReg, mask);
-            AscendC::MicroAPI::Mul(vregTmp, vregTmp, vregGamma, mask);
+            if (regTailWidth > 0) {
+                width = regTailWidth;
+                mask = AscendC::MicroAPI::UpdateMask<float>(width);
+                auto xAddr = xPtr + repeatTimesFloor * VL_FP32;
+                auto gammaAddr = gammaPtr + repeatTimesFloor * VL_FP32;
+                auto vScaleAddr = vScalePtr + repeatTimesFloor * VL_FP32;
+                auto vOffsetAddr = vOffsetPtr + repeatTimesFloor * VL_FP32;
+                auto vQuantAddr = vQuantPtr + repeatTimesFloor * VL_FP32;
+                LoadDataAndCast2Fp32(vregX, xAddr, mask);
+                LoadDataAndCast2Fp32(vregGamma, gammaAddr, mask);
+                AscendC::MicroAPI::Div(vregTmp, vregX, sumReg, mask);
+                AscendC::MicroAPI::Mul(vregTmp, vregTmp, vregGamma, mask);
 
-            LoadDataAndCast2Fp32<float>(vregScale, vScaleAddr, mask);
-            LoadDataAndCast2Fp32<float>(vregOffset, vOffsetAddr, mask);
-            AscendC::MicroAPI::Mul(vregTmp, vregTmp, vregScale, mask);
-            AscendC::MicroAPI::Add(vregTmp, vregTmp, vregOffset, mask);
-            StoreQuantAndCastFromFp32<T_V_CACHE>(vQuantAddr, vregTmp, mask);
+                LoadDataAndCast2Fp32<float>(vregScale, vScaleAddr, mask);
+                LoadDataAndCast2Fp32<float>(vregOffset, vOffsetAddr, mask);
+                AscendC::MicroAPI::Mul(vregTmp, vregTmp, vregScale, mask);
+                AscendC::MicroAPI::Add(vregTmp, vregTmp, vregOffset, mask);
+                StoreQuantAndCastFromFp32<T_V_CACHE>(vQuantAddr, vregTmp, mask);
+            }
         }
     }
     
@@ -948,20 +968,22 @@ public:
             }
 
             // 尾VL
-            width = regTailWidth;
-            mask = AscendC::MicroAPI::UpdateMask<float>(width);
-            auto xAddr = xPtr + repeatTimesFloor * VL_FP32;
-            auto gammaAddr = gammaPtr + repeatTimesFloor * VL_FP32;
-            auto vScaleAddr = vScalePtr + repeatTimesFloor * VL_FP32;
-            auto vQuantAddr = vQuantPtr + repeatTimesFloor * VL_FP32;
-            LoadDataAndCast2Fp32(vregX, xAddr, mask);
-            LoadDataAndCast2Fp32(vregGamma, gammaAddr, mask);
-            AscendC::MicroAPI::Div(vregTmp, vregX, sumReg, mask);
-            AscendC::MicroAPI::Mul(vregTmp, vregTmp, vregGamma, mask);
+            if (regTailWidth > 0) {
+                width = regTailWidth;
+                mask = AscendC::MicroAPI::UpdateMask<float>(width);
+                auto xAddr = xPtr + repeatTimesFloor * VL_FP32;
+                auto gammaAddr = gammaPtr + repeatTimesFloor * VL_FP32;
+                auto vScaleAddr = vScalePtr + repeatTimesFloor * VL_FP32;
+                auto vQuantAddr = vQuantPtr + repeatTimesFloor * VL_FP32;
+                LoadDataAndCast2Fp32(vregX, xAddr, mask);
+                LoadDataAndCast2Fp32(vregGamma, gammaAddr, mask);
+                AscendC::MicroAPI::Div(vregTmp, vregX, sumReg, mask);
+                AscendC::MicroAPI::Mul(vregTmp, vregTmp, vregGamma, mask);
 
-            LoadDataAndCast2Fp32<float>(vregScale, vScaleAddr, mask);
-            AscendC::MicroAPI::Mul(vregTmp, vregTmp, vregScale, mask);
-            StoreQuantAndCastFromFp32<T_V_CACHE>(vQuantAddr, vregTmp, mask);
+                LoadDataAndCast2Fp32<float>(vregScale, vScaleAddr, mask);
+                AscendC::MicroAPI::Mul(vregTmp, vregTmp, vregScale, mask);
+                StoreQuantAndCastFromFp32<T_V_CACHE>(vQuantAddr, vregTmp, mask);
+            }
         }
     }
 
@@ -977,7 +999,8 @@ public:
         
         int64_t gmOffset; 
 
-        if (vCacheIdx >= 0) {
+        // index 的取值是 cache 的行号/槽位号，越界即写到 cache 之外，故必须同时校验上界
+        if (vCacheIdx >= 0 && vCacheIdx < tilingData_->cacheRowLimit) {
             if (tilingData_->cacheMode == NORM_CACHE_MODE) {
                 gmOffset = (batchIdx * tilingData_->cacheLength + vCacheIdx) * tilingData_->dv + this->ubFactor * ubIdx;
                 if constexpr (IsSameType<T_V_CACHE, int8_t>::value || IsSameType<T_V_CACHE, hifloat8_t>::value ||
@@ -1036,7 +1059,8 @@ public:
         
         int64_t gmOffset;
 
-        if (vCacheIdx >= 0) {
+        // index 的取值是 cache 的行号/槽位号，越界即写到 cache 之外，故必须同时校验上界
+        if (vCacheIdx >= 0 && vCacheIdx < tilingData_->cacheRowLimit) {
             if (tilingData_->cacheMode == PA_BLK_BNSD_CACHE_MODE) {
                 int64_t blockOffset = vCacheIdx / tilingData_->blockSize;
                 int64_t rowOffset = seqIdx % tilingData_->blockSize;
@@ -1058,7 +1082,7 @@ public:
                     xDataCopyParams.blockLen = dv0 * sizeof(T_KV);
                 }
                 for (int i = 0; i < tmpFactor / dv0; i++) {
-                    gmOffset = idx * tilingData_->dv * tilingData_->blockSize + (rowOffset + i * tilingData_->blockSize) * dv0 + this->ubFactor * ubIdx * tilingData_->blockSize;
+                    gmOffset = blockOffset * tilingData_->dv * tilingData_->blockSize + (rowOffset + i * tilingData_->blockSize) * dv0 + this->ubFactor * ubIdx * tilingData_->blockSize;
                     int64_t ubOffset = i * dv0;
                     if constexpr (IsSameType<T_V_CACHE, int8_t>::value || IsSameType<T_V_CACHE, hifloat8_t>::value ||
                                   IsSameType<T_V_CACHE, fp8_e5m2_t>::value || IsSameType<T_V_CACHE, fp8_e4m3fn_t>::value) {
@@ -1225,39 +1249,41 @@ public:
             }
 
             // 尾VL计算范式
-            auto ropeAddr1 = ropePtr + repeatTimesFloor * VL_FP32 * CONST_TWO;
-            auto ropeAddr2 = ropePtr + (repeatTimesFloor * CONST_TWO + CONST_ONE) * VL_FP32;
-            auto outAddr1 = outPtr1 + repeatTimesFloor * VL_FP32;
-            auto outAddr2 = outPtr2 + repeatTimesFloor * VL_FP32;
-            auto cosAddr1 = cosPtr1 + repeatTimesFloor * VL_FP32;
-            auto cosAddr2 = cosPtr2 + repeatTimesFloor * VL_FP32;
-            auto sinAddr1 = sinPtr1 + repeatTimesFloor * VL_FP32;
-            auto sinAddr2 = sinPtr2 + repeatTimesFloor * VL_FP32;
+            if (regTailWidth > 0) {
+                auto ropeAddr1 = ropePtr + repeatTimesFloor * VL_FP32 * CONST_TWO;
+                auto ropeAddr2 = ropePtr + (repeatTimesFloor * CONST_TWO + CONST_ONE) * VL_FP32;
+                auto outAddr1 = outPtr1 + repeatTimesFloor * VL_FP32;
+                auto outAddr2 = outPtr2 + repeatTimesFloor * VL_FP32;
+                auto cosAddr1 = cosPtr1 + repeatTimesFloor * VL_FP32;
+                auto cosAddr2 = cosPtr2 + repeatTimesFloor * VL_FP32;
+                auto sinAddr1 = sinPtr1 + repeatTimesFloor * VL_FP32;
+                auto sinAddr2 = sinPtr2 + repeatTimesFloor * VL_FP32;
 
-            LoadDataAndCast2Fp32(vregRope1Fp32, ropeAddr1, mask);
-            LoadDataAndCast2Fp32(vregRope2Fp32, ropeAddr2, mask);
-            AscendC::MicroAPI::DataCopy(tmpBufferPtr, vregRope1Fp32, mask);
-            AscendC::MicroAPI::DataCopy(tmpBufferPtr + VL_FP32, vregRope2Fp32, mask);
-            AscendC::MicroAPI::LocalMemBar<AscendC::MicroAPI::MemType::VEC_STORE, AscendC::MicroAPI::MemType::VEC_LOAD>();
-            AscendC::MicroAPI::DataCopy<float, AscendC::MicroAPI::LoadDist::DIST_DINTLV_B32>(vregRope1Fp32, vregRope2Fp32, ((__local_mem__ float*)(tmpBufferPtr)));
+                LoadDataAndCast2Fp32(vregRope1Fp32, ropeAddr1, mask);
+                LoadDataAndCast2Fp32(vregRope2Fp32, ropeAddr2, mask);
+                AscendC::MicroAPI::DataCopy(tmpBufferPtr, vregRope1Fp32, mask);
+                AscendC::MicroAPI::DataCopy(tmpBufferPtr + VL_FP32, vregRope2Fp32, mask);
+                AscendC::MicroAPI::LocalMemBar<AscendC::MicroAPI::MemType::VEC_STORE, AscendC::MicroAPI::MemType::VEC_LOAD>();
+                AscendC::MicroAPI::DataCopy<float, AscendC::MicroAPI::LoadDist::DIST_DINTLV_B32>(vregRope1Fp32, vregRope2Fp32, ((__local_mem__ float*)(tmpBufferPtr)));
 
-            LoadDataAndCast2Fp32(vregCos1Fp32, cosAddr1, mask);
-            LoadDataAndCast2Fp32(vregCos2Fp32, cosAddr2, mask);
-            LoadDataAndCast2Fp32(vregSin1Fp32, sinAddr1, mask);
-            LoadDataAndCast2Fp32(vregSin2Fp32, sinAddr2, mask);
+                LoadDataAndCast2Fp32(vregCos1Fp32, cosAddr1, mask);
+                LoadDataAndCast2Fp32(vregCos2Fp32, cosAddr2, mask);
+                LoadDataAndCast2Fp32(vregSin1Fp32, sinAddr1, mask);
+                LoadDataAndCast2Fp32(vregSin2Fp32, sinAddr2, mask);
 
-            AscendC::MicroAPI::Mul(vregCos1Fp32, vregCos1Fp32, vregRope1Fp32, mask);
-            AscendC::MicroAPI::Mul(vregCos2Fp32, vregCos2Fp32, vregRope2Fp32, mask);
-            AscendC::MicroAPI::Muls(vregRope2Fp32, vregRope2Fp32, CONST_MINUS_ONE, mask);
-            AscendC::MicroAPI::Mul(vregSin1Fp32, vregSin1Fp32, vregRope2Fp32, mask);
-            AscendC::MicroAPI::Mul(vregSin2Fp32, vregSin2Fp32, vregRope1Fp32, mask);
-            AscendC::MicroAPI::Add(vregCos1Fp32, vregCos1Fp32, vregSin1Fp32, mask);
-            AscendC::MicroAPI::Add(vregCos2Fp32, vregCos2Fp32, vregSin2Fp32, mask);
+                AscendC::MicroAPI::Mul(vregCos1Fp32, vregCos1Fp32, vregRope1Fp32, mask);
+                AscendC::MicroAPI::Mul(vregCos2Fp32, vregCos2Fp32, vregRope2Fp32, mask);
+                AscendC::MicroAPI::Muls(vregRope2Fp32, vregRope2Fp32, CONST_MINUS_ONE, mask);
+                AscendC::MicroAPI::Mul(vregSin1Fp32, vregSin1Fp32, vregRope2Fp32, mask);
+                AscendC::MicroAPI::Mul(vregSin2Fp32, vregSin2Fp32, vregRope1Fp32, mask);
+                AscendC::MicroAPI::Add(vregCos1Fp32, vregCos1Fp32, vregSin1Fp32, mask);
+                AscendC::MicroAPI::Add(vregCos2Fp32, vregCos2Fp32, vregSin2Fp32, mask);
 
-            width = regTailWidth;
-            mask = AscendC::MicroAPI::UpdateMask<float>(width);
-            StoreDataAndCastFromFp32(outAddr1, vregCos1Fp32, uReg, mask, width);
-            StoreDataAndCastFromFp32(outAddr2, vregCos2Fp32, uReg, mask, width);
+                width = regTailWidth;
+                mask = AscendC::MicroAPI::UpdateMask<float>(width);
+                StoreDataAndCastFromFp32(outAddr1, vregCos1Fp32, uReg, mask, width);
+                StoreDataAndCastFromFp32(outAddr2, vregCos2Fp32, uReg, mask, width);
+            }
         }
     }
 
@@ -1328,48 +1354,50 @@ public:
             }
 
             // 尾VL计算范式
-            auto ropeAddr1 = ropePtr + repeatTimesFloor * VL_FP32 * CONST_TWO;
-            auto ropeAddr2 = ropePtr + (repeatTimesFloor * CONST_TWO + CONST_ONE) * VL_FP32;
-            auto cosAddr1 = cosPtr1 + repeatTimesFloor * VL_FP32;
-            auto cosAddr2 = cosPtr2 + repeatTimesFloor * VL_FP32;
-            auto sinAddr1 = sinPtr1 + repeatTimesFloor * VL_FP32;
-            auto sinAddr2 = sinPtr2 + repeatTimesFloor * VL_FP32;
-            auto scaleAddr1 = scalePtr1 + repeatTimesFloor * VL_FP32;
-            auto scaleAddr2 = scalePtr2 + repeatTimesFloor * VL_FP32;
-            auto kQuantAddr1 = quantPtr1 + repeatTimesFloor * VL_FP32;
-            auto kQuantAddr2 = quantPtr2 + repeatTimesFloor * VL_FP32;
+            if (regTailWidth > 0) {
+                auto ropeAddr1 = ropePtr + repeatTimesFloor * VL_FP32 * CONST_TWO;
+                auto ropeAddr2 = ropePtr + (repeatTimesFloor * CONST_TWO + CONST_ONE) * VL_FP32;
+                auto cosAddr1 = cosPtr1 + repeatTimesFloor * VL_FP32;
+                auto cosAddr2 = cosPtr2 + repeatTimesFloor * VL_FP32;
+                auto sinAddr1 = sinPtr1 + repeatTimesFloor * VL_FP32;
+                auto sinAddr2 = sinPtr2 + repeatTimesFloor * VL_FP32;
+                auto scaleAddr1 = scalePtr1 + repeatTimesFloor * VL_FP32;
+                auto scaleAddr2 = scalePtr2 + repeatTimesFloor * VL_FP32;
+                auto kQuantAddr1 = quantPtr1 + repeatTimesFloor * VL_FP32;
+                auto kQuantAddr2 = quantPtr2 + repeatTimesFloor * VL_FP32;
 
-            LoadDataAndCast2Fp32(vregRope1Fp32, ropeAddr1, mask);
-            LoadDataAndCast2Fp32(vregRope2Fp32, ropeAddr2, mask);
-            AscendC::MicroAPI::DataCopy(tmpBufferPtr, vregRope1Fp32, mask);
-            AscendC::MicroAPI::DataCopy(tmpBufferPtr + VL_FP32, vregRope2Fp32, mask);
-            AscendC::MicroAPI::LocalMemBar<AscendC::MicroAPI::MemType::VEC_STORE, AscendC::MicroAPI::MemType::VEC_LOAD>();
-            AscendC::MicroAPI::DataCopy<float, AscendC::MicroAPI::LoadDist::DIST_DINTLV_B32>(vregRope1Fp32, vregRope2Fp32, ((__local_mem__ float*)(tmpBufferPtr)));
+                LoadDataAndCast2Fp32(vregRope1Fp32, ropeAddr1, mask);
+                LoadDataAndCast2Fp32(vregRope2Fp32, ropeAddr2, mask);
+                AscendC::MicroAPI::DataCopy(tmpBufferPtr, vregRope1Fp32, mask);
+                AscendC::MicroAPI::DataCopy(tmpBufferPtr + VL_FP32, vregRope2Fp32, mask);
+                AscendC::MicroAPI::LocalMemBar<AscendC::MicroAPI::MemType::VEC_STORE, AscendC::MicroAPI::MemType::VEC_LOAD>();
+                AscendC::MicroAPI::DataCopy<float, AscendC::MicroAPI::LoadDist::DIST_DINTLV_B32>(vregRope1Fp32, vregRope2Fp32, ((__local_mem__ float*)(tmpBufferPtr)));
 
-            LoadDataAndCast2Fp32(vregCos1Fp32, cosAddr1, mask);
-            LoadDataAndCast2Fp32(vregCos2Fp32, cosAddr2, mask);
-            LoadDataAndCast2Fp32(vregSin1Fp32, sinAddr1, mask);
-            LoadDataAndCast2Fp32(vregSin2Fp32, sinAddr2, mask);
+                LoadDataAndCast2Fp32(vregCos1Fp32, cosAddr1, mask);
+                LoadDataAndCast2Fp32(vregCos2Fp32, cosAddr2, mask);
+                LoadDataAndCast2Fp32(vregSin1Fp32, sinAddr1, mask);
+                LoadDataAndCast2Fp32(vregSin2Fp32, sinAddr2, mask);
 
-            AscendC::MicroAPI::Mul(vregCos1Fp32, vregCos1Fp32, vregRope1Fp32, mask);
-            AscendC::MicroAPI::Mul(vregCos2Fp32, vregCos2Fp32, vregRope2Fp32, mask);
-            AscendC::MicroAPI::Muls(vregRope2Fp32, vregRope2Fp32, CONST_MINUS_ONE, mask);
-            AscendC::MicroAPI::Mul(vregSin1Fp32, vregSin1Fp32, vregRope2Fp32, mask);
-            AscendC::MicroAPI::Mul(vregSin2Fp32, vregSin2Fp32, vregRope1Fp32, mask);
-            AscendC::MicroAPI::Add(vregCos1Fp32, vregCos1Fp32, vregSin1Fp32, mask);
-            AscendC::MicroAPI::Add(vregCos2Fp32, vregCos2Fp32, vregSin2Fp32, mask);
+                AscendC::MicroAPI::Mul(vregCos1Fp32, vregCos1Fp32, vregRope1Fp32, mask);
+                AscendC::MicroAPI::Mul(vregCos2Fp32, vregCos2Fp32, vregRope2Fp32, mask);
+                AscendC::MicroAPI::Muls(vregRope2Fp32, vregRope2Fp32, CONST_MINUS_ONE, mask);
+                AscendC::MicroAPI::Mul(vregSin1Fp32, vregSin1Fp32, vregRope2Fp32, mask);
+                AscendC::MicroAPI::Mul(vregSin2Fp32, vregSin2Fp32, vregRope1Fp32, mask);
+                AscendC::MicroAPI::Add(vregCos1Fp32, vregCos1Fp32, vregSin1Fp32, mask);
+                AscendC::MicroAPI::Add(vregCos2Fp32, vregCos2Fp32, vregSin2Fp32, mask);
 
-            // 量化部分
-            width = regTailWidth;
-            mask = AscendC::MicroAPI::UpdateMask<float>(width);
-            LoadDataAndCast2Fp32<float>(vregScale1Fp32, scaleAddr1, mask);
-            LoadDataAndCast2Fp32<float>(vregScale2Fp32, scaleAddr2, mask);
-            AscendC::MicroAPI::Mul(vregCos1Fp32, vregCos1Fp32, vregScale1Fp32, mask);
-            AscendC::MicroAPI::Mul(vregCos2Fp32, vregCos2Fp32, vregScale2Fp32, mask);
+                // 量化部分
+                width = regTailWidth;
+                mask = AscendC::MicroAPI::UpdateMask<float>(width);
+                LoadDataAndCast2Fp32<float>(vregScale1Fp32, scaleAddr1, mask);
+                LoadDataAndCast2Fp32<float>(vregScale2Fp32, scaleAddr2, mask);
+                AscendC::MicroAPI::Mul(vregCos1Fp32, vregCos1Fp32, vregScale1Fp32, mask);
+                AscendC::MicroAPI::Mul(vregCos2Fp32, vregCos2Fp32, vregScale2Fp32, mask);
 
-            // 将结果cast成对应的量化类型
-            StoreQuantAndCastFromFp32<T_K_CACHE>(kQuantAddr1, vregCos1Fp32, mask);
-            StoreQuantAndCastFromFp32<T_K_CACHE>(kQuantAddr2, vregCos2Fp32, mask);
+                // 将结果cast成对应的量化类型
+                StoreQuantAndCastFromFp32<T_K_CACHE>(kQuantAddr1, vregCos1Fp32, mask);
+                StoreQuantAndCastFromFp32<T_K_CACHE>(kQuantAddr2, vregCos2Fp32, mask);
+            }
         }
     }
 
@@ -1447,54 +1475,56 @@ public:
             }
 
             // 尾VL计算范式
-            auto ropeAddr1 = ropePtr + repeatTimesFloor * VL_FP32 * CONST_TWO;
-            auto ropeAddr2 = ropePtr + (repeatTimesFloor * CONST_TWO + CONST_ONE) * VL_FP32;
-            auto cosAddr1 = cosPtr1 + repeatTimesFloor * VL_FP32;
-            auto cosAddr2 = cosPtr2 + repeatTimesFloor * VL_FP32;
-            auto sinAddr1 = sinPtr1 + repeatTimesFloor * VL_FP32;
-            auto sinAddr2 = sinPtr2 + repeatTimesFloor * VL_FP32;
-            auto scaleAddr1 = scalePtr1 + repeatTimesFloor * VL_FP32;
-            auto scaleAddr2 = scalePtr2 + repeatTimesFloor * VL_FP32;
-            auto kQuantAddr1 = quantPtr1 + repeatTimesFloor * VL_FP32;
-            auto kQuantAddr2 = quantPtr2 + repeatTimesFloor * VL_FP32;
-            auto kOutAddr1 = outPtr1 + repeatTimesFloor * VL_FP32;
-            auto kOutAddr2 = outPtr2 + repeatTimesFloor * VL_FP32;
+            if (regTailWidth > 0) {
+                auto ropeAddr1 = ropePtr + repeatTimesFloor * VL_FP32 * CONST_TWO;
+                auto ropeAddr2 = ropePtr + (repeatTimesFloor * CONST_TWO + CONST_ONE) * VL_FP32;
+                auto cosAddr1 = cosPtr1 + repeatTimesFloor * VL_FP32;
+                auto cosAddr2 = cosPtr2 + repeatTimesFloor * VL_FP32;
+                auto sinAddr1 = sinPtr1 + repeatTimesFloor * VL_FP32;
+                auto sinAddr2 = sinPtr2 + repeatTimesFloor * VL_FP32;
+                auto scaleAddr1 = scalePtr1 + repeatTimesFloor * VL_FP32;
+                auto scaleAddr2 = scalePtr2 + repeatTimesFloor * VL_FP32;
+                auto kQuantAddr1 = quantPtr1 + repeatTimesFloor * VL_FP32;
+                auto kQuantAddr2 = quantPtr2 + repeatTimesFloor * VL_FP32;
+                auto kOutAddr1 = outPtr1 + repeatTimesFloor * VL_FP32;
+                auto kOutAddr2 = outPtr2 + repeatTimesFloor * VL_FP32;
 
-            LoadDataAndCast2Fp32(vregRope1Fp32, ropeAddr1, mask);
-            LoadDataAndCast2Fp32(vregRope2Fp32, ropeAddr2, mask);
-            AscendC::MicroAPI::DataCopy(tmpBufferPtr, vregRope1Fp32, mask);
-            AscendC::MicroAPI::DataCopy(tmpBufferPtr + VL_FP32, vregRope2Fp32, mask);
-            AscendC::MicroAPI::LocalMemBar<AscendC::MicroAPI::MemType::VEC_STORE, AscendC::MicroAPI::MemType::VEC_LOAD>();
-            AscendC::MicroAPI::DataCopy<float, AscendC::MicroAPI::LoadDist::DIST_DINTLV_B32>(vregRope1Fp32, vregRope2Fp32, ((__local_mem__ float*)(tmpBufferPtr)));
+                LoadDataAndCast2Fp32(vregRope1Fp32, ropeAddr1, mask);
+                LoadDataAndCast2Fp32(vregRope2Fp32, ropeAddr2, mask);
+                AscendC::MicroAPI::DataCopy(tmpBufferPtr, vregRope1Fp32, mask);
+                AscendC::MicroAPI::DataCopy(tmpBufferPtr + VL_FP32, vregRope2Fp32, mask);
+                AscendC::MicroAPI::LocalMemBar<AscendC::MicroAPI::MemType::VEC_STORE, AscendC::MicroAPI::MemType::VEC_LOAD>();
+                AscendC::MicroAPI::DataCopy<float, AscendC::MicroAPI::LoadDist::DIST_DINTLV_B32>(vregRope1Fp32, vregRope2Fp32, ((__local_mem__ float*)(tmpBufferPtr)));
 
-            LoadDataAndCast2Fp32(vregCos1Fp32, cosAddr1, mask);
-            LoadDataAndCast2Fp32(vregCos2Fp32, cosAddr2, mask);
-            LoadDataAndCast2Fp32(vregSin1Fp32, sinAddr1, mask);
-            LoadDataAndCast2Fp32(vregSin2Fp32, sinAddr2, mask);
+                LoadDataAndCast2Fp32(vregCos1Fp32, cosAddr1, mask);
+                LoadDataAndCast2Fp32(vregCos2Fp32, cosAddr2, mask);
+                LoadDataAndCast2Fp32(vregSin1Fp32, sinAddr1, mask);
+                LoadDataAndCast2Fp32(vregSin2Fp32, sinAddr2, mask);
 
-            AscendC::MicroAPI::Mul(vregCos1Fp32, vregCos1Fp32, vregRope1Fp32, mask);
-            AscendC::MicroAPI::Mul(vregCos2Fp32, vregCos2Fp32, vregRope2Fp32, mask);
-            AscendC::MicroAPI::Muls(vregRope2Fp32, vregRope2Fp32, CONST_MINUS_ONE, mask);
-            AscendC::MicroAPI::Mul(vregSin1Fp32, vregSin1Fp32, vregRope2Fp32, mask);
-            AscendC::MicroAPI::Mul(vregSin2Fp32, vregSin2Fp32, vregRope1Fp32, mask);
-            AscendC::MicroAPI::Add(vregCos1Fp32, vregCos1Fp32, vregSin1Fp32, mask);
-            AscendC::MicroAPI::Add(vregCos2Fp32, vregCos2Fp32, vregSin2Fp32, mask);
+                AscendC::MicroAPI::Mul(vregCos1Fp32, vregCos1Fp32, vregRope1Fp32, mask);
+                AscendC::MicroAPI::Mul(vregCos2Fp32, vregCos2Fp32, vregRope2Fp32, mask);
+                AscendC::MicroAPI::Muls(vregRope2Fp32, vregRope2Fp32, CONST_MINUS_ONE, mask);
+                AscendC::MicroAPI::Mul(vregSin1Fp32, vregSin1Fp32, vregRope2Fp32, mask);
+                AscendC::MicroAPI::Mul(vregSin2Fp32, vregSin2Fp32, vregRope1Fp32, mask);
+                AscendC::MicroAPI::Add(vregCos1Fp32, vregCos1Fp32, vregSin1Fp32, mask);
+                AscendC::MicroAPI::Add(vregCos2Fp32, vregCos2Fp32, vregSin2Fp32, mask);
 
-            // 中间结果
-            width = regTailWidth;
-            mask = AscendC::MicroAPI::UpdateMask<float>(width);
-            StoreDataAndCastFromFp32(kOutAddr1, vregCos1Fp32, uReg, mask, width);
-            StoreDataAndCastFromFp32(kOutAddr2, vregCos2Fp32, uReg, mask, width);
+                // 中间结果
+                width = regTailWidth;
+                mask = AscendC::MicroAPI::UpdateMask<float>(width);
+                StoreDataAndCastFromFp32(kOutAddr1, vregCos1Fp32, uReg, mask, width);
+                StoreDataAndCastFromFp32(kOutAddr2, vregCos2Fp32, uReg, mask, width);
 
-            // 量化部分
-            LoadDataAndCast2Fp32<float>(vregScale1Fp32, scaleAddr1, mask);
-            LoadDataAndCast2Fp32<float>(vregScale2Fp32, scaleAddr2, mask);
-            AscendC::MicroAPI::Mul(vregCos1Fp32, vregCos1Fp32, vregScale1Fp32, mask);
-            AscendC::MicroAPI::Mul(vregCos2Fp32, vregCos2Fp32, vregScale2Fp32, mask);
+                // 量化部分
+                LoadDataAndCast2Fp32<float>(vregScale1Fp32, scaleAddr1, mask);
+                LoadDataAndCast2Fp32<float>(vregScale2Fp32, scaleAddr2, mask);
+                AscendC::MicroAPI::Mul(vregCos1Fp32, vregCos1Fp32, vregScale1Fp32, mask);
+                AscendC::MicroAPI::Mul(vregCos2Fp32, vregCos2Fp32, vregScale2Fp32, mask);
 
-            // 将结果cast成对应的量化类型
-            StoreQuantAndCastFromFp32<T_K_CACHE>(kQuantAddr1, vregCos1Fp32, mask);
-            StoreQuantAndCastFromFp32<T_K_CACHE>(kQuantAddr2, vregCos2Fp32, mask);
+                // 将结果cast成对应的量化类型
+                StoreQuantAndCastFromFp32<T_K_CACHE>(kQuantAddr1, vregCos1Fp32, mask);
+                StoreQuantAndCastFromFp32<T_K_CACHE>(kQuantAddr2, vregCos2Fp32, mask);
+            }
         }
     }
 
@@ -1670,54 +1700,56 @@ public:
             }
 
             // 尾VL计算范式
-            auto ropeAddr1 = ropePtr + repeatTimesFloor * VL_FP32 * CONST_TWO;
-            auto ropeAddr2 = ropePtr + (repeatTimesFloor * CONST_TWO + CONST_ONE) * VL_FP32;
-            auto cosAddr1 = cosPtr1 + repeatTimesFloor * VL_FP32;
-            auto cosAddr2 = cosPtr2 + repeatTimesFloor * VL_FP32;
-            auto sinAddr1 = sinPtr1 + repeatTimesFloor * VL_FP32;
-            auto sinAddr2 = sinPtr2 + repeatTimesFloor * VL_FP32;
-            auto scaleAddr1 = scalePtr1 + repeatTimesFloor * VL_FP32;
-            auto scaleAddr2 = scalePtr2 + repeatTimesFloor * VL_FP32;
-            auto offsetAdd1 = offsetPtr1 + repeatTimesFloor * VL_FP32;
-            auto offsetAdd2 = offsetPtr2 + repeatTimesFloor * VL_FP32;
-            auto kQuantAddr1 = quantPtr1 + repeatTimesFloor * VL_FP32;
-            auto kQuantAddr2 = quantPtr2 + repeatTimesFloor * VL_FP32;
+            if (regTailWidth > 0) {
+                auto ropeAddr1 = ropePtr + repeatTimesFloor * VL_FP32 * CONST_TWO;
+                auto ropeAddr2 = ropePtr + (repeatTimesFloor * CONST_TWO + CONST_ONE) * VL_FP32;
+                auto cosAddr1 = cosPtr1 + repeatTimesFloor * VL_FP32;
+                auto cosAddr2 = cosPtr2 + repeatTimesFloor * VL_FP32;
+                auto sinAddr1 = sinPtr1 + repeatTimesFloor * VL_FP32;
+                auto sinAddr2 = sinPtr2 + repeatTimesFloor * VL_FP32;
+                auto scaleAddr1 = scalePtr1 + repeatTimesFloor * VL_FP32;
+                auto scaleAddr2 = scalePtr2 + repeatTimesFloor * VL_FP32;
+                auto offsetAdd1 = offsetPtr1 + repeatTimesFloor * VL_FP32;
+                auto offsetAdd2 = offsetPtr2 + repeatTimesFloor * VL_FP32;
+                auto kQuantAddr1 = quantPtr1 + repeatTimesFloor * VL_FP32;
+                auto kQuantAddr2 = quantPtr2 + repeatTimesFloor * VL_FP32;
 
-            LoadDataAndCast2Fp32(vregRope1Fp32, ropeAddr1, mask);
-            LoadDataAndCast2Fp32(vregRope2Fp32, ropeAddr2, mask);
-            AscendC::MicroAPI::DataCopy(tmpBufferPtr, vregRope1Fp32, mask);
-            AscendC::MicroAPI::DataCopy(tmpBufferPtr + VL_FP32, vregRope2Fp32, mask);
-            AscendC::MicroAPI::LocalMemBar<AscendC::MicroAPI::MemType::VEC_STORE, AscendC::MicroAPI::MemType::VEC_LOAD>();
-            AscendC::MicroAPI::DataCopy<float, AscendC::MicroAPI::LoadDist::DIST_DINTLV_B32>(vregRope1Fp32, vregRope2Fp32, ((__local_mem__ float*)(tmpBufferPtr)));
+                LoadDataAndCast2Fp32(vregRope1Fp32, ropeAddr1, mask);
+                LoadDataAndCast2Fp32(vregRope2Fp32, ropeAddr2, mask);
+                AscendC::MicroAPI::DataCopy(tmpBufferPtr, vregRope1Fp32, mask);
+                AscendC::MicroAPI::DataCopy(tmpBufferPtr + VL_FP32, vregRope2Fp32, mask);
+                AscendC::MicroAPI::LocalMemBar<AscendC::MicroAPI::MemType::VEC_STORE, AscendC::MicroAPI::MemType::VEC_LOAD>();
+                AscendC::MicroAPI::DataCopy<float, AscendC::MicroAPI::LoadDist::DIST_DINTLV_B32>(vregRope1Fp32, vregRope2Fp32, ((__local_mem__ float*)(tmpBufferPtr)));
 
-            LoadDataAndCast2Fp32(vregCos1Fp32, cosAddr1, mask);
-            LoadDataAndCast2Fp32(vregCos2Fp32, cosAddr2, mask);
-            LoadDataAndCast2Fp32(vregSin1Fp32, sinAddr1, mask);
-            LoadDataAndCast2Fp32(vregSin2Fp32, sinAddr2, mask);
+                LoadDataAndCast2Fp32(vregCos1Fp32, cosAddr1, mask);
+                LoadDataAndCast2Fp32(vregCos2Fp32, cosAddr2, mask);
+                LoadDataAndCast2Fp32(vregSin1Fp32, sinAddr1, mask);
+                LoadDataAndCast2Fp32(vregSin2Fp32, sinAddr2, mask);
 
-            AscendC::MicroAPI::Mul(vregCos1Fp32, vregCos1Fp32, vregRope1Fp32, mask);
-            AscendC::MicroAPI::Mul(vregCos2Fp32, vregCos2Fp32, vregRope2Fp32, mask);
-            AscendC::MicroAPI::Muls(vregRope2Fp32, vregRope2Fp32, CONST_MINUS_ONE, mask);
-            AscendC::MicroAPI::Mul(vregSin1Fp32, vregSin1Fp32, vregRope2Fp32, mask);
-            AscendC::MicroAPI::Mul(vregSin2Fp32, vregSin2Fp32, vregRope1Fp32, mask);
-            AscendC::MicroAPI::Add(vregCos1Fp32, vregCos1Fp32, vregSin1Fp32, mask);
-            AscendC::MicroAPI::Add(vregCos2Fp32, vregCos2Fp32, vregSin2Fp32, mask);
+                AscendC::MicroAPI::Mul(vregCos1Fp32, vregCos1Fp32, vregRope1Fp32, mask);
+                AscendC::MicroAPI::Mul(vregCos2Fp32, vregCos2Fp32, vregRope2Fp32, mask);
+                AscendC::MicroAPI::Muls(vregRope2Fp32, vregRope2Fp32, CONST_MINUS_ONE, mask);
+                AscendC::MicroAPI::Mul(vregSin1Fp32, vregSin1Fp32, vregRope2Fp32, mask);
+                AscendC::MicroAPI::Mul(vregSin2Fp32, vregSin2Fp32, vregRope1Fp32, mask);
+                AscendC::MicroAPI::Add(vregCos1Fp32, vregCos1Fp32, vregSin1Fp32, mask);
+                AscendC::MicroAPI::Add(vregCos2Fp32, vregCos2Fp32, vregSin2Fp32, mask);
 
-            // 量化部分
-            width = regTailWidth;
-            mask = AscendC::MicroAPI::UpdateMask<float>(width);
-            LoadDataAndCast2Fp32<float>(vregScale1Fp32, scaleAddr1, mask);
-            LoadDataAndCast2Fp32<float>(vregScale2Fp32, scaleAddr2, mask);
-            AscendC::MicroAPI::Mul(vregCos1Fp32, vregCos1Fp32, vregScale1Fp32, mask);
-            AscendC::MicroAPI::Mul(vregCos2Fp32, vregCos2Fp32, vregScale2Fp32, mask);
-            LoadDataAndCast2Fp32<float>(vregOffset1Fp32, offsetAdd1, mask);
-            LoadDataAndCast2Fp32<float>(vregOffset2Fp32, offsetAdd2, mask);
-            AscendC::MicroAPI::Add(vregCos1Fp32, vregCos1Fp32, vregOffset1Fp32, mask);
-            AscendC::MicroAPI::Add(vregCos2Fp32, vregCos2Fp32, vregOffset2Fp32, mask);
+                // 量化部分
+                width = regTailWidth;
+                mask = AscendC::MicroAPI::UpdateMask<float>(width);
+                LoadDataAndCast2Fp32<float>(vregScale1Fp32, scaleAddr1, mask);
+                LoadDataAndCast2Fp32<float>(vregScale2Fp32, scaleAddr2, mask);
+                AscendC::MicroAPI::Mul(vregCos1Fp32, vregCos1Fp32, vregScale1Fp32, mask);
+                AscendC::MicroAPI::Mul(vregCos2Fp32, vregCos2Fp32, vregScale2Fp32, mask);
+                LoadDataAndCast2Fp32<float>(vregOffset1Fp32, offsetAdd1, mask);
+                LoadDataAndCast2Fp32<float>(vregOffset2Fp32, offsetAdd2, mask);
+                AscendC::MicroAPI::Add(vregCos1Fp32, vregCos1Fp32, vregOffset1Fp32, mask);
+                AscendC::MicroAPI::Add(vregCos2Fp32, vregCos2Fp32, vregOffset2Fp32, mask);
 
-            // 将结果cast成对应的量化类型
-            StoreQuantAndCastFromFp32<T_K_CACHE>(kQuantAddr1, vregCos1Fp32, mask);
-            StoreQuantAndCastFromFp32<T_K_CACHE>(kQuantAddr2, vregCos2Fp32, mask);
+                // 将结果cast成对应的量化类型
+                StoreQuantAndCastFromFp32<T_K_CACHE>(kQuantAddr1, vregCos1Fp32, mask);
+                StoreQuantAndCastFromFp32<T_K_CACHE>(kQuantAddr2, vregCos2Fp32, mask);
+            }
         }
     }
 
@@ -1839,7 +1871,8 @@ public:
         WaitFlag<HardEvent::S_MTE3>(eventIDSToMTE3);
         int64_t gmOffset1, gmOffset2; 
 
-        if (kCacheIdx >= 0) {
+        // index 的取值是 cache 的行号/槽位号，越界即写到 cache 之外，故必须同时校验上界
+        if (kCacheIdx >= 0 && kCacheIdx < tilingData_->cacheRowLimit) {
             if (tilingData_->cacheMode == NORM_CACHE_MODE) {
                 gmOffset1 = (batchIdx * tilingData_->cacheLength + kCacheIdx) * tilingData_->dk + this->ubFactor * ubIdx / 2;
                 gmOffset2 = gmOffset1 + tilingData_->dk / 2;
@@ -1907,7 +1940,8 @@ public:
 
         int64_t gmOffset1, gmOffset2;
 
-        if (kCacheIdx >= 0) {
+        // index 的取值是 cache 的行号/槽位号，越界即写到 cache 之外，故必须同时校验上界
+        if (kCacheIdx >= 0 && kCacheIdx < tilingData_->cacheRowLimit) {
             if (tilingData_->cacheMode == PA_BLK_BNSD_CACHE_MODE) {
                 int64_t blockOffset = kCacheIdx / tilingData_->blockSize;
                 int64_t rowOffset = seqIdx % tilingData_->blockSize;
@@ -1932,7 +1966,7 @@ public:
                     xDataCopyParams.blockLen = dk0 * sizeof(T_KV);
                 }
                 for (int i = 0; i < tmpFactor / dk0; i++) {
-                    gmOffset1 = idx * tilingData_->dk * tilingData_->blockSize + (rowOffset + i * tilingData_->blockSize) * dk0 + this->ubFactor * ubIdx * tilingData_->blockSize / 2;
+                    gmOffset1 = blockOffset * tilingData_->dk * tilingData_->blockSize + (rowOffset + i * tilingData_->blockSize) * dk0 + this->ubFactor * ubIdx * tilingData_->blockSize / 2;
                     gmOffset2 = gmOffset1 + tilingData_->dk * tilingData_->blockSize / 2;
                     int64_t ubOffset = i * dk0;
                     if constexpr (IsSameType<T_K_CACHE, int8_t>::value || IsSameType<T_K_CACHE, hifloat8_t>::value ||
@@ -2186,59 +2220,61 @@ public:
             }
 
             // 尾VL计算范式
-            auto ropeAddr1 = ropePtr + repeatTimesFloor * VL_FP32 * CONST_TWO;
-            auto ropeAddr2 = ropePtr + (repeatTimesFloor * CONST_TWO + CONST_ONE) * VL_FP32;
-            auto cosAddr1 = cosPtr1 + repeatTimesFloor * VL_FP32;
-            auto cosAddr2 = cosPtr2 + repeatTimesFloor * VL_FP32;
-            auto sinAddr1 = sinPtr1 + repeatTimesFloor * VL_FP32;
-            auto sinAddr2 = sinPtr2 + repeatTimesFloor * VL_FP32;
-            auto scaleAddr1 = scalePtr1 + repeatTimesFloor * VL_FP32;
-            auto scaleAddr2 = scalePtr2 + repeatTimesFloor * VL_FP32;
-            auto offsetAdd1 = offsetPtr1 + repeatTimesFloor * VL_FP32;
-            auto offsetAdd2 = offsetPtr2 + repeatTimesFloor * VL_FP32;
-            auto kQuantAddr1 = quantPtr1 + repeatTimesFloor * VL_FP32;
-            auto kQuantAddr2 = quantPtr2 + repeatTimesFloor * VL_FP32;
-            auto kOutAddr1 = outPtr1 + repeatTimesFloor * VL_FP32;
-            auto kOutAddr2 = outPtr2 + repeatTimesFloor * VL_FP32;
+            if (regTailWidth > 0) {
+                auto ropeAddr1 = ropePtr + repeatTimesFloor * VL_FP32 * CONST_TWO;
+                auto ropeAddr2 = ropePtr + (repeatTimesFloor * CONST_TWO + CONST_ONE) * VL_FP32;
+                auto cosAddr1 = cosPtr1 + repeatTimesFloor * VL_FP32;
+                auto cosAddr2 = cosPtr2 + repeatTimesFloor * VL_FP32;
+                auto sinAddr1 = sinPtr1 + repeatTimesFloor * VL_FP32;
+                auto sinAddr2 = sinPtr2 + repeatTimesFloor * VL_FP32;
+                auto scaleAddr1 = scalePtr1 + repeatTimesFloor * VL_FP32;
+                auto scaleAddr2 = scalePtr2 + repeatTimesFloor * VL_FP32;
+                auto offsetAdd1 = offsetPtr1 + repeatTimesFloor * VL_FP32;
+                auto offsetAdd2 = offsetPtr2 + repeatTimesFloor * VL_FP32;
+                auto kQuantAddr1 = quantPtr1 + repeatTimesFloor * VL_FP32;
+                auto kQuantAddr2 = quantPtr2 + repeatTimesFloor * VL_FP32;
+                auto kOutAddr1 = outPtr1 + repeatTimesFloor * VL_FP32;
+                auto kOutAddr2 = outPtr2 + repeatTimesFloor * VL_FP32;
 
-            LoadDataAndCast2Fp32(vregRope1Fp32, ropeAddr1, mask);
-            LoadDataAndCast2Fp32(vregRope2Fp32, ropeAddr2, mask);
-            AscendC::MicroAPI::DataCopy(tmpBufferPtr, vregRope1Fp32, mask);
-            AscendC::MicroAPI::DataCopy(tmpBufferPtr + VL_FP32, vregRope2Fp32, mask);
-            AscendC::MicroAPI::LocalMemBar<AscendC::MicroAPI::MemType::VEC_STORE, AscendC::MicroAPI::MemType::VEC_LOAD>();
-            AscendC::MicroAPI::DataCopy<float, AscendC::MicroAPI::LoadDist::DIST_DINTLV_B32>(vregRope1Fp32, vregRope2Fp32, ((__local_mem__ float*)(tmpBufferPtr)));
+                LoadDataAndCast2Fp32(vregRope1Fp32, ropeAddr1, mask);
+                LoadDataAndCast2Fp32(vregRope2Fp32, ropeAddr2, mask);
+                AscendC::MicroAPI::DataCopy(tmpBufferPtr, vregRope1Fp32, mask);
+                AscendC::MicroAPI::DataCopy(tmpBufferPtr + VL_FP32, vregRope2Fp32, mask);
+                AscendC::MicroAPI::LocalMemBar<AscendC::MicroAPI::MemType::VEC_STORE, AscendC::MicroAPI::MemType::VEC_LOAD>();
+                AscendC::MicroAPI::DataCopy<float, AscendC::MicroAPI::LoadDist::DIST_DINTLV_B32>(vregRope1Fp32, vregRope2Fp32, ((__local_mem__ float*)(tmpBufferPtr)));
 
-            LoadDataAndCast2Fp32(vregCos1Fp32, cosAddr1, mask);
-            LoadDataAndCast2Fp32(vregCos2Fp32, cosAddr2, mask);
-            LoadDataAndCast2Fp32(vregSin1Fp32, sinAddr1, mask);
-            LoadDataAndCast2Fp32(vregSin2Fp32, sinAddr2, mask);
+                LoadDataAndCast2Fp32(vregCos1Fp32, cosAddr1, mask);
+                LoadDataAndCast2Fp32(vregCos2Fp32, cosAddr2, mask);
+                LoadDataAndCast2Fp32(vregSin1Fp32, sinAddr1, mask);
+                LoadDataAndCast2Fp32(vregSin2Fp32, sinAddr2, mask);
 
-            AscendC::MicroAPI::Mul(vregCos1Fp32, vregCos1Fp32, vregRope1Fp32, mask);
-            AscendC::MicroAPI::Mul(vregCos2Fp32, vregCos2Fp32, vregRope2Fp32, mask);
-            AscendC::MicroAPI::Muls(vregRope2Fp32, vregRope2Fp32, CONST_MINUS_ONE, mask);
-            AscendC::MicroAPI::Mul(vregSin1Fp32, vregSin1Fp32, vregRope2Fp32, mask);
-            AscendC::MicroAPI::Mul(vregSin2Fp32, vregSin2Fp32, vregRope1Fp32, mask);
-            AscendC::MicroAPI::Add(vregCos1Fp32, vregCos1Fp32, vregSin1Fp32, mask);
-            AscendC::MicroAPI::Add(vregCos2Fp32, vregCos2Fp32, vregSin2Fp32, mask);
-            // 中间结果
-            width = regTailWidth;
-            mask = AscendC::MicroAPI::UpdateMask<float>(width);
-            StoreDataAndCastFromFp32(kOutAddr1, vregCos1Fp32, uReg, mask, width);
-            StoreDataAndCastFromFp32(kOutAddr2, vregCos2Fp32, uReg, mask, width);
+                AscendC::MicroAPI::Mul(vregCos1Fp32, vregCos1Fp32, vregRope1Fp32, mask);
+                AscendC::MicroAPI::Mul(vregCos2Fp32, vregCos2Fp32, vregRope2Fp32, mask);
+                AscendC::MicroAPI::Muls(vregRope2Fp32, vregRope2Fp32, CONST_MINUS_ONE, mask);
+                AscendC::MicroAPI::Mul(vregSin1Fp32, vregSin1Fp32, vregRope2Fp32, mask);
+                AscendC::MicroAPI::Mul(vregSin2Fp32, vregSin2Fp32, vregRope1Fp32, mask);
+                AscendC::MicroAPI::Add(vregCos1Fp32, vregCos1Fp32, vregSin1Fp32, mask);
+                AscendC::MicroAPI::Add(vregCos2Fp32, vregCos2Fp32, vregSin2Fp32, mask);
+                // 中间结果
+                width = regTailWidth;
+                mask = AscendC::MicroAPI::UpdateMask<float>(width);
+                StoreDataAndCastFromFp32(kOutAddr1, vregCos1Fp32, uReg, mask, width);
+                StoreDataAndCastFromFp32(kOutAddr2, vregCos2Fp32, uReg, mask, width);
 
-            // 量化部分
-            LoadDataAndCast2Fp32<float>(vregScale1Fp32, scaleAddr1, mask);
-            LoadDataAndCast2Fp32<float>(vregScale2Fp32, scaleAddr2, mask);
-            AscendC::MicroAPI::Mul(vregCos1Fp32, vregCos1Fp32, vregScale1Fp32, mask);
-            AscendC::MicroAPI::Mul(vregCos2Fp32, vregCos2Fp32, vregScale2Fp32, mask);
-            LoadDataAndCast2Fp32<float>(vregOffset1Fp32, offsetAdd1, mask);
-            LoadDataAndCast2Fp32<float>(vregOffset2Fp32, offsetAdd2, mask);
-            AscendC::MicroAPI::Add(vregCos1Fp32, vregCos1Fp32, vregOffset1Fp32, mask);
-            AscendC::MicroAPI::Add(vregCos2Fp32, vregCos2Fp32, vregOffset2Fp32, mask);
+                // 量化部分
+                LoadDataAndCast2Fp32<float>(vregScale1Fp32, scaleAddr1, mask);
+                LoadDataAndCast2Fp32<float>(vregScale2Fp32, scaleAddr2, mask);
+                AscendC::MicroAPI::Mul(vregCos1Fp32, vregCos1Fp32, vregScale1Fp32, mask);
+                AscendC::MicroAPI::Mul(vregCos2Fp32, vregCos2Fp32, vregScale2Fp32, mask);
+                LoadDataAndCast2Fp32<float>(vregOffset1Fp32, offsetAdd1, mask);
+                LoadDataAndCast2Fp32<float>(vregOffset2Fp32, offsetAdd2, mask);
+                AscendC::MicroAPI::Add(vregCos1Fp32, vregCos1Fp32, vregOffset1Fp32, mask);
+                AscendC::MicroAPI::Add(vregCos2Fp32, vregCos2Fp32, vregOffset2Fp32, mask);
 
-            // 将结果cast成对应的量化类型
-            StoreQuantAndCastFromFp32<T_K_CACHE>(kQuantAddr1, vregCos1Fp32, mask);
-            StoreQuantAndCastFromFp32<T_K_CACHE>(kQuantAddr2, vregCos2Fp32, mask);
+                // 将结果cast成对应的量化类型
+                StoreQuantAndCastFromFp32<T_K_CACHE>(kQuantAddr1, vregCos1Fp32, mask);
+                StoreQuantAndCastFromFp32<T_K_CACHE>(kQuantAddr2, vregCos2Fp32, mask);
+            }
         }
     }
 
