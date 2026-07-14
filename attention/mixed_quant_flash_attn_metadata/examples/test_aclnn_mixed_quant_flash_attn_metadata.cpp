@@ -41,17 +41,17 @@ int Init(int32_t deviceId, aclrtStream *stream) {
     // Fixed writing method, AscendCL initialization.
     auto ret = aclInit(nullptr);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
-        LOG_PRINT("aclInit failed. ERROR: %d\n", ret); 
+        LOG_PRINT("aclInit failed. ERROR: %d\n", ret);
         return ret;
     }
     ret = aclrtSetDevice(deviceId);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
-        LOG_PRINT("aclrtSetDevice failed. ERROR: %d\n", ret); 
+        LOG_PRINT("aclrtSetDevice failed. ERROR: %d\n", ret);
         return ret;
     }
     ret = aclrtCreateStream(stream);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
-        LOG_PRINT("aclrtCreateStream failed. ERROR: %d\n", ret); 
+        LOG_PRINT("aclrtCreateStream failed. ERROR: %d\n", ret);
         return ret;
     }
     return 0;
@@ -98,14 +98,14 @@ int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &
     auto size = GetShapeSize(shape) * sizeof(T);
     // Call aclrtMalloc to request device side memory.
     auto ret = aclrtMalloc(deviceAddr, size, ACL_MEM_MALLOC_HUGE_FIRST);
-    if (!CHECK_RET(ret == ACL_SUCCESS)) { 
-        LOG_PRINT("aclrtMalloc failed. ERROR: %d\n", ret); 
+    if (!CHECK_RET(ret == ACL_SUCCESS)) {
+        LOG_PRINT("aclrtMalloc failed. ERROR: %d\n", ret);
         return ret;
     }
     // Call aclrtMemcpy to copy host side data to device side memory.
     ret = aclrtMemcpy(*deviceAddr, size, hostData.data(), size, ACL_MEMCPY_HOST_TO_DEVICE);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
-        LOG_PRINT("aclrtMemcpy failed. ERROR: %d\n", ret); 
+        LOG_PRINT("aclrtMemcpy failed. ERROR: %d\n", ret);
         return ret;
     }
 
@@ -128,12 +128,12 @@ int main() {
     aclrtStream stream;
     auto ret = Init(deviceId, &stream);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
-        LOG_PRINT("Init acl failed. ERROR: %d\n", ret); 
+        LOG_PRINT("Init acl failed. ERROR: %d\n", ret);
         return ret;
     }
 
     // 2. To construct input and output, it is necessary to customize the construction according to the API interface.
-    
+
     int32_t batchSize = 4; // N
     int32_t numHeads = 32; // N
     int32_t numKeyValueHeads = numHeads;
@@ -167,7 +167,7 @@ int main() {
     std::vector<int32_t> actualSeqLengthsQueryHostData(actualSeqLengthsQueryShapeSize, qS);
     std::vector<int32_t> actualSeqLengthsKvHostData(actualSeqLengthsKvShapeSize, kvS);
     std::vector<int32_t> metadataHostData(metadataShapeSize, 0);
-    
+
 
 
     // Create actual_seq_lengths_query aclTensor.
@@ -193,12 +193,12 @@ int main() {
     char socVersion[] = "ascend950";
     printf("start aclnnMixedQuantFlashAttnMetadata\n");
     ret = aclnnMixedQuantFlashAttnMetadataGetWorkspaceSize(
-        nullptr, nullptr, 
+        nullptr,
         nullptr, nullptr,
         batchSize, qS, kvS,
         numHeads, numKeyValueHeads,
-        headDim, quantMode, sparseMode, preTokens, nextTokens, 
-         "BSND", "PA_BNBD", "BSND",   // layoutQuery, layoutKv, layoutOut
+        headDim, quantMode, sparseMode, preTokens, nextTokens,
+         "BSND", "PA_BBND", "BSND",   // layoutQuery, layoutKv, layoutAttnOut
         metadataTensor,
         &workspaceSize, &executor);
     if (ret != ACL_SUCCESS) {
@@ -227,7 +227,7 @@ int main() {
         printf("aclrtMemcpy %d\n", ret);
         return -1;
     }
-    
+
     DumpMeta(&metadataHostData[0]);
     // return 0;
 

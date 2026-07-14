@@ -46,6 +46,16 @@ using namespace regbaseutil;
 using namespace AttentionCommon;
 using namespace fa_base_matmul;
 
+template <inferFaLayOutTypeEnum LAYOUT>
+__aicore__ inline constexpr UbFormat GetOutUbFormatMQ()
+{
+    if constexpr (LAYOUT == inferFaLayOutTypeEnum::LAYOUT_BSND || LAYOUT == inferFaLayOutTypeEnum::LAYOUT_TND) {
+        return UbFormat::S1G;
+    } else if constexpr (LAYOUT == inferFaLayOutTypeEnum::LAYOUT_BNSD) {
+        return UbFormat::GS1;
+    }
+}
+
 namespace BaseApi {
 
 template <typename CubeBlockType, typename VecFaBlockType, typename VecFdBlockType>
@@ -64,8 +74,7 @@ public:
     static constexpr bool PAGE_ATTENTION = CubeBlockType::PAGE_ATTENTION;
 
     static constexpr inferFaLayOutTypeEnum LAYOUT_Q = CubeBlockType::LAYOUT_Q_MQ;
-    // KV 始终走 PagedAttention，layout 为 BSND（batch-based，非 TND）
-    static constexpr inferFaLayOutTypeEnum LAYOUT_KV = inferFaLayOutTypeEnum::LAYOUT_BSND;
+    static constexpr inferFaLayOutTypeEnum LAYOUT_KV = CubeBlockType::LAYOUT_Q_MQ;
 
     static constexpr ActualSeqLensMode Q_MODE =
         (LAYOUT_Q == inferFaLayOutTypeEnum::LAYOUT_TND) ? ActualSeqLensMode::ACCUM : ActualSeqLensMode::BY_BATCH;
@@ -74,20 +83,26 @@ public:
     using QSeqParserType = typename std::conditional<(LAYOUT_Q == inferFaLayOutTypeEnum::LAYOUT_TND),
                                                      ActualSeqLensParser<Q_MODE, int32_t, true>,
                                                      ActualSeqLensParser<Q_MODE, int32_t>>::type;
+    using KvSeqParserType = typename std::conditional<(LAYOUT_KV == inferFaLayOutTypeEnum::LAYOUT_TND),
+                                                     ActualSeqLensParser<KV_MODE, int32_t, true>,
+                                                     ActualSeqLensParser<KV_MODE, int32_t>>::type;
 
     typename std::conditional<(LAYOUT_Q == inferFaLayOutTypeEnum::LAYOUT_TND),
                               ActualSeqLensParser<Q_MODE, int32_t, true>, ActualSeqLensParser<Q_MODE, int32_t>>::type
         qCuSeqLensParser;
 
+    typename std::conditional<(LAYOUT_KV == inferFaLayOutTypeEnum::LAYOUT_TND),
+                              ActualSeqLensParser<KV_MODE, int32_t, true>, ActualSeqLensParser<KV_MODE, int32_t>>::type
+        kvCuSeqLensParser;
+
     ActualSeqLensParser<ActualSeqLensMode::BY_BATCH, int32_t> qSeqUsedParser;
     ActualSeqLensParser<ActualSeqLensMode::BY_BATCH, int32_t> kvSeqUsedParser;
 
-    static constexpr uint32_t PRELOAD_N = 1;
+    static constexpr uint32_t PRELOAD_N = 2;
     static constexpr uint32_t PRELOAD_TASK_CACHE_SIZE = 4;
     static constexpr uint32_t PRELOAD_TASK_CACHE_MASK = PRELOAD_TASK_CACHE_SIZE - 1;
-
     static_assert(PRELOAD_TASK_CACHE_SIZE >= PRELOAD_N + 2,
-                  "PRELOAD_TASK_CACHE_SIZE must be at least PRELOAD_N + 2 for 2-stage pipeline");
+                  "PRELOAD_TASK_CACHE_SIZE must be at least PRELOAD_N + 2 for 3-stage pipeline");
     static_assert((PRELOAD_TASK_CACHE_SIZE & PRELOAD_TASK_CACHE_MASK) == 0,
                   "PRELOAD_TASK_CACHE_SIZE must be a power of two for bitmask indexing");
 
@@ -97,8 +112,9 @@ public:
 
     BufferManager<BufferType::UB> ubBufferManager;
     BufferManager<BufferType::L1> l1BufferManager;
-    BuffersPolicyDB<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> bmmBuffers;
-    BuffersPolicyDB<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> l1PBuffers;
+    BuffersPolicyDB<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> bmm1Buffers;
+    BuffersPolicyDB<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> bmm2Buffers;
+    BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> l1PBuffers;
 
     GlobalTensor<int32_t> cuSeqLensGmQ;
     GlobalTensor<int32_t> seqUsedGmQ;
@@ -152,9 +168,6 @@ public:
     uint32_t coreFirstTmpOutWsPos_;
     FDparamsX fdParams_;
 
-    __gm__ uint8_t *kDescalePtr_ = nullptr;
-    __gm__ uint8_t *vDescalePtr_ = nullptr;
-
     TQue<QuePosition::VECOUT, 1> SharedBuffer1[2];
     TQue<QuePosition::VECIN, 1> SharedBuffer2[2];
     TBuf<> SharedBuffer3;
@@ -175,8 +188,6 @@ public:
 
         keyPtr = key;
         valuePtr = value;
-        kDescalePtr_ = kDescale;
-        vDescalePtr_ = vDescale;
 
         if constexpr (LAYOUT_Q == inferFaLayOutTypeEnum::LAYOUT_TND) {
             cuSeqLensGmQ.SetGlobalBuffer((__gm__ int32_t *)cuSeqLensQ, constInfo.cuSeqLensQSize + 1);
@@ -212,8 +223,17 @@ public:
                                         workspace);
                 vecFaBlock.SetCuSeqLensParser(qSeqUsedParser);
             }
-            vecFaBlock.InitAntiquantGm(key, value, blocktable, kDescalePtr_, vDescalePtr_);
             vecFaBlock.ClearOutput();
+        }
+
+        if ASCEND_IS_AIC {
+            if constexpr (LAYOUT_Q == inferFaLayOutTypeEnum::LAYOUT_TND) {
+                cubeBlock.InitCubeBlock(tPipe, &l1BufferManager, query, key, value, blocktable, qCuSeqLensParser,
+                                        kvCuSeqLensParser);
+            } else {
+                cubeBlock.InitCubeBlock(tPipe, &l1BufferManager, query, key, value, blocktable, qSeqUsedParser,
+                                        kvSeqUsedParser);
+            }
         }
 
         if (isFd) {
@@ -243,7 +263,7 @@ public:
         l1BufferManager.Init(pipe, 524288);
         l1PBuffers.Init(l1BufferManager, mm2LeftSize);
         ubBufferManager.Init(pipe, mm1ResultSize * 2);
-        bmmBuffers.Init(ubBufferManager, mm1ResultSize);
+        bmm2Buffers.Init(ubBufferManager, mm1ResultSize);
     }
 
     __aicore__ inline void InitConstInfo()
@@ -319,16 +339,16 @@ public:
     __aicore__ inline void CrossCoreBufferInit()
     {
         if ASCEND_IS_AIV {
-            bmmBuffers.Get().SetCrossCore();
-            bmmBuffers.Get().SetCrossCore();
+            bmm2Buffers.Get().SetCrossCore();
+            bmm2Buffers.Get().SetCrossCore();
         }
     }
 
     __aicore__ inline void CrossCoreBufferUnInit()
     {
         if ASCEND_IS_AIC {
-            bmmBuffers.Get().WaitCrossCore();
-            bmmBuffers.Get().WaitCrossCore();
+            bmm2Buffers.Get().WaitCrossCore();
+            bmm2Buffers.Get().WaitCrossCore();
         }
     }
 
@@ -582,31 +602,65 @@ public:
     {
         RunInfoX &runInfo0 = taskRunInfo[loop & PRELOAD_TASK_CACHE_MASK];
         RunInfoX &runInfoNegN = taskRunInfo[(loop - PRELOAD_N) & PRELOAD_TASK_CACHE_MASK];
+        RunInfoX &runInfoNegNMinus1 = taskRunInfo[(loop - PRELOAD_N - 1) & PRELOAD_TASK_CACHE_MASK];
 
         if (runInfo0.isValid) {
             if ASCEND_IS_AIV {
-                ComputeVec1(runInfo0);
+                AntiquantKey(runInfo0);
+            } else {
+                ComputeMm1(runInfo0);
             }
         }
 
         if (loop >= PRELOAD_N) {
             if (runInfoNegN.isValid) {
                 if ASCEND_IS_AIV {
-                    ComputeVec2(runInfoNegN);
+                    ComputeVec1(runInfoNegN);
+                    AntiquantValue(runInfoNegN);
+                } else {
+                    ComputeMm2(runInfoNegN);
                 }
-                runInfoNegN.isValid = false;
+            }
+        }
+
+        if (loop >= PRELOAD_N + 1) {
+            if (runInfoNegNMinus1.isValid) {
+                if ASCEND_IS_AIV {
+                    ComputeVec2(runInfoNegNMinus1);
+                }
+                runInfoNegNMinus1.isValid = false;
             }
         }
     }
 
+    __aicore__ inline void ComputeMm1(RunInfoX &runInfo)
+    {
+        // TODO: 待后续填充实现
+    }
+
+    __aicore__ inline void ComputeMm2(RunInfoX &runInfo)
+    {
+        cubeBlock.IterateBmm2(this->bmm2Buffers.Get(), this->l1PBuffers, runInfo);
+    }
+
+    __aicore__ inline void AntiquantKey(RunInfoX &runInfo)
+    {
+        // TODO: 待后续填充实现
+    }
+
+    __aicore__ inline void AntiquantValue(RunInfoX &runInfo)
+    {
+        // TODO: 待后续填充实现
+    }
+
     __aicore__ inline void ComputeVec1(RunInfoX &runInfo)
     {
-        vecFaBlock.ProcessVec1(l1PBuffers, bmmBuffers.Get(), runInfo);
+        // TODO: 待后续填充实现
     }
 
     __aicore__ inline void ComputeVec2(RunInfoX &runInfo)
     {
-        vecFaBlock.ProcessVec2(bmmBuffers.Get(), runInfo);
+        // TODO: 待后续填充实现
     }
 
     __aicore__ inline void CreateTask(uint64_t loop, uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur,
@@ -621,7 +675,6 @@ public:
     {
         info.loop = loop;
         info.mloop = mloop;
-        info.subTaskId = loop;
         info.bIdx = bN2Cur / constInfo.n2Size;
         info.n2Idx = bN2Cur % constInfo.n2Size;
         info.gS1Idx = gS1Cur * mBaseSize;
@@ -724,6 +777,9 @@ public:
             if ASCEND_IS_AIV {
                 vecFaBlock.InitBuffers(SharedBuffer1, SharedBuffer2, SharedBuffer3);
                 vecFaBlock.AllocEventID();
+            } else {
+                cubeBlock.InitBuffers();
+                cubeBlock.AllocEventID();
             }
         }
         for (uint32_t sectionIdx = 0; sectionIdx < sectionNum_; sectionIdx++) {
@@ -737,6 +793,8 @@ public:
         if (constInfo.aicIdx < constInfo.coreNum) {
             if ASCEND_IS_AIV {
                 vecFaBlock.FreeEventID();
+            } else {
+                cubeBlock.FreeEventID();
             }
             CrossCoreBufferUnInit();
         }

@@ -68,7 +68,6 @@ private:
     CpuKernelContext *context_ = nullptr;
     // input tensor
     Tensor *cuSeqlensQ_ = nullptr;
-    Tensor *cuSeqlensKv_ = nullptr;
     Tensor *sequsedQ_ = nullptr;
     Tensor *sequsedKv_ = nullptr;
     // output tensor
@@ -86,8 +85,8 @@ private:
     int32_t winLeft_ = -1;
     int32_t winRight_ = -1;
     std::string layoutQ_ = "BSND";
-    std::string layoutKv_ = "PA_BNBD";
-    std::string layoutOut_ = "BSND";
+    std::string layoutKv_ = "PA_BBND";
+    std::string layoutAttnOut_ = "BSND";
     std::string socVersion_ = "";
     int32_t aicCoreNum_ = 36U;
     int32_t aivCoreNum_ = 72U;
@@ -104,9 +103,8 @@ private:
     enum class ParamId : uint32_t {
         // input
         cuSeqlensQ = 0,
-        cuSeqlensKv = 1,
-        sequsedQ = 2,
-        sequsedKv = 3,
+        sequsedQ = 1,
+        sequsedKv = 2,
         // output
         metaData = 0,
     };

@@ -38,7 +38,6 @@ bool MixedQuantFlashAttnMetadataCpuKernel::Prepare(CpuKernelContext &ctx)
 {
     // input
     cuSeqlensQ_ = ctx.Input(static_cast<uint32_t>(ParamId::cuSeqlensQ));
-    cuSeqlensKv_ = ctx.Input(static_cast<uint32_t>(ParamId::cuSeqlensKv));
     sequsedQ_ = ctx.Input(static_cast<uint32_t>(ParamId::sequsedQ));
     sequsedKv_ = ctx.Input(static_cast<uint32_t>(ParamId::sequsedKv));
     // output
@@ -64,7 +63,7 @@ bool MixedQuantFlashAttnMetadataCpuKernel::Prepare(CpuKernelContext &ctx)
     GetAttrValueOpt(ctx, "win_right", winRight_);
     GetAttrValueOpt(ctx, "layout_q", layoutQ_);
     GetAttrValueOpt(ctx, "layout_kv", layoutKv_);
-    GetAttrValueOpt(ctx, "layout_out", layoutOut_);
+    GetAttrValueOpt(ctx, "layout_out", layoutAttnOut_);
     return ParamsInit();
 }
 
@@ -201,15 +200,6 @@ bool MixedQuantFlashAttnMetadataCpuKernel::ParamsInit()
             maxSeqlenQ_ = std::max(static_cast<int64_t>(maxSeqlenQ_), sequsedQ[i]);
         }
     }
-    if (baseInfo.isCumulativeKvSeq && cuSeqlensKv_ != nullptr && cuSeqlensKv_->GetData() != nullptr) {
-        batchSize_ = cuSeqlensKv_->GetTensorShape()->GetDimSize(0) - 1;
-        auto cuSeqlensKv = GetTensorDataAsInt64(cuSeqlensKv_, batchSize_ + 1);
-        baseInfo.actualKvSeqSize.resize(batchSize_, maxSeqlenKv_);
-        for (uint32_t i = 0; i < batchSize_; ++i) {
-            baseInfo.actualKvSeqSize[i] = cuSeqlensKv[i + 1];
-            maxSeqlenKv_ = std::max(static_cast<int64_t>(maxSeqlenKv_), cuSeqlensKv[i + 1] - cuSeqlensKv[i]);
-        }
-    }
     if (sequsedKv_ != nullptr && sequsedKv_->GetData() != nullptr) {
         batchSize_ = sequsedKv_->GetTensorShape()->GetDimSize(0);
         auto sequsedKv = GetTensorDataAsInt64(sequsedKv_, batchSize_);
@@ -238,7 +228,7 @@ bool MixedQuantFlashAttnMetadataCpuKernel::ParamsInit()
     // KV 按量化模式选择数据类型，此处 DataType 仅用于表达元素位宽：
     //   quantMode_ == 1 → INT4（0.5 byte，4-bit 量化）
     //   quantMode_ != 1 → INT8（1 byte，8-bit 量化）
-    baseInfo.kvType = quantMode_ == 1 ? load_balance::DataType::INT4 : load_balance::DataType::INT8; 
+    baseInfo.kvType = quantMode_ == 1 ? load_balance::DataType::INT4 : load_balance::DataType::INT8;
     // param
     if (numHeadsKv_ == 0) {
         numHeadsKv_ = numHeadsQ_;
@@ -247,14 +237,19 @@ bool MixedQuantFlashAttnMetadataCpuKernel::ParamsInit()
         groupSize_ = numHeadsQ_ / numHeadsKv_;
     }
     ValidSocVersion validSocVersion = ProcessSocVersion();
-    if (quantMode_ == 1 && validSocVersion == ValidSocVersion::ASCEND950) {
-        s2BaseSize_ = 64U;
-        mBaseSize_ = 256U;
-    } else if (quantMode_ == 1 && validSocVersion == ValidSocVersion::ASCEND910_96) {
-        s2BaseSize_ = 32U;
-        mBaseSize_ = 512U;
+    if (quantMode_ == 1) {
+        if (validSocVersion == ValidSocVersion::ASCEND950) {
+            mBaseSize_ = 64U;
+            s2BaseSize_ = 256U;
+        } else if (validSocVersion == ValidSocVersion::ASCEND910_96) {
+            mBaseSize_ = 32U;
+            s2BaseSize_ = 512U;
+        } else {
+            KERNEL_LOG_ERROR("unsupported socVersion");
+            return false;
+        }
     } else {
-        KERNEL_LOG_ERROR("unsupported quantMode or socVersion");
+        KERNEL_LOG_ERROR("unsupported quantMode");
         return false;
     }
     param.mBaseSize = mBaseSize_;
@@ -262,7 +257,8 @@ bool MixedQuantFlashAttnMetadataCpuKernel::ParamsInit()
     param.costFunc = CalcCost;
     param.mode = load_balance::BalanceMode::BN1_S1;
     param.l2Byte = 0U;     // Set sectionNum to 1
-    param.fdTolerance = 300;                 // 300: least block
+    param.fdTolerance = 10;
+    param.fdLeastBlock = 3;
     param.fdOn = (maskMode_ != 4);           // TODO: turn off fd for flash attn
     return true;
 }

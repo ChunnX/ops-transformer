@@ -22,11 +22,11 @@
 extern "C" {
 #endif
 
-static aclnnStatus ParamsCheck(const aclTensor *cuSeqlensQOptional, const aclTensor *cuSeqlensKvOptional,
-                               const aclTensor *sequsedQOptional, const aclTensor *sequsedKvOptional, int64_t batchSize,
+static aclnnStatus ParamsCheck(const aclTensor *cuSeqlensQOptional, const aclTensor *sequsedQOptional,
+                               const aclTensor *sequsedKvOptional, int64_t batchSize,
                                int64_t maxSeqlenQ, int64_t maxSeqlenKv, int64_t numHeadsQ, int64_t numHeadsKv,
                                int64_t headDim, int64_t quantMode, int64_t maskMode, int64_t winLeft, int64_t winRight,
-                               const char *layoutQ, const char *layoutKv, const char *layoutOut,
+                               const char *layoutQ, const char *layoutKv, const char *layoutAttnOut,
                                const aclTensor *metaData)
 {
     // TODO: 魔鬼数字
@@ -66,17 +66,17 @@ static aclnnStatus ParamsCheck(const aclTensor *cuSeqlensQOptional, const aclTen
         return ACLNN_ERR_PARAM_INVALID;
     }
 
-    bool layoutOutValid =
-        (strcmp(layoutOut, "BSND") == 0 || strcmp(layoutOut, "TND") == 0 || strcmp(layoutOut, "BNSD") == 0);
-    if (!layoutOutValid) {
-        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "layoutOut only supports BSND, TND, BNSD, but got %s", layoutOut);
+    bool layoutAttnOutValid =
+        (strcmp(layoutAttnOut, "BSND") == 0 || strcmp(layoutAttnOut, "TND") == 0 || strcmp(layoutAttnOut, "BNSD") == 0);
+    if (!layoutAttnOutValid) {
+        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "layoutAttnOut only supports BSND, TND, BNSD, but got %s", layoutAttnOut);
         return ACLNN_ERR_PARAM_INVALID;
     }
 
     bool layoutKvValid =
-        (strcmp(layoutKv, "PA_BNBD") == 0 || strcmp(layoutKv, "PA_BBND") == 0);
+        (strcmp(layoutKv, "PA_BNBD") == 0 || strcmp(layoutKv, "PA_BBND") == 0 || strcmp(layoutKv, "PA_NZ") == 0);
     if (!layoutKvValid) {
-        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "layoutKv only supports PA_BNBD, PA_BBND, but got %s",
+        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "layoutKv only supports PA_BNBD, PA_BBND, PA_NZ, but got %s",
                 layoutKv);
         return ACLNN_ERR_PARAM_INVALID;
     }
@@ -91,19 +91,6 @@ static aclnnStatus ParamsCheck(const aclTensor *cuSeqlensQOptional, const aclTen
             if (cuSeqlensQOptional->GetViewShape().GetDim(0) != batchSize + 1) {
                 OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "cuSeqlensQOptional shape must be (batchSize+1,), but got %ld",
                         cuSeqlensQOptional->GetViewShape().GetDim(0));
-                return ACLNN_ERR_PARAM_INVALID;
-            }
-        }
-
-        if (cuSeqlensKvOptional != nullptr) {
-            if (cuSeqlensKvOptional->GetViewShape().GetDimNum() != 1) {
-                OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "cuSeqlensKvOptional must be 1D tensor, but got %ld dims",
-                        cuSeqlensKvOptional->GetViewShape().GetDimNum());
-                return ACLNN_ERR_PARAM_INVALID;
-            }
-            if (cuSeqlensKvOptional->GetViewShape().GetDim(0) != batchSize + 1) {
-                OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "cuSeqlensKvOptional shape must be (batchSize+1,), but got %ld",
-                        cuSeqlensKvOptional->GetViewShape().GetDim(0));
                 return ACLNN_ERR_PARAM_INVALID;
             }
         }
@@ -161,30 +148,12 @@ static aclnnStatus ParamsCheck(const aclTensor *cuSeqlensQOptional, const aclTen
         }
     }
 
-    bool isKv_TND = (strcmp(layoutKv, "TND") == 0);
-    if (isKv_TND) {
-        // layoutKv为TND时，cuSeqlensKvOptional、maxSeqlenKv、sequsedKvOptional至少传一个
-        bool hasKvParam = (cuSeqlensKvOptional != nullptr) || (maxSeqlenKv != -1) || (sequsedKvOptional != nullptr);
-        if (!hasKvParam) {
-            OP_LOGE(ACLNN_ERR_RUNTIME_ERROR,
-                    "When layoutKv is TND, at least one of cuSeqlensKvOptional, "
-                    "maxSeqlenKv, sequsedKvOptional must be provided");
-            return ACLNN_ERR_PARAM_INVALID;
-        }
-    } else {
-        // layoutKv不为TND时，不应该传入cuSeqlensKvOptional
-        if (cuSeqlensKvOptional != nullptr) {
-            OP_LOGE(ACLNN_ERR_RUNTIME_ERROR,
-                    "When layoutKv is not TND, cuSeqlensKvOptional should not be provided, but got non-null");
-            return ACLNN_ERR_PARAM_INVALID;
-        }
-        // maxSeqlenKv和sequsedKvOptional必须有一个（-1表示不传）
-        bool hasKvParam = (maxSeqlenKv != -1) || (sequsedKvOptional != nullptr);
-        if (!hasKvParam) {
-            OP_LOGE(ACLNN_ERR_RUNTIME_ERROR,
-                    "When layoutKv is not TND, at least one of maxSeqlenKv or sequsedKvOptional must be provided");
-            return ACLNN_ERR_PARAM_INVALID;
-        }
+    // maxSeqlenKv和sequsedKvOptional必须有一个（-1表示不传）
+    bool hasKvParam = (maxSeqlenKv != -1) || (sequsedKvOptional != nullptr);
+    if (!hasKvParam) {
+        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR,
+                "When layoutKv is not TND, at least one of maxSeqlenKv or sequsedKvOptional must be provided");
+        return ACLNN_ERR_PARAM_INVALID;
     }
 
     if (numHeadsKv != 0) {

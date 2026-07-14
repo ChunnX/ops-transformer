@@ -35,23 +35,45 @@ def test_qliv2_process(filepath, device_id=0):
     if params[10] == 'FLOAT8_E4M3FN':
         query = test_data['query'].to(dtype=torch.float8_e4m3fn).npu()
         key = test_data['key'].to(dtype=torch.float8_e4m3fn).npu()
+        if 'blockFusion' in test_data and test_data['blockFusion'] is not None:
+            blockFusion = test_data['blockFusion'].to(dtype=torch.float8_e4m3fn).npu()
     else:
         query = test_data['query'].npu()
         key = test_data['key'].npu()
+        if 'blockFusion' in test_data and test_data['blockFusion'] is not None:
+            blockFusion = test_data['blockFusion'].npu()
 
     max_seqlen_q = params[18]
     return_value = params[30]
     weights =test_data['weights'].npu()
     query_dequant_scale = test_data['query_dequant_scale'].npu()
     key_dequant_scale = test_data['key_dequant_scale'].npu()
-    if test_data['actual_seq_lengths_query'] is not None:
-        actual_seq_lengths_query = test_data['actual_seq_lengths_query'].npu()
+    if 'blockFusion' in test_data and test_data['blockFusion'] is not None:
+        block_num = params[9]
+        block_size = params[8]
+        head_dim = params[7]
+        k_head_num = params[6]
+        k_head_num = int(k_head_num)
+        head_dim = int(head_dim)
+        block_size = int(block_size)
+        block_num = int(block_num)
+        dequant_dtype_str = params[11]
+        if dequant_dtype_str == 'FP16':
+            dequant_dtype = torch.float16
+        elif dequant_dtype_str == 'FP32':
+            dequant_dtype = torch.float32
+        else:
+            dequant_dtype = torch.float16
+        key = blockFusion[:, :block_size * k_head_num * head_dim].view(block_num, block_size, k_head_num, head_dim)
+        key_dequant_scale = blockFusion[:, block_size * k_head_num * head_dim:].view(dequant_dtype).view(block_num, block_size, k_head_num)
+    if test_data['seqused_q'] is not None:
+        seqused_q = test_data['seqused_q'].npu()
     else:
-        actual_seq_lengths_query = None
-    if test_data['actual_seq_lengths_key'] is not None:
-        actual_seq_lengths_key = test_data['actual_seq_lengths_key'].npu()
+        seqused_q = None
+    if test_data['seqused_k'] is not None:
+        seqused_k = test_data['seqused_k'].npu()
     else:
-        actual_seq_lengths_key = None
+        seqused_k = None
     if test_data['output_idx_offset'] is not None:
         output_idx_offset = test_data['output_idx_offset'].npu()
     else:
@@ -68,7 +90,6 @@ def test_qliv2_process(filepath, device_id=0):
         block_table = test_data['block_table'].npu()
     else:
         block_table = None
-    metadata = test_data['metadata'].npu()
     quant_mode = test_data['quant_mode']
     layout_query = test_data['layout_query']
     layout_key = test_data['layout_key']
@@ -80,14 +101,36 @@ def test_qliv2_process(filepath, device_id=0):
     else:
         cmp_residual_k_for_npu = None
 
+    max_seqlen_q_meta = test_data['max_seqlen_q_meta']
+    max_seqlen_k_meta = test_data['max_seqlen_k_meta']
+    metadata = torch.ops.cann_ops_transformer.quant_lightning_indexer_metadata(
+                                    cu_seqlens_q = cu_seqlens_query,
+                                    cu_seqlens_k = cu_seqlens_key,
+                                    seqused_q = seqused_q,
+                                    seqused_k = seqused_k,
+                                    cmp_residual_k = cmp_residual_k_for_npu,
+                                    batch_size = params[0],
+                                    max_seqlen_q = max_seqlen_q_meta,
+                                    max_seqlen_k = max_seqlen_k_meta,
+                                    num_heads_q = params[5],
+                                    num_heads_k = params[6],
+                                    head_dim = params[7],
+                                    topk = sparse_count,
+                                    quant_mode = quant_mode,
+                                    mask_mode = sparse_mode,
+                                    layout_q = layout_query,
+                                    layout_k = layout_key,
+                                    cmp_ratio = cmp_ratio)
+    metadata = metadata.npu()
+
     #调用qli算子
     npu_result, npu_value = torch.ops.cann_ops_transformer.quant_lightning_indexer(query, key, weights, 
                                                     query_dequant_scale,
                                                     key_dequant_scale,
                                                     cu_seqlens_q = cu_seqlens_query,
                                                     cu_seqlens_k = cu_seqlens_key,
-                                                    seqused_q = actual_seq_lengths_query,
-                                                    seqused_k = actual_seq_lengths_key,
+                                                    seqused_q = seqused_q,
+                                                    seqused_k = seqused_k,
                                                     cmp_residual_k = cmp_residual_k_for_npu,
                                                     output_idx_offset = output_idx_offset,
                                                     max_seqlen_q = max_seqlen_q,

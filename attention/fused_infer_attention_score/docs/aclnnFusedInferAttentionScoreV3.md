@@ -138,21 +138,21 @@ aclnnStatus aclnnFusedInferAttentionScoreV3(
         <td>key</td>
         <td>输入</td>
         <td>公式中的输入K。</td>
-        <td>key仅支持首轴非连续。</td>
+        <td>-</td>
         <td>FLOAT16、BFLOAT16、INT8、HIFLOAT8、FLOAT8_E4M3FN、INT4(INT32)、FLOAT4_E2M1</td>
         <td>ND</td>
         <td>见参数inputLayout</td>
-        <td>√</td>
+        <td>×</td>
       </tr>
       <tr>
         <td>value</td>
         <td>输入</td>
         <td>公式中的输入V。</td>
-        <td>value仅支持首轴非连续。</td>
+        <td>-</td>
         <td>FLOAT16、BFLOAT16、INT8、HIFLOAT8、FLOAT8_E4M3FN、INT4(INT32)、FLOAT4_E2M1</td>
         <td>ND</td>
         <td>见参数inputLayout</td>
-        <td>√</td>
+        <td>×</td>
       </tr>
       <tr>
         <td>pseShiftOptional</td>
@@ -1299,8 +1299,6 @@ aclnnStatus aclnnFusedInferAttentionScoreV3(
     - keySharedPrefix和valueSharedPrefix都不为空时，keySharedPrefix的shape第一维batch必须为1，layout为BNSD和BSND情况下N、D轴要与key一致、BSH情况下H要与key一致，valueSharedPrefix同理。keySharedPrefix和valueSharedPrefix的S应相等。
     - 当actualSharedPrefixLen存在时，actualSharedPrefixLen的shape需要为[1]，值不能大于keySharedPrefix和valueSharedPrefix的S。
     - 公共前缀的S加上key或value的S的结果，要满足原先key或value的S的限制。
-
-- key、value首轴非连续场景约束：仅支持PagedAttention场景，而且满足TND排布，sparseMode为0/3/4，Q_D=K_D=V_D且≤256，非MLA场景，innerPrecise=0的GQA/MQA，或MHA（MHA场景不支持BF16且innerPrecise=1，不支持sparseMode=0且attenMask非空）。key、value为BnBsH格式要求blockSize满足16对齐且≤512；NZ排布要求blockSize=128且D≠64/128。key、value仅第一个维度支持非连续，其他维度必须连续。
 
 ## 调用示例
 
