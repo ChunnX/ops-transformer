@@ -109,6 +109,13 @@
       <td>ND</td>
     </tr>
     <tr>
+      <td>sinks</td>
+      <td>输入</td>
+      <td>attention结构中的可学习的sinks信息。</td>
+      <td>FLOAT</td>
+      <td>ND</td>
+    </tr>
+    <tr>
       <td>scaleValue</td>
       <td>可选属性</td>
       <td>代表缩放系数。</td>
@@ -214,7 +221,7 @@
     - 只支持sparse_block_size为1。
   - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
     - 支持[1,128]，且要求是2的幂次方，在PageAttention场景下要求sparse_block_size整除block_size
-
+- sinks仅支持Ascend 950PR/Ascend 950DT。
 ## 调用示例
 
 <table class="tg"><thead>
@@ -237,4 +244,20 @@
     接口方式调用算子
     </td>
   </tr>
-</tbody></table>
+</tbody>
+<tbody>
+  <tr>
+    <td class="tg-9wq8" rowspan="6">aclnn接口</td>
+    <td class="tg-0pky">
+    <a href="./examples//test_aclnn_sparse_flash_attention_v2.cpp">test_aclnn_sparse_flash_attention_v2
+    </a>
+    </td>
+    <td class="tg-lboi" rowspan="6">
+    通过
+    <a href="./docs/aclnnSparseFlashAttentionV2.md">aclnnSparseFlashAttentionV2
+    </a>
+    接口方式调用算子
+    </td>
+  </tr>
+</tbody>
+</table>
