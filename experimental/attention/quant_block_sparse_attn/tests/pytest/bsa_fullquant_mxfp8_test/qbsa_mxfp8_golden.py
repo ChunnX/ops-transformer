@@ -668,6 +668,11 @@ def generate_data():
 
 EMPTY_LSE = -3.4028234663852886e38
 MASK_VALUE = -10000.0
+LN2 = math.log(2.0)
+
+
+def _align_up_to_ln2(value):
+    return torch.ceil(value / LN2) * LN2
 
 
 def _positions_from_sparse(sparse_indices, sparse_seq_len, batch_idx, head_idx, qb_idx, kv_len):
@@ -817,22 +822,22 @@ def cpu_mxfp8_golden(q_fp8, k_fp8, v_fp8,
                     s_round = scores[:, round_start:round_end]
                     vm_round = valid_mask[:, round_start:round_end]
                     masked_scores = torch.where(vm_round, s_round, torch.full_like(s_round, neg_inf))
-                    round_max = masked_scores.max(dim=-1).values
+                    round_max = _align_up_to_ln2(masked_scores.max(dim=-1).values)
                     round_has = vm_round.any(dim=-1)
 
-                    # online softmax 状态：m_run/l_run/acc 分别是历史 KV round 的 max、sum、PV 累加。
-                    # 若当前行此前已经有有效 KV，则 m_new=max(m_run, round_max)；否则从本轮 round_max 启动。
-                    # 如果本轮对某个 Q 行没有任何有效 KV，保持该行状态不变。
+                    # online softmax 状态：m_run/l_run/acc 分别是历史 KV round 的 aligned max、sum、PV 累加。
+                    # VF 会执行 ceil(max / ln2) * ln2，这里同步使用 ln2 对齐后的 max。
                     run_started = m_run != neg_inf
                     m_new = torch.where(run_started, torch.maximum(m_run, round_max), round_max)
+                    m_new = _align_up_to_ln2(m_new)
                     m_new = torch.where(round_has, m_new, m_run)
 
-                    # 历史 acc/l_run 需要按 exp(m_old - m_new) 重标定到新的 max 基准。
+                    # 历史 acc/l_run 需要按 exp(aligned_m_old - aligned_m_new) 重标定到新的 max 基准。
                     # 对从未启动过的行，rescale=0，避免 -inf 参与 exp 产生 NaN。
                     rescale = torch.where(run_started, torch.exp(m_run - m_new), torch.zeros_like(m_run))
                     rescale = torch.where(torch.isfinite(rescale), rescale, torch.zeros_like(rescale))
 
-                    # 本轮 P 基于同一个 m_new 计算；无效 token 置 0。
+                    # 本轮 P 基于同一个 aligned m_new 计算；无效 token 置 0。
                     # p_quant 仅用于 PV，l_run 仍累加未量化的 p_round，和参考 online softmax 数据流一致。
                     p_round = torch.exp(s_round - m_new.view(nq, 1))
                     p_round = torch.where(vm_round, p_round, torch.zeros_like(p_round))
@@ -856,8 +861,7 @@ def cpu_mxfp8_golden(q_fp8, k_fp8, v_fp8,
                 any_valid = valid_mask.any(dim=-1)
                 safe_l = torch.where(l_run > 0, l_run, torch.ones_like(l_run))
                 attn = acc / safe_l.view(nq, 1)
-                lse_scores = torch.where(valid_mask, scores, torch.full_like(scores, neg_inf))
-                lse = torch.logsumexp(lse_scores, dim=-1)
+                lse = torch.log(safe_l) + m_run
 
                 for local_idx in range(nq):
                     if not bool(any_valid[local_idx].item()):
@@ -983,7 +987,7 @@ def npu_mxfp8_fa(q_fp8, k_fp8, v_fp8,
     if sparse_indices is None or sparse_seq_len is None:
         sparse_indices, sparse_seq_len = _make_reference_sparse_for_lengths(q_lengths, kv_lengths)
 
-    softmax_scale = 1.0 / math.sqrt(D)
+    softmax_scale = float(CASE["softmax_scale"])
 
     q_layout = canonical_q_input_layout(Q_INPUT_LAYOUT)
     q_npu = convert_q_tnd_or_ntd_to_layout(q_fp8, q_lengths, N_q, q_layout, "Q").contiguous().view(FP8_DTYPE).npu()
