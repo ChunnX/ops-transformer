@@ -118,6 +118,16 @@ public:
         this->seqUsedDims = 0;
     }
 
+    // SparseFlashMla 等调用方传入已构造好的 GlobalTensor + seqUsed
+    __aicore__ inline void Init(GlobalTensor<ACTLEN_T> cuSeqLensGm, GlobalTensor<ACTLEN_T> seqUsedGm,
+                                uint32_t actualLenDims, uint32_t seqUsedDims)
+    {
+        this->cuSeqLensGm = cuSeqLensGm;
+        this->seqUsedGm = seqUsedGm;
+        this->actualLenDims = actualLenDims;
+        this->seqUsedDims = seqUsedDims;
+    }
+
     __aicore__ inline void Init(__gm__ uint8_t *cuSeqLensGmAddr, uint32_t actualLenDims,
         __gm__ uint8_t *seqUsedGmAddr = nullptr, uint32_t seqUsedDims = 0)
     {
