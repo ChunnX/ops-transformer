@@ -2191,7 +2191,7 @@ __simd_vf__ inline void ProcessVec1DnNoUpdatePerTokenHeadVF(
     __ubuf__ float *new_global_sum, __ubuf__ float *new_global_max, __ubuf__ uint32_t *maskUb,
     __ubuf__ uint8_t *indexesUb, __ubuf__ float * qScaleUb, __ubuf__ float * kScaleUb,
     const uint32_t m, const uint32_t n, const uint32_t originN, const T scale, float deScaleQK,
-    const T minValue, float keepProb, bool needAtten, const float dScale,
+    const T minValue, float keepProb, const float dScale,
     const uint32_t blockStride, const uint32_t repeatStride, const float pScale = 1.0f)
 {
     RegTensor<float> vreg_x_sum_0;
@@ -2298,72 +2298,44 @@ __simd_vf__ inline void ProcessVec1DnNoUpdatePerTokenHeadVF(
     Muls(vreg_qscale_vec, vreg_qscale_vec, dScale, preg_108);
     if constexpr ((IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value ||
                     IsSameType<T2, hifloat8_t>::value) && hasAtten) {
-        if (needAtten) {
-            for (uint16_t iter_m = 0; iter_m < uint16_t(ubN / 4); ++iter_m) {
-                LoadAlign(src0, src_ub0 + iter_m * m * 4);
-                LoadAlign(src1, src_ub1 + iter_m * m * 4);
-                LoadAlign(src2, src_ub2 + iter_m * m * 4);
-                LoadAlign(src3, src_ub3 + iter_m * m * 4);
+        for (uint16_t iter_m = 0; iter_m < uint16_t(ubN / 4); ++iter_m) {
+            LoadAlign(src0, src_ub0 + iter_m * m * 4);
+            LoadAlign(src1, src_ub1 + iter_m * m * 4);
+            LoadAlign(src2, src_ub2 + iter_m * m * 4);
+            LoadAlign(src3, src_ub3 + iter_m * m * 4);
 
-                Mul(src0, src0, vreg_qscale_vec, preg_135);
-                Mul(src1, src1, vreg_qscale_vec, preg_135);
-                Mul(src2, src2, vreg_qscale_vec, preg_135);
-                Mul(src3, src3, vreg_qscale_vec, preg_135);
-                LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + iter_m * 4);
-                Mul(src0, src0, vreg_kscale_val, preg_135);
-                LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + iter_m * 4 + 1);
-                Mul(src1, src1, vreg_kscale_val, preg_135);
-                LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + iter_m * 4 + 2);
-                Mul(src2, src2, vreg_kscale_val, preg_135);
-                LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + iter_m * 4 + 3);
-                Mul(src3, src3, vreg_kscale_val, preg_135);
+            Mul(src0, src0, vreg_qscale_vec, preg_135);
+            Mul(src1, src1, vreg_qscale_vec, preg_135);
+            Mul(src2, src2, vreg_qscale_vec, preg_135);
+            Mul(src3, src3, vreg_qscale_vec, preg_135);
+            // 4份ub，解bank冲突
+            LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + iter_m * 4);
+            Mul(src0, src0, vreg_kscale_val, preg_135);
+            LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + NUM_264 + iter_m * 4 + 1);
+            Mul(src1, src1, vreg_kscale_val, preg_135);
+            LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val,
+                                                               kScaleUb + NUM_264 * 2 + iter_m * 4 + 2);
+            Mul(src2, src2, vreg_kscale_val, preg_135);
+            LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val,
+                                                               kScaleUb + NUM_264 * 3 + iter_m * 4 + 3);
+            Mul(src3, src3, vreg_kscale_val, preg_135);
 
-                LoadAlign<uint32_t, MicroAPI::MaskDist::DIST_DS>(preg_compare0, mask_ub0 + iter_m * m);
-                LoadAlign<uint32_t, MicroAPI::MaskDist::DIST_DS>(preg_compare1, mask_ub1 + iter_m * m);
-                LoadAlign<uint32_t, MicroAPI::MaskDist::DIST_DS>(preg_compare2, mask_ub2 + iter_m * m);
-                LoadAlign<uint32_t, MicroAPI::MaskDist::DIST_DS>(preg_compare3, mask_ub3 + iter_m * m);
-                Select(src0, src0, vreg_min, preg_compare0);
-                Select(src1, src1, vreg_min, preg_compare1);
-                Select(src2, src2, vreg_min, preg_compare2);
-                Select(src3, src3, vreg_min, preg_compare3);
-                StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub0 + iter_m * m * 4, src0, preg_108);
-                StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub1 + iter_m * m * 4, src1, preg_108);
-                StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub2 + iter_m * m * 4, src2, preg_108);
-                StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub3 + iter_m * m * 4, src3, preg_108);
-                Max(max0, max0, src0, preg_108);
-                Max(max1, max1, src1, preg_108);
-                Max(max2, max2, src2, preg_108);
-                Max(max3, max3, src3, preg_108);
-            }
-        } else {
-            for (uint16_t iter_m = 0; iter_m < uint16_t(ubN / 4); ++iter_m) {
-                LoadAlign(src0, src_ub0 + iter_m * m * 4);
-                LoadAlign(src1, src_ub1 + iter_m * m * 4);
-                LoadAlign(src2, src_ub2 + iter_m * m * 4);
-                LoadAlign(src3, src_ub3 + iter_m * m * 4);
-
-                Mul(src0, src0, vreg_qscale_vec, preg_135);
-                Mul(src1, src1, vreg_qscale_vec, preg_135);
-                Mul(src2, src2, vreg_qscale_vec, preg_135);
-                Mul(src3, src3, vreg_qscale_vec, preg_135);
-                LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + iter_m * 4);
-                Mul(src0, src0, vreg_kscale_val, preg_135);
-                LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + iter_m * 4 + 1);
-                Mul(src1, src1, vreg_kscale_val, preg_135);
-                LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + iter_m * 4 + 2);
-                Mul(src2, src2, vreg_kscale_val, preg_135);
-                LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + iter_m * 4 + 3);
-                Mul(src3, src3, vreg_kscale_val, preg_135);
-
-                StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub0 + iter_m * m * 4, src0, preg_108);
-                StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub1 + iter_m * m * 4, src1, preg_108);
-                StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub2 + iter_m * m * 4, src2, preg_108);
-                StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub3 + iter_m * m * 4, src3, preg_108);
-                Max(max0, max0, src0, preg_108);
-                Max(max1, max1, src1, preg_108);
-                Max(max2, max2, src2, preg_108);
-                Max(max3, max3, src3, preg_108);
-            }
+            LoadAlign<uint32_t, MicroAPI::MaskDist::DIST_DS>(preg_compare0, mask_ub0 + iter_m * m);
+            LoadAlign<uint32_t, MicroAPI::MaskDist::DIST_DS>(preg_compare1, mask_ub1 + iter_m * m);
+            LoadAlign<uint32_t, MicroAPI::MaskDist::DIST_DS>(preg_compare2, mask_ub2 + iter_m * m);
+            LoadAlign<uint32_t, MicroAPI::MaskDist::DIST_DS>(preg_compare3, mask_ub3 + iter_m * m);
+            Select(src0, src0, vreg_min, preg_compare0);
+            Select(src1, src1, vreg_min, preg_compare1);
+            Select(src2, src2, vreg_min, preg_compare2);
+            Select(src3, src3, vreg_min, preg_compare3);
+            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub0 + iter_m * m * 4, src0, preg_108);
+            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub1 + iter_m * m * 4, src1, preg_108);
+            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub2 + iter_m * m * 4, src2, preg_108);
+            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub3 + iter_m * m * 4, src3, preg_108);
+            Max(max0, max0, src0, preg_108);
+            Max(max1, max1, src1, preg_108);
+            Max(max2, max2, src2, preg_108);
+            Max(max3, max3, src3, preg_108);
         }
     } else {
         for (uint16_t iter_m = 0; iter_m < uint16_t(ubN / 4); ++iter_m) {
@@ -2376,13 +2348,16 @@ __simd_vf__ inline void ProcessVec1DnNoUpdatePerTokenHeadVF(
             Mul(src1, src1, vreg_qscale_vec, preg_135);
             Mul(src2, src2, vreg_qscale_vec, preg_135);
             Mul(src3, src3, vreg_qscale_vec, preg_135);
+            // 4份ub，解bank冲突
             LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + iter_m * 4);
             Mul(src0, src0, vreg_kscale_val, preg_135);
-            LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + iter_m * 4 + 1);
+            LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + NUM_264 + iter_m * 4 + 1);
             Mul(src1, src1, vreg_kscale_val, preg_135);
-            LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + iter_m * 4 + 2);
+            LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val,
+                                                               kScaleUb + NUM_264 * 2 + iter_m * 4 + 2);
             Mul(src2, src2, vreg_kscale_val, preg_135);
-            LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + iter_m * 4 + 3);
+            LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val,
+                                                               kScaleUb + NUM_264 * 3 + iter_m * 4 + 3);
             Mul(src3, src3, vreg_kscale_val, preg_135);
 
             StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub0 + iter_m * m * 4, src0, preg_108);
@@ -2579,7 +2554,7 @@ __simd_vf__ inline void ProcessVec1DnNoUpdatePerTokenHeadTailVF(
     __ubuf__ float *new_global_sum, __ubuf__ float *new_global_max, __ubuf__ uint32_t *maskUb,
     __ubuf__ uint8_t *indexesUb, __ubuf__ float * qScaleUb, __ubuf__ float * kScaleUb,
     const uint32_t m, const uint32_t n, const uint32_t originN, const T scale, float deScaleQK,
-    const T minValue, float keepProb, bool needAtten, const float dScale,
+    const T minValue, float keepProb, const float dScale,
     const uint32_t blockStride, const uint32_t repeatStride, const float pScale = 1.0f)
 {
     RegTensor<float> vreg_x_sum_0;
@@ -2690,14 +2665,14 @@ __simd_vf__ inline void ProcessVec1DnNoUpdatePerTokenHeadTailVF(
         Mul(vreg_data_tmp1, vreg_data_tmp1, vreg_qscale_vec, preg_135);
         Mul(vreg_data_tmp2, vreg_data_tmp2, vreg_qscale_vec, preg_135);
         Mul(vreg_data_tmp3, vreg_data_tmp3, vreg_qscale_vec, preg_135);
-
+        // 4份ub，解bank冲突
         LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + iter_m * 4);
         Mul(vreg_data_tmp0, vreg_data_tmp0, vreg_kscale_val, preg_135);
-        LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + iter_m * 4 + 1);
+        LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + NUM_264 + iter_m * 4 + 1);
         Mul(vreg_data_tmp1, vreg_data_tmp1, vreg_kscale_val, preg_135);
-        LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + iter_m * 4 + 2);
+        LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + NUM_264 * 2 + iter_m * 4 + 2);
         Mul(vreg_data_tmp2, vreg_data_tmp2, vreg_kscale_val, preg_135);
-        LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + iter_m * 4 + 3);
+        LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + NUM_264 * 3 + iter_m * 4 + 3);
         Mul(vreg_data_tmp3, vreg_data_tmp3, vreg_kscale_val, preg_135);
 
         StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub0 + iter_m * m * 4, vreg_data_tmp0, preg_135);
@@ -2713,40 +2688,27 @@ __simd_vf__ inline void ProcessVec1DnNoUpdatePerTokenHeadTailVF(
     mem_bar(VST_VLD);
     if constexpr ((IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value ||
                     IsSameType<T2, hifloat8_t>::value) && hasAtten) {
-        if (needAtten) {
-            for (uint16_t iter_m = 0; iter_m < uint16_t(ubN / 4); ++iter_m) {
-                LoadAlign(src0, src_ub0 + iter_m * m * 4);
-                LoadAlign(src1, src_ub1 + iter_m * m * 4);
-                LoadAlign(src2, src_ub2 + iter_m * m * 4);
-                LoadAlign(src3, src_ub3 + iter_m * m * 4);
-                LoadAlign<uint32_t, MicroAPI::MaskDist::DIST_DS>(preg_compare0, mask_ub0 + iter_m * m);
-                LoadAlign<uint32_t, MicroAPI::MaskDist::DIST_DS>(preg_compare1, mask_ub1 + iter_m * m);
-                LoadAlign<uint32_t, MicroAPI::MaskDist::DIST_DS>(preg_compare2, mask_ub2 + iter_m * m);
-                LoadAlign<uint32_t, MicroAPI::MaskDist::DIST_DS>(preg_compare3, mask_ub3 + iter_m * m);
-                Select(src0, src0, vreg_min, preg_compare0);
-                Select(src1, src1, vreg_min, preg_compare1);
-                Select(src2, src2, vreg_min, preg_compare2);
-                Select(src3, src3, vreg_min, preg_compare3);
-                StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub0 + iter_m * m * 4, src0, preg_108);
-                StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub1 + iter_m * m * 4, src1, preg_108);
-                StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub2 + iter_m * m * 4, src2, preg_108);
-                StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub3 + iter_m * m * 4, src3, preg_108);
-                Max(max0, max0, src0, preg_108);
-                Max(max1, max1, src1, preg_108);
-                Max(max2, max2, src2, preg_108);
-                Max(max3, max3, src3, preg_108);
-            }
-        } else {
-            for (uint16_t iter_m = 0; iter_m < uint16_t(ubN / 4); ++iter_m) {
-                LoadAlign(src0, src_ub0 + iter_m * m * 4);
-                LoadAlign(src1, src_ub1 + iter_m * m * 4);
-                LoadAlign(src2, src_ub2 + iter_m * m * 4);
-                LoadAlign(src3, src_ub3 + iter_m * m * 4);
-                Max(max0, max0, src0, preg_108);
-                Max(max1, max1, src1, preg_108);
-                Max(max2, max2, src2, preg_108);
-                Max(max3, max3, src3, preg_108);
-            }
+        for (uint16_t iter_m = 0; iter_m < uint16_t(ubN / 4); ++iter_m) {
+            LoadAlign(src0, src_ub0 + iter_m * m * 4);
+            LoadAlign(src1, src_ub1 + iter_m * m * 4);
+            LoadAlign(src2, src_ub2 + iter_m * m * 4);
+            LoadAlign(src3, src_ub3 + iter_m * m * 4);
+            LoadAlign<uint32_t, MicroAPI::MaskDist::DIST_DS>(preg_compare0, mask_ub0 + iter_m * m);
+            LoadAlign<uint32_t, MicroAPI::MaskDist::DIST_DS>(preg_compare1, mask_ub1 + iter_m * m);
+            LoadAlign<uint32_t, MicroAPI::MaskDist::DIST_DS>(preg_compare2, mask_ub2 + iter_m * m);
+            LoadAlign<uint32_t, MicroAPI::MaskDist::DIST_DS>(preg_compare3, mask_ub3 + iter_m * m);
+            Select(src0, src0, vreg_min, preg_compare0);
+            Select(src1, src1, vreg_min, preg_compare1);
+            Select(src2, src2, vreg_min, preg_compare2);
+            Select(src3, src3, vreg_min, preg_compare3);
+            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub0 + iter_m * m * 4, src0, preg_108);
+            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub1 + iter_m * m * 4, src1, preg_108);
+            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub2 + iter_m * m * 4, src2, preg_108);
+            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub3 + iter_m * m * 4, src3, preg_108);
+            Max(max0, max0, src0, preg_108);
+            Max(max1, max1, src1, preg_108);
+            Max(max2, max2, src2, preg_108);
+            Max(max3, max3, src3, preg_108);
         }
     } else {
         for (uint16_t iter_m = 0; iter_m < uint16_t(ubN / 4); ++iter_m) {
@@ -2944,7 +2906,7 @@ __simd_vf__ inline void ProcessVec1DnUpdatePerTokenHeadVF(
     __ubuf__ float *new_global_sum, __ubuf__ float *new_global_max, __ubuf__ uint32_t *maskUb,
     __ubuf__ uint8_t *indexesUb, __ubuf__ float * qScaleUb, __ubuf__ float * kScaleUb,
     const uint32_t m, const uint32_t n, const uint32_t originN, const T scale, float deScaleQK,
-    const T minValue, float keepProb, bool needAtten, const float dScale,
+    const T minValue, float keepProb, const float dScale,
     const uint32_t blockStride, const uint32_t repeatStride, const float pScale = 1.0f)
 {
     RegTensor<float> vreg_x_sum_0;
@@ -3052,72 +3014,44 @@ __simd_vf__ inline void ProcessVec1DnUpdatePerTokenHeadVF(
     Muls(vreg_qscale_vec, vreg_qscale_vec, dScale, preg_108);
     if constexpr ((IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value ||
                     IsSameType<T2, hifloat8_t>::value) && hasAtten) {
-        if (needAtten) {
-            for (uint16_t iter_m = 0; iter_m < uint16_t(ubN / 4); ++iter_m) {
-                LoadAlign(src0, src_ub0 + iter_m * m * 4);
-                LoadAlign(src1, src_ub1 + iter_m * m * 4);
-                LoadAlign(src2, src_ub2 + iter_m * m * 4);
-                LoadAlign(src3, src_ub3 + iter_m * m * 4);
+        for (uint16_t iter_m = 0; iter_m < uint16_t(ubN / 4); ++iter_m) {
+            LoadAlign(src0, src_ub0 + iter_m * m * 4);
+            LoadAlign(src1, src_ub1 + iter_m * m * 4);
+            LoadAlign(src2, src_ub2 + iter_m * m * 4);
+            LoadAlign(src3, src_ub3 + iter_m * m * 4);
 
-                Mul(src0, src0, vreg_qscale_vec, preg_135);
-                Mul(src1, src1, vreg_qscale_vec, preg_135);
-                Mul(src2, src2, vreg_qscale_vec, preg_135);
-                Mul(src3, src3, vreg_qscale_vec, preg_135);
-                LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + iter_m * 4);
-                Mul(src0, src0, vreg_kscale_val, preg_135);
-                LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + iter_m * 4 + 1);
-                Mul(src1, src1, vreg_kscale_val, preg_135);
-                LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + iter_m * 4 + 2);
-                Mul(src2, src2, vreg_kscale_val, preg_135);
-                LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + iter_m * 4 + 3);
-                Mul(src3, src3, vreg_kscale_val, preg_135);
+            Mul(src0, src0, vreg_qscale_vec, preg_135);
+            Mul(src1, src1, vreg_qscale_vec, preg_135);
+            Mul(src2, src2, vreg_qscale_vec, preg_135);
+            Mul(src3, src3, vreg_qscale_vec, preg_135);
+            // 4份ub，解bank冲突
+            LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + iter_m * 4);
+            Mul(src0, src0, vreg_kscale_val, preg_135);
+            LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + NUM_264 + iter_m * 4 + 1);
+            Mul(src1, src1, vreg_kscale_val, preg_135);
+            LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val,
+                                                               kScaleUb + NUM_264 * 2 + iter_m * 4 + 2);
+            Mul(src2, src2, vreg_kscale_val, preg_135);
+            LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val,
+                                                               kScaleUb + NUM_264 * 3 + iter_m * 4 + 3);
+            Mul(src3, src3, vreg_kscale_val, preg_135);
 
-                LoadAlign<uint32_t, MicroAPI::MaskDist::DIST_DS>(preg_compare0, mask_ub0 + iter_m * m);
-                LoadAlign<uint32_t, MicroAPI::MaskDist::DIST_DS>(preg_compare1, mask_ub1 + iter_m * m);
-                LoadAlign<uint32_t, MicroAPI::MaskDist::DIST_DS>(preg_compare2, mask_ub2 + iter_m * m);
-                LoadAlign<uint32_t, MicroAPI::MaskDist::DIST_DS>(preg_compare3, mask_ub3 + iter_m * m);
-                Select(src0, src0, vreg_min, preg_compare0);
-                Select(src1, src1, vreg_min, preg_compare1);
-                Select(src2, src2, vreg_min, preg_compare2);
-                Select(src3, src3, vreg_min, preg_compare3);
-                StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub0 + iter_m * m * 4, src0, preg_108);
-                StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub1 + iter_m * m * 4, src1, preg_108);
-                StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub2 + iter_m * m * 4, src2, preg_108);
-                StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub3 + iter_m * m * 4, src3, preg_108);
-                Max(max0, max0, src0, preg_108);
-                Max(max1, max1, src1, preg_108);
-                Max(max2, max2, src2, preg_108);
-                Max(max3, max3, src3, preg_108);
-            }
-        } else {
-            for (uint16_t iter_m = 0; iter_m < uint16_t(ubN / 4); ++iter_m) {
-                LoadAlign(src0, src_ub0 + iter_m * m * 4);
-                LoadAlign(src1, src_ub1 + iter_m * m * 4);
-                LoadAlign(src2, src_ub2 + iter_m * m * 4);
-                LoadAlign(src3, src_ub3 + iter_m * m * 4);
-
-                Mul(src0, src0, vreg_qscale_vec, preg_135);
-                Mul(src1, src1, vreg_qscale_vec, preg_135);
-                Mul(src2, src2, vreg_qscale_vec, preg_135);
-                Mul(src3, src3, vreg_qscale_vec, preg_135);
-                LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + iter_m * 4);
-                Mul(src0, src0, vreg_kscale_val, preg_135);
-                LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + iter_m * 4 + 1);
-                Mul(src1, src1, vreg_kscale_val, preg_135);
-                LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + iter_m * 4 + 2);
-                Mul(src2, src2, vreg_kscale_val, preg_135);
-                LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + iter_m * 4 + 3);
-                Mul(src3, src3, vreg_kscale_val, preg_135);
-
-                StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub0 + iter_m * m * 4, src0, preg_108);
-                StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub1 + iter_m * m * 4, src1, preg_108);
-                StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub2 + iter_m * m * 4, src2, preg_108);
-                StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub3 + iter_m * m * 4, src3, preg_108);
-                Max(max0, max0, src0, preg_108);
-                Max(max1, max1, src1, preg_108);
-                Max(max2, max2, src2, preg_108);
-                Max(max3, max3, src3, preg_108);
-            }
+            LoadAlign<uint32_t, MicroAPI::MaskDist::DIST_DS>(preg_compare0, mask_ub0 + iter_m * m);
+            LoadAlign<uint32_t, MicroAPI::MaskDist::DIST_DS>(preg_compare1, mask_ub1 + iter_m * m);
+            LoadAlign<uint32_t, MicroAPI::MaskDist::DIST_DS>(preg_compare2, mask_ub2 + iter_m * m);
+            LoadAlign<uint32_t, MicroAPI::MaskDist::DIST_DS>(preg_compare3, mask_ub3 + iter_m * m);
+            Select(src0, src0, vreg_min, preg_compare0);
+            Select(src1, src1, vreg_min, preg_compare1);
+            Select(src2, src2, vreg_min, preg_compare2);
+            Select(src3, src3, vreg_min, preg_compare3);
+            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub0 + iter_m * m * 4, src0, preg_108);
+            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub1 + iter_m * m * 4, src1, preg_108);
+            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub2 + iter_m * m * 4, src2, preg_108);
+            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub3 + iter_m * m * 4, src3, preg_108);
+            Max(max0, max0, src0, preg_108);
+            Max(max1, max1, src1, preg_108);
+            Max(max2, max2, src2, preg_108);
+            Max(max3, max3, src3, preg_108);
         }
     } else {
         for (uint16_t iter_m = 0; iter_m < uint16_t(ubN / 4); ++iter_m) {
@@ -3130,13 +3064,16 @@ __simd_vf__ inline void ProcessVec1DnUpdatePerTokenHeadVF(
             Mul(src1, src1, vreg_qscale_vec, preg_135);
             Mul(src2, src2, vreg_qscale_vec, preg_135);
             Mul(src3, src3, vreg_qscale_vec, preg_135);
+            // 4份ub，解bank冲突
             LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + iter_m * 4);
             Mul(src0, src0, vreg_kscale_val, preg_135);
-            LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + iter_m * 4 + 1);
+            LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + NUM_264 + iter_m * 4 + 1);
             Mul(src1, src1, vreg_kscale_val, preg_135);
-            LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + iter_m * 4 + 2);
+            LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val,
+                                                               kScaleUb + NUM_264 * 2 + iter_m * 4 + 2);
             Mul(src2, src2, vreg_kscale_val, preg_135);
-            LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + iter_m * 4 + 3);
+            LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val,
+                                                               kScaleUb + NUM_264 * 3 + iter_m * 4 + 3);
             Mul(src3, src3, vreg_kscale_val, preg_135);
 
             StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub0 + iter_m * m * 4, src0, preg_108);
@@ -3342,7 +3279,7 @@ __simd_vf__ inline void ProcessVec1DnUpdatePerTokenHeadTailVF(
     __ubuf__ float *new_global_sum, __ubuf__ float *new_global_max, __ubuf__ uint32_t *maskUb,
     __ubuf__ uint8_t *indexesUb, __ubuf__ float * qScaleUb, __ubuf__ float * kScaleUb,
     const uint32_t m, const uint32_t n, const uint32_t originN, const T scale, float deScaleQK,
-    const T minValue, float keepProb, bool needAtten, const float dScale,
+    const T minValue, float keepProb, const float dScale,
     const uint32_t blockStride, const uint32_t repeatStride, const float pScale = 1.0f)
 {
     RegTensor<float> vreg_x_sum_0;
@@ -3454,14 +3391,14 @@ __simd_vf__ inline void ProcessVec1DnUpdatePerTokenHeadTailVF(
         Mul(vreg_data_tmp1, vreg_data_tmp1, vreg_qscale_vec, preg_135);
         Mul(vreg_data_tmp2, vreg_data_tmp2, vreg_qscale_vec, preg_135);
         Mul(vreg_data_tmp3, vreg_data_tmp3, vreg_qscale_vec, preg_135);
-
+        // 4份ub，解bank冲突
         LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + iter_m * 4);
         Mul(vreg_data_tmp0, vreg_data_tmp0, vreg_kscale_val, preg_135);
-        LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + iter_m * 4 + 1);
+        LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + NUM_264 + iter_m * 4 + 1);
         Mul(vreg_data_tmp1, vreg_data_tmp1, vreg_kscale_val, preg_135);
-        LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + iter_m * 4 + 2);
+        LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + NUM_264 * 2 + iter_m * 4 + 2);
         Mul(vreg_data_tmp2, vreg_data_tmp2, vreg_kscale_val, preg_135);
-        LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + iter_m * 4 + 3);
+        LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + NUM_264 * 3 + iter_m * 4 + 3);
         Mul(vreg_data_tmp3, vreg_data_tmp3, vreg_kscale_val, preg_135);
 
         StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub0 + iter_m * m * 4, vreg_data_tmp0, preg_135);
@@ -3477,40 +3414,27 @@ __simd_vf__ inline void ProcessVec1DnUpdatePerTokenHeadTailVF(
     mem_bar(VST_VLD);
     if constexpr ((IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value ||
                     IsSameType<T2, hifloat8_t>::value) && hasAtten) {
-        if (needAtten) {
-            for (uint16_t iter_m = 0; iter_m < uint16_t(ubN / 4); ++iter_m) {
-                LoadAlign(src0, src_ub0 + iter_m * m * 4);
-                LoadAlign(src1, src_ub1 + iter_m * m * 4);
-                LoadAlign(src2, src_ub2 + iter_m * m * 4);
-                LoadAlign(src3, src_ub3 + iter_m * m * 4);
-                LoadAlign<uint32_t, MicroAPI::MaskDist::DIST_DS>(preg_compare0, mask_ub0 + iter_m * m);
-                LoadAlign<uint32_t, MicroAPI::MaskDist::DIST_DS>(preg_compare1, mask_ub1 + iter_m * m);
-                LoadAlign<uint32_t, MicroAPI::MaskDist::DIST_DS>(preg_compare2, mask_ub2 + iter_m * m);
-                LoadAlign<uint32_t, MicroAPI::MaskDist::DIST_DS>(preg_compare3, mask_ub3 + iter_m * m);
-                Select(src0, src0, vreg_min, preg_compare0);
-                Select(src1, src1, vreg_min, preg_compare1);
-                Select(src2, src2, vreg_min, preg_compare2);
-                Select(src3, src3, vreg_min, preg_compare3);
-                StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub0 + iter_m * m * 4, src0, preg_108);
-                StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub1 + iter_m * m * 4, src1, preg_108);
-                StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub2 + iter_m * m * 4, src2, preg_108);
-                StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub3 + iter_m * m * 4, src3, preg_108);
-                Max(max0, max0, src0, preg_108);
-                Max(max1, max1, src1, preg_108);
-                Max(max2, max2, src2, preg_108);
-                Max(max3, max3, src3, preg_108);
-            }
-        } else {
-            for (uint16_t iter_m = 0; iter_m < uint16_t(ubN / 4); ++iter_m) {
-                LoadAlign(src0, src_ub0 + iter_m * m * 4);
-                LoadAlign(src1, src_ub1 + iter_m * m * 4);
-                LoadAlign(src2, src_ub2 + iter_m * m * 4);
-                LoadAlign(src3, src_ub3 + iter_m * m * 4);
-                Max(max0, max0, src0, preg_108);
-                Max(max1, max1, src1, preg_108);
-                Max(max2, max2, src2, preg_108);
-                Max(max3, max3, src3, preg_108);
-            }
+        for (uint16_t iter_m = 0; iter_m < uint16_t(ubN / 4); ++iter_m) {
+            LoadAlign(src0, src_ub0 + iter_m * m * 4);
+            LoadAlign(src1, src_ub1 + iter_m * m * 4);
+            LoadAlign(src2, src_ub2 + iter_m * m * 4);
+            LoadAlign(src3, src_ub3 + iter_m * m * 4);
+            LoadAlign<uint32_t, MicroAPI::MaskDist::DIST_DS>(preg_compare0, mask_ub0 + iter_m * m);
+            LoadAlign<uint32_t, MicroAPI::MaskDist::DIST_DS>(preg_compare1, mask_ub1 + iter_m * m);
+            LoadAlign<uint32_t, MicroAPI::MaskDist::DIST_DS>(preg_compare2, mask_ub2 + iter_m * m);
+            LoadAlign<uint32_t, MicroAPI::MaskDist::DIST_DS>(preg_compare3, mask_ub3 + iter_m * m);
+            Select(src0, src0, vreg_min, preg_compare0);
+            Select(src1, src1, vreg_min, preg_compare1);
+            Select(src2, src2, vreg_min, preg_compare2);
+            Select(src3, src3, vreg_min, preg_compare3);
+            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub0 + iter_m * m * 4, src0, preg_108);
+            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub1 + iter_m * m * 4, src1, preg_108);
+            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub2 + iter_m * m * 4, src2, preg_108);
+            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub3 + iter_m * m * 4, src3, preg_108);
+            Max(max0, max0, src0, preg_108);
+            Max(max1, max1, src1, preg_108);
+            Max(max2, max2, src2, preg_108);
+            Max(max3, max3, src3, preg_108);
         }
     } else {
         for (uint16_t iter_m = 0; iter_m < uint16_t(ubN / 4); ++iter_m) {
@@ -3717,7 +3641,7 @@ __aicore__ inline void ProcessVec1DnNoUpdatePerTokenHead(
     const LocalTensor<T>& srcTensor, const LocalTensor<T>& expMaxTensor, const LocalTensor<uint8_t> &vselrIndexesBuf,
     const LocalTensor<uint8_t>& maskTensor, const LocalTensor<T>& qScaleUbTensor, const LocalTensor<T>& kScaleUbTensor,
     const uint32_t m, const uint32_t n, const uint32_t originN,
-    const T scale, float deScaleQK, float pScale, const T minValue, float keepProb, bool needAtten)
+    const T scale, float deScaleQK, float pScale, const T minValue, float keepProb)
 {
     __ubuf__ T2 *x_exp = (__ubuf__ T2*) dstTensor.GetPhyAddr();
     __ubuf__ float *input_x_local_UB = (__ubuf__ T*) srcTensor.GetPhyAddr();
@@ -3747,12 +3671,12 @@ __aicore__ inline void ProcessVec1DnNoUpdatePerTokenHead(
         ProcessVec1DnNoUpdatePerTokenHeadTailVF<T, T2, hasAtten, ubN>(
             x_exp, input_x_local_UB, exp_max_fp32, new_global_sum, new_global_max,
             maskUb, indexesUb, qScaleUb, kScaleUb, m, n, originN, scale, deScaleQK, minValue,
-            keepProb, needAtten, dScale, blockStride, repeatStride, pScale);
+            keepProb, dScale, blockStride, repeatStride, pScale);
     } else {
         ProcessVec1DnNoUpdatePerTokenHeadVF<T, T2, hasAtten, ubN>(
             x_exp, input_x_local_UB, exp_max_fp32, new_global_sum, new_global_max,
             maskUb, indexesUb, qScaleUb, kScaleUb, m, n, originN, scale, deScaleQK, minValue,
-            keepProb, needAtten, dScale, blockStride, repeatStride, pScale);
+            keepProb, dScale, blockStride, repeatStride, pScale);
     }
 }
 
@@ -3762,7 +3686,7 @@ __aicore__ inline void ProcessVec1DnUpdatePerTokenHead(
     const LocalTensor<T>& srcTensor, const LocalTensor<T>& expMaxTensor, const LocalTensor<uint8_t> &vselrIndexesBuf,
     const LocalTensor<uint8_t>& maskTensor, const LocalTensor<T>& qScaleUbTensor, const LocalTensor<T>& kScaleUbTensor,
     const uint32_t m, const uint32_t n, const uint32_t originN,
-    const T scale, float deScaleQK, float pScale, const T minValue, float keepProb, bool needAtten)
+    const T scale, float deScaleQK, float pScale, const T minValue, float keepProb)
 {
     __ubuf__ T2* x_exp = (__ubuf__ T2*) dstTensor.GetPhyAddr();
     __ubuf__ float* input_x_local_UB = (__ubuf__ T*) srcTensor.GetPhyAddr();
@@ -3792,12 +3716,12 @@ __aicore__ inline void ProcessVec1DnUpdatePerTokenHead(
         ProcessVec1DnUpdatePerTokenHeadTailVF<T, T2, hasAtten, ubN>(
             x_exp, input_x_local_UB, exp_max_fp32, new_global_sum, new_global_max,
             maskUb, indexesUb, qScaleUb, kScaleUb, m, n, originN, scale, deScaleQK, minValue,
-            keepProb, needAtten, dScale, blockStride, repeatStride, pScale);
+            keepProb, dScale, blockStride, repeatStride, pScale);
     } else {
         ProcessVec1DnUpdatePerTokenHeadVF<T, T2, hasAtten, ubN>(
             x_exp, input_x_local_UB, exp_max_fp32, new_global_sum, new_global_max,
             maskUb, indexesUb, qScaleUb, kScaleUb, m, n, originN, scale, deScaleQK, minValue,
-            keepProb, needAtten, dScale, blockStride, repeatStride, pScale);
+            keepProb, dScale, blockStride, repeatStride, pScale);
     }
 }
 
@@ -3808,7 +3732,7 @@ __aicore__ inline void ProcessVec1VfDnPerTokenHead(
     const LocalTensor<T>& srcTensor, const LocalTensor<T>& expMaxTensor, TBuf<> *vselrIndexesBuf,
     const LocalTensor<uint8_t>& maskTensor, const LocalTensor<T>& qScaleUbTensor, const LocalTensor<T>& kScaleUbTensor,
     const uint32_t m, const uint32_t n, const uint32_t originN,
-    const T scale, float deScaleQK, float pScale, const T minValue, float keepProb, bool needAtten)
+    const T scale, float deScaleQK, float pScale, const T minValue, float keepProb)
 {
     if constexpr (!isUpdate) {
         LocalTensor<uint8_t> indexesTensor;
@@ -3819,7 +3743,7 @@ __aicore__ inline void ProcessVec1VfDnPerTokenHead(
         ProcessVec1DnNoUpdatePerTokenHead<T, T2, hasAtten, ubN, isTail>(
             dstTensor, expSumTensor, maxTensor, srcTensor, expMaxTensor,
             indexesTensor, maskTensor, qScaleUbTensor, kScaleUbTensor,
-            m, n, originN, scale, deScaleQK, pScale, minValue, keepProb, needAtten);
+            m, n, originN, scale, deScaleQK, pScale, minValue, keepProb);
     } else {
         LocalTensor<uint8_t> indexesTensor;
         if constexpr (IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value ||
@@ -3829,7 +3753,7 @@ __aicore__ inline void ProcessVec1VfDnPerTokenHead(
         ProcessVec1DnUpdatePerTokenHead<T, T2, hasAtten, ubN, isTail>(
             dstTensor, expSumTensor, maxTensor, srcTensor, expMaxTensor,
             indexesTensor, maskTensor, qScaleUbTensor, kScaleUbTensor,
-            m, n, originN, scale, deScaleQK, pScale, minValue, keepProb, needAtten);
+            m, n, originN, scale, deScaleQK, pScale, minValue, keepProb);
     }
 }
 
