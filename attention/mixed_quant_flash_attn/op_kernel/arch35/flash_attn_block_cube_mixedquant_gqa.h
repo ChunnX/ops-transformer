@@ -167,7 +167,7 @@ public:
     using MM2_ABUF_T = Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD>;
 
     using L1QType = BuffersPolicyDB<BufferType::L1>;
-    using L1KvType = BuffersPolicyDB<BufferType::L1>;
+    using L1KvType = BuffersPolicy4buff<BufferType::L1>;
     using L0AType = BuffersPolicyDB<BufferType::L0A>;
     using L0BType = BuffersPolicyDB<BufferType::L0B>;
     using L0CType = typename std::conditional<
@@ -193,8 +193,8 @@ public:
     CopyKvGmToL1<KV_T, KV_FORMAT> copyKvGmToL1;
 
     L1QType l1QBuffers;
-    L1KvType l1KBuffers;
-    L1KvType l1VBuffers;
+    L1KvType l1KvBuffers;
+    // L1KvType l1VBuffers;
 
     L0AType mmL0ABuffers;
     L0BType mmL0BBuffers;
@@ -263,10 +263,10 @@ public:
     {
         constexpr uint32_t mm1LeftSize = mBaseSize * dBaseSize * sizeof(Q_T);
         constexpr uint32_t mm1RightSize = dBaseSize * s2BaseSize * sizeof(KV_T);
-        constexpr uint32_t mm2RightSize = dVBaseSize * s2BaseSize * sizeof(KV_T);
+        // constexpr uint32_t mm2RightSize = dVBaseSize * s2BaseSize * sizeof(KV_T);
         l1QBuffers.Init((*l1BufferManagerPtr), mm1LeftSize);
-        l1KBuffers.Init((*l1BufferManagerPtr), mm1RightSize);
-        l1VBuffers.Init((*l1BufferManagerPtr), mm2RightSize);
+        l1KvBuffers.Init((*l1BufferManagerPtr), mm1RightSize);
+        // l1VBuffers.Init((*l1BufferManagerPtr), mm2RightSize);
 
         l0aBufferManager.Init(tPipe, 65536);
         l0bBufferManager.Init(tPipe, 65536);
@@ -288,8 +288,8 @@ public:
     __aicore__ inline void FreeEventID()
     {
         l1QBuffers.Uninit((*l1BufferManagerPtr));
-        l1KBuffers.Uninit((*l1BufferManagerPtr));
-        l1VBuffers.Uninit((*l1BufferManagerPtr));
+        l1KvBuffers.Uninit((*l1BufferManagerPtr));
+        // l1VBuffers.Uninit((*l1BufferManagerPtr));
         mmL0ABuffers.Uninit(l0aBufferManager);
         mmL0BBuffers.Uninit(l0bBufferManager);
         mmL0CBuffers.Uninit(l0cBufferManager);
@@ -425,7 +425,7 @@ public:
             mm1A.Set<HardEvent::MTE2_MTE1>();
         }
 
-        Buffer<BufferType::L1> mm1B = l1KBuffers.Get();
+        Buffer<BufferType::L1> mm1B = l1KvBuffers.Get();
         mm1B.Wait<HardEvent::MTE1_MTE2>();
         LocalTensor<KV_T> mm1BTensor = mm1B.GetTensor<KV_T>();
         CopyKeyTile(mm1BTensor, runInfo);
@@ -499,7 +499,7 @@ public:
     __aicore__ inline void IterateBmm2l0Split(mm2ResPos &mm2ResBuf, MM2_ABUF_POLICY_T &inputBuf, RunInfoX &runInfo)
     {
         Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> mm2A = inputBuf.Get();
-        Buffer<BufferType::L1> mm2B = l1VBuffers.Get();
+        Buffer<BufferType::L1> mm2B = l1KvBuffers.Get();
         mm2A.WaitCrossCore();
         mm2B.Wait<HardEvent::MTE1_MTE2>();
         LocalTensor<KV_T> mm2BTensor = mm2B.GetTensor<KV_T>();
