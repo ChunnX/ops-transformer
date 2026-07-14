@@ -978,15 +978,16 @@ def gen_data(params, template_mode=None):
     properties = torch.npu.get_device_properties()
     if "Ascend950" in properties.name and layout_kv == "PA_BBND":
         key_stride = 10  # 0轴非连续增加stride
-        bytes_per_token = D + key_stride # 整个非连续的长度
-        blockFusion1 = torch.zeros((block_num1, block_size1 * N2 * bytes_per_token), dtype=ori_kv_type)
+        blocksize_with_stride = block_size1 + key_stride # 整个非连续的长度
+        blockFusion1 = torch.zeros((block_num1, blocksize_with_stride * N2 * D), dtype=ori_kv_type)
         ori_key_flat = ori_k_in_pa_shape.view(block_num1, block_size1 * N2 * D)
         blockFusion1[:, :block_size1 * N2 * D] = ori_key_flat
         blockFusion1 = blockFusion1.npu()
         ori_k_in_pa_shape = blockFusion1[:, :block_size1 * N2 * D].view(block_num1, block_size1, N2, D)
 
         if template_idx != 0:
-            blockFusion2 = torch.zeros((block_num2, block_size2 * N2 * bytes_per_token), dtype=cmp_kv_type)
+            blocksize_with_stride = block_size1 + key_stride
+            blockFusion2 = torch.zeros((block_num2, blocksize_with_stride * N2 * D), dtype=cmp_kv_type)
             cmp_key_flat = cmp_k_in_pa_shape.view(block_num2, block_size2 * N2 * D)
             blockFusion2[:, :block_size2 * N2 * D] = cmp_key_flat
             blockFusion2 = blockFusion2.npu()
