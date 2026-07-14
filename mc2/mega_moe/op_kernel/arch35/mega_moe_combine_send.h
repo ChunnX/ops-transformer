@@ -537,6 +537,77 @@ struct CombineBufferContext {
     int64_t combineUbTensorSize;
 };
 
+// 量化 CombineSend 开始前清零 GMM2 完成计数器所需的信息。
+struct CombineSyncCounterResetContext {
+    CombineTileSchedule tileSchedule;
+    uint32_t expertPerRank;
+    GM_ADDR gmm2SyncCounterAddr;
+};
+
+// ===============================================================
+// ComputeCombineAlignedTileRange：按逻辑 tile 分割计数器区间，并保持每段起点对齐
+// ===============================================================
+__aicore__ inline void ComputeCombineAlignedTileRange(const CombineTileSchedule& tileSchedule,
+    int32_t totalLength, int32_t align, int32_t& tileLength, int32_t& tileOffset)
+{
+    tileLength = 0;
+    tileOffset = 0;
+    if (totalLength <= 0 || align <= 0 || tileSchedule.tileNum == 0 ||
+        tileSchedule.tileId >= tileSchedule.tileNum) {
+        return;
+    }
+    uint32_t lengthPerTile = Ops::Base::CeilDiv(static_cast<uint32_t>(totalLength), tileSchedule.tileNum);
+    uint32_t alignedLengthPerTile = Ops::Base::CeilAlign(lengthPerTile, static_cast<uint32_t>(align));
+    uint32_t offset = tileSchedule.tileId * alignedLengthPerTile;
+    if (offset >= static_cast<uint32_t>(totalLength)) {
+        return;
+    }
+    tileOffset = static_cast<int32_t>(offset);
+    tileLength = static_cast<int32_t>((alignedLengthPerTile < static_cast<uint32_t>(totalLength) - offset) ?
+        alignedLengthPerTile : static_cast<uint32_t>(totalLength) - offset);
+}
+
+// ==================================================================================
+// ResetCombineSyncCountersSingleCore：每个逻辑 tile 清零自己负责的 GMM2 完成计数器
+// ==================================================================================
+__aicore__ inline void ResetCombineSyncCountersSingleCore(const CombineSyncCounterResetContext& resetContext,
+    LocalTensor<int32_t>& resetTensor)
+{
+    if constexpr (g_coreType == AIC) {
+        return;
+    }
+    int32_t totalCounters = static_cast<int32_t>(static_cast<int64_t>(resetContext.expertPerRank) *
+        resetContext.tileSchedule.tileNum * INT_CACHELINE);
+    int32_t tileLength = 0;
+    int32_t tileOffset = 0;
+    ComputeCombineAlignedTileRange(resetContext.tileSchedule, totalCounters, ALIGN_32, tileLength, tileOffset);
+    if (tileLength == 0) {
+        return;
+    }
+    GlobalTensor<int32_t> gmm2CombineSyncCounter;
+    gmm2CombineSyncCounter.SetGlobalBuffer(
+        reinterpret_cast<__gm__ int32_t*>(resetContext.gmm2SyncCounterAddr));
+    Duplicate(resetTensor, 0, tileLength);
+    SyncFuncStatic<AscendC::HardEvent::V_MTE3, SYNC_EVENT_ID2>();
+    DataCopy(gmm2CombineSyncCounter[tileOffset], resetTensor, tileLength);
+}
+
+// ==================================================================================
+// ComputeCombineUbTensorSize：计算量化 CombineSend 在 UB 中需要的元素数
+// ==================================================================================
+template <int32_t CombineQuantMode>
+__aicore__ inline int64_t ComputeCombineUbTensorSize(uint32_t k)
+{
+    if constexpr (CombineQuantMode == COMBINE_NO_QUANT || g_coreType != AIV) {
+        return 0;
+    }
+    uint32_t nAlign32 = Ops::Base::CeilAlign(k, static_cast<uint32_t>(ALIGN_32));
+    uint32_t nScale = Ops::Base::CeilDiv(k, static_cast<uint32_t>(MXFP_SCALE_GROUP_NUM));
+    uint32_t quantTokenSizeBytes = Ops::Base::CeilAlign(k + nScale, static_cast<uint32_t>(ALIGN_32));
+    uint32_t singleTokenBytes = nAlign32 * sizeof(bfloat16_t) + quantTokenSizeBytes;
+    return static_cast<int64_t>((singleTokenBytes * 2) / sizeof(bfloat16_t));
+}
+
 // =============================================
 // ProcessCombineSingleCore：generic combine-quant 路径的单核后处理
 //                            等待本 expert 的 row-group 完成，再读取 triple 和 GMM2 输出

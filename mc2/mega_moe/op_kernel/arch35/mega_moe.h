@@ -434,10 +434,10 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ResetFlagList()
     }
     // combine量化模式下TokenGroupCompleteFlag清零
     if constexpr (CombineQuantMode != COMBINE_NO_QUANT) {
-        MegaMoeGmm2Impl::Gmm2TileSchedule gmm2TileSchedule{aivCoreIdx_, blockAivNum_};
-        MegaMoeGmm2Impl::Gmm2ResetContext gmm2ResetContext{
-            gmm2TileSchedule, expertPerRank_, params_.workspaceInfo.gmm2CombineSyncCounterPtr};
-        MegaMoeGmm2Impl::ResetGmm2CombineSyncCountersSingleCore(gmm2ResetContext, resetTensor_);
+        MegaMoeCombineImpl::CombineTileSchedule combineTileSchedule{aivCoreIdx_, blockAivNum_};
+        MegaMoeCombineImpl::CombineSyncCounterResetContext combineResetContext{
+            combineTileSchedule, expertPerRank_, params_.workspaceInfo.gmm2CombineSyncCounterPtr};
+        MegaMoeCombineImpl::ResetCombineSyncCountersSingleCore(combineResetContext, resetTensor_);
     }
 }
 
@@ -1056,37 +1056,48 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
     vecSetSyncCom_ = 0;
     GMMAddrInfo gmm2AddrInfo;
     ExpertLoopState gmm2State{initShape, initOffset, 0};
+    uint32_t gmm2LogicalTileId = startBlockIdx_;
     MegaMoeGmm2Impl::Gmm2RuntimeState gmm2RuntimeState{
-        startBlockIdx_, vecSetSyncCom_, gmm2PingPongIdx_};
-    int64_t combineUbTensorSize = MegaMoeGmm2Impl::ComputeCombineUbTensorSize<CombineQuantMode>(k_);
+        gmm2LogicalTileId, vecSetSyncCom_, gmm2PingPongIdx_};
+    int64_t combineUbTensorSize = MegaMoeCombineImpl::ComputeCombineUbTensorSize<CombineQuantMode>(k_);
 
     // Combine 后处理只使用连续逻辑 tile；A8W4 中由外部将 AIV1 映射为每 block 一个 tile。
-    uint32_t gmm2TileId = aivCoreIdx_;
-    uint32_t gmm2TileNum = blockAivNum_;
-    bool enableGmm2PostCombine = true;
+    uint32_t combineTileId = aivCoreIdx_;
+    uint32_t combineTileNum = blockAivNum_;
+    bool enableCombineSend = true;
     if constexpr (ENABLE_A8W4) {
-        gmm2TileId = aivCoreIdx_ / 2;
-        gmm2TileNum = blockAivNum_ / 2;
-        enableGmm2PostCombine = subBlockIdx_ == 1;
+        combineTileId = aivCoreIdx_ / 2;
+        combineTileNum = blockAivNum_ / 2;
+        enableCombineSend = subBlockIdx_ == 1;
     }
-    MegaMoeGmm2Impl::Gmm2TileSchedule gmm2TileSchedule{gmm2TileId, gmm2TileNum};
+    MegaMoeCombineImpl::CombineTileSchedule combineTileSchedule{combineTileId, combineTileNum};
 
     for (uint32_t expertIdx = 0; expertIdx < expertPerRank_; expertIdx++) {
         if (!UpdateGroupParams<AddrUpdateMode::GMM2>(gmm2State, expertIdx)) {
             continue;
         }
         UpdateGlobalBuffer<AddrUpdateMode::GMM2>(gmm2AddrInfo, gmm2State);
-        uint64_t syncCounterOffset =
-            (static_cast<uint64_t>(expertIdx) * blockAivNum_ + aivCoreIdx_) * INT_CACHELINE * sizeof(int32_t);
         MegaMoeGmm2Impl::Gmm2ProblemContext gmm2ProblemContext{
             gmm2State.problemShape, gmm2AddrInfo, gmm2State.expertBeforeCnt, expertIdx};
-        MegaMoeGmm2Impl::Gmm2CombineContext gmm2CombineContext{
-            gmm2TileSchedule, rankId_, k_, static_cast<uint32_t>(Get<M_VALUE>(gmm2State.problemShape)),
-            params_.workspaceInfo.gmm2CombineSyncCounterPtr + syncCounterOffset, combineUbTensorSize,
-            enableGmm2PostCombine};
         MegaMoeGmm2Impl::ProcessGmm2SingleCore<CombineQuantMode, QuantOutType, SwigluQuantOutType, Weight1Type,
             QuantScaleOutType, ENABLE_A8W4, ENABLE_A4W4>(
-            params_, gmm2ProblemContext, gmm2CombineContext, gmm2RuntimeState);
+            params_, gmm2ProblemContext, gmm2RuntimeState);
+
+        // GMM2 只产生 expert 输出；CombineSend 由总编排器在 GMM2 之后显式调用。
+        if constexpr (CombineQuantMode != COMBINE_NO_QUANT && g_coreType == AIV) {
+            if (enableCombineSend) {
+                uint64_t syncCounterOffset = (static_cast<uint64_t>(expertIdx) * blockAivNum_ + aivCoreIdx_) *
+                                             INT_CACHELINE * sizeof(int32_t);
+                MegaMoeCombineImpl::CombineExpertContext combineExpertContext{
+                    expertIdx, rankId_, k_, gmm2State.expertBeforeCnt,
+                    static_cast<uint32_t>(Get<M_VALUE>(gmm2State.problemShape))};
+                MegaMoeCombineImpl::CombineBufferContext combineBufferContext{
+                    gmm2AddrInfo.gmm2OutGlobal,
+                    params_.workspaceInfo.gmm2CombineSyncCounterPtr + syncCounterOffset, combineUbTensorSize};
+                MegaMoeCombineImpl::ProcessCombineSingleCore<CombineQuantMode>(
+                    combineTileSchedule, combineExpertContext, combineBufferContext, params_);
+            }
+        }
     }
     MegaMoeGmm2Impl::FinalizeGmm2SingleCore<CombineQuantMode>(gmm2RuntimeState);
     PipeBarrier<PIPE_ALL>();
