@@ -155,7 +155,16 @@ aclnnStatus aclnnChunkGatedDeltaRuleGetWorkspaceSize(const aclTensor *query, con
     CHECK_RET(value_ != nullptr, ACLNN_ERR_INNER_NULLPTR);
     auto beta_ = l0op::Contiguous(beta, uniqueExecutor.get());
     CHECK_RET(beta_ != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    auto initialState_ = l0op::Contiguous(initialState, uniqueExecutor.get());
+    // 支持initialState非连续，使用CreateView设置stride信息
+    auto initialState_ = initialState;
+    if (!IsContiguous(initialState)) {
+        initialState_ = uniqueExecutor.get()->CreateView(
+            initialState,
+            initialState->GetViewShape(),
+            initialState->GetStorageShape(),
+            initialState->GetViewStrides(),
+            initialState->GetViewOffset());
+    }
     CHECK_RET(initialState_ != nullptr, ACLNN_ERR_INNER_NULLPTR);
     auto actualSeqLengths_ = l0op::Contiguous(actualSeqLengths, uniqueExecutor.get());
     CHECK_RET(actualSeqLengths_ != nullptr, ACLNN_ERR_INNER_NULLPTR);
