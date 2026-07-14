@@ -187,7 +187,7 @@ public:
         LocalTensor<T> ubTensor = uBuf_.template Get<T>();
         LocalTensor<T> copyTensor0 = ubTensor;
         LocalTensor<T> copyTensor1 = ubTensor[UB_OFFSET];
-        int32_t interm_offset = 0;
+        int64_t interm_offset = 0;
         SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
         SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID1);
         for (int32_t move_idx = 0; interm_offset < copy_size; ++move_idx) {
