@@ -30,6 +30,7 @@ class CausalConv1dUpdateOpBuilder(OpBuilder):
             "causal_conv1d_update("
             "Tensor x, Tensor conv_state, Tensor weight, "
             "Tensor? bias=None, "
+            "*, "
             "str activation=\"silu\", "
             "Tensor? conv_state_indices=None, "
             "Tensor? num_accepted_tokens=None, "
@@ -49,6 +50,7 @@ class CausalConv1dUpdateOpBuilder(OpBuilder):
             conv_state: torch.Tensor,
             weight: torch.Tensor,
             bias: Optional[torch.Tensor] = None,
+            *,
             activation: str = "silu",
             conv_state_indices: Optional[torch.Tensor] = None,
             num_accepted_tokens: Optional[torch.Tensor] = None,
@@ -98,6 +100,7 @@ def causal_conv1d_update(
     conv_state: torch.Tensor,
     weight: torch.Tensor,
     bias: Optional[torch.Tensor] = None,
+    *,
     activation: str = "silu",
     conv_state_indices: Optional[torch.Tensor] = None,
     num_accepted_tokens: Optional[torch.Tensor] = None,
