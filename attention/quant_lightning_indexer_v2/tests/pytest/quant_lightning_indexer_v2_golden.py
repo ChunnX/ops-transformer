@@ -1224,11 +1224,11 @@ def qliv2_output_single(params, is_batch = False, split_s1 = DEFAULT_SPLIT_S1, s
         return output_tensors
     else:
         metadata = torch.ops.cann_ops_transformer.quant_lightning_indexer_metadata(
-                                cu_seqlens_q = cu_seqlens_query.npu(),
-                                cu_seqlens_k = cu_seqlens_key.npu(),
-                                seqused_q = seqused_q_tensor.npu(),
-                                seqused_k = seqused_k_tensor.npu(),
-                                cmp_residual_k = cmp_residual_k_for_npu.npu(),
+                                cu_seqlens_q = cu_seqlens_query.npu() if cu_seqlens_query is not None else None,
+                                cu_seqlens_k = cu_seqlens_key.npu() if cu_seqlens_key is not None else None,
+                                seqused_q = seqused_q_tensor.npu() if seqused_q_tensor is not None else None,
+                                seqused_k = seqused_k_tensor.npu() if seqused_k_tensor is not None else None,
+                                cmp_residual_k = cmp_residual_k_for_npu.npu() if cmp_residual_k_for_npu is not None else None,
                                 batch_size = batch_size,
                                 max_seqlen_q = max_seqlen_q_meta,
                                 max_seqlen_k = max_seqlen_k_meta,
@@ -1251,20 +1251,23 @@ def qliv2_output_single(params, is_batch = False, split_s1 = DEFAULT_SPLIT_S1, s
         if quant_mode == 4:
             key_dequant_scale = torch.tensor([k_scale]).to(dequant_dtype).npu()
         else:
-            key_dequant_scale = key_dequant_scale_block.npu()
+            if layout_key == "PA_BBND":
+                key_dequant_scale = key_dequant_scale_block.npu()
+            else:
+                key_dequant_scale = key_dequant_scale.npu()
 
         npu_result, npu_topk_value = torch.ops.cann_ops_transformer.quant_lightning_indexer(
                                                     query.npu(), key, weights.npu(),
                                                     query_dequant_scale.npu(),
                                                     key_dequant_scale,
-                                                    cu_seqlens_q = cu_seqlens_query.npu(),
-                                                    cu_seqlens_k = cu_seqlens_key.npu(),
-                                                    seqused_q = seqused_q_tensor.npu(),
-                                                    seqused_k = seqused_k_tensor.npu(),
-                                                    cmp_residual_k = cmp_residual_k_for_npu.npu(),
-                                                    output_idx_offset = output_idx_offset.npu(),
+                                                    cu_seqlens_q = cu_seqlens_query.npu() if cu_seqlens_query is not None else None,
+                                                    cu_seqlens_k = cu_seqlens_key.npu() if cu_seqlens_key is not None else None,
+                                                    seqused_q = seqused_q_tensor.npu() if seqused_q_tensor is not None else None,
+                                                    seqused_k = seqused_k_tensor.npu() if seqused_k_tensor is not None else None,
+                                                    cmp_residual_k = cmp_residual_k_for_npu.npu() if cmp_residual_k_for_npu is not None else None,
+                                                    output_idx_offset = output_idx_offset.npu() if output_idx_offset is not None else None,
                                                     max_seqlen_q = max_seqlen_q,
-                                                    block_table = block_table.npu(),
+                                                    block_table = block_table.npu() if block_table is not None else None,
                                                     metadata = metadata.npu(),
                                                     quant_mode = quant_mode,
                                                     layout_q = layout_query,
