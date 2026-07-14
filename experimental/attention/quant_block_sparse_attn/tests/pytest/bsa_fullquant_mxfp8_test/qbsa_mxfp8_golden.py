@@ -298,11 +298,16 @@ def _physical_ids(start, count, pattern, rng):
     return ids
 
 
-def _make_reference_block_table(batch, seq_len, block_size, pattern, rng):
-    block_num_per_batch = math.ceil(seq_len / block_size)
-    block_table = torch.empty((batch, block_num_per_batch), dtype=torch.int32)
-    for batch_idx in range(batch):
-        physical_ids = _physical_ids(batch_idx * block_num_per_batch, block_num_per_batch, pattern, rng)
+def _make_reference_block_table(batch, seq_lens, block_size, pattern, rng):
+    if isinstance(seq_lens, int):
+        seq_lens = [seq_lens] * batch
+    block_nums = [math.ceil(int(seq_len) / block_size) for seq_len in seq_lens]
+    max_block_num = max(block_nums) if block_nums else 0
+    block_table = torch.full((batch, max_block_num), fill_value=-1, dtype=torch.int32)
+    physical_block_offset = 0
+    for batch_idx, block_num in enumerate(block_nums):
+        physical_ids = _physical_ids(physical_block_offset, block_num, pattern, rng)
+        physical_block_offset += block_num
         for block_idx, physical_block in enumerate(physical_ids):
             block_table[batch_idx, block_idx] = int(physical_block)
     return block_table
@@ -346,8 +351,8 @@ def _select_blocks(blocks, sparse_count, pattern, rng):
 def _make_reference_sparse_indices(case, q_lengths, kv_lengths, rng):
     batch = case["B"]
     n1 = case["N1"]
-    qb_max = math.ceil(case["S1"] / case["sparse_q_block_size"])
-    kv_max = math.ceil(case["S2"] / case["sparse_kv_block_size"])
+    qb_max = math.ceil(max(q_lengths) / case["sparse_q_block_size"])
+    kv_max = math.ceil(max(kv_lengths) / case["sparse_kv_block_size"])
     sparse_indices = torch.full((batch, n1, qb_max, kv_max), fill_value=-1, dtype=torch.int32)
     sparse_seq_len = torch.zeros((batch, n1, qb_max), dtype=torch.int32)
 
@@ -587,7 +592,7 @@ def _generate_reference_style_mxfp8_inputs():
     total_q = int(cu_seqlens_q[-1].item())
 
     batch = case["B"]
-    s2 = case["S2"]
+    s2 = max(kv_lengths)
     n1 = case["N1"]
     n2 = case["N2"]
     head_dim = case["D"]
@@ -610,7 +615,7 @@ def _generate_reference_style_mxfp8_inputs():
         dense_value, FP8_DTYPE, QUANT_GROUP_SIZE)
 
     block_table = _make_reference_block_table(
-        batch, s2, BLOCK_SIZE, case["block_table_pattern"], rng)
+        batch, kv_lengths, BLOCK_SIZE, case["block_table_pattern"], rng)
 
     sparse_indices, sparse_seq_len = _make_reference_sparse_indices(case, q_lengths, kv_lengths, rng)
     p_scale = torch.tensor([float(case["p_scale_value"])], dtype=torch.float32)
