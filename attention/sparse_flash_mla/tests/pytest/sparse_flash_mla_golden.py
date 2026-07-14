@@ -927,11 +927,11 @@ def gen_data(params, template_mode=None):
             cmp_ratio = None
             K = None
         elif template_mode == "HCA":
-            cmp_ratio = int(cmp_ratio)
+            cmp_ratio = int(cmp_ratio) if cmp_ratio is not None else 1
             K = None
         elif template_mode == "CSA":
-            cmp_ratio = int(cmp_ratio)
-            K = int(K)
+            cmp_ratio = int(cmp_ratio) if cmp_ratio is not None else 1
+            K = int(K) if K is not None else None
     else:
         if K is None or K == ['None']:
             if cmp_ratio is None:
