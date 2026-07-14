@@ -392,11 +392,12 @@ __aicore__ inline void ProcessVec1NoUpdateGeneralImpl256(
         expUb1, expUb2, pseUb, expSumUb, maxUb, maxUbStart, srcUb, maskUb1, maskUb2, maskUb3, maskUb4, dropMaskUb1,
         dropMaskUb2, nPadding, blockStride, repeatStride, oriTailN1, oriTailN2, tailN1, tailN2, pltOriTailN1,
         pltOriTailN2, pltTailN1, pltTailN2, divValue, m, pseStride, slopes, posShift, scale, minValue, sinkValue);
-    if (m <= 1 && originN <= 300) {
-        PRINTF("[VF256-post] m=%d postMax[0]=%f postSum[0]=%f postMax[1]=%f\n",
-               (int)m,
-               (float)((__ubuf__ float*)maxUb)[0], (float)((__ubuf__ float*)expSumUb)[0],
-               (float)((__ubuf__ float*)maxUb)[1]);
+    if (m <= 16 && originN <= 300) {
+        PRINTF("[VF256-post] m=%d", (int)m);
+        for (int di=0;di<(int)m;di++) {
+            PRINTF(" mx[%d]=%.4e", di, (float)((__ubuf__ float*)maxUb)[di]);
+        }
+        PRINTF(" sum0=%.4e\n", (float)((__ubuf__ float*)expSumUb)[0]);
     }
 }
 } // namespace

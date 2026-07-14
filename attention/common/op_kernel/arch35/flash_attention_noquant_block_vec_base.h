@@ -376,6 +376,12 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1Nz(
     bmm1ResBuf.SetCrossCore<true>();
     outputBuf.SetCrossCore();
     // ======================================================
+    if (enableKVPrefix && runInfo.s2LoopCount < 2) {
+        PRINTF("[VEC-Nd-preUpd] s2L=%lld mx0=%f sm0=%f mx1=%f sm1=%f\n",
+               (long long)runInfo.s2LoopCount,
+               (float)maxUb.GetValue(0), (float)sumUb.GetValue(0),
+               (float)maxUb.GetValue(1), (float)sumUb.GetValue(1));
+    }
     if (runInfo.s2LoopCount != 0) {
         UpdateExpSumAndExpMax<half, useNz>(sumUb, maxUb, expUb, sumUb, maxUb, apiTmpBuffer, runInfo.halfS1RealSize);
     }
@@ -1035,6 +1041,12 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1Nd(
     LocalTensor<T> mmRes = bmm1ResBuf.template GetTensor<T>();
     
     if (enableKVPrefix && runInfo.s2LoopCount < 1) {
+    PRINTF("[VEC-Nd-allmax]");
+    for (int di=0;di<16;di++) {
+        if (di%4==0) PRINTF("\n  ");
+        PRINTF(" mx[%d]=%.4e", di, (float)maxUb.GetValue(di));
+    }
+    PRINTF("\n");
     PRINTF("[VEC-Nd-pre] s2L=%lld s2R=%lld hS1R=%lld s2S=%lld phyAddr=%llx\n",
            (long long)runInfo.s2LoopCount, (long long)runInfo.s2RealSize,
            (long long)runInfo.halfS1RealSize, (long long)runInfo.s2StartIdx,
@@ -1267,8 +1279,20 @@ if (enableKVPrefix && runInfo.s2LoopCount < 2) {
     }
     outputBuf.SetCrossCore();
     // ======================================================
+    if (enableKVPrefix && runInfo.s2LoopCount < 2) {
+        PRINTF("[VEC-Nd-preUpd] s2L=%lld mx0=%f sm0=%f mx1=%f sm1=%f\n",
+               (long long)runInfo.s2LoopCount,
+               (float)maxUb.GetValue(0), (float)sumUb.GetValue(0),
+               (float)maxUb.GetValue(1), (float)sumUb.GetValue(1));
+    }
     if (runInfo.s2LoopCount != 0) {
         UpdateExpSumAndExpMax<T>(sumUb, maxUb, expUb, sumUb, maxUb, apiTmpBuffer, runInfo.halfS1RealSize);
+    }
+    if (enableKVPrefix && runInfo.s2LoopCount < 2) {
+        PRINTF("[VEC-Nd-postUpd] s2L=%lld mx0=%f sm0=%f mx1=%f sm1=%f\n",
+               (long long)runInfo.s2LoopCount,
+               (float)maxUb.GetValue(0), (float)sumUb.GetValue(0),
+               (float)maxUb.GetValue(1), (float)sumUb.GetValue(1));
     }
     if constexpr (IsSameType<INPUT_T, float>::value) {
         this->sumBrdcst.template FreeTensor(apiTmpBuffer);
