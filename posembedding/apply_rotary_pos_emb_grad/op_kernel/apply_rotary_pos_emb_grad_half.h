@@ -18,19 +18,19 @@
 
 #include "kernel_operator.h"
 
-namespace AiInfraApplyRotaryPosEmbGrad {
+namespace ApplyRotaryPosEmbGrad {
 
 using namespace AscendC;
 
 template <typename T, bool IF_NEED_BACKWARD, bool IF_ALIGN>
-class AiInfraApplyRotaryPosEmbGradHalf {
+class ApplyRotaryPosEmbGradHalf {
 public:
-    __aicore__ inline AiInfraApplyRotaryPosEmbGradHalf(){};
+    __aicore__ inline ApplyRotaryPosEmbGradHalf(){};
     __aicore__ inline void Init(GM_ADDR grad_query_embed, GM_ADDR grad_key_embed, GM_ADDR cos, GM_ADDR sin,
                                 GM_ADDR query, GM_ADDR key, GM_ADDR grad_query, GM_ADDR grad_key, GM_ADDR grad_cos,
                                 GM_ADDR grad_sin, GM_ADDR workspace,
-                                const AiInfraApplyRotaryPosEmbGradTilingData &tiling);
-    __aicore__ inline void InitTilingData(const AiInfraApplyRotaryPosEmbGradTilingData &tiling);
+                                const ApplyRotaryPosEmbGradTilingData &tiling);
+    __aicore__ inline void InitTilingData(const ApplyRotaryPosEmbGradTilingData &tiling);
     __aicore__ inline void InitBuffers();
     __aicore__ inline void Process();
     __aicore__ inline void LoopProcess(int64_t &loopIdx);
@@ -176,10 +176,10 @@ protected:
 };
 
 template <typename T, bool IF_NEED_BACKWARD, bool IF_ALIGN>
-__aicore__ inline void AiInfraApplyRotaryPosEmbGradHalf<T, IF_NEED_BACKWARD, IF_ALIGN>::Init(
+__aicore__ inline void ApplyRotaryPosEmbGradHalf<T, IF_NEED_BACKWARD, IF_ALIGN>::Init(
     GM_ADDR grad_query_embed, GM_ADDR grad_key_embed, GM_ADDR cos, GM_ADDR sin, GM_ADDR query, GM_ADDR key,
     GM_ADDR grad_query, GM_ADDR grad_key, GM_ADDR grad_cos, GM_ADDR grad_sin, GM_ADDR workspace,
-    const AiInfraApplyRotaryPosEmbGradTilingData &tiling)
+    const ApplyRotaryPosEmbGradTilingData &tiling)
 {
     InitTilingData(tiling);
 
@@ -202,10 +202,10 @@ __aicore__ inline void AiInfraApplyRotaryPosEmbGradHalf<T, IF_NEED_BACKWARD, IF_
 }
 
 template <typename T, bool IF_NEED_BACKWARD, bool IF_ALIGN>
-__aicore__ inline void AiInfraApplyRotaryPosEmbGradHalf<T, IF_NEED_BACKWARD, IF_ALIGN>::InitTilingData(
-    const AiInfraApplyRotaryPosEmbGradTilingData &tiling)
+__aicore__ inline void ApplyRotaryPosEmbGradHalf<T, IF_NEED_BACKWARD, IF_ALIGN>::InitTilingData(
+    const ApplyRotaryPosEmbGradTilingData &tiling)
 {
-    const AiInfraApplyRotaryPosEmbHalfGradParams &applyRotaryPosEmbHalfGradTiling = tiling.applyRopeHalfGradParams;
+    const ApplyRotaryPosEmbHalfGradParams &applyRotaryPosEmbHalfGradTiling = tiling.applyRopeHalfGradParams;
     hasOptionalInputs_ = applyRotaryPosEmbHalfGradTiling.hasOptionalInputs;
     dQShapeSize_ = applyRotaryPosEmbHalfGradTiling.dQShapeSize;
     dKShapeSize_ = applyRotaryPosEmbHalfGradTiling.dKShapeSize;
@@ -244,7 +244,7 @@ __aicore__ inline void AiInfraApplyRotaryPosEmbGradHalf<T, IF_NEED_BACKWARD, IF_
 }
 
 template <typename T, bool IF_NEED_BACKWARD, bool IF_ALIGN>
-__aicore__ inline void AiInfraApplyRotaryPosEmbGradHalf<T, IF_NEED_BACKWARD, IF_ALIGN>::InitBuffers()
+__aicore__ inline void ApplyRotaryPosEmbGradHalf<T, IF_NEED_BACKWARD, IF_ALIGN>::InitBuffers()
 {
     // Set loop nums and tail element nums
     if (GetBlockIdx() != coreUsed_ - 1) {
@@ -295,7 +295,7 @@ __aicore__ inline void AiInfraApplyRotaryPosEmbGradHalf<T, IF_NEED_BACKWARD, IF_
 }
 
 template <typename T, bool IF_NEED_BACKWARD, bool IF_ALIGN>
-__aicore__ inline void AiInfraApplyRotaryPosEmbGradHalf<T, IF_NEED_BACKWARD, IF_ALIGN>::Process()
+__aicore__ inline void ApplyRotaryPosEmbGradHalf<T, IF_NEED_BACKWARD, IF_ALIGN>::Process()
 {
     for (int64_t loopIdx = 0; loopIdx < fullTileLoops_; ++loopIdx) {
         elementNum_ = calcUbSize_;
@@ -308,7 +308,7 @@ __aicore__ inline void AiInfraApplyRotaryPosEmbGradHalf<T, IF_NEED_BACKWARD, IF_
 }
 
 template <typename T, bool IF_NEED_BACKWARD, bool IF_ALIGN>
-__aicore__ inline void AiInfraApplyRotaryPosEmbGradHalf<T, IF_NEED_BACKWARD, IF_ALIGN>::LoopProcess(int64_t &loopIdx)
+__aicore__ inline void ApplyRotaryPosEmbGradHalf<T, IF_NEED_BACKWARD, IF_ALIGN>::LoopProcess(int64_t &loopIdx)
 {
     outerOffset_ = GetBlockIdx() * elementsPerCore_ + loopIdx * calcUbSize_;
     dQOffset_ = GetBlockIdx() * elementsPerCore_ * dQHeadInnerLoops_ + loopIdx * calcUbSize_ * dQHeadInnerLoops_;
@@ -323,7 +323,7 @@ __aicore__ inline void AiInfraApplyRotaryPosEmbGradHalf<T, IF_NEED_BACKWARD, IF_
 }
 
 template <typename T, bool IF_NEED_BACKWARD, bool IF_ALIGN>
-__aicore__ inline void AiInfraApplyRotaryPosEmbGradHalf<T, IF_NEED_BACKWARD, IF_ALIGN>::Compute()
+__aicore__ inline void ApplyRotaryPosEmbGradHalf<T, IF_NEED_BACKWARD, IF_ALIGN>::Compute()
 {
     if constexpr (IF_ALIGN) {
         CopyInOuterAlign(outerOffset_, elementNum_);
@@ -355,7 +355,7 @@ __aicore__ inline void AiInfraApplyRotaryPosEmbGradHalf<T, IF_NEED_BACKWARD, IF_
 }
 
 template <typename T, bool IF_NEED_BACKWARD, bool IF_ALIGN>
-__aicore__ inline void AiInfraApplyRotaryPosEmbGradHalf<T, IF_NEED_BACKWARD, IF_ALIGN>::ProcessHeadLoop(
+__aicore__ inline void ApplyRotaryPosEmbGradHalf<T, IF_NEED_BACKWARD, IF_ALIGN>::ProcessHeadLoop(
     int64_t outerLoopIdx, LocalTensor<T> &cosLocal, LocalTensor<T> &sinLocal, int64_t baseOffset,
     int64_t outerLoopGmStride, int64_t headInnerLoops, GlobalTensor<T> &gradEmbedGm, GlobalTensor<T> &inGm,
     GlobalTensor<T> &gradOutGm, uint32_t alignSrcStride, uint32_t paddedSrcStride)
@@ -384,7 +384,7 @@ __aicore__ inline void AiInfraApplyRotaryPosEmbGradHalf<T, IF_NEED_BACKWARD, IF_
 }
 
 template <typename T, bool IF_NEED_BACKWARD, bool IF_ALIGN>
-__aicore__ inline void AiInfraApplyRotaryPosEmbGradHalf<T, IF_NEED_BACKWARD, IF_ALIGN>::ComputeInner(
+__aicore__ inline void ApplyRotaryPosEmbGradHalf<T, IF_NEED_BACKWARD, IF_ALIGN>::ComputeInner(
     const LocalTensor<T> &cosLocal, const LocalTensor<T> &sinLocal, LocalTensor<T> &inLocal, GlobalTensor<T> &gradGm,
     int64_t &offset, int64_t innerPaddedSrcStride)
 {
@@ -440,7 +440,7 @@ __aicore__ inline void AiInfraApplyRotaryPosEmbGradHalf<T, IF_NEED_BACKWARD, IF_
 
 template <typename T, bool IF_NEED_BACKWARD, bool IF_ALIGN>
 __aicore__ inline void
-AiInfraApplyRotaryPosEmbGradHalf<T, IF_NEED_BACKWARD, IF_ALIGN>::ComputeInnerOptional(LocalTensor<T> &inLocal)
+ApplyRotaryPosEmbGradHalf<T, IF_NEED_BACKWARD, IF_ALIGN>::ComputeInnerOptional(LocalTensor<T> &inLocal)
 {
     LocalTensor<T> optionalInLocal = inQueueQK_.DeQue<T>();
     if constexpr (IsSameType<T, float>::value) {
@@ -486,7 +486,7 @@ AiInfraApplyRotaryPosEmbGradHalf<T, IF_NEED_BACKWARD, IF_ALIGN>::ComputeInnerOpt
 }
 
 template <typename T, bool IF_NEED_BACKWARD, bool IF_ALIGN>
-__aicore__ inline void AiInfraApplyRotaryPosEmbGradHalf<T, IF_NEED_BACKWARD, IF_ALIGN>::CopyOutOptional()
+__aicore__ inline void ApplyRotaryPosEmbGradHalf<T, IF_NEED_BACKWARD, IF_ALIGN>::CopyOutOptional()
 {
     LocalTensor<T> gradCosLocal = outQueueGradCos_.AllocTensor<T>();
     LocalTensor<T> gradSinLocal = outQueueGradSin_.AllocTensor<T>();
@@ -502,7 +502,7 @@ __aicore__ inline void AiInfraApplyRotaryPosEmbGradHalf<T, IF_NEED_BACKWARD, IF_
 }
 
 template <typename T, bool IF_NEED_BACKWARD, bool IF_ALIGN>
-__aicore__ inline void AiInfraApplyRotaryPosEmbGradHalf<T, IF_NEED_BACKWARD, IF_ALIGN>::CopyInOuter(
+__aicore__ inline void ApplyRotaryPosEmbGradHalf<T, IF_NEED_BACKWARD, IF_ALIGN>::CopyInOuter(
     int64_t &offset, uint16_t blockCount, uint32_t blockLen, uint32_t srcStride, uint32_t dstStride)
 {
     DataCopyPadExtParams<T> copyPadParams{false, 0, 0, 0};
@@ -522,7 +522,7 @@ __aicore__ inline void AiInfraApplyRotaryPosEmbGradHalf<T, IF_NEED_BACKWARD, IF_
 }
 
 template <typename T, bool IF_NEED_BACKWARD, bool IF_ALIGN>
-__aicore__ inline void AiInfraApplyRotaryPosEmbGradHalf<T, IF_NEED_BACKWARD, IF_ALIGN>::CopyInInner(
+__aicore__ inline void ApplyRotaryPosEmbGradHalf<T, IF_NEED_BACKWARD, IF_ALIGN>::CopyInInner(
     GlobalTensor<T> &gradEmbedGm, GlobalTensor<T> &optionalGm, int64_t &offset, uint16_t blockCount, uint32_t blockLen,
     uint32_t srcStride, uint32_t dstStride)
 {
@@ -549,7 +549,7 @@ __aicore__ inline void AiInfraApplyRotaryPosEmbGradHalf<T, IF_NEED_BACKWARD, IF_
 
 template <typename T, bool IF_NEED_BACKWARD, bool IF_ALIGN>
 __aicore__ inline void
-AiInfraApplyRotaryPosEmbGradHalf<T, IF_NEED_BACKWARD, IF_ALIGN>::CopyOutInner(GlobalTensor<T> &gradGm, int64_t &offset,
+ApplyRotaryPosEmbGradHalf<T, IF_NEED_BACKWARD, IF_ALIGN>::CopyOutInner(GlobalTensor<T> &gradGm, int64_t &offset,
                                                                               uint16_t blockCount, uint32_t blockLen,
                                                                               uint32_t srcStride, uint32_t dstStride)
 {
@@ -566,7 +566,7 @@ AiInfraApplyRotaryPosEmbGradHalf<T, IF_NEED_BACKWARD, IF_ALIGN>::CopyOutInner(Gl
 }
 
 template <typename T, bool IF_NEED_BACKWARD, bool IF_ALIGN>
-__aicore__ inline void AiInfraApplyRotaryPosEmbGradHalf<T, IF_NEED_BACKWARD, IF_ALIGN>::CopyOutOuter(
+__aicore__ inline void ApplyRotaryPosEmbGradHalf<T, IF_NEED_BACKWARD, IF_ALIGN>::CopyOutOuter(
     int64_t &offset, uint16_t blockCount, uint32_t blockLen, uint32_t srcStride, uint32_t dstStride)
 {
     DataCopyExtParams copyParams;
@@ -585,7 +585,7 @@ __aicore__ inline void AiInfraApplyRotaryPosEmbGradHalf<T, IF_NEED_BACKWARD, IF_
 
 template <typename T, bool IF_NEED_BACKWARD, bool IF_ALIGN>
 __aicore__ inline void
-AiInfraApplyRotaryPosEmbGradHalf<T, IF_NEED_BACKWARD, IF_ALIGN>::CopyInOuterAlign(int64_t &offset, uint32_t elementNum)
+ApplyRotaryPosEmbGradHalf<T, IF_NEED_BACKWARD, IF_ALIGN>::CopyInOuterAlign(int64_t &offset, uint32_t elementNum)
 {
     LocalTensor<T> cosLocal = inQueueCos_.AllocTensor<T>();
     LocalTensor<T> sinLocal = inQueueSin_.AllocTensor<T>();
@@ -596,7 +596,7 @@ AiInfraApplyRotaryPosEmbGradHalf<T, IF_NEED_BACKWARD, IF_ALIGN>::CopyInOuterAlig
 }
 
 template <typename T, bool IF_NEED_BACKWARD, bool IF_ALIGN>
-__aicore__ inline void AiInfraApplyRotaryPosEmbGradHalf<T, IF_NEED_BACKWARD, IF_ALIGN>::CopyInInnerAlign(
+__aicore__ inline void ApplyRotaryPosEmbGradHalf<T, IF_NEED_BACKWARD, IF_ALIGN>::CopyInInnerAlign(
     GlobalTensor<T> &gradEmbedGm, GlobalTensor<T> &optionalGm, int64_t &offset, uint16_t blockCount, uint32_t blockLen,
     uint32_t srcStride, uint32_t dstStride)
 {
@@ -619,7 +619,7 @@ __aicore__ inline void AiInfraApplyRotaryPosEmbGradHalf<T, IF_NEED_BACKWARD, IF_
 }
 
 template <typename T, bool IF_NEED_BACKWARD, bool IF_ALIGN>
-__aicore__ inline void AiInfraApplyRotaryPosEmbGradHalf<T, IF_NEED_BACKWARD, IF_ALIGN>::CopyOutInnerAlign(
+__aicore__ inline void ApplyRotaryPosEmbGradHalf<T, IF_NEED_BACKWARD, IF_ALIGN>::CopyOutInnerAlign(
     GlobalTensor<T> &gradGm, int64_t &offset, uint16_t blockCount, uint32_t blockLen, uint32_t srcStride,
     uint32_t dstStride)
 {
@@ -636,7 +636,7 @@ __aicore__ inline void AiInfraApplyRotaryPosEmbGradHalf<T, IF_NEED_BACKWARD, IF_
 
 template <typename T, bool IF_NEED_BACKWARD, bool IF_ALIGN>
 __aicore__ inline void
-AiInfraApplyRotaryPosEmbGradHalf<T, IF_NEED_BACKWARD, IF_ALIGN>::CopyOutOuterAlign(int64_t &offset, uint32_t elementNum)
+ApplyRotaryPosEmbGradHalf<T, IF_NEED_BACKWARD, IF_ALIGN>::CopyOutOuterAlign(int64_t &offset, uint32_t elementNum)
 {
     LocalTensor<T> gradCosLocal = outQueueGradCos_.DeQue<T>();
     LocalTensor<T> gradSinLocal = outQueueGradSin_.DeQue<T>();
@@ -647,7 +647,7 @@ AiInfraApplyRotaryPosEmbGradHalf<T, IF_NEED_BACKWARD, IF_ALIGN>::CopyOutOuterAli
 }
 
 template <typename T, bool IF_NEED_BACKWARD, bool IF_ALIGN>
-__aicore__ inline void AiInfraApplyRotaryPosEmbGradHalf<T, IF_NEED_BACKWARD, IF_ALIGN>::DataChunkCat(
+__aicore__ inline void ApplyRotaryPosEmbGradHalf<T, IF_NEED_BACKWARD, IF_ALIGN>::DataChunkCat(
     const LocalTensor<float> &dstLocal, const LocalTensor<float> &src1Local, const LocalTensor<float> &src2Local,
     uint64_t offset, uint16_t blockCount, uint32_t blockLen, uint32_t srcStride, uint32_t dstStride)
 {
@@ -663,7 +663,7 @@ __aicore__ inline void AiInfraApplyRotaryPosEmbGradHalf<T, IF_NEED_BACKWARD, IF_
 
 template <typename T, bool IF_NEED_BACKWARD, bool IF_ALIGN>
 __aicore__ inline void
-AiInfraApplyRotaryPosEmbGradHalf<T, IF_NEED_BACKWARD, IF_ALIGN>::InitCastInOuter(const LocalTensor<T> &cosLocal,
+ApplyRotaryPosEmbGradHalf<T, IF_NEED_BACKWARD, IF_ALIGN>::InitCastInOuter(const LocalTensor<T> &cosLocal,
                                                                                  const LocalTensor<T> &sinLocal)
 {
     if constexpr (IF_NEED_BACKWARD) {
@@ -678,7 +678,7 @@ AiInfraApplyRotaryPosEmbGradHalf<T, IF_NEED_BACKWARD, IF_ALIGN>::InitCastInOuter
 
 template <typename T, bool IF_NEED_BACKWARD, bool IF_ALIGN>
 __aicore__ inline void
-AiInfraApplyRotaryPosEmbGradHalf<T, IF_NEED_BACKWARD, IF_ALIGN>::CastOutOuter(const LocalTensor<T> &gradCosLocal,
+ApplyRotaryPosEmbGradHalf<T, IF_NEED_BACKWARD, IF_ALIGN>::CastOutOuter(const LocalTensor<T> &gradCosLocal,
                                                                               const LocalTensor<T> &gradSinLocal)
 {
     PipeBarrier<PIPE_V>();
@@ -692,6 +692,6 @@ AiInfraApplyRotaryPosEmbGradHalf<T, IF_NEED_BACKWARD, IF_ALIGN>::CastOutOuter(co
 }
 
 
-} // namespace AiInfraApplyRotaryPosEmbGrad
+} // namespace ApplyRotaryPosEmbGrad
 
 #endif // __APPLY_ROTARY_POS_EMB_GRAD_HALF_H__

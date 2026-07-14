@@ -19,10 +19,10 @@
 
 namespace optiling {
 
-class AiInfraApplyRotaryPosEmbGradHalfTiling : public AiInfraApplyRotaryPosEmbGradTiling {
+class ApplyRotaryPosEmbGradHalfTiling : public ApplyRotaryPosEmbGradTiling {
 public:
-    explicit AiInfraApplyRotaryPosEmbGradHalfTiling(gert::TilingContext* context)
-        : AiInfraApplyRotaryPosEmbGradTiling(context)
+    explicit ApplyRotaryPosEmbGradHalfTiling(gert::TilingContext* context)
+        : ApplyRotaryPosEmbGradTiling(context)
     {}
 
     void Reset(gert::TilingContext* context) override
@@ -72,7 +72,7 @@ private:
     ge::DataType gradQueryEmbedDtype_ = ge::DataType::DT_FLOAT;
 
     // Tiling data
-    AiInfraApplyRotaryPosEmbGradTilingData tiling;
+    ApplyRotaryPosEmbGradTilingData tiling;
 
     // Tiling data parameters
     int64_t hasOptionalInputs_ = 0;

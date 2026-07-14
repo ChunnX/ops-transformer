@@ -90,7 +90,7 @@ static int64_t GetLcmForRotary(const int64_t value1, const int64_t value2)
 } // namespace
 
 namespace optiling {
-void AiInfraApplyRotaryPosEmbGradHalfTiling::ApplyRopeHalfGradAssignParam() // 赋值tiling参数
+void ApplyRotaryPosEmbGradHalfTiling::ApplyRopeHalfGradAssignParam() // 赋值tiling参数
 {
     tiling.applyRopeHalfGradParams.set_hasOptionalInputs(hasOptionalInputs_);
     tiling.applyRopeHalfGradParams.set_layout(layout_);
@@ -124,7 +124,7 @@ void AiInfraApplyRotaryPosEmbGradHalfTiling::ApplyRopeHalfGradAssignParam() // �
     tiling.applyRopeHalfGradParams.set_dKInnerPaddedSrcStride(dKInnerPaddedSrcStride_);
 }
 
-void AiInfraApplyRotaryPosEmbGradHalfTiling::ApplyRopeHalfGradPrintParam() // 打印结构体参数
+void ApplyRotaryPosEmbGradHalfTiling::ApplyRopeHalfGradPrintParam() // 打印结构体参数
 {
     OP_LOGD(context_->GetNodeName(), "hasOptionalInputs = %ld", tiling.applyRopeHalfGradParams.get_hasOptionalInputs());
     OP_LOGD(context_->GetNodeName(), "layout = %ld", tiling.applyRopeHalfGradParams.get_layout());
@@ -168,7 +168,7 @@ void AiInfraApplyRotaryPosEmbGradHalfTiling::ApplyRopeHalfGradPrintParam() // �
 }
 
 // 输入Tensor校验并获取shape相关参数
-ge::graphStatus AiInfraApplyRotaryPosEmbGradHalfTiling::ApplyRopeHalfGradCheckInput()
+ge::graphStatus ApplyRotaryPosEmbGradHalfTiling::ApplyRopeHalfGradCheckInput()
 {
     OP_CHECK_IF(ApplyRopeHalfGradCheckAttr() != ge::GRAPH_SUCCESS, OP_LOGE(context_, "Check attr failed"),
                 return ge::GRAPH_FAILED);
@@ -194,23 +194,23 @@ ge::graphStatus AiInfraApplyRotaryPosEmbGradHalfTiling::ApplyRopeHalfGradCheckIn
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus AiInfraApplyRotaryPosEmbGradHalfTiling::ApplyRopeHalfGradCheckAttr()
+ge::graphStatus ApplyRotaryPosEmbGradHalfTiling::ApplyRopeHalfGradCheckAttr()
 {
     OP_CHECK_IF(rotaryMode_ != "half",
                 OP_LOGE(context_, "Attr rotaryMode: expected half, but got %s", rotaryMode_.data()),
                 return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(layout_ < static_cast<int64_t>(AiInfraApplyRotaryPosEmbGradLayout::BSND) ||
-                    layout_ > static_cast<int64_t>(AiInfraApplyRotaryPosEmbGradLayout::TND),
+    OP_CHECK_IF(layout_ < static_cast<int64_t>(ApplyRotaryPosEmbGradLayout::BSND) ||
+                    layout_ > static_cast<int64_t>(ApplyRotaryPosEmbGradLayout::TND),
                 OP_LOGE(context_, "Attr layout: got invalid value %ld", layout_), return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(layout_ == static_cast<int64_t>(AiInfraApplyRotaryPosEmbGradLayout::BNSD),
+    OP_CHECK_IF(layout_ == static_cast<int64_t>(ApplyRotaryPosEmbGradLayout::BNSD),
                 OP_LOGE(context_, "Attr layout: BNSD is currently unsupported"), return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus AiInfraApplyRotaryPosEmbGradHalfTiling::ApplyRopeHalfGradCheckGradQueryEmbed()
+ge::graphStatus ApplyRotaryPosEmbGradHalfTiling::ApplyRopeHalfGradCheckGradQueryEmbed()
 {
     auto gradQueryEmbedShape = context_->GetInputShape(INDEX_GRAD_QUERY_EMBED);
     OP_CHECK_NULL_WITH_CONTEXT(context_, gradQueryEmbedShape);
@@ -224,7 +224,7 @@ ge::graphStatus AiInfraApplyRotaryPosEmbGradHalfTiling::ApplyRopeHalfGradCheckGr
         dimS_ = gradQueryEmbedShape->GetOriginShape().GetDim(DIM_ZERO);
         dQDimN_ = gradQueryEmbedShape->GetOriginShape().GetDim(DIM_ONE);
         dimD_ = gradQueryEmbedShape->GetOriginShape().GetDim(DIM_TWO);
-    } else if (layout_ == static_cast<int64_t>(AiInfraApplyRotaryPosEmbGradLayout::BSND)) {
+    } else if (layout_ == static_cast<int64_t>(ApplyRotaryPosEmbGradLayout::BSND)) {
         dQKDimB_ = gradQueryEmbedShape->GetOriginShape().GetDim(DIM_ZERO);
         dimS_ = gradQueryEmbedShape->GetOriginShape().GetDim(DIM_ONE);
         dQDimN_ = gradQueryEmbedShape->GetOriginShape().GetDim(DIM_TWO);
@@ -252,7 +252,7 @@ ge::graphStatus AiInfraApplyRotaryPosEmbGradHalfTiling::ApplyRopeHalfGradCheckGr
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus AiInfraApplyRotaryPosEmbGradHalfTiling::ApplyRopeHalfGradCheckGradKeyEmbed()
+ge::graphStatus ApplyRotaryPosEmbGradHalfTiling::ApplyRopeHalfGradCheckGradKeyEmbed()
 {
     auto gradKeyEmbedShape = context_->GetInputShape(INDEX_GRAD_KEY_EMBED);
     OP_CHECK_NULL_WITH_CONTEXT(context_, gradKeyEmbedShape);
@@ -270,7 +270,7 @@ ge::graphStatus AiInfraApplyRotaryPosEmbGradHalfTiling::ApplyRopeHalfGradCheckGr
         OP_CHECK_IF(gradKeyEmbedShape->GetOriginShape().GetDim(DIM_TWO) != dimD_,
                     OP_LOGE(context_, "gradKeyEmbed: Must match gradQueryEmbed on dimension 2, but got %ld vs %ld.",
                             gradKeyEmbedShape->GetOriginShape().GetDim(DIM_TWO), dimD_), return ge::GRAPH_FAILED);
-    } else if (layout_ == static_cast<int64_t>(AiInfraApplyRotaryPosEmbGradLayout::BSND)) {
+    } else if (layout_ == static_cast<int64_t>(ApplyRotaryPosEmbGradLayout::BSND)) {
         OP_CHECK_IF(gradKeyEmbedShape->GetOriginShape().GetDim(DIM_ZERO) != dQKDimB_,
                     OP_LOGE(context_, "gradKeyEmbed: Must match gradQueryEmbed on dimension 0, but got %ld vs %ld.",
                             gradKeyEmbedShape->GetOriginShape().GetDim(DIM_ZERO), dQKDimB_), return ge::GRAPH_FAILED);
@@ -299,7 +299,7 @@ ge::graphStatus AiInfraApplyRotaryPosEmbGradHalfTiling::ApplyRopeHalfGradCheckGr
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus AiInfraApplyRotaryPosEmbGradHalfTiling::ApplyRopeHalfGradCheckCos()
+ge::graphStatus ApplyRotaryPosEmbGradHalfTiling::ApplyRopeHalfGradCheckCos()
 {
     auto cosShape = context_->GetInputShape(INDEX_COS);
     OP_CHECK_NULL_WITH_CONTEXT(context_, cosShape);
@@ -317,7 +317,7 @@ ge::graphStatus AiInfraApplyRotaryPosEmbGradHalfTiling::ApplyRopeHalfGradCheckCo
         OP_CHECK_IF(cosShape->GetOriginShape().GetDim(DIM_TWO) != dimD_,
                     OP_LOGE(context_, "cos: Must match gradQueryEmbed on dimension 2, but got %ld vs %ld.",
                             cosShape->GetOriginShape().GetDim(DIM_TWO), dimD_), return ge::GRAPH_FAILED);
-    } else if (layout_ == static_cast<int64_t>(AiInfraApplyRotaryPosEmbGradLayout::BSND)) {
+    } else if (layout_ == static_cast<int64_t>(ApplyRotaryPosEmbGradLayout::BSND)) {
         cosSinDimB_ = cosShape->GetOriginShape().GetDim(DIM_ZERO);
         OP_CHECK_IF(cosSinDimB_ != dQKDimB_, OP_LOGE(context_, "cos: Must match gradQueryEmbed on dimension 0, "
             "but got %ld vs %ld.", cosSinDimB_, dQKDimB_), return ge::GRAPH_FAILED);
@@ -349,7 +349,7 @@ ge::graphStatus AiInfraApplyRotaryPosEmbGradHalfTiling::ApplyRopeHalfGradCheckCo
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus AiInfraApplyRotaryPosEmbGradHalfTiling::ApplyRopeHalfGradCheckSin()
+ge::graphStatus ApplyRotaryPosEmbGradHalfTiling::ApplyRopeHalfGradCheckSin()
 {
     auto sinShape = context_->GetInputShape(INDEX_SIN);
     OP_CHECK_NULL_WITH_CONTEXT(context_, sinShape);
@@ -368,7 +368,7 @@ ge::graphStatus AiInfraApplyRotaryPosEmbGradHalfTiling::ApplyRopeHalfGradCheckSi
         OP_CHECK_IF(sinShape->GetOriginShape().GetDim(DIM_TWO) != dimD_,
                     OP_LOGE(context_, "sin: Must match gradQueryEmbed on dimension 2, but got %ld vs %ld.",
                             sinShape->GetOriginShape().GetDim(DIM_TWO), dimD_), return ge::GRAPH_FAILED);
-    } else if (layout_ == static_cast<int64_t>(AiInfraApplyRotaryPosEmbGradLayout::BSND)) {
+    } else if (layout_ == static_cast<int64_t>(ApplyRotaryPosEmbGradLayout::BSND)) {
         OP_CHECK_IF(sinShape->GetOriginShape().GetDim(DIM_ZERO) != dQKDimB_,
                     OP_LOGE(context_, "sin: Must match gradQueryEmbed on dimension 0, but got %ld vs %ld.",
                             sinShape->GetOriginShape().GetDim(DIM_ZERO), dQKDimB_), return ge::GRAPH_FAILED);
@@ -399,7 +399,7 @@ ge::graphStatus AiInfraApplyRotaryPosEmbGradHalfTiling::ApplyRopeHalfGradCheckSi
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus AiInfraApplyRotaryPosEmbGradHalfTiling::ApplyRopeHalfGradCheckQuery()
+ge::graphStatus ApplyRotaryPosEmbGradHalfTiling::ApplyRopeHalfGradCheckQuery()
 {
     auto queryShape = context_->GetOptionalInputShape(INDEX_QUERY);
     if (queryShape != nullptr) {
@@ -428,7 +428,7 @@ ge::graphStatus AiInfraApplyRotaryPosEmbGradHalfTiling::ApplyRopeHalfGradCheckQu
 }
 
 // 4D 逐维比对: actualShape 每个维度与 expectShape 逐维比对
-ge::graphStatus AiInfraApplyRotaryPosEmbGradHalfTiling::CheckShapeDimMatch(const gert::StorageShape *actualShape,
+ge::graphStatus ApplyRotaryPosEmbGradHalfTiling::CheckShapeDimMatch(const gert::StorageShape *actualShape,
                                                                            const gert::StorageShape *expectShape,
                                                                            const std::string &label)
 {
@@ -442,7 +442,7 @@ ge::graphStatus AiInfraApplyRotaryPosEmbGradHalfTiling::CheckShapeDimMatch(const
 }
 
 // 3D 逐维比对: actualShape 每个维度与 expVals[3] 比对
-ge::graphStatus AiInfraApplyRotaryPosEmbGradHalfTiling::CheckShapeDimMatch3D(const gert::StorageShape *actualShape,
+ge::graphStatus ApplyRotaryPosEmbGradHalfTiling::CheckShapeDimMatch3D(const gert::StorageShape *actualShape,
                                                                              const int64_t expVals[3],
                                                                              const std::string &label)
 {
@@ -455,7 +455,7 @@ ge::graphStatus AiInfraApplyRotaryPosEmbGradHalfTiling::CheckShapeDimMatch3D(con
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus AiInfraApplyRotaryPosEmbGradHalfTiling::ApplyRopeHalfGradCheckKey()
+ge::graphStatus ApplyRotaryPosEmbGradHalfTiling::ApplyRopeHalfGradCheckKey()
 {
     auto keyShape = context_->GetOptionalInputShape(INDEX_KEY);
     if (hasOptionalInputs_ && keyShape != nullptr) {
@@ -483,7 +483,7 @@ ge::graphStatus AiInfraApplyRotaryPosEmbGradHalfTiling::ApplyRopeHalfGradCheckKe
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus AiInfraApplyRotaryPosEmbGradHalfTiling::ApplyRopeHalfGradCheckInputDatatype()
+ge::graphStatus ApplyRotaryPosEmbGradHalfTiling::ApplyRopeHalfGradCheckInputDatatype()
 {
     auto gradQueryEmbedDesc = context_->GetInputDesc(INDEX_GRAD_QUERY_EMBED);
     OP_CHECK_NULL_WITH_CONTEXT(context_, gradQueryEmbedDesc);
@@ -529,7 +529,7 @@ ge::graphStatus AiInfraApplyRotaryPosEmbGradHalfTiling::ApplyRopeHalfGradCheckIn
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus AiInfraApplyRotaryPosEmbGradHalfTiling::ApplyRopeHalfGradCheckOptionalInputDatatype()
+ge::graphStatus ApplyRotaryPosEmbGradHalfTiling::ApplyRopeHalfGradCheckOptionalInputDatatype()
 {
     auto queryDesc = context_->GetOptionalInputDesc(INDEX_QUERY);
     OP_CHECK_NULL_WITH_CONTEXT(context_, queryDesc);
@@ -552,7 +552,7 @@ ge::graphStatus AiInfraApplyRotaryPosEmbGradHalfTiling::ApplyRopeHalfGradCheckOp
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus AiInfraApplyRotaryPosEmbGradHalfTiling::ApplyRopeHalfGradCheckOutput()
+ge::graphStatus ApplyRotaryPosEmbGradHalfTiling::ApplyRopeHalfGradCheckOutput()
 {
     OP_CHECK_IF(ApplyRopeHalfGradCheckGradQuery() != ge::GRAPH_SUCCESS, OP_LOGE(context_, "Check gradQuery failed"),
                 return ge::GRAPH_FAILED);
@@ -581,7 +581,7 @@ ge::graphStatus AiInfraApplyRotaryPosEmbGradHalfTiling::ApplyRopeHalfGradCheckOu
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus AiInfraApplyRotaryPosEmbGradHalfTiling::ApplyRopeHalfGradCheckGradQuery()
+ge::graphStatus ApplyRotaryPosEmbGradHalfTiling::ApplyRopeHalfGradCheckGradQuery()
 {
     auto gradQueryShape = context_->GetOutputShape(INDEX_GRAD_QUERY);
     OP_CHECK_NULL_WITH_CONTEXT(context_, gradQueryShape);
@@ -607,7 +607,7 @@ ge::graphStatus AiInfraApplyRotaryPosEmbGradHalfTiling::ApplyRopeHalfGradCheckGr
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus AiInfraApplyRotaryPosEmbGradHalfTiling::ApplyRopeHalfGradCheckGradKey()
+ge::graphStatus ApplyRotaryPosEmbGradHalfTiling::ApplyRopeHalfGradCheckGradKey()
 {
     auto gradKeyShape = context_->GetOutputShape(INDEX_GRAD_KEY);
     OP_CHECK_NULL_WITH_CONTEXT(context_, gradKeyShape);
@@ -632,7 +632,7 @@ ge::graphStatus AiInfraApplyRotaryPosEmbGradHalfTiling::ApplyRopeHalfGradCheckGr
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus AiInfraApplyRotaryPosEmbGradHalfTiling::ApplyRopeHalfGradCheckGradCos()
+ge::graphStatus ApplyRotaryPosEmbGradHalfTiling::ApplyRopeHalfGradCheckGradCos()
 {
     auto gradCosShape = context_->GetOutputShape(INDEX_GRAD_COS);
     OP_CHECK_NULL_WITH_CONTEXT(context_, gradCosShape);
@@ -657,7 +657,7 @@ ge::graphStatus AiInfraApplyRotaryPosEmbGradHalfTiling::ApplyRopeHalfGradCheckGr
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus AiInfraApplyRotaryPosEmbGradHalfTiling::ApplyRopeHalfGradCheckGradSin()
+ge::graphStatus ApplyRotaryPosEmbGradHalfTiling::ApplyRopeHalfGradCheckGradSin()
 {
     auto gradSinShape = context_->GetOutputShape(INDEX_GRAD_SIN);
     OP_CHECK_NULL_WITH_CONTEXT(context_, gradSinShape);
@@ -682,7 +682,7 @@ ge::graphStatus AiInfraApplyRotaryPosEmbGradHalfTiling::ApplyRopeHalfGradCheckGr
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus AiInfraApplyRotaryPosEmbGradHalfTiling::ApplyRopeHalfGradCheckOutputDatatype()
+ge::graphStatus ApplyRotaryPosEmbGradHalfTiling::ApplyRopeHalfGradCheckOutputDatatype()
 {
     auto gradQueryDesc = context_->GetOutputDesc(INDEX_GRAD_QUERY);
     OP_CHECK_NULL_WITH_CONTEXT(context_, gradQueryDesc);
@@ -705,7 +705,7 @@ ge::graphStatus AiInfraApplyRotaryPosEmbGradHalfTiling::ApplyRopeHalfGradCheckOu
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus AiInfraApplyRotaryPosEmbGradHalfTiling::ApplyRopeHalfGradCheckOptionalOutputDatatype()
+ge::graphStatus ApplyRotaryPosEmbGradHalfTiling::ApplyRopeHalfGradCheckOptionalOutputDatatype()
 {
     auto gradCosDesc = context_->GetOutputDesc(INDEX_GRAD_COS);
     OP_CHECK_NULL_WITH_CONTEXT(context_, gradCosDesc);
@@ -728,7 +728,7 @@ ge::graphStatus AiInfraApplyRotaryPosEmbGradHalfTiling::ApplyRopeHalfGradCheckOp
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus AiInfraApplyRotaryPosEmbGradHalfTiling::ApplyRopeHalfGradSetTiling(const int64_t availableUbSize,
+ge::graphStatus ApplyRotaryPosEmbGradHalfTiling::ApplyRopeHalfGradSetTiling(const int64_t availableUbSize,
                                                                                    const uint64_t maxCoreNum)
 {
     int64_t reserveAlignNum = dimD_;
@@ -763,7 +763,7 @@ ge::graphStatus AiInfraApplyRotaryPosEmbGradHalfTiling::ApplyRopeHalfGradSetTili
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus AiInfraApplyRotaryPosEmbGradHalfTiling::ApplyRopeHalfGradInitSplitInfo() // 计算切分相关参数
+ge::graphStatus ApplyRotaryPosEmbGradHalfTiling::ApplyRopeHalfGradInitSplitInfo() // 计算切分相关参数
 {
     int64_t availableUbSize = static_cast<int64_t>(aicoreParams_.ubSize) - RESERVE_UB_SIZE;
     if (hasOptionalInputs_) {
@@ -788,12 +788,12 @@ ge::graphStatus AiInfraApplyRotaryPosEmbGradHalfTiling::ApplyRopeHalfGradInitSpl
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus AiInfraApplyRotaryPosEmbGradHalfTiling::ApplyRopeHalfGradInitParamInfo() // 计算循环和搬运相关参数
+ge::graphStatus ApplyRotaryPosEmbGradHalfTiling::ApplyRopeHalfGradInitParamInfo() // 计算循环和搬运相关参数
 {
     innerPaddedBlockLen_ = dimD_ / CHUNK_SIZE * inputDtypeSize_;
 
-    if (layout_ == static_cast<int64_t>(AiInfraApplyRotaryPosEmbGradLayout::BSND) ||
-        layout_ == static_cast<int64_t>(AiInfraApplyRotaryPosEmbGradLayout::TND)) {
+    if (layout_ == static_cast<int64_t>(ApplyRotaryPosEmbGradLayout::BSND) ||
+        layout_ == static_cast<int64_t>(ApplyRotaryPosEmbGradLayout::TND)) {
         cosSinOuterLoops_ = dQKDimB_ / cosSinDimB_;
         dQHeadInnerLoops_ = dQDimN_ / cosSinDimN_;
         dKHeadInnerLoops_ = dKDimN_ / cosSinDimN_;
@@ -816,7 +816,7 @@ ge::graphStatus AiInfraApplyRotaryPosEmbGradHalfTiling::ApplyRopeHalfGradInitPar
     return ge::GRAPH_SUCCESS;
 }
 
-uint32_t AiInfraApplyRotaryPosEmbGradHalfTiling::ApplyRopeHalfGradSelectTilingKey() // 计算tilingkey
+uint32_t ApplyRotaryPosEmbGradHalfTiling::ApplyRopeHalfGradSelectTilingKey() // 计算tilingkey
 {
     uint32_t shapeAlignKey = 0;
     uint32_t needBackwardKey = 0;
@@ -834,9 +834,9 @@ uint32_t AiInfraApplyRotaryPosEmbGradHalfTiling::ApplyRopeHalfGradSelectTilingKe
     return tilingKey;
 }
 
-ge::graphStatus AiInfraApplyRotaryPosEmbGradHalfTiling::DoOpTiling()
+ge::graphStatus ApplyRotaryPosEmbGradHalfTiling::DoOpTiling()
 {
-    OP_LOGD("AiInfraApplyRotaryPosEmbGradHalf tiling start");
+    OP_LOGD("ApplyRotaryPosEmbGradHalf tiling start");
 
     OP_CHECK_IF( // 输入的维度校验并获取shape相关参数，可以增加子函数
         ApplyRopeHalfGradCheckInput() != ge::GRAPH_SUCCESS,

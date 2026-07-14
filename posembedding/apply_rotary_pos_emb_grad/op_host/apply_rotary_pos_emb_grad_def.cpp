@@ -16,9 +16,9 @@
 
 namespace ops {
 
-class AiInfraApplyRotaryPosEmbGrad : public OpDef {
+class ApplyRotaryPosEmbGrad : public OpDef {
 public:
-    explicit AiInfraApplyRotaryPosEmbGrad(const char *name) : OpDef(name)
+    explicit ApplyRotaryPosEmbGrad(const char *name) : OpDef(name)
     {
         this->Input("grad_query_embed")
             .ParamType(REQUIRED)
@@ -91,6 +91,6 @@ public:
     }
 };
 
-OP_ADD(AiInfraApplyRotaryPosEmbGrad);
+OP_ADD(ApplyRotaryPosEmbGrad);
 
 }  // namespace ops

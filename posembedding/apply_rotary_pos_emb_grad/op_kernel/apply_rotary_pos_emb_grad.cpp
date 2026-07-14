@@ -16,7 +16,7 @@
 #include "apply_rotary_pos_emb_grad_half.h"
 
 using namespace AscendC;
-using namespace AiInfraApplyRotaryPosEmbGrad;
+using namespace ApplyRotaryPosEmbGrad;
 
 extern "C" __global__ __aicore__ void
 apply_rotary_pos_emb_grad(GM_ADDR grad_query_embed, GM_ADDR grad_key_embed, GM_ADDR cos, GM_ADDR sin,
@@ -24,27 +24,27 @@ apply_rotary_pos_emb_grad(GM_ADDR grad_query_embed, GM_ADDR grad_key_embed, GM_A
                                    GM_ADDR grad_sin, GM_ADDR workspace, GM_ADDR tiling)
 {
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY);
-    GET_TILING_DATA_WITH_STRUCT(AiInfraApplyRotaryPosEmbGradTilingData, tiling_data_in, tiling);
+    GET_TILING_DATA_WITH_STRUCT(ApplyRotaryPosEmbGradTilingData, tiling_data_in, tiling);
     TPipe pipe;
-    const AiInfraApplyRotaryPosEmbGradTilingData *__restrict tilingData = &tiling_data_in;
+    const ApplyRotaryPosEmbGradTilingData *__restrict tilingData = &tiling_data_in;
 
     if (TILING_KEY_IS(0)) {
-        AiInfraApplyRotaryPosEmbGradHalf<DTYPE_GRAD_QUERY_EMBED, true, true> op;
+        ApplyRotaryPosEmbGradHalf<DTYPE_GRAD_QUERY_EMBED, true, true> op;
         op.Init(grad_query_embed, grad_key_embed, cos, sin, query, key, grad_query, grad_key, grad_cos, grad_sin,
                 workspace, *tilingData);
         op.Process();
     } else if (TILING_KEY_IS(100)) {
-        AiInfraApplyRotaryPosEmbGradHalf<DTYPE_GRAD_QUERY_EMBED, true, false> op;
+        ApplyRotaryPosEmbGradHalf<DTYPE_GRAD_QUERY_EMBED, true, false> op;
         op.Init(grad_query_embed, grad_key_embed, cos, sin, query, key, grad_query, grad_key, grad_cos, grad_sin,
                 workspace, *tilingData);
         op.Process();
     } else if (TILING_KEY_IS(1000)) {
-        AiInfraApplyRotaryPosEmbGradHalf<DTYPE_GRAD_QUERY_EMBED, false, true> op;
+        ApplyRotaryPosEmbGradHalf<DTYPE_GRAD_QUERY_EMBED, false, true> op;
         op.Init(grad_query_embed, grad_key_embed, cos, sin, query, key, grad_query, grad_key, grad_cos, grad_sin,
                 workspace, *tilingData);
         op.Process();
     } else if (TILING_KEY_IS(1100)) {
-        AiInfraApplyRotaryPosEmbGradHalf<DTYPE_GRAD_QUERY_EMBED, false, false> op;
+        ApplyRotaryPosEmbGradHalf<DTYPE_GRAD_QUERY_EMBED, false, false> op;
         op.Init(grad_query_embed, grad_key_embed, cos, sin, query, key, grad_query, grad_key, grad_cos, grad_sin,
                 workspace, *tilingData);
         op.Process();

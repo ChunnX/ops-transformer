@@ -1,4 +1,4 @@
-# aclnnAiInfraApplyRotaryPosEmbGrad
+# aclnnApplyRotaryPosEmbGrad
 
 ## 产品支持情况
 
@@ -40,7 +40,7 @@
 
 ## 功能说明
 
-- 接口功能：aclnnAiInfraApplyRotaryPosEmbGrad 是 aclnnAiInfraApplyRotaryPosEmb 的反向算子，用于计算旋转位置编码（RoPE）反向传播时对输入 query、key 以及 cos、sin 的梯度。
+- 接口功能：aclnnApplyRotaryPosEmbGrad 是 aclnnApplyRotaryPosEmb 的反向算子，用于计算旋转位置编码（RoPE）反向传播时对输入 query、key 以及 cos、sin 的梯度。
 - 计算公式：当 rotary_mode="half"，将输入沿最后一个维度均分为两部分，相关符号说明如下。
 
   - $grad\_q\_embed$ / $grad\_k\_embed$：来自 $q\_embed$ / $k\_embed$ 输出端的上游梯度。
@@ -81,10 +81,10 @@
 
 ## 函数原型
 
-每个算子分为两段式接口，必须先调用“aclnnAiInfraApplyRotaryPosEmbGradGetWorkspaceSize”接口获取计算所需 workspace 大小以及包含了算子计算流程的执行器，再调用“aclnnAiInfraApplyRotaryPosEmbGrad”接口执行计算。
+每个算子分为两段式接口，必须先调用“aclnnApplyRotaryPosEmbGradGetWorkspaceSize”接口获取计算所需 workspace 大小以及包含了算子计算流程的执行器，再调用“aclnnApplyRotaryPosEmbGrad”接口执行计算。
 
 ```cpp
-aclnnStatus aclnnAiInfraApplyRotaryPosEmbGradGetWorkspaceSize(
+aclnnStatus aclnnApplyRotaryPosEmbGradGetWorkspaceSize(
     const aclTensor *gradQueryEmbed,
     const aclTensor *gradKeyEmbed,
     const aclTensor *cos,
@@ -102,14 +102,14 @@ aclnnStatus aclnnAiInfraApplyRotaryPosEmbGradGetWorkspaceSize(
 ```
 
 ```cpp
-aclnnStatus aclnnAiInfraApplyRotaryPosEmbGrad(
+aclnnStatus aclnnApplyRotaryPosEmbGrad(
     void            *workspace,
     uint64_t         workspaceSize,
     aclOpExecutor   *executor,
     aclrtStream      stream)
 ```
 
-## aclnnAiInfraApplyRotaryPosEmbGradGetWorkspaceSize
+## aclnnApplyRotaryPosEmbGradGetWorkspaceSize
 
 - **参数说明**
 
@@ -326,7 +326,7 @@ aclnnStatus aclnnAiInfraApplyRotaryPosEmbGrad(
     </tr>
   </tbody></table>
 
-## aclnnAiInfraApplyRotaryPosEmbGrad
+## aclnnApplyRotaryPosEmbGrad
 
 - **参数说明**
 
@@ -351,7 +351,7 @@ aclnnStatus aclnnAiInfraApplyRotaryPosEmbGrad(
     <tr>
       <td>workspaceSize</td>
       <td>输入</td>
-      <td>在 Device 侧申请的 workspace 大小，由第一段接口 aclnnAiInfraApplyRotaryPosEmbGradGetWorkspaceSize 获取。</td>
+      <td>在 Device 侧申请的 workspace 大小，由第一段接口 aclnnApplyRotaryPosEmbGradGetWorkspaceSize 获取。</td>
     </tr>
     <tr>
       <td>executor</td>
@@ -373,7 +373,7 @@ aclnnStatus aclnnAiInfraApplyRotaryPosEmbGrad(
 
 - 确定性说明：
 
-  aclnnAiInfraApplyRotaryPosEmbGrad 默认确定性实现。
+  aclnnApplyRotaryPosEmbGrad 默认确定性实现。
 
 - 输入 shape 限制：
 
@@ -525,10 +525,10 @@ int main() {
     char* rotaryMode = "half";
     int64_t layout = 1;  // BSND
 
-    ret = aclnnAiInfraApplyRotaryPosEmbGradGetWorkspaceSize(
+    ret = aclnnApplyRotaryPosEmbGradGetWorkspaceSize(
         gradQuery, gradKey, cos, sin, query, key, rotaryMode, layout,
         gradQueryOut, gradKeyOut, gradcosOut, gradsinOut, &workspaceSize, &executor);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnAiInfraApplyRotaryPosEmbGradGetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnApplyRotaryPosEmbGradGetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
 
     // 根据第一段接口计算出的 workspaceSize 申请 device 内存
     void* workspaceAddr = nullptr;
@@ -538,8 +538,8 @@ int main() {
     }
 
     // 调用第二段接口
-    ret = aclnnAiInfraApplyRotaryPosEmbGrad(workspaceAddr, workspaceSize, executor, stream);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnAiInfraApplyRotaryPosEmbGrad failed. ERROR: %d\n", ret); return ret);
+    ret = aclnnApplyRotaryPosEmbGrad(workspaceAddr, workspaceSize, executor, stream);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnApplyRotaryPosEmbGrad failed. ERROR: %d\n", ret); return ret);
 
     // 4.（固定写法）同步等待任务执行结束
     ret = aclrtSynchronizeStream(stream);

@@ -22,7 +22,7 @@
 
 namespace optiling {
 
-BEGIN_TILING_DATA_DEF(AiInfraApplyRotaryPosEmbHalfGradParams)
+BEGIN_TILING_DATA_DEF(ApplyRotaryPosEmbHalfGradParams)
 TILING_DATA_FIELD_DEF(int64_t, hasOptionalInputs);
 TILING_DATA_FIELD_DEF(int64_t, layout);
 TILING_DATA_FIELD_DEF(int64_t, dQShapeSize);
@@ -58,38 +58,38 @@ TILING_DATA_FIELD_DEF(int64_t, innerPaddedBlockLen);
 TILING_DATA_FIELD_DEF(int64_t, dQInnerPaddedSrcStride);
 TILING_DATA_FIELD_DEF(int64_t, dKInnerPaddedSrcStride);
 END_TILING_DATA_DEF;
-REGISTER_TILING_DATA_CLASS(AiInfraApplyRotaryPosEmbHalfGradParamsOp, AiInfraApplyRotaryPosEmbHalfGradParams)
+REGISTER_TILING_DATA_CLASS(ApplyRotaryPosEmbHalfGradParamsOp, ApplyRotaryPosEmbHalfGradParams)
 
-BEGIN_TILING_DATA_DEF(AiInfraApplyRotaryPosEmbGradTilingData)
-TILING_DATA_FIELD_DEF_STRUCT(AiInfraApplyRotaryPosEmbHalfGradParams, applyRopeHalfGradParams);
+BEGIN_TILING_DATA_DEF(ApplyRotaryPosEmbGradTilingData)
+TILING_DATA_FIELD_DEF_STRUCT(ApplyRotaryPosEmbHalfGradParams, applyRopeHalfGradParams);
 END_TILING_DATA_DEF;
-REGISTER_TILING_DATA_CLASS(AiInfraApplyRotaryPosEmbGrad, AiInfraApplyRotaryPosEmbGradTilingData)
+REGISTER_TILING_DATA_CLASS(ApplyRotaryPosEmbGrad, ApplyRotaryPosEmbGradTilingData)
 
-struct AiInfraApplyRotaryPosEmbGradCompileInfo {
+struct ApplyRotaryPosEmbGradCompileInfo {
     uint64_t numBlocks = 0;
     uint64_t ubSize = 0;
     platform_ascendc::SocVersion socVersion = platform_ascendc::SocVersion::ASCEND910B;
 };
 
-enum class AiInfraApplyRotaryPosEmbGradLayout : int64_t {
+enum class ApplyRotaryPosEmbGradLayout : int64_t {
     BSND = 1,
     SBND = 2,
     BNSD = 3,
     TND = 4
 };
 
-enum class AiInfraApplyRotaryPosEmbGradMode : int64_t {
+enum class ApplyRotaryPosEmbGradMode : int64_t {
     HALF = 0
 };
 
-enum class AiInfraApplyRotaryPosEmbGradTilingKey : uint32_t {
+enum class ApplyRotaryPosEmbGradTilingKey : uint32_t {
     TILING_KEY_LAYOUT_COMMON = 0,
     TILING_KEY_LAYOUT_BSND = 1
 };
 
-class AiInfraApplyRotaryPosEmbGradTiling : public AiInfraOps::Transformer::OpTiling::TilingBase {
+class ApplyRotaryPosEmbGradTiling : public Ops::Transformer::OpTiling::TilingBase {
 public:
-    explicit AiInfraApplyRotaryPosEmbGradTiling(gert::TilingContext *context) : TilingBase(context)
+    explicit ApplyRotaryPosEmbGradTiling(gert::TilingContext *context) : TilingBase(context)
     {}
 
     void Reset(gert::TilingContext *context) override

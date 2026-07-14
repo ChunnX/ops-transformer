@@ -224,7 +224,7 @@ def apply_rotary_pos_emb_gpu(q, k, cos, sin, rotary_mode="half"):
 GRAD_NAMES = ["dquery", "dkey", "d_cos", "d_sin"]
 # ---------- test cases ----------
 
-class TestNpuAiInfraApplyRotaryPosEmbGrad(TestCase):
+class TestNpuApplyRotaryPosEmbGrad(TestCase):
     def _run_rotary_test(self, s, b, qn, kn, d, dtype, layout=2, seed=42,
                          precision_level=DEFAULT_PRECISION_LEVEL, cal_dcos=True, autograd=False):
         torch.manual_seed(seed)

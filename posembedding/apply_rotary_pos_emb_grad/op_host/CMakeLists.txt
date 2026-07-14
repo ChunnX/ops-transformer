@@ -8,7 +8,7 @@
 # ======================================================================================================================
 
 add_ops_compile_options(
-        OP_NAME AiInfraApplyRotaryPosEmbGrad
+        OP_NAME ApplyRotaryPosEmbGrad
         OPTIONS --cce-auto-sync=off
                 -Wno-deprecated-declarations
                 -Werror

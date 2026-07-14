@@ -19,7 +19,7 @@
 using namespace std;
 
 namespace {
-constexpr const char *OP_TYPE = "AiInfraApplyRotaryPosEmbGrad";
+constexpr const char *OP_TYPE = "ApplyRotaryPosEmbGrad";
 constexpr uint64_t EXPECT_TILING_KEY = 0;
 const std::vector<size_t> EXPECT_WORKSPACES = {16 * 1024 * 1024};
 
@@ -48,8 +48,8 @@ gert::TilingContextPara::TensorDescription OptTd(ge::DataType dtype)
 
 std::vector<gert::TilingContextPara::OpAttr> Attrs(const char *mode, int64_t layout)
 {
-    return {{"rotary_mode", AiInfraOps::Transformer::AnyValue::CreateFrom<string>(mode)},
-            {"layout", AiInfraOps::Transformer::AnyValue::CreateFrom<int64_t>(layout)}};
+    return {{"rotary_mode", Ops::Transformer::AnyValue::CreateFrom<string>(mode)},
+            {"layout", Ops::Transformer::AnyValue::CreateFrom<int64_t>(layout)}};
 }
 
 // ======== 通用 shape 常量 ========
@@ -74,10 +74,10 @@ const std::initializer_list<int64_t> SBND_COS = {11, 4, 1, 64};
 const std::initializer_list<int64_t> SBND_SIN = {11, 4, 1, 64};
 }  // namespace
 
-class TestAiInfraApplyRotaryPosEmbGradTiling : public testing::Test {
+class TestApplyRotaryPosEmbGradTiling : public testing::Test {
 protected:
-    static void SetUpTestCase() { std::cout << "TestAiInfraApplyRotaryPosEmbGradTiling SetUp" << std::endl; }
-    static void TearDownTestCase() { std::cout << "TestAiInfraApplyRotaryPosEmbGradTiling TearDown" << std::endl; }
+    static void SetUpTestCase() { std::cout << "TestApplyRotaryPosEmbGradTiling SetUp" << std::endl; }
+    static void TearDownTestCase() { std::cout << "TestApplyRotaryPosEmbGradTiling TearDown" << std::endl; }
 };
 
 // =====================================================================================
@@ -86,9 +86,9 @@ protected:
 // BSND: Nq=2, Nk=3 (GQA); TND/SBND: Nq=2, Nk=2
 // =====================================================================================
 
-TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_fp16_bsnd_opt_right)
+TEST_F(TestApplyRotaryPosEmbGradTiling, arpe_grad_fp16_bsnd_opt_right)
 {
-    optiling::AiInfraApplyRotaryPosEmbGradCompileInfo compileInfo = {};
+    optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
     gert::TilingContextPara para(
         OP_TYPE,
         {Td(BSND_GQE, ge::DT_FLOAT16), Td(BSND_GKE, ge::DT_FLOAT16), Td(BSND_COS, ge::DT_FLOAT16),
@@ -102,9 +102,9 @@ TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_fp16_bsnd_opt_right)
                     TilingData2Str<int64_t>);
 }
 
-TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_bf16_bsnd_opt_right)
+TEST_F(TestApplyRotaryPosEmbGradTiling, arpe_grad_bf16_bsnd_opt_right)
 {
-    optiling::AiInfraApplyRotaryPosEmbGradCompileInfo compileInfo = {};
+    optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
     gert::TilingContextPara para(
         OP_TYPE,
         {Td(BSND_GQE, ge::DT_BF16), Td(BSND_GKE, ge::DT_BF16), Td(BSND_COS, ge::DT_BF16),
@@ -118,9 +118,9 @@ TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_bf16_bsnd_opt_right)
                     TilingData2Str<int64_t>);
 }
 
-TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_fp32_bsnd_opt_right)
+TEST_F(TestApplyRotaryPosEmbGradTiling, arpe_grad_fp32_bsnd_opt_right)
 {
-    optiling::AiInfraApplyRotaryPosEmbGradCompileInfo compileInfo = {};
+    optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
     gert::TilingContextPara para(
         OP_TYPE,
         {Td(BSND_GQE, ge::DT_FLOAT), Td(BSND_GKE, ge::DT_FLOAT), Td(BSND_COS, ge::DT_FLOAT),
@@ -134,9 +134,9 @@ TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_fp32_bsnd_opt_right)
                     TilingData2Str<int64_t>);
 }
 
-TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_fp16_tnd_opt_right)
+TEST_F(TestApplyRotaryPosEmbGradTiling, arpe_grad_fp16_tnd_opt_right)
 {
-    optiling::AiInfraApplyRotaryPosEmbGradCompileInfo compileInfo = {};
+    optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
     gert::TilingContextPara para(
         OP_TYPE,
         {Td(TND_GQE, ge::DT_FLOAT16), Td({11, 2, 64}, ge::DT_FLOAT16), Td(TND_COS, ge::DT_FLOAT16),
@@ -150,9 +150,9 @@ TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_fp16_tnd_opt_right)
                     TilingData2Str<int64_t>);
 }
 
-TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_fp16_sbnd_opt_right)
+TEST_F(TestApplyRotaryPosEmbGradTiling, arpe_grad_fp16_sbnd_opt_right)
 {
-    optiling::AiInfraApplyRotaryPosEmbGradCompileInfo compileInfo = {};
+    optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
     gert::TilingContextPara para(
         OP_TYPE,
         {Td(SBND_GQE, ge::DT_FLOAT16), Td({11, 4, 2, 64}, ge::DT_FLOAT16), Td(SBND_COS, ge::DT_FLOAT16),
@@ -170,9 +170,9 @@ TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_fp16_sbnd_opt_right)
 // 第二组: CheckAttr —— 预期 GRAPH_FAILED
 // =====================================================================================
 
-TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_rotary_mode)
+TEST_F(TestApplyRotaryPosEmbGradTiling, arpe_grad_wrong_rotary_mode)
 {
-    optiling::AiInfraApplyRotaryPosEmbGradCompileInfo compileInfo = {};
+    optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
     gert::TilingContextPara para(
         OP_TYPE,
         {Td(BSND_GQE, ge::DT_FLOAT16), Td(BSND_GKE, ge::DT_FLOAT16), Td(BSND_COS, ge::DT_FLOAT16),
@@ -182,9 +182,9 @@ TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_rotary_mode)
     ExecuteTestCase(para, ge::GRAPH_FAILED);
 }
 
-TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_layout_zero)
+TEST_F(TestApplyRotaryPosEmbGradTiling, arpe_grad_wrong_layout_zero)
 {
-    optiling::AiInfraApplyRotaryPosEmbGradCompileInfo compileInfo = {};
+    optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
     gert::TilingContextPara para(
         OP_TYPE,
         {Td(BSND_GQE, ge::DT_FLOAT16), Td(BSND_GKE, ge::DT_FLOAT16), Td(BSND_COS, ge::DT_FLOAT16),
@@ -194,9 +194,9 @@ TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_layout_zero)
     ExecuteTestCase(para, ge::GRAPH_FAILED);
 }
 
-TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_layout_bnsd)
+TEST_F(TestApplyRotaryPosEmbGradTiling, arpe_grad_wrong_layout_bnsd)
 {
-    optiling::AiInfraApplyRotaryPosEmbGradCompileInfo compileInfo = {};
+    optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
     gert::TilingContextPara para(
         OP_TYPE,
         {Td(BSND_GQE, ge::DT_FLOAT16), Td(BSND_GKE, ge::DT_FLOAT16), Td(BSND_COS, ge::DT_FLOAT16),
@@ -206,9 +206,9 @@ TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_layout_bnsd)
     ExecuteTestCase(para, ge::GRAPH_FAILED);
 }
 
-TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_layout_five)
+TEST_F(TestApplyRotaryPosEmbGradTiling, arpe_grad_wrong_layout_five)
 {
-    optiling::AiInfraApplyRotaryPosEmbGradCompileInfo compileInfo = {};
+    optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
     gert::TilingContextPara para(
         OP_TYPE,
         {Td(BSND_GQE, ge::DT_FLOAT16), Td(BSND_GKE, ge::DT_FLOAT16), Td(BSND_COS, ge::DT_FLOAT16),
@@ -222,9 +222,9 @@ TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_layout_five)
 // 第三组: CheckGradQueryEmbed —— 预期 GRAPH_FAILED
 // =====================================================================================
 
-TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradQueryEmbed_rank)
+TEST_F(TestApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradQueryEmbed_rank)
 {
-    optiling::AiInfraApplyRotaryPosEmbGradCompileInfo compileInfo = {};
+    optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
     gert::TilingContextPara para(
         OP_TYPE,
         {Td({11, 64}, ge::DT_FLOAT16), Td(BSND_GKE, ge::DT_FLOAT16), Td(BSND_COS, ge::DT_FLOAT16),
@@ -234,9 +234,9 @@ TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradQueryEmbed_ra
     ExecuteTestCase(para, ge::GRAPH_FAILED);
 }
 
-TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradQueryEmbed_dimD_too_large)
+TEST_F(TestApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradQueryEmbed_dimD_too_large)
 {
-    optiling::AiInfraApplyRotaryPosEmbGradCompileInfo compileInfo = {};
+    optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
     gert::TilingContextPara para(
         OP_TYPE,
         {Td({4, 11, 2, 256}, ge::DT_FLOAT16), Td({4, 11, 3, 256}, ge::DT_FLOAT16),
@@ -248,9 +248,9 @@ TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradQueryEmbed_di
     ExecuteTestCase(para, ge::GRAPH_FAILED);
 }
 
-TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradQueryEmbed_dimD_not_multiple_of_16)
+TEST_F(TestApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradQueryEmbed_dimD_not_multiple_of_16)
 {
-    optiling::AiInfraApplyRotaryPosEmbGradCompileInfo compileInfo = {};
+    optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
     gert::TilingContextPara para(
         OP_TYPE,
         {Td({4, 11, 2, 24}, ge::DT_FLOAT16), Td({4, 11, 3, 24}, ge::DT_FLOAT16),
@@ -268,9 +268,9 @@ TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradQueryEmbed_di
 // =====================================================================================
 
 // BSND: rank 不匹配 (gradQEmbed 4D, gradKEmbed 3D)
-TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradKeyEmbed_rank)
+TEST_F(TestApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradKeyEmbed_rank)
 {
-    optiling::AiInfraApplyRotaryPosEmbGradCompileInfo compileInfo = {};
+    optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
     gert::TilingContextPara para(
         OP_TYPE,
         {Td(BSND_GQE, ge::DT_FLOAT16), Td({11, 3, 64}, ge::DT_FLOAT16), Td(BSND_COS, ge::DT_FLOAT16),
@@ -281,9 +281,9 @@ TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradKeyEmbed_rank
 }
 
 // BSND: dim0 (B) 不匹配: B=5 vs 4
-TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradKeyEmbed_dimB_bsnd)
+TEST_F(TestApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradKeyEmbed_dimB_bsnd)
 {
-    optiling::AiInfraApplyRotaryPosEmbGradCompileInfo compileInfo = {};
+    optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
     gert::TilingContextPara para(
         OP_TYPE,
         {Td(BSND_GQE, ge::DT_FLOAT16), Td({5, 11, 3, 64}, ge::DT_FLOAT16), Td(BSND_COS, ge::DT_FLOAT16),
@@ -294,9 +294,9 @@ TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradKeyEmbed_dimB
 }
 
 // BSND: dim1 (S) 不匹配: S=10 vs 11
-TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradKeyEmbed_dimS_bsnd)
+TEST_F(TestApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradKeyEmbed_dimS_bsnd)
 {
-    optiling::AiInfraApplyRotaryPosEmbGradCompileInfo compileInfo = {};
+    optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
     gert::TilingContextPara para(
         OP_TYPE,
         {Td(BSND_GQE, ge::DT_FLOAT16), Td({4, 10, 3, 64}, ge::DT_FLOAT16), Td(BSND_COS, ge::DT_FLOAT16),
@@ -307,9 +307,9 @@ TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradKeyEmbed_dimS
 }
 
 // BSND: dim3 (D) 不匹配: D=48 vs 64
-TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradKeyEmbed_dimD_bsnd)
+TEST_F(TestApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradKeyEmbed_dimD_bsnd)
 {
-    optiling::AiInfraApplyRotaryPosEmbGradCompileInfo compileInfo = {};
+    optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
     gert::TilingContextPara para(
         OP_TYPE,
         {Td(BSND_GQE, ge::DT_FLOAT16), Td({4, 11, 3, 48}, ge::DT_FLOAT16), Td(BSND_COS, ge::DT_FLOAT16),
@@ -320,9 +320,9 @@ TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradKeyEmbed_dimD
 }
 
 // TND(3D): dim0 (S) 不匹配: S=10 vs 11
-TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradKeyEmbed_dimS_tnd)
+TEST_F(TestApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradKeyEmbed_dimS_tnd)
 {
-    optiling::AiInfraApplyRotaryPosEmbGradCompileInfo compileInfo = {};
+    optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
     gert::TilingContextPara para(
         OP_TYPE,
         {Td(TND_GQE, ge::DT_FLOAT16), Td({10, 3, 64}, ge::DT_FLOAT16), Td(TND_COS, ge::DT_FLOAT16),
@@ -333,9 +333,9 @@ TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradKeyEmbed_dimS
 }
 
 // TND(3D): dim2 (D) 不匹配: D=48 vs 64
-TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradKeyEmbed_dimD_tnd)
+TEST_F(TestApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradKeyEmbed_dimD_tnd)
 {
-    optiling::AiInfraApplyRotaryPosEmbGradCompileInfo compileInfo = {};
+    optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
     gert::TilingContextPara para(
         OP_TYPE,
         {Td(TND_GQE, ge::DT_FLOAT16), Td({11, 3, 48}, ge::DT_FLOAT16), Td(TND_COS, ge::DT_FLOAT16),
@@ -346,9 +346,9 @@ TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradKeyEmbed_dimD
 }
 
 // SBND: dim0 (S) 不匹配: S=10 vs 11
-TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradKeyEmbed_dimS_sbnd)
+TEST_F(TestApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradKeyEmbed_dimS_sbnd)
 {
-    optiling::AiInfraApplyRotaryPosEmbGradCompileInfo compileInfo = {};
+    optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
     gert::TilingContextPara para(
         OP_TYPE,
         {Td(SBND_GQE, ge::DT_FLOAT16), Td({10, 4, 3, 64}, ge::DT_FLOAT16), Td(SBND_COS, ge::DT_FLOAT16),
@@ -359,9 +359,9 @@ TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradKeyEmbed_dimS
 }
 
 // SBND: dim1 (B) 不匹配: B=5 vs 4
-TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradKeyEmbed_dimB_sbnd)
+TEST_F(TestApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradKeyEmbed_dimB_sbnd)
 {
-    optiling::AiInfraApplyRotaryPosEmbGradCompileInfo compileInfo = {};
+    optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
     gert::TilingContextPara para(
         OP_TYPE,
         {Td(SBND_GQE, ge::DT_FLOAT16), Td({11, 5, 3, 64}, ge::DT_FLOAT16), Td(SBND_COS, ge::DT_FLOAT16),
@@ -372,9 +372,9 @@ TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradKeyEmbed_dimB
 }
 
 // SBND: dim3 (D) 不匹配: D=48 vs 64
-TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradKeyEmbed_dimD_sbnd)
+TEST_F(TestApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradKeyEmbed_dimD_sbnd)
 {
-    optiling::AiInfraApplyRotaryPosEmbGradCompileInfo compileInfo = {};
+    optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
     gert::TilingContextPara para(
         OP_TYPE,
         {Td(SBND_GQE, ge::DT_FLOAT16), Td({11, 4, 3, 48}, ge::DT_FLOAT16), Td(SBND_COS, ge::DT_FLOAT16),
@@ -390,9 +390,9 @@ TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradKeyEmbed_dimD
 // =====================================================================================
 
 // BSND: rank 不匹配 (2D vs 4D)
-TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_cos_rank)
+TEST_F(TestApplyRotaryPosEmbGradTiling, arpe_grad_wrong_cos_rank)
 {
-    optiling::AiInfraApplyRotaryPosEmbGradCompileInfo compileInfo = {};
+    optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
     gert::TilingContextPara para(
         OP_TYPE,
         {Td(BSND_GQE, ge::DT_FLOAT16), Td(BSND_GKE, ge::DT_FLOAT16), Td({11, 64}, ge::DT_FLOAT16),
@@ -403,9 +403,9 @@ TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_cos_rank)
 }
 
 // BSND: dim0 (B) 不匹配: B=5 vs 4
-TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_cos_dimB_bsnd)
+TEST_F(TestApplyRotaryPosEmbGradTiling, arpe_grad_wrong_cos_dimB_bsnd)
 {
-    optiling::AiInfraApplyRotaryPosEmbGradCompileInfo compileInfo = {};
+    optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
     gert::TilingContextPara para(
         OP_TYPE,
         {Td(BSND_GQE, ge::DT_FLOAT16), Td(BSND_GKE, ge::DT_FLOAT16), Td({5, 11, 1, 64}, ge::DT_FLOAT16),
@@ -416,9 +416,9 @@ TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_cos_dimB_bsnd)
 }
 
 // BSND: dim1 (S) 不匹配: S=10 vs 11
-TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_cos_dimS_bsnd)
+TEST_F(TestApplyRotaryPosEmbGradTiling, arpe_grad_wrong_cos_dimS_bsnd)
 {
-    optiling::AiInfraApplyRotaryPosEmbGradCompileInfo compileInfo = {};
+    optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
     gert::TilingContextPara para(
         OP_TYPE,
         {Td(BSND_GQE, ge::DT_FLOAT16), Td(BSND_GKE, ge::DT_FLOAT16), Td({4, 10, 1, 64}, ge::DT_FLOAT16),
@@ -429,9 +429,9 @@ TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_cos_dimS_bsnd)
 }
 
 // BSND: dim2 (N) != 1: N=2
-TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_cos_N_bsnd)
+TEST_F(TestApplyRotaryPosEmbGradTiling, arpe_grad_wrong_cos_N_bsnd)
 {
-    optiling::AiInfraApplyRotaryPosEmbGradCompileInfo compileInfo = {};
+    optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
     gert::TilingContextPara para(
         OP_TYPE,
         {Td(BSND_GQE, ge::DT_FLOAT16), Td(BSND_GKE, ge::DT_FLOAT16), Td({4, 11, 2, 64}, ge::DT_FLOAT16),
@@ -442,9 +442,9 @@ TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_cos_N_bsnd)
 }
 
 // BSND: dim3 (D) 不匹配: D=48 vs 64
-TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_cos_dimD_bsnd)
+TEST_F(TestApplyRotaryPosEmbGradTiling, arpe_grad_wrong_cos_dimD_bsnd)
 {
-    optiling::AiInfraApplyRotaryPosEmbGradCompileInfo compileInfo = {};
+    optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
     gert::TilingContextPara para(
         OP_TYPE,
         {Td(BSND_GQE, ge::DT_FLOAT16), Td(BSND_GKE, ge::DT_FLOAT16), Td({4, 11, 1, 48}, ge::DT_FLOAT16),
@@ -455,9 +455,9 @@ TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_cos_dimD_bsnd)
 }
 
 // TND(3D): dim0 (S) 不匹配: S=10 vs 11
-TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_cos_dimS_tnd)
+TEST_F(TestApplyRotaryPosEmbGradTiling, arpe_grad_wrong_cos_dimS_tnd)
 {
-    optiling::AiInfraApplyRotaryPosEmbGradCompileInfo compileInfo = {};
+    optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
     gert::TilingContextPara para(
         OP_TYPE,
         {Td(TND_GQE, ge::DT_FLOAT16), Td(TND_GKE, ge::DT_FLOAT16), Td({10, 1, 64}, ge::DT_FLOAT16),
@@ -468,9 +468,9 @@ TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_cos_dimS_tnd)
 }
 
 // TND(3D): dim1 (N) != 1: N=2
-TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_cos_N_tnd)
+TEST_F(TestApplyRotaryPosEmbGradTiling, arpe_grad_wrong_cos_N_tnd)
 {
-    optiling::AiInfraApplyRotaryPosEmbGradCompileInfo compileInfo = {};
+    optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
     gert::TilingContextPara para(
         OP_TYPE,
         {Td(TND_GQE, ge::DT_FLOAT16), Td(TND_GKE, ge::DT_FLOAT16), Td({11, 2, 64}, ge::DT_FLOAT16),
@@ -481,9 +481,9 @@ TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_cos_N_tnd)
 }
 
 // TND(3D): dim2 (D) 不匹配: D=48 vs 64
-TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_cos_dimD_tnd)
+TEST_F(TestApplyRotaryPosEmbGradTiling, arpe_grad_wrong_cos_dimD_tnd)
 {
-    optiling::AiInfraApplyRotaryPosEmbGradCompileInfo compileInfo = {};
+    optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
     gert::TilingContextPara para(
         OP_TYPE,
         {Td(TND_GQE, ge::DT_FLOAT16), Td(TND_GKE, ge::DT_FLOAT16), Td({11, 1, 48}, ge::DT_FLOAT16),
@@ -494,9 +494,9 @@ TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_cos_dimD_tnd)
 }
 
 // SBND: dim0 (S) 不匹配: S=10 vs 11
-TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_cos_dimS_sbnd)
+TEST_F(TestApplyRotaryPosEmbGradTiling, arpe_grad_wrong_cos_dimS_sbnd)
 {
-    optiling::AiInfraApplyRotaryPosEmbGradCompileInfo compileInfo = {};
+    optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
     gert::TilingContextPara para(
         OP_TYPE,
         {Td(SBND_GQE, ge::DT_FLOAT16), Td(SBND_GKE, ge::DT_FLOAT16), Td({10, 4, 1, 64}, ge::DT_FLOAT16),
@@ -507,9 +507,9 @@ TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_cos_dimS_sbnd)
 }
 
 // SBND: dim1 (B) 不匹配: B=5 vs 4
-TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_cos_dimB_sbnd)
+TEST_F(TestApplyRotaryPosEmbGradTiling, arpe_grad_wrong_cos_dimB_sbnd)
 {
-    optiling::AiInfraApplyRotaryPosEmbGradCompileInfo compileInfo = {};
+    optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
     gert::TilingContextPara para(
         OP_TYPE,
         {Td(SBND_GQE, ge::DT_FLOAT16), Td(SBND_GKE, ge::DT_FLOAT16), Td({11, 5, 1, 64}, ge::DT_FLOAT16),
@@ -520,9 +520,9 @@ TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_cos_dimB_sbnd)
 }
 
 // SBND: dim2 (N) != 1: N=2
-TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_cos_N_sbnd)
+TEST_F(TestApplyRotaryPosEmbGradTiling, arpe_grad_wrong_cos_N_sbnd)
 {
-    optiling::AiInfraApplyRotaryPosEmbGradCompileInfo compileInfo = {};
+    optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
     gert::TilingContextPara para(
         OP_TYPE,
         {Td(SBND_GQE, ge::DT_FLOAT16), Td(SBND_GKE, ge::DT_FLOAT16), Td({11, 4, 2, 64}, ge::DT_FLOAT16),
@@ -533,9 +533,9 @@ TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_cos_N_sbnd)
 }
 
 // SBND: dim3 (D) 不匹配: D=48 vs 64
-TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_cos_dimD_sbnd)
+TEST_F(TestApplyRotaryPosEmbGradTiling, arpe_grad_wrong_cos_dimD_sbnd)
 {
-    optiling::AiInfraApplyRotaryPosEmbGradCompileInfo compileInfo = {};
+    optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
     gert::TilingContextPara para(
         OP_TYPE,
         {Td(SBND_GQE, ge::DT_FLOAT16), Td(SBND_GKE, ge::DT_FLOAT16), Td({11, 4, 1, 48}, ge::DT_FLOAT16),
@@ -551,9 +551,9 @@ TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_cos_dimD_sbnd)
 // =====================================================================================
 
 // BSND: rank 不匹配 (2D vs 4D)
-TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_sin_rank)
+TEST_F(TestApplyRotaryPosEmbGradTiling, arpe_grad_wrong_sin_rank)
 {
-    optiling::AiInfraApplyRotaryPosEmbGradCompileInfo compileInfo = {};
+    optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
     gert::TilingContextPara para(
         OP_TYPE,
         {Td(BSND_GQE, ge::DT_FLOAT16), Td(BSND_GKE, ge::DT_FLOAT16), Td(BSND_COS, ge::DT_FLOAT16),
@@ -564,9 +564,9 @@ TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_sin_rank)
 }
 
 // BSND: dim0 (B) 不匹配: B=5 vs 4
-TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_sin_dimB_bsnd)
+TEST_F(TestApplyRotaryPosEmbGradTiling, arpe_grad_wrong_sin_dimB_bsnd)
 {
-    optiling::AiInfraApplyRotaryPosEmbGradCompileInfo compileInfo = {};
+    optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
     gert::TilingContextPara para(
         OP_TYPE,
         {Td(BSND_GQE, ge::DT_FLOAT16), Td(BSND_GKE, ge::DT_FLOAT16), Td(BSND_COS, ge::DT_FLOAT16),
@@ -577,9 +577,9 @@ TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_sin_dimB_bsnd)
 }
 
 // BSND: dim1 (S) 不匹配: S=12 vs 11
-TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_sin_dimS_bsnd)
+TEST_F(TestApplyRotaryPosEmbGradTiling, arpe_grad_wrong_sin_dimS_bsnd)
 {
-    optiling::AiInfraApplyRotaryPosEmbGradCompileInfo compileInfo = {};
+    optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
     gert::TilingContextPara para(
         OP_TYPE,
         {Td(BSND_GQE, ge::DT_FLOAT16), Td(BSND_GKE, ge::DT_FLOAT16), Td(BSND_COS, ge::DT_FLOAT16),
@@ -590,9 +590,9 @@ TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_sin_dimS_bsnd)
 }
 
 // BSND: dim2 (N) != 1: N=2
-TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_sin_N_bsnd)
+TEST_F(TestApplyRotaryPosEmbGradTiling, arpe_grad_wrong_sin_N_bsnd)
 {
-    optiling::AiInfraApplyRotaryPosEmbGradCompileInfo compileInfo = {};
+    optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
     gert::TilingContextPara para(
         OP_TYPE,
         {Td(BSND_GQE, ge::DT_FLOAT16), Td(BSND_GKE, ge::DT_FLOAT16), Td(BSND_COS, ge::DT_FLOAT16),
@@ -603,9 +603,9 @@ TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_sin_N_bsnd)
 }
 
 // BSND: dim3 (D) 不匹配: D=48 vs 64
-TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_sin_dimD_bsnd)
+TEST_F(TestApplyRotaryPosEmbGradTiling, arpe_grad_wrong_sin_dimD_bsnd)
 {
-    optiling::AiInfraApplyRotaryPosEmbGradCompileInfo compileInfo = {};
+    optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
     gert::TilingContextPara para(
         OP_TYPE,
         {Td(BSND_GQE, ge::DT_FLOAT16), Td(BSND_GKE, ge::DT_FLOAT16), Td(BSND_COS, ge::DT_FLOAT16),
@@ -616,9 +616,9 @@ TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_sin_dimD_bsnd)
 }
 
 // TND(3D): dim0 (S) 不匹配: S=12 vs 11
-TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_sin_dimS_tnd)
+TEST_F(TestApplyRotaryPosEmbGradTiling, arpe_grad_wrong_sin_dimS_tnd)
 {
-    optiling::AiInfraApplyRotaryPosEmbGradCompileInfo compileInfo = {};
+    optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
     gert::TilingContextPara para(
         OP_TYPE,
         {Td(TND_GQE, ge::DT_FLOAT16), Td(TND_GKE, ge::DT_FLOAT16), Td(TND_COS, ge::DT_FLOAT16),
@@ -629,9 +629,9 @@ TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_sin_dimS_tnd)
 }
 
 // TND(3D): dim1 (N) != 1: N=2
-TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_sin_N_tnd)
+TEST_F(TestApplyRotaryPosEmbGradTiling, arpe_grad_wrong_sin_N_tnd)
 {
-    optiling::AiInfraApplyRotaryPosEmbGradCompileInfo compileInfo = {};
+    optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
     gert::TilingContextPara para(
         OP_TYPE,
         {Td(TND_GQE, ge::DT_FLOAT16), Td(TND_GKE, ge::DT_FLOAT16), Td(TND_COS, ge::DT_FLOAT16),
@@ -642,9 +642,9 @@ TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_sin_N_tnd)
 }
 
 // TND(3D): dim2 (D) 不匹配: D=48 vs 64
-TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_sin_dimD_tnd)
+TEST_F(TestApplyRotaryPosEmbGradTiling, arpe_grad_wrong_sin_dimD_tnd)
 {
-    optiling::AiInfraApplyRotaryPosEmbGradCompileInfo compileInfo = {};
+    optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
     gert::TilingContextPara para(
         OP_TYPE,
         {Td(TND_GQE, ge::DT_FLOAT16), Td(TND_GKE, ge::DT_FLOAT16), Td(TND_COS, ge::DT_FLOAT16),
@@ -655,9 +655,9 @@ TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_sin_dimD_tnd)
 }
 
 // SBND: dim0 (S) 不匹配: S=12 vs 11
-TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_sin_dimS_sbnd)
+TEST_F(TestApplyRotaryPosEmbGradTiling, arpe_grad_wrong_sin_dimS_sbnd)
 {
-    optiling::AiInfraApplyRotaryPosEmbGradCompileInfo compileInfo = {};
+    optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
     gert::TilingContextPara para(
         OP_TYPE,
         {Td(SBND_GQE, ge::DT_FLOAT16), Td(SBND_GKE, ge::DT_FLOAT16), Td(SBND_COS, ge::DT_FLOAT16),
@@ -668,9 +668,9 @@ TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_sin_dimS_sbnd)
 }
 
 // SBND: dim1 (B) 不匹配: B=5 vs 4
-TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_sin_dimB_sbnd)
+TEST_F(TestApplyRotaryPosEmbGradTiling, arpe_grad_wrong_sin_dimB_sbnd)
 {
-    optiling::AiInfraApplyRotaryPosEmbGradCompileInfo compileInfo = {};
+    optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
     gert::TilingContextPara para(
         OP_TYPE,
         {Td(SBND_GQE, ge::DT_FLOAT16), Td(SBND_GKE, ge::DT_FLOAT16), Td(SBND_COS, ge::DT_FLOAT16),
@@ -681,9 +681,9 @@ TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_sin_dimB_sbnd)
 }
 
 // SBND: dim2 (N) != 1: N=2
-TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_sin_N_sbnd)
+TEST_F(TestApplyRotaryPosEmbGradTiling, arpe_grad_wrong_sin_N_sbnd)
 {
-    optiling::AiInfraApplyRotaryPosEmbGradCompileInfo compileInfo = {};
+    optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
     gert::TilingContextPara para(
         OP_TYPE,
         {Td(SBND_GQE, ge::DT_FLOAT16), Td(SBND_GKE, ge::DT_FLOAT16), Td(SBND_COS, ge::DT_FLOAT16),
@@ -694,9 +694,9 @@ TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_sin_N_sbnd)
 }
 
 // SBND: dim3 (D) 不匹配: D=48 vs 64
-TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_sin_dimD_sbnd)
+TEST_F(TestApplyRotaryPosEmbGradTiling, arpe_grad_wrong_sin_dimD_sbnd)
 {
-    optiling::AiInfraApplyRotaryPosEmbGradCompileInfo compileInfo = {};
+    optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
     gert::TilingContextPara para(
         OP_TYPE,
         {Td(SBND_GQE, ge::DT_FLOAT16), Td(SBND_GKE, ge::DT_FLOAT16), Td(SBND_COS, ge::DT_FLOAT16),
@@ -712,9 +712,9 @@ TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_sin_dimD_sbnd)
 // =====================================================================================
 
 // BSND: query rank=3 ≠ 4
-TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_query_rank)
+TEST_F(TestApplyRotaryPosEmbGradTiling, arpe_grad_wrong_query_rank)
 {
-    optiling::AiInfraApplyRotaryPosEmbGradCompileInfo compileInfo = {};
+    optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
     gert::TilingContextPara para(
         OP_TYPE,
         {Td(BSND_GQE, ge::DT_FLOAT16), Td(BSND_GKE, ge::DT_FLOAT16), Td(BSND_COS, ge::DT_FLOAT16),
@@ -726,9 +726,9 @@ TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_query_rank)
 }
 
 // BSND(4D): dim0 不匹配: 5 vs 4
-TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_query_dim0)
+TEST_F(TestApplyRotaryPosEmbGradTiling, arpe_grad_wrong_query_dim0)
 {
-    optiling::AiInfraApplyRotaryPosEmbGradCompileInfo compileInfo = {};
+    optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
     gert::TilingContextPara para(
         OP_TYPE,
         {Td(BSND_GQE, ge::DT_FLOAT16), Td(BSND_GKE, ge::DT_FLOAT16), Td(BSND_COS, ge::DT_FLOAT16),
@@ -740,9 +740,9 @@ TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_query_dim0)
 }
 
 // BSND(4D): dim1 不匹配: 10 vs 11
-TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_query_dim1)
+TEST_F(TestApplyRotaryPosEmbGradTiling, arpe_grad_wrong_query_dim1)
 {
-    optiling::AiInfraApplyRotaryPosEmbGradCompileInfo compileInfo = {};
+    optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
     gert::TilingContextPara para(
         OP_TYPE,
         {Td(BSND_GQE, ge::DT_FLOAT16), Td(BSND_GKE, ge::DT_FLOAT16), Td(BSND_COS, ge::DT_FLOAT16),
@@ -754,9 +754,9 @@ TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_query_dim1)
 }
 
 // BSND(4D): dim2(N) 不匹配: 5 vs 2
-TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_query_dim2)
+TEST_F(TestApplyRotaryPosEmbGradTiling, arpe_grad_wrong_query_dim2)
 {
-    optiling::AiInfraApplyRotaryPosEmbGradCompileInfo compileInfo = {};
+    optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
     gert::TilingContextPara para(
         OP_TYPE,
         {Td(BSND_GQE, ge::DT_FLOAT16), Td(BSND_GKE, ge::DT_FLOAT16), Td(BSND_COS, ge::DT_FLOAT16),
@@ -768,9 +768,9 @@ TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_query_dim2)
 }
 
 // BSND(4D): dim3(D) 不匹配: 48 vs 64
-TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_query_dim3)
+TEST_F(TestApplyRotaryPosEmbGradTiling, arpe_grad_wrong_query_dim3)
 {
-    optiling::AiInfraApplyRotaryPosEmbGradCompileInfo compileInfo = {};
+    optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
     gert::TilingContextPara para(
         OP_TYPE,
         {Td(BSND_GQE, ge::DT_FLOAT16), Td(BSND_GKE, ge::DT_FLOAT16), Td(BSND_COS, ge::DT_FLOAT16),
@@ -782,9 +782,9 @@ TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_query_dim3)
 }
 
 // TND(3D): dim0(S) 不匹配: 10 vs 11
-TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_query_dimS_tnd)
+TEST_F(TestApplyRotaryPosEmbGradTiling, arpe_grad_wrong_query_dimS_tnd)
 {
-    optiling::AiInfraApplyRotaryPosEmbGradCompileInfo compileInfo = {};
+    optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
     gert::TilingContextPara para(
         OP_TYPE,
         {Td(TND_GQE, ge::DT_FLOAT16), Td(TND_GKE, ge::DT_FLOAT16), Td(TND_COS, ge::DT_FLOAT16),
@@ -796,9 +796,9 @@ TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_query_dimS_tnd)
 }
 
 // TND(3D): dim1(N) 不匹配: 5 vs 2
-TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_query_dimN_tnd)
+TEST_F(TestApplyRotaryPosEmbGradTiling, arpe_grad_wrong_query_dimN_tnd)
 {
-    optiling::AiInfraApplyRotaryPosEmbGradCompileInfo compileInfo = {};
+    optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
     gert::TilingContextPara para(
         OP_TYPE,
         {Td(TND_GQE, ge::DT_FLOAT16), Td(TND_GKE, ge::DT_FLOAT16), Td(TND_COS, ge::DT_FLOAT16),
@@ -810,9 +810,9 @@ TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_query_dimN_tnd)
 }
 
 // TND(3D): dim2(D) 不匹配: 48 vs 64
-TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_query_dimD_tnd)
+TEST_F(TestApplyRotaryPosEmbGradTiling, arpe_grad_wrong_query_dimD_tnd)
 {
-    optiling::AiInfraApplyRotaryPosEmbGradCompileInfo compileInfo = {};
+    optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
     gert::TilingContextPara para(
         OP_TYPE,
         {Td(TND_GQE, ge::DT_FLOAT16), Td(TND_GKE, ge::DT_FLOAT16), Td(TND_COS, ge::DT_FLOAT16),
@@ -829,9 +829,9 @@ TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_query_dimD_tnd)
 // =====================================================================================
 
 // 仅提供 query，不提供 key
-TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_optional_query_only)
+TEST_F(TestApplyRotaryPosEmbGradTiling, arpe_grad_optional_query_only)
 {
-    optiling::AiInfraApplyRotaryPosEmbGradCompileInfo compileInfo = {};
+    optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
     gert::TilingContextPara para(
         OP_TYPE,
         {Td(BSND_GQE, ge::DT_FLOAT16), Td(BSND_GKE, ge::DT_FLOAT16), Td(BSND_COS, ge::DT_FLOAT16),
@@ -842,9 +842,9 @@ TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_optional_query_only)
 }
 
 // 仅提供 key，不提供 query
-TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_optional_key_only)
+TEST_F(TestApplyRotaryPosEmbGradTiling, arpe_grad_optional_key_only)
 {
-    optiling::AiInfraApplyRotaryPosEmbGradCompileInfo compileInfo = {};
+    optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
     gert::TilingContextPara para(
         OP_TYPE,
         {Td(BSND_GQE, ge::DT_FLOAT16), Td(BSND_GKE, ge::DT_FLOAT16), Td(BSND_COS, ge::DT_FLOAT16),
@@ -855,9 +855,9 @@ TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_optional_key_only)
 }
 
 // BSND: key rank=3 ≠ 4
-TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_key_rank)
+TEST_F(TestApplyRotaryPosEmbGradTiling, arpe_grad_wrong_key_rank)
 {
-    optiling::AiInfraApplyRotaryPosEmbGradCompileInfo compileInfo = {};
+    optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
     gert::TilingContextPara para(
         OP_TYPE,
         {Td(BSND_GQE, ge::DT_FLOAT16), Td(BSND_GKE, ge::DT_FLOAT16), Td(BSND_COS, ge::DT_FLOAT16),
@@ -869,9 +869,9 @@ TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_key_rank)
 }
 
 // BSND(4D): dim0 不匹配: 5 vs 4
-TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_key_dim0)
+TEST_F(TestApplyRotaryPosEmbGradTiling, arpe_grad_wrong_key_dim0)
 {
-    optiling::AiInfraApplyRotaryPosEmbGradCompileInfo compileInfo = {};
+    optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
     gert::TilingContextPara para(
         OP_TYPE,
         {Td(BSND_GQE, ge::DT_FLOAT16), Td(BSND_GKE, ge::DT_FLOAT16), Td(BSND_COS, ge::DT_FLOAT16),
@@ -883,9 +883,9 @@ TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_key_dim0)
 }
 
 // BSND(4D): dim1 不匹配: 10 vs 11
-TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_key_dim1)
+TEST_F(TestApplyRotaryPosEmbGradTiling, arpe_grad_wrong_key_dim1)
 {
-    optiling::AiInfraApplyRotaryPosEmbGradCompileInfo compileInfo = {};
+    optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
     gert::TilingContextPara para(
         OP_TYPE,
         {Td(BSND_GQE, ge::DT_FLOAT16), Td(BSND_GKE, ge::DT_FLOAT16), Td(BSND_COS, ge::DT_FLOAT16),
@@ -897,9 +897,9 @@ TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_key_dim1)
 }
 
 // BSND(4D): dim2(N) 不匹配: 5 vs 3
-TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_key_dim2)
+TEST_F(TestApplyRotaryPosEmbGradTiling, arpe_grad_wrong_key_dim2)
 {
-    optiling::AiInfraApplyRotaryPosEmbGradCompileInfo compileInfo = {};
+    optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
     gert::TilingContextPara para(
         OP_TYPE,
         {Td(BSND_GQE, ge::DT_FLOAT16), Td(BSND_GKE, ge::DT_FLOAT16), Td(BSND_COS, ge::DT_FLOAT16),
@@ -911,9 +911,9 @@ TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_key_dim2)
 }
 
 // BSND(4D): dim3(D) 不匹配: 48 vs 64
-TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_key_dim3)
+TEST_F(TestApplyRotaryPosEmbGradTiling, arpe_grad_wrong_key_dim3)
 {
-    optiling::AiInfraApplyRotaryPosEmbGradCompileInfo compileInfo = {};
+    optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
     gert::TilingContextPara para(
         OP_TYPE,
         {Td(BSND_GQE, ge::DT_FLOAT16), Td(BSND_GKE, ge::DT_FLOAT16), Td(BSND_COS, ge::DT_FLOAT16),
@@ -925,9 +925,9 @@ TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_key_dim3)
 }
 
 // TND(3D): dim0(S) 不匹配: 10 vs 11
-TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_key_dimS_tnd)
+TEST_F(TestApplyRotaryPosEmbGradTiling, arpe_grad_wrong_key_dimS_tnd)
 {
-    optiling::AiInfraApplyRotaryPosEmbGradCompileInfo compileInfo = {};
+    optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
     gert::TilingContextPara para(
         OP_TYPE,
         {Td(TND_GQE, ge::DT_FLOAT16), Td(TND_GKE, ge::DT_FLOAT16), Td(TND_COS, ge::DT_FLOAT16),
@@ -939,9 +939,9 @@ TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_key_dimS_tnd)
 }
 
 // TND(3D): dim1(N) 不匹配: 5 vs 3
-TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_key_dimN_tnd)
+TEST_F(TestApplyRotaryPosEmbGradTiling, arpe_grad_wrong_key_dimN_tnd)
 {
-    optiling::AiInfraApplyRotaryPosEmbGradCompileInfo compileInfo = {};
+    optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
     gert::TilingContextPara para(
         OP_TYPE,
         {Td(TND_GQE, ge::DT_FLOAT16), Td(TND_GKE, ge::DT_FLOAT16), Td(TND_COS, ge::DT_FLOAT16),
@@ -953,9 +953,9 @@ TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_key_dimN_tnd)
 }
 
 // TND(3D): dim2(D) 不匹配: 48 vs 64
-TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_key_dimD_tnd)
+TEST_F(TestApplyRotaryPosEmbGradTiling, arpe_grad_wrong_key_dimD_tnd)
 {
-    optiling::AiInfraApplyRotaryPosEmbGradCompileInfo compileInfo = {};
+    optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
     gert::TilingContextPara para(
         OP_TYPE,
         {Td(TND_GQE, ge::DT_FLOAT16), Td(TND_GKE, ge::DT_FLOAT16), Td(TND_COS, ge::DT_FLOAT16),
@@ -970,9 +970,9 @@ TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_key_dimD_tnd)
 // 第九组: CheckInputDatatype —— 预期 GRAPH_FAILED
 // =====================================================================================
 
-TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradQueryEmbed_dtype_int32)
+TEST_F(TestApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradQueryEmbed_dtype_int32)
 {
-    optiling::AiInfraApplyRotaryPosEmbGradCompileInfo compileInfo = {};
+    optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
     gert::TilingContextPara para(
         OP_TYPE,
         {Td(BSND_GQE, ge::DT_INT32), Td(BSND_GKE, ge::DT_INT32), Td(BSND_COS, ge::DT_INT32),
@@ -982,9 +982,9 @@ TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradQueryEmbed_dt
     ExecuteTestCase(para, ge::GRAPH_FAILED);
 }
 
-TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradKeyEmbed_dtype)
+TEST_F(TestApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradKeyEmbed_dtype)
 {
-    optiling::AiInfraApplyRotaryPosEmbGradCompileInfo compileInfo = {};
+    optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
     gert::TilingContextPara para(
         OP_TYPE,
         {Td(BSND_GQE, ge::DT_FLOAT16), Td(BSND_GKE, ge::DT_FLOAT), Td(BSND_COS, ge::DT_FLOAT16),
@@ -994,9 +994,9 @@ TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradKeyEmbed_dtyp
     ExecuteTestCase(para, ge::GRAPH_FAILED);
 }
 
-TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_cos_dtype)
+TEST_F(TestApplyRotaryPosEmbGradTiling, arpe_grad_wrong_cos_dtype)
 {
-    optiling::AiInfraApplyRotaryPosEmbGradCompileInfo compileInfo = {};
+    optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
     gert::TilingContextPara para(
         OP_TYPE,
         {Td(BSND_GQE, ge::DT_FLOAT16), Td(BSND_GKE, ge::DT_FLOAT16), Td(BSND_COS, ge::DT_FLOAT),
@@ -1006,9 +1006,9 @@ TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_cos_dtype)
     ExecuteTestCase(para, ge::GRAPH_FAILED);
 }
 
-TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_sin_dtype)
+TEST_F(TestApplyRotaryPosEmbGradTiling, arpe_grad_wrong_sin_dtype)
 {
-    optiling::AiInfraApplyRotaryPosEmbGradCompileInfo compileInfo = {};
+    optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
     gert::TilingContextPara para(
         OP_TYPE,
         {Td(BSND_GQE, ge::DT_FLOAT16), Td(BSND_GKE, ge::DT_FLOAT16), Td(BSND_COS, ge::DT_FLOAT16),
@@ -1022,9 +1022,9 @@ TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_sin_dtype)
 // 第十组: CheckOptionalInputDatatype —— 预期 GRAPH_FAILED
 // =====================================================================================
 
-TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_optional_query_dtype)
+TEST_F(TestApplyRotaryPosEmbGradTiling, arpe_grad_wrong_optional_query_dtype)
 {
-    optiling::AiInfraApplyRotaryPosEmbGradCompileInfo compileInfo = {};
+    optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
     gert::TilingContextPara para(
         OP_TYPE,
         {Td(BSND_GQE, ge::DT_FLOAT16), Td(BSND_GKE, ge::DT_FLOAT16), Td(BSND_COS, ge::DT_FLOAT16),
@@ -1035,9 +1035,9 @@ TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_optional_query_dt
     ExecuteTestCase(para, ge::GRAPH_FAILED);
 }
 
-TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_optional_key_dtype)
+TEST_F(TestApplyRotaryPosEmbGradTiling, arpe_grad_wrong_optional_key_dtype)
 {
-    optiling::AiInfraApplyRotaryPosEmbGradCompileInfo compileInfo = {};
+    optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
     gert::TilingContextPara para(
         OP_TYPE,
         {Td(BSND_GQE, ge::DT_FLOAT16), Td(BSND_GKE, ge::DT_FLOAT16), Td(BSND_COS, ge::DT_FLOAT16),
@@ -1052,9 +1052,9 @@ TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_optional_key_dtyp
 // 第十一组: CheckOutput —— optional 一致性 (L631/L635)
 // =====================================================================================
 
-TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_optional_missing_gradCosSin)
+TEST_F(TestApplyRotaryPosEmbGradTiling, arpe_grad_optional_missing_gradCosSin)
 {
-    optiling::AiInfraApplyRotaryPosEmbGradCompileInfo compileInfo = {};
+    optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
     gert::TilingContextPara para(
         OP_TYPE,
         {Td(BSND_GQE, ge::DT_FLOAT16), Td(BSND_GKE, ge::DT_FLOAT16), Td(BSND_COS, ge::DT_FLOAT16),
@@ -1070,9 +1070,9 @@ TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_optional_missing_gradCo
 // =====================================================================================
 
 // BSND: rank 不匹配
-TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradQuery_rank)
+TEST_F(TestApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradQuery_rank)
 {
-    optiling::AiInfraApplyRotaryPosEmbGradCompileInfo compileInfo = {};
+    optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
     gert::TilingContextPara para(
         OP_TYPE,
         {Td(BSND_GQE, ge::DT_FLOAT16), Td(BSND_GKE, ge::DT_FLOAT16), Td(BSND_COS, ge::DT_FLOAT16),
@@ -1083,9 +1083,9 @@ TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradQuery_rank)
 }
 
 // BSND(4D): dim0 不匹配
-TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradQuery_dim0)
+TEST_F(TestApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradQuery_dim0)
 {
-    optiling::AiInfraApplyRotaryPosEmbGradCompileInfo compileInfo = {};
+    optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
     gert::TilingContextPara para(
         OP_TYPE,
         {Td(BSND_GQE, ge::DT_FLOAT16), Td(BSND_GKE, ge::DT_FLOAT16), Td(BSND_COS, ge::DT_FLOAT16),
@@ -1097,9 +1097,9 @@ TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradQuery_dim0)
 }
 
 // BSND(4D): dim1 不匹配
-TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradQuery_dim1)
+TEST_F(TestApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradQuery_dim1)
 {
-    optiling::AiInfraApplyRotaryPosEmbGradCompileInfo compileInfo = {};
+    optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
     gert::TilingContextPara para(
         OP_TYPE,
         {Td(BSND_GQE, ge::DT_FLOAT16), Td(BSND_GKE, ge::DT_FLOAT16), Td(BSND_COS, ge::DT_FLOAT16),
@@ -1111,9 +1111,9 @@ TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradQuery_dim1)
 }
 
 // BSND(4D): dim2(N) 不匹配
-TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradQuery_dim2)
+TEST_F(TestApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradQuery_dim2)
 {
-    optiling::AiInfraApplyRotaryPosEmbGradCompileInfo compileInfo = {};
+    optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
     gert::TilingContextPara para(
         OP_TYPE,
         {Td(BSND_GQE, ge::DT_FLOAT16), Td(BSND_GKE, ge::DT_FLOAT16), Td(BSND_COS, ge::DT_FLOAT16),
@@ -1125,9 +1125,9 @@ TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradQuery_dim2)
 }
 
 // BSND(4D): dim3(D) 不匹配
-TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradQuery_dim3)
+TEST_F(TestApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradQuery_dim3)
 {
-    optiling::AiInfraApplyRotaryPosEmbGradCompileInfo compileInfo = {};
+    optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
     gert::TilingContextPara para(
         OP_TYPE,
         {Td(BSND_GQE, ge::DT_FLOAT16), Td(BSND_GKE, ge::DT_FLOAT16), Td(BSND_COS, ge::DT_FLOAT16),
@@ -1139,9 +1139,9 @@ TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradQuery_dim3)
 }
 
 // TND(3D): dim0(S) 不匹配
-TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradQuery_dimS_tnd)
+TEST_F(TestApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradQuery_dimS_tnd)
 {
-    optiling::AiInfraApplyRotaryPosEmbGradCompileInfo compileInfo = {};
+    optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
     gert::TilingContextPara para(
         OP_TYPE,
         {Td(TND_GQE, ge::DT_FLOAT16), Td(TND_GKE, ge::DT_FLOAT16), Td(TND_COS, ge::DT_FLOAT16),
@@ -1152,9 +1152,9 @@ TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradQuery_dimS_tn
 }
 
 // TND(3D): dim1(N) 不匹配
-TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradQuery_dimN_tnd)
+TEST_F(TestApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradQuery_dimN_tnd)
 {
-    optiling::AiInfraApplyRotaryPosEmbGradCompileInfo compileInfo = {};
+    optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
     gert::TilingContextPara para(
         OP_TYPE,
         {Td(TND_GQE, ge::DT_FLOAT16), Td(TND_GKE, ge::DT_FLOAT16), Td(TND_COS, ge::DT_FLOAT16),
@@ -1165,9 +1165,9 @@ TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradQuery_dimN_tn
 }
 
 // TND(3D): dim2(D) 不匹配
-TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradQuery_dimD_tnd)
+TEST_F(TestApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradQuery_dimD_tnd)
 {
-    optiling::AiInfraApplyRotaryPosEmbGradCompileInfo compileInfo = {};
+    optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
     gert::TilingContextPara para(
         OP_TYPE,
         {Td(TND_GQE, ge::DT_FLOAT16), Td(TND_GKE, ge::DT_FLOAT16), Td(TND_COS, ge::DT_FLOAT16),
@@ -1183,9 +1183,9 @@ TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradQuery_dimD_tn
 // =====================================================================================
 
 // BSND: rank 不匹配
-TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradKey_rank)
+TEST_F(TestApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradKey_rank)
 {
-    optiling::AiInfraApplyRotaryPosEmbGradCompileInfo compileInfo = {};
+    optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
     gert::TilingContextPara para(
         OP_TYPE,
         {Td(BSND_GQE, ge::DT_FLOAT16), Td(BSND_GKE, ge::DT_FLOAT16), Td(BSND_COS, ge::DT_FLOAT16),
@@ -1196,9 +1196,9 @@ TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradKey_rank)
 }
 
 // BSND(4D): dim0 不匹配
-TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradKey_dim0)
+TEST_F(TestApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradKey_dim0)
 {
-    optiling::AiInfraApplyRotaryPosEmbGradCompileInfo compileInfo = {};
+    optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
     gert::TilingContextPara para(
         OP_TYPE,
         {Td(BSND_GQE, ge::DT_FLOAT16), Td(BSND_GKE, ge::DT_FLOAT16), Td(BSND_COS, ge::DT_FLOAT16),
@@ -1210,9 +1210,9 @@ TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradKey_dim0)
 }
 
 // BSND(4D): dim1 不匹配
-TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradKey_dim1)
+TEST_F(TestApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradKey_dim1)
 {
-    optiling::AiInfraApplyRotaryPosEmbGradCompileInfo compileInfo = {};
+    optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
     gert::TilingContextPara para(
         OP_TYPE,
         {Td(BSND_GQE, ge::DT_FLOAT16), Td(BSND_GKE, ge::DT_FLOAT16), Td(BSND_COS, ge::DT_FLOAT16),
@@ -1224,9 +1224,9 @@ TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradKey_dim1)
 }
 
 // BSND(4D): dim2(N) 不匹配
-TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradKey_dim2)
+TEST_F(TestApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradKey_dim2)
 {
-    optiling::AiInfraApplyRotaryPosEmbGradCompileInfo compileInfo = {};
+    optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
     gert::TilingContextPara para(
         OP_TYPE,
         {Td(BSND_GQE, ge::DT_FLOAT16), Td(BSND_GKE, ge::DT_FLOAT16), Td(BSND_COS, ge::DT_FLOAT16),
@@ -1238,9 +1238,9 @@ TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradKey_dim2)
 }
 
 // BSND(4D): dim3(D) 不匹配
-TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradKey_dim3)
+TEST_F(TestApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradKey_dim3)
 {
-    optiling::AiInfraApplyRotaryPosEmbGradCompileInfo compileInfo = {};
+    optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
     gert::TilingContextPara para(
         OP_TYPE,
         {Td(BSND_GQE, ge::DT_FLOAT16), Td(BSND_GKE, ge::DT_FLOAT16), Td(BSND_COS, ge::DT_FLOAT16),
@@ -1252,9 +1252,9 @@ TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradKey_dim3)
 }
 
 // TND(3D): dim0(S) 不匹配
-TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradKey_dimS_tnd)
+TEST_F(TestApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradKey_dimS_tnd)
 {
-    optiling::AiInfraApplyRotaryPosEmbGradCompileInfo compileInfo = {};
+    optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
     gert::TilingContextPara para(
         OP_TYPE,
         {Td(TND_GQE, ge::DT_FLOAT16), Td(TND_GKE, ge::DT_FLOAT16), Td(TND_COS, ge::DT_FLOAT16),
@@ -1265,9 +1265,9 @@ TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradKey_dimS_tnd)
 }
 
 // TND(3D): dim1(N) 不匹配
-TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradKey_dimN_tnd)
+TEST_F(TestApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradKey_dimN_tnd)
 {
-    optiling::AiInfraApplyRotaryPosEmbGradCompileInfo compileInfo = {};
+    optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
     gert::TilingContextPara para(
         OP_TYPE,
         {Td(TND_GQE, ge::DT_FLOAT16), Td(TND_GKE, ge::DT_FLOAT16), Td(TND_COS, ge::DT_FLOAT16),
@@ -1278,9 +1278,9 @@ TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradKey_dimN_tnd)
 }
 
 // TND(3D): dim2(D) 不匹配
-TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradKey_dimD_tnd)
+TEST_F(TestApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradKey_dimD_tnd)
 {
-    optiling::AiInfraApplyRotaryPosEmbGradCompileInfo compileInfo = {};
+    optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
     gert::TilingContextPara para(
         OP_TYPE,
         {Td(TND_GQE, ge::DT_FLOAT16), Td(TND_GKE, ge::DT_FLOAT16), Td(TND_COS, ge::DT_FLOAT16),
@@ -1296,9 +1296,9 @@ TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradKey_dimD_tnd)
 // =====================================================================================
 
 // BSND: rank 不匹配
-TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradCos_rank)
+TEST_F(TestApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradCos_rank)
 {
-    optiling::AiInfraApplyRotaryPosEmbGradCompileInfo compileInfo = {};
+    optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
     gert::TilingContextPara para(
         OP_TYPE,
         {Td(BSND_GQE, ge::DT_FLOAT16), Td(BSND_GKE, ge::DT_FLOAT16), Td(BSND_COS, ge::DT_FLOAT16),
@@ -1310,9 +1310,9 @@ TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradCos_rank)
 }
 
 // BSND(4D): dim0 不匹配
-TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradCos_dim0)
+TEST_F(TestApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradCos_dim0)
 {
-    optiling::AiInfraApplyRotaryPosEmbGradCompileInfo compileInfo = {};
+    optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
     gert::TilingContextPara para(
         OP_TYPE,
         {Td(BSND_GQE, ge::DT_FLOAT16), Td(BSND_GKE, ge::DT_FLOAT16), Td(BSND_COS, ge::DT_FLOAT16),
@@ -1324,9 +1324,9 @@ TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradCos_dim0)
 }
 
 // BSND(4D): dim1 不匹配
-TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradCos_dim1)
+TEST_F(TestApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradCos_dim1)
 {
-    optiling::AiInfraApplyRotaryPosEmbGradCompileInfo compileInfo = {};
+    optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
     gert::TilingContextPara para(
         OP_TYPE,
         {Td(BSND_GQE, ge::DT_FLOAT16), Td(BSND_GKE, ge::DT_FLOAT16), Td(BSND_COS, ge::DT_FLOAT16),
@@ -1338,9 +1338,9 @@ TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradCos_dim1)
 }
 
 // BSND(4D): dim2(N) 不匹配
-TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradCos_dim2)
+TEST_F(TestApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradCos_dim2)
 {
-    optiling::AiInfraApplyRotaryPosEmbGradCompileInfo compileInfo = {};
+    optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
     gert::TilingContextPara para(
         OP_TYPE,
         {Td(BSND_GQE, ge::DT_FLOAT16), Td(BSND_GKE, ge::DT_FLOAT16), Td(BSND_COS, ge::DT_FLOAT16),
@@ -1352,9 +1352,9 @@ TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradCos_dim2)
 }
 
 // BSND(4D): dim3(D) 不匹配
-TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradCos_dim3)
+TEST_F(TestApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradCos_dim3)
 {
-    optiling::AiInfraApplyRotaryPosEmbGradCompileInfo compileInfo = {};
+    optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
     gert::TilingContextPara para(
         OP_TYPE,
         {Td(BSND_GQE, ge::DT_FLOAT16), Td(BSND_GKE, ge::DT_FLOAT16), Td(BSND_COS, ge::DT_FLOAT16),
@@ -1366,9 +1366,9 @@ TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradCos_dim3)
 }
 
 // TND(3D): dim0(S) 不匹配
-TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradCos_dimS_tnd)
+TEST_F(TestApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradCos_dimS_tnd)
 {
-    optiling::AiInfraApplyRotaryPosEmbGradCompileInfo compileInfo = {};
+    optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
     gert::TilingContextPara para(
         OP_TYPE,
         {Td(TND_GQE, ge::DT_FLOAT16), Td(TND_GKE, ge::DT_FLOAT16), Td(TND_COS, ge::DT_FLOAT16),
@@ -1380,9 +1380,9 @@ TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradCos_dimS_tnd)
 }
 
 // TND(3D): dim1(N) 不匹配
-TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradCos_dimN_tnd)
+TEST_F(TestApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradCos_dimN_tnd)
 {
-    optiling::AiInfraApplyRotaryPosEmbGradCompileInfo compileInfo = {};
+    optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
     gert::TilingContextPara para(
         OP_TYPE,
         {Td(TND_GQE, ge::DT_FLOAT16), Td(TND_GKE, ge::DT_FLOAT16), Td(TND_COS, ge::DT_FLOAT16),
@@ -1394,9 +1394,9 @@ TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradCos_dimN_tnd)
 }
 
 // TND(3D): dim2(D) 不匹配
-TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradCos_dimD_tnd)
+TEST_F(TestApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradCos_dimD_tnd)
 {
-    optiling::AiInfraApplyRotaryPosEmbGradCompileInfo compileInfo = {};
+    optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
     gert::TilingContextPara para(
         OP_TYPE,
         {Td(TND_GQE, ge::DT_FLOAT16), Td(TND_GKE, ge::DT_FLOAT16), Td(TND_COS, ge::DT_FLOAT16),
@@ -1413,9 +1413,9 @@ TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradCos_dimD_tnd)
 // =====================================================================================
 
 // BSND: rank 不匹配
-TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradSin_rank)
+TEST_F(TestApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradSin_rank)
 {
-    optiling::AiInfraApplyRotaryPosEmbGradCompileInfo compileInfo = {};
+    optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
     gert::TilingContextPara para(
         OP_TYPE,
         {Td(BSND_GQE, ge::DT_FLOAT16), Td(BSND_GKE, ge::DT_FLOAT16), Td(BSND_COS, ge::DT_FLOAT16),
@@ -1427,9 +1427,9 @@ TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradSin_rank)
 }
 
 // BSND(4D): dim0 不匹配
-TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradSin_dim0)
+TEST_F(TestApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradSin_dim0)
 {
-    optiling::AiInfraApplyRotaryPosEmbGradCompileInfo compileInfo = {};
+    optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
     gert::TilingContextPara para(
         OP_TYPE,
         {Td(BSND_GQE, ge::DT_FLOAT16), Td(BSND_GKE, ge::DT_FLOAT16), Td(BSND_COS, ge::DT_FLOAT16),
@@ -1441,9 +1441,9 @@ TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradSin_dim0)
 }
 
 // BSND(4D): dim1 不匹配
-TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradSin_dim1)
+TEST_F(TestApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradSin_dim1)
 {
-    optiling::AiInfraApplyRotaryPosEmbGradCompileInfo compileInfo = {};
+    optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
     gert::TilingContextPara para(
         OP_TYPE,
         {Td(BSND_GQE, ge::DT_FLOAT16), Td(BSND_GKE, ge::DT_FLOAT16), Td(BSND_COS, ge::DT_FLOAT16),
@@ -1455,9 +1455,9 @@ TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradSin_dim1)
 }
 
 // BSND(4D): dim2(N) 不匹配
-TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradSin_dim2)
+TEST_F(TestApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradSin_dim2)
 {
-    optiling::AiInfraApplyRotaryPosEmbGradCompileInfo compileInfo = {};
+    optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
     gert::TilingContextPara para(
         OP_TYPE,
         {Td(BSND_GQE, ge::DT_FLOAT16), Td(BSND_GKE, ge::DT_FLOAT16), Td(BSND_COS, ge::DT_FLOAT16),
@@ -1469,9 +1469,9 @@ TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradSin_dim2)
 }
 
 // BSND(4D): dim3(D) 不匹配
-TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradSin_dim3)
+TEST_F(TestApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradSin_dim3)
 {
-    optiling::AiInfraApplyRotaryPosEmbGradCompileInfo compileInfo = {};
+    optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
     gert::TilingContextPara para(
         OP_TYPE,
         {Td(BSND_GQE, ge::DT_FLOAT16), Td(BSND_GKE, ge::DT_FLOAT16), Td(BSND_COS, ge::DT_FLOAT16),
@@ -1483,9 +1483,9 @@ TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradSin_dim3)
 }
 
 // TND(3D): dim0(S) 不匹配
-TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradSin_dimS_tnd)
+TEST_F(TestApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradSin_dimS_tnd)
 {
-    optiling::AiInfraApplyRotaryPosEmbGradCompileInfo compileInfo = {};
+    optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
     gert::TilingContextPara para(
         OP_TYPE,
         {Td(TND_GQE, ge::DT_FLOAT16), Td(TND_GKE, ge::DT_FLOAT16), Td(TND_COS, ge::DT_FLOAT16),
@@ -1497,9 +1497,9 @@ TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradSin_dimS_tnd)
 }
 
 // TND(3D): dim1(N) 不匹配
-TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradSin_dimN_tnd)
+TEST_F(TestApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradSin_dimN_tnd)
 {
-    optiling::AiInfraApplyRotaryPosEmbGradCompileInfo compileInfo = {};
+    optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
     gert::TilingContextPara para(
         OP_TYPE,
         {Td(TND_GQE, ge::DT_FLOAT16), Td(TND_GKE, ge::DT_FLOAT16), Td(TND_COS, ge::DT_FLOAT16),
@@ -1511,9 +1511,9 @@ TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradSin_dimN_tnd)
 }
 
 // TND(3D): dim2(D) 不匹配
-TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradSin_dimD_tnd)
+TEST_F(TestApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradSin_dimD_tnd)
 {
-    optiling::AiInfraApplyRotaryPosEmbGradCompileInfo compileInfo = {};
+    optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
     gert::TilingContextPara para(
         OP_TYPE,
         {Td(TND_GQE, ge::DT_FLOAT16), Td(TND_GKE, ge::DT_FLOAT16), Td(TND_COS, ge::DT_FLOAT16),
@@ -1528,9 +1528,9 @@ TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradSin_dimD_tnd)
 // 第十六组: CheckOutputDatatype —— 预期 GRAPH_FAILED
 // =====================================================================================
 
-TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradQuery_output_dtype)
+TEST_F(TestApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradQuery_output_dtype)
 {
-    optiling::AiInfraApplyRotaryPosEmbGradCompileInfo compileInfo = {};
+    optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
     gert::TilingContextPara para(
         OP_TYPE,
         {Td(BSND_GQE, ge::DT_FLOAT16), Td(BSND_GKE, ge::DT_FLOAT16), Td(BSND_COS, ge::DT_FLOAT16),
@@ -1540,9 +1540,9 @@ TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradQuery_output_
     ExecuteTestCase(para, ge::GRAPH_FAILED);
 }
 
-TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradKey_output_dtype)
+TEST_F(TestApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradKey_output_dtype)
 {
-    optiling::AiInfraApplyRotaryPosEmbGradCompileInfo compileInfo = {};
+    optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
     gert::TilingContextPara para(
         OP_TYPE,
         {Td(BSND_GQE, ge::DT_FLOAT16), Td(BSND_GKE, ge::DT_FLOAT16), Td(BSND_COS, ge::DT_FLOAT16),
@@ -1556,9 +1556,9 @@ TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradKey_output_dt
 // 第十七组: CheckOptionalOutputDatatype —— 预期 GRAPH_FAILED
 // =====================================================================================
 
-TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradCos_output_dtype)
+TEST_F(TestApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradCos_output_dtype)
 {
-    optiling::AiInfraApplyRotaryPosEmbGradCompileInfo compileInfo = {};
+    optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
     gert::TilingContextPara para(
         OP_TYPE,
         {Td(BSND_GQE, ge::DT_FLOAT16), Td(BSND_GKE, ge::DT_FLOAT16), Td(BSND_COS, ge::DT_FLOAT16),
@@ -1569,9 +1569,9 @@ TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradCos_output_dt
     ExecuteTestCase(para, ge::GRAPH_FAILED);
 }
 
-TEST_F(TestAiInfraApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradSin_output_dtype)
+TEST_F(TestApplyRotaryPosEmbGradTiling, arpe_grad_wrong_gradSin_output_dtype)
 {
-    optiling::AiInfraApplyRotaryPosEmbGradCompileInfo compileInfo = {};
+    optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
     gert::TilingContextPara para(
         OP_TYPE,
         {Td(BSND_GQE, ge::DT_FLOAT16), Td(BSND_GKE, ge::DT_FLOAT16), Td(BSND_COS, ge::DT_FLOAT16),
