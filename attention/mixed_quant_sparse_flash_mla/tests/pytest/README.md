@@ -36,6 +36,12 @@
 - ./batch/test_mixed_quant_sparse_flash_mla_pt_save.py     # 读取excel表格批量生成用例pt文件
 - ./batch/mixed_quant_sparse_flash_mla_process.py          # 调用算子接口获取npu输出
 
+性能测试：
+- perf_run.sh                                               # 性能数据分析脚本（单进程msprof采集）
+- process_perf_data.py                                      # 单PROF文件夹性能数据解析脚本
+- batch_isolated_run.sh                                     # 批量隔离执行脚本，逐用例独立进程+msprof采集
+- collect_perf_data.py                                      # 多PROF文件夹性能数据批量收集脚本
+
 ## 使用方法
 在pytest文件夹路径下执行：
 
@@ -85,3 +91,51 @@ bash test_run.sh batch --keep-pt
 # batch：全流程，自定义所有参数
 bash test_run.sh batch --excel my.xlsx --sheet prefill --pt-dir my_pt --keep-pt
 ```
+
+### 性能测试
+
+#### 方式一：单进程msprof采集（perf_run.sh）
+
+所有用例在同一个msprof进程中执行，性能数据汇总到单个PROF文件夹：
+
+``` bash
+bash perf_run.sh
+```
+
+执行完成后生成 `result_perf.xlsx`，包含 `metadata_duration`、`qsmla_duration` 及与基线对比结果。
+
+#### 方式二：批量隔离执行（batch_isolated_run.sh）
+
+每条用例单独拉起一个独立pytest进程，进程间完全隔离：
+- 某条用例device越界/崩溃不会影响后续用例
+- msprof挂载在单用例进程上，性能数据采集互不干扰，每条用例生成独立PROF文件夹
+- 启用msprof时每条用例执行多次（默认5次）取平均，提升性能数据准确性：
+  - 第1次：精度校验 + 性能采集
+  - 第2~N次：仅性能采集（跳过精度校验与结果保存）
+
+``` bash
+# 不采集性能，仅隔离执行
+bash batch_isolated_run.sh qsmla_testcase 0
+
+# 启用msprof采集性能数据，默认采集5次取平均
+bash batch_isolated_run.sh qsmla_testcase 1
+
+# 启用msprof，指定采集3次
+bash batch_isolated_run.sh qsmla_testcase 1 3
+```
+
+| 参数 | 说明 | 默认值 |
+|------|------|--------|
+| 参数1 | 用例目录（.pt文件所在路径） | `qsmla_testcase` |
+| 参数2 | 是否启用msprof采集（0:否 1:是） | `0` |
+| 参数3 | 每条用例性能采集次数（取平均） | `5` |
+
+启用msprof时，执行完成后自动调用 `collect_perf_data.py`，按采集次数分组PROF文件夹，提取 `MixedQuantSparseFlashMlaMetadata` 和 `MixedQuantSparseFlashMla` 两个算子的 `Task Duration(us)` 并取平均值，生成 `result_perf.xlsx`。
+
+执行产物：
+| 文件 | 说明 |
+|------|------|
+| `result.xlsx` | 测试结果表格（精度数据） |
+| `result_perf.xlsx` | 性能数据表格（含duration均值、各次详情及基线对比） |
+| `batch_summary.log` | 批量执行详细日志 |
+| `batch_fail_list.log` | 失败用例清单 |

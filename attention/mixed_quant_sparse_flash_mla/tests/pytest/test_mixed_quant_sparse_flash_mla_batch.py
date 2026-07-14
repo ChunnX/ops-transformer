@@ -31,6 +31,7 @@ result_path = Path('result.xlsx')
 device_id=0
 
 _single_case_path = os.environ.get("QSMLA_TESTCASE_PATH", "").strip()
+perf_only = os.environ.get("QSMLA_PERF_ONLY", "").strip() == "1"
 
 testcase_files = []
 if _single_case_path:
@@ -57,14 +58,18 @@ def qsmla(testcase_files):
     try:
         npu_result, cpu_quant_result = mixed_quant_sparse_flash_mla_process.test_qsmla_quant_process_ci(
             test_data, device_id=device_id)
-        result, fulfill_percent = result_compare_method.check_result(cpu_quant_result, npu_result)
+        if perf_only:
+            result, fulfill_percent = "PASS", 100
+        else:
+            result, fulfill_percent = result_compare_method.check_result(cpu_quant_result, npu_result)
     except Exception as e:
         npu_error_msg = str(e)
         print("NPU ERROR：", npu_error_msg)
         result = "NPU ERROR"
         fulfill_percent = 0
 
-    utils.save_result(test_data['params'], result, fulfill_percent, result_path)
+    if not perf_only:
+        utils.save_result(test_data['params'], result, fulfill_percent, result_path)
 
     if result == "Failed":
         pytest.fail(f"用例精度失败:{test_data['Testcase_Name']} 精度:{fulfill_percent:.2f}%")

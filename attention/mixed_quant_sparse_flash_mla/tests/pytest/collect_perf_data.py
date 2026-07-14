@@ -47,6 +47,7 @@ def main():
     parser.add_argument('--test_result_path', type=str, default="result.xlsx")
     parser.add_argument('--is_compare', action='store_true', default=False)
     parser.add_argument('--perf_golden_path', type=str, default="perf_golden.xlsx")
+    parser.add_argument('--iter_count', type=int, default=5, help='每条用例的性能采集次数, 取平均值')
     args = parser.parse_args()
 
     if not os.path.exists(args.test_result_path):
@@ -66,24 +67,29 @@ def main():
         key=lambda x: os.path.getmtime(x)
     )
 
+    iter_count = args.iter_count
+    expected_prof_count = valid_count * iter_count
+
     print(f"============= 开始收集性能数据 =============")
-    print(f"有效用例数: {valid_count}, PROF文件夹数: {len(prof_folders)}")
+    print(f"有效用例数: {valid_count}, 每条用例采集次数: {iter_count}, "
+          f"PROF文件夹数: {len(prof_folders)}, 期望: {expected_prof_count}")
 
     if len(prof_folders) == 0:
         print("未找到PROF文件夹, 跳过性能数据收集")
         return
 
-    if len(prof_folders) != valid_count:
-        print(f"警告: PROF文件夹数量({len(prof_folders)})与有效用例数({valid_count})不一致")
+    if len(prof_folders) != expected_prof_count:
+        print(f"警告: PROF文件夹数量({len(prof_folders)})与期望数量({expected_prof_count})不一致")
 
     task_duration_col = "Task Duration(us)"
     df_b["metadata_duration"] = ""
     df_b["qsmla_duration"] = ""
+    df_b["metadata_duration_detail"] = ""
+    df_b["qsmla_duration_detail"] = ""
     df_b["metadata_perf_diff"] = ""
     df_b["qsmla_perf_diff"] = ""
     df_b["perf_result"] = ""
 
-    perf_rows = {}
     prof_idx = 0
     perf_threshold = 10
     perf_fail_list = []
@@ -99,28 +105,38 @@ def main():
         if not valid_mask.iloc[i]:
             continue
 
-        if prof_idx >= len(prof_folders):
+        if prof_idx + iter_count > len(prof_folders):
             print(f"  [{i}] PROF文件夹不足, 跳过剩余用例")
             break
 
-        prof = prof_folders[prof_idx]
         case_name = df_b.iloc[i]["Testcase_Name"]
-        rows_data = extract_qsmla_rows(prof)
+        case_profs = prof_folders[prof_idx:prof_idx + iter_count]
+        prof_idx += iter_count
 
-        if rows_data is not None:
-            metadata_row = rows_data["metadata"]
-            qsmla_row = rows_data["qsmla"]
+        metadata_durations = []
+        qsmla_durations = []
 
-            cur_metadata_perf = metadata_row[task_duration_col] if metadata_row else ""
-            cur_qsmla_perf = qsmla_row[task_duration_col] if qsmla_row else ""
-            df_b.at[i, "metadata_duration"] = cur_metadata_perf
-            df_b.at[i, "qsmla_duration"] = cur_qsmla_perf
+        for prof in case_profs:
+            rows_data = extract_qsmla_rows(prof)
+            if rows_data is not None:
+                if rows_data["metadata"]:
+                    metadata_durations.append(float(rows_data["metadata"][task_duration_col]))
+                if rows_data["qsmla"]:
+                    qsmla_durations.append(float(rows_data["qsmla"][task_duration_col]))
 
-            if args.is_compare:
+        if metadata_durations or qsmla_durations:
+            avg_metadata = sum(metadata_durations) / len(metadata_durations) if metadata_durations else ""
+            avg_qsmla = sum(qsmla_durations) / len(qsmla_durations) if qsmla_durations else ""
+            df_b.at[i, "metadata_duration"] = avg_metadata
+            df_b.at[i, "qsmla_duration"] = avg_qsmla
+            df_b.at[i, "metadata_duration_detail"] = str([round(d, 2) for d in metadata_durations])
+            df_b.at[i, "qsmla_duration_detail"] = str([round(d, 2) for d in qsmla_durations])
+
+            if args.is_compare and avg_qsmla != "":
                 golden_metadata_perf = df_c.iloc[i]["metadata_duration"]
                 golden_qsmla_perf = df_c.iloc[i]["qsmla_duration"]
-                metadata_perf_diff = float(cur_metadata_perf) - float(golden_metadata_perf)
-                qsmla_perf_diff = float(cur_qsmla_perf) - float(golden_qsmla_perf)
+                metadata_perf_diff = float(avg_metadata) - float(golden_metadata_perf)
+                qsmla_perf_diff = float(avg_qsmla) - float(golden_qsmla_perf)
                 df_b.at[i, "metadata_perf_diff"] = metadata_perf_diff
                 df_b.at[i, "qsmla_perf_diff"] = qsmla_perf_diff
 
@@ -130,15 +146,14 @@ def main():
                 else:
                     df_b.at[i, "perf_result"] = "Pass"
 
-            if metadata_row and qsmla_row:
-                print(f"  [{prof_idx+1}] {case_name} -> {prof} "
-                      f"(metadata: {cur_metadata_perf}us, qsmla: {cur_qsmla_perf}us)")
-            else:
-                print(f"  [{prof_idx+1}] {case_name} -> {prof} (部分op数据缺失)")
+            detail_md = str([round(d, 2) for d in metadata_durations])
+            detail_qs = str([round(d, 2) for d in qsmla_durations])
+            print(f"  [{i}] {case_name} -> {len(case_profs)}次采集 "
+                  f"(metadata均值: {avg_metadata}us, qsmla均值: {avg_qsmla}us)")
+            print(f"       metadata详情: {detail_md}")
+            print(f"       qsmla详情: {detail_qs}")
         else:
-            print(f"  [{prof_idx+1}] {case_name}: 未找到{METADATA_OP_NAME}/{QSMLA_OP_NAME}数据")
-
-        prof_idx += 1
+            print(f"  [{i}] {case_name}: 未找到{METADATA_OP_NAME}/{QSMLA_OP_NAME}数据")
 
     new_path = args.test_result_path.replace(".xlsx", "_perf.xlsx")
     if os.path.exists(new_path):
@@ -146,7 +161,7 @@ def main():
     df_b.to_excel(new_path, index=False)
 
     print(f"\n性能数据已保存: {new_path}")
-    print(f"共收集 {prof_idx} 条用例的 metadata_duration 和 qsmla_duration 数据")
+    print(f"共收集 {prof_idx // iter_count} 条用例的性能数据 (每条{iter_count}次取平均)")
     if args.is_compare and perf_fail_list:
         print(f"性能不达标用例: {perf_fail_list}")
     print(f"============= 性能数据收集完成 =============")
