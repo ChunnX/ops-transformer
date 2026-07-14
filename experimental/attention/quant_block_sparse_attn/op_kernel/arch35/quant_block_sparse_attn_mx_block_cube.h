@@ -56,7 +56,7 @@ public:
                   "MX cube currently only supports S1=128, S2=512, D=128 and DV=128");
     // 每 32 个 fp8 数据元素对应一个 e8m0 scale。
     static constexpr uint32_t MX_SCALE_GROUP = 32U;
-    // V scale 为 [T/64,N,DV,2]。
+    // V scale 为 [blockNum,N,blockSize/64,DV,2]。
     static constexpr uint32_t MX_TOKEN_GROUP = 64U;
     static constexpr uint32_t MX_SCALE_LAST_DIM = 2U;
     static constexpr FixpipeConfig BMM2_FIXPIPE_CONFIG = {CO2Layout::ROW_MAJOR, true};
@@ -336,6 +336,9 @@ private:
             startPos.s2Offset = static_cast<uint32_t>(runInfo.sparseBlockTokenOffset[i]) + copyStartInBlock;
             startPos.dIdx = 0U;
 
+            // KScale GM 为 [physicalBlock, kvHeads, blockSize, D/64, 2]。
+            // sparseBlockTokenOffset 是 BSA 逻辑 KV token 偏移，MxGmFlatScaleCopyInToL1PAForDN
+            // 内部会用 block_table 映射到 PA physicalBlock 和 block 内 token。
             PAShape shape;
             shape.blockSize = constInfo.kvSparseBlockSize;
             shape.headNum = constInfo.n2Size;
@@ -344,8 +347,8 @@ private:
             shape.maxblockNumPerBatch = constInfo.maxBlockNumPerBatch;
             shape.copyRowNum = copyRowNum;
             shape.copyRowNumAlign = AlignUp32(s2CalcSize);
-            shape.pageStride = constInfo.kvSparseBlockSize * constInfo.kScaleN2D;
-            shape.rowStride = constInfo.kScaleN2D;
+            shape.pageStride = constInfo.n2Size * constInfo.kScaleN2D;
+            shape.rowStride = shape.headDim;
             LocalTensor<SCALE_T> keyScaleDstTensor = dstTensor[(overlapStart - tileStart) * shape.actHeadDim];
             MxGmFlatScaleCopyInToL1PAForDN<SCALE_T>(keyScaleDstTensor, kScaleGm_, blockTableGm_, shape, startPos);
         }
@@ -395,7 +398,7 @@ private:
     __aicore__ inline void CopyValueScaleToL1(LocalTensor<SCALE_T> &dstTensor, const MxRunInfo &runInfo,
                                              const MxConstInfo &constInfo, uint32_t realK, uint32_t kIdx)
     {
-        // VScale 与 V 同序拼接，offset 单位为 64-token group。
+        // VScale GM 为 [physicalBlock, kvHeads, blockSize/64, DV, 2]，offset 单位为 64-token group。
         const uint32_t tileStart = kIdx * S2_SPLIT;
         const uint32_t tileEnd = tileStart + realK;
         const uint32_t totalGroupCount = AlignUp64(realK) / MX_TOKEN_GROUP;
@@ -433,8 +436,8 @@ private:
             shape.maxblockNumPerBatch = constInfo.maxBlockNumPerBatch;
             shape.copyRowNum = copyGroupNum;
             shape.copyRowNumAlign = totalGroupCount;
-            shape.pageStride = scaleBlockSize * constInfo.valueScaleN2D;
-            shape.rowStride = constInfo.valueScaleN2D;
+            shape.pageStride = constInfo.n2Size * constInfo.valueScaleN2D;
+            shape.rowStride = shape.headDim;
             LocalTensor<SCALE_T> valueScaleDstTensor = dstTensor[copiedGroupCount * blockElementCnt];
             MxGmFlatScaleCopyInToL1PAForND<SCALE_T>(valueScaleDstTensor, vScaleGm_, blockTableGm_, shape, startPos);
             copiedGroupCount += copyGroupNum;

@@ -94,6 +94,7 @@ struct MxBaseConstInfo {
     uint8_t subBlockIdx = 0U;
     uint32_t n2GD = 0U;
     uint32_t qScaleN1D = 0U;
+    // PA BNBD scale 中单个 kv head 的 stride。
     uint32_t kScaleN2D = 0U;
     uint32_t valueScaleN2D = 0U;
     uint32_t attentionOutStride = 0U;
@@ -114,7 +115,7 @@ struct MxSparseConstInfo {
     uint32_t maxKb = 0U;
 };
 
-// Q/K scale 为 [T,N,D/64,2]，V scale 为 [T/64,N,DV,2]。
+// QScale 为 [T,N,D/64,2]；K/V scale 为 PA BNBD 布局。
 struct MxScaleConstInfo {
     uint32_t scaleLastDim = BSA_MX_SCALE_LAST_DIM;
     uint32_t queryScaleDSize = 0U;
