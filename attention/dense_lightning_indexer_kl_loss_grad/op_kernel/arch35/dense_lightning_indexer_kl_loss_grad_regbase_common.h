@@ -20,6 +20,7 @@
 using namespace fa_base_matmul;
 
 static constexpr uint32_t VEC_SY_BASESIZE = 128;
+static constexpr uint32_t PROCESS_KV_SIZE = 4096;
 static constexpr uint32_t VEC_P_BASESIZE = 128;
 static constexpr uint32_t ATTN_SOFTMAX_REDUCE_BASESIZE = 8192;
 // task step
@@ -79,6 +80,7 @@ struct DLIKGradConstInfo {
     uint32_t remainCoreProcessNNum;
     uint32_t remainCoreNum;
     uint32_t usedCoreNum;
+    uint32_t maxSeqKV;
 
     /* * \brief TilingData中的信息 */
     uint32_t bSize;
@@ -121,6 +123,8 @@ struct DLIKGradRunInfo {
     uint32_t taskIdMod3;
     uint32_t sTaskId;
     uint32_t sTaskIdMod3;
+    uint32_t deterTaskId;
+    uint32_t deterTaskIdMod3;
     uint32_t bIdx;
     uint32_t s1Idx;
     uint32_t t1Index;
@@ -168,6 +172,8 @@ struct DLIKGradRunInfo {
     int64_t queryIndexTensorOffset = 0;
     int64_t keyIndexTensorOffset = 0;
     int64_t topkGmBaseOffset = 0;
+    int64_t deterResOffset = 0;
+    int64_t s2BlockOffset;
     bool isLastK = false;
 
     int8_t taskStep = TASK_INIT;
@@ -191,16 +197,12 @@ struct DLIKGradKRunInfo {
 
 constexpr uint8_t SYNC_MM2_TO_V1_FLAG[3] = {1, 2, 3};
 constexpr uint8_t SYNC_V6_TO_C3_FLAG[3] = {8, 9, 10};
+constexpr uint8_t DETER_TO_FIX_SYNC_FLAG[3] = {11, 12, 13};
+constexpr uint8_t SCATTER_CUBE_SYNC_FLAG = 4;
+constexpr uint8_t SYNC_C3_TO_V7_FLAG = 5;
 
-constexpr uint8_t SYNC_C3_TO_V7_FLAG[2] = {13, 14};
-constexpr uint8_t SYNC_V7_TO_C3_FLAG[2] = {3, 4};
-
-constexpr uint8_t SYNC_ST_TO_P_FLAG = 12;
-constexpr uint8_t SYNC_V6_TO_RELU_FLAG = 11;
-constexpr uint8_t SYNC_RELU_TO_V6_FLAG = 2;
-
-constexpr uint8_t SYNC_C3_TO_V7_DETER_MTE2_FLAG[2] = {5, 6};
-constexpr uint8_t SYNC_C3_TO_V7_DETER_SA_FLAG = 15;
+constexpr uint8_t SYNC_C3_TO_V7_DETER_MTE2_FLAG = 6;
+constexpr uint8_t SYNC_C3_TO_V7_DETER_SA_FLAG = 14;
 
 template <typename T> __aicore__ inline T CeilDiv(T num, T rnd)
 {

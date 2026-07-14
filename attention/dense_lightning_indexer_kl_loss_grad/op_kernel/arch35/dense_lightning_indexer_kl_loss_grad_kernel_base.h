@@ -34,21 +34,15 @@ public:
     __aicore__ inline void Process();
     __aicore__ inline void ProcessDeter();
     __aicore__ inline void ProcessNormal();
-    __aicore__ inline void ProcessSY(DLIKGradRunInfo &runInfo, int64_t taskId, int64_t bIdx, int64_t s1Idx);
-    __aicore__ inline void ProcessP(DLIKGradRunInfo &runInfo, int64_t taskId, int64_t bIdx, int64_t s1Idx);
     __aicore__ inline void InitMMResBuf();
     __aicore__ inline void FreeBuf();
     __aicore__ inline void InitWorkspace(__gm__ uint8_t *workspace);
     __aicore__ inline int32_t GetS2SparseLen(int32_t s1Idx, int32_t actualSeqLensQ, int32_t actualSeqLensK,
         int32_t cmpResidualK, int64_t cmpRatio, DLISparseMode sparseMode);
-    __aicore__ inline void SetRunInfo(DLIKGradRunInfo &runInfo, int64_t taskId, int64_t sTaskId);
-    __aicore__ inline void SetRunInfoP(DLIKGradRunInfo &runInfo);
-    __aicore__ inline void SetSYRunInfo(DLIKGradKRunInfo &kRunInfo, DLIKGradRunInfo &runInfo, int64_t s2TaskId);
-    __aicore__ inline void SetPRunInfo(DLIKGradKRunInfo &kRunInfo, DLIKGradRunInfo &runInfo, int64_t s2TaskId);
-    __aicore__ inline void SetSYSingleRunInfo(DLIKGradKRunInfo &kRunInfo, DLIKGradRunInfo &runInfo, int64_t s2TaskId,
-        int64_t taskId);
-    __aicore__ inline void SetPSingleRunInfo(DLIKGradKRunInfo &kRunInfo, DLIKGradRunInfo &runInfo, int64_t s2TaskId,
-        int64_t taskId);
+    __aicore__ inline void SetRunInfo(DLIKGradRunInfo &runInfo, int64_t taskId, int64_t sTaskId,
+                                    int64_t deterTaskId);
+    __aicore__ inline void SetDeterRunInfo(DLIKGradRunInfo &runInfo, int64_t taskId, int64_t sTaskId,
+                                            int64_t deterTaskId, int64_t s2BlockOffset);
     __aicore__ inline void SetConstInfo();
     __aicore__ inline int32_t GetCmpResidualK(int32_t bIdx, int32_t defaultLens);
     __aicore__ inline void GetTndSeqLen(const int64_t t1Idx, int64_t &bIdx);
@@ -74,6 +68,7 @@ public:
     GlobalTensor<OUT_T> dqGm;
     GlobalTensor<OUT_T> dkGm;
     GlobalTensor<T> bmm3Res;
+    GlobalTensor<T> deterRes;
     // CV间共享buffer
     TBuf<> mm12ResBuf[3]; // UB上3buffer
     TBuf<> mm3ResBuf;
@@ -108,6 +103,8 @@ public:
     int64_t s1Index = 0;
     int64_t t1Index = 0;
     int64_t t2Index = 0;
+    int64_t maxSeqKV = 0;
+    int64_t s2BlockOffset;
 
     uint32_t qPreBlockFactor;
     uint32_t qPreBlockTotal;
@@ -161,111 +158,14 @@ __aicore__ inline void DenseLightningIndexerKLLossGradKernelBase<CubeBlockType, 
         // InitVecOP
         vecBlock.InitParams(constInfo, tilingData);
         vecBlock.InitGlobalBuffer(key, weight, softmaxLse, attnSoftmaxL1, dKey, dWeight, softmaxOut,
-            reduceSumRes, cuSeqlensQ, cuSeqlensK, sequsedQ, sequsedK, cmpResidualK);
+            reduceSumRes, cuSeqlensQ, cuSeqlensK, sequsedQ, sequsedK, cmpResidualK, deterRes, bmm3Res);
         vecBlock.InitBuffers(pipe);
     } else if ASCEND_IS_AIC {
         // initCubeOP
         cubeBlock.SetCubeBlockParams(tPipe, &l1BufferManager);
         cubeBlock.InitCubeBuffers();
-        cubeBlock.InitGlobalBuffer(query, dQuery, key, dKey, bmm3Res);
+        cubeBlock.InitGlobalBuffer(query, dQuery, key, dKey, bmm3Res, deterRes);
     }
-}
-
-template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void DenseLightningIndexerKLLossGradKernelBase<CubeBlockType, VecBlockType>::ProcessSY(
-    DLIKGradRunInfo &runInfo, int64_t taskId, int64_t bIdx, int64_t s1Idx)
-{
-    // bool notLastLoop = true;
-    // DLIKGradKRunInfo kRunInfos[MODE_NUM_2];
-    // int64_t taskId = 0;
-    // if ASCEND_IS_AIV {
-    //     vecBlock.CopyInWeight(runInfo);
-    // }
-    // for (int32_t s2TaskId = 0; s2TaskId < runInfo.s2LoopTimes + 1; ++s2TaskId) {
-    //     DLIKGradKRunInfo &kRunInfoNeg0 = kRunInfos[s2TaskId % MODE_NUM_2];
-    //     DLIKGradKRunInfo &kRunInfoNeg1 = kRunInfos[(s2TaskId + 1) % MODE_NUM_2];
-    //     if (s2TaskId == runInfo.s2LoopTimes) {
-    //         notLastLoop = false;
-    //     }
-    //     if (s2TaskId >= 0 && notLastLoop) {
-    //         SetSYRunInfo(kRunInfoNeg0, runInfo, s2TaskId);
-    //         // if ASCEND_IS_AIV {
-    //         //     for (int32_t s2InnerIdx = 0; s2InnerIdx < kRunInfoNeg0.s2SingleLoopTimes; ++s2InnerIdx) {
-    //         //         SetSYSingleRunInfo(kRunInfoNeg0, runInfo, s2TaskId, s2InnerIdx);
-    //         //         vecBlock.ProcessVector0(this->sYL1Buf.Get(), runInfo, kRunInfoNeg0);
-    //         //     }
-    //         // }
-    //         if ASCEND_IS_AIC {
-    //             cubeBlock.ComputeMmSy(this->bmm1Buffers.Get(), sYL1Buf, runInfo, constInfo, kRunInfoNeg0);
-    //         }
-    //     }
-
-    //     if (s2TaskId >= 1) {
-    //         if ASCEND_IS_AIV {
-    //             Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> bmm1Res = this->bmm1Buffers.Get();
-    //             for (int32_t s2InnerIdx = 0; s2InnerIdx < kRunInfoNeg1.s2SingleLoopTimes; ++s2InnerIdx) {
-    //                 SetSYSingleRunInfo(kRunInfoNeg1, runInfo, s2TaskId - 1, s2InnerIdx);
-    //                 vecBlock.ProcessVector1(bmm1Res, runInfo, kRunInfoNeg1);
-    //             }
-    //         }
-    //     }
-    // }
-    // if ASCEND_IS_AIV {
-    //     vecBlock.ProcessVector2(this->bmm1Buffers.GetPre(), runInfo);
-    // }
-}
-
-template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void DenseLightningIndexerKLLossGradKernelBase<CubeBlockType, VecBlockType>::ProcessP(
-    DLIKGradRunInfo &runInfo, int64_t taskId, int64_t bIdx, int64_t s1Idx)
-{
-    // bool notLastLoop = true;
-    // bool notLastSecondLoop = true;
-    // bool notSecondLast = true;
-    // DLIKGradKRunInfo kRunInfos[MODE_NUM_3];
-    // bool isFixOut = false;
-    // for (int32_t s2TaskId = 0; s2TaskId < runInfo.s2LoopTimes + 2; ++s2TaskId) {
-    //     DLIKGradKRunInfo &kRunInfoNeg0 = kRunInfos[s2TaskId % MODE_NUM_3];
-    //     DLIKGradKRunInfo &kRunInfoNeg2 = kRunInfos[(s2TaskId + 1) % MODE_NUM_3];
-    //     DLIKGradKRunInfo &kRunInfoNeg1 = kRunInfos[(s2TaskId + 2) % MODE_NUM_3];
-    //     if (s2TaskId == runInfo.s2LoopTimes + 1) {
-    //         notLastLoop = false;
-    //     } else if (s2TaskId == runInfo.s2LoopTimes) {
-    //         notSecondLast = false;
-    //     }
-    //     notLastSecondLoop = notLastLoop && notSecondLast;
-    //     if (s2TaskId >= 0 && notLastSecondLoop) {
-    //         SetPRunInfo(kRunInfoNeg0, runInfo, s2TaskId);
-    //         if ASCEND_IS_AIV {
-    //             for (int32_t s2InnerIdx = 0; s2InnerIdx < kRunInfoNeg0.s2SingleLoopTimes; ++s2InnerIdx) {
-    //                 SetPSingleRunInfo(kRunInfoNeg0, runInfo, s2TaskId, s2InnerIdx);
-    //             }
-    //         }
-    //     }
-    //     if (s2TaskId >= 1 && notLastLoop) {
-    //         if ASCEND_IS_AIV {
-    //             for (int32_t s2InnerIdx = 0; s2InnerIdx < kRunInfoNeg1.s2SingleLoopTimes; ++s2InnerIdx) {
-    //                 SetPSingleRunInfo(kRunInfoNeg1, runInfo, s2TaskId - 1, s2InnerIdx);
-    //                 vecBlock.ProcessVector6(this->reluGradResL1Buf.Get(), runInfo, kRunInfoNeg1);
-    //             }
-    //         }
-    //     }
-    //     if (s2TaskId >= 2) {
-    //         if ASCEND_IS_AIC {
-    //             isFixOut = !notLastLoop;
-    //             cubeBlock.ComputeMm3(bmm3Buffer, this->reluGradResL1Buf.Get(), runInfo, constInfo, kRunInfoNeg2);
-    //             cubeBlock.ComputeMm4(reluGradResL1Buf.GetPre(), runInfo, constInfo, kRunInfoNeg2, isFixOut);
-    //         }
-    //         if ASCEND_IS_AIV {
-    //             if constexpr (!Deterministic) {
-    //                 for (int32_t s2InnerIdx = 0; s2InnerIdx < kRunInfoNeg2.s2SingleLoopTimes; ++s2InnerIdx) {
-    //                     SetPSingleRunInfo(kRunInfoNeg2, runInfo, s2TaskId - 2, s2InnerIdx);
-    //                     vecBlock.ProcessVector7(this->bmm3Buffer.Get(), runInfo, kRunInfoNeg2);
-    //                 }
-    //             }
-    //         }
-    //     }
-    // }
 }
 
 template <typename CubeBlockType, typename VecBlockType>
@@ -343,7 +243,7 @@ template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void DenseLightningIndexerKLLossGradKernelBase<CubeBlockType, VecBlockType>::Process()
 {
     if constexpr (Deterministic) {
-        // ProcessDeter();
+        ProcessDeter();
     } else {
         ProcessNormal();
     }
@@ -369,7 +269,7 @@ __aicore__ inline void DenseLightningIndexerKLLossGradKernelBase<CubeBlockType, 
             DLIKGradRunInfo &runInfoNeg0 = runInfo[s2TaskId % MODE_NUM_3];
             DLIKGradRunInfo &runInfoNeg2 = runInfo[(s2TaskId + 1) % MODE_NUM_3];
             DLIKGradRunInfo &runInfoNeg1 = runInfo[(s2TaskId + 2) % MODE_NUM_3];
-            SetRunInfo(runInfoNeg0, s2TaskId, sTaskId);
+            SetRunInfo(runInfoNeg0, s2TaskId, sTaskId, 0);
             if (s2Offset == 0){
                 if ASCEND_IS_AIV {
                     vecBlock.CopyInWeight(runInfoNeg0);
@@ -432,67 +332,157 @@ __aicore__ inline void DenseLightningIndexerKLLossGradKernelBase<CubeBlockType, 
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void DenseLightningIndexerKLLossGradKernelBase<CubeBlockType, VecBlockType>::ProcessDeter()
 {
-    // int64_t taskId = 0;
-    // DLIKGradRunInfo runInfo;
-    // for (int32_t i = 0; i < processBS1ByCore; i++) {
-    //     this->usedT1Index = this->cBlockIdx + this->usedCoreNum * i;
-    //     GetTndSeqLen(usedT1Index, bIndex);
-    //     SetRunInfo(runInfo, taskId);
-    //     if (runInfo.s2LoopTimes == 0) {
-    //         if ASCEND_IS_AIC {
-    //             CrossCoreWaitFlag<2, PIPE_FIX>(SYNC_V7_TO_C3_FLAG[runInfo.taskIdMod2]);
-    //             CrossCoreSetFlag<2, PIPE_FIX>(SYNC_C3_TO_V7_FLAG[runInfo.taskIdMod2]);
-    //         }
-    //         vecBlock.ProcessVector7Deter(runInfo, this->bmm3Buffer.Get());
-    //         CrossCoreSetFlag<2, PIPE_MTE3>(SYNC_V7_TO_C3_FLAG[runInfo.taskIdMod2]);
-    //         taskId++;
-    //         continue;
-    //     }
-    //     if ASCEND_IS_AIV {
-    //         CrossCoreWaitFlag<2, PIPE_MTE3>(SYNC_V6_TO_RELU_FLAG);
-    //     }
-    //     ProcessSY(runInfo, taskId, bIndex, s1Index);
-    //     if ASCEND_IS_AIV {
-    //         // CrossCoreWaitFlag<2, PIPE_MTE2>(SYNC_RELU_TO_V6_FLAG);
-    //         CrossCoreSetFlag<2, PIPE_MTE3>(SYNC_ST_TO_P_FLAG);
-    //     } else {
-    //         // CrossCoreSetFlag<2, PIPE_FIX>(SYNC_RELU_TO_V6_FLAG);
-    //         CrossCoreWaitFlag<2, PIPE_MTE2>(SYNC_ST_TO_P_FLAG);
-    //     }
-    //     SetRunInfoP(runInfo);
-    //     if ASCEND_IS_AIC {
-    //         CrossCoreWaitFlag<2, PIPE_FIX>(SYNC_V7_TO_C3_FLAG[runInfo.taskIdMod2]);
-    //     }
-    //     ProcessP(runInfo, taskId, bIndex, s1Index);
-    //     if ASCEND_IS_AIC {
-    //         CrossCoreSetFlag<2, PIPE_MTE1>(SYNC_V6_TO_RELU_FLAG);
-    //         CrossCoreSetFlag<2, PIPE_FIX>(SYNC_C3_TO_V7_FLAG[runInfo.taskIdMod2]);
-    //     }
-    //     if ASCEND_IS_AIV {
-    //         vecBlock.ProcessVector7Deter(runInfo, this->bmm3Buffer.Get());
-    //         CrossCoreSetFlag<2, PIPE_MTE3>(SYNC_V7_TO_C3_FLAG[runInfo.taskIdMod2]);
-    //     }
-    //     taskId++;
-    // }
-    // if (processBS1ByCore < constInfo.formerCoreProcessNNum) {
-    //     if ASCEND_IS_AIC {
-    //         CrossCoreWaitFlag<2, PIPE_FIX>(SYNC_V7_TO_C3_FLAG[runInfo.taskIdMod2]);
-    //         CrossCoreSetFlag<MODE_NUM_2, PIPE_FIX>(SYNC_C3_TO_V7_FLAG[taskId & 1]); // 额外空同步确保每个核处理+1轮
-    //     }
-    //     if ASCEND_IS_AIV {
-    //         DLIKGradRunInfo runInfoExtra;
-    //         runInfoExtra.taskId = taskId;
-    //         runInfoExtra.taskIdMod2 = taskId & 1;
-    //         vecBlock.ProcessVector7Deter(runInfoExtra, this->bmm3Buffer.Get());
-    //         CrossCoreSetFlag<2, PIPE_MTE3>(SYNC_V7_TO_C3_FLAG[runInfo.taskIdMod2]);
-    //     }
-    // }
-    // SyncAll<false>();
-    // if ASCEND_IS_AIV {
-    //     vecBlock.ReInitBuffers(pipe);
-    //     vecBlock.ProcessVector8();
-    // }
-    // FreeBuf();
+    int64_t sTaskId = 0;
+    int64_t s2TaskId = 0;
+    int64_t deterTaskId = 0;
+    DLIKGradRunInfo runInfo[MODE_NUM_3];
+    DLIKGradRunInfo deterRunInfo[MODE_NUM_3];
+    DLIKGradRunInfo deterInfo;
+    for (int32_t i = 0; i < processBS1ByCore; i++) {
+        this->usedT1Index = this->cBlockIdx + this->usedCoreNum * i;
+        GetTndSeqLen(usedT1Index, bIndex);
+        DLIKGradKRunInfo kRunInfos[MODE_NUM_3];
+        if (currentS2Size <= 0) {
+            continue;
+        }
+        for (this->s2BlockOffset = 0; this->s2BlockOffset < constInfo.maxSeqKV;
+             this->s2BlockOffset += PROCESS_KV_SIZE) {
+            int64_t blockSize = this->s2BlockOffset;
+            int64_t processSize = this->currentS2Size - this->s2BlockOffset > PROCESS_KV_SIZE ?
+                                    PROCESS_KV_SIZE :
+                                    this->currentS2Size - this->s2BlockOffset;
+            processSize = Max(processSize, 0);
+            for (this->s2Offset = blockSize; this->s2Offset < blockSize + processSize;
+                 this->s2Offset += VEC_SY_BASESIZE) {
+                DLIKGradRunInfo &runInfoNeg0 = runInfo[s2TaskId % MODE_NUM_3];
+                DLIKGradRunInfo &runInfoNeg2 = runInfo[(s2TaskId + 1) % MODE_NUM_3];
+                DLIKGradRunInfo &runInfoNeg1 = runInfo[(s2TaskId + 2) % MODE_NUM_3];
+                SetRunInfo(runInfoNeg0, s2TaskId, sTaskId, deterTaskId);
+                if (s2Offset == 0){
+                    if ASCEND_IS_AIV {
+                        vecBlock.CopyInWeight(runInfoNeg0);
+                        vecBlock.ProcessSoftmaxReduceSum(runInfoNeg0);
+                    }
+                }
+                if (s2TaskId >= 0) {
+                    if ASCEND_IS_AIC {
+                        cubeBlock.ComputeMmSy(this->bmm1Buffers.Get(), sYL1Buf, runInfoNeg0, constInfo);
+                    }
+                    runInfoNeg0.taskStep = TASK_C1;
+                }
+                if (s2TaskId >= 1) {
+                    if ASCEND_IS_AIV {
+                        Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> bmm1Res = this->bmm1Buffers.Get();
+                        vecBlock.ProcessVector1(bmm1Res, runInfoNeg1);
+                        vecBlock.ProcessVector6(bmm1Res, this->reluGradResL1Buf.Get(), runInfoNeg1);
+                    }
+                    runInfoNeg1.taskStep = TASK_V1;
+                }
+                if (s2TaskId >= 2) {
+                    if ASCEND_IS_AIC {
+                        cubeBlock.ComputeMm3(bmm3Buffer, this->reluGradResL1Buf.Get(), runInfoNeg2, constInfo);
+                        cubeBlock.ComputeMm4(reluGradResL1Buf.GetPre(), runInfoNeg2, constInfo, runInfoNeg2.isLastBlock);
+                    }
+                }
+                s2TaskId++;
+            }
+            SetDeterRunInfo(deterRunInfo[deterTaskId % 3], s2TaskId, sTaskId, deterTaskId,
+                            this->s2BlockOffset);
+            if (deterTaskId >= 2) {
+                deterInfo = deterRunInfo[(deterTaskId + 1) % 3];
+                if ASCEND_IS_AIC {
+                    CrossCoreWaitFlag<2, PIPE_FIX>(DETER_TO_FIX_SYNC_FLAG[deterInfo.deterTaskIdMod3]);
+                    CrossCoreSetFlag<0, PIPE_FIX>(SCATTER_CUBE_SYNC_FLAG);
+                    CrossCoreWaitFlag<0, PIPE_FIX>(SCATTER_CUBE_SYNC_FLAG);
+                    CrossCoreSetFlag<2, PIPE_FIX>(SYNC_C3_TO_V7_FLAG);
+                } else {
+                    CrossCoreWaitFlag<2, PIPE_MTE2>(SYNC_C3_TO_V7_FLAG);
+                    vecBlock.ProcessVector7Deter(deterInfo);
+                    CrossCoreSetFlag<2, PIPE_MTE3>(DETER_TO_FIX_SYNC_FLAG[deterInfo.deterTaskIdMod3]);
+
+                }
+            }
+            deterTaskId++;
+        }
+        sTaskId++;
+    }
+    if (runInfo[(s2TaskId + 2) % MODE_NUM_3].taskStep == TASK_C1) {
+        if ASCEND_IS_AIV {
+            Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> bmm1Res = this->bmm1Buffers.Get();
+            vecBlock.ProcessVector1(bmm1Res, runInfo[(s2TaskId + 2) % MODE_NUM_3]);
+            vecBlock.ProcessVector6(bmm1Res, this->reluGradResL1Buf.Get(), runInfo[(s2TaskId + 2) % MODE_NUM_3]);
+        }
+        runInfo[(s2TaskId + 2) % MODE_NUM_3].taskStep = TASK_V1;
+    }
+    if (runInfo[(s2TaskId + 1) % MODE_NUM_3].taskStep == TASK_V1) {
+        if ASCEND_IS_AIC {
+            cubeBlock.ComputeMm3(bmm3Buffer, this->reluGradResL1Buf.Get(),
+                runInfo[(s2TaskId + 1) % MODE_NUM_3], constInfo);
+            cubeBlock.ComputeMm4(reluGradResL1Buf.GetPre(), runInfo[(s2TaskId + 1) % MODE_NUM_3],
+                constInfo, runInfo[(s2TaskId + 1) % MODE_NUM_3].isLastBlock);
+        }
+    }
+    s2TaskId++;
+    if (deterTaskId >= 2) {
+        deterInfo = deterRunInfo[(deterTaskId + 1) % 3];
+        if ASCEND_IS_AIC {
+            CrossCoreWaitFlag<2, PIPE_FIX>(DETER_TO_FIX_SYNC_FLAG[deterInfo.deterTaskIdMod3]);
+            CrossCoreSetFlag<0, PIPE_FIX>(SCATTER_CUBE_SYNC_FLAG);
+            CrossCoreWaitFlag<0, PIPE_FIX>(SCATTER_CUBE_SYNC_FLAG);
+            CrossCoreSetFlag<2, PIPE_FIX>(SYNC_C3_TO_V7_FLAG);
+        }else {
+            CrossCoreWaitFlag<2, PIPE_MTE2>(SYNC_C3_TO_V7_FLAG);
+            vecBlock.ProcessVector7Deter(deterInfo);
+            CrossCoreSetFlag<2, PIPE_MTE3>(DETER_TO_FIX_SYNC_FLAG[deterInfo.deterTaskIdMod3]);
+        }
+    }
+    deterTaskId++;
+    if (runInfo[(s2TaskId + 1) % MODE_NUM_3].taskStep == TASK_V1) {
+        if ASCEND_IS_AIC {
+            cubeBlock.ComputeMm3(bmm3Buffer, this->reluGradResL1Buf.Get(),
+                runInfo[(s2TaskId + 1) % MODE_NUM_3], constInfo);
+            cubeBlock.ComputeMm4(reluGradResL1Buf.GetPre(), runInfo[(s2TaskId + 1) % MODE_NUM_3],
+                constInfo, runInfo[(s2TaskId + 1) % MODE_NUM_3].isLastBlock);
+        }
+    }
+    if (deterTaskId >= 2) {
+        deterInfo = deterRunInfo[(deterTaskId + 1) % 3];
+        if ASCEND_IS_AIC {
+            CrossCoreWaitFlag<2, PIPE_FIX>(DETER_TO_FIX_SYNC_FLAG[deterInfo.deterTaskIdMod3]);
+            CrossCoreSetFlag<0, PIPE_FIX>(SCATTER_CUBE_SYNC_FLAG);
+            CrossCoreWaitFlag<0, PIPE_FIX>(SCATTER_CUBE_SYNC_FLAG);
+            CrossCoreSetFlag<2, PIPE_FIX>(SYNC_C3_TO_V7_FLAG);
+        }else {
+            CrossCoreWaitFlag<2, PIPE_MTE2>(SYNC_C3_TO_V7_FLAG);
+            vecBlock.ProcessVector7Deter(deterInfo);
+            CrossCoreSetFlag<2, PIPE_MTE3>(DETER_TO_FIX_SYNC_FLAG[deterInfo.deterTaskIdMod3]);
+        }
+    }
+    deterTaskId++;
+    if (this->processBS1ByCore == 0) {
+        deterTaskId++;
+    }
+    if (this->processBS1ByCore < constInfo.formerCoreProcessNNum) {
+        for (this->s2BlockOffset = 0; this->s2BlockOffset < constInfo.maxSeqKV;
+             this->s2BlockOffset += PROCESS_KV_SIZE) {
+            SetDeterRunInfo(deterRunInfo[(deterTaskId + 1) % 3], s2TaskId, sTaskId, deterTaskId,
+                            this->s2BlockOffset);
+            deterInfo = deterRunInfo[(deterTaskId + 1) % 3];
+            if ASCEND_IS_AIC {
+                CrossCoreWaitFlag<2, PIPE_FIX>(DETER_TO_FIX_SYNC_FLAG[deterInfo.deterTaskIdMod3]);
+                CrossCoreSetFlag<0, PIPE_FIX>(SCATTER_CUBE_SYNC_FLAG);
+                CrossCoreWaitFlag<0, PIPE_FIX>(SCATTER_CUBE_SYNC_FLAG);
+                CrossCoreSetFlag<2, PIPE_FIX>(SYNC_C3_TO_V7_FLAG);
+            }else {
+                CrossCoreWaitFlag<2, PIPE_MTE2>(SYNC_C3_TO_V7_FLAG);
+                vecBlock.ProcessVector7Deter(deterInfo);
+                CrossCoreSetFlag<2, PIPE_MTE3>(DETER_TO_FIX_SYNC_FLAG[deterInfo.deterTaskIdMod3]);
+            }
+            deterTaskId++;
+        }
+    }
+    SyncAll<false>();
+    FreeBuf();
 }
 
 template <typename CubeBlockType, typename VecBlockType>
@@ -514,14 +504,13 @@ __aicore__ inline int32_t DenseLightningIndexerKLLossGradKernelBase<CubeBlockTyp
 
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void DenseLightningIndexerKLLossGradKernelBase<CubeBlockType, VecBlockType>::SetRunInfo(
-    DLIKGradRunInfo &runInfo, int64_t taskId, int64_t sTaskId)
+    DLIKGradRunInfo &runInfo, int64_t taskId, int64_t sTaskId, int64_t deterTaskId)
 {
     runInfo.sTaskId = sTaskId;
     runInfo.sTaskIdMod3 = sTaskId % 3;
     runInfo.taskId = taskId;
     runInfo.taskIdMod2 = taskId & 1;
     runInfo.taskIdMod3 = taskId % 3;
-    // printf("runInfo.sTaskId : %d runInfo.sTaskIdMod3 : %d runInfo.taskId : %d runInfo.taskIdMod2 : %d runInfo.taskIdMod3 : %d\n",runInfo.sTaskId,runInfo.sTaskIdMod3,runInfo.taskId,runInfo.taskIdMod2,runInfo.taskIdMod3);
     runInfo.bIdx = bIndex;
     runInfo.t1Index = t1Index;
     runInfo.t2Index = t2Index;
@@ -544,15 +533,21 @@ __aicore__ inline void DenseLightningIndexerKLLossGradKernelBase<CubeBlockType, 
     runInfo.s2TailSize = (runInfo.s2RealSize % constInfo.syKBaseSize == 0) ?
         constInfo.syKBaseSize :
         (runInfo.s2RealSize % constInfo.syKBaseSize);
-    
     runInfo.s2BaseSize = VEC_SY_BASESIZE;
 
-    // runInfo.kLoopTimes = CeilDiv(runInfo.kRealSize, runInfo.kBaseSize);
-    // runInfo.kTailSize =
-    //     (runInfo.kRealSize % runInfo.kBaseSize == 0) ? runInfo.kBaseSize : (runInfo.kRealSize % runInfo.kBaseSize);
+    if constexpr(Deterministic) {
+        runInfo.deterTaskId = deterTaskId;
+        runInfo.deterTaskIdMod3 = deterTaskId % 3;
+        runInfo.s2BlockOffset = s2BlockOffset;
+        runInfo.deterResOffset = runInfo.deterTaskIdMod3 * PROCESS_KV_SIZE * constInfo.dSizeQueryIndex * coreNum +
+                                constInfo.aicIdx * PROCESS_KV_SIZE * constInfo.dSizeQueryIndex +
+                                (s2Offset - s2BlockOffset) * constInfo.dSizeQueryIndex;
+    } else {
+        runInfo.keyIndexTensorOffset = runInfo.t2Index * constInfo.n2Size * constInfo.dSizeQueryIndex +
+                                        runInfo.s2Offset * constInfo.dSizeQueryIndex;
+    }
 
     runInfo.queryIndexTensorOffset = runInfo.t1Index * constInfo.gSizeQueryIndex * constInfo.dSizeQueryIndex;
-    runInfo.keyIndexTensorOffset = runInfo.t2Index * constInfo.n2Size * constInfo.dSizeQueryIndex + runInfo.s2Offset * constInfo.dSizeQueryIndex;
     runInfo.firstNIndexSize = AlignTo(constInfo.gSizeQueryIndex, ALIGN_NUM_2) / 2;
     if (constInfo.subBlockIdx == 0) {
         runInfo.nIndexSize = runInfo.firstNIndexSize;
@@ -570,72 +565,58 @@ __aicore__ inline void DenseLightningIndexerKLLossGradKernelBase<CubeBlockType, 
 }
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void DenseLightningIndexerKLLossGradKernelBase<CubeBlockType, VecBlockType>::SetRunInfoP(
-    DLIKGradRunInfo &runInfo)
+__aicore__ inline void DenseLightningIndexerKLLossGradKernelBase<CubeBlockType, VecBlockType>::SetDeterRunInfo(
+    DLIKGradRunInfo &runInfo, int64_t taskId, int64_t sTaskId, int64_t deterTaskId,
+    int64_t s2BlockOffset)
 {
-    runInfo.s2LoopTimes = CeilDiv(runInfo.s2RealSize, constInfo.pKBaseSize);
-    runInfo.s2TailSize = (runInfo.s2RealSize % constInfo.pKBaseSize == 0) ? constInfo.pKBaseSize :
-                                                                            (runInfo.s2RealSize % constInfo.pKBaseSize);
-    runInfo.s2BaseSize = VEC_P_BASESIZE;
-}
+    runInfo.s2BlockOffset = s2BlockOffset;
+    runInfo.sTaskId = sTaskId;
+    runInfo.sTaskIdMod3 = sTaskId % 3;
+    runInfo.taskId = taskId;
+    runInfo.taskIdMod2 = taskId & 1;
+    runInfo.taskIdMod3 = taskId % 3;
+    runInfo.deterTaskId = deterTaskId;
+    runInfo.deterTaskIdMod3 = deterTaskId % 3;
+    // runInfo.bIdx = bIndex;
+    // runInfo.t1Index = t1Index;
+    // runInfo.t2Index = t2Index;
+    // runInfo.s1Idx = s1Index;
+    // runInfo.actS1Size = usedS1;
+    // runInfo.actS2Size = usedS2;
+    // runInfo.accumS1Idx = runInfo.t1Index;
+    // runInfo.accumS2Idx = runInfo.t2Index;
+    // runInfo.taskStep = TASK_INIT;
+    runInfo.kBaseSize = 2048;
+    // runInfo.s2SparseLen = currentS2Size;
+    // runInfo.s2RealSize = currentS2Size;
+    // runInfo.kRealSize = currentS2Size;
+    runInfo.s2Offset = s2Offset;
+    runInfo.isLastBlock = s2Offset + VEC_SY_BASESIZE >= currentS2Size;
+    runInfo.kProcessSize = runInfo.s2RealSize - runInfo.s2Offset > 128 ? 128 : runInfo.s2RealSize - runInfo.s2Offset;
+    runInfo.isAlign64 = runInfo.kProcessSize % 64 == 0;
+    runInfo.kRealSizeAlign8 = (runInfo.kRealSize + 7) >> 3 << 3;
+    runInfo.s2LoopTimes = CeilDiv(runInfo.s2RealSize, constInfo.syKBaseSize);
+    runInfo.s2TailSize = (runInfo.s2RealSize % constInfo.syKBaseSize == 0) ?
+        constInfo.syKBaseSize :
+        (runInfo.s2RealSize % constInfo.syKBaseSize);
+    
+    runInfo.s2BaseSize = VEC_SY_BASESIZE;
 
-template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void DenseLightningIndexerKLLossGradKernelBase<CubeBlockType, VecBlockType>::SetSYRunInfo(
-    DLIKGradKRunInfo &kRunInfo, DLIKGradRunInfo &runInfo, int64_t s2TaskId)
-{
-    runInfo.s2TailSize =
-        (runInfo.s2RealSize % VEC_SY_BASESIZE == 0) ? VEC_SY_BASESIZE : (runInfo.s2RealSize % VEC_SY_BASESIZE);
-    kRunInfo.kTaskId = s2TaskId;
-    kRunInfo.kTaskIdMod2 = kRunInfo.kTaskId & 1;
-    kRunInfo.kTaskIdMod3 = kRunInfo.kTaskId & 2;
-    kRunInfo.kProcessSize = (kRunInfo.kTaskId == runInfo.s2LoopTimes - 1) ?
-        (runInfo.s2RealSize - (runInfo.s2LoopTimes - 1) * constInfo.syKBaseSize) :
-        constInfo.syKBaseSize;
-    kRunInfo.s2SingleLoopTimes = CeilDiv(kRunInfo.kProcessSize, VEC_SY_BASESIZE);
-    kRunInfo.dValue = constInfo.dSizeQueryIndex;
-}
+    runInfo.queryIndexTensorOffset = runInfo.t1Index * constInfo.gSizeQueryIndex * constInfo.dSizeQueryIndex;
+    runInfo.keyIndexTensorOffset = runInfo.t2Index * constInfo.n2Size * constInfo.dSizeQueryIndex + runInfo.s2Offset * constInfo.dSizeQueryIndex;
+    runInfo.firstNIndexSize = AlignTo(constInfo.gSizeQueryIndex, ALIGN_NUM_2) / 2;
+    if (constInfo.subBlockIdx == 0) {
+        runInfo.nIndexSize = runInfo.firstNIndexSize;
+        runInfo.nVecSize = AlignTo(constInfo.gSizeQuery, ALIGN_NUM_2) / 2;
+    } else {
+        runInfo.nIndexSize = constInfo.gSizeQueryIndex - runInfo.firstNIndexSize;
+        runInfo.nVecSize = constInfo.gSizeQuery - AlignTo(constInfo.gSizeQuery, ALIGN_NUM_2) / 2;
+    }
 
-template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void DenseLightningIndexerKLLossGradKernelBase<CubeBlockType, VecBlockType>::SetPRunInfo(
-    DLIKGradKRunInfo &kRunInfo, DLIKGradRunInfo &runInfo, int64_t s2TaskId)
-{
-    runInfo.s2TailSize =
-        (runInfo.s2RealSize % VEC_P_BASESIZE == 0) ? VEC_P_BASESIZE : (runInfo.s2RealSize % VEC_P_BASESIZE);
-    kRunInfo.kTaskId = s2TaskId;
-    kRunInfo.kTaskIdMod2 = kRunInfo.kTaskId & 1;
-    kRunInfo.kTaskIdMod3 = kRunInfo.kTaskId & 2;
-    kRunInfo.kProcessSize = (kRunInfo.kTaskId == runInfo.s2LoopTimes - 1) ?
-        (runInfo.s2RealSize - (runInfo.s2LoopTimes - 1) * constInfo.pKBaseSize) :
-        constInfo.pKBaseSize;
-    kRunInfo.s2SingleLoopTimes = CeilDiv(kRunInfo.kProcessSize, VEC_P_BASESIZE);
-    kRunInfo.dValue = constInfo.dSizeQuery;
-    kRunInfo.dRopeValue = constInfo.dSizeRope;
-}
-
-template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void DenseLightningIndexerKLLossGradKernelBase<CubeBlockType, VecBlockType>::SetSYSingleRunInfo(
-    DLIKGradKRunInfo &kRunInfo, DLIKGradRunInfo &runInfo, int64_t s2TaskId, int64_t taskId)
-{
-    kRunInfo.s2SingleIdx = taskId;
-    kRunInfo.s2Idx = s2TaskId * constInfo.syKBaseSize / VEC_SY_BASESIZE + kRunInfo.s2SingleIdx;
-    kRunInfo.isS2end = kRunInfo.s2SingleIdx >= kRunInfo.s2SingleLoopTimes - 1 && s2TaskId >= runInfo.s2LoopTimes - 1;
-    kRunInfo.s2RealBaseSize = kRunInfo.isS2end ? runInfo.s2TailSize : VEC_SY_BASESIZE;
-    runInfo.s2CurSize = s2TaskId * constInfo.syKBaseSize + kRunInfo.s2SingleIdx * VEC_SY_BASESIZE;
-    kRunInfo.s2SingleCurSize = kRunInfo.s2SingleIdx * VEC_SY_BASESIZE;
-    kRunInfo.isAlign64 = (!kRunInfo.isS2end) || (kRunInfo.isS2end && runInfo.s2TailSize % 64 == 0);
-}
-
-template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void DenseLightningIndexerKLLossGradKernelBase<CubeBlockType, VecBlockType>::SetPSingleRunInfo(
-    DLIKGradKRunInfo &kRunInfo, DLIKGradRunInfo &runInfo, int64_t s2TaskId, int64_t taskId)
-{
-    kRunInfo.s2SingleIdx = taskId;
-    kRunInfo.s2Idx = s2TaskId * constInfo.pKBaseSize / VEC_P_BASESIZE + kRunInfo.s2SingleIdx;
-    kRunInfo.isS2end = kRunInfo.s2SingleIdx >= kRunInfo.s2SingleLoopTimes - 1 && s2TaskId >= runInfo.s2LoopTimes - 1;
-    kRunInfo.s2RealBaseSize = kRunInfo.isS2end ? runInfo.s2TailSize : VEC_P_BASESIZE;
-    runInfo.s2CurSize = s2TaskId * constInfo.pKBaseSize + kRunInfo.s2SingleIdx * VEC_P_BASESIZE;
-    kRunInfo.s2SingleCurSize = kRunInfo.s2SingleIdx * VEC_P_BASESIZE;
-    kRunInfo.isAlign64 = (!kRunInfo.isS2end) || (kRunInfo.isS2end && runInfo.s2TailSize % 64 == 0);
+    runInfo.weightOffset =
+        runInfo.t1Index * constInfo.gSizeQueryIndex + runInfo.firstNIndexSize * constInfo.subBlockIdx;
+    runInfo.softmaxInputOffset =
+        runInfo.t1Index * constInfo.gSizeQuery + AlignTo(constInfo.gSizeQuery, ALIGN_NUM_2) * constInfo.subBlockIdx / 2;
 }
 
 template <typename CubeBlockType, typename VecBlockType>
@@ -652,7 +633,6 @@ __aicore__ inline void DenseLightningIndexerKLLossGradKernelBase<CubeBlockType, 
         cBlockIdx = constInfo.aicIdx;
     }
     coreNum = static_cast<int64_t>(GetBlockNum());
-    ;
     constInfo.totalSize = tilingData->multiCoreParams.totalSize;
     auto &baseInfo = tilingData->baseParams;
     constInfo.bSize = baseInfo.bSize;
@@ -683,6 +663,7 @@ __aicore__ inline void DenseLightningIndexerKLLossGradKernelBase<CubeBlockType, 
     constInfo.remainCoreProcessNNum = ((__gm__ uint32_t *)metadataGm)[2];
     constInfo.remainCoreNum = ((__gm__ uint32_t *)metadataGm)[3];
     constInfo.usedCoreNum = ((__gm__ uint32_t *)metadataGm)[4];
+    constInfo.maxSeqKV = ((__gm__ uint32_t *)metadataGm)[5];
     usedCoreNum = constInfo.usedCoreNum;
     int64_t totalCoreNum = static_cast<int64_t>(GetBlockNum());
     if (cBlockIdx >= constInfo.usedCoreNum) {
@@ -716,18 +697,16 @@ __aicore__ inline void DenseLightningIndexerKLLossGradKernelBase<CubeBlockType, 
         CrossCoreSetFlag<2, PIPE_V>(SYNC_MM2_TO_V1_FLAG[0]);
         CrossCoreSetFlag<2, PIPE_V>(SYNC_MM2_TO_V1_FLAG[1]);
         CrossCoreSetFlag<2, PIPE_V>(SYNC_MM2_TO_V1_FLAG[2]);
-        if constexpr (!Deterministic) {
-            // CrossCoreSetFlag<2, PIPE_MTE3>(SYNC_C3_TO_V7_FLAG[0]);
-            // CrossCoreSetFlag<2, PIPE_MTE3>(SYNC_C3_TO_V7_FLAG[1]);
+        if constexpr (Deterministic) {
+            CrossCoreSetFlag<2, PIPE_MTE3>(DETER_TO_FIX_SYNC_FLAG[0]);
+            CrossCoreSetFlag<2, PIPE_MTE3>(DETER_TO_FIX_SYNC_FLAG[1]);
+            CrossCoreSetFlag<2, PIPE_MTE3>(DETER_TO_FIX_SYNC_FLAG[2]);
         } else {
-            // CrossCoreSetFlag<2, PIPE_MTE3>(SYNC_V7_TO_C3_FLAG[0]);
-            // CrossCoreSetFlag<2, PIPE_MTE3>(SYNC_V7_TO_C3_FLAG[1]);
         }
     } else if ASCEND_IS_AIC {
         CrossCoreSetFlag<2, PIPE_MTE1>(SYNC_V6_TO_C3_FLAG[0]);
         CrossCoreSetFlag<2, PIPE_MTE1>(SYNC_V6_TO_C3_FLAG[1]);
         CrossCoreSetFlag<2, PIPE_MTE1>(SYNC_V6_TO_C3_FLAG[2]);
-        // CrossCoreSetFlag<2, PIPE_MTE1>(SYNC_V6_TO_RELU_FLAG);
     }
 }
 
@@ -738,17 +717,15 @@ __aicore__ inline void DenseLightningIndexerKLLossGradKernelBase<CubeBlockType, 
         CrossCoreWaitFlag<2, PIPE_MTE3>(SYNC_V6_TO_C3_FLAG[0]);
         CrossCoreWaitFlag<2, PIPE_MTE3>(SYNC_V6_TO_C3_FLAG[1]);
         CrossCoreWaitFlag<2, PIPE_MTE3>(SYNC_V6_TO_C3_FLAG[2]);
-        // CrossCoreWaitFlag<2, PIPE_MTE3>(SYNC_V6_TO_RELU_FLAG);
     } else if ASCEND_IS_AIC {
         CrossCoreWaitFlag<2, PIPE_FIX>(SYNC_MM2_TO_V1_FLAG[0]);
         CrossCoreWaitFlag<2, PIPE_FIX>(SYNC_MM2_TO_V1_FLAG[1]);
         CrossCoreWaitFlag<2, PIPE_FIX>(SYNC_MM2_TO_V1_FLAG[2]);
-        if constexpr (!Deterministic) {
-            // CrossCoreWaitFlag<2, PIPE_FIX>(SYNC_C3_TO_V7_FLAG[0]);
-            // CrossCoreWaitFlag<2, PIPE_FIX>(SYNC_C3_TO_V7_FLAG[1]);
+        if constexpr (Deterministic) {
+            CrossCoreWaitFlag<2, PIPE_FIX>(DETER_TO_FIX_SYNC_FLAG[0]);
+            CrossCoreWaitFlag<2, PIPE_FIX>(DETER_TO_FIX_SYNC_FLAG[1]);
+            CrossCoreWaitFlag<2, PIPE_FIX>(DETER_TO_FIX_SYNC_FLAG[2]);
         } else {
-            // CrossCoreWaitFlag<2, PIPE_FIX>(SYNC_V7_TO_C3_FLAG[0]);
-            // CrossCoreWaitFlag<2, PIPE_FIX>(SYNC_V7_TO_C3_FLAG[1]);
         }
     }
 }
@@ -757,12 +734,12 @@ __aicore__ inline void DenseLightningIndexerKLLossGradKernelBase<CubeBlockType, 
     __gm__ uint8_t *workspace)
 {
     int64_t reduceSumOffset = 3 * VEC_SY_BASESIZE * sizeof(float) * 2;
-    // int64_t reluOffset = constInfo.gSizeQueryIndex * constInfo.kSizeAlign128 * sizeof(float);
-    // int64_t gatherSYOffset = constInfo.kSizeAlign128 * constInfo.dSizeQueryIndex * sizeof(INPUT_T);
-    // int64_t bmm3Offset = constInfo.kSize * constInfo.dSizeQueryIndex * sizeof(float) * 2;
-    int64_t coreTotalOffset = constInfo.aicIdx * (reduceSumOffset);
-    int64_t totalOffset = GetBlockNum() * (reduceSumOffset);
-    totalOffset = GetBlockNum() * (reduceSumOffset);
+    int64_t deterResOffset = 0;
+    if constexpr (Deterministic) {
+        deterResOffset = 3 * PROCESS_KV_SIZE * constInfo.dSizeQueryIndex * sizeof(float);
+    }
+    int64_t coreTotalOffset = constInfo.aicIdx * reduceSumOffset;
+    int64_t totalOffset = GetBlockNum() * reduceSumOffset;
     uint64_t offset = 0;
 
     if constexpr (Layout_Q == DLILayout::TND) {
@@ -770,37 +747,15 @@ __aicore__ inline void DenseLightningIndexerKLLossGradKernelBase<CubeBlockType, 
     } else if constexpr (Layout_Q == DLILayout::BSND) {
         constInfo.totalCost = constInfo.bSize * constInfo.s2Size;
     }
-    // int64_t scatterAddResOffset = constInfo.totalCost * constInfo.dSizeQueryIndex * sizeof(float);
-
     reduceSumRes.SetGlobalBuffer((__gm__ T *)(workspace + offset + coreTotalOffset));
     offset += reduceSumOffset;
+    if constexpr (Deterministic) {
+        deterRes.SetGlobalBuffer((__gm__ T *)(workspace + totalOffset));
+        totalOffset +=  GetBlockNum() * deterResOffset;
+    }
     bmm3Res.SetGlobalBuffer((__gm__ T *)(workspace + totalOffset));
-    // reluRes.SetGlobalBuffer((__gm__ T *)(workspace + offset + coreTotalOffset));
-    // offset += reluOffset;
-    // gatherSYRes.SetGlobalBuffer((__gm__ INPUT_T *)(workspace + offset + coreTotalOffset));
-    // offset += gatherSYOffset;
-    // if constexpr (Deterministic) {
-    //     totalOffset += scatterAddResOffset;
-    //     scatterAddResPong.SetGlobalBuffer((__gm__ T *)(workspace + totalOffset));
-    //     totalOffset += scatterAddResOffset;
-    //     bmm3Res.SetGlobalBuffer((__gm__ T *)(workspace + totalOffset));
-    // }
 
     if ASCEND_IS_AIV {
-        // int64_t totalCost = constInfo.totalCost;
-        // int64_t totalCoreNum = GetBlockNum() * GetTaskRation();
-        // int64_t coreNum_ = GetBlockNum();
-        // int64_t taskRation = GetTaskRation();
-        // int64_t avgCost = CeilDiv(totalCost, totalCoreNum);
-        // int32_t t2Start = Min(constInfo.aivIdx * avgCost, totalCost);
-        // int32_t t2End = Min(t2Start + avgCost, totalCost);
-        // GlobalTensor<T> sccatterAddTensor = scatterAddResGm[t2Start * constInfo.dSizeQueryIndex];
-        // AscendC::Fill(sccatterAddTensor, constInfo.dSizeQueryIndex * (t2End - t2Start), static_cast<T>(0));
-        // if constexpr (Deterministic) {
-        //     GlobalTensor<T> sccatterAddTensorPong = scatterAddResPong[t2Start * constInfo.dSizeQueryIndex];
-        //     AscendC::Fill(sccatterAddTensorPong, constInfo.dSizeQueryIndex * (t2End - t2Start), static_cast<T>(0));
-        // }
-
         qPreBlockFactor = tilingData->multiCoreParams.qPreBlockFactor;
         qPreBlockTotal = tilingData->multiCoreParams.qPreBlockTotal;
         qPreBlockTail = tilingData->multiCoreParams.qPreBlockTail;

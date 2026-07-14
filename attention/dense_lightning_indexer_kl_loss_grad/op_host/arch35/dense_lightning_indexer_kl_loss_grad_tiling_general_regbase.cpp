@@ -264,7 +264,6 @@ bool DenseLightningIndexerKLLossGradTilingGeneralRegbase::AnalyzeAttrs()
     sparseMode = *sparseModePtr;
     cmpRatio = *cmpRatioPtr;
     deterministic = (context_->GetDeterministic() == 1);
-    deterministic = 0;
     OP_CHECK_IF(strcmp(layoutQuery, "TND") != 0 && strcmp(layoutQuery, "BSND") != 0,
         OP_LOGE(opName, "Layout only support TND or BSND, now layout is %s.", layoutQuery), return false);
     OP_CHECK_IF(strcmp(layoutKey, "TND") != 0 && strcmp(layoutKey, "BSND") != 0,
@@ -1089,7 +1088,7 @@ ge::graphStatus DenseLightningIndexerKLLossGradTilingGeneralRegbase::GetWorkspac
 {
     int64_t coreNum = dlikGradMultiCoreParams_->get_coreNum();
     size_t *workspaces = context_->GetWorkspaceSizes(1);
-
+    int64_t s2BlockSize = 4096;
     int64_t bmm3Size = dlikGradBaseParams_->get_bSize() * dlikGradBaseParams_->get_n2Size() *
         dlikGradBaseParams_->get_s2Size() * dSizeQueryIndex * sizeof(float);
     // TND时候要按照真实的query的num数计算
@@ -1097,6 +1096,7 @@ ge::graphStatus DenseLightningIndexerKLLossGradTilingGeneralRegbase::GetWorkspac
         bmm3Size = dlikGradBaseParams_->get_t2Size() * dlikGradBaseParams_->get_n2Size() *
             dSizeQueryIndex * sizeof(float);
     }
+    int64_t bmm3WorkSpace = s2BlockSize * dlikGradBaseParams_->get_n2Size() * dSizeQueryIndex * sizeof(float);
     // int32_t kSizeAlign128 = (kSize + 127) >> 7 << 7;
     int64_t reduceSumOffset = BLOCK_SIZE * sizeof(float) * 2;
     // int64_t reluOffset = gSizeQueryIndex * kSizeAlign128 * sizeof(float);
@@ -1112,13 +1112,9 @@ ge::graphStatus DenseLightningIndexerKLLossGradTilingGeneralRegbase::GetWorkspac
     int64_t singlecoreTotalSize = THREE_BUFFER_VALUE * reduceSumOffset;
     int64_t multicoreTotalsize = 0;
     if (deterministic) {
-        multicoreTotalsize =
-            (singlecoreTotalSize + bmm3Size) * static_cast<int64_t>(coreNum) +
-            scatterAddOutSize * 2;
-    } else {
-        multicoreTotalsize =
-            singlecoreTotalSize * static_cast<int64_t>(coreNum) + bmm3Size;
+        singlecoreTotalSize = singlecoreTotalSize + THREE_BUFFER_VALUE * bmm3WorkSpace;
     }
+    multicoreTotalsize = singlecoreTotalSize * static_cast<int64_t>(coreNum) + bmm3Size;
     int64_t workspaceOffsets = singlecoreTotalSize * coreNum;
     dlikGradBaseParams_->set_mm3ResWorkSpaceOffset(workspaceOffsets);
     workspaces[0] = static_cast<size_t>(multicoreTotalsize) + WORK_SPACE_RESERVE_SIZE; // 预留16M空间必须加;

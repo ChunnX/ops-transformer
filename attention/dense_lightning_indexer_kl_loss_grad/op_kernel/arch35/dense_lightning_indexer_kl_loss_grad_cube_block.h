@@ -52,7 +52,7 @@ public:
     GlobalTensor<INPUT_T> gatherSYResGm;
     GlobalTensor<OUT_T> mm4ResGm;
     GlobalTensor<OUT_T> mm3ResGm;
-    GlobalTensor<T> mm3DeterResGm;
+    GlobalTensor<T> deterRes;
     GlobalTensor<T> bmm3Res;
     /* =====================LocalBuffer变量==================== */
 
@@ -75,7 +75,8 @@ public:
     __aicore__ inline DlikgBlockCube(){};
     __aicore__ inline void SetCubeBlockParams(TPipe *tPipe, BufferManager<BufferType::L1> *l1BuffMgr);
     __aicore__ inline void InitCubeBuffers();
-    __aicore__ inline void InitGlobalBuffer(GM_ADDR query, GM_ADDR dQuery, GM_ADDR key, GM_ADDR dKey, GlobalTensor<T> bmm3Res);
+    __aicore__ inline void InitGlobalBuffer(GM_ADDR query, GM_ADDR dQuery, GM_ADDR key, GM_ADDR dKey,
+                                            GlobalTensor<T> bmm3Res, GlobalTensor<T> deterRes);
     __aicore__ inline void ComputeMmSy(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm2ResBuf,
         BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_BOTH> &sYL1Buf, DLIKGradRunInfo &runInfo,
         DLIKGradConstInfo &constInfo);
@@ -130,13 +131,14 @@ __aicore__ inline void DlikgBlockCube<TEMPLATE_ARGS>::InitCubeBuffers()
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void DlikgBlockCube<TEMPLATE_ARGS>::InitGlobalBuffer(GM_ADDR query, GM_ADDR dQuery,
-                GM_ADDR key, GM_ADDR dKey, GlobalTensor<T> bmm3Res)
+                GM_ADDR key, GM_ADDR dKey, GlobalTensor<T> bmm3Res, GlobalTensor<T> deterRes)
 {
     queryIndexGm.SetGlobalBuffer((__gm__ INPUT_T *)query);
     keyIndexGm.SetGlobalBuffer((__gm__ INPUT_T *)key);
     mm4ResGm.SetGlobalBuffer((__gm__ OUT_T *)dQuery);
     mm3ResGm.SetGlobalBuffer((__gm__ OUT_T *)dKey);
     this->bmm3Res = bmm3Res;
+    this->deterRes = deterRes;
 };
 
 TEMPLATES_DEF_NO_DEFAULT
@@ -288,8 +290,8 @@ __aicore__ inline void DlikgBlockCube<TEMPLATE_ARGS>::ComputeMm3(
         mm3L0CBuffer.Set<HardEvent::M_FIX>();
         mm3L0CBuffer.Wait<HardEvent::M_FIX>();
         // fix2ub
-        SetAtomicAdd<T>();
         if constexpr (!Deterministic) {
+            SetAtomicAdd<T>();
             FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipe2GmParams;
             fixpipe2GmParams.nSize = mmParam.singleN;
             fixpipe2GmParams.mSize = mmParam.singleM;
@@ -299,36 +301,23 @@ __aicore__ inline void DlikgBlockCube<TEMPLATE_ARGS>::ComputeMm3(
             fixpipe2GmParams.params.ndNum = 1;
             fixpipe2GmParams.params.srcNdStride = 0;
             fixpipe2GmParams.params.dstNdStride = 0;
-            // if constexpr (std::is_same<OUT_T, half>::value) {
-            //     fixpipe2GmParams.quantPre = QuantMode_t::F322F16;
-            // } else {
-            //     fixpipe2GmParams.quantPre = QuantMode_t::F322BF16;
-            // }
             Fixpipe<T, T, PFA_CFG_ROW_MAJOR_GM>(bmm3Res[runInfo.keyIndexTensorOffset], mm3L0CBuffer.GetTensor<T>(), fixpipe2GmParams);
             mm3L0CBuffer.Set<HardEvent::FIX_M>();
-            // pipe_barrier(PIPE_ALL);
-            // printf("runInfo.keyIndexTensorOffset : %d \n", runInfo.keyIndexTensorOffset);
-            // uint32_t array1[] = {static_cast<uint32_t>(1), static_cast<uint32_t>(128)}; 
-            // AscendC::ShapeInfo shapeInfo1(2, array1); // dim为2， shape为(8,8) 
-            // AscendC::DumpTensor(mm3ResGm[runInfo.keyIndexTensorOffset], 111, 1 * 128, shapeInfo1);
+            SetAtomicNone();
         } else {
-            // int64_t gmOffset = (runInfo.taskIdMod2 * constInfo.kSize + pRunInfo.kTaskId * constInfo.pKBaseSize +
-            //     kIdx * VEC_P_BASESIZE) *
-            //     constInfo.dSizeQueryIndex;
-            // FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipe2GmParams;
-            // fixpipe2GmParams.nSize = mmParam.singleN;
-            // fixpipe2GmParams.mSize = mmParam.singleM;
-            // fixpipe2GmParams.srcStride = AlignTo(fixpipe2GmParams.mSize, static_cast<uint16_t>(C0_SIZE));
-            // fixpipe2GmParams.dstStride = AlignTo(constInfo.dSizeQueryIndex, static_cast<uint32_t>(C0_SIZE));
-            // fixpipe2GmParams.dualDstCtl = 0;
-            // fixpipe2GmParams.params.ndNum = 1;
-            // fixpipe2GmParams.params.srcNdStride = 0;
-            // fixpipe2GmParams.params.dstNdStride = 0;
-            // Fixpipe<T, T, PFA_CFG_ROW_MAJOR_GM>(mm3DeterResGm[constInfo.bmm3BaseOffset + gmOffset],
-            //     mm3L0CBuffer.GetTensor<T>(), fixpipe2GmParams);
-            // mm3L0CBuffer.Set<HardEvent::FIX_M>();
+            FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipe2GmParams;
+            fixpipe2GmParams.nSize = mmParam.singleN;
+            fixpipe2GmParams.mSize = mmParam.singleM;
+            fixpipe2GmParams.srcStride = AlignTo(fixpipe2GmParams.mSize, static_cast<uint16_t>(C0_SIZE));
+            fixpipe2GmParams.dstStride = AlignTo(constInfo.dSizeQueryIndex, static_cast<uint32_t>(C0_SIZE));
+            fixpipe2GmParams.dualDstCtl = 0;
+            fixpipe2GmParams.params.ndNum = 1;
+            fixpipe2GmParams.params.srcNdStride = 0;
+            fixpipe2GmParams.params.dstNdStride = 0;
+            Fixpipe<T, T, PFA_CFG_ROW_MAJOR_GM>(deterRes[runInfo.deterResOffset],
+                mm3L0CBuffer.GetTensor<T>(), fixpipe2GmParams);
+            mm3L0CBuffer.Set<HardEvent::FIX_M>();
         }
-        SetAtomicNone();
     }
     if (runInfo.isLastBlock) {
         sYQL1Buffer[runInfo.sTaskIdMod3].Set<HardEvent::MTE1_MTE2>();
@@ -404,7 +393,8 @@ public:
     __aicore__ inline DlikgBlockCubeDummy(){};
     __aicore__ inline void SetCubeBlockParams(TPipe *tPipe, BufferManager<BufferType::L1> *l1BuffMgr){};
     __aicore__ inline void InitCubeBuffers(){};
-    __aicore__ inline void InitGlobalBuffer(GM_ADDR query, GM_ADDR dQuery, GM_ADDR key, GM_ADDR dKey, GlobalTensor<T> bmm3Res){};
+    __aicore__ inline void InitGlobalBuffer(GM_ADDR query, GM_ADDR dQuery, GM_ADDR key, GM_ADDR dKey,
+                                            GlobalTensor<T> bmm3Res, GlobalTensor<T> deterRes){};
     __aicore__ inline void ComputeMmSy(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm2ResBuf,
         BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_BOTH> &sYL1Buf, DLIKGradRunInfo &runInfo,
         DLIKGradConstInfo &constInfo){};

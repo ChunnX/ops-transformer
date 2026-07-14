@@ -150,9 +150,6 @@ __aicore__ inline void ProcessVec6Vf(const LocalTensor<INPUT_T> &dstTensor, cons
     const LocalTensor<T> &reduceSumTensor, const LocalTensor<T> &reduceSumOtherTensor, const LocalTensor<T> &reluTensor,
      const LocalTensor<T> &lseTensor, const uint32_t m, const uint32_t nIndexSize, const uint32_t nBaseSize)
 {
-    if (nIndexSize == 0) {
-        return;
-    }
     uint32_t alignCnt = m >> 6; //2
     uint32_t tailSize = m - (m >> 6 << 6); //0
     uint32_t s2BaseSize = (m + 63) >> 6 << 6;
