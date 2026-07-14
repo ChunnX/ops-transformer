@@ -39,7 +39,7 @@ constexpr uint32_t MAX_HANDLE = 16;
 constexpr uint32_t MAX_HANDLE_WITH_SCALE1 = 17;
 constexpr uint32_t SCALE1_HANDLE_IDX = 16;
 constexpr uint32_t SCALE1_MULTIPLE = 4;
-constexpr uint8_t MC2_DEBUG_ONLY_CUBE = 1; // 只计算不通信
+constexpr uint8_t MC2_DEBUG_ONLY_CUBE = 1;  // 只计算不通信
 constexpr uint8_t MC2_DEBUG_ONLY_AICPU = 4; // 只通信不计算
 constexpr uint32_t MX_BLOCK_SIZE = 32;
 constexpr uint64_t EVEN_ALIGN = 2;
@@ -88,5 +88,5 @@ __aicore__ inline void Mc2SyncAll()
     }
 }
 
-}
-#endif  // MC2_GATHER_COMM_H
+} // namespace AscendC
+#endif // MC2_GATHER_COMM_H

@@ -76,9 +76,19 @@ def load_excel_test_cases(excel_file_path: str, sheetname: str):
                 'testcase_name': lambda x: pd.NA if pd.isna(x) else str(x),
                 'T1': to_int_or_na,
                 'T2': to_int_or_na,
-                # 'T3': to_int_or_na,
+                'T3': to_int_or_na,
                 'S1': to_int_or_na,
                 'S2': to_int_or_na,
+                'B': to_int_or_na,
+                'N1': to_int_or_na,
+                'N2': to_int_or_na,
+                'D': to_int_or_na,
+                'K': to_int_or_na,
+                'ori_mask_mode': to_int_or_na,
+                'cmp_mask_mode': to_int_or_na,
+                'ori_win_left': to_int_or_na,
+                'ori_win_right': to_int_or_na,
+                'cmp_ratio': to_int_or_na,
                 'block_size1': to_int_or_na,
                 'block_size2': to_int_or_na,
                 # 'kv_quant_mode': to_int_or_na,
@@ -88,16 +98,27 @@ def load_excel_test_cases(excel_file_path: str, sheetname: str):
         df = df.astype({
             'T1': "Int64",
             'T2': "Int64",
-            # 'T3': "Int64",
+            'T3': "Int64",
             'S1': "Int64",
             'S2': "Int64",
+            'B': "Int64",
+            'N1': "Int64",
+            'N2': "Int64",
+            'D': "Int64",
+            'K': "Int64",
+            'ori_mask_mode': "Int64",
+            'cmp_mask_mode': "Int64",
+            'ori_win_left': "Int64",
+            'ori_win_right': "Int64",
+            'cmp_ratio': "Int64",
             'block_size1': "Int64",
             'block_size2': "Int64",
             # 'kv_quant_mode': "Int64",
         })
         # 处理可能为空的列
         default_None_columns = ["cu_seqlens_ori_kv","cu_seqlens_cmp_kv","T2","T3",
-                                "seqused_ori_kv","seqused_cmp_kv","cmp_residual_kv"]
+                                "seqused_ori_kv","seqused_cmp_kv","cmp_residual_kv",
+                                "q_datarange","ori_kv_datarange","cmp_kv_datarange"]
         for key in default_None_columns:
             if key not in df.columns:
                 df[key] = None
@@ -321,9 +342,9 @@ def fill_random_used_len(SMax, B, qk_equal_len=True, random_seq=False):
 def generate_case_with_default_param(param_combinations):
     case_param = param_combinations.copy()
     case_param.setdefault('testcase_name', "case_" + str(int(time.time() * 1000000)))
-    case_param.update({'q_datarange': ast.literal_eval(param_combinations.get('q_datarange')) if param_combinations.get('q_datarange') is not None else [-10, 10]})
-    case_param.update({'ori_kv_datarange': ast.literal_eval(param_combinations.get('ori_kv_datarange')) if param_combinations.get('ori_kv_datarange') is not None else [-10, 10]})
-    case_param.update({'cmp_kv_datarange': ast.literal_eval(param_combinations.get('cmp_kv_datarange')) if param_combinations.get('cmp_kv_datarange') is not None else [-10, 10]})
+    case_param.update({'q_datarange': ast.literal_eval(param_combinations.get('q_datarange')) if isinstance(param_combinations.get('q_datarange'), str) else (param_combinations.get('q_datarange') if param_combinations.get('q_datarange') is not None else [-10, 10])})
+    case_param.update({'ori_kv_datarange': ast.literal_eval(param_combinations.get('ori_kv_datarange')) if isinstance(param_combinations.get('ori_kv_datarange'), str) else (param_combinations.get('ori_kv_datarange') if param_combinations.get('ori_kv_datarange') is not None else [-10, 10])})
+    case_param.update({'cmp_kv_datarange': ast.literal_eval(param_combinations.get('cmp_kv_datarange')) if isinstance(param_combinations.get('cmp_kv_datarange'), str) else (param_combinations.get('cmp_kv_datarange') if param_combinations.get('cmp_kv_datarange') is not None else [-10, 10])})
 
     # 测试用，数据预填充，TND场景下cu_seqlens如果没有传入，根据T和S自动填充随机值
     # 常用参数提取

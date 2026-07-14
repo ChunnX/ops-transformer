@@ -10,7 +10,6 @@
 
 from typing import Optional
 import torch
-import torch_npu
 from torch.library import impl
 from cann_ops_transformer.op_builder.builder import OpBuilder
 from cann_ops_transformer.op_builder.builder import AS_LIBRARY
@@ -25,7 +24,7 @@ class SparseFlashMlaOpBuilder(OpBuilder):
 
     def sources(self):
         """Path to C++ source code."""
-        return ['ops/csrc/sparse_flash_mla.cpp']
+        return ["ops/csrc/sparse_flash_mla.cpp"]
 
     def schema(self) -> str:
         """PyTorch operator signature."""
@@ -38,7 +37,6 @@ class SparseFlashMlaOpBuilder(OpBuilder):
             "int? ori_topk=None, int? cmp_topk=None, int? cmp_ratio=None, int? ori_mask_mode=None,"
             "int? cmp_mask_mode=None, int? ori_win_left=None, int? ori_win_right=None, str? layout_q=None,"
             "str? layout_kv=None, bool? has_ori_kv=None, bool? has_cmp_kv=None) -> Tensor",
-
             "sparse_flash_mla(Tensor q, *,"
             "Tensor? ori_kv=None, Tensor? cmp_kv=None, "
             "Tensor? ori_sparse_indices=None, Tensor? cmp_sparse_indices=None, "
@@ -52,66 +50,110 @@ class SparseFlashMlaOpBuilder(OpBuilder):
             "float softmax_scale=1.0, int cmp_ratio=1, "
             "int ori_mask_mode=4, int cmp_mask_mode=3, "
             "int ori_win_left=127, int ori_win_right=0, "
-            "str layout_q=\"BSND\", str layout_kv=\"BSND\", "
-            "int topk_value_mode=1, bool return_softmax_lse=False) -> (Tensor, Tensor)"
+            'str layout_q="BSND", str layout_kv="BSND", '
+            "int topk_value_mode=1, bool return_softmax_lse=False) -> (Tensor, Tensor)",
         ]
- 
+
     def register_meta(self):
         """
         Registers the Meta implementation (Shape/Dtype inference).
         Essential for Autograd and FakeTensor support.
         """
+
         @torch.library.register_fake("cann_ops_transformer::" + SMLA_METADATA_OP_NAME)
         def sparse_flash_mla_metadata_meta(
-            num_heads_q: int, num_heads_kv: int, head_dim: int, cu_seqlens_q: Optional[torch.Tensor] = None,
-            cu_seqlens_ori_kv: Optional[torch.Tensor] = None, cu_seqlens_cmp_kv: Optional[torch.Tensor] = None,
-            seqused_q: Optional[torch.Tensor] = None, seqused_ori_kv: Optional[torch.Tensor] = None,
-            seqused_cmp_kv: Optional[torch.Tensor] = None, cmp_residual_kv: Optional[torch.Tensor] = None,
-            ori_topk_length: Optional[torch.Tensor] = None, cmp_topk_length: Optional[torch.Tensor] = None,
-            batch_size: Optional[int] = None, max_seqlen_q: Optional[int] = None,
-            max_seqlen_ori_kv: Optional[int] = None, max_seqlen_cmp_kv: Optional[int] = None,
-            ori_topk: Optional[int] = None, cmp_topk: Optional[int] = None, cmp_ratio: Optional[int] = None,
-            ori_mask_mode: Optional[int] = None, cmp_mask_mode: Optional[int] = None,
-            ori_win_left: Optional[int] = None, ori_win_right: Optional[int] = None, layout_q: Optional[str] = None,
-            layout_kv: Optional[str] = None, has_ori_kv: Optional[bool] = None, has_cmp_kv: Optional[bool] = None):
+            num_heads_q: int,
+            num_heads_kv: int,
+            head_dim: int,
+            cu_seqlens_q: Optional[torch.Tensor] = None,
+            cu_seqlens_ori_kv: Optional[torch.Tensor] = None,
+            cu_seqlens_cmp_kv: Optional[torch.Tensor] = None,
+            seqused_q: Optional[torch.Tensor] = None,
+            seqused_ori_kv: Optional[torch.Tensor] = None,
+            seqused_cmp_kv: Optional[torch.Tensor] = None,
+            cmp_residual_kv: Optional[torch.Tensor] = None,
+            ori_topk_length: Optional[torch.Tensor] = None,
+            cmp_topk_length: Optional[torch.Tensor] = None,
+            batch_size: Optional[int] = None,
+            max_seqlen_q: Optional[int] = None,
+            max_seqlen_ori_kv: Optional[int] = None,
+            max_seqlen_cmp_kv: Optional[int] = None,
+            ori_topk: Optional[int] = None,
+            cmp_topk: Optional[int] = None,
+            cmp_ratio: Optional[int] = None,
+            ori_mask_mode: Optional[int] = None,
+            cmp_mask_mode: Optional[int] = None,
+            ori_win_left: Optional[int] = None,
+            ori_win_right: Optional[int] = None,
+            layout_q: Optional[str] = None,
+            layout_kv: Optional[str] = None,
+            has_ori_kv: Optional[bool] = None,
+            has_cmp_kv: Optional[bool] = None,
+        ):
             return torch.empty((SMLA_METADATA_SIZE), dtype=torch.int32, device="npu")
 
-
         @impl(AS_LIBRARY, self.name, "Meta")
-        def sparse_flash_mla_meta(q,
-                                                ori_kv=None, cmp_kv=None,
-                                                ori_sparse_indices=None, cmp_sparse_indices=None,
-                                                ori_block_table=None, cmp_block_table=None,
-                                                cu_seqlens_q=None, cu_seqlens_ori_kv=None,
-                                                cu_seqlens_cmp_kv=None, seqused_q=None,
-                                                seqused_ori_kv=None, seqused_cmp_kv=None,
-                                                cmp_residual_kv=None,
-                                                ori_topk_length=None, cmp_topk_length=None,
-                                                sinks=None, metadata=None,
-                                                softmax_scale=1.0, cmp_ratio=1,
-                                                ori_mask_mode=4, cmp_mask_mode=3,
-                                                ori_win_left=127, ori_win_right=0,
-                                                layout_q='BSND', layout_kv='BSND',
-                                                topk_value_mode=1, return_softmax_lse=False):
+        def sparse_flash_mla_meta(
+            q,
+            ori_kv=None,
+            cmp_kv=None,
+            ori_sparse_indices=None,
+            cmp_sparse_indices=None,
+            ori_block_table=None,
+            cmp_block_table=None,
+            cu_seqlens_q=None,
+            cu_seqlens_ori_kv=None,
+            cu_seqlens_cmp_kv=None,
+            seqused_q=None,
+            seqused_ori_kv=None,
+            seqused_cmp_kv=None,
+            cmp_residual_kv=None,
+            ori_topk_length=None,
+            cmp_topk_length=None,
+            sinks=None,
+            metadata=None,
+            softmax_scale=1.0,
+            cmp_ratio=1,
+            ori_mask_mode=4,
+            cmp_mask_mode=3,
+            ori_win_left=127,
+            ori_win_right=0,
+            layout_q="BSND",
+            layout_kv="BSND",
+            topk_value_mode=1,
+            return_softmax_lse=False,
+        ):
             key_headnum = ori_kv.shape[1] if layout_kv == "TND" else ori_kv.shape[2]
             if layout_q == "BSND":
                 ## 添加softmax_lse
                 attn_out = torch.empty(q.shape, dtype=q.dtype, device="meta")
                 if return_softmax_lse:
-                    softmax_lse = torch.empty([q.shape[0], ori_kv.shape[2], q.shape[1], q.shape[2] / ori_kv.shape[2]],
-                                              dtype=torch.float32, device="meta")
+                    softmax_lse = torch.empty(
+                        [
+                            q.shape[0],
+                            ori_kv.shape[2],
+                            q.shape[1],
+                            q.shape[2] / ori_kv.shape[2],
+                        ],
+                        dtype=torch.float32,
+                        device="meta",
+                    )
                 else:
                     # 给一个空的合法张量，不能是 nullptr
                     softmax_lse = torch.empty([], dtype=torch.float32, device="meta")
             else:
                 attn_out = torch.empty(q.shape, dtype=q.dtype, device="meta")
                 if return_softmax_lse:
-                    softmax_lse = torch.empty([ori_kv.shape[1], q.shape[0], q.shape[1] / ori_kv.shape[1]],
-                                              dtype=torch.float32, device="meta")
+                    softmax_lse = torch.empty(
+                        [ori_kv.shape[1], q.shape[0], q.shape[1] / ori_kv.shape[1]],
+                        dtype=torch.float32,
+                        device="meta",
+                    )
                 else:
                     # 给一个空的合法张量，不能是 nullptr
                     softmax_lse = torch.empty([], dtype=torch.float32, device="meta")
             return (attn_out, softmax_lse)
+
 
 # Instantiate the builder
 sparse_flash_mla_op_builder = SparseFlashMlaOpBuilder()
@@ -119,16 +161,34 @@ sparse_flash_mla_op_builder = SparseFlashMlaOpBuilder()
 
 @impl(AS_LIBRARY, SMLA_METADATA_OP_NAME, "PrivateUse1")
 def sparse_flash_mla_metadata(
-    num_heads_q: int, num_heads_kv: int, head_dim: int, cu_seqlens_q: Optional[torch.Tensor] = None,
-    cu_seqlens_ori_kv: Optional[torch.Tensor] = None, cu_seqlens_cmp_kv: Optional[torch.Tensor] = None,
-    seqused_q: Optional[torch.Tensor] = None, seqused_ori_kv: Optional[torch.Tensor] = None,
-    seqused_cmp_kv: Optional[torch.Tensor] = None, cmp_residual_kv: Optional[torch.Tensor] = None,
-    ori_topk_length: Optional[torch.Tensor] = None, cmp_topk_length: Optional[torch.Tensor] = None,
-    batch_size: Optional[int] = None, max_seqlen_q: Optional[int] = None, max_seqlen_ori_kv: Optional[int] = None,
-    max_seqlen_cmp_kv: Optional[int] = None, ori_topk: Optional[int] = None, cmp_topk: Optional[int] = None,
-    cmp_ratio: Optional[int] = None, ori_mask_mode: Optional[int] = None, cmp_mask_mode: Optional[int] = None,
-    ori_win_left: Optional[int] = None, ori_win_right: Optional[int] = None, layout_q: Optional[str] = None,
-    layout_kv: Optional[str] = None, has_ori_kv: Optional[bool] = None, has_cmp_kv: Optional[bool] = None):
+    num_heads_q: int,
+    num_heads_kv: int,
+    head_dim: int,
+    cu_seqlens_q: Optional[torch.Tensor] = None,
+    cu_seqlens_ori_kv: Optional[torch.Tensor] = None,
+    cu_seqlens_cmp_kv: Optional[torch.Tensor] = None,
+    seqused_q: Optional[torch.Tensor] = None,
+    seqused_ori_kv: Optional[torch.Tensor] = None,
+    seqused_cmp_kv: Optional[torch.Tensor] = None,
+    cmp_residual_kv: Optional[torch.Tensor] = None,
+    ori_topk_length: Optional[torch.Tensor] = None,
+    cmp_topk_length: Optional[torch.Tensor] = None,
+    batch_size: Optional[int] = None,
+    max_seqlen_q: Optional[int] = None,
+    max_seqlen_ori_kv: Optional[int] = None,
+    max_seqlen_cmp_kv: Optional[int] = None,
+    ori_topk: Optional[int] = None,
+    cmp_topk: Optional[int] = None,
+    cmp_ratio: Optional[int] = None,
+    ori_mask_mode: Optional[int] = None,
+    cmp_mask_mode: Optional[int] = None,
+    ori_win_left: Optional[int] = None,
+    ori_win_right: Optional[int] = None,
+    layout_q: Optional[str] = None,
+    layout_kv: Optional[str] = None,
+    has_ori_kv: Optional[bool] = None,
+    has_cmp_kv: Optional[bool] = None,
+):
     """
     Dispatcher implementation: NPU.
     'PrivateUse1' is dispatch key for custom NPU backends.
@@ -151,68 +211,165 @@ def sparse_flash_mla_metadata(
 
     op_module = sparse_flash_mla_op_builder.load()
     return op_module.sparse_flash_mla_metadata(
-        num_heads_q, num_heads_kv, head_dim, cu_seqlens_q, cu_seqlens_ori_kv, cu_seqlens_cmp_kv, seqused_q,
-        seqused_ori_kv, seqused_cmp_kv, cmp_residual_kv, ori_topk_length, cmp_topk_length, batch_size, max_seqlen_q,
-        max_seqlen_ori_kv, max_seqlen_cmp_kv, ori_topk, cmp_topk, cmp_ratio, ori_mask_mode, cmp_mask_mode, ori_win_left,
-        ori_win_right, layout_q, layout_kv, has_ori_kv, has_cmp_kv)
+        num_heads_q,
+        num_heads_kv,
+        head_dim,
+        cu_seqlens_q,
+        cu_seqlens_ori_kv,
+        cu_seqlens_cmp_kv,
+        seqused_q,
+        seqused_ori_kv,
+        seqused_cmp_kv,
+        cmp_residual_kv,
+        ori_topk_length,
+        cmp_topk_length,
+        batch_size,
+        max_seqlen_q,
+        max_seqlen_ori_kv,
+        max_seqlen_cmp_kv,
+        ori_topk,
+        cmp_topk,
+        cmp_ratio,
+        ori_mask_mode,
+        cmp_mask_mode,
+        ori_win_left,
+        ori_win_right,
+        layout_q,
+        layout_kv,
+        has_ori_kv,
+        has_cmp_kv,
+    )
 
 
 @torch.library.register_kernel("cann_ops_transformer::" + SMLA_METADATA_OP_NAME, None)
 def sparse_flash_mla_metadata_fallback(
-    num_heads_q: int, num_heads_kv: int, head_dim: int, cu_seqlens_q: Optional[torch.Tensor] = None,
-    cu_seqlens_ori_kv: Optional[torch.Tensor] = None, cu_seqlens_cmp_kv: Optional[torch.Tensor] = None,
-    seqused_q: Optional[torch.Tensor] = None, seqused_ori_kv: Optional[torch.Tensor] = None,
-    seqused_cmp_kv: Optional[torch.Tensor] = None, cmp_residual_kv: Optional[torch.Tensor] = None,
-    ori_topk_length: Optional[torch.Tensor] = None, cmp_topk_length: Optional[torch.Tensor] = None,
-    batch_size: Optional[int] = None, max_seqlen_q: Optional[int] = None, max_seqlen_ori_kv: Optional[int] = None,
-    max_seqlen_cmp_kv: Optional[int] = None, ori_topk: Optional[int] = None, cmp_topk: Optional[int] = None,
-    cmp_ratio: Optional[int] = None, ori_mask_mode: Optional[int] = None, cmp_mask_mode: Optional[int] = None,
-    ori_win_left: Optional[int] = None, ori_win_right: Optional[int] = None, layout_q: Optional[str] = None,
-    layout_kv: Optional[str] = None, has_ori_kv: Optional[bool] = None, has_cmp_kv: Optional[bool] = None):
+    num_heads_q: int,
+    num_heads_kv: int,
+    head_dim: int,
+    cu_seqlens_q: Optional[torch.Tensor] = None,
+    cu_seqlens_ori_kv: Optional[torch.Tensor] = None,
+    cu_seqlens_cmp_kv: Optional[torch.Tensor] = None,
+    seqused_q: Optional[torch.Tensor] = None,
+    seqused_ori_kv: Optional[torch.Tensor] = None,
+    seqused_cmp_kv: Optional[torch.Tensor] = None,
+    cmp_residual_kv: Optional[torch.Tensor] = None,
+    ori_topk_length: Optional[torch.Tensor] = None,
+    cmp_topk_length: Optional[torch.Tensor] = None,
+    batch_size: Optional[int] = None,
+    max_seqlen_q: Optional[int] = None,
+    max_seqlen_ori_kv: Optional[int] = None,
+    max_seqlen_cmp_kv: Optional[int] = None,
+    ori_topk: Optional[int] = None,
+    cmp_topk: Optional[int] = None,
+    cmp_ratio: Optional[int] = None,
+    ori_mask_mode: Optional[int] = None,
+    cmp_mask_mode: Optional[int] = None,
+    ori_win_left: Optional[int] = None,
+    ori_win_right: Optional[int] = None,
+    layout_q: Optional[str] = None,
+    layout_kv: Optional[str] = None,
+    has_ori_kv: Optional[bool] = None,
+    has_cmp_kv: Optional[bool] = None,
+):
     # 处理所有 tensor 都为 None 的情况
     # 调用 NPU 实现
     return sparse_flash_mla_metadata(
-        num_heads_q, num_heads_kv, head_dim, cu_seqlens_q, cu_seqlens_ori_kv, cu_seqlens_cmp_kv, seqused_q,
-        seqused_ori_kv, seqused_cmp_kv, cmp_residual_kv, ori_topk_length, cmp_topk_length, batch_size, max_seqlen_q,
-        max_seqlen_ori_kv, max_seqlen_cmp_kv, ori_topk, cmp_topk, cmp_ratio, ori_mask_mode, cmp_mask_mode, ori_win_left,
-        ori_win_right, layout_q, layout_kv, has_ori_kv, has_cmp_kv)
+        num_heads_q,
+        num_heads_kv,
+        head_dim,
+        cu_seqlens_q,
+        cu_seqlens_ori_kv,
+        cu_seqlens_cmp_kv,
+        seqused_q,
+        seqused_ori_kv,
+        seqused_cmp_kv,
+        cmp_residual_kv,
+        ori_topk_length,
+        cmp_topk_length,
+        batch_size,
+        max_seqlen_q,
+        max_seqlen_ori_kv,
+        max_seqlen_cmp_kv,
+        ori_topk,
+        cmp_topk,
+        cmp_ratio,
+        ori_mask_mode,
+        cmp_mask_mode,
+        ori_win_left,
+        ori_win_right,
+        layout_q,
+        layout_kv,
+        has_ori_kv,
+        has_cmp_kv,
+    )
+
 
 torch.compiler.allow_in_graph(sparse_flash_mla_metadata)
 
 
 @impl(AS_LIBRARY, sparse_flash_mla_op_builder.name, "PrivateUse1")
-def sparse_flash_mla(q,
-                                    ori_kv=None, cmp_kv=None,
-                                    ori_sparse_indices=None, cmp_sparse_indices=None,
-                                    ori_block_table=None, cmp_block_table=None,
-                                    cu_seqlens_q=None, cu_seqlens_ori_kv=None,
-                                    cu_seqlens_cmp_kv=None, seqused_q=None,
-                                    seqused_ori_kv=None, seqused_cmp_kv=None,
-                                    cmp_residual_kv=None,
-                                    ori_topk_length=None, cmp_topk_length=None,
-                                    sinks=None, metadata=None,
-                                    softmax_scale=1.0, cmp_ratio=1,
-                                    ori_mask_mode=4, cmp_mask_mode=3,
-                                    ori_win_left=127, ori_win_right=0,
-                                    layout_q='BSND', layout_kv='BSND',
-                                    topk_value_mode=1, return_softmax_lse=False):
+def sparse_flash_mla(
+    q,
+    ori_kv=None,
+    cmp_kv=None,
+    ori_sparse_indices=None,
+    cmp_sparse_indices=None,
+    ori_block_table=None,
+    cmp_block_table=None,
+    cu_seqlens_q=None,
+    cu_seqlens_ori_kv=None,
+    cu_seqlens_cmp_kv=None,
+    seqused_q=None,
+    seqused_ori_kv=None,
+    seqused_cmp_kv=None,
+    cmp_residual_kv=None,
+    ori_topk_length=None,
+    cmp_topk_length=None,
+    sinks=None,
+    metadata=None,
+    softmax_scale=1.0,
+    cmp_ratio=1,
+    ori_mask_mode=4,
+    cmp_mask_mode=3,
+    ori_win_left=127,
+    ori_win_right=0,
+    layout_q="BSND",
+    layout_kv="BSND",
+    topk_value_mode=1,
+    return_softmax_lse=False,
+):
     """
     dispatcher implementation for NPU.
     'PrivateUse1' is the combine key for custom NPU backends.
     """
     op_module = sparse_flash_mla_op_builder.load()
-    return op_module.sparse_flash_mla(q,
-                                                ori_kv, cmp_kv,
-                                                ori_sparse_indices, cmp_sparse_indices,
-                                                ori_block_table, cmp_block_table,
-                                                cu_seqlens_q, cu_seqlens_ori_kv,
-                                                cu_seqlens_cmp_kv, seqused_q,
-                                                seqused_ori_kv, seqused_cmp_kv,
-                                                cmp_residual_kv,
-                                                ori_topk_length, cmp_topk_length,
-                                                sinks, metadata,
-                                                softmax_scale, cmp_ratio,
-                                                ori_mask_mode, cmp_mask_mode,
-                                                ori_win_left, ori_win_right,
-                                                layout_q, layout_kv,
-                                                topk_value_mode, return_softmax_lse)
+    return op_module.sparse_flash_mla(
+        q,
+        ori_kv,
+        cmp_kv,
+        ori_sparse_indices,
+        cmp_sparse_indices,
+        ori_block_table,
+        cmp_block_table,
+        cu_seqlens_q,
+        cu_seqlens_ori_kv,
+        cu_seqlens_cmp_kv,
+        seqused_q,
+        seqused_ori_kv,
+        seqused_cmp_kv,
+        cmp_residual_kv,
+        ori_topk_length,
+        cmp_topk_length,
+        sinks,
+        metadata,
+        softmax_scale,
+        cmp_ratio,
+        ori_mask_mode,
+        cmp_mask_mode,
+        ori_win_left,
+        ori_win_right,
+        layout_q,
+        layout_kv,
+        topk_value_mode,
+        return_softmax_lse,
+    )

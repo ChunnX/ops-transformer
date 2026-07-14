@@ -201,39 +201,34 @@ def generate_data():
     max_skv = max(ACTUAL_SEQ_KV) if max(ACTUAL_SEQ_KV) > 0 else 1
     print(f"[INFO] max_sq={max_sq}, max_skv={max_skv}")
 
-    # 使用随机数据
-    np.random.seed(SEED_Q)
-    q_amp_hi = max(abs(Q_DATA_RANGE[0]), abs(Q_DATA_RANGE[1]))
-    q_amp_lo = q_amp_hi * 0.01
-    q_token_amps = np.power(
-        10.0,
-        np.random.uniform(np.log10(q_amp_lo), np.log10(q_amp_hi), size=(B, N_q, max_sq, 1))
-    ).astype(np.float32)  # (B, N_q, max_sq, 1)
-    q_base = np.random.uniform(low=-1.0, high=1.0, size=(B, N_q, max_sq, D)).astype(np.float32)
-    q_data = (q_base * q_token_amps).astype(np.float16)
-    q_fp16 = torch.from_numpy(q_data)
+    def _generate_one(seed, data_range, shape, amp_shape):
+            """用 base * amp 结构生成数据，最后线性映射到精确范围 [data_range[0], data_range[1]]"""
+            np.random.seed(seed)
+            amp_hi = max(abs(data_range[0]), abs(data_range[1]))
+            amp_lo = max(amp_hi * 0.01, 1e-8)
+            token_amps = np.power(
+                10.0,
+                np.random.uniform(np.log10(amp_lo), np.log10(amp_hi), size=amp_shape)
+            ).astype(np.float32)
+            base = np.random.uniform(low=-1.0, high=1.0, size=shape).astype(np.float32)
+            raw = base * token_amps  # ∈ [-amp_hi, amp_hi]
+            # 线性映射到目标范围
+            normed = (raw + amp_hi) / (2.0 * amp_hi)  # [0, 1]
+            lo, hi = float(data_range[0]), float(data_range[1])
+            data = lo + normed * (hi - lo)
+            return torch.from_numpy(data.astype(np.float16))
 
-    np.random.seed(SEED_K)
-    k_amp_hi = max(abs(K_DATA_RANGE[0]), abs(K_DATA_RANGE[1]))
-    k_amp_lo = 1.0
-    k_token_amps = np.power(
-        10.0,
-        np.random.uniform(np.log10(k_amp_lo), np.log10(k_amp_hi), size=(B, N_kv, max_skv, 1))
-    ).astype(np.float32)  # (B, N_kv, max_skv, 1)
-    k_base = np.random.uniform(low=-1.0, high=1.0, size=(B, N_kv, max_skv, D)).astype(np.float32)
-    k_data = (k_base * k_token_amps).astype(np.float16)
-    k_fp16 = torch.from_numpy(k_data)
+    q_fp16 = _generate_one(SEED_Q, Q_DATA_RANGE,
+                            (B, N_q, max_sq, D),
+                            (B, N_q, max_sq, 1))
 
-    np.random.seed(SEED_V)
-    v_head_amps = np.power(
-        10.0,
-        np.random.uniform(0.0, np.log10(V_DATA_RANGE[1]), size=(B, N_kv, 1, 1))
-    ).astype(np.float32)  # (B, N_kv, 1, 1) —— 幅度范围 [1, V_DATA_RANGE[1]]
-    v_data_base = np.random.uniform(
-        low=-1.0, high=1.0, size=(B, N_kv, max_skv, D),
-    ).astype(np.float32)
-    v_data = (v_data_base * v_head_amps).astype(np.float16)
-    v_fp16 = torch.from_numpy(v_data)
+    k_fp16 = _generate_one(SEED_K, K_DATA_RANGE,
+                            (B, N_kv, max_skv, D),
+                            (B, N_kv, max_skv, 1))
+
+    v_fp16 = _generate_one(SEED_V, V_DATA_RANGE,
+                            (B, N_kv, max_skv, D),
+                            (B, N_kv, 1, 1))
 
     q_fp16 = q_fp16.cpu().contiguous()
     k_fp16 = k_fp16.cpu().contiguous()

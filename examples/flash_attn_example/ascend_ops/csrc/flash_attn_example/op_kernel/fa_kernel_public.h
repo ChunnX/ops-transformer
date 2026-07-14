@@ -31,20 +31,20 @@
 using namespace AscendC;
 using AscendC::AIC;
 using AscendC::AIV;
+using AscendC::BinaryRepeatParams;
+using AscendC::DataCopyPadParams;
+using AscendC::DataCopyParams;
+using AscendC::DataFormat;
 using AscendC::GlobalTensor;
+using AscendC::HardEvent;
+using AscendC::IsSameType;
 using AscendC::LocalTensor;
+using AscendC::QuePosition;
 using AscendC::SetFlag;
 using AscendC::ShapeInfo;
 using AscendC::SoftmaxConfig;
-using AscendC::WaitFlag;
-using AscendC::DataFormat;
-using AscendC::DataCopyParams;
-using AscendC::DataCopyPadParams;
-using AscendC::BinaryRepeatParams;
-using AscendC::IsSameType;
-using AscendC::HardEvent;
 using AscendC::TQue;
-using AscendC::QuePosition;
+using AscendC::WaitFlag;
 using matmul::MatmulType;
 
 namespace fa_kernel {
@@ -112,8 +112,7 @@ enum class LayOutTypeEnum {
     LAYOUT_NBSD = 7
 };
 
-enum class FA_LAYOUT : uint32_t
-{
+enum class FA_LAYOUT : uint32_t {
     BSH = 0,
     BSND = 0,
     BNSD = 1,
@@ -129,8 +128,7 @@ enum class FaKernelType : uint8_t {
     FULL_QUANT
 };
 
-enum class TASK_DEAL_MODE : uint32_t
-{
+enum class TASK_DEAL_MODE : uint32_t {
     DEAL_ZERO = 0,
     SKIP = 1,
     CREATE_TASK = 2,
@@ -322,12 +320,14 @@ __aicore__ inline int64_t ClipSInnerToken(int64_t sInnerToken, int64_t minValue,
     return sInnerToken;
 }
 
-template <typename T1, typename T2> __aicore__ inline T1 Max(T1 a, T2 b)
+template <typename T1, typename T2>
+__aicore__ inline T1 Max(T1 a, T2 b)
 {
     return (a > b) ? (a) : (b);
 }
 
-template <typename T1, typename T2> __aicore__ inline T1 Min(T1 a, T2 b)
+template <typename T1, typename T2>
+__aicore__ inline T1 Min(T1 a, T2 b)
 {
     return (a > b) ? (b) : (a);
 }
