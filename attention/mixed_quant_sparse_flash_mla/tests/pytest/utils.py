@@ -268,6 +268,12 @@ def fill_none_params(params_dict):
             print(f"T1({params_dict['T1']})与cu_seqlens_q末位({T1})不一致，修正T1为{T1}")
     else:
         T1 = params_dict.get('T1')
+        if seqused_q is None:
+            if cu_seqlens_q is not None:
+                seqused_q = generate_seqused(cu_seqlens_q)
+            else:
+                seqused_q = [S1] * B
+            print("seqused_q auto set to: ", seqused_q)
 
     # 2.2 ori_kv侧: TND场景cu_seqlens_ori_kv生成
     T2 = params_dict.get('T2')

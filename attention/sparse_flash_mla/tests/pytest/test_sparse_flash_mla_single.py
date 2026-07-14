@@ -32,7 +32,7 @@ param_combinations = utils.generate_param_combinations(ENABLED_PARAMS)
 @pytest.mark.ci
 @pytest.mark.parametrize("param_combinations", param_combinations)
 def test_example(param_combinations):
-    test_data = utils.generate_case_with_default_param(param_combinations)
+    test_data = utils.fill_none_params(param_combinations)
     torch_npu.npu.set_device(0)
 
     try:

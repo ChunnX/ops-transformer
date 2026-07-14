@@ -12,7 +12,6 @@
 
 import ast
 import utils
-import check_valid_param
 import itertools
 import math
 import numpy as np
@@ -26,7 +25,7 @@ import sparse_flash_mla_golden
 import torch
 
 excel_path = os.getenv("SMLA_EXCEL_PATH", "./excel/example.xlsx")
-excel_sheet = os.getenv("SMLA_EXCEL_SHEET", "CSA")
+excel_sheet = os.getenv("SMLA_EXCEL_SHEET", "SCFA")
 ENABLED_PARAMS_FROM_FILE = utils.load_excel_test_cases(excel_path, excel_sheet)
 save_path = os.getenv("SMLA_PT_SAVE_PATH", "./data")
 
@@ -35,14 +34,10 @@ param_combinations = utils.generate_param_combinations(ENABLED_PARAMS_FROM_FILE,
 @pytest.mark.ci
 @pytest.mark.parametrize("param_combinations", param_combinations)
 def test_sparse_flash_mla(param_combinations):   # 初始化参数和tensor
-    test_data = utils.generate_case_with_default_param(param_combinations)
-
-    try:
-        check_valid_param.check_valid_param(test_data)
-    except ValueError as e:
-        pytest.skip(f"输入参数校验失败:{e}")
-
+    test_data = utils.fill_none_params(param_combinations)
     print("data parsed.", test_data)
     print("strat to generate data")
     # 生成测试数据
-    input_data = sparse_flash_mla_golden.generate_and_save_testdata(test_data, save_pt=True, save_path=save_path)
+    input_data = sparse_flash_mla_golden.gen_data(test_data, test_data.get("template_mode"))
+    print("strat to save data")
+    sparse_flash_mla_golden.save_test_case(input_data, save_path)
