@@ -399,7 +399,8 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::Process()
         uint32_t startRow, endRow;
         CalcMultiCoreOffsetValid(startRow, endRow, validXBlocks);
 
-        for (uint32_t headIdx = 0; headIdx < constInfo.numHeads; headIdx++) {ProcessPoolingK(batchIdx, headIdx, seqPrefixSumKV, validYBlocks);
+        for (uint32_t headIdx = 0; headIdx < constInfo.numHeads; headIdx++) {
+            ProcessPoolingK(batchIdx, headIdx, seqPrefixSumKV, validYBlocks);
             AscendC::PipeBarrier<PIPE_ALL>();
             SyncAll<false>();
 

@@ -46,7 +46,6 @@ public:
                                    GlobalTensor<int64_t> &actualSeqLensQGm,
                                    GlobalTensor<int64_t> &actualSeqLensKVGm);
 
-
     __aicore__ inline void AllocEventID();
     __aicore__ inline void FreeEventID();
 
