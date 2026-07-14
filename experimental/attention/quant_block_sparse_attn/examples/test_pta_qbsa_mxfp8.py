@@ -113,7 +113,7 @@ def main():
     scale_group_size = 64
     scale_last_dim = 2
     qk_scale_d_size = head_dim // scale_group_size
-    value_scale_block_size = kv_token_num // scale_group_size
+    value_scale_block_size = (sparse_kv_block_size + scale_group_size - 1) // scale_group_size
     softmax_scale = 1.0 / math.sqrt(float(head_dim))
 
     query = _ones_npu((q_token_num, num_heads_q, head_dim), fp8_e4m3)
@@ -121,8 +121,10 @@ def main():
     value = _ones_npu((pa_block_num, num_heads_kv, sparse_kv_block_size, value_dim), fp8_e4m3)
 
     q_descale = _e8m0_ones_npu((q_token_num, num_heads_q, qk_scale_d_size, scale_last_dim), fp8_e8m0)
-    k_descale = _e8m0_ones_npu((kv_token_num, num_heads_kv, qk_scale_d_size, scale_last_dim), fp8_e8m0)
-    v_descale = _e8m0_ones_npu((value_scale_block_size, num_heads_kv, value_dim, scale_last_dim), fp8_e8m0)
+    k_descale = _e8m0_ones_npu(
+        (pa_block_num, num_heads_kv, sparse_kv_block_size, qk_scale_d_size, scale_last_dim), fp8_e8m0)
+    v_descale = _e8m0_ones_npu(
+        (pa_block_num, num_heads_kv, value_scale_block_size, value_dim, scale_last_dim), fp8_e8m0)
     p_scale = _e8m0_ones_npu((1,), fp8_e8m0)
 
     cu_seqlens_q = torch.tensor([0, q_token_num], dtype=torch.int32).npu()

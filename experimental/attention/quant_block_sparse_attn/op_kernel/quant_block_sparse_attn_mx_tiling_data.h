@@ -56,7 +56,7 @@ struct QuantBlockSparseAttnMxBaseParams {
     uint8_t isActualSeqLengthsKVNull = 0;
     uint32_t coreNum = 0;
     uint32_t outputLayout = 0;
-    // PA BNBD stride，单位为元素。
+    // PA BNBD stride，单位为元素。K/V 数据和 K/V scale 均为 [block,N,row,lastDim]。
     QuantBlockSparseAttnMxStrideParams keyStrides;
     QuantBlockSparseAttnMxStrideParams valueStrides;
     QuantBlockSparseAttnMxStrideParams kScaleStrides;
@@ -116,7 +116,8 @@ struct QuantBlockSparseAttnMxWorkspaceParams {
 };
 
 struct QuantBlockSparseAttnMxScaleParams {
-    // PScale:[1]；Q/K scale:[T,N,D/64,2]；V scale:[T/64,N,DV,2]。
+    // PScale:[1]；QScale:[T,N,D/64,2]；
+    // KScale:[blockNum,N,blockSize,D/64,2]；VScale:[blockNum,N,blockSize/64,DV,2]。
     uint32_t scaleGroupSize = 0;
     uint32_t scaleLastDim = 0;
     uint32_t queryScaleDSize = 0;
