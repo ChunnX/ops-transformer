@@ -97,6 +97,7 @@ struct FDparamsX {
 struct RunInfoX {
     uint32_t loop = 0;
     uint32_t mloop = 0;
+    uint32_t subTaskId = 0;
     bool isValid = false;
     bool isChangeBatch = false;
     bool isFirstS2Loop = false;
