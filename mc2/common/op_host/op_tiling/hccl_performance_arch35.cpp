@@ -1,12 +1,12 @@
 /**
-* Copyright (c) 2026 Huawei Technologies Co., Ltd.
-* This program is free software, you can redistribute it and/or modify it under the terms and conditions of
-* CANN Open Software License Agreement Version 2.0 (the "License").
-* Please refer to the License for details. You may not use this file except in compliance with the License.
-* THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
-* INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
-* See LICENSE in the root of the software repository for the full text of the License.
-*/
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file hccl_performance_arch35.cpp
@@ -36,10 +36,9 @@ const static map<string, HCCLFittingParameters> ARCH35_FITTING_PARAMETER_MAP = {
 
 string HCCLPerformanceArch35::GetCommInfoString(SocVersion socVersion)
 {
-    return to_string(static_cast<int>(socVersion)) + "_" +
-        to_string(static_cast<int>(commTypeInfo_.kernelType)) + "_" +
-        to_string(static_cast<int>(commTypeInfo_.topoType)) + "_" +
-        to_string(static_cast<int>(commTypeInfo_.rankDim));
+    return to_string(static_cast<int>(socVersion)) + "_" + to_string(static_cast<int>(commTypeInfo_.kernelType)) + "_" +
+           to_string(static_cast<int>(commTypeInfo_.topoType)) + "_" +
+           to_string(static_cast<int>(commTypeInfo_.rankDim));
 };
 
 void HCCLPerformanceArch35::GetCommArch35Parameters(SocVersion socVersion)
@@ -66,24 +65,22 @@ uint64_t HCCLPerformanceArch35::InverseCommTime(double targetTime) const
 {
     double tmpSize = commEstimatePar_.sizeToTimeBoundary1;
     if (targetTime > commEstimatePar_.timeToSizeBoundary2) {
-        tmpSize = (targetTime - commEstimatePar_.sizeToTimeLinearOffset) /
-                    commEstimatePar_.sizeToTimeLinearGradient;
+        tmpSize = (targetTime - commEstimatePar_.sizeToTimeLinearOffset) / commEstimatePar_.sizeToTimeLinearGradient;
     } else if (targetTime > commEstimatePar_.timeToSizeBoundary1) {
         if (commTypeInfo_.kernelType == KernelType::ALL_REDUCE && commEstimatePar_.timeToSizeParabolicPar2 != 0.0f) {
-            tmpSize = (targetTime - commEstimatePar_.timeToSizeParabolicPar3) /
-                    commEstimatePar_.timeToSizeParabolicPar2;
+            tmpSize =
+                (targetTime - commEstimatePar_.timeToSizeParabolicPar3) / commEstimatePar_.timeToSizeParabolicPar2;
         } else {
             tmpSize = (-sqrt(commEstimatePar_.timeToSizeParabolicPar1 *
-                        (targetTime + commEstimatePar_.timeToSizeParabolicPar2)) +
-                commEstimatePar_.timeToSizeParabolicPar3);
+                             (targetTime + commEstimatePar_.timeToSizeParabolicPar2)) +
+                       commEstimatePar_.timeToSizeParabolicPar3);
             if (commEstimatePar_.timeToSizeParabolicPar3 < 0) {
                 tmpSize = sqrt(commEstimatePar_.timeToSizeParabolicPar1 *
-                    (targetTime + commEstimatePar_.timeToSizeParabolicPar2)) +
-                    commEstimatePar_.timeToSizeParabolicPar3;
+                               (targetTime + commEstimatePar_.timeToSizeParabolicPar2)) +
+                          commEstimatePar_.timeToSizeParabolicPar3;
             }
         }
     }
     return static_cast<uint64_t>(tmpSize * ONE_MBYTE /
-        (commTypeInfo_.commMatrixLen * lookUpTileNum_ *
-        GetRealDtypeSizes()));
+                                 (commTypeInfo_.commMatrixLen * lookUpTileNum_ * GetRealDtypeSizes()));
 }

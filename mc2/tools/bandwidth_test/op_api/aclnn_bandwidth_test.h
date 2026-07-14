@@ -29,18 +29,19 @@ extern "C" {
  * @param [in] worldSize: 计算输入，int。通信域size。
  * @param [in] maxBs: 计算输入，int。最大batch size大小。
  * @param [in] mode: 计算输入，int。模式，0表示精度模式，1表示纯发模式。
- * @param [out] y: 计算输出，Tensor，必选输出，数据类型float16, bfloat16, float32，仅支持2维，数据格式支持ND。输出的token数据。
- * @param [out] receiveCnt: 计算输出，Tensor，必选输出，数据类型int32，仅支持1维，数据格式支持ND。从各rank接收的token数。
+ * @param [out] y: 计算输出，Tensor，必选输出，数据类型float16, bfloat16,
+ * float32，仅支持2维，数据格式支持ND。输出的token数据。
+ * @param [out] receiveCnt:
+ * 计算输出，Tensor，必选输出，数据类型int32，仅支持1维，数据格式支持ND。从各rank接收的token数。
  * @param [out] workspaceSize: 出参，返回需要在npu device侧申请的workspace大小。
  * @param [out] executor: 出参，返回op执行器，包含了算子计算流程。
  * @return aclnnStatus: 返回值，返回状态码
  *
  */
-ACLNN_API aclnnStatus aclnnBandwidthTestGetWorkspaceSize(
-    const aclTensor* x, const aclTensor* dstRankId,
-    char* group, int64_t worldSize, int64_t maxBs, int64_t mode,
-    char *commAlg, int64_t aivNum, aclTensor* y, aclTensor* receiveCnt,
-    uint64_t* workspaceSize, aclOpExecutor** executor);
+ACLNN_API aclnnStatus aclnnBandwidthTestGetWorkspaceSize(const aclTensor *x, const aclTensor *dstRankId, char *group,
+                                                         int64_t worldSize, int64_t maxBs, int64_t mode, char *commAlg,
+                                                         int64_t aivNum, aclTensor *y, aclTensor *receiveCnt,
+                                                         uint64_t *workspaceSize, aclOpExecutor **executor);
 
 /**
  * @brief aclnnBandwidthTest的第二段接口，用于执行计算。
@@ -50,9 +51,9 @@ ACLNN_API aclnnStatus aclnnBandwidthTestGetWorkspaceSize(
  * @param [in] stream: acl stream流。
  * @return aclnnStatus: 返回状态码
  */
-ACLNN_API aclnnStatus aclnnBandwidthTest(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor,
+ACLNN_API aclnnStatus aclnnBandwidthTest(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
                                          aclrtStream stream);
 #ifdef __cplusplus
 }
 #endif
-#endif  // OP_API_INC_BANDWIDTH_TEST_
+#endif // OP_API_INC_BANDWIDTH_TEST_

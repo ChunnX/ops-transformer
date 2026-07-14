@@ -20,9 +20,11 @@
 
 namespace AscendC {
 template <TemplateBasicType>
-class Mc2QuantBatchMatmulV3BaseKernel {  // 纯cube kernel，无pertoken，输出int8/fp16/int32
+class Mc2QuantBatchMatmulV3BaseKernel { // 纯cube kernel，无pertoken，输出int8/fp16/int32
 public:
-    __aicore__ inline Mc2QuantBatchMatmulV3BaseKernel() {}
+    __aicore__ inline Mc2QuantBatchMatmulV3BaseKernel()
+    {
+    }
 
     __aicore__ inline void InitInputs(GM_ADDR x1, GM_ADDR x2, GM_ADDR scale, GM_ADDR bias, GM_ADDR y);
 
@@ -30,14 +32,17 @@ public:
                                 const Mc2QuantBatchMatmulV3TilingData *__restrict tilingData, TPipe *tPipe);
 
     __aicore__ inline void Process();
-    __aicore__ inline UPDATE_TYPE &GetUpdateObj() { return update_; }
+    __aicore__ inline UPDATE_TYPE &GetUpdateObj()
+    {
+        return update_;
+    }
 
 protected:
     __aicore__ inline void MMCompute();
     __aicore__ inline void OneTileCompute(uint64_t mTileIndex, uint64_t nTileIndex);
 
     Mc2QuantBatchMatmulV3BaseBlock block_;
-    UPDATE_TYPE update_;  // 量化mm或mc2的更新计算大小和地址的接口
+    UPDATE_TYPE update_; // 量化mm或mc2的更新计算大小和地址的接口
     QBmmBlockOffset offset_;
     using A_TYPE = matmul::MatmulType<TPosition::GM, DequantBmm::GetFormat(x1Format), x1Type, aTrans>;
     using B_TYPE = matmul::MatmulType<TPosition::GM, DequantBmm::GetFormat(x2Format), x2Type, bTrans>;
@@ -49,7 +54,7 @@ protected:
     GlobalTensor<uint64_t> scaleGlobal_; // aic内随路反量化的数据类型是uint64, scaleType可能是int64/uint64
     uint64_t scaleScalar_;
     GlobalTensor<yType> yGlobal_;
-    GlobalTensor<int32_t> biasGlobal_;  // aic内计算的bias int32类型
+    GlobalTensor<int32_t> biasGlobal_; // aic内计算的bias int32类型
     bool isPerTensor_;
     TPipe *pipe_;
 };
@@ -71,8 +76,8 @@ __aicore__ inline void Mc2QuantBatchMatmulV3BaseKernel<TemplateBasicValue>::Init
 
 template <TemplateBasicType>
 __aicore__ inline void Mc2QuantBatchMatmulV3BaseKernel<TemplateBasicValue>::InitInputs(GM_ADDR x1, GM_ADDR x2,
-                                                                                    GM_ADDR scale, GM_ADDR bias,
-                                                                                    GM_ADDR y)
+                                                                                       GM_ADDR scale, GM_ADDR bias,
+                                                                                       GM_ADDR y)
 {
     x1Global_.SetGlobalBuffer((__gm__ x1Type *)x1);
     x2Global_.SetGlobalBuffer((__gm__ x2Type *)x2);
@@ -80,11 +85,12 @@ __aicore__ inline void Mc2QuantBatchMatmulV3BaseKernel<TemplateBasicValue>::Init
     if (block_.matmulTilingData_->M <= block_.matmulTilingData_->baseM) {
         x2Global_.SetL2CacheHint(CacheMode::CACHE_MODE_DISABLE);
     }
-    scaleGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ uint64_t*>(scale)); // int64/uint64 -> uint64, 硬件不关心符号位
+    scaleGlobal_.SetGlobalBuffer(
+        reinterpret_cast<__gm__ uint64_t *>(scale)); // int64/uint64 -> uint64, 硬件不关心符号位
     if (isPerTensor_) {
-        scaleScalar_ = *((__gm__ uint64_t*)scale);
+        scaleScalar_ = *((__gm__ uint64_t *)scale);
     }
-    biasGlobal_.SetGlobalBuffer((__gm__ int32_t *)bias);  // 不存在时也可以set，真正计算时需要判断
+    biasGlobal_.SetGlobalBuffer((__gm__ int32_t *)bias); // 不存在时也可以set，真正计算时需要判断
     yGlobal_.SetGlobalBuffer((__gm__ yType *)y);
 }
 
@@ -95,7 +101,7 @@ __aicore__ inline void Mc2QuantBatchMatmulV3BaseKernel<TemplateBasicValue>::Proc
         return;
     }
 
-	// 首次计算，兼容无L2cache切分场景，减少scalar计算
+    // 首次计算，兼容无L2cache切分场景，减少scalar计算
     block_.InitFirstTileBlockIndex();
     OneTileCompute(0, 0);
     bool reverse = true;
@@ -103,7 +109,7 @@ __aicore__ inline void Mc2QuantBatchMatmulV3BaseKernel<TemplateBasicValue>::Proc
         reverse = !reverse;
         for (uint64_t nTileIndexTemp = 0; nTileIndexTemp < block_.params_.nTileCntL2; nTileIndexTemp++) {
             uint64_t nTileIndex = reverse ? (block_.params_.nTileCntL2 - nTileIndexTemp - 1) : nTileIndexTemp;
-            if (mTileIndex > 0 || nTileIndex > 0) {  // 跳过首块
+            if (mTileIndex > 0 || nTileIndex > 0) { // 跳过首块
                 block_.UpdateBlockCnt(mTileIndex, nTileIndex);
                 block_.InitBlockIndex();
                 OneTileCompute(mTileIndex, nTileIndex);
@@ -115,7 +121,7 @@ __aicore__ inline void Mc2QuantBatchMatmulV3BaseKernel<TemplateBasicValue>::Proc
 
 template <TemplateBasicType>
 __aicore__ inline void Mc2QuantBatchMatmulV3BaseKernel<TemplateBasicValue>::OneTileCompute(uint64_t mTileIndex,
-                                                                                        uint64_t nTileIndex)
+                                                                                           uint64_t nTileIndex)
 {
     for (uint64_t j = 0; j < block_.realRound_; j++) {
         // 更新此次基本块的大小和输入输出地址
@@ -130,11 +136,10 @@ __aicore__ inline void Mc2QuantBatchMatmulV3BaseKernel<TemplateBasicValue>::OneT
 template <TemplateBasicType>
 __aicore__ inline void Mc2QuantBatchMatmulV3BaseKernel<TemplateBasicValue>::MMCompute()
 {
-    mm_.SetSingleShape(block_.params_.singleCoreM, block_.params_.singleCoreN,
-                       block_.matmulTilingData_->singleCoreK);
+    mm_.SetSingleShape(block_.params_.singleCoreM, block_.params_.singleCoreN, block_.matmulTilingData_->singleCoreK);
     mm_.SetTensorA(x1Global_[offset_.offsetA], aTrans);
     mm_.SetTensorB(x2Global_[offset_.offsetB], bTrans);
-    if constexpr (!IsSameType<yType, int32_t>::value) {  // 非int32输出的，需要随路反量化
+    if constexpr (!IsSameType<yType, int32_t>::value) { // 非int32输出的，需要随路反量化
         if (isPerTensor_) {
             mm_.SetQuantScalar(scaleScalar_);
         } else {
@@ -147,5 +152,5 @@ __aicore__ inline void Mc2QuantBatchMatmulV3BaseKernel<TemplateBasicValue>::MMCo
     mm_.Iterate();
     mm_.GetTensorC(yGlobal_[offset_.offsetC]);
 }
-}  // namespace AscendC
-#endif  // QUANT_BATCH_MATMUL_V3_CUBE_BASIC_H
+} // namespace AscendC
+#endif // QUANT_BATCH_MATMUL_V3_CUBE_BASIC_H
