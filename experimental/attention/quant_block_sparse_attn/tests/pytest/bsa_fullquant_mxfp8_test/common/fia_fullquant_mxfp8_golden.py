@@ -87,7 +87,8 @@ def _make_reference_style_mxfp8_case():
         "S2": 512,
         "block_size": 128,
         "mask_mode": 3,
-        "fp8_dtype": torch.float8_e8m0fnu,
+        "fp8_dtype": torch.float8_e4m3fn,
+        "scale_dtype": torch.float8_e8m0fnu,
         "quant_group_size": 32,
         "layout_q": "TND",
         "p_scale_value": 1.0,
@@ -123,6 +124,7 @@ ACTUAL_SEQ_KV = CASE["actual_seq_kv"]
 BLOCK_SIZE = CASE["block_size"]
 MASK_MODE = CASE["mask_mode"]
 FP8_DTYPE = CASE["fp8_dtype"]
+SCALE_DTYPE = CASE["scale_dtype"]
 QUANT_GROUP_SIZE = CASE["quant_group_size"]
 Q_INPUT_LAYOUT = CASE["layout_q"]
 KV_CACHE_LAYOUT = CASE["kv_cache_layout"]
@@ -141,11 +143,12 @@ OUT_LAYOUT = CASE["layout_out"]
 # ==============================================================================
 # 固定运行常量
 # ==============================================================================
+# Q/K/V 使用 fp8_e4m3fn；Q/K/V descale 与 P scale 使用 fp8_e8m0。
 # e8m0fnu 最小正数: 2^(-127)，用于替换 descale 中的 0 和非有限值
 # e8m0fnu 没有 0 值语义，0 的 biased exponent 会被 NPU 解释为 NaN
 E8M0_MIN_POSITIVE = 2**(-127)
 _EMAX_MAP = {
-    torch.float8_e8m0fnu: 255,
+    torch.float8_e4m3fn: 8,
 }
 
 # ==============================================================================
@@ -175,7 +178,7 @@ def _rand_fp8(shape, generator, data_range=1.0):
 
 def _validate_fp8_dtype(fp8_dtype):
     if fp8_dtype not in _EMAX_MAP:
-        raise ValueError(f"Unsupported FP8 dtype: {fp8_dtype}; only torch.float8_e8m0fnu is supported")
+        raise ValueError(f"Unsupported FP8 dtype: {fp8_dtype}; only torch.float8_e4m3fn is supported")
 
 
 def get_mxfp8_per_token_group_quant_scale(tensor, fp8_dtype, group_size=32):
@@ -383,7 +386,7 @@ def fp32_to_e8m0fnu_safe(scale, name="scale"):
     nan_byte_count = int((packed == 0xFF).sum().item())
     if nan_byte_count:
         raise ValueError(f"{name}: {nan_byte_count} values would become e8m0fnu NaN (0xFF)")
-    return packed
+    return packed.view(SCALE_DTYPE)
 
 
 
@@ -890,8 +893,8 @@ def _call_npu_fa_op(q, k, v, mask, q_lengths, kv_lengths, cu_seqlens_q, cu_seqle
 
 def _build_causal_mask():
     if MASK_MODE == 0:
-        return torch.empty((0,), dtype=torch.bool).npu()
-    return torch.triu(torch.ones(2048, 2048, dtype=torch.bool), diagonal=1).npu()
+        return torch.empty((0,), dtype=torch.uint8).npu()
+    return torch.triu(torch.ones(2048, 2048, dtype=torch.uint8), diagonal=1).npu()
 
 
 def npu_mxfp8_fa(q_fp8, k_fp8, v_fp8,
@@ -916,7 +919,9 @@ def npu_mxfp8_fa(q_fp8, k_fp8, v_fp8,
     deq_q_npu = q_scale_e8m0.npu()
     logger.info("[NPU] Q descale layout=TND, shape=%s", q_scale_e8m0.shape)
 
-    p_scale_npu = p_scale.npu()
+    p_scale_e8m0 = fp32_to_e8m0fnu_safe(p_scale, "P scale")
+    p_scale_npu = p_scale_e8m0.npu()
+    logger.info("[NPU] P scale dtype=%s, shape=%s", p_scale_e8m0.dtype, p_scale_e8m0.shape)
     mask_arg = _build_causal_mask()
 
     if block_table_torch is None:
