@@ -1169,8 +1169,6 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
     if seqused_cmp_kv_calc is None:
         if template_run_mode == "SWA":
             seqused_cmp_kv_calc = None
-        elif cu_seqlens_cmp_kv is not None:
-            seqused_cmp_kv_calc = prefix_sum_to_original(cu_seqlens_cmp_kv).tolist()
         elif layout_kv == "BSND":
             seqused_cmp_kv_calc = [S2 // cmp_ratio] * B if cmp_ratio else None
 
