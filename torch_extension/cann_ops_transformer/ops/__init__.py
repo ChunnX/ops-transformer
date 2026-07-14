@@ -34,6 +34,7 @@ from .inplace_partial_rotary_mul import inplace_partial_rotary_mul
 from .inplace_partial_rotary_mul_backward import inplace_partial_rotary_mul_backward
 from .causal_conv1d_fn import causal_conv1d_fn
 from .causal_conv1d_update import causal_conv1d_update
+from .chunk_gated_delta_rule import chunk_gated_delta_rule
 from . import graph_convert as _graph_convert
 from .qkv_rms_norm_rope_cache_with_k_scale import (
     qkv_rms_norm_rope_cache_with_k_scale,

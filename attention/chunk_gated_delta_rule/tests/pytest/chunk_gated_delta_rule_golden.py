@@ -9,6 +9,8 @@
 import time
 import torch
 import torch_npu
+from cann_ops_transformer.ops import chunk_gated_delta_rule
+from chunk_gated_delta_rule_benchmark import chunk_gdn_benchmark_opt
 import torch.nn.functional as F
 import numpy as np
 import logging
@@ -299,26 +301,24 @@ def cgdr_golden(q, k, v, g, beta, scale, initial_state, actual_seq_lengths, use_
 
 
 def cgdr_benchmark(q, k, v, g, beta, scale, initial_state, actual_seq_lengths):
-    cu_seqlens = F.pad(actual_seq_lengths, (1, 0)).cumsum(dim=0)
+    dtype = torch.bfloat16
     if g is None:
         g = torch.zeros((v.shape[0], v.shape[1])).to(v.device).to(torch.float32)
-    o_bench, state_bench = chunk_gated_delta_rule_npu(
-        q.unsqueeze(0),
-        k.unsqueeze(0),
-        v.unsqueeze(0),
-        g.unsqueeze(0) if g is not None else None,
-        beta.unsqueeze(0),
-        scale=scale,
-        initial_state=initial_state.transpose(-1, -2).clone(),
-        cu_seqlens=cu_seqlens
-    )
-    o_bench = o_bench[0].to(torch.float32)
-    state_bench = state_bench.transpose(-1, -2).to(torch.float32)
+    o_bench, state_bench = chunk_gdn_benchmark_opt(
+        q.to(dtype),
+        k.to(dtype),
+        v.to(dtype),
+        beta.to(dtype),
+        scale,
+        initial_state.to(dtype),
+        actual_seq_lengths,
+        g)
+    o_bench = o_bench.to(torch.float32)
+    state_bench = state_bench.to(torch.float32)
     return o_bench, state_bench
 
-
 def cgdr_npu(q, k, v, g, beta, scale, initial_state, actual_seq_lengths):
-    o_npu, state_npu = torch_npu.npu_chunk_gated_delta_rule(
+    o_npu, state_npu = torch.ops.cann_ops_transformer.chunk_gated_delta_rule(
         q, k, v,
         beta=beta,
         initial_state=initial_state.clone(),
