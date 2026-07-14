@@ -138,7 +138,7 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
     <col style="width: 280px">
     <col style="width: 350px">
     <col style="width: 212px">
-    <col style="width: 100px"> 
+    <col style="width: 100px">
     <col style="width: 190px">
     <col style="width: 145px">
     </colgroup>
@@ -490,7 +490,7 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
 
 - **返回值**
 
-    aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。  
+    aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
     第一段接口完成入参校验，出现以下场景时报错：
 
@@ -662,7 +662,7 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
 
 - **通信方式约束**：
   - <term>Ascend 950DT</term>：仅支持UB Memory通信。
-  
+
 - **组网约束**：
    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：多机场景仅支持交换机组网，不支持双机直连组网。
 
@@ -691,7 +691,7 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
 
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
 
-    无需配置ranktable文件以及环境变量RANK_TABLE_FILE、FIRST_RANK_ID。 
+    无需配置ranktable文件以及环境变量RANK_TABLE_FILE、FIRST_RANK_ID。
 
     本示例支持A2算子运行在卡数为[2, 8]的单机环境中，运行前需要将示例代码中的IS_TEST_A2设置为true，确保执行A2分支。
     同时，用户可以根据需要在示例代码中设置EP_WORLD_SIZE_A2为卡数，并更改launchOneThreadDispatchV2AndCombineV2_A2函数中的moeExpertNum，使得moeExpertNum可以被EP_WORLD_SIZE_A2整除。
@@ -709,8 +709,8 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
     ```
 
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  、<term>Ascend 950DT</term>：
-    
-    无需配置ranktable文件以及环境变量RANK_TABLE_FILE、FIRST_RANK_ID。 
+
+    无需配置ranktable文件以及环境变量RANK_TABLE_FILE、FIRST_RANK_ID。
 
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
@@ -786,7 +786,7 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
             strides[i] = shape[i + 1] * strides[i + 1];
         }
         *tensor = aclCreateTensor(
-            shape.data(), shape.size(), dataType, strides.data(), 0, 
+            shape.data(), shape.size(), dataType, strides.data(), 0,
             aclFormat::ACL_FORMAT_ND, shape.data(), shape.size(), *deviceAddr
         );
         return 0;
@@ -837,7 +837,7 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
             // 共享专家卡
             localExpertNum = 1;
             A = globalBS / sharedExpertRankNum;
-        } else { 
+        } else {
             // Moe专家卡
             localExpertNum = moeExpertNum / (EP_WORLD_SIZE - sharedExpertRankNum);
             A = globalBS * (localExpertNum < K ? localExpertNum : K);
@@ -1005,7 +1005,7 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
         //（固定写法）同步等待任务执行结束
         ret = aclrtSynchronizeStreamWithTimeout(args.combineV2Stream, 10000);
         CHECK_RET(
-            ret == ACL_SUCCESS, 
+            ret == ACL_SUCCESS,
             LOG_PRINT("[ERROR] aclrtSynchronizeStreamWithTimeout failed. ret = %d\n", ret); return ret
         );
 
@@ -1047,7 +1047,7 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
         aclrtDestroyStream(args.combineV2Stream);
         aclrtDestroyContext(args.context);
         aclrtResetDevice(args.rankId);
-        
+
         return 0;
     }
 
@@ -1077,7 +1077,7 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
         int64_t groupList_type = 1;
         int64_t localExpertNum;
         int64_t A;
-        
+
         std::string commAlg = "fullmesh";
         if (args.epRankId < sharedExpertRankNum) {
             localExpertNum = 1;

@@ -316,7 +316,7 @@
     * 不支持动态缩容场景，不支持`elasticInfoOptional`。
     * 当`commAlg` = "hierarchy"，必须传入`expandScalesOptional`。
     * 不支持常量专家场景，不支持`constExpertNum`、`constExpertAlpha1Optional`、`constExpertAlpha2Optional`和`constExpertVOptional`，使用默认值即可。
-    
+
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  ：
     * 当`commAlg` = "hierarchy"，必须传入`expandScalesOptional`。
     * commAlg支持""，"fullmesh_v1"，"fullmesh_v2", "hierarchy"三种输入方式。""：默认值，不开启fullmesh_v2模板；"fullmesh_v1"：不开启fullmesh_v2模板；"fullmesh_v2"：开启fullmesh_v2模板；"hierarchy": 开启跨超模板，仅支持共享专家为0的场景，且不支持可变BS、二维mask、特殊专家、performanceInfo场景。

@@ -68,7 +68,7 @@ aclnnStatus aclnnMoeDistributeCombineTeardown(
 ## aclnnMoeDistributeCombineTeardownGetWorkspaceSize
 
 - **参数说明**
-  
+
     <table style="undefined;table-layout: fixed; width: 1548px"><colgroup>
     <col style="width: 162px">
     <col style="width: 94px">
@@ -323,7 +323,7 @@ aclnnStatus aclnnMoeDistributeCombineTeardown(
     - commQuantMode当前仅支持传入0，表示不进行量化。
     - commType取值范围[0, 2]，当前仅支持2，表示URMA通路。
     - commAlg当前版本不支持，传空指针即可。
-  
+
   - Atlas A3训练系列产品/Atlas A3推理系列产品：
     - 不支持共享专家场景。
     - epWorldSize当前取值仅支持2、8。
@@ -336,11 +336,11 @@ aclnnStatus aclnnMoeDistributeCombineTeardown(
     - commAlg当前版本不支持，传空指针即可。
 
 - **返回值**
-  
+
     aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
     第一段接口完成入参校验，出现以下场景时报错：
-  
+
     <table style="undefined;table-layout: fixed; width: 1000px"><colgroup>
     <col style="width: 300px">
     <col style="width: 150px">
@@ -377,7 +377,7 @@ aclnnStatus aclnnMoeDistributeCombineTeardown(
 ## aclnnMoeDistributeCombineTeardown
 
 - **参数说明：**
-  
+
     <table style="undefined;table-layout: fixed; width: 1000px"><colgroup>
     <col style="width: 200px">
     <col style="width: 130px">
@@ -412,7 +412,7 @@ aclnnStatus aclnnMoeDistributeCombineTeardown(
     </table>
 
 - **返回值：**
-  
+
     返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
 ## 约束说明
@@ -422,7 +422,7 @@ aclnnStatus aclnnMoeDistributeCombineTeardown(
 - aclnnMoeDistributeDispatchSetup接口，aclnnMoeDistributeDispatchTeardown接口，aclnnMoeDistributeCombineSetup接口，aclnnMoeDistributeCombineTeardown接口必须配套使用。
 - 调用接口过程中使用的`groupEp`、`epWorldSize`、`moeExpertNum`、`expertShardType`、`sharedExpertNum`、`sharedExpertRankNum`、`globalBs`、`commQuantMode`、`commType`、`commAlg`参数取值所有卡需保持一致，`groupEp`、`epWorldSize`、`expertShardType`、`sharedExpertNum`、`sharedExpertRankNum`、`globalBs`、`commQuantMode`、`commType`、`commAlg`参数取值在网络中不同层中也需保持一致，且和aclnnMoeDistributeDispatchSetup接口，aclnnMoeDistributeDispatchTeardown接口，aclnnMoeDistributeCombineSetup接口对应参数也保持一致。
 - 参数说明里shape格式说明：
-  
+
   - A：表示本卡需要分发的最大token数量，取值范围如下：
     - 对于共享专家，要满足A = BS \* epWorldSize \* sharedExpertNum / sharedExpertRankNum；当globalBs非0时，要满足A = globalBs\* sharedExpertNum / sharedExpertRankNum。
     - 对于MoE专家，当globalBs为0时，要满足A >= BS \* epWorldSize \* min(localExpertNum, K)；当globalBs非0时，要满足A >= globalBs \* min(localExpertNum, K)。

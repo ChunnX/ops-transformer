@@ -32,7 +32,7 @@ using namespace AscendC;
 using namespace Mc2Kernel;
 using namespace Mc2Tiling;
 
-template<uint8_t QuantMode, uint8_t LayeredMode, uint8_t ArchTag>
+template <uint8_t QuantMode, uint8_t LayeredMode, uint8_t ArchTag>
 __global__ __aicore__ void moe_distribute_combine_add_rms_norm(
     GM_ADDR expandX, GM_ADDR expertIds, GM_ADDR assistInfoForCombine, GM_ADDR epSendCount, GM_ADDR scales,
     GM_ADDR residualX, GM_ADDR gamma, GM_ADDR tpSendCount, GM_ADDR xActiveMask, GM_ADDR activationScale,
@@ -46,10 +46,11 @@ __global__ __aicore__ void moe_distribute_combine_add_rms_norm(
 #if (ORIG_DTYPE_EXPAND_X == DT_BF16 || ORIG_DTYPE_EXPAND_X == DT_FLOAT16)
     GM_ADDR contextGM0 = (GM_ADDR)AscendC::GetHcclContext<HCCL_GROUP_ID_0>();
     MoeDistributeCombineV2<Mc2Kernel::HcclContextHolder, DTYPE_EXPAND_X, DTYPE_X, int32_t,
-                           QuantMode == TILINGKEY_INT8_QUANT, true> op;
-    op.Init(contextGM0, expandX, expertIds, assistInfoForCombine, epSendCount, residualX, gamma, scales,
-            xActiveMask, sharedExpertX, elasticInfo, oriX, constExpertAlpha1, constExpertAlpha2, constExpertV,
-            nullptr, YOut, dynamicScaleOut, XOut, workspaceGM, &pipe, &tilingData);
+                           QuantMode == TILINGKEY_INT8_QUANT, true>
+        op;
+    op.Init(contextGM0, expandX, expertIds, assistInfoForCombine, epSendCount, residualX, gamma, scales, xActiveMask,
+            sharedExpertX, elasticInfo, oriX, constExpertAlpha1, constExpertAlpha2, constExpertV, nullptr, YOut,
+            dynamicScaleOut, XOut, workspaceGM, &pipe, &tilingData);
     op.Process();
 #endif
 }

@@ -14,7 +14,8 @@ namespace ops {
 
 class MoeEpDispatchEpilogue : public OpDef {
 public:
-    explicit MoeEpDispatchEpilogue(const char* name) : OpDef(name) {
+    explicit MoeEpDispatchEpilogue(const char *name) : OpDef(name)
+    {
         this->Input("context")
             .ParamType(REQUIRED)
             .DataTypeList({ge::DT_INT32})
@@ -45,14 +46,8 @@ public:
             .ParamType(REQUIRED)
             .DataTypeList({ge::DT_BF16, ge::DT_FLOAT16, ge::DT_FLOAT8_E5M2, ge::DT_FLOAT8_E4M3FN})
             .FormatList({ge::FORMAT_ND});
-        this->Output("recv_src_metadata")
-            .ParamType(REQUIRED)
-            .DataTypeList({ge::DT_INT32})
-            .FormatList({ge::FORMAT_ND});
-        this->Output("recv_topk_weights")
-            .ParamType(OPTIONAL)
-            .DataTypeList({ge::DT_FLOAT})
-            .FormatList({ge::FORMAT_ND});
+        this->Output("recv_src_metadata").ParamType(REQUIRED).DataTypeList({ge::DT_INT32}).FormatList({ge::FORMAT_ND});
+        this->Output("recv_topk_weights").ParamType(OPTIONAL).DataTypeList({ge::DT_FLOAT}).FormatList({ge::FORMAT_ND});
         this->Output("recv_scales")
             .ParamType(OPTIONAL)
             .DataTypeList({ge::DT_FLOAT, ge::DT_FLOAT8_E8M0})
@@ -83,4 +78,4 @@ public:
 
 OP_ADD(MoeEpDispatchEpilogue);
 
-}  // namespace ops
+} // namespace ops

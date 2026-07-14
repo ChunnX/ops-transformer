@@ -106,7 +106,7 @@ aclnnStatus aclnnMoeDistributeDispatchV3(
     <col style="width: 300px">
     <col style="width: 330px">
     <col style="width: 212px">
-    <col style="width: 100px"> 
+    <col style="width: 100px">
     <col style="width: 190px">
     <col style="width: 145px">
     </colgroup>
@@ -522,7 +522,7 @@ aclnnStatus aclnnMoeDistributeDispatchV3(
 
 - **返回值**
 
-    aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。  
+    aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
     第一段接口完成入参校验，出现以下场景时报错：
 
@@ -698,7 +698,7 @@ aclnnStatus aclnnMoeDistributeDispatchV3(
 
 - **通信方式约束**：
   - <term>Ascend 950DT</term>：仅支持UB Memory通信。
-  
+
 - **组网约束**：
   - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：多机场景仅支持交换机组网，不支持双机直连组网。
 
@@ -711,7 +711,7 @@ aclnnStatus aclnnMoeDistributeDispatchV3(
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> ：
 
     本示例支持A2算子运行在卡数为[2, 8]的单机环境中，用户可以根据需要在示例代码中设置EP_WORLD_SIZE_A2为卡数，并更改moeExpertNum，使得moeExpertNum可以被EP_WORLD_SIZE_A2整除。
-    
+
     - 编译算子：算子编译命令如下，moe_distribute_dispatch_v2和moe_distribute_combine_v2算子都需要编译，这两个算子需要成对执行。
 
         ```bash
@@ -1148,7 +1148,7 @@ aclnnStatus aclnnMoeDistributeDispatchV3(
 - <term>Ascend 950DT</term> ：请参考[aclnnMoeDistributeDispatchV2](../docs/aclnnMoeDistributeDispatchV2.md)中调用示例的准备部分和示例代码，按照上文的约束说明重新设置涉及的变量，V3接口相较于V2接口新增的场景参数按上述参数说明传值即可。
 
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  ：
-       
+
     具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
 - 示例代码如下，仅供参考
@@ -1660,4 +1660,3 @@ aclnnStatus aclnnMoeDistributeDispatchV3(
         return 0;
     }
     ```
-    

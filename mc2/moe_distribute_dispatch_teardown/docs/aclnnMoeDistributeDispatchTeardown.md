@@ -27,27 +27,27 @@
 
 ```cpp
 aclnnStatus aclnnMoeDistributeDispatchTeardownGetWorkspaceSize(
-    const aclTensor* x, 
-    const aclTensor* y, 
-    const aclTensor* expertIds, 
+    const aclTensor* x,
+    const aclTensor* y,
+    const aclTensor* expertIds,
     const aclTensor* commCmdInfo,
-    const char* groupEp, 
-    int64_t epWorldSize, 
+    const char* groupEp,
+    int64_t epWorldSize,
     int64_t epRankId,
-    int64_t moeExpertNum, 
-    int64_t expertShardType, 
-    int64_t sharedExpertNum, 
+    int64_t moeExpertNum,
+    int64_t expertShardType,
+    int64_t sharedExpertNum,
     int64_t sharedExpertRankNum,
-    int64_t quantMode, 
-    int64_t globalBs, 
-    int64_t expertTokenNumsType, 
-    int64_t commType, 
+    int64_t quantMode,
+    int64_t globalBs,
+    int64_t expertTokenNumsType,
+    int64_t commType,
     char* commAlg,
-    aclTensor* expandXOut, 
-    aclTensor* dynamicScalesOut, 
+    aclTensor* expandXOut,
+    aclTensor* dynamicScalesOut,
     aclTensor* assistInfoForCombineOut,
-    aclTensor* expertTokenNumsOut, 
-    uint64_t* workspaceSize, 
+    aclTensor* expertTokenNumsOut,
+    uint64_t* workspaceSize,
     aclOpExecutor** executor)
 ```
 
@@ -62,14 +62,14 @@ aclnnStatus aclnnMoeDistributeDispatchTeardown(
 ## aclnnMoeDistributeDispatchTeardownGetWorkspaceSize
 
 - **参数说明**
-  
+
     <table style="undefined;table-layout: fixed; width: 1550px"> <colgroup>
     <col style="width: 110px">
     <col style="width: 120px">
     <col style="width: 305px">
     <col style="width: 330px">
     <col style="width: 210px">
-    <col style="width: 100px"> 
+    <col style="width: 100px">
     <col style="width: 180px">
     <col style="width: 145px">
     </colgroup>
@@ -336,7 +336,7 @@ aclnnStatus aclnnMoeDistributeDispatchTeardown(
         - commAlg当前版本不支持，传空指针即可。
 
 - **返回值：**
-  
+
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
@@ -422,7 +422,7 @@ aclnnStatus aclnnMoeDistributeDispatchTeardown(
 
 1. 确定性计算：
      - aclnnMoeDistributeDispatchTeardown默认确定性实现。
-     
+
 2. aclnnMoeDistributeDispatchTeardown接口与aclnnMoeDistributeDispatchSetup，aclnnMoeDistributeCombineSetup，aclnnMoeDistributeCombineTeardown接口必须配套使用。
 
 3. 调用接口过程中使用的`groupEp`、`epWorldSize`、`moeExpertNum`、`expertShardType`、`sharedExpertNum`、`sharedExpertRankNum`、`globalBs`、`commQuantMode`、`commType`、`commAlg`参数取值所有卡需保持一致，`groupEp`、`epWorldSize`、`expertShardType`、`sharedExpertNum`、`sharedExpertRankNum`、`globalBs`、`commQuantMode`、`commType`、`commAlg`参数取值在网络中不同层中也需保持一致，且和`aclnnMoeDistributeDispatchTeardown`，`aclnnMoeDistributeCombineSetup`，`aclnnMoeDistributeCombineTeardown`对应参数也保持一致。
@@ -431,14 +431,14 @@ aclnnStatus aclnnMoeDistributeDispatchTeardown(
 
 5. 参数说明里shape格式说明：
     * A：表示本卡可能接收的最大token数量，取值范围如下：
-      
+
       * 对于MoE专家，当globalBs为0时，要满足A >= `BS` \* `epWorldSize` \* min(`localExpertNum`, `K`)；当`globalBs`非0时，要满足A >= `globalBs` \* min(`localExpertNum`, `K`)。
       * 对于共享专家，当`globalBs`为0时，要满足A = `BS` \* `epWorldSize` \* `sharedExpertNum` / `sharedExpertRankNum`；当globalBs非0时，要满足A = `globalBs` \* `sharedExpertNum` / `sharedExpertRankNum`。
     * H：表示hidden size隐藏层大小，取值范围[1024, 8192]。当前仅支持4096、7168。
     * BS：表示batch sequence size，即本卡最终输出的token数量，取值范围为0 < `BS` ≤ 512。当前仅支持8、16、256。
     * K：表示选取topK个专家，取值范围为0 < `K` ≤ 16同时满足0 < `K` ≤ `moeExpertNum`。当前仅支持6、8。
     * localExpertNum：表示本卡专家数量。
-      
+
       * 对于共享专家卡，localExpertNum = 1
       * 对于MoE专家卡，localExpertNum = `moeExpertNum` / (`epWorldSize` - `sharedExpertRankNum`)。moeExpertNum当前仅支持32。
     * tokenMsgSize：表示每个token在数据通信时的维度信息。
@@ -450,10 +450,10 @@ aclnnStatus aclnnMoeDistributeDispatchTeardown(
 6. HCCL_BUFFSIZE：
     - <term>Ascend 950DT</term>：
       调用本接口前需检查`HCCL_BUFFSIZE`环境变量取值是否合理，该环境变量表示单个通信域占用内存大小，单位MB，不配置时默认为200MB。要求 >= 2且满足>= 4 \* (`localExpertNum` \* `maxBs` \* `epWorldSize` \* Align512(Align32(2 \* H) + 44) + (`K` + `sharedExpertNum`) \* `maxBs` \* Align512(2 \* `H`))，`localExpertNum`代表使用MoE专家卡的本卡专家数，其中Align512(x) = ((x + 512 - 1) / 512) \* 512，Align32(x) = ((x + 32 - 1) / 32) \* 32。
-    
+
     - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  ：
       调用本接口前需检查`HCCL_BUFFSIZE`环境变量取值是否合理，该环境变量表示单个通信域占用内存大小，单位MB，不配置时默认为200MB。要求 >= 2且满足>= 2 \* (`localExpertNum` \* `maxBs` \* `epWorldSize` \* Align512(Align32(2 \* H) + 44) + (`K` + `sharedExpertNum`) \* `maxBs` \* Align512(2 \* `H`))，`localExpertNum`代表使用MoE专家卡的本卡专家数，其中Align512(x) = ((x + 512 - 1) / 512) \* 512，Align32(x) = ((x + 32 - 1) / 32) \* 32。
-  
+
 7. 通信域使用约束：
     - 一个模型中的aclnnMoeDistributeDispatchSetup接口，aclnnMoeDistributeDispatchTeardown接口，aclnnMoeDistributeCombineSetup接口，aclnnMoeDistributeCombineTeardown接口仅支持相同EP通信域，且该通信域中不允许有其他算子。
 

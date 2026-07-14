@@ -86,42 +86,48 @@ const std::map<std::pair<QuantModeA5, ge::DataType>, RealModeA5> QUANT_MODE_MAP 
     {{QuantModeA5::MX_QUANT, ge::DT_FLOAT4_E2M1}, RealModeA5::MX_SCALES},
     {{QuantModeA5::MX_QUANT, ge::DT_FLOAT4_E1M2}, RealModeA5::MX_SCALES},
     {{QuantModeA5::MX_QUANT_CLIP, ge::DT_FLOAT8_E5M2}, RealModeA5::MX_SCALES},
-    {{QuantModeA5::MX_QUANT_CLIP, ge::DT_FLOAT8_E4M3FN}, RealModeA5::MX_SCALES}
-};
+    {{QuantModeA5::MX_QUANT_CLIP, ge::DT_FLOAT8_E4M3FN}, RealModeA5::MX_SCALES}};
 
 // Supported x datatype in nonquant mode, the same as expandX
-const std::set<ge::DataType> NON_QUANT_DTYPE = {
-    ge::DT_FLOAT16, ge::DT_BF16, ge::DT_HIFLOAT8, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E5M2,
-    ge::DT_FLOAT4_E2M1, ge::DT_FLOAT4_E1M2};
+const std::set<ge::DataType> NON_QUANT_DTYPE = {ge::DT_FLOAT16,       ge::DT_BF16,        ge::DT_HIFLOAT8,
+                                                ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E5M2, ge::DT_FLOAT4_E2M1,
+                                                ge::DT_FLOAT4_E1M2};
 
 class MoeDistributeDispatchTilingHelper {
 public:
     static ge::graphStatus TilingCheckMoeDistributeDispatch(gert::TilingContext *context, const char *nodeName,
-        const bool isScales, const uint32_t quantMode);
-    static ge::graphStatus TilingCheckMoeDistributeDispatchA5(gert::TilingContext *context,
-        const bool isScales, const uint32_t quantMode, const bool isTokenMask);
+                                                            const bool isScales, const uint32_t quantMode);
+    static ge::graphStatus TilingCheckMoeDistributeDispatchA5(gert::TilingContext *context, const bool isScales,
+                                                              const uint32_t quantMode, const bool isTokenMask);
+
 protected:
-    static bool CheckTensorDim(gert::TilingContext *context, const char *nodeName,
-        const bool isScales, const uint32_t quantMode, const uint32_t opVersion);
-    static bool CheckTensorDataType(gert::TilingContext *context, const char *nodeName,
-        const bool isScales, const uint32_t quantMode);    
-    static bool CheckTensorDataTypeA5(gert::TilingContext *context, const char *nodeName,
-        const bool isScales, const uint32_t quantMode);
-    static bool CheckTensorFormat(const gert::TilingContext *context, const char *nodeName,
-        const bool isScales, const uint32_t quantMode);
+    static bool CheckTensorDim(gert::TilingContext *context, const char *nodeName, const bool isScales,
+                               const uint32_t quantMode, const uint32_t opVersion);
+    static bool CheckTensorDataType(gert::TilingContext *context, const char *nodeName, const bool isScales,
+                                    const uint32_t quantMode);
+    static bool CheckTensorDataTypeA5(gert::TilingContext *context, const char *nodeName, const bool isScales,
+                                      const uint32_t quantMode);
+    static bool CheckTensorFormat(const gert::TilingContext *context, const char *nodeName, const bool isScales,
+                                  const uint32_t quantMode);
+
 private:
     inline static bool CheckInputTensorDim(const gert::TilingContext *context, const char *nodeName,
-        const bool isScales, const uint32_t quantMode);
-    inline static bool CheckDynamicScalesDim(const gert::TilingContext *context, const char *nodeName, const uint32_t quantMode);
-    inline static bool CheckOutputTensorDim(gert::TilingContext *context, const char *nodeName, const uint32_t quantMode);
+                                           const bool isScales, const uint32_t quantMode);
+    inline static bool CheckDynamicScalesDim(const gert::TilingContext *context, const char *nodeName,
+                                             const uint32_t quantMode);
+    inline static bool CheckOutputTensorDim(gert::TilingContext *context, const char *nodeName,
+                                            const uint32_t quantMode);
     inline static bool CheckEpTpRecvTensorDim(const gert::TilingContext *context, const char *nodeName);
     inline static bool CheckCommonOutputTensorDataType(const gert::TilingContext *context, const char *nodeName);
-    inline static bool CheckInputTensorDataType(const gert::TilingContext *context, const char *nodeName, const bool isScales);
-    inline static bool CheckTensorDataTypeNoScales(const gert::TilingContext *context, const char *nodeName, const bool isScales);
-    inline static bool CheckTensorDataTypeStaticOrDynamic(const gert::TilingContext *context, const char *nodeName, bool isScales);
+    inline static bool CheckInputTensorDataType(const gert::TilingContext *context, const char *nodeName,
+                                                const bool isScales);
+    inline static bool CheckTensorDataTypeNoScales(const gert::TilingContext *context, const char *nodeName,
+                                                   const bool isScales);
+    inline static bool CheckTensorDataTypeStaticOrDynamic(const gert::TilingContext *context, const char *nodeName,
+                                                          bool isScales);
     inline static bool CheckTensorDataTypeMxfp8(const gert::TilingContext *context, const char *nodeName);
     inline static bool CheckDistinctTensorDataType(gert::TilingContext *context, const char *nodeName,
-        const bool isScales, const uint32_t quantMode);
+                                                   const bool isScales, const uint32_t quantMode);
     inline static bool CheckTokenMask(const gert::TilingContext *context, const char *nodeName);
 };
 } // namespace optiling

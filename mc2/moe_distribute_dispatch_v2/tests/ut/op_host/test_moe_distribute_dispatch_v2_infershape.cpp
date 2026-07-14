@@ -17,52 +17,42 @@
 #undef private
 
 namespace MoeDistributeDispatchV2 {
-class MoeDistributeDispatchV2Infershape : public testing::Test {
-};
+class MoeDistributeDispatchV2Infershape : public testing::Test {};
 
 // infer shape with bias, success
-TEST_F(MoeDistributeDispatchV2Infershape, inferShape0) 
+TEST_F(MoeDistributeDispatchV2Infershape, inferShape0)
 {
     gert::StorageShape expandXShape = {{32, 7168}, {}};
     gert::StorageShape expertIdsShape = {{32, 8}, {}};
 
-    gert::InfershapeContextPara infershapeContextPara("MoeDistributeDispatchV2",
-        {
-            {expandXShape, ge::DT_INT32, ge::FORMAT_ND},
-            {expertIdsShape, ge::DT_INT32, ge::FORMAT_FRACTAL_NZ}
-        },
-        {
-            {{}, ge::DT_INT32, ge::FORMAT_ND},
-            {{}, ge::DT_INT32, ge::FORMAT_ND},
-            {{}, ge::DT_INT32, ge::FORMAT_ND},
-            {{}, ge::DT_INT32, ge::FORMAT_ND},
-            {{}, ge::DT_INT32, ge::FORMAT_ND},
-            {{}, ge::DT_INT32, ge::FORMAT_ND},
-            {{}, ge::DT_INT32, ge::FORMAT_FRACTAL_NZ}
-        },
-        {
-            {"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("ep_group")},
-            {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(288)},
-            {"ep_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"moe_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(256)},
-            {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
-            {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-            {"tp_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"expert_shard_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"shared_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-            {"shared_expert_rank_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(32)},
-            {"quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"global_bs", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"expert_token_nums_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-            {"comm_alg", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
-            {"zero_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"copy_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"const_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}
-        }
-    );
-    Mc2Hcom::MockValues hcomTopologyMockValues {
-        {"rankNum", 8}
-    };
+    gert::InfershapeContextPara infershapeContextPara(
+        "MoeDistributeDispatchV2",
+        {{expandXShape, ge::DT_INT32, ge::FORMAT_ND}, {expertIdsShape, ge::DT_INT32, ge::FORMAT_FRACTAL_NZ}},
+        {{{}, ge::DT_INT32, ge::FORMAT_ND},
+         {{}, ge::DT_INT32, ge::FORMAT_ND},
+         {{}, ge::DT_INT32, ge::FORMAT_ND},
+         {{}, ge::DT_INT32, ge::FORMAT_ND},
+         {{}, ge::DT_INT32, ge::FORMAT_ND},
+         {{}, ge::DT_INT32, ge::FORMAT_ND},
+         {{}, ge::DT_INT32, ge::FORMAT_FRACTAL_NZ}},
+        {{"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("ep_group")},
+         {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(288)},
+         {"ep_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+         {"moe_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(256)},
+         {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
+         {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+         {"tp_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+         {"expert_shard_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+         {"shared_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+         {"shared_expert_rank_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(32)},
+         {"quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+         {"global_bs", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+         {"expert_token_nums_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+         {"comm_alg", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
+         {"zero_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+         {"copy_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+         {"const_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}});
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
 
     std::vector<std::vector<int64_t>> expertOutputShape = {{288, 7168}};
     Mc2ExecuteTestCase(infershapeContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expertOutputShape);
@@ -73,34 +63,33 @@ TEST_F(MoeDistributeDispatchV2Infershape, inferDtype0)
     ge::DataType expandXType = ge::DT_FLOAT16;
     ge::DataType expertIdsType = ge::DT_INT32;
 
-    auto contextHolder = gert::InferDataTypeContextFaker()
-        .NodeIoNum(2, 6)
-        .NodeAttrs({
-            {"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("ep_group")},
-            {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(288)},
-            {"ep_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"moe_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(256)},
-            {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
-            {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-            {"tp_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"expert_shard_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"shared_expert_rank_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(32)},
-            {"quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"global_bs", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"expert_token_nums_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-            {"comm_alg", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
-            {"zero_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"copy_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"const_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}
-        })
-        .InputDataTypes({&expandXType, &expertIdsType})
-        .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
-        .NodeOutputTd(1, ge::FORMAT_ND, ge::FORMAT_ND)
-        .NodeOutputTd(2, ge::FORMAT_ND, ge::FORMAT_ND)
-        .NodeOutputTd(3, ge::FORMAT_ND, ge::FORMAT_ND)
-        .NodeOutputTd(4, ge::FORMAT_ND, ge::FORMAT_ND)
-        .NodeOutputTd(5, ge::FORMAT_ND, ge::FORMAT_ND)
-        .Build();
+    auto contextHolder =
+        gert::InferDataTypeContextFaker()
+            .NodeIoNum(2, 6)
+            .NodeAttrs({{"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("ep_group")},
+                        {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(288)},
+                        {"ep_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                        {"moe_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(256)},
+                        {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
+                        {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+                        {"tp_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                        {"expert_shard_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                        {"shared_expert_rank_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(32)},
+                        {"quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                        {"global_bs", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                        {"expert_token_nums_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+                        {"comm_alg", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
+                        {"zero_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                        {"copy_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                        {"const_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}})
+            .InputDataTypes({&expandXType, &expertIdsType})
+            .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
+            .NodeOutputTd(1, ge::FORMAT_ND, ge::FORMAT_ND)
+            .NodeOutputTd(2, ge::FORMAT_ND, ge::FORMAT_ND)
+            .NodeOutputTd(3, ge::FORMAT_ND, ge::FORMAT_ND)
+            .NodeOutputTd(4, ge::FORMAT_ND, ge::FORMAT_ND)
+            .NodeOutputTd(5, ge::FORMAT_ND, ge::FORMAT_ND)
+            .Build();
 
     auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
     auto inferDtypeFunc = spaceRegistry->GetOpImpl("MoeDistributeDispatchV2")->infer_datatype;
@@ -174,9 +163,12 @@ TEST_F(MoeDistributeDispatchV2Infershape, InferShape_NoSharedExperts)
     gert::InfershapeContextPara infershapeContextPara(
         "MoeDistributeDispatchV2",
         {{xShape, ge::DT_FLOAT16, ge::FORMAT_ND}, {expertIdsShape, ge::DT_INT32, ge::FORMAT_ND}},
-        {{{}, ge::DT_INT32, ge::FORMAT_ND}, {{}, ge::DT_INT32, ge::FORMAT_ND},
-         {{}, ge::DT_INT32, ge::FORMAT_ND}, {{}, ge::DT_INT32, ge::FORMAT_ND},
-         {{}, ge::DT_INT32, ge::FORMAT_ND}, {{}, ge::DT_INT32, ge::FORMAT_ND},
+        {{{}, ge::DT_INT32, ge::FORMAT_ND},
+         {{}, ge::DT_INT32, ge::FORMAT_ND},
+         {{}, ge::DT_INT32, ge::FORMAT_ND},
+         {{}, ge::DT_INT32, ge::FORMAT_ND},
+         {{}, ge::DT_INT32, ge::FORMAT_ND},
+         {{}, ge::DT_INT32, ge::FORMAT_ND},
          {{}, ge::DT_INT32, ge::FORMAT_ND}},
         {{"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("ep_group")},
          {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
@@ -216,9 +208,12 @@ TEST_F(MoeDistributeDispatchV2Infershape, InferShape_WithExpertScales)
          {{}, ge::DT_FLOAT, ge::FORMAT_ND},
          {{}, ge::DT_BOOL, ge::FORMAT_ND},
          {expertScalesShape, ge::DT_FLOAT, ge::FORMAT_ND}},
-        {{{}, ge::DT_INT32, ge::FORMAT_ND}, {{}, ge::DT_INT32, ge::FORMAT_ND},
-         {{}, ge::DT_INT32, ge::FORMAT_ND}, {{}, ge::DT_INT32, ge::FORMAT_ND},
-         {{}, ge::DT_INT32, ge::FORMAT_ND}, {{}, ge::DT_INT32, ge::FORMAT_ND},
+        {{{}, ge::DT_INT32, ge::FORMAT_ND},
+         {{}, ge::DT_INT32, ge::FORMAT_ND},
+         {{}, ge::DT_INT32, ge::FORMAT_ND},
+         {{}, ge::DT_INT32, ge::FORMAT_ND},
+         {{}, ge::DT_INT32, ge::FORMAT_ND},
+         {{}, ge::DT_INT32, ge::FORMAT_ND},
          {{}, ge::DT_INT32, ge::FORMAT_ND}},
         {{"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("ep_group")},
          {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
@@ -253,9 +248,12 @@ TEST_F(MoeDistributeDispatchV2Infershape, InferShape_NegativeGlobalBs)
     gert::InfershapeContextPara infershapeContextPara(
         "MoeDistributeDispatchV2",
         {{xShape, ge::DT_FLOAT16, ge::FORMAT_ND}, {expertIdsShape, ge::DT_INT32, ge::FORMAT_ND}},
-        {{{}, ge::DT_INT32, ge::FORMAT_ND}, {{}, ge::DT_INT32, ge::FORMAT_ND},
-         {{}, ge::DT_INT32, ge::FORMAT_ND}, {{}, ge::DT_INT32, ge::FORMAT_ND},
-         {{}, ge::DT_INT32, ge::FORMAT_ND}, {{}, ge::DT_INT32, ge::FORMAT_ND},
+        {{{}, ge::DT_INT32, ge::FORMAT_ND},
+         {{}, ge::DT_INT32, ge::FORMAT_ND},
+         {{}, ge::DT_INT32, ge::FORMAT_ND},
+         {{}, ge::DT_INT32, ge::FORMAT_ND},
+         {{}, ge::DT_INT32, ge::FORMAT_ND},
+         {{}, ge::DT_INT32, ge::FORMAT_ND},
          {{}, ge::DT_INT32, ge::FORMAT_ND}},
         {{"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("ep_group")},
          {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
@@ -289,33 +287,32 @@ TEST_F(MoeDistributeDispatchV2Infershape, InferDtype_MxQuant_WithScales)
     ge::DataType scalesType = ge::DT_FLOAT;
 
     auto contextHolder = gert::InferDataTypeContextFaker()
-        .NodeIoNum(3, 6)
-        .NodeAttrs({
-            {"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("ep_group")},
-            {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
-            {"ep_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"moe_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)},
-            {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("tp_group")},
-            {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"tp_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"expert_shard_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"shared_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"shared_expert_rank_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
-            {"global_bs", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"expert_token_nums_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-            {"comm_alg", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
-            {"zero_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"copy_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"const_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}})
-        .InputDataTypes({&xType, &expertIdsType, &scalesType})
-        .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
-        .NodeOutputTd(1, ge::FORMAT_ND, ge::FORMAT_ND)
-        .NodeOutputTd(2, ge::FORMAT_ND, ge::FORMAT_ND)
-        .NodeOutputTd(3, ge::FORMAT_ND, ge::FORMAT_ND)
-        .NodeOutputTd(4, ge::FORMAT_ND, ge::FORMAT_ND)
-        .NodeOutputTd(5, ge::FORMAT_ND, ge::FORMAT_ND)
-        .Build();
+                             .NodeIoNum(3, 6)
+                             .NodeAttrs({{"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("ep_group")},
+                                         {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
+                                         {"ep_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                         {"moe_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)},
+                                         {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("tp_group")},
+                                         {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                         {"tp_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                         {"expert_shard_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                         {"shared_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                         {"shared_expert_rank_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                         {"quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
+                                         {"global_bs", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                         {"expert_token_nums_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+                                         {"comm_alg", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
+                                         {"zero_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                         {"copy_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                         {"const_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}})
+                             .InputDataTypes({&xType, &expertIdsType, &scalesType})
+                             .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
+                             .NodeOutputTd(1, ge::FORMAT_ND, ge::FORMAT_ND)
+                             .NodeOutputTd(2, ge::FORMAT_ND, ge::FORMAT_ND)
+                             .NodeOutputTd(3, ge::FORMAT_ND, ge::FORMAT_ND)
+                             .NodeOutputTd(4, ge::FORMAT_ND, ge::FORMAT_ND)
+                             .NodeOutputTd(5, ge::FORMAT_ND, ge::FORMAT_ND)
+                             .Build();
 
     auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
     ASSERT_NE(spaceRegistry, nullptr);
@@ -335,33 +332,32 @@ TEST_F(MoeDistributeDispatchV2Infershape, InferDtype_NoQuant_WithScales)
     ge::DataType scalesType = ge::DT_FLOAT;
 
     auto contextHolder = gert::InferDataTypeContextFaker()
-        .NodeIoNum(3, 6)
-        .NodeAttrs({
-            {"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("ep_group")},
-            {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
-            {"ep_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"moe_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)},
-            {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("tp_group")},
-            {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"tp_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"expert_shard_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"shared_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"shared_expert_rank_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"global_bs", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"expert_token_nums_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-            {"comm_alg", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
-            {"zero_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"copy_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"const_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}})
-        .InputDataTypes({&xType, &expertIdsType, &scalesType})
-        .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
-        .NodeOutputTd(1, ge::FORMAT_ND, ge::FORMAT_ND)
-        .NodeOutputTd(2, ge::FORMAT_ND, ge::FORMAT_ND)
-        .NodeOutputTd(3, ge::FORMAT_ND, ge::FORMAT_ND)
-        .NodeOutputTd(4, ge::FORMAT_ND, ge::FORMAT_ND)
-        .NodeOutputTd(5, ge::FORMAT_ND, ge::FORMAT_ND)
-        .Build();
+                             .NodeIoNum(3, 6)
+                             .NodeAttrs({{"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("ep_group")},
+                                         {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
+                                         {"ep_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                         {"moe_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)},
+                                         {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("tp_group")},
+                                         {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                         {"tp_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                         {"expert_shard_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                         {"shared_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                         {"shared_expert_rank_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                         {"quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                         {"global_bs", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                         {"expert_token_nums_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+                                         {"comm_alg", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
+                                         {"zero_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                         {"copy_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                         {"const_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}})
+                             .InputDataTypes({&xType, &expertIdsType, &scalesType})
+                             .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
+                             .NodeOutputTd(1, ge::FORMAT_ND, ge::FORMAT_ND)
+                             .NodeOutputTd(2, ge::FORMAT_ND, ge::FORMAT_ND)
+                             .NodeOutputTd(3, ge::FORMAT_ND, ge::FORMAT_ND)
+                             .NodeOutputTd(4, ge::FORMAT_ND, ge::FORMAT_ND)
+                             .NodeOutputTd(5, ge::FORMAT_ND, ge::FORMAT_ND)
+                             .Build();
 
     auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
     ASSERT_NE(spaceRegistry, nullptr);
@@ -395,9 +391,12 @@ TEST_F(MoeDistributeDispatchV2Infershape, InferShape_RtGetSocSpecFail_WithElasti
          {{}, ge::DT_BOOL, ge::FORMAT_ND},
          {{}, ge::DT_FLOAT, ge::FORMAT_ND},
          {elasticInfoShape, ge::DT_INT64, ge::FORMAT_ND}},
-        {{{}, ge::DT_INT32, ge::FORMAT_ND}, {{}, ge::DT_INT32, ge::FORMAT_ND},
-         {{}, ge::DT_INT32, ge::FORMAT_ND}, {{}, ge::DT_INT32, ge::FORMAT_ND},
-         {{}, ge::DT_INT32, ge::FORMAT_ND}, {{}, ge::DT_INT32, ge::FORMAT_ND},
+        {{{}, ge::DT_INT32, ge::FORMAT_ND},
+         {{}, ge::DT_INT32, ge::FORMAT_ND},
+         {{}, ge::DT_INT32, ge::FORMAT_ND},
+         {{}, ge::DT_INT32, ge::FORMAT_ND},
+         {{}, ge::DT_INT32, ge::FORMAT_ND},
+         {{}, ge::DT_INT32, ge::FORMAT_ND},
          {{}, ge::DT_INT32, ge::FORMAT_ND}},
         {{"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("ep_group")},
          {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
@@ -443,9 +442,12 @@ TEST_F(MoeDistributeDispatchV2Infershape, InferShape_A5_PerGroupQuant)
          {{}, ge::DT_BOOL, ge::FORMAT_ND},
          {{}, ge::DT_FLOAT, ge::FORMAT_ND},
          {elasticInfoShape, ge::DT_INT64, ge::FORMAT_ND}},
-        {{{}, ge::DT_INT32, ge::FORMAT_ND}, {{}, ge::DT_INT32, ge::FORMAT_ND},
-         {{}, ge::DT_INT32, ge::FORMAT_ND}, {{}, ge::DT_INT32, ge::FORMAT_ND},
-         {{}, ge::DT_INT32, ge::FORMAT_ND}, {{}, ge::DT_INT32, ge::FORMAT_ND},
+        {{{}, ge::DT_INT32, ge::FORMAT_ND},
+         {{}, ge::DT_INT32, ge::FORMAT_ND},
+         {{}, ge::DT_INT32, ge::FORMAT_ND},
+         {{}, ge::DT_INT32, ge::FORMAT_ND},
+         {{}, ge::DT_INT32, ge::FORMAT_ND},
+         {{}, ge::DT_INT32, ge::FORMAT_ND},
          {{}, ge::DT_INT32, ge::FORMAT_ND}},
         {{"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("ep_group")},
          {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
@@ -492,9 +494,12 @@ TEST_F(MoeDistributeDispatchV2Infershape, InferShape_A5_MxQuant)
          {{}, ge::DT_BOOL, ge::FORMAT_ND},
          {{}, ge::DT_FLOAT, ge::FORMAT_ND},
          {elasticInfoShape, ge::DT_INT64, ge::FORMAT_ND}},
-        {{{}, ge::DT_INT32, ge::FORMAT_ND}, {{}, ge::DT_INT32, ge::FORMAT_ND},
-         {{}, ge::DT_INT32, ge::FORMAT_ND}, {{}, ge::DT_INT32, ge::FORMAT_ND},
-         {{}, ge::DT_INT32, ge::FORMAT_ND}, {{}, ge::DT_INT32, ge::FORMAT_ND},
+        {{{}, ge::DT_INT32, ge::FORMAT_ND},
+         {{}, ge::DT_INT32, ge::FORMAT_ND},
+         {{}, ge::DT_INT32, ge::FORMAT_ND},
+         {{}, ge::DT_INT32, ge::FORMAT_ND},
+         {{}, ge::DT_INT32, ge::FORMAT_ND},
+         {{}, ge::DT_INT32, ge::FORMAT_ND},
          {{}, ge::DT_INT32, ge::FORMAT_ND}},
         {{"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("ep_group")},
          {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
@@ -542,9 +547,12 @@ TEST_F(MoeDistributeDispatchV2Infershape, InferShape_A5_NoQuant_WithScales)
          {{}, ge::DT_BOOL, ge::FORMAT_ND},
          {{}, ge::DT_FLOAT, ge::FORMAT_ND},
          {elasticInfoShape, ge::DT_INT64, ge::FORMAT_ND}},
-        {{{}, ge::DT_INT32, ge::FORMAT_ND}, {{}, ge::DT_INT32, ge::FORMAT_ND},
-         {{}, ge::DT_INT32, ge::FORMAT_ND}, {{}, ge::DT_INT32, ge::FORMAT_ND},
-         {{}, ge::DT_INT32, ge::FORMAT_ND}, {{}, ge::DT_INT32, ge::FORMAT_ND},
+        {{{}, ge::DT_INT32, ge::FORMAT_ND},
+         {{}, ge::DT_INT32, ge::FORMAT_ND},
+         {{}, ge::DT_INT32, ge::FORMAT_ND},
+         {{}, ge::DT_INT32, ge::FORMAT_ND},
+         {{}, ge::DT_INT32, ge::FORMAT_ND},
+         {{}, ge::DT_INT32, ge::FORMAT_ND},
          {{}, ge::DT_INT32, ge::FORMAT_ND}},
         {{"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("ep_group")},
          {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
@@ -591,9 +599,12 @@ TEST_F(MoeDistributeDispatchV2Infershape, InferShape_A5_StaticQuant_Else)
          {{}, ge::DT_BOOL, ge::FORMAT_ND},
          {{}, ge::DT_FLOAT, ge::FORMAT_ND},
          {elasticInfoShape, ge::DT_INT64, ge::FORMAT_ND}},
-        {{{}, ge::DT_INT32, ge::FORMAT_ND}, {{}, ge::DT_INT32, ge::FORMAT_ND},
-         {{}, ge::DT_INT32, ge::FORMAT_ND}, {{}, ge::DT_INT32, ge::FORMAT_ND},
-         {{}, ge::DT_INT32, ge::FORMAT_ND}, {{}, ge::DT_INT32, ge::FORMAT_ND},
+        {{{}, ge::DT_INT32, ge::FORMAT_ND},
+         {{}, ge::DT_INT32, ge::FORMAT_ND},
+         {{}, ge::DT_INT32, ge::FORMAT_ND},
+         {{}, ge::DT_INT32, ge::FORMAT_ND},
+         {{}, ge::DT_INT32, ge::FORMAT_ND},
+         {{}, ge::DT_INT32, ge::FORMAT_ND},
          {{}, ge::DT_INT32, ge::FORMAT_ND}},
         {{"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("ep_group")},
          {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
@@ -640,9 +651,12 @@ TEST_F(MoeDistributeDispatchV2Infershape, InferShape_A5_SharedExperts_ElasticInf
          {{}, ge::DT_BOOL, ge::FORMAT_ND},
          {{}, ge::DT_FLOAT, ge::FORMAT_ND},
          {elasticInfoShape, ge::DT_INT64, ge::FORMAT_ND}},
-        {{{}, ge::DT_INT32, ge::FORMAT_ND}, {{}, ge::DT_INT32, ge::FORMAT_ND},
-         {{}, ge::DT_INT32, ge::FORMAT_ND}, {{}, ge::DT_INT32, ge::FORMAT_ND},
-         {{}, ge::DT_INT32, ge::FORMAT_ND}, {{}, ge::DT_INT32, ge::FORMAT_ND},
+        {{{}, ge::DT_INT32, ge::FORMAT_ND},
+         {{}, ge::DT_INT32, ge::FORMAT_ND},
+         {{}, ge::DT_INT32, ge::FORMAT_ND},
+         {{}, ge::DT_INT32, ge::FORMAT_ND},
+         {{}, ge::DT_INT32, ge::FORMAT_ND},
+         {{}, ge::DT_INT32, ge::FORMAT_ND},
          {{}, ge::DT_INT32, ge::FORMAT_ND}},
         {{"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("ep_group")},
          {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
@@ -690,9 +704,12 @@ TEST_F(MoeDistributeDispatchV2Infershape, InferShape_A5_ExpertScales_NonA2EpRecv
          {{}, ge::DT_BOOL, ge::FORMAT_ND},
          {expertScalesShape, ge::DT_FLOAT, ge::FORMAT_ND},
          {elasticInfoShape, ge::DT_INT64, ge::FORMAT_ND}},
-        {{{}, ge::DT_INT32, ge::FORMAT_ND}, {{}, ge::DT_INT32, ge::FORMAT_ND},
-         {{}, ge::DT_INT32, ge::FORMAT_ND}, {{}, ge::DT_INT32, ge::FORMAT_ND},
-         {{}, ge::DT_INT32, ge::FORMAT_ND}, {{}, ge::DT_INT32, ge::FORMAT_ND},
+        {{{}, ge::DT_INT32, ge::FORMAT_ND},
+         {{}, ge::DT_INT32, ge::FORMAT_ND},
+         {{}, ge::DT_INT32, ge::FORMAT_ND},
+         {{}, ge::DT_INT32, ge::FORMAT_ND},
+         {{}, ge::DT_INT32, ge::FORMAT_ND},
+         {{}, ge::DT_INT32, ge::FORMAT_ND},
          {{}, ge::DT_INT32, ge::FORMAT_ND}},
         {{"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("ep_group")},
          {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
@@ -730,35 +747,36 @@ TEST_F(MoeDistributeDispatchV2Infershape, InferDtype_A5_StaticQuant_Int8)
     ge::DataType xType = ge::DT_FLOAT16;
     ge::DataType expertIdsType = ge::DT_INT32;
 
-    auto contextHolder = gert::InferDataTypeContextFaker()
-        .NodeIoNum(2, 6)
-        .NodeAttrs({
-            {"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("ep_group")},
-            {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
-            {"ep_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"moe_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)},
-            {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("tp_group")},
-            {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"tp_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"expert_shard_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"shared_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"shared_expert_rank_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-            {"global_bs", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"expert_token_nums_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-            {"comm_alg", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
-            {"zero_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"copy_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"const_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int64_t>(ge::DT_INT8))}})
-        .InputDataTypes({&xType, &expertIdsType})
-        .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
-        .NodeOutputTd(1, ge::FORMAT_ND, ge::FORMAT_ND)
-        .NodeOutputTd(2, ge::FORMAT_ND, ge::FORMAT_ND)
-        .NodeOutputTd(3, ge::FORMAT_ND, ge::FORMAT_ND)
-        .NodeOutputTd(4, ge::FORMAT_ND, ge::FORMAT_ND)
-        .NodeOutputTd(5, ge::FORMAT_ND, ge::FORMAT_ND)
-        .Build();
+    auto contextHolder =
+        gert::InferDataTypeContextFaker()
+            .NodeIoNum(2, 6)
+            .NodeAttrs(
+                {{"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("ep_group")},
+                 {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
+                 {"ep_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                 {"moe_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)},
+                 {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("tp_group")},
+                 {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                 {"tp_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                 {"expert_shard_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                 {"shared_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                 {"shared_expert_rank_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                 {"quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+                 {"global_bs", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                 {"expert_token_nums_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+                 {"comm_alg", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
+                 {"zero_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                 {"copy_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                 {"const_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                 {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int64_t>(ge::DT_INT8))}})
+            .InputDataTypes({&xType, &expertIdsType})
+            .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
+            .NodeOutputTd(1, ge::FORMAT_ND, ge::FORMAT_ND)
+            .NodeOutputTd(2, ge::FORMAT_ND, ge::FORMAT_ND)
+            .NodeOutputTd(3, ge::FORMAT_ND, ge::FORMAT_ND)
+            .NodeOutputTd(4, ge::FORMAT_ND, ge::FORMAT_ND)
+            .NodeOutputTd(5, ge::FORMAT_ND, ge::FORMAT_ND)
+            .Build();
 
     auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
     ASSERT_NE(spaceRegistry, nullptr);
@@ -782,35 +800,36 @@ TEST_F(MoeDistributeDispatchV2Infershape, InferDtype_A5_PerTokenQuant_E4M3)
     ge::DataType xType = ge::DT_FLOAT16;
     ge::DataType expertIdsType = ge::DT_INT32;
 
-    auto contextHolder = gert::InferDataTypeContextFaker()
-        .NodeIoNum(2, 6)
-        .NodeAttrs({
-            {"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("ep_group")},
-            {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
-            {"ep_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"moe_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)},
-            {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("tp_group")},
-            {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"tp_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"expert_shard_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"shared_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"shared_expert_rank_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
-            {"global_bs", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"expert_token_nums_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-            {"comm_alg", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
-            {"zero_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"copy_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"const_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int64_t>(ge::DT_FLOAT8_E4M3FN))}})
-        .InputDataTypes({&xType, &expertIdsType})
-        .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
-        .NodeOutputTd(1, ge::FORMAT_ND, ge::FORMAT_ND)
-        .NodeOutputTd(2, ge::FORMAT_ND, ge::FORMAT_ND)
-        .NodeOutputTd(3, ge::FORMAT_ND, ge::FORMAT_ND)
-        .NodeOutputTd(4, ge::FORMAT_ND, ge::FORMAT_ND)
-        .NodeOutputTd(5, ge::FORMAT_ND, ge::FORMAT_ND)
-        .Build();
+    auto contextHolder =
+        gert::InferDataTypeContextFaker()
+            .NodeIoNum(2, 6)
+            .NodeAttrs({{"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("ep_group")},
+                        {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
+                        {"ep_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                        {"moe_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)},
+                        {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("tp_group")},
+                        {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                        {"tp_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                        {"expert_shard_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                        {"shared_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                        {"shared_expert_rank_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                        {"quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
+                        {"global_bs", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                        {"expert_token_nums_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+                        {"comm_alg", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
+                        {"zero_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                        {"copy_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                        {"const_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                        {"y_dtype",
+                         Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int64_t>(ge::DT_FLOAT8_E4M3FN))}})
+            .InputDataTypes({&xType, &expertIdsType})
+            .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
+            .NodeOutputTd(1, ge::FORMAT_ND, ge::FORMAT_ND)
+            .NodeOutputTd(2, ge::FORMAT_ND, ge::FORMAT_ND)
+            .NodeOutputTd(3, ge::FORMAT_ND, ge::FORMAT_ND)
+            .NodeOutputTd(4, ge::FORMAT_ND, ge::FORMAT_ND)
+            .NodeOutputTd(5, ge::FORMAT_ND, ge::FORMAT_ND)
+            .Build();
 
     auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
     ASSERT_NE(spaceRegistry, nullptr);
@@ -834,35 +853,36 @@ TEST_F(MoeDistributeDispatchV2Infershape, InferDtype_A5_PerGroupQuant_E4M3)
     ge::DataType xType = ge::DT_FLOAT16;
     ge::DataType expertIdsType = ge::DT_INT32;
 
-    auto contextHolder = gert::InferDataTypeContextFaker()
-        .NodeIoNum(2, 6)
-        .NodeAttrs({
-            {"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("ep_group")},
-            {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
-            {"ep_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"moe_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)},
-            {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("tp_group")},
-            {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"tp_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"expert_shard_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"shared_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"shared_expert_rank_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
-            {"global_bs", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"expert_token_nums_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-            {"comm_alg", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
-            {"zero_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"copy_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"const_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int64_t>(ge::DT_FLOAT8_E4M3FN))}})
-        .InputDataTypes({&xType, &expertIdsType})
-        .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
-        .NodeOutputTd(1, ge::FORMAT_ND, ge::FORMAT_ND)
-        .NodeOutputTd(2, ge::FORMAT_ND, ge::FORMAT_ND)
-        .NodeOutputTd(3, ge::FORMAT_ND, ge::FORMAT_ND)
-        .NodeOutputTd(4, ge::FORMAT_ND, ge::FORMAT_ND)
-        .NodeOutputTd(5, ge::FORMAT_ND, ge::FORMAT_ND)
-        .Build();
+    auto contextHolder =
+        gert::InferDataTypeContextFaker()
+            .NodeIoNum(2, 6)
+            .NodeAttrs({{"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("ep_group")},
+                        {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
+                        {"ep_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                        {"moe_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)},
+                        {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("tp_group")},
+                        {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                        {"tp_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                        {"expert_shard_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                        {"shared_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                        {"shared_expert_rank_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                        {"quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
+                        {"global_bs", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                        {"expert_token_nums_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+                        {"comm_alg", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
+                        {"zero_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                        {"copy_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                        {"const_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                        {"y_dtype",
+                         Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int64_t>(ge::DT_FLOAT8_E4M3FN))}})
+            .InputDataTypes({&xType, &expertIdsType})
+            .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
+            .NodeOutputTd(1, ge::FORMAT_ND, ge::FORMAT_ND)
+            .NodeOutputTd(2, ge::FORMAT_ND, ge::FORMAT_ND)
+            .NodeOutputTd(3, ge::FORMAT_ND, ge::FORMAT_ND)
+            .NodeOutputTd(4, ge::FORMAT_ND, ge::FORMAT_ND)
+            .NodeOutputTd(5, ge::FORMAT_ND, ge::FORMAT_ND)
+            .Build();
 
     auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
     ASSERT_NE(spaceRegistry, nullptr);
@@ -894,8 +914,12 @@ TEST_F(MoeDistributeDispatchV2Infershape, InferShape_InvalidEpRankId)
     gert::InfershapeContextPara infershapeContextPara(
         "MoeDistributeDispatchV2",
         {{xShape, ge::DT_FLOAT16, ge::FORMAT_ND}, {expertIdsShape, ge::DT_INT32, ge::FORMAT_ND}},
-        {{{}, ge::DT_INT32, ge::FORMAT_ND}, {{}, ge::DT_INT32, ge::FORMAT_ND}, {{}, ge::DT_INT32, ge::FORMAT_ND},
-         {{}, ge::DT_INT32, ge::FORMAT_ND}, {{}, ge::DT_INT32, ge::FORMAT_ND}, {{}, ge::DT_INT32, ge::FORMAT_ND},
+        {{{}, ge::DT_INT32, ge::FORMAT_ND},
+         {{}, ge::DT_INT32, ge::FORMAT_ND},
+         {{}, ge::DT_INT32, ge::FORMAT_ND},
+         {{}, ge::DT_INT32, ge::FORMAT_ND},
+         {{}, ge::DT_INT32, ge::FORMAT_ND},
+         {{}, ge::DT_INT32, ge::FORMAT_ND},
          {{}, ge::DT_INT32, ge::FORMAT_ND}},
         {{"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("ep_group")},
          {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
@@ -926,8 +950,12 @@ TEST_F(MoeDistributeDispatchV2Infershape, InferShape_InvalidSharedExpertRankNum)
     gert::InfershapeContextPara infershapeContextPara(
         "MoeDistributeDispatchV2",
         {{xShape, ge::DT_FLOAT16, ge::FORMAT_ND}, {expertIdsShape, ge::DT_INT32, ge::FORMAT_ND}},
-        {{{}, ge::DT_INT32, ge::FORMAT_ND}, {{}, ge::DT_INT32, ge::FORMAT_ND}, {{}, ge::DT_INT32, ge::FORMAT_ND},
-         {{}, ge::DT_INT32, ge::FORMAT_ND}, {{}, ge::DT_INT32, ge::FORMAT_ND}, {{}, ge::DT_INT32, ge::FORMAT_ND},
+        {{{}, ge::DT_INT32, ge::FORMAT_ND},
+         {{}, ge::DT_INT32, ge::FORMAT_ND},
+         {{}, ge::DT_INT32, ge::FORMAT_ND},
+         {{}, ge::DT_INT32, ge::FORMAT_ND},
+         {{}, ge::DT_INT32, ge::FORMAT_ND},
+         {{}, ge::DT_INT32, ge::FORMAT_ND},
          {{}, ge::DT_INT32, ge::FORMAT_ND}},
         {{"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("ep_group")},
          {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
@@ -958,8 +986,12 @@ TEST_F(MoeDistributeDispatchV2Infershape, InferShape_InvalidSharedSetting)
     gert::InfershapeContextPara infershapeContextPara(
         "MoeDistributeDispatchV2",
         {{xShape, ge::DT_FLOAT16, ge::FORMAT_ND}, {expertIdsShape, ge::DT_INT32, ge::FORMAT_ND}},
-        {{{}, ge::DT_INT32, ge::FORMAT_ND}, {{}, ge::DT_INT32, ge::FORMAT_ND}, {{}, ge::DT_INT32, ge::FORMAT_ND},
-         {{}, ge::DT_INT32, ge::FORMAT_ND}, {{}, ge::DT_INT32, ge::FORMAT_ND}, {{}, ge::DT_INT32, ge::FORMAT_ND},
+        {{{}, ge::DT_INT32, ge::FORMAT_ND},
+         {{}, ge::DT_INT32, ge::FORMAT_ND},
+         {{}, ge::DT_INT32, ge::FORMAT_ND},
+         {{}, ge::DT_INT32, ge::FORMAT_ND},
+         {{}, ge::DT_INT32, ge::FORMAT_ND},
+         {{}, ge::DT_INT32, ge::FORMAT_ND},
          {{}, ge::DT_INT32, ge::FORMAT_ND}},
         {{"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("ep_group")},
          {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
@@ -990,8 +1022,12 @@ TEST_F(MoeDistributeDispatchV2Infershape, InferShape_MoeRankNumNonPositive)
     gert::InfershapeContextPara infershapeContextPara(
         "MoeDistributeDispatchV2",
         {{xShape, ge::DT_FLOAT16, ge::FORMAT_ND}, {expertIdsShape, ge::DT_INT32, ge::FORMAT_ND}},
-        {{{}, ge::DT_INT32, ge::FORMAT_ND}, {{}, ge::DT_INT32, ge::FORMAT_ND}, {{}, ge::DT_INT32, ge::FORMAT_ND},
-         {{}, ge::DT_INT32, ge::FORMAT_ND}, {{}, ge::DT_INT32, ge::FORMAT_ND}, {{}, ge::DT_INT32, ge::FORMAT_ND},
+        {{{}, ge::DT_INT32, ge::FORMAT_ND},
+         {{}, ge::DT_INT32, ge::FORMAT_ND},
+         {{}, ge::DT_INT32, ge::FORMAT_ND},
+         {{}, ge::DT_INT32, ge::FORMAT_ND},
+         {{}, ge::DT_INT32, ge::FORMAT_ND},
+         {{}, ge::DT_INT32, ge::FORMAT_ND},
          {{}, ge::DT_INT32, ge::FORMAT_ND}},
         {{"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("ep_group")},
          {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
@@ -1022,8 +1058,12 @@ TEST_F(MoeDistributeDispatchV2Infershape, InferShape_InvalidZeroBatch)
     gert::InfershapeContextPara infershapeContextPara(
         "MoeDistributeDispatchV2",
         {{xShape, ge::DT_FLOAT16, ge::FORMAT_ND}, {expertIdsShape, ge::DT_INT32, ge::FORMAT_ND}},
-        {{{}, ge::DT_INT32, ge::FORMAT_ND}, {{}, ge::DT_INT32, ge::FORMAT_ND}, {{}, ge::DT_INT32, ge::FORMAT_ND},
-         {{}, ge::DT_INT32, ge::FORMAT_ND}, {{}, ge::DT_INT32, ge::FORMAT_ND}, {{}, ge::DT_INT32, ge::FORMAT_ND},
+        {{{}, ge::DT_INT32, ge::FORMAT_ND},
+         {{}, ge::DT_INT32, ge::FORMAT_ND},
+         {{}, ge::DT_INT32, ge::FORMAT_ND},
+         {{}, ge::DT_INT32, ge::FORMAT_ND},
+         {{}, ge::DT_INT32, ge::FORMAT_ND},
+         {{}, ge::DT_INT32, ge::FORMAT_ND},
          {{}, ge::DT_INT32, ge::FORMAT_ND}},
         {{"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("ep_group")},
          {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
@@ -1062,8 +1102,12 @@ TEST_F(MoeDistributeDispatchV2Infershape, InferShape_A3_NoExpertScalesEpRecv)
     gert::InfershapeContextPara infershapeContextPara(
         "MoeDistributeDispatchV2",
         {{xShape, ge::DT_FLOAT16, ge::FORMAT_ND}, {expertIdsShape, ge::DT_INT32, ge::FORMAT_ND}},
-        {{{}, ge::DT_INT32, ge::FORMAT_ND}, {{}, ge::DT_INT32, ge::FORMAT_ND}, {{}, ge::DT_INT32, ge::FORMAT_ND},
-         {{}, ge::DT_INT32, ge::FORMAT_ND}, {{}, ge::DT_INT32, ge::FORMAT_ND}, {{}, ge::DT_INT32, ge::FORMAT_ND},
+        {{{}, ge::DT_INT32, ge::FORMAT_ND},
+         {{}, ge::DT_INT32, ge::FORMAT_ND},
+         {{}, ge::DT_INT32, ge::FORMAT_ND},
+         {{}, ge::DT_INT32, ge::FORMAT_ND},
+         {{}, ge::DT_INT32, ge::FORMAT_ND},
+         {{}, ge::DT_INT32, ge::FORMAT_ND},
          {{}, ge::DT_INT32, ge::FORMAT_ND}},
         {{"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("ep_group")},
          {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
@@ -1095,35 +1139,36 @@ TEST_F(MoeDistributeDispatchV2Infershape, InferDtype_A5_BadYdtypeStatic)
     SetRtSocSpecNpuArch("3510");
     ge::DataType xType = ge::DT_FLOAT16;
     ge::DataType expertIdsType = ge::DT_INT32;
-    auto contextHolder = gert::InferDataTypeContextFaker()
-        .NodeIoNum(2, 6)
-        .NodeAttrs({
-            {"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("ep_group")},
-            {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
-            {"ep_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"moe_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)},
-            {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("tp_group")},
-            {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"tp_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"expert_shard_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"shared_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"shared_expert_rank_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-            {"global_bs", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"expert_token_nums_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-            {"comm_alg", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
-            {"zero_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"copy_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"const_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int64_t>(ge::DT_FLOAT16))}})
-        .InputDataTypes({&xType, &expertIdsType})
-        .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
-        .NodeOutputTd(1, ge::FORMAT_ND, ge::FORMAT_ND)
-        .NodeOutputTd(2, ge::FORMAT_ND, ge::FORMAT_ND)
-        .NodeOutputTd(3, ge::FORMAT_ND, ge::FORMAT_ND)
-        .NodeOutputTd(4, ge::FORMAT_ND, ge::FORMAT_ND)
-        .NodeOutputTd(5, ge::FORMAT_ND, ge::FORMAT_ND)
-        .Build();
+    auto contextHolder =
+        gert::InferDataTypeContextFaker()
+            .NodeIoNum(2, 6)
+            .NodeAttrs(
+                {{"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("ep_group")},
+                 {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
+                 {"ep_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                 {"moe_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)},
+                 {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("tp_group")},
+                 {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                 {"tp_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                 {"expert_shard_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                 {"shared_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                 {"shared_expert_rank_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                 {"quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+                 {"global_bs", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                 {"expert_token_nums_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+                 {"comm_alg", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
+                 {"zero_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                 {"copy_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                 {"const_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                 {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int64_t>(ge::DT_FLOAT16))}})
+            .InputDataTypes({&xType, &expertIdsType})
+            .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
+            .NodeOutputTd(1, ge::FORMAT_ND, ge::FORMAT_ND)
+            .NodeOutputTd(2, ge::FORMAT_ND, ge::FORMAT_ND)
+            .NodeOutputTd(3, ge::FORMAT_ND, ge::FORMAT_ND)
+            .NodeOutputTd(4, ge::FORMAT_ND, ge::FORMAT_ND)
+            .NodeOutputTd(5, ge::FORMAT_ND, ge::FORMAT_ND)
+            .Build();
     auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
     ASSERT_NE(spaceRegistry, nullptr);
     auto opImpl = spaceRegistry->GetOpImpl("MoeDistributeDispatchV2");
@@ -1139,35 +1184,36 @@ TEST_F(MoeDistributeDispatchV2Infershape, InferDtype_A5_BadYdtypePertoken)
     SetRtSocSpecNpuArch("3510");
     ge::DataType xType = ge::DT_FLOAT16;
     ge::DataType expertIdsType = ge::DT_INT32;
-    auto contextHolder = gert::InferDataTypeContextFaker()
-        .NodeIoNum(2, 6)
-        .NodeAttrs({
-            {"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("ep_group")},
-            {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
-            {"ep_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"moe_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)},
-            {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("tp_group")},
-            {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"tp_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"expert_shard_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"shared_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"shared_expert_rank_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
-            {"global_bs", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"expert_token_nums_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-            {"comm_alg", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
-            {"zero_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"copy_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"const_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int64_t>(ge::DT_FLOAT16))}})
-        .InputDataTypes({&xType, &expertIdsType})
-        .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
-        .NodeOutputTd(1, ge::FORMAT_ND, ge::FORMAT_ND)
-        .NodeOutputTd(2, ge::FORMAT_ND, ge::FORMAT_ND)
-        .NodeOutputTd(3, ge::FORMAT_ND, ge::FORMAT_ND)
-        .NodeOutputTd(4, ge::FORMAT_ND, ge::FORMAT_ND)
-        .NodeOutputTd(5, ge::FORMAT_ND, ge::FORMAT_ND)
-        .Build();
+    auto contextHolder =
+        gert::InferDataTypeContextFaker()
+            .NodeIoNum(2, 6)
+            .NodeAttrs(
+                {{"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("ep_group")},
+                 {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
+                 {"ep_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                 {"moe_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)},
+                 {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("tp_group")},
+                 {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                 {"tp_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                 {"expert_shard_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                 {"shared_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                 {"shared_expert_rank_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                 {"quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
+                 {"global_bs", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                 {"expert_token_nums_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+                 {"comm_alg", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
+                 {"zero_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                 {"copy_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                 {"const_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                 {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int64_t>(ge::DT_FLOAT16))}})
+            .InputDataTypes({&xType, &expertIdsType})
+            .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
+            .NodeOutputTd(1, ge::FORMAT_ND, ge::FORMAT_ND)
+            .NodeOutputTd(2, ge::FORMAT_ND, ge::FORMAT_ND)
+            .NodeOutputTd(3, ge::FORMAT_ND, ge::FORMAT_ND)
+            .NodeOutputTd(4, ge::FORMAT_ND, ge::FORMAT_ND)
+            .NodeOutputTd(5, ge::FORMAT_ND, ge::FORMAT_ND)
+            .Build();
     auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
     ASSERT_NE(spaceRegistry, nullptr);
     auto opImpl = spaceRegistry->GetOpImpl("MoeDistributeDispatchV2");
@@ -1183,35 +1229,36 @@ TEST_F(MoeDistributeDispatchV2Infershape, InferDtype_A5_BadYdtypeMx)
     SetRtSocSpecNpuArch("3510");
     ge::DataType xType = ge::DT_FLOAT16;
     ge::DataType expertIdsType = ge::DT_INT32;
-    auto contextHolder = gert::InferDataTypeContextFaker()
-        .NodeIoNum(2, 6)
-        .NodeAttrs({
-            {"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("ep_group")},
-            {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
-            {"ep_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"moe_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)},
-            {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("tp_group")},
-            {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"tp_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"expert_shard_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"shared_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"shared_expert_rank_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
-            {"global_bs", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"expert_token_nums_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-            {"comm_alg", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
-            {"zero_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"copy_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"const_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int64_t>(ge::DT_FLOAT16))}})
-        .InputDataTypes({&xType, &expertIdsType})
-        .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
-        .NodeOutputTd(1, ge::FORMAT_ND, ge::FORMAT_ND)
-        .NodeOutputTd(2, ge::FORMAT_ND, ge::FORMAT_ND)
-        .NodeOutputTd(3, ge::FORMAT_ND, ge::FORMAT_ND)
-        .NodeOutputTd(4, ge::FORMAT_ND, ge::FORMAT_ND)
-        .NodeOutputTd(5, ge::FORMAT_ND, ge::FORMAT_ND)
-        .Build();
+    auto contextHolder =
+        gert::InferDataTypeContextFaker()
+            .NodeIoNum(2, 6)
+            .NodeAttrs(
+                {{"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("ep_group")},
+                 {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
+                 {"ep_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                 {"moe_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)},
+                 {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("tp_group")},
+                 {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                 {"tp_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                 {"expert_shard_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                 {"shared_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                 {"shared_expert_rank_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                 {"quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
+                 {"global_bs", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                 {"expert_token_nums_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+                 {"comm_alg", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
+                 {"zero_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                 {"copy_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                 {"const_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                 {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int64_t>(ge::DT_FLOAT16))}})
+            .InputDataTypes({&xType, &expertIdsType})
+            .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
+            .NodeOutputTd(1, ge::FORMAT_ND, ge::FORMAT_ND)
+            .NodeOutputTd(2, ge::FORMAT_ND, ge::FORMAT_ND)
+            .NodeOutputTd(3, ge::FORMAT_ND, ge::FORMAT_ND)
+            .NodeOutputTd(4, ge::FORMAT_ND, ge::FORMAT_ND)
+            .NodeOutputTd(5, ge::FORMAT_ND, ge::FORMAT_ND)
+            .Build();
     auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
     ASSERT_NE(spaceRegistry, nullptr);
     auto opImpl = spaceRegistry->GetOpImpl("MoeDistributeDispatchV2");

@@ -37,10 +37,10 @@ constexpr uint32_t UB_ALIGN = 32U;
 
 // dispatchv2所需常量段
 constexpr uint64_t DISPATCH_STATE_WIN_OFFSET = 768UL * 1024UL;
-constexpr uint8_t BUFFER_NUM = 2;        // 多buf
-constexpr uint8_t BUFFER_SINGLE = 1; 
-constexpr uint32_t STATE_OFFSET = 32U;  // 状态空间偏移地址
-constexpr uint8_t COMM_NUM = 1;  // 通信域大小
+constexpr uint8_t BUFFER_NUM = 2; // 多buf
+constexpr uint8_t BUFFER_SINGLE = 1;
+constexpr uint32_t STATE_OFFSET = 32U; // 状态空间偏移地址
+constexpr uint8_t COMM_NUM = 1;        // 通信域大小
 constexpr uint8_t COMM_EP_IDX = 0;
 constexpr uint8_t QUANT_PADDING_VALUE = 0;
 constexpr uint32_t FIRST_CORE = 0U;
@@ -56,7 +56,7 @@ constexpr uint32_t WORKSPACE_ELEMENT_OFFSET = 512U;
 constexpr uint64_t WIN_ADDR_ALIGN = 512UL;
 constexpr uint64_t ALIGNED_LEN_256 = 256UL;
 constexpr uint32_t RANK_LIST_NUM = 2U;
-constexpr uint32_t EXPAND_IDX_INFO = 3U;  // expand_idx是按3元组保存信息，分别为rank_id token_id topk_id
+constexpr uint32_t EXPAND_IDX_INFO = 3U; // expand_idx是按3元组保存信息，分别为rank_id token_id topk_id
 constexpr uint32_t ELASTIC_INFO_OFFSET = 4U;
 constexpr uint32_t FLAG_AFTER_WAIT = 2U;
 constexpr uint8_t EP_WORLD_SIZE_IDX = 1U;
@@ -86,22 +86,22 @@ constexpr uint8_t MXFP8_E5M2_COMM_QUANT = 3;
 constexpr uint8_t MXFP8_E4M3_COMM_QUANT = 4;
 
 // combinev2额外所需常量段
-constexpr uint64_t COMBINE_STATE_WIN_OFFSET = 818UL * 1024UL;   // combine 0/1状态区偏移，为dispatch预留50k大小
-constexpr uint32_t COMBINE_STATE_OFFSET = 64U * 1024U;  // 本卡状态空间偏移地址，前面的地址给dispatch用
+constexpr uint64_t COMBINE_STATE_WIN_OFFSET = 818UL * 1024UL; // combine 0/1状态区偏移，为dispatch预留50k大小
+constexpr uint32_t COMBINE_STATE_OFFSET = 64U * 1024U; // 本卡状态空间偏移地址，前面的地址给dispatch用
 constexpr uint8_t EP_DOMAIN = 0;
 constexpr uint32_t FLOAT_PER_UB_ALIGN = 8U;
-constexpr uint32_t ALIGNED_LEN = 256U;                  // blockReduceMax中，最多支持连续256字节数据参与计算
-constexpr float SCALE_PARAM = 127.0;                    // 计算量化参数所需的缩放倍数
+constexpr uint32_t ALIGNED_LEN = 256U; // blockReduceMax中，最多支持连续256字节数据参与计算
+constexpr float SCALE_PARAM = 127.0;   // 计算量化参数所需的缩放倍数
 constexpr uint32_t REDUCE_NUM = 8U;
 constexpr uint32_t DIM_NUM = 2;
 constexpr size_t MASK_CALC_NEED_WORKSPACE = 10UL * 1024UL;
-constexpr uint32_t BLOCK_NUM = ALIGNED_LEN / UB_ALIGN;  // blockReduceMax中，最多支持连续256字节数据参与计算
+constexpr uint32_t BLOCK_NUM = ALIGNED_LEN / UB_ALIGN; // blockReduceMax中，最多支持连续256字节数据参与计算
 constexpr uint32_t INT8_DIVIVE = 2;
 
 // combineARN额外所需常量段
 constexpr uint64_t COMBINE_ARN_STATE_SIZE = 1024UL * 1024UL; // 1M
 constexpr uint64_t COMBINE_ARN_STATE_WIN_OFFSET = 818UL * 1024UL;
-constexpr uint32_t NUM_PER_REP_FP32 = 64U;  // ONE_REPEAT_BYTE_SIZE / sizeof(float)
+constexpr uint32_t NUM_PER_REP_FP32 = 64U; // ONE_REPEAT_BYTE_SIZE / sizeof(float)
 constexpr float ZERO = 0;
 constexpr float ONE = 1;
 
@@ -115,5 +115,5 @@ constexpr uint64_t EP_WORLD_SIZE_OFFSET = 5U;
 // 其他
 constexpr uint32_t JUMP_WRITE = sizeof(int64_t) / sizeof(int32_t);
 constexpr uint32_t FLAG_OFFSET = STATE_OFFSET / sizeof(float);
-}
+} // namespace Mc2Kernel
 #endif // MOE_DISTRIBUTE_V2_CONSTANT_H

@@ -41,8 +41,8 @@
 
 namespace MoeEpDispatchImpl {
 
-#define TemplateMoeEpDispatchTypeClass typename XType, typename ScalesType, bool DoCpuSync, bool IsCached, \
-    bool IsTopkWeights, uint8_t NetworkMode
+#define TemplateMoeEpDispatchTypeClass                                                                                 \
+    typename XType, typename ScalesType, bool DoCpuSync, bool IsCached, bool IsTopkWeights, uint8_t NetworkMode
 #define TemplateMoeEpDispatchTypeFunc XType, ScalesType, DoCpuSync, IsCached, IsTopkWeights, NetworkMode
 
 using namespace AscendC;
@@ -55,24 +55,24 @@ constexpr uint32_t ALIGNED_LEN_256 = 256U;
 constexpr uint32_t NETWORK_DIRECT = 0U;
 constexpr uint32_t NETWORK_HYBRID = 1U;
 constexpr uint32_t META_INFO = 32U;
-constexpr uint32_t TOPK_INFO_SIZE = 4U;   // sizeof(int32_t)=sizeof(float)=4B
-constexpr uint32_t UB_STRIDE = 8U;   // UB_ALIGN/sizeof(int32_t)=8
+constexpr uint32_t TOPK_INFO_SIZE = 4U; // sizeof(int32_t)=sizeof(float)=4B
+constexpr uint32_t UB_STRIDE = 8U;      // UB_ALIGN/sizeof(int32_t)=8
 constexpr int32_t BITS_PER_BYTE = 8;
 constexpr uint32_t HCOMM_INIT_SIZE = 512U;
 constexpr uint32_t PER_GROUP_SIZE = 50 * 1024U; // 计算count 50KB per group
-constexpr uint32_t COUNTER_STRIDE = 2U;    // counter前两个数为 state、dstRankRecvNum
-constexpr uint32_t CORE_NUM_RATIO = 2U;     // 计算count perrank/perexpert 核数比例
+constexpr uint32_t COUNTER_STRIDE = 2U;         // counter前两个数为 state、dstRankRecvNum
+constexpr uint32_t CORE_NUM_RATIO = 2U;         // 计算count perrank/perexpert 核数比例
 constexpr uint8_t BUFFER_NUM = 2;
-constexpr uint64_t CQE_MAX_WRITE_SIZE = 256UL * 1024UL * 1024UL;    // 单cqe内最大数据长度
+constexpr uint64_t CQE_MAX_WRITE_SIZE = 256UL * 1024UL * 1024UL; // 单cqe内最大数据长度
 
 template <TemplateMoeEpDispatchTypeClass>
 class MoeEpDispatch {
 public:
-    __aicore__ inline MoeEpDispatch() {};
-    __aicore__ inline void Init(GM_ADDR context, GM_ADDR x, GM_ADDR topkIdx, GM_ADDR topkWeights,
-        GM_ADDR scales, GM_ADDR cachedSlotIdx, GM_ADDR numRecvPerRank, GM_ADDR numRecvPerExpert,
-        GM_ADDR dstBufferSlotIdx, GM_ADDR workspaceGM, TPipe *pipe,
-        const MoeEpDispatchTilingData *tilingData);
+    __aicore__ inline MoeEpDispatch(){};
+    __aicore__ inline void Init(GM_ADDR context, GM_ADDR x, GM_ADDR topkIdx, GM_ADDR topkWeights, GM_ADDR scales,
+                                GM_ADDR cachedSlotIdx, GM_ADDR numRecvPerRank, GM_ADDR numRecvPerExpert,
+                                GM_ADDR dstBufferSlotIdx, GM_ADDR workspaceGM, TPipe *pipe,
+                                const MoeEpDispatchTilingData *tilingData);
     __aicore__ inline void Process();
 
 private:
@@ -92,8 +92,8 @@ private:
     __aicore__ inline void WriteToRemoteWindow();
     __aicore__ inline void SendPhase();
     __aicore__ inline void WaitDispatch();
-    __aicore__ inline void SplitToCore(uint32_t curSendCnt, uint32_t curUseAivNum, uint32_t &startId,
-                                       uint32_t &endId, uint32_t &sendNum, bool isFront);
+    __aicore__ inline void SplitToCore(uint32_t curSendCnt, uint32_t curUseAivNum, uint32_t &startId, uint32_t &endId,
+                                       uint32_t &sendNum, bool isFront);
     __aicore__ inline GM_ADDR GetWinAddrByRankId(__gm__ Mc2Aclnn::Mc2MoeContext *ctx, uint32_t rankId, uint64_t offset)
     {
         return (GM_ADDR)ctx->epHcclBuffer_[rankId] + offset;
@@ -139,7 +139,7 @@ private:
     TBuf<> topkIdsBuf_;
     TBuf<> tempBuf_;
     TBuf<> dstExpBuf_;
-    TBuf<> hcommBuf_;   // 通信
+    TBuf<> hcommBuf_; // 通信
     TBuf<> numRecvBuf_;
     TBuf<> numRecvPerRankBuf_;
     TBuf<> numRecvPerExpertBuf_;
@@ -204,18 +204,17 @@ private:
 
 template <TemplateMoeEpDispatchTypeClass>
 __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::Init(
-    GM_ADDR context, GM_ADDR x, GM_ADDR topkIdx, GM_ADDR topkWeights, GM_ADDR scales,
-    GM_ADDR cachedSlotIdx, GM_ADDR numRecvPerRank, GM_ADDR numRecvPerExpert,
-    GM_ADDR dstBufferSlotIdx, GM_ADDR workspaceGM, TPipe *pipe,
+    GM_ADDR context, GM_ADDR x, GM_ADDR topkIdx, GM_ADDR topkWeights, GM_ADDR scales, GM_ADDR cachedSlotIdx,
+    GM_ADDR numRecvPerRank, GM_ADDR numRecvPerExpert, GM_ADDR dstBufferSlotIdx, GM_ADDR workspaceGM, TPipe *pipe,
     const MoeEpDispatchTilingData *tilingData)
 {
     tpipe_ = pipe;
     aivId_ = GetBlockIdx();
     workspaceGM_ = workspaceGM;
-    mc2Context_ = reinterpret_cast<__gm__ Mc2Aclnn::Mc2MoeContext*>(context);
+    mc2Context_ = reinterpret_cast<__gm__ Mc2Aclnn::Mc2MoeContext *>(context);
     epRankId_ = mc2Context_->epRankId;
 
-    const auto& info = tilingData->moeEpDispatchInfo;
+    const auto &info = tilingData->moeEpDispatchInfo;
     axisBS_ = info.cfg.numTokens;
     axisH_ = info.cfg.hidden;
     axisK_ = info.cfg.topK;
@@ -251,26 +250,26 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::Init(
     moeExpertNumAlign512_ = Ceil(moeExpertNum_ * sizeof(int32_t), WIN_ADDR_ALIGN) * WIN_ADDR_ALIGN;
 
     uint32_t numPerCore = (moeExpertNum_ + CORE_NUM_RATIO * epWorldSize_) / aivNum_;
-    calRankCoreNum_ = CORE_NUM_RATIO * numPerCore >= epWorldSize_ ?
-                      Ceil(CORE_NUM_RATIO * epWorldSize_, numPerCore) : epWorldSize_;
+    calRankCoreNum_ =
+        CORE_NUM_RATIO * numPerCore >= epWorldSize_ ? Ceil(CORE_NUM_RATIO * epWorldSize_, numPerCore) : epWorldSize_;
     calRankCoreNum_ = (calRankCoreNum_ >= aivNum_) ? (aivNum_ - 2U) : calRankCoreNum_;
     calExpertCoreNum_ = aivNum_ - calRankCoreNum_;
 
-    xGMTensor_.SetGlobalBuffer((__gm__ XType*)x);
-    topkIdxGMTensor_.SetGlobalBuffer((__gm__ int32_t*)topkIdx);
+    xGMTensor_.SetGlobalBuffer((__gm__ XType *)x);
+    topkIdxGMTensor_.SetGlobalBuffer((__gm__ int32_t *)topkIdx);
     if constexpr (IsTopkWeights) {
-        topkWeightsGMTensor_.SetGlobalBuffer((__gm__ float*)topkWeights);
+        topkWeightsGMTensor_.SetGlobalBuffer((__gm__ float *)topkWeights);
     }
     if constexpr (Std::IsSame<XType, fp8_e5m2_t>::value || Std::IsSame<XType, fp8_e4m3fn_t>::value) {
-        scalesGMTensor_.SetGlobalBuffer((__gm__ ScalesType*)scales);
+        scalesGMTensor_.SetGlobalBuffer((__gm__ ScalesType *)scales);
         metaOffset_ += Ceil(scalesBytes_, UB_ALIGN) * UB_ALIGN;
     }
     if constexpr (IsCached) {
-        cachedSlotIdxGMTensor_.SetGlobalBuffer((__gm__ int32_t*)cachedSlotIdx);
+        cachedSlotIdxGMTensor_.SetGlobalBuffer((__gm__ int32_t *)cachedSlotIdx);
     }
-    numRecvPerRankGMTensor_.SetGlobalBuffer((__gm__ int32_t*)numRecvPerRank);
-    numRecvPerExpertGMTensor_.SetGlobalBuffer((__gm__ int64_t*)numRecvPerExpert);
-    dstSlotIdxGMTensor_.SetGlobalBuffer((__gm__ int32_t*)dstBufferSlotIdx);
+    numRecvPerRankGMTensor_.SetGlobalBuffer((__gm__ int32_t *)numRecvPerRank);
+    numRecvPerExpertGMTensor_.SetGlobalBuffer((__gm__ int64_t *)numRecvPerExpert);
+    dstSlotIdxGMTensor_.SetGlobalBuffer((__gm__ int32_t *)dstBufferSlotIdx);
 
     tpipe_->InitBuffer(numRecvPerRankBuf_, epWorldSizeAlign_);
     numRecvPerRankTensor_ = numRecvPerRankBuf_.Get<int32_t>();
@@ -287,26 +286,26 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::Init(
     localCntStateWinAddr_ = GetWinAddrByRankId(mc2Context_, epRankId_, cntWinStateOffset_);
     localSlotStateWinAddr_ = GetWinAddrByRankId(mc2Context_, epRankId_, slotWinStateOffset_);
     localWinAddr_ = GetWinAddrByRankId(mc2Context_, epRankId_, winDataOffset_);
-    scaleupCounterGMTensor_.SetGlobalBuffer((__gm__ int32_t*)scaleupCounterAddr_);
-    recvCounterGMTensor_.SetGlobalBuffer((__gm__ int32_t*)localCntStateWinAddr_);
-    slotGMTensor_.SetGlobalBuffer((__gm__ XType*)slotWorkspaceAddr_);
-    sendCntGMTensor_.SetGlobalBuffer((__gm__ int32_t*)sendCntWorkspaceAddr_);
+    scaleupCounterGMTensor_.SetGlobalBuffer((__gm__ int32_t *)scaleupCounterAddr_);
+    recvCounterGMTensor_.SetGlobalBuffer((__gm__ int32_t *)localCntStateWinAddr_);
+    slotGMTensor_.SetGlobalBuffer((__gm__ XType *)slotWorkspaceAddr_);
+    sendCntGMTensor_.SetGlobalBuffer((__gm__ int32_t *)sendCntWorkspaceAddr_);
 }
 
 template <TemplateMoeEpDispatchTypeClass>
-__aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::SplitToCore(
-    uint32_t curSendCnt, uint32_t curUseAivNum, uint32_t &startId,
-    uint32_t &endId, uint32_t &sendNum, bool isFront)
+__aicore__ inline void
+MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::SplitToCore(uint32_t curSendCnt, uint32_t curUseAivNum, uint32_t &startId,
+                                                          uint32_t &endId, uint32_t &sendNum, bool isFront)
 {
-    sendNum = curSendCnt / curUseAivNum;                // 每个aiv需要发送的数量
-    uint32_t remainderNum = curSendCnt % curUseAivNum;  // 余数
+    sendNum = curSendCnt / curUseAivNum;               // 每个aiv需要发送的数量
+    uint32_t remainderNum = curSendCnt % curUseAivNum; // 余数
     uint32_t newAivId = aivId_;
     if (!isFront) {
-        newAivId -= calRankCoreNum_;  // 由于是后面的核做perExpert计算，因此需要换算
+        newAivId -= calRankCoreNum_; // 由于是后面的核做perExpert计算，因此需要换算
     }
     startId = sendNum * newAivId;  // 每个aiv发送时的起始rankid
-    if (newAivId < remainderNum) {      // 前remainderRankNum个aiv需要多发1个卡的数据
-        sendNum ++;
+    if (newAivId < remainderNum) { // 前remainderRankNum个aiv需要多发1个卡的数据
+        sendNum++;
         startId += newAivId;
     } else {
         startId += remainderNum;
@@ -328,8 +327,9 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::ResetCounte
 }
 
 template <TemplateMoeEpDispatchTypeClass>
-__aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::CalSendCntPerRank(
-    LocalTensor<int16_t> expertIdsTensor, uint32_t calCnt, uint32_t startRankId, uint32_t endRankId)
+__aicore__ inline void
+MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::CalSendCntPerRank(LocalTensor<int16_t> expertIdsTensor, uint32_t calCnt,
+                                                                uint32_t startRankId, uint32_t endRankId)
 {
     if (startRankId >= epWorldSize_) {
         return;
@@ -351,17 +351,17 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::CalSendCntP
     // 筛选无效expert id 消除影响
     CompareScalar(gatherMaskTensorInt8, expertIdsTensor, static_cast<int16_t>(0), AscendC::CMPMODE::GE, calCntAlign);
     Select(dstTensorInt16, gatherMaskTensorInt8, tempTensorInt16, static_cast<int16_t>(-1),
-        AscendC::SELMODE::VSEL_TENSOR_SCALAR_MODE, calCnt);
+           AscendC::SELMODE::VSEL_TENSOR_SCALAR_MODE, calCnt);
 
     for (uint32_t dstRankId = startRankId; dstRankId < endRankId; dstRankId++) {
         // 筛选出发送到目标卡的token
         uint64_t rsvdCnt = 0;
         Subs(expertIdsTensor, dstTensorInt16, static_cast<int16_t>(dstRankId), calCnt);
         Abs(tempTensorInt16, expertIdsTensor, calCnt);
-        ReduceMin<int16_t, Pattern::Reduce::AR, true>(expertIdsTensor, tempTensorInt16, shape, false);  // 0为目标
-        Duplicate<uint16_t>(maskTensorInt16, 0, tokenCntAlign);    // GatherMask前清0
+        ReduceMin<int16_t, Pattern::Reduce::AR, true>(expertIdsTensor, tempTensorInt16, shape, false); // 0为目标
+        Duplicate<uint16_t>(maskTensorInt16, 0, tokenCntAlign); // GatherMask前清0
         CompareScalar(gatherMaskTensorInt8, expertIdsTensor, static_cast<int16_t>(0), AscendC::CMPMODE::EQ,
-            tokenCntAlign);
+                      tokenCntAlign);
         GatherMask(tempTensorInt16, expertIdsTensor, maskTensorInt16, true, mask, {1, 1, 0, 0}, rsvdCnt);
         SyncFunc<AscendC::HardEvent::V_S>();
         uint32_t offset = (dstRankId - startRankId) * COUNTER_STRIDE + 1;
@@ -371,8 +371,9 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::CalSendCntP
 }
 
 template <TemplateMoeEpDispatchTypeClass>
-__aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::CalSendCntPerExpert(
-    LocalTensor<int16_t> expertIdsTensor, uint32_t calCnt, uint32_t startExpertId, uint32_t endExpertId)
+__aicore__ inline void
+MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::CalSendCntPerExpert(LocalTensor<int16_t> expertIdsTensor, uint32_t calCnt,
+                                                                  uint32_t startExpertId, uint32_t endExpertId)
 {
     if (startExpertId >= moeExpertNum_) {
         return;
@@ -386,9 +387,9 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::CalSendCntP
 
     for (uint32_t dstExpertId = startExpertId; dstExpertId < endExpertId; dstExpertId++) {
         uint64_t rsvdCnt = 0;
-        Duplicate<uint16_t>(maskTensorInt16, 0, calCntAlign);    // GatherMask前清0
-        CompareScalar(gatherMaskTensorInt8, expertIdsTensor, static_cast<int16_t>(dstExpertId),
-            AscendC::CMPMODE::EQ, calCntAlign);
+        Duplicate<uint16_t>(maskTensorInt16, 0, calCntAlign); // GatherMask前清0
+        CompareScalar(gatherMaskTensorInt8, expertIdsTensor, static_cast<int16_t>(dstExpertId), AscendC::CMPMODE::EQ,
+                      calCntAlign);
         GatherMask(dstTensorInt16, expertIdsTensor, maskTensorInt16, true, mask, {1, 1, 0, 0}, rsvdCnt);
         SyncFunc<AscendC::HardEvent::V_S>();
         int32_t curExpertCnt = sendCntTensor_.GetValue(dstExpertId - startExpertId);
@@ -406,8 +407,8 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::CalSendCnt(
     uint32_t groupCnt = Ceil(axisBS_, perGroupTokenNum);
     uint32_t calCnt = perGroupTokenNum * axisK_;
     uint32_t perGroupSizeAlign = Ceil(calCnt * sizeof(int16_t), ALIGNED_LEN_256) * ALIGNED_LEN_256;
-    uint32_t cntPerRankSizeAlign256 = Ceil(epWorldSize_ * COUNTER_STRIDE * sizeof(int32_t),
-        ALIGNED_LEN_256) * ALIGNED_LEN_256;
+    uint32_t cntPerRankSizeAlign256 =
+        Ceil(epWorldSize_ * COUNTER_STRIDE * sizeof(int32_t), ALIGNED_LEN_256) * ALIGNED_LEN_256;
     uint32_t maxSizePerCore = moeExpertNumAlign_ > cntPerRankSizeAlign256 ? moeExpertNumAlign_ : cntPerRankSizeAlign256;
     DataCopyPadExtParams<int32_t> topkIdsCntCopyPadParams{false, 0U, 0U, 0U};
 
@@ -420,7 +421,7 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::CalSendCnt(
     sendCntTensor_ = numRecvBuf_.Get<int32_t>();
     Duplicate<int32_t>(sendCntTensor_, 0, maxSizePerCore / sizeof(int32_t));
 
-    if (aivId_ < calRankCoreNum_) {  // 前面的核做per rank count计算
+    if (aivId_ < calRankCoreNum_) { // 前面的核做per rank count计算
         SplitToCore(epWorldSize_, calRankCoreNum_, startId, endId, numPerCore, true);
         if (startId >= epWorldSize_) {
             return;
@@ -428,7 +429,7 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::CalSendCnt(
         // 两两一组，每组第一个位置填充1，作为状态位
         LocalTensor<int64_t> sendCntTensorInt64 = sendCntTensor_.template ReinterpretCast<int64_t>();
         Duplicate<int64_t>(sendCntTensorInt64, static_cast<int64_t>(1), cntPerRankSizeAlign256 / sizeof(int64_t));
-    } else {    // 后面的核做per expert count计算
+    } else { // 后面的核做per expert count计算
         SplitToCore(moeExpertNum_, calExpertCoreNum_, startId, endId, numPerCore, false);
         if (startId >= moeExpertNum_) {
             return;
@@ -445,13 +446,13 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::CalSendCnt(
         uint32_t topkIdxOffset = group * perGroupTokenNum * axisK_;
         DataCopyExtParams topkIdsCntParams = {1U, static_cast<uint32_t>(calCnt * sizeof(int32_t)), 0U, 0U, 0U};
         DataCopyPad(topkIdsGroupTensor, topkIdxGMTensor_[topkIdxOffset], topkIdsCntParams,
-            topkIdsCntCopyPadParams); // copy topkId
+                    topkIdsCntCopyPadParams); // copy topkId
         SyncFunc<AscendC::HardEvent::MTE2_V>();
         Cast(tempTensorInt16, topkIdsGroupTensor, RoundMode::CAST_NONE, calCnt);
 
-        if (aivId_ >= calRankCoreNum_) {   // 后面的核统计发送给各专家的token count
+        if (aivId_ >= calRankCoreNum_) { // 后面的核统计发送给各专家的token count
             CalSendCntPerExpert(tempTensorInt16, calCnt, startId, endId);
-        } else {    // 前面的核统计发送到各卡token count
+        } else { // 前面的核统计发送到各卡token count
             CalSendCntPerRank(tempTensorInt16, calCnt, startId, endId);
         }
     }
@@ -471,7 +472,7 @@ template <TemplateMoeEpDispatchTypeClass>
 __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::Communication()
 {
     SplitToCore(epWorldSize_, aivNum_, startRankId_, endRankId_, rankNumPerCore_, true); // 按卡分核
-    if (startRankId_ >= epWorldSize_) { // 空闲核，直接返回
+    if (startRankId_ >= epWorldSize_) {                                                  // 空闲核，直接返回
         return;
     }
 
@@ -481,43 +482,42 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::Communicati
     hcomm_.Init(hcommTensor_, HCOMM_INIT_SIZE);
 
     GlobalTensor<uint64_t> numSendGMTensorInt64;
-    numSendGMTensorInt64.SetGlobalBuffer((__gm__ uint64_t*)sendCntWorkspaceAddr_);
+    numSendGMTensorInt64.SetGlobalBuffer((__gm__ uint64_t *)sendCntWorkspaceAddr_);
     LocalTensor<uint64_t> sendCntPerRankInt64 = dstExpBuf_.Get<uint64_t>();
     DataCopyParams cntCopyParams = {1U, static_cast<uint16_t>(rankNumPerCore_ * sizeof(uint64_t)), 0U, 0U};
     DataCopyPad(sendCntPerRankInt64, numSendGMTensorInt64[startRankId_], cntCopyParams, padParams_);
     SyncFunc<AscendC::HardEvent::MTE2_S>();
-    PipeBarrier<PIPE_MTE3>();   // 数据拷贝到workspace后再发远端
+    PipeBarrier<PIPE_MTE3>(); // 数据拷贝到workspace后再发远端
 
     for (uint32_t dstRankId = startRankId_; dstRankId < endRankId_; dstRankId++) {
         uint64_t notifyVal = sendCntPerRankInt64.GetValue(dstRankId - startRankId_);
         // 计算目标窗口地址:
         GM_ADDR remoteStateAddr = GetWinAddrByRankId(mc2Context_, dstRankId, cntWinStateOffset_);
         GM_ADDR notifyAddr = remoteStateAddr + epRankId_ * WIN_ADDR_ALIGN;
-        GM_ADDR remoteCountAddr = remoteStateAddr + epWorldSize_ * WIN_ADDR_ALIGN
-            + epRankId_ * moeNumPerRankAlign512_;
-        GM_ADDR srcWorkspaceAddr = sendCntWorkspaceAddr_ + cntPerRankSizeAlign512_
-            + dstRankId * moeExpertNumPerRank_ * sizeof(int32_t);
+        GM_ADDR remoteCountAddr = remoteStateAddr + epWorldSize_ * WIN_ADDR_ALIGN + epRankId_ * moeNumPerRankAlign512_;
+        GM_ADDR srcWorkspaceAddr =
+            sendCntWorkspaceAddr_ + cntPerRankSizeAlign512_ + dstRankId * moeExpertNumPerRank_ * sizeof(int32_t);
 
-        if (dstRankId != epRankId_) {   // 远端 使用URMA发送 count + state
-            hcomm_.WriteNbi(GetCommHandle(mc2Context_, epRankId_, dstRankId), remoteCountAddr,
-                                  srcWorkspaceAddr, static_cast<uint64_t>(moeExpertNumPerRank_ * sizeof(int32_t)));
+        if (dstRankId != epRankId_) { // 远端 使用URMA发送 count + state
+            hcomm_.WriteNbi(GetCommHandle(mc2Context_, epRankId_, dstRankId), remoteCountAddr, srcWorkspaceAddr,
+                            static_cast<uint64_t>(moeExpertNumPerRank_ * sizeof(int32_t)));
             hcomm_.Drain(GetCommHandle(mc2Context_, epRankId_, dstRankId));
             hcomm_.WriteNbi(GetCommHandle(mc2Context_, epRankId_, dstRankId), notifyAddr,
-                                    sendCntWorkspaceAddr_ + dstRankId * sizeof(uint64_t), sizeof(uint64_t));
+                            sendCntWorkspaceAddr_ + dstRankId * sizeof(uint64_t), sizeof(uint64_t));
             hcomm_.Drain(GetCommHandle(mc2Context_, epRankId_, dstRankId));
-        } else {    // 本端
+        } else { // 本端
             GlobalTensor<int32_t> countGMTensor;
             GlobalTensor<uint64_t> notifyGMTensor;
-            countGMTensor.SetGlobalBuffer((__gm__ int32_t*)remoteCountAddr);
-            notifyGMTensor.SetGlobalBuffer((__gm__ uint64_t*)notifyAddr);
+            countGMTensor.SetGlobalBuffer((__gm__ int32_t *)remoteCountAddr);
+            notifyGMTensor.SetGlobalBuffer((__gm__ uint64_t *)notifyAddr);
             LocalTensor<int32_t> cntPerExpertTensor = tempBuf_.Get<int32_t>();
-            DataCopyParams expertCntCopyParams = {1U, static_cast<uint16_t>(moeExpertNumPerRank_ * sizeof(int32_t)),
-                                                  0U, 0U};
+            DataCopyParams expertCntCopyParams = {1U, static_cast<uint16_t>(moeExpertNumPerRank_ * sizeof(int32_t)), 0U,
+                                                  0U};
             uint32_t srcOffset = cntPerRankSizeAlign512_ / sizeof(int32_t) + dstRankId * moeExpertNumPerRank_;
             DataCopyPad(cntPerExpertTensor, sendCntGMTensor_[srcOffset], expertCntCopyParams, padParams_);
             SyncFunc<AscendC::HardEvent::MTE2_MTE3>();
             DataCopyPad(countGMTensor, cntPerExpertTensor, expertCntCopyParams);
-            SyncFunc<AscendC::HardEvent::MTE3_S>();   // perExpert 写完再写notifyVal
+            SyncFunc<AscendC::HardEvent::MTE3_S>(); // perExpert 写完再写notifyVal
             notifyGMTensor.SetValue(0, notifyVal);
             DataCacheCleanAndInvalid<uint64_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(notifyGMTensor);
         }
@@ -540,15 +540,15 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::GetRecvCoun
     LocalTensor<float> recvCounterTensorFp32 = recvCounterTensor.template ReinterpretCast<float>();
     LocalTensor<float> numRecvPerRankTensorFp32 = numRecvPerRankTensor_.template ReinterpretCast<float>();
     SyncFunc<AscendC::HardEvent::MTE3_V>(); // 等待前面尾核计数器清0(buf 复用)
-    while (sumOfFlag != commpareFlag) {  // 状态位check
+    while (sumOfFlag != commpareFlag) {     // 状态位check
         DataCopy(recvCounterTensor, recvCounterGMTensor_, statusCopyParams_);
         SyncFunc<AscendC::HardEvent::MTE2_V>();
         ReduceSum(numRecvPerRankTensorFp32, recvCounterTensorFp32, tempFp32, mask, epWorldSize_, 1);
         SyncFunc<AscendC::HardEvent::V_S>();
         sumOfFlag = numRecvPerRankTensor_.GetValue(0);
     }
-    SetRecvNumPerExpert();  // 计算本卡上各专家接收的token总数
-    SetRecvNumPerRank(recvCounterTensor);   // 计算本端接收来自各卡的token总数
+    SetRecvNumPerExpert();                // 计算本卡上各专家接收的token总数
+    SetRecvNumPerRank(recvCounterTensor); // 计算本端接收来自各卡的token总数
     // status clear
     Duplicate<int32_t>(recvCounterTensor, 0, epWorldSize_ * UB_STRIDE);
     SyncFunc<AscendC::HardEvent::V_MTE3>();
@@ -574,16 +574,16 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::SetRecvNumP
     DataCopyParams inRecvCntParams = {static_cast<uint16_t>(epWorldSize_), static_cast<uint16_t>(recvExpertSizeAlign),
                                       static_cast<uint16_t>(moeNumPerRankAlign512_ - recvExpertSizeAlign), 0U};
     DataCopyParams recvPerExpertParams = {1U, static_cast<uint16_t>(moeExpertNumPerRank_ * sizeof(int64_t)), 0U, 0U};
-    DataCopyPad(recvTensorInt32, recvCounterGMTensor_[epWorldSize_ * WIN_ADDR_ALIGN / sizeof(int32_t)],
-                inRecvCntParams, padParams_);
+    DataCopyPad(recvTensorInt32, recvCounterGMTensor_[epWorldSize_ * WIN_ADDR_ALIGN / sizeof(int32_t)], inRecvCntParams,
+                padParams_);
     SyncFunc<AscendC::HardEvent::MTE2_V>();
     Cast(tempRecvTensorInt64, recvTensorInt32, RoundMode::CAST_NONE, epWorldSize_ * recvExpertAlign);
     ReduceSum<int64_t, AscendC::Pattern::Reduce::RA, true>(numRecvPerExpertTensor_, tempRecvTensorInt64, sharedTmpInt8,
                                                            shape, true);
 
-    if constexpr (DoCpuSync) {   // 计算actualA，并写入host pin
+    if constexpr (DoCpuSync) { // 计算actualA，并写入host pin
         GlobalTensor<int64_t> hostPinnedCounterTensor;
-        hostPinnedCounterTensor.SetGlobalBuffer((__gm__ int64_t*)hostPinnedCounterAddrGM_);
+        hostPinnedCounterTensor.SetGlobalBuffer((__gm__ int64_t *)hostPinnedCounterAddrGM_);
         ReduceSum(recvCntTensor, numRecvPerExpertTensor_, sharedTmp, moeExpertNumPerRank_);
         SyncFunc<AscendC::HardEvent::V_MTE3>();
         DataCopy(hostPinnedCounterTensor, recvCntTensor, UB_ALIGN / sizeof(int64_t));
@@ -594,12 +594,12 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::SetRecvNumP
 }
 
 template <TemplateMoeEpDispatchTypeClass>
-__aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::SetRecvNumPerRank(
-    LocalTensor<int32_t> recvTmpTensor)
+__aicore__ inline void
+MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::SetRecvNumPerRank(LocalTensor<int32_t> recvTmpTensor)
 {
     LocalTensor<uint32_t> gatherTmpTensor = topkIdsBuf_.GetWithOffset<uint32_t>(UB_STRIDE, epWorldSize_ * UB_ALIGN);
-    gatherTmpTensor.SetValue(0, 2);  // 源操作数每个datablock取下标为1的元素
-    uint32_t mask = 2;               // 源操作数每个datablock只需要处理两个元素
+    gatherTmpTensor.SetValue(0, 2); // 源操作数每个datablock取下标为1的元素
+    uint32_t mask = 2;              // 源操作数每个datablock只需要处理两个元素
     uint64_t rsvdCnt = 0;
     GatherMaskParams recvMaskParams = {1, static_cast<uint16_t>(epWorldSize_), 1, 0};
     DataCopyParams recvPerRankParams = {1U, static_cast<uint16_t>(epWorldSize_ * sizeof(int32_t)), 0U, 0U};
@@ -610,8 +610,9 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::SetRecvNumP
 }
 
 template <TemplateMoeEpDispatchTypeClass>
-__aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::DedupAndSendDirect(
-    LocalTensor<int32_t> hitPerRankTensor, uint32_t srcTokenId)
+__aicore__ inline void
+MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::DedupAndSendDirect(LocalTensor<int32_t> hitPerRankTensor,
+                                                                 uint32_t srcTokenId)
 {
     for (uint32_t k = 0; k < axisK_; k++) {
         int32_t expertId = topkIdxTensor_.GetValue(k);
@@ -627,8 +628,8 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::DedupAndSen
         }
 
         // atomicAdd 计算 计算本卡发送到dstRankId的token数量  预留槽位
-        __gm__ int32_t* dstCounterAddr = reinterpret_cast<__gm__ int32_t*>(
-            scaleupCounterAddr_ + dstRankId * sizeof(int32_t));
+        __gm__ int32_t *dstCounterAddr =
+            reinterpret_cast<__gm__ int32_t *>(scaleupCounterAddr_ + dstRankId * sizeof(int32_t));
         uint32_t slot = AscendC::AtomicAdd(dstCounterAddr, 1);
         dstSlotIdxTensor_.SetValue(k, slot);
         hitPerRankTensor.SetValue(dstRankId, slot);
@@ -639,13 +640,12 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::DedupAndSen
 }
 
 template <TemplateMoeEpDispatchTypeClass>
-__aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::WriteSlotToLocal(uint32_t dstRankId,
-    uint32_t slot)
+__aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::WriteSlotToLocal(uint32_t dstRankId, uint32_t slot)
 {
     GlobalTensor<XType> slotGMTensor;
     GM_ADDR rankGM = (dstRankId == epRankId_) ? localWinAddr_ : slotWorkspaceAddr_;
     GM_ADDR slotAddr = rankGM + (static_cast<uint64_t>(dstRankId) * axisMaxBS_ + slot) * perSlotBytes_;
-    slotGMTensor.SetGlobalBuffer((__gm__ XType*)slotAddr);
+    slotGMTensor.SetGlobalBuffer((__gm__ XType *)slotAddr);
     DataCopyParams slotCopyParams = {1U, static_cast<uint16_t>(perSlotBytes_), 0U, 0U};
     DataCopyPad(slotGMTensor, tokenSlotTensor_, slotCopyParams);
 }
@@ -654,7 +654,7 @@ template <TemplateMoeEpDispatchTypeClass>
 __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::WriteToRemoteWindow()
 {
     SplitToCore(epWorldSize_, aivNum_, startRankId_, endRankId_, rankNumPerCore_, true); // 按卡分核
-    if (startRankId_ >= epWorldSize_) { // 空闲核，直接返回
+    if (startRankId_ >= epWorldSize_) {                                                  // 空闲核，直接返回
         return;
     }
 
@@ -669,26 +669,27 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::WriteToRemo
     DataCopyParams sendCntCopyParams = {1U, static_cast<uint16_t>(sendCntSize), 0U, 0U};
     DataCopyPad(sendNumPerRankTensor, sendCntGMTensor_[startRankId_ * COUNTER_STRIDE], sendCntCopyParams, padParams_);
     SyncFunc<AscendC::HardEvent::MTE2_S>();
-    PipeBarrier<PIPE_MTE3>();   // 数据拷贝到workspace后再发远端
+    PipeBarrier<PIPE_MTE3>(); // 数据拷贝到workspace后再发远端
 
     for (uint32_t dstRankId = startRankId_; dstRankId < endRankId_; dstRankId++) {
         uint32_t sendTokenNum = sendNumPerRankTensor.GetValue((dstRankId - startRankId_) * COUNTER_STRIDE + 1);
-        GM_ADDR notifyAddr = GetWinAddrByRankId(mc2Context_, dstRankId, slotWinStateOffset_) +
-                             epRankId_ * WIN_ADDR_ALIGN;
+        GM_ADDR notifyAddr =
+            GetWinAddrByRankId(mc2Context_, dstRankId, slotWinStateOffset_) + epRankId_ * WIN_ADDR_ALIGN;
         if (unlikely(dstRankId == epRankId_)) {
             SyncFunc<AscendC::HardEvent::MTE3_S>();
             GlobalTensor<int32_t> statusGMTensor;
-            statusGMTensor.SetGlobalBuffer((__gm__ int32_t*)(notifyAddr));
+            statusGMTensor.SetGlobalBuffer((__gm__ int32_t *)(notifyAddr));
             statusGMTensor.SetValue(0, static_cast<int32_t>(1));
             DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(statusGMTensor);
-            continue;   //  本端slot已经写入win
+            continue; //  本端slot已经写入win
         }
 
         uint64_t commHandle = GetCommHandle(mc2Context_, epRankId_, dstRankId);
         if (sendTokenNum > 0) {
             uint64_t sendDataSize = static_cast<uint64_t>(perSlotBytes_) * sendTokenNum;
             uint64_t srcWorkspaceOffset = static_cast<uint64_t>(dstRankId) * axisMaxBS_ * perSlotBytes_;
-            uint64_t dstRankWinOffset = static_cast<uint64_t>(epRankId_) * axisMaxBS_ * perSlotBytes_;    // 计算目标窗口地址偏移
+            uint64_t dstRankWinOffset =
+                static_cast<uint64_t>(epRankId_) * axisMaxBS_ * perSlotBytes_; // 计算目标窗口地址偏移
             GM_ADDR remoteWinAddr = GetWinAddrByRankId(mc2Context_, dstRankId, winDataOffset_) + dstRankWinOffset;
             GM_ADDR localWorkspaceAddr = slotWorkspaceAddr_ + srcWorkspaceOffset;
             uint64_t splitCnt = (sendDataSize + CQE_MAX_WRITE_SIZE - 1) / CQE_MAX_WRITE_SIZE;
@@ -742,7 +743,7 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::SendPhase()
         DataCopyPad(metaLocalTensor_, topkIdxGMTensor_[topkOffset], topkCopyParams, padParams_);
         if constexpr (IsTopkWeights) {
             DataCopyPad(metaLocalTensor_[axisKAlign_].template ReinterpretCast<float>(),
-                topkWeightsGMTensor_[topkOffset], topkCopyParams, padParams_);
+                        topkWeightsGMTensor_[topkOffset], topkCopyParams, padParams_);
         }
         SyncFunc<AscendC::HardEvent::MTE2_S>();
         metaLocalTensor_.SetValue(2 * axisKAlign_, epRankId_);
@@ -795,13 +796,13 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::WaitDispatc
     int32_t commpareFlag = static_cast<int32_t>(epWorldSize_);
     const uint32_t shape[] = {epWorldSize_, UB_ALIGN / sizeof(int32_t)};
     GlobalTensor<int32_t> statusGMTensor;
-    statusGMTensor.SetGlobalBuffer((__gm__ int32_t*)localSlotStateWinAddr_);
+    statusGMTensor.SetGlobalBuffer((__gm__ int32_t *)localSlotStateWinAddr_);
     tpipe_->InitBuffer(recvCntBuf_, epWorldSize_ * UB_ALIGN);
     tpipe_->InitBuffer(tempBuf_, UB_ALIGN);
     LocalTensor<int32_t> statusLocalTensor = recvCntBuf_.Get<int32_t>();
     LocalTensor<int32_t> sumTensor = tempBuf_.Get<int32_t>();
 
-    while (sumOfFlag != commpareFlag) {  // 状态位check
+    while (sumOfFlag != commpareFlag) { // 状态位check
         DataCopy(statusLocalTensor, statusGMTensor, statusCopyParams_);
         SyncFunc<AscendC::HardEvent::MTE2_V>();
         ReduceSum<int32_t, AscendC::Pattern::Reduce::RA, true>(sumTensor, statusLocalTensor, shape, true);
@@ -817,7 +818,7 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::WaitDispatc
 template <TemplateMoeEpDispatchTypeClass>
 __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::ProcessDirect()
 {
-    ResetCounters();    // 计数器清0 为了后续发送token计算atomicAdd
+    ResetCounters(); // 计数器清0 为了后续发送token计算atomicAdd
     CalSendCnt();
     SyncAll<true>();
     Communication();
@@ -837,6 +838,6 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::Process()
         ProcessDirect();
     }
 }
-}  // namespace MoeEpDispatchImpl
+} // namespace MoeEpDispatchImpl
 
-#endif  // MOE_EP_DISPATCH_H
+#endif // MOE_EP_DISPATCH_H

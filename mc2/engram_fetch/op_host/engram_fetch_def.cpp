@@ -20,15 +20,9 @@ class EngramFetch : public OpDef {
 public:
     explicit EngramFetch(const char *name) : OpDef(name)
     {
-        this->Input("commContext")
-            .ParamType(REQUIRED)
-            .DataTypeList({ge::DT_INT32})
-            .FormatList({ge::FORMAT_ND});
+        this->Input("commContext").ParamType(REQUIRED).DataTypeList({ge::DT_INT32}).FormatList({ge::FORMAT_ND});
 
-        this->Input("indices")
-            .ParamType(REQUIRED)
-            .DataTypeList({ge::DT_INT32})
-            .FormatList({ge::FORMAT_ND});
+        this->Input("indices").ParamType(REQUIRED).DataTypeList({ge::DT_INT32}).FormatList({ge::FORMAT_ND});
 
         this->Output("fetched")
             .ParamType(REQUIRED)

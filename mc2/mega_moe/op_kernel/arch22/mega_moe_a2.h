@@ -77,19 +77,18 @@ using namespace Mc2Tiling;
 //   TB2_   : transpose_weight2 attribute
 //   Nz_    : whether weight1/2 is in FRACTAL_NZ format (both are the same)
 //   IS_A2_ : whether running on Atlas A2 (910B); false means A3 (910_93)
-#define MegaMoeClassA2                                                                                                \
-    typename AType_, typename BType_, typename CType_, bool TB1_, bool TB2_, bool Nz_, bool IS_A2_
+#define MegaMoeClassA2 typename AType_, typename BType_, typename CType_, bool TB1_, bool TB2_, bool Nz_, bool IS_A2_
 #define MegaMoeFuncA2 AType_, BType_, CType_, TB1_, TB2_, Nz_, IS_A2_
 
 using namespace AscendC;
 template <MegaMoeClassA2>
 class MegaMoeA2 {
 public:
-    __aicore__ inline MegaMoeA2() {};
+    __aicore__ inline MegaMoeA2(){};
     __aicore__ inline void Init(GM_ADDR contextGM, GM_ADDR xGM, GM_ADDR topkIdsGM, GM_ADDR topkWeightsGM,
                                 GM_ADDR weight1GM, GM_ADDR weight2GM, GM_ADDR weightScales1GM, GM_ADDR weightScales2GM,
-                                GM_ADDR bias1GM, GM_ADDR bias2GM, GM_ADDR xActiveMaskGM, GM_ADDR scalesGM,
-                                GM_ADDR yGM, GM_ADDR expertTokenNumsGM, GM_ADDR workspaceGM, GM_ADDR tilingGM);
+                                GM_ADDR bias1GM, GM_ADDR bias2GM, GM_ADDR xActiveMaskGM, GM_ADDR scalesGM, GM_ADDR yGM,
+                                GM_ADDR expertTokenNumsGM, GM_ADDR workspaceGM, GM_ADDR tilingGM);
     __aicore__ inline void Process();
 
 private:
@@ -139,14 +138,13 @@ private:
 
 
 template <MegaMoeClassA2>
-__aicore__ inline void MegaMoeA2<MegaMoeFuncA2>::Init(
-    GM_ADDR contextGM, GM_ADDR xGM, GM_ADDR topkIdsGM, GM_ADDR topkWeightsGM,
-    GM_ADDR weight1GM, GM_ADDR weight2GM, GM_ADDR weightScales1GM, GM_ADDR weightScales2GM,
-    GM_ADDR bias1GM, GM_ADDR bias2GM, GM_ADDR xActiveMaskGM, GM_ADDR scalesGM,
-    GM_ADDR yGM, GM_ADDR expertTokenNumsGM, GM_ADDR workspaceGM, GM_ADDR tilingGM)
+__aicore__ inline void
+MegaMoeA2<MegaMoeFuncA2>::Init(GM_ADDR contextGM, GM_ADDR xGM, GM_ADDR topkIdsGM, GM_ADDR topkWeightsGM,
+                               GM_ADDR weight1GM, GM_ADDR weight2GM, GM_ADDR weightScales1GM, GM_ADDR weightScales2GM,
+                               GM_ADDR bias1GM, GM_ADDR bias2GM, GM_ADDR xActiveMaskGM, GM_ADDR scalesGM, GM_ADDR yGM,
+                               GM_ADDR expertTokenNumsGM, GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
-    constexpr bool kRoutingIsQuant = std::is_same_v<BType_, AscendC::int4b_t> ||
-                                     std::is_same_v<BType_, int8_t>;
+    constexpr bool kRoutingIsQuant = std::is_same_v<BType_, AscendC::int4b_t> || std::is_same_v<BType_, int8_t>;
 
     contextGM_ = contextGM;
     xGM_ = xGM;
@@ -213,8 +211,7 @@ __aicore__ inline void MegaMoeA2<MegaMoeFuncA2>::Process()
     constexpr bool isW4A8 = std::is_same_v<BType_, AscendC::int4b_t>;
     constexpr bool isInt8 = std::is_same_v<BType_, int8_t>;
 
-    using AElement = std::conditional_t<isW4A8, AscendC::int4b_t,
-                      std::conditional_t<isInt8, int8_t, AType_>>;
+    using AElement = std::conditional_t<isW4A8, AscendC::int4b_t, std::conditional_t<isInt8, int8_t, AType_>>;
     using BElement = std::conditional_t<isW4A8, AscendC::int4b_t, BType_>;
     using CElement = std::conditional_t<isW4A8 || isInt8, float16_t, CType_>;
     using D1Element = std::conditional_t<isW4A8 || isInt8, int8_t, CType_>;
@@ -231,26 +228,20 @@ __aicore__ inline void MegaMoeA2<MegaMoeFuncA2>::Process()
     int64_t quantMode = 1;
 
     using LayoutA = layout::RowMajor;
-    using LayoutB = typename std::conditional<
-        Nz_,
-        layout::zN,
-        typename std::conditional<TB1_, layout::ColumnMajor, layout::RowMajor>::type
-    >::type;
+    using LayoutB =
+        typename std::conditional<Nz_, layout::zN,
+                                  typename std::conditional<TB1_, layout::ColumnMajor, layout::RowMajor>::type>::type;
 
     LayoutB layoutB1 = LayoutBInitializer<LayoutB, BElement>::create(k_, n_);
     LayoutB layoutB2 = LayoutBInitializer<LayoutB, BElement>::create(k2, n2);
     using LayoutC = layout::RowMajor;
 
-    using L1TileShape = std::conditional_t<
-        isW4A8,
-        GemmShape<128, 256, 1024>,
-        std::conditional_t<isInt8, GemmShape<128, 256, 512>, GemmShape<128, 256, 256>>
-    >;
-    using L0TileShape = std::conditional_t<
-        isW4A8,
-        GemmShape<128, 256, 256>,
-        std::conditional_t<isInt8, GemmShape<128, 256, 128>, GemmShape<128, 256, 64>>
-    >;
+    using L1TileShape =
+        std::conditional_t<isW4A8, GemmShape<128, 256, 1024>,
+                           std::conditional_t<isInt8, GemmShape<128, 256, 512>, GemmShape<128, 256, 256>>>;
+    using L0TileShape =
+        std::conditional_t<isW4A8, GemmShape<128, 256, 256>,
+                           std::conditional_t<isInt8, GemmShape<128, 256, 128>, GemmShape<128, 256, 64>>>;
 
     constexpr uint32_t preloadStages = 1;
     constexpr uint32_t l1Stages = 2;
@@ -258,45 +249,35 @@ __aicore__ inline void MegaMoeA2<MegaMoeFuncA2>::Process()
     constexpr uint32_t l0BStages = 2;
     constexpr uint32_t l0CStages = 1;
 
-    using DispatchPolicy = Gemm::MmadDispatchPolicyFor_t<
-        BElement, IS_A2_, preloadStages, l1Stages, l0AStages, l0BStages, l0CStages,
-        enableUnitFlag, enableShuffleK>;
+    using DispatchPolicy = Gemm::MmadDispatchPolicyFor_t<BElement, IS_A2_, preloadStages, l1Stages, l0AStages,
+                                                         l0BStages, l0CStages, enableUnitFlag, enableShuffleK>;
 
     using AType = Gemm::GemmType<AElement, layout::RowMajor>;
     using BType = Gemm::GemmType<BElement, LayoutB>;
     using CType = Gemm::GemmType<CElement, layout::RowMajor>;
     using D1Type = Gemm::GemmType<D1Element, layout::RowMajor>;
-    using D2Type = std::conditional_t<
-        std::is_same_v<CType_, bfloat16_t>,
-        Gemm::GemmType<bfloat16_t, layout::RowMajor>,
-        Gemm::GemmType<CType_, layout::RowMajor>
-    >;
+    using D2Type = std::conditional_t<std::is_same_v<CType_, bfloat16_t>, Gemm::GemmType<bfloat16_t, layout::RowMajor>,
+                                      Gemm::GemmType<CType_, layout::RowMajor>>;
 
     using ScaleGranularity = Catlass::Gemm::Tile::ScaleGranularity;
-    using TileCopyMmad =
-        Gemm::Tile::QuantTileCopy<ArchTag, AType, BType, CType, void, ScaleGranularity::PER_CHANNEL>;
+    using TileCopyMmad = Gemm::Tile::QuantTileCopy<ArchTag, AType, BType, CType, void, ScaleGranularity::PER_CHANNEL>;
 
     using BlockMmad = std::conditional_t<
         isW4A8,
         Gemm::Block::BlockMmad<DispatchPolicy, L1TileShape, L0TileShape, AType, BType, CType, void, TileCopyMmad>,
-        Gemm::Block::BlockMmad<DispatchPolicy, L1TileShape, L0TileShape, AType, BType, CType>
-    >;
+        Gemm::Block::BlockMmad<DispatchPolicy, L1TileShape, L0TileShape, AType, BType, CType>>;
 
     constexpr uint32_t ubStages = 2;
 
-    using EpilogueDispatchPolicy1 = std::conditional_t<
-        isW4A8,
-        Epilogue::EpilogueAtlasA2W4A8PostPerTokenDequantSwigluQuant<ubStages>,
-        std::conditional_t<isInt8, Epilogue::EpilogueAtlasA2PerTokenDequantSwigluQuantInt8<ubStages>,
-            Epilogue::EpilogueAtlasA2PerTokenDequantSwigluQuantBF16<ubStages>>
-    >;
+    using EpilogueDispatchPolicy1 =
+        std::conditional_t<isW4A8, Epilogue::EpilogueAtlasA2W4A8PostPerTokenDequantSwigluQuant<ubStages>,
+                           std::conditional_t<isInt8, Epilogue::EpilogueAtlasA2PerTokenDequantSwigluQuantInt8<ubStages>,
+                                              Epilogue::EpilogueAtlasA2PerTokenDequantSwigluQuantBF16<ubStages>>>;
 
-    using EpilogueDispatchPolicy2 = std::conditional_t<
-        isW4A8,
-        Epilogue::EpilogueAtlasA2W4A8PostPerTokenDequantV2<ubStages>,
-        std::conditional_t<isInt8, Epilogue::EpilogueAtlasA2PerTokenDequantV2Int8<ubStages>,
-            Epilogue::EpilogueAtlasA2PerTokenDequantV2BF16<ubStages>>
-    >;
+    using EpilogueDispatchPolicy2 =
+        std::conditional_t<isW4A8, Epilogue::EpilogueAtlasA2W4A8PostPerTokenDequantV2<ubStages>,
+                           std::conditional_t<isInt8, Epilogue::EpilogueAtlasA2PerTokenDequantV2Int8<ubStages>,
+                                              Epilogue::EpilogueAtlasA2PerTokenDequantV2BF16<ubStages>>>;
 
     using ScaleType = Gemm::GemmType<uint64_t, layout::VectorLayout>;
     using PerTokenScaleType = Gemm::GemmType<float, layout::VectorLayout>;
@@ -304,16 +285,15 @@ __aicore__ inline void MegaMoeA2<MegaMoeFuncA2>::Process()
     using TileElemWiseMuls = Epilogue::Tile::TileElemWiseMuls<ArchTag, ElementMulType, 0>;
 
     using TileCopy1 = Epilogue::Tile::TileCopy<ArchTag, CType, ScaleType, PerTokenScaleType, D1Type>;
-    using BlockEpilogue1 = Epilogue::Block::BlockEpilogue<EpilogueDispatchPolicy1, CType, PerTokenScaleType,
-        D1Type, TileElemWiseMuls, TileCopy1>;
+    using BlockEpilogue1 = Epilogue::Block::BlockEpilogue<EpilogueDispatchPolicy1, CType, PerTokenScaleType, D1Type,
+                                                          TileElemWiseMuls, TileCopy1>;
 
     using TileCopy2 = Epilogue::Tile::TileCopy<ArchTag, CType, ScaleType, PerTokenScaleType, D2Type>;
     using IS_A2 = Epilogue::Block::IS_A2_T<IS_A2_>;
     using BlockEpilogue2 = std::conditional_t<
         isW4A8,
         Epilogue::Block::BlockEpilogue<EpilogueDispatchPolicy2, CType, PerTokenScaleType, D2Type, TileCopy2, IS_A2>,
-        Epilogue::Block::BlockEpilogue<EpilogueDispatchPolicy2, CType, PerTokenScaleType, D2Type, TileCopy2>
-    >;
+        Epilogue::Block::BlockEpilogue<EpilogueDispatchPolicy2, CType, PerTokenScaleType, D2Type, TileCopy2>>;
 
     using BlockScheduler = typename Gemm::Block::GemmIdentityBlockSwizzle<9, 1>;
     using ElementGroupList = int64_t;
@@ -329,53 +309,95 @@ __aicore__ inline void MegaMoeA2<MegaMoeFuncA2>::Process()
     uint32_t epilogueCoreNum;
     uint32_t epilogueGranularity;
 
-    if constexpr(isW4A8) {
-        using MatmulKernel =
-            Gemm::Kernel::MegaMoeKernelA2Bf16W4A8<BlockMmad, BlockScheduler, ElementGroupList,
-                                                    BlockEpilogue1, BlockEpilogue2>;
+    if constexpr (isW4A8) {
+        using MatmulKernel = Gemm::Kernel::MegaMoeKernelA2Bf16W4A8<BlockMmad, BlockScheduler, ElementGroupList,
+                                                                   BlockEpilogue1, BlockEpilogue2>;
         epilogueCoreNum = static_cast<uint32_t>(aivNum_);
         epilogueGranularity = 0U;
-        typename MatmulKernel::Params params = typename MatmulKernel::Params{
-            problemShape, static_cast<uint32_t>(epWorldSize_), static_cast<uint32_t>(listLen_),
-            static_cast<uint32_t>(expertPerRank_), static_cast<uint64_t>(maxOutputSize_),
-            static_cast<uint32_t>(topK_), initRoutingQuantTilingKey,
-            epilogueCoreNum,
-            contextGM_, xGM_, layoutA1, layoutA2,
-            weight1GM_, layoutB1, bias1GM_,
-            weight2GM_, layoutB2, bias2GM_,
-            weightScales1GM_, layoutScale1,
-            weightScales2GM_, layoutScale2,
-            yGM_, layoutD1, layoutD2,
-            topkIdsGM_, moeInitRoutingQuantV2Scale_, moeInitRoutingQuantV2Offset_,
-            expertTokensBeforeCapacity_, topkWeightsGM_,
-            workspaceGM_, gmExpertTokenNums_, xActiveMaskGM_, scalesGM_,
-            moeInitRoutingQuantV2TilingData,
-            epilogueGranularity, activationClamp_, tilingGM_};
+        typename MatmulKernel::Params params = typename MatmulKernel::Params{problemShape,
+                                                                             static_cast<uint32_t>(epWorldSize_),
+                                                                             static_cast<uint32_t>(listLen_),
+                                                                             static_cast<uint32_t>(expertPerRank_),
+                                                                             static_cast<uint64_t>(maxOutputSize_),
+                                                                             static_cast<uint32_t>(topK_),
+                                                                             initRoutingQuantTilingKey,
+                                                                             epilogueCoreNum,
+                                                                             contextGM_,
+                                                                             xGM_,
+                                                                             layoutA1,
+                                                                             layoutA2,
+                                                                             weight1GM_,
+                                                                             layoutB1,
+                                                                             bias1GM_,
+                                                                             weight2GM_,
+                                                                             layoutB2,
+                                                                             bias2GM_,
+                                                                             weightScales1GM_,
+                                                                             layoutScale1,
+                                                                             weightScales2GM_,
+                                                                             layoutScale2,
+                                                                             yGM_,
+                                                                             layoutD1,
+                                                                             layoutD2,
+                                                                             topkIdsGM_,
+                                                                             moeInitRoutingQuantV2Scale_,
+                                                                             moeInitRoutingQuantV2Offset_,
+                                                                             expertTokensBeforeCapacity_,
+                                                                             topkWeightsGM_,
+                                                                             workspaceGM_,
+                                                                             gmExpertTokenNums_,
+                                                                             xActiveMaskGM_,
+                                                                             scalesGM_,
+                                                                             moeInitRoutingQuantV2TilingData,
+                                                                             epilogueGranularity,
+                                                                             activationClamp_,
+                                                                             tilingGM_};
         MatmulKernel kernel(params);
         kernel(params);
-    }
-    else if constexpr (isInt8) {
+    } else if constexpr (isInt8) {
         epilogueCoreNum = aivNum_ / 2; // INT8 场景仅使用一半 AIV 参与 epilogue
         epilogueGranularity = (expertPerRank_ > 1) ? static_cast<uint32_t>(expertPerRank_ - 1) : 1u;
 
         using MatmulKernel = Gemm::Kernel::MegaMoeKernelA2Int8<BlockMmad, BlockScheduler, ElementGroupList,
-                                                                           BlockEpilogue1, BlockEpilogue2>;
-        typename MatmulKernel::Params params{
-            problemShape, static_cast<uint32_t>(epWorldSize_), static_cast<uint32_t>(listLen_),
-            static_cast<uint32_t>(expertPerRank_), static_cast<uint64_t>(maxOutputSize_),
-            static_cast<uint32_t>(topK_), initRoutingQuantTilingKey,
-            epilogueCoreNum,
-            contextGM_, xGM_, layoutA1, layoutA2,
-            weight1GM_, layoutB1, bias1GM_,
-            weight2GM_, layoutB2, bias2GM_,
-            weightScales1GM_, layoutScale1,
-            weightScales2GM_, layoutScale2,
-            yGM_, layoutD1, layoutD2,
-            topkIdsGM_, moeInitRoutingQuantV2Scale_, moeInitRoutingQuantV2Offset_,
-            expertTokensBeforeCapacity_, topkWeightsGM_,
-            workspaceGM_, gmExpertTokenNums_, xActiveMaskGM_, scalesGM_,
-            moeInitRoutingQuantV2TilingData,
-            epilogueGranularity, activationClamp_, tilingGM_};
+                                                               BlockEpilogue1, BlockEpilogue2>;
+        typename MatmulKernel::Params params{problemShape,
+                                             static_cast<uint32_t>(epWorldSize_),
+                                             static_cast<uint32_t>(listLen_),
+                                             static_cast<uint32_t>(expertPerRank_),
+                                             static_cast<uint64_t>(maxOutputSize_),
+                                             static_cast<uint32_t>(topK_),
+                                             initRoutingQuantTilingKey,
+                                             epilogueCoreNum,
+                                             contextGM_,
+                                             xGM_,
+                                             layoutA1,
+                                             layoutA2,
+                                             weight1GM_,
+                                             layoutB1,
+                                             bias1GM_,
+                                             weight2GM_,
+                                             layoutB2,
+                                             bias2GM_,
+                                             weightScales1GM_,
+                                             layoutScale1,
+                                             weightScales2GM_,
+                                             layoutScale2,
+                                             yGM_,
+                                             layoutD1,
+                                             layoutD2,
+                                             topkIdsGM_,
+                                             moeInitRoutingQuantV2Scale_,
+                                             moeInitRoutingQuantV2Offset_,
+                                             expertTokensBeforeCapacity_,
+                                             topkWeightsGM_,
+                                             workspaceGM_,
+                                             gmExpertTokenNums_,
+                                             xActiveMaskGM_,
+                                             scalesGM_,
+                                             moeInitRoutingQuantV2TilingData,
+                                             epilogueGranularity,
+                                             activationClamp_,
+                                             tilingGM_};
 
         MatmulKernel kernel(params);
         kernel(params);
@@ -383,23 +405,45 @@ __aicore__ inline void MegaMoeA2<MegaMoeFuncA2>::Process()
         epilogueCoreNum = static_cast<uint32_t>(aivNum_); // 所有 AIV 参与
         epilogueGranularity = (expertPerRank_ > 2) ? static_cast<uint32_t>(expertPerRank_ - 2) : 1u;
         using MatmulKernel = Gemm::Kernel::MegaMoeKernelA2BF16<BlockMmad, BlockScheduler, ElementGroupList,
-                                                                           BlockEpilogue1, BlockEpilogue2>;
-        typename MatmulKernel::Params params{
-            problemShape, static_cast<uint32_t>(epWorldSize_), static_cast<uint32_t>(listLen_),
-            static_cast<uint32_t>(expertPerRank_), static_cast<uint64_t>(maxOutputSize_),
-            static_cast<uint32_t>(topK_), initRoutingQuantTilingKey,
-            epilogueCoreNum,
-            contextGM_, xGM_, layoutA1, layoutA2,
-            weight1GM_, layoutB1, bias1GM_,
-            weight2GM_, layoutB2, bias2GM_,
-            weightScales1GM_, layoutScale1,
-            weightScales2GM_, layoutScale2,
-            yGM_, layoutD1, layoutD2,
-            topkIdsGM_, moeInitRoutingQuantV2Scale_, moeInitRoutingQuantV2Offset_,
-            expertTokensBeforeCapacity_, topkWeightsGM_,
-            workspaceGM_, gmExpertTokenNums_, xActiveMaskGM_, scalesGM_,
-            moeInitRoutingV2TilingData,
-            epilogueGranularity, activationClamp_, tilingGM_};
+                                                               BlockEpilogue1, BlockEpilogue2>;
+        typename MatmulKernel::Params params{problemShape,
+                                             static_cast<uint32_t>(epWorldSize_),
+                                             static_cast<uint32_t>(listLen_),
+                                             static_cast<uint32_t>(expertPerRank_),
+                                             static_cast<uint64_t>(maxOutputSize_),
+                                             static_cast<uint32_t>(topK_),
+                                             initRoutingQuantTilingKey,
+                                             epilogueCoreNum,
+                                             contextGM_,
+                                             xGM_,
+                                             layoutA1,
+                                             layoutA2,
+                                             weight1GM_,
+                                             layoutB1,
+                                             bias1GM_,
+                                             weight2GM_,
+                                             layoutB2,
+                                             bias2GM_,
+                                             weightScales1GM_,
+                                             layoutScale1,
+                                             weightScales2GM_,
+                                             layoutScale2,
+                                             yGM_,
+                                             layoutD1,
+                                             layoutD2,
+                                             topkIdsGM_,
+                                             moeInitRoutingQuantV2Scale_,
+                                             moeInitRoutingQuantV2Offset_,
+                                             expertTokensBeforeCapacity_,
+                                             topkWeightsGM_,
+                                             workspaceGM_,
+                                             gmExpertTokenNums_,
+                                             xActiveMaskGM_,
+                                             scalesGM_,
+                                             moeInitRoutingV2TilingData,
+                                             epilogueGranularity,
+                                             activationClamp_,
+                                             tilingGM_};
 
         MatmulKernel kernel(params);
         kernel(params);

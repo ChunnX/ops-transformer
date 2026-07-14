@@ -27,7 +27,8 @@ extern "C" {
  * @param [in] context: 计算输入，Tensor，数据类型int32，必须为1维，数据格式支持ND。本卡通信域信息数据。
  * @param [in] x: 计算输入，Tensor，数据类型bfloat16，必须为2维，数据格式支持ND。本卡发送的token数据。
  * @param [in] topkIds: 计算输入，Tensor，数据类型int32，必须为2维，数据格式支持ND。每个token的topK个专家索引。
- * @param [in] topkWeights: 计算输入，Tensor，数据类型float32或bfloat16，必须为2维，数据格式支持ND。每个token的topK个专家权重。
+ * @param [in] topkWeights:
+ * 计算输入，Tensor，数据类型float32或bfloat16，必须为2维，数据格式支持ND。每个token的topK个专家权重。
  * @param [in] weight1: 计算输入，TensorList，数据类型float8_e5m2或float8_e4m3fn，数据格式支持ND。
  *                      GroupMatmul1计算的右矩阵，用于计算SwiGLU激活前的线性变换。
  * @param [in] weight2: 计算输入，TensorList，数据类型float8_e5m2或float8_e4m3fn，数据格式支持ND。
@@ -46,10 +47,12 @@ extern "C" {
  * @param [in] cclBufferSize: 计算输入，int。CCL通信缓冲区大小。
  * @param [in] maxRecvTokenNum: 计算可选输入，int。每个Rank最大可接收Token数，默认值为0表示自动计算。
  * @param [in] dispatchQuantMode: 计算可选输入，int。dispatch通信时量化模式，目前仅支持4（MXFP模式）。默认值为0。
- * @param [in] dispatchQuantOutDtype: 计算可选输入，int。dispatch量化后输出的数据类型。支持23（FP8_E5M2）或24（FP8_E4M3）。
+ * @param [in] dispatchQuantOutDtype:
+ * 计算可选输入，int。dispatch量化后输出的数据类型。支持23（FP8_E5M2）或24（FP8_E4M3）。
  * @param [in] combineQuantMode: 计算可选输入，int。预留参数，暂不支持。默认值为0。
  * @param [in] commAlg: 计算可选输入，str。预留参数，暂不支持。默认值为""。
- * @param [in] numMaxTokensPerRank: 计算可选输入，int。每个Rank最大可接收Token数，默认值为0表示所有卡的token数相同且为当前bs（x的dim0）。
+ * @param [in] numMaxTokensPerRank:
+ * 计算可选输入，int。每个Rank最大可接收Token数，默认值为0表示所有卡的token数相同且为当前bs（x的dim0）。
  * @param [in] activation: 计算可选输入，str。激活函数类型，支持"swiglu"、"gelu"、"silu"、"relu"等，默认值为"swiglu"。
  * @param [in] activationClamp: 计算可选输入，float。激活函数截断值，默认值为float最大值。
  * @param [out] yOut: 计算输出，Tensor，必选输出，数据类型bfloat16，仅支持2维，数据格式支持ND。
@@ -86,4 +89,4 @@ ACLNN_API aclnnStatus aclnnMegaMoe(void *workspace, uint64_t workspaceSize, aclO
 }
 #endif
 
-#endif  // OP_API_INC_MEGA_MOE_
+#endif // OP_API_INC_MEGA_MOE_

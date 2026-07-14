@@ -52,8 +52,7 @@ private:
     AscendC::Hcomm<AscendC::COMM_PROTOCOL_UBC_CTP> hcomm_;
 };
 
-__aicore__ inline void EngramFetchWaitArch35::Init(GM_ADDR commContext, GM_ADDR workspaceGM,
-                                                   AscendC::TPipe *pipe)
+__aicore__ inline void EngramFetchWaitArch35::Init(GM_ADDR commContext, GM_ADDR workspaceGM, AscendC::TPipe *pipe)
 {
     tpipe_ = pipe;
     aivId_ = AscendC::GetBlockIdx();

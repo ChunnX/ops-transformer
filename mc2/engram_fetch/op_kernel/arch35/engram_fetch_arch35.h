@@ -89,9 +89,9 @@ private:
     AscendC::Hcomm<AscendC::COMM_PROTOCOL_UBC_CTP> hcomm_;
 };
 
-__aicore__ inline void EngramFetchArch35::Init(
-    GM_ADDR commContext, GM_ADDR indices, GM_ADDR fetched, GM_ADDR workspaceGM,
-    AscendC::TPipe *pipe, const EngramFetchTilingData *tilingData)
+__aicore__ inline void EngramFetchArch35::Init(GM_ADDR commContext, GM_ADDR indices, GM_ADDR fetched,
+                                               GM_ADDR workspaceGM, AscendC::TPipe *pipe,
+                                               const EngramFetchTilingData *tilingData)
 {
     tpipe_ = pipe;
     indicesGM_ = indices;
@@ -126,8 +126,8 @@ __aicore__ inline void EngramFetchArch35::Init(
     constexpr uint64_t ubReserved = 8U * 1024U;
     // ScatterByRank 需要: indices + tokenIdxInRank + rankIDs + positions + divisor (各4字节) + mask(每元素1字节近似)
     uint32_t bytesPerIndice = sizeof(int32_t) + sizeof(uint32_t) + sizeof(int32_t) * 3U + 1U;
-    uint64_t usedUb = HCOMM_INIT_SIZE + TILE_BYTES * RELAY_BUFFER_NUM + countsBufSize + offsetsBufSize
-                    + commBufferBufSize + hcommHandleBufSize;
+    uint64_t usedUb = HCOMM_INIT_SIZE + TILE_BYTES * RELAY_BUFFER_NUM + countsBufSize + offsetsBufSize +
+                      commBufferBufSize + hcommHandleBufSize;
     uint64_t availableUb = (ubSize_ > usedUb + ubReserved) ? (ubSize_ - usedUb - ubReserved) : 0U;
     uint32_t maxBatchSize = static_cast<uint32_t>(availableUb / bytesPerIndice);
     uint32_t numTokens = static_cast<uint32_t>(numTokens_);
@@ -141,8 +141,8 @@ __aicore__ inline void EngramFetchArch35::Init(
     uint32_t tokenIdxInRankBufSize = AscendC::Ceil(indicesBatchSize_ * sizeof(uint32_t), UB_ALIGN) * UB_ALIGN;
     tpipe_->InitBuffer(tokenIdxInRankBuf_, tokenIdxInRankBufSize);
 
-    uint32_t compareCntMax = AscendC::Ceil(indicesBatchSize_ * sizeof(int32_t), ALIGNED_LEN_256) *
-                             ALIGNED_LEN_256 / sizeof(int32_t);
+    uint32_t compareCntMax =
+        AscendC::Ceil(indicesBatchSize_ * sizeof(int32_t), ALIGNED_LEN_256) * ALIGNED_LEN_256 / sizeof(int32_t);
     uint32_t int32BufSize = compareCntMax * sizeof(int32_t);
     tpipe_->InitBuffer(rankIDsBuf_, int32BufSize);
     tpipe_->InitBuffer(positionsBuf_, int32BufSize);
@@ -193,8 +193,7 @@ __aicore__ inline void EngramFetchArch35::GatherRankTokens(uint32_t ownerRank, u
 
     AscendC::LocalTensor<int32_t> dstRegion = tokenIdxInRank[runningOffset].ReinterpretCast<int32_t>();
     uint64_t rsvdCnt = 0;
-    AscendC::GatherMask(dstRegion, positions, mask.ReinterpretCast<uint32_t>(), true,
-                        batchLen, {1, 1, 0, 0}, rsvdCnt);
+    AscendC::GatherMask(dstRegion, positions, mask.ReinterpretCast<uint32_t>(), true, batchLen, {1, 1, 0, 0}, rsvdCnt);
     AscendC::PipeBarrier<PIPE_V>();
     SyncFunc<AscendC::HardEvent::V_S>();
 
@@ -208,8 +207,8 @@ __aicore__ inline void EngramFetchArch35::ScatterByRank(uint32_t batchLen)
 {
     AscendC::LocalTensor<int32_t> indicesLocal = indicesBuf_.Get<int32_t>();
 
-    uint32_t compareCntMax = AscendC::Ceil(batchLen * sizeof(int32_t), ALIGNED_LEN_256) *
-                             ALIGNED_LEN_256 / sizeof(int32_t);
+    uint32_t compareCntMax =
+        AscendC::Ceil(batchLen * sizeof(int32_t), ALIGNED_LEN_256) * ALIGNED_LEN_256 / sizeof(int32_t);
 
     AscendC::LocalTensor<int32_t> rankIDs = rankIDsBuf_.Get<int32_t>();
     AscendC::LocalTensor<int32_t> positions = positionsBuf_.Get<int32_t>();
@@ -285,8 +284,7 @@ __aicore__ inline void EngramFetchArch35::LocalFetchTokens(uint32_t indicesBatch
         uint32_t localEntryIdx = static_cast<uint32_t>(globalIdx) - localIdxStart;
         uint64_t globalTokenIdx = indicesBatchStart + i;
         GM_ADDR dst = fetchedGM_ + globalTokenIdx * hiddenBytes;
-        GM_ADDR src = (GM_ADDR)commBufferLocal(rankId_)
-                      + static_cast<uint64_t>(localEntryIdx) * hiddenBytes;
+        GM_ADDR src = (GM_ADDR)commBufferLocal(rankId_) + static_cast<uint64_t>(localEntryIdx) * hiddenBytes;
         LocalCopySlice(dst, src, hiddenBytes);
     }
     SyncFunc<AscendC::HardEvent::MTE3_S>();
@@ -316,8 +314,8 @@ __aicore__ inline void EngramFetchArch35::RemoteFetchRank(uint32_t ownerRank, ui
         uint32_t localEntryIdx = static_cast<uint32_t>(globalIdx) - idxStart;
         uint64_t globalTokenIdx = indicesBatchStart + i;
         GM_ADDR dst = fetchedGM_ + globalTokenIdx * hiddenBytes;
-        GM_ADDR remoteSrcAddr = (GM_ADDR)commBufferLocal(ownerRank)
-                                + static_cast<uint64_t>(localEntryIdx) * hiddenBytes;
+        GM_ADDR remoteSrcAddr =
+            (GM_ADDR)commBufferLocal(ownerRank) + static_cast<uint64_t>(localEntryIdx) * hiddenBytes;
         int32_t ret = hcomm_.ReadNbi<false>(hcommHandleLocal(ownerRank), dst, remoteSrcAddr, hiddenBytes);
         ascendc_assert(ret == 0, "Urma readNbi failed, ret=%d, ownerRank=%u", ret, ownerRank);
         pendingReadCount++;

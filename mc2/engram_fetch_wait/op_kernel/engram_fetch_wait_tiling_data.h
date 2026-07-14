@@ -19,6 +19,5 @@
 
 #include "kernel_tiling/kernel_tiling.h"
 
-struct EngramFetchWaitTilingData {
-};
+struct EngramFetchWaitTilingData {};
 #endif

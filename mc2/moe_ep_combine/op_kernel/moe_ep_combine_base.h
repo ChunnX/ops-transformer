@@ -12,7 +12,7 @@
  * \file moe_ep_combine_base.h
  * \brief
  */
- 
+
 #ifndef MOE_EP_COMBINE_BASE_H
 #define MOE_EP_COMBINE_BASE_H
 #include <cstdint>

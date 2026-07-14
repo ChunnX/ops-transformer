@@ -142,14 +142,14 @@ public:
     static constexpr uint64_t kUbMte2BufferNum = 4;
 
     struct Params {
-        __gm__ InType* ptrB;
+        __gm__ InType *ptrB;
     };
 
     __aicore__ inline BlockPrologue();
     template <typename GMWeightTensorType>
-    __aicore__ inline void operator()(
-        const GMWeightTensorType& gmWeightTensor, uint64_t mL1Size, uint64_t kSize, uint64_t nL1Size, uint64_t nOffset,
-        uint64_t nAlign, uint64_t configuredKL1Size = 0);
+    __aicore__ inline void operator()(const GMWeightTensorType &gmWeightTensor, uint64_t mL1Size, uint64_t kSize,
+                                      uint64_t nL1Size, uint64_t nOffset, uint64_t nAlign,
+                                      uint64_t configuredKL1Size = 0);
     __aicore__ inline ~BlockPrologue();
 
 protected:
@@ -157,25 +157,25 @@ protected:
     __aicore__ inline void SetAivToAic();
     __aicore__ inline void WaitAicToAiv();
     template <typename GMWeightTensorType>
-    __aicore__ inline void ComputeBasicBlockAivNdKnNzNk(
-        const PrologueMxCastWOffsetParam& offsetParam, const GMWeightTensorType& gmWeightTensor);
+    __aicore__ inline void ComputeBasicBlockAivNdKnNzNk(const PrologueMxCastWOffsetParam &offsetParam,
+                                                        const GMWeightTensorType &gmWeightTensor);
 
     __aicore__ inline void WaitVectorToMTE2();
     __aicore__ inline void SetVectorToMTE2();
     template <typename Weight4BitTensorType, typename Weight8BitTensorType>
-    __aicore__ inline void WeightAntiQuantComputeNzNk(
-        const Weight4BitTensorType& weight4BitTensor, const Weight8BitTensorType& weight8BitTensor);
+    __aicore__ inline void WeightAntiQuantComputeNzNk(const Weight4BitTensorType &weight4BitTensor,
+                                                      const Weight8BitTensorType &weight8BitTensor);
     template <typename Weight8BitTensorType, typename L1TensorType>
-    __aicore__ inline void CopyWeightToL1(
-        uint64_t mte2RealK, const Weight8BitTensorType& weight8BitTensor, const L1TensorType& l1Tensor);
+    __aicore__ inline void CopyWeightToL1(uint64_t mte2RealK, const Weight8BitTensorType &weight8BitTensor,
+                                          const L1TensorType &l1Tensor);
 
     __aicore__ inline void FinalizeVectorCompute();
 
     // GM to UB copy function
     template <typename GMWeightBaseTensorType, typename Weight4BitTensorType>
-    __aicore__ inline void CopyGmToUb(
-        uint64_t kOffset, uint64_t mte2RealK, const PrologueMxCastWOffsetParam& param,
-        const GMWeightBaseTensorType& gmWeightBaseTensor, const Weight4BitTensorType& weight4BitTensor);
+    __aicore__ inline void CopyGmToUb(uint64_t kOffset, uint64_t mte2RealK, const PrologueMxCastWOffsetParam &param,
+                                      const GMWeightBaseTensorType &gmWeightBaseTensor,
+                                      const Weight4BitTensorType &weight4BitTensor);
 
     // === Tensor Creation Helper Functions ===
     // Weight tensor creation functions
@@ -194,8 +194,8 @@ protected:
     static constexpr uint64_t KB = 1024;
     static constexpr uint64_t WEIGHT_L1_INIT_OFFSET = 0;
     static constexpr uint64_t WEIGHT_L1_DB_OFFSET = 384 * KB;
-    static constexpr uint64_t L1_WEIGHT_OFFSETS[DOUBLE_BUFFER] = {
-        WEIGHT_L1_INIT_OFFSET * sizeof(OutType), WEIGHT_L1_DB_OFFSET * sizeof(OutType)};
+    static constexpr uint64_t L1_WEIGHT_OFFSETS[DOUBLE_BUFFER] = {WEIGHT_L1_INIT_OFFSET * sizeof(OutType),
+                                                                  WEIGHT_L1_DB_OFFSET * sizeof(OutType)};
 
     // === Pipeline Buffer Configuration ===
     static constexpr uint64_t WEIGHT_8BIT_BUFFER_NUM = QUADRUPLE_BUFFER_NUM; // 4
@@ -212,20 +212,18 @@ protected:
     static constexpr uint64_t UB_MAX_USABLE_SIZE = 248 * KB;
 
     // Compile-time verification: active use stays within the UB hardware usable ceiling.
-    static_assert(
-        WEIGHT_4BIT_TOTAL_SIZE + WEIGHT_8BIT_TOTAL_SIZE <= UB_MAX_USABLE_SIZE,
-        "UB buffer total must not exceed 248KB hardware limit");
+    static_assert(WEIGHT_4BIT_TOTAL_SIZE + WEIGHT_8BIT_TOTAL_SIZE <= UB_MAX_USABLE_SIZE,
+                  "UB buffer total must not exceed 248KB hardware limit");
 
     // === UB Buffer Base Offsets ===
     static constexpr uint64_t WEIGHT_4BIT_INIT_OFFSET = 0;
     static constexpr uint64_t WEIGHT_8BIT_INIT_OFFSET = WEIGHT_4BIT_TOTAL_SIZE;
 
     // === UB Buffer Offset Arrays (Compile-time computed for fast lookup) ===
-    static constexpr uint64_t WEIGHT_4BIT_OFFSETS[4] = {
-        WEIGHT_4BIT_INIT_OFFSET + 0 * WEIGHT_4BIT_SINGLE_BUFFER_SIZE,
-        WEIGHT_4BIT_INIT_OFFSET + 1 * WEIGHT_4BIT_SINGLE_BUFFER_SIZE,
-        WEIGHT_4BIT_INIT_OFFSET + 2 * WEIGHT_4BIT_SINGLE_BUFFER_SIZE,
-        WEIGHT_4BIT_INIT_OFFSET + 3 * WEIGHT_4BIT_SINGLE_BUFFER_SIZE};
+    static constexpr uint64_t WEIGHT_4BIT_OFFSETS[4] = {WEIGHT_4BIT_INIT_OFFSET + 0 * WEIGHT_4BIT_SINGLE_BUFFER_SIZE,
+                                                        WEIGHT_4BIT_INIT_OFFSET + 1 * WEIGHT_4BIT_SINGLE_BUFFER_SIZE,
+                                                        WEIGHT_4BIT_INIT_OFFSET + 2 * WEIGHT_4BIT_SINGLE_BUFFER_SIZE,
+                                                        WEIGHT_4BIT_INIT_OFFSET + 3 * WEIGHT_4BIT_SINGLE_BUFFER_SIZE};
 
     // === Hardware/Architecture Parameters ===
 #if __CCE_AICORE__ == 310
@@ -234,11 +232,10 @@ protected:
     constexpr static uint64_t VEC_REG_ELEM = 256;
 #endif
 
-    static constexpr uint64_t WEIGHT_8BIT_OFFSETS[4] = {
-        WEIGHT_8BIT_INIT_OFFSET + 0 * VEC_REG_ELEM * sizeof(OutType),
-        WEIGHT_8BIT_INIT_OFFSET + 1 * VEC_REG_ELEM * sizeof(OutType),
-        WEIGHT_8BIT_INIT_OFFSET + 2 * VEC_REG_ELEM * sizeof(OutType),
-        WEIGHT_8BIT_INIT_OFFSET + 3 * VEC_REG_ELEM * sizeof(OutType)};
+    static constexpr uint64_t WEIGHT_8BIT_OFFSETS[4] = {WEIGHT_8BIT_INIT_OFFSET + 0 * VEC_REG_ELEM * sizeof(OutType),
+                                                        WEIGHT_8BIT_INIT_OFFSET + 1 * VEC_REG_ELEM * sizeof(OutType),
+                                                        WEIGHT_8BIT_INIT_OFFSET + 2 * VEC_REG_ELEM * sizeof(OutType),
+                                                        WEIGHT_8BIT_INIT_OFFSET + 3 * VEC_REG_ELEM * sizeof(OutType)};
     static constexpr uint64_t WEIGHT_8BIT_LAYOUT_INNER_SIZE = VEC_REG_ELEM * WEIGHT_8BIT_BUFFER_NUM;
 
     // === Event IDs for Pipeline Synchronization ===
@@ -279,8 +276,9 @@ __aicore__ inline uint64_t BLOCK_PROLOGUE_MX_FP8FP4_SPECIALIZATION::CalcDynamicK
 
 BLOCK_PROLOGUE_MX_FP8FP4_TEMPLATE_PARAMS
 template <typename GMWeightTensorType>
-__aicore__ inline void BLOCK_PROLOGUE_MX_FP8FP4_SPECIALIZATION::ComputeBasicBlockAivNdKnNzNk(
-    const PrologueMxCastWOffsetParam& param, const GMWeightTensorType& gmWeightTensor)
+__aicore__ inline void
+BLOCK_PROLOGUE_MX_FP8FP4_SPECIALIZATION::ComputeBasicBlockAivNdKnNzNk(const PrologueMxCastWOffsetParam &param,
+                                                                      const GMWeightTensorType &gmWeightTensor)
 {
     // A single V core preserves the original half-K granularity for UB fit,
     // but processes the two halves serially before notifying the cube core.
@@ -293,14 +291,13 @@ __aicore__ inline void BLOCK_PROLOGUE_MX_FP8FP4_SPECIALIZATION::ComputeBasicBloc
 
         for (uint64_t halfIdx = 0; halfIdx < SERIAL_HALF_K_PARTS; ++halfIdx) {
             uint64_t l1SplitOffset = halfIdx * kMte2BaseSize;
-            uint64_t mte2RealK =
-                halfIdx == 0 ? min(kMte2BaseSize, l1RealLen)
-                             : (l1RealLen > kMte2BaseSize ? l1RealLen - kMte2BaseSize : 0);
+            uint64_t mte2RealK = halfIdx == 0 ? min(kMte2BaseSize, l1RealLen) :
+                                                (l1RealLen > kMte2BaseSize ? l1RealLen - kMte2BaseSize : 0);
 
             auto weight4BitTensor = MakeWeight4BitTensor(mte2RealK, param.nL1Size);
             auto weight8BitTensor = MakeWeight8BitTensor(mte2RealK, param.nL1Size);
-            auto l1Tensor = l1BaseTensor.Slice(
-                AscendC::Te::MakeCoord(l1SplitOffset, 0), AscendC::Te::MakeShape(mte2RealK, param.nL1Size));
+            auto l1Tensor = l1BaseTensor.Slice(AscendC::Te::MakeCoord(l1SplitOffset, 0),
+                                               AscendC::Te::MakeShape(mte2RealK, param.nL1Size));
 
             WaitVectorToMTE2();
             CopyGmToUb(kOffset + l1SplitOffset, mte2RealK, param, gmWeightTensor, weight4BitTensor);
@@ -322,9 +319,10 @@ __aicore__ inline void BLOCK_PROLOGUE_MX_FP8FP4_SPECIALIZATION::ComputeBasicBloc
 
 BLOCK_PROLOGUE_MX_FP8FP4_TEMPLATE_PARAMS
 template <typename GMWeightTensorType>
-__aicore__ inline void BLOCK_PROLOGUE_MX_FP8FP4_SPECIALIZATION::operator()(
-    const GMWeightTensorType& gmWeightTensor, uint64_t mL1Size, uint64_t kSize, uint64_t nL1Size, uint64_t nOffset,
-    uint64_t nAlign, uint64_t configuredKL1Size)
+__aicore__ inline void BLOCK_PROLOGUE_MX_FP8FP4_SPECIALIZATION::operator()(const GMWeightTensorType &gmWeightTensor,
+                                                                           uint64_t mL1Size, uint64_t kSize,
+                                                                           uint64_t nL1Size, uint64_t nOffset,
+                                                                           uint64_t nAlign, uint64_t configuredKL1Size)
 {
     // Type assertions - __aicore__ guarantees these types are valid
     static_assert(std::is_same_v<OutType, __fp8e4m3>, "OutType must be __fp8e4m3");
@@ -375,8 +373,8 @@ __aicore__ inline void BLOCK_PROLOGUE_MX_FP8FP4_SPECIALIZATION::SetVectorToMTE2(
 BLOCK_PROLOGUE_MX_FP8FP4_TEMPLATE_PARAMS
 template <typename GMWeightBaseTensorType, typename Weight4BitTensorType>
 __aicore__ inline void BLOCK_PROLOGUE_MX_FP8FP4_SPECIALIZATION::CopyGmToUb(
-    uint64_t kOffset, uint64_t mte2RealK, const PrologueMxCastWOffsetParam& param,
-    const GMWeightBaseTensorType& gmWeightBaseTensor, const Weight4BitTensorType& weight4BitTensor)
+    uint64_t kOffset, uint64_t mte2RealK, const PrologueMxCastWOffsetParam &param,
+    const GMWeightBaseTensorType &gmWeightBaseTensor, const Weight4BitTensorType &weight4BitTensor)
 {
     if (mte2RealK > 0) {
         auto gmSliceTensor = gmWeightBaseTensor.Slice(AscendC::Te::MakeCoord(kOffset, param.nOffset),
@@ -392,8 +390,9 @@ __aicore__ inline void BLOCK_PROLOGUE_MX_FP8FP4_SPECIALIZATION::CopyGmToUb(
 
 BLOCK_PROLOGUE_MX_FP8FP4_TEMPLATE_PARAMS
 template <typename Weight4BitTensorType, typename Weight8BitTensorType>
-__aicore__ inline void BLOCK_PROLOGUE_MX_FP8FP4_SPECIALIZATION::WeightAntiQuantComputeNzNk(
-    const Weight4BitTensorType& weight4BitTensor, const Weight8BitTensorType& weight8BitTensor)
+__aicore__ inline void
+BLOCK_PROLOGUE_MX_FP8FP4_SPECIALIZATION::WeightAntiQuantComputeNzNk(const Weight4BitTensorType &weight4BitTensor,
+                                                                    const Weight8BitTensorType &weight8BitTensor)
 {
     WaitFlag<HardEvent::MTE3_V>(vecEventIdMte3ToV_ + (ubComputeLoopIdx_ & (WEIGHT_8BIT_BUFFER_NUM - 1)));
 
@@ -408,7 +407,7 @@ __aicore__ inline void BLOCK_PROLOGUE_MX_FP8FP4_SPECIALIZATION::WeightAntiQuantC
 BLOCK_PROLOGUE_MX_FP8FP4_TEMPLATE_PARAMS
 template <typename Weight8BitTensorType, typename L1TensorType>
 __aicore__ inline void BLOCK_PROLOGUE_MX_FP8FP4_SPECIALIZATION::CopyWeightToL1(
-    uint64_t mte2RealK, const Weight8BitTensorType& weight8BitTensor, const L1TensorType& l1Tensor)
+    uint64_t mte2RealK, const Weight8BitTensorType &weight8BitTensor, const L1TensorType &l1Tensor)
 {
     if (likely(mte2RealK > 0)) {
         // Copy weight 8-bit from UB to L1 (inlined from CopyWeight8BitForAligned)
