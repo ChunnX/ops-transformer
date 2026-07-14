@@ -261,6 +261,9 @@ private:
 
     __aicore__ inline void RunStage3(ChunkGroup& cg)
     {
+        if ASCEND_IS_AIC {
+            stage3MT_.Init(&tiling_->matmulTilingFp32, pipe_);
+        }
         Stage3 stageThreeOp;
         StageThreeParams initStageThreeParams{
             qkt_, gCum_, GetVInnerBf16(),
