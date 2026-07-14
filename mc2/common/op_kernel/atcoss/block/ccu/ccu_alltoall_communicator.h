@@ -19,6 +19,9 @@
 #include "lib/hccl/hccl.h"
 
 namespace Dista {
+
+__aicore__ inline uint64_t CeilDivU64(uint64_t a, uint64_t b) { return (a + b - 1) / b; }
+
 namespace AivComm {
 namespace Ccu {
 
@@ -241,6 +244,131 @@ HcclCommunicator<AICSync, ServerType, ContextType, TilingDataType, Primitive, Se
     if (notifyFlag_) {
         hccl_.Finalize();
     }
+}
+
+template <typename TilingDataType, bool IsMxFp4 = false>
+class MxQuantAlltoAllComm {
+public:
+    __aicore__ inline MxQuantAlltoAllComm(TilingDataType *tiling);
+    __aicore__ inline void Init(GM_ADDR sendScale, GM_ADDR recvScale,
+                                 GM_ADDR sendData, GM_ADDR recvData,
+                                 uint64_t scaleHcclDtype, uint64_t dataHcclDtype);
+    __aicore__ inline void ProcessScale();
+    template <typename DataType>
+    __aicore__ inline void ProcessData();
+    __aicore__ inline void End();
+    __aicore__ inline uint64_t GetRankForComm() const { return rankForComm_; }
+    __aicore__ inline uint32_t GetScaleKPerRank() const { return scaleKPerRank_; }
+
+private:
+    static constexpr AscendC::HcclServerType kServerType = AscendC::HcclServerType::HCCL_SERVER_TYPE_CCU;
+    using CommEngine = HcclCommunicator<false, kServerType, MC2AlltoAllContext,
+                                         TilingDataType, MC2AlltoAllPrimitives, 0, 1>;
+    CommEngine engine_;
+    TilingDataType *tiling_;
+    GM_ADDR sendScale_, recvScale_, sendData_, recvData_;
+    uint64_t scaleHcclDtype_, dataHcclDtype_;
+    uint64_t rankForComm_;
+    uint32_t scaleKPerRank_;
+    static constexpr uint64_t MXFP_GROUP_SIZE = 64UL;
+    static constexpr uint64_t NUM_TWO = 2UL;
+};
+
+template <typename TilingDataType, bool IsMxFp4>
+__aicore__ inline MxQuantAlltoAllComm<TilingDataType, IsMxFp4>::MxQuantAlltoAllComm(TilingDataType *tiling)
+    : engine_(tiling), tiling_(tiling) {}
+
+template <typename TilingDataType, bool IsMxFp4>
+__aicore__ inline void MxQuantAlltoAllComm<TilingDataType, IsMxFp4>::Init(
+    GM_ADDR sendScale, GM_ADDR recvScale,
+    GM_ADDR sendData, GM_ADDR recvData,
+    uint64_t scaleHcclDtype, uint64_t dataHcclDtype)
+{
+    sendScale_ = sendScale;  recvScale_ = recvScale;
+    sendData_ = sendData;    recvData_ = recvData;
+    scaleHcclDtype_ = scaleHcclDtype;
+    dataHcclDtype_ = dataHcclDtype;
+
+    auto &&info = tiling_->alltoAllQuantMatmulTilingInfo;
+    if constexpr (IsMxFp4) {
+        rankForComm_ = CeilDivU64(info.rankK, 2) / info.rankDim;
+    } else {
+        rankForComm_ = info.rankK / info.rankDim;
+    }
+    scaleKPerRank_ = static_cast<uint32_t>(
+        CeilDivU64(info.rankK / info.rankDim, MXFP_GROUP_SIZE) * NUM_TWO);
+
+    engine_.Init();
+}
+
+template <typename TilingDataType, bool IsMxFp4>
+__aicore__ inline void MxQuantAlltoAllComm<TilingDataType, IsMxFp4>::ProcessScale()
+{
+    auto &&info = tiling_->alltoAllQuantMatmulTilingInfo;
+    uint64_t rankKdivByGroupSize = CeilDivU64(info.rankK / info.rankDim, MXFP_GROUP_SIZE) * NUM_TWO;
+
+    auto *ctx = engine_.GetContextPtr();
+    ctx->taskCnt = 1;
+    ctx->sendBuffer = sendScale_;
+    ctx->recvBuffer = recvScale_;
+    ctx->sendCount = static_cast<uint64_t>(info.rankM) * rankKdivByGroupSize;
+    ctx->strideCount = ctx->sendCount;
+    ctx->hcclDataType = scaleHcclDtype_;
+
+    engine_.PrepareAll(1);
+    engine_.Process(0);
+}
+
+template <typename TilingDataType, bool IsMxFp4>
+template <typename DataType>
+__aicore__ inline void MxQuantAlltoAllComm<TilingDataType, IsMxFp4>::ProcessData()
+{
+    auto &&info = tiling_->alltoAllQuantMatmulTilingInfo;
+    uint64_t strideVal = static_cast<uint64_t>(info.rankM) * rankForComm_;
+
+    auto *ctx = engine_.GetContextPtr();
+    ctx->sendBuffer = sendData_;
+    ctx->recvBuffer = recvData_;
+    ctx->strideCount = strideVal;
+    ctx->hcclDataType = dataHcclDtype_;
+
+    if (info.tileCnt > 0) {
+        uint64_t tileMMultiRankK = static_cast<uint64_t>(info.tileM) * rankForComm_;
+        ctx->taskCnt = info.tileCnt;
+        ctx->sendOffset = tileMMultiRankK * sizeof(DataType);
+        ctx->recvOffset = ctx->sendOffset;
+        ctx->sendCount = tileMMultiRankK;
+
+        engine_.PrepareAll(info.tileCnt);
+        for (uint32_t i = 0; i < info.tileCnt; ++i) {
+            engine_.Process(i);
+            AscendC::CrossCoreSetFlag<2, PIPE_MTE3>(i);
+        }
+    }
+
+    if (info.tailCnt > 0) {
+        uint64_t tilePhaseSize = static_cast<uint64_t>(info.tileCnt) * info.tileM
+                                 * rankForComm_ * sizeof(DataType);
+        uint64_t tailMMultiRankK = static_cast<uint64_t>(info.tailM) * rankForComm_;
+        ctx->taskCnt = info.tailCnt;
+        ctx->sendBuffer = sendData_ + tilePhaseSize;
+        ctx->recvBuffer = recvData_ + tilePhaseSize;
+        ctx->sendOffset = tailMMultiRankK * sizeof(DataType);
+        ctx->recvOffset = ctx->sendOffset;
+        ctx->sendCount = tailMMultiRankK;
+
+        engine_.PrepareAll(info.tailCnt);
+        for (uint32_t i = 0; i < info.tailCnt; ++i) {
+            engine_.Process(i);
+            AscendC::CrossCoreSetFlag<2, PIPE_MTE3>(info.tileCnt + i);
+        }
+    }
+}
+
+template <typename TilingDataType, bool IsMxFp4>
+__aicore__ inline void MxQuantAlltoAllComm<TilingDataType, IsMxFp4>::End()
+{
+    engine_.End();
 }
 
 } // namespace Ccu
