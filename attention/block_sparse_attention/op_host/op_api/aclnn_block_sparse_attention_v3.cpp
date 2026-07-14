@@ -262,6 +262,7 @@ static aclnnStatus MakeContiguous(const aclTensor *&query,
                                   const aclTensor *&qDequantScaleOptional,
                                   const aclTensor *&kDequantScaleOptional,
                                   const aclTensor *&vDequantScaleOptional,
+                                  const aclTensor *&pDequantScaleOptional,
                                   int64_t quantMode,
                                   const std::string &qLayout,
                                   aclOpExecutor *executor)
@@ -331,6 +332,12 @@ static aclnnStatus MakeContiguous(const aclTensor *&query,
         }
     }
 
+    // pDequantScaleOptional: 当前所有 quantMode 下都必须为 nullptr
+    if (pDequantScaleOptional != nullptr) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "pDequantScaleOptional must be nullptr in current quantMode(%lld).", quantMode);
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+
     return ACLNN_SUCCESS;
 }
 
@@ -380,6 +387,7 @@ __attribute__((visibility("default"))) aclnnStatus aclnnBlockSparseAttentionV3Ge
     const aclTensor *qDequantScaleOptional,
     const aclTensor *kDequantScaleOptional,
     const aclTensor *vDequantScaleOptional,
+    const aclTensor *pDequantScaleOptional,
     char *qInputLayout,
     char *kvInputLayout,
     int64_t numKeyValueHeads,
@@ -413,7 +421,7 @@ __attribute__((visibility("default"))) aclnnStatus aclnnBlockSparseAttentionV3Ge
     L2_DFX_PHASE_1(aclnnBlockSparseAttentionV3,
                    DFX_IN(query, key, value, blockSparseMask, attenMaskOptional, blockShape,
                           actualSeqLengthsOptional, actualSeqLengthsKvOptional, blockTableOptional,
-                          qDequantScaleOptional, kDequantScaleOptional, vDequantScaleOptional,
+                          qDequantScaleOptional, kDequantScaleOptional, vDequantScaleOptional, pDequantScaleOptional,
                           qInputLayout, kvInputLayout, numKeyValueHeads, maskType, scaleValue, innerPrecise, blockSize,
                           preTokens, nextTokens, softmaxLseFlag, quantMode, dstTypeMax),
                    DFX_OUT(attentionOut, softmaxLseOptional));
@@ -426,7 +434,7 @@ __attribute__((visibility("default"))) aclnnStatus aclnnBlockSparseAttentionV3Ge
     // 新增blockSparseMaskOptional参数
     ret = MakeContiguous(query, key, value, blockSparseMask, attenMaskOptional, blockTableOptional,
                          qDequantScaleOptional, kDequantScaleOptional, vDequantScaleOptional,
-                         quantMode, qInputLayoutStr, executorImpl);
+                         pDequantScaleOptional, quantMode, qInputLayoutStr, executorImpl);
     if (ret != ACLNN_SUCCESS) {
         return ret;
     }
@@ -434,7 +442,7 @@ __attribute__((visibility("default"))) aclnnStatus aclnnBlockSparseAttentionV3Ge
     auto outputs = l0op::BlockSparseAttention(
         query, key, value, blockSparseMask, attenMaskOptional, blockShape, actualSeqLengthsOptional,
         actualSeqLengthsKvOptional, blockTableOptional, qDequantScaleOptional, kDequantScaleOptional,
-        vDequantScaleOptional, qInputLayoutStr.c_str(), kvInputLayoutStr.c_str(), numKeyValueHeads, maskType,
+        vDequantScaleOptional, pDequantScaleOptional, qInputLayoutStr.c_str(), kvInputLayoutStr.c_str(), numKeyValueHeads, maskType,
         scaleValue, innerPrecise, blockSize, preTokens, nextTokens, softmaxLseFlag, quantMode, dstTypeMax, attentionOut, executorImpl);
     if (outputs[0] == nullptr || outputs[1] == nullptr) {
         OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "BlockSparseAttention returned nullptr outputs.");
