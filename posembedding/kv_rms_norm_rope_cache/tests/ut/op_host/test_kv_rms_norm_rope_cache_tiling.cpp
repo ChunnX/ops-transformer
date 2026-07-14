@@ -1395,3 +1395,127 @@ TEST_F(KvRmsNormRopeCacheTiling, kv_rms_norm_rope_cache_d_full_load_is_output_kv
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 10000, "");
 }
 
+
+TEST_F(KvRmsNormRopeCacheTiling, kv_rms_norm_rope_cache_norm_cache_bn_match_tiling)
+{
+    optiling::KvRmsNormRopeCacheCompileInfo compileInfo;
+    compileInfo.coreNum = 48;
+    compileInfo.ubSize = 196608;
+    gert::TilingContextPara tilingContextPara(
+        "KvRmsNormRopeCache",
+        {
+            {{{4, 1, 1, 192},{4, 1, 1, 192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{128},{128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{4, 1, 1, 64},{4, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{4, 1, 1, 64},{4, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{4, 1},{4, 1}}, ge::DT_INT64, ge::FORMAT_ND},
+            {{{4, 1, 128, 64},{4, 1, 128, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{4, 1, 128, 128},{4, 1, 128, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            kOptionalInput,
+            kOptionalInput,
+            kOptionalInput,
+            kOptionalInput,
+            kOptionalInput
+        },
+        {
+            {{{4, 1, 128, 64},{4, 1, 128, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{4, 1, 128, 128},{4, 1, 128, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{4, 1, 1, 64},{4, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{4, 1, 1, 128},{4, 1, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}
+        },
+        {
+            {"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
+            {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("Norm")},
+            {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+        },
+        &compileInfo,
+        "Ascend950",
+        64,
+        196608);
+
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 10000, "");
+}
+
+// The B and N axes of the cache may be split differently from kv, as long as their product still covers B * N of kv:
+// [1, 4, S, D] and [4, 1, S, D] are the same linear buffer to the kernel.
+TEST_F(KvRmsNormRopeCacheTiling, kv_rms_norm_rope_cache_norm_cache_bn_merged_tiling)
+{
+    optiling::KvRmsNormRopeCacheCompileInfo compileInfo;
+    compileInfo.coreNum = 48;
+    compileInfo.ubSize = 196608;
+    gert::TilingContextPara tilingContextPara(
+        "KvRmsNormRopeCache",
+        {
+            {{{4, 1, 1, 192},{4, 1, 1, 192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{128},{128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{4, 1, 1, 64},{4, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{4, 1, 1, 64},{4, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{4, 1},{4, 1}}, ge::DT_INT64, ge::FORMAT_ND},
+            {{{1, 4, 128, 64},{1, 4, 128, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{1, 4, 128, 128},{1, 4, 128, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            kOptionalInput,
+            kOptionalInput,
+            kOptionalInput,
+            kOptionalInput,
+            kOptionalInput
+        },
+        {
+            {{{1, 4, 128, 64},{1, 4, 128, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{1, 4, 128, 128},{1, 4, 128, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{4, 1, 1, 64},{4, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{4, 1, 1, 128},{4, 1, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}
+        },
+        {
+            {"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
+            {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("Norm")},
+            {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+        },
+        &compileInfo,
+        "Ascend950",
+        64,
+        196608);
+
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 10000, "");
+}
+
+// B * N of the cache is smaller than B * N of kv: the kernel would scatter past the end of the cache, so tiling has to
+// reject the shape instead of letting the kernel write out of bounds.
+TEST_F(KvRmsNormRopeCacheTiling, kv_rms_norm_rope_cache_norm_cache_bn_too_small_tiling)
+{
+    optiling::KvRmsNormRopeCacheCompileInfo compileInfo;
+    compileInfo.coreNum = 48;
+    compileInfo.ubSize = 196608;
+    gert::TilingContextPara tilingContextPara(
+        "KvRmsNormRopeCache",
+        {
+            {{{4, 1, 1, 192},{4, 1, 1, 192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{128},{128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{4, 1, 1, 64},{4, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{4, 1, 1, 64},{4, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{4, 1},{4, 1}}, ge::DT_INT64, ge::FORMAT_ND},
+            {{{1, 1, 128, 64},{1, 1, 128, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{1, 1, 128, 128},{1, 1, 128, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            kOptionalInput,
+            kOptionalInput,
+            kOptionalInput,
+            kOptionalInput,
+            kOptionalInput
+        },
+        {
+            {{{1, 1, 128, 64},{1, 1, 128, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{1, 1, 128, 128},{1, 1, 128, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{4, 1, 1, 64},{4, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{4, 1, 1, 128},{4, 1, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}
+        },
+        {
+            {"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
+            {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("Norm")},
+            {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+        },
+        &compileInfo,
+        "Ascend950",
+        64,
+        196608);
+
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
+}
