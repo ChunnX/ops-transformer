@@ -927,6 +927,10 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::LoadKeyToL1Nz(
     ConstInfo<isInfer, hasRope> &constInfo)
 {
     if constexpr (enableKVPrefix) {
+
+    if (enableKVPrefix && runInfo.s2LoopCount < 1) {
+        printf("[CUBE-LoadKey] s2L=%lld s2S=%lld s2Coord=%lld pLC=%lld s2R=%lld\n", (long long)runInfo.s2LoopCount, (long long)runInfo.s2StartIdx, (long long)coordInfo[runInfo.taskIdMod3].s2Coord, (long long)constInfo.prefixLoopCount, (long long)runInfo.s2RealSize);
+    }
         if ((runInfo.s2LoopCount + runInfo.s2StartIdx / s2BaseSize) < constInfo.prefixLoopCount) {
             runInfo.prefixOffset = this->keySharedPrefixGm.offsetCalculator.GetOffset(
                 0, runInfo.n2oIdx, coordInfo[runInfo.taskIdMod3].s2Coord, 0);
