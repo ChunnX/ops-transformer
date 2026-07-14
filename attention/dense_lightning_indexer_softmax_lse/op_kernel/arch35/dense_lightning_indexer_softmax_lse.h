@@ -204,10 +204,8 @@ __aicore__ inline void DenseLISoftmaxLse<T>::InitWorkSpace(__gm__ uint8_t *works
     mm1ResGm.SetGlobalBuffer((__gm__ MM1_OUT_T *)(workspace + offset + aiCoreIdx * singleCoreMm1ResSize));
     offset += GetBlockNum() * singleCoreMm1ResSize;
 
-    uint64_t maxS2Size = constInfo.kSeqSize > constInfo.MAX_KEY_SEQ_LENGTH ?
-                         constInfo.MAX_KEY_SEQ_LENGTH : constInfo.kSeqSize;
     uint64_t reduceSumResSize = constInfo.s1BaseSize *
-        DenseLISoftmaxLseCommon::Align(maxS2Size, (uint64_t)constInfo.s2BaseSize) * sizeof(float);
+        DenseLISoftmaxLseCommon::Align(constInfo.kSeqSize, (uint64_t)constInfo.s2BaseSize) * sizeof(float);
     vec1ResGm.SetGlobalBuffer((__gm__ float *)(workspace + offset + aiCoreIdx * reduceSumResSize));
     offset += GetBlockNum() * reduceSumResSize;
 }
