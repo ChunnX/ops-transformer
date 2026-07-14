@@ -97,7 +97,7 @@ public:
     __aicore__ inline void UpdateBasicIndex(uint64_t roundIdx);
     __aicore__ inline void UpdateBasicIndex4AL1FullLoad(uint64_t roundIdx);
     template <bool bTrans, CubeFormat formatX2 = CubeFormat::ND>
-    __aicore__ inline void UpdateBlockParams(uint64_t roundIdx, bool isLast = true);
+    __aicore__ inline void UpdateBlockParams(uint64_t roundIdx);
     template <bool bTrans, CubeFormat formatX2 = CubeFormat::ND>
     __aicore__ inline void UpdateBlockParams4AL1FullLoad(uint64_t roundIdx);
     template <bool aTrans, bool bTrans, class x1Type, class scaleType = float, CubeFormat formatX2 = CubeFormat::ND>
@@ -114,9 +114,6 @@ public:
     PerBlockUBParam ubParams_;
     PerBlockMmParam mmParams_;
     const DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams *tilingData_;
-
-public:
-    bool doTailTile_ = false;
 
 private:
     const uint64_t WINDOW_LEN = 4;
@@ -177,7 +174,7 @@ __aicore__ inline void Mc2QuantBmmAswBlock::UpdateBasicIndex4AL1FullLoad(uint64_
 }
 
 template <bool bTrans, CubeFormat formatX2>
-__aicore__ inline void Mc2QuantBmmAswBlock::UpdateBlockParams(uint64_t roundIdx, bool isLast)
+__aicore__ inline void Mc2QuantBmmAswBlock::UpdateBlockParams(uint64_t roundIdx)
 {
     params_.singleCoreM = params_.mIndex != (params_.mCnt - 1) ? tilingData_->matmulTiling.baseM : params_.mBaseTail;
     params_.singleCoreN = params_.nIndex != (params_.nCnt - 1) ? tilingData_->matmulTiling.baseN : params_.nBaseTail;
@@ -185,7 +182,7 @@ __aicore__ inline void Mc2QuantBmmAswBlock::UpdateBlockParams(uint64_t roundIdx,
         return;
     }
 
-    if ((roundIdx == params_.round - 1) && isLast && doTailTile_) {
+    if (roundIdx == params_.round - 1) {
         uint64_t singleCoreMSplit = (params_.singleCoreM + tilingData_->adaptiveSlidingWin.mTailTile - 1) /
                                     tilingData_->adaptiveSlidingWin.mTailTile;
         uint64_t singleCoreNSplit = (params_.singleCoreN + tilingData_->adaptiveSlidingWin.nTailTile - 1) /
