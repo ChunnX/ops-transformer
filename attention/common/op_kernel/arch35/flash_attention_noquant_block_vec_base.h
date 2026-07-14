@@ -1034,8 +1034,8 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1Nd(
     LocalTensor<uint8_t> dropMaskUb;
     GetDerived()->GenerateDropoutMask(runInfo, constInfo, dropMaskUb);
 
-    LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.multiCoreIdxMod3].template Get<float>();
-    LocalTensor<float> maxUb = this->softmaxMaxBuf[runInfo.multiCoreIdxMod3].template Get<float>();
+    LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.multiCoreIdxMod3].template Get<float>()[0];
+    LocalTensor<float> maxUb = this->softmaxMaxBuf[runInfo.multiCoreIdxMod3].template Get<float>()[0];
     LocalTensor<float> expUb = this->softmaxExpBuf[runInfo.taskIdMod3].template Get<T>();
     LocalTensor<T> pScaleUb;
     LocalTensor<T> queryScaleUb;
@@ -1092,15 +1092,15 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1Nd(
     
     if (enableKVPrefix && runInfo.s2LoopCount < 1) {
     PRINTF("[VEC-Nd-allmax] mx0=%f mx1=%f mx2=%f mx3=%f sum0=%f",
-           (float)maxUb.GetValue(0), (float)maxUb.GetValue(1),
-           (float)maxUb.GetValue(2), (float)maxUb.GetValue(3),
+           (float)maxUb.GetValue(0), (float)*((float*)(unsigned long long)maxUb.GetPhyAddr()+1),
+           (float)*((float*)(unsigned long long)maxUb.GetPhyAddr()+2), (float)*((float*)(unsigned long long)maxUb.GetPhyAddr()+3),
            (float)sumUb.GetValue(0));
     PRINTF("[VEC-Nd-pre] s2L=%lld s2R=%lld hS1R=%lld s2S=%lld phyAddr=%llx\n",
            (long long)runInfo.s2LoopCount, (long long)runInfo.s2RealSize,
            (long long)runInfo.halfS1RealSize, (long long)runInfo.s2StartIdx,
            (unsigned long long)mmRes.GetPhyAddr());
     PRINTF("[VEC-Nd-pre-max] iniMax[0]=%f iniSum[0]=%f iniMax[1]=%f\n",
-           (float)maxUb.GetValue(0), (float)sumUb.GetValue(0), (float)maxUb.GetValue(1));
+           (float)maxUb.GetValue(0), (float)sumUb.GetValue(0), (float)*((float*)(unsigned long long)maxUb.GetPhyAddr()+1));
     for (int di=0;di<4;di++) PRINTF("  mmRes[%d]=%f\n", di, (float)mmRes.GetValue(di));
     PRINTF("  mmRes[64]=%f mmRes[128]=%f mmRes[192]=%f mmRes[255]=%f\n",
            (float)mmRes.GetValue(64), (float)mmRes.GetValue(128),
