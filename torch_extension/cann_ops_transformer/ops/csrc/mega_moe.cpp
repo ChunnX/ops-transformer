@@ -227,8 +227,7 @@ int64_t CalcHalfBufferSizeMBA5(int64_t epWorldSize, int64_t moeExpertNum, int64_
 
     int64_t totalBytes = peermemDataOffset + maskRecvSize + quantTokenScaleSize + combineOut;
 
-    // inline_align(inline_align(total, MB) // MB, 2) // 2
-    return CeilAlign(CeilAlign(totalBytes, MB_SIZE) / MB_SIZE, 2) / 2;
+    return totalBytes;
 }
 } // namespace
 
