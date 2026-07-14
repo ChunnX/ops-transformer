@@ -16,6 +16,7 @@
 #include "arch35/mhc_pre_kernel_base.h"
 #include "arch35/mhc_pre_split_bs.h"
 #include "arch35/mhc_pre_split_bs_low_api.h"
+#include "arch35/mhc_pre_m_k_split_core_arch35.h"
 #include "arch35/mhc_pre_split_nd.h"
 #include "arch35/mhc_pre_tiling_key.h"
 
@@ -63,6 +64,31 @@ __global__ __aicore__ void mhc_pre(GM_ADDR x, GM_ADDR phi, GM_ADDR alpha, GM_ADD
             MhcPreKernelSplitBSLowApi<DTYPE_X, float32_t, MHC_PRE_NO_RESI> op(mm);
             op.Init(initParams);
             op.Process();
+        }
+    } else if constexpr (TILING_MODE == MHC_PRE_SPLIT_M_K) {
+        InitParams initParams{x,     phi,     alpha, bias,  gamma, hin,   h_post,
+                              h_res, inv_rms, h_mix, h_pre, user,  &pipe, &tilingData};
+        MT mm;
+        if constexpr (HAS_RESI == MHC_PRE_HAS_RESI) {
+            MhcPreKernelMKPart1<DTYPE_X, float32_t, MHC_PRE_HAS_RESI> part1(mm);
+            part1.Init(initParams);
+            part1.Process();
+            pipe.Destroy();
+            TPipe stage2Pipe;
+            initParams.tPipeIn = &stage2Pipe;
+            MhcPreKernelMKPart2<DTYPE_X, float32_t, MHC_PRE_HAS_RESI> part2(mm);
+            part2.Init(initParams);
+            part2.Process();
+        } else {
+            MhcPreKernelMKPart1<DTYPE_X, float32_t, MHC_PRE_NO_RESI> part1(mm);
+            part1.Init(initParams);
+            part1.Process();
+            pipe.Destroy();
+            TPipe stage2Pipe;
+            initParams.tPipeIn = &stage2Pipe;
+            MhcPreKernelMKPart2<DTYPE_X, float32_t, MHC_PRE_NO_RESI> part2(mm);
+            part2.Init(initParams);
+            part2.Process();
         }
     } else if constexpr (TILING_MODE == MHC_PRE_SPLIT_ND) {
         if constexpr (HAS_RESI == MHC_PRE_HAS_RESI) {

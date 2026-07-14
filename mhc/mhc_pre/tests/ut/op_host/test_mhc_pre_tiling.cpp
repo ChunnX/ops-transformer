@@ -8,6 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
+#include <algorithm>
+#include <cstring>
 #include <iostream>
 #include <gtest/gtest.h>
 #include "../../../op_host/op_tiling/arch35/mhc_pre_tiling.h"
@@ -1592,6 +1594,114 @@ TEST_F(MhcPreTiling, Ut_Check_LowApi_Fallback_N6_SplitBS)
 
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey,
                     expectTilingDataStr, expectWorkspaces, 0, TilingData2Str<int32_t>);
+
+}
+
+/*
+* M-K performance template probe: totalLength=1024, N=4, D=5120.
+* The compile-time probe selector should route this exact shape to MHC_PRE_SPLIT_M_K.
+*/
+TEST_F(MhcPreTiling, Ut_Check_MK_N4_M1024_D5120_HasResi)
+{
+    uint32_t B = 1;
+    uint32_t S = 1024;
+    uint32_t n = 4;
+    uint32_t d = 5120;
+    uint32_t phi_dim0 = n * n + 2 * n;
+    uint32_t phi_dim1 = n * d;
+    uint32_t bias_dim = phi_dim0;
+    float normEps = 0.000001f;
+    float hcEps = 0.000001f;
+    uint32_t outFlag = 0;
+
+    optiling::MhcPreCompileInfo compileInfo = {};
+
+    gert::TilingContextPara tilingContextPara(
+        "MhcPre",
+        {
+            {{{B, S, n, d}, {B, S, n, d}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{phi_dim0, phi_dim1}, {phi_dim0, phi_dim1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{3}, {3}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{bias_dim}, {bias_dim}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{phi_dim1}, {phi_dim1}}, ge::DT_FLOAT, ge::FORMAT_ND}
+        },
+        {
+            {{{B, S, d}, {B, S, d}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, n, n}, {B, S, n, n}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S}, {B, S}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, phi_dim0}, {B, S, phi_dim0}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND}
+        },
+        {
+            {"out_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(outFlag)},
+            {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(normEps)},
+            {"hc_eps", Ops::Transformer::AnyValue::CreateFrom<float>(hcEps)}
+        },
+        &compileInfo
+    );
+
+    int64_t expectTilingKey = 3;
+    string expectTilingDataStr = "";
+    std::vector<size_t> expectWorkspaces = {};
+
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey,
+                    expectTilingDataStr, expectWorkspaces, 0, TilingData2Str<int32_t>);
+
+    TilingInfo tilingInfo;
+    ASSERT_TRUE(ExecuteTiling(tilingContextPara, tilingInfo));
+    constexpr uint32_t sentinel = 0x5A5AA55AU;
+    auto fieldOffset = [&](auto setter) -> size_t {
+        optiling::MhcPreTilingData schema;
+        std::vector<uint8_t> schemaBuffer(schema.GetDataSize(), 0U);
+        setter(schema, sentinel);
+        schema.SaveToBuffer(schemaBuffer.data(), schemaBuffer.size());
+        for (size_t offset = 0; offset + sizeof(uint32_t) <= schemaBuffer.size(); ++offset) {
+            uint32_t value = 0;
+            std::memcpy(&value, schemaBuffer.data() + offset, sizeof(value));
+            if (value == sentinel) {
+                return offset;
+            }
+        }
+        return schemaBuffer.size();
+    };
+    auto readField = [&](size_t offset) -> uint32_t {
+        EXPECT_LT(offset, tilingInfo.tilingDataSize);
+        uint32_t value = 0;
+        std::memcpy(&value, tilingInfo.tilingData.get() + offset, sizeof(value));
+        return value;
+    };
+
+    uint32_t mDim = readField(fieldOffset([](auto &data, uint32_t value) { data.set_cubeBlockDimM(value); }));
+    uint32_t kDim = readField(fieldOffset([](auto &data, uint32_t value) { data.set_cubeBlockDimK(value); }));
+    uint32_t splitK =
+        readField(fieldOffset([](auto &data, uint32_t value) { data.set_multCoreSplitKSize(value); }));
+    uint32_t mmOffset =
+        readField(fieldOffset([](auto &data, uint32_t value) { data.set_mkWorkspaceMmOffset(value); }));
+    uint32_t rmsOffset =
+        readField(fieldOffset([](auto &data, uint32_t value) { data.set_mkWorkspaceRmsOffset(value); }));
+    uint32_t finalOffset =
+        readField(fieldOffset([](auto &data, uint32_t value) { data.set_mkWorkspaceFinalOffset(value); }));
+
+    auto ceilDiv = [](uint32_t value, uint32_t divisor) -> uint32_t {
+        return (value + divisor - 1U) / divisor;
+    };
+    auto roundUp = [&ceilDiv](uint32_t value, uint32_t align) -> uint32_t {
+        return ceilDiv(value, align) * align;
+    };
+    constexpr uint32_t expectedMDim = 4U;
+    uint32_t expectedKDim = tilingInfo.blockNum / expectedMDim;
+    uint32_t expectedSplitK = roundUp(ceilDiv(phi_dim1, expectedKDim), 256U);
+    uint32_t expectedActualKBlocks = ceilDiv(phi_dim1, expectedSplitK);
+
+    EXPECT_EQ(mDim, expectedMDim);
+    EXPECT_EQ(kDim, expectedActualKBlocks);
+    EXPECT_EQ(splitK, expectedSplitK);
+    EXPECT_EQ(mmOffset, 0U);
+    EXPECT_LT(mmOffset, rmsOffset);
+    EXPECT_LT(rmsOffset, finalOffset);
+    ASSERT_FALSE(tilingInfo.workspaceSizes.empty());
+    EXPECT_GT(tilingInfo.workspaceSizes[0], static_cast<int64_t>(finalOffset));
 }
 
 TEST_F(MhcPreTiling, Ut_Check_InvalidAlphaRank)

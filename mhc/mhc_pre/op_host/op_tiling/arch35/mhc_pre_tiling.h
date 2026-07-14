@@ -25,7 +25,8 @@ namespace optiling {
 enum class TilingMode : uint8_t {
     SPLIT_BS = 0,
     SPLIT_ND = 1,
-    LOW_API_BS = 2
+    LOW_API_BS = 2,
+    SPLIT_M_K = 3
 };
 
 BEGIN_TILING_DATA_DEF(MhcPreTilingData)
@@ -56,6 +57,12 @@ TILING_DATA_FIELD_DEF(uint32_t, fusionAlign);
 TILING_DATA_FIELD_DEF(uint32_t, nAlign);
 TILING_DATA_FIELD_DEF(uint32_t, bufferPool0Size);
 TILING_DATA_FIELD_DEF(uint32_t, bufferPool1Size);
+TILING_DATA_FIELD_DEF(uint32_t, cubeBlockDimM);
+TILING_DATA_FIELD_DEF(uint32_t, cubeBlockDimK);
+TILING_DATA_FIELD_DEF(uint32_t, multCoreSplitKSize);
+TILING_DATA_FIELD_DEF(uint32_t, mkWorkspaceMmOffset);
+TILING_DATA_FIELD_DEF(uint32_t, mkWorkspaceRmsOffset);
+TILING_DATA_FIELD_DEF(uint32_t, mkWorkspaceFinalOffset);
 END_TILING_DATA_DEF;
 
 REGISTER_TILING_DATA_CLASS(MhcPre, MhcPreTilingData);
@@ -129,12 +136,15 @@ protected:
     ge::graphStatus TilingProcess();
     ge::graphStatus CheckUbBufferSize();
     void FillLowApiTilingData();
+    void FillMkTilingData();
     bool CanUseLowApiBs() const;
+    bool IsMkPerfProbe() const;
     size_t GetLastRequiredInputIndex() const;
 
 private:
     MhcPreTilingData tilingData_;
     uint32_t blockDim_ = 32; // AIC
+    uint32_t aivBlockDim_ = 64;
     uint64_t totalLength_ = 0;
     uint64_t m_ = 0;
     uint64_t ubSize_ = 0;
