@@ -249,7 +249,7 @@ ElasticBuffer.get_moe_ep_ccl_buffer_size(world_size, num_max_tokens_per_rank, hi
 - **world_size** (`int`)：必选参数，表示 EP 通信域的大小（即参与 EP 通信的卡数）。取值范围 `[2, 768]`。
 - **num_max_tokens_per_rank** (`int`)：必选参数，表示每张卡上的最大 token 数量上限。
 - **hidden** (`int`)：必选参数，表示 hidden size 隐藏层大小。取值范围 `[1024, 8192]`。
-- **num_experts** (`int`)：必选参数，MoE 专家总数量，取值范围 `[1, 2048]`，且满足 `num_experts % ep_world_size = 0`。
+- **num_experts** (`int`)：必选参数，MoE 专家总数量，取值范围 `[2, 2048]`，且满足 `num_experts % ep_world_size = 0`。
 - **topk** (`int`)：必选参数，表示选取 topK 个专家，取值范围 `[1, 32]`。
 
 **输出说明**：
