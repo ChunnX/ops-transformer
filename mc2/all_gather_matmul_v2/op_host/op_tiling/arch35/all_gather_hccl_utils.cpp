@@ -17,6 +17,7 @@
 #include "mc2_log.h"
 #include <algorithm>
 #include <cmath>
+#include <limits>
 
 namespace optiling {
 
@@ -285,16 +286,78 @@ void AdjustCutResultForCCU(CutResult &cutRes, uint64_t mValue, uint64_t kValue, 
 }
 
 /*!
+ * \brief 从候选列表{1,2,3,4}中评估并选择AICPU模式下的最优切分数
+ *
+ * \param [in] tileFormulate  公式化切分对象，包含性能模型和shape信息
+ * \param [in] opName         算子名称（用于日志）
+ *
+ * \return 最优的切分数（从AICPU_TILE_CNT_CANDIDATES中选出）
+ *
+ * \details 评估策略（参考CCU的SelectOptimalCandidateTileM思路）：
+ *   1. 遍历候选列表 {1, 2, 3, 4}
+ *   2. 对每个候选tileCnt：
+ *      - 计算 tileM = ceil(M / tileCnt)，向上对齐到 baseM
+ *      - 预估总耗时 = tileCnt × max(CommTime(tileM), MatmulTime(tileM, rankTileNum))
+ *        （流水线模型：每轮通信和计算重叠，瓶颈为两者中较慢的）
+ *   3. 选择预估总耗时最小的候选值
+ *
+ * \note 与CCU的区别：
+ *   - CCU有256MB和62次硬约束来筛选候选tileM
+ *   - AICPU无硬约束，通过性能模型评估每个候选的预估耗时来选择最优
+ */
+uint64_t SelectOptimalTileCntForAICPU(const Mc2FitBasedBalanceTiling& tileFormulate,
+                                      const std::string& opName)
+{
+    uint64_t mValue = tileFormulate.mmInfo_.mValue;
+    uint64_t baseM = tileFormulate.matmulPerf_.GetBaseM();
+    uint64_t rankTileNum = tileFormulate.rankTileNum_;
+
+    uint64_t bestTileCnt = AICPU_TILE_CNT_CANDIDATES[0];
+    double bestTime = std::numeric_limits<double>::max();
+
+    for (uint64_t candidate : AICPU_TILE_CNT_CANDIDATES) {
+        uint64_t idealTileM = (mValue + candidate - 1) / candidate;
+        uint64_t alignedTileM = idealTileM;
+        if (baseM > 0) {
+            alignedTileM = ((idealTileM + baseM - 1) / baseM) * baseM;
+        }
+
+        uint64_t tileM = std::max(alignedTileM, mValue / candidate);
+        if (tileM > mValue) {
+            tileM = mValue;
+        }
+
+        double commTime = tileFormulate.commPerf_.CommTime(tileM);
+        double mmTime = const_cast<MatmulPerformanceArch35&>(tileFormulate.matmulPerf_).MatmulTime(tileM, rankTileNum);
+        double estimatedTime = static_cast<double>(candidate) * std::max(commTime, mmTime);
+
+        OP_LOGD(opName.c_str(),
+                "AICPU candidate tileCnt=%lu: tileM=%lu, commTime=%.2f, mmTime=%.2f, estimated=%.2f",
+                candidate, tileM, commTime, mmTime, estimatedTime);
+
+        if (estimatedTime < bestTime) {
+            bestTime = estimatedTime;
+            bestTileCnt = candidate;
+        }
+    }
+
+    OP_LOGD(opName.c_str(), "AICPU selected optimal tileCnt=%lu (estimated time=%.2f)",
+            bestTileCnt, bestTime);
+    return bestTileCnt;
+}
+
+/*!
  * \brief AICPU通信模式减少切分，降低通信固定开销
  *
- * \param [inout] cutRes    公式化切分的原始结果（将被调整）
- * \param [in] mValue       M维大小
- * \param [in] baseM        Matmul基本块M，用于tileM对齐
- * \param [in] opName       算子名称（用于日志）
+ * \param [inout] cutRes         公式化切分的原始结果（将被调整）
+ * \param [in] mValue            M维大小
+ * \param [in] baseM             Matmul基本块M，用于tileM对齐
+ * \param [in] targetTileCnt     目标最大tile数
+ * \param [in] opName            算子名称（用于日志）
  *
  * \details 整体流程：
- *   1. 判断当前tile数是否已满足AICPU_TARGET_TILE_CNT，若是则直接返回
- *   2. 计算目标tileM = ceil(M / AICPU_TARGET_TILE_CNT)，向上对齐到baseM
+ *   1. 判断当前tile数是否已满足targetTileCnt，若是则直接返回
+ *   2. 计算目标tileM = ceil(M / targetTileCnt)，向上对齐到baseM
  *   3. 取max(对齐后tileM, 原始longTileLen)，确保不减少切分粒度
  *   4. 重新切分并更新cutRes
  *
@@ -302,16 +365,17 @@ void AdjustCutResultForCCU(CutResult &cutRes, uint64_t mValue, uint64_t kValue, 
 void AdjustCutResultForAICPU(CutResult& cutRes,
                              uint64_t mValue,
                              uint64_t baseM,
+                             uint64_t targetTileCnt,
                              const std::string& opName)
 {
     uint64_t currentTileCnt = cutRes.numLongTile + cutRes.numShortTile;
-    if (currentTileCnt <= AICPU_TARGET_TILE_CNT) {
+    if (currentTileCnt <= targetTileCnt) {
         OP_LOGD(opName.c_str(), "AICPU: currentTileCnt=%lu <= target=%lu, no adjustment needed",
-                currentTileCnt, AICPU_TARGET_TILE_CNT);
+                currentTileCnt, targetTileCnt);
         return;
     }
 
-    uint64_t idealTileM = (mValue + AICPU_TARGET_TILE_CNT - 1) / AICPU_TARGET_TILE_CNT;
+    uint64_t idealTileM = (mValue + targetTileCnt - 1) / targetTileCnt;
     uint64_t alignedTileM = idealTileM;
     if (baseM > 0) {
         alignedTileM = ((idealTileM + baseM - 1) / baseM) * baseM;

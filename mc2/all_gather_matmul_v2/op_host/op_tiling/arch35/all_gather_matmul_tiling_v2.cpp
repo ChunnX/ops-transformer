@@ -132,7 +132,9 @@ CutResult AllGatherMatmulTilingV2::GetTilingResult()
     if (isCcuMode) {
         AdjustCutResultForCCU(result, args_.mValue, args_.kValue, args_.inputDtypeSize, args_.rankDim, opName_);
     } else {
-        AdjustCutResultForAICPU(result, args_.mValue, tileFormulate.matmulPerf_.GetBaseM(), opName_);
+        uint64_t targetTileCnt = SelectOptimalTileCntForAICPU(tileFormulate, opName_);
+        AdjustCutResultForAICPU(result, args_.mValue, tileFormulate.matmulPerf_.GetBaseM(),
+                                targetTileCnt, opName_);
     }
 
     return result;

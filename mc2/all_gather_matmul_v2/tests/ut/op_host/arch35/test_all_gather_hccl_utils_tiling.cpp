@@ -192,7 +192,7 @@ TEST(AllGatherHcclUtilsTest, AdjustCutResultForAICPUReducesTileCount)
     cut.totalTileCnt = 16;
     cut.shortTileAtBack = true;
 
-    AdjustCutResultForAICPU(cut, 32768, 256, "ut");
+    AdjustCutResultForAICPU(cut, 32768, 256, AICPU_TARGET_TILE_CNT, "ut");
 
     EXPECT_EQ(cut.longTileLen, 8192U);
     EXPECT_EQ(cut.numLongTile, 4U);
@@ -211,7 +211,7 @@ TEST(AllGatherHcclUtilsTest, AdjustCutResultForAICPUNoOpWhenTileCountSmall)
     cut.totalTileCnt = 4;
     cut.shortTileAtBack = true;
 
-    AdjustCutResultForAICPU(cut, 4096, 256, "ut");
+    AdjustCutResultForAICPU(cut, 4096, 256, AICPU_TARGET_TILE_CNT, "ut");
 
     EXPECT_EQ(cut.longTileLen, 1024U);
     EXPECT_EQ(cut.numLongTile, 4U);
@@ -228,10 +228,89 @@ TEST(AllGatherHcclUtilsTest, AdjustCutResultForAICPUSingleBlockWhenMSmall)
     cut.totalTileCnt = 7;
     cut.shortTileAtBack = true;
 
-    AdjustCutResultForAICPU(cut, 100, 256, "ut");
+    AdjustCutResultForAICPU(cut, 100, 256, AICPU_TARGET_TILE_CNT, "ut");
 
     EXPECT_EQ(cut.longTileLen, 100U);
     EXPECT_EQ(cut.numLongTile, 1U);
     EXPECT_EQ(cut.shortTileLen, 0U);
     EXPECT_EQ(cut.totalTileCnt, 1U);
+}
+
+TEST(AllGatherHcclUtilsTest, AdjustCutResultForAICPUTarget1SingleTile)
+{
+    CutResult cut{};
+    cut.longTileLen = 2048;
+    cut.numLongTile = 16;
+    cut.shortTileLen = 0;
+    cut.numShortTile = 0;
+    cut.totalTileCnt = 16;
+    cut.shortTileAtBack = true;
+
+    AdjustCutResultForAICPU(cut, 32768, 256, 1, "ut");
+
+    EXPECT_EQ(cut.longTileLen, 32768U);
+    EXPECT_EQ(cut.numLongTile, 1U);
+    EXPECT_EQ(cut.shortTileLen, 0U);
+    EXPECT_EQ(cut.numShortTile, 0U);
+    EXPECT_EQ(cut.totalTileCnt, 1U);
+}
+
+TEST(AllGatherHcclUtilsTest, AdjustCutResultForAICPUTarget3)
+{
+    CutResult cut{};
+    cut.longTileLen = 2048;
+    cut.numLongTile = 16;
+    cut.shortTileLen = 0;
+    cut.numShortTile = 0;
+    cut.totalTileCnt = 16;
+    cut.shortTileAtBack = true;
+
+    AdjustCutResultForAICPU(cut, 32768, 256, 3, "ut");
+
+    EXPECT_EQ(cut.longTileLen, 11008U);
+    EXPECT_EQ(cut.numLongTile, 2U);
+    EXPECT_EQ(cut.shortTileLen, 10752U);
+    EXPECT_EQ(cut.numShortTile, 1U);
+    EXPECT_EQ(cut.totalTileCnt, 3U);
+}
+
+static mc2tiling::TilingArgs MakeTilingArgs(uint64_t m, uint64_t n, uint64_t k, uint64_t coreNum)
+{
+    mc2tiling::TilingArgs args{};
+    args.mValue = m;
+    args.nValue = n;
+    args.kValue = k;
+    args.inputDtypeSize = 2;
+    args.outputDtypeSize = 2;
+    args.aicCoreNum = coreNum;
+    args.geAType = ge::DataType::DT_FLOAT16;
+    args.geBType = ge::DataType::DT_FLOAT16;
+    args.geCType = ge::DataType::DT_FLOAT16;
+    return args;
+}
+
+TEST(AllGatherHcclUtilsTest, SelectOptimalTileCntReturnsValidCandidate)
+{
+    auto args = MakeTilingArgs(32768, 4096, 4096, 32);
+    Mc2FitBasedBalanceTiling tileFormulate(args, KernelType::ALL_GATHER, TopoType::STANDARD_CARD, SocVersion::SOC950);
+    tileFormulate.matmulPerf_.cubeUtil_ = 0.8;
+    tileFormulate.matmulPerf_.GetMatmulGradient();
+
+    uint64_t selected = SelectOptimalTileCntForAICPU(tileFormulate, "ut");
+
+    EXPECT_GE(selected, 1U);
+    EXPECT_LE(selected, 4U);
+}
+
+TEST(AllGatherHcclUtilsTest, SelectOptimalTileCntSmallMPrefersFewerTiles)
+{
+    auto args = MakeTilingArgs(512, 4096, 4096, 32);
+    Mc2FitBasedBalanceTiling tileFormulate(args, KernelType::ALL_GATHER, TopoType::STANDARD_CARD, SocVersion::SOC950);
+    tileFormulate.matmulPerf_.cubeUtil_ = 0.8;
+    tileFormulate.matmulPerf_.GetMatmulGradient();
+
+    uint64_t selected = SelectOptimalTileCntForAICPU(tileFormulate, "ut");
+
+    EXPECT_GE(selected, 1U);
+    EXPECT_LE(selected, 4U);
 }
