@@ -1363,7 +1363,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::UpdateGlobalBuffer(GMMA
         }
     } else if constexpr (Mode == AddrUpdateMode::GMM2) {
         // guard 与 WorkspaceInfo 分配条件一致，由 TilingKey 保证同步。
-        if constexpr (ENABLE_A8W4 || ENABLE_A4W4 || CombineQuantMode != COMBINE_NO_QUANT) {
+        if constexpr (ENABLE_A8W4 || ENABLE_A4W4 || CombineQuantMode != COMBINE_NO_QUANT ||
+                      ENABLE_GMM2_GM_REBUILD) {
             gmmAddrInfo.gmm2OutGlobal =
                 params_.workspaceInfo.gmm2MmadResPtr + Get<IDX_GMM2_OFFSET>(state.baseOffset) * sizeof(bfloat16_t);
         }
@@ -2214,7 +2215,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
         UpdateGlobalBuffer<AddrUpdateMode::GMM2>(gmm2AddrInfo, gmm2State);
         GroupMatmulWithCombine(gmm2AddrInfo, gmm2State, expertIdx, vecSetSyncCom);
     }
-    if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
+    if constexpr (CombineQuantMode == COMBINE_NO_QUANT && !ENABLE_GMM2_GM_REBUILD) {
         EndGMM2Sync(vecSetSyncCom, gmm2PingPongIdx_);
     }
 

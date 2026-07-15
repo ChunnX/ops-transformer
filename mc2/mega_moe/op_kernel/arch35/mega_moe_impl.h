@@ -323,11 +323,8 @@ struct Config {
         if constexpr (Policy::IS_GMM1) {
             config.tileM = Gmm1TileM;
         } else {
-            if constexpr (IsA8W4 || IsLayered) {
-                config.tileM = L1_TILE_M_256;
-            } else {
-                config.tileM = (CombineQuantMode == COMBINE_NO_QUANT && !IsShared) ? L1_TILE_M_128 : L1_TILE_M_256;
-            }
+            // Both MTE wave and the normalized Layered path materialize GMM2 in GM.
+            config.tileM = L1_TILE_M_256;
         }
         // prefetch 路径 epilogue 按 128 子块逐个 AtomicAdd(swigluToGmm2Flag)，
         // GMM2 的 targetLoops 须按 128 基准计算才能与 epilogue 递增数一致（含尾块）。
@@ -353,11 +350,7 @@ struct Config {
                     layouts.c = MakeLayoutC{}(Gmm1TileM, L1_TILE_N);
                 }
             } else {
-                if constexpr (CombineQuantMode == COMBINE_NO_QUANT && !IsShared && !IsLayered) {
-                    layouts.c = MakeLayoutC{}(L1_TILE_M_128, L1_TILE_N);
-                } else {
-                    layouts.c = MakeLayoutC{}(config.m, config.n);
-                }
+                layouts.c = MakeLayoutC{}(config.m, config.n);
             }
         }
         return layouts;
@@ -370,12 +363,12 @@ __aicore__ inline void AicComputeGeneric(BlockMmad &blockMmad, WorkSet &workSet,
                                          uint32_t tileNum, ExtraArgs &args)
 {
     const auto &config = workSet.config;
+    static constexpr bool GMM2_DIRECT_GM = !Policy::IS_GMM1 && CombineQuantMode == COMBINE_NO_QUANT;
     uint32_t ubBufSize;
     if constexpr (Policy::IS_GMM1) {
         ubBufSize = (config.tileM == L1_TILE_M_128) ? MAX_SINGLE_MN_ALIGN32_NUM_128 : MAX_SINGLE_MN_ALIGN32_NUM_256;
     } else {
-        ubBufSize =
-            (CombineQuantMode == COMBINE_NO_QUANT && !IsShared && !IsLayered) ? MAX_SINGLE_MN_ALIGN32_NUM_128 : 0;
+        ubBufSize = GMM2_DIRECT_GM ? 0 : MAX_SINGLE_MN_ALIGN32_NUM_128;
     }
     int64_t ubOffsetFirst = 0;
     int64_t ubOffsetSecond = static_cast<int64_t>(ubBufSize) * sizeof(ElementC);
@@ -419,7 +412,7 @@ __aicore__ inline void AicComputeGeneric(BlockMmad &blockMmad, WorkSet &workSet,
             if (loopIdx == startLoopIdx) {
                 WaitForUpstreamReady<Policy, IsShared>(workSet.gmmAddrInfo, config, mLoc);
             }
-            if constexpr (CombineQuantMode == COMBINE_NO_QUANT && !IsLayered) {
+            if constexpr (CombineQuantMode == COMBINE_NO_QUANT && !GMM2_DIRECT_GM) {
                 if (args.vecSetSyncCom2 >= 2) {
                     WaitForVector(args.pingpongIdx);
                 }
@@ -483,14 +476,25 @@ __aicore__ inline void AicComputeGeneric(BlockMmad &blockMmad, WorkSet &workSet,
             auto gmBlockScaleB = workSet.gmScaleB.Slice(
                 Te::MakeCoord(kLoc / MXFP_SCALE_GROUP_NUM, nLoc),
                 Te::MakeShape(CeilDiv(Get<K_VALUE>(actualShape), MXFP_SCALE_GROUP_NUM), Get<N_VALUE>(actualShape)));
-            if constexpr (CombineQuantMode == COMBINE_NO_QUANT && !IsShared && !IsLayered) {
-                auto tensorUb = args.pingpongIdx == 0 ? l0cOutUbFirst : l0cOutUbSecond;
-                auto tensorBlockUb = tensorUb.Slice(
-                    Te::MakeCoord(0, 0), Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
-                blockMmad(gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, workSet.gmBias, tensorBlockUb, singleShape);
-                NotifyVector(args.pingpongIdx);
-                args.vecSetSyncCom2++;
-                args.pingpongIdx = 1 - args.pingpongIdx;
+            if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
+                if constexpr (GMM2_DIRECT_GM) {
+                    auto gmC = Te::MakeTensor(
+                        Te::MakeMemPtr<Te::Location::GM>(
+                            reinterpret_cast<__gm__ ElementC *>(workSet.gmmAddrInfo.gmm2OutGlobal)),
+                        workSet.layouts.c);
+                    auto gmBlockC = gmC.Slice(Te::MakeCoord(mLoc, nLoc),
+                                              Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
+                    blockMmad(gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, workSet.gmBias, gmBlockC, singleShape);
+                } else {
+                    auto tensorUb = args.pingpongIdx == 0 ? l0cOutUbFirst : l0cOutUbSecond;
+                    auto tensorBlockUb = tensorUb.Slice(
+                        Te::MakeCoord(0, 0), Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
+                    blockMmad(gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, workSet.gmBias, tensorBlockUb,
+                              singleShape);
+                    NotifyVector(args.pingpongIdx);
+                    args.vecSetSyncCom2++;
+                    args.pingpongIdx = 1 - args.pingpongIdx;
+                }
             } else {
                 auto gmC = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(
                                               reinterpret_cast<__gm__ ElementC *>(workSet.gmmAddrInfo.gmm2OutGlobal)),
@@ -699,8 +703,6 @@ __aicore__ inline void GroupMatmulExecGeneric(WorkSet &workSet, uint32_t startLo
     } else {
         if constexpr (Policy::IS_GMM1) {
             AivGmm1PostGeneric<MakeLayoutC, ElementC, TopkWeightsPrefetch>(workSet, args, startLoopIdx, tileNum);
-        } else if constexpr (CombineQuantMode == COMBINE_NO_QUANT && !IsShared && !IsLayered) {
-            AivGmm2PostGeneric<ElementC>(workSet, args, startLoopIdx, tileNum);
         }
     }
 }
@@ -731,9 +733,13 @@ __aicore__ inline void GroupMatmulImplGeneric(const Params &params,
             return;
         }
         args.swigluQuantOp.UpdateNextProblem({config.m, config.outputN, config.k, 0});
-    } else if constexpr (CombineQuantMode == COMBINE_NO_QUANT && !IsShared && !IsLayered) {
-        if (GetSubBlockIdx() != 0)
+    } else if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
+        if constexpr (g_coreType == AscendC::AIV) {
+            // GMM2 writes GM directly. Both AIV siblings only consume the same
+            // virtual tile rotation as AIC so the next expert keeps one owner phase.
+            startBlockIdx = (startBlockIdx + tileNum) % config.blockNum;
             return;
+        }
     }
     // GMM2 量化模式：两分支均不匹配，直接往下执行
 
