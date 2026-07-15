@@ -1,3 +1,63 @@
+[AIV Block 5/56] [Bmm1Tail-post] s2L=4 s2S=4864 s2E=5911 pLC=23 s2R=59
+[AIV Block 5/56] [MASK-entry] s2L=3 s2S=4864 s2R=220 hS1R=1 gS1M=0 isGqa=1 isMla=0 compM=3 preT=946 nextT=-1 s1oIdx=0 actS1=2 actS2=60 prefSz=5852 pLC=23
+[AIV Block 5/56] [MASK-gqa-nonmerge] s2L=3 isPref=1
+[AIV Block 5/56] [MASK-gqa-pref] s2L=3 fill=0xFF mask[0]=ff
+[AIV Block 5/56] [MASK-chk1] s2L=3 mask[0]=ff
+[AIV Block 5/56] [MASK-chk2] s2L=3 mask[0]=ff
+[AIV Block 5/56] [MASK-chk3] s2L=3 mask[0]=ff
+[AIV Block 5/56] [MASK-chk4] s2L=3 mask[0]=ff
+[AIV Block 5/56] [MASK-chk5] s2L=3 mask[0]=ff
+[AIV Block 5/56] [VEC-Nd-info] s2L=3 s2LL=4 s2S=4864 s2E=5911 prefSz=5852 pLC=23 isPref=1 s1oIdx=0 actS1=2 actS2=60 preT=946 nextT=-1 compM=3
+[AIV Block 5/56] [VEC-Nd-allmax] mx0=48.348454 mx1=2.766846 mx2=3.829433 mx3=0.296295 sum0=1.313488[AIV Block 5/56] [VEC-Nd-pre] s2L=3 s2R=220 hS1R=1 s2S=4864 phyAddr=4000
+[AIV Block 5/56] [VEC-Nd-pre-max] iniMax[0]=48.348454 iniSum[0]=1.313488 iniMax[1]=2.766846
+[AIV Block 5/56]   mmRes[0]=-189.577698
+[AIV Block 5/56]   mmRes[1]=17.597324
+[AIV Block 5/56]   mmRes[2]=33.470646
+[AIV Block 5/56]   mmRes[3]=174.337418
+[AIV Block 5/56]   mmRes[64]=-10.715373 mmRes[128]=-134.082870 mmRes[192]=98.761253 mmRes[255]=4.127935
+[AIV Block 5/56] [VEC-Nd-mask] mask[0]=ff mask[1]=ff
+[AIV Block 5/56] [VEC-Nd-post] s2L=3 mx0=48.348454 sm0=1.313488 mx1=2.766846 sm1=182.161926
+[AIV Block 5/56] [VEC-Nd-preUpd] s2L=3 mx0=48.348454 sm0=1.313488 mx1=2.766846 sm1=182.161926
+[AIV Block 5/56] [VEC-Nd-postUpd] s2L=3 mx0=48.348454 sm0=1.313488 mx1=2.766846 sm1=182.161926
+[AIV Block 5/56] [VEC2-entry] s2L=1 s2LL=4 v2S1=1
+[AIV Block 5/56] [VEC2-expUb] s2L=1 e0=0.203078 e1=1.000000 e2=1.000000 e3=1.000000
+[AIV Block 5/56] [VEC2-upd] s2L=1 vo0=-2.765637 vo1=0.462351
+[AIV Block 5/56] [Bmm1Tail-post] s2L=0 s2S=4864 s2E=5911 pLC=23 s2R=256
+[AIV Block 5/56] [MASK-entry] s2L=4 s2S=4864 s2R=59 hS1R=1 gS1M=0 isGqa=1 isMla=0 compM=3 preT=946 nextT=-1 s1oIdx=0 actS1=2 actS2=60 prefSz=5852 pLC=23
+[AIV Block 5/56] [MASK-gqa-nonmerge] s2L=4 isPref=0
+[AIV Block 5/56] [MASK-offset] s2L=4 s2Off=36 deltaN=5794 deltaC=21 deltaPre=-925 maskOff=45056 computeMode=1 s1Off=0
+[AIV Block 5/56] [COPYIN-offset] s2L=4 maskOff=45056 preOff=2112 computeMode=1 compressMode=3 s2R=59 hS1R=1 maskS2Size=2048
+[AIV Block 5/56] [MASK-gqa-nonpref] s2L=4 mask[0]=ff mask[1]=ff
+[AIV Block 5/56] [MASK-chk1] s2L=4 mask[0]=0
+[AIV Block 5/56] [MASK-chk2] s2L=4 mask[0]=0
+[AIV Block 5/56] [MASK-chk3] s2L=4 mask[0]=0
+[AIV Block 5/56] [MASK-chk4] s2L=4 mask[0]=0
+[AIV Block 5/56] [MASK-chk5] s2L=4 mask[0]=0
+[AIV Block 5/56] [VEC-Nd-info] s2L=4 s2LL=4 s2S=4864 s2E=5911 prefSz=5852 pLC=23 isPref=0 s1oIdx=0 actS1=2 actS2=60 preT=946 nextT=-1 compM=3
+[AIV Block 5/56] [VEC-Nd-allmax] mx0=52.780025 mx1=2.766846 mx2=3.829433 mx3=0.296295 sum0=1.017674[AIV Block 5/56] [VEC-Nd-pre] s2L=4 s2R=59 hS1R=1 s2S=4864 phyAddr=c000
+[AIV Block 5/56] [VEC-Nd-pre-max] iniMax[0]=52.780025 iniSum[0]=1.017674 iniMax[1]=2.766846
+[AIV Block 5/56]   mmRes[0]=-129.033997
+[AIV Block 5/56]   mmRes[1]=-61.294510
+[AIV Block 5/56]   mmRes[2]=-226.353271
+[AIV Block 5/56]   mmRes[3]=200.149200
+[AIV Block 5/56]   mmRes[64]=-340282346638528859811704183484516925440.000000 mmRes[128]=-18.197351 mmRes[192]=-39.662861 mmRes[255]=33.135124
+[AIV Block 5/56] [VEC-Nd-mask] mask[0]=0 mask[1]=0
+[AIV Block 5/56] [VEC-Nd-post] s2L=4 mx0=52.780025 sm0=1.017674 mx1=2.766846 sm1=183.018677
+[AIV Block 5/56] [VEC-Nd-preUpd] s2L=4 mx0=52.780025 sm0=1.017674 mx1=2.766846 sm1=183.018677
+[AIV Block 5/56] [VEC-Nd-postUpd] s2L=4 mx0=52.780025 sm0=1.017674 mx1=2.766846 sm1=183.018677
+[AIV Block 5/56] [SoftmaxCopyOut] isFd=0 s2L=4 s2LL=4
+[AIV Block 5/56] [LSE-out] lseOff=625 lse0=42.168110 lse1=42.168110
+[AIV Block 5/56] [VEC2-entry] s2L=2 s2LL=4 v2S1=1
+[AIV Block 5/56] [VEC2-expUb] s2L=2 e0=1.000000 e1=1.000000 e2=1.000000 e3=1.000000
+[AIV Block 5/56] [VEC2-upd] s2L=2 vo0=6.910603 vo1=3.475578
+[AIV Block 5/56] [Bmm1Tail-post] s2L=1 s2S=4864 s2E=5911 pLC=23 s2R=256
+[AIV Block 5/56] [MASK-entry] s2L=0 s2S=4864 s2R=256 hS1R=1 gS1M=0 isGqa=1 isMla=0 compM=3 preT=946 nextT=-1 s1oIdx=0 actS1=2 actS2=60 prefSz=5852 pLC=23
+[AIV Block 5/56] [MASK-gqa-nonmerge] s2L=0 isPref=1
+[AIV Block 5/56] [MASK-gqa-pref] s2L=0 fill=0xFF mask[0]=ff
+
+
+
+
 # 以下是未关闭合轴日志
 [AIV Block 0/56] [Bmm1Tail-post] s2L=0 s2S=4864 s2E=5920 pLC=23 s2R=256
 [AIV Block 0/56] [Bmm1Tail-post] s2L=1 s2S=4864 s2E=5920 pLC=23 s2R=256
