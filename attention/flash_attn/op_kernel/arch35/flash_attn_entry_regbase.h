@@ -29,7 +29,11 @@
 #include "../utils/flash_attn_utils.h"
 #include "../utils/flash_attn_common_def.h"
 #include "flash_attn_kernel_noquant_gqa.h"
+#if __has_include("../../../common/op_kernel/arch35/flash_attention_score_common_regbase.h")
 #include "../../../common/op_kernel/arch35/flash_attention_score_common_regbase.h"
+#else
+#include "../../common/arch35/flash_attention_score_common_regbase.h"
+#endif
 #include "flash_attn_tiling_data.h"
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -103,14 +107,12 @@ flash_attn_kernel_run(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t
 #endif
 
     // 5. Tiling 解析、实例化并执行
-    size_t offset = (size_t)(&((FlashAttnTilingData *)0)->baseTiling);
-    const __gm__ FlashAttnNoQuantTilingArch35 *__restrict tilingData =
-        (const __gm__ FlashAttnNoQuantTilingArch35 *__restrict)(tiling + offset);
+    GET_TILING_DATA_PTR_WITH_STRUCT(FlashAttnTilingData, tilingData, tiling);
 
     TPipe tPipe;
     Kernel op;
     op.Init(query, key, value, attenMask, cuSeqLensQ, cuSeqLensKv, blocktable, learnableSink, softmaxLse, attentionOut,
-            workspace, runtimeMetaData, sequsedQ, sequsedKv, tilingData, &tPipe);
+            workspace, runtimeMetaData, sequsedQ, sequsedKv, &tilingData->baseTiling, &tPipe);
     op.Process();
 }
 

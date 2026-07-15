@@ -21,10 +21,17 @@
 #include "lib/matmul_intf.h"
 #include "lib/matrix/matmul/tiling.h"
 
+#if __has_include("../../../common/op_kernel/arch35/infer_flash_attention_comm.h")
 #include "../../../common/op_kernel/arch35/infer_flash_attention_comm.h"
 #include "../../../common/op_kernel/arch35/vf/vf_flash_decode.h"
 #include "../../../common/op_kernel/fia_public_define.h"
 #include "../../../common/op_kernel/memory_copy_arch35.h"
+#else
+#include "../../common/arch35/infer_flash_attention_comm.h"
+#include "../../common/arch35/vf/vf_flash_decode.h"
+#include "../../common/fia_public_define.h"
+#include "../../common/memory_copy_arch35.h"
+#endif
 
 namespace BaseApi {
 struct TaskInfo {
