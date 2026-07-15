@@ -297,11 +297,16 @@ __aicore__ inline void MegaMoeA2<MegaMoeFuncA2>::Process()
 
     using BlockScheduler = typename Gemm::Block::GemmIdentityBlockSwizzle<9, 1>;
     using ElementGroupList = int64_t;
-    LayoutA layoutA1{static_cast<uint32_t>(m_), static_cast<uint32_t>(k_)};
-    LayoutA layoutA2{static_cast<uint32_t>(m_), static_cast<uint32_t>(k2)};
+    // Only W4A8 reuses the same workspace for GMM1 input and SwiGLU/GMM2 input.
+    // Keep INT8/BF16 packed because their GMM1 input lives in peer memory.
+    uint32_t w4a8SharedRowStride = static_cast<uint32_t>(RoundUp(k_ > k2 ? k_ : k2, ALIGN_128));
+    uint32_t layoutA1RowStride = isW4A8 ? w4a8SharedRowStride : static_cast<uint32_t>(k_);
+    uint32_t layoutA2RowStride = isW4A8 ? w4a8SharedRowStride : k2;
+    LayoutA layoutA1{static_cast<uint32_t>(m_), static_cast<uint32_t>(k_), layoutA1RowStride};
+    LayoutA layoutA2{static_cast<uint32_t>(m_), static_cast<uint32_t>(k2), layoutA2RowStride};
     layout::VectorLayout layoutScale1{static_cast<uint32_t>(n_)};
     layout::VectorLayout layoutScale2{static_cast<uint32_t>(n2)};
-    layout::RowMajor layoutD1{static_cast<uint32_t>(maxOutputSize_), static_cast<uint32_t>(k2)};
+    layout::RowMajor layoutD1{static_cast<uint32_t>(maxOutputSize_), static_cast<uint32_t>(k2), layoutA2RowStride};
     layout::RowMajor layoutD2{static_cast<uint32_t>(m_ * topK_), static_cast<uint32_t>(n2)};
 
     GemmCoord problemShape{static_cast<uint32_t>(m_), static_cast<uint32_t>(n_), static_cast<uint32_t>(k_)};

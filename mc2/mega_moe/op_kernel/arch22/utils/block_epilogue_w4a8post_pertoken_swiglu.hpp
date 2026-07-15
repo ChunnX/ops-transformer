@@ -169,7 +169,7 @@ public:
                     uint32_t MOffset, AscendC::GlobalTensor<ElementPerTokenScale> const &gmPerTokenScale2,
                     uint32_t expertPerRank, uint32_t EP, int32_t rank, int32_t listLen,
                     Arch::Resource<ArchTag> const &resource, uint32_t epilogueCoreNum = 40, float swigluLimit = 0.0f,
-                    uint32_t gmmOutPreRowStride = 1, Callback &&callback = Callback{})
+                    uint32_t gmmOutPreRowStride = 1, uint32_t gmmDPreRowStride = 0, Callback &&callback = Callback{})
     {
         callback();
         uint32_t blockM = shapeC.row();
@@ -197,6 +197,8 @@ public:
 
         uint32_t ChunkTileLen = blockN / 2;
         uint32_t HalfChunkTileLen = ChunkTileLen / 2;
+        // D tensor row stride: use provided stride, or fall back to ChunkTileLen
+        uint32_t dStride = (gmmDPreRowStride > 0) ? gmmDPreRowStride : ChunkTileLen;
         const size_t LEN_VK = (ChunkTileLen / 2) / 128;
         const size_t LAST_LEN_VK = (ChunkTileLen % 256) / 2;
         const half ONE_SIXTEENTH = static_cast<half>(0.0625f);
@@ -220,7 +222,7 @@ public:
             auto &ubOutputTmp = ubAbs;
             auto &sharedUbTmpBuffer = ubReduceMax;
 
-            auto gmTileD = gmD[loopIdx * ChunkTileLen];
+            auto gmTileD = gmD[loopIdx * dStride];
             LayoutC layoutUbC{2, blockN};
             LayoutC layoutGmC{2, blockN, gmmOutPreRowStride};
 
