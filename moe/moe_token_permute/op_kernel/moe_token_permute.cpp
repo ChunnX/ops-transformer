@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2025-2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -12,12 +12,20 @@
  * \file moe_token_permute.cpp
  * \brief
  */
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
+#include "arch35/moe_sort_one_core.h"
+#include "arch35/moe_sort_multi_core.h"
+#include "arch35/moe_src_to_dst_op_simt.h"
+#include "arch35/moe_gather_out_for_simt.h"
+#include "arch35/moe_scatter_out_batch_row.h"
+#else
 #include "moe_mrgsort_out.h"
 #include "moe_mrgsort.h"
 #include "moe_sort_multi_core.h"
 #include "moe_sort_one_core.h"
 #include "moe_index_copy.h"
 #include "moe_index_copy_spilt_d.h"
+#endif
 #if !defined(DTYPE_TOKENS)
 #define DTYPE_TOKENS bfloat16_t
 #endif
@@ -26,26 +34,29 @@
 #endif
 using namespace AscendC;
 using namespace MoeTokenPermute;
-#define GENERAL_OP_IMPL(sortClass1, sortClass2, indexCopyClass, ...)                  \
-    do {                                                                              \
-        sortClass1<DTYPE_INDICES> op;                                                 \
-        op.Init(indices, sortedIndices, userWS, t, &sortPipe);                        \
-        op.Process();                                                                 \
-        sortPipe.Destroy();                                                           \
-        sortClass2<int32_t> op2;                                                      \
-        TPipe sortPipe2;                                                              \
-        op2.Init(sortedIndices, sortedIndices, userWS, t, &sortPipe2);                \
-        op2.Process();                                                                \
-        sortPipe2.Destroy();                                                          \
-        TPipe MoeindexCopyPipe;                                                       \
-        indexCopyClass<__VA_ARGS__> indexCopyOp;                                      \
-        indexCopyOp.Init(tokens, sortedIndices, permuteTokens, t, &MoeindexCopyPipe); \
-        indexCopyOp.Process();                                                        \
+#define GENERAL_OP_IMPL(sortClass1, sortClass2, indexCopyClass, ...)                                                   \
+    do {                                                                                                               \
+        sortClass1<DTYPE_INDICES> op;                                                                                  \
+        op.Init(indices, sortedIndices, userWS, t, &sortPipe);                                                         \
+        op.Process();                                                                                                  \
+        sortPipe.Destroy();                                                                                            \
+        sortClass2<int32_t> op2;                                                                                       \
+        TPipe sortPipe2;                                                                                               \
+        op2.Init(sortedIndices, sortedIndices, userWS, t, &sortPipe2);                                                 \
+        op2.Process();                                                                                                 \
+        sortPipe2.Destroy();                                                                                           \
+        TPipe MoeindexCopyPipe;                                                                                        \
+        indexCopyClass<__VA_ARGS__> indexCopyOp;                                                                       \
+        indexCopyOp.Init(tokens, sortedIndices, permuteTokens, t, &MoeindexCopyPipe);                                  \
+        indexCopyOp.Process();                                                                                         \
     } while (0)
 
-extern "C" __global__ __aicore__ void moe_token_permute(
-    GM_ADDR tokens, GM_ADDR indices, GM_ADDR permuteTokens, GM_ADDR sortedIndices, GM_ADDR workspace, GM_ADDR tiling)
+extern "C" __global__ __aicore__ void moe_token_permute(GM_ADDR tokens, GM_ADDR indices, GM_ADDR permuteTokens,
+                                                        GM_ADDR sortedIndices, GM_ADDR workspace, GM_ADDR tiling)
 {
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
+    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIV_1_0);
+#endif
     if (g_coreType == AIC) {
         return;
     }
@@ -61,6 +72,48 @@ extern "C" __global__ __aicore__ void moe_token_permute(
     }
 
     auto t = &tilingData;
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
+    // arch35(ascend950)：排序(argsort) -> 求逆映射(sortedIndices) -> 按逆映射 scatter tokens
+    {
+        TPipe sortPipe;
+        if (TILING_KEY_IS(10001)) {
+            MoeV2SortOneCore<DTYPE_INDICES> op;
+            op.Init(indices, permuteTokens, sortedIndices, userWS, t, &sortPipe);
+            op.Process();
+        } else if (TILING_KEY_IS(10002)) {
+            MoeV2SortMultiCore<DTYPE_INDICES> op;
+            op.Init(indices, permuteTokens, sortedIndices, userWS, t, &sortPipe);
+            op.Process();
+        }
+        sortPipe.Destroy();
+    }
+    bool useBatchScatter = t->gatherOutComputeParamsOp.scatterMode == 1;
+    {
+        MoeV2SrcToDstOpSimt srcToDst;
+        srcToDst.Init<MoeTokenPermuteTilingData>(sortedIndices, userWS, t);
+        if (useBatchScatter) {
+            srcToDst.ProcessWithoutSync();
+        } else {
+            srcToDst.Process();
+        }
+    }
+    {
+        TPipe gatherPipe;
+        if (useBatchScatter && t->gatherOutComputeParamsOp.needCoreNum > 0) {
+            MoeScatterOutBatchRow<DTYPE_TOKENS> scatter;
+            scatter.Init(tokens, permuteTokens, userWS, t, &gatherPipe);
+            scatter.Process();
+        } else if (!useBatchScatter) {
+            MoeV2GatherOutSimt<DTYPE_TOKENS> gather;
+            gather.Init(tokens, sortedIndices, permuteTokens, userWS, t, &gatherPipe);
+            gather.Process();
+        }
+        if (useBatchScatter) {
+            AscendC::SyncAll();
+        }
+        gatherPipe.Destroy();
+    }
+#else
     TPipe sortPipe;
     if (TILING_KEY_IS(1)) {
         GENERAL_OP_IMPL(MoeSortOneCore, MoeSortOneCore, MoeindexCopyOp, DTYPE_TOKENS, false);
@@ -79,4 +132,5 @@ extern "C" __global__ __aicore__ void moe_token_permute(
     } else if (TILING_KEY_IS(8)) {
         GENERAL_OP_IMPL(MoeSortMultiCore, MoeSortMultiCore, MoeindexCopySpiltDOp, DTYPE_TOKENS, true);
     }
+#endif
 }
