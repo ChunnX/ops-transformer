@@ -79,13 +79,14 @@ private:
     __aicore__ inline void SinkhornGradSimdVf(const LocalTensor<float> &skGradLocal, uint64_t bsIdx, uint64_t bsLen);
     __aicore__ inline void ExpGradSimdVf(LocalTensor<float> skGrad, LocalTensor<float> expGrad,
                                          LocalTensor<float> zResLocal, uint64_t bsIdx, uint64_t bsLen);
+    __aicore__ inline void ExpGradSimdVf2(LocalTensor<U> expGrad, uint16_t bsLen);
     __aicore__ inline void ComputeGNormOutAndGHcBeforeNorm(uint64_t bsOffset, uint64_t bsLen, U alphaScalar, 
                                                             uint64_t count, uint64_t offset);
 
     __aicore__ inline void SinkhornGradStage2(__local_mem__ float *tmpDivLocalPtr, __local_mem__ float *tmpDiv3LocalPtr,
                                               __local_mem__ float *tmpDiv4LocalPtr, __local_mem__ float *rowNormPtr,
                                               __local_mem__ float *rowSumPtr, __local_mem__ float *gradXRowPtr,
-                                              __local_mem__ float *skGradPtr, uint64_t bsLenLoop);
+                                              __local_mem__ float *skGradPtr, uint16_t bsLenLoop);
 
 private:
     GlobalTensor<X_T> xGm_; // 输入
@@ -828,7 +829,7 @@ MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::SinkhornGradSimdVf(const
 
                 Reg::Mul(tmpMulReg, rowNormReg, skGradReg, maskNN);
 
-                Reg::StoreAlign(tmpPtr1, tmpMulReg, maskNN);
+                Reg::Store(tmpPtr1, tmpMulReg, nn_);
             }
 
             Reg::LocalMemBar<Reg::MemType::VEC_STORE, Reg::MemType::VEC_LOAD>();
@@ -896,7 +897,7 @@ MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::SinkhornGradSimdVf(const
                     Reg::Add(reduceSumReg, reduceSumReg, tmpReg, maskN);
                 }
 
-                Reg::StoreAlign(tmpPtr1, reduceSumReg, maskN);
+                Reg::Store(tmpPtr1, reduceSumReg, n_);
             }
 
             Reg::LocalMemBar<Reg::MemType::VEC_STORE, Reg::MemType::VEC_LOAD>();
@@ -911,7 +912,7 @@ template <typename X_T, typename GRADHIN_T, typename U>
 __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::SinkhornGradStage2(
     __local_mem__ float *tmpDivLocalPtr, __local_mem__ float *tmpDiv3LocalPtr, __local_mem__ float *tmpDiv4LocalPtr,
     __local_mem__ float *rowNormPtr, __local_mem__ float *rowSumPtr, __local_mem__ float *gradXRowPtr,
-    __local_mem__ float *skGradPtr, uint64_t bsLenLoop)
+    __local_mem__ float *skGradPtr, uint16_t bsLenLoop)
 {
     __VEC_SCOPE__
     {
@@ -1011,7 +1012,6 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::E
     LocalTensor<float> tmpLocal = tmpBuf_.Get<float>();
     LocalTensor<float> isMaxIdx = isMaxBuf_.Get<float>();
 
-    __local_mem__ float *expGradPtr = (__local_mem__ float *)expGrad.GetPhyAddr();
     __local_mem__ float *zResPtr = (__local_mem__ float *)zResLocal.GetPhyAddr();
     __local_mem__ float *skGradPtr = (__local_mem__ float *)skGrad.GetPhyAddr();
     __local_mem__ float *tmpMulPtr = (__local_mem__ float *)tmpMul.GetPhyAddr();
@@ -1044,15 +1044,12 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::E
         Reg::RegTensor<float> tmpExpReg;
         Reg::RegTensor<float> skGradReg;
         Reg::RegTensor<float> tmpMulReg;
-        Reg::RegTensor<float> tmpMul2Reg;
-        Reg::RegTensor<float> sumAllReg;
-        Reg::RegTensor<float> sumAllBcastReg;
 
         Reg::RegTensor<float> isMaxReg;
         Reg::RegTensor<float> expGradReg;
 
-        Reg::UnalignRegForLoad ureg, ureg0, ureg1, ureg2, ureg3, urege4;
-        Reg::UnalignRegForStore uregStore0, uregStore1, uregStore2, uregStore3, uregStore4;
+        Reg::UnalignRegForLoad ureg, ureg0, ureg1, ureg2;
+        Reg::UnalignRegForStore uregStore0, uregStore1, uregStore2;
         Reg::MaskReg maxMask;
         Reg::MaskReg cmpMask;
         Reg::MaskReg mask = Reg::CreateMask<float, Reg::MaskPattern::ALL>();
@@ -1078,7 +1075,6 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::E
             auto zResMaxPtr1 = zResMaxPtr + bsOffset;
             auto zResMaxIdxPtr1 = zResMaxIdxPtr + bsOffset;
             auto isMaxIdxPtr1 = isMaxIdxPtr + bsOffset;
-            auto expGradPtr1 = expGradPtr + bsOffset;
 
             Reg::RegTensor<float> idxReg, idxSelectReg;
             Reg::Arange(idxReg, 0);
@@ -1128,11 +1124,44 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::E
             Reg::Exp<float>(tmpExpReg, tmpSubReg, maskNN);
             Reg::Mul<float>(tmpMulReg, tmpExpReg, skGradReg, maskNN);
 
-            Reg::StoreAlign<float>(tmpMulPtr + bsOffset, tmpMulReg, maskNN);
+            Reg::Store<float>(tmpMulPtr + bsOffset, tmpMulReg, nn_);
 
             Reg::LocalMemBar<Reg::MemType::VEC_STORE, Reg::MemType::VEC_LOAD>();
+        }
+    }
+    
+    ExpGradSimdVf2(expGrad, bsLenLoop);
+}
 
-            // tmpMul -> reduce_sum, tmpMul2, expGrad
+template <typename X_T, typename GRADHIN_T, typename U>
+__aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::ExpGradSimdVf2(
+    LocalTensor<U> expGrad, uint16_t bsLen)
+{
+    LocalTensor<U> tmpMul = tmpMulBuf_.Get<U>();
+    LocalTensor<U> isMaxIdx = isMaxBuf_.Get<U>();
+
+    __local_mem__ U *expGradPtr = (__local_mem__ U *)expGrad.GetPhyAddr();
+    __local_mem__ U *tmpMulPtr = (__local_mem__ U *)tmpMul.GetPhyAddr();
+    __local_mem__ U *isMaxIdxPtr = (__local_mem__ U *)isMaxIdx.GetPhyAddr();
+
+    uint32_t maskLen = static_cast<uint32_t>(n_);
+
+    __VEC_SCOPE__
+    {
+        Reg::RegTensor<U> tmpMulReg;
+        Reg::RegTensor<U> isMaxReg;
+        Reg::RegTensor<U> sumAllReg;
+        Reg::RegTensor<U> expGradReg;
+        Reg::UnalignRegForLoad ureg;
+        Reg::UnalignRegForStore uregStore;
+        
+        Reg::MaskReg mask = Reg::CreateMask<U, Reg::MaskPattern::ALL>();
+
+        for (uint16_t i = 0; i < bsLen; i++) {
+            auto bsOffset = i * nn_;
+            auto expGradPtr1 = expGradPtr + bsOffset;
+            uint32_t maskLen = static_cast<uint32_t>(n_);
+            mask = Reg::UpdateMask<U>(maskLen);
             for (uint16_t j = 0; j < n_; j++) {
                 Reg::LoadUnAlignPre(ureg, tmpMulPtr + bsOffset + j * n_);
                 Reg::LoadUnAlign(tmpMulReg, ureg, tmpMulPtr + bsOffset + j * n_);
@@ -1140,14 +1169,14 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::E
                 Reg::LoadUnAlignPre(ureg, isMaxIdxPtr + bsOffset + j * n_);
                 Reg::LoadUnAlign(isMaxReg, ureg, isMaxIdxPtr + bsOffset + j * n_);
 
-                Reg::Reduce<Reg::ReduceType::SUM>(sumAllReg, tmpMulReg, maskN);
-                Reg::Duplicate(sumAllBcastReg, sumAllReg, maskN);
-                Reg::Mul(tmpMul2Reg, isMaxReg, sumAllBcastReg, maskN);
-                Reg::Sub(expGradReg, tmpMulReg, tmpMul2Reg, maskN);
+                Reg::Reduce<Reg::ReduceType::SUM>(sumAllReg, tmpMulReg, mask);
+                Reg::Duplicate(sumAllReg, sumAllReg, mask);
+                Reg::Mul(isMaxReg, isMaxReg, sumAllReg, mask);
+                Reg::Sub(expGradReg, tmpMulReg, isMaxReg, mask);
 
-                Reg::StoreUnAlign<float>(expGradPtr1, expGradReg, uregStore3, n_);
+                Reg::StoreUnAlign<U>(expGradPtr1, expGradReg, uregStore, n_);
             }
-            Reg::StoreUnAlignPost(expGradPtr1, uregStore3, 0);
+            Reg::StoreUnAlignPost(expGradPtr1, uregStore, 0);
         }
     }
 }
