@@ -422,7 +422,8 @@ protected:
         LocalTensor<SINK_T> sinkCopyInBuf =
             fdSinkCopyInBuf.GetWithOffset<SINK_T>(BUFFER_SIZE_BYTE_1K, (cntM & 1) * BUFFER_SIZE_BYTE_1K);
 
-        uint32_t copySize = AttentionCommon::Align(constInfo.realGSize, static_cast<uint32_t>(BYTE_BLOCK / sizeof(SINK_T)));
+        uint32_t copySize = AttentionCommon::Align(constInfo.realGSize,
+                                                   static_cast<uint32_t>(BYTE_BLOCK / sizeof(SINK_T)));
         uint64_t sinkGmOffset = taskInfo.n2Idx * constInfo.realGSize;
 
         WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_SINK_BUF1_FLAG + (cntM & 1));
