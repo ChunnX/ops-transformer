@@ -5,7 +5,8 @@
 ## 文件结构
 
 - `qbsa_mxfp8_golden.py`：执行入口，负责生成输入、CPU golden、NPU 调用和精度对比。
-- `qbsa_mxfp8_test_cases.py`：testcase 文件，只存放 case 数据。
+- `qbsa_mxfp8_test_cases.py`：默认 testcase 文件，使用 Python dict 保存 case。
+- `qbsa_mxfp8_test_cases.xlsx`：可选 Excel testcase 文件，每行对应一个 case。
 - `golden_cache.py`：输入、CPU 输出、NPU 输出缓存工具。
 - `result_compare_method.py`：精度比较工具。
 
@@ -31,7 +32,7 @@ python experimental/attention/quant_block_sparse_attn/tests/pytest/bsa_fullquant
 
 ## 默认执行
 
-不指定 case 名称时，脚本默认执行 `qbsa_mxfp8_test_cases.py` 中所有 `enable=True` 的 case。
+不指定数据源和 case 名称时，脚本默认执行 `qbsa_mxfp8_test_cases.py` 中所有 `enable=True` 的 case。
 
 ```bash
 python experimental/attention/quant_block_sparse_attn/tests/pytest/bsa_fullquant_mxfp8_test/qbsa_mxfp8_golden.py
@@ -56,6 +57,53 @@ python experimental/attention/quant_block_sparse_attn/tests/pytest/bsa_fullquant
 ```
 
 `--case_id` 保留为兼容参数，效果等同于 `--case_name`。
+
+也支持用逗号一次指定多个 case：
+
+```bash
+python experimental/attention/quant_block_sparse_attn/tests/pytest/bsa_fullquant_mxfp8_test/qbsa_mxfp8_golden.py \
+  --case_name PA_BNBD_B1_QS256_KVS512_Nq1_Nkv1_D128_SP3,MIX_01
+```
+
+## 使用 Case Excel
+
+使用 Excel 数据源时必须增加 `--excel`。此时未指定 `--case_files` 会读取同目录下的
+`qbsa_mxfp8_test_cases.xlsx`，默认读取名为 `test` 的工作表：
+
+Excel 模式依赖 `pandas` 和 `openpyxl`；默认 Python testcase 模式不会加载这两个依赖。
+
+```bash
+python experimental/attention/quant_block_sparse_attn/tests/pytest/bsa_fullquant_mxfp8_test/qbsa_mxfp8_golden.py \
+  --excel
+```
+
+通过 `--sheet_name` 指定其他工作表：
+
+```bash
+python experimental/attention/quant_block_sparse_attn/tests/pytest/bsa_fullquant_mxfp8_test/qbsa_mxfp8_golden.py \
+  --excel --sheet_name case_group_1
+```
+
+此时不指定 `--case_name`，会运行 Excel 中所有 `enable=true` 的 case；指定单个 case 的方式为：
+
+```bash
+python experimental/attention/quant_block_sparse_attn/tests/pytest/bsa_fullquant_mxfp8_test/qbsa_mxfp8_golden.py \
+  --excel --case_name MIX_01
+```
+
+指定其他 Excel 或一次加载多个 Excel：
+
+```bash
+python experimental/attention/quant_block_sparse_attn/tests/pytest/bsa_fullquant_mxfp8_test/qbsa_mxfp8_golden.py \
+  --excel --case_files /path/to/cases_a.xlsx,/path/to/cases_b.xlsx
+```
+
+不带 `--excel` 时，`--case_files` 按 Python testcase 文件解析：
+
+```bash
+python experimental/attention/quant_block_sparse_attn/tests/pytest/bsa_fullquant_mxfp8_test/qbsa_mxfp8_golden.py \
+  --case_files /path/to/custom_test_cases.py
+```
 
 ## 指定执行阶段
 
@@ -89,33 +137,13 @@ python experimental/attention/quant_block_sparse_attn/tests/pytest/bsa_fullquant
 
 ## 新增 Case
 
-在 `qbsa_mxfp8_test_cases.py` 的 `TestCases` 列表中新增一个 dict。字段 `name` 是 case 名称，`enable=True` 表示默认执行。
+默认方式是在 `qbsa_mxfp8_test_cases.py` 的 `TestCases` 中新增 dict。也可以在
+`qbsa_mxfp8_test_cases.xlsx` 的 `test` 工作表中新增一行，并通过 `--excel` 执行。两种方式都要求
+`name` 唯一；`enable=True` 表示默认运行，关闭的 case 仍可通过 `--case_name` 单独执行。
 
-```python
-TestCases = [
-    {
-        "name": "PA_BNBD_B1_QS256_KVS512_Nq1_Nkv1_D128_SP3",
-        "enable": True,
-        "B": 1,
-        "N1": 1,
-        "N2": 1,
-        "D": 128,
-        "actual_seq_q": [256],
-        "actual_seq_kv": [512],
-        "S1": 256,
-        "S2": 512,
-        "block_size": 128,
-        "mask_mode": 3,
-        "fp8_dtype": "float8_e4m3fn",
-        "scale_dtype": "float8_e8m0fnu",
-        "quant_group_size": 32,
-        "layout_q": "TND",
-        "layout_kv": "PA_BNSD",
-        "layout_out": "TND",
-        "layout_sparse_indices": "B_N_Qb_Kb",
-        "softmax_scale": None,
-    },
-]
-```
+字段格式：
 
-`softmax_scale=None` 时，脚本会按 `1 / sqrt(D)` 自动补齐。
+- `actual_seq_q`、`actual_seq_kv` 使用 JSON 数组文本，例如 `[256]`。
+- `enable`、`is_contiguous`、`return_softmax_lse` 使用 Excel 布尔值 `TRUE/FALSE`。
+- `softmax_scale` 留空时，脚本按 `1 / sqrt(D)` 自动补齐。
+- Excel 可直接扩展到多行；case 名称在一个或多个输入文件之间都不能重复。
