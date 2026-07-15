@@ -12,7 +12,7 @@ set(CONDITION_UNIT ${ASCEND_COMPUTE_UNIT})
 if (BUILD_OPEN_PROJECT)
     set(moe_token_permute_depends moe/moe_init_routing_v3
         CACHE INTERNAL "Dependencies for moe_token_permute")
-    target_sources(op_host_aclnnInner PRIVATE
+    target_sources(op_host_aclnn PRIVATE
        moe_token_permute_def.cpp
     )
     if(CONDITION_UNIT STREQUAL "ascend950")
