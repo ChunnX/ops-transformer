@@ -17,23 +17,19 @@
 #define MOE_EP_COMBINE_BASE_H
 #include <cstdint>
 
-constexpr uint32_t HCCL_MAX_RANK_SIZE = 1024;
-
-struct Mc2MoeContext {
-    uint32_t epRankId;
-    uint32_t rankSizePerServer;
-    uint64_t kfcContextAddr; // host kfc方案中，需要传递通信API所需的地址
-    uint64_t epHcclBuffer[HCCL_MAX_RANK_SIZE];
-    uint64_t hcommHandle[HCCL_MAX_RANK_SIZE];
-};
+#if __has_include("../common/mc2_moe_context.h")
+#include "../common/mc2_moe_context.h"
+#else
+#include "../../common/op_kernel/mc2_moe_context.h"
+#endif
 
 
-__aicore__ inline GM_ADDR GetWinCombineDataAddrByRankId(__gm__ Mc2MoeContext *ctx)
+__aicore__ inline GM_ADDR GetWinCombineDataAddrByRankId(__gm__ Mc2Aclnn::MoeCommContext *ctx)
 {
     return (GM_ADDR)ctx->epHcclBuffer[0];
 }
 
-__aicore__ inline GM_ADDR GetWinCombineStateAddrByRankId(__gm__ Mc2MoeContext *ctx)
+__aicore__ inline GM_ADDR GetWinCombineStateAddrByRankId(__gm__ Mc2Aclnn::MoeCommContext *ctx)
 {
     return (GM_ADDR)ctx->epHcclBuffer[0];
 }
