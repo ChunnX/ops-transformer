@@ -641,10 +641,8 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.wait_flag("mte2", "v", 6)
                     T.tile.sub(diff_ub, softmax_i_chunk_ub, p_reduced_tmp_ub)
 
-                    # Broadcast diff_ub → diff_2d_ub once (all rows = diff, for 2D vectorization below)
-                    # UB→UB copy per row, scalar index — avoids UB range slicing bug, cheaper than tile.mul
-                    for i in T.serial(vector_baseg):
-                        T.copy(diff_ub, diff_2d_ub[i, :])
+                    # Broadcast diff_ub → diff_2d_ub via BRCB (1 instruction replaces 32 serial copies)
+                    T.tile.broadcast(diff_2d_ub, diff_ub)
 
                     # WAR pre-fill: dw_chunk_ub 初始可安全写入（无前序 V 读者）
                     T.set_flag("v", "mte2", 4)
