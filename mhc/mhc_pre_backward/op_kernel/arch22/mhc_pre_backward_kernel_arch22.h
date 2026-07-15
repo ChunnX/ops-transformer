@@ -72,8 +72,8 @@ constexpr int32_t DOUBLE_RATIO = 2;
 
 constexpr int32_t INNER_SPILT_NUM = 8;
 
-constexpr MatmulConfig MHC_PRE_GRAD_MM1_CFG = GetMDLConfig(true, false, 0, false, false, false, true);
-constexpr MatmulConfig MHC_PRE_GRAD_MM2_CFG = GetMDLConfig(true, false, 0, false, false, false, true);
+constexpr MatmulConfig MHC_PRE_GRAD_MM1_CFG = GetMDLConfig(true, false, 0, false, false, false, false);
+constexpr MatmulConfig MHC_PRE_GRAD_MM2_CFG = GetMDLConfig(true, false, 0, false, false, false, false);
 
 template <typename T>
 __aicore__ inline void kahanCustom(LocalTensor<T> &inputTensor, LocalTensor<T> sumTensorList[2], const int32_t len,
@@ -1026,6 +1026,7 @@ __aicore__ inline void MhcPreBackwardKernelArch22<TYPE_X, T, DETERMINISTIC>::Pro
     // ============================================================================
 
     if ASCEND_IS_AIV {
+        printf("AIV start\n");
         // --- AIV 侧: 逐元素计算 ---
         GetHcScaleAndHcBase();
 
@@ -1055,8 +1056,8 @@ __aicore__ inline void MhcPreBackwardKernelArch22<TYPE_X, T, DETERMINISTIC>::Pro
                 ComputeGradHHat2(taskOffset, tileTaskCount);
             }
             // 通知 AIC: workspace 数据就绪，可以开始 matmul
-            CrossCoreSetFlag<0x2, PIPE_MTE3>(0);
-            CrossCoreWaitFlag<0x2>(1);
+            CrossCoreSetFlag<0x2, PIPE_MTE3>(8);
+            CrossCoreWaitFlag<0x2>(9);
 
             
             // printf("gradH2Global_ value is \n");
@@ -1120,7 +1121,7 @@ __aicore__ inline void MhcPreBackwardKernelArch22<TYPE_X, T, DETERMINISTIC>::Pro
         // [公式2][3][4] bias_grad 和 α_grad 最终归约
         tileRepeatTimes_ = Ops::Base::CeilDiv(tileCoreBS_ * 2 * n_, static_cast<int64_t>(ELEMENTS_SIZE_PER_REPEAT));
         ComputeScaleBias();
-
+        printf("AIV end\n");
         GetTPipePtr()->ReleaseEventID<HardEvent::V_MTE3>(eventIdVToMTE3XCast);
     }
 
@@ -1132,7 +1133,7 @@ __aicore__ inline void MhcPreBackwardKernelArch22<TYPE_X, T, DETERMINISTIC>::Pro
             int32_t tileTaskCount =
                 min(static_cast<int32_t>(2 * tileCoreBS_), static_cast<int32_t>(totalTasks_ - taskOffset));
             // 等待 AIV 侧 workspace 数据就绪
-            CrossCoreWaitFlag<0x2>(0);
+            CrossCoreWaitFlag<0x2>(8);
 
             if (tileTaskCount > 0) {
                 // [公式6] x_rs_grad = H_mix_grad @ phi   (ProcessMatmul1)
@@ -1141,7 +1142,7 @@ __aicore__ inline void MhcPreBackwardKernelArch22<TYPE_X, T, DETERMINISTIC>::Pro
                 ProcessMatmul2(taskOffset, tileTaskCount);
             }
             // 通知 AIV: matmul 结果就绪
-            AscendC::CrossCoreSetFlag<0x2, PIPE_FIX>(1);
+            AscendC::CrossCoreSetFlag<0x2, PIPE_FIX>(9);
 
             ping = (ping + 1) % 10;
         }
@@ -1151,12 +1152,14 @@ __aicore__ inline void MhcPreBackwardKernelArch22<TYPE_X, T, DETERMINISTIC>::Pro
         // printf("DETERMINISTIC = true\n");
         SyncAll<false>();
         if ASCEND_IS_AIV {
+            printf("AIV deterministic start.\n");
             int64_t useCoreNum = min(Ops::Base::CeilDiv(totalTasks_, tileCoreBS_), aivNum_);
             ComputeDeterministic(gradHcBaseWSGlobal_, gradHcBaseGlobal_, useCoreNum, fusionSize_);
             ComputeDeterministic(gradHcScaleWSGlobal_, gradHcScaleGlobal_, useCoreNum, 3);
             useCoreNum = Ops::Base::CeilDiv(useCoreNum, static_cast<int64_t>(2));
             ComputeDeterministic(gradWeightWSGlobal_, gradWeightGlobal_, useCoreNum,
                                  fusionSize_ * (n_ * c_));
+            printf("AIV deterministic end.\n");
         }
     }
 }
@@ -1175,7 +1178,6 @@ __aicore__ inline void MhcPreBackwardKernelArch22<TYPE_X, T, DETERMINISTIC>::Pro
 
     mm1_.SetTensorA(gradH2Global_[taskOffset * mm1K_]);
     mm1_.SetTensorB(weightGlobal_);
-    // mm1_.SetHF32(true, 1);
     mm1_.SetOrgShape(mm1M, mm1N_, mm1K_);
     mm1_.SetSingleShape(mm1M, mm1N_, mm1K_);
     mm1_.template IterateAll<true>(gradXCubeGlobal_[taskOffset * (n_ * c_)]);
@@ -1199,23 +1201,14 @@ __aicore__ inline void MhcPreBackwardKernelArch22<TYPE_X, T, DETERMINISTIC>::Pro
     // if (blkIdx_ == 0) {
     //     printf("gradH2Global_ value is \n");
     //     for(int i = 0; i < 16; i++) {
-    //         // int index = i * 32 + 26;
-    //         int index = i * 32;
+    //         int index = i * 32 + 26;
     //         printf("[%d] %x\t", index, gradH2Global_.GetValue(index));
     //     }
     //     printf("-----------------------\n");
 
-    //     // printf("gradH2Global_ value 2 is \n");
-    //     // for(int i = 0; i < 16; i++) {
-    //     //     int index = 26*16 + i;
-    //     //     printf("[%d] %x\t", index, gradH2Global_.GetValue(index));
-    //     // }
-    //     // printf("-----------------------\n");
-
     //     printf("xWorkspaceGlobal_ value is \n");
     //     for(int i = 0; i < 16; i++) {
-    //         // int index = i * 2560 + 2021;
-    //         int index = i * 2560;
+    //         int index = i * 2560 + 2021;
     //         printf("[%d] %x\t", index, xWorkspaceGlobal_.GetValue(index));
     //     }
     //     printf("-----------------------\n");
@@ -1223,7 +1216,6 @@ __aicore__ inline void MhcPreBackwardKernelArch22<TYPE_X, T, DETERMINISTIC>::Pro
 
     mm2_.SetTensorA(gradH2Global_[taskOffset * mm2M_], true); // [B * S, 2N + N!]
     mm2_.SetTensorB(xWorkspaceGlobal_[taskOffset * mm2N_]); // [B * S, N * D]
-    // mm2_.SetHF32(true, 1);
     mm2_.SetOrgShape(mm2M_, mm2N_, mm2K);
     mm2_.SetSingleShape(mm2M_, mm2N_, mm2K);
     if constexpr (DETERMINISTIC == true) {
@@ -1235,16 +1227,16 @@ __aicore__ inline void MhcPreBackwardKernelArch22<TYPE_X, T, DETERMINISTIC>::Pro
         mm2_.template IterateAll<true>(gradWeightGlobal_, needAdd);
         needAdd = 1;
     }
-
+    mm2_.End();
     // if (blkIdx_ == 0) {
-    //     DumpTensor(gradWeightGlobal_[68581], 1, 16);
-    //     // printf("gradWeightWSGlobal_ value is %x\n", gradWeightGlobal_.GetValue(68581));
-    //     printf("gradWeightWSGlobal_ value is %x\n", gradWeightGlobal_.GetValue(0));
+        // DumpTensor(gradWeightWSGlobal_[68581], 1, 16);
+        // // printf("gradWeightWSGlobal_ value is %x\n", gradWeightGlobal_.GetValue(68581));
+        // printf("gradWeightWSGlobal_ value is %x\n", gradWeightWSGlobal_.GetValue(68581));
     // }
 
 
     // DumpTensor(gradH2Global_[taskOffset * mm2M_], 3, 32, *);
-    mm2_.End();
+
 }
 
 #endif // MHC_PRE_BACKWARD_OP_KERNEL_ARCH22_KERNEL_H

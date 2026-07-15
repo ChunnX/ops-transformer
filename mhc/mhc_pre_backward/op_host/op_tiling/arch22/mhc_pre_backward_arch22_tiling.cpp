@@ -322,14 +322,16 @@ ge::graphStatus TilingMhcPreBackwardArch22(gert::TilingContext *context)
     MhcPreBackwardArch22TilingData* tilingData =
     context->GetTilingData<MhcPreBackwardArch22TilingData>();
     auto featureDataType = matmul_tiling::DataType::DT_FLOAT;
-    matmul_tiling::MatmulApiTiling mm1Tiling(ascendPlatformInfo);
-    matmul_tiling::MatmulApiTiling mm2Tiling(ascendPlatformInfo);
+    matmul_tiling::MultiCoreMatmulTiling mm1Tiling(ascendPlatformInfo); 
+    matmul_tiling::MultiCoreMatmulTiling mm2Tiling(ascendPlatformInfo); 
 
+    mm1Tiling.SetDim(aivNum);
     mm1Tiling.SetAType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, featureDataType);
     mm1Tiling.SetBType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, featureDataType);
     mm1Tiling.SetCType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, featureDataType);
     mm1Tiling.SetOrgShape(mm1M, mm1N, mm1K);
     mm1Tiling.SetShape(mm1M, mm1N, mm1K);
+    mm1Tiling.SetSingleShape(mm1M, mm1N, mm1K);
     mm1Tiling.SetBias(false);
     mm1Tiling.SetBufferSpace(-1, -1, -1);
     if (mm1Tiling.GetTiling(tilingData->mm1TilingData) == -1) {
@@ -337,10 +339,12 @@ ge::graphStatus TilingMhcPreBackwardArch22(gert::TilingContext *context)
         return ge::GRAPH_FAILED;
     }
 
+    mm2Tiling.SetDim(aivNum);
     mm2Tiling.SetAType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, featureDataType, true);
     mm2Tiling.SetBType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, featureDataType);
     mm2Tiling.SetCType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, featureDataType);
     mm2Tiling.SetOrgShape(mm2M, mm2N, mm2K);
+    mm2Tiling.SetSingleShape(mm2M, mm2N, mm2K);
     mm2Tiling.SetShape(mm2M, mm2N, mm2K);
     mm2Tiling.SetBias(false);
     mm2Tiling.SetBufferSpace(-1, -1, -1);
@@ -375,13 +379,13 @@ ge::graphStatus TilingMhcPreBackwardArch22(gert::TilingContext *context)
     auto isDeterministic = (context->GetDeterministic() == 1);
     context->SetScheduleMode(1); // 1: batchmode模式
     GET_TPL_TILING_KEY(isDeterministic);
-    if (isDeterministic) {
+    // if (isDeterministic) {
         currentWorkspace[0] = systemWorkspaceSize + usrWorkSpaceSize +
                               aicNum * fusionSize * (n * c) * sizeof(float) +
                               aivNum * (fusionSize + ELEMENTS_SIZE_PER_BLOCK) * sizeof(float);
-    } else {
-        currentWorkspace[0] = systemWorkspaceSize + usrWorkSpaceSize;
-    }
+    // } else {
+    //     currentWorkspace[0] = systemWorkspaceSize + usrWorkSpaceSize;
+    // }
     return ge::GRAPH_SUCCESS;
 }
 } // namespace optiling

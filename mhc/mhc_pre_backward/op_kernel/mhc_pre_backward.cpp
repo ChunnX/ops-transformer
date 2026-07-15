@@ -41,17 +41,17 @@ __global__ __aicore__ void mhc_pre_backward(
 
     TPipe pipe;
     if constexpr (TILINGKEY) {
-        MhcPreBackwardKernelArch22<DTYPE_X, DTYPE_PHI, true> op;
-        op.mm1_.SetSubBlockIdx(0);
+                MhcPreBackwardKernelArch22<DTYPE_X, DTYPE_PHI, true> op;
+op.mm1_.SetSubBlockIdx(0);
         op.mm1_.Init(&tilingData.mm1TilingData, &pipe);
-        op.mm2_.SetSubBlockIdx(0);
+op.mm2_.SetSubBlockIdx(0);
         op.mm2_.Init(&tilingData.mm2TilingData, &pipe);
-
+        
         op.Init(x, phi, h_pre, h_post, grad_h_in, grad_h_post, grad_h_res, alpha, h_mix, inv_rms,
                 grad_x, grad_phi, grad_alpha, grad_bias, usrWorkspace, &tilingData, &pipe);
         op.Process();
     } else {
-        MhcPreBackwardKernelArch22<DTYPE_X, DTYPE_PHI, false> op;
+        MhcPreBackwardKernelArch22<DTYPE_X, DTYPE_PHI, true> op;
         op.mm1_.SetSubBlockIdx(0);
         op.mm1_.Init(&tilingData.mm1TilingData, &pipe);
         op.mm2_.SetSubBlockIdx(0);
