@@ -182,7 +182,7 @@ private:
     __aicore__ inline void SoftmaxInitBuffer();
     __aicore__ inline void GetExtremeValue(T &negativeScalar);
     __aicore__ inline void InitSinksBuffer(ConstInfo &constInfo);
-    __aicore__ inline void CopyPhyAddrToGm( LocalTensor<uint32_t> kvPhyAddrUb, int64_t bS1Idx, int64_t s1Idx,
+    __aicore__ inline void CopyPhyAddrToGm(LocalTensor<uint32_t> kvPhyAddrUb, int64_t bS1Idx, int64_t s1Idx,
         int64_t validS2, int64_t alignNum, ConstInfo &constInfo);
     __aicore__ inline void CopyPaTableToUb(
         LocalTensor<int32_t> blkTableUb, int64_t bIdx, ConstInfo &constInfo);
@@ -354,7 +354,8 @@ __aicore__ inline uint32_t CSABlockVec<TEMPLATE_ARGS>::CopyInKvSparse(LocalTenso
     s2IdLimit = (runInfo.s2RealSize - runInfo.actualS1Size + runInfo.s1oIdx + 1) / constInfo.cmpRatio;
     uint32_t dealRow = 0;
     for (uint32_t i = 0; i < 8; i += 2) {
-        int64_t keyOffset0, keyOffset1;
+        int64_t keyOffset0;
+        int64_t keyOffset1;
         if constexpr (IS_VEC_S2PHYADDR) {
             keyOffset0 = tokenData[i];
             keyOffset1 = tokenData[i + 1];
