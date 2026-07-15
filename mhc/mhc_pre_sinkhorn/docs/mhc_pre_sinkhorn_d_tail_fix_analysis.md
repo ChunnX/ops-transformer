@@ -60,21 +60,22 @@ for (int64_t dLoopIdx = 0; dLoopIdx < tilingData->dLoop; dLoopIdx++) {
 
 前 22 轮均为完整 chunk（`curDFactor = 4512`），计算正确；**第 23 轮 tail 块**（64 元素）出错。
 
-### 2.2 机理：tail 轮次 UB 布局与 buffer 分配不一致
+### 2.2 机理：ProcessY 在 tail 块的 remainder 路径出错（已 Dump 验证）
 
-Stage2 中 x/y 相关 buffer 按 **`RoundUp(dFactor)`**（4512）分配，例如：
+Dump 验证结论：
 
-```cpp
-xQueNum2 = stage2RowFactor * hcMult * RoundUp(dFactor);  // 4 * 4512
-```
+1. **CopyIn 正确**：GM 与 UB 在 tail 全段（含后半）逐元素一致，排除 CopyIn 未刷新假设。
+2. **Cast 正确**：`xCast` 在 `d+272` 处与 GM 一致（dump 点在 remainder 之前）。
+3. **错误边界精确对齐 remainder**（NPU vs CPU 对比）：
 
-但 tail 轮次（`curDFactor = 64`）时：
+| tail 大小 | 正确区间 | 错误区间 | 边界 |
+|-----------|----------|----------|------|
+| 544 (`4704×21+544`) | `[0, 511]` 全部正确 | `[512, 543]` 32/32 全错 | `512 = 8×64` = 完整 repeat 之后 |
+| 64 (`4512×22+64`) | `[0, 31]` 全部正确 | `[32, 63]` 32/32 全错 | tail 后半段 |
 
-1. **CopyIn** 以 `dstStride=0` 紧凑写入，各行间距为 **64**
-2. **ProcessY / CastTwoDim** 按 `RoundUp(curDFactor)=64` 读取 xLocal
-3. xQue 为**双 buffer**，上一轮完整 chunk 在 UB 中按 **4512 行距** 排列；tail 轮次只在开头写入 `4×64` 元素，**未覆盖/未对齐到 4512 行距的 buffer 布局**
+根因：`ProcessY` 内 `MulABLastDimBrcInline2` / `ReduceSumARAPerf` 按 `REPEAT_SIZE=256B=64 float` 分块处理时，当 `curDFactor % 64 != 0`（如 544 余 32）或 tail 后半段，**remainder 分支计算错误**，导致 `output_0` 在 d 轴 tail 末尾出错。post/combFrag 不经过该路径，故不受影响。
 
-因此 tail 轮次 ProcessY 可能读到错误数据，导致 `output_0` 在 d 轴末尾出错。post/combFrag 不依赖该 x 读取路径，故不受影响。
+Stage2 中 x/y buffer 按 `RoundUp(dFactor)` 分配；CopyIn 用紧凑布局亦已验证无误。问题在 **ProcessY 的 vector remainder**，而非 CopyIn stale data。
 
 ### 2.3 为何不是「d > 16000 就全错」
 
@@ -132,6 +133,49 @@ tailDFactor_ = d_ % dFactor_ == 0 ? dFactor_ : d_ % dFactor_;
 ### 3.4 未采用的 Kernel 方案（已还原）
 
 曾考虑在 kernel 中对 tail 轮次做逐行 CopyIn + UB 行距对齐（`mhc_pre_sinkhorn_base.h`、`mhc_pre_sinkhorn_m_split_core.h`）。在 **d 恒 128 对齐 + tiling 修复** 的前提下，tail 块可被消除，**kernel 改动非必需**，已还原，仅保留 tiling 修改。
+
+### 3.5 调试：强制 `4512×22+64` 布局（临时代码）
+
+本机 UB 自然 tiling 往往得到 `4704×21+544`，与原始失败 case 的 `4512×22+64` 不同。为单独验证 **tail=64**（`curDFactor=64`，走主循环、不进 remainder），可在 host tiling 里于正常计算 `dLoop_` / `tailDFactor_` **之后**临时覆盖：
+
+**文件**：`op_host/op_tiling/mhc_pre_sinkhorn_tiling.cpp`（`CalcMKSplitCoreMembasePart2Tiling` 内）
+
+```cpp
+dLoop_ = CeilDiv(d_, dFactor_);
+tailDFactor_ = d_ % dFactor_ == 0 ? dFactor_ : d_ % dFactor_;
+
+// VERIFY tail=64: force original failing layout (4512*22+64) for kernel validation only.
+if (d_ == 99328) {
+    dFactor_ = 4512;
+    dLoop_ = 23;
+    tailDFactor_ = 64;
+}
+```
+
+| 参数 | 强制值 | 含义 |
+|------|--------|------|
+| `dFactor_` | 4512 | 前 22 轮每轮处理 4512 个 d |
+| `dLoop_` | 23 | 共 23 轮 d 轴循环 |
+| `tailDFactor_` | 64 | 最后一轮 `curDFactor=64` |
+
+对应关系：`99328 = 4512 × 22 + 64`，tail 区间 **d ∈ [99264, 99327]**。
+
+kernel 侧最后一轮 d 循环（`mhc_pre_sinkhorn_m_split_core.h`）：
+
+```cpp
+int64_t curDFactor = (dLoopIdx == tilingData->dLoop - 1) ? tilingData->tailDFactor : tilingData->dFactor;
+// dLoopIdx == 22 时 curDFactor = 64
+```
+
+GM 写回偏移：`dLoopIdx * dFactor` → 最后一轮写到 `4512 × 22 = 99264`。
+
+**使用方式**：
+
+1. revert tiling 规避（不做 divisor 整除搜索），保留或去掉 kernel A+B 修复，用于对比；
+2. 加上述临时代码 → `build.sh --pkg --ops=mhc_pre_sinkhorn` → 安装 custom 包；
+3. 跑 ATK case 0，对比 `output_0` 在 `[99264:99328]` 是否仍有 d+32..63 错误。
+
+**注意**：此为调试用硬编码，**验证完成后应删除**；当前仓库中该段已移除。
 
 ---
 

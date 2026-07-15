@@ -216,29 +216,19 @@ __aicore__ inline void MulABLastDimBrcInline2(const LocalTensor<T> &output, cons
                 }
             }
         }
-        // 非128对齐场景;
+        // tail remainder: per-row Mul with correct pre broadcast (avoid src1RepStride=0 row batch).
         if (numRemainPerLine > 0) {
-            if (dstRepStridePerLine > MAX_REPEAT_STRIDE) {
-                instrParams.dstBlkStride = 1;
-                instrParams.src0BlkStride = 1;
-                instrParams.src1BlkStride = 0;
-                instrParams.dstRepStride = 0;
-                instrParams.src0RepStride = 0;
-                instrParams.src1RepStride = 0;
-                for (uint32_t i = 0; i < curRowNum; i++) {
-                    Mul(output[numRepeatPerLine * elemInOneRepeat + i * curColNumAlign],
-                        input0[numRepeatPerLine * elemInOneRepeat + i * curColNumAlign], tmpBuffer[i * elemInOneBlock],
-                        numRemainPerLine, 1, instrParams);
-                }
-            } else {
-                instrParams.dstBlkStride = 1;
-                instrParams.src0BlkStride = 1;
-                instrParams.src1BlkStride = 0;
-                instrParams.dstRepStride = dstRepStridePerLine;
-                instrParams.src0RepStride = dstRepStridePerLine;
-                instrParams.src1RepStride = 0;
-                Mul(output[numRepeatPerLine * elemInOneRepeat], input0[numRepeatPerLine * elemInOneRepeat], tmpBuffer,
-                    numRemainPerLine, curRowNum, instrParams);
+            instrParams.dstBlkStride = 1;
+            instrParams.src0BlkStride = 1;
+            instrParams.src1BlkStride = 0;
+            instrParams.dstRepStride = 0;
+            instrParams.src0RepStride = 0;
+            instrParams.src1RepStride = 0;
+            for (uint32_t i = 0; i < curRowNum; i++) {
+                Mul(output[numRepeatPerLine * elemInOneRepeat + i * curColNumAlign],
+                    input0[numRepeatPerLine * elemInOneRepeat + i * curColNumAlign],
+                    tmpBuffer[(i / numN * elemInOneBlock + i % numN) * elemInOneBlock], numRemainPerLine, 1,
+                    instrParams);
             }
         }
     }
@@ -550,10 +540,17 @@ __aicore__ inline void ReduceSumARAPerf(const LocalTensor<float> &output, const 
             Add(output[i * dim2Align], output[i * dim2Align], input[i * dim1 * dim2Align + j * dim2Align],
                 elemInOneRepeat, dim2RepeatTimes, instrParams);
             if (dim2Reminder != 0) {
+                BinaryRepeatParams remParams;
+                remParams.dstBlkStride = 1;
+                remParams.src0BlkStride = 1;
+                remParams.src1BlkStride = 1;
+                remParams.dstRepStride = 0;
+                remParams.src0RepStride = 0;
+                remParams.src1RepStride = 0;
                 Add(output[i * dim2Align + dim2RepeatTimes * elemInOneRepeat],
                     output[i * dim2Align + dim2RepeatTimes * elemInOneRepeat],
-                    input[i * dim1 * dim2Align + j * dim2Align + +dim2RepeatTimes * elemInOneRepeat], dim2Reminder, 1,
-                    instrParams);
+                    input[i * dim1 * dim2Align + j * dim2Align + dim2RepeatTimes * elemInOneRepeat], dim2Reminder, 1,
+                    remParams);
             }
             PipeBarrier<PIPE_V>();
         }

@@ -152,7 +152,6 @@ ge::graphStatus MhcPreSinkhornTiling::GetShapeAttrsInfoInner()
 
 ge::graphStatus MhcPreSinkhornTiling::CalcMKSplitCoreMembasePart2Tiling()
 {
-    printf("---hyh--155\n");
     rowOfFormerBlock_ = CeilDiv(bs_, static_cast<int64_t>(aivCoreNum_));
     usedAivCoreNums_ = std::min(CeilDiv(bs_, rowOfFormerBlock_), static_cast<int64_t>(aivCoreNum_));
     rowOfTailBlock_ = bs_ - (usedAivCoreNums_ - 1) * rowOfFormerBlock_;
@@ -211,22 +210,6 @@ ge::graphStatus MhcPreSinkhornTiling::CalcMKSplitCoreMembasePart2Tiling()
         }
         if (dFactor_ > 32) {
             dFactor_ = DownAlign(dFactor_, 32);
-        }
-        // Prefer a dFactor that divides d evenly to avoid error-prone partial tail chunks in ProcessY.
-        if (d_ % dFactor_ != 0) {
-            for (int64_t candidate = DownAlign(dFactor_, 32); candidate >= 32; candidate -= 32) {
-                if (d_ % candidate != 0) {
-                    continue;
-                }
-                int64_t candXSize = rowOnceLoop * hcMult_ * RoundUp(candidate, 16) * 2 * DOUBLE_BUFFER;
-                int64_t candYSize = rowOnceLoop * RoundUp(candidate, 16) * 2 * DOUBLE_BUFFER;
-                int64_t candXCastSize = rowOnceLoop * hcMult_ * RoundUp(candidate, 8) * sizeof(float);
-                int64_t candYCastSize = rowOnceLoop * RoundUp(candidate, 8) * sizeof(float);
-                if (candXSize + candYSize + candXCastSize + candYCastSize <= ubRemain) {
-                    dFactor_ = candidate;
-                    break;
-                }
-            }
         }
         dLoop_ = CeilDiv(d_, dFactor_);
         tailDFactor_ = d_ % dFactor_ == 0 ? dFactor_ : d_ % dFactor_;

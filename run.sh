@@ -31,6 +31,6 @@ source ${custom_path}/vendors/custom_transformer/bin/set_env.bash
 # AB
 # atk node --backend pyaclnn --devices 2 node --backend cpu task -c  qwen3_vl/all_aclnn_rope_with_sin_cos_cache_16_24_24.json --task accuracy -p RopeWithSinCosCache.py -wl [0] -cp
 
-# atk node --backend pyaclnn --devices 2 node --backend cpu task -c  all_aclnn_mhc_pre_sinkhorn.json   --task accuracy -p MhcPreSinkhorn.py -e 1
+# atk node --backend pyaclnn --devices 2 node --backend cpu task -c all_aclnn_mhc_pre_sinkhorn.json --task accuracy -p MhcPreSinkhorn.py -e 1 
 
 # bash run_atk.sh -r ${atk_case_name}
