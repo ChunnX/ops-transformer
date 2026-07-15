@@ -112,7 +112,7 @@ private:
 
     TPipe *tpipe_{nullptr};
     const MoeEpCombineInfo *tilingData_{nullptr};
-    __gm__ Mc2MoeContext *mc2Context_{nullptr};
+    __gm__ Mc2Aclnn::MoeCommContext *mc2Context_{nullptr};
 
     uint32_t rankId_{0};
     uint32_t epWorldSize_{0};
@@ -227,7 +227,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::Init(
     hcommTensor_ = hcommBuf_.Get<uint8_t>();
     hcomm_.Init(hcommTensor_, HCOMM_INIT_SIZE);
 
-    mc2Context_ = reinterpret_cast<__gm__ Mc2MoeContext *>(context);
+    mc2Context_ = reinterpret_cast<__gm__ Mc2Aclnn::MoeCommContext *>(context);
     rankId_ = mc2Context_->epRankId;
     for (uint32_t i = 0; i < epWorldSize_; ++i) {
         winRankAddr_[i] = (GM_ADDR)mc2Context_->epHcclBuffer[i];
