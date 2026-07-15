@@ -199,7 +199,12 @@ void MhcPreSinkhornBackwardArch35DeterminiticTiling::DoUbTiling()
     cBlockTailCount_ = tailBsncTaskCount_;
     restSize = static_cast<int64_t>(-1);
     while (restSize <= 0) {
-        int64_t occupy = 4 * DOUBLE_BUFFER * Ops::Base::CeilAlign(cBlockCount_ * FP32_BYTE_SIZE, ubBlock_);
+        int64_t occupy = 4 * DOUBLE_BUFFER * Ops::Base::CeilAlign(cBlockCount_ * FP32_BYTE_SIZE, ubBlock_) +
+                         DOUBLE_BUFFER * Ops::Base::CeilAlign(usedAivNum_ * FP32_BYTE_SIZE, ubBlock_) +
+                         ubBlock_ +
+                         usedAivNum_ * Ops::Base::CeilAlign(n_ * n_ * FP32_BYTE_SIZE, ubBlock_) +
+                         2 * Ops::Base::CeilAlign((2 * n_ + n_ * n_) * FP32_BYTE_SIZE, ubBlock_) +
+                         2 * DOUBLE_BUFFER * Ops::Base::CeilAlign(cLoopDataLen_ * FP32_BYTE_SIZE, ubBlock_);
         restSize = ubSize_ - occupy;
         if (restSize <= 0 && cBlockCount_ > 1) {
             cBlockCount_--;
@@ -236,15 +241,12 @@ ge::graphStatus MhcPreSinkhornBackwardArch35DeterminiticTiling::GetWorkspaceSize
     auto platformInfo = context_->GetPlatformInfo();
     OP_CHECK_IF(platformInfo == nullptr, OP_LOGE(opName, "fail to get platform info"), return ge::GRAPH_FAILED);
     auto ascendPlatformInfo = platform_ascendc::PlatformAscendC(platformInfo);
-    size_t userWorkspaceSize =
-        batchSize_ * seqLength_ * n_ * c_ * FP32_BYTE_SIZE + WS_BUFFER_INTERVAL +              // xFP32
-        3 * usedAivNum_ * FP32_BYTE_SIZE + WS_BUFFER_INTERVAL +                                // gradAlpha
-        (2 * usedAivNum_ * n_ + usedAivNum_ * n_ * n_) * FP32_BYTE_SIZE + WS_BUFFER_INTERVAL + // gradBias
-        batchSize_ * seqLength_ * n_ * c_ * FP32_BYTE_SIZE * 3 + 3 * WS_BUFFER_INTERVAL +      // gradXFrom
-        batchSize_ * seqLength_ * (2 * n_ + n_ * n_) * FP32_BYTE_SIZE + WS_BUFFER_INTERVAL +   // grad_hc_before_norm
-        batchSize_ * seqLength_ * (2 * n_ + n_ * n_) * FP32_BYTE_SIZE + WS_BUFFER_INTERVAL +   // grad_norm_out
-        batchSize_ * seqLength_ * n_ * c_ * FP32_BYTE_SIZE + WS_BUFFER_INTERVAL +              // gradXFromMatMul
-        batchSize_ * seqLength_ * n_ * c_ * FP32_BYTE_SIZE + WS_BUFFER_INTERVAL;               // gradXFromRms
+    size_t userWorkspaceSize = batchSize_ * seqLength_ * n_ * c_ * FP32_BYTE_SIZE + WS_BUFFER_INTERVAL +                       //xFP32
+                                3 * usedAivNum_ * FP32_BYTE_SIZE  + WS_BUFFER_INTERVAL +                                       //gradAlpha
+                                (2 * usedAivNum_ * n_ + usedAivNum_ * n_ * n_) * FP32_BYTE_SIZE  + WS_BUFFER_INTERVAL +        //gradBias
+                                batchSize_ * seqLength_ * n_ * c_ * FP32_BYTE_SIZE * 3  + 3 * WS_BUFFER_INTERVAL +             //gradXFrom
+                                batchSize_ * seqLength_ * (2 * n_ + n_ * n_) * FP32_BYTE_SIZE + WS_BUFFER_INTERVAL +           //grad_hc_before_norm
+                                batchSize_ * seqLength_ * (2 * n_ + n_ * n_) * FP32_BYTE_SIZE + WS_BUFFER_INTERVAL;            //grad_norm_out
 
     size_t systemWorkspaceSize = ascendPlatformInfo.GetLibApiWorkSpaceSize();
     size_t* currentWorkspace = context_->GetWorkspaceSizes(1);
