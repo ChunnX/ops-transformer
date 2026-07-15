@@ -16,9 +16,9 @@
 ## 功能说明
 
 - **接口功能**：MoE的permute计算，根据索引indices将tokens广播并排序。
-- **扩展能力**：相比`aclnnMoeTokenPermute`，本接口新增`quantMode`和`expandedScaleOut`，用于Ascend 950平台下对接`MoeInitRoutingV3`，支持MXFP8和MXFP4量化输出。
+- **扩展能力**：相比`aclnnMoeTokenPermute`，本接口新增`quantMode`和`expandedScaleOut`，在Ascend 950平台支持MXFP8和MXFP4量化输出。
 - **平台行为**：
-  - Ascend 950：调用`MoeInitRoutingV3`，支持`quantMode=-1/2/3/9`。
+  - Ascend 950：`quantMode=-1`直接调用MoeTokenPermute原生tiling和kernel；`quantMode=2/3/9`调用`MoeInitRoutingV3`。
   - 非Ascend 950：量化参数静默忽略，按非量化兼容路径处理。
 
 ## 函数原型

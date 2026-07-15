@@ -8,20 +8,32 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
+set(CONDITION_UNIT ${ASCEND_COMPUTE_UNIT})
 if (BUILD_OPEN_PROJECT)
-    set(moe_token_permute_depends moe/moe_init_routing_v2 moe/moe_init_routing_v3
+    set(moe_token_permute_depends moe/moe_init_routing_v3
         CACHE INTERNAL "Dependencies for moe_token_permute")
     target_sources(op_host_aclnnInner PRIVATE
        moe_token_permute_def.cpp
     )
-    add_ops_compile_options(
-        OP_NAME MoeTokenPermute
-        OPTIONS --cce-auto-sync=on
-                -Wno-deprecated-declarations
-                -Werror
-    )
+    if(CONDITION_UNIT STREQUAL "ascend950")
+        add_ops_compile_options(
+            OP_NAME MoeTokenPermute
+            OPTIONS --cce-auto-sync=on
+                    -Wno-deprecated-declarations
+                    -Werror
+                    -mllvm
+                    -cce-aicore-dcci-before-kernel-end=false
+        )
+    else()
+        add_ops_compile_options(
+            OP_NAME MoeTokenPermute
+            OPTIONS --cce-auto-sync=on
+                    -Wno-deprecated-declarations
+                    -Werror
+        )
+    endif()
 endif()
 
 if(NOT BUILD_OPS_RTY_KERNEL)
-    add_modules_sources(OPTYPE moe_token_permute ACLNNTYPE aclnn_inner )
+    add_modules_sources(OPTYPE moe_token_permute ACLNNTYPE aclnn_exclude )
 endif()

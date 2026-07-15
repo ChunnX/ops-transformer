@@ -638,19 +638,6 @@ void MoeTokenPermuteTilingBase::Tiling4IndexCopyCompute()
     aivNum = std::max(aivNum, numBlocks);
 }
 
-static ge::graphStatus TilingForMoeTokenPermute(gert::TilingContext* context)
-{
-    MoeTokenPermuteTilingBase tiling(context);
-    return tiling.DoTiling();
-}
-
-static ge::graphStatus TilingPrepareForMoeTokenPermute(gert::TilingParseContext* context)
-{
-    (void)context;
-    return ge::GRAPH_SUCCESS;
-}
-
-IMPL_OP_OPTILING(MoeTokenPermute)
-    .Tiling(TilingForMoeTokenPermute)
-    .TilingParse<MoeTokenPermuteCompileInfo>(TilingPrepareForMoeTokenPermute);
+// 注册为兜底 tiling 模板（非 ascend950 走此路径）。IMPL_OP_OPTILING 统一在 tiling_base.cpp。
+REGISTER_OPS_TILING_TEMPLATE(MoeTokenPermute, MoeTokenPermuteTilingBase, 10000);
 } // namespace optiling
