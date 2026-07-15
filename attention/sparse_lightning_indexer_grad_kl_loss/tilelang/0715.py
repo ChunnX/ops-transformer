@@ -448,8 +448,8 @@ def tilelang_grad_kl_loss_single_kernel(
                 sm_2d_ub = T.alloc_ub((G, n_block), calc_dtype)
                 rsy_chunk_ub = T.alloc_ub(n_block, calc_dtype)
                 rsy_bc_ub = T.alloc_ub((1, n_block), calc_dtype)
-                rsy_max_ub = T.alloc_ub((1,), calc_dtype)
-                rsy_sum_ub = T.alloc_ub((1,), calc_dtype)
+                rsy_max_ub = T.alloc_ub((8,), calc_dtype)  # padded to 8 for brcb alignment
+                rsy_sum_ub = T.alloc_ub((8,), calc_dtype)  # padded to 8 for brcb alignment
                 rsy_chunk_max_ub = T.alloc_ub((1,), calc_dtype)
                 rsy_chunk_sum_ub = T.alloc_ub((1,), calc_dtype)
                 eps_sum_ub = T.alloc_ub((1,), calc_dtype)
@@ -567,6 +567,10 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.wait_flag("mte3", "v", 9)
                     T.wait_flag("mte3", "v", 10)
 
+                    # Replicate rsy_max_ub[0] → [0:8] for brcb alignment (BRCB requires rows % 8 == 0)
+                    for i in T.serial(1, 8):
+                        T.copy(rsy_max_ub[0], rsy_max_ub[i])
+
                     # Broadcast rsy_max to vector via brcb (无 PIPE_ALL):
                     #   fill(rsy_bc_ub,1.0) → row_expand_mul(*,rsy_max_ub) → 标量→向量 广播
                     #   mul(softmax_i_chunk, p_reduced_tmp, rsy_bc_ub[0,:])  向量·向量
@@ -606,6 +610,10 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.pipe_barrier("v")
                     T.tile.exp(rsy_chunk_ub, rsy_chunk_ub)
                     T.pipe_barrier("v")
+                    # Replicate rsy_sum_ub[0] → [0:8] for brcb alignment (BRCB requires rows % 8 == 0)
+                    for i in T.serial(1, 8):
+                        T.copy(rsy_sum_ub[0], rsy_sum_ub[i])
+
                     # Broadcast rsy_sum_ub[0] via brcb → rsy_bc_ub (无 PIPE_ALL)
                     T.tile.fill(rsy_bc_ub, 1.0)
                     T.pipe_barrier("v")
