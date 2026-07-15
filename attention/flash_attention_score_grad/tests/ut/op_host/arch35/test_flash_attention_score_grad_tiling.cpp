@@ -207,13 +207,13 @@ TEST_F(FlashAttentionScoreGradTiling, FlashAttentionScoreGrad_950_tiling_1)
             // kv_start_idx
             {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
             // dScaleQ
-            {{{4, 2, 5, 1}, {4, 2, 5, 1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
             // dScaleK
-            {{{4, 1, 5, 1}, {4, 1, 5, 1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
             // dScaleV
-            {{{4, 1, 5, 1}, {4, 1, 5, 1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
             // dScaledy
-            {{{4, 2, 5, 1}, {4, 2, 5, 1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
             // dScaleo
             {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
             // queryRope
@@ -310,13 +310,13 @@ TEST_F(FlashAttentionScoreGradTiling, FlashAttentionScoreGrad_950_tiling_2)
             // kv_start_idx
             {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
             // dScaleQ
-            {{{1, 1, 1, 1}, {1, 1, 1, 1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
             // dScaleK
-            {{{1, 1, 1, 1}, {1, 1, 1, 1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
             // dScaleV
-            {{{1, 1, 1, 1}, {1, 1, 1, 1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
             // dScaledy
-            {{{1, 1, 1, 1}, {1, 1, 1, 1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
             // dScaleo
             {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
             // queryRope
@@ -619,13 +619,13 @@ TEST_F(FlashAttentionScoreGradTiling, FlashAttentionScoreGrad_950_tiling_5)
             // kv_start_idx
             {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
             // dScaleQ
-            {{{64, 16, 1, 1}, {64, 16, 1, 1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
             // dScaleK
-            {{{64, 16, 1, 1}, {64, 16, 1, 1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
             // dScaleV
-            {{{64, 16, 1, 1}, {64, 16, 1, 1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
             // dScaledy
-            {{{64, 16, 1, 1}, {64, 16, 1, 1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
             // dScaleo
             {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
             // queryRope
@@ -722,13 +722,13 @@ TEST_F(FlashAttentionScoreGradTiling, FlashAttentionScoreGrad_950_tiling_6)
             // kv_start_idx
             {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
             // dScaleQ
-            {{{3, 1, 1, 1}, {3, 1, 1, 1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
             // dScaleK
-            {{{3, 1, 1, 1}, {3, 1, 1, 1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
             // dScaleV
-            {{{3, 1, 1, 1}, {3, 1, 1, 1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
             // dScaledy
-            {{{3, 1, 1, 1}, {3, 1, 1, 1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
             // dScaleo
             {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
             // queryRope
@@ -825,13 +825,13 @@ TEST_F(FlashAttentionScoreGradTiling, FlashAttentionScoreGrad_950_tiling_7)
             // kv_start_idx
             {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
             // dScaleQ
-            {{{1, 1, 1, 1}, {1, 1, 1, 1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
             // dScaleK
-            {{{1, 1, 32, 1}, {1, 1, 32, 1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
             // dScaleV
-            {{{1, 1, 32, 1}, {1, 1, 32, 1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
             // dScaledy
-            {{{1, 1, 1, 1}, {1, 1, 1, 1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
             // dScaleo
             {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
             // queryRope
@@ -930,13 +930,13 @@ TEST_F(FlashAttentionScoreGradTiling, FlashAttentionScoreGrad_950_tiling_8)
             // kv_start_idx
             {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
             // dScaleQ
-            {{{3, 2, 1, 1}, {3, 2, 1, 1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
             // dScaleK
-            {{{3, 2, 1, 1}, {3, 2, 1, 1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
             // dScaleV
-            {{{3, 2, 1, 1}, {3, 2, 1, 1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
             // dScaledy
-            {{{3, 2, 1, 1}, {3, 2, 1, 1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
             // dScaleo
             {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
             // queryRope
@@ -1035,13 +1035,13 @@ TEST_F(FlashAttentionScoreGradTiling, FlashAttentionScoreGrad_950_tiling_9)
             // kv_start_idx
             {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
             // dScaleQ
-            {{{3, 2, 1, 1}, {3, 2, 1, 1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
             // dScaleK
-            {{{3, 2, 1, 1}, {3, 2, 1, 1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
             // dScaleV
-            {{{3, 2, 1, 1}, {3, 2, 1, 1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
             // dScaledy
-            {{{3, 2, 1, 1}, {3, 2, 1, 1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
             // dScaleo
             {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
             // queryRope
@@ -1141,13 +1141,13 @@ TEST_F(FlashAttentionScoreGradTiling, FlashAttentionScoreGrad_950_tiling_10)
             // kv_start_idx
             {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
             // dScaleQ
-            {{{3, 2, 1, 1}, {3, 2, 1, 1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
             // dScaleK
-            {{{3, 2, 1, 1}, {3, 2, 1, 1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
             // dScaleV
-            {{{3, 2, 1, 1}, {3, 2, 1, 1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
             // dScaledy
-            {{{3, 2, 1, 1}, {3, 2, 1, 1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
             // dScaleo
             {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
             // queryRope
