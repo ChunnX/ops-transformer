@@ -43,8 +43,8 @@ struct StageTwoParams {
     GlobalTensor<bfloat16_t> kg;
     GlobalTensor<bfloat16_t> out;
     GM_ADDR ws;
-    StageTwoMT *mm1;
-    StageTwoMTFp32C *mm1Fp32C;
+    StageTwoMT *mm1Bf16;
+    StageTwoMTFp32C *mm1Fp32;
     TPipe *pipe;
     ChunkGroup *cg;
     int64_t Nv;
@@ -308,7 +308,7 @@ public:
                                         GlobalTensor<bfloat16_t> state,
                                         GlobalTensor<bfloat16_t> out)
     {
-        RunMatmul(sTP_->mm1, qPrime, false, state, true, out,
+        RunMatmul(sTP_->mm1Bf16, qPrime, false, state, true, out,
                   curChunkSize_, Dv_, Dk_, Dk_, Nv_ * Dv_);
     }
 
@@ -318,10 +318,10 @@ public:
                                      GlobalTensor<vInnerType> vPrime)
     {
         if constexpr (std::is_same_v<vInnerType, float>) {
-            RunMatmul(sTP_->mm1Fp32C, kCumdecay, false, state, true, vPrime,
+            RunMatmul(sTP_->mm1Fp32, kCumdecay, false, state, true, vPrime,
                       curChunkSize_, Dv_, Dk_, 1);
         } else {
-            RunMatmul(sTP_->mm1, kCumdecay, false, state, true, vPrime,
+            RunMatmul(sTP_->mm1Bf16, kCumdecay, false, state, true, vPrime,
                       curChunkSize_, Dv_, Dk_, 1);
         }
     }
@@ -332,10 +332,10 @@ public:
                                        GlobalTensor<stateOutType> state)
     {
         if constexpr (std::is_same_v<stateOutType, float>) {
-            RunMatmul(sTP_->mm1Fp32C, vInner, true, kg, false, state,
+            RunMatmul(sTP_->mm1Fp32, vInner, true, kg, false, state,
                       Dv_, Dk_, curChunkSize_, 0);
         } else {
-            RunMatmul(sTP_->mm1, vInner, true, kg, false, state,
+            RunMatmul(sTP_->mm1Bf16, vInner, true, kg, false, state,
                       Dv_, Dk_, curChunkSize_, 1);
         }
     }

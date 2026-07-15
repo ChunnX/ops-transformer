@@ -236,8 +236,8 @@ private:
         initStageTwoParams.kg = kg_;
         initStageTwoParams.out = out_[cg.startPos * tiling_->nv * tiling_->dv];
         initStageTwoParams.ws = stageWsAddr_;
-        initStageTwoParams.mm1 = &stage2MmBf16_;
-        initStageTwoParams.mm1Fp32C = &stage2MmFp32_;
+        initStageTwoParams.mm1Bf16 = &stage2MmBf16_;
+        initStageTwoParams.mm1Fp32 = &stage2MmFp32_;
         initStageTwoParams.pipe = pipe_;
         initStageTwoParams.cg = &cg;
         initStageTwoParams.Nv = tiling_->nv;
