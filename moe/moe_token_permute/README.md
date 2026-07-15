@@ -26,7 +26,7 @@
     $$
 
     $$
-    permuteTokens[sortedIndicesFirst[i]]=tokens[i//topK]
+    permuteTokensOut[sortedIndicesOut[i]]=tokens[i//topK]
     $$
 
   - paddedMode为`true`时
@@ -102,19 +102,10 @@
 - indices要求元素个数小于`16777215`，值大于等于`0`小于`16777215`(单点支持int32或int64的最大或最小值，其余值不在范围内排序结果不正确)。
 - tokens数据类型为INT8时，indices元素个数不大于`10240`，numOutTokens不大于`10240`。
 - 不支持paddedMode为`true`。
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：topK小于等于512。
-- <term>Ascend 950PR/Ascend 950DT</term>：
-  在调用本接口时，框架内部会转调用[aclnnMoeInitRoutingV2](../moe_init_routing_v2/docs/aclnnMoeInitRoutingV2.md)接口，如果出现参数错误提示，请参考以下参数映射关系：
-  - token输入等同于aclnnMoeInitRoutingV2接口的x输入。
-  - indices输入等同于aclnnMoeInitRoutingV2接口的expertIdx输入。
-  - numOutTokens输入等同于aclnnMoeInitRoutingV2接口的activeNum输入。
-  - paddedMode输入等同于aclnnMoeInitRoutingV2接口的dropPadMode输入。
-  - permuteTokensOut输出等同于aclnnMoeInitRoutingV2接口的expandedXOut输出。
-  - sortedIndicesOut输出等同于aclnnMoeInitRoutingV2接口的expandedRowIdxOut输出。
+- topK小于等于512。
 
 ## 调用说明
 
 | 调用方式   | 样例代码           | 说明                                         |
 | ---------------- | --------------------------- | --------------------------------------------------- |
 | aclnn接口  | [test_aclnn_moe_token_permute](examples/test_aclnn_moe_token_permute.cpp) | 通过[aclnnMoeTokenPermute](docs/aclnnMoeTokenPermute.md)接口方式调用MoeTokenPermute算子。 |
-

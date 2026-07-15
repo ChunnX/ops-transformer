@@ -202,6 +202,34 @@ TEST_F(l2_moe_token_permute_regbase_test, Ascend950_moe_token_permute_indices_1d
     EXPECT_EQ(getWorkspaceResult, ACLNN_SUCCESS);
 }
 
+TEST_F(l2_moe_token_permute_regbase_test, Ascend950_moe_token_permute_empty_int64)
+{
+    auto tokens = TensorDesc({0, 8}, ACL_FLOAT16, ACL_FORMAT_ND);
+    auto indices = TensorDesc({0, 4}, ACL_INT64, ACL_FORMAT_ND);
+    auto permuteTokensOut = TensorDesc({0, 8}, ACL_FLOAT16, ACL_FORMAT_ND);
+    auto sortedIndicesOut = TensorDesc({0}, ACL_INT32, ACL_FORMAT_ND);
+
+    auto ut =
+        OP_API_UT(aclnnMoeTokenPermute, INPUT(tokens, indices, 0, false), OUTPUT(permuteTokensOut, sortedIndicesOut));
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    EXPECT_EQ(ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor), ACLNN_SUCCESS);
+}
+
+TEST_F(l2_moe_token_permute_regbase_test, Ascend950_moe_token_permute_rank3_tokens)
+{
+    auto tokens = TensorDesc({2, 3, 4}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-10, 10);
+    auto indices = TensorDesc({2, 2}, ACL_INT32, ACL_FORMAT_ND).ValueRange(0, 8);
+    auto permuteTokensOut = TensorDesc({4, 3, 4}, ACL_FLOAT16, ACL_FORMAT_ND);
+    auto sortedIndicesOut = TensorDesc({4}, ACL_INT32, ACL_FORMAT_ND);
+
+    auto ut =
+        OP_API_UT(aclnnMoeTokenPermute, INPUT(tokens, indices, 0, false), OUTPUT(permuteTokensOut, sortedIndicesOut));
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    EXPECT_EQ(ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor), ACLNN_SUCCESS);
+}
+
 TEST_F(l2_moe_token_permute_regbase_test, Ascend950_moe_token_permute_num_out_tokens_diff)
 {
     auto tokens = TensorDesc({2, 5}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-10, 10);
@@ -360,6 +388,21 @@ TEST_F(l2_moe_token_permute_regbase_test, Ascend950_moe_token_permute_v2_unquant
     auto expandedScaleOut = TensorDesc({0}, ACL_FLOAT, ACL_FORMAT_ND);
 
     auto ut = OP_API_UT(aclnnMoeTokenPermuteV2, INPUT(tokens, indices, 10, false, -1),
+                        OUTPUT(permuteTokensOut, sortedIndicesOut, expandedScaleOut));
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    EXPECT_EQ(ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor), ACLNN_SUCCESS);
+}
+
+TEST_F(l2_moe_token_permute_regbase_test, Ascend950_moe_token_permute_v2_empty_int64_unquant)
+{
+    auto tokens = TensorDesc({0, 8}, ACL_FLOAT16, ACL_FORMAT_ND);
+    auto indices = TensorDesc({0, 4}, ACL_INT64, ACL_FORMAT_ND);
+    auto permuteTokensOut = TensorDesc({0, 8}, ACL_FLOAT16, ACL_FORMAT_ND);
+    auto sortedIndicesOut = TensorDesc({0}, ACL_INT32, ACL_FORMAT_ND);
+    auto expandedScaleOut = TensorDesc({0}, ACL_FLOAT, ACL_FORMAT_ND);
+
+    auto ut = OP_API_UT(aclnnMoeTokenPermuteV2, INPUT(tokens, indices, 0, false, -1),
                         OUTPUT(permuteTokensOut, sortedIndicesOut, expandedScaleOut));
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
