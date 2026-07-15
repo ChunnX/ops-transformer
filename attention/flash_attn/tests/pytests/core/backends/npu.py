@@ -1,7 +1,10 @@
 """NPU 后端 — 按 flash_attn.md 参数组调用，支持 eager / graph 两种模式。"""
 
 import numpy as np
+import os
+import shutil
 import torch
+from pathlib import Path
 from typing import Any, Dict
 
 from .base import Backend
@@ -15,6 +18,8 @@ except ImportError:
 try:
     import torchair
     from torchair.configs.compiler_config import CompilerConfig
+    from torchair.core._backend import uninstall_static_kernel
+    from torchair._acl_concrete_graph import static_kernel as _sk
     _HAS_TORCHAIR = True
 except ImportError:
     _HAS_TORCHAIR = False
@@ -148,19 +153,50 @@ class NPUBackend(Backend):
         if _HAS_NPU:
             torch.npu.empty_cache()
 
+    def _reset_static_kernel_state(self):
+        """彻底清理 static kernel 状态，确保每次 _get_graph_net 都触发重新编译。
+        清理四层：CANN runtime reselect + uninstall.sh + Python全局set + 磁盘文件。"""
+        if _HAS_TORCHAIR:
+            uninstall_static_kernel()
+            _sk._installed_run_pkgs.clear()
+            _sk._uninstall_paths.clear()
+            try:
+                import torch_npu
+                torch_npu.npu._aclnn_reselect_static_kernel()
+            except Exception:
+                pass
+        build_dir = "./fa_kernel_cache"
+        shutil.rmtree(build_dir, ignore_errors=True)
+        os.makedirs(build_dir, exist_ok=True)
+        opp_path = os.environ.get("ASCEND_OPP_PATH", "")
+        if opp_path:
+            for d in Path(opp_path).rglob("static_kernel"):
+                shutil.rmtree(d, ignore_errors=True)
+
     def _get_graph_net(self):
-        if self._graph_net is None:
-            torch._dynamo.reset()
-            net = FlashAttnGraphNetwork().npu()
-            config = CompilerConfig()
-            config.mode = "reduce-overhead"
-            config.experimental_config.aclgraph._aclnn_static_shape_kernel = True
-            config.experimental_config.aclgraph._aclnn_static_shape_kernel_build_dir = "./"
-            config.experimental_config.frozen_parameter = True
-            config.experimental_config.tiling_schedule_optimize = True
-            config.experimental_config.topology_sorting_strategy = "StableRDFS"
-            npu_backend = torchair.get_npu_backend(compiler_config=config)
-            self._graph_net = torch.compile(net, fullgraph=False, backend=npu_backend, dynamic=False)
+        print("[graph_mode] _get_graph_net: resetting static kernel state...")
+        self._reset_static_kernel_state()
+        print("[graph_mode] _get_graph_net: dynamo reset + new torch.compile...")
+        torch._dynamo.reset()
+        net = FlashAttnGraphNetwork().npu()
+        config = CompilerConfig()
+        config.mode = "reduce-overhead"
+        config.experimental_config.aclgraph._aclnn_static_shape_kernel = True
+        config.experimental_config.aclgraph._aclnn_static_shape_kernel_build_dir = "./fa_kernel_cache"
+        config.experimental_config.frozen_parameter = True
+        npu_backend = torchair.get_npu_backend(compiler_config=config)
+        self._graph_net = torch.compile(net, fullgraph=False, backend=npu_backend, dynamic=False)
+
+        import warnings
+        _orig_warn = warnings.warn
+        _orig_sk = _sk._compile_static_kernel_for_single_card
+        def _patched_sk(*args, **kwargs):
+            print("[graph_mode] compile_static_kernel_for_single_card CALLED")
+            _orig_sk(*args, **kwargs)
+            print("[graph_mode] compile_static_kernel_for_single_card DONE")
+        _sk._compile_static_kernel_for_single_card = _patched_sk
+        _sk._compile_static_kernel = _patched_sk
+
         return self._graph_net
 
     def compute(self, inputs: Dict[str, torch.Tensor],
@@ -183,6 +219,7 @@ class NPUBackend(Backend):
 
         if self._graph_mode:
             net = self._get_graph_net()
+            print(f"[graph_mode] calling compiled net with q.shape={inputs['q'].shape}...")
             out, lse = net(
                 inputs["q"], inputs["k"], inputs["v"],
                 kernel_kwargs.get("block_table"),
@@ -203,6 +240,12 @@ class NPUBackend(Backend):
                 kernel_kwargs.get("layout_out", "BNSD"),
                 kernel_kwargs.get("return_softmax_lse", False),
             )
+            import glob
+            cache_contents = glob.glob("./fa_kernel_cache/**/*", recursive=True)
+            print(f"[graph_mode] fa_kernel_cache contents after net call: {len(cache_contents)} files")
+            if cache_contents:
+                for f in cache_contents[:10]:
+                    print(f"  {f}")
         else:
             out, lse = flash_attn(inputs["q"], inputs["k"], inputs["v"],
                                       metadata=metadata, **kernel_kwargs)
