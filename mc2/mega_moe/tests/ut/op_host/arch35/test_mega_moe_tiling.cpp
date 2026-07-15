@@ -11,6 +11,7 @@
 #include <cstdint>
 #include <iostream>
 #include <limits>
+#include <vector>
 #include <gtest/gtest.h>
 #include "tiling/tiling_api.h"
 #include "util/math_util.h"
@@ -132,6 +133,37 @@ TEST_F(MegaMoeArch35TilingTest, NewNoQuantReadyLayoutIsMteGenericOnly)
     WorkspaceInfo nzInfo(base, &tiling);
     EXPECT_NE(nzInfo.gmm2MmadResPtr, nullptr);
     EXPECT_NE(nzInfo.gmm2NoQuantReadyPtr, nullptr);
+}
+
+TEST_F(MegaMoeArch35TilingTest, BalancedTokenOwnershipCoversEveryTokenOnce)
+{
+    constexpr uint32_t logicalAiv1Num = 36U;
+    const std::vector<uint32_t> tokenCounts{0U, 1U, 35U, 36U, 255U, 256U, 257U};
+    for (uint32_t tokenCount : tokenCounts) {
+        std::vector<uint32_t> owners(tokenCount, 0U);
+        uint32_t previousEnd = 0U;
+        for (uint32_t coreIdx = 0; coreIdx < logicalAiv1Num; ++coreIdx) {
+            MegaMoeImpl::TokenRange range =
+                MegaMoeImpl::GetBalancedTokenRange(tokenCount, coreIdx, logicalAiv1Num);
+            EXPECT_EQ(range.start, previousEnd) << "tokenCount=" << tokenCount << ", coreIdx=" << coreIdx;
+            EXPECT_LE(range.start + range.count, tokenCount);
+            for (uint32_t tokenIdx = range.start; tokenIdx < range.start + range.count; ++tokenIdx) {
+                owners[tokenIdx]++;
+            }
+            previousEnd = range.start + range.count;
+        }
+        EXPECT_EQ(previousEnd, tokenCount);
+        for (uint32_t ownerCount : owners) {
+            EXPECT_EQ(ownerCount, 1U) << "tokenCount=" << tokenCount;
+        }
+    }
+
+    for (uint32_t coreIdx = 0; coreIdx < logicalAiv1Num; ++coreIdx) {
+        MegaMoeImpl::TokenRange range =
+            MegaMoeImpl::GetBalancedTokenRange(256U, coreIdx, logicalAiv1Num);
+        EXPECT_TRUE(range.count == 7U || range.count == 8U);
+    }
+    EXPECT_EQ(MegaMoeImpl::GetBalancedTokenRange(256U, 0U, 0U).count, 0U);
 }
 
 TEST_F(MegaMoeArch35TilingTest, H4096_BS128_FP8E4M3FN)
