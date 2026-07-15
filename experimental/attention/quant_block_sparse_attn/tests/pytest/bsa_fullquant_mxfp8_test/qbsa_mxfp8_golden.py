@@ -54,10 +54,11 @@ _DTYPE_MAP = {
     "float8_e8m0fnu": torch.float8_e8m0fnu,
 }
 
-_CASE_BOOL_FIELDS = {"enable", "is_contiguous", "return_softmax_lse"}
+_CASE_BOOL_FIELDS = {"enable", "is_contiguous", "return_softmax_lse", "empty_actual_seq"}
 _CASE_INT_FIELDS = {
     "B", "N1", "N2", "D", "S1", "S2", "block_size", "mask_mode", "quant_group_size", "seed",
-    "device_id", "sparse_q_block_size", "sparse_kv_block_size", "sparse_count", "quant_mode",
+    "device_id", "sparse_q_block_size", "sparse_kv_block_size", "sparse_count", "quant_mode", "block_num",
+    "n1_n2_ratio", "s1_base_size", "s2_base_size",
 }
 _CASE_FLOAT_FIELDS = {"p_scale_value", "data_range_q", "data_range_k", "data_range_v", "softmax_scale"}
 _CASE_INT_LIST_FIELDS = {"actual_seq_q", "actual_seq_kv"}
@@ -195,6 +196,41 @@ def _resolve_dtype(value, field_name):
     return _DTYPE_MAP[value]
 
 
+def _validate_case_design_fields(case):
+    """校验批量用例表中的设计因子；旧用例未提供这些字段时保持兼容。"""
+    if "n1_n2_ratio" in case and case["N1"] != case["N2"] * case["n1_n2_ratio"]:
+        raise ValueError(
+            f"N1 must equal N2 * n1_n2_ratio, got {case['N1']} != "
+            f"{case['N2']} * {case['n1_n2_ratio']}")
+
+    block_sizes = [case.get(name) for name in ("block_size", "sparse_q_block_size", "sparse_kv_block_size")]
+    if all(value is not None for value in block_sizes) and len(set(block_sizes)) != 1:
+        raise ValueError(
+            "block_size, sparse_q_block_size and sparse_kv_block_size must be equal, "
+            f"got {block_sizes}")
+
+    batch = case.get("B")
+    for field_name in ("actual_seq_q", "actual_seq_kv"):
+        if batch is not None and field_name in case and len(case[field_name]) != batch:
+            raise ValueError(f"{field_name} length must equal B, got {len(case[field_name])} != {batch}")
+
+    if "s1_s2_relation" in case:
+        actual_relation = "gt" if case["S1"] > case["S2"] else "lt" if case["S1"] < case["S2"] else "eq"
+        if case["s1_s2_relation"] != actual_relation:
+            raise ValueError(
+                f"s1_s2_relation must be {actual_relation} for S1/S2={case['S1']}/{case['S2']}, "
+                f"got {case['s1_s2_relation']}")
+
+    if "alignment" in case and "s1_base_size" in case and "s2_base_size" in case:
+        s1_state = "aligned" if case["S1"] % case["s1_base_size"] == 0 else "unaligned"
+        s2_state = "aligned" if case["S2"] % case["s2_base_size"] == 0 else "unaligned"
+        expected_alignment = f"s1_{s1_state}_s2_{s2_state}"
+        if case["alignment"] != expected_alignment:
+            raise ValueError(
+                f"alignment must be {expected_alignment} for S1/S2={case['S1']}/{case['S2']}, "
+                f"got {case['alignment']}")
+
+
 def _normalize_case(case):
     case = dict(case)
     case["fp8_dtype"] = _resolve_dtype(case["fp8_dtype"], "fp8_dtype")
@@ -202,6 +238,7 @@ def _normalize_case(case):
     if case.get("enable") is None:
         case["enable"] = True
     case["softmax_scale"] = case.get("softmax_scale") or (1.0 / math.sqrt(float(case["D"])))
+    _validate_case_design_fields(case)
     return case
 
 
@@ -375,12 +412,40 @@ def _physical_ids(start, count, pattern, rng):
     return ids
 
 
-def _make_reference_block_table(batch, seq_lens, block_size, pattern, rng):
+def _make_reference_block_table(batch, seq_lens, block_size, pattern, rng, physical_block_num=None):
     if isinstance(seq_lens, int):
         seq_lens = [seq_lens] * batch
     block_nums = [math.ceil(int(seq_len) / block_size) for seq_len in seq_lens]
     max_block_num = max(block_nums) if block_nums else 0
     block_table = torch.full((batch, max_block_num), fill_value=-1, dtype=torch.int32)
+
+    if physical_block_num is not None:
+        physical_block_num = int(physical_block_num)
+        total_logical_blocks = sum(block_nums)
+        if physical_block_num <= 0 and total_logical_blocks > 0:
+            raise ValueError(f"block_num must be positive, got {physical_block_num}")
+        if total_logical_blocks == 0:
+            return block_table
+
+        physical_order = list(range(physical_block_num))
+        if pattern == "reverse":
+            physical_order.reverse()
+        elif pattern == "random":
+            rng.shuffle(physical_order)
+        elif pattern != "sequential":
+            raise ValueError(f"Unsupported block table pattern: {pattern}")
+
+        logical_to_physical = [physical_order[idx % physical_block_num] for idx in range(total_logical_blocks)]
+        if max(logical_to_physical) != physical_block_num - 1:
+            logical_to_physical[-1] = physical_block_num - 1
+
+        logical_offset = 0
+        for batch_idx, logical_block_num in enumerate(block_nums):
+            block_table[batch_idx, :logical_block_num] = torch.tensor(
+                logical_to_physical[logical_offset:logical_offset + logical_block_num], dtype=torch.int32)
+            logical_offset += logical_block_num
+        return block_table
+
     physical_block_offset = 0
     for batch_idx, block_num in enumerate(block_nums):
         physical_ids = _physical_ids(physical_block_offset, block_num, pattern, rng)
@@ -388,6 +453,23 @@ def _make_reference_block_table(batch, seq_lens, block_size, pattern, rng):
         for block_idx, physical_block in enumerate(physical_ids):
             block_table[batch_idx, block_idx] = int(physical_block)
     return block_table
+
+
+def _materialize_dense_from_pa_cache(pa_cache, seq_lens, block_size, block_table):
+    """按 block_table 将物理 PA block 展开成 CPU golden 使用的逻辑 BSND Tensor。"""
+    batch = len(seq_lens)
+    _, num_heads, _, head_dim = pa_cache.shape
+    max_seq_len = max(int(seq_len) for seq_len in seq_lens)
+    dense = torch.zeros((batch, max_seq_len, num_heads, head_dim), dtype=pa_cache.dtype)
+    for batch_idx, seq_len in enumerate(seq_lens):
+        logical_block_num = math.ceil(int(seq_len) / block_size)
+        for logical_block_idx in range(logical_block_num):
+            physical_block_idx = int(block_table[batch_idx, logical_block_idx])
+            logical_offset = logical_block_idx * block_size
+            valid_len = min(block_size, int(seq_len) - logical_offset)
+            dense[batch_idx, logical_offset:logical_offset + valid_len] = \
+                pa_cache[physical_block_idx, :, :valid_len].permute(1, 0, 2)
+    return dense
 
 
 def _allowed_blocks(mask_mode, qb_idx, sparse_q_block_size, sparse_kv_block_size, q_len, kv_len):
@@ -580,6 +662,7 @@ def mxfp8_pa_preprocessing(tensor_bnsd, seq_lens, block_size, block_table,
     tensor_bnsd = tensor_bnsd if isinstance(tensor_bnsd, torch.Tensor) else torch.as_tensor(tensor_bnsd)
     block_table = block_table if isinstance(block_table, torch.Tensor) else torch.as_tensor(block_table)
     B, N, S, D = tensor_bnsd.shape
+    physical_block_num = int(block_table.max().item()) + 1 if block_table.numel() > 0 else 0
 
     if is_scale:
         if is_vscale:
@@ -587,20 +670,19 @@ def mxfp8_pa_preprocessing(tensor_bnsd, seq_lens, block_size, block_table,
             v_descale_pack_ratio = group_size * 2
             pack_seq_lens = [math.ceil(act_s / v_descale_pack_ratio) for act_s in seq_lens]
             pack_block_size = math.ceil(block_size / v_descale_pack_ratio)
-            total_block_num = sum(math.ceil(act_s / pack_block_size) for act_s in pack_seq_lens)
-            out_shape = (total_block_num, N, pack_block_size, D, 2)
+            out_shape = (physical_block_num, N, pack_block_size, D, 2)
         else:
             if D % 2 != 0:
                 raise ValueError("K descale Dg must be even for pair packing")
             tensor_processed = tensor_bnsd.reshape(B, N, S, D // 2, 2)
             pack_seq_lens = seq_lens
             pack_block_size = block_size
-            out_shape = (sum(math.ceil(act_s / block_size) for act_s in seq_lens), N, block_size, D // 2, 2)
+            out_shape = (physical_block_num, N, block_size, D // 2, 2)
     else:
         tensor_processed = tensor_bnsd
         pack_seq_lens = seq_lens
         pack_block_size = block_size
-        out_shape = (sum(math.ceil(act_s / block_size) for act_s in seq_lens), N, block_size, D)
+        out_shape = (physical_block_num, N, block_size, D)
 
     fill_value = E8M0_MIN_POSITIVE if is_scale else 0
 
@@ -669,7 +751,6 @@ def _generate_reference_style_mxfp8_inputs():
     total_q = int(cu_seqlens_q[-1].item())
 
     batch = case["B"]
-    s2 = max(kv_lengths)
     n1 = case["N1"]
     n2 = case["N2"]
     head_dim = case["D"]
@@ -684,15 +765,17 @@ def _generate_reference_style_mxfp8_inputs():
         q_descale = get_mxfp8_per_token_group_quant_scale(
             query.unsqueeze(0), FP8_DTYPE, QUANT_GROUP_SIZE).squeeze(0)
 
-    dense_key = _rand_fp8((batch, s2, n2, head_dim), generator, DATA_RANGE_K)
-    dense_value = _rand_fp8((batch, s2, n2, head_dim), generator, DATA_RANGE_V)
+    block_table = _make_reference_block_table(
+        batch, kv_lengths, BLOCK_SIZE, case["block_table_pattern"], rng, case.get("block_num"))
+    physical_block_num = int(block_table.max().item()) + 1
+    physical_key = _rand_fp8((physical_block_num, n2, BLOCK_SIZE, head_dim), generator, DATA_RANGE_K)
+    physical_value = _rand_fp8((physical_block_num, n2, BLOCK_SIZE, head_dim), generator, DATA_RANGE_V)
+    dense_key = _materialize_dense_from_pa_cache(physical_key, kv_lengths, BLOCK_SIZE, block_table)
+    dense_value = _materialize_dense_from_pa_cache(physical_value, kv_lengths, BLOCK_SIZE, block_table)
     dense_k_descale = get_mxfp8_per_token_group_quant_scale(
         dense_key, FP8_DTYPE, QUANT_GROUP_SIZE)
     dense_v_descale = get_mxfp8_per_channel_group_quant_scale(
         dense_value, FP8_DTYPE, QUANT_GROUP_SIZE)
-
-    block_table = _make_reference_block_table(
-        batch, kv_lengths, BLOCK_SIZE, case["block_table_pattern"], rng)
 
     sparse_indices, sparse_seq_len = _make_reference_sparse_indices(case, q_lengths, kv_lengths, rng)
     p_scale = torch.tensor([float(case["p_scale_value"])], dtype=torch.float32)
@@ -973,8 +1056,12 @@ def _call_npu_fa_op(q, k, v, mask, q_lengths, kv_lengths, cu_seqlens_q, cu_seqle
     _ensure_custom_ops_registered()
     torch_npu.npu.set_device(int(DEVICE_ID))
 
-    seqused_q = torch.tensor(q_lengths, dtype=torch.int32)
-    seqused_kv = torch.tensor(kv_lengths, dtype=torch.int32)
+    if CASE.get("empty_actual_seq", False):
+        seqused_q = torch.empty((0,), dtype=torch.int32)
+        seqused_kv = torch.empty((0,), dtype=torch.int32)
+    else:
+        seqused_q = torch.tensor(q_lengths, dtype=torch.int32)
+        seqused_kv = torch.tensor(kv_lengths, dtype=torch.int32)
     cu_seqlens_q = _to_npu(cu_seqlens_q)
     cu_seqlens_kv = _to_npu(cu_seqlens_kv)
     seqused_q = seqused_q.npu()
