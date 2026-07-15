@@ -240,10 +240,10 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Init(
     params_.b2GmAddr = GetTensorAddr(0, weight2);
     params_.bScaleGmAddr = GetTensorAddr(0, weightScales1);
     params_.b2ScaleGmAddr = GetTensorAddr(0, weightScales2);
-    params_.sharedBGmAddr = sharedWeight1;
-    params_.sharedB2GmAddr = sharedWeight2;
-    params_.sharedBScaleGmAddr = sharedWeightScale1;
-    params_.sharedB2ScaleGmAddr = sharedWeightScale2;
+    params_.sharedBGmAddr = GetTensorAddr(0, sharedWeight1);
+    params_.sharedB2GmAddr = GetTensorAddr(0, sharedWeight2);
+    params_.sharedBScaleGmAddr = GetTensorAddr(0, sharedWeightScale1);
+    params_.sharedB2ScaleGmAddr = GetTensorAddr(0, sharedWeightScale2);
 
     params_.y2GmAddr = yOut;
     params_.expertTokenNumsOutGmAddr = expertTokenNumsOut;

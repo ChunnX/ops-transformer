@@ -587,7 +587,7 @@ static ge::graphStatus CheckSharedExpertInputs(const gert::TilingContext *contex
     }
 
     auto weightOneDesc = context->GetDynamicInputDesc(config.weight1Index, 0);
-    auto sharedWeight1Desc = context->GetOptionalInputDesc(config.sharedWeight1Index);
+    auto sharedWeight1Desc = context->GetDynamicInputDesc(config.sharedWeight1Index, 0);
     OP_TILING_CHECK(sharedWeight1Desc == nullptr,
                     OP_LOGE_WITH_INVALID_INPUT(nodeName, "shared_weight1 must be provided when sharedExpertNum > 0"),
                     return ge::GRAPH_FAILED);
@@ -596,7 +596,7 @@ static ge::graphStatus CheckSharedExpertInputs(const gert::TilingContext *contex
                         std::to_string(sharedWeight1Desc->GetDataType()).c_str(),
                         "must be same as weight1"),
                     return ge::GRAPH_FAILED);
-    auto sharedWeight1Shape = context->GetOptionalInputShape(config.sharedWeight1Index);
+    auto sharedWeight1Shape = context->GetDynamicInputShape(config.sharedWeight1Index, 0);
     OP_TILING_CHECK(sharedWeight1Shape->GetStorageShape().GetDimNum() != THREE_DIMS,
                     OP_LOGE_FOR_INVALID_SHAPEDIM(nodeName, "shared_weight1",
                         (std::to_string(sharedWeight1Shape->GetStorageShape().GetDimNum()) + "D").c_str(), "3D"),
@@ -617,12 +617,12 @@ static ge::graphStatus CheckSharedExpertInputs(const gert::TilingContext *contex
                         "must be equal to weight1 dim2"),
                     return ge::GRAPH_FAILED);
 
-    auto sharedWeight2Desc = context->GetOptionalInputDesc(config.sharedWeight2Index);
+    auto sharedWeight2Desc = context->GetDynamicInputDesc(config.sharedWeight2Index, 0);
     OP_TILING_CHECK(sharedWeight2Desc == nullptr,
                     OP_LOGE_WITH_INVALID_INPUT(nodeName, "shared_weight2 must be provided when sharedExpertNum > 0"),
                     return ge::GRAPH_FAILED);
     auto weightTwoStorageShape = context->GetDynamicInputShape(config.weight2Index, 0);
-    auto sharedWeight2Shape = context->GetOptionalInputShape(config.sharedWeight2Index);
+    auto sharedWeight2Shape = context->GetDynamicInputShape(config.sharedWeight2Index, 0);
     OP_TILING_CHECK(sharedWeight2Shape->GetStorageShape().GetDimNum() != THREE_DIMS,
                     OP_LOGE_FOR_INVALID_SHAPEDIM(nodeName, "shared_weight2",
                         (std::to_string(sharedWeight2Shape->GetStorageShape().GetDimNum()) + "D").c_str(), "3D"),
@@ -644,7 +644,7 @@ static ge::graphStatus CheckSharedExpertInputs(const gert::TilingContext *contex
                     return ge::GRAPH_FAILED);
 
     auto weightScales1Desc = context->GetDynamicInputDesc(config.weightScales1Index, 0);
-    auto sharedWeightScale1Desc = context->GetOptionalInputDesc(config.sharedWeightScale1Index);
+    auto sharedWeightScale1Desc = context->GetDynamicInputDesc(config.sharedWeightScale1Index, 0);
     OP_TILING_CHECK(sharedWeightScale1Desc == nullptr,
                     OP_LOGE_WITH_INVALID_INPUT(nodeName, "shared_weight_scale1 must be provided when sharedExpertNum > 0"),
                     return ge::GRAPH_FAILED);
@@ -654,7 +654,7 @@ static ge::graphStatus CheckSharedExpertInputs(const gert::TilingContext *contex
                         "must be same as weight_scales1"),
                     return ge::GRAPH_FAILED);
 
-    auto sharedWeightScale2Desc = context->GetOptionalInputDesc(config.sharedWeightScale2Index);
+    auto sharedWeightScale2Desc = context->GetDynamicInputDesc(config.sharedWeightScale2Index, 0);
     OP_TILING_CHECK(sharedWeightScale2Desc == nullptr,
                     OP_LOGE_WITH_INVALID_INPUT(nodeName, "shared_weight_scale2 must be provided when sharedExpertNum > 0"),
                     return ge::GRAPH_FAILED);
