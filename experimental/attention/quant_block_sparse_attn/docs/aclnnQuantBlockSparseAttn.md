@@ -116,7 +116,7 @@ torch.ops.custom.npu_quant_block_sparse_attn(
       <td>Query 输入。</td>
       <td style="white-space: nowrap;"><code>FLOAT8_E4M3FN</code></td>
       <td style="white-space: nowrap;">ND</td>
-      <td><code>layout_q="TND"</code> 时为 <code>(T1,N1,D)</code>；<code>layout_q="NTD"</code> 时为 <code>(N1,T1,D)</code></td>
+      <td><code>TND:(T1,N1,D); NTD:(N1,T1,D)</code></td>
       <td>不支持空 Tensor。PyTorch 接入层会将该输入转为连续 Tensor。</td>
     </tr>
     <tr>
@@ -125,8 +125,8 @@ torch.ops.custom.npu_quant_block_sparse_attn(
       <td>PageAttention KV Cache 中的 Key。</td>
       <td style="white-space: nowrap;"><code>FLOAT8_E4M3FN</code></td>
       <td style="white-space: nowrap;">ND</td>
-      <td>常规 PA 形态为 <code>(block_num,N2,sparse_kv_block_size,D)</code>；组合 KV 存储形态可为一维尾部存储。</td>
-      <td><code>layout_kv</code> 当前仅支持 <code>PA_BNSD</code>。常规 PA 形态要求 stride 为 <code>[paBlockStride, blockSize * D, D, 1]</code>。</td>
+      <td><code>(block_num,N2,sparse_kv_block_size,D)</code></td>
+      <td><code>layout_kv</code> 仅支持 <code>PA_BNSD</code>。</td>
     </tr>
     <tr>
       <td style="white-space: nowrap;"><code>value</code></td>
@@ -134,8 +134,8 @@ torch.ops.custom.npu_quant_block_sparse_attn(
       <td>PageAttention KV Cache 中的 Value。</td>
       <td style="white-space: nowrap;"><code>FLOAT8_E4M3FN</code></td>
       <td style="white-space: nowrap;">ND</td>
-      <td>常规 PA 形态为 <code>(block_num,N2,sparse_kv_block_size,D_v)</code>；组合 KV 存储形态可为一维尾部存储。</td>
-      <td>常规 PA 形态要求 <code>value.stride(0) == key.stride(0)</code>，内部输出 <code>attention_out</code> 为 BF16。</td>
+      <td><code>(block_num,N2,sparse_kv_block_size,D_v)</code></td>
+      <td><code>layout_kv</code> 仅支持 <code>PA_BNSD</code>。</td>
     </tr>
     <tr>
       <td style="white-space: nowrap;"><code>q_descale</code></td>
@@ -143,8 +143,8 @@ torch.ops.custom.npu_quant_block_sparse_attn(
       <td>Query 反量化缩放因子。</td>
       <td style="white-space: nowrap;"><code>FLOAT32</code></td>
       <td style="white-space: nowrap;">ND</td>
-      <td><code>TND</code> 场景通常为 <code>(T1,N1)</code>；<code>NTD</code> 场景通常为 <code>(N1,T1)</code>。</td>
-      <td>与 Query token 和 Query head 对应，用于 QK 结果缩放。</td>
+      <td><code>TND:(T1,N1); NTD:(N1,T1)</code></td>
+      <td><code>PERTOKEN_PERHEAD</code>。</td>
     </tr>
     <tr>
       <td style="white-space: nowrap;"><code>k_descale</code></td>
@@ -152,8 +152,8 @@ torch.ops.custom.npu_quant_block_sparse_attn(
       <td>Key 反量化缩放因子。</td>
       <td style="white-space: nowrap;"><code>FLOAT32</code></td>
       <td style="white-space: nowrap;">ND</td>
-      <td>常规 PA 形态通常为 <code>(block_num,sparse_kv_block_size,N2)</code> 或与分段 PA 存储匹配的等价布局。</td>
-      <td>PyTorch 接入层要求常规 PA 形态下 <code>k_descale.stride(0) * 4 == key.stride(0)</code>，且 stride 后两维为 <code>[blockSize,1]</code>。</td>
+      <td><code>(block_num,N2,sparse_kv_block_size)</code></td>
+      <td><code>PERTOKEN_PERHEAD</code>。</td>
     </tr>
     <tr>
       <td style="white-space: nowrap;"><code>v_descale</code></td>
@@ -162,7 +162,7 @@ torch.ops.custom.npu_quant_block_sparse_attn(
       <td style="white-space: nowrap;"><code>FLOAT32</code></td>
       <td style="white-space: nowrap;">ND</td>
       <td><code>(N2)</code></td>
-      <td>按 KV head 生效。组合 KV 存储形态下通过该输入第 0 维推导 <code>N2</code>。</td>
+      <td><code>PERHEAD</code>。</td>
     </tr>
     <tr>
       <td style="white-space: nowrap;"><code>p_scale</code></td>
@@ -171,7 +171,7 @@ torch.ops.custom.npu_quant_block_sparse_attn(
       <td style="white-space: nowrap;"><code>FLOAT32</code></td>
       <td style="white-space: nowrap;">ND</td>
       <td><code>(1)</code></td>
-      <td>当前为 per-tensor 静态缩放。</td>
+      <td><code>PERTENSOR</code>。</td>
     </tr>
     <tr>
       <td style="white-space: nowrap;"><code>sparse_indices</code></td>
@@ -180,7 +180,7 @@ torch.ops.custom.npu_quant_block_sparse_attn(
       <td style="white-space: nowrap;"><code>INT32</code></td>
       <td style="white-space: nowrap;">ND</td>
       <td><code>(B,N1,max_Qb,max_Kb)</code></td>
-      <td><code>layout_sparse_indices</code> 当前仅支持 <code>B_N_Qb_Kb</code>。有效元素表示逻辑 KV block id，取值范围为 <code>[0, max_Kb - 1]</code>。</td>
+      <td><code>layout_sparse_indices</code> 仅支持 <code>B_N_Qb_Kb</code>。有效元素表示逻辑 KV block id，取值范围为 <code>[0, max_Kb - 1]</code>。</td>
     </tr>
     <tr>
       <td style="white-space: nowrap;"><code>sparse_seq_len</code></td>
@@ -197,8 +197,8 @@ torch.ops.custom.npu_quant_block_sparse_attn(
       <td>Attention mask。</td>
       <td style="white-space: nowrap;"><code>UINT8</code></td>
       <td style="white-space: nowrap;">ND</td>
-      <td>二维 Tensor，通常为 <code>(sparse_q_block_size,sparse_kv_block_size)</code> 或与实际 mask 窗口匹配的二维形状。</td>
-      <td>当前 host 侧校验要求二维；<code>mask_mode=0</code> 时不使用 mask，<code>mask_mode=3</code> 时按 causal 语义使用。</td>
+      <td><code>mask_mode=3:(2048,2048)</code></td>
+      <td><code>mask_mode=0</code> 时不使用；<code>mask_mode=3</code> 时为 causal mask。</td>
     </tr>
     <tr>
       <td style="white-space: nowrap;"><code>cu_seqlens_q</code></td>
@@ -207,7 +207,7 @@ torch.ops.custom.npu_quant_block_sparse_attn(
       <td style="white-space: nowrap;"><code>INT32</code></td>
       <td style="white-space: nowrap;">ND</td>
       <td><code>(B+1)</code></td>
-      <td><code>TND/NTD</code> 变长场景建议传入。</td>
+      <td><code>TND/NTD</code> 变长场景时传入。</td>
     </tr>
     <tr>
       <td style="white-space: nowrap;"><code>cu_seqlens_kv</code></td>
@@ -216,7 +216,7 @@ torch.ops.custom.npu_quant_block_sparse_attn(
       <td style="white-space: nowrap;"><code>INT32</code></td>
       <td style="white-space: nowrap;">ND</td>
       <td><code>(B+1)</code></td>
-      <td><code>TND/NTD</code> 变长场景建议传入。</td>
+      <td><code>TND/NTD</code> 变长场景时传入。</td>
     </tr>
     <tr>
       <td style="white-space: nowrap;"><code>seqused_q</code></td>
@@ -225,7 +225,7 @@ torch.ops.custom.npu_quant_block_sparse_attn(
       <td style="white-space: nowrap;"><code>INT32</code></td>
       <td style="white-space: nowrap;">ND</td>
       <td><code>(B)</code></td>
-      <td>可选输入；用于实际长度与最大长度不同的场景。</td>
+      <td><code>TND/NTD</code> 变长场景时传入。</td>
     </tr>
     <tr>
       <td style="white-space: nowrap;"><code>seqused_kv</code></td>
@@ -234,7 +234,7 @@ torch.ops.custom.npu_quant_block_sparse_attn(
       <td style="white-space: nowrap;"><code>INT32</code></td>
       <td style="white-space: nowrap;">ND</td>
       <td><code>(B)</code></td>
-      <td>可选输入；用于实际长度与最大长度不同的场景。</td>
+      <td><code>TND/NTD</code> 变长场景时传入。</td>
     </tr>
     <tr>
       <td style="white-space: nowrap;"><code>block_table</code></td>
@@ -251,8 +251,8 @@ torch.ops.custom.npu_quant_block_sparse_attn(
       <td>负载均衡元数据。</td>
       <td style="white-space: nowrap;"><code>INT32</code></td>
       <td style="white-space: nowrap;">ND</td>
-      <td>一维 Tensor，典型值为 <code>(2048)</code></td>
-      <td>可选输入，可由 <code>npu_quant_block_sparse_attn_metadata</code> 生成。</td>
+      <td><code>(2048)</code></td>
+      <td>由 <code>npu_quant_block_sparse_attn_metadata</code> 生成。</td>
     </tr>
     <tr>
       <td style="white-space: nowrap;"><code>softmax_scale</code></td>
@@ -270,7 +270,7 @@ torch.ops.custom.npu_quant_block_sparse_attn(
       <td style="white-space: nowrap;"><code>INT64</code></td>
       <td style="white-space: nowrap;">-</td>
       <td>-</td>
-      <td>当前实现仅支持 128。</td>
+      <td>实现仅支持 128。</td>
     </tr>
     <tr>
       <td style="white-space: nowrap;"><code>sparse_kv_block_size</code></td>
@@ -279,7 +279,7 @@ torch.ops.custom.npu_quant_block_sparse_attn(
       <td style="white-space: nowrap;"><code>INT64</code></td>
       <td style="white-space: nowrap;">-</td>
       <td>-</td>
-      <td>当前实现仅支持 128。</td>
+      <td>实现仅支持 128。</td>
     </tr>
     <tr>
       <td style="white-space: nowrap;"><code>max_seqlen_q</code></td>
@@ -288,7 +288,7 @@ torch.ops.custom.npu_quant_block_sparse_attn(
       <td style="white-space: nowrap;"><code>INT64</code></td>
       <td style="white-space: nowrap;">-</td>
       <td>-</td>
-      <td><code>TND/NTD</code> 场景下用于推导 <code>S1</code> 和 <code>max_Qb</code>；传 0 时按 <code>query</code> 中 token 维长度推导。</td>
+      <td>-</td>
     </tr>
     <tr>
       <td style="white-space: nowrap;"><code>max_seqlen_kv</code></td>
@@ -297,7 +297,7 @@ torch.ops.custom.npu_quant_block_sparse_attn(
       <td style="white-space: nowrap;"><code>INT64</code></td>
       <td style="white-space: nowrap;">-</td>
       <td>-</td>
-      <td>用于推导 <code>S2</code> 和 <code>max_Kb</code>；传 0 时默认按 <code>sparse_kv_block_size</code> 处理。</td>
+      <td>-</td>
     </tr>
     <tr>
       <td style="white-space: nowrap;"><code>pa_block_stride</code></td>
@@ -306,7 +306,7 @@ torch.ops.custom.npu_quant_block_sparse_attn(
       <td style="white-space: nowrap;"><code>INT64</code></td>
       <td style="white-space: nowrap;">-</td>
       <td>-</td>
-      <td>常规 4D PA 输入由 <code>key.stride(0)</code> 自动推导；一维组合 KV 存储形态必须显式传入，且大于 0。</td>
+      <td>取值为 PA 物理 block 间隔步长，需大于 0。</td>
     </tr>
     <tr>
       <td style="white-space: nowrap;"><code>layout_kv</code></td>
@@ -315,7 +315,7 @@ torch.ops.custom.npu_quant_block_sparse_attn(
       <td style="white-space: nowrap;"><code>STRING</code></td>
       <td style="white-space: nowrap;">-</td>
       <td>-</td>
-      <td>当前仅支持 <code>"PA_BNSD"</code>。</td>
+      <td>仅支持 <code>"PA_BNSD"</code>。</td>
     </tr>
     <tr>
       <td style="white-space: nowrap;"><code>layout_q</code></td>
@@ -333,7 +333,7 @@ torch.ops.custom.npu_quant_block_sparse_attn(
       <td style="white-space: nowrap;"><code>STRING</code></td>
       <td style="white-space: nowrap;">-</td>
       <td>-</td>
-      <td>当前仅支持 <code>"B_N_Qb_Kb"</code>。</td>
+      <td>仅支持 <code>"B_N_Qb_Kb"</code>。</td>
     </tr>
     <tr>
       <td style="white-space: nowrap;"><code>layout_out</code></td>
@@ -342,7 +342,7 @@ torch.ops.custom.npu_quant_block_sparse_attn(
       <td style="white-space: nowrap;"><code>STRING</code></td>
       <td style="white-space: nowrap;">-</td>
       <td>-</td>
-      <td>当前默认 <code>"TND"</code>。<code>NTD</code> 输入在 host infer shape 中会将 <code>attention_out</code> 转为 TND 排布。</td>
+      <td>预留参数，暂未生效。</td>
     </tr>
     <tr>
       <td style="white-space: nowrap;"><code>quant_mode</code></td>
@@ -351,7 +351,7 @@ torch.ops.custom.npu_quant_block_sparse_attn(
       <td style="white-space: nowrap;"><code>INT64</code></td>
       <td style="white-space: nowrap;">-</td>
       <td>-</td>
-      <td>当前仅支持 1，表示 <code>Q_PERTOKEN_PERHEAD_K_PERTOKEN_PERHEAD_V_PERHEAD</code>。</td>
+      <td>预留参数，暂未生效。</td>
     </tr>
     <tr>
       <td style="white-space: nowrap;"><code>mask_mode</code></td>
@@ -360,7 +360,7 @@ torch.ops.custom.npu_quant_block_sparse_attn(
       <td style="white-space: nowrap;"><code>INT64</code></td>
       <td style="white-space: nowrap;">-</td>
       <td>-</td>
-      <td>当前执行路径支持 0 和 3，0 表示无 mask，3 表示 causal。</td>
+      <td>执行路径支持 0 和 3，0 表示无 mask，3 表示 causal。</td>
     </tr>
     <tr>
       <td style="white-space: nowrap;"><code>return_softmax_lse</code></td>
@@ -369,7 +369,7 @@ torch.ops.custom.npu_quant_block_sparse_attn(
       <td style="white-space: nowrap;"><code>BOOL</code></td>
       <td style="white-space: nowrap;">-</td>
       <td>-</td>
-      <td><code>True</code> 时返回有效 LSE；<code>False</code> 时不返回有效 LSE，PyTorch 接入层返回占位 Tensor。</td>
+      <td><code>True</code> 时返回有效 LSE；<code>False</code> 时不返回有效 LSE。</td>
     </tr>
     <tr>
       <td style="white-space: nowrap;"><code>attention_out</code></td>
@@ -377,8 +377,8 @@ torch.ops.custom.npu_quant_block_sparse_attn(
       <td>Attention 输出。</td>
       <td style="white-space: nowrap;"><code>BFLOAT16</code></td>
       <td style="white-space: nowrap;">ND</td>
-      <td><code>query</code> 为 <code>TND</code> 时输出 <code>(T1,N1,D_v)</code>；<code>query</code> 为 <code>NTD</code> 时 host infer shape 输出 <code>(T1,N1,D_v)</code></td>
-      <td>PyTorch 接口的第 1 个返回值。</td>
+      <td><code>(T1,N1,D_v)</code></td>
+      <td>-</td>
     </tr>
     <tr>
       <td style="white-space: nowrap;"><code>softmax_lse</code></td>
@@ -386,8 +386,8 @@ torch.ops.custom.npu_quant_block_sparse_attn(
       <td>softmax log-sum-exp。</td>
       <td style="white-space: nowrap;"><code>FLOAT32</code></td>
       <td style="white-space: nowrap;">ND</td>
-      <td>有效 LSE 的逻辑维度为 Query head 和 Query token。PyTorch 接入层当前构造为 <code>(N1,T1)</code>；底层 ACLNN host infer shape 为 <code>(T1,N1)</code>；<code>return_softmax_lse=False</code> 时为占位 Tensor</td>
-      <td>PyTorch 接口的第 2 个返回值。</td>
+      <td><code>return_softmax_lse=True:(N1,T1); return_softmax_lse=False:()</code></td>
+      <td>-</td>
     </tr>
   </tbody>
 </table>
