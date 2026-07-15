@@ -253,7 +253,7 @@ def trans_tnd_actseq(list):
             raise ValueError(f'TND情况下 act_seq_len 为非递减数列 act_seq_len={list}')
     return list_new
 
-def check_result(expect, result, topk_value, output_idx_offset, params):
+def check_result(expect, result, topk_value, output_idx_offset, params, cpu_topk_value, npu_topk_value):
     batch_size, q_seq, k_seq, q_t_size, k_t_size, q_head_num, k_head_num, head_dim, block_size, block_num, \
     qk_dtype, cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k, cmp_residual_k, _, \
     layout_query, layout_key, topk, mask_mode, query_datarange, key_datarange, weights_datarange, \
@@ -318,6 +318,8 @@ def check_result(expect, result, topk_value, output_idx_offset, params):
     print(f"total_line is {total_rows}")
     npu_reshape = npu_output.reshape([total_rows, topk])
     cpu_reshape = cpu_output.reshape([total_rows, topk])
+    npu_topk_value = npu_topk_value.reshape([total_rows, topk])
+    cpu_topk_value = cpu_topk_value.reshape([total_rows, topk])
     start_time = time()
     invalid_data = cpu_reshape != -1
     valid_lens = invalid_data.sum(axis=-1)  # (total_rows,)
@@ -340,8 +342,8 @@ def check_result(expect, result, topk_value, output_idx_offset, params):
         if layout_query == "TND":
             b_idx, s1_idx = find_batch_and_position(cu_seqlens_q, bsn[0])
             bsn = (b_idx, s1_idx, bsn[-1])
-        cur_cpu_output_value = cpu_reshape[t_id, :]
-        cur_npu_output_value = npu_reshape[t_id, :]
+        cur_cpu_output_value = cpu_topk_value[t_id, :]
+        cur_npu_output_value = npu_topk_value[t_id, :]
         npu_pass_t = True
         max_re_t = 0
         valid_len = valid_lens[t_id]
