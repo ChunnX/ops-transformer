@@ -25,7 +25,7 @@ from cann_ops_transformer.ops import compressor
 def test_compressor_process(filepath, device_id=0):
     # 加载测试数据
     # test_data = torch.load(filepath, map_location="cpu")
-    test_data = torch.load(filepath, map_location="cpu",weights_only=True)
+    test_data = torch.load(filepath, map_location="cpu",weights_only=False)
 
     params = test_data['params']
     cpu_result = test_data['cpu_result']
