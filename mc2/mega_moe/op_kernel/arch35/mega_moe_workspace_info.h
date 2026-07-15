@@ -116,6 +116,7 @@ struct WorkspaceInfo {
     GM_ADDR gmm1MmadResPtr{nullptr};
     GM_ADDR gmm2MmadResPtr{nullptr};
     GM_ADDR gmm2CombineSyncCounterPtr{nullptr};
+    GM_ADDR gmm2NoQuantReadyPtr{nullptr};
     GM_ADDR sharedExpertResultPtr{nullptr};
     GM_ADDR sharedExpertGmm1OutPtr{nullptr};
     GM_ADDR sharedExpertInputDataPtr{nullptr};
@@ -196,12 +197,38 @@ struct WorkspaceInfo {
         }
         // gmm2MmadRes: GMM2 matmul output (maxOutputSize × h bf16), needed by A8W4 GMM1 path,
         // A4W4 hybrid path (GMM2 uses A8W4), A4W4_NZ, and combine-quant.
+        bool isGenericGmm = tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_GENERAL ||
+                            tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ;
+        bool useMteNoQuantGmm2Gm = tilingData->topoType == TOPO_TYPE_MTE && isGenericGmm &&
+                                   tilingData->combineQuantMode == COMBINE_NO_QUANT;
         if (tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W4 ||
             tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4 ||
             tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4_NZ ||
-            tilingData->combineQuantMode != COMBINE_NO_QUANT || tilingData->topoType == TOPO_TYPE_URMA) {
+            tilingData->combineQuantMode != COMBINE_NO_QUANT || tilingData->topoType == TOPO_TYPE_URMA ||
+            useMteNoQuantGmm2Gm) {
+            if (useMteNoQuantGmm2Gm) {
+                workspaceSize = Ops::Base::CeilAlign(workspaceSize, static_cast<int64_t>(ALIGN_512));
+            }
             gmm2MmadResPtr = base + workspaceSize;
-            workspaceSize += SIZE_BF_16 * tilingData->maxOutputSize * tilingData->h;
+            // The MTE no-quant path gives every routed row a unique [H] BF16
+            // region for the complete kernel lifetime.  It is not a batch or
+            // ring slot, so AIC never needs a consumer ACK before advancing.
+            int64_t gmm2OutputBytes = static_cast<int64_t>(SIZE_BF_16) *
+                                      static_cast<int64_t>(tilingData->maxOutputSize) *
+                                      static_cast<int64_t>(tilingData->h);
+            workspaceSize += useMteNoQuantGmm2Gm ?
+                                 Ops::Base::CeilAlign(gmm2OutputBytes, static_cast<int64_t>(ALIGN_512)) :
+                                 gmm2OutputBytes;
+        }
+
+        if (useMteNoQuantGmm2Gm) {
+            gmm2NoQuantReadyPtr = base + workspaceSize;
+            // One cache-line slot per expert is sufficient for both A/Bs:
+            // per-expert indexes by expert, while per-batch indexes by batch.
+            // Slots are never reused within one kernel invocation.
+            int64_t readyBytes = static_cast<int64_t>(tilingData->expertPerRank) *
+                                 static_cast<int64_t>(INT_CACHELINE) * static_cast<int64_t>(SIZE_INT_32);
+            workspaceSize += Ops::Base::CeilAlign(readyBytes, static_cast<int64_t>(ALIGN_512));
         }
 
         // Combine-quant-only workspace buffers
