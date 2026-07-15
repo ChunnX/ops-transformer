@@ -39,7 +39,7 @@ constexpr uint64_t DOUBLE_BUFFER = 2;
 constexpr uint64_t QUANT_MODE_FP8 = 2;
 constexpr uint32_t ALIGN_DATA_SIZE = 32;
 constexpr uint64_t CCU_ALLTOALL_MAX_DATACNT = 200 * 1024 * 1024;
-constexpr uint64_t A2APATH_CRITICAL_K = 4608;
+constexpr uint64_t QUANT_A2APATH_CRITICAL_K = 4608;
 
 namespace {
 const gert::Shape defaultShape = gert::Shape();
@@ -168,7 +168,7 @@ ge::graphStatus QuantMatmulAllReduceTilingA5::SetMc2Hcomm()
 {
     bool isUseA2APath = mc2tiling::IsUseA2APath(args_.rankDim, npuArch_);
     const uint64_t k = MatmulAllReduceTilingBase::GetKValue();
-    if (k >= A2APATH_CRITICAL_K) {
+    if (k >= QUANT_A2APATH_CRITICAL_K) {
         isUseA2APath = false;
     }
     OP_TILING_CHECK(
@@ -338,7 +338,7 @@ uint64_t QuantMatmulAllReduceTilingA5::GetTilingKey() const
     bool scenarioIsMXFP8 = (scenario_ == AllReduceScenario::MXFP8); // 区分MXFP8 和 FP8HIF8场景
     bool isUseA2APath = mc2tiling::IsUseA2APath(args_.rankDim, npuArch_);
     const uint64_t k = MatmulAllReduceTilingBase::GetKValue();
-    if (k >= A2APATH_CRITICAL_K) {
+    if (k >= QUANT_A2APATH_CRITICAL_K) {
         isUseA2APath = false;
     }
     uint8_t commMode = GetCommMode();
@@ -484,7 +484,7 @@ ge::graphStatus QuantMatmulAllReduceTilingA5::GetWorkspaceSize()
                         static_cast<uint64_t>(args_.outputDtypeSize);
     bool isUseA2APath = mc2tiling::IsUseA2APath(args_.rankDim, npuArch_);
     const uint64_t k = MatmulAllReduceTilingBase::GetKValue();
-    if (k >= A2APATH_CRITICAL_K) {
+    if (k >= QUANT_A2APATH_CRITICAL_K) {
         isUseA2APath = false;
     }
     if (isUseA2APath && !MutableRCSTilingData().isInputCommQuantScale) {
@@ -1053,7 +1053,7 @@ CutResult QuantMatmulAllReduceTilingA5::GetTilingResult()
     } else if (mc2tiling::Is8P(args_.rankDim, npuArch_)) {
         const uint64_t k = MatmulAllReduceTilingBase::GetKValue();
         KernelType kernelType;
-        if (k >= A2APATH_CRITICAL_K) {
+        if (k >= QUANT_A2APATH_CRITICAL_K) {
             kernelType = KernelType::ALL_REDUCE;
         } else {
             kernelType = KernelType::ALL_REDUCE_VIA_TWO_SHOT;

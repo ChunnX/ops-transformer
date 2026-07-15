@@ -71,7 +71,7 @@ void MMAllReduceFitBalanceTiling::SetCommBoundTile()
 void MMAllReduceFitBalanceTiling::SetShortTileLen()
 {
     tilingM_.SetMinLenByMax(commPerf_.InverseCommTime(COMM_EXPANSION_TIME));
-    tilingM_.SetMinLenByMax(matmulPerf_.InverseMatmulTime(MM_EXPANSION_TIME, 1));
+    tilingM_.SetMinLenByMax(matmulPerf_.InverseMatmulTime(MM_EXPANSION_TIME, rankTileNum_));
     // Encourage larger cutLen if the matrix size is greater than the L2 cache size
     uint64_t l2UseSize = mmInfo_.mValue * mmInfo_.kValue * mmInfo_.inMatrixADtypeSize +
         mmInfo_.kValue * mmInfo_.nValue * mmInfo_.inMatrixBDtypeSize;
@@ -87,11 +87,11 @@ void MMAllReduceFitBalanceTiling::SetLongTileLen()
 {
     // Balancing the pipeline
     if (tilingM_.cutRes.shortTileAtBack) {
-        double targetTime = matmulPerf_.MatmulTime(tilingM_.cutRes.shortTileLen, 1);
+        double targetTime = matmulPerf_.MatmulTime(tilingM_.cutRes.shortTileLen, rankTileNum_);
         tilingM_.cutRes.longTileLen = commPerf_.InverseCommTime(targetTime);
     } else {
         double targetTime = commPerf_.CommTime(tilingM_.cutRes.shortTileLen);
-        tilingM_.cutRes.longTileLen = matmulPerf_.InverseMatmulTime(targetTime, 1);
+        tilingM_.cutRes.longTileLen = matmulPerf_.InverseMatmulTime(targetTime, rankTileNum_);
     }
     tilingM_.cutRes.longTileLen = std::max(tilingM_.cutRes.longTileLen, tilingM_.cutRes.shortTileLen);
     OP_LOGD("MMAllReduceFitBalanceTiling", "initialize longTileLen %lu", tilingM_.cutRes.longTileLen);
