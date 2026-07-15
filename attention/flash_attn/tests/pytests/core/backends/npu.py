@@ -1,7 +1,10 @@
 """NPU 后端 — 按 flash_attn.md 参数组调用，支持 eager / graph 两种模式。"""
 
 import numpy as np
+import os
+import shutil
 import torch
+from pathlib import Path
 from typing import Any, Dict
 
 from .base import Backend
@@ -15,6 +18,8 @@ except ImportError:
 try:
     import torchair
     from torchair.configs.compiler_config import CompilerConfig
+    from torchair.core._backend import uninstall_static_kernel
+    from torchair._acl_concrete_graph import static_kernel as _sk
     _HAS_TORCHAIR = True
 except ImportError:
     _HAS_TORCHAIR = False
@@ -148,11 +153,29 @@ class NPUBackend(Backend):
         if _HAS_NPU:
             torch.npu.empty_cache()
 
+    def _reset_static_kernel_state(self):
+        """彻底清理 static kernel 状态，确保每次 _get_graph_net 都触发重新编译。
+        清理三层：CANN runtime 注册(uninstall.sh) + Python全局set + 磁盘文件。"""
+        if _HAS_TORCHAIR:
+            uninstall_static_kernel()
+            _sk._installed_run_pkgs.clear()
+            _sk._uninstall_paths.clear()
+        build_dir = "./fa_kernel_cache"
+        shutil.rmtree(build_dir, ignore_errors=True)
+        os.makedirs(build_dir, exist_ok=True)
+        opp_path = os.environ.get("ASCEND_OPP_PATH", "")
+        if opp_path:
+            for d in Path(opp_path).rglob("static_kernel"):
+                shutil.rmtree(d, ignore_errors=True)
+
     def _get_graph_net(self):
+        self._reset_static_kernel_state()
         torch._dynamo.reset()
         net = FlashAttnGraphNetwork().npu()
         config = CompilerConfig()
         config.mode = "reduce-overhead"
+        config.experimental_config.aclgraph._aclnn_static_shape_kernel = True
+        config.experimental_config.aclgraph._aclnn_static_shape_kernel_build_dir = "./fa_kernel_cache"
         config.experimental_config.frozen_parameter = True
         npu_backend = torchair.get_npu_backend(compiler_config=config)
         self._graph_net = torch.compile(net, fullgraph=False, backend=npu_backend, dynamic=False)
