@@ -15,37 +15,35 @@
 
 #pragma once
 
+#include "adv_api/hcomm/hcomm.h"
 #include "../collective_comm_base.h"
-#include "../collective_comm_context.h"
-#include "../barrier/barrier_ubmem.h"
 
 namespace Atcoss {
 namespace AivComm {
 
 using namespace AscendC;
 
-template<typename Dtype>
-class AllToAllCommGetImpl : public CollectiveCommBase<AllToAllCommGetImpl<Dtype>, Dtype> {
-    friend class CollectiveCommBase<AllToAllCommGetImpl<Dtype>, Dtype>;
+template<typename Dtype, typename Barrier>
+class AllToAllCommGetImpl : public CollectiveCommBase<AllToAllCommGetImpl<Dtype, Barrier>, Dtype, Barrier> {
+    friend class CollectiveCommBase<AllToAllCommGetImpl<Dtype, Barrier>, Dtype, Barrier>;
 
 private:
     __aicore__ inline void PostInit() {}
 
     __aicore__ inline void DoCommit(uint32_t targetRankId, uint64_t tileOffset, uint64_t tileSize)
     {
-        Barrier barrier;
-        barrier.Execute(this->syncBuf_, this->ubmemCtx_, this->useCoreNum_, this->curCoreId_);
+        this->barrier_.Execute();
         if ((this->curCoreId_ >= this->useCoreNum_) || (this->curCoreId_ == this->udmaCtx_->rankId)) {
             return;
         }
-        GM_ADDR srcAddr = this->commBufferAddrs_[targetRankId]
+        GM_ADDR srcAddr = reinterpret_cast<GM_ADDR>(this->udmaCtx_->commBufferAddrs[targetRankId])
             + this->currentTileIdx_ * this->slotStride_
             + this->myRankOffset_;
         GM_ADDR dstAddr = this->localAddr_ + targetRankId * this->chunkBytes_ +
             tileOffset * this->nonSplitAxisBytes_;
 
         this->comm_.ReadNbi(
-            this->channels_[targetRankId], dstAddr, srcAddr,
+            static_cast<ChannelHandle>(this->udmaCtx_->channelHandles[targetRankId]), dstAddr, srcAddr,
             static_cast<uint64_t>(tileSize * this->nonSplitAxisBytes_));
     }
 
@@ -54,13 +52,12 @@ private:
         if ((this->curCoreId_ >= this->useCoreNum_) || (this->curCoreId_ == this->udmaCtx_->rankId)) {
             return;
         }
-        this->comm_.Drain(this->channels_[targetRankId]);
+        this->comm_.Drain(static_cast<ChannelHandle>(this->udmaCtx_->channelHandles[targetRankId]));
     }
 
     __aicore__ inline void DoFinalize()
     {
-        Barrier barrier;
-        barrier.Execute(this->syncBuf_, this->ubmemCtx_, this->useCoreNum_, this->curCoreId_);
+        this->barrier_.Execute();
     }
 };
 

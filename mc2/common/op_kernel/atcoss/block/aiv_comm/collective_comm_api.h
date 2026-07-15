@@ -35,16 +35,16 @@ enum class CommMode {
     PUT
 };
 
-template<CommCollectiveOp Op, CommMode Mode, typename T> struct CollectiveCommHelper;
-template<typename T> struct CollectiveCommHelper<CommCollectiveOp::AllToAll, CommMode::GET, T> {
-    using type = AllToAllCommGetImpl<T>;
+template<CommCollectiveOp Op, CommMode Mode, typename T, typename Barrier> struct CollectiveCommHelper;
+template<typename T, typename Barrier> struct CollectiveCommHelper<CommCollectiveOp::AllToAll, CommMode::GET, T, Barrier> {
+    using type = AllToAllCommGetImpl<T, Barrier>;
 };
-template<typename T> struct CollectiveCommHelper<CommCollectiveOp::AllToAll, CommMode::PUT, T> {
-    using type = AllToAllCommPutImpl<T>;
+template<typename T, typename Barrier> struct CollectiveCommHelper<CommCollectiveOp::AllToAll, CommMode::PUT, T, Barrier> {
+    using type = AllToAllCommPutImpl<T, Barrier>;
 };
 
-template<CommCollectiveOp Op, CommMode Mode, typename T>
-using CollectiveComm = typename CollectiveCommHelper<Op, Mode, T>::type;
+template<CommCollectiveOp Op, CommMode Mode, typename T, typename Barrier>
+using CollectiveComm = typename CollectiveCommHelper<Op, Mode, T, Barrier>::type;
 
 } // namespace AivComm
 } // namespace Atcoss
