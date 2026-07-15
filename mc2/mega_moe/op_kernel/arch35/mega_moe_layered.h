@@ -1003,7 +1003,6 @@ MegaMoeLayered<TemplateMegaMoeTypeFunc>::ReceiveTokenFromRmtServer(uint32_t rela
             break;
         }
     } while (true);
-    PipeBarrier<PIPE_ALL>();
     hcomm_.ReadNbi<true>(GetUrmaCommHandle(mc2Context_, relayRank, rankId_), scratchAddr, remoteRecordAddr,
         copyInNum);
     hcomm_.Drain(GetUrmaCommHandle(mc2Context_, relayRank, rankId_));
@@ -1123,7 +1122,6 @@ MegaMoeLayered<TemplateMegaMoeTypeFunc>::CopyGMToGMPerToken(int32_t rowDstOffset
         WaitFlag<AscendC::HardEvent::MTE3_MTE2>(eventId);
         uint64_t remoteCopyOffset = RelayTokenOffset(srcServer, static_cast<uint32_t>(tokenIndex));
         ReceiveTokenFromRmtServer(relayRank, remoteCopyOffset, primeIdx, copyInNum);
-        PipeBarrier<PIPE_ALL>();
         SetFlag<AscendC::HardEvent::MTE2_MTE3>(eventId);
     }
     // Phase 2 steady: MTE3[copyIdx] + issueMTE2[copyIdx + BufferNum]
@@ -1149,7 +1147,6 @@ MegaMoeLayered<TemplateMegaMoeTypeFunc>::CopyGMToGMPerToken(int32_t rowDstOffset
             WaitFlag<AscendC::HardEvent::MTE3_MTE2>(eventId);
             uint64_t remoteCopyOffset = RelayTokenOffset(srcServer, static_cast<uint32_t>(tokenIndex));
             ReceiveTokenFromRmtServer(relayRank, remoteCopyOffset, outIdx, copyInNum);
-            PipeBarrier<PIPE_ALL>();
             SetFlag<AscendC::HardEvent::MTE2_MTE3>(eventId);
         }
     }
