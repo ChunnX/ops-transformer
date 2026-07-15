@@ -204,10 +204,21 @@ public:
                     expMaxUbAddr, lastSumAddr);
             }
         }
-        
+
         AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(ubSBufId);
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(ubSBufId);
         SetCrossCoreSync<4, PIPE_V>(mm1ToSmFlag);
+
+        AscendC::printf("tkd lsUbTensor[ubSBufId]\n");
+        AscendC::DumpTensor(lsUbTensor[ubSBufId], 0, 64);
+        AscendC::printf("tkd lmUbTensor\n");
+        AscendC::DumpTensor(lmUbTensor, 0, 16);
+        AscendC::printf("tkd dmUbTensor[l1PBufId]\n");
+        AscendC::DumpTensor(dmUbTensor[l1PBufId], 0, 16);
+        AscendC::printf("tkd lpUbTensor[ubSBufId]\n");
+        AscendC::DumpTensor(lpUbTensor[ubSBufId], 0, 64);  
+        AscendC::printf("tkd llUbTensor\n");
+        AscendC::DumpTensor(llUbTensor, 0, 16);
 
         uint32_t curNRound = FULL_QUANT_FP8 ? RoundUp(n, ELE_NUM_PER_C0_FP8) : nRound;
         auto ubPLayoutTla = tla::MakeLayout<ElementOutput, LayoutOutput>(mRound, curNRound);

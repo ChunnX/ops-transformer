@@ -277,6 +277,27 @@ extern "C" __global__ __aicore__ void block_sparse_attention(
             Gemm::Tile::CopyL0CToUBMode::NO_SPLIT, true>(
                 query, key, value, mask, blockTable, attentionOut,
                 actualSeqLengths, actualSeqLengthsKv, blockSparseMask, user, softmaxLse, tiling);
+    #elif TILING_KEY_VAR == QBF16_KVBF16_QTND_KVTND_NOCACHE_SMBF16_REF32_NOMASK_TRANSMM1_KEY
+        BsaInferIntfRegular<
+            bfloat16_t, bfloat16_t, float, BsaKernelArch35::Format::TND, BsaKernelArch35::Format::TND,
+            Epilogue::LseMode::NONE, Epilogue::LseFormat::TN1,
+            Gemm::Tile::CopyL0CToUBMode::NO_SPLIT, true>(
+                query, key, value, mask, blockTable, attentionOut,
+                actualSeqLengths, actualSeqLengthsKv, blockSparseMask, user, softmaxLse, tiling);
+    #elif TILING_KEY_VAR == QBF16_KVBF16_QBNSD_KVBNSD_NOCACHE_SMBF16_REF32_NOMASK_TRANSMM1_KEY
+        BsaInferIntfRegular<
+            bfloat16_t, bfloat16_t, float, BsaKernelArch35::Format::BNSD, BsaKernelArch35::Format::BNSD,
+            Epilogue::LseMode::NONE, Epilogue::LseFormat::BNS1,
+            Gemm::Tile::CopyL0CToUBMode::NO_SPLIT, true>(
+                query, key, value, mask, blockTable, attentionOut,
+                actualSeqLengths, actualSeqLengthsKv, blockSparseMask, user, softmaxLse, tiling);
+    #elif TILING_KEY_VAR == QBF16_KVBF16_QBSND_KVBSND_NOCACHE_SMBF16_REF32_NOMASK_TRANSMM1_KEY
+        BsaInferIntfRegular<
+            bfloat16_t, bfloat16_t, float, BsaKernelArch35::Format::BSND, BsaKernelArch35::Format::BSND,
+            Epilogue::LseMode::NONE, Epilogue::LseFormat::BSN1,
+            Gemm::Tile::CopyL0CToUBMode::NO_SPLIT, true>(
+                query, key, value, mask, blockTable, attentionOut,
+                actualSeqLengths, actualSeqLengthsKv, blockSparseMask, user, softmaxLse, tiling);
     // 非量化+混合精度softmax+mm1+lse转置
     #elif TILING_KEY_VAR == QF16_KVF16_QTND_KVTND_NOCACHE_SMF16_REF32_NOMASK_LSE_OUT_TRANSMM1_KEY
         BsaInferIntfRegular<
@@ -295,6 +316,27 @@ extern "C" __global__ __aicore__ void block_sparse_attention(
     #elif TILING_KEY_VAR == QF16_KVF16_QBSND_KVBSND_NOCACHE_SMF16_REF32_NOMASK_LSE_OUT_TRANSMM1_KEY
         BsaInferIntfRegular<
             half, half, float, BsaKernelArch35::Format::BSND, BsaKernelArch35::Format::BSND,
+            Epilogue::LseMode::OUT_ONLY, Epilogue::LseFormat::BSN1,
+            Gemm::Tile::CopyL0CToUBMode::NO_SPLIT, true>(
+                query, key, value, mask, blockTable, attentionOut,
+                actualSeqLengths, actualSeqLengthsKv, blockSparseMask, user, softmaxLse, tiling);
+    #elif TILING_KEY_VAR == QBF16_KVBF16_QTND_KVTND_NOCACHE_SMBF16_REF32_NOMASK_LSE_OUT_TRANSMM1_KEY
+        BsaInferIntfRegular<
+            bfloat16_t, bfloat16_t, float, BsaKernelArch35::Format::TND, BsaKernelArch35::Format::TND,
+            Epilogue::LseMode::OUT_ONLY, Epilogue::LseFormat::TN1,
+            Gemm::Tile::CopyL0CToUBMode::NO_SPLIT, true>(
+                query, key, value, mask, blockTable, attentionOut,
+                actualSeqLengths, actualSeqLengthsKv, blockSparseMask, user, softmaxLse, tiling);
+    #elif TILING_KEY_VAR == QBF16_KVBF16_QBNSD_KVBNSD_NOCACHE_SMBF16_REF32_NOMASK_LSE_OUT_TRANSMM1_KEY
+        BsaInferIntfRegular<
+            bfloat16_t, bfloat16_t, float, BsaKernelArch35::Format::BNSD, BsaKernelArch35::Format::BNSD,
+            Epilogue::LseMode::OUT_ONLY, Epilogue::LseFormat::BNS1,
+            Gemm::Tile::CopyL0CToUBMode::NO_SPLIT, true>(
+                query, key, value, mask, blockTable, attentionOut,
+                actualSeqLengths, actualSeqLengthsKv, blockSparseMask, user, softmaxLse, tiling);
+    #elif TILING_KEY_VAR == QBF16_KVBF16_QBSND_KVBSND_NOCACHE_SMBF16_REF32_NOMASK_LSE_OUT_TRANSMM1_KEY
+        BsaInferIntfRegular<
+            bfloat16_t, bfloat16_t, float, BsaKernelArch35::Format::BSND, BsaKernelArch35::Format::BSND,
             Epilogue::LseMode::OUT_ONLY, Epilogue::LseFormat::BSN1,
             Gemm::Tile::CopyL0CToUBMode::NO_SPLIT, true>(
                 query, key, value, mask, blockTable, attentionOut,

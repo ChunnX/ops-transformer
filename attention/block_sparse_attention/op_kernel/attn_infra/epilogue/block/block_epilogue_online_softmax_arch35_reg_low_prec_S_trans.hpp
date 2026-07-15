@@ -368,10 +368,10 @@ private:
             Sub(sVreg2, sVreg2, hmVreg, maskReg16TailN);
             Sub(sVreg3, sVreg3, hmVreg, maskReg16TailN);
 
-            Exp(pVreg0, pVreg0, maskReg16TailN);
-            Exp(pVreg1, pVreg1, maskReg16TailN);
-            Exp(pVreg2, pVreg2, maskReg16TailN);
-            Exp(pVreg3, pVreg3, maskReg16TailN);
+            Exp(pVreg0, sVreg0, maskReg16TailN);
+            Exp(pVreg1, sVreg1, maskReg16TailN);
+            Exp(pVreg2, sVreg2, maskReg16TailN);
+            Exp(pVreg3, sVreg3, maskReg16TailN);
 
             if constexpr (mTileNum >= MAligendTileNum::Zero) {
                 Add(sumVreg0, sumVreg0, pVreg0, maskReg16TailN);
@@ -417,10 +417,10 @@ private:
                 Sub(sVreg2, sVreg2, hmVreg, maskReg16TailN);
                 Sub(sVreg3, sVreg3, hmVreg, maskReg16TailN);
 
-                Exp(pVreg0, pVreg0, maskReg16TailN);
-                Exp(pVreg1, pVreg1, maskReg16TailN);
-                Exp(pVreg2, pVreg2, maskReg16TailN);
-                Exp(pVreg3, pVreg3, maskReg16TailN);
+                Exp(pVreg0, sVreg0, maskReg16TailN);
+                Exp(pVreg1, sVreg1, maskReg16TailN);
+                Exp(pVreg2, sVreg2, maskReg16TailN);
+                Exp(pVreg3, sVreg3, maskReg16TailN);
 
                 if constexpr (mTileNum > MAligendTileNum::Zero) {
                     Add(sumVreg0, sumVreg0, pVreg0, maskReg16TailN);
