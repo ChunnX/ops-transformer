@@ -21,7 +21,7 @@
 #include "lib/matmul_intf.h"
 #include "op_kernel/platform_util.h"
 #include "op_kernel/math_util.h"
-#include "mhc_pre_sinkhorn_backward_deterministic_simd_vf.h"
+#include "mhc_pre_sinkhorn_backward_deterministic_base.h"
 
 using namespace AscendC;
 
@@ -495,6 +495,8 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::C
         xFp32Que_.EnQue<U>(dstLocal);
         dstLocal = xFp32Que_.DeQue<U>();
         CopyOut(gradNormOutWs_[curBsIdx * k_ + offset], dstLocal, 1, count, 0, 0);
+        xFp32Que_.FreeTensor(dstLocal);
+        dstLocal = xFp32Que_.AllocTensor<U>();
         U invRms = invRmsGm_(curBsIdx);
         ComputeMulScalar(dstLocal, srcLocal, invRms * alphaScalar, count, bsLoop * count);
         xFp32Que_.EnQue<U>(dstLocal);
@@ -1258,10 +1260,6 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::P
         pipe_->InitBuffer(gradHinQue_, DOUBLE_BUFFER, cBlockCount_ * sizeof(U));
         pipe_->InitBuffer(xFp32Que_, DOUBLE_BUFFER, max(cLenAlignFp32_, cBlockCount_) * sizeof(U));
 
-        event_t evtMte3ToMte2 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_MTE2));
-        SetFlag<HardEvent::MTE3_MTE2>(evtMte3ToMte2);
-        WaitFlag<HardEvent::MTE3_MTE2>(evtMte3ToMte2);
-
         CrossCoreSetFlag<AIV_AIC_MODE, PIPE_MTE3>(PIPE_MTE3_FLAG);
 
         if (blockIdx_ < usedAivNum_) {
@@ -1279,6 +1277,7 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::P
         }
 
         CrossCoreWaitFlag<AIV_AIC_MODE>(PIPE_FIX_FLAG);
+        SyncAll();
         if (blockIdx_ < finalUsedAivNum_) {
             ComputeFinal();
         }
