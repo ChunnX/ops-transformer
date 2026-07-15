@@ -287,6 +287,7 @@ private:
     bool hasSharedExpertX_ = false;
     bool hasElasticInfoFlag_ = false;
     bool isPerformanceFlag_ = false;
+    bool hasExpertScalesFlag_ = false;
     bool isScalingDownFlag_ = false;
     bool isShareExpertRankFlag_ = false;
     bool enableSpecialExpert_ = false;
@@ -416,6 +417,7 @@ MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::InitTilingAttrs(const MoeDist
     globalBS_ = tilingData->moeDistributeCombineV2Info.globalBs;
     hasElasticInfoFlag_ = tilingData->moeDistributeCombineV2Info.hasElasticInfo;
     isPerformanceFlag_ = tilingData->moeDistributeCombineV2Info.isPerformance;
+    hasExpertScalesFlag_ = tilingData->moeDistributeCombineV2Info.hasExpertScales;
     epWorldSizeOriginal_ = tilingData->moeDistributeCombineV2Info.epWorldSize;
     epRankId_ = tilingData->moeDistributeCombineV2Info.epRankId;
     epRankIdOriginal_ = tilingData->moeDistributeCombineV2Info.epRankId;
@@ -1272,10 +1274,13 @@ MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::ProcessConstantExpert(uint32_
     Add(rowTmpFloatLocal_, rowTmpFloatLocal_, constVFloatLocal, axisH_);
     PipeBarrier<PIPE_V>();
 
-    // 乘以专家权重
-    Muls(mulBufLocal_, rowTmpFloatLocal_, scaleVal, axisH_);
-    PipeBarrier<PIPE_V>();
-    Add(sumFloatBufLocal_, sumFloatBufLocal_, mulBufLocal_, axisH_);
+    if (hasExpertScalesFlag_) {
+        Muls(mulBufLocal_, rowTmpFloatLocal_, scaleVal, axisH_);
+        PipeBarrier<PIPE_V>();
+        Add(sumFloatBufLocal_, sumFloatBufLocal_, mulBufLocal_, axisH_);
+    } else {
+        Add(sumFloatBufLocal_, sumFloatBufLocal_, rowTmpFloatLocal_, axisH_);
+    }
     PipeBarrier<PIPE_V>();
 }
 
@@ -1295,9 +1300,13 @@ __aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::Proces
     PipeBarrier<PIPE_V>();
     moeCopySumQueue_.FreeTensor<ExpandXType>(tmpUb);
 
-    Muls(mulBufLocal_, rowTmpFloatLocal_, scaleVal, axisH_);
-    PipeBarrier<PIPE_V>();
-    Add(sumFloatBufLocal_, sumFloatBufLocal_, mulBufLocal_, axisH_);
+    if (hasExpertScalesFlag_) {
+        Muls(mulBufLocal_, rowTmpFloatLocal_, scaleVal, axisH_);
+        PipeBarrier<PIPE_V>();
+        Add(sumFloatBufLocal_, sumFloatBufLocal_, mulBufLocal_, axisH_);
+    } else {
+        Add(sumFloatBufLocal_, sumFloatBufLocal_, rowTmpFloatLocal_, axisH_);
+    }
     PipeBarrier<PIPE_V>();
 }
 
@@ -1326,13 +1335,22 @@ __aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::Proces
     tmpUb = moeMainSumQueue_.DeQue<XType>();
     LocalTensor<XType> outLocalTensor = fp16CastTensor_.template ReinterpretCast<XType>();
     if constexpr (QuantMode > UNQUANT) {
-        quantInst_.DeQuantProcess(tmpUb, outLocalTensor, rowTmpFloatLocal_, sumFloatBufLocal_, scaleVal);
+        if (hasExpertScalesFlag_) {
+            quantInst_.DeQuantProcess(tmpUb, outLocalTensor, rowTmpFloatLocal_, sumFloatBufLocal_, scaleVal);
+        } else {
+            quantInst_.DeQuantProcessWithoutExpertScale(
+                tmpUb, outLocalTensor, rowTmpFloatLocal_, sumFloatBufLocal_);
+        }
     } else {
         Cast(rowTmpFloatLocal_, tmpUb, AscendC::RoundMode::CAST_NONE, processLen);
         PipeBarrier<PIPE_V>();
-        AscendC::Muls(mulBufLocal_, rowTmpFloatLocal_, scaleVal, processLen);
-        PipeBarrier<PIPE_V>();
-        AscendC::Add(sumFloatBufLocal_, sumFloatBufLocal_, mulBufLocal_, processLen);
+        if (hasExpertScalesFlag_) {
+            AscendC::Muls(mulBufLocal_, rowTmpFloatLocal_, scaleVal, processLen);
+            PipeBarrier<PIPE_V>();
+            AscendC::Add(sumFloatBufLocal_, sumFloatBufLocal_, mulBufLocal_, processLen);
+        } else {
+            Add(sumFloatBufLocal_, sumFloatBufLocal_, rowTmpFloatLocal_, processLen);
+        }
     }
     moeMainSumQueue_.FreeTensor<XType>(tmpUb);
 }
@@ -1350,14 +1368,16 @@ __aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::Expert
         expertScaleEndIdx = validBsIndexTensor_.GetValue(endIndex - 1);
         expertScaleCntPerCore = (expertScaleEndIdx - expertScaleBeginIdx_ + 1) * axisK_;
     }
-    tpipe_->InitBuffer(expertScalesBuf_, Ceil(expertScaleCntPerCore * sizeof(float), UB_ALIGN) * UB_ALIGN);
-    expertScalesLocal_ = expertScalesBuf_.Get<float>();
-    const DataCopyExtParams tokenScaleParams{1U, static_cast<uint32_t>(expertScaleCntPerCore * sizeof(float)), 0U, 0U,
-                                             0U};
-    const DataCopyPadExtParams<float> copyPadFloatParams{false, 0U, 0U, 0U};
-    DataCopyPad(expertScalesLocal_, expertScalesGM_[expertScaleBeginIdx_ * axisK_], tokenScaleParams,
-                copyPadFloatParams);
-    SyncFunc<AscendC::HardEvent::MTE2_S>();
+    if (hasExpertScalesFlag_) {
+        tpipe_->InitBuffer(expertScalesBuf_, Ceil(expertScaleCntPerCore * sizeof(float), UB_ALIGN) * UB_ALIGN);
+        expertScalesLocal_ = expertScalesBuf_.Get<float>();
+        const DataCopyExtParams tokenScaleParams{1U, static_cast<uint32_t>(expertScaleCntPerCore * sizeof(float)), 0U,
+                                                 0U, 0U};
+        const DataCopyPadExtParams<float> copyPadFloatParams{false, 0U, 0U, 0U};
+        DataCopyPad(expertScalesLocal_, expertScalesGM_[expertScaleBeginIdx_ * axisK_], tokenScaleParams,
+                    copyPadFloatParams);
+        SyncFunc<AscendC::HardEvent::MTE2_S>();
+    }
 }
 
 template <A5MteCombineTypeClass>
@@ -1375,7 +1395,9 @@ MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::ProcessMoeExpertsLoop(uint32_
                     continue;
                 }
             }
-            scaleVal = expertScalesLocal_.GetValue(index);
+            if (hasExpertScalesFlag_) {
+                scaleVal = expertScalesLocal_.GetValue(index);
+            }
             ProcessMoeExpert(tokenIndexOffset, topkId, scaleVal);
             index++;
         }
@@ -1392,7 +1414,9 @@ MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::ProcessMoeExpertsLoop(uint32_
                     continue;
                 }
             }
-            scaleVal = expertScalesLocal_.GetValue(index);
+            if (hasExpertScalesFlag_) {
+                scaleVal = expertScalesLocal_.GetValue(index);
+            }
 
             if (expert_id < moeExpertOriginalNum_) {
                 ProcessMoeExpert(tokenIndexOffset, topkId, scaleVal);

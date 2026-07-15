@@ -2,7 +2,7 @@
 
 ## 产品支持情况
 
-- <term>Ascend 950PR/Ascend 950DT</term>：不支持
+- <term>Ascend 950DT</term>：支持
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
 - <term>Atlas 200I/500 A2 推理产品</term>：不支持
@@ -86,7 +86,7 @@ MoeDistributeBuffer.low_latency_combine(x, topk_idx, topk_weights, assist_info_f
         <td>topk_weights</td>
         <td>Tensor</td>
         <td>必选</td>
-        <td>表示每个token的topK个专家的权重，其中共享专家不需要乘权重系数，直接相加即可，数据格式为ND。</td>
+        <td>表示每个token的topK个专家的权重，其中共享专家不需要乘权重系数，直接相加即可，支持传None，数据格式为ND。</td>
         <td>float</td>
         <td>(BS, K)</td>
     </tr>
@@ -538,9 +538,9 @@ MoeDistributeBuffer.low_latency_combine(x, topk_idx, topk_weights, assist_info_f
       # 再调用combine，将dispatch的输出原路返回回收：assist_info_for_combine、ep_recv_counts直接配套传入，按topk_weights乘权重再相加
       x = distribute_buffer.low_latency_combine(x=expand_x,
                                               topk_idx=topk_idx,
+                                              topk_weights=topk_weights,
                                               assist_info_for_combine=assist_info_for_combine,
                                               ep_send_counts=ep_recv_counts,
-                                              topk_weights=topk_weights,
                                               shared_expert_num=0,
                                               shared_expert_rank_num=shared_expert_rank_num,
                                               num_experts=num_experts,
