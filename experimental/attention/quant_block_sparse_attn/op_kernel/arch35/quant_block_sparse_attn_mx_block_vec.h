@@ -515,7 +515,6 @@ private:
     __aicore__ inline void SoftmaxLseCopyOut(MxRunInfo &runInfo, const MxConstInfo &constInfo,
                                              LocalTensor<float> &sumUb, LocalTensor<float> &maxUb)
     {
-        // LSE = log(sum) + max，按 TND token/head 写回。
         if (!constInfo.isSoftmaxLseEnable || runInfo.actVecMSize == 0U) {
             return;
         }
