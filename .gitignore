@@ -52,3 +52,6 @@ third_party/
 # pre-commit log
 log/
 oat_reports/
+
+# clangd index cache
+.cache/
