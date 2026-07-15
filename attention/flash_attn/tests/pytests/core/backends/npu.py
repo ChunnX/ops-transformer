@@ -18,6 +18,7 @@ except ImportError:
 try:
     import torchair
     from torchair.configs.compiler_config import CompilerConfig
+    from torchair.core._backend import uninstall_static_kernel
     _HAS_TORCHAIR = True
 except ImportError:
     _HAS_TORCHAIR = False
@@ -154,7 +155,10 @@ class NPUBackend(Backend):
             torch.npu.empty_cache()
 
     def _cleanup_static_kernel_cache(self):
-        """清理静态 kernel 缓存（编译目录 + CANN OPP 安装目录），确保每次进程都触发重新编译。"""
+        """清理静态 kernel 缓存，确保每次都触发重新编译。
+        先调 uninstall_static_kernel 注销 CANN runtime 内存中的注册，再删磁盘文件。"""
+        if _HAS_TORCHAIR:
+            uninstall_static_kernel()
         shutil.rmtree("./fa_kernel_cache", ignore_errors=True)
         opp_path = os.environ.get("ASCEND_OPP_PATH", "")
         if opp_path:
