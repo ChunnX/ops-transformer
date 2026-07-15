@@ -340,19 +340,21 @@ def check_result(expect, result, topk_value, output_idx_offset, params, cpu_topk
         print(f"有效值集合相同，无需进行比较")
     for t_id in rows:
         bsn = np.unravel_index(t_id, sp)
+        npu_topk_output_value = None
+        cpu_topk_output_value = None
         if layout_query == "TND":
             b_idx, s1_idx = find_batch_and_position(cu_seqlens_q, bsn[0])
             bsn = (b_idx, s1_idx, bsn[-1])
         if return_value:
-            cpu_topk_value = cpu_topk_value[t_id, :]
-            npu_topk_value = npu_topk_value[t_id, :]
+            cpu_topk_output_value = cpu_topk_value[t_id, :]
+            npu_topk_output_value = npu_topk_value[t_id, :]
         npu_pass_t = True
         max_re_t = 0
         valid_len = valid_lens[t_id]
         npu_pass_t, max_re_t = compare_topk_valid(cpu_reshape[t_id, :valid_len], npu_reshape[t_id, :valid_len],
                                                     topk_value, bsn, diff_npu, diff_cpu,
-                                                    npu_topk_value,
-                                                    cpu_topk_value, thres,
+                                                    npu_topk_output_value,
+                                                    cpu_topk_output_value, thres,
                                                     return_value, output_idx_offset, layout_query, cu_seqlens_q, q_seq)
         if not npu_pass_t:
             npu_pass = False
