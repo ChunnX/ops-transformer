@@ -281,7 +281,7 @@ ge::graphStatus CheckAttenMaskShape(FuzzyBaseInfoParamsRegbase& fBaseParams)
                         fBaseParams.queryType != ge::DT_FLOAT && fBaseParams.d == fBaseParams.d1 &&
                         fBaseParams.pseType == static_cast<uint32_t>(PseType::PSE_OUTER_ADD_MUL_TYPE) && ngs1s2BIsAble;
         int64_t dTypeSize = fBaseParams.queryType == ge::DT_BF16 ?
-                            ge::GetSizeByDataType(static_cast<ge::DataType>(fBaseParams.queryType)) << 1 :
+                            ge::GetSizeByDataType(static_cast<ge::DataType>(fBaseParams.queryType)) * NUM_TWO :
                             ge::GetSizeByDataType(static_cast<ge::DataType>(fBaseParams.queryType));
         int64_t s2Align = AlignTo(fBaseParams.s2 *
                                   ge::GetSizeByDataType(static_cast<ge::DataType>(fBaseParams.queryType)),
