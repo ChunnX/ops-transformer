@@ -18,20 +18,22 @@ const int DIM_TWO = 2;
 std::tuple<at::Tensor, at::Tensor>
 NpuMegaMoe(const at::Tensor &context, const at::Tensor &x, const at::Tensor &topkIds, const at::Tensor &topkWeights,
            const std::vector<at::Tensor> &weight1, const std::vector<at::Tensor> &weight2, int64_t moeExpertNum,
-           int64_t epWorldSize, int64_t cclBufferSize, const c10::optional<std::vector<at::Tensor>> &weightScales1,
+           int64_t epWorldSize, int64_t cclBufferSize,
+           const c10::optional<std::vector<at::Tensor>> &weightScales1,
            const c10::optional<std::vector<at::Tensor>> &weightScales2,
            const c10::optional<std::vector<at::Tensor>> &bias1, const c10::optional<std::vector<at::Tensor>> &bias2,
-           const c10::optional<at::Tensor> &xActiveMask, int64_t maxRecvTokenNum, int64_t dispatchQuantMode,
-           int64_t combineQuantMode, std::string commAlg, int64_t numMaxTokensPerRank, std::string activation,
-           c10::optional<float> activationClamp, c10::optional<int64_t> dispatchQuantOutDtype,
-           c10::optional<int64_t> weight1Type, c10::optional<int64_t> weight2Type, c10::optional<int64_t> topoType,
-           c10::optional<int64_t> rankNumPerServer,
+           const c10::optional<at::Tensor> &xActiveMask,
            const c10::optional<std::vector<at::Tensor>> &sharedWeight1,
            const c10::optional<std::vector<at::Tensor>> &sharedWeight2,
            const c10::optional<std::vector<at::Tensor>> &sharedWeightScales1,
            const c10::optional<std::vector<at::Tensor>> &sharedWeightScales2,
            const c10::optional<std::vector<at::Tensor>> &sharedBias1,
-           const c10::optional<std::vector<at::Tensor>> &sharedBias2)
+           const c10::optional<std::vector<at::Tensor>> &sharedBias2,
+           int64_t maxRecvTokenNum, int64_t dispatchQuantMode,
+           int64_t combineQuantMode, std::string commAlg, int64_t numMaxTokensPerRank, std::string activation,
+           c10::optional<float> activationClamp, c10::optional<int64_t> dispatchQuantOutDtype,
+           c10::optional<int64_t> weight1Type, c10::optional<int64_t> weight2Type, c10::optional<int64_t> topoType,
+           c10::optional<int64_t> rankNumPerServer)
 {
     TORCH_CHECK((epWorldSize > 0), "The ep_world_sizes should be greater than 0, current is: ", epWorldSize);
     TORCH_CHECK((x.dim() == DIM_TWO) && (topkIds.dim() == DIM_TWO), "The x and topk_ids should be 2D");
