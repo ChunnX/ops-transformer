@@ -395,8 +395,12 @@ static ge::graphStatus SetAttrParams(const gert::TilingContext *context, MegaMoe
     int64_t moeExpertNum = static_cast<int64_t>(*moeExpertNumPtr);
     int64_t moeExpertPerRank = moeExpertNum / static_cast<int64_t>(tilingData->epWorldSize);
     tilingData->moeExpertPerRank = static_cast<uint32_t>(moeExpertPerRank);
-    tilingData->sharedExpertNum = static_cast<uint32_t>(
-        static_cast<int64_t>(tilingData->expertPerRank) - moeExpertPerRank);
+    auto sharedWeight1StorageShape = context->GetDynamicInputShape(config.sharedWeight1Index, 0);
+    if (sharedWeight1StorageShape != nullptr) {
+        tilingData->sharedExpertNum = static_cast<uint32_t>(sharedWeight1StorageShape->GetStorageShape().GetDim(0));
+    } else {
+        tilingData->sharedExpertNum = 0;
+    }
     OP_TILING_CHECK(tilingData->sharedExpertNum > 4,
                     OP_LOGE_FOR_INVALID_VALUE(nodeName, "sharedExpertNum",
                         std::to_string(tilingData->sharedExpertNum).c_str(),
