@@ -30,6 +30,8 @@ constexpr uint64_t TILE_M_CANDIDATES[] = {2048, 1024, 512, 256}; // 优选候选
 constexpr uint64_t HCCL_NO_ADJUSTMENT = 0;        // 不需要调整
 constexpr uint64_t HCCL_UNSUPPORTED = UINT64_MAX; // 无法处理
 
+constexpr uint64_t AICPU_TARGET_TILE_CNT = 4;   // AICPU 目标最大 tile 数
+
 uint64_t CalcMaxTileMFromHcclLimit(const CutResult &cutRes, uint64_t kValue, uint64_t dtypeSize, uint64_t rankDim,
                                    const std::string &opName);
 
@@ -41,9 +43,13 @@ uint64_t DetermineFinalTileMWithLimit(uint64_t mValue, uint64_t candidateTileM, 
 void ApplyTileSplit(CutResult &cutRes, uint64_t mValue, uint64_t tileM, uint64_t kValue, uint64_t dtypeSize,
                     uint64_t rankDim, const std::string &opName);
 
-void AdjustCutResultForHCCL(CutResult &cutRes, uint64_t mValue, uint64_t kValue, uint64_t dtypeSize, uint64_t rankDim,
+void AdjustCutResultForCCU(CutResult &cutRes, uint64_t mValue, uint64_t kValue, uint64_t dtypeSize, uint64_t rankDim,
                             const std::string &opName);
 
+void AdjustCutResultForAICPU(CutResult& cutRes,
+                             uint64_t mValue,
+                             uint64_t baseM,
+                             const std::string& opName);
 } // namespace optiling
 
 #endif // ALL_GATHER_HCCL_UTILS_H
