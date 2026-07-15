@@ -930,6 +930,7 @@ ge::graphStatus AllGatherQuantBmmHelper::GetShapeAttrsInfo()
     inputParams_.opName = tilingProcesser_.opName_;
     inputParams_.transA = tilingArgs.isATrans;
     inputParams_.transB = tilingArgs.isBTrans;
+    OP_LOGD(tilingProcesser_.opName_, "inputParams_.transB is %d", inputParams_.transB);
     inputParams_.hasBias = tilingArgs.isBias;
     inputParams_.libApiWorkSpaceSize = tilingProcesser_.libApiWorkSpaceSize_;
     inputParams_.mSize = tilingArgs.mValue;

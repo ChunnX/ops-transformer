@@ -154,6 +154,7 @@ bool AllGatherMatmulTilingBase::CheckInputParaArraySize()
     int64_t x2Dim1 = x2Shape->GetStorageShape().GetDim(1);
 
     int64_t x2KValue = 0;
+    OP_LOGD(opName_, "args_.isBTrans is %d", args_.isBTrans);
     if (args_.isBTrans) {
         x2KValue = x2Dim1;
     } else {
