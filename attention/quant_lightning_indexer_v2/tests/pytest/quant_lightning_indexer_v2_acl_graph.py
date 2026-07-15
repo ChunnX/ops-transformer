@@ -77,9 +77,9 @@ def _qliv2_prepare_tensors_and_metadata(params, tensor_dict):
         head_dim = int(params[7])
         k_head_num = int(params[6])
         dequant_dtype_str = params[11]
-        if dequant_dtype_str == 'FP16':
+        if dequant_dtype_str == 'FP16' or dequant_dtype_str == torch.float16:
             dequant_dtype = torch.float16
-        elif dequant_dtype_str == 'FP32':
+        elif dequant_dtype_str == 'FP32' or dequant_dtype_str == torch.float32:
             dequant_dtype = torch.float32
         else:
             dequant_dtype = torch.float16
