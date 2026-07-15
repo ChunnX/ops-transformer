@@ -1676,6 +1676,12 @@ TEST_F(MhcPreTiling, Ut_Check_MK_N4_M1024_D5120_HasResi)
     uint32_t kDim = readField(fieldOffset([](auto &data, uint32_t value) { data.set_cubeBlockDimK(value); }));
     uint32_t splitK =
         readField(fieldOffset([](auto &data, uint32_t value) { data.set_multCoreSplitKSize(value); }));
+    uint32_t mL1Size =
+        readField(fieldOffset([](auto &data, uint32_t value) { data.set_mL1Size(value); }));
+    uint32_t kL1Size =
+        readField(fieldOffset([](auto &data, uint32_t value) { data.set_kL1Size(value); }));
+    uint32_t kUbSize =
+        readField(fieldOffset([](auto &data, uint32_t value) { data.set_kUbSize(value); }));
     uint32_t mmOffset =
         readField(fieldOffset([](auto &data, uint32_t value) { data.set_mkWorkspaceMmOffset(value); }));
     uint32_t rmsOffset =
@@ -1704,6 +1710,9 @@ TEST_F(MhcPreTiling, Ut_Check_MK_N4_M1024_D5120_HasResi)
     EXPECT_EQ(mDim, expectedMDim);
     EXPECT_EQ(kDim, expectedActualKBlocks);
     EXPECT_EQ(splitK, expectedSplitK);
+    EXPECT_EQ(mL1Size, 256U);
+    EXPECT_EQ(kL1Size, 128U);
+    EXPECT_EQ(kUbSize, kL1Size);
     EXPECT_EQ(mmOffset, 0U);
     EXPECT_LT(mmOffset, rmsOffset);
     EXPECT_LT(rmsOffset, finalOffset);
