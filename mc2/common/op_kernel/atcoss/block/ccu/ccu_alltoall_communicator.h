@@ -208,7 +208,10 @@ private:
                                          TilingDataType, MC2AlltoAllPrimitives, 0, 1>;
     CommEngine engine_;
     TilingDataType *tiling_;
-    GM_ADDR sendScale_, recvScale_, sendData_, recvData_;
+    GM_ADDR sendScale_;
+    GM_ADDR recvScale_;
+    GM_ADDR sendData_;
+    GM_ADDR recvData_;
     uint64_t scaleHcclDtype_, dataHcclDtype_;
     uint64_t rankForComm_;
     uint32_t scaleKPerRank_;

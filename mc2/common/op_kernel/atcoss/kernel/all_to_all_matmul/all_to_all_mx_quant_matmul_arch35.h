@@ -121,7 +121,7 @@ AlltoAllMxQuantMatmulArch35<X1Type, X2Type, YType, CommDataTypeX1,
 
     if ASCEND_IS_AIV {
         comm_.ProcessScale();
-        comm_.ProcessData<X1Type>();
+        comm_.template ProcessData<X1Type>();
     }
 
     if ASCEND_IS_AIC {
