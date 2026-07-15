@@ -67,6 +67,9 @@ ge::graphStatus InferShapeQuantBlockSparseAttn(gert::InferShapeContext *context)
         softmaxLseShape->SetDim(0, 0);
         return ge::GRAPH_SUCCESS;
     }
+    const int64_t *quantModePtr = attrs->GetAttrPointer<int64_t>(optiling::BSA_QUANT_MODE_ATTR_INDEX);
+    const uint32_t quantMode =
+        (quantModePtr != nullptr) ? static_cast<uint32_t>(*quantModePtr) : optiling::BSA_QUANT_MODE_FP8;
 
     const size_t queryDimNum = queryShape->GetDimNum();
     if (queryDimNum == 4U) {
@@ -76,8 +79,13 @@ ge::graphStatus InferShapeQuantBlockSparseAttn(gert::InferShapeContext *context)
         softmaxLseShape->SetDim(2, queryShape->GetDim(1)); // S1
     } else if (queryDimNum == 3U) {
         softmaxLseShape->SetDimNum(2);
-        softmaxLseShape->SetDim(0, queryShape->GetDim(1)); // N1
-        softmaxLseShape->SetDim(1, queryShape->GetDim(0)); // T
+        if (quantMode == optiling::BSA_QUANT_MODE_MXFP8_FULL_QUANT) {
+            softmaxLseShape->SetDim(0, queryShape->GetDim(0)); // T
+            softmaxLseShape->SetDim(1, queryShape->GetDim(1)); // N1
+        } else {
+            softmaxLseShape->SetDim(0, queryShape->GetDim(1)); // N1
+            softmaxLseShape->SetDim(1, queryShape->GetDim(0)); // T
+        }
     } else {
         OP_LOGE_FOR_INVALID_SHAPEDIM(kOpName, "query", std::to_string(queryDimNum) + "D", "3D or 4D");
         return ge::GRAPH_FAILED;

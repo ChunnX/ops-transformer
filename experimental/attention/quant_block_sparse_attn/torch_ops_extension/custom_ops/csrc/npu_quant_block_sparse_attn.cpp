@@ -26,9 +26,10 @@ const int64_t BSA_MXFP8_SCALE_LAST_DIM = 2;
 
 // 工具函数，推导输出 attention_out / softmax_lse 的 shape 与 dtype
 //   - attention_out: BF16，shape 跟随 query 布局（BSND/TND），head-dim 取自 value
-//   - softmax_lse:   FLOAT32，return_softmax_lse 为真时 (B,N1,S1)/(N1,T)，否则空张量
+//   - softmax_lse:   FLOAT32，return_softmax_lse 为真时 BSND 为 (B,N1,S1)，TND 下 FP8 为 (N1,T)，
+//                    MXFP8 full-quant 为 (T,N1)，否则空张量
 std::tuple<at::Tensor, at::Tensor> construct_bsa_output_tensors(const at::Tensor &query, const at::Tensor &value,
-                                                                bool return_softmax_lse)
+                                                                int64_t quant_mode, bool return_softmax_lse)
 {
     for (auto i = 0; i < query.sizes().size(); i++) {
         TORCH_CHECK(query.size(i) > 0,
@@ -45,7 +46,11 @@ std::tuple<at::Tensor, at::Tensor> construct_bsa_output_tensors(const at::Tensor
         int64_t t_size = query.size(0);
         int64_t n1_size = query.size(1);
         atten_out_size = {t_size, n1_size, d_size};
-        softmax_lse_size = {n1_size, t_size};
+        if (quant_mode == BSA_MXFP8_FULL_QUANT_MODE) {
+            softmax_lse_size = {t_size, n1_size};
+        } else {
+            softmax_lse_size = {n1_size, t_size};
+        }
     } else {
         // BSND -> (B, S1, N1, D)
         int64_t b_size = query.size(0);
@@ -151,7 +156,8 @@ std::tuple<at::Tensor, at::Tensor> npu_quant_block_sparse_attn_npu(
     }
 
     // construct the output tensors
-    std::tuple<at::Tensor, at::Tensor> outputs = construct_bsa_output_tensors(query, value, return_softmax_lse);
+    std::tuple<at::Tensor, at::Tensor> outputs = construct_bsa_output_tensors(query, value, quant_mode,
+                                                                              return_softmax_lse);
     at::Tensor attention_out = std::get<0>(outputs);
     at::Tensor softmax_lse = std::get<1>(outputs);
 
@@ -188,7 +194,7 @@ std::tuple<at::Tensor, at::Tensor> npu_quant_block_sparse_attn_meta(
     c10::string_view layout_sparse_indices, c10::string_view layout_out, int64_t quant_mode, int64_t mask_mode,
     bool return_softmax_lse)
 {
-    return construct_bsa_output_tensors(query, value, return_softmax_lse);
+    return construct_bsa_output_tensors(query, value, quant_mode, return_softmax_lse);
 }
 } // namespace custom
 

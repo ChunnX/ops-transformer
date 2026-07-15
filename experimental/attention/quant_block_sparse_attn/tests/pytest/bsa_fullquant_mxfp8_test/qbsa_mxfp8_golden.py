@@ -663,7 +663,7 @@ def generate_data():
 #   - Q/QDescale 公共输入为 TND/NTD；K/V 与 K/V descale 使用内部 BNSD
 #   - 按 sparse_indices 中记录的 KV block 顺序收集 positions，并以两个 sparse block 为一组做 online 累加
 #   - Q/K 使用 per-token D-group descale；V 使用 per-channel S-group descale
-#   - 输出 OUT 固定 TND，LSE 固定 NT1
+#   - 输出 OUT 固定 TND，MXFP8 TND LSE 固定 TN
 # ==============================================================================
 
 EMPTY_LSE = -3.4028234663852886e38
@@ -747,12 +747,12 @@ def cpu_mxfp8_golden(q_fp8, k_fp8, v_fp8,
     p_scale_value = float(torch.as_tensor(p_scale).reshape(-1)[0].item())
 
     attention_out = torch.zeros((total_q, n1, head_dim), dtype=torch.float32)
-    softmax_lse = torch.full((n1, total_q, 1), EMPTY_LSE, dtype=torch.float32)
+    softmax_lse = torch.full((total_q, n1), EMPTY_LSE, dtype=torch.float32)
 
     qb_max = math.ceil(max(q_lengths) / SPARSE_BLOCK_SIZE)
     neg_inf = float("-inf")
 
-    logger.info("[CPU Golden] reference sparse flow: layout_q=%s, OUT=TND, LSE=NT1", layout_q)
+    logger.info("[CPU Golden] reference sparse flow: layout_q=%s, OUT=TND, LSE=TN", layout_q)
 
     for batch_idx in range(batch):
         q_len = int(q_lengths[batch_idx])
@@ -868,9 +868,9 @@ def cpu_mxfp8_golden(q_fp8, k_fp8, v_fp8,
                         continue
                     out_idx = q_base + q_start + local_idx
                     attention_out[out_idx, head_idx] = attn[local_idx]
-                    softmax_lse[head_idx, out_idx, 0] = lse[local_idx]
+                    softmax_lse[out_idx, head_idx] = lse[local_idx]
 
-    logger.info("[CPU Golden] output(TND)=%s, lse(NT1)=%s", attention_out.shape, softmax_lse.shape)
+    logger.info("[CPU Golden] output(TND)=%s, lse(TN)=%s", attention_out.shape, softmax_lse.shape)
     return attention_out.contiguous(), softmax_lse.contiguous()
 
 
@@ -973,7 +973,7 @@ def _call_npu_fa_op(q, k, v, mask, q_lengths, kv_lengths, cu_seqlens_q, cu_seqle
 def _build_causal_mask():
     if MASK_MODE == 0:
         return torch.empty((0, 0), dtype=torch.uint8).npu()
-    return torch.triu(torch.ones(2048, 2048, dtype=torch.uint8), diagonal=1).npu()
+    return torch.triu(torch.ones(2048, 2048, dtype=torch.uint8), diagonal=0).npu()
 
 
 def npu_mxfp8_fa(q_fp8, k_fp8, v_fp8,
@@ -1064,8 +1064,8 @@ def npu_mxfp8_fa(q_fp8, k_fp8, v_fp8,
     T_actual = sum(q_lengths)
     if npu_output.shape[0] > T_actual:
         npu_output = npu_output[:T_actual]
-    if npu_lse is not None and npu_lse.dim() >= 2 and npu_lse.shape[1] > T_actual:
-        npu_lse = npu_lse[:, :T_actual, ...]
+    if npu_lse is not None and npu_lse.dim() >= 1 and npu_lse.shape[0] > T_actual:
+        npu_lse = npu_lse[:T_actual, ...]
     logger.info("[NPU] output=%s, lse=%s", npu_output.shape, None if npu_lse is None else npu_lse.shape)
     return npu_output, npu_lse
 
