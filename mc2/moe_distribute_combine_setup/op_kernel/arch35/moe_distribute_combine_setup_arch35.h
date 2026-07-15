@@ -368,6 +368,9 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Communica
             notifySqeInfo.notifyAddr -= sizeof(uint64_t);
             notifySqeInfo.notifyData = 0x3f800000;
             notifySqeInfo.cqe = 1U;
+
+            AscendC::printf("[tzydebug]setup epRankId[%d] sendRankId[%d] notifyAddr[%x]",
+                            moeDistributeCombineSetupInfo_->epRankId, sendRankId, notifySqeInfo.notifyAddr);
         }
 
         if (unlikely(sendRankId == moeDistributeCombineSetupInfo_->epRankId)) { // 本卡通信：仅搬运数据

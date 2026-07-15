@@ -285,6 +285,13 @@ __aicore__ inline void MoeDistributeCombineTeardown<TemplateMC2TypeFunc>::WaitDi
         sumOfFlag = statusSumOutTensor.GetValue(0);
     }
 
+    AscendC::printf(
+        "[tzydebug]teardown epRankId[%d] notifyAddr[%x]", moeDistributeCombineTeardownInfo_->epRankId,
+        epStatusSpaceGlobal[static_cast<uint64_t>(startRankId_) * (stateOffset_ / static_cast<uint64_t>(sizeof(float)))]
+            .GetPhyAddr(),
+        epStatusSpaceGlobal.GetValue(static_cast<uint64_t>(startRankId_) *
+                                     (stateOffset_ / static_cast<uint64_t>(sizeof(float)))));
+
     Duplicate<float>(statusTensor, 0, sendRankNum_ * UB_ALIGN / sizeof(float));
     AscendC::SyncFunc<AscendC::HardEvent::V_MTE3>();
     DataCopy(epStatusSpaceGlobal[static_cast<uint64_t>(startRankId_) *
