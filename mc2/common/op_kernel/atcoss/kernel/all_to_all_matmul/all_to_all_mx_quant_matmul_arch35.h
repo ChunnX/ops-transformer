@@ -15,7 +15,7 @@
  * Pipeline design:
  *   Process()
  *     AIV: comm_.ProcessScale()  →  comm_.ProcessData<X1Type>()
- *     AIC: computeLoop_()        →  setupComputeContext_(i) + BlazeMXQuantMatmul::Process(i)
+ *     AIC: ProcessCompute()      →  setupComputeContext_(i) + BlazeMXQuantMatmul::Process(i)
  *
  * AIV side: pure communication via MxQuantAlltoAllComm (replaceable with AllGather etc).
  * AIC side: pure computation, reuses BlazeMXQuantMatmul without modification.
@@ -71,7 +71,7 @@ private:
     static constexpr uint64_t NUM_TWO = 2UL;
     static constexpr uint64_t ALIGN_NUM = 512UL;
 
-    __aicore__ inline void computeLoop_();
+    __aicore__ inline void ProcessCompute();
     __aicore__ inline void setupComputeContext_(uint32_t loopIdx);
 };
 
@@ -125,7 +125,7 @@ AlltoAllMxQuantMatmulArch35<X1Type, X2Type, YType, CommDataTypeX1,
     }
 
     if ASCEND_IS_AIC {
-        computeLoop_();
+        ProcessCompute();
     }
 
     comm_.End();
@@ -136,13 +136,13 @@ template <typename X1Type, typename X2Type, typename YType, typename CommDataTyp
           typename AlltoAllMatmulTilingDataType, bool IsMxFp4>
 __aicore__ inline void
 AlltoAllMxQuantMatmulArch35<X1Type, X2Type, YType, CommDataTypeX1,
-                             AlltoAllMatmulTilingDataType, IsMxFp4>::computeLoop_()
+                             AlltoAllMatmulTilingDataType, IsMxFp4>::ProcessCompute()
 {
     auto &&mc2Tiling_ = tilingData_->alltoAllQuantMatmulTilingInfo;
     uint32_t totalTileCnt = mc2Tiling_.tileCnt + mc2Tiling_.tailCnt;
 
     for (uint32_t i = 0; i < totalTileCnt; ++i) {
-        AscendC::CrossCoreWaitFlag(i);
+        AscendC::CrossCoreWaitFlag(9);
         setupComputeContext_(i);
         uint32_t localIdx = (i < mc2Tiling_.tileCnt) ? i : (i - mc2Tiling_.tileCnt);
         computeStage_.Process(localIdx);

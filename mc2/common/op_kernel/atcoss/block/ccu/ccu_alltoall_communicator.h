@@ -48,13 +48,6 @@ public:
                                               context->strideCount, context->repeat);
     }
 
-    __aicore__ inline AscendC::HcclHandle SyncSend(HcclType *hccl, MC2AlltoAllContext *context, uint32_t taskIndex)
-    {
-        return hccl->template AlltoAll<true>(context->sendBuffer + taskIndex * context->sendOffset,
-                                             context->recvBuffer + taskIndex * context->recvOffset, context->sendCount,
-                                             (AscendC::HcclDataType)(static_cast<uint8_t>(context->hcclDataType)),
-                                             context->strideCount, context->repeat);
-    }
 };
 
 template <bool AICSync, AscendC::HcclServerType ServerType, typename ContextType, typename TilingDataType,
@@ -66,10 +59,7 @@ public:
     __aicore__ inline ContextType *GetContextPtr();
     __aicore__ inline void PrepareAll(uint32_t taskCnt);
     __aicore__ inline void Process(uint32_t taskIndex);
-    __aicore__ inline void ProcessWithPrepare(uint32_t taskIndex);
     __aicore__ inline void AddIndex(uint32_t taskCnt);
-    __aicore__ inline void PrepareAll();
-    __aicore__ inline void Process();
     __aicore__ inline void End();
 
 private:
@@ -169,24 +159,6 @@ HcclCommunicator<AICSync, ServerType, ContextType, TilingDataType, Primitive, Se
 template <bool AICSync, AscendC::HcclServerType ServerType, typename ContextType, typename TilingDataType,
           template <typename> class Primitive, uint32_t SendCnt, uint32_t RecvCnt>
 __aicore__ inline void
-HcclCommunicator<AICSync, ServerType, ContextType, TilingDataType, Primitive, SendCnt, RecvCnt>::ProcessWithPrepare(
-    uint32_t taskIndex)
-{
-    if (!notifyFlag_) {
-        return;
-    }
-    if (communicationType_ == Communicationtype::COMMUNICATION_WAIT_ONE) {
-        AscendC::HcclHandle handleId = primitive_.SyncSend(&hccl_, &context_, taskIndex);
-        hccl_.Wait(handleId);
-    } else if (communicationType_ == Communicationtype::COMMUNICATION_SEND_ONE) {
-        hTasks_[endIndex_ + taskIndex] = primitive_.SyncSend(&hccl_, &context_, taskIndex);
-        taskSuccess_[endIndex_ + taskIndex] = false;
-    }
-}
-
-template <bool AICSync, AscendC::HcclServerType ServerType, typename ContextType, typename TilingDataType,
-          template <typename> class Primitive, uint32_t SendCnt, uint32_t RecvCnt>
-__aicore__ inline void
 HcclCommunicator<AICSync, ServerType, ContextType, TilingDataType, Primitive, SendCnt, RecvCnt>::AddIndex(
     uint32_t taskCnt)
 {
@@ -195,36 +167,6 @@ HcclCommunicator<AICSync, ServerType, ContextType, TilingDataType, Primitive, Se
     }
     startIndex_ = endIndex_;
     endIndex_ += taskCnt;
-}
-
-template <bool AICSync, AscendC::HcclServerType ServerType, typename ContextType, typename TilingDataType,
-          template <typename> class Primitive, uint32_t SendCnt, uint32_t RecvCnt>
-__aicore__ inline void
-HcclCommunicator<AICSync, ServerType, ContextType, TilingDataType, Primitive, SendCnt, RecvCnt>::PrepareAll()
-{
-    if (!notifyFlag_) {
-        return;
-    }
-    hTasks_[endIndex_] = primitive_.Prepare(&hccl_, &context_, 0);
-    for (uint32_t i = 1; i < context_.repeat; ++i) {
-        hTasks_[endIndex_ + i] = hTasks_[endIndex_];
-    }
-    AddIndex(context_.repeat);
-    if (communicationType_ == Communicationtype::COMMUNICATION_WAIT_ONE) {
-        for (uint32_t i = 0; i < context_.repeat; ++i) {
-            hccl_.Commit(hTasks_[startIndex_ + i]);
-            taskSuccess_[startIndex_ + i] = false;
-        }
-    }
-}
-
-template <bool AICSync, AscendC::HcclServerType ServerType, typename ContextType, typename TilingDataType,
-          template <typename> class Primitive, uint32_t SendCnt, uint32_t RecvCnt>
-__aicore__ inline void
-HcclCommunicator<AICSync, ServerType, ContextType, TilingDataType, Primitive, SendCnt, RecvCnt>::Process()
-{
-    Process(0);
-    startIndex_ += 1;
 }
 
 template <bool AICSync, AscendC::HcclServerType ServerType, typename ContextType, typename TilingDataType,
@@ -342,7 +284,10 @@ __aicore__ inline void MxQuantAlltoAllComm<TilingDataType, IsMxFp4>::ProcessData
         engine_.PrepareAll(info.tileCnt);
         for (uint32_t i = 0; i < info.tileCnt; ++i) {
             engine_.Process(i);
-            AscendC::CrossCoreSetFlag<2, PIPE_MTE3>(i);
+            AscendC::SyncAll<true>();
+            AscendC::CrossCoreSetFlag<0, PIPE_MTE3>(8);
+            AscendC::CrossCoreWaitFlag(8);
+            AscendC::CrossCoreSetFlag<2, PIPE_MTE3>(9);
         }
     }
 
@@ -360,7 +305,10 @@ __aicore__ inline void MxQuantAlltoAllComm<TilingDataType, IsMxFp4>::ProcessData
         engine_.PrepareAll(info.tailCnt);
         for (uint32_t i = 0; i < info.tailCnt; ++i) {
             engine_.Process(i);
-            AscendC::CrossCoreSetFlag<2, PIPE_MTE3>(info.tileCnt + i);
+            AscendC::SyncAll<true>();
+            AscendC::CrossCoreSetFlag<0, PIPE_MTE3>(8);
+            AscendC::CrossCoreWaitFlag(8);
+            AscendC::CrossCoreSetFlag<2, PIPE_MTE3>(9);
         }
     }
 }
@@ -374,13 +322,5 @@ __aicore__ inline void MxQuantAlltoAllComm<TilingDataType, IsMxFp4>::End()
 } // namespace Ccu
 } // namespace AivComm
 } // namespace Dista
-
-#ifndef DEFINE_DISTA_CCU_HCCL_FOR_COMMUNICATION
-#define DEFINE_DISTA_CCU_HCCL_FOR_COMMUNICATION(AICSync, ServerType, HcclContextType, TilingDataType, Primitive,       \
-                                                sendCntPerTask, recvCntPerTask, CommunicationType)                     \
-    using CommunicationType =                                                                                          \
-        Dista::AivComm::Ccu::HcclCommunicator<AICSync, ServerType, HcclContextType, TilingDataType, Primitive,         \
-                                              sendCntPerTask, recvCntPerTask>
-#endif
 
 #endif
