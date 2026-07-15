@@ -197,7 +197,7 @@ __aicore__ inline void CompressorKernel<COMP>::SplitK()
         mSize += bSeqUsed;
     }
     uint32_t mBaseNum = CeilDivT(mSize, constInfo.mBaseSize);
-    if (constInfo.dBasicBlockNum * mBaseNum < constInfo.usedCoreNum && constInfo.batchConsistency != 3) {
+    if (constInfo.dBasicBlockNum * mBaseNum < constInfo.usedCoreNum && constInfo.batchConsistency != BATCH_CONSISTENCY) {
         constInfo.kBaseNum = constInfo.usedCoreNum / constInfo.dBasicBlockNum;
         uint32_t kAlignSize = CeilDivT(
             Align(constInfo.hSize, static_cast<uint32_t>(BUFFER_SIZE_BYTE_32B / sizeof(X_T))), constInfo.kBaseNum);
