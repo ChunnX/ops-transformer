@@ -1381,7 +1381,7 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::GetWorkspaceSize()
         }
     }
     // mask bool workspace size
-    if (fBaseParams.dropoutIsDivisibleBy8 == 0) {
+    if (fBaseParams.dropoutIsDivisibleBy8 == 0 && fBaseParams.dropMaskOuter) {
         postTilingData_->set_dropMaskGmOffset(workspaceSize);
         workspaceSize =
             (workspaceSize + static_cast<size_t>(fBaseParams.dropMaskSize) + GM_ALIGN) / GM_ALIGN * GM_ALIGN;
