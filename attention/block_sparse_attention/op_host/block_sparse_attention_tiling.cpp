@@ -715,29 +715,6 @@ ge::graphStatus BSATiling::ValidateVDequantScale(gert::TilingContext *bsaContext
     return ValidateGenericDequantScale(bsaContext, V_DEQUANT_SCALE_INDEX);
 }
 
-ge::graphStatus BSATiling::CheckBlockShapeQuantConstraint(gert::TilingContext *bsaContext) 
-{ 
-    if (dataType_ == ge::DT_FLOAT8_E4M3FN) { 
-        constexpr int64_t SUPPORTED_BLOCK_SHAPE_X = 128; 
-        constexpr int64_t SUPPORTED_MULTIPLE_OF_BLOCK_SHAPE_Y = 256; 
-        if (blockShapeX_ != SUPPORTED_BLOCK_SHAPE_X) { 
-            OP_LOGE(bsaContext->GetNodeName(), 
-                    "In the float8_e4m3fn full-quant scenario, blockShape element 0 must be consistent with %ld, but " 
-                    "now it is %ld.", 
-                    SUPPORTED_BLOCK_SHAPE_X, blockShapeX_); 
-            return ge::GRAPH_FAILED; 
-        } 
-        if (blockShapeY_ % SUPPORTED_MULTIPLE_OF_BLOCK_SHAPE_Y != 0) { 
-            OP_LOGE(bsaContext->GetNodeName(), 
-                    "In the float8_e4m3fn full-quant scenario, blockShape element 1 must be a multiple of %ld, but now " 
-                    "it is %ld.", 
-                    SUPPORTED_MULTIPLE_OF_BLOCK_SHAPE_Y, blockShapeY_); 
-            return ge::GRAPH_FAILED; 
-        } 
-    } 
-    return ge::GRAPH_SUCCESS; 
-}
-
 ge::graphStatus BSATiling::ParseOptionalTensors(gert::TilingContext *bsaContext)
 {
     if (ParseSeqlens(bsaContext) != ge::GRAPH_SUCCESS ||
@@ -873,21 +850,29 @@ static inline uint32_t LargestDivisorAtMost(uint32_t value, uint32_t maxBound)
 void BSATiling::CalcBaseTileTilingParams950()
 {
     qBaseTile_ = (blockShapeX_ > TILE_SIZE_128) ? TILE_SIZE_128 : blockShapeX_;
-    if (innerPrecise_ == BsaInnerCalcPrec::LOW_HIGH_MIXED && embeddingSize_ <= D_SIZE_128) {
-        if (blockShapeY_ % TILE_SIZE_128 == 0) {
-            kvBaseTile_ = TILE_SIZE_256;
-        } else if (blockShapeY_ > TILE_SIZE_256) {
-            kvBaseTile_ = LargestDivisorAtMost(blockShapeY_, TILE_SIZE_256);
+    if (dataType_ == ge::DT_FLOAT8_E4M3FN) {
+        if (innerPrecise_ == BsaInnerCalcPrec::LOW_HIGH_MIXED && embeddingSize_ <= D_SIZE_128) {
+            if (blockShapeY_ % TILE_SIZE_128 == 0) {
+                kvBaseTile_ = TILE_SIZE_256;
+            } else if (blockShapeY_ > TILE_SIZE_256) {
+                kvBaseTile_ = LargestDivisorAtMost(blockShapeY_, TILE_SIZE_256);
+            } else {
+                kvBaseTile_ = blockShapeY_;
+            }
         } else {
-            kvBaseTile_ = blockShapeY_;
+            if (blockShapeY_ % TILE_SIZE_128 == 0) {
+                kvBaseTile_ = TILE_SIZE_128;
+            } else if (blockShapeY_ > TILE_SIZE_128) {
+                kvBaseTile_ = LargestDivisorAtMost(blockShapeY_, TILE_SIZE_128);
+            } else {
+                kvBaseTile_ = blockShapeY_;
+            }
         }
     } else {
-        if (blockShapeY_ % TILE_SIZE_128 == 0) {
-            kvBaseTile_ = TILE_SIZE_128;
-        } else if (blockShapeY_ > TILE_SIZE_128) {
-            kvBaseTile_ = LargestDivisorAtMost(blockShapeY_, TILE_SIZE_128);
+        if (innerPrecise_ == BsaInnerCalcPrec::LOW_HIGH_MIXED && embeddingSize_ <= D_SIZE_128) {
+            kvBaseTile_ = TILE_SIZE_256;
         } else {
-            kvBaseTile_ = blockShapeY_;
+            kvBaseTile_ = TILE_SIZE_128;
         }
     }
 }
