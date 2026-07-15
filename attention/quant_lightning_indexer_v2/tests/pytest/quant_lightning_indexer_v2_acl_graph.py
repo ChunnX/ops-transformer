@@ -57,34 +57,38 @@ def _qliv2_prepare_tensors_and_metadata(params, tensor_dict):
     qk_dtype = params[10]
 
     if qk_dtype == 'FLOAT8_E4M3FN' or qk_dtype == torch.float8_e4m3fn:
-        query = tensor_dict["query"].to(dtype=torch.float8_e4m3fn).npu()
-        key = tensor_dict["key"].to(dtype=torch.float8_e4m3fn).npu()
-        if 'blockFusion' in tensor_dict and tensor_dict['blockFusion'] is not None:
-            blockFusion = tensor_dict['blockFusion'].to(dtype=torch.float8_e4m3fn).npu()
+        query = tensor_dict["query"].npu().to(dtype=torch.float8_e4m3fn)
+        key = tensor_dict["key"].npu().to(dtype=torch.float8_e4m3fn)
     else:
         query = tensor_dict["query"].npu()
         key = tensor_dict["key"].npu()
-        if 'blockFusion' in tensor_dict and tensor_dict['blockFusion'] is not None:
-            blockFusion = tensor_dict['blockFusion'].npu()
 
     weights = tensor_dict["weights"].npu()
     query_dequant_scale = tensor_dict["query_dequant_scale"].npu()
     key_dequant_scale = tensor_dict["key_dequant_scale"].npu()
 
     if 'blockFusion' in tensor_dict and tensor_dict['blockFusion'] is not None:
+        bf = tensor_dict['blockFusion']
+        if bf.dtype != torch.float8_e4m3fn:
+            bf = bf.to(dtype=torch.float8_e4m3fn)
+        blockFusion = bf.npu().contiguous()
+
         block_num = int(params[9])
         block_size = int(params[8])
         head_dim = int(params[7])
         k_head_num = int(params[6])
         dequant_dtype_str = params[11]
-        if dequant_dtype_str == 'FP16':
+        if dequant_dtype_str == 'FP16' or dequant_dtype_str == torch.float16:
             dequant_dtype = torch.float16
-        elif dequant_dtype_str == 'FP32':
+        elif dequant_dtype_str == 'FP32' or dequant_dtype_str == torch.float32:
             dequant_dtype = torch.float32
         else:
             dequant_dtype = torch.float16
-        key = blockFusion[:, :block_size * k_head_num * head_dim].view(block_num, block_size, k_head_num, head_dim)
-        key_dequant_scale = blockFusion[:, block_size * k_head_num * head_dim:].view(dequant_dtype).view(block_num, block_size, k_head_num)
+        key = blockFusion[:, :block_size * k_head_num * head_dim].contiguous().view(block_num, block_size, k_head_num, head_dim)
+        scale_slice = blockFusion[:, block_size * k_head_num * head_dim:]
+        scale_contig = scale_slice.contiguous()
+        scale_as_fp32 = scale_contig.view(dequant_dtype)
+        key_dequant_scale = scale_as_fp32.view(block_num, block_size, k_head_num)
 
     cu_seqlens_query = tensor_dict["cu_seqlens_query"].npu() if tensor_dict["cu_seqlens_query"] is not None else None
     cu_seqlens_key = tensor_dict["cu_seqlens_key"].npu() if tensor_dict["cu_seqlens_key"] is not None else None
