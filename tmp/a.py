@@ -962,3 +962,311 @@ load npu output from file: /home/z00699874/fuzz/aclnn_fuzz_0703/libs/../testcase
 [2026/07/14 16:47:43] [INFO]-run_single.py:1699 - aclnnFusedInferAttentionScoreV5,aclnnFusedInferAttentionScoreV5_Decode_FP16_FP16_FP16_L1_fuzz_28_162_162_2_7168_57_57_57_BSND_LSE_000311,1784047663,26.452319069278136/35.438712522045854,Failed/Failed,None,0.0,no_bound,,2.0/0.65017515,"[[28, 2, 162, 57], [28, 7168, 162, 57], [28, 7168, 162, 57], [1], [2048, 2048], [1], [1], [1], [1], [1], [1], [1], [1], [1], [1], [1], [1], [1], [1], [1, 7168, 162, 57], [1, 7168, 162, 57], [1], [1], [1], [1], [1], [1], [1]]","['fp16', 'fp16', 'fp16', 'fp16', 'bool', 'uint64', 'fp32', 'uint64', 'fp16', 'fp16', 'fp16', 'fp16', 'int32', 'int64', 'int64', 'fp16', 'fp16', 'fp16', 'fp16', 'fp16', 'fp16', 'fp16', 'fp16', 'fp16', 'fp16', 'fp16', 'fp16', 'fp16']","['ND', 'ND', 'ND', 'ND', 'ND', 'ND', 'ND', 'ND', 'ND', 'ND', 'ND', 'ND', 'ND', 'ND', 'ND', 'ND', 'ND', 'ND', 'ND', 'ND', 'ND', 'ND', 'ND', 'ND', 'ND', 'ND', 'ND', 'ND']","[[-5, 5], [-10, 10], [-10, 10], ['null', 'null'], [-10.0, 10.0], ['null', 'null'], ['null', 'null'], ['null', 'null'], ['null', 'null'], ['null', 'null'], ['null', 'null'], ['null', 'null'], ['null', 'null'], ['null', 'null'], ['null', 'null'], ['null', 'null'], ['null', 'null'], ['null', 'null'], ['null', 'null'], [-10, 10], [-10, 10], ['null', 'null'], ['null', 'null'], ['null', 'null'], ['null', 'null'], ['null', 'null'], ['null', 'null'], ['null', 'null']]","{'actualseqlengths': [], 'actualseqlengthskv': [69, 60, 80, 110, 5376, 43, 81, 3, 98, 107, 18, 92, 3840, 15, 125, 4224, 74, 3328, 75, 100, 29, 56, 21, 89, 74, 65, 3328, 1536], 'prefix_act_lens': [5852], 'qstartidx': [], 'kvstartidx': [], 'numheads': 162, 'scalevalue': 0.1324532357065044, 'pretokens': 946, 'nexttokens': -1, 'inputlayout': 'BSND', 'numkeyvalueheads': 0, 'sparsemode': 4, 'innerprecise': 0, 'blocksize': 0, 'antiquant_mode': 0, 'softmax_lse_flag': True, 'k_antiquant_mode': 0, 'v_antiquant_mode': 0, 'query_quant_mode': 0, 'psetype': 0, 'fused_flag': 1, 'mrandomtype': 'Normal', 'mrandom': 0, 'prandom': 1, 'enablegpu': 'True', 'flaglist': [1, 1, 1, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0]}","[[28, 2, 162, 57], [28, 162, 2, 1]]","['fp16', 'fp32']","None","[]",N/A,"555995.1875","4862.0000",61200384.0000,"16777216",7397,"","",,,,"",,,,,None,,,Pass,,,,
 [2026/07/14 16:47:43] [INFO]-run_single.py:4032 - -------------------------第1用例npu_off执行结束,共1条用例-----------------------------------
 [2026/07/14 16:47:43] [INFO]-run_single.py:4059 - Case execution(aclnnFusedInferAttentionScoreV5:1/0) have completed. Duration:330.55 second.
+
+
+# 再次修改后
+load npu output from file: /home/z00699874/fuzz/aclnn_fuzz_0703/libs/../testcase/aclnn_case/aclnnFusedInferAttentionScoreV5/aclnnFusedInferAttentionScoreV5_Decode_FP16_FP16_FP16_L1_fuzz_28_162_162_2_7168_57_57_57_BSND_LSE_000311_cpu_output_0.bin with dtype:<class 'numpy.float16'> real dtype:fp16
+[2026/07/15 03:34:20] [INFO]-tools.py:4315 - Touch file succeed: /home/z00699874/fuzz/aclnn_fuzz_0703/libs/../testcase/aclnn_case/aclnnFusedInferAttentionScoreV5/aclnnFusedInferAttentionScoreV5_Decode_FP16_FP16_FP16_L1_fuzz_28_162_162_2_7168_57_57_57_BSND_LSE_000311_cpu_output_0.bin
+[2026/07/15 03:34:20] [INFO]-tools.py:1976 - [data_compare_np]ouput flatten start!
+[2026/07/15 03:34:20] [INFO]-tools.py:1979 - [data_compare_np]ouput flatten end!
+[2026/07/15 03:34:20] [INFO]-tools.py:2093 - [data_compare_np]overflows_count start!
+[2026/07/15 03:34:20] [INFO]-tools.py:2097 - [data_compare_np]overflows_count end!
+[2026/07/15 03:34:20] [INFO]-tools.py:2100 - split_count:517104.0; max_diff_hd:10.0;
+[2026/07/15 03:34:20] [INFO]-tools.py:1065 - ---------------------------------------------------------------------------------------
+[2026/07/15 03:34:20] [INFO]-tools.py:1071 - Loop 	 ExpectOut 	 RealOut 	 FpDiff 	 RateDiff
+[2026/07/15 03:34:20] [INFO]-tools.py:1072 - ---------------------------------------------------------------------------------------
+[2026/07/15 03:34:20] [INFO]-tools.py:1062 - 00000001 	 9.8281250 	 9.8281250 	 0.0000000 	 0.0000000
+[2026/07/15 03:34:20] [INFO]-tools.py:1062 - 00000002 	 6.7929688 	 6.7929688 	 0.0000000 	 0.0000000
+[2026/07/15 03:34:20] [INFO]-tools.py:1062 - 00000003 	 6.0585938 	 6.0585938 	 0.0000000 	 0.0000000
+[2026/07/15 03:34:20] [INFO]-tools.py:1062 - 00000004 	 7.5117188 	 7.5117188 	 0.0000000 	 0.0000000
+[2026/07/15 03:34:20] [INFO]-tools.py:1062 - 00000005 	 0.5166016 	 0.5166016 	 0.0000000 	 0.0000000
+[2026/07/15 03:34:20] [INFO]-tools.py:1062 - 00000006 	 -9.4453125 	 -9.4453125 	 0.0000000 	 0.0000000
+[2026/07/15 03:34:20] [INFO]-tools.py:1062 - 00000007 	 0.8339844 	 0.8339844 	 0.0000000 	 0.0000000
+[2026/07/15 03:34:20] [INFO]-tools.py:1062 - 00000008 	 0.1735840 	 0.1735840 	 0.0000000 	 0.0000000
+[2026/07/15 03:34:20] [INFO]-tools.py:1062 - 00000009 	 9.3437500 	 9.3437500 	 0.0000000 	 0.0000000
+[2026/07/15 03:34:20] [INFO]-tools.py:1062 - 00000010 	 -8.4218750 	 -8.4218750 	 0.0000000 	 0.0000000
+[2026/07/15 03:34:20] [INFO]-tools.py:1081 - ...   	   ...   	   ...   	   ...    	   ...
+[2026/07/15 03:34:20] [INFO]-tools.py:1062 - 00517095 	 -1.4199219 	 -1.4199219 	 0.0000000 	 0.0000000
+[2026/07/15 03:34:20] [INFO]-tools.py:1062 - 00517096 	 -4.5625000 	 -4.5625000 	 0.0000000 	 0.0000000
+[2026/07/15 03:34:20] [INFO]-tools.py:1062 - 00517097 	 3.4257812 	 3.4257812 	 0.0000000 	 0.0000000
+[2026/07/15 03:34:20] [INFO]-tools.py:1062 - 00517098 	 1.8593750 	 1.8593750 	 0.0000000 	 0.0000000
+[2026/07/15 03:34:20] [INFO]-tools.py:1062 - 00517099 	 6.1445312 	 6.1445312 	 0.0000000 	 0.0000000
+[2026/07/15 03:34:20] [INFO]-tools.py:1062 - 00517100 	 -4.6093750 	 -4.6093750 	 0.0000000 	 0.0000000
+[2026/07/15 03:34:20] [INFO]-tools.py:1062 - 00517101 	 -3.7734375 	 -3.7734375 	 0.0000000 	 0.0000000
+[2026/07/15 03:34:20] [INFO]-tools.py:1062 - 00517102 	 -1.0830078 	 -1.0830078 	 0.0000000 	 0.0000000
+[2026/07/15 03:34:20] [INFO]-tools.py:1062 - 00517103 	 4.4726562 	 4.4726562 	 0.0000000 	 0.0000000
+[2026/07/15 03:34:20] [INFO]-tools.py:1062 - 00517104 	 0.7348633 	 0.7348633 	 0.0000000 	 0.0000000
+[2026/07/15 03:34:20] [INFO]-tools.py:2264 - ---------------------------------------------------------------------------------------
+[2026/07/15 03:34:20] [INFO]-tools.py:2266 - Rtol   	 Atol   	 PctThd   	 PctRlt   	 Result
+[2026/07/15 03:34:20] [INFO]-tools.py:2267 - ---------------------------------------------------------------------------------------
+[2026/07/15 03:34:20] [INFO]-tools.py:2269 - 0.0050    	 0.000025  	 99.50%   	 51.705846%   	 Failed
+[2026/07/15 03:34:20] [INFO]-tools.py:2272 - Max-RelativeError is: 2.0. Threshold is: 10.0.
+[2026/07/15 03:34:20] [INFO]-tools.py:1129 - Error Line-----------------------------------------------------------------------------
+[2026/07/15 03:34:20] [INFO]-tools.py:1131 - Loop 	 ExpectOut 	 RealOut 	 FpDiff 	 RateDiff
+[2026/07/15 03:34:20] [INFO]-tools.py:1132 - ---------------------------------------------------------------------------------------
+[2026/07/15 03:34:20] [INFO]-tools.py:1139 - 00000114 	 -0.9384766 	 -0.9707031 	 0.0322266 	 0.0332031
+[2026/07/15 03:34:20] [INFO]-tools.py:1139 - 00000116 	 1.3105469 	 1.3310547 	 0.0205078 	 0.0154037
+[2026/07/15 03:34:20] [INFO]-tools.py:1139 - 00000118 	 -9.4921875 	 -9.5468750 	 0.0546875 	 0.0057297
+[2026/07/15 03:34:20] [INFO]-tools.py:1139 - 00000120 	 -4.0039062 	 -4.0390625 	 0.0351562 	 0.0087051
+[2026/07/15 03:34:20] [INFO]-tools.py:1139 - 00000122 	 5.4765625 	 5.5156250 	 0.0390625 	 0.0070839
+[2026/07/15 03:34:20] [INFO]-tools.py:1139 - 00000123 	 -0.3354492 	 -0.3503418 	 0.0148926 	 0.0425110
+[2026/07/15 03:34:20] [INFO]-tools.py:1139 - 00000124 	 -3.8847656 	 -3.9062500 	 0.0214844 	 0.0055008
+[2026/07/15 03:34:20] [INFO]-tools.py:1139 - 00000126 	 -3.1523438 	 -3.1757812 	 0.0234375 	 0.0073814
+[2026/07/15 03:34:20] [INFO]-tools.py:1139 - 00000128 	 -8.5703125 	 -8.6250000 	 0.0546875 	 0.0063400
+[2026/07/15 03:34:20] [INFO]-tools.py:1145 -      ... 	     ... 	     ... 	     ... 	     ...
+[2026/07/15 03:34:20] [INFO]-tools.py:1139 - 00000360 	 -5.9609375 	 -6.2070312 	 0.2460938 	 0.0396423
+[2026/07/15 03:34:20] [INFO]-tools.py:1139 - 00000361 	 -5.4140625 	 -6.1054688 	 0.6914062 	 0.1132202
+[2026/07/15 03:34:20] [INFO]-tools.py:1139 - 00000363 	 -3.9863281 	 -4.0234375 	 0.0371094 	 0.0092239
+[2026/07/15 03:34:20] [INFO]-tools.py:1139 - 00000364 	 -3.4101562 	 -3.6699219 	 0.2597656 	 0.0708008
+[2026/07/15 03:34:20] [INFO]-tools.py:1139 - 00000365 	 -1.8066406 	 -2.0351562 	 0.2285156 	 0.1123047
+[2026/07/15 03:34:20] [INFO]-tools.py:1139 - 00000366 	 -3.0292969 	 -3.4746094 	 0.4453125 	 0.1281738
+[2026/07/15 03:34:20] [INFO]-tools.py:1139 - 00000367 	 8.9843750 	 9.2265625 	 0.2421875 	 0.0262451
+[2026/07/15 03:34:20] [INFO]-tools.py:1139 - 00000368 	 -2.8769531 	 -3.1621094 	 0.2851562 	 0.0901489
+[2026/07/15 03:34:20] [INFO]-tools.py:1139 - 00000369 	 -4.3125000 	 -4.4570312 	 0.1445312 	 0.0324402
+[2026/07/15 03:34:20] [INFO]-tools.py:1145 -      ... 	     ... 	     ... 	     ... 	     ...
+[2026/07/15 03:34:20] [INFO]-tools.py:1150 - Max-RE line:---------------------------------------------------------------------------
+[2026/07/15 03:34:20] [INFO]-tools.py:1158 - 00011739 	 -9.3125000 	 9.3125000 	 18.6250000 	 2.0000000
+[2026/07/15 03:34:20] [INFO]-tools.py:1158 - 00054336 	 0.0501099 	 -0.0500793 	 0.1001892 	 2.0000000
+[2026/07/15 03:34:20] [INFO]-tools.py:1158 - 00059947 	 5.0273438 	 -5.0312500 	 10.0585938 	 2.0000000
+[2026/07/15 03:34:20] [INFO]-tools.py:1165 - ---------------------------------------------------------------------------------------
+[2026/07/15 03:34:20] [INFO]-tools.py:4493 - aclnnFusedInferAttentionScoreV5:aclnnFusedInferAttentionScoreV5_Decode_FP16_FP16_FP16_L1_fuzz_28_162_162_2_7168_57_57_57_BSND_LSE_000311 End to compare result. Duration:0.12 second.
+[2026/07/15 03:34:20] [INFO]-run_aclnn.py:2887 - output-0 compare end 
+[2026/07/15 03:34:20] [INFO]-run_aclnn.py:2889 - output-0 result Failed 51.705846406138804 2.0
+[2026/07/15 03:34:20] [INFO]-run_aclnn.py:2885 - start compare case the first output-1 
+[2026/07/15 03:34:20] [INFO]-tools.py:4122 - Step:------>>>>>> Start to compare result <<<<<<------ 
+[2026/07/15 03:34:20] [INFO]-tools.py:4161 - data-compare for output index:1,and its dtype is fp32.
+npu out file: /home/z00699874/fuzz/aclnn_fuzz_0703/libs/../testcase/aclnn_case/aclnnFusedInferAttentionScoreV5/aclnnFusedInferAttentionScoreV5_Decode_FP16_FP16_FP16_L1_fuzz_28_162_162_2_7168_57_57_57_BSND_LSE_000311_output_1.bin
+load npu output from file: /home/z00699874/fuzz/aclnn_fuzz_0703/libs/../testcase/aclnn_case/aclnnFusedInferAttentionScoreV5/aclnnFusedInferAttentionScoreV5_Decode_FP16_FP16_FP16_L1_fuzz_28_162_162_2_7168_57_57_57_BSND_LSE_000311_output_1.bin with dtype:<class 'numpy.float32'> real dtype:fp32
+*******
+输出数据类型： fp32 method为: 1
+*******
+load npu output from file: /home/z00699874/fuzz/aclnn_fuzz_0703/libs/../testcase/aclnn_case/aclnnFusedInferAttentionScoreV5/aclnnFusedInferAttentionScoreV5_Decode_FP16_FP16_FP16_L1_fuzz_28_162_162_2_7168_57_57_57_BSND_LSE_000311_cpu_output_1.bin with dtype:<class 'numpy.float32'> real dtype:fp32
+[2026/07/15 03:34:20] [INFO]-tools.py:4315 - Touch file succeed: /home/z00699874/fuzz/aclnn_fuzz_0703/libs/../testcase/aclnn_case/aclnnFusedInferAttentionScoreV5/aclnnFusedInferAttentionScoreV5_Decode_FP16_FP16_FP16_L1_fuzz_28_162_162_2_7168_57_57_57_BSND_LSE_000311_cpu_output_1.bin
+[2026/07/15 03:34:20] [INFO]-tools.py:1976 - [data_compare_np]ouput flatten start!
+[2026/07/15 03:34:20] [INFO]-tools.py:1979 - [data_compare_np]ouput flatten end!
+[2026/07/15 03:34:20] [INFO]-tools.py:2093 - [data_compare_np]overflows_count start!
+[2026/07/15 03:34:20] [INFO]-tools.py:2097 - [data_compare_np]overflows_count end!
+[2026/07/15 03:34:20] [INFO]-tools.py:2100 - split_count:9072.0; max_diff_hd:10.0;
+[2026/07/15 03:34:20] [INFO]-tools.py:1065 - ---------------------------------------------------------------------------------------
+[2026/07/15 03:34:20] [INFO]-tools.py:1071 - Loop 	 ExpectOut 	 RealOut 	 FpDiff 	 RateDiff
+[2026/07/15 03:34:20] [INFO]-tools.py:1072 - ---------------------------------------------------------------------------------------
+[2026/07/15 03:34:20] [INFO]-tools.py:1062 - 00000001 	 56.0644913 	 56.0644875 	 0.0000038 	 0.0000001
+[2026/07/15 03:34:20] [INFO]-tools.py:1062 - 00000002 	 53.1180115 	 53.1180153 	 0.0000038 	 0.0000001
+[2026/07/15 03:34:20] [INFO]-tools.py:1062 - 00000003 	 62.7973251 	 62.7973137 	 0.0000114 	 0.0000002
+[2026/07/15 03:34:20] [INFO]-tools.py:1062 - 00000004 	 41.1084213 	 37.4153862 	 3.6930351 	 0.0898365
+[2026/07/15 03:34:20] [INFO]-tools.py:1062 - 00000005 	 59.9560432 	 59.9524956 	 0.0035477 	 0.0000592
+[2026/07/15 03:34:20] [INFO]-tools.py:1062 - 00000006 	 52.4218941 	 52.4218750 	 0.0000191 	 0.0000004
+[2026/07/15 03:34:20] [INFO]-tools.py:1062 - 00000007 	 57.4209442 	 57.4208908 	 0.0000534 	 0.0000009
+[2026/07/15 03:34:20] [INFO]-tools.py:1062 - 00000008 	 54.1091957 	 46.1581802 	 7.9510155 	 0.1469439
+[2026/07/15 03:34:20] [INFO]-tools.py:1062 - 00000009 	 41.5967941 	 41.5884285 	 0.0083656 	 0.0002011
+[2026/07/15 03:34:20] [INFO]-tools.py:1062 - 00000010 	 50.0907707 	 46.4474869 	 3.6432838 	 0.0727336
+[2026/07/15 03:34:20] [INFO]-tools.py:1081 - ...   	   ...   	   ...   	   ...    	   ...
+[2026/07/15 03:34:20] [INFO]-tools.py:1062 - 00009063 	 57.3644829 	 57.3651390 	 0.0006561 	 0.0000114
+[2026/07/15 03:34:20] [INFO]-tools.py:1062 - 00009064 	 59.0962677 	 59.0962639 	 0.0000038 	 0.0000001
+[2026/07/15 03:34:20] [INFO]-tools.py:1062 - 00009065 	 61.8104630 	 61.8104477 	 0.0000153 	 0.0000002
+[2026/07/15 03:34:20] [INFO]-tools.py:1062 - 00009066 	 51.2623787 	 51.2623825 	 0.0000038 	 0.0000001
+[2026/07/15 03:34:20] [INFO]-tools.py:1062 - 00009067 	 49.0081215 	 49.0082169 	 0.0000954 	 0.0000019
+[2026/07/15 03:34:20] [INFO]-tools.py:1062 - 00009068 	 53.0105782 	 53.0105896 	 0.0000114 	 0.0000002
+[2026/07/15 03:34:20] [INFO]-tools.py:1062 - 00009069 	 50.7572136 	 50.7572250 	 0.0000114 	 0.0000002
+[2026/07/15 03:34:20] [INFO]-tools.py:1062 - 00009070 	 49.6615028 	 49.5053291 	 0.1561737 	 0.0031448
+[2026/07/15 03:34:20] [INFO]-tools.py:1062 - 00009071 	 46.5672798 	 46.5673218 	 0.0000420 	 0.0000009
+[2026/07/15 03:34:20] [INFO]-tools.py:1062 - 00009072 	 54.4735184 	 54.4734802 	 0.0000381 	 0.0000007
+[2026/07/15 03:34:20] [INFO]-tools.py:2264 - ---------------------------------------------------------------------------------------
+[2026/07/15 03:34:20] [INFO]-tools.py:2266 - Rtol   	 Atol   	 PctThd   	 PctRlt   	 Result
+[2026/07/15 03:34:20] [INFO]-tools.py:2267 - ---------------------------------------------------------------------------------------
+[2026/07/15 03:34:20] [INFO]-tools.py:2269 - 0.0050    	 0.000025  	 99.50%   	 70.282187%   	 Failed
+[2026/07/15 03:34:20] [INFO]-tools.py:2272 - Max-RelativeError is: 0.45287514. Threshold is: 10.0.
+[2026/07/15 03:34:20] [INFO]-tools.py:1129 - Error Line-----------------------------------------------------------------------------
+[2026/07/15 03:34:20] [INFO]-tools.py:1131 - Loop 	 ExpectOut 	 RealOut 	 FpDiff 	 RateDiff
+[2026/07/15 03:34:20] [INFO]-tools.py:1132 - ---------------------------------------------------------------------------------------
+[2026/07/15 03:34:20] [INFO]-tools.py:1139 - 00000003 	 41.1084213 	 37.4153862 	 3.6930351 	 0.0898365
+[2026/07/15 03:34:20] [INFO]-tools.py:1139 - 00000007 	 54.1091957 	 46.1581802 	 7.9510155 	 0.1469439
+[2026/07/15 03:34:20] [INFO]-tools.py:1139 - 00000009 	 50.0907707 	 46.4474869 	 3.6432838 	 0.0727336
+[2026/07/15 03:34:20] [INFO]-tools.py:1139 - 00000014 	 54.3032990 	 53.7735519 	 0.5297470 	 0.0097553
+[2026/07/15 03:34:20] [INFO]-tools.py:1139 - 00000023 	 63.7636681 	 54.9377518 	 8.8259163 	 0.1384161
+[2026/07/15 03:34:20] [INFO]-tools.py:1139 - 00000025 	 59.5752373 	 45.6535797 	 13.9216576 	 0.2336819
+[2026/07/15 03:34:20] [INFO]-tools.py:1139 - 00000026 	 50.7614632 	 47.7831726 	 2.9782906 	 0.0586723
+[2026/07/15 03:34:20] [INFO]-tools.py:1139 - 00000027 	 49.3294525 	 42.5888023 	 6.7406502 	 0.1366456
+[2026/07/15 03:34:20] [INFO]-tools.py:1139 - 00000028 	 42.1533127 	 40.8290749 	 1.3242378 	 0.0314148
+[2026/07/15 03:34:20] [INFO]-tools.py:1145 -      ... 	     ... 	     ... 	     ... 	     ...
+[2026/07/15 03:34:20] [INFO]-tools.py:1139 - 00000254 	 48.5378265 	 45.2590866 	 3.2787399 	 0.0675502
+[2026/07/15 03:34:20] [INFO]-tools.py:1139 - 00000256 	 51.1059303 	 47.6083984 	 3.4975319 	 0.0684369
+[2026/07/15 03:34:20] [INFO]-tools.py:1139 - 00000257 	 51.2148781 	 43.8742638 	 7.3406143 	 0.1433297
+[2026/07/15 03:34:20] [INFO]-tools.py:1139 - 00000269 	 49.4139519 	 40.3028526 	 9.1110992 	 0.1843831
+[2026/07/15 03:34:20] [INFO]-tools.py:1139 - 00000270 	 66.0728073 	 46.7164192 	 19.3563881 	 0.2929554
+[2026/07/15 03:34:20] [INFO]-tools.py:1139 - 00000277 	 56.9177322 	 49.4930534 	 7.4246788 	 0.1304458
+[2026/07/15 03:34:20] [INFO]-tools.py:1139 - 00000281 	 47.7225037 	 46.6752510 	 1.0472527 	 0.0219446
+[2026/07/15 03:34:20] [INFO]-tools.py:1139 - 00000286 	 47.1458702 	 45.4539032 	 1.6919670 	 0.0358879
+[2026/07/15 03:34:20] [INFO]-tools.py:1139 - 00000291 	 54.1393814 	 53.5359154 	 0.6034660 	 0.0111465
+[2026/07/15 03:34:20] [INFO]-tools.py:1145 -      ... 	     ... 	     ... 	     ... 	     ...
+[2026/07/15 03:34:20] [INFO]-tools.py:1150 - Max-RE line:---------------------------------------------------------------------------
+[2026/07/15 03:34:20] [INFO]-tools.py:1158 - 00000917 	 69.6563721 	 38.1107330 	 31.5456390 	 0.4528751
+[2026/07/15 03:34:20] [INFO]-tools.py:1165 - ---------------------------------------------------------------------------------------
+[2026/07/15 03:34:20] [INFO]-tools.py:4493 - aclnnFusedInferAttentionScoreV5:aclnnFusedInferAttentionScoreV5_Decode_FP16_FP16_FP16_L1_fuzz_28_162_162_2_7168_57_57_57_BSND_LSE_000311 End to compare result. Duration:0.01 second.
+[2026/07/15 03:34:20] [INFO]-run_aclnn.py:2887 - output-1 compare end 
+[2026/07/15 03:34:20] [INFO]-run_aclnn.py:2889 - output-1 result Failed 70.28218694885362 0.45287513732910156
+[2026/07/15 03:34:20] [INFO]-run_single.py:3969 - end execute aclnn case: aclnnFusedInferAttentionScoreV5_Decode_FP16_FP16_FP16_L1_fuzz_28_162_162_2_7168_57_57_57_BSND_LSE_000311
+[2026/07/15 03:34:20] [WARNING]-run_single.py:0316 - There not exist kernel file[kernel_name:aclnnFusedInferAttentionScoreV5] in kernel_meta.
+[2026/07/15 03:34:27] [/home/z00699874/fuzz/aclnn_fuzz_0703/libs/../golden/aclnn_golden/aclnnFusedInferAttentionScoreV5_golden.csv]-run_single.py:1400 - [WARNING]no golden file:
+[2026/07/15 03:34:27] [INFO]-run_single.py:1698 - Case report ->:
+[2026/07/15 03:34:27] [INFO]-run_single.py:1699 - aclnnFusedInferAttentionScoreV5,aclnnFusedInferAttentionScoreV5_Decode_FP16_FP16_FP16_L1_fuzz_28_162_162_2_7168_57_57_57_BSND_LSE_000311,1784086467,51.705846406138804/70.28218694885362,Failed/Failed,None,0.0,no_bound,,2.0/0.45287514,"[[28, 2, 162, 57], [28, 7168, 162, 57], [28, 7168, 162, 57], [1], [2048, 2048], [1], [1], [1], [1], [1], [1], [1], [1], [1], [1], [1], [1], [1], [1], [1, 7168, 162, 57], [1, 7168, 162, 57], [1], [1], [1], [1], [1], [1], [1]]","['fp16', 'fp16', 'fp16', 'fp16', 'bool', 'uint64', 'fp32', 'uint64', 'fp16', 'fp16', 'fp16', 'fp16', 'int32', 'int64', 'int64', 'fp16', 'fp16', 'fp16', 'fp16', 'fp16', 'fp16', 'fp16', 'fp16', 'fp16', 'fp16', 'fp16', 'fp16', 'fp16']","['ND', 'ND', 'ND', 'ND', 'ND', 'ND', 'ND', 'ND', 'ND', 'ND', 'ND', 'ND', 'ND', 'ND', 'ND', 'ND', 'ND', 'ND', 'ND', 'ND', 'ND', 'ND', 'ND', 'ND', 'ND', 'ND', 'ND', 'ND']","[[-5, 5], [-10, 10], [-10, 10], ['null', 'null'], [-10.0, 10.0], ['null', 'null'], ['null', 'null'], ['null', 'null'], ['null', 'null'], ['null', 'null'], ['null', 'null'], ['null', 'null'], ['null', 'null'], ['null', 'null'], ['null', 'null'], ['null', 'null'], ['null', 'null'], ['null', 'null'], ['null', 'null'], [-10, 10], [-10, 10], ['null', 'null'], ['null', 'null'], ['null', 'null'], ['null', 'null'], ['null', 'null'], ['null', 'null'], ['null', 'null']]","{'actualseqlengths': [], 'actualseqlengthskv': [69, 60, 80, 110, 5376, 43, 81, 3, 98, 107, 18, 92, 3840, 15, 125, 4224, 74, 3328, 75, 100, 29, 56, 21, 89, 74, 65, 3328, 1536], 'prefix_act_lens': [5852], 'qstartidx': [], 'kvstartidx': [], 'numheads': 162, 'scalevalue': 0.1324532357065044, 'pretokens': 946, 'nexttokens': -1, 'inputlayout': 'BSND', 'numkeyvalueheads': 0, 'sparsemode': 4, 'innerprecise': 0, 'blocksize': 0, 'antiquant_mode': 0, 'softmax_lse_flag': True, 'k_antiquant_mode': 0, 'v_antiquant_mode': 0, 'query_quant_mode': 0, 'psetype': 0, 'fused_flag': 1, 'mrandomtype': 'Normal', 'mrandom': 0, 'prandom': 1, 'enablegpu': 'True', 'flaglist': [1, 1, 1, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0]}","[[28, 2, 162, 57], [28, 162, 2, 1]]","['fp16', 'fp32']","None","[]",N/A,"524633.1875","4986.3999",61526388.0000,"16777216",7398,"","",,,,"",,,,,None,,,Pass,,,,
+[2026/07/15 03:34:27] [INFO]-run_single.py:4032 - -------------------------第1用例npu_off执行结束,共1条用例-----------------------------------
+[2026/07/15 03:34:27] [INFO]-run_single.py:4059 - Case execution(aclnnFusedInferAttentionScoreV5:1/0) have completed. Duration:345.17 second.
+
+
+[AIV Block 0/56] [Bmm1Tail-post] s2L=0 s2S=4864 s2E=5920 pLC=23 s2R=256
+[AIV Block 0/56] [Bmm1Tail-post] s2L=1 s2S=4864 s2E=5920 pLC=23 s2R=256
+[AIV Block 0/56] [MASK-entry] s2L=0 s2S=4864 s2R=256 hS1R=1 gS1M=0 isGqa=1 isMla=0 compM=3 preT=946 nextT=-1 s1oIdx=0 actS1=2 actS2=69 prefSz=5852 pLC=23
+[AIV Block 0/56] [MASK-gqa-nonmerge] s2L=0 isPref=1
+[AIV Block 0/56] [MASK-gqa-pref] s2L=0 fill=0xFF mask[0]=ff
+[AIV Block 0/56] [VEC-Nd-info] s2L=0 s2LL=4 s2S=4864 s2E=5920 prefSz=5852 pLC=23 isPref=1 s1oIdx=0 actS1=2 actS2=69 preT=946 nextT=-1 compM=3
+[AIV Block 0/56] [VEC-Nd-allmax] mx0=0.812500 mx1=0.312500 mx2=0.289062 mx3=0.445312 sum0=0.437975[AIV Block 0/56] [VEC-Nd-pre] s2L=0 s2R=256 hS1R=1 s2S=4864 phyAddr=c000
+[AIV Block 0/56] [VEC-Nd-pre-max] iniMax[0]=0.812500 iniSum[0]=0.437975 iniMax[1]=0.312500
+[AIV Block 0/56]   mmRes[0]=-27.683027
+[AIV Block 0/56]   mmRes[1]=167.265762
+[AIV Block 0/56]   mmRes[2]=25.492270
+[AIV Block 0/56]   mmRes[3]=68.230728
+[AIV Block 0/56]   mmRes[64]=57.378597 mmRes[128]=32.709888 mmRes[192]=156.699249 mmRes[255]=-231.890488
+[AIV Block 0/56] [VEC-Nd-mask] mask[0]=ff mask[1]=ff
+[AIV Block 0/56] [VF256-pre] m=1 oriN=256 preMax[0]=0.812500 preSum[0]=0.437975 preMax[1]=0.312500
+[AIV Block 0/56] [VF256-srcUb] m=1 oriN=256 src[0..3]=-27.683027 167.265762 25.492270 68.230728 mask[0]=ffffffffffffffff scale=0.132453
+[AIV Block 0/56] [VF256-post] m=1 mx0=0.812500 sum0=0.437975 srcPost0=-27.683027 srcPost1=167.265762
+[AIV Block 0/56] [VEC-Nd-post] s2L=0 mx0=42.800434 sm0=1.000402 mx1=0.312500 sm1=0.555651
+[AIV Block 0/56] [VEC-Nd-preUpd] s2L=0 mx0=42.800434 sm0=1.000402 mx1=0.312500 sm1=0.555651
+[AIV Block 0/56] [VEC-Nd-postUpd] s2L=0 mx0=42.800434 sm0=1.000402 mx1=0.312500 sm1=0.555651
+[AIV Block 0/56] [Bmm1Tail-post] s2L=2 s2S=4864 s2E=5920 pLC=23 s2R=256
+[AIV Block 0/56] [MASK-entry] s2L=1 s2S=4864 s2R=256 hS1R=1 gS1M=0 isGqa=1 isMla=0 compM=3 preT=946 nextT=-1 s1oIdx=0 actS1=2 actS2=69 prefSz=5852 pLC=23
+[AIV Block 0/56] [MASK-gqa-nonmerge] s2L=1 isPref=1
+[AIV Block 0/56] [MASK-gqa-pref] s2L=1 fill=0xFF mask[0]=ff
+[AIV Block 0/56] [VEC-Nd-info] s2L=1 s2LL=4 s2S=4864 s2E=5920 prefSz=5852 pLC=23 isPref=1 s1oIdx=0 actS1=2 actS2=69 preT=946 nextT=-1 compM=3
+[AIV Block 0/56] [VEC-Nd-allmax] mx0=42.800434 mx1=0.312500 mx2=0.289062 mx3=0.445312 sum0=1.000402[AIV Block 0/56] [VEC-Nd-pre] s2L=1 s2R=256 hS1R=1 s2S=4864 phyAddr=4000
+[AIV Block 0/56] [VEC-Nd-pre-max] iniMax[0]=42.800434 iniSum[0]=1.000402 iniMax[1]=0.312500
+[AIV Block 0/56]   mmRes[0]=-73.496201
+[AIV Block 0/56]   mmRes[1]=175.400269
+[AIV Block 0/56]   mmRes[2]=179.696045
+[AIV Block 0/56]   mmRes[3]=-10.499971
+[AIV Block 0/56]   mmRes[64]=150.721924 mmRes[128]=169.427368 mmRes[192]=-130.357605 mmRes[255]=75.636108
+[AIV Block 0/56] [VEC-Nd-mask] mask[0]=ff mask[1]=ff
+[AIV Block 0/56] [VEC-Nd-post] s2L=1 mx0=42.800434 sm0=1.000402 mx1=0.312500 sm1=0.555651
+[AIV Block 0/56] [VEC-Nd-preUpd] s2L=1 mx0=42.800434 sm0=1.000402 mx1=0.312500 sm1=0.555651
+[AIV Block 0/56] [VEC-Nd-postUpd] s2L=1 mx0=42.800434 sm0=1.000402 mx1=0.312500 sm1=0.555651
+[AIV Block 0/56] [Bmm1Tail-post] s2L=3 s2S=4864 s2E=5920 pLC=23 s2R=220
+[AIV Block 0/56] [MASK-entry] s2L=2 s2S=4864 s2R=256 hS1R=1 gS1M=0 isGqa=1 isMla=0 compM=3 preT=946 nextT=-1 s1oIdx=0 actS1=2 actS2=69 prefSz=5852 pLC=23
+[AIV Block 0/56] [MASK-gqa-nonmerge] s2L=2 isPref=1
+[AIV Block 0/56] [MASK-gqa-pref] s2L=2 fill=0xFF mask[0]=ff
+[AIV Block 0/56] [VEC-Nd-info] s2L=2 s2LL=4 s2S=4864 s2E=5920 prefSz=5852 pLC=23 isPref=1 s1oIdx=0 actS1=2 actS2=69 preT=946 nextT=-1 compM=3
+[AIV Block 0/56] [VEC-Nd-allmax] mx0=56.064064 mx1=0.343750 mx2=0.289062 mx3=0.820312 sum0=1.000112[AIV Block 0/56] [VEC-Nd-pre] s2L=2 s2R=256 hS1R=1 s2S=4864 phyAddr=c000
+[AIV Block 0/56] [VEC-Nd-pre-max] iniMax[0]=56.064064 iniSum[0]=1.000112 iniMax[1]=0.343750
+[AIV Block 0/56]   mmRes[0]=-159.652390
+[AIV Block 0/56]   mmRes[1]=-20.926689
+[AIV Block 0/56]   mmRes[2]=-148.055710
+[AIV Block 0/56]   mmRes[3]=-319.478302
+[AIV Block 0/56]   mmRes[64]=136.103928 mmRes[128]=97.351318 mmRes[192]=-87.300552 mmRes[255]=64.942345
+[AIV Block 0/56] [VEC-Nd-mask] mask[0]=ff mask[1]=ff
+[AIV Block 0/56] [VEC-Nd-post] s2L=2 mx0=56.064064 sm0=1.000112 mx1=0.343750 sm1=1.179181
+[AIV Block 0/56] [VEC-Nd-preUpd] s2L=2 mx0=56.064064 sm0=1.000112 mx1=0.343750 sm1=1.179181
+[AIV Block 0/56] [VEC-Nd-postUpd] s2L=2 mx0=56.064064 sm0=1.000112 mx1=0.343750 sm1=1.179181
+[AIV Block 0/56] [VEC2-entry] s2L=0 s2LL=4 v2S1=1
+[AIV Block 0/56] [VEC2-cpy] s2L=0 vo0=0.031250 vo1=0.812500
+[AIV Block 0/56] [Bmm1Tail-post] s2L=4 s2S=4864 s2E=5920 pLC=23 s2R=68
+[AIV Block 0/56] [MASK-entry] s2L=3 s2S=4864 s2R=220 hS1R=1 gS1M=0 isGqa=1 isMla=0 compM=3 preT=946 nextT=-1 s1oIdx=0 actS1=2 actS2=69 prefSz=5852 pLC=23
+[AIV Block 0/56] [MASK-gqa-nonmerge] s2L=3 isPref=1
+[AIV Block 0/56] [MASK-gqa-pref] s2L=3 fill=0xFF mask[0]=ff
+[AIV Block 0/56] [VEC-Nd-info] s2L=3 s2LL=4 s2S=4864 s2E=5920 prefSz=5852 pLC=23 isPref=1 s1oIdx=0 actS1=2 actS2=69 preT=946 nextT=-1 compM=3
+[AIV Block 0/56] [VEC-Nd-allmax] mx0=56.064064 mx1=0.343750 mx2=0.289062 mx3=0.820312 sum0=1.000112[AIV Block 0/56] [VEC-Nd-pre] s2L=3 s2R=220 hS1R=1 s2S=4864 phyAddr=4000
+[AIV Block 0/56] [VEC-Nd-pre-max] iniMax[0]=56.064064 iniSum[0]=1.000112 iniMax[1]=0.343750
+[AIV Block 0/56]   mmRes[0]=-155.773819
+[AIV Block 0/56]   mmRes[1]=-15.460873
+[AIV Block 0/56]   mmRes[2]=-64.166557
+[AIV Block 0/56]   mmRes[3]=60.987240
+[AIV Block 0/56]   mmRes[64]=-278.447418 mmRes[128]=94.691544 mmRes[192]=-22.246895 mmRes[255]=10.018247
+[AIV Block 0/56] [VEC-Nd-mask] mask[0]=ff mask[1]=ff
+[AIV Block 0/56] [VEC-Nd-post] s2L=3 mx0=56.064064 sm0=1.000112 mx1=0.343750 sm1=1.819806
+[AIV Block 0/56] [VEC-Nd-preUpd] s2L=3 mx0=56.064064 sm0=1.000112 mx1=0.343750 sm1=1.819806
+[AIV Block 0/56] [VEC-Nd-postUpd] s2L=3 mx0=56.064064 sm0=1.000112 mx1=0.343750 sm1=1.819806
+[AIV Block 0/56] [VEC2-entry] s2L=1 s2LL=4 v2S1=1
+[AIV Block 0/56] [VEC2-expUb] s2L=1 e0=0.000002 e1=0.969233 e2=1.000000 e3=0.687289
+[AIV Block 0/56] [VEC2-upd] s2L=1 vo0=-6.553119 vo1=-2.880029
+[AIV Block 0/56] [Bmm1Tail-post] s2L=0 s2S=4864 s2E=5920 pLC=23 s2R=256
+[AIV Block 0/56] [MASK-entry] s2L=4 s2S=4864 s2R=68 hS1R=1 gS1M=0 isGqa=1 isMla=0 compM=3 preT=946 nextT=-1 s1oIdx=0 actS1=2 actS2=69 prefSz=5852 pLC=23
+[AIV Block 0/56] [MASK-gqa-nonmerge] s2L=4 isPref=0
+[AIV Block 0/56] [MASK-offset] s2L=4 s2Off=36 deltaN=5785 deltaC=30 deltaPre=-916 maskOff=61440 computeMode=1 s1Off=0
+[AIV Block 0/56] [COPYIN-offset] s2L=4 maskOff=61440 preOff=64 computeMode=1 compressMode=3 s2R=68 hS1R=1 maskS2Size=2048
+[AIV Block 0/56] [MASK-gqa-nonpref] s2L=4 mask[0]=ff mask[1]=ff
+[AIV Block 0/56] [VEC-Nd-info] s2L=4 s2LL=4 s2S=4864 s2E=5920 prefSz=5852 pLC=23 isPref=0 s1oIdx=0 actS1=2 actS2=69 preT=946 nextT=-1 compM=3
+[AIV Block 0/56] [VEC-Nd-allmax] mx0=56.064064 mx1=0.343750 mx2=0.289062 mx3=0.820312 sum0=1.000419[AIV Block 0/56] [VEC-Nd-pre] s2L=4 s2R=68 hS1R=1 s2S=4864 phyAddr=c000
+[AIV Block 0/56] [VEC-Nd-pre-max] iniMax[0]=56.064064 iniSum[0]=1.000419 iniMax[1]=0.343750
+[AIV Block 0/56]   mmRes[0]=-331.737946
+[AIV Block 0/56]   mmRes[1]=-134.870743
+[AIV Block 0/56]   mmRes[2]=-134.921310
+[AIV Block 0/56]   mmRes[3]=188.724365
+[AIV Block 0/56]   mmRes[64]=28.180927 mmRes[128]=12.894497 mmRes[192]=-11.563240 mmRes[255]=-340282346638528859811704183484516925440.000000
+[AIV Block 0/56] [VEC-Nd-mask] mask[0]=0 mask[1]=0
+[AIV Block 0/56] [VEC-Nd-post] s2L=4 mx0=56.064064 sm0=1.000419 mx1=0.343750 sm1=2.460431
+[AIV Block 0/56] [VEC-Nd-preUpd] s2L=4 mx0=56.064064 sm0=1.000419 mx1=0.343750 sm1=2.460431
+[AIV Block 0/56] [VEC-Nd-postUpd] s2L=4 mx0=56.064064 sm0=1.000419 mx1=0.343750 sm1=2.460431
+[AIV Block 0/56] [SoftmaxCopyOut] isFd=0 s2L=4 s2LL=4
+[AIV Block 0/56] [LSE-out] lseOff=0 lse0=0.140866 lse1=0.867188
+[AIV Block 0/56] [VEC2-entry] s2L=2 s2LL=4 v2S1=1
+[AIV Block 0/56] [VEC2-expUb] s2L=2 e0=1.000000 e1=1.000000 e2=1.000000 e3=1.000000
+[AIV Block 0/56] [VEC2-upd] s2L=2 vo0=9.828450 vo1=6.797953
+[AIV Block 0/56] [Bmm1Tail-post] s2L=1 s2S=4864 s2E=5920 pLC=23 s2R=256
+[AIV Block 0/56] [MASK-entry] s2L=0 s2S=4864 s2R=256 hS1R=1 gS1M=0 isGqa=1 isMla=0 compM=3 preT=946 nextT=-1 s1oIdx=0 actS1=2 actS2=69 prefSz=5852 pLC=23
+[AIV Block 0/56] [MASK-gqa-nonmerge] s2L=0 isPref=1
+[AIV Block 0/56] [MASK-gqa-pref] s2L=0 fill=0xFF mask[0]=ff
+[AIV Block 0/56] [VEC-Nd-info] s2L=0 s2LL=4 s2S=4864 s2E=5920 prefSz=5852 pLC=23 isPref=1 s1oIdx=0 actS1=2 actS2=69 preT=946 nextT=-1 compM=3
+[AIV Block 0/56] [VEC-Nd-allmax] mx0=0.679688 mx1=0.750000 mx2=0.765625 mx3=0.656250 sum0=0.031308[AIV Block 0/56] [VEC-Nd-pre] s2L=0 s2R=256 hS1R=1 s2S=4864 phyAddr=4000
+[AIV Block 0/56] [VEC-Nd-pre-max] iniMax[0]=0.679688 iniSum[0]=0.031308 iniMax[1]=0.750000
+[AIV Block 0/56]   mmRes[0]=149.403381
+[AIV Block 0/56]   mmRes[1]=21.309612
+[AIV Block 0/56]   mmRes[2]=-208.727676
+[AIV Block 0/56]   mmRes[3]=-76.581635
+[AIV Block 0/56]   mmRes[64]=-93.687088 mmRes[128]=40.739449 mmRes[192]=99.159515 mmRes[255]=38.584782
+[AIV Block 0/56] [VEC-Nd-mask] mask[0]=ff mask[1]=ff
+[AIV Block 0/56] [VF256-pre] m=1 oriN=256 preMax[0]=0.679688 preSum[0]=0.031308 preMax[1]=0.750000
+[AIV Block 0/56] [VF256-srcUb] m=1 oriN=256 src[0..3]=149.403381 21.309612 -208.727676 -76.581635 mask[0]=ffffffffffffffff scale=0.132453
+[AIV Block 0/56] [VF256-post] m=1 mx0=0.679688 sum0=0.031308 srcPost0=149.403381 srcPost1=21.309612
+[AIV Block 0/56] [VEC-Nd-post] s2L=0 mx0=32.786213 sm0=1.115013 mx1=0.750000 sm1=0.891580
+[AIV Block 0/56] [VEC-Nd-preUpd] s2L=0 mx0=32.786213 sm0=1.115013 mx1=0.750000 sm1=0.891580
+[AIV Block 0/56] [VEC-Nd-postUpd] s2L=0 mx0=32.786213 sm0=1.115013 mx1=0.750000 sm1=0.891580
+[AIV Block 0/56] [VEC2-entry] s2L=3 s2LL=4 v2S1=1
+[AIV Block 0/56] [VEC2-expUb] s2L=3 e0=1.000000 e1=1.000000 e2=1.000000 e3=1.000000
+[AIV Block 0/56] [VEC2-upd] s2L=3 vo0=9.828450 vo1=6.797954
+[AIV Block 0/56] [Bmm1Tail-post] s2L=2 s2S=4864 s2E=5920 pLC=23 s2R=256
+[AIV Block 0/56] [MASK-entry] s2L=1 s2S=4864 s2R=256 hS1R=1 gS1M=0 isGqa=1 isMla=0 compM=3 preT=946 nextT=-1 s1oIdx=0 actS1=2 actS2=69 prefSz=5852 pLC=23
+[AIV Block 0/56] [MASK-gqa-nonmerge] s2L=1 isPref=1
+[AIV Block 0/56] [MASK-gqa-pref] s2L=1 fill=0xFF mask[0]=ff
+[AIV Block 0/56] [VEC-Nd-info] s2L=1 s2LL=4 s2S=4864 s2E=5920 prefSz=5852 pLC=23 isPref=1 s1oIdx=0 actS1=2 actS2=69 preT=946 nextT=-1 compM=3
+[AIV Block 0/56] [VEC-Nd-allmax] mx0=32.786213 mx1=0.750000 mx2=0.765625 mx3=0.656250 sum0=1.115013[AIV Block 0/56] [VEC-Nd-pre] s2L=1 s2R=256 hS1R=1 s2S=4864 phyAddr=c000
+[AIV Block 0/56] [VEC-Nd-pre-max] iniMax[0]=32.786213 iniSum[0]=1.115013 iniMax[1]=0.750000
+[AIV Block 0/56]   mmRes[0]=-136.520264
+[AIV Block 0/56]   mmRes[1]=-91.531883
+[AIV Block 0/56]   mmRes[2]=-29.148708
+[AIV Block 0/56]   mmRes[3]=125.789452
+[AIV Block 0/56]   mmRes[64]=130.689529 mmRes[128]=-116.977104 mmRes[192]=140.817429 mmRes[255]=98.181000
+[AIV Block 0/56] [VEC-Nd-mask] mask[0]=ff mask[1]=ff
+[AIV Block 0/56] [VEC-Nd-post] s2L=1 mx0=32.786213 sm0=1.115013 mx1=0.750000 sm1=0.891580
+[AIV Block 0/56] [VEC-Nd-preUpd] s2L=1 mx0=32.786213 sm0=1.115013 mx1=0.750000 sm1=0.891580
+[AIV Block 0/56] [VEC-Nd-postUpd] s2L=1 mx0=32.786213 sm0=1.115013 mx1=0.750000 sm1=0.891580
+[AIV Block 0/56] [VEC2-entry] s2L=4 s2LL=4 v2S1=1
+[AIV Block 0/56] [VEC2-expUb] s2L=4 e0=1.000000 e1=1.000000 e2=1.000000 e3=1.000000
+[AIV Block 0/56] [VEC2-upd] s2L=4 vo0=9.829404 vo1=6.796728
+[AIV Block 0/56] [VEC2-final] s2L=4 sum=1.000421 max=56.064064
+[AIV Block 0/56] [VEC2-out] s2L=4 vo0=26020.457031 vo1=67212.117188
+[AIV Block 0/56] [Bmm1Tail-post] s2L=3 s2S=4864 s2E=5920 pLC=23 s2R=220
+[AIV Block 0/56] [MASK-entry] s2L=2 s2S=4864 s2R=256 hS1R=1 gS1M=0 isGqa=1 isMla=0 compM=3 preT=946 nextT=-1 s1oIdx=0 actS1=2 actS2=69 prefSz=5852 pLC=23
+[AIV Block 0/56] [MASK-gqa-nonmerge] s2L=2 isPref=1
+[AIV Block 0/56] [MASK-gqa-pref] s2L=2 fill=0xFF mask[0]=ff
+[AIV Block 0/56] [VEC-Nd-info] s2L=2 s2LL=4 s2S=4864 s2E=5920 prefSz=5852 pLC=23 isPref=1 s1oIdx=0 actS1=2 actS2=69 preT=946 nextT=-1 compM=3
+[AIV Block 0/56] [VEC-Nd-allmax] mx0=41.806824 mx1=0.750000 mx2=0.765625 mx3=0.820312 sum0=1.000303[AIV Block 0/56] [VEC-Nd-pre] s2L=2 s2R=256 hS1R=1 s2S=4864 phyAddr=4000
+[AIV Block 0/56] [VEC-Nd-pre-max] iniMax[0]=41.806824 iniSum[0]=1.000303 iniMax[1]=0.750000
+[AIV Block 0/56]   mmRes[0]=-104.787178
+[AIV Block 0/56]   mmRes[1]=112.562508
+[AIV Block 0/56]   mmRes[2]=20.049213
+[AIV Block 0/56]   mmRes[3]=-27.285889
+[AIV Block 0/56]   mmRes[64]=-10.010809 mmRes[128]=99.811615 mmRes[192]=35.328949 mmRes[255]=86.581589
+[AIV Block 0/56] [VEC-Nd-mask] mask[0]=ff mask[1]=ff
+[AIV Block 0/56] [VEC-Nd-post] s2L=2 mx0=41.806824 sm0=1.000303 mx1=0.750000 sm1=1.532205
+[AIV Block 0/56] [VEC-Nd-preUpd] s2L=2 mx0=41.806824 sm0=1.000303 mx1=0.750000 sm1=1.532205
+[AIV Block 0/56] [VEC-Nd-postUpd] s2L=2 mx0=41.806824 sm0=1.000303 mx1=0.750000 sm1=1.532205
+[AIV Block 0/56] CANN Version: 1.0.0, TimeStamp: 202607
