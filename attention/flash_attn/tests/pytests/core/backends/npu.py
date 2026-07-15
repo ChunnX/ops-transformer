@@ -162,18 +162,18 @@ class NPUBackend(Backend):
                 shutil.rmtree(d, ignore_errors=True)
 
     def _get_graph_net(self):
-        if self._graph_net is None:
-            torch._dynamo.reset()
-            net = FlashAttnGraphNetwork().npu()
-            config = CompilerConfig()
-            config.mode = "reduce-overhead"
-            config.experimental_config.aclgraph._aclnn_static_shape_kernel = True
-            config.experimental_config.aclgraph._aclnn_static_shape_kernel_build_dir = "./"
-            config.experimental_config.frozen_parameter = True
-            config.experimental_config.tiling_schedule_optimize = True
-            config.experimental_config.topology_sorting_strategy = "StableRDFS"
-            npu_backend = torchair.get_npu_backend(compiler_config=config)
-            self._graph_net = torch.compile(net, fullgraph=False, backend=npu_backend, dynamic=False)
+        self._cleanup_static_kernel_cache()
+        torch._dynamo.reset()
+        net = FlashAttnGraphNetwork().npu()
+        config = CompilerConfig()
+        config.mode = "reduce-overhead"
+        config.experimental_config.aclgraph._aclnn_static_shape_kernel = True
+        config.experimental_config.aclgraph._aclnn_static_shape_kernel_build_dir = "./"
+        config.experimental_config.frozen_parameter = True
+        config.experimental_config.tiling_schedule_optimize = True
+        config.experimental_config.topology_sorting_strategy = "StableRDFS"
+        npu_backend = torchair.get_npu_backend(compiler_config=config)
+        self._graph_net = torch.compile(net, fullgraph=False, backend=npu_backend, dynamic=False)
         return self._graph_net
 
     def compute(self, inputs: Dict[str, torch.Tensor],
