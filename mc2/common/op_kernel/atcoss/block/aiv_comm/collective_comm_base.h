@@ -26,7 +26,12 @@ namespace AivComm {
 using namespace AscendC;
 using Utils::CommTilingData;
 
-template<typename Impl, typename Dtype, typename Barrier>
+enum class CommAddrLayout {
+    DEFAULT,
+    CONTIGUOUS
+};
+
+template<typename Impl, typename Dtype, typename Barrier, CommAddrLayout Layout = CommAddrLayout::DEFAULT>
 class CollectiveCommBase {
     friend Impl;
 public:
@@ -39,7 +44,8 @@ public:
         GM_ADDR localAddr,
         __ubuf__ uint8_t* commbuf,
         uint32_t useCoreNum,
-        uint32_t curCoreId)
+        uint32_t curCoreId,
+        uint64_t winOffset = 0)
     {
         udmaCtx_ = udmaCtx;
         barrier_ = barrier;
@@ -48,6 +54,7 @@ public:
         useCoreNum_ = useCoreNum;
         curCoreId_ = curCoreId;
         commBuf_ = commbuf;
+        winOffsset_ = winOffset;
 
         comm_.Init(commBuf_, COMM_WORKSPACE_SIZE);
 
@@ -72,10 +79,8 @@ public:
         nonSplitAxisBytes_ = tilingData.nonSplitAxisSize * sizeof(Dtype);
         chunkBytes_ = chunkSize_ * nonSplitAxisBytes_;
         totalTiles_ = tilingData_->splitAxisTileCnt + tilingData_->splitAxisTailCnt;
-        uint64_t tileMaxByteSize = (tilingData_->splitAxisTileSize > tilingData_->splitAxisTailSize ?
+        tileMaxByteSize_ = (tilingData_->splitAxisTileSize > tilingData_->splitAxisTailSize ?
             tilingData_->splitAxisTileSize : tilingData_->splitAxisTailSize) * nonSplitAxisBytes_;
-        slotStride_ = rankSize * tileMaxByteSize;
-        myRankOffset_ = udmaCtx_->rankId * tileMaxByteSize;
         currentTileIdx_ = 0;
         currentTileOffset_ = 0;
         remainingChunkSize_ = chunkSize_;
@@ -127,6 +132,11 @@ public:
         }
     }
 
+    __aicore__ inline uint64_t GetCommSize() const
+    {
+        return chunkSize_ * udmaCtx_->rankSize;
+    }
+
     __aicore__ inline void Finalize()
     {
         static_cast<Impl*>(this)->DoFinalize();
@@ -140,17 +150,17 @@ protected:
     Hcomm<AscendC::COMM_PROTOCOL_UBC_CTP> comm_;
     GM_ADDR localAddr_;
     __ubuf__ uint8_t* commBuf_;
+    uint64_t winOffsset_;
 
     uint64_t chunkSize_;
     uint64_t nonSplitAxisBytes_;
     uint64_t chunkBytes_;
 
     uint64_t totalTiles_;
-    uint64_t slotStride_;
-    uint64_t myRankOffset_;
     uint64_t currentTileIdx_;
     uint64_t currentTileOffset_;
     uint64_t remainingChunkSize_;
+    uint64_t tileMaxByteSize_;
 
     uint32_t targetRankStart_;
     uint32_t targetRankCnt_;

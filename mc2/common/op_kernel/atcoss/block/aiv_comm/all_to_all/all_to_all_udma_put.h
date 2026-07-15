@@ -23,23 +23,33 @@ namespace AivComm {
 
 using namespace AscendC;
 
-template<typename Dtype, typename Barrier>
-class AllToAllCommPutImpl : public CollectiveCommBase<AllToAllCommPutImpl<Dtype, Barrier>, Dtype, Barrier> {
-    friend class CollectiveCommBase<AllToAllCommPutImpl<Dtype, Barrier>, Dtype, Barrier>;
+template<typename Dtype, typename Barrier, CommAddrLayout Layout = CommAddrLayout::DEFAULT>
+class AllToAllCommPutImpl : public CollectiveCommBase<AllToAllCommPutImpl<Dtype, Barrier, Layout>, Dtype, Barrier, Layout> {
+    friend class CollectiveCommBase<AllToAllCommPutImpl<Dtype, Barrier, Layout>, Dtype, Barrier, Layout>;
 
 private:
-    __aicore__ inline void PostInit() {}
+    __aicore__ inline void PostInit() {
+        this->barrier_.Execute();
+    }
 
     __aicore__ inline void DoCommit(uint32_t targetRankId, uint64_t tileOffset, uint64_t tileSize)
     {
-        if ((this->curCoreId_ >= this->useCoreNum_) || (this->curCoreId_ == this->udmaCtx_->rankId)) {
+        if ((this->curCoreId_ >= this->useCoreNum_) || (targetRankId == this->udmaCtx_->rankId)) {
             return;
         }
-        GM_ADDR srcAddr = this->localAddr_ + targetRankId * this->chunkBytes_ +
-            tileOffset * this->nonSplitAxisBytes_;
-        GM_ADDR dstAddr = reinterpret_cast<GM_ADDR>(this->udmaCtx_->commBufferAddrs[targetRankId])
-            + this->currentTileIdx_ * this->slotStride_
-            + this->myRankOffset_;
+        GM_ADDR srcAddr = this->localAddr_ +
+            this->currentTileIdx_ * this->udmaCtx_->rankSize * this->tileMaxByteSize_ +
+            this->udmaCtx_->rankId * this->tileMaxByteSize_;
+
+        GM_ADDR dstAddr;
+        if constexpr (Layout == CommAddrLayout::CONTIGUOUS) {
+            dstAddr = reinterpret_cast<GM_ADDR>(this->udmaCtx_->commBufferAddrs[targetRankId] + this->winOffsset_) +
+                this->currentTileIdx_ * this->udmaCtx_->rankSize * this->tileMaxByteSize_ +
+                      targetRankId * tileSize * this->nonSplitAxisBytes_;
+        } else {
+            dstAddr = reinterpret_cast<GM_ADDR>(this->udmaCtx_->commBufferAddrs[targetRankId] + this->winOffsset_) +
+                targetRankId * this->chunkBytes_ + tileOffset * this->nonSplitAxisBytes_;
+        }
 
         this->comm_.WriteNbi(
             static_cast<ChannelHandle>(this->udmaCtx_->channelHandles[targetRankId]), dstAddr, srcAddr,
@@ -48,7 +58,8 @@ private:
 
     __aicore__ inline void DoWait(uint32_t targetRankId)
     {
-        if ((this->curCoreId_ >= this->useCoreNum_) || (this->curCoreId_ == this->udmaCtx_->rankId)) {
+        this->barrier_.Execute();
+        if ((this->curCoreId_ >= this->useCoreNum_) || (targetRankId == this->udmaCtx_->rankId)) {
             return;
         }
         this->comm_.Drain(static_cast<ChannelHandle>(this->udmaCtx_->channelHandles[targetRankId]));
