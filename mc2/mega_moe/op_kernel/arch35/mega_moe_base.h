@@ -148,6 +148,22 @@ __aicore__ inline void WaitForCubeFinishCopyout(uint16_t value = 0)
     CrossCoreWaitFlag<SYNC_AIC_AIV_MODE, PIPE_MTE2>(AIC_SYNC_AIV_EPILOGUE_FLAG + value);
 }
 
+// [A8W4 卡死修复] AIV1->AIC 反向 ack, 与上面 AIC->AIV1 的 ready 通知(NotifyVectorToCopyIn/
+// WaitForCubeFinishCopyout)配成双向握手。专用 flag 9(AIV1_SYNC_AIC_EPILOGUE_ACK_FLAG),
+// 不复用 base flag 4/6(它们被 generic/dispatch 并发占用, 复用会撞死锁)。PIPE 同 NotifyCube/WaitForVector。
+__aicore__ inline void NotifyAicGmTileAccepted(uint16_t value = 0)
+{
+    CrossCoreSetFlag<SYNC_AIC_AIV_MODE, PIPE_V>(AIV1_SYNC_AIC_EPILOGUE_ACK_FLAG + value);
+}
+
+__aicore__ inline void WaitForAiv1GmTileAccepted(uint16_t value = 0)
+{
+    // AIC 侧等 ack 用 base+FLAG_ID_MAX_PER_V(9+16=25), 与 AIV1 侧 NotifyAicGmTileAccepted 的 SetFlag(9) 配对。
+    // CrossCore 寻址约定: AIC 视角恒 +FLAG_ID_MAX_PER_V, AIV1 视角用 base
+    // (与 ready 方向一致: AIC SetFlag(8+16=24), AIV1 WaitFlag(8))。
+    CrossCoreWaitFlag<SYNC_AIC_AIV_MODE, PIPE_FIX>(AIV1_SYNC_AIC_EPILOGUE_ACK_FLAG + FLAG_ID_MAX_PER_V + value);
+}
+
 __aicore__ inline void EndSync(int32_t& vecSetSyncCom)
 {
     if (vecSetSyncCom == 0) {

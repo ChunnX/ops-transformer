@@ -500,57 +500,6 @@ __aicore__ inline void CombineTokenGroup(
     SyncFuncStatic<AscendC::HardEvent::MTE3_MTE2, SYNC_EVENT_ID2>();
 }
 
-// =============================================
-// CombineTokenGroupNoQuant：combine_quant_mode==0(不量化)的每-token 送出。
-//   从 gmm2Out 读该 token 满 h(bf16) -> 单次 DataCopyPad 送到远端 combineSend
-//   [(tokenIdx*topK+topkIdx)*n](n==h)。每 token 仅 1 次跨卡写(对比逐 N-tile 的
-//   ceil(h/L1_TILE_N) 次)，从根本上把 combine=0 的跨卡写聚合总数降到与 combine!=0 同量级。
-//   与量化路径 CombineTokenGroup 隔离、互不影响。
-// =============================================
-template <typename T>
-__aicore__ inline void CombineTokenGroupNoQuant(
-    uint32_t tokenStart, uint32_t tokenCount, uint32_t n, uint32_t rankId,
-    GM_ADDR gmm2OutAddr, const Params& params, LocalTensor<int32_t>& tripleTensor,
-    int64_t ubTensorSize, int64_t offset)
-{
-    LocalTensor<T> combineUbTensor(TPosition::VECIN, offset, ubTensorSize);
-
-    GlobalTensor<T> gmm2OutGm;
-    gmm2OutGm.SetGlobalBuffer(reinterpret_cast<__gm__ T*>(gmm2OutAddr));
-
-    uint32_t nAlign32 = Ops::Base::CeilAlign(n, static_cast<uint32_t>(ALIGN_32));
-    DataCopyPadExtParams<T> copyPadParams{false, 0U, 0U, 0U};
-    AscendC::DataCopyExtParams gm2UbParams{1, static_cast<uint32_t>(n * sizeof(T)), 0, 0, 0};
-
-    uint64_t gmRemoteBaseOffset = params.peermemInfo.combineSendPtr - params.peermemInfo.rankSyncInWorldPtr;
-    AscendC::DataCopyExtParams ub2GmParams{1, static_cast<uint32_t>(n * sizeof(T)), 0, 0, 0};
-    AscendC::GlobalTensor<T> gmRemoteD;
-
-    for (uint32_t i = 0; i < tokenCount; i++) {
-        uint32_t pingPong = i % 2;
-        LocalTensor<T> ubBf16 = combineUbTensor[pingPong * nAlign32];
-
-        // 等上一次占用该 ping-pong 槽的送出(MTE3)完成, 再覆盖
-        SyncFuncStatic<AscendC::HardEvent::MTE3_MTE2, SYNC_EVENT_ID3>();
-        // MTE2: 从 gmm2Out 读该 token 满 h
-        AscendC::DataCopyPad(ubBf16, gmm2OutGm[(tokenStart + i) * n], gm2UbParams, copyPadParams);
-        // MTE2->S: 保证读完(且顺序在下面 MTE3 送出之前), 同时放行下面的 triple 标量读
-        AscendC::SetFlag<AscendC::HardEvent::MTE2_S>(SYNC_EVENT_ID4);
-        AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(SYNC_EVENT_ID4);
-
-        uint32_t toRankId = tripleTensor.GetValue(i * 8 + rankIdIndex);
-        uint32_t tokenIdx = tripleTensor.GetValue(i * 8 + tokenIdxIndex);
-        uint32_t topkIdx = tripleTensor.GetValue(i * 8 + topkIdxIndex);
-        gmRemoteD.SetGlobalBuffer(reinterpret_cast<__gm__ T*>(
-            GetRankWinAddrWithOffset(toRankId, gmRemoteBaseOffset)));
-        uint64_t dstOffset = (tokenIdx * params.tilingData->topK + topkIdx) * n;
-        // MTE3: 单次送出满 h 到远端 combineSend
-        AscendC::DataCopyPad(gmRemoteD[dstOffset], ubBf16, ub2GmParams);
-    }
-    // 等所有 MTE3 送出完成
-    SyncFuncStatic<AscendC::HardEvent::MTE3_MTE2, SYNC_EVENT_ID2>();
-}
-
 }  // namespace MegaMoeCombineImpl
 
 #endif  // MEGA_MOE_COMBINE_SEND_H

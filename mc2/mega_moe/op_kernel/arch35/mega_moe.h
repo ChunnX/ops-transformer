@@ -92,8 +92,6 @@ private:
     __aicore__ inline void InitCombineBuffers();
     __aicore__ inline void ProcessCombine(const GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &gmm2State,
         uint32_t expertIdx);
-    // [combine=0 修复] GMM2 全循环后, 按每-token 满 h 一次 bf16 送出(替代逐 N-tile 内联送出)
-    __aicore__ inline void CombineNoQuantSendAll(const TupleShape &initShape, const BlockOffset &initOffset);
     __aicore__ inline void CrossRankSyncInWorldSize();
     __aicore__ inline void ExpertTokenNumCopyOut();
     __aicore__ inline void CopyGMToGMPerToken(int32_t rowDstOffsetInCore, int32_t remoteRankIdx,
@@ -1057,77 +1055,6 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessCombine(
 }
 
 // ===============================================================
-// CombineNoQuantSendAll：combine_quant_mode==0 的 combine 送出(替代逐 N-tile 内联送出)。
-//   前提: 调用前已 SyncAll<false>(AIC↔AIV), 所有专家的 GMM2 输出已写入 gmm2MmadRes
-//         (maxOutputSize×h bf16, 按全局收 token 位置分区)且对 AIV 可见。
-//   做法: 用 fresh state 重跑一遍专家循环(UpdateGroupParams 序列与 GMM2 循环一致 => 每专家
-//         mExpert/gmm2Out偏移/expertBeforeCnt 完全相同), 每专家按 token-group 分核(ComputeCoreGrouping),
-//         逐 token 从 gmm2Out 读满 h -> 单次 DataCopyPad 送到远端 combineSend。
-//   每 token 仅 1 次跨卡写(对比逐 N-tile 的 ceil(h/L1_TILE_N) 次), 从根本消除聚合跨卡写过多导致的卡死。
-//   仅 combine=0 走此路径; combine!=0 仍走循环内 ProcessCombine, 行为不变。
-// ===============================================================
-template <TemplateMegaMoeTypeClass>
-__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::CombineNoQuantSendAll(
-    const TupleShape &initShape, const BlockOffset &initOffset)
-{
-    uint32_t coreIdForGrouping = aivCoreIdx_;
-    uint32_t totalCoresForGrouping = blockAivNum_;
-    if constexpr (ENABLE_A8W4) {
-        if (subBlockIdx_ != 1) {
-            return;   // A8W4: 仅 subBlockIdx_==1 参与送出(与 ProcessCombine 一致)
-        }
-        coreIdForGrouping = aivCoreIdx_ / 2;
-        totalCoresForGrouping = blockAivNum_ / 2;
-    }
-
-    uint32_t nAlign32 = Ops::Base::CeilAlign(k_, static_cast<uint32_t>(ALIGN_32));
-    int64_t sendUbSize = 2 * static_cast<int64_t>(nAlign32);   // ping-pong 满 h bf16
-
-    ExpertLoopState sendState{initShape, initOffset, 0};
-    GMMAddrInfo sendAddrInfo;
-    for (uint32_t expertIdx = 0; expertIdx < expertPerRank_; expertIdx++) {
-        if (!UpdateGroupParams<AddrUpdateMode::GMM2>(sendState, expertIdx)) {
-            continue;
-        }
-        UpdateGlobalBuffer<AddrUpdateMode::GMM2>(sendAddrInfo, sendState);
-
-        uint32_t mExpert = Get<M_VALUE>(sendState.problemShape);
-        uint32_t tokenGroupsThisExpert = Ops::Base::CeilDiv(mExpert, L1_TILE_M_256);
-
-        uint32_t myGroup, myIdxInGrp, myGrpSize;
-        MegaMoeImpl::ComputeCoreGrouping(coreIdForGrouping, tokenGroupsThisExpert, totalCoresForGrouping,
-            myGroup, myIdxInGrp, myGrpSize);
-        if (myGroup >= tokenGroupsThisExpert) {
-            continue;
-        }
-
-        uint32_t tokenStart = myGroup * L1_TILE_M_256;
-        uint32_t tokenCount = (L1_TILE_M_256 < mExpert - tokenStart) ? L1_TILE_M_256 : mExpert - tokenStart;
-        uint32_t tokensPerCore = Ops::Base::CeilDiv(tokenCount, myGrpSize);
-        int32_t myTokenOffset = myIdxInGrp * tokensPerCore;
-        int32_t myTokenCount = 0;
-        if (myTokenOffset < (int32_t)tokenCount) {
-            myTokenCount = (tokensPerCore < tokenCount - myTokenOffset) ? tokensPerCore : tokenCount - myTokenOffset;
-        }
-        if (myTokenCount > 0) {
-            AscendC::SetCtrlSpr<60, 60>(0);
-            int64_t offset = 0;
-            LocalTensor<int32_t> tripleTensor =
-                LocalTensor<int32_t>(TPosition::VECIN, offset, myTokenCount * TRIPLE_SIZE);
-            offset += myTokenCount * TRIPLE_SIZE * sizeof(int32_t);
-            AscendC::GlobalTensor<int32_t> tripleGm;
-            tripleGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(params_.workspaceInfo.tripleInfoPtr
-                + (sendState.expertBeforeCnt + tokenStart + myTokenOffset) * TRIPLE_SIZE * sizeof(int32_t)));
-            AscendC::DataCopy(tripleTensor, tripleGm, myTokenCount * TRIPLE_SIZE);
-            PipeBarrier<PIPE_MTE2>();
-            MegaMoeCombineImpl::CombineTokenGroupNoQuant<bfloat16_t>(
-                tokenStart + myTokenOffset, myTokenCount, k_, rankId_,
-                sendAddrInfo.gmm2OutGlobal, params_, tripleTensor, sendUbSize, offset);
-        }
-    }
-}
-
-// ===============================================================
 // UnpermuteLoadWeights：加载一个 token batch 的权重到 UB
 // ===============================================================
 template <TemplateMegaMoeTypeClass>
@@ -1487,19 +1414,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
         EndGMM2Sync(vecSetSyncCom_, gmm2PingPongIdx_);
     }
     PipeBarrier<PIPE_ALL>();
-    if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
-        // [combine=0 修复] GMM2 全循环结束: AIC 已写完所有专家 gmm2Out(gmm2MmadRes)。
-        // 用 SyncAll<false>(AIC↔AIV 全核) 保证 AIC 写完且对 AIV 可见, 再由 AIV 按每-token 满 h
-        // 一次送出(替代原逐 N-tile 内联送出, 把聚合跨卡写数从 ~28×token 降到 1×token)。
-        SyncAll<false>();
-        if constexpr (g_coreType == AIV) {
-            CombineNoQuantSendAll(initShape, initOffset);
-        }
-        PipeBarrier<PIPE_ALL>();
-        SyncAll<true>();   // V 核间: 确认本卡所有 combine send 发起完成, 再进跨卡同步
-    } else {
-        SyncAll<true>();   // combine!=0 原样(送出已在循环内 ProcessCombine 完成)
-    }
+    SyncAll<true>();
 
     // 4. 本卡数据Unpermute
     if constexpr(g_coreType == AIV) {
