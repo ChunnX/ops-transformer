@@ -17,6 +17,12 @@
 #define MEGA_MOE_IMP_BASE_H
 
 namespace MegaMoeImpl {
+#if defined(__DAV_C310_CUBE__) || defined(__DAV_C310_VEC__)
+#define MEGA_MOE_HOST_DEVICE_INLINE __aicore__ inline
+#else
+#define MEGA_MOE_HOST_DEVICE_INLINE inline
+#endif
+
 constexpr uint32_t ALIGN32 = 32U;
 constexpr uint32_t L1_TILE_M_256 = 256;
 constexpr uint32_t L1_TILE_M_128 = 128;
@@ -30,5 +36,26 @@ constexpr uint32_t MAX_SINGLE_MN_ALIGN32_NUM_256 = (MAX_SINGLE_MN_256_256 + 31U)
 constexpr uint32_t MAX_SINGLE_MN_128_256 = 128 * 256;
 constexpr uint32_t MAX_SINGLE_MN_ALIGN32_NUM_128 = (MAX_SINGLE_MN_128_256 + 31U) / ALIGN32 * ALIGN32;
 constexpr uint32_t META_INFO_TENSOR_ADDR = 200U * 1024U; // metaInfo tensor 在 UB 中的起始地址
+
+struct TokenRange {
+    uint32_t start = 0;
+    uint32_t count = 0;
+};
+
+// Balanced contiguous ownership.  Every token belongs to exactly one worker;
+// the first (totalTokens % workerCount) workers receive one extra token.
+MEGA_MOE_HOST_DEVICE_INLINE TokenRange GetBalancedTokenRange(uint32_t totalTokens, uint32_t workerIdx,
+                                                              uint32_t workerCount)
+{
+    if (workerCount == 0U || workerIdx >= workerCount) {
+        return {};
+    }
+    uint32_t base = totalTokens / workerCount;
+    uint32_t remainder = totalTokens % workerCount;
+    uint32_t extraBefore = workerIdx < remainder ? workerIdx : remainder;
+    return {workerIdx * base + extraBefore, base + static_cast<uint32_t>(workerIdx < remainder)};
+}
+
+#undef MEGA_MOE_HOST_DEVICE_INLINE
 } // namespace MegaMoeImpl
 #endif // MEGA_MOE_IMP_BASE_H
