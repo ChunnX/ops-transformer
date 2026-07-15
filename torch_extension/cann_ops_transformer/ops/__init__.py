@@ -32,6 +32,7 @@ from .quant_lightning_indexer import (
 )
 from .mhc_post import mhc_post
 from .mhc_pre_sinkhorn import mhc_pre_sinkhorn
+from .mhc_pre_sinkhorn_backward import mhc_pre_sinkhorn_backward
 from .kv_compress_epilog import kv_compress_epilog
 from .indexer_quant_cache import indexer_quant_cache
 from .compressor import compressor
