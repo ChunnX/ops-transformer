@@ -675,7 +675,7 @@ void MhcPreBaseTiling::FillMkTilingData()
     tilingData_.set_mL1Size(static_cast<uint32_t>(mL1Size));
     tilingData_.set_kL1Size(static_cast<uint32_t>(kL1Size));
     tilingData_.set_mUbSize(static_cast<uint32_t>(ceilDiv(mL1Size, 2)));
-    tilingData_.set_kUbSize(static_cast<uint32_t>(kL1Size / 2));
+    tilingData_.set_kUbSize(static_cast<uint32_t>(kL1Size));
     tilingData_.set_fusionAlign(static_cast<uint32_t>(roundUp(matN_, LOW_API_FLOAT_ALIGN)));
     tilingData_.set_nAlign(static_cast<uint32_t>(roundUp(N_, LOW_API_FLOAT_ALIGN)));
     tilingData_.set_bufferPool0Size(LOW_API_BUFFER_POOL0_SIZE);
