@@ -262,7 +262,7 @@ static aclnnStatus MakeContiguous(const aclTensor *&query,
                                   const aclTensor *&qDequantScaleOptional,
                                   const aclTensor *&kDequantScaleOptional,
                                   const aclTensor *&vDequantScaleOptional,
-                                  const aclTensor *&pDequantScaleOptional,
+                                  const aclTensor *&pQuantScaleOptional,
                                   int64_t quantMode,
                                   const std::string &qLayout,
                                   aclOpExecutor *executor)
@@ -332,9 +332,9 @@ static aclnnStatus MakeContiguous(const aclTensor *&query,
         }
     }
 
-    // pDequantScaleOptional: 当前所有 quantMode 下都必须为 nullptr
-    if (pDequantScaleOptional != nullptr) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "pDequantScaleOptional must be nullptr in current quantMode(%lld).", quantMode);
+    // pQuantScaleOptional: 当前所有 quantMode 下都必须为 nullptr
+    if (pQuantScaleOptional != nullptr) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "pQuantScaleOptional must be nullptr in current quantMode(%lld).", quantMode);
         return ACLNN_ERR_PARAM_INVALID;
     }
 
@@ -367,6 +367,36 @@ static aclnnStatus ValidateAdditionalParams(int64_t innerPrecise, int64_t quantM
     return ACLNN_SUCCESS;
 }
 
+static aclnnStatus ValidateMxfp4Constraints(int64_t quantMode, int64_t softmaxLseFlag, int64_t innerPrecise,
+                                             const aclTensor *attenMaskOptional,
+                                             const aclTensor *blockTableOptional)
+{
+    if (quantMode != MXFP4_OCP_QUANT && quantMode != MXFP4_CX_QUANT) {
+        return ACLNN_SUCCESS;
+    }
+    // mxfp4 量化下 innerPrecise 必须为 4
+    if (innerPrecise != 4) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "innerPrecise must be 4 in mxfp4 quantMode(%lld), got %lld.", quantMode, innerPrecise);
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    // mxfp4 量化场景下暂不支持 LSE、attenMask、pageAttention
+    if (softmaxLseFlag != 0) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "softmaxLseFlag must be 0 in mxfp4 quantMode(%lld), got %lld.", quantMode, softmaxLseFlag);
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    if (attenMaskOptional != nullptr) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "attenMaskOptional must be nullptr in mxfp4 quantMode(%lld).", quantMode);
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    if (blockTableOptional != nullptr) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "blockTableOptional must be nullptr in mxfp4 quantMode(%lld).", quantMode);
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    return ACLNN_SUCCESS;
+}
+
 static string ConvertLayoutString(char *layoutStr)
 {
     return op::ToString(layoutStr).GetString();
@@ -387,7 +417,7 @@ __attribute__((visibility("default"))) aclnnStatus aclnnBlockSparseAttentionV3Ge
     const aclTensor *qDequantScaleOptional,
     const aclTensor *kDequantScaleOptional,
     const aclTensor *vDequantScaleOptional,
-    const aclTensor *pDequantScaleOptional,
+    const aclTensor *pQuantScaleOptional,
     char *qInputLayout,
     char *kvInputLayout,
     int64_t numKeyValueHeads,
@@ -417,11 +447,18 @@ __attribute__((visibility("default"))) aclnnStatus aclnnBlockSparseAttentionV3Ge
     if (ret != ACLNN_SUCCESS) {
         return ret;
     }
+
+    // mxfp4 量化限制检查
+    ret = ValidateMxfp4Constraints(quantMode, softmaxLseFlag, innerPrecise, attenMaskOptional, blockTableOptional);
+    if (ret != ACLNN_SUCCESS) {
+        return ret;
+    }
+
     // 去掉了idx ,idxnums
     L2_DFX_PHASE_1(aclnnBlockSparseAttentionV3,
                    DFX_IN(query, key, value, blockSparseMask, attenMaskOptional, blockShape,
                           actualSeqLengthsOptional, actualSeqLengthsKvOptional, blockTableOptional,
-                          qDequantScaleOptional, kDequantScaleOptional, vDequantScaleOptional, pDequantScaleOptional,
+                          qDequantScaleOptional, kDequantScaleOptional, vDequantScaleOptional, pQuantScaleOptional,
                           qInputLayout, kvInputLayout, numKeyValueHeads, maskType, scaleValue, innerPrecise, blockSize,
                           preTokens, nextTokens, softmaxLseFlag, quantMode, dstTypeMax),
                    DFX_OUT(attentionOut, softmaxLseOptional));
@@ -434,7 +471,7 @@ __attribute__((visibility("default"))) aclnnStatus aclnnBlockSparseAttentionV3Ge
     // 新增blockSparseMaskOptional参数
     ret = MakeContiguous(query, key, value, blockSparseMask, attenMaskOptional, blockTableOptional,
                          qDequantScaleOptional, kDequantScaleOptional, vDequantScaleOptional,
-                         pDequantScaleOptional, quantMode, qInputLayoutStr, executorImpl);
+                         pQuantScaleOptional, quantMode, qInputLayoutStr, executorImpl);
     if (ret != ACLNN_SUCCESS) {
         return ret;
     }
@@ -442,7 +479,7 @@ __attribute__((visibility("default"))) aclnnStatus aclnnBlockSparseAttentionV3Ge
     auto outputs = l0op::BlockSparseAttention(
         query, key, value, blockSparseMask, attenMaskOptional, blockShape, actualSeqLengthsOptional,
         actualSeqLengthsKvOptional, blockTableOptional, qDequantScaleOptional, kDequantScaleOptional,
-        vDequantScaleOptional, pDequantScaleOptional, qInputLayoutStr.c_str(), kvInputLayoutStr.c_str(), numKeyValueHeads, maskType,
+        vDequantScaleOptional, pQuantScaleOptional, qInputLayoutStr.c_str(), kvInputLayoutStr.c_str(), numKeyValueHeads, maskType,
         scaleValue, innerPrecise, blockSize, preTokens, nextTokens, softmaxLseFlag, quantMode, dstTypeMax, attentionOut, executorImpl);
     if (outputs[0] == nullptr || outputs[1] == nullptr) {
         OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "BlockSparseAttention returned nullptr outputs.");
