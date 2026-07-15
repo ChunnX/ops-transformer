@@ -22,6 +22,7 @@ MXFP8 Flash Attention Golden
 
 import argparse
 import importlib.util
+import json
 import logging
 import math
 import os
@@ -46,11 +47,20 @@ QBSA_ROOT = os.path.abspath(os.path.join(CURRENT_DIR, "../../.."))
 TORCH_OPS_EXTENSION_DIR = os.path.join(QBSA_ROOT, "torch_ops_extension")
 _CUSTOM_OPS_IMPORTED = False
 _DEFAULT_CASE_FILE = "qbsa_mxfp8_test_cases"
+_DEFAULT_CASE_EXCEL = "qbsa_mxfp8_test_cases.xlsx"
 _CASE_LOG_WIDTH = 100
 _DTYPE_MAP = {
     "float8_e4m3fn": torch.float8_e4m3fn,
     "float8_e8m0fnu": torch.float8_e8m0fnu,
 }
+
+_CASE_BOOL_FIELDS = {"enable", "is_contiguous", "return_softmax_lse"}
+_CASE_INT_FIELDS = {
+    "B", "N1", "N2", "D", "S1", "S2", "block_size", "mask_mode", "quant_group_size", "seed",
+    "device_id", "sparse_q_block_size", "sparse_kv_block_size", "sparse_count", "quant_mode",
+}
+_CASE_FLOAT_FIELDS = {"p_scale_value", "data_range_q", "data_range_k", "data_range_v", "softmax_scale"}
+_CASE_INT_LIST_FIELDS = {"actual_seq_q", "actual_seq_kv"}
 
 
 def _ensure_custom_ops_registered():
@@ -101,7 +111,7 @@ def _load_case_file_test_cases(case_file):
     spec.loader.exec_module(module)
     if not hasattr(module, "TestCases"):
         raise AttributeError(f"{case_path} must define TestCases")
-    return case_file_no_ext, module.TestCases
+    return module.TestCases
 
 
 def _iter_test_cases(test_cases):
@@ -111,9 +121,70 @@ def _iter_test_cases(test_cases):
             item.setdefault("name", case_name)
             yield item
         return
-
     for case in test_cases:
         yield dict(case)
+
+
+def _parse_bool(value, field_name):
+    if isinstance(value, bool):
+        return value
+    normalized = str(value).strip().lower()
+    if normalized in {"true", "1", "yes"}:
+        return True
+    if normalized in {"false", "0", "no"}:
+        return False
+    raise ValueError(f"{field_name} must be true or false, got: {value}")
+
+
+def _parse_case_field(field_name, value):
+    if value is None:
+        return None
+    if isinstance(value, str):
+        value = value.strip()
+        if not value:
+            return None
+    if field_name in _CASE_BOOL_FIELDS:
+        return _parse_bool(value, field_name)
+    if field_name in _CASE_INT_FIELDS:
+        return int(value)
+    if field_name in _CASE_FLOAT_FIELDS:
+        return float(value)
+    if field_name in _CASE_INT_LIST_FIELDS:
+        parsed = value if isinstance(value, list) else json.loads(str(value))
+        if not isinstance(parsed, list):
+            raise ValueError(f"{field_name} must be a JSON list, got: {value}")
+        return [int(item) for item in parsed]
+    return value
+
+
+def _resolve_case_excel_path(case_excel):
+    case_path = case_excel.strip()
+    if not case_path.endswith(".xlsx"):
+        case_path = f"{case_path}.xlsx"
+    if not os.path.isabs(case_path):
+        case_path = os.path.join(CURRENT_DIR, case_path)
+    if not os.path.exists(case_path):
+        raise FileNotFoundError(f"case Excel not found: {case_path}")
+    return case_path
+
+
+def _load_case_excel(case_excel, sheet_name):
+    try:
+        import pandas as pd
+    except ImportError as error:
+        raise RuntimeError("Excel case loading requires pandas and openpyxl") from error
+
+    case_path = _resolve_case_excel_path(case_excel)
+    dataframe = pd.read_excel(case_path, sheet_name=sheet_name, dtype=object, keep_default_na=False)
+    if "name" not in dataframe.columns:
+        raise ValueError(f"{case_path} must contain a name column")
+    for row_number, row in enumerate(dataframe.to_dict(orient="records"), start=2):
+        if not any(value != "" for value in row.values()):
+            continue
+        try:
+            yield {field: _parse_case_field(field, value) for field, value in row.items()}
+        except (TypeError, ValueError) as error:
+            raise ValueError(f"invalid case data in {case_path}:{row_number}: {error}") from error
 
 
 def _resolve_dtype(value, field_name):
@@ -128,17 +199,21 @@ def _normalize_case(case):
     case = dict(case)
     case["fp8_dtype"] = _resolve_dtype(case["fp8_dtype"], "fp8_dtype")
     case["scale_dtype"] = _resolve_dtype(case["scale_dtype"], "scale_dtype")
-    case.setdefault("enable", True)
+    if case.get("enable") is None:
+        case["enable"] = True
     case["softmax_scale"] = case.get("softmax_scale") or (1.0 / math.sqrt(float(case["D"])))
     return case
 
 
-def load_test_cases(case_files=None):
-    case_files = case_files or _DEFAULT_CASE_FILE
+def load_test_cases(case_files=None, use_excel=False, sheet_name="test"):
+    case_files = case_files or (_DEFAULT_CASE_EXCEL if use_excel else _DEFAULT_CASE_FILE)
     all_cases = {}
     for case_file in [item.strip() for item in case_files.split(",") if item.strip()]:
-        _, test_cases = _load_case_file_test_cases(case_file)
-        for case in _iter_test_cases(test_cases):
+        if use_excel:
+            test_cases = _load_case_excel(case_file, sheet_name)
+        else:
+            test_cases = _iter_test_cases(_load_case_file_test_cases(case_file))
+        for case in test_cases:
             case = _normalize_case(case)
             case_name = case.get("name")
             if not case_name:
@@ -1259,8 +1334,12 @@ if __name__ == '__main__':
     _VALID_MODES = {"all", "gen", "cpu", "npu", "compare"}
 
     parser = argparse.ArgumentParser(description="MXFP8 QuantBlockSparseAttn Golden")
-    parser.add_argument("--case_files", default=_DEFAULT_CASE_FILE,
-                        help="testcase 文件名，支持逗号分隔；默认加载 qbsa_mxfp8_test_cases.py")
+    parser.add_argument("--case_files", default=None,
+                        help="case 文件路径，支持逗号分隔；默认加载 qbsa_mxfp8_test_cases.py")
+    parser.add_argument("--excel", action="store_true",
+                        help="按 Excel 格式加载 case；不指定 --case_files 时读取 qbsa_mxfp8_test_cases.xlsx")
+    parser.add_argument("--sheet_name", "--sheet-name", dest="sheet_name", default="test",
+                        help="Excel 工作表名称，默认使用 test；仅在 --excel 模式生效")
     parser.add_argument("--mode", default="all",
                         help="执行模式，支持逗号组合: all/gen/cpu/npu/compare. 例: --mode=npu,compare")
     parser.add_argument("--case_name", "--case-name", dest="case_name", default=None,
@@ -1268,13 +1347,14 @@ if __name__ == '__main__':
     parser.add_argument("--case_id", default=None,
                         help="兼容旧参数，等价于 --case_name")
     parser.add_argument("--list_cases", action="store_true",
-                        help="只列出已加载 case_files 内的所有 case，不执行")
+                        help="只列出已加载 case，不执行")
     parser.add_argument("--cache_case_name", "--cache-case-name", dest="cache_case_name", default=None,
                         help="缓存文件名前缀；默认使用 case name")
     parser.add_argument("--cache-dir", default=None,
                         help="缓存目录路径（默认 golden_cache/）")
     args = parser.parse_args()
-    all_cases = load_test_cases(args.case_files)
+    case_files = args.case_files or (_DEFAULT_CASE_EXCEL if args.excel else _DEFAULT_CASE_FILE)
+    all_cases = load_test_cases(case_files, use_excel=args.excel, sheet_name=args.sheet_name)
 
     if args.list_cases:
         for case_id in sorted(all_cases):
