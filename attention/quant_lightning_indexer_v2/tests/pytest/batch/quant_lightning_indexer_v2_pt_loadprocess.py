@@ -58,9 +58,9 @@ def test_qliv2_process(filepath, device_id=0):
         block_size = int(block_size)
         block_num = int(block_num)
         dequant_dtype_str = params[11]
-        if dequant_dtype_str == 'FP16':
+        if dequant_dtype_str == 'FP16' or dequant_dtype_str == torch.float16:
             dequant_dtype = torch.float16
-        elif dequant_dtype_str == 'FP32':
+        elif dequant_dtype_str == 'FP32' or dequant_dtype_str == torch.float32:
             dequant_dtype = torch.float32
         else:
             dequant_dtype = torch.float16
