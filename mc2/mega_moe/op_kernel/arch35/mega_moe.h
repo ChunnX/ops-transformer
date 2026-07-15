@@ -36,6 +36,10 @@
 
 using namespace AscendC;
 
+#ifndef MEGA_MOE_GMM2_GM_READY_SMOKE_TEST
+#define MEGA_MOE_GMM2_GM_READY_SMOKE_TEST 0
+#endif
+
 namespace MegaMoeImpl {
 using TupleShape = Shape<int64_t, int64_t, int64_t, int64_t>;
 using BlockOffset = Shape<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t,
@@ -84,6 +88,8 @@ private:
     __aicore__ inline void SendAndQuantBuffInit();
     __aicore__ inline void ResetFlagList();
     __aicore__ inline void ResetGmm2CombineSyncCounters();
+    __aicore__ inline void ResetGmm2NoQuantReadyCounters();
+    __aicore__ inline void RunGmm2NoQuantReadySmokeTest();
     __aicore__ inline void SendMaskCal();
     __aicore__ inline void SendCntCal(int32_t localExpertId, uint64_t &sendCnt);
     __aicore__ inline void TripleInfoCalAndDispatch(GMMAddrInfo &gmmAddrInfo, int32_t localExpertId);
@@ -170,6 +176,11 @@ private:
     //             a4w4 场景下 GMM1 走 generic a4w4、GMM2 走 a8w4，避免两段都用 a4w4 导致精度损失过大。
     static constexpr bool ENABLE_A4W4 =
         Std::IsSame<Weight1Type, fp4x2_e2m1_t>::value && Std::IsSame<QuantOutType, fp4x2_e2m1_t>::value;
+    // The first GM rebuild is intentionally limited to the MTE class in this
+    // file.  MegaMoeLayered has a different AIV1 sender schedule and keeps its
+    // existing no-quant path until that schedule is redesigned independently.
+    static constexpr bool ENABLE_GMM2_GM_REBUILD =
+        !ENABLE_A8W4 && !ENABLE_A4W4 && CombineQuantMode == COMBINE_NO_QUANT;
     static constexpr int32_t DISPATCH_BUFFER_NUM = 6;
     LocalTensor<int32_t> topkIndexTensor_;
     LocalTensor<int32_t> sendCntTensor_;       // SendCntCal stride 只读 worldsize 个 count
@@ -476,6 +487,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SendAndQuantBuffInit()
 // ===============================================================================================
 // ResetFlagList：对本卡workSpace上的Flag位分批清零（封顶到 DISPATCH_RESET_BATCH），
 //   包括 flagSwiGluToGmm2Ptr & flagDispatchToGmm1Ptr & flagSendCntCalToUpdParamsPtr。
+//   新 no-quant ready 区由 AIV1-only 的独立函数清零，避免 AIV0 进入 GM ready 路径。
 // ===============================================================================================
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ResetFlagList()
@@ -505,6 +517,9 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ResetFlagList()
     // combine量化模式下TokenGroupCompleteFlag清零
     if constexpr (CombineQuantMode != COMBINE_NO_QUANT) {
         ResetGmm2CombineSyncCounters();
+    }
+    if constexpr (ENABLE_GMM2_GM_REBUILD) {
+        ResetGmm2NoQuantReadyCounters();
     }
 }
 
@@ -1145,6 +1160,55 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ResetGmm2CombineSyncCou
     }
 }
 
+// =================================================================================================
+// ResetGmm2NoQuantReadyCounters：只由物理 AIV1 清零正式 GM ready 槽。
+// 每个 slot 恰好一条 cache line，避免 partial DMA 覆盖相邻 generation/expert。
+// =================================================================================================
+template <TemplateMegaMoeTypeClass>
+__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ResetGmm2NoQuantReadyCounters()
+{
+    if constexpr (g_coreType == AIV) {
+        if (subBlockIdx_ != 1) {
+            return;
+        }
+        uint32_t logicalAiv1Idx = aivCoreIdx_ / 2U;
+        uint32_t logicalAiv1Num = blockAivNum_ / 2U;
+        GlobalTensor<int32_t> readyGm;
+        readyGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(params_.workspaceInfo.gmm2NoQuantReadyPtr));
+        for (uint32_t slot = logicalAiv1Idx; slot < expertPerRank_; slot += logicalAiv1Num) {
+            uint64_t slotOffset = static_cast<uint64_t>(slot) * static_cast<uint64_t>(INT_CACHELINE);
+            DataCopy(readyGm[slotOffset], resetTensor_, INT_CACHELINE);
+        }
+    }
+}
+
+// ================================================================================================
+// RunGmm2NoQuantReadySmokeTest：默认关闭的最小 NPU 地址 smoke。
+// AIC0 在自己的 FIX pipe drain 后只发布 ready[0]，logical AIV1-0 以 bypass-cache 读取。
+// 其他核只参加末尾 local rendezvous；该模式不运行 GMM/Combine，也不用于性能测量。
+// ================================================================================================
+template <TemplateMegaMoeTypeClass>
+__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::RunGmm2NoQuantReadySmokeTest()
+{
+    __gm__ int32_t *ready = reinterpret_cast<__gm__ int32_t *>(params_.workspaceInfo.gmm2NoQuantReadyPtr);
+    if constexpr (g_coreType == AIC) {
+        if (blockIdx_ == 0U) {
+            AscendC::SetFlag<AscendC::HardEvent::FIX_S>(0);
+            AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(0);
+            AscendC::AtomicAdd(ready, int32_t(1));
+        }
+    } else {
+        if (subBlockIdx_ == 1 && aivCoreIdx_ / 2U == 0U) {
+            while (AscendC::ReadGmByPassDCache(ready) < 1) {
+                int64_t waitStart = AscendC::GetSystemCycle();
+                while (AscendC::GetSystemCycle() - waitStart < 100) {
+                }
+            }
+        }
+    }
+    SyncAll<true>();
+}
+
 // =============================================
 // InitCombineBuffers：初始化 Combine 所需的 buffer 大小
 // =============================================
@@ -1529,6 +1593,11 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
     }
     SyncAll<false>();           // aic需要等待flag位reset清理完成
     CrossRankSyncInWorldSize(); // 全卡同步
+    if constexpr (ENABLE_GMM2_GM_REBUILD && MEGA_MOE_GMM2_GM_READY_SMOKE_TEST != 0) {
+        RunGmm2NoQuantReadySmokeTest();
+        SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);
+        return;
+    }
 
     // 2.本卡专家接收数据dispatch & GroupMatmul1 & SwigluQuant
     DispatchBuffInit();

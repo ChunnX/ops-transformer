@@ -8,9 +8,14 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
+#include <cstdint>
 #include <iostream>
+#include <limits>
 #include <gtest/gtest.h>
+#include "tiling/tiling_api.h"
+#include "util/math_util.h"
 #include "../../../../op_kernel/arch35/mega_moe_tiling.h"
+#include "../../../../op_kernel/arch35/mega_moe_workspace_info.h"
 #include "mc2_tiling_case_executor.h"
 
 namespace MegaMoeUT {
@@ -27,6 +32,107 @@ protected:
         std::cout << "MegaMoeArch35TilingTest TearDown" << std::endl;
     }
 };
+
+namespace {
+constexpr uint64_t WORKSPACE_ALIGNMENT = 512U;
+constexpr uint64_t READY_SLOT_BYTES = static_cast<uint64_t>(INT_CACHELINE) * sizeof(int32_t);
+
+uint64_t AlignWorkspace(uint64_t value)
+{
+    return (value + WORKSPACE_ALIGNMENT - 1U) / WORKSPACE_ALIGNMENT * WORKSPACE_ALIGNMENT;
+}
+
+uint64_t WorkspaceOffset(GM_ADDR base, GM_ADDR ptr)
+{
+    return static_cast<uint64_t>(reinterpret_cast<uintptr_t>(ptr) - reinterpret_cast<uintptr_t>(base));
+}
+
+MegaMoeTilingData MakeMteGenericNoQuantTiling()
+{
+    MegaMoeTilingData tiling{};
+    tiling.expertPerRank = 3U; // Avoid accidentally aligned flag sizes hiding a layout bug.
+    tiling.bs = 512U;
+    tiling.h = 1024U;
+    tiling.hiddenDim = 2048U;
+    tiling.epWorldSize = 8U;
+    tiling.blockNumPerEP = 4U;
+    tiling.maxOutputSize = 257U;
+    tiling.topK = 8U;
+    tiling.aicNum = 36U;
+    tiling.blockAivNum = 72U;
+    tiling.combineQuantMode = COMBINE_NO_QUANT;
+    tiling.groupedMatmulMode = GROUPED_MATMUL_MODE_GENERAL;
+    tiling.topoType = TOPO_TYPE_MTE;
+    tiling.ubSize = 256U * 1024U;
+    return tiling;
+}
+} // namespace
+
+TEST_F(MegaMoeArch35TilingTest, MteGenericNoQuantWorkspaceOutputReadyLayout)
+{
+    MegaMoeTilingData tiling = MakeMteGenericNoQuantTiling();
+    GM_ADDR base = reinterpret_cast<GM_ADDR>(uintptr_t{0x100000000ULL});
+    WorkspaceInfo info(base, &tiling);
+    ASSERT_NE(info.gmm2MmadResPtr, nullptr);
+    ASSERT_NE(info.gmm2NoQuantReadyPtr, nullptr);
+
+    uint64_t outputOffset = WorkspaceOffset(base, info.gmm2MmadResPtr);
+    uint64_t readyOffset = WorkspaceOffset(base, info.gmm2NoQuantReadyPtr);
+    uint64_t outputBytes =
+        AlignWorkspace(2ULL * static_cast<uint64_t>(tiling.maxOutputSize) * static_cast<uint64_t>(tiling.h));
+    uint64_t readyBytes = AlignWorkspace(static_cast<uint64_t>(tiling.expertPerRank) * READY_SLOT_BYTES);
+
+    EXPECT_EQ(outputOffset % WORKSPACE_ALIGNMENT, 0U);
+    EXPECT_EQ(readyOffset % WORKSPACE_ALIGNMENT, 0U);
+    EXPECT_EQ(readyOffset, outputOffset + outputBytes);
+    EXPECT_EQ(static_cast<uint64_t>(info.workspaceSize), readyOffset + readyBytes);
+    for (uint32_t expertIdx = 0; expertIdx < tiling.expertPerRank; ++expertIdx) {
+        EXPECT_EQ((readyOffset + static_cast<uint64_t>(expertIdx) * READY_SLOT_BYTES) % READY_SLOT_BYTES, 0U);
+    }
+}
+
+TEST_F(MegaMoeArch35TilingTest, MteGenericNoQuantWorkspaceUses64BitOffsets)
+{
+    MegaMoeTilingData tiling = MakeMteGenericNoQuantTiling();
+    tiling.h = 4096U;
+    tiling.maxOutputSize = 524289U;
+    GM_ADDR base = reinterpret_cast<GM_ADDR>(uintptr_t{0x100000000ULL});
+    WorkspaceInfo info(base, &tiling);
+    ASSERT_NE(info.gmm2MmadResPtr, nullptr);
+    ASSERT_NE(info.gmm2NoQuantReadyPtr, nullptr);
+
+    uint64_t outputOffset = WorkspaceOffset(base, info.gmm2MmadResPtr);
+    uint64_t readyOffset = WorkspaceOffset(base, info.gmm2NoQuantReadyPtr);
+    uint64_t outputBytes =
+        AlignWorkspace(2ULL * static_cast<uint64_t>(tiling.maxOutputSize) * static_cast<uint64_t>(tiling.h));
+    ASSERT_GT(outputBytes, static_cast<uint64_t>(std::numeric_limits<uint32_t>::max()));
+    EXPECT_EQ(outputBytes, 0x100002000ULL);
+    EXPECT_EQ(readyOffset - outputOffset, outputBytes);
+    EXPECT_GT(static_cast<uint64_t>(info.workspaceSize),
+              static_cast<uint64_t>(std::numeric_limits<uint32_t>::max()));
+}
+
+TEST_F(MegaMoeArch35TilingTest, NewNoQuantReadyLayoutIsMteGenericOnly)
+{
+    MegaMoeTilingData tiling = MakeMteGenericNoQuantTiling();
+    GM_ADDR base = reinterpret_cast<GM_ADDR>(uintptr_t{0x100000000ULL});
+    tiling.topoType = TOPO_TYPE_URMA;
+    WorkspaceInfo urmaInfo(base, &tiling, 1U);
+    EXPECT_EQ(urmaInfo.gmm2MmadResPtr, nullptr);
+    EXPECT_EQ(urmaInfo.gmm2NoQuantReadyPtr, nullptr);
+
+    tiling = MakeMteGenericNoQuantTiling();
+    tiling.groupedMatmulMode = GROUPED_MATMUL_MODE_A8W4;
+    WorkspaceInfo a8w4Info(base, &tiling);
+    EXPECT_NE(a8w4Info.gmm2MmadResPtr, nullptr);
+    EXPECT_EQ(a8w4Info.gmm2NoQuantReadyPtr, nullptr);
+
+    tiling = MakeMteGenericNoQuantTiling();
+    tiling.groupedMatmulMode = GROUPED_MATMUL_MODE_A8W8_NZ;
+    WorkspaceInfo nzInfo(base, &tiling);
+    EXPECT_NE(nzInfo.gmm2MmadResPtr, nullptr);
+    EXPECT_NE(nzInfo.gmm2NoQuantReadyPtr, nullptr);
+}
 
 TEST_F(MegaMoeArch35TilingTest, H4096_BS128_FP8E4M3FN)
 {
