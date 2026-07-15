@@ -11,12 +11,18 @@ EngramFetch 训练样例（单机多卡）
 """
 
 import os
+import inspect
 import torch
 import torch_npu
 import torch.distributed as dist
 from torch.multiprocessing import Process
 from collections import Counter
 from cann_ops_transformer.ops.elastic_buffer import ElasticBuffer
+
+# 诊断: 打印实际加载的模块路径和 __init__ 签名
+import cann_ops_transformer.ops.elastic_buffer as _eb_mod
+print(f"[DIAG] elastic_buffer loaded from: {_eb_mod.__file__}")
+print(f"[DIAG] ElasticBuffer.__init__ params: {list(inspect.signature(ElasticBuffer.__init__).parameters.keys())}")
 
 # ===================== 固定参数 =====================
 WORLD_SIZE = 2

@@ -564,9 +564,10 @@ std::function<at::Tensor()> ElasticBuffer::EngramFetch(const at::Tensor &indices
 
         if (numTokens > 0) {
             fetchInProgress_.store(true);
+            int64_t localStorageAddr = reinterpret_cast<int64_t>(deviceBufPtr_);
             ACLNN_CMD(aclnnEngramFetchTrain, contextTensor_, indices,
                       hiddenSize_, numEngramEntries_,
-                      reinterpret_cast<int64_t>(deviceBufPtr_),
+                      localStorageAddr,
                       fetched,
                       ctx.perm, ctx.sendCounts, ctx.recvCounts, ctx.recvLocalEntry, ctx.numRecv);
             fetchInProgress_.store(false);
