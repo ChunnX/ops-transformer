@@ -11,7 +11,23 @@
 
 /*!
  * \file mhc_pre_sinkhorn_backward_deterministic.h
- * \brief
+ * \brief MhcPreSinkhornBackward 确定性路径 Kernel
+ *
+ * 计算流程 (AIV/AIC 并行):
+ *
+ *   阶段1 — BS 循环 (AIV):
+ *     for idxBs in ceil(bs / ubFactorBS):
+ *       ComputeFirst: gradHPre + gradXFromHin + xFp32 + SigmoidGrad(pre/post) + gradAlphaBias(pre/post)
+ *       SinkhornGrad + ExpGrad: gradZ_res
+ *       ComputeGradAlphaAndBias(res) → gradAlphaWs/gradBiasWs
+ *       ComputeGNormOutAndGHcBeforeNorm(res) → gradNormOutWs/gradHcBeforeNormWs
+ *
+ *   SyncAll → pipe_->Reset() → InitBuffer(阶段2)
+ *
+ *   阶段2 — Cube/Vector 并行:
+ *     AIV: ComputeGradXFromRms → gradXFromRmsWs     AIC: mm1 = gradHcBeforeNorm @ phi → gradXFromMatmulWs
+ *     AIV: AddAlphaAndBias (blockIdx==0)             AIC: setFlag(FIX) → mm2 = gradHcBeforeNorm^T @ xFp32 → gradPhiGm
+ *     AIV: SyncAll → waitFlag(FIX) → ComputeFinal: gradX = gradXFromRms + gradXFromHin + gradXFromMatmul
  */
 #ifndef MHC_PRE_SINKHORN_BACKWARD_DETERMINISTIC_H
 #define MHC_PRE_SINKHORN_BACKWARD_DETERMINISTIC_H
@@ -25,9 +41,9 @@
 
 using namespace AscendC;
 
-constexpr uint8_t NUMONE = 1;
-constexpr uint8_t NUMTWO = 2;
-constexpr int64_t WS_BUFFER_INTERVAL = 1024;
+constexpr uint8_t NUMONE = 1;                        // SigmoidGrad 路径标识: 1=pre
+constexpr uint8_t NUMTWO = 2;                        // SigmoidGrad 路径标识: 2=post
+constexpr int64_t WS_BUFFER_INTERVAL = 1024;         // workspace 区域间隔(字节)
 constexpr float FLT_MAX = 3.402823466e+38F;
 constexpr int64_t CUBE_MAX_N_SIZE = 16;
 constexpr uint16_t PIPE_MTE3_FLAG = 0x5;
@@ -88,7 +104,8 @@ private:
                                               __local_mem__ float *skGradPtr, uint64_t bsLenLoop);
 
 private:
-    GlobalTensor<X_T> xGm_; // 输入
+    // === GM 输入 ===
+    GlobalTensor<X_T> xGm_;
     GlobalTensor<GRADHIN_T> gradHinGm_;
     GlobalTensor<U> gradHPostGm_;
     GlobalTensor<U> gradHResGm_;
@@ -101,6 +118,7 @@ private:
     GlobalTensor<U> sumOutGm_;
     GlobalTensor<U> normOutGm_;
 
+    // === WS workspace ===
     GlobalTensor<U> xFp32Ws_;
     GlobalTensor<U> gradAlphaWs_;
     GlobalTensor<U> gradBiasWs_;
@@ -110,11 +128,13 @@ private:
     GlobalTensor<U> gradXFromMatmulWs_;
     GlobalTensor<U> gradXFromRmsWs_;
 
-    GlobalTensor<X_T> gradXGm_; // 输出
+    // === GM 输出 ===
+    GlobalTensor<X_T> gradXGm_;
     GlobalTensor<U> gradPhiGm_;
     GlobalTensor<U> gradAlphaGm_;
     GlobalTensor<U> gradBiasGm_;
 
+    // === UB Queues (VECIN) ===
     TQue<QuePosition::VECIN, DOUBLE_BUFFER> xQue_;
     TQue<QuePosition::VECIN, DOUBLE_BUFFER> hPreAndGradHPostQue_;
     TQue<QuePosition::VECIN, DOUBLE_BUFFER> gradHinQue_;
@@ -123,6 +143,7 @@ private:
     TQue<QuePosition::VECIN, DOUBLE_BUFFER> gradHResQue_;
     TQue<QuePosition::VECIN, DOUBLE_BUFFER> gradAlphaQue_;
 
+    // === UB Queues (VECOUT) ===
     TQue<QuePosition::VECOUT, DOUBLE_BUFFER> xFp32Que_;
     TQue<QuePosition::VECOUT, DOUBLE_BUFFER> gradXFromHinQue_;
     TQue<QuePosition::VECOUT, 1> gradAlphaAndBiasQue_;
@@ -130,6 +151,7 @@ private:
 
     TQueBind<QuePosition::VECIN, QuePosition::VECOUT, 1> gradBiasQue_;
 
+    // === UB Buffers ===
     TBuf<TPosition::VECCALC> gradHPreBuf_;
     TBuf<TPosition::VECCALC> gradZBuf_;
     TBuf<TPosition::VECCALC> biasBuf_;
@@ -150,6 +172,7 @@ private:
     TBuf<TPosition::VECCALC> sumOutRowBuf_;
     TBuf<TPosition::VECCALC> sumOutColBuf_;
 
+    // === Shape & Tiling ===
     int64_t usedAivNum_ = 0;
     int64_t batchSize_ = 0;
     int64_t seqLength_ = 0;
@@ -162,14 +185,18 @@ private:
     int64_t cLoopDataLen_ = 0;
     int64_t skIterCount_ = 0;
     float eps_ = 0;
-    int64_t k_ = 0;
+    int64_t k_ = 0;                                   // 2N + N²
     int64_t blockIdx_ = 0;
-    int64_t mm1K_ = 0;
-    int64_t mm1M_ = 0;
-    int64_t mm1N_ = 0;
-    int64_t mm2K_ = 0;
-    int64_t mm2M_ = 0;
-    int64_t mm2N_ = 0;
+
+    // === MatMul Shape ===
+    int64_t mm1K_ = 0;                                // mm1: K = 2N+N²
+    int64_t mm1M_ = 0;                                // mm1: M = B*S
+    int64_t mm1N_ = 0;                                // mm1: N = N*C
+    int64_t mm2K_ = 0;                                // mm2: K = B*S
+    int64_t mm2M_ = 0;                                // mm2: M = 2N+N²
+    int64_t mm2N_ = 0;                                // mm2: N = N*C
+
+    // === Alignment ===
     int64_t blockSize_ = 0;
     int64_t nAlignFp32_ = 0;
     int64_t nnAlignFp32_ = 0;
@@ -193,12 +220,12 @@ private:
     int64_t calcBSPerTask_ = 0;
     int64_t totalAicTasksAligned_ = 0;
 
-    // vector中计算RMSNormGrad的循环
+    // === RMSNorm Grad 循环参数 ===
     int64_t cLoopsPerBS_ = 0;
     int64_t cCountPerBS_ = 0;
     int64_t cTailPerBS_ = 0;
 
-    // vector中最后计算gradX的循环
+    // === Final 阶段循环参数 ===
     int64_t cBlockLoops_ = 0;
     int64_t cBlockTailLoops_ = 0;
     int64_t cBlockCount_ = 0;

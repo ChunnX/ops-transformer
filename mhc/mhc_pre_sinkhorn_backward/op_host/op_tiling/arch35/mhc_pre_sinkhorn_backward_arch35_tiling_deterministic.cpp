@@ -9,8 +9,8 @@
  */
 
 /* !
- * \file mhc_pre_sinkhorn_backward_arch35_tiling_base.cpp
- * \brief
+ * \file mhc_pre_sinkhorn_backward_arch35_tiling_deterministic.cpp
+ * \brief 确定性路径 tiling 实现
  */
 
 #include "register/op_def_registry.h"
@@ -25,6 +25,7 @@
 using namespace AscendC;
 namespace optiling {
 
+// 输入/输出索引
 constexpr uint8_t GRAD_HIN_IDX = 0;
 constexpr uint8_t GRAD_H_POST_IDX = 1;
 constexpr uint8_t GRAD_H_RES_IDX = 2;
@@ -41,10 +42,12 @@ constexpr uint8_t GRAD_X_IDX = 0;
 constexpr uint8_t GRAD_PHI_IDX = 1;
 constexpr uint8_t GRAD_ALPHA_IDX = 2;
 constexpr uint8_t GRAD_BIAS_IDX = 3;
+// 维度索引
 constexpr uint8_t BATCH_SIZE_DIM_IDX = 0;
 constexpr uint8_t SEQ_LENGTH_DIM_IDX = 1;
 constexpr uint8_t N_DIM_IDX = 2;
 constexpr uint8_t C_DIM_IDX = 3;
+// 常量
 constexpr float DEFAULT_EPS = 1e-6f;
 constexpr uint8_t ITER_COUNT_IDX = 0;
 constexpr int64_t DOUBLE_BUFFER = 2;
@@ -66,6 +69,10 @@ using namespace ge;
 using namespace std;
 using namespace AscendC;
 
+/*
+ * \brief 确定性路径能力检查
+ * \return isDeterministic==1
+ */
 bool MhcPreSinkhornBackwardArch35DeterminiticTiling::IsCapable()
 {
     auto isDeterministic = (context_->GetDeterministic() == 1);
@@ -76,6 +83,10 @@ bool MhcPreSinkhornBackwardArch35DeterminiticTiling::IsCapable()
     return true;
 }
 
+/*
+ * \brief 设置 tiling 数据
+ * \note mm1: M=BS, N=N*C, K=2N+N²; mm2: M=2N+N², N=N*C, K=BS
+ */
 ge::graphStatus MhcPreSinkhornBackwardArch35DeterminiticTiling::SetTilingData()
 {
     MhcPreSinkhornBackwardArch35DeterminiticTilingData* tilingData =
@@ -143,6 +154,10 @@ ge::graphStatus MhcPreSinkhornBackwardArch35DeterminiticTiling::SetTilingData()
     return ge::GRAPH_SUCCESS;
 }
 
+/*
+ * \brief UB tiling
+ * \note 两个 while 循环: 1.BS循环阶段UB tiling 2.Final阶段UB tiling
+ */
 void MhcPreSinkhornBackwardArch35DeterminiticTiling::DoUbTiling()
 {
     int64_t totalBs = batchSize_ * seqLength_;
@@ -162,26 +177,26 @@ void MhcPreSinkhornBackwardArch35DeterminiticTiling::DoUbTiling()
     */
     while (restSize <= 0) {
         int64_t occupy =
-            DOUBLE_BUFFER * bsLoopDataLen_ * n_ * Ops::Base::CeilAlign(cLoopDataLen_ * BF16_BYTE_SIZE, ubBlock_) +
-            DOUBLE_BUFFER * Ops::Base::CeilAlign(bsLoopDataLen_ * n_ * FP32_BYTE_SIZE, ubBlock_) +
-            DOUBLE_BUFFER * bsLoopDataLen_ * Ops::Base::CeilAlign(cLoopDataLen_ * BF16_BYTE_SIZE, ubBlock_) +
-            DOUBLE_BUFFER * bsLoopDataLen_ * Ops::Base::CeilAlign(n_ * n_ * FP32_BYTE_SIZE, ubBlock_) +
-            DOUBLE_BUFFER * Ops::Base::CeilAlign(bsLoopDataLen_ * FP32_BYTE_SIZE, ubBlock_) +
-            DOUBLE_BUFFER * bsLoopDataLen_ * Ops::Base::CeilAlign(n_ * n_ * FP32_BYTE_SIZE, ubBlock_) +
-            DOUBLE_BUFFER * bsLoopDataLen_ * n_ * Ops::Base::CeilAlign(cLoopDataLen_ * FP32_BYTE_SIZE, ubBlock_) +
-            DOUBLE_BUFFER * bsLoopDataLen_ * n_ * Ops::Base::CeilAlign(cLoopDataLen_ * FP32_BYTE_SIZE, ubBlock_) +
-            Ops::Base::CeilAlign(n_ * n_ * FP32_BYTE_SIZE, ubBlock_) + ubBlock_ +
-            Ops::Base::CeilAlign(bsLoopDataLen_ * n_ * FP32_BYTE_SIZE, ubBlock_) +
-            Ops::Base::CeilAlign(bsLoopDataLen_ * n_ * n_ * FP32_BYTE_SIZE, ubBlock_) +
-            Ops::Base::CeilAlign((2 * n_ + n_ * n_) * FP32_BYTE_SIZE, ubBlock_) +
-            Ops::Base::CeilAlign(bsLoopDataLen_ * n_ * n_ * FP32_BYTE_SIZE, ubBlock_) +
-            Ops::Base::CeilAlign(bsLoopDataLen_ * n_ * n_ * FP32_BYTE_SIZE, ubBlock_) +
-            Ops::Base::CeilAlign((2 * n_ + n_ * n_) * FP32_BYTE_SIZE, ubBlock_) +
-            Ops::Base::CeilAlign((2 * n_ + n_ * n_) * FP32_BYTE_SIZE, ubBlock_) +
-            5 * Ops::Base::CeilAlign(bsLoopDataLen_ * n_ * n_ * FP32_BYTE_SIZE, ubBlock_) +
-            2 * skIterCount_ * bsLoopDataLen_ * Ops::Base::CeilAlign(n_ * FP32_BYTE_SIZE, ubBlock_) +
-            skIterCount_ * bsLoopDataLen_ * Ops::Base::CeilAlign(n_ * n_ * FP32_BYTE_SIZE, ubBlock_) +
-            4 * bsLoopDataLen_ * Ops::Base::CeilAlign(n_ * n_ * FP32_BYTE_SIZE, ubBlock_);
+            DOUBLE_BUFFER * bsLoopDataLen_ * n_ * Ops::Base::CeilAlign(cLoopDataLen_ * BF16_BYTE_SIZE, ubBlock_) + // x
+            DOUBLE_BUFFER * Ops::Base::CeilAlign(bsLoopDataLen_ * n_ * FP32_BYTE_SIZE, ubBlock_) + // h_pre And grad_h_pre
+            DOUBLE_BUFFER * bsLoopDataLen_ * Ops::Base::CeilAlign(cLoopDataLen_ * BF16_BYTE_SIZE, ubBlock_) + // grad_h_in
+            DOUBLE_BUFFER * bsLoopDataLen_ * Ops::Base::CeilAlign(n_ * n_ * FP32_BYTE_SIZE, ubBlock_) + // hc_before_norm
+            DOUBLE_BUFFER * Ops::Base::CeilAlign(bsLoopDataLen_ * FP32_BYTE_SIZE, ubBlock_) + // inv_rms
+            DOUBLE_BUFFER * bsLoopDataLen_ * Ops::Base::CeilAlign(n_ * n_ * FP32_BYTE_SIZE, ubBlock_) + // grad_h_res
+            DOUBLE_BUFFER * bsLoopDataLen_ * n_ * Ops::Base::CeilAlign(cLoopDataLen_ * FP32_BYTE_SIZE, ubBlock_) + // xFP32
+            DOUBLE_BUFFER * bsLoopDataLen_ * n_ * Ops::Base::CeilAlign(cLoopDataLen_ * FP32_BYTE_SIZE, ubBlock_) + // grad_x_from_in
+            Ops::Base::CeilAlign(n_ * n_ * FP32_BYTE_SIZE, ubBlock_) + ubBlock_ + // grad_alpha And grad_bias
+            Ops::Base::CeilAlign(bsLoopDataLen_ * n_ * FP32_BYTE_SIZE, ubBlock_) + // grad_h_pre
+            Ops::Base::CeilAlign(bsLoopDataLen_ * n_ * n_ * FP32_BYTE_SIZE, ubBlock_) + // grad_z
+            Ops::Base::CeilAlign((2 * n_ + n_ * n_) * FP32_BYTE_SIZE, ubBlock_) + // bias
+            Ops::Base::CeilAlign(bsLoopDataLen_ * n_ * n_ * FP32_BYTE_SIZE, ubBlock_) + // norm_out_forward
+            Ops::Base::CeilAlign(bsLoopDataLen_ * n_ * n_ * FP32_BYTE_SIZE, ubBlock_) + // z
+            Ops::Base::CeilAlign((2 * n_ + n_ * n_) * FP32_BYTE_SIZE, ubBlock_) + // gradCalcBuf1_
+            Ops::Base::CeilAlign((2 * n_ + n_ * n_) * FP32_BYTE_SIZE, ubBlock_) + // gradCalcBuf2_
+            5 * Ops::Base::CeilAlign(bsLoopDataLen_ * n_ * n_ * FP32_BYTE_SIZE, ubBlock_) + // tmpBuf
+            2 * skIterCount_ * bsLoopDataLen_ * Ops::Base::CeilAlign(n_ * FP32_BYTE_SIZE, ubBlock_) + // sumOutBuf
+            skIterCount_ * bsLoopDataLen_ * Ops::Base::CeilAlign(n_ * n_ * FP32_BYTE_SIZE, ubBlock_) + // normOutBuf_
+            4 * bsLoopDataLen_ * Ops::Base::CeilAlign(n_ * n_ * FP32_BYTE_SIZE, ubBlock_); // idxBuf~maxBuf
 
         restSize = ubSize_ - occupy;
         if (restSize <= 0 && bsLoopDataLen_ > 1) {
@@ -199,12 +214,12 @@ void MhcPreSinkhornBackwardArch35DeterminiticTiling::DoUbTiling()
     cBlockTailCount_ = tailBsncTaskCount_;
     restSize = static_cast<int64_t>(-1);
     while (restSize <= 0) {
-        int64_t occupy = 4 * DOUBLE_BUFFER * Ops::Base::CeilAlign(cBlockCount_ * FP32_BYTE_SIZE, ubBlock_) +
-                         DOUBLE_BUFFER * Ops::Base::CeilAlign(usedAivNum_ * FP32_BYTE_SIZE, ubBlock_) +
-                         ubBlock_ +
-                         usedAivNum_ * Ops::Base::CeilAlign(n_ * n_ * FP32_BYTE_SIZE, ubBlock_) +
-                         2 * Ops::Base::CeilAlign((2 * n_ + n_ * n_) * FP32_BYTE_SIZE, ubBlock_) +
-                         2 * DOUBLE_BUFFER * Ops::Base::CeilAlign(cLoopDataLen_ * FP32_BYTE_SIZE, ubBlock_);
+        int64_t occupy = 4 * DOUBLE_BUFFER * Ops::Base::CeilAlign(cBlockCount_ * FP32_BYTE_SIZE, ubBlock_) + // 4个双缓冲 FP32 cBlockCount
+                         DOUBLE_BUFFER * Ops::Base::CeilAlign(usedAivNum_ * FP32_BYTE_SIZE, ubBlock_) + // 双缓冲 FP32 usedAivNum
+                         ubBlock_ + // 对齐填充
+                         usedAivNum_ * Ops::Base::CeilAlign(n_ * n_ * FP32_BYTE_SIZE, ubBlock_) + // FP32 n*n per AIV
+                         2 * Ops::Base::CeilAlign((2 * n_ + n_ * n_) * FP32_BYTE_SIZE, ubBlock_) + // 2个 FP32 (2n+n²)
+                         2 * DOUBLE_BUFFER * Ops::Base::CeilAlign(cLoopDataLen_ * FP32_BYTE_SIZE, ubBlock_); // 2个双缓冲 FP32 cLoopDataLen
         restSize = ubSize_ - occupy;
         if (restSize <= 0 && cBlockCount_ > 1) {
             cBlockCount_--;
@@ -216,18 +231,27 @@ void MhcPreSinkhornBackwardArch35DeterminiticTiling::DoUbTiling()
     cBlockTailTailCount_ = tailBsncTaskCount_ - cBlockCount_ * (cBlockTailLoops_ - 1);
 }
 
+/*
+ * \brief 调用 DoUbTiling + SetTilingData
+ */
 ge::graphStatus MhcPreSinkhornBackwardArch35DeterminiticTiling::DoOpTiling()
 {
     DoUbTiling();
     return SetTilingData();
 }
 
+/*
+ * \brief 返回确定性路径 tiling key
+ */
 uint64_t MhcPreSinkhornBackwardArch35DeterminiticTiling::GetTilingKey() const
 {
     bool isDeterministic = true;
     return GET_TPL_TILING_KEY(isDeterministic);
 }
 
+/*
+ * \brief 设置 BlockDim 和 ScheduleMode
+ */
 ge::graphStatus MhcPreSinkhornBackwardArch35DeterminiticTiling::PostTiling()
 {
     context_->SetBlockDim(coreNumAic_);
@@ -236,6 +260,10 @@ ge::graphStatus MhcPreSinkhornBackwardArch35DeterminiticTiling::PostTiling()
     return ge::GRAPH_SUCCESS;
 }
 
+/*
+ * \brief 计算 workspace 大小
+ * \note workspace 区域: xFp32/gradAlpha/gradBias/gradXFrom(gradHin+Rms+Matmul)/gradHcBeforeNorm/gradNormOut
+ */
 ge::graphStatus MhcPreSinkhornBackwardArch35DeterminiticTiling::GetWorkspaceSize()
 {
     auto platformInfo = context_->GetPlatformInfo();
@@ -244,7 +272,7 @@ ge::graphStatus MhcPreSinkhornBackwardArch35DeterminiticTiling::GetWorkspaceSize
     size_t userWorkspaceSize = batchSize_ * seqLength_ * n_ * c_ * FP32_BYTE_SIZE + WS_BUFFER_INTERVAL +                       //xFP32
                                 3 * usedAivNum_ * FP32_BYTE_SIZE  + WS_BUFFER_INTERVAL +                                       //gradAlpha
                                 (2 * usedAivNum_ * n_ + usedAivNum_ * n_ * n_) * FP32_BYTE_SIZE  + WS_BUFFER_INTERVAL +        //gradBias
-                                batchSize_ * seqLength_ * n_ * c_ * FP32_BYTE_SIZE * 3  + 3 * WS_BUFFER_INTERVAL +             //gradXFrom
+                                batchSize_ * seqLength_ * n_ * c_ * FP32_BYTE_SIZE * 3  + 3 * WS_BUFFER_INTERVAL +             //gradXFrom(gradHin+Rms+Matmul)
                                 batchSize_ * seqLength_ * (2 * n_ + n_ * n_) * FP32_BYTE_SIZE + WS_BUFFER_INTERVAL +           //grad_hc_before_norm
                                 batchSize_ * seqLength_ * (2 * n_ + n_ * n_) * FP32_BYTE_SIZE + WS_BUFFER_INTERVAL;            //grad_norm_out
 
@@ -256,6 +284,9 @@ ge::graphStatus MhcPreSinkhornBackwardArch35DeterminiticTiling::GetWorkspaceSize
     return ge::GRAPH_SUCCESS;
 }
 
+/*
+ * \brief 打印 tiling 信息
+ */
 void MhcPreSinkhornBackwardArch35DeterminiticTiling::DumpTilingInfo()
 {
     std::ostringstream info;

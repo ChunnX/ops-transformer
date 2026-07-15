@@ -10,11 +10,11 @@
 
 
 /*!
- * \file mhc_pre_sinkhorn_backward_deterministic.h
- * \brief
+ * \file mhc_pre_sinkhorn_backward_deterministic_base.h
+ * \brief 公共基础设施: CopyIn/CopyOut 封装 + SIMD 纯计算函数
  */
-#ifndef MHC_PRE_SINKHORN_BACKWARD_DETERMINISTIC_SIMD_VF_H
-#define MHC_PRE_SINKHORN_BACKWARD_DETERMINISTIC_SIMD_VF_H
+#ifndef MHC_PRE_SINKHORN_BACKWARD_DETERMINISTIC_BASE_H
+#define MHC_PRE_SINKHORN_BACKWARD_DETERMINISTIC_BASE_H
 
 #include "kernel_operator.h"
 #include "op_kernel/platform_util.h"
@@ -40,12 +40,27 @@ constexpr static AscendC::MicroAPI::CastTrait castTraitFloatTo16 = {
     AscendC::MicroAPI::RegLayout::ZERO, AscendC::MicroAPI::SatMode::NO_SAT, AscendC::MicroAPI::MaskMergeMode::ZEROING,
     AscendC::RoundMode::CAST_RINT};
 
+/*!
+ * \brief 向上对齐计算，将 value 向上取整到 align 的整数倍
+ * \param value 待对齐的值
+ * \param align 对齐基准
+ * \return 向上对齐后的值
+ */
 template <typename T>
 constexpr T AlignUp(T value, T align)
 {
     return (value + align - 1) / align * align;
 }
 
+/*!
+ * \brief 将数据从 GlobalMemory 搬运到 UnifiedBuffer (GM → UB)
+ * \param dstTensor 目标 LocalTensor (UB 侧)
+ * \param srcTensor 源 GlobalTensor (GM 侧)
+ * \param repTime 重复拷贝次数
+ * \param dataLen 每次拷贝的数据元素个数
+ * \param ubStride UB 侧步长
+ * \param gmStride GM 侧步长
+ */
 template <typename PARAM_T>
 __aicore__ inline void CopyIn(const LocalTensor<PARAM_T> &dstTensor, const GlobalTensor<PARAM_T> &srcTensor,
                               int64_t repTime, int64_t dataLen, uint32_t ubStride, uint32_t gmStride)
@@ -58,6 +73,15 @@ __aicore__ inline void CopyIn(const LocalTensor<PARAM_T> &dstTensor, const Globa
     DataCopyPad(dstTensor, srcTensor, copyParams, padParams);
 }
 
+/*!
+ * \brief 将数据从 UnifiedBuffer 搬运到 GlobalMemory (UB → GM)
+ * \param dstTensor 目标 GlobalTensor (GM 侧)
+ * \param srcTensor 源 LocalTensor (UB 侧)
+ * \param repTime 重复拷贝次数
+ * \param dataLen 每次拷贝的数据元素个数
+ * \param ubStride UB 侧步长
+ * \param gmStride GM 侧步长
+ */
 template <typename PARAM_T>
 __aicore__ inline void CopyOut(const GlobalTensor<PARAM_T> &dstTensor, const LocalTensor<PARAM_T> &srcTensor,
                                int64_t repTime, int64_t dataLen, uint32_t ubStride, uint32_t gmStride)
@@ -68,6 +92,17 @@ __aicore__ inline void CopyOut(const GlobalTensor<PARAM_T> &dstTensor, const Loc
     DataCopyPad(dstTensor, srcTensor, copyParams);
 }
 
+/*!
+ * \brief 计算 Sigmoid 的梯度 (grad_z)
+ * \param gradHAddr 上游梯度 dy 地址
+ * \param zAddr 前向输出 z 地址
+ * \param gradZAddr 梯度输出 grad_z 地址
+ * \param bsLen batch 序列长度
+ * \param n 列数
+ * \param vRegSize 向量寄存器大小 (字节)
+ * \param hcEps 预留偏置 (仅 ISPRE 为真时使用)
+ * \note 数学公式: s = sigmoid(z); grad = dy * s * (1 - s); 当 ISPRE 为真时 s = sigmoid(z) - hc_eps
+ */
 template <typename U, bool ISPRE>
 __aicore__ inline void SigmoidGrad(__local_mem__ U *gradHAddr, __local_mem__ U *zAddr, __local_mem__ U *gradZAddr,
                                    uint64_t bsLen, uint64_t n, uint64_t vRegSize, float hcEps)
@@ -112,6 +147,15 @@ __aicore__ inline void SigmoidGrad(__local_mem__ U *gradHAddr, __local_mem__ U *
     }
 }
 
+/*!
+ * \brief 计算偏置 bias 的梯度 (grad_bias)，沿 bs 维度归约
+ * \param gradBiasAddr 梯度输出 grad_bias 地址
+ * \param gradZAddr 输入梯度 grad_z 地址
+ * \param bsLen batch 序列长度
+ * \param colLen 列长度
+ * \param vRegSize 向量寄存器大小 (字节)
+ * \note 数学公式: grad_bias = sum(grad_z) over bs dimension
+ */
 template <typename U>
 __aicore__ inline void ComputeGradBias(__local_mem__ U *gradBiasAddr, __local_mem__ U *gradZAddr, uint64_t bsLen,
                                        uint64_t colLen, uint64_t vRegSize)
@@ -142,6 +186,16 @@ __aicore__ inline void ComputeGradBias(__local_mem__ U *gradBiasAddr, __local_me
     }
 }
 
+/*!
+ * \brief 计算缩放系数 alpha 的梯度 (grad_alpha)
+ * \param normOutForwardPartAddr 前向归一化输出地址
+ * \param gradZAddr 梯度 grad_z 地址
+ * \param gradAlphaAddr 梯度输出 grad_alpha 地址
+ * \param bsLen batch 序列长度
+ * \param colLen 列长度
+ * \param vRegSize 向量寄存器大小 (字节)
+ * \note 数学公式: grad_alpha = sum(norm_out_forward * grad_z)
+ */
 template <typename U>
 __aicore__ inline void ComputeGradAlpha(__local_mem__ U *normOutForwardPartAddr, __local_mem__ U *gradZAddr,
                                         __local_mem__ U *gradAlphaAddr, uint64_t bsLen, uint64_t colLen,
@@ -176,6 +230,18 @@ __aicore__ inline void ComputeGradAlpha(__local_mem__ U *normOutForwardPartAddr,
     }
 }
 
+/*!
+ * \brief 计算 z 和前向归一化输出 (norm_out_forward)
+ * \param zAddr 输出 z 地址
+ * \param normOutForwardAddr 前向归一化输出地址
+ * \param biasAddr 偏置 bias 地址
+ * \param bsLen batch 序列长度
+ * \param colLen 列长度
+ * \param cLenAlign 对齐后的列长度
+ * \param vRegSize 向量寄存器大小 (字节)
+ * \param alpha 缩放系数
+ * \note 数学公式: z = norm_out * alpha + bias
+ */
 template <typename U>
 __aicore__ inline void ComputeZAndForwardPart(__local_mem__ U *zAddr, __local_mem__ U *normOutForwardAddr,
                                               __local_mem__ U *biasAddr, uint64_t bsLen, uint64_t colLen,
@@ -214,6 +280,18 @@ __aicore__ inline void ComputeZAndForwardPart(__local_mem__ U *zAddr, __local_me
     }
 }
 
+/*!
+ * \brief 计算前向归一化输出 (norm_out_forward)
+ * \param hcBeformNormAddr 归一化前输入地址
+ * \param invRmsAddr 逆均方根地址
+ * \param normOutForwardAddr 输出地址
+ * \param bsLen batch 序列长度
+ * \param colLen 列长度
+ * \param cLenAlign 对齐后的列长度
+ * \param vRegSize 向量寄存器大小 (字节)
+ * \param alpha 缩放系数
+ * \note 数学公式: norm_out = hc_before_norm * inv_rms * alpha
+ */
 template <typename U>
 __aicore__ inline void ComputeForwardPart(__local_mem__ U *hcBeformNormAddr, __local_mem__ U *invRmsAddr,
                                           __local_mem__ U *normOutForwardAddr, uint64_t bsLen, uint64_t colLen,
@@ -244,12 +322,17 @@ __aicore__ inline void ComputeForwardPart(__local_mem__ U *hcBeformNormAddr, __l
         }
     }
 }
-/*****************************************************************************
- * 计算GradNormOut和GradHcBeforeNorm的值
- * 注意事项：
- *   1、需要将该函数插入到GradNormPre,GradNormPre,GradNormRes每核每次BS计算完成后
- *   2、计算完成GradHcBeforeNorm后需添加syncAll，保证matmul的确定性。
- ******************************************************************************/
+/*!
+ * \brief 计算张量乘以标量，使用 VF 循环实现
+ * \param dstLocal 目标 LocalTensor
+ * \param srcLocal 源 LocalTensor
+ * \param scalar 标量乘数
+ * \param count 参与计算的元素个数
+ * \param offset 源张量偏移量
+ * \note 数学公式: dst = src * scalar (VF循环)
+ *       注意事项：需将该函数插入到 GradNormPre/GradNormRes 每核每次 BS 计算完成后；
+ *       计算 GradHcBeforeNorm 后需添加 syncAll 以保证 matmul 的确定性。
+ */
 template <typename T>
 __aicore__ inline void ComputeMulScalar(const LocalTensor<T>& dstLocal , const LocalTensor<T>& srcLocal, T scalar,
                                         uint32_t count, uint32_t offset)
@@ -274,6 +357,14 @@ __aicore__ inline void ComputeMulScalar(const LocalTensor<T>& dstLocal , const L
     }
 }
 
+/*!
+ * \brief 计算逆均方根的梯度 (grad_inv_rms)
+ * \param gradNormOutLocal 归一化输出的梯度 LocalTensor
+ * \param hcBeforeNormLocal 归一化前的输入 LocalTensor (兼作中间结果缓冲)
+ * \param count 元素个数
+ * \param gradInvRms 输出的梯度值
+ * \note 数学公式: grad_inv_rms = sum(hc_before_norm * grad_norm_out)
+ */
 template <typename T>
 __aicore__ inline void ComputeGradInvRms(const LocalTensor<T> &gradNormOutLocal,
                                          const LocalTensor<T> &hcBeforeNormLocal, int64_t count, T &gradInvRms)
@@ -283,6 +374,16 @@ __aicore__ inline void ComputeGradInvRms(const LocalTensor<T> &gradNormOutLocal,
     gradInvRms = hcBeforeNormLocal(0);
 }
 
+/*!
+ * \brief 基于 RMS 计算输入 x 的梯度 (VF 循环实现)
+ * \param xFp32Local 输入 x 的 FP32 LocalTensor
+ * \param xFp32LocalOut 输出梯度 LocalTensor
+ * \param gradInvRms 逆均方根的梯度
+ * \param invRms 逆均方根值
+ * \param count 元素个数
+ * \param ncCount N*C 总数 (归约维度)
+ * \note 数学公式: grad_x_rms = -(inv_rms^3 * x * grad_inv_rms) / (N*C)
+ */
 template <typename T>
 __aicore__ inline void ComputeGradXFromRmsVF(const LocalTensor<T>& xFp32Local, const LocalTensor<T>& xFp32LocalOut,
                                                 T gradInvRms, T invRms, int64_t count, int64_t ncCount)
@@ -312,4 +413,4 @@ __aicore__ inline void ComputeGradXFromRmsVF(const LocalTensor<T>& xFp32Local, c
     }
 }
 
-#endif //  MHC_PRE_SINKHORN_BACKWARD_DETERMINISTIC_SIMD_VF_H
+#endif // MHC_PRE_SINKHORN_BACKWARD_DETERMINISTIC_BASE_H
