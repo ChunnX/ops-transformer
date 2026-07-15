@@ -128,6 +128,11 @@ aclnnStatus aclnnMegaMoeGetWorkspaceSize(
     CreateEmptyTensor(ACL_FLOAT, sharedBias2Optional, tmpSharedBiasList, *executor);
     CreateEmptyTensor(ACL_UINT64, sharedWeightScales1Optional, tmpSharedScaleList, *executor);
     CreateEmptyTensor(ACL_UINT64, sharedWeightScales2Optional, tmpSharedScaleList, *executor);
+    aclTensorList *tmpSharedWeightList = nullptr;
+    aclDataType sharedWeightDtype = (weight1 != nullptr && weight1->Size() > 0)
+        ? weight1->GetTensor(0)->GetDataType() : ACL_FLOAT8_E4M3FN;
+    CreateEmptyTensor(sharedWeightDtype, sharedWeight1Optional, tmpSharedWeightList, *executor);
+    CreateEmptyTensor(sharedWeightDtype, sharedWeight2Optional, tmpSharedWeightList, *executor);
 
     // 只在DAV_2201架构上对x1和x2进行int32到int4的转换预处理
     if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2201) {
