@@ -23,7 +23,8 @@ const aclTensor* MixedQuantSparseFlashMlaMetadata(
     int64_t maxSeqlenOriKv, int64_t maxSeqlenCmpKv, int64_t oriTopk, int64_t cmpTopk, int64_t ropeHeadDim,
     int64_t cmpRatio, int64_t oriMaskMode, int64_t cmpMaskMode, int64_t oriWinLeft, int64_t oriWinRight,
     const char *layoutQOptional, const char *layoutKvOptional, bool hasOriKv, bool hasCmpKv, const char *socVersion,
-    int64_t aicCoreNum, int64_t aivCoreNum, const aclTensor *metaData, aclOpExecutor *executor);
+    int64_t aicCoreNum, int64_t aivCoreNum, int64_t batchConsistencyLevel, const aclTensor *metaData,
+    aclOpExecutor *executor);
 } // namespace l0op
 
 #endif
