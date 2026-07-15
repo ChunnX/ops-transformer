@@ -593,6 +593,7 @@ __aicore__ inline void AttenMaskCopyIn(TQue<QuePosition::VECIN, 1> &attenMaskInQ
         BoolCopyInRegbase<isInfer>(attenMaskUb, srcTensor, maskOffset, runInfo.halfS1RealSize, runInfo.s2RealSize,
             attenMaskInfo.attenMaskS2Size, constInfo.s2BaseSize, constInfo);
         attenMaskInQue.template EnQue(attenMaskUb);
+        attenMaskInQue.template DeQue<uint8_t>();
         if (((attenMaskInfo.compressMode == static_cast<uint8_t>(AttenMaskCompressMode::BAND_MODE)) ||
             (attenMaskInfo.compressMode == static_cast<uint8_t>(AttenMaskCompressMode::RIGHT_DOWN_CAUSAL_BAND_MODE) &&
                 runInfo.boIdx == attenMaskInfo.bandIndex) ||
@@ -605,11 +606,10 @@ __aicore__ inline void AttenMaskCopyIn(TQue<QuePosition::VECIN, 1> &attenMaskInQ
                 runInfo.s2RealSize, attenMaskInfo.attenMaskS2Size, constInfo.s2BaseSize, constInfo);
             attenMaskInQuePre.template EnQue(attenMaskUbPre);
             attenMaskInQuePre.template DeQue<uint8_t>();
-            attenMaskInQue.template DeQue<uint8_t>();
             MergeBandModeMask<hasAtten>(attenMaskUbPre, attenMaskUb, runInfo.halfS1RealSize, constInfo.s2BaseSize);
             attenMaskInQuePre.template FreeTensor(attenMaskUbPre);
-            attenMaskInQue.template EnQue(attenMaskUb);
         }
+        attenMaskInQue.template EnQue(attenMaskUb);
         return;
     }
 }
