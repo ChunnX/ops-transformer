@@ -944,7 +944,6 @@ def liv2_output_single(params, is_batch = False, split_s1 = DEFAULT_SPLIT_S1, s1
         if blockFusion is not None:
             blockFusion = blockFusion.npu()
             key = blockFusion[:, :block_size * k_head_num * head_dim].view(block_num, block_size, k_head_num, head_dim)
-            key_dequant_scale_block = blockFusion[:, block_size * k_head_num * head_dim:].view(dequant_dtype).view(block_num, block_size, k_head_num)
         else:
             key = key.npu()
         npu_result, npu_topk_value = lightning_indexer(query.npu(), key.npu(), weights.npu(),
