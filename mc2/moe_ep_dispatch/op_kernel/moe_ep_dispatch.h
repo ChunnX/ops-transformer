@@ -94,19 +94,20 @@ private:
     __aicore__ inline void WaitDispatch();
     __aicore__ inline void SplitToCore(uint32_t curSendCnt, uint32_t curUseAivNum, uint32_t &startId, uint32_t &endId,
                                        uint32_t &sendNum, bool isFront);
-    __aicore__ inline GM_ADDR GetWinAddrByRankId(__gm__ Mc2Aclnn::Mc2MoeContext *ctx, uint32_t rankId, uint64_t offset)
+    __aicore__ inline GM_ADDR GetWinAddrByRankId(__gm__ Mc2Aclnn::MoeCommContext *ctx, uint32_t rankId, uint64_t offset)
     {
-        return (GM_ADDR)ctx->epHcclBuffer_[rankId] + offset;
+        return (GM_ADDR)ctx->epHcclBuffer[rankId] + offset;
     }
 
-    __aicore__ inline uint64_t GetCommHandle(__gm__ Mc2Aclnn::Mc2MoeContext *ctx, uint32_t localRankId, uint32_t rankId)
+    __aicore__ inline uint64_t GetCommHandle(__gm__ Mc2Aclnn::MoeCommContext *ctx, uint32_t localRankId,
+                                             uint32_t rankId)
     {
         uint32_t index = rankId > localRankId ? rankId - 1 : rankId;
-        return ctx->hcommHandle_[index];
+        return ctx->hcommHandle[index];
     }
 
     TPipe *tpipe_{nullptr};
-    __gm__ Mc2Aclnn::Mc2MoeContext *mc2Context_{nullptr};
+    __gm__ Mc2Aclnn::MoeCommContext *mc2Context_{nullptr};
     AscendC::Hcomm<COMM_PROTOCOL_UBC_CTP> hcomm_; // 通信上下文
 
     GlobalTensor<XType> xGMTensor_;
@@ -211,7 +212,7 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::Init(
     tpipe_ = pipe;
     aivId_ = GetBlockIdx();
     workspaceGM_ = workspaceGM;
-    mc2Context_ = reinterpret_cast<__gm__ Mc2Aclnn::Mc2MoeContext *>(context);
+    mc2Context_ = reinterpret_cast<__gm__ Mc2Aclnn::MoeCommContext *>(context);
     epRankId_ = mc2Context_->epRankId;
 
     const auto &info = tilingData->moeEpDispatchInfo;

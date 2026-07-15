@@ -29,9 +29,6 @@ class ElasticBuffer:
         num_max_tokens_per_rank: Optional[int] = None,
         hidden: Optional[int] = None,
         num_topk: Optional[int] = None,
-        num_experts: Optional[int] = None,
-        ccl_buffer_size: int = 0,
-        expert_alignment: int = 1,
     )
 
     def engram_write(self, storage: torch.Tensor) -> None
@@ -91,12 +88,9 @@ class ElasticBuffer:
 - **group** (`torch.distributed.ProcessGroup`)：必选参数，分布式进程组，用于跨 rank 通信和同步。
 - <strong>*</strong>：其之前的变量是位置相关的；之后的变量是可选参数，需要使用键值对赋值，不赋值会使用默认值。
 - **num_cpu_bytes** (`int`)：可选参数，CPU buffer 大小（字节），用于 host pinned 存储区分配。默认值为 0；使用 [engram_write](#engram-write) 时必须大于 0，且必须 2MB 对齐。
-- **num_max_tokens_per_rank** (`int`)：可选参数，表示每张卡上的最大 token 数量上限。使用 [dispatch](#dispatch) 和 [combine](#combine) 时必须与 `hidden`、`num_topk`、`num_experts` 一起指定。
+- **num_max_tokens_per_rank** (`int`)：可选参数，表示每张卡上的最大 token 数量上限。使用 [dispatch](#dispatch) 和 [combine](#combine) 时必须与 `hidden`、`num_topk` 一起指定。
 - **hidden** (`int`)：可选参数，hidden size 隐藏层大小。
 - **num_topk** (`int`)：可选参数，表示选取 topK 个专家。
-- **num_experts** (`int`)：可选参数，MoE 专家总数量。
-- **ccl_buffer_size** (`int`)：可选参数，CCL buffer size 初始值，默认值为 0。
-- **expert_alignment** (`int`)：可选参数，专家对齐数，默认值为 1。
 
 **输出**：无返回值，构造 ElasticBuffer 实例。
 
@@ -184,9 +178,9 @@ ElasticBuffer.dispatch(
 - **topk_idx** (`Tensor`)：可选参数，表示每个 token 的 topK 个专家索引，决定每个 token 要发给哪些专家。要求为 2 维张量，shape 为 `(BS, K)`，数据类型支持 `int32`，数据格式为 $ND$。张量里 value 取值范围为 `[0, num_experts)`。非 cached 模式下为必选参数，cached 模式下必须为 `None`。
 - **topk_weights** (`Tensor`)：可选参数，表示每个 token 对应的 topK 专家权重。要求为 2 维张量，shape 为 `(BS, K)`，数据类型支持 `float32`，数据格式为 $ND$。非 cached 模式下为可选参数，cached 模式下必须为 `None`。
 - **handle** (`EPHandle`)：可选参数，表示上一次 dispatch 返回的 handle 对象，用于 cached 模式。传入 handle 时，`topk_idx` 和 `topk_weights` 必须为 `None`，`do_cpu_sync` 必须为 `False`。默认为 `None`，即非 cached 模式。
-- **num_experts** (`int`)：可选参数，MoE 专家总数量，覆盖初始化时的值。取值范围 `[2, 2048]`，且满足 `num_experts % ep_world_size = 0`。默认使用初始化时传入的值。
+- **num_experts** (`int`)：可选参数，MoE 专家总数量。非 cached 模式下为必选参数；cached 模式默认使用 `handle` 中的值。取值范围 `[2, 2048]`，且满足 `num_experts % ep_world_size = 0`。
 - **num_max_tokens_per_rank** (`int`)：可选参数，表示每张卡上的最大 token 数量上限，覆盖初始化时的值。默认使用初始化时传入的值。
-- **expert_alignment** (`int`)：可选参数，表示专家对齐数，覆盖初始化时的值。默认使用初始化时传入的值。
+- **expert_alignment** (`int`)：可选参数，表示专家对齐数。非 cached 模式默认值为 1；cached 模式默认使用 `handle` 中的值。
 - **do_cpu_sync** (`bool`)：可选参数，表示是否进行 CPU 同步等待。非 cached 模式默认为 `True`，cached 模式必须为 `False`。
 
 **输出说明**：
@@ -491,7 +485,6 @@ def run_dispatch_combine(rank):
         num_max_tokens_per_rank=num_max_tokens_per_rank,
         hidden=hidden,
         num_topk=top_k,
-        num_experts=num_experts,
     )
 
     num_tokens = 64
@@ -519,6 +512,7 @@ def run_dispatch_combine(rank):
         x,
         topk_idx=topk_idx,
         topk_weights=topk_weights,
+        num_experts=num_experts,
     )
     torch.npu.synchronize()
 
