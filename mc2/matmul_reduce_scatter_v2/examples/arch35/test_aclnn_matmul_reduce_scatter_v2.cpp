@@ -16,6 +16,8 @@
 #include <iostream>
 #include <vector>
 #include <thread>
+#include <cstdlib>
+#include <cstring>
 #include "hccl/hccl.h"
 #include "aclnnop/aclnn_matmul_reduce_scatter_v2.h"
 
@@ -32,6 +34,7 @@
     } while(0)
 
 constexpr int DEV_NUM = 2;
+constexpr const char *COMM_MODE = "ccu";
 
 int64_t GetShapeSize(const std::vector<int64_t> &shape)
 {
@@ -133,7 +136,7 @@ int LaunchOneThreadMmReduceScatterV2(Args &args)
 
     // 调用第一阶段接口
     ret = aclnnMatmulReduceScatterV2GetWorkspaceSize(
-        x1, x2, bias, x1Scale, x2Scale, quantScale, blockSize, hcomName, "sum", commTurn, streamMode, groupSize, "ccu",
+        x1, x2, bias, x1Scale, x2Scale, quantScale, blockSize, hcomName, "sum", commTurn, streamMode, groupSize, COMM_MODE,
         out, amaxOut, &workspaceSize, &executor);
     CHECK_RET(ret == ACL_SUCCESS,
         LOG_PRINT("[ERROR] aclnnMatmulReduceScatterV2GetWorkspaceSize failed. ret = %d \n", ret); return ret);
@@ -209,6 +212,34 @@ int LaunchOneThreadMmReduceScatterV2(Args &args)
 
 int main(int argc, char *argv[])
 {
+    class EnvGuard {
+    public:
+        EnvGuard(const char *key, const char *val, bool enable = true)
+            : key_(enable ? key : nullptr)
+        {
+            if (!enable) return;
+            const char *old = getenv(key);
+            if (old != nullptr) {
+                strncpy(saved_, old, sizeof(saved_) - 1);
+            }
+            setenv(key, val, 1);
+        }
+        ~EnvGuard()
+        {
+            if (key_ == nullptr) return;
+            if (saved_[0] != '\0') {
+                setenv(key_, saved_, 1);
+            } else {
+                unsetenv(key_);
+            }
+        }
+    private:
+        const char *key_;
+        char saved_[256] = {0};
+    };
+
+    EnvGuard envGuard("HCCL_OP_EXPANSION_MODE", "CCU_SCHED", strcmp(COMM_MODE, "ccu") == 0);
+
     int ret = aclInit(nullptr);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclInit failed. ret = %d \n", ret); return ret);
     aclrtStream stream[DEV_NUM];
