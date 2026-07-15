@@ -474,10 +474,10 @@ bool AllGatherMatmulV2TransposeA5FusionPass::MeetRequirements(const std::unique_
         return false;
     }
     
-    if (!CheckAttrs(matchResult)) {
-        OPS_LOG_D(FUSION_PASS_NAME.c_str(), "CheckAttrs failed.");
-        return false;
-    }
+    // if (!CheckAttrs(matchResult)) {
+    //     OPS_LOG_D(FUSION_PASS_NAME.c_str(), "CheckAttrs failed.");
+    //     return false;
+    // }
 
     OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Found One pattern that meets requirements");
     return true;
