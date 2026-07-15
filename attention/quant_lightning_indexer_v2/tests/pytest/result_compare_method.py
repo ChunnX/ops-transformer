@@ -379,8 +379,9 @@ def check_result(expect, result, topk_value, output_idx_offset, params, cpu_topk
     print(f"total_line is {total_rows}")
     npu_reshape = npu_output.reshape([total_rows, sparse_count])
     cpu_reshape = cpu_output.reshape([total_rows, sparse_count])
-    cpu_topk_value = cpu_topk_value.reshape([total_rows, sparse_count])
-    npu_topk_value = npu_topk_value.reshape([total_rows, sparse_count])
+    if return_value:
+        cpu_topk_value = cpu_topk_value.reshape([total_rows, sparse_count])
+        npu_topk_value = npu_topk_value.reshape([total_rows, sparse_count])
     start_time = time()
     invalid_data = cpu_reshape != -1
     valid_lens = invalid_data.sum(axis=-1)  # (total_rows,)
