@@ -498,8 +498,13 @@ __aicore__ inline int64_t ComputeAttenMaskOffset(const RunInfo<isInfer> &runInfo
                 }
                 deltaPre = s1Offset - s2Offset - preTokensPerBatchAdj - 1;
                 deltaCausalOrNext = s1Offset - s2Offset + nextTokensPerBatchAdj;
-                attenMaskInfo.attenMaskOffsetPre = ComputeOffsetForCausal(deltaPre, constInfo.s1BaseSize,
-                    constInfo.s2BaseSize, attenMaskInfo.attenMaskS2Size, runInfo.vecCoreOffset, useDn);
+                if constexpr (enableKVPrefix) {
+                    attenMaskInfo.attenMaskOffsetPre = (s1Offset + runInfo.vecCoreOffset) *
+                        attenMaskInfo.attenMaskS2Size + s2Offset;
+                } else {
+                    attenMaskInfo.attenMaskOffsetPre = ComputeOffsetForCausal(deltaPre, constInfo.s1BaseSize,
+                        constInfo.s2BaseSize, attenMaskInfo.attenMaskS2Size, runInfo.vecCoreOffset, useDn);
+                }
             }
         } else if (attenMaskInfo.compressMode == static_cast<uint8_t>(AttenMaskCompressMode::PREFIX_MODE)) {
             deltaCausalOrNext = s1Offset - s2Offset - deltaN;
@@ -528,6 +533,9 @@ __aicore__ inline int64_t ComputeAttenMaskOffset(const RunInfo<isInfer> &runInfo
                 attenMaskInfo.attenMaskS2Size, runInfo.vecCoreOffset, useDn);
         }
         if constexpr (enableKVPrefix) {
+            if (attenMaskInfo.compressMode == static_cast<uint8_t>(AttenMaskCompressMode::BAND_MODE)) {
+                ret = (s1Offset + runInfo.vecCoreOffset) * attenMaskInfo.attenMaskS2Size + s2Offset;
+            }
             PRINTF("[MASK-offset] s2L=%lld s2Off=%lld deltaN=%lld deltaC=%lld deltaPre=%lld maskOff=%lld computeMode=%d s1Off=%lld\n",
                    (long long)runInfo.s2LoopCount, (long long)s2Offset, (long long)deltaN,
                    (long long)deltaCausalOrNext, (long long)deltaPre, (long long)ret,

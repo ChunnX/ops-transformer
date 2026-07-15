@@ -5,7 +5,8 @@
 修复 Ascend arch35 上 `aclnnFusedInferAttentionScoreV5` 在 **KV prefix + BAND_MODE (sparseMode=4)** 下的精度问题。
 
 约束：
-- 只提线上检视意见，不提 PR/issue
+- 只提到线上分支，不提 PR/issue
+- 不要本地编译
 - 不要用裸指针访问 UB 内存（会导致 AIC error）
 - 编辑 arch35 下的 `.h` 文件不要用 Edit 工具（会触发 auto-formatter），用 sed/python 脚本
 - 定位时不需要考虑当前 case 走不到的场景（如 gs 合轴、dn 路径）
