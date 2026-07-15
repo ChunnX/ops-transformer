@@ -186,6 +186,17 @@ class NPUBackend(Backend):
         config.experimental_config.frozen_parameter = True
         npu_backend = torchair.get_npu_backend(compiler_config=config)
         self._graph_net = torch.compile(net, fullgraph=False, backend=npu_backend, dynamic=False)
+
+        import warnings
+        _orig_warn = warnings.warn
+        _orig_sk = _sk._compile_static_kernel_for_single_card
+        def _patched_sk(*args, **kwargs):
+            print("[graph_mode] compile_static_kernel_for_single_card CALLED")
+            _orig_sk(*args, **kwargs)
+            print("[graph_mode] compile_static_kernel_for_single_card DONE")
+        _sk._compile_static_kernel_for_single_card = _patched_sk
+        _sk._compile_static_kernel = _patched_sk
+
         return self._graph_net
 
     def compute(self, inputs: Dict[str, torch.Tensor],
