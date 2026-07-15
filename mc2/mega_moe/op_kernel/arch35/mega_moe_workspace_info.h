@@ -48,6 +48,10 @@ constexpr uint16_t AIC_SYNC_AIV_FLAG = 4;
 constexpr uint16_t AIV_SYNC_AIC_FLAG = 6;
 constexpr uint16_t AIC_SYNC_AIV_EPILOGUE_FLAG = 8;
 constexpr uint16_t FLAG_ID_MAX_PER_V = 16;
+// [A8W4 卡死修复] AIV1->AIC 专用 ack flag: 与 epilogue(8/24)、base(4/6) 分离, 避免复用冲突。
+// AIC 每写完一个 tile 通知 AIV1 就绪后等此 ack, 把 AIC 领先 AIV1 bound 在 1 个 tile,
+// 防止 AIC 覆盖 AIV1 尚未读完的共享 GM tile -> 脏读/卡死。
+constexpr uint16_t AIV1_SYNC_AIC_EPILOGUE_ACK_FLAG = 9;
 constexpr uint32_t SWIGLU_N_HALF = 2U;
 constexpr int32_t MXFP_DIVISOR_SIZE = 64;
 constexpr int32_t MXFP_SCALE_GROUP_NUM = 32;

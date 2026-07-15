@@ -694,6 +694,13 @@ __aicore__ inline void AicComputeA8W4(
             }
         }
         NotifyVectorToCopyIn();
+        // [A8W4 卡死修复] 通知 AIV1 tile 就绪后, 等 AIV1 回 accept 再进入下一 tile 计算。
+        // 把 AIC 领先 AIV1 bound 在 1 个 tile, 防止 AIC 覆盖 AIV1 尚未读完的共享 GM tile -> 脏读/卡死。
+        // 仅当 AIV1 会跑 post 并回 accept 时才等: GMM1(SwigluQuant) 或 GMM2 combine=0。
+        // GMM2 combine!=0 时 AIV1 不经此路径(由 ProcessCombine 解耦处理, 不发 accept), 不能等否则死锁。
+        if constexpr (Policy::IS_GMM1 || CombineQuantMode == COMBINE_NO_QUANT) {
+            WaitForAiv1GmTileAccepted();
+        }
     }
 }
 
@@ -731,6 +738,8 @@ __aicore__ inline void AivGmm1PostA8W4(SwigluQuantOp& swigluQuantOp, Scheduler& 
         uint32_t nLoc = Get<N_VALUE>(blockCoord);
 
         WaitForCubeFinishCopyout();
+        // [A8W4 卡死修复] 收到 AIC "tile 就绪" 后, 在读共享 GM 前立即回 accept, 放行 AIC 算下一 tile。
+        NotifyAicGmTileAccepted();
         AscendC::SetFlag<AscendC::HardEvent::S_MTE2>(0);
         AscendC::WaitFlag<AscendC::HardEvent::S_MTE2>(0);
         auto tensorBlockGmFirst = l0cOutGm.Slice(
@@ -776,6 +785,8 @@ __aicore__ inline void AivGmm2PostA8W4(Scheduler& scheduler, TensorC& l0cOutGm, 
         uint32_t nLoc = Get<N_VALUE>(blockCoord);
 
         WaitForCubeFinishCopyout();
+        // [A8W4 卡死修复] 收到 AIC "tile 就绪" 后, 在读共享 GM 前立即回 accept, 放行 AIC 算下一 tile。
+        NotifyAicGmTileAccepted();
         auto tensorBlockGm = l0cOutGm.Slice(
             Te::MakeCoord(mLoc, nLoc), Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
         auto layoutL0cUB = MakeLayoutC{}(L1_TILE_M_256, L1_TILE_N);
@@ -833,11 +844,11 @@ __aicore__ inline void GroupMatmulExecA8W4(WorkSet& workSet, const Params& param
                 AivGmm1PostA8W4<ElementC, MakeLayoutC>(
                     args.swigluQuantOp, workSet.scheduler, workSet.l0cOutGm, config, startLoopIdx, tileNum);
             } else {
-                // [combine=0 修复] GMM2 阶段 AIV 不再逐-tile 内联送出(原 AivGmm2PostA8W4 每个 N-tile 一次
-                // 跨卡写, h=7168 时每 token 拆 28 次, 大 bs 下聚合跨卡写压垮 fabric->卡死)。
-                // combine send 统一挪到 GMM2 全循环结束后, 按每-token 满 h 一次送出(见 mega_moe.h Process:
-                // SyncAll<false> 保 AIC 写完 gmm2Out -> CombineNoQuantSendAll)。此处 AIV 空转(同 combine!=0),
-                // AIC 的 NotifyVectorToCopyIn 无消费者但无害(与 WaitForCubeFinishCopyout 是不同 flag)。
+                if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
+                    AivGmm2PostA8W4<ElementC, MakeLayoutC>(
+                        workSet.scheduler, workSet.l0cOutGm, params, args.groupCnt, config,
+                        startLoopIdx, tileNum);
+                }
             }
         }
     }
