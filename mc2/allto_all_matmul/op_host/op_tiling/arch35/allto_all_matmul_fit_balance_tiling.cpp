@@ -57,8 +57,9 @@ void AlltoAllMatmulFitBalanceTiling::EstimateMMCommTime()
         tilingM_.cutRes.shortTileAtBack = false;
     }
 
-    // 设置最大切分轮次
+    // aicpu所需时间相比ccu的比率
     const double aicpuTimeRate = 1.5;
+    // 计算最大切分轮次
     double tempMaxTilingNum = commMode_ == mc2tiling::A5_AICPU_TS_ENGINE ?
                                   (totalTpTime_ * aicpuTimeRate / static_cast<double>(AICPU_TILING_COST)) :
                                   (totalTpTime_ / static_cast<double>(CCU_TILING_COST));
