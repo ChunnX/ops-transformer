@@ -17,7 +17,7 @@ extern "C" __global__ __aicore__ void block_sparse_attention(
                        __gm__ uint8_t* query, __gm__ uint8_t* key, __gm__ uint8_t* value,
                        __gm__ uint8_t* blockSparseMask, __gm__ uint8_t* mask, __gm__ uint8_t* blockShape,
                        __gm__ uint8_t* actualSeqLengths, __gm__ uint8_t* actualSeqLengthsKv, __gm__ uint8_t* blockTable,
-                       __gm__ uint8_t* qDequantScale, __gm__ uint8_t* kDequantScale, __gm__ uint8_t* vDequantScale, __gm__ uint8_t* pDequantScale,
+                       __gm__ uint8_t* qDequantScale, __gm__ uint8_t* kDequantScale, __gm__ uint8_t* vDequantScale, __gm__ uint8_t* pQuantScale,
                        __gm__ uint8_t* attentionOut, __gm__ uint8_t* softmaxLse, __gm__ uint8_t* workspace,
                        __gm__ uint8_t* tiling)
 {
