@@ -163,7 +163,13 @@ public:
             outQueue_.EnQue(bf16State);
             CopyOut<bfloat16_t>(sTP_->curStateBf16[nvId * Dv_ * Dk_], Dv_, Dk_, false, curDk_);
             CalGCumExpFp32(sTP_->gCum[nvId * Sp_ + length]);
+            SetFlag<HardEvent::V_MTE2>(V_MTE2_EVENT);
+            WaitFlag<HardEvent::V_MTE2>(V_MTE2_EVENT);
             PipeBarrier<PIPE_MTE3>();
+            auto fp32Local = outQueue_.AllocTensor<float>();
+            DataCopy(fp32Local, stateFp32Ub_, Dv_ * curDk_);
+            outQueue_.EnQue(fp32Local);
+            CopyOut<float>(sTP_->stateOut[nvId * Dv_ * Dk_], Dv_, Dk_, false, curDk_);
         }
         CrossCoreSetFlag<0x2, PIPE_MTE3>(0x3);
         CrossCoreWaitFlag(0x2);
@@ -176,19 +182,6 @@ public:
         }
         CrossCoreSetFlag<0x2, PIPE_MTE3>(0x5);
         CrossCoreWaitFlag(0x4);
-        if (GetSubBlockIdx() == 0) {
-            CopyIn<float>(sTP_->stateOut[nvId * Dv_ * Dk_], Dv_, Dk_);
-            auto deltaIn = inQueue_.DeQue<float>();
-            Add(stateFp32Ub_, stateFp32Ub_, deltaIn, Dv_ * curDk_);
-            PipeBarrier<PIPE_V>();
-            inQueue_.FreeTensor(deltaIn);
-            auto fp32Out = outQueue_.AllocTensor<float>();
-            DataCopy(fp32Out, stateFp32Ub_, Dv_ * curDk_);
-            outQueue_.EnQue(fp32Out);
-            CopyOut<float>(sTP_->stateOut[nvId * Dv_ * Dk_], Dv_, Dk_, false, curDk_);
-            SetFlag<HardEvent::MTE3_MTE2>(MTE3_MTE2_EVENT);
-            WaitFlag<HardEvent::MTE3_MTE2>(MTE3_MTE2_EVENT);
-        }
     }
 
     __aicore__ inline void ProcessAivBf16(int64_t nvId, int64_t cId, int64_t length)
@@ -343,7 +336,7 @@ public:
     {
         if constexpr (kIsFp32) {
             RunMatmul(sTP_->mm1Fp32, vInner, true, kg, false, state,
-                      Dv_, Dk_, curChunkSize_, 0);
+                      Dv_, Dk_, curChunkSize_, 1);
         } else {
             RunMatmul(sTP_->mm1Bf16, vInner, true, kg, false, state,
                       Dv_, Dk_, curChunkSize_, 1);
