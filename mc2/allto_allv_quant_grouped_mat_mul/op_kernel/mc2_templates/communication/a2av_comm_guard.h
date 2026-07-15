@@ -20,10 +20,4 @@
 #define A2AV_AIV_ALL()                      \
     if ASCEND_IS_AIC { return; }
 
-#define A2AV_AIC_ONLY()                     \
-    if ASCEND_IS_AIV { return; }            \
-    if ASCEND_IS_AIC {                      \
-        if (GetBlockIdx() != 0) { return; } \
-    }
-
 #endif // A2AV_COMM_GUARD_H

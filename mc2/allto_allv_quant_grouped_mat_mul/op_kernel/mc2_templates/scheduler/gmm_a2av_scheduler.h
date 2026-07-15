@@ -40,12 +40,12 @@ public:
             uint32_t actualExpertNum = (start + expertNum > e) ? (e - start) : expertNum;
             if ASCEND_IS_AIC {
                 computeOp_.Process(start, actualExpertNum);
-                AscendC::CrossCoreSetFlag<0, PIPE_FIX>(8);
-                AscendC::CrossCoreWaitFlag(8);
-                AscendC::CrossCoreSetFlag<2, PIPE_FIX>(9);
+                AscendC::CrossCoreSetFlag<SYNC_MODE_AIC_BARRIER, PIPE_FIX>(SYNC_FLAG_ID_COMM_DONE);
+                AscendC::CrossCoreWaitFlag(SYNC_FLAG_ID_COMM_DONE);
+                AscendC::CrossCoreSetFlag<SYNC_MODE_AIC_TO_AIV, PIPE_FIX>(SYNC_FLAG_ID_AIC_BARRIER);
             }
             if ASCEND_IS_AIV {
-                AscendC::CrossCoreWaitFlag(9);
+                AscendC::CrossCoreWaitFlag(SYNC_FLAG_ID_AIC_BARRIER);
                 hcclOp_.LaunchCommData(start, actualExpertNum);
             }
         }

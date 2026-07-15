@@ -120,14 +120,16 @@ private:
                     commOp.Wait(start);
                 }
                 SyncAll<true>();
-                AscendC::CrossCoreSetFlag<4, PIPE_V>(8 + 16 * GetSubBlockIdx());
+                AscendC::CrossCoreSetFlag<SYNC_MODE_AIV_TO_AIC, PIPE_V>(
+                    SYNC_FLAG_ID_COMM_DONE + SYNC_FLAG_AIV1_OFFSET * GetSubBlockIdx());
                 if (isPermuteOut_) {
                     commOp.PermuteData(start, actualExpertNum, permuteOutGm_);
                 }
             }
             if ASCEND_IS_AIC {
-                AscendC::CrossCoreWaitFlag<4, PIPE_MTE2>(8);
-                AscendC::CrossCoreWaitFlag<4, PIPE_MTE2>(8 + 16);
+                AscendC::CrossCoreWaitFlag<SYNC_MODE_AIV_TO_AIC, PIPE_MTE2>(SYNC_FLAG_ID_COMM_DONE);
+                AscendC::CrossCoreWaitFlag<SYNC_MODE_AIV_TO_AIC, PIPE_MTE2>(
+                    SYNC_FLAG_ID_COMM_DONE + SYNC_FLAG_AIV1_OFFSET);
                 computeOp.Process(start, actualExpertNum);
             }
         }
