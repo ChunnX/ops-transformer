@@ -206,7 +206,7 @@ public:
         }
     }
 
-    __aicore__ inline void CalculateEndGroupInfo(int64_t endBasicBlockId, int endGroupId, int &endGroupMOffset,
+    __aicore__ inline void CalculateEndGroupInfo(int64_t endBasicBlockId, int endGroupId, uint64_t &endGroupMOffset,
                                                  int64_t &basicBlockCountBeforeEndGroup)
     {
         endGroupMOffset = 0;
@@ -226,7 +226,7 @@ public:
         endGroupMOffset += currentBasicBlockMId * matmulTilingData_->baseM;
     }
 
-    __aicore__ inline void ProcessGroupRange(int startGroupId, int endGroupId, int endGroupMOffset,
+    __aicore__ inline void ProcessGroupRange(int startGroupId, int endGroupId, uint64_t endGroupMOffset,
         uint64_t& globalMOffset, bool &isSyncAll)
     {
         uint64_t currentGroupMOffset = 0;
@@ -259,7 +259,7 @@ public:
         }
         int startGroupId = GetGroupId(startBasicBlockId);
         int endGroupId = GetGroupId(endBasicBlockId);
-        int endGroupMOffset = 0;
+        uint64_t endGroupMOffset = 0;
         int64_t basicBlockCountBeforeEndGroup = 0;
         CalculateEndGroupInfo(endBasicBlockId, endGroupId, endGroupMOffset, basicBlockCountBeforeEndGroup);
         ProcessGroupRange(startGroupId, endGroupId, endGroupMOffset, globalMOffset, isSyncAll);
