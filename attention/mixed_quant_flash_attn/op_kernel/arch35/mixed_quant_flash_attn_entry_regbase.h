@@ -29,14 +29,14 @@
 #include "mixed_quant_flash_attn_kernel_base_gqa_template.h"
 #include "mixed_quant_flash_attn_tiling_data.h"
 
-template <typename INPUT_T, typename OUT_T, uint8_t inOutLayoutType, uint8_t KvLayoutType, bool hasAttenMask,
+template <typename INPUT_T, typename OUT_T, typename KV_TYPE, uint8_t inOutLayoutType, uint8_t KvLayoutType, bool hasAttenMask,
           uint8_t config, uint8_t QuantMode>
 inline __aicore__ void
 mixed_quant_flash_attn_kernel_run(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
                                   __gm__ uint8_t *kDescale, __gm__ uint8_t *vDescale, __gm__ uint8_t *attenMask,
                                   __gm__ uint8_t *cuSeqLensQ, __gm__ uint8_t *sequsedQ, __gm__ uint8_t *sequsedKv, 
                                   __gm__ uint8_t *blocktable, __gm__ uint8_t *learnableSink, __gm__ uint8_t *attentionOut, 
-                                  __gm__ uint8_t *softmaxLse, __gm__ uint8_t *workspace, __gm__ uint8_t *tiling, 
+                                  __gm__ uint8_t *softmaxLse, __gm__ uint8_t *workspace, __gm__ uint8_t *tiling,
                                   __gm__ uint8_t *metaData)
 {
     constexpr inferFaLayOutTypeEnum inputLayoutType =
@@ -48,19 +48,19 @@ mixed_quant_flash_attn_kernel_run(__gm__ uint8_t *query, __gm__ uint8_t *key, __
     constexpr inferS2TemplateType s2TemplateType = static_cast<inferS2TemplateType>(MixedQuantConfigValue[config].s2);
     constexpr inferDTemplateType dTemplateType = static_cast<inferDTemplateType>(MixedQuantConfigValue[config].d);
 
-    using CubeBlock = BaseApi::FAMixedQuantGqaBlockCube<INPUT_T, float, inputLayoutType, s1TemplateType, s2TemplateType,
-                                                        dTemplateType, KvLayoutType>;
+    using CubeBlock = BaseApi::FAMixedQuantGqaBlockCube<INPUT_T, float, KV_TYPE, inputLayoutType, s1TemplateType,
+                                                         s2TemplateType, dTemplateType, KvLayoutType>;
     using VecFaBlock =
-        BaseApi::FAMixedQuantGqaBlockVec<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType, s1TemplateType,
-                                         s2TemplateType, dTemplateType, hasAttenMask, KvLayoutType>;
+        BaseApi::FAMixedQuantGqaBlockVec<INPUT_T, float, OUT_T, KV_TYPE, inputLayoutType, outputLayoutType,
+                                         s1TemplateType, s2TemplateType, dTemplateType, hasAttenMask, KvLayoutType>;
     using VecFdBlock = BaseApi::FAMixedQuantGqaBlockVecFlashDecode<INPUT_T, float, OUT_T, inputLayoutType,
-                                                                   outputLayoutType, s1TemplateType, s2TemplateType,
-                                                                   dTemplateType, hasAttenMask, KvLayoutType>;
+                                                                    outputLayoutType, s1TemplateType, s2TemplateType,
+                                                                    dTemplateType, hasAttenMask, KvLayoutType>;
     using VecBlockDummy =
-        BaseApi::MixedQuantGqaVecBlockBase<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType, s1TemplateType,
-                                           s2TemplateType, dTemplateType, hasAttenMask, KvLayoutType>;
-    using CubeBlockDummy = BaseApi::MixedQuantGqaCubeBlockBase<INPUT_T, float, inputLayoutType, s1TemplateType,
-                                                               s2TemplateType, dTemplateType, KvLayoutType>;
+        BaseApi::MixedQuantGqaVecBlockBase<INPUT_T, float, OUT_T, KV_TYPE, inputLayoutType, outputLayoutType,
+                                            s1TemplateType, s2TemplateType, dTemplateType, hasAttenMask, KvLayoutType>;
+    using CubeBlockDummy = BaseApi::MixedQuantGqaCubeBlockBase<INPUT_T, float, KV_TYPE, inputLayoutType, s1TemplateType,
+                                                                s2TemplateType, dTemplateType, KvLayoutType>;
 
 #ifdef __DAV_C310_CUBE__
     using Kernel = BaseApi::FlashAttentionMixedQuantGqaKernel<CubeBlock, VecBlockDummy, VecBlockDummy>;

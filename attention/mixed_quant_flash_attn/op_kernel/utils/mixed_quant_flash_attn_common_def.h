@@ -83,6 +83,36 @@ static constexpr uint32_t MQFA_CV_RATIO = 2;
 static constexpr uint32_t MQFA_BYTE_BLOCK = 32;
 static constexpr uint32_t MQFA_METADATA_HEADER_OFFSET = 16U * sizeof(uint32_t);
 
+static constexpr uint32_t MQFA_KV_IN_BUF_NUM = 4;
+static constexpr uint32_t MQFA_KV_OUT_BUF_NUM = 2;
+static constexpr uint32_t MQFA_GRP_SIZE = 32;
+
+enum class MqfaPaLayoutType : uint32_t {
+    BNBD = 0,
+    BBND = 1,
+};
+
+static constexpr uint32_t MQFA_CV_L1_EVENT[2] = {8, 9};
+static constexpr uint32_t MQFA_VC_L1_EVENT[2] = {10, 15};
+
+static constexpr uint32_t MQFA_MTE2_V_SCALE_K[2] = {0, 1};
+static constexpr uint32_t MQFA_V_MTE2_SCALE_K[2] = {0, 1};
+static constexpr uint32_t MQFA_MTE2_V_KV_K[2] = {2, 3};
+static constexpr uint32_t MQFA_V_MTE2_KV_K[2] = {2, 3};
+static constexpr uint32_t MQFA_V_MTE3_K[2] = {0, 1};
+static constexpr uint32_t MQFA_MTE3_V_K[2] = {0, 1};
+
+static constexpr uint32_t MQFA_MTE2_V_SCALE_V[2] = {4, 5};
+static constexpr uint32_t MQFA_V_MTE2_SCALE_V[2] = {4, 5};
+static constexpr uint32_t MQFA_MTE2_V_KV_V[2] = {6, 7};
+static constexpr uint32_t MQFA_V_MTE2_KV_V[2] = {6, 7};
+static constexpr uint32_t MQFA_V_MTE3_V[2] = {2, 3};
+static constexpr uint32_t MQFA_MTE3_V_V[2] = {2, 3};
+
+static constexpr uint64_t MQFA_SYNC_MODE = 4;
+
+static constexpr uint32_t MQFA_NEGATIVE_MIN_VALUE_FP32 = 0xFF7FFFFF;
+
 // kernel stream related struct
 struct FDparamsX {
     uint32_t fdCoreEnable;

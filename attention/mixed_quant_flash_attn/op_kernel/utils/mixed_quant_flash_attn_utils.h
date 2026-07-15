@@ -18,9 +18,23 @@
 
 #include "util.h"
 #include "kernel_operator_list_tensor_intf.h"
+#include "mixed_quant_flash_attn_common_def.h"
 
 using AscendC::LocalTensor;
 using namespace AscendC;
 using namespace MicroAPI;
+
+__aicore__ inline constexpr uint16_t MqfaAlignUp64(uint16_t data) {
+    return (data + 63U) >> 6U << 6U;
+}
+
+__aicore__ inline constexpr uint32_t MqfaAlignUp16(uint32_t data) {
+    return (data + 15U) >> 4U << 4U;
+}
+
+__aicore__ inline uint16_t MqfaGetRealDealSize(uint16_t realSize) {
+    uint16_t dealSize = ((realSize >> 1) + 31U) >> 5U << 5U;
+    return (dealSize > realSize) ? realSize : dealSize;
+}
 
 #endif  // FLASH_ATTN_COMMON_DEF_H_

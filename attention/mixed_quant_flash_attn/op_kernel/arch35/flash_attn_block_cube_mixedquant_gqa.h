@@ -58,12 +58,14 @@ __aicore__ inline constexpr GmFormat GetKVGmFormatMQ()
     }
 }
 
-template <typename INPUT_T, typename ACC_T, inferFaLayOutTypeEnum inputLayoutType, inferS1TemplateType s1TemplateType,
-          inferS2TemplateType s2TemplateType, inferDTemplateType dTemplateType, uint8_t KvLayoutType>
+template <typename QINPUT_T, typename ACC_T, typename KV_TYPE, inferFaLayOutTypeEnum inputLayoutType,
+           inferS1TemplateType s1TemplateType, inferS2TemplateType s2TemplateType, inferDTemplateType dTemplateType,
+           uint8_t KvLayoutType>
 class MixedQuantGqaCubeBlockBase {
 public:
     using ConstInfoX = MixedQuantConstInfoX;
-    using Q_T = INPUT_T;
+    using Q_T = QINPUT_T;
+    using KV_T = KV_TYPE;
     using MM_T = ACC_T;
 
     static constexpr uint32_t mBaseSize = (uint32_t)s1TemplateType;
@@ -93,21 +95,23 @@ public:
                                                      ActualSeqLensParser<KV_MODE, int32_t>>::type;
 
     using FaGmTensorQ = FaGmTensor<Q_T, Q_FORMAT, int32_t, Q_NEEDS_WZH>;
-    using FaGmTensorKV = FaGmTensor<Q_T, KV_FORMAT, int32_t>;
+    using FaGmTensorKV = FaGmTensor<KV_T, KV_FORMAT, int32_t>;
 
     __aicore__ inline MixedQuantGqaCubeBlockBase(ConstInfoX &constInfo) : constInfo(constInfo){};
 
     const ConstInfoX &constInfo;
 };
 
-template <typename INPUT_T, typename ACC_T, inferFaLayOutTypeEnum inputLayoutType, inferS1TemplateType s1TemplateType,
-          inferS2TemplateType s2TemplateType, inferDTemplateType dTemplateType, uint8_t KvLayoutType>
-class FAMixedQuantGqaBlockCube : public MixedQuantGqaCubeBlockBase<INPUT_T, ACC_T, inputLayoutType, s1TemplateType,
-                                                                   s2TemplateType, dTemplateType, KvLayoutType> {
+template <typename QINPUT_T, typename ACC_T, typename KV_TYPE, inferFaLayOutTypeEnum inputLayoutType,
+           inferS1TemplateType s1TemplateType, inferS2TemplateType s2TemplateType, inferDTemplateType dTemplateType,
+           uint8_t KvLayoutType>
+class FAMixedQuantGqaBlockCube : public MixedQuantGqaCubeBlockBase<QINPUT_T, ACC_T, KV_TYPE, inputLayoutType,
+                                                                    s1TemplateType, s2TemplateType, dTemplateType,
+                                                                    KvLayoutType> {
 public:
     using ConstInfoX = MixedQuantConstInfoX;
-    using Q_T = INPUT_T;
-    using KV_T = INPUT_T;
+    using Q_T = QINPUT_T;
+    using KV_T = KV_TYPE;
     using MM_T = ACC_T;
 
     static constexpr uint32_t mBaseSize = (uint32_t)s1TemplateType;
@@ -133,7 +137,7 @@ public:
                                                      ActualSeqLensParser<KV_MODE, int32_t>>::type;
 
     using FaGmTensorQ = FaGmTensor<Q_T, Q_FORMAT, int32_t, Q_NEEDS_WZH>;
-    using FaGmTensorKV = FaGmTensor<Q_T, KV_FORMAT, int32_t>;
+    using FaGmTensorKV = FaGmTensor<KV_T, KV_FORMAT, int32_t>;
 
     TPipe *tPipe;
     BufferManager<BufferType::L1> *l1BufferManagerPtr;
@@ -142,6 +146,8 @@ public:
     FaGmTensorKV keyGm;
     FaGmTensorKV valueGm;
     GlobalTensor<int32_t> blockTableGm;
+    GlobalTensor<KV_T> rawKeyGm;
+    GlobalTensor<KV_T> rawValueGm;
 
     QSeqParserType *qSeqParserPtr = nullptr;
     KvSeqParserType *kvSeqParserPtr = nullptr;
@@ -152,8 +158,8 @@ public:
     const ConstInfoX &constInfo;
 
     __aicore__ inline FAMixedQuantGqaBlockCube(ConstInfoX &constInfo)
-        : MixedQuantGqaCubeBlockBase<INPUT_T, ACC_T, inputLayoutType, s1TemplateType, s2TemplateType, dTemplateType,
-                                     KvLayoutType>(constInfo),
+        : MixedQuantGqaCubeBlockBase<QINPUT_T, ACC_T, KV_TYPE, inputLayoutType, s1TemplateType, s2TemplateType,
+                                      dTemplateType, KvLayoutType>(constInfo),
           constInfo(constInfo){};
 
     template <typename QParserRef, typename KvParserRef>
@@ -207,7 +213,6 @@ public:
 
     __aicore__ inline void InitBuffers()
     {
-        // TODO: 待后续填充实现
     }
 
     __aicore__ inline void AllocEventID()
@@ -216,9 +221,40 @@ public:
 
     __aicore__ inline void FreeEventID()
     {
-        // l1QBuffers.Uninit((*l1BufferManagerPtr));
-        // l1KBuffers.Uninit((*l1BufferManagerPtr));
-        // l1VBuffers.Uninit((*l1BufferManagerPtr));
+    }
+
+    __aicore__ inline void InitAntiquantCrossCore()
+    {
+        if ASCEND_IS_AIC {
+            CrossCoreSetFlag<MQFA_SYNC_MODE, PIPE_MTE1>(MQFA_CV_L1_EVENT[0]);
+            CrossCoreSetFlag<MQFA_SYNC_MODE, PIPE_MTE1>(MQFA_CV_L1_EVENT[0] + 16);
+            CrossCoreSetFlag<MQFA_SYNC_MODE, PIPE_MTE1>(MQFA_CV_L1_EVENT[1]);
+            CrossCoreSetFlag<MQFA_SYNC_MODE, PIPE_MTE1>(MQFA_CV_L1_EVENT[1] + 16);
+        }
+    }
+
+    __aicore__ inline void UninitAntiquantCrossCore()
+    {
+        if ASCEND_IS_AIC {
+            CrossCoreWaitFlag<MQFA_SYNC_MODE, PIPE_MTE1>(MQFA_VC_L1_EVENT[0]);
+            CrossCoreWaitFlag<MQFA_SYNC_MODE, PIPE_MTE1>(MQFA_VC_L1_EVENT[0] + 16);
+            CrossCoreWaitFlag<MQFA_SYNC_MODE, PIPE_MTE1>(MQFA_VC_L1_EVENT[1]);
+            CrossCoreWaitFlag<MQFA_SYNC_MODE, PIPE_MTE1>(MQFA_VC_L1_EVENT[1] + 16);
+        }
+    }
+
+    template <bool isAntiquantKey>
+    __aicore__ inline void WaitAntiquantL1Ready(uint32_t idx)
+    {
+        CrossCoreWaitFlag<MQFA_SYNC_MODE, PIPE_MTE1>(MQFA_VC_L1_EVENT[idx]);
+        CrossCoreWaitFlag<MQFA_SYNC_MODE, PIPE_MTE1>(MQFA_VC_L1_EVENT[idx] + 16);
+    }
+
+    template <bool isAntiquantKey>
+    __aicore__ inline void SetAntiquantL1Consumed(uint32_t idx)
+    {
+        CrossCoreSetFlag<MQFA_SYNC_MODE, PIPE_MTE1>(MQFA_CV_L1_EVENT[idx]);
+        CrossCoreSetFlag<MQFA_SYNC_MODE, PIPE_MTE1>(MQFA_CV_L1_EVENT[idx] + 16);
     }
 
 private:

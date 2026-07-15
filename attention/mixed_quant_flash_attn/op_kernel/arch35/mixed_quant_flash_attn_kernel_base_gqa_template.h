@@ -107,6 +107,7 @@ public:
                   "PRELOAD_TASK_CACHE_SIZE must be a power of two for bitmask indexing");
 
     using INPUT_T = typename CubeBlockType::Q_T;
+    using KV_T = typename CubeBlockType::KV_T;
     using T = typename CubeBlockType::MM_T;
     using ConstInfoX = typename CubeBlockType::ConstInfoX;
 
@@ -114,6 +115,7 @@ public:
     BufferManager<BufferType::L1> l1BufferManager;
     BuffersPolicyDB<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> bmmBuffers;
     BuffersPolicyDB<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> l1PBuffers;
+    BuffersPolicyDB<BufferType::L1, SyncType::NO_SYNC> kvAntiquantRes;
 
     GlobalTensor<int32_t> cuSeqLensGmQ;
     GlobalTensor<int32_t> seqUsedGmQ;
@@ -213,6 +215,7 @@ public:
                                                                  sectionNum_ * sizeof(uint32_t)),
                                          MQFA_AIV_CORE_NUM * 16U * sectionNum_);
             vecFaBlock.isFd = isFd;
+            vecFaBlock.InitAntiquantGlobalTensor(key, value, blocktable, kDescale, vDescale);
             if constexpr (LAYOUT_Q == inferFaLayOutTypeEnum::LAYOUT_TND) {
                 vecFaBlock.InitVecBlock(tPipe, cuSeqLensQ, attenMask, learnableSink, softmaxLse,
                                         attentionOut, workspace);
@@ -259,8 +262,10 @@ public:
 
         uint32_t mm1ResultSize = mBaseSize / MQFA_CV_RATIO * s2BaseSize * mm1OutDtype;
         constexpr uint32_t mm2LeftSize = mBaseSize * s2BaseSize * sizeof(INPUT_T);
+        constexpr uint32_t kvAntiquantResSize = s2BaseSize * dBaseSize * sizeof(INPUT_T);
         l1BufferManager.Init(pipe, 524288);
         l1PBuffers.Init(l1BufferManager, mm2LeftSize);
+        kvAntiquantRes.Init(l1BufferManager, kvAntiquantResSize);
         ubBufferManager.Init(pipe, mm1ResultSize * 2);
         bmmBuffers.Init(ubBufferManager, mm1ResultSize);
     }
@@ -644,12 +649,14 @@ public:
 
     __aicore__ inline void AntiquantKey(RunInfoX &runInfo)
     {
-        // TODO: 待后续填充实现
+        LocalTensor<INPUT_T> antiqResL1 = kvAntiquantRes.Get().GetTensor<INPUT_T>();
+        vecFaBlock.AntiquantKey(runInfo, antiqResL1);
     }
 
     __aicore__ inline void AntiquantValue(RunInfoX &runInfo)
     {
-        // TODO: 待后续填充实现
+        LocalTensor<INPUT_T> antiqResL1 = kvAntiquantRes.Get().GetTensor<INPUT_T>();
+        vecFaBlock.AntiquantValue(runInfo, antiqResL1);
     }
 
     __aicore__ inline void ComputeVec1(RunInfoX &runInfo)
@@ -779,6 +786,7 @@ public:
             } else {
                 cubeBlock.InitBuffers();
                 cubeBlock.AllocEventID();
+                cubeBlock.InitAntiquantCrossCore();
             }
         }
         for (uint32_t sectionIdx = 0; sectionIdx < sectionNum_; sectionIdx++) {
@@ -794,6 +802,7 @@ public:
                 vecFaBlock.FreeEventID();
             } else {
                 cubeBlock.FreeEventID();
+                cubeBlock.UninitAntiquantCrossCore();
             }
             CrossCoreBufferUnInit();
         }
