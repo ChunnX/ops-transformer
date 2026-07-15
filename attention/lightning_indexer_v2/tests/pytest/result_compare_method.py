@@ -343,8 +343,9 @@ def check_result(expect, result, topk_value, output_idx_offset, params, cpu_topk
         if layout_query == "TND":
             b_idx, s1_idx = find_batch_and_position(cu_seqlens_q, bsn[0])
             bsn = (b_idx, s1_idx, bsn[-1])
-        cur_cpu_output_value = cpu_topk_value[t_id, :]
-        cur_npu_output_value = npu_topk_value[t_id, :]
+        if return_value:
+            cur_cpu_output_value = cpu_topk_value[t_id, :]
+            cur_npu_output_value = npu_topk_value[t_id, :]
         npu_pass_t = True
         max_re_t = 0
         valid_len = valid_lens[t_id]
