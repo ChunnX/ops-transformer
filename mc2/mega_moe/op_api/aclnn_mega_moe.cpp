@@ -85,8 +85,11 @@ aclnnStatus aclnnMegaMoeGetWorkspaceSize(
     const aclTensor *xActiveMaskOptional, int64_t moeExpertNum, int64_t epWorldSize, int64_t cclBufferSize,
     int64_t maxRecvTokenNum, int64_t dispatchQuantMode, int64_t dispatchQuantOutDtype, int64_t combineQuantMode,
     const char *commAlg, int64_t numMaxTokensPerRank, const char *activation, float activationClamp, int64_t topoType,
-    int64_t rankNumPerServer, aclTensor *yOut, aclTensor *expertTokenNumsOut, uint64_t *workspaceSize,
-    aclOpExecutor **executor)
+    int64_t rankNumPerServer, const aclTensorList *sharedWeight1Optional,
+    const aclTensorList *sharedWeight2Optional, const aclTensorList *sharedWeightScale1Optional,
+    const aclTensorList *sharedWeightScale2Optional, const aclTensorList *sharedBias1Optional,
+    const aclTensorList *sharedBias2Optional, aclTensor *yOut, aclTensor *expertTokenNumsOut,
+    uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     OP_LOGD("aclnn_mega_moe WorkspaceSize start");
 
@@ -119,6 +122,12 @@ aclnnStatus aclnnMegaMoeGetWorkspaceSize(
     CreateEmptyTensor(ACL_FLOAT, bias2Optional, tmpBiasList, *executor);
     CreateEmptyTensor(ACL_UINT64, weightScales1Optional, tmpScaleList, *executor);
     CreateEmptyTensor(ACL_UINT64, weightScales2Optional, tmpScaleList, *executor);
+    aclTensorList *tmpSharedBiasList = nullptr;
+    aclTensorList *tmpSharedScaleList = nullptr;
+    CreateEmptyTensor(ACL_FLOAT, sharedBias1Optional, tmpSharedBiasList, *executor);
+    CreateEmptyTensor(ACL_FLOAT, sharedBias2Optional, tmpSharedBiasList, *executor);
+    CreateEmptyTensor(ACL_UINT64, sharedWeightScale1Optional, tmpSharedScaleList, *executor);
+    CreateEmptyTensor(ACL_UINT64, sharedWeightScale2Optional, tmpSharedScaleList, *executor);
 
     // 只在DAV_2201架构上对x1和x2进行int32到int4的转换预处理
     if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2201) {
@@ -133,7 +142,9 @@ aclnnStatus aclnnMegaMoeGetWorkspaceSize(
     aclnnStatus getWorkspaceSizesRes = aclnnInnerMegaMoeGetWorkspaceSize(
         context, x, topkIds, topkWeights, weight1, weight2,
         weightScales1Optional, weightScales2Optional, bias1Optional, bias2Optional,
-        xActiveMaskOptional, nullptr, moeExpertNum, epWorldSize, cclBufferSize, maxRecvTokenNum,
+        xActiveMaskOptional, nullptr, sharedWeight1Optional, sharedWeight2Optional,
+        sharedWeightScale1Optional, sharedWeightScale2Optional, sharedBias1Optional, sharedBias2Optional,
+        moeExpertNum, epWorldSize, cclBufferSize, maxRecvTokenNum,
         dispatchQuantMode, dispatchQuantOutDtype, combineQuantMode, const_cast<char *>(commAlg), 0,
         const_cast<char *>(activation), activationClamp, ge::DT_UNDEFINED, false, false, 0, topoType,
         rankNumPerServer, yOut, expertTokenNumsOut, workspaceSize, executor);

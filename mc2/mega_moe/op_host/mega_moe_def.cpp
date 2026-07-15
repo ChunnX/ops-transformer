@@ -104,6 +104,36 @@ public:
             .DataTypeList({ge::DT_FLOAT8_E8M0})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
+        this->Input("shared_weight1")
+            .ParamType(OPTIONAL)
+            .DataTypeList({ge::DT_FLOAT8_E5M2, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT4_E2M1})
+            .FormatList({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
+            .AutoContiguous();
+        this->Input("shared_weight2")
+            .ParamType(OPTIONAL)
+            .DataTypeList({ge::DT_FLOAT8_E5M2, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT4_E2M1})
+            .FormatList({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
+            .AutoContiguous();
+        this->Input("shared_weight_scale1")
+            .ParamType(OPTIONAL)
+            .DataTypeList({ge::DT_FLOAT8_E8M0})
+            .FormatList({ge::FORMAT_ND})
+            .AutoContiguous();
+        this->Input("shared_weight_scale2")
+            .ParamType(OPTIONAL)
+            .DataTypeList({ge::DT_FLOAT8_E8M0})
+            .FormatList({ge::FORMAT_ND})
+            .AutoContiguous();
+        this->Input("shared_bias1")
+            .ParamType(OPTIONAL)
+            .DataTypeList({ge::DT_FLOAT})
+            .FormatList({ge::FORMAT_ND})
+            .AutoContiguous();
+        this->Input("shared_bias2")
+            .ParamType(OPTIONAL)
+            .DataTypeList({ge::DT_FLOAT})
+            .FormatList({ge::FORMAT_ND})
+            .AutoContiguous();
 
         this->Output("y").ParamType(REQUIRED).DataTypeList({ge::DT_BF16}).FormatList({ge::FORMAT_ND});
         this->Output("expert_token_nums").ParamType(REQUIRED).DataTypeList({ge::DT_INT32}).FormatList({ge::FORMAT_ND});

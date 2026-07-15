@@ -66,7 +66,8 @@ public:
     __aicore__ inline MegaMoe() {};
     __aicore__ inline void Init(GM_ADDR context, GM_ADDR x, GM_ADDR topkIds, GM_ADDR topkWeights,
         GM_ADDR weight1, GM_ADDR weight2, GM_ADDR xActiveMask, GM_ADDR weightScales1, GM_ADDR weightScales2,
-        GM_ADDR scales, GM_ADDR yOut, GM_ADDR expertTokenNumsOut, GM_ADDR workspaceGM,
+        GM_ADDR scales, GM_ADDR sharedWeight1, GM_ADDR sharedWeight2, GM_ADDR sharedWeightScale1,
+        GM_ADDR sharedWeightScale2, GM_ADDR yOut, GM_ADDR expertTokenNumsOut, GM_ADDR workspaceGM,
         MegaMoeTilingData *tilingData);
     __aicore__ inline void Process();
 
@@ -207,8 +208,9 @@ private:
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Init(
     GM_ADDR context, GM_ADDR x, GM_ADDR topkIds, GM_ADDR topkWeights, GM_ADDR weight1, GM_ADDR weight2,
-    GM_ADDR xActiveMask, GM_ADDR weightScales1, GM_ADDR weightScales2, GM_ADDR scales, GM_ADDR yOut,
-    GM_ADDR expertTokenNumsOut, GM_ADDR workspaceGM, MegaMoeTilingData *tilingData)
+    GM_ADDR xActiveMask, GM_ADDR weightScales1, GM_ADDR weightScales2, GM_ADDR scales,
+    GM_ADDR sharedWeight1, GM_ADDR sharedWeight2, GM_ADDR sharedWeightScale1, GM_ADDR sharedWeightScale2,
+    GM_ADDR yOut, GM_ADDR expertTokenNumsOut, GM_ADDR workspaceGM, MegaMoeTilingData *tilingData)
 {
     m_ = tilingData->bs;
     k_ = tilingData->h;
@@ -238,6 +240,10 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Init(
     params_.b2GmAddr = GetTensorAddr(0, weight2);
     params_.bScaleGmAddr = GetTensorAddr(0, weightScales1);
     params_.b2ScaleGmAddr = GetTensorAddr(0, weightScales2);
+    params_.sharedBGmAddr = sharedWeight1;
+    params_.sharedB2GmAddr = sharedWeight2;
+    params_.sharedBScaleGmAddr = sharedWeightScale1;
+    params_.sharedB2ScaleGmAddr = sharedWeightScale2;
 
     params_.y2GmAddr = yOut;
     params_.expertTokenNumsOutGmAddr = expertTokenNumsOut;
@@ -869,22 +875,6 @@ __aicore__ inline bool MegaMoe<TemplateMegaMoeTypeFunc>::UpdateGroupParams(Exper
         Get<IDX_M_OFFSET>(state.baseOffset) += m;
         Get<IDX_GMM1_OFFSET>(state.baseOffset) += m * n;
         Get<IDX_GMM2_OFFSET>(state.baseOffset) += m * k;
-    } else if constexpr (!IsShared) {
-        if (sharedExpertNum_ > 0) {
-            uint64_t n = Get<N_VALUE>(state.problemShape);
-            uint64_t k = Get<K_VALUE>(state.problemShape);
-            auto scaleK = Ops::Base::CeilDiv(k, static_cast<uint64_t>(MXFP_DIVISOR_SIZE)) * MXFP_MULTI_BASE_SIZE;
-            Get<IDX_B_OFFSET>(state.baseOffset) =
-                static_cast<int64_t>(sharedExpertNum_) * n * k / B_ELEMS_PER_BYTE;
-            Get<IDX_B_SCALE_OFFSET>(state.baseOffset) =
-                static_cast<int64_t>(sharedExpertNum_) * n * scaleK;
-            Get<IDX_B2_OFFSET>(state.baseOffset) =
-                static_cast<int64_t>(sharedExpertNum_) * k * n / SWIGLU_N_HALF / B_ELEMS_PER_BYTE;
-            Get<IDX_B2_SCALE_OFFSET>(state.baseOffset) =
-                static_cast<int64_t>(sharedExpertNum_) * k *
-                Ops::Base::CeilDiv(n / SWIGLU_N_HALF, static_cast<uint64_t>(MXFP_DIVISOR_SIZE)) *
-                MXFP_MULTI_BASE_SIZE;
-        }
     }
 
     if constexpr (IsShared) {
@@ -946,9 +936,14 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::UpdateGlobalBuffer(GMMA
             gmmAddrInfo.gmm1OutGlobal =
                 gmm1OutBase + Get<IDX_GMM1_OFFSET>(state.baseOffset) * sizeof(bfloat16_t);
         }
-        gmmAddrInfo.bGlobal = params_.bGmAddr + Get<IDX_B_OFFSET>(state.baseOffset) * sizeof(ActivationType);
-        gmmAddrInfo.bScaleGlobal = params_.bScaleGmAddr + Get<IDX_B_SCALE_OFFSET>(state.baseOffset) *
-                                    sizeof(QuantScaleOutType);
+        if constexpr (IsShared) {
+            gmmAddrInfo.bGlobal = params_.sharedBGmAddr;
+            gmmAddrInfo.bScaleGlobal = params_.sharedBScaleGmAddr;
+        } else {
+            gmmAddrInfo.bGlobal = params_.bGmAddr + Get<IDX_B_OFFSET>(state.baseOffset) * sizeof(ActivationType);
+            gmmAddrInfo.bScaleGlobal = params_.bScaleGmAddr + Get<IDX_B_SCALE_OFFSET>(state.baseOffset) *
+                                        sizeof(QuantScaleOutType);
+        }
     } else if constexpr(Mode == AddrUpdateMode::kGmm2) {
         GM_ADDR swigluDataBase = IsShared ? params_.workspaceInfo.sharedExpertSwigluDataPtr
                                           : params_.workspaceInfo.swigluQuantDataPtr;
@@ -964,9 +959,14 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::UpdateGlobalBuffer(GMMA
             swigluDataBase + Get<IDX_C_OFFSET>(state.baseOffset) * sizeof(ActivationType);
         gmmAddrInfo.aScaleGlobal =
             swigluScaleBase + Get<IDX_C_SCALE_OFFSET>(state.baseOffset) * sizeof(QuantScaleOutType);
-        gmmAddrInfo.bGlobal = params_.b2GmAddr + Get<IDX_B2_OFFSET>(state.baseOffset) * sizeof(ActivationType);
-        gmmAddrInfo.bScaleGlobal =
-            params_.b2ScaleGmAddr + Get<IDX_B2_SCALE_OFFSET>(state.baseOffset) * sizeof(QuantScaleOutType);
+        if constexpr (IsShared) {
+            gmmAddrInfo.bGlobal = params_.sharedB2GmAddr;
+            gmmAddrInfo.bScaleGlobal = params_.sharedB2ScaleGmAddr;
+        } else {
+            gmmAddrInfo.bGlobal = params_.b2GmAddr + Get<IDX_B2_OFFSET>(state.baseOffset) * sizeof(ActivationType);
+            gmmAddrInfo.bScaleGlobal =
+                params_.b2ScaleGmAddr + Get<IDX_B2_SCALE_OFFSET>(state.baseOffset) * sizeof(QuantScaleOutType);
+        }
     }
     if constexpr (IsShared) {
         gmmAddrInfo.swigluToGmm2Flag = nullptr;
