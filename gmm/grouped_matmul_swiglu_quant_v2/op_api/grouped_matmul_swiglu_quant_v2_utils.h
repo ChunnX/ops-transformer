@@ -279,6 +279,7 @@ protected:
             aclTensor *tensor =
                 executor->CreateView(inputTensor, shape, inputTensor->GetViewOffset()); // use executor to create tensor
             if (tensor == nullptr) {
+                OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "CreateView for contiguous MX scale failed.");
                 return false;
             }
             tensor->SetStorageFormat(inputTensor->GetStorageFormat());
@@ -309,6 +310,7 @@ protected:
             aclTensor *tensor =
                 executor->CreateView(inputTensor, shape, inputTensor->GetViewOffset()); // use executor to create tensor
             if (tensor == nullptr) {
+                OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "CreateView for contiguous tensor failed.");
                 return false;
             }
             tensor->SetStorageFormat(inputTensor->GetStorageFormat());
@@ -465,6 +467,7 @@ protected:
                 gmmDsqParams_.weightScale =
                     executorPtr->AllocTensorList(scaleTensorList.data(), scaleTensorList.size());
                 if (gmmDsqParams_.weightScale == nullptr) {
+                    OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "AllocTensorList for contiguous weightScale failed.");
                     return false;
                 }
                 if (!CreateContiguousTensorList(gmmDsqParams_.weight, weightTensorList, executorPtr)) {
@@ -472,6 +475,7 @@ protected:
                 }
                 gmmDsqParams_.weight = executorPtr->AllocTensorList(weightTensorList.data(), weightTensorList.size());
                 if (gmmDsqParams_.weight == nullptr) {
+                    OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "AllocTensorList for contiguous weight failed.");
                     return false;
                 }
                 uniqueExecutor.ReleaseTo(executor_);
@@ -584,6 +588,7 @@ protected:
             }
             gmmDsqParams_.weight = executorPtr->AllocTensorList(weightTensorList.data(), weightTensorList.size());
             if (gmmDsqParams_.weight == nullptr) {
+                OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "AllocTensorList for contiguous weight failed.");
                 return false;
             }
             uniqueExecutor.ReleaseTo(executor_);

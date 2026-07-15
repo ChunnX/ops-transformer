@@ -74,6 +74,7 @@ bool CreateContiguousTensorListForPertoken(const aclTensorList *tensorList, std:
         aclTensor *tensor =
             executor->CreateView(inputTensor, shape, inputTensor->GetViewOffset()); // use executor to create tensor
         if (tensor == nullptr) {
+            OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "CreateView for contiguous per-token scale failed.");
             return false;
         }
         tensor->SetStorageFormat(inputTensor->GetStorageFormat());
@@ -105,6 +106,7 @@ bool CreateContiguousTensorListForMXTypeMScale(const aclTensorList *tensorList, 
         aclTensor *tensor =
             executor->CreateView(inputTensor, shape, inputTensor->GetViewOffset()); // use executor to create tensor
         if (tensor == nullptr) {
+            OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "CreateView for contiguous MX scale failed.");
             return false;
         }
         tensor->SetStorageFormat(inputTensor->GetStorageFormat());
@@ -133,6 +135,7 @@ bool CreateContiguousTensorList(const aclTensorList *tensorList, std::vector<acl
         aclTensor *tensor =
             executor->CreateView(inputTensor, shape, inputTensor->GetViewOffset()); // use executor to create tensor
         if (tensor == nullptr) {
+            OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "CreateView for contiguous tensor failed.");
             return false;
         }
         tensor->SetStorageFormat(inputTensor->GetStorageFormat());
