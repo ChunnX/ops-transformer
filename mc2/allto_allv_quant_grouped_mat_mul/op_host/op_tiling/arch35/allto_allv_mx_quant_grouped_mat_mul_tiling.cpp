@@ -580,6 +580,11 @@ ge::graphStatus AlltoAllvMXQuantGmmTilingHelper::SetInputParams(uint64_t M, uint
     inputParams_.scaleDtype = ge::DT_FLOAT8_E8M0;
     inputParams_.perTokenScaleDtype = ge::DT_FLOAT8_E8M0;
 
+    OP_TILING_CHECK(gmmGroupNum_ > optiling::Mc2GroupedMatmul::MAX_TENSOR_CONT,
+        OP_LOGE_FOR_INVALID_VALUE(inputParams_.opName, "gmmGroupNum_",
+            std::to_string(gmmGroupNum_).c_str(),
+            (std::string("<=") + std::to_string(optiling::Mc2GroupedMatmul::MAX_TENSOR_CONT)).c_str()),
+        return ge::GRAPH_FAILED);
     for (uint32_t i = 0; i < gmmGroupNum_; i++) {
         mList_[i] = static_cast<int32_t>(M);
     }

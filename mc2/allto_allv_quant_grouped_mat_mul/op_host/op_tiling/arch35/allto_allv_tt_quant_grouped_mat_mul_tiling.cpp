@@ -87,6 +87,12 @@ void AlltoAllvTTQuantGmmTiling::SetGMMQuantParams(Mc2GroupedMatmulTilingData::GM
 
 void AlltoAllvTTQuantGmmTiling::SetTilingArray(Mc2GroupedMatmulTilingData::GMMQuantTilingData &gmmQuantTilingData, uint64_t M, uint64_t N, uint64_t K, uint32_t groupNum) const
 {
+    constexpr uint32_t MAX_TENSOR_CONT = 128U;
+    OP_TILING_CHECK(groupNum > MAX_TENSOR_CONT,
+        OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "groupNum",
+            std::to_string(groupNum).c_str(),
+            (std::string("<=") + std::to_string(MAX_TENSOR_CONT)).c_str()),
+        return);
     for (uint32_t i = 0; i < groupNum; i++) {
         gmmQuantTilingData.gmmArray.mList[i] = static_cast<int32_t>(M);
     }
