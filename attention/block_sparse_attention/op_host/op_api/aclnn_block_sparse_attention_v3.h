@@ -30,7 +30,7 @@ __attribute__((visibility("default"))) aclnnStatus aclnnBlockSparseAttentionV3Ge
     const aclTensor *qDequantScaleOptional,
     const aclTensor *kDequantScaleOptional,
     const aclTensor *vDequantScaleOptional,
-    const aclTensor *pDequantScaleOptional,
+    const aclTensor *pQuantScaleOptional,
     char *qInputLayout,
     char *kvInputLayout,
     int64_t numKeyValueHeads,
