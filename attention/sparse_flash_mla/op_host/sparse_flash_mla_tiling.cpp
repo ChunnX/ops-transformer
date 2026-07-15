@@ -1566,11 +1566,6 @@ ge::graphStatus SMLATilingCheck::CheckSingleParaOriMaskMode() const
 
 ge::graphStatus SMLATilingCheck::CheckSingleParaCmpMaskMode() const
 {
-    if (smlaInfo_.perfMode == SMLATemplateMode::SWA_TEMPLATE_MODE) {
-        OP_CHECK_IF(*opParamInfo_.cmpMaskMode != 0,
-            OP_LOGE(opName_, "cmpMaskMode only support 0 in SWA mode, but got %u.", *opParamInfo_.cmpMaskMode),
-            return ge::GRAPH_FAILED);
-    }
     return ge::GRAPH_SUCCESS;
 }
 

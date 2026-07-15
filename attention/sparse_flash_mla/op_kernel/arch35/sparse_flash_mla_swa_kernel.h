@@ -240,6 +240,11 @@ __aicore__ inline void SparseFlashMlaSwaKernel<CubeBlockType, VecBlockType>::Par
     if constexpr (TEMPLATE_MODE != SMLATemplateMode::SWA_TEMPLATE_MODE) {
         constInfo.cmpKeyStride0 = sparseFlashMLACmpParams.cmpKeyStride0;
     }
+    constInfo.actualLenDimsOriKV = sparseFlashMLABaseParams.actualLenDimsOriKV;
+    if constexpr (TEMPLATE_MODE != SMLATemplateMode::SWA_TEMPLATE_MODE) {
+        constInfo.actualLenDimsCmpKV = sparseFlashMLABaseParams.actualLenDimsCmpKV;
+        constInfo.cmpResidualKVSize = sparseFlashMLABaseParams.cmpResidualKVSize;
+    }
     if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::TND) {
         this->constInfo.isActualLenDimsOriKVNull = 0U;
     } else {
