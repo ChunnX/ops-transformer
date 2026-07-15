@@ -94,6 +94,7 @@ protected:
     ChunkGatedDeltaRuleCompileInfo compileInfo_;
     ChunkGatedDeltaRule::ChunkGatedDeltaRuleTilingData tilingData_;
     ChunkGatedDeltaRuleInfo inputParams_;
+    platform_ascendc::SocVersion socVersion_;
 };
 
 } // namespace optiling
