@@ -76,6 +76,7 @@ private:
     void GetSafeActToken(SparseMode mode, int64_t actSeqLensQ, int64_t actSeqLensKv,
                          int64_t &safePreToken, int64_t &safeNextToken) const;
     bool IsExistRowInvalid(const BaseInfo &baseInfo) const;
+    bool GetIsEmptyBatchOverHalf() const;
 
     bool splitKVFlag_ = false;
 

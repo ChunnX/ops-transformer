@@ -51,6 +51,7 @@ TILING_DATA_FIELD_DEF(uint32_t, needInit)
 TILING_DATA_FIELD_DEF(uint32_t, slidingFlag)
 TILING_DATA_FIELD_DEF(uint32_t, l2CacheOffFlag)
 TILING_DATA_FIELD_DEF(uint32_t, isLegacyIfa)
+TILING_DATA_FIELD_DEF(bool, isEmptyBatchOverHalf)
 END_TILING_DATA_DEF
 REGISTER_TILING_DATA_CLASS(FusedInferAttentionBaseParamsOp, FusedInferAttentionBaseParams)
 
