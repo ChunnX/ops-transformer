@@ -1157,15 +1157,15 @@ def sparse_lightning_indexer_grad_kl_loss(
                 d_rope, input_dtype_str, calc_dtype_str, scale_value, block_n,
             )
 
-            # # # dump 编译出的 AscendC 源码到文件，供离线核对手动同步转写
-            # try:
-            #     import os as _os
-            #     _dump_path = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "0715_kernel_source.cpp")
-            #     with open(_dump_path, "w", encoding="utf-8") as _f:
-            #         _f.write(func.get_kernel_source())
-            #     print(f"[dump] kernel source written to {_dump_path}")
-            # except Exception as _e:
-            #     print(f"[dump] failed to write kernel source: {_e}")
+            # # dump 编译出的 AscendC 源码到文件，供离线核对手动同步转写
+            try:
+                import os as _os
+                _dump_path = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "0715_kernel_source.cpp")
+                with open(_dump_path, "w", encoding="utf-8") as _f:
+                    _f.write(func.get_kernel_source())
+                print(f"[dump] kernel source written to {_dump_path}")
+            except Exception as _e:
+                print(f"[dump] failed to write kernel source: {_e}")
 
             _kernel_cache[cache_key] = func
 
