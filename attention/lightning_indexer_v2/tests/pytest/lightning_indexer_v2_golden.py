@@ -142,6 +142,7 @@ class GeneralizedLIV2:
                     curr_actualSeq_k = ks
             self.cur_actseq_q = curr_actualSeq_q
             self.cur_actseq_k = curr_actualSeq_k
+            self.cur_b_idx = b_idx
             if self.split_s1:
                 # 切分S1轴以减小中间结果内存占用
                 # Split S1 axis to reduce intermediate result memory usage
@@ -179,7 +180,6 @@ class GeneralizedLIV2:
                 self.cur_wt = wt_bnsd_tensor[b_idx:(b_idx + 1), :, :curr_actualSeq_q, :]
                 if self.mask_mode != 0:
                     self.cur_m = mask_tensor[b_idx:(b_idx + 1), :curr_actualSeq_q, :curr_actualSeq_k]
-                self.cur_b_idx = b_idx
 
                 if curr_actualSeq_q != 0:
                     actual_selected_count = min(curr_actualSeq_k, self.topk)
@@ -704,11 +704,96 @@ def liv2_output_single(params, is_batch = False, split_s1 = DEFAULT_SPLIT_S1, s1
             else:
                 output_idx_offset_size = batch_size * q_seq * 1
             output_idx_offset = [[random.randint(output_idx_offset[0], output_idx_offset[1]) for _ in range(output_idx_offset_size)] for _ in range(1)]
+    # ======================== 核心推导：从 cu_seqlens / seqused 推导个体长度 ========================
+    # 辅助函数：从前缀和 cu_seqlens [B+1] 推导个体长度 [B]
+    def _cu_seqlens_to_lengths(cu_list):
+        return [cu_list[i+1] - cu_list[i] for i in range(len(cu_list) - 1)]
 
-    test_liv2 = GeneralizedLIV2(batch_size, q_seq, k_seq, q_t_size, k_t_size, q_head_num, k_head_num,
-                                head_dim, block_size, block_num, qk_dtype, cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k,
-                                cmp_residual_k, layout_query, layout_key, topk, max_seqlen_q, mask_mode, cmp_ratio, return_value,
-                                split_s1 = split_s1, s1size = s1size)
+    # Q 侧个体长度（CPU golden 用）
+    if layout_query == "TND":
+        # TND: 必传 cu_seqlens_q，从差分推导个体长度
+        assert cu_seqlens_q is not None, "TND layout requires cu_seqlens_q"
+        lengths_q_list = _cu_seqlens_to_lengths(cu_seqlens_q)
+    else:
+        # BSND: 从 seqused_q 获取，若 None 则用 q_seq 填满
+        if seqused_q is not None:
+            lengths_q_list = list(seqused_q)
+        else:
+            lengths_q_list = [q_seq] * batch_size
+
+    # K 侧个体长度（CPU golden 用）
+    if layout_key == "TND":
+        # TND: 必传 cu_seqlens_k，从差分推导个体长度
+        assert cu_seqlens_k is not None, "TND layout requires cu_seqlens_k"
+        lengths_k_list = _cu_seqlens_to_lengths(cu_seqlens_k)
+    elif layout_key == "PA_BBND":
+        # PA_BBND: 从 seqused_k 获取
+        assert seqused_k is not None, f"{layout_key} layout requires seqused_k"
+        lengths_k_list = list(seqused_k)
+    else:
+        # BSND: 从 seqused_k 获取，若 None 则用 q_seq 填满
+        if seqused_k is not None:
+            lengths_k_list = list(seqused_k)
+        else:
+            lengths_k_list = [k_seq] * batch_size
+
+    # ======================== 构造 NPU 输入 tensor ========================
+    # cu_seqlens tensor（仅 TND 传入）
+    if layout_query == "TND":
+        cu_seqlens_query = torch.tensor(cu_seqlens_q).to(torch.int32).npu()
+    else:
+        cu_seqlens_query = None
+
+    if layout_key == "TND":
+        cu_seqlens_key = torch.tensor(cu_seqlens_k).to(torch.int32).npu()
+    else:
+        cu_seqlens_key = None
+
+    # seqused tensor
+    if seqused_q is not None:
+        seqused_q_tensor = torch.tensor(seqused_q).to(torch.int32).npu()
+    else:
+        seqused_q_tensor = None
+    if seqused_k is not None:
+        seqused_k_tensor = torch.tensor(seqused_k).to(torch.int32).npu()
+    else:
+        seqused_k_tensor = None
+
+    # ======================== CPU golden forward 用的 actual_seq ========================
+    # TND:     actual_seq 是前缀和格式，即 cu_seqlens[1:]（去掉首位 0）
+    #          golden.forward 内部会 trans_tnd_actseq 差分为个体长度
+    # BSND/PA: actual_seq 是个体长度，即 seqused
+    # （actual_seq始终传入，CPU golden 也需要）
+    if layout_query == "TND":
+        actual_seq_lengths_query = torch.tensor(cu_seqlens_q[1:]).to(torch.int32).npu()
+    else:
+        actual_seq_lengths_query = torch.tensor(lengths_q_list).to(torch.int32).npu()
+
+    if layout_key == "TND":
+        actual_seq_lengths_key = torch.tensor(cu_seqlens_k[1:]).to(torch.int32).npu()
+    else:
+        actual_seq_lengths_key = torch.tensor(lengths_k_list).to(torch.int32).npu()
+
+    # PA_BBND key 构造用的 act_seq_k 列表
+    act_seq_k = lengths_k_list
+
+    # 检查 cmp_residual_k 参数
+    if (mask_mode == 0 or cmp_ratio == 1) and cmp_residual_k is not None:
+        print(f"Warning: mask_mode={mask_mode} or cmp_ratio={cmp_ratio}, "
+              f"cmp_residual_k={cmp_residual_k}, should be None")
+        print("Hint: set cmp_residual_k to None when mask_mode==0 or cmp_ratio==1")
+
+    # cmp_residual_k for CPU golden (always a list with zeros when cmp_ratio==1 or mask_mode==0)
+    if cmp_ratio == 1 or mask_mode == 0:
+        cmp_residual_k_for_cpu = [0] * batch_size
+    else:
+        cmp_residual_k_for_cpu = list(cmp_residual_k)
+
+    # cmp_residual_k for NPU (None when cmp_ratio==1 or mask_mode==0, tensor otherwise)
+    if cmp_ratio == 1 or mask_mode == 0:
+        cmp_residual_k_for_npu = None
+    else:
+        cmp_residual_k_for_npu = torch.tensor(cmp_residual_k).to(torch.int32).npu()
 
     if cu_seqlens_q is not None:
         cu_seqlens_q = torch.tensor(cu_seqlens_q).to(torch.int32)
@@ -720,6 +805,11 @@ def liv2_output_single(params, is_batch = False, split_s1 = DEFAULT_SPLIT_S1, s1
         seqused_k = torch.tensor(seqused_k).to(torch.int32)
     if cmp_residual_k is not None:
         cmp_residual_k = torch.tensor(cmp_residual_k).to(torch.int32)
+    
+    test_liv2 = GeneralizedLIV2(batch_size, q_seq, k_seq, q_t_size, k_t_size, q_head_num, k_head_num,
+                            head_dim, block_size, block_num, qk_dtype, cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k,
+                            cmp_residual_k, layout_query, layout_key, topk, max_seqlen_q, mask_mode, cmp_ratio, return_value,
+                            split_s1 = split_s1, s1size = s1size)
 
     if layout_query == "BSND":
         query = torch.tensor(np.random.uniform(query_datarange[0], query_datarange[1], (batch_size, q_seq, q_head_num, head_dim))).to(qk_dtype)
@@ -731,7 +821,8 @@ def liv2_output_single(params, is_batch = False, split_s1 = DEFAULT_SPLIT_S1, s1
         weights = torch.tensor(np.random.uniform(weights_datarange[0], weights_datarange[1], (q_t_size, q_head_num))).to(torch.float32)
         if output_idx_offset is not None:
             output_idx_offset = torch.tensor(output_idx_offset).reshape(q_t_size, 1).to(torch.int32)
-
+    properties = torch.npu.get_device_properties()
+    blockFusion = None
     if layout_key == "BSND":
         key = torch.tensor(np.random.uniform(key_datarange[0], key_datarange[1], (batch_size, k_seq, k_head_num, head_dim))).to(qk_dtype)
         block_table = None
@@ -810,7 +901,46 @@ def liv2_output_single(params, is_batch = False, split_s1 = DEFAULT_SPLIT_S1, s1
             max_seqlen_k = max(seqused_k).item()
         else:
             max_seqlen_k = k_seq
-    metadata = lightning_indexer_metadata(
+    
+    if blockFusion is not None:
+        blockFusion = blockFusion.npu()
+        key = blockFusion[:, :block_size * k_head_num * head_dim].view(block_num, block_size, k_head_num, head_dim)
+    else:
+        key = key.npu()
+    if is_batch:
+        query = query.to(qk_dtype)
+        key = key.to(qk_dtype)
+        if blockFusion is not None:
+            blockFusion = blockFusion.to(qk_dtype)
+        output_tensors = {
+            "params": params,
+            "cpu_result": cpu_result,
+            "topk_value": topk_value,
+            "cpu_topk_value": cpu_topk_value,
+            "query": query,
+            "key": key,
+            "weights": weights,
+            "output_idx_offset": output_idx_offset,
+            "cu_seqlens_q": cu_seqlens_q,
+            "cu_seqlens_k": cu_seqlens_k,
+            "seqused_q": seqused_q,
+            "seqused_k": seqused_k,
+            "cmp_residual_k_for_npu": cmp_residual_k_for_npu,
+            "block_table": block_table,
+            "max_seqlen_q_meta": max_seqlen_q,
+ 	        "max_seqlen_k_meta": max_seqlen_k,
+            "layout_query": layout_query,
+            "layout_key": layout_key,
+            "cmp_ratio": cmp_ratio,
+            "max_seqlen_q": max_seqlen_q,
+            "topk": topk,
+            "mask_mode": mask_mode,
+            "cmp_ratio": cmp_ratio,
+            "blockFusion": blockFusion 
+        }
+        return output_tensors
+    else:
+        metadata = lightning_indexer_metadata(
                    num_heads_q = q_head_num,
                    num_heads_k = k_head_num,
                    head_dim = head_dim,
@@ -827,37 +957,7 @@ def liv2_output_single(params, is_batch = False, split_s1 = DEFAULT_SPLIT_S1, s1
                    layout_k = layout_key,
                    mask_mode = mask_mode,
                    cmp_ratio = cmp_ratio)
-    metadata = metadata.npu()
-    if blockFusion is not None:
-        blockFusion = blockFusion.npu()
-        key = blockFusion[:, :block_size * k_head_num * head_dim].view(block_num, block_size, k_head_num, head_dim)
-    else:
-        key = key.npu()
-    if is_batch:
-        output_tensors = {
-            "params":params,
-            "cpu_result": cpu_result,
-            "topk_value": topk_value,
-            "cpu_topk_value": cpu_topk_value,
-            "query": query,
-            "key":key,
-            "weights": weights,
-            "output_idx_offset": output_idx_offset,
-            "cu_seqlens_q": cu_seqlens_q,
-            "cu_seqlens_k": cu_seqlens_k,
-            "seqused_q": seqused_q,
-            "seqused_k": seqused_k,
-            "cmp_residual_k": cmp_residual_k,
-            "block_table": block_table,
-            "max_seqlen_q_meta": max_seqlen_q,
- 	        "max_seqlen_k_meta": max_seqlen_k,
-            "layout_query":layout_query,
-            "layout_key":layout_key,
-            "cmp_ratio":cmp_ratio,
-            "max_seqlen_q": max_seqlen_q
-        }
-        return output_tensors
-    else:
+        metadata = metadata.npu()
         npu_result, npu_topk_value = lightning_indexer(query.npu(), key.npu(), weights.npu(),
                                                        cu_seqlens_q = cu_seqlens_q.npu() if cu_seqlens_q is not None else None,
                                                        cu_seqlens_k = cu_seqlens_k.npu() if cu_seqlens_k is not None else None,
