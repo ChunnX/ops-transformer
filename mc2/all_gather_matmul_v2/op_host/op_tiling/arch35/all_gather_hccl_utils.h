@@ -19,6 +19,7 @@
 #include <cstdint>
 #include <string>
 #include "op_host/op_tiling/formulaic_tiling_datatype.h"
+#include "op_host/op_tiling/mc2_fit_based_balance_tiling.h"
 
 namespace optiling {
 
@@ -30,7 +31,8 @@ constexpr uint64_t TILE_M_CANDIDATES[] = {2048, 1024, 512, 256};  // 优选候�
 constexpr uint64_t HCCL_NO_ADJUSTMENT = 0;      // 不需要调整
 constexpr uint64_t HCCL_UNSUPPORTED = UINT64_MAX;  // 无法处理
 
-constexpr uint64_t AICPU_TARGET_TILE_CNT = 4;   // AICPU 目标最大 tile 数
+constexpr uint64_t AICPU_TARGET_TILE_CNT = 4;   // AICPU 默认目标 tile 数
+constexpr uint64_t AICPU_TILE_CNT_CANDIDATES[] = {1, 2, 3, 4};  // AICPU 候选切分数列表
 
 uint64_t CalcMaxTileMFromHcclLimit(const CutResult& cutRes,
                                    uint64_t kValue, uint64_t dtypeSize, uint64_t rankDim,
@@ -47,13 +49,17 @@ void ApplyTileSplit(CutResult& cutRes, uint64_t mValue, uint64_t tileM,
                     const std::string& opName);
 
 void AdjustCutResultForCCU(CutResult& cutRes,
-                           uint64_t mValue, uint64_t kValue,
-                           uint64_t dtypeSize, uint64_t rankDim,
-                           const std::string& opName);
+                            uint64_t mValue, uint64_t kValue,
+                            uint64_t dtypeSize, uint64_t rankDim,
+                            const std::string& opName);
+
+uint64_t SelectOptimalTileCntForAICPU(const Mc2FitBasedBalanceTiling& tileFormulate,
+                                       const std::string& opName);
 
 void AdjustCutResultForAICPU(CutResult& cutRes,
                              uint64_t mValue,
                              uint64_t baseM,
+                             uint64_t targetTileCnt,
                              const std::string& opName);
 
 }  // namespace optiling
