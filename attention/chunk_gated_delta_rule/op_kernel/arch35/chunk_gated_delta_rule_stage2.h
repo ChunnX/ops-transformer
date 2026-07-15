@@ -87,11 +87,10 @@ public:
         }
         if constexpr (kIsFp32) {
             uint64_t inSize = Std::max((uint64_t)chunkSize_, (uint64_t)Dv_) * curDk_ * sizeof(float);
-            uint64_t deltaSize = Dv_ * curDk_ * sizeof(bfloat16_t);
             uint64_t vInnerCastInSize = chunkSize_ * Dv_ * sizeof(float);
             uint64_t vInnerCastOutSize = chunkSize_ * Dv_ * sizeof(bfloat16_t);
-            pipe_->InitBuffer(inQueue_, BUFFER_NUM_ONE, Std::max(Std::max(inSize, deltaSize), vInnerCastInSize));
-            uint64_t outSize = Std::max(Std::max(inSize, deltaSize), vInnerCastOutSize);
+            pipe_->InitBuffer(inQueue_, BUFFER_NUM_ONE, Std::max(inSize, vInnerCastInSize));
+            uint64_t outSize = Std::max(inSize, vInnerCastOutSize);
             pipe_->InitBuffer(outQueue_, BUFFER_NUM_ONE, outSize);
             pipe_->InitBuffer(tmpBuff_, (Dv_ * curDk_ + BLOCK_FLOAT_NUM) * sizeof(float));
             uint32_t buffOffset = 0;

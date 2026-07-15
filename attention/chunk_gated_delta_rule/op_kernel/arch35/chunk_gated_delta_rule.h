@@ -157,7 +157,7 @@ public:
 
         if constexpr (kStateIsFp32) {
             uint64_t stateWkElemCnt = tiling_->nv * tiling_->dv * tiling_->dk;
-            stateBf16Wk_.SetGlobalBuffer(reinterpret_cast<__gm__ lowType *>(user + offset), stateWkElemCnt);
+            curStateBf16_.SetGlobalBuffer(reinterpret_cast<__gm__ lowType *>(user + offset), stateWkElemCnt);
             offset += sizeof(lowType) * stateWkElemCnt;
         }
 
@@ -249,7 +249,7 @@ private:
         initStageTwoParams.stateIn = stateIn;
         initStageTwoParams.stateOut = stateOut;
         if constexpr (std::is_same_v<sType, float>) {
-            initStageTwoParams.curStateBf16 = stateBf16Wk_;
+            initStageTwoParams.curStateBf16 = curStateBf16_;
         } else {
             initStageTwoParams.curStateBf16 = stateIn;
         }
@@ -295,7 +295,7 @@ private:
     GlobalTensor<stateType> initState_;
     GlobalTensor<int32_t> actualSeqLens_;
 
-    GlobalTensor<lowType> stateBf16Wk_;
+    GlobalTensor<lowType> curStateBf16_;
     GlobalTensor<lowType> vInnerBf16_;   // (Nv, maxGroupLength, Dv) BF16 vInner for stage3 (FP32 path only)
 
     GlobalTensor<highType> gCum_;      // (Nv, maxGroupLength)
