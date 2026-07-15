@@ -2052,8 +2052,11 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::DequantQcQrSplitN(const Dequa
     LocalTensor<uint8_t> shareTmpUb = shareBuffer_.Get<uint8_t>();
     LocalTensor<float> scale2Local = dequantTool_.deQuantScaleCqLocal_;
     LocalTensor<mmQcQrOutputType> inputLocal = shareTmpUb.ReinterpretCast<mmQcQrOutputType>();
+    // 可以和inputLocal共享内存地址，减少UB使用
+    LocalTensor<float> computeLocal = shareTmpUb.ReinterpretCast<float>();
     LocalTensor<float> scaleLocal = inputLocal[count + FP32_BLOCK_ELEMENT_NUM].template ReinterpretCast<float>();
-    LocalTensor<mmQnInputType> outputLocal = scaleLocal[colQcSingle].template ReinterpretCast<mmQnInputType>();
+    // outputLocal比scaleLocal占用UB少，且不会同时使用，故可以复用UB内存
+    LocalTensor<mmQnInputType> outputLocal = scaleLocal.template ReinterpretCast<mmQnInputType>();
 
     Rectangle dequantParams{
         row,         //  row
@@ -2068,7 +2071,10 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::DequantQcQrSplitN(const Dequa
     SetFlag<HardEvent::MTE2_V>(EVENT_ID1);
     // cast
     WaitFlag<HardEvent::MTE2_V>(EVENT_ID1);
-    Dequant<mmQcQrOutputType, mmQnInputType>(outputLocal, inputLocal, scaleLocal, scale2Local, dequantParams);
+    Dequant(computeLocal, inputLocal, scaleLocal, scale2Local, dequantParams);
+    AscendC::PipeBarrier<PIPE_V>();
+    // cast
+    Cast(outputLocal, computeLocal, RoundMode::CAST_RINT, count);
     SetFlag<HardEvent::V_MTE3>(EVENT_ID2);
     // copy out
     WaitFlag<HardEvent::V_MTE3>(EVENT_ID2);
