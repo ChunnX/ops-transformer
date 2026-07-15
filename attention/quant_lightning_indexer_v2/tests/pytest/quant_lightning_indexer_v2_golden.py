@@ -883,23 +883,23 @@ def qliv2_output_single(params, is_batch = False, split_s1 = DEFAULT_SPLIT_S1, s
         if actual_seq_dtype == 'INT32':
             actual_seq_dtype = torch.int32
         
-        if cu_seqlens_q is not None:
+        if cu_seqlens_q is not None and isinstance(cu_seqlens_q, str):
             cu_seqlens_q = ast.literal_eval(cu_seqlens_q)
-        if cu_seqlens_k is not None:
+        if cu_seqlens_k is not None and isinstance(cu_seqlens_k, str):
             cu_seqlens_k = ast.literal_eval(cu_seqlens_k)
-        if seqused_q is not None:
+        if seqused_q is not None and isinstance(seqused_q, str):
             seqused_q = ast.literal_eval(seqused_q)
-        if seqused_k is not None:
+        if seqused_k is not None and isinstance(seqused_k, str):
             seqused_k = ast.literal_eval(seqused_k)
-        if cmp_residual_k is not None:
+        if cmp_residual_k is not None and isinstance(cmp_residual_k, str):
             cmp_residual_k = ast.literal_eval(cmp_residual_k)
-        if query_datarange is not None:
+        if query_datarange is not None and isinstance(query_datarange, str):
             query_datarange = ast.literal_eval(query_datarange)
-        if key_datarange is not None:
+        if key_datarange is not None and isinstance(key_datarange, str):
             key_datarange = ast.literal_eval(key_datarange)
-        if weights_datarange is not None:
+        if weights_datarange is not None and isinstance(weights_datarange, str):
             weights_datarange = ast.literal_eval(weights_datarange)
-        if output_idx_offset is not None:
+        if output_idx_offset is not None and isinstance(output_idx_offset, str):
             output_idx_offset = ast.literal_eval(output_idx_offset)
             output_idx_offset = [int(x) for x in output_idx_offset]
             if layout_query == "TND":
