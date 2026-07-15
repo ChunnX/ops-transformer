@@ -46,10 +46,21 @@ struct MoeEpDispatchInfo {
     uint32_t numAivStage1;
     uint32_t numAivStage2;
     uint32_t aivNum;
+    uint32_t scaleoutMaskWordCount;   // uint32 words needed to encode scaleup fanout targets.
+    uint32_t scaleupSlotAlignedBytes;  // Payload slot bytes for final intra-super-node receives.
+    uint32_t scaleoutSlotAlignedBytes; // Scaleout payload plus fanout metadata bytes.
     uint64_t hostPinnedCounterAddr;
+    uint64_t scaleupSendWorkspaceOffset;
+    uint64_t scaleoutSendWorkspaceOffset;
+    uint64_t routeWorkspaceOffset;
     uint64_t cntWinStateOffset;
     uint64_t slotWinStateOffset;
     uint64_t winDataOffset;
+    uint64_t scaleoutRecvDataOffset;
+    uint64_t scaleupFinalRecvDataOffset;
+    uint64_t scaleoutRecvStatusOffset;
+    uint64_t scaleupRecvStatusOffset;
+    uint64_t combineDataOffset;
     uint64_t totalWinSizeEp;
     uint64_t totalUbSize;
 };
