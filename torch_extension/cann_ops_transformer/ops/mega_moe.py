@@ -212,7 +212,7 @@ def _dtype_to_int(dtype):
     )
 
 
-def get_mega_moe_ccl_buffer_size(
+def _get_mega_moe_ccl_buffer_size(
     ep_world_size: int,
     moe_expert_num: int,
     num_max_tokens_per_rank: int,
@@ -251,8 +251,7 @@ def get_symm_buffer_for_mega_moe(
     dispatch_quant_mode: int = 0,
     dispatch_quant_out_dtype: Optional[torch.dtype] = None,
     combine_quant_mode: int = 0,
-    comm_alg: str = "",
-    use_ccl_buffer: bool = True,
+    comm_alg: str = ""
 ) -> SymmBuffer:
     return SymmBuffer(
         group,
