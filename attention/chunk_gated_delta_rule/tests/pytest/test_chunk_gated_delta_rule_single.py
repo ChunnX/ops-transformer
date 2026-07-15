@@ -42,7 +42,8 @@ param_combinations = []
 
 for _, params in enumerate(PARAM_SET):
     param_names = [
-        "B", "seqlen", "nk", "nv", "dk", "dv", "chunk_size", "data_type", "state_data_type", "has_g"
+        "B", "seqlen", "nk", "nv", "dk", "dv", "chunk_size", "data_type", "state_data_type", "has_g",
+        "is_continue"
     ]
 
     param_values = [
@@ -56,6 +57,7 @@ for _, params in enumerate(PARAM_SET):
         params["data_type"],
         params["state_data_type"],
         params["has_g"],
+        params.get("is_continue", [True]),
     ]
 
     for combo in itertools.product(*param_values):
@@ -79,10 +81,12 @@ def test_chunk_gated_delta_rule(param_combinations):
     data_type = param_combinations['data_type']
     state_data_type = param_combinations['state_data_type']
     has_g = param_combinations['has_g']
+    is_continue = param_combinations['is_continue']
 
-    test_data = B, seqlen, nk, nv, dk, dv, chunk_size, data_type, state_data_type, has_g
+    test_data = B, seqlen, nk, nv, dk, dv, chunk_size, data_type, state_data_type, has_g, is_continue
 
     torch_npu.npu.set_device(0)
 
     # 获取cpu结果(真值)和算子结果（测试值)
-    chunk_gated_delta_rule_operator_single.run_precision_test(test_data)
+    ret = chunk_gated_delta_rule_operator_single.run_precision_test(test_data)
+    assert ret, "precision compare failed"

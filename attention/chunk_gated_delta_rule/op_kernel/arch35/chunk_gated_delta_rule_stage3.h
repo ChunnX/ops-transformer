@@ -23,18 +23,18 @@ namespace ChunkGatedDeltaRule {
 using namespace AscendC;
 using namespace matmul;
 
-using aT3 = MatmulType<TPosition::GM, CubeFormat::ND, bfloat16_t, true>;
-using bT3 = MatmulType<TPosition::GM, CubeFormat::ND, bfloat16_t, true>;
-using cT3 = MatmulType<TPosition::GM, CubeFormat::ND, bfloat16_t>;
+using aT3 = MatmulType<TPosition::GM, CubeFormat::ND, float, true>;
+using bT3 = MatmulType<TPosition::GM, CubeFormat::ND, float, true>;
+using cT3 = MatmulType<TPosition::GM, CubeFormat::ND, float>;
 using StageThreeMT = matmul::MatmulImpl<aT3, bT3, cT3>;
 
 struct StageThreeParams {
-    GlobalTensor<bfloat16_t> qkt;       // (Nv, Sp, Dk)
+    GlobalTensor<float> qkt;       // (Nv, Sp, Dk)
     GlobalTensor<float> gCumExp;           // (Nv, Sp)
-    GlobalTensor<bfloat16_t> vInner;
+    GlobalTensor<float> vInner;
     GlobalTensor<float> maskTensor;
     GM_ADDR ws;
-    GlobalTensor<bfloat16_t> attnOut;
+    GlobalTensor<float> attnOut;
     StageThreeMT *mm3;
     TPipe *pipe;
     ChunkGroup *cg;
@@ -62,10 +62,10 @@ public:
         Nk_ = sTP_->Nk;
         Dv_ = sTP_->Dv;
         Dk_ = sTP_->Dk;
-        paddedDv_ = Ceil(Dv_, BLOCK_SIZE / sizeof(bfloat16_t)) * (BLOCK_SIZE / sizeof(bfloat16_t));
+        paddedDv_ = Ceil(Dv_, BLOCK_SIZE / sizeof(float)) * (BLOCK_SIZE / sizeof(float));
         gOptional_ = sTP_->gOptional;
         uint64_t workSpaceOffset = 0;
-        tmpGM_.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t *>(
+        tmpGM_.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(
                                initParams->ws + workSpaceOffset +
                                coreNum_ * chunkSize_ * chunkSize_ * sizeof(float)));
         if ASCEND_IS_AIC {
@@ -76,10 +76,10 @@ public:
             return;
         }
         uint64_t inQueueSize = static_cast<uint64_t>(chunkSize_) *
-                               AscendC::Std::max((int64_t)chunkSize_, paddedDv_) * sizeof(bfloat16_t);
+                               AscendC::Std::max((int64_t)chunkSize_, paddedDv_) * sizeof(float);
         pipe_->InitBuffer(inQueue_, BUFFER_NUM_ONE, inQueueSize);
         pipe_->InitBuffer(outQueue_, BUFFER_NUM_ONE, chunkSize_ > paddedDv_ ?
-                          chunkSize_ * chunkSize_ * sizeof(float) : chunkSize_ * paddedDv_ * sizeof(bfloat16_t));
+                          chunkSize_ * chunkSize_ * sizeof(float) : chunkSize_ * paddedDv_ * sizeof(float));
         pipe_->InitBuffer(tmpBuff_, (STAGE3_BUFFER_COUNT * chunkSize_ * chunkSize_ * sizeof(float)));
         uint64_t buffOffset = 0;
         uint64_t tmpOffset = chunkSize_ * chunkSize_;
@@ -130,11 +130,10 @@ public:
         }
     }
     
-    __aicore__ inline void CalMaskedQKT(GlobalTensor<bfloat16_t> outGM, int nvId, int chunkPos)
+    __aicore__ inline void CalMaskedQKT(GlobalTensor<float> outGM, int nvId, int chunkPos)
     {
-        // chunkSize 大小进行自动补齐
         if (gOptional_) {
-            AlignedCopyIn(sTP_->gCumExp[nvId * Sp_ + chunkPos], 1, curChunkSize_);  // 自动补齐
+            AlignedCopyIn(sTP_->gCumExp[nvId * Sp_ + chunkPos], 1, curChunkSize_);
             auto g_cum = inQueue_.DeQue<float>();
             const uint32_t srcShape1[] = {static_cast<uint32_t>(chunkSize_), static_cast<uint32_t>(1)};
             const uint32_t srcShape2[] = {static_cast<uint32_t>(1), static_cast<uint32_t>(chunkSize_)};
@@ -154,25 +153,23 @@ public:
             Duplicate(tmpBuffer1_, static_cast<float>(1.0f), curChunkSize_ * chunkSize_);
             PipeBarrier<PIPE_V>();
         }
- 
-        // qkt
+
         AlignedCopyIn(sTP_->qkt[nvId * Sp_ * chunkSize_ + chunkPos * chunkSize_], curChunkSize_, curChunkSize_);
-        auto qkt = inQueue_.DeQue<bfloat16_t>();
-        auto scale_qkt = outQueue_.AllocTensor<bfloat16_t>();
-        Cast(tmpBuffer2_, qkt, RoundMode::CAST_NONE, curChunkSize_ * chunkSize_);
+        auto qkt = inQueue_.DeQue<float>();
+        auto scale_qkt = outQueue_.AllocTensor<float>();
+        DataCopy(tmpBuffer2_, qkt, curChunkSize_ * chunkSize_);
         Muls(tmpBuffer2_, tmpBuffer2_, sTP_->scale, curChunkSize_ * chunkSize_);
         Mul(tmpBuffer2_, tmpBuffer2_, tmpBuffer1_, curChunkSize_ * chunkSize_);
-        // mask
         Mul(tmpBuffer2_, tmpBuffer2_, maskBuffer_, curChunkSize_ * chunkSize_);
-        Cast(scale_qkt, tmpBuffer2_, RoundMode::CAST_RINT, curChunkSize_ * chunkSize_);
+        DataCopy(scale_qkt, tmpBuffer2_, curChunkSize_ * chunkSize_);
         outQueue_.EnQue(scale_qkt);
         AlignedCopyOut(outGM, curChunkSize_, curChunkSize_);
         inQueue_.FreeTensor(qkt);
     }
 
-    __aicore__ inline void AICProcess(GlobalTensor<bfloat16_t>tmpGM,
-                                      GlobalTensor<bfloat16_t>vInner,
-                                      GlobalTensor<bfloat16_t>attnInter)
+    __aicore__ inline void AICProcess(GlobalTensor<float>tmpGM,
+                                      GlobalTensor<float>vInner,
+                                      GlobalTensor<float>attnInter)
     {
         // masked_qkt @ v_inner
         sTP_->mm3->SetOrgShape(curChunkSize_, Dv_, curChunkSize_, curChunkSize_, Nv_ * Dv_);    // MNK
@@ -219,7 +216,7 @@ private:
     TQue<QuePosition::VECIN, BUFFER_NUM_ONE> inQueue_;
     TQue<QuePosition::VECOUT, BUFFER_NUM_ONE> outQueue_;
     TBuf<TPosition::VECCALC> tmpBuff_;
-    GlobalTensor<bfloat16_t> tmpGM_;
+    GlobalTensor<float> tmpGM_;
     LocalTensor<float> tmpBuffer1_;
     LocalTensor<float> tmpBuffer2_;
     LocalTensor<float> maskBuffer_;

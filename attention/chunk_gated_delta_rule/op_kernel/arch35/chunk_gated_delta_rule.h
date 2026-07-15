@@ -170,23 +170,23 @@ public:
         gCum_.SetGlobalBuffer(reinterpret_cast<__gm__ highType *>(user + offset));
         offset += sizeof(highType) * tiling_->nv * tiling_->maxGroupLength;
 
-        kCumDecay_.SetGlobalBuffer(reinterpret_cast<__gm__ lowType *>(user + offset));
-        offset += sizeof(lowType) * tiling_->nv * tiling_->maxGroupLength * tiling_->dk;
+        kCumDecay_.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(user + offset));
+        offset += sizeof(float) * tiling_->nv * tiling_->maxGroupLength * tiling_->dk;
 
-        vInner_.SetGlobalBuffer(reinterpret_cast<__gm__ lowType *>(user + offset));
-        offset += sizeof(lowType) * tiling_->nv * tiling_->maxGroupLength * tiling_->dv;
+        vInner_.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(user + offset));
+        offset += sizeof(float) * tiling_->nv * tiling_->maxGroupLength * tiling_->dv;
 
-        qPrime_.SetGlobalBuffer(reinterpret_cast<__gm__ lowType *>(user + offset));
-        offset += sizeof(lowType) * tiling_->nv * tiling_->maxGroupLength * tiling_->dk;
+        qPrime_.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(user + offset));
+        offset += sizeof(float) * tiling_->nv * tiling_->maxGroupLength * tiling_->dk;
 
-        attnInter_.SetGlobalBuffer(reinterpret_cast<__gm__ lowType *>(user + offset));
-        offset += sizeof(lowType) * tiling_->nv * tiling_->maxGroupLength * tiling_->dv;
+        attnInter_.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(user + offset));
+        offset += sizeof(float) * tiling_->nv * tiling_->maxGroupLength * tiling_->dv;
 
-        kg_.SetGlobalBuffer(reinterpret_cast<__gm__ lowType *>(user + offset));
-        offset += sizeof(lowType) * tiling_->nv * tiling_->maxGroupLength * tiling_->dk;
+        kg_.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(user + offset));
+        offset += sizeof(float) * tiling_->nv * tiling_->maxGroupLength * tiling_->dk;
 
-        qkt_.SetGlobalBuffer(reinterpret_cast<__gm__ lowType *>(user + offset));
-        offset += sizeof(lowType) * tiling_->nv * tiling_->maxGroupLength * tiling_->chunkSize;
+        qkt_.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(user + offset));
+        offset += sizeof(float) * tiling_->nv * tiling_->maxGroupLength * tiling_->chunkSize;
 
         highState_.SetGlobalBuffer(reinterpret_cast<__gm__ highType *>(user + offset));
         offset += sizeof(highType) * tiling_->b * tiling_->nv * tiling_->dv * tiling_->dk;
@@ -214,28 +214,37 @@ public:
             int32_t length = actualSeqLens_.GetValue(bid);
             seqStart = seqEnd;
             seqEnd = seqStart + (int64_t)length;
+            int64_t stateSize = tiling_->nv * tiling_->dv * tiling_->dk;
             for (int64_t pos = seqStart; pos < seqEnd; pos += tiling_->maxGroupLength) {
-                // set chunk group
                 cg.startPos = pos;
                 if (pos + tiling_->maxGroupLength > seqEnd) {
                     cg.length = seqEnd - pos;
                 } else {
                     cg.length = tiling_->maxGroupLength;
                 }
-                auto curState = (pos == seqStart) ?
-                                initState_[bid * tiling_->nv * tiling_->dv * tiling_->dk] :
-                                finalState_[bid * tiling_->nv * tiling_->dv * tiling_->dk];
-                // compute this chunk group
+                if (pos == seqStart) {
+                    CopyCast(initState_[bid * stateSize], highState_[bid * stateSize],
+                             pipe_, stateSize, RoundMode::CAST_NONE);
+                    SyncAll<false>();
+                }
                 RunStage1(cg);
                 SyncAll<false>();
 
-                RunStage2(cg, curState,
-                          finalState_[bid * tiling_->nv * tiling_->dv * tiling_->dk]);
+                RunStage2(cg, highState_[bid * stateSize], highState_[bid * stateSize]);
                 SyncAll<false>();
 
                 RunStage3(cg);
                 SyncAll<false>();
+
+                int64_t outSize = cg.length * tiling_->nv * tiling_->dv;
+                CopyCast(attnInter_[0],
+                         out_[cg.startPos * tiling_->nv * tiling_->dv],
+                         pipe_, outSize, RoundMode::CAST_RINT);
+                SyncAll<false>();
             }
+            CopyCast(highState_[bid * stateSize], finalState_[bid * stateSize],
+                     pipe_, stateSize, RoundMode::CAST_RINT);
+            SyncAll<false>();
         }
     }
 
@@ -250,13 +259,13 @@ private:
         pipe_->Reset();
     }
 
-    __aicore__ inline void RunStage2(ChunkGroup& cg, GlobalTensor<lowType> stateIn,
-                                     GlobalTensor<lowType> stateOut)
+    __aicore__ inline void RunStage2(ChunkGroup& cg, GlobalTensor<float> stateIn,
+                                     GlobalTensor<float> stateOut)
     {
         Stage2 stageTwoOp;
         StageTwoParams initStageTwoParams{
             qPrime_, vInner_, gCum_, kCumDecay_, stateIn, stateOut, kg_,
-            out_[cg.startPos * tiling_->nv * tiling_->dv], stageWsAddr_, &stage2MT_, pipe_, &cg,
+            attnInter_[0], stageWsAddr_, &stage2MT_, pipe_, &cg,
             tiling_->nv, tiling_->nk, tiling_->dv, tiling_->dk, gFlag_};
         stageTwoOp.Init(&initStageTwoParams, tiling_->aiCoreNum);
         stageTwoOp.Process();
@@ -269,7 +278,7 @@ private:
         StageThreeParams initStageThreeParams{
             qkt_, gCum_, vInner_,
             stageThreeMask_[int(GetBlockIdx() / 2) * tiling_->chunkSize * tiling_->chunkSize],
-            stageWsAddr_, out_[cg.startPos * tiling_->nv * tiling_->dv],
+            stageWsAddr_, attnInter_[0],
             &stage3MT_, pipe_, &cg, tiling_->scale,
             tiling_->nv, tiling_->nk, tiling_->dv, tiling_->dk, gFlag_};
         stageThreeOp.Init(&initStageThreeParams, tiling_->aiCoreNum);
@@ -292,12 +301,12 @@ private:
     GlobalTensor<int32_t> actualSeqLens_;
 
     GlobalTensor<highType> gCum_;      // (Nv, maxGroupLength)
-    GlobalTensor<lowType> kCumDecay_;     // (Nv, maxGroupLength, Dk)
-    GlobalTensor<lowType> vInner_;       // (Nv, maxGroupLength, Dv)
-    GlobalTensor<lowType> qPrime_;        // (Nv, maxGroupLength, Dk)
-    GlobalTensor<lowType> attnInter_;    // (Nv, maxGroupLength, Dv)
-    GlobalTensor<lowType> kg_;           // (Nv, maxGroupLength, Dk)
-    GlobalTensor<lowType> qkt_;          // (Nv, maxGroupLength, C)
+    GlobalTensor<float> kCumDecay_;     // (Nv, maxGroupLength, Dk)
+    GlobalTensor<float> vInner_;       // (Nv, maxGroupLength, Dv)
+    GlobalTensor<float> qPrime_;        // (Nv, maxGroupLength, Dk)
+    GlobalTensor<float> attnInter_;    // (Nv, maxGroupLength, Dv)
+    GlobalTensor<float> kg_;           // (Nv, maxGroupLength, Dk)
+    GlobalTensor<float> qkt_;          // (Nv, maxGroupLength, C)
     GlobalTensor<highType> highState_;
     // mask矩阵
     GlobalTensor<highType> stageOneMask_;          // (Nv, maxGroupLength, C)

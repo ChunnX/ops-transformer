@@ -161,11 +161,11 @@ ge::graphStatus ChunkGatedDeltaRuleTiling::DoMatmulTiling()
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L0_C, l0CSize);
     mm_.SetBufferSpace(l1Size, l0CSize, ubSize);
     mm_.SetAType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND,
-                 matmul_tiling::DataType::DT_BFLOAT16, true);
+                 matmul_tiling::DataType::DT_FLOAT, true);
     mm_.SetBType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND,
-                 matmul_tiling::DataType::DT_BFLOAT16, true);
+                 matmul_tiling::DataType::DT_FLOAT, true);
     mm_.SetCType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND,
-                 matmul_tiling::DataType::DT_BFLOAT16);
+                 matmul_tiling::DataType::DT_FLOAT);
     mm_.SetBias(false);
     mm_.SetDim(1);
     mm_.SetShape(baseM, baseN, baseK);

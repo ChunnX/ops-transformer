@@ -23,20 +23,20 @@ namespace ChunkGatedDeltaRule {
 using namespace AscendC;
 using namespace matmul;
 
-using aT2 = MatmulType<TPosition::GM, CubeFormat::ND, bfloat16_t, true>;
-using bT2 = MatmulType<TPosition::GM, CubeFormat::ND, bfloat16_t, true>;
-using cT2 = MatmulType<TPosition::GM, CubeFormat::ND, bfloat16_t>;
+using aT2 = MatmulType<TPosition::GM, CubeFormat::ND, float, true>;
+using bT2 = MatmulType<TPosition::GM, CubeFormat::ND, float, true>;
+using cT2 = MatmulType<TPosition::GM, CubeFormat::ND, float>;
 using StageTwoMT = matmul::MatmulImpl<aT2, bT2, cT2>;
 
 struct StageTwoParams {
-    GlobalTensor<bfloat16_t> qPrime;    // (Nv, Sp, Dk)
-    GlobalTensor<bfloat16_t> vInner;    // (Nv, Sp, Dv)
+    GlobalTensor<float> qPrime;    // (Nv, Sp, Dk)
+    GlobalTensor<float> vInner;    // (Nv, Sp, Dv)
     GlobalTensor<float> gCum;   // (Nv, Sp)
-    GlobalTensor<bfloat16_t> kCumdecay; // (Nv, Sp, Dk)
-    GlobalTensor<bfloat16_t> curState;  // (Nv, Dv, Dk)
-    GlobalTensor<bfloat16_t> finalState;  // (Nv, Dv, Dk)
-    GlobalTensor<bfloat16_t> kg;
-    GlobalTensor<bfloat16_t> out;
+    GlobalTensor<float> kCumdecay; // (Nv, Sp, Dk)
+    GlobalTensor<float> curState;  // (Nv, Dv, Dk)
+    GlobalTensor<float> finalState;  // (Nv, Dv, Dk)
+    GlobalTensor<float> kg;
+    GlobalTensor<float> out;
     GM_ADDR ws;
     StageTwoMT *mm1;
     TPipe *pipe;
@@ -63,7 +63,7 @@ public:
         Nk_ = sTP_->Nk;
         Dv_ = sTP_->Dv;
         Dk_ = sTP_->Dk;
-        curDk_ = Ceil(Dk_, BLOCK_SIZE / sizeof(bfloat16_t)) * (BLOCK_SIZE / sizeof(bfloat16_t));
+        curDk_ = Ceil(Dk_, BLOCK_SIZE / sizeof(float)) * (BLOCK_SIZE / sizeof(float));
         curChunkSize_ = chunkSize_;
         gOptional_ = sTP_->gOptional;
         InitLocalBuffers();
@@ -75,9 +75,9 @@ public:
             return;
         }
         pipe_->InitBuffer(inQueue_, BUFFER_NUM_ONE, Std::max((uint64_t)chunkSize_,
-                                                             (uint64_t)Dv_) * curDk_ * sizeof(bfloat16_t));
-        uint64_t outQueueSize = Std::max((uint64_t)chunkSize_ * chunkSize_ * sizeof(bfloat16_t),
-                                         (uint64_t)Dv_ * curDk_ * sizeof(bfloat16_t));
+                                                             (uint64_t)Dv_) * curDk_ * sizeof(float));
+        uint64_t outQueueSize = Std::max((uint64_t)chunkSize_ * chunkSize_ * sizeof(float),
+                                         (uint64_t)Dv_ * curDk_ * sizeof(float));
         pipe_->InitBuffer(outQueue_, BUFFER_NUM_ONE, outQueueSize);
         pipe_->InitBuffer(tmpBuff_, (Std::max((uint64_t)chunkSize_, (uint64_t)Dv_) * curDk_ +
                                      BLOCK_FLOAT_NUM) *sizeof(float));
@@ -140,7 +140,6 @@ public:
     __aicore__ inline void CalGCumExp(GlobalTensor<float> gCum)
     {
         if (gOptional_) {
-            // 刷新cache
             DataCacheCleanAndInvalid<float,
                                      CacheLine::SINGLE_CACHE_LINE,
                                      DcciDst::CACHELINE_OUT>(gCum[curChunkSize_ - 1]);
@@ -153,54 +152,51 @@ public:
             lastGCum_.SetValue(0, 1.0f);
         }
         float tmpFloat = lastGCum_.GetValue(0);
-        auto stateIn = inQueue_.DeQue<bfloat16_t>();
-        auto stateOut = outQueue_.AllocTensor<bfloat16_t>();
+        auto stateIn = inQueue_.DeQue<float>();
+        auto stateOut = outQueue_.AllocTensor<float>();
         SetFlag<HardEvent::MTE2_V>(MTE2_V_EVENT);
         WaitFlag<HardEvent::MTE2_V>(MTE2_V_EVENT);
-        Cast(tmpBuffer1_, stateIn, RoundMode::CAST_NONE, Dv_ * curDk_);
+        DataCopy(tmpBuffer1_, stateIn, Dv_ * curDk_);
         SetFlag<HardEvent::S_V>(S_V_EVENT);
         WaitFlag<HardEvent::S_V>(S_V_EVENT);
         Muls(tmpBuffer1_, tmpBuffer1_, tmpFloat, Dv_ * curDk_);
-        Cast(stateOut, tmpBuffer1_, RoundMode::CAST_RINT, Dv_ * curDk_);
+        DataCopy(stateOut, tmpBuffer1_, Dv_ * curDk_);
         SetFlag<HardEvent::V_MTE3>(V_MTE3_EVENT);
         WaitFlag<HardEvent::V_MTE3>(V_MTE3_EVENT);
         outQueue_.EnQue(stateOut);
         inQueue_.FreeTensor(stateIn);
     }
 
-    __aicore__ inline void CalAttnInter(GlobalTensor<bfloat16_t> qPrime,
-                                        GlobalTensor<bfloat16_t> state,
-                                        GlobalTensor<bfloat16_t> out)
+    __aicore__ inline void CalAttnInter(GlobalTensor<float> qPrime,
+                                        GlobalTensor<float> state,
+                                        GlobalTensor<float> out)
     {
-        // q_prime @ state.transpose(0, 1)
-        sTP_->mm1->SetOrgShape(curChunkSize_, Dv_, Dk_, Dk_, Nv_ * Dv_);    // MNKaKbN
-        sTP_->mm1->SetSingleShape(curChunkSize_, Dv_, Dk_);                 // SingleCoreMNK
+        sTP_->mm1->SetOrgShape(curChunkSize_, Dv_, Dk_, Dk_, Nv_ * Dv_);
+        sTP_->mm1->SetSingleShape(curChunkSize_, Dv_, Dk_);
         sTP_->mm1->SetTensorA(qPrime, false);
         sTP_->mm1->SetTensorB(state, true);
         sTP_->mm1->IterateAll(out);
         sTP_->mm1->End();
     }
 
-    __aicore__ inline void CalVPrime(GlobalTensor<bfloat16_t> kCumdecay,
-                                     GlobalTensor<bfloat16_t> state,
-                                     GlobalTensor<bfloat16_t> vPrime)
+    __aicore__ inline void CalVPrime(GlobalTensor<float> kCumdecay,
+                                     GlobalTensor<float> state,
+                                     GlobalTensor<float> vPrime)
     {
-        // v_inner += k_cumdecay @ state.transpose(0, 1)
-        sTP_->mm1->SetOrgShape(curChunkSize_, Dv_, Dk_);    // MNK
-        sTP_->mm1->SetSingleShape(curChunkSize_, Dv_, Dk_); // SingleCoreMNK
+        sTP_->mm1->SetOrgShape(curChunkSize_, Dv_, Dk_);
+        sTP_->mm1->SetSingleShape(curChunkSize_, Dv_, Dk_);
         sTP_->mm1->SetTensorA(kCumdecay, false);
         sTP_->mm1->SetTensorB(state, true);
         sTP_->mm1->IterateAll(vPrime, 1);
         sTP_->mm1->End();
     }
 
-    __aicore__ inline void CalStateNew(GlobalTensor<bfloat16_t> vInner,
-                                       GlobalTensor<bfloat16_t> kg,
-                                       GlobalTensor<bfloat16_t> state)
+    __aicore__ inline void CalStateNew(GlobalTensor<float> vInner,
+                                       GlobalTensor<float> kg,
+                                       GlobalTensor<float> state)
     {
-        // state_out = v_new.transpose(0, 1) @ kg
-        sTP_->mm1->SetOrgShape(Dv_, Dk_, curChunkSize_);    // MNK
-        sTP_->mm1->SetSingleShape(Dv_, Dk_, curChunkSize_); // SingleCoreMNK
+        sTP_->mm1->SetOrgShape(Dv_, Dk_, curChunkSize_);
+        sTP_->mm1->SetSingleShape(Dv_, Dk_, curChunkSize_);
         sTP_->mm1->SetTensorA(vInner, true);
         sTP_->mm1->SetTensorB(kg, false);
         sTP_->mm1->IterateAll(state, 1);
@@ -221,9 +217,9 @@ public:
         inQueue_.EnQue(inLocal);
     }
 
-    __aicore__ inline void CopyOutState(GlobalTensor<bfloat16_t> stateNew)
+    __aicore__ inline void CopyOutState(GlobalTensor<float> stateNew)
     {
-        CopyOut<bfloat16_t>(stateNew, Dv_, Dk_, false);
+        CopyOut<float>(stateNew, Dv_, Dk_, false);
     }
 
     template <typename outType>
