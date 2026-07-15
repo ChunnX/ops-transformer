@@ -119,11 +119,14 @@ private:
                         commOp.WaitScale(start);
                     }
                     commOp.Wait(start);
+                    SyncAll<true>();
+                    AscendC::CrossCoreSetFlag<4, PIPE_V>(8);
                 }
-                SyncAll<true>();
-                AscendC::CrossCoreSetFlag<4, PIPE_V>(8 + 16 * GetSubBlockIdx());
-                if (isPermuteOut_) {
-                    commOp.PermuteData(start, actualExpertNum, permuteOutGm_);
+                if (GetSubBlockIdx() != 0) {
+                    AscendC::CrossCoreSetFlag<4, PIPE_V>(8 + 16);
+                    if (isPermuteOut_) {
+                        commOp.PermuteData(start, actualExpertNum, permuteOutGm_);
+                    }
                 }
             }
             if ASCEND_IS_AIC {
