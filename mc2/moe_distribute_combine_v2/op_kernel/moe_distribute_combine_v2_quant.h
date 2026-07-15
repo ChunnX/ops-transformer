@@ -156,6 +156,7 @@ public:
     }
 
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
+    template <bool ApplyExpertScale = true>
     __aicore__ inline void Int8DequantProcessA5(LocalTensor<XType> &inLocal, LocalTensor<float> &sumFinalTensor,
                                                 float scaleVal)
     {
@@ -247,10 +248,15 @@ public:
                 MicroAPI::Cast<float, XType, castZero>(deqFp32_1, deqXType_1, maskF32);
                 MicroAPI::Cast<float, XType, castZero>(deqFp32_2, deqXType_2, maskF32);
 
-                MicroAPI::Muls(sumLocal_1, deqFp32_1, scaleVal, maskF32);
-                MicroAPI::Muls(sumLocal_2, deqFp32_2, scaleVal, maskF32);
-                MicroAPI::Add(sumFinal_1, sumFinal_1, sumLocal_1, maskF32);
-                MicroAPI::Add(sumFinal_2, sumFinal_2, sumLocal_2, maskF32);
+                if constexpr (ApplyExpertScale) {
+                    MicroAPI::Muls(sumLocal_1, deqFp32_1, scaleVal, maskF32);
+                    MicroAPI::Muls(sumLocal_2, deqFp32_2, scaleVal, maskF32);
+                    MicroAPI::Add(sumFinal_1, sumFinal_1, sumLocal_1, maskF32);
+                    MicroAPI::Add(sumFinal_2, sumFinal_2, sumLocal_2, maskF32);
+                } else {
+                    MicroAPI::Add(sumFinal_1, sumFinal_1, deqFp32_1, maskF32);
+                    MicroAPI::Add(sumFinal_2, sumFinal_2, deqFp32_2, maskF32);
+                }
 
                 MicroAPI::DataCopy<float, MicroAPI::StoreDist::DIST_INTLV_B32>(
                     sumFinalDstPtr + i * fp32RepeatSize * INT8_DIVIVE, sumFinal_1, sumFinal_2, maskF32);
@@ -282,7 +288,7 @@ public:
         }
     }
 
-    template <typename T>
+    template <typename T, bool ApplyExpertScale = true>
     __aicore__ inline void DeQuantMxFp8(LocalTensor<XType> &inLocal, LocalTensor<float> &sumTensor,
                                         LocalTensor<float> &sumFinalTensor, float scaleVal)
     {
@@ -348,8 +354,10 @@ public:
                 // token与量化参数相乘
                 MicroAPI::Mul(sumLocalDstReg_1, dyScaleFp32Reg, tokenFp32SrcReg_1, maskReg2);
                 MicroAPI::Mul(sumLocalDstReg_2, dyScaleFp32Reg, tokenFp32SrcReg_2, maskReg2);
-                MicroAPI::Muls(sumLocalDstReg_1, sumLocalDstReg_1, scaleVal, maskReg2); // token与专家scale相乘
-                MicroAPI::Muls(sumLocalDstReg_2, sumLocalDstReg_2, scaleVal, maskReg2); // token与专家scale相乘
+                if constexpr (ApplyExpertScale) {
+                    MicroAPI::Muls(sumLocalDstReg_1, sumLocalDstReg_1, scaleVal, maskReg2);
+                    MicroAPI::Muls(sumLocalDstReg_2, sumLocalDstReg_2, scaleVal, maskReg2);
+                }
                 MicroAPI::Add(sumFinalDstReg_1, sumFinalDstReg_1, sumLocalDstReg_1, maskReg2); // combine累加
                 MicroAPI::Add(sumFinalDstReg_2, sumFinalDstReg_2, sumLocalDstReg_2, maskReg2); // combine累加
                 MicroAPI::DataCopy<float, MicroAPI::StoreDist::DIST_INTLV_B32>(
@@ -387,6 +395,24 @@ public:
             DeQuantMxFp8<fp8_e5m2_t>(inLocal, sumTensor, sumFinalTensor, scaleVal);
         } else if constexpr (QuantMode == MXFP8_E4M3_COMM_QUANT) {
             DeQuantMxFp8<fp8_e4m3fn_t>(inLocal, sumTensor, sumFinalTensor, scaleVal);
+        }
+#endif
+    }
+
+    __aicore__ inline void DeQuantProcessWithoutExpertScale(LocalTensor<XType>& inLocal,
+        LocalTensor<XType>& outLocal, LocalTensor<float>& sumTensor, LocalTensor<float>& sumFinalTensor)
+    {
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
+        if constexpr (QuantMode == INT8_COMM_QUANT) {
+            Int8DequantProcessA5<false>(inLocal, sumFinalTensor, 0.0f);
+        } else if constexpr (QuantMode == MXFP8_E5M2_COMM_QUANT) {
+            DeQuantMxFp8<fp8_e5m2_t, false>(inLocal, sumTensor, sumFinalTensor, 0.0f);
+        } else if constexpr (QuantMode == MXFP8_E4M3_COMM_QUANT) {
+            DeQuantMxFp8<fp8_e4m3fn_t, false>(inLocal, sumTensor, sumFinalTensor, 0.0f);
+        }
+#else
+        if constexpr (QuantMode == INT8_COMM_QUANT) {
+            Int8DequantProcess(inLocal, outLocal);
         }
 #endif
     }

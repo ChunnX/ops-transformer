@@ -45,6 +45,7 @@ constexpr uint32_t OUTPUT_ASSIST_INFO_INDEX = 2U;
 constexpr uint32_t OUTPUT_EXPERT_TOKEN_NUMS_INDEX = 3U;
 constexpr uint32_t OUTPUT_EP_RECV_COUNTS_INDEX = 4U;
 constexpr uint32_t OUTPUT_TP_RECV_COUNTS_INDEX = 5U;
+constexpr uint32_t OUTPUT_EXPAND_SCALES_INDEX = 6U;
 
 constexpr uint32_t LAYERED_METAINFO_LIST_NUM = 2;
 constexpr uint32_t TWO_DIMS = 2;
@@ -101,6 +102,20 @@ static const std::set<ge::DataType> NON_QUANT_DTYPE = {ge::DT_FLOAT16, ge::DT_BF
                                                        ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E5M2};
 
 namespace optiling {
+static bool IsPresentTensorShape(const gert::StorageShape *shape)
+{
+    if (shape == nullptr) {
+        return false;
+    }
+    const gert::Shape &storageShape = shape->GetStorageShape();
+    for (size_t i = 0; i < storageShape.GetDimNum(); ++i) {
+        if (storageShape.GetDim(i) == 0) {
+            return false;
+        }
+    }
+    return true;
+}
+
 static void PrintTilingDataInfo(const char *nodeName, MoeDistributeDispatchV2TilingData &tilingData)
 {
     OP_LOGD(nodeName, "epWorldSize is %u.", tilingData.moeDistributeDispatchV2Info.epWorldSize);
@@ -121,6 +136,7 @@ static void PrintTilingDataInfo(const char *nodeName, MoeDistributeDispatchV2Til
     OP_LOGD(nodeName, "totalWinSizeEP is %lu.", tilingData.moeDistributeDispatchV2Info.totalWinSizeEp);
     OP_LOGD(nodeName, "hasElastic is %d.", tilingData.moeDistributeDispatchV2Info.hasElasticInfo);
     OP_LOGD(nodeName, "isPerformance is %d.", tilingData.moeDistributeDispatchV2Info.isPerformance);
+    OP_LOGD(nodeName, "hasExpertScales is %d.", tilingData.moeDistributeDispatchV2Info.hasExpertScales);
     OP_LOGD(nodeName, "zeroComputeExpertNum is %d", tilingData.moeDistributeDispatchV2Info.zeroComputeExpertNum);
 }
 
@@ -1758,6 +1774,79 @@ ge::graphStatus CheckAndGetOptionalInput(gert::TilingContext *context, const cha
     isPerformance = (performanceInfoStorageShape != nullptr);
     tilingData->moeDistributeDispatchV2Info.isPerformance = isPerformance;
 
+    const gert::StorageShape *expertScalesStorageShape = context->GetOptionalInputShape(config.expertScalesIndex);
+    tilingData->moeDistributeDispatchV2Info.hasExpertScales = IsPresentTensorShape(expertScalesStorageShape);
+
+    return ge::GRAPH_SUCCESS;
+}
+
+static ge::graphStatus CheckExpertScales(const gert::TilingContext *context, const char *nodeName,
+    const uint32_t bs, const uint32_t k, DispatchV2Config &config)
+{
+    const gert::StorageShape *expertScalesStorageShape = context->GetOptionalInputShape(config.expertScalesIndex);
+    OP_TILING_CHECK(expertScalesStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "expertScales"),
+        return ge::GRAPH_FAILED);
+    auto expertScalesDesc = context->GetOptionalInputDesc(config.expertScalesIndex);
+    OP_TILING_CHECK(expertScalesDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "expertScalesDesc"),
+        return ge::GRAPH_FAILED);
+
+    OP_TILING_CHECK(expertScalesStorageShape->GetStorageShape().GetDimNum() != TWO_DIMS,
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(nodeName, "expertScales",
+            std::to_string(expertScalesStorageShape->GetStorageShape().GetDimNum()).c_str(),
+            "The shape dim of expertScales must be 2D."),
+        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(expertScalesDesc->GetDataType() != ge::DT_FLOAT,
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(nodeName, "expertScales",
+            Ops::Base::ToString(expertScalesDesc->GetDataType()).c_str(),
+            "The dtype of expertScales must be float."),
+        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(static_cast<ge::Format>(ge::GetPrimaryFormat(expertScalesDesc->GetStorageFormat())) ==
+        ge::FORMAT_FRACTAL_NZ,
+        OP_LOGE_FOR_INVALID_FORMAT(nodeName, "expertScales", "not FRACTAL_NZ", "FRACTAL_NZ"),
+        return ge::GRAPH_FAILED);
+
+    const int64_t expertScalesDim0 = expertScalesStorageShape->GetStorageShape().GetDim(0);
+    const int64_t expertScalesDim1 = expertScalesStorageShape->GetStorageShape().GetDim(1);
+    OP_TILING_CHECK(expertScalesDim0 != static_cast<int64_t>(bs),
+        OP_LOGE_FOR_INVALID_VALUE(nodeName, "expertScales(dim0)", std::to_string(expertScalesDim0).c_str(),
+            ("should equal to bs=" + std::to_string(bs)).c_str()),
+        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(expertScalesDim1 != static_cast<int64_t>(k),
+        OP_LOGE_FOR_INVALID_VALUE(nodeName, "expertScales(dim1)", std::to_string(expertScalesDim1).c_str(),
+            ("should equal to k=" + std::to_string(k)).c_str()),
+        return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
+static ge::graphStatus CheckExpandScales(const gert::TilingContext *context, const char *nodeName, const uint32_t a)
+{
+    const gert::StorageShape *expandScalesStorageShape = context->GetOutputShape(OUTPUT_EXPAND_SCALES_INDEX);
+    OP_TILING_CHECK(expandScalesStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "expandScales"),
+        return ge::GRAPH_FAILED);
+    auto expandScalesDesc = context->GetOutputDesc(OUTPUT_EXPAND_SCALES_INDEX);
+    OP_TILING_CHECK(expandScalesDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "expandScalesDesc"),
+        return ge::GRAPH_FAILED);
+
+    OP_TILING_CHECK(expandScalesStorageShape->GetStorageShape().GetDimNum() != ONE_DIM,
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(nodeName, "expandScales",
+            std::to_string(expandScalesStorageShape->GetStorageShape().GetDimNum()).c_str(),
+            "The shape dim of expandScales must be 1D."),
+        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(expandScalesDesc->GetDataType() != ge::DT_FLOAT,
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(nodeName, "expandScales",
+            Ops::Base::ToString(expandScalesDesc->GetDataType()).c_str(),
+            "The dtype of expandScales must be float."),
+        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(static_cast<ge::Format>(ge::GetPrimaryFormat(expandScalesDesc->GetStorageFormat())) ==
+        ge::FORMAT_FRACTAL_NZ,
+        OP_LOGE_FOR_INVALID_FORMAT(nodeName, "expandScales", "not FRACTAL_NZ", "FRACTAL_NZ"),
+        return ge::GRAPH_FAILED);
+
+    const int64_t expandScalesDim0 = expandScalesStorageShape->GetStorageShape().GetDim(0);
+    OP_TILING_CHECK(expandScalesDim0 < static_cast<int64_t>(a),
+        OP_LOGE_FOR_INVALID_VALUE(nodeName, "expandScales(dim0)", std::to_string(expandScalesDim0).c_str(),
+            ("should be >= a=" + std::to_string(a)).c_str()),
+        return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -1781,6 +1870,16 @@ ge::graphStatus CheckInputParam(gert::TilingContext *context, const char *nodeNa
                                      hasElasticInfo, isPerformance, static_cast<int64_t>(localMoeExpertNum), isLayered,
                                      config) != ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "Check tensor shape failed."), return ge::GRAPH_FAILED);
+
+    if (tilingData->moeDistributeDispatchV2Info.hasExpertScales) {
+        const uint32_t aVal = tilingData->moeDistributeDispatchV2Info.a;
+        const uint32_t bsVal = tilingData->moeDistributeDispatchV2Info.bs;
+        const uint32_t kVal = tilingData->moeDistributeDispatchV2Info.k;
+        OP_TILING_CHECK(CheckExpertScales(context, nodeName, bsVal, kVal, config) != ge::GRAPH_SUCCESS,
+            OP_LOGE(nodeName, "CheckExpertScales failed."), return ge::GRAPH_FAILED);
+        OP_TILING_CHECK(CheckExpandScales(context, nodeName, aVal) != ge::GRAPH_SUCCESS,
+                        OP_LOGE(nodeName, "CheckExpandScales failed."), return ge::GRAPH_FAILED);
+    }
 
     return ge::GRAPH_SUCCESS;
 }
