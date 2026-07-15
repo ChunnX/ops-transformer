@@ -42,8 +42,9 @@ constexpr uint32_t ELEMENT_SIZE = 2;
 constexpr uint32_t MAX_BLOCK_COUNT = 2;
 constexpr uint32_t BLOCK_ALIGN_BYTES = 32U;
 constexpr int32_t MIN_P_VALUE = 1;
-constexpr int32_t MAX_BUFF_BYTES = 204 * 1024 * 1024;
-constexpr int32_t FLAG_BUFF_BYTES = 5 * 512 * 1024;
+constexpr int32_t MAX_BUFF_BYTES = 200 * 1024 * 1024;
+constexpr int32_t FLAG_BUFF_BYTES = 20 * 1024 * 1024;
+constexpr int32_t MB_BYTES = 1024 * 1024;
 constexpr int32_t HALF_KBYTE = 512;
 constexpr int32_t UB_PINGPONG_SIZE = 2;
 constexpr int32_t MAX_UB_NUM = 97280;
@@ -1488,6 +1489,19 @@ ge::graphStatus AlltoAllMatmulTiling910b::DoOpTiling()
     MC2_CHECK_LOG_RET(opName_, CheckOpInputInfo(info));
     MC2_CHECK_LOG_RET(opName_, DoMmCommTiling(tilingData->cocTiling, info));
     MC2_CHECK_LOG_RET(opName_, SetHcclTiling(tilingData));
+    // 校验HCCL BUFF空间大小
+    auto attrs = context_->GetAttrs();
+    auto group = attrs->GetAttrPointer<char>(static_cast<int>(ATTR_GROUP_INDEX));
+    uint64_t hcclBuffSize = 0ULL;
+    auto cclRet = mc2tiling::GetCclBufferSize(group, &hcclBuffSize, opName_);
+    if (cclRet == ge::GRAPH_SUCCESS) {
+        OP_TILING_CHECK(hcclBuffSize < MAX_BUFF_BYTES,
+            OP_LOGE(opName_, "HCCL_BUFFSIZE (%lu Bytes) too small, min required %lu Bytes (%dMB)",
+                hcclBuffSize, MAX_BUFF_BYTES, MAX_BUFF_BYTES / MB_BYTES),
+            return ge::GRAPH_FAILED);
+    } else {
+        OP_LOGW(opName_, "Can't get HCCL_BUFFSIZE, skip CCL buffer size validation.");
+    }
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context_->GetPlatformInfo());
     auto aicNum = ascendcPlatform.GetCoreNumAic();
     auto aivNum = ascendcPlatform.GetCoreNumAiv();

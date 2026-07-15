@@ -518,8 +518,8 @@ aclnnStatus aclnnAlltoAllQuantMatmul(
         | INT4 | INT4 | FLOAT32 | BFLOAT16 |
 
     * 维度约束：
-      * A16W8时，rankSize * H必须整除16；rankSize * H取值范围：[1, 35000]。
-      * A16W4时，rankSize * H必须整除16；N必须为偶数; rankSize * H取值范围：[1, 35000]。
+      * A16W8时，rankSize \* H必须整除16；rankSize \* H取值范围：[1, 35000]。
+      * A16W4时，rankSize \* H必须整除16；N必须为偶数; rankSize \* H取值范围：[1, 35000]。
       * A4W4时，H与N必须为偶数；rankSize * H取值范围：[1, 35000]。
   - <term>Ascend 950PR/Ascend 950DT</term>：
     * 量化模式：
@@ -572,8 +572,8 @@ aclnnStatus aclnnAlltoAllQuantMatmul(
       * mx量化场景下，x2必须转置，shape为(H*rankSize, N)，transposeX2为True。
 * 通算融合算子不支持并发调用，不同的通算融合算子也不支持并发调用。
 * 不支持跨超节点通信，只支持超节点内。
-* 通信引擎约束：
-   - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持MTE通信。
+* 通信约束：
+   - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持MTE通信，且通信缓冲区大于等于200MB。
    - <term>Ascend 950PR/Ascend 950DT</term>：支持CCU通信。
 
 ## 调用示例

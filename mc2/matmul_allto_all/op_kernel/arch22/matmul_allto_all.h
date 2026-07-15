@@ -425,7 +425,8 @@ __aicore__ inline void MatmulAlltoAll<TemplateMMA2AFunc>::Process()
                     int64_t src_offset =
                         flag_idx * commUtil.gm_a_pingpong_size + commUtil.gm_a_pingpong_size / rank_size * rank;
                     int64_t dst_offset = commUtil.core_idx * rank_offset +
-                                         commIdx * commUtil.m0 * commUtil.p_value * (commUtil.n / rank_size);
+                                         static_cast<int64_t>(commIdx) * commUtil.m0 * commUtil.p_value *
+                                         (commUtil.n / rank_size);
                     commUtil.CopyGMToGM((__gm__ cType *)commUtil.buff[commUtil.core_idx] + src_offset,
                                         reinterpret_cast<__gm__ cType *>(cGM_) + dst_offset, token_per_rank);
                 }
