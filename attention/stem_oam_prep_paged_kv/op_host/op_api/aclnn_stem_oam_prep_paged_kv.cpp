@@ -117,15 +117,18 @@ aclnnStatus aclnnStemOamPrepPagedKvGetWorkspaceSize(
                            cacheLayout, kvBlockSize, stemBlockSize, stemStride, kFlat, vBias);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
 
-    auto kCacheView = uniqueExecutor->CreateView(
-        kCache, kCache->GetViewShape(), kCache->GetStorageShape(),
-        kCache->GetViewStrides(), kCache->GetViewOffset());
-    auto vCacheView = uniqueExecutor->CreateView(
-        vCache, vCache->GetViewShape(), vCache->GetStorageShape(),
-        vCache->GetViewStrides(), vCache->GetViewOffset());
-    auto kScaleCacheView = uniqueExecutor->CreateView(
-        kScaleCache, kScaleCache->GetViewShape(), kScaleCache->GetStorageShape(),
-        kScaleCache->GetViewStrides(), kScaleCache->GetViewOffset());
+    auto kCacheView = IsContiguous(kCache) ? kCache
+        : uniqueExecutor->CreateView(
+            kCache, kCache->GetViewShape(), kCache->GetStorageShape(),
+            kCache->GetViewStrides(), kCache->GetViewOffset());
+    auto vCacheView = IsContiguous(vCache) ? vCache
+        : uniqueExecutor->CreateView(
+            vCache, vCache->GetViewShape(), vCache->GetStorageShape(),
+            vCache->GetViewStrides(), vCache->GetViewOffset());
+    auto kScaleCacheView = IsContiguous(kScaleCache) ? kScaleCache
+        : uniqueExecutor->CreateView(
+            kScaleCache, kScaleCache->GetViewShape(), kScaleCache->GetStorageShape(),
+            kScaleCache->GetViewStrides(), kScaleCache->GetViewOffset());
 
     auto kvIndicesContiguous = l0op::Contiguous(kvIndices, uniqueExecutor.get());
     auto kvSeqLensContiguous = l0op::Contiguous(kvSeqLens, uniqueExecutor.get());
