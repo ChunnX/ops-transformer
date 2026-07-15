@@ -14,9 +14,6 @@
 #include "opdev/op_def.h"
 #include "opdev/op_log.h"
 
-#include <cstdio>
-#include <string>
-
 using namespace op;
 
 namespace l0op {
@@ -24,53 +21,6 @@ namespace l0op {
 OP_TYPE_REGISTER(FusedInferAttentionScore);
 
 namespace {
-constexpr uint64_t DEBUG_TENSOR_LIST_LOG_LIMIT = 4;
-
-template <typename... Args>
-void FiaDebugPrintf(const char *format, Args... args)
-{
-    std::printf(format, args...);
-    std::printf("\n");
-}
-
-void LogTensorDebugInfo(const char *name, const aclTensor *tensor)
-{
-    if (tensor == nullptr) {
-        FiaDebugPrintf("[FIA_DEBUG][L0] %s is nullptr.", name);
-        return;
-    }
-    FiaDebugPrintf("[FIA_DEBUG][L0] %s ptr[%p] dtype[%d] viewShape[%s] storageShape[%s] "
-                   "viewOffset[%ld] storageFormat[%d].",
-                   name, static_cast<const void *>(tensor), static_cast<int32_t>(tensor->GetDataType()),
-                   op::ToString(tensor->GetViewShape()).GetString(),
-                   op::ToString(tensor->GetStorageShape()).GetString(), tensor->GetViewOffset(),
-                   static_cast<int32_t>(tensor->GetStorageFormat()));
-}
-
-void LogTensorListDebugInfo(const char *name, const aclTensorList *tensorList)
-{
-    if (tensorList == nullptr) {
-        FiaDebugPrintf("[FIA_DEBUG][L0] %s tensorList is nullptr.", name);
-        return;
-    }
-    FiaDebugPrintf("[FIA_DEBUG][L0] %s tensorList size[%lu].", name, tensorList->Size());
-    uint64_t logSize = tensorList->Size() < DEBUG_TENSOR_LIST_LOG_LIMIT ?
-        tensorList->Size() : DEBUG_TENSOR_LIST_LOG_LIMIT;
-    for (uint64_t i = 0; i < logSize; ++i) {
-        std::string itemName = std::string(name) + "[" + std::to_string(i) + "]";
-        LogTensorDebugInfo(itemName.c_str(), (*tensorList)[i]);
-    }
-}
-
-void LogIntArrayDebugInfo(const char *name, const aclIntArray *array)
-{
-    if (array == nullptr) {
-        FiaDebugPrintf("[FIA_DEBUG][L0] %s aclIntArray is nullptr.", name);
-        return;
-    }
-    FiaDebugPrintf("[FIA_DEBUG][L0] %s aclIntArray size[%lu].", name, array->Size());
-}
-
 const aclTensor *ConvertIntArrayToTensor(const aclIntArray *array, aclOpExecutor *executor)
 {
     if (array == nullptr) {
@@ -84,7 +34,6 @@ const aclTensor *ConvertIntArrayToTensor(const aclIntArray *array, aclOpExecutor
     const_cast<aclTensor *>(tensor)->SetStorageFormat(Format::FORMAT_ND);
     const_cast<aclTensor *>(tensor)->SetViewFormat(Format::FORMAT_ND);
     const_cast<aclTensor *>(tensor)->SetOriginalFormat(Format::FORMAT_ND);
-    LogTensorDebugInfo("convertedIntArrayTensor", tensor);
     return tensor;
 }
 } // namespace
@@ -166,28 +115,6 @@ std::tuple<const aclTensor *, const aclTensor *> FusedInferAttentionScore(
         return {nullptr, nullptr};
     }
 
-    FiaDebugPrintf("[FIA_DEBUG][L0] enter FusedInferAttentionScore attrs: numHeads[%ld] scale[%f] "
-                   "preTokens[%ld] nextTokens[%ld] inputLayout[%s] numKeyValueHeads[%ld] sparseMode[%ld] "
-                   "innerPrecise[%ld] blockSize[%ld] antiquantMode[%ld] softmaxLseFlag[%d] "
-                   "keyAntiquantMode[%ld] valueAntiquantMode[%ld] queryQuantMode[%ld] pseType[%ld] outDtype[%ld].",
-                   numHeads, scaleValue, preTokens, nextTokens, inputLayout == nullptr ? "nullptr" : inputLayout,
-                   numKeyValueHeads, sparseMode, innerPrecise, blockSize, antiquantMode,
-                   static_cast<int32_t>(softmaxLseFlag), keyAntiquantMode, valueAntiquantMode, queryQuantMode,
-                   pseType, outDtype);
-    LogTensorDebugInfo("query", query);
-    LogTensorListDebugInfo("key", key);
-    LogTensorListDebugInfo("value", value);
-    LogTensorDebugInfo("pseShiftOptional", pseShiftOptional);
-    LogTensorDebugInfo("attenMaskOptional", attenMaskOptional);
-    LogTensorDebugInfo("blockTableOptional", blockTableOptional);
-    LogTensorDebugInfo("attentionOut", attentionOut);
-    LogTensorDebugInfo("softmaxLse", softmaxLse);
-    LogIntArrayDebugInfo("actualSeqLengthsOptional", actualSeqLengthsOptional);
-    LogIntArrayDebugInfo("actualSeqLengthsKvOptional", actualSeqLengthsKvOptional);
-    LogIntArrayDebugInfo("actualSharedPrefixLenOptional", actualSharedPrefixLenOptional);
-    LogIntArrayDebugInfo("qStartIdxOptional", qStartIdxOptional);
-    LogIntArrayDebugInfo("kvStartIdxOptional", kvStartIdxOptional);
-
     const aclTensor *actualSeqLengthsTensor = ConvertIntArrayToTensor(actualSeqLengthsOptional, executor);
     const aclTensor *actualSeqLengthsKvTensor = ConvertIntArrayToTensor(actualSeqLengthsKvOptional, executor);
     const aclTensor *actualSharedPrefixLenTensor = ConvertIntArrayToTensor(actualSharedPrefixLenOptional, executor);
@@ -212,10 +139,6 @@ std::tuple<const aclTensor *, const aclTensor *> FusedInferAttentionScore(
         OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "FusedInferAttentionScore: alloc softmaxLseOut failed.");
         return {nullptr, nullptr};
     }
-    LogTensorDebugInfo("attentionOutOut.beforeInfer", attentionOutOut);
-    LogTensorDebugInfo("softmaxLseOut.beforeInfer", softmaxLseOut);
-
-    FiaDebugPrintf("[FIA_DEBUG][L0] before INFER_SHAPE.");
     auto ret = INFER_SHAPE(FusedInferAttentionScore,
         OP_INPUT(query, key, value, pseShiftOptional, attenMaskOptional, actualSeqLengthsTensor,
                  actualSeqLengthsKvTensor, deqScale1Optional, quantScale1Optional, deqScale2Optional,
@@ -231,16 +154,9 @@ std::tuple<const aclTensor *, const aclTensor *> FusedInferAttentionScore(
                 valueAntiquantMode, queryQuantMode, pseType, outDtype));
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "FusedInferAttentionScore InferShape failed.");
-        LogTensorDebugInfo("query.afterInferFailed", query);
-        LogTensorListDebugInfo("key.afterInferFailed", key);
-        LogTensorListDebugInfo("value.afterInferFailed", value);
         return {nullptr, nullptr};
     }
-    FiaDebugPrintf("[FIA_DEBUG][L0] after INFER_SHAPE ret[%d].", static_cast<int32_t>(ret));
-    LogTensorDebugInfo("attentionOutOut.afterInfer", attentionOutOut);
-    LogTensorDebugInfo("softmaxLseOut.afterInfer", softmaxLseOut);
 
-    FiaDebugPrintf("[FIA_DEBUG][L0] before ADD_TO_LAUNCHER_LIST_AICORE.");
     ret = ADD_TO_LAUNCHER_LIST_AICORE(FusedInferAttentionScore,
         OP_INPUT(query, key, value, pseShiftOptional, attenMaskOptional, actualSeqLengthsTensor,
                  actualSeqLengthsKvTensor, deqScale1Optional, quantScale1Optional, deqScale2Optional,
@@ -256,15 +172,8 @@ std::tuple<const aclTensor *, const aclTensor *> FusedInferAttentionScore(
                 valueAntiquantMode, queryQuantMode, pseType, outDtype));
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "FusedInferAttentionScore LaunchAicore failed.");
-        LogTensorDebugInfo("query.afterLaunchFailed", query);
-        LogTensorListDebugInfo("key.afterLaunchFailed", key);
-        LogTensorListDebugInfo("value.afterLaunchFailed", value);
-        LogTensorDebugInfo("actualSeqLengthsTensor.afterLaunchFailed", actualSeqLengthsTensor);
-        LogTensorDebugInfo("actualSeqLengthsKvTensor.afterLaunchFailed", actualSeqLengthsKvTensor);
-        LogTensorDebugInfo("blockTableOptional.afterLaunchFailed", blockTableOptional);
         return {nullptr, nullptr};
     }
-    FiaDebugPrintf("[FIA_DEBUG][L0] after ADD_TO_LAUNCHER_LIST_AICORE ret[%d].", static_cast<int32_t>(ret));
 
     return {attentionOutOut, softmaxLseOut};
 }
