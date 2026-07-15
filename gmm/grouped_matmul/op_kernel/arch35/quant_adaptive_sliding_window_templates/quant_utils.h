@@ -170,15 +170,20 @@ __aicore__ inline void InitOutputWithZero(AscendC::GlobalTensor<T> yInitGlobal, 
     if (AscendC::GetSubBlockIdx() >= 1) { // 搬运共享带宽，只需要把aiv0的0搬到GM即可，也兼容aic:aiv=1:1的场景
         return;
     }
-    uint32_t blockIdx = AscendC::GetBlockIdx() / AscendC::GetTaskRation();
+    uint32_t taskRatio = AscendC::GetTaskRation();
+    if (taskRatio == 0) {
+        return;
+    }
+    uint32_t blockIndex = AscendC::GetBlockIdx() / taskRatio;
     // 仿照InitOutput接口取值
     uint64_t initSize =
         (QuantUtils::MAX_REPEAT_TIMES * AscendC::ONE_BLK_SIZE) / sizeof(T); // 能存放输出dtype的多少个元素
     uint64_t perCoreSize = QuantUtils::CeilDiv(ySize, usedCoreNum);
     perCoreSize = GROUPED_MATMUL::AlignUp<QuantUtils::UB_ALIGN_SIZE>(perCoreSize * sizeof(T)) / sizeof(T);
     initSize = QuantUtils::Min(initSize, perCoreSize);
-    uint64_t realCoreNum = QuantUtils::Min(QuantUtils::CeilDiv(ySize, initSize), static_cast<uint64_t>(usedCoreNum));
-    if (blockIdx >= realCoreNum) { // 多余核数返回，每个核上最少32B
+    uint64_t realCoreNum =
+        QuantUtils::Min(QuantUtils::CeilDiv(ySize, initSize), static_cast<uint64_t>(usedCoreNum));
+    if (blockIndex >= realCoreNum) { // 多余核数返回，每个核上最少32B
         return;
     }
     if (!isKZeroInit) { // 第一次k==0时，需要初始化ub中buffer全0
@@ -188,8 +193,8 @@ __aicore__ inline void InitOutputWithZero(AscendC::GlobalTensor<T> yInitGlobal, 
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(eventIdVToMte3);
         isKZeroInit = true;
     }
-    uint64_t yOffset = perCoreSize * blockIdx;
-    uint64_t outCurSize = (blockIdx == realCoreNum - 1) ? (ySize - yOffset) : perCoreSize;
+    uint64_t yOffset = perCoreSize * blockIndex;
+    uint64_t outCurSize = (blockIndex == realCoreNum - 1) ? (ySize - yOffset) : perCoreSize;
     uint64_t movRound = outCurSize / initSize;
     uint64_t movTail = outCurSize - movRound * initSize;
 
