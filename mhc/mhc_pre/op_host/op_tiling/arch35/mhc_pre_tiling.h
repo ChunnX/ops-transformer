@@ -63,6 +63,8 @@ TILING_DATA_FIELD_DEF(uint32_t, multCoreSplitKSize);
 TILING_DATA_FIELD_DEF(uint32_t, mkWorkspaceMmOffset);
 TILING_DATA_FIELD_DEF(uint32_t, mkWorkspaceRmsOffset);
 TILING_DATA_FIELD_DEF(uint32_t, mkWorkspaceFinalOffset);
+TILING_DATA_FIELD_DEF(uint32_t, stage2UsedAivNum);
+TILING_DATA_FIELD_DEF(uint32_t, stage2RowsPerCore);
 END_TILING_DATA_DEF;
 
 REGISTER_TILING_DATA_CLASS(MhcPre, MhcPreTilingData);

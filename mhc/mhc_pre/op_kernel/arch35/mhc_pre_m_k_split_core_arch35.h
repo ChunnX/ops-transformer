@@ -73,8 +73,82 @@ __aicore__ inline void MhcPreMkVFTransND2NZ(const LocalTensor<float>& dstLocal,
     }
 }
 
+template <typename T, bool INIT_RMS>
+__aicore__ inline void MhcPreMkVFProcessXInGammaLoops(const LocalTensor<float>& xOutLocal,
+    const LocalTensor<float>& rmsLocal, const LocalTensor<T>& xInLocal,
+    const LocalTensor<float>& gammaLocal, uint16_t rowCount, uint16_t columnCount,
+    uint16_t loopStart, uint16_t processLoops)
+{
+    __local_mem__ float* xOut = (__local_mem__ float*)xOutLocal.GetPhyAddr();
+    __local_mem__ float* rms = (__local_mem__ float*)rmsLocal.GetPhyAddr();
+    __local_mem__ T* xIn = (__local_mem__ T*)xInLocal.GetPhyAddr();
+    __local_mem__ float* gamma = (__local_mem__ float*)gammaLocal.GetPhyAddr();
+    uint32_t srcStride = LowApiRoundUp<T>(columnCount);
+    uint32_t dstStride = LowApiRoundUp<float>(columnCount);
+    uint16_t loopEnd = loopStart + processLoops;
+
+    __VEC_SCOPE__
+    {
+        AscendC::MicroAPI::RegTensor<T> xInReg;
+        AscendC::MicroAPI::RegTensor<float> gammaReg;
+        AscendC::MicroAPI::RegTensor<float> xReg;
+        AscendC::MicroAPI::RegTensor<float> xGammaReg;
+        AscendC::MicroAPI::RegTensor<float> squareReg;
+        AscendC::MicroAPI::RegTensor<float> partialReg;
+        AscendC::MicroAPI::RegTensor<float> sumReg;
+        uint32_t remaining = columnCount -
+            static_cast<uint32_t>(loopStart) * MHC_PRE_LOW_API_VL_FP32;
+        for (uint16_t loop = loopStart; loop < loopEnd; ++loop) {
+            AscendC::MicroAPI::MaskReg mask =
+                AscendC::MicroAPI::UpdateMask<float>(remaining);
+            uint32_t vectorOffset =
+                static_cast<uint32_t>(loop) * MHC_PRE_LOW_API_VL_FP32;
+            AscendC::MicroAPI::LoadAlign(gammaReg, gamma + vectorOffset);
+            for (uint16_t row = 0; row < rowCount; ++row) {
+                uint32_t srcOffset = static_cast<uint32_t>(row) * srcStride + vectorOffset;
+                AscendC::MicroAPI::LoadAlign<T, AscendC::MicroAPI::LoadDist::DIST_UNPACK_B16>(
+                    xInReg, xIn + srcOffset);
+                AscendC::MicroAPI::Cast<float, T, MHC_PRE_LOW_API_CAST_B16_TO_B32>(
+                    xReg, xInReg, mask);
+                AscendC::MicroAPI::Mul(xGammaReg, gammaReg, xReg, mask);
+                uint32_t dstOffset = static_cast<uint32_t>(row) * dstStride + vectorOffset;
+                AscendC::MicroAPI::StoreAlign(xOut + dstOffset, xGammaReg, mask);
+                AscendC::MicroAPI::Mul(squareReg, xReg, xReg, mask);
+                AscendC::MicroAPI::Reduce<AscendC::MicroAPI::ReduceType::SUM>(
+                    partialReg, squareReg, mask);
+                if constexpr (INIT_RMS) {
+                    AscendC::MicroAPI::Duplicate(sumReg, 0.0f);
+                } else {
+                    AscendC::MicroAPI::Load(sumReg, rms + row);
+                }
+                AscendC::MicroAPI::Add(sumReg, sumReg, partialReg, mask);
+                AscendC::MicroAPI::Store(rms + row, sumReg, 1U);
+            }
+        }
+    }
+}
+
+template <typename T, bool IS_FIRST_K>
+__aicore__ inline void MhcPreMkVFProcessXInGamma(const LocalTensor<float>& xOutLocal,
+    const LocalTensor<float>& rmsLocal, const LocalTensor<T>& xInLocal,
+    const LocalTensor<float>& gammaLocal, uint16_t rowCount, uint16_t columnCount)
+{
+    uint16_t loopCount = LowApiCeilDiv(columnCount, MHC_PRE_LOW_API_VL_FP32);
+    if constexpr (IS_FIRST_K) {
+        MhcPreMkVFProcessXInGammaLoops<T, true>(xOutLocal, rmsLocal, xInLocal,
+            gammaLocal, rowCount, columnCount, 0U, 1U);
+        if (loopCount > 1U) {
+            MhcPreMkVFProcessXInGammaLoops<T, false>(xOutLocal, rmsLocal, xInLocal,
+                gammaLocal, rowCount, columnCount, 1U, loopCount - 1U);
+        }
+    } else {
+        MhcPreMkVFProcessXInGammaLoops<T, false>(xOutLocal, rmsLocal, xInLocal,
+            gammaLocal, rowCount, columnCount, 0U, loopCount);
+    }
+}
 __aicore__ inline void MhcPreMkVFReducePartials(const LocalTensor<float>& mmOutLocal,
     const LocalTensor<float>& invRmsOutLocal, const LocalTensor<float>& mmPartialLocal,
+
     const LocalTensor<float>& rmsPartialLocal, uint16_t groupK, uint16_t rowCount,
     uint16_t fusionSize, uint16_t rmsStride, float scaleMean, float normEps)
 {
@@ -173,6 +247,87 @@ __aicore__ inline void MhcPreMkVFReducePartials(const LocalTensor<float>& mmOutL
             AscendC::MicroAPI::Add(sumMm0, sumMm0, sumMm1, mmMask);
             AscendC::MicroAPI::Store<float>(invRmsOut + row, sumRms0, 1U);
             AscendC::MicroAPI::Store<float>(mmOut + row * fusionSize, sumMm0, fusionSize);
+        }
+    }
+}
+
+template <int8_t HAS_RESI>
+__aicore__ inline void MhcPreMkVFPostSegmentsN4(const LocalTensor<float>& hPreLocal,
+    const LocalTensor<float>& hPostLocal, const LocalTensor<float>& hResLocal,
+    const LocalTensor<float>& mmLocal, const LocalTensor<float>& invRmsLocal,
+    const LocalTensor<float>& alphaLocal, const LocalTensor<float>& biasLocal,
+    uint16_t rowCount, uint32_t invRmsOffset)
+{
+    __local_mem__ float* hPre = (__local_mem__ float*)hPreLocal.GetPhyAddr();
+    __local_mem__ float* hPost = (__local_mem__ float*)hPostLocal.GetPhyAddr();
+    __local_mem__ float* mm = (__local_mem__ float*)mmLocal.GetPhyAddr();
+    __local_mem__ float* invRms = (__local_mem__ float*)invRmsLocal.GetPhyAddr();
+    __local_mem__ float* alpha = (__local_mem__ float*)alphaLocal.GetPhyAddr();
+    __local_mem__ float* bias = (__local_mem__ float*)biasLocal.GetPhyAddr();
+    __local_mem__ float* hRes = nullptr;
+    if constexpr (HAS_RESI == MHC_PRE_HAS_RESI) {
+        hRes = (__local_mem__ float*)hResLocal.GetPhyAddr();
+    }
+
+    __VEC_SCOPE__
+    {
+        AscendC::MicroAPI::RegTensor<float> dataReg;
+        AscendC::MicroAPI::RegTensor<float> invRmsReg;
+        AscendC::MicroAPI::RegTensor<float> invRmsBroadReg;
+        AscendC::MicroAPI::RegTensor<float> alphaPreReg;
+        AscendC::MicroAPI::RegTensor<float> alphaPostReg;
+        AscendC::MicroAPI::RegTensor<float> alphaResReg;
+        AscendC::MicroAPI::RegTensor<float> biasPreReg;
+        AscendC::MicroAPI::RegTensor<float> biasPostReg;
+        AscendC::MicroAPI::RegTensor<float> biasResReg;
+        uint32_t nMaskSize = MHC_PRE_LOW_API_N4;
+        uint32_t resMaskSize = MHC_PRE_LOW_API_N4 * MHC_PRE_LOW_API_N4;
+        AscendC::MicroAPI::MaskReg nMask =
+            AscendC::MicroAPI::UpdateMask<float>(nMaskSize);
+        AscendC::MicroAPI::MaskReg resMask =
+            AscendC::MicroAPI::UpdateMask<float>(resMaskSize);
+
+        AscendC::MicroAPI::Load<float>(alphaPreReg, alpha);
+        AscendC::MicroAPI::Load<float>(alphaPostReg, alpha + MHC_PRE_LOW_API_N4);
+        AscendC::MicroAPI::Load<float>(biasPreReg, bias);
+        AscendC::MicroAPI::Load<float>(biasPostReg, bias + MHC_PRE_LOW_API_N4);
+        if constexpr (HAS_RESI == MHC_PRE_HAS_RESI) {
+            AscendC::MicroAPI::Load<float>(alphaResReg, alpha + 2U * MHC_PRE_LOW_API_N4);
+            AscendC::MicroAPI::Load<float>(biasResReg, bias + 2U * MHC_PRE_LOW_API_N4);
+        }
+
+        for (uint16_t row = 0; row < rowCount; ++row) {
+            AscendC::MicroAPI::Load<float>(invRmsReg, invRms + invRmsOffset + row);
+            AscendC::MicroAPI::Duplicate(invRmsBroadReg, invRmsReg, nMask);
+            AscendC::MicroAPI::Load<float>(dataReg,
+                mm + static_cast<uint32_t>(row) * MHC_PRE_LOW_API_FUSION_N4);
+            AscendC::MicroAPI::Mul(dataReg, dataReg, invRmsBroadReg, nMask);
+            AscendC::MicroAPI::Mul(dataReg, dataReg, alphaPreReg, nMask);
+            AscendC::MicroAPI::Add(dataReg, dataReg, biasPreReg, nMask);
+            AscendC::MicroAPI::Store<float>(hPre + row * MHC_PRE_LOW_API_N4,
+                dataReg, MHC_PRE_LOW_API_N4);
+
+            AscendC::MicroAPI::Load<float>(dataReg,
+                mm + static_cast<uint32_t>(row) * MHC_PRE_LOW_API_FUSION_N4 +
+                MHC_PRE_LOW_API_N4);
+            AscendC::MicroAPI::Mul(dataReg, dataReg, invRmsBroadReg, nMask);
+            AscendC::MicroAPI::Mul(dataReg, dataReg, alphaPostReg, nMask);
+            AscendC::MicroAPI::Add(dataReg, dataReg, biasPostReg, nMask);
+            AscendC::MicroAPI::Store<float>(hPost + row * MHC_PRE_LOW_API_N4,
+                dataReg, MHC_PRE_LOW_API_N4);
+
+            if constexpr (HAS_RESI == MHC_PRE_HAS_RESI) {
+                AscendC::MicroAPI::Duplicate(invRmsBroadReg, invRmsReg, resMask);
+                AscendC::MicroAPI::Load<float>(dataReg,
+                    mm + static_cast<uint32_t>(row) * MHC_PRE_LOW_API_FUSION_N4 +
+                    2U * MHC_PRE_LOW_API_N4);
+                AscendC::MicroAPI::Mul(dataReg, dataReg, invRmsBroadReg, resMask);
+                AscendC::MicroAPI::Mul(dataReg, dataReg, alphaResReg, resMask);
+                AscendC::MicroAPI::Add(dataReg, dataReg, biasResReg, resMask);
+                AscendC::MicroAPI::Store<float>(
+                    hRes + row * MHC_PRE_LOW_API_N4 * MHC_PRE_LOW_API_N4,
+                    dataReg, MHC_PRE_LOW_API_N4 * MHC_PRE_LOW_API_N4);
+            }
         }
     }
 }
@@ -323,15 +478,11 @@ private:
                     this->DataCopyGamma(currentKUb, kOffset + kUbOffset);
                     this->gammaUb_ = this->gammaInQueue_.template DeQue<P>();
                     if (initializeRms) {
-                        this->template VFDoV0ProcessXIn<true, true>((__ubuf__ P *)xFloatLocal.GetPhyAddr(),
-                            (__ubuf__ P *)this->invRmsUb_.GetPhyAddr(),
-                            (__ubuf__ T *)this->xLocal_.GetPhyAddr(),
-                            (__ubuf__ P *)this->gammaUb_.GetPhyAddr(), rowCount, currentKUb);
+                        MhcPreMkVFProcessXInGamma<T, true>(xFloatLocal, this->invRmsUb_,
+                            this->xLocal_, this->gammaUb_, rowCount, currentKUb);
                     } else {
-                        this->template VFDoV0ProcessXIn<true, false>((__ubuf__ P *)xFloatLocal.GetPhyAddr(),
-                            (__ubuf__ P *)this->invRmsUb_.GetPhyAddr(),
-                            (__ubuf__ T *)this->xLocal_.GetPhyAddr(),
-                            (__ubuf__ P *)this->gammaUb_.GetPhyAddr(), rowCount, currentKUb);
+                        MhcPreMkVFProcessXInGamma<T, false>(xFloatLocal, this->invRmsUb_,
+                            this->xLocal_, this->gammaUb_, rowCount, currentKUb);
                     }
                     this->gammaInQueue_.FreeTensor(this->gammaUb_);
                 } else if (initializeRms) {
@@ -422,18 +573,22 @@ public:
         this->InitUbBuffers();
 
         if ASCEND_IS_AIV {
-            uint32_t aicIndex = GetBlockIdx() / 2U;
-            selected_ = aicIndex < this->tiling_->cubeBlockDimM * this->tiling_->cubeBlockDimK &&
-                        aicIndex % this->tiling_->cubeBlockDimK == 0;
+            uint32_t aivIndex = GetBlockIdx();
+            selected_ = aivIndex < this->tiling_->stage2UsedAivNum;
             if (selected_) {
-                uint32_t mIndex = aicIndex / this->tiling_->cubeBlockDimK;
+                uint64_t absoluteMStart =
+                    static_cast<uint64_t>(aivIndex) * this->tiling_->stage2RowsPerCore;
+                uint64_t mIndex = absoluteMStart / this->tiling_->mL1Size;
+                uint64_t localMStart = absoluteMStart - mIndex * this->tiling_->mL1Size;
                 this->coreIdx_ = mIndex;
-                this->subBlockIdx_ = GetSubBlockIdx();
                 this->globalOffsetM_ = static_cast<uint64_t>(mIndex) * this->tiling_->mL1Size;
                 this->curSingleT_ = AscendC::Std::min(
-                    static_cast<uint64_t>(this->tiling_->mL1Size), this->totalLength_ - this->globalOffsetM_);
+                    static_cast<uint64_t>(this->tiling_->stage2RowsPerCore),
+                    this->totalLength_ - absoluteMStart);
                 this->mnConfig_.curSingleCoreM = this->curSingleT_;
-                this->VectorComputeOffset();
+                this->vectorOffset_.singleCoreM = this->curSingleT_;
+                this->vectorOffset_.offsetMStart = localMStart;
+                this->vectorOffset_.offsetMEnd = localMStart + this->curSingleT_;
                 this->AIVPreLoad();
             }
         }
@@ -448,6 +603,8 @@ public:
             return;
         }
         ReducePartials();
+        SetFlag<HardEvent::MTE3_MTE2>(static_cast<event_t>(0));
+        WaitFlag<HardEvent::MTE3_MTE2>(static_cast<event_t>(0));
         PostProcess();
         this->invRmsOutQueue_.FreeTensor(this->invRmsUb_);
         this->biasInQue_.FreeTensor(this->biasInUb_);
@@ -511,6 +668,40 @@ private:
             this->vectorOffset_.offsetMStart);
     }
 
+    __aicore__ inline void PostProcessSegments(uint64_t offsetT, uint64_t lenT,
+        uint64_t localOffset)
+    {
+        uint64_t outputOffset = this->globalOffsetM_ + offsetT;
+        uint64_t hMixOffset = outputOffset * this->matrixInfo_.fusionSize;
+        LocalTensor<P> hResLocal;
+        if constexpr (HAS_RESI == MHC_PRE_HAS_RESI) {
+            hResLocal = this->outQueue_.template AllocTensor<P>();
+        }
+
+        this->HMixCopyIn(hMixOffset, lenT);
+        this->matmulRes_ = this->xInQueue_.template DeQue<P>();
+        MhcPreMkVFPostSegmentsN4<HAS_RESI>(this->hPreBuff_, this->hPostBuff_, hResLocal,
+            this->matmulRes_, this->invRmsUb_, this->alphaInUb_, this->biasInUb_,
+            static_cast<uint16_t>(lenT), static_cast<uint32_t>(localOffset));
+        PipeBarrier<PIPE_V>();
+
+        if constexpr (HAS_RESI == MHC_PRE_HAS_RESI) {
+            this->outQueue_.template EnQue<P>(hResLocal);
+            hResLocal = this->outQueue_.template DeQue<P>();
+            DataCopyExtParams copyParams;
+            copyParams.blockCount = 1;
+            copyParams.blockLen = static_cast<uint32_t>(
+                lenT * MHC_PRE_LOW_API_N4 * MHC_PRE_LOW_API_N4 * sizeof(P));
+            copyParams.srcStride = 0;
+            copyParams.dstStride = 0;
+            DataCopyPad(this->hResGm_[
+                outputOffset * MHC_PRE_LOW_API_N4 * MHC_PRE_LOW_API_N4],
+                hResLocal, copyParams);
+            this->outQueue_.FreeTensor(hResLocal);
+        }
+        this->xInQueue_.FreeTensor(this->matmulRes_);
+    }
+
     __aicore__ inline void PostProcess()
     {
         uint64_t localOffset = 0;
@@ -518,7 +709,7 @@ private:
              offsetT < this->vectorOffset_.offsetMEnd; offsetT += this->V1_BASE_T) {
             uint64_t lenT = AscendC::Std::min(
                 static_cast<uint64_t>(this->V1_BASE_T), this->vectorOffset_.offsetMEnd - offsetT);
-            this->AIV1Prologue(offsetT, lenT, localOffset);
+            PostProcessSegments(offsetT, lenT, localOffset);
             this->AIV1ProcessHPost(offsetT, lenT);
             this->AIV1ProcessHPre(offsetT, lenT);
             this->AIV1ProcessHIn(offsetT, lenT, this->v1ChunkDSize_);
