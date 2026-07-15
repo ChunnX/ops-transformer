@@ -29,6 +29,7 @@
 namespace aicpu {
 
 static const int64_t NUM_128 = 128L;
+static const uint32_t BLOCK_TOLERANCE_RATIO = 2U;
 
 struct CoreCache {
     uint64_t blockLimit { 0U };
@@ -88,6 +89,7 @@ private:
     bool ScheduleSections(std::vector<SectionInfo> &sectionResults);
     bool GenMetadata(const std::vector<SectionInfo> &sectionResults);
     uint32_t GetRowBlockNum(uint32_t bIdx, uint32_t n1Idx, uint32_t s1Idx) const;
+    void InitBN1BlockInfo();
     uint64_t GetBN1BlockNum(uint32_t bIdx, uint32_t n1Idx) const;
     uint32_t CalcValidS1Rows(uint32_t bIdx, uint32_t n1Idx) const;
     uint64_t CalcBN1Cost(uint32_t bIdx, uint32_t n1Idx) const;
@@ -132,6 +134,8 @@ private:
     uint32_t Qbmax_ = 0;
     uint32_t mBaseSize_ = NUM_128;
     uint32_t s2BaseSize_ = NUM_128;
+    std::vector<uint64_t> bN1BlockNum_ {};
+    std::vector<uint32_t> bN1LastRowBlockNum_ {};
 
 private:
     enum class ParamId : uint32_t {

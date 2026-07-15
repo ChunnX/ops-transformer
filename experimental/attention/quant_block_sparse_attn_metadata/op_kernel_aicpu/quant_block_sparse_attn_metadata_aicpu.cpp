@@ -148,6 +148,7 @@ bool QuantBlockSparseAttnMetadataCpuKernel::ParamsInit()
                          batchSize_, numHeadsQ_, numHeadsKv_, aicCoreNum_, Qbmax_);
         return false;
     }
+    InitBN1BlockInfo();
     return true;
 }
 
@@ -167,13 +168,39 @@ uint32_t QuantBlockSparseAttnMetadataCpuKernel::GetRowBlockNum(uint32_t bIdx, ui
     return sparseSeqLenData[idx] > 0 ? static_cast<uint32_t>(sparseSeqLenData[idx]) : 0U;
 }
 
+void QuantBlockSparseAttnMetadataCpuKernel::InitBN1BlockInfo()
+{
+    const uint32_t batchSize = static_cast<uint32_t>(batchSize_);
+    const uint32_t numHeadsQ = static_cast<uint32_t>(numHeadsQ_);
+    const uint32_t totalBN1 = batchSize * numHeadsQ;
+    bN1BlockNum_.assign(totalBN1, 0U);
+    bN1LastRowBlockNum_.assign(totalBN1, 0U);
+
+    for (uint32_t bIdx = 0U; bIdx < batchSize; ++bIdx) {
+        for (uint32_t n1Idx = 0U; n1Idx < numHeadsQ; ++n1Idx) {
+            const uint32_t bn1Idx = bIdx * numHeadsQ + n1Idx;
+            uint64_t totalBlock = 0U;
+            uint32_t lastRowBlock = 0U;
+            for (uint32_t s1Idx = 0U; s1Idx < Qbmax_; ++s1Idx) {
+                const uint32_t rowBlock = GetRowBlockNum(bIdx, n1Idx, s1Idx);
+                totalBlock += rowBlock;
+                if (rowBlock > 0U) {
+                    lastRowBlock = rowBlock;
+                }
+            }
+            bN1BlockNum_[bn1Idx] = totalBlock;
+            bN1LastRowBlockNum_[bn1Idx] = lastRowBlock;
+        }
+    }
+}
+
 uint64_t QuantBlockSparseAttnMetadataCpuKernel::GetBN1BlockNum(uint32_t bIdx, uint32_t n1Idx) const
 {
-    uint64_t bN1BlockNum = 0U;
-    for (uint32_t s1Idx = 0U; s1Idx < Qbmax_; ++s1Idx) {
-        bN1BlockNum += GetRowBlockNum(bIdx, n1Idx, s1Idx);
+    const uint32_t bn1Idx = bIdx * static_cast<uint32_t>(numHeadsQ_) + n1Idx;
+    if (bn1Idx >= bN1BlockNum_.size()) {
+        return 0U;
     }
-    return bN1BlockNum;
+    return bN1BlockNum_[bn1Idx];
 }
 
 uint32_t QuantBlockSparseAttnMetadataCpuKernel::CalcValidS1Rows(uint32_t bIdx, uint32_t n1Idx) const
@@ -295,7 +322,13 @@ void QuantBlockSparseAttnMetadataCpuKernel::AssignByBatch(AssignContext &assignC
             assignContext.curS2Idx = 0U;
             continue;
         }
-        if (assignContext.coreCache.block + assignContext.bN1Block > assignContext.coreCache.blockLimit) {
+        uint64_t tolerance = 0U;
+        if (assignContext.curBN1Idx < bN1LastRowBlockNum_.size()) {
+            tolerance = static_cast<uint64_t>(bN1LastRowBlockNum_[assignContext.curBN1Idx]) /
+                BLOCK_TOLERANCE_RATIO;
+        }
+        if (assignContext.coreCache.block + assignContext.bN1Block >
+            assignContext.coreCache.blockLimit + tolerance) {
             return;
         }
 
@@ -318,8 +351,9 @@ void QuantBlockSparseAttnMetadataCpuKernel::AssignByRow(AssignContext &assignCon
         }
         uint32_t rowBlock =
             GetRowBlockNum(assignContext.curBIdx, assignContext.curN1Idx, assignContext.curS1Idx);
+        uint64_t tolerance = static_cast<uint64_t>(rowBlock) / BLOCK_TOLERANCE_RATIO;
         if (assignContext.coreCache.block > 0U &&
-            assignContext.coreCache.block + rowBlock > assignContext.coreCache.blockLimit) {
+            assignContext.coreCache.block + rowBlock > assignContext.coreCache.blockLimit + tolerance) {
             return;
         }
         assignContext.coreCache.block += rowBlock;
