@@ -169,7 +169,9 @@ class NPUBackend(Backend):
                 shutil.rmtree(d, ignore_errors=True)
 
     def _get_graph_net(self):
+        print("[graph_mode] _get_graph_net: resetting static kernel state...")
         self._reset_static_kernel_state()
+        print("[graph_mode] _get_graph_net: dynamo reset + new torch.compile...")
         torch._dynamo.reset()
         net = FlashAttnGraphNetwork().npu()
         config = CompilerConfig()
@@ -201,6 +203,7 @@ class NPUBackend(Backend):
 
         if self._graph_mode:
             net = self._get_graph_net()
+            print(f"[graph_mode] calling compiled net with q.shape={inputs['q'].shape}...")
             out, lse = net(
                 inputs["q"], inputs["k"], inputs["v"],
                 kernel_kwargs.get("block_table"),
@@ -221,6 +224,12 @@ class NPUBackend(Backend):
                 kernel_kwargs.get("layout_out", "BNSD"),
                 kernel_kwargs.get("return_softmax_lse", False),
             )
+            import glob
+            cache_contents = glob.glob("./fa_kernel_cache/**/*", recursive=True)
+            print(f"[graph_mode] fa_kernel_cache contents after net call: {len(cache_contents)} files")
+            if cache_contents:
+                for f in cache_contents[:10]:
+                    print(f"  {f}")
         else:
             out, lse = flash_attn(inputs["q"], inputs["k"], inputs["v"],
                                       metadata=metadata, **kernel_kwargs)
