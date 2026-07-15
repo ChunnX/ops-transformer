@@ -627,8 +627,14 @@ ge::graphStatus BSATiling::CheckSparsePattern(gert::TilingContext *bsaContext, c
         return ge::GRAPH_FAILED;
     }
     // temporary regulation of blockShapeY
-    if (blockShapeY_ % defaultShape != 0) {
-        OP_LOGE(bsaContext->GetNodeName(), "BlockShape elem1 must be a multiple of 128 so far, "
+    if (socVer_ == SOC_VER_950_CODE) {
+        if (blockShapeY_ % defaultShape != 0) {
+            OP_LOGE(bsaContext->GetNodeName(), "On chip 950, BlockShape elem1 must be a multiple of 128 so far, "
+                "but got elem1: %ld.", blockShapeY_);
+            return ge::GRAPH_FAILED;
+        }
+    } else if (blockShapeY_ % defaultShape != 0 && blockShapeY_ != 64) {
+        OP_LOGE(bsaContext->GetNodeName(), "On chip 910 & 910_93, BlockShape elem1 must be 64 or 128, "
             "but got elem1: %ld.", blockShapeY_);
         return ge::GRAPH_FAILED;
     }
