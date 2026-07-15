@@ -1682,6 +1682,10 @@ TEST_F(MhcPreTiling, Ut_Check_MK_N4_M1024_D5120_HasResi)
         readField(fieldOffset([](auto &data, uint32_t value) { data.set_mkWorkspaceRmsOffset(value); }));
     uint32_t finalOffset =
         readField(fieldOffset([](auto &data, uint32_t value) { data.set_mkWorkspaceFinalOffset(value); }));
+    uint32_t stage2UsedAivNum =
+        readField(fieldOffset([](auto &data, uint32_t value) { data.set_stage2UsedAivNum(value); }));
+    uint32_t stage2RowsPerCore =
+        readField(fieldOffset([](auto &data, uint32_t value) { data.set_stage2RowsPerCore(value); }));
 
     auto ceilDiv = [](uint32_t value, uint32_t divisor) -> uint32_t {
         return (value + divisor - 1U) / divisor;
@@ -1693,6 +1697,9 @@ TEST_F(MhcPreTiling, Ut_Check_MK_N4_M1024_D5120_HasResi)
     uint32_t expectedKDim = tilingInfo.blockNum / expectedMDim;
     uint32_t expectedSplitK = roundUp(ceilDiv(phi_dim1, expectedKDim), 256U);
     uint32_t expectedActualKBlocks = ceilDiv(phi_dim1, expectedSplitK);
+    uint32_t expectedStage2UsedAivNum =
+        std::min<uint32_t>(B * S, static_cast<uint32_t>(tilingInfo.blockNum) * 2U);
+    uint32_t expectedStage2RowsPerCore = ceilDiv(B * S, expectedStage2UsedAivNum);
 
     EXPECT_EQ(mDim, expectedMDim);
     EXPECT_EQ(kDim, expectedActualKBlocks);
@@ -1700,6 +1707,8 @@ TEST_F(MhcPreTiling, Ut_Check_MK_N4_M1024_D5120_HasResi)
     EXPECT_EQ(mmOffset, 0U);
     EXPECT_LT(mmOffset, rmsOffset);
     EXPECT_LT(rmsOffset, finalOffset);
+    EXPECT_EQ(stage2UsedAivNum, expectedStage2UsedAivNum);
+    EXPECT_EQ(stage2RowsPerCore, expectedStage2RowsPerCore);
     ASSERT_FALSE(tilingInfo.workspaceSizes.empty());
     EXPECT_GT(tilingInfo.workspaceSizes[0], static_cast<int64_t>(finalOffset));
 }

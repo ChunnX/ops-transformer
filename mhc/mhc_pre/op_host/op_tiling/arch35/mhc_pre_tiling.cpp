@@ -680,6 +680,10 @@ void MhcPreBaseTiling::FillMkTilingData()
     tilingData_.set_nAlign(static_cast<uint32_t>(roundUp(N_, LOW_API_FLOAT_ALIGN)));
     tilingData_.set_bufferPool0Size(LOW_API_BUFFER_POOL0_SIZE);
     tilingData_.set_bufferPool1Size(LOW_API_BUFFER_POOL1_SIZE);
+    uint64_t stage2UsedAivNum = std::min<uint64_t>(aivBlockDim_, totalLength_);
+    tilingData_.set_stage2UsedAivNum(static_cast<uint32_t>(stage2UsedAivNum));
+    tilingData_.set_stage2RowsPerCore(
+        static_cast<uint32_t>(ceilDiv(totalLength_, stage2UsedAivNum)));
 
     size_t partialMmBytes = static_cast<size_t>(actualKBlockNum) * totalLength_ * matN_ * sizeof(float);
     size_t partialRmsBytes = static_cast<size_t>(actualKBlockNum) * totalLength_ * sizeof(float);
