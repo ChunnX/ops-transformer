@@ -713,7 +713,8 @@ CutResult AllGatherQuantBmmTiling::GetTilingResult()
     }
 
     if (isCcuMode) {
-        AdjustCutResultForCCU(result, args_.mValue, kValue, inputDtypeSize, args_.rankDim, opName_);
+        CommSizeInfo commSize{kValue, inputDtypeSize, args_.rankDim};
+        AdjustCutResultForCCU(result, args_.mValue, commSize, opName_);
     } else {
         uint64_t targetTileCnt = SelectOptimalTileCntForAICPU(tileFormulate, opName_);
         AdjustCutResultForAICPU(result, args_.mValue, tileFormulate.matmulPerf_.GetBaseM(),
