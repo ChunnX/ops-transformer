@@ -9,6 +9,7 @@
 # -----------------------------------------------------------------------------------------------------------
 import math
 import torch
+import torch_npu
 from torch.library import impl
 from torch_npu.utils._error_code import ErrCode, ops_error
 from cann_ops_transformer.op_builder.builder import OpBuilder
