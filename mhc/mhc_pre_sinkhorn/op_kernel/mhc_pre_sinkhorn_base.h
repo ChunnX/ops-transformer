@@ -540,17 +540,10 @@ __aicore__ inline void ReduceSumARAPerf(const LocalTensor<float> &output, const 
             Add(output[i * dim2Align], output[i * dim2Align], input[i * dim1 * dim2Align + j * dim2Align],
                 elemInOneRepeat, dim2RepeatTimes, instrParams);
             if (dim2Reminder != 0) {
-                BinaryRepeatParams remParams;
-                remParams.dstBlkStride = 1;
-                remParams.src0BlkStride = 1;
-                remParams.src1BlkStride = 1;
-                remParams.dstRepStride = 0;
-                remParams.src0RepStride = 0;
-                remParams.src1RepStride = 0;
                 Add(output[i * dim2Align + dim2RepeatTimes * elemInOneRepeat],
                     output[i * dim2Align + dim2RepeatTimes * elemInOneRepeat],
                     input[i * dim1 * dim2Align + j * dim2Align + dim2RepeatTimes * elemInOneRepeat], dim2Reminder, 1,
-                    remParams);
+                    instrParams);
             }
             PipeBarrier<PIPE_V>();
         }

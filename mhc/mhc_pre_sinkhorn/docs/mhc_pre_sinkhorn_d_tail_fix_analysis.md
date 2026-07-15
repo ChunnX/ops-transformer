@@ -73,9 +73,40 @@ Dump 验证结论：
 | 544 (`4704×21+544`) | `[0, 511]` 全部正确 | `[512, 543]` 32/32 全错 | `512 = 8×64` = 完整 repeat 之后 |
 | 64 (`4512×22+64`) | `[0, 31]` 全部正确 | `[32, 63]` 32/32 全错 | tail 后半段 |
 
-根因：`ProcessY` 内 `MulABLastDimBrcInline2` / `ReduceSumARAPerf` 按 `REPEAT_SIZE=256B=64 float` 分块处理时，当 `curDFactor % 64 != 0`（如 544 余 32）或 tail 后半段，**remainder 分支计算错误**，导致 `output_0` 在 d 轴 tail 末尾出错。post/combFrag 不经过该路径，故不受影响。
+根因：`ProcessY` 内 `MulABLastDimBrcInline2` **remainder 分支 `src1RepStride=0` 写错**（见 §2.4）。CopyIn / Cast 已 Dump 验证无误。
 
-Stage2 中 x/y buffer 按 `RoundUp(dFactor)` 分配；CopyIn 用紧凑布局亦已验证无误。问题在 **ProcessY 的 vector remainder**，而非 CopyIn stale data。
+### 2.4 Kernel remainder 参数错误（`mhc_pre_sinkhorn_base.h`）
+
+`544 = 8×64 + 32`，错误仅出现在最后 32 列（d 局部 `[512:543]`），与实测一致。
+
+#### MulABLastDimBrcInline2
+
+- **写错**：remainder：`src1RepStride = 0`（4 行批量 Mul，`repeatTimes=4`）
+- **影响**：hc1/2/3 误用 hc0 的 pre → d 局部 `[512:543]` 32 个全错
+- **改法**：逐行 Mul，每行 `tmpBuffer[(i/numN*8 + i%numN)*8]`
+
+#### 整体数据流（tail=544）
+
+```
+ProcessY (curDFactor=544)
+═══════════════════════════════════════════════════════════════════
+
+  xLocal (UB)          Cast          xCast (4×544 float)
+  CopyIn ✅      ──►   ✅      ──►   [0:511]✅  [512:543] 待 Mul
+                                      │
+                    MulABLastDimBrcInline2  ← 根因
+                                      │
+                    ┌─────────────────┴─────────────────┐
+                    │ 主循环 8×64      │ remainder 32     │
+                    │ src1Stride=1 ✅  │ 旧: stride=0 ❌  │
+                    │                  │ 新: 逐行 Mul ✅  │
+                    └─────────────────┬─────────────────┘
+                                      │
+                    ReduceSumARAPerf → Cast → yLocal → GM
+                    [0:511]✅          [512:543]
+                                         ↑
+                              修复前 32/32 错；Mul 修复后 0/32 错
+```
 
 ### 2.3 为何不是「d > 16000 就全错」
 
@@ -171,7 +202,7 @@ GM 写回偏移：`dLoopIdx * dFactor` → 最后一轮写到 `4512 × 22 = 9926
 
 **使用方式**：
 
-1. revert tiling 规避（不做 divisor 整除搜索），保留或去掉 kernel A+B 修复，用于对比；
+1. revert tiling 规避（不做 divisor 整除搜索），保留或去掉 kernel Mul 修复，用于对比；
 2. 加上述临时代码 → `build.sh --pkg --ops=mhc_pre_sinkhorn` → 安装 custom 包；
 3. 跑 ATK case 0，对比 `output_0` 在 `[99264:99328]` 是否仍有 d+32..63 错误。
 
@@ -213,8 +244,7 @@ source /data/hey/custom/vendors/custom_transformer/bin/set_env.bash
 
 | 项目 | 内容 |
 |------|------|
-| **问题** | 大 d 分块时 tail 块（`tailDFactor < dFactor`）导致 output_0 末尾错误 |
-| **根因** | tail 轮次 UB 布局与按 dFactor 分配的 buffer 不一致 |
-| **修复** | Tiling 优先选择整除 d 的 dFactor，消除 tail |
-| **改动范围** | 仅 `mhc_pre_sinkhorn_tiling.cpp` |
-| **验证** | ATK case `d=99328` 精度通过 |
+| **问题** | tail 轮 `curDFactor % 64 != 0` 时 output_0 末尾错误 |
+| **根因** | `MulABLastDimBrcInline2` remainder 批量 Mul 设 `src1RepStride=0`，4 行共用 hc0 的 pre |
+| **修复** | Kernel 逐行 Mul remainder（§2.4）；Tiling 整除 d 为可选规避 |
+| **验证** | 自然 tail=544：Mul 修复 → Pass |
