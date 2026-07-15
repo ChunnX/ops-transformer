@@ -50,7 +50,8 @@ def output_operator(params):
     #构造输入
     batch_size, hidden_size, Seq_len, head_dim, block_size, cmp_ratio, coff, \
     start_p, cache_mode, layout_x, data_type, cu_seqlens, seqused, start_pos, \
-    x_datarange, wkv_datarange, wgate_datarange, ape_datarange, kv_state_datarange, score_state_datarange = params
+    x_datarange, wkv_datarange, wgate_datarange, ape_datarange, kv_state_datarange, score_state_datarange, \
+    x_descale_datarange, wkv_descale_datarange, wgate_descale_datarange, quant_mode = params
     S_max = 0
     save_state_seqlens = None
     bs_combine_flag = False
@@ -91,10 +92,13 @@ def output_operator(params):
           f"layout_x={layout_x}, data_type={data_type}, cu_seqlens={cu_seqlens}, seqused={seqused}, start_pos={start_pos}, "
           f"x_datarange={x_datarange}, wkv_datarange={wkv_datarange}, wgate_datarange={wgate_datarange}, "
           f"ape_datarange={ape_datarange}, "
-          f"kv_state_datarange={kv_state_datarange}, score_state_datarange={score_state_datarange}")
+          f"kv_state_datarange={kv_state_datarange}, score_state_datarange={score_state_datarange}, "
+          f"x_descale_datarange={x_descale_datarange}, wkv_descale_datarange={wkv_descale_datarange}, "
+          f"wgate_descale_datarange={wgate_descale_datarange}, quant_mode={quant_mode}")
 
     run_compressor_eager(batch_size, S_max, head_dim, coff, cmp_ratio, bs_combine_flag, S = Seq_len, start_pos = start_pos,
     seqused = seqused, cu_seqlens = cu_seqlens, block_size = block_size, cache_mode = cache_mode, data_type = data_type,
-    hidden_size = hidden_size, save_state_seqlens = save_state_seqlens,
+    hidden_size = hidden_size, save_state_seqlens = save_state_seqlens, quant_mode = quant_mode,
     x_datarange = x_datarange, wkv_datarange = wkv_datarange, wgate_datarange = wgate_datarange, ape_datarange = ape_datarange,
-    kv_state_datarange = kv_state_datarange, score_state_datarange = score_state_datarange)
+    kv_state_datarange = kv_state_datarange, score_state_datarange = score_state_datarange,
+    x_descale_datarange = x_descale_datarange, wkv_descale_datarange = wkv_descale_datarange, wgate_descale_datarange = wgate_descale_datarange)
