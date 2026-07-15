@@ -79,7 +79,8 @@ public:
     __aicore__ inline void UpdateGroupOffset(int32_t m, int32_t n, int32_t k, uint32_t groupIdx);
     template <bool isGmm> __aicore__ inline void UpdateGroupParams();
     __aicore__ inline void UpdateTailTile();
-    template <bool isGmm> __aicore__ inline void UpdateBasicIndex(uint64_t roundIdx, bool isLastGroupRound);
+    template <bool isGmm>
+    __aicore__ inline void UpdateBasicIndex(uint64_t roundIdx, bool isLastGroupRound);
     template <bool aTrans, bool bTrans, CubeFormat wFormat = CubeFormat::ND>
     __aicore__ inline void UpdateBlockParams(uint64_t roundIdx, bool isLastGroupRound = true);
     template <bool aTrans, bool bTrans, class scaleType = AscendC::fp8_e8m0_t, CubeFormat wFormat = CubeFormat::ND>
@@ -223,7 +224,8 @@ __aicore__ inline void QuantASWBlockSch::UpdateGroupOffset(int32_t m, int32_t n,
 }
 
 // 兼容GMM和MM的更新
-template <bool isGmm> __aicore__ inline void QuantASWBlockSch::UpdateGroupParams()
+template <bool isGmm>
+__aicore__ inline void QuantASWBlockSch::UpdateGroupParams()
 {
     params_.mCnt = Mc2QuantUtils::CeilDiv(params_.m, tilingData_->baseM);
     params_.nCnt = Mc2QuantUtils::CeilDiv(params_.n, tilingData_->baseN);
@@ -369,8 +371,8 @@ __aicore__ inline void QuantASWBlockSch::CalcGMOffset()
         if constexpr (bTrans) {
             offset_.offsetB = nOffset * Mc2QuantUtils::WEIGHTNZ_K0_32;
         } else {
-            offset_.offsetB =
-                nOffset * Mc2QuantUtils::CeilDiv(params_.k, Mc2QuantUtils::WEIGHTNZ_K0_16) * Mc2QuantUtils::WEIGHTNZ_K0_16;
+            offset_.offsetB = nOffset * Mc2QuantUtils::CeilDiv(params_.k, Mc2QuantUtils::WEIGHTNZ_K0_16) *
+                              Mc2QuantUtils::WEIGHTNZ_K0_16;
         }
     } else {
         if constexpr (bTrans) {

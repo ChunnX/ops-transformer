@@ -23,13 +23,13 @@
 namespace optiling {
 class MoeDistributeDispatchTeardownTilingBase : public MoeTilingBase {
 public:
-    explicit MoeDistributeDispatchTeardownTilingBase(gert::TilingContext* context)
-        : MoeTilingBase(context), nodeName_(context->GetNodeName()){};
+    explicit MoeDistributeDispatchTeardownTilingBase(gert::TilingContext *context)
+        : MoeTilingBase(context), nodeName_(context->GetNodeName()) {};
 
 protected:
-    const char* socTilingName_;
-    const char* nodeName_;
-    MoeDistributeDispatchTeardownTilingData* tilingData_ = nullptr;
+    const char *socTilingName_;
+    const char *nodeName_;
+    MoeDistributeDispatchTeardownTilingData *tilingData_ = nullptr;
     std::string groupEp_;
 
     uint64_t GetTilingKey() const;

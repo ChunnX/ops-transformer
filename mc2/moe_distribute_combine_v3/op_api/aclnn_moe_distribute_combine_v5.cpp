@@ -25,34 +25,33 @@ extern "C" {
 
 
 aclnnStatus aclnnMoeDistributeCombineV5GetWorkspaceSize(
-    const aclTensor* context, const aclTensor* expandX, const aclTensor* expertIds, const aclTensor* assistInfoForCombine,
-    const aclTensor* epSendCounts, const aclTensor* expertScales, const aclTensor* tpSendCountsOptional,
-    const aclTensor* xActiveMaskOptional, const aclTensor* activationScaleOptional,
-    const aclTensor* weightScaleOptional, const aclTensor* groupListOptional, const aclTensor* expandScalesOptional,
-    const aclTensor* sharedExpertXOptional, const aclTensor* elasticInfoOptional, const aclTensor* oriXOptional,
-    const aclTensor* constExpertAlpha1Optional, const aclTensor* constExpertAlpha2Optional, 
-    const aclTensor* constExpertVOptional,  const aclTensor* performanceInfoOptional,
-    int64_t epWorldSize, int64_t epRankId, int64_t moeExpertNum, int64_t cclBufferSize,
-    int64_t tpWorldSize, int64_t tpRankId, int64_t expertShardType,
-    int64_t sharedExpertNum, int64_t sharedExpertRankNum, int64_t globalBs, int64_t outDtype,
-    int64_t commQuantMode, int64_t groupListType, const char* commAlg, 
-    int64_t zeroExpertNum, int64_t copyExpertNum, int64_t constExpertNum,
-    aclTensor* xOut, uint64_t* workspaceSize, aclOpExecutor** executor)
+    const aclTensor *context, const aclTensor *expandX, const aclTensor *expertIds,
+    const aclTensor *assistInfoForCombine, const aclTensor *epSendCounts, const aclTensor *expertScales,
+    const aclTensor *tpSendCountsOptional, const aclTensor *xActiveMaskOptional,
+    const aclTensor *activationScaleOptional, const aclTensor *weightScaleOptional, const aclTensor *groupListOptional,
+    const aclTensor *expandScalesOptional, const aclTensor *sharedExpertXOptional, const aclTensor *elasticInfoOptional,
+    const aclTensor *oriXOptional, const aclTensor *constExpertAlpha1Optional,
+    const aclTensor *constExpertAlpha2Optional, const aclTensor *constExpertVOptional,
+    const aclTensor *performanceInfoOptional, int64_t epWorldSize, int64_t epRankId, int64_t moeExpertNum,
+    int64_t cclBufferSize, int64_t tpWorldSize, int64_t tpRankId, int64_t expertShardType, int64_t sharedExpertNum,
+    int64_t sharedExpertRankNum, int64_t globalBs, int64_t outDtype, int64_t commQuantMode, int64_t groupListType,
+    const char *commAlg, int64_t zeroExpertNum, int64_t copyExpertNum, int64_t constExpertNum, aclTensor *xOut,
+    uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     OP_LOGD("aclnn_combine v5 WorkspaceSize start");
     aclnnStatus getWorkspaceSizesRes = aclnnInnerMoeDistributeCombineV3GetWorkspaceSize(
-        context, expandX, expertIds, assistInfoForCombine, epSendCounts, expertScales, tpSendCountsOptional, xActiveMaskOptional,
-        activationScaleOptional, weightScaleOptional, groupListOptional, expandScalesOptional, sharedExpertXOptional,
-        elasticInfoOptional, oriXOptional, constExpertAlpha1Optional, constExpertAlpha2Optional,
-        constExpertVOptional, performanceInfoOptional, epWorldSize, epRankId, moeExpertNum, cclBufferSize,
-        tpWorldSize, tpRankId, expertShardType, sharedExpertNum, sharedExpertRankNum, globalBs,
-        outDtype, commQuantMode, groupListType, const_cast<char*>(commAlg), zeroExpertNum, copyExpertNum,
-        constExpertNum, xOut, workspaceSize, executor);
+        context, expandX, expertIds, assistInfoForCombine, epSendCounts, expertScales, tpSendCountsOptional,
+        xActiveMaskOptional, activationScaleOptional, weightScaleOptional, groupListOptional, expandScalesOptional,
+        sharedExpertXOptional, elasticInfoOptional, oriXOptional, constExpertAlpha1Optional, constExpertAlpha2Optional,
+        constExpertVOptional, performanceInfoOptional, epWorldSize, epRankId, moeExpertNum, cclBufferSize, tpWorldSize,
+        tpRankId, expertShardType, sharedExpertNum, sharedExpertRankNum, globalBs, outDtype, commQuantMode,
+        groupListType, const_cast<char *>(commAlg), zeroExpertNum, copyExpertNum, constExpertNum, xOut, workspaceSize,
+        executor);
     return getWorkspaceSizesRes;
 }
 
 aclnnStatus aclnnMoeDistributeCombineV5(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
-                                                  aclrtStream stream)
+                                        aclrtStream stream)
 {
     OP_LOGD("aclnn_combine v5 start");
     return aclnnInnerMoeDistributeCombineV3(workspace, workspaceSize, executor, stream);

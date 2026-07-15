@@ -41,11 +41,12 @@ public:
         GlobalTensor<T> &ScoreFp32Gm, GlobalTensor<OUT_T> &attnScoreFp16Gm);
 
     __aicore__ inline void OnlineSoftmaxFirstPassChunk(uint32_t qChunkStart, uint32_t qChunkSize, uint32_t kChunkStart,
-                                                       uint32_t kChunkSize);
+                                                       uint32_t kChunkSize, uint32_t validYBlocks);
 
     __aicore__ inline void SoftmaxSecondPassAndCast(uint32_t qChunkStart, uint32_t qChunkSize,
                                                     uint32_t kChunkStart, uint32_t kChunkSize,
-                                                    uint32_t batchIdx, uint32_t headIdx);
+                                                    uint32_t batchIdx, uint32_t headIdx,
+                                                    uint32_t validYBlocks);
 
 private:
     BSAConstInfo constInfo;
@@ -240,7 +241,8 @@ void DivBroadcast(
  */
 template <typename BSAT>
 __aicore__ inline void BSAVecSmService<BSAT>::OnlineSoftmaxFirstPassChunk(
-    uint32_t qChunkStart, uint32_t qChunkSize, uint32_t kChunkStart, uint32_t kChunkSize)
+    uint32_t qChunkStart, uint32_t qChunkSize, uint32_t kChunkStart,
+    uint32_t kChunkSize, uint32_t validYBlocks)
 {
     // 更新max
     // M = ReduceMax(score_partial)
@@ -346,7 +348,7 @@ __aicore__ inline void BSAVecSmService<BSAT>::OnlineSoftmaxFirstPassChunk(
     AscendC::PipeBarrier<PIPE_V>();
 
     // 最后一次k循环第二轮循环存储sumbroc
-    if (kChunkStart + kChunkSize >= constInfo.yBlocks) {
+    if (kChunkStart + kChunkSize >= validYBlocks) {
         Brcb(globalSumBroc, globalSum, repeatimes, {1, 8});
         AscendC::PipeBarrier<PIPE_V>();
     }
@@ -358,7 +360,8 @@ __aicore__ inline void BSAVecSmService<BSAT>::OnlineSoftmaxFirstPassChunk(
 template <typename BSAT>
 __aicore__ inline void BSAVecSmService<BSAT>::SoftmaxSecondPassAndCast(
     uint32_t qChunkStart, uint32_t qChunkSize, uint32_t kChunkStart,
-    uint32_t kChunkSize, uint32_t batchIdx, uint32_t headIdx)
+    uint32_t kChunkSize, uint32_t batchIdx, uint32_t headIdx,
+    uint32_t validYBlocks)
 {
     uint32_t actualQRowStart = 0, actualQExcuteRow = 0;
     if (vecSubBlockIdx == 0) {
@@ -436,12 +439,15 @@ __aicore__ inline void BSAVecSmService<BSAT>::SoftmaxSecondPassAndCast(
         sftOutQRowOffset = qChunkStart + qChunkSize / 2 + qChunkSize % 2;
     }
 
-    DataCopyPad(attnScoreFp16GmTensor[sftOutQRowOffset * constInfo.yBlocks + kChunkStart],
+    uint64_t attnScoreOffset = static_cast<uint64_t>(sftOutQRowOffset) * validYBlocks + kChunkStart;
+    GlobalTensor<OUT_T> attnScoreChunkGm;
+    attnScoreChunkGm.SetGlobalBuffer((__gm__ OUT_T *)(attnScoreFp16GmTensor.GetPhyAddr() + attnScoreOffset));
+    DataCopyPad(attnScoreChunkGm[0],
         scoreFp16Ub,
         {static_cast<uint16_t>(actualQExcuteRow),
             static_cast<uint32_t>(kChunkSize * sizeof(OUT_T)),
             0,
-            static_cast<uint32_t>((constInfo.yBlocks - kChunkSize) * sizeof(OUT_T)),
+            static_cast<uint32_t>((validYBlocks - kChunkSize) * sizeof(OUT_T)),
             0});
 }
 

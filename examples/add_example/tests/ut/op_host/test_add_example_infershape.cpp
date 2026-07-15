@@ -13,8 +13,7 @@
 #include "infer_shape_context_faker.h"
 #include "infer_shape_case_executor.h"
 
-class AddExampleInfershape : public testing::Test
-{
+class AddExampleInfershape : public testing::Test {
 protected:
     static void SetUpTestCase()
     {

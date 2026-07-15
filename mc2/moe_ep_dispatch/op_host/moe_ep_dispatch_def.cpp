@@ -19,7 +19,8 @@ namespace ops {
 
 class MoeEpDispatch : public OpDef {
 public:
-    explicit MoeEpDispatch(const char* name) : OpDef(name) {
+    explicit MoeEpDispatch(const char *name) : OpDef(name)
+    {
         this->Input("context")
             .ParamType(REQUIRED)
             .DataTypeList({ge::DT_INT32})
@@ -91,4 +92,4 @@ public:
 
 OP_ADD(MoeEpDispatch);
 
-}  // namespace ops
+} // namespace ops

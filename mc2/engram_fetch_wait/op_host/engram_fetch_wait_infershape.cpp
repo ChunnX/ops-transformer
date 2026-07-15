@@ -46,7 +46,5 @@ static ge::graphStatus InferDataTypeEngramFetchWait(gert::InferDataTypeContext *
     return ge::GRAPH_SUCCESS;
 }
 
-IMPL_OP_INFERSHAPE(EngramFetchWait)
-    .InferShape(InferShapeEngramFetchWait)
-    .InferDataType(InferDataTypeEngramFetchWait);
+IMPL_OP_INFERSHAPE(EngramFetchWait).InferShape(InferShapeEngramFetchWait).InferDataType(InferDataTypeEngramFetchWait);
 } // namespace ops

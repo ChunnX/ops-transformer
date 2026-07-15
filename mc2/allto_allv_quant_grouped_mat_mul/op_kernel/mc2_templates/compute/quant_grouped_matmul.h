@@ -28,7 +28,7 @@ namespace MC2KernelTemplate {
 constexpr uint64_t GROUP_LIST_INDEX = 0;
 
 template <typename TilingDataType, typename GmmTilingDataType, class xType, class wType, class scaleType, class yType,
-    CubeFormat wFormat, bool aTrans, bool bTrans, bool isLocal, bool isA2avGmm>
+          CubeFormat wFormat, bool aTrans, bool bTrans, bool isLocal, bool isA2avGmm>
 class QuantGroupedMatmul {
 public:
     __aicore__ inline QuantGroupedMatmul() {}
