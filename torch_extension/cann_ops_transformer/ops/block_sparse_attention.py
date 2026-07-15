@@ -338,7 +338,6 @@ class BlockSparseAttentionOpBuilder(OpBuilder):
 			"Tensor? q_dequant_scale=None, "
 			"Tensor? k_dequant_scale=None, "
 			"Tensor? v_dequant_scale=None, "
-			"Tensor? p_dequant_scale=None, "
 			"ScalarType? attention_out_dtype=None"
 			") -> (Tensor, Tensor)"
 		)
@@ -353,8 +352,7 @@ class BlockSparseAttentionOpBuilder(OpBuilder):
 				pre_tokens=2147483647, next_tokens=2147483647, softmax_lse_flag=False,
 				quant_mode=0, dst_type_max=0,
 				q_dequant_scale=None, k_dequant_scale=None,
-				v_dequant_scale=None, p_dequant_scale=None,
-				attention_out_dtype=None):
+				v_dequant_scale=None, attention_out_dtype=None):
 			# Mirror the C++ wrapper's input constraints (block_sparse_attention.cpp)
 			# so graph / FakeTensor tracing fails at the same boundary as real
 			# execution instead of only erroring deep inside the kernel at run time.
@@ -388,13 +386,6 @@ class BlockSparseAttentionOpBuilder(OpBuilder):
 				raise RuntimeError(
 					"q_dequant_scale/k_dequant_scale/v_dequant_scale must be None "
 					"for quant_mode=0 (FP16/BF16, no quantization)"
-				)
-			# p_dequant_scale is reserved for future quant modes and must always
-			# be None for all current quant_modes (mirrors eager path).
-			if p_dequant_scale is not None:
-				raise RuntimeError(
-					"p_dequant_scale must be None for quant_mode in {0, 1, 2, 3} "
-					"(not yet supported in any current quant mode)"
 				)
 			if q_input_layout not in _LAYOUTS or kv_input_layout not in _LAYOUTS:
 				raise RuntimeError(
@@ -463,7 +454,7 @@ def block_sparse_attention_v3(query,
 						q_dequant_scale=None,
 						k_dequant_scale=None,
 						v_dequant_scale=None,
-						p_dequant_scale=None,
+						p_quant_scale=None,
 						attention_out_dtype=None):
 	"""Block-sparse attention with optional softmax_lse output.
 
@@ -525,11 +516,10 @@ def block_sparse_attention_v3(query,
 	# No-op for quant_mode=0 (FP16/BF16). Mirrors quant_flash_attn.py:142-151.
 	_validate_quant_mode(query, key, value, quant_mode,
 						q_dequant_scale, k_dequant_scale, v_dequant_scale)
-	# p_dequant_scale is reserved for future quant modes and must always be None
-	# for all current quant_modes (0=FP16/BF16, 1=FP8, 2/3=mxfp4).
-	if p_dequant_scale is not None:
+	# p_quant_scale is reserved for future quant modes and must always be None
+	if p_quant_scale is not None:
 		raise ValueError(
-			f"p_dequant_scale must be None for quant_mode={quant_mode} "
+			f"p_quant_scale must be None for quant_mode={quant_mode} "
 			f"(not yet supported in any current quant mode)"
 		)
 	# Resolve here so eager execution and the registered Meta impl agree on the
@@ -543,6 +533,6 @@ def block_sparse_attention_v3(query,
 		mask_type, scale_value, inner_precise, block_size,
 		pre_tokens, next_tokens, softmax_lse_flag,
 		quant_mode, dst_type_max,
-		q_dequant_scale, k_dequant_scale, v_dequant_scale, p_dequant_scale,
+		q_dequant_scale, k_dequant_scale, v_dequant_scale, p_quant_scale,
 		resolved_out_dtype,
 	)
