@@ -327,7 +327,7 @@ cann_ops_transformer.ops.quant_flash_attn(
     </tr>
     <tr>
         <td>layout_kv</td>
-        <td>支持BSND/TND/BNSD/PA_BBND/PA_BNBD</td>
+        <td>支持BSND/TND/BNSD/PA_BBND/PA_BNBD/PA_NZ</td>
     </tr>
     <tr>
         <td>layout_out</td>
@@ -494,10 +494,10 @@ quant_mode参数解释
             <td rowspan="2">MxFP8</td>
             <td rowspan="2">q_descale</td>
             <td rowspan="2">TND</td>
-            <td>(Q_T, Q_N, D/64, 2)</td>
+            <td>(Q_T, Q_N, D/64, 2)<br>用于Prefill场景，仅支持G*Q_S > 80时传入</td>
         </tr>
         <tr>
-            <td>(KV_N, Q_T, G, D/64, 2)</td>
+            <td>(KV_N, Q_T, G, D/64, 2)<br>用于Decode场景，仅支持G*Q_S <= 80时传入</td>
         </tr>
     </tbody>
 </table>

@@ -220,8 +220,9 @@ ge::graphStatus QuantChecker::CheckShapeEqual(const gert::StorageShape &actual, 
 ge::graphStatus QuantChecker::CheckQDescaleShape(const QfaTilingInfo &qfaInfo) const
 {
     // 文档(descale_shape匹配关系表): MxFP8, layout_q=TND
-    //   4D: (Q_T, Q_N, D/64, 2)
-    //   5D: (KV_N, Q_T, G, D/64, 2)   其中 G = Q_N / KV_N
+    //   4D: (Q_T, Q_N, D/64, 2)              prefill场景，仅支持 G*Q_S > 80 时传入
+    //   5D: (KV_N, Q_T, G, D/64, 2)          decode场景，仅支持 G*Q_S <= 80 时传入
+    //   其中 G = Q_N / KV_N
     const gert::StorageShape *shape = qfaInfo.opParamInfo.qDescale.shape;
     if (shape == nullptr) {
         return ge::GRAPH_SUCCESS;
@@ -240,6 +241,30 @@ ge::graphStatus QuantChecker::CheckQDescaleShape(const QfaTilingInfo &qfaInfo) c
         OP_LOGE(qfaInfo.opName, "q_descale shape dim %u is unsupported, expected 4D or 5D.", dimNum);
         return ge::GRAPH_FAILED;
     }
+
+    // 约束: MxFP8场景下 q_descale 两种 shape 对应不同使用场景
+    //   4D 为 prefill 场景，仅支持 G*Q_S > 80 时传入；5D 为 decode 场景，仅支持 G*Q_S <= 80 时传入
+    if (qfaInfo.quantMode == QfaQuantMode::MXFP8_FP32) {
+        const int64_t sceneThreshold = 80; // prefill/decode 场景的 G*Q_S 切分阈值
+        int64_t gTimesQs = qfaInfo.gSize * qfaInfo.s1Size;
+        std::string shapeStr = Ops::Base::ToString(shape->GetStorageShape());
+        if (dimNum == DIM_NUM_4) {
+            OP_CHECK_IF(gTimesQs <= sceneThreshold,
+                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(qfaInfo.opName, Q_DESCALE_NAME.c_str(),
+                            std::to_string(gTimesQs).c_str(),
+                            ("q_descale shape " + shapeStr + " is for prefill scene, G*Q_S must be greater than 80, "
+                             "but got G*Q_S = " + std::to_string(gTimesQs)).c_str()),
+                        return ge::GRAPH_FAILED);
+        } else { // DIM_NUM_5, decode scene
+            OP_CHECK_IF(gTimesQs > sceneThreshold,
+                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(qfaInfo.opName, Q_DESCALE_NAME.c_str(),
+                            std::to_string(gTimesQs).c_str(),
+                            ("q_descale shape " + shapeStr + " is for decode scene, G*Q_S must be less than or equal "
+                             "to 80, but got G*Q_S = " + std::to_string(gTimesQs)).c_str()),
+                        return ge::GRAPH_FAILED);
+        }
+    }
+
     return CheckShapeEqual(*shape, expected, Q_DESCALE_NAME, qfaInfo.opName);
 }
 

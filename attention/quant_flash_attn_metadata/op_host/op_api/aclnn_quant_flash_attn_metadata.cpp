@@ -50,9 +50,10 @@ aclnnStatus aclnnQuantFlashAttnMetadataGetWorkspaceSize(
     auto uniqueExecutor = CREATE_EXECUTOR();
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
 
-    auto ret = ParamsCheck(cuSeqlensQOptional, cuSeqlensKvOptional, sequsedQOptional, sequsedKvOptional, batchSize,
-                           maxSeqlenQ, maxSeqlenKv, numHeadsQ, numHeadsKv, headDim, quantMode, maskMode, winLeft,
-                           winRight, layoutQ, layoutKv, layoutOut, metaData);
+    auto ret = QuantFlashAttnMetadataCheck::ParamsCheck(cuSeqlensQOptional, cuSeqlensKvOptional, sequsedQOptional,
+                                                        sequsedKvOptional, batchSize, maxSeqlenQ, maxSeqlenKv,
+                                                        numHeadsQ, numHeadsKv, headDim, quantMode, maskMode, winLeft,
+                                                        winRight, layoutQ, layoutKv, layoutOut, metaData);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
 
     const op::PlatformInfo &npuInfo = op::GetCurrentPlatformInfo();

@@ -42,7 +42,7 @@ ge::graphStatus CommonChecker::CheckSingleParaLayout(const QfaTilingInfo &qfaInf
 {
     const std::vector<QfaLayout> supportedQLayouts = {QfaLayout::BSND, QfaLayout::BNSD, QfaLayout::TND};
     const std::vector<QfaLayout> supportedKvLayouts = {QfaLayout::BSND,   QfaLayout::BNSD,  QfaLayout::TND,
-                                                       QfaLayout::PA_BBND, QfaLayout::PA_BNBD};
+                                                       QfaLayout::PA_BBND, QfaLayout::PA_BNBD, QfaLayout::PA_NZ};
     const std::vector<QfaLayout> supportedOutLayouts = {QfaLayout::BSND, QfaLayout::BNSD, QfaLayout::TND};
 
     if (std::find(supportedQLayouts.begin(), supportedQLayouts.end(), qfaInfo.qLayout) == supportedQLayouts.end()) {
@@ -55,7 +55,7 @@ ge::graphStatus CommonChecker::CheckSingleParaLayout(const QfaTilingInfo &qfaInf
                     supportedKvLayouts.end(),
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(qfaInfo.opName, "layout_kv",
                     QfaLayoutToSerialString(qfaInfo.kvLayout).c_str(),
-                    "The value of layout_kv can only be BSND/BNSD/TND/PA_BBND/PA_BNBD"),
+                    "The value of layout_kv can only be BSND/BNSD/TND/PA_BBND/PA_BNBD/PA_NZ"),
                 return ge::GRAPH_FAILED);
 
     if (std::find(supportedOutLayouts.begin(), supportedOutLayouts.end(), qfaInfo.outLayout) ==
