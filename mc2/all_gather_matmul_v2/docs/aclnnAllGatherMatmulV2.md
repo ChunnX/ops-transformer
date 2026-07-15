@@ -441,6 +441,7 @@ aclnnStatus aclnnAllGatherMatmulV2(
     - x1和x2的数据类型需要保持一致。
     - x1和x2数据类型为INT4时，k与n必须为偶数。
     - 支持2、4、8卡。
+    - 通信缓冲区大于等于200MB。
 
 ## 调用示例
 
