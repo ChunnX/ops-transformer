@@ -629,8 +629,10 @@ bool GroupedMatmulSwigluQuantV2Tiling950::AnalyzeInputs()
 
 bool GroupedMatmulSwigluQuantV2Tiling950::CheckCoreNum() const
 {
-    auto aicNum = context_->GetCompileInfo<GMMSwigluV2CompileInfo>()->aicNum_;
-    auto aivNum = context_->GetCompileInfo<GMMSwigluV2CompileInfo>()->aivNum_;
+    auto compileInfo = context_->GetCompileInfo<GMMSwigluV2CompileInfo>();
+    OP_CHECK_IF(compileInfo == nullptr, OP_LOGE(inputParams_.opName, "compileInfo is nullptr."), return false);
+    auto aicNum = compileInfo->aicNum_;
+    auto aivNum = compileInfo->aivNum_;
     OP_CHECK_IF(aicNum == 0,
                 OP_LOGE(inputParams_.opName, "aicNum should be positive integer, actual is %u.", aicNum),
                 return false);

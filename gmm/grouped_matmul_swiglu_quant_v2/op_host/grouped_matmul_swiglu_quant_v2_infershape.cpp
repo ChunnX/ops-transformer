@@ -63,6 +63,7 @@ bool  isSupportedInputDtypeForDavid(ge::DataType dtype)
 
 static ge::graphStatus InferShape4GroupedMatmulSwigluQuantV2(gert::InferShapeContext *context)
 {
+    OP_CHECK_NULL_WITH_CONTEXT(context, context);
     const gert::Shape *xShape = context->GetDynamicInputShape(X_INDEX, 0);
     OP_CHECK_NULL_WITH_CONTEXT(context, xShape);
     const gert::Shape *weightScaleShape = context->GetDynamicInputShape(WEIGHTSCALE_INDEX, 0);
