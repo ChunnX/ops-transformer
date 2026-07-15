@@ -45,7 +45,7 @@ if(UT_TEST_ALL OR OP_KERNEL_UT)
         set(AllSocVersion_OP_KERNEL_UT_EXE ${AllSocVersion_OP_KERNEL_UT_EXE} ${OP_KERNEL_UT_EXE}_${socVersion})
 
         ## add opkernel ut exe for socVersion
-        add_executable(${OP_KERNEL_UT_EXE}_${socVersion} 
+        add_executable(${OP_KERNEL_UT_EXE}_${socVersion}
             test_op_kernel_main.cpp
             )
         add_dependencies(${OP_KERNEL_UT_EXE}_${socVersion} ${OP_KERNEL_MODULE_NAME}_tiling)
@@ -108,9 +108,9 @@ if(UT_TEST_ALL OR OP_KERNEL_UT)
                 POST_BUILD
                 COMMAND
                     ${CMAKE_COMMAND} -E env LD_LIBRARY_PATH=$ENV{LD_LIBRARY_PATH}
-                    valgrind 
+                    valgrind
                     --undef-value-errors=no
-                    --leak-check=full 
+                    --leak-check=full
                     --log-file=valgrind_${OP_KERNEL_UT_EXE}_${socVersion}.log
                     ./${OP_KERNEL_UT_EXE}_${socVersion}
                 COMMENT "Run fast op utest by valgrind, output saved to valgrind_${OP_KERNEL_UT_EXE}_${socVersion}.log"

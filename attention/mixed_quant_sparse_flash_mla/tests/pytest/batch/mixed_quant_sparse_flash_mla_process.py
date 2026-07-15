@@ -28,7 +28,7 @@ class Network(torch.nn.Module):
 
     def forward(self, q, ori_kv, cmp_kv, cmp_sparse_indices, ori_block_table,
         cmp_block_table, cu_seqlens_q, seqused_q, cu_seqlens_ori_kv, cu_seqlens_cmp_kv,
-        seqused_ori_kv, seqused_cmp_kv, cmp_residual_kv, sinks, metadata, quant_mode, rope_head_dim,
+        seqused_ori_kv, seqused_cmp_kv, cmp_residual_kv, ori_topk_length, cmp_topk_length, sinks, metadata, quant_mode, rope_head_dim,
         softmax_scale, cmp_ratio, ori_mask_mode, cmp_mask_mode, ori_win_left, ori_win_right, layout_q, layout_kv,
         topk_value_mode, return_softmax_lse):
         npu_result, _ = torch.ops.cann_ops_transformer.mixed_quant_sparse_flash_mla(
@@ -40,14 +40,14 @@ class Network(torch.nn.Module):
                                 ori_block_table=ori_block_table,
                                 cmp_block_table=cmp_block_table,
                                 cu_seqlens_q=cu_seqlens_q,
-                                cu_seqlens_ori_kv=op_input['cu_seqlens_ori_kv'].npu() if op_input['cu_seqlens_ori_kv'] is not None else None,
-                                cu_seqlens_cmp_kv=op_input['cu_seqlens_cmp_kv'].npu() if op_input['cu_seqlens_cmp_kv'] is not None else None,
+                                cu_seqlens_ori_kv=cu_seqlens_ori_kv,
+                                cu_seqlens_cmp_kv=cu_seqlens_cmp_kv,
                                 seqused_q=seqused_q,
                                 seqused_ori_kv=seqused_ori_kv,
                                 seqused_cmp_kv=seqused_cmp_kv,
                                 cmp_residual_kv=cmp_residual_kv,
-                                ori_topk_length=None,
-                                cmp_topk_length=None,
+                                ori_topk_length=ori_topk_length,
+                                cmp_topk_length=cmp_topk_length,
                                 sinks=sinks,
                                 metadata=metadata,
                                 quant_mode=quant_mode,
@@ -66,7 +66,7 @@ class Network(torch.nn.Module):
                                 value_dtype=None)
         return npu_result
 
-def test_qsmla_quant_process_graph(test_data, device_id=0):
+def test_mqsmla_quant_process_graph(test_data, device_id=0):
     params = test_data['params']
     metadata_input = test_data['metadata_input']
     op_input = test_data['op_input']
@@ -132,6 +132,8 @@ def test_qsmla_quant_process_graph(test_data, device_id=0):
                                 cmp_block_table=op_input['cmp_block_table'].npu() if op_input['cmp_block_table'] is not None else None,
                                 cu_seqlens_q=op_input['cu_seqlens_q'].npu() if op_input['cu_seqlens_q'] is not None else None,
                                 seqused_q=op_input['seqused_q'].npu() if op_input['seqused_q'] is not None else torch.tensor([]).npu(),
+                                cu_seqlens_ori_kv=op_input['cu_seqlens_ori_kv'].npu() if op_input['cu_seqlens_ori_kv'] is not None else None,
+                                cu_seqlens_cmp_kv=op_input['cu_seqlens_cmp_kv'].npu() if op_input['cu_seqlens_cmp_kv'] is not None else None,
                                 seqused_ori_kv=op_input['seqused_ori_kv'].npu() if op_input['seqused_ori_kv'] is not None else None,
                                 seqused_cmp_kv=op_input['seqused_cmp_kv'].npu() if op_input['seqused_cmp_kv'] is not None else None,
                                 cmp_residual_kv=op_input['cmp_residual_kv'].npu() if op_input['cmp_residual_kv'] is not None else None,
@@ -155,7 +157,7 @@ def test_qsmla_quant_process_graph(test_data, device_id=0):
     torch.npu.synchronize()
     return npu_result, cpu_output
 
-def test_qsmla_quant_process_ci(test_data, device_id=0):
+def test_mqsmla_quant_process_ci(test_data, device_id=0):
     params = test_data['params']
     metadata_input = test_data['metadata_input']
     op_input = test_data['op_input']

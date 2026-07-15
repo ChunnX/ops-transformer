@@ -35,6 +35,7 @@ constexpr uint32_t ACT_SEQ_LEN_Q_INPUT_INDEX = 5;
 constexpr uint32_t ACT_SEQ_LEN_KV_INPUT_INDEX = 6;
 constexpr uint32_t QUERY_ROPE_INPUT_INDEX = 7;
 constexpr uint32_t KEY_ROPE_INPUT_INDEX = 8;
+constexpr uint32_t SINKS_INPUT_INDEX = 9;
 // Outputs Index
 constexpr uint32_t OUTPUT_INDEX = 0;
 constexpr uint32_t SOFTMAXMAX_INDEX = 1;
@@ -51,6 +52,7 @@ constexpr uint32_t NEXT_TOKENS_ATTR_INDEX = 6;
 constexpr uint32_t ATTENTION_MODE_ATTR_INDEX = 7;
 constexpr uint32_t RETURN_SOFTMAX_LSE_ATTR_INDEX = 8;
 // Dim Num
+constexpr size_t DIM_NUM_ONE = 1;
 constexpr size_t DIM_NUM_TWO = 2;
 constexpr size_t DIM_NUM_THREE = 3;
 constexpr size_t DIM_NUM_FOUR = 4;
@@ -127,6 +129,7 @@ struct SFAParaInfo {
     SFAOptionalParaInfo actualSeqLengths = {nullptr, nullptr};
     SFAOptionalParaInfo queryRope = {nullptr, nullptr};
     SFAOptionalParaInfo keyRope = {nullptr, nullptr};
+    SFAOptionalParaInfo sinks = {nullptr, nullptr};
     SFARequiredParaInfo attenOut = {nullptr, nullptr};
     SFARequiredParaInfo softmaxMax = {nullptr, nullptr};
     SFARequiredParaInfo softmaxSum = {nullptr, nullptr};
@@ -434,6 +437,7 @@ private:
     ge::graphStatus CheckSoftmaxMaxShape();
     ge::graphStatus CheckSoftmaxSum();
     ge::graphStatus CheckSoftmaxSumShape();
+    ge::graphStatus CheckSinks() const;
     ge::graphStatus CheckActualSeqLensQ();
     ge::graphStatus CheckActualSeqLensQShape();
     ge::graphStatus CheckActualSeqLensQDType();

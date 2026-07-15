@@ -16,8 +16,35 @@
 #ifndef FLASH_ATTN_TILING_UTILS_H
 #define FLASH_ATTN_TILING_UTILS_H
 
+#include "tiling/tiling_api.h"
+
 namespace optiling {
 namespace flash_attn {
+
+// 逐维比对strides与连续场景的期望stride, index返回首个非连续维, 全连续返回GRAPH_SUCCESS
+inline ge::graphStatus CheckTensorContiguous(const uint32_t &tensorDimNum, const gert::Shape &inputShape,
+                                             const gert::Stride *strides, int32_t index)
+{
+    if (strides == nullptr || strides->GetDimNum() == 0) {
+        return ge::GRAPH_SUCCESS;
+    }
+    uint64_t preStride = 1;
+    for (index = static_cast<int32_t>(tensorDimNum) - 1; index >= 0; index--) {
+        if (index == static_cast<int32_t>(tensorDimNum) - 1) {
+            if (strides->GetStride(index) != preStride) {
+                return ge::GRAPH_FAILED;
+            }
+            continue;
+        }
+        uint64_t expected = inputShape.GetDim(index + 1) * preStride;
+        if (strides->GetStride(index) != expected) {
+            return ge::GRAPH_FAILED;
+        }
+        preStride = expected;
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
 template <typename T>
 inline auto CeilDivision(T num1, T num2) -> T
 {

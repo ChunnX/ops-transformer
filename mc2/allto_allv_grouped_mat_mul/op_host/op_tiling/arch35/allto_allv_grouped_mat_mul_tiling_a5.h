@@ -20,23 +20,25 @@
 namespace optiling {
 class AlltoAllvGmmTilingA5 : public AlltoAllvGmmTiling {
 public:
-    explicit AlltoAllvGmmTilingA5(gert::TilingContext* context) : AlltoAllvGmmTiling(context) {}
+    explicit AlltoAllvGmmTilingA5(gert::TilingContext *context) : AlltoAllvGmmTiling(context)
+    {
+    }
     std::vector<int64_t> GetEpWorldSizeOptional() const override;
     bool NeedToCheckCounts() const override;
 };
 
 class AlltoAllvGmmTilingFuncA5 : public AlltoAllvGmmTilingCommon {
 public:
-    ge::graphStatus AlltoAllvGmmOpTilingFunc(gert::TilingContext* context) override;
+    ge::graphStatus AlltoAllvGmmOpTilingFunc(gert::TilingContext *context) override;
 };
 
 class AlltoAllvGmmTilingStructA5 : public AlltoAllvGmmTilingStruct {
 public:
-    explicit AlltoAllvGmmTilingStructA5(gert::TilingContext* context) : AlltoAllvGmmTilingStruct(context){};
+    explicit AlltoAllvGmmTilingStructA5(gert::TilingContext *context) : AlltoAllvGmmTilingStruct(context) {};
 
 protected:
     ge::graphStatus DoOpTiling() override;
 };
-}
+} // namespace optiling
 
 #endif

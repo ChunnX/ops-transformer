@@ -121,7 +121,7 @@ aclnnStatus aclnnGroupedMatmulV4(
 - **参数说明：**
 
   <table style="undefined;table-layout: fixed; width: 1483px"><colgroup>
-  <col style="width: 210px">
+  <col style="width: 240px">
   <col style="width: 90px">
   <col style="width: 370px">
   <col style="width: 232px">
@@ -143,7 +143,7 @@ aclnnStatus aclnnGroupedMatmulV4(
     </tr></thead>
   <tbody>
     <tr>
-      <td>x（aclTensorList）</td>
+      <td>x（aclTensorList *）</td>
       <td>输入</td>
       <td>公式中的输入x。</td>
       <td>tensorList长度支持[1, 128]或者[1, 1024]。</td>
@@ -153,7 +153,7 @@ aclnnStatus aclnnGroupedMatmulV4(
       <td>-</td>
     </tr>
     <tr>
-      <td>weight（aclTensorList）</td>
+      <td>weight（aclTensorList *）</td>
       <td>输入</td>
       <td>公式中的weight。</td>
       <td>tensorList长度支持[1, 128]或者[1, 1024]。</td>
@@ -163,7 +163,7 @@ aclnnStatus aclnnGroupedMatmulV4(
       <td>-</td>
     </tr>
     <tr>
-      <td>biasOptional（aclTensorList）</td>
+      <td>biasOptional（aclTensorList *）</td>
       <td>输入</td>
       <td>公式中的bias。</td>
       <td>长度与weight相同。</td>
@@ -173,7 +173,7 @@ aclnnStatus aclnnGroupedMatmulV4(
       <td>-</td>
     </tr>
     <tr>
-      <td>scaleOptional（aclTensorList）</td>
+      <td>scaleOptional（aclTensorList *）</td>
       <td>输入</td>
       <td>代表量化参数中的缩放因子。</td>
       <td>一般情况下，长度与weight相同。</td>
@@ -183,7 +183,7 @@ aclnnStatus aclnnGroupedMatmulV4(
       <td>-</td>
     </tr>
     <tr>
-      <td>offsetOptional（aclTensorList）</td>
+      <td>offsetOptional（aclTensorList *）</td>
       <td>输入</td>
       <td>代表量化参数中的偏移量。</td>
       <td>长度与weight相同。</td>
@@ -193,7 +193,7 @@ aclnnStatus aclnnGroupedMatmulV4(
       <td>-</td>
     </tr>
     <tr>
-      <td>antiquantScaleOptional（aclTensorList）</td>
+      <td>antiquantScaleOptional（aclTensorList *）</td>
       <td>输入</td>
       <td>代表伪量化参数中的缩放因子。</td>
       <td>长度与weight相同。</td>
@@ -203,7 +203,7 @@ aclnnStatus aclnnGroupedMatmulV4(
       <td>-</td>
     </tr>
     <tr>
-      <td>antiquantOffsetOptional（aclTensorList）</td>
+      <td>antiquantOffsetOptional（aclTensorList *）</td>
       <td>输入</td>
       <td>代表伪量化参数中的偏移量。</td>
       <td>长度与weight相同。</td>
@@ -213,7 +213,7 @@ aclnnStatus aclnnGroupedMatmulV4(
       <td>-</td>
     </tr>
     <tr>
-      <td>perTokenScaleOptional（aclTensorList）</td>
+      <td>perTokenScaleOptional（aclTensorList *）</td>
       <td>输入</td>
       <td>代表量化参数中的由x量化引入的缩放因子。</td>
       <td>仅支持x、weight、out均为单tensor。</td>
@@ -223,7 +223,7 @@ aclnnStatus aclnnGroupedMatmulV4(
       <td>-</td>
     </tr>
     <tr>
-      <td>groupListOptional（aclTensorList）</td>
+      <td>groupListOptional（aclTensor *）</td>
       <td>输入</td>
       <td>代表输入和输出分组轴方向的matmul大小分布。</td>
       <td>-</td>
@@ -233,7 +233,7 @@ aclnnStatus aclnnGroupedMatmulV4(
       <td>-</td>
     </tr>
     <tr>
-      <td>activationInputOptional（aclTensorList）</td>
+      <td>activationInputOptional（aclTensorList *）</td>
       <td>输入</td>
       <td>当前只支持传入nullptr。</td>
       <td>当前只支持传入nullptr。</td>
@@ -243,7 +243,7 @@ aclnnStatus aclnnGroupedMatmulV4(
       <td>-</td>
     </tr>
     <tr>
-      <td>activationQuantScaleOptional（aclTensorList）</td>
+      <td>activationQuantScaleOptional（aclTensorList *）</td>
       <td>输入</td>
       <td>当前只支持传入nullptr。</td>
       <td>当前只支持传入nullptr。</td>
@@ -253,7 +253,7 @@ aclnnStatus aclnnGroupedMatmulV4(
       <td>-</td>
     </tr>
     <tr>
-      <td>activationQuantOffsetOptional（aclTensorList）</td>
+      <td>activationQuantOffsetOptional（aclTensorList *）</td>
       <td>输入</td>
       <td>当前只支持传入nullptr。</td>
       <td>当前只支持传入nullptr。</td>
@@ -309,7 +309,7 @@ aclnnStatus aclnnGroupedMatmulV4(
       <td>-</td>
     </tr>
     <tr>
-      <td>out（aclTensorList）</td>
+      <td>out（aclTensorList *）</td>
       <td>输出</td>
       <td>公式中的输出y。</td>
       <td>tensorList长度支持[1, 128]或者[1, 1024]。</td>
@@ -319,7 +319,7 @@ aclnnStatus aclnnGroupedMatmulV4(
       <td>-</td>
     </tr>
     <tr>
-      <td>activationFeatureOutOptional（aclTensorList）</td>
+      <td>activationFeatureOutOptional（aclTensorList *）</td>
       <td>输出</td>
       <td>激活函数的输入数据。</td>
       <td>当前只支持传入nullptr。</td>
@@ -329,7 +329,7 @@ aclnnStatus aclnnGroupedMatmulV4(
       <td>-</td>
     </tr>
     <tr>
-      <td>dynQuantScaleOutOptional（aclTensorList）</td>
+      <td>dynQuantScaleOutOptional（aclTensorList *）</td>
       <td>输出</td>
       <td>当前只支持传入nullptr。</td>
       <td>当前只支持传入nullptr。</td>

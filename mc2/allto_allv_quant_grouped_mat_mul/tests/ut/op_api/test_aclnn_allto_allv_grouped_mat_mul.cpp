@@ -32,16 +32,16 @@ TEST_P(AclnnAlltoAllvQuantGroupedMatMulTest, param)
 {
     auto param = GetParam();
     op::SetPlatformSocVersion(param.soc);
-    auto ut = OP_API_UT(
-        aclnnAlltoAllvQuantGroupedMatMul,
-        INPUT(param.gmmX, param.gmmWeight, param.gmmXScale, param.gmmWeightScale, nullptr, nullptr, param.mmXOptional,
-              param.mmWeightOptional, param.mmXScaleOptional, param.mmWeightScaleOptional, param.gmmXQuantMode, param.gmmWeightQuantMode,
-              param.mmXQuantMode, param.mmWeightQuantMode, param.group.c_str(), param.epWorldSize, param.sendCounts, param.recvCounts, param.transGmmWeight, param.transMmWeight,
-              param.groupSize, param.permuteOutFlag),
-        OUTPUT(param.gmmY, param.mmYOptional, param.permuteOutOptional)
-    );
+    auto ut =
+        OP_API_UT(aclnnAlltoAllvQuantGroupedMatMul,
+                  INPUT(param.gmmX, param.gmmWeight, param.gmmXScale, param.gmmWeightScale, nullptr, nullptr,
+                        param.mmXOptional, param.mmWeightOptional, param.mmXScaleOptional, param.mmWeightScaleOptional,
+                        param.gmmXQuantMode, param.gmmWeightQuantMode, param.mmXQuantMode, param.mmWeightQuantMode,
+                        param.group.c_str(), param.epWorldSize, param.sendCounts, param.recvCounts,
+                        param.transGmmWeight, param.transMmWeight, param.groupSize, param.permuteOutFlag),
+                  OUTPUT(param.gmmY, param.mmYOptional, param.permuteOutOptional));
     uint64_t workspace_size = 0;
-    aclOpExecutor* executor = nullptr;
+    aclOpExecutor *executor = nullptr;
     auto aclnnRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor);
     if (param.expectResult == ACLNN_SUCCESS) {
         EXPECT_NE(ACLNN_ERR_PARAM_INVALID, aclnnRet);
@@ -51,10 +51,8 @@ TEST_P(AclnnAlltoAllvQuantGroupedMatMulTest, param)
 }
 
 INSTANTIATE_TEST_SUITE_P(
-    AlltoAllvQuantGroupedMatMul,
-    AclnnAlltoAllvQuantGroupedMatMulTest,
+    AlltoAllvQuantGroupedMatMul, AclnnAlltoAllvQuantGroupedMatMulTest,
     testing::ValuesIn(GetCasesFromCsv<AlltoAllvQuantGroupedMatMulApiUtParam>(ReplaceFileExtension2Csv(__FILE__))),
-    PrintCaseInfoString<AlltoAllvQuantGroupedMatMulApiUtParam>
-);
+    PrintCaseInfoString<AlltoAllvQuantGroupedMatMulApiUtParam>);
 
 } // namespace AlltoAllvQuantGroupedMatMulUT

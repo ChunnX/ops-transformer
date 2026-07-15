@@ -104,17 +104,16 @@ public:
         mPerLoop = m0 * pValue;
         tokenSize = k * rankSize;
 
-        x1DataSize = 1LL * m * k;                                                // 矩阵A大小
-        allToAllSizePerRank = x1DataSize / rankSize;                             // 搬运到每个rank的数据量
-        allToAllSizePerRankPerLoop = mPerLoop * k;                               // 一次通信搬运到每个rank的数据量
+        x1DataSize = 1LL * m * k;                    // 矩阵A大小
+        allToAllSizePerRank = x1DataSize / rankSize; // 搬运到每个rank的数据量
+        allToAllSizePerRankPerLoop = mPerLoop * k;   // 一次通信搬运到每个rank的数据量
         allToAllSizeAllRanksPerLoop = allToAllSizePerRankPerLoop * rankSize;     // 一次通信搬运的数据量
         pingPongBlockSize = mPerLoop * tokenSize;                                // pingpong缓冲区大小
         allToAllSizePerCore = allToAllSizeAllRanksPerLoop / allToAllSendCoreNum; // 每个core搬运的数据量
-        coreNumPerRank = allToAllSendCoreNum / rankSize;                         // 每个rank的用来搬运的core数量
+        coreNumPerRank = allToAllSendCoreNum / rankSize; // 每个rank的用来搬运的core数量
 
-        commCount = static_cast<int32_t>((x1DataSize + allToAllSizeAllRanksPerLoop - 1) /
-                                         allToAllSizeAllRanksPerLoop);
-        usedCoreNum = allToAllSendCoreNum + allToAllRecvCoreNum;      // 总共的core数量
+        commCount = static_cast<int32_t>((x1DataSize + allToAllSizeAllRanksPerLoop - 1) / allToAllSizeAllRanksPerLoop);
+        usedCoreNum = allToAllSendCoreNum + allToAllRecvCoreNum; // 总共的core数量
 
         if ASCEND_IS_AIV {
             TPipe pipe;

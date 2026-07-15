@@ -15,14 +15,16 @@
 #include "infer_datatype_context_faker.h"
 
 class BatchMatMulReduceScatterAlltoAllInfershape : public testing::Test {
-    protected:
-        static void SetUpTestCase() {
-            std::cout << "BatchMatMulReduceScatterAlltoAllInfershape SetUp" << std::endl;
-        }
+protected:
+    static void SetUpTestCase()
+    {
+        std::cout << "BatchMatMulReduceScatterAlltoAllInfershape SetUp" << std::endl;
+    }
 
-        static void TearDownTestCase() {
-            std::cout << "BatchMatMulReduceScatterAlltoAllInfershape TearDown" << std::endl;
-        }
+    static void TearDownTestCase()
+    {
+        std::cout << "BatchMatMulReduceScatterAlltoAllInfershape TearDown" << std::endl;
+    }
 };
 
 // infer shape with bias, success
@@ -43,26 +45,17 @@ TEST_F(BatchMatMulReduceScatterAlltoAllInfershape, InferShape0)
 
     gert::InfershapeContextPara infershapeContextPara(
         "BatchMatMulReduceScatterAlltoAll",
-        {
-            {xStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {weightStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {biasStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND}
-        },
-        {
-            {{}, ge::DT_FLOAT16, ge::FORMAT_ND}
-        },
-        {
-            {"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("hcclComEp")},
-            {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("hcclComTp")},
-            {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(ep)},
-            {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(tp)},
-            {"y_shard_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(yShard)},
-            {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(transW)}
-        }
-    );
-    Mc2Hcom::MockValues hcomTopologyMockValues {
-        {"rankNum", 8}
-    };
+        {{xStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {weightStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {biasStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {{{}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {{"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("hcclComEp")},
+         {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("hcclComTp")},
+         {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(ep)},
+         {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(tp)},
+         {"y_shard_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(yShard)},
+         {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(transW)}});
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
 
     std::vector<std::vector<int64_t>> expectOutputShape = {{E, C / tp, H}};
     Mc2ExecuteTestCase(infershapeContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectOutputShape);
@@ -86,26 +79,17 @@ TEST_F(BatchMatMulReduceScatterAlltoAllInfershape, InferShape1)
 
     gert::InfershapeContextPara infershapeContextPara(
         "BatchMatMulReduceScatterAlltoAll",
-        {
-            {xStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {weightStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {biasStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND}
-        },
-        {
-            {{}, ge::DT_FLOAT16, ge::FORMAT_ND}
-        },
-        {
-            {"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("hcclComEp")},
-            {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("hcclComTp")},
-            {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(ep)},
-            {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(tp)},
-            {"y_shard_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(yShard)},
-            {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(transW)}
-        }
-    );
-    Mc2Hcom::MockValues hcomTopologyMockValues {
-        {"rankNum", 8}
-    };
+        {{xStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {weightStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {biasStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {{{}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {{"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("hcclComEp")},
+         {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("hcclComTp")},
+         {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(ep)},
+         {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(tp)},
+         {"y_shard_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(yShard)},
+         {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(transW)}});
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
 
     std::vector<std::vector<int64_t>> expectOutputShape = {{E, C / tp, H}};
     Mc2ExecuteTestCase(infershapeContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectOutputShape);
@@ -129,26 +113,17 @@ TEST_F(BatchMatMulReduceScatterAlltoAllInfershape, InferShape2)
 
     gert::InfershapeContextPara infershapeContextPara(
         "BatchMatMulReduceScatterAlltoAll",
-        {
-            {xStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {weightStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {biasStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND}
-        },
-        {
-            {{}, ge::DT_FLOAT16, ge::FORMAT_ND}
-        },
-        {
-            {"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("hcclComEp")},
-            {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("hcclComTp")},
-            {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(ep)},
-            {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(tp)},
-            {"y_shard_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(yShard)},
-            {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(transW)}
-        }
-    );
-    Mc2Hcom::MockValues hcomTopologyMockValues {
-        {"rankNum", 8}
-    };
+        {{xStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {weightStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {biasStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {{{}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {{"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("hcclComEp")},
+         {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("hcclComTp")},
+         {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(ep)},
+         {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(tp)},
+         {"y_shard_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(yShard)},
+         {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(transW)}});
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
 
     Mc2ExecuteTestCase(infershapeContextPara, hcomTopologyMockValues);
 }
@@ -171,26 +146,17 @@ TEST_F(BatchMatMulReduceScatterAlltoAllInfershape, InferShape3)
 
     gert::InfershapeContextPara infershapeContextPara(
         "BatchMatMulReduceScatterAlltoAll",
-        {
-            {xStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {weightStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {biasStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND}
-        },
-        {
-            {{}, ge::DT_FLOAT16, ge::FORMAT_ND}
-        },
-        {
-            {"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("hcclComEp")},
-            {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("hcclComTp")},
-            {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(ep)},
-            {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(tp)},
-            {"y_shard_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(yShard)},
-            {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(transW)}
-        }
-    );
-    Mc2Hcom::MockValues hcomTopologyMockValues {
-        {"rankNum", 8}
-    };
+        {{xStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {weightStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {biasStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {{{}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {{"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("hcclComEp")},
+         {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("hcclComTp")},
+         {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(ep)},
+         {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(tp)},
+         {"y_shard_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(yShard)},
+         {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(transW)}});
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
 
     Mc2ExecuteTestCase(infershapeContextPara, hcomTopologyMockValues);
 }
@@ -213,26 +179,17 @@ TEST_F(BatchMatMulReduceScatterAlltoAllInfershape, InferShape4)
 
     gert::InfershapeContextPara infershapeContextPara(
         "BatchMatMulReduceScatterAlltoAll",
-        {
-            {xStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {weightStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {biasStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND}
-        },
-        {
-            {{}, ge::DT_FLOAT16, ge::FORMAT_ND}
-        },
-        {
-            {"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("hcclComEp")},
-            {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("hcclComTp")},
-            {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(ep)},
-            {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(tp)},
-            {"y_shard_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(yShard)},
-            {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(transW)}
-        }
-    );
-    Mc2Hcom::MockValues hcomTopologyMockValues {
-        {"rankNum", 8}
-    };
+        {{xStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {weightStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {biasStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {{{}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {{"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("hcclComEp")},
+         {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("hcclComTp")},
+         {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(ep)},
+         {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(tp)},
+         {"y_shard_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(yShard)},
+         {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(transW)}});
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
 
     Mc2ExecuteTestCase(infershapeContextPara, hcomTopologyMockValues);
 }
@@ -253,28 +210,19 @@ TEST_F(BatchMatMulReduceScatterAlltoAllInfershape, InferShape5)
     gert::StorageShape weightStorageShape = {{E / ep, M / tp, H}, {}};
     gert::StorageShape biasStorageShape = {{E / ep, 1, H}, {}};
 
-        gert::InfershapeContextPara infershapeContextPara(
+    gert::InfershapeContextPara infershapeContextPara(
         "BatchMatMulReduceScatterAlltoAll",
-        {
-            {xStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {weightStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {biasStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND}
-        },
-        {
-            {{}, ge::DT_FLOAT16, ge::FORMAT_ND}
-        },
-        {
-            {"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
-            {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("hcclComTp")},
-            {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(ep)},
-            {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(tp)},
-            {"y_shard_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(yShard)},
-            {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(transW)}
-        }
-    );
-    Mc2Hcom::MockValues hcomTopologyMockValues {
-        {"rankNum", 8}
-    };
+        {{xStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {weightStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {biasStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {{{}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {{"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
+         {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("hcclComTp")},
+         {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(ep)},
+         {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(tp)},
+         {"y_shard_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(yShard)},
+         {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(transW)}});
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
 
     Mc2ExecuteTestCase(infershapeContextPara, hcomTopologyMockValues);
 }
@@ -297,26 +245,17 @@ TEST_F(BatchMatMulReduceScatterAlltoAllInfershape, InferShape6)
 
     gert::InfershapeContextPara infershapeContextPara(
         "BatchMatMulReduceScatterAlltoAll",
-        {
-            {xStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {weightStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {biasStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND}
-        },
-        {
-            {{}, ge::DT_FLOAT16, ge::FORMAT_ND}
-        },
-        {
-            {"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("hcclComEp")},
-            {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
-            {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(ep)},
-            {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(tp)},
-            {"y_shard_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(yShard)},
-            {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(transW)}
-        }
-    );
-    Mc2Hcom::MockValues hcomTopologyMockValues {
-        {"rankNum", 8}
-    };
+        {{xStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {weightStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {biasStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {{{}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {{"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("hcclComEp")},
+         {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
+         {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(ep)},
+         {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(tp)},
+         {"y_shard_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(yShard)},
+         {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(transW)}});
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
 
     Mc2ExecuteTestCase(infershapeContextPara, hcomTopologyMockValues);
 }
@@ -339,26 +278,17 @@ TEST_F(BatchMatMulReduceScatterAlltoAllInfershape, InferShape7)
 
     gert::InfershapeContextPara infershapeContextPara(
         "BatchMatMulReduceScatterAlltoAll",
-        {
-            {xStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {weightStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {biasStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND}
-        },
-        {
-            {{}, ge::DT_FLOAT16, ge::FORMAT_ND}
-        },
-        {
-            {"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("hcclComEp")},
-            {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("hcclComTp")},
-            {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(ep)},
-            {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(tp)},
-            {"y_shard_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(yShard)},
-            {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(transW)}
-        }
-    );
-    Mc2Hcom::MockValues hcomTopologyMockValues {
-        {"rankNum", 8}
-    };
+        {{xStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {weightStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {biasStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {{{}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {{"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("hcclComEp")},
+         {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("hcclComTp")},
+         {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(ep)},
+         {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(tp)},
+         {"y_shard_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(yShard)},
+         {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(transW)}});
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
 
     Mc2ExecuteTestCase(infershapeContextPara, hcomTopologyMockValues);
 }
@@ -381,26 +311,17 @@ TEST_F(BatchMatMulReduceScatterAlltoAllInfershape, InferShape8)
 
     gert::InfershapeContextPara infershapeContextPara(
         "BatchMatMulReduceScatterAlltoAll",
-        {
-            {xStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {weightStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {biasStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND}
-        },
-        {
-            {{}, ge::DT_FLOAT16, ge::FORMAT_ND}
-        },
-        {
-            {"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("hcclComEp")},
-            {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("hcclComTp")},
-            {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(ep)},
-            {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(tp)},
-            {"y_shard_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(yShard)},
-            {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(transW)}
-        }
-    );
-    Mc2Hcom::MockValues hcomTopologyMockValues {
-        {"rankNum", 8}
-    };
+        {{xStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {weightStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {biasStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {{{}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {{"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("hcclComEp")},
+         {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("hcclComTp")},
+         {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(ep)},
+         {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(tp)},
+         {"y_shard_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(yShard)},
+         {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(transW)}});
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
 
     Mc2ExecuteTestCase(infershapeContextPara, hcomTopologyMockValues);
 }
@@ -423,26 +344,17 @@ TEST_F(BatchMatMulReduceScatterAlltoAllInfershape, InferShape9)
 
     gert::InfershapeContextPara infershapeContextPara(
         "BatchMatMulReduceScatterAlltoAll",
-        {
-            {xStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {weightStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {biasStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND}
-        },
-        {
-            {{}, ge::DT_FLOAT16, ge::FORMAT_ND}
-        },
-        {
-            {"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("hcclComEp")},
-            {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("hcclComTp")},
-            {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(ep)},
-            {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(tp)},
-            {"y_shard_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(yShard)},
-            {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(transW)}
-        }
-    );
-    Mc2Hcom::MockValues hcomTopologyMockValues {
-        {"rankNum", 8}
-    };
+        {{xStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {weightStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {biasStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {{{}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {{"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("hcclComEp")},
+         {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("hcclComTp")},
+         {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(ep)},
+         {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(tp)},
+         {"y_shard_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(yShard)},
+         {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(transW)}});
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
 
     Mc2ExecuteTestCase(infershapeContextPara, hcomTopologyMockValues);
 }
@@ -465,26 +377,17 @@ TEST_F(BatchMatMulReduceScatterAlltoAllInfershape, InferShape10)
 
     gert::InfershapeContextPara infershapeContextPara(
         "BatchMatMulReduceScatterAlltoAll",
-        {
-            {xStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {weightStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {biasStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND}
-        },
-        {
-            {{}, ge::DT_FLOAT16, ge::FORMAT_ND}
-        },
-        {
-            {"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("hcclComEp")},
-            {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("hcclComTp")},
-            {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(ep)},
-            {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(tp)},
-            {"y_shard_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(yShard)},
-            {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(transW)}
-        }
-    );
-    Mc2Hcom::MockValues hcomTopologyMockValues {
-        {"rankNum", 8}
-    };
+        {{xStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {weightStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {biasStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {{{}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {{"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("hcclComEp")},
+         {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("hcclComTp")},
+         {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(ep)},
+         {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(tp)},
+         {"y_shard_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(yShard)},
+         {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(transW)}});
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
 
     Mc2ExecuteTestCase(infershapeContextPara, hcomTopologyMockValues);
 }
@@ -507,26 +410,17 @@ TEST_F(BatchMatMulReduceScatterAlltoAllInfershape, InferShape11)
 
     gert::InfershapeContextPara infershapeContextPara(
         "BatchMatMulReduceScatterAlltoAll",
-        {
-            {xStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {weightStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {biasStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND}
-        },
-        {
-            {{}, ge::DT_FLOAT16, ge::FORMAT_ND}
-        },
-        {
-            {"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("hcclComEp")},
-            {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("hcclComTp")},
-            {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(ep)},
-            {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(tp)},
-            {"y_shard_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(yShard)},
-            {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(transW)}
-        }
-    );
-    Mc2Hcom::MockValues hcomTopologyMockValues {
-        {"rankNum", 8}
-    };
+        {{xStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {weightStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {biasStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {{{}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {{"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("hcclComEp")},
+         {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("hcclComTp")},
+         {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(ep)},
+         {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(tp)},
+         {"y_shard_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(yShard)},
+         {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(transW)}});
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
 
     Mc2ExecuteTestCase(infershapeContextPara, hcomTopologyMockValues);
 }
@@ -549,26 +443,17 @@ TEST_F(BatchMatMulReduceScatterAlltoAllInfershape, InferShape12)
 
     gert::InfershapeContextPara infershapeContextPara(
         "BatchMatMulReduceScatterAlltoAll",
-        {
-            {xStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {weightStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {biasStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND}
-        },
-        {
-            {{}, ge::DT_FLOAT16, ge::FORMAT_ND}
-        },
-        {
-            {"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("hcclComEp")},
-            {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("hcclComTp")},
-            {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(ep)},
-            {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(tp)},
-            {"y_shard_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(yShard)},
-            {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(transW)}
-        }
-    );
-    Mc2Hcom::MockValues hcomTopologyMockValues {
-        {"rankNum", 8}
-    };
+        {{xStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {weightStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {biasStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {{{}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {{"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("hcclComEp")},
+         {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("hcclComTp")},
+         {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(ep)},
+         {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(tp)},
+         {"y_shard_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(yShard)},
+         {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(transW)}});
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
 
     Mc2ExecuteTestCase(infershapeContextPara, hcomTopologyMockValues);
 }
@@ -591,26 +476,17 @@ TEST_F(BatchMatMulReduceScatterAlltoAllInfershape, InferShape13)
 
     gert::InfershapeContextPara infershapeContextPara(
         "BatchMatMulReduceScatterAlltoAll",
-        {
-            {xStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {weightStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {biasStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND}
-        },
-        {
-            {{}, ge::DT_FLOAT16, ge::FORMAT_ND}
-        },
-        {
-            {"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("hcclComEp")},
-            {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("hcclComTp")},
-            {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(ep)},
-            {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(tp)},
-            {"y_shard_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(yShard)},
-            {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(transW)}
-        }
-    );
-    Mc2Hcom::MockValues hcomTopologyMockValues {
-        {"rankNum", 8}
-    };
+        {{xStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {weightStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {biasStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {{{}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {{"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("hcclComEp")},
+         {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("hcclComTp")},
+         {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(ep)},
+         {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(tp)},
+         {"y_shard_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(yShard)},
+         {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(transW)}});
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
 
     Mc2ExecuteTestCase(infershapeContextPara, hcomTopologyMockValues);
 }
@@ -633,26 +509,17 @@ TEST_F(BatchMatMulReduceScatterAlltoAllInfershape, InferShape14)
 
     gert::InfershapeContextPara infershapeContextPara(
         "BatchMatMulReduceScatterAlltoAll",
-        {
-            {xStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {weightStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {biasStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND}
-        },
-        {
-            {{}, ge::DT_FLOAT16, ge::FORMAT_ND}
-        },
-        {
-            {"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("hcclComEp")},
-            {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("hcclComTp")},
-            {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(ep)},
-            {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(tp)},
-            {"y_shard_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(yShard)},
-            {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(transW)}
-        }
-    );
-    Mc2Hcom::MockValues hcomTopologyMockValues {
-        {"rankNum", 8}
-    };
+        {{xStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {weightStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {biasStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {{{}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {{"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("hcclComEp")},
+         {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("hcclComTp")},
+         {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(ep)},
+         {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(tp)},
+         {"y_shard_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(yShard)},
+         {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(transW)}});
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
 
     Mc2ExecuteTestCase(infershapeContextPara, hcomTopologyMockValues);
 }
@@ -675,26 +542,17 @@ TEST_F(BatchMatMulReduceScatterAlltoAllInfershape, InferShape15)
 
     gert::InfershapeContextPara infershapeContextPara(
         "BatchMatMulReduceScatterAlltoAll",
-        {
-            {xStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {weightStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {biasStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND}
-        },
-        {
-            {{}, ge::DT_FLOAT16, ge::FORMAT_ND}
-        },
-        {
-            {"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("hcclComEp")},
-            {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("hcclComTp")},
-            {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(ep)},
-            {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(tp)},
-            {"y_shard_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(yShard)},
-            {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(transW)}
-        }
-    );
-    Mc2Hcom::MockValues hcomTopologyMockValues {
-        {"rankNum", 8}
-    };
+        {{xStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {weightStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {biasStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {{{}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {{"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("hcclComEp")},
+         {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("hcclComTp")},
+         {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(ep)},
+         {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(tp)},
+         {"y_shard_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(yShard)},
+         {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(transW)}});
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
 
     Mc2ExecuteTestCase(infershapeContextPara, hcomTopologyMockValues);
 }
@@ -717,26 +575,17 @@ TEST_F(BatchMatMulReduceScatterAlltoAllInfershape, InferShape16)
 
     gert::InfershapeContextPara infershapeContextPara(
         "BatchMatMulReduceScatterAlltoAll",
-        {
-            {xStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {weightStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {biasStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND}
-        },
-        {
-            {{}, ge::DT_FLOAT16, ge::FORMAT_ND}
-        },
-        {
-            {"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("hcclComEp")},
-            {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("hcclComTp")},
-            {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(ep)},
-            {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(tp)},
-            {"y_shard_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(yShard)},
-            {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(transW)}
-        }
-    );
-    Mc2Hcom::MockValues hcomTopologyMockValues {
-        {"rankNum", 8}
-    };
+        {{xStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {weightStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {biasStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {{{}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {{"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("hcclComEp")},
+         {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("hcclComTp")},
+         {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(ep)},
+         {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(tp)},
+         {"y_shard_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(yShard)},
+         {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(transW)}});
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
 
     Mc2ExecuteTestCase(infershapeContextPara, hcomTopologyMockValues);
 }
@@ -759,26 +608,17 @@ TEST_F(BatchMatMulReduceScatterAlltoAllInfershape, InferShape17)
 
     gert::InfershapeContextPara infershapeContextPara(
         "BatchMatMulReduceScatterAlltoAll",
-        {
-            {xStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {weightStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {biasStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND}
-        },
-        {
-            {{}, ge::DT_FLOAT16, ge::FORMAT_ND}
-        },
-        {
-            {"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("hcclComEp")},
-            {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("hcclComTp")},
-            {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(ep)},
-            {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(tp)},
-            {"y_shard_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(yShard)},
-            {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(transW)}
-        }
-    );
-    Mc2Hcom::MockValues hcomTopologyMockValues {
-        {"rankNum", 8}
-    };
+        {{xStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {weightStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {biasStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {{{}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {{"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("hcclComEp")},
+         {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("hcclComTp")},
+         {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(ep)},
+         {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(tp)},
+         {"y_shard_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(yShard)},
+         {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(transW)}});
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
 
     Mc2ExecuteTestCase(infershapeContextPara, hcomTopologyMockValues);
 }
@@ -801,26 +641,17 @@ TEST_F(BatchMatMulReduceScatterAlltoAllInfershape, InferShape18)
 
     gert::InfershapeContextPara infershapeContextPara(
         "BatchMatMulReduceScatterAlltoAll",
-        {
-            {xStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {weightStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {biasStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND}
-        },
-        {
-            {{}, ge::DT_FLOAT16, ge::FORMAT_ND}
-        },
-        {
-            {"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("hcclComEp")},
-            {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("hcclComTp")},
-            {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(ep)},
-            {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(tp)},
-            {"y_shard_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(yShard)},
-            {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(transW)}
-        }
-    );
-    Mc2Hcom::MockValues hcomTopologyMockValues {
-        {"rankNum", 8}
-    };
+        {{xStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {weightStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {biasStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {{{}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {{"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("hcclComEp")},
+         {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("hcclComTp")},
+         {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(ep)},
+         {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(tp)},
+         {"y_shard_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(yShard)},
+         {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(transW)}});
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
 
     Mc2ExecuteTestCase(infershapeContextPara, hcomTopologyMockValues);
 }
@@ -843,26 +674,17 @@ TEST_F(BatchMatMulReduceScatterAlltoAllInfershape, InferShape19)
 
     gert::InfershapeContextPara infershapeContextPara(
         "BatchMatMulReduceScatterAlltoAll",
-        {
-            {xStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {weightStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {biasStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND}
-        },
-        {
-            {{}, ge::DT_FLOAT16, ge::FORMAT_ND}
-        },
-        {
-            {"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("hcclComEp")},
-            {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("hcclComTp")},
-            {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(ep)},
-            {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(tp)},
-            {"y_shard_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(yShard)},
-            {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(transW)}
-        }
-    );
-    Mc2Hcom::MockValues hcomTopologyMockValues {
-        {"rankNum", 8}
-    };
+        {{xStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {weightStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {biasStorageShape, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {{{}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {{"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("hcclComEp")},
+         {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("hcclComTp")},
+         {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(ep)},
+         {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(tp)},
+         {"y_shard_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(yShard)},
+         {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(transW)}});
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
 
     Mc2ExecuteTestCase(infershapeContextPara, hcomTopologyMockValues);
 }
@@ -874,10 +696,10 @@ TEST_F(BatchMatMulReduceScatterAlltoAllInfershape, InferDtype0)
     ge::DataType weightType = ge::DT_FLOAT16;
 
     auto contextHolder = gert::InferDataTypeContextFaker()
-        .NodeIoNum(2, 1)
-        .InputDataTypes({&xType, &weightType})
-        .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
-        .Build();
+                             .NodeIoNum(2, 1)
+                             .InputDataTypes({&xType, &weightType})
+                             .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
+                             .Build();
 
     auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
     auto inferDtypeFunc = spaceRegistry->GetOpImpl("BatchMatMulReduceScatterAlltoAll")->infer_datatype;
@@ -894,10 +716,10 @@ TEST_F(BatchMatMulReduceScatterAlltoAllInfershape, InferDtype1)
     ge::DataType biasType = ge::DT_FLOAT16;
 
     auto contextHolder = gert::InferDataTypeContextFaker()
-        .NodeIoNum(3, 1)
-        .InputDataTypes({&xType, &weightType, &biasType})
-        .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
-        .Build();
+                             .NodeIoNum(3, 1)
+                             .InputDataTypes({&xType, &weightType, &biasType})
+                             .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
+                             .Build();
 
     auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
     auto inferDtypeFunc = spaceRegistry->GetOpImpl("BatchMatMulReduceScatterAlltoAll")->infer_datatype;
@@ -914,10 +736,10 @@ TEST_F(BatchMatMulReduceScatterAlltoAllInfershape, InferDtype2)
     ge::DataType biasType = ge::DT_FLOAT16;
 
     auto contextHolder = gert::InferDataTypeContextFaker()
-        .NodeIoNum(3, 1)
-        .InputDataTypes({&xType, &weightType, &biasType})
-        .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
-        .Build();
+                             .NodeIoNum(3, 1)
+                             .InputDataTypes({&xType, &weightType, &biasType})
+                             .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
+                             .Build();
 
     auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
     auto inferDtypeFunc = spaceRegistry->GetOpImpl("BatchMatMulReduceScatterAlltoAll")->infer_datatype;
@@ -932,10 +754,10 @@ TEST_F(BatchMatMulReduceScatterAlltoAllInfershape, InferDtype3)
     ge::DataType biasType = ge::DT_FLOAT;
 
     auto contextHolder = gert::InferDataTypeContextFaker()
-        .NodeIoNum(3, 1)
-        .InputDataTypes({&xType, &weightType, &biasType})
-        .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
-        .Build();
+                             .NodeIoNum(3, 1)
+                             .InputDataTypes({&xType, &weightType, &biasType})
+                             .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
+                             .Build();
 
     auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
     auto inferDtypeFunc = spaceRegistry->GetOpImpl("BatchMatMulReduceScatterAlltoAll")->infer_datatype;
@@ -950,10 +772,10 @@ TEST_F(BatchMatMulReduceScatterAlltoAllInfershape, InferDtype4)
     ge::DataType biasType = ge::DT_FLOAT;
 
     auto contextHolder = gert::InferDataTypeContextFaker()
-        .NodeIoNum(3, 1)
-        .InputDataTypes({&xType, &weightType, &biasType})
-        .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
-        .Build();
+                             .NodeIoNum(3, 1)
+                             .InputDataTypes({&xType, &weightType, &biasType})
+                             .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
+                             .Build();
 
     auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
     auto inferDtypeFunc = spaceRegistry->GetOpImpl("BatchMatMulReduceScatterAlltoAll")->infer_datatype;
@@ -970,10 +792,10 @@ TEST_F(BatchMatMulReduceScatterAlltoAllInfershape, InferDtype5)
     ge::DataType biasType = ge::DT_FLOAT16;
 
     auto contextHolder = gert::InferDataTypeContextFaker()
-        .NodeIoNum(3, 1)
-        .InputDataTypes({&xType, &weightType, &biasType})
-        .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
-        .Build();
+                             .NodeIoNum(3, 1)
+                             .InputDataTypes({&xType, &weightType, &biasType})
+                             .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
+                             .Build();
 
     auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
     auto inferDtypeFunc = spaceRegistry->GetOpImpl("BatchMatMulReduceScatterAlltoAll")->infer_datatype;
@@ -988,10 +810,10 @@ TEST_F(BatchMatMulReduceScatterAlltoAllInfershape, InferDtype6)
     ge::DataType biasType = ge::DT_FLOAT16;
 
     auto contextHolder = gert::InferDataTypeContextFaker()
-        .NodeIoNum(3, 1)
-        .InputDataTypes({&xType, &weightType, &biasType})
-        .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
-        .Build();
+                             .NodeIoNum(3, 1)
+                             .InputDataTypes({&xType, &weightType, &biasType})
+                             .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
+                             .Build();
 
     auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
     auto inferDtypeFunc = spaceRegistry->GetOpImpl("BatchMatMulReduceScatterAlltoAll")->infer_datatype;
@@ -1006,10 +828,10 @@ TEST_F(BatchMatMulReduceScatterAlltoAllInfershape, InferDtype7)
     ge::DataType biasType = ge::DT_INT8;
 
     auto contextHolder = gert::InferDataTypeContextFaker()
-        .NodeIoNum(3, 1)
-        .InputDataTypes({&xType, &weightType, &biasType})
-        .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
-        .Build();
+                             .NodeIoNum(3, 1)
+                             .InputDataTypes({&xType, &weightType, &biasType})
+                             .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
+                             .Build();
 
     auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
     auto inferDtypeFunc = spaceRegistry->GetOpImpl("BatchMatMulReduceScatterAlltoAll")->infer_datatype;
@@ -1024,10 +846,10 @@ TEST_F(BatchMatMulReduceScatterAlltoAllInfershape, InferDtype8)
     ge::DataType biasType = ge::DT_FLOAT16;
 
     auto contextHolder = gert::InferDataTypeContextFaker()
-        .NodeIoNum(3, 1)
-        .InputDataTypes({&xType, &weightType, &biasType})
-        .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
-        .Build();
+                             .NodeIoNum(3, 1)
+                             .InputDataTypes({&xType, &weightType, &biasType})
+                             .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
+                             .Build();
 
     auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
     auto inferDtypeFunc = spaceRegistry->GetOpImpl("BatchMatMulReduceScatterAlltoAll")->infer_datatype;

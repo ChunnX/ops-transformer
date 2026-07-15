@@ -36,14 +36,14 @@ std::map<ge::DataType, aclDataType> geDtype2AclDtypeMap = {{ge::DataType::DT_FLO
                                                            {ge::DataType::DT_FLOAT8_E5M2, ACL_FLOAT8_E5M2},
                                                            {ge::DataType::DT_HIFLOAT8, ACL_HIFLOAT8},
                                                            {ge::DataType::DT_FLOAT4_E2M1, ACL_FLOAT4_E2M1},
-                                                           {ge::DataType::DT_FLOAT4_E1M2, ACL_FLOAT4_E1M2}
-                                                           };
+                                                           {ge::DataType::DT_FLOAT4_E1M2, ACL_FLOAT4_E1M2}};
 }
 
 using namespace ops::adv::tests::utils;
 
 AclnnTensorList::AclnnTensorList(const char *name, const std::vector<std::vector<int64_t>> &shapes,
-    const char *shapeType, ge::DataType dType, ge::Format format, TensorType type, bool isTrans)
+                                 const char *shapeType, ge::DataType dType, ge::Format format, TensorType type,
+                                 bool isTrans)
     : TensorIntf(name, {}, shapeType, dType, format, type), aclDataType_(ACL_DT_UNDEFINED),
       aclTensorListDataStrides_({}), aclTensorList_(nullptr)
 {
@@ -63,10 +63,11 @@ AclnnTensorList::AclnnTensorList(const char *name, const std::vector<std::vector
         }
         // grouped matmul type mx quant mode need speical stride assignment
         if (std::strcmp("pertoken_scale", name) == 0 && isTrans && dType == ge::DataType::DT_FLOAT8_E8M0 &&
-            shape.size() == 3 && shape[2] == 2) { // in gmm mx typek quant mode, scale dim num is 3 and last dim value is 2
+            shape.size() == 3 &&
+            shape[2] == 2) {             // in gmm mx typek quant mode, scale dim num is 3 and last dim value is 2
             aclTensorDataStrides[0] = 2; // first dim is m, stride is 2, given by the last axis
             aclTensorDataStrides[1] = myShape[0] * 2; // k is outer axis, stride should be m dim value times 2
-            aclTensorDataStrides[2] = 1; // 2 is for last dim index, which stride is 1
+            aclTensorDataStrides[2] = 1;              // 2 is for last dim index, which stride is 1
         } else if (isTrans && dim2 >= 0) {
             aclTensorDataStrides[dim2] = 1;
             aclTensorDataStrides[dim1] = myShape[dim2];
@@ -79,7 +80,8 @@ AclnnTensorList::AclnnTensorList(const char *name, const std::vector<std::vector
     /* 获取 aclDataType */
     auto iter = geDtype2AclDtypeMap.find(dType);
     if (iter == geDtype2AclDtypeMap.end()) {
-        LOG_ERR("TensorList(%s), Unknown dtype(%s)", name_.c_str(), ge::TypeUtils::DataTypeToSerialString(dType).c_str());
+        LOG_ERR("TensorList(%s), Unknown dtype(%s)", name_.c_str(),
+                ge::TypeUtils::DataTypeToSerialString(dType).c_str());
     } else {
         aclDataType_ = iter->second;
     }
@@ -112,19 +114,20 @@ uint8_t *AclnnTensorList::AllocDevDataNz(int32_t initVal, int64_t minSize)
     if (size <= 0) {
         return nullptr;
     }
-    aclTensor** tensors = reinterpret_cast<aclTensor**>(malloc(size * sizeof(aclTensor*)));
+    aclTensor **tensors = reinterpret_cast<aclTensor **>(malloc(size * sizeof(aclTensor *)));
     if (tensors == nullptr) {
         return nullptr;
     }
     for (int i = 0; i < size; i++) {
-        aclTensor** tmpTensor = tensors + i;
+        aclTensor **tmpTensor = tensors + i;
         this->shape_ = this->shapes_[i];
         if (TensorIntf::AllocDevData(initVal, minSize) == nullptr) {
             return nullptr;
         }
         /* 调用 aclCreateTensor 创建 aclTensor  */
-        *tmpTensor = aclCreateTensor(shapesView_[i].data(), shapesView_[i].size(), aclDataType_, aclTensorListDataStrides_[i].data(), 0,
-                                     aclFormat::ACL_FORMAT_FRACTAL_NZ, shapesView_[i].data(), shapesView_[i].size(), devData_);
+        *tmpTensor = aclCreateTensor(shapesView_[i].data(), shapesView_[i].size(), aclDataType_,
+                                     aclTensorListDataStrides_[i].data(), 0, aclFormat::ACL_FORMAT_FRACTAL_NZ,
+                                     shapesView_[i].data(), shapesView_[i].size(), devData_);
         if (tmpTensor == nullptr) {
             LOG_ERR("aclCreateTensor failed, Tensor(%s))", name_.c_str());
             this->FreeDevData();
@@ -141,19 +144,20 @@ uint8_t *AclnnTensorList::AllocDevData(int32_t initVal, int64_t minSize)
     if (size <= 0) {
         return nullptr;
     }
-    aclTensor** tensors = reinterpret_cast<aclTensor**>(malloc(size * sizeof(aclTensor*)));
+    aclTensor **tensors = reinterpret_cast<aclTensor **>(malloc(size * sizeof(aclTensor *)));
     if (tensors == nullptr) {
         return nullptr;
     }
     for (int i = 0; i < size; i++) {
-        aclTensor** tmpTensor = tensors + i;
+        aclTensor **tmpTensor = tensors + i;
         this->shape_ = this->shapes_[i];
         if (TensorIntf::AllocDevData(initVal, minSize) == nullptr) {
             return nullptr;
         }
         /* 调用 aclCreateTensor 创建 aclTensor  */
-        *tmpTensor = aclCreateTensor(shapesView_[i].data(), shapesView_[i].size(), aclDataType_, aclTensorListDataStrides_[i].data(), 0,
-                                     aclFormat::ACL_FORMAT_ND, shapesView_[i].data(), shapesView_[i].size(), devData_);
+        *tmpTensor = aclCreateTensor(shapesView_[i].data(), shapesView_[i].size(), aclDataType_,
+                                     aclTensorListDataStrides_[i].data(), 0, aclFormat::ACL_FORMAT_ND,
+                                     shapesView_[i].data(), shapesView_[i].size(), devData_);
         if (tmpTensor == nullptr) {
             LOG_ERR("aclCreateTensor failed, Tensor(%s))", name_.c_str());
             this->FreeDevData();
@@ -216,7 +220,8 @@ void AclnnTensorList::Destroy()
 {
     if (aclTensorList_ != nullptr) {
         auto ret = aclDestroyTensorList(aclTensorList_);
-        LOG_IF(ret != ACL_SUCCESS, LOG_ERR("aclDestroyTensorList failed, ERROR: %d, TensorList(%s))", ret, name_.c_str()));
+        LOG_IF(ret != ACL_SUCCESS,
+               LOG_ERR("aclDestroyTensorList failed, ERROR: %d, TensorList(%s))", ret, name_.c_str()));
         aclTensorList_ = nullptr;
     }
     TensorIntf::FreeDevData();

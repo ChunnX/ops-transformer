@@ -26,9 +26,9 @@ import argparse
 import concurrent.futures
 
 # 读取表格（支持通过环境变量传入）
-save_path = os.environ.get("QSMLA_PT_DIR", "qsmla_testcase")
-excel_file = os.environ.get("QSMLA_EXCEL", "./excel/example.xlsx")
-sheet_name = os.environ.get("QSMLA_SHEET", "decode")
+save_path = os.environ.get("MQSMLA_PT_DIR", "mqsmla_testcase")
+excel_file = os.environ.get("MQSMLA_EXCEL", "./excel/example.xlsx")
+sheet_name = os.environ.get("MQSMLA_SHEET", "decode")
 ENABLED_PARAMS = utils.load_excel_test_cases(excel_file, sheet_name)
 
 param_combinations = []
@@ -49,6 +49,8 @@ for _, params in enumerate(ENABLED_PARAMS):
     for key in ["seqused_q", "cu_seqlens_q", "seqused_ori_kv", "seqused_cmp_kv",
                 "cu_seqlens_ori_kv", "cu_seqlens_cmp_kv", "cmp_residual_kv"]:
         normalized_params[key] = utils.parse_list_param(params.get(key))
+    for key in ["q_datarange", "ori_kv_datarange", "cmp_kv_datarange"]:
+        normalized_params[key] = utils.parse_datarange_param(params.get(key))
     template_run_mode = normalized_params["template_run_mode"]
     if isinstance(template_run_mode, list):
         template_run_mode = template_run_mode[0]
@@ -59,7 +61,8 @@ for _, params in enumerate(ENABLED_PARAMS):
         "ori_win_left", "ori_win_right", "quant_mode", "tile_size", "rope_head_dim", "template_run_mode", \
         "actlen_mode", "S1EQS2", "topk_value_mode", "return_softmax_lse", \
         "seqused_q", "cu_seqlens_q", "seqused_ori_kv", "seqused_cmp_kv", \
-        "cu_seqlens_ori_kv", "cu_seqlens_cmp_kv", "cmp_residual_kv"
+        "cu_seqlens_ori_kv", "cu_seqlens_cmp_kv", "cmp_residual_kv", \
+        "q_datarange", "ori_kv_datarange", "cmp_kv_datarange"
     ]
 
     param_values = [
@@ -99,6 +102,9 @@ for _, params in enumerate(ENABLED_PARAMS):
         [normalized_params["cu_seqlens_ori_kv"]],
         [normalized_params["cu_seqlens_cmp_kv"]],
         [normalized_params["cmp_residual_kv"]],
+        [normalized_params["q_datarange"]],
+        [normalized_params["ori_kv_datarange"]],
+        [normalized_params["cmp_kv_datarange"]],
     ]
 
     # 生成所有的组合，并转换为字典列表
@@ -108,7 +114,7 @@ for _, params in enumerate(ENABLED_PARAMS):
     print(param_combinations)
 
 case_id = 0
-def qsmla(param_combinations):
+def mqsmla(param_combinations):
     global case_id
     params = utils.fill_none_params(param_combinations)
 
@@ -118,7 +124,7 @@ def qsmla(param_combinations):
         q_type_str = "BF16" if params['q_type'] == torch.bfloat16 else "FP16"
         kv_type_str = "HIF8" if params['ori_kv_type'] == torch.uint8 else "FP8_E4M3FN"
         prefix_part = f"{param_combinations['tc_prefix']}_"if param_combinations.get('tc_prefix', '') else ""
-        Testcase_Name = f"QSMLA_{prefix_part}{params['template_run_mode']}_{ops_mode}_{params['layout_q']}_{q_type_str}_{params['layout_kv']}_{kv_type_str}_{params['B']}_{params['N1']}_{params['N2']}_{params['S1']}_{params['S2']}_{params['D']}_{params['K']}_{params['rope_head_dim']}_{case_id:06d}"
+        Testcase_Name = f"MQSMLA_{prefix_part}{params['template_run_mode']}_{ops_mode}_{params['layout_q']}_{q_type_str}_{params['layout_kv']}_{kv_type_str}_{params['B']}_{params['N1']}_{params['N2']}_{params['S1']}_{params['S2']}_{params['D']}_{params['K']}_{params['rope_head_dim']}_{case_id:06d}"
         params['Testcase_Name'] = Testcase_Name
     print("input_params:", params)
 
@@ -137,7 +143,7 @@ def qsmla(param_combinations):
 def test_mixed_quant_sparse_flash_mla(param_combinations):   # 初始化参数和tensor
     # 线程池
     with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
-        futures = executor.submit(qsmla, param_combinations)
+        futures = executor.submit(mqsmla, param_combinations)
         # 等待并获取结果
         for future in concurrent.futures.as_completed([futures]):
             try:
