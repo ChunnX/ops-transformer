@@ -549,8 +549,14 @@ aclnnStatus InnerFusedInferAttentionScoreGetWorkspaceSize(
     OP_CHECK_NULL(key, return ACLNN_ERR_PARAM_NULLPTR);
     OP_CHECK_NULL(value, return ACLNN_ERR_PARAM_NULLPTR);
     OP_CHECK_NULL(attentionOut, return ACLNN_ERR_PARAM_NULLPTR);
-    OP_CHECK_NULL(workspaceSize, return ACLNN_ERR_PARAM_NULLPTR);
-    OP_CHECK_NULL(executor, return ACLNN_ERR_PARAM_NULLPTR);
+    if (workspaceSize == nullptr) {
+        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "workspaceSize is nullptr.");
+        return ACLNN_ERR_PARAM_NULLPTR;
+    }
+    if (executor == nullptr) {
+        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "executor is nullptr.");
+        return ACLNN_ERR_PARAM_NULLPTR;
+    }
     if (softmaxLseFlag) {
         OP_CHECK_NULL(softmaxLse, return ACLNN_ERR_PARAM_NULLPTR);
     }
