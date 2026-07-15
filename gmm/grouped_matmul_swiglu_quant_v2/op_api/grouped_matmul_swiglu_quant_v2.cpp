@@ -26,9 +26,11 @@ constexpr size_t MX_MULTI_WEIGHT_DIM = 2UL;
 constexpr size_t MX_MULTI_WEIGHT_SCALE_N_DIM = 1UL;
 constexpr size_t MX_WEIGHT_SCALE_N_DIM = 2UL;
 
-static bool IsMxWeightNzMultiTensor(const aclTensorList *weight)
+static bool IsMxWeightNzMultiTensor(const aclTensorList *weight, int64_t quantMode)
 {
-    return weight != nullptr && weight->Size() > 0 && (*weight)[0] != nullptr &&
+    // Only MX WeightNZ uses weightScale dim 0 as N after transpose normalization.
+    return quantMode == QUNAT_MODE_MX && weight != nullptr && weight->Size() > 0 &&
+           (*weight)[0] != nullptr &&
            op::IsPrivateFormat((*weight)[0]->GetStorageFormat()) &&
            (*weight)[0]->GetViewShape().GetDimNum() == MX_MULTI_WEIGHT_DIM;
 }
@@ -55,7 +57,7 @@ const std::tuple<aclTensor *, aclTensor *> GroupedMatmulSwigluQuantV2(const aclT
     auto out = executor->AllocTensor(outShape, DataType::DT_INT8, ge::FORMAT_ND);
     auto scaleOut = executor->AllocTensor(scaleOutShape, DataType::DT_FLOAT, ge::FORMAT_ND);
     if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-        n = IsMxWeightNzMultiTensor(weight) ?
+        n = IsMxWeightNzMultiTensor(weight, quantMode) ?
                 (transposeWeight ? (*weightScale)[0]->GetViewShape().GetDim(0) :
                                    (*weightScale)[0]->GetViewShape().GetDim(MX_MULTI_WEIGHT_SCALE_N_DIM)) :
                 (transposeWeight ? (*weightScale)[0]->GetViewShape().GetDim(MX_MULTI_WEIGHT_SCALE_N_DIM) :
