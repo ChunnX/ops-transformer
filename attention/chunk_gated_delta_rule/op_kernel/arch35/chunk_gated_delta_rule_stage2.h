@@ -133,148 +133,173 @@ public:
                 }
                 if ASCEND_IS_AIV {
                     if constexpr (kIsFp32) {
-                        if (GetSubBlockIdx() == 0) {
-                            if (isFirstGroup_ && cId == 0) {
-                                CopyIn<float>(sTP_->stateIn[nvId * Dv_ * Dk_], Dv_, Dk_);
-                            } else {
-                                CopyIn<float>(sTP_->stateOut[nvId * Dv_ * Dk_], Dv_, Dk_);
-                            }
-                            auto stateIn = inQueue_.DeQue<float>();
-                            DataCopy(stateFp32Ub_, stateIn, Dv_ * curDk_);
-                            inQueue_.FreeTensor(stateIn);
-                            SetFlag<HardEvent::MTE2_V>(MTE2_V_EVENT);
-                            WaitFlag<HardEvent::MTE2_V>(MTE2_V_EVENT);
-                            auto bf16State = outQueue_.AllocTensor<bfloat16_t>();
-                            Cast(bf16State, stateFp32Ub_, RoundMode::CAST_RINT, Dv_ * curDk_);
-                            outQueue_.EnQue(bf16State);
-                            CopyOut<bfloat16_t>(sTP_->curStateBf16[nvId * Dv_ * Dk_], Dv_, Dk_, false, curDk_);
-                            CalGCumExp(sTP_->gCum[nvId * Sp_ + length]);
-                            SetFlag<HardEvent::V_MTE2>(V_MTE2_EVENT);
-                            WaitFlag<HardEvent::V_MTE2>(V_MTE2_EVENT);
-                            PipeBarrier<PIPE_MTE3>();
-                            auto fp32Local = outQueue_.AllocTensor<float>();
-                            DataCopy(fp32Local, stateFp32Ub_, Dv_ * curDk_);
-                            outQueue_.EnQue(fp32Local);
-                            CopyOut<float>(sTP_->stateOut[nvId * Dv_ * Dk_], Dv_, Dk_, false, curDk_);
-                        }
-                        CrossCoreSetFlag<0x2, PIPE_MTE3>(0x3);
-                        CrossCoreWaitFlag(0x2);
-                        if (GetSubBlockIdx() == 0) {
-                            PipeBarrier<PIPE_MTE3>();
-                            uint64_t mm_offset1 = nvId * Sp_ * Dv_ + length * Dv_;
-                            CastGmToGm<float, bfloat16_t>(sTP_->vInner[mm_offset1],
-                                                          sTP_->vInnerBf16[mm_offset1],
-                                                          curChunkSize_ * Dv_);
-                        }
-                        CrossCoreSetFlag<0x2, PIPE_MTE3>(0x5);
-                        CrossCoreWaitFlag(0x4);
-                        if (GetSubBlockIdx() == 0) {
-                            CopyIn<float>(sTP_->stateOut[nvId * Dv_ * Dk_], Dv_, Dk_);
-                            auto deltaIn = inQueue_.DeQue<float>();
-                            Add(stateFp32Ub_, stateFp32Ub_, deltaIn, Dv_ * curDk_);
-                            PipeBarrier<PIPE_V>();
-                            inQueue_.FreeTensor(deltaIn);
-                            auto fp32Out = outQueue_.AllocTensor<float>();
-                            DataCopy(fp32Out, stateFp32Ub_, Dv_ * curDk_);
-                            outQueue_.EnQue(fp32Out);
-                            CopyOut<float>(sTP_->stateOut[nvId * Dv_ * Dk_], Dv_, Dk_, false, curDk_);
-                            SetFlag<HardEvent::MTE3_MTE2>(MTE3_MTE2_EVENT);
-                            WaitFlag<HardEvent::MTE3_MTE2>(MTE3_MTE2_EVENT);
-                        }
+                        ProcessAivFp32(nvId, cId, length);
                     } else {
-                        auto curState = (cId == 0) ? sTP_->curStateBf16[nvId * Dv_ * Dk_]
-                                                   : sTP_->stateOut[nvId * Dv_ * Dk_];
-                        auto finalState = sTP_->stateOut[nvId * Dv_ * Dk_];
-                        if (GetSubBlockIdx() == 0) {
-                            CopyIn(curState, Dv_, Dk_);
-                            CalGCumExp(sTP_->gCum[nvId * Sp_ + length]);
-                        }
-                        CrossCoreWaitFlag(0x2);
-                        if (GetSubBlockIdx() == 0) {
-                            CopyOutState(finalState);
-                        }
-                        CrossCoreSetFlag<0x2, PIPE_MTE3>(0x5);
-                        CrossCoreWaitFlag(0x4);
+                        ProcessAivBf16(nvId, cId, length);
                     }
                 }
                 if ASCEND_IS_AIC {
-                    uint64_t mm_offset0 = nvId * Sp_ * Dk_ + length * Dk_;
-                    uint64_t mm_offset1 = nvId * Sp_ * Dv_ + length * Dv_;
-                    auto stateOut = sTP_->stateOut[nvId * Dv_ * Dk_];
-                    GlobalTensor<bfloat16_t> stateForAic;
-                    if constexpr (kIsFp32) {
-                        CrossCoreWaitFlag(0x3);
-                        stateForAic = sTP_->curStateBf16[nvId * Dv_ * Dk_];
-                    } else {
-                        stateForAic = (cId == 0) ? sTP_->curStateBf16[nvId * Dv_ * Dk_]
-                                                 : sTP_->stateOut[nvId * Dv_ * Dk_];
-                    }
-                    CalVPrime(sTP_->kCumdecay[mm_offset0], stateForAic, sTP_->vInner[mm_offset1]);
-                    CalAttnInter(sTP_->qPrime[mm_offset0], stateForAic,
-                                 sTP_->out[nvId * Dv_ + cId * chunkSize_ * Nv_ * Dv_]);
-                    CrossCoreSetFlag<0x2, PIPE_FIX>(0x2);
-                    CrossCoreWaitFlag(0x5);
-                    if constexpr (kIsFp32) {
-                        CalStateNew(sTP_->vInnerBf16[mm_offset1],
-                                    sTP_->kg[mm_offset0], stateOut);
-                    } else {
-                        CalStateNew(sTP_->vInner[mm_offset1], sTP_->kg[mm_offset0], stateOut);
-                    }
-                    SetFlag<HardEvent::FIX_MTE2>(FIX_MTE2_EVENT);
-                    WaitFlag<HardEvent::FIX_MTE2>(FIX_MTE2_EVENT);
-                    CrossCoreSetFlag<0x2, PIPE_FIX>(0x4);
+                    ProcessAic(nvId, cId, length);
                 }
             }
         }
     }
 
+    __aicore__ inline void ProcessAivFp32(int64_t nvId, int64_t cId, int64_t length)
+    {
+        if (GetSubBlockIdx() == 0) {
+            if (isFirstGroup_ && cId == 0) {
+                CopyIn<float>(sTP_->stateIn[nvId * Dv_ * Dk_], Dv_, Dk_);
+            } else {
+                CopyIn<float>(sTP_->stateOut[nvId * Dv_ * Dk_], Dv_, Dk_);
+            }
+            auto stateIn = inQueue_.DeQue<float>();
+            DataCopy(stateFp32Ub_, stateIn, Dv_ * curDk_);
+            inQueue_.FreeTensor(stateIn);
+            SetFlag<HardEvent::MTE2_V>(MTE2_V_EVENT);
+            WaitFlag<HardEvent::MTE2_V>(MTE2_V_EVENT);
+            auto bf16State = outQueue_.AllocTensor<bfloat16_t>();
+            Cast(bf16State, stateFp32Ub_, RoundMode::CAST_RINT, Dv_ * curDk_);
+            outQueue_.EnQue(bf16State);
+            CopyOut<bfloat16_t>(sTP_->curStateBf16[nvId * Dv_ * Dk_], Dv_, Dk_, false, curDk_);
+            CalGCumExp(sTP_->gCum[nvId * Sp_ + length]);
+            SetFlag<HardEvent::V_MTE2>(V_MTE2_EVENT);
+            WaitFlag<HardEvent::V_MTE2>(V_MTE2_EVENT);
+            PipeBarrier<PIPE_MTE3>();
+            auto fp32Local = outQueue_.AllocTensor<float>();
+            DataCopy(fp32Local, stateFp32Ub_, Dv_ * curDk_);
+            outQueue_.EnQue(fp32Local);
+            CopyOut<float>(sTP_->stateOut[nvId * Dv_ * Dk_], Dv_, Dk_, false, curDk_);
+        }
+        CrossCoreSetFlag<0x2, PIPE_MTE3>(0x3);
+        CrossCoreWaitFlag(0x2);
+        if (GetSubBlockIdx() == 0) {
+            PipeBarrier<PIPE_MTE3>();
+            uint64_t mm_offset1 = nvId * Sp_ * Dv_ + length * Dv_;
+            CastGmToGm<float, bfloat16_t>(sTP_->vInner[mm_offset1],
+                                          sTP_->vInnerBf16[mm_offset1],
+                                          curChunkSize_ * Dv_);
+        }
+        CrossCoreSetFlag<0x2, PIPE_MTE3>(0x5);
+        CrossCoreWaitFlag(0x4);
+        if (GetSubBlockIdx() == 0) {
+            CopyIn<float>(sTP_->stateOut[nvId * Dv_ * Dk_], Dv_, Dk_);
+            auto deltaIn = inQueue_.DeQue<float>();
+            Add(stateFp32Ub_, stateFp32Ub_, deltaIn, Dv_ * curDk_);
+            PipeBarrier<PIPE_V>();
+            inQueue_.FreeTensor(deltaIn);
+            auto fp32Out = outQueue_.AllocTensor<float>();
+            DataCopy(fp32Out, stateFp32Ub_, Dv_ * curDk_);
+            outQueue_.EnQue(fp32Out);
+            CopyOut<float>(sTP_->stateOut[nvId * Dv_ * Dk_], Dv_, Dk_, false, curDk_);
+            SetFlag<HardEvent::MTE3_MTE2>(MTE3_MTE2_EVENT);
+            WaitFlag<HardEvent::MTE3_MTE2>(MTE3_MTE2_EVENT);
+        }
+    }
+
+    __aicore__ inline void ProcessAivBf16(int64_t nvId, int64_t cId, int64_t length)
+    {
+        auto curState = (cId == 0) ? sTP_->curStateBf16[nvId * Dv_ * Dk_]
+                                   : sTP_->stateOut[nvId * Dv_ * Dk_];
+        auto finalState = sTP_->stateOut[nvId * Dv_ * Dk_];
+        if (GetSubBlockIdx() == 0) {
+            CopyIn(curState, Dv_, Dk_);
+            CalGCumExp(sTP_->gCum[nvId * Sp_ + length]);
+        }
+        CrossCoreWaitFlag(0x2);
+        if (GetSubBlockIdx() == 0) {
+            CopyOutState(finalState);
+        }
+        CrossCoreSetFlag<0x2, PIPE_MTE3>(0x5);
+        CrossCoreWaitFlag(0x4);
+    }
+
+    __aicore__ inline void ProcessAic(int64_t nvId, int64_t cId, int64_t length)
+    {
+        uint64_t mm_offset0 = nvId * Sp_ * Dk_ + length * Dk_;
+        uint64_t mm_offset1 = nvId * Sp_ * Dv_ + length * Dv_;
+        auto stateOut = sTP_->stateOut[nvId * Dv_ * Dk_];
+        GlobalTensor<bfloat16_t> stateForAic;
+        if constexpr (kIsFp32) {
+            CrossCoreWaitFlag(0x3);
+            stateForAic = sTP_->curStateBf16[nvId * Dv_ * Dk_];
+        } else {
+            stateForAic = (cId == 0) ? sTP_->curStateBf16[nvId * Dv_ * Dk_]
+                                     : sTP_->stateOut[nvId * Dv_ * Dk_];
+        }
+        CalVPrime(sTP_->kCumdecay[mm_offset0], stateForAic, sTP_->vInner[mm_offset1]);
+        CalAttnInter(sTP_->qPrime[mm_offset0], stateForAic,
+                     sTP_->out[nvId * Dv_ + cId * chunkSize_ * Nv_ * Dv_]);
+        CrossCoreSetFlag<0x2, PIPE_FIX>(0x2);
+        CrossCoreWaitFlag(0x5);
+        if constexpr (kIsFp32) {
+            CalStateNew(sTP_->vInnerBf16[mm_offset1],
+                        sTP_->kg[mm_offset0], stateOut);
+        } else {
+            CalStateNew(sTP_->vInner[mm_offset1], sTP_->kg[mm_offset0], stateOut);
+        }
+        SetFlag<HardEvent::FIX_MTE2>(FIX_MTE2_EVENT);
+        WaitFlag<HardEvent::FIX_MTE2>(FIX_MTE2_EVENT);
+        CrossCoreSetFlag<0x2, PIPE_FIX>(0x4);
+    }
+
     __aicore__ inline void CalGCumExp(GlobalTensor<float> gCum)
     {
         if constexpr (kIsFp32) {
-            if (!gOptional_) {
-                return;
-            }
+            CalGCumExpFp32(gCum);
+        } else {
+            CalGCumExpBf16(gCum);
+        }
+    }
+
+    __aicore__ inline void CalGCumExpFp32(GlobalTensor<float> gCum)
+    {
+        if (!gOptional_) {
+            return;
+        }
+        DataCacheCleanAndInvalid<float,
+                                 CacheLine::SINGLE_CACHE_LINE,
+                                 DcciDst::CACHELINE_OUT>(gCum[curChunkSize_ - 1]);
+        float gVal = gCum.GetValue(curChunkSize_ - 1);
+        lastGCum_.SetValue(0, gVal);
+        SetFlag<HardEvent::S_V>(S_V_EVENT);
+        WaitFlag<HardEvent::S_V>(S_V_EVENT);
+        Exp<float, 0, true>(lastGCum_, lastGCum_, 1);
+        float tmpFloat = lastGCum_.GetValue(0);
+        SetFlag<HardEvent::S_V>(S_V_EVENT);
+        WaitFlag<HardEvent::S_V>(S_V_EVENT);
+        Muls(stateFp32Ub_, stateFp32Ub_, tmpFloat, Dv_ * curDk_);
+        PipeBarrier<PIPE_V>();
+    }
+
+    __aicore__ inline void CalGCumExpBf16(GlobalTensor<float> gCum)
+    {
+        if (gOptional_) {
             DataCacheCleanAndInvalid<float,
                                      CacheLine::SINGLE_CACHE_LINE,
                                      DcciDst::CACHELINE_OUT>(gCum[curChunkSize_ - 1]);
-            float gVal = gCum.GetValue(curChunkSize_ - 1);
-            lastGCum_.SetValue(0, gVal);
+            float tmpFloat = gCum.GetValue(curChunkSize_ - 1);
+            lastGCum_.SetValue(0, tmpFloat);
             SetFlag<HardEvent::S_V>(S_V_EVENT);
             WaitFlag<HardEvent::S_V>(S_V_EVENT);
             Exp<float, 0, true>(lastGCum_, lastGCum_, 1);
-            float tmpFloat = lastGCum_.GetValue(0);
-            SetFlag<HardEvent::S_V>(S_V_EVENT);
-            WaitFlag<HardEvent::S_V>(S_V_EVENT);
-            Muls(stateFp32Ub_, stateFp32Ub_, tmpFloat, Dv_ * curDk_);
-            PipeBarrier<PIPE_V>();
         } else {
-            if (gOptional_) {
-                DataCacheCleanAndInvalid<float,
-                                         CacheLine::SINGLE_CACHE_LINE,
-                                         DcciDst::CACHELINE_OUT>(gCum[curChunkSize_ - 1]);
-                float tmpFloat = gCum.GetValue(curChunkSize_ - 1);
-                lastGCum_.SetValue(0, tmpFloat);
-                SetFlag<HardEvent::S_V>(S_V_EVENT);
-                WaitFlag<HardEvent::S_V>(S_V_EVENT);
-                Exp<float, 0, true>(lastGCum_, lastGCum_, 1);
-            } else {
-                lastGCum_.SetValue(0, 1.0f);
-            }
-            float tmpFloat = lastGCum_.GetValue(0);
-            auto stateIn = inQueue_.DeQue<bfloat16_t>();
-            auto stateOut = outQueue_.AllocTensor<bfloat16_t>();
-            SetFlag<HardEvent::MTE2_V>(MTE2_V_EVENT);
-            WaitFlag<HardEvent::MTE2_V>(MTE2_V_EVENT);
-            Cast(tmpBuffer1_, stateIn, RoundMode::CAST_NONE, Dv_ * curDk_);
-            SetFlag<HardEvent::S_V>(S_V_EVENT);
-            WaitFlag<HardEvent::S_V>(S_V_EVENT);
-            Muls(tmpBuffer1_, tmpBuffer1_, tmpFloat, Dv_ * curDk_);
-            Cast(stateOut, tmpBuffer1_, RoundMode::CAST_RINT, Dv_ * curDk_);
-            SetFlag<HardEvent::V_MTE3>(V_MTE3_EVENT);
-            WaitFlag<HardEvent::V_MTE3>(V_MTE3_EVENT);
-            outQueue_.EnQue(stateOut);
-            inQueue_.FreeTensor(stateIn);
+            lastGCum_.SetValue(0, 1.0f);
         }
+        float tmpFloat = lastGCum_.GetValue(0);
+        auto stateIn = inQueue_.DeQue<bfloat16_t>();
+        auto stateOut = outQueue_.AllocTensor<bfloat16_t>();
+        SetFlag<HardEvent::MTE2_V>(MTE2_V_EVENT);
+        WaitFlag<HardEvent::MTE2_V>(MTE2_V_EVENT);
+        Cast(tmpBuffer1_, stateIn, RoundMode::CAST_NONE, Dv_ * curDk_);
+        SetFlag<HardEvent::S_V>(S_V_EVENT);
+        WaitFlag<HardEvent::S_V>(S_V_EVENT);
+        Muls(tmpBuffer1_, tmpBuffer1_, tmpFloat, Dv_ * curDk_);
+        Cast(stateOut, tmpBuffer1_, RoundMode::CAST_RINT, Dv_ * curDk_);
+        SetFlag<HardEvent::V_MTE3>(V_MTE3_EVENT);
+        WaitFlag<HardEvent::V_MTE3>(V_MTE3_EVENT);
+        outQueue_.EnQue(stateOut);
+        inQueue_.FreeTensor(stateIn);
     }
 
     template <typename MMType, typename AT, typename BT, typename CT>
