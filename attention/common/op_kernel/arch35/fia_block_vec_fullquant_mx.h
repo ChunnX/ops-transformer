@@ -172,9 +172,9 @@ public:
         uint32_t tmp1 = NEGATIVE_MIN_VALUE_FP32_LN2;
         this->negativeFloatScalar = *((T *)&tmp1);
         if constexpr (USE_DN) {
- 	        minValue = NEGATIVE_MIN_VALUE_FP32;
- 	        UpdateMinCheckValue();
- 	    }
+            minValue = NEGATIVE_MIN_VALUE_FP32;
+            UpdateMinCheckValue();
+        }
 
         InitVecInput(actualSeqQlenAddr, actualSeqKvlenAddr, pScale, attenMask, softmaxLse, attentionOut, workspace);
     }

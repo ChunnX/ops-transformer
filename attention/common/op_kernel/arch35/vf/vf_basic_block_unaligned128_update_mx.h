@@ -217,7 +217,7 @@ __simd_vf__ void ProcessVec1UpdateGeneralImpl128Mxfp8FullquantVFSubloop0(__ubuf_
         Truncate<T, RoundMode::CAST_CEIL>(vreg_max_input, vreg_max_input, preg_all);
         Muls(vreg_max_input, vreg_max_input, LN2, preg_all);
         Compare<float, CMPMODE::LE>(preg_compare_max, vreg_max_input, vreg_min, preg_all);
- 	    Select(vreg_max_input, vreg_min, vreg_max_input, preg_compare_max);
+        Select(vreg_max_input, vreg_min, vreg_max_input, preg_compare_max);
         StoreUnAlign<float, MicroAPI::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)tmpMaxUb),
             vreg_max_input, ureg_max, 1);
     }
@@ -588,7 +588,7 @@ __simd_vf__ void ProcessVec1UpdateGeneralImpl128Mxfp8FullquantVFSubloop1(
         Truncate<T, RoundMode::CAST_CEIL>(vreg_max_input, vreg_max_input, preg_all);
         Muls(vreg_max_input, vreg_max_input, LN2, preg_all);
         Compare<float, CMPMODE::LE>(preg_compare_max, vreg_max_input, vreg_min, preg_all);
- 	    Select(vreg_max_input, vreg_min, vreg_max_input, preg_compare_max);
+        Select(vreg_max_input, vreg_min, vreg_max_input, preg_compare_max);
         StoreUnAlign<float, MicroAPI::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)tmpMaxUb),
             vreg_max_input, ureg_max, 1);
     }
