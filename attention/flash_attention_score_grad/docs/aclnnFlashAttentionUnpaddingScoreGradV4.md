@@ -2,58 +2,57 @@
 
 ## 产品支持情况
 
-|产品      | 是否支持 |
-|:----------------------------|:-----------:|
-|<term>Ascend 950PR/Ascend 950DT</term>|      √     |
-|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|     √      |
-|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|     √      |
-|<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
-|<term>Atlas 推理系列产品</term>|      ×     |
-|<term>Atlas 训练系列产品</term>|      ×     |
+| 产品                                                     | 是否支持 |
+| :------------------------------------------------------- | :------: |
+| <term>Ascend 950PR/Ascend 950DT</term>                   |    √    |
+| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term> |    √    |
+| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √    |
+| <term>Atlas 200I/500 A2 推理产品</term>                  |    ×    |
+| <term>Atlas 推理系列产品</term>                          |    ×    |
+| <term>Atlas 训练系列产品</term>                          |    ×    |
 
 ## 功能说明
 
 - 接口功能：训练场景下计算注意力的反向输出，即[aclnnFlashAttentionVarLenScoreV4](../../flash_attention_score/docs/aclnnFlashAttentionVarLenScoreV4.md)的反向计算。该接口相较于[aclnnFlashAttentionUnpaddingScoreGrad](./aclnnFlashAttentionUnpaddingScoreGrad.md)接口，新增softmaxInLayout参数。
-  - <term>Ascend 950PR/Ascend 950DT</term>：暂不支持softmaxInLayout参数。
+
   - 当输入softmaxSumOut和softmaxMaxOut的shape和实际数据排布均为TND格式时，softmaxInLayout需要配置为""。
   - 当输入softmaxSumOut和softmaxMaxOut的shape为TND但实际数据排布均为NTD格式时，softmaxInLayout需要配置为"same_as_input"。
   - 原有FlashAttentionVarLenScore接口的softmaxSumOut和softmaxMaxOut的输出格式为NTD，FlashAttentionVarLenScoreV4接口允许传入字符串类型参数softmaxOutLayout，来控制是否输出Shape和数据排布均为TND格式的softmaxSumOut和softmaxMaxOut。
-
 - 计算公式：
 
-    已知注意力的正向计算公式为：
+  已知注意力的正向计算公式为：
 
-    $$
-    Y=Dropout(Softmax(Mask(\frac{QK^T+pse}{\sqrt{d}}),atten\_mask),keep\_prob)V
-    $$
+  $$
+  =Dropout(Softmax(Mask(\frac{QK^T+pse}{\sqrt{d}}),atten\_mask),keep\_prob)V
+  $$
 
-    为方便表达，以变量$S$和$P$表示计算公式：
+  为方便表达，以变量$S$和$P$表示计算公式：
 
-    $$
-    S=Mask(\frac{QK^T+pse}{\sqrt{d}}),atten\_mask
-    $$
+  $$
+  =Mask(\frac{QK^T+pse}{\sqrt{d}}),atten\_mask
+  $$
 
-    $$
-    P=Dropout(Softmax(S),keep\_prob)
-    $$
+  $$
+  =Dropout(Softmax(S),keep\_prob)
+  $$
 
-    $$
-    Y=PV
-    $$
+  $$
+  =PV
+  $$
 
-    则注意力的反向计算公式为：
+  则注意力的反向计算公式为：
 
-    $$
-    dV=P^TdY
-    $$
+  $$
+  V=P^TdY
+  $$
 
-    $$
-    dQ=\frac{((dS)*K)}{\sqrt{d}}
-    $$
+  $$
+  Q=\frac{((dS)*K)}{\sqrt{d}}
+  $$
 
-    $$
-    dK=\frac{((dS)^T*Q)}{\sqrt{d}}
-    $$
+  $$
+  K=\frac{((dS)^T*Q)}{\sqrt{d}}
+  $$
 
 ## 函数原型
 
@@ -104,6 +103,7 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV4(
 ## aclnnFlashAttentionUnpaddingScoreGradV4GetWorkspaceSize
 
 - **参数说明**
+
   <table style="undefined;table-layout: fixed; width: 1529px"><colgroup>
     <col style="width: 198px">
     <col style="width: 120px">
@@ -428,12 +428,12 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV4(
       </tr>
     </tbody>
   </table>
-
 - **返回值**
 
   aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
+
   <table style="undefined;table-layout: fixed;width: 1202px"><colgroup>
   <col style="width: 262px">
   <col style="width: 121px">
@@ -466,6 +466,7 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV4(
 ## aclnnFlashAttentionUnpaddingScoreGradV4
 
 - **参数说明**
+
   <table style="undefined;table-layout: fixed; width: 1154px"><colgroup>
   <col style="width: 153px">
   <col style="width: 121px">
@@ -500,7 +501,6 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV4(
     </tr>
   </tbody>
   </table>
-
 - **返回值**
 
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
@@ -508,6 +508,7 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV4(
 ## 约束说明
 
 - 确定性计算：
+
   - aclnnFlashAttentionUnpaddingScoreGradV4默认非确定性实现，支持通过aclrtCtxSetSysParamOpt开启确定性。
 - 该接口与PyTorch配合使用时，需要保证CANN相关包与PyTorch相关包的版本匹配。
 - 输入query、key、value、dy的B：batchsize必须相等。
@@ -517,19 +518,21 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV4(
 - 支持输入query的N和key/value的N不相等，但必须成比例关系，即Nq/Nkv必须是非0整数，Nq取值范围1~256。
 - 关于数据shape的约束，以inputLayout的TND为例，其中：
 
-    - T(B*S)：取值范围为1\~1M。
-    - B：取值范围为1\~2K。带prefixOptional的时候B最大支持1K。
-    - N：取值范围为1\~256。
-    - S：取值范围为1\~1M。
-    - D：取值范围为1\~768。
-    - KeepProb: 取值范围为(0, 1]。
+  - T(B*S)：取值范围为1\~1M。
+  - B：取值范围为1\~2K。带prefixOptional的时候B最大支持1K。
+  - N：取值范围为1\~256。
+  - S：取值范围为1\~1M。
+  - D：取值范围为1\~768。
+  - KeepProb: 取值范围为(0, 1]。
 - query、key、value数据排布格式仅支持TND，T是B和S合轴紧密排列的数据（每个batch的SeqLenQ和SeqLenKV），其中B（Batch）表示输入样本批量大小、S（Seq-Length）表示输入样本序列长度、H（Head-Size）表示隐藏层的大小、N（Head-Num）表示多头数、D（Head-Dim）表示隐藏层最小的单元尺寸，且满足D=H/N。
 - pseShiftOptional：如果Sq大于1024且每个batch的Sq与Skv等长且是sparseMode为0、2、3的下三角掩码场景，可开启alibi位置编码压缩，此时只需要输入原始PSE最后1024行进行内存优化，即alibi_compress = ori_pse[:, :, -1024:, :]，具体如下：
+
   - 参数每个batch不相同时，shape为BNHSkv(H=1024)。
   - 每个batch相同时，shape为1NHSkv(H=1024)。
   - TND场景下，每个batch段内部仍按[N, Sq_i, Skv_i]生成，但存储与传参时统一flatten。若第i个batch段的真实query长度为Sq_i、真实key/value长度为Skv_i，则该段PSE元素个数为N * Sq_i * Skv_i，整段PSE总长度pseTotalLen为sum_i(N * Sq_i * Skv_i)。
   - 如不使用该参数可传入nullptr。
-- sparseMode的约束如下: 
+- sparseMode的约束如下:
+
   - 当所有的attenMaskOptional的shape小于2048且相同的时候，建议使用default模式，来减少内存使用量；
   - 配置为1、2、3时，用户配置的preTokens、nextTokens不会生效；
   - 配置为0、4时，须保证attenMaskOptional与preTokens、nextTokens的范围一致。
