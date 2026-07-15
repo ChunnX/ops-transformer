@@ -1400,16 +1400,16 @@ TEST_F(block_sparse_attention_tiling_ut, blockShapeY_not_multiple_of_16)
 }
 
 // ============================================================================
-// 用例 32b: A5 blockShapeX的值不是16的整倍数
+// 用例 32b: A5 blockShapeX 可不对齐16；仅要求 blockShapeY 16 对齐
 // ============================================================================
 TEST_F(block_sparse_attention_tiling_ut, A5_blockShapeX_not_multiple_of_16)
 {
     struct BlockSparseAttentionCompileInfo {} compileInfo;
-    constexpr int64_t invalidBlockShapeX = 17;
-    constexpr int64_t invalidBlockShapeY = 64;
-    int64_t invalidBlockShapeData[] = {invalidBlockShapeX, invalidBlockShapeY};
-    constexpr int64_t smallQBlockNum = (qSeqlen + invalidBlockShapeX - 1) / invalidBlockShapeX;
-    constexpr int64_t smallKvBlockNum = (kvSeqlen + invalidBlockShapeY - 1) / invalidBlockShapeY;
+    constexpr int64_t unalignedBlockShapeX = 17;
+    constexpr int64_t validBlockShapeY = 64;
+    int64_t blockShapeDataLocal[] = {unalignedBlockShapeX, validBlockShapeY};
+    constexpr int64_t smallQBlockNum = (qSeqlen + unalignedBlockShapeX - 1) / unalignedBlockShapeX;
+    constexpr int64_t smallKvBlockNum = (kvSeqlen + validBlockShapeY - 1) / validBlockShapeY;
     gert::TilingContextPara tilingContextPara(
         "BlockSparseAttention",
         {
@@ -1418,7 +1418,7 @@ TEST_F(block_sparse_attention_tiling_ut, A5_blockShapeX_not_multiple_of_16)
             {{{tokenKv, numKvHeads, headDim}, {tokenKv, numKvHeads, headDim}}, ge::DT_FLOAT16, ge::FORMAT_ND},
             {{{batch, numHeads, smallQBlockNum, smallKvBlockNum}, {batch, numHeads, smallQBlockNum, smallKvBlockNum}}, ge::DT_INT8, ge::FORMAT_ND},
             {{{}, {}}, ge::DT_INT8, ge::FORMAT_ND},
-            {{{2}, {2}}, ge::DT_INT64, ge::FORMAT_ND, true, invalidBlockShapeData},
+            {{{2}, {2}}, ge::DT_INT64, ge::FORMAT_ND, true, blockShapeDataLocal},
             {{{batch}, {batch}}, ge::DT_INT64, ge::FORMAT_ND, true, actualSeqLengthsData},
             {{{batch}, {batch}}, ge::DT_INT64, ge::FORMAT_ND, true, actualSeqLengthsKvData},
             {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
@@ -1436,26 +1436,26 @@ TEST_F(block_sparse_attention_tiling_ut, A5_blockShapeX_not_multiple_of_16)
             {"numKeyValueHeads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(numKvHeads)},
             {"maskType", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"scaleValue", Ops::Transformer::AnyValue::CreateFrom<float>(scaleValue)},
-            {"innerPrecise", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"innerPrecise", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
             {"blockSize", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"preTokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2147483647)},
             {"nextTokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2147483647)},
             {"softmaxLseFlag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}
         },
         &compileInfo, "Ascend950", 56, 262144, 16384);
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 9050000030400002);
 }
 
 // ============================================================================
-// 用例 32c: A2 blockShape小于128且非128整倍数
+// 用例 32c: A2 blockShapeX 可不对齐128；仅要求 blockShapeY 为128倍数
 // ============================================================================
 TEST_F(block_sparse_attention_tiling_ut, A2_blockShape_not_multiple_of_128)
 {
     struct BlockSparseAttentionCompileInfo {} compileInfo;
-    constexpr int64_t invalidBlockShapeX = 64;
-    constexpr int64_t invalidBlockShapeY = 128;
-    int64_t invalidBlockShapeData[] = {invalidBlockShapeX, invalidBlockShapeY};
-    constexpr int64_t smallQBlockNum = (qSeqlen + invalidBlockShapeX - 1) / invalidBlockShapeX;
+    constexpr int64_t unalignedBlockShapeX = 64;
+    constexpr int64_t validBlockShapeY = 128;
+    int64_t blockShapeDataLocal[] = {unalignedBlockShapeX, validBlockShapeY};
+    constexpr int64_t smallQBlockNum = (qSeqlen + unalignedBlockShapeX - 1) / unalignedBlockShapeX;
     gert::TilingContextPara tilingContextPara(
         "BlockSparseAttention",
         {
@@ -1464,7 +1464,7 @@ TEST_F(block_sparse_attention_tiling_ut, A2_blockShape_not_multiple_of_128)
             {{{tokenKv, numKvHeads, headDim}, {tokenKv, numKvHeads, headDim}}, ge::DT_FLOAT16, ge::FORMAT_ND},
             {{{batch, numHeads, smallQBlockNum, kvBlockNum}, {batch, numHeads, smallQBlockNum, kvBlockNum}}, ge::DT_INT8, ge::FORMAT_ND},
             {{{}, {}}, ge::DT_INT8, ge::FORMAT_ND},
-            {{{2}, {2}}, ge::DT_INT64, ge::FORMAT_ND, true, invalidBlockShapeData},
+            {{{2}, {2}}, ge::DT_INT64, ge::FORMAT_ND, true, blockShapeDataLocal},
             {{{batch}, {batch}}, ge::DT_INT64, ge::FORMAT_ND, true, actualSeqLengthsData},
             {{{batch}, {batch}}, ge::DT_INT64, ge::FORMAT_ND, true, actualSeqLengthsKvData},
             {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
@@ -1489,7 +1489,7 @@ TEST_F(block_sparse_attention_tiling_ut, A2_blockShape_not_multiple_of_128)
             {"softmaxLseFlag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}
         },
         &compileInfo, "Ascend910B", 64, 196608, 16384);
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, UINT64_MAX);
 }
 
 // ============================================================================
@@ -1540,25 +1540,26 @@ TEST_F(block_sparse_attention_tiling_ut, A5_small_blockShape_16_64_tnd_normal)
 }
 
 // ============================================================================
-// 用例 32e: A5 blockShapeY>256 且非128整倍数（如528），应拦截避免 L1 溢出
+// 用例 32e: A5 blockShapeY>256 且非128整倍数（如528）允许通过；
+// kvBaseTile 取 Y 的不大于 256 的最大约数（528 -> 176），避免整块 Y 入 L1 溢出
 // ============================================================================
 TEST_F(block_sparse_attention_tiling_ut, A5_blockShapeY_gt256_not_multiple_of_128)
 {
     struct BlockSparseAttentionCompileInfo {} compileInfo;
-    constexpr int64_t invalidBlockShapeX = 16;
-    constexpr int64_t invalidBlockShapeY = 528;
-    int64_t invalidBlockShapeData[] = {invalidBlockShapeX, invalidBlockShapeY};
-    constexpr int64_t invalidQBlockNum = (qSeqlen + invalidBlockShapeX - 1) / invalidBlockShapeX;
-    constexpr int64_t invalidKvBlockNum = (kvSeqlen + invalidBlockShapeY - 1) / invalidBlockShapeY;
+    constexpr int64_t fineBlockShapeX = 16;
+    constexpr int64_t fineBlockShapeY = 528;
+    int64_t fineBlockShapeData[] = {fineBlockShapeX, fineBlockShapeY};
+    constexpr int64_t fineQBlockNum = (qSeqlen + fineBlockShapeX - 1) / fineBlockShapeX;
+    constexpr int64_t fineKvBlockNum = (kvSeqlen + fineBlockShapeY - 1) / fineBlockShapeY;
     gert::TilingContextPara tilingContextPara(
         "BlockSparseAttention",
         {
             {{{tokenQ, numHeads, headDim}, {tokenQ, numHeads, headDim}}, ge::DT_FLOAT16, ge::FORMAT_ND},
             {{{tokenKv, numKvHeads, headDim}, {tokenKv, numKvHeads, headDim}}, ge::DT_FLOAT16, ge::FORMAT_ND},
             {{{tokenKv, numKvHeads, headDim}, {tokenKv, numKvHeads, headDim}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{{batch, numHeads, invalidQBlockNum, invalidKvBlockNum}, {batch, numHeads, invalidQBlockNum, invalidKvBlockNum}}, ge::DT_INT8, ge::FORMAT_ND},
+            {{{batch, numHeads, fineQBlockNum, fineKvBlockNum}, {batch, numHeads, fineQBlockNum, fineKvBlockNum}}, ge::DT_INT8, ge::FORMAT_ND},
             {{{}, {}}, ge::DT_INT8, ge::FORMAT_ND},
-            {{{2}, {2}}, ge::DT_INT64, ge::FORMAT_ND, true, invalidBlockShapeData},
+            {{{2}, {2}}, ge::DT_INT64, ge::FORMAT_ND, true, fineBlockShapeData},
             {{{batch}, {batch}}, ge::DT_INT64, ge::FORMAT_ND, true, actualSeqLengthsData},
             {{{batch}, {batch}}, ge::DT_INT64, ge::FORMAT_ND, true, actualSeqLengthsKvData},
             {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
@@ -1583,7 +1584,7 @@ TEST_F(block_sparse_attention_tiling_ut, A5_blockShapeY_gt256_not_multiple_of_12
             {"softmaxLseFlag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}
         },
         &compileInfo, "Ascend950", 56, 262144, 16384);
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 9050000030400002);
 }
 
 // ============================================================================
@@ -1966,15 +1967,15 @@ TEST_F(block_sparse_attention_tiling_ut, A5_non_fp8_dequantScale_not_null)
 }
 
 // ============================================================================
-// 用例 42: A5 fp8场景blockShapeX不是16的整倍数
+// 用例 42: A5 fp8 场景 blockShapeX 可不对齐16；仅要求 blockShapeY 16 对齐
 // ============================================================================
 TEST_F(block_sparse_attention_tiling_ut, A5_fp8_blockShapeX_is_not_128)
 {
     struct BlockSparseAttentionCompileInfo {} compileInfo;
-    constexpr int64_t invalidBlockShapeX = 17;
+    constexpr int64_t unalignedBlockShapeX = 17;
     constexpr int64_t validBlockShapeY = 64;
-    int64_t invalidBlockShapeData[] = {invalidBlockShapeX, validBlockShapeY};
-    constexpr int64_t smallQBlockNum = (qSeqlen + invalidBlockShapeX - 1) / invalidBlockShapeX;
+    int64_t blockShapeDataLocal[] = {unalignedBlockShapeX, validBlockShapeY};
+    constexpr int64_t smallQBlockNum = (qSeqlen + unalignedBlockShapeX - 1) / unalignedBlockShapeX;
     constexpr int64_t smallKvBlockNum = (kvSeqlen + validBlockShapeY - 1) / validBlockShapeY;
     gert::TilingContextPara tilingContextPara(
         "BlockSparseAttention",
@@ -1984,7 +1985,7 @@ TEST_F(block_sparse_attention_tiling_ut, A5_fp8_blockShapeX_is_not_128)
             {{{tokenKv, numKvHeads, headDim}, {tokenKv, numKvHeads, headDim}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},
             {{{batch, numHeads, smallQBlockNum, smallKvBlockNum}, {batch, numHeads, smallQBlockNum, smallKvBlockNum}}, ge::DT_INT8, ge::FORMAT_ND},
             {{{}, {}}, ge::DT_INT8, ge::FORMAT_ND},
-            {{{2}, {2}}, ge::DT_INT64, ge::FORMAT_ND, true, invalidBlockShapeData},
+            {{{2}, {2}}, ge::DT_INT64, ge::FORMAT_ND, true, blockShapeDataLocal},
             {{{batch}, {batch}}, ge::DT_INT64, ge::FORMAT_ND, true, actualSeqLengthsData},
             {{{batch}, {batch}}, ge::DT_INT64, ge::FORMAT_ND, true, actualSeqLengthsKvData},
             {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
@@ -2009,7 +2010,7 @@ TEST_F(block_sparse_attention_tiling_ut, A5_fp8_blockShapeX_is_not_128)
             {"softmaxLseFlag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}
         },
         &compileInfo, "Ascend950", 56, 262144, 16384);
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 9050000030400012);
 }
 
 // ============================================================================
