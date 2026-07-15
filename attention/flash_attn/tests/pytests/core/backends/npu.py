@@ -1,10 +1,7 @@
 """NPU 后端 — 按 flash_attn.md 参数组调用，支持 eager / graph 两种模式。"""
 
 import numpy as np
-import os
-import shutil
 import torch
-from pathlib import Path
 from typing import Any, Dict
 
 from .base import Backend
@@ -18,7 +15,6 @@ except ImportError:
 try:
     import torchair
     from torchair.configs.compiler_config import CompilerConfig
-    from torchair.core._backend import uninstall_static_kernel
     _HAS_TORCHAIR = True
 except ImportError:
     _HAS_TORCHAIR = False
@@ -140,8 +136,6 @@ class NPUBackend(Backend):
             torch.npu.set_device(device_id)
         if graph_mode and not _HAS_TORCHAIR:
             raise ImportError("graph_mode 需要 torchair，请先安装")
-        if graph_mode:
-            self._cleanup_static_kernel_cache()
 
     @property
     def device(self) -> torch.device:
@@ -154,28 +148,12 @@ class NPUBackend(Backend):
         if _HAS_NPU:
             torch.npu.empty_cache()
 
-    def _cleanup_static_kernel_cache(self):
-        """清理静态 kernel 缓存，确保每次都触发重新编译。
-        先调 uninstall_static_kernel 注销 CANN runtime 内存中的注册，再删磁盘文件。"""
-        if _HAS_TORCHAIR:
-            uninstall_static_kernel()
-        shutil.rmtree("./fa_kernel_cache", ignore_errors=True)
-        opp_path = os.environ.get("ASCEND_OPP_PATH", "")
-        if opp_path:
-            for d in Path(opp_path).rglob("static_kernel"):
-                shutil.rmtree(d, ignore_errors=True)
-
     def _get_graph_net(self):
-        self._cleanup_static_kernel_cache()
         torch._dynamo.reset()
         net = FlashAttnGraphNetwork().npu()
         config = CompilerConfig()
         config.mode = "reduce-overhead"
-        config.experimental_config.aclgraph._aclnn_static_shape_kernel = True
-        config.experimental_config.aclgraph._aclnn_static_shape_kernel_build_dir = "./"
         config.experimental_config.frozen_parameter = True
-        config.experimental_config.tiling_schedule_optimize = True
-        config.experimental_config.topology_sorting_strategy = "StableRDFS"
         npu_backend = torchair.get_npu_backend(compiler_config=config)
         self._graph_net = torch.compile(net, fullgraph=False, backend=npu_backend, dynamic=False)
         return self._graph_net
