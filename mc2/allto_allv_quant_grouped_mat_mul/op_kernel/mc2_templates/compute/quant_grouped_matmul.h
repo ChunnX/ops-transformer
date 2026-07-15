@@ -13,7 +13,6 @@
  * \brief
  */
 
-
 #ifndef MC2_QUANT_GROUPED_MATMUL_H
 #define MC2_QUANT_GROUPED_MATMUL_H
 
