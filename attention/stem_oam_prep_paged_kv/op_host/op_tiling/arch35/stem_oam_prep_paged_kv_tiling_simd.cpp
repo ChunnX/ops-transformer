@@ -51,6 +51,12 @@ ge::graphStatus StemPrepKvTiling::GetTensorInfo(gert::Shape &shape, gert::Stride
             ContinuousStridesCompute(shape, inputStride, idx);
         } else {
             inputStride = *strides;
+            if (shape.GetDimNum() == 0) {
+                auto xStorageShape = context_->GetInputShape(idx);
+                if (xStorageShape != nullptr) {
+                    shape = xStorageShape->GetOriginShape();
+                }
+            }
         }
     } else {
         ContinuousStridesCompute(shape, inputStride, idx);
