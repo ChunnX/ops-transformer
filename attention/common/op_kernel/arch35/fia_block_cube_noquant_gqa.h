@@ -123,13 +123,13 @@ public:
     BufferManager<BufferType::L0B> l0bBufferManager;
     BufferManager<BufferType::L0C> l0cBufferManager;
 
-    L1QType l1QBuffers;
-    L1KvType l1KBuffers;
-    L1KvType l1VBuffers;
-
     L0AType mmL0ABuffers;
     L0BType mmL0BBuffers;
     L0CType mmL0CBuffers;
+
+    L1QType l1QBuffers;
+    L1KvType l1KBuffers;
+    L1KvType l1VBuffers;
 
     __gm__ uint8_t *keyPtr = nullptr;
     __gm__ uint8_t *valuePtr = nullptr;
@@ -154,7 +154,14 @@ public:
 
     __aicore__ inline void InitBuffers()
     {
-        if constexpr (dBaseSize > 256) {
+        if constexpr (dBaseSize <= 256) {
+            constexpr uint32_t mm1LeftSize = mBaseSize * dBaseSize * sizeof(Q_T);
+            constexpr uint32_t mm1RightSize = dBaseSize * s2BaseSize * sizeof(KV_T);
+            constexpr uint32_t mm2RightSize = (uint32_t)dVTemplateType * s2BaseSize * sizeof(KV_T);
+            l1QBuffers.Init((*l1BufferManagerPtr), mm1LeftSize);
+            l1KBuffers.Init((*l1BufferManagerPtr), mm1RightSize);
+            l1VBuffers.Init((*l1BufferManagerPtr), mm2RightSize);
+        } else {
             /* D大于256的其他dtype场景，Bmm1左矩阵不开DB + 驻留 + 复用 + L1切K
             Bmm2左矩阵3 Buffer循环，Bmm1右矩阵和Bmm2右矩阵在L1上切D轴，并开启DoubleBuffer
             唯一不同的是D=256场景下的D轴只能切分到96，其余都可以切分到128，原因是D=256场景S1Base是128
@@ -162,13 +169,6 @@ public:
             constexpr uint32_t mm1LeftSize = mBaseSize * dBaseSize * sizeof(Q_T);
             constexpr uint32_t mm1RightSize = s2BaseSize * l1BaseD * sizeof(KV_T);
             constexpr uint32_t mm2RightSize = s2BaseSize * l1BaseD * sizeof(KV_T);
-            l1QBuffers.Init((*l1BufferManagerPtr), mm1LeftSize);
-            l1KBuffers.Init((*l1BufferManagerPtr), mm1RightSize);
-            l1VBuffers.Init((*l1BufferManagerPtr), mm2RightSize);
-        } else {
-            constexpr uint32_t mm1LeftSize = mBaseSize * dBaseSize * sizeof(Q_T);
-            constexpr uint32_t mm1RightSize = dBaseSize * s2BaseSize * sizeof(KV_T);
-            constexpr uint32_t mm2RightSize = (uint32_t)dVTemplateType * s2BaseSize * sizeof(KV_T);
             l1QBuffers.Init((*l1BufferManagerPtr), mm1LeftSize);
             l1KBuffers.Init((*l1BufferManagerPtr), mm1RightSize);
             l1VBuffers.Init((*l1BufferManagerPtr), mm2RightSize);
@@ -182,8 +182,8 @@ public:
         mmL0ABuffers.Init(l0aBufferManager, 32 * 1024);
         mmL0BBuffers.Init(l0bBufferManager, 32 * 1024);
 
-        if constexpr (mBaseSize * s2BaseSize * FLOAT_BYTES <= (L0C_SIZE * KB_TO_BYTES) / NUM_4 &&
-                      mBaseSize * dVBaseSize * FLOAT_BYTES <= (L0C_SIZE * KB_TO_BYTES) / NUM_4) {
+        if constexpr (mBaseSize * dVBaseSize * FLOAT_BYTES <= (L0C_SIZE * KB_TO_BYTES) / NUM_4 &&
+                      mBaseSize * s2BaseSize * FLOAT_BYTES <= (L0C_SIZE * KB_TO_BYTES) / NUM_4) {
             mmL0CBuffers.Init(l0cBufferManager, (L0C_SIZE / NUM_4) * KB_TO_BYTES);
         } else {
             mmL0CBuffers.Init(l0cBufferManager, (L0C_SIZE / NUM_2) * KB_TO_BYTES);
@@ -191,10 +191,10 @@ public:
     }
 
     __aicore__ inline void InitCubeInput(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
-                                         __gm__ uint8_t *blockTable, __gm__ uint8_t *queryRope, __gm__ uint8_t *keyRope,
-                                         __gm__ uint8_t *actualSeqQlenAddr, __gm__ uint8_t *actualSeqKvlenAddr,
-                                         __gm__ uint8_t *keySharedPrefix, __gm__ uint8_t *valueSharedPrefix,
-                                         __gm__ uint8_t *actualSharedPrefixLen)
+                                         __gm__ uint8_t *blockTable, __gm__ uint8_t *queryRope,
+                                         __gm__ uint8_t *keyRope, __gm__ uint8_t *actualSeqQlenAddr,
+                                         __gm__ uint8_t *actualSeqKvlenAddr, __gm__ uint8_t *keySharedPrefix,
+                                         __gm__ uint8_t *valueSharedPrefix, __gm__ uint8_t *actualSharedPrefixLen)
     {
         if (constInfo.actualSeqLenSize != 0) {
             actualSeqLengthsGmQ.SetGlobalBuffer((__gm__ uint64_t *)actualSeqQlenAddr, constInfo.actualSeqLenSize);
@@ -461,12 +461,10 @@ public:
             mm1A.Wait<HardEvent::MTE1_MTE2>();
             LocalTensor<Q_T> mm1ATensor = mm1A.GetTensor<Q_T>();
             CopyQueryTile(mm1ATensor, runInfo);
-            mm1A.Set<HardEvent::MTE2_MTE1>();
         } else {
             mm1A = l1QBuffers.GetPre();
-            mm1A.Set<HardEvent::MTE2_MTE1>();
         }
-
+        mm1A.Set<HardEvent::MTE2_MTE1>();
         Buffer<BufferType::L1> mm1B = l1KBuffers.Get();
         mm1B.Wait<HardEvent::MTE1_MTE2>();
         LocalTensor<KV_T> mm1BTensor = mm1B.GetTensor<KV_T>();
@@ -478,22 +476,22 @@ public:
         Buffer<BufferType::L0C> mm1ResL0C = mmL0CBuffers.Get();
         mm1ResL0C.Wait<HardEvent::FIX_M>();
 
-        MMParam param = MakeMMParam((uint32_t)runInfo.actMSize, (uint32_t)runInfo.actSingleLoopS2Size,
-                                    (uint32_t)(constInfo.dSize + constInfo.dSizeRope), false, true);
+        MMParam mmParam = MakeMMParam((uint32_t)runInfo.actMSize, (uint32_t)runInfo.actSingleLoopS2Size,
+            (uint32_t)(constInfo.dSize + constInfo.dSizeRope), false, true);
         if constexpr (dBaseSize > 128) {
             if constexpr (s2BaseSize == 256) {
                 MatmulN<Q_T, KV_T, T, 64, 128, 256, ABLayout::MK, ABLayout::KN>(
                     mm1A.GetTensor<Q_T>(), mm1B.GetTensor<KV_T>(), mmL0ABuffers, mmL0BBuffers, mm1ResL0C.GetTensor<T>(),
-                    param);
+                    mmParam);
             } else {
                 MatmulK<Q_T, KV_T, T, 128, 128, 128, ABLayout::MK, ABLayout::KN>(
                     mm1A.GetTensor<Q_T>(), mm1B.GetTensor<KV_T>(), mmL0ABuffers, mmL0BBuffers,
-                    mm1ResL0C.GetTensor<T>(), param);
+                    mm1ResL0C.GetTensor<T>(), mmParam);
             }
         } else {
             MatmulBase<Q_T, KV_T, T, 128, 128, dBaseSize, ABLayout::MK, ABLayout::KN>(
                 mm1A.GetTensor<Q_T>(), mm1B.GetTensor<KV_T>(), mmL0ABuffers, mmL0BBuffers,
-                mm1ResL0C.GetTensor<T>(), param);
+                mm1ResL0C.GetTensor<T>(), mmParam);
         }
 
         if (unlikely(runInfo.isLastS2Loop)) {
@@ -737,8 +735,8 @@ public:
     }
 
     template <typename DST_TENSOR_T>
-    __aicore__ inline void FixpipeMm2PartialN(const DST_TENSOR_T &dstTensor, const LocalTensor<T> &l0C, uint32_t realN,
-                                              RunInfoX &runInfo)
+    __aicore__ inline void FixpipeMm2PartialN(const DST_TENSOR_T &dstTensor, const LocalTensor<T> &l0C,
+                                              uint32_t realN, RunInfoX &runInfo)
     {
         FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams; // L0C→UB;FixpipeParamsM300:L0C→UB
         if constexpr (bmm2Write2Ub) {
@@ -747,12 +745,12 @@ public:
             fixpipeParams.nSize = realN;
         }
 
-        if constexpr (!useDn) {
-            fixpipeParams.mSize = (runInfo.actMSize + 1) >> 1 << 1;
-            fixpipeParams.srcStride = (fixpipeParams.mSize + 15) >> 4 << 4;
-        } else {
+        if constexpr (useDn) {
             fixpipeParams.mSize = mBaseSize;
             fixpipeParams.srcStride = (mBaseSize + 15) >> 4 << 4;
+        } else {
+            fixpipeParams.mSize = (runInfo.actMSize + 1) >> 1 << 1;
+            fixpipeParams.srcStride = (fixpipeParams.mSize + 15) >> 4 << 4;
         }
 
         if constexpr (bmm2Write2Ub || splitD) {

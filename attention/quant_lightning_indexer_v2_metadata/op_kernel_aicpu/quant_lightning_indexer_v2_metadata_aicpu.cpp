@@ -775,17 +775,30 @@ void QuantLightningIndexerV2MetadataCpuKernel::SplitFD(SplitResult &splitRes)
     for (uint32_t i = 0; i < splitRes.numOfFdHead; i++) {
         totalFDLoad += splitRes.fdRes.fdS2SplitNum[i] * splitRes.fdRes.fdMSize[i];
     }
+    // 计算当前最大冗余vec核数
+    uint32_t emptyVectorNum = aivCoreNum_ - splitRes.numOfFdHead;
     // 计算每个核处理的load
     // 向上取整，避免核负载为0
     uint64_t averageLoad = (totalFDLoad + aivCoreNum_ - 1U) / aivCoreNum_;
     uint32_t curCoreIndex = 0;
     for (uint32_t i = 0; i < splitRes.numOfFdHead; i++) {
+        // 冗余vec核数为0，此时规约任务无法进行更小的切分，只能1个vec核计算1个规约任务
+        if (emptyVectorNum == 0U) {
+            splitRes.fdRes.fdIdx[curCoreIndex] = i;
+            splitRes.fdRes.fdMStart[curCoreIndex] = 0U;
+            splitRes.fdRes.fdMNum[curCoreIndex] = splitRes.fdRes.fdMSize[i];
+            curCoreIndex++;
+            continue;
+        }
         // 计算当前归约任务所用核数，向下取整，避免使用核数超出总核数
         uint32_t curFDVectorNum = splitRes.fdRes.fdS2SplitNum[i] * splitRes.fdRes.fdMSize[i] / averageLoad;
         curFDVectorNum = std::max(1U, curFDVectorNum);
         // 计算当前归约任务每个核的行数，向上取整，避免行数为0
         uint32_t curAveMSize = (splitRes.fdRes.fdMSize[i] + curFDVectorNum - 1U) / curFDVectorNum;
         curFDVectorNum = (splitRes.fdRes.fdMSize[i] + curAveMSize -1U)/ curAveMSize;
+        // 需要使用的vec核数与当前剩余可用vec核数取最小
+        curFDVectorNum = std::min(curFDVectorNum, emptyVectorNum + 1U); // 1: Fd任务自身带一个核
+        // FD负载分配
         for (uint32_t vid = 0; vid < curFDVectorNum; vid++) {
             splitRes.fdRes.fdIdx[curCoreIndex] = i;
             splitRes.fdRes.fdMStart[curCoreIndex] = vid * curAveMSize;
@@ -793,6 +806,8 @@ void QuantLightningIndexerV2MetadataCpuKernel::SplitFD(SplitResult &splitRes)
                 (vid < curFDVectorNum - 1) ? curAveMSize : (splitRes.fdRes.fdMSize[i] - vid * curAveMSize);
             curCoreIndex++;
         }
+        // 更新冗余vec核数
+        emptyVectorNum -= (curFDVectorNum - 1U); // 1: 空余核不包含FD自身的核，要-1
     }
     splitRes.fdRes.fdUsedVecNum = curCoreIndex;
 }

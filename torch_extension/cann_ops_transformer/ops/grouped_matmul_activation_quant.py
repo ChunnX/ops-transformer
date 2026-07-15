@@ -156,7 +156,6 @@ class GroupedMatmulActivationQuantOpBuilder(OpBuilder):
 
 
 _grouped_matmul_activation_quant_op_builder = GroupedMatmulActivationQuantOpBuilder()
-_op_module = _grouped_matmul_activation_quant_op_builder.load()
 
 
 @impl(AS_LIBRARY, _grouped_matmul_activation_quant_op_builder.name, "PrivateUse1")
@@ -168,6 +167,7 @@ def _grouped_matmul_activation_quant(x, group_list, weight, weight_scale, activa
                                      dst_type_max=0.0, x_dtype=None,
                                      weight_dtype=None, weight_scale_dtype=None,
                                      x_scale_dtype=None):
+    _op_module = _grouped_matmul_activation_quant_op_builder.load()
     return _op_module.grouped_matmul_activation_quant(
         x, group_list, weight, weight_scale, activation_type, bias, x_scale, group_list_type, tuning_config,
         quant_mode, y_dtype, round_mode,

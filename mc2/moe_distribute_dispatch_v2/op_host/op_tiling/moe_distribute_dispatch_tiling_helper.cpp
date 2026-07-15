@@ -385,7 +385,8 @@ inline bool MoeDistributeDispatchTilingHelper::CheckDistinctTensorDataType(gert:
     if (quantMode == static_cast<uint32_t>(QuantModeA5::NON_QUANT)) {
         OP_TILING_CHECK(!CheckTensorDataTypeNoScales(context, nodeName, isScales), 
             OP_LOGE(nodeName, "CheckTensorDataType for nonquant mode failed."), return false);
-    } else if (quantMode == static_cast<uint32_t>(QuantModeA5::MX_QUANT)) {
+    } else if ((quantMode == static_cast<uint32_t>(QuantModeA5::MX_QUANT)) ||
+        (quantMode == static_cast<uint32_t>(QuantModeA5::MX_QUANT_CLIP))) {
         OP_TILING_CHECK(!CheckTensorDataTypeMxfp8(context, nodeName),
             OP_LOGE(nodeName, "CheckTensorDataType for mx quant mode failed."), return false);
     } else {

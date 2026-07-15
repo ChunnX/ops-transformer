@@ -1354,53 +1354,13 @@ static ge::graphStatus CheckFAILseOutput(const gert::TilingContext *context)
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus ValidateCacheNonFirstAxisContiguous(const gert::TilingContext *context,
-    const uint64_t inputIndex, const gert::Shape &shape, const char *tensorName)
-{
-    auto *stride = context->GetDynamicInputStride(inputIndex, 0);
-    if (stride == nullptr || stride->GetDimNum() != shape.GetDimNum()) {
-        return ge::GRAPH_SUCCESS;
-    }
-
-    uint64_t expectedStride = 1;
-    for (size_t i = shape.GetDimNum() - 1; i >= 1; --i) {
-        uint64_t actualStride = static_cast<uint64_t>(stride->GetStride(i));
-        if (actualStride != expectedStride) {
-            OP_LOGE(context,
-                    "Tensor %s (irIdx=%lu) dim%zu is non-contiguous: "
-                    "actual stride=%lu, expected contiguous stride=%lu. "
-                    "Only the first axis (dim0) may be non-contiguous.",
-                    tensorName, inputIndex, i, actualStride, expectedStride);
-            return ge::GRAPH_FAILED;
-        }
-        expectedStride *= static_cast<uint64_t>(shape.GetDim(i));
-    }
-    return ge::GRAPH_SUCCESS;
-}
-
-static ge::graphStatus CheckFAIKVContiguity(const gert::TilingContext *context)
-{
-    auto KeyShape = context->GetInputShape(KEY_INDEX)->GetStorageShape();
-    auto ValueShape = context->GetInputShape(VALUE_INDEX)->GetStorageShape();
-    OP_CHECK_IF(ValidateCacheNonFirstAxisContiguous(context, KEY_INDEX, KeyShape, "key") != ge::GRAPH_SUCCESS,
-        OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "key has non-contiguous axis beyond dim0, "
-                                                            "which is not supported."),
-        return ge::GRAPH_FAILED);
-    OP_CHECK_IF(ValidateCacheNonFirstAxisContiguous(context, VALUE_INDEX, ValueShape, "value") != ge::GRAPH_SUCCESS,
-        OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "value has non-contiguous axis beyond dim0, "
-                                                            "which is not supported."),
-        return ge::GRAPH_FAILED);
-    return ge::GRAPH_SUCCESS;
-}
-
 ge::graphStatus CheckFAIAvailability(gert::TilingContext *context)
 {
     bool isPageAttention = context->GetOptionalInputShape(BLOCK_TABLE_INDEX) != nullptr ? true : false;
     if (CheckFAIQKV(context, isPageAttention) != ge::GRAPH_SUCCESS ||
         CheckFAIMask(context) != ge::GRAPH_SUCCESS ||
         CheckFAISinglePara(context, isPageAttention) != ge::GRAPH_SUCCESS ||
-        CheckFAILseOutput(context) != ge::GRAPH_SUCCESS ||
-        CheckFAIKVContiguity(context) != ge::GRAPH_SUCCESS) {
+        CheckFAILseOutput(context) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -1511,18 +1471,6 @@ static void ComputeSeqLenAndDecodeFlagsForFAI(FAInferContext& faInfo, uint32_t a
     }
 }
 
-static void SetBlockStridesForFAI(gert::TilingContext *context, FAInferContext& faInfo)
-{
-    auto keyBlockStrides = context->GetDynamicInputStride(KEY_INDEX, 0);
-    if (keyBlockStrides != nullptr && keyBlockStrides->GetDimNum() > 0) {
-        faInfo.keyBnStride = keyBlockStrides->GetStride(0);
-    }
-    auto valueBlockStrides = context->GetDynamicInputStride(VALUE_INDEX, 0);
-    if (valueBlockStrides != nullptr && valueBlockStrides->GetDimNum() > 0) {
-        faInfo.valueBnStride = valueBlockStrides->GetStride(0);
-    }
-}
-
 static ge::graphStatus ConvertContextToParamsFAI(gert::TilingContext *context, FAInferContext& faInfo, uint32_t aicoreNum)
 {
     auto qDataType = context->GetInputDesc(QUERY_INDEX)->GetDataType();
@@ -1577,8 +1525,6 @@ static ge::graphStatus ConvertContextToParamsFAI(gert::TilingContext *context, F
         faInfo.isTilingSink = true;
     }
     faInfo.workspaces = context->GetWorkspaceSizes(1);
-
-    SetBlockStridesForFAI(context, faInfo);
 
     return ge::GRAPH_SUCCESS;
 }

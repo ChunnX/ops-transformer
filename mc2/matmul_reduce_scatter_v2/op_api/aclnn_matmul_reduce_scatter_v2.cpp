@@ -62,6 +62,13 @@ enum class NnopbaseHcclServerType : uint32_t {
     NNOPBASE_HCCL_SERVER_TYPE_END
 };
 
+enum class CommType : uint64_t {
+    AI_CPU = 0,
+    CCU,
+    AIV,
+    INVALID
+};
+
 extern "C" uint64_t NnopbaseMsprofSysTime();
 extern "C" void NnopbaseSetUserHandle(void *executor, void *handle);
 extern "C" void *NnopbaseGetUserHandle(void *executor);
@@ -73,7 +80,7 @@ static inline bool IsAscend950(void)
     return op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510;
 }
 
-static void SetNnopbaseHcclServerTypeByArch(aclOpExecutor *executor, const char* commMode)
+static void SetNnopbaseHcclServerTypeByArch(aclOpExecutor *executor, CommType commModeEnum)
 {
     if ((executor == nullptr) || (NnopbaseSetHcclServerType == nullptr)) {
         return;
@@ -81,12 +88,21 @@ static void SetNnopbaseHcclServerTypeByArch(aclOpExecutor *executor, const char*
     if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2201) {
         NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_MTE);
     } else if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-        const bool isAicpu = (strncmp(commMode, "ai_cpu", AICPU_STRLEN) == 0);
-        NnopbaseHcclServerType serverType = isAicpu
-            ? NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU
-            : NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU;
-        OP_LOGD("Execute commMode is %s for DAV_3510", isAicpu ? "AICPU" : "CCU");
-        NnopbaseSetHcclServerType(executor, serverType);
+        switch (commModeEnum) {
+            case CommType::AI_CPU:
+                NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
+                OP_LOGD("SetHcclServerType to ai_cpu");
+                break;
+            case CommType::CCU:
+                NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
+                OP_LOGD("SetHcclServerType to ccu");
+                break;
+            default:
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("SetNnopbaseHcclServerTypeByArch", "commModeEnum", "invalid",
+                                                      "Does not match any available case, \
+                                                      please check the input commModeEnum.");
+                return;
+        }
     }
 }
 
@@ -189,17 +205,20 @@ static aclnnStatus CheckAivModeParams(const aclTensor* x1, const aclTensor* x2,
     return ACLNN_SUCCESS;
 }
 
-static aclnnStatus CheckCommMode(const char* commMode)
+static aclnnStatus CheckAndSetCommMode(const char* commMode, CommType &commModeEnum)
 {
     if (commMode == nullptr) {
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "[MatmulReduceScatterV2] commMode must not be nullptr.");
+        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, \
+                "[aclnnMatmulReduceScatterV2GetWorkspaceSize] commMode must not be nullptr.");
         return ACLNN_ERR_PARAM_NULLPTR;
     }
-    if ((strncmp(commMode, "ai_cpu", AICPU_STRLEN) != 0) &&
-        (strncmp(commMode, "ccu", CCU_STRLEN) != 0)) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "[MatmulReduceScatterV2] commMode must be 'ai_cpu' or 'ccu', but got '%s'.",
-                commMode);
+    if (strncmp(commMode, "ai_cpu", AICPU_STRLEN) == 0) {
+        commModeEnum = CommType::AI_CPU;
+    } else if (strncmp(commMode, "ccu", CCU_STRLEN) == 0) {
+        commModeEnum = CommType::CCU;
+    } else {
+        OP_LOGE_FOR_INVALID_VALUE("aclnnMatmulReduceScatterV2GetWorkspaceSize", "commMode", \
+                                  commMode, "\"ccu\" or \"ai_cpu\"");
         return ACLNN_ERR_PARAM_INVALID;
     }
     return ACLNN_SUCCESS;
@@ -377,8 +396,14 @@ aclnnStatus matmulReduceScatterV2GetWorkSpaceSizeA5(const aclTensor* x1, const a
     // 固定写法，参数检查
     auto retParam = CheckParams(x1, x2, bias, streamMode, output);
     CHECK_RET(retParam == ACLNN_SUCCESS, retParam);
-    auto retCommmode = CheckCommMode(commMode);
+    CommType commModeEnum = CommType::INVALID;
+    auto retCommmode = CheckAndSetCommMode(commMode, commModeEnum);
     CHECK_RET(retCommmode == ACLNN_SUCCESS, retCommmode);
+    if (commModeEnum >= CommType::INVALID) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnmatmulReduceScatterV2GetWorkSpaceSize", "commModeEnum",
+            "invalid", "Does not match any available case, please check the input commMode.");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
     // 处理空tensor
     if (x1->IsEmpty() || x2->IsEmpty()) {
         OP_LOGD("MatmulReduceScatter, dealing with empty tensor.");
@@ -390,7 +415,7 @@ aclnnStatus matmulReduceScatterV2GetWorkSpaceSizeA5(const aclTensor* x1, const a
         }
         uniqueExecutor.ReleaseTo(executor);
         if ((executor != nullptr) && (*executor != nullptr)) {
-            SetNnopbaseHcclServerTypeByArch(*executor, commMode);
+            SetNnopbaseHcclServerTypeByArch(*executor, commModeEnum);
         }
         return ACLNN_SUCCESS;
     }
@@ -429,11 +454,9 @@ aclnnStatus matmulReduceScatterV2GetWorkSpaceSizeA5(const aclTensor* x1, const a
         transposeX1, transposeX2, commTurn, rankSize, blockSize, groupSize, isAmaxOut, yDtype,
         const_cast<char*>(commMode), output, amaxOutOptional, workspaceSize, executor);
     if ((ret == ACLNN_SUCCESS) && (executor != nullptr) && (*executor != nullptr)) {
-        SetNnopbaseHcclServerTypeByArch(*executor, commMode);
-        // SetUserHandle to pass comm_mode to aclnnMatmulReduceScatterV2
-        void* commModePtr = reinterpret_cast<void *>(const_cast<char *>(commMode));
-        NnopbaseSetUserHandle(*executor, commModePtr);
-        OP_LOGD("[MatmulReduceScatterV2] GetWorkspaceSize set commMode = %s", commMode);
+        SetNnopbaseHcclServerTypeByArch(*executor, commModeEnum);
+        void *args = reinterpret_cast<void *>(static_cast<uintptr_t>(commModeEnum));
+        NnopbaseSetUserHandle(*executor, args);
     }
     OP_LOGD("MatmulReduceScatterV2, end ret %d.", ret);
     static NnopbaseDfxId dfxId = {0x60000, __func__, false};
@@ -492,7 +515,8 @@ aclnnStatus matmulReduceScatterV2GetWorkSpaceSizeAivMode(const aclTensor* x1, co
         const_cast<char*>(group), const_cast<char*>(reduceOp), transposeX1, transposeX2, commTurn, rankSize, blockSize,
         groupSize, isAmaxOut, yDtype, const_cast<char*>(commMode), output, amaxOutOptional, workspaceSize, executor);
     if ((ret == ACLNN_SUCCESS) && (executor != nullptr) && (*executor != nullptr)) {
-        SetNnopbaseHcclServerTypeByArch(*executor, commMode);
+        CommType commModeEnum = CommType::AIV;
+        SetNnopbaseHcclServerTypeByArch(*executor, commModeEnum);
     }
     OP_LOGD("MatmulReduceScatterV2AivMode, aclnnInnerGetWorkspaceSize ret = %d.", ret);
     return ret;
@@ -534,18 +558,21 @@ aclnnStatus aclnnMatmulReduceScatterV2(void* workspace, uint64_t workspaceSize, 
         return ACLNN_SUCCESS;
     }
 
-    char* commMode = nullptr;
+    CommType commModeEnum = CommType::INVALID;
     if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-        commMode = reinterpret_cast<char*>(NnopbaseGetUserHandle(executor));
+        void *arg = NnopbaseGetUserHandle(executor);
+        uintptr_t handleVal = reinterpret_cast<uintptr_t>(arg);
+        commModeEnum = static_cast<CommType>(handleVal);
     } else if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2201) {
-        commMode = "aiv";
-    }
-    if (commMode == nullptr) {
-        OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "[MatmulReduceScatterV2] commMode get nullptr from NnopbaseGetUserHandle.");
-        return ACLNN_ERR_INNER;
+        commModeEnum = CommType::AIV;
     }
     
-    SetNnopbaseHcclServerTypeByArch(executor, commMode);
+    if (commModeEnum >= CommType::INVALID) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnMatmulReduceScatterV2", "commModeEnum",
+            "invalid", "Does not match any available case, please check the input commMode.");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    SetNnopbaseHcclServerTypeByArch(executor, commModeEnum);
     aclnnStatus ret = aclnnInnerMatmulReduceScatterV2(workspace, workspaceSize, executor, stream);
     if (ret != 0) {
         OP_LOGE_LIBOPAPI_REPORT("aclnnMatmulReduceScatterV2", "This is an error in launch aicore");

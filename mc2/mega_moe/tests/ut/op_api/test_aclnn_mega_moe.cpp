@@ -47,7 +47,7 @@ TEST_F(AclnnMegaMoeTest, ascend950_nullptr_context) {
                         INPUT(nullptr, x_desc, topk_ids_desc, topk_weights_desc,
                               weight1_descs, weight2_descs, weight_scales1_descs, weight_scales2_descs,
                               nullptr, nullptr, nullptr,
-                              16, 4, 2097152, 0, 0, 0, 0, "", 0, "swiglu", std::numeric_limits<float>::max(), 0),
+                              16, 4, 2097152, 0, 0, 0, 0, "", 0, "swiglu", std::numeric_limits<float>::max(), 0, 2),
                         OUTPUT(y_desc, expert_token_nums_desc));
 
     uint64_t workspace_size = 0;
@@ -73,7 +73,7 @@ TEST_F(AclnnMegaMoeTest, ascend950_nullptr_x) {
                         INPUT(context_desc, nullptr, topk_ids_desc, topk_weights_desc,
                               weight1_descs, weight2_descs, weight_scales1_descs, weight_scales2_descs,
                               nullptr, nullptr, nullptr,
-                              16, 4, 2097152, 0, 0, 0, 0, "", 0, "swiglu", std::numeric_limits<float>::max(), 0),
+                              16, 4, 2097152, 0, 0, 0, 0, "", 0, "swiglu", std::numeric_limits<float>::max(), 0, 2),
                         OUTPUT(y_desc, expert_token_nums_desc));
 
     uint64_t workspace_size = 0;
@@ -99,7 +99,7 @@ TEST_F(AclnnMegaMoeTest, ascend950_nullptr_topk_ids) {
                         INPUT(context_desc, x_desc, nullptr, topk_weights_desc,
                               weight1_descs, weight2_descs, weight_scales1_descs, weight_scales2_descs,
                               nullptr, nullptr, nullptr,
-                              16, 4, 2097152, 0, 0, 0, 0, "", 0, "swiglu", std::numeric_limits<float>::max(), 0),
+                              16, 4, 2097152, 0, 0, 0, 0, "", 0, "swiglu", std::numeric_limits<float>::max(), 0, 2),
                         OUTPUT(y_desc, expert_token_nums_desc));
 
     uint64_t workspace_size = 0;
@@ -125,7 +125,7 @@ TEST_F(AclnnMegaMoeTest, ascend950_nullptr_topk_weights) {
                         INPUT(context_desc, x_desc, topk_ids_desc, nullptr,
                               weight1_descs, weight2_descs, weight_scales1_descs, weight_scales2_descs,
                               nullptr, nullptr, nullptr,
-                              16, 4, 2097152, 0, 0, 0, 0, "", 0, "swiglu", std::numeric_limits<float>::max(), 0),
+                              16, 4, 2097152, 0, 0, 0, 0, "", 0, "swiglu", std::numeric_limits<float>::max(), 0, 2),
                         OUTPUT(y_desc, expert_token_nums_desc));
 
     uint64_t workspace_size = 0;
@@ -151,7 +151,7 @@ TEST_F(AclnnMegaMoeTest, ascend950_nullptr_weight1) {
                         INPUT(context_desc, x_desc, topk_ids_desc, topk_weights_desc,
                               nullptr, weight2_descs, weight_scales1_descs, weight_scales2_descs,
                               nullptr, nullptr, nullptr,
-                              16, 4, 2097152, 0, 0, 0, 0, "", 0, "swiglu", std::numeric_limits<float>::max(), 0),
+                              16, 4, 2097152, 0, 0, 0, 0, "", 0, "swiglu", std::numeric_limits<float>::max(), 0, 2),
                         OUTPUT(y_desc, expert_token_nums_desc));
 
     uint64_t workspace_size = 0;
@@ -177,7 +177,7 @@ TEST_F(AclnnMegaMoeTest, ascend950_nullptr_weight2) {
                         INPUT(context_desc, x_desc, topk_ids_desc, topk_weights_desc,
                               weight1_descs, nullptr, weight_scales1_descs, weight_scales2_descs,
                               nullptr, nullptr, nullptr,
-                              16, 4, 2097152, 0, 0, 0, 0, "", 0, "swiglu", std::numeric_limits<float>::max(), 0),
+                              16, 4, 2097152, 0, 0, 0, 0, "", 0, "swiglu", std::numeric_limits<float>::max(), 0, 2),
                         OUTPUT(y_desc, expert_token_nums_desc));
 
     uint64_t workspace_size = 0;
@@ -203,7 +203,7 @@ TEST_F(AclnnMegaMoeTest, ascend950_nullptr_y_out) {
                         INPUT(context_desc, x_desc, topk_ids_desc, topk_weights_desc,
                               weight1_descs, weight2_descs, weight_scales1_descs, weight_scales2_descs,
                               nullptr, nullptr, nullptr,
-                              16, 4, 2097152, 0, 0, 0, 0, "", 0, "swiglu", std::numeric_limits<float>::max(), 0),
+                              16, 4, 2097152, 0, 0, 0, 0, "", 0, "swiglu", std::numeric_limits<float>::max(), 0, 2),
                         OUTPUT(nullptr, expert_token_nums_desc));
 
     uint64_t workspace_size = 0;
@@ -229,7 +229,7 @@ TEST_F(AclnnMegaMoeTest, ascend950_nullptr_expert_token_nums_out) {
                         INPUT(context_desc, x_desc, topk_ids_desc, topk_weights_desc,
                               weight1_descs, weight2_descs, weight_scales1_descs, weight_scales2_descs,
                               nullptr, nullptr, nullptr,
-                              16, 4, 2097152, 0, 0, 0, 0, "", 0, "swiglu", std::numeric_limits<float>::max(), 0),
+                              16, 4, 2097152, 0, 0, 0, 0, "", 0, "swiglu", std::numeric_limits<float>::max(), 0, 2),
                         OUTPUT(y_desc, nullptr));
 
     uint64_t workspace_size = 0;

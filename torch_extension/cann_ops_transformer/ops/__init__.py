@@ -18,7 +18,7 @@ from .mega_moe import (
 )
 from .deep_ep import MoeDistributeBuffer
 from .flash_attn import flash_attn, flash_attn_metadata
-from .mixed_quant_flash_attn import mixed_quant_flash_attn
+from .mixed_quant_flash_attn import mixed_quant_flash_attn, mixed_quant_flash_attn_metadata
 from .mixed_quant_sparse_flash_mla import mixed_quant_sparse_flash_mla, mixed_quant_sparse_flash_mla_metadata
 from .scatter_pa_kv_cache_with_k_scale import scatter_pa_kv_cache_with_k_scale
 from .sparse_flash_mla import sparse_flash_mla, sparse_flash_mla_metadata
@@ -34,10 +34,13 @@ from .kv_compress_epilog import kv_compress_epilog
 from .indexer_quant_cache import indexer_quant_cache
 from .compressor import compressor
 from .inplace_partial_rotary_mul import inplace_partial_rotary_mul
-from . import graph_convert as _graph_convert
+from .inplace_partial_rotary_mul_backward import inplace_partial_rotary_mul_backward
 from .causal_conv1d_fn import causal_conv1d_fn
 from .causal_conv1d_update import causal_conv1d_update
+from . import graph_convert as _graph_convert
+from .qkv_rms_norm_rope_cache_with_k_scale import (
+    qkv_rms_norm_rope_cache_with_k_scale,
+    qkv_rms_norm_rope_cache_with_k_scale_
+)
 from .elastic_buffer import ElasticBuffer, EPHandle
 from .grouped_matmul_activation_quant import grouped_matmul_activation_quant
-
-from .mixed_quant_flash_attn_metadata import mixed_quant_flash_attn_metadata

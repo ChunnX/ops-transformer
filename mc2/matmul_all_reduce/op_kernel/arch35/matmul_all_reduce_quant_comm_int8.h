@@ -61,13 +61,13 @@ private:
     TPipe* tPipe_;
     GM_ADDR aGM_;
     GM_ADDR bGM_;
+    GM_ADDR cGM_;
     GM_ADDR biasGM_;
     GM_ADDR addGM_;
     GM_ADDR dequantScaleGM_;
     GM_ADDR pertokenGM_;
     GM_ADDR commQuantScale1GM_;
     GM_ADDR commQuantScale2GM_;
-    GM_ADDR cGM_;
     GM_ADDR workspaceGM_;
     GM_ADDR all2allInGM_;
     GM_ADDR all2allOutGM_;
@@ -110,6 +110,7 @@ __aicore__ inline void MatmulAllReduceQuantCommInt8<XType, WType, YType, MmType,
     tPipe_ = tPipe;
     aGM_ = aGM;
     bGM_ = bGM;
+    cGM_ = cGM;
     biasGM_ = biasGM;
     addGM_ = addGM;
     dequantScaleGM_ = dequantScaleGM;
@@ -117,7 +118,6 @@ __aicore__ inline void MatmulAllReduceQuantCommInt8<XType, WType, YType, MmType,
     commQuantScale1GM_ = commQuantScale1GM;
     commQuantScale2GM_ = commQuantScale2GM;
     workspaceGM_ = workspaceGM;
-    cGM_ = cGM;
     outGM_ = cGM;
     all2allInGM_ = workspaceGM_ + tilingData_->param.commWorkSpaceSize;    // all2all输入
     all2allOutGM_ = all2allInGM_ + tilingData_->param.commInt8WorkSpace;    // all2all输出及allGather输入
@@ -142,8 +142,8 @@ __aicore__ inline uint32_t MatmulAllReduceQuantCommInt8<
 template <typename XType, typename WType, typename YType, class MmType, Mc2CoreType CoreType, int commMode>
 __aicore__ inline void MatmulAllReduceQuantCommInt8<XType, WType, YType, MmType, CoreType, commMode>::PrepareInit()
 {
-    auto&& mc2Tiling = tilingData_->param;
-    uint32_t rankNum = mc2Tiling.rankDim;
+    auto&& tilingParam = tilingData_->param;
+    uint32_t rankNum = tilingParam.rankDim;
     uint32_t tileM = tilingData_->tilematmulTiling.matmulTiling.M; // 头块 pad 大小更新
     tilePadM_ = tileM;
     if ((tileM % rankNum) != 0) { // 按照 M 来 pad
@@ -159,61 +159,61 @@ __aicore__ inline void MatmulAllReduceQuantCommInt8<XType, WType, YType, MmType,
     tailPadDataCnt_ = tailPadM_ * tilingData_->tailmatmulTiling.matmulTiling.N; // 一个MM尾块的数据个数
     const int64_t tempBufOffsetTilePad = tilePadDataCnt_ * sizeof(int8_t); // 偏移计算
     const int64_t tempBufOffsetTailPad = tailPadDataCnt_ * sizeof(int8_t);
-    const int64_t tempBufOffsetTilePadSingle = tempBufOffsetTilePad / rankNum;
-    const int64_t tempBufOffsetTailPadSingle = tempBufOffsetTailPad / rankNum;
+    const int64_t tempBufOffsetTilePadPerRank = tempBufOffsetTilePad / rankNum;
+    const int64_t tempBufOffsetTailPadPerRank = tempBufOffsetTailPad / rankNum;
 
-    for (uint32_t i = 0U; i < mc2Tiling.tileCnt; ++i) { // 头块偏移
+    for (uint32_t i = 0U; i < tilingParam.tileCnt; ++i) { // 头块偏移
         const int64_t indexOffsetTile = i * tempBufOffsetTilePad;
-        const int64_t indexGatherOffsetTile = tempBufOffsetTilePadSingle * hccl_.GetRankId();
+        const int64_t indexGatherOffsetTile = tempBufOffsetTilePadPerRank * hccl_.GetRankId();
         all2allSendGM_[i] = all2allInGM_ + indexOffsetTile;
         all2allRecvGM_[i] = all2allOutGM_ + indexOffsetTile;
         allGatherSendGM_[i] = all2allOutGM_ + indexOffsetTile + indexGatherOffsetTile;
         allGatherRecvGM_[i] = allGatherOutGM_ + indexOffsetTile;
     }
-    for (uint32_t i = 0U; i < mc2Tiling.tailCnt; ++i) { // 尾块偏移
-        const int64_t indexOffsetTail = mc2Tiling.tileCnt * tempBufOffsetTilePad + i * tempBufOffsetTailPad;
-        const int64_t indexGatherOffsetTail = tempBufOffsetTailPadSingle * hccl_.GetRankId();
-        all2allSendGM_[mc2Tiling.tileCnt + i] = all2allInGM_ + indexOffsetTail;
-        all2allRecvGM_[mc2Tiling.tileCnt + i] = all2allOutGM_ + indexOffsetTail;
-        allGatherSendGM_[mc2Tiling.tileCnt + i] = all2allOutGM_ + indexOffsetTail + indexGatherOffsetTail;
-        allGatherRecvGM_[mc2Tiling.tileCnt + i] = allGatherOutGM_ + indexOffsetTail;
+    for (uint32_t i = 0U; i < tilingParam.tailCnt; ++i) { // 尾块偏移
+        const int64_t indexOffsetTail = tilingParam.tileCnt * tempBufOffsetTilePad + i * tempBufOffsetTailPad;
+        const int64_t indexGatherOffsetTail = tempBufOffsetTailPadPerRank * hccl_.GetRankId();
+        all2allSendGM_[tilingParam.tileCnt + i] = all2allInGM_ + indexOffsetTail;
+        all2allRecvGM_[tilingParam.tileCnt + i] = all2allOutGM_ + indexOffsetTail;
+        allGatherSendGM_[tilingParam.tileCnt + i] = all2allOutGM_ + indexOffsetTail + indexGatherOffsetTail;
+        allGatherRecvGM_[tilingParam.tileCnt + i] = allGatherOutGM_ + indexOffsetTail;
     }
 
     if (notifyFlag_) {
-        uint32_t nowAll2allIdx = 0U;
-        uint32_t nowAllGatherIdx = 0U;
-        uint32_t numN = (mc2Tiling.tileCnt + mc2Tiling.tailCnt) / NUM_TWO;
-        uint32_t numReN = (mc2Tiling.tileCnt + mc2Tiling.tailCnt) % NUM_TWO;
+        uint32_t curAll2allIdx = 0U;
+        uint32_t curAllGatherIdx = 0U;
+        uint32_t numN = (tilingParam.tileCnt + tilingParam.tailCnt) / NUM_TWO;
+        uint32_t numReN = (tilingParam.tileCnt + tilingParam.tailCnt) % NUM_TWO;
         for (uint32_t i = 0U; i < numN; ++i) { // 按总核数下发
-            all2allHandleId_[nowAll2allIdx] = hccl_.template AlltoAll<false>(
-                all2allSendGM_[nowAll2allIdx], all2allRecvGM_[nowAll2allIdx], SendCountCheck(nowAll2allIdx),
+            all2allHandleId_[curAll2allIdx] = hccl_.template AlltoAll<false>(
+                all2allSendGM_[curAll2allIdx], all2allRecvGM_[curAll2allIdx], SendCountCheck(curAll2allIdx),
                 AscendC::HCCL_DATA_TYPE_INT8, 0);
-            nowAll2allIdx++;
-            all2allHandleId_[nowAll2allIdx] = hccl_.template AlltoAll<false>(
-                all2allSendGM_[nowAll2allIdx], all2allRecvGM_[nowAll2allIdx], SendCountCheck(nowAll2allIdx),
+            curAll2allIdx++;
+            all2allHandleId_[curAll2allIdx] = hccl_.template AlltoAll<false>(
+                all2allSendGM_[curAll2allIdx], all2allRecvGM_[curAll2allIdx], SendCountCheck(curAll2allIdx),
                 AscendC::HCCL_DATA_TYPE_INT8, 0);
-            nowAll2allIdx++;
+            curAll2allIdx++;
 
-            allGatherHandleId_[nowAllGatherIdx] = hccl_.template AllGather<false>(
-                allGatherSendGM_[nowAllGatherIdx], allGatherRecvGM_[nowAllGatherIdx], SendCountCheck(nowAllGatherIdx),
+            allGatherHandleId_[curAllGatherIdx] = hccl_.template AllGather<false>(
+                allGatherSendGM_[curAllGatherIdx], allGatherRecvGM_[curAllGatherIdx], SendCountCheck(curAllGatherIdx),
                 AscendC::HCCL_DATA_TYPE_INT8, 0);
-            nowAllGatherIdx++;
-            allGatherHandleId_[nowAllGatherIdx] = hccl_.template AllGather<false>(
-                allGatherSendGM_[nowAllGatherIdx], allGatherRecvGM_[nowAllGatherIdx], SendCountCheck(nowAllGatherIdx),
+            curAllGatherIdx++;
+            allGatherHandleId_[curAllGatherIdx] = hccl_.template AllGather<false>(
+                allGatherSendGM_[curAllGatherIdx], allGatherRecvGM_[curAllGatherIdx], SendCountCheck(curAllGatherIdx),
                 AscendC::HCCL_DATA_TYPE_INT8, 0);
-            nowAllGatherIdx++;
+            curAllGatherIdx++;
         }
 
         if (numReN != 0U) { // 余数下发
-            all2allHandleId_[nowAll2allIdx] = hccl_.template AlltoAll<false>(
-                all2allSendGM_[nowAll2allIdx], all2allRecvGM_[nowAll2allIdx], SendCountCheck(nowAll2allIdx),
+            all2allHandleId_[curAll2allIdx] = hccl_.template AlltoAll<false>(
+                all2allSendGM_[curAll2allIdx], all2allRecvGM_[curAll2allIdx], SendCountCheck(curAll2allIdx),
                 AscendC::HCCL_DATA_TYPE_INT8, 0);
-            nowAll2allIdx++;
+            curAll2allIdx++;
             
-            allGatherHandleId_[nowAllGatherIdx] = hccl_.template AllGather<false>(
-                allGatherSendGM_[nowAllGatherIdx], allGatherRecvGM_[nowAllGatherIdx], SendCountCheck(nowAllGatherIdx),
+            allGatherHandleId_[curAllGatherIdx] = hccl_.template AllGather<false>(
+                allGatherSendGM_[curAllGatherIdx], allGatherRecvGM_[curAllGatherIdx], SendCountCheck(curAllGatherIdx),
                 AscendC::HCCL_DATA_TYPE_INT8, 0);
-            nowAllGatherIdx++;
+            curAllGatherIdx++;
         }
     }
 }
@@ -224,8 +224,8 @@ __aicore__ inline void MatmulAllReduceQuantCommInt8<
     MmType& mmOp, uint32_t tileCnt, DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams* mmTiling, uint32_t isAdd,
     uint32_t needUbBuffer, uint32_t curPadM, bool isTailFlag)
 {
-    const uint64_t aOffset = CalcShapeOffset(sizeof(XType), mmTiling->matmulTiling.M, mmTiling->matmulTiling.Ka);
-    const uint64_t cOffset = CalcShapeOffset(sizeof(YType), mmTiling->matmulTiling.M, mmTiling->matmulTiling.N);
+    const uint64_t aGmOffset = CalcShapeOffset(sizeof(XType), mmTiling->matmulTiling.M, mmTiling->matmulTiling.Ka);
+    const uint64_t cGmOffset = CalcShapeOffset(sizeof(YType), mmTiling->matmulTiling.M, mmTiling->matmulTiling.N);
     const uint64_t tempOffset = CalcShapeOffset(sizeof(int8_t), curPadM, mmTiling->matmulTiling.N);
 
     for (uint32_t i = 0U; i < tileCnt; ++i) {
@@ -235,19 +235,20 @@ __aicore__ inline void MatmulAllReduceQuantCommInt8<
         SyncAll<false>();
         if (isAdd) {
             MatmulAllReduceAddX3Kernel<YType>(
-                cGM_, addGM_, cOffset / sizeof(YType), tilingData_->param.addX3UbCnt, tPipe_);
-            addGM_ += cOffset;
+                cGM_, addGM_, cGmOffset / sizeof(YType), tilingData_->param.addX3UbCnt, tPipe_);
+            addGM_ += cGmOffset;
             SyncAll<false>();
         }
         // 输出int8 存在 all2allInGM_
-        MatmulAllReduceQuantPerchannelCommInt8<YType>(
-            cGM_, commQuantScale1GM_, all2allInGM_, tPipe_, mmTiling->matmulTiling.N, mmTiling->matmulTiling.M);
+        MatmulAllReduceQuantPerchannelCommInt8<YType>(cGM_, commQuantScale1GM_, all2allInGM_,
+            tPipe_, mmTiling->matmulTiling.N, mmTiling->matmulTiling.M);
         SyncAll<false>();
 
         if (notifyFlag_) {
             hccl_.Commit(all2allHandleId_[all2allCommitIdx_]);
             all2allCommitIdx_++;
         }
+        
         if (g_coreType == AscendC::AIV && isSendTileFlag_) { // 需要同步前一块
             if (notifyFlag_) {
                 hccl_.Wait(all2allHandleId_[all2allWaitIdx_]);
@@ -269,8 +270,8 @@ __aicore__ inline void MatmulAllReduceQuantCommInt8<
             }
         }
         isSendTileFlag_ = true;
-        aGM_ += aOffset;
-        cGM_ += cOffset;                  // 偏原始大小
+        aGM_ += aGmOffset;
+        cGM_ += cGmOffset;                  // 偏原始大小
         all2allInGM_ += tempOffset; // 偏移 padM*N 大小
     }
 }
@@ -278,19 +279,17 @@ __aicore__ inline void MatmulAllReduceQuantCommInt8<
 template <typename XType, typename WType, typename YType, class MmType, Mc2CoreType CoreType, int commMode>
 __aicore__ inline void MatmulAllReduceQuantCommInt8<XType, WType, YType, MmType, CoreType, commMode>::Process()
 {
-    auto&& mc2Tiling = tilingData_->param;
+    auto&& tilingParam = tilingData_->param;
 
     // all2all allgather Prepare + InnerProcess
     PrepareInit();
     MmType opTile;
-    InnerProcess(
-        opTile, mc2Tiling.tileCnt, &tilingData_->tilematmulTiling, mc2Tiling.isAdd, mc2Tiling.needUbBuffer, tilePadM_,
-        false);
-    if (mc2Tiling.tailM != 0U) {
+    InnerProcess(opTile, tilingParam.tileCnt, &tilingData_->tilematmulTiling, tilingParam.isAdd,
+        tilingParam.needUbBuffer, tilePadM_, false);
+    if (tilingParam.tailM != 0U) {
         MmType opTail;
-        InnerProcess(
-            opTail, mc2Tiling.tailCnt, &tilingData_->tailmatmulTiling, mc2Tiling.isAdd, mc2Tiling.needUbBuffer,
-            tailPadM_, true);
+        InnerProcess(opTail, tilingParam.tailCnt, &tilingData_->tailmatmulTiling, tilingParam.isAdd,
+            tilingParam.needUbBuffer, tailPadM_, true);
     }
 
     // 最后一次的 all2all 任务没有 wait，以及最后一次的 allgather 任务没有下发
@@ -301,7 +300,7 @@ __aicore__ inline void MatmulAllReduceQuantCommInt8<XType, WType, YType, MmType,
         SyncAll();
         uint32_t lastN = tilingData_->tilematmulTiling.matmulTiling.N;
         uint32_t padM = tilePadM_;
-        if (mc2Tiling.tailM != 0U) {
+        if (tilingParam.tailM != 0U) {
             lastN = tilingData_->tailmatmulTiling.matmulTiling.N;
             padM = tailPadM_;
         }
@@ -318,12 +317,12 @@ __aicore__ inline void MatmulAllReduceQuantCommInt8<XType, WType, YType, MmType,
             tilingData_->tilematmulTiling.matmulTiling.M * tilingData_->tilematmulTiling.matmulTiling.N * sizeof(YType);
         const uint64_t outGmTailOffset =
             tilingData_->tailmatmulTiling.matmulTiling.M * tilingData_->tailmatmulTiling.matmulTiling.N * sizeof(YType);
-        for (uint32_t i = 0U; i < (mc2Tiling.tileCnt + mc2Tiling.tailCnt); ++i) { // 尾块偏移
+        for (uint32_t i = 0U; i < (tilingParam.tileCnt + tilingParam.tailCnt); ++i) { // 尾块偏移
             if (notifyFlag_) {
                 hccl_.Wait(allGatherHandleId_[i]);
             }
             SyncAll();
-            if (i < mc2Tiling.tileCnt) {
+            if (i < tilingParam.tileCnt) {
                 MatmulAllReduceDequantPerchannelCommInt8<YType>(
                     allGatherOutGM_, commQuantScale2GM_, outGM_, tPipe_, tilingData_->tilematmulTiling.matmulTiling.N,
                     tilingData_->tilematmulTiling.matmulTiling.M);
