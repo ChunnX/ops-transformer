@@ -129,10 +129,78 @@ __aicore__ inline void MhcPreMkVFProcessXInGammaLoops(const LocalTensor<float>& 
 }
 
 template <typename T, bool IS_FIRST_K>
+__aicore__ inline void MhcPreMkVFProcessXInGammaFull128(const LocalTensor<float>& xOutLocal,
+    const LocalTensor<float>& rmsLocal, const LocalTensor<T>& xInLocal,
+    const LocalTensor<float>& gammaLocal, uint16_t rowCount)
+{
+    __local_mem__ float* xOut = (__local_mem__ float*)xOutLocal.GetPhyAddr();
+    __local_mem__ float* rms = (__local_mem__ float*)rmsLocal.GetPhyAddr();
+    __local_mem__ T* xIn = (__local_mem__ T*)xInLocal.GetPhyAddr();
+    __local_mem__ float* gamma = (__local_mem__ float*)gammaLocal.GetPhyAddr();
+    constexpr uint32_t columnCount = 128U;
+    constexpr uint32_t vectorOffset = MHC_PRE_LOW_API_VL_FP32;
+    constexpr uint32_t srcStride = columnCount;
+    constexpr uint32_t dstStride = columnCount;
+
+    __VEC_SCOPE__
+    {
+        AscendC::MicroAPI::RegTensor<T> xInReg;
+        AscendC::MicroAPI::RegTensor<float> gammaReg;
+        AscendC::MicroAPI::RegTensor<float> xReg;
+        AscendC::MicroAPI::RegTensor<float> xGammaReg;
+        AscendC::MicroAPI::RegTensor<float> squareReg;
+        AscendC::MicroAPI::RegTensor<float> partialReg;
+        AscendC::MicroAPI::RegTensor<float> sumReg;
+        AscendC::MicroAPI::MaskReg mask = AscendC::MicroAPI::CreateMask<float>();
+
+        AscendC::MicroAPI::LoadAlign(gammaReg, gamma);
+        for (uint16_t row = 0; row < rowCount; ++row) {
+            uint32_t srcOffset = static_cast<uint32_t>(row) * srcStride;
+            AscendC::MicroAPI::LoadAlign<T, AscendC::MicroAPI::LoadDist::DIST_UNPACK_B16>(
+                xInReg, xIn + srcOffset);
+            AscendC::MicroAPI::Cast<float, T, MHC_PRE_LOW_API_CAST_B16_TO_B32>(xReg, xInReg, mask);
+            AscendC::MicroAPI::Mul(xGammaReg, gammaReg, xReg, mask);
+            AscendC::MicroAPI::StoreAlign(xOut + static_cast<uint32_t>(row) * dstStride,
+                xGammaReg, mask);
+            AscendC::MicroAPI::Mul(squareReg, xReg, xReg, mask);
+            AscendC::MicroAPI::Reduce<AscendC::MicroAPI::ReduceType::SUM>(partialReg, squareReg, mask);
+            if constexpr (IS_FIRST_K) {
+                AscendC::MicroAPI::Duplicate(sumReg, 0.0f);
+            } else {
+                AscendC::MicroAPI::Load(sumReg, rms + row);
+            }
+            AscendC::MicroAPI::Add(sumReg, sumReg, partialReg, mask);
+            AscendC::MicroAPI::Store(rms + row, sumReg, 1U);
+        }
+
+        AscendC::MicroAPI::LoadAlign(gammaReg, gamma + vectorOffset);
+        for (uint16_t row = 0; row < rowCount; ++row) {
+            uint32_t srcOffset = static_cast<uint32_t>(row) * srcStride + vectorOffset;
+            AscendC::MicroAPI::LoadAlign<T, AscendC::MicroAPI::LoadDist::DIST_UNPACK_B16>(
+                xInReg, xIn + srcOffset);
+            AscendC::MicroAPI::Cast<float, T, MHC_PRE_LOW_API_CAST_B16_TO_B32>(xReg, xInReg, mask);
+            AscendC::MicroAPI::Mul(xGammaReg, gammaReg, xReg, mask);
+            AscendC::MicroAPI::StoreAlign(xOut + static_cast<uint32_t>(row) * dstStride + vectorOffset,
+                xGammaReg, mask);
+            AscendC::MicroAPI::Mul(squareReg, xReg, xReg, mask);
+            AscendC::MicroAPI::Reduce<AscendC::MicroAPI::ReduceType::SUM>(partialReg, squareReg, mask);
+            AscendC::MicroAPI::Load(sumReg, rms + row);
+            AscendC::MicroAPI::Add(sumReg, sumReg, partialReg, mask);
+            AscendC::MicroAPI::Store(rms + row, sumReg, 1U);
+        }
+    }
+}
+
+template <typename T, bool IS_FIRST_K>
 __aicore__ inline void MhcPreMkVFProcessXInGamma(const LocalTensor<float>& xOutLocal,
     const LocalTensor<float>& rmsLocal, const LocalTensor<T>& xInLocal,
     const LocalTensor<float>& gammaLocal, uint16_t rowCount, uint16_t columnCount)
 {
+    if (columnCount == 128U) {
+        MhcPreMkVFProcessXInGammaFull128<T, IS_FIRST_K>(xOutLocal, rmsLocal, xInLocal,
+            gammaLocal, rowCount);
+        return;
+    }
     uint16_t loopCount = LowApiCeilDiv(columnCount, MHC_PRE_LOW_API_VL_FP32);
     if constexpr (IS_FIRST_K) {
         MhcPreMkVFProcessXInGammaLoops<T, true>(xOutLocal, rmsLocal, xInLocal,
