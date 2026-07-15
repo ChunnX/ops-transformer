@@ -31,4 +31,9 @@ constexpr static uint16_t SYNCFLAGV2C = 10;
 constexpr static uint32_t SERVER_RANK_SIZE_A2 = 8;
 constexpr static uint32_t kMaxDequantSyncGroups = 16;
 constexpr static uint64_t RESERVED_SPACE_SIZE = 10 * 1024 * 1024;
+// Flag 同步 magic 值（精确匹配，避免上一轮残留误判）
+// 三处同步（SendTokensV3 / RecvTokensV3 / V2 allgather）统一使用该值，需配合
+// ResetTokenPerExpert 每轮清零 flag 区，确保上一轮残留不会撞上本值
+constexpr static int32_t FLAG_VALUE_MAGIC = 123456789; // 0x075BCD15
 #endif
+
