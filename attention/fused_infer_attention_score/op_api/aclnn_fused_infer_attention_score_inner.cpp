@@ -300,7 +300,7 @@ bool GetAclTensorViewStrides(const aclTensor *tensor, int64_t *&stridesValue, ui
     return true;
 }
 
-bool IsFirstAxisOnlyNonContiguous(const aclTensor *tensor)
+bool IsFirstAxisOnlyNonContiguous(const aclTensor *tensor, const char *name)
 {
     if (tensor == nullptr) {
         return true;
@@ -314,12 +314,15 @@ bool IsFirstAxisOnlyNonContiguous(const aclTensor *tensor)
     auto viewShape = tensor->GetViewShape();
     int64_t dimNum = viewShape.GetDimNum();
     if (dimNum <= 1) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "%s view shape dim num[%ld] should be greater than 1 in the current cache scene.", name, dimNum);
         return false;
     }
 
     int64_t *viewStrides = nullptr;
     uint64_t stridesNum = 0;
     if (!GetAclTensorViewStrides(tensor, viewStrides, stridesNum)) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Failed to get view strides for %s.", name);
         return false;
     }
     std::string stridesLog = "[";
@@ -332,8 +335,8 @@ bool IsFirstAxisOnlyNonContiguous(const aclTensor *tensor)
     stridesLog += "]";
     FiaDebugPrintf("[FIA_DEBUG][INNER] viewStrides num[%lu] value[%s].", stridesNum, stridesLog.c_str());
     if (stridesNum < static_cast<uint64_t>(dimNum)) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "View strides num[%lu] is less than view shape dim num[%ld].",
-                stridesNum, dimNum);
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "%s view strides num[%lu] is less than view shape dim num[%ld].", name, stridesNum, dimNum);
         delete[] viewStrides;
         return false;
     }
@@ -342,21 +345,18 @@ bool IsFirstAxisOnlyNonContiguous(const aclTensor *tensor)
     int64_t expectedStride = 1;
     for (int64_t dim = dimNum - 1; dim >= 1; --dim) {
         if (viewShape.GetDim(dim) != 1 && viewStrides[dim] != expectedStride) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                    "%s is non-contiguous at axis[%ld] (0-based): actual stride[%ld], expected stride[%ld], "
+                    "shape[%s]. Only axis[0] may be non-contiguous in the current cache scene.",
+                    name, dim, viewStrides[dim], expectedStride, op::ToString(viewShape).GetString());
             isFirstAxisOnlyNonContiguous = false;
             break;
         }
         expectedStride *= viewShape.GetDim(dim);
     }
 
-    if (isFirstAxisOnlyNonContiguous && viewStrides[0] < expectedStride) {
-        isFirstAxisOnlyNonContiguous = false;
-    }
     delete[] viewStrides;
-
-    auto viewOffset = tensor->GetViewOffset();
-    FiaDebugPrintf("[FIA_DEBUG][INNER] first-axis-only result[%d] expectedStride[%ld] viewOffset[%ld].",
-                   static_cast<int32_t>(isFirstAxisOnlyNonContiguous), expectedStride, viewOffset);
-    return isFirstAxisOnlyNonContiguous && (expectedStride == 0 || viewOffset % expectedStride == 0);
+    return isFirstAxisOnlyNonContiguous;
 }
 
 aclnnStatus CheckTensorListFirstAxisOnlyNonContiguous(const aclTensorList *tensorList, const char *name)
@@ -368,10 +368,11 @@ aclnnStatus CheckTensorListFirstAxisOnlyNonContiguous(const aclTensorList *tenso
 
     for (uint64_t i = 0; i < tensorList->Size(); ++i) {
         auto tensor = (*tensorList)[i];
-        if (!IsFirstAxisOnlyNonContiguous(tensor)) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                    "%s[%lu] is non-contiguous in cache scene, only first-axis non-contiguous layout is supported.",
-                    name, i);
+        std::string tensorName = name;
+        if (tensorList->Size() > 1) {
+            tensorName += "[" + std::to_string(i) + "]";
+        }
+        if (!IsFirstAxisOnlyNonContiguous(tensor, tensorName.c_str())) {
             return ACLNN_ERR_PARAM_INVALID;
         }
     }
@@ -512,6 +513,7 @@ aclnnStatus NormalizeFAICacheTensorList(const aclTensorList *&tensorList, const 
                 OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "Try create view for %s failed.", itemName.c_str());
                 return ACLNN_ERR_INNER_NULLPTR;
             }
+            const_cast<aclTensor *>(normalizedTensor)->SetStorageShape(tensor->GetViewShape());
             SetTensorFormatToND(normalizedTensor);
         }
         std::string normalizedName = itemName + ".normalized";
