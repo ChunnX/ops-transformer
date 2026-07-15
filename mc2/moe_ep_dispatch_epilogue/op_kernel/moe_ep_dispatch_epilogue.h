@@ -100,7 +100,7 @@ private:
     LocalTensor<float> ubStageWeights_;
     LocalTensor<int32_t> ubStageMeta_;
     LocalTensor<int32_t> ubLocalCursor_;
-    LocalTensor<int32_t> ubHitList_;
+    LocalTensor<int64_t> ubHitList_;
 
     TBuf<QuePosition::VECIN> ubHitCountBuf_;
     TBuf<QuePosition::VECIN> ubRowStartBuf_;
@@ -213,7 +213,7 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
         uint32_t ubHitCountRowI64Bytes = Ceil((uint32_t)(numLocalExperts_ * sizeof(int64_t)), UB_ALIGN) * UB_ALIGN;
         uint32_t ubStageMetaBytes = axisK_ * UB_ALIGN;
         uint32_t ubStageWeightsBytes = axisK_ * UB_ALIGN;
-        uint32_t ubHitListBytes = Ceil((uint32_t)(axisK_ * HIT_ENTRY_SIZE * sizeof(int32_t)), UB_ALIGN) * UB_ALIGN;
+        uint32_t ubHitListBytes = Ceil((uint32_t)(axisK_ * HIT_ENTRY_SIZE * sizeof(int64_t)), UB_ALIGN) * UB_ALIGN;
         uint32_t ubLocalCursorBytes = Ceil((uint32_t)(numLocalExperts_ * sizeof(int32_t)), UB_ALIGN) * UB_ALIGN;
 
         tpipe_->InitBuffer(ubRecvCntBuf_, ubRecvCntBytes);
@@ -238,7 +238,7 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
         ubHitCountRowI64_ = ubHitCountRowI64Buf_.Get<int64_t>();
         ubStageWeights_ = ubStageWeightsBuf_.Get<float>();
         ubStageMeta_ = ubStageMetaBuf_.Get<int32_t>();
-        ubHitList_ = ubHitListBuf_.Get<int32_t>();
+        ubHitList_ = ubHitListBuf_.Get<int64_t>();
         ubLocalCursor_ = ubLocalCursorBuf_.Get<int32_t>();
     }
 
@@ -420,9 +420,9 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
                 int64_t expertRowStart = ubRowStart_.GetValue(localExpertId);
                 int32_t cursor = ubLocalCursor_.GetValue(localExpertId);
                 ubLocalCursor_.SetValue(localExpertId, cursor + 1);
-                uint32_t globalRow = static_cast<uint32_t>(expertRowStart + cursor);
-                ubHitList_.SetValue(hitCnt * HIT_ENTRY_SIZE + HIT_ROW_OFFSET, static_cast<int32_t>(globalRow));
-                ubHitList_.SetValue(hitCnt * HIT_ENTRY_SIZE + HIT_TOPK_OFFSET, static_cast<int32_t>(topkIdx));
+                int64_t globalRow = expertRowStart + cursor;
+                ubHitList_.SetValue(hitCnt * HIT_ENTRY_SIZE + HIT_ROW_OFFSET, globalRow);
+                ubHitList_.SetValue(hitCnt * HIT_ENTRY_SIZE + HIT_TOPK_OFFSET, static_cast<int64_t>(topkIdx));
                 hitCnt++;
             }
             if (hitCnt == 0) {
@@ -447,14 +447,14 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
             LocalTensor<XType> tokenOut = tokenQueue_.DeQue<XType>();
 
             for (uint32_t i = 0; i < hitCnt; i++) {
-                uint32_t globalRow = static_cast<uint32_t>(ubHitList_.GetValue(i * HIT_ENTRY_SIZE + HIT_ROW_OFFSET));
+                int64_t globalRow = ubHitList_.GetValue(i * HIT_ENTRY_SIZE + HIT_ROW_OFFSET);
                 uint32_t topkIdx = static_cast<uint32_t>(ubHitList_.GetValue(i * HIT_ENTRY_SIZE + HIT_TOPK_OFFSET));
 
-                DataCopyPad(recvXGm_[(int64_t)globalRow * axisH_], tokenOut, tokenCopyParams);
+                DataCopyPad(recvXGm_[globalRow * axisH_], tokenOut, tokenCopyParams);
                 if constexpr (Std::IsSame<XType, fp8_e5m2_t>::value || Std::IsSame<XType, fp8_e4m3fn_t>::value) {
                     DataCopyParams scalesCopyParams{1U, static_cast<uint16_t>(scalesElems_ * sizeof(ScalesType)), 0U,
                                                     0U};
-                    DataCopyPad(recvScalesGm_[(int64_t)globalRow * scalesElems_],
+                    DataCopyPad(recvScalesGm_[globalRow * scalesElems_],
                                 tokenOut[scalesOffset_ / sizeof(XType)].template ReinterpretCast<ScalesType>(),
                                 scalesCopyParams);
                 }
@@ -473,7 +473,7 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
 
             SyncFunc<AscendC::HardEvent::S_MTE3>();
             for (uint32_t i = 0; i < hitCnt; i++) {
-                uint32_t globalRow = static_cast<uint32_t>(ubHitList_.GetValue(i * HIT_ENTRY_SIZE + HIT_ROW_OFFSET));
+                int64_t globalRow = ubHitList_.GetValue(i * HIT_ENTRY_SIZE + HIT_ROW_OFFSET);
                 if constexpr (HasTopkWeights) {
                     DataCopyPad(recvTopkWeightsGm_[globalRow], ubStageWeights_[i * ELEM_ALIGN], weightOutParams);
                 }
