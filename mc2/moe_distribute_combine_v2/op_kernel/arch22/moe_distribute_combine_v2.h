@@ -88,7 +88,6 @@ private:
     __aicore__ inline void ProcessConstantExpert(uint32_t tokenIndex, uint32_t const_expert_idx, float scaleVal);
     __aicore__ inline void ProcessCopyExpert(uint32_t tokenIndex, float scaleVal);
     __aicore__ inline void ProcessMoeExpert(uint32_t tokenIndexOffset, uint32_t topkId, float scaleVal);
-    __aicore__ inline void AddExpertWithoutScale(LocalTensor<float>& expertLocal, uint32_t processLen);
     __aicore__ inline void ProcessExpert(uint32_t tokenIndex, uint32_t processLen);
     __aicore__ inline void ExpertScaleCopy(const uint32_t beginIndex, const uint32_t endIndex,
                                            const uint32_t tokenPerAivNum);
@@ -1089,7 +1088,7 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::ProcessConsta
         PipeBarrier<PIPE_V>();
         Add(sumFloatBufLocal_, sumFloatBufLocal_, mulBufLocal_, axisH_);
     } else {
-        AddExpertWithoutScale(rowTmpFloatLocal_, axisH_);
+        Add(sumFloatBufLocal_, sumFloatBufLocal_, rowTmpFloatLocal_, axisH_);
     }
     PipeBarrier<PIPE_V>();
 }
@@ -1114,16 +1113,9 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::ProcessCopyEx
         PipeBarrier<PIPE_V>();
         Add(sumFloatBufLocal_, sumFloatBufLocal_, mulBufLocal_, axisH_);
     } else {
-        AddExpertWithoutScale(rowTmpFloatLocal_, axisH_);
+        Add(sumFloatBufLocal_, sumFloatBufLocal_, rowTmpFloatLocal_, axisH_);
     }
     PipeBarrier<PIPE_V>();
-}
-
-template <CombineMC2TypeClass>
-__aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::AddExpertWithoutScale(
-    LocalTensor<float>& expertLocal, uint32_t processLen)
-{
-    Add(sumFloatBufLocal_, sumFloatBufLocal_, expertLocal, processLen);
 }
 
 // 处理Moe专家
@@ -1165,7 +1157,7 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::ProcessMoeExp
                 PipeBarrier<PIPE_V>();
                 AscendC::Add(sumFloatBufLocal_, sumFloatBufLocal_, mulBufLocal_, processLen);
             } else {
-                AddExpertWithoutScale(rowTmpFloatLocal_, processLen);
+                Add(sumFloatBufLocal_, sumFloatBufLocal_, rowTmpFloatLocal_, processLen);
             }
         }
 #endif
@@ -1177,7 +1169,7 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::ProcessMoeExp
             PipeBarrier<PIPE_V>();
             AscendC::Add(sumFloatBufLocal_, sumFloatBufLocal_, mulBufLocal_, processLen);
         } else {
-            AddExpertWithoutScale(rowTmpFloatLocal_, processLen);
+            Add(sumFloatBufLocal_, sumFloatBufLocal_, rowTmpFloatLocal_, processLen);
         }
     }
     moeSumQueue_.FreeTensor<XType>(tmpUb);
