@@ -59,6 +59,7 @@ constexpr uint32_t DCCI_OFFSET = 64U;
 constexpr uint64_t ALIGNED_LEN_256 = 256UL;
 constexpr uint32_t FLOAT_PER_UB_ALIGN = 8U;
 constexpr size_t MASK_CALC_NEED_WORKSPACE = 20UL * 1024UL;
+constexpr uint32_t MOE_EP_COMBINE_MAX_RANK_SIZE = 1024U;
 
 template <TemplateMoeEpCombineTypeClass>
 class MoeEpCombine {
@@ -188,8 +189,8 @@ private:
     TQueBind<QuePosition::VECIN, QuePosition::VECOUT, 1> xQueue_; // 数据队列
     AscendC::Hcomm<COMM_PROTOCOL_UBC_CTP> hcomm_; // 通信上下文
 
-    GM_ADDR winRankAddr_[HCCL_MAX_RANK_SIZE];
-    uint64_t hcommHandle_[HCCL_MAX_RANK_SIZE];
+    GM_ADDR winRankAddr_[MOE_EP_COMBINE_MAX_RANK_SIZE];
+    uint64_t hcommHandle_[MOE_EP_COMBINE_MAX_RANK_SIZE];
     GM_ADDR localUrmaWorkspace_{nullptr};      // 工作空间的GM地址
     GM_ADDR maskCalcWorkspaceGM_{nullptr};
     uint32_t aivId_{0};
