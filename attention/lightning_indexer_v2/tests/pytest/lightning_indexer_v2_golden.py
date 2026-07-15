@@ -669,7 +669,6 @@ def liv2_output_single(params, is_batch = False, split_s1 = DEFAULT_SPLIT_S1, s1
         topk = int(topk)
         mask_mode = int(mask_mode)
         return_value = int(return_value)
-        blockFusion = None
 
         params = batch_size, q_seq, k_seq, q_t_size, k_t_size, q_head_num, k_head_num, head_dim, block_size, block_num, \
                  qk_dtype, cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k, cmp_residual_k, output_idx_offset, \
@@ -940,7 +939,7 @@ def liv2_output_single(params, is_batch = False, split_s1 = DEFAULT_SPLIT_S1, s1
                    layout_k = layout_key,
                    mask_mode = mask_mode,
                    cmp_ratio = cmp_ratio)
-        metadata = metadata.npu()
+
         # kv_cache 0轴非连续：将key和key_dequant_scale融合到blockFusion (ref v1 commit keyStride0)
         if blockFusion is not None:
             blockFusion = blockFusion.npu()
@@ -954,9 +953,9 @@ def liv2_output_single(params, is_batch = False, split_s1 = DEFAULT_SPLIT_S1, s1
                                                        seqused_q = seqused_q.npu() if seqused_q is not None else None,
                                                        seqused_k = seqused_k.npu() if seqused_k is not None else None,
                                                        cmp_residual_k = cmp_residual_k.npu() if cmp_residual_k is not None else None,
-                                                       block_table = block_table,
-                                                       output_idx_offset = output_idx_offset,
-                                                       metadata = metadata,
+                                                       block_table = block_table.npu() if block_table is not None else None,
+                                                       output_idx_offset = output_idx_offset.npu() if output_idx_offset is not None else None,
+                                                       metadata = metadata.npu(),
                                                        topk = topk,
                                                        max_seqlen_q = max_seqlen_q,
                                                        layout_q = layout_query,
