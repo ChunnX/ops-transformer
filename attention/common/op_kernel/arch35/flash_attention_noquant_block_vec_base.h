@@ -1020,7 +1020,7 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1Nd(
                     AttenMaskCopyIn<hasAtten, isFd, enableKVPrefix>(this->attenMaskInQue[runInfo.taskIdMod2], this->attenMaskInQue[1 - runInfo.taskIdMod2],
                         this->attenMaskGmInt, runInfo, constInfo, *attenMaskInfoPtr);
                     attenMaskUb = this->attenMaskInQue[runInfo.taskIdMod2].template DeQue<uint8_t>();
-                    if (enableKVPrefix && runInfo.s2LoopCount < 8) { PRINTF("[MASK-gqa-nonpref] s2L=%lld mask[0]=%x mask[1]=%x\n", (long long)runInfo.s2LoopCount, (int)attenMaskUb.GetValue(0), (int)attenMaskUb.GetValue(1)); }
+                    if (enableKVPrefix && runInfo.s2LoopCount < 8) { PRINTF("[MASK-gqa-nonpref] s2L=%lld mask[0]=%x mask[1]=%x phyAddr=%llx\n", (long long)runInfo.s2LoopCount, (int)attenMaskUb.GetValue(0), (int)attenMaskUb.GetValue(1), (unsigned long long)attenMaskUb.GetPhyAddr()); }
                 }
             }
         } else {
@@ -1045,7 +1045,7 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1Nd(
         }
     }
     LocalTensor<uint8_t> dropMaskUb;
-    if (enableKVPrefix && runInfo.s2LoopCount < 8) { PRINTF("[MASK-chk1] s2L=%lld mask[0]=%x\n", (long long)runInfo.s2LoopCount, (int)attenMaskUb.GetValue(0)); }
+    if (enableKVPrefix && runInfo.s2LoopCount < 8) { PRINTF("[MASK-chk1] s2L=%lld mask[0]=%x phyAddr=%llx\n", (long long)runInfo.s2LoopCount, (int)attenMaskUb.GetValue(0), (unsigned long long)attenMaskUb.GetPhyAddr()); }
     GetDerived()->GenerateDropoutMask(runInfo, constInfo, dropMaskUb);
     if (enableKVPrefix && runInfo.s2LoopCount < 8) { PRINTF("[MASK-chk2] s2L=%lld mask[0]=%x\n", (long long)runInfo.s2LoopCount, (int)attenMaskUb.GetValue(0)); }
 
