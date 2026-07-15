@@ -567,13 +567,14 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.wait_flag("mte3", "v", 9)
                     T.wait_flag("mte3", "v", 10)
 
-                    # Broadcast rsy_max to vector once (softmax_i_chunk_ub free, p_reduced_tmp refill 1.0)
+                    # Broadcast rsy_max to vector via T.tile.broadcast (BRCB, PIPE_V, 0 PIPE_ALL)
                     # WAR: p_reduced_tmp 前面被 reduce_sum 覆盖，refill 前等 mte3 drain 完成
                     T.set_flag("mte3", "v", 0)
                     T.wait_flag("mte3", "v", 0)
                     T.tile.fill(p_reduced_tmp_ub, 1.0)
                     T.pipe_barrier("v")
-                    T.tile.mul(softmax_i_chunk_ub, p_reduced_tmp_ub, rsy_max_ub[0])
+                    T.tile.broadcast(rsy_bc_ub, rsy_max_ub)
+                    T.tile.mul(softmax_i_chunk_ub, p_reduced_tmp_ub, rsy_bc_ub[0, :])
 
                     # GlobalSoftmaxI: compute global sum from UB-held ReduceSumY (no GM reads)
                     T.tile.fill(rsy_sum_ub, 0)
@@ -601,7 +602,8 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.pipe_barrier("v")
                     T.tile.exp(rsy_chunk_ub, rsy_chunk_ub)
                     T.pipe_barrier("v")
-                    T.tile.div(rsy_chunk_ub, rsy_chunk_ub, rsy_sum_ub[0])
+                    T.tile.broadcast(rsy_bc_ub, rsy_sum_ub)
+                    T.tile.div(rsy_chunk_ub, rsy_chunk_ub, rsy_bc_ub[0, :])
                     T.set_flag("v", "mte3", 4)
                     T.wait_flag("v", "mte3", 4)
                     T.copy(rsy_chunk_ub, SoftmaxI[bz, s1_id, n_idx_k * n_block:(n_idx_k + 1) * n_block])
