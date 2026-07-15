@@ -112,7 +112,7 @@ __aicore__ inline void NotifyCombineTileComplete(
 // =================================================================================================
 // WaitForUpstreamReady：等待上游 GMM 计算完成，GMM1/GMM2 分流（A8W8/A4W4 和 A8W4 共用）
 // =================================================================================================
-template <bool IsShared = false, typename Policy, typename Config>
+template <typename Policy, typename Config, bool IsShared = false>
 __aicore__ inline void WaitForUpstreamReady(
     const GMMAddrInfo& gmmAddrInfo, const Config& config, uint32_t mLoc)
 {
@@ -317,8 +317,8 @@ struct Config {
     }
 };
 
-template <bool IsShared, uint8_t CombineQuantMode, typename Policy, typename BlockMmad, typename ElementC,
-    typename WorkSet, typename ExtraArgs>
+template <uint8_t CombineQuantMode, typename Policy, typename BlockMmad, typename ElementC,
+    typename WorkSet, typename ExtraArgs, bool IsShared = false>
 __aicore__ inline void AicComputeGeneric(
     BlockMmad& blockMmad, WorkSet& workSet, uint32_t startLoopIdx, uint32_t tileNum, ExtraArgs& args)
 {
@@ -344,7 +344,7 @@ __aicore__ inline void AicComputeGeneric(
             if constexpr (!IsShared) {
                 uint32_t waveIdx = mLoc / L1_TILE_M_256;
                 if (waveIdx != lastWaveWaited) {
-                    WaitForUpstreamReady<IsShared, Policy>(workSet.gmmAddrInfo, config, mLoc);
+                    WaitForUpstreamReady<Policy, IsShared>(workSet.gmmAddrInfo, config, mLoc);
                     lastWaveWaited = waveIdx;
                 }
             }
@@ -354,7 +354,7 @@ __aicore__ inline void AicComputeGeneric(
         } else {
             if constexpr (!IsShared) {
                 if (loopIdx == startLoopIdx) {
-                    WaitForUpstreamReady<IsShared, Policy>(workSet.gmmAddrInfo, config, mLoc);
+                    WaitForUpstreamReady<Policy, IsShared>(workSet.gmmAddrInfo, config, mLoc);
                 }
             }
             if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
@@ -514,7 +514,7 @@ struct WorkSetGeneric {
 };
 
 template <typename Policy, uint8_t CombineQuantMode, typename BlockMmad, typename ElementC,
-    bool IsLayered = false, bool IsShared = false, typename WorkSet, typename ExtraArgs>
+    bool IsLayered = false, typename WorkSet, typename ExtraArgs, bool IsShared = false>
 __aicore__ inline void GroupMatmulExecGeneric(
     WorkSet& workSet, uint32_t startLoopIdx, uint32_t tileNum, ExtraArgs& args)
 {
@@ -525,7 +525,7 @@ __aicore__ inline void GroupMatmulExecGeneric(
         typename BlockMmad::ProblemShape matmulShape{workSet.config.m, workSet.config.n, workSet.config.k, 0};
         blockMmad.Init(matmulShape, l0TileShape, workSet.config.l1Params, false, enableL0CPingPong);
 
-        AicComputeGeneric<IsShared, CombineQuantMode, Policy, BlockMmad, ElementC>(
+        AicComputeGeneric<CombineQuantMode, Policy, BlockMmad, ElementC, IsShared>(
             blockMmad, workSet, startLoopIdx, tileNum, args);
     } else {
         if constexpr (Policy::IS_GMM1) {
@@ -538,7 +538,7 @@ __aicore__ inline void GroupMatmulExecGeneric(
 
 template <typename Policy, uint8_t CombineQuantMode, typename ElementA, typename ElementB,
     typename ElementC, typename ElementMxScaleA, typename ElementMxScaleB, bool IsWeightNZ = false,
-    bool IsLayered = false, bool IsShared = false, typename ExtraArgs>
+    bool IsLayered = false, typename ExtraArgs, bool IsShared = false>
 __aicore__ inline void GroupMatmulImplGeneric(
     const Params& params, const AscendC::Shape<int64_t, int64_t, int64_t, int64_t>& problemShape,
     const GMMAddrInfo& gmmAddrInfo, uint32_t& startBlockIdx, ExtraArgs& args)
@@ -645,8 +645,8 @@ struct Gmm2ArgsA8W4 {
     uint32_t groupIdx = 0;
 };
 
-template <bool IsShared, uint8_t CombineQuantMode, typename Policy, typename BlockMmad, typename Scheduler, typename TensorA,
-    typename TensorScaleA, typename TensorScaleB, typename TensorC, typename Config>
+template <uint8_t CombineQuantMode, typename Policy, typename BlockMmad, typename Scheduler, typename TensorA,
+    typename TensorScaleA, typename TensorScaleB, typename TensorC, typename Config, bool IsShared = false>
 __aicore__ inline void AicComputeA8W4(
     BlockMmad& blockMmad, Scheduler& scheduler, TensorA& gmA, TensorScaleA& gmScaleA, TensorScaleB& gmScaleB,
     TensorC& l0cOutGm, const GMMAddrInfo& gmmAddrInfo, const Config& config,
@@ -671,7 +671,7 @@ __aicore__ inline void AicComputeA8W4(
                 shouldWait = loopIdx == startLoopIdx;
             }
             if (shouldWait) {
-                WaitForUpstreamReady<IsShared, Policy>(gmmAddrInfo, config, mLoc);
+                WaitForUpstreamReady<Policy, IsShared>(gmmAddrInfo, config, mLoc);
                 if constexpr (Policy::IS_GMM1) {
                     lastWaveWaited = waveIdx;
                 }
@@ -820,7 +820,7 @@ struct WorkSetA8W4 {
 };
 
 template <uint8_t CombineQuantMode, typename Policy, typename BlockMmad, typename BlockPrologue, typename ElementC,
-    typename MakeLayoutC, bool IsShared = false, typename WorkSet, typename Config, typename ExtraArgs>
+    typename MakeLayoutC, typename WorkSet, typename Config, typename ExtraArgs, bool IsShared = false>
 __aicore__ inline void GroupMatmulExecA8W4(WorkSet& workSet, const Params& params, const GMMAddrInfo& gmmAddrInfo,
     const Config& config, uint32_t startLoopIdx, uint32_t tileNum, ExtraArgs& args)
 {
@@ -829,7 +829,7 @@ __aicore__ inline void GroupMatmulExecA8W4(WorkSet& workSet, const Params& param
         typename BlockMmad::BlockShape l0TileShape{L1_TILE_M_256, L1_TILE_N, L0_TILE_K, 0};
         typename BlockMmad::ProblemShape matmulShape{config.m, config.outputN, config.k, 0};
         blockMmad.Init(matmulShape, l0TileShape, config.l1Params);
-        AicComputeA8W4<IsShared, CombineQuantMode, Policy>(blockMmad, workSet.scheduler, workSet.gmA, workSet.gmScaleA,
+        AicComputeA8W4<CombineQuantMode, Policy, IsShared>(blockMmad, workSet.scheduler, workSet.gmA, workSet.gmScaleA,
             workSet.gmScaleB, workSet.l0cOutGm, gmmAddrInfo, config, startLoopIdx, tileNum,
             args.groupIdx, (__gm__ int32_t*)params.workspaceInfo.gmm2CombineSyncCounterPtr);
     } else {
@@ -853,7 +853,7 @@ __aicore__ inline void GroupMatmulExecA8W4(WorkSet& workSet, const Params& param
 }
 
 template <uint8_t CombineQuantMode, typename Policy, typename ElementA, typename ElementB, typename ElementC,
-    typename ElementMxScaleA, typename ElementMxScaleB, bool IsShared = false, typename ExtraArgs>
+    typename ElementMxScaleA, typename ElementMxScaleB, typename ExtraArgs, bool IsShared = false>
 __aicore__ inline void GroupMatmulImplA8W4(const Params& params,
     const AscendC::Shape<int64_t, int64_t, int64_t, int64_t>& problemShape, const GMMAddrInfo& gmmAddrInfo,
     uint32_t& startBlockIdx, ExtraArgs& args)
