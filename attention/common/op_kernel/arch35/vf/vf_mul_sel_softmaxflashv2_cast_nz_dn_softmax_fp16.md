@@ -156,12 +156,33 @@ VF 函数中数据布局为 `[ubN][m]`（ubN 列，每列 m 个元素），使�
 | `blockStride = ubN >> 2` | fp8 路径的存储步长，保持不变 |
 | 函数参数中的 `float` 标量 | `float deScaleQK`、`float pScale`、`float keepProb`、`float dScale`、`float sinkValue` 等保持 float，这些是宿主机传入的标量，不参与寄存器运算或在运算前 cast |
 | `RegTensor<half>` 临时 pack 寄存器 | `vreg_x_exp_even_f16`、`vreg_x_exp_f16_pack` 等原本就是 half/bf16，用于 cast 后的 pack 存储，无需修改 |
-| `RegTensor<T2>` 输出寄存器 | `vreg_x_exp_fp8_0` 等，T2 是输出类型（half/bf16/fp8），由 T cast 而来，无需修改 |
-| `Cast<T2, T, ...>` 调用 | 从 T（现为 half）cast 到 T2，类型自动随 T 变化，无需修改 |
-| `StoreAlign<T, ...>` 调用 | 存储类型为 T（现为 half），自动适配 |
+| `RegTensor<T2>` 输出寄存器 | `vreg_x_exp_fp8_0` 等，T2 是输出类型（half/bf16/fp8），由 half cast 而来，无需修改 |
 | `INV_LN2` / `LN2` 常量 | Mxfp8 路径中的量化近似计算，保持原值 |
-| `Truncate<T, ...>` 调用 | 模板参数 T，自动适配 |
 | 调用方 `m` 参数 | 保持 `s1RealSizeAlign32 >> 1` 不变，无需修改调用方 |
+| `__ubuf__ T *tmpExpSumUb/tmpMaxUb` | `sharedTmpBuffer` 的指针保持 `T *` 类型声明，但在 `StoreAlign` 调用时通过 `(__ubuf__ half *&)` 重解释为 half 指针 |
+
+## 编译修复：模板参数 T 显式替换为 half
+
+### 问题背景
+
+原始提交将寄存器和指针类型从 `float` 改为 `half`，但保留了模板参数 `T` 用于 `StoreAlign<T,>`、`Cast<T2, T,>`、`CreateMask<T,>`、`Duplicate<T,>`、`LoadAlign<T,>`、`Truncate<T,>` 以及 wrapper 中的 `(__ubuf__ T*)` 强转。当调用方模板参数 `T=float`（因调用侧适配提交未合入）时，这些 `T` 仍为 `float`，与 `RegTensor<half>` / `__ubuf__ half *` 产生类型不匹配编译错误。
+
+### 修复内容
+
+| 修改项 | 修改前 | 修改后 | 数量 |
+|---|---|---|---|
+| wrapper 指针强转 | `(__ubuf__ T*)tensor.GetPhyAddr()` | `(__ubuf__ half*)tensor.GetPhyAddr()` | 18 |
+| StoreAlign 模板参数 | `StoreAlign<T, ...>` | `StoreAlign<half, ...>` | 107 |
+| StoreAlign 指针强转 | `(__ubuf__ T *&)ptr` | `(__ubuf__ half *&)ptr` | 39 |
+| Cast 源类型参数 | `Cast<T2, T, ...>` | `Cast<T2, half, ...>` | 216 |
+| CreateMask 模板参数 | `CreateMask<T, ...>` | `CreateMask<half, ...>` | 14 |
+| Duplicate 模板参数 | `Duplicate<T, ..., T/half>` | `Duplicate<half, ..., half>` | 72 |
+| LoadAlign 模板参数 | `LoadAlign<T, ...>` | `LoadAlign<half, ...>` | 1 |
+| Truncate 模板参数 | `Truncate<T, ...>` | `Truncate<half, ...>` | 2 |
+
+### 修复原则
+
+VF 函数内部所有涉及 softmax 计算的类型（寄存器、指针、StoreAlign/LoadAlign/CreateMask/Duplicate/Cast/Truncate 模板参数）统一使用 `half`，不再依赖模板参数 `T`。模板参数 `T` 仅保留在函数签名（`LocalTensor<T>` 参数）和函数间调用中，不影响内部计算类型。
 
 ## 影响的函数列表
 
