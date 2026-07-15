@@ -46,6 +46,8 @@ constexpr uint32_t ATTR_EP_RANK_ID_INDEX = 1;
 constexpr uint32_t ATTR_NUM_EXPERTS_INDEX = 2;
 constexpr uint32_t ATTR_NUM_MAX_TPR_INDEX = 3;
 constexpr uint32_t ATTR_CCL_BUFFER_SIZE_INDEX = 4;
+constexpr uint32_t ATTR_TOPO_TYPE_INDEX = 5;
+constexpr uint32_t ATTR_RANK_NUM_PER_SERVER_INDEX = 6;
 
 constexpr uint32_t ONE_DIMS = 1U;
 constexpr uint32_t TWO_DIMS = 2U;
@@ -159,15 +161,22 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, const
     auto numExpertsPtr = attrs->GetAttrPointer<int64_t>(ATTR_NUM_EXPERTS_INDEX);
     auto nmtPtr = attrs->GetAttrPointer<int64_t>(ATTR_NUM_MAX_TPR_INDEX);
     auto cclBufferSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_CCL_BUFFER_SIZE_INDEX);
+    auto topoTypePtr = attrs->GetAttrPointer<int64_t>(ATTR_TOPO_TYPE_INDEX);
+    auto rankNumPerServerPtr = attrs->GetAttrPointer<int64_t>(ATTR_RANK_NUM_PER_SERVER_INDEX);
 
     OP_TILING_CHECK(epWorldSizePtr == nullptr, OP_LOGE(nodeName, "epWorldSizePtr is null."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(epRankIdPtr == nullptr, OP_LOGE(nodeName, "epRankIdPtr is null."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(numExpertsPtr == nullptr, OP_LOGE(nodeName, "numExpertsPtr is null."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(nmtPtr == nullptr, OP_LOGE(nodeName, "nmtPtr is null."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(cclBufferSizePtr == nullptr, OP_LOGE(nodeName, "cclBufferSizePtr is null."),
-                    return ge::GRAPH_FAILED);
+        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(topoTypePtr == nullptr, OP_LOGE(nodeName, "topoTypePtr is null."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(rankNumPerServerPtr == nullptr, OP_LOGE(nodeName, "rankNumPerServerPtr is null."),
+        return ge::GRAPH_FAILED);
 
     int64_t epWorldSize = *epWorldSizePtr;
+    int64_t topoType = *topoTypePtr;
+    int64_t rankNumPerServer = *rankNumPerServerPtr;
     OP_TILING_CHECK((epWorldSize < MIN_EP_WORLD_SIZE) || (epWorldSize > MAX_EP_WORLD_SIZE),
                     OP_LOGE(nodeName, "epWorldSize is invalid, should be in [%ld, %ld], got %ld.", MIN_EP_WORLD_SIZE,
                             MAX_EP_WORLD_SIZE, epWorldSize),
@@ -181,13 +190,24 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, const
         OP_LOGE(nodeName, "numExperts must be positive and divisible by epWorldSize, got %ld.", *numExpertsPtr),
         return ge::GRAPH_FAILED);
     OP_TILING_CHECK(*nmtPtr <= 0, OP_LOGE(nodeName, "numMaxTokensPerRank must be positive, got %ld.", *nmtPtr),
-                    return ge::GRAPH_FAILED);
+        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK((topoType != 0) && (topoType != 1),
+        OP_LOGE(nodeName, "topo_type is invalid, expected 0 or 1, got %ld.", topoType),
+        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(rankNumPerServer <= 0,
+        OP_LOGE(nodeName, "rank_num_per_server must be positive, got %ld.", rankNumPerServer),
+        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(epWorldSize % rankNumPerServer != 0,
+        OP_LOGE(nodeName, "epWorldSize must be divisible by rank_num_per_server, got epWorldSize=%ld, "
+            "rank_num_per_server=%ld.", epWorldSize, rankNumPerServer), return ge::GRAPH_FAILED);
 
     info.cfg.epWorldSize = static_cast<uint32_t>(epWorldSize);
     info.cfg.epRankId = static_cast<uint32_t>(*epRankIdPtr);
     info.cfg.numExperts = static_cast<uint32_t>(*numExpertsPtr);
     info.cfg.numLocalExperts = static_cast<uint32_t>(*numExpertsPtr / epWorldSize);
     info.cfg.numMaxTokensPerRank = static_cast<uint32_t>(*nmtPtr);
+    info.rankSizePerServer = static_cast<uint32_t>(rankNumPerServer);
+    info.numScaleoutRanks = static_cast<uint32_t>(epWorldSize / rankNumPerServer);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -207,7 +227,9 @@ static ge::graphStatus CheckWinSize(const gert::TilingContext *context, MoeEpCom
     uint64_t epWorldSize = static_cast<uint64_t>(info.cfg.epWorldSize);
     uint64_t moeExpertNumPerRank = static_cast<uint64_t>(info.cfg.numLocalExperts);
     uint64_t perWinDataNeed = static_cast<uint64_t>(info.cfg.topK) * static_cast<uint64_t>(*nmtPtr) *
-                              static_cast<uint64_t>(info.cfg.perSlotBytes);
+        static_cast<uint64_t>(info.cfg.perSlotBytes);
+    uint64_t maxTokenCount = static_cast<uint64_t>(*nmtPtr);
+    uint64_t superNodeCount = static_cast<uint64_t>(info.numScaleoutRanks);
 
     uint64_t dispatchWinStateSize =
         epWorldSize * AlignUpWin(moeExpertNumPerRank * sizeof(int32_t)) + 2 * epWorldSize * COMM_ALIGN;
@@ -215,17 +237,32 @@ static ge::graphStatus CheckWinSize(const gert::TilingContext *context, MoeEpCom
         static_cast<uint64_t>(info.cfg.topK) * static_cast<uint64_t>(*nmtPtr) * COMM_ALIGN + epWorldSize * COMM_ALIGN;
     uint32_t hiddenAlign = (info.cfg.hidden * MAX_OUT_DTYPE_SIZE + UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN;
     uint32_t topKAlign = ((info.cfg.topK * METADATA_DTYPE_SIZE + UB_ALIGN - 1UL) / UB_ALIGN) * UB_ALIGN;
-    uint64_t dispatchWinDataSize = epWorldSize * static_cast<uint64_t>(*nmtPtr) *
-                                   AlignUpWin(static_cast<uint64_t>(hiddenAlign + topKAlign * 2 + UB_ALIGN));
+    info.scaleoutMaskWordCount = (info.rankSizePerServer + 31U) / 32U;
+    uint64_t scaleupSlotAlignedBytes =
+        AlignUpWin(static_cast<uint64_t>(hiddenAlign + topKAlign * 2 + UB_ALIGN));
+    uint64_t scaleoutSlotRawBytes = scaleupSlotAlignedBytes +
+                                    static_cast<uint64_t>(info.scaleoutMaskWordCount) * sizeof(uint32_t) +
+                                    static_cast<uint64_t>(info.rankSizePerServer) * sizeof(int32_t);
+    info.scaleoutSlotAlignedBytes = static_cast<uint32_t>(AlignUpWin(scaleoutSlotRawBytes));
+    uint64_t scaleoutRecvDataSize = superNodeCount * maxTokenCount *
+                                    static_cast<uint64_t>(info.scaleoutSlotAlignedBytes);
+    uint64_t scaleupFinalRecvDataSize = epWorldSize * maxTokenCount * scaleupSlotAlignedBytes;
+    uint64_t scaleoutRecvStatusSize = AlignUpWin(superNodeCount * maxTokenCount * COMM_ALIGN);
+    uint64_t scaleupRecvStatusSize = AlignUpWin(epWorldSize * maxTokenCount * COMM_ALIGN);
+    uint64_t scaleoutRecvDataOffset = dispatchWinStateSize + combineWinStateSize;
+    uint64_t scaleupFinalRecvDataOffset = scaleoutRecvDataOffset + scaleoutRecvDataSize;
+    uint64_t scaleoutRecvStatusOffset = scaleupFinalRecvDataOffset + scaleupFinalRecvDataSize;
+    uint64_t scaleupRecvStatusOffset = scaleoutRecvStatusOffset + scaleoutRecvStatusSize;
+    uint64_t combineDataOffset = scaleupRecvStatusOffset + scaleupRecvStatusSize;
 
-    uint64_t winNeedTotal = dispatchWinStateSize + combineWinStateSize + dispatchWinDataSize + perWinDataNeed;
+    uint64_t winNeedTotal = combineDataOffset + perWinDataNeed;
     OP_TILING_CHECK(winNeedTotal > maxWindowSize,
                     OP_LOGE(nodeName, "HCCL_BUFFSIZE too small, need %luMB, available %luMB.",
                             (winNeedTotal / MB_SIZE) + 1UL, maxWindowSize / MB_SIZE),
                     return ge::GRAPH_FAILED);
     info.totalWinSizeEp = maxWindowSize;
     info.winStateOffset = dispatchWinStateSize;
-    info.winDataOffset = dispatchWinStateSize + combineWinStateSize + dispatchWinDataSize;
+    info.winDataOffset = combineDataOffset;
 
     return ge::GRAPH_SUCCESS;
 }
