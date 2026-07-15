@@ -227,7 +227,7 @@ static bool IsGatherOut(const aclTensor *gatherOut)
 }
 
 static bool CheckShape(const aclTensor *x1, const aclTensor *x2, const aclTensor *output, const aclTensor *gatherOut,
-                       bool isTransA)
+                       bool isTransA, bool isTransB)
 {
     if (x1->GetViewShape().GetDimNum() != TWO_DIMS) {
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("aclnnAllGatherMatmulV2", "x1",
@@ -248,7 +248,11 @@ static bool CheckShape(const aclTensor *x1, const aclTensor *x2, const aclTensor
     }
 
     const auto kValX1 = x1->GetViewShape().GetDim(1);
-    const auto kValX2 = x2->GetViewShape().GetDim(0);
+    auto kValX2 = x2->GetViewShape().GetDim(0);
+    if (isTransB) {
+        kValX2 = x2->GetViewShape().GetDim(1);
+    }
+    
     if (kValX1 != kValX2) {
         std::string shapeMsg = std::to_string(kValX1) + " and " + std::to_string(kValX2);
         std::string reasonMsg = "The k-axis of x1 and x2 must be the same";
@@ -524,6 +528,14 @@ static aclnnStatus CheckAndHandleCommMode(const char *group, const char *commMod
     return ACLNN_SUCCESS;
 }
 
+bool IsViewTransposeX2(const aclTensor *x1, const aclTensor *x2, bool isTransX1)
+{
+    const auto kValX1 = x1->GetViewShape().GetDim(isTransX1 ? 0 : 1);
+    const auto x2Dim0 = x2->GetViewShape().GetDim(0);
+    const auto x2Dim1 = x2->GetViewShape().GetDim(1);
+    return (kValX1 != x2Dim0) && (kValX1 == x2Dim1);
+}
+
 aclnnStatus allGatherMatmulV2GetWorkspaceSizeCCUMode(const aclTensor *x1, const aclTensor *x2, const aclTensor *bias,
                                                      const aclTensor *x1Scale, const aclTensor *x2Scale,
                                                      const aclTensor *quantScale, int64_t blockSize, const char *group,
@@ -542,6 +554,8 @@ aclnnStatus allGatherMatmulV2GetWorkspaceSizeCCUMode(const aclTensor *x1, const 
 
     OP_LOGD("X1 is %s.", x1->ToString().GetString());
     OP_LOGD("X2 is %s.", x2->ToString().GetString());
+    OP_LOGD("x1Scale is %s.", x1Scale->ToString().GetString());
+    OP_LOGD("x2Scale is %s.", x2Scale->ToString().GetString());
 
     if (CheckSupportDtype(x1, FP8_DTYPE_SUPPORT_LIST) || CheckSupportDtype(x1, FP4_DTYPE_SUPPORT_LIST)) {
         auto retScaleChk = CheckScale(x1Scale, x2Scale, quantScale);
@@ -550,9 +564,12 @@ aclnnStatus allGatherMatmulV2GetWorkspaceSizeCCUMode(const aclTensor *x1, const 
 
     uint32_t rankSize = 0;
     bool transposeX1 = IsTransposeLastTwoDims(x1);
-    bool transposeX2 = IsTransposeLastTwoDims(x2);
+    bool viewTransposeX2 = IsViewTransposeX2(x1, x2, transposeX1);
+    bool transposeX2 = viewTransposeX2 || IsTransposeLastTwoDims(x2);
+    OP_LOGD("transposeX1 is %d.", transposeX1);
+    OP_LOGD("transposeX2 is %d.", transposeX2);
 
-    CHECK_RET(CheckShape(x1, x2, output, gatherOut, transposeX1), ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(CheckShape(x1, x2, output, gatherOut, transposeX1, transposeX2), ACLNN_ERR_PARAM_INVALID);
     bool isGatherOut = IsGatherOut(gatherOut);
     bool isAMaxOut = IsAMaxOut(amaxOut);
     // 如果为bf16/fp16的,不能输入amaxout, 如果为低精度，amaxout 数据类型只能为float类型且维度为1维
@@ -562,18 +579,20 @@ aclnnStatus allGatherMatmulV2GetWorkspaceSizeCCUMode(const aclTensor *x1, const 
     CHECK_RET(CheckOutDtypeValid(outDtype, OUT_DTYPE_SUPPORT_LIST), ACLNN_ERR_PARAM_INVALID);
     auto transX2 = x2;
     auto transX2Scale = x2Scale;
-    if (transposeX2) {
-        // x2转置时将两轴shape调换
-        if (x2->GetTensor() == nullptr) {
-            OP_LOGE_LIBOPAPI_REPORT("aclnnAllGatherMatmulV2", "Tensor of x2 is null.");
-            return ACLNN_ERR_INNER_NULLPTR;
+    if (x2Scale->GetDataType() == op::DataType::DT_FLOAT8_E8M0) {
+        OP_LOGD("Restoring non-transpose because it's not an MXFP8 scenario !");
+        if (transposeX2) {
+            // x2转置时将两轴shape调换
+            if (x2->GetTensor() == nullptr) {
+                OP_LOGE_LIBOPAPI_REPORT("aclnnAllGatherMatmulV2", "Tensor of x2 is null.");
+                return ACLNN_ERR_INNER_NULLPTR;
+            }
+            transX2 = TransX2Tensor(x2);
         }
-        transX2 = TransX2Tensor(x2);
+        if ((x2Scale != nullptr) && MC2Aclnn::IsNeedScaleTrans(x2Scale)) {
+            transX2Scale = TransX2Tensor(x2Scale);
+        }
     }
-    if ((x2Scale != nullptr) && MC2Aclnn::IsNeedScaleTrans(x2Scale)) {
-        transX2Scale = TransX2Tensor(x2Scale);
-    }
-
     uint8_t commModeEnum = 0;
     aclnnStatus checkCommModeRet = CheckAndHandleCommMode(group, commMode, commModeEnum);
     CHECK_RET(checkCommModeRet == ACLNN_SUCCESS, checkCommModeRet);
@@ -590,14 +609,6 @@ aclnnStatus allGatherMatmulV2GetWorkspaceSizeCCUMode(const aclTensor *x1, const 
     static NnopbaseDfxId dfxId = {0x60000, __func__, false};
     NnopbaseReportApiInfo(timeStamp, dfxId);
     return ret;
-}
-
-bool IsViewTransposeX2(const aclTensor *x1, const aclTensor *x2, bool isTransX1)
-{
-    const auto kValX1 = x1->GetViewShape().GetDim(isTransX1 ? 0 : 1);
-    const auto x2Dim0 = x2->GetViewShape().GetDim(0);
-    const auto x2Dim1 = x2->GetViewShape().GetDim(1);
-    return (kValX1 != x2Dim0) && (kValX1 == x2Dim1);
 }
 
 aclnnStatus allGatherMatmulV2GetWorkspaceSizeAIVMode(const aclTensor *x1, const aclTensor *x2, const aclTensor *bias,
