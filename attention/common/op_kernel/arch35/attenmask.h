@@ -609,12 +609,6 @@ __aicore__ inline void AttenMaskCopyIn(TQue<QuePosition::VECIN, 1> &attenMaskInQ
             MergeBandModeMask<hasAtten>(attenMaskUbPre, attenMaskUb, runInfo.halfS1RealSize, constInfo.s2BaseSize);
             attenMaskInQuePre.template FreeTensor(attenMaskUbPre);
             attenMaskInQue.template EnQue(attenMaskUb);
-        } else {
-            attenMaskInQue.template DeQue<uint8_t>();
-            event_t mte2vEvtID = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_V));
-            SetFlag<HardEvent::MTE2_V>(mte2vEvtID);
-            WaitFlag<HardEvent::MTE2_V>(mte2vEvtID);
-            attenMaskInQue.template EnQue(attenMaskUb);
         }
         return;
     }
