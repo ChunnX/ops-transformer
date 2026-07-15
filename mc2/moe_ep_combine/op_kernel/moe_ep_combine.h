@@ -188,8 +188,8 @@ private:
     TQueBind<QuePosition::VECIN, QuePosition::VECOUT, 1> xQueue_; // 数据队列
     AscendC::Hcomm<COMM_PROTOCOL_UBC_CTP> hcomm_;                 // 通信上下文
 
-    GM_ADDR winRankAddr_[HCCL_MAX_RANK_SIZE];
-    uint64_t hcommHandle_[HCCL_MAX_RANK_SIZE];
+    GM_ADDR winRankAddr_[Mc2Aclnn::HCCL_MAX_RANK_SIZE];
+    uint64_t hcommHandle_[Mc2Aclnn::HCCL_MAX_RANK_SIZE];
     GM_ADDR localUrmaWorkspace_{nullptr}; // 工作空间的GM地址
     GM_ADDR maskCalcWorkspaceGM_{nullptr};
     uint32_t aivId_{0};
