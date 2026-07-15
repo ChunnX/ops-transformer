@@ -567,9 +567,8 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.wait_flag("mte3", "v", 9)
                     T.wait_flag("mte3", "v", 10)
 
-                    # Replicate rsy_max_ub[0] → [0:8] for brcb alignment (BRCB requires rows % 8 == 0)
-                    for i in T.serial(1, 8):
-                        T.copy(rsy_max_ub[0], rsy_max_ub[i])
+                    # rsy_max_ub is (8,) padded for brcb; T.tile.max with rsy_chunk_max_ub(1,)
+                    # broadcasts scalar to all 8 elements automatically
 
                     # Broadcast rsy_max to vector via brcb (无 PIPE_ALL):
                     #   fill(rsy_bc_ub,1.0) → row_expand_mul(*,rsy_max_ub) → 标量→向量 广播
@@ -610,9 +609,8 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.pipe_barrier("v")
                     T.tile.exp(rsy_chunk_ub, rsy_chunk_ub)
                     T.pipe_barrier("v")
-                    # Replicate rsy_sum_ub[0] → [0:8] for brcb alignment (BRCB requires rows % 8 == 0)
-                    for i in T.serial(1, 8):
-                        T.copy(rsy_sum_ub[0], rsy_sum_ub[i])
+                    # rsy_sum_ub is (8,) padded for brcb; T.tile.add with rsy_chunk_sum_ub(1,)
+                    # broadcasts scalar to all 8 elements automatically
 
                     # Broadcast rsy_sum_ub[0] via brcb → rsy_bc_ub (无 PIPE_ALL)
                     T.tile.fill(rsy_bc_ub, 1.0)
