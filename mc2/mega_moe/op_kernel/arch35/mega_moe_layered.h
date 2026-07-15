@@ -180,9 +180,9 @@ private:
     uint64_t sendWorkspaceServerBytes_ = 0;
     uint64_t cumsumRevCntInRank_ = 0;
     int32_t compareCount_ = 0;
-    int64_t combineUbTensorSize_ = 0;
+    int64_t combineUbTensorSize_ = 0; // combineUbTensor 的大小（元素数）
     uint32_t topKWeightsChunkLen_ = 0;
-    uint32_t topKWeightsTempAddr_ = 0; // combineUbTensor 的大小（元素数）
+    uint32_t topKWeightsTempAddr_ = 0;
 
     static constexpr uint32_t A_ELEMS_PER_BYTE = Std::IsSame<QuantOutType, fp4x2_e2m1_t>::value ? 2U : 1U;
     static constexpr uint32_t B_ELEMS_PER_BYTE = Std::IsSame<Weight1Type, fp4x2_e2m1_t>::value ? 2U : 1U;
