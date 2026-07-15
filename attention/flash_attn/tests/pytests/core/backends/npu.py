@@ -155,11 +155,16 @@ class NPUBackend(Backend):
 
     def _reset_static_kernel_state(self):
         """彻底清理 static kernel 状态，确保每次 _get_graph_net 都触发重新编译。
-        清理三层：CANN runtime 注册(uninstall.sh) + Python全局set + 磁盘文件。"""
+        清理四层：CANN runtime reselect + uninstall.sh + Python全局set + 磁盘文件。"""
         if _HAS_TORCHAIR:
             uninstall_static_kernel()
             _sk._installed_run_pkgs.clear()
             _sk._uninstall_paths.clear()
+            try:
+                import torch_npu
+                torch_npu.npu._aclnn_reselect_static_kernel()
+            except Exception:
+                pass
         build_dir = "./fa_kernel_cache"
         shutil.rmtree(build_dir, ignore_errors=True)
         os.makedirs(build_dir, exist_ok=True)
