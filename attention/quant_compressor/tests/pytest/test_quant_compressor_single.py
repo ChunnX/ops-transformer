@@ -30,7 +30,8 @@ for _, params in enumerate(ENABLED_PARAMS):
     param_names = [
         "batch_size", "hidden_size", "Seq_len", "head_dim", "block_size", "cmp_ratio",
         "coff", "start_p", "cache_mode", "layout_x", "data_type", "cu_seqlens", "seqused", "start_pos",
-        "x_datarange", "wkv_datarange", "wgate_datarange", "ape_datarange", "kv_state_datarange", "score_state_datarange"
+        "x_datarange", "wkv_datarange", "wgate_datarange", "ape_datarange", "kv_state_datarange", "score_state_datarange",
+        "x_descale_datarange", "wkv_descale_datarange", "wgate_descale_datarange", "quant_mode"
     ]
 
     param_values = [
@@ -54,6 +55,10 @@ for _, params in enumerate(ENABLED_PARAMS):
         locals()["param_ape_datarange"],
         locals()["param_kv_state_datarange"],
         locals()["param_score_state_datarange"],
+        locals()["param_x_descale_datarange"],
+        locals()["param_wkv_descale_datarange"],
+        locals()["param_wgate_descale_datarange"],
+        locals()["param_quant_mode"],
     ]
 
     # 生成所有的组合，并转换为字典列表
@@ -84,11 +89,16 @@ for _, params in enumerate(ENABLED_PARAMS):
         ape_datarange = param_combinations['ape_datarange']
         kv_state_datarange = param_combinations['kv_state_datarange']
         score_state_datarange = param_combinations['score_state_datarange']
+        x_descale_datarange = param_combinations['x_descale_datarange']
+        wkv_descale_datarange = param_combinations['wkv_descale_datarange']
+        wgate_descale_datarange = param_combinations['wgate_descale_datarange']
+        quant_mode = param_combinations['quant_mode']
 
 
         test_data = batch_size, hidden_size, Seq_len, head_dim, block_size, cmp_ratio, coff, \
                     start_p, cache_mode, layout_x, data_type, cu_seqlens, seqused, start_pos, \
-                    x_datarange, wkv_datarange, wgate_datarange, ape_datarange, kv_state_datarange, score_state_datarange
+                    x_datarange, wkv_datarange, wgate_datarange, ape_datarange, kv_state_datarange, score_state_datarange, \
+                    x_descale_datarange, wkv_descale_datarange, wgate_descale_datarange, quant_mode
 
         torch_npu.npu.set_device(0)
 
