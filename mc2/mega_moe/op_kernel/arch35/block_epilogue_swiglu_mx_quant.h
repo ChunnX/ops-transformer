@@ -204,7 +204,10 @@ private:
     AscendC::LocalTensor<bfloat16_t> gluRes_;
     AscendC::LocalTensor<uint16_t> maxExp_;
     AscendC::LocalTensor<uint16_t> halfScale_;
-    const Params *params_;
+    // Init is commonly called with a temporary Arguments object.  Keep an
+    // owned copy; retaining the address of Init's parameter would leave a
+    // dangling pointer as soon as Init returns.
+    Params params_{};
 
     int64_t n_;
     int64_t scaleN_;
@@ -227,7 +230,7 @@ __aicore__ inline void BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LO
     if constexpr (g_coreType == AscendC::AIC) {
         return;
     }
-    params_ = &params;
+    params_ = params;
     clampLimit_ = params.clampLimit;
     if constexpr (AscendC::IsSameType<DataTypeOut, fp8_e4m3fn_t>::value) {
         fpEmax_ = FP8_E4M3_MAX_EXP;
@@ -262,10 +265,10 @@ __aicore__ inline void
 BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::UpdateGlobalAddr(const BlockCoord &baseOffset)
 {
     if constexpr (g_coreType == AscendC::AIV) {
-        quantOutputGlobal_.SetGlobalBuffer((__gm__ int8_t *)params_->yGmAddr + Get<Y_IDX>(baseOffset));
-        quantScaleGlobal_.SetGlobalBuffer((__gm__ int8_t *)params_->yScaleGmAddr + Get<Y_SCALE_IDX>(baseOffset));
+        quantOutputGlobal_.SetGlobalBuffer((__gm__ int8_t *)params_.yGmAddr + Get<Y_IDX>(baseOffset));
+        quantScaleGlobal_.SetGlobalBuffer((__gm__ int8_t *)params_.yScaleGmAddr + Get<Y_SCALE_IDX>(baseOffset));
         groupFlagListGmAddr_ =
-            (__gm__ int32_t *)params_->groupFlagListGmAddr + Get<GROUP_FLAG_IDX>(baseOffset) * INT_CACHELINE;
+            (__gm__ int32_t *)params_.groupFlagListGmAddr + Get<GROUP_FLAG_IDX>(baseOffset) * INT_CACHELINE;
     }
 }
 
