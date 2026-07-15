@@ -130,11 +130,11 @@ CutResult AllGatherMatmulTilingV2::GetTilingResult()
 
     bool isCcuMode = (std::strncmp(commMode_, "ccu", CMP_MAX_LEN) == 0);
     if (isCcuMode) {
-        AdjustCutResultForCCU(result, args_.mValue, args_.kValue, args_.inputDtypeSize, args_.rankDim, opName_);
+        CommSizeInfo commSize{args_.kValue, args_.inputDtypeSize, args_.rankDim};
+        AdjustCutResultForCCU(result, args_.mValue, commSize, opName_);
     } else {
         uint64_t targetTileCnt = SelectOptimalTileCntForAICPU(tileFormulate, opName_);
-        AdjustCutResultForAICPU(result, args_.mValue, tileFormulate.matmulPerf_.GetBaseM(),
-                                targetTileCnt, opName_);
+        AdjustCutResultForAICPU(result, tileFormulate, targetTileCnt, opName_);
     }
 
     return result;
