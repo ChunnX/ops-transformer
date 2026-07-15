@@ -65,7 +65,7 @@ def liv2(testcase_files):   # 初始化参数和tensor
         else:
             cpu_result, npu_result, topk_value, cpu_topk_value, npu_topk_value, output_idx_offset, params = lightning_indexer_v2_pt_loadprocess.test_liv2_process(testcase_files, device_id=device_id)
         if npu_result != None:
-            result, fulfill_percent = result_compare_method.check_result(cpu_result, npu_result, topk_value, output_idx_offset, params)
+            result, fulfill_percent = result_compare_method.check_result(cpu_result, npu_result, topk_value, output_idx_offset, params, cpu_topk_value, npu_topk_value)
         else:
             result = "Failed"
             fulfill_percent = 0
