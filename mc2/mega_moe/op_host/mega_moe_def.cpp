@@ -105,32 +105,52 @@ public:
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("shared_weight1")
-            .ParamType(OPTIONAL)
-            .DataTypeList({ge::DT_FLOAT8_E5M2, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT4_E2M1})
-            .FormatList({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
-            .AutoContiguous();
+            .ParamType(DYNAMIC)
+            .DataType({
+                ge::DT_FLOAT8_E5M2,                         // E5M2 (ND)
+                ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN, // E4M3FN (ND/NZ)
+                ge::DT_FLOAT4_E2M1,                         // E2M1 (ND)
+#ifdef ENABLE_FORMAT_NZ_C0_32
+                ge::DT_FLOAT4_E2M1, ge::DT_FLOAT4_E2M1 // E2M1 (NZ / NZ_C0_32)
+#endif
+            })
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_FRACTAL_NZ, ge::FORMAT_ND,
+#ifdef ENABLE_FORMAT_NZ_C0_32
+                     ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ_C0_32
+#endif
+            });
         this->Input("shared_weight2")
-            .ParamType(OPTIONAL)
-            .DataTypeList({ge::DT_FLOAT8_E5M2, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT4_E2M1})
-            .FormatList({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
-            .AutoContiguous();
+            .ParamType(DYNAMIC)
+            .DataType({
+                ge::DT_FLOAT8_E5M2,                         // E5M2 (ND)
+                ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN, // E4M3FN (ND/NZ)
+                ge::DT_FLOAT4_E2M1,                         // E2M1 (ND)
+#ifdef ENABLE_FORMAT_NZ_C0_32
+                ge::DT_FLOAT4_E2M1, ge::DT_FLOAT4_E2M1 // E2M1 (NZ_C0_32 / NZ_C0_32)
+#endif
+            })
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_FRACTAL_NZ, ge::FORMAT_ND,
+#ifdef ENABLE_FORMAT_NZ_C0_32
+                     ge::FORMAT_FRACTAL_NZ_C0_32, ge::FORMAT_FRACTAL_NZ_C0_32
+#endif
+            });
         this->Input("shared_weight_scale1")
-            .ParamType(OPTIONAL)
+            .ParamType(DYNAMIC)
             .DataTypeList({ge::DT_FLOAT8_E8M0})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("shared_weight_scale2")
-            .ParamType(OPTIONAL)
+            .ParamType(DYNAMIC)
             .DataTypeList({ge::DT_FLOAT8_E8M0})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("shared_bias1")
-            .ParamType(OPTIONAL)
+            .ParamType(DYNAMIC)
             .DataTypeList({ge::DT_FLOAT})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("shared_bias2")
-            .ParamType(OPTIONAL)
+            .ParamType(DYNAMIC)
             .DataTypeList({ge::DT_FLOAT})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
