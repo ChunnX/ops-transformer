@@ -1212,7 +1212,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::TripleInfoCalAnd
                 uint32_t curRoundMaskBytes = (roundLen == dispatchRoundSendTotalNum_) ?
                     dispatchRoundMaskAlignSize_ :
                     static_cast<uint32_t>(Ops::Base::CeilAlign(
-                        static_cast<int64_t>(Ops::Base::CeilDiv(roundLen, 8)), static_cast<int64_t>(ALIGN_32)));
+                        static_cast<int64_t>(Ops::Base::CeilDiv(roundLen, 8U)), static_cast<int64_t>(ALIGN_32)));
                 uint64_t roundMaskByteOffset = static_cast<uint64_t>(roundStart) / 8U;
                 GlobalTensor<uint8_t> roundMaskSrc;
                 roundMaskSrc.SetGlobalBuffer(rankMaskBasePtr + roundMaskByteOffset);
