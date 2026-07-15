@@ -630,6 +630,19 @@ ge::graphStatus QfaInfoParser::ParseAxisInfo()
         return ge::GRAPH_FAILED;
     }
 
+    uint32_t qDescaleDimNum = opParamInfo_.qDescale.shape->GetStorageShape().GetDimNum();
+    bool isDecode = (s1Size_ * gSize_ <= 80);
+    if (isDecode && qDescaleDimNum != 5) {
+        OP_LOGE(opName_, "q_descale must be 5D in decode mode(s1Size=%lu, gSize=%lu), but got %uD.",
+                s1Size_, gSize_, qDescaleDimNum);
+        return ge::GRAPH_FAILED;
+    }
+    if (!isDecode && qDescaleDimNum != 4) {
+        OP_LOGE(opName_, "q_descale must be 4D in prefill mode(s1Size=%lu, gSize=%lu), but got %uD.",
+                s1Size_, gSize_, qDescaleDimNum);
+        return ge::GRAPH_FAILED;
+    }
+
     return ge::GRAPH_SUCCESS;
 }
 
@@ -682,7 +695,9 @@ ge::graphStatus QfaInfoParser::Parse(QfaTilingInfo &qfaInfo)
     }
     GetKvStorageMode();
     if (emptyTensorFlag_) {
-        return ge::GRAPH_SUCCESS;
+        OP_LOGE(qfaInfo.opName, "empty tensor is not!");
+        return ge::GRAPH_FAILED;
+        //return ge::GRAPH_SUCCESS;
     }
     if (ge::GRAPH_SUCCESS != ParseAxisInfo()) {
         return ge::GRAPH_FAILED;

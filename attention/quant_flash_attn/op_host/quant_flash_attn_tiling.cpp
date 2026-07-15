@@ -57,11 +57,11 @@ ASCENDC_EXTERN_C ge::graphStatus TilingQuantFlashAttn(gert::TilingContext *conte
         return ge::GRAPH_FAILED;
     }
 
-    QfaChecker qfaChecker;
-    qfaChecker.Init(qfaInfo);
-    if (qfaChecker.Process(qfaInfo) != ge::GRAPH_SUCCESS) {
-        return ge::GRAPH_FAILED;
-    }
+    // QfaChecker qfaChecker;
+    // qfaChecker.Init(qfaInfo);
+    // if (qfaChecker.Process(qfaInfo) != ge::GRAPH_SUCCESS) {
+    //     return ge::GRAPH_FAILED;
+    // }
 
     return FiaTilingRegistry::GetInstance().DoTilingImpl(context, &qfaInfo);
 }

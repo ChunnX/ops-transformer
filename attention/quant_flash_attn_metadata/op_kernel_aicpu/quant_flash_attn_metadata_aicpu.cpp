@@ -202,12 +202,7 @@ bool QuantFlashAttnMetadataCpuKernel::ParamsInit()
     }
     baseInfo.batchSize = batchSize_;
     baseInfo.queryHeadNum = numHeadsQ_;
-    if (quantMode_ == 1 || quantMode_ == 2) {
-        uint32_t groupSize = (numHeadsKv_ > 0) ? numHeadsQ_ / numHeadsKv_ : 1;
-        baseInfo.kvHeadNum = (maxSeqlenQ_ * groupSize <= 80) ? numHeadsKv_ : numHeadsQ_;
-    } else {
-        baseInfo.kvHeadNum = numHeadsKv_;
-    }
+    baseInfo.kvHeadNum = numHeadsKv_;
     baseInfo.headDim = headDim_;
     baseInfo.attenMaskFlag = (maskMode_ != 0);
     baseInfo.sparseMode = static_cast<uint32_t>(maskMode_);
@@ -226,9 +221,9 @@ bool QuantFlashAttnMetadataCpuKernel::ParamsInit()
     mBaseSize_ = mBaseSize_ * (aivCoreNum_ / aicCoreNum_);
     param.mBaseSize = mBaseSize_;
     param.s2BaseSize = s2BaseSize_;
-    param.l2Byte = 128U * 1024U * 1024U;
+    param.l2Byte = 0;
     param.fdTolerance = 300;
-    param.fdOn = (maskMode_ != 4);
+    param.fdOn = 0;
     return true;
 }
 
