@@ -8,7 +8,13 @@
  *   softmaxMax / softmaxSum [totalQ, kvHead, topK, groupSize] (compact float)
  *
  * GM max/sum are compact; CopyLseIn expands to 32B-aligned UB for ComputeScaleValue_VF.
- * CopyAccumOutIn reads rowSum from GM (lseSumBuf holds scale after ComputeScaleValue).
+ * Unlike the IFA library, this operator's Phase1 leaves accumOut unnormalized (no /sum),
+ * so Phase2 must divide each partial by its original per-row rowSum. That divide is
+ * embedded as a regbase MicroAPI::Div (broadcast rowSum via DIST_BRC_B32) inside the
+ * local copy of ReduceFinalRes_VF (arch35/vector_api/vf_flash_decode_msa.h). The per-row
+ * rowSum is not re-read from GM: it reuses the compact rowSum already DataCopyPad'd into
+ * broadCastTmp_ by CopyLseIn (lseSumTmpBuf = broadCastTmpBuf_[alignedLseCount],
+ * layout [topK, dealRowCount]), sliced per split j. CopyAccumOutIn only copies accumOut.
  */
 #ifndef EPILOGUE_BLOCK_BLOCK_EPILOGUE_RESCALE_O_PREFILL_ARCH35_HPP
 #define EPILOGUE_BLOCK_BLOCK_EPILOGUE_RESCALE_O_PREFILL_ARCH35_HPP
@@ -21,6 +27,10 @@
 using namespace AscendC;
 
 #include "../../../../../common/op_kernel/arch35/vf/vf_flash_decode.h"
+// Local copy of the library ReduceFinalRes_VF family with the per-row regbase Div
+// embedded (this operator's Phase1 leaves accumOut unnormalized). Must follow the
+// vf_flash_decode.h include above (relies on FLT_ZERO / MicroAPI).
+#include "../../../arch35/vector_api/vf_flash_decode_msa.h"
 
 namespace NpuArch::Epilogue::Block {
 
@@ -190,7 +200,6 @@ private:
                         uint32_t startRow,
                         uint32_t dealRowCount,
                         AscendC::GlobalTensor<T> &gmAccumOut,
-                        AscendC::GlobalTensor<T> &gmSoftmaxSum,
                         AscendC::LocalTensor<T> &accumOutLocal)
     {
         AscendC::DataCopyExtParams copyInParams;
@@ -211,23 +220,9 @@ private:
         AscendC::DataCopyPad(accumOutLocal, gmAccumOut[oOffset], copyInParams, copyInPadParams);
         AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID1);
         AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID1);
-
-        // lseSumBuf_ already holds scale after ComputeScaleValue; rowSum from GM.
-        // Slot validity is checked once per split in ReduceFinalRes (first stat value),
-        // so only valid slots reach here and rowSum > 0 is guaranteed.
-        uint64_t statBase = TaskStatBase(qToken, kvHeadIdx);
-        for (uint32_t r = 0U; r < dealRowCount; ++r) {
-            uint32_t gh = startRow + r;
-            uint64_t statIdx = statBase + static_cast<uint64_t>(splitKVIndex) * groupSize_ + gh;
-            float rowSum = gmSoftmaxSum[statIdx].GetValue(0);
-            uint32_t rowOff = r * headDimAlignFp32_;
-            // AscendC::printf("1111111111111111 rowSum:%f, splitKVIndex:%d, qToken:%d, kvHeadIdx:%d, r:%d\n",
-            //                 rowSum, splitKVIndex, qToken, kvHeadIdx, r);
-            AscendC::Divs(
-                    accumOutLocal[rowOff], accumOutLocal[rowOff], rowSum,
-                    static_cast<int32_t>(headDimAlignFp32_));
-        }
-        AscendC::PipeBarrier<PIPE_V>();
+        // The per-row rowSum used by the regbase Div in ReduceFinalRes_VF is NOT staged here:
+        // it is reused from the compact rowSum already DataCopyPad'd into broadCastTmp_ by
+        // CopyLseIn (lseSumTmpBuf = broadCastTmpBuf_[alignedLseCount], layout [topK, dealRowCount]).
     }
 
     __aicore__ inline
@@ -237,8 +232,7 @@ private:
                         AscendC::LocalTensor<T> &scaleLocal,
                         uint32_t startRow,
                         uint32_t dealRowCount,
-                        AscendC::GlobalTensor<T> &gmAccumOut,
-                        AscendC::GlobalTensor<T> &gmSoftmaxSum)
+                        AscendC::GlobalTensor<T> &gmAccumOut)
     {
         // Slot validity check from UB (no GM round-trip). After CopyLseIn +
         // ComputeScaleValue, lseMaxBuf_ holds the per-slot rowMax in broadcast
@@ -254,6 +248,12 @@ private:
         // once instead of continue. Skipping CopyAccumOutIn + ReduceFinalRes_VF
         // for invalid splits avoids Divs-by-zero (rowSum==0) and stale-UB
         // accumulation; scale[j]==0 from ComputeScaleValue makes them 0 anyway.
+        // The per-row rowSum for the regbase Div is reused from the compact rowSum
+        // already staged by CopyLseIn into broadCastTmp_ (lseSumTmpBuf =
+        // broadCastTmpBuf_[alignedLseCount], layout [topK, dealRowCount]); no GM
+        // re-read or SetValue here.
+        uint32_t lseCount = dealRowCount * topK_;
+        uint32_t alignedLseCount = RoundUp(lseCount, FP32_ONE_BLOCK_SIZE);
         for (uint32_t j = 0; j < actualCombineLoopSize_; ++j) {
             uint32_t maxOff = j * dealRowCount * FP32_ONE_BLOCK_SIZE;
             float firstRowMax = lseMaxBuf_[maxOff].GetValue(0);
@@ -264,9 +264,14 @@ private:
             }
             CopyAccumOutIn(
                 qToken, kvHeadIdx, j, startRow, dealRowCount,
-                gmAccumOut, gmSoftmaxSum, accumOutBuf_);
-            FaVectorApi::ReduceFinalRes_VF<T>(
-                dst, scaleLocal, accumOutBuf_, dealRowCount,
+                gmAccumOut, accumOutBuf_);
+            // split j's compact per-row rowSum (one scalar per row): slice into the
+            // lseSumTmpBuf region staged by CopyLseIn.
+            uint64_t rowSumOff = static_cast<uint64_t>(alignedLseCount)
+                + static_cast<uint64_t>(j) * dealRowCount;
+            AscendC::LocalTensor<T> rowSumLocal = broadCastTmpBuf_[rowSumOff];
+            FaVectorApiPrefill::ReduceFinalRes_VF<T>(
+                dst, scaleLocal, accumOutBuf_, rowSumLocal, dealRowCount,
                 static_cast<uint64_t>(headDimAlignFp32_), j);
             AscendC::PipeBarrier<PIPE_ALL>();  // TODO: remove this
             //AscendC::DumpTensor(accumOutBuf_, 123, 8);
@@ -337,7 +342,7 @@ private:
             AscendC::LocalTensor<T> dst = dstBuf_;
             ReduceFinalRes(
                 qToken, kvHeadIdx, dst, lseSumBuf_, startRow, gSplitSize,
-                gmAccumOut, gmSoftmaxSum);
+                gmAccumOut);
             CopyFinalResOut(attenOutOffset, gmO, dst, startRow, gSplitSize);
         }
 
@@ -349,7 +354,7 @@ private:
             AscendC::LocalTensor<T> dst = dstBuf_;
             ReduceFinalRes(
                 qToken, kvHeadIdx, dst, lseSumBuf_, startRow, tailSplitSize,
-                gmAccumOut, gmSoftmaxSum);
+                gmAccumOut);
             CopyFinalResOut(attenOutOffset, gmO, dst, startRow, tailSplitSize);
         }
     }
