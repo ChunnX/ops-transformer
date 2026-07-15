@@ -64,10 +64,10 @@ public:
             .ParamType(OPTIONAL)
             .DataTypeList({ge::DT_FLOAT, ge::DT_FLOAT8_E8M0})
             .FormatList({ge::FORMAT_ND});
-        this->Input("pDequantScaleOptional")
+        this->Input("pQuantScaleOptional")
             .ParamType(OPTIONAL)
             .DataTypeList({ge::DT_FLOAT8_E8M0})
-            .FormatList({ge::FORMAT_ND});
+            .FormatList({ge::DT_FLOAT});
         this->Output("attentionOut")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT16, ge::DT_BF16})
