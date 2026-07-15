@@ -65,7 +65,6 @@ constexpr uint32_t X1_INDEX = 0;
 constexpr uint32_t X2_INDEX = 1;
 } // namespace
 
-static constexpr int64_t COMM_MODE_RANKSIZE = 8;
 static constexpr int64_t CMP_MAX_LEN = 7;
 
 bool AllGatherQuantBmmTiling::IsCapable()
@@ -704,10 +703,20 @@ CutResult AllGatherQuantBmmTiling::GetTilingResult()
     AllGatherMMFitBalanceTiling tileFormulate(args_, KernelType::ALL_GATHER, TopoType::STANDARD_CARD);
     CutResult result = tileFormulate.GetTiling();
 
+    bool isCcuMode = (std::strncmp(commMode_, "ccu", CMP_MAX_LEN) == 0);
+
+    auto kValue = args_.kValue;
+    auto inputDtypeSize = args_.inputDtypeSize;
     if (isFp4_) {
-        AdjustCutResultForHCCL(result, args_.mValue, args_.kValue / EVEN_ALIGN, 1, args_.rankDim, opName_);
+        kValue = args_.kValue / EVEN_ALIGN;
+        inputDtypeSize = 1;
+    }
+
+    if (isCcuMode) {
+        CommSizeInfo commSize{kValue, inputDtypeSize, args_.rankDim};
+        AdjustCutResultForCCU(result, args_.mValue, commSize, opName_);
     } else {
-        AdjustCutResultForHCCL(result, args_.mValue, args_.kValue, args_.inputDtypeSize, args_.rankDim, opName_);
+        AdjustCutResultForAICPU(result, args_.mValue, tileFormulate.matmulPerf_.GetBaseM(), opName_);
     }
 
     return result;
