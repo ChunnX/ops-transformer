@@ -83,8 +83,8 @@ aclnnStatus aclnnMegaMoeGetWorkspaceSize(
     const aclTensorList *weight1, const aclTensorList *weight2, const aclTensorList *weightScales1Optional,
     const aclTensorList *weightScales2Optional, const aclTensorList *bias1Optional, const aclTensorList *bias2Optional,
     const aclTensor *xActiveMaskOptional, const aclTensorList *sharedWeight1Optional,
-    const aclTensorList *sharedWeight2Optional, const aclTensorList *sharedWeightScale1Optional,
-    const aclTensorList *sharedWeightScale2Optional, const aclTensorList *sharedBias1Optional,
+    const aclTensorList *sharedWeight2Optional, const aclTensorList *sharedWeightScales1Optional,
+    const aclTensorList *sharedWeightScales2Optional, const aclTensorList *sharedBias1Optional,
     const aclTensorList *sharedBias2Optional, int64_t moeExpertNum, int64_t epWorldSize, int64_t cclBufferSize,
     int64_t maxRecvTokenNum, int64_t dispatchQuantMode, int64_t dispatchQuantOutDtype, int64_t combineQuantMode,
     const char *commAlg, int64_t numMaxTokensPerRank, const char *activation, float activationClamp, int64_t topoType,
@@ -126,8 +126,8 @@ aclnnStatus aclnnMegaMoeGetWorkspaceSize(
     aclTensorList *tmpSharedScaleList = nullptr;
     CreateEmptyTensor(ACL_FLOAT, sharedBias1Optional, tmpSharedBiasList, *executor);
     CreateEmptyTensor(ACL_FLOAT, sharedBias2Optional, tmpSharedBiasList, *executor);
-    CreateEmptyTensor(ACL_UINT64, sharedWeightScale1Optional, tmpSharedScaleList, *executor);
-    CreateEmptyTensor(ACL_UINT64, sharedWeightScale2Optional, tmpSharedScaleList, *executor);
+    CreateEmptyTensor(ACL_UINT64, sharedWeightScales1Optional, tmpSharedScaleList, *executor);
+    CreateEmptyTensor(ACL_UINT64, sharedWeightScales2Optional, tmpSharedScaleList, *executor);
 
     // 只在DAV_2201架构上对x1和x2进行int32到int4的转换预处理
     if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2201) {
@@ -143,7 +143,7 @@ aclnnStatus aclnnMegaMoeGetWorkspaceSize(
         context, x, topkIds, topkWeights, weight1, weight2,
         weightScales1Optional, weightScales2Optional, bias1Optional, bias2Optional,
         xActiveMaskOptional, nullptr, sharedWeight1Optional, sharedWeight2Optional,
-        sharedWeightScale1Optional, sharedWeightScale2Optional, sharedBias1Optional, sharedBias2Optional,
+        sharedWeightScales1Optional, sharedWeightScales2Optional, sharedBias1Optional, sharedBias2Optional,
         moeExpertNum, epWorldSize, cclBufferSize, maxRecvTokenNum,
         dispatchQuantMode, dispatchQuantOutDtype, combineQuantMode, const_cast<char *>(commAlg), 0,
         const_cast<char *>(activation), activationClamp, ge::DT_UNDEFINED, false, false, 0, topoType,

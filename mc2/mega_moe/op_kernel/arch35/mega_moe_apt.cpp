@@ -36,8 +36,8 @@ template<uint8_t DispatchQuantMode, uint8_t DispatchQuantOutType, uint8_t Combin
 __global__ __aicore__ void mega_moe(
     GM_ADDR context, GM_ADDR x, GM_ADDR topkIds, GM_ADDR topkWeights, GM_ADDR weight1, GM_ADDR weight2,
     GM_ADDR weightScales1, GM_ADDR weightScales2, GM_ADDR bias1, GM_ADDR bias2, GM_ADDR xActiveMask,
-    GM_ADDR scales, GM_ADDR sharedWeight1, GM_ADDR sharedWeight2, GM_ADDR sharedWeightScale1,
-    GM_ADDR sharedWeightScale2, GM_ADDR sharedBias1, GM_ADDR sharedBias2, GM_ADDR yOut,
+    GM_ADDR scales, GM_ADDR sharedWeight1, GM_ADDR sharedWeight2, GM_ADDR sharedWeightScales1,
+    GM_ADDR sharedWeightScales2, GM_ADDR sharedBias1, GM_ADDR sharedBias2, GM_ADDR yOut,
     GM_ADDR expertTokenNumsOut, GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
     InitSocState();
@@ -57,7 +57,7 @@ __global__ __aicore__ void mega_moe(
         MegaMoe<DTYPE_X, DTYPE_Y, DTYPE_TOPK_WEIGHTS, DTYPE_WEIGHT1,
             DispatchQuantOutType, CombineQuantOutType> op;
             op.Init(context, x, topkIds, topkWeights, weight1, weight2, xActiveMask, weightScales1, weightScales2,
-                    scales, sharedWeight1, sharedWeight2, sharedWeightScale1, sharedWeightScale2,
+                    scales, sharedWeight1, sharedWeight2, sharedWeightScales1, sharedWeightScales2,
                     yOut, expertTokenNumsOut, workspaceGM, &tilingData);
             op.Process();
         }
@@ -66,7 +66,7 @@ __global__ __aicore__ void mega_moe(
             MegaMoeLayered<DTYPE_X, DTYPE_Y, DTYPE_TOPK_WEIGHTS, DTYPE_WEIGHT1,
             DispatchQuantOutType, CombineQuantOutType> op;
             op.Init(context, x, topkIds, topkWeights, weight1, weight2, xActiveMask, weightScales1, weightScales2,
-                    scales, sharedWeight1, sharedWeight2, sharedWeightScale1, sharedWeightScale2,
+                    scales, sharedWeight1, sharedWeight2, sharedWeightScales1, sharedWeightScales2,
                     yOut, expertTokenNumsOut, workspaceGM, &tilingData);
             op.Process();
         }

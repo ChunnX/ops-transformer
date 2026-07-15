@@ -644,19 +644,19 @@ static ge::graphStatus CheckSharedExpertInputs(const gert::TilingContext *contex
                     return ge::GRAPH_FAILED);
 
     auto weightScales1Desc = context->GetDynamicInputDesc(config.weightScales1Index, 0);
-    auto sharedWeightScale1Desc = context->GetDynamicInputDesc(config.sharedWeightScale1Index, 0);
-    OP_TILING_CHECK(sharedWeightScale1Desc == nullptr,
-                    OP_LOGE_WITH_INVALID_INPUT(nodeName, "shared_weight_scale1 must be provided when sharedExpertNum > 0"),
+    auto sharedWeightScales1Desc = context->GetDynamicInputDesc(config.sharedWeightScales1Index, 0);
+    OP_TILING_CHECK(sharedWeightScales1Desc == nullptr,
+                    OP_LOGE_WITH_INVALID_INPUT(nodeName, "shared_weight_scales1 must be provided when sharedExpertNum > 0"),
                     return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(sharedWeightScale1Desc->GetDataType() != weightScales1Desc->GetDataType(),
-                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "shared_weight_scale1 dtype",
-                        std::to_string(sharedWeightScale1Desc->GetDataType()).c_str(),
+    OP_TILING_CHECK(sharedWeightScales1Desc->GetDataType() != weightScales1Desc->GetDataType(),
+                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "shared_weight_scales1 dtype",
+                        std::to_string(sharedWeightScales1Desc->GetDataType()).c_str(),
                         "must be same as weight_scales1"),
                     return ge::GRAPH_FAILED);
 
-    auto sharedWeightScale2Desc = context->GetDynamicInputDesc(config.sharedWeightScale2Index, 0);
-    OP_TILING_CHECK(sharedWeightScale2Desc == nullptr,
-                    OP_LOGE_WITH_INVALID_INPUT(nodeName, "shared_weight_scale2 must be provided when sharedExpertNum > 0"),
+    auto sharedWeightScales2Desc = context->GetDynamicInputDesc(config.sharedWeightScales2Index, 0);
+    OP_TILING_CHECK(sharedWeightScales2Desc == nullptr,
+                    OP_LOGE_WITH_INVALID_INPUT(nodeName, "shared_weight_scales2 must be provided when sharedExpertNum > 0"),
                     return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;

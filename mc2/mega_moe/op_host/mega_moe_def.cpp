@@ -134,12 +134,12 @@ public:
                      ge::FORMAT_FRACTAL_NZ_C0_32, ge::FORMAT_FRACTAL_NZ_C0_32
 #endif
             });
-        this->Input("shared_weight_scale1")
+        this->Input("shared_weight_scales1")
             .ParamType(DYNAMIC)
             .DataTypeList({ge::DT_FLOAT8_E8M0})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
-        this->Input("shared_weight_scale2")
+        this->Input("shared_weight_scales2")
             .ParamType(DYNAMIC)
             .DataTypeList({ge::DT_FLOAT8_E8M0})
             .FormatList({ge::FORMAT_ND})
@@ -286,12 +286,12 @@ public:
                      ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ, ge::FORMAT_ND, ge::FORMAT_ND,
                      ge::FORMAT_ND, ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ})
             .IgnoreContiguous();
-        aicore_config_arch22.Input("shared_weight_scale1")
+        aicore_config_arch22.Input("shared_weight_scales1")
             .ParamType(DYNAMIC)
             .DataTypeList({ge::DT_UINT64})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
-        aicore_config_arch22.Input("shared_weight_scale2")
+        aicore_config_arch22.Input("shared_weight_scales2")
             .ParamType(DYNAMIC)
             .DataTypeList({ge::DT_UINT64})
             .FormatList({ge::FORMAT_ND})

@@ -28,8 +28,8 @@ NpuMegaMoe(const at::Tensor &context, const at::Tensor &x, const at::Tensor &top
            c10::optional<int64_t> rankNumPerServer,
            const c10::optional<std::vector<at::Tensor>> &sharedWeight1,
            const c10::optional<std::vector<at::Tensor>> &sharedWeight2,
-           const c10::optional<std::vector<at::Tensor>> &sharedWeightScale1,
-           const c10::optional<std::vector<at::Tensor>> &sharedWeightScale2,
+           const c10::optional<std::vector<at::Tensor>> &sharedWeightScales1,
+           const c10::optional<std::vector<at::Tensor>> &sharedWeightScales2,
            const c10::optional<std::vector<at::Tensor>> &sharedBias1,
            const c10::optional<std::vector<at::Tensor>> &sharedBias2)
 {
@@ -139,17 +139,17 @@ NpuMegaMoe(const at::Tensor &context, const at::Tensor &x, const at::Tensor &top
     } else {
         sharedWeight2Ref = at::TensorList();
     }
-    at::TensorList sharedWeightScale1Ref;
-    if (sharedWeightScale1.has_value()) {
-        sharedWeightScale1Ref = at::TensorList(sharedWeightScale1.value());
+    at::TensorList sharedWeightScales1Ref;
+    if (sharedWeightScales1.has_value()) {
+        sharedWeightScales1Ref = at::TensorList(sharedWeightScales1.value());
     } else {
-        sharedWeightScale1Ref = at::TensorList();
+        sharedWeightScales1Ref = at::TensorList();
     }
-    at::TensorList sharedWeightScale2Ref;
-    if (sharedWeightScale2.has_value()) {
-        sharedWeightScale2Ref = at::TensorList(sharedWeightScale2.value());
+    at::TensorList sharedWeightScales2Ref;
+    if (sharedWeightScales2.has_value()) {
+        sharedWeightScales2Ref = at::TensorList(sharedWeightScales2.value());
     } else {
-        sharedWeightScale2Ref = at::TensorList();
+        sharedWeightScales2Ref = at::TensorList();
     }
     at::TensorList sharedBias1Ref;
     if (sharedBias1.has_value()) {
@@ -166,17 +166,19 @@ NpuMegaMoe(const at::Tensor &context, const at::Tensor &x, const at::Tensor &top
 
     TensorListWrapper sharedWeight1Wrapper = {sharedWeight1Ref, weight1RefDtype};
     TensorListWrapper sharedWeight2Wrapper = {sharedWeight2Ref, weight2RefDtype};
-    TensorListWrapper sharedWeightScale1Wrapper = {sharedWeightScale1Ref, weightScales1Dtype};
-    TensorListWrapper sharedWeightScale2Wrapper = {sharedWeightScale2Ref, weightScales2Dtype};
+    TensorListWrapper sharedWeightScales1Wrapper = {sharedWeightScales1Ref, weightScales1Dtype};
+    TensorListWrapper sharedWeightScales2Wrapper = {sharedWeightScales2Ref, weightScales2Dtype};
     TensorListWrapper sharedBias1Wrapper = {sharedBias1Ref, aclDataType::ACL_FLOAT};
     TensorListWrapper sharedBias2Wrapper = {sharedBias2Ref, aclDataType::ACL_FLOAT};
 
     ACLNN_CMD(aclnnMegaMoe, context, x, topkIds, topkWeights, weight1Wrapper, weight2Wrapper, weightScales1Wrapper,
-              weightScales2Wrapper, bias1Wrapper, bias2Wrapper, xActiveMask, moeExpertNum, epWorldSize, cclBufferSize,
+              weightScales2Wrapper, bias1Wrapper, bias2Wrapper, xActiveMask,
+              sharedWeight1Wrapper, sharedWeight2Wrapper, sharedWeightScales1Wrapper,
+              sharedWeightScales2Wrapper, sharedBias1Wrapper, sharedBias2Wrapper,
+              moeExpertNum, epWorldSize, cclBufferSize,
               maxRecvTokenNum, dispatchQuantMode, dispatchQuantResultType, combineQuantMode, commAlgPtr,
               numMaxTokensPerRank, activationPtr, activationClampValue, topoTypeValue,
-              rankNumPerServerValue, sharedWeight1Wrapper, sharedWeight2Wrapper, sharedWeightScale1Wrapper,
-              sharedWeightScale2Wrapper, sharedBias1Wrapper, sharedBias2Wrapper, y, expertTokenNums);
+              rankNumPerServerValue, y, expertTokenNums);
 
     return std::tie(y, expertTokenNums);
 }
