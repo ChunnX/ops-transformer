@@ -184,10 +184,10 @@ __aicore__ inline void FlashAttentionVarLenScoreSameAB<layOutType, hasPse, hasAt
             }
             AscendC::InitOutput<INPUT_T>(this->attentionOutGm[accumSize * this->n2GD2],
                                          actualS1Len * this->n2GD2, static_cast<INPUT_T>(0.0));
-            AscendC::InitOutput<float>(this->softmaxMaxGm[accumSize * this->n2G * 8],
-                                       actualS1Len * this->n2G * 8, static_cast<float>(0.0));
-            AscendC::InitOutput<float>(this->softmaxSumGm[accumSize * this->n2G * 8],
-                                       actualS1Len * this->n2G * 8, static_cast<float>(0.0));
+            AscendC::InitOutput<half>(this->softmaxMaxGm[accumSize * this->n2G * 8],
+                                       actualS1Len * this->n2G * 8, static_cast<half>(0.0));
+            AscendC::InitOutput<half>(this->softmaxSumGm[accumSize * this->n2G * 8],
+                                       actualS1Len * this->n2G * 8, static_cast<half>(0.0));
         }
     }
     this->InitBuffer();

@@ -2201,7 +2201,7 @@ void FlashAttentionScoreTilingBase::SetSoftMaxTiling()
 {
     auto softmaxShape = ge::Shape({batchBasic, std::min(s1BasicBlock, alignedS1), std::min(s2BasicBlock, alignedS2)});
 
-    AscendC::SoftMaxFlashV2TilingFunc(softmaxShape, calcTypeSize, sizeof(float), apiMaxUBSize,
+    AscendC::SoftMaxFlashV2TilingFunc(softmaxShape, calcTypeSize, sizeof(half), apiMaxUBSize,
                                       tilingData->softmaxFlashTilingData, true, IsBasicBlockInSoftMax(softmaxShape));
 }
 
@@ -2251,8 +2251,8 @@ void FlashAttentionScoreTilingBase::SetTensorSizeParams()
             tensorSizeParams.set_castUbSize(batchInnerSize * s1BasicBlock * s2BasicBlock);
         }
     }
-    tensorSizeParams.set_softmaxMaxUbSize(batchInnerSize * s1BasicBlock * (BYTE_BLOCK / sizeof(float)));
-    tensorSizeParams.set_softmaxSumUbSize(batchInnerSize * s1BasicBlock * (BYTE_BLOCK / sizeof(float)));
+    tensorSizeParams.set_softmaxMaxUbSize(batchInnerSize * s1BasicBlock * (BYTE_BLOCK / sizeof(half)));
+    tensorSizeParams.set_softmaxSumUbSize(batchInnerSize * s1BasicBlock * (BYTE_BLOCK / sizeof(half)));
     tensorSizeParams.set_softmaxExpUbSize(batchInnerSize * s1BasicBlock * (BYTE_BLOCK / calcTypeSize));
     tensorSizeParams.set_apiTmpBufferBytes(apiMaxUBSize);
 
@@ -2769,7 +2769,7 @@ protected:
 
     bool CalcUBSize(int64_t tmpS1BasicBlock, int64_t tmpS2BasicBlock) override
     {
-        apiMaxUBSize = tmpS1BasicBlock * tmpS2BasicBlock * sizeof(float) + softmaxExtraSize;
+        apiMaxUBSize = tmpS1BasicBlock * tmpS2BasicBlock * sizeof(half) + softmaxExtraSize;
         return true;
     }
 
@@ -3069,8 +3069,8 @@ protected:
                 tensorSizeParams.set_castUbSize(s1BasicBlock * s2BasicBlock);
             }
         }
-        tensorSizeParams.set_softmaxMaxUbSize(s1BasicBlock * (BYTE_BLOCK / sizeof(float)));
-        tensorSizeParams.set_softmaxSumUbSize(s1BasicBlock * (BYTE_BLOCK / sizeof(float)));
+        tensorSizeParams.set_softmaxMaxUbSize(s1BasicBlock * (BYTE_BLOCK / sizeof(half)));
+        tensorSizeParams.set_softmaxSumUbSize(s1BasicBlock * (BYTE_BLOCK / sizeof(half)));
         tensorSizeParams.set_softmaxExpUbSize(s1BasicBlock * (BYTE_BLOCK / calcTypeSize));
         tensorSizeParams.set_apiTmpBufferBytes(apiMaxUBSize);
         tensorSizeParams.set_bmm2ResUbSize(coreParams.get_s1Vec2BaseSize() * dBasicBlock);
@@ -3190,7 +3190,7 @@ protected:
 
     bool CalcUBSize(int64_t tmpS1BasicBlock, int64_t tmpS2BasicBlock) override
     {
-        apiMaxUBSize = HIGH_PERF_API_BUFFER_MULTIPLE * tmpS1BasicBlock * tmpS2BasicBlock * sizeof(float);
+        apiMaxUBSize = HIGH_PERF_API_BUFFER_MULTIPLE * tmpS1BasicBlock * tmpS2BasicBlock * sizeof(half);
         return true;
     }
 
@@ -3222,7 +3222,7 @@ protected:
     void SetSoftMaxTiling() override
     {
         auto softmaxShape = ge::Shape({s1BasicBlock, s2BasicBlock});
-        AscendC::SoftMaxFlashV2TilingFunc(softmaxShape, calcTypeSize, sizeof(float), apiMaxUBSize,
+        AscendC::SoftMaxFlashV2TilingFunc(softmaxShape, calcTypeSize, sizeof(half), apiMaxUBSize,
                                           tilingData->softmaxFlashTilingData, true, IsBasicBlockInSoftMax(softmaxShape));
     }
 };
@@ -3431,7 +3431,7 @@ protected:
 
     bool CalcUBSize(int64_t tmpS1BasicBlock, int64_t tmpS2BasicBlock) override
     {
-        apiMaxUBSize = HIGH_PERF_API_BUFFER_MULTIPLE * tmpS1BasicBlock * tmpS2BasicBlock * sizeof(float);
+        apiMaxUBSize = HIGH_PERF_API_BUFFER_MULTIPLE * tmpS1BasicBlock * tmpS2BasicBlock * sizeof(half);
         return true;
     }
 
@@ -3496,7 +3496,7 @@ protected:
     {
         auto softmaxShape = ge::Shape({s1BasicBlock / GetNRatio(), s2BasicBlock * GetNRatio()});
 
-        AscendC::SoftMaxFlashV2TilingFunc(softmaxShape, calcTypeSize, sizeof(float), apiMaxUBSize,
+        AscendC::SoftMaxFlashV2TilingFunc(softmaxShape, calcTypeSize, sizeof(half), apiMaxUBSize,
                                           tilingData->softmaxFlashTilingData, true, IsBasicBlockInSoftMax(softmaxShape));
     }
 
@@ -3740,7 +3740,7 @@ protected:
 
     bool CalcUBSize(int64_t tmpS1BasicBlock, int64_t tmpS2BasicBlock) override
     {
-        apiMaxUBSize = HIGH_PERF_API_BUFFER_MULTIPLE * tmpS1BasicBlock * tmpS2BasicBlock * sizeof(float);
+        apiMaxUBSize = HIGH_PERF_API_BUFFER_MULTIPLE * tmpS1BasicBlock * tmpS2BasicBlock * sizeof(half);
         return true;
     }
 
@@ -3779,7 +3779,7 @@ protected:
     {
         auto softmaxShape = ge::Shape({s1VecBasicBlock / GetNRatio(), s2BasicBlock * GetNRatio()});
 
-        AscendC::SoftMaxFlashV2TilingFunc(softmaxShape, calcTypeSize, sizeof(float), apiMaxUBSize,
+        AscendC::SoftMaxFlashV2TilingFunc(softmaxShape, calcTypeSize, sizeof(half), apiMaxUBSize,
                                           tilingData->softmaxFlashTilingData, true, IsBasicBlockInSoftMax(softmaxShape));
     }
 
@@ -4057,7 +4057,7 @@ protected:
 
     bool CalcUBSize(int64_t tmpS1BasicBlock, int64_t tmpS2BasicBlock) override
     {
-        apiMaxUBSize = HIGH_PERF_API_BUFFER_MULTIPLE * tmpS1BasicBlock * tmpS2BasicBlock * sizeof(float);
+        apiMaxUBSize = HIGH_PERF_API_BUFFER_MULTIPLE * tmpS1BasicBlock * tmpS2BasicBlock * sizeof(half);
         return true;
     }
 
@@ -4121,7 +4121,7 @@ protected:
     void SetSoftMaxTiling() override
     {
         auto softmaxShape = ge::Shape({s1BasicBlock / GetNRatio(), s2BasicBlock * GetNRatio()});
-        AscendC::SoftMaxFlashV2TilingFunc(softmaxShape, calcTypeSize, sizeof(float), apiMaxUBSize,
+        AscendC::SoftMaxFlashV2TilingFunc(softmaxShape, calcTypeSize, sizeof(half), apiMaxUBSize,
                                           tilingData->softmaxFlashTilingData, true, IsBasicBlockInSoftMax(softmaxShape));
     }
 

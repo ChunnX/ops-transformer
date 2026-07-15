@@ -44,8 +44,8 @@ FlashAttentionScoreEmptyTensor<INPUT_T>::Init(__gm__ uint8_t *softmaxMax, __gm__
 {
     tmpBlockIdx = AscendC::GetBlockIdx();
     tilingData = tiling;
-    softmaxMaxGm.SetGlobalBuffer((__gm__ float *)softmaxMax);
-    softmaxSumGm.SetGlobalBuffer((__gm__ float *)softmaxSum);
+    softmaxMaxGm.SetGlobalBuffer((__gm__ half *)softmaxMax);
+    softmaxSumGm.SetGlobalBuffer((__gm__ half *)softmaxSum);
     attentionOutGm.SetGlobalBuffer((__gm__ INPUT_T *)attentionOut);
 }
 
@@ -91,21 +91,21 @@ template <typename INPUT_T> __aicore__ inline void FlashAttentionScoreEmptyTenso
     if (tmpBlockIdx >= (softmaxMaxFormerNum + softmaxMaxTailNum)) {
         return;
     } else if (tmpBlockIdx < softmaxMaxFormerNum) {
-        AscendC::InitOutput<float>(softmaxMaxGm[tmpBlockIdx * softmaxMaxSingleCoreDataSize],
+        AscendC::InitOutput<half>(softmaxMaxGm[tmpBlockIdx * softmaxMaxSingleCoreDataSize],
                                    tilingData->emptyInputTilingData.softmaxMaxSingleCoreDataSize,
-                                   static_cast<float>(0.0));
-        AscendC::InitOutput<float>(softmaxSumGm[tmpBlockIdx * softmaxMaxSingleCoreDataSize],
+                                   static_cast<half>(0.0));
+        AscendC::InitOutput<half>(softmaxSumGm[tmpBlockIdx * softmaxMaxSingleCoreDataSize],
                                    tilingData->emptyInputTilingData.softmaxMaxSingleCoreDataSize,
-                                   static_cast<float>(0.0));
+                                   static_cast<half>(0.0));
     } else {
-        AscendC::InitOutput<float>(softmaxMaxGm[softmaxMaxFormerNum * softmaxMaxSingleCoreDataSize +
+        AscendC::InitOutput<half>(softmaxMaxGm[softmaxMaxFormerNum * softmaxMaxSingleCoreDataSize +
                                                 (tmpBlockIdx - softmaxMaxFormerNum) * softmaxMaxTailCoreDataSize],
                                    tilingData->emptyInputTilingData.softmaxMaxTailCoreDataSize,
-                                   static_cast<float>(0.0));
-        AscendC::InitOutput<float>(softmaxSumGm[softmaxMaxFormerNum * softmaxMaxSingleCoreDataSize +
+                                   static_cast<half>(0.0));
+        AscendC::InitOutput<half>(softmaxSumGm[softmaxMaxFormerNum * softmaxMaxSingleCoreDataSize +
                                                 (tmpBlockIdx - softmaxMaxFormerNum) * softmaxMaxTailCoreDataSize],
                                    tilingData->emptyInputTilingData.softmaxMaxTailCoreDataSize,
-                                   static_cast<float>(0.0));
+                                   static_cast<half>(0.0));
     }
 }
 

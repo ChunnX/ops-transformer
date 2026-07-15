@@ -493,8 +493,8 @@ FlashAttentionScoreS1s2Bn2gs1SameAB<implMode, layOutType, hasPse, hasAtten, hasD
         this->dropMaskGm.SetGlobalBuffer((__gm__ uint8_t *)dropMask);
     }
     this->attenMaskGmInt.SetGlobalBuffer((__gm__ uint8_t *)attenMask);
-    this->softmaxMaxGm.SetGlobalBuffer((__gm__ float *)softmaxMax);
-    this->softmaxSumGm.SetGlobalBuffer((__gm__ float *)softmaxSum);
+    this->softmaxMaxGm.SetGlobalBuffer((__gm__ half *)softmaxMax);
+    this->softmaxSumGm.SetGlobalBuffer((__gm__ half *)softmaxSum);
     this->sinkGm.SetGlobalBuffer((__gm__ float *)sink);
     this->attentionOutGm.SetGlobalBuffer((__gm__ INPUT_T *)attentionOut);
 
@@ -588,11 +588,11 @@ __aicore__ inline void FlashAttentionScoreS1s2Bn2gs1SameAB<implMode, layOutType,
     this->pipe->InitBuffer(this->stage2TBuf, stage2Size * sizeof(T));    // t.c 32k
     this->pipe->InitBuffer(this->commonTBuf, stage2Size * sizeof(T));    // t.b 32k
 
-    this->pipe->InitBuffer(this->softmaxSumBuf[0], vecS1BaseSize * 4 * this->softmaxReduceSize);  // 2k
-    this->pipe->InitBuffer(this->softmaxSumBuf[1], vecS1BaseSize * 4 * this->softmaxReduceSize);  // 2k
-    this->pipe->InitBuffer(this->softmaxMaxBuf, vecS1BaseSize * 4 * this->softmaxReduceSize);     // 2k
-    this->pipe->InitBuffer(this->softmaxExpBuf[0], vecS1BaseSize * 4 * this->softmaxReduceSize);  // 2k
-    this->pipe->InitBuffer(this->softmaxExpBuf[1], vecS1BaseSize * 4 * this->softmaxReduceSize);  // 2k
+    this->pipe->InitBuffer(this->softmaxSumBuf[0], vecS1BaseSize * 2 * this->softmaxReduceSize);  // 2k
+    this->pipe->InitBuffer(this->softmaxSumBuf[1], vecS1BaseSize * 2 * this->softmaxReduceSize);  // 2k
+    this->pipe->InitBuffer(this->softmaxMaxBuf, vecS1BaseSize * 2 * this->softmaxReduceSize);     // 2k
+    this->pipe->InitBuffer(this->softmaxExpBuf[0], vecS1BaseSize * 2 * this->softmaxReduceSize);  // 2k
+    this->pipe->InitBuffer(this->softmaxExpBuf[1], vecS1BaseSize * 2 * this->softmaxReduceSize);  // 2k
     if (this->softmaxReduceSize == 1) {
         this->pipe->InitBuffer(this->softmaxTempBuf, vecS1BaseSize * blockBytes);    // 16k
     }

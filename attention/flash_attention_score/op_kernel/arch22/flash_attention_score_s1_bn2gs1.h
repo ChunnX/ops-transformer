@@ -377,8 +377,8 @@ __aicore__ inline void FlashAttentionScoreS1Bn2gs1<FA_S1BN2GS1_FUNCTION_PARAMS_T
         this->dropMaskGm.SetGlobalBuffer((__gm__ uint8_t *)dropMask);
     }
     this->attenMaskGmInt.SetGlobalBuffer((__gm__ uint8_t *)attenMask);
-    this->softmaxMaxGm.SetGlobalBuffer((__gm__ float *)softmaxMax);
-    this->softmaxSumGm.SetGlobalBuffer((__gm__ float *)softmaxSum);
+    this->softmaxMaxGm.SetGlobalBuffer((__gm__ half *)softmaxMax);
+    this->softmaxSumGm.SetGlobalBuffer((__gm__ half *)softmaxSum);
     this->sinkGm.SetGlobalBuffer((__gm__ float *)sink);
     this->attentionOutGm.SetGlobalBuffer((__gm__ INPUT_T *)attentionOut);
 
