@@ -10,7 +10,7 @@
 
 /*!
  * \file qfa_checker.h
- * \brief QFAChecker - manages all checkers for QuantFlashAttn
+ * \brief QfaChecker using Composite Pattern - manages all checkers uniformly
  */
 
 #ifndef QUANT_FLASH_ATTN_QFA_CHECKER_H
@@ -20,10 +20,16 @@
 #include <vector>
 #include <functional>
 #include "tiling/tiling_api.h"
+#include "base_checker.h"
 
-#include "../qfa_tiling_info.h"
-#include "../qfa_tiling_shape.h"
-#include "../quant_flash_attn_tiling_utils.h"
+#include "./common_checker.h"
+#include "./quant_checker.h"
+#include "./mask_checker.h"
+#include "./metadata_checker.h"
+#include "./paged_attention_checker.h"
+#include "./seq_len_checker.h"
+#include "./sinks_checker.h"
+#include "./softmax_lse_checker.h"
 
 namespace optiling {
 namespace quant_flash_attn {
@@ -42,10 +48,13 @@ public:
     ge::graphStatus CheckMultiPara(const QfaTilingInfo &qfaInfo);
 
 private:
-    ge::graphStatus CheckDtypeSupport(const QfaTilingInfo &qfaInfo);
-    ge::graphStatus CheckQuantMode(const QfaTilingInfo &qfaInfo);
-    ge::graphStatus CheckLayoutSupport(const QfaTilingInfo &qfaInfo);
-    ge::graphStatus CheckMaskParams(const QfaTilingInfo &qfaInfo);
+    using CheckMethod = std::function<ge::graphStatus(QfaBaseChecker *, const QfaTilingInfo &)>;
+
+    ge::graphStatus RunCheck(const CheckMethod &method, const QfaTilingInfo &qfaInfo);
+
+    void RegisterCheckers();
+
+    std::vector<std::unique_ptr<QfaBaseChecker>> checkers_;
 };
 
 } // namespace quant_flash_attn

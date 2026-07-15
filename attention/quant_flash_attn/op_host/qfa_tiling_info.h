@@ -274,6 +274,12 @@ public:
     QfaLayout qLayout = QfaLayout::BSND;
     QfaLayout outLayout = QfaLayout::BSND;
     QfaLayout kvLayout = QfaLayout::BSND;
+
+    // Strides (for non-contiguous tensor check)
+    const gert::Stride *keyStrides = nullptr;
+    const gert::Stride *valueStrides = nullptr;
+    const gert::Stride *kDescaleStrides = nullptr;
+    const gert::Stride *vDescaleStrides = nullptr;
 };
 
 // ============================================================
@@ -301,6 +307,7 @@ constexpr uint32_t DIM_NUM_2 = 2;
 constexpr uint32_t DIM_NUM_3 = 3;
 constexpr uint32_t DIM_NUM_4 = 4;
 constexpr uint32_t DIM_NUM_5 = 5;
+constexpr uint32_t DIM_NUM_6 = 6;
 
 constexpr uint32_t BLOCK_SIZE_MAX = 512;
 constexpr uint32_t BLOCK_SIZE_ALIGN_SIZE_16 = 16;

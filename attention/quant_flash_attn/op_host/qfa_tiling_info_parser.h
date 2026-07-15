@@ -105,6 +105,12 @@ public:
     QfaLayout layoutKV_ = QfaLayout::BSND;
     QfaLayout layoutOut_ = QfaLayout::BSND;
 
+    // Strides (for non-contiguous tensor check)
+    const gert::Stride *keyStrides_ = nullptr;
+    const gert::Stride *valueStrides_ = nullptr;
+    const gert::Stride *kDescaleStrides_ = nullptr;
+    const gert::Stride *vDescaleStrides_ = nullptr;
+
     // PageAttention
     int64_t maxBlockNumPerBatch_ = 0;
     int32_t blockNum_ = 0;
