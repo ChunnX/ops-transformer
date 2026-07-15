@@ -613,6 +613,7 @@ static aclnnStatus PostProcessOutput(const aclTensor *&l0AttentionOutOut, const 
 
 static bool CheckNotNull(const aclTensor* query, const aclTensor* key, const aclTensor* value,
                          char *inputLayout, const aclTensor *attentionOut) {
+    // 123
     OP_CHECK_NULL(query, return false);
     OP_CHECK_NULL(key, return false);
     OP_CHECK_NULL(value, return false);
