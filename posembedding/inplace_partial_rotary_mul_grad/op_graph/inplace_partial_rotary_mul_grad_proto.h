@@ -59,11 +59,6 @@ namespace ge {
  * mode, ("end" - "start") must be a multiple of 4. The case where "start" equals "end" is not supported.
  */
 
-/*!
- * \file inplace_partial_rotary_mul_grad_proto.h
- * \brief
- */
-
 REG_OP(InplacePartialRotaryMulGrad)
     .INPUT(dy, TensorType({DT_FLOAT16, DT_FLOAT, DT_BFLOAT16}))
     .INPUT(cos, TensorType({DT_FLOAT16, DT_FLOAT, DT_BFLOAT16}))

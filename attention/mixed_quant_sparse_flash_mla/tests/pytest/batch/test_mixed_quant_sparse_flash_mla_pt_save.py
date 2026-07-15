@@ -26,9 +26,9 @@ import argparse
 import concurrent.futures
 
 # 读取表格（支持通过环境变量传入）
-save_path = os.environ.get("QSMLA_PT_DIR", "qsmla_testcase")
-excel_file = os.environ.get("QSMLA_EXCEL", "./excel/example.xlsx")
-sheet_name = os.environ.get("QSMLA_SHEET", "decode")
+save_path = os.environ.get("MQSMLA_PT_DIR", "mqsmla_testcase")
+excel_file = os.environ.get("MQSMLA_EXCEL", "./excel/example.xlsx")
+sheet_name = os.environ.get("MQSMLA_SHEET", "decode")
 ENABLED_PARAMS = utils.load_excel_test_cases(excel_file, sheet_name)
 
 param_combinations = []
@@ -114,7 +114,7 @@ for _, params in enumerate(ENABLED_PARAMS):
     print(param_combinations)
 
 case_id = 0
-def qsmla(param_combinations):
+def mqsmla(param_combinations):
     global case_id
     params = utils.fill_none_params(param_combinations)
 
@@ -124,7 +124,7 @@ def qsmla(param_combinations):
         q_type_str = "BF16" if params['q_type'] == torch.bfloat16 else "FP16"
         kv_type_str = "HIF8" if params['ori_kv_type'] == torch.uint8 else "FP8_E4M3FN"
         prefix_part = f"{param_combinations['tc_prefix']}_"if param_combinations.get('tc_prefix', '') else ""
-        Testcase_Name = f"QSMLA_{prefix_part}{params['template_run_mode']}_{ops_mode}_{params['layout_q']}_{q_type_str}_{params['layout_kv']}_{kv_type_str}_{params['B']}_{params['N1']}_{params['N2']}_{params['S1']}_{params['S2']}_{params['D']}_{params['K']}_{params['rope_head_dim']}_{case_id:06d}"
+        Testcase_Name = f"MQSMLA_{prefix_part}{params['template_run_mode']}_{ops_mode}_{params['layout_q']}_{q_type_str}_{params['layout_kv']}_{kv_type_str}_{params['B']}_{params['N1']}_{params['N2']}_{params['S1']}_{params['S2']}_{params['D']}_{params['K']}_{params['rope_head_dim']}_{case_id:06d}"
         params['Testcase_Name'] = Testcase_Name
     print("input_params:", params)
 
@@ -143,7 +143,7 @@ def qsmla(param_combinations):
 def test_mixed_quant_sparse_flash_mla(param_combinations):   # 初始化参数和tensor
     # 线程池
     with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
-        futures = executor.submit(qsmla, param_combinations)
+        futures = executor.submit(mqsmla, param_combinations)
         # 等待并获取结果
         for future in concurrent.futures.as_completed([futures]):
             try:

@@ -20,8 +20,8 @@
 
 namespace {
 
-mc2tiling::TilingArgs MakeFormulaicArgs(uint64_t m, uint64_t k, uint64_t n, uint32_t rankDim,
-    uint64_t aicCoreNum = 30, ge::DataType dtype = ge::DT_FLOAT16)
+mc2tiling::TilingArgs MakeFormulaicArgs(uint64_t m, uint64_t k, uint64_t n, uint32_t rankDim, uint64_t aicCoreNum = 30,
+                                        ge::DataType dtype = ge::DT_FLOAT16)
 {
     mc2tiling::TilingArgs args{};
     args.cmdType = mc2tiling::AicpuComType::HCCL_CMD_ALLGATHER;
