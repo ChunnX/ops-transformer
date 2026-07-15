@@ -335,6 +335,7 @@ private:
     bool hasCmpKv_ = true;
     uint32_t aicCoreNum_ = optiling::AIC_CORE_MAX_NUM;
     uint32_t aivCoreNum_ = optiling::AIV_CORE_MAX_NUM;
+    int64_t batchConsistencyLevel_ = 0;
 
     // attr
     std::string socVersion_ = "";

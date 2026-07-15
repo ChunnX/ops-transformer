@@ -74,6 +74,7 @@ bool MixedQuantSparseFlashMlaMetadataCpuKernel::Prepare(CpuKernelContext &ctx)
     GetAttrValueOpt(ctx, "layout_kv", layoutKv_);
     GetAttrValueOpt(ctx, "has_ori_kv", hasOriKv_);
     GetAttrValueOpt(ctx, "has_cmp_kv", hasCmpKv_);
+    GetAttrValueOpt(ctx, "batch_consistency_level", batchConsistencyLevel_);
 
     return (ParamsCheck() && ParamsInit());
 }
