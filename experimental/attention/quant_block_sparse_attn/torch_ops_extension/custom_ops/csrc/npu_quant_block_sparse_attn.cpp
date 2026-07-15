@@ -25,10 +25,11 @@ const int64_t BSA_MXFP8_SCALE_GROUP_SIZE = 64;
 const int64_t BSA_MXFP8_SCALE_LAST_DIM = 2;
 
 // 工具函数，推导输出 attention_out / softmax_lse 的 shape 与 dtype
-//   - attention_out: BF16，layoutType只支持 "TND"
-//   - softmax_lse:   FLOAT32，layoutType只支持 "TND"
+//   - attention_out: BF16，输入支持 TND/NTD，输出统一为 TND
+//   - softmax_lse:   FLOAT32，FP8 为 (N1,T)，MXFP8 full-quant 为 (T,N1)
 std::tuple<at::Tensor, at::Tensor> construct_bsa_output_tensors(const at::Tensor &query, const at::Tensor &value,
-                                                                c10::string_view layout_q, bool return_softmax_lse)
+                                                                c10::string_view layout_q, int64_t quant_mode,
+                                                                bool return_softmax_lse)
 {
     TORCH_CHECK(query.dim() == DIM_THREE, "query should be 3D for layout_q TND/NTD, but got ", query.dim(), "D.");
     for (auto i = 0; i < query.sizes().size(); i++) {
@@ -48,8 +49,9 @@ std::tuple<at::Tensor, at::Tensor> construct_bsa_output_tensors(const at::Tensor
     int64_t d_size = query.size(2);
 
     at::SmallVector<int64_t, SIZE> atten_out_size = {t_size, n1_size, d_size};
-    at::SmallVector<int64_t, SIZE> softmax_lse_size = {n1_size, t_size};
-
+    at::SmallVector<int64_t, SIZE> softmax_lse_size =
+        (quant_mode == BSA_MXFP8_FULL_QUANT_MODE) ? at::SmallVector<int64_t, SIZE>{t_size, n1_size}
+                                                  : at::SmallVector<int64_t, SIZE>{n1_size, t_size};
     if (!return_softmax_lse) {
         softmax_lse_size = {};
     }
@@ -148,7 +150,7 @@ std::tuple<at::Tensor, at::Tensor> npu_quant_block_sparse_attn_npu(
 
     // construct the output tensors
     std::tuple<at::Tensor, at::Tensor> outputs =
-        construct_bsa_output_tensors(query, value, layout_q, return_softmax_lse);
+        construct_bsa_output_tensors(query, value, layout_q, quant_mode, return_softmax_lse);
     at::Tensor attention_out = std::get<0>(outputs);
     at::Tensor softmax_lse = std::get<1>(outputs);
 
@@ -185,7 +187,7 @@ std::tuple<at::Tensor, at::Tensor> npu_quant_block_sparse_attn_meta(
     c10::string_view layout_sparse_indices, c10::string_view layout_out, int64_t quant_mode, int64_t mask_mode,
     bool return_softmax_lse)
 {
-    return construct_bsa_output_tensors(query, value, layout_q, return_softmax_lse);
+    return construct_bsa_output_tensors(query, value, layout_q, quant_mode, return_softmax_lse);
 }
 } // namespace custom
 
