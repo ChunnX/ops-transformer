@@ -68,8 +68,7 @@ public:
 
 private:
     __aicore__ inline void SendAndQuantBuffInit(const AivThreadContext &thread);
-    __aicore__ inline bool UpdateGmm2GroupParams(const BlockWorkspaceContext &countWorkspace,
-        ExpertLoopState &state, uint32_t expertIdx);
+    __aicore__ inline bool UpdateGmm2GroupParams(ExpertLoopState &state, uint32_t expertIdx);
     __aicore__ inline void UpdateGmm2GlobalBuffer(
         GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &state);
     __aicore__ inline void Unpermute();
@@ -394,7 +393,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ExpertTokenNumCopyOut()
 // =====================================================================================================
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline bool MegaMoe<TemplateMegaMoeTypeFunc>::UpdateGmm2GroupParams(
-    const BlockWorkspaceContext &countWorkspace, ExpertLoopState &state, uint32_t expertIdx)
+    ExpertLoopState &state, uint32_t expertIdx)
 {
     if (expertIdx != 0) {
         uint64_t m = Get<M_VALUE>(state.problemShape);
@@ -420,8 +419,7 @@ __aicore__ inline bool MegaMoe<TemplateMegaMoeTypeFunc>::UpdateGmm2GroupParams(
         Get<IDX_GMM2_OFFSET>(state.baseOffset) += m * k;
     }
 
-    uint64_t offsetInCnt = expertIdx * INT32_PER_256B * countWorkspace.blockNum +
-        INT32_PER_256B * countWorkspace.blockIdx;
+    uint64_t offsetInCnt = expertIdx * INT32_PER_256B * aicNum_ + INT32_PER_256B * blockIdx_;
     DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(
         expertRevNumsGlobalTensor_[offsetInCnt]);
     Get<M_VALUE>(state.problemShape) = expertRevNumsGlobalTensor_.GetValue(offsetInCnt);
@@ -815,7 +813,10 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
     // 3. 本卡专家接收数据GroupMatmul2 & Combine
     // Preserve the original cross-stage rotation when the block counts match,
     // and normalize it before GMM2 when GMM1 used another logical block count.
-    gmm2StartBlockIdx_ = blockNum_ == 0U ? 0U : gmm1StartBlockIdx_ % blockNum_;
+    uint32_t gmm1BlockNum = gmm1PipelineContext_.threadBlock.threadBlockNum;
+    gmm2StartBlockIdx_ = gmm1BlockNum == blockNum_
+        ? gmm1StartBlockIdx_
+        : (blockNum_ == 0U ? 0U : gmm1StartBlockIdx_ % blockNum_);
     vecSetSyncCom_ = 0;
     GMMAddrInfo gmm2AddrInfo;
     TupleShape initShape;
@@ -823,11 +824,10 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
     Get<K_VALUE>(initShape) = k_;
     BlockOffset initOffset{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
     ExpertLoopState gmm2State{initShape, initOffset, 0};
-    BlockWorkspaceContext gmm2CountWorkspace{blockIdx_, aicNum_};
     InitCombineBuffers();
 
     for (uint32_t expertIdx = 0; expertIdx < expertPerRank_; expertIdx++) {
-        if (!UpdateGmm2GroupParams(gmm2CountWorkspace, gmm2State, expertIdx)) {
+        if (!UpdateGmm2GroupParams(gmm2State, expertIdx)) {
             continue;
         }
         UpdateGmm2GlobalBuffer(gmm2AddrInfo, gmm2State);
