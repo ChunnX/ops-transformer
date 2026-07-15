@@ -111,7 +111,7 @@ cann_ops_transformer.ops.quant_flash_attn(
     layout_q="BSND",
     layout_kv="BSND",
     layout_out="BSND",
-    return_softmax_lse=0
+    return_softmax_lse=False
 ) -> (Tensor, Tensor)
 ```
 
@@ -244,7 +244,7 @@ cann_ops_transformer.ops.quant_flash_attn(
 |                      |  max_seqlen_kv  | ATTR(OPTIONAL) |  int  |
 | Paged Attention参数组 |      block_table      | INPUT(OPTIONAL) |   Tensor   |
 |  Sinks参数组  |     sinks     | INPUT(OPTIONAL) |   Tensor   |
-|   SoftmaxLSE参数组   |    return_softmax_lse    | ATTR(OPTIONAL) |    int    |
+|   SoftmaxLSE参数组   |    return_softmax_lse    | ATTR(OPTIONAL) |    bool    |
 |                      |      softmax_lse      |     OUTPUT(OPTIONAL)     |   Tensor   |
 
 ### 参数组约束
@@ -865,15 +865,15 @@ mask_mode参数解释
             <td>return_softmax_lse</td>
             <td>
                 <ul>
-                    <li>data_type仅支持INT32</li>
-                    <li>值仅支持0和1，1代表开启softmax_lse，0代表关闭softmax_lse</li>
+                    <li>data_type仅支持BOOL</li>
+                    <li>值仅支持True和False，True代表开启softmax_lse，False代表关闭softmax_lse</li>
                 </ul>
             </td>
-            <td>可选属性，默认值为0</td>
+            <td>可选属性，默认值为False</td>
             <td rowspan="2">
                 <ul>
-                    <li>当return_softmax_lse为0时，输出shape为[1]的值为0的Tensor</li>
-                    <li>当return_softmax_lse为1时，输出shape见<a href="#layout匹配关系表">layout匹配关系表</a></li>
+                    <li>当return_softmax_lse为False时，输出shape为[1]的值为0的Tensor</li>
+                    <li>当return_softmax_lse为True时，softmax_lse必须非空，输出shape见<a href="#layout匹配关系表">layout匹配关系表</a></li>
                 </ul>
             </td>
             <td>无</td>
