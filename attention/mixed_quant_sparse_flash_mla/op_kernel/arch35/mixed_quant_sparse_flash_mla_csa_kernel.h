@@ -125,7 +125,8 @@ private:
     bool hasActualSeqCmpKvlen = false;
     /* workspace 空间 */
     BuffersPolicy3buff<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> v0ResGmBuffers;
-    __gm__ uint8_t *s2SplitStagingBase = nullptr;
+    BufferManager<BufferType::GM> fdStagingBufferManager;
+    BuffersPolicySingleBuffer<BufferType::GM> fdStagingBuffer;
     /* 核Index信息 */
     int32_t aicIdx;
 
@@ -176,7 +177,7 @@ __aicore__ inline void MixedQuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>:
     vecBlock.CleanOutput(attentionOut, constInfo);
     /* cube侧不依赖sharedParams的scalar前置 */
     InitMMResBuf(workspace);
-    vecBlock.InitS2SplitStaging(s2SplitStagingBase);
+    vecBlock.InitS2SplitStaging(fdStagingBuffer.Get());
     cubeBlock.InitCubeBlock(pipe, l1BufferManager, query);
     this->ComputeConstexpr();
     this->InitGlobalBuffer(query, oriKV, cmpKV, cmpSparseIndices, oriBlockTable, cmpBlockTable, cuSeqlensQ,
@@ -338,7 +339,14 @@ __aicore__ inline void MixedQuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>:
     }
 
     uint32_t v0RegionSize = IS_SPLIT_G ? (128U * 512U * 2U * 3U * (GetBlockNum() >> 1U)) : 0U;
-    s2SplitStagingBase = workspace + v0RegionSize;
+    fdStagingBufferManager.Init(workspace + v0RegionSize);
+    uint32_t fdSlotCount = static_cast<uint32_t>(AttentionCommon::FD_MAX_S2_SPLIT_NUM) *
+        (IS_SPLIT_G ? (GetBlockNum() >> 1U) : GetBlockNum());
+    constexpr uint32_t FD_MAX_SUM_REGION_NUM = 2U;
+    uint32_t fdStagingSize = fdSlotCount * (constInfo.gSize * constInfo.dSize * sizeof(float) +
+        FD_MAX_SUM_REGION_NUM * constInfo.gSize *
+        static_cast<uint32_t>(AttentionCommon::FD_BROADCAST_ELEMS_PER_ROW) * sizeof(float));
+    fdStagingBuffer.Init(fdStagingBufferManager, fdStagingSize);
 }
 
 template <typename CubeBlockType, typename VecBlockType>

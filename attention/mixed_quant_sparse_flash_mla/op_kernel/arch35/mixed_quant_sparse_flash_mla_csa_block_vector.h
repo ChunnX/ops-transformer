@@ -139,10 +139,10 @@ public:
         __gm__ uint8_t *sequsedQ, __gm__ uint8_t *sinks, __gm__ uint8_t *sequsedOriKv,
         __gm__ uint8_t *sequsedCmpKv, __gm__ uint8_t *cmpResidualKv);
     __aicore__ inline void InitOutputSingleCore(ConstInfo &constInfo);
-    __aicore__ inline void InitS2SplitStaging(__gm__ uint8_t *base)
+    __aicore__ inline void InitS2SplitStaging(Buffer<BufferType::GM, SyncType::INNER_CORE_SYNC> &fdStaging)
     {
-        s2SplitStagingBase = base;
-        stagingOutGm.SetGlobalBuffer((__gm__ float *)base);
+        fdStagingBase = fdStaging.template GetTensor<uint8_t>().GetPhyAddr(0);
+        stagingOutGm = fdStaging.template GetTensor<float>();
     }
     using mm2ResPos = Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>;
     __aicore__ inline void ProcessFlashDecode(FdRunInfo &fdRunInfo, ConstInfo &constInfo);
@@ -267,7 +267,7 @@ private:
     int64_t sparseCalSize;
     int64_t sparseS2Start;
     int64_t sparseS2End;
-    __gm__ uint8_t *s2SplitStagingBase = nullptr;
+    __gm__ uint8_t *fdStagingBase = nullptr;
     GlobalTensor<float> stagingOutGm;
 };
 
@@ -1182,7 +1182,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec1(
         uint32_t workspaceIdx = GetFaStagingWorkspaceIdx(runInfo);
         int64_t stagingMOffset = GetFaStagingMOffset(runInfo, constInfo);
         LocalTensor<float> tmpUb = this->dequantScaleBuff.template Get<float>();
-        AttentionCommon::StageVec1Lse(stagingLayout, s2SplitStagingBase,
+        AttentionCommon::StageVec1Lse(stagingLayout, fdStagingBase,
             workspaceIdx, stagingMOffset, runInfo.halfMRealSize,
             maxUb, sumUb, tmpUb, vToMte3Id, mte3ToVId);
     }
@@ -1268,7 +1268,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessFlashDecode(
     AttentionCommon::S2SplitFdStagingLayout stagingLayout = {constInfo.gSize,
         dTemplateAlign64, GetStagingSlotNum(), AttentionCommon::FD_BROADCAST_ELEMS_PER_ROW,
         AttentionCommon::FD_REDUCE_CHUNK_ROWS};
-    AttentionCommon::Reduce<T, dTemplateAlign64>(stagingLayout, s2SplitStagingBase,
+    AttentionCommon::Reduce<T, dTemplateAlign64>(stagingLayout, fdStagingBase,
         fdRunInfo.workspaceIdx, fdRunInfo.workspaceNum,
         static_cast<int64_t>(fdRunInfo.mStartIdx), fdRunInfo.mNum,
         static_cast<int64_t>(constInfo.dSizeV),
@@ -1480,7 +1480,7 @@ public:
     using mm2ResPos = Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>;
     __aicore__ inline void ProcessVec2(mm2ResPos &bmm2ResBuf, RunInfo &runInfo,
         ConstInfo &constInfo) {}
-    __aicore__ inline void InitS2SplitStaging(__gm__ uint8_t *base) {}
+    __aicore__ inline void InitS2SplitStaging(Buffer<BufferType::GM, SyncType::INNER_CORE_SYNC> &fdStaging) {}
     __aicore__ inline void ProcessFlashDecode(FdRunInfo &fdRunInfo, ConstInfo &constInfo) {}
 };
 }
