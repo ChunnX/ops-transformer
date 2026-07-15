@@ -251,21 +251,26 @@ __aicore__ inline void ComputeForwardPart(__local_mem__ U *hcBeformNormAddr, __l
  *   2、计算完成GradHcBeforeNorm后需添加syncAll，保证matmul的确定性。
  ******************************************************************************/
 template <typename T>
-__aicore__ inline void ComputeGradNormOutOrGradHcBeforeNorm(const LocalTensor<T> &gradZLocal, T scalar, uint32_t count,
-                                                            uint32_t offset)
+__aicore__ inline void ComputeMulScalar(const LocalTensor<T>& dstLocal , const LocalTensor<T>& srcLocal, T scalar,
+                                        uint32_t count, uint32_t offset)
 {
-    auto addr = (__local_mem__ T *)gradZLocal.GetPhyAddr() + offset;
+    auto srcAddr = (__local_mem__ T*)srcLocal.GetPhyAddr() + offset;
+    auto dstAddr = (__local_mem__ T*)dstLocal.GetPhyAddr();
+    uint32_t repeatCount = Ops::Base::GetVRegSize() / sizeof(T);
+    uint32_t maskCount = count;
+    uint16_t repeatTimes = Ops::Base::CeilDiv(maskCount, repeatCount);
+
     __VEC_SCOPE__
     {
-        MicroAPI::RegTensor<T> gradZReg;
-        MicroAPI::MaskReg preg = MicroAPI::CreateMask<T, MicroAPI::MaskPattern::ALL>();
-        MicroAPI::UnalignReg u0;
-        MicroAPI::DataCopyUnAlignPre(u0, addr);
-        MicroAPI::DataCopyUnAlign(gradZReg, u0, addr, 0);
-        MicroAPI::Muls(gradZReg, gradZReg, scalar, preg);
-        MicroAPI::DataCopyUnAlign(addr, gradZReg, u0, count);
-        MicroAPI::DataCopyUnAlignPost(addr, u0, 0);
-        MicroAPI::LocalMemBar<MicroAPI::MemType::VEC_STORE, MicroAPI::MemType::VEC_LOAD>();
+        MicroAPI::RegTensor<T> reg0;
+        for (uint16_t i = 0; i < repeatTimes; i++) {
+            MicroAPI::MaskReg preg = MicroAPI::UpdateMask<T>(maskCount);
+            MicroAPI::UnalignReg u0;
+            MicroAPI::DataCopyUnAlignPre(u0, srcAddr);
+            MicroAPI::DataCopyUnAlign(reg0, u0, srcAddr, repeatCount);
+            MicroAPI::Muls(reg0, reg0, scalar, preg);
+            MicroAPI::DataCopy(dstAddr + i * repeatCount, reg0, preg);
+        }
     }
 }
 
@@ -279,8 +284,8 @@ __aicore__ inline void ComputeGradInvRms(const LocalTensor<T> &gradNormOutLocal,
 }
 
 template <typename T>
-__aicore__ inline void ComputeGradXFromRms(const LocalTensor<T> &xFp32Local, const LocalTensor<T> &xFp32LocalOut,
-                                           T gradInvRms, T invRms, int64_t count, int64_t ncCount)
+__aicore__ inline void ComputeGradXFromRmsVF(const LocalTensor<T>& xFp32Local, const LocalTensor<T>& xFp32LocalOut,
+                                                T gradInvRms, T invRms, int64_t count, int64_t ncCount)
 {
     __local_mem__ T *xFp32Addr = (__local_mem__ T *)xFp32Local.GetPhyAddr();
     __local_mem__ T *xFp32AddrOut = (__local_mem__ T *)xFp32LocalOut.GetPhyAddr();
