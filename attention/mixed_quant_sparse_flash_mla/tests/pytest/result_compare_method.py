@@ -232,3 +232,23 @@ def check_result(expect, npu_result):
         display_error_output(real_data, data_compe,
                                 err_idx, err_diff[0:max_error_idx])
     return result, fulfill_percent
+
+def check_lse_result(expect, npu_result):
+    # softmax_lse 对 max 敏感, 且输入为 bf16/fp8, 采用相对宽松的容差
+    rtol = 0.02
+    atol = 0.05
+    real_data = npu_result.cpu().to(torch.float).numpy().flatten()
+    data_compe = expect.cpu().to(torch.float).numpy().flatten()
+    if real_data.size != data_compe.size:
+        print_log('Error,the size of npu lse[%s] and benchmark[%s] is not equal.' % (real_data.size, data_compe.size))
+        return "Failed", 0.0
+    if real_data.size == 0:
+        return "Pass", 100.0
+    diff_result = np.isclose(real_data.astype(np.float32), data_compe.astype(np.float32),
+                             rtol=rtol, atol=atol, equal_nan=True)
+    err_idx = np.where(diff_result != np.array((True,)))[0]
+    fulfill_percent = float(real_data.size - err_idx.size) / float(real_data.size) * 100.0
+    pct_thd = 95.0
+    result = "Pass" if (fulfill_percent >= pct_thd) else "Failed"
+    print_log('LSE compare: rtol=%s atol=%s fulfill=%.4f%% result=%s' % (rtol, atol, fulfill_percent, result))
+    return result, fulfill_percent

@@ -49,7 +49,8 @@ TEST_PARAMS = {
         "rope_head_dim": [64],
         "template_run_mode": ["SWA"],
         "actlen_mode":["full"],
-        "S1EQS2":[False]
+        "S1EQS2":[False],
+        "return_softmax_lse": [False]
     },
 
     "prefill_first":{
@@ -60,8 +61,8 @@ TEST_PARAMS = {
         "ori_kv_type": [torch.float8_e4m3fn],
         "cmp_kv_type": [torch.float8_e4m3fn],
         "B": [1],
-        "S1": [8192],
-        "S2": [8192],
+        "S1": [128],
+        "S2": [256],
         "N1": [64],
         "N2": [1],
         "D": [512],
@@ -88,9 +89,10 @@ TEST_PARAMS = {
         "rope_head_dim": [64],
         "template_run_mode": ["SWA"],
         "actlen_mode":["full"],
-        "S1EQS2":[False]
+        "S1EQS2":[False],
+        "return_softmax_lse": [True]
     }
 }
 
-ENABLED_PARAMS = [TEST_PARAMS["decode_first"]]
+ENABLED_PARAMS = [TEST_PARAMS["decode_first"], TEST_PARAMS["prefill_first"]]
 #ENABLED_PARAMS = [TEST_PARAMS[key] for key in TEST_PARAMS.keys()]

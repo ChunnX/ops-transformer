@@ -261,6 +261,7 @@ struct MQSMLAParaInfo {
     const char *layoutQ = nullptr;
     const char *layoutKv = nullptr;
     const int64_t *topkValueMode = nullptr;
+    const bool *returnSoftmaxLse = nullptr;
 };
 
 // -----------算子Tiling入参信息类---------------
@@ -331,6 +332,8 @@ public:
     MQSMLALayout qLayout = MQSMLALayout::BSND;
     MQSMLALayout kvLayout = MQSMLALayout::PA_BBND;
     MQSMLALayout outLayout = MQSMLALayout::BSND;
+
+    bool returnSoftmaxLse = false;
 };
 
 class MQSMLAInfoParser {

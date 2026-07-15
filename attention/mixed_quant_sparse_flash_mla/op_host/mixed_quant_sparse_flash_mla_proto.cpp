@@ -21,7 +21,7 @@ using namespace ge;
 
 namespace ops {
 constexpr uint32_t QUERY_INPUT_INDEX = 0;
-constexpr uint32_t RETURN_SOFTMAX_LSE_INDEX = 8;
+constexpr uint32_t ATTR_RETURN_SOFTMAX_LSE_INDEX = 11;
 
 ge::graphStatus InferShapeMixedQuantSparseFlashMla(gert::InferShapeContext *context)
 {
@@ -34,9 +34,9 @@ ge::graphStatus InferShapeMixedQuantSparseFlashMla(gert::InferShapeContext *cont
     *attentionOutShape = *queryShape;
 
     gert::Shape *softmaxLseShape = context->GetOutputShape(1);
-    OPS_LOG_E_IF_NULL(context, attentionOutShape, return ge::GRAPH_FAILED)
+    OPS_LOG_E_IF_NULL(context, softmaxLseShape, return ge::GRAPH_FAILED)
     auto attr = context->GetAttrs();
-    const bool *returnSoftmaxLsePtr = attr->GetAttrPointer<bool>(RETURN_SOFTMAX_LSE_INDEX);
+    const bool *returnSoftmaxLsePtr = attr->GetAttrPointer<bool>(ATTR_RETURN_SOFTMAX_LSE_INDEX);
     bool returnSoftmaxLse = (returnSoftmaxLsePtr != nullptr) ? *returnSoftmaxLsePtr : false;
     if (returnSoftmaxLse) {
         *softmaxLseShape = *queryShape;
@@ -55,6 +55,7 @@ ge::graphStatus InferDataTypeMixedQuantSparseFlashMla(gert::InferDataTypeContext
                return ge::GRAPH_FAILED);
     const auto inputDataType = context->GetInputDataType(QUERY_INPUT_INDEX);
     context->SetOutputDataType(0, inputDataType);
+    context->SetOutputDataType(1, ge::DT_FLOAT);
     return ge::GRAPH_SUCCESS;
 }
 
