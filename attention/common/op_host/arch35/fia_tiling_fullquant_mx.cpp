@@ -464,7 +464,7 @@ void FiaTilingFullQuantMxArch35::SplitPolicy()
     AdjustSinnerAndSouter(); // 确定tiling切块
 
     // decode场景qscale shape为[N2, T, G, D//64, 2]；prefill qscale shape为[T, N, D//64, 2]
-    decodeS1GMerge_ = (fiaInfo_->opParamInfo.dequantScaleQuery.tensor->GetStorageShape().GetDimNum() == 5);
+    decodeS1GMerge_ = (fiaInfo_->s1Size * fiaInfo_->gSize <= 80);
 
     split_core_v2::BaseInfo baseInfo{};
     split_core_v2::SplitParam splitParam{};

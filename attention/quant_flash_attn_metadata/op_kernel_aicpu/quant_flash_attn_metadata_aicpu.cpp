@@ -202,7 +202,12 @@ bool QuantFlashAttnMetadataCpuKernel::ParamsInit()
     }
     baseInfo.batchSize = batchSize_;
     baseInfo.queryHeadNum = numHeadsQ_;
-    baseInfo.kvHeadNum = (quantMode_ == 1 || quantMode_ == 2) ? numHeadsQ_ : numHeadsKv_;
+    if (quantMode_ == 1 || quantMode_ == 2) {
+        uint32_t groupSize = SafeFloorDiv(numHeadsQ_, numHeadsKv_, 1U);
+        baseInfo.kvHeadNum = (maxSeqlenQ_ * groupSize <= 80) ? numHeadsKv_ : numHeadsQ_;
+    } else {
+        baseInfo.kvHeadNum = numHeadsKv_;
+    }
     baseInfo.headDim = headDim_;
     baseInfo.attenMaskFlag = (maskMode_ != 0);
     baseInfo.sparseMode = static_cast<uint32_t>(maskMode_);

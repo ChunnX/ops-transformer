@@ -27,6 +27,15 @@ def _calculate_batch_size(batch_size, cu_seqlens_q, seqused_q):
     return 0
 
 
+def _get_eff_nkv(num_heads_q, num_heads_kv, quant_mode, max_seqlen_q=-1):
+    if quant_mode == 1:
+        g = num_heads_q // num_heads_kv if num_heads_kv > 0 else 1
+        if max_seqlen_q is not None and max_seqlen_q > 0 and max_seqlen_q * g <= 80:
+            return num_heads_kv
+        return num_heads_q
+    return num_heads_kv
+
+
 def _calculate_metadata_size(batch_size, num_heads_kv):
     """计算 metadata tensor 的对齐后大小"""
     metadata_size = ((36 + 72) * batch_size * num_heads_kv + 1) * 16
@@ -78,7 +87,7 @@ class QuantFlashAttnOpBuilder(OpBuilder):
             mask_mode: Optional[int] = None, win_left: Optional[int] = None, win_right: Optional[int] = None,
             layout_q: Optional[str] = None, layout_kv: Optional[str] = None, layout_out: Optional[str] = None
         ):
-            eff_nkv = num_heads_q if quant_mode == 1 else num_heads_kv
+            eff_nkv = _get_eff_nkv(num_heads_q, num_heads_kv, quant_mode, max_seqlen_q)
             metadata_size = _calculate_metadata_size(batch_size, eff_nkv)
             return torch.empty((metadata_size,), dtype=torch.int32, device="npu")
 
@@ -178,14 +187,14 @@ def quant_flash_attn_metadata(
     layout_kv = "BSND" if layout_kv is None else layout_kv
     layout_out = "BSND" if layout_out is None else layout_out
 
-    eff_nkv = num_heads_q if quant_mode == 1 else num_heads_kv
+    eff_nkv = _get_eff_nkv(num_heads_q, num_heads_kv, quant_mode, max_seqlen_q)
     metadata_size = _calculate_metadata_size(batch_size, eff_nkv)
     output = torch.empty((metadata_size,), dtype=torch.int32, device="npu")
  
     return op_module.quant_flash_attn_metadata(
         cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv,
         batch_size, max_seqlen_q, max_seqlen_kv,
-        num_heads_q, num_heads_kv, head_dim,
+        num_heads_q, eff_nkv, head_dim,
         quant_mode,
         mask_mode, win_left, win_right,
         layout_q, layout_kv, layout_out, output)
