@@ -39,8 +39,8 @@ struct CopyL0CToGmPerChannel {
 
     CATLASS_DEVICE
     void operator()(AscendC::GlobalTensor<ElementDst> const &dst, AscendC::LocalTensor<ElementSrc> const &src,
-                    AscendC::LocalTensor<uint64_t> cbufWorkspace,
-                    LayoutDst const &dstLayout, LayoutSrc const &srcLayout, uint8_t unitFlag = 0)
+                    AscendC::LocalTensor<uint64_t> cbufWorkspace, LayoutDst const &dstLayout,
+                    LayoutSrc const &srcLayout, uint8_t unitFlag = 0)
     {
         AscendC::FixpipeParamsV220 intriParams;
 

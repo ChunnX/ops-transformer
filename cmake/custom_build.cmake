@@ -1016,8 +1016,11 @@ if (NOT ENABLE_AICPU_KERNEL)
     install(DIRECTORY ${BLAZE}
             DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common
     )
-    install(DIRECTORY ${TENSOR_API}
-            DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common
+    install(DIRECTORY ${TENSOR_API}/impl/tensor_api
+            DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common/tensor_api/impl
+    )
+    install(DIRECTORY ${TENSOR_API}/include/tensor_api
+            DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common/tensor_api/include
     )
     # Shared kernel headers for whitelist deps (contents -> ascendc/common).
     install(DIRECTORY ${OPS_ADV_DIR}/mc2/common/op_kernel/
@@ -1262,7 +1265,7 @@ if (NOT ENABLE_BUILT_IN AND BUILD_OPEN_PROJECT)
     set(CPACK_GENERATOR External)
     set(CPACK_CMAKE_GENERATOR "Unix Makefiles")
     set(CPACK_EXTERNAL_ENABLE_STAGING TRUE)
-    
+
     if (ENABLE_BUILD_PKG)
         set(CPACK_MAKESELF_PATH ${OPS_TRANSFORMER_DIR}/third_party/makeself)
         set(CPACK_EXTERNAL_PACKAGE_SCRIPT ${ASCEND_PROJECT_DIR}/fwk_modules/makeself.cmake)

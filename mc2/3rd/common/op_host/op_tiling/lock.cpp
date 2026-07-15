@@ -51,6 +51,6 @@ void RWLock::unlock()
         _read_cv.notify_all();
     }
 }
-}
-}
-} // namespace optiling
+} // namespace Optiling
+} // namespace Transformer
+} // namespace Ops

@@ -36,10 +36,10 @@ struct MoeDistributeCombineV2Info {
     uint32_t h;
     uint32_t a;
     uint32_t aivNum;
-    bool isTokenMask;              // input active mask 1dims or not
-    bool isExpertMask;             // input active mask 2dims or not
-    bool hasSharedExpertX;         // input shared expert x or not
-    bool isPerformance;            // whether performance or not
+    bool isTokenMask;      // input active mask 1dims or not
+    bool isExpertMask;     // input active mask 2dims or not
+    bool hasSharedExpertX; // input shared expert x or not
+    bool isPerformance;    // whether performance or not
     bool reserved0;
     bool reserved1;
     bool reserved2;

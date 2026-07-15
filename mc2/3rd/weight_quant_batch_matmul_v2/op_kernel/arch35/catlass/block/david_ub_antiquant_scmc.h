@@ -17,11 +17,10 @@
 
 namespace Mc2WeightQuantBatchMatmulV2::Arch35::Catlass {
 
-template <
-    int Stages, typename TileShapeUb, typename TileShapeReg, int32_t CoreType, int32_t SubBlockDim,
-    uint8_t StageWeightIn_, uint8_t StageVfOut_, int32_t Kub_, typename KernelSchedule, typename TileShapeL1_,
-    typename TileShapeL0, typename DtypeA, typename StrideA, typename DtypeB, typename StrideBOptionalTuple,
-    typename DtypeBias, typename StrideBias, typename DtypeC, typename StrideC>
+template <int Stages, typename TileShapeUb, typename TileShapeReg, int32_t CoreType, int32_t SubBlockDim,
+          uint8_t StageWeightIn_, uint8_t StageVfOut_, int32_t Kub_, typename KernelSchedule, typename TileShapeL1_,
+          typename TileShapeL0, typename DtypeA, typename StrideA, typename DtypeB, typename StrideBOptionalTuple,
+          typename DtypeBias, typename StrideBias, typename DtypeC, typename StrideC>
 struct DavidUbAntiquantScmc {
 public:
     using TileShapeL1 = TileShapeL1_;
@@ -34,12 +33,11 @@ public:
         AscendC::Std::conditional_t<AscendC::Std::is_same_v<StrideBias, void>, AscendC::Std::tuple<_1>, StrideBias>;
 
 private:
-    using Subclass = BlockMmad<
-        MainloopDavidWqbmmUbAntiquantScmc<
-            Stages, TileShapeUb, TileShapeReg, CoreType, SubBlockDim, StageWeightIn_, StageVfOut_, Kub_,
-            KernelSchedule>,
-        TileShapeL1, TileShapeL0, DtypeA, StrideA, DtypeB, StrideBOptionalTuple, DtypeBias, StrideBias, DtypeC,
-        StrideC>;
+    using Subclass =
+        BlockMmad<MainloopDavidWqbmmUbAntiquantScmc<Stages, TileShapeUb, TileShapeReg, CoreType, SubBlockDim,
+                                                    StageWeightIn_, StageVfOut_, Kub_, KernelSchedule>,
+                  TileShapeL1, TileShapeL0, DtypeA, StrideA, DtypeB, StrideBOptionalTuple, DtypeBias, StrideBias,
+                  DtypeC, StrideC>;
 
 public:
     static constexpr bool isTransA =
@@ -50,16 +48,16 @@ public:
     static constexpr bool isTransB =
         isWeightNz ? false : AscendC::Std::is_same_v<typename AscendC::Std::tuple_element<1, StrideB>::type, _1>;
     struct Arguments {
-        __gm__ DtypeA* aGmAddr = nullptr;
+        __gm__ DtypeA *aGmAddr = nullptr;
         StrideA strideA{};
-        __gm__ DtypeB* bGmAddr = nullptr;
+        __gm__ DtypeB *bGmAddr = nullptr;
         StrideB strideB{};
-        __gm__ DtypeA* antiquantScaleGmAddr = nullptr;
+        __gm__ DtypeA *antiquantScaleGmAddr = nullptr;
         StrideAntiquantScale strideAntiquantScale{};
-        __gm__ DtypeA* antiquantOffsetGmAddr = nullptr;
-        __gm__ DtypeBias* biasGmAddr = nullptr;
+        __gm__ DtypeA *antiquantOffsetGmAddr = nullptr;
+        __gm__ DtypeBias *biasGmAddr = nullptr;
         NonVoidStrideBias strideBias{};
-        __gm__ DtypeC* cGmAddr = nullptr;
+        __gm__ DtypeC *cGmAddr = nullptr;
         StrideC strideC{};
         uint64_t groupSize;
     };

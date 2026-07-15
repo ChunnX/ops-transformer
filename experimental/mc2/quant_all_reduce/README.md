@@ -4,11 +4,11 @@
 
 ```
 ├── kernel                                  # 算子核函数目录
-│    ├── quant_all_reduce_mte_one_shot.h    
-│    ├── quant_all_reduce_tiling_data.h     
-│    ├── mte_comm.h                         
-│    ├── vec_comp.h                         
-│    ├── utils.h                         
+│    ├── quant_all_reduce_mte_one_shot.h
+│    ├── quant_all_reduce_tiling_data.h
+│    ├── mte_comm.h
+│    ├── vec_comp.h
+│    ├── utils.h
 ├── scripts                                 # 运行脚本工具
 │   ├── data_gen.py                         # 用例数据生成脚本
 │   ├── data_compare.py                     # 精度对比脚本
@@ -19,17 +19,17 @@
 ├── start.sh
 ├── run.sh                                  # 工程运行脚本
 ├── result.csv                              # 算子运行结果汇总
-├── README.md                              
-└── CMakeLists.txt                          
+├── README.md
+└── CMakeLists.txt
 ```
 
 # 文件改动
 
 新增接口：
-quant_all_reduce_mte_one_shot.h 
+quant_all_reduce_mte_one_shot.h
 外部创建mc2Context与tilingData，传入GM地址mc2Context，tilingGM
 __aicore__ inline void InitWithMc2Context(GM_ADDR x, GM_ADDR scales, GM_ADDR output, GM_ADDR mc2Context, GM_ADDR tilingGM, TPipe *pipe);
-mte_comm.h 
+mte_comm.h
 __aicore__ inline void InitHcclContextByAddr(GM_ADDR mc2Context);
 
 # 工程运行

@@ -54,33 +54,40 @@ enum class QuantModeType : int64_t {
 };
 
 // 带场景标识的校验宏，用于区分不同量化场景下的校验错误
-#define OP_CHECK_WRONG_DIMENSION_WITH_SCENARIO(opName, tensor, expectedDimNum, scenario, retExpr) \
-  if (tensor->GetViewShape().GetDimNum() != expectedDimNum) { \
-    OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(opName, #tensor, \
-        std::to_string(tensor->GetViewShape().GetDimNum()).c_str(), \
-        ("In " + std::string(scenario) + " scenario, the shape of " + #tensor + " must be " + std::to_string(expectedDimNum) + "D.").c_str()); \
-    retExpr; \
-  }
+#define OP_CHECK_WRONG_DIMENSION_WITH_SCENARIO(opName, tensor, expectedDimNum, scenario, retExpr)                      \
+    if (tensor->GetViewShape().GetDimNum() != expectedDimNum) {                                                        \
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(opName, #tensor,                                                      \
+                                                 std::to_string(tensor->GetViewShape().GetDimNum()).c_str(),           \
+                                                 ("In " + std::string(scenario) + " scenario, the shape of " +         \
+                                                  #tensor + " must be " + std::to_string(expectedDimNum) + "D.")       \
+                                                     .c_str());                                                        \
+        retExpr;                                                                                                       \
+    }
 
-#define OP_CHECK_DTYPE_NOT_SUPPORT_WITH_SCENARIO(opName, tensor, supportList, scenario, retExpr) \
-  if (!CheckType(tensor->GetDataType(), supportList)) { \
-    OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName, #tensor, \
-        op::ToString(tensor->GetDataType()).GetString(), \
-        ("In " + std::string(scenario) + " scenario, the dtype of " + #tensor + " must be within the supported range.").c_str()); \
-    retExpr; \
-  }
+#define OP_CHECK_DTYPE_NOT_SUPPORT_WITH_SCENARIO(opName, tensor, supportList, scenario, retExpr)                       \
+    if (!CheckType(tensor->GetDataType(), supportList)) {                                                              \
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName, #tensor, op::ToString(tensor->GetDataType()).GetString(),        \
+                                              ("In " + std::string(scenario) + " scenario, the dtype of " + #tensor +  \
+                                               " must be within the supported range.")                                 \
+                                                  .c_str());                                                           \
+        retExpr;                                                                                                       \
+    }
 
-#define OP_CHECK_DTYPE_NOT_SAME_WITH_SCENARIO(opName, tensor1, tensor2, scenario, retExpr) \
-  if (tensor1->GetDataType() != tensor2->GetDataType()) { \
-    OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(opName, \
-        (std::string(#tensor1) + "," + #tensor2).c_str(), \
-        (std::string(op::ToString(tensor1->GetDataType()).GetString()) + "," + op::ToString(tensor2->GetDataType()).GetString()).c_str(), \
-        ("In " + std::string(scenario) + " scenario, the dtypes of " + #tensor1 + " and " + #tensor2 + " must be the same.").c_str()); \
-    retExpr; \
-  }
+#define OP_CHECK_DTYPE_NOT_SAME_WITH_SCENARIO(opName, tensor1, tensor2, scenario, retExpr)                             \
+    if (tensor1->GetDataType() != tensor2->GetDataType()) {                                                            \
+        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(opName, (std::string(#tensor1) + "," + #tensor2).c_str(),               \
+                                               (std::string(op::ToString(tensor1->GetDataType()).GetString()) + "," +  \
+                                                op::ToString(tensor2->GetDataType()).GetString())                      \
+                                                   .c_str(),                                                           \
+                                               ("In " + std::string(scenario) + " scenario, the dtypes of " +          \
+                                                #tensor1 + " and " + #tensor2 + " must be the same.")                  \
+                                                   .c_str());                                                          \
+        retExpr;                                                                                                       \
+    }
 
-// 校验AlltoAll和Permute数据交换的方向参数, 在alltoallmatmul中可以为空和{-1,-2}, 在matmulalltoall中可以为空和{-2,-1}, 不允许为其他值
-bool CheckAlltoAllAxes(const aclIntArray* alltoAllAxesOptional, bool isMatmulAlltoAll);
+// 校验AlltoAll和Permute数据交换的方向参数, 在alltoallmatmul中可以为空和{-1,-2}, 在matmulalltoall中可以为空和{-2,-1},
+// 不允许为其他值
+bool CheckAlltoAllAxes(const aclIntArray *alltoAllAxesOptional, bool isMatmulAlltoAll);
 
 // 校验输入的转置配置，x1不允许转置
 bool CheckTransposeX1(bool transposeX1);
@@ -89,15 +96,17 @@ bool CheckTransposeX1(bool transposeX1);
 bool CheckGroupLength(const char *group);
 
 // 校验MatmulAlltoAll和QuantMatmulAlltoAll输入属性shape
-bool CheckShapeMMAA(const aclTensor* x1, const aclTensor* x2, const aclTensor* biasOptional, bool transposeX2, const aclTensor* output);
+bool CheckShapeMMAA(const aclTensor *x1, const aclTensor *x2, const aclTensor *biasOptional, bool transposeX2,
+                    const aclTensor *output);
 // 校验AlltoAllMatmul和AlltoAllQuantMatmul输入属性shape
-bool CheckShapeAAMM(const aclTensor* x1, const aclTensor* x2, const aclTensor* biasOptional, bool transposeX2, const aclTensor* output, const aclTensor* alltoAllOutOptional);
+bool CheckShapeAAMM(const aclTensor *x1, const aclTensor *x2, const aclTensor *biasOptional, bool transposeX2,
+                    const aclTensor *output, const aclTensor *alltoAllOutOptional);
 
 // 检查tensor是否连续
 bool IsTransposeLastTwoDims(const aclTensor *tensor);
 
 // 检查x2是否合法，空指针、空tensor和维度
-aclnnStatus CheckX2Valid(const aclTensor* x2);
+aclnnStatus CheckX2Valid(const aclTensor *x2);
 
 // 检查commMode参数是否合法，并获取commMode对应枚举值
 aclnnStatus CheckAndHandleCommMode(const char *group, const char *commModeStr, uint8_t &commModeEnum);
@@ -109,4 +118,4 @@ bool IsAll2AllOut(const aclTensor *alltoAllOut);
 aclTensor *TransX2Tensor(const aclTensor *x2);
 } // namespace matmul_allto_all_check
 
-#endif //CHECKER_H
+#endif // CHECKER_H

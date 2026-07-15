@@ -39,7 +39,7 @@ ASCENDC_TPL_ARGS_DECL(AlltoAllMatmul,
                                             DTYPE_BIAS_FP32),
                       ASCENDC_TPL_BOOL_DECL(ISSMALLK, 0, 1),
                       ASCENDC_TPL_UINT_DECL(COMMTYPE, ASCENDC_TPL_4_BW, ASCENDC_TPL_UI_LIST, ALL2ALL_COMM_TYPE_CCU,
-                                            ALL2ALL_COMM_TYPE_AICPU),);
+                                            ALL2ALL_COMM_TYPE_AICPU), );
 
 // 模板参数组合
 // 用于调用GET_TPL_TILING_KEY获取TilingKey时，接口内部校验TilingKey是否合法

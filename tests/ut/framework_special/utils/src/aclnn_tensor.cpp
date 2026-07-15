@@ -21,12 +21,19 @@
 #include "tests/utils/io.h"
 
 namespace {
-std::map<ge::DataType, aclDataType> geDtype2AclDtypeMap = {
-    {ge::DataType::DT_FLOAT16, ACL_FLOAT16}, {ge::DataType::DT_BF16, ACL_BF16},   {ge::DataType::DT_FLOAT, ACL_FLOAT},
-    {ge::DataType::DT_BOOL, ACL_BOOL},       {ge::DataType::DT_UINT8, ACL_UINT8}, {ge::DataType::DT_INT4, ACL_INT4},
-    {ge::DataType::DT_INT8, ACL_INT8},       {ge::DataType::DT_INT32, ACL_INT32}, {ge::DataType::DT_INT64, ACL_INT64},
-    {ge::DataType::DT_FLOAT8_E4M3FN, ACL_FLOAT8_E4M3FN}, {ge::DataType::DT_FLOAT8_E8M0, ACL_FLOAT8_E8M0},
-    {ge::DataType::DT_FLOAT8_E5M2, ACL_FLOAT8_E5M2}, {ge::DataType::DT_HIFLOAT8, ACL_HIFLOAT8}};
+std::map<ge::DataType, aclDataType> geDtype2AclDtypeMap = {{ge::DataType::DT_FLOAT16, ACL_FLOAT16},
+                                                           {ge::DataType::DT_BF16, ACL_BF16},
+                                                           {ge::DataType::DT_FLOAT, ACL_FLOAT},
+                                                           {ge::DataType::DT_BOOL, ACL_BOOL},
+                                                           {ge::DataType::DT_UINT8, ACL_UINT8},
+                                                           {ge::DataType::DT_INT4, ACL_INT4},
+                                                           {ge::DataType::DT_INT8, ACL_INT8},
+                                                           {ge::DataType::DT_INT32, ACL_INT32},
+                                                           {ge::DataType::DT_INT64, ACL_INT64},
+                                                           {ge::DataType::DT_FLOAT8_E4M3FN, ACL_FLOAT8_E4M3FN},
+                                                           {ge::DataType::DT_FLOAT8_E8M0, ACL_FLOAT8_E8M0},
+                                                           {ge::DataType::DT_FLOAT8_E5M2, ACL_FLOAT8_E5M2},
+                                                           {ge::DataType::DT_HIFLOAT8, ACL_HIFLOAT8}};
 }
 
 using namespace ops::adv::tests::utils;
@@ -44,16 +51,16 @@ AclnnTensor::AclnnTensor(const char *name, const std::vector<int64_t> &shape, co
 {
     /* 计算连续 tensor 的 strides */
     aclTensorDataStrides_.resize(shape_.GetDimNum(), 1);
-        for (auto i = static_cast<int64_t>(shape_.GetDimNum()) - 2; i >= 0; i--) {
-            aclTensorDataStrides_[i] = shape_[i + 1] * aclTensorDataStrides_[i + 1];
-        }
-        /* 获取 aclDataType */
-        auto iter = geDtype2AclDtypeMap.find(dType);
-        if (iter == geDtype2AclDtypeMap.end()) {
-            LOG_ERR("Tensor(%s), Unknown dtype(%s)", name_.c_str(), ge::TypeUtils::DataTypeToSerialString(dType).c_str());
-        } else {
-            aclDataType_ = iter->second;
-        }
+    for (auto i = static_cast<int64_t>(shape_.GetDimNum()) - 2; i >= 0; i--) {
+        aclTensorDataStrides_[i] = shape_[i + 1] * aclTensorDataStrides_[i + 1];
+    }
+    /* 获取 aclDataType */
+    auto iter = geDtype2AclDtypeMap.find(dType);
+    if (iter == geDtype2AclDtypeMap.end()) {
+        LOG_ERR("Tensor(%s), Unknown dtype(%s)", name_.c_str(), ge::TypeUtils::DataTypeToSerialString(dType).c_str());
+    } else {
+        aclDataType_ = iter->second;
+    }
 }
 
 AclnnTensor::AclnnTensor(const Tensor &t)

@@ -205,10 +205,9 @@ aclnnStatus aclnnGatherPaKvCache(
   </table>
 
   - <term>Ascend 950PR/Ascend 950DT</term>:
-    - 输入keyCache、valueCache数据类型应当保持一致；允许keyCache为FLOAT8_E4M3FN、valueCache为FLOAT16或BFLOAT16的组合。
+    - 允许keyCache为FLOAT8_E4M3FN、valueCache为FLOAT16或BFLOAT16的组合。
 
   - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
-    - 输入keyCache、valueCache数据类型应当保持一致。
     - 输入keyCache、valueCache、keyRef、valueRef不支持FLOAT、UINT8、INT16、UINT16、INT32、UINT32、HIFLOAT8、FLOAT8_E5M2、FLOAT8_E4M3FN数据类型。
     - 输入blockTables、seqLens、seqOffsetOptional不支持INT64数据类型。
 

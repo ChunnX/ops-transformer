@@ -45,7 +45,7 @@ struct HcclTypeSelector {
     using type = Hccl<HcclServerType::HCCL_SERVER_TYPE_CCU>;
 };
 
-template<>
+template <>
 struct HcclTypeSelector<TILINGKEY_TPL_AICPU> {
     using type = Hccl<HcclServerType::HCCL_SERVER_TYPE_AICPU>;
 };

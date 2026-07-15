@@ -51,4 +51,4 @@ third_party/
 
 # pre-commit log
 log/
-oat_reports/compile.log
+oat_reports/

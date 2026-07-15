@@ -18,37 +18,25 @@
 #include "ascendc/host_api/tiling/template_argument.h"
 
 // 模板参数
-ASCENDC_TPL_ARGS_DECL( 
+ASCENDC_TPL_ARGS_DECL(
     AlltoAllAllGatherBatchMatMul,
-    ASCENDC_TPL_UINT_DECL(  // 按枚举值给出，0表示在H维度按tp域进行allgather，1表示在C维度上按tp域进行allgather
-        ALL_TO_ALL_ALL_GATHER_BATCH_MM_X_SHARD, 
-        ASCENDC_TPL_2_BW,
-        ASCENDC_TPL_UI_LIST, 0, 1),
-    ASCENDC_TPL_BOOL_DECL(  // 按布尔值给出，权重矩阵是否转置
+    ASCENDC_TPL_UINT_DECL( // 按枚举值给出，0表示在H维度按tp域进行allgather，1表示在C维度上按tp域进行allgather
+        ALL_TO_ALL_ALL_GATHER_BATCH_MM_X_SHARD, ASCENDC_TPL_2_BW, ASCENDC_TPL_UI_LIST, 0, 1),
+    ASCENDC_TPL_BOOL_DECL( // 按布尔值给出，权重矩阵是否转置
         ALL_TO_ALL_ALL_GATHER_BATCH_MM_WEIGHT_TRANSPOSE, 0, 1),
-    ASCENDC_TPL_BOOL_DECL(  // 按布尔值给出，是否包含偏矩阵
+    ASCENDC_TPL_BOOL_DECL( // 按布尔值给出，是否包含偏矩阵
         ALL_TO_ALL_ALL_GATHER_BATCH_MM_IS_BIAS, 0, 1),
-    ASCENDC_TPL_BOOL_DECL(  // 按布尔值给出，是否包含AllGather的输出
-        ALL_TO_ALL_ALL_GATHER_BATCH_MM_Y2_NEED, 0, 1), 
-    ASCENDC_TPL_BOOL_DECL(  // 按布尔值给出，有激活函数时，是否包含BatchMatMul的输出
-        ALL_TO_ALL_ALL_GATHER_BATCH_MM_Y3_NEED, 0, 1), 
-);
+    ASCENDC_TPL_BOOL_DECL( // 按布尔值给出，是否包含AllGather的输出
+        ALL_TO_ALL_ALL_GATHER_BATCH_MM_Y2_NEED, 0, 1),
+    ASCENDC_TPL_BOOL_DECL( // 按布尔值给出，有激活函数时，是否包含BatchMatMul的输出
+        ALL_TO_ALL_ALL_GATHER_BATCH_MM_Y3_NEED, 0, 1), );
 
 // 模板参数组合
-ASCENDC_TPL_SEL(
-    ASCENDC_TPL_ARGS_SEL(
-        ASCENDC_TPL_UINT_SEL(  
-            ALL_TO_ALL_ALL_GATHER_BATCH_MM_X_SHARD, 
-            ASCENDC_TPL_UI_LIST, 0, 1),
-        ASCENDC_TPL_BOOL_SEL(  
-            ALL_TO_ALL_ALL_GATHER_BATCH_MM_WEIGHT_TRANSPOSE, 0, 1),
-        ASCENDC_TPL_BOOL_SEL(  
-            ALL_TO_ALL_ALL_GATHER_BATCH_MM_IS_BIAS, 0, 1),
-        ASCENDC_TPL_BOOL_SEL(  
-            ALL_TO_ALL_ALL_GATHER_BATCH_MM_Y2_NEED, 0, 1), 
-        ASCENDC_TPL_BOOL_SEL(  
-            ALL_TO_ALL_ALL_GATHER_BATCH_MM_Y3_NEED, 0, 1), 
-    )
-);
+ASCENDC_TPL_SEL(ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_UINT_SEL(ALL_TO_ALL_ALL_GATHER_BATCH_MM_X_SHARD, ASCENDC_TPL_UI_LIST,
+                                                          0, 1),
+                                     ASCENDC_TPL_BOOL_SEL(ALL_TO_ALL_ALL_GATHER_BATCH_MM_WEIGHT_TRANSPOSE, 0, 1),
+                                     ASCENDC_TPL_BOOL_SEL(ALL_TO_ALL_ALL_GATHER_BATCH_MM_IS_BIAS, 0, 1),
+                                     ASCENDC_TPL_BOOL_SEL(ALL_TO_ALL_ALL_GATHER_BATCH_MM_Y2_NEED, 0, 1),
+                                     ASCENDC_TPL_BOOL_SEL(ALL_TO_ALL_ALL_GATHER_BATCH_MM_Y3_NEED, 0, 1), ));
 
 #endif // MC2_ALLTOALL_ALLGATHER_BATCHMATMUL_TILING_KEY_H

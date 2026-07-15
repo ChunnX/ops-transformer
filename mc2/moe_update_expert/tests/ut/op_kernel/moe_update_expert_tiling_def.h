@@ -18,12 +18,12 @@
 
 using namespace MoeUpdateExpertNamespace;
 
-inline void InitMoeUpdateExpertTilingData(uint8_t* tiling, MoeUpdateExpertTilingData* constData)
+inline void InitMoeUpdateExpertTilingData(uint8_t *tiling, MoeUpdateExpertTilingData *constData)
 {
     memcpy(constData, tiling, sizeof(MoeUpdateExpertTilingData));
 }
 
-#define GET_TILING_DATA(tilingData, tilingArg) \
-    MoeUpdateExpertTilingData tilingData;       \
+#define GET_TILING_DATA(tilingData, tilingArg)                                                                         \
+    MoeUpdateExpertTilingData tilingData;                                                                              \
     InitMoeUpdateExpertTilingData(tilingArg, &tilingData)
 #endif // MOE_UPDATE_EXPERT_TILING_DEF_H
