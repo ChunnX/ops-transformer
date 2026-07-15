@@ -22,6 +22,7 @@
 #include "moe_ep_dispatch_tiling_key.h"
 #include "moe_ep_dispatch_tiling.h"
 #include "moe_ep_dispatch.h"
+#include "moe_ep_dispatch_hybrid.h"
 
 using namespace MoeEpDispatchImpl;
 using namespace Mc2Tiling;
@@ -42,10 +43,20 @@ __global__ __aicore__ void moe_ep_dispatch(
     GET_TILING_DATA_WITH_STRUCT(MoeEpDispatchTilingData, tilingData, tilingGM);
     using ScalesType = typename std::conditional<IsMxQuant, fp8_e8m0_t, float>::type;
 
-    MoeEpDispatch<DTYPE_X, ScalesType, DoCpuSync, IsCached, IsTopkWeights, NetworkMode> op;
-    op.Init(context, x, topkIdx, topkWeights, scales, cachedSlotIdx, cachedRouteCount, cachedRouteDstScaleout,
-            cachedRouteScaleoutSlot, cachedRouteScaleupMask, cachedRouteScaleupSlot, numRecvPerRank,
-            numRecvPerExpert, dstBufferSlotIdx, routeCount, routeDstScaleout, routeScaleoutSlot,
-            routeScaleupMask, routeScaleupSlot, debugOut, workspaceGM, &pipe, &tilingData);
-    op.Process();
+    if constexpr (NetworkMode == TILINGKEY_HYBRID) {
+        MoeEpDispatchHybridImpl::MoeEpDispatchHybrid<DTYPE_X, ScalesType, DoCpuSync, IsCached, IsTopkWeights,
+                                                     NetworkMode> op;
+        op.Init(context, x, topkIdx, topkWeights, scales, cachedSlotIdx, cachedRouteCount, cachedRouteDstScaleout,
+                cachedRouteScaleoutSlot, cachedRouteScaleupMask, cachedRouteScaleupSlot, numRecvPerRank,
+                numRecvPerExpert, dstBufferSlotIdx, routeCount, routeDstScaleout, routeScaleoutSlot,
+                routeScaleupMask, routeScaleupSlot, debugOut, workspaceGM, &pipe, &tilingData);
+        op.Process();
+    } else {
+        MoeEpDispatch<DTYPE_X, ScalesType, DoCpuSync, IsCached, IsTopkWeights, NetworkMode> op;
+        op.Init(context, x, topkIdx, topkWeights, scales, cachedSlotIdx, cachedRouteCount, cachedRouteDstScaleout,
+                cachedRouteScaleoutSlot, cachedRouteScaleupMask, cachedRouteScaleupSlot, numRecvPerRank,
+                numRecvPerExpert, dstBufferSlotIdx, routeCount, routeDstScaleout, routeScaleoutSlot,
+                routeScaleupMask, routeScaleupSlot, debugOut, workspaceGM, &pipe, &tilingData);
+        op.Process();
+    }
 }

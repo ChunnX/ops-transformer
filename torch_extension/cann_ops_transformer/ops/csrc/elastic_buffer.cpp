@@ -144,12 +144,12 @@ public:
         const at::Tensor &numRecvPerExpert, const c10::optional<at::Tensor> &cachedRecvSrcMetadata, int64_t epWorldSize,
         int64_t epRankId, int64_t numExperts, int64_t numMaxTokensPerRank, int64_t cclBufferSize, at::Tensor &recvX,
         at::Tensor &recvSrcMetadata, const c10::optional<at::Tensor> &recvTopkWeightsOpt,
-        const c10::optional<at::Tensor> &recvScalesOpt);
+        const c10::optional<at::Tensor> &recvScalesOpt, int64_t topoType, int64_t rankNumPerServer);
     static CombineTensorList MoeEpCombine(const at::Tensor &context, const at::Tensor &x, const at::Tensor &topkIdx,
                                           const at::Tensor &recvSrcMetadata, const at::Tensor &numRecvTokensPerExpert,
                                           const c10::optional<at::Tensor> &topkWeights, int64_t epWorldSize,
                                           int64_t epRankId, int64_t numExperts, int64_t numMaxTokensPerRank,
-                                          int64_t cclBufferSize);
+                                          int64_t cclBufferSize, int64_t topoType, int64_t rankNumPerServer);
 
 private:
     void BuildCommContext();
@@ -701,9 +701,11 @@ Mc2Api::ElasticBuffer::DispatchEpilogueTensorList Mc2Api::ElasticBuffer::MoeEpDi
     const at::Tensor &numRecvPerExpert, const c10::optional<at::Tensor> &cachedRecvSrcMetadata, int64_t epWorldSize,
     int64_t epRankId, int64_t numExperts, int64_t numMaxTokensPerRank, int64_t cclBufferSize, at::Tensor &recvX,
     at::Tensor &recvSrcMetadata, const c10::optional<at::Tensor> &recvTopkWeightsOpt,
-    const c10::optional<at::Tensor> &recvScalesOpt)
+    const c10::optional<at::Tensor> &recvScalesOpt, int64_t topoType, int64_t rankNumPerServer)
 {
     TORCH_CHECK(dstBufferSlotIdx.dim() == DIM_TWO, "dst_buffer_slot_idx must be 2D");
+    TORCH_CHECK(rankNumPerServer > 0, "rank_num_per_server must be positive, got ", rankNumPerServer);
+    TORCH_CHECK(epWorldSize % rankNumPerServer == 0, "ep_world_size must be divisible by rank_num_per_server");
 
     at::Tensor cachedRecvSrcMetadataTensor = cachedRecvSrcMetadata.has_value() ? *cachedRecvSrcMetadata : at::Tensor();
 
@@ -721,7 +723,8 @@ Mc2Api::ElasticBuffer::DispatchEpilogueTensorList Mc2Api::ElasticBuffer::MoeEpDi
 
     ACLNN_CMD(aclnnMoeEpDispatchEpilogue, context, dstBufferSlotIdx, numRecvPerRank, numRecvPerExpert,
               cachedRecvSrcMetadataTensor, epWorldSize, epRankId, numExperts, numMaxTokensPerRank, cclBufferSize,
-              hasTopkWeights, recvX, recvSrcMetadata, recvTopkWeightsTensor, recvScalesWrapper);
+              hasTopkWeights, topoType, rankNumPerServer, recvX, recvSrcMetadata, recvTopkWeightsTensor,
+              recvScalesWrapper);
 
     c10::optional<at::Tensor> recvTopkWeightsOutput;
     if (recvTopkWeightsOpt.has_value()) {
@@ -737,9 +740,12 @@ Mc2Api::ElasticBuffer::DispatchEpilogueTensorList Mc2Api::ElasticBuffer::MoeEpDi
 Mc2Api::ElasticBuffer::CombineTensorList Mc2Api::ElasticBuffer::MoeEpCombine(
     const at::Tensor &context, const at::Tensor &x, const at::Tensor &topkIdx, const at::Tensor &recvSrcMetadata,
     const at::Tensor &numRecvTokensPerExpert, const c10::optional<at::Tensor> &topkWeights, int64_t epWorldSize,
-    int64_t epRankId, int64_t numExperts, int64_t numMaxTokensPerRank, int64_t cclBufferSize)
+    int64_t epRankId, int64_t numExperts, int64_t numMaxTokensPerRank, int64_t cclBufferSize, int64_t topoType,
+    int64_t rankNumPerServer)
 {
     TORCH_CHECK(x.dim() == DIM_TWO, "x must be 2D");
+    TORCH_CHECK(rankNumPerServer > 0, "rank_num_per_server must be positive, got ", rankNumPerServer);
+    TORCH_CHECK(epWorldSize % rankNumPerServer == 0, "ep_world_size must be divisible by rank_num_per_server");
 
     int64_t numTokens = topkIdx.size(0);
     int64_t hidden = x.size(1);
@@ -756,7 +762,8 @@ Mc2Api::ElasticBuffer::CombineTensorList Mc2Api::ElasticBuffer::MoeEpCombine(
     c10::optional<at::Tensor> topkWeightsOpt = topkWeights;
 
     ACLNN_CMD(aclnnMoeEpCombine, context, x, topkIdx, recvSrcMetadata, numRecvTokensPerExpert, topkWeightsOpt,
-              epWorldSize, epRankId, numExperts, numMaxTokensPerRank, cclBufferSize, combinedX,
+              epWorldSize, epRankId, numExperts, numMaxTokensPerRank, cclBufferSize, topoType, rankNumPerServer,
+              combinedX,
               combinedTopkWeights);
 
     c10::optional<at::Tensor> combinedTopkWeightsOpt;

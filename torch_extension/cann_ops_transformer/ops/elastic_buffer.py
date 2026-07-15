@@ -61,6 +61,16 @@ class ElasticBufferOpBuilder(OpBuilder):
 _elastic_buffer_op_builder = ElasticBufferOpBuilder()
 
 
+def _debug_int_env(name: str) -> Optional[int]:
+    value = os.environ.get(name)
+    if value is None or value == "":
+        return None
+    try:
+        return int(value)
+    except ValueError as exc:
+        raise ValueError(f"{name} must be an integer, got {value!r}") from exc
+
+
 @dataclass
 class EPHandle:
     dst_buffer_slot_idx: torch.Tensor
@@ -320,7 +330,7 @@ class ElasticBuffer:
                 context, dst_slot, num_recv_per_rank, num_recv_per_expert, args.cached_recv_src_metadata,
                 self.ep_world_size, self.rank_id, args.num_experts, args.num_max_tokens_per_rank,
                 ccl_buffer_size, recv_x, recv_src_meta,
-                recv_topk_weights, recv_scales
+                recv_topk_weights, recv_scales, self.topo_type, self.rank_num_per_server
             )
 
         recv_x = (recv_x, recv_scales) if recv_scales is not None else recv_x
@@ -347,7 +357,7 @@ class ElasticBuffer:
             context, x, handle.topk_idx, handle.recv_src_metadata,
             handle.num_recv_tokens_per_expert, topk_weights,
             self.ep_world_size, self.rank_id, handle.num_experts,
-            handle.num_max_tokens_per_rank, ccl_buffer_size
+            handle.num_max_tokens_per_rank, ccl_buffer_size, self.topo_type, self.rank_num_per_server
         )
         return combined_x, combined_topk_weights
 
@@ -417,8 +427,12 @@ class ElasticBuffer:
             self._rank_nums_per_server[op_name] = manager.rank_num_per_server
             self.context = context
             self.ccl_buffer_size = manager.ccl_buffer_size
-        self.topo_type = self._topo_types[op_name]
-        self.rank_num_per_server = self._rank_nums_per_server[op_name]
+        self.topo_type = _debug_int_env("MOE_EP_DEBUG_TOPO_TYPE")
+        if self.topo_type is None:
+            self.topo_type = self._topo_types[op_name]
+        self.rank_num_per_server = _debug_int_env("MOE_EP_DEBUG_RANK_NUM_PER_SERVER")
+        if self.rank_num_per_server is None:
+            self.rank_num_per_server = self._rank_nums_per_server[op_name]
         self._check_topology()
         return self._contexts[op_name], self._ccl_buffer_sizes[op_name]
 
