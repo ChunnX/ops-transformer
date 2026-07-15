@@ -94,6 +94,16 @@ public:
             .DataTypeList({ge::DT_FLOAT})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
+        this->Input("x_active_mask")
+            .ParamType(OPTIONAL)
+            .DataTypeList({ge::DT_INT8})
+            .FormatList({ge::FORMAT_ND})
+            .AutoContiguous();
+        this->Input("scales")
+            .ParamType(OPTIONAL)
+            .DataTypeList({ge::DT_FLOAT8_E8M0})
+            .FormatList({ge::FORMAT_ND})
+            .AutoContiguous();
         this->Input("shared_weight1")
             .ParamType(DYNAMIC)
             .DataType({
@@ -142,16 +152,6 @@ public:
         this->Input("shared_bias2")
             .ParamType(DYNAMIC)
             .DataTypeList({ge::DT_FLOAT})
-            .FormatList({ge::FORMAT_ND})
-            .AutoContiguous();
-        this->Input("x_active_mask")
-            .ParamType(OPTIONAL)
-            .DataTypeList({ge::DT_INT8})
-            .FormatList({ge::FORMAT_ND})
-            .AutoContiguous();
-        this->Input("scales")
-            .ParamType(OPTIONAL)
-            .DataTypeList({ge::DT_FLOAT8_E8M0})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
 
@@ -256,6 +256,16 @@ public:
             .DataTypeList({ge::DT_FLOAT})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
+        aicore_config_arch22.Input("x_active_mask")
+            .ParamType(OPTIONAL)
+            .DataTypeList({ge::DT_INT8})
+            .FormatList({ge::FORMAT_ND})
+            .AutoContiguous();
+        aicore_config_arch22.Input("scales")
+            .ParamType(OPTIONAL)
+            .DataTypeList({ge::DT_FLOAT})
+            .FormatList({ge::FORMAT_ND})
+            .AutoContiguous();
         aicore_config_arch22.Input("shared_weight1")
             .ParamType(DYNAMIC)
             .DataType({ge::DT_INT4, ge::DT_INT4, ge::DT_INT4, ge::DT_INT32, ge::DT_INT32, ge::DT_INT32, ge::DT_FLOAT16,
@@ -293,16 +303,6 @@ public:
             .AutoContiguous();
         aicore_config_arch22.Input("shared_bias2")
             .ParamType(DYNAMIC)
-            .DataTypeList({ge::DT_FLOAT})
-            .FormatList({ge::FORMAT_ND})
-            .AutoContiguous();
-        aicore_config_arch22.Input("x_active_mask")
-            .ParamType(OPTIONAL)
-            .DataTypeList({ge::DT_INT8})
-            .FormatList({ge::FORMAT_ND})
-            .AutoContiguous();
-        aicore_config_arch22.Input("scales")
-            .ParamType(OPTIONAL)
             .DataTypeList({ge::DT_FLOAT})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();

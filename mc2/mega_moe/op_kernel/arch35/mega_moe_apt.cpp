@@ -35,9 +35,9 @@ using namespace MegaMoeImpl;
 template<uint8_t DispatchQuantMode, uint8_t DispatchQuantOutType, uint8_t CombineQuantOutType, uint8_t CommModeType>
 __global__ __aicore__ void mega_moe(
     GM_ADDR context, GM_ADDR x, GM_ADDR topkIds, GM_ADDR topkWeights, GM_ADDR weight1, GM_ADDR weight2,
-    GM_ADDR weightScales1, GM_ADDR weightScales2, GM_ADDR bias1, GM_ADDR bias2,
-    GM_ADDR sharedWeight1, GM_ADDR sharedWeight2, GM_ADDR sharedWeightScale1, GM_ADDR sharedWeightScale2,
-    GM_ADDR sharedBias1, GM_ADDR sharedBias2, GM_ADDR xActiveMask, GM_ADDR scales, GM_ADDR yOut,
+    GM_ADDR weightScales1, GM_ADDR weightScales2, GM_ADDR bias1, GM_ADDR bias2, GM_ADDR xActiveMask,
+    GM_ADDR scales, GM_ADDR sharedWeight1, GM_ADDR sharedWeight2, GM_ADDR sharedWeightScale1,
+    GM_ADDR sharedWeightScale2, GM_ADDR sharedBias1, GM_ADDR sharedBias2, GM_ADDR yOut,
     GM_ADDR expertTokenNumsOut, GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
     InitSocState();
