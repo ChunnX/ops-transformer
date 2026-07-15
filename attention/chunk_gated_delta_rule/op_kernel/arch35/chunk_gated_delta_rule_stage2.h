@@ -162,14 +162,8 @@ public:
             Cast(bf16State, stateFp32Ub_, RoundMode::CAST_RINT, Dv_ * curDk_);
             outQueue_.EnQue(bf16State);
             CopyOut<bfloat16_t>(sTP_->curStateBf16[nvId * Dv_ * Dk_], Dv_, Dk_, false, curDk_);
-            CalGCumExp(sTP_->gCum[nvId * Sp_ + length]);
-            SetFlag<HardEvent::V_MTE2>(V_MTE2_EVENT);
-            WaitFlag<HardEvent::V_MTE2>(V_MTE2_EVENT);
+            CalGCumExpFp32(sTP_->gCum[nvId * Sp_ + length]);
             PipeBarrier<PIPE_MTE3>();
-            auto fp32Local = outQueue_.AllocTensor<float>();
-            DataCopy(fp32Local, stateFp32Ub_, Dv_ * curDk_);
-            outQueue_.EnQue(fp32Local);
-            CopyOut<float>(sTP_->stateOut[nvId * Dv_ * Dk_], Dv_, Dk_, false, curDk_);
         }
         CrossCoreSetFlag<0x2, PIPE_MTE3>(0x3);
         CrossCoreWaitFlag(0x2);
@@ -204,7 +198,7 @@ public:
         auto finalState = sTP_->stateOut[nvId * Dv_ * Dk_];
         if (GetSubBlockIdx() == 0) {
             CopyIn(curState, Dv_, Dk_);
-            CalGCumExp(sTP_->gCum[nvId * Sp_ + length]);
+            CalGCumExpBf16(sTP_->gCum[nvId * Sp_ + length]);
         }
         CrossCoreWaitFlag(0x2);
         if (GetSubBlockIdx() == 0) {
@@ -241,15 +235,6 @@ public:
         SetFlag<HardEvent::FIX_MTE2>(FIX_MTE2_EVENT);
         WaitFlag<HardEvent::FIX_MTE2>(FIX_MTE2_EVENT);
         CrossCoreSetFlag<0x2, PIPE_FIX>(0x4);
-    }
-
-    __aicore__ inline void CalGCumExp(GlobalTensor<float> gCum)
-    {
-        if constexpr (kIsFp32) {
-            CalGCumExpFp32(gCum);
-        } else {
-            CalGCumExpBf16(gCum);
-        }
     }
 
     __aicore__ inline void CalGCumExpFp32(GlobalTensor<float> gCum)
@@ -342,7 +327,7 @@ public:
                                      GlobalTensor<bfloat16_t> state,
                                      GlobalTensor<vInnerType> vPrime)
     {
-        if constexpr (std::is_same_v<vInnerType, float>) {
+        if constexpr (kIsFp32) {
             RunMatmul(sTP_->mm1Fp32, kCumdecay, false, state, true, vPrime,
                       curChunkSize_, Dv_, Dk_, 1);
         } else {
@@ -356,7 +341,7 @@ public:
                                        GlobalTensor<bfloat16_t> kg,
                                        GlobalTensor<stateOutType> state)
     {
-        if constexpr (std::is_same_v<stateOutType, float>) {
+        if constexpr (kIsFp32) {
             RunMatmul(sTP_->mm1Fp32, vInner, true, kg, false, state,
                       Dv_, Dk_, curChunkSize_, 0);
         } else {
