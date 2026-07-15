@@ -170,7 +170,7 @@ def check_param_valid(
 # ==============================================================================
 @tilelang.jit(
     out_idx=[-4, -3, -2, -1],
-    workspace_idx=[12, 13, 14, 15, 16, 17, 18, 19, 20],
+    workspace_idx=[12, 13, 14, 15, 16, 17, 18, 19, 20, 21],
     pass_configs=pass_configs,
 )
 def tilelang_grad_kl_loss_single_kernel(
@@ -219,11 +219,12 @@ def tilelang_grad_kl_loss_single_kernel(
         ReduceSumY: T.Tensor((B, S1, K), calc_dtype),                   # 18
         SoftmaxI: T.Tensor((B, S1, K), calc_dtype),                     # 19
         dk_matmul_partial: T.Tensor((B, S1, K, DQueryIndex), calc_dtype), # 20 (workspace: reluGrad^T @ QueryIndex)
-        # === OUTPUTS (21-24) ===
-        dQueryIndex: T.Tensor((B, S1, Nidx1, DQueryIndex), input_dtype), # 21
-        dWeight_partial: T.Tensor((B, S1, n_num, Nidx1), input_dtype),  # 22
-        reluGradRes: T.Tensor((B, S1, Nidx1, K), input_dtype),          # 23
-        LossOut: T.Tensor((B, S1, n_num), calc_dtype),             # 24
+        reluGradT_ws: T.Tensor((B, S1, K, Nidx1), input_dtype),          # 21 (workspace: reluGrad 预转置)
+        # === OUTPUTS (22-25) ===
+        dQueryIndex: T.Tensor((B, S1, Nidx1, DQueryIndex), input_dtype), # 22
+        dWeight_partial: T.Tensor((B, S1, n_num, Nidx1), input_dtype),  # 23
+        reluGradRes: T.Tensor((B, S1, Nidx1, K), input_dtype),          # 24
+        LossOut: T.Tensor((B, S1, n_num), calc_dtype),             # 25
     ):
         with T.Kernel(block_num, is_npu=True) as (cid, vid):
             bz = cid // (s1_tile_num * n_num)
@@ -546,18 +547,13 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.wait_flag("mte3", "v", 9)
                     T.wait_flag("mte3", "v", 10)
 
-                    # Broadcast rsy_max to vector via brcb (无 PIPE_ALL):
-                    #   fill(rsy_bc_ub,1.0) → row_expand_mul(*,rsy_max_ub) → 标量→向量 广播
-                    #   mul(softmax_i_chunk, p_reduced_tmp, rsy_bc_ub[0,:])  向量·向量
+                    # Broadcast rsy_max to vector once (softmax_i_chunk_ub free, p_reduced_tmp refill 1.0)
                     # WAR: p_reduced_tmp 前面被 reduce_sum 覆盖，refill 前等 mte3 drain 完成
                     T.set_flag("mte3", "v", 0)
                     T.wait_flag("mte3", "v", 0)
                     T.tile.fill(p_reduced_tmp_ub, 1.0)
-                    T.tile.fill(rsy_bc_ub, 1.0)
                     T.pipe_barrier("v")
-                    T.tile.row_expand_mul_experiment(rsy_bc_ub, rsy_bc_ub, rsy_max_ub, re_tmp_ub)
-                    T.pipe_barrier("v")
-                    T.tile.mul(softmax_i_chunk_ub, p_reduced_tmp_ub, rsy_bc_ub[0, :])
+                    T.tile.mul(softmax_i_chunk_ub, p_reduced_tmp_ub, rsy_max_ub[0])
 
                     # GlobalSoftmaxI: compute global sum from UB-held ReduceSumY (no GM reads)
                     T.tile.fill(rsy_sum_ub, 0)
@@ -585,12 +581,7 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.pipe_barrier("v")
                     T.tile.exp(rsy_chunk_ub, rsy_chunk_ub)
                     T.pipe_barrier("v")
-                    # Broadcast rsy_sum_ub[0] via brcb → rsy_bc_ub (无 PIPE_ALL)
-                    T.tile.fill(rsy_bc_ub, 1.0)
-                    T.pipe_barrier("v")
-                    T.tile.row_expand_mul_experiment(rsy_bc_ub, rsy_bc_ub, rsy_sum_ub, re_tmp_ub)
-                    T.pipe_barrier("v")
-                    T.tile.div(rsy_chunk_ub, rsy_chunk_ub, rsy_bc_ub[0, :])
+                    T.tile.div(rsy_chunk_ub, rsy_chunk_ub, rsy_sum_ub[0])
                     T.set_flag("v", "mte3", 4)
                     T.wait_flag("v", "mte3", 4)
                     T.copy(rsy_chunk_ub, SoftmaxI[bz, s1_id, n_idx_k * n_block:(n_idx_k + 1) * n_block])
@@ -1155,7 +1146,7 @@ def sparse_lightning_indexer_grad_kl_loss(
             ws = _workspace_cache[ws_key]
             d_query_index_accum, gather_key_ws, gather_key_rope_ws, gather_key_index_ws, \
                 bmm1_res_ws, bmm2_res_ws, p_reduced_ws, reduce_sum_y_ws, softmax_i_ws, \
-                dk_matmul_partial, \
+                dk_matmul_partial, relu_grad_t_ws, \
                 d_query_index_out, d_weight_partial_out, relu_grad_out, loss_out, d_key_index_out = ws
         else:
             gather_key_ws = torch.zeros(B, S1, K, DQuery, dtype=input_dtype, device=query.device)
@@ -1169,6 +1160,8 @@ def sparse_lightning_indexer_grad_kl_loss(
             d_query_index_accum = torch.zeros(B, S1, Nidx1, DQueryIndex, dtype=torch.float32, device=query.device)
             # dKeyIndex 融合：matmul 中间结果(workspace) + fp32 累加器输出
             dk_matmul_partial = torch.zeros(B, S1, K, DQueryIndex, dtype=torch.float32, device=query.device)
+            # reluGrad 预转置 workspace (n_block, Nidx1) 逐 core 全覆盖，无需归零
+            relu_grad_t_ws = torch.zeros(B, S1, K, Nidx1, dtype=input_dtype, device=query.device)
             d_key_index_out = torch.zeros(B, S2_pad, Nidx2, DQueryIndex, dtype=torch.float32, device=query.device)
             d_query_index_out = torch.zeros(B, S1, Nidx1, DQueryIndex, dtype=input_dtype, device=query.device)
             d_weight_partial_out = torch.zeros(B, S1, n_num_ws, Nidx1, dtype=input_dtype, device=query.device)
@@ -1176,7 +1169,7 @@ def sparse_lightning_indexer_grad_kl_loss(
             loss_out = torch.zeros(B, S1, n_num_ws, dtype=torch.float32, device=query.device)
             _workspace_cache[ws_key] = (d_query_index_accum, gather_key_ws, gather_key_rope_ws, gather_key_index_ws,
                                         bmm1_res_ws, bmm2_res_ws, p_reduced_ws, reduce_sum_y_ws, softmax_i_ws,
-                                        dk_matmul_partial,
+                                        dk_matmul_partial, relu_grad_t_ws,
                                         d_query_index_out, d_weight_partial_out, relu_grad_out, loss_out, d_key_index_out)
 
         # Zero workspaces before each call (gather_ws filled by V0 scope)
@@ -1197,7 +1190,8 @@ def sparse_lightning_indexer_grad_kl_loss(
             bmm1_res_ws, bmm2_res_ws,                  # 15-16
             p_reduced_ws, reduce_sum_y_ws, softmax_i_ws,  # 17-19
             dk_matmul_partial,                         # 20 (workspace)
-            d_query_index_out, d_weight_partial_out, relu_grad_out, loss_out,  # 21-24
+            relu_grad_t_ws,                            # 21 (workspace)
+            d_query_index_out, d_weight_partial_out, relu_grad_out, loss_out,  # 22-25
         )
         if _PROFILE:
             _t_kernel_end.record()
