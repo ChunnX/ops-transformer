@@ -22,6 +22,9 @@
 namespace MoeInitRoutingV3 {
 using namespace AscendC;
 constexpr int64_t GATHER_OUT_DYNAMIC_QUANT_BUFFER_NUM = 1;
+constexpr int64_t GATHER_OUT_DYNAMIC_QUANT_INPUT_X_QUEUE_NUM = 3;
+constexpr int64_t GATHER_OUT_DYNAMIC_QUANT_INPUT_QUEUE_NUM = 1;
+constexpr int64_t GATHER_OUT_DYNAMIC_QUANT_OUTPUT_QUEUE_NUM = 1;
 
 template <typename T, typename QuantT = int8_t>
 class MoeGatherOutDynamicQuant {
@@ -60,11 +63,11 @@ private:
 
 private:
     TPipe *pipe_;
-    TQue<QuePosition::VECIN, 3> inputXInQueue_;
-    TQue<QuePosition::VECIN, 1> smoothInQueue_;
-    TQue<QuePosition::VECIN, 1> expandRowIdxInQueue_;
-    TQue<QuePosition::VECOUT, 1> inputXOutQueue_;
-    TQue<QuePosition::VECOUT, 1> scaleOutQueue_;
+    TQue<QuePosition::VECIN, GATHER_OUT_DYNAMIC_QUANT_INPUT_X_QUEUE_NUM> inputXInQueue_;
+    TQue<QuePosition::VECIN, GATHER_OUT_DYNAMIC_QUANT_INPUT_QUEUE_NUM> smoothInQueue_;
+    TQue<QuePosition::VECIN, GATHER_OUT_DYNAMIC_QUANT_INPUT_QUEUE_NUM> expandRowIdxInQueue_;
+    TQue<QuePosition::VECOUT, GATHER_OUT_DYNAMIC_QUANT_OUTPUT_QUEUE_NUM> inputXOutQueue_;
+    TQue<QuePosition::VECOUT, GATHER_OUT_DYNAMIC_QUANT_OUTPUT_QUEUE_NUM> scaleOutQueue_;
 
     GlobalTensor<T> inputXGm_;
     GlobalTensor<int8_t> expandedXGm_;
@@ -287,7 +290,6 @@ __aicore__ inline void MoeGatherOutDynamicQuant<T, QuantT>::ComputeMultiPass(Loc
             MicroAPI::CompareScalar<float, CMPMODE::EQ>(maskRegScaleZero, scaleValueReg, 0.0f, maskRegVL1);
             MicroAPI::Select(quantFactorReg, zeroReg, quantFactorReg, maskRegScaleZero);
             MicroAPI::Duplicate(quantFactorReg, quantFactorReg, maskRegAll);
-
             MicroAPI::Muls(scaleValueReg, scaleValueReg, 1.0f / DYNAMIC_QUANT_INT4_SYM_SCALE, maskRegVL1);
         }
         MicroAPI::Duplicate(scaleValueReg, scaleValueReg, maskRegAll);
@@ -734,8 +736,9 @@ __aicore__ inline void MoeGatherOutDynamicQuant<T, QuantT>::Init(
     }
     pipe_->InitBuffer(smoothInQueue_, GATHER_OUT_DYNAMIC_QUANT_BUFFER_NUM,
                       AlignBytes(perLoopCols_, sizeof(float)));
-    pipe_->InitBuffer(inputXOutQueue_, 1, AlignBytes(perLoopColsAsInt8_, sizeof(int8_t)));
-    pipe_->InitBuffer(scaleOutQueue_, 1, BLOCK_BYTES + BLOCK_BYTES);
+    pipe_->InitBuffer(inputXOutQueue_, GATHER_OUT_DYNAMIC_QUANT_OUTPUT_QUEUE_NUM,
+                      AlignBytes(perLoopColsAsInt8_, sizeof(int8_t)));
+    pipe_->InitBuffer(scaleOutQueue_, GATHER_OUT_DYNAMIC_QUANT_OUTPUT_QUEUE_NUM, BLOCK_BYTES + BLOCK_BYTES);
 }
 
 template <typename T, typename QuantT>
