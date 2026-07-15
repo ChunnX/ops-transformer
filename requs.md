@@ -1,0 +1,5 @@
+# 需求一
+
+背景：适配sparse_flash_mla算子pytest aclgraph路线(即路径7)
+借鉴：attention/mixed_quant_sparse_flash_mla/tests/pytest下test_run.sh有Graph入口
+请借鉴mixed_quant_sparse_flash_mla算子的pytest aclgraph实现，去实现sparse_flash_mla算子pytest aclgraph路线
