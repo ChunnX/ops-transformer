@@ -1062,6 +1062,8 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzGetWorkspaceSize(const aclT
     float sharedInputWeight, int64_t sharedInputOffset, bool transposeX1, bool transposeX2, int64_t groupListType,
     aclTensor *out, uint64_t *workspaceSize, aclOpExecutor **executor)
 {
+    OP_CHECK_COMM_INPUT(workspaceSize, executor);
+    CHECK_RET(out != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     L2_DFX_PHASE_1(aclnnGroupedMatmulFinalizeRoutingWeightNz,
         DFX_IN(x1, x2, scale, bias, pertokenScaleOptional, groupList, sharedInput, logit, rowIndex, dtype,
         sharedInputWeight, sharedInputOffset, transposeX1, transposeX2, groupListType),
@@ -1075,6 +1077,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzGetWorkspaceSize(const aclT
         const aclTensor* unused = nullptr;
     const aclIntArray* unusedTuningConfig = nullptr;
     auto uniqueExecutor = CREATE_EXECUTOR();
+    CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
     GroupedMatmulParams params = GroupedMatmulParamsBuilder::Create(x1, x2, out)
         .SetScale(scale)
         .SetBias(bias)
@@ -1123,6 +1126,8 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2GetWorkspaceSize(
     int64_t sharedInputOffset, bool transposeX1, bool transposeX2, int64_t groupListType,
     const aclIntArray *tuningConfigOptional, aclTensor *out, uint64_t *workspaceSize, aclOpExecutor **executor)
 {
+    OP_CHECK_COMM_INPUT(workspaceSize, executor);
+    CHECK_RET(out != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     L2_DFX_PHASE_1(aclnnGroupedMatmulFinalizeRoutingWeightNzV2,
                    DFX_IN(x1, x2, scale, bias, pertokenScaleOptional, groupList, sharedInput, logit, rowIndex, dtype,
                           sharedInputWeight, sharedInputOffset, transposeX1, transposeX2, groupListType),
@@ -1134,12 +1139,14 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2GetWorkspaceSize(
     CHECK_RET(retxweightnullptr == ACLNN_SUCCESS, retxweightnullptr);
     auto viewShape = x2->GetViewShape();
     auto uniqueExecutor = CREATE_EXECUTOR();
+    CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
 
     // MxA8W4场景需要保留原stride信息不丢失
     auto *finalWeight = x2;
 
     // unpack int32 to int4
     auto tmpWeight = uniqueExecutor.get()->CreateView(x2, viewShape, x2->GetViewOffset());
+    CHECK_RET(tmpWeight != nullptr, ACLNN_ERR_INNER_NULLPTR);
     if (op::GetCurrentPlatformInfo().GetCurNpuArch() != NpuArch::DAV_3510) {
         auto storageShape = x2->GetStorageShape();
         if (tmpWeight->GetDataType() == DataType::DT_INT32) {
@@ -1235,6 +1242,8 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingGetWorkspaceSize(const aclTensor *x
     float sharedInputWeight, int64_t sharedInputOffset, bool transposeX1, bool transposeX2, int64_t groupListType,
     aclTensor *out, uint64_t *workspaceSize, aclOpExecutor **executor)
 {
+    OP_CHECK_COMM_INPUT(workspaceSize, executor);
+    CHECK_RET(out != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     L2_DFX_PHASE_1(aclnnGroupedMatmulFinalizeRouting,
         DFX_IN(x1, x2, scale, bias, pertokenScaleOptional, groupList, sharedInput, logit, rowIndex, dtype,
         sharedInputWeight, sharedInputOffset, transposeX1, transposeX2, groupListType), DFX_OUT(out));
@@ -1274,6 +1283,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingGetWorkspaceSize(const aclTensor *x
 
     // aclnnGroupedMatmulFinalizeRoutingND
     auto uniqueExecutorND = CREATE_EXECUTOR();
+    CHECK_RET(uniqueExecutorND.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
     const aclTensor* unusedND = nullptr;
     const aclIntArray* unusedTuningConfig = nullptr;
     GroupedMatmulParams params = GroupedMatmulParamsBuilder::Create(x1, x2, out)
@@ -1305,6 +1315,8 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV2GetWorkspaceSize(const aclTensor 
     float sharedInputWeight, int64_t sharedInputOffset, bool transposeX1, bool transposeX2, int64_t groupListType,
     aclTensor *out, uint64_t *workspaceSize, aclOpExecutor **executor)
 {
+    OP_CHECK_COMM_INPUT(workspaceSize, executor);
+    CHECK_RET(out != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     L2_DFX_PHASE_1(aclnnGroupedMatmulFinalizeRoutingV2,
         DFX_IN(x1, x2, scaleOptional, biasOptional, pertokenScaleOptional, groupListOptional, sharedInputOptional, logitOptional, rowIndexOptional, dtype,
         sharedInputWeight, sharedInputOffset, transposeX1, transposeX2, groupListType), DFX_OUT(out));
@@ -1344,6 +1356,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV2GetWorkspaceSize(const aclTensor 
     }
 
     auto uniqueExecutor = CREATE_EXECUTOR();
+    CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
     const aclIntArray* unusedTuningConfig = nullptr;
     GroupedMatmulParams params = GroupedMatmulParamsBuilder::Create(x1, x2, out)
         .SetScale(scaleOptional).SetBias(biasOptional)
@@ -1422,6 +1435,8 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3GetWorkspaceSize(const aclTensor 
     float sharedInputWeight, int64_t sharedInputOffset, bool transposeX1, bool transposeX2, int64_t groupListType, const aclIntArray *tuningConfigOptional,
     aclTensor *out, uint64_t *workspaceSize, aclOpExecutor **executor)
 {
+    OP_CHECK_COMM_INPUT(workspaceSize, executor);
+    CHECK_RET(out != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     L2_DFX_PHASE_1(aclnnGroupedMatmulFinalizeRoutingV3,
         DFX_IN(x1, x2, scaleOptional, biasOptional, pertokenScaleOptional, groupListOptional, sharedInputOptional, logitOptional, rowIndexOptional, dtype,
         sharedInputWeight, sharedInputOffset, transposeX1, transposeX2, groupListType), DFX_OUT(out));
@@ -1474,7 +1489,8 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3GetWorkspaceSize(const aclTensor 
             "for mx, the dtypes of x and weight must be within the range {FLOAT8_E5M2, FLOAT8_E4M3FN, FLOAT4_E2M1}");
         return ACLNN_ERR_PARAM_INVALID;
     }
-        auto uniqueExecutor = CREATE_EXECUTOR();
+    auto uniqueExecutor = CREATE_EXECUTOR();
+    CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
     GroupedMatmulParams params = GroupedMatmulParamsBuilder::Create(x1, x2, out)
         .SetScale(scaleOptional).SetBias(biasOptional)
         .SetPertokenScale(pertokenScaleOptional).SetGroupList(groupListOptional)
