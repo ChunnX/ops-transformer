@@ -53,9 +53,14 @@ def qliv2(testcase_files):   # 初始化参数和tensor
     # return_value 模式：对比 topk value（对齐 single 模式）
     return_value = int(params[31])
     if return_value and npu_result is not None:
-        result_return_value, fulfill_precent_return_value = result_compare_method.check_result_return_value(cpu_topk_value, npu_topk_value, params)
-        print(f"result_return_value: {result_return_value}")
-        print(f"fulfill_precent_return_value: {fulfill_precent_return_value}")
+        if cpu_topk_value is None:
+            print("[警告] .pt 文件缺少 cpu_topk_value（旧格式 .pt），请重新生成 .pt：python3 batch/quant_lightning_indexer_v2_pt_save.py ./testcases_red.xlsx ./pt_path")
+        elif npu_topk_value is None:
+            print("[警告] npu_topk_value 为 None，跳过 return_value 对比")
+        else:
+            result_return_value, fulfill_precent_return_value = result_compare_method.check_result_return_value(cpu_topk_value, npu_topk_value, params)
+            print(f"result_return_value: {result_return_value}")
+            print(f"fulfill_precent_return_value: {fulfill_precent_return_value}")
 
     row_data = {
         "Testcase_Name": Path(testcase_files).stem,
