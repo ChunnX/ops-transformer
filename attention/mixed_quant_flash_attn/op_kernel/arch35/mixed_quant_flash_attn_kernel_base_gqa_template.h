@@ -116,6 +116,7 @@ public:
     BuffersPolicyDB<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> bmm1Buffers;
     BuffersPolicyDB<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> bmm2Buffers;
     BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> l1PBuffers;
+    BuffersPolicyDB<BufferType::L1, SyncType::NO_SYNC> kvAntiquantRes;
 
     GlobalTensor<int32_t> cuSeqLensGmQ;
     GlobalTensor<int32_t> seqUsedGmQ;
@@ -225,7 +226,6 @@ public:
                                         workspace);
                 vecFaBlock.SetCuSeqLensParser(qSeqUsedParser);
             }
-            vecFaBlock.InitAntiquantGm(key, value, blocktable, kDescale, vDescale);
             vecFaBlock.ClearOutput();
         }
 
