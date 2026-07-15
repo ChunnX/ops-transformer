@@ -114,6 +114,30 @@ static uint32_t ApplyDebugNetworkModeOverride(uint32_t networkMode, const char *
     OP_LOGW(nodeName, "Ignore invalid MOE_EP_DEBUG_FORCE_NETWORK_MODE=%s, expected 0/direct or 1/hybrid.", envValue);
     return networkMode;
 }
+constexpr uint64_t HYBRID_ROUTE_WORKSPACE_BYTES = 0UL;
+constexpr uint32_t HYBRID_COUNTER_STRIDE = 2U; // hybrid sendCntPerRank: state + dstRankRecvNum
+
+static uint32_t ApplyDebugNetworkModeOverride(uint32_t networkMode, const char *nodeName)
+{
+    const char *envValue = std::getenv("MOE_EP_DEBUG_FORCE_NETWORK_MODE");
+    if (envValue == nullptr || envValue[0] == '\0') {
+        return networkMode;
+    }
+    if ((std::strcmp(envValue, "0") == 0) || (std::strcmp(envValue, "direct") == 0) ||
+        (std::strcmp(envValue, "DIRECT") == 0)) {
+        OP_LOGI(nodeName, "MOE_EP_DEBUG_FORCE_NETWORK_MODE overrides networkMode from %u to %u.", networkMode,
+                DIRECT_MODE);
+        return DIRECT_MODE;
+    }
+    if ((std::strcmp(envValue, "1") == 0) || (std::strcmp(envValue, "hybrid") == 0) ||
+        (std::strcmp(envValue, "HYBRID") == 0)) {
+        OP_LOGI(nodeName, "MOE_EP_DEBUG_FORCE_NETWORK_MODE overrides networkMode from %u to %u.", networkMode,
+                HYBRID_MODE);
+        return HYBRID_MODE;
+    }
+    OP_LOGW(nodeName, "Ignore invalid MOE_EP_DEBUG_FORCE_NETWORK_MODE=%s, expected 0/direct or 1/hybrid.", envValue);
+    return networkMode;
+}
 
 static void PrintTilingDataInfo(const char *nodeName, const MoeEpDispatchInfo &info)
 {
@@ -246,61 +270,6 @@ static bool CheckOptionalTensorShape(const gert::TilingContext *context, const c
                 "cached_slot_idx dim1 must equal topk_idx dim1, but got cached_slot_idx dim1=%ld, topk_idx dim1=%ld.",
                 cachedShape->GetStorageShape().GetDim(1), topkDim1),
             return false);
-    }
-
-    const gert::StorageShape *cachedRouteCountShape = context->GetOptionalInputShape(CACHED_ROUTE_COUNT_INDEX);
-    const gert::StorageShape *cachedRouteDstScaleoutShape =
-        context->GetOptionalInputShape(CACHED_ROUTE_DST_SCALEOUT_INDEX);
-    const gert::StorageShape *cachedRouteScaleoutSlotShape =
-        context->GetOptionalInputShape(CACHED_ROUTE_SCALEOUT_SLOT_INDEX);
-    const gert::StorageShape *cachedRouteScaleupMaskShape =
-        context->GetOptionalInputShape(CACHED_ROUTE_SCALEUP_MASK_INDEX);
-    const gert::StorageShape *cachedRouteScaleupSlotShape =
-        context->GetOptionalInputShape(CACHED_ROUTE_SCALEUP_SLOT_INDEX);
-    bool anyCachedRoute = cachedRouteCountShape != nullptr || cachedRouteDstScaleoutShape != nullptr ||
-                          cachedRouteScaleoutSlotShape != nullptr || cachedRouteScaleupMaskShape != nullptr ||
-                          cachedRouteScaleupSlotShape != nullptr;
-    bool allCachedRoute = cachedRouteCountShape != nullptr && cachedRouteDstScaleoutShape != nullptr &&
-                          cachedRouteScaleoutSlotShape != nullptr && cachedRouteScaleupMaskShape != nullptr &&
-                          cachedRouteScaleupSlotShape != nullptr;
-    OP_TILING_CHECK(anyCachedRoute && !allCachedRoute,
-                    OP_LOGE(nodeName, "cached route tensors must be provided together."), return false);
-    if (allCachedRoute) {
-        int64_t routeCapacity = topkDim1;
-        int64_t maskWordCount = (static_cast<int64_t>(info.numScaleupRanks) + 31) / 32;
-        OP_TILING_CHECK(cachedRouteCountShape->GetStorageShape().GetDimNum() != ONE_DIM,
-                        OP_LOGE(nodeName, "cached_route_count dims must be 1."), return false);
-        OP_TILING_CHECK(cachedRouteCountShape->GetStorageShape().GetDim(0) != topkDim0,
-                        OP_LOGE(nodeName, "cached_route_count dim0 must equal topk dim0."), return false);
-        const gert::StorageShape *routeTwoDimShapes[] = {cachedRouteDstScaleoutShape, cachedRouteScaleoutSlotShape};
-        const char *routeTwoDimNames[] = {"cached_route_dst_scaleout", "cached_route_scaleout_slot"};
-        for (uint32_t routeIndex = 0; routeIndex < 2U; ++routeIndex) {
-            OP_TILING_CHECK(routeTwoDimShapes[routeIndex]->GetStorageShape().GetDimNum() != TWO_DIMS,
-                            OP_LOGE(nodeName, "%s dims must be 2.", routeTwoDimNames[routeIndex]), return false);
-            OP_TILING_CHECK(routeTwoDimShapes[routeIndex]->GetStorageShape().GetDim(0) != topkDim0,
-                            OP_LOGE(nodeName, "%s dim0 must equal topk dim0.", routeTwoDimNames[routeIndex]),
-                            return false);
-            OP_TILING_CHECK(routeTwoDimShapes[routeIndex]->GetStorageShape().GetDim(1) != routeCapacity,
-                            OP_LOGE(nodeName, "%s dim1 must equal route capacity.", routeTwoDimNames[routeIndex]),
-                            return false);
-        }
-        OP_TILING_CHECK(cachedRouteScaleupMaskShape->GetStorageShape().GetDimNum() != 3U,
-                        OP_LOGE(nodeName, "cached_route_scaleup_mask dims must be 3."), return false);
-        OP_TILING_CHECK(cachedRouteScaleupMaskShape->GetStorageShape().GetDim(0) != topkDim0,
-                        OP_LOGE(nodeName, "cached_route_scaleup_mask dim0 must equal topk dim0."), return false);
-        OP_TILING_CHECK(cachedRouteScaleupMaskShape->GetStorageShape().GetDim(1) != routeCapacity,
-                        OP_LOGE(nodeName, "cached_route_scaleup_mask dim1 must equal route capacity."), return false);
-        OP_TILING_CHECK(cachedRouteScaleupMaskShape->GetStorageShape().GetDim(2) != maskWordCount,
-                        OP_LOGE(nodeName, "cached_route_scaleup_mask dim2 must equal mask word count."), return false);
-        OP_TILING_CHECK(cachedRouteScaleupSlotShape->GetStorageShape().GetDimNum() != 3U,
-                        OP_LOGE(nodeName, "cached_route_scaleup_slot dims must be 3."), return false);
-        OP_TILING_CHECK(cachedRouteScaleupSlotShape->GetStorageShape().GetDim(0) != topkDim0,
-                        OP_LOGE(nodeName, "cached_route_scaleup_slot dim0 must equal topk dim0."), return false);
-        OP_TILING_CHECK(cachedRouteScaleupSlotShape->GetStorageShape().GetDim(1) != routeCapacity,
-                        OP_LOGE(nodeName, "cached_route_scaleup_slot dim1 must equal route capacity."), return false);
-        OP_TILING_CHECK(
-            cachedRouteScaleupSlotShape->GetStorageShape().GetDim(2) != static_cast<int64_t>(info.numScaleupRanks),
-            OP_LOGE(nodeName, "cached_route_scaleup_slot dim2 must equal scaleup rank count."), return false);
     }
 
     const gert::StorageShape *cachedRouteCountShape = context->GetOptionalInputShape(CACHED_ROUTE_COUNT_INDEX);
@@ -908,7 +877,6 @@ static uint64_t CalcDispatchWorkspace(MoeEpDispatchInfo &info)
 {
     uint64_t epWorldSize = static_cast<uint64_t>(info.cfg.epWorldSize);
     uint64_t nmt = static_cast<uint64_t>(info.cfg.numMaxTokensPerRank);
-    uint64_t perSlotBytes = static_cast<uint64_t>(info.cfg.perSlotBytes);
     uint64_t moeExpertNumPerRank = static_cast<uint64_t>(info.cfg.numLocalExperts);
     uint64_t aivNum = static_cast<uint64_t>(info.aivNum);
     uint64_t superNodeCount = static_cast<uint64_t>(info.numScaleoutRanks);
@@ -948,8 +916,7 @@ static uint64_t CalcDispatchWorkspace(MoeEpDispatchInfo &info)
     info.scaleupSendWorkspaceOffset = sendCntBytes;
     info.scaleoutSendWorkspaceOffset = info.scaleupSendWorkspaceOffset + scaleupSendWorkspaceBytes;
     info.routeWorkspaceOffset = info.scaleoutSendWorkspaceOffset + scaleoutSendWorkspaceBytes;
-    return SYSTEM_NEED_WORKSPACE + info.routeWorkspaceOffset + scaleoutCounterBytes + routeWorkspaceBytes +
-           scaleoutNotifyBytes + readyStatusBytes + globalABytes;
+    return SYSTEM_NEED_WORKSPACE + info.routeWorkspaceOffset + routeWorkspaceBytes + globalABytes;
 }
 
 static ge::graphStatus CheckWinSize(const gert::TilingContext *context, MoeEpDispatchInfo &info, const char *nodeName)
@@ -961,7 +928,6 @@ static ge::graphStatus CheckWinSize(const gert::TilingContext *context, MoeEpDis
     uint64_t maxWindowSize = static_cast<uint64_t>(*cclBufferSizePtr);
     uint64_t epWorldSize = static_cast<uint64_t>(info.cfg.epWorldSize);
     uint64_t nmt = static_cast<uint64_t>(info.cfg.numMaxTokensPerRank);
-    uint64_t perSlotBytes = static_cast<uint64_t>(info.cfg.perSlotBytes);
     uint64_t moeExpertNumPerRank = static_cast<uint64_t>(info.cfg.numLocalExperts);
     uint64_t topK = static_cast<uint64_t>(info.cfg.topK);
     uint64_t superNodeCount = static_cast<uint64_t>(info.numScaleoutRanks);
@@ -1010,7 +976,7 @@ static ge::graphStatus CheckWinSize(const gert::TilingContext *context, MoeEpDis
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus SetWorkSpace(gert::TilingContext *context, const MoeEpDispatchInfo &info, const char *nodeName)
+static ge::graphStatus SetWorkSpace(gert::TilingContext *context, MoeEpDispatchInfo &info, const char *nodeName)
 {
     size_t *workSpaces = context->GetWorkspaceSizes(1);
     OP_TILING_CHECK(workSpaces == nullptr, OP_LOGE(nodeName, "workSpaces is nullptr."), return ge::GRAPH_FAILED);

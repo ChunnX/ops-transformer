@@ -57,6 +57,16 @@ class ElasticBufferOpBuilder(OpBuilder):
 _elastic_buffer_op_builder = ElasticBufferOpBuilder()
 
 
+def _debug_int_env(name: str) -> Optional[int]:
+    value = os.environ.get(name)
+    if value is None or value == "":
+        return None
+    try:
+        return int(value)
+    except ValueError as exc:
+        raise ValueError(f"{name} must be an integer, got {value!r}") from exc
+
+
 @dataclass
 class EPHandle:
     dst_buffer_slot_idx: torch.Tensor
