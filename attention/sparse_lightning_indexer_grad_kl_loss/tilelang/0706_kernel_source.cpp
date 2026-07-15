@@ -6,7 +6,7 @@ using uint = unsigned int;
 using uchar = unsigned char;
 using ushort = unsigned short;
 
-extern "C" __global__ __aicore__ void main_kernel( GM_ADDR SparseIndices_handle,  GM_ADDR Query_handle,  GM_ADDR QueryRope_handle,  GM_ADDR Key_handle,  GM_ADDR KeyRope_handle,  GM_ADDR QueryIndex_handle,  GM_ADDR KeyIndex_handle,  GM_ADDR Weights_handle,  GM_ADDR SoftmaxMax_handle,  GM_ADDR SoftmaxSum_handle,  GM_ADDR dQueryIndexAccum_handle,  GM_ADDR GatherKey_ws_handle,  GM_ADDR GatherKeyRope_ws_handle,  GM_ADDR GatherKeyIndex_ws_handle,  GM_ADDR bmm1Res_handle,  GM_ADDR bmm2Res_handle,  GM_ADDR PReduced_handle,  GM_ADDR ReduceSumY_handle,  GM_ADDR SoftmaxI_handle,  GM_ADDR dk_matmul_partial_handle,  GM_ADDR reluGradT_ws_handle,  GM_ADDR dQueryIndex_handle,  GM_ADDR dWeight_partial_handle,  GM_ADDR reluGradRes_handle,  GM_ADDR LossOut_handle,  GM_ADDR dKeyIndex_handle, uint64_t fftsAddr) {
+extern "C" __global__ __aicore__ void main_kernel( GM_ADDR SparseIndices_handle,  GM_ADDR Query_handle,  GM_ADDR QueryRope_handle,  GM_ADDR Key_handle,  GM_ADDR KeyRope_handle,  GM_ADDR QueryIndex_handle,  GM_ADDR KeyIndex_handle,  GM_ADDR Weights_handle,  GM_ADDR SoftmaxMax_handle,  GM_ADDR SoftmaxSum_handle,  GM_ADDR dQueryIndexAccum_handle,  GM_ADDR dKeyIndex_handle,  GM_ADDR GatherKey_ws_handle,  GM_ADDR GatherKeyRope_ws_handle,  GM_ADDR GatherKeyIndex_ws_handle,  GM_ADDR bmm1Res_handle,  GM_ADDR bmm2Res_handle,  GM_ADDR PReduced_handle,  GM_ADDR ReduceSumY_handle,  GM_ADDR SoftmaxI_handle,  GM_ADDR dk_matmul_partial_handle,  GM_ADDR reluGradT_ws_handle,  GM_ADDR dQueryIndex_handle,  GM_ADDR dWeight_partial_handle,  GM_ADDR reluGradRes_handle,  GM_ADDR LossOut_handle, uint64_t fftsAddr) {
   KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
   AscendC::TPipe pipe;
 
@@ -32,6 +32,8 @@ extern "C" __global__ __aicore__ void main_kernel( GM_ADDR SparseIndices_handle,
   SoftmaxSum.SetGlobalBuffer((__gm__ float*)SoftmaxSum_handle);
   AscendC::GlobalTensor<float> dQueryIndexAccum;
   dQueryIndexAccum.SetGlobalBuffer((__gm__ float*)dQueryIndexAccum_handle);
+  AscendC::GlobalTensor<float> dKeyIndex;
+  dKeyIndex.SetGlobalBuffer((__gm__ float*)dKeyIndex_handle);
   AscendC::GlobalTensor<half> GatherKey_ws;
   GatherKey_ws.SetGlobalBuffer((__gm__ half*)GatherKey_ws_handle);
   AscendC::GlobalTensor<half> GatherKeyRope_ws;
@@ -60,8 +62,6 @@ extern "C" __global__ __aicore__ void main_kernel( GM_ADDR SparseIndices_handle,
   reluGradRes.SetGlobalBuffer((__gm__ half*)reluGradRes_handle);
   AscendC::GlobalTensor<float> LossOut;
   LossOut.SetGlobalBuffer((__gm__ float*)LossOut_handle);
-  AscendC::GlobalTensor<float> dKeyIndex;
-  dKeyIndex.SetGlobalBuffer((__gm__ float*)dKeyIndex_handle);
 
   AscendC::TBuf<AscendC::TPosition::A2> ascend_l0a;
   pipe.InitBuffer(ascend_l0a, 65536);
@@ -253,7 +253,7 @@ extern "C" __global__ __aicore__ void main_kernel( GM_ADDR SparseIndices_handle,
       AscendC::Muls(weight_2d_ub[(k * 64)], p_reduced_tmp_ub[0], weight_all_ub_scalar, 64);
       }
     }
-    tl::ascend::Fill<float>(rsy_max_ub[0], -1.000000e+30f, 1);
+    tl::ascend::Fill<float>(rsy_max_ub[0], -CUDART_INF_F, 1);
     for (int32_t n_rsy = 0; n_rsy < 32; ++n_rsy) {
       AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(2);
       AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(2);
@@ -442,15 +442,17 @@ extern "C" __global__ __aicore__ void main_kernel( GM_ADDR SparseIndices_handle,
     }
   }
   if ASCEND_IS_AIV {
-    for (int32_t k_id = (cid * 64); k_id < ((cid * 64) + 64); ++k_id) {
-      int32_t idx_2 = SparseIndices.GetValue(k_id);
-      if (0 <= idx_2) {
-        tl::ascend::copy_gm_to_ub<float, 128, 1>(dk_chunk_ub[0], dk_matmul_partial[(k_id * 128)], 262144, 1, 128, 0.000000e+00f);
-        AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE3>(0);
-        AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE3>(0);
-        tl::ascend::atomic_add_ub_to_gm<float, 128, 1>(dKeyIndex[(idx_2 * 128)], dk_chunk_ub[0], 262144, 1, 128);
-        AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(1);
-        AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(1);
+    if (vid == 0) {
+      for (int32_t k_id = (cid * 64); k_id < ((cid * 64) + 64); ++k_id) {
+        int32_t idx_2 = SparseIndices.GetValue(k_id);
+        if (0 <= idx_2) {
+          tl::ascend::copy_gm_to_ub<float, 128, 1>(dk_chunk_ub[0], dk_matmul_partial[(k_id * 128)], 262144, 1, 128, 0.000000e+00f);
+          AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE3>(0);
+          AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE3>(0);
+          tl::ascend::atomic_add_ub_to_gm<float, 128, 1>(dKeyIndex[(idx_2 * 128)], dk_chunk_ub[0], 262144, 1, 128);
+          AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(1);
+          AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(1);
+        }
       }
     }
   }
@@ -459,10 +461,10 @@ extern "C" __global__ __aicore__ void main_kernel( GM_ADDR SparseIndices_handle,
 void main_kernel_tiling() {
 }
 
-extern "C" void call(uint8_t* SparseIndices_handle, uint8_t* Query_handle, uint8_t* QueryRope_handle, uint8_t* Key_handle, uint8_t* KeyRope_handle, uint8_t* QueryIndex_handle, uint8_t* KeyIndex_handle, uint8_t* Weights_handle, uint8_t* SoftmaxMax_handle, uint8_t* SoftmaxSum_handle, uint8_t* dQueryIndexAccum_handle, uint8_t* GatherKey_ws_handle, uint8_t* GatherKeyRope_ws_handle, uint8_t* GatherKeyIndex_ws_handle, uint8_t* bmm1Res_handle, uint8_t* bmm2Res_handle, uint8_t* PReduced_handle, uint8_t* ReduceSumY_handle, uint8_t* SoftmaxI_handle, uint8_t* dk_matmul_partial_handle, uint8_t* reluGradT_ws_handle, uint8_t* dQueryIndex_handle, uint8_t* dWeight_partial_handle, uint8_t* reluGradRes_handle, uint8_t* LossOut_handle, uint8_t* dKeyIndex_handle, aclrtStream stream) {
+extern "C" void call(uint8_t* SparseIndices_handle, uint8_t* Query_handle, uint8_t* QueryRope_handle, uint8_t* Key_handle, uint8_t* KeyRope_handle, uint8_t* QueryIndex_handle, uint8_t* KeyIndex_handle, uint8_t* Weights_handle, uint8_t* SoftmaxMax_handle, uint8_t* SoftmaxSum_handle, uint8_t* dQueryIndexAccum_handle, uint8_t* dKeyIndex_handle, uint8_t* GatherKey_ws_handle, uint8_t* GatherKeyRope_ws_handle, uint8_t* GatherKeyIndex_ws_handle, uint8_t* bmm1Res_handle, uint8_t* bmm2Res_handle, uint8_t* PReduced_handle, uint8_t* ReduceSumY_handle, uint8_t* SoftmaxI_handle, uint8_t* dk_matmul_partial_handle, uint8_t* reluGradT_ws_handle, uint8_t* dQueryIndex_handle, uint8_t* dWeight_partial_handle, uint8_t* reluGradRes_handle, uint8_t* LossOut_handle, aclrtStream stream) {
   uint32_t fftsLen{0};
   uint64_t fftsAddr{0};
   rtGetC2cCtrlAddr(&fftsAddr, &fftsLen);
   main_kernel_tiling();
-  main_kernel<<<32, nullptr, stream>>>(SparseIndices_handle, Query_handle, QueryRope_handle, Key_handle, KeyRope_handle, QueryIndex_handle, KeyIndex_handle, Weights_handle, SoftmaxMax_handle, SoftmaxSum_handle, dQueryIndexAccum_handle, GatherKey_ws_handle, GatherKeyRope_ws_handle, GatherKeyIndex_ws_handle, bmm1Res_handle, bmm2Res_handle, PReduced_handle, ReduceSumY_handle, SoftmaxI_handle, dk_matmul_partial_handle, reluGradT_ws_handle, dQueryIndex_handle, dWeight_partial_handle, reluGradRes_handle, LossOut_handle, dKeyIndex_handle, fftsAddr);
+  main_kernel<<<32, nullptr, stream>>>(SparseIndices_handle, Query_handle, QueryRope_handle, Key_handle, KeyRope_handle, QueryIndex_handle, KeyIndex_handle, Weights_handle, SoftmaxMax_handle, SoftmaxSum_handle, dQueryIndexAccum_handle, dKeyIndex_handle, GatherKey_ws_handle, GatherKeyRope_ws_handle, GatherKeyIndex_ws_handle, bmm1Res_handle, bmm2Res_handle, PReduced_handle, ReduceSumY_handle, SoftmaxI_handle, dk_matmul_partial_handle, reluGradT_ws_handle, dQueryIndex_handle, dWeight_partial_handle, reluGradRes_handle, LossOut_handle, fftsAddr);
 }
