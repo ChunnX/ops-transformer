@@ -240,6 +240,10 @@ __aicore__ inline void StemOamPrepPagedKvSimd::ComputTotalStemBlockIndex(void)
                                 totalStemBlockNum_ - 1 :
                                 (startStemBlock + curCoreProcessStemBlock_);
         for (int32_t i = 0; i < totalStemBlockNum_; i++) {
+            while (batchIdx < batchSize_ && kvSeqLensLocal.GetValue(batchIdx) == 0) {
+                batchIdx++;
+                hKvIdx = 0;
+            }
             stemBlockIdx = i - baseStemBlockNum;
             if (kvSeqLensLocal.GetValue(batchIdx) == 0) {
                 batchIdx++;
@@ -252,6 +256,10 @@ __aicore__ inline void StemOamPrepPagedKvSimd::ComputTotalStemBlockIndex(void)
                 if (hKvIdx >= hKv_) {
                     batchIdx++;
                     hKvIdx = 0;
+                    while (batchIdx < batchSize_ && kvSeqLensLocal.GetValue(batchIdx) == 0) {
+                        batchIdx++;
+                        hKvIdx = 0;
+                    }
                 }
             }
             if (i >= startStemBlock && i < endStemBlock) {

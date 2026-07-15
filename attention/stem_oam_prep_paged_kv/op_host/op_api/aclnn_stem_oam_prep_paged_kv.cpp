@@ -123,14 +123,16 @@ aclnnStatus aclnnStemOamPrepPagedKvGetWorkspaceSize(
     auto vCacheView = uniqueExecutor->CreateView(
         vCache, vCache->GetViewShape(), vCache->GetStorageShape(),
         vCache->GetViewStrides(), vCache->GetViewOffset());
+    auto kScaleCacheView = uniqueExecutor->CreateView(
+        kScaleCache, kScaleCache->GetViewShape(), kScaleCache->GetStorageShape(),
+        kScaleCache->GetViewStrides(), kScaleCache->GetViewOffset());
 
     auto kvIndicesContiguous = l0op::Contiguous(kvIndices, uniqueExecutor.get());
     auto kvSeqLensContiguous = l0op::Contiguous(kvSeqLens, uniqueExecutor.get());
-    auto kScaleCacheContiguous = l0op::Contiguous(kScaleCache, uniqueExecutor.get());
     auto vScaleContiguous = l0op::Contiguous(vScale, uniqueExecutor.get());
 
     auto result = l0op::StemOamPrepPagedKv(kCacheView, vCacheView, kvIndicesContiguous, kvSeqLensContiguous,
-                                           kScaleCacheContiguous, vScaleContiguous, lambdaMag,
+                                           kScaleCacheView, vScaleContiguous, lambdaMag,
                                            cacheLayout, kvBlockSize, stemBlockSize, stemStride,
                                            kFlat, vBias, uniqueExecutor.get());
     CHECK_RET(std::get<0>(result) != nullptr && std::get<1>(result) != nullptr, ACLNN_ERR_INNER_NULLPTR);
