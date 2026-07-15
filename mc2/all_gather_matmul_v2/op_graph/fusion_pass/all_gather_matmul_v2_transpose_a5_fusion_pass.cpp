@@ -101,7 +101,7 @@ static ge::fusion::PatternUniqPtr MakePatternForTranspose(bool hasBias)
       const char *group = "";
 
       auto mc2Out = ge::es::AllGatherMatmulV2(
-          x1, transpose, hasBias ? bias : nullptr, x1Scale, x2Scale, nullptr, group);
+          x1, transpose, hasBias ? bias : nullptr, nullptr, nullptr, nullptr, group);
       auto graph = graphBuilder.BuildAndReset({mc2Out.y, mc2Out.gather_out, mc2Out.amax_out});
       auto pattern = std::make_unique<ge::fusion::Pattern>(std::move(*graph));
       pattern->CaptureTensor({*mc2Out.y.GetProducer(), 0}).CaptureTensor({*transpose.GetProducer(), 0});
@@ -120,7 +120,7 @@ static ge::fusion::PatternUniqPtr MakePatternForTransposeD(bool hasBias)
       const char *group = "";
 
       auto mc2Out = ge::es::AllGatherMatmulV2(
-          x1, transposeD, hasBias ? bias : nullptr, x1Scale, x2Scale, nullptr, group);
+          x1, transposeD, hasBias ? bias : nullptr, nullptr, nullptr, nullptr, group);
       auto graph = graphBuilder.BuildAndReset({mc2Out.y, mc2Out.gather_out, mc2Out.amax_out});
       auto pattern = std::make_unique<ge::fusion::Pattern>(std::move(*graph));
       pattern->CaptureTensor({*mc2Out.y.GetProducer(), 0}).CaptureTensor({*transposeD.GetProducer(), 0});
