@@ -37,7 +37,7 @@ private:
     __aicore__ inline void ComputeTotary(
         LocalTensor<T1>& qSize, LocalTensor<T1>& cosSize, LocalTensor<T1>& sinSize, LocalTensor<T1>& qoutSize,
         const ApplyRotaryPosEmbTilingData* tilingData);
-    __aicore__ inline void ComputeBF16(
+    __aicore__ inline void ComputeCast(
         LocalTensor<T1>& qSize, LocalTensor<T1>& cosSize, LocalTensor<T1>& sinSize, LocalTensor<T1>& qoutSize,
         const ApplyRotaryPosEmbTilingData* tilingData);
 
@@ -59,6 +59,7 @@ private:
     GlobalTensor<T1> cosGm;
     GlobalTensor<T1> sinGm;
     uint64_t blockIdx = 0;
+    uint64_t oneBlock = 0;
     DataCopyParams copyIn1;
     BinaryRepeatParams repeatParams;
     DataCopyParams copyInQ;
@@ -97,25 +98,27 @@ __aicore__ inline void ARPESmall<T1, T2>::Init(
     repeatParams.src0RepStride = tilingData->dstRepSBr;
     repeatParams.src1RepStride = 0;
 
-    copyInQ.blockCount = tilingData->qcNum; // 当前batch的token数量，也就是qN
-    copyInQ.blockLen = tilingData->blockMoveQ; // 64个元素所占的32字节数量，fp32为:8 bf16/fp16为4，// tiling侧增加
-    copyInQ.srcStride = tilingData->blockMoveQ;
+    oneBlock = tilingData->lastDim / tilingData->blockMoveQ;
+
+    copyInQ.blockCount = tilingData->qcNum;
+    copyInQ.blockLen = tilingData->blockMoveQ;
+    copyInQ.srcStride = tilingData->qDim3 / oneBlock - tilingData->blockMoveQ;
     copyInQ.dstStride = 0;
-    
+
     copyInK.blockCount = tilingData->kcNum;
     copyInK.blockLen = tilingData->blockMoveQ;
-    copyInK.srcStride = tilingData->blockMoveQ;
+    copyInK.srcStride = tilingData->kDim3 / oneBlock - tilingData->blockMoveQ;
     copyInK.dstStride = 0;
 
     copyOutQ.blockCount = tilingData->qcNum;
     copyOutQ.blockLen =  tilingData->blockMoveQ;
     copyOutQ.srcStride = 0;
-    copyOutQ.dstStride = tilingData->blockMoveQ;
-    
+    copyOutQ.dstStride = tilingData->qDim3 / oneBlock - tilingData->blockMoveQ;
+
     copyOutK.blockCount = tilingData->kcNum;
     copyOutK.blockLen =  tilingData->blockMoveQ;
     copyOutK.srcStride = 0;
-    copyOutK.dstStride = tilingData->blockMoveQ;
+    copyOutK.dstStride = tilingData->kDim3 / oneBlock - tilingData->blockMoveQ;
 
 #if ORIG_DTYPE_QUERY == DT_BF16
     pipe.InitBuffer(cosCast, tilingData->sin1UbSize);
@@ -152,9 +155,10 @@ __aicore__ inline void ARPESmall<T1, T2>::CastCopyIn(const ApplyRotaryPosEmbTili
     LocalTensor<T1> qSize = qInQueue.DeQue<T1>();
     LocalTensor<T1> cosSize = cosInQueue.DeQue<T1>();
     LocalTensor<T1> sinSize = sinInQueue.DeQue<T1>();
-#if ORIG_DTYPE_QUERY != DT_BF16
+#if ORIG_DTYPE_QUERY == DT_FLOAT
     T1 scalar_data = -1.0;
     Muls(sinSize, sinSize, scalar_data, tilingData->halfNum, 1, mulRepeatP);
+    PipeBarrier<PIPE_V>();
 #endif
     LocalTensor<T1> qOutUb = qOutQueue.AllocTensor<T1>();
     ComputeTotary(qSize, cosSize, sinSize, qOutUb, tilingData);
@@ -175,7 +179,7 @@ __aicore__ inline void ARPESmall<T1, T2>::CastCopyIn(const ApplyRotaryPosEmbTili
 }
 
 template <typename T1, typename T2>
-__aicore__ inline void ARPESmall<T1, T2>::ComputeBF16(
+__aicore__ inline void ARPESmall<T1, T2>::ComputeCast(
     LocalTensor<T1>& qUb, LocalTensor<T1>& cosUb, LocalTensor<T1>& sinUb, LocalTensor<T1>& qoutSize,
     const ApplyRotaryPosEmbTilingData* tilingData)
 {
@@ -184,6 +188,7 @@ __aicore__ inline void ARPESmall<T1, T2>::ComputeBF16(
     LocalTensor<float> cosC1 = cosCast.Get<float>();
     LocalTensor<float> sinC1 = sinCast.Get<float>();
     Cast(mul2Ub, qUb, RoundMode::CAST_NONE, tilingData->mulNum);
+    PipeBarrier<PIPE_V>();
     LocalTensor<float> qoutSizeFP32;
     this->LocalTensor2NewTensor(qoutSizeFP32, qoutSize);
     DataCopy(qoutSizeFP32, mul2Ub[tilingData->halfNum], copyIn1);
@@ -191,23 +196,26 @@ __aicore__ inline void ARPESmall<T1, T2>::ComputeBF16(
 
     Cast(cosC1, cosUb, RoundMode::CAST_NONE, tilingData->lastDim);
     Cast(sinC1, sinUb, RoundMode::CAST_NONE, tilingData->lastDim);
+    PipeBarrier<PIPE_V>();
 
     float scalar_data = -1.0f;
 
     Muls<float>(sinC1, sinC1, scalar_data, tilingData->halfNum, 1, mulRepeatP);
+    PipeBarrier<PIPE_V>();
     LocalTensor<float> qUbFP32;
     this->LocalTensor2NewTensor(qUbFP32, qUb);
-    for (int32_t aa = 0; aa < (tilingData->qcdHalfNum); aa++) {
-        Mul<float>(
-            mul1Ub[aa * tilingData->mask], qoutSizeFP32[aa * tilingData->mask], sinC1[aa * tilingData->mask],
-            tilingData->mask, tilingData->qkcNum, repeatParams);
-        Mul<float>(
-            qUbFP32[aa * tilingData->mask], mul2Ub[aa * tilingData->mask], cosC1[aa * tilingData->mask],
-            tilingData->mask, tilingData->qkcNum, repeatParams);
+    int64_t fullMask = tilingData->mask;
+    int64_t fullChunks = (tilingData->lastDim + fullMask - 1) / fullMask; // DIM泛化：ceil(lastDim/mask)，支持非整数倍
+    for (int32_t aa = 0; aa < fullChunks; aa++) {
+        int64_t offset = aa * fullMask;
+        int64_t curMask = (offset + fullMask > tilingData->lastDim) ? (tilingData->lastDim - offset) : fullMask;
+        Mul<float>(mul1Ub[offset], qoutSizeFP32[offset], sinC1[offset], curMask, tilingData->qkcNum, repeatParams);
+        Mul<float>(qUbFP32[offset], mul2Ub[offset], cosC1[offset], curMask, tilingData->qkcNum, repeatParams);
     }
+    PipeBarrier<PIPE_V>();
     Add(mul2Ub, mul1Ub, qUbFP32, tilingData->mulNum);
-
-    Cast(qoutSize, mul2Ub, RoundMode::CAST_ROUND, tilingData->mulNum);
+    PipeBarrier<PIPE_V>();
+    Cast(qoutSize, mul2Ub, RoundMode::CAST_RINT, tilingData->mulNum);
 }
 
 template <typename T1, typename T2>
@@ -215,23 +223,25 @@ __aicore__ inline void ARPESmall<T1, T2>::ComputeTotary(
     LocalTensor<T1>& qUb, LocalTensor<T1>& cosUb, LocalTensor<T1>& sinUb, LocalTensor<T1>& qoutSize,
     const ApplyRotaryPosEmbTilingData* tilingData)
 {
-#if ORIG_DTYPE_QUERY == DT_BF16
-    ComputeBF16(qUb, cosUb, sinUb, qoutSize, tilingData);
+#if ORIG_DTYPE_QUERY != DT_FLOAT
+    ComputeCast(qUb, cosUb, sinUb, qoutSize, tilingData);
 #else
     LocalTensor<T1> mul2Ub = mul2.Get<T1>();
     LocalTensor<T1> mul1Ub = mul1.Get<T1>();
 
     DataCopy(qoutSize, qUb[tilingData->halfNum], copyIn1);
     DataCopy(qoutSize[tilingData->halfNum], qUb, copyIn1);
+    PipeBarrier<PIPE_V>();
 
-    for (int32_t aa = 0; aa < (tilingData->qcdHalfNum); aa++) {
-        Mul<T1>(
-            mul1Ub[aa * tilingData->mask], qoutSize[aa * tilingData->mask], sinUb[aa * tilingData->mask],
-            tilingData->mask, tilingData->qkcNum, repeatParams);
-        Mul<T1>(
-            mul2Ub[aa * tilingData->mask], qUb[aa * tilingData->mask], cosUb[aa * tilingData->mask], tilingData->mask,
-            tilingData->qkcNum, repeatParams);
+    int64_t fullMask = tilingData->mask;
+    int64_t fullChunks = (tilingData->lastDim + fullMask - 1) / fullMask; // DIM泛化：ceil(lastDim/mask)，支持非整数倍
+    for (int32_t aa = 0; aa < fullChunks; aa++) {
+        int64_t offset = aa * fullMask;
+        int64_t curMask = (offset + fullMask > tilingData->lastDim) ? (tilingData->lastDim - offset) : fullMask;
+        Mul<T1>(mul1Ub[offset], qoutSize[offset], sinUb[offset], curMask, tilingData->qkcNum, repeatParams);
+        Mul<T1>(mul2Ub[offset], qUb[offset], cosUb[offset], curMask, tilingData->qkcNum, repeatParams);
     }
+    PipeBarrier<PIPE_V>();
     Add(qoutSize, mul1Ub, mul2Ub, tilingData->mulNum);
 #endif
 }

@@ -38,6 +38,7 @@ from .indexer_quant_cache import indexer_quant_cache
 from .compressor import compressor
 from .inplace_partial_rotary_mul import inplace_partial_rotary_mul
 from .inplace_partial_rotary_mul_backward import inplace_partial_rotary_mul_backward
+from .apply_rotary_pos_emb import apply_rotary_pos_emb
 from .causal_conv1d_fn import causal_conv1d_fn
 from .causal_conv1d_update import causal_conv1d_update
 from . import graph_convert as _graph_convert

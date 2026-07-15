@@ -63,6 +63,7 @@ TILING_DATA_FIELD_DEF(int64_t, kcNum);
 TILING_DATA_FIELD_DEF(int64_t, qDim3);
 TILING_DATA_FIELD_DEF(int64_t, kDim3);
 TILING_DATA_FIELD_DEF(int64_t, blockMoveQ);
+TILING_DATA_FIELD_DEF(int64_t, singleN);        // max(qcNum, kcNum)，PERF 模型使用
 END_TILING_DATA_DEF;
 
 REGISTER_TILING_DATA_CLASS(ApplyRotaryPosEmb, ApplyRotaryPosEmbTilingData)
@@ -134,6 +135,8 @@ enum class ApplyRotaryPosEmbTilingKey : int64_t {
     TILINGKEY_2 = 2,
     TILINGKEY_AB = 3,
     TILINGKEY_AB_CAST = 4,
+    TILINGKEY_AB_PERF = 5,
+    TILINGKEY_AB_CAST_PERF = 6,
 };
 
 enum class ApplyRotaryPosEmbLayout : int64_t {
