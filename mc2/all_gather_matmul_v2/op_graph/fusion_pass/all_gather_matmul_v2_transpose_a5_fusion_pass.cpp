@@ -89,7 +89,7 @@ namespace {
     }
 }
 
-static ge::fusion::PatternUniqPtr MakePatternForTranspose(bool hasBias)
+static ge::fusion::PatternUniqPtr MakePatternForTranspose(bool hasBias, bool hasScale)
 {
     std::string patternName = FUSION_PASS_NAME + PATTERN_TRANSPOSE;
       if (hasBias) {
@@ -101,14 +101,14 @@ static ge::fusion::PatternUniqPtr MakePatternForTranspose(bool hasBias)
       const char *group = "";
 
       auto mc2Out = ge::es::AllGatherMatmulV2(
-          x1, transpose, hasBias ? bias : nullptr, nullptr, nullptr, nullptr, group);
+          x1, transpose, hasBias ? bias : nullptr, hasScale ? x1Scale : nullptr, hasScale ? x2Scale : nullptr, nullptr, group);
       auto graph = graphBuilder.BuildAndReset({mc2Out.y, mc2Out.gather_out, mc2Out.amax_out});
       auto pattern = std::make_unique<ge::fusion::Pattern>(std::move(*graph));
       pattern->CaptureTensor({*mc2Out.y.GetProducer(), 0}).CaptureTensor({*transpose.GetProducer(), 0});
       return pattern;
 }
 
-static ge::fusion::PatternUniqPtr MakePatternForTransposeD(bool hasBias)
+static ge::fusion::PatternUniqPtr MakePatternForTransposeD(bool hasBias, bool hasScale)
 {
     std::string patternName = FUSION_PASS_NAME + PATTERN_TRANSPOSE_D;
       if (hasBias) {
@@ -120,7 +120,7 @@ static ge::fusion::PatternUniqPtr MakePatternForTransposeD(bool hasBias)
       const char *group = "";
 
       auto mc2Out = ge::es::AllGatherMatmulV2(
-          x1, transposeD, hasBias ? bias : nullptr, nullptr, nullptr, nullptr, group);
+          x1, transposeD, hasBias ? bias : nullptr, hasScale ? x1Scale : nullptr, hasScale ? x2Scale : nullptr, nullptr, group);
       auto graph = graphBuilder.BuildAndReset({mc2Out.y, mc2Out.gather_out, mc2Out.amax_out});
       auto pattern = std::make_unique<ge::fusion::Pattern>(std::move(*graph));
       pattern->CaptureTensor({*mc2Out.y.GetProducer(), 0}).CaptureTensor({*transposeD.GetProducer(), 0});
@@ -443,11 +443,16 @@ std::vector<ge::fusion::PatternUniqPtr>
 AllGatherMatmulV2TransposeA5FusionPass::Patterns() {
     OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Enter Patterns for AllGatherMatmulV2TransposeA5FusionPass");
     bool hasBias = true;
+    bool hasScale = true;
     std::vector<ge::fusion::PatternUniqPtr> patternGraphs;
-    patternGraphs.emplace_back(MakePatternForTranspose(hasBias));
-    patternGraphs.emplace_back(MakePatternForTranspose(!hasBias));
-    patternGraphs.emplace_back(MakePatternForTransposeD(hasBias));
-    patternGraphs.emplace_back(MakePatternForTransposeD(!hasBias));
+    patternGraphs.emplace_back(MakePatternForTranspose(hasBias, hasScale));
+    patternGraphs.emplace_back(MakePatternForTranspose(!hasBias, hasScale));
+    patternGraphs.emplace_back(MakePatternForTransposeD(hasBias, hasScale));
+    patternGraphs.emplace_back(MakePatternForTransposeD(!hasBias, hasScale));
+    patternGraphs.emplace_back(MakePatternForTranspose(hasBias, !hasScale));
+    patternGraphs.emplace_back(MakePatternForTranspose(!hasBias, !hasScale));
+    patternGraphs.emplace_back(MakePatternForTransposeD(hasBias, !hasScale));
+    patternGraphs.emplace_back(MakePatternForTransposeD(!hasBias, !hasScale));
     return patternGraphs;
 }
 
