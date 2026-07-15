@@ -36,13 +36,21 @@ constexpr static uint64_t MAX_CORE_NUM = 24;
 // common struct
 /////////////////////////////////////////////////////
 
-template <class TILING_CLASS, typename T1, const bool IS_BSND = false, const uint32_t MODE = SMLAG_SCFA_MODE, typename... Args>
+template <class TILING_CLASS, typename T1, const bool IS_BSND = false, const uint32_t MODE = SMLAG_SCFA_MODE,
+          const bool IS_DETER = false, typename... Args>
 struct SMLAG_TYPE {
     using tiling_class = TILING_CLASS;
     using t1 = T1;
     static constexpr bool is_bsnd = IS_BSND;
     static constexpr uint32_t mode = MODE;
+    static constexpr bool is_deter = IS_DETER;
 };
+
+// Deterministic sync flags (AIV-AIV mode=0 / mode=1)
+constexpr uint32_t DETER_SCATTER_VEC_SYNC_FLAG = 7;
+constexpr uint32_t DETER_CMP_L1_SYNC_FLAG = 8;
+// AccumulateKvDeter 按 core0..N-1 串行时的全 AIV 轮次屏障（替代每 core 一次 SyncAll）
+constexpr uint32_t DETER_ACC_VEC_SYNC_FLAG = 9;
 
 struct RunInfo {
     int64_t task;
@@ -61,6 +69,7 @@ struct RunInfo {
     int64_t dqOutGmOffset;
     int64_t actualSelCntOffset;
     int64_t scatterTaskId;
+    int64_t s1Round{0}; // processBS1 轮次 i，供路径1全局 ScatterAddDeter 解析各 core 的 S1
     int64_t s1Index;
     int64_t actualSelectedBlockCount;
     int64_t changeS1 = false;

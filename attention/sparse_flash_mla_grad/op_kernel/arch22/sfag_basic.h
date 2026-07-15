@@ -28,6 +28,7 @@ class SelectedAttentionGradBasic {
     using TILING_CLASS = typename SMLAGT::tiling_class;
     using T1 = typename SMLAGT::t1;
     static constexpr bool IS_BSND = SMLAGT::is_bsnd;
+    static constexpr bool IS_DETER = SMLAGT::is_deter;
 
 public:
     __aicore__ inline SelectedAttentionGradBasic(){};
@@ -51,12 +52,19 @@ private:
                                         const GM_ADDR cmp_residual_kv,
                                         const int64_t t1Idx, int64_t &bIdx);
     __aicore__ inline void GetActualSelCount(const int64_t t1Idx, const int64_t n2Idx, int32_t &actSelBlkCount, int32_t &curS2Loop);
+    __aicore__ inline void DeterScatterAfterLocalSync(VecOp<SMLAGT> &vecOp, int64_t s1Round, int64_t scatterDbIdx);
+    __aicore__ inline void DeterAccumulateAfterLocalSync(VecOp<SMLAGT> &vecOp);
 
     uint32_t cubeBlockIdx;
     uint32_t subBlockIdx;
     uint32_t formerCoreNum;
     uint32_t processBS1ByCore;
     uint32_t usedCoreNum;
+    uint32_t formerProcessNNum{0};
+    uint32_t remainProcessNNum{0};
+    int32_t deterScatterSeq{0};
+    int32_t deterAccSeq{0};
+    int32_t maxDeterAccWaves{0};
 
     // shape info
     int64_t dimG;
@@ -134,11 +142,14 @@ private:
     constexpr static uint32_t CUBE_WAIT_VEC_GATHER_PING = 4;
     constexpr static uint32_t CUBE_WAIT_VEC_GATHER_PONG = 5;
     constexpr static uint32_t SCATTER_SYNC_FLAG = 6;
+    constexpr static uint32_t DETER_KV_SYNC_FLAG = 7;
     bool changePingpong = false;
     bool isLastBlockSelected = false;
 
     RunInfo runInfo[2];
     RunInfo scatterRunInfo;
+    RunInfo deterAccRunInfo;
+    bool needDeterAcc{false};
 
     // gm
     GlobalTensor<int32_t> topkIndicesGm;
@@ -178,10 +189,12 @@ __aicore__ inline void SelectedAttentionGradBasic<SMLAGT>::Init(const TILING_CLA
 
     formerCoreNum = tilingData->opInfo.formerCoreNum;
     usedCoreNum = tilingData->opInfo.usedCoreNum;
+    formerProcessNNum = tilingData->opInfo.formerCoreProcessNNum;
+    remainProcessNNum = tilingData->opInfo.remainCoreProcessNNum;
     if (cubeBlockIdx < formerCoreNum) {
-        processBS1ByCore = tilingData->opInfo.formerCoreProcessNNum;
+        processBS1ByCore = formerProcessNNum;
     } else {
-        processBS1ByCore = tilingData->opInfo.remainCoreProcessNNum;
+        processBS1ByCore = remainProcessNNum;
     }
 
     selectedKWorkspaceLen = tilingData->opInfo.selectedKWorkspaceLen;
@@ -192,6 +205,16 @@ __aicore__ inline void SelectedAttentionGradBasic<SMLAGT>::Init(const TILING_CLA
     }
     selectedBlockSize = tilingData->opInfo.selectedBlockSize;
     s1BasicSize = tilingData->splitCoreParams.s1BasicSize;
+
+    if constexpr (IS_DETER) {
+        // 上界：每 S1 轮最多 ori+cmp 的 singleN 次数；barrier 每 VecCompute 一次
+        int64_t maxOriLoops = CeilDiv(static_cast<int64_t>(oriWinLeft + oriWinRight + 1),
+                                      static_cast<int64_t>(selectedCountOffset > 0 ? selectedCountOffset : 1));
+        int64_t maxCmpLoops = CeilDiv(static_cast<int64_t>(selectedBlockCount),
+                                      static_cast<int64_t>(selectedCountOffset > 0 ? selectedCountOffset : 1));
+        maxDeterAccWaves = static_cast<int32_t>(formerProcessNNum * dimN2 * (maxOriLoops + maxCmpLoops) + 2);
+        deterAccSeq = 0;
+    }
 }
 
 template <typename SMLAGT>
@@ -225,6 +248,7 @@ __aicore__ inline void SelectedAttentionGradBasic<SMLAGT>::Process(
                 GetActualSelCount(t1Index, n2Index, actualSelectedBlockCount, s2Loop);
                 for (int32_t loop = 0; loop < s2Loop; loop++) {
                     UpdateGmOffset(task, loop);
+                    runInfo[mmPingPongIdx].s1Round = i;
                     CubeCompute(cubeOp);
                     if (changeS1) {
                         CrossCoreSetFlag<2, PIPE_FIX>(SCATTER_SYNC_FLAG);
@@ -234,7 +258,11 @@ __aicore__ inline void SelectedAttentionGradBasic<SMLAGT>::Process(
                 }
             }
             if (changePingpong) {
-                changeS1 = actualSelectedBlockCount ? true : false;
+                if constexpr (IS_DETER) {
+                    changeS1 = true; // 空 S1 也要对齐全核 SyncAll 轮次
+                } else {
+                    changeS1 = actualSelectedBlockCount ? true : false;
+                }
             }
         }
 
@@ -242,6 +270,11 @@ __aicore__ inline void SelectedAttentionGradBasic<SMLAGT>::Process(
             int64_t taskMod = runInfo[1 - mmPingPongIdx].task & 1;
             CrossCoreWaitFlag<2, PIPE_MTE2>(taskMod == 0 ? CUBE_WAIT_VEC_PING : CUBE_WAIT_VEC_PONG);
             cubeOp.cube345Process(runInfo[1 - mmPingPongIdx], lastblkCntOffset, 1 - mmPingPongIdx);
+            if constexpr (IS_DETER) {
+                if (runInfo[1 - mmPingPongIdx].isOri) {
+                    CrossCoreSetFlag<2, PIPE_FIX>(DETER_KV_SYNC_FLAG);
+                }
+            }
             CrossCoreSetFlag<2, PIPE_FIX>(SCATTER_SYNC_FLAG);
         }
         FreeEventID();
@@ -252,13 +285,15 @@ __aicore__ inline void SelectedAttentionGradBasic<SMLAGT>::Process(
         TPipe pipeVec;
         VecOp<SMLAGT> vecOp;
         vecOp.Init(ori_kv, cmp_kv, attention_out, attention_out_grad, lse, topk_indices, sinks, dsinks,
-                    cu_seqlens_q, cu_seqlens_ori_kv, cu_seqlens_cmp_kv, cmp_softmax_l1_norm, workspace, tilingData, &pipeVec);
+                    cu_seqlens_q, cu_seqlens_ori_kv, cu_seqlens_cmp_kv, cmp_residual_kv, cmp_softmax_l1_norm,
+                    workspace, tilingData, &pipeVec);
         SyncAll();
 
         vWaitMte3Proc = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>());
         SET_FLAG(MTE3, V, vWaitMte3Proc);
         
         int64_t task = 0;
+        deterScatterSeq = 0;
         for (int32_t i = 0; i < processBS1ByCore; i++) {
             scatterTaskId = i % 2;
             int64_t t1Index = static_cast<int64_t>(cubeBlockIdx) + usedCoreNum * i;
@@ -268,18 +303,28 @@ __aicore__ inline void SelectedAttentionGradBasic<SMLAGT>::Process(
                 GetActualSelCount(t1Index, n2Index, actualSelectedBlockCount, s2Loop);
                 for (int32_t loop = 0; loop < s2Loop; loop++) {
                     UpdateGmOffset(task, loop);
+                    runInfo[mmPingPongIdx].s1Round = i;
                     VecCompute(vecOp);
                     task++;
                 }
             }
             if (changePingpong) {
-                runInfo[1 - mmPingPongIdx].changeS1 = actualSelectedBlockCount ? true : false;
+                if constexpr (IS_DETER) {
+                    runInfo[1 - mmPingPongIdx].changeS1 = true;
+                    runInfo[1 - mmPingPongIdx].s1Round = i;
+                } else {
+                    runInfo[1 - mmPingPongIdx].changeS1 = actualSelectedBlockCount ? true : false;
+                }
             }
         }
         if (cubeBlockIdx < usedCoreNum && task > 0) {
             if (scatterRunInfo.changeS1) {
                 CrossCoreWaitFlag<2, PIPE_MTE2>(SCATTER_SYNC_FLAG);
-                vecOp.ScatterAdd(scatterRunInfo);
+                if constexpr (IS_DETER) {
+                    DeterScatterAfterLocalSync(vecOp, scatterRunInfo.s1Round, scatterRunInfo.scatterTaskId);
+                } else {
+                    vecOp.ScatterAdd(scatterRunInfo);
+                }
                 scatterRunInfo.changeS1 = false;
             }
 
@@ -288,8 +333,42 @@ __aicore__ inline void SelectedAttentionGradBasic<SMLAGT>::Process(
             vecOp.Process(runInfo[1 - mmPingPongIdx]);
             CrossCoreSetFlag<2, PIPE_MTE3>(taskMod1 == 0 ? CUBE_WAIT_VEC_PING : CUBE_WAIT_VEC_PONG);
 
+            if constexpr (IS_DETER) {
+                if (needDeterAcc) {
+                    CrossCoreWaitFlag<2, PIPE_MTE2>(DETER_KV_SYNC_FLAG);
+                }
+                DeterAccumulateAfterLocalSync(vecOp);
+                if (runInfo[1 - mmPingPongIdx].isOri) {
+                    deterAccRunInfo = runInfo[1 - mmPingPongIdx];
+                    deterAccRunInfo.scatterTaskId = deterAccRunInfo.task;
+                    needDeterAcc = true;
+                }
+            }
+
             CrossCoreWaitFlag<2, PIPE_MTE2>(SCATTER_SYNC_FLAG);
-            vecOp.ScatterAdd(runInfo[1 - mmPingPongIdx]);
+            if constexpr (IS_DETER) {
+                if (needDeterAcc) {
+                    CrossCoreWaitFlag<2, PIPE_MTE2>(DETER_KV_SYNC_FLAG);
+                }
+                DeterAccumulateAfterLocalSync(vecOp);
+                DeterScatterAfterLocalSync(vecOp, runInfo[1 - mmPingPongIdx].s1Round,
+                                           runInfo[1 - mmPingPongIdx].scatterTaskId);
+            } else {
+                vecOp.ScatterAdd(runInfo[1 - mmPingPongIdx]);
+            }
+        }
+        // 路径1：former/remain/空核对齐 SyncAll + ScatterAddDeter 次数 = formerProcessNNum
+        if constexpr (IS_DETER) {
+            // 无 task 的核也要对齐 Accumulate SyncAll 轮次
+            while (deterAccSeq < maxDeterAccWaves) {
+                needDeterAcc = false;
+                DeterAccumulateAfterLocalSync(vecOp);
+            }
+            while (deterScatterSeq < static_cast<int32_t>(formerProcessNNum)) {
+                SyncAll();
+                vecOp.ScatterAddDeter(deterScatterSeq, deterScatterSeq % 2);
+                deterScatterSeq++;
+            }
         }
         WAIT_FLAG(MTE3, V, vWaitMte3Proc);
         vecOp.CopyOutDsinks();
@@ -298,7 +377,7 @@ __aicore__ inline void SelectedAttentionGradBasic<SMLAGT>::Process(
 
         TPipe pipeCast;
         SparseFlashMlaGradPost<T1, TILING_CLASS, true, IS_BSND ? 2 : 3, 0> opCast;
-        opCast.Init(dq, d_ori_kv, d_cmp_kv, workspace, tilingData, &pipeCast);
+        opCast.Init(dq, d_ori_kv, d_cmp_kv, dsinks, workspace, tilingData, &pipeCast);
         opCast.Process();
     }
 }
@@ -319,6 +398,11 @@ __aicore__ inline void SelectedAttentionGradBasic<SMLAGT>::CubeCompute(CubeOp<SM
     CrossCoreSetFlag<2, PIPE_FIX>(taskMod == 0 ? VEC_WAIT_CUBE_PING : VEC_WAIT_CUBE_PONG);
     CrossCoreWaitFlag<2, PIPE_MTE2>(taskMod == 0 ? CUBE_WAIT_VEC_PONG : CUBE_WAIT_VEC_PING);
     cubeOp.cube345Process(runInfo[1 - mmPingPongIdx], lastblkCntOffset, 1 - mmPingPongIdx);
+    if constexpr (IS_DETER) {
+        if (runInfo[1 - mmPingPongIdx].isOri) {
+            CrossCoreSetFlag<2, PIPE_FIX>(DETER_KV_SYNC_FLAG);
+        }
+    }
     SaveLastInfo();
 }
 
@@ -337,9 +421,26 @@ __aicore__ inline void SelectedAttentionGradBasic<SMLAGT>::VecCompute(VecOp<SMLA
         vecOp.Process(runInfo[1 - mmPingPongIdx]);
         CrossCoreSetFlag<2, PIPE_MTE3>(taskMod1 == 0 ? CUBE_WAIT_VEC_PING : CUBE_WAIT_VEC_PONG);
 
+        if constexpr (IS_DETER) {
+            if (needDeterAcc) {
+                CrossCoreWaitFlag<2, PIPE_MTE2>(DETER_KV_SYNC_FLAG);
+            }
+            // 每 VecCompute 对齐 SyncAll 轮次；有 pending 时按 core0..N-1 串行累加本核
+            DeterAccumulateAfterLocalSync(vecOp);
+            if (runInfo[1 - mmPingPongIdx].isOri) {
+                deterAccRunInfo = runInfo[1 - mmPingPongIdx];
+                deterAccRunInfo.scatterTaskId = deterAccRunInfo.task;
+                needDeterAcc = true;
+            }
+        }
+
         if (scatterRunInfo.changeS1) {
             CrossCoreWaitFlag<2, PIPE_MTE2>(SCATTER_SYNC_FLAG);
-            vecOp.ScatterAdd(scatterRunInfo);
+            if constexpr (IS_DETER) {
+                DeterScatterAfterLocalSync(vecOp, scatterRunInfo.s1Round, scatterRunInfo.scatterTaskId);
+            } else {
+                vecOp.ScatterAdd(scatterRunInfo);
+            }
             scatterRunInfo.changeS1 = false;
         }
 
@@ -475,6 +576,34 @@ __aicore__ inline void SelectedAttentionGradBasic<SMLAGT>::GetTndSeqLen(const GM
         t2Offset = bIdx * curS2;
         t3Offset = bIdx * curS3;
     }
+}
+
+template <typename SMLAGT>
+__aicore__ inline void SelectedAttentionGradBasic<SMLAGT>::DeterScatterAfterLocalSync(VecOp<SMLAGT> &vecOp,
+                                                                                        int64_t s1Round,
+                                                                                        int64_t scatterDbIdx)
+{
+    // 本 cube 已 Wait SCATTER_SYNC（本核 mm45 完成）；SyncAll 等待所有 AIV 到达，
+    // 从而保证 usedCoreNum 各核本轮 staging 均已写完，再全局一次 ScatterAddDeter。
+    SyncAll();
+    vecOp.ScatterAddDeter(s1Round, scatterDbIdx);
+    deterScatterSeq++;
+}
+
+template <typename SMLAGT>
+__aicore__ inline void SelectedAttentionGradBasic<SMLAGT>::DeterAccumulateAfterLocalSync(VecOp<SMLAGT> &vecOp)
+{
+    // 1 次 SyncAll + mode=0 flag 按 core 串行，避免 usedCoreNum+1 次 SyncAll
+    SyncAll();
+    for (int64_t coreIdx = 0; coreIdx < static_cast<int64_t>(usedCoreNum); coreIdx++) {
+        if (needDeterAcc && static_cast<int64_t>(cubeBlockIdx) == coreIdx) {
+            vecOp.AccumulateKvDeter(deterAccRunInfo);
+        }
+        CrossCoreSetFlag<0, PIPE_MTE3>(DETER_ACC_VEC_SYNC_FLAG);
+        CrossCoreWaitFlag<0, PIPE_MTE3>(DETER_ACC_VEC_SYNC_FLAG);
+    }
+    needDeterAcc = false;
+    deterAccSeq++;
 }
 
 template <typename SMLAGT>

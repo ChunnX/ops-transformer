@@ -34,7 +34,28 @@ CubeOp<T1>::cube5Process(const int64_t pGmOffset, const int32_t blkCntOffset, co
     mmParam.dstStride = dimDv * dimN2;
 
     int64_t mm5ResOutBaseOffset;
-    if constexpr (MODE == SMLAG_SCFA_MODE) {
+    if constexpr (IS_DETER) {
+        if constexpr (MODE == SMLAG_SCFA_MODE) {
+            if (!runInfo.isOri) {
+                mm5ResOutBaseOffset = runInfo.scatterTaskId * MAX_CORE_NUM * selectedBlockCount * dimDv +
+                                      cBlockIdx * selectedBlockCount * dimDv;
+                mm5ResWorkspaceGm.SetGlobalBuffer((__gm__ float *)workspace + mm5ResAddr);
+            } else {
+                int64_t dbIdx = runInfo.scatterTaskId & 1;
+                int64_t perCore = singleN * dimDTotal * 2;
+                // Dv 紧跟 Dk：offset += singleN * Dk
+                mm5ResOutBaseOffset = dbIdx * usedCoreNum * perCore + cBlockIdx * perCore + singleN * dimDTotal -
+                                      blkCntOffset * selectedBlockSize * dimDv;
+                mm5ResWorkspaceGm.SetGlobalBuffer((__gm__ float *)workspace + deterKvAddr);
+            }
+        } else {
+            int64_t dbIdx = runInfo.task & 1;
+            int64_t perCore = singleN * dimDTotal * 2;
+            mm5ResOutBaseOffset = dbIdx * usedCoreNum * perCore + cBlockIdx * perCore + singleN * dimDTotal -
+                                  blkCntOffset * selectedBlockSize * dimDv;
+            mm5ResWorkspaceGm.SetGlobalBuffer((__gm__ float *)workspace + deterKvAddr);
+        }
+    } else if constexpr (MODE == SMLAG_SCFA_MODE) {
         if (!runInfo.isOri) {
             mm5ResOutBaseOffset = runInfo.scatterTaskId * MAX_CORE_NUM * selectedBlockCount * dimDv + cBlockIdx * selectedBlockCount * dimDv;
             mm5ResWorkspaceGm.SetGlobalBuffer((__gm__ float *)workspace + mm5ResAddr);
@@ -67,11 +88,11 @@ CubeOp<T1>::cube5Process(const int64_t pGmOffset, const int32_t blkCntOffset, co
             // l0a复用
             uint32_t l0a_ping_pong_flag = ping_pong_flag_l0a_;
             if (runInfo.isOri) {
-                MmadInnerWithSync<T1, true>(l0cTensor, l1_p_tensor, current_l1_dy_tensor,
+                MmadInnerWithSync<T1, IS_DETER ? false : true>(l0cTensor, l1_p_tensor, current_l1_dy_tensor,
                     aL0TensorPingPong, bL0TensorPingPong,
                     mmParam, l0a_ping_pong_flag, ping_pong_flag_l0b_, ping_pong_flag_l0c_, dIdx == 0, mm5ResWorkspaceGm[currentOutGmOffset]);
             } else {
-                MmadInnerWithSync<T1, MODE!=SMLAG_SCFA_MODE>(l0cTensor, l1_p_tensor, current_l1_dy_tensor,
+                MmadInnerWithSync<T1, IS_DETER ? false : (MODE!=SMLAG_SCFA_MODE)>(l0cTensor, l1_p_tensor, current_l1_dy_tensor,
                     aL0TensorPingPong, bL0TensorPingPong,
                     mmParam, l0a_ping_pong_flag, ping_pong_flag_l0b_, ping_pong_flag_l0c_, dIdx == 0, mm5ResWorkspaceGm[currentOutGmOffset]);
             }
