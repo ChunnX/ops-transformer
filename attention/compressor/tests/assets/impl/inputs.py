@@ -11,6 +11,7 @@
 # -----------------------------------------------------------------------------------------------------------
 
 import torch
+import random
 
 
 def to_list(value):
@@ -57,32 +58,34 @@ def build_block_table(block_table, B, S_max, block_size, cmp_ratio,
         return
 
     next_block_id = 1
-    for i in range(B):
-        cur_start = start_pos[i] // cmp_ratio * cmp_ratio - cmp_ratio
-        cur_end = start_pos[i] // cmp_ratio * cmp_ratio + cmp_ratio
-        if start_pos[i] % cmp_ratio == 0:
-            cur_end = start_pos[i]
-        cur_end = min(cur_end, start_pos[i] + S)
-        cur_start_block_id = (cur_start // block_size) if cur_start >= 0 else 0
-        cur_end_block_id = (cur_end - 1) // block_size
-        for j in range(cur_start_block_id, min(cur_end_block_id + 1, block_table.shape[1])):
-            if next_block_id < block_num:
-                block_table[i][j] = next_block_id
-                next_block_id += 1
+    if cache_mode == 1:
+        for i in range(B):
+            cur_start = start_pos[i] // cmp_ratio * cmp_ratio - cmp_ratio
+            cur_end = start_pos[i] // cmp_ratio * cmp_ratio + cmp_ratio
+            if start_pos[i] % cmp_ratio == 0:
+                cur_end = start_pos[i]
+            cur_end = min(cur_end, start_pos[i] + S)
+            cur_start_block_id = (cur_start // block_size) if cur_start >= 0 else 0
+            cur_end_block_id = (cur_end - 1) // block_size
+            for j in range(cur_start_block_id, min(cur_end_block_id + 1, block_table.shape[1])):
+                if next_block_id < block_num:
+                    block_table[i][j] = next_block_id
+                    next_block_id += 1
 
-        end_pos = get_seq_used_by_batch(i, S, seqused, cu_seqlens)
-        next_start = (start_pos[i] + end_pos) // cmp_ratio * cmp_ratio - cmp_ratio
-        next_end = (start_pos[i] + end_pos) // cmp_ratio * cmp_ratio + cmp_ratio
-        if (start_pos[i] + end_pos) % cmp_ratio == 0:
-            next_end = start_pos[i] + end_pos
-        next_end = min(next_end, start_pos[i] + end_pos)
-        next_start_block_id = (next_start // block_size) if next_start >= 0 else 0
-        next_end_block_id = (next_end - 1) // block_size
-        for j in range(next_start_block_id, min(next_end_block_id + 1, block_table.shape[1])):
-            if next_block_id < block_num and int(block_table[i][j].item()) == 0:
-                block_table[i][j] = next_block_id
-                next_block_id += 1
-
+            end_pos = get_seq_used_by_batch(i, S, seqused, cu_seqlens)
+            next_start = (start_pos[i] + end_pos) // cmp_ratio * cmp_ratio - cmp_ratio
+            next_end = (start_pos[i] + end_pos) // cmp_ratio * cmp_ratio + cmp_ratio
+            if (start_pos[i] + end_pos) % cmp_ratio == 0:
+                next_end = start_pos[i] + end_pos
+            next_end = min(next_end, start_pos[i] + end_pos)
+            next_start_block_id = (next_start // block_size) if next_start >= 0 else 0
+            next_end_block_id = (next_end - 1) // block_size
+            for j in range(next_start_block_id, min(next_end_block_id + 1, block_table.shape[1])):
+                if next_block_id < block_num and int(block_table[i][j].item()) == 0:
+                    block_table[i][j] = next_block_id
+                    next_block_id += 1
+    elif cache_mode == 2:
+        block_table = torch.tensor(random.sample(list(range(B)), B), dtype=torch.int32)
 
 def _fill_seq_descriptors(x, state_cache, cmp_ratio, coff, cache_mode,
                           cu_seqlens, seqused, start_pos, **kwargs):
