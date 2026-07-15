@@ -172,7 +172,7 @@ private:
         Std::IsSame<Weight1Type, fp4x2_e2m1_t>::value && Std::IsSame<QuantOutType, fp4x2_e2m1_t>::value;
     static constexpr int32_t DISPATCH_BUFFER_NUM = 6;
     LocalTensor<int32_t> topkIndexTensor_;
-    LocalTensor<int32_t> sendCntTensor_;       // SendCntCal stride 只读 ws 个 count
+    LocalTensor<int32_t> sendCntTensor_;       // SendCntCal stride 只读 worldsize 个 count
     LocalTensor<uint8_t> maskBatchTensor_;     // TripleInfoCalAndDispatch 当前 batch 的 mask 切片
     LocalTensor<uint32_t> maskBatchU32Tensor_; // maskBatchTensor_ 的 u32 视图，供 GatherMask
     LocalTensor<int32_t> expertTokenCntTensor_;
@@ -300,7 +300,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::DispatchBuffInit()
     uint32_t expertTokenCntTensorSize = ALIGN_32;
     uint32_t cumsumInfoTensorSize = Ops::Base::CeilAlign(
         static_cast<int64_t>(worldSize_ * expertPerRank_ * sizeof(int32_t)), static_cast<int64_t>(ALIGN_32));
-    // sendCntTensor_: 每 src rank 一个 burst(32B), 共 ws*32B（stride 只读 count 跳过 mask 区）
+    // sendCntTensor_: 每 src rank 一个 burst(32B), 共 worldsize*32B（stride 只读 count 跳过 mask 区）
     uint32_t sendCntTensorSize = worldSize_ * static_cast<uint32_t>(ALIGN_32);
     // copyTmpTensors_ 6 个 dispatch buffer, 各 tokenScaleSize
     uint32_t tokenScaleSize = Ops::Base::CeilAlign(
@@ -335,7 +335,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::DispatchBuffInit()
     cumsumInfoTensor_ =
         LocalTensor<int32_t>(TPosition::VECCALC, cumsumInfoTensorAddr, cumsumInfoTensorSize / sizeof(int32_t));
     // Tensor用处：SendCntCal 函数中 stride 只读 count 跳过 mask 区时，暂存各 src rank 的 count；
-    // Tensor大小：每 src rank 一个 burst(32B)，共 ws*32B；
+    // Tensor大小：每 src rank 一个 burst(32B)，共 worldsize*32B；
     uint32_t sendCntTensorAddr = cumsumInfoTensorAddr + cumsumInfoTensorSize;
     sendCntTensor_ = LocalTensor<int32_t>(TPosition::VECCALC, sendCntTensorAddr, sendCntTensorSize / sizeof(int32_t));
     // Tensor用处：TripleInfoCalAndDispatch 函数中接收当前 batch 的 mask 切片；
@@ -723,7 +723,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::QuantProcessInRank()
 // ==================================================================================================
 // SendCntCal：stride 只读 count（跳过 mask 区），得到当前专家Id收到的token总数。
 //
-//   Phase 1: stride 读本 localExpert 的 ws 个 count；
+//   Phase 1: stride 读本 localExpert 的 worldsize 个 count；
 //   Phase 2: 逐 rank 读 count + cumsum；
 //   Phase 3: 写 expertRevNumsGlobalTensor_ + AtomicAdd 通知 AIC。
 // ==================================================================================================
@@ -732,7 +732,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SendCntCal(int32_t loca
 {
     sendCnt = 0;
 
-    // Phase 1: stride 读本 localExpert 的 ws 个 count
+    // Phase 1: stride 读本 localExpert 的 worldsize 个 count
     GlobalTensor<int32_t> cntSrcGlobal;
     cntSrcGlobal.SetGlobalBuffer((__gm__ int32_t *)(params_.peermemInfo.maskRecvPtr +
                                                     static_cast<uint64_t>(localExpertId) * worldSize_ * maskSlotSize_ +
