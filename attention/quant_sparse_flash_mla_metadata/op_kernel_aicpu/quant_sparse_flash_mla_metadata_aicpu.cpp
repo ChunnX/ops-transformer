@@ -484,8 +484,8 @@ int64_t QuantSparseFlashMlaMetadataCpuKernel::CmpCalcCost(uint32_t basicM, uint3
 }
 
 void QuantSparseFlashMlaMetadataCpuKernel::CalcCostTable(uint32_t s1NormalSize, uint32_t s2NormalSize,
-                                                              uint32_t s1GTailSize, uint32_t oriS2TailSize,
-                                                              uint32_t cmpS2TailSize)
+                                                         uint32_t s1GTailSize, uint32_t oriS2TailSize,
+                                                         uint32_t cmpS2TailSize)
 {
     // ori 部分 cost
     if (hasOriKv_) {
@@ -507,8 +507,8 @@ void QuantSparseFlashMlaMetadataCpuKernel::CalcCostTable(uint32_t s1NormalSize, 
     }
 }
 
-Range<int64_t> QuantSparseFlashMlaMetadataCpuKernel::CalcS2TokenRange(uint32_t s1GIdx,
-                                                                           const BatchCache &batchCache, bool isCmpKv)
+Range<int64_t> QuantSparseFlashMlaMetadataCpuKernel::CalcS2TokenRange(uint32_t s1GIdx, const BatchCache &batchCache,
+                                                                      bool isCmpKv)
 {
     // actual seq == 0
     if (!isCmpKv) {
@@ -567,7 +567,7 @@ Range<int64_t> QuantSparseFlashMlaMetadataCpuKernel::CalcS2TokenRange(uint32_t s
 }
 
 void QuantSparseFlashMlaMetadataCpuKernel::CalcBatchCache(uint32_t bIdx, const SplitContext &splitContext,
-                                                               BatchCache &batchCache)
+                                                          BatchCache &batchCache)
 {
     const SplitInfo &splitInfo = splitContext.splitInfo;
 
@@ -650,7 +650,7 @@ void QuantSparseFlashMlaMetadataCpuKernel::CalcCmpS1GCache(S1GCache &s1GCache, c
 }
 
 void QuantSparseFlashMlaMetadataCpuKernel::CalcOriBlockRange(const Range<int64_t> &oriS2TokenRange,
-                                                                  const BatchCache &batchCache, S1GCache &s1GCache)
+                                                             const BatchCache &batchCache, S1GCache &s1GCache)
 {
     int64_t oriS2FirstToken = oriS2TokenRange.first;
     int64_t oriS2LastToken = oriS2TokenRange.second;
@@ -675,7 +675,7 @@ void QuantSparseFlashMlaMetadataCpuKernel::CalcOriBlockRange(const Range<int64_t
 }
 
 void QuantSparseFlashMlaMetadataCpuKernel::CalcCmpBlockRange(const Range<int64_t> &cmpRevertS2TokenRange,
-                                                                  const BatchCache &batchCache, S1GCache &s1GCache)
+                                                             const BatchCache &batchCache, S1GCache &s1GCache)
 {
     int64_t cmpRevertS2FirstToken = cmpRevertS2TokenRange.first;
     int64_t cmpRevertS2LastToken = cmpRevertS2TokenRange.second;
@@ -726,7 +726,7 @@ void QuantSparseFlashMlaMetadataCpuKernel::GatherOriAndCmpCache(S1GCache &s1GCac
 }
 
 void QuantSparseFlashMlaMetadataCpuKernel::CalcS1GCache(uint32_t s1GIdx, const SplitContext &splitContext,
-                                                             const BatchCache &batchCache, S1GCache &s1GCache)
+                                                        const BatchCache &batchCache, S1GCache &s1GCache)
 {
     const SplitInfo &splitInfo = splitContext.splitInfo;
     // 如果s1G是空行，则直接返回
@@ -780,7 +780,7 @@ void QuantSparseFlashMlaMetadataCpuKernel::CalcS1GCache(uint32_t s1GIdx, const S
 }
 
 void QuantSparseFlashMlaMetadataCpuKernel::CalcBatchCost(uint32_t bIdx, const SplitContext &splitContext,
-                                                              CostInfo &costInfo)
+                                                         CostInfo &costInfo)
 {
     const SplitInfo &splitInfo = splitContext.splitInfo;
 
@@ -843,8 +843,7 @@ void QuantSparseFlashMlaMetadataCpuKernel::CalcCostInfo(SplitContext &splitConte
     }
 }
 
-void QuantSparseFlashMlaMetadataCpuKernel::UpdateCursor(const SplitContext &splitContext,
-                                                             AssignContext &assignContext)
+void QuantSparseFlashMlaMetadataCpuKernel::UpdateCursor(const SplitContext &splitContext, AssignContext &assignContext)
 {
     const SplitInfo &splitInfo = splitContext.splitInfo;
     const CostInfo &costInfo = splitContext.costInfo;
@@ -892,8 +891,7 @@ void QuantSparseFlashMlaMetadataCpuKernel::UpdateCursor(const SplitContext &spli
     }
 }
 
-void QuantSparseFlashMlaMetadataCpuKernel::AssignByBatch(const SplitContext &splitContext,
-                                                              AssignContext &assignContext)
+void QuantSparseFlashMlaMetadataCpuKernel::AssignByBatch(const SplitContext &splitContext, AssignContext &assignContext)
 {
     if (assignContext.isFinished) {
         return;
@@ -928,8 +926,7 @@ void QuantSparseFlashMlaMetadataCpuKernel::AssignByBatch(const SplitContext &spl
     }
 }
 
-void QuantSparseFlashMlaMetadataCpuKernel::AssignByRow(const SplitContext &splitContext,
-                                                            AssignContext &assignContext)
+void QuantSparseFlashMlaMetadataCpuKernel::AssignByRow(const SplitContext &splitContext, AssignContext &assignContext)
 {
     if (assignContext.isFinished) {
         return;
@@ -971,8 +968,7 @@ int64_t QuantSparseFlashMlaMetadataCpuKernel::CalcCurBlockCost(const AssignConte
     return curCost;
 }
 
-void QuantSparseFlashMlaMetadataCpuKernel::AssignByBlock(const SplitContext &splitContext,
-                                                              AssignContext &assignContext)
+void QuantSparseFlashMlaMetadataCpuKernel::AssignByBlock(const SplitContext &splitContext, AssignContext &assignContext)
 {
     if (assignContext.isFinished || !supportFd) {
         return;
@@ -996,8 +992,7 @@ void QuantSparseFlashMlaMetadataCpuKernel::AssignByBlock(const SplitContext &spl
     }
 }
 
-void QuantSparseFlashMlaMetadataCpuKernel::ForceAssign(const SplitContext &splitContext,
-                                                            AssignContext &assignContext)
+void QuantSparseFlashMlaMetadataCpuKernel::ForceAssign(const SplitContext &splitContext, AssignContext &assignContext)
 {
     if (assignContext.isFinished) {
         return;
@@ -1018,7 +1013,7 @@ void QuantSparseFlashMlaMetadataCpuKernel::ForceAssign(const SplitContext &split
 }
 
 bool QuantSparseFlashMlaMetadataCpuKernel::IsNeedRecordFDInfo(const AssignContext &assignContext,
-                                                                   const SplitResult &splitRes)
+                                                              const SplitResult &splitRes)
 {
     // 切分点大概率不会刚好在行尾，因此滞后处理归约信息的统计，到下一个切分点再判断是否需要归约
     // 核0无需处理
@@ -1038,7 +1033,7 @@ bool QuantSparseFlashMlaMetadataCpuKernel::IsNeedRecordFDInfo(const AssignContex
 }
 
 void QuantSparseFlashMlaMetadataCpuKernel::RecordFDInfo(const SplitContext &splitContext,
-                                                             const AssignContext &assignContext, SplitResult &result)
+                                                        const AssignContext &assignContext, SplitResult &result)
 {
     const SplitInfo &splitInfo = splitContext.splitInfo;
     // 需要规约的行是上一个核的切分点所在位置
@@ -1062,7 +1057,7 @@ void QuantSparseFlashMlaMetadataCpuKernel::RecordFDInfo(const SplitContext &spli
 }
 
 void QuantSparseFlashMlaMetadataCpuKernel::AssignBlocksToCore(const SplitContext &splitContext,
-                                                                   AssignContext &assignContext, SplitResult &result)
+                                                              AssignContext &assignContext, SplitResult &result)
 {
     const CostInfo &costInfo = splitContext.costInfo;
     result.firstFdDataWorkspaceIdx[assignContext.curCoreIdx] =
@@ -1104,7 +1099,7 @@ void QuantSparseFlashMlaMetadataCpuKernel::AssignBlocksToCore(const SplitContext
 }
 
 void QuantSparseFlashMlaMetadataCpuKernel::CalcSplitPlan(int64_t costLimit, const SplitContext &splitContext,
-                                                              SplitResult &result)
+                                                         SplitResult &result)
 {
     const CostInfo &costInfo = splitContext.costInfo;
     const SplitInfo &splitInfo = splitContext.splitInfo;
