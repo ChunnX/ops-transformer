@@ -70,7 +70,7 @@ std::string ViewShapeToString(const aclTensor *tensor)
         }                                                        \
     } while (0)
 
-static aclnnStatus CheckNotNull(QGmmInPlaceAdd::QuantGroupedMatmulInplaceAddParams params)
+static aclnnStatus CheckX1X2NotNull(QGmmInPlaceAdd::QuantGroupedMatmulInplaceAddParams params)
 {
     QGMM_INPLACE_ADD_CHECK_REPORT(params.x1 != nullptr, return ACLNN_ERR_PARAM_NULLPTR,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(QGMM_INPLACE_ADD_ACLNN_OP_NAME, "x1", "nullptr",
@@ -78,6 +78,12 @@ static aclnnStatus CheckNotNull(QGmmInPlaceAdd::QuantGroupedMatmulInplaceAddPara
     QGMM_INPLACE_ADD_CHECK_REPORT(params.x2 != nullptr, return ACLNN_ERR_PARAM_NULLPTR,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(QGMM_INPLACE_ADD_ACLNN_OP_NAME, "x2", "nullptr",
                                               "the value of x2 cannot be nullptr"));
+    return ACLNN_SUCCESS;
+}
+
+static aclnnStatus CheckNotNull(QGmmInPlaceAdd::QuantGroupedMatmulInplaceAddParams params)
+{
+    CHECK_RET(CheckX1X2NotNull(params) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_NULLPTR);
     QGMM_INPLACE_ADD_CHECK_REPORT(params.scale2 != nullptr, return ACLNN_ERR_PARAM_NULLPTR,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(QGMM_INPLACE_ADD_ACLNN_OP_NAME, "scale2", "nullptr",
                                               "the value of scale2 cannot be nullptr"));
@@ -343,6 +349,8 @@ static aclnnStatus aclnnQuantGroupedMatmulInplaceAddGetWorkspaceSizeCommon(
 {
     // 固定写法，创建OpExecutor
     OP_CHECK_COMM_INPUT(workspaceSize, executor);
+    auto ret = CheckX1X2NotNull(params);
+    CHECK_RET(ret == ACLNN_SUCCESS, ret);
     auto uniqueExecutor = CREATE_EXECUTOR();
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
     auto executorPtr = uniqueExecutor.get();
@@ -354,7 +362,7 @@ static aclnnStatus aclnnQuantGroupedMatmulInplaceAddGetWorkspaceSizeCommon(
         return ACLNN_SUCCESS;
     }
     // 固定写法，参数检查
-    auto ret = CheckParams(params);
+    ret = CheckParams(params);
     CHECK_RET(ret == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
     bool transposeX = gmm::IsTransposeLastTwoDims(params.x1);      // check is transpose x
     bool transposeWeight = gmm::IsTransposeLastTwoDims(params.x2); // check is transpose weight
