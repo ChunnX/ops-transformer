@@ -72,8 +72,8 @@ class Stage1 {
 public:
     using vInnerType = std::conditional_t<kStateIsFp32, float, bfloat16_t>;
     using MMBf16 = StageOneMTT<bfloat16_t>;
-    using MM = StageOneMTT<vInnerType>;
-    __aicore__ inline Stage1(MMBf16 &mmBf16, MM &mm) : mmBf16_(mmBf16), mm(mm) {}
+    using MMVInner = StageOneMTT<vInnerType>;
+    __aicore__ inline Stage1(MMBf16 &mmBf16, MMVInner &mmVInner) : mmBf16_(mmBf16), mmVInner_(mmVInner) {}
     __aicore__ inline void SetGlobalTensors(const GDRStageOneInitParams<vInnerType> &initParams)
     {
         queryGm_ = initParams.query;
@@ -332,7 +332,7 @@ private:
 
         // attn @ v_beta    stage1 out
         for (uint32_t i = 0; i < curParaNum; ++i) {
-            AICProcess(mm, attnWsGm_[i * ccOffset_], vBetaWsGm_[i * cvOffset_],
+            AICProcess(mmVInner_, attnWsGm_[i * ccOffset_], vBetaWsGm_[i * cvOffset_],
                        outVInnerGm_[chunkRowBase_[i] * dv_],
                        {chunkSize_, dv_, chunkSize_, chunkSize_, dv_, chunkSize_});
         }
@@ -800,12 +800,14 @@ private:
         uint64_t leftDown = offset + chunkSize_ * INVERSE_SHAPE;
         uint64_t rightDown = leftDown + INVERSE_SHAPE;
         // 右矩阵左下角 @ 右矩阵左上角 -> 右矩阵左下角
-        InverseAICProcess(attnWsGm_[leftDown], attnWsGm_[offset], attnWsGm_[leftDown]);
+        AICProcess(mmBf16_, attnWsGm_[leftDown], attnWsGm_[offset], attnWsGm_[leftDown],
+                   {chunkSize_, chunkSize_, chunkSize_, INVERSE_SHAPE, INVERSE_SHAPE, INVERSE_SHAPE});
         int32_t eventID = static_cast<int32_t>(pipe_->FetchEventID(HardEvent::FIX_MTE2));
         SetFlag<HardEvent::FIX_MTE2>(eventID);
         WaitFlag<HardEvent::FIX_MTE2>(eventID);
         // 右矩阵右下角 @ 右矩阵左下角 -> 右矩阵左下角
-        InverseAICProcess(attnWsGm_[rightDown], attnWsGm_[leftDown], attnWsGm_[leftDown]);
+        AICProcess(mmBf16_, attnWsGm_[rightDown], attnWsGm_[leftDown], attnWsGm_[leftDown],
+                   {chunkSize_, chunkSize_, chunkSize_, INVERSE_SHAPE, INVERSE_SHAPE, INVERSE_SHAPE});
         eventID = static_cast<int32_t>(pipe_->FetchEventID(HardEvent::FIX_MTE2));
         SetFlag<HardEvent::FIX_MTE2>(eventID);
         WaitFlag<HardEvent::FIX_MTE2>(eventID);
@@ -822,21 +824,10 @@ private:
         mmRef.IterateAll(z);
         mmRef.End();
     }
-
-    __aicore__ inline void InverseAICProcess(GlobalTensor<bfloat16_t> x, GlobalTensor<bfloat16_t> y,
-                                             GlobalTensor<bfloat16_t> z)
-    {
-        mmBf16_.SetOrgShape(chunkSize_, chunkSize_, chunkSize_);
-        mmBf16_.SetSingleShape(INVERSE_SHAPE, INVERSE_SHAPE, INVERSE_SHAPE);
-        mmBf16_.SetTensorA(x);
-        mmBf16_.SetTensorB(y);
-        mmBf16_.IterateAll(z);
-        mmBf16_.End();
-    }
     
     TPipe *pipe_;
     MMBf16 &mmBf16_;
-    MM &mm;
+    MMVInner &mmVInner_;
     const ChunkGatedDeltaRuleTilingData *tiling_;
     ChunkGroup cg_;
     uint32_t nk_;
