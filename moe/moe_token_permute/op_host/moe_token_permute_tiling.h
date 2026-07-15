@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2025-2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -18,8 +18,10 @@
 #include "register/tilingdata_base.h"
 #include "register/op_impl_registry.h"
 #include "log/log.h"
+#include "tiling/platform/platform_ascendc.h"
 #include "op_host/tiling_base.h"
 #include "op_host/tiling_templates_registry.h"
+#include "op_host/tiling_util.h"
 namespace optiling {
 BEGIN_TILING_DATA_DEF(PermuteVBSComputeTilingData)
 TILING_DATA_FIELD_DEF(int64_t, needCoreNum);
@@ -75,6 +77,25 @@ TILING_DATA_FIELD_DEF(int64_t, indicesUB);
 END_TILING_DATA_DEF;
 REGISTER_TILING_DATA_CLASS(IndexCopyComputeTilingDataOp, IndexCopyComputeTilingData)
 
+// arch35(ascend950) gather/src-to-dst 分核参数，字段与 kernel 侧一一对应
+BEGIN_TILING_DATA_DEF(PermuteGatherOutComputeTilingData)
+TILING_DATA_FIELD_DEF(int64_t, needCoreNum);
+TILING_DATA_FIELD_DEF(int64_t, activateRows);
+TILING_DATA_FIELD_DEF(int64_t, perCoreRows);
+TILING_DATA_FIELD_DEF(int64_t, perCorePerLoopRows);
+TILING_DATA_FIELD_DEF(int64_t, perCoreLastLoopRows);
+TILING_DATA_FIELD_DEF(int64_t, lastCoreRows);
+TILING_DATA_FIELD_DEF(int64_t, lastCorePerLoopRows);
+TILING_DATA_FIELD_DEF(int64_t, lastCoreLastLoopRows);
+TILING_DATA_FIELD_DEF(int64_t, perCoreLoops);
+TILING_DATA_FIELD_DEF(int64_t, lastCoreLoops);
+TILING_DATA_FIELD_DEF(int64_t, perLoopCols);
+TILING_DATA_FIELD_DEF(int64_t, lastLoopCols);
+TILING_DATA_FIELD_DEF(int64_t, colLoops);
+TILING_DATA_FIELD_DEF(int64_t, scatterMode);
+END_TILING_DATA_DEF;
+REGISTER_TILING_DATA_CLASS(PermuteGatherOutComputeTilingDataOp, PermuteGatherOutComputeTilingData)
+
 BEGIN_TILING_DATA_DEF(MoeTokenPermuteTilingData)
 TILING_DATA_FIELD_DEF(int64_t, coreNum);
 TILING_DATA_FIELD_DEF(int64_t, n);
@@ -82,13 +103,25 @@ TILING_DATA_FIELD_DEF(int64_t, cols);
 TILING_DATA_FIELD_DEF(int64_t, colsAlign);
 
 TILING_DATA_FIELD_DEF(int64_t, topK);
+// arch35 复用 moe_init_routing_v2 kernel 所需的标量（910b 路径不读取，恒 0）
+TILING_DATA_FIELD_DEF(int64_t, expertCapacity);
+TILING_DATA_FIELD_DEF(int64_t, expertNum);
+TILING_DATA_FIELD_DEF(int64_t, dropPadMode);
+TILING_DATA_FIELD_DEF(int64_t, expertTokensCountOrCumsumFlag);
+TILING_DATA_FIELD_DEF(int64_t, expertTokensBeforeCapacityFlag);
 TILING_DATA_FIELD_DEF_STRUCT(PermuteVBSComputeTilingData, vbsComputeParamsOp);
 TILING_DATA_FIELD_DEF_STRUCT(PermuteVMSMiddleComputeTilingData, vmsMiddleComputeParamsOp);
 TILING_DATA_FIELD_DEF_STRUCT(PermuteSortOutComputeTilingData, sortOutComputeParamsOp);
 TILING_DATA_FIELD_DEF_STRUCT(IndexCopyComputeTilingData, indexCopyComputeParamsOp);
+// arch35 专用：求逆(src->dst) 与 gather 分核参数
+TILING_DATA_FIELD_DEF_STRUCT(PermuteGatherOutComputeTilingData, srcToDstComputeParamsOp);
+TILING_DATA_FIELD_DEF_STRUCT(PermuteGatherOutComputeTilingData, gatherOutComputeParamsOp);
 END_TILING_DATA_DEF;
 REGISTER_TILING_DATA_CLASS(MoeTokenPermute, MoeTokenPermuteTilingData)
 struct MoeTokenPermuteCompileInfo {
+    int32_t aivNum = 0;
+    uint64_t ubSize = 0;
+    platform_ascendc::SocVersion socVersion = platform_ascendc::SocVersion::ASCEND910B;
 };
 } // namespace optiling
 #endif // MOE_TOKEN_PERMUTE
