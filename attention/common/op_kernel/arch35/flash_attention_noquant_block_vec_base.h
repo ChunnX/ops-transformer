@@ -1020,7 +1020,7 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1Nd(
                     AttenMaskCopyIn<hasAtten, isFd, enableKVPrefix>(this->attenMaskInQue[runInfo.taskIdMod2], this->attenMaskInQue[1 - runInfo.taskIdMod2],
                         this->attenMaskGmInt, runInfo, constInfo, *attenMaskInfoPtr);
                     attenMaskUb = this->attenMaskInQue[runInfo.taskIdMod2].template DeQue<uint8_t>();
-                    if (enableKVPrefix && runInfo.s2LoopCount < 8) { PRINTF("[MASK-gqa-nonpref] s2L=%lld mask[0]=%x mask[1]=%x phyAddr=%llx\n", (long long)runInfo.s2LoopCount, (int)attenMaskUb.GetValue(0), (int)attenMaskUb.GetValue(1), (unsigned long long)attenMaskUb.GetPhyAddr()); }
+                    if (enableKVPrefix && runInfo.s2LoopCount < 8) { PRINTF("[MASK-gqa-nonpref] s2L=%lld tM2=%lld mask[0]=%x mask[1]=%x reread=%x phyAddr=%llx\n", (long long)runInfo.s2LoopCount, (long long)runInfo.taskIdMod2, (int)attenMaskUb.GetValue(0), (int)attenMaskUb.GetValue(1), (int)attenMaskUb.GetValue(0), (unsigned long long)attenMaskUb.GetPhyAddr()); }
                 }
             }
         } else {
@@ -1045,6 +1045,7 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1Nd(
         }
     }
     LocalTensor<uint8_t> dropMaskUb;
+    PipeBarrier<PIPE_MTE2>();
     if (enableKVPrefix && runInfo.s2LoopCount < 8) { PRINTF("[MASK-chk1] s2L=%lld mask[0]=%x phyAddr=%llx\n", (long long)runInfo.s2LoopCount, (int)attenMaskUb.GetValue(0), (unsigned long long)attenMaskUb.GetPhyAddr()); }
     GetDerived()->GenerateDropoutMask(runInfo, constInfo, dropMaskUb);
     if (enableKVPrefix && runInfo.s2LoopCount < 8) { PRINTF("[MASK-chk2] s2L=%lld mask[0]=%x\n", (long long)runInfo.s2LoopCount, (int)attenMaskUb.GetValue(0)); }
@@ -1052,7 +1053,7 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1Nd(
     LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.multiCoreIdxMod3].template Get<float>();
     LocalTensor<float> maxUb = this->softmaxMaxBuf[runInfo.multiCoreIdxMod3].template Get<float>();
     LocalTensor<float> expUb = this->softmaxExpBuf[runInfo.taskIdMod3].template Get<T>();
-    if (enableKVPrefix && runInfo.s2LoopCount < 8) { PRINTF("[MASK-chk3] s2L=%lld mask[0]=%x\n", (long long)runInfo.s2LoopCount, (int)attenMaskUb.GetValue(0)); }
+    if (enableKVPrefix && runInfo.s2LoopCount < 8) { PRINTF("[MASK-chk3] s2L=%lld mask[0]=%x expPhy=%llx\n", (long long)runInfo.s2LoopCount, (int)attenMaskUb.GetValue(0), (unsigned long long)expUb.GetPhyAddr()); }
     LocalTensor<T> pScaleUb;
     LocalTensor<T> queryScaleUb;
     LocalTensor<uint8_t> apiTmpBuffer;
@@ -1106,7 +1107,7 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1Nd(
     }
 
     LocalTensor<T> mmRes = bmm1ResBuf.template GetTensor<T>();
-    if (enableKVPrefix && runInfo.s2LoopCount < 8) { PRINTF("[MASK-chk5] s2L=%lld mask[0]=%x\n", (long long)runInfo.s2LoopCount, (int)attenMaskUb.GetValue(0)); }
+    if (enableKVPrefix && runInfo.s2LoopCount < 8) { PRINTF("[MASK-chk5] s2L=%lld mask[0]=%x maskPhy=%llx mmResPhy=%llx maxPhy=%llx sumPhy=%llx\n", (long long)runInfo.s2LoopCount, (int)attenMaskUb.GetValue(0), (unsigned long long)attenMaskUb.GetPhyAddr(), (unsigned long long)mmRes.GetPhyAddr(), (unsigned long long)maxUb.GetPhyAddr(), (unsigned long long)sumUb.GetPhyAddr()); }
     if (enableKVPrefix && runInfo.s2LoopCount < 8) { PRINTF("[VEC-Nd-info] s2L=%lld s2LL=%lld s2S=%lld s2E=%lld prefSz=%lld pLC=%lld isPref=%lld s1oIdx=%lld actS1=%lld actS2=%lld preT=%lld nextT=%lld compM=%d\n", (long long)runInfo.s2LoopCount, (long long)runInfo.s2LoopLimit, (long long)runInfo.s2StartIdx, (long long)runInfo.s2EndIdx, (long long)constInfo.actualKVPrefixSize, (long long)constInfo.prefixLoopCount, (long long)((runInfo.s2LoopCount + runInfo.s2StartIdx / s2BaseSize) < constInfo.prefixLoopCount), (long long)runInfo.s1oIdx, (long long)runInfo.actualS1Size, (long long)runInfo.actualS2Size, (long long)attenMaskInfoPtr->preTokens, (long long)attenMaskInfoPtr->nextTokens, (int)attenMaskInfoPtr->compressMode); }
     if (enableKVPrefix && runInfo.s2LoopCount < 8) {
     PRINTF("[VEC-Nd-allmax] mx0=%f mx1=%f mx2=%f mx3=%f sum0=%f",
