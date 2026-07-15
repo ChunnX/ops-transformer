@@ -80,8 +80,8 @@ def test_liv2_process(filepath, device_id=0):
     layout_query = test_data['layout_query']
     layout_key = test_data['layout_key']
     cmp_ratio = test_data['cmp_ratio']
-    if test_data['cmp_residual_k'] is not None:
-        cmp_residual_k = test_data['cmp_residual_k'].npu()
+    if test_data['cmp_residual_k_for_npu'] is not None:
+        cmp_residual_k = test_data['cmp_residual_k_for_npu'].npu()
     else:
         cmp_residual_k = None
     max_seqlen_q_meta = test_data['max_seqlen_q_meta']
