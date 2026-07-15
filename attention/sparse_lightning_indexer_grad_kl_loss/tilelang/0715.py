@@ -567,8 +567,13 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.wait_flag("mte3", "v", 9)
                     T.wait_flag("mte3", "v", 10)
 
-                    # rsy_max_ub is (8,) padded for brcb; T.tile.max with rsy_chunk_max_ub(1,)
-                    # broadcasts scalar to all 8 elements automatically
+                    T.copy(rsy_max_ub[0], rsy_max_ub[1])
+                    T.copy(rsy_max_ub[0], rsy_max_ub[2])
+                    T.copy(rsy_max_ub[0], rsy_max_ub[3])
+                    T.copy(rsy_max_ub[0], rsy_max_ub[4])
+                    T.copy(rsy_max_ub[0], rsy_max_ub[5])
+                    T.copy(rsy_max_ub[0], rsy_max_ub[6])
+                    T.copy(rsy_max_ub[0], rsy_max_ub[7])
 
                     # Broadcast rsy_max to vector via brcb (无 PIPE_ALL):
                     #   fill(rsy_bc_ub,1.0) → row_expand_mul(*,rsy_max_ub) → 标量→向量 广播
@@ -609,8 +614,13 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.pipe_barrier("v")
                     T.tile.exp(rsy_chunk_ub, rsy_chunk_ub)
                     T.pipe_barrier("v")
-                    # rsy_sum_ub is (8,) padded for brcb; T.tile.add with rsy_chunk_sum_ub(1,)
-                    # broadcasts scalar to all 8 elements automatically
+                    T.copy(rsy_sum_ub[0], rsy_sum_ub[1])
+                    T.copy(rsy_sum_ub[0], rsy_sum_ub[2])
+                    T.copy(rsy_sum_ub[0], rsy_sum_ub[3])
+                    T.copy(rsy_sum_ub[0], rsy_sum_ub[4])
+                    T.copy(rsy_sum_ub[0], rsy_sum_ub[5])
+                    T.copy(rsy_sum_ub[0], rsy_sum_ub[6])
+                    T.copy(rsy_sum_ub[0], rsy_sum_ub[7])
 
                     # Broadcast rsy_sum_ub[0] via brcb → rsy_bc_ub (无 PIPE_ALL)
                     T.tile.fill(rsy_bc_ub, 1.0)
