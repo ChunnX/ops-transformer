@@ -566,6 +566,17 @@ __aicore__ inline void AttenMaskCopyIn(TQue<QuePosition::VECIN, 1> &attenMaskInQ
                    (int)attenMaskInfo.computeMode, (int)attenMaskInfo.compressMode,
                    (long long)runInfo.s2RealSize, (long long)runInfo.halfS1RealSize, (int)attenMaskInfo.attenMaskS2Size);
         }
+        if constexpr (enableKVPrefix) {
+            int64_t s1OffGm = runInfo.s1oIdx * constInfo.s1BaseSize + runInfo.vecCoreOffset * runInfo.firstHalfS1RealSize;
+            int64_t s2OffGm = runInfo.s2StartIdx + runInfo.s2LoopCount * constInfo.s2BaseSize - constInfo.actualKVPrefixSize;
+            if (s2OffGm < 0) { s2OffGm = 0; }
+            int64_t correctOff = s1OffGm * (int64_t)attenMaskInfo.attenMaskS2Size + s2OffGm;
+            uint8_t gmAtDelta = srcTensor.GetValue(maskOffset);
+            uint8_t gmAtCorrect = srcTensor.GetValue(correctOff);
+            PRINTF("[MASK-gm] s2L=%lld gmAtDeltaOff=%lld val=%x gmAtCorrectOff=%lld val=%x s1O=%lld s2O=%lld\n",
+                   (long long)runInfo.s2LoopCount, (long long)maskOffset, (int)gmAtDelta,
+                   (long long)correctOff, (int)gmAtCorrect, (long long)s1OffGm, (long long)s2OffGm);
+        }
         if (attenMaskInfo.compressMode == static_cast<uint8_t>(AttenMaskCompressMode::PREFIX_MODE)) {
             if (attenMaskInfo.computeMode == AttenMaskComputeMode::NO_NEED_COMPUTE_MODE) {
                 maskOffset = 4194304; // 2048*2048
