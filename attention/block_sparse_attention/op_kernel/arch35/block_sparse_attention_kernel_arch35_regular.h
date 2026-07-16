@@ -466,7 +466,7 @@ public:
 #endif
                 }
             }
-            AscendC::PRINTF("K[%d]: taskDone idx=%d\n", (int)coreIdx, (int)taskIdx);
+            //AscendC::PRINTF("K[%d]: taskDone idx=%d\n", (int)coreIdx, (int)taskIdx);
         }
         AscendC::PRINTF("K[%d]: allTasksDone total=%d\n", (int)coreIdx, (int)totalTaskNum_);
         // release reverse sync flags
