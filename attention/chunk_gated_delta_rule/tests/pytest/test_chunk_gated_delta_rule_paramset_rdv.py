@@ -176,6 +176,7 @@ def _convert_cases(cases):
     result = []
     for _name, B, seqlen, Nv, Nk, Dv, Dk, has_g, _scale, data_type, state_dtype, is_contiguous in cases:
         result.append({
+            "_name": [_name],
             "B": [B],
             "seqlen": [list(seqlen)] if isinstance(seqlen, (list, tuple)) else [seqlen],
             "nk": [Nk],
