@@ -38,6 +38,7 @@ protected:
 namespace {
 constexpr uint64_t WORKSPACE_ALIGNMENT = 512U;
 constexpr uint64_t READY_SLOT_BYTES = static_cast<uint64_t>(INT_CACHELINE) * sizeof(int32_t);
+static_assert(READY_SLOT_BYTES == WORKSPACE_ALIGNMENT, "every GM flag slot must be 512B");
 
 uint64_t AlignWorkspace(uint64_t value)
 {
@@ -96,7 +97,7 @@ TEST_F(MegaMoeArch35TilingTest, MteGenericNoQuantWorkspaceOutputReadyLayout)
 TEST_F(MegaMoeArch35TilingTest, SwiGluReadyFlagsReserveOneSlotPerWave)
 {
     MegaMoeTilingData tiling = MakeMteGenericNoQuantTiling();
-    tiling.maxOutputSize = 4097U; // 17 waves, forcing two cache lines per expert.
+    tiling.maxOutputSize = 4097U; // 17 independently spaced wave counters per expert.
     GM_ADDR base = reinterpret_cast<GM_ADDR>(uintptr_t{0x100000000ULL});
     WorkspaceInfo info(base, &tiling);
 
@@ -104,11 +105,10 @@ TEST_F(MegaMoeArch35TilingTest, SwiGluReadyFlagsReserveOneSlotPerWave)
     uint64_t dispatchOffset = WorkspaceOffset(base, info.flagDispatchToGmm1Ptr);
     uint64_t maxWaves = (static_cast<uint64_t>(tiling.maxOutputSize) + DISPATCH_WAVE_TILE_M - 1U) /
                         DISPATCH_WAVE_TILE_M;
-    uint64_t slotsPerExpert =
-        (maxWaves + static_cast<uint64_t>(INT_CACHELINE) - 1U) / INT_CACHELINE * INT_CACHELINE;
+    uint64_t slotsPerExpert = maxWaves * static_cast<uint64_t>(INT_CACHELINE);
     uint64_t expectedBytes = static_cast<uint64_t>(tiling.expertPerRank) * slotsPerExpert * sizeof(int32_t);
 
-    EXPECT_EQ(slotsPerExpert, 2ULL * INT_CACHELINE);
+    EXPECT_EQ(slotsPerExpert, maxWaves * static_cast<uint64_t>(INT_CACHELINE));
     EXPECT_EQ(dispatchOffset - swigluOffset, expectedBytes);
 }
 
