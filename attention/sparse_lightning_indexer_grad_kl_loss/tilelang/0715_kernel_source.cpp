@@ -82,8 +82,8 @@ extern "C" __global__ __aicore__ void main_kernel( GM_ADDR SparseIndices_handle,
   auto Q_L1_0 = ascend_l1.GetWithOffset<half>(16384, 0);
   auto GK_L1_0 = ascend_l1.GetWithOffset<half>(8192, 32768);
   auto C_L0C = ascend_l0c.GetWithOffset<float>(8192, 0);
-  auto Q_L1_1 = ascend_l1.GetWithOffset<half>(16384, 65536);
-  auto GK_L1_1 = ascend_l1.GetWithOffset<half>(8192, 49152);
+  auto Q_L1_1 = ascend_l1.GetWithOffset<half>(16384, 49152);
+  auto GK_L1_1 = ascend_l1.GetWithOffset<half>(8192, 81920);
   auto QI_L1 = ascend_l1.GetWithOffset<half>(8192, 98304);
   auto GKI_L1 = ascend_l1.GetWithOffset<half>(8192, 114688);
   auto C2_L0C = ascend_l0c.GetWithOffset<float>(4096, 32768);
@@ -357,11 +357,10 @@ extern "C" __global__ __aicore__ void main_kernel( GM_ADDR SparseIndices_handle,
     tl::ascend::Broadcast<float, 2, 1, false>(rsy_bc_ub[0],rsy_max_ub[0],tmp_ub,(uint32_t[]){1, 64}, (uint32_t[]){1, 1});
     AscendC::Mul(softmax_i_chunk_ub[0], p_reduced_tmp_ub[0], rsy_bc_ub[0], 64);
     tl::ascend::Fill<float>(rsy_sum_ub[0], 0, 1);
+    tl::ascend::Broadcast<float, 2, 0, false>(rsy_bc_ub[0],softmax_i_chunk_ub[0],tmp_ub,(uint32_t[]){1, 64}, (uint32_t[]){1, 64});
     for (int32_t n_idx_iter = 0; n_idx_iter < 32; ++n_idx_iter) {
       tl::ascend::copy_ub_to_ub<float, float, 64>(rsy_chunk_ub[0], rsy_all_ub[(n_idx_iter * 64)], 1, 64, 64, 1, 64, 64);
-      AscendC::PipeBarrier<PIPE_V>();
-      AscendC::Sub(rsy_chunk_ub[0], rsy_chunk_ub[0], softmax_i_chunk_ub[0], 64);
-      AscendC::PipeBarrier<PIPE_V>();
+      AscendC::Sub(rsy_chunk_ub[0], rsy_chunk_ub[0], rsy_bc_ub[0], 64);
       AscendC::Exp(rsy_chunk_ub[0], rsy_chunk_ub[0], 64);
       {
       AscendC::Muls(rsy_bc_ub[0], rsy_chunk_ub[0], 1.000000e+00f, 64);
@@ -409,7 +408,9 @@ extern "C" __global__ __aicore__ void main_kernel( GM_ADDR SparseIndices_handle,
       AscendC::Exp(rsy_tmp_ub[0], rsy_tmp_ub[0], 2048);
       AscendC::PipeBarrier<PIPE_V>();
       AscendC::Sub(rsy_tmp_ub[0], ones_2d_ub[0], rsy_tmp_ub[0], 2048);
-      tl::ascend::copy_ub_to_ub<float, float, 2048>(rg_chunk_ub[0], weight_2d_ub[(g_id * 2048)], 32, 64, 64, 32, 64, 64);
+      for (int32_t i_2 = 0; i_2 < 32; ++i_2) {
+        tl::ascend::copy_ub_to_ub<float, float, 64>(rg_chunk_ub[(i_2 * 64)], weight_2d_ub[((g_id * 2048) + (i_2 * 64))], 1, 64, 64, 1, 64, 64);
+      }
       AscendC::Mul(rg_chunk_ub[0], rg_chunk_ub[0], diff_2d_ub[0], 2048);
       AscendC::PipeBarrier<PIPE_V>();
       AscendC::Mul(rg_chunk_ub[0], rg_chunk_ub[0], rsy_tmp_ub[0], 2048);
