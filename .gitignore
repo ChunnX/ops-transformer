@@ -10,7 +10,7 @@
 
 # Jetbrain
 .idea
-cmake-build-*
+cmake-build-
 
 # Visual Studio
 .vs
