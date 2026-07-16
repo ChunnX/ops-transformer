@@ -450,18 +450,17 @@ __aicore__ inline void MoeGatingTopKWithoutGroupRegbase<T>::ProcessSingleExpert(
             MicroAPI::MaskReg preg0 = MicroAPI::CreateMask<float>();
             MicroAPI::Duplicate<float, MicroAPI::MaskMergeMode::ZEROING, float>(vregOne, static_cast<float>(1), preg0);
 
-            uint16_t vfLoopNum = static_cast<uint16_t>(CeilDiv(static_cast<uint32_t>(rowsInBatch), WG_VL_FLOAT_SIZE));
+            uint32_t rowsInBatchU32 = static_cast<uint32_t>(rowsInBatch);
+            uint16_t vfLoopNum = static_cast<uint16_t>(CeilDiv(rowsInBatchU32, WG_VL_FLOAT_SIZE));
             for (uint16_t i = 0; i < vfLoopNum; i++) {
-                preg0 = MicroAPI::UpdateMask<float>(static_cast<uint32_t>(rowsInBatch));
+                preg0 = MicroAPI::UpdateMask<float>(rowsInBatchU32);
                 ops::LoadOneTensorForDtypeT<T>(inputAddr, vregIn, preg0, i * WG_VL_FLOAT_SIZE);
 
                 if (normType_ == 1) {
                     MicroAPI::Muls(vregTmp1, vregIn, static_cast<float>(-1), preg0);
                     MicroAPI::Exp(vregTmp2, vregTmp1, preg0);
                     MicroAPI::Adds(vregTmp3, vregTmp2, static_cast<float>(1), preg0);
-                    RegTensor<float> vregResult;
-                    MicroAPI::Div<float, &WG_DIV_MODE>(vregResult, vregOne, vregTmp3, preg0);
-                    MicroAPI::DataCopy(vregNorm, vregResult, preg0);
+                    MicroAPI::Div<float, &WG_DIV_MODE>(vregNorm, vregOne, vregTmp3, preg0);
                 } else if (normType_ == 0) {
                     MicroAPI::Duplicate(vregNorm, static_cast<float>(1), preg0);
                 } else {
@@ -480,7 +479,7 @@ __aicore__ inline void MoeGatingTopKWithoutGroupRegbase<T>::ProcessSingleExpert(
                     MicroAPI::Duplicate(vregSumBcast, vregSum, preg0);
                     MicroAPI::Div(vregOut, vregNorm, vregSumBcast, preg0);
                 } else {
-                    MicroAPI::DataCopy(vregOut, vregNorm, preg0);
+                    MicroAPI::Muls(vregOut, vregNorm, static_cast<float>(1), preg0);
                 }
                 MicroAPI::Muls(vregOut, vregOut, routedScalingFactor_, preg0);
 
