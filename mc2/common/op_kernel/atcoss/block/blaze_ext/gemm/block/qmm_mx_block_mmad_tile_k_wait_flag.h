@@ -451,17 +451,17 @@ public:
         // split-K hard sync: AIV 每就绪 AG_SYNC_INTERVAL(1024) 元素 set(9) 一次，每核共 ceil(k/1024) 次。
         // AIC 读第 iter0 段 K [iter0*kL1,(iter0+1)*kL1) 前，需累计等到 ceil((iter0+1)*kL1/1024) 次，
         // 保证该段所有列已 gather 完成。循环末尾 drain 补齐，确保 wait 次数恒等于 AIV set 次数。
-        const uint64_t agTotalSets = CeilDiv(k_, AG_SYNC_INTERVAL);
-        uint64_t agWaited = 0;
+        const uint64_t totalSets = CeilDiv(k_, AG_SYNC_INTERVAL);
+        uint64_t waited = 0;
         for (uint64_t iter0 = 0; iter0 < kL1Iter_; ++iter0) {
             if (firstRound) {
                 uint64_t waitTarget = CeilDiv((iter0 + 1) * kL1_, AG_SYNC_INTERVAL);
-                if (waitTarget > agTotalSets) {
-                    waitTarget = agTotalSets;
+                if (waitTarget > totalSets) {
+                    waitTarget = totalSets;
                 }
-                while (agWaited < waitTarget) {
+                while (waited < waitTarget) {
                     AscendC::CrossCoreWaitFlag(CROSS_CORE_FLAG_NUM_NINE);
-                    agWaited++;
+                    waited++;
                 }
             }
 
@@ -545,9 +545,9 @@ public:
         if (firstRound) {
             // drain 剩余 set(9)，确保 AIC wait 次数恒等于 AIV set 次数（ceil(k/AG_SYNC_INTERVAL)），
             // 避免残留计数影响后续（虽然只有 firstRound wait，但计数须收支平衡）。
-            while (agWaited < agTotalSets) {
+            while (waited < totalSets) {
                 AscendC::CrossCoreWaitFlag(CROSS_CORE_FLAG_NUM_NINE);
-                agWaited++;
+                waited++;
             }
         }
         firstRound = false;
