@@ -19,6 +19,7 @@ namespace NpuArch::Epilogue
 
 enum class LseMode {NONE = 0, OUT_ONLY = 1};
 enum class LseFormat {TN1 = 0, BNS1 = 1, BSN1 = 2};
+enum class MXQuantMode {NONE=0, OCP = 1, CX = 2};
 // For AtlasA2, FA Infer online Softmax
 template <LseMode LSE_MODE_, typename SM_DTYPE_>
 struct EpilogueAtlasA2OnlineSoftmax {
@@ -41,17 +42,35 @@ struct EpilogueBsaMask2Idx {
     using ArchTag = Arch::AtlasA5;
 };
 
+template <bool transposedMm1_ = false, MXQuantMode MX_QUANT_MODE_ = MXQuantMode::NONE>
 struct EpilogueOnlineSoftmaxBsa {
     using ArchTag = Arch::AtlasA5;
+    static constexpr bool transposedMm1 = transposedMm1_;
+    static constexpr MXQuantMode MX_QUANT_MODE = MX_QUANT_MODE_;
+};
+
+template <bool transposedMm1_ = false, MXQuantMode MX_QUANT_MODE_ = MXQuantMode::NONE>
+struct EpilogueComputePScaleBsa {
+    using ArchTag = Arch::AtlasA5;
+    static constexpr bool transposedMm1 = transposedMm1_;
+    static constexpr MXQuantMode MX_QUANT_MODE = MX_QUANT_MODE_;
+};
+
+template <bool transposedMm1_ = false>
+struct EpilogueCopyGlobalMaxUbToL1Bsa {
+    using ArchTag = Arch::AtlasA5;
+    static constexpr bool transposedMm1 = transposedMm1_;;
 };
 
 template <
     LseMode LSE_MODE_ = LseMode::NONE,
-    LseFormat LSE_FORMAT_ = LseFormat::BNS1>
+    LseFormat LSE_FORMAT_ = LseFormat::BNS1,
+    bool transposedMm1_ = false>
 struct EpilogueAtlasA5BsaRescaleO {
     using ArchTag = Arch::AtlasA5;
     static constexpr LseMode LSE_MODE = LSE_MODE_;
     static constexpr LseFormat LSE_FORMAT = LSE_FORMAT_;
+    static constexpr bool transposedMm1 = transposedMm1_;
 };
 
 }  // namespace NpuArch::Epilogue
