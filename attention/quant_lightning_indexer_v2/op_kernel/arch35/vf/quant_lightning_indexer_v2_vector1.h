@@ -933,27 +933,18 @@ __aicore__ inline void MulWeightAndReduceSum2_MxFP8(__ubuf__ uint16_t* out0,
         DuplicateZero(regSum0, maskAllB32);
         DuplicateZero(regSum1, maskAllB32);
 
-        // 分两段循环串行读 ND0/ND1, 消除同时访问 ND0/ND1 的 bank 冲突
-        // 第一段: 读 ND0 (qk0 + 128*i, qk1 + 128*i)
         for (uint16_t i = (uint16_t)(0); i < (uint16_t)(gSize); i++) {
             MicroAPI::LoadAlign<float>(regQK0[0], qk0 + 128 * i);
-            MicroAPI::LoadAlign<float>(regQK1[0], qk1 + 128 * i);
-            // 混合使用对整体性能更好
-            BroadcastLane(regwBrc[0], regW[0], i);
-            // Weight无bank冲突，用LoadAlign来提取weight标量
-            BroadcastLane(regwBrc[1], weightTemp, i);
-            AscendC::MicroAPI::MulAddDst(regSum0[0], regQK0[0], regwBrc[0], maskAllB32);
-            AscendC::MicroAPI::MulAddDst(regSum1[0], regQK1[0], regwBrc[1], maskAllB32);
-        }
-        // 第二段: 读 ND1 (qk0 + 128*i + qkVLStride, qk1 + 128*i + qkVLStride)
-        for (uint16_t i = (uint16_t)(0); i < (uint16_t)(gSize); i++) {
             MicroAPI::LoadAlign<float>(regQK0[1], qk0 + 128 * i + qkVLStride);
+            MicroAPI::LoadAlign<float>(regQK1[0], qk1 + 128 * i);
             MicroAPI::LoadAlign<float>(regQK1[1], qk1 + 128 * i + qkVLStride);
             // 混合使用对整体性能更好
             BroadcastLane(regwBrc[0], regW[0], i);
             // Weight无bank冲突，用LoadAlign来提取weight标量
             BroadcastLane(regwBrc[1], weightTemp, i);
+            AscendC::MicroAPI::MulAddDst(regSum0[0], regQK0[0], regwBrc[0], maskAllB32);
             AscendC::MicroAPI::MulAddDst(regSum0[1], regQK0[1], regwBrc[0], maskAllB32);
+            AscendC::MicroAPI::MulAddDst(regSum1[0], regQK1[0], regwBrc[1], maskAllB32);
             AscendC::MicroAPI::MulAddDst(regSum1[1], regQK1[1], regwBrc[1], maskAllB32);
         }
 

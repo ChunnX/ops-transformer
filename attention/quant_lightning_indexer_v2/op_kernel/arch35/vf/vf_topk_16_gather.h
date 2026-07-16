@@ -19,8 +19,7 @@
 namespace topkb16gather {
 
 template<typename T>
-__simd_vf__ void HistogramsHighVFImpl(__ubuf__ uint32_t* histogramsBuf, __ubuf__ uint16_t* inputBuf, uint16_t vfLoop,
-    bool init)
+__simd_vf__ void HistogramsHighVFImpl(__ubuf__ uint32_t* histogramsBuf, __ubuf__ uint16_t* inputBuf, uint16_t vfLoop)
 {
     MicroAPI::MaskReg pregB32 = MicroAPI::CreateMask<uint32_t, MicroAPI::MaskPattern::ALL>();
     MicroAPI::MaskReg pregB16 = MicroAPI::CreateMask<uint16_t, MicroAPI::MaskPattern::ALL>();
@@ -127,7 +126,7 @@ __simd_vf__ void FindHighTargetBinVFImpl(__ubuf__ uint32_t* idxHighBuf, __ubuf__
 
 template<typename T>
 __simd_vf__ void HistogramsLowVFImpl(__ubuf__ uint32_t* histogramsBuf, __ubuf__ uint16_t* inputBuf,
-    __ubuf__ uint32_t* idxHighBuf, uint16_t vfLoop, bool init)
+    __ubuf__ uint32_t* idxHighBuf, uint16_t vfLoop)
 {
     MicroAPI::MaskReg pregB32 = MicroAPI::CreateMask<uint32_t, MicroAPI::MaskPattern::ALL>();
     MicroAPI::MaskReg pregB16 = MicroAPI::CreateMask<uint16_t, MicroAPI::MaskPattern::ALL>();
@@ -406,7 +405,6 @@ __aicore__ inline void LiTopKVF(const LocalTensor<uint16_t>& tmpIdxLocal,
 
     uint32_t bottomK = validLen - topK + 1;
     uint32_t beginIdx = 0;
-    bool flag = true;
 
     const uint16_t repeatSize8 = 256;
     const uint16_t repeatSize16 = 128;
@@ -418,10 +416,10 @@ __aicore__ inline void LiTopKVF(const LocalTensor<uint16_t>& tmpIdxLocal,
     uint16_t topkLoopNum16 = (topK + repeatSize16 - 1) / repeatSize16;
 
     // find kth-value
-    HistogramsHighVFImpl<uint16_t>(histogramsBuf, inputValueBuf, histogramsLoopNum, flag);
+    HistogramsHighVFImpl<uint16_t>(histogramsBuf, inputValueBuf, histogramsLoopNum);
     FindHighTargetBinVFImpl(idxHighBuf, nkValueBuf, histogramsBuf, bottomK);
 
-    HistogramsLowVFImpl<uint16_t>(histogramsBuf, inputValueBuf, idxHighBuf, histogramsLoopNum, flag);
+    HistogramsLowVFImpl<uint16_t>(histogramsBuf, inputValueBuf, idxHighBuf, histogramsLoopNum);
     FindKthVFImpl(nkValueBuf, histogramsBuf, idxHighBuf, idxLowBuf);
 
     // filter

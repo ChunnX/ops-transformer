@@ -159,18 +159,19 @@ private:
 template <typename QLIV2T>
 __aicore__ inline void QLIV2Vector<QLIV2T>::InitBuffers(TPipe *pipe)
 {
+    // 大小：2(开dB) 2 * 64 * 128 * 4 = 128KB
     pipe->InitBuffer(resMm1Buf_,
         2 * CeilDiv(constInfo_.mBaseSize, CVRATIO) * s2BaseSize_ * sizeof(QK_T));
     resMm1UB_ = resMm1Buf_.Get<QK_T>(); // qk
-    pipe->InitBuffer(weightBuf_, 2 * CeilDiv(s1BaseSize_, CVRATIO) * UB_VEC_STRIDE);
+    pipe->InitBuffer(weightBuf_, 2 * CeilDiv(s1BaseSize_, CVRATIO) * UB_BANK_DEPTH_STRIDE);
     weightUB_ = weightBuf_.Get<W_T>(); // weight
-    pipe->InitBuffer(weightTempBuf_, 2 * CeilDiv(s1BaseSize_, CVRATIO) * UB_VEC_STRIDE);
+    pipe->InitBuffer(weightTempBuf_, 2 * CeilDiv(s1BaseSize_, CVRATIO) * UB_BANK_DEPTH_STRIDE);
     weightTempUB_ = weightTempBuf_.Get<float>();
     if constexpr (!IS_MXFP8) {
         // 大小：2(开dB) * 128 * 4 = 1KB
         pipe->InitBuffer(kScaleBuf_, 2 * s2BaseSize_ * 16 * sizeof(SCALE_T));
         kScaleUB_ = kScaleBuf_.Get<SCALE_T>(); // kScale
-        pipe->InitBuffer(qScaleBuf_, 2 * CeilDiv(s1BaseSize_, CVRATIO) * UB_VEC_STRIDE);
+        pipe->InitBuffer(qScaleBuf_, 2 * CeilDiv(s1BaseSize_, CVRATIO) * UB_BANK_DEPTH_STRIDE);
         qScaleUB_ = qScaleBuf_.Get<SCALE_T>(); // qScale
     }
     pipe->InitBuffer(outBuf_, 2 * CeilDiv(s1BaseSize_, CVRATIO) * s2BaseSize_ * sizeof(uint16_t));
@@ -456,7 +457,7 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessVec1(const QLIV2Common::RunIn
         qwDataCopyExtParams.blockCount = curAivS1ProcNum;
         qwDataCopyExtParams.blockLen = gSize_ * sizeof(W_T);
         qwDataCopyExtParams.srcStride = 0;
-        qwDataCopyExtParams.dstStride = (UB_VEC_STRIDE - qwDataCopyExtParams.blockLen) / 32;
+        qwDataCopyExtParams.dstStride = (UB_BANK_DEPTH_STRIDE - UB_BANK_STRIDE) / 32;
         DataCopyPad(weightUB_[qScalepingpong * (UB_BANK_STRIDE / sizeof(W_T))],
                     weightsGm[weightGmOffset], qwDataCopyExtParams, padWeightsParams);
 
@@ -496,13 +497,13 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessVec1(const QLIV2Common::RunIn
 
     auto qkBase = resMm1UB_[pingpong * (UB_BANK_STRIDE / sizeof(QK_T))];
     auto qkVLstride = QLIV2Common::Align((uint64_t)info.actMBaseSize, 2 * constInfo_.gSize)
-        * s2BaseSize_;
+        * (UB_BANK_DEPTH_STRIDE / sizeof(QK_T));
 
     if constexpr (IS_MXFP8) {
-        vector1::BatchMulWeightAndReduceSum_MxFP8(outBase, UB_VEC_STRIDE / sizeof(uint16_t),
+        vector1::BatchMulWeightAndReduceSum_MxFP8(outBase, UB_BANK_DEPTH_STRIDE / sizeof(uint16_t),
                                                     qkBase, qkVLstride,
-                                                    (uint32_t)(gSize_ * s2BaseSize_),
-                                                    weightBase, UB_VEC_STRIDE / sizeof(W_T),
+                                                    (uint32_t)(gSize_ * UB_BANK_DEPTH_STRIDE / sizeof(QK_T)),
+                                                    weightBase, UB_BANK_DEPTH_STRIDE / sizeof(W_T),
                                                     weightTempBase,
                                                     gSize_, curAivS1ProcNum);
     }
@@ -523,7 +524,7 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessVec1(const QLIV2Common::RunIn
     DataCopyExtParams copyOutParams;
     copyOutParams.blockCount = curAivS1ProcNum;
     copyOutParams.blockLen = s2BaseSize_ * sizeof(SCORE_T);
-    copyOutParams.srcStride = (UB_VEC_STRIDE - copyOutParams.blockLen) / 32;
+    copyOutParams.srcStride = (UB_BANK_DEPTH_STRIDE - UB_BANK_STRIDE) / 32;
     copyOutParams.dstStride = (QLIV2Common::Align((uint64_t)constInfo_.kSeqSize, (uint64_t)s2BaseSize_) - s2BaseSize_)
         * sizeof(SCORE_T);
     DataCopyPad(scoreGm[vec1OutGmOffset], outBase, copyOutParams);

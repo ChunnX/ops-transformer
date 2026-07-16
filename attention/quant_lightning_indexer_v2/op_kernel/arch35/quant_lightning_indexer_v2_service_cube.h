@@ -149,6 +149,7 @@ template <typename QLIV2T>
 __aicore__ inline void QLIV2Matmul<QLIV2T>::InitBuffers(TPipe *pipe)
 {
     pipe->InitBuffer(bufUB_, 2 * CeilDiv(constInfo_.mBaseSize, 2) * constInfo_.s2BaseSize * sizeof(float));
+        // 大小：2(开dB) * 2 * 64 * 128 * 4 = 128KB
     mm1ResUB_ = bufUB_.Get<QK_T>();
     pipe->InitBuffer(bufQL1_, QUERY_BUF_NUM * QUERY_BUFFER_OFFSET * sizeof(Q_T));
     queryL1_ = bufQL1_.Get<Q_T>();
@@ -636,7 +637,7 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::Fixp(uint64_t s1gGmOffset, uint64_t 
         // 固定参数
         fixpipeParams.mSize = mSize;
         fixpipeParams.srcStride = mSize; // 已16对齐
-        fixpipeParams.dstStride = constInfo_.s2BaseSize; // 行间stride
+        fixpipeParams.dstStride = UB_BANK_DEPTH_STRIDE / sizeof(QK_T); // 落到同一个bank
         // 单目标模式（CVRATIO=1，不需要拆M）
         fixpipeParams.dualDstCtl = 0;
         fixpipeParams.reluEn = true;   // 启用随路ReLU
@@ -650,12 +651,14 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::Fixp(uint64_t s1gGmOffset, uint64_t 
             fixpipeParams.params.dstNdStride = 0;
         } else {
             // N方向在(256B, 512B]范围， 直接按512B搬, 注意此时不能开unitflag
-            fixpipeParams.nSize = S2_BASIC_BLOCK_L0 / 2; // 分2个ND搬
+            fixpipeParams.nSize = S2_BASIC_BLOCK_L0 / 2; // 分2个ND搬, S2_BASIC_BLOCK_L0不为128会有问题
             fixpipeParams.params.ndNum = 2;
             fixpipeParams.params.srcNdStride = ((fixpipeParams.mSize + 15) / 16) * fixpipeParams.nSize;
+            // dstNdStride = 第一个ND块的总占用 = mSize × dstStride（含每行padding）
             fixpipeParams.params.dstNdStride = fixpipeParams.mSize * fixpipeParams.dstStride;
         }
         Fixpipe<QK_T, float, QLIV2_CFG_ROW_MAJOR_UB>(mm1ResUB_[(runInfo.loop % 2) * constInfo_.s2BaseSize / 2],
+        // 未考虑s1gGmOffset和s2GmOffset，将matmul结果从L0C搬运到UB
             cL0_[(l0BufIdx_ % L0_BUF_NUM) * L0C_BUFFER_OFFSET],
             fixpipeParams);
     } else {
@@ -669,7 +672,7 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::Fixp(uint64_t s1gGmOffset, uint64_t 
         fixpipeParams.nSize = nSize; // N方向全部输出
         fixpipeParams.mSize = mSize / 2; // M方向每个AIV一半
         fixpipeParams.srcStride = srcStride;
-        fixpipeParams.dstStride = UB_VEC_STRIDE / sizeof(QK_T); // 行间stride
+        fixpipeParams.dstStride = UB_BANK_DEPTH_STRIDE / sizeof(QK_T); // 落到同一个bank
         fixpipeParams.params.ndNum = 1;
         fixpipeParams.params.srcNdStride = 0;
         fixpipeParams.params.dstNdStride = 0;

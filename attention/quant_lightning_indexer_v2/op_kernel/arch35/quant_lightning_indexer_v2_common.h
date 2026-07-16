@@ -214,29 +214,16 @@ __aicore__ inline T CeilDiv(T num, T rnd)
 }  // namespace QLIV2Common
 
 // bank冲突优化
-// A6 bank layout: 8 bank groups × 4 banks/group × 32B/bank = 1024B 循环周期
-// 每个 bank: 2 sub banks × 16B = 32B (950 是 4 sub banks × 8B)
-// 1KB 内: bank0=0~255B, bank1=256~511B, bank2=512~767B, bank3=768~1023B
-//
-// 消除 ping-pong slot 间同 bank 冲突:
-// reducesum 同时读 slot0 和 slot1 的同一行, qkVLstride = slot_size = mBaseSize*dstStride
-// mBaseSize(256)*dstStride(128)*sizeof(float)(4) = 131072B, 131072%1024=0 → 同 bank 冲突
-// ping-pong 偏移加 VL_PAD_STRIDE(256B) → slot1 相对 slot0 错开 256B → 同 group 不同 bank
+// david 256KB bank layout
+// shape  (             bank_depth  (            banks  bank_groups  block))  (512  (  2   8  32))
+// stride (banks*bank_groups*block  (bank_groups*block        block      1))  (512  (256  32   1))
 #define UB_BLOCK              32   // 32B
 #define UB_BANK_GROUPS        8
-#define UB_BANKS              4
-#define UB_BANK_DEPTH         256
+#define UB_BANKS              2
+#define UB_BANK_DEPTH         512
 
 #define UB_BANK_GROUP_STRIDE  UB_BLOCK                                   // 32B
 #define UB_BANK_STRIDE        (UB_BANK_GROUPS * UB_BLOCK)               // 256B
-#define UB_BANK_DEPTH_STRIDE  (UB_BANKS * UB_BANK_GROUPS * UB_BLOCK)    // 1024B (A6 bank 周期)
-
-// VL padding: ping-pong 偏移加 256B, 让 slot1 相对 slot0 错开 bank
-// 旧偏移 s2BaseSize/2=256B + VL_PAD 256B = 512B (满足 fixpipe 512B 对齐)
-// qkVLstride = mBaseSize*dstStride + VL_PAD, 131072+256=131328B, 131328%1024=256 → 不冲突
-#define VL_PAD_STRIDE         (UB_BANK_STRIDE / sizeof(float))          // 64 元素 = 256B
-
-// vector buffer 行间 stride (weight/out 等，不经过 fixpipe)
-#define UB_VEC_STRIDE         (2 * UB_BANK_GROUPS * UB_BLOCK)           // 512B
+#define UB_BANK_DEPTH_STRIDE  (UB_BANKS * UB_BANK_GROUPS * UB_BLOCK)    // 512B
 
 #endif  // QUANT_LIGHTNING_INDEXER_V2_COMMON_H
