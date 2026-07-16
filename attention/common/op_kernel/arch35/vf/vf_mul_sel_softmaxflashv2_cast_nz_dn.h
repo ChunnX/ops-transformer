@@ -1239,14 +1239,14 @@ __simd_vf__ inline void ProcessVec1DnUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf__ 
     RegTensor<bfloat16_t> vreg_x_exp_even_bf16_1;
     RegTensor<bfloat16_t> vreg_x_exp_odd_bf16_1;
 
-    RegTensor<float> vreg_x_f32_0;
-    RegTensor<float> vreg_x_f32_1;
-    RegTensor<float> vreg_x_f32_2;
-    RegTensor<float> vreg_x_f32_3;
-    RegTensor<float> vreg_x_f32_4;
-    RegTensor<float> vreg_x_f32_5;
-    RegTensor<float> vreg_x_f32_6;
-    RegTensor<float> vreg_x_f32_7;
+    RegTensor<half> vreg_x_f32_0;
+    RegTensor<half> vreg_x_f32_1;
+    RegTensor<half> vreg_x_f32_2;
+    RegTensor<half> vreg_x_f32_3;
+    RegTensor<half> vreg_x_f32_4;
+    RegTensor<half> vreg_x_f32_5;
+    RegTensor<half> vreg_x_f32_6;
+    RegTensor<half> vreg_x_f32_7;
     RegTensor<float> vreg_x_max_f32_b;
     RegTensor<float> vreg_subloop_update;
     RegTensor<half> vreg_x_exp_f16_pack;
@@ -1268,8 +1268,13 @@ __simd_vf__ inline void ProcessVec1DnUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf__ 
     preg_135 = CreateMask<T, MaskPattern::ALL>();
     uint32_t sreg_92 = (uint32_t)128ULL;
     preg_136 = UpdateMask<uint16_t>(sreg_92);
-    RegTensor<float> src0, src1, src2, src3;
-    RegTensor<float> max0, max1, max2, max3;
+    RegTensor<half> src0, src1, src2, src3;
+    RegTensor<half> max0, max1, max2, max3;
+    RegTensor<float> tmp_f32_0, tmp_f32_1, tmp_f32_2, tmp_f32_3;
+    RegTensor<float> max0_f32;
+    RegTensor<half> max0_half;
+    RegTensor<half> vreg_x_max_f16_b;
+    RegTensor<half> vreg_min_half;
     MaskReg preg_compare0, preg_compare1, preg_compare2, preg_compare3, preg_compare_all;
     preg_compare_all = CreateMask<T, MaskPattern::ALLF>();
     MaskReg preg = AscendC::MicroAPI::CreateMask<T, AscendC::MicroAPI::MaskPattern::ALL>();
@@ -1296,13 +1301,14 @@ __simd_vf__ inline void ProcessVec1DnUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf__ 
     __ubuf__ uint32_t *mask_ub2 = maskUb + 32;
     __ubuf__ uint32_t *mask_ub3 = maskUb + 48;
 
-    Duplicate(max0, minValue);
-    Duplicate(max1, minValue);
-    Duplicate(max2, minValue);
-    Duplicate(max3, minValue);
+    Duplicate(max0, static_cast<half>(minValue));
+    Duplicate(max1, static_cast<half>(minValue));
+    Duplicate(max2, static_cast<half>(minValue));
+    Duplicate(max3, static_cast<half>(minValue));
     Duplicate(vreg_min, minValue);
     Duplicate(vreg_p_scale, static_cast<float>(pScale));
     Ln(vreg_ln_p_scale, vreg_p_scale, preg_108);
+    Cast<half, T, castTraitZero>(vreg_min_half, vreg_min, preg_135);
     for (uint16_t i = originN; i < ubN; ++i) {
         StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
             (__ubuf__ T *&)input_x_local_UB + i * m, vreg_min, preg_135);
@@ -1312,63 +1318,81 @@ __simd_vf__ inline void ProcessVec1DnUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf__ 
     if constexpr ((IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value ||
                     IsSameType<T2, hifloat8_t>::value) && hasAtten) {
         for (uint16_t iter_m = 0; iter_m < uint16_t(ubN / 4); ++iter_m) {
-            LoadAlign(src0, src_ub0 + iter_m * m * 4);
-            LoadAlign(src1, src_ub1 + iter_m * m * 4);
-            LoadAlign(src2, src_ub2 + iter_m * m * 4);
-            LoadAlign(src3, src_ub3 + iter_m * m * 4);
+            LoadAlign(tmp_f32_0, src_ub0 + iter_m * m * 4);
+            LoadAlign(tmp_f32_1, src_ub1 + iter_m * m * 4);
+            LoadAlign(tmp_f32_2, src_ub2 + iter_m * m * 4);
+            LoadAlign(tmp_f32_3, src_ub3 + iter_m * m * 4);
+            Cast<half, T, castTraitZero>(src0, tmp_f32_0, preg_135);
+            Cast<half, T, castTraitZero>(src1, tmp_f32_1, preg_135);
+            Cast<half, T, castTraitZero>(src2, tmp_f32_2, preg_135);
+            Cast<half, T, castTraitZero>(src3, tmp_f32_3, preg_135);
             LoadAlign<uint32_t, MicroAPI::MaskDist::DIST_DS>(preg_compare0, mask_ub0 + iter_m * m);
             LoadAlign<uint32_t, MicroAPI::MaskDist::DIST_DS>(preg_compare1, mask_ub1 + iter_m * m);
             LoadAlign<uint32_t, MicroAPI::MaskDist::DIST_DS>(preg_compare2, mask_ub2 + iter_m * m);
             LoadAlign<uint32_t, MicroAPI::MaskDist::DIST_DS>(preg_compare3, mask_ub3 + iter_m * m);
-            Select(src0, src0, vreg_min, preg_compare0);
-            Select(src1, src1, vreg_min, preg_compare1);
-            Select(src2, src2, vreg_min, preg_compare2);
-            Select(src3, src3, vreg_min, preg_compare3);
-            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub0 + iter_m * m * 4, src0, preg_108);
-            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub1 + iter_m * m * 4, src1, preg_108);
-            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub2 + iter_m * m * 4, src2, preg_108);
-            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub3 + iter_m * m * 4, src3, preg_108);
-            Max(max0, max0, src0, preg_108);
-            Max(max1, max1, src1, preg_108);
-            Max(max2, max2, src2, preg_108);
-            Max(max3, max3, src3, preg_108);
+            Select(src0, src0, vreg_min_half, preg_compare0);
+            Select(src1, src1, vreg_min_half, preg_compare1);
+            Select(src2, src2, vreg_min_half, preg_compare2);
+            Select(src3, src3, vreg_min_half, preg_compare3);
+            Cast<T, half, castTraitZero>(tmp_f32_0, src0, preg_135);
+            Cast<T, half, castTraitZero>(tmp_f32_1, src1, preg_135);
+            Cast<T, half, castTraitZero>(tmp_f32_2, src2, preg_135);
+            Cast<T, half, castTraitZero>(tmp_f32_3, src3, preg_135);
+            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub0 + iter_m * m * 4, tmp_f32_0, preg_108);
+            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub1 + iter_m * m * 4, tmp_f32_1, preg_108);
+            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub2 + iter_m * m * 4, tmp_f32_2, preg_108);
+            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub3 + iter_m * m * 4, tmp_f32_3, preg_108);
+            Max(max0, max0, src0, preg_136);
+            Max(max1, max1, src1, preg_136);
+            Max(max2, max2, src2, preg_136);
+            Max(max3, max3, src3, preg_136);
         }
     } else {
         for (uint16_t iter_m = 0; iter_m < uint16_t(ubN / 4); ++iter_m) {
-            LoadAlign(src0, src_ub0 + iter_m * m * 4);
-            LoadAlign(src1, src_ub1 + iter_m * m * 4);
-            LoadAlign(src2, src_ub2 + iter_m * m * 4);
-            LoadAlign(src3, src_ub3 + iter_m * m * 4);
-            Max(max0, max0, src0, preg_108);
-            Max(max1, max1, src1, preg_108);
-            Max(max2, max2, src2, preg_108);
-            Max(max3, max3, src3, preg_108);
+            LoadAlign(tmp_f32_0, src_ub0 + iter_m * m * 4);
+            LoadAlign(tmp_f32_1, src_ub1 + iter_m * m * 4);
+            LoadAlign(tmp_f32_2, src_ub2 + iter_m * m * 4);
+            LoadAlign(tmp_f32_3, src_ub3 + iter_m * m * 4);
+            Cast<half, T, castTraitZero>(src0, tmp_f32_0, preg_135);
+            Cast<half, T, castTraitZero>(src1, tmp_f32_1, preg_135);
+            Cast<half, T, castTraitZero>(src2, tmp_f32_2, preg_135);
+            Cast<half, T, castTraitZero>(src3, tmp_f32_3, preg_135);
+            Max(max0, max0, src0, preg_136);
+            Max(max1, max1, src1, preg_136);
+            Max(max2, max2, src2, preg_136);
+            Max(max3, max3, src3, preg_136);
         }
     }
 
     LoadAlign(vreg_x_max_f32_b, new_global_max);
-    Max(max0, max0, max2, preg_108);
-    Max(max1, max1, max3, preg_108);
-    Max(max0, max0, max1, preg_108);
-    Muls(max0, max0, dScale, preg_108);
-    Muls(max0, max0, INV_LN2, preg_108);
-    Truncate<T, RoundMode::CAST_CEIL>(max0, max0, preg_108);
-    Muls(max0, max0, LN2, preg_108);
-    Max(max0, max0, vreg_x_max_f32_b, preg_108);
+    Max(max0, max0, max2, preg_136);
+    Max(max1, max1, max3, preg_136);
+    Max(max0, max0, max1, preg_136);
+    Cast<float, half, castTraitZero>(max0_f32, max0, preg_135);
+    Muls(max0_f32, max0_f32, dScale, preg_108);
+    Muls(max0_f32, max0_f32, INV_LN2, preg_108);
+    Truncate<T, RoundMode::CAST_CEIL>(max0_f32, max0_f32, preg_108);
+    Muls(max0_f32, max0_f32, LN2, preg_108);
+    Max(max0_f32, max0_f32, vreg_x_max_f32_b, preg_108);
 
+    Cast<half, float, castTraitZero>(max0_half, max0_f32, preg_135);
     if (subLoop == 0) {
         StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B16>(
             (__ubuf__ T *&)pre_loop_max, vreg_x_max_f32_b, preg_108);
-        FusedExpSub(vreg_x_max_f32_b, vreg_x_max_f32_b, max0, preg_134);
+        Cast<half, float, castTraitZero>(vreg_x_max_f16_b, vreg_x_max_f32_b, preg_135);
+        FusedExpSub(vreg_x_max_f32_b, vreg_x_max_f16_b, max0_half, preg_134);
     } else {
-        FusedExpSub(vreg_subloop_update, vreg_x_max_f32_b, max0, preg_134);
+        Cast<half, float, castTraitZero>(vreg_x_max_f16_b, vreg_x_max_f32_b, preg_135);
+        FusedExpSub(vreg_subloop_update, vreg_x_max_f16_b, max0_half, preg_134);
         LoadAlign(vreg_x_max_f32_b, pre_loop_max);
-        FusedExpSub(vreg_x_max_f32_b, vreg_x_max_f32_b, max0, preg_134);
+        Cast<half, float, castTraitZero>(vreg_x_max_f16_b, vreg_x_max_f32_b, preg_135);
+        FusedExpSub(vreg_x_max_f32_b, vreg_x_max_f16_b, max0_half, preg_134);
     }
     
     StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B16>(
-        (__ubuf__ T *&)new_global_max, max0, preg_108);
-    Sub(max0, max0, vreg_ln_p_scale, preg_108);
+        (__ubuf__ T *&)new_global_max, max0_f32, preg_108);
+    Sub(max0_f32, max0_f32, vreg_ln_p_scale, preg_108);
+    Cast<half, float, castTraitZero>(max0_half, max0_f32, preg_135);
 
     StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B16>(
         (__ubuf__ T *&)exp_max_fp32, vreg_x_max_f32_b, preg_108);
@@ -1397,43 +1421,55 @@ __simd_vf__ inline void ProcessVec1DnUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf__ 
     for (uint16_t i0 = 0; i0 < loopNum; ++i0) {
         if constexpr (IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value ||
             IsSameType<T2, hifloat8_t>::value) {
-            LoadAlign(vreg_x_f32_0, input_x_local_UB + i0 * m * 2);
-            LoadAlign(vreg_x_f32_1, input_x_local_UB + ubN * m / 4 + i0 * m * 2);
-            LoadAlign(vreg_x_f32_2, input_x_local_UB + ubN * m / 2 + i0 * m * 2);
-            LoadAlign(vreg_x_f32_3, input_x_local_UB + ubN * m / 2 + ubN * m / 4 + i0 * m * 2);
+            LoadAlign(tmp_f32_0, input_x_local_UB + i0 * m * 2);
+            LoadAlign(tmp_f32_1, input_x_local_UB + ubN * m / 4 + i0 * m * 2);
+            LoadAlign(tmp_f32_2, input_x_local_UB + ubN * m / 2 + i0 * m * 2);
+            LoadAlign(tmp_f32_3, input_x_local_UB + ubN * m / 2 + ubN * m / 4 + i0 * m * 2);
+            Cast<half, T, castTraitZero>(vreg_x_f32_0, tmp_f32_0, preg_135);
+            Cast<half, T, castTraitZero>(vreg_x_f32_1, tmp_f32_1, preg_135);
+            Cast<half, T, castTraitZero>(vreg_x_f32_2, tmp_f32_2, preg_135);
+            Cast<half, T, castTraitZero>(vreg_x_f32_3, tmp_f32_3, preg_135);
 
-            LoadAlign(vreg_x_f32_4, input_x_local_UB + i0 * m * 2 + 64);
-            LoadAlign(vreg_x_f32_5, input_x_local_UB + ubN * m / 4 + i0 * m * 2 + 64);
-            LoadAlign(vreg_x_f32_6, input_x_local_UB + ubN * m / 2 + i0 * m * 2 + 64);
-            LoadAlign(vreg_x_f32_7, input_x_local_UB + ubN * m / 2 + ubN * m / 4 + i0 * m * 2 + 64);
+            LoadAlign(tmp_f32_0, input_x_local_UB + i0 * m * 2 + 64);
+            LoadAlign(tmp_f32_1, input_x_local_UB + ubN * m / 4 + i0 * m * 2 + 64);
+            LoadAlign(tmp_f32_2, input_x_local_UB + ubN * m / 2 + i0 * m * 2 + 64);
+            LoadAlign(tmp_f32_3, input_x_local_UB + ubN * m / 2 + ubN * m / 4 + i0 * m * 2 + 64);
+            Cast<half, T, castTraitZero>(vreg_x_f32_4, tmp_f32_0, preg_135);
+            Cast<half, T, castTraitZero>(vreg_x_f32_5, tmp_f32_1, preg_135);
+            Cast<half, T, castTraitZero>(vreg_x_f32_6, tmp_f32_2, preg_135);
+            Cast<half, T, castTraitZero>(vreg_x_f32_7, tmp_f32_3, preg_135);
         } else {
-            LoadAlign(vreg_x_f32_0, input_x_local_UB + i0 * m);
-            LoadAlign(vreg_x_f32_1, input_x_local_UB + ubN * m / 4 + i0 * m);
-            LoadAlign(vreg_x_f32_2, input_x_local_UB + ubN * m / 2 + i0 * m);
-            LoadAlign(vreg_x_f32_3, input_x_local_UB + ubN * m / 2 + ubN * m / 4 + i0 * m);
+            LoadAlign(tmp_f32_0, input_x_local_UB + i0 * m);
+            LoadAlign(tmp_f32_1, input_x_local_UB + ubN * m / 4 + i0 * m);
+            LoadAlign(tmp_f32_2, input_x_local_UB + ubN * m / 2 + i0 * m);
+            LoadAlign(tmp_f32_3, input_x_local_UB + ubN * m / 2 + ubN * m / 4 + i0 * m);
+            Cast<half, T, castTraitZero>(vreg_x_f32_0, tmp_f32_0, preg_135);
+            Cast<half, T, castTraitZero>(vreg_x_f32_1, tmp_f32_1, preg_135);
+            Cast<half, T, castTraitZero>(vreg_x_f32_2, tmp_f32_2, preg_135);
+            Cast<half, T, castTraitZero>(vreg_x_f32_3, tmp_f32_3, preg_135);
         }
 
-        Muls(vreg_x_f32_0, vreg_x_f32_0, dScale, preg_108);
-        Muls(vreg_x_f32_1, vreg_x_f32_1, dScale, preg_108);
-        Muls(vreg_x_f32_2, vreg_x_f32_2, dScale, preg_108);
-        Muls(vreg_x_f32_3, vreg_x_f32_3, dScale, preg_108);
+        Muls(vreg_x_f32_0, vreg_x_f32_0, static_cast<half>(dScale), preg_136);
+        Muls(vreg_x_f32_1, vreg_x_f32_1, static_cast<half>(dScale), preg_136);
+        Muls(vreg_x_f32_2, vreg_x_f32_2, static_cast<half>(dScale), preg_136);
+        Muls(vreg_x_f32_3, vreg_x_f32_3, static_cast<half>(dScale), preg_136);
 
-        FusedExpSub(vreg_x_exp_0, vreg_x_f32_0, max0, preg_134);
-        FusedExpSub(vreg_x_exp_1, vreg_x_f32_1, max0, preg_134);
-        FusedExpSub(vreg_x_exp_2, vreg_x_f32_2, max0, preg_134);
-        FusedExpSub(vreg_x_exp_3, vreg_x_f32_3, max0, preg_134);
+        FusedExpSub(vreg_x_exp_0, vreg_x_f32_0, max0_half, preg_134);
+        FusedExpSub(vreg_x_exp_1, vreg_x_f32_1, max0_half, preg_134);
+        FusedExpSub(vreg_x_exp_2, vreg_x_f32_2, max0_half, preg_134);
+        FusedExpSub(vreg_x_exp_3, vreg_x_f32_3, max0_half, preg_134);
 
         if constexpr (IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value ||
             IsSameType<T2, hifloat8_t>::value) {
-            Muls(vreg_x_f32_4, vreg_x_f32_4, dScale, preg_108);
-            Muls(vreg_x_f32_5, vreg_x_f32_5, dScale, preg_108);
-            Muls(vreg_x_f32_6, vreg_x_f32_6, dScale, preg_108);
-            Muls(vreg_x_f32_7, vreg_x_f32_7, dScale, preg_108);
+            Muls(vreg_x_f32_4, vreg_x_f32_4, static_cast<half>(dScale), preg_136);
+            Muls(vreg_x_f32_5, vreg_x_f32_5, static_cast<half>(dScale), preg_136);
+            Muls(vreg_x_f32_6, vreg_x_f32_6, static_cast<half>(dScale), preg_136);
+            Muls(vreg_x_f32_7, vreg_x_f32_7, static_cast<half>(dScale), preg_136);
 
-            FusedExpSub(vreg_x_exp_4, vreg_x_f32_4, max0, preg_134);
-            FusedExpSub(vreg_x_exp_5, vreg_x_f32_5, max0, preg_134);
-            FusedExpSub(vreg_x_exp_6, vreg_x_f32_6, max0, preg_134);
-            FusedExpSub(vreg_x_exp_7, vreg_x_f32_7, max0, preg_134);
+            FusedExpSub(vreg_x_exp_4, vreg_x_f32_4, max0_half, preg_134);
+            FusedExpSub(vreg_x_exp_5, vreg_x_f32_5, max0_half, preg_134);
+            FusedExpSub(vreg_x_exp_6, vreg_x_f32_6, max0_half, preg_134);
+            FusedExpSub(vreg_x_exp_7, vreg_x_f32_7, max0_half, preg_134);
         }
         if constexpr (AscendC::IsSameType<T2, bfloat16_t>::value) {
             Cast<T2, T, castTraitZero>(vreg_x_exp_even_bf16, vreg_x_exp_0, preg_135);
