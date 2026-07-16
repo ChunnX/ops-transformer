@@ -433,27 +433,34 @@ aggregate 图语义必须在 NPU 上采 all-core task/profile 后验收，同时
 combine/下一 wave 不会拖慢慢核 dispatch。还要确认 AIV0 没有 combine task，并记录
 AIC/AIV0/AIV1 scalar、GM load 次数和端到端时间。
 
-## BlockMmad Phase 7 结论
+## BlockMmad Phase 7 API 边界
 
-当前没有叠加不安全的“单实例”开关，交付的是明确 API blocker：
+当前没有在尚未上板的 A-D 基础上叠加“单实例”开关。最新依赖改变了旧结论，但仍没有
+足够的公开生命周期契约把该实验混入本次基础分支：
 
 - 当前 generic 路径在
   `mc2/mega_moe/op_kernel/arch35/mega_moe_impl.h:526` 的
   `GroupMatmulExecGeneric` 中每 expert 构造 `BlockMmad` 并 `Init`。
-- QBMM MX `BlockMmad` 的构造/析构负责成对设置和等待 event，内部还保持
-  `abL1LoopCnt_`、`scaleLoopCnt_`、L0 ping-pong 等状态；它只有 `Init`，没有合法的
-  `Reset/ReInit/UpdateParamsForNextProblem`。简单把对象提到 batch 外再重复 `Init` 会继承
-  上一 expert 状态，不能作为实验分支。证据在
-  `third_party/ops-tensor/include/blaze/gemm/block/block_mmad_qbmm_mx.h:86`、`:121`、`:148`。
+- QBMM MX `BlockMmad` 的构造/析构在
+  `block_mmad_qbmm_mx.h:121-145` 成对设置/等待 event。ops-tensor `051664f3` 新增了
+  `Init:156-159`，会把 `abL1LoopCnt_`、`scaleLoopCnt_`、`l0PingPong_` 和
+  `l0cPingPong_` 全部清零；所以旧的“重复 Init 必然继承 counters”判断已经失效，
+  “单对象生命周期 + 每 expert Init”现在具备进入独立编译实验的条件。
+- 但普通类仍没有 `Reset/ReInit/UpdateParamsForNextProblem` 或公开的 expert-boundary
+  drain/rearm API。把对象外提会同时删掉每 expert 析构中的 event wait，而 `Init` 只重置
+  参数/phase，没有声明它是完整的 event/fixpipe rebind 契约；本地静态检查不能据此证明
+  不 hang 或不错数。该候选必须是默认关闭的独立提交，并在 NPU 上先做 correctness/hang，
+  不能直接并入 A-D 性能包。
 - ops-tensor 另有 QGMM MX 专用 `BlockMmad`，具备
   `UpdateParamsForNextProblem`，其 `KernelGroupedMmadWithScaleMx` 也保持单 scheduler/
   BlockMmad 跨 group 连续双缓冲。但它依赖 grouped problem list、地址/layout 和专用
   scheduler，不是当前 bespoke GMM1/GMM2 调用的 drop-in replacement。对应入口在
   `block_mmad_qgmm_mx.h:124,152` 和 `kernel_qgmm_mx.h:183,377,451`。
 
-因此 Phase 7 要作为独立适配：先让 A-D 在 NPU 通过，再选择实测组合，把当前 expert
-列表显式转成 QGMM grouped contract，单独验证 rolling cursor、不同 M/地址、GMM1 post
-和 GMM2 ready 边界。没有这些工作前不应声称有 E/F 候选。
+因此先让 A-D 在 NPU 通过并选择实测组合；随后把 E 拆成“普通单对象 + 每 expert Init”
+的独立宏实验，把 F 拆成 QGMM grouped contract 适配。两者都要单独验证 rolling cursor、
+不同 M/地址、event/fixpipe、GMM1 post 和 GMM2 ready 边界。当前交付不声称已有 E/F
+正确候选。
 
 ## 用户回传清单
 
