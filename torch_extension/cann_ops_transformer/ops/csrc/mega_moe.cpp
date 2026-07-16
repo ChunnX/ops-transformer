@@ -44,30 +44,13 @@ NpuMegaMoe(const at::Tensor &context, const at::Tensor &x, const at::Tensor &top
     at::TensorList weight1Ref = weight1;
     at::TensorList weight2Ref = weight2;
 
-    at::TensorList weightScales1Ref;
-    if (weightScales1.has_value()) {
-        weightScales1Ref = at::TensorList(weightScales1.value());
-    } else {
-        weightScales1Ref = at::TensorList();
-    }
-    at::TensorList weightScales2Ref;
-    if (weightScales2.has_value()) {
-        weightScales2Ref = at::TensorList(weightScales2.value());
-    } else {
-        weightScales2Ref = at::TensorList();
-    }
-    at::TensorList bias1Ref;
-    if (bias1.has_value()) {
-        bias1Ref = at::TensorList(bias1.value());
-    } else {
-        bias1Ref = at::TensorList();
-    }
-    at::TensorList bias2Ref;
-    if (bias2.has_value()) {
-        bias2Ref = at::TensorList(bias2.value());
-    } else {
-        bias2Ref = at::TensorList();
-    }
+    auto toTensorList = [](const c10::optional<std::vector<at::Tensor>> &opt) -> at::TensorList {
+        return opt.has_value() ? at::TensorList(opt.value()) : at::TensorList();
+    };
+    at::TensorList weightScales1Ref = toTensorList(weightScales1);
+    at::TensorList weightScales2Ref = toTensorList(weightScales2);
+    at::TensorList bias1Ref = toTensorList(bias1);
+    at::TensorList bias2Ref = toTensorList(bias2);
 
     aclDataType weight1RefDtype = weight1Type.has_value() ? GetAclDataType(weight1Type.value()) :
                                                             ConvertToAclDataType(weight1Ref[0].scalar_type());
@@ -129,42 +112,12 @@ NpuMegaMoe(const at::Tensor &context, const at::Tensor &x, const at::Tensor &top
     TensorListWrapper bias1Wrapper = {bias1Ref, aclDataType::ACL_FLOAT};
     TensorListWrapper bias2Wrapper = {bias2Ref, aclDataType::ACL_FLOAT};
 
-    at::TensorList sharedWeight1Ref;
-    if (sharedWeight1.has_value()) {
-        sharedWeight1Ref = at::TensorList(sharedWeight1.value());
-    } else {
-        sharedWeight1Ref = at::TensorList();
-    }
-    at::TensorList sharedWeight2Ref;
-    if (sharedWeight2.has_value()) {
-        sharedWeight2Ref = at::TensorList(sharedWeight2.value());
-    } else {
-        sharedWeight2Ref = at::TensorList();
-    }
-    at::TensorList sharedWeightScales1Ref;
-    if (sharedWeightScales1.has_value()) {
-        sharedWeightScales1Ref = at::TensorList(sharedWeightScales1.value());
-    } else {
-        sharedWeightScales1Ref = at::TensorList();
-    }
-    at::TensorList sharedWeightScales2Ref;
-    if (sharedWeightScales2.has_value()) {
-        sharedWeightScales2Ref = at::TensorList(sharedWeightScales2.value());
-    } else {
-        sharedWeightScales2Ref = at::TensorList();
-    }
-    at::TensorList sharedBias1Ref;
-    if (sharedBias1.has_value()) {
-        sharedBias1Ref = at::TensorList(sharedBias1.value());
-    } else {
-        sharedBias1Ref = at::TensorList();
-    }
-    at::TensorList sharedBias2Ref;
-    if (sharedBias2.has_value()) {
-        sharedBias2Ref = at::TensorList(sharedBias2.value());
-    } else {
-        sharedBias2Ref = at::TensorList();
-    }
+    at::TensorList sharedWeight1Ref = toTensorList(sharedWeight1);
+    at::TensorList sharedWeight2Ref = toTensorList(sharedWeight2);
+    at::TensorList sharedWeightScales1Ref = toTensorList(sharedWeightScales1);
+    at::TensorList sharedWeightScales2Ref = toTensorList(sharedWeightScales2);
+    at::TensorList sharedBias1Ref = toTensorList(sharedBias1);
+    at::TensorList sharedBias2Ref = toTensorList(sharedBias2);
 
     TensorListWrapper sharedWeight1Wrapper = {sharedWeight1Ref, weight1RefDtype};
     TensorListWrapper sharedWeight2Wrapper = {sharedWeight2Ref, weight2RefDtype};

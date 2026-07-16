@@ -1572,13 +1572,14 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
         EndGMM2Sync(vecSetSyncCom, gmm2PingPongIdx_);
     }
 
-    // 3.5: 共享专家 GMM2 (MoE GMM2 之后, 复用 MoE 函数)
-    if (sharedExpertNum_ > 0) {
-        SyncAll<true>();
-        ProcessSharedExpertGmm2(initShape, initOffset);
-    } else if constexpr(g_coreType == AIV) {
+    if constexpr(g_coreType == AIV) {
         PipeBarrier<PIPE_ALL>();
         SyncAll<true>();
+    }
+
+    // 3.5: 共享专家 GMM2 (MoE GMM2 之后, 复用 MoE 函数)
+    if (sharedExpertNum_ > 0) {
+        ProcessSharedExpertGmm2(initShape, initOffset);
     }
 
     // 4. 本卡数据Unpermute
