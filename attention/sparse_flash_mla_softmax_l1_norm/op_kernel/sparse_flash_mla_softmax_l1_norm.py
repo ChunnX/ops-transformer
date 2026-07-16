@@ -490,8 +490,7 @@ def get_seq_length(seqused_q, seq_q, seq_k, constInfo, runInfo):
     tiling_key=SmlaTilingKey,
     datatype={
         "query": "input_dtype",
-    },
-    pipeline=pl.pipeline.PipelineConfig(sync_only=True))
+    })
 def sparse_flash_mla_softmax_l1_norm(
     query: pl.Ptr[pl.DT_UINT8],
     key: pl.Ptr[pl.DT_UINT8],
