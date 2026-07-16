@@ -815,13 +815,14 @@ static uint64_t CalcDispatchWorkspace(MoeEpDispatchInfo &info)
         (info.networkMode == HYBRID_MODE) ? AlignUpWin(superNodeCount * sizeof(int32_t)) : 0UL;
     uint64_t scaleoutNotifyBytes =
         (info.networkMode == HYBRID_MODE) ? AlignUpWin(superNodeCount * sizeof(uint64_t)) : 0UL;
+    uint64_t readyStatusBytes = (info.networkMode == HYBRID_MODE) ? WIN_ADDR_ALIGN : 0UL;
     uint64_t globalABytes = UB_ALIGN;
 
     info.scaleupSendWorkspaceOffset = sendCntBytes;
     info.scaleoutSendWorkspaceOffset = info.scaleupSendWorkspaceOffset + scaleupSendWorkspaceBytes;
     info.routeWorkspaceOffset = info.scaleoutSendWorkspaceOffset + scaleoutSendWorkspaceBytes;
     return SYSTEM_NEED_WORKSPACE + info.routeWorkspaceOffset + scaleoutCounterBytes + routeWorkspaceBytes +
-           scaleoutNotifyBytes + globalABytes;
+           scaleoutNotifyBytes + readyStatusBytes + globalABytes;
 }
 
 static ge::graphStatus CheckWinSize(const gert::TilingContext *context, MoeEpDispatchInfo &info, const char *nodeName)
