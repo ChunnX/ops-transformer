@@ -106,6 +106,7 @@ struct MxBaseConstInfo {
 struct MxPageAttentionConstInfo {
     uint32_t maxBlockNumPerBatch = 0U;
     uint32_t paBlockStride = 0U;
+    uint32_t qSparseBlockSize = 0U;
     uint32_t kvSparseBlockSize = 0U;
 };
 
