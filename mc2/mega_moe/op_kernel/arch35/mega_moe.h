@@ -1770,7 +1770,20 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessCombineNoQuantGm
             DataCopyPad(rowUb, gmm2OutGm[static_cast<uint64_t>(tokenLocal) * k_], gm2UbParams, gm2UbPad);
             SetFlag<HardEvent::MTE2_MTE3>(eventId);
             WaitFlag<HardEvent::MTE2_MTE3>(eventId);
-            MegaMoeCombineImpl::CombineTokenRow<bfloat16_t>(k_, tokenMetaInfo, rowUb, params_);
+
+            // A/B baseline: keep the full 8 KiB GMM2 GM-to-UB row read, but
+            // restore the original 256-column remote sends.  For H=4096 BF16
+            // this issues 16 x 512 B MTE3 commands per token instead of one
+            // 8 KiB command, isolating remote transfer granularity only.
+            for (uint32_t nLoc = 0; nLoc < k_; nLoc += L1_TILE_N) {
+                uint32_t nActual = L1_TILE_N < k_ - nLoc ? L1_TILE_N : k_ - nLoc;
+                TupleShape actualShape;
+                Get<M_VALUE>(actualShape) = 1;
+                Get<N_VALUE>(actualShape) = nActual;
+                LocalTensor<bfloat16_t> rowSlice = rowUb[nLoc];
+                MegaMoeCombineImpl::CombineTokens<bfloat16_t, TupleShape>(
+                    tokenLocal, nLoc, k_, tokenMetaInfo, rowSlice, actualShape, params_);
+            }
             SetFlag<HardEvent::MTE3_MTE2>(eventId);
         }
     }
