@@ -21,7 +21,7 @@ using namespace ge;
 
 namespace ops {
 constexpr uint32_t QUERY_INPUT_INDEX = 0;
-constexpr uint32_t RETURN_SOFTMAX_LSE_INDEX = 8;
+constexpr uint32_t ATTR_RETURN_SOFTMAX_LSE_INDEX = 11;
 
 ge::graphStatus InferShapeMixedQuantSparseFlashMla(gert::InferShapeContext *context)
 {
@@ -34,17 +34,37 @@ ge::graphStatus InferShapeMixedQuantSparseFlashMla(gert::InferShapeContext *cont
     *attentionOutShape = *queryShape;
 
     gert::Shape *softmaxLseShape = context->GetOutputShape(1);
-    OPS_LOG_E_IF_NULL(context, attentionOutShape, return ge::GRAPH_FAILED)
+    OPS_LOG_E_IF_NULL(context, softmaxLseShape, return ge::GRAPH_FAILED)
     auto attr = context->GetAttrs();
-    const bool *returnSoftmaxLsePtr = attr->GetAttrPointer<bool>(RETURN_SOFTMAX_LSE_INDEX);
+    const bool *returnSoftmaxLsePtr = attr->GetAttrPointer<bool>(ATTR_RETURN_SOFTMAX_LSE_INDEX);
     bool returnSoftmaxLse = (returnSoftmaxLsePtr != nullptr) ? *returnSoftmaxLsePtr : false;
+    int64_t kvHeadNum = GetKvHeadNum(kvShape, layoutKv);
+
     if (returnSoftmaxLse) {
-        *softmaxLseShape = *queryShape;
-        auto lastDimIdx = softmaxLseShape->GetDimNum() - 1;
-        softmaxLseShape->SetDim(lastDimIdx, 1);
+        printf("[aclnnMixedQuantSparseFlashMla] returnSoftmaxLse 为True\n");
+        if (queryShape->GetDimNum() == DIM_NUM_3) {
+            printf("[aclnnMixedQuantSparseFlashMla] returnSoftmaxLse 为True  且进入 TND\n");
+            softmaxLseShape->SetDimNum(DIM_NUM_3);
+            softmaxLseShape->SetDim(DIM_INDEX_0, kvHeadNum);
+            softmaxLseShape->SetDim(DIM_INDEX_1, queryShape->GetDim(DIM_INDEX_0));
+            softmaxLseShape->SetDim(DIM_INDEX_2, queryShape->GetDim(DIM_INDEX_1) / kvHeadNum);
+        int dimCount = softmaxLseShape->GetDimNum();
+        printf("softmaxLseShape: dimNum=%d, shape=\[%lld, %lld, %lld\]\\n",
+            dimCount,
+            softmaxLseShape->GetDim(0),
+            softmaxLseShape->GetDim(1),
+            softmaxLseShape->GetDim(2));
+        } else {
+            softmaxLseShape->SetDimNum(DIM_NUM_4);
+            softmaxLseShape->SetDim(DIM_INDEX_0, queryShape->GetDim(DIM_INDEX_0));
+            softmaxLseShape->SetDim(DIM_INDEX_1, kvHeadNum);
+            softmaxLseShape->SetDim(DIM_INDEX_2, queryShape->GetDim(DIM_INDEX_1));
+            softmaxLseShape->SetDim(DIM_INDEX_3, queryShape->GetDim(DIM_INDEX_2) / kvHeadNum);
+        }
     } else {
-        softmaxLseShape->SetDimNum(1);
-        softmaxLseShape->SetDim(0, 0);
+        printf("[aclnnMixedQuantSparseFlashMla] returnSoftmaxLse 为False\n");
+        softmaxLseShape->SetDimNum(DIM_NUM_1);
+        softmaxLseShape->SetDim(DIM_INDEX_0, 0);
     }
     return GRAPH_SUCCESS;
 }
@@ -55,6 +75,7 @@ ge::graphStatus InferDataTypeMixedQuantSparseFlashMla(gert::InferDataTypeContext
                return ge::GRAPH_FAILED);
     const auto inputDataType = context->GetInputDataType(QUERY_INPUT_INDEX);
     context->SetOutputDataType(0, inputDataType);
+    context->SetOutputDataType(1, ge::DT_FLOAT);
     return ge::GRAPH_SUCCESS;
 }
 
