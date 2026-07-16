@@ -15,6 +15,7 @@ import itertools
 # 定义测试参数组合
 TEST_PARAMS = {
     "Testcase0": {
+        "_name": ["Testcase0"],
         "B": [1],
         "seqlen": [64],
         "nk": [4],
@@ -28,6 +29,7 @@ TEST_PARAMS = {
         "is_contiguous": [True],
     },
     "Testcase1": {
+        "_name": ["Testcase1"],
         "B": [1],
         "seqlen": [16384],
         "nk": [4],
