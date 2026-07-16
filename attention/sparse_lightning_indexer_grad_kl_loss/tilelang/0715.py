@@ -576,15 +576,14 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.tile.mul(softmax_i_chunk_ub, p_reduced_tmp_ub, rsy_bc_ub[0, :])
 
                     # GlobalSoftmaxI: compute global sum from UB-held ReduceSumY (no GM reads)
-                    # Vectorized: operate on entire rsy_all_ub (n_num, n_block) instead of per-row loop
                     T.tile.fill(rsy_sum_ub, 0)
-                    # Step 1: broadcast softmax_i_chunk_ub to 2D for sub
-                    T.tile.broadcast(rsy_bc_ub, softmax_i_chunk_ub)  # (1, 128) with broadcast
-                    # Step 2: per-row sub and exp from rsy_all_ub
                     for n_idx_iter in T.serial(n_num):
                         T.copy(rsy_all_ub[n_idx_iter, :], rsy_chunk_ub)
-                        T.tile.sub(rsy_chunk_ub, rsy_chunk_ub, rsy_bc_ub[0, :])
+                        T.pipe_barrier("v")
+                        T.tile.sub(rsy_chunk_ub, rsy_chunk_ub, softmax_i_chunk_ub)
+                        T.pipe_barrier("v")
                         T.tile.exp(rsy_chunk_ub, rsy_chunk_ub)
+                        T.pipe_barrier("v")
                         T.tile.mul(rsy_bc_ub[0, :], rsy_chunk_ub, 1.0)
                         T.pipe_barrier("v")
                         T.reduce_sum(rsy_bc_ub, rsy_chunk_sum_ub, 1)
