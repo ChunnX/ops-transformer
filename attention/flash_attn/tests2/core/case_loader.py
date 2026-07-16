@@ -69,7 +69,7 @@ def load_cases(case_set: str = "ci") -> tuple[list[dict], list[str]]:
 
 def resolve_case_ids(pattern: str, all_case_ids: list[str]) -> list[str]:
     if pattern == "all":
-        return sorted(all_case_ids)
+        return list(all_case_ids)
     ids = [x.strip() for x in pattern.split(",")]
     result = []
     missing = []

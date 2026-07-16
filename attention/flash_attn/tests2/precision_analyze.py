@@ -6,6 +6,9 @@ from compare import DEFAULT_TOLERANCE
 
 SEP = "━" * 80
 
+# 失败点位默认打印数量(不传 --verbose_diff 时); 传 --verbose_diff 时打印全量
+DEFAULT_FAIL_SHOW_LIMIT = 10
+
 
 def analyze_failure(
     cpu_out: dict,
@@ -62,7 +65,7 @@ def analyze_failure(
         fail_idxs = mask_flat.nonzero(as_tuple=False).squeeze(1)
 
         if len(fail_idxs) > 0:
-            show_idxs = fail_idxs if verbose else fail_idxs[:10]
+            show_idxs = fail_idxs if verbose else fail_idxs[:DEFAULT_FAIL_SHOW_LIMIT]
             label = "全量" if verbose else f"前{len(show_idxs)}"
             lines.append(f"\n  [失败点位 {label}]")
             lines.append(f"  {'idx':>10}  {'cpu':>14}  {'npu':>14}  {'absErr':>12}  {'relErr':>10}")
@@ -72,8 +75,8 @@ def analyze_failure(
                     f"  {i:>10}  {cpu_flat[i].item():>+14.8f}  {npu_flat[i].item():>+14.8f}"
                     f"  {diff_flat[i].item():>12.8f}  {rel_flat[i].item():>10.6f}"
                 )
-            if not verbose and fail_cnt > 10:
-                lines.append(f"  ... 共 {fail_cnt} 个失败点 (使用 --verbose-diff 查看全量)")
+            if not verbose and fail_cnt > DEFAULT_FAIL_SHOW_LIMIT:
+                lines.append(f"  ... 共 {fail_cnt} 个失败点 (使用 --verbose_diff 查看全量)")
 
             lines.append(f"\n  [Max-RE 前3] (绝对误差最大)")
             lines.append(f"  {'idx':>10}  {'cpu':>14}  {'npu':>14}  {'absErr':>12}  {'relErr':>10}")
