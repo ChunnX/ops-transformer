@@ -58,7 +58,12 @@ constexpr int64_t ALIGN_32 = 32LL;
 constexpr int64_t ALIGN_128 = 128LL;
 constexpr int64_t ALIGN_256 = 256LL;
 constexpr int64_t ALIGN_512 = 512LL;
-constexpr int32_t INT_CACHELINE = 16;
+// Keep independent GM synchronization words 512B apart.  Several producers
+// may update one counter, while unrelated counters must not share the same
+// HBM/L2 sector.
+constexpr int32_t INT_CACHELINE = ALIGN_512 / static_cast<int32_t>(sizeof(int32_t));
+static_assert(INT_CACHELINE * static_cast<int32_t>(sizeof(int32_t)) == ALIGN_512,
+              "GM flag stride must be 512B");
 constexpr int32_t MAX_AICORE_NUM = 36;
 constexpr uint32_t BUFFER_ALIGN = 96U * 1024U * 2U;
 constexpr uint32_t HCCL_MAX_RANK_SIZE = 1024U;
@@ -162,11 +167,11 @@ struct WorkspaceInfo {
         flagSwiGluToGmm2Ptr = base + workspaceSize;
         int64_t dispatchTileM = static_cast<int64_t>(MegaMoeImpl::L1_TILE_M_256);
         int64_t maxWavesPerExpert = Ops::Base::CeilDiv(static_cast<int64_t>(tilingData->maxOutputSize), dispatchTileM);
-        int64_t waveFlagSlotsPerExpert =
-            Ops::Base::CeilAlign(maxWavesPerExpert, static_cast<int64_t>(INT_CACHELINE));
+        // Every wave owns one 512B-spaced counter.  The value is an int32
+        // element count, not a count of logical flags.
+        int64_t waveFlagSlotsPerExpert = maxWavesPerExpert * static_cast<int64_t>(INT_CACHELINE);
         // Interleaved GMM1 lets GMM2 consume each completed 256-row SwiGLU
-        // wave. Reserve a cache-line-clean slot range per expert; the default
-        // layout simply uses the first slot in each range.
+        // wave. Reserve one isolated counter per wave.
         workspaceSize += SIZE_INT_32 * tilingData->expertPerRank * waveFlagSlotsPerExpert;
 
         flagDispatchToGmm1Ptr = base + workspaceSize;
@@ -225,7 +230,7 @@ struct WorkspaceInfo {
 
         if (useMteNoQuantGmm2Gm) {
             gmm2NoQuantReadyPtr = base + workspaceSize;
-            // One cache-line slot per expert is sufficient for both A/Bs:
+            // One 512B-spaced slot per expert is sufficient for both A/Bs:
             // per-expert indexes by expert, while per-batch indexes by batch.
             // Slots are never reused within one kernel invocation.
             int64_t readyBytes = static_cast<int64_t>(tilingData->expertPerRank) *
@@ -233,9 +238,10 @@ struct WorkspaceInfo {
             workspaceSize += Ops::Base::CeilAlign(readyBytes, static_cast<int64_t>(ALIGN_512));
         }
 
-        // Combine-quant-only workspace buffers
+        // Combine synchronization workspace buffers.
         if (tilingData->combineQuantMode != COMBINE_NO_QUANT || tilingData->topoType == TOPO_TYPE_URMA) {
-            // Token group completion counters
+            // Token group completion counters; every independently polled
+            // counter occupies one 512B-spaced slot.
             gmm2CombineSyncCounterPtr = base + workspaceSize;
             int64_t combineCounterBytes = static_cast<int64_t>(tilingData->combineSyncSlotCountPerExpert) *
                                           tilingData->moeExpertPerRank * INT_CACHELINE * SIZE_INT_32;

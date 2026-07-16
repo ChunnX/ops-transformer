@@ -51,7 +51,7 @@ __aicore__ inline GroupSyncSlotLayout CalcGroupSyncSlotLayout(uint32_t expertTok
     return {totalSyncSlotCount / groupCount, totalSyncSlotCount % groupCount};
 }
 
-// 每个同步 slot 独占 INT_CACHELINE 个 int32_t（64B），避免不同 flag 共享 cacheline 产生读写竞争。
+// 每个同步 slot 独占 INT_CACHELINE 个 int32_t（512B），避免不同 flag 共享 HBM/L2 sector 产生读写竞争。
 __aicore__ inline __gm__ int32_t *GetCombineSyncCounterAddress(__gm__ int32_t *expertCounterBase,
                                                                uint32_t localSyncSlotIndex)
 {
@@ -162,7 +162,8 @@ __aicore__ inline void WaitForUpstreamReady(const GMMAddrInfo &gmmAddrInfo, cons
     if constexpr (Policy::IS_GMM1) {
         uint32_t waveIdx = mLoc / config.tileM;
         uint32_t targetValue = (mLoc + config.tileM > config.m) ? (config.m - mLoc) : config.tileM;
-        __gm__ int32_t *flagValueAddr = gmmAddrInfo.dispatchToGmm1Flag + waveIdx;
+        __gm__ int32_t *flagValueAddr =
+            gmmAddrInfo.dispatchToGmm1Flag + static_cast<uint64_t>(waveIdx) * INT_CACHELINE;
         while (targetValue != AscendC::ReadGmByPassDCache(flagValueAddr)) {
             int64_t st = AscendC::GetSystemCycle();
             while (AscendC::GetSystemCycle() - st < 100) {
@@ -175,7 +176,8 @@ __aicore__ inline void WaitForUpstreamReady(const GMMAddrInfo &gmmAddrInfo, cons
             uint32_t waveM = waveStart + L1_TILE_M_256 > config.m ? config.m - waveStart : L1_TILE_M_256;
             uint32_t targetLoops = Ops::Base::CeilDiv(waveM, config.swigluTileM) *
                                    Ops::Base::CeilDiv(config.k * SWIGLU_N_HALF, L1_TILE_N);
-            __gm__ int32_t *flagValueAddr = gmmAddrInfo.swigluToGmm2Flag + waveIdx;
+            __gm__ int32_t *flagValueAddr =
+                gmmAddrInfo.swigluToGmm2Flag + static_cast<uint64_t>(waveIdx) * INT_CACHELINE;
             while (targetLoops != AscendC::ReadGmByPassDCache(flagValueAddr)) {
                 int64_t st = AscendC::GetSystemCycle();
                 while (AscendC::GetSystemCycle() - st < 100) {
