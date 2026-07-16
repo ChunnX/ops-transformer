@@ -29,6 +29,7 @@ constexpr int32_t CONSTANT_TWO = 2;
 constexpr int32_t CONSTANT_THREE = 3;
 constexpr int32_t CONSTANT_FOUR = 4;
 constexpr int32_t CONSTANT_EIGHT = 8;
+constexpr int32_t B32_BLOCK_COUNT = 8;
 constexpr uint32_t VL_FLOAT_SIZE = VECTOR_REG_WIDTH / sizeof(float);
 constexpr MicroAPI::DivSpecificMode mode = {MicroAPI::MaskMergeMode::ZEROING, true};
 
@@ -321,9 +322,9 @@ __aicore__ inline void MoeGatingTopKRegbase<T, U1, U2>::SoftMaxWithoutBias(Local
 
 template <typename T, typename U1, typename U2>
 __aicore__ inline void MoeGatingTopKRegbase<T, U1, U2>::ComputeWithSoftMax(LocalTensor<float> xInLocalTensor,
-                                                                           LocalTensor<float> xSigmoidTensor,
-                                                                           LocalTensor<float> xBiasTensor,
-                                                                           LocalTensor<uint32_t> indexTensor)
+                                                                            LocalTensor<float> xSigmoidTensor,
+                                                                            LocalTensor<float> xBiasTensor,
+                                                                            LocalTensor<uint32_t> indexTensor)
 {
     if constexpr (!IsSameType<T, float>::value) {
         Cast(xInLocalTensor, xInLocalTensor[expertCountAlign_].template ReinterpretCast<T>(), RoundMode::CAST_NONE,
@@ -341,12 +342,34 @@ __aicore__ inline void MoeGatingTopKRegbase<T, U1, U2>::ComputeWithSoftMax(Local
                   (perGroupExpertCountAlign_ * sizeof(float)) / BLOCK_BYTES);
     }
 
-    SoftMaxShapeInfo softmaxShapeInfo;
-    softmaxShapeInfo.srcM = 1;
-    softmaxShapeInfo.srcK = groupCount_ * perGroupExpertCountAlign_;
-    softmaxShapeInfo.oriSrcM = 1;
-    softmaxShapeInfo.oriSrcK = groupCount_ * perGroupExpertCountAlign_;
-    SoftMax<float, true, false>(xSigmoidTensor, xInLocalTensor, tilingData_->softmaxTilingData, softmaxShapeInfo);
+    uint32_t size = perGroupExpertCountAlign_ * groupCount_;
+    __local_mem__ float *xInAddr = (__local_mem__ float *)xInLocalTensor.GetPhyAddr();
+    __local_mem__ float *sigmoidOutAddr = (__local_mem__ float *)xSigmoidTensor.GetPhyAddr();
+    __local_mem__ float *addBiasOutAddr = (__local_mem__ float *)xBiasTensor.GetPhyAddr();
+    __local_mem__ int32_t *indexOutAddr = (__local_mem__ int32_t *)indexTensor.GetPhyAddr();
+
+    __VEC_SCOPE__
+    {
+        RegTensor<float> vregX;
+        RegTensor<float> vregMax;
+        RegTensor<float> vregMaxBcast;
+        RegTensor<float> vregExp;
+        RegTensor<float> vregSum;
+        RegTensor<float> vregSumBcast;
+        RegTensor<float> vregResult;
+        RegTensor<int32_t> vregIndex;
+        MicroAPI::MaskReg preg0 = MicroAPI::UpdateMask<float>(size);
+
+        MicroAPI::DataCopy(vregX, xInAddr);
+        MicroAPI::ReduceMax(vregMax, vregX, preg0);
+        MicroAPI::Duplicate(vregMaxBcast, vregMax, preg0);
+        MicroAPI::Sub(vregExp, vregX, vregMaxBcast, preg0);
+        MicroAPI::Exp(vregExp, vregExp, preg0);
+        MicroAPI::ReduceSum(vregSum, vregExp, preg0);
+        MicroAPI::Duplicate(vregSumBcast, vregSum, preg0);
+        MicroAPI::Div(vregResult, vregExp, vregSumBcast, preg0);
+        MicroAPI::DataCopy(sigmoidOutAddr, vregResult, preg0);
+    }
 
     if (hasBias_) {
         SoftMaxWithBias(xSigmoidTensor, xBiasTensor, indexTensor);
@@ -757,17 +780,32 @@ template <typename T, typename U1, typename U2>
 __aicore__ inline void MoeGatingTopKRegbase<T, U1, U2>::TopKCompute()
 {
     LocalTensor<float> xBiasTensor = xBiasBuf_.Get<float>();
-    LocalTensor<float> sortedInGroupTensor = sortedInGroupBuf_.Get<float>(); // 组内排序的结果, 后续归并需要
+    LocalTensor<float> sortedInGroupTensor = sortedInGroupBuf_.Get<float>();
     LocalTensor<float> tmpLocal = finalSortBuffer_.Get<float>();
-
-    Sort<float, true>(sortedInGroupTensor, xBiasTensor, indexTensor, tmpLocal,
-                      perGroupExpertCountAlign_ * groupCount_ / ONE_REPEAT_SORT_NUM);
 
     LocalTensor<float> xSigmoidTensor = xSigmoidBuf_.Get<float>();
     LocalTensor<T> yTensor = yOutQueue_.AllocTensor<T>();
     LocalTensor<int32_t> expertIdxTensor = expertIdxOutQueue_.AllocTensor<int32_t>();
 
     LocalTensor<int32_t> sortedInGroupTensorCast = sortedInGroupTensor.template ReinterpretCast<int32_t>();
+
+    if (k_ == 1 && expertCount_ <= B32_BLOCK_COUNT) {
+        __local_mem__ float *xBiasAddr = (__local_mem__ float *)xBiasTensor.GetPhyAddr();
+        __local_mem__ float *sortedAddr = (__local_mem__ float *)sortedInGroupTensor.GetPhyAddr();
+        uint32_t expertCountU32 = static_cast<uint32_t>(expertCount_);
+        __VEC_SCOPE__
+        {
+            RegTensor<float> valueAndIndexReg;
+            MicroAPI::MaskReg maskForVL2 = MicroAPI::CreateMask<uint32_t, MicroAPI::MaskPattern::VL2>();
+            MicroAPI::MaskReg maskForExpertCount = MicroAPI::UpdateMask<uint32_t>(expertCountU32);
+            MicroAPI::DataCopy(valueAndIndexReg, xBiasAddr);
+            MicroAPI::ReduceMax(valueAndIndexReg, valueAndIndexReg, maskForExpertCount);
+            MicroAPI::DataCopy(sortedAddr, valueAndIndexReg, maskForVL2);
+        }
+    } else {
+        Sort<float, true>(sortedInGroupTensor, xBiasTensor, indexTensor, tmpLocal,
+                          perGroupExpertCountAlign_ * groupCount_ / ONE_REPEAT_SORT_NUM);
+    }
 
     int32_t expertIdxPad = perGroupExpertCountAlign_ - perGroupExpertCount_;
     if (k_ <= VL_FLOAT_SIZE) {
