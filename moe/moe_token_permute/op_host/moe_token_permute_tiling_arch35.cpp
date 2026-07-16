@@ -32,7 +32,6 @@ const static int64_t SCATTER_FULL_MAX_K = 4;
 const static int64_t SCATTER_FULL_MAX_ROW_BYTES = 512;
 const static int64_t ASSIST_NUM = 256;
 const static int64_t MAX_INDICES_NUM = 512;
-const static int64_t MAX_INT8_INDICES_NUM = 10240;
 const static int64_t SORT_LIMIT_LENGTH = 16777215;
 const static int64_t SIMT_UB_SIZE_BYTE = 40960; // arch35 SIMT DCache 预留
 const static int64_t MRG_SORT_LIST_MAX_ELEMENT = 2048;
@@ -133,11 +132,23 @@ void MoeTokenPermuteTilingArch35::Reset()
 ge::graphStatus MoeTokenPermuteTilingArch35::GetPlatformInfo()
 {
     opName = context_->GetNodeName();
+    auto platformInfo = context_->GetPlatformInfo();
+    OP_CHECK_IF(platformInfo == nullptr, OP_LOGE(opName, "fail to get platform info"), return ge::GRAPH_FAILED);
+
     auto compileInfoPtr = reinterpret_cast<const MoeTokenPermuteCompileInfo *>(context_->GetCompileInfo());
-    OP_CHECK_IF(compileInfoPtr == nullptr, OP_LOGE(opName, "fail to get compile info"), return ge::GRAPH_FAILED);
-    aivNum = compileInfoPtr->aivNum;
+    if (compileInfoPtr != nullptr) {
+        aivNum = compileInfoPtr->aivNum;
+        aicoreParams_.ubSize = compileInfoPtr->ubSize - SIMT_UB_SIZE_BYTE;
+    } else {
+        // compileInfo 未设置时回退到 PlatformAscendC（例如在 ascend910b 等非 arch35 平台上被尝试执行时）
+        OP_LOGD(opName, "compileInfo is null, fallback to PlatformAscendC");
+        auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
+        aivNum = ascendcPlatform.GetCoreNumAiv();
+        uint64_t ubSize;
+        ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
+        aicoreParams_.ubSize = ubSize - SIMT_UB_SIZE_BYTE;
+    }
     aicoreParams_.numBlocks = aivNum;
-    aicoreParams_.ubSize = compileInfoPtr->ubSize - SIMT_UB_SIZE_BYTE;
     moeTokenPermuteTilingData.set_coreNum(aivNum);
     return ge::GRAPH_SUCCESS;
 }
@@ -247,17 +258,6 @@ ge::graphStatus MoeTokenPermuteTilingArch35::GetShapeAttrsInfo()
         return ge::GRAPH_FAILED;
     }
     totalLength = moeTokenPermuteTilingData.get_n() * moeTokenPermuteTilingData.get_topK();
-    bool isInt8 = context_->GetInputDesc(0)->GetDataType() == ge::DataType::DT_INT8;
-    if (isInt8 && totalLength > MAX_INT8_INDICES_NUM) {
-        OP_LOGE(context_->GetNodeName(), "The elements num of indices [%ld] should not exceed [%ld] for INT8 tokens.",
-                totalLength, MAX_INT8_INDICES_NUM);
-        return ge::GRAPH_FAILED;
-    }
-    if (isInt8 && numOutTokens > MAX_INT8_INDICES_NUM) {
-        OP_LOGE(context_->GetNodeName(), "num_out_tokens [%ld] should not exceed [%ld] for INT8 tokens.", numOutTokens,
-                MAX_INT8_INDICES_NUM);
-        return ge::GRAPH_FAILED;
-    }
 
     if (numOutTokens == 0) {
         numOutTokens = totalLength;
@@ -570,5 +570,5 @@ void MoeTokenPermuteTilingArch35::Tiling4GatherOutCompute()
     SetGatherOutLoopParams(perCoreRows, lastCoreRows, rowSize, colSize);
 }
 
-REGISTER_OPS_TILING_TEMPLATE(MoeTokenPermute, MoeTokenPermuteTilingArch35, 1000);
+REGISTER_OPS_TILING_TEMPLATE(MoeTokenPermute, MoeTokenPermuteTilingArch35, 10000);
 } // namespace optiling

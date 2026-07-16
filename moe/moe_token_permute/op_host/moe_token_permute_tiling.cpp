@@ -150,7 +150,8 @@ public:
 protected:
     bool IsCapable() override
     {
-        return true;
+        // 仅在非 regbase 平台（ascend910b 等）生效，regbase 平台（ascend950 等）走 arch35 tiling
+        return !Ops::Transformer::OpTiling::IsRegbaseSocVersion(context_);
     }
     // 1、获取平台信息比如CoreNum、UB/L1/L0C资源大小
     ge::graphStatus GetPlatformInfo() override;
@@ -622,5 +623,5 @@ void MoeTokenPermuteTilingBase::Tiling4IndexCopyCompute()
 }
 
 // 注册为兜底 tiling 模板（非 ascend950 走此路径）。IMPL_OP_OPTILING 统一在 tiling_base.cpp。
-REGISTER_OPS_TILING_TEMPLATE(MoeTokenPermute, MoeTokenPermuteTilingBase, 10000);
+REGISTER_OPS_TILING_TEMPLATE(MoeTokenPermute, MoeTokenPermuteTilingBase, 1000);
 } // namespace optiling

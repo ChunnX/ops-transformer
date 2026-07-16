@@ -21,6 +21,7 @@
 #include "tiling/platform/platform_ascendc.h"
 #include "op_host/tiling_base.h"
 #include "op_host/tiling_templates_registry.h"
+#include "op_host/tiling_util.h"
 namespace optiling {
 BEGIN_TILING_DATA_DEF(PermuteVBSComputeTilingData)
 TILING_DATA_FIELD_DEF(int64_t, needCoreNum);
