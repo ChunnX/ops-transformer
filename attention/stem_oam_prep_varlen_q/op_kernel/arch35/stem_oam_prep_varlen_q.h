@@ -41,7 +41,7 @@
  *
  *      Phase 1: qBlockFP32Buf[(r*S+g)*D : (r*S+g+1)*D] *= scales[r*S+g]
  *                对每个 (r, g) 的原地乘 scale
- *      Phase 2: 沿 R 轴二进制分解 + 原地配对归约（任意 R 均支持）
+ *      Phase 2: 沿 R 轴反向 reduce（stride 从 R_main 递减到 1）
  *                结果保留在 qBlockFP32Buf 的前 S 行 (偏移 0..S*D-1)
  *
  *   5. FlattenAndCast:
@@ -127,22 +127,6 @@ __simd_vf__ inline void CastFP32ToBF16Vf(__ubuf__ float *srcPtr, __ubuf__ bfloat
     }
 }
 
-/**
- * __simd_callee__ helpers for WeightedBinaryReduceChunkVf.
- *
- * Each helper is pure — uses MicroAPI directly, no if statements.
- *
- * MulsOnAllRows:
- *   qFP32[(r*S + g)*D + d] *= scale[r*S + g]  for all r,g,d
- *
- * ReduceChunkInPlace:
- *   pair-wise reduce chunk (size 2^p, starting at base_r) so that
- *   row[(base_r*S + g), :] holds the intra-chunk sum
- *
- * AddMergeToAccumulator:
- *   row[g, :] += row[(base_r*S + g), :]  for g in [0, S)
- */
-
 __simd_callee__ inline void MulsOnAllRows(__ubuf__ float *qFP32Ptr, __ubuf__ float *scalePtr, uint16_t R, uint16_t S,
                                           uint16_t D)
 {
@@ -170,9 +154,11 @@ __simd_callee__ inline void MulsOnAllRows(__ubuf__ float *qFP32Ptr, __ubuf__ flo
     }
 }
 
-__simd_callee__ inline void ReduceChunkInPlace(__ubuf__ float *qFP32Ptr, uint16_t base_r, uint16_t p, uint16_t S,
-                                               uint16_t D)
+__simd_vf__ inline void WeightedBinaryReduceFull(__ubuf__ float *qFP32Ptr, __ubuf__ float *scalePtr, uint16_t R,
+                                                  uint16_t S, uint16_t D)
 {
+    MulsOnAllRows(qFP32Ptr, scalePtr, R, S, D);
+
     using namespace AscendC::MicroAPI;
 
     constexpr uint16_t VL_F = VECTOR_REG_WIDTH / sizeof(float);
@@ -182,20 +168,17 @@ __simd_callee__ inline void ReduceChunkInPlace(__ubuf__ float *qFP32Ptr, uint16_
     RegTensor<float> regA;
     RegTensor<float> regB;
 
-    uint16_t chunk_size = 1;
-    for (uint16_t i = 0; i < p; i++) {
-        chunk_size <<= 1;
-    }
+    uint16_t R_main = 1;
+    while ((R_main << 1) <= R) { R_main <<= 1; }
+    uint16_t R_tail = R - R_main;
 
-    for (uint16_t k = 0; k < p; k++) {
-        uint16_t stride = static_cast<uint16_t>(1 << k);
-        uint16_t step = stride << 1;
+    for (uint16_t stride = R_main; stride >= 1; stride >>= 1) {
+        uint16_t ops = (stride == R_main) ? R_tail : stride;
+        if (ops == 0) continue;
         for (uint16_t g = 0; g < S; g++) {
-            for (uint16_t r_local = 0; r_local < chunk_size; r_local += step) {
-                uint16_t r_dst = base_r + r_local;
-                uint16_t r_src = base_r + r_local + stride;
-                uint32_t offDst = static_cast<uint32_t>(r_dst * S + g) * D;
-                uint32_t offSrc = static_cast<uint32_t>(r_src * S + g) * D;
+            for (uint16_t r = 0; r < ops; r++) {
+                uint32_t offDst = static_cast<uint32_t>(r * S + g) * D;
+                uint32_t offSrc = static_cast<uint32_t>((r + stride) * S + g) * D;
                 for (uint16_t vi = 0; vi < vlIter; vi++) {
                     uint32_t d = static_cast<uint32_t>(vi) * VL_F;
                     DataCopy(regA, qFP32Ptr + offDst + d);
@@ -205,57 +188,6 @@ __simd_callee__ inline void ReduceChunkInPlace(__ubuf__ float *qFP32Ptr, uint16_
                 }
             }
         }
-    }
-}
-
-__simd_callee__ inline void AddMergeToAccumulator(__ubuf__ float *qFP32Ptr, uint16_t base_r, uint16_t S, uint16_t D)
-{
-    using namespace AscendC::MicroAPI;
-
-    constexpr uint16_t VL_F = VECTOR_REG_WIDTH / sizeof(float);
-    uint16_t vlIter = (D + VL_F - 1) / VL_F;
-
-    MaskReg maskAll = CreateMask<float, MaskPattern::ALL>();
-    RegTensor<float> regA;
-    RegTensor<float> regB;
-
-    for (uint16_t g = 0; g < S; g++) {
-        uint32_t offAcc = static_cast<uint32_t>(g) * D;
-        uint32_t offChunk = static_cast<uint32_t>(base_r * S + g) * D;
-        for (uint16_t vi = 0; vi < vlIter; vi++) {
-            uint32_t d = static_cast<uint32_t>(vi) * VL_F;
-            DataCopy(regA, qFP32Ptr + offAcc + d);
-            DataCopy(regB, qFP32Ptr + offChunk + d);
-            Add(regA, regA, regB, maskAll);
-            DataCopy(qFP32Ptr + offAcc + d, regA, maskAll);
-        }
-    }
-}
-
-/**
- * WeightedBinaryReduceChunkVf: one chunk of the binary decomposition
- *
- * Single VF entry; no if inside. Control flow is bounded by uint16_t flags
- * (do_muls / merge_count in {0,1}) via for-loop iteration counts.
- *   - First chunk (base_r=0): do_muls=1, merge_count=0  → Muls all rows, reduce chunk, NO merge
- *     (row[g] already holds the chunk sum after reduce, no merge needed)
- *   - Later chunks (base_r>0): do_muls=0, merge_count=1 → reduce chunk, then Add merge
- *     (row[g] is accumulator, just Add the new chunk in)
- *
- * Muls is fused into the same entry as reduce+merge, avoiding extra VF calls.
- */
-__simd_vf__ inline void WeightedBinaryReduceChunkVf(__ubuf__ float *qFP32Ptr, __ubuf__ float *scalePtr, uint16_t R,
-                                                    uint16_t base_r, uint16_t p, uint16_t S, uint16_t D,
-                                                    uint16_t do_muls, uint16_t merge_count)
-{
-    for (uint16_t m = 0; m < do_muls; m++) {
-        MulsOnAllRows(qFP32Ptr, scalePtr, R, S, D);
-    }
-
-    ReduceChunkInPlace(qFP32Ptr, base_r, p, S, D);
-
-    for (uint16_t m = 0; m < merge_count; m++) {
-        AddMergeToAccumulator(qFP32Ptr, base_r, S, D);
     }
 }
 
@@ -468,23 +400,6 @@ public:
         SetFlag<HardEvent::MTE2_V>(EVENT_ID1);
     }
 
-    /**
-     * AccumulateBlock: Binary-reduce based Weighted Group Sum (in-place)
-     *
-     * qBlockFP32Buf [B, D] 逻辑 reshape 为 [R, S, D]
-     * scalesBuf     [B]    逻辑 reshape 为 [R, S]
-     *
-     * 对每个 g ∈ [0, S-1]:
-     *   groupSum[g, :] = Σ_{r=0}^{R-1} qBlockFP32[r*S+g, :] × scales[r*S+g]
-     *
-     * Binary decompose R (MSB→LSB) and dispatch one chunk per VF call.
-     * Each VF call fuses:
-     *   - Muls on all R*S rows   (only the first chunk, do_muls=1)
-     *   - Pairwise reduce in p layers on this chunk (always)
-     *   - Add-merge into row[g]  (only later chunks, merge_count=1)
-     *
-     * 结果留在 qBlockFP32Buf 的前 S 行 (行 g, 偏移 g*D, g in [0, S))
-     */
     __aicore__ inline void AccumulateBlock()
     {
         WaitFlag<HardEvent::MTE2_V>(EVENT_ID1);
@@ -494,28 +409,10 @@ public:
         __ubuf__ float *qFP32Ptr = (__ubuf__ float *)fp32Buf.GetPhyAddr();
         __ubuf__ float *scalePtr = (__ubuf__ float *)scaleBuf.GetPhyAddr();
 
-        uint16_t base_r = 0;
-        uint16_t R_rem = static_cast<uint16_t>(R_);
-        while (R_rem > 0) {
-            uint16_t p = 0;
-            uint16_t tmp = R_rem;
-            while (tmp >= 2) {
-                tmp >>= 1;
-                p++;
-            }
-            uint16_t chunk = static_cast<uint16_t>(1 << p);
+        VF_CALL<WeightedBinaryReduceFull>(qFP32Ptr, scalePtr, static_cast<uint16_t>(R_),
+                                           static_cast<uint16_t>(S_), static_cast<uint16_t>(dim_qk_));
+        PipeBarrier<PIPE_V>();
 
-            uint16_t do_muls = (base_r == 0) ? 1 : 0;
-            uint16_t merge_count = (base_r > 0) ? 1 : 0;
-
-            VF_CALL<WeightedBinaryReduceChunkVf>(qFP32Ptr, scalePtr, static_cast<uint16_t>(R_), base_r, p,
-                                                 static_cast<uint16_t>(S_), static_cast<uint16_t>(dim_qk_), do_muls,
-                                                 merge_count);
-            PipeBarrier<PIPE_V>();
-
-            base_r += chunk;
-            R_rem -= chunk;
-        }
         scalesBuf_.FreeTensor(scaleBuf);
         qBlockFP32Buf_.EnQue(fp32Buf);
     }

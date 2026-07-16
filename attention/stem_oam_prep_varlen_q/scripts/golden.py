@@ -11,14 +11,13 @@ shape [batch, H_q, max_Qb, S*D]:
                                (no Python loops over batch/head/qb).
                                Mathematically identical to golden_seq.
                                Requires PyTorch.
-  golden_binary_reduce       - Binary reduce algorithm, numpy. Mirrors the
+  golden_binary_reduce       - Backward reduce algorithm, numpy. Mirrors the
                                current kernel implementation exactly:
                                  Phase 1: Muls each row by its scale
-                                 Phase 2: binary-decompose R (MSB->LSB);
-                                          for each chunk of size 2^p, do a
-                                          p-layer pairwise reduce over r,
-                                          then add-merge into the accumulator
-                                          row[g] (first chunk skips merge).
+                                 Phase 2: backward reduce over R axis;
+                                          stride from R_main (largest power
+                                          of 2 <= R) down to 1, each round
+                                          adds row[r+stride] into row[r].
                                Expected FP32 difference vs golden_seq < 1e-6.
 
 Switch between them by uncommenting exactly one SELECTED_GOLDEN line below.
@@ -182,7 +181,7 @@ def golden_torch_vectorized(context: "tbetoolkits.UniversalTestcaseStructure"):
 
 def golden_binary_reduce(context: "tbetoolkits.UniversalTestcaseStructure"):
     """
-    Binary reduce algorithm, numpy (matches current kernel exactly).
+    Backward reduce algorithm, numpy (matches current kernel exactly).
 
     Per block (qb) at a given head h, working on Q_q[r, g, :] with shape
     [R, S, D]:
@@ -190,13 +189,12 @@ def golden_binary_reduce(context: "tbetoolkits.UniversalTestcaseStructure"):
       Phase 1: Muls each row by its scale
                Q_q[r, g, :] *= scales[r, g]
 
-      Phase 2: binary-decompose R (MSB to LSB).
-               For each chunk of size 2^p starting at base_r:
-                 - p-layer pairwise reduce on rows base_r..base_r+chunk-1
-                   (after this, row[base_r, g, :] holds the intra-chunk sum)
-                 - add-merge the chunk result into the accumulator row[0, g, :]
-                   (the first chunk, where base_r=0, is NOT merged because
-                    its reduce result already lives in row[0, g, :])
+      Phase 2: backward reduce over R axis.
+               R_main = largest power of 2 <= R
+               R_tail = R - R_main
+               stride from R_main down to 1 (halving each round):
+                 ops = R_tail if stride==R_main else stride
+                 for r in 0..ops-1: row[r] += row[r + stride]
                After the loop, row[0, g, :] holds the full group sum.
     """
     q_np = context.input_arrays[0]
@@ -263,35 +261,18 @@ def golden_binary_reduce(context: "tbetoolkits.UniversalTestcaseStructure"):
                 if scales is not None:
                     Q_q = Q_q * scales[qb, :, :, np.newaxis]
 
-                # Phase 2: binary reduce over r-axis (MSB to LSB)
-                base_r = 0
-                R_rem = R
-                is_first = True
-                while R_rem > 0:
-                    # floor_log2
-                    p = 0
-                    tmp = R_rem
-                    while tmp >= 2:
-                        tmp >>= 1
-                        p += 1
-                    chunk = 1 << p
+                R_main = 1
+                while (R_main << 1) <= R:
+                    R_main <<= 1
+                R_tail = R - R_main
 
-                    # p-layer pairwise reduce (vectorized over g, D)
-                    for k in range(p):
-                        stride = 1 << k
-                        step = stride << 1
-                        for r_local in range(0, chunk, step):
-                            r_dst = base_r + r_local
-                            r_src = base_r + r_local + stride
-                            Q_q[r_dst] += Q_q[r_src]
-
-                    # merge: accumulator row[0] += chunk-reduced row[base_r]
-                    if not is_first:
-                        Q_q[0] += Q_q[base_r]
-                    is_first = False
-
-                    base_r += chunk
-                    R_rem -= chunk
+                stride = R_main
+                while stride >= 1:
+                    ops = R_tail if stride == R_main else stride
+                    if ops > 0:
+                        for r in range(ops):
+                            Q_q[r] += Q_q[r + stride]
+                    stride >>= 1
 
                 # row[0, g, :] now holds groupSum[g, :]
                 qflat[b, h, qb, :] = Q_q[0].reshape(S * D)
