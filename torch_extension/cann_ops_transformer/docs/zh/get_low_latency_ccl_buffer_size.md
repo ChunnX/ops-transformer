@@ -21,7 +21,7 @@
 
         $$token\_actual\_len = Align32(hidden * max\_out\_dtype\_size) + scale\_expand\_index\_buffer$$
 
-        其中max_out_dtype_size为token类型转为字节数，scale_expand_index_buffer为scale（32B）+ expand_idx（3 × 4B）
+        其中max_out_dtype_size为token类型转为字节数，scale_expand_index_buffer为scale（32B）+ expand_idx（3 × 4B）。`topk_weights`非空时，expertScale作为expand_idx后的第4个4B数据复用该区域的32B对齐空间，不额外增加token_actual_len。
 
     - 根据`comm_alg`计算dispatch阶段每个token所需大小：
 
