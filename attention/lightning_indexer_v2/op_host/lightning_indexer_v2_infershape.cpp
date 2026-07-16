@@ -29,8 +29,10 @@ constexpr uint32_t ATTR_RETURN_VALUE_INDEX = 6;
 
 static ge::graphStatus InferShapeLightningIndexerV2(gert::InferShapeContext *context)
 {
-    OP_CHECK_IF(context == nullptr, OP_LOGE_WITH_INVALID_INPUT("LightningIndexerV2", "InferShapeContext"),
-               return ge::GRAPH_FAILED);
+    OP_CHECK_IF(context == nullptr,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON("LightningIndexerV2", "InferShapeContext",
+                    "InferShapeContext is nullptr"),
+                return ge::GRAPH_FAILED);
     const gert::Shape *queryShape = context->GetInputShape(QUERY_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, queryShape);
     const gert::Shape *keyShape = context->GetInputShape(KEY_INDEX);
@@ -95,8 +97,10 @@ static ge::graphStatus InferShapeLightningIndexerV2(gert::InferShapeContext *con
 
 static ge::graphStatus InferDataTypeLightningIndexerV2(gert::InferDataTypeContext *context)
 {
-    OP_CHECK_IF(context == nullptr, OP_LOGE_WITH_INVALID_INPUT("LightningIndexerV2", "InferDataTypeContext"),
-               return ge::GRAPH_FAILED);
+    OP_CHECK_IF(context == nullptr,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON("LightningIndexerV2", "InferDataTypeContext",
+                    "InferDataTypeContext is nullptr"),
+                return ge::GRAPH_FAILED);
     OP_LOGI(context->GetNodeName(), "Enter LightningIndexerV2 InferDataType impl.");
     // default set q's dtype as fia's output type
     ge::DataType outputType = ge::DT_INT32;
