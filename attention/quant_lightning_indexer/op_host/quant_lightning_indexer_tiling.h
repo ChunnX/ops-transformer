@@ -160,8 +160,6 @@ public:
     int64_t nextTokens = 0;
     int64_t keyStride0 = 0;
     int64_t keyDequantScaleStride0 = 0;
-    std::vector<uint32_t> keyStridesVec;
-    std::vector<uint32_t> keyDequantScaleStridesVec;
     // DType
     ge::DataType inputQType = ge::DT_FLOAT16;
     ge::DataType inputKType = ge::DT_FLOAT16;
@@ -212,7 +210,7 @@ public:
     ge::graphStatus ParseAndCheck(QLITilingInfo &QLIInfo);
     size_t GetTensorDimNum(const uint32_t tensorIdx);
     int64_t GetTensorDim(const uint32_t tensorIdx, const size_t idx);
-    ge::graphStatus CheckContiguous() const;
+    ge::graphStatus CheckContiguous();
 
 public:
     gert::TilingContext *context_ = nullptr;

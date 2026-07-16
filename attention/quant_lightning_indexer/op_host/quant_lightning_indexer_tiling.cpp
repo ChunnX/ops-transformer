@@ -219,18 +219,6 @@ ge::graphStatus QLIInfoParser::GetAttrParaInfo()
     opParamInfo_.nextTokens = attrs->GetAttrPointer<int64_t>(ATTR_NEXT_TOKENS_INDEX);
     opParamInfo_.keyStride0 = *(attrs->GetAttrPointer<int64_t>(ATTR_KEY_STRIDE0_INDEX));
     opParamInfo_.keyDequantScaleStride0 = *(attrs->GetAttrPointer<int64_t>(ATTR_KEY_DEQUANT_SCALE_STRIDE0_INDEX));
-    auto keyStrides = context_->GetDynamicInputStride(KEY_INDEX, 0);
-    auto keyDequantScaleStrides = context_->GetDynamicInputStride(KEY_DEQUANT_SCALE_INDEX, 0);
-    if (keyStrides != nullptr && keyStrides->GetDimNum() > 0) {
-        for (size_t i = 0; i < keyStrides->GetDimNum(); i++) {
-            keyStridesVec_.push_back(keyStrides->GetStride(i));
-        }
-    }
-    if (keyDequantScaleStrides != nullptr && keyDequantScaleStrides->GetDimNum() > 0) {
-        for (size_t i = 0; i < keyDequantScaleStrides->GetDimNum(); i++) {
-            keyDequantScaleStridesVec_.push_back(keyDequantScaleStrides->GetStride(i));
-        }
-    }
 
     if (opParamInfo_.layOutQuery != nullptr) {
         OP_LOGI(context_->GetNodeName(), "layout_query is:%s", opParamInfo_.layOutQuery);
@@ -932,8 +920,25 @@ ge::graphStatus QLIInfoParser::CheckScaleShape()
 // key非连续校验：通过shape计算expected stride进行校验
 // PA_BSND时，只允许0轴非连续，其余轴必须连续
 // 非PA_BSND时，所有轴都必须连续
-ge::graphStatus QLIInfoParser::CheckContiguous() const
+ge::graphStatus QLIInfoParser::CheckContiguous()
 {
+    if (npuArch_ != NpuArch::DAV_3510) {
+        return ge::GRAPH_SUCCESS;
+    }
+
+    auto keyStrides = context_->GetDynamicInputStride(KEY_INDEX, 0);
+    auto keyDequantScaleStrides = context_->GetDynamicInputStride(KEY_DEQUANT_SCALE_INDEX, 0);
+    if (keyStrides != nullptr && keyStrides->GetDimNum() > 0) {
+        for (size_t i = 0; i < keyStrides->GetDimNum(); i++) {
+            keyStridesVec_.push_back(keyStrides->GetStride(i));
+        }
+    }
+    if (keyDequantScaleStrides != nullptr && keyDequantScaleStrides->GetDimNum() > 0) {
+        for (size_t i = 0; i < keyDequantScaleStrides->GetDimNum(); i++) {
+            keyDequantScaleStridesVec_.push_back(keyDequantScaleStrides->GetStride(i));
+        }
+    }
+
     bool keyNonContiguous = false;
     bool scaleNonContiguous = false;
     // PA_BSND: 0轴允许非连续，从1轴开始检查；非PA_BSND: 从0轴开始检查
@@ -1010,15 +1015,13 @@ void QLIInfoParser::GenerateInfo(QLITilingInfo &QLIInfo)
     QLIInfo.preTokens = *opParamInfo_.preTokens;
     QLIInfo.nextTokens = *opParamInfo_.nextTokens;
 
-    QLIInfo.keyStridesVec = keyStridesVec_;
-    QLIInfo.keyDequantScaleStridesVec = keyDequantScaleStridesVec_;
-    if (!keyStridesVec_.empty()) {
-        QLIInfo.keyStride0 = static_cast<uint32_t>(keyStridesVec_[0]);
+    if (opParamInfo_.keyStride0 != -1) {
+        QLIInfo.keyStride0 = opParamInfo_.keyStride0;
     } else {
-        QLIInfo.keyStride0 = blockSize_ * n2Size_ * headDim_;  // 非PA无需使用stride
+        QLIInfo.keyStride0 = blockSize_ * n2Size_ * headDim_;
     }
-    if (!keyDequantScaleStridesVec_.empty()) {
-        QLIInfo.keyDequantScaleStride0 = static_cast<uint32_t>(keyDequantScaleStridesVec_[0]);
+    if (opParamInfo_.keyDequantScaleStride0 != -1) {
+        QLIInfo.keyDequantScaleStride0 = opParamInfo_.keyDequantScaleStride0;
     } else {
         QLIInfo.keyDequantScaleStride0 = blockSize_;
     }
@@ -1048,8 +1051,11 @@ ge::graphStatus QLIInfoParser::ParseAndCheck(QLITilingInfo &QLIInfo)
         ge::GRAPH_SUCCESS != GetS2Size()) {
         return ge::GRAPH_FAILED;
     }
-    if (ge::GRAPH_SUCCESS != ValidateInputShapesMatch() || ge::GRAPH_SUCCESS != CheckScaleShape() ||
-        ge::GRAPH_SUCCESS != CheckContiguous()) {
+    if (ge::GRAPH_SUCCESS != ValidateInputShapesMatch() || ge::GRAPH_SUCCESS != CheckScaleShape()) {
+        return ge::GRAPH_FAILED;
+    }
+
+    if (ge::GRAPH_SUCCESS != CheckContiguous()) {
         return ge::GRAPH_FAILED;
     }
 
