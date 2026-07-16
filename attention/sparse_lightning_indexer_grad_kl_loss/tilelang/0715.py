@@ -450,6 +450,7 @@ def tilelang_grad_kl_loss_single_kernel(
                 rsy_bc_ub = T.alloc_ub((1, n_block), calc_dtype)
                 rsy_max_ub = T.alloc_ub((1,), calc_dtype)
                 rsy_sum_ub = T.alloc_ub((1,), calc_dtype)
+                rsy_max_prev_ub = T.alloc_ub((1,), calc_dtype)
                 rsy_chunk_max_ub = T.alloc_ub((1,), calc_dtype)
                 rsy_chunk_sum_ub = T.alloc_ub((1,), calc_dtype)
                 eps_sum_ub = T.alloc_ub((1,), calc_dtype)
@@ -505,6 +506,7 @@ def tilelang_grad_kl_loss_single_kernel(
                     # ReduceSumY + GlobalSoftmaxI max: fused K-block pass
                     # rsy_all_ub holds all ReduceSumY blocks (avoid GM re-reads)
                     T.tile.fill(rsy_max_ub, -T.infinity(calc_dtype))
+                    T.tile.fill(rsy_sum_ub, 0)
                     # Double-buffer ReduceSumY loop: overlap copy[n_rsy+1] ∥ compute[n_rsy]
                     # bmm2 DB: V_MTE2{0,1} (WAR) / MTE2_V{0,1} (RAW)
                     # rsy_reduce DB: MTE3_V{9,10} (WAR: MTE3 done reading, V can overwrite)
@@ -542,12 +544,31 @@ def tilelang_grad_kl_loss_single_kernel(
                         # MTE3 copy: fire-and-forget, overlaps with V reduce_max below
                         T.copy(rsy_reduce_db[cur, :], ReduceSumY[bz, s1_id, n_rsy * n_block:(n_rsy + 1) * n_block])
                         T.set_flag("mte3", "v", cur + 9)
+                        # Save old max for running softmax correction
+                        T.copy(rsy_max_ub[0:1], rsy_max_prev_ub[0:1])
                         # Fused: update global max from rsy_reduce_db[cur, :] (still in UB, ∥ MTE3 copy in flight)
                         T.tile.mul(rsy_bc_ub[0, :], rsy_reduce_db[cur, :], 1.0)
                         T.pipe_barrier("v")
                         T.reduce_max(rsy_bc_ub, rsy_chunk_max_ub, 1)
                         T.pipe_barrier("v")
                         T.tile.max(rsy_max_ub, rsy_max_ub, rsy_chunk_max_ub)
+                        # Running softmax correction: rsy_sum *= exp(old_max - new_max)
+                        T.tile.sub(rsy_max_prev_ub, rsy_max_prev_ub, rsy_max_ub)
+                        T.pipe_barrier("v")
+                        T.tile.exp(rsy_max_prev_ub, rsy_max_prev_ub)
+                        T.pipe_barrier("v")
+                        T.tile.mul(rsy_sum_ub, rsy_sum_ub, rsy_max_prev_ub)
+                        # Running softmax: accumulate sum(exp(val - new_max))
+                        T.tile.broadcast(rsy_bc_ub, rsy_max_ub)
+                        T.tile.sub(rsy_chunk_ub, rsy_reduce_db[cur, :], rsy_bc_ub[0, :])
+                        T.pipe_barrier("v")
+                        T.tile.exp(rsy_chunk_ub, rsy_chunk_ub)
+                        T.pipe_barrier("v")
+                        T.tile.mul(rsy_bc_ub[0, :], rsy_chunk_ub, 1.0)
+                        T.pipe_barrier("v")
+                        T.reduce_sum(rsy_bc_ub, rsy_chunk_sum_ub, 1)
+                        T.pipe_barrier("v")
+                        T.tile.add(rsy_sum_ub, rsy_sum_ub, rsy_chunk_sum_ub)
                         # WAR: current slot consumed → safe to refill
                         T.set_flag("v", "mte2", cur)
 
@@ -576,21 +597,7 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.tile.broadcast(rsy_bc_ub, rsy_max_ub)
                     T.tile.mul(softmax_i_chunk_ub, p_reduced_tmp_ub, rsy_bc_ub[0, :])
 
-                    # GlobalSoftmaxI: compute global sum from UB-held ReduceSumY (no GM reads)
-                    T.tile.fill(rsy_sum_ub, 0)
-                    for n_idx_iter in T.serial(n_num):
-                        T.copy(rsy_all_ub[n_idx_iter, :], rsy_chunk_ub)
-                        T.pipe_barrier("v")
-                        T.tile.sub(rsy_chunk_ub, rsy_chunk_ub, softmax_i_chunk_ub)
-                        T.pipe_barrier("v")
-                        T.tile.exp(rsy_chunk_ub, rsy_chunk_ub)
-                        T.pipe_barrier("v")
-                        T.tile.mul(rsy_bc_ub[0, :], rsy_chunk_ub, 1.0)
-                        T.pipe_barrier("v")
-                        T.reduce_sum(rsy_bc_ub, rsy_chunk_sum_ub, 1)
-                        T.pipe_barrier("v")
-                        T.tile.add(rsy_sum_ub, rsy_sum_ub, rsy_chunk_sum_ub)
-
+                    # Running softmax already computed rsy_sum during n_rsy loop — just clamp for safety
                     T.tile.fill(eps_sum_ub, 1e-8)
                     T.pipe_barrier("v")
                     T.tile.max(rsy_sum_ub, rsy_sum_ub, eps_sum_ub)
