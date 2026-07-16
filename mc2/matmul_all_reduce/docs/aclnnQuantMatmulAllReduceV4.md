@@ -21,7 +21,7 @@
 - **计算公式**：
 
   - 公式1，开启低bit通信的公式2或公式3场景：
-  
+
     x1，x2为INT8，commQuantScale1Optional, commQuantScale2Optional不为空时:
 
     $$
@@ -41,7 +41,7 @@
     $$
 
   - 公式2，perchannel量化 && pertensor量化：
-  
+
     x1，x2为INT8，无x1ScaleOptional，x2ScaleOptional为INT64/UINT64，可选biasOptional为INT32，out为BFLOAT16/FLOAT16：
 
     $$
@@ -49,7 +49,7 @@
     $$
 
   - 公式3，pertoken-perchannel量化 && pertoken-pertensor量化：
-    
+
     x1，x2为INT8，x1ScaleOptional为FLOAT32，x2Scale为FLOAT32/BFLOAT16，可选biasOptional为INT32, out为FLOAT16/BFLOAT16：
 
     $$
@@ -57,7 +57,7 @@
     $$
 
   - 公式4，MXFP量化：
-    
+
     x1，x2为`FLOAT4_E2M1`/`FLOAT8_E4M3FN`/`FLOAT8_E5M2`，x1ScaleOptional为`FLOAT8_E8M0`，x2ScaleOptional为`FLOAT8_E8M0`，可选biasOptional为FLOAT32, out为FLOAT16/BFLOAT16/FLOAT32：
 
     $$
@@ -73,7 +73,7 @@
   $$
 
   - 公式6，pertoken-perchannel量化 && pertoken-pertensor量化：
-  
+
     x1，x2为`FLOAT8_E4M3FN`/`FLOAT8_E5M2`/HIFLOAT8，x1ScaleOptional为FLOAT32，x2ScaleOptional为FLOAT32，可选bias为FLOAT32, out为FLOAT16/BFLOAT16/FLOAT32：
 
     $$
@@ -81,7 +81,7 @@
     $$
 
   - 公式7，perblock-perblock量化：
-  
+
     x1，x2为`FLOAT8_E4M3FN`/`FLOAT8_E5M2`/HIFLOAT8，x1ScaleOptional为FLOAT32，x2Scale为FLOAT32，无biasOptional。当x1为(a0, a1)，x2为(b0, b1)时x1ScaleOptional为(ceilDiv(a0，128)，ceilDiv(a1，128))，x2Scale为(ceilDiv(b0，128)，ceilDiv(b1，128))，out为FLOAT16/BFLOAT16/FLOAT32:
 
     $$
@@ -526,7 +526,7 @@ aclnnStatus aclnnQuantMatmulAllReduceV4(
     </table>
 
 - <term>Ascend 950PR/Ascend 950DT</term>：
-    
+
     int8输入时，支持pertoken-perchannel量化 && pertensor-perchannel量化
     <table>
     <thead>
