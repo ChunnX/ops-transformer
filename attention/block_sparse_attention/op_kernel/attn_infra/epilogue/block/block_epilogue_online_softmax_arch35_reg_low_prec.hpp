@@ -141,7 +141,7 @@ public:
     __aicore__ inline
     void SetCrossCoreSync(Arch::CrossCoreFlag &crossCoreFlag)
     {
-        // in mode 4, AIC set for 2 AIVs seperately
+        // in mode 4, AIC set for 2 AIVs separately
         if constexpr (MODE == 4U) {
             Arch::CrossCoreSetFlag<MODE, PIPE>(crossCoreFlag);
         }
@@ -151,7 +151,7 @@ public:
     __aicore__ inline
     void WaitCrossCoreSync(Arch::CrossCoreFlag &crossCoreFlag)
     {
-        // in mode 4, AIC wait for 2 AIVs seperately
+        // in mode 4, AIC wait for 2 AIVs separately
         if constexpr (MODE == 4U) {
             Arch::CrossCoreWaitFlag<MODE, PIPE>(crossCoreFlag);
         }
