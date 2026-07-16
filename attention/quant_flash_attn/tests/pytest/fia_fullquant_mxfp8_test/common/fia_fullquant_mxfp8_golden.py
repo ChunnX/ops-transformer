@@ -916,7 +916,7 @@ def _call_npu_fa_op(q, k, v, q_rope, k_rope, mask, actual_seq_q, actual_seq_kv,
         mask_mode=sparse_mode,
         layout_q=layout_q, layout_kv=layout_kv, layout_out=layout_out,
         pa_block_size=block_size,
-        max_seqlen_kv=max_seqlen_kv_val,
+        max_seqlen_q=max_seqlen_q_val, max_seqlen_kv=max_seqlen_kv_val,
         **_get_npu_fa_kwargs(),
     )
     torch.npu.synchronize()

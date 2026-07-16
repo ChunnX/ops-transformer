@@ -250,28 +250,6 @@ ge::graphStatus QfaInfoParser::GetAttrParaInfo()
     opParamInfo_.paBlockSize = attrs->GetAttrPointer<int64_t>(ATTR_PA_BLOCK_SIZE_INDEX);
     opParamInfo_.returnSoftMaxLse = attrs->GetAttrPointer<int64_t>(ATTR_RETURN_LSE_INDEX);
 
-    std::cout << "[QFA DEBUG] quantMode ptr=" << static_cast<const void*>(opParamInfo_.quantMode)
-              << " val=" << (opParamInfo_.quantMode ? std::to_string(*opParamInfo_.quantMode) : "nullptr") << std::endl;
-    std::cout << "[QFA DEBUG] softmaxScale ptr=" << static_cast<const void*>(opParamInfo_.softmaxScale)
-              << " val=" << (opParamInfo_.softmaxScale ? std::to_string(*opParamInfo_.softmaxScale) : "nullptr") << std::endl;
-    std::cout << "[QFA DEBUG] maskMode ptr=" << static_cast<const void*>(opParamInfo_.maskMode)
-              << " val=" << (opParamInfo_.maskMode ? std::to_string(*opParamInfo_.maskMode) : "nullptr") << std::endl;
-    std::cout << "[QFA DEBUG] winLeft ptr=" << static_cast<const void*>(opParamInfo_.winLeft)
-              << " val=" << (opParamInfo_.winLeft ? std::to_string(*opParamInfo_.winLeft) : "nullptr") << std::endl;
-    std::cout << "[QFA DEBUG] winRight ptr=" << static_cast<const void*>(opParamInfo_.winRight)
-              << " val=" << (opParamInfo_.winRight ? std::to_string(*opParamInfo_.winRight) : "nullptr") << std::endl;
-    std::cout << "[QFA DEBUG] maxSeqlenQ ptr=" << static_cast<const void*>(opParamInfo_.maxSeqlenQ)
-              << " val=" << (opParamInfo_.maxSeqlenQ ? std::to_string(*opParamInfo_.maxSeqlenQ) : "nullptr") << std::endl;
-    std::cout << "[QFA DEBUG] maxSeqlenKV ptr=" << static_cast<const void*>(opParamInfo_.maxSeqlenKV)
-              << " val=" << (opParamInfo_.maxSeqlenKV ? std::to_string(*opParamInfo_.maxSeqlenKV) : "nullptr") << std::endl;
-    std::cout << "[QFA DEBUG] layoutQ=" << (opParamInfo_.layoutQ ? opParamInfo_.layoutQ : "nullptr") << std::endl;
-    std::cout << "[QFA DEBUG] layoutKV=" << (opParamInfo_.layoutKV ? opParamInfo_.layoutKV : "nullptr") << std::endl;
-    std::cout << "[QFA DEBUG] layoutOut=" << (opParamInfo_.layoutOut ? opParamInfo_.layoutOut : "nullptr") << std::endl;
-    std::cout << "[QFA DEBUG] paBlockSize ptr=" << static_cast<const void*>(opParamInfo_.paBlockSize)
-              << " val=" << (opParamInfo_.paBlockSize ? std::to_string(*opParamInfo_.paBlockSize) : "nullptr") << std::endl;
-    std::cout << "[QFA DEBUG] returnSoftMaxLse ptr=" << static_cast<const void*>(opParamInfo_.returnSoftMaxLse)
-              << " val=" << (opParamInfo_.returnSoftMaxLse ? std::to_string(*opParamInfo_.returnSoftMaxLse) : "nullptr") << std::endl;
-
     return ge::GRAPH_SUCCESS;
 }
 
