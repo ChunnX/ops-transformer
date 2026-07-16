@@ -52,3 +52,13 @@ third_party/
 # pre-commit log
 log/
 oat_reports/
+
+# large test data & artifacts
+*.pt
+*.tar.gz
+*.run
+run.log
+compile*.log
+
+# IDE personal config
+.favorites.json
