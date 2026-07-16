@@ -50,12 +50,6 @@ using namespace AscendC;
 #error "MEGA_MOE_GMM2_READY_MODE must be PER_EXPERT(0) or PER_BATCH(1)"
 #endif
 
-// 0 selects ceil(AIC/worldSize), which is five experts per wave for the
-// 36-AIC/8-rank target.  A positive value is a build-time experiment override.
-#ifndef MEGA_MOE_EXPERTS_PER_WAVE
-#define MEGA_MOE_EXPERTS_PER_WAVE 0
-#endif
-
 // Default-off NPU timeline diagnostic for the 16-local-expert target.  When
 // enabled, expertTokenNumsOut is repurposed as sixteen uint32 words and must
 // not be used for correctness or performance measurements.
@@ -200,6 +194,7 @@ private:
     uint32_t rankId_ = 0;
     uint32_t worldSize_ = 0;
     uint32_t expertPerRank_ = 0;
+    uint32_t expertsPerBatch_ = 1;
     int64_t hiddenDim_ = 0;
     uint64_t maxOutputSize_ = 0;
     uint32_t startBlockIdx_ = 0;
@@ -325,6 +320,13 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Init(
     expertPerRank_ = tilingData->expertPerRank;
     moeExpertPerRank_ = tilingData->moeExpertPerRank;
     sharedExpertNum_ = tilingData->sharedExpertNum;
+    expertsPerBatch_ = tilingData->expertsPerBatch == 0U ? 1U : tilingData->expertsPerBatch;
+    if (expertsPerBatch_ > moeExpertPerRank_) {
+        expertsPerBatch_ = moeExpertPerRank_;
+    }
+    if (expertsPerBatch_ > MEGA_MOE_MAX_EXPERTS_PER_BATCH) {
+        expertsPerBatch_ = MEGA_MOE_MAX_EXPERTS_PER_BATCH;
+    }
     blockNumPerRank_ = tilingData->blockNumPerEP;
     maxOutputSize_ = tilingData->maxOutputSize;
     // 与 WorkspaceInfo 构造里 flagDispatchToGmm1Ptr 的分配公式保持一致。
@@ -2290,14 +2292,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessGmm2GmWaves(
     ExpertLoopState gmm2State{initShape, initOffset, 0};
     ExpertLoopState combineState{initShape, initOffset, 0};
 
-    uint32_t expertsPerWave = 0;
-    if constexpr (MEGA_MOE_EXPERTS_PER_WAVE > 0) {
-        expertsPerWave = MEGA_MOE_EXPERTS_PER_WAVE;
-    } else {
-        expertsPerWave = Ops::Base::CeilDiv(blockNum_, worldSize_);
-    }
-    expertsPerWave = expertsPerWave == 0U ? 1U : expertsPerWave;
-    expertsPerWave = expertsPerWave < moeExpertPerRank_ ? expertsPerWave : moeExpertPerRank_;
+    const uint32_t expertsPerWave = expertsPerBatch_;
 
     uint32_t nextDispatchExpert = 0;
     if constexpr (g_coreType == AIV) {

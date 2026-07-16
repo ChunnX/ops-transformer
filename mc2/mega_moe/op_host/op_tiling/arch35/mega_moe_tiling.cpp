@@ -31,6 +31,7 @@
 #include "../../../op_kernel/arch35/mega_moe_tiling.h"
 #include "../../../op_kernel/arch35/mega_moe_tiling_key.h"
 #include "../../../op_kernel/arch35/mega_moe_workspace_info.h"
+#include "mega_moe_batch_tiling.h"
 
 using namespace Mc2Tiling;
 using namespace AscendC;
@@ -110,6 +111,7 @@ void PrintMegaMoeTilingData(const MegaMoeTilingData *tilingData, const char *nod
             unpermuteTailChunkConfig.bf16SlotElementCount, unpermuteTailChunkConfig.fp32SlotElementCount,
             unpermuteTailChunkConfig.topKWeightsBufferBytes, unpermuteTailChunkConfig.topKWeightsConversionBufferBytes);
     OP_LOGD(nodeName, "topkWeightsPrefetch is %d", tilingData->topkWeightsPrefetch);
+    OP_LOGD(nodeName, "expertsPerBatch is %u", tilingData->expertsPerBatch);
 }
 
 void PrintWorkspaceInfo(const struct WorkspaceInfo *info, const char *nodeName)
@@ -498,6 +500,9 @@ static ge::graphStatus SetAttrParams(const gert::TilingContext *context, MegaMoe
         tilingData->maxTilesPerExpert =
             static_cast<uint32_t>(ops::CeilAlign(maxTilesM * maxTilesN, static_cast<int64_t>(16)));
     }
+
+    tilingData->expertsPerBatch = MegaMoeBatchTiling::CalcExpertsPerBatch(
+        tilingData->bs, tilingData->topK, tilingData->moeExpertPerRank, tilingData->hiddenDim, tilingData->h, aicNum);
 
     return ge::GRAPH_SUCCESS;
 }
