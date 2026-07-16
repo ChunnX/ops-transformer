@@ -96,7 +96,7 @@ public:
     static constexpr uint64_t SYNC_SINKS_BUF_FLAG = 6;
     static constexpr uint32_t DATABLOCK_BYTES = 32;
     static constexpr uint32_t uint64Touint8 = sizeof(uint64_t) / sizeof(uint8_t);
-
+    static constexpr uint32_t initOutputEventId = 0U;  // attenOut和lse，刷无效行会用到剩余ub，需要加同步
     // ==================== Functions ======================
     __aicore__ inline CSABlockVec() {};
     __aicore__ inline void InitVecBlock(TPipe *pipe, __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *cuSeqlensOriKv,
@@ -1348,8 +1348,10 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::InitOutputSingleCore(ConstInf
         uint64_t tailSize = totalOutputSize - constInfo.aivIdx * singleCoreSize;
         uint64_t singleInitOutputSize = tailSize < singleCoreSize ? tailSize : singleCoreSize;
         if (singleInitOutputSize > 0) {
+            WaitFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
             matmul::InitOutput<OUTPUT_T>(this->attentionOutGm[constInfo.aivIdx * singleCoreSize],
                 singleInitOutputSize, 0);
+            SetFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
         }
     }
     if (constInfo.isSoftmaxLseEnable) {
@@ -1364,8 +1366,10 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::InitOutputSingleCore(ConstInf
             uint64_t tailLse = totalLseSize - constInfo.aivIdx * singleCoreLse;
             uint64_t singleInitLse = tailLse < singleCoreLse ? tailLse : singleCoreLse;
             if (constInfo.aivIdx * singleCoreLse < totalLseSize && singleInitLse > 0) {
+                WaitFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
                 matmul::InitOutput<float>(this->softmaxLseGm[constInfo.aivIdx * singleCoreLse],
                     singleInitLse, 0);
+                SetFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
             }
         }
     }
@@ -1382,7 +1386,9 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::CleanOutput(__gm__ uint8_t *a
             this->softmaxLseGm.SetGlobalBuffer((__gm__ float *)softmaxLse);
         }
         if (constInfo.needInit == 1) {
+            SetFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
             InitOutputSingleCore(constInfo);
+            WaitFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
         }
     }
 }
