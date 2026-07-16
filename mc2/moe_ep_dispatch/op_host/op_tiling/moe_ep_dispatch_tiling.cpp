@@ -789,6 +789,7 @@ static uint64_t CalcDispatchWorkspace(MoeEpDispatchInfo &info)
 
     uint64_t sendCntBytes = counterBytes + sendCntPerRankBytes + sendCntPerExpertBytes;
     uint64_t scaleoutCounterBytes = AlignUpWin(superNodeCount * sizeof(int32_t));
+    uint64_t scaleoutNotifyBytes = AlignUpWin(superNodeCount * sizeof(uint64_t));
     uint64_t globalABytes = UB_ALIGN;
     uint64_t scaleupSendWorkspaceBytes = epWorldSize * nmt * static_cast<uint64_t>(info.scaleupSlotAlignedBytes);
     uint64_t scaleoutSendWorkspaceBytes = superNodeCount * nmt * static_cast<uint64_t>(info.scaleoutSlotAlignedBytes);
@@ -796,8 +797,8 @@ static uint64_t CalcDispatchWorkspace(MoeEpDispatchInfo &info)
     info.scaleupSendWorkspaceOffset = sendCntBytes;
     info.scaleoutSendWorkspaceOffset = info.scaleupSendWorkspaceOffset + scaleupSendWorkspaceBytes;
     info.routeWorkspaceOffset = info.scaleoutSendWorkspaceOffset + scaleoutSendWorkspaceBytes;
-    return SYSTEM_NEED_WORKSPACE + info.routeWorkspaceOffset + scaleoutCounterBytes + HYBRID_ROUTE_WORKSPACE_BYTES +
-           globalABytes;
+    return SYSTEM_NEED_WORKSPACE + info.routeWorkspaceOffset + scaleoutCounterBytes + scaleoutNotifyBytes +
+           HYBRID_ROUTE_WORKSPACE_BYTES + globalABytes;
 }
 
 static ge::graphStatus CheckWinSize(const gert::TilingContext *context, MoeEpDispatchInfo &info, const char *nodeName)
