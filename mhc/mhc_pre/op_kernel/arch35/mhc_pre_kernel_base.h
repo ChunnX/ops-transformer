@@ -677,18 +677,22 @@ public:
         }
     }
 
-    __aicore__ inline void AIV1ProcessHInBatched(uint64_t offsetT, uint64_t lenT, uint64_t lenD)
+    __aicore__ inline void AIV1ProcessHInBatched(uint64_t offsetT, uint64_t lenT)
     {
         if (N_ != kSupportedN4 && N_ != kSupportedN6 && N_ != kSupportedN8) {
-            AIV1ProcessHIn(offsetT, lenT, lenD);
+            AIV1ProcessHIn(offsetT, lenT, D_);
             return;
         }
 
         constexpr uint32_t xBufferBytes = 80U * 1024U;
         constexpr uint32_t outBufferBytes = 20U * 1024U;
         constexpr uint32_t blockElements = kAlignmentBytes / sizeof(T);
-        for (uint32_t offsetD = 0; offsetD < D_; offsetD += v1ChunkDSize_) {
-            lenD = v1ChunkDSize_ < D_ - offsetD ? v1ChunkDSize_ : D_ - offsetD;
+        uint32_t fullD = static_cast<uint32_t>(D_);
+        bool fullDFits = xBufferBytes / (N_ * fullD * sizeof(T)) > 0U &&
+                         outBufferBytes / (fullD * sizeof(T)) > 0U;
+        uint32_t dChunkSize = fullDFits ? fullD : v1ChunkDSize_;
+        for (uint32_t offsetD = 0; offsetD < D_; offsetD += dChunkSize) {
+            uint32_t lenD = dChunkSize < D_ - offsetD ? dChunkSize : D_ - offsetD;
             bool contiguous = offsetD == 0U && lenD == D_ && (lenD % blockElements == 0U);
             uint32_t localStride = contiguous ? lenD : Ceil(lenD, blockElements) * blockElements;
             uint32_t maxRowsByX = xBufferBytes / (N_ * localStride * sizeof(T));
@@ -698,7 +702,7 @@ public:
                 static_cast<uint64_t>(MhcPreUtils::Min(
                     MhcPreUtils::Min(maxRowsByX, maxRowsByOut), maxBatchRows)), lenT);
             if (rowsPerBatch == 0U) {
-                AIV1ProcessHIn(offsetT, lenT, lenD);
+                AIV1ProcessHIn(offsetT, lenT, D_);
                 return;
             }
 
