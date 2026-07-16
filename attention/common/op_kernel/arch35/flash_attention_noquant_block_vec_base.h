@@ -283,6 +283,12 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1(
         return;
     }
     if constexpr (!isInfer) {
+
+if (enableKVPrefix && runInfo.s2LoopCount < 8) {
+    PRINTF("[VEC-Nd-branch] learnSink=%d s2LC=%lld s2R=%lld s2BS=%d\n",
+           (int)constInfo.learnableSinkFlag, (long long)runInfo.s2LoopCount,
+           (long long)runInfo.s2RealSize, (int)s2BaseSize);
+}
         if (constInfo.learnableSinkFlag) {
             constInfo.sinkValue = this->sinkGm.GetValue(runInfo.n2oIdx * constInfo.gSize + runInfo.goIdx);
         }
@@ -370,6 +376,12 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1Nz(
     bmm1ResBuf.SetCrossCore<true>();
     outputBuf.SetCrossCore();
     // ======================================================
+    if (enableKVPrefix && runInfo.s2LoopCount < 8) {
+        PRINTF("[VEC-Nd-preUpd] s2L=%lld mx0=%f sm0=%f mx1=%f sm1=%f\n",
+               (long long)runInfo.s2LoopCount,
+               (float)maxUb.GetValue(0), (float)sumUb.GetValue(0),
+               (float)maxUb.GetValue(1), (float)sumUb.GetValue(1));
+    }
     if (runInfo.s2LoopCount != 0) {
         UpdateExpSumAndExpMax<half, useNz>(sumUb, maxUb, expUb, sumUb, maxUb, apiTmpBuffer, runInfo.halfS1RealSize);
     }
@@ -905,12 +917,21 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1Nd(
 
     LocalTensor<uint8_t> attenMaskUb;
     if constexpr (hasAtten == true) {
+        if (enableKVPrefix && runInfo.s2LoopCount < 8) { PRINTF("[MASK-entry] s2L=%lld s2S=%lld s2R=%lld hS1R=%lld gS1M=%d isGqa=%d isMla=%d compM=%d preT=%lld nextT=%lld s1oIdx=%lld actS1=%lld actS2=%lld prefSz=%lld pLC=%lld\n",
+            (long long)runInfo.s2LoopCount, (long long)runInfo.s2StartIdx, (long long)runInfo.s2RealSize,
+            (long long)runInfo.halfS1RealSize, (int)constInfo.isPfaGS1Merge, (int)isGqaNoQuant,
+            (int)(isMlaFullQuant || isMlaNoQuant), (int)attenMaskInfoPtr->compressMode,
+            (long long)attenMaskInfoPtr->preTokens, (long long)attenMaskInfoPtr->nextTokens,
+            (long long)runInfo.s1oIdx, (long long)runInfo.actualS1Size, (long long)runInfo.actualS2Size,
+            (long long)constInfo.actualKVPrefixSize, (long long)constInfo.prefixLoopCount); }
         if constexpr (isMlaFullQuant || isMlaNoQuant) {
             this->MlaAttenMaskCopyIn(this->attenMaskInQue[runInfo.taskIdMod2], this->attenMaskInQue[1 - runInfo.taskIdMod2],
                 this->attenMaskGmInt, runInfo, constInfo, *attenMaskInfoPtr);
             attenMaskUb = this->attenMaskInQue[runInfo.taskIdMod2].template DeQue<uint8_t>();
         } else if constexpr (isGqaNoQuant) {
             if (constInfo.isPfaGS1Merge) {
+                if (enableKVPrefix && runInfo.s2LoopCount < 8) { PRINTF("[MASK-gs1merge] s2L=%lld isPref=%d\n",
+                    (long long)runInfo.s2LoopCount, (int)((runInfo.s2StartIdx + runInfo.s2LoopCount * s2BaseSize) < constInfo.actualKVPrefixSize)); }
                 MaskInfo maskInfo;
                 maskInfo.gs1StartIdx = runInfo.gS1Idx + constInfo.subBlockIdx * runInfo.firstHalfS1RealSize;
                 if constexpr (layout == LayOutTypeEnum::LAYOUT_TND ||
@@ -942,15 +963,37 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1Nd(
                 maskInfo.s1LeftPaddingSize = runInfo.queryLeftPaddingSize;
                 maskInfo.s2LeftPaddingSize = runInfo.kvLeftPaddingSize;
 
+                bool isPrefixMaskBlock = false;
+                if constexpr (enableKVPrefix) {
+                    if (maskInfo.s2StartIdx >= constInfo.actualKVPrefixSize) {
+                        maskInfo.s2StartIdx -= constInfo.actualKVPrefixSize;
+                    } else {
+                        isPrefixMaskBlock = true;
+                    }
+                }
                 attenMaskUb = this->attenMaskInQue[runInfo.taskIdMod2].template AllocTensor<uint8_t>();
-                AttentionmaskCopyGS1<uint8_t, false, s2BaseSize>(attenMaskUb, this->attenMaskGmInt, maskInfo, false);
+                if (isPrefixMaskBlock) {
+                    for (uint32_t i = 0; i < s2BaseSize / 8; i++) {
+                        attenMaskUb.SetValue(i, (uint8_t)0xFF);
+                    }
+                } else {
+                    AttentionmaskCopyGS1<uint8_t, false, s2BaseSize>(attenMaskUb, this->attenMaskGmInt, maskInfo, false);
+                }
                 this->attenMaskInQue[runInfo.taskIdMod2].template EnQue(attenMaskUb);
                 this->attenMaskInQue[runInfo.taskIdMod2].template DeQue<uint8_t>();
+                if (enableKVPrefix && runInfo.s2LoopCount < 8) { PRINTF("[MASK-gs1-post] s2L=%lld isPref=%d mask[0]=%x mask[1]=%x\n",
+                    (long long)runInfo.s2LoopCount, (int)isPrefixMaskBlock, (int)attenMaskUb.GetValue(0), (int)attenMaskUb.GetValue(1)); }
                 if (attenMaskInfoPtr->compressMode == static_cast<uint8_t>(AttenMaskCompressMode::BAND_MODE)) {
                     LocalTensor<uint8_t> preAttenMaskUb;
                     preAttenMaskUb = this->attenMaskInQue[1 - runInfo.taskIdMod2].template AllocTensor<uint8_t>();
-                    AttentionmaskCopyGS1<uint8_t, false, s2BaseSize>(preAttenMaskUb, this->attenMaskGmInt,
-                        maskInfo, true);
+                    if (isPrefixMaskBlock) {
+                        for (uint32_t i = 0; i < s2BaseSize / 8; i++) {
+                            preAttenMaskUb.SetValue(i, (uint8_t)0xFF);
+                        }
+                    } else {
+                        AttentionmaskCopyGS1<uint8_t, false, s2BaseSize>(preAttenMaskUb, this->attenMaskGmInt,
+                            maskInfo, true);
+                    }
                     this->attenMaskInQue[1 - runInfo.taskIdMod2].template EnQue(preAttenMaskUb);
                     this->attenMaskInQue[1 - runInfo.taskIdMod2].template DeQue<uint8_t>();
                     MergeBandModeMask<hasAtten>(preAttenMaskUb, attenMaskUb, runInfo.halfS1RealSize, s2BaseSize);
@@ -959,22 +1002,71 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1Nd(
                     this->attenMaskInQue[runInfo.taskIdMod2].template DeQue<uint8_t>();
                 }
             } else {
+                if (enableKVPrefix && runInfo.s2LoopCount < 8) { PRINTF("[MASK-gqa-nonmerge] s2L=%lld isPref=%d\n",
+                    (long long)runInfo.s2LoopCount, (int)((runInfo.s2LoopCount + runInfo.s2StartIdx / s2BaseSize) < constInfo.prefixLoopCount)); }
+                bool isPrefixMaskBlockGqa = false;
+                if constexpr (enableKVPrefix) {
+                    isPrefixMaskBlockGqa = (runInfo.s2LoopCount + runInfo.s2StartIdx / s2BaseSize) < constInfo.prefixLoopCount;
+                }
+                if (isPrefixMaskBlockGqa) {
+                    attenMaskUb = this->attenMaskInQue[runInfo.taskIdMod2].template AllocTensor<uint8_t>();
+                    int64_t s2OrigStartPref = runInfo.s2StartIdx + runInfo.s2LoopCount * s2BaseSize - constInfo.actualKVPrefixSize;
+                    int64_t preTokensAdjPref = runInfo.preTokensPerBatch + constInfo.actualKVPrefixSize;
+                    int64_t preBoundaryPref = runInfo.s1oIdx * constInfo.s1BaseSize / constInfo.gSize - preTokensAdjPref;
+                    int64_t maskedCountPref = preBoundaryPref - s2OrigStartPref;
+                    if (maskedCountPref < 0) { maskedCountPref = 0; }
+                    if (maskedCountPref > (int64_t)runInfo.s2RealSize) { maskedCountPref = runInfo.s2RealSize; }
+                    for (uint32_t i = 0; i < s2BaseSize; i++) {
+                        attenMaskUb.SetValue(i, (i < (uint32_t)maskedCountPref) ? (uint8_t)0x00 : (uint8_t)0xFF);
+                    }
+                    this->attenMaskInQue[runInfo.taskIdMod2].template EnQue(attenMaskUb);
+                    this->attenMaskInQue[runInfo.taskIdMod2].template DeQue<uint8_t>();
+                    if (enableKVPrefix && runInfo.s2LoopCount < 8) { PRINTF("[MASK-gqa-pref] s2L=%lld fill=0xFF mask[0]=%x masked=%lld\n", (long long)runInfo.s2LoopCount, (int)attenMaskUb.GetValue(0), (long long)maskedCountPref); }
+                } else {
+                    AttenMaskCopyIn<hasAtten, isFd, enableKVPrefix>(this->attenMaskInQue[runInfo.taskIdMod2], this->attenMaskInQue[1 - runInfo.taskIdMod2],
+                        this->attenMaskGmInt, runInfo, constInfo, *attenMaskInfoPtr);
+                    attenMaskUb = this->attenMaskInQue[runInfo.taskIdMod2].template DeQue<uint8_t>();
+                    if (enableKVPrefix && runInfo.s2LoopCount < 8) { PRINTF("[MASK-gqa-nonpref] s2L=%lld tM2=%lld mask[0]=%x mask[1]=%x reread=%x phyAddr=%llx\n", (long long)runInfo.s2LoopCount, (long long)runInfo.taskIdMod2, (int)attenMaskUb.GetValue(0), (int)attenMaskUb.GetValue(1), (int)attenMaskUb.GetValue(0), (unsigned long long)attenMaskUb.GetPhyAddr()); }
+                }
+            }
+        } else {
+            bool isPrefixMaskBlock = false;
+            if constexpr (enableKVPrefix) {
+                isPrefixMaskBlock = (runInfo.s2LoopCount + runInfo.s2StartIdx / s2BaseSize) < constInfo.prefixLoopCount;
+            }
+            if (isPrefixMaskBlock) {
+                attenMaskUb = this->attenMaskInQue[runInfo.taskIdMod2].template AllocTensor<uint8_t>();
+                int64_t s2OrigStartNp = runInfo.s2StartIdx + runInfo.s2LoopCount * s2BaseSize - constInfo.actualKVPrefixSize;
+                int64_t preTokensAdjNp = runInfo.preTokensPerBatch + constInfo.actualKVPrefixSize;
+                int64_t s1OffsetNp = runInfo.s1oIdx * constInfo.s1BaseSize;
+                int64_t preBoundaryNp = s1OffsetNp - preTokensAdjNp;
+                int64_t maskedCountNp = preBoundaryNp - s2OrigStartNp;
+                if (maskedCountNp < 0) { maskedCountNp = 0; }
+                if (maskedCountNp > (int64_t)runInfo.s2RealSize) { maskedCountNp = runInfo.s2RealSize; }
+                for (uint32_t i = 0; i < s2BaseSize; i++) {
+                    attenMaskUb.SetValue(i, (i < (uint32_t)maskedCountNp) ? (uint8_t)0x00 : (uint8_t)0xFF);
+                }
+                this->attenMaskInQue[runInfo.taskIdMod2].template EnQue(attenMaskUb);
+                this->attenMaskInQue[runInfo.taskIdMod2].template DeQue<uint8_t>();
+                if (enableKVPrefix) { PRINTF("[MASK-prefix] s2L=%lld s2R=%lld masked=%lld\n", (long long)runInfo.s2LoopCount, (long long)runInfo.s2RealSize, (long long)maskedCountNp); }
+            } else {
                 AttenMaskCopyIn<hasAtten, isFd, enableKVPrefix>(this->attenMaskInQue[runInfo.taskIdMod2], this->attenMaskInQue[1 - runInfo.taskIdMod2],
                     this->attenMaskGmInt, runInfo, constInfo, *attenMaskInfoPtr);
                 attenMaskUb = this->attenMaskInQue[runInfo.taskIdMod2].template DeQue<uint8_t>();
+                if (enableKVPrefix) { PRINTF("[MASK-nonprefix] s2L=%lld s2R=%lld mask[0]=%x mask[1]=%x\n", (long long)runInfo.s2LoopCount, (long long)runInfo.s2RealSize, (int)attenMaskUb.GetValue(0), (int)attenMaskUb.GetValue(1)); }
             }
-        } else {
-            AttenMaskCopyIn<hasAtten, isFd, enableKVPrefix>(this->attenMaskInQue[runInfo.taskIdMod2], this->attenMaskInQue[1 - runInfo.taskIdMod2],
-                this->attenMaskGmInt, runInfo, constInfo, *attenMaskInfoPtr);
-            attenMaskUb = this->attenMaskInQue[runInfo.taskIdMod2].template DeQue<uint8_t>();
         }
     }
     LocalTensor<uint8_t> dropMaskUb;
+    PipeBarrier<PIPE_MTE2>();
+    if (enableKVPrefix && runInfo.s2LoopCount < 8) { PRINTF("[MASK-chk1] s2L=%lld mask[0]=%x phyAddr=%llx\n", (long long)runInfo.s2LoopCount, (int)attenMaskUb.GetValue(0), (unsigned long long)attenMaskUb.GetPhyAddr()); }
     GetDerived()->GenerateDropoutMask(runInfo, constInfo, dropMaskUb);
+    if (enableKVPrefix && runInfo.s2LoopCount < 8) { PRINTF("[MASK-chk2] s2L=%lld mask[0]=%x\n", (long long)runInfo.s2LoopCount, (int)attenMaskUb.GetValue(0)); }
 
     LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.multiCoreIdxMod3].template Get<float>();
     LocalTensor<float> maxUb = this->softmaxMaxBuf[runInfo.multiCoreIdxMod3].template Get<float>();
     LocalTensor<float> expUb = this->softmaxExpBuf[runInfo.taskIdMod3].template Get<T>();
+    if (enableKVPrefix && runInfo.s2LoopCount < 8) { PRINTF("[MASK-chk3] s2L=%lld mask[0]=%x expPhy=%llx\n", (long long)runInfo.s2LoopCount, (int)attenMaskUb.GetValue(0), (unsigned long long)expUb.GetPhyAddr()); }
     LocalTensor<T> pScaleUb;
     LocalTensor<T> queryScaleUb;
     LocalTensor<uint8_t> apiTmpBuffer;
@@ -983,6 +1075,7 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1Nd(
     } else {
         apiTmpBuffer = this->commonTBuf.template Get<uint8_t>();
     }
+    if (enableKVPrefix && runInfo.s2LoopCount < 8) { PRINTF("[MASK-chk4] s2L=%lld mask[0]=%x\n", (long long)runInfo.s2LoopCount, (int)attenMaskUb.GetValue(0)); }
 
     int64_t stage1Offset = 0;
     if constexpr (!IsSameType<INPUT_T, float>::value && !isMlaNoQuant) {
@@ -1027,6 +1120,26 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1Nd(
     }
 
     LocalTensor<T> mmRes = bmm1ResBuf.template GetTensor<T>();
+    if (enableKVPrefix && runInfo.s2LoopCount < 8) { PRINTF("[MASK-chk5] s2L=%lld mask[0]=%x maskPhy=%llx mmResPhy=%llx maxPhy=%llx sumPhy=%llx\n", (long long)runInfo.s2LoopCount, (int)attenMaskUb.GetValue(0), (unsigned long long)attenMaskUb.GetPhyAddr(), (unsigned long long)mmRes.GetPhyAddr(), (unsigned long long)maxUb.GetPhyAddr(), (unsigned long long)sumUb.GetPhyAddr()); }
+    if (enableKVPrefix && runInfo.s2LoopCount < 8) { PRINTF("[VEC-Nd-info] s2L=%lld s2LL=%lld s2S=%lld s2E=%lld prefSz=%lld pLC=%lld isPref=%lld s1oIdx=%lld actS1=%lld actS2=%lld preT=%lld nextT=%lld compM=%d\n", (long long)runInfo.s2LoopCount, (long long)runInfo.s2LoopLimit, (long long)runInfo.s2StartIdx, (long long)runInfo.s2EndIdx, (long long)constInfo.actualKVPrefixSize, (long long)constInfo.prefixLoopCount, (long long)((runInfo.s2LoopCount + runInfo.s2StartIdx / s2BaseSize) < constInfo.prefixLoopCount), (long long)runInfo.s1oIdx, (long long)runInfo.actualS1Size, (long long)runInfo.actualS2Size, (long long)attenMaskInfoPtr->preTokens, (long long)attenMaskInfoPtr->nextTokens, (int)attenMaskInfoPtr->compressMode); }
+    if (enableKVPrefix && runInfo.s2LoopCount < 8) {
+    PRINTF("[VEC-Nd-allmax] mx0=%f mx1=%f mx2=%f mx3=%f sum0=%f",
+           (float)maxUb.GetValue(0), (float)maxUb.GetValue(1),
+           (float)maxUb.GetValue(2), (float)maxUb.GetValue(3),
+           (float)sumUb.GetValue(0));
+    PRINTF("[VEC-Nd-pre] s2L=%lld s2R=%lld hS1R=%lld s2S=%lld phyAddr=%llx\n",
+           (long long)runInfo.s2LoopCount, (long long)runInfo.s2RealSize,
+           (long long)runInfo.halfS1RealSize, (long long)runInfo.s2StartIdx,
+           (unsigned long long)mmRes.GetPhyAddr());
+    PRINTF("[VEC-Nd-pre-max] iniMax[0]=%f iniSum[0]=%f iniMax[1]=%f\n",
+           (float)maxUb.GetValue(0), (float)sumUb.GetValue(0), (float)maxUb.GetValue(1));
+    for (int di=0;di<4;di++) PRINTF("  mmRes[%d]=%f\n", di, (float)mmRes.GetValue(di));
+    PRINTF("  mmRes[64]=%f mmRes[128]=%f mmRes[192]=%f mmRes[255]=%f\n",
+           (float)mmRes.GetValue(64), (float)mmRes.GetValue(128),
+           (float)mmRes.GetValue(192), (float)mmRes.GetValue(255));
+    if constexpr (enableKVPrefix && hasAtten) PRINTF("[VEC-Nd-mask] mask[0]=%x mask[1]=%x\n",
+           (int)attenMaskUb.GetValue(0), (int)attenMaskUb.GetValue(1));
+    }
     auto stage1CastTensor = this->stage1OutQue[stage1Offset].template AllocTensor<INPUT_T>();
     constexpr bool useMlaSgdFlag = ((isMlaFullQuant) && layout != LayOutTypeEnum::LAYOUT_BNSD);
     float pScale = 1.0f;    // pScale 默认值
@@ -1179,6 +1292,13 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1Nd(
             }
         }
     }
+
+if (enableKVPrefix && runInfo.s2LoopCount < 8) {
+    PRINTF("[VEC-Nd-post] s2L=%lld mx0=%f sm0=%f mx1=%f sm1=%f\n",
+           (long long)runInfo.s2LoopCount,
+           (float)maxUb.GetValue(0), (float)sumUb.GetValue(0),
+           (float)maxUb.GetValue(1), (float)sumUb.GetValue(1));
+}
     bmm1ResBuf.SetCrossCore();
     if constexpr (hasAtten) {
         this->attenMaskInQue[runInfo.taskIdMod2].template FreeTensor(attenMaskUb);
@@ -1239,8 +1359,20 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1Nd(
     }
     outputBuf.SetCrossCore();
     // ======================================================
+    if (enableKVPrefix && runInfo.s2LoopCount < 8) {
+        PRINTF("[VEC-Nd-preUpd] s2L=%lld mx0=%f sm0=%f mx1=%f sm1=%f\n",
+               (long long)runInfo.s2LoopCount,
+               (float)maxUb.GetValue(0), (float)sumUb.GetValue(0),
+               (float)maxUb.GetValue(1), (float)sumUb.GetValue(1));
+    }
     if (runInfo.s2LoopCount != 0) {
         UpdateExpSumAndExpMax<T>(sumUb, maxUb, expUb, sumUb, maxUb, apiTmpBuffer, runInfo.halfS1RealSize);
+    }
+    if (enableKVPrefix && runInfo.s2LoopCount < 8) {
+        PRINTF("[VEC-Nd-postUpd] s2L=%lld mx0=%f sm0=%f mx1=%f sm1=%f\n",
+               (long long)runInfo.s2LoopCount,
+               (float)maxUb.GetValue(0), (float)sumUb.GetValue(0),
+               (float)maxUb.GetValue(1), (float)sumUb.GetValue(1));
     }
     if constexpr (IsSameType<INPUT_T, float>::value) {
         this->sumBrdcst.template FreeTensor(apiTmpBuffer);
@@ -1304,10 +1436,13 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec2OnU
     LocalTensor<T> vec2ResUb = this->stage2OutBuf.template Get<T>();
     LocalTensor<T> mmRes = bmm2ResBuf.template GetTensor<T>();
     WaitFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
+    if (enableKVPrefix) { PRINTF("[VEC2-entry] s2L=%lld s2LL=%lld v2S1=%lld\n", (long long)runInfo.s2LoopCount, (long long)runInfo.s2LoopLimit, (long long)runInfo.vec2S1RealSize); }
     if (unlikely(runInfo.s2LoopCount == 0)) {
         DataCopy(vec2ResUb, mmRes, vec2CalcSize);
+        if (enableKVPrefix) { PRINTF("[VEC2-cpy] s2L=%lld vo0=%f vo1=%f\n", (long long)runInfo.s2LoopCount, (float)vec2ResUb.GetValue(0), (float)vec2ResUb.GetValue(1)); }
     } else {
         LocalTensor<T> expUb = softmaxExpBuf[runInfo.taskIdMod3].template Get<T>();
+        if (enableKVPrefix) { PRINTF("[VEC2-expUb] s2L=%lld e0=%f e1=%f e2=%f e3=%f\n", (long long)runInfo.s2LoopCount, (float)expUb.GetValue(0), (float)expUb.GetValue(1), (float)expUb.GetValue(2), (float)expUb.GetValue(3)); }
         LocalTensor<T> pScaleUb;
         if constexpr (isMlaFullQuant) {
             pScaleUb = pScaleBuf[runInfo.taskIdMod3].template Get<T>();
@@ -1381,15 +1516,18 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec2OnU
                     1.0, 1.0);
             }
         }
+        if (enableKVPrefix) { PRINTF("[VEC2-upd] s2L=%lld vo0=%f vo1=%f\n", (long long)runInfo.s2LoopCount, (float)vec2ResUb.GetValue(0), (float)vec2ResUb.GetValue(1)); }
     }
     bmm2ResBuf.SetCrossCore();
     if (runInfo.s2LoopCount == runInfo.s2LoopLimit) {
+        if (enableKVPrefix) { LocalTensor<float> fSumUb = this->softmaxSumBuf[runInfo.multiCoreIdxMod3].template Get<float>(); LocalTensor<float> fMaxUb = this->softmaxMaxBuf[runInfo.multiCoreIdxMod3].template Get<float>(); PRINTF("[VEC2-final] s2L=%lld sum=%f max=%f\n", (long long)runInfo.s2LoopCount, (float)fSumUb.GetValue(0), (float)fMaxUb.GetValue(0)); }
         if (unlikely(runInfo.s2LoopCount == 0)) {
             LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.multiCoreIdxMod3].template Get<float>();
             LastDivNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64, isMlaFullQuant>(
                 vec2ResUb, vec2ResUb, sumUb, runInfo.vec2S1RealSize, (uint16_t)dTemplateAlign64, deSCaleVValue);
         }
         GetDerived()->CopyOutAttentionOut(runInfo, constInfo, vec2ResUb, 0, vec2CalcSize);
+        if (enableKVPrefix) { PRINTF("[VEC2-out] s2L=%lld vo0=%f vo1=%f\n", (long long)runInfo.s2LoopCount, (float)vec2ResUb.GetValue(0), (float)vec2ResUb.GetValue(1)); }
     }
     SetFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
 }

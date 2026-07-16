@@ -742,6 +742,13 @@ __aicore__ inline void FlashAttentionNoQuantKernelBase<ChildClass, CubeBlockType
             runInfo.s2AlignedSize = Align(runInfo.s2RealSize);
         }
     }
+    
+    if (enableKVPrefix && runInfo.s2LoopCount < 8) {
+    PRINTF("[Bmm1Tail-post] s2L=%lld s2S=%lld s2E=%lld pLC=%lld s2R=%lld\n",
+           (long long)runInfo.s2LoopCount, (long long)runInfo.s2StartIdx,
+           (long long)runInfo.s2EndIdx, (long long)constInfo.prefixLoopCount,
+           (long long)runInfo.s2RealSize);
+    }
 }
 }
 #endif // FLASH_ATTENTION_NOQUANT_KERNEL_BASE_H_

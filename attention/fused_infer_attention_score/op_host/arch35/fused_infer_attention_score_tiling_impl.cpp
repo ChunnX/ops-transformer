@@ -105,10 +105,19 @@ void FusedInferAttentionScoreTilingImpl::SetGSMerge(const FiaTilingInfo &fiaInfo
 {
     if (fiaInfo.mlaMode == MlaMode::ROPE_SPLIT_D512) {
         gsMergeFlag_ = true;
+        if (fiaInfo.systemPrefixMaxLen > 0) {
+            gsMergeFlag_ = false;
+        }
         return;
     }
     if (!fiaInfo.antiQuantFlag && fiaInfo.qkHeadDim > 256U && (fiaInfo.qkHeadDim % DSIZE_64) != 0) {
         gsMergeFlag_ = false;
+        return;
+    }
+
+    if (fiaInfo.systemPrefixMaxLen > 0) {
+        gsMergeFlag_ = false;
+        pfaMergeFlag_ = false;
         return;
     }
 

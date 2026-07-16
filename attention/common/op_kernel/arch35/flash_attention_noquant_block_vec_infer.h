@@ -429,9 +429,11 @@ __aicore__ inline void FANoQuantBlockVecInfer<TEMPLATE_ARGS>::SoftmaxDataCopyOut
     LocalTensor<float> &maxUb)
 {
     if constexpr (isFd) {
+        if (enableKVPrefix) { PRINTF("[SoftmaxCopyOut] isFd=1 s2L=%lld s2LL=%lld\n", (long long)runInfo.s2LoopCount, (long long)runInfo.s2LoopLimit); }
         ComputeLogSumExpAndCopyToGm(runInfo, constInfo);
         return;
     }
+    if (enableKVPrefix) { PRINTF("[SoftmaxCopyOut] isFd=0 s2L=%lld s2LL=%lld\n", (long long)runInfo.s2LoopCount, (long long)runInfo.s2LoopLimit); }
     if (constInfo.learnableSinkFlag) {
         if (constInfo.isGqa && constInfo.gSize > 1) {
             this->Vec1SinkComputeGSFused(runInfo, constInfo, sumUb, maxUb);
@@ -651,6 +653,7 @@ __aicore__ inline void FANoQuantBlockVecInfer<TEMPLATE_ARGS>::SoftmaxLseCopyOut(
     ComputeLseOutputVF(lseUb, softmaxSumTmp, softmaxMaxTmp, runInfo.halfS1RealSize);
     softmaxLseQueue.template EnQue(lseUb);
     softmaxLseQueue.DeQue<float>();
+    if (enableKVPrefix) { PRINTF("[LSE-out] lseOff=%lld lse0=%f lse1=%f\n", (long long)runInfo.softmaxLseOffset, (float)lseUb.GetValue(0), (float)lseUb.GetValue(1)); }
     DataCopyExtParams intriParams1;
     intriParams1.blockLen = sizeof(float);
     intriParams1.blockCount = runInfo.halfS1RealSize;

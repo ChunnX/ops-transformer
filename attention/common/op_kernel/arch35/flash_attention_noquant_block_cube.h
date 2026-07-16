@@ -926,6 +926,15 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::LoadKeyToL1Nz(
     LocalTensor<INPUT_T> &mm1BTensor, RunInfo<isInfer> &runInfo,
     ConstInfo<isInfer, hasRope> &constInfo)
 {
+
+if (enableKVPrefix && runInfo.s2LoopCount < 8) {
+    PRINTF("[CUBE-LoadKey] s2L=%lld s2S=%lld s2Coord=%lld pLC=%lld s2R=%lld isPref=%d bIdx=%lld n2Idx=%lld\n",
+           (long long)runInfo.s2LoopCount, (long long)runInfo.s2StartIdx,
+           (long long)coordInfo[runInfo.taskIdMod3].s2Coord,
+           (long long)constInfo.prefixLoopCount,
+           (long long)runInfo.s2RealSize,
+           (int)((runInfo.s2LoopCount + runInfo.s2StartIdx / s2BaseSize) < constInfo.prefixLoopCount), (long long)coordInfo[runInfo.taskIdMod3].curBIdx, (long long)runInfo.n2oIdx);
+}
     if constexpr (enableKVPrefix) {
         if ((runInfo.s2LoopCount + runInfo.s2StartIdx / s2BaseSize) < constInfo.prefixLoopCount) {
             runInfo.prefixOffset = this->keySharedPrefixGm.offsetCalculator.GetOffset(

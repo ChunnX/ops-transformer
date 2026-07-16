@@ -376,11 +376,28 @@ __aicore__ inline void ProcessVec1NoUpdateGeneralImpl256(
     uint32_t pltTailN2 = tailN2;
     float divValue = 1.0f / keepProb;
 
+    if (m <= 1 && originN <= 300) {
+        PRINTF("[VF256-pre] m=%d oriN=%d preMax[0]=%f preSum[0]=%f preMax[1]=%f\n",
+               (int)m, (int)originN,
+               (float)((__ubuf__ float*)maxUb)[0], (float)((__ubuf__ float*)expSumUb)[0],
+               (float)((__ubuf__ float*)maxUb)[1]);
+        PRINTF("[VF256-srcUb] m=%d oriN=%d src[0..3]=%f %f %f %f mask[0]=%x scale=%f\n",
+               (int)m, (int)originN,
+               (float)((__ubuf__ float*)srcUb)[0], (float)((__ubuf__ float*)srcUb)[1],
+               (float)((__ubuf__ float*)srcUb)[2], (float)((__ubuf__ float*)srcUb)[3],
+               (int)(maskUb1[0]), (float)scale);
+    }
     ProcessVec1NoUpdateGeneralImpl256VF<T, T2, pseShiftType, s1BaseSize, s2BaseSize, hasAtten,
         pseMode, hasDrop, hasSink>(
         expUb1, expUb2, pseUb, expSumUb, maxUb, maxUbStart, srcUb, maskUb1, maskUb2, maskUb3, maskUb4, dropMaskUb1,
         dropMaskUb2, nPadding, blockStride, repeatStride, oriTailN1, oriTailN2, tailN1, tailN2, pltOriTailN1,
         pltOriTailN2, pltTailN1, pltTailN2, divValue, m, pseStride, slopes, posShift, scale, minValue, sinkValue);
+    if (m <= 16 && originN <= 300) {
+        PRINTF("[VF256-post] m=%d mx0=%f sum0=%f srcPost0=%f srcPost1=%f\n",
+               (int)m,
+               (float)((__ubuf__ float*)maxUb)[0], (float)((__ubuf__ float*)expSumUb)[0],
+               (float)((__ubuf__ float*)srcUb)[0], (float)((__ubuf__ float*)srcUb)[1]);
+    }
 }
 } // namespace
 
