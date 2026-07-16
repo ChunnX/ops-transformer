@@ -15,6 +15,14 @@
  * rowSum is not re-read from GM: it reuses the compact rowSum already DataCopyPad'd into
  * broadCastTmp_ by CopyLseIn (lseSumTmpBuf = broadCastTmpBuf_[alignedLseCount],
  * layout [topK, dealRowCount]), sliced per split j. CopyAccumOutIn only copies accumOut.
+ *
+ * Pipeline: the per-split j loop is double-buffered so the MTE2 load of split j+1
+ * overlaps the V reduce of split j (mirrors IFA fdMm2ResBuf1/2). accumOut is managed
+ * like the kernel's ubSTensor[ubSBufId]: a 2-deep array accumOutBuf[bufId],
+ * bufId = j % ACCUM_OUT_STAGES, with two strided stages carved from the free
+ * [192,256)KiB region, and event ids ACCUM_OUT_FLAG_BASE + bufId for both MTE2_V and
+ * V_MTE2. CopyLseIn(MTE2_V EVENT_ID0) and CopyFinalResOut(V_MTE3 EVENT_ID0) stay
+ * per-chunk blocking (MTE3 overlap out of scope: production single chunk).
  */
 #ifndef EPILOGUE_BLOCK_BLOCK_EPILOGUE_RESCALE_O_PREFILL_ARCH35_HPP
 #define EPILOGUE_BLOCK_BLOCK_EPILOGUE_RESCALE_O_PREFILL_ARCH35_HPP
@@ -49,7 +57,16 @@ public:
     static constexpr uint32_t BYTE_BLOCK = 32U;
     static constexpr uint32_t BUFFER_SIZE_BYTE_32K = 32768U;
     static constexpr uint32_t BUF_32K_FLOATS = BUFFER_SIZE_BYTE_32K / sizeof(T);
+    static constexpr uint32_t BUFFER_SIZE_BYTE_8K = 8192U;
+    static constexpr uint32_t BUF_8K_FLOATS = BUFFER_SIZE_BYTE_8K / sizeof(T);
     static constexpr float NEG_INF_LSE = -3.4028235e38f;
+
+    // accumOut ping-pong (mirrors the kernel ubSTensor[ubSBufId] style): a 2-deep array of
+    // UB tensors indexed by bufId = j % ACCUM_OUT_STAGES, each a strided stage, with event
+    // ids derived as ACCUM_OUT_FLAG_BASE + bufId for both MTE2_V and V_MTE2 (distinct
+    // HardEvent types share an id safely, per the IFA fdMm2ResBuf1/2 pattern).
+    static constexpr uint32_t ACCUM_OUT_STAGES = 2U;
+    static constexpr uint32_t ACCUM_OUT_FLAG_BASE = 3U;     // MTE2_V/V_MTE2 id = base + bufId
 
     __aicore__ inline BlockEpilogue() {}
 
@@ -66,15 +83,22 @@ public:
         kvHeads_ = kvHeads;
         headDimAlignFp32_ = RoundUp(D_, FP32_ONE_BLOCK_SIZE);
 
-        lseMaxBuf_ = ubBase;
-        lseSumBuf_ = ubBase[BUF_32K_FLOATS];
-        dstBuf_ = ubBase[BUF_32K_FLOATS * 2U];
-        accumOutBuf_ = ubBase[BUF_32K_FLOATS * 3U];
-        broadCastTmpBuf_ = ubBase[BUF_32K_FLOATS * 4U];
-        // Dedicated bf16 cast-output buffer (separate from dstBuf_ so CopyFinalResOut's Cast is
-        // out-of-place, not the corrupting in-place float->bf16 alias). Size need is tiny
-        // (<=gSplitSize*headDimAlignFp32 bf16); carve a 32K-float slot to match the layout stride.
-        castOutBuf_ = ubBase[BUF_32K_FLOATS * 5U];
+        // UB layout: contiguous, no holes. lse buffers capped at 8K (the [topK, dealRowCount, 8]
+        // broadcast layout fits in 8KiB for topK, groupSize <= 16); the rest are 32K slots.
+        lseMaxBuf_       = ubBase;                       // 8K
+        lseSumBuf_       = ubBase[BUF_8K_FLOATS];        // 8K
+        uint32_t off = BUF_8K_FLOATS * 2U;
+        dstBuf_          = ubBase[off];
+        off += BUF_32K_FLOATS;   // 32K
+        broadCastTmpBuf_ = ubBase[off];
+        off += BUF_32K_FLOATS;  // 32K (Broadcast scratch + lse staging)
+        // Separate bf16 cast-output buffer so CopyFinalResOut's Cast is out-of-place.
+        castOutBuf_      = ubBase[off];
+        off += BUF_32K_FLOATS;  // 32K
+        // accumOut ping-pong (kernel ubSTensor style): 2 stages, uniform 32K-slot stride.
+        for (uint32_t i = 0U; i < ACCUM_OUT_STAGES; ++i) {
+            accumOutBuf[i] = ubBase[off + BUF_32K_FLOATS * i];  // 32K each
+        }
     }
 
     __aicore__ inline
@@ -106,7 +130,7 @@ private:
     AscendC::LocalTensor<T> lseMaxBuf_;
     AscendC::LocalTensor<T> lseSumBuf_;
     AscendC::LocalTensor<T> dstBuf_;
-    AscendC::LocalTensor<T> accumOutBuf_;
+    AscendC::LocalTensor<T> accumOutBuf[ACCUM_OUT_STAGES];
     AscendC::LocalTensor<T> broadCastTmpBuf_;
     AscendC::LocalTensor<T> castOutBuf_;
 
@@ -139,7 +163,6 @@ private:
     __aicore__ inline
     void CopyLseIn(uint32_t qToken,
                    uint32_t kvHeadIdx,
-                   uint32_t startRow,
                    uint32_t dealRowCount,
                    AscendC::GlobalTensor<T> &gmSoftmaxMax,
                    AscendC::GlobalTensor<T> &gmSoftmaxSum,
@@ -187,7 +210,7 @@ private:
         //AscendC::DumpTensor(lseMaxLocal, 123, 64);
         //AscendC::DumpTensor(lseSumLocal, 456, 64);
         FaVectorApi::ComputeScaleValue_VF(
-            tmpSinkUb, lseMaxLocal, lseSumLocal, accumOutBuf_,
+            tmpSinkUb, lseMaxLocal, lseSumLocal, accumOutBuf[0],
             dealRowCount, actualCombineLoopSize_, softmaxLseFlag, learnableSinkFlag);
         //AscendC::DumpTensor(lseSumLocal, 789, 64);
         AscendC::PipeBarrier<PIPE_V>();
@@ -197,7 +220,6 @@ private:
     void CopyAccumOutIn(uint32_t qToken,
                         uint32_t kvHeadIdx,
                         uint32_t splitKVIndex,
-                        uint32_t startRow,
                         uint32_t dealRowCount,
                         AscendC::GlobalTensor<T> &gmAccumOut,
                         AscendC::LocalTensor<T> &accumOutLocal)
@@ -215,14 +237,8 @@ private:
         copyInPadParams.paddingValue = 0;
 
         uint64_t oOffset = TaskAccumBase(qToken, kvHeadIdx)
-            + static_cast<uint64_t>(splitKVIndex) * groupSize_ * D_
-            + static_cast<uint64_t>(startRow) * D_;
+            + static_cast<uint64_t>(splitKVIndex) * groupSize_ * D_;
         AscendC::DataCopyPad(accumOutLocal, gmAccumOut[oOffset], copyInParams, copyInPadParams);
-        AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID1);
-        AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID1);
-        // The per-row rowSum used by the regbase Div in ReduceFinalRes_VF is NOT staged here:
-        // it is reused from the compact rowSum already DataCopyPad'd into broadCastTmp_ by
-        // CopyLseIn (lseSumTmpBuf = broadCastTmpBuf_[alignedLseCount], layout [topK, dealRowCount]).
     }
 
     __aicore__ inline
@@ -230,7 +246,6 @@ private:
                         uint32_t kvHeadIdx,
                         AscendC::LocalTensor<T> &dst,
                         AscendC::LocalTensor<T> &scaleLocal,
-                        uint32_t startRow,
                         uint32_t dealRowCount,
                         AscendC::GlobalTensor<T> &gmAccumOut)
     {
@@ -254,28 +269,57 @@ private:
         // re-read or SetValue here.
         uint32_t lseCount = dealRowCount * topK_;
         uint32_t alignedLseCount = RoundUp(lseCount, FP32_ONE_BLOCK_SIZE);
-        for (uint32_t j = 0; j < actualCombineLoopSize_; ++j) {
+
+        // Double-buffered (ping-pong) accumOut, managed like the kernel's ubSTensor[ubSBufId]:
+        // a 2-deep array accumOutBuf[curId], curId = j % ACCUM_OUT_STAGES, with event ids
+        // ACCUM_OUT_FLAG_BASE + curId for both MTE2_V (forward) and V_MTE2 (reverse) — distinct
+        // HardEvent types share an id safely (IFA fdMm2ResBuf1/2 does the same).
+        //
+        // Uniform loop (no prologue / no prefetch branch): each iteration loads its own split j
+        // (MTE2) then reduces it (V). The MTE2 load of j overlaps the V reduce of j-1 (still in
+        // flight): Wait<V_MTE2>(curId) drains curId's prior use (reduce j-2, or the prime) so the
+        // MTE2 load may issue while V is still finishing reduce(j-1); Wait<MTE2_V>(curId) then
+        // gates the V reduce on the just-loaded data. CopyAccumOutIn is in the loop.
+        //
+        // Validity is checked inline (same NEG_INF_LSE test). The break issues before this iter's
+        // load, so it leaves no dangling MTE2_V; the prime + trailing drain absorb the dangling
+        // V_MTE2, so flags stay balanced for any break point. (The scalar GetValue is a non-blocking
+        // scalar-pipe read; if profiling ever shows it serializing the V reduce, hoist the scan into
+        // a precomputed validK bound and loop `j < validK`.)
+
+        // Prime each stage's V_MTE2: a stage's first reuse has no prior V reduce to drain.
+        for (uint32_t s = 0U; s < ACCUM_OUT_STAGES; ++s) {
+            AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(ACCUM_OUT_FLAG_BASE + s);
+        }
+
+        for (uint32_t j = 0U; j < actualCombineLoopSize_; ++j) {
             uint32_t maxOff = j * dealRowCount * FP32_ONE_BLOCK_SIZE;
-            float firstRowMax = lseMaxBuf_[maxOff].GetValue(0);
-            // AscendC::printf("qToken:%d, kvHeadIdx:%d, firstRowMax:%f, j:%d\n",
-            //                 qToken, kvHeadIdx, firstRowMax, j);
-            if (firstRowMax <= NEG_INF_LSE) {
+            if (lseMaxBuf_[maxOff].GetValue(0) <= NEG_INF_LSE) {
                 break;
             }
-            CopyAccumOutIn(
-                qToken, kvHeadIdx, j, startRow, dealRowCount,
-                gmAccumOut, accumOutBuf_);
+            uint32_t curId = j % ACCUM_OUT_STAGES;
+            // stage drained (reduce j-2, or primed) -> MTE2 may overwrite it.
+            AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(ACCUM_OUT_FLAG_BASE + curId);
+            CopyAccumOutIn(qToken, kvHeadIdx, j, dealRowCount, gmAccumOut, accumOutBuf[curId]);
+            AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(ACCUM_OUT_FLAG_BASE + curId);    // load j || V reduce j-1
+            AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(ACCUM_OUT_FLAG_BASE + curId);  // load j done
             // split j's compact per-row rowSum (one scalar per row): slice into the
             // lseSumTmpBuf region staged by CopyLseIn.
             uint64_t rowSumOff = static_cast<uint64_t>(alignedLseCount)
                 + static_cast<uint64_t>(j) * dealRowCount;
             AscendC::LocalTensor<T> rowSumLocal = broadCastTmpBuf_[rowSumOff];
             FaVectorApiPrefill::ReduceFinalRes_VF<T>(
-                dst, scaleLocal, accumOutBuf_, rowSumLocal, dealRowCount,
+                dst, scaleLocal, accumOutBuf[curId], rowSumLocal, dealRowCount,
                 static_cast<uint64_t>(headDimAlignFp32_), j);
-            AscendC::PipeBarrier<PIPE_ALL>();  // TODO: remove this
-            //AscendC::DumpTensor(accumOutBuf_, 123, 8);
-            //AscendC::DumpTensor(dst, 456, 8);
+            // V done reading accumOutBuf[curId] (and dst store committed; SetFlag<V_MTE2> is a V
+            // completion barrier, ordering dst V-store->V-load across iterations) -> stage reusable.
+            AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(ACCUM_OUT_FLAG_BASE + curId);
+        }
+        // Trailing drain: consume the dangling V_MTE2 per stage (last reduce's set + the primed
+        // twin that no later load reached) so it doesn't stale-signal the next chunk/task. MTE2_V
+        // is set+waited 1:1 within each iter, so no MTE2_V trailing drain.
+        for (uint32_t s = 0U; s < ACCUM_OUT_STAGES; ++s) {
+            AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(ACCUM_OUT_FLAG_BASE + s);
         }
     }
 
@@ -283,7 +327,6 @@ private:
     void CopyFinalResOut(uint64_t attenOutOffset,
                          AscendC::GlobalTensor<ElementO> &gmO,
                          AscendC::LocalTensor<T> &accumOutLocal,
-                         uint32_t startRow,
                          uint32_t dealRowCount)
     {
         // castBuf is a SEPARATE buffer from accumOutLocal (dstBuf_): the old code aliased them
@@ -306,9 +349,7 @@ private:
         dataCopyParams.blockLen = static_cast<uint32_t>(D_) * sizeof(ElementO);
         dataCopyParams.srcStride = (headDimAlignFp32_ - D_) / (BYTE_BLOCK / sizeof(ElementO));
         dataCopyParams.dstStride = 0;
-        AscendC::DataCopyPad(
-            gmO[attenOutOffset + static_cast<uint64_t>(startRow) * D_],
-            castBuf, dataCopyParams);
+        AscendC::DataCopyPad(gmO[attenOutOffset], castBuf, dataCopyParams);
     }
 
     __aicore__ inline
@@ -320,43 +361,14 @@ private:
                            AscendC::GlobalTensor<T> &gmSoftmaxMax,
                            AscendC::GlobalTensor<T> &gmSoftmaxSum)
     {
-        uint32_t gSplitSizeLse = BUFFER_SIZE_BYTE_32K / (BYTE_BLOCK * topK_);
-        uint32_t gSplitSizeAccumOut = BUFFER_SIZE_BYTE_32K / sizeof(T) / headDimAlignFp32_;
-        uint32_t gSplitSize = (gSplitSizeLse < gSplitSizeAccumOut) ? gSplitSizeLse : gSplitSizeAccumOut;
-        gSplitSize = (gSplitSize > groupSize_) ? groupSize_ : gSplitSize;
-        if (gSplitSize > 16U) {
-            gSplitSize = 16U;
-        }
-
-        uint32_t loopCount = (groupSize_ + gSplitSize - 1U) / gSplitSize;
-        uint32_t tailSplitSize = groupSize_ - (loopCount - 1U) * gSplitSize;
-
-        uint32_t shapeArray[] = {gSplitSize, FP32_ONE_BLOCK_SIZE};
-        dstBuf_.SetShapeInfo(AscendC::ShapeInfo(2, shapeArray, AscendC::DataFormat::ND));
-
-        for (uint32_t i = 0; i < loopCount - 1U; ++i) {
-            uint32_t startRow = i * gSplitSize;
-            CopyLseIn(qToken, kvHeadIdx, startRow, gSplitSize,
-                      gmSoftmaxMax, gmSoftmaxSum, lseMaxBuf_, lseSumBuf_);
-            ComputeScaleValue(lseMaxBuf_, lseSumBuf_, gSplitSize);
-            AscendC::LocalTensor<T> dst = dstBuf_;
-            ReduceFinalRes(
-                qToken, kvHeadIdx, dst, lseSumBuf_, startRow, gSplitSize,
-                gmAccumOut);
-            CopyFinalResOut(attenOutOffset, gmO, dst, startRow, gSplitSize);
-        }
-
-        if (tailSplitSize > 0U) {
-            uint32_t startRow = (loopCount - 1U) * gSplitSize;
-            CopyLseIn(qToken, kvHeadIdx, startRow, tailSplitSize,
-                      gmSoftmaxMax, gmSoftmaxSum, lseMaxBuf_, lseSumBuf_);
-            ComputeScaleValue(lseMaxBuf_, lseSumBuf_, tailSplitSize);
-            AscendC::LocalTensor<T> dst = dstBuf_;
-            ReduceFinalRes(
-                qToken, kvHeadIdx, dst, lseSumBuf_, startRow, tailSplitSize,
-                gmAccumOut);
-            CopyFinalResOut(attenOutOffset, gmO, dst, startRow, tailSplitSize);
-        }
+        // groupSize <= 16 fits every UB buffer (lse 8K cap, dst/accumOut/castOut 32K slots)
+        // for topK <= 16, D <= 512, so a single chunk covers the whole group.
+        CopyLseIn(qToken, kvHeadIdx, groupSize_,
+                  gmSoftmaxMax, gmSoftmaxSum, lseMaxBuf_, lseSumBuf_);
+        ComputeScaleValue(lseMaxBuf_, lseSumBuf_, groupSize_);
+        AscendC::LocalTensor<T> dst = dstBuf_;
+        ReduceFinalRes(qToken, kvHeadIdx, dst, lseSumBuf_, groupSize_, gmAccumOut);
+        CopyFinalResOut(attenOutOffset, gmO, dst, groupSize_);
     }
 };
 

@@ -52,7 +52,7 @@ build_k2q_csr_torch_reference = prefill_golden.build_k2q_csr_torch_reference
 
 # ---- config ----
 KV_SEQLENS = [
-    16*1024,
+    128*1024,
     #32 * 1024, 64 * 1024, 128 * 1024
 ]  # KV cache length sweep
 Q_HEADS = 64
@@ -65,11 +65,23 @@ SEED = 42
 PREC = 1e-2                  # prefill vs decode consistency rtol (different reduction orders)
 
 
-def _fast_causal_select_idx(q_seqlen, kv_seqlen, kv_heads, block_size, top_k):
-    """Vectorized causal block selection: each q token picks its last top_k visible blocks.
+def _fast_causal_select_idx(q_seqlen, kv_seqlen, kv_heads, block_size, top_k, *,
+                            random_select=False, rng_seed=0):
+    """Vectorized causal block selection: each q token picks (at most) top_k visible blocks.
+
     O(q*top_k) only (no per-(q,kv,head) score pooling) -> fast for large kv. For batch=1 the
     result is batch-local, which is exactly what both the decode op (select_idx) and the k2q
-    builder (q2k) expect."""
+    builder (q2k) expect.
+
+    random_select=False (default): the LAST valid_k contiguous causal blocks.
+    random_select=True: a random subset of (at most) top_k blocks drawn from the causal-visible
+    range, GUARANTEEING the local block (the block holding q's own KV position, i.e. the top of
+    the visible range) is always selected — matching case 1's local-block guarantee. The local
+    block is force-included; the remaining (valid_k - 1) blocks are drawn at random from the
+    rest of the visible range. Order is irrelevant for the result: softmax + weighted sum is
+    commutative over blocks, and the same select_idx feeds both the decode op and the k2q CSR
+    builder, so prefill vs decode still compare the identical sparse pattern.
+    """
     total_q = q_seqlen
     total_blocks = ceil(kv_seqlen / block_size)
     q_tokens = torch.arange(total_q)
@@ -78,18 +90,42 @@ def _fast_causal_select_idx(q_seqlen, kv_seqlen, kv_heads, block_size, top_k):
     q_block = causal_bound // block_size
     visible = torch.minimum(torch.full_like(q_block, total_blocks), q_block + 1)
     valid_k = torch.minimum(torch.full_like(visible, top_k), visible)
-    k_idx = torch.arange(top_k)
-    # selected[q, k] = q_block[q] - valid_k[q] + 1 + k  (the last valid_k blocks, causal)
-    selected = q_block.unsqueeze(1) - valid_k.unsqueeze(1) + 1 + k_idx.unsqueeze(0)
-    mask = k_idx.unsqueeze(0) < valid_k.unsqueeze(1)
-    selected = torch.where(mask, selected, torch.full_like(selected, -1))
+
+    if not random_select:
+        k_idx = torch.arange(top_k)
+        # selected[q, k] = q_block[q] - valid_k[q] + 1 + k  (the last valid_k blocks, causal)
+        selected = q_block.unsqueeze(1) - valid_k.unsqueeze(1) + 1 + k_idx.unsqueeze(0)
+        mask = k_idx.unsqueeze(0) < valid_k.unsqueeze(1)
+        selected = torch.where(mask, selected, torch.full_like(selected, -1))
+    else:
+        # Random min(top_k, visible) blocks from the causal-visible range, GUARANTEEING the local
+        # block (visible-1 = the block holding q's own KV position) is always selected. Force-
+        # include the local block, then draw (valid_k - 1) blocks at random from {0, ..., visible-2}.
+        gen = torch.Generator(device="cpu").manual_seed(rng_seed)
+        rand_scores = torch.rand((total_q, total_blocks), generator=gen)
+        block_ids = torch.arange(total_blocks).unsqueeze(0)        # [1, total_blocks]
+        # remaining candidates: visible range EXCLUDING the local block (visible-1)
+        rem_mask = block_ids < (visible - 1).unsqueeze(1)           # [total_q, total_blocks]
+        rand_scores = torch.where(rem_mask, rand_scores,
+                                  torch.full_like(rand_scores, -1.0))
+        rem_vals, rem_ids = rand_scores.topk(top_k - 1, dim=1)     # [total_q, top_k-1]
+        rem_chosen = rem_vals >= 0.0                                # exactly valid_k - 1 picks per q
+        rem_selected = torch.where(rem_chosen, rem_ids,
+                                   torch.full_like(rem_ids, -1))   # [total_q, top_k-1]
+        # local block: always selected when valid_k >= 1 (valid_k==0 -> nothing visible, all -1)
+        local = (visible - 1).unsqueeze(1)                          # [total_q, 1] local block id
+        local_chosen = (valid_k >= 1).unsqueeze(1)                   # [total_q, 1]
+        local_selected = torch.where(local_chosen, local,
+                                     torch.full_like(local, -1))    # [total_q, 1]
+        selected = torch.cat([local_selected, rem_selected], dim=1)  # [total_q, top_k]
+
     select_idx = selected.unsqueeze(0).expand(kv_heads, total_q, top_k).contiguous().to(torch.int32)
     select_num = valid_k.unsqueeze(0).expand(kv_heads, total_q).contiguous().to(torch.int32)
     print("select_idx:", select_idx)
     return select_idx, select_num
 
 
-def _gen_data(kv_seqlen, seed):
+def _gen_data(kv_seqlen, seed, *, random_select=False):
     batch = 1
     q_seqlen = Q_SEQLEN
     max_blocks = ceil(kv_seqlen / BLOCK_SIZE)
@@ -100,7 +136,9 @@ def _gen_data(kv_seqlen, seed):
     value = (torch.rand(total_physical, BLOCK_SIZE, KV_HEADS, HEAD_DIM, dtype=torch.float32) * 2 - 1).to(torch.bfloat16)
     block_table = torch.arange(total_physical, dtype=torch.int32).reshape(batch, max_blocks)
 
-    select_idx, select_num = _fast_causal_select_idx(q_seqlen, kv_seqlen, KV_HEADS, BLOCK_SIZE, TOP_K)
+    select_idx, select_num = _fast_causal_select_idx(
+        q_seqlen, kv_seqlen, KV_HEADS, BLOCK_SIZE, TOP_K,
+        random_select=random_select, rng_seed=seed)
     actual_seq_lengths = torch.tensor([q_seqlen], dtype=torch.int32)
     actual_seq_lengths_kv = torch.tensor([kv_seqlen], dtype=torch.int32)
 
@@ -122,8 +160,8 @@ def _gen_data(kv_seqlen, seed):
 class TestSparseAttentionPrefillVsDecode(TestCase):
     """Prefill vs decode accuracy (long q=16K prefill), kv cache sweep. Perf via external profiler."""
 
-    def _run_one(self, kv_seqlen):
-        data = _gen_data(kv_seqlen, SEED)
+    def _run_one(self, kv_seqlen, *, random_select=False):
+        data = _gen_data(kv_seqlen, SEED, random_select=random_select)
         q = data["query"].npu()
         k = data["key"].npu()
         v = data["value"].npu()
@@ -151,29 +189,38 @@ class TestSparseAttentionPrefillVsDecode(TestCase):
                 num_key_value_heads=KV_HEADS,
                 scale_value=scale,
                 block_size=BLOCK_SIZE, top_k=TOP_K, inner_precise=4)
-        
+
         p_out = p_out = prefill_fn()
         d_out = d_out = decode_fn()
-        
+
         torch.npu.synchronize()
         p_out = p_out.cpu()
         d_out = d_out.cpu()
-        
+
         print("p_out:", p_out)
         print("d_out:", d_out)
         diff = (p_out.float() - d_out.float()).abs()
-        print(f"[kv={kv_seqlen//1024}K q={Q_SEQLEN//1024}K kvh={KV_HEADS} tk={TOP_K}] "
+        mode = "random" if random_select else "last-blocks"
+        print(f"[kv={kv_seqlen//1024}K q={Q_SEQLEN//1024}K kvh={KV_HEADS} tk={TOP_K} mode={mode}] "
               f"max_diff={diff.max().item():.6f} mean={diff.mean().item():.6f}")
 
         # accuracy: prefill vs decode must agree (loose rtol). assertRtolEqual also fails on NaN.
         self.assertRtolEqual(d_out.float().numpy(), p_out.float().numpy(), prec=PREC)
 
     def test_prefill_vs_decode_sweep(self):
-        print(f"\n=== prefill vs decode accuracy (batch=1, q_heads={Q_HEADS}, kv_heads={KV_HEADS}, "
-              f"top_k={TOP_K}, q_seqlen={Q_SEQLEN}) ===")
+        print(f"\n=== prefill vs decode accuracy, case 1: last contiguous causal blocks "
+              f"(batch=1, q_heads={Q_HEADS}, kv_heads={KV_HEADS}, top_k={TOP_K}, "
+              f"q_seqlen={Q_SEQLEN}) ===")
         print("kv(K)  max_diff    mean_diff")
         for s in KV_SEQLENS:
-            self._run_one(s)
+            self._run_one(s, random_select=False)
+
+    def test_prefill_vs_decode_random(self):
+        print(f"\n=== prefill vs decode accuracy, case 2: random causal block selection "
+              f"(at most top_k blocks drawn from the causal-visible range) ===")
+        print("kv(K)  max_diff    mean_diff")
+        for s in KV_SEQLENS:
+            self._run_one(s, random_select=True)
 
 
 if __name__ == "__main__":
