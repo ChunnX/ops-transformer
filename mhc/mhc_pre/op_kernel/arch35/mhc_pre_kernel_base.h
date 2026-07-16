@@ -90,6 +90,116 @@ struct MNConfig {
     MicroAPI::Muls(xFp32Reg, xFp32Reg, hPreValue##nIdx, mask); \
     MicroAPI::Add(accFp32Reg, accFp32Reg, xFp32Reg, mask)
 
+template <class P>
+__aicore__ inline void MhcPreLoadHInValue(MicroAPI::RegTensor<P>& dst, __ubuf__ P* src, uint32_t offset)
+{
+    MicroAPI::DataCopy<P, MicroAPI::LoadDist::DIST_BRC_B32>(dst, src + offset);
+}
+
+template <class T, class P>
+__aicore__ inline void MhcPreAccumulateHIn(MicroAPI::RegTensor<P>& acc, MicroAPI::RegTensor<P>& xFp32,
+    MicroAPI::RegTensor<T>& xIn, MicroAPI::RegTensor<P>& hPre, __ubuf__ T* x,
+    uint32_t offset, MicroAPI::MaskReg mask)
+{
+    MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(xIn, x + offset);
+    MicroAPI::Cast<P, T, ctHalf2Fp32Zero>(xFp32, xIn, mask);
+    MicroAPI::Mul(xFp32, xFp32, hPre, mask);
+    MicroAPI::Add(acc, acc, xFp32, mask);
+}
+
+template <class P, uint32_t HEAD_NUM, bool HAS_RESI_VALUE>
+__aicore__ inline void MhcPreVFPostSegments(const LocalTensor<P>& hPreLocal,
+    const LocalTensor<P>& hPostLocal, const LocalTensor<P>& hResLocal,
+    const LocalTensor<P>& mmLocal, const LocalTensor<P>& invRmsLocal,
+    const LocalTensor<P>& alphaLocal, const LocalTensor<P>& biasLocal,
+    uint16_t rowCount, uint32_t invRmsOffset, uint32_t mmRowStride)
+{
+    __ubuf__ P* hPre = (__ubuf__ P*)hPreLocal.GetPhyAddr();
+    __ubuf__ P* hPost = (__ubuf__ P*)hPostLocal.GetPhyAddr();
+    __ubuf__ P* mm = (__ubuf__ P*)mmLocal.GetPhyAddr();
+    __ubuf__ P* invRms = (__ubuf__ P*)invRmsLocal.GetPhyAddr();
+    __ubuf__ P* alpha = (__ubuf__ P*)alphaLocal.GetPhyAddr();
+    __ubuf__ P* bias = (__ubuf__ P*)biasLocal.GetPhyAddr();
+    __ubuf__ P* hRes = nullptr;
+    if constexpr (HAS_RESI_VALUE) {
+        hRes = (__ubuf__ P*)hResLocal.GetPhyAddr();
+    }
+
+    __VEC_SCOPE__
+    {
+        MicroAPI::RegTensor<P> dataReg;
+        MicroAPI::RegTensor<P> invRmsReg;
+        MicroAPI::RegTensor<P> invRmsBroadReg;
+        MicroAPI::RegTensor<P> alphaPreReg;
+        MicroAPI::RegTensor<P> alphaPostReg;
+        MicroAPI::RegTensor<P> alphaResReg;
+        MicroAPI::RegTensor<P> biasPreReg;
+        MicroAPI::RegTensor<P> biasPostReg;
+        MicroAPI::RegTensor<P> biasResReg;
+        uint32_t nMaskSize = HEAD_NUM;
+        uint32_t resMaskSize = HEAD_NUM * HEAD_NUM;
+        MicroAPI::MaskReg nMask = MicroAPI::UpdateMask<P>(nMaskSize);
+        MicroAPI::MaskReg resMask = MicroAPI::UpdateMask<P>(resMaskSize);
+
+        MicroAPI::Load<P>(alphaPreReg, alpha);
+        MicroAPI::Load<P>(alphaPostReg, alpha + HEAD_NUM);
+        MicroAPI::Load<P>(biasPreReg, bias);
+        MicroAPI::Load<P>(biasPostReg, bias + HEAD_NUM);
+        if constexpr (HAS_RESI_VALUE) {
+            MicroAPI::Load<P>(alphaResReg, alpha + 2U * HEAD_NUM);
+            MicroAPI::Load<P>(biasResReg, bias + 2U * HEAD_NUM);
+        }
+
+        for (uint16_t row = 0; row < rowCount; ++row) {
+            MicroAPI::Load<P>(invRmsReg, invRms + invRmsOffset + row);
+            MicroAPI::Duplicate(invRmsBroadReg, invRmsReg, nMask);
+            uint32_t mmOffset = static_cast<uint32_t>(row) * mmRowStride;
+            MicroAPI::Load<P>(dataReg, mm + mmOffset);
+            MicroAPI::Mul(dataReg, dataReg, invRmsBroadReg, nMask);
+            MicroAPI::Mul(dataReg, dataReg, alphaPreReg, nMask);
+            MicroAPI::Add(dataReg, dataReg, biasPreReg, nMask);
+            MicroAPI::Store<P>(hPre + row * HEAD_NUM, dataReg, HEAD_NUM);
+
+            MicroAPI::Load<P>(dataReg, mm + mmOffset + HEAD_NUM);
+            MicroAPI::Mul(dataReg, dataReg, invRmsBroadReg, nMask);
+            MicroAPI::Mul(dataReg, dataReg, alphaPostReg, nMask);
+            MicroAPI::Add(dataReg, dataReg, biasPostReg, nMask);
+            MicroAPI::Store<P>(hPost + row * HEAD_NUM, dataReg, HEAD_NUM);
+
+            if constexpr (HAS_RESI_VALUE) {
+                MicroAPI::Duplicate(invRmsBroadReg, invRmsReg, resMask);
+                MicroAPI::Load<P>(dataReg, mm + mmOffset + 2U * HEAD_NUM);
+                MicroAPI::Mul(dataReg, dataReg, invRmsBroadReg, resMask);
+                MicroAPI::Mul(dataReg, dataReg, alphaResReg, resMask);
+                MicroAPI::Add(dataReg, dataReg, biasResReg, resMask);
+                MicroAPI::Store<P>(
+                    hRes + row * HEAD_NUM * HEAD_NUM, dataReg, HEAD_NUM * HEAD_NUM);
+            }
+        }
+    }
+}
+template <class P, uint32_t HEAD_NUM, bool HAS_RESI_VALUE>
+__aicore__ inline void MhcPreVFExpandAlpha(const LocalTensor<P>& alphaLocal)
+{
+    __ubuf__ P* alpha = (__ubuf__ P*)alphaLocal.GetPhyAddr();
+    __VEC_SCOPE__
+    {
+        MicroAPI::RegTensor<P> alphaPreReg;
+        MicroAPI::RegTensor<P> alphaPostReg;
+        MicroAPI::RegTensor<P> alphaResReg;
+        MicroAPI::DataCopy<P, MicroAPI::LoadDist::DIST_BRC_B32>(alphaPreReg, alpha);
+        MicroAPI::DataCopy<P, MicroAPI::LoadDist::DIST_BRC_B32>(alphaPostReg, alpha + 1U);
+        if constexpr (HAS_RESI_VALUE) {
+            MicroAPI::DataCopy<P, MicroAPI::LoadDist::DIST_BRC_B32>(alphaResReg, alpha + 2U);
+        }
+        MicroAPI::Store<P>(alpha, alphaPreReg, HEAD_NUM);
+        MicroAPI::Store<P>(alpha + HEAD_NUM, alphaPostReg, HEAD_NUM);
+        if constexpr (HAS_RESI_VALUE) {
+            MicroAPI::Store<P>(
+                alpha + 2U * HEAD_NUM, alphaResReg, HEAD_NUM * HEAD_NUM);
+        }
+    }
+}
 template <class T, class P>
 class MhcPreKernelBase {
 public:
@@ -368,28 +478,43 @@ public:
         DataCopyPad(hPreGm_[offset * N_], hPreBuff_, copyParams);
     }
 
-    __aicore__ inline void AIVPreLoad()
+    __aicore__ inline void AIVPreLoad(bool initSliceOffsets = true)
     {
         invRmsUb_ = invRmsOutQueue_.AllocTensor<P>();
-        AIV1GetHSliceOffset();
-
-        float alphaPre = alphaGm_.GetValue(kAlphaPreIndex);
-        float alphaPost = alphaGm_.GetValue(kAlphaPostIndex);
-
-        for (uint64_t i = 0; i < N_; ++i) {
-            alphaInUb_.SetValue(i, alphaPre);
-            alphaInUb_.SetValue(i + N_, alphaPost);
+        if (initSliceOffsets) {
+            AIV1GetHSliceOffset();
         }
 
-        if (hasResi_) {
-            float alphaComb = alphaGm_.GetValue(kAlphaCombIndex);
-            for (uint64_t i = 0; i < N_; ++i) {
-                for (uint64_t j = 0; j < N_; ++j) {
-                    alphaInUb_.SetValue((kAlphaCombBaseOffset + i) * N_ + j, alphaComb);
-                }
+        DataCopyExtParams alphaCopyParams;
+        alphaCopyParams.blockCount = 1U;
+        uint32_t alphaInputCount = hasResi_ ? 3U : 2U;
+        alphaCopyParams.blockLen = alphaInputCount * sizeof(P);
+        alphaCopyParams.srcStride = 0U;
+        alphaCopyParams.dstStride = 0U;
+        uint32_t alphaRightPadding = kAlignmentBytes / sizeof(P) - alphaInputCount;
+        DataCopyPadExtParams<P> alphaPadParams{
+            true, 0, static_cast<uint8_t>(alphaRightPadding), 0};
+        DataCopyPad(alphaInUb_, alphaGm_, alphaCopyParams, alphaPadParams);
+        SetFlag<HardEvent::MTE2_V>(EVENT_ID0);
+        WaitFlag<HardEvent::MTE2_V>(EVENT_ID0);
+
+        if (N_ == kSupportedN4) {
+            if (hasResi_) {
+                MhcPreVFExpandAlpha<P, kSupportedN4, true>(alphaInUb_);
+            } else {
+                MhcPreVFExpandAlpha<P, kSupportedN4, false>(alphaInUb_);
             }
+        } else if (N_ == kSupportedN6) {
+            if (hasResi_) {
+                MhcPreVFExpandAlpha<P, kSupportedN6, true>(alphaInUb_);
+            } else {
+                MhcPreVFExpandAlpha<P, kSupportedN6, false>(alphaInUb_);
+            }
+        } else if (hasResi_) {
+            MhcPreVFExpandAlpha<P, kSupportedN8, true>(alphaInUb_);
+        } else {
+            MhcPreVFExpandAlpha<P, kSupportedN8, false>(alphaInUb_);
         }
-  
         BiasCopyIn();
         biasInUb_ = biasInQue_.DeQue<P>();
     }
@@ -482,6 +607,147 @@ public:
         outQueue_.FreeTensor(hPostOutLocal);
     }
 
+    template <uint32_t HEAD_NUM>
+    __aicore__ inline void VFDoV1ProcessHInRows(__ubuf__ T* xInAddr, __ubuf__ T* hinOutAddr,
+        __ubuf__ P* hPreAddr, uint16_t rowCount, uint32_t lenD, uint32_t localStride)
+    {
+        uint16_t dLoopCnt = (lenD + eleNumPerVf_ - 1) / eleNumPerVf_;
+        __VEC_SCOPE__
+        {
+            MicroAPI::RegTensor<P> xFp32Reg;
+            MicroAPI::RegTensor<T> xInReg;
+            MicroAPI::RegTensor<P> accFp32Reg;
+            MicroAPI::RegTensor<T> outB16Reg;
+            MicroAPI::RegTensor<P> hPreReg0;
+            MicroAPI::RegTensor<P> hPreReg1;
+            MicroAPI::RegTensor<P> hPreReg2;
+            MicroAPI::RegTensor<P> hPreReg3;
+            MicroAPI::RegTensor<P> hPreReg4;
+            MicroAPI::RegTensor<P> hPreReg5;
+            MicroAPI::RegTensor<P> hPreReg6;
+            MicroAPI::RegTensor<P> hPreReg7;
+
+            for (uint16_t row = 0; row < rowCount; ++row) {
+                uint32_t hPreOffset = static_cast<uint32_t>(row) * HEAD_NUM;
+                MhcPreLoadHInValue<P>(hPreReg0, hPreAddr, hPreOffset);
+                MhcPreLoadHInValue<P>(hPreReg1, hPreAddr, hPreOffset + 1U);
+                MhcPreLoadHInValue<P>(hPreReg2, hPreAddr, hPreOffset + 2U);
+                MhcPreLoadHInValue<P>(hPreReg3, hPreAddr, hPreOffset + 3U);
+                if constexpr (HEAD_NUM >= kSupportedN6) {
+                    MhcPreLoadHInValue<P>(hPreReg4, hPreAddr, hPreOffset + 4U);
+                    MhcPreLoadHInValue<P>(hPreReg5, hPreAddr, hPreOffset + 5U);
+                }
+                if constexpr (HEAD_NUM == kSupportedN8) {
+                    MhcPreLoadHInValue<P>(hPreReg6, hPreAddr, hPreOffset + 6U);
+                    MhcPreLoadHInValue<P>(hPreReg7, hPreAddr, hPreOffset + 7U);
+                }
+
+                uint32_t remaining = lenD;
+                uint32_t xRowOffset = static_cast<uint32_t>(row) * HEAD_NUM * localStride;
+                uint32_t outRowOffset = static_cast<uint32_t>(row) * localStride;
+                for (uint16_t dIdx = 0; dIdx < dLoopCnt; ++dIdx) {
+                    MicroAPI::MaskReg mask = MicroAPI::UpdateMask<P>(remaining);
+                    uint32_t dOffset = static_cast<uint32_t>(dIdx) * eleNumPerVf_;
+                    MicroAPI::Duplicate<P>(accFp32Reg, static_cast<P>(0.0f), mask);
+                    MhcPreAccumulateHIn<T, P>(
+                        accFp32Reg, xFp32Reg, xInReg, hPreReg0, xInAddr, xRowOffset + dOffset, mask);
+                    MhcPreAccumulateHIn<T, P>(accFp32Reg, xFp32Reg, xInReg, hPreReg1, xInAddr,
+                        xRowOffset + localStride + dOffset, mask);
+                    MhcPreAccumulateHIn<T, P>(accFp32Reg, xFp32Reg, xInReg, hPreReg2, xInAddr,
+                        xRowOffset + 2U * localStride + dOffset, mask);
+                    MhcPreAccumulateHIn<T, P>(accFp32Reg, xFp32Reg, xInReg, hPreReg3, xInAddr,
+                        xRowOffset + 3U * localStride + dOffset, mask);
+                    if constexpr (HEAD_NUM >= kSupportedN6) {
+                        MhcPreAccumulateHIn<T, P>(accFp32Reg, xFp32Reg, xInReg, hPreReg4, xInAddr,
+                            xRowOffset + 4U * localStride + dOffset, mask);
+                        MhcPreAccumulateHIn<T, P>(accFp32Reg, xFp32Reg, xInReg, hPreReg5, xInAddr,
+                            xRowOffset + 5U * localStride + dOffset, mask);
+                    }
+                    if constexpr (HEAD_NUM == kSupportedN8) {
+                        MhcPreAccumulateHIn<T, P>(accFp32Reg, xFp32Reg, xInReg, hPreReg6, xInAddr,
+                            xRowOffset + 6U * localStride + dOffset, mask);
+                        MhcPreAccumulateHIn<T, P>(accFp32Reg, xFp32Reg, xInReg, hPreReg7, xInAddr,
+                            xRowOffset + 7U * localStride + dOffset, mask);
+                    }
+                    MicroAPI::Cast<T, P, ctFp32To16>(outB16Reg, accFp32Reg, mask);
+                    MicroAPI::StoreAlign<T, MicroAPI::StoreDist::DIST_PACK_B32>(
+                        hinOutAddr + outRowOffset + dOffset, outB16Reg, mask);
+                }
+            }
+        }
+    }
+
+    __aicore__ inline void AIV1ProcessHInBatched(uint64_t offsetT, uint64_t lenT, uint64_t lenD)
+    {
+        if (N_ != kSupportedN4 && N_ != kSupportedN6 && N_ != kSupportedN8) {
+            AIV1ProcessHIn(offsetT, lenT, lenD);
+            return;
+        }
+
+        constexpr uint32_t xBufferBytes = 80U * 1024U;
+        constexpr uint32_t outBufferBytes = 20U * 1024U;
+        constexpr uint32_t blockElements = kAlignmentBytes / sizeof(T);
+        for (uint32_t offsetD = 0; offsetD < D_; offsetD += v1ChunkDSize_) {
+            lenD = v1ChunkDSize_ < D_ - offsetD ? v1ChunkDSize_ : D_ - offsetD;
+            bool contiguous = offsetD == 0U && lenD == D_ && (lenD % blockElements == 0U);
+            uint32_t localStride = contiguous ? lenD : Ceil(lenD, blockElements) * blockElements;
+            uint32_t maxRowsByX = xBufferBytes / (N_ * localStride * sizeof(T));
+            uint32_t maxRowsByOut = outBufferBytes / (localStride * sizeof(T));
+            uint32_t maxBatchRows = chunkTSize_ <= 32U ? 2U : 4U;
+            uint32_t rowsPerBatch = MhcPreUtils::Min(
+                static_cast<uint64_t>(MhcPreUtils::Min(
+                    MhcPreUtils::Min(maxRowsByX, maxRowsByOut), maxBatchRows)), lenT);
+            if (rowsPerBatch == 0U) {
+                AIV1ProcessHIn(offsetT, lenT, lenD);
+                return;
+            }
+
+            for (uint32_t rowOffset = 0; rowOffset < lenT; rowOffset += rowsPerBatch) {
+                uint32_t rowCount = MhcPreUtils::Min(
+                    static_cast<uint64_t>(rowsPerBatch), lenT - rowOffset);
+                LocalTensor<T> xIn = xInQueue_.AllocTensor<T>();
+                DataCopyExtParams xCopyParams;
+                xCopyParams.blockCount = contiguous ? 1U : static_cast<uint16_t>(rowCount * N_);
+                xCopyParams.blockLen = contiguous ?
+                    rowCount * N_ * lenD * sizeof(T) : lenD * sizeof(T);
+                xCopyParams.srcStride = contiguous ? 0U : (D_ - lenD) * sizeof(T);
+                xCopyParams.dstStride = 0U;
+                DataCopyPadExtParams<T> xPadParams{
+                    !contiguous, 0, static_cast<uint8_t>(localStride - lenD), 0};
+                uint64_t globalRow = globalOffsetM_ + offsetT + rowOffset;
+                DataCopyPad(xIn, xGm_[globalRow * N_ * D_ + offsetD], xCopyParams, xPadParams);
+                xInQueue_.EnQue(xIn);
+                xIn = xInQueue_.DeQue<T>();
+
+                LocalTensor<T> hinOut = outQueue_.AllocTensor<T>();
+                __ubuf__ T* xInAddr = (__ubuf__ T*)xIn.GetPhyAddr();
+                __ubuf__ T* hinOutAddr = (__ubuf__ T*)hinOut.GetPhyAddr();
+                __ubuf__ P* hPreAddr = (__ubuf__ P*)hPreBuff_[rowOffset * N_].GetPhyAddr();
+                if (N_ == kSupportedN4) {
+                    VFDoV1ProcessHInRows<kSupportedN4>(
+                        xInAddr, hinOutAddr, hPreAddr, rowCount, lenD, localStride);
+                } else if (N_ == kSupportedN6) {
+                    VFDoV1ProcessHInRows<kSupportedN6>(
+                        xInAddr, hinOutAddr, hPreAddr, rowCount, lenD, localStride);
+                } else {
+                    VFDoV1ProcessHInRows<kSupportedN8>(
+                        xInAddr, hinOutAddr, hPreAddr, rowCount, lenD, localStride);
+                }
+                xInQueue_.FreeTensor(xIn);
+
+                outQueue_.EnQue(hinOut);
+                hinOut = outQueue_.DeQue<T>();
+                DataCopyExtParams outCopyParams;
+                outCopyParams.blockCount = contiguous ? 1U : static_cast<uint16_t>(rowCount);
+                outCopyParams.blockLen = contiguous ?
+                    rowCount * lenD * sizeof(T) : lenD * sizeof(T);
+                outCopyParams.srcStride = contiguous ? 0U : (localStride - lenD) * sizeof(T);
+                outCopyParams.dstStride = contiguous ? 0U : (D_ - lenD) * sizeof(T);
+                DataCopyPad(hinGm_[globalRow * D_ + offsetD], hinOut, outCopyParams);
+                outQueue_.FreeTensor(hinOut);
+            }
+        }
+    }
     __aicore__ inline void AIV1ProcessHIn(uint64_t offsetT, uint64_t lenT, uint64_t lenD)
     {
         auto hInDealBuf = inputBuff_;
