@@ -51,6 +51,7 @@ constexpr uint32_t DEBUG_OFFSET_ERROR_FLAGS = 24U;
 
 constexpr uint8_t DEBUG_PATH_DIRECT = 0xD0U;
 constexpr uint8_t DEBUG_PATH_HYBRID = 0xA1U;
+constexpr uint32_t DEBUG_FLAG_REMOTE_ROUTE_OVERFLOW = 0xA1U;
 
 // PerExpertCnt Calculation
 template <Reg::HistogramsType htype, typename T, typename U>
