@@ -132,7 +132,7 @@ bool MhcPostTilingRegBaseArch35::IsCapable()
         return false;
     }
 
-    if (tt < static_cast<int64_t>(ascendcPlatform.GetCoreNumAiv()) / 2) {
+    if (tt < static_cast<int64_t>(ascendcPlatform.GetCoreNumAiv()) / 4) {
         return false;
     }
 
