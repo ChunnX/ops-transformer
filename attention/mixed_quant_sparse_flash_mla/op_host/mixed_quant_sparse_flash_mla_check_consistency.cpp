@@ -83,7 +83,7 @@ ge::graphStatus MQSMLATilingCheck::CompareShape(QSMLATilingShapeCompareParam &pa
     }
 
     if (shape.GetDimNum() != shapeExpected.GetDimNum()) {
-        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(opName_, name.c_str(),
+        OP_LOGE_FOR_INVALID_SHAPEDIM(opName_, name.c_str(),
             std::to_string(shape.GetDimNum()).c_str(), std::to_string(shapeExpected.GetDimNum()).c_str());
         return ge::GRAPH_FAILED;
     }
