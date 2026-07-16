@@ -22,6 +22,8 @@ import sys
 import argparse
 
 _USE_GRAPH = os.environ.get('USE_GRAPH', 'false').lower() in ('true', '1', 'yes')
+_ENABLE_PROF = os.environ.get('ENABLE_PROF', 'false').lower() in ('true', '1', 'yes')
+
 if _USE_GRAPH:
     import torchair
     import warnings
@@ -263,8 +265,21 @@ def run_chunk_gated_delta_rule_eager(B, seqlen, nk, nv, dk, dv, chunk_size=64,
     k = torch.nn.functional.normalize(k, p=2, dim=-1)
     scale = 1 / (dk ** 0.5)
     initial_state = torch.rand((B, nv, dv, dk), dtype=state_data_type, device="npu:%s" % DEVICE_ID)
+    if not is_contiguous:
+        state_pad = torch.zeros((B, nv, dv + 1, dk), dtype=state_data_type, device="npu:%s" % DEVICE_ID)
+        state_pad[:, :, :dv, :] = initial_state
+        initial_state = state_pad[:, :, :dv, :]
+    print(f"initial_state: is_contiguous={initial_state.is_contiguous()}, stride={initial_state.stride()}")
     actual_seq_lengths = torch.tensor(seqlen_list, dtype=torch.int32, device="npu:%s" % DEVICE_ID)
     # ======================== gen input data finish =============================
+
+    if _ENABLE_PROF:
+        cgdr_npu(q, k, v, g, beta, scale, initial_state, actual_seq_lengths)
+        for _ in range(5):
+            cgdr_npu(q, k, v, g, beta, scale, initial_state, actual_seq_lengths)
+        torch.npu.synchronize()
+        print("PASSED (prof)")
+        return True
 
     # ======================== execute golden/benchmark/npu ================================
     o_golden, state_golden = cgdr_golden(q, k, v, g, beta, scale, initial_state, actual_seq_lengths, use_float64=False, chunk_size=chunk_size)
@@ -286,6 +301,7 @@ def run_chunk_gated_delta_rule_eager(B, seqlen, nk, nv, dk, dv, chunk_size=64,
         print(f"idx={idx}, err_s={err_s[idx]}, state_golden={state_golden.flatten()[idx]}, "
               f"state_npu={state_npu.flatten()[idx]}, state_bench={state_bench.flatten()[idx]}")
         ret = False
+
     print("PASSED" if ret else "FAILED")
     return ret
 
