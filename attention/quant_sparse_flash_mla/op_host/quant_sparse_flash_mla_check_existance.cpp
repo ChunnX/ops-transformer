@@ -69,9 +69,8 @@ ge::graphStatus QSMLATilingCheck::CheckCmpSparseIndicesExistence()
 {
     if (opParamInfo_.cmpSparseIndices.tensor != nullptr) {
         if (qLayout_ == QSMLALayout::BSND) {
-            if (opParamInfo_.cmpSparseIndices.tensor->GetStorageShape().GetDim(DIM_3) != 512
-                && opParamInfo_.cmpSparseIndices.tensor->GetStorageShape().GetDim(DIM_3) != 1024) {
-                OP_LOGE(opName_, "When qLayout is BSND, topK should be 512 or 1024, but got %ld",
+            if (opParamInfo_.cmpSparseIndices.tensor->GetStorageShape().GetDim(DIM_3) <= 0) {
+                OP_LOGE(opName_, "When qLayout is BSND, topK should be greater than 0, but got %ld",
                     opParamInfo_.cmpSparseIndices.tensor->GetStorageShape().GetDim(3));
                 return ge::GRAPH_FAILED;
             }
@@ -81,9 +80,8 @@ ge::graphStatus QSMLATilingCheck::CheckCmpSparseIndicesExistence()
                 return ge::GRAPH_FAILED;
             }
         } else {
-            if (opParamInfo_.cmpSparseIndices.tensor->GetStorageShape().GetDim(DIM_2) != 512
-                && opParamInfo_.cmpSparseIndices.tensor->GetStorageShape().GetDim(DIM_2) != 1024) {
-                OP_LOGE(opName_, "When qLayout is TND, topK should be 512 or 1024, but got %ld",
+            if (opParamInfo_.cmpSparseIndices.tensor->GetStorageShape().GetDim(DIM_2) <= 0) {
+                OP_LOGE(opName_, "When qLayout is TND, topK should be greater than 0, but got %ld",
                     opParamInfo_.cmpSparseIndices.tensor->GetStorageShape().GetDim(2));
                 return ge::GRAPH_FAILED;
             }
@@ -180,18 +178,18 @@ ge::graphStatus QSMLATilingCheck::CheckCSAExistence()
 
 ge::graphStatus QSMLATilingCheck::CheckCmpRatioExistence()
 {
+    OP_CHECK_IF(opParamInfo_.cmpRatio == nullptr, OP_LOGE(opName_, "cmpRatio is required, but got nullptr."),
+                return ge::GRAPH_FAILED);
+
     if (perfMode_ == QSMLATemplateMode::SWA_TEMPLATE_MODE) {
-        OP_CHECK_IF(*opParamInfo_.cmpRatio != 1 && *opParamInfo_.cmpRatio != 128 && *opParamInfo_.cmpRatio != 4,
-            OP_LOGE(opName_, "when SWA mode, cmpRatio must be 1 or 4 or 128, but got %u", *opParamInfo_.cmpRatio),
-            return ge::GRAPH_FAILED);
-    } else if (perfMode_ == QSMLATemplateMode::HCA_TEMPLATE_MODE) {
-        OP_CHECK_IF(*opParamInfo_.cmpRatio != 128 && *opParamInfo_.cmpRatio != 4,
-            OP_LOGE(opName_, "when HCA mode, cmpRatio must be 4 or 128, but got %u", *opParamInfo_.cmpRatio),
-            return ge::GRAPH_FAILED);
+        OP_CHECK_IF(*opParamInfo_.cmpRatio != 1,
+                    OP_LOGE(opName_, "When SWA mode, cmpRatio must be 1, but got %ld.", *opParamInfo_.cmpRatio),
+                    return ge::GRAPH_FAILED);
     } else {
-        OP_CHECK_IF(*opParamInfo_.cmpRatio != 128 && *opParamInfo_.cmpRatio != 4,
-            OP_LOGE(opName_, "when CSA mode, cmpRatio must be 4 or 128, but got %u", *opParamInfo_.cmpRatio),
-            return ge::GRAPH_FAILED);
+        OP_CHECK_IF(*opParamInfo_.cmpRatio < 1 || *opParamInfo_.cmpRatio > 128,
+                    OP_LOGE(opName_, "When non-SWA mode, cmpRatio must be in range [1, 128], but got %ld.",
+                            *opParamInfo_.cmpRatio),
+                    return ge::GRAPH_FAILED);
     }
 
     return ge::GRAPH_SUCCESS;
