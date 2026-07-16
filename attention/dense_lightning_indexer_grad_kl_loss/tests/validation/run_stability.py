@@ -46,16 +46,19 @@ def compare_with_first(case_dir: Path, first_dir: Path, manifest):
     return comparison
 
 
-def run(case_dir: Path, device_id: int, repeat: int):
+def run(case_dir: Path, device_id: int, repeat: int, result_name: str):
     manifest = json.loads((case_dir / "case_manifest.json").read_text(encoding="utf-8"))
-    result_dir = case_dir / "stability"
+    result_dir = case_dir / result_name
     first_dir = result_dir / "first_outputs"
     result_dir.mkdir(parents=True, exist_ok=True)
     first_dir.mkdir(parents=True, exist_ok=True)
     iterations = []
+    baseline_iteration = None
 
     for iteration in range(1, repeat + 1):
         log_path = result_dir / f"iteration_{iteration:02d}.log"
+        report_path = case_dir / "run_report.json"
+        report_path.unlink(missing_ok=True)
         command = [
             sys.executable,
             str(Path(__file__).with_name("run_case.py")),
@@ -66,24 +69,26 @@ def run(case_dir: Path, device_id: int, repeat: int):
         with log_path.open("w", encoding="utf-8") as log:
             completed = subprocess.run(command, stdout=log, stderr=subprocess.STDOUT, check=False)
 
-        report_path = case_dir / "run_report.json"
         report = json.loads(report_path.read_text(encoding="utf-8")) if report_path.exists() else {}
         archived_report = result_dir / f"run_report_{iteration:02d}.json"
         if report:
             dump_json(archived_report, report)
 
         checksums = {}
-        outputs_exist = True
-        for name in OUTPUTS:
-            output_path = case_dir / "outputs" / f"{name}.bin"
-            if not output_path.exists():
-                outputs_exist = False
-                break
-            checksums[name] = file_sha256(output_path)
-
         variation = {}
-        if completed.returncode == 0 and outputs_exist:
-            if iteration == 1:
+        outputs_exist = completed.returncode == 0 and bool(report.get("passed", False))
+        if outputs_exist:
+            for name in OUTPUTS:
+                output_path = case_dir / "outputs" / f"{name}.bin"
+                if not output_path.exists():
+                    outputs_exist = False
+                    checksums = {}
+                    break
+                checksums[name] = file_sha256(output_path)
+
+        if outputs_exist:
+            if baseline_iteration is None:
+                baseline_iteration = iteration
                 for name in OUTPUTS:
                     shutil.copyfile(
                         case_dir / "outputs" / f"{name}.bin",
@@ -114,6 +119,7 @@ def run(case_dir: Path, device_id: int, repeat: int):
                 "case_id": manifest["case"]["id"],
                 "repeat": repeat,
                 "completed_iterations": len(iterations),
+                "baseline_iteration": baseline_iteration,
                 "passed": all(item["returncode"] == 0 and item["passed"] for item in iterations)
                 and len(iterations) == repeat,
                 "iterations": iterations,
@@ -128,8 +134,9 @@ def main():
     parser.add_argument("case_dir", type=Path)
     parser.add_argument("--device-id", type=int, default=0)
     parser.add_argument("--repeat", type=int, default=10)
+    parser.add_argument("--result-name", default="stability")
     args = parser.parse_args()
-    report = run(args.case_dir, args.device_id, args.repeat)
+    report = run(args.case_dir, args.device_id, args.repeat, args.result_name)
     print(json.dumps(report, ensure_ascii=False, indent=2))
     raise SystemExit(0 if report["passed"] else 1)
 
