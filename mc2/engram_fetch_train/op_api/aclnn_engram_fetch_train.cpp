@@ -14,6 +14,7 @@
  */
 
 #include <algorithm>
+#include <cstdio>
 #include "aclnn/aclnn_base.h"
 #include "common/utils/op_mc2_def.h"
 #include "aclnn_kernels/common/op_error_check.h"
@@ -64,11 +65,19 @@ aclnnStatus aclnnEngramFetchTrainGetWorkspaceSize(
     auto retParam = CheckParams(commContext, indices, fetched, permOut, sendCountsOut,
                                 recvCountsOut, recvLocalEntryOut, numRecvOut);
     CHECK_RET(retParam == ACLNN_SUCCESS, retParam);
+    printf("[EngramAclnn] aclnnEngramFetchTrainGetWorkspaceSize: hiddenSize=%d, numEntriesPerRank=%ld, "
+           "localStorageAddr=0x%lx, numMaxTokensPerRank=%ld, commBufferSize=%ld\n",
+           hiddenSize, numEntriesPerRank, static_cast<uint64_t>(localStorageAddr),
+           numMaxTokensPerRank, commBufferSize);
+    fflush(stdout);
     aclnnStatus ret = aclnnInnerEngramFetchTrainGetWorkspaceSize(
         commContext, indices,
         hiddenSize, numEntriesPerRank, localStorageAddr, numMaxTokensPerRank, commBufferSize,
         fetched, permOut, sendCountsOut, recvCountsOut, recvLocalEntryOut, numRecvOut,
         workspaceSize, executor);
+    printf("[EngramAclnn] aclnnEngramFetchTrainGetWorkspaceSize done: ret=%d, workspaceSize=%lu\n",
+           ret, workspaceSize ? *workspaceSize : 0);
+    fflush(stdout);
     return ret;
 }
 

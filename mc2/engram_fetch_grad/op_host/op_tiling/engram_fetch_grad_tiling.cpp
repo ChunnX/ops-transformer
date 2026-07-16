@@ -573,6 +573,8 @@ static ge::graphStatus EngramFetchGradTilingFunc(gert::TilingContext *context)
         OP_LOGE_WITH_INVALID_INPUT(nodeName, "nodeName"), return ge::GRAPH_FAILED);
 
     OP_LOGI(nodeName, "Enter EngramFetchGrad tiling func.");
+    printf("[EngramGradTiling] EngramFetchGrad tiling enter: node=%s\n", nodeName);
+    fflush(stdout);
 
     EngramFetchGradTilingData *tilingData = context->GetTilingData<EngramFetchGradTilingData>();
     OP_TILING_CHECK(tilingData == nullptr,
@@ -585,6 +587,10 @@ static ge::graphStatus EngramFetchGradTilingFunc(gert::TilingContext *context)
     OP_TILING_CHECK(TilingCheckEngramFetchGrad(context, numTokens, rankSize, totalRecv, hiddenDim) != ge::GRAPH_SUCCESS,
         OP_LOGE(nodeName, "check input/output failed."), return ge::GRAPH_FAILED);
 
+    printf("[EngramGradTiling] check tensor ok: numTokens=%ld, rankSize=%u, totalRecv=%ld, hiddenDim=%ld (from gradFetched.dim(1))\n",
+           numTokens, rankSize, totalRecv, hiddenDim);
+    fflush(stdout);
+
     OP_TILING_CHECK(CheckAttrs(context) != ge::GRAPH_SUCCESS,
         OP_LOGE(nodeName, "check attrs failed."), return ge::GRAPH_FAILED);
 
@@ -594,10 +600,18 @@ static ge::graphStatus EngramFetchGradTilingFunc(gert::TilingContext *context)
     OP_TILING_CHECK(SetTilingData(context, *tilingData, numTokens, rankSize, totalRecv, hiddenDim) != ge::GRAPH_SUCCESS,
         OP_LOGE(nodeName, "set tiling data failed."), return ge::GRAPH_FAILED);
 
+    printf("[EngramGradTiling] tilingData set: hiddenDim=%ld, hiddenBytes=%ld, commBufferSize=%ld\n",
+           tilingData->hiddenDim, tilingData->hiddenBytes, tilingData->commBufferSize);
+    fflush(stdout);
+
     SetTilingKey(context);
 
     OP_TILING_CHECK(SetWorkSpace(context, *tilingData) != ge::GRAPH_SUCCESS,
         OP_LOGE(nodeName, "set workspace failed."), return ge::GRAPH_FAILED);
+
+    printf("[EngramGradTiling] workspace=%zu bytes, tiling done\n",
+           context->GetWorkspaceSizes(1)[0]);
+    fflush(stdout);
 
     PrintEngramFetchGradTilingData(tilingData, nodeName);
     OP_LOGI(nodeName, "EngramFetchGrad tiling end.");

@@ -18,6 +18,7 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/functional.h>
 #include <chrono>
+#include <cstdio>
 #include <functional>
 #include <stdexcept>
 #include <string>
@@ -451,6 +452,9 @@ void ElasticBuffer::EnsureEngramContext()
         return;
     }
     TORCH_CHECK(numCpuBytes_ > 0, "num_cpu_bytes must be greater than 0 to use Engram operations");
+    printf("[Engram] EnsureEngramContext: groupName=%s, numCpuBytes=%ld, withGrad=%d, numMaxTokensPerRank=%ld\n",
+           groupName_.c_str(), numCpuBytes_, withGrad_, numMaxTokensPerRank_);
+    fflush(stdout);
     EngramContextBuilder builder;
     EngramContextResources resources = builder.Build(groupName_, numCpuBytes_, withGrad_);
     hcclComm_ = resources.hcclComm;
@@ -460,6 +464,9 @@ void ElasticBuffer::EnsureEngramContext()
     commContext_ = resources.context;
     contextTensor_ = resources.contextTensor;
     engramContextInitialized_ = true;
+    printf("[Engram] EnsureEngramContext done: rankId=%u, rankSize=%u, hostBufPtr=%p, deviceBufPtr=%p\n",
+           commContext_.epRankId, commContext_.rankSize, hostBufPtr_, deviceBufPtr_);
+    fflush(stdout);
 
     if (withGrad_ && commBufferSize_ == 0) {
         QueryAndExchangeHcclBuffer();
@@ -502,6 +509,10 @@ void ElasticBuffer::EngramWrite(const at::Tensor &storage)
     hiddenSize_ = storage.size(1);
     numEngramEntries_ = storage.size(0);
     engramDtype_ = storage.scalar_type();
+    printf("[Engram] EngramWrite: numEntries=%ld, hiddenSize=%ld, dtype=%d, storageBytes=%ld, capacity=%ld\n",
+           numEngramEntries_, hiddenSize_, static_cast<int>(engramDtype_),
+           storage.nbytes(), numCpuBytes_);
+    fflush(stdout);
 
     // 推理/训练统一: storage 拷到 host-pinned（设备映射地址）
     // 训练态 gather 从 deviceBufPtr_（host-pinned 设备映射地址）读取
@@ -553,6 +564,12 @@ std::function<at::Tensor()> ElasticBuffer::EngramFetch(const at::Tensor &indices
         uint32_t rankSize = commContext_.rankSize;
         int64_t maxR = numMaxTokensPerRank_ * static_cast<int64_t>(rankSize);
         auto opts = indices.options();
+        printf("[Engram] EngramFetch[train]: rankId=%u, rankSize=%u, numTokens=%ld, hiddenSize=%ld, "
+               "numMaxTokensPerRank=%ld, maxR=%ld, commBufferSize=%ld, localStorageAddr=0x%lx\n",
+               commContext_.epRankId, rankSize, numTokens, hiddenSize_,
+               numMaxTokensPerRank_, maxR, commBufferSize_,
+               reinterpret_cast<uint64_t>(deviceBufPtr_));
+        fflush(stdout);
 
         EngramFetchCtx ctx{
             at::empty({numTokens}, opts),
@@ -564,11 +581,18 @@ std::function<at::Tensor()> ElasticBuffer::EngramFetch(const at::Tensor &indices
         if (numTokens > 0) {
             fetchInProgress_.store(true);
             int64_t localStorageAddr = reinterpret_cast<int64_t>(deviceBufPtr_);
+            printf("[Engram] EngramFetch[train] calling aclnnEngramFetchTrain: hiddenSize=%ld, numEntries=%ld, "
+                   "localStorageAddr=0x%lx, numMaxTokensPerRank=%ld, commBufferSize=%ld\n",
+                   hiddenSize_, numEngramEntries_, static_cast<uint64_t>(localStorageAddr),
+                   numMaxTokensPerRank_, commBufferSize_);
+            fflush(stdout);
             ACLNN_CMD(aclnnEngramFetchTrain, contextTensor_, indices,
                       fetched,
                       ctx.perm, ctx.sendCounts, ctx.recvCounts, ctx.recvLocalEntry, ctx.numRecv,
                       hiddenSize_, numEngramEntries_, localStorageAddr,
                       numMaxTokensPerRank_, commBufferSize_);
+            printf("[Engram] EngramFetch[train] aclnnEngramFetchTrain done\n");
+            fflush(stdout);
             fetchInProgress_.store(false);
         }
         if (ctxOut != nullptr) {
@@ -616,6 +640,12 @@ std::tuple<at::Tensor, at::Tensor> ElasticBuffer::EngramFetchGrad(
     uint32_t rankSize = commContext_.rankSize;
     int64_t maxR = numTokens * static_cast<int64_t>(rankSize);
 
+    printf("[Engram] EngramFetchGrad: rankId=%u, rankSize=%u, numTokens=%ld, hidden=%ld, "
+           "maxR=%ld, numEntries=%ld, commBufferSize=%ld\n",
+           commContext_.epRankId, rankSize, numTokens, hidden,
+           maxR, numEngramEntries_, commBufferSize_);
+    fflush(stdout);
+
     auto gradUnique = at::empty({maxR, hidden},
         at::TensorOptions().dtype(at::kFloat).device(gradFetched.device()));
     auto uniqueLocalEntry = at::empty({maxR},
@@ -623,12 +653,18 @@ std::tuple<at::Tensor, at::Tensor> ElasticBuffer::EngramFetchGrad(
     auto numUnique = at::empty({1},
         at::TensorOptions().dtype(at::kInt).device(gradFetched.device()));
 
+    printf("[Engram] EngramFetchGrad calling aclnnEngramFetchGrad\n");
+    fflush(stdout);
     ACLNN_CMD(aclnnEngramFetchGrad, contextTensor_, gradFetched,
               perm, sendCounts, recvCounts, recvLocalEntry, numRecv,
               gradUnique, uniqueLocalEntry, numUnique,
               numEngramEntries_, commBufferSize_);
+    printf("[Engram] EngramFetchGrad aclnnEngramFetchGrad done\n");
+    fflush(stdout);
 
     int64_t actualK = static_cast<int64_t>(numUnique.item<int32_t>());
+    printf("[Engram] EngramFetchGrad result: actualK=%ld (maxR=%ld)\n", actualK, maxR);
+    fflush(stdout);
     if (actualK < maxR) {
         gradUnique = gradUnique.narrow(0, 0, actualK);
         uniqueLocalEntry = uniqueLocalEntry.narrow(0, 0, actualK);
@@ -654,6 +690,9 @@ void ElasticBuffer::QueryAndExchangeHcclBuffer()
 
     commBufferSize_ = static_cast<int64_t>(localBufferSize);
     commContext_.virtualAddrList[commContext_.epRankId] = reinterpret_cast<uint64_t>(localBuffer);
+    printf("[Engram] QueryHcclBuffer: localBuffer=%p, localBufferSize=%lu (%.1f MB)\n",
+           localBuffer, localBufferSize, localBufferSize / (1024.0 * 1024.0));
+    fflush(stdout);
 
     for (uint32_t i = 0; i < commContext_.rankSize; ++i) {
         if (i == commContext_.epRankId)
@@ -664,10 +703,15 @@ void ElasticBuffer::QueryAndExchangeHcclBuffer()
                                                 &remoteBuffer, &remoteBufSize);
         TORCH_CHECK(hcclRet == HCCL_SUCCESS, "HcclChannelGetHcclBuffer(peer=", i, ") failed, ret=", hcclRet);
         commContext_.virtualAddrList[i] = reinterpret_cast<uint64_t>(remoteBuffer);
+        printf("[Engram] QueryHcclBuffer: peer=%u, remoteBuffer=%p, remoteBufSize=%lu\n",
+               i, remoteBuffer, remoteBufSize);
+        fflush(stdout);
     }
 
     UpdateContextTensor();
     EngramBarrier(true);
+    printf("[Engram] QueryHcclBuffer done: commBufferSize_=%ld\n", commBufferSize_);
+    fflush(stdout);
 }
 
 // UpdateContextTensor - refresh contextTensor_ with latest commContext_

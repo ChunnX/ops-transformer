@@ -551,6 +551,8 @@ static ge::graphStatus EngramFetchTrainTilingFunc(gert::TilingContext *context)
         OP_LOGE_WITH_INVALID_INPUT(nodeName, "nodeName"), return ge::GRAPH_FAILED);
 
     OP_LOGI(nodeName, "Enter EngramFetchTrain tiling func.");
+    printf("[EngramTiling] EngramFetchTrain tiling enter: node=%s\n", nodeName);
+    fflush(stdout);
 
     EngramFetchTrainTilingData *tilingData = context->GetTilingData<EngramFetchTrainTilingData>();
     OP_TILING_CHECK(tilingData == nullptr,
@@ -562,6 +564,10 @@ static ge::graphStatus EngramFetchTrainTilingFunc(gert::TilingContext *context)
     OP_TILING_CHECK(TilingCheckEngramFetchTrain(context, numTokens, rankSize, totalRecv) != ge::GRAPH_SUCCESS,
         OP_LOGE(nodeName, "check input/output failed."), return ge::GRAPH_FAILED);
 
+    printf("[EngramTiling] check tensor ok: numTokens=%ld, rankSize=%u, totalRecv=%ld\n",
+           numTokens, rankSize, totalRecv);
+    fflush(stdout);
+
     OP_TILING_CHECK(CheckAttrs(context) != ge::GRAPH_SUCCESS,
         OP_LOGE(nodeName, "check attrs failed."), return ge::GRAPH_FAILED);
 
@@ -571,10 +577,19 @@ static ge::graphStatus EngramFetchTrainTilingFunc(gert::TilingContext *context)
     OP_TILING_CHECK(SetTilingData(context, *tilingData, numTokens, rankSize, totalRecv) != ge::GRAPH_SUCCESS,
         OP_LOGE(nodeName, "set tiling data failed."), return ge::GRAPH_FAILED);
 
+    printf("[EngramTiling] tilingData set: numMaxTokensPerRank=%ld, localStorageAddr=0x%lx, commBufferSize=%ld\n",
+           tilingData->numMaxTokensPerRank,
+           static_cast<uint64_t>(tilingData->localStorageAddr), tilingData->commBufferSize);
+    fflush(stdout);
+
     SetTilingKey(context);
 
     OP_TILING_CHECK(SetWorkSpace(context, *tilingData) != ge::GRAPH_SUCCESS,
         OP_LOGE(nodeName, "set workspace failed."), return ge::GRAPH_FAILED);
+
+    printf("[EngramTiling] workspace=%zu bytes, tiling done\n",
+           context->GetWorkspaceSizes(1)[0]);
+    fflush(stdout);
 
     PrintEngramFetchTrainTilingData(tilingData, nodeName);
     OP_LOGI(nodeName, "EngramFetchTrain tiling end.");
