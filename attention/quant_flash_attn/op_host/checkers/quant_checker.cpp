@@ -588,8 +588,8 @@ ge::graphStatus QuantChecker::CheckKVShape(const QfaTilingInfo &qfaInfo) const
         return ge::GRAPH_FAILED;
     }
 
-    // v 的 D 用 vHeadDim
-    shapeParams.D = qfaInfo.vHeadDim;
+    // v 的 D 用 qkHeadDim
+    shapeParams.D = qfaInfo.qkHeadDim;
     if (valueShapeCmp_->CompareShape(shapeParams, __func__) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
