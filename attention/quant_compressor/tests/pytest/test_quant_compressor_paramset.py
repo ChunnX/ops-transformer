@@ -242,6 +242,10 @@ TEST_PARAMS = {
         "ape_datarange": [[-10, 10]],
         "kv_state_datarange": [[-10, 10]],
         "score_state_datarange": [[-10, 10]],
+        "x_descale_datarange": [[0.001, 1.0]],
+        "wkv_descale_datarange": [[0.001, 1.0]],
+        "wgate_descale_datarange": [[0.001, 1.0]],
+        "quant_mode": [1],
     }
 }#注意单个用例组内的用例尽量不要超过32
 FIRST_CASE = [TEST_PARAMS["Prefill0"], TEST_PARAMS["Prefill1"], TEST_PARAMS["Prefill2"], TEST_PARAMS["decode0"],
