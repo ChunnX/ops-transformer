@@ -20,16 +20,15 @@
 #include "opdev/tensor_view_utils.h"
 #include "acl/acl.h"
 
-#include <string>
-#include <vector>
-
 using namespace op;
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
+namespace {
 const uint64_t INT4_NUMS_IN_INT32 = 8;
+}
 
 // The weak symbol is available when opbase supports TensorV2 view strides.
 bool NnopbaseSupportTensorV2() __attribute__((weak));
