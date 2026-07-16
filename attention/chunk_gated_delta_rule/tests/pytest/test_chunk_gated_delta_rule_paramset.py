@@ -25,6 +25,7 @@ TEST_PARAMS = {
         "data_type": [torch.bfloat16],
         "state_data_type": [torch.bfloat16],
         "has_g": [True],
+        "is_contiguous": [True],
     },
     "Testcase1": {
         "B": [1],
@@ -37,6 +38,7 @@ TEST_PARAMS = {
         "data_type": [torch.bfloat16],
         "state_data_type": [torch.bfloat16],
         "has_g": [True],
+        "is_contiguous": [True],
     }
 }
 #注意单个用例组内的用例尽量不要超过32

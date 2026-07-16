@@ -178,7 +178,8 @@ def chunk_gdn_benchmark_opt(
     scale,              # float
     initial_state,      # (B, Nv, Dv, Dk)
     actual_seq_lengths, # (B,)
-    g = None            # (T, Nv)
+    g = None,           # (T, Nv)
+    chunk_size=64,
 ):
     T, Nk, Dk = query.shape
     B, Nv, Dv, _ = initial_state.shape
@@ -186,12 +187,11 @@ def chunk_gdn_benchmark_opt(
 
     if g is None:
         g = torch.zeros((T, Nv), dtype=torch.float32, device=device)
-    attn_out = torch.empty((T, Nv, Dv), dtype=query.dtype, device=device)
-    attn_out = (attn_out).to(torch.bfloat16)
+    attn_out = torch.empty((T, Nv, Dv), dtype=torch.bfloat16, device=device)
     final_state = torch.empty_like(initial_state).to(torch.bfloat16)
 
     start = 0
-    C = 64
+    C = chunk_size
     for bid in range(B):
         cur_state = initial_state[bid].clone()
         S = actual_seq_lengths[bid]
@@ -203,10 +203,10 @@ def chunk_gdn_benchmark_opt(
         cur_state, attn_inter, v_new = stage2_opt(
             q_prime, v_inner, g_cum, k_cum_decay, cur_state, kg, C)
         final_state[bid] = cur_state.to(torch.bfloat16)
-        attn_out_paddend = stage3_opt(
+        attn_out_padded = stage3_opt(
             qkt, scale, g_cum, attn_inter, v_new, C)
         
-        attn_out[start:end, ...] = attn_out_paddend[:S]
+        attn_out[start:end, ...] = attn_out_padded[:S]
         start = end
 
     return attn_out, final_state

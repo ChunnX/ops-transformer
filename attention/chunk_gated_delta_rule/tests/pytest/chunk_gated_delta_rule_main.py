@@ -133,7 +133,7 @@ def compare_cv(golden: torch.Tensor, golden_high_type: torch.Tensor, actual: tor
     return result
 
 
-def cgdr_golden(q, k, v, g, beta, scale, initial_state, actual_seq_lengths, use_float64=False):
+def cgdr_golden(q, k, v, g, beta, scale, initial_state, actual_seq_lengths, use_float64=False, chunk_size=64):
     t0 = time.time()
     cu_seqlens = F.pad(actual_seq_lengths, (1, 0)).cumsum(dim=0)
     if use_float64:
@@ -150,7 +150,8 @@ def cgdr_golden(q, k, v, g, beta, scale, initial_state, actual_seq_lengths, use_
         beta.unsqueeze(0).to(v.device).to(v.dtype),
         scale=scale,
         initial_state=initial_state.transpose(-1, -2).clone().to(v.device).to(v.dtype),
-        cu_seqlens=cu_seqlens.to(v.device)
+        cu_seqlens=cu_seqlens.to(v.device),
+        chunk_size=chunk_size
     )
     o_golden = o_golden[0]
     state_golden = state_golden.transpose(-1, -2)
@@ -158,7 +159,7 @@ def cgdr_golden(q, k, v, g, beta, scale, initial_state, actual_seq_lengths, use_
     return o_golden.to(torch.float32).npu(), state_golden.to(torch.float32).npu()
 
 
-def cgdr_benchmark(q, k, v, g, beta, scale, initial_state, actual_seq_lengths):
+def cgdr_benchmark(q, k, v, g, beta, scale, initial_state, actual_seq_lengths, chunk_size=64):
     dtype = torch.bfloat16
     if g is None:
         g = torch.zeros((v.shape[0], v.shape[1])).to(v.device).to(torch.float32)
@@ -170,7 +171,9 @@ def cgdr_benchmark(q, k, v, g, beta, scale, initial_state, actual_seq_lengths):
         scale,
         initial_state.to(dtype),
         actual_seq_lengths,
-        g)
+        g,
+        chunk_size=chunk_size
+    )
     o_bench = o_bench.to(torch.float32)
     state_bench = state_bench.to(torch.float32)
     return o_bench, state_bench
@@ -193,10 +196,17 @@ def cgdr_npu(q, k, v, g, beta, scale, initial_state, actual_seq_lengths):
 def run_chunk_gated_delta_rule_eager(B, seqlen, nk, nv, dk, dv, chunk_size=64,
                                      data_type=torch.bfloat16,
                                      state_data_type=torch.bfloat16,
-                                     has_g=True):
+                                     has_g=True,
+                                     is_contiguous=True):
     torch_npu.npu.set_device(int(DEVICE_ID))
     # ======================== gen input data start =============================
-    T = B * seqlen
+    if isinstance(seqlen, (list, tuple)):
+        seqlen_list = list(seqlen)
+        B = len(seqlen_list)
+        T = sum(seqlen_list)
+    else:
+        seqlen_list = [seqlen] * B
+        T = B * seqlen
     q = torch.rand((T, nk, dk), dtype=data_type, device="npu:%s" % DEVICE_ID)
     k = torch.rand((T, nk, dk), dtype=data_type, device="npu:%s" % DEVICE_ID)
     v = torch.rand((T, nv, dv), dtype=data_type, device="npu:%s" % DEVICE_ID)
@@ -209,12 +219,12 @@ def run_chunk_gated_delta_rule_eager(B, seqlen, nk, nv, dk, dv, chunk_size=64,
     k = torch.nn.functional.normalize(k, p=2, dim=-1)
     scale = 1 / (dk ** 0.5)
     initial_state = torch.rand((B, nv, dv, dk), dtype=state_data_type, device="npu:%s" % DEVICE_ID)
-    actual_seq_lengths = torch.tensor([seqlen] * B, dtype=torch.int32, device="npu:%s" % DEVICE_ID)
+    actual_seq_lengths = torch.tensor(seqlen_list, dtype=torch.int32, device="npu:%s" % DEVICE_ID)
     # ======================== gen input data finish =============================
 
     # ======================== execute golden/benchmark/npu ================================
-    o_golden, state_golden = cgdr_golden(q, k, v, g, beta, scale, initial_state, actual_seq_lengths, use_float64=False)
-    o_bench, state_bench = cgdr_benchmark(q, k, v, g, beta, scale, initial_state, actual_seq_lengths)
+    o_golden, state_golden = cgdr_golden(q, k, v, g, beta, scale, initial_state, actual_seq_lengths, use_float64=False, chunk_size=chunk_size)
+    o_bench, state_bench = cgdr_benchmark(q, k, v, g, beta, scale, initial_state, actual_seq_lengths, chunk_size=chunk_size)
     o_npu, state_npu = cgdr_npu(q, k, v, g, beta, scale, initial_state, actual_seq_lengths)
     # ======================== check result ================================
     ret = True
@@ -242,5 +252,6 @@ def run_precision_test(inputs):
         inputs['nv'], inputs['dk'], inputs['dv'], inputs['chunk_size'],
         data_type=inputs['data_type'],
         state_data_type=inputs.get('state_data_type', torch.bfloat16),
-        has_g=inputs.get('has_g', True)
+        has_g=inputs.get('has_g', True),
+        is_contiguous=inputs.get('is_contiguous', True)
     )
