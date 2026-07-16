@@ -7,10 +7,13 @@
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
-#ifndef QUANT_ALL_REDUCE_H
-#define QUANT_ALL_REDUCE_H
-// <<<>>>调用函数声明
-void quant_all_reduce_demo(int8_t type, uint32_t blockDim, void *stream, uint8_t *x, uint8_t *scales, uint8_t *output,
-                           uint8_t *workspaceGM, uint8_t *mc2Context, uint8_t *tilingGM);
 
-#endif // QUANT_ALL_REDUCE_H
+#ifndef LOCAL_MS_RW_H
+#define LOCAL_MS_RW_H
+
+#include <cstdint>
+
+void local_ms_rw_demo(uint32_t mode0, uint32_t mode1, uint64_t dataSize, uint32_t blockDim, void *stream,
+                      uint8_t *msAddr0, uint8_t *msAddr1, uint8_t *msAddr2, uint8_t *msAddr3, uint8_t *timeAddr);
+
+#endif // LOCAL_MS_RW_H

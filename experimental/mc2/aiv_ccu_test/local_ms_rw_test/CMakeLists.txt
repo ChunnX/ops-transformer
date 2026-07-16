@@ -8,15 +8,19 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 cmake_minimum_required(VERSION 3.16)
-project(Ascend_c)
+project(Ascend_c_local_ms_rw)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
-set(SOC_VERSION "Ascend310P3" CACHE STRING "system on chip type")
+set(SOC_VERSION "ascend950pr_9599" CACHE STRING "system on chip type")
 set(ASCEND_CANN_PACKAGE_PATH "/usr/local/Ascend/cann"
     CACHE STRING "ASCEND CANN package installation directory"
 )
+# hcomm 源码路径（用于获取内部头文件）
+set(HCOMM_SRC_PATH "/Users/coke/Desktop/Ascend/hcomm"
+    CACHE STRING "hcomm source directory"
+)
 if(NOT CMAKE_BUILD_TYPE)
-    set(CMAKE_BUILD_TYPE "Debug" CACHE STRING "Build type Release/Debug (default Debug)" FORCE)
+    set(CMAKE_BUILD_TYPE "Release" CACHE STRING "Build type Release/Debug (default Release)" FORCE)
 endif()
 if(CMAKE_INSTALL_PREFIX STREQUAL /usr/local)
     set(CMAKE_INSTALL_PREFIX "${CMAKE_CURRENT_LIST_DIR}/out" CACHE STRING "path for install()" FORCE)
@@ -27,7 +31,7 @@ if(NOT DEFINED ENV{CMAKE_PREFIX_PATH})
 endif()
 
 file(GLOB KERNEL_FILES
-    ${CMAKE_CURRENT_SOURCE_DIR}/quant_all_reduce.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/local_ms_rw.cpp
 )
 
 if(EXISTS ${ASCEND_CANN_PACKAGE_PATH}/compiler/tikcpp/ascendc_kernel_cmake)
@@ -35,33 +39,37 @@ if(EXISTS ${ASCEND_CANN_PACKAGE_PATH}/compiler/tikcpp/ascendc_kernel_cmake)
 elseif(EXISTS ${ASCEND_CANN_PACKAGE_PATH}/tools/tikcpp/ascendc_kernel_cmake)
     set(ASCENDC_CMAKE_DIR ${ASCEND_CANN_PACKAGE_PATH}/tools/tikcpp/ascendc_kernel_cmake)
 else()
-    message(FATAL_ERROR "ascendc_kernel_cmake does not exist ,please check whether the cann package is installed")
+    message(FATAL_ERROR "ascendc_kernel_cmake does not exist, please check whether the cann package is installed")
 endif()
 include(${ASCENDC_CMAKE_DIR}/ascendc.cmake)
 
-# ascendc_library use to add kernel file to generate ascendc library
-ascendc_library(ascendc_kernels SHARED ${KERNEL_FILES})
+# ascendc_library: 编译 kernel 生成动态库
+ascendc_library(ascendc_kernels_ms_rw SHARED ${KERNEL_FILES})
 
-add_executable(test_quant_all_reduce
-    ${CMAKE_CURRENT_SOURCE_DIR}/test_quant_all_reduce.cpp
+# test 可执行文件
+add_executable(test_local_ms_rw
+    ${CMAKE_CURRENT_SOURCE_DIR}/test_local_ms_rw.cpp
 )
 
-target_compile_options(test_quant_all_reduce PRIVATE
+target_compile_options(test_local_ms_rw PRIVATE
     -O2 -std=c++17 -D_GLIBCXX_USE_CXX11_ABI=0 -Wall -Werror
 )
 
-target_compile_definitions(test_quant_all_reduce PRIVATE
+target_compile_definitions(test_local_ms_rw PRIVATE
     SOC_VERSION="${SOC_VERSION}"
 )
 
-target_include_directories(test_quant_all_reduce PRIVATE
+target_include_directories(test_local_ms_rw PRIVATE
     ${ASCEND_CANN_PACKAGE_PATH}/pkg_inc
     ${ASCEND_CANN_PACKAGE_PATH}/include
+    ${HCOMM_SRC_PATH}/include
+    ${HCOMM_SRC_PATH}/src/legacy/ascend950/unified_platform/common
+    ${HCOMM_SRC_PATH}/src/legacy/ascend950/unified_platform/external_system
 )
 
-target_link_libraries(test_quant_all_reduce PRIVATE
+target_link_libraries(test_local_ms_rw PRIVATE
     host_intf_pub
-    ascendc_kernels
+    ascendc_kernels_ms_rw
     tiling_api
     platform
     pthread
@@ -69,7 +77,7 @@ target_link_libraries(test_quant_all_reduce PRIVATE
     hcomm
 )
 
-install(TARGETS test_quant_all_reduce
+install(TARGETS test_local_ms_rw
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
     ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
