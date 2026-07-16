@@ -16,6 +16,7 @@ from golden_a2_a5 import (
     compute_reference,
     dtype_name,
     make_inputs,
+    read_tensor,
     save_tensor,
 )
 
@@ -29,11 +30,33 @@ def tensor_record(relative_path: Path, tensor: torch.Tensor, sha256: str):
     }
 
 
-def generate(case, output_root: Path, golden_device: str):
+def _load_existing_inputs(case_dir: Path, manifest):
+    tensors = {}
+    for name, description in manifest["inputs"].items():
+        if name.startswith("softmax_"):
+            continue
+        tensors[name] = read_tensor(
+            case_dir / description["file"],
+            description["shape"],
+            description["dtype"],
+        )
+    return tensors
+
+
+def generate(case, output_root: Path, golden_device: str, reuse_existing: bool = False):
     validate_case(case)
-    seed = secrets.randbits(63)
     case_dir = output_root / str(case["id"])
-    tensors, metadata = make_inputs(case, seed)
+    manifest_path = case_dir / "case_manifest.json"
+    if reuse_existing:
+        if not manifest_path.exists():
+            raise FileNotFoundError(f"cannot reuse missing manifest: {manifest_path}")
+        previous = json.loads(manifest_path.read_text(encoding="utf-8"))
+        seed = int(previous["seed"])
+        metadata = previous["metadata"]
+        tensors = _load_existing_inputs(case_dir, previous)
+    else:
+        seed = secrets.randbits(63)
+        tensors, metadata = make_inputs(case, seed)
     stats, outputs = compute_reference(tensors, case, metadata, device=golden_device)
     tensors.update(stats)
 
@@ -73,11 +96,12 @@ def main():
     parser.add_argument("--suite", choices=("smoke", "typical", "full"), action="append")
     parser.add_argument("--case", action="append")
     parser.add_argument("--golden-device", default="cpu")
+    parser.add_argument("--reuse-existing", action="store_true")
     args = parser.parse_args()
     suites = args.suite or ["smoke"]
     cases = select_cases(args.root, suites, args.case)
     for case in cases:
-        case_dir = generate(case, args.output_root, args.golden_device)
+        case_dir = generate(case, args.output_root, args.golden_device, args.reuse_existing)
         print(f"generated {case['id']}: {case_dir}")
 
 

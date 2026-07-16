@@ -187,9 +187,12 @@ def _batch_slice(
 
 
 def _chunk_size(n1: int, n1_index: int, s2: int) -> int:
-    # Bound score tensors so the reference can run beside production workloads.
-    denominator = max(n1, n1_index) * max(s2, 1)
-    return max(1, min(256, (16 * 1024 * 1024) // max(denominator, 1)))
+    del n1, n1_index
+    if s2 <= 40 * 1024:
+        return 512
+    if s2 <= 80 * 1024:
+        return 256
+    return 64
 
 
 def compute_reference(
