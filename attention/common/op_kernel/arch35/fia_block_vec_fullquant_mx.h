@@ -330,7 +330,7 @@ public:
         }
 
         if (unlikely(runInfo.isFirstS2Loop)) {
-            if (!isSkipMask) {
+            if (unlikely(!isSkipMask)) {
                 FaVectorApi::ProcessVec1VfDnMxfp8<T, INPUT_T, false, hasAtten, s2BaseSizeCur>(
                     stage1CastTensor, sumUb, maxUb, mmRes, expUb,
                     this->vselrIndexesBuf, attenMaskUb, pScaleSubLoop0Tensor,
@@ -346,7 +346,7 @@ public:
                     0.0F, preLoopMaxUb, preLoopSumUb, firstLoopSumUb, subLoop);
             }
         } else {
-            if (!isSkipMask) {
+            if (unlikely(!isSkipMask)) {
                 FaVectorApi::ProcessVec1VfDnMxfp8<T, INPUT_T, true, hasAtten, s2BaseSizeCur>(
                     stage1CastTensor, sumUb, maxUb, mmRes, expUb,
                     this->vselrIndexesBuf, attenMaskUb, pScaleSubLoop0Tensor,
@@ -384,7 +384,7 @@ public:
                 DataCopy(mm2AScaleL1Tensor[vecOffset + i * blockBytes],
                     pScaleSubLoop0Tensor, {4, 1, 0, pScaleDstStride});
             }
-        } else if (runInfo.actSingleLoopS2Size <= s2SplitSize) {
+        } else if (unlikely(runInfo.actSingleLoopS2Size <= s2SplitSize)) {
             // 一次循环拷贝32个S1的scale，每个S1对应8个scale
             // actVecMSize为64，通过2次拷贝覆盖完整的S1分形需求
             for (uint16_t i = 0; i < 2; i++) {
@@ -567,8 +567,8 @@ public:
         if (runInfo.actSingleLoopS2Size > s2SplitSize) {
             s2CalcSize = subLoop == 0 ? s2BaseSizeCur : runInfo.actSingleLoopS2Size - s2BaseSizeCur;
         }
-        if (runInfo.isFirstS2Loop) {
-            if (likely(s2CalcSize == 128)) {
+        if (unlikely(runInfo.isFirstS2Loop)) {
+            if (unlikely(s2CalcSize == 128)) {
                 ProcessVec1VfMxfp8<T, INPUT_T, pseShiftType, false, mBaseSize, s2BaseSizeCur, EQ_128, HAS_MASK, pseMode,
                                    hasDrop, false, false, false, false>(
                     stage1CastTensor, this->vselrIndexesBuf, sumUb, maxUb, mmRes, expUb, sumUb, maxUb, attenMaskUb,
@@ -576,7 +576,7 @@ public:
                     firstLoopSumUb, subLoop, actVecMSizeAlign16, s2CalcSize, pseStride, slopes, posShift,
                     static_cast<T>(constInfo.scaleValue), descaleQK, negativeFloatScalar, 0.0F, queryScaleUb,
                     deSCaleKValue, pScaleValue);
-            } else if (s2CalcSize <= 64) {
+            } else if (unlikely(s2CalcSize <= 64)) {
                 ProcessVec1VfMxfp8<T, INPUT_T, pseShiftType, false, mBaseSize, s2BaseSizeCur, GT_0_AND_LTE_64, HAS_MASK,
                                    pseMode, hasDrop, false, false, false, false>(
                     stage1CastTensor, this->vselrIndexesBuf, sumUb, maxUb, mmRes, expUb, sumUb, maxUb, attenMaskUb,
@@ -584,7 +584,7 @@ public:
                     firstLoopSumUb, subLoop, actVecMSizeAlign16, s2CalcSize, pseStride, slopes, posShift,
                     static_cast<T>(constInfo.scaleValue), descaleQK, negativeFloatScalar, 0.0F, queryScaleUb,
                     deSCaleKValue, pScaleValue);
-            } else if (s2CalcSize < 128) {
+            } else if (unlikely(s2CalcSize < 128)) {
                 ProcessVec1VfMxfp8<T, INPUT_T, pseShiftType, false, mBaseSize, s2BaseSizeCur, GT_64_AND_LTE_128,
                                    HAS_MASK, pseMode, hasDrop, false, false, false, false>(
                     stage1CastTensor, this->vselrIndexesBuf, sumUb, maxUb, mmRes, expUb, sumUb, maxUb, attenMaskUb,
@@ -604,7 +604,7 @@ public:
                 }
             }
         } else {
-            if (likely(s2CalcSize == 128)) {
+            if (unlikely(s2CalcSize == 128)) {
                 ProcessVec1VfMxfp8<T, INPUT_T, pseShiftType, true, mBaseSize, s2BaseSizeCur, EQ_128, HAS_MASK, pseMode,
                                    hasDrop, false, false, false, false>(
                     stage1CastTensor, this->vselrIndexesBuf, sumUb, maxUb, mmRes, expUb, sumUb, maxUb, attenMaskUb,
@@ -612,7 +612,7 @@ public:
                     firstLoopSumUb, subLoop, actVecMSizeAlign16, s2CalcSize, pseStride, slopes, posShift,
                     static_cast<T>(constInfo.scaleValue), descaleQK, negativeFloatScalar, 0.0F, queryScaleUb,
                     deSCaleKValue, pScaleValue);
-            } else if (s2CalcSize <= 64) {
+            } else if (unlikely(s2CalcSize <= 64)) {
                 ProcessVec1VfMxfp8<T, INPUT_T, pseShiftType, true, mBaseSize, s2BaseSizeCur, GT_0_AND_LTE_64, HAS_MASK,
                                    pseMode, hasDrop, false, false, false, false>(
                     stage1CastTensor, this->vselrIndexesBuf, sumUb, maxUb, mmRes, expUb, sumUb, maxUb, attenMaskUb,
@@ -620,7 +620,7 @@ public:
                     firstLoopSumUb, subLoop, actVecMSizeAlign16, s2CalcSize, pseStride, slopes, posShift,
                     static_cast<T>(constInfo.scaleValue), descaleQK, negativeFloatScalar, 0.0F, queryScaleUb,
                     deSCaleKValue, pScaleValue);
-            } else if (s2CalcSize < 128) {
+            } else if (unlikely(s2CalcSize < 128)) {
                 ProcessVec1VfMxfp8<T, INPUT_T, pseShiftType, true, mBaseSize, s2BaseSizeCur, GT_64_AND_LTE_128,
                                    HAS_MASK, pseMode, hasDrop, false, false, false, false>(
                     stage1CastTensor, this->vselrIndexesBuf, sumUb, maxUb, mmRes, expUb, sumUb, maxUb, attenMaskUb,
@@ -663,7 +663,7 @@ public:
                 DataCopy(mm2AScaleL1Tensor[pScaleSubLoopOffset + vecOffset + i * 32],
                     pScaleSubLoop0Tensor[128], {copyCount, 1, 0, pScaleDstStride});
             }
-        } else if (runInfo.actSingleLoopS2Size <= s2SplitSize) {
+        } else if (unlikely(runInfo.actSingleLoopS2Size <= s2SplitSize)) {
             for (uint16_t i = 0; i < 4; i++) {
                 DataCopy(mm2AScaleL1Tensor[vecOffset + i * 32],
                     pScaleSubLoop0Tensor, {copyCount, 1, 0, pScaleDstStride});
@@ -716,7 +716,7 @@ public:
             LocalTensor<T> pScaleUb;
 
             constexpr float deSCalePreVValue = 1.0f;
-            if (!runInfo.isLastS2Loop) {
+            if (likely(!runInfo.isLastS2Loop)) {
                 FlashUpdateNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64, false, false>(
                     vec2ResUb, mmRes, vec2ResUb, expUb, pScaleUb, vecMSize, dTemplateAlign64, 1.0f, 1.0f);
             } else {
@@ -727,7 +727,7 @@ public:
             }
         }
         bmm2ResBuf.SetCrossCore();
-        if (runInfo.isLastS2Loop) {
+        if (unlikely(runInfo.isLastS2Loop)) {
             if (unlikely(runInfo.isFirstS2Loop)) {
                 LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.mloop % (PRELOAD_N + 1)].template Get<float>();
                 LastDivNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64, false>(
@@ -883,7 +883,7 @@ public:
 
     __aicore__ inline void CopyAttentionOut(FaUbTensor<OUTPUT_T, false> &ubTensor, GmCoord &gmCoord)
     {
-        if (constInfo.outputLayout == FIA_LAYOUT::BSH) {
+        if constexpr (outLayout == LayOutTypeEnum::LAYOUT_BSH) {
             constexpr GmFormat OUT_FORMAT = GmFormat::BSNGD;
             FaGmTensor<OUTPUT_T, OUT_FORMAT> outGmTensor;
             outGmTensor.gmTensor = attentionOutGm;
@@ -892,7 +892,7 @@ public:
                                               constInfo.actualSeqLenSize, false, 0);
             CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<layout>()> copyAttenOutUbToGm;
             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
-        } else if (constInfo.outputLayout == FIA_LAYOUT::BNSD) {
+        } else if constexpr (outLayout == LayOutTypeEnum::LAYOUT_BNSD) {
             constexpr GmFormat OUT_FORMAT = GmFormat::BNGSD;
             FaGmTensor<OUTPUT_T, OUT_FORMAT> outGmTensor;
             outGmTensor.gmTensor = attentionOutGm;
@@ -901,7 +901,7 @@ public:
                                               constInfo.actualSeqLenSize, false, 0);
             CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<layout>()> copyAttenOutUbToGm;
             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
-        } else if (constInfo.outputLayout == FIA_LAYOUT::TND) {
+        } else if constexpr (outLayout == LayOutTypeEnum::LAYOUT_TND) {
             constexpr GmFormat OUT_FORMAT = GmFormat::TNGD;
             FaGmTensor<OUTPUT_T, OUT_FORMAT> outGmTensor;
             outGmTensor.gmTensor = attentionOutGm;
@@ -909,7 +909,7 @@ public:
                                               actualSeqLengthsGmQ, constInfo.actualSeqLenSize);
             CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<layout>()> copyAttenOutUbToGm;
             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
-        } else if (constInfo.outputLayout == FIA_LAYOUT::NTD) {
+        } else if constexpr (outLayout == LayOutTypeEnum::LAYOUT_NTD) {
             constexpr GmFormat OUT_FORMAT = GmFormat::NGTD;
             FaGmTensor<OUTPUT_T, OUT_FORMAT> outGmTensor;
             outGmTensor.gmTensor = attentionOutGm;
@@ -1109,24 +1109,10 @@ public:
         maskInfo.attenMaskType = MASK_BOOL; // compatible with int8/uint8
 
         bool IsSkipMask = IsSkipAttentionmask(maskInfo);
-        bool IsSkipMaskForPre = IsSkipAttentionmaskForPre(maskInfo);
-        if (IsSkipMask && IsSkipMaskForPre) {
-            Duplicate(attenMaskUb, static_cast<uint8_t>(0U), maskInfo.gs1dealNum * s2BaseSizeCur);
-            return;
-        }
-
-        if (!IsSkipMask) {
+        if (unlikely(!IsSkipMask)) {
             AttentionmaskCopyIn<uint8_t, MASK_LAYOUT, true, s2BaseSizeCur>(attenMaskUb, attenMaskGmInt, maskInfo);
         } else {
             Duplicate(attenMaskUb, static_cast<uint8_t>(0U), maskInfo.gs1dealNum * s2BaseSizeCur);
-        }
-
-        if (!IsSkipMaskForPre) {
-            LocalTensor<uint8_t> attenMaskUbPre = this->attenMaskInQue[0].template AllocTensor<uint8_t>();
-            AttentionmaskCopyIn<uint8_t, MASK_LAYOUT, true, s2BaseSizeCur>(attenMaskUbPre, attenMaskGmInt,
-                maskInfo, true);
-            MergeMask(attenMaskUb, attenMaskUbPre, maskInfo.gs1dealNum, s2BaseSizeCur);
-            this->attenMaskInQue[0].template FreeTensor(attenMaskUbPre);
         }
     }
 
@@ -1162,7 +1148,7 @@ public:
         maskInfo.attenMaskType = MASK_BOOL; // compatible with int8/uint8
 
         isSkipMask = IsSkipAttentionmask(maskInfo);
-        if (!isSkipMask) {
+        if (unlikely(!isSkipMask)) {
             AttentionmaskCopyInDn<uint8_t, MASK_LAYOUT, true, s2BaseSizeCur>(attenMaskUb, attenMaskGmInt, maskInfo);
         }
     }
