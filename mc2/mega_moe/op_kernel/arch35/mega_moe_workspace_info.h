@@ -160,16 +160,18 @@ struct WorkspaceInfo {
         workspaceSize += Ops::Base::CeilAlign(tilingData->maxOutputSize * ALIGN_32, ALIGN_512);
 
         flagSwiGluToGmm2Ptr = base + workspaceSize;
-        workspaceSize += SIZE_INT_32 * tilingData->expertPerRank * INT_CACHELINE;
-
-        flagDispatchToGmm1Ptr = base + workspaceSize;
-        // wave-grain dispatch flag: per expert allocate one slot per wave,
-        // aligned up to INT_CACHELINE so each expert's slot block stays cache-line clean.
         int64_t dispatchTileM = static_cast<int64_t>(MegaMoeImpl::L1_TILE_M_256);
         int64_t maxWavesPerExpert = Ops::Base::CeilDiv(static_cast<int64_t>(tilingData->maxOutputSize), dispatchTileM);
-        int64_t dispatchFlagSlotsPerExpert =
+        int64_t waveFlagSlotsPerExpert =
             Ops::Base::CeilAlign(maxWavesPerExpert, static_cast<int64_t>(INT_CACHELINE));
-        workspaceSize += SIZE_INT_32 * tilingData->expertPerRank * dispatchFlagSlotsPerExpert;
+        // Interleaved GMM1 lets GMM2 consume each completed 256-row SwiGLU
+        // wave. Reserve a cache-line-clean slot range per expert; the default
+        // layout simply uses the first slot in each range.
+        workspaceSize += SIZE_INT_32 * tilingData->expertPerRank * waveFlagSlotsPerExpert;
+
+        flagDispatchToGmm1Ptr = base + workspaceSize;
+        // Dispatch readiness already uses the same wave-grain layout.
+        workspaceSize += SIZE_INT_32 * tilingData->expertPerRank * waveFlagSlotsPerExpert;
 
         // 每(expert, aiCore)单独占一个cache_line
         flagSendCntCalToUpdParamsPtr = base + workspaceSize;

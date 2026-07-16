@@ -169,9 +169,11 @@ private:
     uint32_t expertPerRank_ = 0;
     int64_t hiddenDim_ = 0;
     uint64_t maxOutputSize_ = 0;
+    uint16_t gmm1PingPongIdx_ = 0;
     uint32_t startBlockIdx_ = 0;
     uint32_t blockNumPerRank_ = 2;
     int32_t dispatchFlagSlotsPerExpert_ = 0;
+    int32_t swigluFlagSlotsPerExpert_ = 0;
     int32_t maxWavesPerExpert_ = 0;
     uint32_t blockNum_ = GetBlockNum();
     uint32_t blockAivNum_ = GetBlockNum() * 2;
@@ -290,6 +292,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Init(
         Ops::Base::CeilDiv(static_cast<int64_t>(maxOutputSize_), static_cast<int64_t>(MegaMoeImpl::L1_TILE_M_256)));
     dispatchFlagSlotsPerExpert_ = static_cast<int32_t>(
         Ops::Base::CeilAlign(static_cast<int64_t>(maxWavesPerExpert_), static_cast<int64_t>(INT_CACHELINE)));
+    swigluFlagSlotsPerExpert_ = dispatchFlagSlotsPerExpert_;
     hiddenDim_ = tilingData->hiddenDim;
     mc2Context_ = reinterpret_cast<__gm__ Mc2MoeContext *>(context);
     rankId_ = mc2Context_->epRankId;
@@ -505,7 +508,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::SendAndQuantBuff
     // 计算 resetTensor 大小（与原逻辑一致）
     uint64_t totalFlagInt32 =
         static_cast<uint64_t>(expertPerRank_) *
-        (static_cast<uint64_t>(INT_CACHELINE) + static_cast<uint64_t>(dispatchFlagSlotsPerExpert_) +
+        (static_cast<uint64_t>(swigluFlagSlotsPerExpert_) + static_cast<uint64_t>(dispatchFlagSlotsPerExpert_) +
          static_cast<uint64_t>(INT_CACHELINE) * static_cast<uint64_t>(aicNum_)); // 64 * (16 + 256 + 16 * 28) = 46080
     int64_t tokenGroupResetSize = static_cast<int64_t>(expertPerRank_) * blockAivNum_ * INT_CACHELINE;
     totalFlagInt32 = (static_cast<int64_t>(totalFlagInt32) > tokenGroupResetSize) ?
@@ -583,12 +586,13 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ResetFlagList()
         return;
     }
     // workSpace Flag 清零
-    // 总数 = SwiGluToGmm2(expertPerRank * INT_CACHELINE) + DispatchToGmm1(expertPerRank * dispatchFlagSlotsPerExpert_)
-    //        + SendCntCalToUpdParams(expertPerRank * aicNum_ * INT_CACHELINE)
+    // 总数 = SwiGluToGmm2(moeExpertPerRank * swigluFlagSlotsPerExpert_)
+    //        + DispatchToGmm1(moeExpertPerRank * dispatchFlagSlotsPerExpert_)
+    //        + SendCntCalToUpdParams(moeExpertPerRank * aicNum_ * INT_CACHELINE)
     swigluToGmm2FlagGm_.SetGlobalBuffer((__gm__ int32_t *)params_.workspaceInfo.flagSwiGluToGmm2Ptr);
-    int32_t flagNum =
-        static_cast<int32_t>(moeExpertPerRank_) * (static_cast<int32_t>(INT_CACHELINE) + dispatchFlagSlotsPerExpert_ +
-                                                   static_cast<int32_t>(INT_CACHELINE) * static_cast<int32_t>(aicNum_));
+    int32_t flagNum = static_cast<int32_t>(moeExpertPerRank_) *
+                      (swigluFlagSlotsPerExpert_ + dispatchFlagSlotsPerExpert_ +
+                       static_cast<int32_t>(INT_CACHELINE) * static_cast<int32_t>(aicNum_));
     int32_t coreLen, coreOffset;
     TilingByCore(flagNum, coreLen, coreOffset, 1);
     DataCopyExtParams rankSyncCopyParams{1U, static_cast<uint32_t>(coreLen * sizeof(int32_t)), 0U, 0U, 0U};
@@ -2148,13 +2152,15 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::GroupMatmulWithS
             params_.tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4_NZ) {
             MegaMoeImpl::GroupMatmulSwigluQuant<QuantOutType, SwigluQuantOutType, QuantOutType, bfloat16_t,
                                                 QuantScaleOutType, QuantScaleOutType, true, MegaMoeImpl::L1_TILE_M_256,
-                                                MegaMoeImpl::L1_TILE_M_256, false, IsShared>(
-                epilogueOp, params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom, 0);
+                                                MegaMoeImpl::L1_TILE_M_256, false, IsShared, false>(
+                epilogueOp, params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom, 0, 0,
+                gmm1PingPongIdx_);
         } else {
             MegaMoeImpl::GroupMatmulSwigluQuant<QuantOutType, SwigluQuantOutType, QuantOutType, bfloat16_t,
                                                 QuantScaleOutType, QuantScaleOutType, false, MegaMoeImpl::L1_TILE_M_256,
-                                                MegaMoeImpl::L1_TILE_M_256, false, IsShared>(
-                epilogueOp, params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom, 0);
+                                                MegaMoeImpl::L1_TILE_M_256, false, IsShared, false>(
+                epilogueOp, params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom, 0, 0,
+                gmm1PingPongIdx_);
         }
     }
 }
@@ -2173,21 +2179,21 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::GroupMatmulWithC
     if constexpr (ENABLE_A8W4 || ENABLE_A4W4) {
         MegaMoeImpl::GroupMatmul2CombineA8W4<CombineQuantMode, SwigluQuantOutType, Weight1Type, bfloat16_t,
                                              QuantScaleOutType, QuantScaleOutType, MegaMoeImpl::L1_TILE_M_256, false,
-                                             IsShared, true>(params_, state.problemShape, gmmAddrInfo, startBlockIdx_,
-                                                             vecSetSyncCom, state.expertBeforeCnt, gmm2PingPongIdx_,
-                                                             expertIdx);
+                                             IsShared, true, false>(
+            params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom, state.expertBeforeCnt,
+            gmm2PingPongIdx_, expertIdx);
     } else {
         // A8W8_NZ / Generic: both use the same GroupMatmul2 template, only LayoutB differs (ZN vs ND).
         if (params_.tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ) {
             MegaMoeImpl::GroupMatmul2<CombineQuantMode, QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType,
-                                      QuantScaleOutType, true, true, MegaMoeImpl::L1_TILE_M_256, false, IsShared>(
-                params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom, state.expertBeforeCnt,
-                gmm2PingPongIdx_, expertIdx);
+                                      QuantScaleOutType, true, true, MegaMoeImpl::L1_TILE_M_256, false, IsShared,
+                                      false>(params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom,
+                                             state.expertBeforeCnt, gmm2PingPongIdx_, expertIdx);
         } else {
             MegaMoeImpl::GroupMatmul2<CombineQuantMode, QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType,
-                                      QuantScaleOutType, false, true, MegaMoeImpl::L1_TILE_M_256, false, IsShared>(
-                params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom, state.expertBeforeCnt,
-                gmm2PingPongIdx_, expertIdx);
+                                      QuantScaleOutType, false, true, MegaMoeImpl::L1_TILE_M_256, false, IsShared,
+                                      false>(params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom,
+                                             state.expertBeforeCnt, gmm2PingPongIdx_, expertIdx);
         }
     }
     if constexpr (g_coreType == AIV && !IsShared) {
