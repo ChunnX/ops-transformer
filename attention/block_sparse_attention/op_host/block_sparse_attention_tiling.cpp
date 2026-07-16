@@ -904,7 +904,6 @@ void BSATiling::CalcSplitCoreTilingParams950()
     yBlockNumAligned_ = (maxKvSeqlen_ + blockShapeY_ - 1) / blockShapeY_;
     uint32_t totalRowNumBlockMask = batch_ * numHeads_ * xBlockNumAligned_;
     avgRowPerSubCore_ = (totalRowNumBlockMask + aivNum_ - 1) / aivNum_;
-    // preActiveSubCoreNum_ = 实际需要激活的 AIV Core 数量（可能少于 aivNum_ ，如果任务不够分）
     preActiveSubCoreNum_ = (totalRowNumBlockMask + avgRowPerSubCore_ - 1) / avgRowPerSubCore_;
 }
 
@@ -1018,7 +1017,7 @@ void BSATiling::CalcMatmulPhaseL1TileInfo950()
         // V矩阵开启db，D按128分割，kvBaseTile_不分割，指令同样提前于核间同步下发
         // 如果kvBaseTile_进一步增大，考虑关闭db，使得kvBaseTile_不分割
         mm2L1TileN_ = TILE_SIZE_128;
-        mm2L1TileKLeft_ = TILE_SIZE_256;	 
+        mm2L1TileKLeft_ = TILE_SIZE_256; 
         vL1BufNum_ = DUO_BUF;
         // P矩阵在950上会常驻L1，由于基块的prelaunch为2，因此最好有3 buf，以免基块间流水阻塞
         mm2L1TileM_ = qBaseTileAligned128;
