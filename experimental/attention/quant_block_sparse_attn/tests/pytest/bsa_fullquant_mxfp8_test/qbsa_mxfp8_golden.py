@@ -206,10 +206,8 @@ def _validate_case_design_fields(case):
             "block_size, sparse_q_block_size and sparse_kv_block_size must be equal, "
             f"got {block_sizes}")
 
-    batch = case.get("B")
-    for field_name in ("actual_seq_q", "actual_seq_kv"):
-        if batch is not None and field_name in case and len(case[field_name]) != batch:
-            raise ValueError(f"{field_name} length must equal B, got {len(case[field_name])} != {batch}")
+    _get_runtime_seq_lengths(case, "actual_seq_q", "S1")
+    _get_runtime_seq_lengths(case, "actual_seq_kv", "S2")
 
     if "s1_s2_relation" in case:
         actual_relation = "gt" if case["S1"] > case["S2"] else "lt" if case["S1"] < case["S2"] else "eq"
@@ -226,6 +224,22 @@ def _validate_case_design_fields(case):
             raise ValueError(
                 f"alignment must be {expected_alignment} for S1/S2={case['S1']}/{case['S2']}, "
                 f"got {case['alignment']}")
+
+
+def _get_runtime_seq_lengths(case, field_name, total_field_name):
+    """支持逐 batch 长度，也支持用单元素总 T 表示等长 batch。"""
+    values = [int(item) for item in case[field_name]]
+    batch = int(case["B"])
+    if len(values) == batch:
+        return values
+    if len(values) == 1 and batch > 1:
+        total_size = values[0]
+        if total_size != int(case[total_field_name]) or total_size % batch != 0:
+            raise ValueError(
+                f"single-value {field_name} must equal {total_field_name} and be divisible by B, "
+                f"got {values}, {total_field_name}={case[total_field_name]}, B={batch}")
+        return [total_size // batch] * batch
+    raise ValueError(f"{field_name} length must be B or 1, got {len(values)} for B={batch}")
 
 
 def _normalize_case(case):
@@ -741,8 +755,8 @@ def _generate_reference_style_mxfp8_inputs():
     rng = random.Random(case["seed"])
     generator = torch.Generator().manual_seed(case["seed"])
 
-    q_lengths = [int(item) for item in ACTUAL_SEQ_Q]
-    kv_lengths = [int(item) for item in ACTUAL_SEQ_KV]
+    q_lengths = _get_runtime_seq_lengths(case, "actual_seq_q", "S1")
+    kv_lengths = _get_runtime_seq_lengths(case, "actual_seq_kv", "S2")
     cu_seqlens_q = _prefix(q_lengths)
     cu_seqlens_kv = _prefix(kv_lengths)
     total_q = int(cu_seqlens_q[-1].item())
@@ -1250,6 +1264,35 @@ def _cache_case_name(case_id, case_name_arg, total_case_num):
     return f"{case_name_arg}_{safe_case_id}"
 
 
+def _safe_debug_case_name(case_name):
+    return "".join(char if char.isalnum() or char in "._-" else "_" for char in case_name)
+
+
+def _prepare_debug_artifacts(case_name):
+    case_dir = os.path.join(CURRENT_DIR, "debug", _safe_debug_case_name(case_name))
+    pt_dir = os.path.join(case_dir, "pt")
+    precision_dir = os.path.join(case_dir, "precision")
+    os.makedirs(pt_dir, exist_ok=True)
+    os.makedirs(precision_dir, exist_ok=True)
+    for directory, suffix in ((pt_dir, ".pt"), (precision_dir, ".png")):
+        for file_name in os.listdir(directory):
+            if file_name.endswith(suffix):
+                os.remove(os.path.join(directory, file_name))
+    return {
+        "case_dir": case_dir,
+        "pt_dir": pt_dir,
+        "precision_dir": precision_dir,
+        "log_path": os.path.join(case_dir, "run.log"),
+    }
+
+
+def _add_debug_log_handler(log_path):
+    file_handler = logging.FileHandler(log_path, mode="w", encoding="utf-8")
+    file_handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
+    logging.getLogger().addHandler(file_handler)
+    return file_handler
+
+
 def _log_case_start(case_idx, total_case_num, case_id, mode, cache_case_name):
     logger.info("")
     logger.info("#" * _CASE_LOG_WIDTH)
@@ -1308,7 +1351,7 @@ def _log_final_summary(results):
     logger.info("=" * _CASE_LOG_WIDTH)
 
 
-def run_one_case(case_id, case, mode, case_name, cache_dir, case_idx=1, total_case_num=1):
+def run_one_case(case_id, case, mode, case_name, cache_dir, case_idx=1, total_case_num=1, precision_dir=None):
     start_time = time.time()
     golden_cache = _load_golden_cache()
     set_active_case(case)
@@ -1358,8 +1401,8 @@ def run_one_case(case_id, case, mode, case_name, cache_dir, case_idx=1, total_ca
         block_table_torch = data.get("block_table_torch")
         sparse_indices = data.get("sparse_indices")
         sparse_seq_len = data.get("sparse_seq_len")
-        q_lengths = data.get("q_lengths", [int(item) for item in ACTUAL_SEQ_Q])
-        kv_lengths = data.get("kv_lengths", [int(item) for item in ACTUAL_SEQ_KV])
+        q_lengths = data.get("q_lengths", _get_runtime_seq_lengths(CASE, "actual_seq_q", "S1"))
+        kv_lengths = data.get("kv_lengths", _get_runtime_seq_lengths(CASE, "actual_seq_kv", "S2"))
         cu_seqlens_q = data.get("cu_seqlens_q")
         cu_seqlens_kv = data.get("cu_seqlens_kv")
         if cu_seqlens_q is None:
@@ -1402,11 +1445,19 @@ def run_one_case(case_id, case, mode, case_name, cache_dir, case_idx=1, total_ca
 
     logger.info("\n[Step 4] Atten OUT 精度对比")
     out_result = result_compare_method.check_result(cpu_out, atten_out)
+    if precision_dir is not None:
+        result_compare_method.save_precision_map(
+            cpu_out, atten_out, os.path.join(precision_dir, "attention_out.png"),
+            "attention_out", out_result)
 
     lse_result = None
     if ENABLE_LSE:
         logger.info("\n[Step 5] LSE 精度对比")
         lse_result = result_compare_method.check_result(cpu_lse, lse_out)
+        if precision_dir is not None:
+            result_compare_method.save_precision_map(
+                cpu_lse, lse_out, os.path.join(precision_dir, "softmax_lse.png"),
+                "softmax_lse", lse_result)
 
     status = "Pass"
     if _result_status(out_result) != "Pass" or (lse_result is not None and _result_status(lse_result) != "Pass"):
@@ -1434,7 +1485,20 @@ if __name__ == '__main__':
                         help="缓存文件名前缀；默认使用 case name")
     parser.add_argument("--cache-dir", default=None,
                         help="缓存目录路径（默认 golden_cache/）")
+    parser.add_argument("--debug", action="store_true",
+                        help="单 case 调试模式；必须配合 --case_name，输出到 debug/<case_name>/")
     args = parser.parse_args()
+
+    if args.debug:
+        if args.case_name is None or args.case_id is not None:
+            parser.error("--debug must be used with --case_name, and does not accept --case_id")
+        if args.list_cases:
+            parser.error("--debug executes one case and cannot be combined with --list_cases")
+        if args.mode != "all":
+            parser.error("--debug requires --mode all so that PT files and precision PNGs are complete")
+        if args.cache_dir is not None or args.cache_case_name is not None:
+            parser.error("--debug manages its own pt directory; do not use --cache-dir or --cache_case_name")
+
     case_files = args.case_files or (_DEFAULT_CASE_CSV if args.csv else _DEFAULT_CASE_FILE)
     all_cases = load_test_cases(case_files, use_csv=args.csv)
 
@@ -1455,18 +1519,38 @@ if __name__ == '__main__':
     run_case_ids = resolve_case_names(selected_case_name, all_cases)
     if not run_case_ids:
         parser.error("No runnable case selected. Check enable fields or pass --case_name explicitly.")
+    if args.debug and len(run_case_ids) != 1:
+        parser.error("--debug can run exactly one case; pass one name through --case_name")
+
+    debug_artifacts = _prepare_debug_artifacts(run_case_ids[0]) if args.debug else None
+    debug_log_handler = _add_debug_log_handler(debug_artifacts["log_path"]) if debug_artifacts else None
+    if debug_artifacts:
+        logger.info("[DEBUG] case directory: %s", debug_artifacts["case_dir"])
+        logger.info("[DEBUG] log file: %s", debug_artifacts["log_path"])
+        logger.info("[DEBUG] PT directory: %s", debug_artifacts["pt_dir"])
+        logger.info("[DEBUG] precision directory: %s", debug_artifacts["precision_dir"])
+
     case_results = []
     total_case_num = len(run_case_ids)
-    for case_idx, case_id in enumerate(run_case_ids, 1):
-        case_name = _cache_case_name(case_id, args.cache_case_name, len(run_case_ids))
-        case_start = time.time()
-        try:
-            case_results.append(
-                run_one_case(case_id, all_cases[case_id], mode, case_name, args.cache_dir, case_idx, total_case_num))
-        except Exception as err:  # pylint: disable=broad-except
-            logger.exception("CASE ERROR [%d/%d] %s", case_idx, total_case_num, case_id)
-            case_results.append(_make_case_result(case_id, "Error", time.time() - case_start, error=str(err)))
+    try:
+        for case_idx, case_id in enumerate(run_case_ids, 1):
+            case_name = _cache_case_name(case_id, args.cache_case_name, len(run_case_ids))
+            cache_dir = debug_artifacts["pt_dir"] if debug_artifacts else args.cache_dir
+            precision_dir = debug_artifacts["precision_dir"] if debug_artifacts else None
+            case_start = time.time()
+            try:
+                case_results.append(
+                    run_one_case(case_id, all_cases[case_id], mode, case_name, cache_dir,
+                                 case_idx, total_case_num, precision_dir))
+            except Exception as err:  # pylint: disable=broad-except
+                logger.exception("CASE ERROR [%d/%d] %s", case_idx, total_case_num, case_id)
+                case_results.append(_make_case_result(case_id, "Error", time.time() - case_start, error=str(err)))
 
-    _log_final_summary(case_results)
+        _log_final_summary(case_results)
+    finally:
+        if debug_log_handler is not None:
+            logging.getLogger().removeHandler(debug_log_handler)
+            debug_log_handler.close()
+
     if any(item["status"] in {"Failed", "Error"} for item in case_results):
         sys.exit(1)
