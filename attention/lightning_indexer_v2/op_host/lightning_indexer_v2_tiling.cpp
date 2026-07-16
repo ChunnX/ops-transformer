@@ -259,10 +259,10 @@ ge::graphStatus LIV2InfoParser::GetAndCheckAttrParaInfo()
         OP_CHECK_IF(
             ((std::string(opParamInfo_.layOutKey) != "PA_BBND") &&
             (std::string(opParamInfo_.layOut)) != (std::string(opParamInfo_.layOutKey))),
-            OP_LOGE(opName_,  "outside of PA, input attr layout_query and input attr layout_key must be the same,"
-                    "but now layout_key is %s, layout_query is %s.",
-            std::string(opParamInfo_.layOutKey).c_str(),
-            std::string(opParamInfo_.layOut).c_str()), return ge::GRAPH_FAILED);
+            OP_LOGE_FOR_INVALID_FORMATS_WITH_REASON(opName_, "query and key",
+                std::string(opParamInfo_.layOut) + " and " + std::string(opParamInfo_.layOutKey),
+                "outside of PA, input attr layout_query and input attr layout_key must be the same"),
+            return ge::GRAPH_FAILED);
         OP_CHECK_IF((*opParamInfo_.maxSeqlenQ < -1),
                 OP_LOGE(opName_, "input attr max_seqlens_q must >= -1, "
                         "but now max_seqlen_q is %d.",
