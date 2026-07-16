@@ -881,6 +881,7 @@ def _call_npu_fa_op(q, k, v, q_rope, k_rope, mask, actual_seq_q, actual_seq_kv,
                           "Please check that cann_ops_transformer is installed and all .so are compiled.")
 
     # 序列长度转换：累加前缀和 → cu_seqlens (补0前缀和) + seqused
+    # TND 场景可以传 cu_seqlens 和 seqused；其他场景包括 PA 只能传 seqused，不能传 cu_seqlens
     import numpy as np
     seq_lens_q = [actual_seq_q[0]] + [actual_seq_q[i] - actual_seq_q[i-1] for i in range(1, len(actual_seq_q))]
     seq_lens_kv = [actual_seq_kv[0]] + [actual_seq_kv[i] - actual_seq_kv[i-1] for i in range(1, len(actual_seq_kv))]
@@ -891,11 +892,15 @@ def _call_npu_fa_op(q, k, v, q_rope, k_rope, mask, actual_seq_q, actual_seq_kv,
     max_seqlen_kv_val = max(seq_lens_kv)
     max_seqlen_q_val = max(seq_lens_q)
 
+    is_tnd_q = (layout_q == "TND")
+    is_tnd_kv = (layout_kv == "TND")
+
     torch.npu.synchronize()
 
     metadata = quant_flash_attn_metadata(
         num_heads_q=q_n, num_heads_kv=kv_n, head_dim=q.shape[-1], quant_mode=1,
-        cu_seqlens_q=cu_seqlens_q, cu_seqlens_kv=cu_seqlens_kv,
+        cu_seqlens_q=cu_seqlens_q if is_tnd_q else None,
+        cu_seqlens_kv=cu_seqlens_kv if is_tnd_kv else None,
         seqused_q=seqused_q, seqused_kv=seqused_kv,
         mask_mode=sparse_mode,
         layout_q=layout_q, layout_kv=layout_kv, layout_out=layout_out,
@@ -908,7 +913,8 @@ def _call_npu_fa_op(q, k, v, q_rope, k_rope, mask, actual_seq_q, actual_seq_kv,
         quant_mode=1,
         block_table=block_table,
         p_scale=p_scale,
-        cu_seqlens_q=cu_seqlens_q, cu_seqlens_kv=cu_seqlens_kv,
+        cu_seqlens_q=cu_seqlens_q if is_tnd_q else None,
+        cu_seqlens_kv=cu_seqlens_kv if is_tnd_kv else None,
         seqused_q=seqused_q, seqused_kv=seqused_kv,
         attn_mask=mask,
         metadata=metadata,

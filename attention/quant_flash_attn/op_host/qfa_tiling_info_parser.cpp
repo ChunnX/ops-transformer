@@ -340,7 +340,7 @@ ge::graphStatus QfaInfoParser::GetQkHeadDim()
 ge::graphStatus QfaInfoParser::GetS1Size()
 {
     if (layoutQ_ == QfaLayout::TND) {
-        s1Size_ = queryTSize_;
+        s1Size_ = (opParamInfo_.maxSeqlenQ == nullptr) ? -1 : *opParamInfo_.maxSeqlenQ;
     } else {
         if (queryShape_->CheckHasShapeS(__func__) != ge::GRAPH_SUCCESS) {
             return ge::GRAPH_FAILED;
