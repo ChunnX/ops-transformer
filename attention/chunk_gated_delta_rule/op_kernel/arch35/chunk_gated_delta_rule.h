@@ -192,15 +192,16 @@ public:
                 } else {
                     cg.length = tiling_->maxGroupLength;
                 }
-                auto curState = (pos == seqStart) ?
-                    initState_[bid * tiling_->nv * tiling_->dv * tiling_->dk] :
-                    finalState_[bid * tiling_->nv * tiling_->dv * tiling_->dk];
+                bool useInitialState = (pos == seqStart);
+                auto curState = (useInitialState) ?
+                                initState_[bid * tiling_->stateStride0] :
+                                finalState_[bid * tiling_->nv * tiling_->dv * tiling_->dk];
+                // compute this chunk group
                 RunStage1(cg);
                 SyncAll<false>();
 
                 RunStage2(cg, curState,
-                          finalState_[bid * tiling_->nv * tiling_->dv * tiling_->dk],
-                          pos == seqStart);
+                          finalState_[bid * tiling_->nv * tiling_->dv * tiling_->dk], useInitialState);
                 SyncAll<false>();
 
                 RunStage3(cg);
@@ -244,6 +245,8 @@ private:
         initStageTwoParams.Nk = tiling_->nk;
         initStageTwoParams.Dv = tiling_->dv;
         initStageTwoParams.Dk = tiling_->dk;
+        initStageTwoParams.stateStride1 = tiling_->stateStride1;
+        initStageTwoParams.useInitialState = isFirstGroup;
         initStageTwoParams.gOptional = gFlag_;
         initStageTwoParams.isFirstGroup = isFirstGroup;
         initStageTwoParams.stateIn = stateIn;

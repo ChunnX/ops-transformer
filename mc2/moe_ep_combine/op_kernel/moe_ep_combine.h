@@ -112,7 +112,7 @@ private:
 
     TPipe *tpipe_{nullptr};
     const MoeEpCombineInfo *tilingData_{nullptr};
-    __gm__ Mc2MoeContext *mc2Context_{nullptr};
+    __gm__ Mc2Aclnn::MoeCommContext *mc2Context_{nullptr};
 
     uint32_t rankId_{0};
     uint32_t epWorldSize_{0};
@@ -188,8 +188,8 @@ private:
     TQueBind<QuePosition::VECIN, QuePosition::VECOUT, 1> xQueue_; // 数据队列
     AscendC::Hcomm<COMM_PROTOCOL_UBC_CTP> hcomm_;                 // 通信上下文
 
-    GM_ADDR winRankAddr_[HCCL_MAX_RANK_SIZE];
-    uint64_t hcommHandle_[HCCL_MAX_RANK_SIZE];
+    GM_ADDR winRankAddr_[Mc2Aclnn::HCCL_MAX_RANK_SIZE];
+    uint64_t hcommHandle_[Mc2Aclnn::HCCL_MAX_RANK_SIZE];
     GM_ADDR localUrmaWorkspace_{nullptr}; // 工作空间的GM地址
     GM_ADDR maskCalcWorkspaceGM_{nullptr};
     uint32_t aivId_{0};
@@ -227,7 +227,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::Init(
     hcommTensor_ = hcommBuf_.Get<uint8_t>();
     hcomm_.Init(hcommTensor_, HCOMM_INIT_SIZE);
 
-    mc2Context_ = reinterpret_cast<__gm__ Mc2MoeContext *>(context);
+    mc2Context_ = reinterpret_cast<__gm__ Mc2Aclnn::MoeCommContext *>(context);
     rankId_ = mc2Context_->epRankId;
     for (uint32_t i = 0; i < epWorldSize_; ++i) {
         winRankAddr_[i] = (GM_ADDR)mc2Context_->epHcclBuffer[i];

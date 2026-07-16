@@ -51,6 +51,8 @@ struct StageTwoParams {
     int64_t Nk;
     int64_t Dv;
     int64_t Dk;
+    int64_t stateStride1;
+    bool useInitialState;
     bool gOptional;
     bool isFirstGroup;
 };
@@ -75,6 +77,8 @@ public:
         Dk_ = sTP_->Dk;
         curDk_ = Ceil(Dk_, BLOCK_SIZE / sizeof(bfloat16_t)) * (BLOCK_SIZE / sizeof(bfloat16_t));
         curChunkSize_ = chunkSize_;
+        useInitialState_ = sTP_->useInitialState;
+        stateStride1_ = (useInitialState_) ? sTP_->stateStride1 : Dv_ * Dk_;
         gOptional_ = sTP_->gOptional;
         isFirstGroup_ = sTP_->isFirstGroup;
         InitLocalBuffers();
@@ -148,7 +152,7 @@ public:
     {
         if (GetSubBlockIdx() == 0) {
             if (isFirstGroup_ && cId == 0) {
-                CopyIn<float>(sTP_->stateIn[nvId * Dv_ * Dk_], Dv_, Dk_);
+                CopyIn<float>(sTP_->stateIn[nvId * stateStride1_], Dv_, Dk_);
             } else {
                 CopyIn<float>(sTP_->stateOut[nvId * Dv_ * Dk_], Dv_, Dk_);
             }
@@ -185,7 +189,7 @@ public:
 
     __aicore__ inline void ProcessAivBf16(int64_t nvId, int64_t cId, int64_t length)
     {
-        auto curState = (cId == 0) ? sTP_->curStateBf16[nvId * Dv_ * Dk_]
+        auto curState = (cId == 0) ? sTP_->curStateBf16[nvId * stateStride1_]
                                    : sTP_->stateOut[nvId * Dv_ * Dk_];
         auto finalState = sTP_->stateOut[nvId * Dv_ * Dk_];
         if (GetSubBlockIdx() == 0) {
@@ -210,7 +214,7 @@ public:
             CrossCoreWaitFlag(0x3);
             stateForAic = sTP_->curStateBf16[nvId * Dv_ * Dk_];
         } else {
-            stateForAic = (cId == 0) ? sTP_->curStateBf16[nvId * Dv_ * Dk_]
+            stateForAic = (cId == 0) ? sTP_->curStateBf16[nvId * stateStride1_]
                                      : sTP_->stateOut[nvId * Dv_ * Dk_];
         }
         CalVPrime(sTP_->kCumdecay[mm_offset0], stateForAic, sTP_->vInner[mm_offset1]);
@@ -459,6 +463,8 @@ private:
     int64_t Sp_;
     int32_t chunkNum_;
     int32_t coreNum_;
+    int64_t stateStride1_;
+    bool useInitialState_;
     bool gOptional_;
     bool isFirstGroup_;
 };
