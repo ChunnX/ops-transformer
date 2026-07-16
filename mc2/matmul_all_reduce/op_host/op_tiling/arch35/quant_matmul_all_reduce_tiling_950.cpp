@@ -1055,7 +1055,7 @@ CutResult QuantMatmulAllReduceTilingA5::GetTilingResult()
     } else if (mc2tiling::Is8P(args_.rankDim, npuArch_)) {
         const uint64_t k = MatmulAllReduceTilingBase::GetKValue();
         KernelType kernelType;
-        if (k >= QUANT_A2APATH_CRITICAL_K) {
+        if (k >= QUANT_A2APATH_CRITICAL_K && !param.isInputCommQuantScale) {
             kernelType = KernelType::ALL_REDUCE;
         } else {
             kernelType = KernelType::ALL_REDUCE_VIA_TWO_SHOT;
