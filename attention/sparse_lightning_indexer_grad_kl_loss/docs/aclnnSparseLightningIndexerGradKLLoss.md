@@ -714,7 +714,7 @@ int main() {
 
   std::vector<int64_t> dQIndexShape = {1,32,128};
   std::vector<int64_t> dKIndexShape = {1,1,128};
-  std::vector<int64_t> dWeightShape = {1,1,32};
+  std::vector<int64_t> dWeightShape = {1,32};
   std::vector<int64_t> lossShape = {1};
 
   void* qDeviceAddr = nullptr;
