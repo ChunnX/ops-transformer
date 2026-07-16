@@ -510,8 +510,8 @@ static uint64_t CalcDispatchWorkspace(const MoeEpDispatchInfo &info)
     uint64_t nmt = static_cast<uint64_t>(info.cfg.numMaxTokensPerRank);
     uint64_t perSlotBytes = static_cast<uint64_t>(info.cfg.perSlotBytes);
     uint64_t moeExpertNumPerRank = static_cast<uint64_t>(info.cfg.numLocalExperts);
-    uint64_t counterBytes = AlignUpWin(epWorldSize * sizeof(int32_t));
-    uint64_t sendCntPerRankBytes = AlignUpWin(2 * epWorldSize * sizeof(int32_t));
+    uint64_t counterBytes = epWorldSize * WIN_ADDR_ALIGN;
+    uint64_t sendCntPerRankBytes = epWorldSize * WIN_ADDR_ALIGN;
     uint64_t sendCntPerExpertBytes = AlignUpWin(moeExpertNumPerRank * epWorldSize * sizeof(int32_t));
 
     uint64_t sendCntBytes = counterBytes + sendCntPerRankBytes + sendCntPerExpertBytes;
