@@ -82,11 +82,14 @@ aclnnStatus aclnnMegaMoeGetWorkspaceSize(
     const aclTensor *context, const aclTensor *x, const aclTensor *topkIds, const aclTensor *topkWeights,
     const aclTensorList *weight1, const aclTensorList *weight2, const aclTensorList *weightScales1Optional,
     const aclTensorList *weightScales2Optional, const aclTensorList *bias1Optional, const aclTensorList *bias2Optional,
-    const aclTensor *xActiveMaskOptional, int64_t moeExpertNum, int64_t epWorldSize, int64_t cclBufferSize,
+    const aclTensor *xActiveMaskOptional, const aclTensorList *sharedWeight1Optional,
+    const aclTensorList *sharedWeight2Optional, const aclTensorList *sharedWeightScales1Optional,
+    const aclTensorList *sharedWeightScales2Optional, const aclTensorList *sharedBias1Optional,
+    const aclTensorList *sharedBias2Optional, int64_t moeExpertNum, int64_t epWorldSize, int64_t cclBufferSize,
     int64_t maxRecvTokenNum, int64_t dispatchQuantMode, int64_t dispatchQuantOutDtype, int64_t combineQuantMode,
     const char *commAlg, int64_t numMaxTokensPerRank, const char *activation, float activationClamp, int64_t topoType,
-    int64_t rankNumPerServer, aclTensor *yOut, aclTensor *expertTokenNumsOut, uint64_t *workspaceSize,
-    aclOpExecutor **executor)
+    int64_t rankNumPerServer, aclTensor *yOut, aclTensor *expertTokenNumsOut,
+    uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     OP_LOGD("aclnn_mega_moe WorkspaceSize start");
 
@@ -113,10 +116,21 @@ aclnnStatus aclnnMegaMoeGetWorkspaceSize(
     // 可选 DYNAMIC 参数为 nullptr 时创建带 dtype 的 dummy tensor list 满足支持列表校验
     aclTensorList *tmpBiasList = nullptr;
     aclTensorList *tmpScaleList = nullptr;
+    aclTensorList *tmpSharedBiasList = nullptr;
+    aclTensorList *tmpSharedScaleList = nullptr;
+    aclTensorList *tmpSharedWeightList = nullptr;
+    aclDataType sharedWeightDtype = (sharedWeight1Optional != nullptr && sharedWeight1Optional->Size() > 0)
+        ? static_cast<aclDataType>((*sharedWeight1Optional)[0]->GetDataType()) : ACL_FLOAT8_E4M3FN;
     CreateEmptyTensor(ACL_FLOAT, bias1Optional, tmpBiasList, *executor);
     CreateEmptyTensor(ACL_FLOAT, bias2Optional, tmpBiasList, *executor);
-    CreateEmptyTensor(ACL_UINT64, weightScales1Optional, tmpScaleList, *executor);
-    CreateEmptyTensor(ACL_UINT64, weightScales2Optional, tmpScaleList, *executor);
+    CreateEmptyTensor(ACL_FLOAT8_E8M0, weightScales1Optional, tmpScaleList, *executor);
+    CreateEmptyTensor(ACL_FLOAT8_E8M0, weightScales2Optional, tmpScaleList, *executor);
+    CreateEmptyTensor(ACL_FLOAT, sharedBias1Optional, tmpSharedBiasList, *executor);
+    CreateEmptyTensor(ACL_FLOAT, sharedBias2Optional, tmpSharedBiasList, *executor);
+    CreateEmptyTensor(ACL_FLOAT8_E8M0, sharedWeightScales1Optional, tmpSharedScaleList, *executor);
+    CreateEmptyTensor(ACL_FLOAT8_E8M0, sharedWeightScales2Optional, tmpSharedScaleList, *executor);
+    CreateEmptyTensor(sharedWeightDtype, sharedWeight1Optional, tmpSharedWeightList, *executor);
+    CreateEmptyTensor(sharedWeightDtype, sharedWeight2Optional, tmpSharedWeightList, *executor);
 
     // 只在DAV_2201架构上对x1和x2进行int32到int4的转换预处理
     if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2201) {
@@ -129,8 +143,11 @@ aclnnStatus aclnnMegaMoeGetWorkspaceSize(
     }
 
     aclnnStatus getWorkspaceSizesRes = aclnnInnerMegaMoeGetWorkspaceSize(
-        context, x, topkIds, topkWeights, weight1, weight2, weightScales1Optional, weightScales2Optional, bias1Optional,
-        bias2Optional, xActiveMaskOptional, nullptr, moeExpertNum, epWorldSize, cclBufferSize, maxRecvTokenNum,
+        context, x, topkIds, topkWeights, weight1, weight2,
+        weightScales1Optional, weightScales2Optional, bias1Optional, bias2Optional,
+        xActiveMaskOptional, nullptr, sharedWeight1Optional, sharedWeight2Optional,
+        sharedWeightScales1Optional, sharedWeightScales2Optional, sharedBias1Optional, sharedBias2Optional,
+        moeExpertNum, epWorldSize, cclBufferSize, maxRecvTokenNum,
         dispatchQuantMode, dispatchQuantOutDtype, combineQuantMode, const_cast<char *>(commAlg), 0,
         const_cast<char *>(activation), activationClamp, ge::DT_UNDEFINED, false, false, 0, topoType, rankNumPerServer,
         yOut, expertTokenNumsOut, workspaceSize, executor);
