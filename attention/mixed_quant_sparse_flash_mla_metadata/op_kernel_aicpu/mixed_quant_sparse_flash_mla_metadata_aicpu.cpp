@@ -286,6 +286,9 @@ bool MixedQuantSparseFlashMlaMetadataCpuKernel::ParamsInit()
     if (hasCmpKv_ && cmpTopK_ != 0) {
         isSparseCmpKv_ = true;
     }
+    if (isBatchConsistency_) {
+        supportFd_ = true;
+    }
     ValidSocVersion validSocVersion = ProcessSocVersion();
     if (validSocVersion == ValidSocVersion::ASCEND950) {
         if (numHeadsQ_ == 128) {
@@ -907,7 +910,7 @@ void MixedQuantSparseFlashMlaMetadataCpuKernel::UpdateCursor(const SplitContext 
     }
     if (UpdateS1G) {
         CalcS1GCache(assignContext.curS1GIdx, splitContext, assignContext.batchCache, assignContext.s1GCache);
-        assignContext.curS2Idx = (supportFd) ? assignContext.s1GCache.oriS2Start : 0;
+        assignContext.curS2Idx = (supportFd_) ? assignContext.s1GCache.oriS2Start : 0;
     }
 }
 
@@ -993,7 +996,7 @@ int64_t MixedQuantSparseFlashMlaMetadataCpuKernel::CalcCurBlockCost(const Assign
 void MixedQuantSparseFlashMlaMetadataCpuKernel::AssignByBlock(const SplitContext &splitContext,
                                                               AssignContext &assignContext)
 {
-    if (assignContext.isFinished || !supportFd) {
+    if (assignContext.isFinished || !supportFd_) {
         return;
     }
 
@@ -1107,7 +1110,7 @@ void MixedQuantSparseFlashMlaMetadataCpuKernel::AssignBlocksToCore(const SplitCo
         assignContext.preFdDataNum + assignContext.curKvSplitPart - 1U;
     int64_t avgCost = assignContext.unassignedCost / (aicCoreNum_ - assignContext.curCoreIdx);
     assignContext.coreCache = {};
-    if (!supportFd) {
+    if (!supportFd_) {
         assignContext.coreCache.costLimit = std::max(avgCost, costInfo.maxS1GCost);
     } else {
         assignContext.coreCache.costLimit = avgCost;
@@ -1119,7 +1122,7 @@ void MixedQuantSparseFlashMlaMetadataCpuKernel::AssignBlocksToCore(const SplitCo
     // 3、按块分配
     AssignByBlock(splitContext, assignContext);
     // 4、强制分配
-    if (assignContext.coreCache.block == 0 && supportFd) {
+    if (assignContext.coreCache.block == 0 && supportFd_) {
         ForceAssign(splitContext, assignContext);
     }
     result.bN2End[assignContext.curCoreIdx] = assignContext.curBN2Idx;
