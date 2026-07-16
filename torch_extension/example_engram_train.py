@@ -31,7 +31,7 @@ MASTER_PORT = 50029
 
 num_entries_per_rank = 4
 hidden_size = 128
-num_tokens = 3
+num_tokens = 6
 storage_type = torch.bfloat16
 
 

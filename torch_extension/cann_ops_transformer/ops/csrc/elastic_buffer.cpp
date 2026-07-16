@@ -573,10 +573,15 @@ std::function<at::Tensor()> ElasticBuffer::EngramFetch(const at::Tensor &indices
 
         EngramFetchCtx ctx{
             at::empty({numTokens}, intOpts),
-            at::empty({static_cast<int64_t>(rankSize *8)}, intOpts), // 32b对齐
+            at::empty({static_cast<int64_t>(rankSize * 8)}, intOpts), // 32b对齐
             at::empty({static_cast<int64_t>(rankSize)}, intOpts),
             at::empty({maxR}, intOpts),
             at::empty({1}, intOpts)};
+
+        printf("[Engram] ctx shapes: perm=[%ld], sendCounts=[%u], recvCounts=[%u], "
+               "recvLocalEntry=[%ld], numRecv=[1]\n",
+               numTokens, rankSize, rankSize, maxR);
+        fflush(stdout);
 
         if (numTokens > 0) {
             fetchInProgress_.store(true);

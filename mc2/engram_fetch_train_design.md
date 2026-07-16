@@ -15,12 +15,6 @@
 |------|------|------|---------|
 | ★ `with_grad` | 新增 | bool=False | True→训练态，触发 GM 申请 + save-for-backward |
 
-**`engram_fetch`（修改，签名不变）**
-
-| 项 | 变化 | 测试关注 |
-|----|------|---------|
-| ▽ 返回值 | 推理: `fetched`；训练: `(fetched, EngramFetchCtx)` | 同接口两形态，按 `IsWithGrad()` 分支；|
-
 **`engram_fetch_grad`（★新增）**
 
 | 参数 | 类型 | 测试关注 |
@@ -30,7 +24,7 @@
 | 返回 `grad_unique` | (K,H) fp32 | K=numUnique，前 actualK 有效 |
 | 返回 `unique_local_entry` | (K,) int32 | 对应 local entry 索引 |
 
-**`EngramFetchCtx`（★新增，dataclass + C++ bound class）**
+**`EngramFetchCtx`（★新增）**
 
 | 字段 | shape | dtype | 测试关注 |
 |------|-------|-------|---------|
@@ -41,14 +35,6 @@
 | `numRecv` | (1,) | int32 | 实际接收行数 R |
 
 ### 1.2 aclnn 层
-
-**推理 `aclnnEngramFetchGetWorkspaceSize`（修改）**：删除 5 个可选输出参数，回归纯推理
-
-```cpp
-aclnnEngramFetchGetWorkspaceSize(commContext, indices,
-    hiddenSize, numEntriesPerRank, fetched,
-    workspaceSize, executor)
-```
 
 **训练 `aclnnEngramFetchTrainGetWorkspaceSize`（★新增）**
 
@@ -84,8 +70,6 @@ aclnnEngramFetchGetWorkspaceSize(commContext, indices,
 
 ### 1.3 TilingData 层
 
-**推理 `EngramFetchTilingData`（修改）**：删除 `withGrad`/`numMaxTokensPerRank`/`rankSize`，回归 6 字段纯推理。
-
 **训练 `EngramFetchTrainTilingData`（★新增）**：10 字段。关键：
 - `rankSize` ← sendCountsOut.dim0
 - `totalRecv` ← recvLocalEntryOut.dim0
@@ -100,7 +84,6 @@ aclnnEngramFetchGetWorkspaceSize(commContext, indices,
 
 | 算子 | 变化 | 值 | 测试关注 |
 |------|------|----|---------|
-| 推理 engram_fetch | ▽ 二值 → 单值 | INFER_MODE=0 | 纯推理，无 WITH_GRAD |
 | 训练 engram_fetch_train | ★ 新增 | TRAIN_DEFAULT_MODE=0 | 单一模式 |
 | 反向 engram_fetch_grad | ★ 新增 | GRAD_DEFAULT_MODE=0 | 单一模式 |
 
