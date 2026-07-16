@@ -8,7 +8,7 @@ from pathlib import Path
 
 import torch
 
-from compare import compare_outputs
+from compare import Comparator, DefaultComparator
 from core.gen_data import GenDataBackend
 from core.cpu import CpuBackend
 from core.npu import NpuBackend
@@ -181,7 +181,8 @@ def _exec_or_load(stages: set, stage_name: str, compute_fn, case_set: str,
 # ============ Engine ============
 def run_case(stages: set, params: dict, reporter: Reporter, *,
              npu_mode: str = "eager",
-             chunk_size: int = 0, verbose_diff: bool = False) -> dict:
+             chunk_size: int = 0, verbose_diff: bool = False,
+             comparator: Comparator = None) -> dict:
     case_set = params.get("case_set", "")
     case_id = params.get("case_id", params.get("name", ""))
     result_dir = str(Path("result") / case_id)
@@ -190,6 +191,9 @@ def run_case(stages: set, params: dict, reporter: Reporter, *,
     inputs = None
     cpu_out = None
     npu_out = None
+    gpu_out = None
+    if comparator is None:
+        comparator = DefaultComparator()
     try:
         gen = GenDataBackend()
         cpu = CpuBackend()
@@ -248,8 +252,12 @@ def run_case(stages: set, params: dict, reporter: Reporter, *,
         if "compare" in stages and cpu_out is not None and npu_out is not None:
             logger.info("[cmp]  start")
             t0 = time.perf_counter()
-            result = compare_outputs(cpu_out, npu_out,
-                                     chunk_size=chunk_size)
+            if gpu_out is not None:
+                result = comparator.compare_three_way(
+                    cpu_out, npu_out, gpu_out, chunk_size=chunk_size)
+            else:
+                result = comparator.compare_two_way(
+                    cpu_out, npu_out, chunk_size=chunk_size)
             logger.info("[cmp]  done  | %.2fs", time.perf_counter() - t0)
             for key, m in result.items():
                 if isinstance(m, dict):
@@ -298,4 +306,6 @@ def run_case(stages: set, params: dict, reporter: Reporter, *,
             del cpu_out
         if npu_out is not None:
             del npu_out
+        if gpu_out is not None:
+            del gpu_out
         gc.collect()
