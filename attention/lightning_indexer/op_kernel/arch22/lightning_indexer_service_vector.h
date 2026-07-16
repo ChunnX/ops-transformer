@@ -357,6 +357,8 @@ __aicore__ inline void LightningIndexerServiceVector<LIT>::ProcessVec(const LICo
             LIServiceVec::DoReduce(reduceCacheBuf[REDUCE_BANK_CONFLICT_NUM], reduceOutInner, gRedCnt, s2BaseSize_);
             outQueue_.FreeTensor(reduceCacheBuf);
 
+            if (constInfo_.radixTotalBatch > 0) {
+            // RadixTopK path: write scoreB16Gm, skip Sort+MergeSort
             // Write reduce result to scoreB16Gm for RadixTopK (bf16)
             if (cuS2Len < s2BaseSize_) {
                 int32_t cuS2LenAlign8 = (cuS2Len + 7) / 8 * 8;
@@ -378,7 +380,8 @@ __aicore__ inline void LightningIndexerServiceVector<LIT>::ProcessVec(const LICo
                 dcParams.dstStride = 0;
                 DataCopyPad(scoreB16Gm[scoreOffset], scoreB16Ub, dcParams);
             }
-
+            } else {
+            // Sort+MergeSort path (original ProcessVec logic)
             LocalTensor<float> sortScoreUb = reduceOutBuff;
             LocalTensor<float> sortIndiceUb = reduceOutBuff[cuS2LenVecAlign];
             Duplicate(sortScoreUb.template ReinterpretCast<int32_t>(), LIServiceVec::NEG_INF, cuS2LenVecAlign);
@@ -516,6 +519,7 @@ __aicore__ inline void LightningIndexerServiceVector<LIT>::ProcessVec(const LICo
                 LIServiceVec::CopyOut(vec1ResGm[wsOffset], globalTopkUb_[innerS1Idx * BASE_TOPK * 2], 2 * BASE_TOPK);
                 SetWaitFlag<HardEvent::MTE3_V>(HardEvent::MTE3_V);
             }
+        } // end else (Sort+MergeSort path)
         } else if (cuRealAcSeq <= 0) {
             CleanInvalidOutput(info.indiceOutOffset + cuS1Idx * constInfo_.sparseCount);
         }
