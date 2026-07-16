@@ -106,6 +106,10 @@ struct Params {
     GM_ADDR bScaleGmAddr;
     GM_ADDR b2GmAddr;
     GM_ADDR b2ScaleGmAddr;
+    GM_ADDR sharedBGmAddr;
+    GM_ADDR sharedBScaleGmAddr;
+    GM_ADDR sharedB2GmAddr;
+    GM_ADDR sharedB2ScaleGmAddr;
     GM_ADDR probsGmAddr;
     GM_ADDR y2GmAddr;
     GM_ADDR expertTokenNumsOutGmAddr;
