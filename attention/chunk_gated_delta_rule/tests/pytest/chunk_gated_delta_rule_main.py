@@ -21,6 +21,45 @@ import os
 import sys
 import argparse
 
+_USE_GRAPH = os.environ.get('USE_GRAPH', 'false').lower() in ('true', '1', 'yes')
+if _USE_GRAPH:
+    import torchair
+    import warnings
+    from torchair.core.utils import logger
+    import torch.nn.functional as F
+    warnings.filterwarnings("ignore", category=DeprecationWarning)
+    logger.setLevel(logging.ERROR)
+
+    os.environ["ENABLE_ACLNN"] = "false"
+    # 配置图模式config
+    config = torchair.CompilerConfig()
+    config.mode = "max-autotune"
+    npu_backend = torchair.get_npu_backend(compiler_config=config)
+
+class MyModel(torch.nn.Module):
+    def __init__(self):
+        super().__init__()
+
+    def forward(self,
+    query,
+    key,
+    value,
+    initial_state,
+    beta,
+    actual_seq_lengths,
+    scale,
+    gamma):
+        chunk_gated_delta_rule = torch_npu.npu_chunk_gated_delta_rule(
+        # chunk_gated_delta_rule = torch.ops.cann_ops_transformer.chunk_gated_delta_rule(
+            query, key, value,
+            beta = beta,
+            initial_state = initial_state,
+            actual_seq_lengths = actual_seq_lengths,
+            scale = scale,
+            g = gamma)
+
+        return chunk_gated_delta_rule
+
 np.random.seed(21)
 np.set_printoptions(suppress=True)
 DEVICE_ID = 0
@@ -179,19 +218,24 @@ def cgdr_benchmark(q, k, v, g, beta, scale, initial_state, actual_seq_lengths, c
     return o_bench, state_bench
 
 def cgdr_npu(q, k, v, g, beta, scale, initial_state, actual_seq_lengths):
-    # o_npu, state_npu = torch.ops.cann_ops_transformer.chunk_gated_delta_rule(
-    o_npu, state_npu = torch_npu.npu_chunk_gated_delta_rule(
-        q, k, v,
-        beta=beta,
-        initial_state=initial_state.clone(),
-        actual_seq_lengths=actual_seq_lengths,
-        scale=scale,
-        g=g
-    )
+    print(f"[cgdr_npu] 运行模式: {'静态图' if _USE_GRAPH else 'torch直调'}")
+    if _USE_GRAPH:
+        model = MyModel().npu()
+        model = torch.compile(model, backend=npu_backend, dynamic=False)
+        o_npu, state_npu = model(q, k, v, initial_state.clone(), beta, actual_seq_lengths, scale, g)
+    else:
+        # o_npu, state_npu = torch.ops.cann_ops_transformer.chunk_gated_delta_rule(
+        o_npu, state_npu = torch_npu.npu_chunk_gated_delta_rule(
+            q, k, v,
+            beta=beta,
+            initial_state=initial_state.clone(),
+            actual_seq_lengths=actual_seq_lengths,
+            scale=scale,
+            g=g
+        )
     o_npu = o_npu.to(torch.float32)
     state_npu = state_npu.to(torch.float32)
     return o_npu, state_npu
-
 
 def run_chunk_gated_delta_rule_eager(B, seqlen, nk, nv, dk, dv, chunk_size=64,
                                      data_type=torch.bfloat16,
