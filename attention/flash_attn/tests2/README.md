@@ -6,19 +6,19 @@
 
 ```bash
 # CLI — 全链路
-python test.py --stages gen,cpu,npu,compare --case-set ci
+python test.py --stages gen,cpu,npu,compare --case_set ci
 
 # pytest — 全链路
-pytest test.py --stages gen,cpu,npu,compare --case-set ci
+pytest test.py --stages gen,cpu,npu,compare --case_set ci
 
 # 仅生成golden（不依赖NPU）
-python test.py --stages gen,cpu --case-set debug
+python test.py --stages gen,cpu --case_set debug
 
 # 断点续跑（跳过gen/cpu，从pt加载，只跑npu+compare）
-python test.py --stages npu,compare --case-set ci
+python test.py --stages npu,compare --case_set ci
 
 # 静默日志（批量跑只看结果）
-python test.py --stages gen,cpu,npu,compare --case-set ci --log-level WARNING
+python test.py --stages gen,cpu,npu,compare --case_set ci --log_level WARNING
 ```
 
 ## 核心功能
@@ -27,13 +27,12 @@ python test.py --stages gen,cpu,npu,compare --case-set ci --log-level WARNING
 |------|------|---------|
 | 流程任意组合 | gen→cpu→npu→gpu→compare按固定顺序执行，`--stages`选子集 | `--stages gen,cpu,compare` |
 | 断点续跑 | 跳过的阶段自动从pt加载 | `--stages cpu,compare` |
-| 外部pt导入 | 从整网pt加载inputs替代gen | `--load-network-pt path/to/input.pt` |
-| 崩溃隔离 | npu_compute用ThreadPoolExecutor隔离，单case崩溃不中断批跑 | `--max-retries 3` |
-| 精度失败分析 | 失败时输出点位详情+Max-RE+预览 | `--verbose-diff` |
-| 日志系统 | 每阶段进度+耗时+shape，可调级别 | `--log-level INFO` |
-| 图模式 | npu_compute支持aclgraph | `--graph-path 7` |
-| 用例集分层 | ci/debug/func_rdv等用例集 | `--case-set ci` |
-| 用例过滤 | 精确/前缀/后缀三模式匹配 | `--case-id FP16_BNSD_01` |
+| 崩溃隔离 | npu_compute用ThreadPoolExecutor隔离，单case崩溃不中断批跑 | (自动) |
+| 精度失败分析 | 失败时输出点位详情+Max-RE+预览 | `--verbose_diff` |
+| 日志系统 | 每阶段进度+耗时+shape，可调级别 | `--log_level INFO` |
+| NPU执行模式 | eager直调(默认)/graph aclgraph图模式 | `--npu_mode graph` |
+| 用例集分层 | ci/debug/func_rdv等用例集 | `--case_set ci` |
+| 用例过滤 | 精确/前缀/后缀三模式匹配 | `--case_id FP16_BNSD_01` |
 
 ## 目录结构
 
@@ -92,7 +91,7 @@ tests2/
 2. `core/gen_data.py` — GenDataBackend(gen_inputs + normalize_params)
 3. `core/cpu.py` — CpuBackend(cpu_compute)
 4. `core/npu.py` — NpuBackend(npu_compute)
-5. (可选) `core/gpu.py` / `core/quant.py` / `core/__init__.py`中forward
+5. (可选) `core/gpu.py` / `core/quant.py`
 
 框架核心无需修改。
 

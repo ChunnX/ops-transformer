@@ -80,11 +80,9 @@ def _setup_hookwrapper(_pytest_terminal):
 
 def test_op(params, stages, reporter, request):
     result = run_case(stages, params, reporter,
-                      max_retries=request.config.getoption("--max-retries"),
-                      load_network_pt=request.config.getoption("--load-network-pt"),
-                      graph_path=request.config.getoption("--graph-path"),
-                      chunk_size=request.config.getoption("--chunk-size"),
-                      verbose_diff=request.config.getoption("--verbose-diff"))
+                      npu_mode=request.config.getoption("--npu_mode"),
+                      chunk_size=request.config.getoption("--chunk_size"),
+                      verbose_diff=request.config.getoption("--verbose_diff"))
     if not result.get("passed", False):
         pytest.fail(result.get("fail_msg", "精度校验失败"))
 
@@ -93,17 +91,15 @@ def main():
     parser = argparse.ArgumentParser(description="精度测试 CLI 入口")
     parser.add_argument("--stages", default="all",
                         help="执行阶段: all/gen/cpu/npu/gpu/compare/npuprof/npuprofop/gpuprof")
-    parser.add_argument("--case-id", default="all", help="用例ID过滤")
-    parser.add_argument("--case-set", default="ci", help="用例集marker: ci/debug/func_rdv/perf_rdv")
-    parser.add_argument("--graph-path", default=0, type=int, help="图模式路径")
-    parser.add_argument("--verbose-diff", action="store_true", help="打印全部失败元素")
-    parser.add_argument("--report-interval", default=20, type=int, help="中间报告间隔")
-    parser.add_argument("--load-network-pt", default=None, help="从整网推理产出的pt加载inputs")
-    parser.add_argument("--chunk-size", default=0, type=int, help="比对分块大小")
-    parser.add_argument("--max-retries", default=0, type=int, help="NPU最大重试次数")
-    parser.add_argument("--log-level", default="INFO",
+    parser.add_argument("--case_id", default="all", help="用例ID过滤")
+    parser.add_argument("--case_set", default="ci", help="用例集marker: ci/debug/func_rdv/perf_rdv")
+    parser.add_argument("--npu_mode", default="eager", help="NPU执行模式: eager(直调,默认)/graph(aclgraph)")
+    parser.add_argument("--verbose_diff", action="store_true", help="打印全部失败元素")
+    parser.add_argument("--report_interval", default=20, type=int, help="中间报告间隔")
+    parser.add_argument("--chunk_size", default=0, type=int, help="比对分块大小")
+    parser.add_argument("--log_level", default="INFO",
                         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
-                        help="框架日志级别: DEBUG(预留) | INFO(阶段进度/耗时/shape, 默认) | WARNING(重试/key缺失) | ERROR(异常)")
+                        help="框架日志级别: DEBUG(预留) | INFO(阶段进度/耗时/shape, 默认) | WARNING(key缺失) | ERROR(异常)")
     args = parser.parse_args()
 
     logging.basicConfig(level=getattr(logging, args.log_level),
@@ -124,9 +120,7 @@ def main():
         print(f"{'='*66}")
         try:
             run_case(stages, params, reporter,
-                     max_retries=args.max_retries,
-                     load_network_pt=args.load_network_pt,
-                     graph_path=args.graph_path,
+                     npu_mode=args.npu_mode,
                      chunk_size=args.chunk_size,
                      verbose_diff=args.verbose_diff)
         except Exception as e:

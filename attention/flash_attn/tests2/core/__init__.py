@@ -1,7 +1,5 @@
 from abc import ABC, abstractmethod
 
-import torch
-
 
 class GenDataBase(ABC):
     @abstractmethod
@@ -9,9 +7,6 @@ class GenDataBase(ABC):
 
     @abstractmethod
     def normalize_params(self, params: dict) -> dict: ...
-
-    def load_network_inputs(self, pt_path: str) -> dict:
-        return torch.load(pt_path, map_location="cpu", weights_only=False)
 
 
 class CpuBase(ABC):
@@ -21,7 +16,7 @@ class CpuBase(ABC):
 
 class NpuBase(ABC):
     @abstractmethod
-    def npu_compute(self, inputs: dict, graph_path: int = 0) -> dict: ...
+    def npu_compute(self, inputs: dict, npu_mode: str = "eager") -> dict: ...
 
 
 class GpuBase(ABC):

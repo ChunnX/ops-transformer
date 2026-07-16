@@ -90,18 +90,18 @@ class NpuBackend(NpuBase):
             self._graph_net = torch.compile(net, fullgraph=False, backend=npu_backend, dynamic=False)
         return self._graph_net
 
-    def npu_compute(self, inputs: dict, graph_path: int = 0) -> dict:
+    def npu_compute(self, inputs: dict, npu_mode: str = "eager") -> dict:
         if not _HAS_NPU:
             raise ImportError("cann_ops_transformer 不可用, 请安装后重试")
-        if graph_path != 0 and not _HAS_TORCHAIR:
-            raise ImportError("torchair 不可用, graph_path!=0 需要 torchair, 请安装后重试")
+        if npu_mode == "graph" and not _HAS_TORCHAIR:
+            raise ImportError("torchair 不可用, npu_mode='graph' 需要 torchair, 请安装后重试")
 
         meta_kwargs, kernel_kwargs, _ = build_flash_attn_params(
             inputs, self._device, inputs)
 
         metadata = flash_attn_metadata(**meta_kwargs)
 
-        if graph_path != 0:
+        if npu_mode == "graph":
             net = self._get_graph_net()
             out, lse = net(
                 inputs["q"], inputs["k"], inputs["v"],

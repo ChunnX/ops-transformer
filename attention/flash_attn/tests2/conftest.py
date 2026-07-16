@@ -11,21 +11,19 @@ _setup_hookwrapper(_pytest.terminal)
 def pytest_addoption(parser):
     parser.addoption("--stages", default="all",
                      help="执行阶段, 逗号组合: all/gen/cpu/npu/gpu/compare/npuprof/npuprofop/gpuprof")
-    parser.addoption("--case-id", default="all", help="用例ID过滤, 逗号组合")
-    parser.addoption("--case-set", default="ci", help="用例集marker: ci/debug/func_rdv/perf_rdv")
-    parser.addoption("--graph-path", default=0, type=int, help="图模式路径(0=非图模式)")
-    parser.addoption("--verbose-diff", action="store_true", help="精度不达标时打印全部失败元素")
-    parser.addoption("--report-interval", default=20, type=int, help="中间报告间隔")
-    parser.addoption("--load-network-pt", default=None, help="从整网推理产出的pt加载inputs(设计目标8)")
-    parser.addoption("--chunk-size", default=0, type=int, help="比对分块大小(0=不分块)")
-    parser.addoption("--max-retries", default=0, type=int, help="NPU计算最大重试次数")
+    parser.addoption("--case_id", default="all", help="用例ID过滤, 逗号组合")
+    parser.addoption("--case_set", default="ci", help="用例集marker: ci/debug/func_rdv/perf_rdv")
+    parser.addoption("--npu_mode", default="eager", help="NPU执行模式: eager(直调,默认)/graph(aclgraph)")
+    parser.addoption("--verbose_diff", action="store_true", help="精度不达标时打印全部失败元素")
+    parser.addoption("--report_interval", default=20, type=int, help="中间报告间隔")
+    parser.addoption("--chunk_size", default=0, type=int, help="比对分块大小(0=不分块)")
 
 
 def pytest_generate_tests(metafunc):
     if "params" not in metafunc.fixturenames:
         return
-    case_set = metafunc.config.getoption("--case-set")
-    case_id_opt = metafunc.config.getoption("--case-id")
+    case_set = metafunc.config.getoption("--case_set")
+    case_id_opt = metafunc.config.getoption("--case_id")
     cases, case_ids = _collect_cases(case_set, case_id_opt)
     metafunc.parametrize("params", cases, ids=case_ids)
 

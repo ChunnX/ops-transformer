@@ -180,7 +180,7 @@ def _exec_or_load(stages: set, stage_name: str, compute_fn, case_set: str,
 
 # ============ Engine ============
 def run_case(stages: set, params: dict, reporter: Reporter, *,
-             max_retries: int = 0, load_network_pt: str = None, graph_path: int = 0,
+             npu_mode: str = "eager",
              chunk_size: int = 0, verbose_diff: bool = False) -> dict:
     case_set = params.get("case_set", "")
     case_id = params.get("case_id", params.get("name", ""))
@@ -195,11 +195,7 @@ def run_case(stages: set, params: dict, reporter: Reporter, *,
         cpu = CpuBackend()
         npu = NpuBackend()
 
-        if load_network_pt:
-            logger.info("[gen]  load-network-pt | %s", load_network_pt)
-            inputs = gen.load_network_inputs(load_network_pt)
-            _save_pt(inputs, _pt_path(case_set, case_id, "input"))
-        elif "gen" in stages:
+        if "gen" in stages:
             logger.info("[gen]  start | %s", _params_summary(params))
             t0 = time.perf_counter()
             inputs = gen.gen_inputs(gen.normalize_params(params))
@@ -222,18 +218,11 @@ def run_case(stages: set, params: dict, reporter: Reporter, *,
         def _do_npu():
             dev_inputs = _to_device(inputs, "npu")
             with ThreadPoolExecutor(max_workers=1) as executor:
-                for attempt in range(max_retries + 1):
-                    try:
-                        future = executor.submit(npu.npu_compute, dev_inputs, graph_path)
-                        return future.result()
-                    except Exception:
-                        if attempt < max_retries:
-                            logger.warning("[npu]  retry | attempt %d/%d", attempt + 1, max_retries)
-                            continue
-                        raise
+                future = executor.submit(npu.npu_compute, dev_inputs, npu_mode)
+                return future.result()
 
         if "npu" in stages:
-            logger.info("[npu]  start | %s", "graph" if graph_path else "eager")
+            logger.info("[npu]  start | %s", npu_mode)
             t0 = time.perf_counter()
         npu_out = _exec_or_load(stages, "npu", _do_npu,
                                 case_set, case_id)

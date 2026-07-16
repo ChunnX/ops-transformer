@@ -15,7 +15,6 @@ DEFAULTS = {
     "mask_mode": [0],
     "return_softmax_lse": [False],
     "seed": [42],
-    "graph_path": [0],
     "device_id": [0],
     "block_size": [-1],
     "scale": [0.0],
