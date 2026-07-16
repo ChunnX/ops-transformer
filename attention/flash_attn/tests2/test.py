@@ -16,11 +16,19 @@ _VALID_STAGES = {"all", "gen", "cpu", "npu", "gpu", "compare",
 
 def _register_cli_params(register):
     """CLI参数唯一定义。register = parser.addoption(conftest) 或 parser.add_argument(argparse)"""
+
+    # ── 执行控制 ──
     register("--stages", default="all",
              help="执行阶段, 逗号组合: all/gen/cpu/npu/gpu/compare/npuprof/npuprofop/gpuprof")
+
+    # ── 用例选择 ──
     register("--case_id", default="all", help="用例ID过滤")
     register("--case_set", default="ci", help="用例集marker: ci/debug/func_rdv/perf_rdv")
+
+    # ── NPU 配置 ──
     register("--npu_mode", default="eager", help="NPU执行模式: eager(直调,默认)/graph(aclgraph)")
+
+    # ── 输出控制 ──
     register("--verbose_diff", action="store_true", help="精度不达标时打印全部失败元素")
     register("--report_interval", default=20, type=int, help="中间报告间隔")
     register("--chunk_size", default=0, type=int, help="比对分块大小(0=不分块)")
