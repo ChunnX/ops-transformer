@@ -1356,7 +1356,10 @@ MegaMoe<TemplateMegaMoeTypeFunc>::CalcUnpermuteBufferConfig(int32_t coreLen, uin
     config.inputBufferCount = config.inputBufferCount > MAX_UNPERMUTE_INPUT_BUFFER_COUNT ?
                                   MAX_UNPERMUTE_INPUT_BUFFER_COUNT :
                                   config.inputBufferCount;
-    config.inputBufferCount = config.inputBufferCount > topK_ ? topK_ : config.inputBufferCount;
+    // 输入 ring 在整个 token batch 的 route item 序列上连续轮转，buffer 数量不再受单 token 的 topK 限制。
+    // 对短 batch 仅保留实际可能使用的槽位；最低仍维持双 buffer。
+    int32_t routeItemCount = config.tokensPerBatch * topK_;
+    config.inputBufferCount = config.inputBufferCount > routeItemCount ? routeItemCount : config.inputBufferCount;
     config.inputBufferCount = config.inputBufferCount < MIN_UNPERMUTE_INPUT_BUFFER_COUNT ?
                                   MIN_UNPERMUTE_INPUT_BUFFER_COUNT :
                                   config.inputBufferCount;
