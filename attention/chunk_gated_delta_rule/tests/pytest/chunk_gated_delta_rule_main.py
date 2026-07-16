@@ -10,7 +10,7 @@
 import time
 import torch
 import torch_npu
-#from cann_ops_transformer.ops import chunk_gated_delta_rule
+from cann_ops_transformer.ops import chunk_gated_delta_rule
 from chunk_gated_delta_rule_benchmark import chunk_gdn_benchmark_opt
 from chunk_gated_delta_rule_golden import chunk_gated_delta_rule_npu
 import torch.nn.functional as F
@@ -22,6 +22,8 @@ import sys
 import argparse
 
 _USE_GRAPH = os.environ.get('USE_GRAPH', 'false').lower() in ('true', '1', 'yes')
+_ENABLE_PROF = os.environ.get('ENABLE_PROF', 'false').lower() in ('true', '1', 'yes')
+
 if _USE_GRAPH:
     import torchair
     import warnings
@@ -49,8 +51,8 @@ class MyModel(torch.nn.Module):
     actual_seq_lengths,
     scale,
     gamma):
-        chunk_gated_delta_rule = torch_npu.npu_chunk_gated_delta_rule(
-        # chunk_gated_delta_rule = torch.ops.cann_ops_transformer.chunk_gated_delta_rule(
+        # chunk_gated_delta_rule = torch_npu.npu_chunk_gated_delta_rule(
+        chunk_gated_delta_rule = torch.ops.cann_ops_transformer.chunk_gated_delta_rule(
             query, key, value,
             beta = beta,
             initial_state = initial_state,
@@ -224,8 +226,8 @@ def cgdr_npu(q, k, v, g, beta, scale, initial_state, actual_seq_lengths):
         model = torch.compile(model, backend=npu_backend, dynamic=False)
         o_npu, state_npu = model(q, k, v, initial_state.clone(), beta, actual_seq_lengths, scale, g)
     else:
-        # o_npu, state_npu = torch.ops.cann_ops_transformer.chunk_gated_delta_rule(
-        o_npu, state_npu = torch_npu.npu_chunk_gated_delta_rule(
+        o_npu, state_npu = torch.ops.cann_ops_transformer.chunk_gated_delta_rule(
+        # o_npu, state_npu = torch_npu.npu_chunk_gated_delta_rule(
             q, k, v,
             beta=beta,
             initial_state=initial_state.clone(),
@@ -266,6 +268,14 @@ def run_chunk_gated_delta_rule_eager(B, seqlen, nk, nv, dk, dv, chunk_size=64,
     actual_seq_lengths = torch.tensor(seqlen_list, dtype=torch.int32, device="npu:%s" % DEVICE_ID)
     # ======================== gen input data finish =============================
 
+    if _ENABLE_PROF:
+        cgdr_npu(q, k, v, g, beta, scale, initial_state, actual_seq_lengths)
+        for _ in range(5):
+            cgdr_npu(q, k, v, g, beta, scale, initial_state, actual_seq_lengths)
+        torch.npu.synchronize()
+        print("PASSED (prof)")
+        return True
+
     # ======================== execute golden/benchmark/npu ================================
     o_golden, state_golden = cgdr_golden(q, k, v, g, beta, scale, initial_state, actual_seq_lengths, use_float64=False, chunk_size=chunk_size)
     o_bench, state_bench = cgdr_benchmark(q, k, v, g, beta, scale, initial_state, actual_seq_lengths, chunk_size=chunk_size)
@@ -286,6 +296,7 @@ def run_chunk_gated_delta_rule_eager(B, seqlen, nk, nv, dk, dv, chunk_size=64,
         print(f"idx={idx}, err_s={err_s[idx]}, state_golden={state_golden.flatten()[idx]}, "
               f"state_npu={state_npu.flatten()[idx]}, state_bench={state_bench.flatten()[idx]}")
         ret = False
+
     print("PASSED" if ret else "FAILED")
     return ret
 
