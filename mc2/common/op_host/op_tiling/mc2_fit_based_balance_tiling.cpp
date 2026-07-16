@@ -17,6 +17,21 @@
 
 CutResult Mc2FitBasedBalanceTiling::GetTiling()
 {
+    const uint64_t FORCE_TILE_CNT = 1; // 消融实验: 0=正常tiling, 1/2/4=强制M轴均分
+    if (FORCE_TILE_CNT != 0 && mmInfo_.mValue % FORCE_TILE_CNT == 0) {
+        uint64_t tileLen = mmInfo_.mValue / FORCE_TILE_CNT;
+        tilingM_.cutRes.shortTileAtBack = true;
+        tilingM_.cutRes.longTileLen = tileLen;
+        tilingM_.cutRes.numLongTile = FORCE_TILE_CNT;
+        tilingM_.cutRes.shortTileLen = 0U;
+        tilingM_.cutRes.numShortTile = 0U;
+        tilingM_.cutRes.totalTileCnt = FORCE_TILE_CNT;
+        OPS_LOG_D("Mc2FitBasedBalanceTiling",
+                  "Force uniform split: tileCnt=%lu, tileLen=%lu, mValue=%lu",
+                  FORCE_TILE_CNT, tileLen, mmInfo_.mValue);
+        return tilingM_.cutRes;
+    }
+
     EstimateMMCommTime();
     SetShortTileLen();
     if (tilingM_.totalLen < tilingM_.cutRes.shortTileLen * 2) { // do not cut if mValue is too small

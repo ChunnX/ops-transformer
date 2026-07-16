@@ -155,9 +155,9 @@ __aicore__ inline void MatmulReduceScatterFP16BF16<AType, BType, BiasType, CType
     using cDataType = typename CType::T;
     auto &&cfg = tilingData_->param;
     cfg.rankID = rankId_;
-    MC2MatmulV3::MC2MatmulAswKernelDerive<AType, BType, CType, BiasType, MC2MatmulV3::MC2MatmulAswBlockDerive> mmv3;
-    auto tempGM = (debugMode_ == MC2_DEBUG_ONLY_CUBE) ? cGM : gmToFloat_;
-    mmv3.Init(aGM_, bGM_, tempGM, biasGM_, nullptr, nullptr, &tiling, GetTPipePtr(), cfg, isTail, false);
+    // MC2MatmulV3::MC2MatmulAswKernelDerive<AType, BType, CType, BiasType, MC2MatmulV3::MC2MatmulAswBlockDerive> mmv3;
+    // auto tempGM = (debugMode_ == MC2_DEBUG_ONLY_CUBE) ? cGM : gmToFloat_;
+    // mmv3.Init(aGM_, bGM_, tempGM, biasGM_, nullptr, nullptr, &tiling, GetTPipePtr(), cfg, isTail, false);
     uint64_t sliceM = static_cast<uint64_t>(tiling.tCubeTiling.M) / cfg.rankDim;
     auto recvCount = sliceM * static_cast<uint64_t>(tiling.tCubeTiling.N);
     auto cOffset = recvCount * sizeof(cDataType);
@@ -167,8 +167,8 @@ __aicore__ inline void MatmulReduceScatterFP16BF16<AType, BType, BiasType, CType
     uint64_t stride = static_cast<uint64_t>(cfg.rankM / cfg.rankDim) * static_cast<uint64_t>(cfg.rankN);
     uint8_t repeat = 1;
     for (uint32_t i = 0; i < count; i++) {
-        mmv3.UpdateSlice(i, isTail);
-        mmv3.Process(isLast && (i == (count - 1)));
+        // mmv3.UpdateSlice(i, isTail);
+        // mmv3.Process(isLast && (i == (count - 1)));
         AscendC::CrossCoreSetFlag<0, PIPE_FIX>(3);
         AscendC::CrossCoreWaitFlag(3);
         recvCount = (debugMode_ == MC2_DEBUG_ONLY_CUBE) ? 1 : recvCount;
@@ -177,7 +177,7 @@ __aicore__ inline void MatmulReduceScatterFP16BF16<AType, BType, BiasType, CType
         cWork += cOffset;
         recvBuffer += cOffset;
     }
-    mmv3.End();
+    // mmv3.End();
 }
 } // namespace MatmulReduceScatterV2Impl
 
