@@ -43,8 +43,9 @@ ge::graphStatus MQSMLATilingCheck::GetActualSeqLenSize(uint32_t &size, const ger
                                                        const MQSMLALayout &layout, const std::string &name) const
 {
     if (tensor == nullptr) {
-        OP_LOGE(opName_, "when layout of query is %s, %s must be provided.", MQSMLALayoutToSerialString(layout).c_str(),
-                name.c_str());
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, name.c_str(),
+            "when layout of query is " +
+            MQSMLALayoutToSerialString(layout) + ", " + name + "must be provided");
         return ge::GRAPH_FAILED;
     }
     int64_t shapeSize = tensor->GetShapeSize();
@@ -83,16 +84,17 @@ ge::graphStatus MQSMLATilingCheck::CompareShape(QSMLATilingShapeCompareParam &pa
     }
 
     if (shape.GetDimNum() != shapeExpected.GetDimNum()) {
-        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(opName_, name.c_str(),
+        OP_LOGE_FOR_INVALID_SHAPEDIM(opName_, name.c_str(),
             std::to_string(shape.GetDimNum()).c_str(), std::to_string(shapeExpected.GetDimNum()).c_str());
         return ge::GRAPH_FAILED;
     }
 
     for (size_t i = 0; i < shape.GetDimNum(); i++) {
         if (shape.GetDim(i) != shapeExpected.GetDim(i)) {
-            OP_LOGE(opName_, "%s layout is %s, shape is %s, expected shape is %s.", name.c_str(),
-                    MQSMLALayoutToSerialString(layout).c_str(), GetShapeStr(shape).c_str(),
-                    GetShapeStr(shapeExpected).c_str());
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "cmp_residual_k",
+                    Ops::Base::ToString(shape).c_str(),
+                    name + "layout is " + MQSMLALayoutToSerialString(layout) +
+                    ", expected shape is " + Ops::Base::ToString(shapeExpected));
             return ge::GRAPH_FAILED;
         }
     }
@@ -268,13 +270,14 @@ ge::graphStatus MQSMLATilingCheck::CheckActualSeqLensQDType()
         return ge::GRAPH_SUCCESS;
     }
     if (opParamInfo_.cuSeqLensQ.desc == nullptr) {
-        OP_LOGE(opName_, "cuSeqLensQ is not empty,"
-                         "but cuSeqLensQ's dtype is nullptr.");
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "cuSeqLensQ's dtype",
+            "cuSeqLensQ is not empty,"
+            "but cuSeqLensQ's dtype is nullptr");
         return ge::GRAPH_FAILED;
     }
     if (opParamInfo_.cuSeqLensQ.desc->GetDataType() != ge::DT_INT32) {
-        OP_LOGE(opName_, "cuSeqLensQ's dtype is %s, it should be DT_INT32.",
-                MQSMLADataTypeToSerialString(opParamInfo_.cuSeqLensQ.desc->GetDataType()).c_str());
+        OP_LOGE_FOR_INVALID_DTYPE(opName_, "cuSeqLensQ",
+            MQSMLADataTypeToSerialString(opParamInfo_.cuSeqLensQ.desc->GetDataType()).c_str(), "DT_INT32");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
