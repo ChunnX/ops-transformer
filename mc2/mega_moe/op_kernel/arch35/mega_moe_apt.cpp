@@ -31,7 +31,19 @@ using namespace AscendC;
 using namespace MegaMoeImpl;
 #endif
 
-template<uint8_t DispatchQuantMode, uint8_t DispatchQuantOutType, uint8_t CombineQuantOutType, uint8_t CommModeType>
+#ifndef MEGA_MOE_WEIGHT1_INTERLEAVED
+#define MEGA_MOE_WEIGHT1_INTERLEAVED 0
+#endif
+#if MEGA_MOE_WEIGHT1_INTERLEAVED != 0 && MEGA_MOE_WEIGHT1_INTERLEAVED != 1
+#error "MEGA_MOE_WEIGHT1_INTERLEAVED must be 0 or 1"
+#endif
+
+// The interleaved kernel expects weight1 (and its MX scale) to be prepared in
+// matching [gate, up] tile order. Keep the public/default layout unchanged;
+// performance builds can opt in together with their weight preparation.
+static constexpr bool WEIGHT1_INTERLEAVED = MEGA_MOE_WEIGHT1_INTERLEAVED != 0;
+
+template <uint8_t DispatchQuantMode, uint8_t DispatchQuantOutType, uint8_t CombineQuantOutType, uint8_t CommModeType>
 __global__ __aicore__ void mega_moe(
     GM_ADDR context, GM_ADDR x, GM_ADDR topkIds, GM_ADDR topkWeights, GM_ADDR weight1, GM_ADDR weight2,
     GM_ADDR weightScales1, GM_ADDR weightScales2, GM_ADDR bias1, GM_ADDR bias2, GM_ADDR xActiveMask,
@@ -50,7 +62,9 @@ __global__ __aicore__ void mega_moe(
     defined(ORIG_DTYPE_WEIGHT2) && (ORIG_DTYPE_WEIGHT2 == ORIG_DTYPE_WEIGHT1)
     if constexpr (CommModeType == TILINGKEY_TPL_MTE) {
         if constexpr (DispatchQuantMode == DISPATCH_QUANT_MODE_MXFP) {
-            MegaMoe<DTYPE_X, DTYPE_Y, DTYPE_TOPK_WEIGHTS, DTYPE_WEIGHT1, DispatchQuantOutType, CombineQuantOutType> op;
+            MegaMoe<DTYPE_X, DTYPE_Y, DTYPE_TOPK_WEIGHTS, DTYPE_WEIGHT1, DispatchQuantOutType, CombineQuantOutType,
+                    WEIGHT1_INTERLEAVED>
+                op;
             op.Init(context, x, topkIds, topkWeights, weight1, weight2, xActiveMask, weightScales1, weightScales2,
                     scales, sharedWeight1, sharedWeight2, sharedWeightScales1, sharedWeightScales2,
                     yOut, expertTokenNumsOut, workspaceGM, &tilingData);
