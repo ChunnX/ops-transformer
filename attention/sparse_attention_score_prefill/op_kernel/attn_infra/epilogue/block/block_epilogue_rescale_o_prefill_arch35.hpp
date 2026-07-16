@@ -214,6 +214,15 @@ private:
         const uint32_t dstShape[2] = {lseCount, FP32_ONE_BLOCK_SIZE};
         AscendC::Broadcast<T, 2, 1>(lseMaxLocal, lseMaxTmpBuf, dstShape, srcShape, broadCastTmpBuf);
         AscendC::Broadcast<T, 2, 1>(lseSumLocal, lseSumTmpBuf, dstShape, srcShape, broadCastTmpBuf);
+        // Div->Mul: precompute 1/rowSum in place on the compact lseSumTmpBuf. The 8x
+        // broadcast lseSumBuf_ (read by ComputeScaleValue for the per-split scale) was
+        // just written above and is a SEPARATE buffer, so the original sum values feeding
+        // scale stay intact; only the compact per-row rowSum that ReduceFinalRes_VF reads
+        // as rowSumLocal becomes its reciprocal, turning the per-(row,split,z) Div into a
+        // Mul. Broadcast (V) reads lseSumTmpBuf before this in-place Reciprocal (same V
+        // pipe, in-order). Invalid slots have rowSum==0 (WS_ROWSUM_INIT) -> reciprocal=+inf,
+        // never used (combineDone breaks before the reduce reaches them).
+        AscendC::Reciprocal<T>(lseSumTmpBuf, lseSumTmpBuf, static_cast<int32_t>(alignedLseCount));
         AscendC::PipeBarrier<PIPE_V>();
     }
 

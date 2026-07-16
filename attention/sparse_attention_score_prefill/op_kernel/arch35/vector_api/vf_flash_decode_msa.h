@@ -5,18 +5,20 @@
  * sparse_attention_score_prefill Phase2 combine.
  *
  * Rationale: this operator's Phase1 does not divide accumOut by the softmax
- * sum, so Phase2 must perform an extra per-row Divs by the original Phase1
- * rowSum before the cross-split scale-and-reduce. Instead of a separate
- * UB-level AscendC::Divs pre-pass, the per-row divide is embedded into the
- * __simd_vf__ reduce kernel via the regbase interface (MicroAPI::Div with a
- * broadcast rowSum register, matching the DivFuncLastAndFirst pattern in
- * block_epilogue_rescale_o_arch35_reg_high_prec.hpp).
+ * sum, so Phase2 must perform an extra per-row normalization by the original
+ * Phase1 rowSum before the cross-split scale-and-reduce. Instead of a separate
+ * UB-level AscendC::Divs pre-pass, the per-row normalize is a Mul here: CopyLseIn
+ * pre-inverts the compact per-row rowSum in place (AscendC::Reciprocal on
+ * lseSumTmpBuf), so this kernel Mul-multiplies vregAccumOut by the broadcast
+ * 1/rowSum (equivalent to the old Div, cheaper) before the existing
+ * Mul(…, vregLse, …) / Add.
  *
  * This header is a near-verbatim copy of the ReduceFinalRes_* family in
  * attention/common/op_kernel/arch35/vf/vf_flash_decode.h, with:
- *   - an extra rowSumUb / rowSumLocal parameter (per-row original rowSum);
- *   - one MicroAPI::Div inserted per z-block, dividing vregAccumOut by the
- *     broadcast rowSum before the existing Mul(…, vregLse, …) / Add.
+ *   - an extra rowSumUb / rowSumLocal parameter (per-row original rowSum,
+ *     pre-inverted to 1/rowSum by CopyLseIn);
+ *   - one MicroAPI::Mul (was Div) per z-block, multiplying vregAccumOut by the
+ *     broadcast 1/rowSum before the existing Mul(…, vregLse, …) / Add.
  *
  * Include ordering: must be included AFTER
  *   ../../../../../common/op_kernel/arch35/vf/vf_flash_decode.h
@@ -52,8 +54,11 @@ __simd_vf__ void ReduceFinalRes_0_VF(__ubuf__ T * dstUb, __ubuf__ T * lseUb, __u
             MicroAPI::Duplicate<T, MicroAPI::MaskMergeMode::ZEROING, float>(vregDst, FLT_ZERO, pregTailN);
             MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_NORM>(
                 vregAccumOut, (__ubuf__ float*&)accumOutUb + k * repStride * 8 + z * floatRepSize);
-            // Embedded regbase Divs: normalize Phase1 accumOut by its original per-row rowSum.
-            MicroAPI::Div<T, MicroAPI::MaskMergeMode::ZEROING>(vregAccumOut, vregAccumOut, vregRowSum, pregTailN);
+            // Embedded regbase Mul: normalize Phase1 accumOut by its original per-row rowSum.
+            // rowSum was pre-inverted to 1/rowSum by CopyLseIn's Reciprocal on the compact
+            // lseSumTmpBuf, so this is a Mul (cheaper than Div). Broadcast-loaded via
+            // DIST_BRC_B32 (one reciprocal per row).
+            MicroAPI::Mul<T, MicroAPI::MaskMergeMode::ZEROING>(vregAccumOut, vregAccumOut, vregRowSum, pregTailN);
             MicroAPI::Mul<T, MicroAPI::MaskMergeMode::ZEROING>(vregAccumOut, vregLse, vregAccumOut, pregTailN);
             MicroAPI::Add<T, MicroAPI::MaskMergeMode::ZEROING>(vregDst, vregDst, vregAccumOut, pregTailN);
             MicroAPI::StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
@@ -109,8 +114,11 @@ __simd_vf__ void ReduceFinalRes_Rest_VF(__ubuf__ T * dstUb, __ubuf__ T * lseUb, 
                 vregDst, (__ubuf__ float*&)dstUb + k * repStride * 8 + z * floatRepSize);
             MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_NORM>(
                 vregAccumOut, (__ubuf__ float*&)accumOutUb + k * repStride * 8 + z * floatRepSize);
-            // Embedded regbase Divs: normalize Phase1 accumOut by its original per-row rowSum.
-            MicroAPI::Div<T, MicroAPI::MaskMergeMode::ZEROING>(vregAccumOut, vregAccumOut, vregRowSum, pregTailN);
+            // Embedded regbase Mul: normalize Phase1 accumOut by its original per-row rowSum.
+            // rowSum was pre-inverted to 1/rowSum by CopyLseIn's Reciprocal on the compact
+            // lseSumTmpBuf, so this is a Mul (cheaper than Div). Broadcast-loaded via
+            // DIST_BRC_B32 (one reciprocal per row).
+            MicroAPI::Mul<T, MicroAPI::MaskMergeMode::ZEROING>(vregAccumOut, vregAccumOut, vregRowSum, pregTailN);
             MicroAPI::Mul<T, MicroAPI::MaskMergeMode::ZEROING>(vregAccumOut, vregLse, vregAccumOut, pregTailN);
             MicroAPI::Add<T, MicroAPI::MaskMergeMode::ZEROING>(vregDst, vregDst, vregAccumOut, pregTailN);
             MicroAPI::StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
