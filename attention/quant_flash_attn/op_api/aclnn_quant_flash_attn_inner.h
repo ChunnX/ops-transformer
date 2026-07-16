@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef ACLNN_QUAN_FLASH_ATTN_INNER_H_
-#define ACLNN_QUAN_FLASH_ATTN_INNER_H_
+#ifndef ACLNN_QUANT_FLASH_ATTN_INNER_H_
+#define ACLNN_QUANT_FLASH_ATTN_INNER_H_
 #define ACLNN_API __attribute__((visibility("default")))
 
 #include "aclnn/aclnn_base.h"

@@ -8,7 +8,7 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#include "aclnn_quan_flash_attn_inner.h"
+#include "aclnn_quant_flash_attn_inner.h"
 #include "opdev/op_log.h"
 #include "opdev/common_types.h"
 

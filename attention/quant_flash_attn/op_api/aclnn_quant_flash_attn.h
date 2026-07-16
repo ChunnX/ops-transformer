@@ -9,12 +9,12 @@
  */
 
 /*!
- * \file aclnn_quan_flash_attn.h
+ * \file aclnn_quant_flash_attn.h
  * \brief QuantFlashAttn aclnn level-2 interface
  */
 
-#ifndef OP_API_INC_LEVEL2_ACLNN_QUAN_FLASH_ATTN_H_
-#define OP_API_INC_LEVEL2_ACLNN_QUAN_FLASH_ATTN_H_
+#ifndef OP_API_INC_LEVEL2_ACLNN_QUANT_FLASH_ATTN_H_
+#define OP_API_INC_LEVEL2_ACLNN_QUANT_FLASH_ATTN_H_
 
 #include "aclnn/aclnn_base.h"
 
@@ -103,4 +103,4 @@ aclnnStatus aclnnQuantFlashAttn(void *workspace, uint64_t workspaceSize, aclOpEx
 }
 #endif
 
-#endif  // OP_API_INC_LEVEL2_ACLNN_QUAN_FLASH_ATTN_H_
+#endif  // OP_API_INC_LEVEL2_ACLNN_QUANT_FLASH_ATTN_H_

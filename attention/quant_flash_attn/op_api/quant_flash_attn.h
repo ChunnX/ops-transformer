@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef OP_API_INC_LEVEL0_QUAN_FLASH_ATTN_H_
-#define OP_API_INC_LEVEL0_QUAN_FLASH_ATTN_H_
+#ifndef OP_API_INC_LEVEL0_QUANT_FLASH_ATTN_H_
+#define OP_API_INC_LEVEL0_QUANT_FLASH_ATTN_H_
 
 #include <array>
 #include "opdev/op_executor.h"
@@ -82,4 +82,4 @@ const std::array<const aclTensor *, 2> QuantFlashAttn(
 
 }  // namespace l0op
 
-#endif  // OP_API_INC_LEVEL0_QUAN_FLASH_ATTN_H_
+#endif  // OP_API_INC_LEVEL0_QUANT_FLASH_ATTN_H_

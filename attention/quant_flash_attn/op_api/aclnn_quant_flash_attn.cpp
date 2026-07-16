@@ -9,17 +9,17 @@
  */
 
 /*!
- * \file aclnn_quan_flash_attn.cpp
+ * \file aclnn_quant_flash_attn.cpp
  * \brief
  */
 
-#include "aclnn_quan_flash_attn.h"
+#include "aclnn_quant_flash_attn.h"
 
 #include "opdev/common_types.h"
 #include "opdev/make_op_executor.h"
 #include "opdev/op_def.h"
 #include "opdev/op_log.h"
-#include "aclnn_quan_flash_attn_inner.h"
+#include "aclnn_quant_flash_attn_inner.h"
 
 using namespace op;
 
