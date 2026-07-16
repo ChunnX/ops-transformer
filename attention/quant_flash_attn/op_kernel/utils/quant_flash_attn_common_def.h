@@ -210,14 +210,6 @@ struct CommonConstInfo {
     uint64_t seqUsedQSize;
     uint64_t seqUsedKvSize;
 
-    uint32_t bN2Start;
-    uint32_t bN2End;
-    uint32_t gS1OStart;
-    uint32_t gS1OEnd;
-    uint32_t s2OStart;
-    uint32_t s2OEnd;
-    uint32_t coreFirstTmpOutWsPos;
-
     uint32_t sparseMode;
     uint32_t attenMaskBatch;
     uint32_t attenMaskS1Size;
@@ -230,9 +222,6 @@ struct CommonConstInfo {
     uint32_t aivIdx;
     uint8_t subBlockIdx;
     uint32_t coreNum;
-
-    bool enableS1OutSplit;
-    uint32_t totalSize;
 
     uint32_t accumOutSize;
     uint32_t logSumExpSize;
@@ -255,37 +244,8 @@ struct SinkConstInfo {
     bool learnableSinkFlag = false;
 };
 
-struct PseConstInfo {
-    uint32_t pseShiftByBatch;
-    int64_t pseS1Size;
-    int64_t pseS2Size;
-    uint32_t pseStride;
-};
-
 struct TensorListConstInfo {
     bool isKvContinuous;
-};
-
-struct PostQuantConstInfo {
-    bool isPostQuantPerChnl;
-    bool isPostQuantBF16;
-    bool isPostQuantOffsetExist;
-    float postQuantScaleValue;
-    float postQuantOffsetValue;
-};
-
-struct LeftPaddingConstInfo {
-    bool isQHasLeftPadding;
-    bool isKVHasLeftPadding;
-    int64_t queryRightPaddingSize;
-    int64_t kvRightPaddingSize;
-};
-
-struct SysPrefixConstInfo {
-    bool isActualSharedPrefixLenNull = true;
-    int64_t actualKVPrefixSize = 0;
-    int64_t kvPrefixSize = 0;
-    int64_t prefixLoopCount = 0;
 };
 
 template <FiaKernelType>
@@ -296,10 +256,6 @@ struct ConstInfo_t<FiaKernelType::FULL_QUANT> : CommonConstInfo,
                                                 PAConstInfo,
                                                 LseConstInfo,
                                                 SinkConstInfo,
-                                                PseConstInfo,
-                                                TensorListConstInfo,
-                                                PostQuantConstInfo,
-                                                LeftPaddingConstInfo,
-                                                SysPrefixConstInfo {};
+                                                TensorListConstInfo {};
 
 #endif // QUANT_FLASH_ATTN_COMMON_DEF_H_
