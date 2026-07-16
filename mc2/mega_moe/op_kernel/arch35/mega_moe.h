@@ -89,13 +89,14 @@ private:
         uint32_t topKWeightsBf16BufferBytes = 0;
     };
     struct SendMaskBufferConfig {
+        int32_t routeItemsPerBatch = 0;
+        int32_t routeBatchCount = 0;
         int32_t bufferCount = 0;
         uint32_t bufferBytes = 0;
     };
 
     __aicore__ inline void DispatchBuffInit();
-    __aicore__ inline SendMaskBufferConfig CalcSendMaskBufferConfig(uint32_t bytesBeforeMaskBuffers,
-                                                                    uint32_t bytesAfterMaskBuffers, uint32_t ubSize);
+    __aicore__ inline SendMaskBufferConfig CalcSendMaskBufferConfig(uint32_t fixedBufferBytes, uint32_t ubSize);
     __aicore__ inline SendMaskBufferConfig SendAndQuantBuffInit();
     __aicore__ inline void ResetFlagList();
     __aicore__ inline void ResetGmm2CombineSyncCounters();
@@ -399,19 +400,31 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::DispatchBuffInit()
 }
 
 // ==================================================================================================
-// CalcSendMaskBufferConfig：保持 send route batch 不变，按其余 tensor 占用反推 mask push buffer 数量
+// CalcSendMaskBufferConfig：按基准 send batch 选择 mask buffer 数量，再固定 buffer 数扩大 batch
 // ==================================================================================================
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline typename MegaMoe<TemplateMegaMoeTypeFunc>::SendMaskBufferConfig
-MegaMoe<TemplateMegaMoeTypeFunc>::CalcSendMaskBufferConfig(uint32_t bytesBeforeMaskBuffers,
-                                                           uint32_t bytesAfterMaskBuffers, uint32_t ubSize)
+MegaMoe<TemplateMegaMoeTypeFunc>::CalcSendMaskBufferConfig(uint32_t fixedBufferBytes, uint32_t ubSize)
 {
     SendMaskBufferConfig config;
-    // 每个槽位存一个 batch 的 bit-packed mask，并追加 32B 供末 batch 写入 count。
-    config.bufferBytes = static_cast<uint32_t>(sendRouteItemsPerBatch_ / 8) + static_cast<uint32_t>(ALIGN_32);
+    uint64_t alignedTotalRouteItems = Ops::Base::CeilAlign(sendTotalNum_, static_cast<uint64_t>(ALIGN_256));
+    config.routeItemsPerBatch = alignedTotalRouteItems < static_cast<uint64_t>(BASE_SEND_ROUTE_ITEMS_PER_BATCH) ?
+                                    static_cast<int32_t>(alignedTotalRouteItems) :
+                                    BASE_SEND_ROUTE_ITEMS_PER_BATCH;
+    config.routeBatchCount =
+        static_cast<int32_t>(Ops::Base::CeilDiv(sendTotalNum_, static_cast<uint64_t>(config.routeItemsPerBatch)));
 
-    uint32_t fixedBytes = bytesBeforeMaskBuffers + bytesAfterMaskBuffers;
-    uint32_t maskBufferBudgetBytes = ubSize > fixedBytes ? ubSize - fixedBytes : 0;
+    // 每个槽位存一个 batch 的 bit-packed mask，并追加 32B 供末 batch 写入 count。
+    // routeItemsPerBatch 已按 256 个 route item 对齐；每 item 占 1 bit，因此除以 8 后天然按 32B
+    // 对齐。追加 32B count 后单槽仍保持 32B 对齐，多个槽连续分配时无需再次 CeilAlign。
+    config.bufferBytes = static_cast<uint32_t>(config.routeItemsPerBatch / 8) + static_cast<uint32_t>(ALIGN_32);
+
+    // 基准 batch 下 topkIdsTensor_ 和 sendGatherOutTensor_ 各保存一份 int32 route item 数组，大小相同。
+    // 从 UB 中扣除这两个数组及其它固定 tensor 后，剩余空间用于反推可分配的 mask buffer 数量。
+    uint32_t routeIndexBufferBytes =
+        static_cast<uint32_t>(config.routeItemsPerBatch) * static_cast<uint32_t>(sizeof(int32_t));
+    uint32_t bytesWithoutMaskBuffers = fixedBufferBytes + 2 * routeIndexBufferBytes;
+    uint32_t maskBufferBudgetBytes = ubSize > bytesWithoutMaskBuffers ? ubSize - bytesWithoutMaskBuffers : 0;
     config.bufferCount = static_cast<int32_t>(maskBufferBudgetBytes / config.bufferBytes);
     config.bufferCount =
         config.bufferCount > MAX_SEND_MASK_BUFFER_COUNT ? MAX_SEND_MASK_BUFFER_COUNT : config.bufferCount;
@@ -421,14 +434,48 @@ MegaMoe<TemplateMegaMoeTypeFunc>::CalcSendMaskBufferConfig(uint32_t bytesBeforeM
     int32_t coreIdx = static_cast<int32_t>(aivCoreIdx_);
     int32_t ownedExpertCount =
         coreIdx < totalExperts ? Ops::Base::CeilDiv(totalExperts - coreIdx, static_cast<int32_t>(blockAivNum_)) : 0;
-    int32_t maskPushCount = sendRouteBatchCount_ * ownedExpertCount;
+    int32_t maskPushCount = config.routeBatchCount * ownedExpertCount;
     if (maskPushCount > 0 && config.bufferCount > maskPushCount) {
         config.bufferCount = maskPushCount;
     }
 
-    // MAX_SEND_ROUTE_ITEMS_PER_BATCH 的最坏 UB 推导已包含双 mask buffer，因此可以安全保底到 2。
+    // BASE_SEND_ROUTE_ITEMS_PER_BATCH 的最坏 UB 推导已包含双 mask buffer，因此可以安全保底到 2。
     config.bufferCount =
         config.bufferCount < MIN_SEND_MASK_BUFFER_COUNT ? MIN_SEND_MASK_BUFFER_COUNT : config.bufferCount;
+
+    // 固定已选中的 N 个 mask buffer 后，用剩余 UB 扩大 route batch。此时 UB 布局可拆为：
+    //   固定部分 = fixedBufferBytes + N * 32B count 尾部；
+    //   随 batch B 增长的部分 = 2 * B * sizeof(int32_t) + N * B / 8。
+    // 前者包含 reset/quant/count 累加等固定 tensor，后者对应 topkIds、GatherMask 输出和 N 份 bit mask。
+    // 因此闭式反推会完整保留 N 个 buffer 的数据区和 count 尾部，不会降低已经选定的流水深度。
+    if (static_cast<uint64_t>(config.routeItemsPerBatch) < sendTotalNum_) {
+        // 先扣除所有与 batch 无关的 tensor，以及每个 mask buffer 固定的 32B count 尾部。
+        uint32_t fixedBytesWithMaskCount =
+            fixedBufferBytes + static_cast<uint32_t>(config.bufferCount) * static_cast<uint32_t>(ALIGN_32);
+        uint32_t routeItemBudgetBytes = ubSize > fixedBytesWithMaskCount ? ubSize - fixedBytesWithMaskCount : 0;
+
+        // 每个 route item 占两个 int32 元素和每个 mask buffer 中的 1 bit：
+        //   bytesPerItem = 2 * 4B + N / 8B = (64 + N) / 8B；
+        //   maxItems = routeItemBudgetBytes * 8 / (64 + N)。
+        uint32_t expandedRouteItems = routeItemBudgetBytes * 8 / (64 + static_cast<uint32_t>(config.bufferCount));
+
+        // 向下对齐到 256 个 item，确保不超过 UB 预算，同时满足 CompareScalar 的长度约束；
+        // 256 个 mask bit 恰好为 32B，因此每个 mask 槽位也继续保持 32B 对齐。
+        expandedRouteItems = expandedRouteItems / static_cast<uint32_t>(ALIGN_256) * static_cast<uint32_t>(ALIGN_256);
+
+        // batch 无需超过全部 route item 的对齐长度；末 batch 仍由 validLen 限制真实有效数据。
+        if (static_cast<uint64_t>(expandedRouteItems) > alignedTotalRouteItems) {
+            expandedRouteItems = static_cast<uint32_t>(alignedTotalRouteItems);
+        }
+
+        // 只有闭式结果确实优于基准 batch 时才更新配置，并同步刷新 batch 数和单个 mask 槽位大小。
+        if (expandedRouteItems > static_cast<uint32_t>(config.routeItemsPerBatch)) {
+            config.routeItemsPerBatch = static_cast<int32_t>(expandedRouteItems);
+            config.routeBatchCount = static_cast<int32_t>(
+                Ops::Base::CeilDiv(sendTotalNum_, static_cast<uint64_t>(config.routeItemsPerBatch)));
+            config.bufferBytes = static_cast<uint32_t>(config.routeItemsPerBatch / 8) + static_cast<uint32_t>(ALIGN_32);
+        }
+    }
     return config;
 }
 
@@ -473,21 +520,16 @@ MegaMoe<TemplateMegaMoeTypeFunc>::SendAndQuantBuffInit()
     uint32_t sendCntAccSize =
         Ops::Base::CeilAlign(static_cast<int64_t>(expertPerCoreMax * sizeof(int32_t)), static_cast<int64_t>(ALIGN_32));
 
-    // 确定每个 send batch 的 route item 数及 batch 总数
-    sendRouteItemsPerBatch_ = MAX_SEND_ROUTE_ITEMS_PER_BATCH;
-    if (sendTotalNum_ < static_cast<uint64_t>(sendRouteItemsPerBatch_)) {
-        sendRouteItemsPerBatch_ = static_cast<int32_t>(sendTotalNum_);
-    }
-    sendRouteItemsPerBatch_ = static_cast<int32_t>(
-        Ops::Base::CeilAlign(static_cast<int64_t>(sendRouteItemsPerBatch_), static_cast<int64_t>(ALIGN_256)));
-    sendRouteBatchCount_ =
-        static_cast<int32_t>(Ops::Base::CeilDiv(sendTotalNum_, static_cast<uint64_t>(sendRouteItemsPerBatch_)));
+    uint32_t fixedBufferBytes =
+        resetTensorSize + mxTempTensorSize + 2 * xOutTensorSize + 2 * xInAlignSize + sendCntAccSize;
+    bufferConfig = CalcSendMaskBufferConfig(fixedBufferBytes, static_cast<uint32_t>(params_.tilingData->ubSize));
+    sendRouteItemsPerBatch_ = bufferConfig.routeItemsPerBatch;
+    sendRouteBatchCount_ = bufferConfig.routeBatchCount;
 
-    // 按既定顺序落地址
+    // 按既定顺序落地址。routeItemsPerBatch 按 256 个 item 对齐，因此两个 int32 tensor 均天然满足 256B 对齐。
     uint32_t topkIdsTensorAddr = 0;
     uint32_t topkIdsTensorSize =
-        Ops::Base::CeilAlign(static_cast<int64_t>(sendRouteItemsPerBatch_) * static_cast<int64_t>(sizeof(int32_t)),
-                             static_cast<int64_t>(ALIGN_256));
+        static_cast<uint32_t>(sendRouteItemsPerBatch_) * static_cast<uint32_t>(sizeof(int32_t));
     topkIdsTensor_ = LocalTensor<int32_t>(TPosition::VECCALC, topkIdsTensorAddr, topkIdsTensorSize / sizeof(int32_t));
 
     uint32_t resetAddrActual = topkIdsTensorAddr + topkIdsTensorSize;
@@ -511,11 +553,7 @@ MegaMoe<TemplateMegaMoeTypeFunc>::SendAndQuantBuffInit()
 
     uint32_t sendMaskAddr = xInAlignAddr2 + xInAlignSize;
     uint32_t sendGatherOutSize =
-        Ops::Base::CeilAlign(static_cast<int64_t>(sendRouteItemsPerBatch_) * static_cast<int64_t>(sizeof(int32_t)),
-                             static_cast<int64_t>(ALIGN_256));
-    uint32_t bytesAfterMaskBuffers = sendGatherOutSize + sendCntAccSize;
-    bufferConfig = CalcSendMaskBufferConfig(sendMaskAddr, bytesAfterMaskBuffers,
-                                            static_cast<uint32_t>(params_.tilingData->ubSize));
+        static_cast<uint32_t>(sendRouteItemsPerBatch_) * static_cast<uint32_t>(sizeof(int32_t));
 
     uint32_t sendMaskTotalBytes = static_cast<uint32_t>(bufferConfig.bufferCount) * bufferConfig.bufferBytes;
     sendMaskTensor_ = LocalTensor<uint8_t>(TPosition::VECCALC, sendMaskAddr, sendMaskTotalBytes);

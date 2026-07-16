@@ -285,11 +285,6 @@ constexpr uint32_t UNPERMUTE_WEIGHT_ALIGNMENT_RESERVE_BYTES = 2 * ALIGN_32;
 constexpr uint32_t DEQUANT_BF16_SCALE_EXPANSION = 2U;
 constexpr uint32_t DEQUANT_FP32_SCALE_EXPANSION = 4U;
 
-// SendMaskCal 使用 MTE3_V 的 EVENT_ID0~EVENT_ID5 管理 mask push ring。
-// 最低保留双 buffer 兼容原有流水，最多 6 个 buffer；实际数量由 SendAndQuantBuffInit 按剩余 UB 反推。
-constexpr int32_t MIN_SEND_MASK_BUFFER_COUNT = 2;
-constexpr int32_t MAX_SEND_MASK_BUFFER_COUNT = 6;
-
 // Recv route batch 上限只由 DispatchBuffInit 的 UB 布局约束。Brecv 表示每个 recv batch 的 route item 数，
 // W=worldSize，E=expertPerRank，D=DISPATCH_BUFFER_NUM：
 //   recvVariableBytes(Brecv) = Brecv / 8 + 2 * Brecv * sizeof(int32_t) = 65 * Brecv / 8；
@@ -299,17 +294,34 @@ constexpr int32_t MAX_SEND_MASK_BUFFER_COUNT = 6;
 // DispatchBuffInit、DISPATCH_BUFFER_NUM 或 k/worldSize/expert 上限，只需重新计算 recv 上限。
 constexpr int32_t MAX_RECV_ROUTE_ITEMS_PER_BATCH = 12288;
 
-// Send route batch 上限只由 SendAndQuantBuffInit 的 UB 布局约束。Bsend 表示每个 send batch 的 route item 数：
-//   sendVariableBytes(Bsend) = 2 * Bsend * sizeof(int32_t) + 2 * (Bsend / 8) = 33 * Bsend / 4；
-//   sendFixedBytes = resetTensorBytes + 2048 + 2 * xOutTensorBytes + 2 * xInTensorBytes
-//                    + sendCntAccBytes + 2 * 32；末尾的 2 * 32 是两个 mask buffer 的 count 尾部；
-//   sendFixedBytes + sendVariableBytes(Bsend) <= 248KB。
-// 12288 按 k=8192 和 send fixedBytes 的最坏合法参数验证。Bsend 须向下对齐到 ALIGN_256；若修改
-// SendAndQuantBuffInit 或其 k/worldSize/expert/reset 参数上限，只需重新计算 send 上限。
-constexpr int32_t MAX_SEND_ROUTE_ITEMS_PER_BATCH = 12288;
+// Send route batch 基准用于先选择 mask buffer 数量，再固定 buffer 数反推最终 batch。Bsend 表示基准 batch
+// 的 route item 数，N 表示 mask buffer 数：
+//   sendVariableBytes(Bsend, N) = 2 * Bsend * sizeof(int32_t) + N * (Bsend / 8 + 32)；
+//   sendFixedBytes = resetTensorBytes + 2048 + 2 * xOutTensorBytes + 2 * xInTensorBytes + sendCntAccBytes；
+//   sendFixedBytes + sendVariableBytes(Bsend, N) <= 248KB。
+//
+// 12288 的成立前提按最坏合法规格 k=8192、moeExpertNum=2048、N=6 保守验证：
+//   resetTensor                 <= 8KB；
+//   mxTempTensor                = 2KB；
+//   2 个 xOutTensor             = 2 * (8192B data + 256B scale) = 16.5KB；
+//   2 个 xInTensor              = 2 * 8192 * sizeof(bfloat16_t) = 32KB；
+//   sendCntAccTensor            <= Align32(2048 * sizeof(int32_t)) = 8KB；
+//   2 个 route int32 tensor     = 2 * 12288 * sizeof(int32_t) = 96KB；
+//   6 个 mask buffer            = 6 * (12288 / 8 + 32) = 9408B；
+//   合计 175808B，约 172KB，小于 248KB 可用 UB。
+// 因此基准 batch 在所有合法规格下至少支持双 buffer，且最坏规格也能支持当前上限 6 个 buffer。
+// 若修改 MAX_H、MAX_MOE_EXPERT_NUM、DISPATCH_RESET_BATCH、Quant buffer 布局或 mask buffer 数量上限，
+// 必须重新验证该前提。
+// 最终 batch 由 CalcSendMaskBufferConfig 使用剩余 UB 扩大，并向下对齐到 ALIGN_256。
+//
+// SendMaskCal 使用 MTE3_V 的 EVENT_ID0~EVENT_ID5 管理 mask push ring。最低保留双 buffer 兼容原有
+// 流水，最多 6 个 buffer；实际数量由 CalcSendMaskBufferConfig 按基准 batch 和剩余 UB 反推。
+constexpr int32_t MIN_SEND_MASK_BUFFER_COUNT = 2;
+constexpr int32_t MAX_SEND_MASK_BUFFER_COUNT = 6;
+constexpr int32_t BASE_SEND_ROUTE_ITEMS_PER_BATCH = 12288;
 
 // Send/Recv 均按 ALIGN_256 对齐，以满足 mask 的 32B 对齐和 DAV_3510 CompareScalar 的 256B 输入长度要求。
-// 两个上限当前数值相同只是各自预算计算后的结果，彼此独立，不要求保持相等。
+// recv 上限与 send 基准当前数值相同只是各自预算计算后的结果，彼此独立，不要求保持相等。
 
 // 大 BS dispatch 分块常量
 // DISPATCH_RESET_BATCH: ResetFlagList 分批清零的粒度（int32 个数）。
