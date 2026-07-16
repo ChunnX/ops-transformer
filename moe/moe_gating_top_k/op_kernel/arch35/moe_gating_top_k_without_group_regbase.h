@@ -39,9 +39,9 @@ constexpr int64_t SINGLE_EXPERT_FALLBACK_BATCH = 512;
 constexpr int64_t WG_REPEAT_BYTES = 256;
 constexpr int64_t WG_REPEAT_BLOCKS = 8;
 constexpr MicroAPI::DivSpecificMode WG_DIV_MODE = {MicroAPI::MaskMergeMode::ZEROING, true};
-static constexpr MicroAPI::CastTrait WG_CAST_FP32_TO_I32 = {MicroAPI::RegLayout::ZERO, MicroAPI::SatMode::NO_SAT,
+static constexpr MicroAPI::CastTrait WG_CAST_FP32_TO_I32 = {MicroAPI::RegLayout::UNKNOWN, MicroAPI::SatMode::SAT,
                                                              MicroAPI::MaskMergeMode::ZEROING,
-                                                             RoundMode::CAST_TRUNC};
+                                                             RoundMode::CAST_RINT};
 
 template <typename T>
 class MoeGatingTopKWithoutGroupRegbase {
@@ -654,8 +654,8 @@ __aicore__ inline void MoeGatingTopKWithoutGroupRegbase<T>::ProcessSmallExpertK1
                                 ops::LoadOneTensorForDtypeT<T>(biasAddr, vregBiasVal, pregRow, e);
                                 MicroAPI::Add(vregNorm, vregNorm, vregBiasVal, pregRow);
                             }
-                            MicroAPI::DataCopy(vregMax, maxAddr + rowOffset, pregRow);
-                            MicroAPI::DataCopy(vregArgmax, argmaxAddr + rowOffset, pregRow);
+                            ops::LoadOneTensorForDtypeT<float>(maxAddr, vregMax, pregRow, rowOffset);
+                            ops::LoadOneTensorForDtypeT<float>(argmaxAddr, vregArgmax, pregRow, rowOffset);
                             MicroAPI::Compare<float, CMPMODE::GT>(pregCmp, vregNorm, vregMax, pregRow);
                             MicroAPI::Select<float>(vregMax, vregNorm, vregMax, pregCmp);
                             MicroAPI::Select<float>(vregArgmax, vregE, vregArgmax, pregCmp);
@@ -711,8 +711,8 @@ __aicore__ inline void MoeGatingTopKWithoutGroupRegbase<T>::ProcessSmallExpertK1
                                 ops::LoadOneTensorForDtypeT<T>(biasAddr, vregBiasVal, pregRow, e);
                                 MicroAPI::Add(vregNorm, vregNorm, vregBiasVal, pregRow);
                             }
-                            MicroAPI::DataCopy(vregMax, maxAddr + rowOffset, pregRow);
-                            MicroAPI::DataCopy(vregArgmax, argmaxAddr + rowOffset, pregRow);
+                            ops::LoadOneTensorForDtypeT<float>(maxAddr, vregMax, pregRow, rowOffset);
+                            ops::LoadOneTensorForDtypeT<float>(argmaxAddr, vregArgmax, pregRow, rowOffset);
                             MicroAPI::Compare<float, CMPMODE::GT>(pregCmp, vregNorm, vregMax, pregRow);
                             MicroAPI::Select<float>(vregMax, vregNorm, vregMax, pregCmp);
                             MicroAPI::Select<float>(vregArgmax, vregE, vregArgmax, pregCmp);
@@ -780,8 +780,8 @@ __aicore__ inline void MoeGatingTopKWithoutGroupRegbase<T>::ProcessSmallExpertK1
                                 ops::LoadOneTensorForDtypeT<T>(biasAddr, vregBiasVal, pregRow, e);
                                 MicroAPI::Add(vregNorm, vregNorm, vregBiasVal, pregRow);
                             }
-                            MicroAPI::DataCopy(vregMax, maxAddr + rowOffset, pregRow);
-                            MicroAPI::DataCopy(vregArgmax, argmaxAddr + rowOffset, pregRow);
+                            ops::LoadOneTensorForDtypeT<float>(maxAddr, vregMax, pregRow, rowOffset);
+                            ops::LoadOneTensorForDtypeT<float>(argmaxAddr, vregArgmax, pregRow, rowOffset);
                             MicroAPI::Compare<float, CMPMODE::GT>(pregCmp, vregNorm, vregMax, pregRow);
                             MicroAPI::Select<float>(vregMax, vregNorm, vregMax, pregCmp);
                             MicroAPI::Select<float>(vregArgmax, vregE, vregArgmax, pregCmp);
@@ -805,15 +805,15 @@ __aicore__ inline void MoeGatingTopKWithoutGroupRegbase<T>::ProcessSmallExpertK1
                 for (uint16_t i = 0; i < vfLoopNum; i++) {
                     pregRow = MicroAPI::UpdateMask<float>(rowsInBatchU32);
                     uint32_t rowOffset = i * WG_VL_FLOAT_SIZE;
-                    MicroAPI::DataCopy(vregMax, maxAddr + rowOffset, pregRow);
+                    ops::LoadOneTensorForDtypeT<float>(maxAddr, vregMax, pregRow, rowOffset);
                     MicroAPI::ReduceSum(vregSum, vregMax, pregRow);
                     MicroAPI::Adds(vregSum, vregSum, eps_, pregRow);
                     MicroAPI::Duplicate(vregSumBcast, vregSum, pregRow);
                     MicroAPI::Div(vregOut, vregMax, vregSumBcast, pregRow);
                     MicroAPI::Muls(vregOut, vregOut, routedScalingFactor_, pregRow);
-                    MicroAPI::Cast<int32_t, float, WG_CAST_FP32_TO_I32>(vregArgmaxInt,
-                                                                        (__local_mem__ float *)argmaxAddr + rowOffset,
-                                                                        pregRow);
+                    RegTensor<float> vregArgmax;
+                    ops::LoadOneTensorForDtypeT<float>(argmaxAddr, vregArgmax, pregRow, rowOffset);
+                    MicroAPI::Cast<int32_t, float, WG_CAST_FP32_TO_I32>(vregArgmaxInt, vregArgmax, pregRow);
                     ops::StoreOneTensorForDtypeT<T>(outputAddr, vregOut, pregRow, rowOffset);
                     MicroAPI::DataCopy(expertIdxAddr + rowOffset, vregArgmaxInt, pregRow);
                 }
@@ -824,15 +824,15 @@ __aicore__ inline void MoeGatingTopKWithoutGroupRegbase<T>::ProcessSmallExpertK1
                 RegTensor<float> vregMax;
                 RegTensor<float> vregOut;
                 RegTensor<int32_t> vregArgmaxInt;
+                RegTensor<float> vregArgmax;
                 MicroAPI::MaskReg pregRow = MicroAPI::CreateMask<float>();
                 for (uint16_t i = 0; i < vfLoopNum; i++) {
                     pregRow = MicroAPI::UpdateMask<float>(rowsInBatchU32);
                     uint32_t rowOffset = i * WG_VL_FLOAT_SIZE;
-                    MicroAPI::DataCopy(vregMax, maxAddr + rowOffset, pregRow);
+                    ops::LoadOneTensorForDtypeT<float>(maxAddr, vregMax, pregRow, rowOffset);
                     MicroAPI::Muls(vregOut, vregMax, routedScalingFactor_, pregRow);
-                    MicroAPI::Cast<int32_t, float, WG_CAST_FP32_TO_I32>(vregArgmaxInt,
-                                                                        (__local_mem__ float *)argmaxAddr + rowOffset,
-                                                                        pregRow);
+                    ops::LoadOneTensorForDtypeT<float>(argmaxAddr, vregArgmax, pregRow, rowOffset);
+                    MicroAPI::Cast<int32_t, float, WG_CAST_FP32_TO_I32>(vregArgmaxInt, vregArgmax, pregRow);
                     ops::StoreOneTensorForDtypeT<T>(outputAddr, vregOut, pregRow, rowOffset);
                     MicroAPI::DataCopy(expertIdxAddr + rowOffset, vregArgmaxInt, pregRow);
                 }
