@@ -150,7 +150,7 @@ ge::graphStatus QuantMatmulAllReduceTilingA5::SetMc2Hcomm()
 {
     bool isUseA2APath = mc2tiling::IsUseA2APath(args_.rankDim, npuArch_);
     const uint64_t k = MatmulAllReduceTilingBase::GetKValue();
-    if (k >= QUANT_A2APATH_CRITICAL_K) {
+    if (k >= QUANT_A2APATH_CRITICAL_K && mc2tiling::Is8P(args_.rankDim, npuArch_)) {
         isUseA2APath = false;
     }
     OP_TILING_CHECK(
@@ -322,7 +322,7 @@ uint64_t QuantMatmulAllReduceTilingA5::GetTilingKey() const
     bool scenarioIsMXFP8 = (scenario_ == AllReduceScenario::MXFP8); // 区分MXFP8 和 FP8HIF8场景
     bool isUseA2APath = mc2tiling::IsUseA2APath(args_.rankDim, npuArch_);
     const uint64_t k = MatmulAllReduceTilingBase::GetKValue();
-    if (k >= QUANT_A2APATH_CRITICAL_K) {
+    if (k >= QUANT_A2APATH_CRITICAL_K && mc2tiling::Is8P(args_.rankDim, npuArch_)) {
         isUseA2APath = false;
     }
     bool isA2ARSAG = (isUseA2APath && (commDtype == COMMDTPYE_DEFAULT));
@@ -468,7 +468,7 @@ ge::graphStatus QuantMatmulAllReduceTilingA5::GetWorkspaceSize()
                         static_cast<uint64_t>(args_.outputDtypeSize);
     bool isUseA2APath = mc2tiling::IsUseA2APath(args_.rankDim, npuArch_);
     const uint64_t k = MatmulAllReduceTilingBase::GetKValue();
-    if (k >= QUANT_A2APATH_CRITICAL_K) {
+    if (k >= QUANT_A2APATH_CRITICAL_K && mc2tiling::Is8P(args_.rankDim, npuArch_)) {
         isUseA2APath = false;
     }
     if (isUseA2APath && !MutableRCSTilingData().isInputCommQuantScale) {
@@ -1049,7 +1049,7 @@ CutResult QuantMatmulAllReduceTilingA5::GetTilingResult()
     } else if (mc2tiling::Is8P(args_.rankDim, npuArch_)) {
         const uint64_t k = MatmulAllReduceTilingBase::GetKValue();
         KernelType kernelType;
-        if (k >= QUANT_A2APATH_CRITICAL_K) {
+        if (k >= QUANT_A2APATH_CRITICAL_K && !param.isInputCommQuantScale) {
             kernelType = KernelType::ALL_REDUCE;
         } else {
             kernelType = KernelType::ALL_REDUCE_VIA_TWO_SHOT;
