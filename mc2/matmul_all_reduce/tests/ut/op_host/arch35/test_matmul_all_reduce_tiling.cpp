@@ -45,7 +45,7 @@ std::vector<gert::TilingContextPara::OpAttr> MakeArch35DefaultAttrs(bool isTrans
         {"group_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(groupSize)},
         {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int64_t>(ge::DT_UNDEFINED))},
         {"comm_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-        {"comm_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("")}
+        {"comm_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("ai_cpu")}
     };
 }
 
@@ -102,7 +102,7 @@ TEST_P(MatmulAllReduceArch35TilingTest, param)
             {"group_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.group_size)},
             {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.y_dtype)},
             {"comm_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.comm_quant_mode)},
-            {"comm_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>(param.comm_mode)}
+            {"comm_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("ccu")}
         },
         param.inputInstance, param.outputInstance,
         &compileInfo,
@@ -262,7 +262,7 @@ TEST_F(MatmulAllReduceArch35TilingExtraTest, A16W8PerGroupTailM)
         {"group_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
         {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int64_t>(ge::DT_UNDEFINED))},
         {"comm_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-        {"comm_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("")}
+        {"comm_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("ai_cpu")}
     };
     gert::TilingContextPara tilingContextPara(
         "MatmulAllReduce", inputs, outputs, attrs,

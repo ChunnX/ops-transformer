@@ -15,12 +15,21 @@
 #ifndef FLASH_ATTEN_BLOCK_CUBE_NOQUANT_GQA_H_
 #define FLASH_ATTEN_BLOCK_CUBE_NOQUANT_GQA_H_
 
+#if __has_include("../../../common/op_kernel/offset_calculator.h")
 #include "../../../common/op_kernel/offset_calculator.h"
 #include "../../../common/op_kernel/matmul.h"
-#include "../../../common/op_kernel/FixpipeOut.h"         // PFA_CFG_ROW_MAJOR_UB
-#include "../../../common/op_kernel/memory_copy_arch35.h" // SeqLenFromTensorList
+#include "../../../common/op_kernel/FixpipeOut.h"
+#include "../../../common/op_kernel/memory_copy_arch35.h"
 #include "../../../common/op_kernel/arch35/infer_flash_attention_comm.h"
 #include "../../../common/op_kernel/arch35/flash_attention_score_common_regbase.h"
+#else
+#include "../../common/offset_calculator.h"
+#include "../../common/matmul.h"
+#include "../../common/FixpipeOut.h"
+#include "../../common/memory_copy_arch35.h"
+#include "../../common/arch35/infer_flash_attention_comm.h"
+#include "../../common/arch35/flash_attention_score_common_regbase.h"
+#endif
 #include "kernel_operator_list_tensor_intf.h"
 using namespace AscendC;
 using namespace AscendC::Impl::Detail;
@@ -172,21 +181,21 @@ public:
     static constexpr GmFormat Q_FORMAT = GetQueryGmFormat<layout>();
     static constexpr GmFormat KV_FORMAT = GetKVGmFormat<layout, KvLayoutType, PAGE_ATTENTION>();
 
-    using Q_T = INPUT_T;
-    using KV_T = INPUT_T;
-    using MM_T = T;
-    using mm2ResPos = typename std::conditional<bmm2Write2Ub, Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>,
-                                                Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_FORWARD>>::type;
-
-    using MM1_DBUF_T = Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>;
-    using MM2_ABUF_POLICY_T = BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD>;
-    using MM2_ABUF_T = Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD>;
-
     using L1KvType = typename KVL1BuffSel<s2BaseSize, dBaseSize>::Type;
     using L1QType = typename QL1BuffSel<dBaseSize>::Type;
     using L0AType = typename L0ABuffSel::Type;
     using L0BType = typename L0BBuffSel<s2BaseSize, dBaseSize>::Type;
     using L0CType = typename L0CBuffSel<mBaseSize, s2BaseSize, dVBaseSize>::Type;
+
+    using Q_T = INPUT_T;
+    using KV_T = INPUT_T;
+    using MM_T = T;
+    using mm2ResPos = typename std::conditional<bmm2Write2Ub, Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>,
+                                                 Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_FORWARD>>::type;
+
+    using MM1_DBUF_T = Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>;
+    using MM2_ABUF_POLICY_T = BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD>;
+    using MM2_ABUF_T = Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD>;
 
     using ConstInfoX = ConstInfo_t<FiaKernelType::NO_QUANT>;
 
@@ -217,6 +226,15 @@ public:
                                         BuffersPolicyDB<BufferType::L1>>;
     };
 
+    /* ============确定L0C的类型============= */
+    template <uint32_t mBaseSize, uint32_t s2BaseSize, uint32_t dVBaseSize>
+    struct L0CBuffSel {
+        using Type = std::conditional_t<(mBaseSize * s2BaseSize * FLOAT_BYTES <= (L0C_SIZE * KB_TO_BYTES) / NUM_4 &&
+                                         mBaseSize * dVBaseSize * FLOAT_BYTES <= (L0C_SIZE * KB_TO_BYTES) / NUM_4),
+                                        BuffersPolicy4buff<BufferType::L0C>,
+                                        BuffersPolicyDB<BufferType::L0C>>;
+    };
+
     /* ============确定L0A的类型============= */
     struct L0ABuffSel {
         using Type = BuffersPolicyDB<BufferType::L0A>;
@@ -227,15 +245,6 @@ public:
         using Type = std::conditional_t<(s2BaseSize == 256 && dBaseSize > 128),
                                         BuffersPolicySingleBuffer<BufferType::L0B>,
                                         BuffersPolicyDB<BufferType::L0B>>;
-    };
-
-    /* ============确定L0C的类型============= */
-    template <uint32_t mBaseSize, uint32_t s2BaseSize, uint32_t dVBaseSize>
-    struct L0CBuffSel {
-        using Type = std::conditional_t<(mBaseSize * s2BaseSize * FLOAT_BYTES <= (L0C_SIZE * KB_TO_BYTES) / NUM_4 &&
-                                         mBaseSize * dVBaseSize * FLOAT_BYTES <= (L0C_SIZE * KB_TO_BYTES) / NUM_4),
-                                        BuffersPolicy4buff<BufferType::L0C>,
-                                        BuffersPolicyDB<BufferType::L0C>>;
     };
 
     static constexpr uint32_t mBaseSize = (uint32_t)s1TemplateType;
@@ -253,12 +262,6 @@ public:
     static constexpr GmFormat Q_FORMAT = GetQueryGmFormat<layout>();
     static constexpr GmFormat KV_FORMAT = GetKVGmFormat<layout, KvLayoutType, PAGE_ATTENTION>();
 
-    using Q_T = INPUT_T;
-    using KV_T = INPUT_T;
-    using MM_T = T;
-    using mm2ResPos = typename std::conditional<bmm2Write2Ub, Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>,
-                                                Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_FORWARD>>::type;
-
     using MM1_DBUF_T = Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>;
     using MM2_ABUF_POLICY_T = BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD>;
     using MM2_ABUF_T = Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD>;
@@ -268,6 +271,12 @@ public:
     using L0AType = typename L0ABuffSel::Type;
     using L0BType = typename L0BBuffSel<s2BaseSize, dBaseSize>::Type;
     using L0CType = typename L0CBuffSel<mBaseSize, s2BaseSize, dVBaseSize>::Type;
+
+    using Q_T = INPUT_T;
+    using KV_T = INPUT_T;
+    using MM_T = T;
+    using mm2ResPos = typename std::conditional<bmm2Write2Ub, Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>,
+                                                 Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_FORWARD>>::type;
 
     using ConstInfoX = ConstInfo_t<FiaKernelType::NO_QUANT>;
 
@@ -388,9 +397,9 @@ public:
         valuePtr = value;
         if (constInfo.isKvContinuous) {
             InitKVBuffer(constInfo.bSize, constInfo.s2Size, constInfo.n2Size, constInfo.blockSize, constInfo.dSize,
-                         keyGm, key);
+                         keyGm, key, constInfo.keyBnStride, constInfo.keyN2Stride);
             InitKVBuffer(constInfo.bSize, constInfo.s2Size, constInfo.n2Size, constInfo.blockSize, constInfo.dSizeV,
-                         valueGm, value);
+                         valueGm, value, constInfo.valueBnStride, constInfo.valueN2Stride);
         }
     }
 
@@ -407,18 +416,18 @@ public:
 
     __aicore__ inline void InitKVBuffer(uint32_t batchSize, uint32_t kvSeqSize, uint32_t n2Size,
                                         uint32_t kvCacheBlockSize, uint32_t headDim, FaGmTensorKV &kvGmTensor,
-                                        __gm__ uint8_t *gm)
+                                        __gm__ uint8_t *gm, uint64_t bnStride = 0, uint64_t n2Stride = 0)
     {
         kvGmTensor.gmTensor.SetGlobalBuffer((__gm__ KV_T *)gm);
 
         if constexpr (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_PA_BNBD) {
             kvGmTensor.offsetCalculator.Init(n2Size, kvCacheBlockSize, headDim, blockTableGm,
-                                             constInfo.maxBlockNumPerBatch);
+                                             constInfo.maxBlockNumPerBatch, bnStride, n2Stride);
         } else if constexpr (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_PA_NZ) {
             uint32_t d0 = 32 / sizeof(KV_T);
             uint32_t d1 = headDim / d0;
             kvGmTensor.offsetCalculator.Init(n2Size, kvCacheBlockSize, d1, d0, blockTableGm,
-                                             constInfo.maxBlockNumPerBatch);
+                                             constInfo.maxBlockNumPerBatch, bnStride, n2Stride);
         } else if constexpr (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_TND) {
             kvGmTensor.offsetCalculator.Init(n2Size, headDim, *this->kvSeqParserPtr);
         } else if constexpr (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_BNSD) {
@@ -427,10 +436,8 @@ public:
         }
     }
 
-    __aicore__ inline void AllocEventID()
-    {
-        // InitBuffers阶段已完成eventId申请和SetFlag，这里为空实现
-    }
+    // InitBuffers阶段已完成eventId申请和SetFlag，这里为空实现
+    __aicore__ inline void AllocEventID() {}
 
     __aicore__ inline void FreeEventID()
     {
@@ -443,8 +450,8 @@ public:
     }
 
     // copy query with full s1g and split D
-    __aicore__ inline void CopyQuerySlice(const LocalTensor<Q_T> &dstTensor, uint32_t dOffset, uint32_t dRealSize,
-                                          RunInfoX &runInfo)
+    __aicore__ inline void CopyQuerySlice(const LocalTensor<Q_T> &dstTensor, uint32_t dOffset,
+                                          uint32_t dRealSize, RunInfoX &runInfo)
     {
         uint32_t nopeDealSize = dRealSize;
 
@@ -491,15 +498,15 @@ public:
     __aicore__ inline void CopyValueSlice(const LocalTensor<KV_T> &dstTensor, uint32_t dOffset, uint32_t dRealSize,
                                           RunInfoX &runInfo)
     {
-        FaL1Tensor<KV_T, L1Format::NZ> l1Tensor{.tensor = dstTensor,
-                                                .rowCount = AttentionCommon::Align(runInfo.actSingleLoopS2Size, 16U)};
-
         GmKvCoord gmCoord{.bIdx = constInfo.isKvContinuous ? runInfo.bIdx : 0,
                           .n2Idx = runInfo.n2Idx,
                           .s2Idx = runInfo.s2Idx,
                           .dIdx = dOffset,
                           .s2DealSize = runInfo.actSingleLoopS2Size,
                           .dDealSize = dRealSize};
+
+        FaL1Tensor<KV_T, L1Format::NZ> l1Tensor{.tensor = dstTensor,
+                                                .rowCount = AttentionCommon::Align(runInfo.actSingleLoopS2Size, 16U)};
         copyKvGmToL1(l1Tensor, valueGm, gmCoord);
     }
 
@@ -706,27 +713,27 @@ public:
     /* 针对useDn=true, S1Base=128, S2Base = 128, 128 < D <= 256场景，L1全载，左矩阵驻留 + L0切D + L0Db*/
     __aicore__ inline void IterateBmm1DnSplitK(MM1_DBUF_T &mm1ResBuf, RunInfoX &runInfo)
     {
-        Buffer<BufferType::L1> mm1B;
+        Buffer<BufferType::L1> mm1BBuffer;
         if (unlikely(runInfo.isFirstS2Loop)) {
-            mm1B = l1QBuffers.Get();
-            mm1B.Wait<HardEvent::MTE1_MTE2>();
-            LocalTensor<Q_T> mm1BTensor = mm1B.GetTensor<Q_T>();
+            mm1BBuffer = l1QBuffers.Get();
+            mm1BBuffer.Wait<HardEvent::MTE1_MTE2>();
+            LocalTensor<Q_T> mm1BTensor = mm1BBuffer.GetTensor<Q_T>();
             CopyQueryTile(mm1BTensor, runInfo);
-            mm1B.Set<HardEvent::MTE2_MTE1>();
+            mm1BBuffer.Set<HardEvent::MTE2_MTE1>();
         } else {
-            mm1B = l1QBuffers.GetPre();
-            mm1B.Set<HardEvent::MTE2_MTE1>();
+            mm1BBuffer = l1QBuffers.GetPre();
+            mm1BBuffer.Set<HardEvent::MTE2_MTE1>();
         }
 
-        Buffer<BufferType::L1> mm1A = l1KBuffers.Get();
-        mm1A.Wait<HardEvent::MTE1_MTE2>();
-        LocalTensor<KV_T> mm1ATensor = mm1A.GetTensor<KV_T>();
+        Buffer<BufferType::L1> mm1ABuffer = l1KBuffers.Get();
+        mm1ABuffer.Wait<HardEvent::MTE1_MTE2>();
+        LocalTensor<KV_T> mm1ATensor = mm1ABuffer.GetTensor<KV_T>();
 
         CopyKeyTile(mm1ATensor, runInfo);
 
-        mm1A.Set<HardEvent::MTE2_MTE1>();
-        mm1A.Wait<HardEvent::MTE2_MTE1>();
-        mm1B.Wait<HardEvent::MTE2_MTE1>();
+        mm1ABuffer.Set<HardEvent::MTE2_MTE1>();
+        mm1ABuffer.Wait<HardEvent::MTE2_MTE1>();
+        mm1BBuffer.Wait<HardEvent::MTE2_MTE1>();
 
         Buffer<BufferType::L0C> mm1ResL0C = mmL0CBuffers.Get();
         mm1ResL0C.Wait<HardEvent::FIX_M>();
@@ -734,13 +741,13 @@ public:
         MMParam param = MakeMMParam((uint32_t)runInfo.actSingleLoopS2Size, (uint32_t)runInfo.actMSize,
                                     (uint32_t)(constInfo.dSize), false, true);
 
-        MatmulK<KV_T, Q_T, T, 128, 128, 128, ABLayout::MK, ABLayout::KN>(mm1A.GetTensor<KV_T>(),
-            mm1B.GetTensor<Q_T>(), mmL0ABuffers, mmL0BBuffers, mm1ResL0C.GetTensor<T>(), param);
+        MatmulK<KV_T, Q_T, T, 128, 128, 128, ABLayout::MK, ABLayout::KN>(mm1ABuffer.GetTensor<KV_T>(),
+            mm1BBuffer.GetTensor<Q_T>(), mmL0ABuffers, mmL0BBuffers, mm1ResL0C.GetTensor<T>(), param);
 
         if (unlikely(runInfo.isLastS2Loop)) {
-            mm1B.Set<HardEvent::MTE1_MTE2>();
+            mm1BBuffer.Set<HardEvent::MTE1_MTE2>();
         }
-        mm1A.Set<HardEvent::MTE1_MTE2>();
+        mm1ABuffer.Set<HardEvent::MTE1_MTE2>();
         mm1ResL0C.Set<HardEvent::M_FIX>();
         mm1ResL0C.Wait<HardEvent::M_FIX>();
 
@@ -852,8 +859,7 @@ public:
         uint32_t realN = baseNSize;
         for (uint32_t nIdx = 0; nIdx < nLoops; ++nIdx) {
             if (nIdx == nLoops - 1) {
-                uint32_t tailSize = (uint32_t)constInfo.dSizeV % baseNSize;
-                realN = tailSize ? tailSize : baseNSize;
+                realN = constInfo.dSizeV - nIdx * baseNSize;
             }
             Buffer<BufferType::L1> mm2B = l1VBuffers.Get();
             mm2B.Wait<HardEvent::MTE1_MTE2>();
@@ -927,16 +933,9 @@ public:
 
         Buffer<BufferType::L0C> mm2ResL0C = mmL0CBuffers.Get();
         mm2ResL0C.Wait<HardEvent::FIX_M>(); // 占用
-        MMParam param = {
-            (uint32_t)mBaseSize,                   // singleM 128
-            (uint32_t)constInfo.dSizeV,            // singleN 128
-            (uint32_t)runInfo.actSingleLoopS2Size, // singleK
-            useDn,                                 // isLeftTranspose
-            false                                  // isRightTranspose
-        };
-        if constexpr (!useDn) {
-            param.realM = (uint32_t)runInfo.actMSize;
-        }
+        MMParam param = MakeMMParam(mBaseSize, (uint32_t)constInfo.dSizeV,
+                                    (uint32_t)runInfo.actSingleLoopS2Size, useDn, false,
+                                    true, true, 0, useDn ? 0 : (uint32_t)runInfo.actMSize);
         mm2B.Wait<HardEvent::MTE2_MTE1>(); // 等待
 
         if constexpr ((uint32_t)dVTemplateType <= 128) {

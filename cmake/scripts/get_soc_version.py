@@ -16,9 +16,8 @@
 import argparse
 import logging
 from pathlib import Path
-from typing import List, Dict, Any, Optional
+from typing import List
 import sys
-import yaml
 from parse_changed_files import Module
 from parse_changed_files import Parser
 
@@ -28,22 +27,43 @@ class GetSocModules(Module):
         super().__init__(name=name)
 
     def get_test_options(self, f: Path) -> List[str]:
-
         def check_option_arch(path_obj: Path, option: List[str]):
             if not option:
                 return True
             if option[0] == "ascend310p":
-                ascend310p_exclude_folders = ["arch22", "arch35",
-                    "ascend910b", "ascend910_93", "ascend950"]
-                return any(folder in path_obj.parts for folder in ascend310p_exclued_folders)
+                ascend310p_exclude_folders = [
+                    "arch22",
+                    "arch35",
+                    "ascend910b",
+                    "ascend910_93",
+                    "ascend950",
+                ]
+                return any(
+                    folder in path_obj.parts for folder in ascend310p_exclued_folders
+                )
             if option[0] == "ascend910b":
-                ascend910b_exclude_folders = ["arch20", "arch31", "arch35",
-                    "ascend310p", "ascend310p"]
-                return any(folder in path_obj.parts for folder in ascend910b_exclued_folders)
+                ascend910b_exclude_folders = [
+                    "arch20",
+                    "arch31",
+                    "arch35",
+                    "ascend310p",
+                    "ascend310p",
+                ]
+                return any(
+                    folder in path_obj.parts for folder in ascend910b_exclued_folders
+                )
             if option[0] == "ascend950":
-                ascend950_exclude_folders = ["arch22", "arch20", "arch31",
-                    "ascend910b", "ascend910_93", "ascend310p"]
-                return any(folder in path_obj.parts for folder in ascend950_exclued_folders)
+                ascend950_exclude_folders = [
+                    "arch22",
+                    "arch20",
+                    "arch31",
+                    "ascend910b",
+                    "ascend910_93",
+                    "ascend310p",
+                ]
+                return any(
+                    folder in path_obj.parts for folder in ascend950_exclued_folders
+                )
             return False
 
         def is_excluded(e_f: Path, option: str):
@@ -77,17 +97,35 @@ class ParserSoc(Parser):
     规则文件、修改文件列表文件解析.
     """
 
-    _Modules: List[GetSocModules] = []         # 保存规则文件(tests/test_soc_config.yaml)内设置的模块列表
+    _Modules: List[
+        GetSocModules
+    ] = []  # 保存规则文件(tests/test_soc_config.yaml)内设置的模块列表
 
     @staticmethod
     def main() -> str:
         # 脚本运行参数注册，包括配置文件和修改文件列表
-        ps = argparse.ArgumentParser(description="Get socs according to changed files", epilog="End!")
-        ps.add_argument("-c", "--classify", required=True, nargs=1, type=Path, help="tests/test_soc_config.yaml")
-        ps.add_argument("-f", "--file", required=True, nargs=1, type=Path, help="changed files desc file.")
+        ps = argparse.ArgumentParser(
+            description="Get socs according to changed files", epilog="End!"
+        )
+        ps.add_argument(
+            "-c",
+            "--classify",
+            required=True,
+            nargs=1,
+            type=Path,
+            help="tests/test_soc_config.yaml",
+        )
+        ps.add_argument(
+            "-f",
+            "--file",
+            required=True,
+            nargs=1,
+            type=Path,
+            help="changed files desc file.",
+        )
         # 子命令行，绑定一下获取soc的函数
         sub_ps = ps.add_subparsers(help="Sub-Command")
-        p_soc = sub_ps.add_parser('get_related_soc', help="Get related soc.")
+        p_soc = sub_ps.add_parser("get_related_soc", help="Get related soc.")
         p_soc.set_defaults(func=ParserSoc.get_related_soc)
         # 处理，先获取配置文件的信息，然后是修改文件列表
         args = ps.parse_args()
@@ -105,6 +143,7 @@ class ParserSoc(Parser):
         def soc_test_list_append(soc, soc_test_option_lst):
             if soc not in soc_test_option_lst:
                 soc_test_option_lst.append(soc)
+
         soc_test_option_lst: List[str] = []
         for p in cls._ChangedPaths:
             for m in cls._Modules:
@@ -128,6 +167,7 @@ class ParserSoc(Parser):
         def ops_test_list_append(opt, ops_test_option_lst):
             if opt not in ops_test_option_lst:
                 ops_test_option_lst.append(opt)
+
         ops_test_option_lst: List[str] = []
         for p in cls._ChangedPaths:
             for m in cls._Modules:
@@ -136,8 +176,13 @@ class ParserSoc(Parser):
                     ops_test_list_append(opt, ops_test_option_lst)
         return ops_test_option_lst
 
-if __name__ == '__main__':
-    logging.basicConfig(stream=sys.stdout, format='[%(asctime)s][%(filename)s:%(lineno)d] %(message)s',
-                        datefmt='%Y-%m-%d %H:%M:%S', level=logging.INFO)
+
+if __name__ == "__main__":
+    logging.basicConfig(
+        stream=sys.stdout,
+        format="[%(asctime)s][%(filename)s:%(lineno)d] %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+        level=logging.INFO,
+    )
     result = ParserSoc.main()
     logging.info(result)

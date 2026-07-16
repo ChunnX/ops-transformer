@@ -841,17 +841,7 @@ bool CausalConv1dTiling::InferIsFnMode()
         return false;
     }
 
-    // Has query_start_loc — infer mode from shape relationship
-    // prefill varlen: x is (cu_seqlen, dim), cu_seqlen > batch (multiple tokens per segment)
-    // update varlen: x is (batch, dim), cu_seqlen == batch (one token per segment)
-    int64_t qslSize = qslShape.GetDim(0);
-    int64_t xFirstDim = xShape.GetDim(0);
-    int64_t batch = qslSize - 1;
-
-    if (xFirstDim > batch) {
-        return true; // prefill varlen
-    }
-    return false; // update varlen
+    return true; // 2D + query_start_loc => FN_VARLEN (Update uses 3D with seqLen=1)
 }
 
 // ============================================================

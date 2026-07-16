@@ -146,24 +146,24 @@ aclnnStatus CheckSingleParamQliV2(int64_t numHeadsQ, int64_t numHeadsK, int64_t 
     } else { // 校验 A5参数
         // num_heads_q 校验
         CHECK_COND(numHeadsQ >= QLI_V2_NUM_HEADS_Q_LOWER_BOUND && numHeadsQ <= QLI_V2_NUM_HEADS_Q_UPPER_BOUND,
-            ACLNN_ERR_PARAM_INVALID, "For Atlas A5, num_heads_q should be [%lld, %lld], but got %lld",
+            ACLNN_ERR_PARAM_INVALID, "For Ascend 950PR/Ascend 950DT, num_heads_q should be [%lld, %lld], but got %lld",
             QLI_V2_NUM_HEADS_Q_LOWER_BOUND, QLI_V2_NUM_HEADS_Q_UPPER_BOUND, numHeadsQ);
         // topk 校验
         CHECK_COND(topk >= QLI_V2_TOPK_LOWER_BOUND && topk <= QLI_V2_A5_TOPK_UPPER_BOUND, ACLNN_ERR_PARAM_INVALID,
-            "For Atlas A5, topk should be [%lld, %lld], but got %lld",
+            "For Ascend 950PR/Ascend 950DT, topk should be [%lld, %lld], but got %lld",
             QLI_V2_TOPK_LOWER_BOUND, QLI_V2_A5_TOPK_UPPER_BOUND, topk);
         // quant_mode 校验
         CHECK_COND((quantMode == QLI_V2_QUANT_MODE_1) || (quantMode == QLI_V2_QUANT_MODE_2) ||
             (quantMode == QLI_V2_QUANT_MODE_4), ACLNN_ERR_PARAM_INVALID,
-            "For Atlas A5, quant_mode should be %lld/%lld/%lld, but got %lld",
+            "For Ascend 950PR/Ascend 950DT, quant_mode should be %lld/%lld/%lld, but got %lld",
             QLI_V2_QUANT_MODE_1, QLI_V2_QUANT_MODE_2, QLI_V2_QUANT_MODE_4, quantMode);
         // cmp_ratio 校验
         CHECK_COND((cmpRatio >= QLI_V2_CMP_RATIO_LOWER_BOUND) && (cmpRatio <= QLI_V2_CMP_RATIO_UPPER_BOUND),
-            ACLNN_ERR_PARAM_INVALID, "For Atlas A5, cmp_ratio should be between [%lld, %lld], but got %lld",
-            QLI_V2_CMP_RATIO_LOWER_BOUND, QLI_V2_CMP_RATIO_UPPER_BOUND, cmpRatio);
+            ACLNN_ERR_PARAM_INVALID, "For Ascend 950PR/Ascend 950DT, cmp_ratio should be between [%lld, %lld], "
+            "but got %lld", QLI_V2_CMP_RATIO_LOWER_BOUND, QLI_V2_CMP_RATIO_UPPER_BOUND, cmpRatio);
         CHECK_COND((strcmp(layoutKOptional, "TND") == 0) || (strcmp(layoutKOptional, "BSND") == 0) || \
             (strcmp(layoutKOptional, "PA_BBND") == 0), ACLNN_ERR_PARAM_INVALID,
-            "For Atlas A5, layout_k must be TND/BSND/PA_BBND, but got %s", layoutKOptional);
+            "For Ascend 950PR/Ascend 950DT, layout_k must be TND/BSND/PA_BBND, but got %s", layoutKOptional);
     }
     // 核心数校验
     CHECK_COND(aicCoreNum > 0, ACLNN_ERR_PARAM_INVALID, "AIC num should be larger than 0, but got %u", aicCoreNum);
@@ -285,6 +285,20 @@ aclnnStatus CheckConsistencyQliV2(int64_t batchSize, const aclTensor *cuSeqlensQ
     CHECK_COND(queryBatchSize == keyBatchSize, ACLNN_ERR_PARAM_INVALID,
         "The batch_size obtained from query should be the same as that obtained from key, but got %lld and %lld",
         queryBatchSize, keyBatchSize);
+    // 校验TND场景q维度一致性
+    if (strcmp(layoutQOptional, "TND") == 0 && IsTensorExistQliV2(sequsedQOptional)) {
+        int64_t cuSeqlensQBatchSize = cuSeqlensQOptional->GetViewShape().GetDim(0) - 1;
+        CHECK_COND(cuSeqlensQBatchSize == queryBatchSize, ACLNN_ERR_PARAM_INVALID,
+            "When layout_q is TND and seqused_q is passed, The batch_size obtained from cu_seqlens_q should be the "
+            "same as that obtained from seqused_q, but got %lld and %lld", cuSeqlensQBatchSize, queryBatchSize);
+    }
+    // 校验TND场景k维度一致性
+    if (strcmp(layoutKOptional, "TND") == 0 && IsTensorExistQliV2(sequsedKOptional)) {
+        int64_t cuSeqlensKBatchSize = cuSeqlensKOptional->GetViewShape().GetDim(0) - 1;
+        CHECK_COND(cuSeqlensKBatchSize == keyBatchSize, ACLNN_ERR_PARAM_INVALID,
+            "When layout_k is TND and seqused_k is passed, The batch_size obtained from cu_seqlens_k should be the "
+            "same as that obtained from seqused_k, but got %lld and %lld", cuSeqlensKBatchSize, keyBatchSize);
+    }
     // 校验 cmp_residual_k 元素数
     if (IsTensorExistQliV2(cmpResidualKOptional)) {
         auto cmpResidualKBatch = cmpResidualKOptional->GetViewShape().GetDim(0);

@@ -27,10 +27,10 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用`aclnnWeightQuantMatmulAllReduceGetWorkspaceSizeV2`接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用`aclnnWeightQuantMatmulAllReduceV2`接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用`aclnnWeightQuantMatmulAllReduceV2GetWorkspaceSize`接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用`aclnnWeightQuantMatmulAllReduceV2`接口执行计算。
 
 ```cpp
-aclnnStatus aclnnWeightQuantMatmulAllReduceGetWorkspaceSizeV2(
+aclnnStatus aclnnWeightQuantMatmulAllReduceV2GetWorkspaceSize(
     const aclTensor  *x1,
     const aclTensor  *x2,
     const aclTensor  *bias,
@@ -56,7 +56,7 @@ aclnnStatus aclnnWeightQuantMatmulAllReduceV2(
     const aclrtStream stream)
 ```
 
-## aclnnWeightQuantMatmulAllReduceGetWorkspaceSizeV2
+## aclnnWeightQuantMatmulAllReduceV2GetWorkspaceSize
 
 - **参数说明**
     <table style="undefined;table-layout: fixed; width: 1567px"><colgroup>
@@ -295,7 +295,7 @@ aclnnStatus aclnnWeightQuantMatmulAllReduceV2(
     <tr>
         <td>workspaceSize</td>
         <td>输入</td>
-        <td>在Device侧申请的workspace大小，由第一段接口<code>aclnnWeightQuantMatmulAllReduceGetWorkspaceSizeV2</code>获取。</td>
+        <td>在Device侧申请的workspace大小，由第一段接口<code>aclnnWeightQuantMatmulAllReduceV2GetWorkspaceSize</code>获取。</td>
     </tr>
     <tr>
         <td>executor</td>
@@ -316,8 +316,8 @@ aclnnStatus aclnnWeightQuantMatmulAllReduceV2(
 ## 约束说明
 
 - 通信引擎commMode支持度：
-  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：目前不支持指定通信引擎，commMode仅允许输入为空字符串，默认使用AICPU。
-  - <term>Ascend 950PR/Ascend 950DT</term>：目前通信引擎支持AICPU和CCU，commMode允许输入为"ai_cpu"、"ccu"和空字符串，前两者直接指定AICPU和CCU，空字符串表示自适应模式，优先选择最佳的通信引擎，当前版本默认使用CCU作为通信引擎。CCU仅支持单机UB域内互联，AICPU可支持跨机UB域内互联。
+  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：目前不支持指定通信引擎，commMode仅允许输入为"ai_cpu"，使用AICPU通信引擎。
+  - <term>Ascend 950PR/Ascend 950DT</term>：目前通信引擎支持AICPU和CCU，commMode允许输入为"ai_cpu"或者"ccu"。CCU仅支持单机UB域内互联，AICPU可支持跨机UB域内互联。
   - 同一条通信链路内，只能选择同一种通信引擎。
   - AICPU和CCU通信引擎简单介绍：
     - AICPU：不占用计算核，通信效率高，但通信静态开销较大，对小数据量通信场景不友好。适用于大数据高带宽场景。
@@ -466,7 +466,7 @@ aclnnStatus aclnnWeightQuantMatmulAllReduceV2(
 
 示例代码如下，仅供参考，具体编译和执行过程请参考编译与运行样例。
 
-说明：本示例代码调用了部分HCCL集合通信库接口：HcclGetCommName、HcclCommInitAll、HcclCommDestroy,请参考[ <<HCCL API (C)>>](https://hiascend.com/document/redirect/CannCommunityHcclCppApi)。
+说明：本示例代码调用了部分HCCL集合通信库接口：HcclGetCommName、HcclCommInitAll、HcclCommDestroy,请参考[<<HCCL API (C)>>](https://hiascend.com/document/redirect/CannCommunityHcclCppApi)。
 
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Ascend 950PR/Ascend 950DT</term>：
 
@@ -600,11 +600,11 @@ aclnnStatus aclnnWeightQuantMatmulAllReduceV2(
       ret = CreateAclTensor(outHostData, outShape, &outDeviceAddr, aclDataType::ACL_FLOAT16, &out);
       CHECK_RET(ret == ACL_SUCCESS, return ret);
       // 调用第一段接口
-      ret = aclnnWeightQuantMatmulAllReduceGetWorkspaceSizeV2(x1, x2, bias, antiquantScale, antiquantOffset, x3, hcom_name,
+      ret = aclnnWeightQuantMatmulAllReduceV2GetWorkspaceSize(x1, x2, bias, antiquantScale, antiquantOffset, x3, hcom_name,
                                                               "sum", "", commTurn, streamMode, antiquantGroupSize, out,
                                                               &workspaceSize, &executor);
       CHECK_RET(ret == ACL_SUCCESS,
-              LOG_PRINT("aclnnWeightQuantMatmulAllReduceGetWorkspaceSizeV2 failed. ERROR: %d\n", ret); return ret);
+              LOG_PRINT("aclnnWeightQuantMatmulAllReduceV2GetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
       // 根据第一段接口计算出的workspaceSize申请device内存
       if (workspaceSize > 0) {
           ret = aclrtMalloc(&workspaceAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);

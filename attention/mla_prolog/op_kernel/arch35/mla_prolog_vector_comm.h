@@ -48,52 +48,6 @@ struct PerTileQuantParams {
 };
 
 /**
- * @brief vec mul by row;  dstUb[i, j] = src0Ub[j] * src1Ub[i, j],
- * @param dstUb 输出tensor [row, columnStride]
- * @param src0Ub 输入tensor [1, columnStride]
- * @param src1Ub 输入tensor src1Ub:[row, col]
- * @param rectangleParams 描述待处理数据的排布，包括
-          row 行数
-          col 列数
-          stride 一行的真实长度
- */
-__aicore__ inline void VecMulMat(LocalTensor<float> dstUb, LocalTensor<float> src0Ub, LocalTensor<float> src1Ub,
-                                 const Rectangle &rectangleParams)
-{
-    uint32_t mask = FP32_REPEAT_ELEMENT_NUM;
-    uint32_t columnLoopCount = rectangleParams.col / mask;
-    uint32_t remainCount = rectangleParams.col % mask;
-    // 选择迭代较少的方式
-    // dstRepStride为0~255, columnCount需要小于2048
-    if (columnLoopCount < rectangleParams.row &&
-        rectangleParams.stride < REPEAT_STRIDE_UP_BOUND * FP32_BLOCK_ELEMENT_NUM) {
-        BinaryRepeatParams repeatParams;
-        repeatParams.dstBlkStride = 1;
-        repeatParams.src0BlkStride = 1;
-        repeatParams.src1BlkStride = 1;
-        repeatParams.dstRepStride = rectangleParams.stride / FP32_BLOCK_ELEMENT_NUM;
-        repeatParams.src0RepStride = 0;
-        repeatParams.src1RepStride = rectangleParams.stride / FP32_BLOCK_ELEMENT_NUM;
-        uint32_t offset = 0;
-        for (int i = 0; i < columnLoopCount; i++) {
-            // 偏移 offset : i * mask
-            Mul(dstUb[offset], src0Ub[offset], src1Ub[offset], mask, rectangleParams.row, repeatParams);
-            offset += mask;
-        }
-        if (remainCount > 0) {
-            // 偏移 offset : columnLoopCount * mask
-            Mul(dstUb[offset], src0Ub[offset], src1Ub[offset], remainCount, rectangleParams.row, repeatParams);
-        }
-    } else {
-        uint32_t offset = 0;
-        for (int i = 0; i < rectangleParams.row; i++) {
-            Mul(dstUb[offset], src0Ub, src1Ub[offset], rectangleParams.col);
-            offset += rectangleParams.stride;
-        }
-    }
-}
-
-/**
  * @brief RowMuls muls by row, 每行的元素乘以相同的元素，该元素需要扩展到一个数据块；
  *        dstUb[i, (j * 8) : (j * 8 + 7)] = src0Ub[i, (j * 8) : (j * 8 + 7)] * src1Ub[i, 0 : 7]
  * @param dstUb 输出tensor [row, columnStride]
@@ -198,7 +152,7 @@ __aicore__ inline void RowMax(LocalTensor<float> &dstUb, LocalTensor<float> &src
     repeatParamsMax.dstRepStride = rectangleParams.stride / FP32_BLOCK_ELEMENT_NUM;
     if (blockCount > 0 && remain > 0) {
         Max(srcUb, srcUb, srcUb[blockCount * dtypeMask], remain, rectangleParams.row, repeatParamsMax);
-        AscendC::PipeBarrier<PIPE_V>();
+        PipeBarrier<PIPE_V>();
     }
 
     for (uint32_t columnLoopCount = blockCount >> 1; columnLoopCount > 0;
@@ -208,7 +162,7 @@ __aicore__ inline void RowMax(LocalTensor<float> &dstUb, LocalTensor<float> &src
             Max(srcUb[j * dtypeMask], srcUb[j * dtypeMask], srcUb[(j + blockCount) * dtypeMask], dtypeMask,
                 rectangleParams.row, repeatParamsMax);
         }
-        AscendC::PipeBarrier<PIPE_V>();
+        PipeBarrier<PIPE_V>();
     }
 
     WholeReduceMax(dstUb, srcUb, (rectangleParams.col < dtypeMask) ? rectangleParams.col : dtypeMask,
@@ -252,11 +206,11 @@ __aicore__ inline void CastFP32ToINT8(const LocalTensor<O> outLocal, const Local
     LocalTensor<int32_t> int32 = shareTmpUb.ReinterpretCast<int32_t>();
     LocalTensor<half> tmpHalf = shareTmpUb.ReinterpretCast<half>();
     Cast(int32, inputLocal, RoundMode::CAST_RINT, cnt);
-    AscendC::PipeBarrier<PIPE_V>();
+    PipeBarrier<PIPE_V>();
     SetDeqScale(static_cast<half>(1.0));
-    AscendC::PipeBarrier<PIPE_V>();
+    PipeBarrier<PIPE_V>();
     Cast(tmpHalf, int32, RoundMode::CAST_ROUND, cnt);
-    AscendC::PipeBarrier<PIPE_V>();
+    PipeBarrier<PIPE_V>();
     Cast(outLocal, tmpHalf, RoundMode::CAST_TRUNC, cnt);
 }
 
@@ -409,25 +363,6 @@ __aicore__ inline void QuantPerTensor(const LocalTensor<O> &outLocal, const Loca
 }
 
 /**
- * @brief QuantPerTensorToFP8e4m3 同时对row行进行FP32到fp8_e4m3的per-tensor量化操作。一行内共用同一个量化系数。
-          outLocal[i , j] = inputLocal[i , j] * quantScaleLocal[i]
- * @param outLocal 输出tensor [row , col]
- * @param inputLocal 输入tensor [row , col]
- * @param quantScaleLocal quant系数 [1 , Hckv]
- * @param rectangleParams 描述待处理数据的排布，包括
-          row 行数
-          col 列数
-          stride 一行的真实长度
- */
-__aicore__ inline void QuantPerTensorToFP8e4m3(const LocalTensor<FP8E4M3> &outLocal,
-                                               const LocalTensor<float> &inputLocal,
-                                               const LocalTensor<float> &quantScaleLocal,
-                                               const Rectangle &rectangleParams)
-{
-    QuantPerTensorVF(outLocal, inputLocal, quantScaleLocal, rectangleParams.row, rectangleParams.col);
-}
-
-/**
  * @brief QuantPerTile 对输入tensor进行per-tile量化操作，FP32->fp8 e4m3/hifloat8，每个tile出一个量化系数。
             量化流程：先对输入的每行的每个tile做动态量化，最后转换为fp8/hif8.
  * @param outLocal 输出tensor [row * col]，量化后的fp8/hif8数据，后续跟随scale数据
@@ -496,25 +431,25 @@ __aicore__ inline void DynamicQuant(const LocalTensor<float> &outputLocal, const
     LocalTensor<float> rowMaxBrcb = inputCopy[Align(computeSize, static_cast<uint64_t>(ALIGN_BLOCK_SIZE))];
     // abs(x)
     Abs(inputCopy, inputLocal, computeSize);
-    AscendC::PipeBarrier<PIPE_V>();
+    PipeBarrier<PIPE_V>();
     Rectangle rectangleParams{
         static_cast<uint32_t>(row), static_cast<uint32_t>(col),
         static_cast<uint32_t>(col) // columnStride
     };
     // rowMax(abs(x))
     RowMax(inputCopy, inputCopy, rectangleParams);
-    AscendC::PipeBarrier<PIPE_V>();
+    PipeBarrier<PIPE_V>();
 
     // scaleOut = rowMax(abs(x)) / 127
     Div(scale, inputCopy, maxInt8Tensor, row);
-    AscendC::PipeBarrier<PIPE_V>();
+    PipeBarrier<PIPE_V>();
 
     // 1 / scaleOut = 127 / rowMax(abs(x))
     Div(inputCopy, maxInt8Tensor, inputCopy, row);
-    AscendC::PipeBarrier<PIPE_V>();
+    PipeBarrier<PIPE_V>();
 
     Brcb(rowMaxBrcb, inputCopy, static_cast<uint8_t>(CeilDivT(row, brcnNum)), {1, brcnNum});
-    AscendC::PipeBarrier<PIPE_V>();
+    PipeBarrier<PIPE_V>();
 
     // x * 1 / scaleOut
     RowMuls(outputLocal, inputLocal, rowMaxBrcb, rectangleParams);

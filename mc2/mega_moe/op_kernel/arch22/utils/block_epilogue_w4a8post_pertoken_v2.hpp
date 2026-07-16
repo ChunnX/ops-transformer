@@ -41,6 +41,7 @@ public:
     using ArchTag = typename DispatchPolicy::ArchTag;
     static constexpr uint32_t UB_STAGES = UB_STAGES_;
     static constexpr bool IS_A2 = IS_A2_T<IS_A2_>::Value;
+    static constexpr uint32_t maxM = 128;
 
     // Data infos
     using ElementC = typename CType_::Element;
@@ -71,14 +72,15 @@ public:
         int32_t n0;
         int32_t rank;
         HcclShmem<IS_A2> shmem;
-        int32_t offsetD;
+        int64_t offsetD;
+        int64_t offsetWinOutD;
         Layout3D tokenPerExpertLayout;
 
         CATLASS_DEVICE
         Params() {};
         CATLASS_DEVICE
         Params(int32_t EP_, int32_t expertPerRank_, int32_t rank_, __gm__ int32_t *ptrTokenPerExpert_, LayoutC layoutC_,
-               int32_t n2_, int32_t n0_, HcclShmem<IS_A2> &shmem_, int32_t offsetD_, Layout3D tokenPerExpertLayout_)
+               int32_t n2_, int32_t n0_, HcclShmem<IS_A2> &shmem_, int64_t offsetD_, Layout3D tokenPerExpertLayout_)
             : ptrTokenPerExpert(ptrTokenPerExpert_), EP(EP_), expertPerRank(expertPerRank_), rank(rank_),
               layoutC(layoutC_), n2(n2_), n0(n0_), shmem(shmem_), offsetD(offsetD_),
               tokenPerExpertLayout(tokenPerExpertLayout_)
@@ -105,8 +107,12 @@ public:
             ubOffset += n0 * sizeof(float);
             ubDList[i] = resource.ubBuf.template GetBufferByByte<ElementD>(ubOffset);
             ubOffset += max_len * sizeof(ElementD);
+            scaleUbList[i] = resource.ubBuf.template GetBufferByByte<float>(ubOffset);
+            ubOffset += maxM * sizeof(float);
+            source_scale_offset[i] = -1;
 
             eventUbTileCVMTE2List[i] = eventVMTE2++;
+            eventUbScaleVMTE2List[i] = eventVMTE2++;
             eventUbTileCMTE2VList[i] = eventMTE2V++;
             eventUbTileWMTE2VList[i] = eventMTE2V++;
             eventUbTileDVMTE3List[i] = eventVMTE3++;
@@ -130,6 +136,7 @@ public:
         for (int32_t i = 0; i < UB_STAGES; ++i) {
             AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(eventUbTileCVMTE2List[i]);
             AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(eventUbTileDVMTE3List[i]);
+            AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(eventUbScaleVMTE2List[i]);
         }
     }
 
@@ -139,6 +146,7 @@ public:
         for (uint32_t i = 0; i < UB_STAGES; ++i) {
             AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(eventUbTileCVMTE2List[i]);
             AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(eventUbTileDVMTE3List[i]);
+            AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(eventUbScaleVMTE2List[i]);
         }
     }
     CATLASS_DEVICE
@@ -147,7 +155,7 @@ public:
     }
 
     CATLASS_DEVICE
-    void operator()(AscendC::GlobalTensor<float> const &gmGMM2, AscendC::GlobalTensor<ElementC> const &gmC,
+    void operator()(AscendC::GlobalTensor<ElementC> const &gmC,
                     AscendC::GlobalTensor<ElementPerTokenScale> const &gmPerTokenScale, __gm__ float *gmWeightAux,
                     GemmCoord &blockCoord, GemmCoord &actualBlockShape, int32_t groupIdx, int32_t preSrcExpertSum,
                     AscendC::GlobalTensor<int32_t> preSumBeforeRank, int32_t listLen)
@@ -155,9 +163,11 @@ public:
         auto &ubCH = ubCHList[ubListId];
         auto &ubCL = ubCLList[ubListId];
         auto &ubD = ubDList[ubListId];
+        auto &scaleUb = scaleUbList[ubListId];
         auto &ubweighAux = ubweighAuxList[ubListId];
-        int32_t gmCOffsetH = (preSrcExpertSum * params.n2 + blockCoord.m() * params.n2) + blockCoord.n();
-        int32_t gmCOffsetL = (preSrcExpertSum * params.n2 + blockCoord.m() * params.n2) + blockCoord.n() + params.n2;
+        int64_t gmCOffsetH =
+            (static_cast<int64_t>(preSrcExpertSum) * params.n2 + blockCoord.m() * params.n2) + blockCoord.n();
+        int64_t gmCOffsetL = gmCOffsetH + params.n2;
         auto gmTileCH = gmC[gmCOffsetH];
         auto gmTileCL = gmC[gmCOffsetL];
         AscendC::GlobalTensor<float> weightAux;
@@ -204,15 +214,21 @@ public:
         AscendC::PipeBarrier<PIPE_V>();
 
         int32_t gmScaleOffset = (preSrcExpertSum + blockCoord.m()) / 2;
+        layout::VectorLayout scaleLayout{actualBlockShape.m() / 2};
+        AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(eventUbScaleVMTE2List[ubListId]);
+        if (source_scale_offset[ubListId] != gmScaleOffset) {
+            source_scale_offset[ubListId] = gmScaleOffset;
+            copyScaleGmToUb(scaleUb, gmPerTokenScale[gmScaleOffset], scaleLayout, scaleLayout);
+        }
+        AscendC::SetFlag<AscendC::HardEvent::MTE2_S>(0);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(0);
         for (int32_t row = 0; row < actualBlockShape.m() / 2; ++row) {
-            dcci(gmPerTokenScale.GetPhyAddr(gmScaleOffset + row), 0);
-            float scale = gmPerTokenScale(gmScaleOffset + row);
-            AscendC::SetFlag<AscendC::HardEvent::S_V>(0);
-            AscendC::WaitFlag<AscendC::HardEvent::S_V>(0);
+            float scale = scaleUb(row);
             Muls<float, false>(ubFp32[n0 * row], ubFp32[n0 * row], scale, -1, (actualBlockShape.n() + 127) / 128 * 2,
                                {1, 1, 8, 8});
         }
         AscendC::PipeBarrier<PIPE_V>();
+        AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(eventUbScaleVMTE2List[ubListId]);
 
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(eventUbTileDVMTE3List[ubListId]);
         AscendC::Cast<ElementD, float, false>(ubD, ubFp32, AscendC::RoundMode::CAST_RINT, -1, repeat, {1, 1, 4, 8});
@@ -260,12 +276,12 @@ public:
                 bool isCrossServer = (dstEpIdx / SERVER_RANK_SIZE_A2) != (params.rank / SERVER_RANK_SIZE_A2);
                 if (isCrossServer) {
                     AscendC::GlobalTensor<ElementD> gmLocalWindowsOut;
-                    gmLocalWindowsOut.SetGlobalBuffer(reinterpret_cast<__gm__ ElementD*>(
-                        params.shmem.windowsOutAddr() + params.offsetD));
+                    gmLocalWindowsOut.SetGlobalBuffer(
+                        reinterpret_cast<__gm__ ElementD *>(params.shmem.windowsOutAddr() + params.offsetWinOutD));
                     MatrixCoord srcOffset{(uint32_t)(stData + preSrcExpertSum / 2), blockCoord.n()};
                     int64_t gmSrcOffset = params.layoutC.GetOffset(srcOffset);
                     auto gmTileLocal = gmLocalWindowsOut[gmSrcOffset];
-                    copyUbToGmD(gmTileLocal, ubD[tileOffset *  n0], layoutGM2, layoutUB2);
+                    copyUbToGmD(gmTileLocal, ubD[tileOffset * n0], layoutGM2, layoutUB2);
                 } else {
                     copyUbToGmD(gmTileD, ubD[tileOffset * n0], layoutGM2, layoutUB2);
                 }
@@ -287,6 +303,7 @@ private:
     AscendC::LocalTensor<ElementD> ubDList[UB_STAGES];
     AscendC::LocalTensor<float> ubFp32;
     AscendC::LocalTensor<float> ubFp32L;
+    AscendC::LocalTensor<float> scaleUbList[UB_STAGES];
 
     int32_t max_len = 32 * 256;
     int32_t n0;
@@ -299,6 +316,8 @@ private:
     int32_t eventUbTileWMTE2VList[UB_STAGES];
     int32_t eventUbTileDVMTE3List[UB_STAGES];
     int32_t eventUbTileDMTE3VList[UB_STAGES];
+    int32_t eventUbScaleVMTE2List[UB_STAGES];
+    int32_t source_scale_offset[UB_STAGES];
 
     uint32_t ubListId{0};
 

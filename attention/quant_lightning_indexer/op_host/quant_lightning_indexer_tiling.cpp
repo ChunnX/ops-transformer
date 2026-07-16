@@ -158,11 +158,12 @@ ge::graphStatus QLIInfoParser::GetNpuInfo()
         OP_LOGE(opName_, "Npu Arch Version[%d] is not support.", static_cast<int32_t>(npuArch_));
         return GRAPH_FAILED;
     }
-    OP_CHECK_IF(context_->GetWorkspaceSizes(1) == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "workSpaceSize"),
-               return ge::GRAPH_FAILED);
+    OP_CHECK_IF(context_->GetWorkspaceSizes(1) == nullptr,
+                OP_LOGE_WITH_INVALID_INPUT(opName_, "workSpaceSize got from ge"),
+                return ge::GRAPH_FAILED);
     OP_CHECK_IF(context_->GetRawTilingData() == nullptr,
-               OP_LOGE_WITH_INVALID_INPUT(opName_, "RawTilingData"),
-               return ge::GRAPH_FAILED);
+                OP_LOGE_WITH_INVALID_INPUT(opName_, "RawTilingData got from GE context"),
+                return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -201,7 +202,7 @@ void QLIInfoParser::GetOutputParaInfo()
 ge::graphStatus QLIInfoParser::GetAttrParaInfo()
 {
     auto attrs = context_->GetAttrs();
-    OP_CHECK_IF(attrs == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "attrs"),
+    OP_CHECK_IF(attrs == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "attrs got from ge"),
                return ge::GRAPH_FAILED);
 
     OP_LOGI(context_->GetNodeName(), "GetAttrParaInfo start");
@@ -439,11 +440,13 @@ ge::graphStatus QLIInfoParser::GetAndCheckOptionalInput()
 {
     if (kLayout_ == DataLayout::PA_BSND) {
         OP_CHECK_IF(opParamInfo_.blockTable.tensor == nullptr,
-                   OP_LOGE_WITH_INVALID_INPUT(opName_, "block_table"),
-                   return ge::GRAPH_FAILED);
+            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "block_table",
+                "key layout only supported PA_BSND, input block_table must not be null"),
+            return ge::GRAPH_FAILED);
         OP_CHECK_IF(
             opParamInfo_.actualSeqLengthsK.tensor == nullptr,
-            OP_LOGE_WITH_INVALID_INPUT(opName_, "actual_seq_lengths_key"),
+            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "actual_seq_lengths_key",
+                "key layout only supported PA_BSND, input actual_seq_lengths_key must not be null"),
             return ge::GRAPH_FAILED);
         OP_CHECK_IF(opParamInfo_.blockTable.desc->GetDataType() != ge::DT_INT32,
             OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, "block_table",
@@ -459,8 +462,9 @@ ge::graphStatus QLIInfoParser::GetAndCheckOptionalInput()
 
     if (kLayout_ == DataLayout::TND) {
         OP_CHECK_IF(opParamInfo_.actualSeqLengthsK.tensor == nullptr,
-                   OP_LOGE_WITH_INVALID_INPUT(opName_, "actual_seq_lengths_key"),
-                   return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "actual_seq_lengths_key",
+                        "when layout_key is TND, input actual_seq_lengths_key must not be null"),
+                    return ge::GRAPH_FAILED);
     }
     OP_CHECK_IF(opParamInfo_.actualSeqLengthsK.tensor != nullptr &&
                     opParamInfo_.actualSeqLengthsK.desc->GetDataType() != ge::DT_INT32,
@@ -470,8 +474,9 @@ ge::graphStatus QLIInfoParser::GetAndCheckOptionalInput()
                 return ge::GRAPH_FAILED);
     if (qLayout_ == DataLayout::TND) {
         OP_CHECK_IF(opParamInfo_.actualSeqLengthsQ.tensor == nullptr,
-                   OP_LOGE_WITH_INVALID_INPUT(opName_, "actual_seq_lengths_query"),
-                   return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "actual_seq_lengths_query",
+                        "when layout_query is TND, input actual_seq_lengths_query must not be null"),
+                    return ge::GRAPH_FAILED);
     }
     OP_CHECK_IF(opParamInfo_.actualSeqLengthsQ.tensor != nullptr &&
                    opParamInfo_.actualSeqLengthsQ.desc->GetDataType() != ge::DT_INT32,
@@ -993,7 +998,7 @@ static ge::graphStatus TilingPrepareForQuantLightningIndexer(gert::TilingParseCo
 
 // --------------------------QuantLightningIndexerTiling类成员函数定义-----------------------
 static uint64_t QliCalcWorkspaceSize(const platform_ascendc::PlatformAscendC &qliPlatform,
-                                     int64_t qliS2Size, uint32_t qliAicNum)
+                                     int64_t qliS2Size, uint32_t qliAicNum, ge::DataType inputQType)
 {
     constexpr uint32_t qliMm1ResElemSize = 4;
     constexpr uint32_t qliDoubleBuffer = 2;
@@ -1011,9 +1016,10 @@ static uint64_t QliCalcWorkspaceSize(const platform_ascendc::PlatformAscendC &ql
     if (qliPlatform.GetCurNpuArch() == NpuArch::DAV_3510) {
         constexpr uint32_t qli3510S1Base = 4;
         constexpr uint32_t qli3510S2Base = 128;
+        uint32_t scoreElemSize = (inputQType == ge::DT_INT8) ? sizeof(uint32_t) : sizeof(uint16_t);
         qliWorkspaceSize +=
             qli3510S1Base * ((qliS2Size + qli3510S2Base - 1) / qli3510S2Base) * qli3510S2Base *
-            sizeof(uint16_t) * qliAicNum;
+            scoreElemSize * qliAicNum;
     } else {
         constexpr uint32_t qliMm1ResSize = qliMBaseSize * qliS2BaseSize;
         qliWorkspaceSize += qliMm1ResSize * qliMm1ResElemSize * qliDoubleBuffer * qliAicNum;
@@ -1035,7 +1041,8 @@ ge::graphStatus QuantLightningIndexerTiling::DoTiling(QLITilingInfo *tilingInfo)
     context_->SetBlockDim(blockDim);
 
     // -------------set workspacesize-----------------
-    uint64_t workspaceSize = QliCalcWorkspaceSize(ascendcPlatform, tilingInfo->s2Size, aicNum);
+    uint64_t workspaceSize = QliCalcWorkspaceSize(ascendcPlatform, tilingInfo->s2Size, aicNum,
+        tilingInfo->inputQType);
     size_t *workSpaces = context_->GetWorkspaceSizes(1);
     workSpaces[0] = workspaceSize;
 

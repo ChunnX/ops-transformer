@@ -575,7 +575,7 @@ TEST_F(L2MoeDistributeDispatchSetupTest, TestSetupExecuteEntry)
     // 覆盖 aclnnMoeDistributeDispatchSetup 入口与 NnopbaseSetHcclServerType 弱符号分支（UT 桩无真实 workspace）
     aclnnStatus execRet = aclnnMoeDistributeDispatchSetup(nullptr, 0, nullptr, nullptr);
     EXPECT_THAT(execRet, testing::AnyOf(testing::Eq(ACLNN_SUCCESS), testing::Eq(ACLNN_ERR_PARAM_NULLPTR),
-                                         testing::Eq(ACLNN_ERR_PARAM_INVALID)));
+                                        testing::Eq(ACLNN_ERR_PARAM_INVALID)));
 }
 
 } // namespace MoeDistributeDispatchSetup

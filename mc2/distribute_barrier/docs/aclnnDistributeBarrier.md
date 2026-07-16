@@ -21,18 +21,18 @@
 
 ```cpp
 aclnnStatus aclnnDistributeBarrierGetWorkspaceSize(
-    aclTensor*      xRef, 
-    const char*     group, 
-    int64_t         worldSize, 
-    uint64_t*       workspaceSize, 
+    aclTensor*      xRef,
+    const char*     group,
+    int64_t         worldSize,
+    uint64_t*       workspaceSize,
     aclOpExecutor** executor)
 ```
 
 ```cpp
 aclnnStatus aclnnDistributeBarrier(
-    void            *workspace, 
-    uint64_t        workspaceSize, 
-    aclOpExecutor   *executor, 
+    void            *workspace,
+    uint64_t        workspaceSize,
+    aclOpExecutor   *executor,
     aclrtStream     stream)
 ```
 
@@ -113,7 +113,7 @@ aclnnStatus aclnnDistributeBarrier(
     <td>-</td>
     </tr>
     </tbody></table>
-    
+
 - **返回值**
 
     返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
@@ -188,7 +188,7 @@ aclnnStatus aclnnDistributeBarrier(
     <td>指定执行任务的Stream。</td>
     </tr>
     </tbody></table>
-    
+
 - **返回值**
 
     返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
@@ -224,19 +224,19 @@ aclnnStatus aclnnDistributeBarrier(
     #include "aclnnop/aclnn_moe_distribute_dispatch_v2.h"
     #include "aclnnop/aclnn_distribute_barrier.h"
     #include "aclnnop/aclnn_moe_distribute_combine_v2.h"
-    
+
     #define CHECK_RET(cond, return_expr) \
         do {                             \
             if (!(cond)) {               \
                 return_expr;             \
             }                            \
         } while (0)
-    
+
     #define LOG_PRINT(message, ...)         \
         do {                                \
             printf(message, ##__VA_ARGS__); \
         } while(0)
-    
+
     struct Args {
         uint32_t rankId;
         uint32_t epRankId;
@@ -249,11 +249,11 @@ aclnnStatus aclnnDistributeBarrier(
         aclrtStream combineStream;
         aclrtContext context;
     };
-    
+
     constexpr uint32_t EP_WORLD_SIZE = 2;
     constexpr uint32_t TP_WORLD_SIZE = 1;
     constexpr uint32_t DEV_NUM = EP_WORLD_SIZE * TP_WORLD_SIZE;
-    
+
     int64_t GetShapeSize(const std::vector<int64_t> &shape)
     {
         int64_t shape_size = 1;
@@ -262,7 +262,7 @@ aclnnStatus aclnnDistributeBarrier(
         }
         return shape_size;
     }
-    
+
     template<typename T>
     int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &shape, void **deviceAddr,
         aclDataType dataType, aclTensor **tensor)
@@ -280,12 +280,12 @@ aclnnStatus aclnnDistributeBarrier(
             shape.data(), shape.size(), *deviceAddr);
         return 0;
     }
-    
+
     int LaunchOneProcessDispatchAndCombine(Args &args)
     {
         int ret = aclrtSetCurrentContext(args.context);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtSetCurrentContext failed, ret %d\n", ret); return ret);
-    
+
         char hcomEpName[128] = {0};
         ret = HcclGetCommName(args.hcclEpComm, hcomEpName);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] HcclGetEpCommName failed, ret %d\n", ret); return -1);
@@ -293,7 +293,7 @@ aclnnStatus aclnnDistributeBarrier(
         ret = HcclGetCommName(args.hcclEpBarrierComm, hcomEpBarrierName);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] HcclGetEpBarrierCommName failed, ret %d\n", ret); return -1);
         char hcomTpName[128] = {0};
-    
+
         int64_t Bs = 8;
         int64_t H = 7168;
         int64_t K = 2;
@@ -316,7 +316,7 @@ aclnnStatus aclnnDistributeBarrier(
             localExpertNum = moeExpertNum / (EP_WORLD_SIZE - sharedExpertRankNum);
             A = globalBs * (localExpertNum < K ? localExpertNum : K);
         }
-    
+
         void *xDeviceAddr = nullptr;
         void *expertIdsDeviceAddr = nullptr;
         void *scalesDeviceAddr = nullptr;
@@ -328,7 +328,7 @@ aclnnStatus aclnnDistributeBarrier(
         void *epRecvCountsDeviceAddr = nullptr;
         void *tpRecvCountsDeviceAddr = nullptr;
         void *expandScalesDeviceAddr = nullptr;
-    
+
         aclTensor *x = nullptr;
         aclTensor *expertIds = nullptr;
         aclTensor *scales = nullptr;
@@ -340,7 +340,7 @@ aclnnStatus aclnnDistributeBarrier(
         aclTensor *epRecvCounts = nullptr;
         aclTensor *tpRecvCounts = nullptr;
         aclTensor *expandScales = nullptr;
-    
+
         std::vector<int64_t> xShape{Bs, H};
         std::vector<int64_t> expertIdsShape{Bs, K};
         std::vector<int64_t> scalesShape{moeExpertNum + 1, H};
@@ -352,7 +352,7 @@ aclnnStatus aclnnDistributeBarrier(
         std::vector<int64_t> epRecvCountsShape{TP_WORLD_SIZE * localExpertNum * EP_WORLD_SIZE};
         std::vector<int64_t> tpRecvCountsShape{TP_WORLD_SIZE * localExpertNum};
         std::vector<int64_t> expandScalesShape{A};
-    
+
         int64_t xShapeSize = GetShapeSize(xShape);
         int64_t expertIdsShapeSize = GetShapeSize(expertIdsShape);
         int64_t scalesShapeSize = GetShapeSize(scalesShape);
@@ -364,7 +364,7 @@ aclnnStatus aclnnDistributeBarrier(
         int64_t epRecvCountsShapeSize = GetShapeSize(epRecvCountsShape);
         int64_t tpRecvCountsShapeSize = GetShapeSize(tpRecvCountsShape);
         int64_t expandScalesShapeSize = GetShapeSize(expandScalesShape);
-    
+
         std::vector<int16_t> xHostData(xShapeSize, 1);
         std::vector<int32_t> expertIdsHostData;
         for (int32_t token_id = 0; token_id < expertIdsShape[0]; token_id++) {
@@ -372,7 +372,7 @@ aclnnStatus aclnnDistributeBarrier(
                 expertIdsHostData.push_back(k_id);
             }
         }
-    
+
         std::vector<float> scalesHostData(scalesShapeSize, 0.1);
         std::vector<float> expertScalesHostData(expertScalesShapeSize, 0.1);
         std::vector<int16_t> expandXHostData(expandXShapeSize, 0);
@@ -382,7 +382,7 @@ aclnnStatus aclnnDistributeBarrier(
         std::vector<int32_t> epRecvCountsHostData(epRecvCountsShapeSize, 0);
         std::vector<int32_t> tpRecvCountsHostData(tpRecvCountsShapeSize, 0);
         std::vector<float> expandScalesHostData(expandScalesShapeSize, 0);
-    
+
         ret = CreateAclTensor(xHostData, xShape, &xDeviceAddr, aclDataType::ACL_BF16, &x);
         CHECK_RET(ret == ACL_SUCCESS, return ret);
         ret = CreateAclTensor(expertIdsHostData, expertIdsShape, &expertIdsDeviceAddr, aclDataType::ACL_INT32, &expertIds);
@@ -405,30 +405,30 @@ aclnnStatus aclnnDistributeBarrier(
         CHECK_RET(ret == ACL_SUCCESS, return ret);
         ret = CreateAclTensor(expandScalesHostData, expandScalesShape, &expandScalesDeviceAddr, aclDataType::ACL_FLOAT, &expandScales);
         CHECK_RET(ret == ACL_SUCCESS, return ret);
-        
+
         uint64_t dispatchWorkspaceSize = 0;
         aclOpExecutor *dispatchExecutor = nullptr;
         void *dispatchWorkspaceAddr = nullptr;
-    
+
         uint64_t barrierWorkspaceSize = 0;
         aclOpExecutor *barrierExecutor = nullptr;
         void *barrierWorkspaceAddr = nullptr;
-    
+
         uint64_t combineWorkspaceSize = 0;
         aclOpExecutor *combineExecutor = nullptr;
         void *combineWorkspaceAddr = nullptr;
-    
+
         /**************************************** 调用dispatch********************************************/
-    
-        ret = aclnnMoeDistributeDispatchV2GetWorkspaceSize(x, expertIds, (quantMode > 0 ? scales : nullptr), nullptr, 
+
+        ret = aclnnMoeDistributeDispatchV2GetWorkspaceSize(x, expertIds, (quantMode > 0 ? scales : nullptr), nullptr,
                 expertScales, hcomEpName, EP_WORLD_SIZE, args.epRankId, moeExpertNum, hcomTpName, TP_WORLD_SIZE,
                 args.tpRankId, expertShardType, sharedExpertNum,sharedExpertRankNum, quantMode, globalBs,
                 expertTokenNumsType, nullptr, expandX, dynamicScales, expandIdx, expertTokenNums, epRecvCounts,
                 tpRecvCounts, expandScales, &dispatchWorkspaceSize, &dispatchExecutor);
-        
+
         CHECK_RET(ret == ACL_SUCCESS,
             LOG_PRINT("[ERROR] aclnnMoeDistributeDispatchV2GetWorkspaceSize failed. ret = %d \n", ret); return ret);
-    
+
         if (dispatchWorkspaceSize > 0) {
             ret = aclrtMalloc(&dispatchWorkspaceAddr, dispatchWorkspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
             CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtMalloc workspace failed. ret = %d \n", ret); return ret);
@@ -441,19 +441,19 @@ aclnnStatus aclnnDistributeBarrier(
         ret = aclrtSynchronizeStreamWithTimeout(args.dispatchStream, 10000);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtSynchronizeStreamWithTimeout failed. ret = %d \n", ret);
             return ret);
-        
+
         /**************************************** 调用barrier********************************************/
-    
+
         ret = aclnnDistributeBarrierGetWorkspaceSize(expandX, hcomEpBarrierName, EP_WORLD_SIZE, &barrierWorkspaceSize, &combineExecutor);
-        
+
         CHECK_RET(ret == ACL_SUCCESS,
             LOG_PRINT("[ERROR] aclnnDistributeBarrierGetWorkspaceSize failed. ret = %d \n", ret); return ret);
-    
+
         if (barrierWorkspaceSize > 0) {
             ret = aclrtMalloc(&barrierWorkspaceAddr, barrierWorkspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
             CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtMalloc workspace failed. ret = %d \n", ret); return ret);
         }
-    
+
         // 调用第二阶段接口
         ret = aclnnDistributeBarrier(barrierWorkspaceAddr, barrierWorkspaceSize,
                                      combineExecutor, args.barrierStream);
@@ -462,14 +462,14 @@ aclnnStatus aclnnDistributeBarrier(
         ret = aclrtSynchronizeStreamWithTimeout(args.barrierStream, 10000);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtSynchronizeStreamWithTimeout failed. ret = %d \n", ret);
             return ret);
-    
+
         /**************************************** 调用combine********************************************/
         // 调用第一阶段接口
         ret = aclnnMoeDistributeCombineV2GetWorkspaceSize(expandX, expertIds,
                                                          expandIdx, epRecvCounts,
                                                          expertScales, tpRecvCounts,
                                                          nullptr, nullptr, nullptr,
-                                                         nullptr, nullptr, nullptr, 
+                                                         nullptr, nullptr, nullptr,
                                                          hcomEpName, EP_WORLD_SIZE, args.epRankId, moeExpertNum,
                                                          hcomTpName, TP_WORLD_SIZE, args.tpRankId, expertShardType,
                                                          sharedExpertNum, sharedExpertRankNum, globalBs, outDtype,
@@ -482,7 +482,7 @@ aclnnStatus aclnnDistributeBarrier(
             ret = aclrtMalloc(&combineWorkspaceAddr, combineWorkspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
             CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtMalloc workspace failed. ret = %d \n", ret); return ret);
         }
-    
+
         // 调用第二阶段接口
         ret = aclnnMoeDistributeCombineV2(combineWorkspaceAddr, combineWorkspaceSize, combineExecutor, args.combineStream);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclnnMoeDistributeCombineV2 failed. ret = %d \n", ret);
@@ -493,7 +493,7 @@ aclnnStatus aclnnDistributeBarrier(
             return ret);
         LOG_PRINT("[INFO] device_%d aclnnMoeDistributeDispatchV2 and aclnnMoeDistributeCombineV2                      \
                    execute successfully.\n", args.rankId);
-    
+
         // 释放device资源
         if (dispatchWorkspaceSize > 0) {
             aclrtFree(dispatchWorkspaceAddr);
@@ -567,7 +567,7 @@ aclnnStatus aclnnDistributeBarrier(
         if (tpRecvCountsDeviceAddr != nullptr) {
             aclrtFree(tpRecvCountsDeviceAddr);
         }
-        
+
         HcclCommDestroy(args.hcclEpComm);
         HcclCommDestroy(args.hcclEpBarrierComm);
         HcclCommDestroy(args.hcclTpComm);
@@ -575,16 +575,16 @@ aclnnStatus aclnnDistributeBarrier(
         aclrtDestroyStream(args.combineStream);
         aclrtDestroyContext(args.context);
         aclrtResetDevice(args.rankId);
-    
+
         return 0;
     }
-    
+
     int main(int argc, char *argv[])
     {
         // 本样例基于Atlas A3实现，必须在Atlas A3上运行
         int ret = aclInit(nullptr);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtInit failed, ret = %d\n", ret); return ret);
-    
+
         aclrtStream dispatchStream[DEV_NUM];
         aclrtStream barrierStream[DEV_NUM];
         aclrtStream combineStream[DEV_NUM];
@@ -601,14 +601,14 @@ aclnnStatus aclnnDistributeBarrier(
             ret = aclrtCreateStream(&combineStream[rankId]);
             CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtCreateStream failed, ret = %d\n", ret); return ret);
         }
-    
+
         int32_t devicesEp[TP_WORLD_SIZE][EP_WORLD_SIZE];
         for (int32_t tpId = 0; tpId < TP_WORLD_SIZE; tpId++) {
             for (int32_t epId = 0; epId < EP_WORLD_SIZE; epId++) {
                 devicesEp[tpId][epId] = epId * TP_WORLD_SIZE + tpId;
             }
         }
-    
+
         HcclComm commsEp[TP_WORLD_SIZE][EP_WORLD_SIZE];
         for (int32_t tpId = 0; tpId < TP_WORLD_SIZE; tpId++) {
             ret = HcclCommInitAll(EP_WORLD_SIZE, devicesEp[tpId], commsEp[tpId]);
@@ -622,27 +622,27 @@ aclnnStatus aclnnDistributeBarrier(
             CHECK_RET(ret == ACL_SUCCESS,
                       LOG_PRINT("[ERROR] HcclCommInitAll epBarrier %d failed, ret %d\n", tpId, ret); return ret);
         }
-    
+
         int32_t devicesTp[EP_WORLD_SIZE][TP_WORLD_SIZE];
         for (int32_t epId = 0; epId < EP_WORLD_SIZE; epId++) {
             for (int32_t tpId = 0; tpId < TP_WORLD_SIZE; tpId++) {
                 devicesTp[epId][tpId] = epId * TP_WORLD_SIZE + tpId;
             }
         }
-    
+
         HcclComm commsTp[EP_WORLD_SIZE][TP_WORLD_SIZE];
         for (int32_t epId = 0; epId < EP_WORLD_SIZE; epId++) {
             ret = HcclCommInitAll(TP_WORLD_SIZE, devicesTp[epId], commsTp[epId]);
             CHECK_RET(ret == ACL_SUCCESS,
                       LOG_PRINT("[ERROR] HcclCommInitAll tp %d failed, ret %d\n", epId, ret); return ret);
         }
-    
+
         Args args[DEV_NUM];
         std::vector<std::unique_ptr<std::thread>> threads(DEV_NUM);
         for (uint32_t rankId = 0; rankId < DEV_NUM; rankId++) {
             uint32_t epRankId = rankId / TP_WORLD_SIZE;
             uint32_t tpRankId = rankId % TP_WORLD_SIZE;
-    
+
             args[rankId].rankId = rankId;
             args[rankId].epRankId = epRankId;
             args[rankId].tpRankId = tpRankId;
@@ -655,14 +655,14 @@ aclnnStatus aclnnDistributeBarrier(
             args[rankId].context = context[rankId];
             threads[rankId].reset(new(std::nothrow) std::thread(&LaunchOneProcessDispatchAndCombine, std::ref(args[rankId])));
         }
-    
+
         for(uint32_t rankId = 0; rankId < DEV_NUM; rankId++) {
             threads[rankId]->join();
         }
-    
+
         aclFinalize();
         LOG_PRINT("[INFO] aclFinalize success\n");
-    
+
         return 0;
     }
     ```

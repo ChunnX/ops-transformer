@@ -31,7 +31,7 @@
   |版本变化      | Atlas A2 训练系列产品/Atlas A2 推理系列产品<br>Atlas A3 训练系列产品/Atlas A3 推理系列产品|Ascend 950PR/Ascend 950DT|
   |---------|---------|----------------|
   |V4 -> V5|  增加可选参数tuningConfigOptional，调优参数。数组中第一个值表示各个专家处理的token数的预期值，算子tiling时会按照该预期值进行最优tiling。   |  /  |
-  |V1 -> V4|  支持不同分组轴，由groupType表示。<br />非量化场景，支持x，weight转置（转置指若shape为[M,K]时，则stride为[1, M],数据排布为[K,M]的场景）。<br />量化、伪量化场景，支持weight转置，支持weight为单tensor。<br />x、weight、y都为单tensor非量化场景，支持x，weight输入都为float32类型。<br />支持伪量化weight是INT4的输入，不带激活场景，支持perchannel和pergroup两种模式。     |支持不同分组轴，由groupType表示。<br />非量化场景，支持x，weight转置（转置指若shape为[M,K]时，则stride为[1, M],数据排布为[K,M]的场景）。<br />支持静态量化（1.pertensor-perchannel(T-C)；2.pertensor-pertensor(T-T)）BFLOAT16，FLOAT16和FLOAT32输出，带bias。<br />支持动态量化（1.pertoken-perchannel(K-C)；2.pertoken-pertensor(K-T)；3.pertensor-pertensor(T-T)；4.pertensor-perchannel(T-C)；5.mx量化；6.pergroup-perblock(G-B)）BFLOAT16，FLOAT16和FLOAT32输出，带bias。<br />支持伪量化weight是INT4、FLOAT8_E5M2、FLOAT8_E4M3FN、HIFLOAT8的输入，不带激活场景，仅支持perchannel模式。|
+  |V1 -> V4|  支持不同分组轴，由groupType表示。<br />非量化场景，支持x，weight转置（转置指若shape为[M,K]时，则stride为[1, M],数据排布为[K,M]的场景）。<br />量化、伪量化场景，支持weight转置，支持weight为单tensor。<br />x、weight、y都为单tensor非量化场景，支持x，weight输入都为float32类型。<br />支持伪量化weight是INT4的输入，不带激活场景，支持perchannel和pergroup两种模式。     |支持不同分组轴，由groupType表示。<br />非量化场景，支持x，weight转置（转置指若shape为[M,K]时，则stride为[1, M],数据排布为[K,M]的场景）。<br />支持静态量化（1.pertensor-perchannel(T-C)；2.pertensor-pertensor(T-T)）BFLOAT16，FLOAT16和FLOAT32输出，带bias。<br />支持动态量化（1.pertoken-perchannel(K-C)；2.pertoken-pertensor(K-T)；3.pertensor-pertensor(T-T)；4.pertensor-perchannel(T-C)；5.mx量化；6.pergroup-perblock(G-B)）BFLOAT16，FLOAT16和FLOAT32输出，带bias。<br />支持伪量化weight是INT4、FLOAT8_E5M2、FLOAT8_E4M3FN、HIFLOAT8的输入，不带激活场景，支持perchannel和pergroup模式（INT4支持perchannel和pergroup，其余weight类型仅支持perchannel）。|
 
 ## 函数原型
 
@@ -75,16 +75,16 @@ aclnnStatus aclnnGroupedMatmulV5(
 
 - **参数说明：**
 
-  <table style="undefined;table-layout: fixed; width: 1550px;">
+  <table style="undefined;table-layout: fixed; width: 1483px;">
   <colgroup>
-      <col style="width: 170px">
+      <col style="width: 240px">
       <col style="width: 120px">
       <col style="width: 300px">
       <col style="width: 330px">
       <col style="width: 212px">
       <col style="width: 100px">
-      <col style="width: 190px">
-      <col style="width: 145px">
+      <col style="width: 100px">
+      <col style="width: 100px">
   </colgroup>
   <thead>
       <tr>
@@ -100,7 +100,7 @@ aclnnStatus aclnnGroupedMatmulV5(
   </thead>
   <tbody>
       <tr>
-          <td>x</td>
+          <td>x（aclTensorList *）</td>
           <td>输入</td>
           <td>公式中的输入<code>x</code>。</td>
           <td>tensorList长度支持[1, 128]或者[1, 1024]。</td>
@@ -110,7 +110,7 @@ aclnnStatus aclnnGroupedMatmulV5(
           <td>√</td>
       </tr>
       <tr>
-          <td>weight</td>
+          <td>weight（aclTensorList *）</td>
           <td>输入</td>
           <td>公式中的<code>weight</code>。</td>
           <td>tensorList长度支持[1, 128]或者[1, 1024]。</td>
@@ -120,7 +120,7 @@ aclnnStatus aclnnGroupedMatmulV5(
           <td>√</td>
       </tr>
       <tr>
-          <td>biasOptional</td>
+          <td>biasOptional（aclTensorList *）</td>
           <td>可选输入</td>
           <td>公式中的<code>bias</code>。</td>
           <td>长度与weight相同。</td>
@@ -130,7 +130,7 @@ aclnnStatus aclnnGroupedMatmulV5(
           <td>√</td>
       </tr>
       <tr>
-          <td>scaleOptional</td>
+          <td>scaleOptional（aclTensorList *）</td>
           <td>可选输入</td>
           <td>公式中的<code>scale</code>，代表量化参数中的缩放因子。</td>
           <td>一般情况下，长度与weight相同。综合约束请参见<a href="#约束说明">约束说明</a>。</td>
@@ -140,7 +140,7 @@ aclnnStatus aclnnGroupedMatmulV5(
           <td>√</td>
       </tr>
       <tr>
-          <td>offsetOptional</td>
+          <td>offsetOptional（aclTensorList *）</td>
           <td>可选输入</td>
           <td>公式中的<code>offset</code>，代表量化参数中的偏移量。</td>
           <td>长度与weight相同。</td>
@@ -150,7 +150,7 @@ aclnnStatus aclnnGroupedMatmulV5(
           <td>√</td>
       </tr>
       <tr>
-          <td>antiquantScaleOptional</td>
+          <td>antiquantScaleOptional（aclTensorList *）</td>
           <td>可选输入</td>
           <td>公式中的<code>antiquant_scale</code>，代表伪量化参数中的缩放因子。</td>
           <td>长度与weight相同。综合约束请参见<a href="#约束说明">约束说明</a>。</td>
@@ -160,7 +160,7 @@ aclnnStatus aclnnGroupedMatmulV5(
           <td>√</td>
       </tr>
       <tr>
-          <td>antiquantOffsetOptional</td>
+          <td>antiquantOffsetOptional（aclTensorList *）</td>
           <td>可选输入</td>
           <td>公式中的<code>antiquant_offset</code>，代表伪量化参数中的偏移量。</td>
           <td>长度与weight相同。综合约束请参见<a href="#约束说明">约束说明</a>。</td>
@@ -170,7 +170,7 @@ aclnnStatus aclnnGroupedMatmulV5(
           <td>√</td>
       </tr>
       <tr>
-          <td>perTokenScaleOptional</td>
+          <td>perTokenScaleOptional（aclTensorList *）</td>
           <td>可选输入</td>
           <td>公式中的<code>per_token_scale</code>，代表量化参数中的由x量化引入的缩放因子。</td>
           <td>一般情况下，只支持1维且长度与x的M相同。综合约束请参见<a href="#约束说明">约束说明</a>。</td>
@@ -180,7 +180,7 @@ aclnnStatus aclnnGroupedMatmulV5(
           <td>√</td>
       </tr>
       <tr>
-          <td>groupListOptional</td>
+          <td>groupListOptional（aclTensor *）</td>
           <td>可选输入</td>
           <td>代表输入和输出分组轴方向的matmul大小分布。</td>
           <td>根据groupListType输入不同格式数据。</td>
@@ -190,7 +190,7 @@ aclnnStatus aclnnGroupedMatmulV5(
           <td>√</td>
       </tr>
       <tr>
-          <td>activationInputOptional</td>
+          <td>activationInputOptional（aclTensorList *）</td>
           <td>可选输入</td>
           <td>代表激活函数的反向输入，当前只支持传入nullptr。</td>
           <td>-</td>
@@ -200,7 +200,7 @@ aclnnStatus aclnnGroupedMatmulV5(
           <td>-</td>
       </tr>
       <tr>
-          <td>activationQuantScaleOptional</td>
+          <td>activationQuantScaleOptional（aclTensorList *）</td>
           <td>可选输入</td>
           <td>当前只支持传入nullptr。</td>
           <td>-</td>
@@ -210,7 +210,7 @@ aclnnStatus aclnnGroupedMatmulV5(
           <td>-</td>
       </tr>
       <tr>
-          <td>activationQuantOffsetOptional</td>
+          <td>activationQuantOffsetOptional（aclTensorList *）</td>
           <td>可选输入</td>
           <td>当前只支持传入nullptr。</td>
           <td>-</td>
@@ -267,7 +267,7 @@ aclnnStatus aclnnGroupedMatmulV5(
           <td>-</td>
       </tr>
       <tr>
-          <td>tuningConfigOptional</td>
+          <td>tuningConfigOptional（aclIntArray *）</td>
           <td>可选输入</td>
           <td>第一个数代表各个专家处理的token数的预期值，用于优化tiling。<br>第二个数代表A8W4可选开启weight，先转置的NZ格式。<br>第三个数代表允许额外使用的内存空间。详见<a href="#约束说明">约束说明</a>。</td>
           <td>兼容历史版本，用户如不使用该参数，不传（即为nullptr）即可。</td>
@@ -277,7 +277,7 @@ aclnnStatus aclnnGroupedMatmulV5(
           <td>-</td>
       </tr>
       <tr>
-          <td>out</td>
+          <td>out（aclTensorList *）</td>
           <td>输出</td>
           <td>公式中的输出<code>y</code>。</td>
           <td>tensorList长度支持[1, 128]或者[1, 1024]。</td>
@@ -287,7 +287,7 @@ aclnnStatus aclnnGroupedMatmulV5(
           <td></td>
       </tr>
       <tr>
-          <td>activationFeatureOutOptional</td>
+          <td>activationFeatureOutOptional（aclTensorList *）</td>
           <td>输出</td>
           <td>激活函数的输入数据，当前只支持传入nullptr。</td>
           <td>-</td>
@@ -297,7 +297,7 @@ aclnnStatus aclnnGroupedMatmulV5(
           <td>-</td>
       </tr>
       <tr>
-          <td>dynQuantScaleOutOptional</td>
+          <td>dynQuantScaleOutOptional（aclTensorList *）</td>
           <td>输出</td>
           <td>当前只支持传入nullptr。</td>
           <td>-</td>
@@ -307,7 +307,7 @@ aclnnStatus aclnnGroupedMatmulV5(
           <td>-</td>
       </tr>
       <tr>
-          <td>workspaceSize</td>
+          <td>workspaceSize（uint64_t *）</td>
           <td>输出</td>
           <td>返回需要在Device侧申请的workspace大小。</td>
           <td>-</td>
@@ -317,7 +317,7 @@ aclnnStatus aclnnGroupedMatmulV5(
           <td>-</td>
       </tr>
       <tr>
-          <td>executor</td>
+          <td>executor（aclOpExecutor **）</td>
           <td>输出</td>
           <td>返回op执行器，包含了算子计算流程。</td>
           <td>-</td>
@@ -447,7 +447,7 @@ aclnnStatus aclnnGroupedMatmulV5(
 
   <a id="全量化场景"></a>
 
- - **量化场景（静态量化，T-C && T-T量化，无perTokenScaleOptional）：**
+  - **量化场景（静态量化，T-C && T-T量化，无perTokenScaleOptional）：**
     $$
       y_i=(x_i\times weight_i) * scale_i + offset_i
     $$
@@ -857,7 +857,7 @@ aclnnStatus aclnnGroupedMatmulV5(
         |groupType| 使用场景 | shape限制 |
         |:---------:|:---------:| :------ |
         |0|weight单tensor|每个tensor 4维，当weight转置时，shape为(g, N, ceil(K / 64), 2)；当weight不转置时，shape为(g, ceil(K / 64), N, 2)|
-        |2|weight单tensor|每个tensor 3维，shape为((K / 64) + g, N, 2)，scale\_i起始地址偏移为((K\_0 + K\_1 + ...+ K\_ {i-1})/ 64 + g\_i) * N * 2，即scale_0的起始地址偏移为0，scale_1的起始地址偏移为（K\_0 / 64 + 1）* N * 2， scale_2的起始地址偏移为((K\_0 + K\_1) / 64 + 2) * N * 2,依此类推|
+        |2|weight单tensor|每个tensor 3维，shape为((K / 64) + g, N, 2)，scale\_i起始地址偏移为((K\_0 + K\_1 + ...+ K\_ {i-1})/ 64 + g\_i) *N* 2，即scale_0的起始地址偏移为0，scale_1的起始地址偏移为（K\_0 / 64 + 1）*N* 2， scale_2的起始地址偏移为((K\_0 + K\_1) / 64 + 2) *N* 2,依此类推|
 
     - perTokenScaleOptional要满足下表：
 
@@ -887,7 +887,7 @@ aclnnStatus aclnnGroupedMatmulV5(
         |groupType| 使用场景 | shape限制 |
         |:---------:|:---------:| :------ |
         |0|weight单tensor|每个tensor 3维，weight转置时shape为（g, ceil(N / gsN), ceil (K / gsK)），weight非转置时shape为（g, ceil(K / gsK), ceil(N / gsN)）|
-        |2|weight单tensor|每个tensor 2维，shape为（K / gsK + g, ceil(N / gsN)），scale\_i地址偏移为（(K\_0 + K\_1 + ...+   K\_{i-1})/ gsK + g\_i）* ceil(N /  gsN)，即scale\_0的起始地址偏移为0，scale\_1的起始地址偏移为（K\_0 / gsK + 1）* ceil(N / gsN)， scale_2的起始地址偏移为((K\_0 + K\_1) / gsK + 2) * ceil(N / gsN),依此类推|
+        |2|weight单tensor|每个tensor 2维，shape为（K / gsK + g, ceil(N / gsN)），scale\_i地址偏移为（(K\_0 + K\_1 + ...+   K\_{i-1})/ gsK + g\_i）*ceil(N /  gsN)，即scale\_0的起始地址偏移为0，scale\_1的起始地址偏移为（K\_0 / gsK + 1）* ceil(N / gsN)， scale_2的起始地址偏移为((K\_0 + K\_1) / gsK + 2) * ceil(N / gsN),依此类推|
 
     - perTokenScaleOptional要满足下表：
 
@@ -930,12 +930,17 @@ aclnnStatus aclnnGroupedMatmulV5(
 
     - 当weight的数据类型为FLOAT8_E5M2、FLOAT8_E4M3FN、HIFLOAT8时，antiquantOffsetOptional仅支持传入空指针或空tensorList，weight仅支持转置。
     - 若weight的类型为INT4，则weight中每一组tensor的最后一维大小都应是偶数。$weight_i$的最后一维指weight不转置时$weight_i$的N轴或当weight转置时$weight_i$的K轴。
-    - antiquantScaleOptional和非空的biasOptional、antiquantOffsetOptional要满足下表（其中E为matmul组数即分组数）：
+    - 当weight的数据类型为INT4时，支持perchannel和pergroup两种伪量化模式。perchannel与pergroup模式通过antiquantScaleOptional的维度数自动判定：单单单场景antiquantScaleOptional维度为2时为perchannel，维度为3时为pergroup；多多多场景antiquantScaleOptional维度为1时为perchannel，维度为2时为pergroup。
+    - 在pergroup场景下，pergroup数G或$G_i$必须要能整除对应的$k_i$。若weight为多tensor，定义pergroup长度$s_i = k_i / G_i$，要求所有$s_i(i=1,2,...g)$都相等。
+    - 在pergroup场景下，groupSize取值仅支持32、64、128、256。当weight转置时，要求pergroup长度$s_i$是偶数。
+    - antiquantScaleOptional和非空的biasOptional、antiquantOffsetOptional要满足下表（其中E为matmul组数即分组数，G为pergroup数，$G_i$为第i个tensor的pergroup数）：
 
       |groupType| 使用场景 | shape限制 |
       |:---------:|:---------:| :------ |
-      |-1|weight多tensor|每个tensor 1维，shape为（$n_i$），不允许存在一个tensorList中部分tensor的shape为（$n_i$）部分tensor为空的情况 |
-      |0|weight单tensor|每个tensor 2维，shape为（E, N）|
+      |-1|weight多tensor（perchannel）|每个tensor 1维，shape为（$n_i$），不允许存在一个tensorList中部分tensor的shape为（$n_i$）部分tensor为空的情况 |
+      |-1|weight多tensor（pergroup）|每个tensor 2维，shape为（$G_i$, $n_i$） |
+      |0|weight单tensor（perchannel）|每个tensor 2维，shape为（E, N）|
+      |0|weight单tensor（pergroup）|每个tensor 3维，shape为（E, G, N）|
 
     <details>
       <summary>不同groupType约束</summary>

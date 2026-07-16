@@ -378,3 +378,27 @@
     - qNoRopeDim：表示Q矩阵中无旋转编码部分的维度，取值范围：16~256，为16的倍数
 - rope模式约束
     - mla_preprocess算子中的Rotary Embedding（RoPE）操作采用half模式，暂不支持interleave模式
+
+## 调用说明
+
+<table class="tg"><thead>
+  <tr>
+    <th class="tg-0pky">调用方式</th>
+    <th class="tg-0pky">样例代码</th>
+    <th class="tg-0pky">说明</th>
+  </tr></thead>
+<tbody>
+  <tr>
+    <td class="tg-9wq8">aclnn接口</td>
+    <td class="tg-0pky">
+    <a href="./examples/test_aclnn_mla_preprocess_v2.cpp">test_aclnn_mla_preprocess_v2
+    </a>
+    </td>
+    <td class="tg-lboi">
+    通过
+    <a href="./docs/aclnnMlaPreprocessV2.md">aclnnMlaPreprocessV2
+    </a>
+    接口方式调用MlaPreprocessV2算子
+    </td>
+  </tr>
+</tbody></table>

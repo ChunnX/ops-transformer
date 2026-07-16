@@ -6,12 +6,12 @@
 
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
-| Ascend 950PR/Ascend 950DT |      √     |
-| Atlas A3 训练系列产品/Atlas A3 推理系列产品     |    √     |
-| Atlas A2 训练系列产品/Atlas A2 推理系列产品 |    √     |
-| Atlas 200I/500 A2 推理产品                      |    x     |
-| Atlas 推理系列产品                              |    x     |
-| Atlas 训练系列产品                              |    x     |
+| <term>Ascend 950PR/Ascend 950DT</term>                       |     √    |
+| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>      |    √     |
+| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>      |    √     |
+| <term>Atlas 200I/500 A2 推理产品</term>                      |    x     |
+| <term>Atlas 推理系列产品</term>                              |    x     |
+| <term>Atlas 训练系列产品</term>                              |    x     |
 
 ## 功能说明
 
@@ -87,50 +87,50 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
       <td>cuSeqlensQOptional（aclTensor*）</td>
       <td>输入</td>
       <td>表示不同Batch中Query的有效Sequence Length。</td>
-      <td><ul><li>支持空Tensor</li><li>layoutQOptional为TND场景下必传。</li><li>第一个值为额外值并固定为0。</li></ul></td>
+      <td><ul><li>支持空Tensor</li><li>layoutQOptional为TND场景下必传。</li><li>第一个值为额外值并固定为0。</li><li>shape固定为(B+1, )。</li></ul></td>
       <td>INT32</td>
       <td>ND</td>
-      <td>1维，shape固定为(B+1，)</td>
+      <td>1维</td>
       <td>√</td>
     </tr>
     <tr>
       <td>cuSeqlensKOptional（aclTensor*）</td>
       <td>输入</td>
       <td>表示不同Batch中Key的有效Sequence Length。</td>
-      <td><ul><li>支持空Tensor。</li><li>layoutKOptional为TND场景下必传。</li><li>第一个值为额外值并固定为0。</li></ul></td>
+      <td><ul><li>支持空Tensor。</li><li>layoutKOptional为TND场景下必传。</li><li>第一个值为额外值并固定为0。</li><li>shape固定为(B+1, )。</li></ul></td>
       <td>INT32</td>
       <td>ND</td>
-      <td>1维，shape固定为(B+1，)</td>
+      <td>1维</td>
       <td>√</td>
     </tr>
     <tr>
       <td>sequsedQOptional（aclTensor*）</td>
       <td>输入</td>
       <td>表示不同Batch中Query实际参与运算的Sequence Length。</td>
-      <td>支持空Tensor。</td>
+      <td><ul><li>支持空Tensor。</li><li>shape固定为(B, )。</li></ul></td>
       <td>INT32</td>
       <td>ND</td>
-      <td>1维，shape固定为(B，)</td>
+      <td>1维</td>
       <td>√</td>
     </tr>
     <tr>
       <td>sequsedKOptional（aclTensor*）</td>
       <td>输入</td>
       <td>表示不同Batch中Key实际参与运算的Sequence Length。</td>
-      <td>支持空Tensor。</td>
+      <td><ul><li>支持空Tensor。</li><li>shape固定为(B, )。</li></ul></td>
       <td>INT32</td>
       <td>ND</td>
-      <td>1维，shape固定为(B，)</td>
+      <td>1维</td>
       <td>√</td>
     </tr>
     <tr>
       <td>cmpResidualKOptional（aclTensor*）</td>
       <td>输入</td>
       <td>表示不同Batch中cmp_kv压缩后Sequence Length的余数，配合cmpRatio实现cmp_kv部分的mask和负载计算。</td>
-      <td><ul><li>支持空Tensor。</li><li>cmpRatio不为1，且mask为3场景下必传。</li></ul></td>
+      <td><ul><li>支持空Tensor。</li><li>cmpRatio不为1，且mask为3场景下必传。</li><li>shape固定为(B, )。</li></ul></td>
       <td>INT32</td>
       <td>ND</td>
-      <td>1维，shape固定为(B，)</td>
+      <td>1维</td>
       <td>√</td>
     </tr>
     <tr>
@@ -359,7 +359,7 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
 ## 约束说明
 
   - aclnnLightningIndexerV2Metadata默认确定性实现。
-
+  - B（Batch）表示输入样本批量大小。
   - Batch取值规则
     - 优先获取sequsedQOptional中的Batch信息。
     - 如果未传入sequsedQOptional，优先获取cuSeqlensQOptional中的Batch信息。

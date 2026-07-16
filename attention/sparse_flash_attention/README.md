@@ -2,14 +2,14 @@
 
 ## 产品支持情况
 
-|产品      | 是否支持 |
-|:----------------------------|:-----------:|
-|<term>Ascend 950PR/Ascend 950DT</term>|      √     |
-|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      √     |
-|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      √     |
-|<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
-|<term>Atlas 推理系列产品</term>|      ×     |
-|<term>Atlas 训练系列产品</term>|      ×     |
+| 产品                                                     | 是否支持 |
+| :------------------------------------------------------- | :------: |
+| <term>Ascend 950PR/Ascend 950DT</term>                   |    √    |
+| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term> |    √    |
+| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √    |
+| <term>Atlas 200I/500 A2 推理产品</term>                  |    ×    |
+| <term>Atlas 推理系列产品</term>                          |    ×    |
+| <term>Atlas 训练系列产品</term>                          |    ×    |
 
 ## 功能说明
 
@@ -106,6 +106,13 @@
       <td>输入</td>
       <td>表示MLA结构中的key的rope信息，不支持空tensor和非连续。layout_kv为"BSND"时，shape为[B, KV_S, KV_N, Dr]。layout_kv为"TND"时，shape为[KV_T, KV_N, Dr]。layout_kv为"PA_BSND"时，shape为[block_num, block_size, KV_N, Dr]。</td>
       <td>FLOAT16、BFLOAT16</td>
+      <td>ND</td>
+    </tr>
+    <tr>
+      <td>sinks</td>
+      <td>输入</td>
+      <td>attention结构中的可学习的sinks信息。</td>
+      <td>FLOAT</td>
       <td>ND</td>
     </tr>
     <tr>
@@ -214,7 +221,7 @@
     - 只支持sparse_block_size为1。
   - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
     - 支持[1,128]，且要求是2的幂次方，在PageAttention场景下要求sparse_block_size整除block_size
-
+- sinks仅支持Ascend 950PR/Ascend 950DT。
 ## 调用示例
 
 <table class="tg"><thead>
@@ -237,4 +244,20 @@
     接口方式调用算子
     </td>
   </tr>
-</tbody></table>
+</tbody>
+<tbody>
+  <tr>
+    <td class="tg-9wq8" rowspan="6">aclnn接口</td>
+    <td class="tg-0pky">
+    <a href="./examples//test_aclnn_sparse_flash_attention_v2.cpp">test_aclnn_sparse_flash_attention_v2
+    </a>
+    </td>
+    <td class="tg-lboi" rowspan="6">
+    通过
+    <a href="./docs/aclnnSparseFlashAttentionV2.md">aclnnSparseFlashAttentionV2
+    </a>
+    接口方式调用算子
+    </td>
+  </tr>
+</tbody>
+</table>

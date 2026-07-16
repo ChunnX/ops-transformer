@@ -48,13 +48,13 @@ aclTensorList *ConvertTensorListToInt4(const aclTensorList *input, aclOpExecutor
         auto viewShape = tensor->GetViewShape();
         viewShape[viewShape.GetDimNum() - 1] = viewShape[viewShape.GetDimNum() - 1] * INT4_NUMS_IN_INT32;
         auto inputTemp = executor->CreateView(tensor, viewShape, tensor->GetViewOffset());
-        inputTemp->SetDataType(DataType::DT_INT4);
-        inputTemp->SetStorageFormat(Format::FORMAT_FRACTAL_NZ);
-        inputTemp->SetViewFormat(Format::FORMAT_FRACTAL_NZ);
         if (inputTemp == nullptr) {
             OP_LOGE(ACLNN_ERR_INNER, "ConvertTensorListToInt4: CreateView failed at index %d.", i);
             return nullptr;
         }
+        inputTemp->SetDataType(DataType::DT_INT4);
+        inputTemp->SetStorageFormat(Format::FORMAT_FRACTAL_NZ);
+        inputTemp->SetViewFormat(Format::FORMAT_FRACTAL_NZ);
         tensors.push_back(inputTemp);
     }
     aclTensorList *newInput = executor->AllocTensorList(tensors.data(), tensors.size());
@@ -66,11 +66,11 @@ aclTensorList *ConvertTensorListToInt4(const aclTensorList *input, aclOpExecutor
     return newInput;
 }
 
-static void CreateEmptyTensor(aclDataType dataType, const aclTensorList *&ioList,
-                              aclTensorList *&outList, aclOpExecutor *executor)
+static void CreateEmptyTensor(aclDataType dataType, const aclTensorList *&ioList, aclTensorList *&outList,
+                              aclOpExecutor *executor)
 {
     if (ioList == nullptr) {
-        std::vector<aclTensor*> emptyTensors;
+        std::vector<aclTensor *> emptyTensors;
         aclTensor *emptyTensor = executor->AllocTensor({0}, static_cast<op::DataType>(dataType));
         emptyTensors.emplace_back(emptyTensor);
         outList = executor->AllocTensorList(emptyTensors.data(), emptyTensors.size());
@@ -84,8 +84,9 @@ aclnnStatus aclnnMegaMoeGetWorkspaceSize(
     const aclTensorList *weightScales2Optional, const aclTensorList *bias1Optional, const aclTensorList *bias2Optional,
     const aclTensor *xActiveMaskOptional, int64_t moeExpertNum, int64_t epWorldSize, int64_t cclBufferSize,
     int64_t maxRecvTokenNum, int64_t dispatchQuantMode, int64_t dispatchQuantOutDtype, int64_t combineQuantMode,
-    const char *commAlg, int64_t numMaxTokensPerRank, const char *activation, float activationClamp, aclTensor *yOut,
-    aclTensor *expertTokenNumsOut, uint64_t *workspaceSize, aclOpExecutor **executor)
+    const char *commAlg, int64_t numMaxTokensPerRank, const char *activation, float activationClamp, int64_t topoType,
+    int64_t rankNumPerServer, aclTensor *yOut, aclTensor *expertTokenNumsOut, uint64_t *workspaceSize,
+    aclOpExecutor **executor)
 {
     OP_LOGD("aclnn_mega_moe WorkspaceSize start");
 
@@ -98,12 +99,10 @@ aclnnStatus aclnnMegaMoeGetWorkspaceSize(
     OP_CHECK_NULL(yOut, return ACLNN_ERR_PARAM_NULLPTR);
     OP_CHECK_NULL(expertTokenNumsOut, return ACLNN_ERR_PARAM_NULLPTR);
 
-    CHECK_COND(moeExpertNum > 0, ACLNN_ERR_PARAM_INVALID,
-        "moeExpertNum must be > 0, got %ld.", moeExpertNum);
-    CHECK_COND(epWorldSize > 0, ACLNN_ERR_PARAM_INVALID,
-        "epWorldSize must be > 0, got %ld.", epWorldSize);
-    CHECK_COND(maxRecvTokenNum > 0, ACLNN_ERR_PARAM_INVALID,
-        "maxRecvTokenNum must be > 0, got %ld.", maxRecvTokenNum);
+    CHECK_COND(moeExpertNum > 0, ACLNN_ERR_PARAM_INVALID, "moeExpertNum must be > 0, got %ld.", moeExpertNum);
+    CHECK_COND(epWorldSize > 0, ACLNN_ERR_PARAM_INVALID, "epWorldSize must be > 0, got %ld.", epWorldSize);
+    CHECK_COND(maxRecvTokenNum >= 0, ACLNN_ERR_PARAM_INVALID, "maxRecvTokenNum must be >= 0, got %ld.",
+               maxRecvTokenNum);
 
     // 确保 executor 已创建，以便调用 CreateEmptyTensor
     if (*executor == nullptr) {
@@ -130,12 +129,11 @@ aclnnStatus aclnnMegaMoeGetWorkspaceSize(
     }
 
     aclnnStatus getWorkspaceSizesRes = aclnnInnerMegaMoeGetWorkspaceSize(
-        context, x, topkIds, topkWeights, weight1, weight2,
-        weightScales1Optional, weightScales2Optional, bias1Optional, bias2Optional,
-        xActiveMaskOptional, nullptr, moeExpertNum, epWorldSize, cclBufferSize, maxRecvTokenNum,
+        context, x, topkIds, topkWeights, weight1, weight2, weightScales1Optional, weightScales2Optional, bias1Optional,
+        bias2Optional, xActiveMaskOptional, nullptr, moeExpertNum, epWorldSize, cclBufferSize, maxRecvTokenNum,
         dispatchQuantMode, dispatchQuantOutDtype, combineQuantMode, const_cast<char *>(commAlg), 0,
-        const_cast<char *>(activation), activationClamp, ge::DT_UNDEFINED, false, false, 0, yOut, expertTokenNumsOut,
-        workspaceSize, executor);
+        const_cast<char *>(activation), activationClamp, ge::DT_UNDEFINED, false, false, 0, topoType, rankNumPerServer,
+        yOut, expertTokenNumsOut, workspaceSize, executor);
 
     return getWorkspaceSizesRes;
 }

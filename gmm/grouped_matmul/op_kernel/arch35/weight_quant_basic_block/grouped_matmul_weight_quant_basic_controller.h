@@ -23,6 +23,7 @@ using WeightQuantBatchMatmulV2::Arch35::BasicBlockOffsetParam;
 using WeightQuantBatchMatmulV2::Arch35::CeilDivide;
 using WeightQuantBatchMatmulV2::Arch35::DOUBLE_BUFFER_NUM;
 using WeightQuantBatchMatmulV2::Arch35::QUADRUPLE_BUFFER_NUM;
+using WeightQuantBatchMatmulV2::Arch35::QuantType;
 using WeightQuantBatchMatmulV2::Arch35::VecAntiQuantConfig;
 using WeightQuantBatchMatmulV2::Arch35::WeightQuantMatmulBasicBlock;
 using WeightQuantBatchMatmulV2::Arch35::WqmmConfig;
@@ -46,7 +47,7 @@ private:
     __aicore__ inline void SetMKN(uint64_t groupIdx, uint64_t &preOffset, BasicBlockOffsetParam &offsetParam);
     __aicore__ inline void SetGmAddr(uint64_t groupIdx, uint64_t &xBaseOffset, uint64_t &weightBaseOffset,
                                      uint64_t &yBaseOffset, uint64_t &antiquantParamsBaseOffset,
-                                     const BasicBlockOffsetParam &offsetParam);
+                                     uint64_t &biasBaseOffset, const BasicBlockOffsetParam &offsetParam);
     __aicore__ inline uint64_t GetSplitValueFromGroupList(uint64_t groupIdx, uint64_t &preOffset);
 
     const GMMWeightQuantParam *gmmBaseTiling_;
@@ -108,12 +109,14 @@ __aicore__ inline void GMMWeightQuantBasicController<xType, wType, biasType, yTy
     uint64_t weightBaseOffset = 0;
     uint64_t yBaseOffset = 0;
     uint64_t antiquantParamsBaseOffset = 0;
+    uint64_t biasBaseOffset = 0;
 
     BasicBlockOffsetParam offsetParam;
     InitOffsetParam(offsetParam);
     for (uint32_t groupIdx = 0, count = 0; groupIdx < gmmBaseTiling_->groupNum; ++groupIdx) {
         SetMKN(groupIdx, preOffset, offsetParam);  // 每个核都必须知道之前group的信息，在单场景下作为baseOffset
-        SetGmAddr(groupIdx, xBaseOffset, weightBaseOffset, yBaseOffset, antiquantParamsBaseOffset, offsetParam);
+        SetGmAddr(groupIdx, xBaseOffset, weightBaseOffset, yBaseOffset, antiquantParamsBaseOffset, biasBaseOffset,
+                  offsetParam);
         if (offsetParam.mSize == 0 || offsetParam.nSize == 0) {
             continue;
         }
@@ -194,7 +197,7 @@ template <typename xType, typename wType, typename biasType, typename yType, con
           const VecAntiQuantConfig &vecConfig>
 __aicore__ inline void GMMWeightQuantBasicController<xType, wType, biasType, yType, wqmmConfig, vecConfig>::SetGmAddr(
     uint64_t groupIdx, uint64_t &xBaseOffset, uint64_t &weightBaseOffset, uint64_t &yBaseOffset,
-    uint64_t &antiquantParamsBaseOffset, const BasicBlockOffsetParam &offsetParam)
+    uint64_t &antiquantParamsBaseOffset, uint64_t &biasBaseOffset, const BasicBlockOffsetParam &offsetParam)
 {
     __gm__ xType *xGm;
     __gm__ wType *weightGm;
@@ -223,7 +226,7 @@ __aicore__ inline void GMMWeightQuantBasicController<xType, wType, biasType, yTy
         weightGm = GetTensorAddr<wType>(0, weightGm_) + weightBaseOffset;
         antiquantScaleGm = GetTensorAddr<xType>(0, antiquantScaleGm_) + antiquantParamsBaseOffset;
         antiquantOffsetGm = GetTensorAddr<xType>(0, antiquantOffsetGm_) + antiquantParamsBaseOffset;
-        biasGm = GetTensorAddr<biasType>(0, biasGm_) + antiquantParamsBaseOffset;
+        biasGm = GetTensorAddr<biasType>(0, biasGm_) + biasBaseOffset;
     }
     wqmmBasicBlock_.UpdateGlobalAddr(xGm, weightGm, antiquantScaleGm, antiquantOffsetGm, nullptr, nullptr, biasGm,
                                      yGm, mmTiling_->isBias, true);
@@ -233,7 +236,13 @@ __aicore__ inline void GMMWeightQuantBasicController<xType, wType, biasType, yTy
     } else {
         weightBaseOffset += offsetParam.nSize * offsetParam.kSize;
     }
-    antiquantParamsBaseOffset += offsetParam.nSize;
+    if constexpr (wqmmConfig.antiQuantType == QuantType::PER_GROUP) {
+        uint64_t groupNumK = offsetParam.kSize / gmmBaseTiling_->groupSize;
+        antiquantParamsBaseOffset += groupNumK * offsetParam.nSize;
+    } else {
+        antiquantParamsBaseOffset += offsetParam.nSize;
+    }
+    biasBaseOffset += offsetParam.nSize;
     yBaseOffset += offsetParam.mSize * offsetParam.nSize;
 }
 

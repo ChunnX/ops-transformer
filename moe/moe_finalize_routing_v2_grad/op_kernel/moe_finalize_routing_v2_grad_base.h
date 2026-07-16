@@ -92,6 +92,20 @@ protected:
     bool hasBias = false;
 };
 
+__aicore__ inline void MTE3ToVSync()
+{
+    event_t eventIDMTE3ToV = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_V));
+    SetFlag<HardEvent::MTE3_V>(eventIDMTE3ToV);
+    WaitFlag<HardEvent::MTE3_V>(eventIDMTE3ToV);
+}
+
+__aicore__ inline void VToMTE3Sync()
+{
+    event_t eventIDVToMTE3 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_MTE3));
+    SetFlag<HardEvent::V_MTE3>(eventIDVToMTE3);
+    WaitFlag<HardEvent::V_MTE3>(eventIDVToMTE3);
+}
+
 template <typename T1, typename T2>
 __aicore__ inline void MoeFinalizeRoutingV2GradBase<T1, T2>::SubInit(
     GM_ADDR gradY, GM_ADDR expandedRowIdx, GM_ADDR gradExpandedX, const MoeFinalizeRoutingV2GradTilingData* tilingData,
@@ -161,6 +175,7 @@ __aicore__ inline void MoeFinalizeRoutingV2GradBase<T1, T2>::InitOutNotCutH()
         dstOffset_ = batchIdx * tilingData_->hidden;
         gradExpandedXInitGm_ = gradExpandedXGm_[dstOffset_];
         InitOutput<T1>(gradExpandedXInitGm_, tilingData_->hidden, 0);
+        MTE3ToVSync();
     }
 }
 
@@ -416,7 +431,7 @@ __aicore__ inline void MoeFinalizeRoutingV2GradBase<T1, T2>::CopyOutGradScales(i
     } else {
         gradScalesUb.SetValue(0, gradScalesSum_);
     }
-
+    VToMTE3Sync();
     gradScalesSum_ = 0;
     DataCopyPad(gradScalesGm_[dstOffset_], gradScalesUb, copyExtParams);
     Mte3ToMte2();

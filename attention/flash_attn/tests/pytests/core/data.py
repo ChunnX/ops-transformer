@@ -111,7 +111,7 @@ def build_flash_attn_params(p: dict, device: torch.device, inputs: dict
         max_seqlen_q=msq,
         max_seqlen_kv=msk,
         layout_q=layout_q, layout_kv=layout_kv, layout_out=layout_out,
-        return_softmax_lse=p.get("return_softmax_lse", 0),
+        return_softmax_lse=p.get("return_softmax_lse", False),
     )
 
     return meta_kwargs, kernel_kwargs, layout_out

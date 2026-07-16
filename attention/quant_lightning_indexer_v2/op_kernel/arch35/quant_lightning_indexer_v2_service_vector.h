@@ -175,7 +175,7 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::InitBuffers(TPipe *pipe)
     resMm1UB_ = resMm1Buf_.Get<QK_T>(); // qk
     // 大小：2(开dB) * 2 * 64 * 2 = 0.5KB
     pipe->InitBuffer(weightBuf_,
-        2 * CeilDiv(s1BaseSize_, 2) * gSize_ * sizeof(float));
+        2 * CeilDiv(s1BaseSize_, 2) * UB_BANK_DEPTH_STRIDE * sizeof(float));
     weightUB_ = weightBuf_.Get<float>(); // weight
     pipe->InitBuffer(weightTempBuf_, 2 * CeilDiv(s1BaseSize_, 2) * UB_BANK_DEPTH_STRIDE);
     weightTempUB_ = weightTempBuf_.Get<float>();
@@ -184,7 +184,7 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::InitBuffers(TPipe *pipe)
     kScaleUB_ = kScaleBuf_.Get<float>(); // kScale
     // 大小：2(开dB) * 2 * 64 * 4 = 1KB
     pipe->InitBuffer(qScaleBuf_,
-        2 * CeilDiv(s1BaseSize_, 2) * gSize_ * sizeof(float));
+        2 * CeilDiv(s1BaseSize_, 2) * UB_BANK_DEPTH_STRIDE * sizeof(float));
     qScaleUB_ = qScaleBuf_.Get<float>(); // qScale
     // 大小：2(开dB) * 2 * 128 * 4 = 2KB
     pipe->InitBuffer(outBuf_,
@@ -368,6 +368,8 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::DoTndPadding(const QLIV2Common::RunI
         GlobalTensor<uint16_t> valueOut = valueOutGmTmp[paddingOffset];
 
         AscendC::InitGlobalMemory(valueOut, dealSize, constInfo_.NEG_INF_BFLOAT);
+        SetFlag<HardEvent::MTE3_V>(eventIDMTE3ToV);
+        WaitFlag<HardEvent::MTE3_V>(eventIDMTE3ToV);
     }
 }
 template <typename QLIV2T>
@@ -457,7 +459,7 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessVec1(const QLIV2Common::RunIn
         qwDataCopyExtParams.blockCount = curAivS1ProcNum;
         qwDataCopyExtParams.blockLen = gSize_ * sizeof(float);
         qwDataCopyExtParams.srcStride = 0;
-        qwDataCopyExtParams.dstStride = (UB_BANK_DEPTH_STRIDE - UB_BANK_STRIDE) / 32;
+        qwDataCopyExtParams.dstStride = (UB_BANK_DEPTH_STRIDE - qwDataCopyExtParams.blockLen) / 32;
         DataCopyPad(weightUB_[qScalepingpong * (UB_BANK_STRIDE / sizeof(float))],
                     weightsGm[weightGmOffset], qwDataCopyExtParams, padWeightsParams);
 
@@ -533,7 +535,7 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessVec1(const QLIV2Common::RunIn
     DataCopyExtParams copyOutParams;
     copyOutParams.blockCount = curAivS1ProcNum;
     copyOutParams.blockLen = s2BaseSize_ * sizeof(SCORE_T);
-    copyOutParams.srcStride = (UB_BANK_DEPTH_STRIDE - UB_BANK_STRIDE) / 32;
+    copyOutParams.srcStride = (UB_BANK_DEPTH_STRIDE - copyOutParams.blockLen) / 32;
     copyOutParams.dstStride = (QLIV2Common::Align((uint64_t)constInfo_.kSeqSize, (uint64_t)s2BaseSize_) - s2BaseSize_)
         * sizeof(SCORE_T);
     DataCopyPad(scoreGm[vec1OutGmOffset], outBase, copyOutParams);
@@ -852,6 +854,7 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessTopK(const QLIV2Common::RunIn
             // 将每一行S1的Topk结果存放在ldScoreGm和ldIndexGm中
             AscendC::DataCopyPad(ldScoreGm[offset], scoreOutLocal_, ldCopyScoreOutParams);
             AscendC::DataCopyPad(ldIndexGm[offset], indicesOutLocal_.ReinterpretCast<int32_t>(), ldCopyOutParams);
+            SetFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
         }
     }
 }

@@ -29,10 +29,12 @@ constexpr uint32_t MAX_RANK_DIM = 64;
 
 template <typename x1Type, typename x2Type, typename biasType, typename yType, CubeFormat formatX1, CubeFormat formatX2,
           CubeFormat formatY, bool aTrans, bool bTrans>
-class MatMulPerBlockASWNonContiguous : public MatMulPerBlockASW<x1Type, x2Type, biasType, yType, formatX1, formatX2,
-      formatY, aTrans, bTrans> {
+class MatMulPerBlockASWNonContiguous
+    : public MatMulPerBlockASW<x1Type, x2Type, biasType, yType, formatX1, formatX2, formatY, aTrans, bTrans> {
 public:
-    __aicore__ inline MatMulPerBlockASWNonContiguous() {}
+    __aicore__ inline MatMulPerBlockASWNonContiguous()
+    {
+    }
     __aicore__ inline void Init(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR bias, GM_ADDR scale, GM_ADDR perTokenScale,
                                 GM_ADDR cGM, GM_ADDR workSpace, const void *tilingData, TPipe *que,
                                 const uint32_t *batchWeight, const uint32_t strideCount, const bool offsetFlag);
@@ -55,10 +57,8 @@ template <typename x1Type, typename x2Type, typename biasType, typename yType, C
           CubeFormat formatY, bool aTrans, bool bTrans>
 __aicore__ inline void
 MatMulPerBlockASWNonContiguous<x1Type, x2Type, biasType, yType, formatX1, formatX2, formatY, aTrans, bTrans>::Init(
-                                                        GM_ADDR aGM, GM_ADDR bGM, GM_ADDR bias, GM_ADDR scale,
-                                                        GM_ADDR perTokenScale, GM_ADDR cGM, GM_ADDR workSpace,
-                                                        const void *tilingData, TPipe *que, const uint32_t *batchWeight,
-                                                        const uint32_t strideCount, const bool offsetFlag)
+    GM_ADDR aGM, GM_ADDR bGM, GM_ADDR bias, GM_ADDR scale, GM_ADDR perTokenScale, GM_ADDR cGM, GM_ADDR workSpace,
+    const void *tilingData, TPipe *que, const uint32_t *batchWeight, const uint32_t strideCount, const bool offsetFlag)
 {
     quantBmmTilingData_ = static_cast<const DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams *>(tilingData);
     offsetFlag_ = offsetFlag;
@@ -94,9 +94,8 @@ MatMulPerBlockASWNonContiguous<x1Type, x2Type, biasType, yType, formatX1, format
 
 template <typename x1Type, typename x2Type, typename biasType, typename yType, CubeFormat formatX1, CubeFormat formatX2,
           CubeFormat formatY, bool aTrans, bool bTrans>
-__aicore__ inline void
-MatMulPerBlockASWNonContiguous<x1Type, x2Type, biasType, yType, formatX1, formatX2,
-                              formatY, aTrans, bTrans>::ProcessWithoutBatch()
+__aicore__ inline void MatMulPerBlockASWNonContiguous<x1Type, x2Type, biasType, yType, formatX1, formatX2, formatY,
+                                                      aTrans, bTrans>::ProcessWithoutBatch()
 {
     for (uint64_t roundIndex = 0; roundIndex < block_.params_.round; ++roundIndex) {
         block_.UpdateBasicIndex(roundIndex);
@@ -109,11 +108,12 @@ MatMulPerBlockASWNonContiguous<x1Type, x2Type, biasType, yType, formatX1, format
             block_.template CalcGMOffset<aTrans, bTrans, x1Type, float, formatX2>(strideCount_, batchWeight_);
         }
         block_.UpdatePerBlockMmParam<aTrans, bTrans>();
-        // 'tmpScaleMOffset' is used for temporary equivalent calculations when modifying the offset computation of scaleM.
+        // 'tmpScaleMOffset' is used for temporary equivalent calculations when modifying the offset computation of
+        // scaleM.
         uint64_t tmpScaleMOffset = DequantBmm::CeilDiv(strideCount_, block_.params_.groupSizeM);
         mm_.Iterate(tmpScaleMOffset, batchWeight_, strideCount_, offsetFlag_);
     }
 }
 
-}  // namespace Mc2QuantBatchMatmulV3
-#endif  // QBMM_MIX_PERBLOCK_NONCONTIGUOUS_H
+} // namespace Mc2QuantBatchMatmulV3
+#endif // QBMM_MIX_PERBLOCK_NONCONTIGUOUS_H

@@ -1105,6 +1105,7 @@ ge::graphStatus FiaInfoParser::GetAntiQuantInfo()
                 OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(opName_, "antiquant",
                     std::to_string(tmpAntiquant.GetDimNum()).c_str(),
                     "The shape dim of antiquant must be 5 when per-token-group mode is enabled");
+                return ge::GRAPH_FAILED;
             }
             antiquantParaSeqSize_ = tmpAntiquant.GetDim(3);
         }
@@ -1113,6 +1114,7 @@ ge::graphStatus FiaInfoParser::GetAntiQuantInfo()
             OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(opName_, "antiquant",
                 std::to_string(tmpAntiquant.GetDimNum()).c_str(),
                 "The shape dim of antiquant must be 2 or 3 when per-token mode is enabled");
+            return ge::GRAPH_FAILED;
         }
         antiquantParaSeqSize_ = tmpAntiquant.GetDimNum() == 3U ? tmpAntiquant.GetDim(2) : tmpAntiquant.GetDim(1);
     } else if (tmpAntiquantMode == 3) {
@@ -1120,6 +1122,7 @@ ge::graphStatus FiaInfoParser::GetAntiQuantInfo()
             OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(opName_, "antiquant",
                 std::to_string(tmpAntiquant.GetDimNum()).c_str(),
                 "The shape dim of antiquant must be 3 when per-token-head mode is enabled");
+            return ge::GRAPH_FAILED;
         }
         antiquantParaSeqSize_ = tmpAntiquant.GetDim(2);
     }

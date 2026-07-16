@@ -47,21 +47,21 @@ template <class T>
 using BlockCost = std::array<std::array<T, static_cast<size_t>(BLOCK_MAX_TYPE)>, static_cast<size_t>(BLOCK_MAX_TYPE)>;
 
 template <typename T>
-T Clip(T value, T minValue, T maxValue)
+T Clip(T value, T min, T max)
 {
-    if (value < minValue) {
-        return minValue;
+    if (value < min) {
+        return min;
     }
-    if (value > maxValue) {
-        return maxValue;
+    if (value > max) {
+        return max;
     }
     return value;
 }
 
 template <typename T>
-inline bool IsWithinTolerance(T limit, T tolerance, T value)
+inline bool IsWithinTolerance(T limit, T toler, T value)
 {
-    return limit + tolerance >= value;
+    return limit + toler >= value;
 }
 
 // 分核功能模块输入：输入case的基本信息
@@ -87,10 +87,13 @@ struct BaseInfo {
 
 // 分核功能模块输入：切分属性，预留接口，可作为切分方案的参数入口
 struct SplitParam {
-    uint32_t mBaseSize{1U};
-    uint32_t s2BaseSize{1U};
-    uint32_t gS1BaseSizeOfFd{8U}; // FD阶段分核，m轴切分基本块大小
+    uint32_t mBaseSize{ 1U };
+    uint32_t s2BaseSize{ 1U };
+    uint32_t gS1BaseSizeOfFd{ 8U }; // FD阶段分核，m轴切分基本块大小
     bool streamK = true;
+    int64_t fdTolerance { 0U };             // if fd - full_block_cost * fdTolerance <= fd, then choose no fd,
+                                            // full_block_cost is costFunc(mBaseSize, s2BaseSize)
+    int64_t fdLeastBlock { 0U };            // if noFd.maxCost <= fdLeastBlock * full_block_cost, then choose no fd
 };
 
 
@@ -259,6 +262,7 @@ void RecordFDInfo(const SplitContext &splitContext, const AssignContext &assignC
 // main
 void SplitFD(FAMetaData &result);
 void CalcSplitPlan(uint32_t coreNum, int64_t costLimit, const SplitContext &splitContext, FAMetaData &result);
+bool CheckChooseWithFd(int64_t noFdCost, int64_t withFdCost, uint32_t actualMFdsize, const SplitParam &param);
 void LogSplitCoreInput(const BaseInfo &baseInfo, const SplitParam &param);
 void LogSplitCoreResult(const FAMetaData &result);
 void SplitCore(uint32_t coreNum, const BaseInfo &baseInfo, const SplitParam &param, FAMetaData &result);

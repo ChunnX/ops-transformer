@@ -33,7 +33,7 @@ ge::graphStatus SystemPrefixChecker::CheckSharedPrefixDim(const FiaTilingInfo &f
     // 校验keySharedPrefix和valueSharedPrefix的的维度
     auto &keySharedPrefixTensor = fiaInfo.opParamInfo.keySharedPrefix.tensor;
     auto &valueSharedPrefixTensor = fiaInfo.opParamInfo.valueSharedPrefix.tensor;
-    if (keySharedPrefixTensor == nullptr || valueSharedPrefixTensor == nullptr) {
+    if (!fiaInfo.sysPrefixFlag) {
         // 若keySharedPrefix或valueSharedPrefix的shape为空，则放弃后续校验
         return ge::GRAPH_SUCCESS;
     }
@@ -86,6 +86,8 @@ ge::graphStatus SystemPrefixChecker::CheckSharedPrefixShape(const FiaTilingInfo 
         auto &keySharedPrefixShape = fiaInfo.opParamInfo.keySharedPrefix.tensor->GetStorageShape();
         auto &valueSharedPrefixShape = fiaInfo.opParamInfo.valueSharedPrefix.tensor->GetStorageShape();
         auto &keyShape = fiaInfo.opParamInfo.key.shape->GetStorageShape();
+        uint32_t keySharedPrefixS = 0;
+        uint32_t valueSharedPrefixS = 0;
         // 第一维batch必须为1
         if (keySharedPrefixShape.GetDim(DIM_NUM_0) != 1) {
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "key_shared_prefix",
@@ -98,15 +100,27 @@ ge::graphStatus SystemPrefixChecker::CheckSharedPrefixShape(const FiaTilingInfo 
             return ge::GRAPH_FAILED;
         }
         // layout为BNSD和BSND情况下，N、D轴与key一致
-        if (fiaInfo.kvLayout == FiaLayout::BNSD) {
-            uint32_t keySharedPrefixN = keySharedPrefixShape.GetDim(DIM_NUM_1);
+        if (fiaInfo.kvLayout == FiaLayout::BNSD || fiaInfo.kvLayout == FiaLayout::BSND) {
+            uint32_t keySharedPrefixN = 0;
+            uint32_t valueSharedPrefixN = 0;
+            uint32_t keyN = 0;
             uint32_t keySharedPrefixD = keySharedPrefixShape.GetDim(DIM_NUM_3);
-            uint32_t valueSharedPrefixN = valueSharedPrefixShape.GetDim(DIM_NUM_1);
             uint32_t valueSharedPrefixD = valueSharedPrefixShape.GetDim(DIM_NUM_3);
-            uint32_t keyN = keyShape.GetDim(DIM_NUM_1);
             uint32_t keyD = keyShape.GetDim(DIM_NUM_3);
-            uint32_t keySharedPrefixS = keySharedPrefixShape.GetDim(DIM_NUM_2);
-            uint32_t valueSharedPrefixS = valueSharedPrefixShape.GetDim(DIM_NUM_2);
+            if (fiaInfo.kvLayout == FiaLayout::BNSD) {
+                keySharedPrefixS = keySharedPrefixShape.GetDim(DIM_NUM_2);
+                valueSharedPrefixS = valueSharedPrefixShape.GetDim(DIM_NUM_2);
+                keySharedPrefixN = keySharedPrefixShape.GetDim(DIM_NUM_1);
+                valueSharedPrefixN = valueSharedPrefixShape.GetDim(DIM_NUM_1);
+                keyN = keyShape.GetDim(DIM_NUM_1);
+            }
+            if (fiaInfo.kvLayout == FiaLayout::BSND) {
+                keySharedPrefixS = keySharedPrefixShape.GetDim(DIM_NUM_1);
+                valueSharedPrefixS = valueSharedPrefixShape.GetDim(DIM_NUM_1);
+                keySharedPrefixN = keySharedPrefixShape.GetDim(DIM_NUM_2);
+                valueSharedPrefixN = valueSharedPrefixShape.GetDim(DIM_NUM_2);
+                keyN = keyShape.GetDim(DIM_NUM_2);
+            }
             if (keySharedPrefixN != keyN) {
                 std::string shapeStr = ToString(keySharedPrefixShape) + " and " + ToString(keyShape);
                 std::string reason = "N of key_shared_prefix must be equal to the same axis "
@@ -139,69 +153,13 @@ ge::graphStatus SystemPrefixChecker::CheckSharedPrefixShape(const FiaTilingInfo 
                     shapeStr.c_str(), reason.c_str());
                 return ge::GRAPH_FAILED;
             }
-            // keySharedPrefix和valueSharedPrefix的S应相等
-            if (keySharedPrefixS != valueSharedPrefixS) {
-                OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(fiaInfo.opName, "key_shared_prefix and value_shared_prefix",
-                    (ToString(keySharedPrefixShape) + " and " + ToString(valueSharedPrefixShape)).c_str(),
-                    "S of key_shared_prefix must be equal to the same axis of value_shared_prefix");
-                return ge::GRAPH_FAILED;
-            }
-        }
-        if (fiaInfo.kvLayout == FiaLayout::BSND) {
-            uint32_t keySharedPrefixN = keySharedPrefixShape.GetDim(DIM_NUM_2);
-            uint32_t keySharedPrefixD = keySharedPrefixShape.GetDim(DIM_NUM_3);
-            uint32_t valueSharedPrefixN = valueSharedPrefixShape.GetDim(DIM_NUM_2);
-            uint32_t valueSharedPrefixD = valueSharedPrefixShape.GetDim(DIM_NUM_3);
-            uint32_t keyN = keyShape.GetDim(DIM_NUM_2);
-            uint32_t keyD = keyShape.GetDim(DIM_NUM_3);
-            uint32_t keySharedPrefixS = keySharedPrefixShape.GetDim(DIM_NUM_1);
-            uint32_t valueSharedPrefixS = valueSharedPrefixShape.GetDim(DIM_NUM_1);
-            if (keySharedPrefixN != keyN) {
-                std::string shapeStr = ToString(keySharedPrefixShape) + " and " + ToString(keyShape);
-                std::string reason = "N of key_shared_prefix must be equal to the same axis of "
-                    "key when layout of key is BNSD or BSND";
-                OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(fiaInfo.opName, "key_shared_prefix and key",
-                    shapeStr.c_str(), reason.c_str());
-                return ge::GRAPH_FAILED;
-            }
-            if (keySharedPrefixN != valueSharedPrefixN) {
-                std::string shapeStr = ToString(keySharedPrefixShape) + " and " + ToString(valueSharedPrefixShape);
-                std::string reason = "N of key_shared_prefix must be equal to the same axis of "
-                    "valueSharedPrefix when layout of key is BNSD or BSND";
-                OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(fiaInfo.opName, "key_shared_prefix and value_shared_prefix",
-                    shapeStr.c_str(), reason.c_str());
-                return ge::GRAPH_FAILED;
-            }
-            if (keySharedPrefixD != keyD) {
-                std::string shapeStr = ToString(keySharedPrefixShape) + " and " + ToString(keyShape);
-                std::string reason = "D of key_shared_prefix must be equal to the same axis of key "
-                    "when layout of key is BNSD or BSND";
-                OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(fiaInfo.opName, "key_shared_prefix and key",
-                    shapeStr.c_str(), reason.c_str());
-                return ge::GRAPH_FAILED;
-            }
-            if (keySharedPrefixD != valueSharedPrefixD) {
-                std::string shapeStr = ToString(keySharedPrefixShape) + " and " + ToString(valueSharedPrefixShape);
-                std::string reason = "D of key_shared_prefix must be equal to the same axis of "
-                    "valueSharedPrefix when layout of key is BNSD or BSND";
-                OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(fiaInfo.opName, "key_shared_prefix and value_shared_prefix",
-                    shapeStr.c_str(), reason.c_str());
-                return ge::GRAPH_FAILED;
-            }
-            // keySharedPrefix和valueSharedPrefix的S应相等
-            if (keySharedPrefixS != valueSharedPrefixS) {
-                OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(fiaInfo.opName, "key_shared_prefix and value_shared_prefix",
-                    (ToString(keySharedPrefixShape) + " and " + ToString(valueSharedPrefixShape)).c_str(),
-                    "S of key_shared_prefix must be equal to the same axis of value_shared_prefix");
-                return ge::GRAPH_FAILED;
-            }
         }
         // layout为BSH情况下H与key一致
         if (fiaInfo.kvLayout == FiaLayout::BSH) {
             uint32_t keySharedPrefixH = keySharedPrefixShape.GetDim(DIM_NUM_2);
             uint32_t valueSharedPrefixH = valueSharedPrefixShape.GetDim(DIM_NUM_2);
-            uint32_t keySharedPrefixS = keySharedPrefixShape.GetDim(DIM_NUM_1);
-            uint32_t valueSharedPrefixS = valueSharedPrefixShape.GetDim(DIM_NUM_1);
+            keySharedPrefixS = keySharedPrefixShape.GetDim(DIM_NUM_1);
+            valueSharedPrefixS = valueSharedPrefixShape.GetDim(DIM_NUM_1);
             uint32_t keyH = keyShape.GetDim(DIM_NUM_2);
             if (keySharedPrefixH != keyH) {
                 std::string shapeStr = ToString(keySharedPrefixShape) + " and " + ToString(keyShape);
@@ -219,13 +177,13 @@ ge::graphStatus SystemPrefixChecker::CheckSharedPrefixShape(const FiaTilingInfo 
                     shapeStr.c_str(), reason.c_str());
                 return ge::GRAPH_FAILED;
             }
-            // keySharedPrefix和valueSharedPrefix的S应相等
-            if (keySharedPrefixS != valueSharedPrefixS) {
-                OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(fiaInfo.opName, "key_shared_prefix and value_shared_prefix",
-                    (ToString(keySharedPrefixShape) + " and " + ToString(valueSharedPrefixShape)).c_str(),
-                    "S of key_shared_prefix must be equal to the same axis of value_shared_prefix");
-                return ge::GRAPH_FAILED;
-            }
+        }
+        // keySharedPrefix和valueSharedPrefix的S应相等
+        if (keySharedPrefixS != valueSharedPrefixS) {
+            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(fiaInfo.opName, "key_shared_prefix and value_shared_prefix",
+                (ToString(keySharedPrefixShape) + " and " + ToString(valueSharedPrefixShape)).c_str(),
+                "S of key_shared_prefix must be equal to the same axis of value_shared_prefix");
+            return ge::GRAPH_FAILED;
         }
     }
     return ge::GRAPH_SUCCESS;
@@ -539,20 +497,11 @@ ge::graphStatus SystemPrefixChecker::CheckFeatureAntiquant(const FiaTilingInfo &
 // multipara
 ge::graphStatus SystemPrefixChecker::CheckSinglePara(const FiaTilingInfo &fiaInfo)
 {
-    if (ge::GRAPH_SUCCESS != CheckSharedPrefixDim(fiaInfo) ||
-        ge::GRAPH_SUCCESS != CheckSharedPrefixDataType(fiaInfo) ||
-        ge::GRAPH_SUCCESS != CheckSharedPrefixShape(fiaInfo) ||
-        ge::GRAPH_SUCCESS != CheckActualSharedPrefixLenData(fiaInfo)) {
-        return ge::GRAPH_FAILED;
-    }
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus SystemPrefixChecker::CheckParaExistence(const FiaTilingInfo &fiaInfo)
 {
-    if (ge::GRAPH_SUCCESS != CheckSharedPrefixExistence(fiaInfo)) {
-        return ge::GRAPH_FAILED;
-    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -573,6 +522,13 @@ ge::graphStatus SystemPrefixChecker::CheckCrossFeature(const FiaTilingInfo &fiaI
 
 ge::graphStatus SystemPrefixChecker::CheckMultiParaConsistency(const FiaTilingInfo &fiaInfo)
 {
+    if (ge::GRAPH_SUCCESS != CheckSharedPrefixDim(fiaInfo) ||
+        ge::GRAPH_SUCCESS != CheckSharedPrefixDataType(fiaInfo) ||
+        ge::GRAPH_SUCCESS != CheckSharedPrefixShape(fiaInfo) ||
+        ge::GRAPH_SUCCESS != CheckActualSharedPrefixLenData(fiaInfo) ||
+        ge::GRAPH_SUCCESS != CheckSharedPrefixExistence(fiaInfo)) {
+        return ge::GRAPH_FAILED;
+    }
     return ge::GRAPH_SUCCESS;
 }
 

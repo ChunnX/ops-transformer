@@ -48,7 +48,7 @@ struct AlltoAllMatmulTilingUtParam {
     std::vector<size_t> expectWorkspaces;
     uint64_t mc2TilingDataReservedLen;
 
-    explicit AlltoAllMatmulTilingUtParam(const csv_map& csvMap)
+    explicit AlltoAllMatmulTilingUtParam(const csv_map &csvMap)
     {
         this->case_name = ReadMap(csvMap, "caseName");
         GetTensorGE(csvMap, "x1Shape", "x1Dtype", "x1Format", this->x1);
@@ -81,7 +81,7 @@ struct AlltoAllMatmulTilingUtParam {
         if (!tilingKeyStr.empty()) {
             this->expectTilingKey = stoull(tilingKeyStr);
         } else {
-            this->expectTilingKey = UINT64_MAX;  // Skip validation marker
+            this->expectTilingKey = UINT64_MAX; // Skip validation marker
         }
         this->expectTilingData = ReadMap(csvMap, "expectTilingData");
         std::string wsStr = ReadMap(csvMap, "expectWorkspaces");
@@ -92,7 +92,7 @@ struct AlltoAllMatmulTilingUtParam {
     }
 };
 
-inline std::ostream& operator<<(std::ostream& os, const AlltoAllMatmulTilingUtParam& param)
+inline std::ostream &operator<<(std::ostream &os, const AlltoAllMatmulTilingUtParam &param)
 {
     return os << param.case_name;
 }
