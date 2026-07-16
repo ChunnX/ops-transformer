@@ -8,6 +8,7 @@ SEP = "━" * 80
 
 DEFAULT_SCATTER_LIMIT = 10
 DEFAULT_SEGMENT_LIMIT = 10
+LARGE_FAIL_THRESHOLD = 1_000_000  # 超过此数量跳过坐标分析, 仅显示概要
 
 _LAYOUT_COLUMNS = {"BNSD": ["B", "N", "S", "D"], "BSND": ["B", "S", "N", "D"], "TND": ["T", "N", "D"]}
 
@@ -41,50 +42,84 @@ def _render_table(col_names, col_types, rows):
 
 
 # ═══════════════════════════════════════════════════════════════
-# 连续段查找
+# 连续段查找 (矢量化)
 # ═══════════════════════════════════════════════════════════════
 
-def _find_ranges(fail_coords, shape):
-    """fail_coords: 按前缀分组的失败坐标列表。在最后维度上找连续区间。"""
+def _flat_to_coords(fail_indices, shape):
+    """矢量化: 扁平索引 → 坐标张量 (N, ndim), 按字典序排序。"""
+    ndim = len(shape)
+    strides = [1]
+    for s in reversed(shape[1:]):
+        strides.insert(0, strides[0] * s)
+
+    coords = torch.zeros(len(fail_indices), ndim, dtype=torch.int64)
+    r = fail_indices.long()
+    for i in range(ndim):
+        coords[:, i] = r // strides[i]
+        r = r % strides[i]
+
+    # 稳定排序 (从最后一维到第一维)
+    order = torch.arange(len(coords), dtype=torch.int64)
+    for i in range(ndim - 1, -1, -1):
+        order = order[coords[order, i].argsort(stable=True)]
+    return coords[order]
+
+
+def _find_ranges(coords_t, shape):
+    """矢量化: 在已排序坐标张量上找前缀分组和D连续段。接受 list-of-tuples 或 tensor。"""
+    if isinstance(coords_t, list):
+        coords_t = torch.tensor(coords_t, dtype=torch.int64)
     ndim = len(shape)
     dim_size = shape[-1]
-    segments = []   # [(prefix, d_range)]
-    scatter = []    # [(full_coord)]
+    n = len(coords_t)
+    segments = []
+    scatter = []
 
-    for prefix, group in _group_by_prefix(fail_coords, ndim - 1):
-        dim_vals = sorted(set(c[-1] for c in group))
-        seg_start = seg_end = dim_vals[0]
-        for d in dim_vals[1:]:
-            if d == seg_end + 1:
-                seg_end = d
-            else:
-                _emit(segments, scatter, prefix, seg_start, seg_end, dim_size)
-                seg_start = seg_end = d
-        _emit(segments, scatter, prefix, seg_start, seg_end, dim_size)
+    if n == 0:
+        return segments, scatter
+
+    if ndim == 1:
+        # 1D: 所有点同一前缀(空), 直接在D维找连续段
+        _emit_ranges(segments, scatter, (), coords_t[:, 0], dim_size)
+        return segments, scatter
+
+    # 找前缀变化边界: 前 ndim-1 维任意变化处
+    prefix_cols = coords_t[:, :ndim - 1]
+    prefix_change = torch.zeros(n, dtype=torch.bool)
+    prefix_change[1:] = (prefix_cols[1:] != prefix_cols[:-1]).any(dim=1)
+    boundaries = prefix_change.nonzero(as_tuple=True)[0].tolist() + [n]
+
+    prev = 0
+    for b in boundaries:
+        prefix = tuple(coords_t[prev, :ndim - 1].tolist())
+        d_col = coords_t[prev:b, -1]
+        _emit_ranges(segments, scatter, prefix, d_col, dim_size)
+        prev = b
 
     return segments, scatter
 
 
-def _group_by_prefix(coords, prefix_len):
-    """按前 prefix_len 维分组, 保持输入顺序。"""
-    groups = {}
-    order = []
-    for c in coords:
-        key = tuple(c[:prefix_len])
-        if key not in groups:
-            groups[key] = []
-            order.append(key)
-        groups[key].append(c)
-    return [(k, groups[k]) for k in order]
-
-
-def _emit(segments, scatter, prefix, start, end, dim_size):
-    if start == end:
-        scatter.append(tuple(prefix) + (start,))
-    elif start == 0 and end == dim_size - 1:
-        segments.append((tuple(prefix), (-1, -1)))  # -1 标记全覆盖
-    else:
-        segments.append((tuple(prefix), (start, end)))
+def _emit_ranges(segments, scatter, prefix, d_vals, dim_size):
+    """从D值列中找出连续区间并发射片段/散点。"""
+    if len(d_vals) == 0:
+        return
+    unique_d = torch.unique(d_vals)
+    if len(unique_d) == 0:
+        return
+    # 找间隙
+    gaps = torch.cat([torch.tensor([True]),
+                      (unique_d[1:] - unique_d[:-1]) > 1,
+                      torch.tensor([True])])
+    gap_pos = gaps.nonzero(as_tuple=True)[0]
+    for j in range(len(gap_pos) - 1):
+        start = int(unique_d[gap_pos[j]])
+        end = int(unique_d[gap_pos[j + 1] - 1])
+        if start == end:
+            scatter.append(prefix + (start,))
+        elif start == 0 and end == dim_size - 1:
+            segments.append((prefix, (-1, -1)))
+        else:
+            segments.append((prefix, (start, end)))
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -163,22 +198,6 @@ def _compact_rows(fail_indices, shape, layout, verbose):
     return rows, len(col_names), truncated
 
 
-def _flat_to_coords(fail_indices, shape):
-    """扁平索引 → 多维坐标列表, 按坐标排序。"""
-    ndim = len(shape)
-    strides = [1]
-    for s in reversed(shape[1:]):
-        strides.insert(0, strides[0] * s)
-
-    coords = []
-    for flat in fail_indices.tolist():
-        c = []
-        r = flat
-        for i in range(ndim):
-            c.append(r // strides[i])
-            r %= strides[i]
-        coords.append(tuple(c))
-    return sorted(coords)
 
 
 def _fmt_coord_val(v, size):
@@ -300,7 +319,12 @@ def analyze_failure(
             npu_flat = npu_t.reshape(-1)
             diff_flat_t = diff.reshape(-1)
 
-            if verbose == "all":
+            if fail_cnt > LARGE_FAIL_THRESHOLD:
+                lines.append(f"    失败点数过多 ({fail_cnt:,} > {LARGE_FAIL_THRESHOLD:,}), "
+                             f"跳过坐标分析以节省内存")
+                lines.append("    (尝试缩小 --case_id 范围或使用 --verbose_diff all 查看全部)")
+                lines.append("")
+            elif verbose == "all":
                 # 逐点坐标 + cpu/npu/diff 值
                 coords = _flat_to_coords(fail_indices, tuple(cpu_t.shape))
                 all_rows = []
