@@ -219,6 +219,18 @@ ge::graphStatus QLIInfoParser::GetAttrParaInfo()
     opParamInfo_.nextTokens = attrs->GetAttrPointer<int64_t>(ATTR_NEXT_TOKENS_INDEX);
     opParamInfo_.keyStride0 = *(attrs->GetAttrPointer<int64_t>(ATTR_KEY_STRIDE0_INDEX));
     opParamInfo_.keyDequantScaleStride0 = *(attrs->GetAttrPointer<int64_t>(ATTR_KEY_DEQUANT_SCALE_STRIDE0_INDEX));
+    auto keyStrides = context_->GetDynamicInputStride(KEY_INDEX, 0);
+    auto keyDequantScaleStrides = context_->GetDynamicInputStride(KEY_DEQUANT_SCALE_INDEX, 0);
+    if (keyStrides != nullptr && keyStrides->GetDimNum() > 0) {
+        for (size_t i = 0; i < keyStrides->GetDimNum(); i++) {
+            keyStridesVec_.push_back(keyStrides->GetStride(i));
+        }
+    }
+    if (keyDequantScaleStrides != nullptr && keyDequantScaleStrides->GetDimNum() > 0) {
+        for (size_t i = 0; i < keyDequantScaleStrides->GetDimNum(); i++) {
+            keyDequantScaleStridesVec_.push_back(keyDequantScaleStrides->GetStride(i));
+        }
+    }
 
     if (opParamInfo_.layOutQuery != nullptr) {
         OP_LOGI(context_->GetNodeName(), "layout_query is:%s", opParamInfo_.layOutQuery);
@@ -354,7 +366,7 @@ ge::graphStatus QLIInfoParser::GetAndCheckInOutDataType()
             return ge::GRAPH_FAILED);
         // hifloat8只支持bf16的weights和fp32的scale
         if (inputQType_ == ge::DT_FLOAT8_E4M3FN) {
-            OP_CHECK_IF((weightsType_ != ge::DT_BF16 || inputQueryScaleType_ != ge::DT_FLOAT) && 
+            OP_CHECK_IF((weightsType_ != ge::DT_BF16 || inputQueryScaleType_ != ge::DT_FLOAT) &&
                         (weightsType_ != ge::DT_FLOAT16|| inputQueryScaleType_ != ge::DT_FLOAT16),
                 OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(opName_, "weights, query_dequant_scale and key_dequant_scale",
                     QLIDataTypeToSerialString(weightsType_) + ", " +
@@ -401,7 +413,7 @@ ge::graphStatus QLIInfoParser::GetAndCheckInOutDataType()
             OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(opName_, "query_dequant_scale and key_dequant_scale",
                 QLIDataTypeToSerialString(inputQueryScaleType_) + ", " + QLIDataTypeToSerialString(inputKeyScaleType_),
                 "The dtype of query_dequant_scale and key_dequant_scale must be float16"),
-            return ge::GRAPH_FAILED);        
+            return ge::GRAPH_FAILED);
     }
 
     OP_CHECK_IF(outputType_ != ge::DT_INT32,
@@ -609,9 +621,9 @@ ge::graphStatus QLIInfoParser::GetGSize()
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "query",
                 Ops::Base::ToString(opParamInfo_.query.shape->GetStorageShape()).c_str(),
                 "input query's head_num divided by input key's head_num must <= " + std::to_string(G_SIZE_LIMIT)),
-               return ge::GRAPH_FAILED);        
+               return ge::GRAPH_FAILED);
     }
-    
+
     return ge::GRAPH_SUCCESS;
 }
 
@@ -917,6 +929,59 @@ ge::graphStatus QLIInfoParser::CheckScaleShape()
     return ge::GRAPH_SUCCESS;
 }
 
+// key非连续校验：通过shape计算expected stride进行校验
+// PA_BSND时，只允许0轴非连续，其余轴必须连续
+// 非PA_BSND时，所有轴都必须连续
+ge::graphStatus QLIInfoParser::CheckContiguous() const
+{
+    bool keyNonContiguous = false;
+    bool scaleNonContiguous = false;
+    // PA_BSND: 0轴允许非连续，从1轴开始检查；非PA_BSND: 从0轴开始检查
+    // PA_BSND: axis 0 allows non-contiguous, check starts from axis 1
+    // Non-PA_BSND: check starts from axis 0
+    size_t checkStartIdx = (kLayout_ == DataLayout::PA_BSND) ? 1 : 0;
+    if (!keyStridesVec_.empty() && opParamInfo_.key.shape != nullptr) {
+        auto &shape = opParamInfo_.key.shape->GetStorageShape();
+        std::vector<uint32_t> expectedStrides;
+        if (kLayout_ == DataLayout::BSND || kLayout_ == DataLayout::PA_BSND) {
+            expectedStrides = {shape.GetDim(1) * shape.GetDim(2) * shape.GetDim(3),
+                               shape.GetDim(2) * shape.GetDim(3), shape.GetDim(3), 1};
+        } else if (kLayout_ == DataLayout::TND) {
+            expectedStrides = {shape.GetDim(1) * shape.GetDim(2), shape.GetDim(2), 1};
+        }
+        for (size_t i = checkStartIdx; i < expectedStrides.size(); ++i) {
+            if (i < keyStridesVec_.size() && keyStridesVec_[i] != expectedStrides[i]) {
+                keyNonContiguous = true;
+                break;
+            }
+        }
+    }
+    if (!keyDequantScaleStridesVec_.empty() && opParamInfo_.key_dequant_scale.shape != nullptr) {
+        auto &shape = opParamInfo_.key_dequant_scale.shape->GetStorageShape();
+        std::vector<uint32_t> expectedStrides;
+        if (kLayout_ == DataLayout::BSND || kLayout_ == DataLayout::PA_BSND) {
+            expectedStrides = {shape.GetDim(1) * shape.GetDim(2), shape.GetDim(2), 1};
+        } else if (kLayout_ == DataLayout::TND) {
+            expectedStrides = {shape.GetDim(1), 1};
+        }
+        for (size_t i = checkStartIdx; i < expectedStrides.size(); ++i) {
+            if (i < keyDequantScaleStridesVec_.size() &&
+                keyDequantScaleStridesVec_[i] != expectedStrides[i]) {
+                scaleNonContiguous = true;
+                break;
+            }
+        }
+    }
+    OP_CHECK_IF(keyNonContiguous || scaleNonContiguous,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "keyNonContiguous and scaleNonContiguous",
+            std::string(keyNonContiguous ? "true" : "false") + " and " +
+            std::string(scaleNonContiguous ? "true" : "false"),
+            "key and keyscale only support non-continuous keying on the 0-axis"),
+        return ge::GRAPH_FAILED);
+
+    return ge::GRAPH_SUCCESS;
+}
+
 void QLIInfoParser::GenerateInfo(QLITilingInfo &QLIInfo)
 {
     QLIInfo.opName = opName_;
@@ -945,15 +1010,17 @@ void QLIInfoParser::GenerateInfo(QLITilingInfo &QLIInfo)
     QLIInfo.preTokens = *opParamInfo_.preTokens;
     QLIInfo.nextTokens = *opParamInfo_.nextTokens;
 
-    if (opParamInfo_.keyStride0 != -1) {
-        QLIInfo.keyStride0 = opParamInfo_.keyStride0;
+    QLIInfo.keyStridesVec = keyStridesVec_;
+    QLIInfo.keyDequantScaleStridesVec = keyDequantScaleStridesVec_;
+    if (!keyStridesVec_.empty()) {
+        QLIInfo.keyStride0 = static_cast<uint32_t>(keyStridesVec_[0]);
     } else {
-        QLIInfo.keyStride0 = blockSize_ * n2Size_ * headDim_;
+        QLIInfo.keyStride0 = 0;  // 非PA无需使用stride
     }
-    if (opParamInfo_.keyDequantScaleStride0 != -1) {
-        QLIInfo.keyDequantScaleStride0 = opParamInfo_.keyDequantScaleStride0;
+    if (!keyDequantScaleStridesVec_.empty()) {
+        QLIInfo.keyDequantScaleStride0 = static_cast<uint32_t>(keyDequantScaleStridesVec_[0]);
     } else {
-        QLIInfo.keyDequantScaleStride0 = blockSize_;
+        QLIInfo.keyDequantScaleStride0 = 0;
     }
 
     QLIInfo.inputQLayout = qLayout_;
@@ -981,7 +1048,8 @@ ge::graphStatus QLIInfoParser::ParseAndCheck(QLITilingInfo &QLIInfo)
         ge::GRAPH_SUCCESS != GetS2Size()) {
         return ge::GRAPH_FAILED;
     }
-    if (ge::GRAPH_SUCCESS != ValidateInputShapesMatch() || ge::GRAPH_SUCCESS != CheckScaleShape()) {
+    if (ge::GRAPH_SUCCESS != ValidateInputShapesMatch() || ge::GRAPH_SUCCESS != CheckScaleShape() ||
+        ge::GRAPH_SUCCESS != CheckContiguous()) {
         return ge::GRAPH_FAILED;
     }
 
