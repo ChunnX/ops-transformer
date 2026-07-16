@@ -124,10 +124,12 @@ private:
     /* =====================LocalBuffer变量==================== */
     TBuf<TPosition::A1> l1QBuffers;
     TBuf<TPosition::A2> mmL0ABuffers;
+    TBuf<TPosition::A2> mmL0ABuffersBmm2;
     TBuf<TPosition::B2> mmL0BBuffers;
     TBuf<TPosition::CO1> mmL0CBuffers;
     LocalTensor<Q_T> l1QTensor;
     LocalTensor<Q_T> mmL0ATensor;
+    LocalTensor<Q_T> mmL0ATensorBmm2;
     LocalTensor<Q_T> mmL0BTensor;
     LocalTensor<T> mmL0CTensor;
 };
@@ -159,9 +161,11 @@ __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::InitLocalBuffer(BufferManage
     l1QTensor = l1QBuffers.Get<Q_T>();
 
     tPipe->InitBuffer(mmL0ABuffers, BUFFER_SIZE_32K);
+    tPipe->InitBuffer(mmL0ABuffersBmm2, BUFFER_SIZE_16K);
     tPipe->InitBuffer(mmL0BBuffers, BUFFER_SIZE_64K);
     tPipe->InitBuffer(mmL0CBuffers, BUFFER_SIZE_256K);
     mmL0ATensor = mmL0ABuffers.Get<Q_T>();
+    mmL0ATensorBmm2 = mmL0ABuffersBmm2.Get<Q_T>();
     mmL0BTensor = mmL0BBuffers.Get<Q_T>();
     mmL0CTensor = mmL0CBuffers.Get<T>();
     SetFlag<HardEvent::M_MTE1>(l0ABMToMte1FlagId); // {0, 1}, 用于L0AB
@@ -354,7 +358,7 @@ __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::IterateBmm2CSA(
     MatmulN1<Q_T, Q_T, T, s1BaseSize, dBaseMatmulSize, s2BaseSize, ABLayout::MK, ABLayout::KN>(
         l1PBuffer.GetTensor<Q_T>(),
         inputRightBuf.GetTensor<Q_T>(),
-        mmL0ATensor, mmL0BTensor, mmL0CTensor[BUFFER_SIZE_32K * l0CBufId],
+        mmL0ATensorBmm2, mmL0BTensor, mmL0CTensor[BUFFER_SIZE_32K * l0CBufId],
         param, l0ABMToMte1FlagId, l0ABMte1ToMFlagId, l0ABBufId);
 
     SetFlag<HardEvent::M_FIX>(l0CMToFixFlagId + l0CBufId);
