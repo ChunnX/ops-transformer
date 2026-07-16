@@ -148,9 +148,10 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::InitParams(const ConstInfo &constInf
 template <typename QLIV2T>
 __aicore__ inline void QLIV2Matmul<QLIV2T>::InitBuffers(TPipe *pipe)
 {
-    // 2*mBaseSize*s2BaseSize*sizeof(float) + ping-pong偏移(s2BaseSize/2 + VL_PAD_STRIDE)
+    // slot(2*M*s2) + ping-pong偏移(s2/2+VL_PAD) + VL_PAD(ND0/ND1间padding)
     pipe->InitBuffer(bufUB_, 2 * constInfo_.mBaseSize * constInfo_.s2BaseSize * sizeof(float)
-        + (constInfo_.s2BaseSize / 2 + VL_PAD_STRIDE) * sizeof(float));
+        + (constInfo_.s2BaseSize / 2 + VL_PAD_STRIDE) * sizeof(float)
+        + VL_PAD_STRIDE * sizeof(float));
     mm1ResUB_ = bufUB_.Get<QK_T>();
     pipe->InitBuffer(bufQL1_, QUERY_BUF_NUM * QUERY_BUFFER_OFFSET * sizeof(Q_T));
     queryL1_ = bufQL1_.Get<Q_T>();
@@ -655,7 +656,8 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::Fixp(uint64_t s1gGmOffset, uint64_t 
             fixpipeParams.nSize = S2_BASIC_BLOCK_L0 / 2; // 分2个ND搬
             fixpipeParams.params.ndNum = 2;
             fixpipeParams.params.srcNdStride = ((fixpipeParams.mSize + 15) / 16) * fixpipeParams.nSize;
-            fixpipeParams.params.dstNdStride = fixpipeParams.mSize * fixpipeParams.dstStride;
+            // dstNdStride 加 VL_PAD_STRIDE, 让 ND0/ND1 错开 bank, 与 qkVLstride 一致
+            fixpipeParams.params.dstNdStride = fixpipeParams.mSize * fixpipeParams.dstStride + VL_PAD_STRIDE;
         }
         // ping-pong 偏移 = s2BaseSize/2 + VL_PAD, slot1 相对 slot0 错开 256B 消除 bank 冲突
         Fixpipe<QK_T, float, QLIV2_CFG_ROW_MAJOR_UB>(mm1ResUB_[(runInfo.loop % 2)
