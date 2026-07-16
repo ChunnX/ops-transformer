@@ -132,7 +132,6 @@ aclnn_celu.h
 aclnn_chamfer_distance_backward.h
 aclnn_channel_shuffle.h
 aclnn_chunk_cat.h
-aclnn_chunk_gated_delta_rule.h
 aclnn_circular_pad2d_backward.h
 aclnn_circular_pad2d.h
 aclnn_circular_pad3d_backward.h

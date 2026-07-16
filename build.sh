@@ -1047,7 +1047,7 @@ set_ut_mode() {
   fi
   if [[ "$OP_KERNEL_UT" == "TRUE" ]] && [[ -z "$ascend_op_name" ]]; then
     echo "Warning: Please use --ops when running Opkernel UT."
-    ascend_op_name="recurrent_gated_delta_rule,chunk_gated_delta_rule"
+    ascend_op_name="recurrent_gated_delta_rule"
   fi
 }
 parse_changed_files() {
