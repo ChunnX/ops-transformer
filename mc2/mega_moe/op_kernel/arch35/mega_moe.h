@@ -26,7 +26,7 @@
 #include "kernel_operator_list_tensor_intf.h"
 #include "mega_moe_base.h"
 #include "mega_moe_workspace_info.h"
-#include "block_epilogue_swiglu_mx_quant.h"
+#include "aiv_compute/block_epilogue_swiglu_mx_quant.h"
 #include "mega_moe_impl.h"
 #include "mega_moe_single_core.h"
 
