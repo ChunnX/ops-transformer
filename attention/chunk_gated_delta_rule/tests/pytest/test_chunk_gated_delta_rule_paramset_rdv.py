@@ -56,47 +56,6 @@ A5_REDLINE_CASES = [
     ("ARC-038", 1, 32768, 16, 16, 128, 128, True, 1.0, torch.bfloat16, torch.bfloat16, True),
 ]
 
-A5_REDLINE_CASES_FP32 = [
-    ("ARC-001-FP32", 1, 2048, 32, 32, 128, 128, True, 1.0, torch.bfloat16, torch.float32, True),
-    ("ARC-002-FP32", 1, 4096, 32, 32, 128, 128, True, 1.0, torch.bfloat16, torch.float32, True),
-    ("ARC-003-FP32", 1, 8192, 32, 32, 128, 128, True, 1.0, torch.bfloat16, torch.float32, True),
-    ("ARC-004-FP32", 2, 2048, 32, 32, 128, 128, True, 1.0, torch.bfloat16, torch.float32, True),
-    ("ARC-005-FP32", 4, 2048, 32, 32, 128, 128, True, 1.0, torch.bfloat16, torch.float32, True),
-    ("ARC-006-FP32", 1, 32768, 32, 32, 128, 128, True, 1.0, torch.bfloat16, torch.float32, True),
-    ("ARC-007-FP32", 1, 65536, 32, 32, 128, 128, True, 1.0, torch.bfloat16, torch.float32, True),
-    ("ARC-008-FP32", 1, 131072, 32, 32, 128, 128, True, 1.0, torch.bfloat16, torch.float32, True),
-    ("ARC-009-FP32", 1, 262144, 32, 32, 128, 128, True, 1.0, torch.bfloat16, torch.float32, True),
-    ("ARC-010-FP32", 1, 2048, 32, 32, 128, 128, True, 1.0, torch.bfloat16, torch.float32, True),
-    ("ARC-011-FP32", 1, 2048, 2, 2, 128, 128, True, 1.0, torch.bfloat16, torch.float32, True),
-    ("ARC-012-FP32", 1, 2048, 32, 16, 128, 128, True, 1.0, torch.bfloat16, torch.float32, True),
-    ("ARC-013-FP32", 1, 2048, 16, 8, 128, 128, True, 1.0, torch.bfloat16, torch.float32, True),
-    ("ARC-014-FP32", 1, 4096, 32, 16, 128, 128, True, 1.0, torch.bfloat16, torch.float32, True),
-    ("ARC-015-FP32", 1, 8192, 16, 8, 128, 128, True, 1.0, torch.bfloat16, torch.float32, True),
-    ("ARC-016-FP32", 32, 8000, 8, 8, 128, 128, True, 1.0, torch.bfloat16, torch.float32, True),
-    ("ARC-017-FP32", 1, 6000, 8, 8, 128, 128, True, 1.0, torch.bfloat16, torch.float32, True),
-    ("ARC-018-FP32", 80, 5000, 16, 16, 128, 128, True, 1.0, torch.bfloat16, torch.float32, True),
-    ("ARC-019-FP32", 200, 256, 8, 8, 128, 128, True, 1.0, torch.bfloat16, torch.float32, True),
-    ("ARC-020-FP32", 1, 10240, 8, 2, 128, 128, True, 1.0, torch.bfloat16, torch.float32, True),
-    ("ARC-021-FP32", 1, 10240, 16, 4, 128, 128, True, 1.0, torch.bfloat16, torch.float32, True),
-    ("ARC-022-FP32", 1, 10240, 32, 8, 128, 128, True, 1.0, torch.bfloat16, torch.float32, True),
-    ("ARC-023-FP32", 1, 10240, 64, 16, 128, 128, True, 1.0, torch.bfloat16, torch.float32, True),
-    ("ARC-024-FP32", 1, 32768, 8, 2, 128, 128, True, 1.0, torch.bfloat16, torch.float32, True),
-    ("ARC-025-FP32", 1, 32768, 16, 4, 128, 128, True, 1.0, torch.bfloat16, torch.float32, True),
-    ("ARC-026-FP32", 1, 32768, 32, 8, 128, 128, True, 1.0, torch.bfloat16, torch.float32, True),
-    ("ARC-027-FP32", 1, 32768, 64, 16, 128, 128, True, 1.0, torch.bfloat16, torch.float32, True),
-    ("ARC-028-FP32", 4, 10240, 4, 2, 128, 128, True, 1.0, torch.bfloat16, torch.float32, True),
-    ("ARC-029-FP32", 4, 10240, 8, 4, 128, 128, True, 1.0, torch.bfloat16, torch.float32, True),
-    ("ARC-030-FP32", 4, 10240, 32, 16, 128, 128, True, 1.0, torch.bfloat16, torch.float32, True),
-    ("ARC-031-FP32", 1, 32768, 4, 2, 128, 128, True, 1.0, torch.bfloat16, torch.float32, True),
-    ("ARC-032-FP32", 1, 32768, 8, 4, 128, 128, True, 1.0, torch.bfloat16, torch.float32, True),
-    ("ARC-033-FP32", 1, 32768, 32, 16, 128, 128, True, 1.0, torch.bfloat16, torch.float32, True),
-    ("ARC-034-FP32", 1, 65535, 4, 2, 128, 128, True, 1.0, torch.bfloat16, torch.float32, True),
-    ("ARC-035-FP32", 1, 65535, 8, 4, 128, 128, True, 1.0, torch.bfloat16, torch.float32, True),
-    ("ARC-036-FP32", 1, 65535, 32, 16, 128, 128, True, 1.0, torch.bfloat16, torch.float32, True),
-    ("ARC-037-FP32", 1, 32768, 48, 16, 128, 128, True, 1.0, torch.bfloat16, torch.float32, True),
-    ("ARC-038-FP32", 1, 32768, 16, 16, 128, 128, True, 1.0, torch.bfloat16, torch.float32, True),
-]
-
 A5_STC_CASES = [
     ("ASC-001", 2, 4096, 32, 32, 128, 128, True, 1.0, torch.bfloat16, torch.bfloat16, True),
     ("ASC-002", 4, 8192, 32, 32, 128, 128, True, 1.0, torch.bfloat16, torch.bfloat16, True),
@@ -134,48 +93,26 @@ A5_STC_CASES = [
     ("ASC-034", 4, 2000, 2, 2, 16, 16, True, 1.0, torch.bfloat16, torch.bfloat16, True),
 ]
 
-A5_STC_CASES_FP32 = [
-    ("ASC-001-FP32", 2, 4096, 32, 32, 128, 128, True, 1.0, torch.bfloat16, torch.float32, True),
-    ("ASC-002-FP32", 4, 8192, 32, 32, 128, 128, True, 1.0, torch.bfloat16, torch.float32, True),
-    ("ASC-003-FP32", 1, 32768, 32, 32, 128, 128, True, 1.0, torch.bfloat16, torch.float32, True),
-    ("ASC-004-FP32", 2, 32768, 32, 32, 128, 128, True, 1.0, torch.bfloat16, torch.float32, True),
-    ("ASC-005-FP32", 3, 32768, 32, 32, 128, 128, True, 1.0, torch.bfloat16, torch.float32, True),
-    ("ASC-006-FP32", 4, 32768, 32, 32, 128, 128, True, 1.0, torch.bfloat16, torch.float32, True),
-    ("ASC-007-FP32", 1, 65536, 32, 32, 128, 128, True, 1.0, torch.bfloat16, torch.float32, True),
-    ("ASC-008-FP32", 2, 65536, 32, 32, 128, 128, True, 1.0, torch.bfloat16, torch.float32, True),
-    ("ASC-009-FP32", 3, 65536, 32, 32, 128, 128, True, 1.0, torch.bfloat16, torch.float32, True),
-    ("ASC-010-FP32", 4, 65536, 32, 32, 128, 128, True, 1.0, torch.bfloat16, torch.float32, True),
-    ("ASC-011-FP32", 1, 131072, 32, 32, 128, 128, True, 1.0, torch.bfloat16, torch.float32, True),
-    ("ASC-012-FP32", 1, 262144, 32, 32, 128, 128, True, 1.0, torch.bfloat16, torch.float32, True),
-    ("ASC-013-FP32", 1, 2048, 16, 16, 128, 128, True, 1.0, torch.bfloat16, torch.float32, True),
-    ("ASC-014-FP32", 1, 2048, 2, 2, 128, 128, True, 1.0, torch.bfloat16, torch.float32, True),
-    ("ASC-015-FP32", 1, 2048, 32, 16, 128, 128, True, 1.0, torch.bfloat16, torch.float32, True),
-    ("ASC-016-FP32", 1, 2048, 16, 8, 128, 128, True, 1.0, torch.bfloat16, torch.float32, True),
-    ("ASC-017-FP32", 1, 4096, 32, 16, 128, 128, True, 1.0, torch.bfloat16, torch.float32, True),
-    ("ASC-018-FP32", 1, 8192, 16, 8, 128, 128, True, 1.0, torch.bfloat16, torch.float32, True),
-    ("ASC-019-FP32", 1, 128, 32, 32, 128, 64, True, 1.0, torch.bfloat16, torch.float32, True),
-    ("ASC-020-FP32", 4, 512, 8, 8, 64, 128, True, 1.0, torch.bfloat16, torch.float32, True),
-    ("ASC-021-FP32", 2, 1024, 32, 4, 64, 64, True, 1.0, torch.bfloat16, torch.float32, True),
-    ("ASC-022-FP32", 1, 4096, 64, 1, 128, 128, True, 1.0, torch.bfloat16, torch.float32, True),
-    ("ASC-023-FP32", 3, 10000, 64, 16, 50, 50, True, 1.0, torch.bfloat16, torch.float32, True),
-    ("ASC-024-FP32", 3, 10000, 32, 16, 8, 5, True, 1.0, torch.bfloat16, torch.float32, True),
-    ("ASC-025-FP32", 2, 300, 8, 8, 64, 64, False, 1.0, torch.bfloat16, torch.float32, True),
-    ("ASC-026-FP32", 4, 512, 8, 8, 1, 1, False, 1.0, torch.bfloat16, torch.float32, True),
-    ("ASC-027-FP32", 4, 1024, 8, 8, 64, 64, True, 1.0, torch.bfloat16, torch.float32, True),
-    ("ASC-028-FP32", 4, 512, 8, 4, 64, 64, False, 1.0, torch.bfloat16, torch.float32, True),
-    ("ASC-029-FP32", 4, 512, 16, 4, 64, 64, False, 1.0, torch.bfloat16, torch.float32, True),
-    ("ASC-030-FP32", 8, 4096, 64, 64, 128, 128, True, 1.0, torch.bfloat16, torch.float32, True),
-    ("ASC-031-FP32", 4, 128, 16, 8, 31, 31, True, 1.0, torch.bfloat16, torch.float32, True),
-    ("ASC-032-FP32", 8, 128, 2, 2, 16, 16, True, 1.0, torch.bfloat16, torch.float32, True),
-    ("ASC-033-FP32", 1, 128, 3, 3, 128, 128, True, 1.0, torch.bfloat16, torch.float32, True),
-    ("ASC-034-FP32", 4, 2000, 2, 2, 16, 16, True, 1.0, torch.bfloat16, torch.float32, True),
-]
+def _gen_fp32_cases(cases, suffix="-FP32"):
+    return [(name + suffix, B, s, Nv, Nk, Dv, Dk, g, scale, dt, torch.float32, ic)
+            for name, B, s, Nv, Nk, Dv, Dk, g, scale, dt, _, ic in cases]
+
+
+def _gen_noncontiguous_cases(cases, suffix="-NC"):
+    return [(name + suffix, B, s, Nv, Nk, Dv, Dk, g, scale, dt, sdt, False)
+            for name, B, s, Nv, Nk, Dv, Dk, g, scale, dt, sdt, _ in cases]
+
+
+def _expand(cases):
+    cases = cases + _gen_fp32_cases(cases)
+    return cases + _gen_noncontiguous_cases(cases)
 
 
 def _convert_cases(cases):
     result = []
     for _name, B, seqlen, Nv, Nk, Dv, Dk, has_g, _scale, data_type, state_dtype, is_contiguous in cases:
         result.append({
+            "_name": [_name],
             "B": [B],
             "seqlen": [list(seqlen)] if isinstance(seqlen, (list, tuple)) else [seqlen],
             "nk": [Nk],
@@ -191,12 +128,7 @@ def _convert_cases(cases):
     return result
 
 
-GROUP_REDLINE_BF16 = _convert_cases(A5_REDLINE_CASES)
-GROUP_REDLINE_FP32 = _convert_cases(A5_REDLINE_CASES_FP32)
-GROUP_STC_BF16 = _convert_cases(A5_STC_CASES)
-GROUP_STC_FP32 = _convert_cases(A5_STC_CASES_FP32)
+GROUP_REDLINE = _convert_cases(_expand(A5_REDLINE_CASES))
+GROUP_STC = _convert_cases(_expand(A5_STC_CASES))
 
-
-# ENABLED_PARAMS_RDV = GROUP_REDLINE_BF16 + GROUP_REDLINE_FP32 + GROUP_STC_BF16 + GROUP_STC_FP32
-# fp32 待启用后开启
-ENABLED_PARAMS_RDV = GROUP_REDLINE_BF16 + GROUP_STC_BF16
+ENABLED_PARAMS_RDV = GROUP_REDLINE + GROUP_STC
