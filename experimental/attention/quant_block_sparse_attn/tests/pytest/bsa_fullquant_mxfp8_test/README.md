@@ -119,6 +119,46 @@ block size、重点 head 组合、三种 S1/S2 关系、四种对齐状态、`ma
 `actualSeqLengths`、64大小KV块拼接、变长多batch、反序block/sparse、双S2循环和关闭LSE；其中大
 `block_num` 典型用例默认关闭。
 
+## Debug 模式
+
+`--debug` 必须与一个 `--case_name` 配合使用，只允许执行单个 case，并固定执行完整的
+`gen/cpu/npu/compare` 流程：
+
+```bash
+python experimental/attention/quant_block_sparse_attn/tests/pytest/bsa_fullquant_mxfp8_test/qbsa_mxfp8_golden.py \
+  --debug --case_name BASE_01
+```
+
+CSV case 同样支持 debug：
+
+```bash
+python experimental/attention/quant_block_sparse_attn/tests/pytest/bsa_fullquant_mxfp8_test/qbsa_mxfp8_golden.py \
+  --csv --debug --case_name F_BS64_R5_N3_BN1_GT_AA
+```
+
+输出目录固定为 `debug/<case_name>/`：
+
+```text
+debug/<case_name>/
+├── run.log
+├── pt/
+│   ├── <case_name>_input.pt
+│   ├── <case_name>_cpu_output.pt
+│   └── <case_name>_npu_output.pt
+└── precision/
+    ├── attention_out.png
+    └── softmax_lse.png        # return_softmax_lse=true 时生成
+```
+
+`cpu_output.pt` 保存 CPU golden，`npu_output.pt` 保存算子输出。精度图逐元素使用与
+`check_result` 相同的 `rtol/atol`：白色表示通过，蓝色表示失败。图片标题会标注 golden/算子 shape、
+逻辑矩阵大小、显示大小、元素数和失败数。超大 Tensor 会按区域聚合；某个显示像素对应的原始区域中
+只要存在一个失败元素，该像素就是蓝色。因此整体比较允许少量失败元素而最终为 Pass 时，图片中仍可能
+出现少量蓝点。生成 PNG 需要安装 `matplotlib`。
+
+Debug 模式自行管理输出目录，因此不能同时指定 `--cache-dir`、`--cache_case_name` 或非 `all` 的
+`--mode`，也不能与 `--list_cases` 组合使用。
+
 ## 指定执行阶段
 
 `--mode` 支持 `all/gen/cpu/npu/compare`，也支持逗号组合：
@@ -158,6 +198,8 @@ python experimental/attention/quant_block_sparse_attn/tests/pytest/bsa_fullquant
 字段格式：
 
 - `actual_seq_q`、`actual_seq_kv` 使用 JSON 数组文本，例如 `[256]`。
+- 等长多 batch 可以使用单元素总 T，例如 `B=8, S1=65536, actual_seq_q=[65536]` 会在运行时展开为
+  8 个 8192。
 - `enable`、`is_contiguous`、`return_softmax_lse`、`empty_actual_seq` 使用 `true/false`。
 - `softmax_scale` 留空时，脚本按 `1 / sqrt(D)` 自动补齐。
 - `N1` 必须等于 `N2 * n1_n2_ratio`。
