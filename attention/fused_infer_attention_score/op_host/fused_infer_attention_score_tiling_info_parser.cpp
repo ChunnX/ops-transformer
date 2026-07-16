@@ -266,7 +266,8 @@ ge::graphStatus FiaInfoParser::GetStrides()
     return ge::GRAPH_SUCCESS;
 }
 
-void FiaInfoParser::GetKvIsContiguous() {
+void FiaInfoParser::GetKvIsContiguous()
+{
     if (!hasViewStride_) {
         return ;
     }
