@@ -35,6 +35,9 @@ def run(case_dir: Path, device_id: int):
     logical_device_id = 0 if visible_devices else device_id
     torch.npu.set_device(logical_device_id)
     device = torch.device(f"npu:{logical_device_id}")
+    torch.npu.empty_cache()
+    torch.npu.reset_peak_memory_stats(logical_device_id)
+    allocated_before = torch.npu.memory_allocated(logical_device_id)
     device_tensors = {name: tensor.contiguous().to(device) for name, tensor in tensors.items()}
     optional = {}
     if case["rope"]:
@@ -64,11 +67,18 @@ def run(case_dir: Path, device_id: int):
     )
     torch.npu.synchronize()
     elapsed_ms = (time.perf_counter() - start) * 1000.0
+    peak_allocated = torch.npu.max_memory_allocated(logical_device_id)
+    peak_reserved = torch.npu.max_memory_reserved(logical_device_id)
     output_dir = case_dir / "outputs"
     for name, tensor in zip(OUTPUTS, outputs):
         save_tensor(output_dir / f"{name}.bin", tensor.cpu())
     report = compare_case(case_dir)
     report["elapsed_ms"] = elapsed_ms
+    report["npu_memory"] = {
+        "allocated_before_bytes": int(allocated_before),
+        "peak_allocated_bytes": int(peak_allocated),
+        "peak_reserved_bytes": int(peak_reserved),
+    }
     dump_json(case_dir / "run_report.json", report)
     return report
 
