@@ -161,7 +161,6 @@ ge::graphStatus SparseLightningIndexerGradKLLossTilingBaseRegbase::CheckOutPut()
     //     return ge::GRAPH_FAILED;
     // }
 
-    // ===== [MODIFIED] query_index shape 校验：先 GetDimNum() 再逐维比较，用 ToString() 输出完整 shape =====
     {
         auto qIdxDimNum = queryIndexShape.GetDimNum();
         if (qIdxDimNum != dQueryIndexShape.GetDimNum() ||
@@ -175,7 +174,6 @@ ge::graphStatus SparseLightningIndexerGradKLLossTilingBaseRegbase::CheckOutPut()
         }
     }
 
-    // ===== [MODIFIED] key_index shape 校验：先 GetDimNum() 再逐维比较，用 ToString() 输出完整 shape =====
     {
         auto kIdxDimNum = keyIndexShape.GetDimNum();
         if (kIdxDimNum != dkeyIndexShape.GetDimNum() ||
@@ -189,8 +187,6 @@ ge::graphStatus SparseLightningIndexerGradKLLossTilingBaseRegbase::CheckOutPut()
         }
     }
 
-    // ===== [MODIFIED] weights shape 校验：用 GetDimNum() 统一处理 TND(2D) 和 BSND(3D)，ToString() 输出 =====
-    // 原代码按 TND/BSND 分支写了两套不同维度的比较，现统一为一个 GetDimNum() 判断
     {
         auto wDimNum = weightsShape.GetDimNum();
         if (wDimNum != dWeightsShape.GetDimNum() || 
@@ -202,7 +198,7 @@ ge::graphStatus SparseLightningIndexerGradKLLossTilingBaseRegbase::CheckOutPut()
             return ge::GRAPH_FAILED;
         }
     }
-    // ===== [MODIFIED END] =====
+
     return ge::GRAPH_SUCCESS;
 }
 
