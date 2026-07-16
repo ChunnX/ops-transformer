@@ -85,7 +85,7 @@ protected:
     static constexpr uint32_t V_MTE2_EVENT1 = EVENT_ID2;
     static constexpr uint32_t V_MTE2_EVENT2 = EVENT_ID3;
     static constexpr uint32_t V_MTE2_EVENT3 = EVENT_ID5;
-    static constexpr uint32_t MTE3_V_EVENT = ENENT_ID6;
+    static constexpr uint32_t MTE3_V_EVENT = EVENT_ID6;
 
 private:
     // ================================Local Buffer区====================================
