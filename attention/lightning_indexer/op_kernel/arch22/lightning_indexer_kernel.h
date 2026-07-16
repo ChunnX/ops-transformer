@@ -720,6 +720,11 @@ __aicore__ inline void LightningIndexerKernel<LIT>::ProcessRadixTopK()
             uint32_t actS1 = 0;
             uint32_t actS2 = 0;
             GetS1S2ActualSeqLen(bIdx, actS1, actS2);
+            // For TND layout, qSeqSize=0 causes actS1=0 from GetS1S2ActualSeqLen
+            // Use radixTotalBatch as actS1 in that case
+            if (actS1 == 0 && constInfo.radixTotalBatch > 0) {
+                actS1 = actS2;  // TND single batch: actS1 == actS2
+            }
             int32_t cuRealAcSeq = constInfo.attenMaskFlag ?
                 (static_cast<int32_t>(actS2) - (static_cast<int32_t>(actS1) - static_cast<int32_t>(s1Idx)) + 1) :
                 static_cast<int32_t>(actS2);
