@@ -260,7 +260,7 @@ static ge::graphStatus CheckTensorDim(const gert::TilingContext *context, int64_
         return ge::GRAPH_FAILED);
     rankSize = static_cast<uint32_t>(sendCountsShape->GetStorageShape().GetDim(0));
 
-    // recvCounts: 1D (W,), dim0 == sendCounts.dim0
+    // recvCounts: 1D (W,)
     const gert::StorageShape *recvCountsShape = context->GetInputShape(IN_RECV_COUNTS);
     OP_TILING_CHECK(recvCountsShape == nullptr,
         OP_LOGE_WITH_INVALID_INPUT(nodeName, "recvCounts"), return ge::GRAPH_FAILED);
@@ -268,11 +268,6 @@ static ge::graphStatus CheckTensorDim(const gert::TilingContext *context, int64_
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(nodeName, "recvCounts",
             (std::to_string(recvCountsShape->GetStorageShape().GetDimNum()) + "D").c_str(),
             "The shape dim of recvCounts must be 1D."),
-        return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(recvCountsShape->GetStorageShape().GetDim(0) != static_cast<int64_t>(rankSize),
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "recvCounts",
-            (std::string("dim0=") + std::to_string(recvCountsShape->GetStorageShape().GetDim(0))).c_str(),
-            (std::string("dim0 must equal sendCounts dim0=") + std::to_string(rankSize)).c_str()),
         return ge::GRAPH_FAILED);
 
     // recvLocalEntry: 1D (R,)
