@@ -127,6 +127,11 @@ public:
         // for reuse workspace, gmm1 out preRow Stride use max(n,k)
         // single axis must lower than uint32, layoutC need uint32
         uint32_t gmmOutPreRowStride;
+        // GMM1 input reuses the SwiGLU output workspace. Inputs are K-dense
+        // inside each expert, while every expert reserves currentM * max(K, K2)
+        // elements. The tail gap prevents an earlier expert's K2-wide SwiGLU
+        // output from overwriting a later expert's unconsumed GMM1 input.
+        uint32_t gmm1InputExpertSlotWidth;
         //--------------
         GM_ADDR expertIdx;
         GM_ADDR moeInitRoutingQuantV2Scale;
@@ -203,6 +208,8 @@ public:
             moeInitRoutingQuantV2TilingData.gatherOutComputeParamsOp =
                 moeInitRoutingQuantV2TilingData_.gatherOutComputeParamsOp;
             gmmOutPreRowStride = problemShape.n() > problemShape.k() ? problemShape.n() : problemShape.k();
+            uint32_t k2 = problemShape.n() / 2;
+            gmm1InputExpertSlotWidth = problemShape.k() > k2 ? problemShape.k() : k2;
         }
 
         CATLASS_HOST_DEVICE
@@ -235,6 +242,8 @@ public:
               moeInitRoutingV2TilingData(moeInitRoutingV2TilingData_)
         {
             gmmOutPreRowStride = problemShape.n() > problemShape.k() ? problemShape.n() : problemShape.k();
+            uint32_t k2 = problemShape.n() / 2;
+            gmm1InputExpertSlotWidth = problemShape.k() > k2 ? problemShape.k() : k2;
         }
     };
 
@@ -712,7 +721,8 @@ private:
             } else {
                 preCurrentmSum += currentM;
             }
-            gmGroupOffsetA += inGroupProblemShape.m() * inGroupProblemShape.k();
+            // 每个专家之间在k小于k2的时候不是密排，所以这里不取k
+            gmGroupOffsetA += inGroupProblemShape.m() * params.gmm1InputExpertSlotWidth;
             if (params.listLen == 1) {
                 gmGroupOffsetB += inGroupProblemShape.k() * inGroupProblemShape.n();
             }
@@ -1153,8 +1163,9 @@ private:
             // ----------------------------------------------------------
             uint32_t currentM = cumsumMM((params.EP - 1) * params.expertPerRank + groupIdx);
             for (int32_t dstEpIdx = coreIdx; dstEpIdx < params.EP; dstEpIdx += coreNum) {
-                uint32_t rowStart =
-                    (dstEpIdx == 0 ? 0 : cumsumMM((dstEpIdx - 1) * params.expertPerRank + groupIdx)) + prevGroupSum1;
+                uint32_t rowStartInGroup =
+                    dstEpIdx == 0 ? 0 : cumsumMM((dstEpIdx - 1) * params.expertPerRank + groupIdx);
+                uint32_t rowStart = rowStartInGroup + prevGroupSum1;
                 if (rowStart < params.maxOutputSize) {
                     uint32_t rows = tokenPerExpert(tokenPerExpertLayout(dstEpIdx, runtimeRank, groupIdx));
                     if (rowStart + rows > params.maxOutputSize) {
@@ -1166,9 +1177,12 @@ private:
                     gmRemoteA.SetGlobalBuffer(
                         reinterpret_cast<__gm__ ElementABefore *>(otherRankPtr + peermemInfo.offsetA));
 
-                    MatrixCoord offsetA{rowStart, 0};
                     MatrixCoord offsetPeer{rowSrc, 0};
-                    int64_t gmOffsetA = params.layoutA.GetOffset(offsetA);
+                    // 在做dispatch的时候，因为复用了gmm1的A矩阵与swiglu的输出
+                    // 所以dispatch的时候每个专家之间间隔从密排改为max（k， k2）
+                    // 但是专家之内仍然是密排的
+                    int64_t gmOffsetA = static_cast<int64_t>(prevGroupSum1) * params.gmm1InputExpertSlotWidth +
+                                        static_cast<int64_t>(rowStartInGroup) * params.problemShape.k();
                     if constexpr (std::is_same_v<ElementB, AscendC::int4b_t>) {
                         int64_t gmOffsetPeer = rowSrc * (params.problemShape.k() + ALIGN_512);
                         FetchAndPreprocessInt8ToInt4(static_cast<uint64_t>(gmOffsetA), gmPerTokenScale1[rowStart],
@@ -1551,8 +1565,6 @@ private:
         CATLASS_DEVICE
         WorkspaceInfo(const Params &params)
         {
-            uint32_t k2 = params.problemShape.n() / 2;
-            uint32_t n2 = params.problemShape.k();
             uint64_t workspaceOffset = 0;
 
             expandedRowIdx = params.ptrWorkspace;
@@ -1586,12 +1598,11 @@ private:
                 ptrA1Int4 = params.ptrWorkspace + workspaceOffset;
                 ptrA2Int4 = params.ptrWorkspace + workspaceOffset;
                 // sizeof(ElementA) is 1
-                workspaceOffset += params.maxOutputSize * (params.problemShape.k() > k2 ? params.problemShape.k() : k2);
+                workspaceOffset += params.maxOutputSize * params.gmm1InputExpertSlotWidth;
             } else {
                 ptrA = params.ptrWorkspace + workspaceOffset;
                 ptrPermutedToken = params.ptrWorkspace + workspaceOffset;
-                workspaceOffset += params.maxOutputSize *
-                                   (params.problemShape.k() > k2 ? params.problemShape.k() : k2) * sizeof(ElementA);
+                workspaceOffset += params.maxOutputSize * params.gmm1InputExpertSlotWidth * sizeof(ElementA);
             }
 
             ptrSumBeforeRank = params.ptrWorkspace + workspaceOffset;
