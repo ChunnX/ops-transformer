@@ -568,7 +568,7 @@ aclnnStatus aclnnSparseLightningIndexerKLLossGrad(
             </tr>
             <tr>
                 <td>K</td>
-                <td>512、1024、2048、4096、8192</td>
+                <td>512、1024、2048</td>
                 <td>top-k大小。</td>
             </tr>
             <tr>
