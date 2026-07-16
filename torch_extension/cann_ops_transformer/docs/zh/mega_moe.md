@@ -1328,7 +1328,7 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
     scene = 'A16W16'
 
     world_size = num_servers * num_ranks_per_server
-    num_ranks_per_server = num_experts // world_size
+    num_experts_per_rank = num_experts // world_size
 
     torch_npu.npu.config.allow_internal_format = True
 
@@ -1353,12 +1353,12 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
     def bf16_mega_moe(rank):
         torch_npu.npu.set_device(rank % num_ranks_per_server)
 
-        x = torch.randn((num_tokens, hidden), dtype=torch.bfloat16)
-        scores = torch.randn((num_tokens, num_experts), dtype=torch.float)
+        x = torch.randn((num_tokens, hidden), dtype=torch.bfloat16, device="npu")
+        scores = torch.randn((num_tokens, num_experts), dtype=torch.float, device="npu")
         topk_weights, topk_ids = torch.topk(scores, num_topk, dim=-1, largest=True, sorted=False)
         topk_ids = topk_ids.to(torch.int32)
-        l1_weights = [torch.randn((intermediate_hidden, hidden), dtype=torch.bfloat16) for _ in range(num_experts_per_rank)]
-        l2_weights = [torch.randn((intermediate_hidden, hidden), dtype=torch.bfloat16) for _ in range(num_experts_per_rank)]
+        l1_weights = [torch.randn((hidden, intermediate_hidden * 2), dtype=torch.bfloat16, device="npu") for _ in range(num_experts_per_rank)]
+        l2_weights = [torch.randn((intermediate_hidden, hidden), dtype=torch.bfloat16, device="npu") for _ in range(num_experts_per_rank)]
 
         ep_group = init_hccl_comm(rank)
 
@@ -1381,15 +1381,15 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
     def int8_int8_mega_moe(rank):
         torch_npu.npu.set_device(rank % num_ranks_per_server)
 
-        x = torch.randn((num_tokens, hidden), dtype=torch.bfloat16)
-        scores = torch.randn((num_tokens, num_experts), dtype=torch.float)
+        x = torch.randn((num_tokens, hidden), dtype=torch.bfloat16, device="npu")
+        scores = torch.randn((num_tokens, num_experts), dtype=torch.float, device="npu")
         topk_weights, topk_ids = torch.topk(scores, num_topk, dim=-1, largest=True, sorted=False)
         topk_ids = topk_ids.to(torch.int32)
         l1_weights_bf16 = [
-            torch.randn((intermediate_hidden, hidden), dtype=torch.bfloat16) for _ in range(num_experts_per_rank)
+            torch.randn((hidden, intermediate_hidden * 2), dtype=torch.bfloat16, device="npu") for _ in range(num_experts_per_rank)
         ]
         l2_weights_bf16 = [
-            torch.randn((intermediate_hidden, hidden), dtype=torch.bfloat16) for _ in range(num_experts_per_rank)
+            torch.randn((intermediate_hidden, hidden), dtype=torch.bfloat16, device="npu") for _ in range(num_experts_per_rank)
         ]
 
         def per_channel_cast_to_int8(w: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
@@ -1439,22 +1439,22 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
     def int8_int4_mega_moe(rank):
         torch_npu.npu.set_device(rank % num_ranks_per_server)
 
-        x = torch.randn((num_tokens, hidden), dtype=torch.bfloat16)
-        scores = torch.randn((num_tokens, num_experts), dtype=torch.float)
+        x = torch.randn((num_tokens, hidden), dtype=torch.bfloat16, device="npu")
+        scores = torch.randn((num_tokens, num_experts), dtype=torch.float, device="npu")
         topk_weights, topk_ids = torch.topk(scores, num_topk, dim=-1, largest=True, sorted=False)
         topk_ids = topk_ids.to(torch.int32)
         l1_weights_bf16 = [
-            torch.randn((intermediate_hidden, hidden), dtype=torch.bfloat16) for _ in range(num_experts_per_rank)
+            torch.randn((hidden, intermediate_hidden * 2), dtype=torch.bfloat16, device="npu") for _ in range(num_experts_per_rank)
         ]
         l2_weights_bf16 = [
-            torch.randn((intermediate_hidden, hidden), dtype=torch.bfloat16) for _ in range(num_experts_per_rank)
+            torch.randn((intermediate_hidden, hidden), dtype=torch.bfloat16, device="npu") for _ in range(num_experts_per_rank)
         ]
 
         def per_channel_cast_to_int4(w: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
             max_abs = torch.amax(torch.abs(w), dim=0, keepdim=True)
             sf = torch.clamp(max_abs / 7.0, min=1e-8)
             q_weight = torch.round(w / sf).clamp(-7, 7).to(torch.int8)
-            return q_weight, sf.squeeze()
+            return q_weight, sf.squeeze().to(torch.float)
 
         def pack_int4_to_int8(x: torch.Tensor) -> torch.Tensor:
             x = (x + 8).to(torch.uint8).reshape(x.shape[0], -1, 2)
