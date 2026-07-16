@@ -811,12 +811,16 @@ static uint64_t CalcDispatchWorkspace(MoeEpDispatchInfo &info)
     }
 
     uint64_t sendCntBytes = counterBytes + sendCntPerRankBytes + sendCntPerExpertBytes;
+    // scaleout counter 与 scaleup counter 一样按每 AIV 一份，SendPhase 用它做 slot prefix。
+    uint64_t scaleoutCounterBytes =
+        (info.networkMode == HYBRID_MODE) ? aivNum * AlignUpWin(superNodeCount * sizeof(int32_t)) : 0UL;
     uint64_t globalABytes = UB_ALIGN;
 
     info.scaleupSendWorkspaceOffset = sendCntBytes;
     info.scaleoutSendWorkspaceOffset = info.scaleupSendWorkspaceOffset + scaleupSendWorkspaceBytes;
     info.routeWorkspaceOffset = info.scaleoutSendWorkspaceOffset + scaleoutSendWorkspaceBytes;
-    return SYSTEM_NEED_WORKSPACE + info.routeWorkspaceOffset + routeWorkspaceBytes + globalABytes;
+    return SYSTEM_NEED_WORKSPACE + info.routeWorkspaceOffset + scaleoutCounterBytes + routeWorkspaceBytes +
+           globalABytes;
 }
 
 static ge::graphStatus CheckWinSize(const gert::TilingContext *context, MoeEpDispatchInfo &info, const char *nodeName)
