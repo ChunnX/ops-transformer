@@ -1285,9 +1285,9 @@ MegaMoe<TemplateMegaMoeTypeFunc>::UnpermuteProcessToken(int32_t tokenIdx, int32_
                                                         const GlobalTensor<bfloat16_t> &expandedX,
                                                         const UnpermuteBufferConfig &bufferConfig)
 {
-    int32_t inputBufferIdx = 0;
     for (int32_t expId = 0; expId < topK_; ++expId) {
         float expScale = topKWeightsTensor_.GetValue(localIdx * topK_ + expId);
+        int32_t inputBufferIdx = expId % bufferConfig.inputBufferCount;
         TEventID event = static_cast<TEventID>(inputBufferIdx);
         LocalTensor<bfloat16_t> dataInBf16 = dataResTensor_[(inputBufferIdx + 1) * bufferConfig.bf16SlotElementCount];
         LocalTensor<float> dataInFp32 = dataResFp32Tensor_[(inputBufferIdx + 1) * bufferConfig.fp32SlotElementCount];
@@ -1296,8 +1296,6 @@ MegaMoe<TemplateMegaMoeTypeFunc>::UnpermuteProcessToken(int32_t tokenIdx, int32_
             DataCopy(dataInBf16, expandedX[(static_cast<uint64_t>(tokenIdx) * topK_ + expId) * k_], k_);
             SetFlag<AscendC::HardEvent::MTE2_V>(event);
             WaitFlag<AscendC::HardEvent::MTE2_V>(event);
-            SetFlag<AscendC::HardEvent::S_V>(event);
-            WaitFlag<AscendC::HardEvent::S_V>(event);
             Cast(dataInFp32, dataInBf16, AscendC::RoundMode::CAST_NONE, k_);
         } else {
             uint32_t nScale = Ops::Base::CeilDiv(k_, uint32_t(MXFP_SCALE_GROUP_NUM));
@@ -1313,6 +1311,9 @@ MegaMoe<TemplateMegaMoeTypeFunc>::UnpermuteProcessToken(int32_t tokenIdx, int32_
             MegaMoeCombineImpl::DeQuantMxFp8<Fp8Type, bfloat16_t>(dataInBf16, dataInFp32, bf16ScaleTensor_,
                                                                   fp32ScaleTensor_, nScale, k_);
         }
+        // GetValue 在 Scalar 流水读取 expScale；两条反量化路径汇合后统一等待，再由 Vector 流水消费。
+        SetFlag<AscendC::HardEvent::S_V>(event);
+        WaitFlag<AscendC::HardEvent::S_V>(event);
         PipeBarrier<PIPE_V>();
         if (expId == 0) {
             Muls(dataResFp32Tensor_, dataInFp32, expScale, k_);
@@ -1323,10 +1324,6 @@ MegaMoe<TemplateMegaMoeTypeFunc>::UnpermuteProcessToken(int32_t tokenIdx, int32_
             PipeBarrier<PIPE_V>();
         }
         SetFlag<AscendC::HardEvent::V_MTE2>(event);
-        ++inputBufferIdx;
-        if (inputBufferIdx == bufferConfig.inputBufferCount) {
-            inputBufferIdx = 0;
-        }
     }
 }
 
@@ -1484,6 +1481,10 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Unpermute()
     GlobalTensor<bfloat16_t> output;
     output.SetGlobalBuffer((__gm__ bfloat16_t *)params_.y2GmAddr);
 
+    // 输出槽由 Vector 写入、MTE3 读出。先将槽位交给 Vector，最终回收最后一次 MTE3 完成信号。
+    constexpr TEventID kOutputBufferEvent = EVENT_ID0;
+    SetFlag<AscendC::HardEvent::MTE3_V>(kOutputBufferEvent);
+
     // 外层：token batch
     for (int32_t batchTokenOffset = 0; batchTokenOffset < coreLen; batchTokenOffset += tokensPerBatch) {
         int32_t batchTokenCount =
@@ -1497,16 +1498,19 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Unpermute()
         }
         for (int32_t localIdx = 0; localIdx < batchTokenCount; localIdx++) {
             int32_t tokenIdx = coreOffset + batchTokenOffset + localIdx;
-            SyncFuncStatic<AscendC::HardEvent::MTE3_MTE2, SYNC_EVENT_ID2>();
             UnpermuteProcessToken(tokenIdx, localIdx, expandedX, bufferConfig);
+            // MTE2 使用独立输入槽，可与上一 token 的 MTE3 输出重叠；仅在覆盖输出槽前等待 MTE3 读完。
+            WaitFlag<AscendC::HardEvent::MTE3_V>(kOutputBufferEvent);
             Cast(dataResTensor_, dataResFp32Tensor_, AscendC::RoundMode::CAST_RINT, k_);
             SyncFuncStatic<AscendC::HardEvent::V_MTE3, SYNC_EVENT_ID3>();
             DataCopy(output[static_cast<uint64_t>(tokenIdx) * k_], dataResTensor_, k_);
+            SetFlag<AscendC::HardEvent::MTE3_V>(kOutputBufferEvent);
         }
         for (int32_t bufferIdx = 0; bufferIdx < bufferConfig.inputBufferCount; ++bufferIdx) {
             WaitFlag<AscendC::HardEvent::V_MTE2>(static_cast<TEventID>(bufferIdx));
         }
     }
+    WaitFlag<AscendC::HardEvent::MTE3_V>(kOutputBufferEvent);
 }
 
 // ==============================================================================================
