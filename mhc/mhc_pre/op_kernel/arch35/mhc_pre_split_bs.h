@@ -351,7 +351,7 @@ __aicore__ inline void MhcPreKernelSplitBS<T, P, HAS_RESI>::AIV1Process(uint64_t
         this->AIV1ProcessHPost(offsetT, lenT);
 
         this->AIV1ProcessHPre(offsetT, lenT);
-        this->AIV1ProcessHInBatched(offsetT, lenT, lenD);
+        this->AIV1ProcessHInBatched(offsetT, lenT);
 
         singleCoreOffset += V1_BASE_T;
     }
