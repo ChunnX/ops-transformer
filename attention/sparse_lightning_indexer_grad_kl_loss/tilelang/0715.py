@@ -576,12 +576,14 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.tile.mul(softmax_i_chunk_ub, p_reduced_tmp_ub, rsy_bc_ub[0, :])
 
                     # GlobalSoftmaxI: compute global sum from UB-held ReduceSumY (no GM reads)
+                    # Vectorized: operate on entire rsy_all_ub (n_num, n_block) instead of per-row loop
                     T.tile.fill(rsy_sum_ub, 0)
+                    # Step 1: broadcast softmax_i_chunk_ub to 2D for sub
+                    T.tile.broadcast(rsy_bc_ub, softmax_i_chunk_ub)  # (1, 128) with broadcast
+                    # Step 2: per-row sub and exp from rsy_all_ub
                     for n_idx_iter in T.serial(n_num):
                         T.copy(rsy_all_ub[n_idx_iter, :], rsy_chunk_ub)
-                        T.pipe_barrier("v")
-                        T.tile.sub(rsy_chunk_ub, rsy_chunk_ub, softmax_i_chunk_ub)
-                        T.pipe_barrier("v")
+                        T.tile.sub(rsy_chunk_ub, rsy_chunk_ub, rsy_bc_ub[0, :])
                         T.tile.exp(rsy_chunk_ub, rsy_chunk_ub)
                         T.tile.mul(rsy_bc_ub[0, :], rsy_chunk_ub, 1.0)
                         T.pipe_barrier("v")
@@ -664,8 +666,9 @@ def tilelang_grad_kl_loss_single_kernel(
                         T.tile.sub(rsy_tmp_ub, ones_2d_ub, rsy_tmp_ub)
 
                         # Op1: rg = weight_slice * diff (2D)
-                        # weight切片整块copy（消除32次逐行copy）
-                        T.copy(weight_2d_ub[g_start:g_start + vector_baseg, 0:n_block], rg_chunk_ub)
+                        # weight切片逐行copy（整块copy参数在CANN 9.1下不正确）
+                        for i in T.serial(vector_baseg):
+                            T.copy(weight_2d_ub[g_start + i, :], rg_chunk_ub[i, :])
                         T.tile.mul(rg_chunk_ub, rg_chunk_ub, diff_2d_ub)
                         # Op2: rg *= rsy_tmp mask (2D, was per-row 1D mul)
                         T.pipe_barrier("v")
