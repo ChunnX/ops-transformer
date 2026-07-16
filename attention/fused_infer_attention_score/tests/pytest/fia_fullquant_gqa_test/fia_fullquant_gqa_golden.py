@@ -508,22 +508,23 @@ def cpu_fp8_fullquant_gqa_golden(q_fp8, k_fp8, v_fp8,
             causal_mask = mask_blocks[i][j].contiguous()
             sij = sij.masked_fill(causal_mask, float('-inf'))
 
-            m_block, _ = torch.max(sij, dim=-1, keepdims=True)
-            m_block = m_block - ln_p_scale
+            sij_fp16 = sij.to(torch.float16)
+            m_block, _ = torch.max(sij_fp16, dim=-1, keepdims=True)
+            m_block = m_block.float() - ln_p_scale
             mi_new = torch.maximum(m_block, mi)
             all_masked_block = (m_block == float('-inf'))
             pij = torch.where(all_masked_block,
-                              torch.zeros_like(sij),
-                              torch.exp(sij - mi_new))
+                              torch.zeros_like(sij_fp16),
+                              torch.exp(sij_fp16 - mi_new.to(torch.float16))).float()
             s_block = torch.sum(pij, dim=-1, keepdims=True)
             pij_drop = pij.to(FP8_DTYPE).to(torch.float32)
             pij_v = torch.matmul(pij_drop, vj)
             pij_v = pij_v * deq_v
             scale = torch.where(mi_new == float('-inf'),
                                 torch.ones_like(mi_new),
-                                torch.exp(mi - mi_new))
+                                torch.exp((mi - mi_new).to(torch.float16)).float())
             si_new = scale * si + s_block
-            o_blocks[i] = (si * torch.exp(mi - mi_new) * oi + pij_v) / (si_new + EPSILON)
+            o_blocks[i] = (si * scale * oi + pij_v) / (si_new + EPSILON)
             s_blocks[i] = si_new
             m_blocks[i] = mi_new
 
