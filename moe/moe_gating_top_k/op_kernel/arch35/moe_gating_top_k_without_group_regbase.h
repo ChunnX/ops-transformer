@@ -576,7 +576,7 @@ __aicore__ inline void MoeGatingTopKWithoutGroupRegbase<T>::ProcessSmallExpertK1
         __local_mem__ T *outputAddr = (__local_mem__ T *)yOutTensor.GetPhyAddr();
         __local_mem__ int32_t *expertIdxAddr = (__local_mem__ int32_t *)expertIdxOut.GetPhyAddr();
 
-        uint32_t expertCountU32 = static_cast<uint32_t>(expertCount_);
+        uint16_t expertCountU16 = static_cast<uint16_t>(expertCount_);
         uint32_t rowsInBatchU32 = static_cast<uint32_t>(rowsInBatch);
 
         __VEC_SCOPE__
@@ -601,9 +601,9 @@ __aicore__ inline void MoeGatingTopKWithoutGroupRegbase<T>::ProcessSmallExpertK1
                 pregRow = MicroAPI::UpdateMask<float>(rowsInBatchU32);
                 uint32_t rowOffset = i * WG_VL_FLOAT_SIZE;
 
-                for (uint32_t e = 0; e < expertCountU32; e++) {
+                for (uint16_t e = 0; e < expertCountU16; e++) {
                     ops::LoadOneTensorForDtypeT<T>(inputAddr, vregIn, pregRow,
-                                                   rowOffset * expertCountU32 + e);
+                                                   rowOffset * expertCountU16 + e);
 
                     if (normType_ == 1) {
                         MicroAPI::Muls(vregTmp1, vregIn, static_cast<float>(-1), pregRow);
