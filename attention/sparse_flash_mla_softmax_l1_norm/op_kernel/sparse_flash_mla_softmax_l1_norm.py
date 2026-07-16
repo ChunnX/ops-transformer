@@ -108,14 +108,14 @@ class OpTiling:
 #  TilingKey
 # ================================================================
 class SmlaTilingKey:
-    SPARSE_MODE = TilingKeyField(bits=2, values=[0, 3])
+    SPARSE_MODE = TilingKeyField(bits=2, values=[0, 1, 2, 3])
     IS_TND = TilingKeyField(bits=1, values=[0])
     IS_SPARSE = TilingKeyField(bits=1, values=[0])
 
 
 def get_q_offset(constInfo, runInfo):
     offset = []
-    if constInfo.is_tnd:
+    if IS_TND == 1:
         offset = [runInfo.t1_offset + runInfo.s1_idx, 0, 0]
     else:
         offset = [runInfo.batch_id, runInfo.s1_idx, 0, 0]
@@ -123,13 +123,13 @@ def get_q_offset(constInfo, runInfo):
 
 # no sparse
 def get_k_offset(constInfo, runInfo, d_offset):
-    if constInfo.is_tnd:
+    if IS_TND == 1:
         return None
     else:
         return [runInfo.batch_id, runInfo.ki, 0, d_offset]
 
 def gather_k_offset(constInfo, runInfo, k_index):
-    if constInfo.is_tnd:
+    if IS_TND == 1:
         return [runInfo.t2_offset + k_index, 0, 0]
         # return None
     else:
@@ -137,21 +137,21 @@ def gather_k_offset(constInfo, runInfo, k_index):
 
 def get_sparse_offset(constInfo, runInfo, first_core_half_s2_base_size):
     offset = 0
-    if constInfo.is_tnd:
+    if IS_TND == 1:
         offset = (runInfo.t1_offset + runInfo.s1_idx) * constInfo.k_length + constInfo.sub_id * first_core_half_s2_base_size
     else:
         offset = runInfo.batch_id * constInfo.s1_size * constInfo.k_length + runInfo.s1_idx * constInfo.k_length + constInfo.sub_id * first_core_half_s2_base_size
     return offset
 
 def get_out_offset(constInfo, runInfo):
-    if constInfo.is_tnd:
+    if IS_TND == 1:
         return [runInfo.t1_offset + runInfo.s1_idx, 0, runInfo.ki]
         # return None
     else:
         return [runInfo.batch_id, runInfo.s1_idx, runInfo.ki]
 
 def get_lse_offset(constInfo, runInfo):
-    if constInfo.is_tnd:
+    if IS_TND == 1:
         # [N2, T1, G]
         return [0, runInfo.t1_offset + runInfo.s1_idx, constInfo.sub_id * constInfo.first_g_size]
         # return None
@@ -207,7 +207,7 @@ def gatherK(k_l1_db, k, sparse_indices, gather_nd_db, gather_nz_db, constInfo, r
             # k_index = 0
             gather_k_slot_single_row = gather_k_slot[i * D_TOTAL]
             pl.set_validshape(gather_k_slot_single_row, [1, D_TOTAL])
-            if constInfo.is_tnd:
+            if IS_TND == 1:
                 pl.load(gather_k_slot_single_row, k, [runInfo.t2_offset + k_index, 0, 0], tile_dims=[0, 2])
             else:
                 pl.load(gather_k_slot_single_row, k, [runInfo.batch_id, k_index, 0, 0], tile_dims=[2, 3])
@@ -251,7 +251,7 @@ def compute_qk(q, k, cur_q_slot, k_l1_db, left_db, right_db, acc_db, qk_vec_db, 
     
     # query复用
     if runInfo.ki == 0:
-        if constInfo.is_tnd:
+        if IS_TND == 1:
             pl.load(cur_q_slot, q, [runInfo.t1_offset + runInfo.s1_idx, 0, 0], tile_dims=[1, 2])
         else:
             pl.load(cur_q_slot, q, [runInfo.batch_id, runInfo.s1_idx, 0, 0], tile_dims=[2, 3])
@@ -296,7 +296,7 @@ def compute_qk_dense(q, k, cur_q_slot, k_l1_db, left_db, right_db, acc_db, qk_ve
     
     # query复用
     if runInfo.ki == 0:
-        if constInfo.is_tnd:
+        if IS_TND == 1:
             pl.load(cur_q_slot, q, [runInfo.t1_offset + runInfo.s1_idx, 0, 0], tile_dims=[1, 2])
         else:
             pl.load(cur_q_slot, q, [runInfo.batch_id, runInfo.s1_idx, 0, 0], tile_dims=[2, 3])
@@ -305,7 +305,7 @@ def compute_qk_dense(q, k, cur_q_slot, k_l1_db, left_db, right_db, acc_db, qk_ve
         cur_k_slot = k_l1_db.next()
         pl.set_validshape(cur_k_slot, [TD, runInfo.s2_base_size])
         
-        if constInfo.is_tnd:
+        if IS_TND == 1:
             pl.load(cur_k_slot, k, [runInfo.t2_offset + runInfo.ki, 0, d_offset], is_transpose=True, tile_dims=[0, 2])
         else:
             pl.load(cur_k_slot, k, [runInfo.batch_id, runInfo.ki, 0, d_offset], is_transpose=True, tile_dims=[1, 3])
@@ -431,7 +431,7 @@ def compute_softmax_l1_norm(softmax_l1_norm, qk_vec_db, lse_vec_slot, out_vec_db
         # if runInfo.used_t1_index == 1427:
         #     pl.store(qk, out_vec_slot, [constInfo.sub_id, 0], tile_dims=[0, 1])
         
-        if constInfo.is_tnd:
+        if IS_TND == 1:
             pl.store(softmax_l1_norm, out_vec_slot, [runInfo.t1_offset + runInfo.s1_idx, 0, runInfo.ki], tile_dims=[1, 2], atomic=pl.AtomicType.AtomicAdd)
         else:
             pl.store(softmax_l1_norm, out_vec_slot, [runInfo.batch_id, runInfo.s1_idx, 0, runInfo.ki], tile_dims=[2, 3], atomic=pl.AtomicType.AtomicAdd)
@@ -448,7 +448,7 @@ def get_seq_length(seqused_q, seq_q, seq_k, constInfo, runInfo):
             runInfo.used_t1_offset = runInfo.next_used_t1_offset
             runInfo.next_used_t1_offset = runInfo.next_used_t1_offset + next_batch_used_t1
         runInfo.s1_idx = runInfo.used_t1_index - runInfo.used_t1_offset
-        if constInfo.is_tnd:
+        if IS_TND == 1:
             runInfo.t1_offset = pl.getval(seq_q, runInfo.batch_id)
             runInfo.t2_offset = pl.getval(seq_k, runInfo.batch_id)
             runInfo.next_t1_offset = pl.getval(seq_q, runInfo.batch_id + 1)
@@ -458,7 +458,7 @@ def get_seq_length(seqused_q, seq_q, seq_k, constInfo, runInfo):
             runInfo.s2_size = s2_next - s2_pre
             # pl.printf("runInfo.batch_id: %d, s2_pre: %d, s2_next: %d, runInfo.s2_size: %d, runInfo.t1_offset: %d, runInfo.t2_offset: %d, runInfo.s1_idx: %d\n", runInfo.batch_id, s2_pre, s2_next, runInfo.s2_size, runInfo.t1_offset, runInfo.t2_offset, runInfo.s1_idx)
     else:
-        if constInfo.is_tnd:
+        if IS_TND == 1:
             # pl.printf("runInfo.batch_id: %d, runInfo.next_t1_offset: %d, runInfo.used_t1_index: %d\n", runInfo.batch_id, runInfo.next_t1_offset, runInfo.used_t1_index)
             for batch_id in pl.range(runInfo.batch_id, constInfo.b_size):
                 # pl.printf("batch_id: %d, runInfo.next_t1_offset: %d, runInfo.used_t1_index: %d\n", batch_id, runInfo.next_t1_offset, runInfo.used_t1_index)
@@ -509,7 +509,7 @@ def sparse_flash_mla_softmax_l1_norm(
     tiling: OpTiling,
 ):
     pl.printf("SPARSE_MODE: %d, IS_TND: %d, IS_SPARSE: %d\n", SPARSE_MODE, IS_TND, IS_SPARSE)
-    if IS_TND:
+    if IS_TND == 1:
         tensor_q = pl.make_tensor(
             query,
             [tiling.t1, tiling.g, tiling.d],
@@ -528,7 +528,7 @@ def sparse_flash_mla_softmax_l1_norm(
             [tiling.g, tiling.g, 1],
             dtype=pl.DT_FP32,
         )
-        if IS_SPARSE:
+        if IS_SPARSE == 1:
             tensor_softmax_l1_norm = pl.make_tensor(
                 softmax_l1_norm,
                 [tiling.t1, 1, tiling.k_length],
@@ -579,7 +579,7 @@ def sparse_flash_mla_softmax_l1_norm(
             [tiling.sq * tiling.g, tiling.g, tiling.g, 1],
             dtype=pl.DT_FP32,
         )
-        if IS_SPARSE:
+        if IS_SPARSE == 1:
             tensor_softmax_l1_norm = pl.make_tensor(
                 softmax_l1_norm,
                 [tiling.b, tiling.sq, 1, tiling.k_length],
@@ -751,7 +751,7 @@ def sparse_flash_mla_softmax_l1_norm(
             lse_vec_slot = lse_vec_db.next()
             if currentHalfG > 0 and runInfo.s2_real_size > 0:
                 pl.set_validshape(lse_vec_slot, [1, currentHalfG])
-                if IS_TND:
+                if IS_TND == 1:
                     pl.load(lse_vec_slot, tensor_lse, [0, runInfo.t1_offset + runInfo.s1_idx, constInfo.sub_id * constInfo.first_g_size], tile_dims=[1, 2])
                 else:
                     pl.load(lse_vec_slot, tensor_lse, [runInfo.batch_id, 0, runInfo.s1_idx, constInfo.sub_id * constInfo.first_g_size], tile_dims=[1, 3])
@@ -762,7 +762,7 @@ def sparse_flash_mla_softmax_l1_norm(
             if ki + TKV > runInfo.s2_real_size:
                 runInfo.s2_base_size =  runInfo.s2_real_size - ki
             with pl.section_cube():
-                if IS_SPARSE:
+                if IS_SPARSE == 1:
                     compute_qk(tensor_q, tensor_k, cur_q_slot, k_l1_db, left_db, right_db, acc_db, qk_vec_db, constInfo, runInfo)
                 else:
                     compute_qk_dense(tensor_q, tensor_k, cur_q_slot, k_l1_db, left_db, right_db, acc_db, qk_vec_db, constInfo, runInfo)

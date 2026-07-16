@@ -56,7 +56,8 @@ static ge::graphStatus SparseFlashMlaSoftmaxL1NormTilingFunc(gert::TilingContext
     tilingData->has_topk_length = false;
     OP_LOGI(context->GetNodeName(), "SparseFlashMlaSoftmaxL1Norm tiling 333.");
 
-    context->SetTilingKey(11);
+    uint64_t tilingKey = GET_TPL_TILING_KEY(0, 0, 0);
+    context->SetTilingKey(tilingKey);
     OP_LOGI(context->GetNodeName(), "SparseFlashMlaSoftmaxL1Norm tiling 444.");
 
     // Workspace: system reserve + qk buffer [G, Sk] FP32.
