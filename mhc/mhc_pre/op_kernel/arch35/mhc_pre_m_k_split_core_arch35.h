@@ -439,7 +439,7 @@ public:
             this->pipe_->InitBuffer(this->invRmsOutQueue_, 1,
                 LowApiRoundUp<P>(rowCapacity) * sizeof(P));
             if (this->hasGamma_) {
-                this->pipe_->InitBuffer(this->gammaInQueue_, 1,
+                this->pipe_->InitBuffer(this->gammaInQueue_, 2,
                     LowApiRoundUp<P>(this->tiling_->kUbSize) * sizeof(P));
             }
             this->pipe_->InitBuffer(nd2NzBuf_,
@@ -527,6 +527,10 @@ private:
             static_cast<uint64_t>(this->tiling_->kL1Size), static_cast<uint64_t>(kEnd - kStart));
         this->xLocal_ = this->xInQueue_.template AllocTensor<T>();
         this->DataCopyX(rowCount, firstK, rowStart, kStart);
+        if (this->hasGamma_) {
+            this->gammaUb_ = this->gammaInQueue_.template AllocTensor<P>();
+            this->DataCopyGamma(firstK, kStart);
+        }
 
         for (uint32_t kOffset = kStart; kOffset < kEnd; kOffset += this->tiling_->kL1Size) {
             uint32_t currentK = AscendC::Std::min(
@@ -536,10 +540,9 @@ private:
             LocalTensor<T> currentXLocal = this->xInQueue_.template DeQue<T>();
             LocalTensor<P> xFloatLocal = this->outQueue_.template AllocTensor<P>();
             bool initializeRms = kOffset == kStart;
+            LocalTensor<P> currentGammaLocal;
             if (this->hasGamma_) {
-                this->gammaUb_ = this->gammaInQueue_.template AllocTensor<P>();
-                this->DataCopyGamma(currentK, kOffset);
-                this->gammaUb_ = this->gammaInQueue_.template DeQue<P>();
+                currentGammaLocal = this->gammaInQueue_.template DeQue<P>();
             }
 
             uint32_t nextKOffset = kOffset + this->tiling_->kL1Size;
@@ -549,17 +552,21 @@ private:
                     static_cast<uint64_t>(kEnd - nextKOffset));
                 this->xLocal_ = this->xInQueue_.template AllocTensor<T>();
                 this->DataCopyX(rowCount, nextK, rowStart, nextKOffset);
+                if (this->hasGamma_) {
+                    this->gammaUb_ = this->gammaInQueue_.template AllocTensor<P>();
+                    this->DataCopyGamma(nextK, nextKOffset);
+                }
             }
 
             if (this->hasGamma_) {
                 if (initializeRms) {
                     MhcPreMkVFProcessXInGamma<T, true>(xFloatLocal, this->invRmsUb_,
-                        currentXLocal, this->gammaUb_, rowCount, currentK);
+                        currentXLocal, currentGammaLocal, rowCount, currentK);
                 } else {
                     MhcPreMkVFProcessXInGamma<T, false>(xFloatLocal, this->invRmsUb_,
-                        currentXLocal, this->gammaUb_, rowCount, currentK);
+                        currentXLocal, currentGammaLocal, rowCount, currentK);
                 }
-                this->gammaInQueue_.FreeTensor(this->gammaUb_);
+                this->gammaInQueue_.FreeTensor(currentGammaLocal);
             } else if (initializeRms) {
                 this->template VFDoV0ProcessXIn<false, true>((__ubuf__ P *)xFloatLocal.GetPhyAddr(),
                     (__ubuf__ P *)this->invRmsUb_.GetPhyAddr(),
