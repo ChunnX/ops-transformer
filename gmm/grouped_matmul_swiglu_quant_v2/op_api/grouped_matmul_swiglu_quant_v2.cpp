@@ -29,7 +29,7 @@ constexpr size_t MX_WEIGHT_SCALE_N_DIM = 2UL;
 static bool IsMxWeightNzMultiTensor(const aclTensorList *weight, int64_t quantMode)
 {
     // Only MX WeightNZ uses weightScale dim 0 as N after transpose normalization.
-    return quantMode == QUNAT_MODE_MX && weight != nullptr && weight->Size() > 0 &&
+    return quantMode == 2 && weight != nullptr && weight->Size() > 0 &&
            (*weight)[0] != nullptr &&
            op::IsPrivateFormat((*weight)[0]->GetStorageFormat()) &&
            (*weight)[0]->GetViewShape().GetDimNum() == MX_MULTI_WEIGHT_DIM;
