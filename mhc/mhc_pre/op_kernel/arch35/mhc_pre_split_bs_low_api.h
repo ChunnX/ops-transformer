@@ -157,7 +157,7 @@ private:
             AIV1PrologueDirect(offsetT, lenT, localOffset);
             this->AIV1ProcessHPost(offsetT, lenT);
             this->AIV1ProcessHPre(offsetT, lenT);
-            this->AIV1ProcessHInBatched(offsetT, lenT, this->v1ChunkDSize_);
+            this->AIV1ProcessHInBatched(offsetT, lenT);
             localOffset += lenT;
         }
     }
