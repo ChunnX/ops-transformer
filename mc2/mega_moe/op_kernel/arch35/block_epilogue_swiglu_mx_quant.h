@@ -22,7 +22,7 @@
 #else
 #include "kernel_operator.h"
 #endif
-#include "../mega_moe_base.h"
+#include "mega_moe_base.h"
 
 namespace SwigluQuantMsg {
 enum class QuantMode : uint32_t {
@@ -204,8 +204,7 @@ private:
     AscendC::LocalTensor<bfloat16_t> gluRes_;
     AscendC::LocalTensor<uint16_t> maxExp_;
     AscendC::LocalTensor<uint16_t> halfScale_;
-    // The caller owns Params and must keep it alive for the epilogue lifetime.
-    const Params *params_{nullptr};
+    const Params *params_;
 
     int64_t n_;
     int64_t scaleN_;
