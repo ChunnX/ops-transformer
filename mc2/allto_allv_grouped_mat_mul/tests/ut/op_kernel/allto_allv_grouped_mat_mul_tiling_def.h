@@ -18,12 +18,12 @@
 #include "kernel_tiling/kernel_tiling.h"
 #include "../../../op_kernel/allto_allv_grouped_mat_mul_tiling.h"
 
-inline void InitAlltoAllvGroupedMatMulTilingData(uint8_t* tiling, AlltoAllvGmmTilingData* constData)
+inline void InitAlltoAllvGroupedMatMulTilingData(uint8_t *tiling, AlltoAllvGmmTilingData *constData)
 {
     memcpy(constData, tiling, sizeof(AlltoAllvGmmTilingData));
 }
 
-#define GET_TILING_DATA(tilingData, tilingArg) \
-    AlltoAllvGmmTilingData tilingData;          \
+#define GET_TILING_DATA(tilingData, tilingArg)                                                                         \
+    AlltoAllvGmmTilingData tilingData;                                                                                 \
     InitAlltoAllvGroupedMatMulTilingData(tilingArg, &tilingData)
-#endif  // ALL_TO_ALLV_GROUPED_MAT_MUL_TILING_DEF_H
+#endif // ALL_TO_ALLV_GROUPED_MAT_MUL_TILING_DEF_H

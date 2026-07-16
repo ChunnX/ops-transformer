@@ -7,7 +7,7 @@
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
- /* !
+/* !
  * \file moe_update_expert_tiling_key.h
  * \brief
  */
@@ -23,21 +23,21 @@
 #define RANK_ID_BALANCING_MODE 0
 #define TOKEN_ID_BALANCING_MODE 1
 namespace Mc2Tiling {
-ASCENDC_TPL_ARGS_DECL(MoeUpdateExpert, ASCENDC_TPL_UINT_DECL(TILINGKEY_BALANCE_MODE, ASCENDC_TPL_2_BW, ASCENDC_TPL_UI_LIST,
-                                                             RANK_ID_BALANCING_MODE, TOKEN_ID_BALANCING_MODE),
-                      ASCENDC_TPL_DTYPE_DECL(TILINGKEY_DATA_TYPE, TILINGKEY_FLOAT, TILINGKEY_HALF, TILINGKEY_BFLOAT16),
-);
-ASCENDC_TPL_SEL(ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_UINT_SEL(TILINGKEY_BALANCE_MODE,  ASCENDC_TPL_UI_LIST, 
-                                                          RANK_ID_BALANCING_MODE, TOKEN_ID_BALANCING_MODE),
-                                     ASCENDC_TPL_DTYPE_SEL(TILINGKEY_DATA_TYPE, TILINGKEY_FLOAT),
-                                     ASCENDC_TPL_TILING_STRUCT_SEL(MoeUpdateExpertTilingData)), 
-                ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_UINT_SEL(TILINGKEY_BALANCE_MODE,  ASCENDC_TPL_UI_LIST, 
-                                                          TOKEN_ID_BALANCING_MODE),
-                                     ASCENDC_TPL_DTYPE_SEL(TILINGKEY_DATA_TYPE, TILINGKEY_HALF),
-                                     ASCENDC_TPL_TILING_STRUCT_SEL(MoeUpdateExpertTilingData)), 
-                ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_UINT_SEL(TILINGKEY_BALANCE_MODE,  ASCENDC_TPL_UI_LIST, 
-                                                          TOKEN_ID_BALANCING_MODE),
-                                     ASCENDC_TPL_DTYPE_SEL(TILINGKEY_DATA_TYPE, TILINGKEY_BFLOAT16),
-                                     ASCENDC_TPL_TILING_STRUCT_SEL(MoeUpdateExpertTilingData)), );
-}
+ASCENDC_TPL_ARGS_DECL(MoeUpdateExpert,
+                      ASCENDC_TPL_UINT_DECL(TILINGKEY_BALANCE_MODE, ASCENDC_TPL_2_BW, ASCENDC_TPL_UI_LIST,
+                                            RANK_ID_BALANCING_MODE, TOKEN_ID_BALANCING_MODE),
+                      ASCENDC_TPL_DTYPE_DECL(TILINGKEY_DATA_TYPE, TILINGKEY_FLOAT, TILINGKEY_HALF,
+                                             TILINGKEY_BFLOAT16), );
+ASCENDC_TPL_SEL(
+    ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_UINT_SEL(TILINGKEY_BALANCE_MODE, ASCENDC_TPL_UI_LIST, RANK_ID_BALANCING_MODE,
+                                              TOKEN_ID_BALANCING_MODE),
+                         ASCENDC_TPL_DTYPE_SEL(TILINGKEY_DATA_TYPE, TILINGKEY_FLOAT),
+                         ASCENDC_TPL_TILING_STRUCT_SEL(MoeUpdateExpertTilingData)),
+    ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_UINT_SEL(TILINGKEY_BALANCE_MODE, ASCENDC_TPL_UI_LIST, TOKEN_ID_BALANCING_MODE),
+                         ASCENDC_TPL_DTYPE_SEL(TILINGKEY_DATA_TYPE, TILINGKEY_HALF),
+                         ASCENDC_TPL_TILING_STRUCT_SEL(MoeUpdateExpertTilingData)),
+    ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_UINT_SEL(TILINGKEY_BALANCE_MODE, ASCENDC_TPL_UI_LIST, TOKEN_ID_BALANCING_MODE),
+                         ASCENDC_TPL_DTYPE_SEL(TILINGKEY_DATA_TYPE, TILINGKEY_BFLOAT16),
+                         ASCENDC_TPL_TILING_STRUCT_SEL(MoeUpdateExpertTilingData)), );
+} // namespace Mc2Tiling
 #endif

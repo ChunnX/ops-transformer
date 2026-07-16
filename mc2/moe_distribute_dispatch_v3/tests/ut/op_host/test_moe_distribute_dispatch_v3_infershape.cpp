@@ -778,38 +778,37 @@ TEST_F(MoeDistributeDispatchV3InfershapeTest, InferDtype_MxQuant_DynamicScalesE8
     ge::DataType xType = ge::DT_FLOAT16;
     ge::DataType expertIdsType = ge::DT_INT32;
 
-    auto contextHolder =
-        gert::InferDataTypeContextFaker()
-            .NodeIoNum(3, 7)
-            .NodeAttrs({{"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
-                        {"ep_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-                        {"moe_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)},
-                        {"ccl_buffer_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-                        {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-                        {"tp_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-                        {"expert_shard_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-                        {"shared_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-                        {"shared_expert_rank_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-                        {"quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
-                        {"global_bs", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-                        {"expert_token_nums_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-                        {"comm_alg", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
-                        {"zero_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-                        {"copy_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-                        {"const_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-                        {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(28)}})
-            .NodeInputTd(0, contextType, ge::FORMAT_ND, ge::FORMAT_ND)
-            .NodeInputTd(1, xType, ge::FORMAT_ND, ge::FORMAT_ND)
-            .NodeInputTd(2, expertIdsType, ge::FORMAT_ND, ge::FORMAT_ND)
-            .InputDataTypes({&contextType, &xType, &expertIdsType})
-            .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
-            .NodeOutputTd(1, ge::FORMAT_ND, ge::FORMAT_ND)
-            .NodeOutputTd(2, ge::FORMAT_ND, ge::FORMAT_ND)
-            .NodeOutputTd(3, ge::FORMAT_ND, ge::FORMAT_ND)
-            .NodeOutputTd(4, ge::FORMAT_ND, ge::FORMAT_ND)
-            .NodeOutputTd(5, ge::FORMAT_ND, ge::FORMAT_ND)
-            .NodeOutputTd(6, ge::FORMAT_ND, ge::FORMAT_ND)
-            .Build();
+    auto contextHolder = gert::InferDataTypeContextFaker()
+                             .NodeIoNum(3, 7)
+                             .NodeAttrs({{"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
+                                         {"ep_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                         {"moe_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)},
+                                         {"ccl_buffer_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                         {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                         {"tp_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                         {"expert_shard_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                         {"shared_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                         {"shared_expert_rank_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                         {"quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
+                                         {"global_bs", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                         {"expert_token_nums_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+                                         {"comm_alg", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
+                                         {"zero_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                         {"copy_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                         {"const_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                         {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(28)}})
+                             .NodeInputTd(0, contextType, ge::FORMAT_ND, ge::FORMAT_ND)
+                             .NodeInputTd(1, xType, ge::FORMAT_ND, ge::FORMAT_ND)
+                             .NodeInputTd(2, expertIdsType, ge::FORMAT_ND, ge::FORMAT_ND)
+                             .InputDataTypes({&contextType, &xType, &expertIdsType})
+                             .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
+                             .NodeOutputTd(1, ge::FORMAT_ND, ge::FORMAT_ND)
+                             .NodeOutputTd(2, ge::FORMAT_ND, ge::FORMAT_ND)
+                             .NodeOutputTd(3, ge::FORMAT_ND, ge::FORMAT_ND)
+                             .NodeOutputTd(4, ge::FORMAT_ND, ge::FORMAT_ND)
+                             .NodeOutputTd(5, ge::FORMAT_ND, ge::FORMAT_ND)
+                             .NodeOutputTd(6, ge::FORMAT_ND, ge::FORMAT_ND)
+                             .Build();
 
     auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
     ASSERT_NE(spaceRegistry, nullptr);
@@ -1132,23 +1131,24 @@ TEST_F(MoeDistributeDispatchV3InfershapeTest, InferDtype_A5_StaticQuant_Int8)
     auto contextHolder =
         gert::InferDataTypeContextFaker()
             .NodeIoNum(3, 7)
-            .NodeAttrs({{"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
-                        {"ep_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-                        {"moe_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)},
-                        {"ccl_buffer_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-                        {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-                        {"tp_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-                        {"expert_shard_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-                        {"shared_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-                        {"shared_expert_rank_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-                        {"quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-                        {"global_bs", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-                        {"expert_token_nums_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-                        {"comm_alg", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
-                        {"zero_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-                        {"copy_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-                        {"const_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-                        {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int64_t>(ge::DT_INT8))}})
+            .NodeAttrs(
+                {{"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
+                 {"ep_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                 {"moe_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)},
+                 {"ccl_buffer_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                 {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                 {"tp_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                 {"expert_shard_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                 {"shared_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                 {"shared_expert_rank_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                 {"quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+                 {"global_bs", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                 {"expert_token_nums_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+                 {"comm_alg", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
+                 {"zero_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                 {"copy_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                 {"const_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                 {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int64_t>(ge::DT_INT8))}})
             .NodeInputTd(0, contextType, ge::FORMAT_ND, ge::FORMAT_ND)
             .NodeInputTd(1, xType, ge::FORMAT_ND, ge::FORMAT_ND)
             .NodeInputTd(2, expertIdsType, ge::FORMAT_ND, ge::FORMAT_ND)
@@ -1205,7 +1205,8 @@ TEST_F(MoeDistributeDispatchV3InfershapeTest, InferDtype_A5_PerTokenQuant_E4M3)
                         {"zero_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
                         {"copy_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
                         {"const_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-                        {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int64_t>(ge::DT_FLOAT8_E4M3FN))}})
+                        {"y_dtype",
+                         Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int64_t>(ge::DT_FLOAT8_E4M3FN))}})
             .NodeInputTd(0, contextType, ge::FORMAT_ND, ge::FORMAT_ND)
             .NodeInputTd(1, xType, ge::FORMAT_ND, ge::FORMAT_ND)
             .NodeInputTd(2, expertIdsType, ge::FORMAT_ND, ge::FORMAT_ND)
@@ -1261,7 +1262,8 @@ TEST_F(MoeDistributeDispatchV3InfershapeTest, InferDtype_A5_PerGroupQuant_E4M3)
                         {"zero_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
                         {"copy_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
                         {"const_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-                        {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int64_t>(ge::DT_FLOAT8_E4M3FN))}})
+                        {"y_dtype",
+                         Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int64_t>(ge::DT_FLOAT8_E4M3FN))}})
             .NodeInputTd(0, contextType, ge::FORMAT_ND, ge::FORMAT_ND)
             .NodeInputTd(1, xType, ge::FORMAT_ND, ge::FORMAT_ND)
             .NodeInputTd(2, expertIdsType, ge::FORMAT_ND, ge::FORMAT_ND)

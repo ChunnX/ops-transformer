@@ -138,55 +138,54 @@ inline std::vector<char> CreateErrorMsg()
         }                                                                                                              \
     } while (0)
 // MC2_CHECK_GRAPH_STATUS — 检查 graphStatus 返回值为 0，上报 EZ9999
-#define MC2_CHECK_LOG_RET(opName, callExpr)                                              \
-    do {                                                                                       \
-        const ge::graphStatus _mc2_gs_ = (callExpr);                                           \
-        if (_mc2_gs_ != 0) {                                                                   \
-            OP_LOGE(opName, "call %s failed, status=%d", #callExpr, (int)_mc2_gs_);            \
-            return ge::FAILED;                                                                 \
-        }                                                                                      \
+#define MC2_CHECK_LOG_RET(opName, callExpr)                                                                            \
+    do {                                                                                                               \
+        const ge::graphStatus _mc2_gs_ = (callExpr);                                                                   \
+        if (_mc2_gs_ != 0) {                                                                                           \
+            OP_LOGE(opName, "call %s failed, status=%d", #callExpr, (int)_mc2_gs_);                                    \
+            return ge::FAILED;                                                                                         \
+        }                                                                                                              \
     } while (0)
 
 // MC2_CHECK_NOTNULL — 空指针检查，上报 EZ0004
-#define MC2_CHECK_NOTNULL_RET(opName, ptr)                                                         \
-    do {                                                                                       \
-        if (unlikely((ptr) == nullptr)) {                                                      \
-            OP_LOGE_WITH_INVALID_INPUT(opName, #ptr);                                          \
-            return ge::FAILED;                                                                 \
-        }                                                                                      \
+#define MC2_CHECK_NOTNULL_RET(opName, ptr)                                                                             \
+    do {                                                                                                               \
+        if (unlikely((ptr) == nullptr)) {                                                                              \
+            OP_LOGE_WITH_INVALID_INPUT(opName, #ptr);                                                                  \
+            return ge::FAILED;                                                                                         \
+        }                                                                                                              \
     } while (0)
 
 // MC2_CHECK_TRUE — 布尔条件断言，上报 EZ9999
-#define MC2_CHECK_TRUE_RET(opName, condition)                                                      \
-    do {                                                                                       \
-        if (unlikely(!(condition))) {                                                          \
-            OP_LOGE(opName, "assert %s failed", #condition);                                   \
-            return ge::FAILED;                                                                 \
-        }                                                                                      \
+#define MC2_CHECK_TRUE_RET(opName, condition)                                                                          \
+    do {                                                                                                               \
+        if (unlikely(!(condition))) {                                                                                  \
+            OP_LOGE(opName, "assert %s failed", #condition);                                                           \
+            return ge::FAILED;                                                                                         \
+        }                                                                                                              \
     } while (0)
 
 // MC2_CHECK_SUCCESS — 检查返回值 == ge::SUCCESS，上报 EZ9999
-#define MC2_CHECK_SUCCESS_RET(opName, callExpr)                                                    \
-    do {                                                                                       \
-        const auto _mc2_ret_ = (callExpr);                                                     \
-        if (_mc2_ret_ != ge::SUCCESS) {                                                        \
-            OP_LOGE(opName, "call %s failed, ret=%d", #callExpr, (int)_mc2_ret_);              \
-            return ge::FAILED;                                                                 \
-        }                                                                                      \
+#define MC2_CHECK_SUCCESS_RET(opName, callExpr)                                                                        \
+    do {                                                                                                               \
+        const auto _mc2_ret_ = (callExpr);                                                                             \
+        if (_mc2_ret_ != ge::SUCCESS) {                                                                                \
+            OP_LOGE(opName, "call %s failed, ret=%d", #callExpr, (int)_mc2_ret_);                                      \
+            return ge::FAILED;                                                                                         \
+        }                                                                                                              \
     } while (0)
 
 // MC2_CHECK_EQ_ERR — 等值断言，返回 ::ErrorResult()，上报 EZ9999
-#define MC2_CHECK_EQ_RET(opName, x, y)                                                         \
-    do {                                                                                       \
-        const auto &_mc2_x_ = (x);                                                             \
-        const auto &_mc2_y_ = (y);                                                             \
-        if (_mc2_x_ != _mc2_y_) {                                                              \
-            std::stringstream _mc2_ss_;                                                        \
-            _mc2_ss_ << "Assert (" << #x << " == " << #y << ")failed, expect "                \
-                     << _mc2_y_ << " actual " << _mc2_x_;                                      \
-            OP_LOGE(opName, "%s", _mc2_ss_.str().c_str());                                     \
-            return ::ErrorResult();                                                            \
-        }                                                                                      \
+#define MC2_CHECK_EQ_RET(opName, x, y)                                                                                 \
+    do {                                                                                                               \
+        const auto &_mc2_x_ = (x);                                                                                     \
+        const auto &_mc2_y_ = (y);                                                                                     \
+        if (_mc2_x_ != _mc2_y_) {                                                                                      \
+            std::stringstream _mc2_ss_;                                                                                \
+            _mc2_ss_ << "Assert (" << #x << " == " << #y << ")failed, expect " << _mc2_y_ << " actual " << _mc2_x_;    \
+            OP_LOGE(opName, "%s", _mc2_ss_.str().c_str());                                                             \
+            return ::ErrorResult();                                                                                    \
+        }                                                                                                              \
     } while (0)
 
 namespace ops {

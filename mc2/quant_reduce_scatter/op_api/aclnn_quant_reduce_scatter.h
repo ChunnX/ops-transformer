@@ -33,19 +33,23 @@ extern "C" {
  * 当量化方式为mx量化时，数据类型支持：FLOAT8_E4M3FN、FLOAT8_E5M2，数据格式支持ND，
  * 当量化方式为pertoken-pergroup量化时，数据类型支持：INT8, HIFLOAT8, FLOAT8_E4M3FN, FLOAT8_E5M2，数据格式支持ND。
  * @param [in] scales: 公式中的输入scales，不支持空Tensor，
- * 当量化方式为mx量化时，支持的维度为3-4维，shape必须对应x的shape为(BS, H/64, 2)或者(B, S, H/64, 2)，数据类型支持：FLOAT8_E8M0，数据格式支持ND，
- * 当量化方式为pertoken-pergroup量化时，支持的维度为2-3维，shape必须对应x的shape为(BS, H/128)或者(B, S, H/128)，数据类型支持：FLOAT，数据格式支持ND。
+ * 当量化方式为mx量化时，支持的维度为3-4维，shape必须对应x的shape为(BS, H/64, 2)或者(B, S, H/64,
+ * 2)，数据类型支持：FLOAT8_E8M0，数据格式支持ND，
+ * 当量化方式为pertoken-pergroup量化时，支持的维度为2-3维，shape必须对应x的shape为(BS, H/128)或者(B, S,
+ * H/128)，数据类型支持：FLOAT，数据格式支持ND。
  * @param [in] group: 通信域标识，数据类型支持：string。
  * @param [in] reduceOp: 公式中的reduce操作类型，默认值：sum，当前版本只支持sum，数据类型支持：string。
- * @param [out] output: 公式中的输出output，不支持空Tensor，支持的维度为2维，shape为(BS/rankNum,H)，数据类型支持：FLOAT16, BFLOAT16, FLOAT，数据格式为ND。
+ * @param [out] output:
+ * 公式中的输出output，不支持空Tensor，支持的维度为2维，shape为(BS/rankNum,H)，数据类型支持：FLOAT16, BFLOAT16,
+ * FLOAT，数据格式为ND。
  * @param [out] workspaceSize: 返回需要在Device侧申请的workspace大小。
  * @param [out] executor: 返回op执行器，包含了算子计算流程。
  * @return aclnnStatus: 返回状态码
  */
-ACLNN_API aclnnStatus aclnnQuantReduceScatterGetWorkspaceSize(const aclTensor* x, const aclTensor* scales,
-                                                              const char* group, const char* reduceOp,
-                                                              aclTensor* output, uint64_t* workspaceSize,
-                                                              aclOpExecutor** executor);
+ACLNN_API aclnnStatus aclnnQuantReduceScatterGetWorkspaceSize(const aclTensor *x, const aclTensor *scales,
+                                                              const char *group, const char *reduceOp,
+                                                              aclTensor *output, uint64_t *workspaceSize,
+                                                              aclOpExecutor **executor);
 
 /**
  * @brief aclnnQuantReduceScatter的第二段接口，用于执行计算。
@@ -55,11 +59,11 @@ ACLNN_API aclnnStatus aclnnQuantReduceScatterGetWorkspaceSize(const aclTensor* x
  * @param [in] stream: 指定执行任务的Stream。
  * @return aclnnStatus: 返回状态码
  */
-ACLNN_API aclnnStatus aclnnQuantReduceScatter(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor,
+ACLNN_API aclnnStatus aclnnQuantReduceScatter(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
                                               const aclrtStream stream);
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif  // OP_API_INC_QUANT_REDUCE_SCATTER_
+#endif // OP_API_INC_QUANT_REDUCE_SCATTER_

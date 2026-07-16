@@ -20,7 +20,7 @@
 
 namespace l0op {
 const aclTensor *Fill(const aclTensor *dims, const aclTensor *value, const aclIntArray *outShape,
-    aclOpExecutor *executor);
+                      aclOpExecutor *executor);
 }
 
 #endif

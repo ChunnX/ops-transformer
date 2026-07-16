@@ -153,7 +153,8 @@ protected:
     static bool CheckModelKernelResultStr(std::string &kernelLog);
     static bool CheckFrameworkKernelResultStr(std::string &kernelLog);
 
-    template <class T> bool DetectField(T &field, const char *fPrefix, const char *fSuffix)
+    template <class T>
+    bool DetectField(T &field, const char *fPrefix, const char *fSuffix)
     {
         char *bgn = nullptr;
         char *end = nullptr;
