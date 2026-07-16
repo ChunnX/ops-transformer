@@ -26,6 +26,7 @@
 #include "kernel_tiling/kernel_tiling.h"
 #include "../op_kernel/arch35/mhc_sinkhorn_struct.h"
 #include "../op_kernel/arch35/mhc_sinkhorn_tiling_key.h"
+#include "../../mhc_sinkhorn_common/op_host/arch35/mhc_sinkhorn_base_tiling.h"
 
 namespace optiling
 {
@@ -37,10 +38,10 @@ struct MhcSinkhornCompileInfo {
     int64_t ubSize{0};
 };
 
-class MhcSinkhornTiling : public TilingBaseClass
+class MhcSinkhornTiling : public MhcSinkhornBaseTiling
 {
 public:
-    explicit MhcSinkhornTiling(gert::TilingContext* context) : TilingBaseClass(context)
+    explicit MhcSinkhornTiling(gert::TilingContext* context) : MhcSinkhornBaseTiling(context)
     {
     }
 
@@ -56,7 +57,6 @@ protected:
     void DumpTilingInfo() override;
     ge::graphStatus CheckInputShape();
     ge::graphStatus CheckInputDtype();
-    int64_t CalOccupySize(int64_t ubFactor);
     void SplitByCoreNum();
     void SetTilingData();
 
@@ -70,17 +70,16 @@ private:
     int64_t tTailCoreLoop_ = 0;
     int64_t tUbTailTail_ = 0;
     int64_t tNormCore_ = 0;
-    
-    int64_t tTailCore_ = 0;
+
     int64_t tilingKey_ = 0;
     int64_t totalCoreNum_ = 0;
     int64_t ubSize_ = 0;
-    int64_t ubSizeUsed_ = 0;
     float eps_ = 1E-6f;
     int64_t num_iters_ = 20;
     int64_t outFlag_ = 0;
     int64_t xDimNum_ = 0;
     int64_t yDimNum_ = 0;
+    int64_t xDtypeSize_ = 0;
 
     gert::Shape outputShape_;
     ge::DataType xDtype_ = ge::DT_UNDEFINED;

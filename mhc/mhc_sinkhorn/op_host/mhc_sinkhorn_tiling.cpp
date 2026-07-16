@@ -44,12 +44,7 @@ constexpr int64_t N_NUM_4 = 4;
 constexpr int64_t N_NUM_6 = 6;
 constexpr int64_t N_NUM_8 = 8;
 
-constexpr int64_t DOUBLE_SIZE = 2;
-constexpr int64_t TRIPLE_SIZE = 3;
-constexpr int64_t SIMD_RESERVED_SIZE = static_cast<uint64_t>(8) * 1024;
 constexpr int64_t ASCENDC_TOOLS_WORKSPACE = 0;
-constexpr int64_t MASK_BUFFER = 64;
-constexpr int64_t MAX_BUFFER = 256 * TRIPLE_SIZE;
 
 static const std::set<ge::DataType> X_DTYPE = {ge::DT_FLOAT};
 
@@ -116,6 +111,7 @@ ge::graphStatus MhcSinkhornTiling::CheckInputDtype()
             "x dtype only supports float32, please check");
         return ge::GRAPH_FAILED;
     }
+    xDtypeSize_ = static_cast<int64_t>(ge::GetSizeByDataType(xDtype_));
 
     auto outputPtr = context_->GetOutputDesc(Y_IDX);
     OP_CHECK_NULL_WITH_CONTEXT(context_, outputPtr);
@@ -192,56 +188,22 @@ ge::graphStatus MhcSinkhornTiling::CheckInputShape()
     return ge::GRAPH_SUCCESS;
 }
 
-int64_t MhcSinkhornTiling::CalOccupySize(int64_t ubFactor)
-{
-    int64_t ubBlock = static_cast<int64_t>(Ops::Base::GetUbBlockSize(context_));
-    int64_t xDtypeSize = ge::GetSizeByDataType(xDtype_);
-    int64_t dataBlockNum = ubBlock / xDtypeSize;
-
-    int64_t nnSize = n_ * n_;
-    int64_t nAlign = Ops::Base::CeilAlign(n_, dataBlockNum);
-
-    int64_t inQueSize = Ops::Base::CeilAlign(ubFactor * nnSize, dataBlockNum);
-    int64_t outQueSize = Ops::Base::CeilAlign(ubFactor * nnSize, dataBlockNum);
-    int64_t normOutSize = Ops::Base::CeilAlign(n_ * ubFactor * nAlign, dataBlockNum);
-    int64_t sumColSize = Ops::Base::CeilAlign(ubFactor * nAlign, dataBlockNum);
-    int64_t sumRowSize = Ops::Base::CeilAlign(ubFactor * nAlign, dataBlockNum);
-
-    int64_t occupySize = (inQueSize + outQueSize + normOutSize + sumColSize) * xDtypeSize;
-    if (outFlag_ == 1) {
-        occupySize = (inQueSize + outQueSize + normOutSize * DOUBLE_SIZE + sumColSize + sumRowSize) * xDtypeSize;
-    }
-    return occupySize;
-}
-
 void MhcSinkhornTiling::SplitByCoreNum()
 {
-    auto availableUbSize = ubSizeUsed_ / DOUBLE_SIZE;
+    auto splitInfo = BaseSplitCores(T_, n_, xDtypeSize_, outFlag_);
 
-    tUbFactor_ = tNormCore_;
-    int64_t occupySize = CalOccupySize(tUbFactor_);
-    if (occupySize > availableUbSize) {
-        auto onePiceSize = CalOccupySize(1);
-        tUbFactor_ = availableUbSize / onePiceSize;
-        tUbFactor_ = Ops::Base::FloorAlign(tUbFactor_, N_NUM_8);
-    }
-    tUbFactor_ = tUbFactor_ == 0 ? N_NUM_8 : tUbFactor_;
-
-    tNormCoreLoop_ = Ops::Base::CeilDiv(tNormCore_, tUbFactor_);
-    tTailCoreLoop_ = Ops::Base::CeilDiv(tTailCore_, tUbFactor_);
-
-    tUbFactorTail_ = tNormCore_ - (tNormCoreLoop_ - 1) * tUbFactor_;
-    tUbTailTail_ = tTailCore_ - (tTailCoreLoop_ - 1) * tUbFactor_;
+    usedCoreNum_ = splitInfo.usedCoreNum;
+    tNormCore_ = splitInfo.tNormCore;
+    tNormCoreLoop_ = splitInfo.tNormCoreLoop;
+    tUbFactor_ = splitInfo.tUbFactor;
+    tUbFactorTail_ = splitInfo.tUbFactorTail;
+    tTailCoreLoop_ = splitInfo.tTailCoreLoop;
+    tUbTailTail_ = splitInfo.tUbTailTail;
 }
 
 ge::graphStatus MhcSinkhornTiling::DoOpTiling()
 {
     OP_LOGD(opName_, "MhcSinkhorn tiling DoOpTiling.");
-
-    tNormCore_ = Ops::Base::CeilDiv(T_, totalCoreNum_);
-    usedCoreNum_ = Ops::Base::CeilDiv(T_, tNormCore_);
-    tTailCore_ = T_ - tNormCore_ * (usedCoreNum_ - 1);
-    ubSizeUsed_ = ubSize_ - MASK_BUFFER - MAX_BUFFER;
 
     SplitByCoreNum();
     SetTilingData();
