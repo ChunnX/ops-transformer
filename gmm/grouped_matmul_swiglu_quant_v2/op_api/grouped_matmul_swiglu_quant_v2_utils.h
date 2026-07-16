@@ -443,7 +443,9 @@ protected:
 
         if (transposeWeightScale && transposeWeight) {
             gmmDsqParams_.transposeWeight = true;
-            if (!IsMultiTensorWeight()) {
+            // MX WeightNz multi-tensor inputs are normalized later in the dedicated contiguous path. Other
+            // transposed inputs, including MXA8W4 multi-tensor inputs, still require view conversion here.
+            if (!IsMxWeightNzMultiTensorSupported()) {
                 auto uniqueExecutor = CREATE_EXECUTOR();
                 CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
                 aclOpExecutor *executorPtr = uniqueExecutor.get();
