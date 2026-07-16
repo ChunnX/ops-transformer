@@ -145,10 +145,6 @@ def _compact_rows(fail_indices, shape, layout, verbose):
     for coord in scatter[:sct_limit]:
         rows.append(tuple(str(v) for v in coord) + ("1",))
 
-    # 全量模式: 不合并, 逐点输出
-    if verbose == "all":
-        rows = [tuple(str(v) for v in c) + ("1",) for c in coords]
-
     # 截断提示
     truncated = False
     if verbose is None:
@@ -295,39 +291,53 @@ def analyze_failure(
         if fail_cnt > 0:
             lines.append("  " + "═" * 64)
 
-            # ── 坐标化紧凑表 ──
             fail_indices = fail_mask.reshape(-1).nonzero(as_tuple=False).squeeze(1)
             col_names = _col_names(cpu_t.shape, layout or "")
 
-            rows, axis_width, truncated = _compact_rows(
-                fail_indices, tuple(cpu_t.shape), layout or "", verbose)
-
-            if rows:
-                table_header = col_names + ["元素数"]
-                col_types = (["c"] * axis_width) + ["n"]
-                lines += _render_table(table_header, col_types, rows)
-                lines.append("")
-
-            if truncated:
-                lines.append(
-                    "    (使用 --verbose_diff fold 查看全部, "
-                    "--verbose_diff all 查看全部点位)"
-                )
-                lines.append("")
-
-            # ── Max-RE 前3 ──
             cpu_flat = cpu_t.reshape(-1)
             npu_flat = npu_t.reshape(-1)
-            diff_flat = diff.reshape(-1)
+            diff_flat_t = diff.reshape(-1)
+
+            if verbose == "all":
+                # 逐点坐标 + cpu/npu/diff 值
+                coords = _flat_to_coords(fail_indices, tuple(cpu_t.shape))
+                all_rows = []
+                for flat, coord in zip(fail_indices.tolist(), coords):
+                    all_rows.append(
+                        tuple(str(v) for v in coord)
+                        + (f"{cpu_flat[flat].item():>+.6f}",
+                           f"{npu_flat[flat].item():>+.6f}",
+                           f"{diff_flat_t[flat].item():.6f}")
+                    )
+                if all_rows:
+                    table_header = col_names + ["cpu", "npu", "diff"]
+                    col_types = (["c"] * len(col_names)) + ["n", "n", "n"]
+                    lines += _render_table(table_header, col_types, all_rows)
+            else:
+                rows, axis_width, truncated = _compact_rows(
+                    fail_indices, tuple(cpu_t.shape), layout or "", verbose)
+                if rows:
+                    table_header = col_names + ["元素数"]
+                    col_types = (["c"] * axis_width) + ["n"]
+                    lines += _render_table(table_header, col_types, rows)
+                lines.append("")
+                if truncated:
+                    lines.append(
+                        "    (使用 --verbose_diff fold 查看全部, "
+                        "--verbose_diff all 查看全部点位)"
+                    )
+                    lines.append("")
+
+            # ── Max-RE 前3 ──
             rel = torch.abs(cpu_flat - npu_flat) / (torch.abs(cpu_flat) + 1e-6)
 
             lines.append(f"  [Max-RE 前3] (绝对误差最大)")
             lines.append(f"  {'idx':>10}  {'cpu':>14}  {'npu':>14}  {'absErr':>12}  {'relErr':>10}")
             lines.append(f"  {'─' * 10}  {'─' * 14}  {'─' * 14}  {'─' * 12}  {'─' * 10}")
-            for i in diff_flat.topk(min(3, total)).indices.tolist():
+            for i in diff_flat_t.topk(min(3, total)).indices.tolist():
                 lines.append(
                     f"  {i:>10}  {cpu_flat[i].item():>+14.8f}  {npu_flat[i].item():>+14.8f}"
-                    f"  {diff_flat[i].item():>12.8f}  {rel[i].item():>10.6f}"
+                    f"  {diff_flat_t[i].item():>12.8f}  {rel[i].item():>10.6f}"
                 )
 
             # ── 预览 (仅默认模式) ──
