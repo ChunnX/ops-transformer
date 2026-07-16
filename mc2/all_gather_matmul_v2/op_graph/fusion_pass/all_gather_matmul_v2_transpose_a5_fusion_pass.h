@@ -26,5 +26,5 @@ protected:
     ge::fusion::GraphUniqPtr Replacement(const std::unique_ptr<ge::fusion::MatchResult> &matchResult) override;
 };
 } // namespace ops
-#endif // OPS_MATH_VERSION_NUM
+#endif // GRAPH_FUSION_SUPPORT_VERSION
 #endif // TRANSFORMER_ALL_GATHER_MATMUL_V2_TRANSPOSE_A5_FUSION_PASS_H
