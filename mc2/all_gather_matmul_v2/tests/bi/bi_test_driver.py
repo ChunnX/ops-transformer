@@ -70,11 +70,16 @@ def make_and_call(dev, hcom, ws, M_per_rank, K, N, target_row, seed, x1_scale_va
     target_row_bytes = torch.randint(0x10, 0x50, (K,), dtype=torch.uint8, generator=g_t)
 
     g_w = torch.Generator(); g_w.manual_seed(9000)
+    # 不转置
     x2_bytes = torch.randint(0x10, 0x50, (K, N), dtype=torch.uint8, generator=g_w)
     x2 = x2_bytes.to(dev).reshape(K, N).view(torch.float8_e4m3fn)
-
     x2s_bytes = build_x2_scale_k_varying(n_pack, N)
     x2s = x2s_bytes.to(dev).reshape(n_pack, N, 2).view(torch.float8_e8m0fnu)
+    # 转置
+    # x2_bytes = torch.randint(0x10, 0x50, (N, K), dtype=torch.uint8, generator=g_w)
+    # x2 = x2_bytes.to(dev).reshape(N, K).view(torch.float8_e4m3fn)
+    # x2s_bytes = build_x2_scale_k_varying(N, n_pack)
+    # x2s = x2s_bytes.to(dev).reshape(N, n_pack, 2).view(torch.float8_e8m0fnu)
 
     g_o = torch.Generator(); g_o.manual_seed(seed)
     x1_bytes = torch.randint(0x10, 0x50, (M_per_rank, K), dtype=torch.uint8, generator=g_o)
