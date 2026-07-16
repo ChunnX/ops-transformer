@@ -93,6 +93,25 @@ TEST_F(MegaMoeArch35TilingTest, MteGenericNoQuantWorkspaceOutputReadyLayout)
     }
 }
 
+TEST_F(MegaMoeArch35TilingTest, SwiGluReadyFlagsReserveOneSlotPerWave)
+{
+    MegaMoeTilingData tiling = MakeMteGenericNoQuantTiling();
+    tiling.maxOutputSize = 4097U; // 17 waves, forcing two cache lines per expert.
+    GM_ADDR base = reinterpret_cast<GM_ADDR>(uintptr_t{0x100000000ULL});
+    WorkspaceInfo info(base, &tiling);
+
+    uint64_t swigluOffset = WorkspaceOffset(base, info.flagSwiGluToGmm2Ptr);
+    uint64_t dispatchOffset = WorkspaceOffset(base, info.flagDispatchToGmm1Ptr);
+    uint64_t maxWaves = (static_cast<uint64_t>(tiling.maxOutputSize) + DISPATCH_WAVE_TILE_M - 1U) /
+                        DISPATCH_WAVE_TILE_M;
+    uint64_t slotsPerExpert =
+        (maxWaves + static_cast<uint64_t>(INT_CACHELINE) - 1U) / INT_CACHELINE * INT_CACHELINE;
+    uint64_t expectedBytes = static_cast<uint64_t>(tiling.expertPerRank) * slotsPerExpert * sizeof(int32_t);
+
+    EXPECT_EQ(slotsPerExpert, 2ULL * INT_CACHELINE);
+    EXPECT_EQ(dispatchOffset - swigluOffset, expectedBytes);
+}
+
 TEST_F(MegaMoeArch35TilingTest, MteGenericNoQuantWorkspaceUses64BitOffsets)
 {
     MegaMoeTilingData tiling = MakeMteGenericNoQuantTiling();
