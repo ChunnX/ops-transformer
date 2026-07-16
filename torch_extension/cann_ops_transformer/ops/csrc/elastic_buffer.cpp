@@ -563,7 +563,7 @@ std::function<at::Tensor()> ElasticBuffer::EngramFetch(const at::Tensor &indices
 
         uint32_t rankSize = commContext_.rankSize;
         int64_t maxR = numMaxTokensPerRank_ * static_cast<int64_t>(rankSize);
-        auto opts = indices.options();
+        auto intOpts = at::TensorOptions().dtype(at::kInt).device(indices.device());
         printf("[Engram] EngramFetch[train]: rankId=%u, rankSize=%u, numTokens=%ld, hiddenSize=%ld, "
                "numMaxTokensPerRank=%ld, maxR=%ld, commBufferSize=%ld, localStorageAddr=0x%lx\n",
                commContext_.epRankId, rankSize, numTokens, hiddenSize_,
@@ -572,11 +572,11 @@ std::function<at::Tensor()> ElasticBuffer::EngramFetch(const at::Tensor &indices
         fflush(stdout);
 
         EngramFetchCtx ctx{
-            at::empty({numTokens}, opts),
-            at::empty({static_cast<int64_t>(rankSize)}, opts),
-            at::empty({static_cast<int64_t>(rankSize)}, opts),
-            at::empty({maxR}, opts),
-            at::empty({1}, opts)};
+            at::empty({numTokens}, intOpts),
+            at::empty({static_cast<int64_t>(rankSize *8)}, intOpts), // 32b对齐
+            at::empty({static_cast<int64_t>(rankSize)}, intOpts),
+            at::empty({maxR}, intOpts),
+            at::empty({1}, intOpts)};
 
         if (numTokens > 0) {
             fetchInProgress_.store(true);
