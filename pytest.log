@@ -1,183 +1,36 @@
-(fzx_py311) root@aa:/home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test# PYTHONPATH=/home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test python3 -m ttk e2e -i /home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test/fia_mxfp8.csv --plugin /home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test/assets --backend npu -t PA_BnNBsD_B1_QS0_KVS64_Nq1_Nkv1_D128_SP3 --warmup 0 --run 1
-/root/miniconda3/envs/fzx_py311/bin/python3: No module named ttk
-(fzx_py311) root@aa:/home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test# cd /home/z00954345/Ascendfzxttk/cann/ops-test-kit
-(fzx_py311) root@aa:/home/z00954345/Ascendfzxttk/cann/ops-test-kit# PYTHONPATH=/home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test python3 -m ttk e2e -i /home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test/fia_mxfp8.csv --plugin /home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test/assets --backend npu -t PA_BnNBsD_B1_QS0_KVS64_Nq1_Nkv1_D128_SP3 --warmup 0 --run 1
-2026-07-16 03:57:42,636 [INFO] [220175 MP MT] [bridge.py:198]: Command: ttk framework-api -i /home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test/fia_mxfp8.csv 
-2026-07-16 03:57:47,169 [INFO] [220175 MP MT] [patch_getenv.py:15]: get env ASCEND_HOME_PATH = /home/z00954345/Ascendfzxttk/cann 
-2026-07-16 03:57:47,716 [INFO] [220175 MP MT] [instance.py:33]: Framework API mode: backend=npu 
-2026-07-16 03:57:47,716 [INFO] [220175 MP MT] [instance_base.py:100]: TTK Profiling Start! 
-2026-07-16 03:57:47,716 [INFO] [220175 MP MT] [instance_base.py:101]: Mode: ASCEND_ONBOARD 
-2026-07-16 03:57:47,716 [INFO] [220175 MP MT] [patch_getenv.py:15]: get env PATH = /home/z00954345/Ascendfzxttk/cann/bin:/home/z00954345/Ascendfzxttk/cann/tools/ccec_compiler/bin:/home/z00954345/Ascendfzxttk/cann/tools/profiler/bin:/home/z00954345/Ascendfzxttk/cann/tools/ascend_system_advisor/asys:/home/z00954345/Ascendfzxttk/cann/tools/show_kernel_debug_data:/home/z00954345/Ascendfzxttk/cann/tools/msobjdump:/usr/local/bin:/root/.remotedev-server/bin/54b7d5e655f755d970eae443dec651dc57c16686/1.96.67/bin/remote-cli:/root/miniconda3/envs/fzx_py311/bin:/root/miniconda3/condabin:/usr/local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin:/root/.remotedev-server/bin/54b7d5e655f755d970eae443dec651dc57c16686/1.96.67 
-2026-07-16 03:57:48,862 [INFO] [220175 MP MT] [patch_getenv.py:15]: get env ASCEND_OPP_PATH = /home/z00954345/Ascendfzxttk/cann/opp 
-2026-07-16 03:57:48,867 [INFO] [220175 MP MT] [instance.py:49]: Device platform: Ascend950DT_9592 
-2026-07-16 03:57:48,868 [INFO] [220175 MP MT] [instance_base.py:104]: Device Platform: Ascend950DT_9592 
-2026-07-16 03:57:50,010 [INFO] [220175 MP MT] [instance.py:42]: Device count: 1 
-2026-07-16 03:57:50,010 [INFO] [220175 MP MT] [instance_base.py:111]: Device Count: 1 
-2026-07-16 03:57:50,010 [INFO] [220175 MP MT] [instance_base.py:231]: Preparing testcases ... 
-2026-07-16 03:57:50,010 [INFO] [220175 MP MT] [instance_base.py:233]: Reading testcase file /home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test/fia_mxfp8.csv ... 
-2026-07-16 03:57:50,011 [INFO] [220175 MP MT] [instance_base.py:296]: Input testcase file is not a valid zip file, switch to normal csv mode... 
-2026-07-16 03:57:50,011 [INFO] [220175 MP MT] [instance_base.py:461]: Reading normal csv testcases... 
-Checking testcase name...
-Case number: 1
-Initialize output csv file...
-Output csv file is not specified. It will be set as /home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test/fia_mxfp8_result.csv
-Process per device: 1
-Preparing Task Executors...
+(fzx_py311) root@aa:/home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test# python3 -m pytest test_fia_fullquant_mxfp8_func_rdv.py -v -k "PA_BnNBsD_B1_QS0_KVS64_Nq1_Nkv1_D128_SP3" -s
+===================================================================================== test session starts =====================================================================================
+platform linux -- Python 3.11.15, pytest-9.1.1, pluggy-1.6.0 -- /root/miniconda3/envs/fzx_py311/bin/python3
+cachedir: .pytest_cache
+rootdir: /home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test
+configfile: pytest.ini
+collected 151 items / 150 deselected / 1 selected                                                                                                                                             
 
-+------------------------------------------------------------------------------------------------------+
-| Version: 3.0.0 Summary (Device Total: 1) Progress: 0% 0 / 1 ET: 3s Rev: 7f1d28b                      |
-+------------------------------------------------------------------------------------------------------+
-| npu:0                                    | 220506 D0P0             UNKNOWN              IDLE     0s  |
-+------------------------------------------------------------------------------------------------------+
-2026-07-16 03:57:55,708 [INFO] [220506 D0P0 MainThread] [patch_getenv.py:15]: get env ASCEND_HOME_PATH = /home/z00954345/Ascendfzxttk/cann 
-
-----------------------------------------------------------------------------------------------------
-API Name: fia_mxfp8_wrapper.npu_fia_mxfp8
-Golden API: 
-Backend: npu
-////////////// Tensors //////////////
-Input View Shapes: ((1, 1, 0, 128), (1, 1, 64, 128), (1, 1, 64, 128), (1, 1, 0, 4), (1, 1, 64, 4), (1, 1, 2, 128), (1,), (1, 1))
-Input Dtypes: ('float16', 'float16', 'float16', 'float32', 'float32', 'float32', 'float32', 'int32')
-Input Storage Shapes: ()
-Input Formats: ()
-Input View Offsets: ()
-Input View Strides: ()
-//////////// Output Info //////////
-Output Tensor Indexes: ()
-//////////// Attributes //////////
-B: 1
-N_q: 1
-N_kv: 1
-D: 128
-actual_seq_q: [0]
-actual_seq_kv: [64]
-enable_pa: True
-kv_cache_layout: BnNBsD
-block_size: 512
-sparse_mode: 3
-q_scale_layout: N2TGD
-p_scale_value: 15.0
-data_range_q: 1.0
-data_range_k: 1.0
-data_range_v: 1.0
-enable_lse: False
-enable_rope: False
-D_rope: 64
-graph_path: 7
-input_layout: TND
-is_contiguous: True
-device_id: 0
-//////////// Test Config //////////
-Input Data Range: ((None, None), (None, None), (None, None), (None, None), (None, None), (None, None), (None, None), (None, None))
-Precision Tolerance: None
-Absolute Precision: (1e-08,)
-Mode: ASCEND_ONBOARD
-PID: 220506
-Device: 0
-----------------------------------------------------------------------------------------------------
-
-+------------------------------------------------------------------------------------------------------+
-| Version: 3.0.0 Summary (Device Total: 1) Progress: 0% 0 / 1 ET: 13s Rev: 7f1d28b                     |
-+------------------------------------------------------------------------------------------------------+
-| npu:0                                    | 220506 q1_Nkv1_D128_SP3 OnEagerProfiling     RUNNING  3s  |
-+------------------------------------------------------------------------------------------------------+
-[WRAPPER] 使用 customize_inputs 缓存的真实 FP8 数据
-[WRAPPER] graph_path=7, 调用 npu_mxfp8_fa
-[NPU] Q layout auto: G=1, S1=0, G*S1=0, q_layout=N2TGD
-[NPU TND] q=torch.Size([0, 1, 128])
-[NPU] Q scale layout=N2TGD, shape=torch.Size([1, 0, 1, 2, 2])
-[NPU PA] kv_layout=BnNBsD
-[NPU PA] k=torch.Size([1, 1, 512, 128]), v=torch.Size([1, 1, 512, 128])
-[NPU PA] deq_k=torch.Size([1, 1, 512, 2, 2]), deq_v=torch.Size([1, 1, 8, 128, 2])
-[NPU] 调用 PA 模式...
-[NPU] 调用aclgraph (npugraph_ex)...
-get env TORCHINDUCTOR_CACHE_DIR = /tmp/torchinductor_root
-[NPU] output=torch.Size([0, 1, 128])
-[WRAPPER] 使用 customize_inputs 缓存的真实 FP8 数据
-[WRAPPER] graph_path=7, 调用 npu_mxfp8_fa
-[NPU] Q layout auto: G=1, S1=0, G*S1=0, q_layout=N2TGD
-[NPU TND] q=torch.Size([0, 1, 128])
-[NPU] Q scale layout=N2TGD, shape=torch.Size([1, 0, 1, 2, 2])
-[NPU PA] kv_layout=BnNBsD
-[NPU PA] k=torch.Size([1, 1, 512, 128]), v=torch.Size([1, 1, 512, 128])
-[NPU PA] deq_k=torch.Size([1, 1, 512, 2, 2]), deq_v=torch.Size([1, 1, 8, 128, 2])
-[NPU] 调用 PA 模式...
-[NPU] 调用aclgraph (npugraph_ex)...
-[NPU] output=torch.Size([0, 1, 128])
-[WRAPPER] 使用 customize_inputs 缓存的真实 FP8 数据
-[WRAPPER] graph_path=7, 调用 npu_mxfp8_fa
-[NPU] Q layout auto: G=1, S1=0, G*S1=0, q_layout=N2TGD
-[NPU TND] q=torch.Size([0, 1, 128])
-[NPU] Q scale layout=N2TGD, shape=torch.Size([1, 0, 1, 2, 2])
-[NPU PA] kv_layout=BnNBsD
-[NPU PA] k=torch.Size([1, 1, 512, 128]), v=torch.Size([1, 1, 512, 128])
-[NPU PA] deq_k=torch.Size([1, 1, 512, 2, 2]), deq_v=torch.Size([1, 1, 8, 128, 2])
-[NPU] 调用 PA 模式...
-[NPU] 调用aclgraph (npugraph_ex)...
-[NPU] output=torch.Size([0, 1, 128])
-[WRAPPER] 使用 customize_inputs 缓存的真实 FP8 数据
-[WRAPPER] graph_path=7, 调用 npu_mxfp8_fa
-[NPU] Q layout auto: G=1, S1=0, G*S1=0, q_layout=N2TGD
-[NPU TND] q=torch.Size([0, 1, 128])
-[NPU] Q scale layout=N2TGD, shape=torch.Size([1, 0, 1, 2, 2])
-[NPU PA] kv_layout=BnNBsD
-[NPU PA] k=torch.Size([1, 1, 512, 128]), v=torch.Size([1, 1, 512, 128])
-[NPU PA] deq_k=torch.Size([1, 1, 512, 2, 2]), deq_v=torch.Size([1, 1, 8, 128, 2])
-[NPU] 调用 PA 模式...
-[NPU] 调用aclgraph (npugraph_ex)...
-[NPU] output=torch.Size([0, 1, 128])
-[WRAPPER] 使用 customize_inputs 缓存的真实 FP8 数据
-[WRAPPER] graph_path=7, 调用 npu_mxfp8_fa
-[NPU] Q layout auto: G=1, S1=0, G*S1=0, q_layout=N2TGD
-[NPU TND] q=torch.Size([0, 1, 128])
-[NPU] Q scale layout=N2TGD, shape=torch.Size([1, 0, 1, 2, 2])
-[NPU PA] kv_layout=BnNBsD
-[NPU PA] k=torch.Size([1, 1, 512, 128]), v=torch.Size([1, 1, 512, 128])
-[NPU PA] deq_k=torch.Size([1, 1, 512, 2, 2]), deq_v=torch.Size([1, 1, 8, 128, 2])
-[NPU] 调用 PA 模式...
-[NPU] 调用aclgraph (npugraph_ex)...
-[NPU] output=torch.Size([0, 1, 128])
-
-+-------------------------------------------------------------------------------------------------------+
-| Version: 3.0.0 Summary (Device Total: 1) Progress: 0% 0 / 1 ET: 23s Rev: 7f1d28b                      |
-+-------------------------------------------------------------------------------------------------------+
-| npu:0                                    | 220506 q1_Nkv1_D128_SP3 OnEagerProfiling     RUNNING  13s  |
-+-------------------------------------------------------------------------------------------------------+
-[WRAPPER] 使用 customize_inputs 缓存的真实 FP8 数据
-[WRAPPER] graph_path=7, 调用 npu_mxfp8_fa
-[NPU] Q layout auto: G=1, S1=0, G*S1=0, q_layout=N2TGD
-[NPU TND] q=torch.Size([0, 1, 128])
-[NPU] Q scale layout=N2TGD, shape=torch.Size([1, 0, 1, 2, 2])
-[NPU PA] kv_layout=BnNBsD
-[NPU PA] k=torch.Size([1, 1, 512, 128]), v=torch.Size([1, 1, 512, 128])
-[NPU PA] deq_k=torch.Size([1, 1, 512, 2, 2]), deq_v=torch.Size([1, 1, 8, 128, 2])
-[NPU] 调用 PA 模式...
-[NPU] 调用aclgraph (npugraph_ex)...
-[NPU] output=torch.Size([0, 1, 128])
-get env ASCEND_GLOBAL_LOG_LEVEL = 3
-[2026-07-16 03:58:11] [INFO] [221231] profiler.py: Start parsing profiling data in sync mode at: /tmp/ttk_npu_prof_p9a0fbg2/aa_220506_20260716035811027_ascend_pt
-get env PATH = /home/z00954345/Ascendfzxttk/cann/bin:/home/z00954345/Ascendfzxttk/cann/tools/ccec_compiler/bin:/home/z00954345/Ascendfzxttk/cann/tools/profiler/bin:/home/z00954345/Ascendfzxttk/cann/tools/ascend_system_advisor/asys:/home/z00954345/Ascendfzxttk/cann/tools/show_kernel_debug_data:/home/z00954345/Ascendfzxttk/cann/tools/msobjdump:/usr/local/bin:/root/.remotedev-server/bin/54b7d5e655f755d970eae443dec651dc57c16686/1.96.67/bin/remote-cli:/root/miniconda3/envs/fzx_py311/bin:/root/miniconda3/condabin:/usr/local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin:/root/.remotedev-server/bin/54b7d5e655f755d970eae443dec651dc57c16686/1.96.67
-[2026-07-16 03:58:15] [INFO] [221248] profiler.py: CANN profiling data parsed in a total time of 0:00:03.038532
-[2026-07-16 03:58:15] [WARNING] [221231] profiler.py: Failed to get api data from db.
-[2026-07-16 03:58:15] [WARNING] [221231] profiler.py: Failed to get task data from db.
-[2026-07-16 03:58:16] [INFO] [221231] profiler.py: All profiling data parsed in a total time of 0:00:04.520367
+test_fia_fullquant_mxfp8_func_rdv.py::test_fia_fullquant_mxfp8[PA_BnNBsD_B1_QS0_KVS64_Nq1_Nkv1_D128_SP3] [INFO] max_sq=0, max_skv=64
+[INFO] q_fp16=torch.Size([1, 1, 0, 128]), k_fp16=torch.Size([1, 1, 64, 128]), v_fp16=torch.Size([1, 1, 64, 128])
+[INFO] V scale Sg=2, 是否奇数=False
+[CACHE] save input → /home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test/common/golden_cache/PA_BnNBsD_B1_QS0_KVS64_Nq1_Nkv1_D128_SP3_input.pt
 [CPU Golden] TILES_Q=0, TILES_KV=1, Sq=0, Skv=64
 [CPU Golden] output=torch.Size([1, 1, 0, 128])
+[CACHE] save CPU output → /home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test/common/golden_cache/PA_BnNBsD_B1_QS0_KVS64_Nq1_Nkv1_D128_SP3_cpu_output.pt
+[NPU] Q layout auto: G=1, S1=0, G*S1=0, q_layout=N2TGD
+[NPU TND] q=torch.Size([0, 1, 128])
+[NPU] Q scale layout=N2TGD, shape=torch.Size([1, 0, 1, 2, 2])
+[NPU PA] kv_layout=BnNBsD
+[NPU PA] k=torch.Size([1, 1, 512, 128]), v=torch.Size([1, 1, 512, 128])
+[NPU PA] deq_k=torch.Size([1, 1, 512, 2, 2]), deq_v=torch.Size([1, 1, 8, 128, 2])
+[NPU] 调用 PA 模式...
+[NPU] 调用单算子模式...
+[NPU] output=torch.Size([0, 1, 128])
+[CACHE] save NPU output → /home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test/common/golden_cache/PA_BnNBsD_B1_QS0_KVS64_Nq1_Nkv1_D128_SP3_npu_output.pt
+The npu_output is [],and it is same as bm_output, the result of data_compare is "Pass"
+PASSED
 
-Eager Kernels
--------------------------------------------------------------------------------------------------------
-Name         avg            max           min           # of Calls
--------------------------------------------------------------------------------------------------------
-ForeachCopy  4.104          5.823         3.031         4
--------------------------------------------------------------------------------------------------------
+====================================================================================== warnings summary =======================================================================================
+../../../../../../../../../../root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/torch/jit/_script.py:365: 14 warnings
+  /root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/torch/jit/_script.py:365: DeprecationWarning: `torch.jit.script_method` is deprecated. Please switch to `torch.compile` or `torch.export`.
+    warnings.warn(
 
-
- ####################################### Eager Result Summary  ######################################## 
-EAGER:       invalid
-  DEVICE: 16.414 us
-  CPU:    6374.318 us
-STATUS: FAIL
-Golden Shapes: ((0, 1, 128),)
-Golden Dtypes: ('float32',)
-#######################################################################################################
-ttk Profiling complete
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+======================================================================= 1 passed, 150 deselected, 14 warnings in 18.86s =======================================================================
+(fzx_py311) root@aa:/home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test# cd 
