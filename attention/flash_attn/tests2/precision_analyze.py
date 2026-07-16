@@ -296,6 +296,9 @@ def analyze_failure(
             if verbose is None:
                 lines += _preview(cpu_flat, npu_flat, total)
 
+    lines += analyze_dimensions(cpu_out, npu_out, compare_result)
+    lines += analyze_continuity(cpu_out, npu_out, compare_result)
+    lines += visualize_failure(cpu_out, npu_out, compare_result)
     lines.append(f"\n{SEP}")
     report = "\n".join(lines)
 
@@ -308,13 +311,16 @@ def analyze_failure(
     return report
 
 
-def analyze_dimensions(cpu_out: dict, npu_out: dict, compare_result: dict) -> str:
-    raise NotImplementedError("维度分析待实现")
+def analyze_dimensions(cpu_out: dict, npu_out: dict, compare_result: dict) -> list[str]:
+    """维度分析扩展点。算子可 override, 默认不输出。"""
+    return []
 
 
-def analyze_continuity(cpu_out: dict, npu_out: dict, compare_result: dict) -> str:
-    raise NotImplementedError("连续性分析待实现")
+def analyze_continuity(cpu_out: dict, npu_out: dict, compare_result: dict) -> list[str]:
+    """连续性分析扩展点。算子可 override, 默认不输出。"""
+    return []
 
 
-def visualize_failure(cpu_out: dict, npu_out: dict, compare_result: dict, save_dir: str = None) -> str:
-    raise NotImplementedError("可视化待实现")
+def visualize_failure(cpu_out: dict, npu_out: dict, compare_result: dict, save_dir: str = None) -> list[str]:
+    """可视化扩展点。算子可 override, 默认不输出。"""
+    return []
