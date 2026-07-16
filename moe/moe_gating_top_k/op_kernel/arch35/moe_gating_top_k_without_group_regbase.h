@@ -578,82 +578,191 @@ __aicore__ inline void MoeGatingTopKWithoutGroupRegbase<T>::ProcessSmallExpertK1
 
         uint16_t expertCountU16 = static_cast<uint16_t>(expertCount_);
         uint32_t rowsInBatchU32 = static_cast<uint32_t>(rowsInBatch);
+        uint16_t vfLoopNum = static_cast<uint16_t>(CeilDiv(rowsInBatchU32, WG_VL_FLOAT_SIZE));
+        bool needRenorm = (normType_ == 1) || (normType_ == 0 && renorm_ == 1);
 
-        __VEC_SCOPE__
-        {
-            RegTensor<float> vregIn;
-            RegTensor<float> vregNorm;
-            RegTensor<float> vregOut;
-            RegTensor<float> vregOne;
-            RegTensor<float> vregTmp1;
-            RegTensor<float> vregTmp2;
-            RegTensor<float> vregTmp3;
-            RegTensor<float> vregMax;
-            RegTensor<float> vregArgmax;
-            RegTensor<int32_t> vregArgmaxInt;
-            MicroAPI::MaskReg pregRow = MicroAPI::CreateMask<float>();
-            MicroAPI::MaskReg pregCmp;
-            MicroAPI::Duplicate<float, MicroAPI::MaskMergeMode::ZEROING, float>(vregOne, static_cast<float>(1),
-                                                                                pregRow);
-
-            uint16_t vfLoopNum = static_cast<uint16_t>(CeilDiv(rowsInBatchU32, WG_VL_FLOAT_SIZE));
-            for (uint16_t i = 0; i < vfLoopNum; i++) {
-                pregRow = MicroAPI::UpdateMask<float>(rowsInBatchU32);
-                uint32_t rowOffset = i * WG_VL_FLOAT_SIZE;
-
-                for (uint16_t e = 0; e < expertCountU16; e++) {
-                    ops::LoadOneTensorForDtypeT<T>(inputAddr, vregIn, pregRow,
-                                                   rowOffset * expertCountU16 + e);
-
-                    if (normType_ == 1) {
+        if (normType_ == 1) {
+            __VEC_SCOPE__
+            {
+                RegTensor<float> vregIn;
+                RegTensor<float> vregNorm;
+                RegTensor<float> vregOut;
+                RegTensor<float> vregOne;
+                RegTensor<float> vregTmp1;
+                RegTensor<float> vregTmp2;
+                RegTensor<float> vregTmp3;
+                RegTensor<float> vregMax;
+                RegTensor<float> vregArgmax;
+                RegTensor<int32_t> vregArgmaxInt;
+                MicroAPI::MaskReg pregRow = MicroAPI::CreateMask<float>();
+                MicroAPI::MaskReg pregCmp;
+                MicroAPI::Duplicate<float, MicroAPI::MaskMergeMode::ZEROING, float>(vregOne, static_cast<float>(1),
+                                                                                    pregRow);
+                for (uint16_t i = 0; i < vfLoopNum; i++) {
+                    pregRow = MicroAPI::UpdateMask<float>(rowsInBatchU32);
+                    uint32_t rowOffset = i * WG_VL_FLOAT_SIZE;
+                    ops::LoadOneTensorForDtypeT<T>(inputAddr, vregIn, pregRow, rowOffset * expertCountU16);
+                    MicroAPI::Muls(vregTmp1, vregIn, static_cast<float>(-1), pregRow);
+                    MicroAPI::Exp(vregTmp2, vregTmp1, pregRow);
+                    MicroAPI::Adds(vregTmp3, vregTmp2, static_cast<float>(1), pregRow);
+                    MicroAPI::Div<float, &WG_DIV_MODE>(vregNorm, vregOne, vregTmp3, pregRow);
+                    if (hasBias_) {
+                        RegTensor<float> vregBiasVal;
+                        ops::LoadOneTensorForDtypeT<T>(biasAddr, vregBiasVal, pregRow, 0);
+                        MicroAPI::Add(vregNorm, vregNorm, vregBiasVal, pregRow);
+                    }
+                    MicroAPI::Muls(vregMax, vregNorm, static_cast<float>(1), pregRow);
+                    MicroAPI::Duplicate(vregArgmax, static_cast<float>(0), pregRow);
+                    for (uint16_t e = 1; e < expertCountU16; e++) {
+                        ops::LoadOneTensorForDtypeT<T>(inputAddr, vregIn, pregRow,
+                                                       rowOffset * expertCountU16 + e);
                         MicroAPI::Muls(vregTmp1, vregIn, static_cast<float>(-1), pregRow);
                         MicroAPI::Exp(vregTmp2, vregTmp1, pregRow);
                         MicroAPI::Adds(vregTmp3, vregTmp2, static_cast<float>(1), pregRow);
                         MicroAPI::Div<float, &WG_DIV_MODE>(vregNorm, vregOne, vregTmp3, pregRow);
-                    } else if (normType_ == 0) {
-                        MicroAPI::Duplicate(vregNorm, static_cast<float>(1), pregRow);
-                    } else {
-                        MicroAPI::Exp(vregTmp1, vregIn, pregRow);
-                        MicroAPI::Adds(vregTmp2, vregTmp1, static_cast<float>(1), pregRow);
-                        MicroAPI::Ln(vregTmp3, vregTmp2, pregRow);
-                        MicroAPI::Sqrt(vregNorm, vregTmp3, pregRow);
-                    }
-
-                    if (hasBias_) {
-                        RegTensor<float> vregBiasVal;
-                        ops::LoadOneTensorForDtypeT<T>(biasAddr, vregBiasVal, pregRow, e);
-                        MicroAPI::Add(vregNorm, vregNorm, vregBiasVal, pregRow);
-                    }
-
-                    if (e == 0) {
-                        MicroAPI::Muls(vregMax, vregNorm, static_cast<float>(1), pregRow);
-                        MicroAPI::Duplicate(vregArgmax, static_cast<float>(0), pregRow);
-                    } else {
+                        if (hasBias_) {
+                            RegTensor<float> vregBiasVal;
+                            ops::LoadOneTensorForDtypeT<T>(biasAddr, vregBiasVal, pregRow, e);
+                            MicroAPI::Add(vregNorm, vregNorm, vregBiasVal, pregRow);
+                        }
                         MicroAPI::Compare<float, CMPMODE::GT>(pregCmp, vregNorm, vregMax, pregRow);
                         MicroAPI::Select<float>(vregMax, vregNorm, vregMax, pregCmp);
                         RegTensor<float> vregE;
                         MicroAPI::Duplicate(vregE, static_cast<float>(e), pregRow);
                         MicroAPI::Select<float>(vregArgmax, vregE, vregArgmax, pregCmp);
                     }
+                    if (needRenorm) {
+                        RegTensor<float> vregSum;
+                        MicroAPI::ReduceSum(vregSum, vregMax, pregRow);
+                        MicroAPI::Adds(vregSum, vregSum, eps_, pregRow);
+                        RegTensor<float> vregSumBcast;
+                        MicroAPI::Duplicate(vregSumBcast, vregSum, pregRow);
+                        MicroAPI::Div(vregOut, vregMax, vregSumBcast, pregRow);
+                    } else {
+                        MicroAPI::Muls(vregOut, vregMax, static_cast<float>(1), pregRow);
+                    }
+                    MicroAPI::Muls(vregOut, vregOut, routedScalingFactor_, pregRow);
+                    MicroAPI::Cast<int32_t, float, WG_CAST_FP32_TO_I32>(vregArgmaxInt, vregArgmax, pregRow);
+                    ops::StoreOneTensorForDtypeT<T>(outputAddr, vregOut, pregRow, rowOffset);
+                    MicroAPI::DataCopy(expertIdxAddr + rowOffset, vregArgmaxInt, pregRow);
                 }
-
-                bool needRenorm = (normType_ == 1) || (normType_ == 0 && renorm_ == 1);
-                if (needRenorm) {
-                    RegTensor<float> vregSum;
-                    MicroAPI::ReduceSum(vregSum, vregMax, pregRow);
-                    MicroAPI::Adds(vregSum, vregSum, eps_, pregRow);
-                    RegTensor<float> vregSumBcast;
-                    MicroAPI::Duplicate(vregSumBcast, vregSum, pregRow);
-                    MicroAPI::Div(vregOut, vregMax, vregSumBcast, pregRow);
-                } else {
-                    MicroAPI::Muls(vregOut, vregMax, static_cast<float>(1), pregRow);
+            }
+        } else if (normType_ == 0) {
+            __VEC_SCOPE__
+            {
+                RegTensor<float> vregIn;
+                RegTensor<float> vregNorm;
+                RegTensor<float> vregOut;
+                RegTensor<float> vregMax;
+                RegTensor<float> vregArgmax;
+                RegTensor<int32_t> vregArgmaxInt;
+                MicroAPI::MaskReg pregRow = MicroAPI::CreateMask<float>();
+                MicroAPI::MaskReg pregCmp;
+                for (uint16_t i = 0; i < vfLoopNum; i++) {
+                    pregRow = MicroAPI::UpdateMask<float>(rowsInBatchU32);
+                    uint32_t rowOffset = i * WG_VL_FLOAT_SIZE;
+                    ops::LoadOneTensorForDtypeT<T>(inputAddr, vregIn, pregRow, rowOffset * expertCountU16);
+                    MicroAPI::Duplicate(vregNorm, static_cast<float>(1), pregRow);
+                    if (hasBias_) {
+                        RegTensor<float> vregBiasVal;
+                        ops::LoadOneTensorForDtypeT<T>(biasAddr, vregBiasVal, pregRow, 0);
+                        MicroAPI::Add(vregNorm, vregNorm, vregBiasVal, pregRow);
+                    }
+                    MicroAPI::Muls(vregMax, vregNorm, static_cast<float>(1), pregRow);
+                    MicroAPI::Duplicate(vregArgmax, static_cast<float>(0), pregRow);
+                    for (uint16_t e = 1; e < expertCountU16; e++) {
+                        ops::LoadOneTensorForDtypeT<T>(inputAddr, vregIn, pregRow,
+                                                       rowOffset * expertCountU16 + e);
+                        MicroAPI::Duplicate(vregNorm, static_cast<float>(1), pregRow);
+                        if (hasBias_) {
+                            RegTensor<float> vregBiasVal;
+                            ops::LoadOneTensorForDtypeT<T>(biasAddr, vregBiasVal, pregRow, e);
+                            MicroAPI::Add(vregNorm, vregNorm, vregBiasVal, pregRow);
+                        }
+                        MicroAPI::Compare<float, CMPMODE::GT>(pregCmp, vregNorm, vregMax, pregRow);
+                        MicroAPI::Select<float>(vregMax, vregNorm, vregMax, pregCmp);
+                        RegTensor<float> vregE;
+                        MicroAPI::Duplicate(vregE, static_cast<float>(e), pregRow);
+                        MicroAPI::Select<float>(vregArgmax, vregE, vregArgmax, pregCmp);
+                    }
+                    if (needRenorm) {
+                        RegTensor<float> vregSum;
+                        MicroAPI::ReduceSum(vregSum, vregMax, pregRow);
+                        MicroAPI::Adds(vregSum, vregSum, eps_, pregRow);
+                        RegTensor<float> vregSumBcast;
+                        MicroAPI::Duplicate(vregSumBcast, vregSum, pregRow);
+                        MicroAPI::Div(vregOut, vregMax, vregSumBcast, pregRow);
+                    } else {
+                        MicroAPI::Muls(vregOut, vregMax, static_cast<float>(1), pregRow);
+                    }
+                    MicroAPI::Muls(vregOut, vregOut, routedScalingFactor_, pregRow);
+                    MicroAPI::Cast<int32_t, float, WG_CAST_FP32_TO_I32>(vregArgmaxInt, vregArgmax, pregRow);
+                    ops::StoreOneTensorForDtypeT<T>(outputAddr, vregOut, pregRow, rowOffset);
+                    MicroAPI::DataCopy(expertIdxAddr + rowOffset, vregArgmaxInt, pregRow);
                 }
-                MicroAPI::Muls(vregOut, vregOut, routedScalingFactor_, pregRow);
-
-                MicroAPI::Cast<int32_t, float, WG_CAST_FP32_TO_I32>(vregArgmaxInt, vregArgmax, pregRow);
-
-                ops::StoreOneTensorForDtypeT<T>(outputAddr, vregOut, pregRow, rowOffset);
-                MicroAPI::DataCopy(expertIdxAddr + rowOffset, vregArgmaxInt, pregRow);
+            }
+        } else {
+            __VEC_SCOPE__
+            {
+                RegTensor<float> vregIn;
+                RegTensor<float> vregNorm;
+                RegTensor<float> vregOut;
+                RegTensor<float> vregTmp1;
+                RegTensor<float> vregTmp2;
+                RegTensor<float> vregTmp3;
+                RegTensor<float> vregMax;
+                RegTensor<float> vregArgmax;
+                RegTensor<int32_t> vregArgmaxInt;
+                MicroAPI::MaskReg pregRow = MicroAPI::CreateMask<float>();
+                MicroAPI::MaskReg pregCmp;
+                for (uint16_t i = 0; i < vfLoopNum; i++) {
+                    pregRow = MicroAPI::UpdateMask<float>(rowsInBatchU32);
+                    uint32_t rowOffset = i * WG_VL_FLOAT_SIZE;
+                    ops::LoadOneTensorForDtypeT<T>(inputAddr, vregIn, pregRow, rowOffset * expertCountU16);
+                    MicroAPI::Exp(vregTmp1, vregIn, pregRow);
+                    MicroAPI::Adds(vregTmp2, vregTmp1, static_cast<float>(1), pregRow);
+                    MicroAPI::Ln(vregTmp3, vregTmp2, pregRow);
+                    MicroAPI::Sqrt(vregNorm, vregTmp3, pregRow);
+                    if (hasBias_) {
+                        RegTensor<float> vregBiasVal;
+                        ops::LoadOneTensorForDtypeT<T>(biasAddr, vregBiasVal, pregRow, 0);
+                        MicroAPI::Add(vregNorm, vregNorm, vregBiasVal, pregRow);
+                    }
+                    MicroAPI::Muls(vregMax, vregNorm, static_cast<float>(1), pregRow);
+                    MicroAPI::Duplicate(vregArgmax, static_cast<float>(0), pregRow);
+                    for (uint16_t e = 1; e < expertCountU16; e++) {
+                        ops::LoadOneTensorForDtypeT<T>(inputAddr, vregIn, pregRow,
+                                                       rowOffset * expertCountU16 + e);
+                        MicroAPI::Exp(vregTmp1, vregIn, pregRow);
+                        MicroAPI::Adds(vregTmp2, vregTmp1, static_cast<float>(1), pregRow);
+                        MicroAPI::Ln(vregTmp3, vregTmp2, pregRow);
+                        MicroAPI::Sqrt(vregNorm, vregTmp3, pregRow);
+                        if (hasBias_) {
+                            RegTensor<float> vregBiasVal;
+                            ops::LoadOneTensorForDtypeT<T>(biasAddr, vregBiasVal, pregRow, e);
+                            MicroAPI::Add(vregNorm, vregNorm, vregBiasVal, pregRow);
+                        }
+                        MicroAPI::Compare<float, CMPMODE::GT>(pregCmp, vregNorm, vregMax, pregRow);
+                        MicroAPI::Select<float>(vregMax, vregNorm, vregMax, pregCmp);
+                        RegTensor<float> vregE;
+                        MicroAPI::Duplicate(vregE, static_cast<float>(e), pregRow);
+                        MicroAPI::Select<float>(vregArgmax, vregE, vregArgmax, pregCmp);
+                    }
+                    if (needRenorm) {
+                        RegTensor<float> vregSum;
+                        MicroAPI::ReduceSum(vregSum, vregMax, pregRow);
+                        MicroAPI::Adds(vregSum, vregSum, eps_, pregRow);
+                        RegTensor<float> vregSumBcast;
+                        MicroAPI::Duplicate(vregSumBcast, vregSum, pregRow);
+                        MicroAPI::Div(vregOut, vregMax, vregSumBcast, pregRow);
+                    } else {
+                        MicroAPI::Muls(vregOut, vregMax, static_cast<float>(1), pregRow);
+                    }
+                    MicroAPI::Muls(vregOut, vregOut, routedScalingFactor_, pregRow);
+                    MicroAPI::Cast<int32_t, float, WG_CAST_FP32_TO_I32>(vregArgmaxInt, vregArgmax, pregRow);
+                    ops::StoreOneTensorForDtypeT<T>(outputAddr, vregOut, pregRow, rowOffset);
+                    MicroAPI::DataCopy(expertIdxAddr + rowOffset, vregArgmaxInt, pregRow);
+                }
             }
         }
 
