@@ -1,33 +1,27 @@
-(fzx_py311) root@aa:/home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test# bash check_torchair.sh 
-=== 搜索 register_matmul_backward_decomp 的调用位置 ===
-282:def register_matmul_backward_decomp():
-447:    register_matmul_backward_decomp()
+=== 搜索 torch_npu 中所有 py_impl(AutogradPrivateUse1) 的注册 ===
+/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/torch_npu/dynamo/npugraph_ex/_utils/__init__.py:288:    @aten.to.other.py_impl(DispatchKey.AutogradPrivateUse1)
+/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/torch_npu/dynamo/npugraph_ex/_utils/__init__.py:293:    @aten.type_as.default.py_impl(DispatchKey.AutogradPrivateUse1)
+/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/torch_npu/dynamo/torchair/_utils/__init__.py:288:    @aten.to.other.py_impl(DispatchKey.AutogradPrivateUse1)
+/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/torch_npu/dynamo/torchair/_utils/__init__.py:293:    @aten.type_as.default.py_impl(DispatchKey.AutogradPrivateUse1)
+/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/torch_npu/_inductor/ascend_npu_ir/ascend_npu_ir/npu/npu_decomp.py:23:@aten.batch_norm.default.py_impl(DispatchKey.AutogradPrivateUse1)
 
-=== 搜索 add_npu_patch 函数定义 ===
-445:def add_npu_patch(decompositions, compiler_config):
+=== 搜索 torch 中 aten.to.other 的注册 ===
 
-=== 搜索 add_npu_patch 被调用的位置 ===
-445:def add_npu_patch(decompositions, compiler_config):
+=== 搜索 AutogradPrivateUse1 相关代码 ===
+/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/torch_npu/csrc/aten/npu_native_functions_by_codegen.yaml:991:    AutogradPrivateUse1: npu_moe_token_unpermute_with_routing_map
+/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/torch_npu/dynamo/npugraph_ex/_utils/__init__.py:288:    @aten.to.other.py_impl(DispatchKey.AutogradPrivateUse1)
+/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/torch_npu/dynamo/npugraph_ex/_utils/__init__.py:293:    @aten.type_as.default.py_impl(DispatchKey.AutogradPrivateUse1)
+/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/torch_npu/dynamo/npugraph_ex/_utils/__init__.py:447:    if DispatchKey.AutogradPrivateUse1 not in aten.to.other.py_kernels:
+Binary file /root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/torch_npu/dynamo/npugraph_ex/_utils/__pycache__/__init__.cpython-311.pyc matches
+/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/torch_npu/dynamo/torchair/_utils/__init__.py:288:    @aten.to.other.py_impl(DispatchKey.AutogradPrivateUse1)
+/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/torch_npu/dynamo/torchair/_utils/__init__.py:293:    @aten.type_as.default.py_impl(DispatchKey.AutogradPrivateUse1)
+Binary file /root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/torch_npu/dynamo/torchair/_utils/__pycache__/__init__.cpython-311.pyc matches
+Binary file /root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/torch_npu/_C.cpython-311-x86_64-linux-gnu.so matches
+/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/torch_npu/_inductor/ascend_npu_ir/ascend_npu_ir/npu/npu_decomp.py:23:@aten.batch_norm.default.py_impl(DispatchKey.AutogradPrivateUse1)
+Binary file /root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/torch_npu/_inductor/ascend_npu_ir/ascend_npu_ir/npu/__pycache__/npu_decomp.cpython-311.pyc matches
+Binary file /root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/torch_npu/lib/libtorch_npu.so matches
 
-=== 第 440-460 行（add_npu_patch 函数附近）===
-        return FAST_OP_IMPLEMENTATIONS
-    _subclasses_fake_tensor.get_fast_op_impls = new_get_fast_op_impls
-
-
-@run_once
-def add_npu_patch(decompositions, compiler_config):
-    adjust_implicit_decomposition()
-    register_matmul_backward_decomp()
-    npu_patch_meta()
-    npu_patch_break_graph()
-    npu_patch_register_fast_op_impl()
-    if compiler_config.experimental_config.npu_fx_pass:
-        npu_patch_fx_pass(decompositions)
-
-
-def get_npu_default_decompositions():
-    default_decompositions = {}
-    from torchair._ge_concrete_graph.ge_converter.experimental.hcom_allgather import allgather_decomposition
-    default_decompositions.update({torch.ops.npu_define.allgather.default: allgather_decomposition})
-    if torch.__version__ >= "2.3.1":
-        from torchair._ge_concrete_graph.ge_converter.c10d_functional.c10d_functional import \
+=== 检查 @run_once 装饰器定义 ===
+25:def run_once(f):
+25:def run_once(f):
+444:@run_once
