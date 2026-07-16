@@ -286,12 +286,15 @@ constexpr uint32_t DEQUANT_BF16_SCALE_EXPANSION = 2U;
 constexpr uint32_t DEQUANT_FP32_SCALE_EXPANSION = 4U;
 
 // Recv route batch 上限只由 DispatchBuffInit 的 UB 布局约束。Brecv 表示每个 recv batch 的 route item 数，
-// W=worldSize，E=expertPerRank，D=DISPATCH_BUFFER_NUM：
+// W=worldSize，E=expertPerRank，D=dispatch buffer 数：
 //   recvVariableBytes(Brecv) = Brecv / 8 + 2 * Brecv * sizeof(int32_t) = 65 * Brecv / 8；
 //   recvFixedBytes = 32 + Align32(W * E * 4) + W * 32 + D * tokenScaleBytes + Align32(E * 4) + D * 32；
 //   recvFixedBytes + recvVariableBytes(Brecv) <= 248KB。
 // 12288 按 k=8192 和 recv fixedBytes 的最坏合法参数验证。Brecv 须向下对齐到 ALIGN_256；若修改
-// DispatchBuffInit、DISPATCH_BUFFER_NUM 或 k/worldSize/expert 上限，只需重新计算 recv 上限。
+// DispatchBuffInit、dispatch buffer 数量上限或 k/worldSize/expert 上限，只需重新计算 recv 上限。
+// CopyGMToGMPerToken 的 copyTmp、triple 和 event ID 三类槽位一一对应，统一使用 2~6 个 buffer。
+constexpr int32_t MIN_DISPATCH_BUFFER_COUNT = 2;
+constexpr int32_t MAX_DISPATCH_BUFFER_COUNT = 6;
 constexpr int32_t MAX_RECV_ROUTE_ITEMS_PER_BATCH = 12288;
 
 // Send route batch 基准用于先选择 mask buffer 数量，再固定 buffer 数反推最终 batch。Bsend 表示基准 batch

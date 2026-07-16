@@ -94,15 +94,20 @@ private:
         int32_t bufferCount = 0;
         uint32_t bufferBytes = 0;
     };
+    struct DispatchBufferConfig {
+        int32_t bufferCount = 0;
+        uint32_t copyBufferElementCount = 0;
+    };
 
-    __aicore__ inline void DispatchBuffInit();
+    __aicore__ inline DispatchBufferConfig DispatchBuffInit();
     __aicore__ inline SendMaskBufferConfig CalcSendMaskBufferConfig(uint32_t fixedBufferBytes, uint32_t ubSize);
     __aicore__ inline SendMaskBufferConfig SendAndQuantBuffInit();
     __aicore__ inline void ResetFlagList();
     __aicore__ inline void ResetGmm2CombineSyncCounters();
     __aicore__ inline void SendMaskCal(const SendMaskBufferConfig &bufferConfig);
     __aicore__ inline void SendCntCal(int32_t localExpertId, uint64_t &sendCnt);
-    __aicore__ inline void TripleInfoCalAndDispatch(GMMAddrInfo &gmmAddrInfo, int32_t localExpertId);
+    __aicore__ inline void TripleInfoCalAndDispatch(GMMAddrInfo &gmmAddrInfo, int32_t localExpertId,
+                                                    const DispatchBufferConfig &bufferConfig);
     template <AddrUpdateMode Mode>
     __aicore__ inline bool UpdateGroupParams(ExpertLoopState &state, uint32_t expertIdx, uint64_t sendCnt = 0);
     template <AddrUpdateMode Mode>
@@ -122,7 +127,7 @@ private:
     __aicore__ inline void CrossRankSyncInWorldSize();
     __aicore__ inline void ExpertTokenNumCopyOut();
     __aicore__ inline void CopyGMToGMPerToken(int32_t rowDstOffsetInCore, int32_t remoteRankIdx, int32_t copyStartIdx,
-                                              int32_t copyNum);
+                                              int32_t copyNum, const DispatchBufferConfig &bufferConfig);
     __aicore__ inline void QuantProcessInRank();
     __aicore__ inline void GroupMatmulWithSwigluQuant(const GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &state);
     __aicore__ inline void GroupMatmulWithCombine(const GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &state,
@@ -189,7 +194,6 @@ private:
     //             a4w4 场景下 GMM1 走 generic a4w4、GMM2 走 a8w4，避免两段都用 a4w4 导致精度损失过大。
     static constexpr bool ENABLE_A4W4 =
         Std::IsSame<Weight1Type, fp4x2_e2m1_t>::value && Std::IsSame<QuantOutType, fp4x2_e2m1_t>::value;
-    static constexpr int32_t DISPATCH_BUFFER_NUM = 6;
     LocalTensor<int32_t> topkIndexTensor_;
     LocalTensor<int32_t> sendCntTensor_;       // SendCntCal stride 只读 worldsize 个 count
     LocalTensor<uint8_t> maskBatchTensor_;     // TripleInfoCalAndDispatch 当前 batch 的 mask 切片
@@ -197,7 +201,7 @@ private:
     LocalTensor<int32_t> expertTokenCntTensor_;
     LocalTensor<int32_t> validTopkIndexTensor_;
     LocalTensor<int32_t> cumsumInfoTensor_;
-    LocalTensor<ActivationType> copyTmpTensors_[DISPATCH_BUFFER_NUM]; // 6-buffer 软流水：占满 EVENT_ID0..EVENT_ID5。
+    LocalTensor<ActivationType> copyTmpTensor_; // CopyGMToGMPerToken 的动态 2~6 buffer 连续 ring
     LocalTensor<int32_t> tripleTensor_;
     LocalTensor<bfloat16_t> xInTensor1_;
     LocalTensor<bfloat16_t> xInTensor2_;
@@ -309,10 +313,12 @@ MegaMoe<TemplateMegaMoeTypeFunc>::Init(GM_ADDR context, GM_ADDR x, GM_ADDR topkI
 //   topkIndex/validTopkIndex 按 recvRouteItemsPerBatch_ 分配，tripleTensor_ 常驻 ring buffer。
 // =================================================================================================
 template <TemplateMegaMoeTypeClass>
-__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::DispatchBuffInit()
+__aicore__ inline typename MegaMoe<TemplateMegaMoeTypeFunc>::DispatchBufferConfig
+MegaMoe<TemplateMegaMoeTypeFunc>::DispatchBuffInit()
 {
+    DispatchBufferConfig bufferConfig;
     if constexpr (g_coreType == AIC) {
-        return;
+        return bufferConfig;
     }
 
     // 与 route batch 无关的固定占用
@@ -321,16 +327,13 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::DispatchBuffInit()
         static_cast<int64_t>(worldSize_ * expertPerRank_ * sizeof(int32_t)), static_cast<int64_t>(ALIGN_32));
     // sendCntTensor_: 每 src rank 一个 burst(32B), 共 worldsize*32B（stride 只读 count 跳过 mask 区）
     uint32_t sendCntTensorSize = worldSize_ * static_cast<uint32_t>(ALIGN_32);
-    // copyTmpTensors_ 6 个 dispatch buffer, 各 tokenScaleSize
+    // 每个 copyTmp dispatch buffer 容纳一份 token + scale。
     uint32_t tokenScaleSize = Ops::Base::CeilAlign(
         static_cast<int64_t>(mxQuantTokenAlignBytes_ + mxQuantScaleAlignBytes_), static_cast<int64_t>(ALIGN_32));
     uint32_t COPY_TMP_BUFFER_SIZE = tokenScaleSize;
-    uint32_t copyTmpTotalSize = static_cast<uint32_t>(DISPATCH_BUFFER_NUM) * COPY_TMP_BUFFER_SIZE;
+    bufferConfig.copyBufferElementCount = COPY_TMP_BUFFER_SIZE / sizeof(ActivationType);
     uint32_t expertTokenNumsOutTensorSize =
         Ops::Base::CeilAlign(static_cast<int64_t>(expertPerRank_ * sizeof(int32_t)), static_cast<int64_t>(ALIGN_32));
-    // triple ring buffer: DISPATCH_BUFFER_NUM 条 * 32B，逐 token 即时写 GM
-    uint32_t tripleReserveSize =
-        static_cast<uint32_t>(DISPATCH_BUFFER_NUM) * static_cast<uint32_t>(INT32_PER_256B) * sizeof(int32_t);
 
     // 确定每个 recv batch 的 route item 数及 batch 总数
     recvRouteItemsPerBatch_ = MAX_RECV_ROUTE_ITEMS_PER_BATCH;
@@ -377,26 +380,45 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::DispatchBuffInit()
     uint32_t topkIndexTensorSize = validTopkIndexTensorSize;
     topkIndexTensor_ =
         LocalTensor<int32_t>(TPosition::VECCALC, topkIndexTensorAddr, topkIndexTensorSize / sizeof(int32_t));
-    // Tensor用处：TripleInfoCalAndDispatch 函数中的 6 个 dispatch buffer，配合 EVENT_ID0..EVENT_ID5 做软流水；
-    // Tensor大小：每块容纳 token+scale，动态计算以节省 UB 空间；
+
+    // route batch tensor 和其它固定 tensor 落位后，剩余 UB 用于一一对应的 copyTmp + 32B triple 槽位。
     uint32_t copyTmpBaseAddr = topkIndexTensorAddr + topkIndexTensorSize;
-    for (int32_t index = 0; index < DISPATCH_BUFFER_NUM; ++index) {
-        copyTmpTensors_[index] = LocalTensor<ActivationType>(
-            TPosition::VECCALC, copyTmpBaseAddr + static_cast<uint32_t>(index) * COPY_TMP_BUFFER_SIZE,
-            COPY_TMP_BUFFER_SIZE / sizeof(ActivationType));
-    }
+    uint32_t fixedBytesAfterDispatchBuffers = expertTokenNumsOutTensorSize;
+    uint32_t dispatchSlotBytes =
+        COPY_TMP_BUFFER_SIZE + static_cast<uint32_t>(INT32_PER_256B) * static_cast<uint32_t>(sizeof(int32_t));
+    uint32_t ubSize = params_.tilingData->ubSize;
+    uint32_t dispatchBufferBudgetBytes = ubSize > copyTmpBaseAddr + fixedBytesAfterDispatchBuffers ?
+                                             ubSize - copyTmpBaseAddr - fixedBytesAfterDispatchBuffers :
+                                             0;
+    bufferConfig.bufferCount = static_cast<int32_t>(dispatchBufferBudgetBytes / dispatchSlotBytes);
+    bufferConfig.bufferCount =
+        bufferConfig.bufferCount > MAX_DISPATCH_BUFFER_COUNT ? MAX_DISPATCH_BUFFER_COUNT : bufferConfig.bufferCount;
+    // MAX_RECV_ROUTE_ITEMS_PER_BATCH 原布局按 6 个槽位验证，因此当前基准 batch 可安全保底到双 buffer。
+    bufferConfig.bufferCount =
+        bufferConfig.bufferCount < MIN_DISPATCH_BUFFER_COUNT ? MIN_DISPATCH_BUFFER_COUNT : bufferConfig.bufferCount;
+
+    uint32_t copyTmpTotalSize = static_cast<uint32_t>(bufferConfig.bufferCount) * COPY_TMP_BUFFER_SIZE;
+    // Tensor用处：TripleInfoCalAndDispatch 中的动态 dispatch ring，配合 EVENT_ID0..EVENT_ID5 做软流水；
+    // Tensor大小：bufferCount 块，每块容纳一份 token + scale。
+    // copyTmpBaseAddr 由前序 32B 对齐 tensor 顺次累加得到，COPY_TMP_BUFFER_SIZE 也已向上对齐到 32B，
+    // 因此连续 ring 中每个 copyTmp 槽位的起始地址都保持 32B 对齐。
+    copyTmpTensor_ =
+        LocalTensor<ActivationType>(TPosition::VECCALC, copyTmpBaseAddr, copyTmpTotalSize / sizeof(ActivationType));
     // Tensor用处：ExpertTokenNumCopyOut 函数中本卡各专家收到的 tokenCnt 数；
     // Tensor大小：expertPerRank_ * sizeof(int32_t) 对齐至 32 字节；
     uint32_t expertTokenNumsOutTensorAddr = copyTmpBaseAddr + copyTmpTotalSize;
     expertTokenNumsOutTensor_ = LocalTensor<int32_t>(TPosition::VECCALC, expertTokenNumsOutTensorAddr,
                                                      expertTokenNumsOutTensorSize / sizeof(int32_t));
     // Tensor用处：CopyGMToGMPerToken 函数中的 triple ring buffer，逐 token 即时写 GM；
-    // Tensor大小：DISPATCH_BUFFER_NUM 条 * 32B；
+    // Tensor大小：bufferCount 条 * 32B，与 copyTmp 槽位和 event ID 一一对应。
     uint32_t tripleTensorAddr = expertTokenNumsOutTensorAddr + expertTokenNumsOutTensorSize;
+    uint32_t tripleReserveSize =
+        static_cast<uint32_t>(bufferConfig.bufferCount) * static_cast<uint32_t>(INT32_PER_256B) * sizeof(int32_t);
     tripleTensor_ = LocalTensor<int32_t>(TPosition::VECCALC, tripleTensorAddr, tripleReserveSize / sizeof(int32_t));
     ubBufferUsedAddr_ = tripleTensorAddr + tripleReserveSize;
     Duplicate<int32_t>(cumsumInfoTensor_, 0, (cumsumInfoTensorSize / sizeof(int32_t)));
     PipeBarrier<PIPE_ALL>();
+    return bufferConfig;
 }
 
 // ==================================================================================================
@@ -875,23 +897,22 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SendCntCal(int32_t loca
 }
 
 // ============================================================================
-
-// CopyGMToGMPerToken：6-buffer 软流水 + ring buffer triple 即时写 GM
+// CopyGMToGMPerToken：动态 2~6 buffer 软流水 + ring buffer triple 即时写 GM
 // ----------------------------------------------------------------------------
 //   Phase 1 prime:  前 primeCount 个槽 — MTE2 取远程 token + S 侧同步组装 triple，各就绪后 set 标志位
 //   Phase 2 steady: Wait MTE2 到数 → MTE3 写 token/scale/triple 到 GM → 释放 buffer → 预取下一条
-//   Phase 2 drain:  不再发新 MTE2，只等 tail 槽 MTE3 收尾（避免 copyNum < BufferNum 时死等未填充槽）
+//   Phase 2 drain:  不再发新 MTE2，只回收 primeCount 个实际启动槽位
 // ============================================================================
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::CopyGMToGMPerToken(int32_t rowDstOffsetInCore,
                                                                             int32_t remoteRankIdx, int32_t copyStartIdx,
-                                                                            int32_t copyNum)
+                                                                            int32_t copyNum,
+                                                                            const DispatchBufferConfig &bufferConfig)
 {
     if (copyNum <= 0) {
         return;
     }
-    constexpr int32_t BufferNum = DISPATCH_BUFFER_NUM;
-    constexpr TEventID kBufEvents[BufferNum] = {EVENT_ID0, EVENT_ID1, EVENT_ID2, EVENT_ID3, EVENT_ID4, EVENT_ID5};
+    int32_t bufferCount = bufferConfig.bufferCount;
     int64_t widthA = k_ / A_ELEMS_PER_BYTE;
     int64_t widthAScale = Ops::Base::CeilDiv(static_cast<int64_t>(k_), static_cast<int64_t>(MXFP_DIVISOR_SIZE)) *
                           MXFP_MULTI_BASE_SIZE; // 输出 token-scale 长度,紧密排列
@@ -911,14 +932,17 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::CopyGMToGMPerToken(int3
         params_.workspaceInfo.tripleInfoPtr + rowDstOffsetInCore * INT32_PER_256B * sizeof(int32_t)));
 
     PipeBarrier<PIPE_ALL>();
-    // Phase 1 prime: 前 BufferNum 个槽 — MTE2 取远程 token + S 侧组装 triple，各就绪后分别 set MTE2_MTE3/S_MTE3
-    int32_t primeCount = (copyNum < BufferNum) ? copyNum : BufferNum;
+    // Phase 1 prime: 前 bufferCount 个槽 — MTE2 取远程 token + S 侧组装 triple。
+    int32_t primeCount = (copyNum < bufferCount) ? copyNum : bufferCount;
     for (int32_t primeIdx = 0; primeIdx < primeCount; ++primeIdx) {
         int32_t topkIndex = validTopkIndexTensor_.GetValue(copyStartIdx + primeIdx);
         int32_t tokenIndex = topkIndex / topK_;
-        TEventID eventId = kBufEvents[primeIdx];
+        TEventID eventId = static_cast<TEventID>(primeIdx);
         uint64_t remoteCopyOffset = static_cast<uint64_t>(tokenIndex) * static_cast<uint64_t>(copyInNum);
-        DataCopy(copyTmpTensors_[primeIdx], remoteRankGlobalTensor[remoteCopyOffset], copyInNum);
+        // LocalTensor 下标以元素为单位；copyBufferElementCount * sizeof(ActivationType)
+        // 等于 32B 对齐的 COPY_TMP_BUFFER_SIZE，因此按槽位偏移后仍满足 32B 对齐。
+        LocalTensor<ActivationType> copyBuffer = copyTmpTensor_[primeIdx * bufferConfig.copyBufferElementCount];
+        DataCopy(copyBuffer, remoteRankGlobalTensor[remoteCopyOffset], copyInNum);
         SetFlag<AscendC::HardEvent::MTE2_MTE3>(eventId);
         tripleTensor_[primeIdx * INT32_PER_256B].SetValue(RANK_ID, remoteRankIdx);
         tripleTensor_[primeIdx * INT32_PER_256B].SetValue(TOKEN_ID, tokenIndex);
@@ -927,11 +951,11 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::CopyGMToGMPerToken(int3
     }
     // Phase 2 steady: Wait MTE2 到数 → MTE3 写 token/scale/triple 到 GM → 释放 buffer → 预取下一条
     for (int32_t copyIdx = 0; copyIdx < copyNum; ++copyIdx) {
-        int32_t outIdx = copyIdx % BufferNum;
-        TEventID eventId = kBufEvents[outIdx];
+        int32_t outIdx = copyIdx % bufferCount;
+        TEventID eventId = static_cast<TEventID>(outIdx);
         WaitFlag<AscendC::HardEvent::MTE2_MTE3>(eventId);
 
-        LocalTensor<ActivationType> tokenScalebuf = copyTmpTensors_[outIdx];
+        LocalTensor<ActivationType> tokenScalebuf = copyTmpTensor_[outIdx * bufferConfig.copyBufferElementCount];
         LocalTensor<QuantScaleOutType> bufScale =
             tokenScalebuf[mxQuantTokenAlignBytes_].template ReinterpretCast<QuantScaleOutType>();
         DataCopyPad(tokenRevGlobalTensor[copyIdx * widthA], tokenScalebuf,
@@ -944,15 +968,15 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::CopyGMToGMPerToken(int3
         SetFlag<AscendC::HardEvent::MTE3_MTE2>(eventId);
         SetFlag<AscendC::HardEvent::MTE3_S>(eventId); // MTE3 读完 triple，S 可覆盖
 
-        // 发下一个槽的 MTE2 (copyIdx + BufferNum, 复用 outIdx 槽)
-        int32_t nextIdx = copyIdx + BufferNum;
+        // 发下一个槽的 MTE2 (copyIdx + bufferCount, 复用 outIdx 槽)
+        int32_t nextIdx = copyIdx + bufferCount;
         if (nextIdx < copyNum) {
             // 预取下一条：等 MTE3 释放 buffer → 发下一轮 MTE2 → 等 S 槽空闲 → 组装 triple
             int32_t nextTopkIndex = validTopkIndexTensor_.GetValue(copyStartIdx + nextIdx);
             int32_t nextTokenIndex = nextTopkIndex / topK_;
             uint64_t remoteCopyOffset = static_cast<uint64_t>(nextTokenIndex) * static_cast<uint64_t>(copyInNum);
             WaitFlag<AscendC::HardEvent::MTE3_MTE2>(eventId);
-            DataCopy(copyTmpTensors_[outIdx], remoteRankGlobalTensor[remoteCopyOffset], copyInNum);
+            DataCopy(tokenScalebuf, remoteRankGlobalTensor[remoteCopyOffset], copyInNum);
             SetFlag<AscendC::HardEvent::MTE2_MTE3>(eventId);
             WaitFlag<AscendC::HardEvent::MTE3_S>(eventId);
             tripleTensor_[outIdx * INT32_PER_256B].SetValue(RANK_ID, remoteRankIdx);
@@ -961,10 +985,11 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::CopyGMToGMPerToken(int3
             SetFlag<AscendC::HardEvent::S_MTE3>(eventId);
         }
     }
-    // Phase 2 drain: 不再发新 MTE2，只等 tail 几个槽的 MTE3 收尾（避免 copyNum < BufferNum 时死等未填充的槽）
+    // Phase 2 drain: 只回收实际 prime 的槽位，避免 copyNum < bufferCount 时等待未启动事件。
     for (int32_t bufferIdx = 0; bufferIdx < primeCount; ++bufferIdx) {
-        WaitFlag<AscendC::HardEvent::MTE3_MTE2>(kBufEvents[bufferIdx]);
-        WaitFlag<AscendC::HardEvent::MTE3_S>(kBufEvents[bufferIdx]);
+        TEventID eventId = static_cast<TEventID>(bufferIdx);
+        WaitFlag<AscendC::HardEvent::MTE3_MTE2>(eventId);
+        WaitFlag<AscendC::HardEvent::MTE3_S>(eventId);
     }
 }
 
@@ -975,8 +1000,9 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::CopyGMToGMPerToken(int3
 // 数据流：route mask -> compacted route index -> match ordinal -> dst row -> expert row/GMM1 wave。
 // ====================================================================================================
 template <TemplateMegaMoeTypeClass>
-__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::TripleInfoCalAndDispatch(GMMAddrInfo &gmmAddrInfo,
-                                                                                  int32_t localExpertId)
+__aicore__ inline void
+MegaMoe<TemplateMegaMoeTypeFunc>::TripleInfoCalAndDispatch(GMMAddrInfo &gmmAddrInfo, int32_t localExpertId,
+                                                           const DispatchBufferConfig &bufferConfig)
 {
     constexpr int32_t GMM1_WAVE_ROW_COUNT = static_cast<int32_t>(MegaMoeImpl::L1_TILE_M_256);
     // cumsumInfo 按 [expert][source rank] 累加；前一个 expert 的末值就是当前 expert 的全局起始行。
@@ -1061,7 +1087,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::TripleInfoCalAndDispatc
                 int32_t batchDispatchRowCount =
                     dispatchMatchOrdinalEnd - dispatchMatchOrdinalBegin; // 本次从该 batch dispatch 的行数
                 int32_t dispatchDstRowBegin = static_cast<int32_t>(rankSegmentDstRowBegin) + dispatchMatchOrdinalBegin;
-                CopyGMToGMPerToken(dispatchDstRowBegin, remoteRankIdx, batchLocalMatchBegin, batchDispatchRowCount);
+                CopyGMToGMPerToken(dispatchDstRowBegin, remoteRankIdx, batchLocalMatchBegin, batchDispatchRowCount,
+                                   bufferConfig);
                 dispatchedRowCount += batchDispatchRowCount;
             }
             matchedRouteCount = batchMatchOrdinalEnd;
@@ -1704,7 +1731,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
     CrossRankSyncInWorldSize(); // 全卡同步
 
     // 2.本卡专家接收数据dispatch & GroupMatmul1 & SwigluQuant
-    DispatchBuffInit();
+    DispatchBufferConfig dispatchBufferConfig = DispatchBuffInit();
     GMMAddrInfo dispatchAddrInfo;
     GMMAddrInfo gmm1AddrInfo;
     TupleShape initShape;
@@ -1727,7 +1754,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
             SendCntCal(0, nextSendCnt);
             if (UpdateGroupParams<AddrUpdateMode::GMM1>(dispatchState, 0, nextSendCnt)) {
                 UpdateGlobalBuffer<AddrUpdateMode::GMM1>(dispatchAddrInfo, dispatchState);
-                TripleInfoCalAndDispatch(dispatchAddrInfo, 0);
+                TripleInfoCalAndDispatch(dispatchAddrInfo, 0, dispatchBufferConfig);
             }
         }
     }
@@ -1741,7 +1768,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
                 SendCntCal(localExpertId + 1, nextSendCnt);
                 if (UpdateGroupParams<AddrUpdateMode::GMM1>(dispatchState, localExpertId + 1, nextSendCnt)) {
                     UpdateGlobalBuffer<AddrUpdateMode::GMM1>(dispatchAddrInfo, dispatchState);
-                    TripleInfoCalAndDispatch(dispatchAddrInfo, localExpertId + 1);
+                    TripleInfoCalAndDispatch(dispatchAddrInfo, localExpertId + 1, dispatchBufferConfig);
                 }
             }
         }
