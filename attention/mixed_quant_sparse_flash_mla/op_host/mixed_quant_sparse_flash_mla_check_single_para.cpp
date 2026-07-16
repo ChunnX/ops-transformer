@@ -210,11 +210,6 @@ ge::graphStatus MQSMLATilingCheck::CheckSingleParaKey() const
                     OP_LOGE(opName_, "when page attention is enabled, ori_block_size(%u) should be in range (0, %u].",
                             oriBlockSize_, MAX_BLOCK_SIZE),
                     return ge::GRAPH_FAILED);
-
-        OP_CHECK_IF(
-            oriBlockSize_ % 16 > 0,
-            OP_LOGE(opName_, "when page attention is enabled, ori_block_size(%u) should be 16-aligned.", oriBlockSize_),
-            return ge::GRAPH_FAILED);
     }
 
     if (opParamInfo_.cmpKv.tensor != nullptr) {
@@ -239,11 +234,6 @@ ge::graphStatus MQSMLATilingCheck::CheckSingleParaKey() const
                         OP_LOGE(opName_,
                                 "when page attention is enabled, cmp_block_size(%u) should be in range (0, %u].",
                                 cmpBlockSize_, MAX_BLOCK_SIZE),
-                        return ge::GRAPH_FAILED);
-
-            OP_CHECK_IF(cmpBlockSize_ % 16 > 0,
-                        OP_LOGE(opName_, "when page attention is enabled, cmp_block_size(%u) should be 16-aligned.",
-                                cmpBlockSize_),
                         return ge::GRAPH_FAILED);
         }
     }
