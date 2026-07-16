@@ -56,6 +56,13 @@ using namespace AscendC;
 #define MEGA_MOE_EXPERTS_PER_WAVE 0
 #endif
 
+// Default-off NPU timeline diagnostic for the 16-local-expert target.  When
+// enabled, expertTokenNumsOut is repurposed as sixteen uint32 words and must
+// not be used for correctness or performance measurements.
+#ifndef MEGA_MOE_GMM2_WAVE_TIMELINE_DIAG
+#define MEGA_MOE_GMM2_WAVE_TIMELINE_DIAG 0
+#endif
+
 namespace MegaMoeImpl {
 using TupleShape = Shape<int64_t, int64_t, int64_t, int64_t>;
 using BlockOffset = Shape<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t,
@@ -112,6 +119,8 @@ private:
     __aicore__ inline void ResetGmm2CombineSyncCounters();
     __aicore__ inline void ResetGmm2NoQuantReadyCounters();
     __aicore__ inline void RunGmm2NoQuantReadySmokeTest();
+    __aicore__ inline void RecordGmm2WaveTimeline(uint32_t slotIdx);
+    __aicore__ inline void WriteGmm2WaveTimelineMetadata(uint32_t expertsPerWave);
     __aicore__ inline void SendMaskCal(const SendMaskBufferConfig &bufferConfig);
     __aicore__ inline void SendCntCal(int32_t localExpertId, uint64_t &sendCnt);
     __aicore__ inline void DispatchExpert(ExpertLoopState &state, GMMAddrInfo &gmmAddrInfo, uint32_t expertIdx,
@@ -1561,6 +1570,43 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::RunGmm2NoQuantReadySmok
     SyncAll<true>();
 }
 
+// The lower 32 bits are sufficient for a single-op trace.  Consumers compare
+// markers with uint32 modular subtraction so a counter wrap is harmless.
+template <TemplateMegaMoeTypeClass>
+__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::RecordGmm2WaveTimeline(uint32_t slotIdx)
+{
+#if MEGA_MOE_GMM2_WAVE_TIMELINE_DIAG != 0
+    constexpr uint32_t TRACE_WORDS = 16U;
+    if (expertPerRank_ < TRACE_WORDS || slotIdx >= TRACE_WORDS) {
+        return;
+    }
+    __gm__ uint32_t *trace = reinterpret_cast<__gm__ uint32_t *>(params_.expertTokenNumsOutGmAddr);
+    WriteGmByPassDCache(trace + slotIdx, static_cast<uint32_t>(AscendC::GetSystemCycle()));
+#else
+    (void)slotIdx;
+#endif
+}
+
+template <TemplateMegaMoeTypeClass>
+__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::WriteGmm2WaveTimelineMetadata(uint32_t expertsPerWave)
+{
+#if MEGA_MOE_GMM2_WAVE_TIMELINE_DIAG != 0
+    constexpr uint32_t TRACE_WORDS = 16U;
+    if (expertPerRank_ < TRACE_WORDS) {
+        return;
+    }
+    __gm__ uint32_t *trace = reinterpret_cast<__gm__ uint32_t *>(params_.expertTokenNumsOutGmAddr);
+    WriteGmByPassDCache(trace + 10U, uint32_t(0x57415645U)); // "WAVE"
+    WriteGmByPassDCache(trace + 11U, uint32_t(1U));          // trace format version
+    WriteGmByPassDCache(trace + 12U, blockNum_);
+    WriteGmByPassDCache(trace + 13U, expertsPerWave);
+    WriteGmByPassDCache(trace + 14U, worldSize_);
+    WriteGmByPassDCache(trace + 15U, uint32_t(MEGA_MOE_GMM2_READY_MODE));
+#else
+    (void)expertsPerWave;
+#endif
+}
+
 // AIC fan-in publication.  Every AIC contributes once for the selected slot,
 // including cores that owned no tile; FIX_S makes all prior direct-GM writes
 // visible before the counter can reach the actual launched producer count.
@@ -2267,6 +2313,20 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessGmm2GmWaves(
                                 batchBegin + expertsPerWave :
                                 moeExpertPerRank_;
 
+#if MEGA_MOE_GMM2_WAVE_TIMELINE_DIAG != 0
+        if (batchIdx == 1U) {
+            if constexpr (g_coreType == AIC) {
+                if (blockIdx_ == 0U) {
+                    RecordGmm2WaveTimeline(2U); // AIC GMM1(B+1) begin
+                }
+            } else {
+                if (subBlockIdx_ == 0U && aivCoreIdx_ / 2U == 0U) {
+                    RecordGmm2WaveTimeline(6U); // AIV0 SwiGLU(B+1) begin
+                }
+            }
+        }
+#endif
+
         // First wave is one-expert-ahead; later waves were fully prefetched by
         // AIV1 during the preceding wave.
         for (uint32_t expertIdx = batchBegin; expertIdx < batchEnd; ++expertIdx) {
@@ -2290,6 +2350,20 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessGmm2GmWaves(
             GroupMatmulWithSwigluQuant(gmm1AddrInfo, gmm1State, expertIdx, vecSetSyncCom);
         }
 
+#if MEGA_MOE_GMM2_WAVE_TIMELINE_DIAG != 0
+        if (batchIdx == 1U) {
+            if constexpr (g_coreType == AIC) {
+                if (blockIdx_ == 0U) {
+                    RecordGmm2WaveTimeline(3U); // AIC GMM1(B+1) end
+                }
+            } else {
+                if (subBlockIdx_ == 0U && aivCoreIdx_ / 2U == 0U) {
+                    RecordGmm2WaveTimeline(7U); // AIV0 SwiGLU(B+1) end
+                }
+            }
+        }
+#endif
+
         // Full next-wave prefetch is complete before this AIV1 can enter
         // Combine(B).  Existing dispatch helpers drain their own six buffers.
         uint32_t nextBatchEnd = batchEnd + expertsPerWave < moeExpertPerRank_ ?
@@ -2297,15 +2371,32 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessGmm2GmWaves(
                                     moeExpertPerRank_;
         if constexpr (g_coreType == AIV) {
             if (subBlockIdx_ == 1) {
+#if MEGA_MOE_GMM2_WAVE_TIMELINE_DIAG != 0
+                if (batchIdx == 0U && nextBatchEnd > batchEnd && aivCoreIdx_ / 2U == 0U) {
+                    RecordGmm2WaveTimeline(0U); // AIV1 Dispatch(B+1) begin
+                }
+#endif
                 while (nextDispatchExpert < nextBatchEnd) {
                     DispatchExpert(dispatchState, dispatchAddrInfo, nextDispatchExpert, bufferConfig);
                     ++nextDispatchExpert;
                 }
+#if MEGA_MOE_GMM2_WAVE_TIMELINE_DIAG != 0
+                if (batchIdx == 0U && nextBatchEnd > batchEnd && aivCoreIdx_ / 2U == 0U) {
+                    RecordGmm2WaveTimeline(1U); // AIV1 Dispatch(B+1) end
+                }
+#endif
             }
         }
 
         // AIC computes every expert in the wave.  AIV0/AIV1 only consume the
         // same virtual scheduler rotation in the direct-GM GroupMatmul2 path.
+#if MEGA_MOE_GMM2_WAVE_TIMELINE_DIAG != 0
+        if constexpr (g_coreType == AIC) {
+            if (batchIdx == 0U && blockIdx_ == 0U) {
+                RecordGmm2WaveTimeline(4U); // AIC GMM2(B) begin
+            }
+        }
+#endif
         for (uint32_t expertIdx = batchBegin; expertIdx < batchEnd; ++expertIdx) {
             if (!UpdateGroupParams<AddrUpdateMode::GMM2>(gmm2State, expertIdx)) {
                 continue;
@@ -2319,6 +2410,13 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessGmm2GmWaves(
         if constexpr (MEGA_MOE_GMM2_READY_MODE == MEGA_MOE_GMM2_READY_PER_BATCH) {
             PublishGmm2NoQuantReady(batchIdx);
         }
+#if MEGA_MOE_GMM2_WAVE_TIMELINE_DIAG != 0
+        if constexpr (g_coreType == AIC) {
+            if (batchIdx == 0U && blockIdx_ == 0U) {
+                RecordGmm2WaveTimeline(5U); // GMM2(B) end, after FIX/Atomic publish
+            }
+        }
+#endif
 
         // This block is AIV1-only.  In particular AIV0 never calls the wait
         // helper and never creates combine UB/event state.
@@ -2327,6 +2425,11 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessGmm2GmWaves(
                 if constexpr (MEGA_MOE_GMM2_READY_MODE == MEGA_MOE_GMM2_READY_PER_BATCH) {
                     WaitGmm2NoQuantReady(batchIdx);
                 }
+#if MEGA_MOE_GMM2_WAVE_TIMELINE_DIAG != 0
+                if (batchIdx == 0U && aivCoreIdx_ / 2U == 0U) {
+                    RecordGmm2WaveTimeline(8U); // AIV1 Combine(B) control entry
+                }
+#endif
                 for (uint32_t expertIdx = batchBegin; expertIdx < batchEnd; ++expertIdx) {
                     if (!UpdateGroupParams<AddrUpdateMode::GMM2>(combineState, expertIdx)) {
                         continue;
@@ -2334,6 +2437,11 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessGmm2GmWaves(
                     UpdateGlobalBuffer<AddrUpdateMode::GMM2>(combineAddrInfo, combineState);
                     ProcessCombineNoQuantGm(combineAddrInfo, combineState, expertIdx);
                 }
+#if MEGA_MOE_GMM2_WAVE_TIMELINE_DIAG != 0
+                if (batchIdx == 0U && aivCoreIdx_ / 2U == 0U) {
+                    RecordGmm2WaveTimeline(9U); // AIV1 Combine(B) end
+                }
+#endif
             }
         }
     }
@@ -2345,7 +2453,17 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessGmm2GmWaves(
     }
     if constexpr (g_coreType == AIV) {
         if (subBlockIdx_ == 1) {
+#if MEGA_MOE_GMM2_WAVE_TIMELINE_DIAG != 0
+            if (expertPerRank_ >= 16U) {
+                if (aivCoreIdx_ / 2U == 0U) {
+                    WriteGmm2WaveTimelineMetadata(expertsPerWave);
+                }
+            } else {
+                ExpertTokenNumCopyOut();
+            }
+#else
             ExpertTokenNumCopyOut();
+#endif
         }
     }
 }
