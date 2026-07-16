@@ -254,17 +254,25 @@ def generate_sparse_blocks_by_row(
         raise ValueError(f"Frame forces {n_forced}/{n_total} blocks ({n_forced / n_total:.2%}) "
                          f"— exceeds target sparsity {sparsity:.2%}. Adjust frame or sparsity.")
     n_max_kept = int(math.floor(n_total * (1.0 - sparsity)))
-    n_kept_per_row = math.ceil((n_max_kept - n_forced) / n_sparse_rows) if n_sparse_rows > 0 else 0
+    # Spread the post-frame budget exactly across sparse rows: the first
+    # `extra_rows` rows keep one more random block than the rest. Rounding the
+    # per-row count (e.g. math.ceil) would overshoot the budget by up to
+    # n_sparse_rows-1 blocks; divmod makes the total kept == n_max_kept exactly.
+    base_per_row, extra_rows = divmod(max(n_max_kept - n_forced, 0), n_sparse_rows) if n_sparse_rows > 0 else (0, 0)
     rng = random.Random(seed)
     rows: list[list[int]] = []
+    sparse_row_idx = 0
     for r in range(n_rows):
         if r in dense_rows:
-            cols = list(range(n_cols))
-        elif n_kept_per_row <= 0:
+            rows.append(list(range(n_cols)))
+            continue
+        n_kept_this_row = base_per_row + (1 if sparse_row_idx < extra_rows else 0)
+        sparse_row_idx += 1
+        if n_kept_this_row <= 0:
             cols = sorted(forced_cols) + [pad_value] * (n_cols - len(forced_cols))
         else:
-            picked = rng.sample(candidate_cols, n_kept_per_row)
-            cols = sorted(list(forced_cols) + picked) + [pad_value] * (n_cols - len(forced_cols) - n_kept_per_row)
+            picked = rng.sample(candidate_cols, n_kept_this_row)
+            cols = sorted(list(forced_cols) + picked) + [pad_value] * (n_cols - len(forced_cols) - n_kept_this_row)
         rows.append(cols)
     return rows
 
