@@ -168,7 +168,7 @@ ge::graphStatus SparseLightningIndexerGradKLLossTilingBaseRegbase::CheckOutPut()
             queryIndexShape.GetDim(DIM_NUM_1) != dQueryIndexShape.GetDim(DIM_NUM_1) ||
             (qIdxDimNum > DIM_NUM_2 && queryIndexShape.GetDim(DIM_NUM_2) != dQueryIndexShape.GetDim(DIM_NUM_2)) ||
             (qIdxDimNum > DIM_NUM_3 && queryIndexShape.GetDim(DIM_NUM_3) != dQueryIndexShape.GetDim(DIM_NUM_3))) {
-            OP_LOGE(context_, "SparseLightningIndexerGradKLLoss Input query_index %s is not equal to Output d_query_index %s",
+            OP_LOGE(context_, "SparseLightningIndexerGradKLLoss Input query_index %s is not equal to Output d_query_index %s --luo",
                 Ops::Base::ToString(queryIndexShape).c_str(), Ops::Base::ToString(dQueryIndexShape).c_str());
             return ge::GRAPH_FAILED;
         }
@@ -181,7 +181,7 @@ ge::graphStatus SparseLightningIndexerGradKLLossTilingBaseRegbase::CheckOutPut()
             keyIndexShape.GetDim(DIM_NUM_1) != dkeyIndexShape.GetDim(DIM_NUM_1) ||
             (kIdxDimNum > DIM_NUM_2 && keyIndexShape.GetDim(DIM_NUM_2) != dkeyIndexShape.GetDim(DIM_NUM_2)) ||
             (kIdxDimNum > DIM_NUM_3 && keyIndexShape.GetDim(DIM_NUM_3) != dkeyIndexShape.GetDim(DIM_NUM_3))) {
-            OP_LOGE(context_, "SparseLightningIndexerGradKLLoss Input key_index %s is not equal to Output d_key_index %s",
+            OP_LOGE(context_, "SparseLightningIndexerGradKLLoss Input key_index %s is not equal to Output d_key_index %s --luo",
                 Ops::Base::ToString(keyIndexShape).c_str(), Ops::Base::ToString(dkeyIndexShape).c_str());
             return ge::GRAPH_FAILED;
         }
@@ -193,7 +193,7 @@ ge::graphStatus SparseLightningIndexerGradKLLossTilingBaseRegbase::CheckOutPut()
             weightsShape.GetDim(DIM_NUM_0) != dWeightsShape.GetDim(DIM_NUM_0) ||
             weightsShape.GetDim(DIM_NUM_1) != dWeightsShape.GetDim(DIM_NUM_1) ||
             (wDimNum > DIM_NUM_2 && weightsShape.GetDim(DIM_NUM_2) != dWeightsShape.GetDim(DIM_NUM_2))) {
-            OP_LOGE(context_, "The input weights shape is %s, but d_weights got %s",
+            OP_LOGE(context_, "The input weights shape is %s, but d_weights got %s --luo",
                 Ops::Base::ToString(weightsShape).c_str(), Ops::Base::ToString(dWeightsShape).c_str());
             return ge::GRAPH_FAILED;
         }
