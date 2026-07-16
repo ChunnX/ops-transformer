@@ -835,45 +835,54 @@ uint32_t BSATiling::GetCurQSTileNum950(int64_t curQSeqlen)
 
 static inline uint32_t LargestDivisorAtMost(uint32_t value, uint32_t maxBound)
 {
+    // 求 value 的、不超过 maxBound 的最大正约数（保证 value % result == 0 且 result <= maxBound）
     if (value == 0 || maxBound == 0) {
         return 1;
     }
-    const uint32_t bound = std::min(value, maxBound);
-    for (uint32_t d = bound; d >= 1; --d) {
+    if (maxBound >= value) {
+        return value;
+    }
+    uint32_t result = 1;
+    for (uint32_t d = 1; d * d <= value; ++d) {
         if (value % d == 0) {
-            return d;
+            if (d <= maxBound) {
+                result = std::max(result, d);
+            }
+            const uint32_t paired = value / d;
+            if (paired <= maxBound) {
+                result = std::max(result, paired);
+            }
         }
     }
-    return 1;
+    return result;
+}
+
+// FP8: pick largest preferred tile that divides blockShapeY (tile <= Y, Y % tile == 0).
+static inline uint32_t CalcFp8KvBaseTile(uint32_t blockShapeY, uint32_t preferredTile)
+{
+    if (blockShapeY % preferredTile == 0) {
+        return preferredTile;
+    }
+    // Mixed path prefers 256; fall back to 128 when Y is a multiple of 128 but not 256.
+    if (preferredTile > TILE_SIZE_128 && blockShapeY % TILE_SIZE_128 == 0) {
+        return TILE_SIZE_128;
+    }
+    if (blockShapeY > preferredTile) {
+        return LargestDivisorAtMost(blockShapeY, preferredTile);
+    }
+    return blockShapeY;
 }
 
 void BSATiling::CalcBaseTileTilingParams950()
 {
-    qBaseTile_ = (blockShapeX_ > TILE_SIZE_128) ? TILE_SIZE_128 : blockShapeX_;
+    qBaseTile_ = (blockShapeX_ > TILE_SIZE_128) ? TILE_SIZE_128 : static_cast<uint32_t>(blockShapeX_);
+    const bool isMixedPrecision =
+        (innerPrecise_ == BsaInnerCalcPrec::LOW_HIGH_MIXED && embeddingSize_ <= D_SIZE_128);
     if (dataType_ == ge::DT_FLOAT8_E4M3FN) {
-        if (innerPrecise_ == BsaInnerCalcPrec::LOW_HIGH_MIXED && embeddingSize_ <= D_SIZE_128) {
-            if (blockShapeY_ % TILE_SIZE_128 == 0) {
-                kvBaseTile_ = TILE_SIZE_256;
-            } else if (blockShapeY_ > TILE_SIZE_256) {
-                kvBaseTile_ = LargestDivisorAtMost(blockShapeY_, TILE_SIZE_256);
-            } else {
-                kvBaseTile_ = blockShapeY_;
-            }
-        } else {
-            if (blockShapeY_ % TILE_SIZE_128 == 0) {
-                kvBaseTile_ = TILE_SIZE_128;
-            } else if (blockShapeY_ > TILE_SIZE_128) {
-                kvBaseTile_ = LargestDivisorAtMost(blockShapeY_, TILE_SIZE_128);
-            } else {
-                kvBaseTile_ = blockShapeY_;
-            }
-        }
+        const uint32_t preferredTile = isMixedPrecision ? TILE_SIZE_256 : TILE_SIZE_128;
+        kvBaseTile_ = CalcFp8KvBaseTile(static_cast<uint32_t>(blockShapeY_), preferredTile);
     } else {
-        if (innerPrecise_ == BsaInnerCalcPrec::LOW_HIGH_MIXED && embeddingSize_ <= D_SIZE_128) {
-            kvBaseTile_ = TILE_SIZE_256;
-        } else {
-            kvBaseTile_ = TILE_SIZE_128;
-        }
+        kvBaseTile_ = isMixedPrecision ? TILE_SIZE_256 : TILE_SIZE_128;
     }
 }
 
