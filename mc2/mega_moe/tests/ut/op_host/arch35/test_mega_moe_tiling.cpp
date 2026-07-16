@@ -17,6 +17,7 @@
 #include "util/math_util.h"
 #include "../../../../op_kernel/arch35/mega_moe_tiling.h"
 #include "../../../../op_kernel/arch35/mega_moe_workspace_info.h"
+#include "../../../../op_host/op_tiling/arch35/mega_moe_batch_tiling.h"
 #include "mc2_tiling_case_executor.h"
 
 namespace MegaMoeUT {
@@ -164,6 +165,17 @@ TEST_F(MegaMoeArch35TilingTest, BalancedTokenOwnershipCoversEveryTokenOnce)
         EXPECT_TRUE(range.count == 7U || range.count == 8U);
     }
     EXPECT_EQ(MegaMoeImpl::GetBalancedTokenRange(256U, 0U, 0U).count, 0U);
+}
+
+TEST_F(MegaMoeArch35TilingTest, ExpertsPerBatchUsesTileWorkAndAicCount)
+{
+    // Fixed EP8 case: 8 GMM1 tiles/expert and 16 GMM2 tiles/expert, so
+    // ceil(36 / min(8, 16)) = 5 experts are needed to fill the AICs.
+    EXPECT_EQ(optiling::MegaMoeBatchTiling::CalcExpertsPerBatch(512U, 8U, 16U, 4096U, 4096U, 36U), 5U);
+
+    // The result follows available AICs and tile work rather than epWorldSize.
+    EXPECT_EQ(optiling::MegaMoeBatchTiling::CalcExpertsPerBatch(512U, 8U, 16U, 4096U, 4096U, 64U), 8U);
+    EXPECT_EQ(optiling::MegaMoeBatchTiling::CalcExpertsPerBatch(512U, 8U, 16U, 8192U, 4096U, 36U), 3U);
 }
 
 TEST_F(MegaMoeArch35TilingTest, H4096_BS128_FP8E4M3FN)

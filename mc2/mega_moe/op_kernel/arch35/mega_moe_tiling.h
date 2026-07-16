@@ -21,6 +21,10 @@
 
 using namespace AscendC;
 
+// Bound rolling batches so AIV1 dispatch prefetch cannot run arbitrarily far
+// ahead of the GMM2 consumer.
+constexpr uint32_t MEGA_MOE_MAX_EXPERTS_PER_BATCH = 14U;
+
 struct MegaMoeTilingData {
     uint32_t expertPerRank;
     uint32_t bs;
@@ -37,5 +41,7 @@ struct MegaMoeTilingData {
     uint8_t groupedMatmulMode;
     int64_t topoType;
     uint32_t ubSize; // 单 AIV UB 总字节数(host 由平台查得), prefill 模板动态算 route batch 用
+    // Keep scheduling extensions at the tail to preserve every existing field offset.
+    uint32_t expertsPerBatch;
 };
 #endif
