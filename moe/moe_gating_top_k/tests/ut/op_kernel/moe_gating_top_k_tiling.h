@@ -66,6 +66,9 @@ struct MoeGatingTopKRegbaseTilingData {
     int64_t vmsCount = 0;
     float routedScalingFactor = 0;
     float eps = 0;
+    bool hashFlag = false;
+    SoftMaxTiling softmaxTilingData;
+    int64_t batchRows = 0;
 };
 #pragma pack()
 

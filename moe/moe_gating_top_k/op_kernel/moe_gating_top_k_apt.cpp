@@ -14,6 +14,7 @@
  */
 
 #include "arch35/moe_gating_top_k_regbase.h"
+#include "arch35/moe_gating_top_k_without_group_regbase.h"
 using namespace AscendC;
 using namespace MoeGatingTopK;
 
@@ -22,6 +23,7 @@ using namespace MoeGatingTopK;
 #define TILING_KEY_HASH_INT32_INT32 10002
 #define TILING_KEY_HASH_INT64_INT64 10003
 #define TILING_KEY_HASH_INT64_INT32 10004
+#define TILING_KEY_WITHOUT_GROUP_REGBASE 10005
 
 extern "C" __global__ __aicore__ void moe_gating_top_k(GM_ADDR x, GM_ADDR bias, GM_ADDR inputIds, GM_ADDR tid2eid,
                                                        GM_ADDR y, GM_ADDR expertIdx, GM_ADDR out, GM_ADDR workspace,
@@ -44,7 +46,11 @@ extern "C" __global__ __aicore__ void moe_gating_top_k(GM_ADDR x, GM_ADDR bias, 
     const MoeGatingTopKRegbaseTilingData *__restrict tilingData = &tiling_data_in;
     TPipe tPipe;
 
-    if (TILING_KEY_IS(TILING_KEY_REGBASE) || TILING_KEY_IS(TILING_KEY_HASH_INT32_INT32)) {
+    if (TILING_KEY_IS(TILING_KEY_WITHOUT_GROUP_REGBASE)) {
+        MoeGatingTopKWithoutGroupRegbase<DTYPE_X> op;
+        op.Init(x, bias, y, expertIdx, out, userWS, tilingData, &tPipe);
+        op.Process();
+    } else if (TILING_KEY_IS(TILING_KEY_REGBASE) || TILING_KEY_IS(TILING_KEY_HASH_INT32_INT32)) {
         MoeGatingTopKRegbase<DTYPE_X> op;
         op.Init(x, bias, inputIds, tid2eid, y, expertIdx, out, userWS, tilingData, &tPipe);
         op.Process();
