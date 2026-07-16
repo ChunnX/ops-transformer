@@ -916,7 +916,8 @@ static uint64_t CalcDispatchWorkspace(MoeEpDispatchInfo &info)
     info.scaleupSendWorkspaceOffset = sendCntBytes;
     info.scaleoutSendWorkspaceOffset = info.scaleupSendWorkspaceOffset + scaleupSendWorkspaceBytes;
     info.routeWorkspaceOffset = info.scaleoutSendWorkspaceOffset + scaleoutSendWorkspaceBytes;
-    return SYSTEM_NEED_WORKSPACE + info.routeWorkspaceOffset + routeWorkspaceBytes + globalABytes;
+    return SYSTEM_NEED_WORKSPACE + info.routeWorkspaceOffset + scaleoutCounterBytes + routeWorkspaceBytes +
+           globalABytes;
 }
 
 static ge::graphStatus CheckWinSize(const gert::TilingContext *context, MoeEpDispatchInfo &info, const char *nodeName)
