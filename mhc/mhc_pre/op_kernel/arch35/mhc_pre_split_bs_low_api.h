@@ -31,7 +31,7 @@ public:
 
         if ASCEND_IS_AIV {
             this->coreIdx_ = GetBlockIdx() / this->kDoubleBufferCount;
-            this->AIVPreLoad();
+            this->AIVPreLoad(false);
         }
         if ASCEND_IS_AIC {
             this->pipe_->InitBuffer(l1Buffer_, MHC_PRE_LOW_API_L1_ALLOC_SIZE);
@@ -157,7 +157,7 @@ private:
             AIV1PrologueDirect(offsetT, lenT, localOffset);
             this->AIV1ProcessHPost(offsetT, lenT);
             this->AIV1ProcessHPre(offsetT, lenT);
-            this->AIV1ProcessHIn(offsetT, lenT, this->v1ChunkDSize_);
+            this->AIV1ProcessHInBatched(offsetT, lenT, this->v1ChunkDSize_);
             localOffset += lenT;
         }
     }
@@ -192,56 +192,13 @@ private:
             CopyRawHMixToGm(offsetT, lenT);
         }
 
-        __ubuf__ P *matmulPtr = (__ubuf__ P *)this->matmulRes_.GetPhyAddr();
-        __ubuf__ P *invRmsPtr = (__ubuf__ P *)this->invRmsUb_.GetPhyAddr();
-        __ubuf__ P *biasInPtr = (__ubuf__ P *)this->biasInUb_.GetPhyAddr();
-        __ubuf__ P *alphaInPtr = (__ubuf__ P *)this->alphaInUb_.GetPhyAddr();
-        __ubuf__ P *hPreBuffPtr = (__ubuf__ P *)this->hPreBuff_.GetPhyAddr();
-        __ubuf__ P *hPostBuffPtr = (__ubuf__ P *)this->hPostBuff_.GetPhyAddr();
-
-        __VEC_SCOPE__
-        {
-            MicroAPI::RegTensor<P> matmulResReg;
-            MicroAPI::RegTensor<P> invRmsReg;
-            MicroAPI::RegTensor<P> invRmsBroadReg;
-            MicroAPI::RegTensor<P> biasInReg;
-            MicroAPI::RegTensor<P> alphaInReg;
-
-            for (uint16_t tIdx = 0; tIdx < static_cast<uint16_t>(lenT); tIdx++) {
-                MicroAPI::Load<P>(invRmsReg, invRmsPtr + localOffset + tIdx);
-
-                uint32_t loopCntPerN =
-                    (this->mnConfig_.n + this->eleNumPerVf_ - 1) / this->eleNumPerVf_;
-                uint32_t curLen = this->mnConfig_.n;
-                for (uint16_t vfBlockIdx = 0; vfBlockIdx < static_cast<uint16_t>(loopCntPerN); vfBlockIdx++) {
-                    uint32_t maskOffset = tIdx * this->mnConfig_.n + vfBlockIdx * this->eleNumPerVf_;
-                    uint32_t alphaOffset = vfBlockIdx * this->eleNumPerVf_;
-                    uint32_t biasOffset = vfBlockIdx * this->eleNumPerVf_;
-                    uint32_t curOffset = MhcPreUtils::Min(
-                        this->mnConfig_.n - vfBlockIdx * this->eleNumPerVf_,
-                        static_cast<uint64_t>(this->eleNumPerVf_));
-                    MicroAPI::MaskReg curMask = MicroAPI::UpdateMask<P>(curLen);
-
-                    MicroAPI::Load<P>(matmulResReg, matmulPtr + maskOffset);
-                    MicroAPI::Load<P>(biasInReg, biasInPtr + biasOffset);
-                    MicroAPI::Load<P>(alphaInReg, alphaInPtr + alphaOffset);
-                    MicroAPI::Duplicate(invRmsBroadReg, invRmsReg, curMask);
-                    MicroAPI::Mul(matmulResReg, matmulResReg, invRmsBroadReg, curMask);
-                    MicroAPI::Mul(matmulResReg, matmulResReg, alphaInReg, curMask);
-                    MicroAPI::Add(matmulResReg, matmulResReg, biasInReg, curMask);
-                    MicroAPI::Store<P>(matmulPtr + maskOffset, matmulResReg, curOffset);
-                }
-            }
-        }
-
-        Gather(this->hPreBuff_, this->matmulRes_, this->preOffsetBuf_, uint32_t(0), lenT * this->N_);
-        Gather(this->hPostBuff_, this->matmulRes_, this->postOffsetBuf_, uint32_t(0), lenT * this->N_);
+        MhcPreVFPostSegments<P, MHC_PRE_LOW_API_N4, HAS_RESI == MHC_PRE_HAS_RESI>(
+            this->hPreBuff_, this->hPostBuff_, hResOutLocal, this->matmulRes_,
+            this->invRmsUb_, this->alphaInUb_, this->biasInUb_, static_cast<uint16_t>(lenT),
+            static_cast<uint32_t>(localOffset), this->tiling_->fusionAlign);
+        PipeBarrier<PIPE_V>();
 
         if constexpr (HAS_RESI == MHC_PRE_HAS_RESI) {
-            Gather(hResOutLocal, this->matmulRes_, this->resOffsetBuf_, uint32_t(0),
-                lenT * this->N_ * this->N_);
-            PipeBarrier<PIPE_V>();
-
             this->outQueue_.EnQue(hResOutLocal);
             hResOutLocal = this->outQueue_.template DeQue<P>();
             DataCopyExtParams copyParams;
@@ -251,8 +208,6 @@ private:
             copyParams.dstStride = 0;
             DataCopyPad(this->hResGm_[outputOffset * this->N_ * this->N_], hResOutLocal, copyParams);
             this->outQueue_.FreeTensor(hResOutLocal);
-        } else {
-            PipeBarrier<PIPE_V>();
         }
     }
 
