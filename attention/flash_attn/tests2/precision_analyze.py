@@ -298,7 +298,7 @@ def analyze_failure(
 
     lines += analyze_dimensions(cpu_out, npu_out, compare_result)
     lines += analyze_continuity(cpu_out, npu_out, compare_result)
-    lines += visualize_failure(cpu_out, npu_out, compare_result)
+    lines += visualize_failure(cpu_out, npu_out, compare_result, case_dir)
     lines.append(f"\n{SEP}")
     report = "\n".join(lines)
 
