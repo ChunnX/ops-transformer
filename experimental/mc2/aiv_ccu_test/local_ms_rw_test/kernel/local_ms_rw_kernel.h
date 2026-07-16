@@ -109,11 +109,11 @@ __aicore__ inline void LocalMsRw<T>::GetBlockTargetAddr(uint64_t blockIdx, uint3
 {
     if (mode1_ == MODE_INTERLEAVED) {
         // 交织：每 8 个 4KB 块为一组，组间轮转 CCUA0→1→2→3
-        uint32_t group = static_cast<uint32_t>(blockIdx / GROUP_SIZE);
-        ccuaIdx = group % CCUA_NUM;
-        uint32_t localGroup = group / CCUA_NUM;
-        uint32_t posInGroup = static_cast<uint32_t>(blockIdx % GROUP_SIZE);
-        offsetBytes = (localGroup * GROUP_SIZE + posInGroup) * BLOCK_4K_BYTES;
+        uint32_t group = static_cast<uint32_t>(blockIdx / GROUP_SIZE); // group = 41 / 8 = 5
+        ccuaIdx = group % CCUA_NUM; // ccuaidx = 5 % 4 = 1
+        uint32_t localGroup = group / CCUA_NUM; // localGroup = 5 / 4 = 1
+        uint32_t posInGroup = static_cast<uint32_t>(blockIdx % GROUP_SIZE); // posInGroup = 41 % 8 = 1
+        offsetBytes = (localGroup * GROUP_SIZE + posInGroup) * BLOCK_4K_BYTES; //( 1 * 8 + 1 ) * 4KB = 36KB
     } else {
         // 非交织：连续写满 CCUA0(1.5MB) 再写 CCUA1，以此类推
         ccuaIdx = static_cast<uint32_t>(blockIdx / BLOCKS_PER_CCUA);

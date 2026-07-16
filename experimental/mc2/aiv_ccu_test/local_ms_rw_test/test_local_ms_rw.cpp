@@ -38,8 +38,12 @@ using namespace std;
         }                                                                                                              \
     } while (0)
 
-// ========== hcomm 内部接口 extern 声明（避免引入内部头文件） ==========
-// CcuMemInfo 结构体定义（与 orion_adapter_hccp.h 中一致）
+// ========== hcomm 暴露的接口声明 ==========
+// 返回值类型
+typedef int32_t CcuResult;
+constexpr CcuResult CCU_SUCCESS = 0;
+
+// MS 内存信息结构体
 struct CcuMemInfo {
     uint64_t memType{0};
     uint64_t memVa{0};
@@ -53,26 +57,18 @@ constexpr uint64_t CCU_MEMTYPE_MS_BLOCK1 = 1ULL << 33;
 constexpr uint64_t CCU_MEMTYPE_MS_BLOCK2 = 1ULL << 34;
 constexpr uint64_t CCU_MEMTYPE_MS_BLOCK3 = 1ULL << 35;
 
-// HrtGetCcuMemInfo extern 声明
-extern "C" HcclResult HrtGetCcuMemInfo(void *tlv_handle, uint32_t udieIdx, uint64_t memTypeBitmap,
-                                        struct CcuMemInfo *memInfoList, uint32_t count);
-
-// HccpTlvHdcManager::GetTlvHandle 是 C++ 符号，在 hcomm 库中
-// 声明最小接口
-namespace Hccl {
-class HccpTlvHdcManager {
-public:
-    static HccpTlvHdcManager &GetInstance();
-    void *GetTlvHandle(int32_t deviceLogicId);
-};
-} // namespace Hccl
+// hcomm 暴露的两个 C 接口
+extern "C" CcuResult CcuGetTlvHandle(uint32_t devLogicId, void **outTlvHandle);
+extern "C" CcuResult CcuGetMemInfo(void *tlvHandle, uint32_t udieIdx, uint64_t memTypeBitmap,
+                                    void *memInfoList, uint32_t count);
 
 // ========== 系统周期频率 ==========
 constexpr uint32_t SYS_CYCLE_FREQ_MHZ = 1000U;
 constexpr double NS_PER_CYCLE = 1.0; // 1000MHz → 1 cycle = 1 ns
 
 // ========== 默认参数 ==========
-constexpr int64_t BLOCK_NUM = 64;
+// constexpr int64_t BLOCK_NUM = 64;
+constexpr int64_t BLOCK_NUM = 1;
 constexpr int64_t HCCL_BUFFER_SIZE = 200;
 int32_t g_rankId = 0;
 int32_t g_ranksize = 1;        // 卡数（本地测试默认单卡）
@@ -171,14 +167,16 @@ int main(int argc, char *argv[])
 
     // ========== 获取 MS 地址 ==========
     LOG_PRINT("[INFO] 获取 TLV Handle...\n");
-    void *tlvHandle = Hccl::HccpTlvHdcManager::GetInstance().GetTlvHandle(g_rankId);
-    CHECK_RET(tlvHandle != nullptr, LOG_PRINT("[ERROR] GetTlvHandle failed.\n"); return -1);
+    void *tlvHandle = nullptr;
+    CcuResult ccuRet = CcuGetTlvHandle((uint32_t)g_rankId, &tlvHandle);
+    CHECK_RET(ccuRet == CCU_SUCCESS, LOG_PRINT("[ERROR] CcuGetTlvHandle failed. ret: %d\n", ccuRet); return -1);
+    CHECK_RET(tlvHandle != nullptr, LOG_PRINT("[ERROR] tlvHandle is nullptr.\n"); return -1);
 
     uint64_t msBitmap = CCU_MEMTYPE_MS_BLOCK0 | CCU_MEMTYPE_MS_BLOCK1 | CCU_MEMTYPE_MS_BLOCK2 | CCU_MEMTYPE_MS_BLOCK3;
     CcuMemInfo memInfoList[4];
     LOG_PRINT("[INFO] 查询 MS 地址...\n");
-    HcclResult hcclRet = HrtGetCcuMemInfo(tlvHandle, 0, msBitmap, memInfoList, 4);
-    CHECK_RET(hcclRet == HCCL_SUCCESS, LOG_PRINT("[ERROR] HrtGetCcuMemInfo failed. ret: %d\n", hcclRet); return -1);
+    ccuRet = CcuGetMemInfo(tlvHandle, 0, msBitmap, memInfoList, 4);
+    CHECK_RET(ccuRet == CCU_SUCCESS, LOG_PRINT("[ERROR] CcuGetMemInfo failed. ret: %d\n", ccuRet); return -1);
 
     uint64_t msAddrs[4];
     for (uint32_t i = 0; i < 4; i++) {

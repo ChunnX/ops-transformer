@@ -15,10 +15,6 @@ set(SOC_VERSION "ascend950pr_9599" CACHE STRING "system on chip type")
 set(ASCEND_CANN_PACKAGE_PATH "/usr/local/Ascend/cann"
     CACHE STRING "ASCEND CANN package installation directory"
 )
-# hcomm 源码路径（用于获取内部头文件）
-set(HCOMM_SRC_PATH "/Users/coke/Desktop/Ascend/hcomm"
-    CACHE STRING "hcomm source directory"
-)
 if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE "Release" CACHE STRING "Build type Release/Debug (default Release)" FORCE)
 endif()
@@ -62,9 +58,6 @@ target_compile_definitions(test_local_ms_rw PRIVATE
 target_include_directories(test_local_ms_rw PRIVATE
     ${ASCEND_CANN_PACKAGE_PATH}/pkg_inc
     ${ASCEND_CANN_PACKAGE_PATH}/include
-    ${HCOMM_SRC_PATH}/include
-    ${HCOMM_SRC_PATH}/src/legacy/ascend950/unified_platform/common
-    ${HCOMM_SRC_PATH}/src/legacy/ascend950/unified_platform/external_system
 )
 
 target_link_libraries(test_local_ms_rw PRIVATE
