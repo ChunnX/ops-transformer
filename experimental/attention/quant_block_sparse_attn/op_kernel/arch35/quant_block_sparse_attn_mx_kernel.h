@@ -141,6 +141,7 @@ private:
 
         constInfo.maxBlockNumPerBatch = pageAttentionParams.maxBlockNumPerBatch;
         constInfo.paBlockStride = pageAttentionParams.paBlockStride;
+        constInfo.qSparseBlockSize = pageAttentionParams.qBlockSize;
         constInfo.kvSparseBlockSize = pageAttentionParams.kvBlockSize;
 
         constInfo.maxQb = sparseParams.maxQb;
@@ -236,7 +237,8 @@ private:
     __aicore__ inline uint32_t GetS1LoopEnd(uint32_t bn1Idx, uint32_t bn1EndIdx, uint32_t s1EndIdx,
                                             uint32_t actualS1Size) const
     {
-        const uint32_t loopEnd = (actualS1Size + M_BASE - 1U) / M_BASE;
+        const uint32_t loopEnd =
+            (actualS1Size + constInfo.qSparseBlockSize - 1U) / constInfo.qSparseBlockSize;
         if (s1EndIdx != 0U && bn1Idx == bn1EndIdx - 1U) {
             return s1EndIdx;
         }
@@ -295,13 +297,15 @@ private:
         runInfo.realN2Idx = runInfo.n1Idx;
         runInfo.n2Idx = runInfo.n1Idx / constInfo.gSize;
         runInfo.gIdx = runInfo.n1Idx % constInfo.gSize;
-        runInfo.gS1Idx = s1OuterIdx * M_BASE;
-        runInfo.s1Idx = s1OuterIdx * M_BASE;
+        // s1OuterIdx 是 sparse Q block 下标。MX 的计算上限仍为 M=128，
+        // q_block_size=64 时每个 task 只处理对应的 64 行，避免跨两个 sparse 列表。
+        runInfo.gS1Idx = s1OuterIdx * constInfo.qSparseBlockSize;
+        runInfo.s1Idx = s1OuterIdx * constInfo.qSparseBlockSize;
         runInfo.queryTokenBase = GetQTokenBase(runInfo.bIdx);
         runInfo.actS1Size = GetActualQSeqLen(runInfo.bIdx);
         runInfo.actS2Size = GetActualKvSeqLen(runInfo.bIdx);
-        runInfo.actMSize = M_BASE;
-        if (runInfo.s1Idx + M_BASE > runInfo.actS1Size) {
+        runInfo.actMSize = constInfo.qSparseBlockSize;
+        if (runInfo.s1Idx + constInfo.qSparseBlockSize > runInfo.actS1Size) {
             runInfo.actMSize = static_cast<uint32_t>(runInfo.actS1Size) - runInfo.s1Idx;
         }
         runInfo.actMSizeAlign32 = (runInfo.actMSize + 31U) >> 5 << 5;
