@@ -43,14 +43,12 @@ public:
             .Format({ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND});
         this->Output("kFlat")
-            .OutputShapeDependOnCompute()
             .ParamType(REQUIRED)
             .DataType({ge::DT_BF16})
             .Format({ge::FORMAT_ND})
             .OutputShapeDependOnCompute()
             .UnknownShapeFormat({ge::FORMAT_ND});
         this->Output("vBias")
-            .OutputShapeDependOnCompute()
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT})
             .Format({ge::FORMAT_ND})
