@@ -206,6 +206,14 @@ __aicore__ inline void InlineRadixTopK(
             (static_cast<int16_t>(boundaryBin) << (roundId * RDX_BITS));
         RDX_S_V_SYNC();
 
+        // Update globalHistBoundaryNum_ for next round's ClearHist
+        RDX_V_S_SYNC();
+        globalHistBoundaryNum_ = globalHist.GetValue(boundaryBin);
+        if (boundaryBin < static_cast<int32_t>(RDX_BINS) - 1) {
+            globalHistBoundaryNum_ -= globalHist.GetValue(boundaryBinPrev);
+        }
+        RDX_S_V_SYNC();
+
         // AddTileHistToTileTopK
         RDX_V_S_SYNC();
         if (globalHist.GetValue(boundaryBin) == remainK_) {
@@ -257,8 +265,6 @@ __aicore__ inline void InlineRadixTopK(
         coreTopKOffset += tileTopK.GetValue(i);
     }
     RDX_S_V_SYNC();
-
-    // TileTopK: extract indices - use scalar approach for correctness
     int16_t boundaryNumber16 = involvedMask16_ ^ ((~(involvedMask16_ >> 15)) | 0x8000);
     bfloat16_t boundaryBf16 = *reinterpret_cast<bfloat16_t *>(&boundaryNumber16);
     float boundaryFloat = AscendC::Cast(boundaryBf16);
