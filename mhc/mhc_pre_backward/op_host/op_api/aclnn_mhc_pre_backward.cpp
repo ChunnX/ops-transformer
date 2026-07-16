@@ -703,22 +703,23 @@ bool CopyOutput(const aclTensor *out, const aclTensor *dst, aclOpExecutor *execu
 
 static aclnnStatus mhcPreBackwardCommonProcess(AclnnMhcPreBackwardParams &params, aclOpExecutor *executor)
 {
-    printf("mhcPreBackwardCommonProcess start.\n");
+    // printf("mhcPreBackwardCommonProcess start.\n");
     auto ret = MhcGradCheckParams(params);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
-    printf("mhcPreBackwardCommonProcess check params.\n");
+    // printf("mhcPreBackwardCommonProcess check params.\n");
 
     ret = MhcGradCovertDataContiguous(params, executor);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
-    printf("mhcPreBackwardCommonProcess covert data contiguous.\n");
+    // printf("mhcPreBackwardCommonProcess covert data contiguous.\n");
 
+    // printf("params.hcEps = %.30f\n", params.hcEps);
     auto outParams =
         l0op::MhcPreBackward(params.xContiguous, params.phiContiguous, params.alphaContiguous, params.gradHInContiguous,
                              params.gradHPostContiguous, params.gradHResContiguous, params.invRmsContiguous,
                              params.hMixContiguous, params.hPreContiguous, params.hPostContiguous,
                              params.gammaContiguous, params.gradXPostOptionalContiguous, params.hcEps, executor);
     CHECK_RET(outParams != std::tuple(nullptr, nullptr, nullptr, nullptr, nullptr), ACLNN_ERR_INNER_NULLPTR);
-    printf("mhcPreBackwardCommonProcess mhc pre backward.\n");
+    // printf("mhcPreBackwardCommonProcess mhc pre backward.\n");
 
     CHECK_RET(CopyOutput(std::get<0>(outParams), params.gradX, executor), ACLNN_ERR_INNER_NULLPTR);
     CHECK_RET(CopyOutput(std::get<1>(outParams), params.gradPhi, executor), ACLNN_ERR_INNER_NULLPTR);
@@ -738,14 +739,14 @@ aclnnStatus aclnnMhcPreBackwardGetWorkspaceSize(
     float hcEps, const aclTensor *gradX, const aclTensor *gradPhi, const aclTensor *gradAlpha,
     const aclTensor *gradBias, const aclTensor *gradGamma, uint64_t *workspaceSize, aclOpExecutor **executor)
 {
-    printf("aclnnMhcPreBackwardGetWorkspaceSize start.\n");
+    // printf("aclnnMhcPreBackwardGetWorkspaceSize start. eps = %.30f\n", hcEps);
     L2_DFX_PHASE_1(aclnnMhcPreBackward,
                    DFX_IN(x, phi, alpha, gradHIn, gradHPost, gradHRes, invRms, hMix, hPre, hPost, gamma,
                           gradXPostOptional),
                    DFX_OUT(gradX, gradPhi, gradAlpha, gradBias, gradGamma));
-    printf("aclnnMhcPreBackwardGetWorkspaceSize create executor start.\n");
+    // printf("aclnnMhcPreBackwardGetWorkspaceSize create executor start.\n");
     auto uniqueExecutor = CREATE_EXECUTOR();
-    printf("aclnnMhcPreBackwardGetWorkspaceSize create executor.\n");
+    // printf("aclnnMhcPreBackwardGetWorkspaceSize create executor.\n");
     AclnnMhcPreBackwardParams params = AclnnMhcPreBackward::Create()
                                            .SetInput(x, phi, alpha, gamma)
                                            .SetGradInput(gradHIn, gradHPost, gradHRes)
@@ -754,10 +755,10 @@ aclnnStatus aclnnMhcPreBackwardGetWorkspaceSize(
                                            .SetAttr(hcEps)
                                            .SetOutput(gradX, gradPhi, gradAlpha, gradBias, gradGamma)
                                            .Build();
-    printf("aclnnMhcPreBackwardGetWorkspaceSize build params.\n");
+    // printf("aclnnMhcPreBackwardGetWorkspaceSize build params.\n");
     auto ret = mhcPreBackwardCommonProcess(params, uniqueExecutor.get());
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
-    printf("aclnnMhcPreBackwardGetWorkspaceSize common process.\n");
+    // printf("aclnnMhcPreBackwardGetWorkspaceSize common process.\n");
     *workspaceSize = uniqueExecutor->GetWorkspaceSize();
     uniqueExecutor.ReleaseTo(executor);
     return ACLNN_SUCCESS;

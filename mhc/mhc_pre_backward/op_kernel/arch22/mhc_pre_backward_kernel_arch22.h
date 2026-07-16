@@ -495,15 +495,13 @@ __aicore__ inline void MhcPreBackwardKernelArch22<TYPE_X, T, DETERMINISTIC>::Com
         {4, 0, 4, static_cast<uint8_t>(fusionSize_), 0, static_cast<uint8_t>(fusionSize_)});
     PipeBarrier<PIPE_V>();
 
-    // printf("ComputeGradHHat2 done\n");
-    // PipeBarrier<PIPE_ALL>();
     auto eventIdVToMTE2 = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::V_MTE2>());
     SetFlag<HardEvent::V_MTE2>(eventIdVToMTE2);
     WaitFlag<HardEvent::V_MTE2>(eventIdVToMTE2);
     // 新增: 加载正向输出 h_pre 、 h_post和反向的grad_h_res
     DataCopyPad(hatLocal, preGlobal_[taskOffset * n_],
                 {static_cast<uint16_t>(tileTaskCount), static_cast<uint32_t>(n_ * sizeof(T)), 0, 0, 0}, 
-                {true, 0, static_cast<uint8_t>(ELEMENTS_SIZE_PER_BLOCK - n_), 0});
+                {true, 0, static_cast<uint8_t>(ELEMENTS_SIZE_PER_BLOCK - n_), eps_});
     // DumpTensor(hatLocal, 1, tileTaskCount * 8);
 
     DataCopyPad(hatLocal[ELEMENTS_SIZE_PER_BLOCK * tileTaskCount], hPostGlobal_[taskOffset * n_],
@@ -518,11 +516,43 @@ __aicore__ inline void MhcPreBackwardKernelArch22<TYPE_X, T, DETERMINISTIC>::Com
     // 计算真正的 sigmoid 输出 s
     // pre 区段:  s = H_pre - eps  (正向 H_pre = sigmoid(x) + eps)
     // post 区段: s = H_post / 2   (正向 H_post = 2 * sigmoid(x))
+    // if (blkIdx_ == 0) {
+    //     printf("eps_ = %x\n", eps_);
+    //     printf("hatLocal value is \n");
+    //     for(int i = 0; i < 16; i++) {
+    //         int index = i * 8 + 7;
+    //         printf("[%d] %x\t", index, hatLocal.GetValue(index + ELEMENTS_SIZE_PER_BLOCK * tileTaskCount));
+    //     }
+    //     printf("-----------------------\n");
+    // }
     Adds(hatLocal, hatLocal, float(-eps_), ELEMENTS_SIZE_PER_BLOCK * tileTaskCount);
     Muls(hatLocal[ELEMENTS_SIZE_PER_BLOCK * tileTaskCount], hatLocal[ELEMENTS_SIZE_PER_BLOCK * tileTaskCount], float(0.5), ELEMENTS_SIZE_PER_BLOCK * tileTaskCount);
     PipeBarrier<PIPE_V>();
+    // if (blkIdx_ == 0) {
+    //     printf("hatLocal value 3 is \n");
+    //     for(int i = 0; i < 16; i++) {
+    //         int index = i * 8 + 7;
+    //         printf("[%d] %x\t", index, hatLocal.GetValue(index));
+    //     }
+    //     printf("-----------------------\n");
+    //     printf("hatLocal value 4 is \n");
+    //     for(int i = 0; i < 16; i++) {
+    //         int index = i * 8 + 7;
+    //         printf("[%d] %x\t", index, hatLocal.GetValue(index + ELEMENTS_SIZE_PER_BLOCK * tileTaskCount));
+    //     }
+    //     printf("-----------------------\n");
+    // }
     Add(hatLocal, hatLocal, hatLocal[ELEMENTS_SIZE_PER_BLOCK * tileTaskCount], ELEMENTS_SIZE_PER_BLOCK * tileTaskCount);
     PipeBarrier<PIPE_V>();
+
+    // if (blkIdx_ == 0) {
+    //     printf("hatLocal value 2 is \n");
+    //     for(int i = 0; i < 16; i++) {
+    //         int index = i * 8 + 7;
+    //         printf("[%d] %x\t", index, hatLocal.GetValue(index));
+    //     }
+    //     printf("-----------------------\n");
+    // }
 
     auto hatLocalTemp = dhatBeforeNormLocal;
 
@@ -535,6 +565,16 @@ __aicore__ inline void MhcPreBackwardKernelArch22<TYPE_X, T, DETERMINISTIC>::Com
         {1, 1, 1, 8, 8, 8});
     PipeBarrier<PIPE_V>();
 
+    // if (blkIdx_ == 0) {
+    //     printf("hatLocalTemp value 2 is \n");
+    //     for(int i = 0; i < 16; i++) {
+    //         int index = i * 8 + 7;
+    //         printf("[%d] %x\t", index, hatLocalTemp.GetValue(index));
+    //     }
+    //     printf("-----------------------\n");
+    // }
+
+
     // --- [公式2][3] H_pre_2_grad = H_pre_grad ⊙ s ⊙ (1-s), H_post_2_grad = H_post_grad ⊙ s ⊙ (1-s) ---
     // dhatLocal_ = dPrePostTempLocal_ * hatLocalTemp
     //   pre 区段:  H_pre_2_grad  = H_pre_grad  * s * (1-s)
@@ -543,6 +583,15 @@ __aicore__ inline void MhcPreBackwardKernelArch22<TYPE_X, T, DETERMINISTIC>::Com
     Mul(dhatLocal_, dPrePostTempLocal_, hatLocalTemp, ELEMENTS_SIZE_PER_REPEAT, tileRepeatTimes_,
         {4, 1, 1, static_cast<uint8_t>(fusionSize_), 8, 8});
     PipeBarrier<PIPE_V>();
+
+    // if (blkIdx_ == 0) {
+    //     printf("dhatLocal_ value is \n");
+    //     for(int i = 0; i < 16; i++) {
+    //         int index = i * 32 + 7;
+    //         printf("[%d] %x\t", index, dhatLocal_.GetValue(index));
+    //     }
+    //     printf("-----------------------\n");
+    // }
 
     // --- [公式5] RMSNorm Fusion 反向 ---
     // inv_rms_grad = sum_last_dim(H_mix_tmp_grad ⊙ H_mix)
@@ -580,6 +629,21 @@ __aicore__ inline void MhcPreBackwardKernelArch22<TYPE_X, T, DETERMINISTIC>::Com
     Mul(dhatBeforeNormLocal, rsqrtbrcbLocal_, dhatLocal_, fusionSize_ * tileTaskCount);
     PipeBarrier<PIPE_V>();
 
+    // if (blkIdx_ == 0) {
+    //     printf("scaleLocal_ value is \n");
+    //     for(int i = 0; i < 16; i++) {
+    //         printf("[%d] %x\t", i, scaleLocal_.GetValue(i));
+    //     }
+    //     printf("-----------------------\n");
+
+    //     printf("dhatBeforeNormLocal value is \n");
+    //     for(int i = 0; i < 16; i++) {
+    //         int index = i * 32 + 7;
+    //         printf("[%d] %x\t", index, dhatBeforeNormLocal.GetValue(index));
+    //     }
+    //     printf("-----------------------\n");
+    // }
+
     // --- 累加 α_grad 和 bias_grad 的中间结果 ---
     // α_grad = sum(H_2_grad * H_1)，其中 H_1 = H_mix (before norm)
     // dhatLocal_[tileCoreBS_*fusionSize_] = hat2LocalTemp * dhatBeforeNormLocal
@@ -602,6 +666,7 @@ __aicore__ inline void MhcPreBackwardKernelArch22<TYPE_X, T, DETERMINISTIC>::Com
     // --- 输出 H_mix_grad 供 AIC 侧 matmul 使用 ---
     // dhat2Local = α * dhatBeforeNormLocal = α * inv_rms * H_2_grad = inv_rms * H_1_grad = H_mix_grad
     // H_mix_grad 将被 AIC 侧 ProcessMatmul1 用于: x_rs_grad = H_mix_grad @ phi
+    
     Mul(dhat2Local, scaleLocal_, dhatBeforeNormLocal, ELEMENTS_SIZE_PER_REPEAT, tileRepeatTimes_,
         {4, 0, 4, static_cast<uint8_t>(fusionSize_), 0, static_cast<uint8_t>(fusionSize_)});
     Mul(dhat2Local[8], scaleLocal_[8], dhatBeforeNormLocal[8], ELEMENTS_SIZE_PER_REPEAT, tileRepeatTimes_,
@@ -611,6 +676,29 @@ __aicore__ inline void MhcPreBackwardKernelArch22<TYPE_X, T, DETERMINISTIC>::Com
     Mul(dhat2Local[24], scaleLocal_[8], dhatBeforeNormLocal[24], ELEMENTS_SIZE_PER_REPEAT, tileRepeatTimes_,
         {4, 0, 4, static_cast<uint8_t>(fusionSize_), 0, static_cast<uint8_t>(fusionSize_)});
 
+    // if (blkIdx_ == 0) {
+    //     printf("scaleLocal_ value is \n");
+    //     for(int i = 0; i < 16; i++) {
+    //         printf("[%d] %x\t", i, scaleLocal_.GetValue(i));
+    //     }
+    //     printf("-----------------------\n");
+
+    //     printf("dhatBeforeNormLocal value is \n");
+    //     for(int i = 0; i < 16; i++) {
+    //         int index = i * 32 + 1;
+    //         printf("[%d] %x\t", index, dhatBeforeNormLocal.GetValue(index));
+    //     }
+    //     printf("-----------------------\n");
+
+
+    //     printf("dhat2Local value is \n");
+    //     for(int i = 0; i < 16; i++) {
+    //         int index = i * 32 + 1;
+    //         printf("[%d] %x\t", index, dhat2Local.GetValue(index));
+    //     }
+    //     printf("-----------------------\n");
+    // }
+        
     OutQueue.EnQue(dhat2Local);
     dhat2Local = OutQueue.DeQue<T>();
     // 写入 gradH2Global_ (workspace)，AIC 核心读取此数据做 matmul
@@ -669,12 +757,6 @@ __aicore__ inline void MhcPreBackwardKernelArch22<TYPE_X, T, DETERMINISTIC>::Com
                      static_cast<uint32_t>((c_ - copyLen) * sizeof(T)), 0, 0},
                     {isPad, 0, padLen, 0});
 
-        // if (blkIdx_ == 0) {
-        //     int id = 365 + 3 * 640 + 5 * 4 * 640;
-        //     printf("gradXCubeGlobal_ id = %d\n", id);
-        //     printf("gradXCubeGlobal_ = %x\n", gradXCubeGlobal_.GetValue(id));
-        // }
-
         inputXInQueue.EnQue(xLocal_);
         inputXInQueue.DeQue();
         PipeBarrier<PIPE_V>();
@@ -716,12 +798,6 @@ __aicore__ inline void MhcPreBackwardKernelArch22<TYPE_X, T, DETERMINISTIC>::Com
                           {1, 1, 0, blkStride2, blkStride2, 1});
             }
         }
-
-        // if (blkIdx_ == 0) {
-        //     int id = 365 - 256 + 3 * 256 + 5 * 4 * 256;
-        //     printf("gradXCastLocal_ id = %d\n", id);
-        //     printf("gradXCastLocal_ = %x\n", gradXCastLocal_.GetValue(id));
-        // }
 
         PipeBarrier<PIPE_V>();
         // --- [公式6] x_grad = x_grad_vec3 + x_grad_vec1 + x_grad_mm ---
@@ -1026,7 +1102,7 @@ __aicore__ inline void MhcPreBackwardKernelArch22<TYPE_X, T, DETERMINISTIC>::Pro
     // ============================================================================
 
     if ASCEND_IS_AIV {
-        printf("AIV start\n");
+        // printf("AIV start\n");
         // --- AIV 侧: 逐元素计算 ---
         GetHcScaleAndHcBase();
 
@@ -1034,8 +1110,6 @@ __aicore__ inline void MhcPreBackwardKernelArch22<TYPE_X, T, DETERMINISTIC>::Pro
 
         for (int64_t taskOffset = blkIdx_ * tileCoreBS_; taskOffset < totalTasksAligned_;
              taskOffset += aivNum_ * tileCoreBS_) {
-            // printf("totalTasksAligned_ = %d\n", totalTasksAligned_);
-            // printf("taskOffset = %d\n", taskOffset);
 
             int32_t tileTaskCount =
                 min(static_cast<int32_t>(tileCoreBS_), static_cast<int32_t>(totalTasks_ - taskOffset));
@@ -1121,7 +1195,6 @@ __aicore__ inline void MhcPreBackwardKernelArch22<TYPE_X, T, DETERMINISTIC>::Pro
         // [公式2][3][4] bias_grad 和 α_grad 最终归约
         tileRepeatTimes_ = Ops::Base::CeilDiv(tileCoreBS_ * 2 * n_, static_cast<int64_t>(ELEMENTS_SIZE_PER_REPEAT));
         ComputeScaleBias();
-        printf("AIV end\n");
         GetTPipePtr()->ReleaseEventID<HardEvent::V_MTE3>(eventIdVToMTE3XCast);
     }
 
@@ -1149,17 +1222,14 @@ __aicore__ inline void MhcPreBackwardKernelArch22<TYPE_X, T, DETERMINISTIC>::Pro
     }
     // --- Deterministic 模式: 多核归约 ---
     if constexpr (DETERMINISTIC == true) {
-        // printf("DETERMINISTIC = true\n");
         SyncAll<false>();
         if ASCEND_IS_AIV {
-            printf("AIV deterministic start.\n");
             int64_t useCoreNum = min(Ops::Base::CeilDiv(totalTasks_, tileCoreBS_), aivNum_);
             ComputeDeterministic(gradHcBaseWSGlobal_, gradHcBaseGlobal_, useCoreNum, fusionSize_);
             ComputeDeterministic(gradHcScaleWSGlobal_, gradHcScaleGlobal_, useCoreNum, 3);
             useCoreNum = Ops::Base::CeilDiv(useCoreNum, static_cast<int64_t>(2));
             ComputeDeterministic(gradWeightWSGlobal_, gradWeightGlobal_, useCoreNum,
                                  fusionSize_ * (n_ * c_));
-            printf("AIV deterministic end.\n");
         }
     }
 }
@@ -1198,41 +1268,36 @@ __aicore__ inline void MhcPreBackwardKernelArch22<TYPE_X, T, DETERMINISTIC>::Pro
     // DumpTensor(gradH2Global_[taskOffset * mm2M_], 1, tileCoreBS_ * 32);
     // DumpTensor(xWorkspaceGlobal_[taskOffset * mm2M_], 2, tileCoreBS_ * 32);
 
-    // if (blkIdx_ == 0) {
-    //     printf("gradH2Global_ value is \n");
-    //     for(int i = 0; i < 16; i++) {
-    //         int index = i * 32 + 26;
-    //         printf("[%d] %x\t", index, gradH2Global_.GetValue(index));
-    //     }
-    //     printf("-----------------------\n");
+        // printf("gradH2Global_ value is \n");
+        // for(int i = 0; i < mm2K; i++) {
+        //     int index = i * mm2M_ + 7;
+        //     printf("[%d] %x\t", index, gradH2Global_.GetValue(index));
+        // }
+        // printf("-----------------------\n");
 
-    //     printf("xWorkspaceGlobal_ value is \n");
-    //     for(int i = 0; i < 16; i++) {
-    //         int index = i * 2560 + 2021;
-    //         printf("[%d] %x\t", index, xWorkspaceGlobal_.GetValue(index));
-    //     }
-    //     printf("-----------------------\n");
-    // }
+        // printf("xWorkspaceGlobal_ value is \n");
+        // for(int i = 0; i < mm2K; i++) {
+        //     int index = i * mm2N_ + 2624;
+        //     printf("[%d] %x\t", index, xWorkspaceGlobal_.GetValue(index));
+        // }
+        // printf("-----------------------\n");
 
     mm2_.SetTensorA(gradH2Global_[taskOffset * mm2M_], true); // [B * S, 2N + N!]
     mm2_.SetTensorB(xWorkspaceGlobal_[taskOffset * mm2N_]); // [B * S, N * D]
     mm2_.SetOrgShape(mm2M_, mm2N_, mm2K);
     mm2_.SetSingleShape(mm2M_, mm2N_, mm2K);
     if constexpr (DETERMINISTIC == true) {
-        // printf("DETERMINISTIC = true\n");
         mm2_.template IterateAll<true>(gradWeightWSGlobal_[blkIdx_ * (mm2M_ * mm2N_)], needAdd);
         needAdd = 1;
     } else {
-        // printf("DETERMINISTIC = false\n");
         mm2_.template IterateAll<true>(gradWeightGlobal_, needAdd);
         needAdd = 1;
     }
     mm2_.End();
-    // if (blkIdx_ == 0) {
+
         // DumpTensor(gradWeightWSGlobal_[68581], 1, 16);
-        // // printf("gradWeightWSGlobal_ value is %x\n", gradWeightGlobal_.GetValue(68581));
-        // printf("gradWeightWSGlobal_ value is %x\n", gradWeightWSGlobal_.GetValue(68581));
-    // }
+        // printf("gradWeightWSGlobal_ value is %x\n", gradWeightWSGlobal_.GetValue(85056));
+    
 
 
     // DumpTensor(gradH2Global_[taskOffset * mm2M_], 3, 32, *);
