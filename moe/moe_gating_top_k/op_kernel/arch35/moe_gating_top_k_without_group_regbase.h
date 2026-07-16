@@ -39,6 +39,9 @@ constexpr int64_t SINGLE_EXPERT_FALLBACK_BATCH = 512;
 constexpr int64_t WG_REPEAT_BYTES = 256;
 constexpr int64_t WG_REPEAT_BLOCKS = 8;
 constexpr MicroAPI::DivSpecificMode WG_DIV_MODE = {MicroAPI::MaskMergeMode::ZEROING, true};
+static constexpr MicroAPI::CastTrait WG_CAST_FP32_TO_I32 = {MicroAPI::RegLayout::ZERO, MicroAPI::SatMode::NO_SAT,
+                                                             MicroAPI::MaskMergeMode::ZEROING,
+                                                             RoundMode::CAST_TRUNC};
 
 template <typename T>
 class MoeGatingTopKWithoutGroupRegbase {
@@ -647,7 +650,7 @@ __aicore__ inline void MoeGatingTopKWithoutGroupRegbase<T>::ProcessSmallExpertK1
                 }
                 MicroAPI::Muls(vregOut, vregOut, routedScalingFactor_, pregRow);
 
-                MicroAPI::Cast<float, int32_t>(vregArgmaxInt, vregArgmax, pregRow);
+                MicroAPI::Cast<int32_t, float, WG_CAST_FP32_TO_I32>(vregArgmaxInt, vregArgmax, pregRow);
 
                 ops::StoreOneTensorForDtypeT<T>(outputAddr, vregOut, pregRow, rowOffset);
                 MicroAPI::DataCopy(expertIdxAddr + rowOffset, vregArgmaxInt, pregRow);
