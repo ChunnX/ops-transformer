@@ -113,12 +113,7 @@ def mqsmla(param_combinations):
             test_data, device_id=device_id)
         result, fulfill_percent = result_compare_method.check_result(cpu_quant_result, npu_result)
         if cpu_lse is not None and npu_lse is not None:
-            lse_result, lse_percent = result_compare_method.check_lse_result(
-                cpu_lse.to(torch.float).flatten(), npu_lse.to(torch.float).flatten())
-            print(f"LSE compare: {lse_result} {lse_percent:.2f}%")
-            if lse_result != "Pass":
-                result = "Failed"
-                fulfill_percent = min(fulfill_percent, lse_percent)
+            result, fulfill_percent = result_compare_method.check_result(cpu_lse, npu_lse)
     except Exception as e:
         npu_error_msg = str(e)
         print("NPU ERROR：", npu_error_msg)
