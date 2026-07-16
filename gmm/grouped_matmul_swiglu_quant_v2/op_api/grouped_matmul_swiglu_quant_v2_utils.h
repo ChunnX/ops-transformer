@@ -143,7 +143,7 @@ constexpr int64_t MXA8W4_SCALE_BLOCK = 128LL;
 const std::vector<DataType> X_DTYPE_SUPPORT_LIST = {DataType::DT_FLOAT8_E4M3FN, DataType::DT_FLOAT8_E5M2};
 const std::vector<DataType> X_DTYPE_SUPPORT_LIST_MXFP4_ND = {DataType::DT_FLOAT4_E2M1};
 const std::vector<DataType> X_DTYPE_SUPPORT_LIST_MXFP4_NZ = {DataType::DT_FLOAT4_E2M1,
-                                                            DataType::DT_FLOAT4_E1M2};
+                                                             DataType::DT_FLOAT4_E1M2};
 const std::vector<DataType> XW_DTYPE_SUPPORT_LIST_PERTOKEN = {
     DataType::DT_INT8, DataType::DT_FLOAT8_E4M3FN, DataType::DT_FLOAT8_E5M2, DataType::DT_HIFLOAT8};
 const std::vector<DataType> WEIGHT_DTYPE_SUPPORT_LIST = {DataType::DT_FLOAT8_E4M3FN,
@@ -1217,6 +1217,16 @@ protected:
         const aclTensor *groupList = gmmDsqParams_.groupList;
         const aclTensor *output = gmmDsqParams_.output;
         const aclTensor *outputScale = gmmDsqParams_.outputScale;
+        if (weight->GetStorageFormat() == ge::FORMAT_ND && (weightDtype == DataType::DT_FLOAT4_E1M2 ||
+            xDtype == DataType::DT_FLOAT4_E1M2 || output->GetDataType() == DataType::DT_FLOAT4_E1M2)) {
+            OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
+                apiName_.c_str(), "weight, x and output",
+                "weight=" + std::string(op::ToString(weightDtype).GetString()) +
+                    ", x=" + op::ToString(xDtype).GetString() +
+                    ", output=" + op::ToString(output->GetDataType()).GetString(),
+                "when the format of weight is ND, the dtypes of weight, x and output can not be DT_FLOAT4_E1M2");
+            return false;
+        }
         const auto &xDtypeSupportListMxfp4 = GetXSupportListMxfp4(weight);
         const auto &weightDtypeSupportListMxfp4 = GetWeightSupportListMxfp4(weight);
         const char *dtypeSupportList =
