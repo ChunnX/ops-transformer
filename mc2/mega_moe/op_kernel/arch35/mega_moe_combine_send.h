@@ -30,7 +30,7 @@
 using namespace AscendC;
 
 namespace MegaMoeCombineImpl {
-constexpr uint32_t COMBINE_SEND_ADDR = 130 * 1024U;  // triple tensor 在 UB 中的起始地址
+constexpr uint32_t COMBINE_SEND_ADDR = 140 * 1024U;  // triple tensor 在 UB 中的起始地址
 constexpr uint32_t rankIdIndex = 0;
 constexpr uint32_t tokenIdxIndex = 1;
 constexpr uint32_t topkIdxIndex = 2;
@@ -153,9 +153,9 @@ __aicore__ inline uint32_t ComputeRecvTokenCounts(
                 static_cast<uint64_t>(expertIdx) * worldSize * maskSlotSize +
                 static_cast<uint64_t>(index) * maskSlotSize));
             AscendC::DataCopy(slotCopyTensor, maskSrcGlobal, slotCopyStride);
-            AscendC::SetFlag<AscendC::HardEvent::MTE2_S>(0);
-            AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(0);
+            SyncFuncStatic<AscendC::HardEvent::MTE2_S, SYNC_EVENT_ID2>();
             cnt += slotReadTensor.GetValue(countWordIdx);
+            SyncFuncStatic<AscendC::HardEvent::S_MTE2, SYNC_EVENT_ID2>();
         }
         uint32_t totalDataBlockCnt = cnt * static_cast<uint32_t>(Ops::Base::CeilDiv(
             static_cast<int64_t>(params.tilingData->h), static_cast<int64_t>(MegaMoeImpl::L1_TILE_N)));
@@ -205,8 +205,7 @@ __aicore__ inline void PollNotifyAndSendData(
                     slotIdx * (maxDataLengthPerBlock + ALIGN_32);
                 gmLocalDTriple.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(dataAddr + maxDataLengthPerBlock));
                 AscendC::DataCopy(sendTensor, gmLocalDTriple, 8);
-                AscendC::SetFlag<AscendC::HardEvent::MTE2_S>(0);
-                AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(0);
+                SyncFuncStatic<AscendC::HardEvent::MTE2_S, SYNC_EVENT_ID2>();
                 if (sendTensor.GetValue(flagIndex) == 1) {
                     uint32_t toRankId = sendTensor.GetValue(rankIdIndex);
                     uint32_t tokenIdx = sendTensor.GetValue(tokenIdxIndex);
@@ -258,10 +257,10 @@ template <typename ElementMMadOut2>
 __aicore__ inline void CombineSendTokenToRemote(const Params& params)
 {
     uint32_t maxDataLengthPerBlock = Ops::Base::CeilAlign(static_cast<int64_t>(MegaMoeImpl::L1_TILE_N *
-        sizeof(ElementMMadOut2)), (int64_t)ALIGN_32);
+        sizeof(ElementMMadOut2)), (int64_t)ALIGN_32); // 512
     uint32_t maxDataSizePerToken = Ops::Base::CeilDiv(static_cast<int64_t>(params.tilingData->h),
-        (int64_t)MegaMoeImpl::L1_TILE_N) * (ALIGN_32 + maxDataLengthPerBlock);
-    LocalTensor<int32_t> sendTensor = LocalTensor<int32_t>(TPosition::VECCALC, ALIGN_512, ALIGN_32 / sizeof(int32_t));
+        (int64_t)MegaMoeImpl::L1_TILE_N) * (ALIGN_32 + maxDataLengthPerBlock); // 2176
+    LocalTensor<int32_t> sendTensor = LocalTensor<int32_t>(TPosition::VECCALC, ALIGN_512, ALIGN_32 / sizeof(int32_t)); //8个
 
     // 分核: 仅 subBlockIdx_==1 的核参与, 核数 = GetBlockNum() (每个 block 的核1)
     uint32_t aivIdx = GetBlockIdx() / GetTaskRation();
@@ -280,9 +279,9 @@ __aicore__ inline void CombineSendTokenToRemote(const Params& params)
     }
 
     LocalTensor<int32_t> sendTokenCnt = LocalTensor<int32_t>(TPosition::VECCALC, ALIGN_32 + ALIGN_512,
-        cntTensorLength / sizeof(int32_t));
+        cntTensorLength / sizeof(int32_t));// 1
     LocalTensor<int32_t> totalTokenCnt = LocalTensor<int32_t>(TPosition::VECCALC, ALIGN_32 + ALIGN_512 +
-        cntTensorLength, cntTensorLength / sizeof(int32_t));
+        cntTensorLength, cntTensorLength / sizeof(int32_t)); // 1
     AscendC::Duplicate<int32_t>(sendTokenCnt, 0, processRankNum);
     AscendC::Duplicate<int32_t>(totalTokenCnt, 0, processRankNum);
     SyncFuncStatic<AscendC::HardEvent::V_S, SYNC_EVENT_ID2>();

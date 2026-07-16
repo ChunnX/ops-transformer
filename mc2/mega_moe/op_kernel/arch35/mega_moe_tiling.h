@@ -23,6 +23,7 @@ using namespace AscendC;
 
 struct MegaMoeTilingData {
     uint32_t expertPerRank;
+    uint32_t moeExpertPerRank;
     uint32_t bs;
     uint32_t h;
     uint32_t hiddenDim;
@@ -36,5 +37,6 @@ struct MegaMoeTilingData {
     float clampLimit;
     uint8_t groupedMatmulMode;
     int64_t topoType;
+    uint32_t sharedExpertNum;
 };
 #endif
