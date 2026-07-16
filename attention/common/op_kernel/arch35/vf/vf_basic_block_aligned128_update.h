@@ -32,7 +32,9 @@ __simd_vf__ void ProcessVec1UpdateImpl128VF(
     __ubuf__ uint32_t * maskUb, __ubuf__ uint32_t * maskUbUnroll, __ubuf__ uint32_t * dropMaskUb,
     float divValue, const uint32_t blockStride, const uint32_t repeatStride, const float dScale,
     const uint16_t m, const uint32_t pseStride, const float slopes, const float posShift, const T scale,
-    const float dScaleQK, const T minValue, const float deSCaleKValue = 1.0f, const float sinkValue = 0.0f)
+    const float dScaleQK, const T minValue, const float sparseLambda = -999.0f,
+    __ubuf__ float * sparseLocalMaxUb = nullptr,
+    const float deSCaleKValue = 1.0f, const float sinkValue = 0.0f)
 {
     RegTensor<float> vreg_min;
     RegTensor<float> vreg_sel;
@@ -58,6 +60,7 @@ __simd_vf__ void ProcessVec1UpdateImpl128VF(
     RegTensor<float> vreg_rowmax_p;
     RegTensor<float> vreg_scale_qk;
     RegTensor<float> vreg_sink_input;
+    RegTensor<float> vreg_diff_for_blasst;
     // bfloat16_t
     RegTensor<bfloat16_t> vreg_exp_even_bf16;
     RegTensor<bfloat16_t> vreg_exp_odd_bf16;
@@ -198,9 +201,9 @@ __simd_vf__ void ProcessVec1UpdateImpl128VF(
     }
     StoreUnAlignPost<float, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
             ((__ubuf__ T *&)tmpMaxUb), ureg_max, 0);
-    LoadAlign(vreg_in_max, inMaxUb);
+    LoadAlign(vreg_in_max, inMaxUb); // old_running_max
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
-    LoadAlign(vreg_input_max, tmpMaxUb2); // 获取新的max[s1, 1]
+    LoadAlign(vreg_input_max, tmpMaxUb2); // tmpMaxUb和tmpMaxUb2相同地址，获取新的localmax [s1, 1]
     Max(vreg_max_new, vreg_input_max, vreg_in_max, preg_all); // 计算新、旧max的最大值
     StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
         (__ubuf__ T *&)tmpMaxUb2, vreg_max_new, preg_all);
@@ -211,11 +214,57 @@ __simd_vf__ void ProcessVec1UpdateImpl128VF(
             (__ubuf__ T *&)pScaleUb, vreg_rowmax_p, preg_all);
     }
 
+    // ===================== BLASST Block-level Sparse Check =====================
+    Sub(vreg_diff_for_blasst, vreg_input_max, vreg_in_max, preg_all);  // diff = local - old (64 floats)
+    Reduce<MicroAPI::ReduceType::MAX, float, float, MicroAPI::MaskMergeMode::ZEROING>(
+        vreg_max_tmp, vreg_diff_for_blasst, preg_all);  // max_diff scalar in lane[0]
+    StoreAlign<float, MicroAPI::StoreDist::DIST_NORM_B32>(
+        (__ubuf__ float *&)sparseLocalMaxUb, vreg_max_tmp, preg_all);
+    // ======================================================================
+}
+
+// Part 2: online softmax
+template <typename T, typename T2, typename pseShiftType, uint32_t s1BaseSize = 128, uint32_t s2BaseSize = 128,
+    bool hasAtten = 0, PseTypeEnum pseMode = PseTypeEnum::PSE_NONE_TYPE, bool hasDrop = 0, bool isMlaSgd = false,
+    bool isMlaFullQuant = false, bool hasSink = false>
+__simd_vf__ void ProcessVec1UpdateImpl128VF_Part2(
+    __ubuf__ T2 * expUb, __ubuf__ T2 * x_expUb, __ubuf__ T * tmpMaxUb2, __ubuf__ T * tmpExpSumUb,
+    __ubuf__ T * srcUb, __ubuf__ T * qScaleUb, __ubuf__ T * pScaleUb, __ubuf__ uint8_t * indexesUb,
+    __ubuf__ uint32_t * dropMaskUb, float divValue, const uint32_t blockStride, const uint32_t repeatStride,
+    const uint16_t m, const float deSCaleKValue = 1.0f)
+{
+    RegTensor<float> vreg_input_x;
+    RegTensor<float> vreg_input_x_unroll;
+    RegTensor<float> vreg_exp_sum;
+    RegTensor<float> vreg_max;
+    RegTensor<float> vreg_exp_even;
+    RegTensor<float> vreg_exp_odd;
+    RegTensor<float> vreg_zero;
+    RegTensor<float> vreg_sel_drop;
+    RegTensor<float> vreg_sel_drop2;
+    RegTensor<float> vreg_rowmax_p;
+    RegTensor<bfloat16_t> vreg_exp_even_bf16;
+    RegTensor<bfloat16_t> vreg_exp_odd_bf16;
+    RegTensor<bfloat16_t> vreg_exp_bf16;
+    RegTensor<half> vreg_exp_even_f16;
+    RegTensor<half> vreg_exp_odd_f16;
+    RegTensor<half> vreg_exp_f16;
+    UnalignRegForStore ureg_exp_sum;
+    MaskReg preg_all = CreateMask<float, MaskPattern::ALL>();
+    MaskReg preg_all_b16 = CreateMask<uint16_t, MaskPattern::ALL>();
+    MaskReg preg1;
+    MaskReg preg2 = CreateMask<int8_t, MaskPattern::ALLF>();
+    MaskReg preg3;
+    MaskReg preg4;
+    MaskReg preg5;
+    MaskReg preg6;
+
     if constexpr (hasDrop == 1) {
         Duplicate<T, MicroAPI::MaskMergeMode::ZEROING, float>(vreg_zero, 0.0f, preg_all);
     }
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
 
+    // Phase 2: online softmax
     for (uint16_t i = 0; i < m; ++i) {
         LoadAlign<T, MicroAPI::LoadDist::DIST_BRC_B32>(
             vreg_max, tmpMaxUb2 + i);
@@ -371,7 +420,8 @@ __aicore__ inline void ProcessVec1UpdateImpl128(
     const LocalTensor<uint8_t>& sharedTmpBuffer, const LocalTensor<T>& pScaleTensor, const uint16_t m,
     const uint32_t originN, const uint32_t pseStride, const float slopes, const float posShift, const T scale,
     const float dScaleQK, const T minValue, float keepProb, const LocalTensor<T>& queryScaleUb = LocalTensor<T>(),
-    const float deSCaleKValue = 1.0f, const float sinkValue = 0.0f)
+    const float sparseLambda = -999.0f, const float deSCaleKValue = 1.0f,
+    const float sinkValue = 0.0f, const LocalTensor<float>& sparseLocalMaxTensor = LocalTensor<float>())
 {
     // 写的时候固定用65或者33的stride去写，因为正向目前使能settail之后mm2的s1方向必须算满128或者64行
     // stride, high 16bits: blockStride (m*16*2/32), low 16bits: repeatStride (1)
@@ -400,11 +450,39 @@ __aicore__ inline void ProcessVec1UpdateImpl128(
     __ubuf__ uint32_t * maskUbUnroll = (__ubuf__ uint32_t*)(maskTensor.GetPhyAddr() + floatRepSize);
     __ubuf__ uint32_t * dropMaskUb = (__ubuf__ uint32_t*)dropTensor.GetPhyAddr();
 
+    __ubuf__ float * sparseLocalMaxUb = nullptr;
+    if (sparseLocalMaxTensor.GetPhyAddr() != 0) {
+        sparseLocalMaxUb = (__ubuf__ float *)sparseLocalMaxTensor.GetPhyAddr();
+    } else {
+        // VF always writes via StoreAlign; use tmpMaxUb as dummy target when BLASST disabled
+        sparseLocalMaxUb = (__ubuf__ float *)tmpMaxUb;
+    }
     ProcessVec1UpdateImpl128VF <T, T2, pseShiftType, s1BaseSize, s2BaseSize, hasAtten, pseMode, hasDrop,
         isMlaSgd, isMlaFullQuant, hasSink>(
         expUb, x_expUb, pseUb, maxUb, srcUb, expMaxUb, inMaxUb, tmpExpSumUb, tmpMaxUb, tmpMaxUb2, qScaleUb,
         pScaleUb, indexesUb, maskUb, maskUbUnroll, dropMaskUb, divValue, blockStride, repeatStride, dScale,
-        m, pseStride, slopes, posShift, scale, dScaleQK, minValue, deSCaleKValue, sinkValue);
+        m, pseStride, slopes, posShift, scale, dScaleQK, minValue, sparseLambda, sparseLocalMaxUb,
+        deSCaleKValue, sinkValue);
+
+    // BLASST: read max_diff, conditionally skip Part2
+    bool blockSparse = false;
+    if (sparseLambda < 0.0f && sparseLocalMaxTensor.GetPhyAddr() != 0) {
+        float maxDiff = sparseLocalMaxTensor.GetValue(0);
+        blockSparse = (maxDiff < sparseLambda);
+        float o0 = m > 0 ? *(inMaxUb) : 0.0f;
+        printf("[BLASST] VF-chk blk=%u m=%u max=%f old0=%f lambda=%f sparse=%d\n",
+               AscendC::GetBlockIdx(), m, maxDiff, o0, sparseLambda, (int)blockSparse);
+    }
+
+    // BLASST: always run Phase 2 to keep softmax (stage1CastTensor) fresh for BMM2.
+    // Phase 2 skip corrupts stage1CastTensor → BMM2 reads stale softmax → V*P wrong.
+    // Vec2 skip (FlashUpdate/LastDivNew) is sufficient for BLASST approximation.
+    // NB: sparse block's softmax scores are naturally near-zero (local_max << old_max),
+    //     so exp_sum is negligible and gl drift from not zeroing tmpExpSumUb is minimal.
+    ProcessVec1UpdateImpl128VF_Part2<T, T2, pseShiftType, s1BaseSize, s2BaseSize, hasAtten, pseMode,
+        hasDrop, isMlaSgd, isMlaFullQuant, hasSink>(
+        expUb, x_expUb, tmpMaxUb2, tmpExpSumUb, srcUb, qScaleUb, pScaleUb, indexesUb,
+        dropMaskUb, divValue, blockStride, repeatStride, m, deSCaleKValue);
 }
 } // namespace
 

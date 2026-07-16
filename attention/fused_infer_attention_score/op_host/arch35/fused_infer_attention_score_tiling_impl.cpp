@@ -1452,7 +1452,7 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::UpdateTilingKeyInfo(const Fi
         tilingKeyInfo_.emptyTensor = fiaInfo.emptyTensorFlag;
         tilingKeyInfo_.enableKvPrefix = fiaInfo.sysPrefixFlag;
         tilingKeyInfo_.enableS1OutSplit = enableS1OutSplit;
-        tilingKeyInfo_.isReconstructTemp = false;
+        tilingKeyInfo_.isReconstructTemp = true;  // must be true for BLASST sparse to take effect (GQA kernel path)
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -2166,6 +2166,10 @@ void FusedInferAttentionScoreTilingImpl::PrintInputParams(const FiaTilingInfo &f
 ge::graphStatus FusedInferAttentionScoreTilingImpl::DoOpTiling(gert::TilingContext *context,
                                                                const FiaTilingInfo &fiaInfo)
 {
+    OP_LOGI(fiaInfo.opName, "[FIA TRACE] DoOpTiling entry, emptyTensor=%d bSize=%u s1Size=%u s2Size=%ld "
+            "qkHeadDim=%u vHeadDim=%u quantMode=%d",
+            fiaInfo.emptyTensorFlag, fiaInfo.bSize, fiaInfo.s1Size, fiaInfo.s2Size,
+            fiaInfo.qkHeadDim, fiaInfo.vHeadDim, static_cast<int>(fiaInfo.quantMode));
     OP_CHECK_IF(SetPlatMemoryInfo(context, fiaInfo) != ge::GRAPH_SUCCESS,
                 OP_LOGE(fiaInfo.opName, "Set plat memory info fail."), return ge::GRAPH_FAILED);
 
@@ -2176,6 +2180,10 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::DoOpTiling(gert::TilingConte
     }
 
     InitImplParam(fiaInfo);
+
+    OP_LOGI(fiaInfo.opName, "[FIA TRACE] After InitImplParam: isIFA=%d isPFA=%d gsMerge=%d "
+            "nLoopTimes=%u gsSize=%u antiQuant=%d",
+            isIFAFlag_, isPFAFlag_, gsMergeFlag_, nLoopTimes_, gsSize_, fiaInfo.antiQuantFlag);
 
     OP_CHECK_IF(SplitPolicy(context, fiaInfo) != ge::GRAPH_SUCCESS,
                 OP_LOGE(fiaInfo.opName, "Excute split policy fail."), return ge::GRAPH_FAILED);

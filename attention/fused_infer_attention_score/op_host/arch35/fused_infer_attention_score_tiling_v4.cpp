@@ -27,6 +27,7 @@ using namespace ge;
 using namespace AscendC;
 namespace optiling {
 ge::graphStatus TilingFusedInferAttentionScoreV4(gert::TilingContext *context) {
+    OP_LOGI(context->GetNodeName(), "[FIA TRACE] TilingFusedInferAttentionScoreV4 entry");
     // Parse -> Check -> DoOpTiling
     FiaTilingInfo fiaInfo;
     FiaInfoParser fiaInfoParser(context);
@@ -45,7 +46,7 @@ ge::graphStatus TilingFusedInferAttentionScoreV4(gert::TilingContext *context) {
     if (FiaTilingRegistry::GetInstance().DoTilingImpl(context, &fiaInfo) == ge::GRAPH_SUCCESS) {
         return ge::GRAPH_SUCCESS;
     } else {        // 假设，老的模板也注册，把else分支和下面的逻辑删掉
-        OP_LOGD(context, "reconstruct template do not support, routing to old template.");
+        OP_LOGI(context->GetNodeName(), "[FIA TRACE] reconstruct template not supported, routing to old template (FusedInferAttentionScoreTilingImpl).");
     }
 
     if (fiav4.DoOpTiling(context, fiaInfo) != ge::GRAPH_SUCCESS) {

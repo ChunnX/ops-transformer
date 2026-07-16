@@ -2259,11 +2259,17 @@ FIA_EXTERN_C ge::graphStatus DoOpTilingFusedInferAttentionScore(gert::TilingCont
         OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "platformInfoPtr is null"),
         return ge::GRAPH_FAILED);
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
+    OP_LOGI(context->GetNodeName(), "[FIA TRACE] DoOpTiling entry, npuArch=%d (DAV_3510=%d DAV_5102=%d)",
+            static_cast<int>(ascendcPlatform.GetCurNpuArch()), static_cast<int>(NpuArch::DAV_3510),
+            static_cast<int>(NpuArch::DAV_5102));
     if (ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_3510) {
+        OP_LOGI(context->GetNodeName(), "[FIA TRACE] routing to V4 (arch35/ascend950)");
         return TilingFusedInferAttentionScoreV4(context);
     } else if (ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_5102) {
+        OP_LOGI(context->GetNodeName(), "[FIA TRACE] routing to Arch38");
         return TilingFusedInferAttentionScoreArch38(context);
     } else {
+        OP_LOGI(context->GetNodeName(), "[FIA TRACE] routing to default (arch22)");
         return TilingFusedInferAttentionScore(context);
     }
     return ge::GRAPH_SUCCESS;

@@ -239,6 +239,8 @@ aclnnStatus aclnnFusedInferAttentionScoreV5GetWorkspaceSize(
     int64_t keyAntiquantMode, int64_t valueAntiquantMode, int64_t queryQuantMode, int64_t pseType,
     const aclTensor *attentionOut, const aclTensor *softmaxLse, uint64_t *workspaceSize, aclOpExecutor **executor)
 {
+    OP_LOGI("[FIA TRACE] V5 GetWorkspaceSize entry, inputLayout=%s numHeads=%ld numKeyValueHeads=%ld sparseMode=%ld",
+            inputLayout, numHeads, numKeyValueHeads, sparseMode);
     const aclTensorList *tensorListKey = key;
     const aclTensorList *tensorListValue = value;
     TensorPreProcess(tensorListKey, tensorListValue);

@@ -526,6 +526,21 @@ void FiaTilingNonQuantArch35::SetSplitOutput(const split_core_v2::FAMetaData &sp
         tilingData_.fiaMetaData.FDMetadata[i][FD_M_START_INDEX] = fdRes.mStart[i];
         tilingData_.fiaMetaData.FDMetadata[i][FD_M_NUM_INDEX] = fdRes.mLen[i];
     }
+
+    // [FIA TRACE] Log per-core FA assignment
+    OP_LOGI(fiaInfo_->opName, "[FIA TRACE] FA core assignment: usedCoreNum=%u", splitRes.usedCoreNum);
+    for (size_t i = 0; i < splitRes.usedCoreNum && i < 4; ++i) {
+        OP_LOGI(fiaInfo_->opName, "[FIA TRACE]   core[%zu] bN2=[%u,%u) M=[%u,%u) s2=[%u,%u)",
+            i, splitRes.bN2End[i == 0 ? 0 : i - 1], splitRes.bN2End[i],
+            splitRes.mEnd[i == 0 ? 0 : i - 1], splitRes.mEnd[i],
+            splitRes.s2End[i == 0 ? 0 : i - 1], splitRes.s2End[i]);
+    }
+    // [FIA TRACE] Log per-core FD assignment
+    for (size_t i = 0; i < fdRes.fdUsedVecNum && i < 4; ++i) {
+        uint32_t curFdIdx = fdRes.taskIdx[i];
+        OP_LOGI(fiaInfo_->opName, "[FIA TRACE]   fd[%zu] bn2Idx=%u mIdx=%u s2SplitNum=%u",
+            i, fdRes.fdBN2Idx[curFdIdx], fdRes.fdMIdx[curFdIdx], fdRes.fdS2SplitNum[curFdIdx]);
+    }
 }
 
 void FiaTilingNonQuantArch35::SplitPolicy()
@@ -717,6 +732,12 @@ void FiaTilingNonQuantArch35::GenTilingKey()
                                     tilingKeyInfo_.kvLayoutType, tilingKeyInfo_.isFd, tilingKeyInfo_.emptyTensor,
                                     tilingKeyInfo_.enableKvPrefix, tilingKeyInfo_.enableS1OutSplit,
                                     tilingKeyInfo_.isReconstructTemp);
+    printf("[BLASST][TILING_KEY] lay=%lu cfg=%lu pse=%lu quant=%lu mask=%d rope=%d kvL=%lu fd=%d empty=%d prefix=%d s1os=%d reconst=%d -> key=%lu\n",
+           tilingKeyInfo_.inputLayout, tilingKeyInfo_.config, tilingKeyInfo_.pseMode,
+           tilingKeyInfo_.quantMode, (int)tilingKeyInfo_.hasAttenMask, (int)tilingKeyInfo_.hasRope,
+           tilingKeyInfo_.kvLayoutType, (int)tilingKeyInfo_.isFd, (int)tilingKeyInfo_.emptyTensor,
+           (int)tilingKeyInfo_.enableKvPrefix, (int)tilingKeyInfo_.enableS1OutSplit,
+           (int)tilingKeyInfo_.isReconstructTemp, tilingKey_);
 
     OP_LOGI(fiaInfo_->opName, "The tilingkey is %llu.", tilingKey_);
     OP_LOGI(fiaInfo_->opName,

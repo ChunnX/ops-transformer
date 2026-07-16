@@ -55,6 +55,17 @@ __global__ __aicore__ void fused_infer_attention_score(__gm__ uint8_t* query, __
                                                     __gm__ uint8_t* learnableSink, __gm__ uint8_t* qStartIdx, __gm__ uint8_t* kvStartIdx,
                                                     __gm__ uint8_t* attentionOut, __gm__ uint8_t* softmaxLse, __gm__ uint8_t* workspace, __gm__ uint8_t* tiling)
 {
+    // [FIA TRACE] Kernel dispatch: tiling key quantMode maps directly to kernel path.
+    //   quantMode >= FullQuantTiling -> prompt_flash_attention_FIAS_regbase (PFA)
+    //   quantMode <  FullQuantTiling -> incre_flash_attention_FIAS_regbase (IFA)
+    //   The tiling key logged in GenTilingKey() encodes all template parameters.
+    printf("[FIA KERNEL] %s dispatcher, blk=%u lay=%u cfg=%u pse=%u quant=%u "
+        "mask=%u rope=%u kvL=%u fd=%u empty=%u kvpfx=%u s1os=%u reconst=%u\n",
+        quantMode >= FullQuantTiling ? "PFA" : "IFA",
+        AscendC::GetBlockIdx(),
+        inOutLayoutType, config, pseMode, quantMode,
+        hasAttenMask, hasRope, KvLayoutType, isFd,
+        emptyTensor, enableKVPrefix, enableS1OutSplit, isReconstructTemp);
     if (quantMode >= FullQuantTiling) {
         //pfa 模板
         prompt_flash_attention_FIAS_regbase<inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, KvLayoutType, isFd, emptyTensor, enableKVPrefix, enableS1OutSplit,isReconstructTemp>(

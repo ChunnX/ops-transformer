@@ -35,6 +35,14 @@ using AscendC::ShapeInfo;
 using AscendC::SoftmaxConfig;
 using AscendC::WaitFlag;
 
+// ===================== BLASST Sparse Mask Constants =====================
+constexpr uint32_t SSBUF_NUM_SLOTS = 3;          // ring buffer slots (PRELOAD_N+1)
+constexpr uint32_t SSBUF_SLOT_STRIDE = 64;       // 64B per slot, avoids offset=32 issue
+constexpr uint32_t SSBUF_AIV_STRIDE = SSBUF_NUM_SLOTS * 64; // 192B per AIV
+constexpr uint32_t SSBUF_MASK_FLAG_BASE = 6;   // forward: Vec1→BMM2
+constexpr uint32_t SSBUF_REV_FLAG_BASE = 0;    // reverse: BMM2→Vec1 (AIV0)   // must be in [0,10] per hardware spec
+static constexpr float BLASST_SPARSE_LAMBDA = -3.0f;  // disabled for baseline verification
+
 namespace AttentionCommon {
 
 enum class FiaKernelType : uint8_t {
@@ -137,6 +145,9 @@ struct CommonConstInfo {
     bool isRowInvalidOpen;
     bool isExistRowInvalid;
     float scaleValue;
+
+    /* BLASST sparse */
+    float sparseLambda;
 
     /* 核信息 */
     uint32_t aicIdx;
