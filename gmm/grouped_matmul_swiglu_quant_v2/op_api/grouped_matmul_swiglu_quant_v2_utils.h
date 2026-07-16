@@ -15,6 +15,7 @@
 #include "util/math_util.h"
 #include "log/log.h"
 
+#include <iostream>
 #include <sstream>
 #include <vector>
 
@@ -552,6 +553,15 @@ protected:
     {
         bool transposeWeight = IsTransposeLastTwoDims((*gmmDsqParams_.weight)[0]);
         bool transposeX = IsTransposeLastTwoDims(gmmDsqParams_.x);
+        std::cout << "*** GMMSQV2 POST7302 CHECK_PERTOKEN_BEFORE quantMode=" << gmmDsqParams_.quantMode
+                  << ", dequantMode=" << gmmDsqParams_.dequantMode
+                  << ", transposeWeight=" << transposeWeight
+                  << ", transposeX=" << transposeX
+                  << ", weightShape="
+                  << op::ToString((*gmmDsqParams_.weight)[0]->GetViewShape()).GetString()
+                  << ", weightScaleShape="
+                  << op::ToString((*gmmDsqParams_.weightScale)[0]->GetViewShape()).GetString()
+                  << std::endl;
 
         if (transposeWeight) {
             gmmDsqParams_.transposeWeight = true;
@@ -562,6 +572,13 @@ protected:
             std::vector<aclTensor *> weightTensorList;
             CreateContiguousTensorList(gmmDsqParams_.weight, weightTensorList, executorPtr);
             gmmDsqParams_.weight = executorPtr->AllocTensorList(weightTensorList.data(), weightTensorList.size());
+            std::cout << "*** GMMSQV2 POST7302 CHECK_PERTOKEN_NORMALIZED transposeWeight="
+                      << gmmDsqParams_.transposeWeight
+                      << ", weightShape="
+                      << op::ToString((*gmmDsqParams_.weight)[0]->GetViewShape()).GetString()
+                      << ", weightScaleShape="
+                      << op::ToString((*gmmDsqParams_.weightScale)[0]->GetViewShape()).GetString()
+                      << std::endl;
             uniqueExecutor.ReleaseTo(executor_);
         }
         if ((gmmDsqParams_.x->GetViewShape().GetDim(0) == 1 && gmmDsqParams_.x->GetViewShape().GetDim(1) == 1) ||
