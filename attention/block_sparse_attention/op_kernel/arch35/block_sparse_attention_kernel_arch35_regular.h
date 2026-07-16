@@ -110,9 +110,9 @@ public:
             gBlockSparseMask, gSparseIdx, gSparseCount,
             totalRowNumBlockMask, yBlockNumAligned_, avgRowPerSubCore_, preActiveSubCoreNum_);
 #endif
-        if (coreIdx < 4) { AscendC::PRINTF("K[%d]: before syncall\n", (int)coreIdx); }
+        // if (coreIdx < 4) { AscendC::PRINTF("K[%d]: before syncall\n", (int)coreIdx); }
         AscendC::SyncAll<false>();
-        if (coreIdx < 4) { AscendC::PRINTF("K[%d]: after syncall\n", (int)coreIdx); }
+        // if (coreIdx < 4) { AscendC::PRINTF("K[%d]: after syncall\n", (int)coreIdx); }
 #ifdef __DAV_CUBE__
         coreIdx = AscendC::GetBlockIdx();
         BlockMmadQK blockMmadQK(resource, mm1L1TileHelper_);
@@ -124,10 +124,10 @@ public:
         EpilogueRescaleO epilogueRescaleO(resource);
 #endif
         uint32_t qSTileNumPerFullXBlock = CeilDiv(blockShapeX_, qBaseTile_);
-        if (coreIdx < 4) {
-            AscendC::PRINTF("K[%d]: batch=%d qH=%d kvH=%d emb=%d total=%d\n", (int)coreIdx, (int)batch_, (int)qHeads_, (int)kvHeads_, (int)embed_, (int)totalTaskNum_);
-            AscendC::PRINTF("K[%d]: useEff=%d maxBlkEff=%d blkX=%d blkY=%d\n", (int)coreIdx, (int)useEffRows_, (int)maxBlockNumEff_, (int)blockShapeX_, (int)blockShapeY_);
-        }
+        // if (coreIdx < 4) {
+        //     AscendC::PRINTF("K[%d]: batch=%d qH=%d kvH=%d emb=%d total=%d\n", (int)coreIdx, (int)batch_, (int)qHeads_, (int)kvHeads_, (int)embed_, (int)totalTaskNum_);
+        //     AscendC::PRINTF("K[%d]: useEff=%d maxBlkEff=%d blkX=%d blkY=%d\n", (int)coreIdx, (int)useEffRows_, (int)maxBlockNumEff_, (int)blockShapeX_, (int)blockShapeY_);
+        // }
         // Calculate strides based on layout
         // For TND: [T, N, D], stride = N * D
         // For BNSD: [B, N, S, D], strideB = N * S * D, strideN = S * D, strideS = D
@@ -190,9 +190,9 @@ public:
         uint32_t curTotalTaskNum = firstBatchTaskNum_;
         // Go through each task
         for (uint32_t taskIdx = coreIdx; taskIdx < totalTaskNum_; taskIdx += coreNum) {
-            if (coreIdx < 4) { AscendC::PRINTF("K[%d]: taskStart idx=%d\n", (int)coreIdx, (int)taskIdx); }
+            // if (coreIdx < 4) { AscendC::PRINTF("K[%d]: taskStart idx=%d\n", (int)coreIdx, (int)taskIdx); }
             while (taskIdx >= curTotalTaskNum) {
-                if (coreIdx < 4) { AscendC::PRINTF("K[%d]: while curB=%d batch=%d curTot=%d idx=%d\n", (int)coreIdx, (int)curBatch, (int)batch_, (int)curTotalTaskNum, (int)taskIdx); }
+                // if (coreIdx < 4) { AscendC::PRINTF("K[%d]: while curB=%d batch=%d curTot=%d idx=%d\n", (int)coreIdx, (int)curBatch, (int)batch_, (int)curTotalTaskNum, (int)taskIdx); }
                 ++curBatch;
                 preTotalTaskNum = curTotalTaskNum;
                 if constexpr (qFormat == Format::TND) {
@@ -276,7 +276,7 @@ public:
                 effRowsBase = (static_cast<uint64_t>(curBatch) * qHeads_ + qHeadIdx) * maxBlockNumEff_ * 2;
                 uint32_t effectiveX = gBlockEffRows.GetValue(effRowsBase + xBlockIdx * 2);
                 xBlockSize = (xBlockSize < effectiveX) ? xBlockSize : effectiveX;
-                if (coreIdx < 4) { AscendC::PRINTF("K[%d]: effX=%d xBlkSz=%d xBlkIdx=%d\n", (int)coreIdx, (int)effectiveX, (int)xBlockSize, (int)xBlockIdx); }
+                // if (coreIdx < 4) { AscendC::PRINTF("K[%d]: effX=%d xBlkSz=%d xBlkIdx=%d\n", (int)coreIdx, (int)effectiveX, (int)xBlockSize, (int)xBlockIdx); }
             }
             uint32_t qSTileNumCurXBlock = CeilDiv(xBlockSize, qBaseTile_);
             if (useEffRows_ && (xBlockSize == 0 || qSTileIdxCurXBlock >= qSTileNumCurXBlock)) {
@@ -320,9 +320,9 @@ public:
             uint32_t rowNum = qSTileSizeAct;
             uint32_t rowNumRound = RoundUp(rowNum, 16);
             uint32_t kvSLoopNum = static_cast<uint32_t>(CeilDiv(gatheredKvSeqlen, static_cast<int64_t>(kvBaseTile_)));
-            if (coreIdx < 4) { AscendC::PRINTF("K[%d]: gatKv=%d kvSLoop=%d yBlkRsvd=%d\n", (int)coreIdx, (int)gatheredKvSeqlen, (int)kvSLoopNum, (int)yBlockNumRsvd); }
+            // if (coreIdx < 4) { AscendC::PRINTF("K[%d]: gatKv=%d kvSLoop=%d yBlkRsvd=%d\n", (int)coreIdx, (int)gatheredKvSeqlen, (int)kvSLoopNum, (int)yBlockNumRsvd); }
             if (useEffRows_ && kvSLoopNum == 0) {
-                if (coreIdx < 4) { AscendC::PRINTF("K[%d]: skip kvSLoop=0\n", (int)coreIdx); }
+                // if (coreIdx < 4) { AscendC::PRINTF("K[%d]: skip kvSLoop=0\n", (int)coreIdx); }
                 continue;
             }
             uint32_t kvSTileSizeAct = kvBaseTile_;
@@ -477,7 +477,7 @@ public:
 #endif
                 }
             }
-            if (coreIdx < 4) { AscendC::PRINTF("K[%d]: taskDone idx=%d\n", (int)coreIdx, (int)taskIdx); }
+            // if (coreIdx < 4) { AscendC::PRINTF("K[%d]: taskDone idx=%d\n", (int)coreIdx, (int)taskIdx); }
         }
         if (coreIdx < 4) { AscendC::PRINTF("K[%d]: allTasksDone\n", (int)coreIdx); }
 #ifdef __DAV_CUBE__
@@ -670,26 +670,34 @@ public:
         AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(EVENT_ID2);
         AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(EVENT_ID3);
         AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(EVENT_ID4);
+        if (coreIdx < 4) { AscendC::PRINTF("K[%d]: CUBE done MTE1_MTE2\n", (int)coreIdx); }
         AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(EVENT_ID0);
         AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(EVENT_ID1);
         AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(EVENT_ID2);
         AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(EVENT_ID3);
+        if (coreIdx < 4) { AscendC::PRINTF("K[%d]: CUBE done M_MTE1\n", (int)coreIdx); }
         AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(EVENT_ID0);
         AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(EVENT_ID1);
         AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(EVENT_ID2);
         AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(EVENT_ID3);
+        if (coreIdx < 4) { AscendC::PRINTF("K[%d]: CUBE done FIX_M\n", (int)coreIdx); }
         if constexpr (MM1_SM_MODE == 4U) {
             AscendC::CrossCoreWaitFlag<MM1_SM_MODE, PIPE_FIX>(0);
             AscendC::CrossCoreWaitFlag<MM1_SM_MODE, PIPE_FIX>(1);
+            if (coreIdx < 4) { AscendC::PRINTF("K[%d]: CUBE done CrossMM1(0,1)\n", (int)coreIdx); }
             AscendC::CrossCoreWaitFlag<MM1_SM_MODE, PIPE_FIX>(16);
             AscendC::CrossCoreWaitFlag<MM1_SM_MODE, PIPE_FIX>(17);
+            if (coreIdx < 4) { AscendC::PRINTF("K[%d]: CUBE done CrossMM1(16,17)\n", (int)coreIdx); }
         }
         if constexpr (MM2_RE_MODE == 4U) {
             AscendC::CrossCoreWaitFlag<MM2_RE_MODE, PIPE_FIX>(5);
             AscendC::CrossCoreWaitFlag<MM2_RE_MODE, PIPE_FIX>(21);
+            if (coreIdx < 4) { AscendC::PRINTF("K[%d]: CUBE done CrossMM2(5,21)\n", (int)coreIdx); }
             AscendC::CrossCoreWaitFlag<MM2_RE_MODE, PIPE_FIX>(6);
             AscendC::CrossCoreWaitFlag<MM2_RE_MODE, PIPE_FIX>(22);
+            if (coreIdx < 4) { AscendC::PRINTF("K[%d]: CUBE done CrossMM2(6,22)\n", (int)coreIdx); }
         }
+        if (coreIdx < 4) { AscendC::PRINTF("K[%d]: CUBE done all cross-core\n", (int)coreIdx); }
 #endif
 #ifdef __DAV_VEC__
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID0);
