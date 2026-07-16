@@ -10,7 +10,7 @@
 import time
 import torch
 import torch_npu
-from cann_ops_transformer.ops import chunk_gated_delta_rule
+#from cann_ops_transformer.ops import chunk_gated_delta_rule
 from chunk_gated_delta_rule_benchmark import chunk_gdn_benchmark_opt
 from chunk_gated_delta_rule_golden import chunk_gated_delta_rule_npu
 import torch.nn.functional as F
@@ -224,8 +224,8 @@ def cgdr_npu(q, k, v, g, beta, scale, initial_state, actual_seq_lengths):
         model = torch.compile(model, backend=npu_backend, dynamic=False)
         o_npu, state_npu = model(q, k, v, initial_state.clone(), beta, actual_seq_lengths, scale, g)
     else:
-        o_npu, state_npu = torch.ops.cann_ops_transformer.chunk_gated_delta_rule(
-        # o_npu, state_npu = torch_npu.npu_chunk_gated_delta_rule(
+        # o_npu, state_npu = torch.ops.cann_ops_transformer.chunk_gated_delta_rule(
+        o_npu, state_npu = torch_npu.npu_chunk_gated_delta_rule(
             q, k, v,
             beta=beta,
             initial_state=initial_state.clone(),
