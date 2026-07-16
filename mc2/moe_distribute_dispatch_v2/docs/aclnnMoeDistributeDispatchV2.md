@@ -199,7 +199,7 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
     <td>expertScalesOptional</td>
     <td>输入</td>
     <td>每个Token的topK个专家权重。</td>
-    <td>-</td>
+    <td>可传有效Tensor或空指针。</td>
     <td>FLOAT32</td>
     <td>ND</td>
     <td><code>(BS, K)</code></td>
@@ -407,7 +407,7 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
     <tr>
     <td>expandScalesOut</td>
     <td>输出</td>
-    <td>表示本卡输出token的权重（对应<code>aclnnMoeDistributeCombineV2</code>中的<code>expertScalesOptional</code>）。</td>
+    <td>表示本卡输出token的权重（对应<code>aclnnMoeDistributeCombineV2</code>中的<code>expertScalesOptional</code>）。<code>expertScalesOptional</code>传有效Tensor时shape为<code>(A,)</code>；传空指针时shape为<code>(0,)</code>。</td>
     <td>-</td>
     <td>FLOAT32</td>
     <td>ND</td>
@@ -456,7 +456,7 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
         - `dynamicScalesOut`仅quantMode取值为2时有输出。
         - `commAlg`当前版本不支持，传空指针即可。
         - `xActiveMaskOptional`要求为1D或2D Tensor（1D时shape为(BS, )，2D时shape为(BS, K)）；1D时true需排在false前，2D时token对应K个值全为false则不参与通信。
-        - `expertScalesOptional`当前版本不支持，传空指针即可。
+        - `expertScalesOptional`可传有效Tensor或空指针；传有效Tensor时要求为2D Tensor，shape为(BS, K)。
         - `epWorldSize`取值范围[2, 768]。
         - `moeExpertNum`取值范围(0, 1024]。
         - `groupTp`（预留参数，当前版本不支持）。
@@ -467,14 +467,14 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
         - `sharedExpertRankNum`取值范围[0, epWorldSize)；为0时需满足sharedExpertNum为0或1，不为0时需满足sharedExpertRankNum % sharedExpertNum = 0。
         - `epRecvCountsOut`的shape为(epWorldSize \* localExpertNum,)。
         - `tpRecvCountsOut`（预留输出，当前版本不支持，传空指针即可）。
-        - `expandScalesOut`当前版本不支持该输出。
+        - 支持`expandScalesOut`输出；`expertScalesOptional`传有效Tensor时shape为(A,)；传空指针时shape为(0,)。
         - `quantMode`支持0（非量化）、2（动态量化）。
 
     - <term>Ascend 950DT</term>：
         - `dynamicScalesOut`quantMode取值为2、3、4时有输出；quantMode取值为0且`x`的数据类型为`HIFLOAT8`、`FLOAT8_E5M2`、`FLOAT8_E4M3FN`、`FLOAT4_E2M1`、`FLOAT4_E1M2`时也有输出。
         - `commAlg`当前版本不支持，传空指针即可。
         - `xActiveMaskOptional`要求为1D或2D Tensor（1D时shape为(BS, )，2D时shape为(BS, K)）；1D时true需排在false前（例：{true, false, true}非法），2D时token对应K个值全为false则不参与通信。
-        - `expertScalesOptional`当前版本不支持，传空指针即可。
+        - `expertScalesOptional`可传有效Tensor或空指针；传有效Tensor时要求为2D Tensor，shape为(BS, K)。
         - `epWorldSize`取值范围[2, 1024]。
         - `moeExpertNum`取值范围(0, 1024]。
         - `groupTp`当前版本不支持，传空字符即可。
@@ -485,7 +485,7 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
         - `sharedExpertRankNum`取值范围[0, epWorldSize)；为0时需满足sharedExpertNum为0或1，不为0时需满足sharedExpertRankNum % sharedExpertNum = 0。
         - `epRecvCountsOut`的shape为(epWorldSize \* localExpertNum,)。
         - `tpRecvCountsOut`当前版本不支持该输出。
-        - `expandScalesOut`当前版本不支持该输出。
+        - 支持`expandScalesOut`输出；`expertScalesOptional`传有效Tensor时shape为(A,)；传空指针时shape为(0,)。
         - `quantMode`支持0（非量化）、1（静态量化）、2（pertoken动态量化）、3（pergroup动态量化）、4（mx动态量化）。
 
 - **返回值**
@@ -648,9 +648,8 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
               - commAlg为"fullmesh"：设置大小要求(≥ 2 \* (BS \* epWorldSize \* min(localExpertNum, K) \* H \* sizeof(uint16) + 2MB))。
               - commAlg为"hierarchy"：设置大小要求(≥ (`moeExpertNum` + `epWorldSize` / 4) \* Align512(`maxBS` \* (`H` \* 2 + 16 \* Align8  (`K`))) \* 1B + 8MB，其中Align8(x) = ((x + 8 - 1) / 8) \* 8，Align512(x) = ((x + 512 - 1) / 512) \* 512)。
           - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  ：
-              - ep通信域内：设置大小要求(≥ 2)且满足(≥ 2 \* (localExpertNum \* maxBS \* epWorldSize \* Align512(Align32(2 \* H) + 44) + (K +   sharedExpertNum) \* maxBS \* Align512(2 \* H)))（`localExpertNum`需使用MoE专家卡的本卡专家数；`Align512(x) = ((x + 512 - 1) /   512) * 512`；`Align32(x) = ((x + 32 - 1) / 32) * 32`）。当前不支持TP通信域。
-          - <term>Ascend 950DT</term>：ep通信域内设置大小要求(≥ 2)且满足(≥ 2 \* (localExpertNum \* maxBS \* epWorldSize \* Align512(Align32(2 \* H) + 44) + (K + sharedExpertNum) \* maxBS \* Align512(2 \* H)))（`localExpertNum`需使用MoE专家卡的本卡专家数；`Align512(x) = ((x + 512 - 1) / 512) * 512`；`Align32(x) = ((x + 32 - 1) / 32) * 32`）。不支持TP通信域。
-          - 每个token的44B附加数据由32B量化scale和3个4B索引信息组成；`expertScalesOptional`非空时，expertScale作为索引信息后的第4个4B数据复用该区域的32B对齐空间，不额外增加通信窗口占用。
+              - ep通信域内：设置大小要求(≥ 2)且满足(≥ 2 \* (localExpertNum \* maxBS \* epWorldSize \* Align512(Align32(2 \* H) + 64) + (K +   sharedExpertNum) \* maxBS \* Align512(2 \* H)))（`localExpertNum`需使用MoE专家卡的本卡专家数；`Align512(x) = ((x + 512 - 1) /   512) * 512`；`Align32(x) = ((x + 32 - 1) / 32) * 32`）。当前不支持TP通信域。
+          - <term>Ascend 950DT</term>：ep通信域内设置大小要求(≥ 2)且满足(≥ 2 \* (localExpertNum \* maxBS \* epWorldSize \* Align512(Align32(2 \* H) + 64) + (K + sharedExpertNum) \* maxBS \* Align512(2 \* H)))（`localExpertNum`需使用MoE专家卡的本卡专家数；`Align512(x) = ((x + 512 - 1) / 512) * 512`；`Align32(x) = ((x + 32 - 1) / 32) * 32`）。不支持TP通信域。
 
   - **HCCL_INTRA_PCIE_ENABLE和HCCL_INTRA_ROCE_ENABLE**：
       - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：该环境变量不再推荐使用，建议通过`commAlg`配置为"hierarchy"。

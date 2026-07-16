@@ -230,9 +230,9 @@ MoeDistributeBuffer.low_latency_dispatch(x, topk_idx, num_experts, *, quant_mode
         <td>topk_weights</td>
         <td>Tensor</td>
         <td>可选</td>
-        <td>暂不支持该参数，使用默认值即可。</td>
-        <td>暂不支持</td>
-        <td>-</td>
+        <td>表示每个token的topK个专家权重，可传有效Tensor或None。</td>
+        <td>float32</td>
+        <td>(BS, K)</td>
     </tr>
     <tr>
         <td>zero_expert_num</td>
@@ -423,9 +423,9 @@ MoeDistributeBuffer.low_latency_dispatch(x, topk_idx, num_experts, *, quant_mode
         <td>expand_scales</td>
         <td>Tensor</td>
         <td>必选</td>
-        <td>表示`topk_weights`与`x`一起进行alltoallv之后的输出。暂不支持该输出，返回None。</td>
-        <td>暂不支持</td>
-        <td>-</td>
+        <td>表示`topk_weights`与`x`一起进行alltoallv之后的输出。`topk_weights`传有效Tensor时shape为(A,)；传None时shape为(0,)。</td>
+        <td>float32</td>
+        <td>(A,)，未传`topk_weights`时为(0,)</td>
     </tr>
 </tbody>
 </table>
@@ -514,10 +514,9 @@ MoeDistributeBuffer.low_latency_dispatch(x, topk_idx, num_experts, *, quant_mode
 -   HCCL通信域缓存区大小:
     调用本接口前需检查HCCL\_BUFFSIZE环境变量取值是否合理，该环境变量表示单个通信域占用内存大小，单位MB，不配置时默认为200MB。
     -   该场景仅支持通过环境变量HCCL\_BUFFSIZE配置，该环境变量按通信域粒度管理，每个通信域独占一组“2*HCCL\_BUFFSIZE”大小的内存。
-    -   ep通信域内，comm\_alg配置为"fullmesh_v1"或"": 设置大小要求 \>= 2 \* \(local\_expert\_num \* max\_bs \* ep\_world\_size \* Align512\(Align32\(2 \* H\) + 44\) + \(K + shared\_expert\_num\) \* max\_bs \* Align512\(2 \* H\)\)。
-    -   ep通信域内，comm\_alg配置为"fullmesh_v2": 设置大小要求 \>= 2 \* \(local\_expert\_num \* max\_bs \* ep\_world\_size \* 480Align512\(Align32\(2 \* H\) + 44\) + \(K + shared\_expert\_num\) \* max\_bs \* Align512\(2 \* H\)\)。
+    -   ep通信域内，comm\_alg配置为"fullmesh_v1"或"": 设置大小要求 \>= 2 \* \(local\_expert\_num \* max\_bs \* ep\_world\_size \* Align512\(Align32\(2 \* H\) + 64\) + \(K + shared\_expert\_num\) \* max\_bs \* Align512\(2 \* H\)\)。
+    -   ep通信域内，comm\_alg配置为"fullmesh_v2": 设置大小要求 \>= 2 \* \(local\_expert\_num \* max\_bs \* ep\_world\_size \* 480Align512\(Align32\(2 \* H\) + 64\) + \(K + shared\_expert\_num\) \* max\_bs \* Align512\(2 \* H\)\)。
     -   其中480Align512(x) = ((x+480-1)/480)\*512,Align512(x) = ((x+512-1)/512)\*512,Align32(x) = ((x+32-1)/32)\*32。
-    -   每个token的44B附加数据由32B量化scale和3个4B索引信息组成；`topk_weights`非空时，expertScale作为索引信息后的第4个4B数据复用该区域的32B对齐空间，不额外增加通信buffer占用。
     -   通信域开设大小可通过调用MoeDistributeBuffer.get_low_latency_ccl_buffer_size接口计算。
 
 -   本文公式中的“/”表示整除。

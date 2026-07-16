@@ -132,7 +132,7 @@ $$
   <tr>
    <td>expertScalesOptional</td>
    <td>可选输入</td>
-   <td>每个token的topK个专家权重。</td>
+   <td>每个token的topK个专家权重，可传有效Tensor或空指针。</td>
    <td>FLOAT32</td>
    <td>ND</td>
   </tr>
@@ -314,7 +314,7 @@ $$
   <tr>
    <td>expandScalesOut</td>
    <td>输出</td>
-   <td>表示本卡输出token的权重（对应CombineV2系列算子中的expandScalesOptional）。</td>
+   <td>表示本卡输出token的权重（对应CombineV2系列算子中的expandScalesOptional）。expertScalesOptional传有效Tensor时shape为(A,)；传空指针时shape为(0,)。</td>
    <td>FLOAT32</td>
    <td>ND</td>
   </tr>
@@ -329,13 +329,14 @@ $$
     * 不支持常量专家场景，不支持`constExpertNum`，使用默认值即可。
 * <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  ：
     * commAlg支持""，"fullmesh_v1"，"fullmesh_v2", "hierarchy"三种输入方式。""：默认值，不开启fullmesh_v2模板；"fullmesh_v1"：不开启fullmesh_v2模板；"fullmesh_v2"：开启fullmesh_v2模板，不支持在各卡`BS`不一致、输入xActiveMask和特殊专家场景下开启；"hierarchy": 开启跨超模板，仅支持共享专家为0的场景，且不支持可变BS、二维mask、特殊专家、performanceInfo场景。
-    * expertScalesOptional当commAlg="hierarchy"场景时，要求为2D Tensor，shape为(BS, K)；当commAlg=""，"fullmesh_v1"，
+    * `expertScalesOptional`可传有效Tensor或空指针；传有效Tensor时要求为2D Tensor，shape为(BS, K)。
     * epWorldSize取值范围[2, 768]；当commAlg="hierarchy"场景时，取值范围为[16, 256]，且为16的整数倍。
     * moeExpertNum取值范围(0, 1024]；当commAlg="hierarchy"场景时，取值范围为(0, 512]。
-    * expandScalesOut当commAlg="hierarchy"场景时，要求为1D Tensor，shape为(A,)；当commAlg=""，"fullmesh_v1"，"fullmesh_v2"场景时，暂不支持该输出。
+    * 支持`expandScalesOut`输出；`expertScalesOptional`传有效Tensor时shape为(A,)；传空指针时shape为(0,)。
 * <term>Ascend 950DT</term>：
     * 仅支持EP域，无TP域，不支持`groupTp`、`tpWorldSize`、`tpRankId`属性，且`tpRecvCounts`输出无有效内容。
-    * 不支持`expandScalesOut`。
+    * `expertScalesOptional`可传有效Tensor或空指针；传有效Tensor时要求为2D Tensor，shape为(BS, K)。
+    * 支持`expandScalesOut`输出；`expertScalesOptional`传有效Tensor时shape为(A,)；传空指针时shape为(0,)。
 
 ## 约束说明
 
@@ -412,7 +413,7 @@ $$
         - `BS`：表示batch sequence size，即本卡最终输出的token数量。
             - `commAlg` = "fullmesh_v2"或"hierarchy"：取值范围(0, 256]。
             - `commAlg` = "fullmesh_v1"或""：取值范围(0, 512]。
-    - `HCCL_BUFFSIZE`：调用本算子前需检查`HCCL_BUFFSIZE`环境变量取值是否合理，该环境变量表示单个通信域占用内存大小，单位MB，不配置时默认为200MB。要求 >= 2且满足>= 2 * (`localExpertNum` * `maxBS` * `epWorldSize` * Align512(Align32(2 * `H`) + 44) + (`K` + `sharedExpertNum`) * `maxBS` * Align512(2 * `H`))，`localExpertNum`需使用MoE专家卡的本卡专家数，其中Align512(x) = ((x + 512 - 1) / 512) * 512，Align32(x) = ((x + 32 - 1) / 32) * 32。每个token的44B附加数据由32B量化scale和3个4B索引信息组成；`expertScalesOptional`非空时，expertScale作为索引信息后的第4个4B数据复用该区域的32B对齐空间，不额外增加通信窗口占用。
+    - `HCCL_BUFFSIZE`：调用本算子前需检查`HCCL_BUFFSIZE`环境变量取值是否合理，该环境变量表示单个通信域占用内存大小，单位MB，不配置时默认为200MB。要求 >= 2且满足>= 2 * (`localExpertNum` * `maxBS` * `epWorldSize` * Align512(Align32(2 * `H`) + 64) + (`K` + `sharedExpertNum`) * `maxBS` * Align512(2 * `H`))，`localExpertNum`需使用MoE专家卡的本卡专家数，其中Align512(x) = ((x + 512 - 1) / 512) * 512，Align32(x) = ((x + 32 - 1) / 32) * 32。
 
 - <term>Ascend 950DT</term>：
     - 参数约束：
@@ -431,7 +432,7 @@ $$
     - 参数说明里shape格式说明：
         - `H`：表示hidden size隐藏层大小，取值范围[1024, 8192]。
         - `BS`：表示batch sequence size，即本卡最终输出的token数量，取值范围(0, 512]。
-    - `HCCL_BUFFSIZE`：调用本算子前需检查`HCCL_BUFFSIZE`环境变量取值是否合理，该环境变量表示单个通信域占用内存大小，单位MB，不配置时默认为200MB。要求 >= 2且满足>= 2 * (`localExpertNum` * `maxBS` * `epWorldSize` * Align512(Align32(2 * `H`) + 44) + (`K` + `sharedExpertNum`) * `maxBS` * Align512(2 * `H`))，`localExpertNum`需使用MoE专家卡的本卡专家数，其中Align512(x) = ((x + 512 - 1) / 512) * 512，Align32(x) = ((x + 32 - 1) / 32) * 32。每个token的44B附加数据由32B量化scale和3个4B索引信息组成；`expertScalesOptional`非空时，expertScale作为索引信息后的第4个4B数据复用该区域的32B对齐空间，不额外增加通信窗口占用。
+    - `HCCL_BUFFSIZE`：调用本算子前需检查`HCCL_BUFFSIZE`环境变量取值是否合理，该环境变量表示单个通信域占用内存大小，单位MB，不配置时默认为200MB。要求 >= 2且满足>= 2 * (`localExpertNum` * `maxBS` * `epWorldSize` * Align512(Align32(2 * `H`) + 64) + (`K` + `sharedExpertNum`) * `maxBS` * Align512(2 * `H`))，`localExpertNum`需使用MoE专家卡的本卡专家数，其中Align512(x) = ((x + 512 - 1) / 512) * 512，Align32(x) = ((x + 32 - 1) / 32) * 32。
 
 ## 调用说明
 

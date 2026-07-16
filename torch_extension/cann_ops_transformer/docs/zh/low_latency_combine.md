@@ -147,9 +147,9 @@ MoeDistributeBuffer.low_latency_combine(x, topk_idx, topk_weights, assist_info_f
         <td>expand_scales</td>
         <td>Optional[Tensor]</td>
         <td>可选</td>
-        <td>对应[low_latency_dispatch](low_latency_dispatch.md)的`expand_scales`输出。暂不支持该参数，使用默认值即可。默认值为None。</td>
-        <td>float</td>
-        <td>-</td>
+        <td>对应[low_latency_dispatch](low_latency_dispatch.md)的`expand_scales`输出，可传有效Tensor、空Tensor或None。默认值为None。</td>
+        <td>float32</td>
+        <td>(A,)，未传`topk_weights`时可为(0,)</td>
     </tr>
     <tr>
         <td>shared_expert_x</td>
