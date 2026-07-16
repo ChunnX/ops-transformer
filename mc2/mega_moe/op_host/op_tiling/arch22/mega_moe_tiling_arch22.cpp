@@ -97,7 +97,7 @@ namespace MegaMoeA2A3Tiling {
     // 属性范围限制
     constexpr int64_t MIN_MOE_EXPERT_NUM = 1;
     constexpr int64_t MAX_MOE_EXPERT_NUM = 1024;
-    constexpr int64_t VALID_EP_WORLD_SIZE[] = {2, 4, 8, 16, 32, 64, 128};
+    constexpr int64_t VALID_EP_WORLD_SIZE[] = {2, 4, 8, 16, 32};
 
     constexpr uint32_t TWO_DIMS = 2U;
     constexpr uint32_t ONE_DIM = 1U;
