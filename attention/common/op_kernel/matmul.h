@@ -800,6 +800,8 @@ __aicore__ inline void MatmulK1(
     LocalTensor<L0BType> &bL0Tensor, const LocalTensor<C> &cL0Tensor, const MMParam &param,
     uint32_t l0ABMToMte1FlagId, uint32_t l0ABMte1ToMFlagId, uint32_t &l0ABBufId)
 {
+    constexpr uint32_t L0A_BLOCK_SIZE = baseM * baseK;
+    constexpr uint32_t L0B_BLOCK_SIZE = baseN * baseK;
     uint32_t kLoops = (param.singleK + baseK - 1) / baseK;
     uint32_t tailSize = param.singleK % baseK;
     uint32_t tailK = tailSize ? tailSize : baseK;
@@ -818,12 +820,12 @@ __aicore__ inline void MatmulK1(
 #endif
     for (uint32_t k = 0; k < kLoops; k++) {
         uint32_t tileK = (k == (kLoops - 1)) ? tailK : baseK;
-        LocalTensor<L0AType> curAL0Tensor = aL0Tensor[BUFFER_SIZE_16K * l0ABBufId];
+        LocalTensor<L0AType> curAL0Tensor = aL0Tensor[L0A_BLOCK_SIZE * l0ABBufId];
         WaitFlag<HardEvent::M_MTE1>(l0ABMToMte1FlagId + l0ABBufId);
         LoadDataToL0A(curAL0Tensor, aL1Tensor, param, k * l1Aoffset, tileK, param.singleM);
 
         uint64_t loopNum = param.isRightTranspose ? 1 : kLoops;
-        LocalTensor<L0BType> curBL0Tensor = bL0Tensor[BUFFER_SIZE_32K * l0ABBufId];
+        LocalTensor<L0BType> curBL0Tensor = bL0Tensor[L0B_BLOCK_SIZE * l0ABBufId];
         LoadDataToL0B(curBL0Tensor, bL1Tensor, param, k * l1Boffset, tileK, param.singleN, loopNum);
 
         SetFlag<HardEvent::MTE1_M>(l0ABMte1ToMFlagId + l0ABBufId);
@@ -856,6 +858,8 @@ __aicore__ inline void MatmulN1(
     LocalTensor<L0BType> &bL0Tensor, const LocalTensor<C> &cL0Tensor, const MMParam &param,
     uint32_t l0ABMToMte1FlagId, uint32_t l0ABMte1ToMFlagId, uint32_t &l0ABBufId)
 {
+    constexpr uint32_t L0A_BLOCK_SIZE = baseM * baseK;
+    constexpr uint32_t L0B_BLOCK_SIZE = baseN * baseK;
     uint32_t nLoops = (param.singleN + baseN - 1) / baseN;
     uint32_t tailSize = param.singleN % baseN;
     uint32_t tailN = tailSize ? tailSize : baseN;
@@ -888,13 +892,13 @@ __aicore__ inline void MatmulN1(
         mmadParams.n = tileN;
 
         WaitFlag<HardEvent::M_MTE1>(l0ABMToMte1FlagId + l0ABBufId);
-        LocalTensor<L0AType> curAL0Tensor = aL0Tensor[BUFFER_SIZE_16K * l0ABBufId];
+        LocalTensor<L0AType> curAL0Tensor = aL0Tensor[L0A_BLOCK_SIZE * l0ABBufId];
         if (n == 0 || n == 1) {
             LoadDataToL0A(curAL0Tensor, aL1Tensor, param, 0, param.singleK, param.singleM);
         }
 
         uint64_t loopNum = param.isRightTranspose ? nLoops : 1;
-        LocalTensor<L0BType> curBL0Tensor = bL0Tensor[BUFFER_SIZE_32K * l0ABBufId];
+        LocalTensor<L0BType> curBL0Tensor = bL0Tensor[L0B_BLOCK_SIZE * l0ABBufId];
         LoadDataToL0B(curBL0Tensor, bL1Tensor, param, n * l1BOffset, param.singleK, tileN, loopNum);
         SetFlag<HardEvent::MTE1_M>(l0ABMte1ToMFlagId + l0ABBufId);
         WaitFlag<HardEvent::MTE1_M>(l0ABMte1ToMFlagId + l0ABBufId);
