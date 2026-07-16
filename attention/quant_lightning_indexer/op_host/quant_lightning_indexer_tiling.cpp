@@ -209,7 +209,7 @@ ge::graphStatus QLIInfoParser::GetAttrParaInfo()
     opParamInfo_.layOutQuery = attrs->GetStr(ATTR_QUERY_LAYOUT_INDEX);
     opParamInfo_.layOutKey = attrs->GetStr(ATTR_KEY_LAYOUT_INDEX);
 
-    opParamInfo_.queryQuantMode = attrs->GetAttrPointer<int32_t>(ATTR_QUERY_QUANT_MODE_INDEX);
+    opParamInfo_.queryQuantMode =  attrs->GetAttrPointer<int32_t>(ATTR_QUERY_QUANT_MODE_INDEX);
     opParamInfo_.keyQuantMode = attrs->GetAttrPointer<int32_t>(ATTR_KEY_QUANT_MODE_INDEX);
     opParamInfo_.layOutQuery = attrs->GetStr(ATTR_QUERY_LAYOUT_INDEX);
     opParamInfo_.layOutKey = attrs->GetStr(ATTR_KEY_LAYOUT_INDEX);
@@ -354,7 +354,7 @@ ge::graphStatus QLIInfoParser::GetAndCheckInOutDataType()
             return ge::GRAPH_FAILED);
         // hifloat8只支持bf16的weights和fp32的scale
         if (inputQType_ == ge::DT_FLOAT8_E4M3FN) {
-            OP_CHECK_IF((weightsType_ != ge::DT_BF16 || inputQueryScaleType_ != ge::DT_FLOAT) && 
+            OP_CHECK_IF((weightsType_ != ge::DT_BF16 || inputQueryScaleType_ != ge::DT_FLOAT) &&
                         (weightsType_ != ge::DT_FLOAT16|| inputQueryScaleType_ != ge::DT_FLOAT16),
                 OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(opName_, "weights, query_dequant_scale and key_dequant_scale",
                     QLIDataTypeToSerialString(weightsType_) + ", " +
@@ -401,7 +401,7 @@ ge::graphStatus QLIInfoParser::GetAndCheckInOutDataType()
             OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(opName_, "query_dequant_scale and key_dequant_scale",
                 QLIDataTypeToSerialString(inputQueryScaleType_) + ", " + QLIDataTypeToSerialString(inputKeyScaleType_),
                 "The dtype of query_dequant_scale and key_dequant_scale must be float16"),
-            return ge::GRAPH_FAILED);        
+            return ge::GRAPH_FAILED);
     }
 
     OP_CHECK_IF(outputType_ != ge::DT_INT32,
@@ -609,9 +609,9 @@ ge::graphStatus QLIInfoParser::GetGSize()
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "query",
                 Ops::Base::ToString(opParamInfo_.query.shape->GetStorageShape()).c_str(),
                 "input query's head_num divided by input key's head_num must <= " + std::to_string(G_SIZE_LIMIT)),
-               return ge::GRAPH_FAILED);        
+               return ge::GRAPH_FAILED);
     }
-    
+
     return ge::GRAPH_SUCCESS;
 }
 
