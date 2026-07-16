@@ -8,7 +8,7 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
- /*!
+/*!
  * \file matmul_all_reduce_add_rms_norm_tiling_data.h
  * \brief
  */
@@ -25,7 +25,7 @@
 
 namespace Mc2Tiling {
 #pragma pack(push, 8) // 8 means 8 bytes aligned
-struct AddRMSNormTilingData{
+struct AddRMSNormTilingData {
     uint32_t num_row;
     uint32_t num_col;
     uint32_t block_factor;
@@ -35,33 +35,33 @@ struct AddRMSNormTilingData{
     float avg_factor;
 };
 
-struct AddRMSNormTilingeKeyData{
+struct AddRMSNormTilingeKeyData {
     uint32_t ARNKeyTile;
     uint32_t ARNKeyTail;
     uint32_t ARNNumBlocksTile;
     uint32_t ARNNumBlocksTail;
 };
 
-struct MatmulAllReduceAddRmsNormTilingData{
+struct MatmulAllReduceAddRmsNormTilingData {
     MatmulAllReduce910TilingData matmulAllReduceTilingData;
     AddRMSNormTilingData addRMSNormTileTilingData;
     AddRMSNormTilingData addRMSNormTailTilingData;
     AddRMSNormTilingeKeyData addRmsNormTilingeKeyData;
 };
 
-struct QuantMatmulAllReduceAddRmsNormTilingData{
+struct QuantMatmulAllReduceAddRmsNormTilingData {
     QuantMatmulAllReduceTilingData quantMatmulAllReduceTilingData;
     AddRMSNormTilingData addRMSNormTileTilingData;
     AddRMSNormTilingData addRMSNormTailTilingData;
     AddRMSNormTilingeKeyData addRmsNormTilingeKeyData;
 };
 
-struct WeightQuantMatmulAllReduceAddRmsNormTilingData{
+struct WeightQuantMatmulAllReduceAddRmsNormTilingData {
     WeightQuantMatmulAllReduceTilingData weightQuantMatmulAllReduceTilingData;
     AddRMSNormTilingData addRMSNormTileTilingData;
     AddRMSNormTilingData addRMSNormTailTilingData;
     AddRMSNormTilingeKeyData addRmsNormTilingeKeyData;
 };
 #pragma pack(pop)
-}  // namespace Mc2Tiling
+} // namespace Mc2Tiling
 #endif
