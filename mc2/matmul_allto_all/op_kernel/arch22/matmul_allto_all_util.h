@@ -106,7 +106,7 @@ public:
         m_loop = DivCeil(m, m0);
         n_loop = DivCeil(n, n0);
         k_loop = DivCeil(k, k0);
-        gm_a_pingpong_size = m0 * n * p_value;
+        gm_a_pingpong_size = static_cast<int64_t>(m0) * n * p_value;
     }
 
     template <pipe_t pipe, uint64_t mode>
