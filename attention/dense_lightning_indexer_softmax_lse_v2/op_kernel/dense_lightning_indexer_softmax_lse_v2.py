@@ -105,33 +105,37 @@ def write_scalar_vf(tile, val):
 
 
 @pl.vector_function
-def process_reduce_max_vf(dst_tile, qk_tile, weight_tile, max_tile, n1_dim):
+def process_reduce_max_vf(dst_tile, qk_tile, weight_tile, max_tile, n1_dim, s2_size):
     vreg_reduce_sum = vf.full(0, dtype=pl.DT_FP32)
-    preg_all = vf.create_mask(pattern=pl.MaskPattern.ALL, dtype=pl.DT_FP32)
+    preg_s2 = vf.update_mask(s2_size, dtype=pl.DT_FP32)
     preg_max = vf.update_mask(1, dtype=pl.DT_FP32)
     for m in pl.range(n1_dim):
         vreg_x = vf.load_align(qk_tile, m * TKV_HALF)
         vreg_w = vf.load_align(weight_tile, m, dist=pl.LoadDist.BRC_B32)
-        vreg_relu = vf.relu(vreg_x, preg_all)
-        vreg_mul = vf.mul(vreg_relu, vreg_w, preg_all)
-        vreg_reduce_sum = vf.add(vreg_reduce_sum, vreg_mul, preg_all)
-    vreg_reduce_max = vf.reduce_max(vreg_reduce_sum, preg_all, merge_mode=pl.MergeMode.ZEROING)
+        vreg_relu = vf.relu(vreg_x, preg_s2)
+        vreg_mul = vf.mul(vreg_relu, vreg_w, preg_s2)
+        vreg_reduce_sum = vf.add(vreg_reduce_sum, vreg_mul, preg_s2)
+    vreg_reduce_max = vf.reduce_max(vreg_reduce_sum, preg_s2, merge_mode=pl.MergeMode.ZEROING)
     vreg_tmp_max = vf.load_align(max_tile, 0)
-    vreg_tmp_max = vf.max(vreg_tmp_max, vreg_reduce_max, preg_max)
-    vf.store_align(dst_tile, vreg_reduce_sum, preg_all)
-    vf.store_align(max_tile, vreg_tmp_max, preg_max)
+    vreg_max = vf.max(vreg_tmp_max, vreg_reduce_max, preg_max)
+    vf.store_align(dst_tile, vreg_reduce_sum, preg_s2)
+    vf.store_align(max_tile, vreg_max, preg_max)
 
 
 @pl.vector_function
-def process_reduce_sum_vf(dst_tile, reduce_sum_vec_tile, tmp_max, s2_tiles):
+def process_reduce_sum_vf(dst_tile, reduce_sum_vec_tile, tmp_max, s2_tiles, tail_size):
     vreg_max = vf.full(tmp_max, dtype=pl.DT_FP32)
     vreg_all_sum = vf.full(0, dtype=pl.DT_FP32)
     preg_all = vf.create_mask(pattern=pl.MaskPattern.ALL, dtype=pl.DT_FP32)
+    preg_tail = vf.update_mask(tail_size, dtype=pl.DT_FP32)
     preg_sum = vf.update_mask(1, dtype=pl.DT_FP32)
-    for m in pl.range(s2_tiles):
+    for m in pl.range(s2_tiles - 1):
         vreg_x = vf.load_align(reduce_sum_vec_tile, m * TKV_HALF)
         vreg_exp = vf.exp_sub(vreg_x, vreg_max, preg_all)
         vreg_all_sum = vf.add(vreg_all_sum, vreg_exp, preg_all)
+    vreg_x = vf.load_align(reduce_sum_vec_tile, (s2_tiles - 1) * TKV_HALF)
+    vreg_exp = vf.exp_sub(vreg_x, vreg_max, preg_tail)
+    vreg_all_sum = vf.add(vreg_all_sum, vreg_exp, preg_tail)
     vreg_reduce_sum = vf.reduce_sum(vreg_all_sum, preg_all, merge_mode=pl.MergeMode.ZEROING)
     vf.store_align(dst_tile, vreg_reduce_sum, preg_sum)
 
@@ -239,31 +243,42 @@ def dense_lightning_indexer_softmax_lse_v2_inner(
             s1_i = work_id % s1_dim
             q_used_size = pl.getval(seqused_q, b_idx) #if q_used else s1_dim
             k_used_size = pl.getval(seqused_k, b_idx) #if k_used else s2_dim
-            if s1_i < q_used_size:             
-                if mask_mode == 3:
-                    if cmp_ratio > 1:
-                        cur_residual_k = pl.getval(cmp_residual_k, b_idx)
-                        ori_k_size = k_used_size * cmp_ratio + cur_residual_k
-                    else:
-                        ori_k_size = k_used_size * cmp_ratio
-                    valid_k_size = pl.max((s1_i + 1 + ori_k_size - q_used_size) // cmp_ratio, 0)
-                    s2_tiles = (valid_k_size + TKV - 1) // TKV
-                else:
-                    valid_k_size = k_used_size
-                    s2_tiles = (k_used_size + TKV - 1) // TKV
+            valid_s1_start = 0
+            valid_k_size = k_used_size
+            if mask_mode == 3:
+                cur_residual_k = 0
+                if cmp_ratio > 1:
+                    cur_residual_k = pl.getval(cmp_residual_k, b_idx)
+                ori_k_size = k_used_size * cmp_ratio + cur_residual_k
+                qk_residual = q_used_size - ori_k_size
+                valid_s1_start = pl.max(qk_residual, 0)
+                valid_k_size = pl.max((s1_i + 1 - qk_residual) // cmp_ratio, 0)
+            if s1_i < q_used_size and s1_i >= valid_s1_start:
+                s2_tiles = (valid_k_size + TKV - 1) // TKV
+                s2_tail_size = TKV + valid_k_size - s2_tiles * TKV
 
                 q_tile = q_mat.next()
                 pl.load(q_tile, query_index, [b_idx, s1_i * TS, 0, 0])
                 for s2_i in pl.range(0, s2_tiles + 1):
                     k_tile_nxt = k_mat.next() # 0-a 1-b 2-a
                     if s2_i < s2_tiles:
-                        #pl.printf("-------p offset is %d, s2_i is %d \n ", s2_i * TKV, s2_i)
+                        if s2_i == s2_tiles - 1 and s2_tail_size != TKV:
+                            pl.set_validshape(k_tile_nxt, [TD, s2_tail_size])
+                        else:
+                            pl.set_validshape(k_tile_nxt, [TD, TKV])
                         pl.load(k_tile_nxt, key_index, [b_idx, s2_i * TKV, 0, 0], is_transpose=True) # 0-a 1-b 2-a
                     if s2_i > 0:
                         k_tile_cur = k_mat.previous() # 1-a 2-b
                         left_tile = left.next()
                         right_tile = right.next()
                         acc_tile = acc.next()
+                        if s2_i == s2_tiles and s2_tail_size != TKV:
+                            s2_tail_size_align = ((s2_tail_size + 31) // 32) * 32
+                            pl.set_validshape(k_tile_cur, [TD, s2_tail_size])
+                            pl.set_validshape(acc_tile, [TN, s2_tail_size_align])
+                        else:
+                            pl.set_validshape(k_tile_cur, [TD, TKV])
+                            pl.set_validshape(acc_tile, [TN, TKV])
                         pl.move(left_tile, q_tile)
                         pl.move(right_tile, k_tile_cur) # 1-a
                         pl.matmul(acc_tile, left_tile, right_tile)
@@ -290,6 +305,12 @@ def dense_lightning_indexer_softmax_lse_v2_inner(
         prev_b_idx = 0
         prev_s1_i = 0
         prev_s2_tiles = 0
+        prev_is_s1_valid = False
+        prev_valid_k_size = 0
+        prev_s2_tail_size = TKV
+        s2_tiles = 0
+        s2_tail_size = 0
+        valid_k_size = 0
 
         for j in pl.range(0, work_count + 1):
             work_id = core_id + j * total_cores
@@ -299,40 +320,62 @@ def dense_lightning_indexer_softmax_lse_v2_inner(
             max_tile = max_vec.next()
             init_data(max_tile)
 
-            s2_tiles = 0
+            is_s1_valid = False
             if j < work_count:
                 q_used_size = pl.getval(seqused_q, b_idx)
                 k_used_size = pl.getval(seqused_k, b_idx)
+                valid_s1_start = 0
+                valid_k_size = k_used_size
                 if mask_mode == 3:
+                    cur_residual_k = 0
                     if cmp_ratio > 1:
                         cur_residual_k = pl.getval(cmp_residual_k, b_idx)
-                        ori_k_size = k_used_size * cmp_ratio + cur_residual_k
-                    else:
-                        ori_k_size = k_used_size * cmp_ratio
-                    valid_k_size = pl.max((s1_i + 1 + ori_k_size - q_used_size) // cmp_ratio, 0)
+                    ori_k_size = k_used_size * cmp_ratio + cur_residual_k
+                    qk_residual = q_used_size - ori_k_size
+                    valid_s1_start = pl.max(qk_residual, 0)
+                    valid_k_size = pl.max((s1_i + 1 - qk_residual) // cmp_ratio, 0)
+                is_s1_valid = s1_i >= valid_s1_start and s1_i < q_used_size
+                if is_s1_valid:
                     s2_tiles = (valid_k_size + TKV - 1) // TKV
-                else:
-                    s2_tiles = (k_used_size + TKV - 1) // TKV
+                    s2_tail_size = TKV + valid_k_size - s2_tiles * TKV
 
             weight_vec_nxt = weight_vec.next()
-            if j < work_count:
+            if j < work_count and is_s1_valid:
                 pl.load(weight_vec_nxt, weight, [b_idx, s1_i * TS, 0])
 
-            if j > 0:
+            if j > 0 and prev_is_s1_valid:
                 reduce_sum_vec_tile = reduce_sum_vec.next()
                 lse_vec_tile = lse_vec.next()
                 if is_long_s2 == 0:
+                    prev_s2_vec_tail_size = TKV_HALF
+                    if prev_valid_k_size % TKV != 0:
+                        s2_tail_align = ((prev_s2_tail_size + 31) // 32) * 32
+                        split_half = s2_tail_align // 2
+                        if sub_id == 0:
+                            prev_s2_vec_tail_size = pl.min(prev_s2_tail_size, split_half)
+                        else:
+                            prev_s2_vec_tail_size = pl.max(prev_s2_tail_size - split_half, 0)
                     for s2_i in pl.range(0, prev_s2_tiles):
                         qk_vec_tile = qk_vec.next()
                         weight_tile_cur = weight_vec.previous()
                         pl.system.wait_cross_core(pipe=pl.PipeType.V, event_id=QK_READY_IDS[task_id % 2])
                         src_tile = reduce_sum_vec_tile[s2_i * TKV_HALF]
-                        pl.set_validshape(src_tile, [1, TKV_HALF])
-                        process_reduce_max_vf(src_tile, qk_vec_tile, weight_tile_cur, max_tile, n1_dim)
+                        cur_vec_size = prev_s2_vec_tail_size if s2_i == prev_s2_tiles - 1 else TKV_HALF
+                        if cur_vec_size > 0:
+                            pl.set_validshape(src_tile, [1, cur_vec_size])
+                            process_reduce_max_vf(src_tile, qk_vec_tile, weight_tile_cur, max_tile, n1_dim, cur_vec_size)
                         if not (j == work_count and s2_i >= prev_s2_tiles - 2):
                             pl.system.set_cross_core(pipe=pl.PipeType.V, event_id=QK_FREE_IDS[task_id % 2])
                         task_id = task_id + 1
                 else:
+                    prev_s2_vec_tail_size = TKV_HALF
+                    if prev_valid_k_size % TKV != 0:
+                        s2_tail_align = ((prev_s2_tail_size + 31) // 32) * 32
+                        split_half = s2_tail_align // 2
+                        if sub_id == 0:
+                            prev_s2_vec_tail_size = pl.min(prev_s2_tail_size, split_half)
+                        else:
+                            prev_s2_vec_tail_size = pl.max(prev_s2_tail_size - split_half, 0)
                     num_chunks = (prev_s2_tiles + MAX_UB_S2_TILES - 1) // MAX_UB_S2_TILES
                     for chunk_idx in pl.range(0, num_chunks):
                         chunk_start = chunk_idx * MAX_UB_S2_TILES
@@ -345,15 +388,19 @@ def dense_lightning_indexer_softmax_lse_v2_inner(
                             weight_tile_cur = weight_vec.previous()
                             pl.system.wait_cross_core(pipe=pl.PipeType.V, event_id=QK_READY_IDS[task_id % 2])
                             src_tile = reduce_sum_vec_tile[ci * TKV_HALF]
-                            pl.set_validshape(src_tile, [1, TKV_HALF])
-                            process_reduce_max_vf(src_tile, qk_vec_tile, weight_tile_cur, max_tile, n1_dim)
+                            cur_vec_size = prev_s2_vec_tail_size if (chunk_start + ci) == prev_s2_tiles - 1 else TKV_HALF
+                            if cur_vec_size > 0:
+                                pl.set_validshape(src_tile, [1, cur_vec_size])
+                                process_reduce_max_vf(src_tile, qk_vec_tile, weight_tile_cur, max_tile, n1_dim, cur_vec_size)
                             if not (j == work_count and (chunk_start + ci) >= prev_s2_tiles - 2):
                                 pl.system.set_cross_core(pipe=pl.PipeType.V, event_id=QK_FREE_IDS[task_id % 2])
                             task_id = task_id + 1
                         for ci in pl.range(0, chunk_tiles):
                             ws_tile = reduce_sum_vec_tile[ci * TKV_HALF]
-                            pl.set_validshape(ws_tile, [1, TKV_HALF])
-                            pl.store(workspace, ws_tile, [core_id, (chunk_start + ci) * TKV + TKV_HALF * sub_id])
+                            cur_vec_size = prev_s2_vec_tail_size if (chunk_start + ci) == prev_s2_tiles - 1 else TKV_HALF
+                            if cur_vec_size > 0:
+                                pl.set_validshape(ws_tile, [1, cur_vec_size])
+                                pl.store(workspace, ws_tile, [core_id, (chunk_start + ci) * TKV + TKV_HALF * sub_id])
 
                 pl.set_validshape(max_tile, [1, 1])
                 pl.store(workspace_max, max_tile, [0, core_id * 2 + sub_id])
@@ -368,7 +415,11 @@ def dense_lightning_indexer_softmax_lse_v2_inner(
                 tmp_s2_max = pl.max(v0_tmp_max, v1_tmp_max)
 
                 if is_long_s2 == 0:
-                    process_reduce_sum_vf(lse_vec_tile, reduce_sum_vec_tile, tmp_s2_max, prev_s2_tiles)
+                    if prev_s2_tiles > 0:
+                        prev_tail_sum = TKV_HALF if prev_valid_k_size % TKV == 0 else prev_s2_vec_tail_size
+                        process_reduce_sum_vf(lse_vec_tile, reduce_sum_vec_tile, tmp_s2_max, prev_s2_tiles, prev_tail_sum)
+                    else:
+                        write_scalar_vf(lse_vec_tile, 0.0)
                 else:
                     ws_chunk_sum = 0.0
                     num_chunks = (prev_s2_tiles + MAX_UB_S2_TILES - 1) // MAX_UB_S2_TILES
@@ -381,9 +432,14 @@ def dense_lightning_indexer_softmax_lse_v2_inner(
                         chunk_tile = reduce_sum_vec.next()
                         for ci in pl.range(0, chunk_tiles):
                             src = chunk_tile[ci * TKV_HALF]
-                            pl.set_validshape(src, [1, TKV_HALF])
-                            pl.load(src, workspace, [core_id, (chunk_start + ci) * TKV + TKV_HALF * sub_id])
-                        process_reduce_sum_vf(lse_vec_tile, chunk_tile, tmp_s2_max, chunk_tiles)
+                            cur_vec_size = prev_s2_vec_tail_size if (chunk_start + ci) == prev_s2_tiles - 1 else TKV_HALF
+                            if cur_vec_size > 0:
+                                pl.set_validshape(src, [1, cur_vec_size])
+                                pl.load(src, workspace, [core_id, (chunk_start + ci) * TKV + TKV_HALF * sub_id])
+                        chunk_tail_sum = TKV_HALF
+                        if chunk_idx == num_chunks - 1 and prev_valid_k_size % TKV != 0:
+                            chunk_tail_sum = prev_s2_vec_tail_size
+                        process_reduce_sum_vf(lse_vec_tile, chunk_tile, tmp_s2_max, chunk_tiles, chunk_tail_sum)
                         ws_chunk_sum = ws_chunk_sum + pl.getval(lse_vec_tile, 0)
                     write_scalar_vf(lse_vec_tile, ws_chunk_sum)
 
@@ -399,10 +455,22 @@ def dense_lightning_indexer_softmax_lse_v2_inner(
                 process_lse_vf(lse_vec_tile, reduce_res, tmp_s2_max)
                 pl.set_validshape(lse_vec_tile, [1, 1])
                 pl.store(lse_out, lse_vec_tile, [prev_b_idx, prev_s1_i])
+            elif j > 0:
+                lse_vec_tile = lse_vec.next()
+                write_scalar_vf(lse_vec_tile, -3.4028234663852886e+38)
+                pl.set_validshape(lse_vec_tile, [1, 1])
+                pl.store(lse_out, lse_vec_tile, [prev_b_idx, prev_s1_i])
 
             prev_b_idx = b_idx
             prev_s1_i = s1_i
             prev_s2_tiles = s2_tiles
+            prev_is_s1_valid = is_s1_valid
+            if is_s1_valid:
+                prev_valid_k_size = valid_k_size
+                prev_s2_tail_size = s2_tail_size
+            else:
+                prev_valid_k_size = 0
+                prev_s2_tail_size = TKV
     return
 
 
