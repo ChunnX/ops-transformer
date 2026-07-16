@@ -120,23 +120,19 @@ bool MhcPostTilingRegBaseArch35::IsCapable()
     const gert::Shape& xShape = xShapePtr->GetStorageShape();
     uint32_t dimNum = xShape.GetDimNum();
 
-    int64_t tt;
+    int64_t d;
     int64_t n;
     if (dimNum == DIM_NUM_4) {
-        tt = xShape.GetDim(DIM_0) * xShape.GetDim(DIM_1);
         n = xShape.GetDim(DIM_2);
+        d = xShape.GetDim(DIM_3);
     } else if (dimNum == DIM_NUM_3) {
-        tt = xShape.GetDim(DIM_0);
         n = xShape.GetDim(DIM_1);
+        d = xShape.GetDim(DIM_2);
     } else {
         return false;
     }
 
-    if (tt < static_cast<int64_t>(ascendcPlatform.GetCoreNumAiv()) / 4) {
-        return false;
-    }
-
-    if (n < 4) {
+    if (d <= 4096) {
         return false;
     }
 
