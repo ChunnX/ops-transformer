@@ -1,0 +1,49 @@
+cases:
+  - {id: FULL-PW-01, group: pairwise, layout: BSND, q_dtype: float16, weight_dtype: float16, rope: true, batch: 1, s1: 1024, s2: 4096, n1: 32, n1_index: 8}
+  - {id: FULL-PW-02, group: pairwise, layout: TND, q_dtype: bfloat16, weight_dtype: float32, rope: false, batch: 1, s1: 2048, s2: 16384, n1: 64, n1_index: 16}
+  - {id: FULL-PW-03, group: pairwise, layout: BSND, q_dtype: float16, weight_dtype: float32, rope: false, batch: 4, s1: 4096, s2: 65536, n1: 128, n1_index: 32}
+  - {id: FULL-PW-04, group: pairwise, layout: TND, q_dtype: bfloat16, weight_dtype: bfloat16, rope: true, batch: 16, s1: 4096, s2: 4096, n1: 128, n1_index: 64}
+  - {id: FULL-PW-05, group: pairwise, layout: BSND, q_dtype: float16, weight_dtype: float16, rope: true, batch: 4, s1: 2048, s2: 16384, n1: 64, n1_index: 64}
+  - {id: FULL-PW-06, group: pairwise, layout: TND, q_dtype: bfloat16, weight_dtype: float32, rope: false, batch: 16, s1: 1024, s2: 65536, n1: 32, n1_index: 8}
+  - {id: FULL-PW-07, group: pairwise, layout: TND, q_dtype: bfloat16, weight_dtype: bfloat16, rope: false, batch: 4, s1: 2048, s2: 4096, n1: 32, n1_index: 32}
+  - {id: FULL-PW-08, group: pairwise, layout: BSND, q_dtype: float16, weight_dtype: float16, rope: true, batch: 16, s1: 1024, s2: 65536, n1: 64, n1_index: 16}
+  - {id: FULL-PW-09, group: pairwise, layout: BSND, q_dtype: bfloat16, weight_dtype: float32, rope: true, batch: 1, s1: 1024, s2: 16384, n1: 128, n1_index: 32}
+  - {id: FULL-PW-10, group: pairwise, layout: TND, q_dtype: float16, weight_dtype: float32, rope: false, batch: 1, s1: 4096, s2: 16384, n1: 32, n1_index: 64}
+  - {id: FULL-PW-11, group: pairwise, layout: BSND, q_dtype: float16, weight_dtype: float32, rope: true, batch: 4, s1: 4096, s2: 4096, n1: 64, n1_index: 8}
+  - {id: FULL-PW-12, group: pairwise, layout: BSND, q_dtype: float16, weight_dtype: float16, rope: true, batch: 16, s1: 2048, s2: 16384, n1: 128, n1_index: 8}
+  - {id: FULL-PW-13, group: pairwise, layout: BSND, q_dtype: float16, weight_dtype: float16, rope: true, batch: 4, s1: 1024, s2: 4096, n1: 32, n1_index: 16}
+  - {id: FULL-PW-14, group: pairwise, layout: BSND, q_dtype: float16, weight_dtype: float16, rope: true, batch: 1, s1: 1024, s2: 65536, n1: 32, n1_index: 64}
+  - {id: FULL-PW-15, group: pairwise, layout: BSND, q_dtype: float16, weight_dtype: float16, rope: true, batch: 16, s1: 2048, s2: 65536, n1: 64, n1_index: 32}
+  - {id: FULL-PW-16, group: pairwise, layout: BSND, q_dtype: float16, weight_dtype: float16, rope: true, batch: 1, s1: 4096, s2: 4096, n1: 128, n1_index: 16}
+  - {id: FULL-PW-17, group: pairwise, layout: TND, q_dtype: float16, weight_dtype: float16, rope: false, batch: 4, s1: 1024, s2: 16384, n1: 128, n1_index: 64}
+  - {id: FULL-PW-18, group: pairwise, layout: TND, q_dtype: float16, weight_dtype: float32, rope: true, batch: 16, s1: 2048, s2: 4096, n1: 64, n1_index: 32}
+  - {id: FULL-PW-19, group: pairwise, layout: BSND, q_dtype: bfloat16, weight_dtype: bfloat16, rope: false, batch: 4, s1: 4096, s2: 16384, n1: 32, n1_index: 16}
+  - {id: FULL-PW-20, group: pairwise, layout: TND, q_dtype: bfloat16, weight_dtype: bfloat16, rope: true, batch: 1, s1: 1024, s2: 65536, n1: 64, n1_index: 8}
+  - {id: FULL-PW-21, group: pairwise, layout: BSND, q_dtype: bfloat16, weight_dtype: float32, rope: false, batch: 16, s1: 4096, s2: 4096, n1: 128, n1_index: 64}
+  - {id: FULL-PW-22, group: pairwise, layout: TND, q_dtype: float16, weight_dtype: float16, rope: true, batch: 4, s1: 2048, s2: 65536, n1: 32, n1_index: 32}
+  - {id: FULL-PW-23, group: pairwise, layout: BSND, q_dtype: bfloat16, weight_dtype: bfloat16, rope: true, batch: 16, s1: 1024, s2: 16384, n1: 64, n1_index: 16}
+  - {id: FULL-PW-24, group: pairwise, layout: TND, q_dtype: bfloat16, weight_dtype: float32, rope: false, batch: 4, s1: 4096, s2: 4096, n1: 128, n1_index: 8}
+  - {id: FULL-PW-25, group: pairwise, layout: BSND, q_dtype: float16, weight_dtype: float32, rope: true, batch: 1, s1: 2048, s2: 16384, n1: 32, n1_index: 64}
+  - {id: FULL-PW-26, group: pairwise, layout: TND, q_dtype: float16, weight_dtype: float16, rope: false, batch: 16, s1: 4096, s2: 65536, n1: 64, n1_index: 16}
+  - {id: FULL-PW-27, group: pairwise, layout: BSND, q_dtype: bfloat16, weight_dtype: bfloat16, rope: false, batch: 1, s1: 1024, s2: 4096, n1: 128, n1_index: 32}
+  - {id: FULL-PW-28, group: pairwise, layout: TND, q_dtype: bfloat16, weight_dtype: float32, rope: true, batch: 4, s1: 2048, s2: 16384, n1: 32, n1_index: 8}
+  - {id: FULL-PW-29, group: pairwise, layout: BSND, q_dtype: float16, weight_dtype: float16, rope: false, batch: 16, s1: 4096, s2: 4096, n1: 64, n1_index: 64}
+  - {id: FULL-PW-30, group: pairwise, layout: TND, q_dtype: float16, weight_dtype: float32, rope: true, batch: 1, s1: 1024, s2: 65536, n1: 128, n1_index: 16}
+  - {id: FULL-PW-31, group: pairwise, layout: BSND, q_dtype: bfloat16, weight_dtype: float32, rope: true, batch: 4, s1: 4096, s2: 16384, n1: 32, n1_index: 32}
+  - {id: FULL-PW-32, group: pairwise, layout: TND, q_dtype: bfloat16, weight_dtype: bfloat16, rope: false, batch: 16, s1: 2048, s2: 4096, n1: 64, n1_index: 64}
+  - {id: FULL-TND-01, group: tnd_special, layout: TND, q_dtype: float16, weight_dtype: float16, rope: true, batch: 4, s1: 4096, s2: 16384, n1: 64, n1_index: 16, q_lengths: [1024, 2048, 1024, 4096], k_lengths: [4096, 8192, 16384, 8192]}
+  - {id: FULL-TND-02, group: tnd_special, layout: TND, q_dtype: float16, weight_dtype: float32, rope: false, batch: 4, s1: 2048, s2: 8192, n1: 64, n1_index: 32, q_lengths: [1024, 0, 2048, 1024], k_lengths: [4096, 0, 8192, 4096]}
+  - {id: FULL-TND-03, group: tnd_special, layout: TND, q_dtype: bfloat16, weight_dtype: bfloat16, rope: true, batch: 8, s1: 2048, s2: 16384, n1: 128, n1_index: 64, zero_position: middle}
+  - {id: FULL-TND-04, group: tnd_special, layout: TND, q_dtype: bfloat16, weight_dtype: float32, rope: false, batch: 16, s1: 1024, s2: 4096, n1: 32, n1_index: 8, zero_position: first}
+  - {id: FULL-TND-05, group: tnd_special, layout: TND, q_dtype: float16, weight_dtype: float32, rope: true, batch: 8, s1: 4096, s2: 32768, n1: 128, n1_index: 16, zero_position: last}
+  - {id: FULL-TND-06, group: tnd_special, layout: TND, q_dtype: bfloat16, weight_dtype: bfloat16, rope: false, batch: 2, s1: 4096, s2: 65536, n1: 64, n1_index: 32, q_lengths: [4096, 1024], k_lengths: [65536, 4096]}
+  - {id: FULL-TND-07, group: tnd_special, layout: TND, q_dtype: float16, weight_dtype: float16, rope: false, batch: 4, s1: 1024, s2: 4096, n1: 32, n1_index: 8, q_lengths: [0, 1024, 0, 512], k_lengths: [0, 4096, 0, 2048]}
+  - {id: FULL-TND-08, group: tnd_special, layout: TND, q_dtype: bfloat16, weight_dtype: float32, rope: true, batch: 4, s1: 2048, s2: 16384, n1: 64, n1_index: 64, q_lengths: [2048, 0, 0, 1024], k_lengths: [16384, 0, 0, 4096]}
+  - {id: BND-01, group: boundary, layout: BSND, q_dtype: float16, weight_dtype: float16, rope: true, batch: 1, s1: 1024, s2: 4096, n1: 32, n1_index: 8}
+  - {id: BND-02, group: boundary, layout: BSND, q_dtype: float16, weight_dtype: float32, rope: false, batch: 16, s1: 4096, s2: 65536, n1: 128, n1_index: 64}
+  - {id: BND-03, group: boundary, layout: TND, q_dtype: bfloat16, weight_dtype: bfloat16, rope: true, batch: 1, s1: 4096, s2: 65536, n1: 32, n1_index: 8, q_lengths: [4096], k_lengths: [65536]}
+  - {id: BND-04, group: boundary, layout: BSND, q_dtype: bfloat16, weight_dtype: float32, rope: false, batch: 1, s1: 1024, s2: 4096, n1: 128, n1_index: 64}
+  - {id: RISK-01, group: risk, layout: BSND, q_dtype: float16, weight_dtype: float32, rope: true, batch: 4, s1: 2048, s2: 16384, n1: 64, n1_index: 32}
+  - {id: RISK-02, group: risk, layout: TND, q_dtype: bfloat16, weight_dtype: bfloat16, rope: false, batch: 4, s1: 2048, s2: 8192, n1: 128, n1_index: 64, zero_position: middle}
+  - {id: RISK-03, group: risk, layout: BSND, q_dtype: bfloat16, weight_dtype: float32, rope: true, batch: 1, s1: 4096, s2: 32768, n1: 32, n1_index: 8}
+  - {id: RISK-04, group: risk, layout: TND, q_dtype: float16, weight_dtype: float16, rope: true, batch: 2, s1: 1024, s2: 4096, n1: 64, n1_index: 16, q_lengths: [1024, 1024], k_lengths: [4096, 1024]}

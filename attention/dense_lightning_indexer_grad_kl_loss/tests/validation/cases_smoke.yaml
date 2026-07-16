@@ -1,0 +1,47 @@
+cases:
+  - id: SMK-01
+    group: smoke
+    layout: BSND
+    q_dtype: float16
+    weight_dtype: float16
+    rope: true
+    batch: 1
+    s1: 1024
+    s2: 4096
+    n1: 32
+    n1_index: 8
+  - id: SMK-02
+    group: smoke
+    layout: TND
+    q_dtype: float16
+    weight_dtype: float16
+    rope: true
+    batch: 1
+    s1: 1024
+    s2: 4096
+    n1: 32
+    n1_index: 8
+    q_lengths: [1024]
+    k_lengths: [4096]
+  - id: SMK-03
+    group: smoke
+    layout: BSND
+    q_dtype: bfloat16
+    weight_dtype: bfloat16
+    rope: false
+    batch: 1
+    s1: 1024
+    s2: 4096
+    n1: 32
+    n1_index: 8
+  - id: SMK-04
+    group: smoke
+    layout: BSND
+    q_dtype: float16
+    weight_dtype: float32
+    rope: false
+    batch: 1
+    s1: 1024
+    s2: 4096
+    n1: 32
+    n1_index: 8
