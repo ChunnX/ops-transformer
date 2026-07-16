@@ -57,8 +57,7 @@ oat_reports/
 *.pt
 *.tar.gz
 *.run
-run.log
-compile*.log
+*.log
 
 # IDE personal config
 .favorites.json
