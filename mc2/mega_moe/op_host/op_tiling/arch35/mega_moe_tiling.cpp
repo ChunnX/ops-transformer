@@ -31,6 +31,7 @@
 #include "../../../op_kernel/arch35/mega_moe_tiling.h"
 #include "../../../op_kernel/arch35/mega_moe_tiling_key.h"
 #include "../../../op_kernel/arch35/mega_moe_workspace_info.h"
+#include "mega_moe_batch_tiling.h"
 
 using namespace Mc2Tiling;
 using namespace AscendC;
@@ -109,6 +110,7 @@ void PrintMegaMoeTilingData(const MegaMoeTilingData *tilingData, const char *nod
             unpermuteTailChunkConfig.tokensPerBatch, unpermuteTailChunkConfig.inputBufferCount,
             unpermuteTailChunkConfig.bf16SlotElementCount, unpermuteTailChunkConfig.fp32SlotElementCount,
             unpermuteTailChunkConfig.topKWeightsBufferBytes, unpermuteTailChunkConfig.topKWeightsConversionBufferBytes);
+    OP_LOGD(nodeName, "expertsPerBatch is %u", tilingData->expertsPerBatch);
 }
 
 void PrintWorkspaceInfo(const struct WorkspaceInfo *info, const char *nodeName)
@@ -469,6 +471,9 @@ static ge::graphStatus SetAttrParams(const gert::TilingContext *context, MegaMoe
         // Generic: fp8 activation × fp8 weight in ND format
         tilingData->groupedMatmulMode = GROUPED_MATMUL_MODE_GENERAL;
     }
+
+    tilingData->expertsPerBatch = MegaMoeBatchTiling::CalcExpertsPerBatch(
+        tilingData->bs, tilingData->topK, tilingData->moeExpertPerRank, tilingData->hiddenDim, tilingData->h, aicNum);
 
     return ge::GRAPH_SUCCESS;
 }
