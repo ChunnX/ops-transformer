@@ -1217,6 +1217,16 @@ protected:
         const aclTensor *groupList = gmmDsqParams_.groupList;
         const aclTensor *output = gmmDsqParams_.output;
         const aclTensor *outputScale = gmmDsqParams_.outputScale;
+        if (weight->GetStorageFormat() == ge::FORMAT_ND && (weightDtype == DataType::DT_FLOAT4_E1M2 ||
+            xDtype == DataType::DT_FLOAT4_E1M2 || output->GetDataType() == DataType::DT_FLOAT4_E1M2)) {
+            OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
+                apiName_.c_str(), "weight, x and output",
+                "weight=" + std::string(op::ToString(weightDtype).GetString()) +
+                    ", x=" + op::ToString(xDtype).GetString() +
+                    ", output=" + op::ToString(output->GetDataType()).GetString(),
+                "when the format of weight is ND, the dtypes of weight, x and output can not be DT_FLOAT4_E1M2");
+            return false;
+        }
         const auto &xDtypeSupportListMxfp4 = GetXSupportListMxfp4(weight);
         const auto &weightDtypeSupportListMxfp4 = GetWeightSupportListMxfp4(weight);
         const char *dtypeSupportList =
