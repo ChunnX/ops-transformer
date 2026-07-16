@@ -18,7 +18,7 @@
 #pragma once
 #include "op_host/op_tiling/mc2_fit_based_balance_tiling.h"
 
-constexpr double RS_FP4_COMPUTE_PER_CYCLE_RATIO = 2; // 调整mxfp4的computesPerCycle和mxfp8一致
+constexpr double RS_FP4_COMPUTE_PER_CYCLE_RATIO = 1; // 调整mxfp4的computesPerCycle和mxfp8一致
 
 class MMReduceScatterFitBalanceTiling : public Mc2FitBasedBalanceTiling
 {

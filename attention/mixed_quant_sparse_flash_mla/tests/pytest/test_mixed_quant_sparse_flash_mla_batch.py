@@ -26,28 +26,49 @@ import check_valid_param
 from batch import mixed_quant_sparse_flash_mla_process
 import utils
 
-testcase_path = os.environ.get("QSMLA_PT_DIR", "qsmla_testcase")
-result_path = Path('result.xlsx')
-device_id=0
+testcase_path = os.environ.get("MQSMLA_PT_DIR", "mqsmla_testcase")
+batch_test_mode = int(os.environ.get("MQSMLA_BATCH_TEST_MODE", 0))  # 0:路径下全量批跑，1:按表格中case批跑
+excel_path = os.environ.get("MQSMLA_EXCEL_PATH", os.path.join(os.path.dirname(__file__), "excel", "testcase.xlsx"))
+result_path = os.environ.get("MQSMLA_RESULT_SAVE_PATH", './mqsmla_result.xlsx')
+device_id = int(os.environ.get("MQSMLA_DEVICE_ID", 0))
 
 testcase_files = []
 if os.path.isdir(testcase_path):
-    pt_files = [f for f in os.listdir(testcase_path) if f.endswith('.pt')]
-    if not pt_files:
-        print(f"错误: 目录中没有找到.pt文件: {testcase_path}")
+    if batch_test_mode == 1:
+        df = pd.read_excel(excel_path)
+        target_names = [str(name) for name in df['Testcase_Name'].dropna().tolist() if str(name) != 'None']
+        if not target_names:
+            print(f"错误: 表格中没有有效的Testcase_Name: {excel_path}")
+        else:
+            print(f"从表格中读取到 {len(target_names)} 个目标用例名")
+            pt_files = [f for f in os.listdir(testcase_path) if f.endswith('.pt')]
+            for target_name in target_names:
+                matched = [f for f in pt_files if target_name in f]
+                if matched:
+                    for f in matched:
+                        filepath = os.path.join(testcase_path, f)
+                        if filepath not in testcase_files:
+                            testcase_files.append(filepath)
+                else:
+                    print(f"警告: 用例名 '{target_name}' 未匹配到任何.pt文件")
+            print(f"按表格筛选后共 {len(testcase_files)} 个测试用例文件")
     else:
-        print(f"找到 {len(pt_files)} 个测试用例文件")
-        for pt_file in pt_files:
-            filepath = os.path.join(testcase_path, pt_file)
-            testcase_files.append(filepath)
+        pt_files = [f for f in os.listdir(testcase_path) if f.endswith('.pt')]
+        if not pt_files:
+            print(f"错误: 目录中没有找到.pt文件: {testcase_path}")
+        else:
+            print(f"找到 {len(pt_files)} 个测试用例文件")
+            for pt_file in pt_files:
+                filepath = os.path.join(testcase_path, pt_file)
+                testcase_files.append(filepath)
 else:
     print(f"错误: 输出目录不存在: {testcase_path}")
 
-def qsmla(testcase_files):
+def mqsmla(testcase_files):
     test_data = torch.load(testcase_files, map_location="cpu")
     npu_error_msg = None
     try:
-        npu_result, cpu_quant_result = mixed_quant_sparse_flash_mla_process.test_qsmla_quant_process_ci(
+        npu_result, cpu_quant_result = mixed_quant_sparse_flash_mla_process.test_mqsmla_quant_process_ci(
             test_data, device_id=device_id)
         result, fulfill_percent = result_compare_method.check_result(cpu_quant_result, npu_result)
     except Exception as e:
@@ -56,7 +77,7 @@ def qsmla(testcase_files):
         result = "NPU ERROR"
         fulfill_percent = 0
 
-    utils.save_result(test_data['params'], result, fulfill_percent, result_path)
+    utils.save_result(test_data['params'], result, fulfill_percent, Path(result_path))
 
     if result == "Failed":
         pytest.fail(f"用例精度失败:{test_data['Testcase_Name']} 精度:{fulfill_percent:.2f}%")
@@ -70,7 +91,7 @@ testcase_ids = [os.path.splitext(os.path.basename(f))[0] for f in testcase_files
 def test_mixed_quant_sparse_flash_mla(testcase_files):
     # 线程池
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-        futures = executor.submit(qsmla, testcase_files)
+        futures = executor.submit(mqsmla, testcase_files)
         # 等待并获取结果
         for future in concurrent.futures.as_completed([futures]):
             try:

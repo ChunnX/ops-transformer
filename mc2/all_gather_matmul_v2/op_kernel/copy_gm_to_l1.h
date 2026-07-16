@@ -20,17 +20,18 @@
 
 namespace Catlass::Gemm::Tile {
 /// Partial specialization for nZ in and nZ out.
-template <class ArchTag, class Element> struct CopyGmToL1<ArchTag, Gemm::GemmType<Element, layout::VectorLayout>> 
-{
+template <class ArchTag, class Element>
+struct CopyGmToL1<ArchTag, Gemm::GemmType<Element, layout::VectorLayout>> {
     using LayoutDst = layout::VectorLayout;
     using LayoutSrc = layout::VectorLayout;
 
-    static constexpr uint32_t ELE_NUM_PER_C0 = Catlass::BytesToBits(BYTE_PER_C0) / Catlass::SizeOfBits<Element>::value; // int64, 32/8=4
+    static constexpr uint32_t ELE_NUM_PER_C0 =
+        Catlass::BytesToBits(BYTE_PER_C0) / Catlass::SizeOfBits<Element>::value; // int64, 32/8=4
 
     // Mehtods
 
     CATLASS_DEVICE
-    CopyGmToL1(){};
+    CopyGmToL1() {};
 
     CATLASS_DEVICE
     void operator()(AscendC::LocalTensor<Element> const &dstTensor, AscendC::GlobalTensor<Element> const &srcTensor,

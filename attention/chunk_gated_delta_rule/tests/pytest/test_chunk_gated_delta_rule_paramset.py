@@ -23,6 +23,8 @@ TEST_PARAMS = {
         "dv": [128],
         "chunk_size": [64],
         "data_type": [torch.bfloat16],
+        "state_data_type": [torch.bfloat16],
+        "has_g": [True],
     },
     "Testcase1": {
         "B": [1],
@@ -33,6 +35,8 @@ TEST_PARAMS = {
         "dv": [128],
         "chunk_size": [64],
         "data_type": [torch.bfloat16],
+        "state_data_type": [torch.bfloat16],
+        "has_g": [True],
     }
 }
 #注意单个用例组内的用例尽量不要超过32

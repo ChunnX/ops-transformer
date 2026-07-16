@@ -36,6 +36,8 @@ _single_case_path = os.environ.get("QLIV2_TESTCASE_PATH", "").strip()
 _is_isolated_mode = bool(_single_case_path)
 # flag：运行模式 eager / graph（通过环境变量 QLIV2_RUN_MODE 或命令行参数设置，默认 eager）
 _run_mode = os.environ.get("QLIV2_RUN_MODE", "eager").strip().lower()
+# 支持通过环境变量 QLIV2_PT_FILE_LIST 指定用例文件列表（逗号分隔），用于从 Excel 筛选的 batch_exec 模式
+_pt_file_list = os.environ.get("QLIV2_PT_FILE_LIST", "").strip()
 
 # 生成所有的组合，并转换为字典列表
 locals()["testcase_files"] = []
@@ -45,6 +47,22 @@ if _single_case_path:
     else:
         print(f"单用例隔离模式, 仅执行: {_single_case_path}")
         locals()["testcase_files"].append(_single_case_path)
+elif _pt_file_list:
+    file_paths = [p.strip() for p in _pt_file_list.split(",") if p.strip()]
+    valid_files = []
+    missing_files = []
+    for fp in file_paths:
+        if os.path.isfile(fp):
+            valid_files.append(fp)
+        else:
+            missing_files.append(fp)
+    if missing_files:
+        print(f"警告: 以下 pt 文件不存在，已跳过: {missing_files}")
+    if not valid_files:
+        print(f"错误: QLIV2_PT_FILE_LIST 中所有 pt 文件均不存在")
+    else:
+        print(f"Excel 筛选模式, 共 {len(valid_files)} 条用例")
+        locals()["testcase_files"] = valid_files
 elif os.path.isdir(pt_dir):
     pt_files = [f for f in os.listdir(pt_dir) if f.endswith('.pt')]
     if not pt_files:

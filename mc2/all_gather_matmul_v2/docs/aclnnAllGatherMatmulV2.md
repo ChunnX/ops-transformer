@@ -18,13 +18,13 @@
 - **接口功能**：
 
     `aclnnAllGatherMatmulV2`接口是对`aclnnAllGatherMatmul`接口的功能拓展，在支持x1和x2输入类型为FLOAT16/BFLOAT16的基础上，新增功能如下：
-    
+
     - <term>Ascend 950PR/Ascend 950DT</term>：
-        
+
         新增了对低精度数据类型FLOAT8_E4M3FN/FLOAT8_E5M2/HIFLOAT8的支持。支持pertensor、perblock、mx[量化方式](../../../docs/zh/context/量化介绍.md)。
-    
+
     - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
-        
+
         新增了对低精度数据类型INT8/INT4的支持。支持pertoken/perchannel[量化方式](../../../docs/zh/context/量化介绍.md)。
 
 - **计算公式**：
@@ -75,31 +75,31 @@
 
 ```cpp
 aclnnStatus aclnnAllGatherMatmulV2GetWorkspaceSize(
-    const aclTensor* x1, 
-    const aclTensor* x2, 
-    const aclTensor* bias, 
-    const aclTensor* x1Scale, 
-    const aclTensor* x2Scale, 
-    const aclTensor* quantScale, 
-    int64_t          blockSize, 
-    const char*      group, 
-    int64_t          gatherIndex, 
-    int64_t          commTurn, 
-    int64_t          streamMode, 
-    int64_t          groupSize, 
-    const char*      commMode, 
-    aclTensor*       output, 
-    aclTensor*       gatherOut, 
-    aclTensor*       amaxOut, 
-    uint64_t*        workspaceSize, 
+    const aclTensor* x1,
+    const aclTensor* x2,
+    const aclTensor* bias,
+    const aclTensor* x1Scale,
+    const aclTensor* x2Scale,
+    const aclTensor* quantScale,
+    int64_t          blockSize,
+    const char*      group,
+    int64_t          gatherIndex,
+    int64_t          commTurn,
+    int64_t          streamMode,
+    int64_t          groupSize,
+    const char*      commMode,
+    aclTensor*       output,
+    aclTensor*       gatherOut,
+    aclTensor*       amaxOut,
+    uint64_t*        workspaceSize,
     aclOpExecutor**  executor)
 ```
 
 ```cpp
 aclnnStatus aclnnAllGatherMatmulV2(
-    void*          workspace, 
-    uint64_t       workspaceSize, 
-    aclOpExecutor* executor, 
+    void*          workspace,
+    uint64_t       workspaceSize,
+    aclOpExecutor* executor,
     aclrtStream    stream)
 ```
 
@@ -441,6 +441,7 @@ aclnnStatus aclnnAllGatherMatmulV2(
     - x1和x2的数据类型需要保持一致。
     - x1和x2数据类型为INT4时，k与n必须为偶数。
     - 支持2、4、8卡。
+    - 通信缓冲区大于等于200MB。
 
 ## 调用示例
 
@@ -706,6 +707,8 @@ aclnnStatus aclnnAllGatherMatmulV2(
     #include <iostream>
     #include <vector>
     #include <thread>
+    #include <cstdlib>
+    #include <cstring>
     #include "hccl/hccl.h"
     #include "aclnnop/aclnn_all_gather_matmul_v2.h"
 
@@ -722,6 +725,7 @@ aclnnStatus aclnnAllGatherMatmulV2(
         } while(0)
 
     constexpr int DEV_NUM = 2;
+    constexpr const char *COMM_MODE = "ccu";
 
     int64_t GetShapeSize(const std::vector<int64_t> &shape)
     {
@@ -831,7 +835,7 @@ aclnnStatus aclnnAllGatherMatmulV2(
 
         // 调用第一阶段接口
         ret = aclnnAllGatherMatmulV2GetWorkspaceSize(
-            x1, x2, bias, x1Scale, x2Scale, quantScale, blockSize, hcomName, gatherIndex, commTurn, streamMode, groupSize, "ccu",
+            x1, x2, bias, x1Scale, x2Scale, quantScale, blockSize, hcomName, gatherIndex, commTurn, streamMode, groupSize, COMM_MODE,
             out, gatherOut, amax, &workspaceSize, &executor);
         CHECK_RET(ret == ACL_SUCCESS,
             LOG_PRINT("[ERROR] aclnnAllGatherMatmulV2GetWorkspaceSize failed. ret = %d \n", ret); return ret);
@@ -843,7 +847,7 @@ aclnnStatus aclnnAllGatherMatmulV2(
         // 调用第二阶段接口
         ret = aclnnAllGatherMatmulV2(workspaceAddr, workspaceSize, executor, args.stream);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclnnAllGatherMatmulV2 failed. ret = %d \n", ret); return ret);
-        //（固定写法）同步等待任务执行结束
+        // （固定写法）同步等待任务执行结束
         ret = aclrtSynchronizeStreamWithTimeout(args.stream, 10000);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtSynchronizeStreamWithTimeout failed. ret = %d \n", ret);
             return ret);
@@ -913,6 +917,34 @@ aclnnStatus aclnnAllGatherMatmulV2(
 
     int main(int argc, char *argv[])
     {
+        class EnvGuard {
+        public:
+            EnvGuard(const char *key, const char *val, bool enable = true)
+                : key_(enable ? key : nullptr)
+            {
+                if (!enable) return;
+                const char *old = getenv(key);
+                if (old != nullptr) {
+                    strncpy(saved_, old, sizeof(saved_) - 1);
+                }
+                setenv(key, val, 1);
+            }
+            ~EnvGuard()
+            {
+                if (key_ == nullptr) return;
+                if (saved_[0] != '\0') {
+                    setenv(key_, saved_, 1);
+                } else {
+                    unsetenv(key_);
+                }
+            }
+        private:
+            const char *key_;
+            char saved_[256] = {0};
+        };
+
+        EnvGuard envGuard("HCCL_OP_EXPANSION_MODE", "CCU_SCHED", strcmp(COMM_MODE, "ccu") == 0);
+
         int ret = aclInit(nullptr);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclInit failed. ret = %d \n", ret); return ret);
         aclrtStream stream[DEV_NUM];

@@ -183,7 +183,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMla(
       <td>ND</td>
       <td>
         <ul>
-          <li>layoutKv为PA_BBND时：(ori_block_num, ori_block_size, N2, D_KV)，ori_block_size为16的倍数且不超过1024</li>
+          <li>layoutKv为PA_BBND时：(ori_block_num, ori_block_size, N2, D_KV)，ori_block_size支持1到1024</li>
           <li>layoutKv为BSND时：(B, S2, N2, D_KV)</li>
           <li>layoutKv为TND时：(T2, N2, D_KV)</li>
         </ul>
@@ -200,7 +200,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMla(
       <td>ND</td>
       <td>
         <ul>
-          <li>layoutKv为PA_BBND时：(cmp_block_num, cmp_block_size, N2, D_KV)，cmp_block_size为16的倍数且不超过1024</li>
+          <li>layoutKv为PA_BBND时：(cmp_block_num, cmp_block_size, N2, D_KV)，cmp_block_size支持1到1024</li>
           <li>layoutKv为BSND时：(B, S3, N2, D_KV)</li>
           <li>layoutKv为TND时：(T3, N2, D_KV)</li>
         </ul>
@@ -227,10 +227,10 @@ aclnnStatus aclnnMixedQuantSparseFlashMla(
       <td>ND</td>
       <td>
         <ul>
-          <li>layoutQ为BSND时：(B, S1, N2, K)</li>
-          <li>layoutQ为TND时：(T1, N2, K)</li>
+          <li>layoutQ为BSND时：(B, S1, N2, K2)</li>
+          <li>layoutQ为TND时：(T1, N2, K2)</li>
         </ul>
-        其中K为TopK稀疏选择数，支持512或1024。
+        其中K2为cmpKv的TopK稀疏选择数。
       </td>
       <td>√</td>
     </tr>
@@ -398,7 +398,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMla(
       <td>cmpRatio（int64_t）</td>
       <td>输入</td>
       <td>cmpKv相对于压缩前KV长度的压缩倍率，用于恢复cmp侧mask使用的压缩前KV长度。</td>
-      <td>SWA场景支持1，CSA场景支持4，HCA场景支持128。</td>
+      <td>支持1到128。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -640,7 +640,6 @@ aclnnStatus aclnnMixedQuantSparseFlashMla(
 - 使用约束
 
   - 本算子仅支持推理场景。
-  - 资料支持范围内暂不支持对`oriKvOptional`进行稀疏计算，设置`oriSparseIndicesOptional`无效。
   - 除`oriTopkLengthOptional`和`cmpTopkLengthOptional`等预留输入可传入nullptr或空Tensor外，其余已传入Tensor不支持为空。
   - `metadataOptional`参数必须传入，由`aclnnMixedQuantSparseFlashMlaMetadata`算子生成，shape固定为(1024,)。
   - `cmpResidualKvOptional`为主算子和`aclnnMixedQuantSparseFlashMlaMetadata`的可选入参；传入后用于按`cmp_len * cmpRatio + residual`恢复cmp侧mask使用的压缩前长度。
@@ -655,7 +654,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMla(
   | CSA   | 必须传入 | 必须传入 | 必须传入 | 滑动窗口 + TopK稀疏压缩KV |
   | HCA | 必须传入 | 必须传入 | 不传入 | 滑动窗口 + 稠密压缩KV |
 
-- `cmpRatio`约束：SWA场景仅支持1，CSA场景仅支持4，HCA场景仅支持128。
+- `cmpRatio`约束：SWA场景仅支持1。
 
 - Layout约束
 
