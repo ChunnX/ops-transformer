@@ -1,27 +1,23 @@
 /**
-  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
-  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
-  * CANN Open Software License Agreement Version 2.0 (the "License").
-  * Please refer to the License for details. You may not use this file except in compliance with the License.
-  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
-  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
-  * See LICENSE in the root of the software repository for the full text of the License.
-  */
-
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
-  * \file quant_flash_attn_def.cpp
-  * \brief QuantFlashAttn算子定义（量化注意力推理）
-  *        输入数据类型支持FP8_E4M3（quant_mode=1），输出固定BF16。
-  *        支持BSND/BNSD/TND三种layout，支持分页KV缓存（PA_ND/PA_Nz）。
-  */
-
+ * \file quant_flash_attn_def.cpp
+ * \brief QuantFlashAttn算子定义（量化注意力推理）
+ *        输入数据类型支持FP8_E4M3（quant_mode=1），输出固定BF16。
+ *        支持BSND/BNSD/TND三种layout，支持分页KV缓存（PA_ND/PA_Nz）。
+ */
 
 #include "register/op_def_registry.h"
 
-
 namespace ops {
-
 
 class QuantFlashAttn : public OpDef {
 public:
@@ -168,8 +164,6 @@ public:
     }
 };
 
-
 OP_ADD(QuantFlashAttn);
-
 
 }  // namespace ops

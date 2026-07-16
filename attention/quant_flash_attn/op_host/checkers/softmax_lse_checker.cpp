@@ -34,8 +34,8 @@ using namespace arch35QFA;
 ge::graphStatus SoftmaxLSEChecker::CheckSinglePara(const QfaTilingInfo &qfaInfo)
 {
     // 文档约束(单参数校验列):
-    //   return_softmax_lse: data_type 仅支持 BOOL, 值仅支持 True/False
-    //   softmax_lse: data_type 仅支持 FLOAT32
+    // return_softmax_lse: data_type 仅支持 BOOL, 值仅支持 True/False
+    // softmax_lse: data_type 仅支持 FLOAT32
     const bool *returnSoftmaxLse = qfaInfo.opParamInfo.returnSoftMaxLse;
     if (returnSoftmaxLse != nullptr) {
         bool returnSoftmaxLseVal = *returnSoftmaxLse;
@@ -68,7 +68,7 @@ ge::graphStatus SoftmaxLSEChecker::CheckSinglePara(const QfaTilingInfo &qfaInfo)
 ge::graphStatus SoftmaxLSEChecker::CheckMultiPara(const QfaTilingInfo &qfaInfo)
 {
     // 文档约束(一致性校验列):
-    //   当 return_softmax_lse 为 True 时, softmax_lse 必须非空
+    // 当 return_softmax_lse 为 True 时, softmax_lse 必须非空
     if (qfaInfo.softmaxLseFlag) {
         const gert::StorageShape *lseOutShape = qfaInfo.opParamInfo.lseOut.shape;
         OP_CHECK_IF(lseOutShape == nullptr,

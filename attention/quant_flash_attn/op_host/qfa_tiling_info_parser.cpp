@@ -670,7 +670,6 @@ ge::graphStatus QfaInfoParser::Parse(QfaTilingInfo &qfaInfo)
     if (emptyTensorFlag_) {
         OP_LOGE(qfaInfo.opName, "empty tensor is not!");
         return ge::GRAPH_FAILED;
-        //return ge::GRAPH_SUCCESS;
     }
     if (ge::GRAPH_SUCCESS != ParseAxisInfo()) {
         return ge::GRAPH_FAILED;

@@ -80,7 +80,7 @@ public:
     ge::graphStatus ParseFeatureInfo();
     ge::graphStatus Parse(QfaTilingInfo &qfaInfo);
 
-public:
+private:
     const gert::TilingContext *context_ = nullptr;
 
     const char *opName_ = nullptr;
