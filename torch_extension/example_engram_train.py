@@ -113,7 +113,7 @@ def train_worker(rank):
         grad_fetched = fetched.clone()
 
         # all_gather 所有 rank 的 indices，用于验证累加计数
-        all_indices = [torch.zeros_like(indices) for _ in range(WORLD_SIZE)]
+        all_indices = [torch.zeros_like(indices_npu) for _ in range(WORLD_SIZE)]
         dist.all_gather(all_indices, indices_npu, group=group)
         all_indices_list = [t.cpu().tolist() for t in all_indices]
 
