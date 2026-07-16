@@ -443,7 +443,7 @@ protected:
 
         if (transposeWeightScale && transposeWeight) {
             gmmDsqParams_.transposeWeight = true;
-            if (!IsMxWeightNzMultiTensorSupported()) {
+            if (!IsMultiTensorWeight()) {
                 auto uniqueExecutor = CREATE_EXECUTOR();
                 CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
                 aclOpExecutor *executorPtr = uniqueExecutor.get();
@@ -680,10 +680,11 @@ protected:
             const aclTensor *weight = (*gmmDsqParams_.weight)[i];
             const aclTensor *weightScale = (*gmmDsqParams_.weightScale)[i];
             if (gmmDsqParams_.transposeWeight) {
-                GMM_SWIGLU_CHECK_SHAPE(weight, "weight", weightTransExpectShape, return false);
                 if (gmmDsqParams_.isMxA8W4) {
+                    GMM_SWIGLU_CHECK_SHAPE(weight, "weight", weightTransExpectShape, return false);
                     GMM_SWIGLU_CHECK_SHAPE(weightScale, "weightScale", weightScaleExpectShape, return false);
                 } else {
+                    GMM_SWIGLU_CHECK_SHAPE(weight, "weight", weightTransExpectShape, return false);
                     GMM_SWIGLU_CHECK_SHAPE(weightScale, "weightScale", weightScaleTransExpectShape, return false);
                 }
             } else {
@@ -941,7 +942,7 @@ protected:
     {
         int64_t m = gmmDsqParams_.x->GetViewShape().GetDim(0);
         int64_t k = gmmDsqParams_.x->GetViewShape().GetDim(1);
-        // 多tensor下shape:(n,k), 单tensor下shape:(e, n, k)
+        // MXA8W4多tensor shape:(n,k)，单tensor shape:(e,n,k)
         int64_t n = IsMultiTensorWeight()
             ? ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(0)
             : ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(1);
@@ -1104,8 +1105,7 @@ protected:
         if (IsMxWeightNzMultiTensorSupported()) {
             kInWeight = ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(0);
         } else if (gmmDsqParams_.isMxA8W4) {
-            auto weightViewDimNum = ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDimNum();
-            kInWeight = ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(weightViewDimNum - LAST_SECOND_DIM_INDEX);
+            kInWeight = GetWeightK((*gmmDsqParams_.weight)[0]);
         } else {
             kInWeight = ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(1);
         }
