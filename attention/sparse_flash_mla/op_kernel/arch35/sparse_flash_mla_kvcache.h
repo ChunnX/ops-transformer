@@ -321,10 +321,8 @@ __aicore__ inline void InitTaskParamByRun(const RunParamStr& runParam, RunInfo &
     runInfo.softmaxLseOffset = runParam.softmaxLseOffset;
     runInfo.qSNumInOneBlock = runParam.qSNumInOneBlock;
     runInfo.oriKvLoopEndIdx = runParam.oriKvLoopEndIdx;
-    if constexpr (TEMPLATE_MODE != SMLATemplateMode::SWA_TEMPLATE_MODE) {
-        runInfo.cmpKvLoopEndIdx = runParam.cmpKvLoopEndIdx;
-        runInfo.isCmp = runInfo.s2LoopCount >= runInfo.oriKvLoopEndIdx;
-    }
+    runInfo.cmpKvLoopEndIdx = runParam.cmpKvLoopEndIdx;
+    runInfo.isCmp = runInfo.s2LoopCount >= runInfo.oriKvLoopEndIdx;
     runInfo.oriSparseBlockCount = runParam.oriSparseBlockCount;
     runInfo.cmpSparseBlockCount = runParam.cmpSparseBlockCount;
 }
