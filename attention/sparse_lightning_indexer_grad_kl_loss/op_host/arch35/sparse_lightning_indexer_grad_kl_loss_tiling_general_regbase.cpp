@@ -111,6 +111,9 @@ static auto CalcTailSize(T num1, T num2) -> T
     return mod != 0 ? mod : num2;
 }
 
+// ===== [MODIFIED] 旧 CheckOutShape 已废弃，改用 GetDimNum() + Ops::Base::ToString() 替代 =====
+// 原因：当输入输出维度不同时，原函数直接比较 GetDim() 无法正确报错
+/*
 ge::graphStatus SparseLightningIndexerGradKLLossTilingBaseRegbase::CheckOutShape(gert::Shape &inputshape, const char *inputName, 
                                                                     gert::Shape &outputshape)
 {
@@ -134,6 +137,8 @@ ge::graphStatus SparseLightningIndexerGradKLLossTilingBaseRegbase::CheckOutShape
 
     return ge::GRAPH_SUCCESS;
 }
+*/
+// ===== [MODIFIED END] =====
 
 // 比较维度数值与输入是否能够对应
 ge::graphStatus SparseLightningIndexerGradKLLossTilingBaseRegbase::CheckOutPut()
@@ -145,30 +150,59 @@ ge::graphStatus SparseLightningIndexerGradKLLossTilingBaseRegbase::CheckOutPut()
     auto dkeyIndexShape = context_->GetOutputShape(D_KEY_INDEX_OUTPUT_INDEX)->GetStorageShape();
     auto dWeightsShape = context_->GetOutputShape(D_WEIGHTS_OUTPUT_INDEX)->GetStorageShape();
 
-    auto status = CheckOutShape(queryIndexShape, "query_index", dQueryIndexShape);
-    if (status == ge::GRAPH_FAILED) {
-        return ge::GRAPH_FAILED;
-    }
-    status = CheckOutShape(keyIndexShape, "key_index", dkeyIndexShape);
-    if (status == ge::GRAPH_FAILED) {
-        return ge::GRAPH_FAILED;
+    // ===== [MODIFIED] 旧 CheckOutShape 调用已废弃，改用 GetDimNum() + Ops::Base::ToString() =====
+    // 原因：当输入输出维度不同时，原函数直接比较 GetDim() 无法正确识别维度数量不匹配
+    // auto status = CheckOutShape(queryIndexShape, "query_index", dQueryIndexShape);
+    // if (status == ge::GRAPH_FAILED) {
+    //     return ge::GRAPH_FAILED;
+    // }
+    // status = CheckOutShape(keyIndexShape, "key_index", dkeyIndexShape);
+    // if (status == ge::GRAPH_FAILED) {
+    //     return ge::GRAPH_FAILED;
+    // }
+
+    // ===== [MODIFIED] query_index shape 校验：先 GetDimNum() 再逐维比较，用 ToString() 输出完整 shape =====
+    {
+        auto qIdxDimNum = queryIndexShape.GetDimNum();
+        if (qIdxDimNum != dQueryIndexShape.GetDimNum() ||
+            queryIndexShape.GetDim(DIM_NUM_0) != dQueryIndexShape.GetDim(DIM_NUM_0) ||
+            queryIndexShape.GetDim(DIM_NUM_1) != dQueryIndexShape.GetDim(DIM_NUM_1) ||
+            (qIdxDimNum > DIM_NUM_2 && queryIndexShape.GetDim(DIM_NUM_2) != dQueryIndexShape.GetDim(DIM_NUM_2)) ||
+            (qIdxDimNum > DIM_NUM_3 && queryIndexShape.GetDim(DIM_NUM_3) != dQueryIndexShape.GetDim(DIM_NUM_3))) {
+            OP_LOGE(context_, "SparseLightningIndexerGradKLLoss Input query_index %s is not equal to Output d_query_index %s",
+                Ops::Base::ToString(queryIndexShape).c_str(), Ops::Base::ToString(dQueryIndexShape).c_str());
+            return ge::GRAPH_FAILED;
+        }
     }
 
-    if (inputLayout[DIM_NUM_0] == 'B' && inputLayout[DIM_NUM_1] == 'S' && inputLayout[DIM_NUM_2] == 'N' && inputLayout[DIM_NUM_3] == 'D') {
-        if (dWeightsShape.GetDim(DIM_NUM_0) != weightsShape.GetDim(DIM_NUM_0) || dWeightsShape.GetDim(DIM_NUM_1) != weightsShape.GetDim(DIM_NUM_1)
-            || dWeightsShape.GetDim(DIM_NUM_2) != weightsShape.GetDim(DIM_NUM_2)) {
-                OP_LOGE(context_, "The input weights shape is [%ld, %ld, %ld], but d_weights got [%ld, %ld, %ld].", weightsShape.GetDim(DIM_NUM_0),
-                weightsShape.GetDim(DIM_NUM_1), weightsShape.GetDim(DIM_NUM_2), dWeightsShape.GetDim(DIM_NUM_0),
-                dWeightsShape.GetDim(DIM_NUM_1), dWeightsShape.GetDim(DIM_NUM_2));
-                return GRAPH_FAILED;
-        }
-    } else if (inputLayout[DIM_NUM_0] == 'T' && inputLayout[DIM_NUM_1] == 'N' && inputLayout[DIM_NUM_2] == 'D'){
-        if (dWeightsShape.GetDim(DIM_NUM_0) != weightsShape.GetDim(DIM_NUM_0) || dWeightsShape.GetDim(DIM_NUM_1) != weightsShape.GetDim(DIM_NUM_1)) {
-                OP_LOGE(context_, "The input weights shape is [%ld, %ld], but d_weights got [%ld, %ld].", weightsShape.GetDim(DIM_NUM_0),
-                weightsShape.GetDim(DIM_NUM_1), dWeightsShape.GetDim(DIM_NUM_0), dWeightsShape.GetDim(DIM_NUM_1));
-                return GRAPH_FAILED;
+    // ===== [MODIFIED] key_index shape 校验：先 GetDimNum() 再逐维比较，用 ToString() 输出完整 shape =====
+    {
+        auto kIdxDimNum = keyIndexShape.GetDimNum();
+        if (kIdxDimNum != dkeyIndexShape.GetDimNum() ||
+            keyIndexShape.GetDim(DIM_NUM_0) != dkeyIndexShape.GetDim(DIM_NUM_0) ||
+            keyIndexShape.GetDim(DIM_NUM_1) != dkeyIndexShape.GetDim(DIM_NUM_1) ||
+            (kIdxDimNum > DIM_NUM_2 && keyIndexShape.GetDim(DIM_NUM_2) != dkeyIndexShape.GetDim(DIM_NUM_2)) ||
+            (kIdxDimNum > DIM_NUM_3 && keyIndexShape.GetDim(DIM_NUM_3) != dkeyIndexShape.GetDim(DIM_NUM_3))) {
+            OP_LOGE(context_, "SparseLightningIndexerGradKLLoss Input key_index %s is not equal to Output d_key_index %s",
+                Ops::Base::ToString(keyIndexShape).c_str(), Ops::Base::ToString(dkeyIndexShape).c_str());
+            return ge::GRAPH_FAILED;
         }
     }
+
+    // ===== [MODIFIED] weights shape 校验：用 GetDimNum() 统一处理 TND(2D) 和 BSND(3D)，ToString() 输出 =====
+    // 原代码按 TND/BSND 分支写了两套不同维度的比较，现统一为一个 GetDimNum() 判断
+    {
+        auto wDimNum = weightsShape.GetDimNum();
+        if (wDimNum != dWeightsShape.GetDimNum() || 
+            weightsShape.GetDim(DIM_NUM_0) != dWeightsShape.GetDim(DIM_NUM_0) ||
+            weightsShape.GetDim(DIM_NUM_1) != dWeightsShape.GetDim(DIM_NUM_1) ||
+            (wDimNum > DIM_NUM_2 && weightsShape.GetDim(DIM_NUM_2) != dWeightsShape.GetDim(DIM_NUM_2))) {
+            OP_LOGE(context_, "The input weights shape is %s, but d_weights got %s",
+                Ops::Base::ToString(weightsShape).c_str(), Ops::Base::ToString(dWeightsShape).c_str());
+            return ge::GRAPH_FAILED;
+        }
+    }
+    // ===== [MODIFIED END] =====
     return ge::GRAPH_SUCCESS;
 }
 
