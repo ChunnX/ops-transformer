@@ -1,10 +1,46 @@
-(fzx_py311) root@aa:/home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test# python3 -c "import torch_npu; import torchair; print(torchair._utils.__file__)"
+(fzx_py311) root@aa:/home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test# bash check_torchair.sh 
+=== 文件路径 ===
 /root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/torch_npu/dynamo/torchair/_utils/__init__.py
-(fzx_py311) root@aa:/home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test# python3 -c "import torch_npu; import torchair; print('torchair:', torchair.__version__)"
-Traceback (most recent call last):
-  File "<string>", line 1, in <module>
-  File "/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/torch_npu/dynamo/__init__.py", line 88, in __getattr__
-    return getattr(self._torchair, name)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-AttributeError: module 'torch_npu.dynamo.torchair' has no attribute '__version__'
-[ERROR] 2026-07-16-02:40:17 (PID:133534, Device:-1, RankID:-1) ERR99999 UNKNOWN applicaiton exception
+
+=== 第 280-310 行（register_matmul_backward_decomp 函数）===
+
+
+def register_matmul_backward_decomp():
+    """
+    Torch_npu currently dispatch linear to matmul and matmul_backward
+    instead of mm and mm_backward. This will lead to some bug in npu_backend
+    and the decomposition can fix it.
+    """
+    @aten.to.other.py_impl(DispatchKey.AutogradPrivateUse1)
+    def to_other_decomposition(self, other, non_blocking=False, copy=False, memory_format=None):
+        output = self.to(other.dtype)
+        return output
+
+    @aten.type_as.default.py_impl(DispatchKey.AutogradPrivateUse1)
+    def type_as_decomposition(self, other):
+        output = self.to(other.dtype)
+        return output
+
+    @aten.matmul_backward.default.py_impl(DispatchKey.CompositeImplicitAutograd)
+    @out_wrapper("grad_self", "grad_other")
+    def matmul_backward_decomposition(grad, self, other, mask):
+        dim_self = self.dim()
+        dim_other = other.dim()
+
+        size_grad = grad.size()
+        size_self = self.size()
+        size_other = other.size()
+        grad_self = None
+        grad_other = None
+
+        def matmul_backward_1d_1d():
+
+=== 搜索 aten.to.other 相关代码 ===
+288:    @aten.to.other.py_impl(DispatchKey.AutogradPrivateUse1)
+
+=== 搜索 py_impl 相关代码 ===
+150:        op_overload.py_impl(DispatchKey.Meta)(fn)
+288:    @aten.to.other.py_impl(DispatchKey.AutogradPrivateUse1)
+293:    @aten.type_as.default.py_impl(DispatchKey.AutogradPrivateUse1)
+298:    @aten.matmul_backward.default.py_impl(DispatchKey.CompositeImplicitAutograd)
+(fzx_py311) root@aa:/home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test# 
