@@ -56,6 +56,10 @@ struct MmadAtlasA5BsaPV : public MmadAtlasA5 {
     static constexpr uint32_t L0_STAGES = 2;
 };
 
+struct CopyGlobalMaxL1ToUBBsa : public MmadAtlasA5 {
+    static constexpr uint32_t L0_STAGES = 2;
+};
+
 }  // namespace NpuArch::Gemm
 
 #endif  // GEMM_DISPATCH_POLICY_HPP
