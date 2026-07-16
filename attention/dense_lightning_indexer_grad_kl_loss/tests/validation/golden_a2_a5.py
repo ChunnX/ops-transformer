@@ -17,6 +17,11 @@ from typing import Dict, Iterable, List, Mapping, MutableMapping, Sequence, Tupl
 import numpy as np
 import torch
 
+try:
+    import torch_npu  # noqa: F401
+except ImportError:
+    torch_npu = None
+
 
 TENSOR_INPUTS = (
     "query",
@@ -192,6 +197,8 @@ def compute_reference(
     metadata: Mapping[str, object],
     device: str = "cpu",
 ) -> Tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor]]:
+    if device.startswith("npu") and torch_npu is None:
+        raise RuntimeError("torch_npu is required for NPU golden calculation")
     layout = str(case["layout"])
     batch = int(case["batch"])
     n1 = int(case["n1"])
