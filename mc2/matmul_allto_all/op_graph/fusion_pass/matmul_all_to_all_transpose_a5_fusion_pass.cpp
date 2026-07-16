@@ -115,7 +115,7 @@ static ge::fusion::PatternUniqPtr MakePatternForTransposeD(bool hasBias)
     if (hasBias) {
         patternName += PATTERN_BIAS;
     }
-    auto graphBuilder = ge::es::EsGraphBuilder(FUSION_PASS_NAME.c_str());
+    auto graphBuilder = ge::es::EsGraphBuilder(patternName.c_str());
     auto [x1, x2, bias, x1Scale, x2Scale] = graphBuilder.CreateInputs<5>();
     auto transposeD = ge::es::TransposeD(x2, std::vector<int64_t>{1, 0});
     std::string group = std::string("");
