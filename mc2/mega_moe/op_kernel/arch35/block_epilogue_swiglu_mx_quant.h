@@ -193,6 +193,9 @@ private:
     AscendC::GlobalTensor<int8_t> quantOutputGlobal_;
     AscendC::GlobalTensor<int8_t> quantScaleGlobal_;
     __gm__ int32_t *groupFlagListGmAddr_;
+    GM_ADDR yGmAddr_{nullptr};
+    GM_ADDR yScaleGmAddr_{nullptr};
+    GM_ADDR groupFlagListGmBaseAddr_{nullptr};
 
     // UB ADDR
     AscendC::LocalTensor<DataTypeIn> l0cOutUbFirst_{AscendC::TPosition::VECIN, 0, MAX_SINGLE_MN};
@@ -204,8 +207,6 @@ private:
     AscendC::LocalTensor<bfloat16_t> gluRes_;
     AscendC::LocalTensor<uint16_t> maxExp_;
     AscendC::LocalTensor<uint16_t> halfScale_;
-    const Params *params_;
-
     int64_t n_;
     int64_t scaleN_;
     uint32_t subBlockIdx_ = AscendC::GetSubBlockIdx();
@@ -227,7 +228,11 @@ __aicore__ inline void BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LO
     if constexpr (g_coreType == AscendC::AIC) {
         return;
     }
-    params_ = &params;
+    // Init is called with a temporary Arguments object. Keep the GM bases owned by this
+    // epilogue so UpdateGlobalAddr never dereferences a dangling parameter reference.
+    yGmAddr_ = params.yGmAddr;
+    yScaleGmAddr_ = params.yScaleGmAddr;
+    groupFlagListGmBaseAddr_ = params.groupFlagListGmAddr;
     clampLimit_ = params.clampLimit;
     if constexpr (AscendC::IsSameType<DataTypeOut, fp8_e4m3fn_t>::value) {
         fpEmax_ = FP8_E4M3_MAX_EXP;
@@ -262,10 +267,10 @@ __aicore__ inline void
 BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::UpdateGlobalAddr(const BlockCoord &baseOffset)
 {
     if constexpr (g_coreType == AscendC::AIV) {
-        quantOutputGlobal_.SetGlobalBuffer((__gm__ int8_t *)params_->yGmAddr + Get<Y_IDX>(baseOffset));
-        quantScaleGlobal_.SetGlobalBuffer((__gm__ int8_t *)params_->yScaleGmAddr + Get<Y_SCALE_IDX>(baseOffset));
+        quantOutputGlobal_.SetGlobalBuffer((__gm__ int8_t *)yGmAddr_ + Get<Y_IDX>(baseOffset));
+        quantScaleGlobal_.SetGlobalBuffer((__gm__ int8_t *)yScaleGmAddr_ + Get<Y_SCALE_IDX>(baseOffset));
         groupFlagListGmAddr_ =
-            (__gm__ int32_t *)params_->groupFlagListGmAddr + Get<GROUP_FLAG_IDX>(baseOffset) * INT_CACHELINE;
+            (__gm__ int32_t *)groupFlagListGmBaseAddr_ + Get<GROUP_FLAG_IDX>(baseOffset) * INT_CACHELINE;
     }
 }
 
