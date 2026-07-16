@@ -251,8 +251,8 @@ torch.ops.custom.npu_quant_block_sparse_attn(
       <td>负载均衡元数据。</td>
       <td style="white-space: nowrap;"><code>INT32</code></td>
       <td style="white-space: nowrap;">ND</td>
-      <td><code>(2048)</code></td>
-      <td>由 <code>npu_quant_block_sparse_attn_metadata</code> 生成。</td>
+      <td><code>(metadata_size)</code></td>
+      <td>由 <code>npu_quant_block_sparse_attn_metadata</code> 生成，长度随分 section 结果动态变化。</td>
     </tr>
     <tr>
       <td style="white-space: nowrap;"><code>softmax_scale</code></td>
@@ -784,12 +784,13 @@ QuantBlockSparseAttn 算子约束分为 4 个档位，按约束复杂程度递�
 - 单参数约束
 
   - `metadata` 数据类型仅支持 `INT32`，数据格式仅支持 ND。
-  - 有效 `metadata` 为一维 Tensor，shape 为 `(2048)`。
+  - 有效 `metadata` 为一维 Tensor，shape 为 `(metadata_size)`，长度随分 section 结果动态变化，不应固定为 2048。
+  - `metadata_size = 8 + section_num * 36 * 8 + 72 * 8`，其中第一个 8 为 head metadata 区长度，`section_num` 为实时分 section 数，生成后记录在 `metadata[0]`；36 为 AIC core 数，72 为 AIV core 数，每个 core 的元数据长度为 8 个 `INT32`。
 
 - 存在性约束
 
   - `metadata` 在主算子 schema 中为可选输入，但当前内核执行依赖 metadata 中的分核调度信息；推荐使用 `npu_quant_block_sparse_attn_metadata` 生成并传入。
-  - PyTorch 测试封装在 `metadata` 为 `None`、长度不是 2048 或全 0 时会调用 `npu_quant_block_sparse_attn_metadata` 重新生成；直接调用主算子时需由调用者保证传入有效 metadata。
+  - PyTorch 测试封装在 `metadata` 为 `None`、长度不足或全 0 时会调用 `npu_quant_block_sparse_attn_metadata` 重新生成；直接调用主算子时需由调用者保证传入有效 metadata。
 
 - 一致性约束
 
