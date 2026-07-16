@@ -998,8 +998,10 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::UpdateSharedGlobalBuffe
             gmmAddrInfo.gmm1OutGlobal =
                 params_.workspaceInfo.sharedExpertGmm1OutPtr + Get<IDX_GMM1_OFFSET>(state.baseOffset) * sizeof(bfloat16_t);
         }
-        gmmAddrInfo.bGlobal = params_.sharedBGmAddr;
-        gmmAddrInfo.bScaleGlobal = params_.sharedBScaleGmAddr;
+        gmmAddrInfo.bGlobal = params_.sharedBGmAddr +
+            Get<IDX_B_OFFSET>(state.baseOffset) * sizeof(ActivationType);
+        gmmAddrInfo.bScaleGlobal = params_.sharedBScaleGmAddr +
+            Get<IDX_B_SCALE_OFFSET>(state.baseOffset) * sizeof(QuantScaleOutType);
     } else if constexpr(Mode == AddrUpdateMode::kGmm2) {
         gmmAddrInfo.gmm2OutGlobal =
             params_.workspaceInfo.sharedExpertResultPtr + Get<IDX_GMM2_OFFSET>(state.baseOffset) * sizeof(bfloat16_t);
@@ -1007,8 +1009,10 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::UpdateSharedGlobalBuffe
             params_.workspaceInfo.sharedExpertSwigluDataPtr + Get<IDX_C_OFFSET>(state.baseOffset) * sizeof(ActivationType);
         gmmAddrInfo.aScaleGlobal =
             params_.workspaceInfo.sharedExpertSwigluScalePtr + Get<IDX_C_SCALE_OFFSET>(state.baseOffset) * sizeof(QuantScaleOutType);
-        gmmAddrInfo.bGlobal = params_.sharedB2GmAddr;
-        gmmAddrInfo.bScaleGlobal = params_.sharedB2ScaleGmAddr;
+        gmmAddrInfo.bGlobal = params_.sharedB2GmAddr +
+            Get<IDX_B2_OFFSET>(state.baseOffset) * sizeof(ActivationType);
+        gmmAddrInfo.bScaleGlobal = params_.sharedB2ScaleGmAddr +
+            Get<IDX_B2_SCALE_OFFSET>(state.baseOffset) * sizeof(QuantScaleOutType);
     }
     gmmAddrInfo.swigluToGmm2Flag = nullptr;
     gmmAddrInfo.dispatchToGmm1Flag = nullptr;
