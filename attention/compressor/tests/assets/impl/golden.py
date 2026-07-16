@@ -21,6 +21,7 @@ import numpy as np
 
 PYTEST_GOLDEN_MODULE = None
 
+_GOLDEN_CONTEXT = {}
 
 def load_pytest_golden_module():
     """Load tests/pytest/compressor_golden.py as the canonical CPU golden."""
@@ -164,9 +165,20 @@ def cpu_compressor(x, wkv, wgate, state_cache, ape, cmp_ratio=4, *,
     cu_seqlens_list = ttk_tensor_to_list(cu_seqlens) if cu_seqlens is not None else None
     seqused_list = ttk_tensor_to_list(seqused) if seqused is not None else None
 
-    cmp_kv, _, _, _, x_dtype = run_cpu_compressor(
+    cmp_kv, golden_state_cache, update_kv, update_score, x_dtype = run_cpu_compressor(
         x_cpu, wkv_cpu, wgate_cpu, state_cache_cpu, ape_cpu, block_table,
         cmp_ratio, coff, cache_mode, start_pos_list, cu_seqlens_list, seqused_list,
     )
 
-    return [cmp_kv]
+    _GOLDEN_CONTEXT['update_kv'] = update_kv
+    _GOLDEN_CONTEXT['update_score'] = update_score
+    _GOLDEN_CONTEXT['data_type'] = str(x_dtype)
+
+    return [
+        cmp_kv,
+        golden_state_cache,
+    ]
+
+
+def get_golden_context():
+    return _GOLDEN_CONTEXT
