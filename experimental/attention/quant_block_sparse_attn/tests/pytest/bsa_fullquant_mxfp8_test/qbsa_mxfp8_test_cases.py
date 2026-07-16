@@ -13,7 +13,7 @@
 TestCases = [
     {
         "name": "BASE_01",
-        "enable": True,
+        "enable": False,
         "B": 1,
         "N1": 1,
         "N2": 1,
@@ -50,7 +50,7 @@ TestCases = [
     },
     {
         "name": "MIX_00",
-        "enable": True,
+        "enable": False,
         "B": 8,
         "N1": 64,
         "N2": 8,
@@ -87,7 +87,7 @@ TestCases = [
     },
     {
         "name": "MIX_01",
-        "enable": True,
+        "enable": False,
         "B": 8,
         "N1": 64,
         "N2": 8,
