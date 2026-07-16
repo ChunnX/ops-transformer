@@ -1356,7 +1356,7 @@ __aicore__ inline bool MegaMoeLayered<TemplateMegaMoeTypeFunc>::UpdateGroupParam
 
     if constexpr (IsShared) {
         Get<M_VALUE>(state.problemShape) = m_;
-    } else if constexpr (Mode == AddrUpdateMode::kGmm1) {
+    } else if constexpr (Mode == AddrUpdateMode::GMM1) {
         if (subBlockIdx_ == 0) {
             __gm__ int32_t* sendCntFlag = (__gm__ int32_t*)params_.workspaceInfo.flagSendCntCalToUpdParamsPtr +
                 static_cast<uint64_t>(expertIdx) * aicNum_ * INT_CACHELINE +
@@ -1398,7 +1398,7 @@ template <AddrUpdateMode Mode, bool IsShared>
 __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::UpdateGlobalBuffer(GMMAddrInfo &gmmAddrInfo,
                                                                                    const ExpertLoopState &state)
 {
-    if constexpr (Mode == AddrUpdateMode::kGmm1) {
+    if constexpr (Mode == AddrUpdateMode::GMM1) {
         if constexpr (IsShared) {
             gmmAddrInfo.aGlobal = params_.workspaceInfo.sharedExpertInputDataPtr;
             gmmAddrInfo.aScaleGlobal = params_.workspaceInfo.sharedExpertInputScalePtr;
@@ -1418,7 +1418,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::UpdateGlobalBuff
         gmmAddrInfo.bGlobal = params_.bGmAddr + Get<IDX_B_OFFSET>(state.baseOffset) * sizeof(ActivationType);
         gmmAddrInfo.bScaleGlobal = params_.bScaleGmAddr + Get<IDX_B_SCALE_OFFSET>(state.baseOffset) *
                                     sizeof(QuantScaleOutType);
-    } else if constexpr(Mode == AddrUpdateMode::kGmm2) {
+    } else if constexpr(Mode == AddrUpdateMode::GMM2) {
         GM_ADDR swigluDataBase = IsShared ? params_.workspaceInfo.sharedExpertSwigluDataPtr
                                           : params_.workspaceInfo.swigluQuantDataPtr;
         GM_ADDR swigluScaleBase = IsShared ? params_.workspaceInfo.sharedExpertSwigluScalePtr
@@ -1923,10 +1923,10 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ProcessSharedExp
     GMMAddrInfo sharedGmm1AddrInfo;
     ExpertLoopState sharedGmm1State{initShape, initOffset, 0};
     for (uint32_t sharedIdx = 0; sharedIdx < sharedExpertNum_; sharedIdx++) {
-        if (!UpdateGroupParams<AddrUpdateMode::kGmm1, true>(sharedGmm1State, sharedIdx)) {
+        if (!UpdateGroupParams<AddrUpdateMode::GMM1, true>(sharedGmm1State, sharedIdx)) {
             continue;
         }
-        UpdateGlobalBuffer<AddrUpdateMode::kGmm1, true>(sharedGmm1AddrInfo, sharedGmm1State);
+        UpdateGlobalBuffer<AddrUpdateMode::GMM1, true>(sharedGmm1AddrInfo, sharedGmm1State);
         GroupMatmulWithSwigluQuant<true>(sharedGmm1AddrInfo, sharedGmm1State);
     }
     EndSync(vecSetSyncCom_);
@@ -1943,10 +1943,10 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ProcessSharedExp
     GMMAddrInfo sharedGmm2AddrInfo;
     ExpertLoopState sharedGmm2State{initShape, initOffset, 0};
     for (uint32_t sharedIdx = 0; sharedIdx < sharedExpertNum_; sharedIdx++) {
-        if (!UpdateGroupParams<AddrUpdateMode::kGmm2, true>(sharedGmm2State, sharedIdx)) {
+        if (!UpdateGroupParams<AddrUpdateMode::GMM2, true>(sharedGmm2State, sharedIdx)) {
             continue;
         }
-        UpdateGlobalBuffer<AddrUpdateMode::kGmm2, true>(sharedGmm2AddrInfo, sharedGmm2State);
+        UpdateGlobalBuffer<AddrUpdateMode::GMM2, true>(sharedGmm2AddrInfo, sharedGmm2State);
         GroupMatmulWithCombine<true>(sharedGmm2AddrInfo, sharedGmm2State, sharedIdx);
     }
     SyncAll<false>();
@@ -2052,7 +2052,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Process()
         }
     }
     for (uint32_t expertIdx = 0; expertIdx < moeExpertPerRank_; expertIdx++) {
-        if (!UpdateGroupParams<AddrUpdateMode::kGmm2>(gmm2State, expertIdx)) {
+        if (!UpdateGroupParams<AddrUpdateMode::GMM2>(gmm2State, expertIdx)) {
             continue;
         }
         UpdateGlobalBuffer<AddrUpdateMode::GMM2>(gmm2AddrInfo, gmm2State);
