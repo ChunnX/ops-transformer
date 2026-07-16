@@ -121,8 +121,8 @@ aclnnStatus aclnnMegaMoeGetWorkspaceSize(
     aclTensorList *tmpSharedBiasList = nullptr;
     aclTensorList *tmpSharedScaleList = nullptr;
     aclTensorList *tmpSharedWeightList = nullptr;
-    aclDataType sharedWeightDtype = (weight1 != nullptr && weight1->Size() > 0)
-        ? (*weight1)[0]->GetDataType() : ACL_FLOAT8_E4M3FN;
+    aclDataType sharedWeightDtype = (sharedWeight1Optional != nullptr && sharedWeight1Optional->Size() > 0)
+        ? (*sharedWeight1Optional)[0]->GetDataType() : ACL_FLOAT8_E4M3FN;
     CreateEmptyTensor(ACL_FLOAT, bias1Optional, tmpBiasList, *executor);
     CreateEmptyTensor(ACL_FLOAT, bias2Optional, tmpBiasList, *executor);
     CreateEmptyTensor(ACL_FLOAT8_E8M0, weightScales1Optional, tmpScaleList, *executor);
