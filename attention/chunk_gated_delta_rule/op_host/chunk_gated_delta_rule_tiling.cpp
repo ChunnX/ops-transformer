@@ -20,6 +20,7 @@
 #include "err/ops_err.h"
 #include "log/log.h"
 #include "tiling/platform/platform_ascendc.h"
+#include "../op_kernel/chunk_gated_delta_rule_tiling_key.h"
 
 namespace optiling {
 REGISTER_OPS_TILING_TEMPLATE(ChunkGatedDeltaRule, ChunkGatedDeltaRuleTiling, 0);
@@ -72,6 +73,7 @@ void ChunkGatedDeltaRuleTiling::InitCompileInfo()
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, compileInfo_.ubSize);
     compileInfo_.aivNum = ascendcPlatform.GetCoreNumAiv();
     compileInfo_.aicNum = ascendcPlatform.GetCoreNumAic();
+    socVersion_ = ascendcPlatform.GetSocVersion();
 
     if (compileInfo_.aivNum <= 0 || compileInfo_.aicNum <= 0) {
         OP_LOGE(context_->GetNodeName(), "aivNum <= 0 or aicNum <= 0");
@@ -122,24 +124,33 @@ ge::graphStatus ChunkGatedDeltaRuleTiling::DoOpTiling()
 
     tilingData_.interWorkspaceSz = 0;
     int64_t sizeHigh = ge::GetSizeByDataType(ge::DT_FLOAT);
+    int64_t sizeLow = ge::GetSizeByDataType(ge::DT_BF16);
     int64_t nv = tilingData_.nv;
     int64_t dv = tilingData_.dv;
     int64_t dk = tilingData_.dk;
     int64_t s = tilingData_.maxGroupLength;
-    int64_t b = tilingData_.b;
-    tilingData_.interWorkspaceSz += sizeHigh * nv * s;                                   // gCumExp
-    tilingData_.interWorkspaceSz += sizeHigh * nv * s * dk;                              // kCumDecay
-    tilingData_.interWorkspaceSz += sizeHigh * nv * s * dv;                              // vInner
-    tilingData_.interWorkspaceSz += sizeHigh * nv * s * dk;                              // qPrime
-    tilingData_.interWorkspaceSz += sizeHigh * nv * s * dv;                              // attnInter
-    tilingData_.interWorkspaceSz += sizeHigh * nv * s * dk;                              // kg
-    tilingData_.interWorkspaceSz += sizeHigh * nv * s * c;                               // qkt
-    tilingData_.interWorkspaceSz += sizeHigh * b * nv * dv * dk;                         // highState
-    tilingData_.interWorkspaceSz += sizeHigh * c * c * tilingData_.aiCoreNum * MASK_NUM; // mask
+    tilingData_.interWorkspaceSz += sizeHigh * nv * s;                                   // gCumExp (FP32)
+    tilingData_.interWorkspaceSz += sizeLow * nv * s * dk;                               // kCumDecay (BF16)
+    if (tilingData_.stateIsFp32) {
+        tilingData_.interWorkspaceSz += sizeHigh * nv * s * dv;                           // vInner (FP32)
+        tilingData_.interWorkspaceSz += sizeLow * nv * s * dv;                            // vInnerBf16 (BF16, for stage3)
+    } else {
+        tilingData_.interWorkspaceSz += sizeLow * nv * s * dv;                            // vInner (BF16)
+    }
+    tilingData_.interWorkspaceSz += sizeLow * nv * s * dk;                               // qPrime (BF16)
+    tilingData_.interWorkspaceSz += sizeLow * nv * s * dv;                               // attnInter (BF16, arch22 compat)
+    tilingData_.interWorkspaceSz += sizeLow * nv * s * dk;                               // kg (BF16)
+    tilingData_.interWorkspaceSz += sizeLow * nv * s * c;                                // qkt (BF16)
+    if (tilingData_.stateIsFp32) {
+        tilingData_.interWorkspaceSz += sizeLow * nv * dv * dk;                           // stateBf16Wk (BF16, arch35)
+    } else if (socVersion_ != platform_ascendc::SocVersion::ASCEND950) {
+        tilingData_.interWorkspaceSz += sizeHigh * tilingData_.b * nv * dv * dk;         // highState_ (arch22: kernel unconditionally advances offset)
+    }
+    tilingData_.interWorkspaceSz += sizeHigh * c * c * tilingData_.aiCoreNum * MASK_NUM; // mask (FP32)
 
     // stage1 临时变量空间
     tilingData_.stageWorkspaceSz =
-        sizeHigh * c * (STAGE_ONE_TWO * c + STAGE_ONE_THREE * dk + dv) * tilingData_.stageOneParaNum;
+        sizeLow * c * (STAGE_ONE_TWO * c + STAGE_ONE_THREE * dk + dv) * tilingData_.stageOneParaNum;
     tilingData_.stageWorkspaceSz *= tilingData_.aiCoreNum;
 
     PrintTilingData();
@@ -186,12 +197,40 @@ ge::graphStatus ChunkGatedDeltaRuleTiling::DoMatmulTiling()
     tilingData_.matmulTilingFp32.depthB1 = 1;
     tilingData_.matmulTilingFp32.stepM = 1;
     tilingData_.matmulTilingFp32.stepN = 1;
+
+    // ========== MT_FP32C: BF16 -> BF16 -> FP32 (for FP32 state path) ==========
+    if (tilingData_.stateIsFp32) {
+        matmul_tiling::MultiCoreMatmulTiling mmFp32C;
+        mmFp32C.SetBufferSpace(l1Size, l0CSize, ubSize);
+        mmFp32C.SetAType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND,
+                         matmul_tiling::DataType::DT_BFLOAT16, true);
+        mmFp32C.SetBType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND,
+                         matmul_tiling::DataType::DT_BFLOAT16, true);
+        mmFp32C.SetCType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND,
+                         matmul_tiling::DataType::DT_FLOAT);
+        mmFp32C.SetBias(false);
+        mmFp32C.SetDim(1);
+        mmFp32C.SetShape(baseM, baseN, baseK);
+        mmFp32C.SetOrgShape(baseM, baseN, baseK);
+        mmFp32C.SetFixSplit(baseM, baseN, baseK);
+        if (mmFp32C.GetTiling(tilingData_.matmulTilingFp32C) == -1) {
+            OP_LOGE(context_->GetNodeName(), "CGDR: Get Tiling Fp32C Failed!");
+            return ge::GRAPH_FAILED;
+        }
+        tilingData_.matmulTilingFp32C.dbL0C = 1;
+        tilingData_.matmulTilingFp32C.stepKa = 1;
+        tilingData_.matmulTilingFp32C.stepKb = 1;
+        tilingData_.matmulTilingFp32C.depthA1 = 1;
+        tilingData_.matmulTilingFp32C.depthB1 = 1;
+        tilingData_.matmulTilingFp32C.stepM = 1;
+        tilingData_.matmulTilingFp32C.stepN = 1;
+    }
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus ChunkGatedDeltaRuleTiling::DoLibApiTiling()
 {
-    tilingKey_ = 0;
+    tilingKey_ = tilingData_.stateIsFp32 ? TILING_KEY_CGDR_FP32_STATE : TILING_KEY_CGDR_BF16_STATE;
 
     // 执行 matmul tiling
     if (DoMatmulTiling() != ge::GRAPH_SUCCESS) {
@@ -313,9 +352,17 @@ ge::graphStatus ChunkGatedDeltaRuleTiling::AnalyzeDtype()
 
     auto betaDtype = context_->GetInputDesc(BETA_INDEX)->GetDataType();
     auto stateDtype = context_->GetInputDesc(STATE_INDEX)->GetDataType();
-    OP_CHECK_IF(betaDtype != ge::DT_BF16 || stateDtype != ge::DT_BF16,
-                OP_LOGE(context_->GetNodeName(), "beta dtype and state dtype should be bfloat16"),
+    OP_CHECK_IF(betaDtype != ge::DT_BF16,
+                OP_LOGE(context_->GetNodeName(), "beta dtype should be bfloat16"),
                 return ge::GRAPH_FAILED);
+    OP_CHECK_IF(stateDtype != ge::DT_BF16 && stateDtype != ge::DT_FLOAT,
+                OP_LOGE(context_->GetNodeName(), "state dtype should be bfloat16 or float32"),
+                return ge::GRAPH_FAILED);
+    if (stateDtype == ge::DT_FLOAT && socVersion_ != platform_ascendc::SocVersion::ASCEND950) {
+        OP_LOGE(context_->GetNodeName(), "FP32 state is only supported on Ascend950");
+        return ge::GRAPH_FAILED;
+    }
+    tilingData_.stateIsFp32 = (stateDtype == ge::DT_FLOAT) ? 1 : 0;
 
     auto actualSeqLengthsDtype = context_->GetInputDesc(ACTUAL_SEQ_LENGTHS_INDEX)->GetDataType();
     OP_CHECK_IF(actualSeqLengthsDtype != ge::DT_INT32,
@@ -331,8 +378,13 @@ ge::graphStatus ChunkGatedDeltaRuleTiling::AnalyzeDtype()
     auto finalStateDtype = context_->GetOutputDesc(OUTPUT_FINAL_STATE_IDX)->GetDataType();
     OP_CHECK_IF(outDtype != ge::DT_BF16, OP_LOGE(context_->GetNodeName(), "output dtype should be bfloat16"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(finalStateDtype != ge::DT_BF16,
-                OP_LOGE(context_->GetNodeName(), "final_state dtype should be bfloat16"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(finalStateDtype != ge::DT_BF16 && finalStateDtype != ge::DT_FLOAT,
+                OP_LOGE(context_->GetNodeName(), "final_state dtype should be bfloat16 or float32"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(stateDtype != finalStateDtype,
+                OP_LOGE(context_->GetNodeName(),
+                        "initial_state and final_state must have the same dtype, got initial_state=%d, final_state=%d",
+                        static_cast<int>(stateDtype), static_cast<int>(finalStateDtype)),
+                return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -551,6 +603,7 @@ void ChunkGatedDeltaRuleTiling::PrintTilingData()
     OP_LOGD(context_->GetNodeName(), "stateStride0: [%ld]", tilingData_.stateStride0);
     OP_LOGD(context_->GetNodeName(), "stateStride1: [%ld]", tilingData_.stateStride1);
     OP_LOGD(context_->GetNodeName(), "scale: [%f]", tilingData_.scale);
+    OP_LOGD(context_->GetNodeName(), "stateIsFp32: [%ld]", tilingData_.stateIsFp32);
 }
 
 // tiling 调度入口
