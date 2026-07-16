@@ -499,7 +499,6 @@ void FiaTilingNonQuant::FillTilingBaseParams()
     tilingData_.baseParams.set_isEmptyBatchOverHalf(GetIsEmptyBatchOverHalf());
 }
 
-
 void FiaTilingNonQuant::FillTilingPageAttenParams()
 {
     tilingData_.pageAttenParams.set_blockSize(fiaInfo_->blockSize);
