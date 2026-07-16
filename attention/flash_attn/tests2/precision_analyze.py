@@ -91,6 +91,35 @@ def _emit(segments, scatter, prefix, start, end, dim_size):
 # 紧凑报告
 # ═══════════════════════════════════════════════════════════════
 
+def _merge_full_coverage(segments, shape):
+    """逐级合并全覆盖: 从 S 向 B (从最内层 prefix 维向外)。合并后 prefix 长度不变。"""
+    if not segments or len(segments) <= 1:
+        return segments
+
+    ndim = len(shape)
+    # prefix_len: ndim-2(S) → ndim-3(N)... → 0
+    for prefix_len in range(ndim - 2, -1, -1):
+        groups = {}
+        for prefix, d_range in segments:
+            key = prefix[:prefix_len] if prefix_len > 0 else ()
+            groups.setdefault(key, []).append((prefix, d_range))
+
+        merged = []
+        for key, items in groups.items():
+            all_full = all(dr == (-1, -1) for _, dr in items)
+            positions = sorted({p[prefix_len] for p, _ in items})
+            if all_full and len(positions) == shape[prefix_len]:
+                # 合并: prefix 保持不变但该位改为全覆盖标记
+                template = list(items[0][0])
+                template[prefix_len] = (-1, -1)
+                merged.append((tuple(template), (-1, -1)))
+            else:
+                merged.extend(items)
+        segments = merged
+
+    return segments
+
+
 def _compact_rows(fail_indices, shape, layout, verbose):
     """构建紧凑表行: 散点+片段。返回(rows, truncated)。"""
     ndim = len(shape)
@@ -100,6 +129,7 @@ def _compact_rows(fail_indices, shape, layout, verbose):
     coords = _flat_to_coords(fail_indices, shape)
 
     segments, scatter = _find_ranges(coords, shape)
+    segments = _merge_full_coverage(segments, shape)
 
     rows = []
 
@@ -155,23 +185,31 @@ def _flat_to_coords(fail_indices, shape):
     return sorted(coords)
 
 
+def _fmt_coord_val(v, size):
+    """坐标值或区间 → 字符串。(-1,-1) 表示全覆盖。"""
+    if v == (-1, -1):
+        return f"[0..{size - 1}]"
+    return str(v)
+
+
 def _fmt_prefix_range(prefix, d_range, shape, col_names):
-    """前缀 + D区间 → 行单元格元组。(-1,-1) 表示 D 全覆盖。"""
-    parts = list(prefix)
-    if d_range == (-1, -1):
-        parts = list(prefix) + [f"[0..{shape[-1] - 1}]"]
-    elif d_range[0] == d_range[1]:
-        parts = list(prefix) + [str(d_range[0])]
-    else:
-        parts = list(prefix) + [f"[{d_range[0]}..{d_range[1]}]"]
+    """前缀 + D区间 → 行单元格元组。"""
+    parts = [_fmt_coord_val(v, shape[i]) for i, v in enumerate(prefix)]
+    parts.append(_fmt_coord_val(d_range, shape[-1]))
     return tuple(parts)
 
 
 def _range_count(prefix, d_range, shape):
-    """片段覆盖的元素数: D区间长度 × 前缀覆盖数(单前缀下=1)。"""
+    """片段覆盖的元素数。"""
+    count = 1
+    for i, v in enumerate(prefix):
+        if v == (-1, -1):
+            count *= shape[i]
     if d_range == (-1, -1):
-        return shape[-1]
-    return d_range[1] - d_range[0] + 1
+        count *= shape[-1]
+    else:
+        count *= d_range[1] - d_range[0] + 1
+    return count
 
 
 # ═══════════════════════════════════════════════════════════════
