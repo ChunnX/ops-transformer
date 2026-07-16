@@ -16,7 +16,9 @@ replayed unchanged on A2 and A5.
 - Computes all four max/sum tensors from the actual Q/K and index-score inputs.
 - Keeps `d_weight` in FP32 when the weight input is FP32.
 - Performs FP32 reference math and checks every generated tensor for NaN/Inf.
+- Preserves the original Golden's 512/256/64 query-slice accumulation order.
 - Records random seed, shapes, dtypes, cumulative lengths, and input checksums.
+- Supports `--reuse-existing` to recompute stats and Golden from unchanged inputs.
 
 ## Suites
 
@@ -33,6 +35,7 @@ goldens can require substantial host memory and time; run them sequentially.
 python3 check_case_coverage.py
 python3 generate_case.py --suite smoke --output-root /path/to/stage/inputs
 python3 run_case.py /path/to/stage/inputs/SMK-01 --device-id 3
+python3 run_stability.py /path/to/stage/inputs/SMK-01 --device-id 3 --repeat 10
 ```
 
 Or run a complete suite:
