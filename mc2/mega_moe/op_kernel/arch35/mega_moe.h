@@ -1163,14 +1163,14 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::UnpermuteBuffInit()
         // Tensor用处：DeQuantMxFp8 中用于存储 bf16 格式的 scale（e8m0 转换后的中间结果）
         // Tensor大小：scaleNum * sizeof(bfloat16_t) * DOUBLE_BUFFER * DEQUANT_SCALE_EXPAND，双缓冲 + scale 扩展
         uint32_t bf16ScaleBufAlign = Ops::Base::CeilAlign(static_cast<uint32_t>
-            (scaleNum * sizeof(bfloat16_t) * DOUBLE_BUFFER * DEQUANT_SCALE_EXPAND), static_cast<uint32_t>(ALIGN_32));
+            (scaleNum * sizeof(bfloat16_t) * DEQUANT_SCALE_EXPAND), static_cast<uint32_t>(ALIGN_32));
         bf16ScaleTensor_ = LocalTensor<bfloat16_t>(
             TPosition::VECCALC, tempAddr, bf16ScaleBufAlign / sizeof(bfloat16_t));
         tempAddr += bf16ScaleBufAlign;
         // Tensor用处：DeQuantMxFp8 中用于存储 fp32 格式的 scale（广播后的最终 scale）
         // Tensor大小：scaleNum * sizeof(float) * DOUBLE_BUFFER * DEQUANT_SCALE_EXPAND，双缓冲 + scale 扩展
         uint32_t fp32ScaleBufAlign = Ops::Base::CeilAlign(static_cast<uint32_t>
-            (scaleNum * sizeof(float) * DOUBLE_BUFFER * DEQUANT_SCALE_EXPAND), static_cast<uint32_t>(ALIGN_32));
+            (scaleNum * sizeof(float) * DEQUANT_SCALE_EXPAND), static_cast<uint32_t>(ALIGN_32));
         fp32ScaleTensor_ = LocalTensor<float>(TPosition::VECCALC, tempAddr, fp32ScaleBufAlign / sizeof(float));
         tempAddr += fp32ScaleBufAlign;
     }
@@ -1491,7 +1491,6 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
 
     // Phase 1: 量化 + 共享专家输入拆分 + mask/reset (AIV)
     QuantProcessInRank();
-    SendMaskCal();
     ResetFlagList();
     if (sharedExpertNum_ > 0) {
         SharedExpertCopyInput();
@@ -1500,6 +1499,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
         PipeBarrier<PIPE_ALL>();
     }
     SyncAll<false>();
+    SendMaskCal();
 
     // Phase 1.5: 共享专家 GMM1+SwiGLU (前移, 在 MoE 之前执行, 复用 MoE 函数)
     TupleShape initShape;
