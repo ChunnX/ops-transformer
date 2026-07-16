@@ -22,8 +22,7 @@ using AscendC::int4b_t;
 
 namespace Mc2WeightQuantBatchMatmulV2::Arch35::Catlass {
 template <bool innerK, bool isNz, typename DtypeA, typename DtypeB>
-struct XWeightStride {
-};
+struct XWeightStride {};
 
 template <typename DtypeA, typename DtypeB>
 struct XWeightStride<false, false, DtypeA, DtypeB> {
@@ -49,9 +48,8 @@ template <bool innerK, typename DtypeA, typename DtypeB>
 struct XWeightStride<innerK, true, DtypeA, DtypeB> {
     DEVICE decltype(auto) operator()(uint64_t outer, uint64_t k)
     {
-        if constexpr (
-            (AscendC::Std::is_same_v<DtypeA, half> || AscendC::Std::is_same_v<DtypeA, bfloat16_t>) &&
-            AscendC::Std::is_same_v<DtypeB, AscendC::int4b_t>) {
+        if constexpr ((AscendC::Std::is_same_v<DtypeA, half> || AscendC::Std::is_same_v<DtypeA, bfloat16_t>) &&
+                      AscendC::Std::is_same_v<DtypeB, AscendC::int4b_t>) {
             if constexpr (innerK) {
                 // n, k -> k1, n1, n0(16), k0(16)
                 // m, k -> k1, m1, m0(16), k0(16)
@@ -68,8 +66,7 @@ struct XWeightStride<innerK, true, DtypeA, DtypeB> {
 };
 
 template <bool trans, Mc2QuantType antiquantType>
-struct ScaleOffsetStride {
-};
+struct ScaleOffsetStride {};
 
 template <bool trans>
 struct ScaleOffsetStride<trans, Mc2QuantType::PER_TENSOR> {
@@ -126,16 +123,15 @@ struct TilingKeyParams {
                                                                                                               256;
         constexpr uint32_t ubMte2BufNum = customization == 0 || customization == 2 || customization == 4 ? 2 : 4;
 
-        return {
-            .ubMte2InnerSize = ubMte2InnerSize,
-            .ubMte2BufNum = ubMte2BufNum,
-            .transA = trans == 2 || trans == 3,
-            .transB = trans == 1 || trans == 3,
-            .antiquantType = static_cast<Mc2QuantType>(TILING_KEY / 1000UL % 10UL),
-            .quantType = static_cast<Mc2QuantType>(TILING_KEY / 100UL % 10UL),
-            .hasAntiquantOffset = optional == 2 || optional == 6,
-            .biasTypeSameAsX = optional == 0 || optional == 2,
-            .isWeightNz = (TILING_KEY % 10UL) == 1};
+        return {.ubMte2InnerSize = ubMte2InnerSize,
+                .ubMte2BufNum = ubMte2BufNum,
+                .transA = trans == 2 || trans == 3,
+                .transB = trans == 1 || trans == 3,
+                .antiquantType = static_cast<Mc2QuantType>(TILING_KEY / 1000UL % 10UL),
+                .quantType = static_cast<Mc2QuantType>(TILING_KEY / 100UL % 10UL),
+                .hasAntiquantOffset = optional == 2 || optional == 6,
+                .biasTypeSameAsX = optional == 0 || optional == 2,
+                .isWeightNz = (TILING_KEY % 10UL) == 1};
     }
 };
 
@@ -220,9 +216,9 @@ struct TileShapeReg<1024> {
 };
 
 template <uint64_t TILING_KEY>
-DEVICE void InvokeActKernel(
-    GM_ADDR x, GM_ADDR weight, GM_ADDR antiquantScale, GM_ADDR antiquantOffset, GM_ADDR quantScale, GM_ADDR quantOffset,
-    GM_ADDR bias, GM_ADDR y, GM_ADDR workspace, GM_ADDR tiling)
+DEVICE void InvokeActKernel(GM_ADDR x, GM_ADDR weight, GM_ADDR antiquantScale, GM_ADDR antiquantOffset,
+                            GM_ADDR quantScale, GM_ADDR quantOffset, GM_ADDR bias, GM_ADDR y, GM_ADDR workspace,
+                            GM_ADDR tiling)
 {
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
     GET_TILING_DATA_WITH_STRUCT(Mc2WeightQuantBatchMatmulV2ASTilingData, tilingDataIn, tiling);
@@ -231,9 +227,10 @@ DEVICE void InvokeActKernel(
     using StrideA = typename StrideXWeight<false, !params.transA>::type;
     using StrideB = typename StrideXWeight<params.isWeightNz, params.transB>::type;
     using StrideAntiquantScale = typename StrideAntiquant<params.antiquantType, params.transB>::type;
-    using StrideBOptionalTuple = AscendC::Std::conditional_t<
-        params.hasAntiquantOffset, AscendC::Std::tuple<StrideB, StrideAntiquantScale, StrideAntiquantScale>,
-        AscendC::Std::tuple<StrideB, StrideAntiquantScale>>;
+    using StrideBOptionalTuple =
+        AscendC::Std::conditional_t<params.hasAntiquantOffset,
+                                    AscendC::Std::tuple<StrideB, StrideAntiquantScale, StrideAntiquantScale>,
+                                    AscendC::Std::tuple<StrideB, StrideAntiquantScale>>;
 
     using DtypeBias = AscendC::Std::conditional_t<params.biasTypeSameAsX, DTYPE_X, float>;
 #if defined(__DAV_310R6__)
@@ -242,28 +239,27 @@ DEVICE void InvokeActKernel(
     constexpr int SUB_BLOCK_NUM = 2;
 #endif
 
-    using DispatchPolicy = MainloopDavidWqbmmUbAntiquantScmc<
-        2, TileShapeUb, typename TileShapeReg<params.ubMte2InnerSize>::type, g_coreType, SUB_BLOCK_NUM,
-        params.ubMte2BufNum, 2, params.ubMte2InnerSize>;
-    using BlockMmad = BlockMmad<
-        DispatchPolicy, TileShapeL1, TileShapeL0, DTYPE_X, StrideA, DTYPE_WEIGHT, StrideBOptionalTuple, DtypeBias,
-        StrideBias, DTYPE_Y, StrideC>;
+    using DispatchPolicy =
+        MainloopDavidWqbmmUbAntiquantScmc<2, TileShapeUb, typename TileShapeReg<params.ubMte2InnerSize>::type,
+                                          g_coreType, SUB_BLOCK_NUM, params.ubMte2BufNum, 2, params.ubMte2InnerSize>;
+    using BlockMmad = BlockMmad<DispatchPolicy, TileShapeL1, TileShapeL0, DTYPE_X, StrideA, DTYPE_WEIGHT,
+                                StrideBOptionalTuple, DtypeBias, StrideBias, DTYPE_Y, StrideC>;
     using Kernel = wqbmmv2<ProblemShape, BlockMmad, TileSchedulerTailResplit<SUB_BLOCK_NUM>>;
 
     typename BlockMmad::Arguments args{
-        .aGmAddr = (__gm__ DTYPE_X*)x,
+        .aGmAddr = (__gm__ DTYPE_X *)x,
         .strideA =
             XWeightStride<!params.transA, false, DTYPE_X, DTYPE_WEIGHT>{}(tilingDataIn.mSize, tilingDataIn.kSize),
-        .bGmAddr = (__gm__ DTYPE_WEIGHT*)weight,
-        .strideB = XWeightStride<params.transB, params.isWeightNz, DTYPE_X, DTYPE_WEIGHT>{}(
-            tilingDataIn.nSize, tilingDataIn.kSize),
-        .antiquantScaleGmAddr = (__gm__ DTYPE_X*)antiquantScale,
+        .bGmAddr = (__gm__ DTYPE_WEIGHT *)weight,
+        .strideB = XWeightStride<params.transB, params.isWeightNz, DTYPE_X, DTYPE_WEIGHT>{}(tilingDataIn.nSize,
+                                                                                            tilingDataIn.kSize),
+        .antiquantScaleGmAddr = (__gm__ DTYPE_X *)antiquantScale,
         .strideAntiquantScale = ScaleOffsetStride<params.transB, params.antiquantType>{}(
             tilingDataIn.nSize, tilingDataIn.kSize, tilingDataIn.groupSize),
-        .antiquantOffsetGmAddr = (__gm__ DTYPE_X*)antiquantOffset,
-        .biasGmAddr = (__gm__ DtypeBias*)bias,
+        .antiquantOffsetGmAddr = (__gm__ DTYPE_X *)antiquantOffset,
+        .biasGmAddr = (__gm__ DtypeBias *)bias,
         .strideBias = AscendC::Std::make_tuple(_1{}),
-        .cGmAddr = (__gm__ DTYPE_Y*)y,
+        .cGmAddr = (__gm__ DTYPE_Y *)y,
         .strideC = AscendC::Std::make_tuple(tilingDataIn.nSize, _1{}),
         .groupSize = tilingDataIn.groupSize,
     };

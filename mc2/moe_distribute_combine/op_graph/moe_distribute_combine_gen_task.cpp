@@ -28,7 +28,7 @@ ge::Status MoeDistributeCombineCalcParamFunc(gert::ExeResGenerationContext *cont
 }
 
 ge::Status MoeDistributeCombineGenTaskFunc(const gert::ExeResGenerationContext *context,
-                                            std::vector<std::vector<uint8_t>> &tasks)
+                                           std::vector<std::vector<uint8_t>> &tasks)
 {
     const char *nodeName = context->GetNodeName();
     if (IsTargetPlatformSocVersion(nodeName, PLATFORM_A2)) {

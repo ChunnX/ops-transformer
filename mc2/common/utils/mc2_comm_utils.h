@@ -34,6 +34,6 @@ inline uint8_t GetCommModeFromEnv()
     return COMM_MODE_CCU;
 }
 
-}
+} // namespace Mc2Comm
 
 #endif

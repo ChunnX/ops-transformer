@@ -11,7 +11,6 @@ import os
 from typing import Optional, Tuple
 
 import torch
-import torch_npu
 from torch.library import impl
 from torch_npu.utils._error_code import ErrCode, ops_error
 from cann_ops_transformer.op_builder.builder import OpBuilder
@@ -28,7 +27,11 @@ _PAD_TO_EVEN_FACTOR = 2
 
 
 def _is_mx_quant_mode(quant_mode: int) -> bool:
-    return quant_mode in (_QUANT_MODE_MXFP8_E5M2, _QUANT_MODE_MXFP8_E4M3FN, _QUANT_MODE_MXFP4_E2M1)
+    return quant_mode in (
+        _QUANT_MODE_MXFP8_E5M2,
+        _QUANT_MODE_MXFP8_E4M3FN,
+        _QUANT_MODE_MXFP4_E2M1,
+    )
 
 
 def _actual_num_out_tokens(indices: torch.Tensor, num_out_tokens: Optional[int]) -> int:
@@ -52,42 +55,50 @@ class MoeTokenPermuteOpBuilder(OpBuilder):
         super(MoeTokenPermuteOpBuilder, self).__init__("moe_token_permute")
 
     def sources(self):
-        return ['ops/csrc/moe_token_permute.cpp']
+        return ["ops/csrc/moe_token_permute.cpp"]
 
     def include_paths(self):
         paths = super().include_paths()
-        paths.append(os.path.abspath(os.path.join(
-            self._package_path,
-            "..",
-            "..",
-            "moe",
-            "moe_token_permute",
-            "op_host",
-            "op_api",
-        )))
+        paths.append(
+            os.path.abspath(
+                os.path.join(
+                    self._package_path,
+                    "..",
+                    "..",
+                    "moe",
+                    "moe_token_permute",
+                    "op_host",
+                    "op_api",
+                )
+            )
+        )
         return paths
 
     def schema(self) -> str:
-        return "moe_token_permute(Tensor tokens, Tensor indices, " \
+        return (
+            "moe_token_permute(Tensor tokens, Tensor indices, "
             "int? num_out_tokens=None, bool padded_mode=False, int quant_mode=-1) -> (Tensor, Tensor, Tensor)"
+        )
 
     def register_meta(self):
         @impl(AS_LIBRARY, self.name, "Meta")
-        def moe_token_permute_meta(tokens, indices, num_out_tokens=None, padded_mode=False, quant_mode=-1):
+        def moe_token_permute_meta(
+            tokens, indices, num_out_tokens=None, padded_mode=False, quant_mode=-1
+        ):
             torch._check(
                 tokens.dim() == 2,
                 lambda: f"tokens must be a 2D tensor, but got {tokens.dim()} dimensions."
-                        f"{ops_error(ErrCode.VALUE)}",
+                f"{ops_error(ErrCode.VALUE)}",
             )
             torch._check(
                 indices.dim() in (1, 2),
                 lambda: f"indices must be a 1D or 2D tensor, but got {indices.dim()} dimensions."
-                        f"{ops_error(ErrCode.VALUE)}",
+                f"{ops_error(ErrCode.VALUE)}",
             )
             torch._check(
                 quant_mode == _QUANT_MODE_NONE or _is_mx_quant_mode(quant_mode),
                 lambda: "quant_mode only supports -1, 2, 3 or 9."
-                        f"{ops_error(ErrCode.VALUE)}",
+                f"{ops_error(ErrCode.VALUE)}",
             )
 
             out_tokens = _actual_num_out_tokens(indices, num_out_tokens)
@@ -95,26 +106,42 @@ class MoeTokenPermuteOpBuilder(OpBuilder):
             sorted_indices = indices.new_empty((indices.numel(),), dtype=torch.int32)
 
             if quant_mode == _QUANT_MODE_MXFP8_E5M2:
-                permuted_tokens = tokens.new_empty((out_tokens, hidden_size), dtype=torch.float8_e5m2)
-                scale_cols = _align_up(_ceil_div(hidden_size, _MX_QUANT_BLOCK_SIZE), _PAD_TO_EVEN_FACTOR)
-                expanded_scale = tokens.new_empty((out_tokens, scale_cols), dtype=torch.float8_e8m0fnu)
+                permuted_tokens = tokens.new_empty(
+                    (out_tokens, hidden_size), dtype=torch.float8_e5m2
+                )
+                scale_cols = _align_up(
+                    _ceil_div(hidden_size, _MX_QUANT_BLOCK_SIZE), _PAD_TO_EVEN_FACTOR
+                )
+                expanded_scale = tokens.new_empty(
+                    (out_tokens, scale_cols), dtype=torch.float8_e8m0fnu
+                )
             elif quant_mode == _QUANT_MODE_MXFP8_E4M3FN:
-                permuted_tokens = tokens.new_empty((out_tokens, hidden_size), dtype=torch.float8_e4m3fn)
-                scale_cols = _align_up(_ceil_div(hidden_size, _MX_QUANT_BLOCK_SIZE), _PAD_TO_EVEN_FACTOR)
-                expanded_scale = tokens.new_empty((out_tokens, scale_cols), dtype=torch.float8_e8m0fnu)
+                permuted_tokens = tokens.new_empty(
+                    (out_tokens, hidden_size), dtype=torch.float8_e4m3fn
+                )
+                scale_cols = _align_up(
+                    _ceil_div(hidden_size, _MX_QUANT_BLOCK_SIZE), _PAD_TO_EVEN_FACTOR
+                )
+                expanded_scale = tokens.new_empty(
+                    (out_tokens, scale_cols), dtype=torch.float8_e8m0fnu
+                )
             elif quant_mode == _QUANT_MODE_MXFP4_E2M1:
                 torch._check(
                     hidden_size % 2 == 0,
                     lambda: "The hidden size must be even when quant_mode is 9."
-                            f"{ops_error(ErrCode.VALUE)}",
+                    f"{ops_error(ErrCode.VALUE)}",
                 )
-                permuted_tokens = tokens.new_empty((out_tokens, hidden_size // 2), dtype=torch.uint8)
+                permuted_tokens = tokens.new_empty(
+                    (out_tokens, hidden_size // 2), dtype=torch.uint8
+                )
                 expanded_scale = tokens.new_empty(
                     (out_tokens, _ceil_div(hidden_size, _MXFP4_SCALE_BLOCK_SIZE), 2),
                     dtype=torch.uint8,
                 )
             else:
-                permuted_tokens = tokens.new_empty((out_tokens, hidden_size), dtype=tokens.dtype)
+                permuted_tokens = tokens.new_empty(
+                    (out_tokens, hidden_size), dtype=tokens.dtype
+                )
                 expanded_scale = tokens.new_empty((0,), dtype=torch.float32)
 
             return permuted_tokens, sorted_indices, expanded_scale
@@ -124,9 +151,13 @@ moe_token_permute_op_builder = MoeTokenPermuteOpBuilder()
 
 
 @impl(AS_LIBRARY, moe_token_permute_op_builder.name, "PrivateUse1")
-def _moe_token_permute(tokens, indices, num_out_tokens=None, padded_mode=False, quant_mode=-1):
+def _moe_token_permute(
+    tokens, indices, num_out_tokens=None, padded_mode=False, quant_mode=-1
+):
     op_module = moe_token_permute_op_builder.load()
-    return op_module.moe_token_permute(tokens, indices, num_out_tokens, padded_mode, quant_mode)
+    return op_module.moe_token_permute(
+        tokens, indices, num_out_tokens, padded_mode, quant_mode
+    )
 
 
 def moe_token_permute(

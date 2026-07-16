@@ -55,23 +55,23 @@ const std::string CMP_TOPK_LENGTH_NAME = "cmp_topk_length";
 const std::string METADATA_NAME = "metadata";
 
 // // ------------------公共定义--------------------------
-struct QSMLATilingRequiredParaInfo {
+struct MQSMLATilingRequiredParaInfo {
     const gert::CompileTimeTensorDesc *desc;
     const gert::StorageShape *shape;
 };
 
-struct QSMLATilingOptionalParaInfo {
+struct MQSMLATilingOptionalParaInfo {
     const gert::CompileTimeTensorDesc *desc;
     const gert::Tensor *tensor;
 };
 
-enum class QSMLALayout : uint32_t {
+enum class MQSMLALayout : uint32_t {
     BSND = 0,
     TND = 1,
     PA_BBND = 2
 };
 
-enum class QSMLAAxis : uint32_t {
+enum class MQSMLAAxis : uint32_t {
     B = 0,
     S = 1,
     N = 2,
@@ -208,44 +208,44 @@ const std::map<ge::DataType, std::string> DATATYPE_TO_STRING_MAP = {
     {ge::DT_HIFLOAT8, "DT_HIFLOAT8"},             // dt_variant type
 };
 
-const std::map<QSMLALayout, std::vector<QSMLAAxis>> QSMLA_LAYOUT_AXIS_MAP = {
-    {QSMLALayout::BSND, {QSMLAAxis::B, QSMLAAxis::S, QSMLAAxis::N, QSMLAAxis::D}},
-    {QSMLALayout::TND, {QSMLAAxis::T, QSMLAAxis::N, QSMLAAxis::D}},
-    {QSMLALayout::PA_BBND, {QSMLAAxis::Bn, QSMLAAxis::Bs, QSMLAAxis::N, QSMLAAxis::D}},
+const std::map<MQSMLALayout, std::vector<MQSMLAAxis>> QSMLA_LAYOUT_AXIS_MAP = {
+    {MQSMLALayout::BSND, {MQSMLAAxis::B, MQSMLAAxis::S, MQSMLAAxis::N, MQSMLAAxis::D}},
+    {MQSMLALayout::TND, {MQSMLAAxis::T, MQSMLAAxis::N, MQSMLAAxis::D}},
+    {MQSMLALayout::PA_BBND, {MQSMLAAxis::Bn, MQSMLAAxis::Bs, MQSMLAAxis::N, MQSMLAAxis::D}},
 };
 
-const std::map<QSMLALayout, size_t> QSMLA_LAYOUT_DIM_MAP = {
-    {QSMLALayout::BSND, DIM_NUM_FOUR},
-    {QSMLALayout::TND, DIM_NUM_THREE},
-    {QSMLALayout::PA_BBND, DIM_NUM_FOUR},
+const std::map<MQSMLALayout, size_t> QSMLA_LAYOUT_DIM_MAP = {
+    {MQSMLALayout::BSND, DIM_NUM_FOUR},
+    {MQSMLALayout::TND, DIM_NUM_THREE},
+    {MQSMLALayout::PA_BBND, DIM_NUM_FOUR},
 };
 
-std::string QSMLADataTypeToSerialString(ge::DataType type);
-std::string QSMLALayoutToSerialString(QSMLALayout layout);
+std::string MQSMLADataTypeToSerialString(ge::DataType type);
+std::string MQSMLALayoutToSerialString(MQSMLALayout layout);
 std::string GetShapeStr(gert::Shape shape);
 
 // -----------算子Tiling入参信息解析及Check类---------------
 
-struct QSMLAParaInfo {
-    QSMLATilingRequiredParaInfo q = {nullptr, nullptr};
-    QSMLATilingOptionalParaInfo oriKv = {nullptr, nullptr};
-    QSMLATilingOptionalParaInfo cmpKv = {nullptr, nullptr};
-    QSMLATilingOptionalParaInfo oriSparseIndices = {nullptr, nullptr};
-    QSMLATilingOptionalParaInfo cmpSparseIndices = {nullptr, nullptr};
-    QSMLATilingOptionalParaInfo oriBlockTable = {nullptr, nullptr};
-    QSMLATilingOptionalParaInfo cmpBlockTable = {nullptr, nullptr};
-    QSMLATilingOptionalParaInfo cuSeqLensQ = {nullptr, nullptr};
-    QSMLATilingOptionalParaInfo cuSeqLensOriKv = {nullptr, nullptr};
-    QSMLATilingOptionalParaInfo cuSeqLensCmpKv = {nullptr, nullptr};
-    QSMLATilingOptionalParaInfo seqUsedQ = {nullptr, nullptr};
-    QSMLATilingOptionalParaInfo sequsedOriKv = {nullptr, nullptr};
-    QSMLATilingOptionalParaInfo sequsedCmpKv = {nullptr, nullptr};
-    QSMLATilingOptionalParaInfo cmpResidualKv = {nullptr, nullptr};
-    QSMLATilingOptionalParaInfo oriTopkLength = {nullptr, nullptr};
-    QSMLATilingOptionalParaInfo cmpTopkLength = {nullptr, nullptr};
-    QSMLATilingOptionalParaInfo sinks = {nullptr, nullptr};
-    QSMLATilingOptionalParaInfo metadata = {nullptr, nullptr};
-    QSMLATilingRequiredParaInfo attnOut = {nullptr, nullptr};
+struct MQSMLAParaInfo {
+    MQSMLATilingRequiredParaInfo q = {nullptr, nullptr};
+    MQSMLATilingOptionalParaInfo oriKv = {nullptr, nullptr};
+    MQSMLATilingOptionalParaInfo cmpKv = {nullptr, nullptr};
+    MQSMLATilingOptionalParaInfo oriSparseIndices = {nullptr, nullptr};
+    MQSMLATilingOptionalParaInfo cmpSparseIndices = {nullptr, nullptr};
+    MQSMLATilingOptionalParaInfo oriBlockTable = {nullptr, nullptr};
+    MQSMLATilingOptionalParaInfo cmpBlockTable = {nullptr, nullptr};
+    MQSMLATilingOptionalParaInfo cuSeqLensQ = {nullptr, nullptr};
+    MQSMLATilingOptionalParaInfo cuSeqLensOriKv = {nullptr, nullptr};
+    MQSMLATilingOptionalParaInfo cuSeqLensCmpKv = {nullptr, nullptr};
+    MQSMLATilingOptionalParaInfo seqUsedQ = {nullptr, nullptr};
+    MQSMLATilingOptionalParaInfo sequsedOriKv = {nullptr, nullptr};
+    MQSMLATilingOptionalParaInfo sequsedCmpKv = {nullptr, nullptr};
+    MQSMLATilingOptionalParaInfo cmpResidualKv = {nullptr, nullptr};
+    MQSMLATilingOptionalParaInfo oriTopkLength = {nullptr, nullptr};
+    MQSMLATilingOptionalParaInfo cmpTopkLength = {nullptr, nullptr};
+    MQSMLATilingOptionalParaInfo sinks = {nullptr, nullptr};
+    MQSMLATilingOptionalParaInfo metadata = {nullptr, nullptr};
+    MQSMLATilingRequiredParaInfo attnOut = {nullptr, nullptr};
 
     const int64_t *quantMode = nullptr;
     const int64_t *tileSize = nullptr;
@@ -264,11 +264,11 @@ struct QSMLAParaInfo {
 };
 
 // -----------算子Tiling入参信息类---------------
-class QSMLATilingInfo {
+class MQSMLATilingInfo {
 public:
     const char *opName = nullptr;
     fe::PlatFormInfos *platformInfo = nullptr;
-    QSMLAParaInfo opParamInfo;
+    MQSMLAParaInfo opParamInfo;
 
     // Base Param
     platform_ascendc::SocVersion socVersion = platform_ascendc::SocVersion::ASCEND910B;
@@ -328,23 +328,23 @@ public:
     ge::DataType outputType = ge::DT_FLOAT16;
 
     // Layout
-    QSMLALayout qLayout = QSMLALayout::BSND;
-    QSMLALayout kvLayout = QSMLALayout::PA_BBND;
-    QSMLALayout outLayout = QSMLALayout::BSND;
+    MQSMLALayout qLayout = MQSMLALayout::BSND;
+    MQSMLALayout kvLayout = MQSMLALayout::PA_BBND;
+    MQSMLALayout outLayout = MQSMLALayout::BSND;
 };
 
-class QSMLAInfoParser {
+class MQSMLAInfoParser {
 public:
-    explicit QSMLAInfoParser(gert::TilingContext *context) : context_(context)
+    explicit MQSMLAInfoParser(gert::TilingContext *context) : context_(context)
     {
     }
-    ~QSMLAInfoParser() = default;
+    ~MQSMLAInfoParser() = default;
 
     ge::graphStatus CheckRequiredInOutExistence() const;
     ge::graphStatus CheckRequiredAttrExistence() const;
     ge::graphStatus CheckRequiredParaExistence() const;
 
-    ge::graphStatus GetActualSeqLenSize(uint32_t &size, const gert::Tensor *tensor, QSMLALayout &layout,
+    ge::graphStatus GetActualSeqLenSize(uint32_t &size, const gert::Tensor *tensor, MQSMLALayout &layout,
                                         const std::string &name) const;
     ge::graphStatus GetActualSeqLenQSize(uint32_t &size);
     ge::graphStatus GetOpName();
@@ -376,18 +376,18 @@ public:
     ge::graphStatus GetDSizeQ();
     ge::graphStatus GetDSizeKV();
     ge::graphStatus GetKvstride();
-    void GenerateInfo(QSMLATilingInfo &qsmlaInfo);
-    ge::graphStatus Parse(QSMLATilingInfo &qsmlaInfo);
+    void GenerateInfo(MQSMLATilingInfo &qsmlaInfo);
+    ge::graphStatus Parse(MQSMLATilingInfo &qsmlaInfo);
 
 public:
     gert::TilingContext *context_ = nullptr;
     const char *opName_;
     fe::PlatFormInfos *platformInfo_;
-    QSMLAParaInfo opParamInfo_;
+    MQSMLAParaInfo opParamInfo_;
 
-    bool HasAxis(const QSMLAAxis &axis, const QSMLALayout &layout, const gert::Shape &shape) const;
-    size_t GetAxisIdx(const QSMLAAxis &axis, const QSMLALayout &layout) const;
-    uint32_t GetAxisNum(const gert::Shape &shape, const QSMLAAxis &axis, const QSMLALayout &layout) const;
+    bool HasAxis(const MQSMLAAxis &axis, const MQSMLALayout &layout, const gert::Shape &shape) const;
+    size_t GetAxisIdx(const MQSMLAAxis &axis, const MQSMLALayout &layout) const;
+    uint32_t GetAxisNum(const gert::Shape &shape, const MQSMLAAxis &axis, const MQSMLALayout &layout) const;
     static constexpr int64_t invalidDimValue_ = std::numeric_limits<int64_t>::min();
 
     // BaseParams
@@ -412,9 +412,9 @@ public:
     std::vector<int64_t> oriKvStridesVec_;
     std::vector<int64_t> cmpKvStridesVec_;
     // Layout
-    QSMLALayout qLayout_ = QSMLALayout::BSND;
-    QSMLALayout outLayout_ = QSMLALayout::BSND;
-    QSMLALayout kvLayout_ = QSMLALayout::PA_BBND;
+    MQSMLALayout qLayout_ = MQSMLALayout::BSND;
+    MQSMLALayout outLayout_ = MQSMLALayout::BSND;
+    MQSMLALayout kvLayout_ = MQSMLALayout::PA_BBND;
     // PageAttention
     uint32_t oriMaxBlockNumPerBatch_ = 0;
     uint32_t cmpMaxBlockNumPerBatch_ = 0;
@@ -440,17 +440,17 @@ public:
     gert::Shape cmpSparseIndicesShape_{};
 };
 
-class QSMLATilingCheck {
+class MQSMLATilingCheck {
 public:
-    explicit QSMLATilingCheck(const QSMLATilingInfo &qsmlaInfo) : qsmlaInfo_(qsmlaInfo) {};
-    ~QSMLATilingCheck() = default;
+    explicit MQSMLATilingCheck(const MQSMLATilingInfo &qsmlaInfo) : qsmlaInfo_(qsmlaInfo) {};
+    ~MQSMLATilingCheck() = default;
     virtual ge::graphStatus Process();
 
 private:
     void Init();
-    bool HasAxis(const QSMLAAxis &axis, const QSMLALayout &layout, const gert::Shape &shape) const;
-    size_t GetAxisIdx(const QSMLAAxis &axis, const QSMLALayout &layout) const;
-    uint32_t GetAxisNum(const gert::Shape &shape, const QSMLAAxis &axis, const QSMLALayout &layout) const;
+    bool HasAxis(const MQSMLAAxis &axis, const MQSMLALayout &layout, const gert::Shape &shape) const;
+    size_t GetAxisIdx(const MQSMLAAxis &axis, const MQSMLALayout &layout) const;
+    uint32_t GetAxisNum(const gert::Shape &shape, const MQSMLAAxis &axis, const MQSMLALayout &layout) const;
     static constexpr int64_t invalidDimValue_ = std::numeric_limits<int64_t>::min();
 
     void LogErrorDtypeSupport(const std::vector<ge::DataType> &expectDtypeList, const ge::DataType &actualDtype,
@@ -466,15 +466,15 @@ private:
                                        const std::string &name) const;
     ge::graphStatus CheckShapeNumSupport(const gert::StorageShape *shape,
                                          const std::vector<int64_t> &expectShapeNumList, const std::string &name) const;
-    ge::graphStatus CheckDimNumInLayoutSupport(const QSMLALayout &layout, const gert::StorageShape *shape,
+    ge::graphStatus CheckDimNumInLayoutSupport(const MQSMLALayout &layout, const gert::StorageShape *shape,
                                                const std::string &name) const;
-    void LogErrorLayoutSupport(const std::vector<QSMLALayout> &expectLayoutList, const QSMLALayout &actualLayout,
+    void LogErrorLayoutSupport(const std::vector<MQSMLALayout> &expectLayoutList, const MQSMLALayout &actualLayout,
                                const std::string &name) const;
     ge::graphStatus GetExpectedShape(gert::Shape &shapeExpected, const QSMLATilingShapeCompareParam &param,
-                                     const QSMLALayout &layout) const;
+                                     const MQSMLALayout &layout) const;
     ge::graphStatus CompareShape(QSMLATilingShapeCompareParam &param, const gert::Shape &shape,
-                                 const QSMLALayout &layout, const std::string &name) const;
-    ge::graphStatus CheckLayoutSupport(const QSMLALayout &actualLayout, const std::string &name) const;
+                                 const MQSMLALayout &layout, const std::string &name) const;
+    ge::graphStatus CheckLayoutSupport(const MQSMLALayout &actualLayout, const std::string &name) const;
     ge::graphStatus CheckSingleParaQuery() const;
     ge::graphStatus CheckSingleParaKey() const;
     ge::graphStatus CheckSingleParaNumHeads() const;
@@ -502,7 +502,7 @@ private:
     ge::graphStatus CheckCmpSparseIndicesExistence();
     ge::graphStatus CheckParaExistence();
     ge::graphStatus CheckCmpRatioExistence();
-    ge::graphStatus GetActualSeqLenSize(uint32_t &size, const gert::Tensor *tensor, const QSMLALayout &layout,
+    ge::graphStatus GetActualSeqLenSize(uint32_t &size, const gert::Tensor *tensor, const MQSMLALayout &layout,
                                         const std::string &name) const;
     ge::graphStatus CheckSWAExistence();
     ge::graphStatus CheckHCAExistence();
@@ -550,8 +550,8 @@ private:
 private:
     const char *opName_;
     fe::PlatFormInfos *platformInfo_;
-    QSMLAParaInfo opParamInfo_;
-    const QSMLATilingInfo &qsmlaInfo_;
+    MQSMLAParaInfo opParamInfo_;
+    const MQSMLATilingInfo &qsmlaInfo_;
 
     uint32_t bSize_ = 0;
     uint32_t n1Size_ = 0;
@@ -596,9 +596,9 @@ private:
     uint32_t oriMaskMode_ = 0;
     uint32_t cmpMaskMode_ = 0;
 
-    QSMLALayout qLayout_ = QSMLALayout::BSND;
-    QSMLALayout outLayout_ = QSMLALayout::BSND;
-    QSMLALayout kvLayout_ = QSMLALayout::PA_BBND;
+    MQSMLALayout qLayout_ = MQSMLALayout::BSND;
+    MQSMLALayout outLayout_ = MQSMLALayout::BSND;
+    MQSMLALayout kvLayout_ = MQSMLALayout::PA_BBND;
 
     uint32_t oriMaxBlockNumPerBatch_ = 0;
     uint32_t cmpMaxBlockNumPerBatch_ = 0;

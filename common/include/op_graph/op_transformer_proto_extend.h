@@ -306,4 +306,5 @@ REG_OP(MaskedSoftmaxWithRelPosBias)
     .OP_END_FACTORY_REG(FFN)
 
 } // namespace ge
+
 #endif
