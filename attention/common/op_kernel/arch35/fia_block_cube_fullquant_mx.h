@@ -650,11 +650,6 @@ public:
 
     __aicore__ inline void IterateBmm1(MM1_DBUF_T &outputBuf, RunInfoX &runInfo, uint32_t subLoop)
     {
-        if constexpr (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_BNSD) {
-            if (runInfo.isChangeBatch) {
-                UpdateKey(runInfo.bIdx);
-            }
-        }
         if constexpr (USE_DN) {
             IterateBmm1Dn(outputBuf, runInfo, subLoop);
         } else {
@@ -876,12 +871,6 @@ public:
 
     __aicore__ inline void IterateBmm2(mm2ResPos &outputBuf, MM2_ABUF_POLICY_T &inputBuf, RunInfoX &runInfo)
     {
-        if constexpr (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_BNSD) {
-            if (runInfo.isChangeBatch) {
-                UpdateValue(runInfo.bIdx);
-            }
-        }
-
         if constexpr (USE_DN) {
             IterateBmm2Dn(outputBuf, inputBuf, runInfo);
         } else {
@@ -1115,18 +1104,15 @@ public:
     static constexpr bool HAS_PREFIX = enableKVPrefix;
     static constexpr bool BMM2_TOUB = bmm2Write2Ub;
     static constexpr bool USE_DN = useDn;
-
     using ROPE_T = bfloat16_t;
     using Q_T = INPUT_T;
     using KV_T = INPUT_T;
     using MM_T = T;
     using mm2ResPos = typename std::conditional<bmm2Write2Ub, Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>,
                                                 Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_FORWARD>>::type;
-
     using MM1_DBUF_T = Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>;
     using MM2_ABUF_POLICY_T = BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD>;
     using MM2_ABUF_T = Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD>;
-
     using ConstInfoX = ConstInfo_t<FiaKernelType::FULL_QUANT>;
     __aicore__ inline FAFullQuantMxBlockCubeDummy(ConstInfoX &constInfo) {};
 };
