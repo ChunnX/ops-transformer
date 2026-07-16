@@ -639,9 +639,8 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.wait_flag("mte2", "v", 6)
                     T.tile.sub(diff_ub, softmax_i_chunk_ub, p_reduced_tmp_ub)
 
-                    # Broadcast diff_ub → diff_2d_ub (UB→UB copy per row)
-                    for i in T.serial(vector_baseg):
-                        T.copy(diff_ub, diff_2d_ub[i, :])
+                    # Broadcast diff_ub → diff_2d_ub via BRCB (1 instruction replaces 32 serial copies)
+                    T.tile.broadcast(diff_2d_ub, diff_ub)
 
                     # WAR pre-fill: dw_chunk_ub 初始可安全写入（无前序 V 读者）
                     T.set_flag("v", "mte2", 4)
@@ -665,9 +664,8 @@ def tilelang_grad_kl_loss_single_kernel(
                         T.tile.sub(rsy_tmp_ub, ones_2d_ub, rsy_tmp_ub)
 
                         # Op1: rg = weight_slice * diff (2D)
-                        # weight切片逐行copy（TileLang不支持动态切片作为mul参数）
-                        for i in T.serial(vector_baseg):
-                            T.copy(weight_2d_ub[g_start + i, :], rg_chunk_ub[i, :])
+                        # weight切片整块copy（消除32次逐行copy）
+                        T.copy(weight_2d_ub[g_start:g_start + vector_baseg, 0:n_block], rg_chunk_ub)
                         T.tile.mul(rg_chunk_ub, rg_chunk_ub, diff_2d_ub)
                         # Op2: rg *= rsy_tmp mask (2D, was per-row 1D mul)
                         T.pipe_barrier("v")
