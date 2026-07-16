@@ -286,18 +286,18 @@ static ge::graphStatus AllGatherMatmulAIVModeCheckAttrAndSetTiling(gert::TilingC
                                                                    CoCTiling &coctiling)
 {
     auto attrs = context->GetAttrs();
-    OP_TILING_CHECK(attrs == nullptr, OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "attrs"),
-                    return ge::GRAPH_FAILED);
+    OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
 
     // Attr相关tilingdata的设置、校验、打印
     auto groupPtr = attrs->GetAttrPointer<char>(static_cast<int>(ATTR_GROUP_INDEX));
     auto isTransposeX1 = attrs->GetAttrPointer<bool>(ATTR_IS_TRANS_X1);
     auto isTransposeX2 = attrs->GetAttrPointer<bool>(ATTR_IS_TRANS_X2);
-
-    OP_TILING_CHECK(groupPtr == nullptr || strlen(groupPtr) == 0,
-                    OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "group"), return GRAPH_FAILED);
-    OP_TILING_CHECK(isTransposeX2 == nullptr, OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "isTransposeX2"),
-                    return GRAPH_FAILED);
+    OP_CHECK_NULL_WITH_CONTEXT(context, groupPtr);
+    if (strlen(groupPtr) == 0) {
+        OP_LOGE(context->GetNodeName(), "The length of group string is 0.");
+        return GRAPH_FAILED;
+    }
+    OP_CHECK_NULL_WITH_CONTEXT(context, isTransposeX2);
 
     info.isTransposeX1 = *isTransposeX1 ? *isTransposeX1 : false;
     info.isTransposeX2 = *isTransposeX2 ? *isTransposeX2 : false;
