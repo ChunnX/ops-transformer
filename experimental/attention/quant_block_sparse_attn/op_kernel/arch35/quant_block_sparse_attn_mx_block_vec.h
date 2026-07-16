@@ -111,6 +111,7 @@ public:
             tPipe_->InitBuffer(preLoopMaxBuf_, 256U);
             tPipe_->InitBuffer(preLoopSumBuf_, 256U);
             tPipe_->InitBuffer(firstLoopSumBuf_, 256U);
+            tPipe_->InitBuffer(softmaxLseQueue_, 1, (M_BASE >> 1U) * sizeof(float) * 8U);
             if constexpr (HAS_ATTEN) {
                 // DN mask UB：[256,64]，按 sparse segment 拼接。
                 tPipe_->InitBuffer(attenMaskInQue_, 1, ATTEN_MASK_UB_SIZE);
@@ -518,11 +519,10 @@ private:
         if (!constInfo.isSoftmaxLseEnable || runInfo.actVecMSize == 0U) {
             return;
         }
-        WaitFlag<HardEvent::MTE3_V>(mte3ToVId_[0]);
-        LocalTensor<float> lseUb = softmaxExpBuf_[0].template Get<float>();
+        LocalTensor<float> lseUb = softmaxLseQueue_.template AllocTensor<float>();
         ComputeLseOutputVF(lseUb, sumUb, maxUb, runInfo.actVecMSize);
-        SetFlag<HardEvent::V_MTE3>(vToMte3Id_[0]);
-        WaitFlag<HardEvent::V_MTE3>(vToMte3Id_[0]);
+        softmaxLseQueue_.template EnQue(lseUb);
+        softmaxLseQueue_.template DeQue<float>();
         DataCopyExtParams dataCopyParams;
         dataCopyParams.blockLen = sizeof(float);
         dataCopyParams.blockCount = runInfo.actVecMSize;
@@ -532,7 +532,7 @@ private:
             (runInfo.queryTokenBase + runInfo.s1Idx + runInfo.vecMbaseIdx) * constInfo.realN2Size +
             runInfo.realN2Idx;
         DataCopyPad(softmaxLseGm_[dstOffset], lseUb, dataCopyParams);
-        SetFlag<HardEvent::MTE3_V>(mte3ToVId_[0]);
+        softmaxLseQueue_.template FreeTensor(lseUb);
     }
 
     TPipe *tPipe_ = nullptr;
@@ -544,6 +544,7 @@ private:
     TQue<QuePosition::VECIN, 1> attenMaskInQue_;
     TQue<QuePosition::VECOUT, 1> stage1OutQue_[2];
     TQue<QuePosition::VECOUT, 1> pScaleSubLoop0Que_;
+    TQue<QuePosition::VECOUT, 1> softmaxLseQueue_;
     TBuf<> stage2OutBuf_;
     TBuf<> softmaxMaxBuf_[PRELOAD_N + 1U];
     TBuf<> softmaxSumBuf_[PRELOAD_N + 1U];
