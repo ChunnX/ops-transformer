@@ -1,0 +1,12 @@
+case_name,expectResult,q_shape,q_dtype,q_format,qSeqLens_shape,qSeqLens_dtype,qSeqLens_format,cuSeqLensQ_shape,cuSeqLensQ_dtype,cuSeqLensQ_format,qScale_shape,qScale_dtype,qScale_format,qFlat_shape,qFlat_dtype,qFlat_format,stemBlockSize,stemStride,expect_qFlat_shape
+infershape_basic_B1_H1,SUCCESS,128 1 128,FLOAT8_E4M3FN,ND,1,INT32,ND,2,INT32,ND,,,,,BF16,ND,128,16,1 1 -1 2048
+infershape_B2_H1,SUCCESS,256 1 128,FLOAT8_E4M3FN,ND,2,INT32,ND,3,INT32,ND,,,,,BF16,ND,128,16,2 1 -1 2048
+infershape_B1_H8,SUCCESS,128 8 128,FLOAT8_E4M3FN,ND,1,INT32,ND,2,INT32,ND,,,,,BF16,ND,128,16,1 8 -1 2048
+infershape_B4_H4,SUCCESS,512 4 128,FLOAT8_E4M3FN,ND,4,INT32,ND,5,INT32,ND,,,,,BF16,ND,128,16,4 4 -1 2048
+infershape_stride32,SUCCESS,128 1 128,FLOAT8_E4M3FN,ND,1,INT32,ND,2,INT32,ND,,,,,BF16,ND,128,32,1 1 -1 4096
+infershape_stride64,SUCCESS,128 2 128,FLOAT8_E4M3FN,ND,1,INT32,ND,2,INT32,ND,,,,,BF16,ND,128,64,1 2 -1 8192
+infershape_blocksize32,SUCCESS,128 1 128,FLOAT8_E4M3FN,ND,1,INT32,ND,2,INT32,ND,,,,,BF16,ND,32,16,1 1 -1 2048
+infershape_with_qScale,SUCCESS,128 1 128,FLOAT8_E4M3FN,ND,1,INT32,ND,2,INT32,ND,128 1,FLOAT,ND,,BF16,ND,128,16,1 1 -1 2048
+infershape_failed_no_qSeqLens,FAILED,128 1 128,FLOAT8_E4M3FN,ND,,INT32,ND,2,INT32,ND,,,,,BF16,ND,128,16,
+infershape_failed_no_q,FAILED,,FLOAT8_E4M3FN,ND,1,INT32,ND,2,INT32,ND,,,,,BF16,ND,128,16,
+infershape_failed_q_2d,FAILED,128 128,FLOAT8_E4M3FN,ND,1,INT32,ND,2,INT32,ND,,,,,BF16,ND,128,16,
