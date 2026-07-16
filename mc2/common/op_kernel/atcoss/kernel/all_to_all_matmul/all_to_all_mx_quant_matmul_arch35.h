@@ -15,33 +15,89 @@
  * Pipeline design:
  *   Process()
  *     AIV: comm_.ProcessScale()  →  comm_.ProcessData<X1Type>()
- *     AIC: ProcessCompute()      →  setupComputeContext_(i) + BlazeMXQuantMatmul::Process(i)
+ *     AIC: ProcessCompute()      →  setupComputeContext_(i) + executeGemm_(i)
  *
  * AIV side: pure communication via MxQuantAlltoAllComm (replaceable with AllGather etc).
- * AIC side: pure computation, reuses BlazeMXQuantMatmul without modification.
+ * AIC side: pure computation, directly invokes Blaze GemmKernel.
  */
 
 #ifndef DISTA_ALL_TO_ALL_MX_QUANT_MATMUL_ARCH35_H
 #define DISTA_ALL_TO_ALL_MX_QUANT_MATMUL_ARCH35_H
 
-#include "blaze_mx_quant_matmul.h"
 #include "../../block/ccu/ccu_alltoall_communicator.h"
+#include "blaze/gemm/utils/common_utils.h"
+#include "blaze/gemm/policy/dispatch_policy.h"
+#include "../../block/blaze_ext/gemm/policy/dispatch_policy_alltoall.h"
+#include "../../block/blaze_ext/gemm/kernel/kernel_qbmm_mx_alltoall.h"
+#include "../../block/blaze_ext/gemm/block/block_mmad_qbmm_mx_alltoall.h"
+#include "blaze/gemm/block/block_scheduler_qbmm.h"
+#include "blaze/epilogue/block/block_epilogue_empty.h"
+#include "../../utils/qbmm_tiling_data.h"
 
 namespace Dista {
 namespace Kernel {
+
+struct BlazeMXQuantMMBaseGmAddrs {
+    GM_ADDR aGM;
+    GM_ADDR bGM;
+    GM_ADDR cGM;
+    uint64_t aOffset;
+    uint64_t bOffset;
+    uint64_t cOffset;
+};
+
+struct BlazeMXQuantMMAdditionalData {
+    GM_ADDR x1Scale;
+    GM_ADDR x2Scale;
+    uint64_t x1ScaleOffset;
+    uint32_t rankDim;
+    uint32_t rankN;
+    uint32_t rankM;
+    uint32_t scaleKPerRank;
+};
+
+template <typename TilingDataType>
+struct BlazeMXQuantMMContext {
+    BlazeMXQuantMMBaseGmAddrs baseData;
+    BlazeMXQuantMMAdditionalData additionalData;
+    TilingDataType *tilingDataPtr;
+};
 
 template <typename X1Type, typename X2Type, typename YType, typename CommDataTypeX1,
           typename AlltoAllMatmulTilingDataType, bool IsMxFp4>
 class AlltoAllMxQuantMatmulArch35 {
 private:
     using CommType = Dista::AivComm::Ccu::MxQuantAlltoAllComm<AlltoAllMatmulTilingDataType, IsMxFp4>;
-    using ComputationType = BlazeMXQuantMatmul<X1Type, X2Type, YType>;
+
+    using LayoutA = AscendC::Te::NDExtLayoutPtn;
+    using LayoutB = AscendC::Te::DNExtLayoutPtn;
+    using LayoutC = AscendC::Te::NDExtLayoutPtn;
+    using ProblemShape = AscendC::Te::Shape<int64_t, int64_t, int64_t, int64_t>;
+
+    using DispatchPolicy = Blaze::Gemm::MatmulWithScaleMxAlltoAll<0, false>;
+    using BlockEpilogue = Blaze::Gemm::Block::BlockEpilogueEmpty;
+    using BlockScheduler =
+        Blaze::Gemm::Block::BlockSchedulerQuantBatchMatmulV3<ProblemShape, 0, LayoutA, LayoutB, X1Type>;
+    using BlockMmad = Blaze::Gemm::Block::BlockMmad<DispatchPolicy, X1Type, LayoutA, X2Type, LayoutB, YType, LayoutC,
+                                                     float, LayoutC>;
+    using GemmKernel = Blaze::Gemm::Kernel::GemmUniversal<ProblemShape, BlockMmad, BlockEpilogue, BlockScheduler,
+        AscendC::Std::enable_if_t<AscendC::Std::is_same_v<Blaze::Gemm::KernelMmadWithScaleMxAlltoAll,
+                                                           typename BlockMmad::DispatchPolicy::ScheduleType>>>;
+
+    using GemmParams = typename GemmKernel::Params;
+    using BlockMmadParams = typename BlockMmad::Params;
+    using L1Params = typename BlockMmad::L1Params;
+    using SchParams = typename BlockScheduler::Params;
+    using QBMMTiling = typename GemmKernel::QBMMTiling;
+    using AlltoAllParams = typename BlockMmad::AlltoAllParams;
+
+    using ComputeContextType = BlazeMXQuantMMContext<QuantBatchMatmulTilingData>;
 
 public:
     __aicore__ inline AlltoAllMxQuantMatmulArch35(AlltoAllMatmulTilingDataType *tilingData,
                                                      AscendC::TPipe *tPipe, uint64_t x1HcclDataType)
         : comm_(tilingData),
-          computeStage_(), tilingData_(tilingData), tPipe_(tPipe),
+          tilingData_(tilingData), tPipe_(tPipe),
           x1HcclDataType_(x1HcclDataType){};
 
     __aicore__ inline void Init(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias, GM_ADDR y, GM_ADDR all2all_out,
@@ -50,7 +106,7 @@ public:
 
 private:
     CommType comm_;
-    ComputationType computeStage_;
+    ComputeContextType computeContext_;
     AlltoAllMatmulTilingDataType *tilingData_;
     AscendC::TPipe *tPipe_;
 
@@ -73,6 +129,7 @@ private:
 
     __aicore__ inline void ProcessCompute();
     __aicore__ inline void setupComputeContext_(uint32_t loopIdx);
+    __aicore__ inline void executeGemm_(uint32_t taskIndex);
 };
 
 template <typename X1Type, typename X2Type, typename YType, typename CommDataTypeX1,
@@ -99,7 +156,6 @@ AlltoAllMxQuantMatmulArch35<X1Type, X2Type, YType, CommDataTypeX1,
 
     comm_.Init(x1Scale_, commX1ScaleGM1_, x1_, commOutGM_,
                mxScaleHcclDataType_, x1HcclDataType_);
-    computeStage_.Init();
 }
 
 template <typename X1Type, typename X2Type, typename YType, typename CommDataTypeX1,
@@ -129,7 +185,6 @@ AlltoAllMxQuantMatmulArch35<X1Type, X2Type, YType, CommDataTypeX1,
     }
 
     comm_.End();
-    computeStage_.End();
 }
 
 template <typename X1Type, typename X2Type, typename YType, typename CommDataTypeX1,
@@ -145,7 +200,7 @@ AlltoAllMxQuantMatmulArch35<X1Type, X2Type, YType, CommDataTypeX1,
         AscendC::CrossCoreWaitFlag(9);
         setupComputeContext_(i);
         uint32_t localIdx = (i < mc2Tiling_.tileCnt) ? i : (i - mc2Tiling_.tileCnt);
-        computeStage_.Process(localIdx);
+        executeGemm_(localIdx);
     }
 }
 
@@ -162,7 +217,7 @@ AlltoAllMxQuantMatmulArch35<X1Type, X2Type, YType, CommDataTypeX1,
     uint64_t rankForComm = comm_.GetRankForComm();
     uint32_t scaleKPerRank = comm_.GetScaleKPerRank();
 
-    auto *ctx = computeStage_.GetContextPtr();
+    auto *ctx = &computeContext_;
     if (isHead) {
         ctx->baseData.aGM = commOutGM_;
         ctx->baseData.cGM = y_;
@@ -184,6 +239,91 @@ AlltoAllMxQuantMatmulArch35<X1Type, X2Type, YType, CommDataTypeX1,
     ctx->additionalData.rankM = mc2Tiling_.rankM;
     ctx->additionalData.scaleKPerRank = scaleKPerRank;
     ctx->tilingDataPtr = isHead ? &(tilingData_->blazeMmTileTilingData) : &(tilingData_->blazeMmTailTilingData);
+}
+
+template <typename X1Type, typename X2Type, typename YType, typename CommDataTypeX1,
+          typename AlltoAllMatmulTilingDataType, bool IsMxFp4>
+__aicore__ inline void
+AlltoAllMxQuantMatmulArch35<X1Type, X2Type, YType, CommDataTypeX1,
+                             AlltoAllMatmulTilingDataType, IsMxFp4>::executeGemm_(uint32_t taskIndex)
+{
+    GM_ADDR aGM = computeContext_.baseData.aGM + taskIndex * computeContext_.baseData.aOffset;
+    GM_ADDR bGM = computeContext_.baseData.bGM + taskIndex * computeContext_.baseData.bOffset;
+    GM_ADDR cGM = computeContext_.baseData.cGM + taskIndex * computeContext_.baseData.cOffset;
+    GM_ADDR x1Scale = computeContext_.additionalData.x1Scale + taskIndex * computeContext_.additionalData.x1ScaleOffset;
+    GM_ADDR x2Scale = computeContext_.additionalData.x2Scale;
+
+    const auto &mmTile = *computeContext_.tilingDataPtr;
+    uint32_t rankDim = computeContext_.additionalData.rankDim;
+    uint64_t rankKPerRank = static_cast<uint64_t>(mmTile.k) / rankDim;
+    uint64_t scaleKPerRank = computeContext_.additionalData.scaleKPerRank;
+    uint64_t aRankStride = static_cast<uint64_t>(computeContext_.additionalData.rankM) * rankKPerRank;
+    uint64_t scaleARankStride = static_cast<uint64_t>(computeContext_.additionalData.rankM) * scaleKPerRank;
+
+    GemmParams params;
+
+    AscendC::Std::get<Blaze::Gemm::MNK_M>(params.problemShape) = static_cast<int64_t>(mmTile.m);
+    AscendC::Std::get<Blaze::Gemm::MNK_N>(params.problemShape) = static_cast<int64_t>(mmTile.n);
+    AscendC::Std::get<Blaze::Gemm::MNK_K>(params.problemShape) = static_cast<int64_t>(mmTile.k);
+    AscendC::Std::get<Blaze::Gemm::MNK_B>(params.problemShape) = 1;
+
+    BlockMmadParams mmad;
+    mmad.aGmAddr = aGM;
+    mmad.bGmAddr = bGM;
+    mmad.cGmAddr = cGM;
+    mmad.scaleAGmAddr = x1Scale;
+    mmad.scaleBGmAddr = x2Scale;
+    mmad.biasGmAddr = nullptr;
+    params.mmadParams = mmad;
+
+    L1Params l1;
+    l1.kL1 = static_cast<uint64_t>(mmTile.stepK) * mmTile.baseK;
+    l1.scaleKL1 = mmTile.scaleKL1;
+    l1.l1BufNum = mmTile.nBufferNum;
+    params.l1Params = l1;
+
+    SchParams sch;
+    sch.baseM = 256;
+    sch.baseN = 128;
+    sch.mTailTile = mmTile.mTailTile;
+    sch.nTailTile = mmTile.nTailTile;
+    sch.mBaseTailSplitCnt = mmTile.mBaseTailSplitCnt;
+    sch.nBaseTailSplitCnt = mmTile.nBaseTailSplitCnt;
+    sch.mTailMain = mmTile.mTailMain;
+    sch.nTailMain = mmTile.nTailMain;
+    params.schParams = sch;
+
+    QBMMTiling qb;
+    qb.batchA1 = 1;
+    qb.batchA2 = 1;
+    qb.batchA3 = 1;
+    qb.batchA4 = 1;
+    qb.batchB1 = 1;
+    qb.batchB2 = 1;
+    qb.batchB3 = 1;
+    qb.batchB4 = 1;
+    qb.batchC1 = 1;
+    qb.batchC2 = 1;
+    qb.batchC3 = 1;
+    qb.batchC4 = 1;
+    qb.biasThreeDim = 0;
+    qb.baseM = 256;
+    qb.baseN = 128;
+    qb.baseK = mmTile.baseK;
+    qb.isBias = 0;
+    qb.dbL0C = 1;
+    params.qbmmParams = qb;
+
+    AlltoAllParams alltoall;
+    alltoall.rankDim = rankDim;
+    alltoall.rankKPerRank = rankKPerRank;
+    alltoall.scaleKPerRank = scaleKPerRank;
+    alltoall.aRankStride = aRankStride;
+    alltoall.scaleARankStride = scaleARankStride;
+    params.alltoallParams = alltoall;
+
+    GemmKernel gemm;
+    gemm(params);
 }
 
 } // namespace Kernel
