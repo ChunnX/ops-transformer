@@ -29,6 +29,11 @@ constexpr size_t DIM_NUM_4 = 4U;
 constexpr size_t DIM_NUM_5 = 5U;
 constexpr int64_t BSA_MXFP8_P_SCALE_SIZE = 1;
 
+bool IsMXFP8SparseBlockSizeSupported(uint32_t blockSize)
+{
+    return blockSize == BSA_MXFP8_SPARSE_BLOCK_SIZE_128 || blockSize == BSA_MXFP8_SPARSE_BLOCK_SIZE_64;
+}
+
 template <size_t N>
 std::string ShapeToString(const std::array<int64_t, N> &shape)
 {
@@ -234,27 +239,23 @@ ge::graphStatus QuantBlockSparseAttnCheck::CheckScaleDtype() const
 
 ge::graphStatus QuantBlockSparseAttnCheck::CheckBlockSize() const
 {
-    // MX 将 128/64-token block 拼成 512-token tile。
-    if (tilingInfo_.qBlockSizeVal != BSA_BLOCK_SIZE) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-            kOpName, "q_block_size", std::to_string(tilingInfo_.qBlockSizeVal),
-            "must be " + std::to_string(BSA_BLOCK_SIZE));
-        return ge::GRAPH_FAILED;
-    }
     if (tilingInfo_.quantModeVal == BSA_QUANT_MODE_MXFP8_FULL_QUANT) {
-        if (tilingInfo_.kvBlockSizeVal != BSA_MXFP8_KV_BLOCK_SIZE_128 &&
-            tilingInfo_.kvBlockSizeVal != BSA_MXFP8_KV_BLOCK_SIZE_64) {
+        // MX 接受 64/128 sparse block；KV 侧继续拼成固定的 512-token kernel tile。
+        if (!IsMXFP8SparseBlockSizeSupported(tilingInfo_.qBlockSizeVal) ||
+            !IsMXFP8SparseBlockSizeSupported(tilingInfo_.kvBlockSizeVal)) {
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                kOpName, "kv_block_size", std::to_string(tilingInfo_.kvBlockSizeVal),
-                "must be " + std::to_string(BSA_MXFP8_KV_BLOCK_SIZE_128) + " or " +
-                    std::to_string(BSA_MXFP8_KV_BLOCK_SIZE_64) +
+                kOpName, "q_block_size/kv_block_size",
+                std::to_string(tilingInfo_.qBlockSizeVal) + "/" + std::to_string(tilingInfo_.kvBlockSizeVal),
+                "must each be " + std::to_string(BSA_MXFP8_SPARSE_BLOCK_SIZE_128) + " or " +
+                    std::to_string(BSA_MXFP8_SPARSE_BLOCK_SIZE_64) +
                     " in quant_mode=2 MXFP8 full-quant scenario");
             return ge::GRAPH_FAILED;
         }
-    } else if (tilingInfo_.kvBlockSizeVal != BSA_BLOCK_SIZE) {
+    } else if (tilingInfo_.qBlockSizeVal != BSA_BLOCK_SIZE || tilingInfo_.kvBlockSizeVal != BSA_BLOCK_SIZE) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-            kOpName, "kv_block_size", std::to_string(tilingInfo_.kvBlockSizeVal),
-            "must be " + std::to_string(BSA_BLOCK_SIZE));
+            kOpName, "q_block_size/kv_block_size",
+            std::to_string(tilingInfo_.qBlockSizeVal) + "/" + std::to_string(tilingInfo_.kvBlockSizeVal),
+            "must both be " + std::to_string(BSA_BLOCK_SIZE));
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
