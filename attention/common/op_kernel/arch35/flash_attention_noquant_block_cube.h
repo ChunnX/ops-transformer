@@ -1524,10 +1524,10 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm2Nz(mm2ResPo
     }
  
     FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams; // L0C→UB;FixpipeParamsM300:L0C→UB
-    if constexpr (!bmm2Write2Ub) {
-        fixpipeParams.nSize = constInfo.dSizeV; // L0C上的bmm1结果矩阵N方向的size大小
+    if constexpr (bmm2Write2Ub) {
+        fixpipeParams.nSize = ((constInfo.dSizeV + 7) >> 3) << 3; // L0C上的bmm1结果矩阵N方向的size大小
     } else {
-        fixpipeParams.nSize = (constInfo.dSizeV + 7) >> 3 << 3; // L0C上的bmm1结果矩阵N方向的size大小
+        fixpipeParams.nSize = constInfo.dSizeV; // L0C上的bmm1结果矩阵N方向的size大小
     }
  
     fixpipeParams.mSize = runInfo.s1RealSize; // 有效数据不足16行，只需要输出部分行即可; L0C上的bmm1结果矩阵M方向的size大小; 同mmadParams.m
