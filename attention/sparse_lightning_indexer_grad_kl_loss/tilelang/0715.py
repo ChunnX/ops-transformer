@@ -524,7 +524,6 @@ def tilelang_grad_kl_loss_single_kernel(
 
                         # Compute current slot
                         T.wait_flag("mte2", "v", cur)
-                        T.pipe_barrier("v")
                         if cur == 0:
                             T.tile.mul(bmm2_0, bmm2_0, weight_2d_ub)
                         if cur == 1:
@@ -584,7 +583,6 @@ def tilelang_grad_kl_loss_single_kernel(
                         T.tile.sub(rsy_chunk_ub, rsy_chunk_ub, softmax_i_chunk_ub)
                         T.pipe_barrier("v")
                         T.tile.exp(rsy_chunk_ub, rsy_chunk_ub)
-                        T.pipe_barrier("v")
                         T.tile.mul(rsy_bc_ub[0, :], rsy_chunk_ub, 1.0)
                         T.pipe_barrier("v")
                         T.reduce_sum(rsy_bc_ub, rsy_chunk_sum_ub, 1)
