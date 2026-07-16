@@ -159,9 +159,10 @@ private:
 template <typename QLIV2T>
 __aicore__ inline void QLIV2Vector<QLIV2T>::InitBuffers(TPipe *pipe)
 {
-    // 2*mBaseSize*s2BaseSize + VL_PAD (ping-pong 偏移加 padding 消除 bank 冲突)
+    // 2*mBaseSize*s2BaseSize*sizeof(QK_T) + ping-pong偏移(s2BaseSize/2 + VL_PAD_STRIDE)
     pipe->InitBuffer(resMm1Buf_,
-        2 * constInfo_.mBaseSize * s2BaseSize_ * sizeof(QK_T) + VL_PAD_STRIDE * sizeof(QK_T));
+        2 * constInfo_.mBaseSize * s2BaseSize_ * sizeof(QK_T)
+        + (s2BaseSize_ / 2 + VL_PAD_STRIDE) * sizeof(QK_T));
     resMm1UB_ = resMm1Buf_.Get<QK_T>(); // qk
     pipe->InitBuffer(weightBuf_, 2 * CeilDiv(s1BaseSize_, CVRATIO) * UB_VEC_STRIDE);
     weightUB_ = weightBuf_.Get<W_T>(); // weight

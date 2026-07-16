@@ -148,9 +148,9 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::InitParams(const ConstInfo &constInf
 template <typename QLIV2T>
 __aicore__ inline void QLIV2Matmul<QLIV2T>::InitBuffers(TPipe *pipe)
 {
-    // 2*mBaseSize*s2BaseSize + VL_PAD (修正 CeilDiv→mBaseSize + ping-pong 偏移加 padding)
+    // 2*mBaseSize*s2BaseSize*sizeof(float) + ping-pong偏移(s2BaseSize/2 + VL_PAD_STRIDE)
     pipe->InitBuffer(bufUB_, 2 * constInfo_.mBaseSize * constInfo_.s2BaseSize * sizeof(float)
-        + VL_PAD_STRIDE * sizeof(float));
+        + (constInfo_.s2BaseSize / 2 + VL_PAD_STRIDE) * sizeof(float));
     mm1ResUB_ = bufUB_.Get<QK_T>();
     pipe->InitBuffer(bufQL1_, QUERY_BUF_NUM * QUERY_BUFFER_OFFSET * sizeof(Q_T));
     queryL1_ = bufQL1_.Get<Q_T>();
