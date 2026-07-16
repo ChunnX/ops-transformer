@@ -76,8 +76,8 @@ aclnnStatus aclnnEngramFetchGradGetWorkspaceSize(
     aclnnStatus ret = aclnnInnerEngramFetchGradGetWorkspaceSize(
         commContext, gradFetched, perm, sendCounts, recvCounts, recvLocalEntry,
         numRecv,
-        gradUniqueOut, uniqueLocalEntryOut, numUniqueOut,
         numEntriesPerRank, commBufferSize,
+        gradUniqueOut, uniqueLocalEntryOut, numUniqueOut,
         workspaceSize, executor);
     return ret;
 }

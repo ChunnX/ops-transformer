@@ -146,8 +146,9 @@ class ElasticBuffer:
                      lambda: (f"num_cpu_bytes must be 2MB-aligned, got {num_cpu_bytes=}, "
                               f"which is not divisible by {buffer_alignment=}."))
         moe_args = (num_max_tokens_per_rank, hidden, num_topk, num_experts)
+        moe_required_args = (hidden, num_topk, num_experts)
         torch._check(
-            all(arg is None for arg in moe_args) or all(arg is not None for arg in moe_args),
+            all(arg is None for arg in moe_required_args) or all(arg is not None for arg in moe_args),
             lambda: (
                 "num_max_tokens_per_rank, hidden, num_topk and num_experts "
                 "must be specified together for MoE dispatch/combine."

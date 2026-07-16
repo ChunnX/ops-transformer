@@ -65,9 +65,9 @@ aclnnStatus aclnnEngramFetchTrainGetWorkspaceSize(
                                 recvCountsOut, recvLocalEntryOut, numRecvOut);
     CHECK_RET(retParam == ACLNN_SUCCESS, retParam);
     aclnnStatus ret = aclnnInnerEngramFetchTrainGetWorkspaceSize(
-        commContext, indices, fetched, permOut, sendCountsOut,
-        recvCountsOut, recvLocalEntryOut, numRecvOut,
+        commContext, indices,
         hiddenSize, numEntriesPerRank, localStorageAddr, numMaxTokensPerRank, commBufferSize,
+        fetched, permOut, sendCountsOut, recvCountsOut, recvLocalEntryOut, numRecvOut,
         workspaceSize, executor);
     return ret;
 }
