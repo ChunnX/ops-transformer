@@ -21,6 +21,7 @@ def chunk_gated_delta_rule_npu(
     scale: float = None,
     initial_state: torch.Tensor = None,
     cu_seqlens: Optional[torch.LongTensor] = None,
+    chunk_size: int = 64,
 ):
     num_heads = q.shape[-2]
     num_value_heads = v.shape[-2]
@@ -51,6 +52,7 @@ def chunk_gated_delta_rule_npu(
             initial_state=cur_state,
             output_final_state=True,
             use_qk_l2norm_in_kernel=True,
+            chunk_size=chunk_size,
         )
         core_attn_out.append(cur_core_attn_out)
         last_recurrent_state[b_idx] = cur_last_recurrent_state
