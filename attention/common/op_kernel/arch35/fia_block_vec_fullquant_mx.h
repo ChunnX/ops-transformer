@@ -883,7 +883,7 @@ public:
 
     __aicore__ inline void CopyAttentionOut(FaUbTensor<OUTPUT_T, false> &ubTensor, GmCoord &gmCoord)
     {
-        if constexpr (constInfo.outputLayout == FIA_LAYOUT::BSH) {
+        if constexpr (outLayout == LayOutTypeEnum::BSH) {
             constexpr GmFormat OUT_FORMAT = GmFormat::BSNGD;
             FaGmTensor<OUTPUT_T, OUT_FORMAT> outGmTensor;
             outGmTensor.gmTensor = attentionOutGm;
@@ -892,7 +892,7 @@ public:
                                               constInfo.actualSeqLenSize, false, 0);
             CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<layout>()> copyAttenOutUbToGm;
             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
-        } else if constexpr (constInfo.outputLayout == FIA_LAYOUT::BNSD) {
+        } else if constexpr (outLayout == LayOutTypeEnum::BNSD) {
             constexpr GmFormat OUT_FORMAT = GmFormat::BNGSD;
             FaGmTensor<OUTPUT_T, OUT_FORMAT> outGmTensor;
             outGmTensor.gmTensor = attentionOutGm;
@@ -901,7 +901,7 @@ public:
                                               constInfo.actualSeqLenSize, false, 0);
             CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<layout>()> copyAttenOutUbToGm;
             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
-        } else if constexpr (constInfo.outputLayout == FIA_LAYOUT::TND) {
+        } else if constexpr (outLayout == LayOutTypeEnum::TND) {
             constexpr GmFormat OUT_FORMAT = GmFormat::TNGD;
             FaGmTensor<OUTPUT_T, OUT_FORMAT> outGmTensor;
             outGmTensor.gmTensor = attentionOutGm;
@@ -909,7 +909,7 @@ public:
                                               actualSeqLengthsGmQ, constInfo.actualSeqLenSize);
             CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<layout>()> copyAttenOutUbToGm;
             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
-        } else if constexpr (constInfo.outputLayout == FIA_LAYOUT::NTD) {
+        } else if constexpr (outLayout == LayOutTypeEnum::NTD) {
             constexpr GmFormat OUT_FORMAT = GmFormat::NGTD;
             FaGmTensor<OUTPUT_T, OUT_FORMAT> outGmTensor;
             outGmTensor.gmTensor = attentionOutGm;
