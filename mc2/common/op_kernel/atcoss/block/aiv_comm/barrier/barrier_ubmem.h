@@ -15,12 +15,13 @@
 #pragma once
 #include "../collective_comm_context.h"
 #include "basic_api/kernel_basic_intf.h"
+#include "tensor_api/tensor.h"
 
 namespace Atcoss {
 namespace AivComm {
 using namespace AscendC;
 
-constexpr uint32_t UB_SIZE = 32;
+constexpr uint32_t UB_SIZE = 64;
 constexpr uint32_t SYNC_SLOT_PEER_CORE = 8;
 constexpr uint32_t BARRIER_FLAG_SIZE = 8;
 
@@ -75,26 +76,35 @@ __aicore__ inline void TeamBarrier::Init(
 
 __aicore__ inline void TeamBarrier::Execute()
 {
-    if (threadId_ >= threadCnt_) {
-        return;
+    if ASCEND_IS_AIV {
+        if (threadId_ >= threadCnt_) {
+            return;
+        }
+
+        __gm__ uint64_t* teamSyncCounter = (__gm__ uint64_t*)(ctx_->commBufferAddrs[ctx_->rankId]
+            + BARRIER_FLAG_SIZE + threadId_ * BARRIER_FLAG_SIZE);
+        count_ = (int32_t)(*teamSyncCounter) + 1;
+
+        BarrierCrossCore();
+        SetFlag<HardEvent::S_V>(1);
+        WaitFlag<HardEvent::S_V>(1);
+        BarrierCrossDevice();
+
+        auto copyUB2GM = Te::MakeCopy(Te::CopyUB2GM{});
+        auto ubTmp = Te::MakeTensor(
+            Te::MakeMemPtr<Te::Location::UB, int32_t>(reinterpret_cast<uint64_t>(syncBuf_)),
+            Te::FrameLayoutFormat<Te::NDExtLayoutPtn, Te::LayoutTraitDefault<int32_t>>{}(1, 1));
+        auto teamSyncGmTensor = Te::MakeTensor(
+            Te::MakeMemPtr<Te::Location::GM>((__gm__ int32_t*)(teamSyncCounter)),
+            Te::FrameLayoutFormat<Te::NDExtLayoutPtn, Te::LayoutTraitDefault<int32_t>>{}(1, 1));
+        ubTmp[Te::MakeCoord(0, 0)] = count_;
+        SetFlag<HardEvent::V_MTE3>(1);
+        WaitFlag<HardEvent::V_MTE3>(1);
+        Te::Copy(copyUB2GM, teamSyncGmTensor, ubTmp);
+        SetFlag<HardEvent::MTE3_S>(1);
+        WaitFlag<HardEvent::MTE3_S>(1);
+
     }
-
-    __gm__ uint64_t* teamSyncCounter = (__gm__ uint64_t*)(ctx_->commBufferAddrs[ctx_->rankId]
-        + BARRIER_FLAG_SIZE + threadId_ * BARRIER_FLAG_SIZE);
-    count_ = (int32_t)(*teamSyncCounter) + 1;
-    BarrierCrossCore();
-    BarrierCrossDevice();
-
-    LocalTensor<uint64_t> ubTmp;
-    ubTmp.address_.logicPos = static_cast<uint8_t>(TPosition::VECCALC);
-    ubTmp.address_.bufferAddr = reinterpret_cast<uint64_t>(syncBuf_);
-    ubTmp.address_.dataLen = UB_SIZE;
-    GlobalTensor<uint64_t> teamSyncGmTensor;
-    teamSyncGmTensor.SetGlobalBuffer(teamSyncCounter, 1);
-    DataCopyExtParams copyParams{1U, sizeof(uint64_t), 0, 0, 0};
-    ubTmp.SetValue(0, (uint64_t)count_);
-    DataCopyPad(teamSyncGmTensor, ubTmp, copyParams);
-    PipeBarrier<PIPE_MTE3>();
 }
 
 __aicore__ inline void TeamBarrier::BarrierCrossCore()
@@ -127,32 +137,28 @@ __aicore__ inline void TeamBarrier::BarrierCrossDevice()
     int32_t step = threadCnt_ < nranks ? (int32_t)threadCnt_ : (int32_t)nranks;
     auto localFlag = (__gm__ int32_t*)(ctx_->commBufferAddrs[ctx_->rankId]);
 
-    DataCopyExtParams copyParams{1U, sizeof(int32_t), 0, 0, 0};
-    DataCopyPadExtParams<int32_t> padParams;
-    LocalTensor<int32_t> ubTmp;
-    ubTmp.address_.logicPos = static_cast<uint8_t>(TPosition::VECCALC);
-    ubTmp.address_.bufferAddr = reinterpret_cast<uint64_t>(syncBuf_);
-    ubTmp.address_.dataLen = UB_SIZE;
+    auto copyUB2GM = Te::MakeCopy(Te::CopyUB2GM{});
+    auto ubTmp = Te::MakeTensor(
+        Te::MakeMemPtr<Te::Location::UB, int32_t>(reinterpret_cast<uint64_t>(syncBuf_)),
+        Te::FrameLayoutFormat<Te::NDExtLayoutPtn, Te::LayoutTraitDefault<int32_t>>{}(1, 1));
+    ubTmp[Te::MakeCoord(0, 0)] = count_;
+    SetFlag<HardEvent::V_MTE3>(1);
+    WaitFlag<HardEvent::V_MTE3>(1);
+    auto gmFlag = Te::MakeTensor(
+        Te::MakeMemPtr<Te::Location::GM>((__gm__ int32_t*)(localFlag)),
+        Te::FrameLayoutFormat<Te::NDExtLayoutPtn, Te::LayoutTraitDefault<int32_t>>{}(1, 1));
+    Te::Copy(copyUB2GM, gmFlag, ubTmp);
+    SetFlag<HardEvent::MTE3_S>(1);
+    WaitFlag<HardEvent::MTE3_S>(1);
 
-    ubTmp.SetValue(0, count_);
-    GlobalTensor<int32_t> gmFlag;
-    gmFlag.SetGlobalBuffer(localFlag);
-    DataCopyPad(gmFlag, ubTmp, copyParams);
-    PipeBarrier<PIPE_MTE3>();
-
-    int32_t val;
     for (uint32_t i = threadId_; i < nranks; i += (uint32_t)step) {
         if (i == myRank) {
             continue;
         }
         __gm__ int32_t* remotePtr = (__gm__ int32_t*)(ctx_->commBufferAddrs[i]);
-        GlobalTensor<int32_t> remoteGmTensor;
-        remoteGmTensor.SetGlobalBuffer(remotePtr);
         do {
-            DataCopyPad(ubTmp, remoteGmTensor, copyParams, padParams);
-            PipeBarrier<PIPE_MTE2>();
-            val = ubTmp.GetValue(0);
-            if (val >= count_) {
+            FlushCacheLine((__gm__ uint8_t*)remotePtr);
+            if (*remotePtr >= count_) {
                 break;
             }
         } while (true);
