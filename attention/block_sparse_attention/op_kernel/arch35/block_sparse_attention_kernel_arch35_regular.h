@@ -670,34 +670,34 @@ public:
         AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(EVENT_ID2);
         AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(EVENT_ID3);
         AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(EVENT_ID4);
-        if (coreIdx < 4) { AscendC::PRINTF("K[%d]: CUBE done MTE1_MTE2\n", (int)coreIdx); }
+        if (AscendC::GetBlockIdx() < 4) { AscendC::PRINTF("K[%d]: CUBE done MTE1_MTE2\n", (int)AscendC::GetBlockIdx()); }
         AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(EVENT_ID0);
         AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(EVENT_ID1);
         AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(EVENT_ID2);
         AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(EVENT_ID3);
-        if (coreIdx < 4) { AscendC::PRINTF("K[%d]: CUBE done M_MTE1\n", (int)coreIdx); }
+        if (AscendC::GetBlockIdx() < 4) { AscendC::PRINTF("K[%d]: CUBE done M_MTE1\n", (int)AscendC::GetBlockIdx()); }
         AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(EVENT_ID0);
         AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(EVENT_ID1);
         AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(EVENT_ID2);
         AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(EVENT_ID3);
-        if (coreIdx < 4) { AscendC::PRINTF("K[%d]: CUBE done FIX_M\n", (int)coreIdx); }
+        if (AscendC::GetBlockIdx() < 4) { AscendC::PRINTF("K[%d]: CUBE done FIX_M\n", (int)AscendC::GetBlockIdx()); }
         if constexpr (MM1_SM_MODE == 4U) {
             AscendC::CrossCoreWaitFlag<MM1_SM_MODE, PIPE_FIX>(0);
             AscendC::CrossCoreWaitFlag<MM1_SM_MODE, PIPE_FIX>(1);
-            if (coreIdx < 4) { AscendC::PRINTF("K[%d]: CUBE done CrossMM1(0,1)\n", (int)coreIdx); }
+            if (AscendC::GetBlockIdx() < 4) { AscendC::PRINTF("K[%d]: CUBE done CrossMM1(0,1)\n", (int)AscendC::GetBlockIdx()); }
             AscendC::CrossCoreWaitFlag<MM1_SM_MODE, PIPE_FIX>(16);
             AscendC::CrossCoreWaitFlag<MM1_SM_MODE, PIPE_FIX>(17);
-            if (coreIdx < 4) { AscendC::PRINTF("K[%d]: CUBE done CrossMM1(16,17)\n", (int)coreIdx); }
+            if (AscendC::GetBlockIdx() < 4) { AscendC::PRINTF("K[%d]: CUBE done CrossMM1(16,17)\n", (int)AscendC::GetBlockIdx()); }
         }
         if constexpr (MM2_RE_MODE == 4U) {
             AscendC::CrossCoreWaitFlag<MM2_RE_MODE, PIPE_FIX>(5);
             AscendC::CrossCoreWaitFlag<MM2_RE_MODE, PIPE_FIX>(21);
-            if (coreIdx < 4) { AscendC::PRINTF("K[%d]: CUBE done CrossMM2(5,21)\n", (int)coreIdx); }
+            if (AscendC::GetBlockIdx() < 4) { AscendC::PRINTF("K[%d]: CUBE done CrossMM2(5,21)\n", (int)AscendC::GetBlockIdx()); }
             AscendC::CrossCoreWaitFlag<MM2_RE_MODE, PIPE_FIX>(6);
             AscendC::CrossCoreWaitFlag<MM2_RE_MODE, PIPE_FIX>(22);
-            if (coreIdx < 4) { AscendC::PRINTF("K[%d]: CUBE done CrossMM2(6,22)\n", (int)coreIdx); }
+            if (AscendC::GetBlockIdx() < 4) { AscendC::PRINTF("K[%d]: CUBE done CrossMM2(6,22)\n", (int)AscendC::GetBlockIdx()); }
         }
-        if (coreIdx < 4) { AscendC::PRINTF("K[%d]: CUBE done all cross-core\n", (int)coreIdx); }
+        if (AscendC::GetBlockIdx() < 4) { AscendC::PRINTF("K[%d]: CUBE done all cross-core\n", (int)AscendC::GetBlockIdx()); }
 #endif
 #ifdef __DAV_VEC__
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID0);
