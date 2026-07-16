@@ -213,17 +213,76 @@ __aicore__ inline T CeilDiv(T num, T rnd)
 }
 }  // namespace QLIV2Common
 
-// bank冲突优化
-// david 256KB bank layout
-// shape  (             bank_depth  (            banks  bank_groups  block))  (512  (  2   8  32))
-// stride (banks*bank_groups*block  (bank_groups*block        block      1))  (512  (256  32   1))
-#define UB_BLOCK              32   // 32B
-#define UB_BANK_GROUPS        8
-#define UB_BANKS              2
-#define UB_BANK_DEPTH         512
+// ============================================================================
+// bank冲突优化 — 新芯片 bank 布局
+// ============================================================================
+// 新芯片 Vector UB = 384KB, bank 布局:
+//   8 bank groups × 4 banks/group × 32B/bank
+//   每 1KB 地址范围内:
+//     bank0 = [0,   255B], bank1 = [256, 511B]
+//     bank2 = [512, 767B], bank3 = [768,1023B]
+//   每个 bank 含 2 个 sub-bank × 16B (950 为 4×8B)
+//
+// 冲突判定: 两地址 A,B 同 bank ⟺
+//   (A/256)%4 == (B/256)%4  且  (A/1024)%8 == (B/1024)%8
+//   └── bank index (1KB内4选1) ──┘  └── group index (8KB内8选1) ──┘
+//
+// 解冲突手段:
+//   ① 错开 nK+256/512/768B → 落同 group 不同 bank
+//   ② 错开 nK+1KB → 落不同 group
+//   ③ 交换读写方向 (读/写不冲突)
+// ============================================================================
 
-#define UB_BANK_GROUP_STRIDE  UB_BLOCK                                   // 32B
-#define UB_BANK_STRIDE        (UB_BANK_GROUPS * UB_BLOCK)               // 256B
-#define UB_BANK_DEPTH_STRIDE  (UB_BANKS * UB_BANK_GROUPS * UB_BLOCK)    // 512B
+#define UB_BLOCK              32   // 32B (不变)
+#define UB_BANK_GROUPS        8    // 8 个 bank group (不变)
+#define UB_BANKS              4    // 每 group 4 个 bank (原 2 → 4)
+#define UB_BANK_DEPTH         384  // 384KB / 1024B = 384 行 (原 512)
+
+// UB_BANK_STRIDE=256B: 新芯片语义为"同 group 内跨 bank" (原 950 为"跨 group 同 bank")
+//   ping-pong 偏移 256B 在新芯片上天然跨 bank → ping/pong 无冲突 (利好, 无需改动)
+#define UB_BANK_STRIDE        (UB_BANK_GROUPS * UB_BLOCK)               // 256B (值不变, 语义变更)
+
+// UB_BANK_GROUP_STRIDE: 一个 bank group 宽度 = 4×256B = 1024B (原 32B)
+#define UB_BANK_GROUP_STRIDE  (UB_BANKS * UB_BANK_STRIDE)               // 1024B
+
+// ⚠️ UB_BANK_DEPTH_STRIDE 保持 512B 不变!
+//   原因: vector1.h 内层循环 "qk + 128*i" 的 128 是硬编码 S2Base(float元素数),
+//         锁死 rowStride = 128 float = 512B。若改为 1024B, g维读取错位 → 算子崩。
+//   注意: 此处 512B = UB_BANKS_OLD(2) × UB_BANK_GROUPS(8) × UB_BLOCK(32),
+//         而非新芯片的 UB_BANKS(4) × ... = 1024B。
+#define UB_BANK_DEPTH_STRIDE  (2 * UB_BANK_GROUPS * UB_BLOCK)           // 512B (锁死, 勿改!)
+
+// ============================================================================
+// bank 偏移宏 — 用于将同时访问的 buffer 散到不同 bank/group
+// ============================================================================
+// QK 4路并发 (MulWeightAndReduceSum2_MxFP8):
+//   A = qk0 + 128*i               (s1行A, g=i)
+//   C = qk0 + qkStride + 128*i    (s1行B, g=i)  → qkStride 附加 +256B → bank+1
+//   B = qk0 + qkVLStride + 128*i  (配对路,  g=i) → qkVLStride 附加 +512B → bank+2 (TODO, 见下)
+//   D = qk0 + qkStride + qkVLStride + 128*i     → bank+3 (自动)
+//
+// 跨 buffer:
+//   weight/weightTemp 与 QK 并发读 → base 错 bank
+//   out 写与 QK 读不并发 (循环后), 但仍错开 group 防边界冲突
+// ============================================================================
+
+// qkStride 附加偏移: s1行B 落 bank+1 (解 A/C 同 bank 冲突)
+#define QLIV2_BANK_OFF_QK_S1     256    // 256B → bank+1
+
+// qkVLStride 附加偏移: 配对路落 bank+2 (解 A/B 同 bank 冲突)
+// ⚠️ TODO: 需确认 cube Fixpipe 写配对路(pong块)的路径后才能启用。
+//    当前不启用 (vector端不加, cube端不加), 配对路冲突保持, A/B 仍同 bank。
+//    启用方法: vector 端 qkVLstride += (QLIV2_BANK_OFF_QK_VL/sizeof(QK_T)),
+//              cube 端 Fixpipe 写配对路时同步偏移。
+#define QLIV2_BANK_OFF_QK_VL     512    // 512B → bank+2
+
+// weight base 偏移 → bank3 (与 QK bank0/1 错开)
+#define QLIV2_BANK_OFF_WEIGHT    768    // 768B → bank3
+
+// weightTemp base 偏移 → 跨 group1 (与 QK group0 彻底分开)
+#define QLIV2_BANK_OFF_WTEMP     1024   // 1KB → group1
+
+// out base 偏移 → 跨 group1 (与 QK group0 彻底分开)
+#define QLIV2_BANK_OFF_OUT       1024   // 1KB → group1
 
 #endif  // QUANT_LIGHTNING_INDEXER_V2_COMMON_H

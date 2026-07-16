@@ -637,7 +637,7 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::Fixp(uint64_t s1gGmOffset, uint64_t 
         // 固定参数
         fixpipeParams.mSize = mSize;
         fixpipeParams.srcStride = mSize; // 已16对齐
-        fixpipeParams.dstStride = UB_BANK_DEPTH_STRIDE / sizeof(QK_T); // 落到同一个bank
+        fixpipeParams.dstStride = constInfo_.s2BaseSize; // 紧凑: 每行 s2BaseSize 个 float
         // 单目标模式（CVRATIO=1，不需要拆M）
         fixpipeParams.dualDstCtl = 0;
         fixpipeParams.reluEn = true;   // 启用随路ReLU
@@ -672,7 +672,7 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::Fixp(uint64_t s1gGmOffset, uint64_t 
         fixpipeParams.nSize = nSize; // N方向全部输出
         fixpipeParams.mSize = mSize / 2; // M方向每个AIV一半
         fixpipeParams.srcStride = srcStride;
-        fixpipeParams.dstStride = UB_BANK_DEPTH_STRIDE / sizeof(QK_T); // 落到同一个bank
+        fixpipeParams.dstStride = constInfo_.s2BaseSize; // 紧凑: 每行 s2BaseSize 个 QK_T 元素
         fixpipeParams.params.ndNum = 1;
         fixpipeParams.params.srcNdStride = 0;
         fixpipeParams.params.dstNdStride = 0;
