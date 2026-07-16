@@ -25,6 +25,20 @@
 #endif
 #include "mega_moe_impl_base.h"
 
+// GMM2 direct-GM readiness A/B modes.  Keep the selection in this common
+// host/device header so workspace sizing and kernel addressing cannot drift.
+#define MEGA_MOE_GMM2_FANIN_SHARED_ATOMIC 0
+#define MEGA_MOE_GMM2_FANIN_PRIVATE_COMPACT 1
+#define MEGA_MOE_GMM2_FANIN_PRIVATE_STRIDED 2
+#ifndef MEGA_MOE_GMM2_FANIN_MODE
+#define MEGA_MOE_GMM2_FANIN_MODE MEGA_MOE_GMM2_FANIN_SHARED_ATOMIC
+#endif
+#if MEGA_MOE_GMM2_FANIN_MODE != MEGA_MOE_GMM2_FANIN_SHARED_ATOMIC && \
+    MEGA_MOE_GMM2_FANIN_MODE != MEGA_MOE_GMM2_FANIN_PRIVATE_COMPACT && \
+    MEGA_MOE_GMM2_FANIN_MODE != MEGA_MOE_GMM2_FANIN_PRIVATE_STRIDED
+#error "invalid MEGA_MOE_GMM2_FANIN_MODE"
+#endif
+
 namespace {
 constexpr uint64_t M_VALUE = 0UL;
 constexpr uint64_t N_VALUE = 1UL;
@@ -125,6 +139,7 @@ struct WorkspaceInfo {
     GM_ADDR gmm2MmadResPtr;
     GM_ADDR gmm2CombineSyncCounterPtr;
     GM_ADDR gmm2NoQuantReadyPtr;
+    GM_ADDR gmm2NoQuantReleasePtr;
 
     GM_ADDR maskSlotPtr;          // urma发送mask临时GM
     GM_ADDR dispatchL1CommPtr;    // dispatch L1 communication workspace
@@ -188,6 +203,7 @@ struct WorkspaceInfo {
         gmm1MmadResPtr = nullptr;
         gmm2MmadResPtr = nullptr;
         gmm2NoQuantReadyPtr = nullptr;
+        gmm2NoQuantReleasePtr = nullptr;
         if (tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W4) {
             // cumsumInfo: per-core backup of cumsum state (expertPerRank × epWorldSize int32 per core).
             cumsumInfoPtr = base + workspaceSize;
@@ -226,12 +242,22 @@ struct WorkspaceInfo {
 
         if (useMteNoQuantGmm2Gm) {
             gmm2NoQuantReadyPtr = base + workspaceSize;
-            // One 512B-spaced slot per expert is sufficient for both A/Bs:
-            // per-expert indexes by expert, while per-batch indexes by batch.
-            // Slots are never reused within one kernel invocation.
-            int64_t readyBytes = static_cast<int64_t>(tilingData->expertPerRank) *
-                                 static_cast<int64_t>(INT_CACHELINE) * static_cast<int64_t>(SIZE_INT_32);
+            // slotIdx is expertIdx in PER_EXPERT mode and batchIdx in
+            // PER_BATCH mode.  The strided A/B gives every AIC a private
+            // 512B line; shared/compact A/Bs need one 512B line per slot.
+            int64_t readyStrideBytes = ALIGN_512;
+#if MEGA_MOE_GMM2_FANIN_MODE == MEGA_MOE_GMM2_FANIN_PRIVATE_STRIDED
+            readyStrideBytes *= static_cast<int64_t>(tilingData->aicNum);
+#endif
+            int64_t readyBytes = static_cast<int64_t>(tilingData->expertPerRank) * readyStrideBytes;
             workspaceSize += Ops::Base::CeilAlign(readyBytes, static_cast<int64_t>(ALIGN_512));
+
+            // One private 512B release line for every (slot, logical AIV1).
+            // The coordinator publishes the whole slot with one MTE3 copy.
+            gmm2NoQuantReleasePtr = base + workspaceSize;
+            int64_t releaseBytes = static_cast<int64_t>(tilingData->expertPerRank) *
+                                   static_cast<int64_t>(tilingData->aicNum) * ALIGN_512;
+            workspaceSize += Ops::Base::CeilAlign(releaseBytes, static_cast<int64_t>(ALIGN_512));
         }
 
         // Combine-quant-only workspace buffers
