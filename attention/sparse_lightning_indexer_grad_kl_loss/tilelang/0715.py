@@ -665,8 +665,11 @@ def tilelang_grad_kl_loss_single_kernel(
                         T.pipe_barrier("v")
                         T.tile.sub(rsy_tmp_ub, ones_2d_ub, rsy_tmp_ub)
 
-                        # Op1: rg = weight_slice * diff (2D, eliminated per-row T.copy loop)
-                        T.tile.mul(rg_chunk_ub, weight_2d_ub[g_start:g_start + vector_baseg, 0:n_block], diff_2d_ub)
+                        # Op1: rg = weight_slice * diff (2D)
+                        # weight切片逐行copy（TileLang不支持动态切片作为mul参数）
+                        for i in T.serial(vector_baseg):
+                            T.copy(weight_2d_ub[g_start + i, :], rg_chunk_ub[i, :])
+                        T.tile.mul(rg_chunk_ub, rg_chunk_ub, diff_2d_ub)
                         # Op2: rg *= rsy_tmp mask (2D, was per-row 1D mul)
                         T.pipe_barrier("v")
                         T.tile.mul(rg_chunk_ub, rg_chunk_ub, rsy_tmp_ub)
