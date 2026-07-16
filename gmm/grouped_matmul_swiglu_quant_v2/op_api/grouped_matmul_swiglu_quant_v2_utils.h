@@ -162,7 +162,7 @@ const std::vector<DataType> GROUP_LIST_DTYPE_SUPPORT_LIST = {DataType::DT_INT64}
 const std::vector<DataType> QUANTOUT_DTYPE_SUPPORT_LIST_MXFP4_ND = {
     DataType::DT_FLOAT8_E4M3FN, DataType::DT_FLOAT8_E5M2, DataType::DT_FLOAT4_E2M1};
 const std::vector<DataType> QUANTOUT_DTYPE_SUPPORT_LIST_MXFP4_NZ = {
-    DataType::DT_FLOAT8_E4M3FN, DataType::DT_FLOAT8_E5M2, DataType::DT_FLOAT4_E2M1, DataType::DT_FLOAT4_E1M2};
+    DataType::DT_FLOAT8_E4M3FN, DataType::DT_FLOAT4_E2M1, DataType::DT_FLOAT4_E1M2};
 const std::vector<DataType> QUANTOUT_DTYPE_SUPPORT_LIST_PERTOKEN = {
     DataType::DT_INT8, DataType::DT_FLOAT8_E4M3FN, DataType::DT_FLOAT8_E5M2, DataType::DT_HIFLOAT8};
 const std::vector<DataType> QUANTSCALEOUT_DTYPE_SUPPORT_LIST = {DataType::DT_FLOAT8_E8M0};
@@ -170,21 +170,25 @@ const std::vector<DataType> QUANTSCALEOUT_DTYPE_SUPPORT_LIST_PERTOKEN = {DataTyp
 const std::vector<DataType> X_DTYPE_SUPPORT_LIST_MXA8W4 = {DataType::DT_FLOAT8_E4M3FN};
 const std::vector<DataType> WEIGHT_DTYPE_SUPPORT_LIST_MXA8W4 = {DataType::DT_FLOAT4_E2M1};
 
+inline bool IsMxfp4WeightNzFormat(const aclTensor *weight)
+{
+    return weight != nullptr && weight->GetStorageFormat() == op::Format::FORMAT_FRACTAL_NZ;
+}
+
 inline const std::vector<DataType> &GetXSupportListMxfp4(const aclTensor *weight)
 {
-    return op::IsPrivateFormat(weight->GetStorageFormat()) ? X_DTYPE_SUPPORT_LIST_MXFP4_NZ :
-        X_DTYPE_SUPPORT_LIST_MXFP4_ND;
+    return IsMxfp4WeightNzFormat(weight) ? X_DTYPE_SUPPORT_LIST_MXFP4_NZ : X_DTYPE_SUPPORT_LIST_MXFP4_ND;
 }
 
 inline const std::vector<DataType> &GetWeightSupportListMxfp4(const aclTensor *weight)
 {
-    return op::IsPrivateFormat(weight->GetStorageFormat()) ? WEIGHT_DTYPE_SUPPORT_LIST_MXFP4_NZ :
+    return IsMxfp4WeightNzFormat(weight) ? WEIGHT_DTYPE_SUPPORT_LIST_MXFP4_NZ :
         WEIGHT_DTYPE_SUPPORT_LIST_MXFP4_ND;
 }
 
 inline const std::vector<DataType> &GetOutputSupportListMxfp4(const aclTensor *weight)
 {
-    return op::IsPrivateFormat(weight->GetStorageFormat()) ? QUANTOUT_DTYPE_SUPPORT_LIST_MXFP4_NZ :
+    return IsMxfp4WeightNzFormat(weight) ? QUANTOUT_DTYPE_SUPPORT_LIST_MXFP4_NZ :
         QUANTOUT_DTYPE_SUPPORT_LIST_MXFP4_ND;
 }
 
@@ -1207,6 +1211,22 @@ protected:
         return true;
     }
 
+    bool CheckWeightFormatConsistency() const
+    {
+        const auto firstFormat = (*gmmDsqParams_.weight)[0]->GetStorageFormat();
+        size_t weightLength = gmmDsqParams_.weight->Size();
+        for (size_t i = 1; i < weightLength; ++i) {
+            const auto currentFormat = (*gmmDsqParams_.weight)[i]->GetStorageFormat();
+            if (currentFormat != firstFormat) {
+                const std::string firstFormatStr = op::ToString(firstFormat).GetString();
+                OP_LOGE_FOR_INVALID_FORMAT(apiName_.c_str(), "weight",
+                                           op::ToString(currentFormat).GetString(), firstFormatStr.c_str());
+                return false;
+            }
+        }
+        return true;
+    }
+
     bool CheckDtypeValid() override
     {
         DataType xDtype = gmmDsqParams_.x->GetDataType();
@@ -1217,6 +1237,9 @@ protected:
         const aclTensor *groupList = gmmDsqParams_.groupList;
         const aclTensor *output = gmmDsqParams_.output;
         const aclTensor *outputScale = gmmDsqParams_.outputScale;
+        if (!CheckWeightFormatConsistency()) {
+            return false;
+        }
         if (weight->GetStorageFormat() == ge::FORMAT_ND && (weightDtype == DataType::DT_FLOAT4_E1M2 ||
             xDtype == DataType::DT_FLOAT4_E1M2 || output->GetDataType() == DataType::DT_FLOAT4_E1M2)) {
             OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
@@ -1230,7 +1253,7 @@ protected:
         const auto &xDtypeSupportListMxfp4 = GetXSupportListMxfp4(weight);
         const auto &weightDtypeSupportListMxfp4 = GetWeightSupportListMxfp4(weight);
         const char *dtypeSupportList =
-            op::IsPrivateFormat(weight->GetStorageFormat()) ?
+            IsMxfp4WeightNzFormat(weight) ?
                 "{INT8, FLOAT8_E4M3FN, FLOAT8_E5M2, HIFLOAT8, FLOAT4_E2M1, FLOAT4_E1M2}" :
                 "{INT8, FLOAT8_E4M3FN, FLOAT8_E5M2, HIFLOAT8, FLOAT4_E2M1}";
         bool xDtypeNotSupported =
