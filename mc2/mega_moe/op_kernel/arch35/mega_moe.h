@@ -1839,6 +1839,9 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessGmm2GmWaves()
     }
 
     uint32_t batchIdx = 0;
+#if MEGA_MOE_GMM2_WAVE_TIMELINE_DIAG != 0
+    bool traceGmm1B1ReadyRecorded = false;
+#endif
     for (uint32_t batchBegin = 0; batchBegin < expertPerRank_; batchBegin += expertsPerWave, ++batchIdx) {
         uint32_t batchEnd = batchBegin + expertsPerWave < expertPerRank_ ?
                                 batchBegin + expertsPerWave :
@@ -1846,13 +1849,9 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessGmm2GmWaves()
 
 #if MEGA_MOE_GMM2_WAVE_TIMELINE_DIAG != 0
         if (batchIdx == 1U) {
-            if constexpr (g_coreType == AIC) {
-                if (blockIdx_ == 0U) {
-                    RecordGmm2WaveTimeline(2U); // AIC GMM1(B+1) begin
-                }
-            } else {
+            if constexpr (g_coreType == AIV) {
                 if (subBlockIdx_ == 0U && aivCoreIdx_ / 2U == 0U) {
-                    RecordGmm2WaveTimeline(6U); // AIV0 SwiGLU(B+1) begin
+                    RecordGmm2WaveTimeline(6U); // AIV0 SwiGLU(B+1) control entry
                 }
             }
         }
@@ -1878,6 +1877,24 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessGmm2GmWaves()
                 continue;
             }
             UpdateGlobalBuffer<AddrUpdateMode::GMM1>(gmm1AddrInfo, gmm1State);
+#if MEGA_MOE_GMM2_WAVE_TIMELINE_DIAG != 0
+            if constexpr (g_coreType == AIC) {
+                if (batchIdx == 1U && blockIdx_ == 0U && !traceGmm1B1ReadyRecorded) {
+                    // Mirror the first GMM1 wave wait in diagnostic mode so
+                    // slot 2 means that this expert's dispatch data is ready,
+                    // rather than merely that AIC0 entered the outer loop.
+                    uint32_t mActual = static_cast<uint32_t>(Get<M_VALUE>(gmm1State.problemShape));
+                    uint32_t targetRows = mActual < L1_TILE_M_256 ? mActual : L1_TILE_M_256;
+                    while (targetRows != AscendC::ReadGmByPassDCache(gmm1AddrInfo.dispatchToGmm1Flag)) {
+                        int64_t waitStart = AscendC::GetSystemCycle();
+                        while (AscendC::GetSystemCycle() - waitStart < 100) {
+                        }
+                    }
+                    RecordGmm2WaveTimeline(2U); // AIC0 GMM1(B+1) first dispatch wave ready
+                    traceGmm1B1ReadyRecorded = true;
+                }
+            }
+#endif
             GroupMatmulWithSwigluQuant(gmm1AddrInfo, gmm1State);
         }
 
@@ -1885,7 +1902,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessGmm2GmWaves()
         if (batchIdx == 1U) {
             if constexpr (g_coreType == AIC) {
                 if (blockIdx_ == 0U) {
-                    RecordGmm2WaveTimeline(3U); // AIC GMM1(B+1) end
+                    RecordGmm2WaveTimeline(3U); // AIC0 GMM1(B+1) wave end
                 }
             } else {
                 if (subBlockIdx_ == 0U && aivCoreIdx_ / 2U == 0U) {
@@ -1924,7 +1941,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessGmm2GmWaves()
 #if MEGA_MOE_GMM2_WAVE_TIMELINE_DIAG != 0
         if constexpr (g_coreType == AIC) {
             if (batchIdx == 0U && blockIdx_ == 0U) {
-                RecordGmm2WaveTimeline(4U); // AIC GMM2(B) begin
+                RecordGmm2WaveTimeline(4U); // AIC0 GMM2(B) control entry
             }
         }
 #endif
