@@ -95,10 +95,14 @@ private:
         uint32_t bufferBytes = 0;
     };
     struct DispatchBufferConfig {
+        int32_t routeItemsPerBatch = 0;
+        int32_t routeBatchCount = 0;
         int32_t bufferCount = 0;
         uint32_t copyBufferElementCount = 0;
     };
 
+    __aicore__ inline DispatchBufferConfig CalcDispatchBufferConfig(uint32_t fixedBufferBytes, uint32_t copyBufferBytes,
+                                                                    uint32_t ubSize);
     __aicore__ inline DispatchBufferConfig DispatchBuffInit();
     __aicore__ inline SendMaskBufferConfig CalcSendMaskBufferConfig(uint32_t fixedBufferBytes, uint32_t ubSize);
     __aicore__ inline SendMaskBufferConfig SendAndQuantBuffInit();
@@ -309,6 +313,61 @@ MegaMoe<TemplateMegaMoeTypeFunc>::Init(GM_ADDR context, GM_ADDR x, GM_ADDR topkI
 }
 
 // =================================================================================================
+// CalcDispatchBufferConfig：按基准 recv batch 选择 dispatch buffer 数量，再固定 buffer 数扩大 batch。
+// =================================================================================================
+template <TemplateMegaMoeTypeClass>
+__aicore__ inline typename MegaMoe<TemplateMegaMoeTypeFunc>::DispatchBufferConfig
+MegaMoe<TemplateMegaMoeTypeFunc>::CalcDispatchBufferConfig(uint32_t fixedBufferBytes, uint32_t copyBufferBytes,
+                                                           uint32_t ubSize)
+{
+    DispatchBufferConfig config;
+    uint64_t alignedTotalRouteItems = Ops::Base::CeilAlign(sendTotalNum_, static_cast<uint64_t>(ALIGN_256));
+    config.routeItemsPerBatch = alignedTotalRouteItems < static_cast<uint64_t>(BASE_RECV_ROUTE_ITEMS_PER_BATCH) ?
+                                    static_cast<int32_t>(alignedTotalRouteItems) :
+                                    BASE_RECV_ROUTE_ITEMS_PER_BATCH;
+    config.routeBatchCount =
+        static_cast<int32_t>(Ops::Base::CeilDiv(sendTotalNum_, static_cast<uint64_t>(config.routeItemsPerBatch)));
+    config.copyBufferElementCount = copyBufferBytes / sizeof(ActivationType);
+
+    // 基准 batch 包含一个 bit-packed mask 和两个 int32 route index tensor。routeItemsPerBatch 按 256
+    // 对齐，因此 maskBytes = B / 8 天然按 32B 对齐，两个 index tensor 也天然按 32B 对齐。
+    uint32_t maskBufferBytes = static_cast<uint32_t>(config.routeItemsPerBatch / 8);
+    uint32_t routeIndexBufferBytes =
+        static_cast<uint32_t>(config.routeItemsPerBatch) * static_cast<uint32_t>(sizeof(int32_t));
+    uint32_t bytesWithoutDispatchSlots = fixedBufferBytes + maskBufferBytes + 2 * routeIndexBufferBytes;
+
+    // 每个 dispatch 槽由一份 copyTmp token+scale 和一条 32B triple 组成，两者与 event ID 一一对应。
+    uint32_t dispatchSlotBytes = copyBufferBytes + static_cast<uint32_t>(ALIGN_32);
+    uint32_t dispatchSlotBudgetBytes = ubSize > bytesWithoutDispatchSlots ? ubSize - bytesWithoutDispatchSlots : 0;
+    config.bufferCount = static_cast<int32_t>(dispatchSlotBudgetBytes / dispatchSlotBytes);
+    config.bufferCount =
+        config.bufferCount > MAX_DISPATCH_BUFFER_COUNT ? MAX_DISPATCH_BUFFER_COUNT : config.bufferCount;
+    // BASE_RECV_ROUTE_ITEMS_PER_BATCH 已按最坏合法规格验证至少可容纳双 buffer。
+    config.bufferCount =
+        config.bufferCount < MIN_DISPATCH_BUFFER_COUNT ? MIN_DISPATCH_BUFFER_COUNT : config.bufferCount;
+
+    // 基准 batch 尚未覆盖全部 route item 时，固定已选中的 dispatch buffer 数量，用剩余 UB 扩大 batch。
+    // 每个 route item 的可变占用为 1 bit mask + 两个 int32 index，即 65 / 8 字节：
+    // maxRouteItems = routeItemBudgetBytes * 8 / 65。
+    if (static_cast<uint64_t>(config.routeItemsPerBatch) < sendTotalNum_) {
+        uint32_t fixedBytesWithDispatchSlots =
+            fixedBufferBytes + static_cast<uint32_t>(config.bufferCount) * dispatchSlotBytes;
+        uint32_t routeItemBudgetBytes = ubSize > fixedBytesWithDispatchSlots ? ubSize - fixedBytesWithDispatchSlots : 0;
+        uint32_t expandedRouteItems = routeItemBudgetBytes * 8 / 65;
+        expandedRouteItems = expandedRouteItems / static_cast<uint32_t>(ALIGN_256) * static_cast<uint32_t>(ALIGN_256);
+        if (static_cast<uint64_t>(expandedRouteItems) > alignedTotalRouteItems) {
+            expandedRouteItems = static_cast<uint32_t>(alignedTotalRouteItems);
+        }
+        if (expandedRouteItems > static_cast<uint32_t>(config.routeItemsPerBatch)) {
+            config.routeItemsPerBatch = static_cast<int32_t>(expandedRouteItems);
+            config.routeBatchCount = static_cast<int32_t>(
+                Ops::Base::CeilDiv(sendTotalNum_, static_cast<uint64_t>(config.routeItemsPerBatch)));
+        }
+    }
+    return config;
+}
+
+// =================================================================================================
 // DispatchBuffInit：SendCntCal & TripleInfoCalAndDispatch & ExpertTokenNumCopyOut 中使用的 buffer 申请。
 //   topkIndex/validTopkIndex 按 recvRouteItemsPerBatch_ 分配，tripleTensor_ 常驻 ring buffer。
 // =================================================================================================
@@ -331,19 +390,14 @@ MegaMoe<TemplateMegaMoeTypeFunc>::DispatchBuffInit()
     uint32_t tokenScaleSize = Ops::Base::CeilAlign(
         static_cast<int64_t>(mxQuantTokenAlignBytes_ + mxQuantScaleAlignBytes_), static_cast<int64_t>(ALIGN_32));
     uint32_t COPY_TMP_BUFFER_SIZE = tokenScaleSize;
-    bufferConfig.copyBufferElementCount = COPY_TMP_BUFFER_SIZE / sizeof(ActivationType);
     uint32_t expertTokenNumsOutTensorSize =
         Ops::Base::CeilAlign(static_cast<int64_t>(expertPerRank_ * sizeof(int32_t)), static_cast<int64_t>(ALIGN_32));
 
-    // 确定每个 recv batch 的 route item 数及 batch 总数
-    recvRouteItemsPerBatch_ = MAX_RECV_ROUTE_ITEMS_PER_BATCH;
-    if (sendTotalNum_ < static_cast<uint64_t>(recvRouteItemsPerBatch_)) {
-        recvRouteItemsPerBatch_ = static_cast<int32_t>(sendTotalNum_);
-    }
-    recvRouteItemsPerBatch_ = static_cast<int32_t>(
-        Ops::Base::CeilAlign(static_cast<int64_t>(recvRouteItemsPerBatch_), static_cast<int64_t>(ALIGN_256)));
-    recvRouteBatchCount_ =
-        static_cast<int32_t>(Ops::Base::CeilDiv(sendTotalNum_, static_cast<uint64_t>(recvRouteItemsPerBatch_)));
+    uint32_t fixedBufferBytes =
+        expertTokenCntTensorSize + cumsumInfoTensorSize + sendCntTensorSize + expertTokenNumsOutTensorSize;
+    bufferConfig = CalcDispatchBufferConfig(fixedBufferBytes, COPY_TMP_BUFFER_SIZE, params_.tilingData->ubSize);
+    recvRouteItemsPerBatch_ = bufferConfig.routeItemsPerBatch;
+    recvRouteBatchCount_ = bufferConfig.routeBatchCount;
 
     // 按既定顺序落地址
     // Tensor用处：SendCntCal 函数中记录本卡各专家收到的 token 总数；
@@ -381,22 +435,8 @@ MegaMoe<TemplateMegaMoeTypeFunc>::DispatchBuffInit()
     topkIndexTensor_ =
         LocalTensor<int32_t>(TPosition::VECCALC, topkIndexTensorAddr, topkIndexTensorSize / sizeof(int32_t));
 
-    // route batch tensor 和其它固定 tensor 落位后，剩余 UB 用于一一对应的 copyTmp + 32B triple 槽位。
+    // route batch tensor 后依次放置 copyTmp ring、expert token count 输出和 32B triple ring。
     uint32_t copyTmpBaseAddr = topkIndexTensorAddr + topkIndexTensorSize;
-    uint32_t fixedBytesAfterDispatchBuffers = expertTokenNumsOutTensorSize;
-    uint32_t dispatchSlotBytes =
-        COPY_TMP_BUFFER_SIZE + static_cast<uint32_t>(INT32_PER_256B) * static_cast<uint32_t>(sizeof(int32_t));
-    uint32_t ubSize = params_.tilingData->ubSize;
-    uint32_t dispatchBufferBudgetBytes = ubSize > copyTmpBaseAddr + fixedBytesAfterDispatchBuffers ?
-                                             ubSize - copyTmpBaseAddr - fixedBytesAfterDispatchBuffers :
-                                             0;
-    bufferConfig.bufferCount = static_cast<int32_t>(dispatchBufferBudgetBytes / dispatchSlotBytes);
-    bufferConfig.bufferCount =
-        bufferConfig.bufferCount > MAX_DISPATCH_BUFFER_COUNT ? MAX_DISPATCH_BUFFER_COUNT : bufferConfig.bufferCount;
-    // MAX_RECV_ROUTE_ITEMS_PER_BATCH 原布局按 6 个槽位验证，因此当前基准 batch 可安全保底到双 buffer。
-    bufferConfig.bufferCount =
-        bufferConfig.bufferCount < MIN_DISPATCH_BUFFER_COUNT ? MIN_DISPATCH_BUFFER_COUNT : bufferConfig.bufferCount;
-
     uint32_t copyTmpTotalSize = static_cast<uint32_t>(bufferConfig.bufferCount) * COPY_TMP_BUFFER_SIZE;
     // Tensor用处：TripleInfoCalAndDispatch 中的动态 dispatch ring，配合 EVENT_ID0..EVENT_ID5 做软流水；
     // Tensor大小：bufferCount 块，每块容纳一份 token + scale。

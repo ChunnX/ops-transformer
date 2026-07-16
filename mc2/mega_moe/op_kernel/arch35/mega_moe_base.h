@@ -285,17 +285,30 @@ constexpr uint32_t UNPERMUTE_WEIGHT_ALIGNMENT_RESERVE_BYTES = 2 * ALIGN_32;
 constexpr uint32_t DEQUANT_BF16_SCALE_EXPANSION = 2U;
 constexpr uint32_t DEQUANT_FP32_SCALE_EXPANSION = 4U;
 
-// Recv route batch 上限只由 DispatchBuffInit 的 UB 布局约束。Brecv 表示每个 recv batch 的 route item 数，
-// W=worldSize，E=expertPerRank，D=dispatch buffer 数：
-//   recvVariableBytes(Brecv) = Brecv / 8 + 2 * Brecv * sizeof(int32_t) = 65 * Brecv / 8；
-//   recvFixedBytes = 32 + Align32(W * E * 4) + W * 32 + D * tokenScaleBytes + Align32(E * 4) + D * 32；
-//   recvFixedBytes + recvVariableBytes(Brecv) <= 248KB。
-// 12288 按 k=8192 和 recv fixedBytes 的最坏合法参数验证。Brecv 须向下对齐到 ALIGN_256；若修改
-// DispatchBuffInit、dispatch buffer 数量上限或 k/worldSize/expert 上限，只需重新计算 recv 上限。
+// Recv route batch 基准用于先选择 dispatch buffer 数量，再固定 buffer 数反推最终 batch。Brecv 表示
+// 基准 batch 的 route item 数，D 表示 dispatch buffer 数：
+//   recvVariableBytes(Brecv, D) = Brecv / 8 + 2 * Brecv * sizeof(int32_t)
+//                                  + D * (tokenScaleBytes + 32)；
+//   recvFixedBytes = 32 + Align32(worldSize * expertPerRank * 4) + worldSize * 32
+//                    + Align32(expertPerRank * 4)；
+//   recvFixedBytes + recvVariableBytes(Brecv, D) <= 248KB。
+//
+// 12288 的成立前提按 k=8192、moeExpertNum<=2048、worldSize<=1024、expertPerRank<=1024 和 D=6
+// 保守验证。分别取各 tensor 的独立上限时：
+//   recvFixedBytes             <= 32 + 8192 + 32768 + 4096 = 45088B；
+//   route batch tensor         = 12288 / 8 + 2 * 12288 * 4 = 99840B；
+//   6 个 dispatch slot         = 6 * (8448 + 32) = 50880B；
+//   合计 195808B，约 191.2KB，小于 248KB 可用 UB。
+// 因此该基准在所有合法规格下至少支持双 buffer，且最坏规格也能支持当前上限 6 个 buffer。若修改 MAX_H、
+// MAX_MOE_EXPERT_NUM、worldSize/expertPerRank 上限、DispatchBuffInit 固定 tensor 布局或 dispatch buffer
+// 数量上限，必须重新验证该前提。
+//
+// 最终 batch 由 CalcDispatchBufferConfig 使用剩余 UB 扩大，并向下对齐到 ALIGN_256。每个 route item
+// 占 1 bit mask 和两个 int32 index，因此 maxRouteItems = routeItemBudgetBytes * 8 / 65。
 // CopyGMToGMPerToken 的 copyTmp、triple 和 event ID 三类槽位一一对应，统一使用 2~6 个 buffer。
 constexpr int32_t MIN_DISPATCH_BUFFER_COUNT = 2;
 constexpr int32_t MAX_DISPATCH_BUFFER_COUNT = 6;
-constexpr int32_t MAX_RECV_ROUTE_ITEMS_PER_BATCH = 12288;
+constexpr int32_t BASE_RECV_ROUTE_ITEMS_PER_BATCH = 12288;
 
 // Send route batch 基准用于先选择 mask buffer 数量，再固定 buffer 数反推最终 batch。Bsend 表示基准 batch
 // 的 route item 数，N 表示 mask buffer 数：
