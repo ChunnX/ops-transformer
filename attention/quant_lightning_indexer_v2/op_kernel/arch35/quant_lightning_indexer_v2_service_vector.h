@@ -159,11 +159,8 @@ private:
 template <typename QLIV2T>
 __aicore__ inline void QLIV2Vector<QLIV2T>::InitBuffers(TPipe *pipe)
 {
-    // slot(2*M*s2) + ping-pong偏移(s2/2+VL_PAD) + VL_PAD(ND0/ND1间padding)
     pipe->InitBuffer(resMm1Buf_,
-        2 * constInfo_.mBaseSize * s2BaseSize_ * sizeof(QK_T)
-        + (s2BaseSize_ / 2 + VL_PAD_STRIDE) * sizeof(QK_T)
-        + VL_PAD_STRIDE * sizeof(QK_T));
+        2 * CeilDiv(constInfo_.mBaseSize, CVRATIO) * s2BaseSize_ * sizeof(QK_T));
     resMm1UB_ = resMm1Buf_.Get<QK_T>(); // qk
     pipe->InitBuffer(weightBuf_, 2 * CeilDiv(s1BaseSize_, CVRATIO) * UB_VEC_STRIDE);
     weightUB_ = weightBuf_.Get<W_T>(); // weight
@@ -497,10 +494,9 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessVec1(const QLIV2Common::RunIn
     auto weightBase = weightUB_[qScalepingpong * (UB_BANK_STRIDE / sizeof(W_T))];
     auto weightTempBase = weightTempUB_[qScalepingpong * (UB_BANK_STRIDE / sizeof(float))];
 
-    auto qkBase = resMm1UB_[pingpong * (UB_BANK_STRIDE / sizeof(QK_T) + VL_PAD_STRIDE)];
-    // qkVLstride = mBaseSize*dstStride + VL_PAD, slot1 相对 slot0 错开 256B 消除 bank 冲突
+    auto qkBase = resMm1UB_[pingpong * (UB_BANK_STRIDE / sizeof(QK_T))];
     auto qkVLstride = QLIV2Common::Align((uint64_t)info.actMBaseSize, 2 * constInfo_.gSize)
-        * s2BaseSize_ + VL_PAD_STRIDE;
+        * s2BaseSize_;
 
     if constexpr (IS_MXFP8) {
         vector1::BatchMulWeightAndReduceSum_MxFP8(outBase, UB_VEC_STRIDE / sizeof(uint16_t),
