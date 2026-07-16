@@ -288,6 +288,11 @@ __aicore__ inline bool FiaKernelNonQuant<FIAT, CubeBlockType, VecBlockType, FdBl
 {
     // TND、NTD场景且不存在无效行,不需要初始化
     if constexpr (LAYOUT_T == FIA_LAYOUT::TND || LAYOUT_T == FIA_LAYOUT::NTD) {
+        // 如果空batch超过一半，则全刷0，临时措施
+        if (tilingData->baseParams.isEmptyBatchOverHalf) {
+            return true;
+        }
+
         /*
          * tiling中提前算好了是否可能出现无效行, 正常从tiling中提取这个标记位(constInfo.isExistRowInvalid),
          * 对于FD场景, 有可能整体是没有无效行的, 但当前FD处理的这部分s2是无效的。为规避潜在的风险，只要带mask(constInfo.isExistRowInvalid)
@@ -780,6 +785,11 @@ __aicore__ inline void FiaKernelNonQuant<FIAT, CubeBlockType, VecBlockType, FdBl
 {
     uint32_t n2Idx = GetN2Idx(bN2Cur);
     uint32_t bIdx = GetBIdx(bN2Cur);
+    if (constInfo.outputLayout == FIA_LAYOUT::TND || constInfo.outputLayout == FIA_LAYOUT::NTD) {
+        if (tilingData->baseParams.isEmptyBatchOverHalf) {
+            return;
+        }
+    }
 
     // 对整个batch的结果置0
     if constexpr (POST_QUANT) { // out int8
