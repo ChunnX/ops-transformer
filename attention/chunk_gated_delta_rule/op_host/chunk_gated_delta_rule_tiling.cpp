@@ -103,6 +103,9 @@ ge::graphStatus ChunkGatedDeltaRuleTiling::GetShapeAttrsInfo()
     OP_CHECK_IF(AnalyzeShapes() != ge::GRAPH_SUCCESS, OP_LOGE(inputParams_.opName, "Invalid shapes."),
                 return ge::GRAPH_FAILED);
 
+    OP_CHECK_IF(GetStrides() != ge::GRAPH_SUCCESS, OP_LOGE(inputParams_.opName, "Invalid GetStrides."),
+                return ge::GRAPH_FAILED);
+
     OP_CHECK_IF(AnalyzeFormat() != ge::GRAPH_SUCCESS, OP_LOGE(inputParams_.opName, "Invalid Format."),
                 return ge::GRAPH_FAILED);
 
@@ -505,6 +508,19 @@ ge::graphStatus ChunkGatedDeltaRuleTiling::GetScale()
     return ge::GRAPH_SUCCESS;
 }
 
+ ge::graphStatus ChunkGatedDeltaRuleTiling::GetStrides()
+{
+    auto strideState = context_->GetInputStride(STATE_INDEX);
+    if (strideState != nullptr && strideState->GetDimNum() == STATE_DIM_NUM) {
+        tilingData_.stateStride0 = strideState->GetStride(0);
+        tilingData_.stateStride1 = strideState->GetStride(1);
+    } else {
+        tilingData_.stateStride1 = static_cast<uint64_t>(tilingData_.dk) * static_cast<uint64_t>(tilingData_.dv);
+        tilingData_.stateStride0 = static_cast<uint64_t>(tilingData_.nv) * tilingData_.stateStride1;
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
 // 负责判断 gamma 是否存在，并将状态写入 tilingData_.hasGamma（0 或 1）
 ge::graphStatus ChunkGatedDeltaRuleTiling::GetOptionalInput()
 {
@@ -532,6 +548,8 @@ void ChunkGatedDeltaRuleTiling::PrintTilingData()
     OP_LOGD(context_->GetNodeName(), "interWorkspaceSz: [%ld]", tilingData_.interWorkspaceSz);
     OP_LOGD(context_->GetNodeName(), "stageWorkspaceSz: [%ld]", tilingData_.stageWorkspaceSz);
     OP_LOGD(context_->GetNodeName(), "stageOneParaNum: [%ld]", tilingData_.stageOneParaNum);
+    OP_LOGD(context_->GetNodeName(), "stateStride0: [%ld]", tilingData_.stateStride0);
+    OP_LOGD(context_->GetNodeName(), "stateStride1: [%ld]", tilingData_.stateStride1);
     OP_LOGD(context_->GetNodeName(), "scale: [%f]", tilingData_.scale);
 }
 
