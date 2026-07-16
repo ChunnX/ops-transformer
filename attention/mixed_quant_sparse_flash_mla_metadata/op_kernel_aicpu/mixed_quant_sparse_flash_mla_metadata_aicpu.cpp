@@ -1135,7 +1135,7 @@ void MixedQuantSparseFlashMlaMetadataCpuKernel::AssignBlocksToCore(const SplitCo
     if (IsNeedRecordFDInfo(assignContext, result)) {
         if (isBatchConsistency_) { // batch一致性场景
             // curKvSplitPart补充最后一个规约切分的规约块数量
-            assignContext.curKvSplitPart += assignContext.s1GCache.s1GBlock - result.s2End[assignContext.curCoreIdx - 1U] - 1U;
+            assignContext.curKvSplitPart += assignContext.coreCache.block - result.s2End[assignContext.curCoreIdx] - 1U;
         }
         RecordFDInfo(splitContext, assignContext, result);
         assignContext.preFdDataNum += assignContext.curKvSplitPart;
