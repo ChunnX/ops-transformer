@@ -30,7 +30,7 @@ import npu_ops_transformer
 # ======================== 场景开关 ========================
 # False: 场景一 — CPU 上跑仿真，用 cpu_test 二进制生成 metadata，再将所有数据搬到 NPU 调 QLI 算子
 # True : 场景二 — 先将所有数据搬到 NPU，再调用真正的 NPU metadata 算子，最后调 QLI 算子
-IS_NPU_NOW = False
+IS_NPU_NOW = True
 
 FP32_FRACTION_BITS = 23        # fp32尾数位数
 

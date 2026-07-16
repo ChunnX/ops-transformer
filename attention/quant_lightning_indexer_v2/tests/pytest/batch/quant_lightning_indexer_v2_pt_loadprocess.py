@@ -26,7 +26,7 @@ from quant_lightning_indexer_v2_golden import _load_metadata_from_cpu
 # ======================== 场景开关 ========================
 # False: 场景一 — CPU 上跑仿真，用 cpu_test 二进制生成 metadata，再将所有数据搬到 NPU 调 QLI 算子
 # True : 场景二 — 先将所有数据搬到 NPU，再调用真正的 NPU metadata 算子，最后调 QLI 算子
-IS_NPU_NOW = False
+IS_NPU_NOW = True
 
 
 def test_qliv2_process(filepath, device_id=0):
