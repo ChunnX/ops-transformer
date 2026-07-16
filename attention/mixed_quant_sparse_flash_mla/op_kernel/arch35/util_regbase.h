@@ -30,6 +30,7 @@ enum class VselrIndexEnum {GT_64_AND_LTE_128_INDEX = 0, GT_0_AND_LTE_64_INDEX = 
     int64_t s1oIdx; \
     int64_t n2oIdx; \
     int64_t goIdx; \
+    int64_t gSplitSize;            /* split-G模式下当前AIC处理的G轴行数 */ \
     int64_t s2LoopEndIdx;          /* S2方向的循环控制信息 souter层确定 */ \
     int64_t s2LineStartIdx = 0;    /* S2方向按行的起始位置 */ \
     int64_t s2LineOriEndIdx;          /* S2方向按行的结束位置 */ \
