@@ -961,7 +961,7 @@ static uint64_t LiCalcWorkspaceSize(const platform_ascendc::PlatformAscendC &liP
         liWorkspaceSize += liMm1ResSize * liMm1ResElemSize * liDoubleBuffer * liBlockDim * 2;  // *2 for AIV GetBlockNum()
     }
 
-    // scoreB16Gm: [totalBatch, sortLenAlign] of bf16
+    // scoreGm: [totalBatch, sortLenAlign] of float (32-bit for precision)
     uint32_t sortLen = static_cast<uint32_t>(liS2Size);
     uint32_t sortLenAlign = ((sortLen + 255) / 256) * 256;
     // For TND, liS1Size=0, use liS2Size as fallback
@@ -974,7 +974,6 @@ static uint64_t LiCalcWorkspaceSize(const platform_ascendc::PlatformAscendC &liP
     // RadixTopK workspace: [aivNum * 4] globalHist + [aivNum] coreTopK
     uint32_t aivNum = liBlockDim * 2;
     liWorkspaceSize += static_cast<uint64_t>(aivNum) * (RDX_BINS_COUNT + 1) * sizeof(int32_t);
-    liWorkspaceSize += 256 * 1024 * 1024;  // 256MB padding for safety
     return liWorkspaceSize;
 }
 

@@ -357,7 +357,7 @@ __aicore__ inline void LightningIndexerServiceVector<LIT>::ProcessVec(const LICo
             LIServiceVec::DoReduce(reduceCacheBuf[REDUCE_BANK_CONFLICT_NUM], reduceOutInner, gRedCnt, s2BaseSize_);
             outQueue_.FreeTensor(reduceCacheBuf);
 
-            // Write reduce result to scoreB16Gm for RadixTopK
+            // Write reduce result to scoreB16Gm for RadixTopK (bf16)
             if (cuS2Len < s2BaseSize_) {
                 int32_t cuS2LenAlign8 = (cuS2Len + 7) / 8 * 8;
                 if (cuS2LenAlign8 < s2BaseSize_) {

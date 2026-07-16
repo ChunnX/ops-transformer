@@ -119,7 +119,7 @@ protected:
     GlobalTensor<MM1_OUT_T> mm1ResGm;  // 存放S
     GlobalTensor<float> vec1ResGm;     // 存放TopK计算中间结果
     GlobalTensor<int64_t> vec1ParamGm; // 存放LD参数信息
-    GlobalTensor<bfloat16_t> scoreB16Gm; // 存放bf16 score for RadixTopK
+    GlobalTensor<bfloat16_t> scoreB16Gm;
     __gm__ uint8_t *workspaceBase = nullptr;
     __gm__ uint8_t *sparseIndicesBase = nullptr;
 
