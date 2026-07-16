@@ -78,20 +78,19 @@ aclnnStatus aclnnCompressorGetWorkspaceSize(
     const aclTensor *x,
     const aclTensor *wkv,
     const aclTensor *wgate,
-    const aclTensor *stateCacheRef,
+    aclTensor       *stateCacheRef,
     const aclTensor *ape,
-    const aclTensor *stateBlockTable,
-    const aclTensor *cuSeqlens,
-    const aclTensor *seqused,
-    const aclTensor *startPos,
+    const aclTensor *stateBlockTableOptional,
+    const aclTensor *cuSeqlensOptional,
+    const aclTensor *sequsedOptional,
+    const aclTensor *startPosOptional,
     int64_t          cmpRatio,
     int64_t          coff,
     int64_t          cacheMode,
     int64_t          stateCacheStrideDim0,
-    const aclTensor *cmpKv,
-    const aclTensor *stateCache,
+    const aclTensor *cmpKvOut,
     uint64_t        *workspaceSize,
-    aclOpExecutor  **executor)
+    aclOpExecutor   **executor)
 ```
 ``` cpp
 aclnnStatus aclnnCompressor(
