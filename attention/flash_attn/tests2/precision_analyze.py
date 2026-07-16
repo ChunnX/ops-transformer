@@ -343,7 +343,7 @@ def analyze_failure(
                 )
 
             # ── 预览 (仅默认模式) ──
-            if verbose is None:
+            if verbose != "all":
                 lines += _preview(cpu_flat, npu_flat, total)
 
     lines += analyze_dimensions(cpu_out, npu_out, compare_result)
