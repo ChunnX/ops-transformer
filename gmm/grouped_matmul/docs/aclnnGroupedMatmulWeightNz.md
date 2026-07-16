@@ -96,7 +96,7 @@
         y_i=x_i \times (weight_i  * antiquant\_scale_i) + bias_i
         $$
 
-        x为FLOAT8_E4M3FN输入，weight为FLOAT32（表示8个FLOAT4_E2M1）/FLOAT4_E2M1/FLOAT4_E1M2输入
+        x为FLOAT8_E4M3FN输入，weight为FLOAT32(表示8个FLOAT4_E2M1)/FLOAT4_E2M1/FLOAT4_E1M2输入
 
         $$
         y_i=(x_i * per\_token\_scale_i) \times (weight_i  * antiquant\_scale_i) + bias_i
@@ -632,7 +632,7 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
       - mx伪量化和K-CG伪量化场景，weight的K轴和N轴均要求32B对齐。
       - 当x和weight的类型分别为BFLOAT16/FLOAT16和FLOAT4_E2M1/FLOAT32时，或为INT8和INT4/INT32时，仅支持x、weight均不转置；MxA8W4场景为FLOAT8_E4M3FN和FLOAT4_E2M1/FLOAT4_E1M2时，仅支持x不转置且weight转置。
       - antiquantScale的转置与否和weight保持一致。
-      - 当x为FLOAT8_E4M3FN，weight为FLOAT4_E2M1/FLOAT4_E1M2，weight shape为(N, K)的场景，属于单多单场景，weight支持多tensor（个数大于等于1），antiquantScaleOptional、antiquantOffsetOptional、biasOptional的tensor个数和weight一致。
+      - 当x为FLOAT8_E4M3FN，weight为FLOAT4_E2M1/FLOAT4_E1M2，weight shape为(N, K)的场景，属于单多单场景， weight支持多tensor(个数大于等于1)，antiquantScaleOptional、antiquantOffsetOptional、biasOptional的tensor个数和weight一致。
 
   - 静态量化场景支持的输入类型与shape为：
     - 以下入参为空：offsetOptional、antiquantScaleOptional、antiquantOffsetOptional、perTokenScaleOptional、activationInputOptional、activationQuantScaleOptional、activationQuantOffsetOptional、activationFeatureOutOptional
