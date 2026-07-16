@@ -1287,7 +1287,8 @@ MegaMoe<TemplateMegaMoeTypeFunc>::UnpermuteProcessToken(int32_t tokenIdx, int32_
 {
     for (int32_t expId = 0; expId < topK_; ++expId) {
         float expScale = topKWeightsTensor_.GetValue(localIdx * topK_ + expId);
-        int32_t inputBufferIdx = expId % bufferConfig.inputBufferCount;
+        int32_t routeItemIdxInBatch = localIdx * topK_ + expId;
+        int32_t inputBufferIdx = routeItemIdxInBatch % bufferConfig.inputBufferCount;
         TEventID event = static_cast<TEventID>(inputBufferIdx);
         LocalTensor<bfloat16_t> dataInBf16 = dataResTensor_[(inputBufferIdx + 1) * bufferConfig.bf16SlotElementCount];
         LocalTensor<float> dataInFp32 = dataResFp32Tensor_[(inputBufferIdx + 1) * bufferConfig.fp32SlotElementCount];
