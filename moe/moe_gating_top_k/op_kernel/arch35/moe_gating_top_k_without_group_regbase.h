@@ -60,8 +60,6 @@ private:
 
     __aicore__ inline void ProcessSingleExpert();
 
-    __aicore__ inline void PadWithMinFp32(__local_mem__ float *addr, uint32_t expertCount, uint32_t expertCountAlign);
-
 private:
     TPipe *pipe_;
     TQue<QuePosition::VECIN, 2> xInQueue_;
@@ -99,22 +97,6 @@ private:
 
     const MoeGatingTopKRegbaseTilingData *tilingData_;
 };
-
-template <typename T>
-__aicore__ inline void
-MoeGatingTopKWithoutGroupRegbase<T>::PadWithMinFp32(__local_mem__ float *addr, uint32_t expertCount,
-                                                     uint32_t expertCountAlign)
-{
-    uint32_t padNum = expertCountAlign - expertCount;
-    if (padNum == 0) {
-        return;
-    }
-    RegTensor<float> vregPad;
-    MicroAPI::UnalignReg u0;
-    MicroAPI::Duplicate(vregPad, *((float *)&MIN_FP32));
-    MicroAPI::DataCopyUnAlign(addr + expertCount, vregPad, u0, padNum);
-    MicroAPI::DataCopyUnAlignPost(addr + expertCount, u0, 0);
-}
 
 template <typename T>
 __aicore__ inline void MoeGatingTopKWithoutGroupRegbase<T>::CopyInBias()
