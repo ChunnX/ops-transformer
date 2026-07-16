@@ -664,9 +664,10 @@ static ge::graphStatus CheckSharedExpertInputs(const gert::TilingContext *contex
                         std::to_string(sharedWeight1Desc->GetDataType()).c_str(),
                         "must be same as weight1"),
                     return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(CheckSharedWeightShape(sharedWeight1Shape, weightOneStorageShape,
-                        "shared_weight1", "weight1", nodeName) != ge::GRAPH_SUCCESS,
-                    return ge::GRAPH_FAILED);
+    if (CheckSharedWeightShape(sharedWeight1Shape, weightOneStorageShape,
+                        "shared_weight1", "weight1", nodeName) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
 
     auto sharedWeight2Desc = context->GetDynamicInputDesc(config.sharedWeight2Index, 0);
     auto weightTwoDesc = context->GetDynamicInputDesc(config.weight2Index, 0);
@@ -682,17 +683,20 @@ static ge::graphStatus CheckSharedExpertInputs(const gert::TilingContext *contex
                         std::to_string(sharedWeight2Shape->GetStorageShape().GetDim(0)).c_str(),
                         (std::string("must be equal to sharedExpertNum = ") + std::to_string(sharedExpertNum)).c_str()),
                     return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(CheckSharedWeightShape(sharedWeight2Shape, weightTwoStorageShape,
-                        "shared_weight2", "weight2", nodeName) != ge::GRAPH_SUCCESS,
-                    return ge::GRAPH_FAILED);
+    if (CheckSharedWeightShape(sharedWeight2Shape, weightTwoStorageShape,
+                        "shared_weight2", "weight2", nodeName) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
 
     OP_TILING_CHECK(CheckSharedWeightScalesInput(context, config.sharedWeightScales1Index,
                         config.weightScales1Index, "shared_weight_scales1", "weight_scales1",
                         sharedExpertNum, nodeName) != ge::GRAPH_SUCCESS,
+                    OP_LOGE(nodeName, "check shared_weight_scales1 failed."),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(CheckSharedWeightScalesInput(context, config.sharedWeightScales2Index,
                         config.weightScales2Index, "shared_weight_scales2", "weight_scales2",
                         sharedExpertNum, nodeName) != ge::GRAPH_SUCCESS,
+                    OP_LOGE(nodeName, "check shared_weight_scales2 failed."),
                     return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
