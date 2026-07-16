@@ -158,11 +158,12 @@ ge::graphStatus QLIInfoParser::GetNpuInfo()
         OP_LOGE(opName_, "Npu Arch Version[%d] is not support.", static_cast<int32_t>(npuArch_));
         return GRAPH_FAILED;
     }
-    OP_CHECK_IF(context_->GetWorkspaceSizes(1) == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "workSpaceSize"),
-               return ge::GRAPH_FAILED);
+    OP_CHECK_IF(context_->GetWorkspaceSizes(1) == nullptr,
+                OP_LOGE_WITH_INVALID_INPUT(opName_, "workSpaceSize got from ge"),
+                return ge::GRAPH_FAILED);
     OP_CHECK_IF(context_->GetRawTilingData() == nullptr,
-               OP_LOGE_WITH_INVALID_INPUT(opName_, "RawTilingData"),
-               return ge::GRAPH_FAILED);
+                OP_LOGE_WITH_INVALID_INPUT(opName_, "RawTilingData got from GE context"),
+                return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -201,7 +202,7 @@ void QLIInfoParser::GetOutputParaInfo()
 ge::graphStatus QLIInfoParser::GetAttrParaInfo()
 {
     auto attrs = context_->GetAttrs();
-    OP_CHECK_IF(attrs == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "attrs"),
+    OP_CHECK_IF(attrs == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "attrs got from ge"),
                return ge::GRAPH_FAILED);
 
     OP_LOGI(context_->GetNodeName(), "GetAttrParaInfo start");
@@ -439,11 +440,13 @@ ge::graphStatus QLIInfoParser::GetAndCheckOptionalInput()
 {
     if (kLayout_ == DataLayout::PA_BSND) {
         OP_CHECK_IF(opParamInfo_.blockTable.tensor == nullptr,
-                   OP_LOGE_WITH_INVALID_INPUT(opName_, "block_table"),
-                   return ge::GRAPH_FAILED);
+            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "block_table",
+                "key layout only supported PA_BSND, input block_table must not be null"),
+            return ge::GRAPH_FAILED);
         OP_CHECK_IF(
             opParamInfo_.actualSeqLengthsK.tensor == nullptr,
-            OP_LOGE_WITH_INVALID_INPUT(opName_, "actual_seq_lengths_key"),
+            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "actual_seq_lengths_key",
+                "key layout only supported PA_BSND, input actual_seq_lengths_key must not be null"),
             return ge::GRAPH_FAILED);
         OP_CHECK_IF(opParamInfo_.blockTable.desc->GetDataType() != ge::DT_INT32,
             OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, "block_table",
@@ -459,8 +462,9 @@ ge::graphStatus QLIInfoParser::GetAndCheckOptionalInput()
 
     if (kLayout_ == DataLayout::TND) {
         OP_CHECK_IF(opParamInfo_.actualSeqLengthsK.tensor == nullptr,
-                   OP_LOGE_WITH_INVALID_INPUT(opName_, "actual_seq_lengths_key"),
-                   return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "actual_seq_lengths_key",
+                        "when layout_key is TND, input actual_seq_lengths_key must not be null"),
+                    return ge::GRAPH_FAILED);
     }
     OP_CHECK_IF(opParamInfo_.actualSeqLengthsK.tensor != nullptr &&
                     opParamInfo_.actualSeqLengthsK.desc->GetDataType() != ge::DT_INT32,
@@ -470,8 +474,9 @@ ge::graphStatus QLIInfoParser::GetAndCheckOptionalInput()
                 return ge::GRAPH_FAILED);
     if (qLayout_ == DataLayout::TND) {
         OP_CHECK_IF(opParamInfo_.actualSeqLengthsQ.tensor == nullptr,
-                   OP_LOGE_WITH_INVALID_INPUT(opName_, "actual_seq_lengths_query"),
-                   return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "actual_seq_lengths_query",
+                        "when layout_query is TND, input actual_seq_lengths_query must not be null"),
+                    return ge::GRAPH_FAILED);
     }
     OP_CHECK_IF(opParamInfo_.actualSeqLengthsQ.tensor != nullptr &&
                    opParamInfo_.actualSeqLengthsQ.desc->GetDataType() != ge::DT_INT32,
