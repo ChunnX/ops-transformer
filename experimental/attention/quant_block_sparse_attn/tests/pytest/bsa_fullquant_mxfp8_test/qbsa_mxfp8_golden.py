@@ -21,6 +21,7 @@ MXFP8 Flash Attention Golden
 """
 
 import argparse
+import csv
 import importlib.util
 import json
 import logging
@@ -47,7 +48,7 @@ QBSA_ROOT = os.path.abspath(os.path.join(CURRENT_DIR, "../../.."))
 TORCH_OPS_EXTENSION_DIR = os.path.join(QBSA_ROOT, "torch_ops_extension")
 _CUSTOM_OPS_IMPORTED = False
 _DEFAULT_CASE_FILE = "qbsa_mxfp8_test_cases"
-_DEFAULT_CASE_EXCEL = "qbsa_mxfp8_test_cases.xlsx"
+_DEFAULT_CASE_CSV = "qbsa_mxfp8_test_cases.csv"
 _CASE_LOG_WIDTH = 100
 _DTYPE_MAP = {
     "float8_e4m3fn": torch.float8_e4m3fn,
@@ -158,34 +159,30 @@ def _parse_case_field(field_name, value):
     return value
 
 
-def _resolve_case_excel_path(case_excel):
-    case_path = case_excel.strip()
-    if not case_path.endswith(".xlsx"):
-        case_path = f"{case_path}.xlsx"
+def _resolve_case_csv_path(case_csv):
+    case_path = case_csv.strip()
+    if not case_path.endswith(".csv"):
+        case_path = f"{case_path}.csv"
     if not os.path.isabs(case_path):
         case_path = os.path.join(CURRENT_DIR, case_path)
     if not os.path.exists(case_path):
-        raise FileNotFoundError(f"case Excel not found: {case_path}")
+        raise FileNotFoundError(f"case CSV not found: {case_path}")
     return case_path
 
 
-def _load_case_excel(case_excel, sheet_name):
-    try:
-        import pandas as pd
-    except ImportError as error:
-        raise RuntimeError("Excel case loading requires pandas and openpyxl") from error
-
-    case_path = _resolve_case_excel_path(case_excel)
-    dataframe = pd.read_excel(case_path, sheet_name=sheet_name, dtype=object, keep_default_na=False)
-    if "name" not in dataframe.columns:
-        raise ValueError(f"{case_path} must contain a name column")
-    for row_number, row in enumerate(dataframe.to_dict(orient="records"), start=2):
-        if not any(value != "" for value in row.values()):
-            continue
-        try:
-            yield {field: _parse_case_field(field, value) for field, value in row.items()}
-        except (TypeError, ValueError) as error:
-            raise ValueError(f"invalid case data in {case_path}:{row_number}: {error}") from error
+def _load_case_csv(case_csv):
+    case_path = _resolve_case_csv_path(case_csv)
+    with open(case_path, "r", encoding="utf-8-sig", newline="") as csv_file:
+        reader = csv.DictReader(csv_file)
+        if not reader.fieldnames or "name" not in reader.fieldnames:
+            raise ValueError(f"{case_path} must contain a name column")
+        for row_number, row in enumerate(reader, start=2):
+            if not any(value is not None and value.strip() for value in row.values()):
+                continue
+            try:
+                yield {field: _parse_case_field(field, value) for field, value in row.items()}
+            except (TypeError, ValueError) as error:
+                raise ValueError(f"invalid case data in {case_path}:{row_number}: {error}") from error
 
 
 def _resolve_dtype(value, field_name):
@@ -242,12 +239,12 @@ def _normalize_case(case):
     return case
 
 
-def load_test_cases(case_files=None, use_excel=False, sheet_name="test"):
-    case_files = case_files or (_DEFAULT_CASE_EXCEL if use_excel else _DEFAULT_CASE_FILE)
+def load_test_cases(case_files=None, use_csv=False):
+    case_files = case_files or (_DEFAULT_CASE_CSV if use_csv else _DEFAULT_CASE_FILE)
     all_cases = {}
     for case_file in [item.strip() for item in case_files.split(",") if item.strip()]:
-        if use_excel:
-            test_cases = _load_case_excel(case_file, sheet_name)
+        if use_csv:
+            test_cases = _load_case_csv(case_file)
         else:
             test_cases = _iter_test_cases(_load_case_file_test_cases(case_file))
         for case in test_cases:
@@ -1422,11 +1419,9 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(description="MXFP8 QuantBlockSparseAttn Golden")
     parser.add_argument("--case_files", default=None,
-                        help="case 文件路径，支持逗号分隔；默认加载 qbsa_mxfp8_test_cases.py")
-    parser.add_argument("--excel", action="store_true",
-                        help="按 Excel 格式加载 case；不指定 --case_files 时读取 qbsa_mxfp8_test_cases.xlsx")
-    parser.add_argument("--sheet_name", "--sheet-name", dest="sheet_name", default="test",
-                        help="Excel 工作表名称，默认使用 test；仅在 --excel 模式生效")
+                        help="case 文件路径，支持逗号分隔；默认文件由是否指定 --csv 决定")
+    parser.add_argument("--csv", action="store_true",
+                        help="按 CSV 格式加载 case；不指定 --case_files 时读取 qbsa_mxfp8_test_cases.csv")
     parser.add_argument("--mode", default="all",
                         help="执行模式，支持逗号组合: all/gen/cpu/npu/compare. 例: --mode=npu,compare")
     parser.add_argument("--case_name", "--case-name", dest="case_name", default=None,
@@ -1440,8 +1435,8 @@ if __name__ == '__main__':
     parser.add_argument("--cache-dir", default=None,
                         help="缓存目录路径（默认 golden_cache/）")
     args = parser.parse_args()
-    case_files = args.case_files or (_DEFAULT_CASE_EXCEL if args.excel else _DEFAULT_CASE_FILE)
-    all_cases = load_test_cases(case_files, use_excel=args.excel, sheet_name=args.sheet_name)
+    case_files = args.case_files or (_DEFAULT_CASE_CSV if args.csv else _DEFAULT_CASE_FILE)
+    all_cases = load_test_cases(case_files, use_csv=args.csv)
 
     if args.list_cases:
         for case_id in sorted(all_cases):
