@@ -16,7 +16,5 @@
 #include "single_core_context.h"
 #include "aiv_compute/quant_process.h"
 #include "aiv_comm/dispatch_prepare.h"
-#include "aiv_comm/dispatch.h"
-#include "epilogue/dispatch_gmm1_swiglu.h"
 
 #endif // MEGA_MOE_SINGLE_CORE_H
