@@ -212,7 +212,7 @@ public:
     ge::graphStatus ParseAndCheck(QLITilingInfo &QLIInfo);
     size_t GetTensorDimNum(const uint32_t tensorIdx);
     int64_t GetTensorDim(const uint32_t tensorIdx, const size_t idx);
-    ge::graphStatus CheckKeyContiguous() const;
+    ge::graphStatus CheckContiguous() const;
 
 public:
     gert::TilingContext *context_ = nullptr;
