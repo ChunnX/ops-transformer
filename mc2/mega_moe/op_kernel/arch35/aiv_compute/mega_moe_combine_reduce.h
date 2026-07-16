@@ -10,15 +10,15 @@
 
 /*!
  * \file mega_moe_combine_reduce.h
- * \brief Single-core combine reduce implementation.
+ * \brief Pure AIV CombineReduce compute implementation.
  */
 
 #ifndef MEGA_MOE_COMBINE_REDUCE_H
 #define MEGA_MOE_COMBINE_REDUCE_H
 
 #include "kernel_operator.h"
-#include "mega_moe_base.h"
-#include "mega_moe_combine_send.h"
+#include "../mega_moe_base.h"
+#include "mega_moe_combine_compute.h"
 
 using namespace AscendC;
 
@@ -39,12 +39,6 @@ struct CombineReduceBufferContext {
     GM_ADDR expandedXAddr;
     GM_ADDR topKWeightsAddr;
     GM_ADDR outputAddr;
-};
-
-struct CombineReduceSyncContext {
-    GM_ADDR rankSyncAddr;
-    uint32_t rankId;
-    uint32_t worldSize;
 };
 
 // CombineReduce 在 UB 中使用的数据、权重及反量化 scale buffer。
@@ -278,36 +272,6 @@ __aicore__ inline void ProcessCombineReduceSingleCore(const CombineReduceTileSch
         WaitFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID0);
         WaitFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID1);
     }
-}
-
-// ==============================================================================================
-// CrossRankSyncSingleCore：全卡同步，rankSyncAddr 前 48K 用于同步，后续区域记录各 tile 的 syncCnt
-// ==============================================================================================
-__aicore__ inline void CrossRankSyncSingleCore(const CombineReduceTileSchedule& tileSchedule,
-    const CombineReduceSyncContext& syncContext)
-{
-    if constexpr (g_coreType == AIC) {
-        return;
-    }
-    if (tileSchedule.tileNum == 0 || tileSchedule.tileId >= tileSchedule.tileNum) {
-        return;
-    }
-    // 每个逻辑 tile 使用独立 64B cache line 保存本轮同步计数。
-    __gm__ int32_t* syncRank = reinterpret_cast<__gm__ int32_t*>(syncContext.rankSyncAddr);
-    __gm__ int32_t* syncCount = reinterpret_cast<__gm__ int32_t*>(
-        syncContext.rankSyncAddr + 48 * 1024 + tileSchedule.tileId * 64);
-    int32_t count = ReadGmByPassDCache(syncCount) + 1;
-    // tile 按步长 tileNum 负责 rank：写对端通知，再等待本端对应 rank 的通知。
-    for (uint32_t rankIndex = tileSchedule.tileId; rankIndex < syncContext.worldSize;
-        rankIndex += tileSchedule.tileNum) {
-        __gm__ int32_t* syncRemoteAddr = reinterpret_cast<__gm__ int32_t*>(winRankAddr_[rankIndex])
-            + syncContext.rankId * 16;
-        WriteGmByPassDCache(syncRemoteAddr, count);
-        GmSignalWaitBarrier(syncRank + rankIndex * 16, count);
-    }
-    WriteGmByPassDCache(syncCount, count);
-    PipeBarrier<PIPE_ALL>();
-    SyncAll<true>();
 }
 
 } // namespace MegaMoeCombineReduceImpl

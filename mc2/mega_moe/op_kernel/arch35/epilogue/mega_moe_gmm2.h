@@ -10,14 +10,14 @@
 
 /*!
  * \file mega_moe_gmm2.h
- * \brief Single-core GMM2 implementation.
+ * \brief GMM2 single-core orchestration shared by the AIC matmul and its AIV epilogue.
  */
 
 #ifndef MEGA_MOE_GMM2_H
 #define MEGA_MOE_GMM2_H
 
 #include "kernel_operator.h"
-#include "mega_moe_impl.h"
+#include "../mega_moe_impl.h"
 
 using namespace AscendC;
 
