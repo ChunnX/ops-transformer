@@ -626,7 +626,7 @@ __aicore__ inline void MoeGatingTopKWithoutGroupRegbase<T>::ProcessSmallExpertK1
                         MicroAPI::Muls(vregMax, vregNorm, static_cast<float>(1), pregRow);
                         MicroAPI::Duplicate(vregArgmax, static_cast<float>(0), pregRow);
                     } else {
-                        MicroAPI::Compare<float, MicroAPI::CMPMODE::GT>(pregCmp, vregNorm, vregMax, pregRow);
+                        MicroAPI::Compare<float, CMPMODE::GT>(pregCmp, vregNorm, vregMax, pregRow);
                         MicroAPI::Select<float>(vregMax, vregNorm, vregMax, pregCmp);
                         RegTensor<float> vregE;
                         MicroAPI::Duplicate(vregE, static_cast<float>(e), pregRow);
