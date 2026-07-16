@@ -30,7 +30,7 @@
 using namespace AscendC;
 
 namespace MegaMoeCombineImpl {
-constexpr uint32_t COMBINE_SEND_ADDR = 140 * 1024U; // triple tensor 在 UB 中的起始地址
+constexpr uint32_t COMBINE_SEND_ADDR = 140 * 1024U;  // triple tensor 在 UB 中的起始地址
 constexpr uint32_t rankIdIndex = 0;
 constexpr uint32_t tokenIdxIndex = 1;
 constexpr uint32_t topkIdxIndex = 2;

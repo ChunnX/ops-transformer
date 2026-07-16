@@ -23,6 +23,7 @@ using namespace AscendC;
 
 struct MegaMoeTilingData {
     uint32_t expertPerRank;
+    uint32_t moeExpertPerRank;
     uint32_t bs;
     uint32_t h;
     uint32_t hiddenDim;
@@ -36,6 +37,6 @@ struct MegaMoeTilingData {
     float clampLimit;
     uint8_t groupedMatmulMode;
     int64_t topoType;
-    uint32_t ubSize; // 单 AIV UB 总字节数(host 由平台查得), prefill 模板动态算 route batch 用
+    uint32_t sharedExpertNum;
 };
 #endif
