@@ -29,7 +29,7 @@ def load_impl_module(stem):
 
 golden_module = load_impl_module("golden")
 inputs_module = load_impl_module("inputs")
-
+compare_module = load_impl_module("compare")
 
 class CompressorSpec:
     golden = golden_module.cpu_compressor
@@ -39,6 +39,12 @@ class CompressorSpec:
         "bfloat16": {"standard": "stat_rel_err"},
     }
 
+    def compare(*outputs, **kwargs):
+        ctx = golden_module.get_golden_context()
+        kwargs['cmp_kv_mask'] = ctx.get('cmp_kv_mask')
+        kwargs['update_kv'] = ctx.get('update_kv')
+        kwargs['update_score'] = ctx.get('update_score')
+        return compare_module.compare(*outputs, **kwargs)
 
 __spec__ = {
     "cann_ops_transformer.ops.compressor": "CompressorSpec",
