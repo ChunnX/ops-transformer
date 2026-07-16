@@ -186,9 +186,9 @@ def _batch_slice(
 
 
 def _chunk_size(n1: int, n1_index: int, s2: int) -> int:
-    # Keep the two largest temporary score tensors below roughly 384 MiB.
+    # Bound score tensors so the reference can run beside production workloads.
     denominator = max(n1, n1_index) * max(s2, 1)
-    return max(1, min(512, (96 * 1024 * 1024) // max(denominator, 1)))
+    return max(1, min(256, (16 * 1024 * 1024) // max(denominator, 1)))
 
 
 def compute_reference(
@@ -212,41 +212,38 @@ def compute_reference(
     k_starts = [0] + k_ends[:-1]
     target = torch.device(device)
 
-    working = {name: tensor.to(target) for name, tensor in tensors.items()}
-    q_dtype = working["query"].dtype
-    weight_dtype = working["weight"].dtype
-    if bool(case["rope"]):
-        query_total = torch.cat((working["query"], working["query_rope"]), dim=-1)
-        key_total = torch.cat((working["key"], working["key_rope"]), dim=-1)
-    else:
-        query_total = working["query"]
-        key_total = working["key"]
-
-    d_query_index = torch.zeros_like(working["query_index"])
-    d_key_index = torch.zeros_like(working["key_index"])
-    d_weight = torch.zeros(working["weight"].shape, dtype=weight_dtype, device=target)
-    loss = torch.zeros((1,), dtype=torch.float32, device=target)
+    q_dtype = tensors["query"].dtype
+    weight_dtype = tensors["weight"].dtype
+    d_query_index = torch.zeros_like(tensors["query_index"])
+    d_key_index = torch.zeros_like(tensors["key_index"])
+    d_weight = torch.zeros(tensors["weight"].shape, dtype=weight_dtype)
+    loss = torch.zeros((1,), dtype=torch.float32)
 
     if layout == "BSND":
-        softmax_max = torch.empty((batch, n1, q_lengths[0], 1), dtype=torch.float32, device=target)
+        softmax_max = torch.empty((batch, n1, q_lengths[0], 1), dtype=torch.float32)
         softmax_sum = torch.empty_like(softmax_max)
-        softmax_max_index = torch.empty((batch, 1, q_lengths[0]), dtype=torch.float32, device=target)
+        softmax_max_index = torch.empty((batch, 1, q_lengths[0]), dtype=torch.float32)
         softmax_sum_index = torch.empty_like(softmax_max_index)
     else:
-        softmax_max = torch.empty((n1, sum(q_lengths), 1), dtype=torch.float32, device=target)
+        softmax_max = torch.empty((n1, sum(q_lengths), 1), dtype=torch.float32)
         softmax_sum = torch.empty_like(softmax_max)
-        softmax_max_index = torch.empty((1, sum(q_lengths)), dtype=torch.float32, device=target)
+        softmax_max_index = torch.empty((1, sum(q_lengths)), dtype=torch.float32)
         softmax_sum_index = torch.empty_like(softmax_max_index)
 
     for batch_index in range(batch):
         q_len, k_len = q_lengths[batch_index], k_lengths[batch_index]
         if q_len == 0:
             continue
-        q_batch = _batch_slice(query_total, layout, batch_index, q_starts, q_ends)
-        k_batch = _batch_slice(key_total, layout, batch_index, k_starts, k_ends)
-        qi_batch = _batch_slice(working["query_index"], layout, batch_index, q_starts, q_ends)
-        ki_batch = _batch_slice(working["key_index"], layout, batch_index, k_starts, k_ends)
-        w_batch = _batch_slice(working["weight"], layout, batch_index, q_starts, q_ends)
+        q_batch = _batch_slice(tensors["query"], layout, batch_index, q_starts, q_ends).to(target)
+        k_batch = _batch_slice(tensors["key"], layout, batch_index, k_starts, k_ends).to(target)
+        qi_batch = _batch_slice(tensors["query_index"], layout, batch_index, q_starts, q_ends).to(target)
+        ki_batch = _batch_slice(tensors["key_index"], layout, batch_index, k_starts, k_ends).to(target)
+        w_batch = _batch_slice(tensors["weight"], layout, batch_index, q_starts, q_ends).to(target)
+        if bool(case["rope"]):
+            q_rope = _batch_slice(tensors["query_rope"], layout, batch_index, q_starts, q_ends).to(target)
+            k_rope = _batch_slice(tensors["key_rope"], layout, batch_index, k_starts, k_ends).to(target)
+            q_batch = torch.cat((q_batch, q_rope), dim=-1)
+            k_batch = torch.cat((k_batch, k_rope), dim=-1)
         chunk = _chunk_size(n1, n1_index, k_len)
 
         for q_start in range(0, q_len, chunk):
@@ -275,7 +272,7 @@ def compute_reference(
 
             p_clip = torch.clamp(p_reduce, min=1e-8)
             sy_clip = torch.clamp(sy, min=1e-8)
-            loss += (p_reduce * (torch.log(p_clip) - torch.log(sy_clip))).sum()
+            loss += (p_reduce * (torch.log(p_clip) - torch.log(sy_clip))).sum().cpu()
 
             d_i = sy - p_reduce
             d_weight_slice = (d_i.unsqueeze(1) * score.transpose(0, 1)).sum(dim=-1)
@@ -284,41 +281,44 @@ def compute_reference(
                 * w_slice.transpose(0, 1).unsqueeze(-1).float()
                 * (score > 0).float()
             ).to(q_dtype)
-            repeated_key = ki_batch.repeat(1, n1_index, 1)
-            dq = torch.einsum("nst,tnd->snd", relu_grad.float(), repeated_key.float()).to(q_dtype)
-            dk = torch.einsum("nst,snd->tnd", relu_grad.float(), qi_slice.float())
-            dk = dk.sum(dim=1, keepdim=True).to(q_dtype)
+            dq = torch.einsum("nst,td->snd", relu_grad.float(), ki_batch[:, 0].float()).to(q_dtype)
+            dk = torch.einsum("nst,snd->td", relu_grad.float(), qi_slice.float())
+            dk = dk.unsqueeze(1).to(q_dtype)
 
             if layout == "BSND":
-                d_query_index[batch_index, q_start:q_end] = dq
-                d_key_index[batch_index] += dk
-                d_weight[batch_index, q_start:q_end] = d_weight_slice.to(weight_dtype)
-                softmax_max[batch_index, :, q_start:q_end, 0] = p_max
-                softmax_sum[batch_index, :, q_start:q_end, 0] = p_sum
-                softmax_max_index[batch_index, 0, q_start:q_end] = sy_max
-                softmax_sum_index[batch_index, 0, q_start:q_end] = sy_sum
+                d_query_index[batch_index, q_start:q_end] = dq.cpu()
+                d_key_index[batch_index] += dk.cpu()
+                d_weight[batch_index, q_start:q_end] = d_weight_slice.to(weight_dtype).cpu()
+                softmax_max[batch_index, :, q_start:q_end, 0] = p_max.cpu()
+                softmax_sum[batch_index, :, q_start:q_end, 0] = p_sum.cpu()
+                softmax_max_index[batch_index, 0, q_start:q_end] = sy_max.cpu()
+                softmax_sum_index[batch_index, 0, q_start:q_end] = sy_sum.cpu()
             else:
                 global_q_start = q_starts[batch_index] + q_start
                 global_q_end = q_starts[batch_index] + q_end
-                d_query_index[global_q_start:global_q_end] = dq
-                d_key_index[k_starts[batch_index] : k_ends[batch_index]] += dk
-                d_weight[global_q_start:global_q_end] = d_weight_slice.to(weight_dtype)
-                softmax_max[:, global_q_start:global_q_end, 0] = p_max
-                softmax_sum[:, global_q_start:global_q_end, 0] = p_sum
-                softmax_max_index[0, global_q_start:global_q_end] = sy_max
-                softmax_sum_index[0, global_q_start:global_q_end] = sy_sum
+                d_query_index[global_q_start:global_q_end] = dq.cpu()
+                d_key_index[k_starts[batch_index] : k_ends[batch_index]] += dk.cpu()
+                d_weight[global_q_start:global_q_end] = d_weight_slice.to(weight_dtype).cpu()
+                softmax_max[:, global_q_start:global_q_end, 0] = p_max.cpu()
+                softmax_sum[:, global_q_start:global_q_end, 0] = p_sum.cpu()
+                softmax_max_index[0, global_q_start:global_q_end] = sy_max.cpu()
+                softmax_sum_index[0, global_q_start:global_q_end] = sy_sum.cpu()
+
+        del q_batch, k_batch, qi_batch, ki_batch, w_batch
+        if target.type == "npu":
+            torch.npu.empty_cache()
 
     stats = {
-        "softmax_max": softmax_max.cpu(),
-        "softmax_sum": softmax_sum.cpu(),
-        "softmax_max_index": softmax_max_index.cpu(),
-        "softmax_sum_index": softmax_sum_index.cpu(),
+        "softmax_max": softmax_max,
+        "softmax_sum": softmax_sum,
+        "softmax_max_index": softmax_max_index,
+        "softmax_sum_index": softmax_sum_index,
     }
     outputs = {
-        "d_query_index": d_query_index.cpu(),
-        "d_key_index": d_key_index.cpu(),
-        "d_weight": d_weight.cpu(),
-        "loss": loss.cpu(),
+        "d_query_index": d_query_index,
+        "d_key_index": d_key_index,
+        "d_weight": d_weight,
+        "loss": loss,
     }
     for name, tensor in {**stats, **outputs}.items():
         if not torch.isfinite(tensor.float()).all():
