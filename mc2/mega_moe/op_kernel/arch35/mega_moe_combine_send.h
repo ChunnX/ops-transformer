@@ -65,26 +65,6 @@ __aicore__ inline void CombineTokens(uint32_t mLoc, uint32_t nLoc, uint32_t n, L
     }
 }
 
-// Direct-GM token combine has already rebuilt one complete row in UB.  Read
-// the route once and send the contiguous row with one MTE3 command instead of
-// re-entering the 256-column tile helper for every slice.
-template <typename Element>
-__aicore__ inline void CombineTokenRow(uint32_t n, LocalTensor<int32_t> &tripleTensor,
-                                       LocalTensor<Element> &rowTensor, const Params &params)
-{
-    uint32_t toRankId = tripleTensor.GetValue(0);
-    uint32_t tokenIdx = tripleTensor.GetValue(1);
-    uint32_t topkIdx = tripleTensor.GetValue(2);
-
-    uint64_t gmRemoteBaseOffset = params.peermemInfo.combineSendPtr - params.peermemInfo.rankSyncInWorldPtr;
-    AscendC::GlobalTensor<Element> gmRemoteD;
-    gmRemoteD.SetGlobalBuffer(
-        reinterpret_cast<__gm__ Element *>(GetRankWinAddrWithOffset(toRankId, gmRemoteBaseOffset)));
-    uint64_t gmDstOffset = (static_cast<uint64_t>(tokenIdx) * params.tilingData->topK + topkIdx) * n;
-    AscendC::DataCopyExtParams ub2GmParams{1U, static_cast<uint32_t>(n * sizeof(Element)), 0U, 0U, 0U};
-    AscendC::DataCopyPad(gmRemoteD[gmDstOffset], rowTensor, ub2GmParams);
-}
-
 template <typename ElementMMadOut2, typename BlockShape>
 __aicore__ inline void
 CombineTokensLayered(uint32_t mLoc, uint32_t nLoc, uint32_t n, LocalTensor<int32_t> &tripleTensor,
