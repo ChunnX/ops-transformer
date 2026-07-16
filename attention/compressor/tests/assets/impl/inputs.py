@@ -71,7 +71,6 @@ def build_block_table(block_table, B, S_max, block_size, cmp_ratio,
                 if next_block_id < block_num:
                     block_table[i][j] = next_block_id
                     next_block_id += 1
-
             end_pos = get_seq_used_by_batch(i, S, seqused, cu_seqlens)
             next_start = (start_pos[i] + end_pos) // cmp_ratio * cmp_ratio - cmp_ratio
             next_end = (start_pos[i] + end_pos) // cmp_ratio * cmp_ratio + cmp_ratio
@@ -85,7 +84,11 @@ def build_block_table(block_table, B, S_max, block_size, cmp_ratio,
                     block_table[i][j] = next_block_id
                     next_block_id += 1
     elif cache_mode == 2:
-        block_table = torch.tensor(random.sample(list(range(B)), B), dtype=torch.int32)
+        block_table.zero_()
+        if B > 0:
+            perm = random.sample(list(range(B)), B)
+            for i in range(B):
+                block_table[i] = perm[i]
 
 def _fill_seq_descriptors(x, state_cache, cmp_ratio, coff, cache_mode,
                           cu_seqlens, seqused, start_pos, **kwargs):

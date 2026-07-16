@@ -296,8 +296,8 @@ def compare(*outputs, **kwargs):
     update_kv = kwargs.get('update_kv', None)
     update_score = kwargs.get('update_score', None)
 
-    npu_sub_outputs = [npu_cmp_kv]
-    golden_sub_outputs = [cpu_cmp_kv]
+    npu_sub_outputs = [npu_cmp_kv[cmp_kv_mask]]
+    golden_sub_outputs = [cpu_cmp_kv[cmp_kv_mask]]
 
     npu_sub_outputs.append(npu_state_cache[:, :, :npu_state_cache.shape[2]//2][update_kv])
     npu_sub_outputs.append(npu_state_cache[:, :, npu_state_cache.shape[2]//2:][update_score])
