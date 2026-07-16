@@ -456,7 +456,7 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
         - `dynamicScalesOut`仅quantMode取值为2时有输出。
         - `commAlg`当前版本不支持，传空指针即可。
         - `xActiveMaskOptional`要求为1D或2D Tensor（1D时shape为(BS, )，2D时shape为(BS, K)）；1D时true需排在false前，2D时token对应K个值全为false则不参与通信。
-        - `expertScalesOptional`可传有效Tensor、空指针或空Tensor，传空指针或空Tensor时`expertScalesOptional`无效。
+        - `expertScalesOptional`可传有效Tensor、空指针或空Tensor，有效Tensor为2D Tensor，shape为(BS, K)，传空指针或空Tensor时`expertScalesOptional`无效。
         - `epWorldSize`取值范围[2, 768]。
         - `moeExpertNum`取值范围(0, 1024]。
         - `groupTp`（预留参数，当前版本不支持）。
@@ -474,7 +474,7 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
         - `dynamicScalesOut`quantMode取值为2、3、4时有输出；quantMode取值为0且`x`的数据类型为`HIFLOAT8`、`FLOAT8_E5M2`、`FLOAT8_E4M3FN`、`FLOAT4_E2M1`、`FLOAT4_E1M2`时也有输出。
         - `commAlg`当前版本不支持，传空指针即可。
         - `xActiveMaskOptional`要求为1D或2D Tensor（1D时shape为(BS, )，2D时shape为(BS, K)）；1D时true需排在false前（例：{true, false, true}非法），2D时token对应K个值全为false则不参与通信。
-        - `expertScalesOptional`可传有效Tensor、空指针或空Tensor，传空指针或空Tensor时`expertScalesOptional`无效。
+        - `expertScalesOptional`可传有效Tensor、空指针或空Tensor，有效Tensor为2D Tensor，shape为(BS, K)，传空指针或空Tensor时`expertScalesOptional`无效。
         - `epWorldSize`取值范围[2, 1024]。
         - `moeExpertNum`取值范围(0, 1024]。
         - `groupTp`当前版本不支持，传空字符即可。
