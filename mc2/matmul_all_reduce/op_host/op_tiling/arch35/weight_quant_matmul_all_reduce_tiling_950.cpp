@@ -216,7 +216,7 @@ uint64_t WeightQuantMatmulAllReduceTilingA5::GetTilingKey() const
     }
     bool isUseA2APath = mc2tiling::IsUseA2APath(args_.rankDim, npuArch_);
     const uint64_t k = MatmulAllReduceTilingBase::GetKValue();
-    if (k >= WEIGHT_QUANT_A2APATH_CRITICAL_K) {
+    if (k >= WEIGHT_QUANT_A2APATH_CRITICAL_K && mc2tiling::Is8P(args_.rankDim, npuArch_)) {
         isUseA2APath = false;
     }
     bool isA2ARSAG = isUseA2APath;
@@ -279,7 +279,7 @@ ge::graphStatus WeightQuantMatmulAllReduceTilingA5::GetWorkspaceSize()
     } else {
         bool isUseA2APath = mc2tiling::IsUseA2APath(args_.rankDim, npuArch_);
         const uint64_t k = MatmulAllReduceTilingBase::GetKValue();
-        if (k >= WEIGHT_QUANT_A2APATH_CRITICAL_K) {
+        if (k >= WEIGHT_QUANT_A2APATH_CRITICAL_K && mc2tiling::Is8P(args_.rankDim, npuArch_)) {
             isUseA2APath = false;
         }
         if (isUseA2APath) {
@@ -498,7 +498,7 @@ ge::graphStatus WeightQuantMatmulAllReduceTilingA5::SetMc2Hcomm()
     const char* groupName = context_->GetAttrs()->GetAttrPointer<char>(static_cast<int>(0));
     bool isUseA2APath = mc2tiling::IsUseA2APath(args_.rankDim, npuArch_);
     const uint64_t k = MatmulAllReduceTilingBase::GetKValue();
-    if (k >= WEIGHT_QUANT_A2APATH_CRITICAL_K) {
+    if (k >= WEIGHT_QUANT_A2APATH_CRITICAL_K && mc2tiling::Is8P(args_.rankDim, npuArch_)) {
         isUseA2APath = false;
     }
     if (isUseA2APath) {
