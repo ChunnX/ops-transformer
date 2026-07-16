@@ -441,6 +441,9 @@ __aicore__ inline void MoeGatingTopKWithoutGroupRegbase<T>::ProcessSingleExpert(
             outAddr = (__local_mem__ float *)outOutTensor.GetPhyAddr();
         }
 
+        uint32_t rowsInBatchU32 = static_cast<uint32_t>(rowsInBatch);
+        uint16_t vfLoopNum = static_cast<uint16_t>(CeilDiv(rowsInBatchU32, WG_VL_FLOAT_SIZE));
+
         __VEC_SCOPE__
         {
             RegTensor<float> vregIn;
@@ -454,8 +457,6 @@ __aicore__ inline void MoeGatingTopKWithoutGroupRegbase<T>::ProcessSingleExpert(
             MicroAPI::MaskReg preg0 = MicroAPI::CreateMask<float>();
             MicroAPI::Duplicate<float, MicroAPI::MaskMergeMode::ZEROING, float>(vregOne, static_cast<float>(1), preg0);
 
-            uint32_t rowsInBatchU32 = static_cast<uint32_t>(rowsInBatch);
-            uint16_t vfLoopNum = static_cast<uint16_t>(CeilDiv(rowsInBatchU32, WG_VL_FLOAT_SIZE));
             for (uint16_t i = 0; i < vfLoopNum; i++) {
                 preg0 = MicroAPI::UpdateMask<float>(rowsInBatchU32);
                 ops::LoadOneTensorForDtypeT<T>(inputAddr, vregIn, preg0, i * WG_VL_FLOAT_SIZE);
@@ -593,6 +594,7 @@ __aicore__ inline void MoeGatingTopKWithoutGroupRegbase<T>::ProcessSmallExpertK1
                 RegTensor<float> vregTmp3;
                 RegTensor<float> vregMax;
                 RegTensor<float> vregArgmax;
+                RegTensor<float> vregBiasVal;
                 RegTensor<int32_t> vregArgmaxInt;
                 MicroAPI::MaskReg pregRow = MicroAPI::CreateMask<float>();
                 MicroAPI::MaskReg pregCmp;
@@ -607,7 +609,6 @@ __aicore__ inline void MoeGatingTopKWithoutGroupRegbase<T>::ProcessSmallExpertK1
                     MicroAPI::Adds(vregTmp3, vregTmp2, static_cast<float>(1), pregRow);
                     MicroAPI::Div<float, &WG_DIV_MODE>(vregNorm, vregOne, vregTmp3, pregRow);
                     if (hasBias_) {
-                        RegTensor<float> vregBiasVal;
                         ops::LoadOneTensorForDtypeT<T>(biasAddr, vregBiasVal, pregRow, 0);
                         MicroAPI::Add(vregNorm, vregNorm, vregBiasVal, pregRow);
                     }
@@ -621,7 +622,6 @@ __aicore__ inline void MoeGatingTopKWithoutGroupRegbase<T>::ProcessSmallExpertK1
                         MicroAPI::Adds(vregTmp3, vregTmp2, static_cast<float>(1), pregRow);
                         MicroAPI::Div<float, &WG_DIV_MODE>(vregNorm, vregOne, vregTmp3, pregRow);
                         if (hasBias_) {
-                            RegTensor<float> vregBiasVal;
                             ops::LoadOneTensorForDtypeT<T>(biasAddr, vregBiasVal, pregRow, e);
                             MicroAPI::Add(vregNorm, vregNorm, vregBiasVal, pregRow);
                         }
@@ -655,6 +655,7 @@ __aicore__ inline void MoeGatingTopKWithoutGroupRegbase<T>::ProcessSmallExpertK1
                 RegTensor<float> vregOut;
                 RegTensor<float> vregMax;
                 RegTensor<float> vregArgmax;
+                RegTensor<float> vregBiasVal;
                 RegTensor<int32_t> vregArgmaxInt;
                 MicroAPI::MaskReg pregRow = MicroAPI::CreateMask<float>();
                 MicroAPI::MaskReg pregCmp;
@@ -664,7 +665,6 @@ __aicore__ inline void MoeGatingTopKWithoutGroupRegbase<T>::ProcessSmallExpertK1
                     ops::LoadOneTensorForDtypeT<T>(inputAddr, vregIn, pregRow, rowOffset * expertCountU16);
                     MicroAPI::Duplicate(vregNorm, static_cast<float>(1), pregRow);
                     if (hasBias_) {
-                        RegTensor<float> vregBiasVal;
                         ops::LoadOneTensorForDtypeT<T>(biasAddr, vregBiasVal, pregRow, 0);
                         MicroAPI::Add(vregNorm, vregNorm, vregBiasVal, pregRow);
                     }
@@ -675,7 +675,6 @@ __aicore__ inline void MoeGatingTopKWithoutGroupRegbase<T>::ProcessSmallExpertK1
                                                        rowOffset * expertCountU16 + e);
                         MicroAPI::Duplicate(vregNorm, static_cast<float>(1), pregRow);
                         if (hasBias_) {
-                            RegTensor<float> vregBiasVal;
                             ops::LoadOneTensorForDtypeT<T>(biasAddr, vregBiasVal, pregRow, e);
                             MicroAPI::Add(vregNorm, vregNorm, vregBiasVal, pregRow);
                         }
@@ -712,6 +711,7 @@ __aicore__ inline void MoeGatingTopKWithoutGroupRegbase<T>::ProcessSmallExpertK1
                 RegTensor<float> vregTmp3;
                 RegTensor<float> vregMax;
                 RegTensor<float> vregArgmax;
+                RegTensor<float> vregBiasVal;
                 RegTensor<int32_t> vregArgmaxInt;
                 MicroAPI::MaskReg pregRow = MicroAPI::CreateMask<float>();
                 MicroAPI::MaskReg pregCmp;
@@ -724,7 +724,6 @@ __aicore__ inline void MoeGatingTopKWithoutGroupRegbase<T>::ProcessSmallExpertK1
                     MicroAPI::Ln(vregTmp3, vregTmp2, pregRow);
                     MicroAPI::Sqrt(vregNorm, vregTmp3, pregRow);
                     if (hasBias_) {
-                        RegTensor<float> vregBiasVal;
                         ops::LoadOneTensorForDtypeT<T>(biasAddr, vregBiasVal, pregRow, 0);
                         MicroAPI::Add(vregNorm, vregNorm, vregBiasVal, pregRow);
                     }
@@ -738,7 +737,6 @@ __aicore__ inline void MoeGatingTopKWithoutGroupRegbase<T>::ProcessSmallExpertK1
                         MicroAPI::Ln(vregTmp3, vregTmp2, pregRow);
                         MicroAPI::Sqrt(vregNorm, vregTmp3, pregRow);
                         if (hasBias_) {
-                            RegTensor<float> vregBiasVal;
                             ops::LoadOneTensorForDtypeT<T>(biasAddr, vregBiasVal, pregRow, e);
                             MicroAPI::Add(vregNorm, vregNorm, vregBiasVal, pregRow);
                         }
