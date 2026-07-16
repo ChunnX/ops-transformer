@@ -43,7 +43,7 @@ def display_error_output(real_data, expect_data, err_idx, relative_diff):
     len_err = len(err_idx)
     for i in err_idx:
         count += 1
-        if True:
+        if count < 10 or (90 < count < 100):
             print_log('%08d \t %.7f \t %.7f \t %.7f \t %.7f' % (
                 i, expect_data[i], real_data[i], abs(np.float64(
                     expect_data[i]) - np.float64(real_data[i])),
