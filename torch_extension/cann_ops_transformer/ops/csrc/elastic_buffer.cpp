@@ -53,7 +53,6 @@ constexpr uint32_t HCCL_MIN_RANK_SIZE = 2;
 constexpr int COMM_PROTOCOL_UBC_CTP_VALUE = 4;
 constexpr int COMM_PROTOCOL_UBC_TP_VALUE = 5;
 constexpr int64_t BUFFER_ALIGNMENT = 2 * 1024 * 1024;
-constexpr int64_t ENGRAM_FETCH_GM_BYTES = 200 * 1024 * 1024; // 训练 a2a GM 缓冲区固定 200MB
 constexpr int DIM_TWO = 2;
 
 // RAII guard for multi-step host buffer allocation
@@ -394,8 +393,8 @@ private:
     void EnsureEngramContext();
     void EnsureMoeContext();
 
-    // GM 管理（write 阶段申请, destroy 阶段释放）
-    void AllocateAndExchangeGm(int64_t gmBytes);
+    // HCCL 默认 buffer 查询（训练态 a2a 收发缓冲）
+    void QueryAndExchangeHcclBuffer();
     void UpdateContextTensor();
 
     std::string groupName_;
@@ -406,9 +405,7 @@ private:
     void *hostBufPtr_ = nullptr;
     void *deviceBufPtr_ = nullptr;          // host-pinned 设备映射地址（推理RDMA read源 / 训练gather源）
     HcclMemHandle memHandle_ = nullptr;
-    void *epHcclBufferPtr_ = nullptr;       // a2a GM（200MB 固定，仅训练 all-to-all 收发缓冲）
-    HcclMemHandle gmMemHandle_ = nullptr;
-    std::string gmBufferTag_;
+    int64_t commBufferSize_ = 0;             // HCCL 默认 buffer 大小（从 HcclGetHcclBufferFunc 查询，训练 a2a 收发缓冲）
     HcclComm hcclComm_ = nullptr;
     CommContext commContext_;
     at::Tensor contextTensor_; // Cached Engram context tensor
@@ -464,8 +461,8 @@ void ElasticBuffer::EnsureEngramContext()
     contextTensor_ = resources.contextTensor;
     engramContextInitialized_ = true;
 
-    if (withGrad_ && epHcclBufferPtr_ == nullptr) {
-        AllocateAndExchangeGm(ENGRAM_FETCH_GM_BYTES);
+    if (withGrad_ && commBufferSize_ == 0) {
+        QueryAndExchangeHcclBuffer();
     }
 }
 
@@ -548,11 +545,13 @@ std::function<at::Tensor()> ElasticBuffer::EngramFetch(const at::Tensor &indices
 
     // 训练态: save-for-backward 通过 ctxOut 输出（局部变量, 不存成员）
     if (withGrad_) {
-        TORCH_CHECK(epHcclBufferPtr_ != nullptr,
-                    "a2a GM not allocated, engram_write must be called first with with_grad=True");
+        TORCH_CHECK(commBufferSize_ > 0,
+                    "HCCL buffer not queried, engram_write must be called first with with_grad=True");
+        TORCH_CHECK(numMaxTokensPerRank_ > 0,
+                    "num_max_tokens_per_rank must be > 0 for training mode, got ", numMaxTokensPerRank_);
 
         uint32_t rankSize = commContext_.rankSize;
-        int64_t maxR = numTokens * static_cast<int64_t>(rankSize);
+        int64_t maxR = numMaxTokensPerRank_ * static_cast<int64_t>(rankSize);
         auto opts = indices.options();
 
         EngramFetchCtx ctx{
@@ -566,10 +565,10 @@ std::function<at::Tensor()> ElasticBuffer::EngramFetch(const at::Tensor &indices
             fetchInProgress_.store(true);
             int64_t localStorageAddr = reinterpret_cast<int64_t>(deviceBufPtr_);
             ACLNN_CMD(aclnnEngramFetchTrain, contextTensor_, indices,
-                      hiddenSize_, numEngramEntries_,
-                      localStorageAddr,
                       fetched,
-                      ctx.perm, ctx.sendCounts, ctx.recvCounts, ctx.recvLocalEntry, ctx.numRecv);
+                      ctx.perm, ctx.sendCounts, ctx.recvCounts, ctx.recvLocalEntry, ctx.numRecv,
+                      hiddenSize_, numEngramEntries_, localStorageAddr,
+                      numMaxTokensPerRank_, commBufferSize_);
             fetchInProgress_.store(false);
         }
         if (ctxOut != nullptr) {
@@ -626,8 +625,8 @@ std::tuple<at::Tensor, at::Tensor> ElasticBuffer::EngramFetchGrad(
 
     ACLNN_CMD(aclnnEngramFetchGrad, contextTensor_, gradFetched,
               perm, sendCounts, recvCounts, recvLocalEntry, numRecv,
-              hiddenSize_, numEngramEntries_,
-              gradUnique, uniqueLocalEntry, numUnique);
+              gradUnique, uniqueLocalEntry, numUnique,
+              numEngramEntries_, commBufferSize_);
 
     int64_t actualK = static_cast<int64_t>(numUnique.item<int32_t>());
     if (actualK < maxR) {
@@ -639,55 +638,32 @@ std::tuple<at::Tensor, at::Tensor> ElasticBuffer::EngramFetchGrad(
     return {gradUnique, uniqueLocalEntry};
 }
 
-// AllocateAndExchangeGm - allocate GM, register to HCCL, exchange addresses
-// 在 engram_write 阶段调用一次, destroy 时释放
-void ElasticBuffer::AllocateAndExchangeGm(int64_t gmBytes)
+// QueryAndExchangeHcclBuffer - query HCCL default buffer address+size, exchange remote addresses
+// 训练态 a2a 收发缓冲使用 HCCL 默认 buffer（大小受环境变量控制，默认 200MB）
+void ElasticBuffer::QueryAndExchangeHcclBuffer()
 {
-    TORCH_CHECK(!destroyed_, "AllocateAndExchangeGm cannot be called after destroy");
-    TORCH_CHECK(gmBytes > 0, "gmBytes must be > 0, got ", gmBytes);
-    TORCH_CHECK(epHcclBufferPtr_ == nullptr, "GM already allocated");
+    TORCH_CHECK(!destroyed_, "QueryAndExchangeHcclBuffer cannot be called after destroy");
     TORCH_CHECK(hcclComm_ != nullptr, "HCCL comm not initialized");
 
-    aclError ar = aclrtMalloc(&epHcclBufferPtr_, static_cast<uint64_t>(gmBytes), ACL_MEM_MALLOC_HUGE_FIRST);
-    TORCH_CHECK(ar == ACL_SUCCESS, "aclrtMalloc(HUGE_FIRST, ", gmBytes, " B) failed, ret=", ar);
+    void *localBuffer = nullptr;
+    uint64_t localBufferSize = 0;
+    auto hcclRet = HcclGetHcclBufferFunc(hcclComm_, &localBuffer, &localBufferSize);
+    TORCH_CHECK(hcclRet == HCCL_SUCCESS, "HcclGetHcclBuffer failed, ret=", hcclRet);
+    TORCH_CHECK(localBuffer != nullptr && localBufferSize > 0,
+                "HCCL default buffer is null or empty, size=", localBufferSize);
 
-    gmBufferTag_ = groupName_ + "engram_embedding_gm";
-
-    CommMem mem;
-    mem.type = COMM_MEM_TYPE_DEVICE;
-    mem.addr = epHcclBufferPtr_;
-    mem.size = static_cast<uint64_t>(gmBytes);
-
-    auto hcclRet = HcclCommMemRegFunc(hcclComm_, gmBufferTag_.c_str(), &mem, &gmMemHandle_);
-    TORCH_CHECK(hcclRet == HCCL_SUCCESS, "HcclCommMemReg(GM tag='", gmBufferTag_, "', size=", gmBytes,
-                ") failed, ret=", hcclRet);
-
-    EngramBarrier(true);
-
-    commContext_.virtualAddrList[commContext_.epRankId] = reinterpret_cast<uint64_t>(epHcclBufferPtr_);
+    commBufferSize_ = static_cast<int64_t>(localBufferSize);
+    commContext_.virtualAddrList[commContext_.epRankId] = reinterpret_cast<uint64_t>(localBuffer);
 
     for (uint32_t i = 0; i < commContext_.rankSize; ++i) {
         if (i == commContext_.epRankId)
             continue;
-        uint32_t memNum = 0;
-        CommMem *remoteMems = nullptr;
-        char **memTags = nullptr;
-        hcclRet = HcclChannelGetRemoteMemsFunc(hcclComm_, commContext_.hcommHandle[i], &memNum, &remoteMems,
-                                                &memTags);
-        TORCH_CHECK(hcclRet == HCCL_SUCCESS, "HcclChannelGetRemoteMems(peer=", i, ") for GM failed, ret=", hcclRet);
-
-        bool found = false;
-        for (uint32_t j = 0; j < memNum; j++) {
-            if (memTags == nullptr || remoteMems == nullptr) {
-                break;
-            }
-            if (memTags[j] != nullptr && gmBufferTag_ == memTags[j]) {
-                commContext_.virtualAddrList[i] = reinterpret_cast<uint64_t>(remoteMems[j].addr);
-                found = true;
-                break;
-            }
-        }
-        TORCH_CHECK(found, "GM Mem tag '", gmBufferTag_, "' not found for peer ", i);
+        void *remoteBuffer = nullptr;
+        uint64_t remoteBufSize = 0;
+        hcclRet = HcclChannelGetHcclBufferFunc(hcclComm_, commContext_.hcommHandle[i],
+                                                &remoteBuffer, &remoteBufSize);
+        TORCH_CHECK(hcclRet == HCCL_SUCCESS, "HcclChannelGetHcclBuffer(peer=", i, ") failed, ret=", hcclRet);
+        commContext_.virtualAddrList[i] = reinterpret_cast<uint64_t>(remoteBuffer);
     }
 
     UpdateContextTensor();
@@ -731,12 +707,8 @@ void ElasticBuffer::Destroy()
     if (destroyed_)
         return;
 
-    if (epHcclBufferPtr_ != nullptr) {
-        aclError ret = aclrtFree(epHcclBufferPtr_);
-        TORCH_CHECK(ret == ACL_SUCCESS, "aclrtFree(GM) failed, ret: ", ret);
-        epHcclBufferPtr_ = nullptr;
-        gmMemHandle_ = nullptr;
-    }
+    // HCCL 默认 buffer 由框架管理，无需手动释放
+    commBufferSize_ = 0;
 
     if (hostBufPtr_ != nullptr) {
         aclError ret = aclrtHostUnregister(hostBufPtr_);

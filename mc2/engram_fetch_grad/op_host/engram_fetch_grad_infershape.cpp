@@ -22,25 +22,25 @@
 using namespace ge;
 namespace ops {
 
+static constexpr size_t IN_GRAD_FETCHED = 1UL;
 static constexpr size_t OUT_GRAD_UNIQUE = 0UL;
 static constexpr size_t OUT_UNIQUE_LOCAL_ENTRY = 1UL;
 static constexpr size_t OUT_NUM_UNIQUE = 2UL;
-static constexpr size_t ATTR_HIDDEN_SIZE = 0UL;
 static constexpr int64_t FIRST_ELE_SIZE = -1;
 
 static ge::graphStatus InferShapeEngramFetchGrad(gert::InferShapeContext *context)
 {
     OPS_LOG_D(context->GetNodeName(), "Begin to do InferShapeEngramFetchGrad.");
 
-    auto *attrs = context->GetAttrs();
-    auto hiddenSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_HIDDEN_SIZE);
-    OPS_CHECK_NULL_WITH_CONTEXT(context, hiddenSizePtr);
+    const gert::Shape *gradFetchedShape = context->GetInputShape(IN_GRAD_FETCHED);
+    OPS_CHECK_NULL_WITH_CONTEXT(context, gradFetchedShape);
+    int64_t hiddenSize = gradFetchedShape->GetDim(1);
 
     // gradUniqueOut = [-1, hiddenSize] fp32（前 numUnique 有效）
     auto *gradUniqueShape = context->GetOutputShape(OUT_GRAD_UNIQUE);
     gradUniqueShape->SetDimNum(2);
     gradUniqueShape->SetDim(0, FIRST_ELE_SIZE);
-    gradUniqueShape->SetDim(1, *hiddenSizePtr);
+    gradUniqueShape->SetDim(1, hiddenSize);
 
     // uniqueLocalEntryOut = [-1] int32
     auto *uniqueLocalEntryShape = context->GetOutputShape(OUT_UNIQUE_LOCAL_ENTRY);

@@ -64,6 +64,8 @@ public:
         this->Attr("hidden_size").AttrType(REQUIRED).Int();
         this->Attr("num_entries_per_rank").AttrType(REQUIRED).Int();
         this->Attr("local_storage_addr").AttrType(REQUIRED).Int();
+        this->Attr("num_max_tokens_per_rank").AttrType(REQUIRED).Int();
+        this->Attr("comm_buffer_size").AttrType(REQUIRED).Int();
 
         OpAICoreConfig aicore_config_950;
         aicore_config_950.DynamicCompileStaticFlag(true)

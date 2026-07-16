@@ -44,6 +44,8 @@ constexpr uint32_t OUT_NUM_RECV = 5U;
 constexpr uint32_t ATTR_HIDDEN_SIZE = 0U;
 constexpr uint32_t ATTR_NUM_ENTRIES_PER_RANK = 1U;
 constexpr uint32_t ATTR_LOCAL_STORAGE_ADDR = 2U;
+constexpr uint32_t ATTR_NUM_MAX_TOKENS_PER_RANK = 3U;
+constexpr uint32_t ATTR_COMM_BUFFER_SIZE = 4U;
 
 constexpr uint32_t DIM_ONE = 1U;
 constexpr uint32_t DIM_TWO = 2U;
@@ -85,6 +87,7 @@ static void PrintEngramFetchTrainTilingData(const EngramFetchTrainTilingData *ti
     OP_LOGD(nodeName, "numMaxTokensPerRank is %ld", tilingData->numMaxTokensPerRank);
     OP_LOGD(nodeName, "totalRecv is %ld", tilingData->totalRecv);
     OP_LOGD(nodeName, "localStorageAddr is %ld", tilingData->localStorageAddr);
+    OP_LOGD(nodeName, "commBufferSize is %ld", tilingData->commBufferSize);
 }
 
 static ge::graphStatus CheckTensorPtrNullptr(const gert::TilingContext *context)
@@ -401,6 +404,22 @@ static ge::graphStatus CheckAttrs(const gert::TilingContext *context)
             std::to_string(*localStorageAddrPtr).c_str(), "> 0"),
         return ge::GRAPH_FAILED);
 
+    auto numMaxTokensPerRankPtr = attrs->GetAttrPointer<int64_t>(ATTR_NUM_MAX_TOKENS_PER_RANK);
+    OP_TILING_CHECK(numMaxTokensPerRankPtr == nullptr,
+        OP_LOGE_WITH_INVALID_INPUT(nodeName, "num_max_tokens_per_rank"), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(*numMaxTokensPerRankPtr <= 0,
+        OP_LOGE_FOR_INVALID_VALUE(nodeName, "num_max_tokens_per_rank",
+            std::to_string(*numMaxTokensPerRankPtr).c_str(), "> 0"),
+        return ge::GRAPH_FAILED);
+
+    auto commBufferSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_COMM_BUFFER_SIZE);
+    OP_TILING_CHECK(commBufferSizePtr == nullptr,
+        OP_LOGE_WITH_INVALID_INPUT(nodeName, "comm_buffer_size"), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(*commBufferSizePtr <= 0,
+        OP_LOGE_FOR_INVALID_VALUE(nodeName, "comm_buffer_size",
+            std::to_string(*commBufferSizePtr).c_str(), "> 0"),
+        return ge::GRAPH_FAILED);
+
     return ge::GRAPH_SUCCESS;
 }
 
@@ -454,17 +473,22 @@ static ge::graphStatus SetTilingData(gert::TilingContext *context, EngramFetchTr
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
     tilingData.ubSize = ubSize;
 
-    tilingData.numMaxTokensPerRank = (rankSize > 0) ? (totalRecv / static_cast<int64_t>(rankSize)) : 0;
+    auto numMaxTokensPerRankPtr = attrs->GetAttrPointer<int64_t>(ATTR_NUM_MAX_TOKENS_PER_RANK);
+    tilingData.numMaxTokensPerRank = *numMaxTokensPerRankPtr;
 
     auto localStorageAddrPtr = attrs->GetAttrPointer<int64_t>(ATTR_LOCAL_STORAGE_ADDR);
     tilingData.localStorageAddr = *localStorageAddrPtr;
 
+    auto commBufferSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_COMM_BUFFER_SIZE);
+    tilingData.commBufferSize = *commBufferSizePtr;
+
     OP_LOGD(nodeName, "SetTilingData: numTokens=%ld, hiddenDim=%ld, numEntriesPerRank=%d, hiddenBytes=%ld, "
-            "ubSize=%lu, rankSize=%u, numMaxTokensPerRank=%ld, totalRecv=%ld, localStorageAddr=%ld",
+            "ubSize=%lu, rankSize=%u, numMaxTokensPerRank=%ld, totalRecv=%ld, localStorageAddr=%ld, "
+            "commBufferSize=%ld",
             tilingData.numTokens, tilingData.hiddenDim,
             tilingData.numEntriesPerRank, tilingData.hiddenBytes, tilingData.ubSize,
             tilingData.rankSize, tilingData.numMaxTokensPerRank, tilingData.totalRecv,
-            tilingData.localStorageAddr);
+            tilingData.localStorageAddr, tilingData.commBufferSize);
     return ge::GRAPH_SUCCESS;
 }
 

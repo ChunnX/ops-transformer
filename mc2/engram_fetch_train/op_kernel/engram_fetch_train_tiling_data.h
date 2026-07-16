@@ -28,8 +28,9 @@ struct EngramFetchTrainTilingData {
     uint32_t aivNum;               // AIV 核数
     uint64_t ubSize;               // UB 空间
     uint32_t rankSize;             // 通信域 rank 数（从 sendCountsOut dim0 获取）
-    int64_t numMaxTokensPerRank;   // 每 rank 最大 token 数（workspace 计算用）
+    int64_t numMaxTokensPerRank;   // 每 rank 最大 token 数（从 attr 获取）
     int64_t totalRecv;             // a2a 接收上界 = numMaxTokensPerRank × rankSize
-    int64_t localStorageAddr;    // host-pinned 设备映射地址（gather 源, 即 deviceBufPtr_）
+    int64_t localStorageAddr;      // host-pinned 设备映射地址（gather 源, 即 deviceBufPtr_）
+    int64_t commBufferSize;        // a2a GM 收发缓冲大小（即 epHcclBuffer 200MB）
 };
 #endif
