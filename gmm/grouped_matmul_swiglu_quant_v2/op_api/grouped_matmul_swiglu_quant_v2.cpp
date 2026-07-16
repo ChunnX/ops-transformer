@@ -8,6 +8,7 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
+#include <iostream>
 #include "opdev/op_log.h"
 #include "opdev/op_dfx.h"
 #include "opdev/make_op_executor.h"
@@ -45,10 +46,22 @@ const std::tuple<aclTensor *, aclTensor *> GroupedMatmulSwigluQuantV2(const aclT
     auto out = executor->AllocTensor(outShape, DataType::DT_INT8, ge::FORMAT_ND);
     auto scaleOut = executor->AllocTensor(scaleOutShape, DataType::DT_FLOAT, ge::FORMAT_ND);
     if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
+        std::cout << "*** GMMSQV2 PRE7302 L0_ENTRY quantMode=" << quantMode
+                  << ", dequantMode=" << dequantMode
+                  << ", transposeWeight=" << transposeWeight
+                  << ", xShape=" << op::ToString(x->GetViewShape()).GetString()
+                  << ", weightShape=" << op::ToString((*weight)[0]->GetViewShape()).GetString()
+                  << ", weightFormat=" << op::ToString((*weight)[0]->GetStorageFormat()).GetString()
+                  << ", weightScaleShape=" << op::ToString((*weightScale)[0]->GetViewShape()).GetString()
+                  << std::endl;
         n = transposeWeight ? (*weightScale)[0]->GetViewShape().GetDim(1) : // 转置情况下weightScale的第1维是n
                             (*weightScale)[0]->GetViewShape().GetDim(2); // 非转置情况下weightScale的第2维是n
         nAfterHalve = static_cast<int64_t>(n / 2); // outShape需要为[M, N / 2]
         gert::Shape outShapeV2({m, nAfterHalve});
+        std::cout << "*** GMMSQV2 PRE7302 L0_SELECTED m=" << m
+                  << ", n=" << n
+                  << ", internalOutputShape=[" << m << ", " << nAfterHalve << "]"
+                  << std::endl;
         gert::Shape scaleOutShapeV2;
         // 当quantMode等于2时，out_scale 的形状为三维
         if (quantMode == 2) {
