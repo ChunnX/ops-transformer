@@ -50,11 +50,9 @@ __simd_callee__ inline void LoadFp8GroupInput(RegTensor<float> &dst, __local_mem
 
 template <typename T, typename U, bool CLAMP_AMAX>
 __simd_vf__ inline void ComputeFp8GroupQuantVF(__ubuf__ T *xAddr, __ubuf__ float *scaleAddr, __ubuf__ U *yAddr,
-                                               uint32_t groupElemNum, float fp8MaxValue)
+                                               uint32_t totalElemNum, uint16_t groupNum, float fp8MaxValue)
 {
     const uint16_t vfLen = AscendC::VECTOR_REG_WIDTH / sizeof(float);
-    uint32_t inputElemNum = groupElemNum;
-    uint32_t outputElemNum = groupElemNum;
 
     __VEC_SCOPE__
     {
@@ -98,7 +96,6 @@ __simd_vf__ inline void ComputeFp8GroupQuantVF(__ubuf__ T *xAddr, __ubuf__ float
         uint32_t fp8Exp = (fp8MaxBits >> FP32_EXPONENT_SHIFT) & FP32_EXPONENT_MASK;
         uint32_t fp8Mant = fp8MaxBits & FP32_MANTISSA_MASK;
 
-        Duplicate(maxReg, 0.0f, maskAll);
         Duplicate(expMaskReg, FP32_EXPONENT_MASK, maskAllUint);
         Duplicate(mantMaskReg, FP32_MANTISSA_MASK, maskAllUint);
         Duplicate(oneIntReg, 1U, maskAllUint);
@@ -109,63 +106,72 @@ __simd_vf__ inline void ComputeFp8GroupQuantVF(__ubuf__ T *xAddr, __ubuf__ float
         Duplicate(bias127Reg, static_cast<uint32_t>(FP32_BIAS), maskAllUint);
         Duplicate(threshold254Reg, 254U, maskAllUint);
 
-        if (inputElemNum > vfLen) {
-            uint32_t rightElemNum = inputElemNum - vfLen;
-            maskRight = UpdateMask<float>(rightElemNum);
-            LoadFp8GroupInput<T>(xLeftReg, xAddr, maskAll, 0);
-            LoadFp8GroupInput<T>(xRightReg, xAddr, maskRight, vfLen);
-            Abs(absLeftReg, xLeftReg, maskAll);
-            Abs(absRightReg, xRightReg, maskRight);
-            ReduceMax(maxReg, absLeftReg, maskAll);
-            ReduceMax(maxRightReg, absRightReg, maskRight);
-            Max(maxReg, maxReg, maxRightReg, maskScalar);
-        } else if (inputElemNum > 0) {
-            maskLoop = UpdateMask<float>(inputElemNum);
-            LoadFp8GroupInput<T>(xLeftReg, xAddr, maskLoop, 0);
-            Abs(absLeftReg, xLeftReg, maskLoop);
-            ReduceMax(maxReg, absLeftReg, maskLoop);
-        }
-        Duplicate(maxReg, maxReg, maskAll);
-        if constexpr (CLAMP_AMAX) {
-            Maxs(maxReg, maxReg, 0.0001f, maskAll);
-        }
+        for (uint16_t groupIdx = 0; groupIdx < groupNum; groupIdx++) {
+            uint32_t groupOffset = groupIdx * FP8_GROUP_QUANT_SIZE;
+            uint32_t groupElemNum = (groupIdx == groupNum - 1) ? (totalElemNum - groupOffset) : FP8_GROUP_QUANT_SIZE;
+            uint32_t inputElemNum = groupElemNum;
+            uint32_t outputElemNum = groupElemNum;
 
-        // 从 maxReg 直接提取指数/尾数（amax 为正常 float，不受 FTZ 影响），整数域计算 round_scale 指数
-        ShiftRights(expBitsReg, (RegTensor<uint32_t> &)maxReg, FP32_EXPONENT_SHIFT, maskAllUint);
-        And(expBitsReg, expBitsReg, expMaskReg, maskAllUint);
-        And(mantBitsReg, (RegTensor<uint32_t> &)maxReg, mantMaskReg, maskAllUint);
-        // mant_add = (mant_amax > fp8_mant) ? 1 : 0
-        Compare<uint32_t, CMPMODE::GT>(maskMantHigh, mantBitsReg, fp8MantReg, maskAllUint);
-        Select(mantAddReg, oneIntReg, zeroIntReg, maskMantHigh);
-        // biased_exp = exp_amax - fp8_exp + 127 + mant_add（uint32_t 下溢回绕由下方 clamp 处理）
-        Sub<uint32_t>(roundedExpBitsReg, expBitsReg, fp8ExpReg, maskAllUint);
-        Add<uint32_t>(roundedExpBitsReg, roundedExpBitsReg, bias127Reg, maskAllUint);
-        Add<uint32_t>(roundedExpBitsReg, roundedExpBitsReg, mantAddReg, maskAllUint);
-        // 下溢钳位：biased_exp == 0 或回绕 > 254 时钳到 1（= 2^-126），匹配标杆对 denormal 的处理
-        Compare<uint32_t, CMPMODE::EQ>(maskClamp, roundedExpBitsReg, zeroIntReg, maskAllUint);
-        Select(roundedExpBitsReg, oneIntReg, roundedExpBitsReg, maskClamp);
-        Compare<uint32_t, CMPMODE::GT>(maskClamp, roundedExpBitsReg, threshold254Reg, maskAllUint);
-        Select(roundedExpBitsReg, oneIntReg, roundedExpBitsReg, maskClamp);
-        // amax == 0 时 exp_amax=0 使 biased_exp 下溢回绕为 >254，同样被钳到 1（round_scale = 2^-126）
-        // round_scale = biased_exp << 23
-        ShiftLefts((RegTensor<uint32_t> &)roundScaleReg, roundedExpBitsReg, FP32_EXPONENT_SHIFT, maskAllUint);
+            Duplicate(maxReg, 0.0f, maskAll);
 
-        DataCopy<float, StoreDist::DIST_FIRST_ELEMENT_B32>(scaleAddr, roundScaleReg, maskAll);
-        Sub<uint32_t>(invExpBitsReg, invExpSubReg, roundedExpBitsReg, maskAllUint);
-        ShiftLefts((RegTensor<uint32_t> &)invScaleReg, invExpBitsReg, FP32_EXPONENT_SHIFT, maskAllUint);
+            if (inputElemNum > vfLen) {
+                uint32_t rightElemNum = inputElemNum - vfLen;
+                maskRight = UpdateMask<float>(rightElemNum);
+                LoadFp8GroupInput<T>(xLeftReg, xAddr + groupOffset, maskAll, 0);
+                LoadFp8GroupInput<T>(xRightReg, xAddr + groupOffset, maskRight, vfLen);
+                Abs(absLeftReg, xLeftReg, maskAll);
+                Abs(absRightReg, xRightReg, maskRight);
+                ReduceMax(maxReg, absLeftReg, maskAll);
+                ReduceMax(maxRightReg, absRightReg, maskRight);
+                Max(maxReg, maxReg, maxRightReg, maskScalar);
+            } else if (inputElemNum > 0) {
+                maskLoop = UpdateMask<float>(inputElemNum);
+                LoadFp8GroupInput<T>(xLeftReg, xAddr + groupOffset, maskLoop, 0);
+                Abs(absLeftReg, xLeftReg, maskLoop);
+                ReduceMax(maxReg, absLeftReg, maskLoop);
+            }
+            Duplicate(maxReg, maxReg, maskAll);
+            if constexpr (CLAMP_AMAX) {
+                Maxs(maxReg, maxReg, 0.0001f, maskAll);
+            }
 
-        if (outputElemNum > vfLen) {
-            Mul(quantLeftReg, xLeftReg, invScaleReg, maskAll);
-            Mul(quantRightReg, xRightReg, invScaleReg, maskRight);
-            Cast<U, float, CAST_TRAIT_F32_TO_FP8>(outLeftReg, quantLeftReg, maskAll);
-            Cast<U, float, CAST_TRAIT_F32_TO_FP8>(outRightReg, quantRightReg, maskRight);
-            DataCopy<U, StoreDist::DIST_PACK4_B32>(yAddr, outLeftReg, maskAll);
-            DataCopy<U, StoreDist::DIST_PACK4_B32>(yAddr + vfLen, outRightReg, maskRight);
-        } else if (outputElemNum > 0) {
-            maskLoop = UpdateMask<float>(outputElemNum);
-            Mul(quantLeftReg, xLeftReg, invScaleReg, maskLoop);
-            Cast<U, float, CAST_TRAIT_F32_TO_FP8>(outLeftReg, quantLeftReg, maskLoop);
-            DataCopy<U, StoreDist::DIST_PACK4_B32>(yAddr, outLeftReg, maskLoop);
+            // 从 maxReg 直接提取指数/尾数（amax 为正常 float，不受 FTZ 影响），整数域计算 round_scale 指数
+            ShiftRights(expBitsReg, (RegTensor<uint32_t> &)maxReg, FP32_EXPONENT_SHIFT, maskAllUint);
+            And(expBitsReg, expBitsReg, expMaskReg, maskAllUint);
+            And(mantBitsReg, (RegTensor<uint32_t> &)maxReg, mantMaskReg, maskAllUint);
+            // mant_add = (mant_amax > fp8_mant) ? 1 : 0
+            Compare<uint32_t, CMPMODE::GT>(maskMantHigh, mantBitsReg, fp8MantReg, maskAllUint);
+            Select(mantAddReg, oneIntReg, zeroIntReg, maskMantHigh);
+            // biased_exp = exp_amax - fp8_exp + 127 + mant_add（uint32_t 下溢回绕由下方 clamp 处理）
+            Sub<uint32_t>(roundedExpBitsReg, expBitsReg, fp8ExpReg, maskAllUint);
+            Add<uint32_t>(roundedExpBitsReg, roundedExpBitsReg, bias127Reg, maskAllUint);
+            Add<uint32_t>(roundedExpBitsReg, roundedExpBitsReg, mantAddReg, maskAllUint);
+            // 下溢钳位：biased_exp == 0 或回绕 > 254 时钳到 1（= 2^-126），匹配标杆对 denormal 的处理
+            Compare<uint32_t, CMPMODE::EQ>(maskClamp, roundedExpBitsReg, zeroIntReg, maskAllUint);
+            Select(roundedExpBitsReg, oneIntReg, roundedExpBitsReg, maskClamp);
+            Compare<uint32_t, CMPMODE::GT>(maskClamp, roundedExpBitsReg, threshold254Reg, maskAllUint);
+            Select(roundedExpBitsReg, oneIntReg, roundedExpBitsReg, maskClamp);
+            // amax == 0 时 exp_amax=0 使 biased_exp 下溢回绕为 >254，同样被钳到 1（round_scale = 2^-126）
+            // round_scale = biased_exp << 23
+            ShiftLefts((RegTensor<uint32_t> &)roundScaleReg, roundedExpBitsReg, FP32_EXPONENT_SHIFT, maskAllUint);
+
+            DataCopy<float, StoreDist::DIST_FIRST_ELEMENT_B32>(scaleAddr + groupIdx, roundScaleReg, maskAll);
+            Sub<uint32_t>(invExpBitsReg, invExpSubReg, roundedExpBitsReg, maskAllUint);
+            ShiftLefts((RegTensor<uint32_t> &)invScaleReg, invExpBitsReg, FP32_EXPONENT_SHIFT, maskAllUint);
+
+            if (outputElemNum > vfLen) {
+                Mul(quantLeftReg, xLeftReg, invScaleReg, maskAll);
+                Mul(quantRightReg, xRightReg, invScaleReg, maskRight);
+                Cast<U, float, CAST_TRAIT_F32_TO_FP8>(outLeftReg, quantLeftReg, maskAll);
+                Cast<U, float, CAST_TRAIT_F32_TO_FP8>(outRightReg, quantRightReg, maskRight);
+                DataCopy<U, StoreDist::DIST_PACK4_B32>(yAddr + groupOffset, outLeftReg, maskAll);
+                DataCopy<U, StoreDist::DIST_PACK4_B32>(yAddr + groupOffset + vfLen, outRightReg, maskRight);
+            } else if (outputElemNum > 0) {
+                maskLoop = UpdateMask<float>(outputElemNum);
+                Mul(quantLeftReg, xLeftReg, invScaleReg, maskLoop);
+                Cast<U, float, CAST_TRAIT_F32_TO_FP8>(outLeftReg, quantLeftReg, maskLoop);
+                DataCopy<U, StoreDist::DIST_PACK4_B32>(yAddr + groupOffset, outLeftReg, maskLoop);
+            }
         }
     }
 }
@@ -383,13 +389,8 @@ __aicore__ inline void MoeV3GatherFP8GroupQuant<T, U, CLAMP_AMAX>::Compute(int64
     LocalTensor<float> scaleLocal = scaleQueue_.AllocTensor<float>();
     __ubuf__ float *scaleAddr = reinterpret_cast<__ubuf__ float *>(scaleLocal.GetPhyAddr());
 
-    for (int64_t groupIdx = 0; groupIdx < loopScaleCols; groupIdx++) {
-        int64_t groupOffset = groupIdx * FP8_GROUP_QUANT_SIZE;
-        int64_t groupElemNum = (groupIdx == loopScaleCols - 1) ? (loopCols - groupOffset) : FP8_GROUP_QUANT_SIZE;
-        VF_CALL<ComputeFp8GroupQuantVF<T, U, CLAMP_AMAX>>(xAddr + groupOffset, scaleAddr + groupIdx,
-                                                          outAddr + groupOffset, static_cast<uint32_t>(groupElemNum),
-                                                          fp8MaxValue_);
-    }
+    VF_CALL<ComputeFp8GroupQuantVF<T, U, CLAMP_AMAX>>(xAddr, scaleAddr, outAddr, static_cast<uint32_t>(loopCols),
+                                                       static_cast<uint16_t>(loopScaleCols), fp8MaxValue_);
 
     inQueue_.FreeTensor(xLocal);
     outQueue_.EnQue(outLocal);
