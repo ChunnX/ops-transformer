@@ -118,19 +118,19 @@ aclnnStatus aclnnMegaMoeGetWorkspaceSize(
     // 可选 DYNAMIC 参数为 nullptr 时创建带 dtype 的 dummy tensor list 满足支持列表校验
     aclTensorList *tmpBiasList = nullptr;
     aclTensorList *tmpScaleList = nullptr;
+    aclTensorList *tmpSharedBiasList = nullptr;
+    aclTensorList *tmpSharedScaleList = nullptr;
+    aclTensorList *tmpSharedWeightList = nullptr;
+    aclDataType sharedWeightDtype = (weight1 != nullptr && weight1->Size() > 0)
+        ? (*weight1)[0]->GetDataType() : ACL_FLOAT8_E4M3FN;
     CreateEmptyTensor(ACL_FLOAT, bias1Optional, tmpBiasList, *executor);
     CreateEmptyTensor(ACL_FLOAT, bias2Optional, tmpBiasList, *executor);
     CreateEmptyTensor(ACL_UINT64, weightScales1Optional, tmpScaleList, *executor);
     CreateEmptyTensor(ACL_UINT64, weightScales2Optional, tmpScaleList, *executor);
-    aclTensorList *tmpSharedBiasList = nullptr;
-    aclTensorList *tmpSharedScaleList = nullptr;
     CreateEmptyTensor(ACL_FLOAT, sharedBias1Optional, tmpSharedBiasList, *executor);
     CreateEmptyTensor(ACL_FLOAT, sharedBias2Optional, tmpSharedBiasList, *executor);
     CreateEmptyTensor(ACL_UINT64, sharedWeightScales1Optional, tmpSharedScaleList, *executor);
     CreateEmptyTensor(ACL_UINT64, sharedWeightScales2Optional, tmpSharedScaleList, *executor);
-    aclTensorList *tmpSharedWeightList = nullptr;
-    aclDataType sharedWeightDtype = (weight1 != nullptr && weight1->Size() > 0)
-        ? weight1->GetTensor(0)->GetDataType() : ACL_FLOAT8_E4M3FN;
     CreateEmptyTensor(sharedWeightDtype, sharedWeight1Optional, tmpSharedWeightList, *executor);
     CreateEmptyTensor(sharedWeightDtype, sharedWeight2Optional, tmpSharedWeightList, *executor);
 
