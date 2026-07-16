@@ -728,20 +728,16 @@ __aicore__ inline void LightningIndexerKernel<LIT>::ProcessRadixTopK()
             __gm__ uint8_t *idxPtr = sparseIndicesBase + batchId * kValue * sizeof(int32_t);
 
             if (cuRealAcSeq <= 0) {
-                if (aivIdx == 0) {
-                    __gm__ int32_t *outIdx = reinterpret_cast<__gm__ int32_t *>(idxPtr);
-                    for (uint32_t i = 0; i < kValue; i++) { outIdx[i] = -1; }
-                }
+                __gm__ int32_t *outIdx = reinterpret_cast<__gm__ int32_t *>(idxPtr);
+                for (uint32_t i = 0; i < kValue; i++) { outIdx[i] = -1; }
                 continue;
             }
 
             // If cuRealAcSeq <= kValue, all valid indices are in TopK
             if (static_cast<uint32_t>(cuRealAcSeq) <= kValue) {
-                if (aivIdx == 0) {
-                    __gm__ int32_t *outIdx = reinterpret_cast<__gm__ int32_t *>(idxPtr);
-                    for (int32_t i = 0; i < cuRealAcSeq; i++) { outIdx[i] = i; }
-                    for (uint32_t i = static_cast<uint32_t>(cuRealAcSeq); i < kValue; i++) { outIdx[i] = -1; }
-                }
+                __gm__ int32_t *outIdx = reinterpret_cast<__gm__ int32_t *>(idxPtr);
+                for (int32_t i = 0; i < cuRealAcSeq; i++) { outIdx[i] = i; }
+                for (uint32_t i = static_cast<uint32_t>(cuRealAcSeq); i < kValue; i++) { outIdx[i] = -1; }
                 continue;
             }
 
