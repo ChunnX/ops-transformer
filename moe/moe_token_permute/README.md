@@ -16,27 +16,27 @@
 - **算子功能**：MoE的permute计算，根据索引indices将tokens广播并排序。
 - **计算公式**：
   - paddedMode为`false`时
-  
+
     $$
-    sortedIndicesFirst=argSort(Indices)
+    sortedIndicesFirst=argSort(indices)
     $$
-  
+
     $$
     sortedIndicesOut=argSort(sortedIndicesFirst)
     $$
-  
+
     $$
     permuteTokens[sortedIndicesFirst[i]]=tokens[i//topK]
     $$
-  
+
   - paddedMode为`true`时
-  
+
     $$
     permuteTokensOut[i]=tokens[Indices[i]]
     $$
-  
+
     $$
-    sortedIndicesOut=Indices
+    sortedIndicesOut=indices
     $$
 
 ## 参数说明
@@ -94,7 +94,7 @@
       <td>INT32</td>
       <td>ND</td>
     </tr>
-    
+
   </tbody></table>
 
 ## 约束说明

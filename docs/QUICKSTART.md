@@ -23,21 +23,23 @@
 ### 1. 进入项目源码
 
 - CANNLab云开发环境：
-   
+
    默认提供最新商发版CANN包配套的项目源码，进入源码目录，\$\{gitCode\_id\}替换为开发者个人gitCode账号。
-   
-   ```
+
+   ```bash
    cd /mnt/workspace/gitCode/${gitCode_id}/ops-transformer
    ```
+
 - 非CANNLab云开发环境：
-  
+
   根据[release仓库](https://gitcode.com/cann/release-management)源码与CANN版本配套关系，执行如下命令下载源码，\$\{tag\_version\}替换为目标分支标签，例如9.0.0。
-    
+
   ```bash
   git clone -b ${tag_version} https://gitcode.com/cann/ops-transformer.git && cd ops-transformer
   ```
 
 > 说明：如需切换源码分支版本，请参考如下指导。
+>
 > 1. 在源码目录执行`git branch`，查询当前源码版本。
 > 2. 在源码目录执行`git checkout ${tag_version}`，切换到目标分支源码，注意满足源码与CANN版本配套关系。若源码已存在，执行`git pull`拉取最新源码。
 
@@ -50,6 +52,7 @@
 ```bash
 bash build.sh --pkg --soc=${soc_version} --ops=add_example -j16
 ```
+
 产品名对应的${soc_version}取值如下，请按实际场景传参。
 
 - Atlas A2 训练系列产品/Atlas A2 推理系列产品：取值为ascend910b
@@ -92,7 +95,7 @@ bash build.sh --run_example add_example eager cust --vendor_name=custom
 
 预期输出：打印算子`AddExample`的加法计算结果，表明算子已成功部署并正确执行。
 
-```
+```bash
 add_example first input[0] is: 1.000000, second input[0] is: 1.000000, result[0] is: 2.000000
 add_example first input[1] is: 1.000000, second input[1] is: 1.000000, result[1] is: 2.000000
 add_example first input[2] is: 1.000000, second input[2] is: 1.000000, result[2] is: 2.000000
@@ -152,7 +155,7 @@ __aicore__ inline void AddExample<T>::Compute(int32_t progress)
 
 4. **成功标志**：输出结果变成乘法结果。
 
-    ```
+    ```bash
     add_example first input[0] is: 1.000000, second input[0] is: 1.000000, result[0] is: 1.000000
     add_example first input[1] is: 1.000000, second input[1] is: 1.000000, result[1] is: 1.000000
     add_example first input[2] is: 1.000000, second input[2] is: 1.000000, result[2] is: 1.000000
@@ -174,7 +177,7 @@ __aicore__ inline void AddExample<T>::Compute(int32_t progress)
 
 请在`examples/add_example/op_kernel/add_example.h`中进行代码修改。
 
-* **printf**
+- **printf**
 
   该接口支持打印Scalar类型数据，如整数、字符型、布尔型等，详细介绍请参见[《Ascend C API》](https://hiascend.com/document/redirect/CannCommunityAscendCApi)中“Ascend C算子开发接口 > SIMD API > 基础API > 调试接口 > 上板打印 > printf”。
 
@@ -187,10 +190,10 @@ __aicore__ inline void AddExample<T>::Compute(int32_t progress)
   AscendC::PRINTF("Tiling blockLength is %llu\n", blockLength_);
   ```
 
-* **DumpTensor**
+- **DumpTensor**
 
   该接口支持Dump指定Tensor的内容，同时支持打印自定义附加信息，比如当前行号等，详细介绍请参见[《Ascend C API》](https://hiascend.com/document/redirect/CannCommunityAscendCApi)中“Ascend C算子开发接口 > SIMD API > 基础API > 调试接口 > 上板打印 > DumpTensor”。
-  
+
   ```c++
   AscendC::LocalTensor<T> zLocal = outputQueueZ.DeQue<T>();
   // 打印zLocal Tensor信息

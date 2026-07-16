@@ -23,8 +23,7 @@ ge::graphStatus MoeTilingBase::GetPlatformInfo()
     auto platformInfo = context_->GetPlatformInfo();
     const char *nodeName = context_->GetNodeName();
     OP_TILING_CHECK(nodeName == nullptr, OP_LOGE(nodeName, "Fail to get nodeName."), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(platformInfo == nullptr, OP_LOGE(nodeName, "fail to get platform info"),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(platformInfo == nullptr, OP_LOGE(nodeName, "fail to get platform info"), return ge::GRAPH_FAILED);
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
     npuArch_ = ascendcPlatform.GetCurNpuArch();
     return ge::GRAPH_SUCCESS;

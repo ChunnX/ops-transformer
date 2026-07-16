@@ -28,8 +28,6 @@ if (BUILD_OPEN_PROJECT)  # custom
             OP_NAME MegaMoe
             OPTIONS --cce-auto-sync=off
             OPTIONS -I${OPTENSOR_INCLUDE_ROOT}
-            OPTIONS -I${TENSOR_API_INCLUDE_ROOT}
-            OPTIONS -I${TENSOR_API_IMPL_INCLUDE_ROOT}
         )
     else()
         add_ops_compile_options(
@@ -37,7 +35,6 @@ if (BUILD_OPEN_PROJECT)  # custom
             OPTIONS --cce-auto-sync=on
             OPTIONS -I${CMAKE_SOURCE_DIR}/mc2/common/op_kernel
             OPTIONS -I${CMAKE_SOURCE_DIR}/mc2/common/inc/kernel
-            OPTIONS -DHCCL_COMM
         )
     endif()
 

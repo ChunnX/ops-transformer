@@ -20,7 +20,8 @@
 #endif
 
 namespace DequantBmm {
-// Mc2QuantBatchMatmulV3Tiling set Mc2QuantBatchMatmulV3Params tilingData mc2 calls Mc2QuantBatchMatmulV3Tiling DoLibApiTiling
+// Mc2QuantBatchMatmulV3Tiling set Mc2QuantBatchMatmulV3Params tilingData mc2 calls Mc2QuantBatchMatmulV3Tiling
+// DoLibApiTiling
 #pragma pack(push, 8)
 struct Mc2QuantBatchMatmulV3DataParams {
     uint32_t batchA = 0;
@@ -48,7 +49,7 @@ struct Mc2QuantBatchMatmulV3DataParams {
     uint32_t needUbBuffer = 0;
     uint32_t realSingleCoreM = 0;
     uint32_t realSingleCoreN = 0;
-    uint32_t biasDtype = 0; //代替原来的isBiasBf16
+    uint32_t biasDtype = 0; // 代替原来的isBiasBf16
     uint32_t ubSize = 0;
     uint32_t isMClash = 0;
     uint32_t isNClash = 0;
@@ -84,5 +85,5 @@ struct Mc2QuantBatchMatmulV3TilingDataParams {
     Mc2SlidingWindowParams adaptiveSlidingWin;
 };
 #pragma pack(pop)
-} // DequantBmm
-#endif  // QUANT_BATCH_MATMUL_V3_TILING_DATA_H
+} // namespace DequantBmm
+#endif // QUANT_BATCH_MATMUL_V3_TILING_DATA_H

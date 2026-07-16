@@ -107,8 +107,8 @@ struct CombineResult {
     std::vector<uint32_t> mStart{};
     std::vector<uint32_t> mLen{};
     CombineResult(uint32_t coreNum, uint32_t vecCubeRatio)
-        : combineBN2Idx(coreNum), combineMIdx(coreNum), combineS2SplitNum(coreNum), combineWorkspaceIdx(coreNum), mSize(coreNum),
-          taskIdx(coreNum * vecCubeRatio), mStart(coreNum * vecCubeRatio), mLen(coreNum * vecCubeRatio)
+        : combineBN2Idx(coreNum), combineMIdx(coreNum), combineS2SplitNum(coreNum), combineWorkspaceIdx(coreNum),
+          mSize(coreNum), taskIdx(coreNum * vecCubeRatio), mStart(coreNum * vecCubeRatio), mLen(coreNum * vecCubeRatio)
     {
     }
 };
@@ -124,7 +124,7 @@ struct FAMetaData {
     CombineResult combineRes{0U, 0U};
     FAMetaData(uint32_t coreNum, uint32_t ratio)
         : vecCubeRatio(ratio), bN2End(coreNum), mEnd(coreNum), s2End(coreNum), firstCombineDataWorkspaceIdx(coreNum),
-          combineRes(coreNum, ratio){};
+          combineRes(coreNum, ratio) {};
 };
 
 struct SplitInfo {

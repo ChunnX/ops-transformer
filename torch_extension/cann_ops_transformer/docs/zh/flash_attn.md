@@ -40,7 +40,7 @@
   其中$Q$和$K^T$的乘积代表输入$x$的注意力，为避免该值变得过大，通常除以$\sqrt{d}$进行缩放，并对每行进行softmax归一化，与$V$相乘后得到一个$n \times d$的矩阵。
 
   增加**sink**之后计算逻辑如下所示，主要修改相关softmax_max和softmax_sum逻辑计算部分。
-    
+
   $$
   S = \frac{QK^T}{\sqrt{d}}
   $$
@@ -58,7 +58,7 @@
   $$
   S = \frac{QK^T}{\sqrt{d}}
   $$
-  
+
   $$
   softmax\_max = max(S)
   $$
@@ -198,6 +198,7 @@ cann_ops_transformer.ops.flash_attn(
 
 - 声明
   - 参数cu_seqlens_q、cu_seqlens_kv、seqused_q、seqused_kv、block_table及attn_mask属于tensor。由于算子在Tiling阶段无法获取tensor的具体数值，tiling侧不对值进行校验，正确性需要用户自行保证。若上述参数传入非法值，会触发未定义行为（精度问题、非法内存访问导致的程序崩溃等）。
+  - flash_attn_metadata和flash_attn的入参在调用时应该保持一致。由于算子分为两个接口分段调用，算子无法自行校验，正确性需要由客户自行保证。若接口传入参数不一致，会发生未定义行为（精度问题、非法内存访问导致的程序崩溃等）。
 
 ### 特性参数组
 

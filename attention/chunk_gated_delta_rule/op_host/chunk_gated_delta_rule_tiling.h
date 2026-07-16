@@ -79,6 +79,7 @@ protected:
     ge::graphStatus AnalyzeShapes();
     ge::graphStatus CheckDerivedDimConstraints();
     ge::graphStatus GetScale();
+    ge::graphStatus GetStrides();
     ge::graphStatus GetOptionalInput();
     ge::graphStatus AnalyzeFormat();
     ge::graphStatus DoMatmulTiling();

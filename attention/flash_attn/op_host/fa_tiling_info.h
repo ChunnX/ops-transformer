@@ -253,9 +253,21 @@ public:
 
     // Others Flag
     bool batchContinuousFlag = true;
+    KvStorageMode kvStorageMode = KvStorageMode::BATCH_CONTINUOUS;
     bool softmaxLseFlag = false;
     bool sinksFlag = false;
     bool emptyTensorFlag = false;
+
+    // kvcache strides (tensor v2 view inputs). hasViewStride == false means old opbase
+    // without view info, key/value are guaranteed contiguous.
+    uint64_t keyBnStride = 0;
+    uint64_t keyN2Stride = 0;
+    uint64_t valueBnStride = 0;
+    uint64_t valueN2Stride = 0;
+    bool hasViewStride = true;
+    // 非连续场景下首个非连续维, -1表示连续, 由parser计算供checker复用
+    int32_t keyNonContigDim = -1;
+    int32_t valueNonContigDim = -1;
 
     // DType
     ge::DataType inputQType = ge::DT_FLOAT16;

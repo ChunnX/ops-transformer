@@ -23,6 +23,7 @@ using AscendC::QuePosition;
 
 namespace regbaseutil {
 constexpr int64_t MAX_PRE_NEXT_TOKENS = 0x7FFFFFFF;
+enum class VselrIndexEnum {GT_64_AND_LTE_128_INDEX = 0, GT_0_AND_LTE_64_INDEX = 1};
 
 #define COMMON_RUN_PARAM \
     int64_t boIdx; \
@@ -78,6 +79,11 @@ struct RunParamStr {  // 分核与切块需要使用到参数
     int64_t qSNumInOneBlock;
     int64_t oriKvLoopEndIdx;
     int64_t cmpKvLoopEndIdx;
+    // FD S2-split
+    int64_t firstFdDataWorkspaceIdx = 0;
+    bool isS2Split = false;
+    int64_t s2SplitIdx = 0;
+    bool isFirstS2SplitCore = true;
 };
 
 #define COMMON_RUN_INFO \
@@ -119,6 +125,9 @@ struct RunParamStr {  // 分核与切块需要使用到参数
     uint8_t resv[3]; \
     int64_t sOuterOffset; \
     int64_t mOuterOffset; \
+    bool    isS2Split = false; \
+    int64_t s2SplitIdx = 0; \
+    bool    isFirstS2SplitCore = true; \
 
 struct RunInfo {
     COMMON_RUN_INFO;
@@ -131,6 +140,7 @@ struct RunInfo {
     int64_t cmpKvLoopEndIdx;
     uint32_t oriSparseBlockCount;
     uint32_t cmpSparseBlockCount;
+    int64_t firstFdDataWorkspaceIdx = 0;
 };
 
 #define COMMON_CONST_INFO \

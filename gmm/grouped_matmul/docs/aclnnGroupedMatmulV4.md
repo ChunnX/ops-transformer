@@ -32,51 +32,52 @@
       - 支持伪量化weight是INT4、FLOAT8_E5M2、FLOAT8_E4M3FN、HIFLOAT8的输入，不带激活场景，支持perchannel和pergroup模式（INT4支持perchannel和pergroup，其余weight类型仅支持perchannel）。
 
 **说明：**
+
   - 单tensor指一个tensor list中所有分组的tensor在groupType指定的分组轴上合并为1个；否则为多tensor。
   - tensor转置：指若tensor shape为[M,K]时，则stride为[1,M],数据排布为[K,M]的场景，即非连续tensor。
 
-- 计算公式：
-  - **非量化场景：**
+  - 计算公式：
+    - **非量化场景：**
 
-    $$
-     y_i=x_i\times weight_i + bias_i
-    $$
+      $$
+       y_i=x_i\times weight_i + bias_i
+      $$
 
-  - **量化场景（静态量化，T-C && T-T量化，无perTokenScaleOptional）：**
-    $$
-      y_i=(x_i\times weight_i) * scale_i + offset_i
-    $$
-    - x为INT8，bias为INT32
+    - **量化场景（静态量化，T-C && T-T量化，无perTokenScaleOptional）：**
       $$
-        y_i=(x_i\times weight_i + bias_i) * scale_i + offset_i
+        y_i=(x_i\times weight_i) * scale_i + offset_i
       $$
-    - x为INT8，bias为BFLOAT16/FLOAT16/FLOAT32，无offset
+      - x为INT8，bias为INT32
+        $$
+          y_i=(x_i\times weight_i + bias_i) * scale_i + offset_i
+        $$
+      - x为INT8，bias为BFLOAT16/FLOAT16/FLOAT32，无offset
+        $$
+          y_i=(x_i\times weight_i) * scale_i + bias_i
+        $$
+    - **量化场景（动态量化，T-T && T-C && K-T && K-C量化）：**
       $$
-        y_i=(x_i\times weight_i) * scale_i + bias_i
+       y_i=(x_i\times weight_i) * scale_i * per\_token\_scale_i
       $$
-  - **量化场景（动态量化，T-T && T-C && K-T && K-C量化）：**
-    $$
-     y_i=(x_i\times weight_i) * scale_i * per\_token\_scale_i
-    $$
-    - x为INT8，bias为INT32
+      - x为INT8，bias为INT32
+        $$
+          y_i=(x_i\times weight_i + bias_i) * scale_i * per\_token\_scale_i
+        $$
+      - x为INT8，bias为BFLOAT16/FLOAT16/FLOAT32
+        $$
+          y_i=(x_i\times weight_i) * scale_i * per\_token\_scale_i  + bias_i
+        $$
+    - **量化场景（动态量化，MX && G-B量化）：**
       $$
-        y_i=(x_i\times weight_i + bias_i) * scale_i * per\_token\_scale_i
+      y_i[m,n] = \sum_{j=0}^{kLoops-1} ((\sum_{k=0}^{gsK-1} (xSlice_i * weightSlice_i)) * (per\_token\_scale_i[m/gsM, j] * scale_i[j, n/gsN])) + bias_i[n]
       $$
-    - x为INT8，bias为BFLOAT16/FLOAT16/FLOAT32
-      $$
-        y_i=(x_i\times weight_i) * scale_i * per\_token\_scale_i  + bias_i
-      $$
-  - **量化场景（动态量化，MX && G-B量化）：**
-    $$
-    y_i[m,n] = \sum_{j=0}^{kLoops-1} ((\sum_{k=0}^{gsK-1} (xSlice_i * weightSlice_i)) * (per\_token\_scale_i[m/gsM, j] * scale_i[j, n/gsN])) + bias_i[n]
-    $$
-    其中，gsM,gsN和gsK分别代表M/N/K轴的量化的block size，$xSlice_i$代表$x_i$第m行长度为gsK的向量，$weightSlice_i$代表$weight_i$第n列长度为gsK的向量，K轴均从j * gsK起始切片，j的取值范围[0, kLoops), kLoops=ceil($K_i$ / gsK)，支持最后的切片长度不足gsK。
+      其中，gsM,gsN和gsK分别代表M/N/K轴的量化的block size，$xSlice_i$代表$x_i$第m行长度为gsK的向量，$weightSlice_i$代表$weight_i$第n列长度为gsK的向量，K轴均从j * gsK起始切片，j的取值范围[0, kLoops), kLoops=ceil($K_i$ / gsK)，支持最后的切片长度不足gsK。
 
-  - **伪量化场景：**
+    - **伪量化场景：**
 
-    $$
-     y_i=x_i\times (weight_i + antiquant\_offset_i) * antiquant\_scale_i + bias_i
-    $$
+      $$
+       y_i=x_i\times (weight_i + antiquant\_offset_i) * antiquant\_scale_i + bias_i
+      $$
 
 ## 函数原型
 
@@ -120,7 +121,7 @@ aclnnStatus aclnnGroupedMatmulV4(
 - **参数说明：**
 
   <table style="undefined;table-layout: fixed; width: 1483px"><colgroup>
-  <col style="width: 210px">
+  <col style="width: 240px">
   <col style="width: 90px">
   <col style="width: 370px">
   <col style="width: 232px">
@@ -142,7 +143,7 @@ aclnnStatus aclnnGroupedMatmulV4(
     </tr></thead>
   <tbody>
     <tr>
-      <td>x（aclTensorList）</td>
+      <td>x（aclTensorList *）</td>
       <td>输入</td>
       <td>公式中的输入x。</td>
       <td>tensorList长度支持[1, 128]或者[1, 1024]。</td>
@@ -152,7 +153,7 @@ aclnnStatus aclnnGroupedMatmulV4(
       <td>-</td>
     </tr>
     <tr>
-      <td>weight（aclTensorList）</td>
+      <td>weight（aclTensorList *）</td>
       <td>输入</td>
       <td>公式中的weight。</td>
       <td>tensorList长度支持[1, 128]或者[1, 1024]。</td>
@@ -162,7 +163,7 @@ aclnnStatus aclnnGroupedMatmulV4(
       <td>-</td>
     </tr>
     <tr>
-      <td>biasOptional（aclTensorList）</td>
+      <td>biasOptional（aclTensorList *）</td>
       <td>输入</td>
       <td>公式中的bias。</td>
       <td>长度与weight相同。</td>
@@ -172,7 +173,7 @@ aclnnStatus aclnnGroupedMatmulV4(
       <td>-</td>
     </tr>
     <tr>
-      <td>scaleOptional（aclTensorList）</td>
+      <td>scaleOptional（aclTensorList *）</td>
       <td>输入</td>
       <td>代表量化参数中的缩放因子。</td>
       <td>一般情况下，长度与weight相同。</td>
@@ -182,7 +183,7 @@ aclnnStatus aclnnGroupedMatmulV4(
       <td>-</td>
     </tr>
     <tr>
-      <td>offsetOptional（aclTensorList）</td>
+      <td>offsetOptional（aclTensorList *）</td>
       <td>输入</td>
       <td>代表量化参数中的偏移量。</td>
       <td>长度与weight相同。</td>
@@ -192,7 +193,7 @@ aclnnStatus aclnnGroupedMatmulV4(
       <td>-</td>
     </tr>
     <tr>
-      <td>antiquantScaleOptional（aclTensorList）</td>
+      <td>antiquantScaleOptional（aclTensorList *）</td>
       <td>输入</td>
       <td>代表伪量化参数中的缩放因子。</td>
       <td>长度与weight相同。</td>
@@ -202,7 +203,7 @@ aclnnStatus aclnnGroupedMatmulV4(
       <td>-</td>
     </tr>
     <tr>
-      <td>antiquantOffsetOptional（aclTensorList）</td>
+      <td>antiquantOffsetOptional（aclTensorList *）</td>
       <td>输入</td>
       <td>代表伪量化参数中的偏移量。</td>
       <td>长度与weight相同。</td>
@@ -212,7 +213,7 @@ aclnnStatus aclnnGroupedMatmulV4(
       <td>-</td>
     </tr>
     <tr>
-      <td>perTokenScaleOptional（aclTensorList）</td>
+      <td>perTokenScaleOptional（aclTensorList *）</td>
       <td>输入</td>
       <td>代表量化参数中的由x量化引入的缩放因子。</td>
       <td>仅支持x、weight、out均为单tensor。</td>
@@ -222,7 +223,7 @@ aclnnStatus aclnnGroupedMatmulV4(
       <td>-</td>
     </tr>
     <tr>
-      <td>groupListOptional（aclTensorList）</td>
+      <td>groupListOptional（aclTensor *）</td>
       <td>输入</td>
       <td>代表输入和输出分组轴方向的matmul大小分布。</td>
       <td>-</td>
@@ -232,7 +233,7 @@ aclnnStatus aclnnGroupedMatmulV4(
       <td>-</td>
     </tr>
     <tr>
-      <td>activationInputOptional（aclTensorList）</td>
+      <td>activationInputOptional（aclTensorList *）</td>
       <td>输入</td>
       <td>当前只支持传入nullptr。</td>
       <td>当前只支持传入nullptr。</td>
@@ -242,7 +243,7 @@ aclnnStatus aclnnGroupedMatmulV4(
       <td>-</td>
     </tr>
     <tr>
-      <td>activationQuantScaleOptional（aclTensorList）</td>
+      <td>activationQuantScaleOptional（aclTensorList *）</td>
       <td>输入</td>
       <td>当前只支持传入nullptr。</td>
       <td>当前只支持传入nullptr。</td>
@@ -252,7 +253,7 @@ aclnnStatus aclnnGroupedMatmulV4(
       <td>-</td>
     </tr>
     <tr>
-      <td>activationQuantOffsetOptional（aclTensorList）</td>
+      <td>activationQuantOffsetOptional（aclTensorList *）</td>
       <td>输入</td>
       <td>当前只支持传入nullptr。</td>
       <td>当前只支持传入nullptr。</td>
@@ -308,7 +309,7 @@ aclnnStatus aclnnGroupedMatmulV4(
       <td>-</td>
     </tr>
     <tr>
-      <td>out（aclTensorList）</td>
+      <td>out（aclTensorList *）</td>
       <td>输出</td>
       <td>公式中的输出y。</td>
       <td>tensorList长度支持[1, 128]或者[1, 1024]。</td>
@@ -318,7 +319,7 @@ aclnnStatus aclnnGroupedMatmulV4(
       <td>-</td>
     </tr>
     <tr>
-      <td>activationFeatureOutOptional（aclTensorList）</td>
+      <td>activationFeatureOutOptional（aclTensorList *）</td>
       <td>输出</td>
       <td>激活函数的输入数据。</td>
       <td>当前只支持传入nullptr。</td>
@@ -328,7 +329,7 @@ aclnnStatus aclnnGroupedMatmulV4(
       <td>-</td>
     </tr>
     <tr>
-      <td>dynQuantScaleOutOptional（aclTensorList）</td>
+      <td>dynQuantScaleOutOptional（aclTensorList *）</td>
       <td>输出</td>
       <td>当前只支持传入nullptr。</td>
       <td>当前只支持传入nullptr。</td>
@@ -782,6 +783,7 @@ aclnnStatus aclnnGroupedMatmulV4(
       - groupListOptional在该模式会将所有非0的group移动到前面，适用于非激活专家较多场景。
       - groupListOptional：`[[0, 123], [2, 333], [5, 333], [1, 0], [3, 0], [4, 0], [6, 0], [7, 0], [8, 0]]`
     </details>
+
 </details>
 
 <a id="ascend_950pr_ascend950dt"></a>
@@ -872,7 +874,7 @@ aclnnStatus aclnnGroupedMatmulV4(
         |groupType| 使用场景 | shape限制 |
         |:---------:|:---------:| :------ |
         |0|weight单tensor|每个tensor 4维，当weight转置时，shape为(g, N, ceil(K / 64), 2)；当weight不转置时，shape为(g, ceil(K / 64), N, 2)|
-        |2|weight单tensor|每个tensor 3维，shape为((K / 64) + g, N, 2)，scale\_i起始地址偏移为((K\_0 + K\_1 + ...+ K\_{i-1})/ 64 + g\_i) * N * 2，即scale_0的起始地址偏移为0，scale_1的起始地址偏移为（K\_0 / 64 + 1）* N * 2， scale_2的起始地址偏移为((K\_0 + K\_1) / 64 + 2) * N * 2,依此类推|
+        |2|weight单tensor|每个tensor 3维，shape为((K / 64) + g, N, 2)，scale\_i起始地址偏移为((K\_0 + K\_1 + ...+ K\_{i-1})/ 64 + g\_i) *N* 2，即scale_0的起始地址偏移为0，scale_1的起始地址偏移为（K\_0 / 64 + 1）*N* 2， scale_2的起始地址偏移为((K\_0 + K\_1) / 64 + 2) *N* 2,依此类推|
 
     - perTokenScaleOptional要满足下表：
 
@@ -902,7 +904,7 @@ aclnnStatus aclnnGroupedMatmulV4(
         |groupType| 使用场景 | shape限制 |
         |:---------:|:---------:| :------ |
         |0|weight单tensor|每个tensor 3维，weight转置时shape为（g, ceil(N / gsN), ceil (K / gsK)），weight非转置时shape为（g, ceil(K / gsK), ceil(N / gsN)）|
-        |2|weight单tensor|每个tensor 2维，shape为（K / gsK + g, ceil(N / gsN)），scale\_i地址偏移为（(K\_0 + K\_1 + ...+   K\_{i-1})/ gsK + g\_i）* ceil(N /  gsN)，即scale\_0的起始地址偏移为0，scale\_1的起始地址偏移为（K\_0 / gsK + 1）* ceil(N / gsN)， scale_2的起始地址偏移为((K\_0 + K\_1) / gsK + 2) * ceil(N / gsN),依此类推|
+        |2|weight单tensor|每个tensor 2维，shape为（K / gsK + g, ceil(N / gsN)），scale\_i地址偏移为（(K\_0 + K\_1 + ...+   K\_{i-1})/ gsK + g\_i）*ceil(N /  gsN)，即scale\_0的起始地址偏移为0，scale\_1的起始地址偏移为（K\_0 / gsK + 1）* ceil(N / gsN)， scale_2的起始地址偏移为((K\_0 + K\_1) / gsK + 2) * ceil(N / gsN),依此类推|
 
     - perTokenScaleOptional要满足下表：
 

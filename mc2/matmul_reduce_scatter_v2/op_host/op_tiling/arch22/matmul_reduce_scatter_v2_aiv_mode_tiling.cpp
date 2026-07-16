@@ -40,6 +40,8 @@ constexpr uint32_t X2_SCALE_INDEX = 4;
 constexpr uint32_t C_INDEX = 0;
 constexpr uint32_t SYSTEM_NEED_WORKSPACE = 16 * 1024 * 1024;
 constexpr uint32_t USER_WORKSPACE_A2 = 1 * 1024 * 1024; // moeExpertNum_ * sizeof(uint32_t) + epWorldSize_ * 2 * 32
+constexpr uint64_t CCL_BUFFER_MIN_BYTES = 200ULL * 1024 * 1024;  // 校验HCCL BUFF空间大小
+constexpr uint32_t MB_BYTES = 1024 * 1024;
 constexpr uint64_t TILINGKEY_BIAS = 1U;
 constexpr uint64_t TILINGKEY_TRANS_A = 100U;
 constexpr uint64_t TILINGKEY_TRANS_B = 10U;
@@ -547,8 +549,7 @@ static inline bool IsArrayEqual(std::vector<uint32_t> &arr1, const std::vector<u
     return true;
 }
 
-static ge::graphStatus MatmulReduceScatterV2CheckDtypeAndSetTiling(const gert::TilingContext *context,
-                                                                   const MatmulReduceScatterV2AivModeInfo &)
+static ge::graphStatus MatmulReduceScatterV2CheckDtypeAndSetTiling(const gert::TilingContext *context)
 {
     // 获取并校验输入张量描述符
     auto x1TensorDesc = context->GetInputDesc(A_INDEX);
@@ -1127,7 +1128,7 @@ ge::graphStatus MatmulReduceScatterTilingV2AivModeFunc(gert::TilingContext *cont
                     OP_LOGE(context->GetNodeName(),
                             "MatmulReduceScatterV2 aivMode CheckShapeAndSetTiling Failed"),
                     return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(MatmulReduceScatterV2CheckDtypeAndSetTiling(context, info) != ge::GRAPH_SUCCESS,
+    OP_TILING_CHECK(MatmulReduceScatterV2CheckDtypeAndSetTiling(context) != ge::GRAPH_SUCCESS,
                     OP_LOGE(context->GetNodeName(),
                             "MatmulReduceScatterV2 aivMode CheckDtypeAndSetTiling Failed"),
                     return ge::GRAPH_FAILED);
@@ -1138,6 +1139,17 @@ ge::graphStatus MatmulReduceScatterTilingV2AivModeFunc(gert::TilingContext *cont
     auto attrs = context->GetAttrs();
     auto group = attrs->GetAttrPointer<char>(static_cast<int>(ATTR_GROUP_INDEX));
     const char *opName = context->GetNodeName();
+    // 校验HCCL BUFF空间大小
+    uint64_t hcclBuffSize = 0ULL;
+    auto cclRet = mc2tiling::GetCclBufferSize(group, &hcclBuffSize, opName);
+    if (cclRet == ge::GRAPH_SUCCESS) {
+        OP_TILING_CHECK(hcclBuffSize < CCL_BUFFER_MIN_BYTES,
+            OP_LOGE(opName, "HCCL_BUFFSIZE (%lu Bytes) too small, min required %lu Bytes (%dMB)",
+                hcclBuffSize, CCL_BUFFER_MIN_BYTES, CCL_BUFFER_MIN_BYTES / MB_BYTES),
+            return ge::GRAPH_FAILED);
+    } else {
+        OP_LOGW(opName, "Can't get HCCL_BUFFSIZE, skip CCL buffer size validation.");
+    }
     int64_t rankSize = 0;
     mc2tiling::GetRankSize(opName, group, rankSize);
     OP_TILING_CHECK(rankSize != 2 && rankSize != 4 && rankSize != 8,

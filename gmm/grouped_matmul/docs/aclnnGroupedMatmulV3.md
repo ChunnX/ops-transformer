@@ -36,30 +36,30 @@
   - 单tensor指一个tensor list中所有分组的tensor在groupType指定的分组轴上合并为1个；否则为多tensor。
   - tensor转置：指若tensor shape为[M,K]时，则stride为[1,M],数据排布为[K,M]的场景，即非连续tensor。
 
-- 计算公式：
-  - **非量化场景：**
+  - 计算公式：
+    - **非量化场景：**
 
-    $$
-     y_i=x_i\times weight_i + bias_i
-    $$
+      $$
+       y_i=x_i\times weight_i + bias_i
+      $$
 
-  - **量化场景：**
+    - **量化场景：**
 
-    $$
-     y_i=(x_i\times weight_i + bias_i) * scale_i + offset_i
-    $$
+      $$
+       y_i=(x_i\times weight_i + bias_i) * scale_i + offset_i
+      $$
 
-  - **反量化场景：**
+    - **反量化场景：**
 
-    $$
-     y_i=(x_i\times weight_i + bias_i) * scale_i
-    $$
+      $$
+       y_i=(x_i\times weight_i + bias_i) * scale_i
+      $$
 
-  - **伪量化场景：**
+    - **伪量化场景：**
 
-    $$
-     y_i=x_i\times (weight_i + antiquant\_offset_i) * antiquant\_scale_i + bias_i
-    $$
+      $$
+       y_i=x_i\times (weight_i + antiquant\_offset_i) * antiquant\_scale_i + bias_i
+      $$
 
 ## 函数原型
 
@@ -95,7 +95,7 @@ aclnnStatus aclnnGroupedMatmulV3(
 - **参数说明：**
 
   <table style="undefined;table-layout: fixed; width: 1483px"><colgroup>
-  <col style="width: 210px">
+  <col style="width: 240px">
   <col style="width: 90px">
   <col style="width: 370px">
   <col style="width: 232px">
@@ -117,7 +117,7 @@ aclnnStatus aclnnGroupedMatmulV3(
     </tr></thead>
   <tbody>
     <tr>
-      <td>x（aclTensorList）</td>
+      <td>x（aclTensorList *）</td>
       <td>输入</td>
       <td>公式中的输入x。</td>
       <td>tensorList长度支持[1, 128]或者[1, 1024]。</td>
@@ -127,7 +127,7 @@ aclnnStatus aclnnGroupedMatmulV3(
       <td>-</td>
     </tr>
     <tr>
-      <td>weight（aclTensorList）</td>
+      <td>weight（aclTensorList *）</td>
       <td>输入</td>
       <td>公式中的weight。</td>
       <td>tensorList长度支持[1, 128]或者[1, 1024]。</td>
@@ -137,7 +137,7 @@ aclnnStatus aclnnGroupedMatmulV3(
       <td>-</td>
     </tr>
     <tr>
-      <td>biasOptional（aclTensorList）</td>
+      <td>biasOptional（aclTensorList *）</td>
       <td>输入</td>
       <td>公式中的bias。</td>
       <td>长度与weight相同。</td>
@@ -147,7 +147,7 @@ aclnnStatus aclnnGroupedMatmulV3(
       <td>-</td>
     </tr>
     <tr>
-      <td>scaleOptional（aclTensorList）</td>
+      <td>scaleOptional（aclTensorList *）</td>
       <td>输入</td>
       <td>代表量化参数中的缩放因子。</td>
       <td>一般情况下，长度与weight相同。</td>
@@ -157,7 +157,7 @@ aclnnStatus aclnnGroupedMatmulV3(
       <td>-</td>
     </tr>
     <tr>
-      <td>offsetOptional（aclTensorList）</td>
+      <td>offsetOptional（aclTensorList *）</td>
       <td>输入</td>
       <td>代表量化参数中的偏移量。</td>
       <td>长度与weight相同。</td>
@@ -167,7 +167,7 @@ aclnnStatus aclnnGroupedMatmulV3(
       <td>-</td>
     </tr>
     <tr>
-      <td>antiquantScaleOptional（aclTensorList）</td>
+      <td>antiquantScaleOptional（aclTensorList *）</td>
       <td>输入</td>
       <td>代表伪量化参数中的缩放因子。</td>
       <td>长度与weight相同。</td>
@@ -177,7 +177,7 @@ aclnnStatus aclnnGroupedMatmulV3(
       <td>-</td>
     </tr>
     <tr>
-      <td>antiquantOffsetOptional（aclTensorList）</td>
+      <td>antiquantOffsetOptional（aclTensorList *）</td>
       <td>输入</td>
       <td>代表伪量化参数中的偏移量。</td>
       <td>长度与weight相同。</td>
@@ -187,7 +187,7 @@ aclnnStatus aclnnGroupedMatmulV3(
       <td>-</td>
     </tr>
     <tr>
-      <td>groupListOptional（aclTensorList）</td>
+      <td>groupListOptional（aclTensor *）</td>
       <td>输入</td>
       <td>代表输入和输出分组轴方向的matmul大小分布。</td>
       <td>当输出中TensorList的长度为1时，groupListOptional中的最后一个值约束了输出数据的有效部分，groupListOptional中未指定的部分将不会参与更新。</td>
@@ -220,7 +220,7 @@ aclnnStatus aclnnGroupedMatmulV3(
       <td>-</td>
     </tr>
     <tr>
-      <td>y（aclTensorList）</td>
+      <td>y（aclTensorList *）</td>
       <td>输出</td>
       <td>公式中的输出y。</td>
       <td>tensorList长度支持[1, 128]或者[1, 1024]。</td>

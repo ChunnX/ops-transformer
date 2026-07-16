@@ -25,11 +25,10 @@ namespace MC2Tiling {
 class MatmulAlltoAllFitBalanceTiling : public Mc2FitBasedBalanceTiling {
 public:
     explicit MatmulAlltoAllFitBalanceTiling(const mc2tiling::TilingArgs &args, KernelType kernelType,
-                                        TopoType topoType = TopoType::STANDARD_CARD,
-                                        SocVersion socVersion = SocVersion::SOC950,
-                                        QuantMode quantMode = QuantMode::NON_QUANT)
-        : Mc2FitBasedBalanceTiling(args, kernelType, topoType, socVersion),
-          quantMode_(quantMode)
+                                            TopoType topoType = TopoType::STANDARD_CARD,
+                                            SocVersion socVersion = SocVersion::SOC950,
+                                            QuantMode quantMode = QuantMode::NON_QUANT)
+        : Mc2FitBasedBalanceTiling(args, kernelType, topoType, socVersion), quantMode_(quantMode)
     {
         commPerf_.SetCommShapeLen(args.nValue);
         commPerf_.SetCommDTypeSize(mmInfo_.outMatrixCDtypeSize);
@@ -51,8 +50,8 @@ private:
     QuantMode quantMode_;
 };
 
-inline CutResult GetArch35TilingResult(const mc2tiling::TilingArgs &args, KernelType kernelType,
-                                       SocVersion socVersion, NpuArch npuArch, QuantMode quantMode)
+inline CutResult GetArch35TilingResult(const mc2tiling::TilingArgs &args, KernelType kernelType, SocVersion socVersion,
+                                       NpuArch npuArch, QuantMode quantMode)
 {
     if (mc2tiling::IsStandardCard4P(args.rankDim, npuArch)) {
         OP_LOGD("Arch35TilingResult", "Using fit balance tiling for arch35 standard card 4P");

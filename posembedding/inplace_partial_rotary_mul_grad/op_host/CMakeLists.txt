@@ -9,7 +9,7 @@
 # -----------------------------------------------------------------------------------------------------------
 
 if (BUILD_OPEN_PROJECT)
-    target_sources(op_host_aclnnInner PRIVATE
+    target_sources(op_host_aclnn PRIVATE
         inplace_partial_rotary_mul_grad_def.cpp
     )
     add_modules_sources(OPTYPE inplace_partial_rotary_mul_grad ACLNNTYPE aclnn)

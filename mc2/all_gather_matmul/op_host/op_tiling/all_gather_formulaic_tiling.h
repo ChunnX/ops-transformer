@@ -26,16 +26,15 @@ constexpr double gatherLargerNKCommGrowRatio1 = 3;
 constexpr double gatherLargerNKCommGrowRatio2 = 1.5;
 constexpr uint64_t HUGE_K_BOUNDARY = 32768;
 
-class AllGatherPlusMM : public OneCalcOneCommBase
-{
+class AllGatherPlusMM : public OneCalcOneCommBase {
 public:
     double frontMMTime_ = 0;
     bool strongTpBound_ = false;
-    bool hasLocalAtFront_ = true;  // local提前计算
+    bool hasLocalAtFront_ = true; // local提前计算
 
-// Constructor
-    explicit AllGatherPlusMM(const mc2tiling::TilingArgs& args, uint32_t inputRankDim, KernelType inputKernelType,
-                            SocVersion inputSocVersion)
+    // Constructor
+    explicit AllGatherPlusMM(const mc2tiling::TilingArgs &args, uint32_t inputRankDim, KernelType inputKernelType,
+                             SocVersion inputSocVersion)
         : OneCalcOneCommBase(args, inputRankDim, inputKernelType, inputSocVersion)
     {
         commPerf_.SetCommShapeLen(clusterInfo_.kValue);

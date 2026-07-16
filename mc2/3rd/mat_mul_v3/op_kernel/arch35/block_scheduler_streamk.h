@@ -24,11 +24,7 @@
 namespace Act {
 namespace Gemm {
 namespace Block {
-template <
-    class ProblemShape_,
-    class L1TileShape_,
-    class L0TileShape_
->
+template <class ProblemShape_, class L1TileShape_, class L0TileShape_>
 class Mc2BlockSchedulerStreamKBuiltIn {
 public:
     int64_t usedCoreNum_{0};
@@ -64,10 +60,11 @@ public:
     using ProblemShape = ProblemShape_;
 
     struct Params {
-        const Mc2MatMulV3BasicTilingData* tilingData;
+        const Mc2MatMulV3BasicTilingData *tilingData;
     };
+
 public:
-    __aicore__ inline Mc2BlockSchedulerStreamKBuiltIn(const ProblemShape& shape, const Params& params)
+    __aicore__ inline Mc2BlockSchedulerStreamKBuiltIn(const ProblemShape &shape, const Params &params)
     {
         usedCoreNum_ = params.tilingData->usedCoreNum;
         m_ = shape.m;
@@ -80,7 +77,7 @@ public:
         nL1_ = baseN_; // size of n in L1 & L0 & singlecore, per core use L1 once in stream k
 
         skKSingleCore_ = params.tilingData->skSingleCoreK; // size of k in singlecore
-        baseK_ = params.tilingData->baseK; // fix basek to 32, need to be adjusted by baseM, baseN, L0
+        baseK_ = params.tilingData->baseK;                 // fix basek to 32, need to be adjusted by baseM, baseN, L0
         kL1_ = params.tilingData->kL1;
 
         isHf32_ = params.tilingData->isHf32;
@@ -141,9 +138,9 @@ public:
         int64_t tailL1M = m_ - (mTileNum_ - 1) * mL1_;
         int64_t tailL1N = n_ - (nTileNum_ - 1) * nL1_;
         int64_t tailSingleCoreK = k_ - (curKTileNum_ - 1) * skKSingleCore_;
-        int64_t blkM = (mTileIdx_ == (mTileNum_ -1)) ? tailL1M : mL1_;
-        int64_t blkN = (nTileIdx_ == (nTileNum_ -1)) ? tailL1N : nL1_;
-        int64_t blkK = (kTileIdx_ == (curKTileNum_ -1)) ? tailSingleCoreK : skKSingleCore_;
+        int64_t blkM = (mTileIdx_ == (mTileNum_ - 1)) ? tailL1M : mL1_;
+        int64_t blkN = (nTileIdx_ == (nTileNum_ - 1)) ? tailL1N : nL1_;
+        int64_t blkK = (kTileIdx_ == (curKTileNum_ - 1)) ? tailSingleCoreK : skKSingleCore_;
         return {blkM, blkN, blkK, 0};
     }
 
@@ -190,21 +187,10 @@ public:
     }
 };
 
-template <
-    class ProblemShape_,
-    class L1TileShape_,
-    class L0TileShape_,
-    bool TransA_,
-    bool TransB_>
-struct BlockSchedulerSelector<
-    ProblemShape_,
-    L1TileShape_,
-    L0TileShape_,
-    Act::Gemm::BuiltInStreamKScheduler,
-    TransA_,
-    TransB_
-> {
-using SchedulerOp = Mc2BlockSchedulerStreamKBuiltIn<ProblemShape_, L1TileShape_, L0TileShape_>;
+template <class ProblemShape_, class L1TileShape_, class L0TileShape_, bool TransA_, bool TransB_>
+struct BlockSchedulerSelector<ProblemShape_, L1TileShape_, L0TileShape_, Act::Gemm::BuiltInStreamKScheduler, TransA_,
+                              TransB_> {
+    using SchedulerOp = Mc2BlockSchedulerStreamKBuiltIn<ProblemShape_, L1TileShape_, L0TileShape_>;
 };
 
 } // namespace Block

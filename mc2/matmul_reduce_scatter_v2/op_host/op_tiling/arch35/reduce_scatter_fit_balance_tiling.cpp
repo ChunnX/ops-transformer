@@ -18,6 +18,7 @@
 constexpr static uint64_t L2_CACHE_SIZE = 128 * ONE_MBYTE;
 constexpr static uint64_t UNBALANCE_RATIO = 2;
 constexpr static uint64_t SMALL_K_BOUND = 2048;
+constexpr static uint64_t AICPU_M_TILE_CAP = 4; // AICPU通路通信切分膨胀较大，限制最大切分轮数
 
 void MMReduceScatterFitBalanceTiling::EstimateMMCommTime()
 {
@@ -83,6 +84,9 @@ void MMReduceScatterFitBalanceTiling::SetLongTileLen()
 
 void MMReduceScatterFitBalanceTiling::AdjustLongShortTileLen()
 {
+    if (isAicpuComm_) { // AICPU场景通信切分膨胀较大，限制最大切分轮数
+        tilingM_.SetMaxTileCnt(AICPU_M_TILE_CAP);
+    }
     bool goodLinearityShape = (mmInfo_.kValue * mmInfo_.nValue >= LARGE_NK_BAR_BASE * ONE_MBYTE);
     tilingM_.FitTileLengthDiscrete(false, goodLinearityShape);
     // When the long and short tiles are equal, the long and short pieces become one.

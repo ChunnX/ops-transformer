@@ -23,7 +23,7 @@ namespace ops {
 
 using namespace ge;
 
-static const char* INNER_DEBUG = "MC2: QuantAllReduce InferShape Debug";
+static const char *INNER_DEBUG = "MC2: QuantAllReduce InferShape Debug";
 // 原型IR中input的index
 constexpr size_t X_INDEX = 0;
 constexpr size_t SCALES_INDEX = 1;
@@ -54,7 +54,7 @@ struct QuantAllReduceShapeInfo {
  * @param context: 框架根据input，output，attrs等信息生成tiling需要的context
  * @param shapeInfo: 临时变量存放shape信息
  */
-static ge::graphStatus GetShapeInfo(const gert::InferShapeContext* context, QuantAllReduceShapeInfo& shapeInfo)
+static ge::graphStatus GetShapeInfo(const gert::InferShapeContext *context, QuantAllReduceShapeInfo &shapeInfo)
 {
     const auto x_shape = context->GetInputShape(X_INDEX);
     OPS_CHECK_NULL_WITH_CONTEXT(context, x_shape);
@@ -73,8 +73,7 @@ static ge::graphStatus GetShapeInfo(const gert::InferShapeContext* context, Quan
         shapeInfo.bs = x_shape->GetDim(0) * x_shape->GetDim(1);
         shapeInfo.hiddenSize = x_shape->GetDim(AXIS_TWO);
     } else {
-        OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "x",
-            (std::to_string(x_dim) + "D").c_str(), "2D or 3D");
+        OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "x", (std::to_string(x_dim) + "D").c_str(), "2D or 3D");
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -84,18 +83,18 @@ static ge::graphStatus GetShapeInfo(const gert::InferShapeContext* context, Quan
  * @param context: 框架根据input，output，attrs等信息生成tiling需要的context
  * @param shapeInfo: 临时变量存放shape信息
  */
-static ge::graphStatus GetRankSize(gert::InferShapeContext* context, QuantAllReduceShapeInfo& shapeInfo)
+static ge::graphStatus GetRankSize(gert::InferShapeContext *context, QuantAllReduceShapeInfo &shapeInfo)
 {
     const auto attrs = context->GetAttrs();
     OPS_CHECK_NULL_WITH_CONTEXT(context, attrs);
 
     // 通过attr获取卡数
     const int *rankSize = attrs->GetAttrPointer<int>(WORLD_SIZE_INDEX);
-    OP_LOGE_IF(rankSize == nullptr, ge::GRAPH_FAILED, context->GetNodeName(), "Get rank_size failed in quant_all_reduce");
+    OP_LOGE_IF(rankSize == nullptr, ge::GRAPH_FAILED, context->GetNodeName(),
+               "Get rank_size failed in quant_all_reduce");
     OP_TILING_CHECK(std::find(SUPPORT_RANK_SIZE.begin(), SUPPORT_RANK_SIZE.end(), *rankSize) >= SUPPORT_RANK_SIZE.end(),
-                    OP_LOGE_WITH_INVALID_ATTR(context->GetNodeName(), "rankSize",
-                        std::to_string(*rankSize).c_str(),
-                        VectorToString(SUPPORT_RANK_SIZE).c_str()),
+                    OP_LOGE_WITH_INVALID_ATTR(context->GetNodeName(), "rankSize", std::to_string(*rankSize).c_str(),
+                                              VectorToString(SUPPORT_RANK_SIZE).c_str()),
                     return ge::GRAPH_FAILED);
 
     shapeInfo.rankNum = *rankSize;
@@ -118,8 +117,7 @@ static ge::graphStatus InferShapeQuantAllReduce(gert::InferShapeContext *context
 
     // get rank_size
     OPS_CHECK(GetRankSize(context, shapeInfo) != ge::GRAPH_SUCCESS,
-              OP_LOGE(context->GetNodeName(), "Failed to get rank size in quant_all_reduce."),
-              return ge::GRAPH_FAILED);
+              OP_LOGE(context->GetNodeName(), "Failed to get rank size in quant_all_reduce."), return ge::GRAPH_FAILED);
 
     auto output_shape = context->GetOutputShape(OUTPUT_INDEX);
     OPS_CHECK_NULL_WITH_CONTEXT(context, output_shape);
@@ -135,8 +133,8 @@ static ge::graphStatus InferShapeQuantAllReduce(gert::InferShapeContext *context
         output_shape->SetDim(AXIS_TWO, shapeInfo.hiddenSize);
     }
 
-    OP_LOGD(INNER_DEBUG, "output after infershape func, shape: [%zu], bs: [%ld], h: [%ld]",
-            shapeInfo.xDim, shapeInfo.bs, shapeInfo.hiddenSize);
+    OP_LOGD(INNER_DEBUG, "output after infershape func, shape: [%zu], bs: [%ld], h: [%ld]", shapeInfo.xDim,
+            shapeInfo.bs, shapeInfo.hiddenSize);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -154,7 +152,7 @@ static ge::graphStatus InferDataTypeQuantAllReduce(gert::InferDataTypeContext *c
     const auto attrs = context->GetAttrs();
     OPS_CHECK_NULL_WITH_CONTEXT(context, attrs);
 
-    const int64_t* output_dtype_ptr = attrs->GetInt(OUTPUT_DTYPE_INDEX);
+    const int64_t *output_dtype_ptr = attrs->GetInt(OUTPUT_DTYPE_INDEX);
     const uint64_t output_dtype = (output_dtype_ptr != nullptr ? *output_dtype_ptr : ge::DataType::DT_BF16);
     if (output_dtype != ge::DataType::DT_BF16) {
         get_dtype = static_cast<ge::DataType>(output_dtype);
@@ -162,8 +160,6 @@ static ge::graphStatus InferDataTypeQuantAllReduce(gert::InferDataTypeContext *c
     return context->SetOutputDataType(0, get_dtype);
 }
 
-IMPL_OP_INFERSHAPE(QuantAllReduce)
-    .InferShape(InferShapeQuantAllReduce)
-    .InferDataType(InferDataTypeQuantAllReduce);
+IMPL_OP_INFERSHAPE(QuantAllReduce).InferShape(InferShapeQuantAllReduce).InferDataType(InferDataTypeQuantAllReduce);
 
 } // namespace ops
