@@ -63,5 +63,5 @@ repos:
         language: system
         pass_filenames: true
         types: [file]
-        stages: [commit]
+        stages: [pre-commit]
         verbose: true
