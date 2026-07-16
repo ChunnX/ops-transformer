@@ -267,6 +267,9 @@ __aicore__ inline T CeilDiv(T num, T rnd)
 // ============================================================================
 
 // qkStride 附加偏移: s1行B 落 bank+1 (解 A/C 同 bank 冲突)
+// ⚠️ 已回退: Fixpipe 分段实现此偏移导致 (1)srcStride 错误→精度失败 (2)调用次数×4→性能劣化
+//   保留宏定义供未来参考, 当前不使用。
+//   TODO: 需在不分段 Fixpipe 的前提下解 QK s1 行间冲突
 #define QLIV2_BANK_OFF_QK_S1     256    // 256B → bank+1
 
 // qkVLStride 附加偏移: 配对路落 bank+2 (解 A/B 同 bank 冲突)

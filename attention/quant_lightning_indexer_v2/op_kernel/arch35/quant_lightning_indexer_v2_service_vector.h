@@ -513,26 +513,17 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessVec1(const QLIV2Common::RunIn
     auto weightTempBase = weightTempUB_[qScalepingpong * (UB_BANK_STRIDE / sizeof(float))];
 
     auto qkBase = resMm1UB_[pingpong * (UB_BANK_STRIDE / sizeof(QK_T))];
-    // qkVLstride: 配对路 stride (保持原值, 不附加 bank 偏移)
-    // ⚠️ TODO: 启用 QLIV2_BANK_OFF_QK_VL 偏移需确认 cube Fixpipe 写配对路路径
     auto qkVLstride = QLIV2Common::Align((uint64_t)info.actMBaseSize, 2 * constInfo_.gSize)
         * (UB_BANK_DEPTH_STRIDE / sizeof(QK_T));
 
     if constexpr (IS_MXFP8) {
-        // === bank 冲突优化: qkStride 附加 +256B 偏移 ===
-        // 原始 qkStride = gSize * rowStride = 64 * 128 = 8192 float
-        //   → bank 增量 (8192*4/256)%4 = (128)%4 = 0 → s1行B 与 s1行A 同 bank (冲突!)
-        // 附加 +256B(=64 float) 后: bank 增量 (8256*4/256)%4 = (129)%4 = 1 → s1行B 落 bank+1 ✓
-        // Fixpipe 端需同步按 s1 行组分段并附加偏移 (见 service_cube.h Fixp)
-        uint32_t qkStride = (uint32_t)(gSize_ * UB_BANK_DEPTH_STRIDE / sizeof(QK_T))
-                          + (QLIV2_BANK_OFF_QK_S1 / sizeof(QK_T));  // +256B → bank+1
-
-        // outStride/weightStride: 紧凑布局 (原 UB_BANK_DEPTH_STRIDE/sizeof(T) = 512B stride)
-        //   outStride:  s2BaseSize = 128 uint16 = 256B (紧凑, 原 512B)
-        //   weightStride: gSize = 64 float = 256B (紧凑, 原 512B)
+        // QK s1 行间冲突 (A/C 同 bank) 暂未解决:
+        //   qkStride = gSize * rowStride = 64 * 128 = 8192 float, bank 增量 = 0 → A/C 同 bank
+        //   解法需 Fixpipe 分段+偏移, 但分段导致 srcStride 错误(精度) + 调用次数×4(性能), 已回退。
+        //   TODO: 需在不分段的前提下解 QK s1 行间冲突 (如调整 gSize 对齐或 Fixpipe ndNum 级偏移)
         vector1::BatchMulWeightAndReduceSum_MxFP8(outBase, s2BaseSize_,
                                                     qkBase, qkVLstride,
-                                                    qkStride,
+                                                    (uint32_t)(gSize_ * UB_BANK_DEPTH_STRIDE / sizeof(QK_T)),
                                                     weightBase, gSize_,
                                                     weightTempBase,
                                                     gSize_, curAivS1ProcNum);
