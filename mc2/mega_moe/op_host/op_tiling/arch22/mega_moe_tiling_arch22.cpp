@@ -97,7 +97,7 @@ namespace MegaMoeA2A3Tiling {
     // 属性范围限制
     constexpr int64_t MIN_MOE_EXPERT_NUM = 1;
     constexpr int64_t MAX_MOE_EXPERT_NUM = 1024;
-    constexpr int64_t VALID_EP_WORLD_SIZE[] = {2, 4, 8, 16, 32, 64, 128};
+    constexpr int64_t VALID_EP_WORLD_SIZE[] = {2, 4, 8, 16, 32};
 
     constexpr uint32_t TWO_DIMS = 2U;
     constexpr uint32_t ONE_DIM = 1U;
@@ -411,6 +411,7 @@ static ge::graphStatus MegaMoeA2A3CheckAttrAndSetTiling(gert::TilingContext *con
     OP_TILING_CHECK(CheckActivationClampAttr(activationClampPtr) != ge::GRAPH_SUCCESS,
         OP_LOGE(K_INNER_DEBUG, "CheckActivationClampAttr failed."),
         return GRAPH_FAILED);
+    info.activationClamp = *activationClampPtr;
 
     // 11. activation_out_dtype
     OP_TILING_CHECK(CheckActivationOutDtypeAttr(activationOutDtypePtr) != ge::GRAPH_SUCCESS,
@@ -443,6 +444,7 @@ static ge::graphStatus MegaMoeA2A3CheckAttrAndSetTiling(gert::TilingContext *con
     OP_LOGD(K_INNER_DEBUG, "dispatchQuantOutDtype=%u", info.dispatchQuantOutDtype);
     OP_LOGD(K_INNER_DEBUG, "combineQuantMode=%u", info.combineQuantMode);
     OP_LOGD(K_INNER_DEBUG, "numMaxTokensPerRank=%u", info.numMaxTokensPerRank);
+    OP_LOGD(K_INNER_DEBUG, "activationClamp=%f", info.activationClamp);
     OP_LOGD(K_INNER_DEBUG, "activationOutDtype=%u", info.activationOutDtype);
     OP_LOGD(K_INNER_DEBUG, "transposeWeight1=%u", info.isTransposeW1);
     OP_LOGD(K_INNER_DEBUG, "transposeWeight2=%u", info.isTransposeW2);
