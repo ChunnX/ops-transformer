@@ -1,46 +1,33 @@
 (fzx_py311) root@aa:/home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test# bash check_torchair.sh 
-=== 文件路径 ===
-/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/torch_npu/dynamo/torchair/_utils/__init__.py
+=== 搜索 register_matmul_backward_decomp 的调用位置 ===
+282:def register_matmul_backward_decomp():
+447:    register_matmul_backward_decomp()
 
-=== 第 280-310 行（register_matmul_backward_decomp 函数）===
+=== 搜索 add_npu_patch 函数定义 ===
+445:def add_npu_patch(decompositions, compiler_config):
+
+=== 搜索 add_npu_patch 被调用的位置 ===
+445:def add_npu_patch(decompositions, compiler_config):
+
+=== 第 440-460 行（add_npu_patch 函数附近）===
+        return FAST_OP_IMPLEMENTATIONS
+    _subclasses_fake_tensor.get_fast_op_impls = new_get_fast_op_impls
 
 
-def register_matmul_backward_decomp():
-    """
-    Torch_npu currently dispatch linear to matmul and matmul_backward
-    instead of mm and mm_backward. This will lead to some bug in npu_backend
-    and the decomposition can fix it.
-    """
-    @aten.to.other.py_impl(DispatchKey.AutogradPrivateUse1)
-    def to_other_decomposition(self, other, non_blocking=False, copy=False, memory_format=None):
-        output = self.to(other.dtype)
-        return output
+@run_once
+def add_npu_patch(decompositions, compiler_config):
+    adjust_implicit_decomposition()
+    register_matmul_backward_decomp()
+    npu_patch_meta()
+    npu_patch_break_graph()
+    npu_patch_register_fast_op_impl()
+    if compiler_config.experimental_config.npu_fx_pass:
+        npu_patch_fx_pass(decompositions)
 
-    @aten.type_as.default.py_impl(DispatchKey.AutogradPrivateUse1)
-    def type_as_decomposition(self, other):
-        output = self.to(other.dtype)
-        return output
 
-    @aten.matmul_backward.default.py_impl(DispatchKey.CompositeImplicitAutograd)
-    @out_wrapper("grad_self", "grad_other")
-    def matmul_backward_decomposition(grad, self, other, mask):
-        dim_self = self.dim()
-        dim_other = other.dim()
-
-        size_grad = grad.size()
-        size_self = self.size()
-        size_other = other.size()
-        grad_self = None
-        grad_other = None
-
-        def matmul_backward_1d_1d():
-
-=== 搜索 aten.to.other 相关代码 ===
-288:    @aten.to.other.py_impl(DispatchKey.AutogradPrivateUse1)
-
-=== 搜索 py_impl 相关代码 ===
-150:        op_overload.py_impl(DispatchKey.Meta)(fn)
-288:    @aten.to.other.py_impl(DispatchKey.AutogradPrivateUse1)
-293:    @aten.type_as.default.py_impl(DispatchKey.AutogradPrivateUse1)
-298:    @aten.matmul_backward.default.py_impl(DispatchKey.CompositeImplicitAutograd)
-(fzx_py311) root@aa:/home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test# 
+def get_npu_default_decompositions():
+    default_decompositions = {}
+    from torchair._ge_concrete_graph.ge_converter.experimental.hcom_allgather import allgather_decomposition
+    default_decompositions.update({torch.ops.npu_define.allgather.default: allgather_decomposition})
+    if torch.__version__ >= "2.3.1":
+        from torchair._ge_concrete_graph.ge_converter.c10d_functional.c10d_functional import \
