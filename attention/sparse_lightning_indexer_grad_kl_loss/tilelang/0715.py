@@ -650,7 +650,6 @@ def tilelang_grad_kl_loss_single_kernel(
                     for g_id in T.serial(g_num):
                         g_start = g_id * vector_baseg
 
-                        T.pipe_barrier("v")
                         T.tile.fill(weight_ub, 0)
 
                         # WAR: 等 V 读完 dw_chunk_ub → MTE2 安全覆盖（替代 barrier_all 兜底）
@@ -660,21 +659,14 @@ def tilelang_grad_kl_loss_single_kernel(
                         T.set_flag("mte2", "v", 7)
                         T.wait_flag("mte2", "v", 7)
 
-                        T.pipe_barrier("v")
                         T.tile.mul(rsy_tmp_ub, dw_chunk_ub, -10000.0)
                         T.pipe_barrier("v")
                         T.tile.exp(rsy_tmp_ub, rsy_tmp_ub)
                         T.pipe_barrier("v")
                         T.tile.sub(rsy_tmp_ub, ones_2d_ub, rsy_tmp_ub)
-                        T.pipe_barrier("v")
 
-                        # 2D-vectorized per-row ops (was 32×3=96 tile.mul → now 32 T.copy + 3 tile.mul)
-                        # Step 1: copy weight rows from weight_2d_ub to rg_chunk_ub (scalar index, no UB range slice)
-                        for i in T.serial(vector_baseg):
-                            T.copy(weight_2d_ub[g_start + i, :], rg_chunk_ub[i, :])
-                        # Op1: rg = weight_slice * diff (2D, was per-row 1D mul)
-                        T.pipe_barrier("v")
-                        T.tile.mul(rg_chunk_ub, rg_chunk_ub, diff_2d_ub)
+                        # Op1: rg = weight_slice * diff (2D, eliminated per-row T.copy loop)
+                        T.tile.mul(rg_chunk_ub, weight_2d_ub[g_start:g_start + vector_baseg, 0:n_block], diff_2d_ub)
                         # Op2: rg *= rsy_tmp mask (2D, was per-row 1D mul)
                         T.pipe_barrier("v")
                         T.tile.mul(rg_chunk_ub, rg_chunk_ub, rsy_tmp_ub)
