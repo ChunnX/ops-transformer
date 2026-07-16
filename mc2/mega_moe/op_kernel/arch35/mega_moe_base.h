@@ -257,16 +257,25 @@ __aicore__ inline void SyncFuncStatic()
 
 // MegaMoe batch sizing constants. DAV_3510 的 AIV 可用 UB 上限按 248KB 计算。
 //
-// Unpermute 的 batch 相关最坏占用来自 topK weight：
-//   float weight buffer + 可选的 bf16 中转 buffer
-//   = tokensPerBatch * topK * (sizeof(float) + sizeof(bfloat16_t))。
-// 基准值 1024 * 8 使最坏 weight buffer 保持为 48KB；topK > 8 时，运行时按
-//   tokensPerBatch = baseTokensPerBatch * baseTopK / topK
-// 反比缩小，并满足
-//   fixedUnpermuteBytes(k, combineMode) + tokensPerBatch * topK * 6 <= 248KB。
-// 若 UnpermuteBuffInit 增删固定 buffer、扩大 k/topK 上限或改变 weight 中转类型，必须重新核算该值。
+// Unpermute 保留 1 个累加/输出 buffer，并支持在 EVENT_ID0~EVENT_ID5 上运行 2~6 个输入 buffer。
+// 实际 UB 仅按运行时选中的输入 buffer 数量分配；该上限不表示固定预留 6 个 buffer。
+constexpr int32_t MIN_UNPERMUTE_INPUT_BUFFER_COUNT = 2;
+constexpr int32_t MAX_UNPERMUTE_INPUT_BUFFER_COUNT = 6;
+// 延续原 Unpermute 的 weight batch 基准：tokensPerBatch * topK 不超过 1024 * 8 个 weight item。
+// 先按该基准确定 batch，再用剩余 UB 反推输入 buffer 数量；只有最小布局放不下时才缩小 batch。
 constexpr int32_t UNPERMUTE_BASE_TOPK = 8;
 constexpr int32_t UNPERMUTE_BASE_TOKENS_PER_BATCH = 1024;
+constexpr int32_t UNPERMUTE_WEIGHT_ITEMS_PER_BATCH = UNPERMUTE_BASE_TOPK * UNPERMUTE_BASE_TOKENS_PER_BATCH;
+// 扩大 Unpermute weight batch 时，为 FP32 weight 和可选的 BF16 中转 buffer 各预留一个 32B 对齐块。
+// 统一预留 64B 可覆盖两个独立 buffer 各最多 31B 的 padding，使两种 weight 路径共享同一套反推逻辑。
+constexpr uint32_t UNPERMUTE_WEIGHT_ALIGNMENT_RESERVE_BYTES = 2 * ALIGN_32;
+
+// DeQuantMxFp8 的 scale scratch 展开倍数。E8M0 scale 转成 BF16 时，DIST_INTLV_B16 将每个 scale
+// 交织复制为 2 个 BF16；随后 DIST_INTLV_B32 再将每个 BF16 scale 交织复制为 2 个 FP32。因此，
+// BF16 scratch 需要 scaleNum * 2 个元素，FP32 scratch 需要 scaleNum * 4 个元素。这两个倍数只由
+// DeQuantMxFp8 的 scale 布局决定，与 Unpermute 的输入 buffer 数量无关；若修改该布局，需同步更新。
+constexpr uint32_t DEQUANT_BF16_SCALE_EXPANSION = 2U;
+constexpr uint32_t DEQUANT_FP32_SCALE_EXPANSION = 4U;
 
 // Recv route batch 上限只由 DispatchBuffInit 的 UB 布局约束。Brecv 表示每个 recv batch 的 route item 数，
 // W=worldSize，E=expertPerRank，D=DISPATCH_BUFFER_NUM：

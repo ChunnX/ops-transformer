@@ -80,6 +80,15 @@ public:
     __aicore__ inline void Process();
 
 private:
+    struct UnpermuteBufferConfig {
+        int32_t tokensPerBatch = 0;
+        int32_t inputBufferCount = 0;
+        uint32_t bf16SlotElementCount = 0;
+        uint32_t fp32SlotElementCount = 0;
+        uint32_t topKWeightsBufferBytes = 0;
+        uint32_t topKWeightsBf16BufferBytes = 0;
+    };
+
     __aicore__ inline void DispatchBuffInit();
     __aicore__ inline void SendAndQuantBuffInit();
     __aicore__ inline void ResetFlagList();
@@ -92,11 +101,14 @@ private:
     template <AddrUpdateMode Mode>
     __aicore__ inline void UpdateGlobalBuffer(GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &state);
     __aicore__ inline void Unpermute();
-    __aicore__ inline int32_t UnpermuteBuffInit(int32_t coreLen);
+    __aicore__ inline UnpermuteBufferConfig UnpermuteBuffInit(int32_t coreLen);
+    __aicore__ inline UnpermuteBufferConfig CalcUnpermuteBufferConfig(int32_t coreLen, uint32_t dataSlotBytes,
+                                                                      uint32_t scaleBytes, uint32_t ubSize);
     __aicore__ inline void UnpermuteLoadWeights(int32_t coreOffset, int32_t batchTokenOffset, int32_t batchTokenCount,
                                                 LocalTensor<bfloat16_t> &tempLocal);
     __aicore__ inline void UnpermuteProcessToken(int32_t tokenIdx, int32_t localIdx,
-                                                 const GlobalTensor<bfloat16_t> &expandedX);
+                                                 const GlobalTensor<bfloat16_t> &expandedX,
+                                                 const UnpermuteBufferConfig &bufferConfig);
     __aicore__ inline void InitCombineBuffers();
     __aicore__ inline void ProcessCombine(const GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &gmm2State,
                                           uint32_t expertIdx);
@@ -1270,17 +1282,15 @@ MegaMoe<TemplateMegaMoeTypeFunc>::UnpermuteLoadWeights(int32_t coreOffset, int32
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline void
 MegaMoe<TemplateMegaMoeTypeFunc>::UnpermuteProcessToken(int32_t tokenIdx, int32_t localIdx,
-                                                        const GlobalTensor<bfloat16_t> &expandedX)
+                                                        const GlobalTensor<bfloat16_t> &expandedX,
+                                                        const UnpermuteBufferConfig &bufferConfig)
 {
-    LocalTensor<bfloat16_t> dataIn0Bf16 = dataResTensor_[k_];
-    LocalTensor<bfloat16_t> dataIn1Bf16 = dataResTensor_[k_ * 2];
-    LocalTensor<float> dataIn0Fp32 = dataResFp32Tensor_[k_];
-    LocalTensor<float> dataIn1Fp32 = dataResFp32Tensor_[k_ * 2];
+    int32_t inputBufferIdx = 0;
     for (int32_t expId = 0; expId < topK_; ++expId) {
         float expScale = topKWeightsTensor_.GetValue(localIdx * topK_ + expId);
-        auto event = (expId % DOUBLE_BUFFER == 0) ? EVENT_ID0 : EVENT_ID1;
-        auto dataInBf16 = (expId % DOUBLE_BUFFER == 0) ? dataIn0Bf16 : dataIn1Bf16;
-        auto dataInFp32 = (expId % DOUBLE_BUFFER == 0) ? dataIn0Fp32 : dataIn1Fp32;
+        TEventID event = static_cast<TEventID>(inputBufferIdx);
+        LocalTensor<bfloat16_t> dataInBf16 = dataResTensor_[(inputBufferIdx + 1) * bufferConfig.bf16SlotElementCount];
+        LocalTensor<float> dataInFp32 = dataResFp32Tensor_[(inputBufferIdx + 1) * bufferConfig.fp32SlotElementCount];
         if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
             WaitFlag<AscendC::HardEvent::V_MTE2>(event);
             DataCopy(dataInBf16, expandedX[(static_cast<uint64_t>(tokenIdx) * topK_ + expId) * k_], k_);
@@ -1313,77 +1323,146 @@ MegaMoe<TemplateMegaMoeTypeFunc>::UnpermuteProcessToken(int32_t tokenIdx, int32_
             PipeBarrier<PIPE_V>();
         }
         SetFlag<AscendC::HardEvent::V_MTE2>(event);
+        ++inputBufferIdx;
+        if (inputBufferIdx == bufferConfig.inputBufferCount) {
+            inputBufferIdx = 0;
+        }
     }
 }
 
 // ===============================================================
-// UnpermuteBuffInit：分配 Unpermute 所需固定 buffer，返回每个 batch 处理的 token 数
+// CalcUnpermuteBufferConfig：按基准 batch 计算输入 buffer 数量，并用剩余 UB 扩大 batch
 // ===============================================================
 template <TemplateMegaMoeTypeClass>
-__aicore__ inline int32_t MegaMoe<TemplateMegaMoeTypeFunc>::UnpermuteBuffInit(int32_t coreLen)
+__aicore__ inline typename MegaMoe<TemplateMegaMoeTypeFunc>::UnpermuteBufferConfig
+MegaMoe<TemplateMegaMoeTypeFunc>::CalcUnpermuteBufferConfig(int32_t coreLen, uint32_t dataSlotBytes,
+                                                            uint32_t scaleBytes, uint32_t ubSize)
 {
-    // 固定 buffer：dataRes + dataResFp32 (+ scales)
-    uint32_t dataResBufAlign = Ops::Base::CeilAlign(static_cast<uint32_t>(UNPERMUTE_LIST_NUM * k_ * sizeof(bfloat16_t)),
-                                                    static_cast<uint32_t>(ALIGN_32));
-    uint32_t dataResFp32BufAlign = dataResBufAlign * HALF_TO_FP32;
+    UnpermuteBufferConfig config;
+    int32_t baseTokensPerBatch = UNPERMUTE_WEIGHT_ITEMS_PER_BATCH / topK_;
+    config.tokensPerBatch = baseTokensPerBatch > coreLen ? coreLen : baseTokensPerBatch;
+
+    uint32_t weightElementCount = config.tokensPerBatch * topK_;
+    config.topKWeightsBufferBytes = Ops::Base::CeilAlign(static_cast<uint32_t>(weightElementCount * sizeof(float)),
+                                                         static_cast<uint32_t>(ALIGN_32));
+    if constexpr (Std::IsSame<TopkWeightsType, bfloat16_t>::value) {
+        config.topKWeightsBf16BufferBytes = Ops::Base::CeilAlign(
+            static_cast<uint32_t>(weightElementCount * sizeof(bfloat16_t)), static_cast<uint32_t>(ALIGN_32));
+    }
+
+    // weight、scale 和累加槽之外的 UB 全部用于输入槽，每个输入槽包含一份 BF16 和一份 FP32 数据。
+    uint32_t bytesBeforeInputBuffers =
+        config.topKWeightsBufferBytes + config.topKWeightsBf16BufferBytes + scaleBytes + dataSlotBytes;
+    uint32_t inputBufferBudgetBytes = ubSize > bytesBeforeInputBuffers ? ubSize - bytesBeforeInputBuffers : 0;
+    config.inputBufferCount = static_cast<int32_t>(inputBufferBudgetBytes / dataSlotBytes);
+    config.inputBufferCount = config.inputBufferCount > MAX_UNPERMUTE_INPUT_BUFFER_COUNT ?
+                                  MAX_UNPERMUTE_INPUT_BUFFER_COUNT :
+                                  config.inputBufferCount;
+    config.inputBufferCount = config.inputBufferCount > topK_ ? topK_ : config.inputBufferCount;
+    config.inputBufferCount = config.inputBufferCount < MIN_UNPERMUTE_INPUT_BUFFER_COUNT ?
+                                  MIN_UNPERMUTE_INPUT_BUFFER_COUNT :
+                                  config.inputBufferCount;
+
+    // 基准 batch 尚未覆盖本 core 时，固定已选中的输入 buffer 数量，用最后剩余的 UB 扩大 weight batch。
+    if (baseTokensPerBatch < coreLen) {
+        uint32_t fixedBytes = scaleBytes + (config.inputBufferCount + 1) * dataSlotBytes;
+        uint32_t weightBudgetBytes = ubSize - fixedBytes - UNPERMUTE_WEIGHT_ALIGNMENT_RESERVE_BYTES;
+        uint32_t weightBytesPerToken = topK_ * sizeof(float);
+        if constexpr (Std::IsSame<TopkWeightsType, bfloat16_t>::value) {
+            weightBytesPerToken += topK_ * sizeof(bfloat16_t);
+        }
+        int32_t expandedTokensPerBatch = static_cast<int32_t>(weightBudgetBytes / weightBytesPerToken);
+        expandedTokensPerBatch = expandedTokensPerBatch > coreLen ? coreLen : expandedTokensPerBatch;
+
+        if (expandedTokensPerBatch > config.tokensPerBatch) {
+            config.tokensPerBatch = expandedTokensPerBatch;
+            weightElementCount = config.tokensPerBatch * topK_;
+            config.topKWeightsBufferBytes = Ops::Base::CeilAlign(
+                static_cast<uint32_t>(weightElementCount * sizeof(float)), static_cast<uint32_t>(ALIGN_32));
+            if constexpr (Std::IsSame<TopkWeightsType, bfloat16_t>::value) {
+                config.topKWeightsBf16BufferBytes = Ops::Base::CeilAlign(
+                    static_cast<uint32_t>(weightElementCount * sizeof(bfloat16_t)), static_cast<uint32_t>(ALIGN_32));
+            }
+        }
+    }
+    return config;
+}
+
+// ===============================================================
+// UnpermuteBuffInit：分配 Unpermute 所需固定 buffer，返回本阶段的 buffer 配置
+// ===============================================================
+template <TemplateMegaMoeTypeClass>
+__aicore__ inline typename MegaMoe<TemplateMegaMoeTypeFunc>::UnpermuteBufferConfig
+MegaMoe<TemplateMegaMoeTypeFunc>::UnpermuteBuffInit(int32_t coreLen)
+{
+    uint32_t bf16ScaleBufAlign = 0;
+    uint32_t fp32ScaleBufAlign = 0;
+    if constexpr (CombineQuantMode != COMBINE_NO_QUANT) {
+        uint32_t scaleNum = Ops::Base::CeilDiv(k_, static_cast<uint32_t>(ALIGN_32));
+        bf16ScaleBufAlign =
+            Ops::Base::CeilAlign(static_cast<uint32_t>(scaleNum * sizeof(bfloat16_t) * DEQUANT_BF16_SCALE_EXPANSION),
+                                 static_cast<uint32_t>(ALIGN_32));
+        fp32ScaleBufAlign =
+            Ops::Base::CeilAlign(static_cast<uint32_t>(scaleNum * sizeof(float) * DEQUANT_FP32_SCALE_EXPANSION),
+                                 static_cast<uint32_t>(ALIGN_32));
+    }
+
+    // 先保持原有 topK * tokensPerBatch <= 8 * 1024 的 weight batch 基准，再用剩余 UB 反推输入 buffer 数量。
+    uint32_t bf16SlotBytes =
+        Ops::Base::CeilAlign(static_cast<uint32_t>(k_ * sizeof(bfloat16_t)), static_cast<uint32_t>(ALIGN_32));
+    uint32_t fp32SlotBytes =
+        Ops::Base::CeilAlign(static_cast<uint32_t>(k_ * sizeof(float)), static_cast<uint32_t>(ALIGN_32));
+    uint32_t dataSlotBytes = bf16SlotBytes + fp32SlotBytes;
+
+    uint32_t scaleBytes = bf16ScaleBufAlign + fp32ScaleBufAlign;
+    uint32_t ubSize = params_.tilingData->ubSize;
+    UnpermuteBufferConfig bufferConfig = CalcUnpermuteBufferConfig(coreLen, dataSlotBytes, scaleBytes, ubSize);
+    int32_t tokensPerBatch = bufferConfig.tokensPerBatch;
+    uint32_t topKWeightsBufAlign = bufferConfig.topKWeightsBufferBytes;
+    uint32_t topKWeightsBf16BufAlign = bufferConfig.topKWeightsBf16BufferBytes;
+
+    uint32_t dataResBufAlign = (bufferConfig.inputBufferCount + 1) * bf16SlotBytes;
+    uint32_t dataResFp32BufAlign = (bufferConfig.inputBufferCount + 1) * fp32SlotBytes;
+    bufferConfig.bf16SlotElementCount = bf16SlotBytes / sizeof(bfloat16_t);
+    bufferConfig.fp32SlotElementCount = fp32SlotBytes / sizeof(float);
     // Tensor用处：Unpermute 函数用于存储 mte2 搬入 token；
-    // Tensor大小：3 * 单个 token 长度，2 块用于 mte2 搬运 doubleBuffer，1 块存储 Cast 输出结果用于搬出；
+    // Tensor大小：(1 + bufferConfig.inputBufferCount) × 独立对齐后的 BF16 单槽大小；
+    // 1 块用于累加/搬出，其余用于 MTE2 搬入。
     uint32_t dataResAddr = 0;
     dataResTensor_ = LocalTensor<bfloat16_t>(TPosition::VECCALC, dataResAddr, dataResBufAlign / sizeof(bfloat16_t));
     // Tensor用处：Unpermute 函数用于存储 token Cast 目的 Tensor；
-    // Tensor大小：dataResTensor_ 开设大小 × HALF_TO_FP32；
+    // Tensor大小：(1 + bufferConfig.inputBufferCount) × 独立对齐后的 FP32 单槽大小；
     uint32_t dataResFp32Addr = dataResAddr + dataResBufAlign;
     dataResFp32Tensor_ = LocalTensor<float>(TPosition::VECCALC, dataResFp32Addr, dataResFp32BufAlign / sizeof(float));
     uint32_t tempAddr = dataResFp32Addr + dataResFp32BufAlign;
 
-    // 以 UNPERMUTE_BASE_TOPK 为基准确定每个 batch 处理的 token 数。
-    int32_t tokensPerBatch = UNPERMUTE_BASE_TOKENS_PER_BATCH;
-    if (topK_ > UNPERMUTE_BASE_TOPK) {
-        // 保持 tokensPerBatch * topK_ 不超过基准 topK 时的 UB 预算。
-        tokensPerBatch = tokensPerBatch * UNPERMUTE_BASE_TOPK / topK_;
-    }
-    if (tokensPerBatch > coreLen) {
-        tokensPerBatch = coreLen;
-    }
-
     // weight buffer（在 scale 之前，与 master 顺序一致）
     // Tensor用处：用于存储 topKWeight；
     // Tensor大小：tokensPerBatch × topK_ × sizeof(float) align 到 32 字节对齐；
-    uint32_t topKWeightsBufAlign = Ops::Base::CeilAlign(static_cast<uint32_t>(tokensPerBatch * topK_ * sizeof(float)),
-                                                        static_cast<uint32_t>(ALIGN_32));
     topKWeightsTensor_ = LocalTensor<float>(TPosition::VECCALC, tempAddr, topKWeightsBufAlign / sizeof(float));
     tempAddr += topKWeightsBufAlign;
 
     if constexpr (Std::IsSame<TopkWeightsType, bfloat16_t>::value) {
         // Tensor用处：Unpermute 中 bf16 weight 搬运中转 buffer；
         // Tensor大小：tokensPerBatch × topK_ × sizeof(bfloat16_t) align 到 32 字节；
-        uint32_t tempBufAlign = Ops::Base::CeilAlign(static_cast<uint32_t>(tokensPerBatch * topK_ * sizeof(bfloat16_t)),
-                                                     uint32_t(ALIGN_32));
         topKWeightsBf16Tensor_ =
-            LocalTensor<bfloat16_t>(TPosition::VECCALC, tempAddr, tempBufAlign / sizeof(bfloat16_t));
-        tempAddr += tempBufAlign;
+            LocalTensor<bfloat16_t>(TPosition::VECCALC, tempAddr, topKWeightsBf16BufAlign / sizeof(bfloat16_t));
+        tempAddr += topKWeightsBf16BufAlign;
     }
 
     if constexpr (CombineQuantMode != COMBINE_NO_QUANT) {
-        uint32_t scaleNum = Ops::Base::CeilDiv(static_cast<uint32_t>(k_), static_cast<uint32_t>(ALIGN_32));
         // Tensor用处：DeQuantMxFp8 中用于存储 bf16 格式的 scale（e8m0 转换后的中间结果）
-        // Tensor大小：scaleNum × sizeof(bfloat16_t) × DOUBLE_BUFFER × HALF_TO_FP32
-        uint32_t bf16ScaleBufAlign =
-            Ops::Base::CeilAlign(static_cast<uint32_t>(scaleNum * sizeof(bfloat16_t) * DOUBLE_BUFFER * HALF_TO_FP32),
-                                 static_cast<uint32_t>(ALIGN_32));
+        // Tensor大小：scaleNum × sizeof(bfloat16_t) × DEQUANT_BF16_SCALE_EXPANSION
         bf16ScaleTensor_ =
             LocalTensor<bfloat16_t>(TPosition::VECCALC, tempAddr, bf16ScaleBufAlign / sizeof(bfloat16_t));
         tempAddr += bf16ScaleBufAlign;
         // Tensor用处：DeQuantMxFp8 中用于存储 fp32 格式的 scale（广播后的最终 scale）
-        // Tensor大小：scaleNum × sizeof(float) × DOUBLE_BUFFER × HALF_TO_FP32
-        uint32_t fp32ScaleBufAlign =
-            Ops::Base::CeilAlign(static_cast<uint32_t>(scaleNum * sizeof(float) * DOUBLE_BUFFER * HALF_TO_FP32),
-                                 static_cast<uint32_t>(ALIGN_32));
+        // Tensor大小：scaleNum × sizeof(float) × DEQUANT_FP32_SCALE_EXPANSION
         fp32ScaleTensor_ = LocalTensor<float>(TPosition::VECCALC, tempAddr, fp32ScaleBufAlign / sizeof(float));
         tempAddr += fp32ScaleBufAlign;
     }
 
-    return tokensPerBatch;
+    return bufferConfig;
 }
 
 // ===============================================================
@@ -1397,7 +1476,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Unpermute()
     if (coreLen == 0) {
         return;
     }
-    int32_t tokensPerBatch = UnpermuteBuffInit(coreLen);
+    UnpermuteBufferConfig bufferConfig = UnpermuteBuffInit(coreLen);
+    int32_t tokensPerBatch = bufferConfig.tokensPerBatch;
 
     GlobalTensor<bfloat16_t> expandedX;
     expandedX.SetGlobalBuffer((__gm__ bfloat16_t *)params_.peermemInfo.combineSendPtr);
@@ -1412,18 +1492,20 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Unpermute()
         UnpermuteLoadWeights(coreOffset, batchTokenOffset, batchTokenCount, topKWeightsBf16Tensor_);
 
         // 内层：token 循环
-        SetFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID0);
-        SetFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID1);
+        for (int32_t bufferIdx = 0; bufferIdx < bufferConfig.inputBufferCount; ++bufferIdx) {
+            SetFlag<AscendC::HardEvent::V_MTE2>(static_cast<TEventID>(bufferIdx));
+        }
         for (int32_t localIdx = 0; localIdx < batchTokenCount; localIdx++) {
             int32_t tokenIdx = coreOffset + batchTokenOffset + localIdx;
             SyncFuncStatic<AscendC::HardEvent::MTE3_MTE2, SYNC_EVENT_ID2>();
-            UnpermuteProcessToken(tokenIdx, localIdx, expandedX);
+            UnpermuteProcessToken(tokenIdx, localIdx, expandedX, bufferConfig);
             Cast(dataResTensor_, dataResFp32Tensor_, AscendC::RoundMode::CAST_RINT, k_);
             SyncFuncStatic<AscendC::HardEvent::V_MTE3, SYNC_EVENT_ID3>();
             DataCopy(output[static_cast<uint64_t>(tokenIdx) * k_], dataResTensor_, k_);
         }
-        WaitFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID0);
-        WaitFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID1);
+        for (int32_t bufferIdx = 0; bufferIdx < bufferConfig.inputBufferCount; ++bufferIdx) {
+            WaitFlag<AscendC::HardEvent::V_MTE2>(static_cast<TEventID>(bufferIdx));
+        }
     }
 }
 
