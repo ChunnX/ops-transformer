@@ -1192,8 +1192,12 @@ protected:
         if (weight->GetStorageFormat() == ge::FORMAT_ND && (weight->GetDataType() == DataType::DT_FLOAT4_E1M2 ||
             gmmDsqParams_.x->GetDataType() == DataType::DT_FLOAT4_E1M2 ||
             gmmDsqParams_.output->GetDataType() == DataType::DT_FLOAT4_E1M2)) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                    "ND format weight does not support weight/x/quant_dtype with DT_FLOAT4_E1M2 data type.");
+            OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
+                apiName_.c_str(), "weight, x and output",
+                "weight=" + std::string(op::ToString(weight->GetDataType()).GetString()) +
+                    ", x=" + op::ToString(gmmDsqParams_.x->GetDataType()).GetString() +
+                    ", output=" + op::ToString(gmmDsqParams_.output->GetDataType()).GetString(),
+                "when the format of weight is ND, the dtypes of weight, x and output can not be DT_FLOAT4_E1M2");
             return false;
         }
         bool xDtypeNotSupported =
