@@ -13,6 +13,12 @@
  * \brief
  */
 
+#if ASC_DEVKIT_MAJOR >= 9 && ASC_DEVKIT_MINOR > 0
+#define IS_BLAZE true
+#else
+#define IS_BLAZE false
+#endif
+
 #include "kernel_tiling/kernel_tiling.h"
 #if ASC_DEVKIT_MAJOR >= 9
 #include "kernel_basic_intf.h"
@@ -32,6 +38,9 @@
 #else
 // 全量化Mx量化
     #include "arch35/grouped_matmul_swiglu_quant_v2_mxquant.h"
+    #if IS_BLAZE
+    #include "arch35/grouped_matmul_swiglu_quant_v2_mxquant_tensor_api.h"
+    #endif
     #include "arch35/grouped_matmul_swiglu_quant_v2_mxfp4_weight_nz.h"
     #include "arch35/grouped_matmul_swiglu_quant_v2_tiling_key.h"
 #endif
@@ -113,11 +122,23 @@ __global__ __aicore__ void grouped_matmul_swiglu_quant_v2(GM_ADDR x, GM_ADDR xSc
         }
     } else {
         if (QUANT_B_TRANS == GMM_SWIGLU_QUANT_NO_TRANS && QUANT_A_TRANS == GMM_SWIGLU_QUANT_NO_TRANS) {
+#if IS_BLAZE
+            GmmSwigluAswtTensorApi<AscendC::Te::NDExtLayoutPtn, AscendC::Te::NDExtLayoutPtn>(
+                x, weight, weightScale, xScale, weightAssistanceMatrix, smoothScale, groupList, y, yScale,
+                workspace, tiling);
+#else
             GmmSwigluAswt<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::RowMajor>(x, weight, weightScale,
                 xScale, weightAssistanceMatrix, smoothScale, groupList, y, yScale, workspace, tiling);
+#endif
         } else if (QUANT_B_TRANS == GMM_SWIGLU_QUANT_TRANS && QUANT_A_TRANS == GMM_SWIGLU_QUANT_NO_TRANS) {
+#if IS_BLAZE
+            GmmSwigluAswtTensorApi<AscendC::Te::NDExtLayoutPtn, AscendC::Te::DNExtLayoutPtn>(
+                x, weight, weightScale, xScale, weightAssistanceMatrix, smoothScale, groupList, y, yScale,
+                workspace, tiling);
+#else
             GmmSwigluAswt<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::ColumnMajor>(x, weight, weightScale,
                 xScale, weightAssistanceMatrix, smoothScale, groupList, y, yScale, workspace, tiling);
+#endif
         }
     }
 #elif ORIG_DTYPE_X_SCALE == DT_FLOAT
