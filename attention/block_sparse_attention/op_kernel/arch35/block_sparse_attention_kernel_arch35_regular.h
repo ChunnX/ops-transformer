@@ -466,9 +466,9 @@ public:
 #endif
                 }
             }
-            if (1) { AscendC::PRINTF("K[%d]: taskDone idx=%d\n", (int)coreIdx, (int)taskIdx); }
+            AscendC::PRINTF("K[%d]: taskDone idx=%d\n", (int)coreIdx, (int)taskIdx);
         }
-        if (1) { AscendC::PRINTF("K[%d]: allTasksDone total=%d\n", (int)coreIdx, (int)totalTaskNum_); }
+        AscendC::PRINTF("K[%d]: allTasksDone total=%d\n", (int)coreIdx, (int)totalTaskNum_);
         // release reverse sync flags
         ReleaseSyncFlags<4, 4, 4>();
     }
