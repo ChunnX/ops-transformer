@@ -9,7 +9,75 @@
 |<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      ×     |
 
 ## 参数说明
-  TODO
+<table style="table-layout: auto; width: 100%">
+  <thead>
+    <tr>
+      <th style="white-space: nowrap">参数名</th>
+      <th style="white-space: nowrap">输入/输出/属性</th>
+      <th style="white-space: nowrap">描述</th>
+      <th style="white-space: nowrap">数据类型</th>
+      <th style="white-space: nowrap">数据格式</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td style="white-space: nowrap">x1</td>
+      <td style="white-space: nowrap">输入</td>
+      <td style="white-space: nowrap">公式中的输入`x1`，表示输入矩阵（左矩阵）。</td>
+      <td style="white-space: nowrap">FLOAT8_E5M2、FLOAT8_E4M3FN、HIFLOAT8</td>
+      <td style="white-space: nowrap">ND</td>
+    </tr>
+    <tr>
+      <td style="white-space: nowrap">x2</td>
+      <td style="white-space: nowrap">输入</td>
+      <td style="white-space: nowrap">公式中的输入`x2`，表示权重矩阵（右矩阵）。</td>
+      <td style="white-space: nowrap">FLOAT8_E5M2、FLOAT8_E4M3FN、HIFLOAT8</td>
+      <td style="white-space: nowrap">ND</td>
+    </tr>
+    <tr>
+      <td style="white-space: nowrap">scale1Optional</td>
+      <td style="white-space: nowrap">可选输入</td>
+      <td style="white-space: nowrap">量化参数中由`x1`量化引入的缩放因子。综合约束请参见<a href="#约束说明">约束说明</a>。</td>
+      <td style="white-space: nowrap">FLOAT32、FLOAT8_E8M0</td>
+      <td style="white-space: nowrap">ND</td>
+    </tr>
+    <tr>
+      <td style="white-space: nowrap">scale2</td>
+      <td style="white-space: nowrap">输入</td>
+      <td style="white-space: nowrap">量化参数中由`x2`量化引入的缩放因子。综合约束请参见<a href="#约束说明">约束说明</a>。</td>
+      <td style="white-space: nowrap">FLOAT32、FLOAT8_E8M0</td>
+      <td style="white-space: nowrap">ND</td>
+    </tr>
+    <tr>
+      <td style="white-space: nowrap">groupList</td>
+      <td style="white-space: nowrap">输入</td>
+      <td style="white-space: nowrap">分组轴方向的matmul大小分布，前缀和的分组索引列表。当`groupListType`为0时须为非负单调非递减数列，为1时须为非负数列。</td>
+      <td style="white-space: nowrap">INT64</td>
+      <td style="white-space: nowrap">ND</td>
+    </tr>
+    <tr>
+      <td style="white-space: nowrap">yRef</td>
+      <td style="white-space: nowrap">输入输出</td>
+      <td style="white-space: nowrap">公式中的输入输出`y`，InplaceAdd的累加器。计算`y + matmul结果`后写回。</td>
+      <td style="white-space: nowrap">FLOAT32</td>
+      <td style="white-space: nowrap">ND</td>
+    </tr>
+    <tr>
+      <td style="white-space: nowrap">groupListType</td>
+      <td style="white-space: nowrap">属性</td>
+      <td style="white-space: nowrap">整数型属性，`groupList`的解析方式：0表示累积和（cumsum），1表示每组大小（count）。</td>
+      <td style="white-space: nowrap">INT64</td>
+      <td style="white-space: nowrap">-</td>
+    </tr>
+    <tr>
+      <td style="white-space: nowrap">groupSize</td>
+      <td style="white-space: nowrap">属性</td>
+      <td style="white-space: nowrap">整数型属性，m/n/k方向的量化分组大小。</td>
+      <td style="white-space: nowrap">INT64</td>
+      <td style="white-space: nowrap">-</td>
+    </tr>
+  </tbody>
+</table>
 
 ## 功能说明
 
