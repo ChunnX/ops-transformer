@@ -29,7 +29,8 @@ def _register_cli_params(register):
     register("--npu_mode", default="eager", help="NPU执行模式: eager(直调,默认)/graph(aclgraph)")
 
     # ── 输出控制 ──
-    register("--verbose_diff", action="store_true", help="精度不达标时打印全部失败元素")
+    register("--verbose_diff", nargs="?", const="fold", default=None,
+             help="精度失败分析: 不传=≤10项, fold(全量片段), all(全量点位)")
     register("--report_interval", default=20, type=int, help="中间报告间隔")
     register("--chunk_size", default=0, type=int, help="比对分块大小(0=不分块)")
 

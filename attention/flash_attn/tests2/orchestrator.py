@@ -181,7 +181,7 @@ def _exec_or_load(stages: set, stage_name: str, compute_fn, case_set: str,
 # ============ Engine ============
 def run_case(stages: set, params: dict, reporter: Reporter, *,
              npu_mode: str = "eager",
-             chunk_size: int = 0, verbose_diff: bool = False,
+             chunk_size: int = 0, verbose_diff: str = None,
              comparator: Comparator = None) -> dict:
     case_set = params.get("case_set", "")
     case_id = params.get("case_id", params.get("name", ""))
@@ -266,8 +266,10 @@ def run_case(stages: set, params: dict, reporter: Reporter, *,
                                 status, key, m.get("max_abs", 0), m.get("fail_ratio", 0) * 100)
             result["fail_msg"] = "" if result.get("passed", False) else "compare failed"
             if not result.get("passed", False):
+                layout = params.get("layout_out", "")
                 print(analyze_failure(cpu_out, npu_out, result,
-                                      case_dir=result_dir, verbose=verbose_diff))
+                                      case_dir=result_dir, verbose=verbose_diff,
+                                      layout=layout))
             reporter.record(case_id, result, dtype=dtype)
 
         if "npuprof" in stages:
