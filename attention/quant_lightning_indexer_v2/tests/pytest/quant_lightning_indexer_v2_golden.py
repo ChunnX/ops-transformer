@@ -1175,7 +1175,10 @@ def qliv2_output_single(params, is_batch = False, split_s1 = DEFAULT_SPLIT_S1, s
             blockFusion[:, :block_size * k_head_num * head_dim] = key_flat
             blockFusion[:, block_size * k_head_num * head_dim:] = scale_flat
 
-        key_dequant_scale = key_dequant_scale_block
+        if quant_mode == 4:	 
+            key_dequant_scale = torch.tensor([k_scale]).to(dequant_dtype)
+        else: 
+            key_dequant_scale = key_dequant_scale_block
 
         cpu_result, topk_value, cpu_topk_value = test_qliv2.forward(query, key_bnsd, weights, query_dequant_scale_cpu, key_dequant_scale_bns, cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k, block_table, output_idx_offset)
         block_table = torch.from_numpy(block_table).to(dtype=torch.int32)
