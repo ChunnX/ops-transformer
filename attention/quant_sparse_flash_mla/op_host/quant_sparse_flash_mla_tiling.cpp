@@ -620,13 +620,17 @@ ge::graphStatus QuantSparseFlashMlaTiling::DoOpTiling(QSMLATilingInfo *tilingInf
     constexpr uint32_t VEC_RES_ELEM_SIZE = 2;        // 2: fp16/bf16
     constexpr uint32_t TOPK_MAX_SIZE = 2048;          // TopK选取个数
     constexpr uint32_t UB_SIZE = 248 * 1024;          // UB大小共256KB,预留8k
+    constexpr uint32_t SPARSE_BLOCK_ALIGN_NUM = 128;   // VF向量化处理的元素对齐粒度
+    uint32_t alignedSparseBlockCount = (tilingInfo->sparseBlockCount + SPARSE_BLOCK_ALIGN_NUM - 1) /
+        SPARSE_BLOCK_ALIGN_NUM * SPARSE_BLOCK_ALIGN_NUM;
     uint32_t totalBS1 = (tilingInfo->qLayout == QSMLALayout::TND) ?
         tilingInfo->s1Size : (tilingInfo->bSize * tilingInfo->s1Size);
     uint32_t blocksizeFlag = static_cast<uint32_t>((tilingInfo->cmpBlockSize &
         (tilingInfo->cmpBlockSize - 1)) == 0); // blockSize2是否为2的幂次
-    uint32_t vectorizeUbSize = tilingInfo->cmpMaxBlockNumPerBatch * sizeof(int32_t) +
-        tilingInfo->sparseBlockCount * sizeof(int32_t) +
-        tilingInfo->sparseBlockCount * sizeof(int64_t); // 物理地址计算向量化所需ub大小
+
+    uint64_t vectorizeUbSize = static_cast<uint64_t>(tilingInfo->cmpMaxBlockNumPerBatch) * sizeof(int32_t) +
+        static_cast<uint64_t>(alignedSparseBlockCount) * sizeof(int32_t) +
+        static_cast<uint64_t>(alignedSparseBlockCount) * sizeof(int64_t); // 物理地址计算向量化所需ub大小
     uint32_t vectorizeFlag =
         static_cast<uint32_t>((perfMode_ == QSMLATemplateMode::CSA_TEMPLATE_MODE) && (vectorizeUbSize <= UB_SIZE) &&
                               blocksizeFlag && (tilingInfo->kvLayout == QSMLALayout::PA_BBND)); // 是否满足向量化条件
@@ -637,7 +641,7 @@ ge::graphStatus QuantSparseFlashMlaTiling::DoOpTiling(QSMLATilingInfo *tilingInf
         workspaceSize += (S2_BASE_SIZE * D_SIZE * VEC_RES_ELEM_SIZE * TRIPLE_BUFFER_NUM * aicNum);
     }
     if (vectorizeFlag) {
-        workspaceSize += (totalBS1 * tilingInfo->sparseBlockCount * sizeof(int64_t));
+        workspaceSize += (static_cast<uint64_t>(totalBS1) * alignedSparseBlockCount * sizeof(int64_t));
     }
     size_t *workSpaces = context_->GetWorkspaceSizes(1);
     OP_CHECK_NULL_WITH_CONTEXT(context_, workSpaces);

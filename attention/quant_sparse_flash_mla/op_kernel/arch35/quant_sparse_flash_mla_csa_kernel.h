@@ -238,6 +238,9 @@ __aicore__ inline void QuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::Pars
     constInfo.s2Size = quantSparseFlashMlaBaseParams.kvSeqSize;
     constInfo.cmpS2Size = quantSparseFlashMlaBaseParams.cmpKvSeqSize;
     constInfo.sparseBlockCount = quantSparseFlashMlaBaseParams.sparseBlockCount;
+    constexpr uint32_t SPARSE_BLOCK_ALIGN_NUM = 128;
+    constInfo.alignedSparseBlockCount = (constInfo.sparseBlockCount + SPARSE_BLOCK_ALIGN_NUM - 1) /
+        SPARSE_BLOCK_ALIGN_NUM * SPARSE_BLOCK_ALIGN_NUM;
     if constexpr (TEMPLATE_MODE != QSMLATemplateMode::SWA_TEMPLATE_MODE) {
         constInfo.cmpRatio = quantSparseFlashMlaBaseParams.cmpRatio;
     }

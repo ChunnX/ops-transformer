@@ -64,7 +64,13 @@ class GeneralizedSFAQuant:
         ori_win_left,
         ori_win_right,
         template_run_mode,
+        q_descale_val,
+        ori_kv_descale_val,
+        cmp_kv_descale_val,
     ):
+        self.q_descale_val = q_descale_val
+        self.ori_kv_descale_val = ori_kv_descale_val
+        self.cmp_kv_descale_val = cmp_kv_descale_val
         self.layout_q = layout_q
         self.layout_kv = layout_kv
         self.q_type = q_type
@@ -216,7 +222,15 @@ class GeneralizedSFAQuant:
                         v_tile = k_tile.clone()
                         # MM1
                         mm1_res = torch.matmul(q_curr_fp32, k_tile.T)
-                        scale_res = mm1_res * self.softmax_scale
+                        # scale过程与NPU一致 保证精度统一
+                        is_cmp_tile = (i_S2 >= ori_s2_loop_time)
+                        if is_cmp_tile:
+                            combined_scale = self.softmax_scale * self.q_descale_val * self.cmp_kv_descale_val
+                            cur_v_descale = self.cmp_kv_descale_val
+                        else:
+                            combined_scale = self.softmax_scale * self.q_descale_val * self.ori_kv_descale_val
+                            cur_v_descale = self.ori_kv_descale_val
+                        scale_res = mm1_res * combined_scale
 
                         # 更新 score_max
                         score_max_pre = score_max.clone()
@@ -236,6 +250,7 @@ class GeneralizedSFAQuant:
 
                         # MM2
                         mm2_res = torch.matmul(acc_s_cast, v_tile)
+                        mm2_res = mm2_res * cur_v_descale
                         acc_o = acc_o * score_max_pre.unsqueeze(1) + mm2_res
 
                     acc_o = torch.div(acc_o, sumexp.unsqueeze(1))
@@ -548,7 +563,7 @@ def _gen_hif8_q_tensor(shape):
         np.random.uniform(DATA_RANGE_LEFT, DATA_RANGE_RIGHT, shape).astype(np.float32)
     )
     q_npu = torch.tensor(trans_float_tensor_to_hifuint8(q_))
-    q = torch.tensor(trans_hifuint8_tensor_to_float(q_npu)) * scale
+    q = torch.tensor(trans_hifuint8_tensor_to_float(q_npu))
     return q, q_npu, scale
 
 
@@ -569,8 +584,6 @@ def _gen_hif8_kv_tensor(B, N2, max_s2, dim):
     k_bnsd = torch.tensor(trans_hifuint8_tensor_to_float(k_bnsd_npu))
     k_bnsd_npu = torch.tensor(k_bnsd_npu)
 
-    # golden 计算用: * scale
-    k_bnsd = k_bnsd * scale
     return k_bnsd, k_bnsd_npu, scale
 
 
@@ -965,6 +978,9 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
         ori_win_left,
         ori_win_right,
         template_run_mode,
+        q_descale_val=q_descale.item(),
+        ori_kv_descale_val=ori_kv_descale.item(),
+        cmp_kv_descale_val=cmp_kv_descale.item() if cmp_kv_descale is not None else None,
     )
     cpu_result = test_qsmla.forward(
         q,
