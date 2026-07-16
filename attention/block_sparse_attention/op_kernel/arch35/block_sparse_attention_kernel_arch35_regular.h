@@ -110,7 +110,9 @@ public:
             gBlockSparseMask, gSparseIdx, gSparseCount,
             totalRowNumBlockMask, yBlockNumAligned_, avgRowPerSubCore_, preActiveSubCoreNum_);
 #endif
+        if (coreIdx == 0) { AscendC::Print("K: before syncall\n"); }
         AscendC::SyncAll<false>();
+        if (coreIdx == 0) { AscendC::Print("K: after syncall\n"); }
 #ifdef __DAV_CUBE__
         coreIdx = AscendC::GetBlockIdx();
         BlockMmadQK blockMmadQK(resource, mm1L1TileHelper_);
@@ -122,6 +124,10 @@ public:
         EpilogueRescaleO epilogueRescaleO(resource);
 #endif
         uint32_t qSTileNumPerFullXBlock = CeilDiv(blockShapeX_, qBaseTile_);
+        if (coreIdx == 0) {
+            AscendC::Print("K: batch=%d qH=%d kvH=%d emb=%d total=%d\n", (int)batch_, (int)qHeads_, (int)kvHeads_, (int)embed_, (int)totalTaskNum_);
+            AscendC::Print("K: useEff=%d maxBlkEff=%d blkX=%d blkY=%d\n", (int)useEffRows_, (int)maxBlockNumEff_, (int)blockShapeX_, (int)blockShapeY_);
+        }
         // Calculate strides based on layout
         // For TND: [T, N, D], stride = N * D
         // For BNSD: [B, N, S, D], strideB = N * S * D, strideN = S * D, strideS = D
@@ -184,7 +190,9 @@ public:
         uint32_t curTotalTaskNum = firstBatchTaskNum_;
         // Go through each task
         for (uint32_t taskIdx = coreIdx; taskIdx < totalTaskNum_; taskIdx += coreNum) {
+            if (coreIdx == 0) { AscendC::Print("K: taskStart idx=%d\n", (int)taskIdx); }
             while (taskIdx >= curTotalTaskNum) {
+                if (coreIdx == 0) { AscendC::Print("K: while curB=%d batch=%d curTot=%d idx=%d\n", (int)curBatch, (int)batch_, (int)curTotalTaskNum, (int)taskIdx); }
                 ++curBatch;
                 preTotalTaskNum = curTotalTaskNum;
                 if constexpr (qFormat == Format::TND) {
@@ -268,6 +276,7 @@ public:
                 effRowsBase = (static_cast<uint64_t>(curBatch) * qHeads_ + qHeadIdx) * maxBlockNumEff_ * 2;
                 uint32_t effectiveX = gBlockEffRows.GetValue(effRowsBase + xBlockIdx * 2);
                 xBlockSize = (xBlockSize < effectiveX) ? xBlockSize : effectiveX;
+                if (coreIdx == 0) { AscendC::Print("K: effX=%d xBlkSz=%d xBlkIdx=%d\n", (int)effectiveX, (int)xBlockSize, (int)xBlockIdx); }
             }
             uint32_t qSTileNumCurXBlock = CeilDiv(xBlockSize, qBaseTile_);
             if (useEffRows_ && (xBlockSize == 0 || qSTileIdxCurXBlock >= qSTileNumCurXBlock)) {
@@ -311,7 +320,9 @@ public:
             uint32_t rowNum = qSTileSizeAct;
             uint32_t rowNumRound = RoundUp(rowNum, 16);
             uint32_t kvSLoopNum = static_cast<uint32_t>(CeilDiv(gatheredKvSeqlen, static_cast<int64_t>(kvBaseTile_)));
+            if (coreIdx == 0) { AscendC::Print("K: gatKv=%d kvSLoop=%d yBlkRsvd=%d\n", (int)gatheredKvSeqlen, (int)kvSLoopNum, (int)yBlockNumRsvd); }
             if (useEffRows_ && kvSLoopNum == 0) {
+                if (coreIdx == 0) { AscendC::Print("K: skip kvSLoop=0\n"); }
                 continue;
             }
             uint32_t kvSTileSizeAct = kvBaseTile_;
@@ -466,7 +477,9 @@ public:
 #endif
                 }
             }
+            if (coreIdx == 0) { AscendC::Print("K: taskDone idx=%d\n", (int)taskIdx); }
         }
+        if (coreIdx == 0) { AscendC::Print("K: allTasksDone\n"); }
         // release reverse sync flags
         ReleaseSyncFlags<4, 4, 4>();
     }
