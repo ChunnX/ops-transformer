@@ -250,6 +250,19 @@ class ElasticBuffer:
         state_dtype_size = 4
         mb_conversion = 1024 * 1024
         local_experts_num = num_experts // world_size
+        debug_rank_num_per_server = _debug_int_env("MOE_EP_DEBUG_RANK_NUM_PER_SERVER")
+        rank_num_per_server = (
+            world_size if debug_rank_num_per_server is None else debug_rank_num_per_server
+        )
+        torch._check(
+            (rank_num_per_server > 0) and (world_size % rank_num_per_server == 0),
+            lambda: (
+                "MOE_EP_DEBUG_RANK_NUM_PER_SERVER must be positive and divide world_size, "
+                f"got {rank_num_per_server=} and {world_size=}."
+            ),
+        )
+        scaleout_rank_count = world_size // rank_num_per_server
+        scaleout_mask_word_count = inline_align(rank_num_per_server, 32) // 32
 
         dispatch_count_size = world_size * inline_align(
             local_experts_num * state_dtype_size, win_addr_align
@@ -268,9 +281,28 @@ class ElasticBuffer:
         dispatch_per_slot_bytes = inline_align(
             hidden_align + metadata_bytes * 2 + ub_align, win_addr_align
         )
+        scaleout_per_slot_bytes = inline_align(
+            dispatch_per_slot_bytes
+            + scaleout_mask_word_count * state_dtype_size
+            + rank_num_per_server * state_dtype_size,
+            win_addr_align,
+        )
         combine_per_slot_bytes = inline_align(hidden_align + ub_align, win_addr_align)
-        dispatch_buffer_size = (
+        scaleup_recv_data_size = (
             world_size * num_max_tokens_per_rank * dispatch_per_slot_bytes
+        )
+        scaleout_recv_data_size = (
+            scaleout_rank_count * num_max_tokens_per_rank * scaleout_per_slot_bytes
+        )
+        scaleout_recv_status_size = (
+            scaleout_rank_count * num_max_tokens_per_rank * win_addr_align
+        )
+        scaleup_recv_status_size = world_size * num_max_tokens_per_rank * win_addr_align
+        dispatch_buffer_size = (
+            scaleout_recv_data_size
+            + scaleup_recv_data_size
+            + scaleout_recv_status_size
+            + scaleup_recv_status_size
         )
         combine_buffer_size = num_max_tokens_per_rank * combine_per_slot_bytes * topk
 
