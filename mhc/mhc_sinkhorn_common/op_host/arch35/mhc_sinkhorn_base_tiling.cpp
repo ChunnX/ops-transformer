@@ -126,7 +126,7 @@ void MhcSinkhornBaseTiling::ForwardSplitCore(uint64_t ubSize, int64_t totalCoreN
     auto ubSizeUsed = ubSize - MASK_BUFFER - MAX_BUFFER_FORWARD;
     auto availableUbSize = ubSizeUsed / DOUBLE_SIZE;
     
-    splitInfo.tUbFactor = Ops::Base::CeilAlign(splitInfo.tNormCore, static_cast<int64_t>(8));
+    splitInfo.tUbFactor = splitInfo.tNormCore;
     int64_t occupySize = ForwardCalOccupySize(splitInfo.tUbFactor, nSize, xDtypeSize, outFlag);
     if (occupySize > availableUbSize) {
         auto onePiceSize = ForwardCalOccupySize(1, nSize, xDtypeSize, outFlag);
