@@ -394,7 +394,7 @@ TestCases = [
     },
     {
         "name": "TYP_LARGE_PA_BLOCKNUM8192_BS64_GQA10",
-        "enable": False,
+        "enable": True,
         "case_group": "typical_large",
         "B": 1,
         "N1": 10,
