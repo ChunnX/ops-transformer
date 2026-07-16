@@ -3,20 +3,13 @@ import logging
 import pytest
 import _pytest.terminal
 
-from test import _parse_stages, _collect_cases, _make_reporter, _setup_hookwrapper
+from test import _parse_stages, _collect_cases, _make_reporter, _setup_hookwrapper, _register_cli_params
 
 _setup_hookwrapper(_pytest.terminal)
 
 
 def pytest_addoption(parser):
-    parser.addoption("--stages", default="all",
-                     help="执行阶段, 逗号组合: all/gen/cpu/npu/gpu/compare/npuprof/npuprofop/gpuprof")
-    parser.addoption("--case_id", default="all", help="用例ID过滤, 逗号组合")
-    parser.addoption("--case_set", default="ci", help="用例集marker: ci/debug/func_rdv/perf_rdv")
-    parser.addoption("--npu_mode", default="eager", help="NPU执行模式: eager(直调,默认)/graph(aclgraph)")
-    parser.addoption("--verbose_diff", action="store_true", help="精度不达标时打印全部失败元素")
-    parser.addoption("--report_interval", default=20, type=int, help="中间报告间隔")
-    parser.addoption("--chunk_size", default=0, type=int, help="比对分块大小(0=不分块)")
+    _register_cli_params(parser.addoption)
 
 
 def pytest_generate_tests(metafunc):

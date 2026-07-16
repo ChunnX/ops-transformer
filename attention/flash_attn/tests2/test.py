@@ -14,6 +14,18 @@ _VALID_STAGES = {"all", "gen", "cpu", "npu", "gpu", "compare",
                  "npuprof", "npuprofop", "gpuprof", "l2_flush"}
 
 
+def _register_cli_params(register):
+    """CLI参数唯一定义。register = parser.addoption(conftest) 或 parser.add_argument(argparse)"""
+    register("--stages", default="all",
+             help="执行阶段, 逗号组合: all/gen/cpu/npu/gpu/compare/npuprof/npuprofop/gpuprof")
+    register("--case_id", default="all", help="用例ID过滤")
+    register("--case_set", default="ci", help="用例集marker: ci/debug/func_rdv/perf_rdv")
+    register("--npu_mode", default="eager", help="NPU执行模式: eager(直调,默认)/graph(aclgraph)")
+    register("--verbose_diff", action="store_true", help="精度不达标时打印全部失败元素")
+    register("--report_interval", default=20, type=int, help="中间报告间隔")
+    register("--chunk_size", default=0, type=int, help="比对分块大小(0=不分块)")
+
+
 def _parse_stages(raw):
     parts = {s.strip() for s in raw.split(",") if s.strip()}
     invalid = parts - _VALID_STAGES
@@ -89,14 +101,7 @@ def test_op(params, stages, reporter, request):
 
 def main():
     parser = argparse.ArgumentParser(description="精度测试 CLI 入口")
-    parser.add_argument("--stages", default="all",
-                        help="执行阶段: all/gen/cpu/npu/gpu/compare/npuprof/npuprofop/gpuprof")
-    parser.add_argument("--case_id", default="all", help="用例ID过滤")
-    parser.add_argument("--case_set", default="ci", help="用例集marker: ci/debug/func_rdv/perf_rdv")
-    parser.add_argument("--npu_mode", default="eager", help="NPU执行模式: eager(直调,默认)/graph(aclgraph)")
-    parser.add_argument("--verbose_diff", action="store_true", help="打印全部失败元素")
-    parser.add_argument("--report_interval", default=20, type=int, help="中间报告间隔")
-    parser.add_argument("--chunk_size", default=0, type=int, help="比对分块大小")
+    _register_cli_params(parser.add_argument)
     parser.add_argument("--log_level", default="INFO",
                         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
                         help="框架日志级别: DEBUG(预留) | INFO(阶段进度/耗时/shape, 默认) | WARNING(key缺失) | ERROR(异常)")
