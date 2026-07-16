@@ -43,7 +43,21 @@ static ge::graphStatus SparseFlashMlaSoftmaxL1NormTilingFunc(gert::TilingContext
     tilingData->g = gSize;
     tilingData->d = dSize;
 
-    context->SetTilingKey(0);
+    OP_LOGI(context->GetNodeName(), "SparseFlashMlaSoftmaxL1Norm tiling 111.");
+
+    tilingData->t1 = 0;
+    OP_LOGI(context->GetNodeName(), "SparseFlashMlaSoftmaxL1Norm tiling 222.");
+    tilingData->t2 = 0;
+    tilingData->max_seqlen_k = 0;
+    tilingData->k_length = 0;
+    tilingData->cmp_ratio = 1;
+    tilingData->has_seqused_q = false;
+    tilingData->has_seqused_k = false;
+    tilingData->has_topk_length = false;
+    OP_LOGI(context->GetNodeName(), "SparseFlashMlaSoftmaxL1Norm tiling 333.");
+
+    context->SetTilingKey(11);
+    OP_LOGI(context->GetNodeName(), "SparseFlashMlaSoftmaxL1Norm tiling 444.");
 
     // Workspace: system reserve + qk buffer [G, Sk] FP32.
     size_t workspaceSize = ascendcPlatform.GetLibApiWorkSpaceSize();

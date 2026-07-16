@@ -117,6 +117,8 @@ metadata = cann_ops_transformer.sparse_flash_mla_softmax_l1_norm_metadata(
     cmp_ratio=1,
 )
 
+print(f"metadata: {metadata[:10]}")
+
 out = cann_ops_transformer.sparse_flash_mla_softmax_l1_norm(
     q, key, lse,
     metadata=metadata,
