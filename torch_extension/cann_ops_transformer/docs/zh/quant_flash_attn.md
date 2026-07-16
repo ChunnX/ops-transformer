@@ -164,9 +164,9 @@ cann_ops_transformer.ops.quant_flash_attn(
 | q | Tensor | 必选 | 公式中的Q | float8_e4m3fn | ND | (Q_T, Q_N, D) | ✓ |
 | k | Tensor | 必选 | 公式中的K | float8_e4m3fn | ND | <ul><li>(KV_T, KV_N, D)</li><li>(Bn, KV_N, Bs, D)</li><li>(Bn, KV_N, D/16, Bs/64, 16, 2)</li></ul> | ✓ |
 | v | Tensor | 必选 | 公式中的V | float8_e4m3fn | ND | <ul><li>(KV_T, KV_N, D)</li><li>(Bn, KV_N, Bs, D)</li><li>(Bn, KV_N, D/16, Bs/64, 16, 2)</li></ul> | ✓ |
-| q_descale | Tensor | 必选 | q的反量化scale | float8_e8m0 | ND | <ul><li>(Q_T, Q_N, D/64, 2)</li><li>(KV_N, Q_T, G, D/64, 2)</li></ul> | ✓ |
-| k_descale | Tensor | 必选 | k的反量化scale | float8_e8m0 | ND | <ul><li>(KV_T, KV_N, D/64, 2)</li><li>(Bn, KV_N, Bs, D/64, 2)</li><li>(Bn, KV_N, Bs/16, D/64, 16, 2)</li></ul> | ✓ |
-| v_descale | Tensor | 必选 | v的反量化scale | float8_e8m0 | ND | <ul><li>(KV_T/64, KV_N, D, 2)</li><li>(Bn, KV_N, Bs/64, D, 2)</li><li>(Bn, KV_N, D/16, Bs/64, 16, 2)</li></ul> | ✓ |
+| q_descale | Tensor | 必选 | q的反量化scale | float8_e8m0/float32 | ND | <ul><li>(Q_T, Q_N, D/64, 2)</li><li>(KV_N, Q_T, G, D/64, 2)</li></ul> | ✓ |
+| k_descale | Tensor | 必选 | k的反量化scale | float8_e8m0/float32 | ND | <ul><li>(KV_T, KV_N, D/64, 2)</li><li>(Bn, KV_N, Bs, D/64, 2)</li><li>(Bn, KV_N, Bs/16, D/64, 16, 2)</li></ul> | ✓ |
+| v_descale | Tensor | 必选 | v的反量化scale | float8_e8m0/float32 | ND | <ul><li>(KV_T/64, KV_N, D, 2)</li><li>(Bn, KV_N, Bs/64, D, 2)</li><li>(Bn, KV_N, D/16, Bs/64, 16, 2)</li></ul> | ✓ |
 | quant_mode | int | 必选 | 量化模式，1表示MxFP8，2表示HiF8，3表示MxFP4 | int32 | - | - | - |
 | block_table | Tensor | 可选 | 用于分块注意力计算中的块索引映射 | int32 | ND | (B, Bn) | ✓ |
 | cu_seqlens_q | Tensor | 可选 | Q的累积序列长度，用于处理变长序列，第一个元素必须为0 | int32 | ND | (B+1,) | ✓ |
@@ -181,7 +181,7 @@ cann_ops_transformer.ops.quant_flash_attn(
 | attn_mask | Tensor | 可选 | 掩码矩阵 | int8/uint8/bool | ND | (2048, 2048) | ✓ |
 | win_left | int | 可选 | window左界限 | int32 | - | - | - |
 | win_right | int | 可选 | window右界限 | int32 | - | - | - |
-| max_seqlen_q | int | 可选 | 指定查询q序列的长度上限 | int32 | - | - | - |
+| max_seqlen_q | int | 可选 | 指定查询q序列的长度上限，MxFP8场景下为必选且必须大于等于0，其他场景仅支持-1 | int32 | - | - | - |
 | max_seqlen_kv | int | 可选 | 指定键k和值v序列的长度上限 | int32 | - | - | - |
 | layout_q | string | 可选 | 定义输入q张量的布局格式 | string | - | - | - |
 | layout_kv | string | 可选 | 定义输入k和v张量的布局格式 | string | - | - | - |
@@ -398,14 +398,15 @@ quant_mode参数解释
             <td>q_descale</td>
             <td>
                 <ul>
-                    <li>tensor_type仅支持FLOAT8_E8M0</li>
+                    <li>tensor_type支持FLOAT8_E8M0、FLOAT32</li>
                     <li>shape dim支持4、5</li>
                 </ul>
             </td>
             <td rowspan="3">必须存在</td>
             <td rowspan="3">
                 <ul>
-                    <li>descale shape校验规则见descale_shape匹配关系表</li>
+                    <li>descale shape校验规则见<a href="#descale_shape匹配关系表">descale_shape匹配关系表</a></li>
+                    <li>descale dtype校验规则见<a href="#descale_dtype匹配关系表">descale_dtype匹配关系表</a></li>
                 </ul>
             </td>
         </tr>
@@ -413,7 +414,7 @@ quant_mode参数解释
             <td>k_descale</td>
             <td>
                 <ul>
-                    <li>tensor_type仅支持FLOAT8_E8M0</li>
+                    <li>tensor_type支持FLOAT8_E8M0、FLOAT32</li>
                     <li>shape dim支持4、5、6</li>
                 </ul>
             </td>
@@ -422,7 +423,7 @@ quant_mode参数解释
             <td>v_descale</td>
             <td>
                 <ul>
-                    <li>tensor_type仅支持FLOAT8_E8M0</li>
+                    <li>tensor_type支持FLOAT8_E8M0、FLOAT32</li>
                     <li>shape dim支持4、5、6</li>
                 </ul>
             </td>
@@ -471,6 +472,37 @@ quant_mode参数解释
         <td>(Q_N, Q_T)</td>
     </tr>
 </tbody>
+</table>
+
+<a name="descale_dtype匹配关系表"></a>q/k/v descale dtype匹配关系表
+<table style="undefined;table-layout: fixed; width:1625px">
+    <colgroup>
+        <col style="width: 120px">
+        <col style="width: 147px">
+        <col style="width: 293px">
+    </colgroup>
+    <thead>
+        <tr>
+            <th>quant_mode</th>
+            <th>参数</th>
+            <th>dtype</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+            <td rowspan="3">MxFP8</td>
+            <td>q_descale</td>
+            <td>FLOAT8_E8M0</td>
+        </tr>
+        <tr>
+            <td>k_descale</td>
+            <td>FLOAT8_E8M0</td>
+        </tr>
+        <tr>
+            <td>v_descale</td>
+            <td>FLOAT8_E8M0</td>
+        </tr>
+    </tbody>
 </table>
 
 <a name="descale_shape匹配关系表"></a>q_descale shape匹配关系表
@@ -548,6 +580,10 @@ k_descale/v_descale shape匹配关系表
         </tr>
     </tbody>
 </table>
+
+> [!NOTE]
+>
+> MxFP8场景下，v_descale 在 TND（非PA）场景下，shape 中第一维 KV_T/64 并非简单整数除法，而是各 batch 实际 KV 序列长度按 64 向上取整后的累加和，即 Σ ceil(cu_seqlens_kv[b+1] - cu_seqlens_kv[b], 64)，其中 cu_seqlens_kv 为累积序列长度。因此各 batch 的 KV 序列长度无需严格 64 对齐。
 
 q/k/v/attn_out shape匹配关系表
 <table style="undefined;table-layout: fixed; width:1625px">
@@ -746,21 +782,33 @@ mask_mode参数解释
         </tr>
         <tr>
             <td>max_seqlen_q</td>
-            <td rowspan="2">
+            <td>
+                <ul>
+                    <li>data_type支持INT32</li>
+                    <li>MxFP8场景下必须大于等于0</li>
+                    <li>其他场景暂不生效，仅支持-1，默认值为-1</li>
+                </ul>
+            </td>
+            <td>
+                <ul>
+                    <li>可选属性；MxFP8场景下为必选，必须传入</li>
+                </ul>
+            </td>
+        </tr>
+        <tr>
+            <td>max_seqlen_kv</td>
+            <td>
                 <ul>
                     <li>data_type支持INT32</li>
                     <li>暂不生效，仅支持-1</li>
                     <li>默认值为-1</li>
                 </ul>
             </td>
-            <td rowspan="2">
+            <td>
                 <ul>
                     <li>暂不生效，仅支持传入-1</li>
                 </ul>
             </td>
-        </tr>
-        <tr>
-            <td>max_seqlen_kv</td>
         </tr>
     </tbody>
 </table>

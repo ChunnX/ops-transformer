@@ -49,6 +49,14 @@ private:
     ge::graphStatus CheckKDescaleShape(const QfaTilingInfo &qfaInfo) const;
     ge::graphStatus CheckVDescaleShape(const QfaTilingInfo &qfaInfo) const;
 
+    // --- MultiPara: descale dtype 校验 ---
+    // MxFP8 场景下, q/k/v descale 的 tensor_type 仅支持 FLOAT8_E8M0
+    ge::graphStatus CheckDescaleDtype(const QfaTilingInfo &qfaInfo) const;
+
+    // TND(非PA)场景下 v_descale 第一维 KV_T/64 的实际计算:
+    // 各 batch 实际 KV 序列长度按 64 向上取整后累加，即 Σ ceil(cu_seqlens_kv[b+1]-cu_seqlens_kv[b], 64)
+    int64_t CalcVDescaleTndDim0(const QfaTilingInfo &qfaInfo) const;
+
     // --- Feature: 非连续 Tensor 支持校验 ---
     // 仅 PA 场景(layout_kv 为 PA_BNBD 或 PA_NZ)时，k/v/k_descale/v_descale
     // 仅支持 0 轴和 1 轴非连续，其余轴必须连续；非 PA 场景均不支持非连续。

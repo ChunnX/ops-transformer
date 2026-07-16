@@ -145,13 +145,23 @@ ge::graphStatus SeqLenChecker::CheckSingleParaCuSeqlensKv(const QfaTilingInfo &q
 
 ge::graphStatus SeqLenChecker::CheckSingleParaMaxSeqlenQ(const QfaTilingInfo &qfaInfo)
 {
-    // 文档约束(单参数校验): data_type 支持 INT32，暂不生效，仅支持 -1，默认值为 -1
+    // 文档约束(单参数校验): data_type 支持 INT32
+    //   - MxFP8 场景: 必须大于等于 0（必传，默认值 -1 会被拦截）
+    //   - 其他场景: 暂不生效，仅支持 -1
     // qfaInfo.maxSeqQ 为 parser 解引用后的 int64_t 值
-    OP_CHECK_IF(qfaInfo.maxSeqQ != -1,
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(qfaInfo.opName, MAX_SEQLEN_Q_NAME.c_str(),
-                    std::to_string(qfaInfo.maxSeqQ).c_str(),
-                    "max_seqlen_q is not effective currently, only -1 is supported"),
-                return ge::GRAPH_FAILED);
+    if (qfaInfo.quantMode == QfaQuantMode::MXFP8_FP32) {
+        OP_CHECK_IF(qfaInfo.maxSeqQ < 0,
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(qfaInfo.opName, MAX_SEQLEN_Q_NAME.c_str(),
+                        std::to_string(qfaInfo.maxSeqQ).c_str(),
+                        "max_seqlen_q must be greater than or equal to 0 in MxFP8 scenario"),
+                    return ge::GRAPH_FAILED);
+    } else {
+        OP_CHECK_IF(qfaInfo.maxSeqQ != -1,
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(qfaInfo.opName, MAX_SEQLEN_Q_NAME.c_str(),
+                        std::to_string(qfaInfo.maxSeqQ).c_str(),
+                        "max_seqlen_q is not effective currently, only -1 is supported"),
+                    return ge::GRAPH_FAILED);
+    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -184,8 +194,8 @@ ge::graphStatus SeqLenChecker::CheckParaExistence(const QfaTilingInfo &qfaInfo)
     // 文档约束(存在性校验列):
     //   - seqused_q / seqused_kv: 可选参数
     //   - cu_seqlens_q / cu_seqlens_kv: 可选参数
-    //   - max_seqlen_q / max_seqlen_kv: 可选属性，默认值为 -1
-    // 以上参数均为可选，未传入时由 parser 填充默认值，此处无需强制存在。
+    //   - max_seqlen_q: 可选属性；MxFP8 场景下为必选（默认值 -1 会在单参数校验中被拦截），其他场景仅支持 -1
+    //   - max_seqlen_kv: 可选属性，默认值为 -1
     // cu_seqlens_q/kv 与 layout 的关系约束属于特性交叉校验(CheckFeature)。
     // seqused[b] <= cu_seqlens[b+1] - cu_seqlens[b] 属于值约束，tiling 阶段无法获取 tensor 数值，不校验。
     (void)qfaInfo;
@@ -232,7 +242,8 @@ ge::graphStatus SeqLenChecker::CheckFeature(const QfaTilingInfo &qfaInfo)
     // 文档约束(特性交叉校验列):
     //   - seqused_q / seqused_kv: 无
     //   - cu_seqlens_q / cu_seqlens_kv: 与 layout 的关系约束
-    //   - max_seqlen_q / max_seqlen_kv: 暂不生效，仅支持传入 -1 (单参数校验已处理)
+    //   - max_seqlen_q: MxFP8 场景下必须大于等于 0；其他场景仅支持 -1 (单参数校验已处理)
+    //   - max_seqlen_kv: 暂不生效，仅支持传入 -1 (单参数校验已处理)
     // seqused[b] <= cu_seqlens[b+1] - cu_seqlens[b] 属于值约束，tiling 阶段无法获取 tensor 数值，不校验。
     if (CheckCuSeqlensLayoutConsistency(qfaInfo) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
