@@ -43,7 +43,7 @@ using namespace AscendC;
 #define MEGA_MOE_GMM2_READY_PER_EXPERT 0
 #define MEGA_MOE_GMM2_READY_PER_BATCH 1
 #ifndef MEGA_MOE_GMM2_READY_MODE
-#define MEGA_MOE_GMM2_READY_MODE MEGA_MOE_GMM2_READY_PER_EXPERT
+#define MEGA_MOE_GMM2_READY_MODE MEGA_MOE_GMM2_READY_PER_BATCH
 #endif
 #if MEGA_MOE_GMM2_READY_MODE != MEGA_MOE_GMM2_READY_PER_EXPERT && \
     MEGA_MOE_GMM2_READY_MODE != MEGA_MOE_GMM2_READY_PER_BATCH
@@ -1480,16 +1480,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessCombineNoQuantGm
             DataCopyPad(rowUb, gmm2OutGm[static_cast<uint64_t>(tokenLocal) * k_], gm2UbParams, gm2UbPad);
             SetFlag<HardEvent::MTE2_MTE3>(eventId);
             WaitFlag<HardEvent::MTE2_MTE3>(eventId);
-
-            for (uint32_t nLoc = 0; nLoc < k_; nLoc += L1_TILE_N) {
-                uint32_t nActual = L1_TILE_N < k_ - nLoc ? L1_TILE_N : k_ - nLoc;
-                TupleShape actualShape;
-                Get<M_VALUE>(actualShape) = 1;
-                Get<N_VALUE>(actualShape) = nActual;
-                LocalTensor<bfloat16_t> rowSlice = rowUb[nLoc];
-                MegaMoeCombineImpl::CombineTokens<bfloat16_t, TupleShape>(
-                    tokenLocal, nLoc, k_, tokenTriple, rowSlice, actualShape, params_);
-            }
+            MegaMoeCombineImpl::CombineTokenRow<bfloat16_t>(k_, tokenTriple, rowUb, params_);
             SetFlag<HardEvent::MTE3_MTE2>(eventId);
         }
     }
