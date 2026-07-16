@@ -98,6 +98,9 @@ public:
     using Base::kDoubleBufferCount;
     using Base::kSingleBufferCount;
     using Base::kHalfSplitDivisor;
+    using Base::kSupportedN4;
+    using Base::kSupportedN6;
+    using Base::kSupportedN8;
     using Base::ND_LENGTH;
     using Base::PARALLEL_NUM;
     using Base::hasResi_;
@@ -132,7 +135,7 @@ __aicore__ inline void MhcPreKernelSplitBS<T, P, HAS_RESI>::Init(InitParams init
 
     if ASCEND_IS_AIV {
         coreIdx_ = GetBlockIdx() / kDoubleBufferCount;
-        this->AIVPreLoad();
+        this->AIVPreLoad(false);
     }
 }
 
@@ -348,7 +351,7 @@ __aicore__ inline void MhcPreKernelSplitBS<T, P, HAS_RESI>::AIV1Process(uint64_t
         this->AIV1ProcessHPost(offsetT, lenT);
 
         this->AIV1ProcessHPre(offsetT, lenT);
-        this->AIV1ProcessHIn(offsetT, lenT, lenD);
+        this->AIV1ProcessHInBatched(offsetT, lenT, lenD);
 
         singleCoreOffset += V1_BASE_T;
     }
@@ -373,57 +376,25 @@ __aicore__ inline void MhcPreKernelSplitBS<T, P, HAS_RESI>::AIV1Prologue(
     this->HMixCopyIn(HMixOffset, lenT);
     matmulRes_ = xInQueue_.template DeQue<P>();
 
-    __ubuf__ P *matmulPtr = (__ubuf__ P *)matmulRes_.GetPhyAddr();
-    __ubuf__ P *invRmsPtr = (__ubuf__ P *)invRmsUb_.GetPhyAddr();
-    __ubuf__ P *biasInPtr = (__ubuf__ P *)biasInUb_.GetPhyAddr();
-    __ubuf__ P *alphaInPtr = (__ubuf__ P *)alphaInUb_.GetPhyAddr();
-    __ubuf__ P *hPreBuffPtr = (__ubuf__ P *)hPreBuff_.GetPhyAddr();
-    __ubuf__ P *hPostBuffPtr = (__ubuf__ P *)hPostBuff_.GetPhyAddr();
-
-    __VEC_SCOPE__
-    {
-        MicroAPI::RegTensor<P> matmulResReg;
-        MicroAPI::RegTensor<P> invRmsReg;
-        MicroAPI::RegTensor<P> invRmsBroadReg;
-        MicroAPI::RegTensor<P> biasInReg;
-        MicroAPI::RegTensor<P> alphaInReg;
-
-        for (uint16_t tIdx = 0; tIdx < static_cast<uint16_t>(lenT); tIdx++) {
-            MicroAPI::Load<P>(invRmsReg, invRmsPtr + singleCoreOffset + tIdx);
-
-            uint32_t loopCntPerN = (mnConfig_.n + eleNumPerVf_ - 1) / eleNumPerVf_;
-            uint32_t curLen = mnConfig_.n;
-            for (uint16_t vfBlockIdx = 0; vfBlockIdx < (uint16_t)loopCntPerN; vfBlockIdx++) {
-                uint32_t maskOffset = tIdx * mnConfig_.n + vfBlockIdx * eleNumPerVf_;
-                uint32_t alphaOffset = vfBlockIdx * eleNumPerVf_;
-                uint32_t biasOffset = vfBlockIdx * eleNumPerVf_;
-                uint32_t curOffset =
-                    MhcPreUtils::Min(mnConfig_.n - vfBlockIdx * eleNumPerVf_, static_cast<uint64_t>(eleNumPerVf_));
-                MicroAPI::MaskReg curMask = MicroAPI::UpdateMask<P>(curLen);
-
-                MicroAPI::Load<P>(matmulResReg, matmulPtr + maskOffset);
-                MicroAPI::Load<P>(biasInReg, biasInPtr + biasOffset);
-                MicroAPI::Load<P>(alphaInReg, alphaInPtr + alphaOffset);
-
-                MicroAPI::Duplicate(invRmsBroadReg, invRmsReg, curMask);
-                MicroAPI::Mul(matmulResReg, matmulResReg, invRmsBroadReg, curMask);
-
-                MicroAPI::Mul(matmulResReg, matmulResReg, alphaInReg, curMask);
-
-                MicroAPI::Add(matmulResReg, matmulResReg, biasInReg, curMask);
-
-                MicroAPI::Store<P>(matmulPtr + maskOffset, matmulResReg, curOffset);
-            }
-        }
+    if (N_ == kSupportedN4) {
+        MhcPreVFPostSegments<P, kSupportedN4, HAS_RESI == MHC_PRE_HAS_RESI>(
+            hPreBuff_, hPostBuff_, hResOutLocal, matmulRes_, invRmsUb_, alphaInUb_, biasInUb_,
+            static_cast<uint16_t>(lenT), static_cast<uint32_t>(singleCoreOffset),
+            static_cast<uint32_t>(mnConfig_.n));
+    } else if (N_ == kSupportedN6) {
+        MhcPreVFPostSegments<P, kSupportedN6, HAS_RESI == MHC_PRE_HAS_RESI>(
+            hPreBuff_, hPostBuff_, hResOutLocal, matmulRes_, invRmsUb_, alphaInUb_, biasInUb_,
+            static_cast<uint16_t>(lenT), static_cast<uint32_t>(singleCoreOffset),
+            static_cast<uint32_t>(mnConfig_.n));
+    } else {
+        MhcPreVFPostSegments<P, kSupportedN8, HAS_RESI == MHC_PRE_HAS_RESI>(
+            hPreBuff_, hPostBuff_, hResOutLocal, matmulRes_, invRmsUb_, alphaInUb_, biasInUb_,
+            static_cast<uint16_t>(lenT), static_cast<uint32_t>(singleCoreOffset),
+            static_cast<uint32_t>(mnConfig_.n));
     }
-
-    Gather(hPreBuff_, matmulRes_, preOffsetBuf_, uint32_t(0), lenT * N_);
-    Gather(hPostBuff_, matmulRes_, postOffsetBuf_, uint32_t(0), lenT * N_);
+    PipeBarrier<PIPE_V>();
 
     if constexpr (HAS_RESI == MHC_PRE_HAS_RESI) {
-        Gather(hResOutLocal, matmulRes_, resOffsetBuf_, uint32_t(0), lenT * N_ * N_);
-        PipeBarrier<PIPE_V>();
-
         outQueue_.EnQue(hResOutLocal);
         hResOutLocal = outQueue_.template DeQue<P>();
         DataCopyExtParams copyParams;
@@ -433,8 +404,6 @@ __aicore__ inline void MhcPreKernelSplitBS<T, P, HAS_RESI>::AIV1Prologue(
         copyParams.dstStride = uint32_t(0);
         DataCopyPad(hResGm_[offset * N_ * N_], hResOutLocal, copyParams);
         outQueue_.FreeTensor(hResOutLocal);
-    } else {
-        PipeBarrier<PIPE_V>();
     }
 
     xInQueue_.FreeTensor(matmulRes_);
