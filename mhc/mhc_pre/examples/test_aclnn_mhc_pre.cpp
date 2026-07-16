@@ -268,6 +268,15 @@ void FreeDeviceMemory(Tensors &tensors)
     aclrtFree(tensors.h_pre_addr);
 }
 
+static int64_t Factorial(int64_t n)
+{
+    int64_t r = 1;
+    for (int64_t i = 2; i <= n; ++i) {
+        r *= i;
+    }
+    return r;
+}
+
 int main()
 {
     int32_t device_id = 0;
@@ -275,10 +284,10 @@ int main()
     aclrtStream stream = nullptr;
     Tensors tensors;
     int B = 1, S = 2048, n = 4, D = 2560;
-    std::vector<int64_t> x_shape = {B * S, n, D}, phi_shape = {n * n + 2 * n, n * D}, alpha_shape = {3},
-                         bias_shape = {n * n + 2 * n}, gamma_shape = {n, D};
-    std::vector<int64_t> hin_shape = {B * S, D}, h_post_shape = {B * S, n}, h_res_shape = {B * S, n, n},
-                         inv_rms_shape = {B * S}, h_mix_shape = {B * S, n * n + 2 * n}, h_pre_shape = {B * S, n};
+    std::vector<int64_t> x_shape = {B * S, n, D}, phi_shape = {Factorial(n) + 2 * n, n * D}, alpha_shape = {3},
+                         bias_shape = {Factorial(n) + 2 * n}, gamma_shape = {n, D};
+    std::vector<int64_t> hin_shape = {B * S, D}, h_post_shape = {B * S, n}, h_res_shape = {B * S, Factorial(n)},
+                         inv_rms_shape = {B * S}, h_mix_shape = {B * S, Factorial(n) + 2 * n}, h_pre_shape = {B * S, n};
     int ret = InitAcl(device_id, context, stream);
     CHECK_RET(ret == 0, LOG_PRINT("InitAcl failed, error: %d\n", ret); return -1);
     ret = CreateInputTensors(x_shape, phi_shape, alpha_shape, bias_shape, gamma_shape, tensors);

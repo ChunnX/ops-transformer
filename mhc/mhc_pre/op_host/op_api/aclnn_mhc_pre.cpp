@@ -45,6 +45,15 @@ constexpr int64_t ALPHA_DIM_SIZE_3 = 3;
 constexpr int64_t ALPHA_DIM_SIZE_2 = 2;
 constexpr int64_t PHI_DIM_OFFSET = 2;
 
+static int64_t Factorial(int64_t n)
+{
+    int64_t r = 1;
+    for (int64_t i = 2; i <= n; ++i) {
+        r *= i;
+    }
+    return r;
+}
+
 static bool CheckAlphaShape(const aclTensor *alphaTensor);
 static bool ValidateNDParams(int64_t n, int64_t d);
 static bool CheckPhiShape(const aclTensor *phiTensor, int64_t n2Plus2n, int64_t nD);
@@ -255,8 +264,8 @@ static bool CheckInputOutShape(const MhcParamsBase &params)
         expectedPhiRows = 2 * n;
         expectedBiasSize = 2 * n;
     } else {
-        expectedPhiRows = n * n + 2 * n;
-        expectedBiasSize = n * n + 2 * n;
+        expectedPhiRows = Factorial(n) + 2 * n;
+        expectedBiasSize = Factorial(n) + 2 * n;
     }
 
     if (!CheckPhiShape(params.phi, expectedPhiRows, nD)) {
