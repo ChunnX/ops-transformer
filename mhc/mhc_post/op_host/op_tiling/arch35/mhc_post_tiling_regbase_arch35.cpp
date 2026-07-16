@@ -139,6 +139,10 @@ bool MhcPostTilingRegBaseArch35::IsCapable()
         return false;
     }
 
+    if (tt > 2048 && n * d < 8) {
+        return false;
+    }
+
     const int64_t D_MIN = 32;
     const int64_t N_MIN = 4;
     const int64_t N_BUF_ALIGN = 8;
