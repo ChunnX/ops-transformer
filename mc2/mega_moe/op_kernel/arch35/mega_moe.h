@@ -1360,6 +1360,7 @@ MegaMoe<TemplateMegaMoeTypeFunc>::CalcUnpermuteBufferConfig(int32_t coreLen, uin
     // 对短 batch 仅保留实际可能使用的槽位；最低仍维持双 buffer。
     int32_t routeItemCount = config.tokensPerBatch * topK_;
     config.inputBufferCount = config.inputBufferCount > routeItemCount ? routeItemCount : config.inputBufferCount;
+    // 基准 batch 在最坏合法 UB 布局下也至少能容纳双 buffer，推导见 mega_moe_base.h。
     config.inputBufferCount = config.inputBufferCount < MIN_UNPERMUTE_INPUT_BUFFER_COUNT ?
                                   MIN_UNPERMUTE_INPUT_BUFFER_COUNT :
                                   config.inputBufferCount;

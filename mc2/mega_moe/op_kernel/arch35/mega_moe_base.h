@@ -259,10 +259,18 @@ __aicore__ inline void SyncFuncStatic()
 //
 // Unpermute 保留 1 个累加/输出 buffer，并支持在 EVENT_ID0~EVENT_ID5 上运行 2~6 个输入 buffer。
 // 实际 UB 仅按运行时选中的输入 buffer 数量分配；该上限不表示固定预留 6 个 buffer。
+//
+// 最低双 buffer 是基准 batch 的成立前提。按最坏合法规格 k=8192、BF16 topK weight、combine quant 计算：
+//   1 个累加槽 + 2 个输入槽 = 3 * (8192 * 2B + 8192 * 4B) = 144KB；
+//   8192 个 weight item       = 8192 * (4B + 2B)              = 48KB；
+//   BF16/FP32 scale scratch   = 1KB + 4KB                     = 5KB；
+//   合计约 197KB，小于 248KB 可用 UB。
+// 若修改 MAX_H、weight batch 基准、scale scratch 布局或最低 buffer 数，必须重新验证该前提。
 constexpr int32_t MIN_UNPERMUTE_INPUT_BUFFER_COUNT = 2;
 constexpr int32_t MAX_UNPERMUTE_INPUT_BUFFER_COUNT = 6;
 // 延续原 Unpermute 的 weight batch 基准：tokensPerBatch * topK 不超过 1024 * 8 个 weight item。
-// 先按该基准确定 batch，再用剩余 UB 反推输入 buffer 数量；只有最小布局放不下时才缩小 batch。
+// 先按该基准确定 batch，再用剩余 UB 反推输入 buffer 数量；上述最坏规格已保证基准 batch 至少容纳
+// 2 个输入 buffer，因此运行时可以直接将反推结果钳位到 MIN_UNPERMUTE_INPUT_BUFFER_COUNT。
 constexpr int32_t UNPERMUTE_BASE_TOPK = 8;
 constexpr int32_t UNPERMUTE_BASE_TOKENS_PER_BATCH = 1024;
 constexpr int32_t UNPERMUTE_WEIGHT_ITEMS_PER_BATCH = UNPERMUTE_BASE_TOPK * UNPERMUTE_BASE_TOKENS_PER_BATCH;
