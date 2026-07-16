@@ -177,9 +177,7 @@ __aicore__ inline void MhcPostBackwardKernel<T, IS_HRES>::Init(
     gradXGm_.SetGlobalBuffer((__gm__ T *)gradX, totalItems_ * n_ * D_);
     // Set global memory buffers for outputs (float32)
     gradHPostGm_.SetGlobalBuffer((__gm__ float *)gradHPost, totalItems_ * n_);
-    if constexpr (IS_HRES) {
-        gradHResGm_.SetGlobalBuffer((__gm__ float *)gradHRes, totalItems_ * n_ * n_);
-    }
+    gradHResGm_.SetGlobalBuffer((__gm__ float *)gradHRes, totalItems_ * n_ * n_);
 
     if ASCEND_IS_AIV {
         // Calculate work distribution with remainder handling
@@ -216,18 +214,16 @@ __aicore__ inline void MhcPostBackwardKernel<T, IS_HRES>::Init(
     }
 
     if ASCEND_IS_AIC {
-        if constexpr (IS_HRES) {
-            if (blockIdx_ < remainderItemsAic_) {
-                myItemCount_ = itemsPerAic_ + 1;
-                itemStart_ = blockIdx_ * (itemsPerAic_ + 1);
-            } else {
-                myItemCount_ = itemsPerAic_;
-                itemStart_ = remainderItemsAic_ * (itemsPerAic_ + 1) +
-                             (blockIdx_ - remainderItemsAic_) * itemsPerAic_;
-            }
-
-            mm.Init(&tilingData->matmulTiling, pipe_);
+        if (blockIdx_ < remainderItemsAic_) {
+            myItemCount_ = itemsPerAic_ + 1;
+            itemStart_ = blockIdx_ * (itemsPerAic_ + 1);
+        } else {
+            myItemCount_ = itemsPerAic_;
+            itemStart_ = remainderItemsAic_ * (itemsPerAic_ + 1) +
+                         (blockIdx_ - remainderItemsAic_) * itemsPerAic_;
         }
+
+        mm.Init(&tilingData->matmulTiling, pipe_);
     }
 }
 
@@ -256,15 +252,13 @@ __aicore__ inline void MhcPostBackwardKernel<T, IS_HRES>::Process()
         }
     }
     if ASCEND_IS_AIC {
-        if constexpr (IS_HRES) {
-            if (blockIdx_ >= usedAic_) {
-                return;
-            }
+        if (blockIdx_ >= usedAic_) {
+            return;
+        }
 
-            for (uint32_t itemIdx = 0; itemIdx < myItemCount_; itemIdx++) {
-                uint32_t globalItemIdx = itemStart_ + itemIdx;
-                SetMMParaAndCompute(globalItemIdx);
-            }
+        for (uint32_t itemIdx = 0; itemIdx < myItemCount_; itemIdx++) {
+            uint32_t globalItemIdx = itemStart_ + itemIdx;
+            SetMMParaAndCompute(globalItemIdx);
         }
     }
 }

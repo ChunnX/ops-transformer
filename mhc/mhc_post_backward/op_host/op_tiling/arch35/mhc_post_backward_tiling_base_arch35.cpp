@@ -665,6 +665,7 @@ ge::graphStatus MhcPostBackwardTilingBaseArch35::CheckSpecConstraints()
 
 ge::graphStatus MhcPostBackwardTilingBaseArch35::CheckParam()
 {
+    isHRes_ = 0;
     auto desc = context_->GetInputDesc(H_RES_INPUT_INDEX);
     if (desc != nullptr) {
         isHRes_ = 1;
@@ -842,6 +843,7 @@ void MhcPostBackwardTilingBaseArch35::Reset()
     usedAic_ = 0;
     itemsPerAic_ = 0;
     remainderItemsAic_ = 0;
+    isHRes_ = 0;
 }
 
 REGISTER_TILING_TEMPLATE_WITH_ARCH(MhcPostBackward, MhcPostBackwardTilingBaseArch35,
