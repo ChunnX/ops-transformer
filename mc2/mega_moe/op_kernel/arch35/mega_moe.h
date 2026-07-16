@@ -140,8 +140,14 @@ private:
     __aicore__ inline void InitCombineBuffers();
     __aicore__ inline void PublishGmm2NoQuantReady(uint32_t slotIdx);
     __aicore__ inline void WaitGmm2NoQuantReady(uint32_t slotIdx);
-    __aicore__ inline void ProcessCombineNoQuantGm(const GMMAddrInfo &gmmAddrInfo,
-                                                   const ExpertLoopState &gmm2State, uint32_t expertIdx);
+    __aicore__ inline MegaMoeImpl::TokenRange GetCombineNoQuantOwnedRange(uint32_t tokenCount);
+    __aicore__ inline void InitCombineNoQuantRowRing();
+    __aicore__ inline void DrainCombineNoQuantRowRing();
+    __aicore__ inline void PreloadCombineNoQuantMetaInfo(const ExpertLoopState &gmm2State, uint32_t tokenStart,
+                                                        uint32_t tokenCount, uint32_t metaInfoUbTokenOffset);
+    __aicore__ inline void ProcessCombineNoQuantGm(const GMMAddrInfo &gmmAddrInfo, uint32_t tokenStart,
+                                                   uint32_t tokenCount, uint32_t metaInfoUbTokenOffset,
+                                                   uint32_t &rowSequence);
     __aicore__ inline void ProcessGmm2GmWaves(const DispatchBufferConfig &bufferConfig,
                                                int32_t &vecSetSyncCom);
     __aicore__ inline void ProcessCombine(const GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &gmm2State,
@@ -260,6 +266,11 @@ private:
     // existing no-quant path until that schedule is redesigned independently.
     static constexpr bool ENABLE_GMM2_GM_REBUILD =
         !ENABLE_A8W4 && !ENABLE_A4W4 && CombineQuantMode == COMBINE_NO_QUANT;
+    static constexpr uint32_t COMBINE_ROW_BUFFER_NUM = 6U;
+    static constexpr uint32_t COMBINE_UB_USABLE_BYTES = 248U * 1024U;
+    static constexpr uint32_t COMBINE_META_INFO_TOKEN_CAPACITY =
+        (COMBINE_UB_USABLE_BYTES - META_INFO_TENSOR_ADDR) / (META_INFO_SIZE * sizeof(int32_t));
+    static_assert(COMBINE_META_INFO_TOKEN_CAPACITY > 0U, "combine meta-info UB must hold at least one token");
     LocalTensor<int32_t> topkIndexTensor_;
     LocalTensor<int32_t> sendCntTensor_;       // SendCntCal stride 只读 worldsize 个 count
     LocalTensor<uint8_t> maskBatchTensor_;     // MetaInfoCalAndDispatch 当前 batch 的 mask 切片
@@ -1652,69 +1663,105 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::WaitGmm2NoQuantReady(ui
     }
 }
 
-// Token-grain AIV1 combine.  Each logical AIV1 owns a balanced contiguous row
-// range, loads each BF16 row once, then sends its 256-column slices to the
-// routed destination.  AIV0 returns before touching ready/UB/event state.
+template <TemplateMegaMoeTypeClass>
+__aicore__ inline MegaMoeImpl::TokenRange
+MegaMoe<TemplateMegaMoeTypeFunc>::GetCombineNoQuantOwnedRange(uint32_t tokenCount)
+{
+    uint32_t logicalAiv1Num = blockAivNum_ / 2U;
+    if (logicalAiv1Num == 0U) {
+        return {};
+    }
+    return MegaMoeImpl::GetBalancedTokenRange(tokenCount, aivCoreIdx_ / 2U, logicalAiv1Num);
+}
+
+// Dispatch and combine time-share AIV1's dynamic UB/event resources.  Dispatch
+// is fully drained before this ring is initialized, so EVENT_ID0..EVENT_ID5
+// can remain live across every expert in the current wave.
+template <TemplateMegaMoeTypeClass>
+__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::InitCombineNoQuantRowRing()
+{
+    constexpr TEventID kRowEvents[COMBINE_ROW_BUFFER_NUM] = {
+        EVENT_ID0, EVENT_ID1, EVENT_ID2, EVENT_ID3, EVENT_ID4, EVENT_ID5};
+    for (uint32_t slot = 0; slot < COMBINE_ROW_BUFFER_NUM; ++slot) {
+        SetFlag<HardEvent::MTE3_MTE2>(kRowEvents[slot]);
+    }
+}
+
+template <TemplateMegaMoeTypeClass>
+__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::DrainCombineNoQuantRowRing()
+{
+    constexpr TEventID kRowEvents[COMBINE_ROW_BUFFER_NUM] = {
+        EVENT_ID0, EVENT_ID1, EVENT_ID2, EVENT_ID3, EVENT_ID4, EVENT_ID5};
+    for (uint32_t slot = 0; slot < COMBINE_ROW_BUFFER_NUM; ++slot) {
+        WaitFlag<HardEvent::MTE3_MTE2>(kRowEvents[slot]);
+    }
+}
+
+// Bulk-load one contiguous slice owned by this AIV1.  PER_BATCH packs the
+// slices of all experts in the wave into this UB area; PER_EXPERT reuses offset
+// zero after each expert's routing scalars have been consumed.
+template <TemplateMegaMoeTypeClass>
+__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::PreloadCombineNoQuantMetaInfo(
+    const ExpertLoopState &gmm2State, uint32_t tokenStart, uint32_t tokenCount, uint32_t metaInfoUbTokenOffset)
+{
+    if (tokenCount == 0U) {
+        return;
+    }
+    uint32_t metaInfoUbByteOffset =
+        metaInfoUbTokenOffset * static_cast<uint32_t>(META_INFO_SIZE * sizeof(int32_t));
+    LocalTensor<int32_t> metaInfoUb(TPosition::VECCALC, META_INFO_TENSOR_ADDR + metaInfoUbByteOffset,
+                                    tokenCount * META_INFO_SIZE);
+    GlobalTensor<int32_t> metaInfoGm;
+    metaInfoGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(params_.workspaceInfo.metaInfoPtr));
+    uint64_t metaInfoGmOffset =
+        (static_cast<uint64_t>(gmm2State.expertBeforeCnt) + tokenStart) * META_INFO_SIZE;
+    DataCopy(metaInfoUb, metaInfoGm[metaInfoGmOffset], tokenCount * META_INFO_SIZE);
+}
+
+// Token-grain AIV1 combine.  The caller has already bulk-loaded and made the
+// matching meta-info slice scalar-visible.  rowSequence is wave-scoped, hence
+// a six-slot row can stay in flight while the loop advances to the next expert.
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessCombineNoQuantGm(
-    const GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &gmm2State, uint32_t expertIdx)
+    const GMMAddrInfo &gmmAddrInfo, uint32_t tokenStart, uint32_t tokenCount, uint32_t metaInfoUbTokenOffset,
+    uint32_t &rowSequence)
 {
     if constexpr (g_coreType == AIV) {
-        if (subBlockIdx_ != 1) {
+        if (subBlockIdx_ != 1 || tokenCount == 0U) {
             return;
         }
 
-        uint32_t logicalAiv1Idx = aivCoreIdx_ / 2U;
-        uint32_t logicalAiv1Num = blockAivNum_ / 2U;
-        if (logicalAiv1Num == 0U) {
-            return;
-        }
-        uint32_t mExpert = static_cast<uint32_t>(Get<M_VALUE>(gmm2State.problemShape));
-        MegaMoeImpl::TokenRange owned =
-            MegaMoeImpl::GetBalancedTokenRange(mExpert, logicalAiv1Idx, logicalAiv1Num);
-        if (owned.count == 0U) {
-            return;
-        }
-
-        if constexpr (MEGA_MOE_GMM2_READY_MODE == MEGA_MOE_GMM2_READY_PER_EXPERT) {
-            WaitGmm2NoQuantReady(expertIdx);
-        }
-
-        // Dispatch and combine time-share this AIV1's dynamic UB region.  The
-        // complete next-wave prefetch above drains dispatch before combine;
-        // only the cumsum state below 64 KiB remains live.  Keep the row area
-        // below the fixed 200 KiB meta-info scratch for the host-supported H<=8K.
+        // Only the cumsum state below 64 KiB remains live here.  Six maximum
+        // H=8K BF16 rows end at 160 KiB, below the 200 KiB meta-info arena.
         constexpr uint32_t ROW_UB_BASE = 64U * 1024U;
         constexpr uint32_t MAX_SUPPORTED_ROW_BYTES = 8U * 1024U * sizeof(bfloat16_t);
-        static_assert(ROW_UB_BASE + DOUBLE_BUFFER * MAX_SUPPORTED_ROW_BYTES <= META_INFO_TENSOR_ADDR,
+        static_assert(ROW_UB_BASE + COMBINE_ROW_BUFFER_NUM * MAX_SUPPORTED_ROW_BYTES <= META_INFO_TENSOR_ADDR,
                       "GMM2 row buffers overlap combine meta-info scratch");
+        constexpr TEventID kRowEvents[COMBINE_ROW_BUFFER_NUM] = {
+            EVENT_ID0, EVENT_ID1, EVENT_ID2, EVENT_ID3, EVENT_ID4, EVENT_ID5};
+
         uint32_t rowBytes = k_ * sizeof(bfloat16_t);
-        uint32_t rowStrideBytes = static_cast<uint32_t>(Ops::Base::CeilAlign(
-            static_cast<uint64_t>(rowBytes), static_cast<uint64_t>(ALIGN_32)));
-        LocalTensor<bfloat16_t> rowPing(TPosition::VECIN, ROW_UB_BASE,
-                                        rowStrideBytes / sizeof(bfloat16_t));
-        LocalTensor<bfloat16_t> rowPong(TPosition::VECIN, ROW_UB_BASE + rowStrideBytes,
-                                        rowStrideBytes / sizeof(bfloat16_t));
-        LocalTensor<int32_t> metaInfoUb(TPosition::VECCALC, META_INFO_TENSOR_ADDR, META_INFO_SIZE);
+        uint32_t rowStrideBytes = static_cast<uint32_t>(
+            Ops::Base::CeilAlign(static_cast<uint64_t>(rowBytes), static_cast<uint64_t>(ALIGN_32)));
+        uint32_t metaInfoUbByteOffset =
+            metaInfoUbTokenOffset * static_cast<uint32_t>(META_INFO_SIZE * sizeof(int32_t));
+        LocalTensor<int32_t> metaInfoUb(TPosition::VECCALC, META_INFO_TENSOR_ADDR + metaInfoUbByteOffset,
+                                        tokenCount * META_INFO_SIZE);
 
         GlobalTensor<bfloat16_t> gmm2OutGm;
         gmm2OutGm.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t *>(gmmAddrInfo.gmm2OutGlobal));
-        GlobalTensor<int32_t> metaInfoGm;
-        metaInfoGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(params_.workspaceInfo.metaInfoPtr));
         DataCopyExtParams gm2UbParams{1U, rowBytes, 0U, 0U, 0U};
         DataCopyPadExtParams<bfloat16_t> gm2UbPad{false, 0U, 0U, 0U};
 
-        SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
-        SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID1);
-        for (uint32_t ownedIdx = 0; ownedIdx < owned.count; ++ownedIdx) {
-            uint32_t tokenLocal = owned.start + ownedIdx;
-            TEventID eventId = (ownedIdx % DOUBLE_BUFFER == 0U) ? EVENT_ID0 : EVENT_ID1;
-            LocalTensor<bfloat16_t> rowUb = (ownedIdx % DOUBLE_BUFFER == 0U) ? rowPing : rowPong;
+        for (uint32_t tokenIdxInSlice = 0; tokenIdxInSlice < tokenCount; ++tokenIdxInSlice, ++rowSequence) {
+            uint32_t tokenLocal = tokenStart + tokenIdxInSlice;
+            uint32_t slot = rowSequence % COMBINE_ROW_BUFFER_NUM;
+            TEventID eventId = kRowEvents[slot];
+            LocalTensor<bfloat16_t> rowUb(TPosition::VECIN, ROW_UB_BASE + slot * rowStrideBytes,
+                                          rowStrideBytes / sizeof(bfloat16_t));
+            LocalTensor<int32_t> tokenMetaInfo = metaInfoUb[tokenIdxInSlice * META_INFO_SIZE];
             WaitFlag<HardEvent::MTE3_MTE2>(eventId);
 
-            uint64_t metaInfoOffset =
-                (static_cast<uint64_t>(gmm2State.expertBeforeCnt) + tokenLocal) * META_INFO_SIZE;
-            DataCopy(metaInfoUb, metaInfoGm[metaInfoOffset], META_INFO_SIZE);
             DataCopyPad(rowUb, gmm2OutGm[static_cast<uint64_t>(tokenLocal) * k_], gm2UbParams, gm2UbPad);
             SetFlag<HardEvent::MTE2_MTE3>(eventId);
             WaitFlag<HardEvent::MTE2_MTE3>(eventId);
@@ -1726,12 +1773,10 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessCombineNoQuantGm
                 Get<N_VALUE>(actualShape) = nActual;
                 LocalTensor<bfloat16_t> rowSlice = rowUb[nLoc];
                 MegaMoeCombineImpl::CombineTokens<bfloat16_t, TupleShape>(
-                    tokenLocal, nLoc, k_, metaInfoUb, rowSlice, actualShape, params_);
+                    tokenLocal, nLoc, k_, tokenMetaInfo, rowSlice, actualShape, params_);
             }
             SetFlag<HardEvent::MTE3_MTE2>(eventId);
         }
-        WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
-        WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID1);
     }
 }
 
@@ -2304,6 +2349,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessGmm2GmWaves(
     ExpertLoopState dispatchState{initShape, initOffset, 0};
     ExpertLoopState gmm1State{initShape, initOffset, 0};
     ExpertLoopState gmm2State{initShape, initOffset, 0};
+    ExpertLoopState combinePreloadState{initShape, initOffset, 0};
     ExpertLoopState combineState{initShape, initOffset, 0};
 
     const uint32_t expertsPerWave = expertsPerBatch_;
@@ -2448,21 +2494,100 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessGmm2GmWaves(
         // helper and never creates combine UB/event state.
         if constexpr (g_coreType == AIV) {
             if (subBlockIdx_ == 1) {
+                InitCombineNoQuantRowRing();
+                uint32_t rowSequence = 0U;
+                uint32_t wavePreloadedExpertEnd = batchBegin;
+                uint32_t wavePreloadedMetaInfoCount = 0U;
+                bool waveMetaInfoPreloadIssued = false;
+
                 if constexpr (MEGA_MOE_GMM2_READY_MODE == MEGA_MOE_GMM2_READY_PER_BATCH) {
+                    // Meta-info routing data was finalized by Dispatch(B), so it
+                    // can be packed while AIC is still finishing GMM2(B).
+                    // Keep expert ownership unchanged: every expert contributes
+                    // one contiguous per-core segment to the wave-resident UB.
+                    bool waveMetaInfoArenaHasCapacity = true;
+                    for (uint32_t expertIdx = batchBegin; expertIdx < batchEnd; ++expertIdx) {
+                        bool hasTokens = UpdateGroupParams<AddrUpdateMode::GMM2>(combinePreloadState, expertIdx);
+                        if (!hasTokens) {
+                            if (waveMetaInfoArenaHasCapacity) {
+                                wavePreloadedExpertEnd = expertIdx + 1U;
+                            }
+                            continue;
+                        }
+                        uint32_t mExpert = static_cast<uint32_t>(Get<M_VALUE>(combinePreloadState.problemShape));
+                        MegaMoeImpl::TokenRange owned = GetCombineNoQuantOwnedRange(mExpert);
+                        if (waveMetaInfoArenaHasCapacity &&
+                            owned.count <= COMBINE_META_INFO_TOKEN_CAPACITY - wavePreloadedMetaInfoCount) {
+                            PreloadCombineNoQuantMetaInfo(combinePreloadState, owned.start, owned.count,
+                                                        wavePreloadedMetaInfoCount);
+                            waveMetaInfoPreloadIssued = waveMetaInfoPreloadIssued || owned.count != 0U;
+                            wavePreloadedMetaInfoCount += owned.count;
+                            wavePreloadedExpertEnd = expertIdx + 1U;
+                        } else {
+                            // Stop extending the resident prefix.  Later
+                            // experts fall back to capacity-bounded bulk chunks.
+                            waveMetaInfoArenaHasCapacity = false;
+                        }
+                    }
+                    if (waveMetaInfoPreloadIssued) {
+                        SetFlag<HardEvent::MTE2_S>(EVENT_ID6);
+                    }
                     WaitGmm2NoQuantReady(batchIdx);
+                    if (waveMetaInfoPreloadIssued) {
+                        WaitFlag<HardEvent::MTE2_S>(EVENT_ID6);
+                    }
                 }
 #if MEGA_MOE_GMM2_WAVE_TIMELINE_DIAG != 0
                 if (batchIdx == 0U && aivCoreIdx_ / 2U == 0U) {
                     RecordGmm2WaveTimeline(8U); // AIV1 Combine(B) control entry
                 }
 #endif
+                uint32_t waveMetaInfoReadOffset = 0U;
                 for (uint32_t expertIdx = batchBegin; expertIdx < batchEnd; ++expertIdx) {
                     if (!UpdateGroupParams<AddrUpdateMode::GMM2>(combineState, expertIdx)) {
                         continue;
                     }
                     UpdateGlobalBuffer<AddrUpdateMode::GMM2>(combineAddrInfo, combineState);
-                    ProcessCombineNoQuantGm(combineAddrInfo, combineState, expertIdx);
+                    uint32_t mExpert = static_cast<uint32_t>(Get<M_VALUE>(combineState.problemShape));
+                    MegaMoeImpl::TokenRange owned = GetCombineNoQuantOwnedRange(mExpert);
+                    if (owned.count == 0U) {
+                        continue;
+                    }
+
+                    if constexpr (MEGA_MOE_GMM2_READY_MODE == MEGA_MOE_GMM2_READY_PER_BATCH) {
+                        if (expertIdx < wavePreloadedExpertEnd) {
+                            ProcessCombineNoQuantGm(combineAddrInfo, owned.start, owned.count, waveMetaInfoReadOffset,
+                                                   rowSequence);
+                            waveMetaInfoReadOffset += owned.count;
+                            continue;
+                        }
+                    }
+
+                    // Expert-ready keeps only the current expert resident.
+                    // The same bounded path also handles a wave that exceeds
+                    // the 48 KiB meta-info arena.  Only the first chunk needs to
+                    // overlap the expert-ready wait.
+                    uint32_t processed = 0U;
+                    while (processed < owned.count) {
+                        uint32_t chunkCount = owned.count - processed < COMBINE_META_INFO_TOKEN_CAPACITY ?
+                                                  owned.count - processed :
+                                                  COMBINE_META_INFO_TOKEN_CAPACITY;
+                        PreloadCombineNoQuantMetaInfo(combineState, owned.start + processed, chunkCount, 0U);
+                        SetFlag<HardEvent::MTE2_S>(EVENT_ID6);
+                        if constexpr (MEGA_MOE_GMM2_READY_MODE == MEGA_MOE_GMM2_READY_PER_EXPERT) {
+                            if (processed == 0U) {
+                                WaitGmm2NoQuantReady(expertIdx);
+                            }
+                        }
+                        WaitFlag<HardEvent::MTE2_S>(EVENT_ID6);
+                        ProcessCombineNoQuantGm(combineAddrInfo, owned.start + processed, chunkCount, 0U,
+                                               rowSequence);
+                        processed += chunkCount;
+                    }
                 }
+                // A slot can remain in flight across expert boundaries, but
+                // dispatch for the following wave may reuse the same UB/events.
+                DrainCombineNoQuantRowRing();
 #if MEGA_MOE_GMM2_WAVE_TIMELINE_DIAG != 0
                 if (batchIdx == 0U && aivCoreIdx_ / 2U == 0U) {
                     RecordGmm2WaveTimeline(9U); // AIV1 Combine(B) end
