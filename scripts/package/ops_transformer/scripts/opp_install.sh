@@ -371,7 +371,7 @@ add_init_py() {
 }
 
 install_whl_package() {
-  local whl_dir="${CURR_PATH}/../../../../ops_transformer"
+  local whl_dir="${CURR_PATH}/../../../../python/site-packages"
   local target_python_dir="${TARGET_VERSION_DIR}/python/site-packages"
 
   # 查找 whl 文件

@@ -132,7 +132,7 @@ function(pack_built_in)
   file(GLOB WHL_FILES "${WHL_SOURCE_DIR}/cann_ops_transformer-*.whl")
   if(WHL_FILES)
       install(FILES ${WHL_FILES}
-          DESTINATION ${WHL_INSTALL_DIR}/es_packages/whl
+          DESTINATION python/site-packages
       )
       message(STATUS "Including whl package: ${WHL_FILES}")
   else()
