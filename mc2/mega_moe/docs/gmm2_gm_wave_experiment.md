@@ -126,24 +126,22 @@ MEGA_MOE_GMM2_READY_MODE=0       per-expert
 MEGA_MOE_GMM2_READY_MODE=1       per-batch（默认）
 MEGA_MOE_GMM2_GM_READY_SMOKE_TEST=1  最小 scalar GM 地址 smoke
 MEGA_MOE_GMM2_WAVE_TIMELINE_DIAG=1  默认关闭的内部时间戳
-MEGA_MOE_WEIGHT1_INTERLEAVED=1   GMM1/SwiGLU 双 UB slot interleave（默认 0）
+MEGA_MOE_WEIGHT1_INTERLEAVED=1   GMM1/SwiGLU 双 UB slot interleave（默认）
 ```
 
 `MEGA_MOE_WEIGHT1_INTERLEAVED=1` 不只是调度开关：kernel 会按参考分支
 `codex/0715-prefetch-next-batch-dispatch-ab` 的契约，把 weight1 和 weight1 MX scale
 解释为匹配的 `[gate, up]` tile-interleaved 布局。上板时必须同步启用 runner/权重准备侧的
-interleave；普通连续 gate/up 权重必须保持默认 `0`。
+interleave；普通连续 gate/up 权重需要显式设置 `MEGA_MOE_WEIGHT1_INTERLEAVED=0`。
 
-interleave 版本的构建命令：
+默认最优版本不需要额外编译选项：
 
 ```bash
-bash build.sh --pkg --soc=ascend950 --ops=mega_moe -j16 -O3 \
-  --ops-compile-options '-DMEGA_MOE_WEIGHT1_INTERLEAVED=1'
+bash build.sh --pkg --soc=ascend950 --ops=mega_moe -j16 -O3
 
-rg -n 'MEGA_MOE_WEIGHT1_INTERLEAVED=1' \
-  build/autogen/custom_compile_options.ini \
-  build/impl/dynamic/mega_moe.py \
-  build/binary/ascend950/src/mega_moe_apt/MegaMoe.py
+rg -n '#define MEGA_MOE_(WEIGHT1_INTERLEAVED|GMM2_READY_MODE)' \
+  mc2/mega_moe/op_kernel/arch35/mega_moe_apt.cpp \
+  mc2/mega_moe/op_kernel/arch35/mega_moe.h
 ```
 
 该模式下 generic GMM1 的 AIC 与 AIV0/SwiGLU 用两个 128KB UB slot 做 ownership
