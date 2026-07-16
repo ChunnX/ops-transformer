@@ -1010,12 +1010,18 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1Nd(
                 }
                 if (isPrefixMaskBlockGqa) {
                     attenMaskUb = this->attenMaskInQue[runInfo.taskIdMod2].template AllocTensor<uint8_t>();
-                    for (uint32_t i = 0; i < s2BaseSize / 8; i++) {
-                        attenMaskUb.SetValue(i, (uint8_t)0xFF);
+                    int64_t s2OrigStartPref = runInfo.s2StartIdx + runInfo.s2LoopCount * s2BaseSize - constInfo.actualKVPrefixSize;
+                    int64_t preTokensAdjPref = runInfo.preTokensPerBatch + constInfo.actualKVPrefixSize;
+                    int64_t preBoundaryPref = runInfo.s1oIdx * constInfo.s1BaseSize / constInfo.gSize - preTokensAdjPref;
+                    int64_t maskedCountPref = preBoundaryPref - s2OrigStartPref;
+                    if (maskedCountPref < 0) { maskedCountPref = 0; }
+                    if (maskedCountPref > (int64_t)runInfo.s2RealSize) { maskedCountPref = runInfo.s2RealSize; }
+                    for (uint32_t i = 0; i < s2BaseSize; i++) {
+                        attenMaskUb.SetValue(i, (i < (uint32_t)maskedCountPref) ? (uint8_t)0x00 : (uint8_t)0xFF);
                     }
                     this->attenMaskInQue[runInfo.taskIdMod2].template EnQue(attenMaskUb);
                     this->attenMaskInQue[runInfo.taskIdMod2].template DeQue<uint8_t>();
-                    if (enableKVPrefix && runInfo.s2LoopCount < 8) { PRINTF("[MASK-gqa-pref] s2L=%lld fill=0xFF mask[0]=%x\n", (long long)runInfo.s2LoopCount, (int)attenMaskUb.GetValue(0)); }
+                    if (enableKVPrefix && runInfo.s2LoopCount < 8) { PRINTF("[MASK-gqa-pref] s2L=%lld fill=0xFF mask[0]=%x masked=%lld\n", (long long)runInfo.s2LoopCount, (int)attenMaskUb.GetValue(0), (long long)maskedCountPref); }
                 } else {
                     AttenMaskCopyIn<hasAtten, isFd, enableKVPrefix>(this->attenMaskInQue[runInfo.taskIdMod2], this->attenMaskInQue[1 - runInfo.taskIdMod2],
                         this->attenMaskGmInt, runInfo, constInfo, *attenMaskInfoPtr);
@@ -1030,12 +1036,19 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1Nd(
             }
             if (isPrefixMaskBlock) {
                 attenMaskUb = this->attenMaskInQue[runInfo.taskIdMod2].template AllocTensor<uint8_t>();
-                for (uint32_t i = 0; i < s2BaseSize / 8; i++) {
-                    attenMaskUb.SetValue(i, (uint8_t)0xFF);
+                int64_t s2OrigStartNp = runInfo.s2StartIdx + runInfo.s2LoopCount * s2BaseSize - constInfo.actualKVPrefixSize;
+                int64_t preTokensAdjNp = runInfo.preTokensPerBatch + constInfo.actualKVPrefixSize;
+                int64_t s1OffsetNp = runInfo.s1oIdx * constInfo.s1BaseSize;
+                int64_t preBoundaryNp = s1OffsetNp - preTokensAdjNp;
+                int64_t maskedCountNp = preBoundaryNp - s2OrigStartNp;
+                if (maskedCountNp < 0) { maskedCountNp = 0; }
+                if (maskedCountNp > (int64_t)runInfo.s2RealSize) { maskedCountNp = runInfo.s2RealSize; }
+                for (uint32_t i = 0; i < s2BaseSize; i++) {
+                    attenMaskUb.SetValue(i, (i < (uint32_t)maskedCountNp) ? (uint8_t)0x00 : (uint8_t)0xFF);
                 }
                 this->attenMaskInQue[runInfo.taskIdMod2].template EnQue(attenMaskUb);
                 this->attenMaskInQue[runInfo.taskIdMod2].template DeQue<uint8_t>();
-                if (enableKVPrefix) { PRINTF("[MASK-prefix] s2L=%lld s2R=%lld fill=0xFF\n", (long long)runInfo.s2LoopCount, (long long)runInfo.s2RealSize); }
+                if (enableKVPrefix) { PRINTF("[MASK-prefix] s2L=%lld s2R=%lld masked=%lld\n", (long long)runInfo.s2LoopCount, (long long)runInfo.s2RealSize, (long long)maskedCountNp); }
             } else {
                 AttenMaskCopyIn<hasAtten, isFd, enableKVPrefix>(this->attenMaskInQue[runInfo.taskIdMod2], this->attenMaskInQue[1 - runInfo.taskIdMod2],
                     this->attenMaskGmInt, runInfo, constInfo, *attenMaskInfoPtr);
