@@ -57,13 +57,23 @@ const std::tuple<aclTensor *, aclTensor *> GroupedMatmulSwigluQuantV2(const aclT
     auto out = executor->AllocTensor(outShape, DataType::DT_INT8, ge::FORMAT_ND);
     auto scaleOut = executor->AllocTensor(scaleOutShape, DataType::DT_FLOAT, ge::FORMAT_ND);
     if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-        n = IsMxWeightNzMultiTensor(weight, quantMode) ?
+        bool isMxWeightNzMultiTensor = IsMxWeightNzMultiTensor(weight, quantMode);
+        OP_LOGI("*** GroupedMatmulSwigluQuantV2 A3 output-shape input: quantMode=%ld, dequantMode=%ld, "
+                "transposeWeight=%d, isMxWeightNzMultiTensor=%d, weightFormat=%s, weightShape=%s, "
+                "weightScaleShape=%s.",
+                quantMode, dequantMode, transposeWeight, isMxWeightNzMultiTensor,
+                op::ToString((*weight)[0]->GetStorageFormat()).GetString(),
+                op::ToString((*weight)[0]->GetViewShape()).GetString(),
+                op::ToString((*weightScale)[0]->GetViewShape()).GetString());
+        n = isMxWeightNzMultiTensor ?
                 (transposeWeight ? (*weightScale)[0]->GetViewShape().GetDim(0) :
                                    (*weightScale)[0]->GetViewShape().GetDim(MX_MULTI_WEIGHT_SCALE_N_DIM)) :
                 (transposeWeight ? (*weightScale)[0]->GetViewShape().GetDim(MX_MULTI_WEIGHT_SCALE_N_DIM) :
                                    (*weightScale)[0]->GetViewShape().GetDim(MX_WEIGHT_SCALE_N_DIM));
         nAfterHalve = static_cast<int64_t>(n / 2); // outShape需要为[M, N / 2]
         gert::Shape outShapeV2({m, nAfterHalve});
+        OP_LOGI("*** GroupedMatmulSwigluQuantV2 A3 output-shape selected: M=%ld, N=%ld, outputShape=%s.",
+                m, n, op::ToString(outShapeV2).GetString());
         gert::Shape scaleOutShapeV2;
         // 当quantMode等于2时，out_scale 的形状为三维
         if (quantMode == 2) {
