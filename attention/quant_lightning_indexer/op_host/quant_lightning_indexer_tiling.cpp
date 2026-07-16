@@ -1010,28 +1010,17 @@ void QLIInfoParser::GenerateInfo(QLITilingInfo &QLIInfo)
     QLIInfo.preTokens = *opParamInfo_.preTokens;
     QLIInfo.nextTokens = *opParamInfo_.nextTokens;
 
-    if (opParamInfo_.keyStride0 != -1) {
-        QLIInfo.keyStride0 = opParamInfo_.keyStride0;
-    } else {
-        QLIInfo.keyStride0 = blockSize_ * n2Size_ * headDim_;
-    }
-    if (opParamInfo_.keyDequantScaleStride0 != -1) {
-        QLIInfo.keyDequantScaleStride0 = opParamInfo_.keyDequantScaleStride0;
-    } else {
-        QLIInfo.keyDequantScaleStride0 = blockSize_;
-    }
-
     QLIInfo.keyStridesVec = keyStridesVec_;
     QLIInfo.keyDequantScaleStridesVec = keyDequantScaleStridesVec_;
     if (!keyStridesVec_.empty()) {
         QLIInfo.keyStride0 = static_cast<uint32_t>(keyStridesVec_[0]);
     } else {
-        QLIInfo.keyStride0 = 0;  // 非PA无需使用stride
+        QLIInfo.keyStride0 = blockSize_ * n2Size_ * headDim_;  // 非PA无需使用stride
     }
     if (!keyDequantScaleStridesVec_.empty()) {
         QLIInfo.keyDequantScaleStride0 = static_cast<uint32_t>(keyDequantScaleStridesVec_[0]);
     } else {
-        QLIInfo.keyDequantScaleStride0 = 0;
+        QLIInfo.keyDequantScaleStride0 = blockSize_;
     }
 
     QLIInfo.inputQLayout = qLayout_;
