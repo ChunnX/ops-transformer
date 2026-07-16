@@ -167,17 +167,18 @@ public:
 
     using mm2ResPos = Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>;
     using MM1_DBUF_T = Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>;
-    using MM2_ABUF_POLICY_T = BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD>;
-    using MM2_ABUF_T = Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD>;
+    using MM2_ABUF_POLICY_T = BuffersPolicyDB<BufferType::L1, SyncType::CROSS_CORE_SYNC_BOTH>;
+    using KV_ABUF_T = Buffer<BufferType::L1, SyncType::NO_SYNC>;
 
     using L1QType = BuffersPolicyDB<BufferType::L1>;
-    using L1KvType = BuffersPolicy4buff<BufferType::L1>;
+    using L1KvType = BuffersPolicy4buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_BOTH>;
     using L0AType = BuffersPolicyDB<BufferType::L0A>;
     using L0BType = BuffersPolicyDB<BufferType::L0B>;
-    using L0CType = typename std::conditional<
-        (mBaseSize * s2BaseSize * FLOAT_BYTES <= (L0C_SIZE * KB_TO_BYTES) / NUM_4 &&
-         mBaseSize * dVBaseSize * FLOAT_BYTES <= (L0C_SIZE * KB_TO_BYTES) / NUM_4),
-        BuffersPolicy4buff<BufferType::L0C>, BuffersPolicyDB<BufferType::L0C>>::type;
+    using L0CType = BuffersPolicyDB<BufferType::L0C>;
+    // using L0CType = typename std::conditional<
+    //     (mBaseSize * s2BaseSize * FLOAT_BYTES <= (L0C_SIZE * KB_TO_BYTES) / NUM_4 &&
+    //      mBaseSize * dVBaseSize * FLOAT_BYTES <= (L0C_SIZE * KB_TO_BYTES) / NUM_4),
+    //     BuffersPolicy4buff<BufferType::L0C>, BuffersPolicyDB<BufferType::L0C>>::type;
 
     TPipe *tPipe;
     BufferManager<BufferType::L1> *l1BufferManagerPtr;
@@ -425,14 +426,21 @@ public:
         }
     }
 
-    __aicore__ inline void IterateBmm1(MM1_DBUF_T &mm1ResBuf, RunInfoX &runInfo)
+    __aicore__ inline void IterateBmm1(MM1_DBUF_T &mm1ResBuf, KV_ABUF_T &inputBufB, RunInfoX &runInfo)
     {
+        // if constexpr (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_BNSD) {
+        //     if (runInfo.isChangeBatch) {
+        //         UpdateKey(runInfo.bIdx);
+        //     }
+        // }
+
 #ifdef SKIP_C1
         mm1ResBuf.WaitCrossCore();
         mm1ResBuf.SetCrossCore();
         return;
 #endif
-        IterateBmm1NdL0Split(mm1ResBuf, runInfo);
+
+        IterateBmm1NdL0Split(mm1ResBuf, inputBufB, runInfo);
     }
 
     __aicore__ inline void FixpipeMm1(const LocalTensor<MM_T> &dstTensor, const LocalTensor<MM_T> &l0C,
@@ -451,7 +459,7 @@ public:
         Fixpipe<MM_T, MM_T, PFA_CFG_ROW_MAJOR_UB>(dstTensor, l0C, fixpipeParams);
     }
 
-    __aicore__ inline void IterateBmm1NdL0Split(MM1_DBUF_T &mm1ResBuf, RunInfoX &runInfo)
+    __aicore__ inline void IterateBmm1NdL0Split(MM1_DBUF_T &mm1ResBuf, KV_ABUF_T &inputBufB, RunInfoX &runInfo)
     {
         Buffer<BufferType::L1> mm1A;
         if (unlikely(runInfo.isFirstS2Loop)) {
@@ -464,60 +472,69 @@ public:
             mm1A = l1QBuffers.GetPre();
             mm1A.Set<HardEvent::MTE2_MTE1>();
         }
-
-        Buffer<BufferType::L1> mm1B = l1KvBuffers.Get();
-        mm1B.Wait<HardEvent::MTE1_MTE2>();
-        LocalTensor<KV_T> mm1BTensor = mm1B.GetTensor<KV_T>();
-        CopyKeyTile(mm1BTensor, runInfo);
-        mm1B.Set<HardEvent::MTE2_MTE1>();
+        KV_ABUF_T mm1B = inputBufB;
+        //等待antiquantkey结果搬运到L1完成
+        CrossCoreWaitFlag<MQFA_SYNC_MODE, PIPE_MTE3>(MQFA_VC_L1_EVENT[runInfo.KvL1loop & 3]); //应该mod 4
+        CrossCoreWaitFlag<MQFA_SYNC_MODE, PIPE_MTE3>(MQFA_VC_L1_EVENT[runInfo.KvL1loop & 3] + 16);
+        // mm1B.WaitCrossCore();
         mm1A.Wait<HardEvent::MTE2_MTE1>();
-        mm1B.Wait<HardEvent::MTE2_MTE1>();
+        // mm1B.Wait<HardEvent::MTE2_MTE1>();
 
         Buffer<BufferType::L0C> mm1ResL0C = mmL0CBuffers.Get();
         mm1ResL0C.Wait<HardEvent::FIX_M>();
 
         MMParam param = MakeMMParam((uint32_t)runInfo.actMSize, (uint32_t)runInfo.actSingleLoopS2Size,
                                     (uint32_t)(constInfo.dSize), false, true);
-        if constexpr (dBaseSize <= 128) {
-            MatmulBase<Q_T, KV_T, MM_T, 128, 128, dBaseSize, ABLayout::MK, ABLayout::KN>(
-                mm1A.GetTensor<Q_T>(), mm1B.GetTensor<KV_T>(), mmL0ABuffers, mmL0BBuffers,
-                mm1ResL0C.GetTensor<MM_T>(), param);
-        } else {
-            if constexpr (s2BaseSize == 256) {
-                MatmulN<Q_T, KV_T, MM_T, 64, 128, 256, ABLayout::MK, ABLayout::KN>(
-                    mm1A.GetTensor<Q_T>(), mm1B.GetTensor<KV_T>(), mmL0ABuffers, mmL0BBuffers,
+        // if constexpr (dBaseSize <= 128) {
+        //     MatmulBase<Q_T, KV_T, T, 128, 128, dBaseSize, ABLayout::MK, ABLayout::KN>(
+        //         mm1A.GetTensor<Q_T>(), mm1B.GetTensor<KV_T>(), mmL0ABuffers, mmL0BBuffers,
+        //         mm1ResL0C.GetTensor<T>(), param);
+        // } else {
+        //     if constexpr (s2BaseSize == 256) {
+        //         MatmulN<Q_T, KV_T, T, 64, 128, 256, ABLayout::MK, ABLayout::KN>(
+        //             mm1A.GetTensor<Q_T>(), mm1B.GetTensor<KV_T>(), mmL0ABuffers, mmL0BBuffers,
+        //             mm1ResL0C.GetTensor<T>(), param);
+        //     } else {
+        //         MatmulK<Q_T, KV_T, T, 128, 128, 128, ABLayout::MK, ABLayout::KN>(
+        //             mm1A.GetTensor<Q_T>(), mm1B.GetTensor<KV_T>(), mmL0ABuffers, mmL0BBuffers,
+        //             mm1ResL0C.GetTensor<T>(), param);
+        //     }
+        // }
+        MatmulK<Q_T, Q_T, MM_T, mBaseSize, s2BaseSize, dBaseSize, ABLayout::MK, ABLayout::KN>(
+                    mm1A.GetTensor<Q_T>(), mm1B.GetTensor<Q_T>(), mmL0ABuffers, mmL0BBuffers,
                     mm1ResL0C.GetTensor<MM_T>(), param);
-            } else {
-                MatmulK<Q_T, KV_T, MM_T, 128, 128, 128, ABLayout::MK, ABLayout::KN>(
-                    mm1A.GetTensor<Q_T>(), mm1B.GetTensor<KV_T>(), mmL0ABuffers, mmL0BBuffers,
-                    mm1ResL0C.GetTensor<MM_T>(), param);
-            }
-        }
 
         if (unlikely(runInfo.isLastS2Loop)) {
             mm1A.Set<HardEvent::MTE1_MTE2>();
         }
-        mm1B.Set<HardEvent::MTE1_MTE2>();
-        mm1ResL0C.Set<HardEvent::M_FIX>();
-        mm1ResL0C.Wait<HardEvent::M_FIX>();
+        mm1B.Set<HardEvent::MTE1_MTE2>();   // 释放L1B
+        mm1ResL0C.Set<HardEvent::M_FIX>();  // 通知
+        mm1ResL0C.Wait<HardEvent::M_FIX>(); // 等待L0C
 
+        //set 告诉antiquant阶段 L1已使用完
+        CrossCoreSetFlag<SYNC_MODE, PIPE_MTE1>(MQFA_CV_L1_EVENT[runInfo.KvL1loop & 3]); // 2 is double buffer
+        CrossCoreSetFlag<SYNC_MODE, PIPE_MTE1>(16 + MQFA_CV_L1_EVENT[runInfo.KvL1loop & 3]); // 16 is Vec num, 2 is double buffer
+
+        //等待Ub上结果使用完成
         mm1ResBuf.WaitCrossCore();
+
         FixpipeMm1(mm1ResBuf.template GetTensor<MM_T>(), mm1ResL0C.GetTensor<MM_T>(), runInfo);
 
         mm1ResL0C.Set<HardEvent::FIX_M>();
+        //告诉V1 C1结果搬运完成
         mm1ResBuf.SetCrossCore();
     }
 
-    __aicore__ inline void IterateBmm2(mm2ResPos &mm2ResBuf, MM2_ABUF_POLICY_T &inputBuf, RunInfoX &runInfo)
+    __aicore__ inline void IterateBmm2(mm2ResPos &mm2ResBuf, MM2_ABUF_POLICY_T &inputBufA, KV_ABUF_T &inputBufB, RunInfoX &runInfo)
     {
 #ifdef SKIP_C2
-        Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> mm2A = inputBuf.Get();
-        mm2A.WaitCrossCore();
-        mm2ResBuf.WaitCrossCore();
-        mm2ResBuf.SetCrossCore();
-        return;
+        // Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> mm2A = inputBufA.Get();
+        // mm2A.WaitCrossCore();
+        // mm2ResBuf.WaitCrossCore();
+        // mm2ResBuf.SetCrossCore();
+        // return;
 #endif
-        IterateBmm2l0Split(mm2ResBuf, inputBuf, runInfo);
+        IterateBmm2l0Split(mm2ResBuf, inputBufA, inputBufB, runInfo);
     }
 
     template <typename DST_TENSOR_T>
@@ -526,7 +543,7 @@ public:
     {
         FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams;
         fixpipeParams.nSize = (realN + 7) >> 3 << 3;
-        fixpipeParams.mSize = (runInfo.actMSize + 1) >> 1 << 1;
+        fixpipeParams.mSize = (runInfo.actMSize + 1) >> 1 << 1;  //TODO: 验证是runInfo.actMSize还是s1BaseSize
         fixpipeParams.srcStride = ((fixpipeParams.mSize + 15) >> 4) << 4;
         fixpipeParams.dstStride = ((uint32_t)dVBaseSize + 15) >> 4 << 4;
         fixpipeParams.dualDstCtl = 1;
@@ -536,45 +553,47 @@ public:
         Fixpipe<MM_T, MM_T, BMM2_FIXPIPE_CONFIG>(dstTensor, l0C, fixpipeParams);
     }
 
-    __aicore__ inline void IterateBmm2l0Split(mm2ResPos &mm2ResBuf, MM2_ABUF_POLICY_T &inputBuf, RunInfoX &runInfo)
+    __aicore__ inline void IterateBmm2l0Split(mm2ResPos &mm2ResBuf, MM2_ABUF_POLICY_T &inputBufA, KV_ABUF_T &inputBufB, RunInfoX &runInfo)
     {
-        Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> mm2A = inputBuf.Get();
-        Buffer<BufferType::L1> mm2B = l1KvBuffers.Get();
+        Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_BOTH> mm2A = inputBufA.Get();
+        KV_ABUF_T mm2B = inputBufB;
+        // wait V1Res
         mm2A.WaitCrossCore();
-        mm2B.Wait<HardEvent::MTE1_MTE2>();
-        LocalTensor<KV_T> mm2BTensor = mm2B.GetTensor<KV_T>();
-        CopyValueTile(mm2BTensor, runInfo);
-        mm2B.Set<HardEvent::MTE2_MTE1>();
+        // wait VAntiquantRes
+        // mm2B.WaitCrossCore();
+        CrossCoreWaitFlag<MQFA_SYNC_MODE, PIPE_MTE3>(MQFA_VC_L1_EVENT[runInfo.KvL1loop & 3]); //应该mod 4
+        CrossCoreWaitFlag<MQFA_SYNC_MODE, PIPE_MTE3>(MQFA_VC_L1_EVENT[runInfo.KvL1loop & 3] + 16);
+        LocalTensor<Q_T> mm2BTensor = mm2B.GetTensor<Q_T>();
 
         Buffer<BufferType::L0C> mm2ResL0C = mmL0CBuffers.Get();
         mm2ResL0C.Wait<HardEvent::FIX_M>();
         MMParam param = MakeMMParam(mBaseSize, (uint32_t)constInfo.dSizeV,
                                     (uint32_t)runInfo.actSingleLoopS2Size, false, false,
                                     true, true, 0, (uint32_t)runInfo.actMSize);
-        mm2B.Wait<HardEvent::MTE2_MTE1>();
 
-        if constexpr (dVBaseSize <= 128) {
-            if constexpr (s2BaseSize == 128) {
-                MatmulFull<Q_T, KV_T, MM_T, 128, dVBaseSize, 128, ABLayout::MK, ABLayout::KN>(
-                    mm2A.GetTensor<Q_T>(), mm2BTensor, mmL0ABuffers, mmL0BBuffers, mm2ResL0C.GetTensor<MM_T>(), param);
-            } else {
-                MatmulBase<Q_T, KV_T, MM_T, 128, dVBaseSize, 128, ABLayout::MK, ABLayout::KN>(
-                    mm2A.GetTensor<Q_T>(), mm2BTensor, mmL0ABuffers, mmL0BBuffers, mm2ResL0C.GetTensor<MM_T>(), param);
-            }
-        } else {
-            MatmulN<Q_T, KV_T, MM_T, mBaseSize, 128, s2BaseSize, ABLayout::MK, ABLayout::KN>(
-                mm2A.GetTensor<Q_T>(), mm2BTensor, mmL0ABuffers, mmL0BBuffers, mm2ResL0C.GetTensor<MM_T>(), param);
-        }
-
-        mm2B.Set<HardEvent::MTE1_MTE2>();
+        MatmulN<Q_T, Q_T, MM_T, mBaseSize, dVBaseSize, s2BaseSize, ABLayout::MK, ABLayout::KN>(
+        mm2A.GetTensor<Q_T>(), mm2BTensor, mmL0ABuffers, mmL0BBuffers, mm2ResL0C.GetTensor<MM_T>(), param);
         mm2ResL0C.Set<HardEvent::M_FIX>();
         mm2ResL0C.Wait<HardEvent::M_FIX>();
 
+        // set Vantiquant
+        // mm2B.SetCrossCore();
+        CrossCoreSetFlag<SYNC_MODE, PIPE_MTE1>(MQFA_CV_L1_EVENT[runInfo.KvL1loop & 3]); // 2 is double buffer
+        CrossCoreSetFlag<SYNC_MODE, PIPE_MTE1>(16 + MQFA_CV_L1_EVENT[runInfo.KvL1loop & 3]); // 16 is Vec num, 2 is double buffer
+
+
+        //等待V2用完上一轮C2结果
+        // CrossCoreWaitFlag<SYNC_MODE, PIPE_FIX>(VC_MM2RES_EVENT[runInfo.loop % 2]);
+        // CrossCoreWaitFlag<SYNC_MODE, PIPE_FIX>(16 + VC_MM2RES_EVENT[runInfo.loop % 2]); // 16 is Vec num
         mm2ResBuf.WaitCrossCore();
+
         FixpipeMm2PartialN(mm2ResBuf.template GetTensor<MM_T>(), mm2ResL0C.GetTensor<MM_T>(), constInfo.dSizeV,
                            runInfo);
 
         mm2ResL0C.Set<HardEvent::FIX_M>();
+        //告诉本轮V2C2结果搬运完成
+        // CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(CV_MM2RES_EVENT[runInfo.loop % 2]);
+        // CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(16 + CV_MM2RES_EVENT[runInfo.loop % 2]); // 16 is Vec num
         mm2ResBuf.SetCrossCore();
     }
 };

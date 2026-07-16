@@ -76,3 +76,4 @@ result = cann_ops_transformer.ops.mixed_quant_flash_attn(
     layout_attn_out="BSND",
     return_softmax_lse=0
 )
+print(result[0])

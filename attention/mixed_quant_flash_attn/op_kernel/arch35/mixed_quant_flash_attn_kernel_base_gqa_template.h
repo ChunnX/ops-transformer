@@ -113,10 +113,11 @@ public:
 
     BufferManager<BufferType::UB> ubBufferManager;
     BufferManager<BufferType::L1> l1BufferManager;
-    BuffersPolicyDB<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> bmm1Buffers;
-    BuffersPolicyDB<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> bmm2Buffers;
-    BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> l1PBuffers;
-    BuffersPolicyDB<BufferType::L1, SyncType::NO_SYNC> kvAntiquantRes;
+    // BuffersPolicyDB<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> bmm1Buffers;
+    // BuffersPolicyDB<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> bmm2Buffers;
+    BuffersPolicyDB<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> bmmBuffers;
+    BuffersPolicyDB<BufferType::L1, SyncType::CROSS_CORE_SYNC_BOTH> l1PBuffers;
+    BuffersPolicy4buff<BufferType::L1, SyncType::NO_SYNC> kvAntiquantRes;
 
     GlobalTensor<int32_t> cuSeqLensGmQ;
     GlobalTensor<int32_t> seqUsedGmQ;
@@ -154,6 +155,7 @@ public:
     uint32_t prevBN2Idx;
     uint32_t prevGS1Idx;
     uint32_t mloop = 0;
+    uint32_t KvL1loop = 0;
     bool headS2Split = false;
     bool tailS2Split = false;
     bool emptyBatch = false;
@@ -268,8 +270,9 @@ public:
         l1PBuffers.Init(l1BufferManager, mm2LeftSize);
         kvAntiquantRes.Init(l1BufferManager, kvAntiquantResSize);
         ubBufferManager.Init(pipe, mm1ResultSize * 2);
-        bmm1Buffers.Init(ubBufferManager, mm1ResultSize);
-        bmm2Buffers.Init(ubBufferManager, mm1ResultSize);
+        // bmm1Buffers.Init(ubBufferManager, mm1ResultSize);
+        // bmm2Buffers.Init(ubBufferManager, mm1ResultSize);
+        bmmBuffers.Init(ubBufferManager, mm1ResultSize);
     }
 
     __aicore__ inline void InitConstInfo()
@@ -345,16 +348,18 @@ public:
     __aicore__ inline void CrossCoreBufferInit()
     {
         if ASCEND_IS_AIV {
-            bmm2Buffers.Get().SetCrossCore();
-            bmm2Buffers.Get().SetCrossCore();
+            // bmm1Buffers.Get().SetCrossCore();
+            // bmm2Buffers.Get().SetCrossCore();
+            bmmBuffers.Get().SetCrossCore();
         }
     }
 
     __aicore__ inline void CrossCoreBufferUnInit()
     {
         if ASCEND_IS_AIC {
-            bmm2Buffers.Get().WaitCrossCore();
-            bmm2Buffers.Get().WaitCrossCore();
+            // bmm1Buffers.Get().WaitCrossCore();
+            // bmm2Buffers.Get().WaitCrossCore();
+            bmmBuffers.Get().SetCrossCore();
         }
     }
 
@@ -612,9 +617,13 @@ public:
 
         if (runInfo0.isValid) {
             if ASCEND_IS_AIV {
+                runInfo0.KvL1loop = KvL1loop;
                 AntiquantKey(runInfo0);
+                KvL1loop++;
             } else {
+                runInfo0.KvL1loop = KvL1loop;
                 ComputeMm1(runInfo0);
+                KvL1loop++;
             }
         }
 
@@ -622,9 +631,13 @@ public:
             if (runInfoNegN.isValid) {
                 if ASCEND_IS_AIV {
                     ComputeVec1(runInfoNegN);
+                    runInfo0.KvL1loop = KvL1loop;
                     AntiquantValue(runInfoNegN);
+                    KvL1loop++;
                 } else {
+                    runInfo0.KvL1loop = KvL1loop;
                     ComputeMm2(runInfoNegN);
+                    KvL1loop++;
                 }
             }
         }
@@ -641,12 +654,12 @@ public:
 
     __aicore__ inline void ComputeMm1(RunInfoX &runInfo)
     {
-        // TODO: 待后续填充实现
+        cubeBlock.IterateBmm1(this->bmmBuffers.Get(), kvAntiquantRes.Get(), runInfo);
     }
 
     __aicore__ inline void ComputeMm2(RunInfoX &runInfo)
     {
-        // cubeBlock.IterateBmm2(this->bmm2Buffers.Get(), this->l1PBuffers, runInfo);
+        cubeBlock.IterateBmm2(this->bmmBuffers.Get(), this->l1PBuffers, kvAntiquantRes.Get(), runInfo);
     }
 
     __aicore__ inline void AntiquantKey(RunInfoX &runInfo)
@@ -663,12 +676,12 @@ public:
 
     __aicore__ inline void ComputeVec1(RunInfoX &runInfo)
     {
-        vecFaBlock.ProcessVec1(l1PBuffers.Get(), bmm1Buffers.Get(), runInfo);
+        vecFaBlock.ProcessVec1(l1PBuffers.Get(), bmmBuffers.Get(), runInfo);
     }
 
     __aicore__ inline void ComputeVec2(RunInfoX &runInfo)
     {
-        vecFaBlock.ProcessVec2(bmm2Buffers.Get(), runInfo);
+        vecFaBlock.ProcessVec2(bmmBuffers.Get(), runInfo);
     }
 
     __aicore__ inline void CreateTask(uint64_t loop, uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur,

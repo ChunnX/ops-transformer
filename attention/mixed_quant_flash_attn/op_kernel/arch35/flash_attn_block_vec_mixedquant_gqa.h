@@ -102,6 +102,12 @@ public:
 
     QSeqParserType *qActSeqLensParser = nullptr;
 
+<<<<<<< HEAD
+=======
+    TEventID mte3ToVId[2];
+    TEventID vToMte3Id[2];
+
+>>>>>>> 69c719436 (添加C1代码&&修复一些问题)
     bool isFd = false;
 
     const ConstInfoX &constInfo;
@@ -154,8 +160,8 @@ public:
     }
 
     __aicore__ inline void InitVecBlock(TPipe *pipe, __gm__ uint8_t *actualSeqQlenAddr,
-                                        __gm__ uint8_t *attenMask, __gm__ uint8_t *learnableSink, 
-                                        __gm__ uint8_t *softmaxLse, __gm__ uint8_t *attentionOut, 
+                                        __gm__ uint8_t *attenMask, __gm__ uint8_t *learnableSink,
+                                        __gm__ uint8_t *softmaxLse, __gm__ uint8_t *attentionOut,
                                         __gm__ uint8_t *workspace)
     {
         tPipe = pipe;
@@ -166,8 +172,8 @@ public:
                      workspace);
     }
 
-    __aicore__ inline void InitVecInput(__gm__ uint8_t *actualSeqQlenAddr, __gm__ uint8_t *attenMask, 
-                                        __gm__ uint8_t *learnableSink, __gm__ uint8_t *softmaxLse, 
+    __aicore__ inline void InitVecInput(__gm__ uint8_t *actualSeqQlenAddr, __gm__ uint8_t *attenMask,
+                                        __gm__ uint8_t *learnableSink, __gm__ uint8_t *softmaxLse,
                                         __gm__ uint8_t *attentionOut, __gm__ uint8_t *workspace)
     {
         this->attentionOutGm.SetGlobalBuffer((__gm__ OUTPUT_T *)attentionOut);
@@ -464,10 +470,19 @@ public:
         SetFlag<HardEvent::MTE3_V>(MQFA_MTE3_V_V[0]);
         SetFlag<HardEvent::MTE3_V>(MQFA_MTE3_V_V[1]);
 
+<<<<<<< HEAD
         SetFlag<HardEvent::MTE3_V>(MQFA_MTE3_V_VEC2[0]);
         SetFlag<HardEvent::MTE3_V>(MQFA_MTE3_V_VEC2[1]);
         SetFlag<HardEvent::V_MTE3>(MQFA_V_MTE3_VEC2[0]);
         SetFlag<HardEvent::V_MTE3>(MQFA_V_MTE3_VEC2[1]);       
+=======
+        mte3ToVId[0] = GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>();
+        mte3ToVId[1] = GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>();
+        vToMte3Id[0] = GetTPipePtr()->AllocEventID<HardEvent::V_MTE3>();
+        vToMte3Id[1] = GetTPipePtr()->AllocEventID<HardEvent::V_MTE3>();
+        SetFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
+        SetFlag<HardEvent::MTE3_V>(mte3ToVId[1]);
+>>>>>>> 69c719436 (添加C1代码&&修复一些问题)
     }
 
     __aicore__ inline void FreeEventID()
@@ -485,10 +500,19 @@ public:
         WaitFlag<HardEvent::MTE3_V>(MQFA_MTE3_V_V[0]);
         WaitFlag<HardEvent::MTE3_V>(MQFA_MTE3_V_V[1]);
 
+<<<<<<< HEAD
         WaitFlag<HardEvent::MTE3_V>(MQFA_MTE3_V_VEC2[0]);
         WaitFlag<HardEvent::MTE3_V>(MQFA_MTE3_V_VEC2[1]);
         WaitFlag<HardEvent::V_MTE3>(MQFA_V_MTE3_VEC2[0]);
         WaitFlag<HardEvent::V_MTE3>(MQFA_V_MTE3_VEC2[1]);  
+=======
+        WaitFlag<AscendC::HardEvent::MTE3_V>(mte3ToVId[0]);
+        WaitFlag<AscendC::HardEvent::MTE3_V>(mte3ToVId[1]);
+        GetTPipePtr()->ReleaseEventID<HardEvent::MTE3_V>(mte3ToVId[0]);
+        GetTPipePtr()->ReleaseEventID<HardEvent::MTE3_V>(mte3ToVId[1]);
+        GetTPipePtr()->ReleaseEventID<HardEvent::V_MTE3>(vToMte3Id[0]);
+        GetTPipePtr()->ReleaseEventID<HardEvent::V_MTE3>(vToMte3Id[1]);
+>>>>>>> 69c719436 (添加C1代码&&修复一些问题)
     }
 
     __aicore__ inline void DealZeroActSeqLen(uint32_t bN2Cur)
@@ -513,7 +537,7 @@ public:
     }
 
     using MM1_DBUF_T = Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>;
-    using MM2_ABUF_T = Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD>;
+    using MM2_ABUF_T = Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_BOTH>;
 
     __aicore__ inline void ProcessVec1(MM2_ABUF_T &vec1ResBuf, MM1_DBUF_T &bmm1ResBuf, RunInfoX &runInfo)
     {
@@ -971,8 +995,8 @@ public:
         if (subBlockIdx == 1) {
             copyTotalS = s2RealSize - copyTotalS;
         }
-        uint32_t taskId = runInfo.loop;
-        uint32_t idx = taskId % 2;
+        uint32_t taskId = runInfo.KvL1loop;
+        uint32_t idx = taskId & 3;
 
         LocalTensor<QINPUT_T> scaleE8M0Ub = scaleInBuf.Get<QINPUT_T>();
         LocalTensor<QINPUT_T> scaleBf16Ub = scaleResBuf.Get<QINPUT_T>();
@@ -998,8 +1022,8 @@ public:
         if (subBlockIdx == 1) {
             copyTotalS = s2RealSize - copyTotalS;
         }
-        uint32_t taskId = runInfo.loop;
-        uint32_t idx = taskId % 2;
+        uint32_t taskId = runInfo.KvL1loop;
+        uint32_t idx = taskId & 3;
 
         LocalTensor<QINPUT_T> scaleE8M0Ub = scaleInBuf.Get<QINPUT_T>();
         LocalTensor<QINPUT_T> scaleBf16Ub = scaleResBuf.Get<QINPUT_T>();
