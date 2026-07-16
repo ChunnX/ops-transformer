@@ -47,7 +47,7 @@ def golden_dli_lse_blk(query_index, key_index, weight, seqused_q=None, seqused_k
         q_used = S1 if seqused_q is None else seqused_q[b, 0].item()
         k_used = S2 if seqused_k is None else seqused_k[b, 0].item()
 
-        x_full = torch.zeros(S1, S2, dtype=torch.float32, device=dev)
+        x_full = torch.full((S1, S2), neg_inf, dtype=torch.float32, device=dev)
 
         s2_tiles = (k_used + TKV - 1) // TKV
 
@@ -76,15 +76,28 @@ def golden_dli_lse_blk(query_index, key_index, weight, seqused_q=None, seqused_k
             else:
                 ori_k_size = k_used * cmp_ratio
             for s1_i in range(S1):
+                if s1_i >= q_used:
+                    continue
                 valid_k_size = max((s1_i + 1 + ori_k_size - q_used) // cmp_ratio, 0)
                 if valid_k_size < k_used:
-                    x_full[s1_i, valid_k_size:] = 0
+                    x_full[s1_i, valid_k_size:] = neg_inf
+
+        row_valid = torch.zeros(S1, dtype=torch.bool, device=dev)
+        for s1_i in range(min(q_used, S1)):
+            if mask_mode == 3:
+                cur_residual = 0
+                if cmp_ratio > 1:
+                    cur_residual = 0 if cmp_residual_k is None else cmp_residual_k[b, 0].item()
+                ori_k_size = k_used * cmp_ratio + cur_residual
+                vk = max((s1_i + 1 + ori_k_size - q_used) // cmp_ratio, 0)
+                row_valid[s1_i] = vk > 0
+            else:
+                row_valid[s1_i] = k_used > 0
 
         reduce_max = x_full.amax(dim=1)
-        valid = x_full.abs().sum(dim=1) > 0
         shifted = x_full - reduce_max.unsqueeze(1)
         sum_exp = torch.exp(shifted).sum(dim=1)
-        lse[b] = torch.where(valid, reduce_max + torch.log(sum_exp), torch.zeros_like(reduce_max))
+        lse[b] = torch.where(row_valid, reduce_max + torch.log(sum_exp), torch.full_like(reduce_max, neg_inf))
 
     return lse
 
@@ -165,8 +178,8 @@ def test_e2e():
     torch.npu.set_device(device)
     torch.manual_seed(42)
     test_cases = [
-        (1, 4096, 1024, 128, 128, 0, 4, True, True),
-        (1, 65536, 16384, 128, 128, 0, 4, True, True),
+        (1, 4096, 1024, 64, 128, 0, 4, True, True),
+        (1, 65536, 16384, 64, 128, 0, 4, True, True),
         (1, 16384, 262144, 64, 128, 0, 1, True, True),
         # (1, 65536, 16384, 128, 128, 3, 4, True, True),
         # (1, 4096, 1024, 128, 128, 3, 4, True, True),
