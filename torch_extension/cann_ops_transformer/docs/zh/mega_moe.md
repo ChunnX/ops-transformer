@@ -1410,3 +1410,213 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
             expert_scales_list=golden_expert_scales_list,
         )
     ```
+
+  - **Atlas A2 训练系列产品/Atlas A2 推理系列产品、Atlas A3 训练系列产品/Atlas A3 推理系列产品**：
+
+    ```python
+    import torch
+    import torch_npu
+    import torch.multiprocessing as mp
+    import torch.distributed as dist
+    from cann_ops_transformer.ops import get_symm_buffer_for_mega_moe, mega_moe
+
+    num_tokens = 64
+    hidden = 4096
+    intermediate_hidden = 1024
+    num_topk = 6
+    num_experts = 16
+    num_max_tokens_per_rank = 256
+    num_servers = 1
+    num_ranks_per_server = 2
+    server_index = 0
+    master_addr = '127.0.0.1'
+    master_port = 50001
+    scene = 'A16W16'
+
+    world_size = num_servers * num_ranks_per_server
+    num_ranks_per_server = num_experts // world_size
+
+    torch_npu.npu.config.allow_internal_format = True
+
+
+    def init_hccl_comm(rank):
+        print(f'[INFO] device_{rank} 创建HCCL通信链路')
+        options = torch_npu._C._distributed_c10d.ProcessGroupHCCL.Options()
+        options.hccl_config = {'hccl_buffer_size': 200}
+        dist.init_process_group(
+            backend='hccl',
+            rank=rank,
+            world_size=world_size,
+            init_method=f'tcp://{master_addr}:{master_port}',
+            pg_options=options,
+        )
+        print(f'device_{rank} init_process_group success')
+        ep_group = dist.new_group(backend='hccl', ranks=list(range(world_size)))
+        _ = ep_group._get_backend(torch.device('npu')).get_hccl_comm_name(rank)
+        return ep_group
+
+
+    def bf16_mega_moe(rank):
+        torch_npu.npu.set_device(rank % num_ranks_per_server)
+
+        x = torch.randn((num_tokens, hidden), dtype=torch.bfloat16)
+        scores = torch.randn((num_tokens, num_experts), dtype=torch.float)
+        topk_weights, topk_ids = torch.topk(scores, num_topk, dim=-1, largest=True, sorted=False)
+        topk_ids = topk_ids.to(torch.int32)
+        l1_weights = [torch.randn((intermediate_hidden, hidden), dtype=torch.bfloat16) for _ in range(num_experts_per_rank)]
+        l2_weights = [torch.randn((intermediate_hidden, hidden), dtype=torch.bfloat16) for _ in range(num_experts_per_rank)]
+
+        ep_group = init_hccl_comm(rank)
+
+        sym_buffer = get_symm_buffer_for_mega_moe(
+            ep_group,
+            num_experts=num_experts,
+            num_max_tokens_per_rank=num_max_tokens_per_rank,
+            num_topk=num_topk,
+            hidden=hidden,
+            intermediate_hidden=intermediate_hidden,
+            dispatch_quant_mode=0,
+            dispatch_quant_out_dtype=None,
+        )
+        y, expert_token_nums = mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer)
+
+        dist.barrier()
+        dist.destroy_process_group()
+
+
+    def int8_int8_mega_moe(rank):
+        torch_npu.npu.set_device(rank % num_ranks_per_server)
+
+        x = torch.randn((num_tokens, hidden), dtype=torch.bfloat16)
+        scores = torch.randn((num_tokens, num_experts), dtype=torch.float)
+        topk_weights, topk_ids = torch.topk(scores, num_topk, dim=-1, largest=True, sorted=False)
+        topk_ids = topk_ids.to(torch.int32)
+        l1_weights_bf16 = [
+            torch.randn((intermediate_hidden, hidden), dtype=torch.bfloat16) for _ in range(num_experts_per_rank)
+        ]
+        l2_weights_bf16 = [
+            torch.randn((intermediate_hidden, hidden), dtype=torch.bfloat16) for _ in range(num_experts_per_rank)
+        ]
+
+        def per_channel_cast_to_int8(w: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+            max_abs = torch.amax(torch.abs(w), dim=0, keepdim=True)
+            sf = torch.clamp(max_abs / 127.0, min=1e-8)
+            q_weight = torch.round(w / sf).clamp(-127, 127).to(torch.int8)
+            return q_weight, sf.squeeze().to(torch.float32)
+
+        l1_weights_int8, l1_weights_sf_float = map(list, zip(*[per_channel_cast_to_int8(w) for w in l1_weights_bf16]))
+        l2_weights_int8, l2_weights_sf_float = map(list, zip(*[per_channel_cast_to_int8(w) for w in l2_weights_bf16]))
+
+        # Cast weights to NZ format for better performance.
+        l1_weights = [torch_npu.npu_format_cast(w, torch_npu.Format.FRACTAL_NZ) for w in l1_weights_int8]
+        l2_weights = [torch_npu.npu_format_cast(w, torch_npu.Format.FRACTAL_NZ) for w in l2_weights_int8]
+
+        # Pack float32 scale factors into uint64, which is required for the process of fixpipe dequantization.
+        l1_weights_sf = [sf.view(torch.int32).to(torch.int64).view(torch.uint64) for sf in l1_weights_sf_float]
+        l2_weights_sf = [sf.view(torch.int32).to(torch.int64).view(torch.uint64) for sf in l2_weights_sf_float]
+
+        ep_group = init_hccl_comm(rank)
+
+        sym_buffer = get_symm_buffer_for_mega_moe(
+            ep_group,
+            num_experts=num_experts,
+            num_max_tokens_per_rank=num_max_tokens_per_rank,
+            num_topk=num_topk,
+            hidden=hidden,
+            intermediate_hidden=intermediate_hidden,
+            dispatch_quant_mode=2,
+            dispatch_quant_out_dtype=torch.int8,
+        )
+        y, expert_token_nums = mega_moe(
+            x,
+            topk_ids,
+            topk_weights,
+            l1_weights,
+            l2_weights,
+            sym_buffer,
+            l1_weights_sf=l1_weights_sf,
+            l2_weights_sf=l2_weights_sf,
+        )
+
+        dist.barrier()
+        dist.destroy_process_group()
+
+
+    def int8_int4_mega_moe(rank):
+        torch_npu.npu.set_device(rank % num_ranks_per_server)
+
+        x = torch.randn((num_tokens, hidden), dtype=torch.bfloat16)
+        scores = torch.randn((num_tokens, num_experts), dtype=torch.float)
+        topk_weights, topk_ids = torch.topk(scores, num_topk, dim=-1, largest=True, sorted=False)
+        topk_ids = topk_ids.to(torch.int32)
+        l1_weights_bf16 = [
+            torch.randn((intermediate_hidden, hidden), dtype=torch.bfloat16) for _ in range(num_experts_per_rank)
+        ]
+        l2_weights_bf16 = [
+            torch.randn((intermediate_hidden, hidden), dtype=torch.bfloat16) for _ in range(num_experts_per_rank)
+        ]
+
+        def per_channel_cast_to_int4(w: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+            max_abs = torch.amax(torch.abs(w), dim=0, keepdim=True)
+            sf = torch.clamp(max_abs / 7.0, min=1e-8)
+            q_weight = torch.round(w / sf).clamp(-7, 7).to(torch.int8)
+            return q_weight, sf.squeeze()
+
+        def pack_int4_to_int8(x: torch.Tensor) -> torch.Tensor:
+            x = (x + 8).to(torch.uint8).reshape(x.shape[0], -1, 2)
+            x = ((x[..., 1] << 4) | x[..., 0]).view(torch.int8)
+            return x
+
+        l1_weights_int8, l1_weights_sf_float = map(list, zip(*[per_channel_cast_to_int4(w) for w in l1_weights_bf16]))
+        l2_weights_int8, l2_weights_sf_float = map(list, zip(*[per_channel_cast_to_int4(w) for w in l2_weights_bf16]))
+
+        # Cast weights to NZ format for better performance.
+        l1_weights = [torch_npu.npu_format_cast(w, torch_npu.Format.FRACTAL_NZ).view(torch.int32) for w in l1_weights_int8]
+        l2_weights = [torch_npu.npu_format_cast(w, torch_npu.Format.FRACTAL_NZ).view(torch.int32) for w in l2_weights_int8]
+
+        # Pack float32 scale factors into uint64, which is required for the process of fixpipe dequantization.
+        l1_weights_sf = [sf.view(torch.int32).to(torch.int64).view(torch.uint64) for sf in l1_weights_sf_float]
+        l2_weights_sf = [sf.view(torch.int32).to(torch.int64).view(torch.uint64) for sf in l2_weights_sf_float]
+
+        l1_bias = [(w.float() * sf.unsqueeze(0)).sum(dim=0) * 8.0 for w, sf in zip(l1_weights_int8, l1_weights_sf_float)]
+        l2_bias = [(w.float() * sf.unsqueeze(0)).sum(dim=0) * 8.0 for w, sf in zip(l2_weights_int8, l2_weights_sf_float)]
+
+        ep_group = init_hccl_comm(rank)
+
+        sym_buffer = get_symm_buffer_for_mega_moe(
+            ep_group,
+            num_experts=num_experts,
+            num_max_tokens_per_rank=num_max_tokens_per_rank,
+            num_topk=num_topk,
+            hidden=hidden,
+            intermediate_hidden=intermediate_hidden,
+            dispatch_quant_mode=2,
+            dispatch_quant_out_dtype=torch.int8,
+        )
+        y, expert_token_nums = mega_moe(
+            x,
+            topk_ids,
+            topk_weights,
+            l1_weights,
+            l2_weights,
+            sym_buffer,
+            l1_weights_sf=l1_weights_sf,
+            l2_weights_sf=l2_weights_sf,
+            l1_bias=l1_bias,
+            l2_bias=l2_bias,
+        )
+
+        dist.barrier()
+        dist.destroy_process_group()
+
+
+    if __name__ == '__main__':
+        if scene == 'A16W16':
+            torch.multiprocessing.spawn(bf16_mega_moe, nprocs=num_ranks_per_server)
+        elif scene == 'A8W8-INT':
+            torch.multiprocessing.spawn(int8_int8_mega_moe, nprocs=num_ranks_per_server)
+        elif scene == 'A8W4-INT':
+            torch.multiprocessing.spawn(int8_int4_mega_moe, nprocs=num_ranks_per_server)
+        else:
+            raise ValueError(f"Unsupported scene: {scene}, please choose from ['A16W16', 'A8W8-INT', 'A8W4-INT']")
+    ```
