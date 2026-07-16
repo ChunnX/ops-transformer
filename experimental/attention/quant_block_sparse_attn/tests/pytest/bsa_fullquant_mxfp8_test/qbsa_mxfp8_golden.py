@@ -274,7 +274,7 @@ def load_test_cases(case_files=None, use_csv=False):
 
 def resolve_case_names(case_name_arg, all_cases):
     if not case_name_arg or case_name_arg == "all":
-        return sorted([name for name, case in all_cases.items() if case.get("enable", True)])
+        return [name for name, case in all_cases.items() if case.get("enable", True)]
     result = []
     missing = []
     for case_name in [item.strip() for item in case_name_arg.split(",") if item.strip()]:
@@ -293,7 +293,7 @@ def _load_initial_case():
     if enabled_cases:
         return dict(all_cases[enabled_cases[0]])
     if all_cases:
-        return dict(all_cases[sorted(all_cases.keys())[0]])
+        return dict(next(iter(all_cases.values())))
     raise ValueError(f"{_DEFAULT_CASE_FILE}.py must define at least one case")
 
 
@@ -1385,7 +1385,8 @@ def _log_case_start(case_idx, total_case_num, case_id, mode, cache_case_name):
     logger.info("#" * _CASE_LOG_WIDTH)
 
 
-def _make_case_result(case_id, status, elapsed, out_result=None, lse_result=None, error=None):
+def _make_case_result(case_id, status, elapsed, out_result=None, lse_result=None, error=None,
+                      compute_amount=None):
     return {
         "case": case_id,
         "status": status,
@@ -1393,6 +1394,7 @@ def _make_case_result(case_id, status, elapsed, out_result=None, lse_result=None
         "out": out_result,
         "lse": lse_result,
         "error": error,
+        "compute_amount": compute_amount,
     }
 
 
@@ -1408,29 +1410,42 @@ def _result_max_error(compare_result):
     return "-" if compare_result is None else f"{compare_result[2]:.6g}"
 
 
+def _result_compute_amount(item):
+    value = item.get("compute_amount")
+    if value is None:
+        return "-"
+    return f"{value / 1000000 / 432:.2f}"
+
+
 def _log_final_summary(results):
     total = len(results)
     passed = sum(1 for item in results if item["status"] == "Pass")
     skipped = sum(1 for item in results if item["status"] in {"Generated", "CpuDone", "NpuDone"})
     failed = total - passed - skipped
 
+    case_col_width = max((len(str(item["case"])) for item in results), default=0)
+    case_col_width = max(case_col_width, len("Case"))
+    table_width = 104 + case_col_width
+
     logger.info("")
-    logger.info("=" * _CASE_LOG_WIDTH)
+    logger.info("=" * table_width)
     logger.info("QBSA MXFP8 CASE SUMMARY")
-    logger.info("=" * _CASE_LOG_WIDTH)
-    logger.info("%-4s %-10s %-10s %-12s %-12s %-12s %-12s %s",
-                "No.", "Status", "Time(s)", "OutPct", "OutMaxErr", "LsePct", "LseMaxErr", "Case")
-    logger.info("-" * _CASE_LOG_WIDTH)
+    logger.info("=" * table_width)
+    logger.info("%-4s %-10s %-10s %-24s %-12s %-12s %-12s %-12s %-*s",
+                "No.", "Status", "Time(s)", "mfu_without_duration", "OutPct", "OutMaxErr", "LsePct", "LseMaxErr",
+                case_col_width, "Case")
+    logger.info("-" * table_width)
     for idx, item in enumerate(results, 1):
-        logger.info("%-4d %-10s %-10.2f %-12s %-12s %-12s %-12s %s",
-                    idx, item["status"], item["elapsed"], _result_pct(item["out"]),
+        logger.info("%-4d %-10s %-10.2f %-24s %-12s %-12s %-12s %-12s %-*s",
+                    idx, item["status"], item["elapsed"], _result_compute_amount(item),
+                    _result_pct(item["out"]),
                     _result_max_error(item["out"]), _result_pct(item["lse"]),
-                    _result_max_error(item["lse"]), item["case"])
+                    _result_max_error(item["lse"]), case_col_width, item["case"])
         if item["error"]:
             logger.info("     error: %s", item["error"])
-    logger.info("-" * _CASE_LOG_WIDTH)
+    logger.info("-" * table_width)
     logger.info("Total: %d, Pass: %d, Failed/Error: %d, No-compare: %d", total, passed, failed, skipped)
-    logger.info("=" * _CASE_LOG_WIDTH)
+    logger.info("=" * table_width)
 
 
 def run_one_case(case_id, case, mode, case_name, cache_dir, case_idx=1, total_case_num=1, precision_dir=None):
@@ -1494,11 +1509,11 @@ def run_one_case(case_id, case, mode, case_name, cache_dir, case_idx=1, total_ca
         if sparse_indices is None or sparse_seq_len is None:
             sparse_indices, sparse_seq_len = _make_reference_sparse_for_lengths(q_lengths, kv_lengths)
 
-    _log_attention_compute_stats(q_lengths, kv_lengths, sparse_indices, sparse_seq_len)
+    cube_compute_amount = _log_attention_compute_stats(q_lengths, kv_lengths, sparse_indices, sparse_seq_len)
 
     if "gen" in mode and not (mode & {"cpu", "npu", "compare"}):
         logger.info("\n[Done] 数据已保存，退出")
-        return _make_case_result(case_id, "Generated", time.time() - start_time)
+        return _make_case_result(case_id, "Generated", time.time() - start_time, compute_amount=cube_compute_amount)
 
     if "cpu" in mode:
         logger.info("\n[Step 2] CPU Golden")
@@ -1511,7 +1526,7 @@ def run_one_case(case_id, case, mode, case_name, cache_dir, case_idx=1, total_ca
 
     if "cpu" in mode and not (mode & {"npu", "compare"}):
         logger.info("\n[Done] CPU 输出已保存，退出")
-        return _make_case_result(case_id, "CpuDone", time.time() - start_time)
+        return _make_case_result(case_id, "CpuDone", time.time() - start_time, compute_amount=cube_compute_amount)
 
     if "npu" in mode:
         logger.info("\n[Step 3] NPU 调用")
@@ -1525,7 +1540,7 @@ def run_one_case(case_id, case, mode, case_name, cache_dir, case_idx=1, total_ca
 
     if "npu" in mode and "compare" not in mode:
         logger.info("\n[Done] NPU 输出已保存，退出")
-        return _make_case_result(case_id, "NpuDone", time.time() - start_time)
+        return _make_case_result(case_id, "NpuDone", time.time() - start_time, compute_amount=cube_compute_amount)
 
     logger.info("\n[Step 4] Atten OUT 精度对比")
     out_result = result_compare_method.check_result(cpu_out, atten_out)
@@ -1546,7 +1561,8 @@ def run_one_case(case_id, case, mode, case_name, cache_dir, case_idx=1, total_ca
     status = "Pass"
     if _result_status(out_result) != "Pass" or (lse_result is not None and _result_status(lse_result) != "Pass"):
         status = "Failed"
-    return _make_case_result(case_id, status, time.time() - start_time, out_result, lse_result)
+    return _make_case_result(case_id, status, time.time() - start_time, out_result, lse_result,
+                             compute_amount=cube_compute_amount)
 
 
 if __name__ == '__main__':
@@ -1587,7 +1603,7 @@ if __name__ == '__main__':
     all_cases = load_test_cases(case_files, use_csv=args.csv)
 
     if args.list_cases:
-        for case_id in sorted(all_cases):
+        for case_id in all_cases:
             print(f"{case_id} enable={all_cases[case_id].get('enable', True)}")
         sys.exit(0)
 
