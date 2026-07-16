@@ -85,7 +85,7 @@ __aicore__ inline void ComputeGroupRange(uint32_t groupIdx, uint32_t numGroups, 
 // =================================================================================================
 // NotifyCombineTileComplete：AIC 完成一个 tile 后，通过 AtomicAdd 通知负责该 token group 的 AIV
 // =================================================================================================
-// counterPtr 内存布局: 每个 expert 一段, 每段 blockAivNum 个 slot, 每个 slot = INT_CACHELINE int32
+// counterPtr 内存布局: 每个 expert 一段, 每段 blockAivNum 个 slot, 每个 slot = 512B
 //   expert:  [slot_0][slot_1][slot_2]...[slot_n]
 // IsA8W4=false (A8W8/A4W4): 所有 blockAivNum 个核参与, 逻辑索引 = 物理 ID
 // IsA8W4=true  (A8W4):    仅 sub=1 的核参与, 逻辑索引 i 映射为物理 ID = i*2+1
@@ -116,7 +116,8 @@ __aicore__ inline void WaitForUpstreamReady(const GMMAddrInfo &gmmAddrInfo, cons
     if constexpr (Policy::IS_GMM1) {
         uint32_t waveIdx = mLoc / L1_TILE_M_256;
         uint32_t targetValue = (mLoc + L1_TILE_M_256 > config.m) ? (config.m - mLoc) : L1_TILE_M_256;
-        __gm__ int32_t *flagValueAddr = gmmAddrInfo.dispatchToGmm1Flag + waveIdx;
+        __gm__ int32_t *flagValueAddr =
+            gmmAddrInfo.dispatchToGmm1Flag + static_cast<uint64_t>(waveIdx) * INT_CACHELINE;
         while (targetValue != AscendC::ReadGmByPassDCache(flagValueAddr)) {
             int64_t st = AscendC::GetSystemCycle();
             while (AscendC::GetSystemCycle() - st < 100) {
@@ -129,7 +130,8 @@ __aicore__ inline void WaitForUpstreamReady(const GMMAddrInfo &gmmAddrInfo, cons
             uint32_t waveM = waveStart + L1_TILE_M_256 > config.m ? config.m - waveStart : L1_TILE_M_256;
             uint32_t targetLoops = Ops::Base::CeilDiv(waveM, L1_TILE_M_256) *
                                    Ops::Base::CeilDiv(config.k * SWIGLU_N_HALF, L1_TILE_N);
-            __gm__ int32_t *flagValueAddr = gmmAddrInfo.swigluToGmm2Flag + waveIdx;
+            __gm__ int32_t *flagValueAddr =
+                gmmAddrInfo.swigluToGmm2Flag + static_cast<uint64_t>(waveIdx) * INT_CACHELINE;
             while (targetLoops != AscendC::ReadGmByPassDCache(flagValueAddr)) {
                 int64_t st = AscendC::GetSystemCycle();
                 while (AscendC::GetSystemCycle() - st < 100) {

@@ -307,8 +307,7 @@ MegaMoe<TemplateMegaMoeTypeFunc>::Init(GM_ADDR context, GM_ADDR x, GM_ADDR topkI
     // 与 WorkspaceInfo 构造里 flagDispatchToGmm1Ptr 的分配公式保持一致。
     maxWavesPerExpert_ =
         static_cast<int32_t>(Ops::Base::CeilDiv(static_cast<int64_t>(maxOutputSize_), DISPATCH_WAVE_TILE_M));
-    dispatchFlagSlotsPerExpert_ = static_cast<int32_t>(
-        Ops::Base::CeilAlign(static_cast<int64_t>(maxWavesPerExpert_), static_cast<int64_t>(INT_CACHELINE)));
+    dispatchFlagSlotsPerExpert_ = maxWavesPerExpert_ * INT_CACHELINE;
     swigluFlagSlotsPerExpert_ = dispatchFlagSlotsPerExpert_;
     hiddenDim_ = tilingData->hiddenDim;
     mc2Context_ = reinterpret_cast<__gm__ Mc2MoeContext *>(context);
@@ -1100,7 +1099,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::TripleInfoCalAndDispatc
                     coreExpertRowBegin > waveExpertRowBegin ? coreExpertRowBegin : waveExpertRowBegin;
                 int32_t overlapRowEnd = coreExpertRowEnd < waveExpertRowEnd ? coreExpertRowEnd : waveExpertRowEnd;
                 // 每个 core 只累加自己与该 wave 的重叠行数；计数达到 wave 行数后 GMM1 才能消费。
-                AtomicAdd(flagBase + waveIdx, int32_t(overlapRowEnd - overlapRowBegin));
+                AtomicAdd(flagBase + static_cast<int64_t>(waveIdx) * INT_CACHELINE,
+                          int32_t(overlapRowEnd - overlapRowBegin));
             }
         }
     }
@@ -1225,7 +1225,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::UpdateGlobalBuffer(GMMA
     }
     gmmAddrInfo.swigluToGmm2Flag = (__gm__ int32_t *)params_.workspaceInfo.flagSwiGluToGmm2Ptr +
                                    Get<IDX_FLAG_OFFSET>(state.baseOffset) * swigluFlagSlotsPerExpert_;
-    // wave-grain dispatch-gmm1 flag: per-expert 步长是 dispatchFlagSlotsPerExpert_,而不是 INT_CACHELINE。
+    // wave-grain flags: every wave is INT_CACHELINE int32 (512B) apart, and
+    // dispatchFlagSlotsPerExpert_ covers all waves owned by one expert.
     gmmAddrInfo.dispatchToGmm1Flag = (__gm__ int32_t *)params_.workspaceInfo.flagDispatchToGmm1Ptr +
                                      Get<IDX_FLAG_OFFSET>(state.baseOffset) * dispatchFlagSlotsPerExpert_;
 }
@@ -1260,7 +1261,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ResetGmm2CombineSyncCou
 
 // =================================================================================================
 // ResetGmm2NoQuantReadyCounters：只由物理 AIV1 清零正式 GM ready 槽。
-// 每个 slot 恰好一条 cache line，避免 partial DMA 覆盖相邻 generation/expert。
+// 每个 slot 恰好占 512B，避免 partial DMA 覆盖相邻 generation/expert。
 // =================================================================================================
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ResetGmm2NoQuantReadyCounters()

@@ -767,7 +767,7 @@ __aicore__ inline void BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LO
     if constexpr (IsInterleaved_) {
         // The scheduler already has mLoc. Carry its wave index in the spare
         // GROUP_FLAG coordinate rather than divide again in scalar code.
-        AscendC::AtomicAdd(groupFlagListGmAddr_ + Get<GROUP_FLAG_IDX>(blockCoord), 1);
+        AscendC::AtomicAdd(groupFlagListGmAddr_ + Get<GROUP_FLAG_IDX>(blockCoord) * INT_CACHELINE, 1);
     } else {
         AscendC::AtomicAdd(groupFlagListGmAddr_, 1);
     }

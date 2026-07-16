@@ -250,8 +250,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Init(
     // 与 WorkspaceInfo 构造里 flagDispatchToGmm1Ptr 的分配公式保持一致。
     maxWavesPerExpert_ =
         static_cast<int32_t>(Ops::Base::CeilDiv(static_cast<int64_t>(maxOutputSize_), DISPATCH_WAVE_TILE_M));
-    dispatchFlagSlotsPerExpert_ = static_cast<int32_t>(
-        Ops::Base::CeilAlign(static_cast<int64_t>(maxWavesPerExpert_), static_cast<int64_t>(INT_CACHELINE)));
+    dispatchFlagSlotsPerExpert_ = maxWavesPerExpert_ * INT_CACHELINE;
     swigluFlagSlotsPerExpert_ = dispatchFlagSlotsPerExpert_;
     hiddenDim_ = tilingData->hiddenDim;
     mc2Context_ = reinterpret_cast<__gm__ Mc2MoeContext *>(context);
@@ -1143,7 +1142,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::TripleInfoCalAnd
                     int32_t waveEndLocal = waveStartLocal + L1_TILE_M_I32;
                     int32_t lo = rowStartLocal > waveStartLocal ? rowStartLocal : waveStartLocal;
                     int32_t hi = rowEndLocal < waveEndLocal ? rowEndLocal : waveEndLocal;
-                    AtomicAdd(flagBase + w, int32_t(hi - lo));
+                    AtomicAdd(flagBase + static_cast<int64_t>(w) * INT_CACHELINE, int32_t(hi - lo));
                 }
             }
         }
@@ -1246,7 +1245,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::UpdateGlobalBuff
             AscendC::Coord<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t> vecBaseOffset{
                 Get<IDX_C_OFFSET>(state.baseOffset),
                 Get<IDX_C_SCALE_OFFSET>(state.baseOffset),
-                Get<IDX_FLAG_OFFSET>(state.baseOffset),
+                Get<IDX_FLAG_OFFSET>(state.baseOffset) * swigluFlagSlotsPerExpert_ / INT_CACHELINE,
                 0L,
                 0L,
                 0L};
@@ -1267,8 +1266,9 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::UpdateGlobalBuff
             params_.b2ScaleGmAddr + Get<IDX_B2_SCALE_OFFSET>(state.baseOffset) * sizeof(QuantScaleOutType);
     }
     gmmAddrInfo.swigluToGmm2Flag = (__gm__ int32_t *)params_.workspaceInfo.flagSwiGluToGmm2Ptr +
-                                   Get<IDX_FLAG_OFFSET>(state.baseOffset) * INT_CACHELINE;
-    // wave-grain dispatch-gmm1 flag: per-expert 步长是 dispatchFlagSlotsPerExpert_,而不是 INT_CACHELINE。
+                                   Get<IDX_FLAG_OFFSET>(state.baseOffset) * swigluFlagSlotsPerExpert_;
+    // wave-grain flags: every wave is INT_CACHELINE int32 (512B) apart, and
+    // dispatchFlagSlotsPerExpert_ covers all waves owned by one expert.
     gmmAddrInfo.dispatchToGmm1Flag = (__gm__ int32_t *)params_.workspaceInfo.flagDispatchToGmm1Ptr +
                                      Get<IDX_FLAG_OFFSET>(state.baseOffset) * dispatchFlagSlotsPerExpert_;
 }
