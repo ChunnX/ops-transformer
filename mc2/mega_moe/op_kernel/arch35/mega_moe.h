@@ -148,6 +148,7 @@ private:
     __aicore__ inline void InitCombineBuffers();
     __aicore__ inline void PublishGmm2NoQuantReady(uint32_t slotIdx);
     __aicore__ inline void WaitGmm2NoQuantReady(uint32_t slotIdx);
+    __aicore__ inline uint64_t Gmm2NoQuantReadySlotStride() const;
     __aicore__ inline MegaMoeImpl::TokenRange GetCombineNoQuantOwnedRange(uint32_t tokenCount);
     __aicore__ inline TEventID CombineNoQuantRowEventId(uint32_t slot)
     {
@@ -279,6 +280,15 @@ private:
         !ENABLE_A8W4 && !ENABLE_A4W4 && CombineQuantMode == COMBINE_NO_QUANT;
     static constexpr uint32_t COMBINE_ROW_BUFFER_NUM = 6U;
     static constexpr uint32_t COMBINE_UB_USABLE_BYTES = 248U * 1024U;
+    // GMM2-ready control scratch is live only after Dispatch(B+1) has drained
+    // and before the six combine row buffers start. Keep it below the meta-info
+    // arena and out of the row-buffer range, including the H=8K maximum.
+    static constexpr uint32_t GMM2_READY_RELEASE_UB_ADDR = 160U * 1024U;
+    static constexpr uint32_t GMM2_READY_SCAN_UB_ADDR = 184U * 1024U;
+    static_assert(GMM2_READY_RELEASE_UB_ADDR + MAX_AICORE_NUM * ALIGN_512 <= GMM2_READY_SCAN_UB_ADDR,
+                  "GMM2 ready release and scan scratch overlap");
+    static_assert(GMM2_READY_SCAN_UB_ADDR + 2U * ALIGN_512 <= META_INFO_TENSOR_ADDR,
+                  "GMM2 ready scan scratch overlaps meta-info arena");
     static constexpr uint32_t COMBINE_META_INFO_TOKEN_CAPACITY =
         (COMBINE_UB_USABLE_BYTES - META_INFO_TENSOR_ADDR) / (META_INFO_SIZE * sizeof(int32_t));
     static_assert(COMBINE_META_INFO_TOKEN_CAPACITY > 0U, "combine meta-info UB must hold at least one token");
@@ -1552,9 +1562,19 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ResetGmm2CombineSyncCou
     }
 }
 
+template <TemplateMegaMoeTypeClass>
+__aicore__ inline uint64_t MegaMoe<TemplateMegaMoeTypeFunc>::Gmm2NoQuantReadySlotStride() const
+{
+    if constexpr (MEGA_MOE_GMM2_FANIN_MODE == MEGA_MOE_GMM2_FANIN_PRIVATE_STRIDED) {
+        return static_cast<uint64_t>(blockNum_) * static_cast<uint64_t>(INT_CACHELINE);
+    }
+    return static_cast<uint64_t>(INT_CACHELINE);
+}
+
 // =================================================================================================
-// ResetGmm2NoQuantReadyCounters：只由物理 AIV1 清零正式 GM ready 槽。
-// 每个 slot 恰好占 512B，避免 partial DMA 覆盖相邻 generation/expert。
+// Reset the selected AIC arrival layout and the private AIV1 release lines.
+// Only physical AIV1 participates.  Every MTE3 copy is 512B so a reset never
+// performs a partial-line read/modify/write over a neighbouring generation.
 // =================================================================================================
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ResetGmm2NoQuantReadyCounters()
@@ -1568,39 +1588,51 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ResetGmm2NoQuantReadyCo
         if (logicalAiv1Num == 0U) {
             return;
         }
+        // The general resetTensor_ may be smaller than one cache line for a
+        // tiny shape.  Use the dedicated ready scratch and always materialize
+        // a full 512B zero line here.
+        LocalTensor<int32_t> zeroLine(TPosition::VECCALC, GMM2_READY_SCAN_UB_ADDR, INT_CACHELINE);
+        Duplicate<int32_t>(zeroLine, 0, INT_CACHELINE);
+        SyncFuncStatic<AscendC::HardEvent::V_MTE3, SYNC_EVENT_ID2>();
+
         GlobalTensor<int32_t> readyGm;
         readyGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(params_.workspaceInfo.gmm2NoQuantReadyPtr));
-        for (uint32_t slot = logicalAiv1Idx; slot < expertPerRank_; slot += logicalAiv1Num) {
-            uint64_t slotOffset = static_cast<uint64_t>(slot) * static_cast<uint64_t>(INT_CACHELINE);
-            DataCopy(readyGm[slotOffset], resetTensor_, INT_CACHELINE);
+        if constexpr (MEGA_MOE_GMM2_FANIN_MODE == MEGA_MOE_GMM2_FANIN_PRIVATE_STRIDED) {
+            // Each logical AIV1 resets the same-indexed AIC private line.
+            for (uint32_t slot = 0U; slot < expertPerRank_; ++slot) {
+                uint64_t slotOffset = static_cast<uint64_t>(slot) * Gmm2NoQuantReadySlotStride() +
+                                      static_cast<uint64_t>(logicalAiv1Idx) * INT_CACHELINE;
+                DataCopy(readyGm[slotOffset], zeroLine, INT_CACHELINE);
+            }
+        } else {
+            // Shared-atomic and compact-private layouts both occupy one line
+            // per slot, distributed across AIV1 reset workers.
+            for (uint32_t slot = logicalAiv1Idx; slot < expertPerRank_; slot += logicalAiv1Num) {
+                uint64_t slotOffset = static_cast<uint64_t>(slot) * Gmm2NoQuantReadySlotStride();
+                DataCopy(readyGm[slotOffset], zeroLine, INT_CACHELINE);
+            }
+        }
+
+        GlobalTensor<int32_t> releaseGm;
+        releaseGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(params_.workspaceInfo.gmm2NoQuantReleasePtr));
+        for (uint32_t slot = 0U; slot < expertPerRank_; ++slot) {
+            uint64_t releaseOffset =
+                (static_cast<uint64_t>(slot) * logicalAiv1Num + logicalAiv1Idx) * INT_CACHELINE;
+            DataCopy(releaseGm[releaseOffset], zeroLine, INT_CACHELINE);
         }
     }
 }
 
 // ================================================================================================
 // RunGmm2NoQuantReadySmokeTest：默认关闭的最小 NPU 地址 smoke。
-// AIC0 在自己的 FIX pipe drain 后只发布 ready[0]，logical AIV1-0 以 bypass-cache 读取。
-// 其他核只参加末尾 local rendezvous；该模式不运行 GMM/Combine，也不用于性能测量。
+// Every AIC publishes slot 0 and every physical AIV1 traverses the selected
+// coordinator/release path.  It does not run GMM/Combine or measure latency.
 // ================================================================================================
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::RunGmm2NoQuantReadySmokeTest()
 {
-    __gm__ int32_t *ready = reinterpret_cast<__gm__ int32_t *>(params_.workspaceInfo.gmm2NoQuantReadyPtr);
-    if constexpr (g_coreType == AIC) {
-        if (blockIdx_ == 0U) {
-            AscendC::SetFlag<AscendC::HardEvent::FIX_S>(0);
-            AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(0);
-            AscendC::AtomicAdd(ready, int32_t(1));
-        }
-    } else {
-        if (subBlockIdx_ == 1 && aivCoreIdx_ / 2U == 0U) {
-            while (AscendC::ReadGmByPassDCache(ready) < 1) {
-                int64_t waitStart = AscendC::GetSystemCycle();
-                while (AscendC::GetSystemCycle() - waitStart < 100) {
-                }
-            }
-        }
-    }
+    PublishGmm2NoQuantReady(0U);
+    WaitGmm2NoQuantReady(0U);
     SyncAll<true>();
 }
 
@@ -1642,22 +1674,31 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::WriteGmm2WaveTimelineMe
 }
 
 // AIC fan-in publication.  Every AIC contributes once for the selected slot,
-// including cores that owned no tile; FIX_S makes all prior direct-GM writes
-// visible before the counter can reach the actual launched producer count.
+// including cores that owned no tile.  FIX_S orders all prior direct-GM GMM2
+// writes before this core's arrival publication.
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::PublishGmm2NoQuantReady(uint32_t slotIdx)
 {
     if constexpr (g_coreType == AIC) {
         AscendC::SetFlag<AscendC::HardEvent::FIX_S>(0);
         AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(0);
-        __gm__ int32_t *ready = reinterpret_cast<__gm__ int32_t *>(params_.workspaceInfo.gmm2NoQuantReadyPtr) +
-                                static_cast<uint64_t>(slotIdx) * INT_CACHELINE;
-        AscendC::AtomicAdd(ready, int32_t(1));
+        __gm__ int32_t *readyBase =
+            reinterpret_cast<__gm__ int32_t *>(params_.workspaceInfo.gmm2NoQuantReadyPtr);
+        uint64_t slotOffset = static_cast<uint64_t>(slotIdx) * Gmm2NoQuantReadySlotStride();
+        if constexpr (MEGA_MOE_GMM2_FANIN_MODE == MEGA_MOE_GMM2_FANIN_SHARED_ATOMIC) {
+            AscendC::AtomicAdd(readyBase + slotOffset, int32_t(1));
+        } else if constexpr (MEGA_MOE_GMM2_FANIN_MODE == MEGA_MOE_GMM2_FANIN_PRIVATE_COMPACT) {
+            AscendC::WriteGmByPassDCache(readyBase + slotOffset + blockIdx_, int32_t(1));
+        } else {
+            AscendC::WriteGmByPassDCache(
+                readyBase + slotOffset + static_cast<uint64_t>(blockIdx_) * INT_CACHELINE, int32_t(1));
+        }
     }
 }
 
-// Only physical AIV1 may enter the ready path.  Callers keep AIV0 outside this
-// helper so it never creates a ready tensor, polls GM, or consumes an event.
+// One physical AIV1 coordinates the AIC fan-in, then publishes one private
+// 512B release line per AIV1 with a single MTE3 copy.  Non-coordinators poll
+// only their own line, eliminating the 36-reader hot address in the baseline.
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::WaitGmm2NoQuantReady(uint32_t slotIdx)
 {
@@ -1665,13 +1706,90 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::WaitGmm2NoQuantReady(ui
         if (subBlockIdx_ != 1) {
             return;
         }
-        __gm__ int32_t *ready = reinterpret_cast<__gm__ int32_t *>(params_.workspaceInfo.gmm2NoQuantReadyPtr) +
-                                static_cast<uint64_t>(slotIdx) * INT_CACHELINE;
-        while (AscendC::ReadGmByPassDCache(ready) < static_cast<int32_t>(blockNum_)) {
-            int64_t waitStart = AscendC::GetSystemCycle();
-            while (AscendC::GetSystemCycle() - waitStart < 100) {
+        uint32_t logicalAiv1Idx = aivCoreIdx_ / 2U;
+        uint32_t logicalAiv1Num = blockAivNum_ / 2U;
+        if (logicalAiv1Num == 0U) {
+            return;
+        }
+
+        __gm__ int32_t *releaseBase =
+            reinterpret_cast<__gm__ int32_t *>(params_.workspaceInfo.gmm2NoQuantReleasePtr);
+        uint64_t releaseSlotOffset = static_cast<uint64_t>(slotIdx) * logicalAiv1Num * INT_CACHELINE;
+        if (logicalAiv1Idx != 0U) {
+            __gm__ int32_t *ownRelease =
+                releaseBase + releaseSlotOffset + static_cast<uint64_t>(logicalAiv1Idx) * INT_CACHELINE;
+            while (AscendC::ReadGmByPassDCache(ownRelease) < 1) {
+                int64_t waitStart = AscendC::GetSystemCycle();
+                while (AscendC::GetSystemCycle() - waitStart < 100) {
+                }
+            }
+            return;
+        }
+
+        // Prepare all private release lines while the coordinator is waiting
+        // for C cores.  This vector work is independent from the scalar poll.
+        uint32_t releaseElements = logicalAiv1Num * static_cast<uint32_t>(INT_CACHELINE);
+        LocalTensor<int32_t> releaseUb(TPosition::VECCALC, GMM2_READY_RELEASE_UB_ADDR, releaseElements);
+        Duplicate<int32_t>(releaseUb, 1, releaseElements);
+        SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID7);
+
+        __gm__ int32_t *readyBase =
+            reinterpret_cast<__gm__ int32_t *>(params_.workspaceInfo.gmm2NoQuantReadyPtr);
+        uint64_t readySlotOffset = static_cast<uint64_t>(slotIdx) * Gmm2NoQuantReadySlotStride();
+        if constexpr (MEGA_MOE_GMM2_FANIN_MODE == MEGA_MOE_GMM2_FANIN_SHARED_ATOMIC) {
+            while (AscendC::ReadGmByPassDCache(readyBase + readySlotOffset) < static_cast<int32_t>(blockNum_)) {
+                int64_t waitStart = AscendC::GetSystemCycle();
+                while (AscendC::GetSystemCycle() - waitStart < 100) {
+                }
+            }
+        } else if constexpr (MEGA_MOE_GMM2_FANIN_MODE == MEGA_MOE_GMM2_FANIN_PRIVATE_COMPACT) {
+            GlobalTensor<int32_t> readyGm;
+            readyGm.SetGlobalBuffer(readyBase);
+            LocalTensor<int32_t> scanUb(TPosition::VECCALC, GMM2_READY_SCAN_UB_ADDR, INT_CACHELINE);
+            LocalTensor<int32_t> sumUb(TPosition::VECCALC, GMM2_READY_SCAN_UB_ADDR + ALIGN_512, INT_CACHELINE);
+            while (true) {
+                DataCopy(scanUb, readyGm[readySlotOffset], INT_CACHELINE);
+                SetFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID7);
+                WaitFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID7);
+                WholeReduceSum<int32_t>(sumUb, scanUb, static_cast<int32_t>(blockNum_), 1, 1, 1, 8);
+                SetFlag<AscendC::HardEvent::V_S>(EVENT_ID7);
+                WaitFlag<AscendC::HardEvent::V_S>(EVENT_ID7);
+                if (sumUb.GetValue(0) >= static_cast<int32_t>(blockNum_)) {
+                    break;
+                }
+                int64_t waitStart = AscendC::GetSystemCycle();
+                while (AscendC::GetSystemCycle() - waitStart < 100) {
+                }
+            }
+        } else {
+            uint64_t pending = 0U;
+            for (uint32_t coreIdx = 0U; coreIdx < blockNum_; ++coreIdx) {
+                pending |= uint64_t(1) << coreIdx;
+            }
+            while (pending != 0U) {
+                for (uint32_t coreIdx = 0U; coreIdx < blockNum_; ++coreIdx) {
+                    uint64_t bit = uint64_t(1) << coreIdx;
+                    if ((pending & bit) != 0U &&
+                        AscendC::ReadGmByPassDCache(readyBase + readySlotOffset +
+                                                   static_cast<uint64_t>(coreIdx) * INT_CACHELINE) >= 1) {
+                        pending &= ~bit;
+                    }
+                }
+                if (pending == 0U) {
+                    break;
+                }
+                int64_t waitStart = AscendC::GetSystemCycle();
+                while (AscendC::GetSystemCycle() - waitStart < 100) {
+                }
             }
         }
+
+        GlobalTensor<int32_t> releaseGm;
+        releaseGm.SetGlobalBuffer(releaseBase);
+        WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID7);
+        DataCopy(releaseGm[releaseSlotOffset], releaseUb, releaseElements);
+        SetFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID7);
+        WaitFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID7);
     }
 }
 
@@ -1746,11 +1864,11 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessCombineNoQuantGm
         }
 
         // Only the cumsum state below 64 KiB remains live here.  Six maximum
-        // H=8K BF16 rows end at 160 KiB, below the 200 KiB meta-info arena.
+        // H=8K BF16 rows end at 160 KiB, immediately before ready scratch.
         constexpr uint32_t ROW_UB_BASE = 64U * 1024U;
         constexpr uint32_t MAX_SUPPORTED_ROW_BYTES = 8U * 1024U * sizeof(bfloat16_t);
-        static_assert(ROW_UB_BASE + COMBINE_ROW_BUFFER_NUM * MAX_SUPPORTED_ROW_BYTES <= META_INFO_TENSOR_ADDR,
-                      "GMM2 row buffers overlap combine meta-info scratch");
+        static_assert(ROW_UB_BASE + COMBINE_ROW_BUFFER_NUM * MAX_SUPPORTED_ROW_BYTES <= GMM2_READY_RELEASE_UB_ADDR,
+                      "GMM2 row buffers overlap ready release scratch");
 
         uint32_t rowBytes = k_ * sizeof(bfloat16_t);
         uint32_t rowStrideBytes = static_cast<uint32_t>(
