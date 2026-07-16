@@ -384,6 +384,19 @@ aclnnStatus ReshapeTensorToViewShape(const aclTensor *&tensor, const char *name,
     return ACLNN_SUCCESS;
 }
 
+aclnnStatus MakeTensorContiguousToViewShape(const aclTensor *&tensor, const char *name, aclOpExecutor *executor)
+{
+    if (tensor == nullptr) {
+        return ACLNN_SUCCESS;
+    }
+    tensor = l0op::Contiguous(tensor, executor);
+    if (tensor == nullptr) {
+        OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "Try make %s contiguous failed.", name);
+        return ACLNN_ERR_INNER_NULLPTR;
+    }
+    return ReshapeTensorToViewShape(tensor, name, executor);
+}
+
 aclnnStatus ReshapeTensorListToViewShape(const aclTensorList *&tensorList, const char *name, aclOpExecutor *executor)
 {
     if (tensorList == nullptr) {
@@ -578,25 +591,22 @@ aclnnStatus InnerFusedInferAttentionScoreGetWorkspaceSize(
     const aclTensor *processedQuery = query;
     const aclTensorList *processedKey = key;
     const aclTensorList *processedValue = value;
+    const aclTensor *processedAttenMask = attenMaskOptional;
     const aclTensor *processedBlockTable = blockTableOptional;
 
     aclOpExecutor *l0Executor = uniqueExecutor.get();
-    processedQuery = l0op::Contiguous(processedQuery, l0Executor);
-    CHECK_RET(processedQuery != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    CHECK_RET(ReshapeTensorToViewShape(processedQuery, "query", l0Executor) == ACLNN_SUCCESS,
+    CHECK_RET(MakeTensorContiguousToViewShape(processedQuery, "query", l0Executor) == ACLNN_SUCCESS,
               ACLNN_ERR_INNER_NULLPTR);
-    if (processedBlockTable != nullptr) {
-        processedBlockTable = l0op::Contiguous(processedBlockTable, l0Executor);
-        CHECK_RET(processedBlockTable != nullptr, ACLNN_ERR_INNER_NULLPTR);
-        CHECK_RET(ReshapeTensorToViewShape(processedBlockTable, "blockTable", l0Executor) == ACLNN_SUCCESS,
-                  ACLNN_ERR_INNER_NULLPTR);
-    }
+    CHECK_RET(MakeTensorContiguousToViewShape(processedAttenMask, "attenMask", l0Executor) == ACLNN_SUCCESS,
+              ACLNN_ERR_INNER_NULLPTR);
+    CHECK_RET(MakeTensorContiguousToViewShape(processedBlockTable, "blockTable", l0Executor) == ACLNN_SUCCESS,
+              ACLNN_ERR_INNER_NULLPTR);
     auto kvProcessRet = ProcessKVForL0Input(
         processedKey, processedValue, processedBlockTable, isFAIRoutingCandidate, l0Executor);
     CHECK_RET(kvProcessRet == ACLNN_SUCCESS, kvProcessRet);
 
     auto l0Out = l0op::FusedInferAttentionScore(
-        processedQuery, processedKey, processedValue, pseShiftOptional, attenMaskOptional, actualSeqLengthsOptional,
+        processedQuery, processedKey, processedValue, pseShiftOptional, processedAttenMask, actualSeqLengthsOptional,
         actualSeqLengthsKvOptional, deqScale1Optional, quantScale1Optional, deqScale2Optional, quantScale2Optional,
         quantOffset2Optional, antiquantScaleOptional, antiquantOffsetOptional, processedBlockTable,
         queryPaddingSizeOptional, kvPaddingSizeOptional, keyAntiquantScaleOptional, keyAntiquantOffsetOptional,
