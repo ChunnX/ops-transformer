@@ -247,7 +247,6 @@ ge::graphStatus QfaInfoParser::GetAttrParaInfo()
     opParamInfo_.layoutQ = attrs->GetStr(ATTR_LAYOUT_Q_INDEX);
     opParamInfo_.layoutKV = attrs->GetStr(ATTR_LAYOUT_KV_INDEX);
     opParamInfo_.layoutOut = attrs->GetStr(ATTR_LAYOUT_OUT_INDEX);
-    opParamInfo_.paBlockSize = attrs->GetAttrPointer<int64_t>(ATTR_PA_BLOCK_SIZE_INDEX);
     opParamInfo_.returnSoftMaxLse = attrs->GetAttrPointer<int64_t>(ATTR_RETURN_LSE_INDEX);
 
     return ge::GRAPH_SUCCESS;
@@ -277,15 +276,12 @@ ge::graphStatus QfaInfoParser::GetQuantMode()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QfaInfoParser::GetPaBlockSize()
+ge::graphStatus QfaInfoParser::GetBlockSize()
 {
-    paBlockSize_ = (opParamInfo_.paBlockSize == nullptr) ? 0 : *opParamInfo_.paBlockSize;
-    if (kvStorageMode_ == KvStorageMode::PAGE_ATTENTION && paBlockSize_ <= 0) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "pa_block_size",
-            std::to_string(paBlockSize_).c_str(),
-            "pa_block_size must be positive when layout_kv is PA");
+    if (keyShape_->CheckHasShapeBlockSize(__func__) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
+    blockSize_ = keyShape_->GetShapeBlockSize();
     return ge::GRAPH_SUCCESS;
 }
 
@@ -404,11 +400,14 @@ ge::graphStatus QfaInfoParser::GetS2SizeForPageAttention()
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "block_table", "provided",
             "When layout_kv is PA, block_table must be provided but got nullptr."),
                 return ge::GRAPH_FAILED);
+    if (GetBlockSize() != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
     if (GetBlockNum() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     maxBlockNumPerBatch_ = opParamInfo_.blockTable.tensor->GetStorageShape().GetDim(1);
-    s2Size_ = static_cast<int64_t>(maxBlockNumPerBatch_) * paBlockSize_;
+    s2Size_ = static_cast<int64_t>(maxBlockNumPerBatch_) * blockSize_;
     return ge::GRAPH_SUCCESS;
 }
 
@@ -508,7 +507,7 @@ ge::graphStatus QfaInfoParser::GetActualSeqInfo()
 void QfaInfoParser::GenerateFeatureInfo(QfaTilingInfo &qfaInfo)
 {
     qfaInfo.pageAttentionFlag = (kvStorageMode_ == KvStorageMode::PAGE_ATTENTION);
-    qfaInfo.paBlockSize = paBlockSize_;
+    qfaInfo.blockSize = blockSize_;
     qfaInfo.blockTypeSize = sizeof(uint8_t);
 
     qfaInfo.maskMode = maskMode_;
@@ -642,10 +641,6 @@ ge::graphStatus QfaInfoParser::ParseFeatureInfo()
     maxSeqKv_ = (opParamInfo_.maxSeqlenKV == nullptr) ? -1 : *opParamInfo_.maxSeqlenKV;
 
     if (ge::GRAPH_SUCCESS != GetQuantMode()) {
-        return ge::GRAPH_FAILED;
-    }
-
-    if (ge::GRAPH_SUCCESS != GetPaBlockSize()) {
         return ge::GRAPH_FAILED;
     }
 

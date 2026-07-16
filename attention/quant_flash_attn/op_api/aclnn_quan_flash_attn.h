@@ -62,7 +62,6 @@ extern "C" {
  * @param layoutQ             [IN]  ATTR. Query layout: "BSND"/"BNSD"/"TND".
  * @param layoutKv            [IN]  ATTR. KV layout: "BSND"/"TND"/"PA_ND"/"PA_NZ".
  * @param layoutOut           [IN]  ATTR. Output layout: "BSND"/"BNSD"/"TND".
- * @param paBlockSize         [IN]  ATTR. Paged attention block size. INT. 0 means not PA.
  * @param returnSoftmaxLse    [IN]  ATTR. Whether to output softmax_lse. INT. 1=output, 0=no.
  * @param attnOut             [OUT] Required output. Attention result, BF16, layout by layoutOut.
  * @param softmaxLseOptional  [OUT] Optional output. Softmax log-sum-exp, FLOAT32.
@@ -84,7 +83,7 @@ aclnnStatus aclnnQuantFlashAttnGetWorkspaceSize(
     double softmaxScale, int64_t maskMode, int64_t winLeft, int64_t winRight,
     int64_t maxSeqlenQ, int64_t maxSeqlenKV,
     const char *layoutQ, const char *layoutKv, const char *layoutOut,
-    int64_t paBlockSize, int64_t returnSoftmaxLse,
+    int64_t returnSoftmaxLse,
     const aclTensor *attnOut, const aclTensor *softmaxLseOptional,
     uint64_t *workspaceSize, aclOpExecutor **executor);
 

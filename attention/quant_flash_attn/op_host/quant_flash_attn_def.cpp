@@ -149,9 +149,6 @@ public:
         this->Attr("layout_out")
             .AttrType(OPTIONAL)
             .String("BSND");
-        this->Attr("pa_block_size")
-            .AttrType(OPTIONAL)
-            .Int(0);
         this->Attr("return_softmax_lse")
             .AttrType(OPTIONAL)
             .Int(0);

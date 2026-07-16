@@ -54,7 +54,6 @@ const std::string LAYOUT_Q_NAME = "layout_q";
 const std::string LAYOUT_KV_NAME = "layout_kv";
 const std::string LAYOUT_OUT_NAME = "layout_out";
 const std::string QUANT_MODE_NAME = "quant_mode";
-const std::string PA_BLOCK_SIZE_NAME = "pa_block_size";
 const std::string RETURN_SOFTMAX_LSE_NAME = "return_softmax_lse";
 const std::string ATTN_OUT_NAME = "attn_out";
 const std::string SOFTMAX_LSE_NAME = "softmax_lse";
@@ -91,8 +90,7 @@ constexpr uint32_t ATTR_MAX_SEQLEN_KV_INDEX = 6;
 constexpr uint32_t ATTR_LAYOUT_Q_INDEX = 7;
 constexpr uint32_t ATTR_LAYOUT_KV_INDEX = 8;
 constexpr uint32_t ATTR_LAYOUT_OUT_INDEX = 9;
-constexpr uint32_t ATTR_PA_BLOCK_SIZE_INDEX = 10;
-constexpr uint32_t ATTR_RETURN_LSE_INDEX = 11;
+constexpr uint32_t ATTR_RETURN_LSE_INDEX = 10;
 
 // Output Index
 constexpr uint32_t ATTN_OUT_INDEX = 0;
@@ -204,7 +202,6 @@ struct QfaParaInfo {
     const char *layoutQ = nullptr;
     const char *layoutKV = nullptr;
     const char *layoutOut = nullptr;
-    const int64_t *paBlockSize = nullptr;
     const int64_t *returnSoftMaxLse = nullptr;
 
     QfaRequiredParaInfo attnOut = {nullptr, nullptr};
@@ -242,7 +239,7 @@ public:
 
     // PageAttention
     bool pageAttentionFlag = false;
-    int64_t paBlockSize = 0;
+    int64_t blockSize = 0;
     int64_t blockTypeSize = 0;
     int64_t maxBlockNumPerBatch = 0;
     int64_t totalBlockNum = 0;

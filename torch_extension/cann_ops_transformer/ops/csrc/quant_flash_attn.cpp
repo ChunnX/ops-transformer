@@ -50,7 +50,7 @@ quant_flash_attn(
     double softmax_scale, int64_t mask_mode, int64_t win_left, int64_t win_right,
     int64_t max_seqlen_q, int64_t max_seqlen_kv,
     std::string layout_q, std::string layout_kv, std::string layout_out,
-    int64_t pa_block_size, int64_t return_softmax_lse)
+    int64_t return_softmax_lse)
 {
     const c10::string_view device = "npu";
     at::Device outputDevice = at::Device(std::string(device));
@@ -109,7 +109,7 @@ quant_flash_attn(
               block_table, p_scale, cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv, sinks, attn_mask, metadata,
               quant_mode,
               softmax_scale, mask_mode, win_left, win_right, max_seqlen_q, max_seqlen_kv, layout_q_ptr, layout_kv_ptr,
-              layout_out_ptr, pa_block_size, return_softmax_lse, attentionOutput, softmaxLse);
+              layout_out_ptr, return_softmax_lse, attentionOutput, softmaxLse);
 
     return std::tuple<at::Tensor, at::Tensor>(attentionOutput, softmaxLse);
 }

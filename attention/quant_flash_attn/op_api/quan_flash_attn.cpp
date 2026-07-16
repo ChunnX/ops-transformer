@@ -35,14 +35,14 @@ const std::array<const aclTensor *, 2> QuantFlashAttn(
     int64_t maskMode, int64_t winLeft, int64_t winRight,
     int64_t maxSeqlenQ, int64_t maxSeqlenKV,
     const char *layoutQ, const char *layoutKv, const char *layoutOut,
-    int64_t paBlockSize, int64_t returnSoftmaxLse,
+    int64_t returnSoftmaxLse,
     aclOpExecutor *executor)
 {
     L0_DFX(QuantFlashAttn, q, k, v, qDescale, kDescale, vDescale, blockTableOptional, pScaleOptional,
            cuSeqlensQOptional, cuSeqlensKvOptional,
            sequsedQOptional, sequsedKvOptional, sinksOptional, attnMaskOptional, metadataOptional,
            quantMode, softmaxScale, maskMode, winLeft, winRight, maxSeqlenQ, maxSeqlenKV,
-           layoutQ, layoutKv, layoutOut, paBlockSize, returnSoftmaxLse);
+           layoutQ, layoutKv, layoutOut, returnSoftmaxLse);
 
     if (blockTableOptional == nullptr) {
         blockTableOptional = executor->AllocTensor(DataType::DT_INT32, Format::FORMAT_ND, Format::FORMAT_ND);
@@ -81,7 +81,7 @@ const std::array<const aclTensor *, 2> QuantFlashAttn(
                                     sequsedQOptional, sequsedKvOptional, sinksOptional, attnMaskOptional, metadataOptional),
                            OP_OUTPUT(attentionOutAlloc, softmaxLseAlloc),
                            OP_ATTR(quantMode, softmaxScale, maskMode, winLeft, winRight, maxSeqlenQ, maxSeqlenKV,
-                                   layoutQ, layoutKv, layoutOut, paBlockSize, returnSoftmaxLse));
+                                   layoutQ, layoutKv, layoutOut, returnSoftmaxLse));
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "QuantFlashAttn InferShape failed.");
         return {nullptr, nullptr};
@@ -94,7 +94,7 @@ const std::array<const aclTensor *, 2> QuantFlashAttn(
                  sequsedQOptional, sequsedKvOptional, sinksOptional, attnMaskOptional, metadataOptional),
         OP_OUTPUT(attentionOutAlloc, softmaxLseAlloc),
         OP_ATTR(quantMode, softmaxScale, maskMode, winLeft, winRight, maxSeqlenQ, maxSeqlenKV,
-                layoutQ, layoutKv, layoutOut, paBlockSize, returnSoftmaxLse));
+                layoutQ, layoutKv, layoutOut, returnSoftmaxLse));
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "QuantFlashAttn launch kernel failed.");
         return {nullptr, nullptr};

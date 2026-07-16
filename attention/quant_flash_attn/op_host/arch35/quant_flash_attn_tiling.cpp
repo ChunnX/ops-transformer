@@ -345,7 +345,7 @@ void QuantFlashAttnTilingImpl::SetQFATilingData()
     if (qfaInfo_->winRight == -1) {
         tilingData_.baseTiling.quantFlashAttnAttenMaskParams.winRights = MASK_MODE_INT_MAX;
     }
-    tilingData_.baseTiling.quantFlashAttnPageAttentionParams.blockSize = qfaInfo_->paBlockSize;
+    tilingData_.baseTiling.quantFlashAttnPageAttentionParams.blockSize = qfaInfo_->blockSize;
     uint32_t maxBlockNumPerBatch = 0;
     if (qfaInfo_->pageAttentionFlag) {
         maxBlockNumPerBatch = qfaInfo_->maxBlockNumPerBatch;

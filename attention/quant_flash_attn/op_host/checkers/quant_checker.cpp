@@ -287,9 +287,9 @@ ge::graphStatus QuantChecker::CheckKDescaleShape(const QfaTilingInfo &qfaInfo) c
     if (qfaInfo.kvLayout == QfaLayout::TND) {
         expected = {qfaInfo.kTSize, qfaInfo.n2Size, DPerGroup, 2};
     } else if (qfaInfo.kvLayout == QfaLayout::PA_BNBD) {
-        expected = {qfaInfo.totalBlockNum, qfaInfo.n2Size, qfaInfo.paBlockSize, DPerGroup, 2};
+        expected = {qfaInfo.totalBlockNum, qfaInfo.n2Size, qfaInfo.blockSize, DPerGroup, 2};
     } else if (qfaInfo.kvLayout == QfaLayout::PA_NZ) {
-        expected = {qfaInfo.totalBlockNum, qfaInfo.n2Size, qfaInfo.paBlockSize / 16, DPerGroup, 16, 2};
+        expected = {qfaInfo.totalBlockNum, qfaInfo.n2Size, qfaInfo.blockSize / 16, DPerGroup, 16, 2};
     } else {
         OP_LOGE(qfaInfo.opName, "k_descale shape check: kv_layout %s is unsupported.",
                 QfaLayoutToSerialString(qfaInfo.kvLayout).c_str());
@@ -322,9 +322,9 @@ ge::graphStatus QuantChecker::CheckVDescaleShape(const QfaTilingInfo &qfaInfo) c
     if (qfaInfo.kvLayout == QfaLayout::TND) {
         expected = {qfaInfo.kTSize / 64, qfaInfo.n2Size, D, 2};
     } else if (qfaInfo.kvLayout == QfaLayout::PA_BNBD) {
-        expected = {qfaInfo.totalBlockNum, qfaInfo.n2Size, qfaInfo.paBlockSize / 64, D, 2};
+        expected = {qfaInfo.totalBlockNum, qfaInfo.n2Size, qfaInfo.blockSize / 64, D, 2};
     } else if (qfaInfo.kvLayout == QfaLayout::PA_NZ) {
-        expected = {qfaInfo.totalBlockNum, qfaInfo.n2Size, D / 16, qfaInfo.paBlockSize / 64, 16, 2};
+        expected = {qfaInfo.totalBlockNum, qfaInfo.n2Size, D / 16, qfaInfo.blockSize / 64, 16, 2};
     } else {
         OP_LOGE(qfaInfo.opName, "v_descale shape check: kv_layout %s is unsupported.",
                 QfaLayoutToSerialString(qfaInfo.kvLayout).c_str());
@@ -517,7 +517,7 @@ ge::graphStatus QuantChecker::CheckKVShape(const QfaTilingInfo &qfaInfo) const
         shapeParams.T = qfaInfo.kTSize;
     } else if (qfaInfo.kvLayout == QfaLayout::PA_BNBD || qfaInfo.kvLayout == QfaLayout::PA_NZ) {
         shapeParams.Bn = qfaInfo.totalBlockNum;
-        shapeParams.Bs = qfaInfo.paBlockSize;
+        shapeParams.Bs = qfaInfo.blockSize;
     }
 
     if (keyShapeCmp_->CompareShape(shapeParams, __func__) != ge::GRAPH_SUCCESS) {

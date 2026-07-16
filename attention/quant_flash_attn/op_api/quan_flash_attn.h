@@ -46,7 +46,6 @@ namespace l0op {
  * @param layoutQ             query layout string
  * @param layoutKv            kv layout string
  * @param layoutOut           output layout string
- * @param paBlockSize         paged attention block size (int64_t)
  * @param returnSoftmaxLse    whether to output softmax_lse (int64_t)
  * @param executor            op executor
  * @return std::array<const aclTensor*, 2> [attnOut, softmaxLse]
@@ -78,7 +77,6 @@ const std::array<const aclTensor *, 2> QuantFlashAttn(
     const char *layoutQ,
     const char *layoutKv,
     const char *layoutOut,
-    int64_t paBlockSize,
     int64_t returnSoftmaxLse,
     aclOpExecutor *executor);
 

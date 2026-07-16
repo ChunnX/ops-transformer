@@ -127,12 +127,12 @@ ge::graphStatus PagedAttentionChecker::CheckFeature(const QfaTilingInfo &qfaInfo
                         "When PagedAttention is enabled, seqused_kv must be provided"),
                     return ge::GRAPH_FAILED);
 
-        // MxFP8 场景: paBlockSize 仅支持 512 或 1024
+        // MxFP8 场景: blockSize 仅支持 512 或 1024
         if (qfaInfo.quantMode == QfaQuantMode::MXFP8_FP32) {
-            OP_CHECK_IF(qfaInfo.paBlockSize != 512 && qfaInfo.paBlockSize != 1024,
-                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(qfaInfo.opName, PA_BLOCK_SIZE_NAME.c_str(),
-                            std::to_string(qfaInfo.paBlockSize).c_str(),
-                            "When quant_mode is MxFP8, pa_block_size must be 512 or 1024"),
+            OP_CHECK_IF(qfaInfo.blockSize != 512 && qfaInfo.blockSize != 1024,
+                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(qfaInfo.opName, "block_size",
+                            std::to_string(qfaInfo.blockSize).c_str(),
+                            "When quant_mode is MxFP8, block_size must be 512 or 1024"),
                         return ge::GRAPH_FAILED);
         }
     } else {

@@ -66,7 +66,7 @@ public:
     ge::graphStatus GetGSize();
     void GetMaskParams();
     ge::graphStatus GetQuantMode();
-    ge::graphStatus GetPaBlockSize();
+    ge::graphStatus GetBlockSize();
 
     ge::graphStatus GetActualSeqInfo();
 
@@ -133,7 +133,7 @@ public:
 
     // Quant
     QfaQuantMode quantMode_ = QfaQuantMode::MXFP8_FP32;
-    int64_t paBlockSize_ = 0;
+    int64_t blockSize_ = 0;
 
     // Sinks
     bool sinksFlag_ = false;

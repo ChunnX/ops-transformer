@@ -68,7 +68,6 @@ class QuantFlashAttnOpBuilder(OpBuilder):
             "float softmax_scale=1.0, int mask_mode=0, int win_left=-1, int win_right=-1, "
             "int max_seqlen_q=-1, int max_seqlen_kv=-1, "
             "str layout_q=\"BSND\", str layout_kv=\"BSND\", str layout_out=\"BSND\", "
-            "int pa_block_size=0, "
             "bool return_softmax_lse=False) -> (Tensor, Tensor)"
         ]
 
@@ -107,7 +106,6 @@ class QuantFlashAttnOpBuilder(OpBuilder):
             mask_mode: Optional[int] = 0, win_left: Optional[int] = -1, win_right: Optional[int] = -1,
             max_seqlen_q: Optional[int] = -1, max_seqlen_kv: Optional[int] = -1,
             layout_q: Optional[str] = "BSND", layout_kv: Optional[str] = "BSND", layout_out: Optional[str] = "BSND",
-            pa_block_size: Optional[int] = 0,
             return_softmax_lse: Optional[bool] = False
         ):
             if layout_q == "TND":
@@ -237,7 +235,6 @@ def quant_flash_attn(
         mask_mode: Optional[int] = 0, win_left: Optional[int] = -1, win_right: Optional[int] = -1,
         max_seqlen_q: Optional[int] = -1, max_seqlen_kv: Optional[int] = -1,
         layout_q: Optional[str] = "BSND", layout_kv: Optional[str] = "BSND", layout_out: Optional[str] = "BSND",
-        pa_block_size: Optional[int] = 0,
         return_softmax_lse: Optional[bool] = False
     ):
     """
@@ -255,5 +252,5 @@ def quant_flash_attn(
         sinks, attn_mask, metadata,
         softmax_scale, mask_mode, win_left, win_right,
         max_seqlen_q, max_seqlen_kv,
-        layout_q, layout_kv, layout_out, pa_block_size,
+        layout_q, layout_kv, layout_out,
         return_softmax_lse)
