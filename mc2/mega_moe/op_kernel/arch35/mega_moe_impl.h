@@ -341,21 +341,17 @@ __aicore__ inline void AicComputeGeneric(
         uint32_t kLoc = Get<K_VALUE>(blockCoord);
 
         if constexpr (Policy::IS_GMM1) {
-            if constexpr (!IsShared) {
-                uint32_t waveIdx = mLoc / L1_TILE_M_256;
-                if (waveIdx != lastWaveWaited) {
-                    WaitForUpstreamReady<Policy, IsShared>(workSet.gmmAddrInfo, config, mLoc);
-                    lastWaveWaited = waveIdx;
-                }
+            uint32_t waveIdx = mLoc / L1_TILE_M_256;
+            if (waveIdx != lastWaveWaited) {
+                WaitForUpstreamReady<Policy, IsShared>(workSet.gmmAddrInfo, config, mLoc);
+                lastWaveWaited = waveIdx;
             }
             if (args.vecSetSyncCom) {
                 WaitForVector();
             }
         } else {
-            if constexpr (!IsShared) {
-                if (loopIdx == startLoopIdx) {
-                    WaitForUpstreamReady<Policy, IsShared>(workSet.gmmAddrInfo, config, mLoc);
-                }
+            if (loopIdx == startLoopIdx) {
+                WaitForUpstreamReady<Policy, IsShared>(workSet.gmmAddrInfo, config, mLoc);
             }
             if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
                 if (args.vecSetSyncCom2 >= 2) {
@@ -661,20 +657,15 @@ __aicore__ inline void AicComputeA8W4(
         uint32_t mLoc = Get<M_VALUE>(blockCoord);
         uint32_t nLoc = Get<N_VALUE>(blockCoord);
 
-        if constexpr (!IsShared) {
-            bool shouldWait = false;
-            uint32_t waveIdx = 0;
-            if constexpr (Policy::IS_GMM1) {
-                waveIdx = mLoc / L1_TILE_M_256;
-                shouldWait = waveIdx != lastWaveWaited;
-            } else {
-                shouldWait = loopIdx == startLoopIdx;
-            }
-            if (shouldWait) {
+        if constexpr (Policy::IS_GMM1) {
+            uint32_t waveIdx = mLoc / L1_TILE_M_256;
+            if (waveIdx != lastWaveWaited) {
                 WaitForUpstreamReady<Policy, IsShared>(gmmAddrInfo, config, mLoc);
-                if constexpr (Policy::IS_GMM1) {
-                    lastWaveWaited = waveIdx;
-                }
+                lastWaveWaited = waveIdx;
+            }
+        } else {
+            if (loopIdx == startLoopIdx) {
+                WaitForUpstreamReady<Policy, IsShared>(gmmAddrInfo, config, mLoc);
             }
         }
 
