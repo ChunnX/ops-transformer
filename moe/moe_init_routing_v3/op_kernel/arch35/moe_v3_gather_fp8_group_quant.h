@@ -28,6 +28,7 @@ constexpr float FP8_GROUP_E5M2_MAX_VALUE = 57344.0f;
 constexpr uint32_t FP32_MANTISSA_MASK = 0x007fffffU;
 constexpr uint32_t FP32_EXPONENT_MASK = 0x000000ffU;
 constexpr int16_t FP32_EXPONENT_SHIFT = 23;
+constexpr uint32_t FP32_INV_EXP_SUB = 2U * FP32_BIAS;
 
 constexpr CastTrait CAST_TRAIT_B16_TO_F32 = {RegLayout::ZERO, SatMode::UNKNOWN, MaskMergeMode::ZEROING,
                                              RoundMode::UNKNOWN};
@@ -55,8 +56,6 @@ __simd_vf__ inline void ComputeFp8GroupQuantVF(__ubuf__ T *xAddr, __ubuf__ float
     uint32_t inputElemNum = groupElemNum;
     uint32_t outputElemNum = groupElemNum;
 
-    static constexpr DivSpecificMode divMode = {MaskMergeMode::ZEROING, false};
-
     __VEC_SCOPE__
     {
         RegTensor<float> xLeftReg;
@@ -65,8 +64,6 @@ __simd_vf__ inline void ComputeFp8GroupQuantVF(__ubuf__ T *xAddr, __ubuf__ float
         RegTensor<float> absRightReg;
         RegTensor<float> maxReg;
         RegTensor<float> maxRightReg;
-        RegTensor<float> fp8MaxReg;
-        RegTensor<float> rawScaleReg;
         RegTensor<float> roundScaleReg;
         RegTensor<float> invScaleReg;
         RegTensor<float> quantLeftReg;
@@ -82,21 +79,35 @@ __simd_vf__ inline void ComputeFp8GroupQuantVF(__ubuf__ T *xAddr, __ubuf__ float
         RegTensor<uint32_t> zeroIntReg;
         RegTensor<uint32_t> mantAddReg;
         RegTensor<uint32_t> roundedExpBitsReg;
+        RegTensor<uint32_t> invExpBitsReg;
+        RegTensor<uint32_t> invExpSubReg;
+        RegTensor<uint32_t> fp8ExpReg;
+        RegTensor<uint32_t> fp8MantReg;
+        RegTensor<uint32_t> bias127Reg;
+        RegTensor<uint32_t> threshold254Reg;
 
         MaskReg maskAll = CreateMask<float, MaskPattern::ALL>();
         MaskReg maskAllUint = CreateMask<uint32_t, MaskPattern::ALL>();
         MaskReg maskLoop;
         MaskReg maskRight;
         MaskReg maskScalar = CreateMask<float, MaskPattern::VL1>();
-        MaskReg maskMantNonZero;
-        MaskReg maskExpZero;
+        MaskReg maskMantHigh;
+        MaskReg maskClamp;
+
+        uint32_t fp8MaxBits = *reinterpret_cast<const uint32_t *>(&fp8MaxValue);
+        uint32_t fp8Exp = (fp8MaxBits >> FP32_EXPONENT_SHIFT) & FP32_EXPONENT_MASK;
+        uint32_t fp8Mant = fp8MaxBits & FP32_MANTISSA_MASK;
 
         Duplicate(maxReg, 0.0f, maskAll);
-        Duplicate(fp8MaxReg, fp8MaxValue, maskAll);
         Duplicate(expMaskReg, FP32_EXPONENT_MASK, maskAllUint);
         Duplicate(mantMaskReg, FP32_MANTISSA_MASK, maskAllUint);
         Duplicate(oneIntReg, 1U, maskAllUint);
         Duplicate(zeroIntReg, 0U, maskAllUint);
+        Duplicate(invExpSubReg, FP32_INV_EXP_SUB, maskAllUint);
+        Duplicate(fp8ExpReg, fp8Exp, maskAllUint);
+        Duplicate(fp8MantReg, fp8Mant, maskAllUint);
+        Duplicate(bias127Reg, static_cast<uint32_t>(FP32_BIAS), maskAllUint);
+        Duplicate(threshold254Reg, 254U, maskAllUint);
 
         if (inputElemNum > vfLen) {
             uint32_t rightElemNum = inputElemNum - vfLen;
@@ -119,20 +130,29 @@ __simd_vf__ inline void ComputeFp8GroupQuantVF(__ubuf__ T *xAddr, __ubuf__ float
             Maxs(maxReg, maxReg, 0.0001f, maskAll);
         }
 
-        Div<float, &divMode>(rawScaleReg, maxReg, fp8MaxReg, maskAll);
-        ShiftRights(expBitsReg, (RegTensor<uint32_t> &)rawScaleReg, FP32_EXPONENT_SHIFT, maskAllUint);
+        // 从 maxReg 直接提取指数/尾数（amax 为正常 float，不受 FTZ 影响），整数域计算 round_scale 指数
+        ShiftRights(expBitsReg, (RegTensor<uint32_t> &)maxReg, FP32_EXPONENT_SHIFT, maskAllUint);
         And(expBitsReg, expBitsReg, expMaskReg, maskAllUint);
-        And(mantBitsReg, (RegTensor<uint32_t> &)rawScaleReg, mantMaskReg, maskAllUint);
-        Compare<uint32_t, CMPMODE::NE>(maskMantNonZero, mantBitsReg, zeroIntReg, maskAllUint);
-        Select(mantAddReg, oneIntReg, zeroIntReg, maskMantNonZero);
-        Compare<uint32_t, CMPMODE::EQ>(maskExpZero, expBitsReg, zeroIntReg, maskAllUint);
-        Select(mantAddReg, oneIntReg, mantAddReg, maskExpZero);
-        Add(roundedExpBitsReg, expBitsReg, mantAddReg, maskAllUint);
+        And(mantBitsReg, (RegTensor<uint32_t> &)maxReg, mantMaskReg, maskAllUint);
+        // mant_add = (mant_amax > fp8_mant) ? 1 : 0
+        Compare<uint32_t, CMPMODE::GT>(maskMantHigh, mantBitsReg, fp8MantReg, maskAllUint);
+        Select(mantAddReg, oneIntReg, zeroIntReg, maskMantHigh);
+        // biased_exp = exp_amax - fp8_exp + 127 + mant_add（uint32_t 下溢回绕由下方 clamp 处理）
+        Sub<uint32_t>(roundedExpBitsReg, expBitsReg, fp8ExpReg, maskAllUint);
+        Add<uint32_t>(roundedExpBitsReg, roundedExpBitsReg, bias127Reg, maskAllUint);
+        Add<uint32_t>(roundedExpBitsReg, roundedExpBitsReg, mantAddReg, maskAllUint);
+        // 下溢钳位：biased_exp == 0 或回绕 > 254 时钳到 1（= 2^-126），匹配标杆对 denormal 的处理
+        Compare<uint32_t, CMPMODE::EQ>(maskClamp, roundedExpBitsReg, zeroIntReg, maskAllUint);
+        Select(roundedExpBitsReg, oneIntReg, roundedExpBitsReg, maskClamp);
+        Compare<uint32_t, CMPMODE::GT>(maskClamp, roundedExpBitsReg, threshold254Reg, maskAllUint);
+        Select(roundedExpBitsReg, oneIntReg, roundedExpBitsReg, maskClamp);
+        // amax == 0 时 exp_amax=0 使 biased_exp 下溢回绕为 >254，同样被钳到 1（round_scale = 2^-126）
+        // round_scale = biased_exp << 23
         ShiftLefts((RegTensor<uint32_t> &)roundScaleReg, roundedExpBitsReg, FP32_EXPONENT_SHIFT, maskAllUint);
 
         DataCopy<float, StoreDist::DIST_FIRST_ELEMENT_B32>(scaleAddr, roundScaleReg, maskAll);
-        Duplicate(fp8MaxReg, 1.0f, maskAll);
-        Div<float, &divMode>(invScaleReg, fp8MaxReg, roundScaleReg, maskAll);
+        Sub<uint32_t>(invExpBitsReg, invExpSubReg, roundedExpBitsReg, maskAllUint);
+        ShiftLefts((RegTensor<uint32_t> &)invScaleReg, invExpBitsReg, FP32_EXPONENT_SHIFT, maskAllUint);
 
         if (outputElemNum > vfLen) {
             Mul(quantLeftReg, xLeftReg, invScaleReg, maskAll);
