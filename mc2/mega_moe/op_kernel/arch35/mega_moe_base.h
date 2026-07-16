@@ -285,6 +285,11 @@ constexpr uint32_t UNPERMUTE_WEIGHT_ALIGNMENT_RESERVE_BYTES = 2 * ALIGN_32;
 constexpr uint32_t DEQUANT_BF16_SCALE_EXPANSION = 2U;
 constexpr uint32_t DEQUANT_FP32_SCALE_EXPANSION = 4U;
 
+// SendMaskCal 使用 MTE3_V 的 EVENT_ID0~EVENT_ID5 管理 mask push ring。
+// 最低保留双 buffer 兼容原有流水，最多 6 个 buffer；实际数量由 SendAndQuantBuffInit 按剩余 UB 反推。
+constexpr int32_t MIN_SEND_MASK_BUFFER_COUNT = 2;
+constexpr int32_t MAX_SEND_MASK_BUFFER_COUNT = 6;
+
 // Recv route batch 上限只由 DispatchBuffInit 的 UB 布局约束。Brecv 表示每个 recv batch 的 route item 数，
 // W=worldSize，E=expertPerRank，D=DISPATCH_BUFFER_NUM：
 //   recvVariableBytes(Brecv) = Brecv / 8 + 2 * Brecv * sizeof(int32_t) = 65 * Brecv / 8；

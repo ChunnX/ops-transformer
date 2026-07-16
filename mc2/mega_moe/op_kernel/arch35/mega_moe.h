@@ -88,12 +88,18 @@ private:
         uint32_t topKWeightsBufferBytes = 0;
         uint32_t topKWeightsBf16BufferBytes = 0;
     };
+    struct SendMaskBufferConfig {
+        int32_t bufferCount = 0;
+        uint32_t bufferBytes = 0;
+    };
 
     __aicore__ inline void DispatchBuffInit();
-    __aicore__ inline void SendAndQuantBuffInit();
+    __aicore__ inline SendMaskBufferConfig CalcSendMaskBufferConfig(uint32_t bytesBeforeMaskBuffers,
+                                                                    uint32_t bytesAfterMaskBuffers, uint32_t ubSize);
+    __aicore__ inline SendMaskBufferConfig SendAndQuantBuffInit();
     __aicore__ inline void ResetFlagList();
     __aicore__ inline void ResetGmm2CombineSyncCounters();
-    __aicore__ inline void SendMaskCal();
+    __aicore__ inline void SendMaskCal(const SendMaskBufferConfig &bufferConfig);
     __aicore__ inline void SendCntCal(int32_t localExpertId, uint64_t &sendCnt);
     __aicore__ inline void TripleInfoCalAndDispatch(GMMAddrInfo &gmmAddrInfo, int32_t localExpertId);
     template <AddrUpdateMode Mode>
@@ -199,9 +205,9 @@ private:
     LocalTensor<uint16_t> mxTempTensor_;
     LocalTensor<int32_t> resetTensor_;
     LocalTensor<int32_t> topkIdsTensor_;
-    LocalTensor<uint8_t> sendMaskTensor_[DOUBLE_BUFFER]; // SendMaskCal 源卡算 [mask|count] 的 ping-pong 缓冲
-    LocalTensor<int32_t> sendGatherOutTensor_;           // SendMaskCal GatherMask 计 count 的废弃输出 scratch
-    LocalTensor<int32_t> sendCntAccTensor_;              // SendMaskCal per-expert 跨 batch count 累加器
+    LocalTensor<uint8_t> sendMaskTensor_;      // SendMaskCal 源卡生成并推送 [mask|count] 的动态 ring buffer
+    LocalTensor<int32_t> sendGatherOutTensor_; // SendMaskCal GatherMask 计 count 的废弃输出 scratch
+    LocalTensor<int32_t> sendCntAccTensor_;    // SendMaskCal per-expert 跨 batch count 累加器
     LocalTensor<int32_t> expertTokenNumsOutTensor_;
     LocalTensor<bfloat16_t> dataResTensor_;
     LocalTensor<float> dataResFp32Tensor_;
@@ -392,15 +398,51 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::DispatchBuffInit()
     PipeBarrier<PIPE_ALL>();
 }
 
+// ==================================================================================================
+// CalcSendMaskBufferConfig：保持 send route batch 不变，按其余 tensor 占用反推 mask push buffer 数量
+// ==================================================================================================
+template <TemplateMegaMoeTypeClass>
+__aicore__ inline typename MegaMoe<TemplateMegaMoeTypeFunc>::SendMaskBufferConfig
+MegaMoe<TemplateMegaMoeTypeFunc>::CalcSendMaskBufferConfig(uint32_t bytesBeforeMaskBuffers,
+                                                           uint32_t bytesAfterMaskBuffers, uint32_t ubSize)
+{
+    SendMaskBufferConfig config;
+    // 每个槽位存一个 batch 的 bit-packed mask，并追加 32B 供末 batch 写入 count。
+    config.bufferBytes = static_cast<uint32_t>(sendRouteItemsPerBatch_ / 8) + static_cast<uint32_t>(ALIGN_32);
+
+    uint32_t fixedBytes = bytesBeforeMaskBuffers + bytesAfterMaskBuffers;
+    uint32_t maskBufferBudgetBytes = ubSize > fixedBytes ? ubSize - fixedBytes : 0;
+    config.bufferCount = static_cast<int32_t>(maskBufferBudgetBytes / config.bufferBytes);
+    config.bufferCount =
+        config.bufferCount > MAX_SEND_MASK_BUFFER_COUNT ? MAX_SEND_MASK_BUFFER_COUNT : config.bufferCount;
+
+    // 短任务只保留当前 AIV core 实际可能使用的槽位。
+    int32_t totalExperts = static_cast<int32_t>(worldSize_ * expertPerRank_);
+    int32_t coreIdx = static_cast<int32_t>(aivCoreIdx_);
+    int32_t ownedExpertCount =
+        coreIdx < totalExperts ? Ops::Base::CeilDiv(totalExperts - coreIdx, static_cast<int32_t>(blockAivNum_)) : 0;
+    int32_t maskPushCount = sendRouteBatchCount_ * ownedExpertCount;
+    if (maskPushCount > 0 && config.bufferCount > maskPushCount) {
+        config.bufferCount = maskPushCount;
+    }
+
+    // MAX_SEND_ROUTE_ITEMS_PER_BATCH 的最坏 UB 推导已包含双 mask buffer，因此可以安全保底到 2。
+    config.bufferCount =
+        config.bufferCount < MIN_SEND_MASK_BUFFER_COUNT ? MIN_SEND_MASK_BUFFER_COUNT : config.bufferCount;
+    return config;
+}
+
 // ======================================================================================
 // SendAndQuantBuffInit：SendMaskCal & ResetFlagList & QuantProcessInRank 中使用的 buffer 申请。
 //   topkIds/sendMask/sendGatherOut 按 sendRouteItemsPerBatch_ 分配，reset 封顶 DISPATCH_RESET_BATCH。
 // ======================================================================================
 template <TemplateMegaMoeTypeClass>
-__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SendAndQuantBuffInit()
+__aicore__ inline typename MegaMoe<TemplateMegaMoeTypeFunc>::SendMaskBufferConfig
+MegaMoe<TemplateMegaMoeTypeFunc>::SendAndQuantBuffInit()
 {
+    SendMaskBufferConfig bufferConfig;
     if constexpr (g_coreType == AIC) {
-        return;
+        return bufferConfig;
     }
 
     // 与 route batch 无关的固定占用
@@ -467,22 +509,22 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SendAndQuantBuffInit()
     uint32_t xInAlignAddr2 = xInAlignAddr1 + xInAlignSize;
     xInTensor2_ = LocalTensor<bfloat16_t>(TPosition::VECCALC, xInAlignAddr2, xInAlignSize / sizeof(bfloat16_t));
 
-    // sendMaskTensor_: 各 batch/8 mask 切片 + 32B（末块折叠 count），DOUBLE_BUFFER 双 buffer
-    uint32_t maskBufBytes = static_cast<uint32_t>(sendRouteItemsPerBatch_ / 8) + static_cast<uint32_t>(ALIGN_32);
     uint32_t sendMaskAddr = xInAlignAddr2 + xInAlignSize;
-    for (int32_t index = 0; index < DOUBLE_BUFFER; ++index) {
-        sendMaskTensor_[index] = LocalTensor<uint8_t>(
-            TPosition::VECCALC, sendMaskAddr + static_cast<uint32_t>(index) * maskBufBytes, maskBufBytes);
-    }
-    uint32_t sendGatherOutAddr = sendMaskAddr + static_cast<uint32_t>(DOUBLE_BUFFER) * maskBufBytes;
     uint32_t sendGatherOutSize =
         Ops::Base::CeilAlign(static_cast<int64_t>(sendRouteItemsPerBatch_) * static_cast<int64_t>(sizeof(int32_t)),
                              static_cast<int64_t>(ALIGN_256));
+    uint32_t bytesAfterMaskBuffers = sendGatherOutSize + sendCntAccSize;
+    bufferConfig = CalcSendMaskBufferConfig(sendMaskAddr, bytesAfterMaskBuffers,
+                                            static_cast<uint32_t>(params_.tilingData->ubSize));
+
+    uint32_t sendMaskTotalBytes = static_cast<uint32_t>(bufferConfig.bufferCount) * bufferConfig.bufferBytes;
+    sendMaskTensor_ = LocalTensor<uint8_t>(TPosition::VECCALC, sendMaskAddr, sendMaskTotalBytes);
+    uint32_t sendGatherOutAddr = sendMaskAddr + sendMaskTotalBytes;
     sendGatherOutTensor_ =
         LocalTensor<int32_t>(TPosition::VECCALC, sendGatherOutAddr, sendGatherOutSize / sizeof(int32_t));
-
     uint32_t sendCntAccAddr = sendGatherOutAddr + sendGatherOutSize;
     sendCntAccTensor_ = LocalTensor<int32_t>(TPosition::VECCALC, sendCntAccAddr, sendCntAccSize / sizeof(int32_t));
+    return bufferConfig;
 }
 
 // ===============================================================================================
@@ -552,11 +594,13 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ExpertTokenNumCopyOut()
 // SendMaskCal：对本卡 topk 按通信域内所有专家id计算mask位，并发送至目标专家卡。
 //
 //   Phase 1: 本卡 topk 按 route batch 分批搬入；
-//   Phase 2: 配合 topk batch 的 per-expert mask 生成+双缓冲推送。
+//   Phase 2: 配合 topk batch 的 per-expert mask 生成+动态 ring buffer 推送。
 //
-// 流水（双缓冲 mask push）：
-//   batch e 的 topk 加载 (V_MTE2→MTE2_V) 与 batch e-1 的 per-expert mask 生成+推送 (V_S→...→MTE3_V) 重叠。
-//   kBufEvents[DOUBLE_BUFFER] 控制 MTE3 write 完成事件，保证双 buf 交替使用不冲突。
+// 流水（动态 2~6 buffer mask push）：
+//   当前槽完成 mask 生成后即可发起 MTE3 push；Vector 继续使用后续槽生成其他 expert 的 mask，
+//   直到 ring 回绕时才等待对应槽的 MTE3 完成。跨 batch 时，下一批 topk 的 MTE2 加载也可与上一批
+//   尚未完成的 MTE3 push 重叠。
+//   EVENT_ID0~EVENT_ID(bufferCount-1) 控制各槽 MTE3 write 完成事件，保证 ring 轮转使用不冲突。
 //
 // 关键细节：
 //   - 非末 batch: pushBytes = sliceBytes（纯 mask 切片）
@@ -566,7 +610,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ExpertTokenNumCopyOut()
 //   - peer window 地址: maskWinOffset_ + expert*srcRank*(mask+count slot) + batchStart/8 偏移
 // ======================================================================================================
 template <TemplateMegaMoeTypeClass>
-__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SendMaskCal()
+__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SendMaskCal(const SendMaskBufferConfig &bufferConfig)
 {
     if constexpr (g_coreType == AIC) {
         return;
@@ -592,10 +636,9 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SendMaskCal()
     Duplicate<int32_t>(sendCntAccTensor_, 0, ownedExpertNum);
     SyncFuncStatic<AscendC::HardEvent::V_S, SYNC_EVENT_ID2>();
 
-    // 双缓冲 mask push 事件：初始全部 set
-    constexpr TEventID kBufEvents[DOUBLE_BUFFER] = {EVENT_ID0, EVENT_ID1};
-    for (int32_t bufIdx = 0; bufIdx < static_cast<int32_t>(DOUBLE_BUFFER); ++bufIdx) {
-        SetFlag<AscendC::HardEvent::MTE3_V>(kBufEvents[bufIdx]);
+    // mask push ring 事件：初始将实际分配的全部槽位交给 Vector。
+    for (int32_t bufferIdx = 0; bufferIdx < bufferConfig.bufferCount; ++bufferIdx) {
+        SetFlag<AscendC::HardEvent::MTE3_V>(static_cast<TEventID>(bufferIdx));
     }
 
     int32_t iter = 0;
@@ -627,8 +670,9 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SendMaskCal()
             int32_t dstRank = globalExpertId / static_cast<int32_t>(expertPerRank_);
             int32_t localExpertId = globalExpertId % static_cast<int32_t>(expertPerRank_);
 
-            TEventID bufEvent = kBufEvents[iter % static_cast<int32_t>(DOUBLE_BUFFER)];
-            LocalTensor<uint8_t> maskBuf = sendMaskTensor_[iter % static_cast<int32_t>(DOUBLE_BUFFER)];
+            int32_t bufferIdx = iter % bufferConfig.bufferCount;
+            TEventID bufEvent = static_cast<TEventID>(bufferIdx);
+            LocalTensor<uint8_t> maskBuf = sendMaskTensor_[bufferIdx * bufferConfig.bufferBytes];
             LocalTensor<uint32_t> maskBufU32 = maskBuf.template ReinterpretCast<uint32_t>();
 
             WaitFlag<AscendC::HardEvent::MTE3_V>(bufEvent);
@@ -661,8 +705,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SendMaskCal()
         }
     }
 
-    for (int32_t bufIdx = 0; bufIdx < static_cast<int32_t>(DOUBLE_BUFFER); ++bufIdx) {
-        WaitFlag<AscendC::HardEvent::MTE3_V>(kBufEvents[bufIdx]);
+    for (int32_t bufferIdx = 0; bufferIdx < bufferConfig.bufferCount; ++bufferIdx) {
+        WaitFlag<AscendC::HardEvent::MTE3_V>(static_cast<TEventID>(bufferIdx));
     }
 }
 
@@ -1610,9 +1654,9 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
     // 1.本卡数据处理
     int64_t oriOverflowMode = GetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>();
     SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(0);
-    SendAndQuantBuffInit();
-    SendMaskCal();   // 源卡按所有全局专家算 mask 并推送到目标专家卡
-    ResetFlagList(); // 清理workSpace空间上的flag位
+    SendMaskBufferConfig sendMaskBufferConfig = SendAndQuantBuffInit();
+    SendMaskCal(sendMaskBufferConfig); // 源卡按所有全局专家算 mask 并推送到目标专家卡
+    ResetFlagList();                   // 清理workSpace空间上的flag位
 
     QuantProcessInRank(); // 对本卡token的量化
     if constexpr (g_coreType == AIV) {
