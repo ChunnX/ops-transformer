@@ -365,7 +365,12 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::DispatchBuffInit
             + static_cast<uint32_t>(DISPATCH_WAVE_TILE_M) * static_cast<uint32_t>(ALIGN_32);
     }
     uint32_t fixedBefore = cumsumInfoTensorAddr + cumsumInfoTensorSize;
-    uint32_t dispatchAvailUb = SEND_MASK_UB_LIMIT - fixedBefore - dispatchFixedCost;
+    if (SEND_MASK_UB_LIMIT > fixedBefore && 
+        SEND_MASK_UB_LIMIT - fixedBefore > dispatchFixedCost) {
+        dispatchAvailUb = SEND_MASK_UB_LIMIT - fixedBefore - dispatchFixedCost;
+    } else {
+        dispatchAvailUb = 0;
+    }
     uint32_t maxDispatchRoundSize = dispatchAvailUb * 8U / 65U;
     maxDispatchRoundSize = (maxDispatchRoundSize / 256U) * 256U;
     if (maxDispatchRoundSize == 0) { maxDispatchRoundSize = 256U; }
