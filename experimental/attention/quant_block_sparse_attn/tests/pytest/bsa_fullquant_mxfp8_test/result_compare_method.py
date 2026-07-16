@@ -12,6 +12,7 @@
 
 import logging
 import math
+import os
 import torch
 
 logging.basicConfig(
@@ -23,6 +24,10 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 _EPS = 1e-10
+_DEFAULT_RTOL = 0.005
+_DEFAULT_ATOL = 0.000025
+_BF16_RTOL = 0.0078125
+_BF16_ATOL = 0.0001
 _TABLE_WIDTH = 90
 _BASE_HEADER = "{:>10} {:>18} {:>18} {:>18} {:>14}"
 _BASE_ROW = "{:>10} {:>18} {:>18} {:>18} {:>14}"
@@ -47,6 +52,13 @@ def _display_offsets(total_count):
     if total_count <= 20:
         return list(range(total_count))
     return list(range(10)) + [None] + list(range(total_count - 10, total_count))
+
+
+def get_compare_tolerance(npu_result):
+    """返回与 check_result 完全一致的逐元素 rtol/atol。"""
+    if isinstance(npu_result, torch.Tensor) and npu_result.dtype == torch.bfloat16:
+        return _BF16_RTOL, _BF16_ATOL
+    return _DEFAULT_RTOL, _DEFAULT_ATOL
 
 
 def display_output_torch(real_data, expect_data, start, end, expect_fp32_data=None):
@@ -125,8 +137,7 @@ def check_result(expect, npu_result):
     diff_thd = 0.005
     pct_thd = 0.005
     max_diff_hd = 10
-    rtol = 0.005
-    atol = 0.000025
+    rtol, atol = get_compare_tolerance(npu_result)
 
     real_data = npu_result.detach().cpu().flatten()
     expect_data = expect.detach().cpu().flatten() if isinstance(expect, torch.Tensor) else torch.as_tensor(expect).flatten()
@@ -162,10 +173,6 @@ def check_result(expect, npu_result):
 
     real_float = real_data.to(torch.float32)
     expect_float = expect_data.to(torch.float32)
-
-    if npu_result.dtype == torch.bfloat16:
-        rtol = 0.0078125
-        atol = 0.0001
 
     diff_result = torch.isclose(real_float, expect_float, rtol=rtol, atol=atol, equal_nan=True)
     err_idx = torch.nonzero(~diff_result, as_tuple=False).flatten()
@@ -203,3 +210,117 @@ def check_result(expect, npu_result):
         display_error_output_torch(real_data, expect_data, err_idx, err_diff)
 
     return result, fulfill_percent, max_error
+
+
+def save_precision_map(expect, npu_result, output_path, tensor_name, compare_result=None,
+                       max_display_rows=2048, max_display_cols=2048):
+    """生成白色通过、蓝色失败的逐元素精度分布图；大 Tensor 按区域聚合显示。"""
+    try:
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+        from matplotlib.colors import ListedColormap
+        from matplotlib.patches import Patch
+    except ImportError as error:
+        raise RuntimeError("--debug precision PNG requires matplotlib") from error
+
+    expect_tensor = expect.detach().cpu() if isinstance(expect, torch.Tensor) else torch.as_tensor(expect)
+    npu_tensor = npu_result.detach().cpu()
+    expect_shape = tuple(expect_tensor.shape)
+    npu_shape = tuple(npu_tensor.shape)
+    rtol, atol = get_compare_tolerance(npu_result)
+    expect_flat = expect_tensor.flatten()
+    npu_flat = npu_tensor.flatten()
+    element_count_mismatch = expect_flat.numel() != npu_flat.numel()
+
+    if element_count_mismatch:
+        display_mask = torch.ones((1, 1), dtype=torch.uint8)
+        logical_rows = logical_cols = 1
+        fail_count = max(expect_flat.numel(), npu_flat.numel())
+        total_count = fail_count
+    else:
+        if expect_flat.dtype == torch.bool:
+            expect_flat = expect_flat.to(torch.int8)
+            npu_flat = npu_flat.to(torch.int8)
+        total_count = int(expect_flat.numel())
+        logical_cols = int(expect_shape[-1]) if expect_shape and expect_shape[-1] > 0 else max(total_count, 1)
+        logical_rows = max(1, math.ceil(total_count / logical_cols))
+        display_rows = min(logical_rows, max_display_rows)
+        display_cols = min(logical_cols, max_display_cols)
+        display_mask = torch.zeros((display_rows, display_cols), dtype=torch.uint8)
+        fail_count = 0
+
+        # 按最终图片的一行分块比较，避免 MIX 大用例额外构造完整 FP32 失败矩阵。
+        for display_row in range(display_rows):
+            source_row_begin = display_row * logical_rows // display_rows
+            source_row_end = (display_row + 1) * logical_rows // display_rows
+            flat_begin = source_row_begin * logical_cols
+            flat_end = min(source_row_end * logical_cols, total_count)
+            if flat_begin >= flat_end:
+                continue
+
+            close_mask = torch.isclose(
+                npu_flat[flat_begin:flat_end].to(torch.float32),
+                expect_flat[flat_begin:flat_end].to(torch.float32),
+                rtol=rtol, atol=atol, equal_nan=True)
+            fail_chunk = ~close_mask
+            fail_count += int(fail_chunk.sum().item())
+
+            source_row_count = source_row_end - source_row_begin
+            padded_count = source_row_count * logical_cols
+            if fail_chunk.numel() < padded_count:
+                fail_chunk = torch.nn.functional.pad(
+                    fail_chunk, (0, padded_count - fail_chunk.numel()), value=False)
+            fail_columns = fail_chunk.reshape(source_row_count, logical_cols).any(dim=0)
+            if display_cols != logical_cols:
+                fail_columns = torch.nn.functional.adaptive_max_pool1d(
+                    fail_columns.to(torch.float32).reshape(1, 1, logical_cols), display_cols)[0, 0].to(torch.bool)
+            display_mask[display_row] = fail_columns.to(torch.uint8)
+
+    display_rows, display_cols = display_mask.shape
+    output_dir = os.path.dirname(output_path)
+    if output_dir:
+        os.makedirs(output_dir, exist_ok=True)
+    figure_width = min(18.0, max(8.0, display_cols / max(display_rows, 1) * 10.0))
+    figure_height = min(14.0, max(5.0, display_rows / max(display_cols, 1) * figure_width))
+    fig, axis = plt.subplots(figsize=(figure_width, figure_height))
+    axis.imshow(
+        display_mask.numpy(), cmap=ListedColormap(["#FFFFFF", "#2563EB"]),
+        vmin=0, vmax=1, interpolation="nearest", aspect="auto",
+        extent=(0, logical_cols, logical_rows, 0))
+    axis.set_xlabel(f"logical column (size={logical_cols})")
+    axis.set_ylabel(f"logical row (size={logical_rows})")
+
+    status = compare_result[0] if compare_result is not None else "N/A"
+    pass_count = max(total_count - fail_count, 0)
+    title = (
+        f"{tensor_name} precision map | result={status}\n"
+        f"golden_shape={expect_shape}, operator_shape={npu_shape}\n"
+        f"logical={logical_rows}x{logical_cols}, display={display_rows}x{display_cols}, "
+        f"elements={total_count}, pass={pass_count}, fail={fail_count}, rtol={rtol:g}, atol={atol:g}"
+    )
+    if element_count_mismatch:
+        title += "\nelement-count mismatch"
+    elif expect_shape != npu_shape:
+        title += "\nshape differs; flattened elements use the normal precision criteria"
+    elif display_rows != logical_rows or display_cols != logical_cols:
+        title += "\naggregated view: a pixel is blue when its source region contains at least one failed element"
+    axis.set_title(title, fontsize=10)
+    axis.legend(
+        handles=[Patch(facecolor="#FFFFFF", edgecolor="#808080", label="PASS"),
+                 Patch(facecolor="#2563EB", label="FAIL")],
+        loc="upper right", framealpha=0.9)
+    fig.tight_layout()
+    fig.savefig(output_path, dpi=140, bbox_inches="tight", facecolor="white")
+    plt.close(fig)
+    logger.info("[DEBUG] precision map saved: %s", output_path)
+    return {
+        "golden_shape": expect_shape,
+        "operator_shape": npu_shape,
+        "logical_size": (logical_rows, logical_cols),
+        "display_size": (display_rows, display_cols),
+        "total": total_count,
+        "fail": fail_count,
+        "rtol": rtol,
+        "atol": atol,
+    }
