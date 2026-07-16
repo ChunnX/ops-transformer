@@ -535,6 +535,8 @@ __aicore__ inline void AivGmm2PostGeneric(WorkSet &workSet, ExtraArgs &args, uin
             MegaMoeCombineImpl::CombineTokensLayered<ElementC, decltype(actualShape)>(
                 mLoc, nLoc, workSet.config.n, tripleTensor, l0cOutUbGMM2, actualShape, workSet.params);
         } else {
+            AscendC::SetFlag<AscendC::HardEvent::MTE2_S>(0);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(0);
             MegaMoeCombineImpl::CombineTokens<ElementC, decltype(actualShape)>(
                 mLoc, nLoc, workSet.config.n, tripleTensor, l0cOutUbGMM2, actualShape, workSet.params);
         }
@@ -886,6 +888,8 @@ __aicore__ inline void AivGmm2PostA8W4(Scheduler &scheduler, TensorC &l0cOutGm, 
         tripleGm.SetGlobalBuffer(
             reinterpret_cast<__gm__ int32_t *>(params.workspaceInfo.tripleInfoPtr + (groupCnt + mLoc) * 32));
         AscendC::DataCopy(tripleTensor, tripleGm, lenTile * 8);
+        AscendC::SetFlag<AscendC::HardEvent::MTE2_S>(0);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(0);
         MegaMoeCombineImpl::CombineTokens<ElementC, decltype(actualShape)>(mLoc, nLoc, config.n, tripleTensor,
                                                                            l0cOutUbGMM2, actualShape, params);
         AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(0);
