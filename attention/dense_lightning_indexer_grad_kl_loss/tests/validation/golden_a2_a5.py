@@ -92,7 +92,8 @@ def resolve_lengths(case: Mapping[str, object], seed: int) -> Tuple[List[int], L
     else:
         rng = random.Random(seed ^ 0x5EED5EED)
         q_lengths = _balanced_lengths(batch, max_q, rng)
-        k_lengths = _balanced_lengths(batch, max_k, rng)
+        k_lengths = [rng.randint(q_length, max_k) for q_length in q_lengths]
+        k_lengths[rng.randrange(batch)] = max_k
         zero_position = case.get("zero_position")
         if zero_position is not None:
             positions = {
