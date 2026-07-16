@@ -42,7 +42,8 @@ param_combinations = []
 
 for _, params in enumerate(PARAM_SET):
     param_names = [
-        "B", "seqlen", "nk", "nv", "dk", "dv", "chunk_size", "data_type", "state_data_type", "has_g"
+        "B", "seqlen", "nk", "nv", "dk", "dv", "chunk_size", "data_type", "state_data_type", "has_g",
+        "is_contiguous"
     ]
 
     param_values = [
@@ -56,6 +57,7 @@ for _, params in enumerate(PARAM_SET):
         params["data_type"],
         params["state_data_type"],
         params["has_g"],
+        params.get("is_contiguous", [True]),
     ]
 
     for combo in itertools.product(*param_values):
@@ -79,8 +81,9 @@ def test_chunk_gated_delta_rule(param_combinations):
     data_type = param_combinations['data_type']
     state_data_type = param_combinations['state_data_type']
     has_g = param_combinations['has_g']
+    is_contiguous = param_combinations['is_contiguous']
 
-    test_data = B, seqlen, nk, nv, dk, dv, chunk_size, data_type, state_data_type, has_g
+    test_data = B, seqlen, nk, nv, dk, dv, chunk_size, data_type, state_data_type, has_g, is_contiguous
 
     torch_npu.npu.set_device(0)
 
