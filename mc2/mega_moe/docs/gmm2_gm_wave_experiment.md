@@ -12,9 +12,9 @@
   ops-tensor `051664f3` 依赖重打完整包。handoff 中的旧 base 仅作背景，没有
   cherry-pick 旧 GMM2-GM/diagnostic 实现。
 - `[LOCAL-VERIFIED]` token：`codex/0715-gmm2-gm-rebuild-token`，核心实现 head
-  `7c91d3e07`，最新主线集成/打包 head `75c1a4ef0`。
+  `7c91d3e07`，动态 wave tiling 修复 `8224210e1`。
 - `[LOCAL-VERIFIED]` tile：`codex/0715-gmm2-gm-rebuild-tile`，核心实现 head
-  `e653e6d59`，最新主线集成/打包 head `e9116a4a7`。
+  `e653e6d59`，动态 wave tiling 修复 `a9e04d725`。
 - `[NEEDS-NPU]` 两条分支都尚未做上板 correctness、hang、scalar GM 地址、timeline
   和性能验收；在数据返回前不能称为正确版本或最佳版本。
 
@@ -37,6 +37,10 @@ latest upstream integration:
 916d211e9 upstream/master dependency/namespace cleanup
 75c1a4ef0 token merge and package point
 e9116a4a7 tile merge and package point
+
+dynamic wave tiling fix:
+8224210e1 token: derive wave size from tile workload and AIC count
+a9e04d725 tile: equivalent cherry-pick, retaining tile ownership tests
 ```
 
 ## 流水与资源约束
@@ -67,6 +71,20 @@ ready 协议为真正的 producer fan-in：每颗已启动 AIC 先 `FIX_S` drain
 - per-expert：每 rank `36 * 16 = 576` 次 publish；
 - per-batch：wave 为 `5,5,5,1`，每 rank `36 * 4 = 144` 次 publish。
 
+wave 大小不再由 kernel 编译宏或 `ceil(blockNum/worldSize)` 决定。host tiling 先估计每个
+expert 的平均 token 数，再按当前 256x256 GMM tile 和实际 `aicNum` 计算：
+
+```text
+expectedM = ceil(bs * topK / expertPerRank)
+gmm1Tiles = max(1, ceil(expectedM / 256)) * ceil(hiddenDim / 512)
+gmm2Tiles = ceil(expectedM / 256) * ceil(h / 256)
+expertsPerBatch = clamp(ceil(aicNum / max(1, min(gmm1Tiles, gmm2Tiles))),
+                        1, min(expertPerRank, 14))
+```
+
+固定 case 的 `expectedM=256`，GMM1/GMM2 分别为 8/16 tiles/expert，因此 tiling 输出
+`ceil(36/min(8,16))=5`；kernel 只消费 `expertsPerBatch`。
+
 token 分支把每个 expert 的 M 行在 36 个 logical AIV1 间做平衡连续切分，M=256 时每颗
 约 7/8 行；每行从 GM 搬一次，再按 256 列发送。tile 分支把 256x256 tile 按 row-major
 round-robin 分给 logical AIV1；固定 M=256,H=4096 时共 16 tile，16 颗 AIV1 各一块。
@@ -82,16 +100,16 @@ round-robin 分给 logical AIV1；固定 M=256,H=4096 时共 16 tile，16 颗 AI
 | 项目 | 结果 |
 |---|---|
 | upstream/master baseline `--pkg` | `[LOCAL-VERIFIED]` PASS |
-| token host UT | `[LOCAL-VERIFIED]` 14/14 |
-| tile host UT | `[LOCAL-VERIFIED]` 15/15 |
-| token 默认/per-batch/wave16/timeline opkernel | `[LOCAL-VERIFIED]` 每组 8/8 变体编译 |
-| tile 默认/per-batch opkernel | `[LOCAL-VERIFIED]` 每组 8/8 变体编译 |
-| token 默认 `--pkg` | `[LOCAL-VERIFIED]` PASS，4,039,183 bytes，SHA256 `be93e571a8e46af7bf1ac3243407092025ed5218fd2c773ca801c30095dbe241` |
-| tile 默认 `--pkg` | `[LOCAL-VERIFIED]` PASS，4,039,456 bytes，SHA256 `7d2b9b56bcf5c35922b04741c3489f46113a500367d4e272811b2a10bb0dfeb8` |
+| token host UT | `[LOCAL-VERIFIED]` 15/15 |
+| tile host UT | `[LOCAL-VERIFIED]` 16/16 |
+| token 默认/per-batch opkernel | `[LOCAL-VERIFIED]` 每组 8/8 变体编译 |
+| tile 默认 opkernel | `[LOCAL-VERIFIED]` 8/8 变体编译 |
+| token 默认 `--pkg` | `[LOCAL-VERIFIED]` PASS，4,040,039 bytes，SHA256 `53c0fe602f39ab4694ad81eb77c6f091e6445c4fa794260ea57dd1b7710751ec` |
+| tile 默认 `--pkg` | `[LOCAL-VERIFIED]` PASS，4,039,698 bytes，SHA256 `12663ef786d94cd5518291ce871de687598c9dfbb328851e037310cb213dfa17` |
 | NPU correctness/timeline/perf | `[NEEDS-NPU]` |
 
-本地归档包分别为 `/tmp/mega_moe_wave_artifacts/token_75c1a4ef0_default.run` 和
-`/tmp/mega_moe_wave_artifacts/tile_e9116a4a7_default.run`。`/tmp` 不是长期存储，正式上板
+本地归档包分别为 `/tmp/mega_moe_wave_artifacts/token_8224210e1_default.run` 和
+`/tmp/mega_moe_wave_artifacts/tile_a9e04d725_default.run`。`/tmp` 不是长期存储，正式上板
 建议在目标机器 checkout 对应 branch 后重编。
 
 复现本地 build：
@@ -106,8 +124,6 @@ bash build.sh --pkg --soc=ascend950 --ops=mega_moe -j16 -O3
 ```text
 MEGA_MOE_GMM2_READY_MODE=0       per-expert（默认）
 MEGA_MOE_GMM2_READY_MODE=1       per-batch
-MEGA_MOE_EXPERTS_PER_WAVE=0      ceil(blockNum/worldSize)，固定 case 为 5（默认）
-MEGA_MOE_EXPERTS_PER_WAVE=16     单 wave 对照，不用于宣称最优
 MEGA_MOE_GMM2_GM_READY_SMOKE_TEST=1  最小 scalar GM 地址 smoke
 MEGA_MOE_GMM2_WAVE_TIMELINE_DIAG=1  默认关闭的内部时间戳
 ```
@@ -131,13 +147,6 @@ rg -n 'MEGA_MOE_GMM2_READY_MODE=1' \
 ```bash
 TOKEN_SRC=/path/to/codex-0715-gmm2-gm-rebuild-token
 TILE_SRC=/path/to/codex-0715-gmm2-gm-rebuild-tile
-```
-
-多个宏用分号并保持整个参数为一个 shell 字符串：
-
-```bash
---ops-compile-options \
-  '-DMEGA_MOE_GMM2_READY_MODE=0;-DMEGA_MOE_EXPERTS_PER_WAVE=16'
 ```
 
 ## 固定 EP8 case
@@ -295,7 +304,7 @@ PY
 
 ## A/B 性能 `[NEEDS-NPU]`
 
-四个正式候选和一个控制组：
+四个正式候选：
 
 | Variant | Branch | build macro |
 |---|---|---|
@@ -303,7 +312,6 @@ PY
 | B token/per-batch | token | `READY_MODE=1` |
 | C tile/per-expert | tile | 默认或 `READY_MODE=0` |
 | D tile/per-batch | tile | `READY_MODE=1` |
-| control wave16 | token | `READY_MODE=0;EXPERTS_PER_WAVE=16` |
 
 对应的完整 build/install 命令如下；每次 build 后都按前文方法核验生成配置中的宏：
 
@@ -332,12 +340,6 @@ PY
     --ops-compile-options '-DMEGA_MOE_GMM2_READY_MODE=1' && \
   ./build_out/cann-ops-transformer-custom_linux-x86_64.run)
 
-# wave16 control
-(cd "$TOKEN_SRC" && \
-  bash build.sh --pkg --soc=ascend950 --ops=mega_moe -j16 -O3 \
-    --ops-compile-options \
-      '-DMEGA_MOE_GMM2_READY_MODE=0;-DMEGA_MOE_EXPERTS_PER_WAVE=16' && \
-  ./build_out/cann-ops-transformer-custom_linux-x86_64.run)
 ```
 
 每组先跑 correctness。性能行是 Excel row 3，一次采 100 次；建议按
@@ -377,7 +379,6 @@ python3 batch_run_once/export_batch_performance.py \
 | B1 token/batch |  |  |  |  | 144/rank expected |  |
 | C1 tile/expert |  |  |  |  | 576/rank expected |  |
 | D1 tile/batch |  |  |  |  | 144/rank expected |  |
-| wave16 control |  |  |  |  | 576/rank expected |  |
 
 ## 内部 timeline `[NEEDS-NPU]`
 
