@@ -214,6 +214,56 @@ __aicore__ inline void MhcPreMkVFProcessXInGamma(const LocalTensor<float>& xOutL
             gammaLocal, rowCount, columnCount, 0U, loopCount);
     }
 }
+template <typename T, uint32_t D_SIZE, uint16_t ROW_COUNT>
+__aicore__ inline void MhcPreMkVFProcessHInN4(const LocalTensor<T>& outputLocal,
+    const LocalTensor<T>& xLocal, const LocalTensor<float>& hPreLocal)
+{
+    __local_mem__ T* output = (__local_mem__ T*)outputLocal.GetPhyAddr();
+    __local_mem__ T* x = (__local_mem__ T*)xLocal.GetPhyAddr();
+    __local_mem__ float* hPre = (__local_mem__ float*)hPreLocal.GetPhyAddr();
+    constexpr uint32_t dSize = D_SIZE;
+    constexpr uint16_t dLoopCount = dSize / MHC_PRE_LOW_API_VL_FP32;
+
+    __VEC_SCOPE__
+    {
+        AscendC::MicroAPI::RegTensor<float> xReg;
+        AscendC::MicroAPI::RegTensor<float> accReg;
+        AscendC::MicroAPI::RegTensor<float> hPre0Reg;
+        AscendC::MicroAPI::RegTensor<float> hPre1Reg;
+        AscendC::MicroAPI::RegTensor<float> hPre2Reg;
+        AscendC::MicroAPI::RegTensor<float> hPre3Reg;
+        AscendC::MicroAPI::MaskReg mask = AscendC::MicroAPI::CreateMask<float>();
+
+        for (uint16_t row = 0; row < ROW_COUNT; ++row) {
+            uint32_t hPreOffset = static_cast<uint32_t>(row) * MHC_PRE_LOW_API_N4;
+            uint32_t xOffset = static_cast<uint32_t>(row) * MHC_PRE_LOW_API_N4 * dSize;
+            uint32_t outputOffset = static_cast<uint32_t>(row) * dSize;
+            MhcPreLowApiLoadBroadcast(hPre0Reg, hPre, mask, hPreOffset);
+            MhcPreLowApiLoadBroadcast(hPre1Reg, hPre, mask, hPreOffset + 1U);
+            MhcPreLowApiLoadBroadcast(hPre2Reg, hPre, mask, hPreOffset + 2U);
+            MhcPreLowApiLoadBroadcast(hPre3Reg, hPre, mask, hPreOffset + 3U);
+            for (uint16_t dLoop = 0; dLoop < dLoopCount; ++dLoop) {
+                uint32_t dOffset = static_cast<uint32_t>(dLoop) * MHC_PRE_LOW_API_VL_FP32;
+                AscendC::MicroAPI::Duplicate(accReg, 0.0f, mask);
+
+                MhcPreLowApiLoad(xReg, x, mask, xOffset + dOffset);
+                AscendC::MicroAPI::Mul(xReg, xReg, hPre0Reg, mask);
+                AscendC::MicroAPI::Add(accReg, accReg, xReg, mask);
+                MhcPreLowApiLoad(xReg, x, mask, xOffset + dSize + dOffset);
+                AscendC::MicroAPI::Mul(xReg, xReg, hPre1Reg, mask);
+                AscendC::MicroAPI::Add(accReg, accReg, xReg, mask);
+                MhcPreLowApiLoad(xReg, x, mask, xOffset + 2U * dSize + dOffset);
+                AscendC::MicroAPI::Mul(xReg, xReg, hPre2Reg, mask);
+                AscendC::MicroAPI::Add(accReg, accReg, xReg, mask);
+                MhcPreLowApiLoad(xReg, x, mask, xOffset + 3U * dSize + dOffset);
+                AscendC::MicroAPI::Mul(xReg, xReg, hPre3Reg, mask);
+                AscendC::MicroAPI::Add(accReg, accReg, xReg, mask);
+
+                MhcPreLowApiStore(output, accReg, mask, outputOffset + dOffset);
+            }
+        }
+    }
+}
 __aicore__ inline void MhcPreMkVFReducePartials(const LocalTensor<float>& mmOutLocal,
     const LocalTensor<float>& invRmsOutLocal, const LocalTensor<float>& mmPartialLocal,
 
@@ -780,6 +830,60 @@ private:
         this->xInQueue_.FreeTensor(this->matmulRes_);
     }
 
+    template <uint32_t D_SIZE, uint16_t ROW_COUNT>
+    __aicore__ inline void ProcessHInRows(uint64_t offsetT, uint64_t rowOffset)
+    {
+        constexpr uint32_t dSize = D_SIZE;
+        LocalTensor<T> xLocal = this->xInQueue_.template AllocTensor<T>();
+        DataCopyExtParams xCopyParams;
+        xCopyParams.blockCount = 1U;
+        xCopyParams.blockLen = ROW_COUNT * MHC_PRE_LOW_API_N4 * dSize * sizeof(T);
+        xCopyParams.srcStride = 0;
+        xCopyParams.dstStride = 0;
+        DataCopyPadExtParams<T> xPadParams{false, 0, 0, 0};
+        uint64_t globalRow = this->globalOffsetM_ + offsetT + rowOffset;
+        DataCopyPad(xLocal, this->xGm_[globalRow * MHC_PRE_LOW_API_N4 * dSize],
+            xCopyParams, xPadParams);
+        this->xInQueue_.template EnQue<T>(xLocal);
+        xLocal = this->xInQueue_.template DeQue<T>();
+
+        LocalTensor<T> hInLocal = this->outQueue_.template AllocTensor<T>();
+        MhcPreMkVFProcessHInN4<T, D_SIZE, ROW_COUNT>(hInLocal, xLocal,
+            this->hPreBuff_[rowOffset * MHC_PRE_LOW_API_N4]);
+        this->xInQueue_.FreeTensor(xLocal);
+        this->outQueue_.template EnQue<T>(hInLocal);
+        hInLocal = this->outQueue_.template DeQue<T>();
+
+        DataCopyExtParams outputParams;
+        outputParams.blockCount = 1U;
+        outputParams.blockLen = ROW_COUNT * dSize * sizeof(T);
+        outputParams.srcStride = 0;
+        outputParams.dstStride = 0;
+        DataCopyPad(this->hinGm_[globalRow * dSize], hInLocal, outputParams);
+        this->outQueue_.FreeTensor(hInLocal);
+    }
+
+    template <uint32_t D_SIZE>
+    __aicore__ inline void ProcessHInN4(uint64_t offsetT, uint64_t lenT)
+    {
+        constexpr uint16_t rowsPerChunk = D_SIZE == 2560U ? 4U : 2U;
+        uint64_t row = 0;
+        for (; row + rowsPerChunk <= lenT; row += rowsPerChunk) {
+            ProcessHInRows<D_SIZE, rowsPerChunk>(offsetT, row);
+        }
+        uint16_t tailRows = static_cast<uint16_t>(lenT - row);
+        if constexpr (rowsPerChunk == 4U) {
+            if (tailRows == 3U) {
+                ProcessHInRows<D_SIZE, 3U>(offsetT, row);
+            } else if (tailRows == 2U) {
+                ProcessHInRows<D_SIZE, 2U>(offsetT, row);
+            } else if (tailRows == 1U) {
+                ProcessHInRows<D_SIZE, 1U>(offsetT, row);
+            }
+        } else if (tailRows == 1U) {
+            ProcessHInRows<D_SIZE, 1U>(offsetT, row);
+        }
+    }
     __aicore__ inline void PostProcess()
     {
         uint64_t localOffset = 0;
@@ -790,7 +894,13 @@ private:
             PostProcessSegments(offsetT, lenT, localOffset);
             this->AIV1ProcessHPost(offsetT, lenT);
             this->AIV1ProcessHPre(offsetT, lenT);
-            this->AIV1ProcessHIn(offsetT, lenT, this->v1ChunkDSize_);
+            if (this->D_ == 5120U) {
+                ProcessHInN4<5120U>(offsetT, lenT);
+            } else if (this->D_ == 2560U) {
+                ProcessHInN4<2560U>(offsetT, lenT);
+            } else {
+                this->AIV1ProcessHIn(offsetT, lenT, this->v1ChunkDSize_);
+            }
             localOffset += this->V1_BASE_T;
         }
     }
