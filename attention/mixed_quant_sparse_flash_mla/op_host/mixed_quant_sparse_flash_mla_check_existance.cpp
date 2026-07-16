@@ -66,11 +66,10 @@ ge::graphStatus MQSMLATilingCheck::CheckCmpSparseIndicesExistence()
 {
     if (opParamInfo_.cmpSparseIndices.tensor != nullptr) {
         if (qLayout_ == MQSMLALayout::BSND) {
-            if (opParamInfo_.cmpSparseIndices.tensor->GetStorageShape().GetDim(DIM_3) != 512 &&
-                opParamInfo_.cmpSparseIndices.tensor->GetStorageShape().GetDim(DIM_3) != 1024) {
+            if (opParamInfo_.cmpSparseIndices.tensor->GetStorageShape().GetDim(DIM_3) <= 0) {
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "cmpSparseIndices",
                     Ops::Base::ToString(opParamInfo_.cmpSparseIndices.tensor->GetStorageShape()).c_str(),
-                    "When qLayout is BSND, topK should be 512 or 1024, but got " +
+                    "When qLayout is BSND, topK should be gather than 0, but got " +
                     std::to_string(opParamInfo_.cmpSparseIndices.tensor->GetStorageShape().GetDim(DIM_3)));
                 return ge::GRAPH_FAILED;
             }
@@ -83,11 +82,10 @@ ge::graphStatus MQSMLATilingCheck::CheckCmpSparseIndicesExistence()
                 return ge::GRAPH_FAILED;
             }
         } else {
-            if (opParamInfo_.cmpSparseIndices.tensor->GetStorageShape().GetDim(DIM_2) != 512 &&
-                opParamInfo_.cmpSparseIndices.tensor->GetStorageShape().GetDim(DIM_2) != 1024) {
+            if (opParamInfo_.cmpSparseIndices.tensor->GetStorageShape().GetDim(DIM_2) <= 0) {
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "cmpSparseIndices",
                     Ops::Base::ToString(opParamInfo_.cmpSparseIndices.tensor->GetStorageShape()).c_str(),
-                    "When qLayout is TND, topK should be 512 or 1024, but got " +
+                    "When qLayout is TND, topK should be gather than 0, but got " +
                     std::to_string(opParamInfo_.cmpSparseIndices.tensor->GetStorageShape().GetDim(2)));
                 return ge::GRAPH_FAILED;
             }
