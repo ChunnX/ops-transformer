@@ -62,13 +62,13 @@ cann_ops_transformer.grouped_matmul_activation_quant(
 
 | 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 维度(shape) |
 | --- | --- | --- | --- | --- | --- |
-| `x` | Tensor | 必选 | 左矩阵，表示GroupedMatmul的输入激活。 | `torch.float8_e4m3fn`、`torch.float8_e5m2` | `(M, K)` |
-| `group_list` | Tensor | 必选 | 分组信息。`group_list_type=0`时表示每个group在M轴上的累计结束位置；`group_list_type=1`时表示每个group的M轴长度。 | `torch.int64` | `(E,)` |
-| `weight` | List[Tensor] | 必选 | 右矩阵TensorList，当前MXFP8场景tensorList长度仅支持1。调用者必须传入FRACTAL_NZ格式的`weight`，torch接口按3维逻辑shape解析。 | `torch.float8_e4m3fn` | `(E, K, N)` |
-| `weight_scale` | List[Tensor] | 必选 | `weight`的MX量化scale，当前MXFP8场景tensorList长度仅支持1。 | 通过`weight_scale_dtype`按`torch_npu.float8_e8m0fnu`解析 | `(E, ceil(K / 64), N, 2)` |
+| `x` | Tensor | 必选 | 左矩阵，表示GroupedMatmul的输入激活。 | `torch.float8_e4m3fn`、`torch.float8_e5m2` | 2 |
+| `group_list` | Tensor | 必选 | 分组信息。`group_list_type=0`时表示每个group在M轴上的累计结束位置；`group_list_type=1`时表示每个group的M轴长度。 | `torch.int64` | 1 |
+| `weight` | List[Tensor] | 必选 | 右矩阵TensorList，当前MXFP8场景tensorList长度仅支持1。调用者必须传入FRACTAL_NZ格式的`weight`，torch接口按3维逻辑shape解析。 | `torch.float8_e4m3fn` | 3 |
+| `weight_scale` | List[Tensor] | 必选 | `weight`的MX量化scale，当前MXFP8场景tensorList长度仅支持1。 | 通过`weight_scale_dtype`按`torch_npu.float8_e8m0fnu`解析 | 4 |
 | `activation_type` | str | 必选 | 激活函数类型，当前仅支持`"gelu_tanh"`。 | string | - |
-| `bias` | List[Tensor] | 可选 | bias TensorList，默认值为`None`。当前MXFP8场景必须为空，支持`None`、空TensorList或单个空Tensor。 | `torch.float32` | 空Tensor |
-| `x_scale` | Tensor | 可选 | `x`的MX量化scale。当前MXFP8场景必须传入有效Tensor。 | 通过`x_scale_dtype`按`torch_npu.float8_e8m0fnu`解析 | `(M, ceil(K / 64), 2)` |
+| `bias` | List[Tensor] | 可选 | bias TensorList，默认值为`None`。当前MXFP8场景必须为空，支持`None`、空TensorList或单个空Tensor。 | `torch.float32` | - |
+| `x_scale` | Tensor | 可选 | `x`的MX量化scale。当前MXFP8场景必须传入有效Tensor。 | 通过`x_scale_dtype`按`torch_npu.float8_e8m0fnu`解析 | 3 |
 | `group_list_type` | int | 可选 | `group_list`语义类型，默认值为0，支持0或1。 | int | - |
 | `tuning_config` | List[int] | 可选 | 预留调优参数，默认值为`None`。 | int | - |
 | `quant_mode` | str | 可选 | 量化模式，默认值为`None`。torch层不解析该参数，直接透传到aclnn层；显式传值时当前仅支持`"mx"`。 | string | - |
@@ -92,10 +92,6 @@ cann_ops_transformer.grouped_matmul_activation_quant(
 
 - 适用场景：该接口支持训练、推理场景下使用。
 - 调用方式：该接口支持单算子模式调用。
-- 当前仅支持`activation_type="gelu_tanh"`。
-- 当前仅支持MXFP8量化模式，`quant_mode`显式传值时必须为`"mx"`。
-- `weight`必须先通过`torch_npu.npu_format_cast(weight, 29)`转换为FRACTAL_NZ格式，再以TensorList形式传入。
-- 当前MXFP8场景下，`x_scale`必须传入有效Tensor，`bias`必须为空。
 - `N`必须为64的整数倍，`E`取值范围为`[1, 1024]`。
 - 支持M为0或N为0的空Tensor场景；该场景下允许K为0。
 
