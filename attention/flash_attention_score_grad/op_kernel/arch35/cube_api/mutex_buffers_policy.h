@@ -284,8 +284,8 @@ public:
         } else if (flag1_ == 1) {
             flag1_ = NUM_2;
             return b_;
-        } else if (flag1_ == 2) {
-            flag1_ = 3;
+        } else if (flag1_ == NUM_2) {
+            flag1_ = NUM_3;
             return c_;
         } else {
             flag1_ = 0;
@@ -300,7 +300,7 @@ public:
             return d_;
         } else if (flag1_ == 1) {
             return a_;
-        } else if (flag1_ == 2) {
+        } else if (flag1_ == NUM_2) {
             return b_;
         } else {
             return c_;
@@ -316,8 +316,8 @@ public:
         } else if (flag2_ == 1) {
             flag2_ = NUM_2;
             return b_;
-        } else if (flag2_ == 2) {
-            flag2_ = 3;
+        } else if (flag2_ == NUM_2) {
+            flag2_ = NUM_3;
             return c_;
         } else {
             flag2_ = 0;
@@ -434,8 +434,8 @@ private:
     MutexBuffer<bufferType, syncType> bufferM0k1_;
     MutexBuffer<bufferType, syncType> bufferM1k0_;
     MutexBuffer<bufferType, syncType> bufferM1k1_;
-    int32_t mSize_ = 2;
-    int32_t kSize_ = 2;
+    int32_t mSize_ = NUM_2;
+    int32_t kSize_ = NUM_2;
 
     int32_t aIdx_ = -1;
     int32_t amIdx_ = 0;

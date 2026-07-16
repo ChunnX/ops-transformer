@@ -42,7 +42,7 @@ public:
             .UnknownShapeFormat({ge::FORMAT_ND});
         this->Input("initial_state")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_BF16})
+            .DataTypeList({ge::DT_BF16, ge::DT_FLOAT})
             .Format({ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND});
         this->Input("actual_seq_lengths")
@@ -64,10 +64,10 @@ public:
             .AutoContiguous();
         this->Output("final_state")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_BF16})
+            .DataTypeList({ge::DT_BF16, ge::DT_FLOAT})
             .Format({ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND});
-            
+
         this->Attr("scale_value").AttrType(OPTIONAL).Float(1.0);
 
         OpAICoreConfig aicoreConfig;
