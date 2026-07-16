@@ -669,7 +669,6 @@ def liv2_output_single(params, is_batch = False, split_s1 = DEFAULT_SPLIT_S1, s1
         topk = int(topk)
         mask_mode = int(mask_mode)
         return_value = int(return_value)
-        blockFusion = None
 
         params = batch_size, q_seq, k_seq, q_t_size, k_t_size, q_head_num, k_head_num, head_dim, block_size, block_num, \
                  qk_dtype, cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k, cmp_residual_k, output_idx_offset, \
@@ -740,22 +739,22 @@ def liv2_output_single(params, is_batch = False, split_s1 = DEFAULT_SPLIT_S1, s1
     # ======================== 构造 NPU 输入 tensor ========================
     # cu_seqlens tensor（仅 TND 传入）
     if layout_query == "TND":
-        cu_seqlens_query = torch.tensor(cu_seqlens_q).to(torch.int32).npu()
+        cu_seqlens_query = torch.tensor(cu_seqlens_q).to(torch.int32)
     else:
         cu_seqlens_query = None
 
     if layout_key == "TND":
-        cu_seqlens_key = torch.tensor(cu_seqlens_k).to(torch.int32).npu()
+        cu_seqlens_key = torch.tensor(cu_seqlens_k).to(torch.int32)
     else:
         cu_seqlens_key = None
 
     # seqused tensor
     if seqused_q is not None:
-        seqused_q_tensor = torch.tensor(seqused_q).to(torch.int32).npu()
+        seqused_q_tensor = torch.tensor(seqused_q).to(torch.int32)
     else:
         seqused_q_tensor = None
     if seqused_k is not None:
-        seqused_k_tensor = torch.tensor(seqused_k).to(torch.int32).npu()
+        seqused_k_tensor = torch.tensor(seqused_k).to(torch.int32)
     else:
         seqused_k_tensor = None
 
@@ -765,14 +764,14 @@ def liv2_output_single(params, is_batch = False, split_s1 = DEFAULT_SPLIT_S1, s1
     # BSND/PA: actual_seq 是个体长度，即 seqused
     # （actual_seq始终传入，CPU golden 也需要）
     if layout_query == "TND":
-        actual_seq_lengths_query = torch.tensor(cu_seqlens_q[1:]).to(torch.int32).npu()
+        actual_seq_lengths_query = torch.tensor(cu_seqlens_q[1:]).to(torch.int32)
     else:
-        actual_seq_lengths_query = torch.tensor(lengths_q_list).to(torch.int32).npu()
+        actual_seq_lengths_query = torch.tensor(lengths_q_list).to(torch.int32)
 
     if layout_key == "TND":
-        actual_seq_lengths_key = torch.tensor(cu_seqlens_k[1:]).to(torch.int32).npu()
+        actual_seq_lengths_key = torch.tensor(cu_seqlens_k[1:]).to(torch.int32)
     else:
-        actual_seq_lengths_key = torch.tensor(lengths_k_list).to(torch.int32).npu()
+        actual_seq_lengths_key = torch.tensor(lengths_k_list).to(torch.int32)
 
     # PA_BBND key 构造用的 act_seq_k 列表
     act_seq_k = lengths_k_list
@@ -821,7 +820,6 @@ def liv2_output_single(params, is_batch = False, split_s1 = DEFAULT_SPLIT_S1, s1
         weights = torch.tensor(np.random.uniform(weights_datarange[0], weights_datarange[1], (q_t_size, q_head_num))).to(torch.float32)
         if output_idx_offset is not None:
             output_idx_offset = torch.tensor(output_idx_offset).reshape(q_t_size, 1).to(torch.int32)
-    properties = torch.npu.get_device_properties()
     blockFusion = None
     if layout_key == "BSND":
         key = torch.tensor(np.random.uniform(key_datarange[0], key_datarange[1], (batch_size, k_seq, k_head_num, head_dim))).to(qk_dtype)
@@ -872,17 +870,16 @@ def liv2_output_single(params, is_batch = False, split_s1 = DEFAULT_SPLIT_S1, s1
                 else:
                     for i_n in range(k_head_num):
                         key[cur_block_id, :, i_n, :] = key_expand[i_batch, i_n, block_start_pos:block_start_pos+block_size,:]
-        # kv_cache 0轴非连续：将key和key_dequant_scale融合到blockFusion (ref v1 commit keyStride0)
-        properties = torch.npu.get_device_properties()
-        if "Ascend950" in properties.name:
-            key_stride = 10  # 0轴非连续增加stride
-            bytes_per_token = head_dim + key_stride # 整个非连续的长度
-            blockFusion = torch.zeros((block_num, block_size * k_head_num * bytes_per_token), dtype=qk_dtype)
-            key_flat = key.view(block_num, block_size * k_head_num * head_dim)
-            blockFusion[:, :block_size * k_head_num * head_dim] = key_flat
+        properties = torch.npu.get_device_properties() 
+        blockFusion = None 
+        if "Ascend950" in properties.name and DISCONTINUOUS_KEYS: 
+            key_stride = 10  # 0轴非连续增加stride 
+            bytes_per_token = head_dim + key_stride # 整个非连续的长度 
+            blockFusion = torch.zeros((block_num, block_size * k_head_num * bytes_per_token), dtype=qk_dtype) 
+            key_flat = key.view(block_num, block_size * k_head_num * head_dim) 
+            blockFusion[:, :block_size * k_head_num * head_dim] = key_flat 
+            blockFusion = blockFusion.npu() 
             key = blockFusion[:, :block_size * k_head_num * head_dim].view(block_num, block_size, k_head_num, head_dim)
-
-        key = key
         cpu_result, topk_value, cpu_topk_value = test_liv2.forward(query, key_bnsd, weights, cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k, cmp_residual_k, block_table, output_idx_offset)
         block_table = torch.from_numpy(block_table).to(dtype=torch.int32)
     
@@ -902,11 +899,6 @@ def liv2_output_single(params, is_batch = False, split_s1 = DEFAULT_SPLIT_S1, s1
         else:
             max_seqlen_k = k_seq
     
-    if blockFusion is not None:
-        blockFusion = blockFusion.npu()
-        key = blockFusion[:, :block_size * k_head_num * head_dim].view(block_num, block_size, k_head_num, head_dim)
-    else:
-        key = key.npu()
     if is_batch:
         query = query.to(qk_dtype)
         key = key.to(qk_dtype)
@@ -957,16 +949,22 @@ def liv2_output_single(params, is_batch = False, split_s1 = DEFAULT_SPLIT_S1, s1
                    layout_k = layout_key,
                    mask_mode = mask_mode,
                    cmp_ratio = cmp_ratio)
-        metadata = metadata.npu()
+
+        # kv_cache 0轴非连续：将key和key_dequant_scale融合到blockFusion (ref v1 commit keyStride0)
+        if blockFusion is not None:
+            blockFusion = blockFusion.npu()
+            key = blockFusion[:, :block_size * k_head_num * head_dim].view(block_num, block_size, k_head_num, head_dim)
+        else:
+            key = key.npu()
         npu_result, npu_topk_value = lightning_indexer(query.npu(), key.npu(), weights.npu(),
                                                        cu_seqlens_q = cu_seqlens_q.npu() if cu_seqlens_q is not None else None,
                                                        cu_seqlens_k = cu_seqlens_k.npu() if cu_seqlens_k is not None else None,
                                                        seqused_q = seqused_q.npu() if seqused_q is not None else None,
                                                        seqused_k = seqused_k.npu() if seqused_k is not None else None,
                                                        cmp_residual_k = cmp_residual_k.npu() if cmp_residual_k is not None else None,
-                                                       block_table = block_table,
-                                                       output_idx_offset = output_idx_offset,
-                                                       metadata = metadata,
+                                                       block_table = block_table.npu() if block_table is not None else None,
+                                                       output_idx_offset = output_idx_offset.npu() if output_idx_offset is not None else None,
+                                                       metadata = metadata.npu(),
                                                        topk = topk,
                                                        max_seqlen_q = max_seqlen_q,
                                                        layout_q = layout_query,
