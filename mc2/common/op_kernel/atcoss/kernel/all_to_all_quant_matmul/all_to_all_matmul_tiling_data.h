@@ -13,15 +13,10 @@
 #include "tiling/quant_matmul_tiling_data.h"
 #include "tiling/comm_tiling_data.h"
 
-struct AllToAllCommTilingData {
-    CommTilingData commTilingData;
-    uint32_t bufferSize{0}; // 内存复用场景
-    uint32_t localMatmul{0}; // 是否使能local块计算先行
-};
-
 struct allToAllMatmulTilingData {
-    AllToAllCommTilingData alltoallTilingData;
+    CommTilingData commTilingData;
     QuantMatmulTilingData tileQbmmTilingData;
     QuantMatmulTilingData tailQbmmTilingData;
     QuantMatmulTilingData localQbmmTilingData;
+    uint32_t localMatmul{0}; // 是否使能local块计算先行，0：不使能；1：使能atomiadd
 };
