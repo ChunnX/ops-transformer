@@ -34,6 +34,7 @@ from pathlib import Path
 import torch
 import torch_npu
 from torch_npu.testing.testcase import TestCase, run_tests
+torch_npu.npu.set_device("npu:2")
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _TORCH_EXT = _REPO_ROOT / "torch_extension"
@@ -162,17 +163,17 @@ class TestSparseAttentionPrefillVsDecode(TestCase):
 
     def _run_one(self, kv_seqlen, *, random_select=False):
         data = _gen_data(kv_seqlen, SEED, random_select=random_select)
-        q = data["query"].npu()
-        k = data["key"].npu()
-        v = data["value"].npu()
-        bt = data["block_table"].npu()
-        asl = data["actual_seq_lengths"].npu()
-        asl_kv = data["actual_seq_lengths_kv"].npu()
-        sel_idx = data["select_idx"].npu()
-        sel_num = data["select_num"].npu()
-        rpw = data["k2q_row_ptr"].npu()
-        qidx = data["k2q_q_indices"].npu()
-        sidx = data["k2q_slot_indices"].npu()
+        q = data["query"].to("npu:2")
+        k = data["key"].to("npu:2")
+        v = data["value"].to("npu:2")
+        bt = data["block_table"].to("npu:2")
+        asl = data["actual_seq_lengths"].to("npu:2")
+        asl_kv = data["actual_seq_lengths_kv"].to("npu:2")
+        sel_idx = data["select_idx"].to("npu:2")
+        sel_num = data["select_num"].to("npu:2")
+        rpw = data["k2q_row_ptr"].to("npu:2")
+        qidx = data["k2q_q_indices"].to("npu:2")
+        sidx = data["k2q_slot_indices"].to("npu:2")
         scale = data["scale_value"]
 
         def prefill_fn():

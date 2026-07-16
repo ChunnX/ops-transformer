@@ -453,9 +453,6 @@ Golden 不模拟 Cube tile 搬运；数值路径与 §7.2 一致。
 2. ~~Kernel workspace 显式预置 `rowMax=-inf`；非法 slot 跳过~~ —— 已实现（`InitWorkspaceStats` + `ReduceFinalRes` 首值判断跳过 `CopyAccumOutIn`）。
 3. `CopyLseIn` 在 `groupSize > gSplitSize` 分片时按 `startRow` 正确 gather max/sum。
 4. ~~Phase2 `GetBlockIdx` 与 Phase1 VEC 核映射关系统一验证（AIC/AIV 混合 blockDim）~~ —— 已实现：`Phase2CombineScale` 改为 `subLinearIdx = GetBlockIdx()*GetSubBlockNum()+GetSubBlockIdx()`、`stride = GetBlockNum()*GetSubBlockNum()` 的循环，覆盖全部 `totalTaskNumP2` 任务，且区分两个 VEC 子核。
-5. D/blockSize 以外 shape 的 tiling key 扩展。
-6. 清理 Phase2 debug barrier / DumpPhase1OPartial 等临时代码。
-7. NPU 与 Golden 残差：P cast bf16 舍入、Cube QK 累加精度。
 
 ## 10. 后续 kernel 修改建议
 

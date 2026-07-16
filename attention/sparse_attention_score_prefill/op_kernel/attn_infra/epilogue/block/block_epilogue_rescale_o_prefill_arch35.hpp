@@ -16,13 +16,19 @@
  * broadCastTmp_ by CopyLseIn (lseSumTmpBuf = broadCastTmpBuf_[alignedLseCount],
  * layout [topK, dealRowCount]), sliced per split j. CopyAccumOutIn only copies accumOut.
  *
- * Pipeline: the per-split j loop is double-buffered so the MTE2 load of split j+1
- * overlaps the V reduce of split j (mirrors IFA fdMm2ResBuf1/2). accumOut is managed
- * like the kernel's ubSTensor[ubSBufId]: a 2-deep array accumOutBuf[bufId],
- * bufId = j % ACCUM_OUT_STAGES, with two strided stages carved from the free
- * [192,256)KiB region, and event ids ACCUM_OUT_FLAG_BASE + bufId for both MTE2_V and
- * V_MTE2. CopyLseIn(MTE2_V EVENT_ID0) and CopyFinalResOut(V_MTE3 EVENT_ID0) stay
- * per-chunk blocking (MTE3 overlap out of scope: production single chunk).
+ * Pipeline: the per buf-group g loop is double-buffered so the MTE2 load of group g+1
+ * overlaps the V reduce of group g (mirrors IFA fdMm2ResBuf1/2 at coarser grain). Each
+ * group loads splitsPerBuf_ (or the tail) contiguous splits in ONE DataCopyPad
+ * (CopyAccumOutIn), then the V reduce walks those splits from UB — the per-split j
+ * MTE2 scatter reads (16x 8KB) were the Phase2 MTE2 bottleneck (39.5% of the op at
+ * 24 GB/s); batching to ~splitsPerBuf_*8KB raises effective BW and drops per-transaction
+ * overhead. accumOut is managed like the kernel's ubSTensor[ubSBufId]: a 2-deep array
+ * accumOutBuf[bufId], bufId = g % ACCUM_OUT_STAGES, with two strided stages carved from
+ * the free [192,256)KiB region, and event ids ACCUM_OUT_FLAG_BASE + bufId for both
+ * MTE2_V and V_MTE2. Slot validity (left-contiguous NEG_INF_LSE) is checked in the
+ * inner split loop; the first invalid slot breaks the whole combine. CopyLseIn
+ * (MTE2_V EVENT_ID0) and CopyFinalResOut(V_MTE3 EVENT_ID0) stay per-chunk blocking
+ * (MTE3 overlap out of scope: production single chunk).
  */
 #ifndef EPILOGUE_BLOCK_BLOCK_EPILOGUE_RESCALE_O_PREFILL_ARCH35_HPP
 #define EPILOGUE_BLOCK_BLOCK_EPILOGUE_RESCALE_O_PREFILL_ARCH35_HPP
@@ -62,7 +68,8 @@ public:
     static constexpr float NEG_INF_LSE = -3.4028235e38f;
 
     // accumOut ping-pong (mirrors the kernel ubSTensor[ubSBufId] style): a 2-deep array of
-    // UB tensors indexed by bufId = j % ACCUM_OUT_STAGES, each a strided stage, with event
+    // UB tensors indexed by bufId = g % ACCUM_OUT_STAGES (one ping-pong slot per buf-group,
+    // each holding splitsPerBuf_ contiguous splits), each a strided stage, with event
     // ids derived as ACCUM_OUT_FLAG_BASE + bufId for both MTE2_V and V_MTE2 (distinct
     // HardEvent types share an id safely, per the IFA fdMm2ResBuf1/2 pattern).
     static constexpr uint32_t ACCUM_OUT_STAGES = 2U;
@@ -82,6 +89,16 @@ public:
         topK_ = topK;
         kvHeads_ = kvHeads;
         headDimAlignFp32_ = RoundUp(D_, FP32_ONE_BLOCK_SIZE);
+
+        // E: batched accumOut read. One 32K-float UB slot holds cap splits
+        // (split = groupSize * headDimAlignFp32 floats). Supported range
+        // (groupSize<=16, D<=512 => split<=8192 floats) keeps cap>=4. Aim for ~2
+        // buf-groups so the 2-stage ping-pong still overlaps MTE2(g+1) || V(g) at
+        // coarser grain (was per-split). Capped by cap, floored at 1.
+        uint32_t cap = BUF_32K_FLOATS / (groupSize_ * headDimAlignFp32_);
+        if (cap == 0U) { cap = 1U; }
+        uint32_t half = (topK_ + 1U) / 2U;
+        splitsPerBuf_ = (half < 1U) ? 1U : ((cap < half) ? cap : half);
 
         // UB layout: contiguous, no holes. lse buffers capped at 8K (the [topK, dealRowCount, 8]
         // broadcast layout fits in 8KiB for topK, groupSize <= 16); the rest are 32K slots.
@@ -140,6 +157,7 @@ private:
     uint32_t kvHeads_ = 0;
     uint32_t headDimAlignFp32_ = 0;
     uint32_t actualCombineLoopSize_ = 0;
+    uint32_t splitsPerBuf_ = 0;   // E: splits read per ping-pong slot (batched contiguous read)
 
     __aicore__ inline
     static uint32_t RoundUp(uint32_t a, uint32_t b)
@@ -219,14 +237,19 @@ private:
     __aicore__ inline
     void CopyAccumOutIn(uint32_t qToken,
                         uint32_t kvHeadIdx,
-                        uint32_t splitKVIndex,
+                        uint32_t jStart,
+                        uint32_t nSplits,
                         uint32_t dealRowCount,
                         AscendC::GlobalTensor<T> &gmAccumOut,
                         AscendC::LocalTensor<T> &accumOutLocal)
     {
+        // E: batched contiguous read of nSplits splits in one DataCopyPad (was one
+        // 8KB DataCopyPad per split). GM layout [totalQ, kvHead, topK, groupSize, D]
+        // is contiguous over [jStart..jStart+nSplits) (topK slowest, D fastest,
+        // srcStride 0 => rows back-to-back), so the whole span is one transaction.
         AscendC::DataCopyExtParams copyInParams;
         AscendC::DataCopyPadExtParams<T> copyInPadParams;
-        copyInParams.blockCount = dealRowCount;
+        copyInParams.blockCount = nSplits * dealRowCount;
         copyInParams.blockLen = static_cast<uint32_t>(D_) * sizeof(T);
         copyInParams.srcStride = 0;
         copyInParams.dstStride = (headDimAlignFp32_ - D_) / FP32_ONE_BLOCK_SIZE;
@@ -237,7 +260,7 @@ private:
         copyInPadParams.paddingValue = 0;
 
         uint64_t oOffset = TaskAccumBase(qToken, kvHeadIdx)
-            + static_cast<uint64_t>(splitKVIndex) * groupSize_ * D_;
+            + static_cast<uint64_t>(jStart) * groupSize_ * D_;
         AscendC::DataCopyPad(accumOutLocal, gmAccumOut[oOffset], copyInParams, copyInPadParams);
     }
 
@@ -271,48 +294,74 @@ private:
         uint32_t alignedLseCount = RoundUp(lseCount, FP32_ONE_BLOCK_SIZE);
 
         // Double-buffered (ping-pong) accumOut, managed like the kernel's ubSTensor[ubSBufId]:
-        // a 2-deep array accumOutBuf[curId], curId = j % ACCUM_OUT_STAGES, with event ids
+        // a 2-deep array accumOutBuf[curId], curId = g % ACCUM_OUT_STAGES, with event ids
         // ACCUM_OUT_FLAG_BASE + curId for both MTE2_V (forward) and V_MTE2 (reverse) — distinct
         // HardEvent types share an id safely (IFA fdMm2ResBuf1/2 does the same).
         //
-        // Uniform loop (no prologue / no prefetch branch): each iteration loads its own split j
-        // (MTE2) then reduces it (V). The MTE2 load of j overlaps the V reduce of j-1 (still in
-        // flight): Wait<V_MTE2>(curId) drains curId's prior use (reduce j-2, or the prime) so the
-        // MTE2 load may issue while V is still finishing reduce(j-1); Wait<MTE2_V>(curId) then
-        // gates the V reduce on the just-loaded data. CopyAccumOutIn is in the loop.
+        // E: the ping-pong grain moved from per-split j to per buf-group g. Each group
+        // loads splitsPerBuf_ (or the tail) splits in ONE contiguous DataCopyPad
+        // (CopyAccumOutIn), then the V reduce walks those splits from UB. The MTE2 load
+        // of group g+1 overlaps the V reduce of group g (still 2-stage, still overlapped);
+        // only the transaction size grew (8KB -> ~splitsPerBuf_*8KB) so per-transaction
+        // overhead drops ~splitsPerBuf_-fold and effective MTE2 BW rises. For topK=1 this
+        // degenerates to a single load (no overlap, nothing to overlap with).
         //
-        // Validity is checked inline (same NEG_INF_LSE test). The break issues before this iter's
-        // load, so it leaves no dangling MTE2_V; the prime + trailing drain absorb the dangling
-        // V_MTE2, so flags stay balanced for any break point. (The scalar GetValue is a non-blocking
-        // scalar-pipe read; if profiling ever shows it serializing the V reduce, hoist the scan into
-        // a precomputed validK bound and loop `j < validK`.)
+        // Validity is checked in the inner split loop (one scalar GetValue per split,
+        // issued alongside the V reduce so it hides under the V pipe, not pacing it).
+        // Valid slots are left-contiguous (Phase1 writes slotK = 0..valid_k-1; slots
+        // beyond are prefilled -FLT_MAX = NEG_INF_LSE by InitWorkspaceStats, whose
+        // WS_ROWSUM_INIT=0 makes an unreduced invalid split a Div-by-zero NaN risk), so
+        // the first invalid slot means every later slot is invalid too: break out of the
+        // whole combine there. The batch load already pulled this group's splits (incl.
+        // the rare invalid tail straddling valid_k); we simply don't reduce past the first
+        // invalid. The extra copied data is <= one partial group and only when valid_k <
+        // topK (causal head / sparse tail) — rare in prefill, accepted.
 
         // Prime each stage's V_MTE2: a stage's first reuse has no prior V reduce to drain.
         for (uint32_t s = 0U; s < ACCUM_OUT_STAGES; ++s) {
             AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(ACCUM_OUT_FLAG_BASE + s);
         }
 
-        for (uint32_t j = 0U; j < actualCombineLoopSize_; ++j) {
-            uint32_t maxOff = j * dealRowCount * FP32_ONE_BLOCK_SIZE;
-            if (lseMaxBuf_[maxOff].GetValue(0) <= NEG_INF_LSE) {
-                break;
-            }
-            uint32_t curId = j % ACCUM_OUT_STAGES;
-            // stage drained (reduce j-2, or primed) -> MTE2 may overwrite it.
+        uint32_t numGroups = (topK_ + splitsPerBuf_ - 1U) / splitsPerBuf_;
+        bool combineDone = false;
+        for (uint32_t g = 0U; (g < numGroups) && !combineDone; ++g) {
+            uint32_t jStart = g * splitsPerBuf_;
+            uint32_t nSplits = splitsPerBuf_;
+            uint32_t remain = topK_ - jStart;
+            if (nSplits > remain) { nSplits = remain; }
+            uint32_t curId = g % ACCUM_OUT_STAGES;
+            // stage drained (reduce g-2, or primed) -> MTE2 may overwrite it.
             AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(ACCUM_OUT_FLAG_BASE + curId);
-            CopyAccumOutIn(qToken, kvHeadIdx, j, dealRowCount, gmAccumOut, accumOutBuf[curId]);
-            AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(ACCUM_OUT_FLAG_BASE + curId);    // load j || V reduce j-1
-            AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(ACCUM_OUT_FLAG_BASE + curId);  // load j done
-            // split j's compact per-row rowSum (one scalar per row): slice into the
-            // lseSumTmpBuf region staged by CopyLseIn.
-            uint64_t rowSumOff = static_cast<uint64_t>(alignedLseCount)
-                + static_cast<uint64_t>(j) * dealRowCount;
-            AscendC::LocalTensor<T> rowSumLocal = broadCastTmpBuf_[rowSumOff];
-            FaVectorApiPrefill::ReduceFinalRes_VF<T>(
-                dst, scaleLocal, accumOutBuf[curId], rowSumLocal, dealRowCount,
-                static_cast<uint64_t>(headDimAlignFp32_), j);
+            CopyAccumOutIn(qToken, kvHeadIdx, jStart, nSplits, dealRowCount, gmAccumOut,
+                           accumOutBuf[curId]);
+            AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(ACCUM_OUT_FLAG_BASE + curId);    // load g || V reduce g-1
+            AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(ACCUM_OUT_FLAG_BASE + curId);  // load g done
+            // V reduce each split in this group: accumOut base is the in-buf offset
+            // (j-jStart)*groupSize*headDimAlignFp32; j stays the global split index so
+            // lse (lseSumBuf_) and rowSum (broadCastTmpBuf_[alignedLseCount+j*dealRowCount])
+            // and the _0/_Rest (j==0 init vs load prior dst) dispatches are unchanged.
+            // First invalid (left-contiguous) breaks the whole combine.
+            for (uint32_t j = jStart; j < jStart + nSplits; ++j) {
+                uint32_t maxOff = j * dealRowCount * FP32_ONE_BLOCK_SIZE;
+                if (lseMaxBuf_[maxOff].GetValue(0) <= NEG_INF_LSE) {
+                    combineDone = true;
+                    break;
+                }
+                uint64_t localOff = static_cast<uint64_t>(j - jStart) * groupSize_
+                    * headDimAlignFp32_;
+                uint64_t rowSumOff = static_cast<uint64_t>(alignedLseCount)
+                    + static_cast<uint64_t>(j) * dealRowCount;
+                AscendC::LocalTensor<T> accumSplit = accumOutBuf[curId][localOff];
+                AscendC::LocalTensor<T> rowSumLocal = broadCastTmpBuf_[rowSumOff];
+                FaVectorApiPrefill::ReduceFinalRes_VF<T>(
+                    dst, scaleLocal, accumSplit, rowSumLocal, dealRowCount,
+                    static_cast<uint64_t>(headDimAlignFp32_), j);
+            }
             // V done reading accumOutBuf[curId] (and dst store committed; SetFlag<V_MTE2> is a V
             // completion barrier, ordering dst V-store->V-load across iterations) -> stage reusable.
+            // ALWAYS executed, even when the inner loop broke: this group already did
+            // Wait<V_MTE2> above, so it must replenish with a Set or the trailing drain
+            // would underflow (the broken group's Wait consumed a primed/prior Set).
             AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(ACCUM_OUT_FLAG_BASE + curId);
         }
         // Trailing drain: consume the dangling V_MTE2 per stage (last reduce's set + the primed
