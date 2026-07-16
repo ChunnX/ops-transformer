@@ -656,14 +656,30 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::Fixp(uint64_t s1gGmOffset, uint64_t 
             fixpipeParams.nSize = S2_BASIC_BLOCK_L0 / 2; // 分2个ND搬
             fixpipeParams.params.ndNum = 2;
             fixpipeParams.params.srcNdStride = ((fixpipeParams.mSize + 15) / 16) * fixpipeParams.nSize;
-            // dstNdStride 加 VL_PAD_STRIDE, 让 ND0/ND1 错开 bank, 与 qkVLstride 一致
-            fixpipeParams.params.dstNdStride = fixpipeParams.mSize * fixpipeParams.dstStride + VL_PAD_STRIDE;
+            // dstNdStride = mSize * dstStride (不能加padding, fixpipe硬件要求)
+            fixpipeParams.params.dstNdStride = fixpipeParams.mSize * fixpipeParams.dstStride;
         }
-        // ping-pong 偏移 = s2BaseSize/2 + VL_PAD, slot1 相对 slot0 错开 256B 消除 bank 冲突
-        Fixpipe<QK_T, float, QLIV2_CFG_ROW_MAJOR_UB>(mm1ResUB_[(runInfo.loop % 2)
-            * (constInfo_.s2BaseSize / 2 + VL_PAD_STRIDE)],
-            cL0_[(l0BufIdx_ % L0_BUF_NUM) * L0C_BUFFER_OFFSET],
-            fixpipeParams);
+        uint32_t ubBase = (runInfo.loop % 2) * (constInfo_.s2BaseSize / 2 + VL_PAD_STRIDE);
+        if (nSize <= (256 / sizeof(float))) {
+            // ndNum=1: 单次fixpipe, 数据连续存放
+            Fixpipe<QK_T, float, QLIV2_CFG_ROW_MAJOR_UB>(mm1ResUB_[ubBase],
+                cL0_[(l0BufIdx_ % L0_BUF_NUM) * L0C_BUFFER_OFFSET],
+                fixpipeParams);
+        } else {
+            // ndNum=2: 拆成两次 ndNum=1, ND1 目标地址加 VL_PAD 消除 bank 冲突
+            FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParamsNd1 = fixpipeParams;
+            fixpipeParamsNd1.params.ndNum = 1;
+            fixpipeParamsNd1.params.srcNdStride = 0;
+            fixpipeParamsNd1.params.dstNdStride = 0;
+            // ND0
+            Fixpipe<QK_T, float, QLIV2_CFG_ROW_MAJOR_UB>(mm1ResUB_[ubBase],
+                cL0_[(l0BufIdx_ % L0_BUF_NUM) * L0C_BUFFER_OFFSET],
+                fixpipeParamsNd1);
+            // ND1: 目标地址加 VL_PAD_STRIDE, 源地址加 srcNdStride
+            Fixpipe<QK_T, float, QLIV2_CFG_ROW_MAJOR_UB>(mm1ResUB_[ubBase + fixpipeParams.mSize * fixpipeParams.dstStride + VL_PAD_STRIDE],
+                cL0_[(l0BufIdx_ % L0_BUF_NUM) * L0C_BUFFER_OFFSET + fixpipeParams.params.srcNdStride],
+                fixpipeParamsNd1);
+        }
     } else {
         // nSize * sizeof(QT) <= 256B, 小于一个UB bank大小(VL)
         uint32_t nSize = (s2L0RealSize + 7) >> 3 << 3; // 8个元素（32B)对齐
