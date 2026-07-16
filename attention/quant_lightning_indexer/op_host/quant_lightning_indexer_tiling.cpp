@@ -915,7 +915,7 @@ ge::graphStatus QLIInfoParser::CheckScaleShape()
 // key非连续校验：通过shape计算expected stride进行校验
 // PA_BSND时，只允许0轴非连续，其余轴必须连续
 // 非PA_BSND时，所有轴都必须连续
-ge::graphStatus QLIInfoParser::CheckContiguous() const
+ge::graphStatus QLIInfoParser::CheckContiguous()
 {
     if (npuArch_ != NpuArch::DAV_3510) {
         return ge::GRAPH_SUCCESS;
