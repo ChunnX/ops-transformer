@@ -45,6 +45,8 @@ struct StageTwoParams {
     int64_t Nk;
     int64_t Dv;
     int64_t Dk;
+    int64_t stateStride1;
+    bool useInitialState;
     bool gOptional;
 };
 
@@ -65,6 +67,8 @@ public:
         Dk_ = sTP_->Dk;
         curDk_ = Ceil(Dk_, BLOCK_SIZE / sizeof(bfloat16_t)) * (BLOCK_SIZE / sizeof(bfloat16_t));
         curChunkSize_ = chunkSize_;
+        useInitialState_ = sTP_->useInitialState;
+        stateStride1_ = (useInitialState_) ? sTP_->stateStride1 : Dv_ * Dk_;
         gOptional_ = sTP_->gOptional;
         InitLocalBuffers();
     }
@@ -102,7 +106,7 @@ public:
         for (int64_t nvId = nvStart; nvId < nvEnd; nvId++) {
             curChunkSize_ = chunkSize_;
             for (int64_t cId = 0; cId < chunkNum_; cId++) {
-                auto curState = (cId == 0) ? sTP_->curState[nvId * Dv_ * Dk_] : sTP_->finalState[nvId * Dv_ * Dk_];
+                auto curState = (cId == 0) ? sTP_->curState[nvId * stateStride1_] : sTP_->finalState[nvId * Dv_ * Dk_];
                 auto finalState = sTP_->finalState[nvId * Dv_ * Dk_];
                 int64_t length = cId * chunkSize_;
                 if (cId == chunkNum_ - 1) {
@@ -264,6 +268,8 @@ private:
     int64_t Sp_;
     int32_t chunkNum_;
     int32_t coreNum_;
+    int64_t stateStride1_;
+    bool useInitialState_;
     bool gOptional_;
 };
 } // namespace ChunkGatedDeltaRule
