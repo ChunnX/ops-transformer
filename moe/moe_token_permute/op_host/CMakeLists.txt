@@ -10,9 +10,9 @@
 
 set(CONDITION_UNIT ${ASCEND_COMPUTE_UNIT})
 if (BUILD_OPEN_PROJECT)
-    set(moe_token_permute_depends moe/moe_init_routing_v3
+    set(moe_token_permute_depends moe/moe_init_routing_v2 moe/moe_init_routing_v3
         CACHE INTERNAL "Dependencies for moe_token_permute")
-    target_sources(op_host_aclnnExc PRIVATE
+    target_sources(op_host_aclnnInner PRIVATE
        moe_token_permute_def.cpp
     )
     if(CONDITION_UNIT STREQUAL "ascend950")
@@ -35,5 +35,5 @@ if (BUILD_OPEN_PROJECT)
 endif()
 
 if(NOT BUILD_OPS_RTY_KERNEL)
-    add_modules_sources(OPTYPE moe_token_permute ACLNNTYPE aclnn_exclude )
+    add_modules_sources(OPTYPE moe_token_permute ACLNNTYPE aclnn_inner )
 endif()
