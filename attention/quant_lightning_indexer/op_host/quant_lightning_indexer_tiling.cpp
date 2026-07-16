@@ -926,6 +926,9 @@ ge::graphStatus QLIInfoParser::CheckContiguous()
         return ge::GRAPH_SUCCESS;
     }
 
+    std::vector<uint32_t> keyStridesVec_;
+    std::vector<uint32_t> keyDequantScaleStridesVec_;
+
     auto keyStrides = context_->GetDynamicInputStride(KEY_INDEX, 0);
     auto keyDequantScaleStrides = context_->GetDynamicInputStride(KEY_DEQUANT_SCALE_INDEX, 0);
     if (keyStrides != nullptr && keyStrides->GetDimNum() > 0) {
