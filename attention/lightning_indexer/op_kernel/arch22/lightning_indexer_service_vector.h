@@ -67,8 +67,9 @@ public:
     __aicore__ inline void InitParams(const struct LICommon::ConstInfo &constInfo,
                                       const LITilingData *__restrict tilingData);
     __aicore__ inline void InitVec1GlobalTensor(GlobalTensor<MM1_OUT_T> mm1ResGm, GlobalTensor<float> vec1ResGm,
-                                                GlobalTensor<int64_t> vec1ParamGm, GlobalTensor<W_T> weightsGm,
-                                                GlobalTensor<int32_t> indiceOutGm, GlobalTensor<K_T> valueOutGm);
+                                                 GlobalTensor<int64_t> vec1ParamGm, GlobalTensor<W_T> weightsGm,
+                                                 GlobalTensor<int32_t> indiceOutGm, GlobalTensor<K_T> valueOutGm,
+                                                 GlobalTensor<bfloat16_t> scoreB16Gm);
     __aicore__ inline void CleanInvalidOutput(int64_t invalidS1offset);
     __aicore__ inline void AllocEventID();
     __aicore__ inline void FreeEventID();
@@ -78,6 +79,7 @@ protected:
     GlobalTensor<MM1_OUT_T> mm1ResGm;
     GlobalTensor<float> vec1ResGm;
     GlobalTensor<int64_t> vec1ParamGm;
+    GlobalTensor<bfloat16_t> scoreB16Gm;
     GlobalTensor<W_T> weightsGm;
     GlobalTensor<int32_t> indiceOutGm;
     GlobalTensor<K_T> valueOutGm;
@@ -205,7 +207,8 @@ __aicore__ inline void
 LightningIndexerServiceVector<LIT>::InitVec1GlobalTensor(GlobalTensor<MM1_OUT_T> mm1ResGm,
                                     GlobalTensor<float> vec1ResGm,
                                     GlobalTensor<int64_t> vec1ParamGm, GlobalTensor<W_T> weightsGm,
-                                    GlobalTensor<int32_t> indiceOutGm, GlobalTensor<K_T> valueOutGm)
+                                    GlobalTensor<int32_t> indiceOutGm, GlobalTensor<K_T> valueOutGm,
+                                    GlobalTensor<bfloat16_t> scoreB16Gm)
 {
     this->mm1ResGm = mm1ResGm;
     this->vec1ResGm = vec1ResGm;
@@ -213,6 +216,7 @@ LightningIndexerServiceVector<LIT>::InitVec1GlobalTensor(GlobalTensor<MM1_OUT_T>
     this->weightsGm = weightsGm;
     this->indiceOutGm = indiceOutGm;
     this->valueOutGm = valueOutGm;
+    this->scoreB16Gm = scoreB16Gm;
 }
 
 template <typename LIT>
@@ -352,6 +356,28 @@ __aicore__ inline void LightningIndexerServiceVector<LIT>::ProcessVec(const LICo
             bool isS2End = cuBaseS2Idx + s2BaseSize_ >= cuRealAcSeq;
             LIServiceVec::DoReduce(reduceCacheBuf[REDUCE_BANK_CONFLICT_NUM], reduceOutInner, gRedCnt, s2BaseSize_);
             outQueue_.FreeTensor(reduceCacheBuf);
+
+            // Write reduce result to scoreB16Gm for RadixTopK
+            if (cuS2Len < s2BaseSize_) {
+                int32_t cuS2LenAlign8 = (cuS2Len + 7) / 8 * 8;
+                if (cuS2LenAlign8 < s2BaseSize_) {
+                    Duplicate(reduceOutInner[cuS2LenAlign8], -1.0e30f, s2BaseSize_ - cuS2LenAlign8);
+                }
+                PipeBarrier<PIPE_V>();
+            }
+            {
+                LocalTensor<bfloat16_t> scoreB16Ub = tmpUb_.template ReinterpretCast<bfloat16_t>();
+                Cast(scoreB16Ub, reduceOutInner, RoundMode::CAST_ROUND, s2BaseSize_);
+                PipeBarrier<PIPE_V>();
+                uint64_t globalS1Idx = static_cast<uint64_t>(cuS1Idx);
+                uint64_t scoreOffset = globalS1Idx * constInfo_.radixSortLenAlign + cuBaseS2Idx;
+                AscendC::DataCopyParams dcParams;
+                dcParams.blockCount = 1;
+                dcParams.blockLen = s2BaseSize_ * sizeof(bfloat16_t);
+                dcParams.srcStride = 0;
+                dcParams.dstStride = 0;
+                DataCopyPad(scoreB16Gm[scoreOffset], scoreB16Ub, dcParams);
+            }
 
             LocalTensor<float> sortScoreUb = reduceOutBuff;
             LocalTensor<float> sortIndiceUb = reduceOutBuff[cuS2LenVecAlign];

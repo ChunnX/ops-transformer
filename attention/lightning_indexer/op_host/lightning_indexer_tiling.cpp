@@ -939,20 +939,15 @@ static ge::graphStatus TilingPrepareForLightningIndexer(gert::TilingParseContext
 }
 
 // --------------------------LightningIndexerTiling类成员函数定义-----------------------
+static constexpr uint32_t RDX_BINS_COUNT = 4;
 static uint64_t LiCalcWorkspaceSize(const platform_ascendc::PlatformAscendC &liPlatform,
-                                    int64_t liS2Size, uint32_t liAicNum)
+                                    int64_t liS2Size, uint32_t liBlockDim,
+                                    uint32_t liBSize, uint32_t liS1Size, uint32_t liN2Size)
 {
     constexpr uint32_t liMm1ResElemSize = 4;
     constexpr uint32_t liDoubleBuffer = 2;
     constexpr uint32_t liMBaseSize = 512;
     constexpr uint32_t liS2BaseSize = 512;
-    constexpr uint32_t liV1ResElemSize = 4;
-    constexpr uint32_t liV1ResElemType = 2;
-    constexpr uint32_t liV1DecodeParamElemSize = 8;
-    constexpr uint32_t liV1DecodeParamNum = 16;
-    constexpr uint32_t liV1DecodeDataNum = 2;
-    constexpr uint32_t liS1BaseSize = 8;
-    constexpr uint32_t liTopkMaxSize = 2048;
 
     uint64_t liWorkspaceSize = liPlatform.GetLibApiWorkSpaceSize();
     if (liPlatform.GetCurNpuArch() == NpuArch::DAV_3510) {
@@ -960,15 +955,26 @@ static uint64_t LiCalcWorkspaceSize(const platform_ascendc::PlatformAscendC &liP
         constexpr uint32_t li3510S2Base = 128;
         liWorkspaceSize +=
             li3510S1Base * ((liS2Size + li3510S2Base - 1) / li3510S2Base) * li3510S2Base *
-            sizeof(uint32_t) * liAicNum;
+            sizeof(uint32_t) * liBlockDim;
     } else {
         constexpr uint32_t liMm1ResSize = liMBaseSize * liS2BaseSize;
-        liWorkspaceSize += liMm1ResSize * liMm1ResElemSize * liDoubleBuffer * liAicNum;
-        liWorkspaceSize +=
-            liV1DecodeDataNum * liS1BaseSize * liV1ResElemType * liTopkMaxSize * liV1ResElemSize * liAicNum;
-        liWorkspaceSize +=
-            liV1DecodeDataNum * liS1BaseSize * liV1DecodeParamNum * liV1DecodeParamElemSize * liAicNum;
+        liWorkspaceSize += liMm1ResSize * liMm1ResElemSize * liDoubleBuffer * liBlockDim * 2;  // *2 for AIV GetBlockNum()
     }
+
+    // scoreB16Gm: [totalBatch, sortLenAlign] of bf16
+    uint32_t sortLen = static_cast<uint32_t>(liS2Size);
+    uint32_t sortLenAlign = ((sortLen + 255) / 256) * 256;
+    // For TND, liS1Size=0, use liS2Size as fallback
+    uint32_t actS1 = liS1Size;
+    if (actS1 == 0) {
+        actS1 = static_cast<uint32_t>(liS2Size);
+    }
+    uint32_t totalBatch = liBSize * actS1 * liN2Size;
+    liWorkspaceSize += static_cast<uint64_t>(totalBatch) * sortLenAlign * sizeof(uint16_t);
+    // RadixTopK workspace: [aivNum * 4] globalHist + [aivNum] coreTopK
+    uint32_t aivNum = liBlockDim * 2;
+    liWorkspaceSize += static_cast<uint64_t>(aivNum) * (RDX_BINS_COUNT + 1) * sizeof(int32_t);
+    liWorkspaceSize += 256 * 1024 * 1024;  // 256MB padding for safety
     return liWorkspaceSize;
 }
 
@@ -982,9 +988,36 @@ ge::graphStatus LightningIndexerTiling::DoTiling(LITilingInfo *tilingInfo)
     context_->SetBlockDim(blockDim);
 
     // -------------set workspacesize-----------------
-    uint64_t workspaceSize = LiCalcWorkspaceSize(ascendcPlatform, tilingInfo->s2Size, aicNum);
+    uint64_t workspaceSize = LiCalcWorkspaceSize(ascendcPlatform, tilingInfo->s2Size, blockDim,
+                                                  tilingInfo->bSize, tilingInfo->s1Size, tilingInfo->n2Size);
     size_t *workSpaces = context_->GetWorkspaceSizes(1);
     workSpaces[0] = workspaceSize;
+
+    // -------------compute scoreB16Gm offset-----------------
+    uint32_t sortLen = static_cast<uint32_t>(tilingInfo->s2Size);
+    uint32_t sortLenAlign = ((sortLen + 255) / 256) * 256;
+    uint64_t libApiWs = ascendcPlatform.GetLibApiWorkSpaceSize();
+    uint64_t mm1ResTotal = 0;
+    if (ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_3510) {
+        constexpr uint32_t li3510S1Base = 4;
+        constexpr uint32_t li3510S2Base = 128;
+        mm1ResTotal = li3510S1Base * ((tilingInfo->s2Size + li3510S2Base - 1) / li3510S2Base) *
+                      li3510S2Base * sizeof(uint32_t) * blockDim;
+    } else {
+        constexpr uint32_t liMBaseSize = 512;
+        constexpr uint32_t liS2BaseSize = 512;
+        mm1ResTotal = liMBaseSize * liS2BaseSize * 4 * 2 * blockDim * 2;  // *2 for AIV GetBlockNum()
+    }
+    uint64_t scoreB16GmOffset = mm1ResTotal;
+    uint32_t aivNumTotal = blockDim * 2;
+    // For TND, s1Size=0, use s2Size as actS1 for scoreB16Gm sizing
+    uint32_t actS1ForScore = static_cast<uint32_t>(tilingInfo->s1Size);
+    if (actS1ForScore == 0) {
+        actS1ForScore = static_cast<uint32_t>(tilingInfo->s2Size);
+    }
+    uint64_t scoreB16Size = static_cast<uint64_t>(tilingInfo->bSize * actS1ForScore * tilingInfo->n2Size) *
+                            sortLenAlign * sizeof(uint16_t);
+    uint64_t radixWsOffset = scoreB16GmOffset + scoreB16Size;
 
     // -------------set tilingdata-----------------
     tilingData_.set_bSize(tilingInfo->bSize);
@@ -999,6 +1032,20 @@ ge::graphStatus LightningIndexerTiling::DoTiling(LITilingInfo *tilingInfo)
     tilingData_.set_nextTokens(tilingInfo->nextTokens);
     tilingData_.set_returnValue(tilingInfo->returnValue);
     tilingData_.set_usedCoreNum(blockDim);
+    tilingData_.set_radixSortLen(sortLen);
+    tilingData_.set_radixSortLenAlign(sortLenAlign);
+    tilingData_.set_scoreB16GmOffset(scoreB16GmOffset);
+    tilingData_.set_radixWsOffset(radixWsOffset);
+    tilingData_.set_radixAivNum(aivNumTotal);
+    // For RadixTopK: totalBatch = bSize * actS1Size * n2Size
+    // For TND, s1Size=0, use s2Size as actS1Size (single batch case)
+    uint32_t actS1ForRadix = static_cast<uint32_t>(tilingInfo->s1Size);
+    if (actS1ForRadix == 0) {
+        // TND layout: use actual seq length
+        actS1ForRadix = static_cast<uint32_t>(tilingInfo->s2Size);  // s2Size is actKSize, but for TND single batch s1=s2
+    }
+    uint32_t radixTotalBatch = tilingInfo->bSize * actS1ForRadix * tilingInfo->n2Size;
+    tilingData_.set_radixTotalBatch(radixTotalBatch);
     tilingData_.SaveToBuffer(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity());
     context_->GetRawTilingData()->SetDataSize(tilingData_.GetDataSize());
 
