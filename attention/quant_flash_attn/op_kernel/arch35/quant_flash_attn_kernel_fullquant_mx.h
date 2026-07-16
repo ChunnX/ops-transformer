@@ -188,11 +188,11 @@ public:
 
         if ASCEND_IS_AIC {
             if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
-                cubeBlock.InitCubeBlock(tPipe, &l1BufferManager, query, key, value, blockTable, nullptr, nullptr,
+                cubeBlock.InitCubeBlock(tPipe, &l1BufferManager, query, key, value, blockTable,
                                         dequantScaleQuery, dequantScaleKey, dequantScaleValue,
                                         qCuSeqLensParser, kvCuSeqLensParser);
             } else {
-                cubeBlock.InitCubeBlock(tPipe, &l1BufferManager, query, key, value, blockTable, nullptr, nullptr,
+                cubeBlock.InitCubeBlock(tPipe, &l1BufferManager, query, key, value, blockTable,
                                         dequantScaleQuery, dequantScaleKey, dequantScaleValue,
                                         qSeqUsedParser, kvSeqUsedParser);
             }
@@ -286,7 +286,7 @@ public:
         constInfo.seqUsedQSize = qfaBaseParams.seqUsedQSize;
         constInfo.seqUsedKvSize = qfaBaseParams.seqUsedKvSize;
         constInfo.scaleValue = static_cast<float>(qfaBaseParams.scaleValue);
-        constInfo.isKvContinuous = qfaBaseParams.isKvContinuous != 0;
+        constInfo.isKvContinuous = true;
         constInfo.coreNum = qfaBaseParams.coreNum;
         constInfo.needInitOutput = qfaBaseParams.needInitOutput;
         constInfo.outputLayout = static_cast<FA_LAYOUT>(qfaBaseParams.outputLayout);
@@ -437,14 +437,10 @@ public:
         uint32_t bIdx = bN2Cur / constInfo.realN2Size;
         if (isFirstTask || prevBIdx != bIdx) {
             prevBIdx = bIdx;
-            if (constInfo.cuSeqLensKVSize == 0 && constInfo.seqUsedKvSize == 0 && !constInfo.isKvContinuous) {
-                actSeqLensKv = SeqLenFromTensorList<LAYOUT_KV>(keyPtr, bIdx);
+            if constexpr (LAYOUT_KV == LayOutTypeEnum::LAYOUT_TND) {
+                actSeqLensKv = kvCuSeqLensParser.GetActualSeqLength(bIdx);
             } else {
-                if constexpr (LAYOUT_KV == LayOutTypeEnum::LAYOUT_TND) {
-                    actSeqLensKv = kvCuSeqLensParser.GetActualSeqLength(bIdx);
-                } else {
-                    actSeqLensKv = kvSeqUsedParser.GetActualSeqLength(bIdx);
-                }
+                actSeqLensKv = kvSeqUsedParser.GetActualSeqLength(bIdx);
             }
             if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
                 actSeqLensQ = qCuSeqLensParser.GetActualSeqLength(bIdx);
@@ -686,16 +682,7 @@ public:
         info.actSingleLoopS2SizeAlign =
             AttentionCommon::Align((uint32_t)info.actSingleLoopS2Size, (uint32_t)(FA_BYTE_BLOCK / sizeof(INPUT_T)));
 
-        if (constInfo.isKvContinuous) {
-            info.isChangeBatch = false;
-        } else {
-            // for tensor-list
-            if (loop == 0) { // 第一个有效任务才需要重置KV的tensor
-                info.isChangeBatch = true;
-            } else {
-                info.isChangeBatch = (info.n2Idx == 0 && s2Cur == curS2Start);
-            }
-        }
+        info.isChangeBatch = false;
 
         GetPreNextTokenLeftUp(actSeqLensQ, actSeqLensKv, info.preTokensLeftUp, info.nextTokensLeftUp);
 

@@ -58,16 +58,10 @@ template <typename INPUT_T, typename T, LayOutTypeEnum layout = LayOutTypeEnum::
           S1TemplateType s1TemplateType = S1TemplateType::Aligned128,
           S2TemplateType s2TemplateType = S2TemplateType::Aligned128,
           DTemplateType dTemplateType = DTemplateType::Aligned128,
-          DTemplateType dVTemplateType = DTemplateType::Aligned128, bool hasRope = false, uint8_t KvLayoutType = 0,
+          DTemplateType dVTemplateType = DTemplateType::Aligned128, uint8_t KvLayoutType = 0,
           bool enableKVPrefix = false, bool useDn = false, bool bmm2Write2Ub = true, bool splitD = false>
 class FAFullQuantMxBlockCube {
 public:
-    /* ============确定Key的L1类型============= */
-    template <bool hasKRope>
-    struct KVL1BuffSel {
-        using Type = std::conditional_t<hasKRope, BuffersPolicyDB<BufferType::L1>, BuffersPolicy4buff<BufferType::L1>>;
-    };
-
     /* ============确定L0A的类型============= */
     struct L0ABuffSel {
         using Type = BuffersPolicyDB<BufferType::L0A>;
@@ -98,7 +92,6 @@ public:
     static constexpr uint32_t MXFP_MULTI_BASE_SIZE = 2U;
     static constexpr LayOutTypeEnum LAYOUT = layout;
     static constexpr bool PAGE_ATTENTION = (KvLayoutType > 0);
-    static constexpr bool HAS_ROPE = hasRope;
     static constexpr bool BMM2_TOUB = bmm2Write2Ub;
     static constexpr bool USE_DN = useDn;
     static constexpr bool SPLITD = splitD;
@@ -110,7 +103,6 @@ public:
     static constexpr GmFormat K_SCALE_FORMAT = GetKeyScaleGmFormat<layout, KvLayoutType, PAGE_ATTENTION>();
     static constexpr GmFormat V_SCALE_FORMAT = GetValueScaleGmFormat<layout, KvLayoutType, PAGE_ATTENTION>();
 
-    using ROPE_T = bfloat16_t;
     using Q_T = INPUT_T;
     using KV_T = INPUT_T;
     using SCALE_T = fp8_e8m0_t;
@@ -140,7 +132,7 @@ public:
                                CopyValueScaleGmToL1<SCALE_T, V_SCALE_FORMAT, L1Format::NZ, ScaleTrans::ND2NZ>>;
     };
 
-    using L1KvType = typename KVL1BuffSel<HAS_ROPE>::Type;
+    using L1KvType = BuffersPolicy4buff<BufferType::L1>;
     using L0AType = typename L0ABuffSel::Type;
     using L0BType = typename L0BBuffSel<s2BaseSize, dBaseSize>::Type;
     using L0CType = typename L0CBuffSel<mBaseSize, s2BaseSize, dVBaseSize>::Type;
@@ -168,8 +160,6 @@ public:
     using FaGmTensorQScale = FaGmTensor<SCALE_T, Q_SCALE_FORMAT, int32_t, Q_NEEDS_WZH>;
     using FaGmTensorKScale = FaGmTensor<SCALE_T, K_SCALE_FORMAT, int32_t, KV_NEEDS_WZH>;
     using FaGmTensorVScale = FaGmTensor<SCALE_T, V_SCALE_FORMAT, int32_t, KV_NEEDS_WZH>;
-    using FaGmTensorRopeQ = FaGmTensor<ROPE_T, Q_FORMAT, int32_t, Q_NEEDS_WZH>;
-    using FaGmTensorRopeKV = FaGmTensor<ROPE_T, KV_FORMAT, int32_t, KV_NEEDS_WZH>;
 
     using ConstInfoX = ConstInfo_t<FiaKernelType::FULL_QUANT>;
     TPipe *tPipe = nullptr;
@@ -180,8 +170,6 @@ public:
     FaGmTensorQScale queryScaleGm;
     FaGmTensorKScale keyScaleGm;
     FaGmTensorVScale valueScaleGm;
-    FaGmTensorRopeQ queryRopeGm;
-    FaGmTensorRopeKV keyRopeGm;
     GlobalTensor<int32_t> blockTableGm;
 
     QSeqParserType *qSeqParserPtr = nullptr;
@@ -192,8 +180,6 @@ public:
     CopyQueryScaleGmToL1<SCALE_T, Q_SCALE_FORMAT> copyQueryScaleGmToL1;
     KeyScaleGmToL1Type copyKeyScaleGmToL1;
     ValueScaleGmToL1Type copyValueScaleGmToL1;
-    CopyQueryGmToL1<ROPE_T, Q_FORMAT> copyQueryRopeGmToL1;
-    CopyKvGmToL1<ROPE_T, KV_FORMAT> copyKeyRopeGmToL1;
 
     /* =====================LocalBuffer变量====================*/
     BufferManager<BufferType::L1> *l1BufferManagerPtr;
@@ -203,7 +189,6 @@ public:
 
     BuffersPolicyDB<BufferType::L1> l1QBuffers;
     L1KvType l1KVBuffers;
-    BuffersPolicyDB<BufferType::L1> l1VBuffers;
 
     L0AType mmL0ABuffers;
     L0BType mmL0BBuffers;
@@ -219,7 +204,6 @@ public:
 
     __aicore__ inline void InitCubeBlock(TPipe *pipe, BufferManager<BufferType::L1> *l1BuffMgr, __gm__ uint8_t *query,
                                          __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *blockTable,
-                                         __gm__ uint8_t *queryRope, __gm__ uint8_t *keyRope,
                                          __gm__ uint8_t *dequantScaleQuery, __gm__ uint8_t *dequantScaleKey,
                                          __gm__ uint8_t *dequantScaleValue,
                                          QSeqParserType &qParser, KvSeqParserType &kvParser)
@@ -228,7 +212,7 @@ public:
         l1BufferManagerPtr = l1BuffMgr;
         this->qSeqParserPtr = &qParser;
         this->kvSeqParserPtr = &kvParser;
-        InitCubeInput(query, key, value, blockTable, queryRope, keyRope,
+        InitCubeInput(query, key, value, blockTable,
                       dequantScaleQuery, dequantScaleKey, dequantScaleValue);
     }
 
@@ -240,16 +224,8 @@ public:
         constexpr uint32_t mmKVSize = dBaseSize * s2BaseSizeCur * sizeof(INPUT_T);
         constexpr uint32_t mmKVScaleSize = s2BaseSizeCur * dBaseSize / MXFP_GROUP_SIZE * sizeof(SCALE_T);
 
-        if constexpr (HAS_ROPE) {
-            constexpr uint32_t qRopeSize = mBaseSize * 64 * sizeof(ROPE_T); // 64: rope d is 64
-            l1QBuffers.Init((*l1BufferManagerPtr), mm1QSize + mm1QScaleSize + qRopeSize);
-            constexpr uint32_t kRopeSize = s2BaseSizeCur * 64 * sizeof(ROPE_T); // 64: rope d is 64
-            l1KVBuffers.Init((*l1BufferManagerPtr), mmKVSize + mmKVScaleSize + kRopeSize);
-            l1VBuffers.Init((*l1BufferManagerPtr), mmKVSize + mmKVScaleSize);
-        } else {
-            l1QBuffers.Init((*l1BufferManagerPtr), mm1QSize + mm1QScaleSize);
-            l1KVBuffers.Init((*l1BufferManagerPtr), mmKVSize + mmKVScaleSize);
-        }
+        l1QBuffers.Init((*l1BufferManagerPtr), mm1QSize + mm1QScaleSize);
+        l1KVBuffers.Init((*l1BufferManagerPtr), mmKVSize + mmKVScaleSize);
 
         // L0A B C 当前写死，能否通过基础api获取
         l0aBufferManager.Init(tPipe, 65536);  // 64 * 1024
@@ -268,7 +244,7 @@ public:
     }
 
     __aicore__ inline void InitCubeInput(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
-                                         __gm__ uint8_t *blockTable, __gm__ uint8_t *queryRope, __gm__ uint8_t *keyRope,
+                                         __gm__ uint8_t *blockTable,
                                          __gm__ uint8_t *dequantScaleQuery, __gm__ uint8_t *dequantScaleKey,
                                          __gm__ uint8_t *dequantScaleValue)
     {
@@ -284,23 +260,15 @@ public:
 
         keyPtr = key;
         valuePtr = value;
-        if (constInfo.isKvContinuous) {
-            InitKVBuffer(constInfo.bSize, constInfo.s2Size, constInfo.n2Size, constInfo.blockSize, constInfo.dSize,
-                         keyGm, key);
-            InitKVBuffer(constInfo.bSize, constInfo.s2Size, constInfo.n2Size, constInfo.blockSize, constInfo.dSizeV,
-                         valueGm, value);
-            InitKScaleBuffer(constInfo.bSize, constInfo.s2Size, constInfo.n2Size, constInfo.blockSize,
-                             constInfo.dSize / MXFP_GROUP_SIZE, keyScaleGm, dequantScaleKey);
-            InitVScaleBuffer(constInfo.bSize, constInfo.s2Size / MXFP_DIVISOR_SIZE, constInfo.n2Size,
-                             constInfo.blockSize / MXFP_DIVISOR_SIZE, constInfo.dSizeV * MXFP_MULTI_BASE_SIZE,
+        InitKVBuffer(constInfo.bSize, constInfo.s2Size, constInfo.n2Size, constInfo.blockSize, constInfo.dSize,
+                     keyGm, key);
+        InitKVBuffer(constInfo.bSize, constInfo.s2Size, constInfo.n2Size, constInfo.blockSize, constInfo.dSizeV,
+                     valueGm, value);
+        InitKScaleBuffer(constInfo.bSize, constInfo.s2Size, constInfo.n2Size, constInfo.blockSize,
+                         constInfo.dSize / MXFP_GROUP_SIZE, keyScaleGm, dequantScaleKey);
+        InitVScaleBuffer(constInfo.bSize, constInfo.s2Size / MXFP_DIVISOR_SIZE, constInfo.n2Size,
+                         constInfo.blockSize / MXFP_DIVISOR_SIZE, constInfo.dSizeV * MXFP_MULTI_BASE_SIZE,
                              valueScaleGm, dequantScaleValue);
-        }
-        if constexpr (HAS_ROPE) {
-            InitQRopeBuffer(constInfo.bSize, constInfo.realN2Size, constInfo.realGSize, constInfo.s1Size,
-                        constInfo.dSizeRope, queryRopeGm, queryRope);
-            InitKRopeBuffer(constInfo.bSize, constInfo.s2Size, constInfo.n2Size, constInfo.blockSize,
-                         constInfo.dSizeRope, keyRopeGm, keyRope);
-        }
     }
 
     __aicore__ inline void InitQBuffer(uint32_t batchSize, uint32_t n2Size, uint32_t gSize, uint32_t qSeqSize,
@@ -311,17 +279,6 @@ public:
             qGmTensor.offsetCalculator.Init(n2Size, gSize, headDim, *this->qSeqParserPtr);
         } else {
             qGmTensor.offsetCalculator.Init(batchSize, n2Size, gSize, qSeqSize, headDim, *this->qSeqParserPtr);
-        }
-    }
-
-    __aicore__ inline void InitQRopeBuffer(uint32_t batchSize, uint32_t n2Size, uint32_t gSize, uint32_t qSeqSize,
-                                           uint32_t headDim, FaGmTensorRopeQ &qRopeGmTensor, __gm__ uint8_t *gm)
-    {
-        qRopeGmTensor.gmTensor.SetGlobalBuffer((__gm__ ROPE_T *)gm);
-        if constexpr (Q_NEEDS_WZH) {
-            qRopeGmTensor.offsetCalculator.Init(n2Size, gSize, headDim, *this->qSeqParserPtr);
-        } else {
-            qRopeGmTensor.offsetCalculator.Init(batchSize, n2Size, gSize, qSeqSize, headDim, *this->qSeqParserPtr);
         }
     }
 
@@ -354,26 +311,6 @@ public:
         } else {
             kvGmTensor.offsetCalculator.Init(batchSize, n2Size, kvSeqSize, headDim);
             kvGmTensor.offsetCalculator.Init(*this->kvSeqParserPtr);
-        }
-    }
-
-    __aicore__ inline void InitKRopeBuffer(uint32_t batchSize, uint32_t kvSeqSize, uint32_t n2Size,
-                                           uint32_t kvCacheBlockSize, uint32_t headDim,
-                                           FaGmTensorRopeKV &kRopeGmTensor, __gm__ uint8_t *gm)
-    {
-        kRopeGmTensor.gmTensor.SetGlobalBuffer((__gm__ ROPE_T *)gm);
-        if constexpr (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_PA_BNBD) {
-            kRopeGmTensor.offsetCalculator.Init(n2Size, kvCacheBlockSize, headDim, blockTableGm,
-                                                constInfo.maxBlockNumPerBatch);
-        } else if constexpr (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_PA_NZ) {
-            uint32_t d0 = 32 / sizeof(ROPE_T);
-            uint32_t d1 = headDim / d0;
-            kRopeGmTensor.offsetCalculator.Init(n2Size, kvCacheBlockSize, d1, d0, blockTableGm,
-                                                constInfo.maxBlockNumPerBatch);
-        } else if constexpr (KV_NEEDS_WZH) {
-            kRopeGmTensor.offsetCalculator.Init(n2Size, headDim, *this->kvSeqParserPtr);
-        } else {
-            kRopeGmTensor.offsetCalculator.Init(batchSize, n2Size, kvSeqSize, headDim, *this->kvSeqParserPtr);
         }
     }
 
@@ -454,26 +391,6 @@ public:
             .dDealSize = nopeDealSize
         };
         copyQueryGmToL1(l1Tensor, queryGm, gmCoord);
-
-        if constexpr (HAS_ROPE) {
-            uint32_t ropeDealSize = constInfo.dSizeRope;
-            uint32_t dstStrideRope = (runInfo.actMSize + 15) >> 4 << 4;
-            uint32_t offset =  AttentionCommon::Align(nopeDealSize, blockNumDtype) *  AttentionCommon::Align(runInfo.actMSize, blockNumDtype);
-            FaL1Tensor<ROPE_T, L1Format::NZ> l1Tensor {
-                .tensor = (dstTensor[offset]).template ReinterpretCast<ROPE_T>(),
-                .rowCount = dstStrideRope
-            };
-
-            GmCoord gmCoord = {
-                .bIdx = runInfo.bIdx,
-                .n2Idx = runInfo.realN2Idx,
-                .gS1Idx = runInfo.gS1Idx,
-                .dIdx = 0,
-                .gS1DealSize = runInfo.actMSize,
-                .dDealSize = ropeDealSize
-            };
-            copyQueryRopeGmToL1(l1Tensor, queryRopeGm, gmCoord);
-        }
     }
 
     __aicore__ inline void CopyQueryTile(const LocalTensor<Q_T> &dstTensor, RunInfoX &runInfo)
@@ -521,7 +438,7 @@ public:
         };
         // CopyKey的控制参数
         GmKvCoord gmCoord {
-            .bIdx = constInfo.isKvContinuous ? runInfo.bIdx : 0,
+            .bIdx = runInfo.bIdx,
             .n2Idx = runInfo.n2Idx,
             .s2Idx = s2Offset,
             .dIdx = dOffset,
@@ -529,26 +446,6 @@ public:
             .dDealSize = nopeDealSize
         };
         copyKvGmToL1(l1Tensor, keyGm, gmCoord);
-
-        if constexpr (HAS_ROPE) {
-            uint32_t ropeDealSize = constInfo.dSizeRope;
-            uint32_t dstStrideRope = (s2RealSize + 15) >> 4 << 4;
-            uint32_t offset =  AttentionCommon::Align(nopeDealSize, blockNumDtype) *  AttentionCommon::Align(s2RealSize, blockNumDtype);
-            FaL1Tensor<ROPE_T, L1Format::NZ> l1Tensor =  {
-                .tensor = (dstTensor[offset]).template ReinterpretCast<ROPE_T>(),
-                .rowCount = dstStrideRope
-            };
-
-            GmKvCoord gmCoord = {
-                .bIdx = constInfo.isKvContinuous ? runInfo.bIdx : 0,
-                .n2Idx = runInfo.n2Idx,
-                .s2Idx = s2Offset,
-                .dIdx = 0,
-                .s2DealSize = s2RealSize,
-                .dDealSize = ropeDealSize
-            };
-            copyKeyRopeGmToL1(l1Tensor, keyRopeGm, gmCoord);
-        }
     }
 
     // 全量拷贝
@@ -600,7 +497,7 @@ public:
         };
 
         GmKvCoord gmCoord {
-            .bIdx = constInfo.isKvContinuous ? runInfo.bIdx : 0,
+            .bIdx = runInfo.bIdx,
             .n2Idx = runInfo.n2Idx,
             .s2Idx = s2Offset,
             .dIdx = dOffset,
@@ -665,11 +562,6 @@ public:
 
     __aicore__ inline void IterateBmm1(MM1_DBUF_T &outputBuf, RunInfoX &runInfo, uint32_t subLoop)
     {
-        if constexpr (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_BNSD) {
-            if (runInfo.isChangeBatch) {
-                UpdateKey(runInfo.bIdx);
-            }
-        }
         if constexpr (USE_DN) {
             IterateBmm1Dn(outputBuf, runInfo, subLoop);
         } else {
@@ -691,10 +583,7 @@ public:
             }
         }
         Buffer<BufferType::L1> mm1A;
-        uint32_t qScaleOffset = ((runInfo.actMSize + 31) >> 5 << 5) * constInfo.dSize; // QScale在mm1A的偏移量（单位：元素）
-        if constexpr (HAS_ROPE) {
-            qScaleOffset += ((runInfo.actMSize + 31) >> 5 << 5) * constInfo.dSizeRope * sizeof(ROPE_T);
-        }
+        uint32_t qScaleOffset = ((runInfo.actMSize + 31) >> 5 << 5) * constInfo.dSize;
         if (unlikely(runInfo.isFirstS2Loop && subLoop == 0)) {
             mm1A = l1QBuffers.Get();
             mm1A.Wait<HardEvent::MTE1_MTE2>();
@@ -714,10 +603,7 @@ public:
         LocalTensor<KV_T> mm1BTensor = mm1B.GetTensor<KV_T>();
         CopyKeyTile(mm1BTensor, runInfo, s2CurSize, subLoop);
 
-        uint32_t kScaleOffset = ((s2CurSize + 31) >> 5 << 5) * constInfo.dSize; // KScale在mm1B的偏移量（单位：元素）
-        if constexpr (HAS_ROPE) {
-            kScaleOffset += ((s2CurSize + 31) >> 5 << 5) * constInfo.dSizeRope * sizeof(ROPE_T);
-        }
+        uint32_t kScaleOffset = ((s2CurSize + 31) >> 5 << 5) * constInfo.dSize;
         LocalTensor<SCALE_T> mm1BScaleTensor = mm1B.GetTensor<SCALE_T>(kScaleOffset);
         CopyKeyScaleTile(mm1BScaleTensor, runInfo, s2CurSize, subLoop);
         mm1B.Set<HardEvent::MTE2_MTE1>();
@@ -736,17 +622,6 @@ public:
             param,
             mm1A.GetTensor<SCALE_T>(qScaleOffset), mm1B.GetTensor<SCALE_T>(kScaleOffset));
 
-        if constexpr (HAS_ROPE) {
-            uint32_t qRopeOffset = ((runInfo.actMSize + 31) >> 5 << 5) * constInfo.dSize / sizeof(ROPE_T);
-            uint32_t kRopeOffset = ((s2CurSize + 31) >> 5 << 5) * constInfo.dSize / sizeof(ROPE_T);
-            MMParam ropeParam = MakeMMParam((uint32_t)runInfo.actMSize, (uint32_t)s2CurSize,
-                                            (uint32_t)constInfo.dSizeRope, false, true, true, false);
-            MatmulFullMX<ROPE_T, ROPE_T, T, 128, 256, 64, ABLayout::MK, ABLayout::KN>(
-                mm1A.GetTensor<ROPE_T>(qRopeOffset), mm1B.GetTensor<ROPE_T>(kRopeOffset),
-                mmL0ABuffers, mmL0BBuffers,
-                mm1ResL0C.GetTensor<T>(),
-                ropeParam);
-        }
         if (unlikely(runInfo.isLastS2Loop && (((runInfo.actSingleLoopS2Size > s2SplitSize) && (subLoop % 2 == 1)) ||
                                               (runInfo.actSingleLoopS2Size <= s2SplitSize)))) {
             mm1A.Set<HardEvent::MTE1_MTE2>();
@@ -817,10 +692,7 @@ public:
             }
         }
         Buffer<BufferType::L1> mm1B;
-        uint32_t qScaleOffset = ((runInfo.actMSize + 31) >> 5 << 5) * constInfo.dSize; // QScale在mm1A的偏移量（单位：元素）
-        if constexpr (HAS_ROPE) {
-            qScaleOffset += ((runInfo.actMSize + 31) >> 5 << 5) * constInfo.dSizeRope * sizeof(ROPE_T);
-        }
+        uint32_t qScaleOffset = ((runInfo.actMSize + 31) >> 5 << 5) * constInfo.dSize;
         if (unlikely(runInfo.isFirstS2Loop && subLoop == 0)) {
             mm1B = l1QBuffers.Get();
             mm1B.Wait<HardEvent::MTE1_MTE2>();   // B矩阵常驻，两次Sub中，只有第一次搬B
@@ -840,10 +712,7 @@ public:
         LocalTensor<KV_T> mm1ATensor = mm1A.GetTensor<KV_T>();
         CopyKeyTile(mm1ATensor, runInfo, s2CalcSize, subLoop);
 
-        uint32_t kScaleOffset = ((s2CalcSize + 31) >> 5 << 5) * constInfo.dSize; // KScale在mm1B的偏移量（单位：元素）
-        if constexpr (HAS_ROPE) {
-            kScaleOffset += ((s2CalcSize + 31) >> 5 << 5) * constInfo.dSizeRope * sizeof(ROPE_T);
-        }
+        uint32_t kScaleOffset = ((s2CalcSize + 31) >> 5 << 5) * constInfo.dSize;
         LocalTensor<SCALE_T> mm1AScaleTensor = mm1A.GetTensor<SCALE_T>(kScaleOffset);
         CopyKeyScaleTile(mm1AScaleTensor, runInfo, s2CalcSize, subLoop);
         mm1A.Set<HardEvent::MTE2_MTE1>();
@@ -862,17 +731,6 @@ public:
             param,
             mm1A.GetTensor<SCALE_T>(kScaleOffset), mm1B.GetTensor<SCALE_T>(qScaleOffset));
 
-        if constexpr (HAS_ROPE) {
-            uint32_t qRopeOffset = ((runInfo.actMSize + 31) >> 5 << 5) * constInfo.dSize / sizeof(ROPE_T);
-            uint32_t kRopeOffset = ((s2CalcSize + 31) >> 5 << 5) * constInfo.dSize / sizeof(ROPE_T);
-            MMParam ropeParam = MakeMMParam((uint32_t)s2CalcSize, (uint32_t)runInfo.actMSize,
-                                            (uint32_t)constInfo.dSizeRope, false, true, true, false);
-            MatmulFullMX<ROPE_T, ROPE_T, T, 128, 256, 64, ABLayout::MK, ABLayout::KN>(
-                mm1A.GetTensor<ROPE_T>(kRopeOffset), mm1B.GetTensor<ROPE_T>(qRopeOffset),
-                mmL0ABuffers, mmL0BBuffers,
-                mm1ResL0C.GetTensor<T>(),
-                ropeParam);
-        }
         if (unlikely(runInfo.isLastS2Loop && (((runInfo.actSingleLoopS2Size > s2SplitSize) && (subLoop % 2 == 1)) ||
                                               (runInfo.actSingleLoopS2Size <= s2SplitSize)))) {
             mm1B.Set<HardEvent::MTE1_MTE2>();
@@ -891,12 +749,6 @@ public:
 
     __aicore__ inline void IterateBmm2(mm2ResPos &outputBuf, MM2_ABUF_POLICY_T &inputBuf, RunInfoX &runInfo)
     {
-        if constexpr (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_BNSD) {
-            if (runInfo.isChangeBatch) {
-                UpdateValue(runInfo.bIdx);
-            }
-        }
-
         if constexpr (USE_DN) {
             IterateBmm2Dn(outputBuf, inputBuf, runInfo);
         } else {
@@ -921,12 +773,7 @@ public:
         uint32_t kLoops = (runInfo.actSingleLoopS2Size + baseK - 1) / baseK;
         uint32_t realK = baseK;
         for (uint32_t kIdx = 0; kIdx < kLoops; kIdx++) {
-            Buffer<BufferType::L1> mm2B;
-            if constexpr (HAS_ROPE) {
-                mm2B = l1VBuffers.Get();
-            } else {
-                mm2B = l1KVBuffers.Get();
-            }
+            Buffer<BufferType::L1> mm2B = l1KVBuffers.Get();
             if (kIdx == kLoops - 1) {
                 realK = runInfo.actSingleLoopS2Size - kIdx * baseK;
             }
@@ -1022,12 +869,7 @@ public:
         uint32_t kLoops = (runInfo.actSingleLoopS2Size + baseK - 1) / baseK;
         uint32_t realK = baseK;
         for (uint32_t k = 0; k < kLoops; k++) {
-            Buffer<BufferType::L1> mm2B;
-            if constexpr (HAS_ROPE) {
-                mm2B = l1VBuffers.Get();
-            } else {
-                mm2B = l1KVBuffers.Get();
-            }
+            Buffer<BufferType::L1> mm2B = l1KVBuffers.Get();
             if (k == kLoops - 1) {
                 realK = runInfo.actSingleLoopS2Size - k * baseK;
             }
@@ -1116,7 +958,7 @@ template <typename INPUT_T, typename T, LayOutTypeEnum layout = LayOutTypeEnum::
           S1TemplateType s1TemplateType = S1TemplateType::Aligned128,
           S2TemplateType s2TemplateType = S2TemplateType::Aligned128,
           DTemplateType dTemplateType = DTemplateType::Aligned128,
-          DTemplateType dVTemplateType = DTemplateType::Aligned128, bool hasRope = false, uint8_t KvLayoutType = 0,
+          DTemplateType dVTemplateType = DTemplateType::Aligned128, uint8_t KvLayoutType = 0,
           bool enableKVPrefix = false, bool useDn = false, bool bmm2Write2Ub = true, bool splitD = false>
 class FAFullQuantMxBlockCubeDummy {
 public:
@@ -1126,12 +968,10 @@ public:
     static constexpr uint32_t dVBaseSize = (uint32_t)dVTemplateType;
     static constexpr LayOutTypeEnum LAYOUT = layout;
     static constexpr bool PAGE_ATTENTION = (KvLayoutType > 0);
-    static constexpr bool HAS_ROPE = hasRope;
     static constexpr bool HAS_PREFIX = enableKVPrefix;
     static constexpr bool BMM2_TOUB = bmm2Write2Ub;
     static constexpr bool USE_DN = useDn;
 
-    using ROPE_T = bfloat16_t;
     using Q_T = INPUT_T;
     using KV_T = INPUT_T;
     using MM_T = T;

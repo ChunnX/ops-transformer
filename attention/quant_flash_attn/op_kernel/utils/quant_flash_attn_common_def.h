@@ -198,7 +198,6 @@ struct CommonConstInfo {
     uint32_t dSize;
     uint32_t dSizeV;
     uint32_t dBasicBlock;
-    uint32_t dSizeRope = 0;
     uint32_t gSize;
     uint32_t n2Size;
     uint32_t realGSize;

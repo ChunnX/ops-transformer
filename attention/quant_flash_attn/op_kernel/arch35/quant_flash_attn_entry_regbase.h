@@ -61,7 +61,6 @@ quant_flash_attn_kernel_run(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ u
     constexpr DTemplateType dVTemplateType = static_cast<DTemplateType>(ConfigValue[config].dv);
 
     // 其余参数硬编码
-    constexpr bool hasRopeConst = false;
     constexpr bool isFdConst = false;
     constexpr PseTypeEnum pseModeConst = PseTypeEnum::PSE_NONE_TYPE;
     constexpr bool enableKVPrefixConst = false;
@@ -69,7 +68,7 @@ quant_flash_attn_kernel_run(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ u
     // 2. 推导编译期常量
     constexpr TPosition bmm2OutPos =
         BaseApi::GetC2Position(dVTemplateType,
-                               BaseApi::UbOutCondition<INPUT_T>(false, pseModeConst, hasAttenMask, false, hasRopeConst,
+                               BaseApi::UbOutCondition<INPUT_T>(false, pseModeConst, hasAttenMask, false, false,
                                                                 (uint32_t)s1TemplateType == 64),
                                ((uint32_t)s2TemplateType == 256 && (uint32_t)s1TemplateType == 64), false);
     // prefill(quantMode==QFA_MXFP8_FP32_PREFILL) → useDn=true; decode(quantMode==QFA_MXFP8_FP32_DECODE) → useDn=false
@@ -80,33 +79,33 @@ quant_flash_attn_kernel_run(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ u
     // 3. Block 类型别名
     using CubeBlock =
         BaseApi::FAFullQuantMxBlockCube<INPUT_T, float, inputLayoutType, s1TemplateType, s2TemplateType,
-                                        dTemplateType, dVTemplateType, hasRopeConst, KvLayoutType,
+                                        dTemplateType, dVTemplateType, KvLayoutType,
                                         enableKVPrefixConst, useDn, bmm2Write2Ub, splitD>;
     using VecFaBlock =
         BaseApi::FAFullQuantMxBlockVec<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType, s1TemplateType,
                                        s2TemplateType, dTemplateType, dVTemplateType, pseModeConst, hasAttenMask,
-                                       false, hasRopeConst, KvLayoutType, isFdConst, enableKVPrefixConst, useDn,
+                                       false, KvLayoutType, isFdConst, enableKVPrefixConst, useDn,
                                        bmm2Write2Ub, splitD>;
     using VecFdBlock =
         BaseApi::FiaBlockVecFlashDecodeFullQuant<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType,
                                                  s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
-                                                 pseModeConst, hasAttenMask, false, hasRopeConst, KvLayoutType,
+                                                 pseModeConst, hasAttenMask, false, KvLayoutType,
                                                  enableKVPrefixConst, useDn, bmm2Write2Ub, splitD>;
 
     // 4. AIC/AIV分别编译：用Dummy Block避免交叉编译不需要的代码
     using CubeBlockDummy =
         BaseApi::FAFullQuantMxBlockCubeDummy<INPUT_T, float, inputLayoutType, s1TemplateType, s2TemplateType,
-                                             dTemplateType, dVTemplateType, hasRopeConst, KvLayoutType,
+                                             dTemplateType, dVTemplateType, KvLayoutType,
                                              enableKVPrefixConst, useDn, bmm2Write2Ub, splitD>;
     using VecFaBlockDummy =
         BaseApi::FAFullQuantMxBlockVecDummy<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType,
                                             s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
-                                            pseModeConst, hasAttenMask, false, hasRopeConst, KvLayoutType,
+                                            pseModeConst, hasAttenMask, false, KvLayoutType,
                                             isFdConst, enableKVPrefixConst, useDn, bmm2Write2Ub, splitD>;
     using VecFdBlockDummy =
         BaseApi::FiaBlockVecFlashDecodeFullQuantDummy<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType,
                                                       s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
-                                                      pseModeConst, hasAttenMask, false, hasRopeConst, KvLayoutType,
+                                                      pseModeConst, hasAttenMask, false, KvLayoutType,
                                                       enableKVPrefixConst, useDn, bmm2Write2Ub, splitD>;
 
 #ifdef __DAV_C310_CUBE__
