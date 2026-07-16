@@ -9,31 +9,43 @@
  */
 
 /*!
- * \file mega_moe_gmm2.h
- * \brief GMM2 AIV prologue/post processing and AIC/AIV synchronization finalization.
+ * \file mega_moe_gmm2_block.h
+ * \brief Pure AIC single-core entry for GMM2 matmul.
  */
 
-#ifndef MEGA_MOE_GMM2_EPILOGUE_H
-#define MEGA_MOE_GMM2_EPILOGUE_H
+#ifndef MEGA_MOE_GMM2_BLOCK_H
+#define MEGA_MOE_GMM2_BLOCK_H
 
 #include "kernel_operator.h"
-#include "../block/mega_moe_gmm2.h"
+#include "../mega_moe_impl.h"
 
 using namespace AscendC;
 
-namespace MegaMoeGmm2EpilogueImpl {
-using Gmm2ProblemContext = MegaMoeGmm2BlockImpl::Gmm2ProblemContext;
-using Gmm2RuntimeState = MegaMoeGmm2BlockImpl::Gmm2RuntimeState;
+namespace MegaMoeGmm2BlockImpl {
+using Gmm2ProblemShape = AscendC::Shape<int64_t, int64_t, int64_t, int64_t>;
 
-// ==================================================================================
-// ProcessGmm2EpilogueSingleCore：只实例化 GMM2 的 AIV prologue/post 路径
-// ==================================================================================
+// GMM2 block 与 epilogue 共用的问题描述，所有地址均由外部编排器准备。
+struct Gmm2ProblemContext {
+    const Gmm2ProblemShape& problemShape;
+    const GMMAddrInfo& addrInfo;
+    uint32_t expertBeforeCnt;
+    uint32_t expertIdx;
+};
+
+// 每个核独立维护的逻辑调度状态；logicalTileId 不表示物理 block ID。
+struct Gmm2RuntimeState {
+    uint32_t& logicalTileId;
+    int32_t& vecSetSyncCom;
+    uint16_t& pingPongIdx;
+};
+
+// 纯 AIC GMM2 入口。AIV 编译实例不会执行或实例化矩阵计算分支。
 template <int32_t CombineQuantMode, typename QuantOutType, typename SwigluQuantOutType, typename WeightType,
     typename QuantScaleType, bool EnableA8W4, bool EnableA4W4>
-__aicore__ inline void ProcessGmm2EpilogueSingleCore(const Params& params,
+__aicore__ inline void ProcessGmm2BlockSingleCore(const Params& params,
     const Gmm2ProblemContext& problemContext, Gmm2RuntimeState& runtimeState)
 {
-    if constexpr (g_coreType == AIV) {
+    if constexpr (g_coreType == AIC) {
         if constexpr (EnableA8W4 || EnableA4W4) {
             MegaMoeImpl::GroupMatmul2CombineA8W4<CombineQuantMode, SwigluQuantOutType, WeightType, bfloat16_t,
                 QuantScaleType, QuantScaleType>(params, problemContext.problemShape, problemContext.addrInfo,
@@ -53,17 +65,6 @@ __aicore__ inline void ProcessGmm2EpilogueSingleCore(const Params& params,
     }
 }
 
-// ==================================================================================
-// FinalizeGmm2SingleCore：非量化 GMM2 路径等待 ping-pong 同步收尾
-// ==================================================================================
-template <int32_t CombineQuantMode>
-__aicore__ inline void FinalizeGmm2SingleCore(Gmm2RuntimeState& runtimeState)
-{
-    if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
-        EndGMM2Sync(runtimeState.vecSetSyncCom, runtimeState.pingPongIdx);
-    }
-}
+} // namespace MegaMoeGmm2BlockImpl
 
-} // namespace MegaMoeGmm2EpilogueImpl
-
-#endif // MEGA_MOE_GMM2_EPILOGUE_H
+#endif // MEGA_MOE_GMM2_BLOCK_H

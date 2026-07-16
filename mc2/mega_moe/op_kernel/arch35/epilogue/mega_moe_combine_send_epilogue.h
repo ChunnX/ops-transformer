@@ -9,12 +9,12 @@
  */
 
 /*!
- * \file mega_moe_combine_send.h
+ * \file mega_moe_combine_send_epilogue.h
  * \brief CombineSend epilogue that connects GMM2 completion, AIV compute, and communication.
  */
 
-#ifndef MEGA_MOE_COMBINE_SEND_H
-#define MEGA_MOE_COMBINE_SEND_H
+#ifndef MEGA_MOE_COMBINE_SEND_EPILOGUE_H
+#define MEGA_MOE_COMBINE_SEND_EPILOGUE_H
 
 #include "kernel_operator.h"
 #include "../mega_moe_base.h"
@@ -25,8 +25,8 @@
 #endif
 
 #include "../mega_moe_impl_base.h"
-#include "../aiv_comm/mega_moe_combine_comm.h"
-#include "../aiv_compute/mega_moe_combine_compute.h"
+#include "../aiv_comm/mega_moe_combine_send_comm.h"
+#include "../aiv_compute/mega_moe_combine_send_compute.h"
 using namespace AscendC;
 
 namespace MegaMoeCombineImpl {
@@ -275,4 +275,4 @@ __aicore__ inline void ProcessCombineSingleCore(const CombineTileSchedule& tileS
 
 }  // namespace MegaMoeCombineImpl
 
-#endif // MEGA_MOE_COMBINE_SEND_H
+#endif // MEGA_MOE_COMBINE_SEND_EPILOGUE_H

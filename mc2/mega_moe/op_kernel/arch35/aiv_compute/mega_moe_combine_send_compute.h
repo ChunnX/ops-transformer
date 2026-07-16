@@ -9,12 +9,12 @@
  */
 
 /*!
- * \file mega_moe_combine_compute.h
+ * \file mega_moe_combine_send_compute.h
  * \brief Pure AIV vector compute helpers shared by CombineSend and CombineReduce.
  */
 
-#ifndef MEGA_MOE_COMBINE_COMPUTE_H
-#define MEGA_MOE_COMBINE_COMPUTE_H
+#ifndef MEGA_MOE_COMBINE_SEND_COMPUTE_H
+#define MEGA_MOE_COMBINE_SEND_COMPUTE_H
 
 #include "kernel_operator.h"
 #include "../mega_moe_base.h"
@@ -121,4 +121,4 @@ __aicore__ inline void DeQuantMxFp8(LocalTensor<XType> &inLocal, LocalTensor<flo
 
 }  // namespace MegaMoeCombineImpl
 
-#endif // MEGA_MOE_COMBINE_COMPUTE_H
+#endif // MEGA_MOE_COMBINE_SEND_COMPUTE_H

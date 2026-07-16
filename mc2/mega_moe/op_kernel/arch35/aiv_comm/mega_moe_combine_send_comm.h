@@ -9,12 +9,12 @@
  */
 
 /*!
- * \file mega_moe_combine_comm.h
+ * \file mega_moe_combine_send_comm.h
  * \brief Pure AIV communication helpers for CombineSend.
  */
 
-#ifndef MEGA_MOE_COMBINE_COMM_H
-#define MEGA_MOE_COMBINE_COMM_H
+#ifndef MEGA_MOE_COMBINE_SEND_COMM_H
+#define MEGA_MOE_COMBINE_SEND_COMM_H
 
 #include "kernel_operator.h"
 #include "../mega_moe_base.h"
@@ -351,4 +351,4 @@ __aicore__ inline void CombineQuantizedTokens(uint32_t batchStart, uint32_t curR
 
 }  // namespace MegaMoeCombineImpl
 
-#endif // MEGA_MOE_COMBINE_COMM_H
+#endif // MEGA_MOE_COMBINE_SEND_COMM_H

@@ -28,8 +28,8 @@
 #include "mega_moe_workspace_info.h"
 #include "block_epilogue_swiglu_mx_quant.h"
 #include "mega_moe_impl.h"
-#include "block/mega_moe_gmm2.h"
-#include "epilogue/mega_moe_gmm2.h"
+#include "block/mega_moe_gmm2_block.h"
+#include "epilogue/mega_moe_gmm2_epilogue.h"
 #include "aiv_comm/mega_moe_combine_sync.h"
 #include "aiv_compute/mega_moe_combine_reduce.h"
 #if __has_include("../../moe_distribute_dispatch_v2/quantize_functions.h")

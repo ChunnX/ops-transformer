@@ -30,7 +30,7 @@
 #include "blaze/prologue/block_prologue_mx_fp8fp4.h"
 
 #include "mega_moe_impl_base.h"
-#include "epilogue/mega_moe_combine_send.h"
+#include "epilogue/mega_moe_combine_send_epilogue.h"
 
 namespace MegaMoeImpl {
 using BlockScheduler = typename Blaze::Gemm::Block::BlockSchedulerSwizzle<3, 1>; // 3: SwizzleOffset

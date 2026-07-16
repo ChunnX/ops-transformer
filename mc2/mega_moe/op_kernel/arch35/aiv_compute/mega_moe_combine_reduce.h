@@ -18,7 +18,7 @@
 
 #include "kernel_operator.h"
 #include "../mega_moe_base.h"
-#include "mega_moe_combine_compute.h"
+#include "mega_moe_combine_send_compute.h"
 
 using namespace AscendC;
 
