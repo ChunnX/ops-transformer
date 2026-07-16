@@ -10,6 +10,7 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
+import logging
 import math
 import os
 import random
@@ -18,6 +19,10 @@ import torch
 
 import check_valid_param
 import combined_kv_cache
+
+
+logging.basicConfig(level=logging.INFO, format='%(message)s')
+logger = logging.getLogger(__name__)
 
 
 DATA_RANGE_LEFT = -1.0
@@ -262,6 +267,90 @@ def _positions_from_sparse(case, sparse_indices, sparse_seq_len, batch_idx, head
     return chunk_positions
 
 
+def _count_mask_valid_pairs(case, q_start, q_end, kv_start, kv_end, q_len, kv_len):
+    q_count = max(0, q_end - q_start)
+    kv_count = max(0, kv_end - kv_start)
+    if q_count == 0 or kv_count == 0:
+        return 0
+    if case["mask_mode"] == 0:
+        return q_count * kv_count
+    if case["mask_mode"] != 3:
+        raise ValueError(f"unsupported mask_mode: {case['mask_mode']}")
+
+    valid_pairs = 0
+    causal_offset = kv_len - q_len
+    for q_idx in range(q_start, q_end):
+        valid_kv_end = min(kv_end, q_idx + causal_offset + 1)
+        if valid_kv_end > kv_start:
+            valid_pairs += valid_kv_end - kv_start
+    return valid_pairs
+
+
+def _dtype_size(dtype):
+    return torch.empty((), dtype=dtype).element_size()
+
+
+def _calc_cube_compute_amount(case, q_lengths, kv_lengths, sparse_indices, sparse_seq_len):
+    q_block_size = int(case["sparse_q_block_size"])
+    kv_block_size = int(case["sparse_kv_block_size"])
+    if q_block_size <= 0 or kv_block_size <= 0:
+        raise ValueError(f"sparse block size must be positive, got q={q_block_size}, kv={kv_block_size}")
+
+    sparse_indices_cpu = torch.as_tensor(sparse_indices).cpu()
+    sparse_seq_len_cpu = torch.as_tensor(sparse_seq_len).cpu()
+    if sparse_indices_cpu.dim() != 4 or sparse_seq_len_cpu.dim() != 3:
+        raise ValueError(
+            f"invalid sparse shapes: sparse_indices={tuple(sparse_indices_cpu.shape)}, "
+            f"sparse_seq_len={tuple(sparse_seq_len_cpu.shape)}")
+
+    batch = len(q_lengths)
+    n1 = int(case["N1"])
+    head_dim = int(case["D"])
+    if len(kv_lengths) != batch:
+        raise ValueError(f"q_lengths and kv_lengths batch mismatch: {len(q_lengths)} vs {len(kv_lengths)}")
+    if sparse_seq_len_cpu.shape[0] < batch or sparse_indices_cpu.shape[0] < batch:
+        raise ValueError(
+            f"sparse batch dimension is smaller than seqused batch: sparse_indices={tuple(sparse_indices_cpu.shape)}, "
+            f"sparse_seq_len={tuple(sparse_seq_len_cpu.shape)}, batch={batch}")
+    if sparse_seq_len_cpu.shape[1] < n1 or sparse_indices_cpu.shape[1] < n1:
+        raise ValueError(
+            f"sparse head dimension is smaller than N1={n1}: sparse_indices={tuple(sparse_indices_cpu.shape)}, "
+            f"sparse_seq_len={tuple(sparse_seq_len_cpu.shape)}")
+
+    valid_pairs = 0
+    qb_limit = sparse_seq_len_cpu.shape[2]
+    kb_limit = sparse_indices_cpu.shape[3]
+    for batch_idx in range(batch):
+        q_len = int(q_lengths[batch_idx])
+        kv_len = int(kv_lengths[batch_idx])
+        qb_count = min(qb_limit, math.ceil(q_len / q_block_size))
+        for head_idx in range(n1):
+            for qb_idx in range(qb_count):
+                q_start = qb_idx * q_block_size
+                q_end = min(q_start + q_block_size, q_len)
+                if q_start >= q_end:
+                    continue
+                block_count = int(sparse_seq_len_cpu[batch_idx, head_idx, qb_idx].item())
+                block_count = max(0, min(block_count, kb_limit))
+                for sparse_idx in range(block_count):
+                    kv_block_idx = int(sparse_indices_cpu[batch_idx, head_idx, qb_idx, sparse_idx].item())
+                    if kv_block_idx < 0:
+                        continue
+                    kv_start = kv_block_idx * kv_block_size
+                    kv_end = min(kv_start + kv_block_size, kv_len)
+                    if kv_start >= kv_end:
+                        continue
+                    valid_pairs += _count_mask_valid_pairs(case, q_start, q_end, kv_start, kv_end, q_len, kv_len)
+
+    return valid_pairs * head_dim * _dtype_size(_fp8_dtype()) * 2
+
+
+def _log_cube_compute_amount(case_name, case, q_lengths, kv_lengths, sparse_indices, sparse_seq_len):
+    cube_compute_amount = _calc_cube_compute_amount(case, q_lengths, kv_lengths, sparse_indices, sparse_seq_len)
+    logger.info("case_name=%s, cube_compute_amount=%d", case_name, cube_compute_amount)
+    return cube_compute_amount
+
+
 def _reference_attention(case, query, dense_key, dense_value, q_scale, k_scale, v_scale, p_scale,
                          sparse_indices, sparse_seq_len, cu_seqlens_q, cu_seqlens_kv, q_lengths, kv_lengths):
     # 向量化版本（采纳 MR!40 的 einops 思路把 query token 维度批量进 matmul），
@@ -452,16 +541,17 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
     atten_mask = torch.tril(torch.ones((2048, 2048), dtype=torch.uint8)).T
     sparse_indices, sparse_seq_len = _make_sparse_indices(case, q_lengths, kv_lengths, rng)
 
-    attention_out, softmax_lse = _reference_attention(
-        case, query, dense_key, dense_value, q_scale, k_scale, v_scale, p_scale,
-        sparse_indices, sparse_seq_len, cu_seqlens_q, cu_seqlens_kv, q_lengths, kv_lengths)
-
     if case["Testcase_Name"] is None:
         mode = "prefill"
         case["Testcase_Name"] = (
             f"quantBlockSparseAttn_{mode}_{case['layout_q']}_{case['layout_kv']}_"
             f"{batch}_{n1}_{n2}_{s1}_{s2}_{head_dim}"
         )
+    _log_cube_compute_amount(case["Testcase_Name"], case, q_lengths, kv_lengths, sparse_indices, sparse_seq_len)
+
+    attention_out, softmax_lse = _reference_attention(
+        case, query, dense_key, dense_value, q_scale, k_scale, v_scale, p_scale,
+        sparse_indices, sparse_seq_len, cu_seqlens_q, cu_seqlens_kv, q_lengths, kv_lengths)
 
     max_seqlen_q = max(q_lengths)
     max_seqlen_kv = max(kv_lengths)
