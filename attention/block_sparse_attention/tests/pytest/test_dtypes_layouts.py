@@ -44,7 +44,6 @@ import torch
 import torch_npu  # noqa: F401  (registers the NPU backend)
 import cann_ops_transformer
 from cann_ops_transformer.ops.block_sparse_attention import (
-    _is_arch220_soc,
     _resolve_out_dtype,
 )
 
@@ -55,21 +54,30 @@ BLOCK_KV = 128
 torch.npu.set_device(DEVICE)
 
 
-# ── SoC capability detection (mirrors the front-end guard) ───────────────────
+# SoC capability detection
+# arch35 is matched POSITIVELY, not as `not v220`: an unreadable/unrecognised
+# device must not be assumed arch35, or its FP8/BSND cases would run (and fail)
+# on a chip that can't support them.
 
 def _device_name():
+    """Runtime SoC name, or None if it can't be read (e.g. no NPU present)."""
     try:
         return torch_npu.npu.get_device_name(torch_npu.npu.current_device())
     except Exception:  # pylint: disable=broad-except
-        return "unknown"
+        return None
+
+
+def _is_arch35_soc(device_name):
+    """True only for a name we can confidently identify as Ascend 950 (arch35).
+    Uses the repo-wide token (deep_ep.py, sparse_flash_mla_grad.py)."""
+    return device_name is not None and "Ascend950" in device_name
 
 
 _DEVICE_NAME = _device_name()
-_IS_ARCH35 = not _is_arch220_soc(_DEVICE_NAME)
+_IS_ARCH35 = _is_arch35_soc(_DEVICE_NAME)
 _arch35_only = pytest.mark.skipif(
     not _IS_ARCH35,
-    reason=f"FP8 / BSND require an Ascend 950 (arch35); current device is "
-           f"'{_DEVICE_NAME}' (Atlas A2/A3, arch v220).",
+    reason=f"FP8 / BSND require an Ascend 950 (arch35); current device is '{_DEVICE_NAME}'.",
 )
 # inner_precise is SoC-gated by the kernel (block_sparse_attention_tiling.cpp):
 # 950 → 4 (low/high mixed softmax); 910/910_93 → 0 (fp32 softmax). Picking it from

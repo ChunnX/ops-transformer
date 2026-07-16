@@ -39,20 +39,17 @@ def is_arch35_soc(device_name=None):
 
     These two families need different kernel parameters (the 950 supports FP8 +
     BSND and *requires* innerPrecise=4; A2/A3 are FP16/BF16 + TND/BNSD only and
-    require innerPrecise ∈ {0, 1}). Detection reuses the torch front-end's guard
-    (`_is_arch220_soc`) so the test harness and the op agree on one definition.
+    require innerPrecise ∈ {0, 1}). arch35 is matched POSITIVELY on the "Ascend950"
+    name token (as in deep_ep.py / sparse_flash_mla_grad.py) rather than as
+    `not v220`, so a device we cannot read or recognise is treated as NOT arch35
+    (inner_precise 0) instead of being assumed a 950.
     """
     if device_name is None:
         try:
             device_name = torch_npu.npu.get_device_name(torch_npu.npu.current_device())
         except Exception:
             return False
-    # Imported lazily: importing the front-end module triggers a JIT kernel build,
-    # which util.py callers (mask helpers) should not pay for unless they ask for SoC info.
-    from cann_ops_transformer.ops.block_sparse_attention import (
-        _is_arch220_soc,
-    )
-    return not _is_arch220_soc(device_name)
+    return device_name is not None and "Ascend950" in device_name
 
 
 def bsa_inner_precise(device_name=None):
