@@ -129,6 +129,10 @@ private:
     __aicore__ inline void PublishGmm2NoQuantReady(uint32_t slotIdx);
     __aicore__ inline void WaitGmm2NoQuantReady(uint32_t slotIdx);
     __aicore__ inline MegaMoeImpl::TokenRange GetCombineNoQuantOwnedRange(uint32_t tokenCount);
+    __aicore__ inline TEventID CombineNoQuantRowEventId(uint32_t slot)
+    {
+        return static_cast<TEventID>(static_cast<int32_t>(EVENT_ID0) + static_cast<int32_t>(slot));
+    }
     __aicore__ inline void InitCombineNoQuantRowRing();
     __aicore__ inline void DrainCombineNoQuantRowRing();
     __aicore__ inline void PreloadCombineNoQuantTriples(const ExpertLoopState &gmm2State, uint32_t tokenStart,
@@ -1387,21 +1391,25 @@ MegaMoe<TemplateMegaMoeTypeFunc>::GetCombineNoQuantOwnedRange(uint32_t tokenCoun
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::InitCombineNoQuantRowRing()
 {
-    constexpr TEventID kRowEvents[COMBINE_ROW_BUFFER_NUM] = {
-        EVENT_ID0, EVENT_ID1, EVENT_ID2, EVENT_ID3, EVENT_ID4, EVENT_ID5};
-    for (uint32_t slot = 0; slot < COMBINE_ROW_BUFFER_NUM; ++slot) {
-        SetFlag<HardEvent::MTE3_MTE2>(kRowEvents[slot]);
-    }
+    // Keep event IDs as immediates.  A device-side event table may spill to GM
+    // and add a load to every row in this hot path.
+    SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
+    SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID1);
+    SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID2);
+    SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID3);
+    SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID4);
+    SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID5);
 }
 
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::DrainCombineNoQuantRowRing()
 {
-    constexpr TEventID kRowEvents[COMBINE_ROW_BUFFER_NUM] = {
-        EVENT_ID0, EVENT_ID1, EVENT_ID2, EVENT_ID3, EVENT_ID4, EVENT_ID5};
-    for (uint32_t slot = 0; slot < COMBINE_ROW_BUFFER_NUM; ++slot) {
-        WaitFlag<HardEvent::MTE3_MTE2>(kRowEvents[slot]);
-    }
+    WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
+    WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID1);
+    WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID2);
+    WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID3);
+    WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID4);
+    WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID5);
 }
 
 // Bulk-load one contiguous slice owned by this AIV1.  PER_BATCH packs the
@@ -1444,8 +1452,6 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessCombineNoQuantGm
         constexpr uint32_t MAX_SUPPORTED_ROW_BYTES = 8U * 1024U * sizeof(bfloat16_t);
         static_assert(ROW_UB_BASE + COMBINE_ROW_BUFFER_NUM * MAX_SUPPORTED_ROW_BYTES <= TRIPLE_TENSOR_ADDR,
                       "GMM2 row buffers overlap combine triple scratch");
-        constexpr TEventID kRowEvents[COMBINE_ROW_BUFFER_NUM] = {
-            EVENT_ID0, EVENT_ID1, EVENT_ID2, EVENT_ID3, EVENT_ID4, EVENT_ID5};
 
         uint32_t rowBytes = k_ * sizeof(bfloat16_t);
         uint32_t rowStrideBytes = static_cast<uint32_t>(Ops::Base::CeilAlign(
@@ -1463,7 +1469,9 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessCombineNoQuantGm
         for (uint32_t tokenIdxInSlice = 0; tokenIdxInSlice < tokenCount; ++tokenIdxInSlice, ++rowSequence) {
             uint32_t tokenLocal = tokenStart + tokenIdxInSlice;
             uint32_t slot = rowSequence % COMBINE_ROW_BUFFER_NUM;
-            TEventID eventId = kRowEvents[slot];
+            // EVENT_ID0..5 are contiguous: calculate the scalar event ID
+            // directly instead of indexing a device-side table that may spill.
+            TEventID eventId = CombineNoQuantRowEventId(slot);
             LocalTensor<bfloat16_t> rowUb(TPosition::VECIN, ROW_UB_BASE + slot * rowStrideBytes,
                                            rowStrideBytes / sizeof(bfloat16_t));
             LocalTensor<int32_t> tokenTriple = tripleUb[tokenIdxInSlice * TRIPLE_SIZE];
