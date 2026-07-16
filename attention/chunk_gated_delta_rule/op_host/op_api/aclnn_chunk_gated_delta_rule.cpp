@@ -32,6 +32,8 @@ extern "C" {
 #endif
 
 namespace {
+constexpr uint64_t INITIAL_STATE_DIMS_NUM = 4;
+
 struct ChunkGatedDeltaRuleParams {
     // 必选输入
     const aclTensor *query{nullptr};
@@ -155,8 +157,36 @@ aclnnStatus aclnnChunkGatedDeltaRuleGetWorkspaceSize(const aclTensor *query, con
     CHECK_RET(value_ != nullptr, ACLNN_ERR_INNER_NULLPTR);
     auto beta_ = l0op::Contiguous(beta, uniqueExecutor.get());
     CHECK_RET(beta_ != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    auto initialState_ = l0op::Contiguous(initialState, uniqueExecutor.get());
+    // 仅在Ascend950支持initialState 0或1轴非连续时传入非连续tensor，使用CreateView设置stride信息
+    int64_t *stateShapeDims = nullptr;
+    uint64_t stateShapeDimsNum = 0;
+    int64_t *stateStrideDims = nullptr;
+    uint64_t stateStrideDimsNum = 0;
+    ret = aclGetViewShape(initialState, &stateShapeDims, &stateShapeDimsNum);
+    CHECK_RET(ret == ACLNN_SUCCESS, ret);
+    ret = aclGetViewStrides(initialState, &stateStrideDims, &stateStrideDimsNum);
+    CHECK_RET(ret == ACLNN_SUCCESS, ret);
+    CHECK_RET(stateShapeDimsNum == INITIAL_STATE_DIMS_NUM && stateStrideDimsNum == INITIAL_STATE_DIMS_NUM,
+        ACLNN_ERR_INNER_CREATE_EXECUTOR);
+    auto initialState_ = initialState;
+
+    const char *socName = aclrtGetSocName();
+    CHECK_RET(socName != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    bool isAscend950 = std::strstr(socName, "Ascend950") != nullptr;
+    if (isAscend950 &&
+        stateStrideDims[stateStrideDimsNum - 1] == 1 &&
+        stateStrideDims[stateStrideDimsNum - 2] == stateShapeDims[stateShapeDimsNum - 1]) {
+        initialState_ = uniqueExecutor.get()->CreateView(
+            initialState,
+            initialState->GetViewShape(),
+            initialState->GetStorageShape(),
+            initialState->GetViewStrides(),
+            initialState->GetViewOffset());
+    } else {
+        initialState_ = l0op::Contiguous(initialState, uniqueExecutor.get());
+    }
     CHECK_RET(initialState_ != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    
     auto actualSeqLengths_ = l0op::Contiguous(actualSeqLengths, uniqueExecutor.get());
     CHECK_RET(actualSeqLengths_ != nullptr, ACLNN_ERR_INNER_NULLPTR);
     // gOptional 为可选输入，非空时才做 contiguous
