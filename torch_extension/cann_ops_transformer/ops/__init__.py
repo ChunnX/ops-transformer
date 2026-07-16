@@ -34,7 +34,6 @@ from .indexer_quant_cache import indexer_quant_cache
 from .compressor import compressor
 from .inplace_partial_rotary_mul import inplace_partial_rotary_mul
 from .inplace_partial_rotary_mul_backward import inplace_partial_rotary_mul_backward
-from . import graph_convert as _graph_convert
 from .causal_conv1d_fn import causal_conv1d_fn
 from .causal_conv1d_update import causal_conv1d_update
 from .qkv_rms_norm_rope_cache_with_k_scale import (
@@ -44,6 +43,5 @@ from .qkv_rms_norm_rope_cache_with_k_scale import (
 from .elastic_buffer import ElasticBuffer, EPHandle
 from .grouped_matmul_activation_quant import grouped_matmul_activation_quant
 from .moe_init_routing import moe_init_routing
-from .graph_convert.graph_convert_moe_init_routing import convert_moe_init_routing
 from .moe_re_routing import moe_re_routing
-from .graph_convert.graph_convert_moe_re_routing import convert_moe_re_routing
+from . import graph_convert as _graph_convert
