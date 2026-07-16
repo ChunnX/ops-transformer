@@ -77,13 +77,13 @@ public:
     __aicore__ inline void InitCubeBuffers();
     __aicore__ inline void InitGlobalBuffer(GM_ADDR query, GM_ADDR dQuery, GM_ADDR key, GM_ADDR dKey,
                                             GlobalTensor<T> bmm3Res, GlobalTensor<T> deterRes);
-    __aicore__ inline void ComputeMmSy(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm2ResBuf,
-        BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_BOTH> &sYL1Buf, DLIKGradRunInfo &runInfo,
+    __aicore__ inline void ComputeMmSy(Buffer<BufferType::UB, SyncType::NO_SYNC> &bmm2ResBuf,
+        DLIKGradRunInfo &runInfo,
         DLIKGradConstInfo &constInfo);
-    __aicore__ inline void ComputeMm3(BuffersPolicyDB<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm3Buf,
-        Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_BOTH> &reluGradResL1Buf, DLIKGradRunInfo &runInfo,
+    __aicore__ inline void ComputeMm3(
+        Buffer<BufferType::L1, SyncType::NO_SYNC> &reluGradResL1Buf, DLIKGradRunInfo &runInfo,
         DLIKGradConstInfo &constInfo);
-    __aicore__ inline void ComputeMm4(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_BOTH> &reluGradResL1Buf,
+    __aicore__ inline void ComputeMm4(Buffer<BufferType::L1, SyncType::NO_SYNC> &reluGradResL1Buf,
         DLIKGradRunInfo &runInfo, DLIKGradConstInfo &constInfo, bool isFixOut);
 
 private:
@@ -183,8 +183,8 @@ __aicore__ inline void DlikgBlockCube<TEMPLATE_ARGS>::CopyInMm4BToL1(LocalTensor
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void DlikgBlockCube<TEMPLATE_ARGS>::ComputeMmSy(
-    Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm2ResBuf,
-    BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_BOTH> &sYL1Buf, DLIKGradRunInfo &runInfo,
+    Buffer<BufferType::UB, SyncType::NO_SYNC> &bmm2ResBuf,
+    DLIKGradRunInfo &runInfo,
     DLIKGradConstInfo &constInfo)
 {
     uint32_t dSize = constInfo.dSizeQueryIndex;                          // 128
@@ -256,8 +256,7 @@ __aicore__ inline void DlikgBlockCube<TEMPLATE_ARGS>::ComputeMmSy(
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void DlikgBlockCube<TEMPLATE_ARGS>::ComputeMm3(
-    BuffersPolicyDB<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm3Buf,
-    Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_BOTH> &reluGradResL1Buf, DLIKGradRunInfo &runInfo,
+    Buffer<BufferType::L1, SyncType::NO_SYNC> &reluGradResL1Buf, DLIKGradRunInfo &runInfo,
     DLIKGradConstInfo &constInfo)
 {
     uint32_t kSize = runInfo.kProcessSize;                             // 2048
@@ -326,7 +325,7 @@ __aicore__ inline void DlikgBlockCube<TEMPLATE_ARGS>::ComputeMm3(
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void DlikgBlockCube<TEMPLATE_ARGS>::ComputeMm4(
-    Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_BOTH> &reluGradResL1Buf, DLIKGradRunInfo &runInfo,
+    Buffer<BufferType::L1, SyncType::NO_SYNC> &reluGradResL1Buf, DLIKGradRunInfo &runInfo,
     DLIKGradConstInfo &constInfo, bool isFixOut)
 {
     uint32_t kSize = runInfo.kProcessSize;                             // 2048
@@ -395,13 +394,13 @@ public:
     __aicore__ inline void InitCubeBuffers(){};
     __aicore__ inline void InitGlobalBuffer(GM_ADDR query, GM_ADDR dQuery, GM_ADDR key, GM_ADDR dKey,
                                             GlobalTensor<T> bmm3Res, GlobalTensor<T> deterRes){};
-    __aicore__ inline void ComputeMmSy(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm2ResBuf,
-        BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_BOTH> &sYL1Buf, DLIKGradRunInfo &runInfo,
+    __aicore__ inline void ComputeMmSy(Buffer<BufferType::UB, SyncType::NO_SYNC> &bmm2ResBuf,
+        DLIKGradRunInfo &runInfo,
         DLIKGradConstInfo &constInfo){};
-    __aicore__ inline void ComputeMm3(BuffersPolicyDB<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm3Buf,
-        Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_BOTH> &reluGradResL1Buf, DLIKGradRunInfo &runInfo,
+    __aicore__ inline void ComputeMm3(
+        Buffer<BufferType::L1, SyncType::NO_SYNC> &reluGradResL1Buf, DLIKGradRunInfo &runInfo,
         DLIKGradConstInfo &constInfo){};
-    __aicore__ inline void ComputeMm4(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_BOTH> &reluGradResL1Buf,
+    __aicore__ inline void ComputeMm4(Buffer<BufferType::L1, SyncType::NO_SYNC> &reluGradResL1Buf,
         DLIKGradRunInfo &runInfo, DLIKGradConstInfo &constInfo, bool isFixOut){};
 };
 

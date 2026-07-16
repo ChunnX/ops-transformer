@@ -1088,7 +1088,7 @@ ge::graphStatus DenseLightningIndexerKLLossGradTilingGeneralRegbase::GetWorkspac
 {
     int64_t coreNum = dlikGradMultiCoreParams_->get_coreNum();
     size_t *workspaces = context_->GetWorkspaceSizes(1);
-    int64_t s2BlockSize = 4096;
+    int64_t s2BlockSize = 128;
     int64_t bmm3Size = dlikGradBaseParams_->get_bSize() * dlikGradBaseParams_->get_n2Size() *
         dlikGradBaseParams_->get_s2Size() * dSizeQueryIndex * sizeof(float);
     // TND时候要按照真实的query的num数计算

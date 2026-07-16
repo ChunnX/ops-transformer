@@ -20,7 +20,7 @@
 using namespace fa_base_matmul;
 
 static constexpr uint32_t VEC_SY_BASESIZE = 128;
-static constexpr uint32_t PROCESS_KV_SIZE = 4096;
+static constexpr uint32_t PROCESS_KV_SIZE = 128;
 static constexpr uint32_t VEC_P_BASESIZE = 128;
 static constexpr uint32_t ATTN_SOFTMAX_REDUCE_BASESIZE = 8192;
 // task step
@@ -196,13 +196,13 @@ struct DLIKGradKRunInfo {
 };
 
 constexpr uint8_t SYNC_MM2_TO_V1_FLAG[3] = {1, 2, 3};
-constexpr uint8_t SYNC_V6_TO_C3_FLAG[3] = {8, 9, 10};
-constexpr uint8_t DETER_TO_FIX_SYNC_FLAG[3] = {11, 12, 13};
+constexpr uint8_t SYNC_V6_TO_C3_FLAG[3] = {10, 11, 12};
+constexpr uint8_t DETER_TO_FIX_SYNC_FLAG = 9;
 constexpr uint8_t SCATTER_CUBE_SYNC_FLAG = 4;
 constexpr uint8_t SYNC_C3_TO_V7_FLAG = 5;
 
 constexpr uint8_t SYNC_C3_TO_V7_DETER_MTE2_FLAG = 6;
-constexpr uint8_t SYNC_C3_TO_V7_DETER_SA_FLAG = 14;
+constexpr uint8_t SYNC_C3_TO_V7_DETER_SA_FLAG = 0;
 
 template <typename T> __aicore__ inline T CeilDiv(T num, T rnd)
 {
