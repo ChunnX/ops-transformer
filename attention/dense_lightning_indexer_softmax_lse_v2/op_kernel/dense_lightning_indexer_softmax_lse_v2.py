@@ -239,18 +239,18 @@ def dense_lightning_indexer_softmax_lse_v2_inner(
             s1_i = work_id % s1_dim
             q_used_size = pl.getval(seqused_q, b_idx) #if q_used else s1_dim
             k_used_size = pl.getval(seqused_k, b_idx) #if k_used else s2_dim
-            if s1_i < q_used_size:             
-                if mask_mode == 3:
-                    if cmp_ratio > 1:
-                        cur_residual_k = pl.getval(cmp_residual_k, b_idx)
-                        ori_k_size = k_used_size * cmp_ratio + cur_residual_k
-                    else:
-                        ori_k_size = k_used_size * cmp_ratio
-                    valid_k_size = pl.max((s1_i + 1 + ori_k_size - q_used_size) // cmp_ratio, 0)
-                    s2_tiles = (valid_k_size + TKV - 1) // TKV
-                else:
-                    valid_k_size = k_used_size
-                    s2_tiles = (k_used_size + TKV - 1) // TKV
+            valid_s1_start = 0
+            valid_k_size = k_used_size
+            if mask_mode == 3:
+                cur_residual_k = 0
+                if cmp_ratio > 1:
+                    cur_residual_k = pl.getval(cmp_residual_k, b_idx)
+                ori_k_size = k_used_size * cmp_ratio + cur_residual_k
+                qk_residual = q_used_size - ori_k_size
+                valid_s1_start = pl.max(qk_residual, 0)
+                valid_k_size = pl.max((s1_i + 1 - qk_residual) // cmp_ratio, 0)
+            if s1_i < q_used_size and s1_i >= valid_s1_start:
+                s2_tiles = (valid_k_size + TKV - 1) // TKV
 
                 q_tile = q_mat.next()
                 pl.load(q_tile, query_index, [b_idx, s1_i * TS, 0, 0])
@@ -290,6 +290,7 @@ def dense_lightning_indexer_softmax_lse_v2_inner(
         prev_b_idx = 0
         prev_s1_i = 0
         prev_s2_tiles = 0
+        prev_is_s1_valid = False
 
         for j in pl.range(0, work_count + 1):
             work_id = core_id + j * total_cores
@@ -300,25 +301,29 @@ def dense_lightning_indexer_softmax_lse_v2_inner(
             init_data(max_tile)
 
             s2_tiles = 0
+            is_s1_valid = False
             if j < work_count:
                 q_used_size = pl.getval(seqused_q, b_idx)
                 k_used_size = pl.getval(seqused_k, b_idx)
+                valid_s1_start = 0
+                valid_k_size = k_used_size
                 if mask_mode == 3:
+                    cur_residual_k = 0
                     if cmp_ratio > 1:
                         cur_residual_k = pl.getval(cmp_residual_k, b_idx)
-                        ori_k_size = k_used_size * cmp_ratio + cur_residual_k
-                    else:
-                        ori_k_size = k_used_size * cmp_ratio
-                    valid_k_size = pl.max((s1_i + 1 + ori_k_size - q_used_size) // cmp_ratio, 0)
+                    ori_k_size = k_used_size * cmp_ratio + cur_residual_k
+                    qk_residual = q_used_size - ori_k_size
+                    valid_s1_start = pl.max(qk_residual, 0)
+                    valid_k_size = pl.max((s1_i + 1 - qk_residual) // cmp_ratio, 0)
+                is_s1_valid = s1_i >= valid_s1_start and s1_i < q_used_size
+                if is_s1_valid:
                     s2_tiles = (valid_k_size + TKV - 1) // TKV
-                else:
-                    s2_tiles = (k_used_size + TKV - 1) // TKV
 
             weight_vec_nxt = weight_vec.next()
-            if j < work_count:
+            if j < work_count and is_s1_valid:
                 pl.load(weight_vec_nxt, weight, [b_idx, s1_i * TS, 0])
 
-            if j > 0:
+            if j > 0 and prev_is_s1_valid:
                 reduce_sum_vec_tile = reduce_sum_vec.next()
                 lse_vec_tile = lse_vec.next()
                 if is_long_s2 == 0:
@@ -399,10 +404,16 @@ def dense_lightning_indexer_softmax_lse_v2_inner(
                 process_lse_vf(lse_vec_tile, reduce_res, tmp_s2_max)
                 pl.set_validshape(lse_vec_tile, [1, 1])
                 pl.store(lse_out, lse_vec_tile, [prev_b_idx, prev_s1_i])
+            elif j > 0:
+                lse_vec_tile = lse_vec.next()
+                write_scalar_vf(lse_vec_tile, -3.4028234663852886e+38)
+                pl.set_validshape(lse_vec_tile, [1, 1])
+                pl.store(lse_out, lse_vec_tile, [prev_b_idx, prev_s1_i])
 
             prev_b_idx = b_idx
             prev_s1_i = s1_i
             prev_s2_tiles = s2_tiles
+            prev_is_s1_valid = is_s1_valid
     return
 
 
