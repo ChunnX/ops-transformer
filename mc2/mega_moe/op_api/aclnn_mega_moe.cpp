@@ -125,12 +125,12 @@ aclnnStatus aclnnMegaMoeGetWorkspaceSize(
         ? (*weight1)[0]->GetDataType() : ACL_FLOAT8_E4M3FN;
     CreateEmptyTensor(ACL_FLOAT, bias1Optional, tmpBiasList, *executor);
     CreateEmptyTensor(ACL_FLOAT, bias2Optional, tmpBiasList, *executor);
-    CreateEmptyTensor(ACL_UINT64, weightScales1Optional, tmpScaleList, *executor);
-    CreateEmptyTensor(ACL_UINT64, weightScales2Optional, tmpScaleList, *executor);
+    CreateEmptyTensor(ACL_FLOAT8_E8M0, weightScales1Optional, tmpScaleList, *executor);
+    CreateEmptyTensor(ACL_FLOAT8_E8M0, weightScales2Optional, tmpScaleList, *executor);
     CreateEmptyTensor(ACL_FLOAT, sharedBias1Optional, tmpSharedBiasList, *executor);
     CreateEmptyTensor(ACL_FLOAT, sharedBias2Optional, tmpSharedBiasList, *executor);
-    CreateEmptyTensor(ACL_UINT64, sharedWeightScales1Optional, tmpSharedScaleList, *executor);
-    CreateEmptyTensor(ACL_UINT64, sharedWeightScales2Optional, tmpSharedScaleList, *executor);
+    CreateEmptyTensor(ACL_FLOAT8_E8M0, sharedWeightScales1Optional, tmpSharedScaleList, *executor);
+    CreateEmptyTensor(ACL_FLOAT8_E8M0, sharedWeightScales2Optional, tmpSharedScaleList, *executor);
     CreateEmptyTensor(sharedWeightDtype, sharedWeight1Optional, tmpSharedWeightList, *executor);
     CreateEmptyTensor(sharedWeightDtype, sharedWeight2Optional, tmpSharedWeightList, *executor);
 
