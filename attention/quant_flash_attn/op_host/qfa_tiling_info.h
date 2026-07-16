@@ -202,7 +202,7 @@ struct QfaParaInfo {
     const char *layoutQ = nullptr;
     const char *layoutKV = nullptr;
     const char *layoutOut = nullptr;
-    const int64_t *returnSoftMaxLse = nullptr;
+    const bool *returnSoftMaxLse = nullptr;
 
     QfaRequiredParaInfo attnOut = {nullptr, nullptr};
     QfaRequiredParaInfo lseOut = {nullptr, nullptr};

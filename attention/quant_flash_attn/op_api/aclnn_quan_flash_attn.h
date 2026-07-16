@@ -62,10 +62,11 @@ extern "C" {
  * @param layoutQ             [IN]  ATTR. Query layout: "BSND"/"BNSD"/"TND".
  * @param layoutKv            [IN]  ATTR. KV layout: "BSND"/"TND"/"PA_ND"/"PA_NZ".
  * @param layoutOut           [IN]  ATTR. Output layout: "BSND"/"BNSD"/"TND".
- * @param returnSoftmaxLse    [IN]  ATTR. Whether to output softmax_lse. INT. 1=output, 0=no.
+ * @param returnSoftmaxLse    [IN]  ATTR. Whether to output softmax_lse. BOOL. True=output, False=no.
+ *                                  Training forward pass set True, inference set False.
  * @param attnOut             [OUT] Required output. Attention result, BF16, layout by layoutOut.
  * @param softmaxLseOptional  [OUT] Optional output. Softmax log-sum-exp, FLOAT32.
- *                                  Valid when returnSoftmaxLse=1.
+ *                                  Valid when returnSoftmaxLse=True.
  * @param workspaceSize       [OUT] Workspace size in bytes.
  * @param executor            [OUT] Op executor handle for second phase.
  * @return aclnnStatus. ACLNN_SUCCESS on success.
@@ -83,7 +84,7 @@ aclnnStatus aclnnQuantFlashAttnGetWorkspaceSize(
     double softmaxScale, int64_t maskMode, int64_t winLeft, int64_t winRight,
     int64_t maxSeqlenQ, int64_t maxSeqlenKV,
     const char *layoutQ, const char *layoutKv, const char *layoutOut,
-    int64_t returnSoftmaxLse,
+    bool returnSoftmaxLse,
     const aclTensor *attnOut, const aclTensor *softmaxLseOptional,
     uint64_t *workspaceSize, aclOpExecutor **executor);
 

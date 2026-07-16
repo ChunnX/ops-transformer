@@ -123,9 +123,9 @@
          this->Attr("layout_out") 
              .AttrType(OPTIONAL) 
              .String("BSND"); 
-         this->Attr("return_softmax_lse") 
-             .AttrType(OPTIONAL) 
-             .Int(0); 
+         this->Attr("return_softmax_lse")
+             .AttrType(OPTIONAL)
+             .Int(0);
 
 
          OpAICoreConfig aicore_config_95;

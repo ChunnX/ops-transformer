@@ -247,7 +247,7 @@ ge::graphStatus QfaInfoParser::GetAttrParaInfo()
     opParamInfo_.layoutQ = attrs->GetStr(ATTR_LAYOUT_Q_INDEX);
     opParamInfo_.layoutKV = attrs->GetStr(ATTR_LAYOUT_KV_INDEX);
     opParamInfo_.layoutOut = attrs->GetStr(ATTR_LAYOUT_OUT_INDEX);
-    opParamInfo_.returnSoftMaxLse = attrs->GetAttrPointer<int64_t>(ATTR_RETURN_LSE_INDEX);
+    opParamInfo_.returnSoftMaxLse = attrs->GetAttrPointer<bool>(ATTR_RETURN_LSE_INDEX);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -633,8 +633,8 @@ ge::graphStatus QfaInfoParser::ParseFeatureInfo()
 
     sinksFlag_ = (opParamInfo_.sinks.tensor != nullptr);
 
-    returnSoftmaxLse_ = (opParamInfo_.returnSoftMaxLse == nullptr) ? 0 : *opParamInfo_.returnSoftMaxLse;
-    softmaxLseFlag_ = (returnSoftmaxLse_ != 0);
+    returnSoftmaxLse_ = (opParamInfo_.returnSoftMaxLse == nullptr) ? false : *opParamInfo_.returnSoftMaxLse;
+    softmaxLseFlag_ = returnSoftmaxLse_;
 
     softmaxScale_ = (opParamInfo_.softmaxScale == nullptr) ? 1.0f : *opParamInfo_.softmaxScale;
     maxSeqQ_ = (opParamInfo_.maxSeqlenQ == nullptr) ? -1 : *opParamInfo_.maxSeqlenQ;

@@ -151,7 +151,7 @@ public:
             .String("BSND");
         this->Attr("return_softmax_lse")
             .AttrType(OPTIONAL)
-            .Int(0);
+            .Bool(false);
 
         OpAICoreConfig aicore_config_95;
         aicore_config_95.DynamicCompileStaticFlag(true)

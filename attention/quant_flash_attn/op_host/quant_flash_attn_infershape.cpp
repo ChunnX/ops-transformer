@@ -73,15 +73,15 @@ ge::graphStatus InferShapeQuantFlashAttn(gert::InferShapeContext *context)
     OP_CHECK_NULL_WITH_CONTEXT(context, layoutKv);
     OP_CHECK_NULL_WITH_CONTEXT(context, layoutOut);
 
-    auto returnSoftmaxLsePtr = attrs->GetAttrPointer<int64_t>(ATTR_IDX_RETURN_SOFTMAX_LSE);
+    auto returnSoftmaxLsePtr = attrs->GetAttrPointer<bool>(ATTR_IDX_RETURN_SOFTMAX_LSE);
     OP_CHECK_NULL_WITH_CONTEXT(context, returnSoftmaxLsePtr);
-    int64_t returnSoftmaxLse = *returnSoftmaxLsePtr;
+    bool returnSoftmaxLse = *returnSoftmaxLsePtr;
 
     std::string layoutQStr   = ToUpper(std::string(layoutQ));
     std::string layoutKvStr  = ToUpper(std::string(layoutKv));
     std::string layoutOutStr = ToUpper(std::string(layoutOut));
 
-    OP_LOGI(context, "QuantFlashAttn InferShape: layoutQ=%s, layoutKv=%s, layoutOut=%s, returnLSE=%ld.",
+    OP_LOGI(context, "QuantFlashAttn InferShape: layoutQ=%s, layoutKv=%s, layoutOut=%s, returnLSE=%d.",
             layoutQStr.c_str(), layoutKvStr.c_str(), layoutOutStr.c_str(), returnSoftmaxLse);
 
     int64_t batchSize  = 1;
@@ -172,7 +172,7 @@ ge::graphStatus InferShapeQuantFlashAttn(gert::InferShapeContext *context)
 
     gert::Shape *lseShape = context->GetOutputShape(OUTPUT_IDX_SOFTMAX_LSE);
     if (lseShape != nullptr) {
-        if (returnSoftmaxLse != 0) {
+        if (returnSoftmaxLse) {
             if (isTND) {
                 lseShape->SetDimNum(2);
                 lseShape->SetDim(0, seqLenQ);

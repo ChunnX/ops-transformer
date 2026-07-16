@@ -50,7 +50,7 @@ quant_flash_attn(
     double softmax_scale, int64_t mask_mode, int64_t win_left, int64_t win_right,
     int64_t max_seqlen_q, int64_t max_seqlen_kv,
     std::string layout_q, std::string layout_kv, std::string layout_out,
-    int64_t return_softmax_lse)
+    bool return_softmax_lse)
 {
     const c10::string_view device = "npu";
     at::Device outputDevice = at::Device(std::string(device));

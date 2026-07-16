@@ -46,7 +46,7 @@ namespace l0op {
  * @param layoutQ             query layout string
  * @param layoutKv            kv layout string
  * @param layoutOut           output layout string
- * @param returnSoftmaxLse    whether to output softmax_lse (int64_t)
+ * @param returnSoftmaxLse    whether to output softmax_lse (bool)
  * @param executor            op executor
  * @return std::array<const aclTensor*, 2> [attnOut, softmaxLse]
  *         Any element being nullptr indicates InferShape or Launch failure for that output.
@@ -77,7 +77,7 @@ const std::array<const aclTensor *, 2> QuantFlashAttn(
     const char *layoutQ,
     const char *layoutKv,
     const char *layoutOut,
-    int64_t returnSoftmaxLse,
+    bool returnSoftmaxLse,
     aclOpExecutor *executor);
 
 }  // namespace l0op

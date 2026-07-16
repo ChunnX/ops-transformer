@@ -186,7 +186,7 @@ cann_ops_transformer.ops.quant_flash_attn(
 | layout_q | string | 可选 | 定义输入q张量的布局格式 | string | - | - | - |
 | layout_kv | string | 可选 | 定义输入k和v张量的布局格式 | string | - | - | - |
 | layout_out | string | 可选 | 定义输出张量的布局格式 | string | - | - | - |
-| return_softmax_lse | int | 可选 | 是否需要获取softmax的LSE结果 | int32 | - | - | - |
+| return_softmax_lse | bool | 可选 | 是否需要获取softmax的LSE结果 | BOOL | - | - | - |
 
 ## 返回值说明<a name="zh-cn_topic_0000002168254826_section22231435517"></a>
 
@@ -205,7 +205,7 @@ cann_ops_transformer.ops.quant_flash_attn(
 
 **说明**
 -   attn_out：Tensor类型，公式中的输出，数据类型仅支持bfloat16。数据格式支持ND。
--   softmax_lse：Tensor类型，ring attention算法对query乘key的结果，先取max得到softmax_max。query乘key的结果减去softmax_max，再取exp，最后取sum，得到softmax_sum，最后对softmax_sum取log，再加上softmax_max得到的结果。数据类型支持float32，return_softmax_lse为1时，输出shape为(Q_N, Q_T)的Tensor；return_softmax_lse为0时，则输出shape为[1]的值为0的Tensor。
+-   softmax_lse：Tensor类型，ring attention算法对query乘key的结果，先取max得到softmax_max。query乘key的结果减去softmax_max，再取exp，最后取sum，得到softmax_sum，最后对softmax_sum取log，再加上softmax_max得到的结果。数据类型支持float32，return_softmax_lse为True时，输出shape为(Q_N, Q_T)的Tensor；return_softmax_lse为False时，则输出shape为[1]的值为0的Tensor。
 
 
 ## 约束说明<a name="zh-cn_topic_0000002168254826_section12345537164214"></a>
@@ -1008,7 +1008,7 @@ mask_mode参数解释
         layout_q="TND",
         layout_kv="TND",
         layout_out="TND",
-        return_softmax_lse=0,
+        return_softmax_lse=False,
     )
     torch_npu.npu.synchronize()
     assert attn_out.shape == (Q_T, Q_N, D)
@@ -1092,7 +1092,7 @@ mask_mode参数解释
         layout_q="TND",
         layout_kv="TND",
         layout_out="TND",
-        return_softmax_lse=0,
+        return_softmax_lse=False,
     )
     torch_npu.npu.synchronize()
     assert attn_out.shape == (B * Q_S, Q_N, D)

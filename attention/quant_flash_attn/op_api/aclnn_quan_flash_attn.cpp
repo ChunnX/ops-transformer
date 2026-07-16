@@ -40,7 +40,7 @@ aclnnStatus aclnnQuantFlashAttnGetWorkspaceSize(
     double softmaxScale, int64_t maskMode, int64_t winLeft, int64_t winRight,
     int64_t maxSeqlenQ, int64_t maxSeqlenKV,
     const char *layoutQ, const char *layoutKv, const char *layoutOut,
-    int64_t returnSoftmaxLse,
+    bool returnSoftmaxLse,
     const aclTensor *attnOut, const aclTensor *softmaxLseOptional,
     uint64_t *workspaceSize, aclOpExecutor **executor)
 {
@@ -61,7 +61,7 @@ aclnnStatus aclnnQuantFlashAttnGetWorkspaceSize(
         layoutQ, layoutKv, layoutOut, returnSoftmaxLse,
         attnOut, placeHolder, workspaceSize, executor);
 
-    if (returnSoftmaxLse == 0) {
+    if (!returnSoftmaxLse) {
         aclDestroyTensor(tempTensor);
     }
 

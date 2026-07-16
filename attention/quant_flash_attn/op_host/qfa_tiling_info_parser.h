@@ -140,7 +140,7 @@ public:
 
     // SoftmaxLSE
     bool softmaxLseFlag_ = false;
-    int64_t returnSoftmaxLse_ = 0;
+    bool returnSoftmaxLse_ = false;
 
     // Other attrs
     float softmaxScale_ = 1.0;

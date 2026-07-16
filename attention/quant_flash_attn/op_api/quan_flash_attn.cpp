@@ -35,7 +35,7 @@ const std::array<const aclTensor *, 2> QuantFlashAttn(
     int64_t maskMode, int64_t winLeft, int64_t winRight,
     int64_t maxSeqlenQ, int64_t maxSeqlenKV,
     const char *layoutQ, const char *layoutKv, const char *layoutOut,
-    int64_t returnSoftmaxLse,
+    bool returnSoftmaxLse,
     aclOpExecutor *executor)
 {
     L0_DFX(QuantFlashAttn, q, k, v, qDescale, kDescale, vDescale, blockTableOptional, pScaleOptional,

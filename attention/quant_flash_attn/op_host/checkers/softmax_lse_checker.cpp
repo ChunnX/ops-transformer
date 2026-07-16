@@ -36,12 +36,12 @@ ge::graphStatus SoftmaxLSEChecker::CheckSinglePara(const QfaTilingInfo &qfaInfo)
     // 文档约束(单参数校验列):
     //   return_softmax_lse: data_type 仅支持 BOOL, 值仅支持 True/False
     //   softmax_lse: data_type 仅支持 FLOAT32
-    const int64_t *returnSoftmaxLse = qfaInfo.opParamInfo.returnSoftMaxLse;
+    const bool *returnSoftmaxLse = qfaInfo.opParamInfo.returnSoftMaxLse;
     if (returnSoftmaxLse != nullptr) {
-        int64_t returnSoftmaxLseVal = *returnSoftmaxLse;
-        OP_CHECK_IF(returnSoftmaxLseVal != 0 && returnSoftmaxLseVal != 1,
+        bool returnSoftmaxLseVal = *returnSoftmaxLse;
+        OP_CHECK_IF(returnSoftmaxLseVal != false && returnSoftmaxLseVal != true,
                     OP_LOGE_FOR_INVALID_VALUE(qfaInfo.opName, RETURN_SOFTMAX_LSE_NAME.c_str(),
-                        std::to_string(returnSoftmaxLseVal).c_str(), "0 or 1"),
+                        (returnSoftmaxLseVal ? "true" : "false"), "True or False"),
                     return ge::GRAPH_FAILED);
     }
 
