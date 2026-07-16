@@ -760,7 +760,8 @@ __aicore__ inline void LightningIndexerKernel<LIT>::ProcessRadixTopK()
                 kValue,
                 tileLen,
                 0,      // coreId = 0 (single core per batch)
-                1);     // coreNum = 1
+                1,      // coreNum = 1
+                batchId);  // debug: batchId
         }
     }
 }

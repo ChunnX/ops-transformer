@@ -359,9 +359,20 @@ __aicore__ inline void LightningIndexerServiceVector<LIT>::ProcessVec(const LICo
 
             if (constInfo_.radixTotalBatch > 0) {
             // RadixTopK path: write scoreB16Gm, skip Sort+MergeSort
+            // Fix cuRealAcSeq for TND (actS1=0 causes wrong cuRealAcSeq in ProcessVec)
+            int32_t radixCuRealAcSeq = cuRealAcSeq;
+            if (constInfo_.qSeqSize == 0 && constInfo_.attenMaskFlag) {
+                // TND: actS1 was 0, recalculate cuRealAcSeq correctly
+                radixCuRealAcSeq = info.actS2Size - (info.actS2Size - cuS1Idx) + 1;
+            }
+            int32_t radixCuS2Len = cuBaseS2Idx + s2BaseSize_ >= radixCuRealAcSeq ?
+                radixCuRealAcSeq - cuBaseS2Idx : s2BaseSize_;
+            if (radixCuS2Len <= 0) {
+                // Skip scoreB16Gm write, go to end of RadixTopK path
+            } else {
             // Write reduce result to scoreB16Gm for RadixTopK (bf16)
-            if (cuS2Len < s2BaseSize_) {
-                int32_t cuS2LenAlign8 = (cuS2Len + 7) / 8 * 8;
+            if (radixCuS2Len < s2BaseSize_) {
+                int32_t cuS2LenAlign8 = (radixCuS2Len + 7) / 8 * 8;
                 if (cuS2LenAlign8 < s2BaseSize_) {
                     Duplicate(reduceOutInner[cuS2LenAlign8], -1.0e30f, s2BaseSize_ - cuS2LenAlign8);
                 }
@@ -380,6 +391,7 @@ __aicore__ inline void LightningIndexerServiceVector<LIT>::ProcessVec(const LICo
                 dcParams.dstStride = 0;
                 DataCopyPad(scoreB16Gm[scoreOffset], scoreB16Ub, dcParams);
             }
+            } // end if radixCuS2Len > 0
             } else {
             // Sort+MergeSort path (original ProcessVec logic)
             LocalTensor<float> sortScoreUb = reduceOutBuff;
