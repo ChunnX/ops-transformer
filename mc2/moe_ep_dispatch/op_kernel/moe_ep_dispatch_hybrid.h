@@ -828,9 +828,16 @@ MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>::CopyCachedRouteForToke
     routeCountGMTensor_.SetValue(tokenId, static_cast<int32_t>(routeEntryCount));
     for (uint32_t routeEntryIndex = 0; routeEntryIndex < axisK_; routeEntryIndex++) {
         uint32_t routeTwoDimOffset = tokenId * axisK_ + routeEntryIndex;
-        routeDstScaleoutGMTensor_.SetValue(routeTwoDimOffset, cachedRouteDstScaleoutGMTensor_.GetValue(routeTwoDimOffset));
+        int32_t dstScaleoutValue = cachedRouteDstScaleoutGMTensor_.GetValue(routeTwoDimOffset);
+        routeDstScaleoutGMTensor_.SetValue(routeTwoDimOffset, dstScaleoutValue);
         routeScaleoutSlotGMTensor_.SetValue(routeTwoDimOffset,
                                             cachedRouteScaleoutSlotGMTensor_.GetValue(routeTwoDimOffset));
+        if (routeEntryIndex < routeEntryCount && dstScaleoutValue >= 0) {
+            __gm__ int32_t *dstCounterAddr =
+                reinterpret_cast<__gm__ int32_t *>(scaleoutCounterAddr_ +
+                                                   static_cast<uint32_t>(dstScaleoutValue) * sizeof(int32_t));
+            (void)AscendC::AtomicAdd(dstCounterAddr, 1);
+        }
 
         for (uint32_t maskWordIndex = 0; maskWordIndex < scaleoutMaskWordCount_; maskWordIndex++) {
             uint32_t routeMaskOffset = routeTwoDimOffset * scaleoutMaskWordCount_ + maskWordIndex;
