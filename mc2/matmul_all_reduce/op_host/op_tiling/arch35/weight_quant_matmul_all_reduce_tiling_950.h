@@ -19,8 +19,7 @@
 #include "../../../op_kernel/arch35/matmul_all_reduce_tiling_struct_ar35.h"
 
 namespace optiling {
-struct WeightQuantMMAllReduceTilingKeyParams
-{
+struct WeightQuantMMAllReduceTilingKeyParams {
     bool transB{false};
     bool biasIsExist{false};
     uint8_t antiQuantType{0};
@@ -30,13 +29,12 @@ struct WeightQuantMMAllReduceTilingKeyParams
     bool isBiasFp32{false};
 };
 
-class WeightQuantMatmulAllReduceTilingA5 : public MatmulAllReduceTilingBase
-{
+class WeightQuantMatmulAllReduceTilingA5 : public MatmulAllReduceTilingBase {
     friend class WeightQuantTilingTransferHelperA5;
     friend class WeightQuantAsTilingTransferHelper;
 
 public:
-    explicit WeightQuantMatmulAllReduceTilingA5(gert::TilingContext* context);
+    explicit WeightQuantMatmulAllReduceTilingA5(gert::TilingContext *context);
     ~WeightQuantMatmulAllReduceTilingA5() override = default;
 
 protected:
@@ -50,7 +48,7 @@ protected:
 
     ge::graphStatus PostTiling() override;
 
-    Mc2Tiling::RCSTiling& MutableRCSTilingData() override
+    Mc2Tiling::RCSTiling &MutableRCSTilingData() override
     {
         if (antiQuantType_ != AntiQuantType::PER_GROUP) {
             return weightQuantMatmulAllReduceA5Fp8TilingData_.param;
@@ -58,7 +56,7 @@ protected:
         return weightQuantMatmulAllReduceA5TilingData_.param;
     }
 
-    ::TCubeTiling& MutableTCubeTileTilingData() override
+    ::TCubeTiling &MutableTCubeTileTilingData() override
     {
         if (antiQuantType_ != AntiQuantType::PER_GROUP) {
             return weightQuantMatmulAllReduceA5Fp8TilingData_.tileMmASTiling.matmulTiling;
@@ -66,7 +64,7 @@ protected:
         return weightQuantMatmulAllReduceA5TilingData_.tileRegBaseMmTiling.matmulTiling;
     }
 
-    ::TCubeTiling& MutableTCubeTailTilingData() override
+    ::TCubeTiling &MutableTCubeTailTilingData() override
     {
         if (antiQuantType_ != AntiQuantType::PER_GROUP) {
             return weightQuantMatmulAllReduceA5Fp8TilingData_.tailMmASTiling.matmulTiling;
@@ -85,8 +83,8 @@ protected:
     ge::graphStatus CheckInput() override;
 
     ge::graphStatus GetWorkspaceSizeForA2ARSAG();
-    ge::graphStatus SetMc2HcommAllReduce(const char* groupName, const uint32_t reduceType);
-    ge::graphStatus SetMc2HcommTwoShot(const char* groupName, const uint32_t reduceType);
+    ge::graphStatus SetMc2HcommAllReduce(const char *groupName, const uint32_t reduceType);
+    ge::graphStatus SetMc2HcommTwoShot(const char *groupName, const uint32_t reduceType);
     ge::graphStatus SetMc2Hcomm();
 
     CutResult GetTilingResult() override;
@@ -97,22 +95,19 @@ private:
     Mc2Tiling::WeightQuantMatmulAllReduceA5TilingData weightQuantMatmulAllReduceA5TilingDataSelf_{};
     Mc2Tiling::WeightQuantMatmulAllReduceA5Fp8TilingData weightQuantMatmulAllReduceA5Fp8TilingDataSelf_{};
 
-    Mc2Tiling::WeightQuantMatmulAllReduceA5TilingData& weightQuantMatmulAllReduceA5TilingData_;
-    Mc2Tiling::WeightQuantMatmulAllReduceA5Fp8TilingData& weightQuantMatmulAllReduceA5Fp8TilingData_;
+    Mc2Tiling::WeightQuantMatmulAllReduceA5TilingData &weightQuantMatmulAllReduceA5TilingData_;
+    Mc2Tiling::WeightQuantMatmulAllReduceA5Fp8TilingData &weightQuantMatmulAllReduceA5Fp8TilingData_;
     uint64_t myWorkSpaceSize_{0U};
     bool isWeightFp8Hif8_{false};
     WeightQuantMMAllReduceTilingKeyParams WeightQuantTPLPatams_;
 };
 
-class WeightQuantTilingTransferHelperA5 : public Mc2WeightQuantBatchMatmulV2RegBase
-{
+class WeightQuantTilingTransferHelperA5 : public Mc2WeightQuantBatchMatmulV2RegBase {
 public:
-    WeightQuantTilingTransferHelperA5(
-        WeightQuantMatmulAllReduceTilingA5& weightQuantMatmulAllReduceTiling,
-        Mc2WeightQuantBatchMatmulV2RegBaseTilingData& data)
+    WeightQuantTilingTransferHelperA5(WeightQuantMatmulAllReduceTilingA5 &weightQuantMatmulAllReduceTiling,
+                                      Mc2WeightQuantBatchMatmulV2RegBaseTilingData &data)
         : Mc2WeightQuantBatchMatmulV2RegBase(weightQuantMatmulAllReduceTiling.context_),
-          tilingProcesser_(weightQuantMatmulAllReduceTiling),
-          data_(data)
+          tilingProcesser_(weightQuantMatmulAllReduceTiling), data_(data)
     {
         Mc2WeightQuantBatchMatmulV2RegBase::InitCompileInfo();
     }
@@ -170,25 +165,22 @@ public:
     }
 
 private:
-    WeightQuantMatmulAllReduceTilingA5& tilingProcesser_;
-    Mc2WeightQuantBatchMatmulV2RegBaseTilingData& data_;
+    WeightQuantMatmulAllReduceTilingA5 &tilingProcesser_;
+    Mc2WeightQuantBatchMatmulV2RegBaseTilingData &data_;
 };
 
-class WeightQuantAsTilingTransferHelper : public Mc2weight_quant_batch_matmul_v2::Mc2WeightQuantBatchMatmulV2TilingAS
-{
+class WeightQuantAsTilingTransferHelper : public Mc2weight_quant_batch_matmul_v2::Mc2WeightQuantBatchMatmulV2TilingAS {
 public:
-    WeightQuantAsTilingTransferHelper(
-        WeightQuantMatmulAllReduceTilingA5& weightQuantMatmulAllReduceTiling,
-        Mc2WeightQuantBatchMatmulV2ASTilingData& data)
+    WeightQuantAsTilingTransferHelper(WeightQuantMatmulAllReduceTilingA5 &weightQuantMatmulAllReduceTiling,
+                                      Mc2WeightQuantBatchMatmulV2ASTilingData &data)
         : Mc2WeightQuantBatchMatmulV2TilingAS(weightQuantMatmulAllReduceTiling.context_),
-          tilingProcesser_(weightQuantMatmulAllReduceTiling),
-          mmASTilingdata_(data)
+          tilingProcesser_(weightQuantMatmulAllReduceTiling), mmASTilingdata_(data)
     {
         Mc2WeightQuantBatchMatmulV2TilingAS::InitCompileInfo();
     }
     ge::graphStatus GetShapeAttrsInfo() override;
     ge::graphStatus PostTiling() override;
-    void PrintTilingInputParam(std::unique_ptr<Mc2WeightQuantBatchMatmulInfo>& matmulInfo);
+    void PrintTilingInputParam(std::unique_ptr<Mc2WeightQuantBatchMatmulInfo> &matmulInfo);
     WeightQuantMMAllReduceTilingKeyParams GetWeightQuantASMMAllReduceTPLParam();
     bool IsCapable() override
     {
@@ -246,8 +238,8 @@ public:
     }
 
 private:
-    WeightQuantMatmulAllReduceTilingA5& tilingProcesser_;
-    Mc2WeightQuantBatchMatmulV2ASTilingData& mmASTilingdata_;
+    WeightQuantMatmulAllReduceTilingA5 &tilingProcesser_;
+    Mc2WeightQuantBatchMatmulV2ASTilingData &mmASTilingdata_;
 };
 
 } // namespace optiling

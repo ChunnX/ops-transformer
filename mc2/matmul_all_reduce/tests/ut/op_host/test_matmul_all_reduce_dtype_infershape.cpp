@@ -31,35 +31,45 @@ protected:
 TEST_P(InferDataTypeMatmulAllReduceTest, param)
 {
     auto param = GetParam();
-    std::vector<void*> inputDataTypes;
-    if (param.inputInstance[0] == 1) inputDataTypes.emplace_back(&param.x1);
-    if (param.inputInstance[1] == 1) inputDataTypes.emplace_back(&param.x2);
-    if (param.inputInstance[2] == 1) inputDataTypes.emplace_back(&param.bias);
-    if (param.inputInstance[3] == 1) inputDataTypes.emplace_back(&param.x3);
-    if (param.inputInstance[4] == 1) inputDataTypes.emplace_back(&param.antiquant_scale);
-    if (param.inputInstance[5] == 1) inputDataTypes.emplace_back(&param.antiquant_offset);
-    if (param.inputInstance[6] == 1) inputDataTypes.emplace_back(&param.dequant_scale);
-    if (param.inputInstance[7] == 1) inputDataTypes.emplace_back(&param.pertoken_scale);
-    if (param.inputInstance[8] == 1) inputDataTypes.emplace_back(&param.comm_quant_scale_1);
-    if (param.inputInstance[9] == 1) inputDataTypes.emplace_back(&param.comm_quant_scale_2);
+    std::vector<void *> inputDataTypes;
+    if (param.inputInstance[0] == 1)
+        inputDataTypes.emplace_back(&param.x1);
+    if (param.inputInstance[1] == 1)
+        inputDataTypes.emplace_back(&param.x2);
+    if (param.inputInstance[2] == 1)
+        inputDataTypes.emplace_back(&param.bias);
+    if (param.inputInstance[3] == 1)
+        inputDataTypes.emplace_back(&param.x3);
+    if (param.inputInstance[4] == 1)
+        inputDataTypes.emplace_back(&param.antiquant_scale);
+    if (param.inputInstance[5] == 1)
+        inputDataTypes.emplace_back(&param.antiquant_offset);
+    if (param.inputInstance[6] == 1)
+        inputDataTypes.emplace_back(&param.dequant_scale);
+    if (param.inputInstance[7] == 1)
+        inputDataTypes.emplace_back(&param.pertoken_scale);
+    if (param.inputInstance[8] == 1)
+        inputDataTypes.emplace_back(&param.comm_quant_scale_1);
+    if (param.inputInstance[9] == 1)
+        inputDataTypes.emplace_back(&param.comm_quant_scale_2);
 
-    auto contextHolder = gert::InferDataTypeContextFaker()
-        .SetOpType("MatmulAllReduce")
-        .IrInstanceNum(param.inputInstance, param.outputInstance)
-        .InputDataTypes(inputDataTypes)
-        .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
-        .NodeAttrs({
-            {"group", Ops::Transformer::AnyValue::CreateFrom<std::string>(param.group)},
-            {"reduce_op", Ops::Transformer::AnyValue::CreateFrom<std::string>(param.reduce_op)},
-            {"is_trans_a", Ops::Transformer::AnyValue::CreateFrom<bool>(param.is_trans_a)},
-            {"is_trans_b", Ops::Transformer::AnyValue::CreateFrom<bool>(param.is_trans_b)},
-            {"comm_turn", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.comm_turn)},
-            {"antiquant_group_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.antiquant_group_size)},
-            {"group_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.group_size)},
-            {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.y_dtype)},
-            {"comm_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.comm_quant_mode)}
-        })
-        .Build();
+    auto contextHolder =
+        gert::InferDataTypeContextFaker()
+            .SetOpType("MatmulAllReduce")
+            .IrInstanceNum(param.inputInstance, param.outputInstance)
+            .InputDataTypes(inputDataTypes)
+            .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
+            .NodeAttrs(
+                {{"group", Ops::Transformer::AnyValue::CreateFrom<std::string>(param.group)},
+                 {"reduce_op", Ops::Transformer::AnyValue::CreateFrom<std::string>(param.reduce_op)},
+                 {"is_trans_a", Ops::Transformer::AnyValue::CreateFrom<bool>(param.is_trans_a)},
+                 {"is_trans_b", Ops::Transformer::AnyValue::CreateFrom<bool>(param.is_trans_b)},
+                 {"comm_turn", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.comm_turn)},
+                 {"antiquant_group_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.antiquant_group_size)},
+                 {"group_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.group_size)},
+                 {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.y_dtype)},
+                 {"comm_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.comm_quant_mode)}})
+            .Build();
 
     auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
     auto inferDtypeFunc = spaceRegistry->GetOpImpl("MatmulAllReduce")->infer_datatype;
@@ -70,10 +80,8 @@ TEST_P(InferDataTypeMatmulAllReduceTest, param)
 }
 
 INSTANTIATE_TEST_SUITE_P(
-    MatmulAllReduce,
-    InferDataTypeMatmulAllReduceTest,
+    MatmulAllReduce, InferDataTypeMatmulAllReduceTest,
     testing::ValuesIn(GetCasesFromCsv<MatmulAllReduceInferDataTypeUtParam>(ReplaceFileExtension2Csv(__FILE__))),
-    PrintCaseInfoString<MatmulAllReduceInferDataTypeUtParam>
-);
+    PrintCaseInfoString<MatmulAllReduceInferDataTypeUtParam>);
 
 } // namespace MatmulAllReduceUT
