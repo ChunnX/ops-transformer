@@ -31,6 +31,7 @@ from .kv_compress_epilog import kv_compress_epilog
 from .indexer_quant_cache import indexer_quant_cache
 from .compressor import compressor
 from .inplace_partial_rotary_mul import inplace_partial_rotary_mul
+from .stem_oam_prep_varlen_q import stem_oam_prep_varlen_q
 from .inplace_partial_rotary_mul_backward import inplace_partial_rotary_mul_backward
 from .causal_conv1d_fn import causal_conv1d_fn
 from .causal_conv1d_update import causal_conv1d_update
@@ -40,4 +41,5 @@ from .qkv_rms_norm_rope_cache_with_k_scale import (
     qkv_rms_norm_rope_cache_with_k_scale_
 )
 from .elastic_buffer import ElasticBuffer, EPHandle
+from .stem_oam_prep_varlen_q import stem_oam_prep_varlen_q
 from .grouped_matmul_activation_quant import grouped_matmul_activation_quant
