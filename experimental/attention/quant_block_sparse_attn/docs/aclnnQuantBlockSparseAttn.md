@@ -351,7 +351,7 @@ torch.ops.custom.npu_quant_block_sparse_attn(
       <td style="white-space: nowrap;"><code>INT64</code></td>
       <td style="white-space: nowrap;">-</td>
       <td>-</td>
-      <td>预留参数，暂未生效。</td>
+      <td>当前仅支持 <code>1</code>，表示 <code>Q_PERTOKEN_PERHEAD_K_PERTOKEN_PERHEAD_V_PERHEAD</code>。</td>
     </tr>
     <tr>
       <td style="white-space: nowrap;"><code>mask_mode</code></td>
@@ -597,22 +597,22 @@ QuantBlockSparseAttn 算子约束分为 4 个档位，按约束复杂程度递�
 | :---: | :--- |
 | FP8全量化 | `query`、`key`、`value` 为 `FLOAT8_E4M3FN`，`q_descale`、`k_descale`、`v_descale`、`p_scale` 参与反量化/再量化缩放的场景。 |
 | PA_BNSD | Paged Attention KV Cache 排布，逻辑形态为 `[PageBlockNum, KeyValueNumHead, BlockSize, HeadDim]`。 |
-| 1D组合KV存储 | 将每个物理 PA block 的 Key、Value、`k_descale` 分段打包到同一段一维存储中，接口传入 `key`、`value`、`k_descale` 的一维尾部视图。 |
+| 4D PA Block内连续存储 | 当前支持的 KV Cache 存储形态；接口传入 4D `key`、4D `value` 和 3D `k_descale` 视图，每个物理 PA block 内 Key、Value、`k_descale` 按连续分段组织，不支持 1D 组合 KV 存储。 |
 | BatchSize | Batch 数，对应 `sparse_indices`、`sparse_seq_len`、`block_table` 的第 0 维。 |
 | QueryTokenNum | 所有 batch 的 Query 有效 token 数之和，对应 `query` 的 T 轴。 |
-| QueryMaxSeqLen | 单个 batch 的 Query 最大序列长度，对应 `max_seqlen_q` 或由 `query` T 轴推导。 |
-| KeyValueMaxSeqLen | 单个 batch 的 KV 最大序列长度，对应 `max_seqlen_kv` 或默认的 `sparse_kv_block_size`。 |
+| QueryMaxSeqLen | 单个 batch 的 Query 最大序列长度，对应 `max_seqlen_q`，要求大于 0。 |
+| KeyValueMaxSeqLen | 单个 batch 的 KV 最大序列长度，对应 `max_seqlen_kv`，要求大于 0。 |
 | QueryNumHead | Query head 数，对应 `query` 的 N 轴和 `sparse_indices` 的第 1 维。 |
-| KeyValueNumHead | KV head 数，对应 `key`、`value` 的 N 轴，组合 KV 存储下由 `v_descale` 第 0 维推导。 |
+| KeyValueNumHead | KV head 数，对应 `key`、`value` 的 N 轴。 |
 | GroupNum | GQA 分组数，`GroupNum = QueryNumHead / KeyValueNumHead`。 |
 | QueryHeadDim | Query/Key head dim，当前固定为 128。 |
 | ValueHeadDim | Value head dim，当前固定为 128。 |
 | QueryBlockNumMax | Query block 最大数量，`ceil(QueryMaxSeqLen / sparse_q_block_size)`。 |
 | KeyValueBlockNumMax | KV block 最大数量，`ceil(KeyValueMaxSeqLen / sparse_kv_block_size)`。 |
 | max_Kb | 每个 Query block 最多关联的 KV block 数，对应 `sparse_indices` 第 3 维，与 `KeyValueBlockNumMax` 含义一致。 |
-| PageBlockNum | PA KV Cache 物理 block 总数，对应 4D `key` 第 0 维，或 1D 组合 KV 存储长度除以 `pa_block_stride`。 |
+| PageBlockNum | PA KV Cache 物理 block 总数，对应 4D `key` 第 0 维。 |
 | MaxBlockNumPerBatch | 每个 batch 在 `block_table` 中可索引的最大逻辑 block 数，对应 `block_table` 第 1 维。 |
-| PaBlockStride | 相邻物理 PA block 的外步长；4D PA 输入下由 PyTorch 接入层使用 `key.stride(0)` 传给底层，1D 组合 KV 存储下必须由调用者显式传入。 |
+| PaBlockStride | 相邻物理 PA block 的外步长；当前 4D PA 输入下由 PyTorch 接入层使用 `key.stride(0)` 传给底层，表示每个物理 PA block 内 Key、Value、`k_descale` 连续分段存储的总跨度。 |
 
 ### 参数组约束
 
@@ -626,33 +626,32 @@ QuantBlockSparseAttn 算子约束分为 4 个档位，按约束复杂程度递�
     - `layout_q="TND"` 时，shape 为 `(QueryTokenNum, QueryNumHead, QueryHeadDim)`。
     - `layout_q="NTD"` 时，shape 为 `(QueryNumHead, QueryTokenNum, QueryHeadDim)`。
   - `query` 不支持空 Tensor，且 `QueryHeadDim` 当前固定为 128。
-  - `key` 支持 4D PA 形态或 1D 组合 KV 存储尾部视图；4D PA 形态 shape 为 `(PageBlockNum, KeyValueNumHead, sparse_kv_block_size, QueryHeadDim)`，其中 `QueryHeadDim` 固定为 128。
-  - `value` 支持与 `key` 对应的 4D PA 形态或 1D 组合 KV 存储尾部视图，`ValueHeadDim` 固定为 128。
+  - `key` 仅支持 4D PA 形态，shape 为 `(PageBlockNum, KeyValueNumHead, sparse_kv_block_size, QueryHeadDim)`，其中 `QueryHeadDim` 固定为 128。
+  - `value` 仅支持与 `key` 对应的 4D PA 形态，shape 为 `(PageBlockNum, KeyValueNumHead, sparse_kv_block_size, ValueHeadDim)`，其中 `ValueHeadDim` 固定为 128。
   - `attention_out` 数据类型为 `BFLOAT16`，数据格式为 ND。`layout_q="TND"` 时输出 shape 为 `(QueryTokenNum, QueryNumHead, ValueHeadDim)`；`layout_q="NTD"` 时 PyTorch 接入层输出仍为 TND 语义的 `(QueryTokenNum, QueryNumHead, ValueHeadDim)`。
   - `sparse_q_block_size` 和 `sparse_kv_block_size` 当前均仅支持 128。
   - `layout_q` 当前仅支持 `TND`、`NTD`。
-  - `layout_out` 当前按 `TND` 输出语义维护；`NTD` 输入不会使输出保持 NTD。
+  - `layout_out` 为预留参数，当前不使能。
   - `quant_mode` 当前主算子仅支持 1，表示 `Q_PERTOKEN_PERHEAD_K_PERTOKEN_PERHEAD_V_PERHEAD`。
   - `softmax_scale` 为 float 属性，常用值为 `1 / sqrt(QueryHeadDim)`。
 
 - 存在性约束
 
   - `query`、`key`、`value`、`q_descale`、`k_descale`、`v_descale`、`p_scale`、`sparse_indices`、`sparse_seq_len`、`atten_mask` 为必选输入。
-  - 当前算子不支持非量化、伪量化、后量化输出、PSE、ROPE、公共前缀、左 padding、dropout、tensorlist KV 输入等扩展场景。
+  - 当前算子仅支持 FP8 全量化、4D PA_BNSD KV Cache 输入和 BF16 attention_out 输出；不支持非量化、伪量化、后量化输出、PSE、ROPE、公共前缀、左 padding、dropout、tensorlist KV 输入、1D 组合 KV 存储等扩展场景。
 
 - 一致性约束
 
   - `BatchSize`、`QueryNumHead`、`KeyValueNumHead`、`GroupNum` 均必须大于 0。
   - `QueryNumHead` 必须能被 `KeyValueNumHead` 整除。
-  - `QueryMaxSeqLen`、`KeyValueMaxSeqLen`、`QueryBlockNumMax`、`KeyValueBlockNumMax` 均必须大于 0。
-  - `max_seqlen_q` 传入正数时用于推导 `QueryMaxSeqLen` 和 `QueryBlockNumMax`；小于等于 0 时按 `query` 的 token 维长度推导。
-  - `max_seqlen_kv` 传入正数时用于推导 `KeyValueMaxSeqLen` 和 `KeyValueBlockNumMax`；小于等于 0 时按 `sparse_kv_block_size` 推导。
-  - 总任务数 `BatchSize * QueryNumHead * QueryBlockNumMax` 必须在 `[1, UINT32_MAX]` 范围内。
+  - `max_seqlen_q`、`max_seqlen_kv` 均必须大于 0，分别作为 `QueryMaxSeqLen`、`KeyValueMaxSeqLen`。
+  - `QueryBlockNumMax = ceil(QueryMaxSeqLen / sparse_q_block_size)`，`KeyValueBlockNumMax = ceil(KeyValueMaxSeqLen / sparse_kv_block_size)`，且二者均必须大于 0。
+  - 总计算块数 `BatchSize * QueryNumHead * QueryBlockNumMax` 必须在 `[1, UINT32_MAX]` 范围内。
 
 - 特性交叉约束
 
   - 当前执行路径仅支持 FP8 全量化场景；`query`、`key`、`value` 的 head dim 必须与量化参数、稀疏 block 参数和输出 head dim 保持一致。
-  - `layout_q` 会影响 `query`、`q_descale`、`attention_out`、`softmax_lse` 的轴解释；其余参数中的 Batch、Head、Block 维度需与该解释保持一致。
+  - `layout_q` 会影响 `query`、`q_descale` 的轴解释；其余输入参数中的 Batch、Head、Block 维度需与该解释保持一致。`attention_out`、`softmax_lse` 按固定输出语义返回，不随 `layout_q` 改变轴解释。
 
 #### 量化参数组（QuantChecker）
 
@@ -672,13 +671,13 @@ QuantBlockSparseAttn 算子约束分为 4 个档位，按约束复杂程度递�
 
   - `q_descale` 的 token/head 维度必须与 `query` 的 QueryTokenNum/QueryNumHead 对齐。
   - `k_descale` 的 PA block、KV head、block 内 token 维度必须与 `key`、`block_table`、`sparse_kv_block_size` 对齐。
-  - `v_descale` 第 0 维必须等于 `KeyValueNumHead`；1D 组合 KV 存储形态下，底层会通过 `v_descale` 第 0 维推导 `KeyValueNumHead`。
+  - `v_descale` 第 0 维必须等于 `KeyValueNumHead`。
   - `p_scale` 数值应大于 0；Tiling 阶段无法读取 Tensor 数值，该数值合法性由调用者保证。
 
 - 特性交叉约束
 
   - `quant_mode=1` 时，量化粒度固定为 Query per-token-per-head、Key per-token-per-head、Value per-head、P per-tensor。
-  - 常规 4D PA 输入下，`k_descale` 必须满足 Paged Attention 参数组中的分段 PA stride 约束；1D 组合 KV 存储下，`k_descale` 必须是一维尾部视图。
+  - `k_descale` 必须满足 Paged Attention 参数组中的 4D PA block 内连续分段存储 stride 约束。
 
 #### 稀疏索引参数组（SparseIndexChecker）
 
@@ -710,9 +709,9 @@ QuantBlockSparseAttn 算子约束分为 4 个档位，按约束复杂程度递�
 - 单参数约束
 
   - `layout_kv` 当前仅支持 `PA_BNSD`。
-  - `block_table` 数据类型仅支持 `INT32`，数据格式仅支持 ND。当前 PA 执行路径依赖 `block_table` 做逻辑 block 到物理 block 的映射，建议始终传入有效 `block_table`。
-  - 传入 `block_table` 时，shape 必须为 `(BatchSize, MaxBlockNumPerBatch)`，第 0 维必须等于 `BatchSize`。
-  - `pa_block_stride` 为非负整数属性。常规 4D PA 输入下由 PyTorch 接入层使用 `key.stride(0)` 传给底层；1D 组合 KV 存储下必须显式传入，且必须大于 0。
+  - `block_table` 数据类型仅支持 `INT32`，数据格式仅支持 ND。当前 PA 执行路径依赖 `block_table` 做逻辑 block 到物理 block 的映射，必须传入有效 `block_table`。
+  - `block_table` 的 shape 必须为 `(BatchSize, MaxBlockNumPerBatch)`，第 0 维必须等于 `BatchSize`。
+  - `pa_block_stride` 为正整数属性。当前 4D PA 输入下由 PyTorch 接入层使用 `key.stride(0)` 传给底层，表示相邻物理 PA block 的外步长。
 
 - 存在性约束
 
@@ -721,16 +720,12 @@ QuantBlockSparseAttn 算子约束分为 4 个档位，按约束复杂程度递�
 
 - 一致性约束
 
-  - 常规 4D PA 输入下：
-    - `key` stride 必须满足 `[paBlockStride, sparse_kv_block_size * QueryHeadDim, QueryHeadDim, 1]`。
-    - `value` stride 必须满足 `[paBlockStride, sparse_kv_block_size * ValueHeadDim, ValueHeadDim, 1]`。
-    - `value.stride(0)` 必须等于 `key.stride(0)`。
-    - `k_descale.stride(0) * 4` 必须等于 `key.stride(0)`，且 `k_descale` 后两维 stride 必须为 `[sparse_kv_block_size, 1]`。
-  - 1D 组合 KV 存储下：
-    - `key`、`value`、`k_descale` 必须均为一维尾部视图。
-    - `key` 存储长度必须为正数，且必须能被 `pa_block_stride` 整除。
-    - `PageBlockNum = key.numel() / pa_block_stride`。
-    - 典型打包顺序为每个物理 block 内 `Key block | Value block | k_descale block`，且 `pa_block_stride` 以 FP8 元素数/字节数计。
+  - 当前仅支持 4D PA 输入，不支持 1D 组合 KV 存储。
+  - 4D PA 输入下，每个物理 PA block 内的 `Key block`、`Value block`、`k_descale block` 在底层按连续分段组织，接口分别传入 `key`、`value`、`k_descale` 对应的 4D/3D 视图。
+  - `key` stride 必须满足 `[paBlockStride, sparse_kv_block_size * QueryHeadDim, QueryHeadDim, 1]`。
+  - `value` stride 必须满足 `[paBlockStride, sparse_kv_block_size * ValueHeadDim, ValueHeadDim, 1]`。
+  - `value.stride(0)` 必须等于 `key.stride(0)`，表示 Value 视图与 Key 视图使用相同的物理 PA block 外步长。
+  - `k_descale.stride(0) * 4` 必须等于 `key.stride(0)`，表示 `k_descale` 以 FLOAT32 字节数对齐同一物理 PA block 外步长；`k_descale` 后两维 stride 必须为 `[sparse_kv_block_size, 1]`。
   - `MaxBlockNumPerBatch` 应大于等于 `KeyValueBlockNumMax`；`block_table` 的有效值必须在 `[0, PageBlockNum - 1]` 范围内。
 
 - 特性交叉约束
@@ -749,7 +744,7 @@ QuantBlockSparseAttn 算子约束分为 4 个档位，按约束复杂程度递�
 
 - 存在性约束
 
-  - ActualSeqLen 参数均为可选输入。变长 TND/NTD 场景建议传入 `cu_seqlens_q`、`cu_seqlens_kv`、`seqused_q`、`seqused_kv`。
+  - 变长 TND/NTD 场景必须传入 `cu_seqlens_q`、`cu_seqlens_kv`、`seqused_q`、`seqused_kv`。
 
 - 一致性约束
 
@@ -777,7 +772,7 @@ QuantBlockSparseAttn 算子约束分为 4 个档位，按约束复杂程度递�
 - 一致性约束
 
   - `mask_mode=0` 时，内核按无 mask 语义执行，不使用 `atten_mask` 的数值。
-  - `mask_mode=3` 时，`atten_mask` 需与当前 Query/KV block 的 causal 访问窗口匹配。当前测试与推荐输入为二维 `(2048, 2048)` UINT8 mask。
+  - `mask_mode=3` 时，`atten_mask` 必须为二维 `(2048, 2048)` UINT8 causal mask，并与当前 Query/KV block 的 causal 访问窗口匹配。
 
 - 特性交叉约束
 
