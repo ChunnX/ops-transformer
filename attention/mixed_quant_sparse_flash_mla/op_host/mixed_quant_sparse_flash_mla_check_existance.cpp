@@ -36,11 +36,13 @@ ge::graphStatus MQSMLATilingCheck::CheckParaExistenceAntiquant() const
         if (perfMode_ != QSMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE &&
             perfMode_ != QSMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
             OP_CHECK_IF(opParamInfo_.sequsedOriKv.tensor == nullptr,
-                        OP_LOGE(opName_, "when layout_kv is PA_BBND, sequsedOriKv must not be null."),
+                        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "sequsedOriKv",
+                            "when layout_kv is PA_BBND, sequsedOriKv must not be null"),
                         return ge::GRAPH_FAILED);
         }
         OP_CHECK_IF(opParamInfo_.oriBlockTable.tensor == nullptr,
-                    OP_LOGE(opName_, "when layout_kv is PA_BBND, oriBlockTable must not be null."),
+                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "oriBlockTable",
+                        "when layout_kv is PA_BBND, oriBlockTable must not be null"),
                     return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -137,7 +139,8 @@ ge::graphStatus MQSMLATilingCheck::CheckHCAExistence()
         return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(kvLayout_ == MQSMLALayout::TND && opParamInfo_.cuSeqLensCmpKv.tensor == nullptr,
-                OP_LOGE(opName_, "cuSeqLensCmpKv must not be empty when kvLayout is TND in HCA mode."),
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "cuSeqLensCmpKv",
+                    "cuSeqLensCmpKv must not be empty when kvLayout is TND in HCA mode"),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -185,17 +188,22 @@ ge::graphStatus MQSMLATilingCheck::CheckCSAExistence()
 
 ge::graphStatus MQSMLATilingCheck::CheckCmpRatioExistence()
 {
-    OP_CHECK_IF(opParamInfo_.cmpRatio == nullptr, OP_LOGE(opName_, "cmpRatio is required, but got nullptr."),
+    OP_CHECK_IF(opParamInfo_.cmpRatio == nullptr,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "cmpRatio",
+                    "cmpRatio is required, but got nullptr"),
                 return ge::GRAPH_FAILED);
 
     if (perfMode_ == QSMLATemplateMode::SWA_TEMPLATE_MODE) {
         OP_CHECK_IF(*opParamInfo_.cmpRatio != 1,
-                    OP_LOGE(opName_, "When SWA mode, cmpRatio must be 1, but got %ld.", *opParamInfo_.cmpRatio),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "cmpRatio",
+                        std::to_string(*opParamInfo_.cmpRatio).c_str(),
+                        "When SWA mode, cmpRatio must be 1"),
                     return ge::GRAPH_FAILED);
     } else {
         OP_CHECK_IF(*opParamInfo_.cmpRatio < 1 || *opParamInfo_.cmpRatio > 128,
-                    OP_LOGE(opName_, "When non-SWA mode, cmpRatio must be in range [1, 128], but got %ld.",
-                            *opParamInfo_.cmpRatio),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "cmpRatio",
+                        std::to_string(*opParamInfo_.cmpRatio).c_str(),
+                        "When non-SWA mode, cmpRatio must be in range [1, 128]"),
                     return ge::GRAPH_FAILED);
     }
 

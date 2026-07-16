@@ -28,7 +28,7 @@ std::string MQSMLADataTypeToSerialString(ge::DataType type)
     if (it != DATATYPE_TO_STRING_MAP.end()) {
         return it->second;
     } else {
-        OP_LOGE("MixedQuantSparseFlashMla ", "datatype %d not support", type);
+        OP_LOGE("MixedQuantSparseFlashMla", "datatype %d not support", type);
         return "UNDEFINED";
     }
 }
