@@ -1087,9 +1087,8 @@ public:
                         vec2ResInner, bmm2Ub, vec2ResInner, expUb, expUb, subMRealsize, dTemplateAlign64, 0.0F,
                         deSCalePreVValue);
                 } else {
-                    int64_t sumRowOffsetVec2 = mIdx;
                     LocalTensor<float> sumUb =
-                        softmaxSumBuf[runInfo.mloop % (PRELOAD_N + 1)].template Get<float>()[sumRowOffsetVec2];
+                        softmaxSumBuf[runInfo.mloop % (PRELOAD_N + 1)].template Get<float>()[mIdx];
                     FlashUpdateLastNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64, false, false>(
                         vec2ResInner, bmm2Ub, vec2ResInner, expUb, expUb, sumUb, subMRealsize, dTemplateAlign64, 0.0F,
                         deSCalePreVValue);
@@ -1098,9 +1097,8 @@ public:
 
             if (unlikely(runInfo.isLastS2Loop)) {
                 if (unlikely(runInfo.isFirstS2Loop)) {
-                    int64_t sumRowOffsetVec2 = mIdx;
                     LocalTensor<float> sumUb =
-                        softmaxSumBuf[runInfo.mloop % (PRELOAD_N + 1)].template Get<float>()[sumRowOffsetVec2];
+                        softmaxSumBuf[runInfo.mloop % (PRELOAD_N + 1)].template Get<float>()[mIdx];
                     LastDivNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64, false>(vec2ResInner, vec2ResInner, sumUb,
                                                                               subMRealsize, dTemplateAlign64, 0.0F);
                 }
