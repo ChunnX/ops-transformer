@@ -104,6 +104,55 @@ private:
     __aicore__ inline void ExpertTokenNumCopyOut();
     __aicore__ inline void CopyGMToGMPerToken(int32_t rowDstOffsetInCore, int32_t remoteRankIdx, int32_t copyStartIdx,
                                               int32_t copyNum);
+    __aicore__ inline TEventID DispatchEventId(int32_t bufferIdx)
+    {
+        return static_cast<TEventID>(static_cast<int32_t>(EVENT_ID0) + bufferIdx);
+    }
+    __aicore__ inline LocalTensor<ActivationType> DispatchCopyTmpTensor(int32_t bufferIdx)
+    {
+        return LocalTensor<ActivationType>(
+            TPosition::VECCALC,
+            copyTmpBaseAddr_ + static_cast<uint32_t>(bufferIdx) * mxQuantTokenScaleAlignBytes_,
+            mxQuantTokenScaleAlignBytes_ / sizeof(ActivationType));
+    }
+    __aicore__ inline void DispatchIssueMte2(int32_t bufferIdx, int32_t topkIndex, int32_t remoteRankIdx,
+                                             GlobalTensor<ActivationType> &remoteRankGlobalTensor, uint32_t copyInNum)
+    {
+        TEventID eventId = DispatchEventId(bufferIdx);
+        LocalTensor<ActivationType> copyTmpTensor = DispatchCopyTmpTensor(bufferIdx);
+        int32_t tokenIndex = topkIndex / topK_;
+        uint64_t remoteCopyOffset = static_cast<uint64_t>(tokenIndex) * static_cast<uint64_t>(copyInNum);
+        WaitFlag<AscendC::HardEvent::MTE3_MTE2>(eventId);
+        DataCopy(copyTmpTensor, remoteRankGlobalTensor[remoteCopyOffset], copyInNum);
+        SetFlag<AscendC::HardEvent::MTE2_MTE3>(eventId);
+
+        WaitFlag<AscendC::HardEvent::MTE3_S>(eventId);
+        tripleTensor_[bufferIdx * INT32_PER_256B].SetValue(RANK_ID, remoteRankIdx);
+        tripleTensor_[bufferIdx * INT32_PER_256B].SetValue(TOKEN_ID, tokenIndex);
+        tripleTensor_[bufferIdx * INT32_PER_256B].SetValue(TOPK_INDEX, topkIndex % topK_);
+        SetFlag<AscendC::HardEvent::S_MTE3>(eventId);
+    }
+    __aicore__ inline void DispatchCopyMte3(int32_t bufferIdx, int32_t dstIdx,
+                                            GlobalTensor<ActivationType> &tokenRevGlobalTensor,
+                                            GlobalTensor<QuantScaleOutType> &scaleRevGlobalTensor,
+                                            GlobalTensor<int32_t> &tripleGlobalTensor, int64_t widthA,
+                                            int64_t widthAScale)
+    {
+        TEventID eventId = DispatchEventId(bufferIdx);
+        WaitFlag<AscendC::HardEvent::MTE2_MTE3>(eventId);
+        LocalTensor<ActivationType> tokenScalebuf = DispatchCopyTmpTensor(bufferIdx);
+        LocalTensor<QuantScaleOutType> bufScale =
+            tokenScalebuf[mxQuantTokenAlignBytes_].template ReinterpretCast<QuantScaleOutType>();
+        DataCopyPad(tokenRevGlobalTensor[dstIdx * widthA], tokenScalebuf,
+                    {1, static_cast<uint16_t>(widthA * sizeof(ActivationType)), 0U, 0U, 0U});
+        DataCopyPad(scaleRevGlobalTensor[dstIdx * widthAScale], bufScale,
+                    {1, static_cast<uint16_t>(widthAScale * sizeof(QuantScaleOutType)), 0U, 0U, 0U});
+        WaitFlag<AscendC::HardEvent::S_MTE3>(eventId);
+        DataCopy(tripleGlobalTensor[dstIdx * INT32_PER_256B], tripleTensor_[bufferIdx * INT32_PER_256B],
+                 INT32_PER_256B);
+        SetFlag<AscendC::HardEvent::MTE3_MTE2>(eventId);
+        SetFlag<AscendC::HardEvent::MTE3_S>(eventId);
+    }
     __aicore__ inline void QuantProcessInRank();
     __aicore__ inline void GroupMatmulWithSwigluQuant(const GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &state);
     __aicore__ inline void GroupMatmulWithCombine(const GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &state,
@@ -150,6 +199,7 @@ private:
     uint32_t maskSlotSize_ = 0;   // 单个 win 槽位 = maskAlignSize_(mask) + 32B(count)
     uint64_t maskWinOffset_ = 0;  // maskRecvPtr 相对 win 基址(rankSyncInWorldPtr)的偏移
     uint64_t quantWinOffset_ = 0; // quantTokenScalePtr 相对 win 基址的偏移
+    uint32_t copyTmpBaseAddr_ = 0;
     uint64_t cumsumRevCntInRank_ = 0;
     int32_t compareCount_ = 0;
     int64_t combineUbTensorSize_ = 0; // combineUbTensor 的大小（元素数）
@@ -178,7 +228,6 @@ private:
     LocalTensor<int32_t> expertTokenCntTensor_;
     LocalTensor<int32_t> validTopkIndexTensor_;
     LocalTensor<int32_t> cumsumInfoTensor_;
-    LocalTensor<ActivationType> copyTmpTensors_[DISPATCH_BUFFER_NUM]; // 6-buffer 软流水：占满 EVENT_ID0..EVENT_ID5。
     LocalTensor<int32_t> tripleTensor_;
     LocalTensor<bfloat16_t> xInTensor1_;
     LocalTensor<bfloat16_t> xInTensor2_;
@@ -302,11 +351,9 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::DispatchBuffInit()
         static_cast<int64_t>(worldSize_ * expertPerRank_ * sizeof(int32_t)), static_cast<int64_t>(ALIGN_32));
     // sendCntTensor_: 每 src rank 一个 burst(32B), 共 worldsize*32B（stride 只读 count 跳过 mask 区）
     uint32_t sendCntTensorSize = worldSize_ * static_cast<uint32_t>(ALIGN_32);
-    // copyTmpTensors_ 6 个 dispatch buffer, 各 tokenScaleSize
-    uint32_t tokenScaleSize = Ops::Base::CeilAlign(
-        static_cast<int64_t>(mxQuantTokenAlignBytes_ + mxQuantScaleAlignBytes_), static_cast<int64_t>(ALIGN_32));
-    uint32_t COPY_TMP_BUFFER_SIZE = tokenScaleSize;
-    uint32_t copyTmpTotalSize = static_cast<uint32_t>(DISPATCH_BUFFER_NUM) * COPY_TMP_BUFFER_SIZE;
+    // 6 个 dispatch buffer, 每个 buffer 容纳一个 token+scale
+    uint32_t copyTmpTotalSize =
+        static_cast<uint32_t>(DISPATCH_BUFFER_NUM) * mxQuantTokenScaleAlignBytes_;
     uint32_t expertTokenNumsOutTensorSize =
         Ops::Base::CeilAlign(static_cast<int64_t>(expertPerRank_ * sizeof(int32_t)), static_cast<int64_t>(ALIGN_32));
     // triple ring buffer: DISPATCH_BUFFER_NUM 条 * 32B，逐 token 即时写 GM
@@ -360,15 +407,10 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::DispatchBuffInit()
         LocalTensor<int32_t>(TPosition::VECCALC, topkIndexTensorAddr, topkIndexTensorSize / sizeof(int32_t));
     // Tensor用处：TripleInfoCalAndDispatch 函数中的 6 个 dispatch buffer，配合 EVENT_ID0..EVENT_ID5 做软流水；
     // Tensor大小：每块容纳 token+scale，动态计算以节省 UB 空间；
-    uint32_t copyTmpBaseAddr = topkIndexTensorAddr + topkIndexTensorSize;
-    for (int32_t index = 0; index < DISPATCH_BUFFER_NUM; ++index) {
-        copyTmpTensors_[index] = LocalTensor<ActivationType>(
-            TPosition::VECCALC, copyTmpBaseAddr + static_cast<uint32_t>(index) * COPY_TMP_BUFFER_SIZE,
-            COPY_TMP_BUFFER_SIZE / sizeof(ActivationType));
-    }
+    copyTmpBaseAddr_ = topkIndexTensorAddr + topkIndexTensorSize;
     // Tensor用处：ExpertTokenNumCopyOut 函数中本卡各专家收到的 tokenCnt 数；
     // Tensor大小：expertPerRank_ * sizeof(int32_t) 对齐至 32 字节；
-    uint32_t expertTokenNumsOutTensorAddr = copyTmpBaseAddr + copyTmpTotalSize;
+    uint32_t expertTokenNumsOutTensorAddr = copyTmpBaseAddr_ + copyTmpTotalSize;
     expertTokenNumsOutTensor_ = LocalTensor<int32_t>(TPosition::VECCALC, expertTokenNumsOutTensorAddr,
                                                      expertTokenNumsOutTensorSize / sizeof(int32_t));
     // Tensor用处：CopyGMToGMPerToken 函数中的 triple ring buffer，逐 token 即时写 GM；
@@ -784,9 +826,9 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SendCntCal(int32_t loca
 
 // CopyGMToGMPerToken：6-buffer 软流水 + ring buffer triple 即时写 GM
 // ----------------------------------------------------------------------------
-//   Phase 1 prime:  前 primeCount 个槽 — MTE2 取远程 token + S 侧同步组装 triple，各就绪后 set 标志位
-//   Phase 2 steady: Wait MTE2 到数 → MTE3 写 token/scale/triple 到 GM → 释放 buffer → 预取下一条
-//   Phase 2 drain:  不再发新 MTE2，只等 tail 槽 MTE3 收尾（避免 copyNum < BufferNum 时死等未填充槽）
+//   MTE2 始终领先 MTE3 一个 token：先下发当前 token 的 MTE2，再消费前一个 token 的 MTE3。
+//   event id 由槽号直接计算，copy buffer 由 UB base + 槽偏移构造，避免热路径数组索引 spill 到 GM。
+//   triple 在 MTE2 下发后随路组装到 ring buffer，并随对应 token/scale 即时写 GM。
 // ============================================================================
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::CopyGMToGMPerToken(int32_t rowDstOffsetInCore,
@@ -796,8 +838,6 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::CopyGMToGMPerToken(int3
     if (copyNum <= 0) {
         return;
     }
-    constexpr int32_t BufferNum = DISPATCH_BUFFER_NUM;
-    constexpr TEventID kBufEvents[BufferNum] = {EVENT_ID0, EVENT_ID1, EVENT_ID2, EVENT_ID3, EVENT_ID4, EVENT_ID5};
     int64_t widthA = k_ / A_ELEMS_PER_BYTE;
     int64_t widthAScale = Ops::Base::CeilDiv(static_cast<int64_t>(k_), static_cast<int64_t>(MXFP_DIVISOR_SIZE)) *
                           MXFP_MULTI_BASE_SIZE; // 输出 token-scale 长度,紧密排列
@@ -817,61 +857,44 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::CopyGMToGMPerToken(int3
         params_.workspaceInfo.tripleInfoPtr + rowDstOffsetInCore * INT32_PER_256B * sizeof(int32_t)));
 
     PipeBarrier<PIPE_ALL>();
-    // Phase 1 prime: 前 BufferNum 个槽 — MTE2 取远程 token + S 侧组装 triple，各就绪后分别 set MTE2_MTE3/S_MTE3
-    int32_t primeCount = (copyNum < BufferNum) ? copyNum : BufferNum;
-    for (int32_t primeIdx = 0; primeIdx < primeCount; ++primeIdx) {
-        int32_t topkIndex = validTopkIndexTensor_.GetValue(copyStartIdx + primeIdx);
-        int32_t tokenIndex = topkIndex / topK_;
-        TEventID eventId = kBufEvents[primeIdx];
-        uint64_t remoteCopyOffset = static_cast<uint64_t>(tokenIndex) * static_cast<uint64_t>(copyInNum);
-        DataCopy(copyTmpTensors_[primeIdx], remoteRankGlobalTensor[remoteCopyOffset], copyInNum);
-        SetFlag<AscendC::HardEvent::MTE2_MTE3>(eventId);
-        tripleTensor_[primeIdx * INT32_PER_256B].SetValue(RANK_ID, remoteRankIdx);
-        tripleTensor_[primeIdx * INT32_PER_256B].SetValue(TOKEN_ID, tokenIndex);
-        tripleTensor_[primeIdx * INT32_PER_256B].SetValue(TOPK_INDEX, topkIndex % topK_);
-        SetFlag<AscendC::HardEvent::S_MTE3>(eventId);
-    }
-    // Phase 2 steady: Wait MTE2 到数 → MTE3 写 token/scale/triple 到 GM → 释放 buffer → 预取下一条
-    for (int32_t copyIdx = 0; copyIdx < copyNum; ++copyIdx) {
-        int32_t outIdx = copyIdx % BufferNum;
-        TEventID eventId = kBufEvents[outIdx];
-        WaitFlag<AscendC::HardEvent::MTE2_MTE3>(eventId);
+    SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
+    SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
+    SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID2);
+    SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID3);
+    SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID4);
+    SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID5);
+    SetFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID0);
+    SetFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID1);
+    SetFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID2);
+    SetFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID3);
+    SetFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID4);
+    SetFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID5);
 
-        LocalTensor<ActivationType> tokenScalebuf = copyTmpTensors_[outIdx];
-        LocalTensor<QuantScaleOutType> bufScale =
-            tokenScalebuf[mxQuantTokenAlignBytes_].template ReinterpretCast<QuantScaleOutType>();
-        DataCopyPad(tokenRevGlobalTensor[copyIdx * widthA], tokenScalebuf,
-                    {1, static_cast<uint16_t>(widthA * sizeof(ActivationType)), 0U, 0U, 0U});
-        DataCopyPad(scaleRevGlobalTensor[copyIdx * widthAScale], bufScale,
-                    {1, static_cast<uint16_t>(widthAScale * sizeof(QuantScaleOutType)), 0U, 0U, 0U});
-        // triple 即时写 GM（S_MTE3 保证 SetValue 对 tripleTensor_ 的写入已完成）
-        WaitFlag<AscendC::HardEvent::S_MTE3>(eventId);
-        DataCopy(tripleGlobalTensor[copyIdx * INT32_PER_256B], tripleTensor_[outIdx * INT32_PER_256B], INT32_PER_256B);
-        SetFlag<AscendC::HardEvent::MTE3_MTE2>(eventId);
-        SetFlag<AscendC::HardEvent::MTE3_S>(eventId); // MTE3 读完 triple，S 可覆盖
+    int32_t firstTopkIndex = validTopkIndexTensor_.GetValue(copyStartIdx);
+    DispatchIssueMte2(0, firstTopkIndex, remoteRankIdx, remoteRankGlobalTensor, copyInNum);
+    for (int32_t issueIdx = 1, copyIdx = 0; issueIdx < copyNum; ++issueIdx, ++copyIdx) {
+        int32_t issueBufferIdx = issueIdx % DISPATCH_BUFFER_NUM;
+        int32_t copyBufferIdx = copyIdx % DISPATCH_BUFFER_NUM;
+        int32_t topkIndex = validTopkIndexTensor_.GetValue(copyStartIdx + issueIdx);
+        DispatchIssueMte2(issueBufferIdx, topkIndex, remoteRankIdx, remoteRankGlobalTensor, copyInNum);
+        DispatchCopyMte3(copyBufferIdx, copyIdx, tokenRevGlobalTensor, scaleRevGlobalTensor, tripleGlobalTensor, widthA,
+                         widthAScale);
+    }
+    DispatchCopyMte3((copyNum - 1) % DISPATCH_BUFFER_NUM, copyNum - 1, tokenRevGlobalTensor, scaleRevGlobalTensor,
+                     tripleGlobalTensor, widthA, widthAScale);
 
-        // 发下一个槽的 MTE2 (copyIdx + BufferNum, 复用 outIdx 槽)
-        int32_t nextIdx = copyIdx + BufferNum;
-        if (nextIdx < copyNum) {
-            // 预取下一条：等 MTE3 释放 buffer → 发下一轮 MTE2 → 等 S 槽空闲 → 组装 triple
-            int32_t nextTopkIndex = validTopkIndexTensor_.GetValue(copyStartIdx + nextIdx);
-            int32_t nextTokenIndex = nextTopkIndex / topK_;
-            uint64_t remoteCopyOffset = static_cast<uint64_t>(nextTokenIndex) * static_cast<uint64_t>(copyInNum);
-            WaitFlag<AscendC::HardEvent::MTE3_MTE2>(eventId);
-            DataCopy(copyTmpTensors_[outIdx], remoteRankGlobalTensor[remoteCopyOffset], copyInNum);
-            SetFlag<AscendC::HardEvent::MTE2_MTE3>(eventId);
-            WaitFlag<AscendC::HardEvent::MTE3_S>(eventId);
-            tripleTensor_[outIdx * INT32_PER_256B].SetValue(RANK_ID, remoteRankIdx);
-            tripleTensor_[outIdx * INT32_PER_256B].SetValue(TOKEN_ID, nextTokenIndex);
-            tripleTensor_[outIdx * INT32_PER_256B].SetValue(TOPK_INDEX, nextTopkIndex % topK_);
-            SetFlag<AscendC::HardEvent::S_MTE3>(eventId);
-        }
-    }
-    // Phase 2 drain: 不再发新 MTE2，只等 tail 几个槽的 MTE3 收尾（避免 copyNum < BufferNum 时死等未填充的槽）
-    for (int32_t bufferIdx = 0; bufferIdx < primeCount; ++bufferIdx) {
-        WaitFlag<AscendC::HardEvent::MTE3_MTE2>(kBufEvents[bufferIdx]);
-        WaitFlag<AscendC::HardEvent::MTE3_S>(kBufEvents[bufferIdx]);
-    }
+    WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
+    WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
+    WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID2);
+    WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID3);
+    WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID4);
+    WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID5);
+    WaitFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID0);
+    WaitFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID1);
+    WaitFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID2);
+    WaitFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID3);
+    WaitFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID4);
+    WaitFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID5);
 }
 
 // ====================================================================================================
