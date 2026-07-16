@@ -1135,7 +1135,7 @@ void MixedQuantSparseFlashMlaMetadataCpuKernel::AssignBlocksToCore(const SplitCo
     if (IsNeedRecordFDInfo(assignContext, result)) {
         if (isBatchConsistency_) { // batch一致性场景
             // curKvSplitPart补充最后一个规约切分的规约块数量
-            assignContext.curKvSplitPart += assignContext.coreCache.block - result.s2End[assignContext.curCoreIdx] - 1U;
+            assignContext.curKvSplitPart += remainedBlockNum_ - 1U;
         }
         RecordFDInfo(splitContext, assignContext, result);
         assignContext.preFdDataNum += assignContext.curKvSplitPart;
@@ -1151,6 +1151,8 @@ void MixedQuantSparseFlashMlaMetadataCpuKernel::AssignBlocksToCore(const SplitCo
                 assignContext.curKvSplitPart +=
                     result.s2End[assignContext.curCoreIdx] - result.s2End[assignContext.curCoreIdx - 1];
             }
+            // 当前s1g行剩余的规约块数量
+            remainedBlockNum_ = assignContext.s1GCache.s1GBlock;
         } else { // 非batch一致性场景
             assignContext.curKvSplitPart++;
         }

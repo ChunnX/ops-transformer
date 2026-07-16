@@ -357,7 +357,8 @@ private:
     bool isSplitG_ = false;
     bool isSparseOriKv_ = false;
     bool isSparseCmpKv_ = false;
-    
+    uint32_t remainedBlockNum_ = 0;
+
 private:
     enum class ParamId : uint32_t {
     // input
