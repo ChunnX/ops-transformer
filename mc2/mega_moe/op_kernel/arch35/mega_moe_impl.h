@@ -326,6 +326,15 @@ __aicore__ inline void AicComputeGeneric(BlockMmad &blockMmad, WorkSet &workSet,
         uint32_t nLoc = Get<N_VALUE>(blockCoord);
         uint32_t kLoc = Get<K_VALUE>(blockCoord);
 
+        // 项10：A/ScaleA 是 GMM1/GMM2 两分支公共的切片(仅依赖 mLoc/kLoc、与下方 wait 无先后依赖，
+        // Slice 只算数据视图不触发搬运)，前移到 sync/wait 之前统一组织：
+        // 先定位本 tile 的数据视图 → 再等上游就绪 → 再算。
+        auto gmBlockA = workSet.gmA.Slice(Te::MakeCoord(mLoc, kLoc),
+                                          Te::MakeShape(Get<M_VALUE>(actualShape), Get<K_VALUE>(actualShape)));
+        auto gmBlockScaleA = workSet.gmScaleA.Slice(
+            Te::MakeCoord(mLoc, kLoc / MXFP_SCALE_GROUP_NUM),
+            Te::MakeShape(Get<M_VALUE>(actualShape), CeilDiv(Get<K_VALUE>(actualShape), MXFP_SCALE_GROUP_NUM)));
+
         if constexpr (Policy::IS_GMM1) {
             uint32_t waveIdx = mLoc / L1_TILE_M_256;
             if (waveIdx != lastWaveWaited) {
@@ -346,11 +355,6 @@ __aicore__ inline void AicComputeGeneric(BlockMmad &blockMmad, WorkSet &workSet,
             }
         }
 
-        auto gmBlockA = workSet.gmA.Slice(Te::MakeCoord(mLoc, kLoc),
-                                          Te::MakeShape(Get<M_VALUE>(actualShape), Get<K_VALUE>(actualShape)));
-        auto gmBlockScaleA = workSet.gmScaleA.Slice(
-            Te::MakeCoord(mLoc, kLoc / MXFP_SCALE_GROUP_NUM),
-            Te::MakeShape(Get<M_VALUE>(actualShape), CeilDiv(Get<K_VALUE>(actualShape), MXFP_SCALE_GROUP_NUM)));
         typename BlockMmad::BlockShape singleShape{Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape),
                                                    Get<K_VALUE>(actualShape), 0};
 
