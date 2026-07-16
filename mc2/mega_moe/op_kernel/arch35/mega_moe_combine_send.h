@@ -57,6 +57,37 @@ __aicore__ inline void CombineTokens(uint32_t mLoc, uint32_t nLoc, uint32_t n, L
     }
 }
 
+// Direct-GM no-quant combine has one complete row resident in UB.  Preserve
+// the fast 256-column remote transfer granularity, but resolve the route and
+// destination row only once per token instead of once per remote copy.
+template <typename Element>
+__aicore__ inline void CombineTokenRowTiled(uint32_t n, uint64_t gmRemoteBaseOffset,
+                                            LocalTensor<int32_t> &metaInfoTensor, LocalTensor<Element> &rowTensor,
+                                            const Params &params)
+{
+    uint32_t toRankId = metaInfoTensor.GetValue(RANK_ID);
+    uint32_t tokenIdx = metaInfoTensor.GetValue(TOKEN_ID);
+    uint32_t topkIdx = metaInfoTensor.GetValue(TOPK_INDEX);
+
+    AscendC::GlobalTensor<Element> gmRemoteD;
+    gmRemoteD.SetGlobalBuffer(
+        reinterpret_cast<__gm__ Element *>(GetRankWinAddrWithOffset(toRankId, gmRemoteBaseOffset)));
+    uint64_t gmDstRowOffset =
+        (static_cast<uint64_t>(tokenIdx) * params.tilingData->topK + topkIdx) * n;
+
+    constexpr uint32_t TILE_N = MegaMoeImpl::L1_TILE_N;
+    AscendC::DataCopyExtParams ub2GmParams{
+        1U, static_cast<uint32_t>(TILE_N * sizeof(Element)), 0U, 0U, 0U};
+    uint32_t nLoc = 0U;
+    for (; nLoc + TILE_N <= n; nLoc += TILE_N) {
+        AscendC::DataCopyPad(gmRemoteD[gmDstRowOffset + nLoc], rowTensor[nLoc], ub2GmParams);
+    }
+    if (nLoc < n) {
+        ub2GmParams.blockLen = static_cast<uint32_t>((n - nLoc) * sizeof(Element));
+        AscendC::DataCopyPad(gmRemoteD[gmDstRowOffset + nLoc], rowTensor[nLoc], ub2GmParams);
+    }
+}
+
 template <typename DataType, bool IsQuantized = true>
 __aicore__ inline void CombineSendTokenToRemote(uint32_t batchStart, uint32_t curRows, uint32_t n, uint32_t nScale,
                                                 uint32_t groupIdx, uint32_t rankId,
