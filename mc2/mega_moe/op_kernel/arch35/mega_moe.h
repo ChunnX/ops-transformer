@@ -50,6 +50,14 @@ using namespace AscendC;
 #error "MEGA_MOE_GMM2_READY_MODE must be PER_EXPERT(0) or PER_BATCH(1)"
 #endif
 
+// Performance experiment: retain the final wave's full combine tail, but
+// skip combine work in earlier PER_BATCH waves after preserving their GMM2
+// ready dependency.  This is default-on so the requested A/B needs no extra
+// compiler option.
+#ifndef MEGA_MOE_GMM2_FINAL_BATCH_COMBINE_ONLY
+#define MEGA_MOE_GMM2_FINAL_BATCH_COMBINE_ONLY 1
+#endif
+
 // Default-off NPU timeline diagnostic for the 16-local-expert target.  When
 // enabled, expertTokenNumsOut is repurposed as sixteen uint32 words and must
 // not be used for correctness or performance measurements.
@@ -2021,6 +2029,16 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessGmm2GmWaves()
         // helper and never creates combine UB/event state.
         if constexpr (g_coreType == AIV) {
             if (subBlockIdx_ == 1) {
+                if constexpr (MEGA_MOE_GMM2_FINAL_BATCH_COMBINE_ONLY != 0 &&
+                              MEGA_MOE_GMM2_READY_MODE == MEGA_MOE_GMM2_READY_PER_BATCH) {
+                    if (batchEnd != expertPerRank_) {
+                        // Preserve the original control dependency so AIV1
+                        // cannot run ahead of this wave's completed GMM2.
+                        WaitGmm2NoQuantReady(batchIdx);
+                        continue;
+                    }
+                }
+
                 InitCombineNoQuantRowRing();
                 uint32_t rowSequence = 0U;
                 MegaMoeImpl::TokenRange waveOwned;
