@@ -774,6 +774,7 @@ def gen_cmp_kv(layout_q, layout_kv, cmp_kv_type, B, S1, S2, T1, T2, T3, N2, D, K
         if cmp_block_table.shape[1] == 0:
             cmp_block_table = None
     elif layout_kv == "TND":
+        T3 = int(T3)
         cmp_block_table = None
         cmp_max_s2 = get_max_adjacent_diff([x // cmp_ratio for x in cu_seqlens_ori_kv])
         cmp_k = (torch.rand((T3, N2, D)) * (data_range_left - data_range_right) + data_range_left).to(cmp_kv_type)
@@ -842,6 +843,14 @@ def gen_data(params, template_mode=None):
     ori_sparse_indices_mode = params.get('ori_sparse_indices_mode')
     cmp_sparse_indices_mode = params.get('cmp_sparse_indices_mode')
     return_softmax_lse = params.get('return_softmax_lse')
+    template_mode = params.get('template_mode')
+
+    B = int(B)
+    S1 = int(S1)
+    S2 = int(S2)
+    N1 = int(N1)
+    N2 = int(N2)
+    D = int(D)
 
     if layout_q == "TND" and T1 == None:
         raise ValueError(f"T1 must be provided when layout_kv is TND")
