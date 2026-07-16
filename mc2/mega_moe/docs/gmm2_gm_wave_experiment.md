@@ -6,13 +6,15 @@
 
 ## 状态与分支
 
-- `[LOCAL-VERIFIED]` 实际基线是用户指定的当时最新 `upstream/master`：
-  `38854175411a507ded2429e9d6d89d703b41ed9e`。handoff 中的旧 base 仅作背景，没有
+- `[LOCAL-VERIFIED]` 使用用户指定的 `upstream/master`：实现起点为
+  `38854175411a507ded2429e9d6d89d703b41ed9e`；收口期间主线前进到
+  `916d211e9a5037fcf56f2d0f308efe70492a12a2`，两条分支均已合入并用其
+  ops-tensor `051664f3` 依赖重打完整包。handoff 中的旧 base 仅作背景，没有
   cherry-pick 旧 GMM2-GM/diagnostic 实现。
 - `[LOCAL-VERIFIED]` token：`codex/0715-gmm2-gm-rebuild-token`，核心实现 head
-  `7c91d3e07`。
+  `7c91d3e07`，最新主线集成/打包 head `75c1a4ef0`。
 - `[LOCAL-VERIFIED]` tile：`codex/0715-gmm2-gm-rebuild-tile`，核心实现 head
-  `e653e6d59`。
+  `e653e6d59`，最新主线集成/打包 head `e9116a4a7`。
 - `[NEEDS-NPU]` 两条分支都尚未做上板 correctness、hang、scalar GM 地址、timeline
   和性能验收；在数据返回前不能称为正确版本或最佳版本。
 
@@ -30,6 +32,11 @@ tile only:
 ede7ec831 feat(mega_moe): distribute combine by GMM2 tile
 25167a2fb feat(mega_moe): add wave timeline diagnostics
 e653e6d59 fix(mega_moe): trace GMM1 after dispatch ready
+
+latest upstream integration:
+916d211e9 upstream/master dependency/namespace cleanup
+75c1a4ef0 token merge and package point
+e9116a4a7 tile merge and package point
 ```
 
 ## 流水与资源约束
@@ -79,12 +86,12 @@ round-robin 分给 logical AIV1；固定 M=256,H=4096 时共 16 tile，16 颗 AI
 | tile host UT | `[LOCAL-VERIFIED]` 15/15 |
 | token 默认/per-batch/wave16/timeline opkernel | `[LOCAL-VERIFIED]` 每组 8/8 变体编译 |
 | tile 默认/per-batch opkernel | `[LOCAL-VERIFIED]` 每组 8/8 变体编译 |
-| token 默认 `--pkg` | `[LOCAL-VERIFIED]` PASS，4,035,317 bytes，SHA256 `f998916992e1c0962d7bd8677b85a0c006299f5fbfaa40b3f6c873e14444427a` |
-| tile 默认 `--pkg` | `[LOCAL-VERIFIED]` PASS，4,035,294 bytes，SHA256 `6ac6cd2bf9e61fbb5f27618e31b2667f50a317dc7dc3e965672f58514d6ec2b3` |
+| token 默认 `--pkg` | `[LOCAL-VERIFIED]` PASS，4,039,183 bytes，SHA256 `be93e571a8e46af7bf1ac3243407092025ed5218fd2c773ca801c30095dbe241` |
+| tile 默认 `--pkg` | `[LOCAL-VERIFIED]` PASS，4,039,456 bytes，SHA256 `7d2b9b56bcf5c35922b04741c3489f46113a500367d4e272811b2a10bb0dfeb8` |
 | NPU correctness/timeline/perf | `[NEEDS-NPU]` |
 
-本地归档包分别为 `/tmp/mega_moe_wave_artifacts/token_7c91d3e07_default.run` 和
-`/tmp/mega_moe_wave_artifacts/tile_e653e6d59_default.run`。`/tmp` 不是长期存储，正式上板
+本地归档包分别为 `/tmp/mega_moe_wave_artifacts/token_75c1a4ef0_default.run` 和
+`/tmp/mega_moe_wave_artifacts/tile_e9116a4a7_default.run`。`/tmp` 不是长期存储，正式上板
 建议在目标机器 checkout 对应 branch 后重编。
 
 复现本地 build：
