@@ -1,14 +1,10 @@
-[ERROR] 2026-07-16-01:43:41 (PID:60454, Device:0, RankID:-1) ERR99999 UNKNOWN applicaiton exception
-(fzx_py311) root@aa:/home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test#  python3 -c "import torch; print('torch:', torch.__version__)"
-torch: 2.11.0+cpu
-(fzx_py311) root@aa:/home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test# python3 -c "import torch_npu; print('torch_npu:', torch_npu.version__)"
+(fzx_py311) root@aa:/home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test# python3 -c "import torch_npu; import torchair; print(torchair._utils.__file__)"
+/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/torch_npu/dynamo/torchair/_utils/__init__.py
+(fzx_py311) root@aa:/home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test# python3 -c "import torch_npu; import torchair; print('torchair:', torchair.__version__)"
 Traceback (most recent call last):
   File "<string>", line 1, in <module>
-AttributeError: module 'torch_npu' has no attribute 'version__'. Did you mean: '__version__'?
-[ERROR] 2026-07-16-02:31:00 (PID:123338, Device:-1, RankID:-1) ERR99999 UNKNOWN applicaiton exception
-(fzx_py311) root@aa:/home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test# python3 -c "import torch_npu; print('torch_npu:', torch_npu.__version__)"
-torch_npu: 2.11.0.dev20260507
-(fzx_py311) root@aa:/home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test# python3 -c "import torchair; print('torchair:', torchair.__version__)"
-Traceback (most recent call last):
-  File "<string>", line 1, in <module>
-ModuleNotFoundError: No module named 'torchair'
+  File "/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/torch_npu/dynamo/__init__.py", line 88, in __getattr__
+    return getattr(self._torchair, name)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: module 'torch_npu.dynamo.torchair' has no attribute '__version__'
+[ERROR] 2026-07-16-02:40:17 (PID:133534, Device:-1, RankID:-1) ERR99999 UNKNOWN applicaiton exception
