@@ -1,45 +1,14 @@
-fzx_py311) root@aa:/home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test# python3 demo.py 
-PyTorch version: 2.11.0+cpu
-torch_npu available: True
-torchair available: True
-
-
-============================================================
-测试直接用 npugraph_ex（作为参考）
-============================================================
-
-[Direct] Compiling with npugraph_ex...
-[Direct] Running compiled model...
-/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/torch_npu/dynamo/npugraph_ex/_acl_concrete_graph/acl_graph.py:1197: UserWarning: Cannot create tensor with interal format while allow_internel_format=False, tensor will be created with base format. (Triggered internally at ../torch_npu/csrc/aten/common/TensorFactories.cpp:348.)
-  args_list[input_idx] = torch.empty_like(args_list[input_idx], memory_format=torch.contiguous_format)
-
-[SUCCESS] Direct npugraph_ex works!
-Result: tensor([[ 2.0848, -1.0236],
-        [ 0.1199, -1.2196]])
-============================================================
-测试嵌套 torch.compile
-============================================================
-
-[TTK] Creating backend with plain CompilerConfig...
+[ERROR] 2026-07-16-01:43:41 (PID:60454, Device:0, RankID:-1) ERR99999 UNKNOWN applicaiton exception
+(fzx_py311) root@aa:/home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test#  python3 -c "import torch; print('torch:', torch.__version__)"
+torch: 2.11.0+cpu
+(fzx_py311) root@aa:/home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test# python3 -c "import torch_npu; print('torch_npu:', torch_npu.version__)"
 Traceback (most recent call last):
-  File "/home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test/demo.py", line 143, in <module>
-    test_nested_compile()
-  File "/home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test/demo.py", line 63, in test_nested_compile
-    npu_backend = tng.get_npu_backend(compiler_config=config)
-                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/torch_npu/dynamo/torchair/npu_fx_compiler.py", line 905, in get_npu_backend
-    decompositions = _get_merged_decompositions(compiler_config, custom_decompositions)
-                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/torch_npu/dynamo/torchair/npu_fx_compiler.py", line 918, in _get_merged_decompositions
-    add_npu_patch(decompositions, compiler_config)
-  File "/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/torch_npu/dynamo/torchair/_utils/__init__.py", line 32, in wrapper
-    result = f(*args, **kwargs)
-             ^^^^^^^^^^^^^^^^^^
-  File "/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/torch_npu/dynamo/torchair/_utils/__init__.py", line 447, in add_npu_patch
-    register_matmul_backward_decomp()
-  File "/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/torch_npu/dynamo/torchair/_utils/__init__.py", line 288, in register_matmul_backward_decomp
-    @aten.to.other.py_impl(DispatchKey.AutogradPrivateUse1)
-     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/torch/_ops.py", line 146, in inner
-    raise RuntimeError(
-RuntimeError: Trying to override a python impl for DispatchKey.AutogradPrivateUse1 on operator aten::to.other
+  File "<string>", line 1, in <module>
+AttributeError: module 'torch_npu' has no attribute 'version__'. Did you mean: '__version__'?
+[ERROR] 2026-07-16-02:31:00 (PID:123338, Device:-1, RankID:-1) ERR99999 UNKNOWN applicaiton exception
+(fzx_py311) root@aa:/home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test# python3 -c "import torch_npu; print('torch_npu:', torch_npu.__version__)"
+torch_npu: 2.11.0.dev20260507
+(fzx_py311) root@aa:/home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test# python3 -c "import torchair; print('torchair:', torchair.__version__)"
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+ModuleNotFoundError: No module named 'torchair'
