@@ -182,9 +182,11 @@ def _flat_to_coords(fail_indices, shape):
 
 
 def _fmt_coord_val(v, size):
-    """坐标值或区间 → 字符串。(-1,-1) 表示全覆盖。"""
-    if v == (-1, -1):
-        return f"[0..{size - 1}]"
+    """坐标值或区间 → 字符串。"""
+    if isinstance(v, tuple):
+        if v == (-1, -1):
+            return f"[0..{size - 1}]"
+        return f"[{v[0]}..{v[1]}]"
     return str(v)
 
 
