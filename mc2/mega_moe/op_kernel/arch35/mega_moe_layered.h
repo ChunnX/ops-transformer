@@ -146,9 +146,11 @@ private:
     int64_t hiddenDim_ = 0;
     uint64_t maxOutputSize_ = 0;
     int32_t vecSetSyncCom_ = 0;
+    uint16_t gmm1PingPongIdx_ = 0;
     uint32_t startBlockIdx_ = 0;
     uint32_t blockNumPerRank_ = 2;
     int32_t dispatchFlagSlotsPerExpert_ = 0;
+    int32_t swigluFlagSlotsPerExpert_ = 0;
     int32_t maxWavesPerExpert_ = 0;
     uint32_t blockNum_ = GetBlockNum();
     uint32_t blockAivNum_ = GetBlockNum() * 2;
@@ -250,6 +252,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Init(
         static_cast<int32_t>(Ops::Base::CeilDiv(static_cast<int64_t>(maxOutputSize_), DISPATCH_WAVE_TILE_M));
     dispatchFlagSlotsPerExpert_ = static_cast<int32_t>(
         Ops::Base::CeilAlign(static_cast<int64_t>(maxWavesPerExpert_), static_cast<int64_t>(INT_CACHELINE)));
+    swigluFlagSlotsPerExpert_ = dispatchFlagSlotsPerExpert_;
     hiddenDim_ = tilingData->hiddenDim;
     mc2Context_ = reinterpret_cast<__gm__ Mc2MoeContext *>(context);
     rankId_ = mc2Context_->epRankId;
@@ -430,7 +433,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::SendAndQuantBuff
     uint32_t resetTensorAddr = topkIdsTensorAddr + topkIdsTensorSize;
     uint64_t totalFlagInt32 =
         static_cast<uint64_t>(expertPerRank_) *
-        (static_cast<uint64_t>(INT_CACHELINE) + static_cast<uint64_t>(dispatchFlagSlotsPerExpert_) +
+        (static_cast<uint64_t>(swigluFlagSlotsPerExpert_) + static_cast<uint64_t>(dispatchFlagSlotsPerExpert_) +
          static_cast<uint64_t>(INT_CACHELINE) * static_cast<uint64_t>(aicNum_));
     if constexpr (CombineQuantMode != COMBINE_NO_QUANT) {
         int64_t tokenGroupResetSize = static_cast<int64_t>(expertPerRank_) * blockAivNum_ * INT_CACHELINE;
@@ -471,12 +474,13 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ResetFlagList()
         return;
     }
     // workSpace Flag 清零
-    // 总数 = SwiGluToGmm2(expertPerRank * INT_CACHELINE) + DispatchToGmm1(expertPerRank * dispatchFlagSlotsPerExpert_)
+    // 总数 = SwiGluToGmm2(expertPerRank * swigluFlagSlotsPerExpert_)
+    //        + DispatchToGmm1(expertPerRank * dispatchFlagSlotsPerExpert_)
     //        + SendCntCalToUpdParams(expertPerRank * aicNum_ * INT_CACHELINE)
     swigluToGmm2FlagGm_.SetGlobalBuffer((__gm__ int32_t *)params_.workspaceInfo.flagSwiGluToGmm2Ptr);
-    int32_t flagNum =
-        static_cast<int32_t>(expertPerRank_) * (static_cast<int32_t>(INT_CACHELINE) + dispatchFlagSlotsPerExpert_ +
-                                                static_cast<int32_t>(INT_CACHELINE) * static_cast<int32_t>(aicNum_));
+    int32_t flagNum = static_cast<int32_t>(expertPerRank_) *
+                      (swigluFlagSlotsPerExpert_ + dispatchFlagSlotsPerExpert_ +
+                       static_cast<int32_t>(INT_CACHELINE) * static_cast<int32_t>(aicNum_));
     int32_t coreLen, coreOffset;
     TilingByCore(flagNum, coreLen, coreOffset, 1);
     DataCopyExtParams rankSyncCopyParams{1U, static_cast<uint32_t>(coreLen * sizeof(int32_t)), 0U, 0U, 0U};
@@ -1562,12 +1566,14 @@ MegaMoeLayered<TemplateMegaMoeTypeFunc>::GroupMatmulWithSwigluQuant(const GMMAdd
             // NZ format (A8W8_NZ / A4W4_NZ): isWeightNZ=true, EpilogueElementA 由 SwigluQuantOutType 自动处理类型提升
             MegaMoeImpl::GroupMatmulSwigluQuant<QuantOutType, SwigluQuantOutType, QuantOutType, bfloat16_t,
                                                 QuantScaleOutType, QuantScaleOutType, true>(
-                epilogueOp_, params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_);
+                epilogueOp_, params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_,
+                gmm1PingPongIdx_);
         } else {
             // Generic: fp8/fp4 activation × fp8/fp4 weight in ND format (includes A4W4 ND)
             MegaMoeImpl::GroupMatmulSwigluQuant<QuantOutType, SwigluQuantOutType, QuantOutType, bfloat16_t,
                                                 QuantScaleOutType, QuantScaleOutType>(
-                epilogueOp_, params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_);
+                epilogueOp_, params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_,
+                gmm1PingPongIdx_);
         }
     }
 }

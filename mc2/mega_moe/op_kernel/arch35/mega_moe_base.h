@@ -162,13 +162,27 @@ __aicore__ inline void WaitForAiv1GmTileAccepted()
     CrossCoreWaitFlag<SYNC_AIC_AIV_MODE, PIPE_FIX>(AIV1_SYNC_AIC_EPILOGUE_ACK_FLAG + FLAG_ID_MAX_PER_V);
 }
 
-__aicore__ inline void EndSync(int32_t &vecSetSyncCom)
+template <bool IsPingPong = false>
+__aicore__ inline void EndSync(int32_t &vecSetSyncCom, uint16_t pingpongIdx = 0)
 {
     if (vecSetSyncCom == 0) {
         return;
     }
     if constexpr (g_coreType == AIC) {
-        WaitForVector();
+        if constexpr (IsPingPong) {
+            if (vecSetSyncCom == 1) {
+                // pingpongIdx already points at the next slot, so the only
+                // outstanding tile occupies the opposite slot.
+                WaitForVector(1U - pingpongIdx);
+            } else {
+                // Drain the oldest slot first, then the other outstanding
+                // acknowledgement.
+                WaitForVector(pingpongIdx);
+                WaitForVector(1U - pingpongIdx);
+            }
+        } else {
+            WaitForVector();
+        }
     }
 }
 

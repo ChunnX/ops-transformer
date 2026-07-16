@@ -123,14 +123,25 @@ __aicore__ inline void WaitForUpstreamReady(const GMMAddrInfo &gmmAddrInfo, cons
             }
         }
     } else {
-        BlockScheduler gmmBlockScheduler({config.m, config.k, config.n},
-                                         BlockScheduler::Params{Te::MakeCoord(static_cast<int64_t>(L1_TILE_M_256),
-                                                                              static_cast<int64_t>(L1_TILE_N))});
-        uint32_t targetLoops = gmmBlockScheduler.GetTileNum();
-        __gm__ int32_t *flagValueAddr = gmmAddrInfo.swigluToGmm2Flag;
-        while (targetLoops != AscendC::ReadGmByPassDCache(flagValueAddr)) {
-            int64_t st = AscendC::GetSystemCycle();
-            while (AscendC::GetSystemCycle() - st < 100) {
+        if constexpr (Config::SOURCE_GMM1_INTERLEAVED) {
+            uint32_t waveIdx = mLoc / L1_TILE_M_256;
+            uint32_t waveStart = waveIdx * L1_TILE_M_256;
+            uint32_t waveM = waveStart + L1_TILE_M_256 > config.m ? config.m - waveStart : L1_TILE_M_256;
+            uint32_t targetLoops = Ops::Base::CeilDiv(waveM, L1_TILE_M_256) *
+                                   Ops::Base::CeilDiv(config.k * SWIGLU_N_HALF, L1_TILE_N);
+            __gm__ int32_t *flagValueAddr = gmmAddrInfo.swigluToGmm2Flag + waveIdx;
+            while (targetLoops != AscendC::ReadGmByPassDCache(flagValueAddr)) {
+                int64_t st = AscendC::GetSystemCycle();
+                while (AscendC::GetSystemCycle() - st < 100) {
+                }
+            }
+        } else {
+            uint32_t targetLoops = Ops::Base::CeilDiv(config.m, L1_TILE_M_256) *
+                                   Ops::Base::CeilDiv(config.k, L1_TILE_N);
+            while (targetLoops != AscendC::ReadGmByPassDCache(gmmAddrInfo.swigluToGmm2Flag)) {
+                int64_t st = AscendC::GetSystemCycle();
+                while (AscendC::GetSystemCycle() - st < 100) {
+                }
             }
         }
     }
@@ -177,7 +188,7 @@ struct BlockMmadSelector<true, C> {
 // ==================================================================================
 template <bool IsA8W4, typename Policy, uint8_t CombineQuantMode, typename ElementA, typename ElementB,
           typename ElementC, typename ElementMxScaleA, typename ElementMxScaleB, bool IsWeightNZ = false,
-          bool IsLayered = false>
+          bool IsLayered = false, bool IsGmm1Interleaved = false>
 struct Config {
     using ElementAType = ElementA;
     using ElementBType = ElementB;
@@ -218,12 +229,15 @@ struct Config {
     using LayoutBiasType = decltype(Te::MakeFrameLayout<LayoutBias>(uint32_t{}, uint32_t{}));
 
     using BlockMmad = typename BlockMmadSelector<IsA8W4, Config>::type;
+    static constexpr bool SOURCE_GMM1_INTERLEAVED = IsGmm1Interleaved;
 
     // BlockPrologue（仅 A8W4 使用；A8W8/A4W4 路径用 void 占位）
     using BlockPrologue =
         Std::conditional_t<IsA8W4, Blaze::Gemm::Prologue::BlockPrologue<DispatchPolicy, ElementA, ElementB>, void>;
 
     struct ProblemConfig {
+        static constexpr bool SOURCE_GMM1_INTERLEAVED = IsGmm1Interleaved;
+
         static __aicore__ inline typename BlockMmad::L1Params DefaultL1Params()
         {
             if constexpr (IsA8W4) {
@@ -238,6 +252,7 @@ struct Config {
         uint32_t n = 0;
         uint32_t k = 0;
         uint32_t outputN = 0;
+        uint32_t schedulerN = 0;
         uint32_t blockNum = 0;
         uint32_t blockIdx = 0;
         uint32_t scaleK = 0;
@@ -266,6 +281,7 @@ struct Config {
             config.k = Get<N_VALUE>(problemShape) / SWIGLU_N_HALF;
         }
         config.outputN = Policy::IS_GMM1 ? config.n / SWIGLU_N_HALF : config.n;
+        config.schedulerN = Policy::IS_GMM1 && IsGmm1Interleaved ? config.n : config.outputN;
         config.blockNum = GetBlockNum();
         config.blockIdx = GetBlockIdx() / GetTaskRation();
         config.scaleK = CeilDiv(config.k, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
@@ -312,8 +328,8 @@ struct Config {
     }
 };
 
-template <uint8_t CombineQuantMode, typename Policy, typename BlockMmad, typename ElementC, bool IsLayered,
-          typename WorkSet, typename ExtraArgs>
+template <uint8_t CombineQuantMode, typename Policy, typename BlockMmad, typename ElementC, bool IsGmm1Interleaved,
+          bool IsLayered, typename WorkSet, typename ExtraArgs>
 __aicore__ inline void AicComputeGeneric(BlockMmad &blockMmad, WorkSet &workSet, uint32_t startLoopIdx,
                                          uint32_t tileNum, ExtraArgs &args)
 {
@@ -345,11 +361,21 @@ __aicore__ inline void AicComputeGeneric(BlockMmad &blockMmad, WorkSet &workSet,
                 WaitForUpstreamReady<Policy>(workSet.gmmAddrInfo, config, mLoc);
                 lastWaveWaited = waveIdx;
             }
-            if (args.vecSetSyncCom) {
+            if constexpr (IsGmm1Interleaved) {
+                if (args.vecSetSyncCom >= 2) {
+                    WaitForVector(args.pingpongIdx);
+                }
+            } else if (args.vecSetSyncCom != 0) {
                 WaitForVector();
             }
         } else {
-            if (loopIdx == startLoopIdx) {
+            if constexpr (std::remove_reference_t<decltype(config)>::SOURCE_GMM1_INTERLEAVED) {
+                uint32_t waveIdx = mLoc / L1_TILE_M_256;
+                if (waveIdx != lastWaveWaited) {
+                    WaitForUpstreamReady<Policy>(workSet.gmmAddrInfo, config, mLoc);
+                    lastWaveWaited = waveIdx;
+                }
+            } else if (loopIdx == startLoopIdx) {
                 WaitForUpstreamReady<Policy>(workSet.gmmAddrInfo, config, mLoc);
             }
             if constexpr (CombineQuantMode == COMBINE_NO_QUANT && !GMM2_DIRECT_GM) {
@@ -368,21 +394,39 @@ __aicore__ inline void AicComputeGeneric(BlockMmad &blockMmad, WorkSet &workSet,
                                                    Get<K_VALUE>(actualShape), 0};
 
         if constexpr (Policy::IS_GMM1) {
-            auto tensorBlockUbFirst = l0cOutUbFirst.Slice(
-                Te::MakeCoord(0, 0), Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
-            auto tensorBlockUbSecond = l0cOutUbSecond.Slice(
-                Te::MakeCoord(0, 0), Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
-            for (uint32_t weightBlock = 0; weightBlock < SWIGLU_N_HALF; ++weightBlock) {
-                auto gmBlockB = workSet.gmB.Slice(Te::MakeCoord(kLoc, nLoc + weightBlock * config.outputN),
-                                                  Te::MakeShape(Get<K_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
+            if constexpr (IsGmm1Interleaved) {
+                auto gmBlockB = workSet.gmB.Slice(
+                    Te::MakeCoord(kLoc, nLoc), Te::MakeShape(Get<K_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
                 auto gmBlockScaleB = workSet.gmScaleB.Slice(
-                    Te::MakeCoord(kLoc / MXFP_SCALE_GROUP_NUM, nLoc + weightBlock * config.outputN),
+                    Te::MakeCoord(kLoc / MXFP_SCALE_GROUP_NUM, nLoc),
                     Te::MakeShape(CeilDiv(Get<K_VALUE>(actualShape), MXFP_SCALE_GROUP_NUM), Get<N_VALUE>(actualShape)));
-                blockMmad(gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, workSet.gmBias,
-                          weightBlock == 0 ? tensorBlockUbFirst : tensorBlockUbSecond, singleShape);
+                auto tensorUb = args.pingpongIdx == 0 ? l0cOutUbFirst : l0cOutUbSecond;
+                auto tensorBlockUb = tensorUb.Slice(
+                    Te::MakeCoord(0, 0), Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
+                blockMmad(gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, workSet.gmBias, tensorBlockUb,
+                          singleShape);
+                NotifyVector(args.pingpongIdx);
+                args.vecSetSyncCom++;
+                args.pingpongIdx = 1U - args.pingpongIdx;
+            } else {
+                auto tensorBlockUbFirst = l0cOutUbFirst.Slice(
+                    Te::MakeCoord(0, 0), Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
+                auto tensorBlockUbSecond = l0cOutUbSecond.Slice(
+                    Te::MakeCoord(0, 0), Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
+                for (uint32_t weightBlock = 0; weightBlock < SWIGLU_N_HALF; ++weightBlock) {
+                    auto gmBlockB = workSet.gmB.Slice(
+                        Te::MakeCoord(kLoc, nLoc + weightBlock * config.outputN),
+                        Te::MakeShape(Get<K_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
+                    auto gmBlockScaleB = workSet.gmScaleB.Slice(
+                        Te::MakeCoord(kLoc / MXFP_SCALE_GROUP_NUM, nLoc + weightBlock * config.outputN),
+                        Te::MakeShape(CeilDiv(Get<K_VALUE>(actualShape), MXFP_SCALE_GROUP_NUM),
+                                      Get<N_VALUE>(actualShape)));
+                    blockMmad(gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, workSet.gmBias,
+                              weightBlock == 0 ? tensorBlockUbFirst : tensorBlockUbSecond, singleShape);
+                }
+                NotifyVector();
+                args.vecSetSyncCom = 1;
             }
-            NotifyVector();
-            args.vecSetSyncCom = 1;
         } else {
             auto gmBlockB = workSet.gmB.Slice(Te::MakeCoord(kLoc, nLoc),
                                               Te::MakeShape(Get<K_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
@@ -422,7 +466,7 @@ __aicore__ inline void AicComputeGeneric(BlockMmad &blockMmad, WorkSet &workSet,
     }
 }
 
-template <typename WorkSet, typename ExtraArgs>
+template <bool IsGmm1Interleaved, typename WorkSet, typename ExtraArgs>
 __aicore__ inline void AivGmm1PostGeneric(WorkSet &workSet, ExtraArgs &args, uint32_t startLoopIdx, uint32_t tileNum)
 {
     const auto &config = workSet.config;
@@ -432,20 +476,32 @@ __aicore__ inline void AivGmm1PostGeneric(WorkSet &workSet, ExtraArgs &args, uin
         uint32_t mLoc = Get<M_VALUE>(blockCoord);
         uint32_t nLoc = Get<N_VALUE>(blockCoord);
 
-        Std::tuple<int64_t, int64_t, int64_t, int64_t> epilogueShape{Get<M_VALUE>(actualShape),
-                                                                     Get<N_VALUE>(actualShape), 0, 0};
+        uint32_t epilogueN =
+            IsGmm1Interleaved ? Get<N_VALUE>(actualShape) / SWIGLU_N_HALF : Get<N_VALUE>(actualShape);
+        uint32_t epilogueNLoc = IsGmm1Interleaved ? nLoc / SWIGLU_N_HALF : nLoc;
+        Std::tuple<int64_t, int64_t, int64_t, int64_t> epilogueShape{Get<M_VALUE>(actualShape), epilogueN, 0, 0};
         Std::tuple<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t> epilogueOffset{
-            mLoc * config.outputN + nLoc,
+            mLoc * config.outputN + epilogueNLoc,
             mLoc * CeilDiv(config.outputN, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE +
-                CeilDiv(nLoc, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE,
-            0,
+                CeilDiv(epilogueNLoc, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE,
+            static_cast<int64_t>(mLoc / L1_TILE_M_256),
             0,
             0,
             0};
-        WaitForCube();
+        if constexpr (IsGmm1Interleaved) {
+            WaitForCube(args.pingpongIdx);
+        } else {
+            WaitForCube();
+        }
         AscendC::SetCtrlSpr<60, 60>(0);
-        args.swigluQuantOp(epilogueShape, epilogueOffset);
-        NotifyCube();
+        if constexpr (IsGmm1Interleaved) {
+            args.swigluQuantOp(epilogueShape, epilogueOffset, args.pingpongIdx);
+            NotifyCube(args.pingpongIdx);
+            args.pingpongIdx = 1U - args.pingpongIdx;
+        } else {
+            args.swigluQuantOp(epilogueShape, epilogueOffset);
+            NotifyCube();
+        }
     }
 }
 
@@ -493,6 +549,7 @@ template <typename SwigluQuantOp>
 struct Gmm1ArgsGeneric {
     SwigluQuantOp &swigluQuantOp;
     int32_t &vecSetSyncCom;
+    uint16_t &pingpongIdx;
 };
 
 struct Gmm2ArgsGeneric {
@@ -517,8 +574,8 @@ struct WorkSetGeneric {
     const LayoutBundle &layouts;
 };
 
-template <typename Policy, uint8_t CombineQuantMode, typename BlockMmad, typename ElementC, bool IsLayered = false,
-          typename WorkSet, typename ExtraArgs>
+template <typename Policy, uint8_t CombineQuantMode, typename BlockMmad, typename ElementC,
+          bool IsGmm1Interleaved = false, bool IsLayered = false, typename WorkSet, typename ExtraArgs>
 __aicore__ inline void GroupMatmulExecGeneric(WorkSet &workSet, uint32_t startLoopIdx, uint32_t tileNum,
                                               ExtraArgs &args)
 {
@@ -529,11 +586,11 @@ __aicore__ inline void GroupMatmulExecGeneric(WorkSet &workSet, uint32_t startLo
         typename BlockMmad::ProblemShape matmulShape{workSet.config.m, workSet.config.n, workSet.config.k, 0};
         blockMmad.Init(matmulShape, l0TileShape, workSet.config.l1Params, false, enableL0CPingPong);
 
-        AicComputeGeneric<CombineQuantMode, Policy, BlockMmad, ElementC, IsLayered>(
+        AicComputeGeneric<CombineQuantMode, Policy, BlockMmad, ElementC, IsGmm1Interleaved, IsLayered>(
             blockMmad, workSet, startLoopIdx, tileNum, args);
     } else {
         if constexpr (Policy::IS_GMM1) {
-            AivGmm1PostGeneric(workSet, args, startLoopIdx, tileNum);
+            AivGmm1PostGeneric<IsGmm1Interleaved>(workSet, args, startLoopIdx, tileNum);
         } else if constexpr (CombineQuantMode == COMBINE_NO_QUANT && IsLayered) {
             AivGmm2PostGeneric<ElementC, IsLayered>(workSet, args, startLoopIdx, tileNum);
         }
@@ -543,17 +600,17 @@ __aicore__ inline void GroupMatmulExecGeneric(WorkSet &workSet, uint32_t startLo
 
 template <typename Policy, uint8_t CombineQuantMode, typename ElementA, typename ElementB, typename ElementC,
           typename ElementMxScaleA, typename ElementMxScaleB, bool IsWeightNZ = false, bool IsLayered = false,
-          typename ExtraArgs>
+          bool IsGmm1Interleaved = false, typename ExtraArgs>
 __aicore__ inline void GroupMatmulImplGeneric(const Params &params,
                                               const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
                                               const GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx, ExtraArgs &args)
 {
     using Config = Config<false, Policy, CombineQuantMode, ElementA, ElementB, ElementC, ElementMxScaleA,
-                          ElementMxScaleB, IsWeightNZ, IsLayered>;
+                          ElementMxScaleB, IsWeightNZ, IsLayered, IsGmm1Interleaved>;
     auto config = Config::BuildProblemConfig(problemShape);
 
     BlockScheduler scheduler(
-        {config.m, config.outputN, config.k},
+        {config.m, config.schedulerN, config.k},
         BlockScheduler::Params{Te::MakeCoord(static_cast<int64_t>(config.tileM), static_cast<int64_t>(L1_TILE_N))});
     uint32_t tileNum = scheduler.GetTileNum();
     uint32_t startLoopIdx =
@@ -602,8 +659,8 @@ __aicore__ inline void GroupMatmulImplGeneric(const Params &params,
                                        decltype(gmScaleB), decltype(gmBias), decltype(config), decltype(layouts)>;
     WorkSetType workSet{scheduler, gmA, gmB, gmScaleA, gmScaleB, gmBias, gmmAddrInfo, params, config, layouts};
 
-    GroupMatmulExecGeneric<Policy, CombineQuantMode, BlockMmad, ElementC, IsLayered>(workSet, startLoopIdx, tileNum,
-                                                                                     args);
+    GroupMatmulExecGeneric<Policy, CombineQuantMode, BlockMmad, ElementC, IsGmm1Interleaved, IsLayered>(
+        workSet, startLoopIdx, tileNum, args);
 
     startBlockIdx = (startBlockIdx + tileNum) % config.blockNum;
 }
@@ -613,23 +670,26 @@ __aicore__ inline void GroupMatmulImplGeneric(const Params &params,
 // GroupMatmulSwigluQuant：GMM1 矩阵乘法 + SwiGLU 激活 + 量化
 // =================================================================================================
 template <typename ElementA, typename EpilogueElementA, typename ElementB, typename ElementC, typename ElementMxScaleA,
-          typename ElementMxScaleB, bool IsWeightNZ = false>
+          typename ElementMxScaleB, bool IsWeightNZ = false, bool IsGmm1Interleaved = false>
 __aicore__ inline void GroupMatmulSwigluQuant(
-    BlockEpilogueSwigluMxQuant<EpilogueElementA, ElementC, ElementMxScaleA, ElementMxScaleB, true> &epilogueOp,
+    BlockEpilogueSwigluMxQuant<EpilogueElementA, ElementC, ElementMxScaleA, ElementMxScaleB, true,
+                               IsGmm1Interleaved> &epilogueOp,
     const Params &params, const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
-    const GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx, int32_t &vecSetSyncCom)
+    const GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx, int32_t &vecSetSyncCom, uint16_t &pingpongIdx)
 {
     using SwigluQuantOpType = std::remove_reference_t<decltype(epilogueOp)>;
-    Detail::Gmm1ArgsGeneric<SwigluQuantOpType> args{epilogueOp, vecSetSyncCom};
+    Detail::Gmm1ArgsGeneric<SwigluQuantOpType> args{epilogueOp, vecSetSyncCom, pingpongIdx};
     Detail::GroupMatmulImplGeneric<Detail::Gmm1Policy, COMBINE_NO_QUANT, ElementA, ElementB, ElementC, ElementMxScaleA,
-                                   ElementMxScaleB, IsWeightNZ>(params, problemShape, gmmAddrInfo, startBlockIdx, args);
+                                   ElementMxScaleB, IsWeightNZ, false, IsGmm1Interleaved>(
+        params, problemShape, gmmAddrInfo, startBlockIdx, args);
 }
 
 // =================================================================================================
 // GroupMatmul2：GMM2 矩阵乘法，支持量化和非量化模式
 // =================================================================================================
 template <uint8_t CombineQuantMode, typename ElementA, typename ElementB, typename ElementC, typename ElementMxScaleA,
-          typename ElementMxScaleB, bool IsWeightNZ = false, bool IsLayered = false>
+          typename ElementMxScaleB, bool IsWeightNZ = false, bool IsLayered = false,
+          bool IsGmm1Interleaved = false>
 __aicore__ inline void GroupMatmul2(const Params &params,
                                     const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
                                     const GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx, int32_t &vecSetSyncCom2,
@@ -637,8 +697,8 @@ __aicore__ inline void GroupMatmul2(const Params &params,
 {
     Detail::Gmm2ArgsGeneric args{vecSetSyncCom2, groupCnt, pingpongIdx, groupIdx};
     Detail::GroupMatmulImplGeneric<Detail::Gmm2Policy, CombineQuantMode, ElementA, ElementB, ElementC, ElementMxScaleA,
-                                   ElementMxScaleB, IsWeightNZ, IsLayered>(params, problemShape, gmmAddrInfo,
-                                                                           startBlockIdx, args);
+                                   ElementMxScaleB, IsWeightNZ, IsLayered, IsGmm1Interleaved>(
+        params, problemShape, gmmAddrInfo, startBlockIdx, args);
 }
 
 // ==================================================================================
@@ -678,12 +738,15 @@ __aicore__ inline void AicComputeA8W4(BlockMmad &blockMmad, Scheduler &scheduler
         if constexpr (Policy::IS_GMM1) {
             waveIdx = mLoc / L1_TILE_M_256;
             shouldWait = waveIdx != lastWaveWaited;
+        } else if constexpr (Config::SOURCE_GMM1_INTERLEAVED) {
+            waveIdx = mLoc / L1_TILE_M_256;
+            shouldWait = waveIdx != lastWaveWaited;
         } else {
             shouldWait = loopIdx == startLoopIdx;
         }
         if (shouldWait) {
             WaitForUpstreamReady<Policy>(gmmAddrInfo, config, mLoc);
-            if constexpr (Policy::IS_GMM1) {
+            if constexpr (Policy::IS_GMM1 || Config::SOURCE_GMM1_INTERLEAVED) {
                 lastWaveWaited = waveIdx;
             }
         }
@@ -875,7 +938,7 @@ __aicore__ inline void GroupMatmulExecA8W4(WorkSet &workSet, const Params &param
 }
 
 template <uint8_t CombineQuantMode, typename Policy, typename ElementA, typename ElementB, typename ElementC,
-          typename ElementMxScaleA, typename ElementMxScaleB, typename ExtraArgs>
+          typename ElementMxScaleA, typename ElementMxScaleB, bool IsGmm1Interleaved, typename ExtraArgs>
 __aicore__ inline void GroupMatmulImplA8W4(const Params &params,
                                            const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
                                            const GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx, ExtraArgs &args)
@@ -883,7 +946,8 @@ __aicore__ inline void GroupMatmulImplA8W4(const Params &params,
     static_assert(std::is_same_v<ElementA, __fp8e4m3>, "Activation must be __fp8e4m3");
     static_assert(std::is_same_v<ElementB, __fp4e2m1x2>, "Weight must be __fp4e2m1x2");
 
-    using Config = Config<true, Policy, 0, ElementA, ElementB, ElementC, ElementMxScaleA, ElementMxScaleB, false>;
+    using Config = Config<true, Policy, 0, ElementA, ElementB, ElementC, ElementMxScaleA, ElementMxScaleB, false,
+                          false, IsGmm1Interleaved>;
     auto config = Config::BuildProblemConfig(problemShape);
 
     if constexpr (Policy::IS_GMM1) {
@@ -941,12 +1005,12 @@ __aicore__ inline void GroupMatmulSwigluQuantA8W4(
     using SwigluQuantOpType = std::remove_reference_t<decltype(swigluQuantOp)>;
     Detail::Gmm1ArgsA8W4<SwigluQuantOpType> args{swigluQuantOp};
     Detail::GroupMatmulImplA8W4<COMBINE_NO_QUANT, Detail::Gmm1Policy, ElementA, ElementB, ElementC, ElementMxScaleA,
-                                ElementMxScaleB>(params, problemShape, gmmAddrInfo, startBlockIdx, args);
+                                ElementMxScaleB, false>(params, problemShape, gmmAddrInfo, startBlockIdx, args);
 }
 
 // GroupMatmul2CombineA8W4 — A8W4 prologue（W4→W8）+ GMM2 + Combine
 template <uint8_t CombineQuantMode, typename ElementA, typename ElementB, typename ElementC, typename ElementMxScaleA,
-          typename ElementMxScaleB>
+          typename ElementMxScaleB, bool IsGmm1Interleaved = false>
 __aicore__ inline void
 GroupMatmul2CombineA8W4(const Params &params, const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
                         const GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx, int32_t &vecSetSyncCom2,
@@ -955,7 +1019,8 @@ GroupMatmul2CombineA8W4(const Params &params, const AscendC::Shape<int64_t, int6
     (void)vecSetSyncCom2;
     Detail::Gmm2ArgsA8W4 args{groupCnt, pingpongIdx, groupIdx};
     Detail::GroupMatmulImplA8W4<CombineQuantMode, Detail::Gmm2Policy, ElementA, ElementB, ElementC, ElementMxScaleA,
-                                ElementMxScaleB>(params, problemShape, gmmAddrInfo, startBlockIdx, args);
+                                ElementMxScaleB, IsGmm1Interleaved>(
+        params, problemShape, gmmAddrInfo, startBlockIdx, args);
 }
 
 } // namespace MegaMoeImpl
