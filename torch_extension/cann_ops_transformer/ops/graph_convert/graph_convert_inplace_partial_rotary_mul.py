@@ -16,8 +16,11 @@ try:
     from torchair.ge._ge_graph import Tensor, TensorSpec
     from torchair.ge._ge_graph import auto_convert_to_tensor
     from torchair._ge_concrete_graph.compat_ir import ge_op, IrDef
-    from torchair._ge_concrete_graph.fx2ge_converter import register_fx_node_ge_converter
+    from torchair._ge_concrete_graph.fx2ge_converter import (
+        register_fx_node_ge_converter,
+    )
     from torchair.ge import attr
+
     _TORCHAIR_AVAILABLE = True
 except ImportError:
     _TORCHAIR_AVAILABLE = False
@@ -29,6 +32,7 @@ _ROTARY_MODE_MAP = {
 
 
 if _TORCHAIR_AVAILABLE:
+
     @auto_convert_to_tensor([False, False, False], [False, False, False])
     def inplace_partial_rotary_mul(
         x: Tensor,
@@ -77,19 +81,25 @@ if _TORCHAIR_AVAILABLE:
             .input("sin", "DT_FLOAT16, DT_FLOAT, DT_BFLOAT16")
             .attr("rotary_mode", attr.Int(0))
             .attr("partial_slice", attr.ListInt([0, 0]))
-            .output("x", "DT_FLOAT16, DT_FLOAT, DT_BFLOAT16")
+            .output("x", "DT_FLOAT16, DT_FLOAT, DT_BFLOAT16"),
         )
 
-    @register_fx_node_ge_converter(torch.ops.cann_ops_transformer.inplace_partial_rotary_mul.default)
-    def convert_inplace_partial_rotary_mul(x: Tensor, r1: Tensor, r2: Tensor, *,
-                                           rotary_mode: str = "interleave",
-                                           partial_slice: Optional[List[int]] = None,
-                                           meta_outputs: TensorSpec = None):
+    @register_fx_node_ge_converter(
+        torch.ops.cann_ops_transformer.inplace_partial_rotary_mul.default
+    )
+    def convert_inplace_partial_rotary_mul(
+        x: Tensor,
+        r1: Tensor,
+        r2: Tensor,
+        *,
+        rotary_mode: str = "interleave",
+        partial_slice: Optional[List[int]] = None,
+        meta_outputs: TensorSpec = None,
+    ):
         partial_slice = [0, 0] if partial_slice is None else partial_slice
         if rotary_mode not in _ROTARY_MODE_MAP:
             raise ValueError(
-                "rotary_mode only supports 'interleave', "
-                f"got '{rotary_mode}'."
+                f"rotary_mode only supports 'interleave', got '{rotary_mode}'."
             )
         return inplace_partial_rotary_mul(
             x=x,
@@ -99,5 +109,8 @@ if _TORCHAIR_AVAILABLE:
             partial_slice=partial_slice,
         )
 else:
+
     def convert_inplace_partial_rotary_mul(*args, **kwargs):
-        raise RuntimeError("GE converter requires torchair, but torchair is not available.")
+        raise RuntimeError(
+            "GE converter requires torchair, but torchair is not available."
+        )

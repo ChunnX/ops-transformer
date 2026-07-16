@@ -63,7 +63,7 @@ static bool CheckNotEmptyTensor(const aclTensor *x1, const aclTensor *x2, bool t
         auto mVal = x1->GetViewShape().GetDim(0);
         OP_API_CHECK((mVal == ZERO), {
             OP_LOGE_FOR_INVALID_VALUE("aclnnMatmulAlltoAllBaseGetWorkspaceSize", "x1.dimM",
-                                        std::to_string(mVal).c_str(), "non-zero");
+                                      std::to_string(mVal).c_str(), "non-zero");
             return false;
         });
     }
@@ -71,18 +71,18 @@ static bool CheckNotEmptyTensor(const aclTensor *x1, const aclTensor *x2, bool t
     auto kVal2 = transposeX2 ? x2->GetViewShape().GetDim(1) : x2->GetViewShape().GetDim(0);
     auto nVal = transposeX2 ? x2->GetViewShape().GetDim(0) : x2->GetViewShape().GetDim(1);
     OP_API_CHECK((kVal1 == ZERO), {
-        OP_LOGE_FOR_INVALID_VALUE("aclnnMatmulAlltoAllBaseGetWorkspaceSize", "x1.dimK",
-                                    std::to_string(kVal1).c_str(), "non-zero");
+        OP_LOGE_FOR_INVALID_VALUE("aclnnMatmulAlltoAllBaseGetWorkspaceSize", "x1.dimK", std::to_string(kVal1).c_str(),
+                                  "non-zero");
         return false;
     });
     OP_API_CHECK((kVal2 == ZERO), {
-        OP_LOGE_FOR_INVALID_VALUE("aclnnMatmulAlltoAllBaseGetWorkspaceSize", "x2.dimK",
-                                    std::to_string(kVal2).c_str(), "non-zero");
+        OP_LOGE_FOR_INVALID_VALUE("aclnnMatmulAlltoAllBaseGetWorkspaceSize", "x2.dimK", std::to_string(kVal2).c_str(),
+                                  "non-zero");
         return false;
     });
     OP_API_CHECK((nVal == ZERO), {
-        OP_LOGE_FOR_INVALID_VALUE("aclnnMatmulAlltoAllBaseGetWorkspaceSize", "x2.dimN",
-                                    std::to_string(nVal).c_str(), "non-zero");
+        OP_LOGE_FOR_INVALID_VALUE("aclnnMatmulAlltoAllBaseGetWorkspaceSize", "x2.dimN", std::to_string(nVal).c_str(),
+                                  "non-zero");
         return false;
     });
     return true;
@@ -111,8 +111,7 @@ static bool CheckAllDtypesValid(const aclTensor *x1, const aclTensor *x2, const 
     if (biasOptional != nullptr) {
         if (biasOptional->GetDataType() != op::DataType::DT_FLOAT && biasOptional->GetDataType() != x1->GetDataType()) {
             OP_LOGE_FOR_INVALID_DTYPE("aclnnMatmulAlltoAllBaseGetWorkspaceSize", "biasOptional",
-                                        op::ToString(biasOptional->GetDataType()).GetString(),
-                                        "x1 dtype or float32");
+                                      op::ToString(biasOptional->GetDataType()).GetString(), "x1 dtype or float32");
             return false;
         }
     }
@@ -135,8 +134,7 @@ static bool CheckAllDtypesValid910B(const aclTensor *x1, const aclTensor *x2, co
             OP_CHECK_DTYPE_NOT_SAME(x1, biasOptional, return false);
         } else if (biasDtype != op::DataType::DT_FLOAT) {
             OP_LOGE_FOR_INVALID_DTYPE("aclnnMatmulAlltoAllBaseGetWorkspaceSize", "biasOptional",
-                                        op::ToString(biasDtype).GetString(),
-                                        "DT_FLOAT when x is DT_BFLOAT16");
+                                      op::ToString(biasDtype).GetString(), "DT_FLOAT when x is DT_BFLOAT16");
             return false;
         }
     }
@@ -150,24 +148,24 @@ static bool CheckFormat(const aclTensor *x1, const aclTensor *x2, const aclTenso
     // 输入格式不支持私有格式
     if (IsPrivateFormat(x1->GetStorageFormat())) {
         OP_LOGE_FOR_INVALID_FORMAT("aclnnMatmulAlltoAllBaseGetWorkspaceSize", "x1",
-                                     op::ToString(x1->GetStorageFormat()).GetString(), "ND");
+                                   op::ToString(x1->GetStorageFormat()).GetString(), "ND");
         return false;
     }
     if (IsPrivateFormat(x2->GetStorageFormat())) {
         OP_LOGE_FOR_INVALID_FORMAT("aclnnMatmulAlltoAllBaseGetWorkspaceSize", "x2",
-                                     op::ToString(x2->GetStorageFormat()).GetString(), "ND");
+                                   op::ToString(x2->GetStorageFormat()).GetString(), "ND");
         return false;
     }
     if (biasOptional != nullptr) {
         if (IsPrivateFormat(biasOptional->GetStorageFormat())) {
             OP_LOGE_FOR_INVALID_FORMAT("aclnnMatmulAlltoAllBaseGetWorkspaceSize", "biasOptional",
-                                         op::ToString(biasOptional->GetStorageFormat()).GetString(), "ND");
+                                       op::ToString(biasOptional->GetStorageFormat()).GetString(), "ND");
             return false;
         }
     }
     if (IsPrivateFormat(output->GetStorageFormat())) {
         OP_LOGE_FOR_INVALID_FORMAT("aclnnMatmulAlltoAllBaseGetWorkspaceSize", "output",
-                                     op::ToString(output->GetStorageFormat()).GetString(), "ND");
+                                   op::ToString(output->GetStorageFormat()).GetString(), "ND");
         return false;
     }
     return true;
@@ -313,10 +311,10 @@ aclnnStatus aclnnMatmulAlltoAllBaseGetWorkspaceSize(const aclTensor *x1, const a
     auto transX2 = x2;                                                   // 复制一个x2
     if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) { // 只有当非连续时，才会涉及到转连续等情况
         bool notContiguous =
-            IsTransposeLastTwoDims(x2);     // notContiguous标识x2是否是非连续的，通常在pytorch经过.t()会导致x2非连续
+            IsTransposeLastTwoDims(x2); // notContiguous标识x2是否是非连续的，通常在pytorch经过.t()会导致x2非连续
         if (notContiguous && transposeX2) { // 当非连续和转置同时生效时，判断为错误用法，直接报错
-            OP_LOGE_FOR_INVALID_VALUE("aclnnMatmulAlltoAllBaseGetWorkspaceSize", "x2",
-                                        "non-contiguous and transposed", "contiguous or not transposed");
+            OP_LOGE_FOR_INVALID_VALUE("aclnnMatmulAlltoAllBaseGetWorkspaceSize", "x2", "non-contiguous and transposed",
+                                      "contiguous or not transposed");
             return ACLNN_ERR_PARAM_INVALID;
         }
         if (notContiguous) {
@@ -332,8 +330,7 @@ aclnnStatus aclnnMatmulAlltoAllBaseGetWorkspaceSize(const aclTensor *x1, const a
     } else {
         // 对于 A2 和 A3，非连续则报错
         OP_API_CHECK(!MC2Aclnn::IsTensorContiguous(x2), {
-            OP_LOGE_FOR_INVALID_VALUE("aclnnMatmulAlltoAllBaseGetWorkspaceSize", "x2",
-                                        "non-contiguous", "contiguous");
+            OP_LOGE_FOR_INVALID_VALUE("aclnnMatmulAlltoAllBaseGetWorkspaceSize", "x2", "non-contiguous", "contiguous");
             return ACLNN_ERR_PARAM_INVALID;
         });
     }
@@ -354,8 +351,9 @@ aclnnStatus aclnnMatmulAlltoAllBaseGetWorkspaceSize(const aclTensor *x1, const a
                                             transposeX1, transposeX2, output, workspaceSize, executor);
     OP_LOGD("MatmulAlltoAll, end ret %d", ret);
     if (ret != ACLNN_SUCCESS) {
-        OP_LOGE_LIBOPAPI_REPORT("aclnnMatmulAlltoAllBaseGetWorkspaceSize",
-                                "This is an error in launch aicore, aclnnMatmulAlltoAllBaseGetWorkspaceSize interface call failed.");
+        OP_LOGE_LIBOPAPI_REPORT(
+            "aclnnMatmulAlltoAllBaseGetWorkspaceSize",
+            "This is an error in launch aicore, aclnnMatmulAlltoAllBaseGetWorkspaceSize interface call failed.");
     }
 
     if (ret == ACLNN_SUCCESS && *executor != nullptr) {

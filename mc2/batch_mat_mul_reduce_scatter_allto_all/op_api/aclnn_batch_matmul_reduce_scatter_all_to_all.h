@@ -25,7 +25,8 @@ extern "C" {
  * @domain aclnn_ops_infer
  * @param [in] x: 计算输入，Tensor，数据类型float16，bfloat16，必须为3维。BatchMatMul计算的左矩阵
  * @param [in] weight: 计算输入，Tensor，数据类型float16, bfloat16，必须为3维，类型与x保持一致。BatchMatMul计算的右矩阵
- * @param [in] biasOptional: 计算输入，Tensor，数据类型float16, float32。x为float16时，bias需为float16；x为bfloat16时，bias需为float32。支持两维或三维。BatchMatMul计算的bias。(由于要进行ReduceScatter通信，因此需要在通信之后再Add)
+ * @param [in] biasOptional: 计算输入，Tensor，数据类型float16,
+ * float32。x为float16时，bias需为float16；x为bfloat16时，bias需为float32。支持两维或三维。BatchMatMul计算的bias。(由于要进行ReduceScatter通信，因此需要在通信之后再Add)
  * @param [in] groupEp: 计算输入，str。ep通信域名称，专家并行的通信域
  * @param [in] groupTp: 计算输入，str。tp通信域名称，Tensor并行的通信域
  * @param [in] epWorldSize: 计算输入，int。ep通信域size，支持2/4/8/16/32
@@ -57,27 +58,25 @@ extern "C" {
  * C大于0，上限为算子device内存上限，当yShardType为1时，C是tp的整数倍；
  * 不支持跨超节点，只支持超节点内；
  */
-ACLNN_API aclnnStatus aclnnBatchMatMulReduceScatterAlltoAllGetWorkspaceSize(const aclTensor* x, const aclTensor* weight,
-                                                                            const aclTensor* biasOptional,
-                                                                            const char* groupEp, const char* groupTp,
-                                                                            int64_t epWorldSize, int64_t tpWorldSize,
-                                                                            int64_t yShardType, aclTensor* out,
-                                                                            uint64_t* workspaceSize,
-                                                                            aclOpExecutor** executor);
+ACLNN_API aclnnStatus aclnnBatchMatMulReduceScatterAlltoAllGetWorkspaceSize(
+    const aclTensor *x, const aclTensor *weight, const aclTensor *biasOptional, const char *groupEp,
+    const char *groupTp, int64_t epWorldSize, int64_t tpWorldSize, int64_t yShardType, aclTensor *out,
+    uint64_t *workspaceSize, aclOpExecutor **executor);
 
 /**
  * @brief aclnnBatchMatMulReduceScatterAlltoAll的第二段接口，用于执行计算。
  * @param [in] workspace: 在npu device侧申请的workspace内存起址。
- * @param [in] workspace_size: 在npu device侧申请的workspace大小，由第一段接口aclnnBatchMatMulReduceScatterAlltoAllGetWorkspaceSize获取。
+ * @param [in] workspace_size: 在npu
+ * device侧申请的workspace大小，由第一段接口aclnnBatchMatMulReduceScatterAlltoAllGetWorkspaceSize获取。
  * @param [in] executor: op执行器，包含了算子计算流程。
  * @param [in] stream: acl stream流。
  * @return aclnnStatus: 返回状态码
  */
-ACLNN_API aclnnStatus aclnnBatchMatMulReduceScatterAlltoAll(void* workspace, uint64_t workspaceSize,
-                                                            aclOpExecutor* executor, aclrtStream stream);
+ACLNN_API aclnnStatus aclnnBatchMatMulReduceScatterAlltoAll(void *workspace, uint64_t workspaceSize,
+                                                            aclOpExecutor *executor, aclrtStream stream);
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif  // OP_API_INC_BATCH_MATMUL_REDUCE_SCATTER_ALL_TO_ALL_
+#endif // OP_API_INC_BATCH_MATMUL_REDUCE_SCATTER_ALL_TO_ALL_

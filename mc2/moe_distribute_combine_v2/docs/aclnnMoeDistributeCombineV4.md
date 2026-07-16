@@ -15,7 +15,7 @@
 
 ## 功能说明
 
-- 接口功能：进行AllToAllV通信，最后将接收的数据整合（乘权重再相加）。不支持TP域通信。
+- 接口功能：进行AllToAllV通信，最后将接收的数据整合；expertScales非空时乘权重再相加，为空时直接相加。不支持TP域通信。
 
     相较于`aclnnMoeDistributeCombineV3`接口，该接口变更如下：
 
@@ -27,6 +27,8 @@
     ataOut = AllToAllV(expandX)\\
     xOut = Sum(expertScales * ataOut + expertScales * sharedExpertX)
     $$
+
+    `expertScales`为空Tensor时，不执行权重乘法，直接对专家输出求和。
 
 > 注意：该接口必须与`aclnnMoeDistributeDispatchV4`配套使用，相当于按`aclnnMoeDistributeDispatchV4`接口收集数据的路径原路返还。
 
@@ -95,7 +97,7 @@ aclnnStatus aclnnMoeDistributeCombineV4(
     <col style="width: 300px">
     <col style="width: 330px">
     <col style="width: 212px">
-    <col style="width: 100px"> 
+    <col style="width: 100px">
     <col style="width: 190px">
     <col style="width: 145px">
     </colgroup>
@@ -155,11 +157,11 @@ aclnnStatus aclnnMoeDistributeCombineV4(
     <tr>
     <td>expertScales</td>
     <td>输入</td>
-    <td>每个token的topK个专家的权重。</td>
-    <td>要求2D Tensor。</td>
+    <td>每个token的topK个专家的权重。支持空Tensor；传入空Tensor时不进行加权，直接对专家输出求和。</td>
+    <td>非空时要求2D Tensor；空Tensor至少有一个维度为0，不要求固定维数。</td>
     <td>FLOAT32</td>
     <td>ND</td>
-    <td><code>(BS, K)</code></td>
+    <td>非空：<code>(BS, K)</code>；空Tensor：至少一维为0</td>
     <td>√</td>
     </tr>
     <tr>
@@ -596,7 +598,7 @@ aclnnStatus aclnnMoeDistributeCombineV4(
 
 - **返回值**
 
-    aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。  
+    aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
     第一段接口完成入参校验，出现以下场景时报错：
 
@@ -1194,7 +1196,7 @@ aclnnStatus aclnnMoeDistributeCombineV4(
 - <term>Ascend 950DT</term> ：请参考[aclnnMoeDistributeCombineV2](../docs/aclnnMoeDistributeCombineV2.md)中调用示例的准备部分和示例代码，按照上文的约束说明重新设置涉及的变量，V4接口相较于V3接口新增的场景参数按上述参数说明传值即可。
 
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  ：
-       
+
     具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
 - 示例代码如下，仅供参考

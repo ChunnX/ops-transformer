@@ -47,12 +47,12 @@ struct WriteWithNotifySQEInfoParams {
 using namespace AscendC;
 template <TemplateMC2TypeClass>
 class MoeDistributeCombineSetup {
-    constexpr static uint8_t BUFFER_NUM = 2;                // 多buf
-    constexpr static uint64_t STATE_OFFSET = 512U;          // 状态空间偏移地址
-    constexpr static uint32_t STATE_SIZE = 1024U * 1024U;   // 1M
-    constexpr static uint32_t UB_ALIGN = 32U;               // UB按32字节对齐
-    constexpr static uint64_t STATE_SIZE_PER_CORE = 512U;   // 数据和状态的0/1区标识占用空间
-    constexpr static uint64_t COMBINE_STATE_OFFSET = 0U;    // 本卡状态空间偏移地址，前面的地址给dispatch用
+    constexpr static uint8_t BUFFER_NUM = 2;              // 多buf
+    constexpr static uint64_t STATE_OFFSET = 512U;        // 状态空间偏移地址
+    constexpr static uint32_t STATE_SIZE = 1024U * 1024U; // 1M
+    constexpr static uint32_t UB_ALIGN = 32U;             // UB按32字节对齐
+    constexpr static uint64_t STATE_SIZE_PER_CORE = 512U; // 数据和状态的0/1区标识占用空间
+    constexpr static uint64_t COMBINE_STATE_OFFSET = 0U; // 本卡状态空间偏移地址，前面的地址给dispatch用
     constexpr static uint32_t STATE_COUNT_THRESHOLD = 512U; // moeExpertNumPerRank*epWorldSize状态数阈值
 
 public:
@@ -282,7 +282,7 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::CallJfsDo
             AscendC::SyncFunc<AscendC::HardEvent::S_MTE3>();
             UpdatePICI(piCiU32, (GM_ADDR)hcclContext_, moeDistributeCombineSetupInfo_->epRankId, rankId);
             AscendC::SyncFunc<AscendC::HardEvent::MTE3_MTE2>(); // 防止piCiU32被覆盖
-            AscendC::SyncFunc<AscendC::HardEvent::S_MTE2>(); // 防止sqInfoU8被覆盖
+            AscendC::SyncFunc<AscendC::HardEvent::S_MTE2>();    // 防止sqInfoU8被覆盖
         }
     }
 }

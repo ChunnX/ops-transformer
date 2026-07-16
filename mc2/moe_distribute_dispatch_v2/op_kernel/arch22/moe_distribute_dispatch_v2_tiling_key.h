@@ -61,7 +61,6 @@ ASCENDC_TPL_SEL(
                          ASCENDC_TPL_UINT_SEL(TILINGKEY_FULLMESH, ASCENDC_TPL_UI_LIST, TILINGKEY_ENABLE_HIERARCHY),
                          ASCENDC_TPL_UINT_SEL(TILINGKEY_COMM_MODE, ASCENDC_TPL_UI_LIST, TILINGKEY_TPL_MTE),
                          ASCENDC_TPL_UINT_SEL(ARCH_TAG, ASCENDC_TPL_UI_LIST, TILINGKEY_TPL_A3),
-                         ASCENDC_TPL_TILING_STRUCT_SEL(MoeDistributeDispatchV2TilingData)),
-);
+                         ASCENDC_TPL_TILING_STRUCT_SEL(MoeDistributeDispatchV2TilingData)), );
 } // namespace Mc2Tiling
 #endif

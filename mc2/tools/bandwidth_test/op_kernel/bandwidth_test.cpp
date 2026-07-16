@@ -25,10 +25,9 @@ using namespace BandwidthTestImpl;
 using namespace BandwidthTestTiling;
 using namespace AscendC;
 
-template<uint8_t ArchTag>
-__global__ __aicore__ void bandwidth_test(
-    GM_ADDR context, GM_ADDR x, GM_ADDR dstRankId, GM_ADDR y, GM_ADDR receiveCnt,
-    GM_ADDR workspaceGM, GM_ADDR tilingGM)
+template <uint8_t ArchTag>
+__global__ __aicore__ void bandwidth_test(GM_ADDR context, GM_ADDR x, GM_ADDR dstRankId, GM_ADDR y, GM_ADDR receiveCnt,
+                                          GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
     REGISTER_TILING_DEFAULT(BandwidthTestTilingData);
     REGISTER_TILING_FOR_TILINGKEY("ArchTag == TILINGKEY_TPL_A5", BandwidthTestTilingData);

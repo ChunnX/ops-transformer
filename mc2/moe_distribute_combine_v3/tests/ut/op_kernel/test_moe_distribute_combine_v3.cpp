@@ -21,10 +21,12 @@
 
 class MoeDistributeCombineV3Test : public testing::Test {
 protected:
-    static void SetUpTestCase() {
+    static void SetUpTestCase()
+    {
         std::cout << "MoeDistributeCombineV3Test SetUp\n" << std::endl;
     }
-    static void TearDownTestCase() {
+    static void TearDownTestCase()
+    {
         std::cout << "MoeDistributeCombineV3Test TearDown\n" << std::endl;
     }
 };
@@ -35,11 +37,11 @@ TEST_F(MoeDistributeCombineV3Test, MoeDistributeCombineV3Test1000)
     size_t sysWorkspaceSize = 16 * 1024 * 1024;
     size_t usrWorkspaceSize = 0;
     size_t allWorkspaceSize = usrWorkspaceSize + sysWorkspaceSize;
-    uint8_t* workspace = (uint8_t*)AscendC::GmAlloc(allWorkspaceSize);
+    uint8_t *workspace = (uint8_t *)AscendC::GmAlloc(allWorkspaceSize);
     size_t tilingSize = sizeof(MoeDistributeCombineV2TilingData);
-    uint8_t* tiling = (uint8_t*)AscendC::GmAlloc(tilingSize);
+    uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(tilingSize);
 
-    MoeDistributeCombineV2TilingData *tilingData = reinterpret_cast<MoeDistributeCombineV2TilingData*>(tiling);
+    MoeDistributeCombineV2TilingData *tilingData = reinterpret_cast<MoeDistributeCombineV2TilingData *>(tiling);
     tilingData->moeDistributeCombineV2Info.epWorldSize = 8;
     tilingData->moeDistributeCombineV2Info.tpWorldSize = 2;
     tilingData->moeDistributeCombineV2Info.epRankId = 0;
@@ -77,42 +79,44 @@ TEST_F(MoeDistributeCombineV3Test, MoeDistributeCombineV3Test1000)
     uint8_t *groupList = (uint8_t *)AscendC::GmAlloc(1024 * sizeof(uint16_t));
     uint8_t *expandScales = (uint8_t *)AscendC::GmAlloc(1024 * sizeof(uint16_t));
 
-    auto moeDistributeCombineV2Warrper = [] (GM_ADDR context, GM_ADDR expandX, GM_ADDR expertIds, GM_ADDR assistInfoForCombine,
-        GM_ADDR epSendCount, GM_ADDR scales, GM_ADDR tpSendCount, GM_ADDR xActiveMask, GM_ADDR activationScale, 
-        GM_ADDR weightScale, GM_ADDR groupList, GM_ADDR expandScales, GM_ADDR sharedExpertX, GM_ADDR elasticInfo,
-        GM_ADDR oriX, GM_ADDR constExpertAlpha1, GM_ADDR constExpertAlpha2, GM_ADDR constExpertV, 
-        GM_ADDR performanceInfo, GM_ADDR XOut, GM_ADDR workspaceGM, GM_ADDR tilingGM) {
-            moe_distribute_combine_v2<false, TILINGKEY_NO_QUANT, TILINGKEY_TPL_MTE, TILINGKEY_TPL_A3>(expandX, expertIds, 
-                assistInfoForCombine, epSendCount, scales, tpSendCount, xActiveMask, activationScale,
-                weightScale, groupList, expandScales, sharedExpertX, elasticInfo, oriX, constExpertAlpha1,
-                constExpertAlpha2, constExpertV, performanceInfo, XOut, workspaceGM, tilingGM);
+    auto moeDistributeCombineV2Warrper =
+        [](GM_ADDR context, GM_ADDR expandX, GM_ADDR expertIds, GM_ADDR assistInfoForCombine, GM_ADDR epSendCount,
+           GM_ADDR scales, GM_ADDR tpSendCount, GM_ADDR xActiveMask, GM_ADDR activationScale, GM_ADDR weightScale,
+           GM_ADDR groupList, GM_ADDR expandScales, GM_ADDR sharedExpertX, GM_ADDR elasticInfo, GM_ADDR oriX,
+           GM_ADDR constExpertAlpha1, GM_ADDR constExpertAlpha2, GM_ADDR constExpertV, GM_ADDR performanceInfo,
+           GM_ADDR XOut, GM_ADDR workspaceGM, GM_ADDR tilingGM) {
+            moe_distribute_combine_v2<false, TILINGKEY_NO_QUANT, TILINGKEY_TPL_MTE, TILINGKEY_TPL_A3>(
+                expandX, expertIds, assistInfoForCombine, epSendCount, scales, tpSendCount, xActiveMask,
+                activationScale, weightScale, groupList, expandScales, sharedExpertX, elasticInfo, oriX,
+                constExpertAlpha1, constExpertAlpha2, constExpertV, performanceInfo, XOut, workspaceGM, tilingGM);
         };
-    ICPU_RUN_KF(moeDistributeCombineV2Warrper, 20, expandX, expertIds, assistInfoForCombine, epSendCount, scales, tpSendCount, 
-                xActiveMask, activationScale, weightScale, groupList, expandScales, sharedExpertX, elasticInfo, oriX,
-                constExpertAlpha1, constExpertAlpha2, constExpertV, performanceInfo, XOut, workspace, tiling);
+    ICPU_RUN_KF(moeDistributeCombineV2Warrper, 20, expandX, expertIds, assistInfoForCombine, epSendCount, scales,
+                tpSendCount, xActiveMask, activationScale, weightScale, groupList, expandScales, sharedExpertX,
+                elasticInfo, oriX, constExpertAlpha1, constExpertAlpha2, constExpertV, performanceInfo, XOut, workspace,
+                tiling);
 
-    AscendC::GmFree((void*)workspace);
-    AscendC::GmFree((void*)tiling);
-    AscendC::GmFree((void*)context);
-    AscendC::GmFree((void*)expandX);
-    AscendC::GmFree((void*)expertIds);
-    AscendC::GmFree((void*)expandIdx);
-    AscendC::GmFree((void*)epSendCount);
-    AscendC::GmFree((void*)tpSendCount);
-    AscendC::GmFree((void*)scales);
-    AscendC::GmFree((void*)sharedExpertX);
-    AscendC::GmFree((void*)assistInfoForCombine);
-    AscendC::GmFree((void*)elasticInfo);
-    AscendC::GmFree((void*)oriX);
-    AscendC::GmFree((void*)constExpertAlpha1);
-    AscendC::GmFree((void*)constExpertAlpha2);
-    AscendC::GmFree((void*)constExpertV);
-    AscendC::GmFree((void*)performanceInfo);
-    AscendC::GmFree((void*)xActiveMask);
-    AscendC::GmFree((void*)activationScale);
-    AscendC::GmFree((void*)weightScale);
-    AscendC::GmFree((void*)groupList);
-    AscendC::GmFree((void*)expandScales);
-    AscendC::GmFree((void*)XOut);
-    AscendC::GmFree((void*)winAddr);
+    AscendC::GmFree((void *)workspace);
+    AscendC::GmFree((void *)tiling);
+    AscendC::GmFree((void *)context);
+    AscendC::GmFree((void *)expandX);
+    AscendC::GmFree((void *)expertIds);
+    AscendC::GmFree((void *)expandIdx);
+    AscendC::GmFree((void *)epSendCount);
+    AscendC::GmFree((void *)tpSendCount);
+    AscendC::GmFree((void *)scales);
+    AscendC::GmFree((void *)sharedExpertX);
+    AscendC::GmFree((void *)assistInfoForCombine);
+    AscendC::GmFree((void *)elasticInfo);
+    AscendC::GmFree((void *)oriX);
+    AscendC::GmFree((void *)constExpertAlpha1);
+    AscendC::GmFree((void *)constExpertAlpha2);
+    AscendC::GmFree((void *)constExpertV);
+    AscendC::GmFree((void *)performanceInfo);
+    AscendC::GmFree((void *)xActiveMask);
+    AscendC::GmFree((void *)activationScale);
+    AscendC::GmFree((void *)weightScale);
+    AscendC::GmFree((void *)groupList);
+    AscendC::GmFree((void *)expandScales);
+    AscendC::GmFree((void *)XOut);
+    AscendC::GmFree((void *)winAddr);
 }

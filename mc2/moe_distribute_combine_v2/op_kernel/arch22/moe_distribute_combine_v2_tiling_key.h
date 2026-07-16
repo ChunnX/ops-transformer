@@ -40,7 +40,6 @@ ASCENDC_TPL_SEL(
                                               TILINGKEY_INT8_QUANT),
                          ASCENDC_TPL_UINT_SEL(TILINGKEY_LAYERED_MODE, ASCENDC_TPL_UI_LIST, TILINGKEY_TPL_HIERARCHY),
                          ASCENDC_TPL_UINT_SEL(ARCH_TAG, ASCENDC_TPL_UI_LIST, TILINGKEY_TPL_A3),
-                         ASCENDC_TPL_TILING_STRUCT_SEL(MoeDistributeCombineV2TilingData)),
-);
+                         ASCENDC_TPL_TILING_STRUCT_SEL(MoeDistributeCombineV2TilingData)), );
 } // namespace Mc2Tiling
 #endif

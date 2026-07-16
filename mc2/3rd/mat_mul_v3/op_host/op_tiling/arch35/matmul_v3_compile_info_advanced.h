@@ -31,9 +31,9 @@ namespace mc2_matmul_v3_advanced {
 inline ge::graphStatus InitCompileInfo(fe::PlatFormInfos *platformInfo, Mc2MatmulV3CompileInfo *compileInfoPtr)
 {
     OP_TILING_CHECK(platformInfo == nullptr, OP_LOGE_WITH_INVALID_INPUT("Mc2MatMul", "platformInfo"),
-        return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(compileInfoPtr == nullptr,
-        OP_LOGE_WITH_INVALID_INPUT("Mc2MatMul", "compileInfoPtr"), return ge::GRAPH_FAILED);
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(compileInfoPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT("Mc2MatMul", "compileInfoPtr"),
+                    return ge::GRAPH_FAILED);
 
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
     compileInfoPtr->aicNum = ascendcPlatform.GetCoreNumAic();
@@ -43,7 +43,7 @@ inline ge::graphStatus InitCompileInfo(fe::PlatFormInfos *platformInfo, Mc2Matmu
     bool supportMmadS8S4 = res && mmad.find("s8s4") != std::string::npos;
     compileInfoPtr->socVersion =
         supportMmadS8S4 ? platform_ascendc::SocVersion::RESERVED_VERSION : ascendcPlatform.GetSocVersion();
-    compileInfoPtr->supportL0c2out = false; // Not used
+    compileInfoPtr->supportL0c2out = false;   // Not used
     compileInfoPtr->supportL12BtBf16 = false; // Not used
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, compileInfoPtr->ubSize);
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L1, compileInfoPtr->l1Size);
@@ -52,7 +52,8 @@ inline ge::graphStatus InitCompileInfo(fe::PlatFormInfos *platformInfo, Mc2Matmu
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L0_C, compileInfoPtr->l0CSize);
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L2, compileInfoPtr->l2Size);
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::BT, compileInfoPtr->btSize);
-    OP_LOGI("Mc2MatMul",
+    OP_LOGI(
+        "Mc2MatMul",
         "parse compile info success soc:%d, aicNum:%lu, aivNum:%lu, ubSize:%lu, l1Size:%lu, l2Size:%lu, l0ASize:%lu, "
         "l0BSize:%lu, "
         "l0CSize:%lu, btSize:%lu",
@@ -64,12 +65,11 @@ inline ge::graphStatus InitCompileInfo(fe::PlatFormInfos *platformInfo, Mc2Matmu
 
 inline ge::graphStatus InitCompileInfo(gert::TilingParseContext *context)
 {
-    OP_TILING_CHECK(context == nullptr, OP_LOGE_WITH_INVALID_INPUT("Mc2MatMul", "context"),
-        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(context == nullptr, OP_LOGE_WITH_INVALID_INPUT("Mc2MatMul", "context"), return ge::GRAPH_FAILED);
     fe::PlatFormInfos *platformInfo = context->GetPlatformInfo();
     auto compileInfoPtr = context->GetCompiledInfo<Mc2MatmulV3CompileInfo>();
     return InitCompileInfo(platformInfo, compileInfoPtr);
 }
-}
-} // namespace optiling::mc2_matmul_v3
+} // namespace mc2_matmul_v3_advanced
+} // namespace optiling
 #endif // __OP_HOST_MATMUL_V3_COMPILE_INFO_ADVANCED_H__

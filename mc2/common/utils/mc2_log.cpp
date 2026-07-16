@@ -43,17 +43,17 @@ static void PrintTCubeTilingDataSecondPart(const std::string &opName, ::TCubeTil
     OP_LOGD(opName, "tiling.get_mxTypePara %d", tiling.mxTypePara);
 }
 
-void PrintMMV3TilingData(const std::string &opName,
-                         Mc2Tiling::MC2MatmulV3TilingData &tiling) {
-  PrintTCubeTilingData(opName, tiling.matmulTiling);
-  OP_LOGD(opName, "mTailCnt %d", tiling.mTailCnt);
-  OP_LOGD(opName, "nTailCnt %d", tiling.nTailCnt);
-  OP_LOGD(opName, "kTailCnt %d", tiling.kTailCnt);
-  OP_LOGD(opName, "mBaseTailSplitCnt %d", tiling.mBaseTailSplitCnt);
-  OP_LOGD(opName, "nBaseTailSplitCnt %d", tiling.nBaseTailSplitCnt);
-  OP_LOGD(opName, "mTailMain %d", tiling.mTailMain);
-  OP_LOGD(opName, "nTailMain %d", tiling.nTailMain);
-  OP_LOGD(opName, "isHf32 %d", tiling.isHf32);
+void PrintMMV3TilingData(const std::string &opName, Mc2Tiling::MC2MatmulV3TilingData &tiling)
+{
+    PrintTCubeTilingData(opName, tiling.matmulTiling);
+    OP_LOGD(opName, "mTailCnt %d", tiling.mTailCnt);
+    OP_LOGD(opName, "nTailCnt %d", tiling.nTailCnt);
+    OP_LOGD(opName, "kTailCnt %d", tiling.kTailCnt);
+    OP_LOGD(opName, "mBaseTailSplitCnt %d", tiling.mBaseTailSplitCnt);
+    OP_LOGD(opName, "nBaseTailSplitCnt %d", tiling.nBaseTailSplitCnt);
+    OP_LOGD(opName, "mTailMain %d", tiling.mTailMain);
+    OP_LOGD(opName, "nTailMain %d", tiling.nTailMain);
+    OP_LOGD(opName, "isHf32 %d", tiling.isHf32);
 }
 
 void PrintTCubeTilingData(const std::string &opName, ::TCubeTiling &tiling)
@@ -87,7 +87,7 @@ void PrintTCubeTilingData(const std::string &opName, ::TCubeTiling &tiling)
     OP_LOGD(opName, "tiling.stepKa %d", tiling.stepKa);
     OP_LOGD(opName, "tiling.stepKb %d", tiling.stepKb);
     // for cleancode, make sure func less than 50 lines
-    PrintTCubeTilingDataSecondPart(opName,tiling);
+    PrintTCubeTilingDataSecondPart(opName, tiling);
 }
 
 void PrintRCSTilingData(const std::string &opName, Mc2Tiling::RCSTiling &rcsTiling)
@@ -132,7 +132,7 @@ void PrintTileL2TilingData(const std::string &opName, Mc2Tiling::TileL2Tiling &t
 
 void PrintMc2MsgData(const std::string &opName, Mc2Tiling::Mc2Msg &msg)
 {
-OP_LOGD(opName, "msg.sendOff %lu", msg.sendOff);
+    OP_LOGD(opName, "msg.sendOff %lu", msg.sendOff);
     OP_LOGD(opName, "msg.recvOff %lu", msg.recvOff);
     OP_LOGD(opName, "msg.tailSendOff %lu", msg.tailSendOff);
     OP_LOGD(opName, "msg.tailRecvOff %lu", msg.tailRecvOff);
@@ -233,4 +233,4 @@ void PrintMMV3TilingData(const std::string &opName, Mc2MatMulV3TilingData &tilin
     OP_LOGD(opName, "tiling.aswWindowLen %d", tiling.aswWindowLen);
 }
 
-}  // namespace Mc2Log
+} // namespace Mc2Log

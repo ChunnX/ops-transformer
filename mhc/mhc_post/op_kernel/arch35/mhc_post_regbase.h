@@ -32,10 +32,6 @@ using namespace AscendC;
 #define REGBASE_TEMPLATE_DECLARE template <typename T>
 #define REGBASE_TEMPLATE_ARGS T
 
-// Register-level alignment constants (in elements)
-constexpr uint16_t REG_ALIGN_N = 8;   // N-axis: 8-element register alignment
-constexpr uint16_t REG_ALIGN_D = 16;  // D-axis: 16-element register alignment
-
 REGBASE_TEMPLATE_DECLARE
 class MhcPostRegbase {
 public:

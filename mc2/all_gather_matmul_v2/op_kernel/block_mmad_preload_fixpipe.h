@@ -236,7 +236,8 @@ public:
                 auto l1BTensor = l1BTensorList[l1ListIdNext];
                 // Get GM tensor for next stage
                 kActualNext = (firstTileIdxNext < kTileCountNext - 1) ?
-                    L1TileShape::K : (actualShapeNext.k() - firstTileIdxNext * L1TileShape::K);
+                                  L1TileShape::K :
+                                  (actualShapeNext.k() - firstTileIdxNext * L1TileShape::K);
                 MatrixCoord gmTileAOffset{0, firstTileIdxNext * L1TileShape::K};
                 MatrixCoord gmTileBOffset{firstTileIdxNext * L1TileShape::K, 0};
                 auto gmTileA = gmNextBlockA[layoutA.GetOffset(gmTileAOffset)];
