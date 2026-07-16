@@ -142,15 +142,6 @@ def display_error_output(real_data, expect_data, err_idx, relative_diff):
         '---------------------------------------------------------------------------------------')
 
 def _tensor_compare(npu_out, golden_out, name):
-    """Compare a single tensor pair consistent with compressor_golden.py check_result.
-
-    Logic:
-      1. Empty check → Pass
-      2. Size mismatch → Failed
-      3. np.isclose(rtol, atol, equal_nan=True) per-element (cast to float32)
-      4. Pass if fulfill_percent >= 99.5% (pct_thd=0.005)
-      5. Additional fail if max relative error >= 10.0 (max_diff_hd)
-    """
     npu = as_numpy(npu_out)
     golden = as_numpy(golden_out)
 
@@ -255,17 +246,6 @@ def _tensor_compare(npu_out, golden_out, name):
 
 
 def compare(*outputs, **kwargs):
-    """Compare NPU outputs against golden references.
-
-    Two capture modes are supported:
-
-    state_cache captured as single tensor via output_tensor_indexes:
-        outputs = [npu_cmp_kv, npu_state_cache, golden_cmp_kv, golden_state_cache]
-
-    Fallback (no state_cache capture, NPU has 1 output):
-        outputs = [npu_cmp_kv, golden_cmp_kv, golden_state_cache]
-        Only cmp_kv is compared; state_cache outputs marked as N/A.
-    """
     if len(outputs) < 2:
         return {"pass": False, "precision": "invalid",
                 "error_info": "compare expects NPU outputs followed by golden outputs"}
@@ -296,8 +276,8 @@ def compare(*outputs, **kwargs):
     update_kv = kwargs.get('update_kv', None)
     update_score = kwargs.get('update_score', None)
 
-    npu_sub_outputs = [npu_cmp_kv]
-    golden_sub_outputs = [cpu_cmp_kv]
+    npu_sub_outputs = [npu_cmp_kv[cmp_kv_mask]]
+    golden_sub_outputs = [cpu_cmp_kv[cmp_kv_mask]]
 
     npu_sub_outputs.append(npu_state_cache[:, :, :npu_state_cache.shape[2]//2][update_kv])
     npu_sub_outputs.append(npu_state_cache[:, :, npu_state_cache.shape[2]//2:][update_score])

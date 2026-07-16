@@ -43,11 +43,6 @@ def get_seq_used_by_batch(batch_idx, S, seqused, cu_seqlens):
 
 def build_block_table(block_table, B, S_max, block_size, cmp_ratio,
                       start_pos, seqused, cu_seqlens, cache_mode, S):
-    """Build state_block_table consistent with compressor_golden.py run_compressor_eager.
-
-    Key: cur_end for read range uses S (max seq len across batches), NOT per-batch
-    batch_seq_used — matching compressor_golden.py:577.
-    """
     if block_table is None or not torch.is_tensor(block_table):
         return
 
@@ -71,7 +66,6 @@ def build_block_table(block_table, B, S_max, block_size, cmp_ratio,
                 if next_block_id < block_num:
                     block_table[i][j] = next_block_id
                     next_block_id += 1
-
             end_pos = get_seq_used_by_batch(i, S, seqused, cu_seqlens)
             next_start = (start_pos[i] + end_pos) // cmp_ratio * cmp_ratio - cmp_ratio
             next_end = (start_pos[i] + end_pos) // cmp_ratio * cmp_ratio + cmp_ratio
@@ -85,17 +79,14 @@ def build_block_table(block_table, B, S_max, block_size, cmp_ratio,
                     block_table[i][j] = next_block_id
                     next_block_id += 1
     elif cache_mode == 2:
-        block_table = torch.tensor(random.sample(list(range(B)), B), dtype=torch.int32)
+        block_table.zero_()
+        if B > 0:
+            perm = random.sample(list(range(B)), B)
+            for i in range(B):
+                block_table[i] = perm[i]
 
 def _fill_seq_descriptors(x, state_cache, cmp_ratio, coff, cache_mode,
                           cu_seqlens, seqused, start_pos, **kwargs):
-    """Shared logic for filling sequence-descriptor tensors and building block_table.
-
-    Parameter assignment logic consistent with compressor_operator_single.py
-    output_operator and compressor_golden.py run_compressor_eager.
-
-    Returns (cu_seqlens_list, seqused_list, start_pos_list, B, S, S_max, block_size).
-    """
     if x is None or not torch.is_tensor(x):
         return None, None, None, 0, 0, 0, 128
 
@@ -160,7 +151,6 @@ def _fill_seq_descriptors(x, state_cache, cmp_ratio, coff, cache_mode,
 def generate_compressor_inputs(x, wkv, wgate, state_cache, ape, cmp_ratio=4, *,
                                 state_block_table=None, cu_seqlens=None, seqused=None,
                                 start_pos=None, coff=1, cache_mode=1, **kwargs):
-    """E2E customize_inputs for cann_ops_transformer.ops.compressor."""
     cu_seqlens_list, seqused_list, start_pos_list, B, S, S_max, block_size = \
         _fill_seq_descriptors(x, state_cache, cmp_ratio, coff, cache_mode,
                               cu_seqlens, seqused, start_pos, **kwargs)

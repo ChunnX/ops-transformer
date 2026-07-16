@@ -96,11 +96,6 @@ def ttk_tensor_to_list(val):
 def run_cpu_compressor(x, wkv, wgate, state_cache_cpu, ape_cpu, block_table,
                        cmp_ratio, coff, cache_mode,
                        start_pos_list, cu_seqlens_list, seqused_list):
-    """Framework-agnostic CPU golden computation.
-
-    Splits the combined state_cache into kv_state + score_state, calls the pytest
-    cpu_compressor, and returns (cmp_kv, golden_state_cache, update_kv, update_score, x_dtype).
-    """
     pytest_golden = load_pytest_golden_module()
 
     x_dtype = x.dtype if x is not None else torch.bfloat16
@@ -149,11 +144,6 @@ def run_cpu_compressor(x, wkv, wgate, state_cache_cpu, ape_cpu, block_table,
 def cpu_compressor(x, wkv, wgate, state_cache, ape, cmp_ratio=4, *,
                    state_block_table=None, cu_seqlens=None, seqused=None,
                    start_pos=None, coff=1, cache_mode=1, **kwargs):
-    """E2E golden for cann_ops_transformer.ops.compressor.
-
-    Returns a list of 1 tensor:
-      [0] cmp_kv
-    """
     x_cpu = ttk_to_cpu(x)
     wkv_cpu = ttk_to_cpu(wkv)
     wgate_cpu = ttk_to_cpu(wgate)
