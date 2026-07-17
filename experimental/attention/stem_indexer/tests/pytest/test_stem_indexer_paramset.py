@@ -14,7 +14,7 @@
 # Add new cases by appending one dict to ENABLED_PARAMS. Keep fixed-spec attrs unchanged unless testing FAIL paths.
 ENABLED_PARAMS = [
     # SI_WB_001 basic_prefill_32k_kv_no_tail
-    # 覆盖: 基础链路；prefill；kv/prompt为32K token；causal=true
+    # 覆盖: 基础链路；prefill；kv/prompt为32K token；causal=true；uint16 TopK score路径
     # 设计: query长度保持原基础case，只把KV和prompt拉到32K token基准线。
     {
         'case_id': 'SI_WB_001',
@@ -32,6 +32,7 @@ ENABLED_PARAMS = [
         'stem_stride': 16,
         'initial_blocks': 4,
         'window_size': 4,
+        'topk_score_precision': 2,
         'qflat_dtype': 'BF16',
         'kflat_dtype': 'BF16',
         'vbias_dtype': 'FP32',

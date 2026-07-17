@@ -66,7 +66,7 @@ std::tuple<at::Tensor, at::Tensor> npu_stem_indexer_npu(
     const c10::optional<at::Tensor> &num_prompt_tokens, const c10::optional<at::Tensor> &metadata,
     bool causal, int64_t stem_block_size, int64_t stem_stride, double alpha, int64_t initial_blocks,
     int64_t window_size, double k_block_num_rate_medium, int64_t k_block_num_bias_medium,
-    double k_block_num_rate_large, int64_t k_block_num_bias_large)
+    double k_block_num_rate_large, int64_t k_block_num_bias_large, int64_t topk_score_precision)
 {
     TORCH_CHECK(qflat.numel() > 0, "Tensor qflat is empty.");
     TORCH_CHECK(qflat.dim() == DIM_FOUR,
@@ -85,6 +85,8 @@ std::tuple<at::Tensor, at::Tensor> npu_stem_indexer_npu(
                 "The Kb dimensions of kflat and vbias must be equal.");
     TORCH_CHECK(qflat.size(qflat.dim() - 1) == kflat.size(kflat.dim() - 1),
                 "The last dimensions of qflat and kflat must be equal.");
+    TORCH_CHECK(topk_score_precision == 1 || topk_score_precision == 2,
+                "topk_score_precision must be 1(uint32) or 2(uint16), but got ", topk_score_precision, ".");
 
     // construct the output tensors
     std::tuple<at::Tensor, at::Tensor> outputs = construct_stem_output_tensors(qflat, kflat);
@@ -100,7 +102,8 @@ std::tuple<at::Tensor, at::Tensor> npu_stem_indexer_npu(
     EXEC_NPU_CMD_V1(aclnnStemIndexer, qflat, kflat, vbias, q_seq_lens, kv_seq_lens,
                     num_prompt_tokens_value, metadata_value, causal, stem_block_size, stem_stride, alpha,
                     initial_blocks, window_size, k_block_num_rate_medium, k_block_num_bias_medium,
-                    k_block_num_rate_large, k_block_num_bias_large, sparse_indices, sparse_seq_len);
+                    k_block_num_rate_large, k_block_num_bias_large, topk_score_precision,
+                    sparse_indices, sparse_seq_len);
 
     return std::tuple<at::Tensor, at::Tensor>(sparse_indices, sparse_seq_len);
 }
@@ -112,8 +115,10 @@ std::tuple<at::Tensor, at::Tensor> npu_stem_indexer_meta(
     const c10::optional<at::Tensor> &num_prompt_tokens, const c10::optional<at::Tensor> &metadata,
     bool causal, int64_t stem_block_size, int64_t stem_stride, double alpha, int64_t initial_blocks,
     int64_t window_size, double k_block_num_rate_medium, int64_t k_block_num_bias_medium,
-    double k_block_num_rate_large, int64_t k_block_num_bias_large)
+    double k_block_num_rate_large, int64_t k_block_num_bias_large, int64_t topk_score_precision)
 {
+    TORCH_CHECK(topk_score_precision == 1 || topk_score_precision == 2,
+                "topk_score_precision must be 1(uint32) or 2(uint16), but got ", topk_score_precision, ".");
     return construct_stem_output_tensors(qflat, kflat);
 }
 } // namespace custom
