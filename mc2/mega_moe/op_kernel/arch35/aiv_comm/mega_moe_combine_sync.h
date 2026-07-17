@@ -40,8 +40,7 @@ struct CrossRankSyncContext {
 };
 
 // 全卡同步：rankSyncAddr 前 48K 用于同步，后续区域记录各逻辑 tile 的 syncCnt。
-__aicore__ inline __attribute__((always_inline)) void CrossRankSyncSingleCore(
-    const AivCommTileSchedule& tileSchedule,
+__aicore__ inline void CrossRankSyncSingleCore(const AivCommTileSchedule& tileSchedule,
     const CrossRankSyncContext& syncContext)
 {
     if constexpr (g_coreType == AIC) {
