@@ -1481,7 +1481,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case27_OutFlag1_LongSeq_BSND_BF16)
         &compileInfo
     );
 
-    int64_t expectTilingKey = 0;
+    int64_t expectTilingKey = 2;
     string expectTilingDataStr = "";
     std::vector<size_t> expectWorkspaces = {};
 
@@ -1864,4 +1864,121 @@ TEST_F(MhcPreTiling, Ut_Check_InvalidHMixShape)
         &compileInfo);
 
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
+}
+
+static void CheckMkGeneralizedTiling(uint32_t totalLength, uint32_t n, uint32_t d,
+                                    int64_t expectedTilingKey, int32_t deterministicLevel = 0,
+                                    bool hasResi = true)
+{
+    uint32_t phiDim0 = hasResi ? n * n + 2U * n : 2U * n;
+    uint32_t alphaDim0 = hasResi ? 3U : 2U;
+    uint32_t phiDim1 = n * d;
+    optiling::MhcPreCompileInfo compileInfo = {};
+
+    gert::TilingContextPara tilingContextPara(
+        "MhcPre",
+        {
+            {{{1U, totalLength, n, d}, {1U, totalLength, n, d}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{phiDim0, phiDim1}, {phiDim0, phiDim1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{alphaDim0}, {alphaDim0}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{phiDim0}, {phiDim0}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{phiDim1}, {phiDim1}}, ge::DT_FLOAT, ge::FORMAT_ND}
+        },
+        {
+            {{{1U, totalLength, d}, {1U, totalLength, d}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{1U, totalLength, n}, {1U, totalLength, n}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{1U, totalLength, n, n}, {1U, totalLength, n, n}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{1U, totalLength}, {1U, totalLength}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{1U, totalLength, phiDim0}, {1U, totalLength, phiDim0}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{1U, totalLength, n}, {1U, totalLength, n}}, ge::DT_FLOAT, ge::FORMAT_ND}
+        },
+        {
+            {"out_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(0.000001f)},
+            {"hc_eps", Ops::Transformer::AnyValue::CreateFrom<float>(0.000001f)}
+        },
+        &compileInfo);
+    tilingContextPara.deterministicInfo_ = deterministicLevel;
+
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectedTilingKey, "", {},
+                    0, TilingData2Str<int32_t>);
+    if (expectedTilingKey != 3 && expectedTilingKey != 7) {
+        return;
+    }
+
+    TilingInfo tilingInfo;
+    ASSERT_TRUE(ExecuteTiling(tilingContextPara, tilingInfo));
+    constexpr uint32_t sentinel = 0x5A5AA55AU;
+    auto fieldOffset = [&](auto setter) -> size_t {
+        optiling::MhcPreTilingData schema;
+        std::vector<uint8_t> schemaBuffer(schema.GetDataSize(), 0U);
+        setter(schema, sentinel);
+        schema.SaveToBuffer(schemaBuffer.data(), schemaBuffer.size());
+        for (size_t offset = 0; offset + sizeof(uint32_t) <= schemaBuffer.size(); ++offset) {
+            uint32_t value = 0;
+            std::memcpy(&value, schemaBuffer.data() + offset, sizeof(value));
+            if (value == sentinel) {
+                return offset;
+            }
+        }
+        return schemaBuffer.size();
+    };
+    auto readField = [&](size_t offset) -> uint32_t {
+        EXPECT_LT(offset, tilingInfo.tilingDataSize);
+        uint32_t value = 0;
+        std::memcpy(&value, tilingInfo.tilingData.get() + offset, sizeof(value));
+        return value;
+    };
+    uint32_t kL1Size =
+        readField(fieldOffset([](auto &data, uint32_t value) { data.set_kL1Size(value); }));
+    uint32_t fusionAlign =
+        readField(fieldOffset([](auto &data, uint32_t value) { data.set_fusionAlign(value); }));
+    uint32_t stage2UsedAivNum =
+        readField(fieldOffset([](auto &data, uint32_t value) { data.set_stage2UsedAivNum(value); }));
+    uint32_t stage2RowsPerCore =
+        readField(fieldOffset([](auto &data, uint32_t value) { data.set_stage2RowsPerCore(value); }));
+    EXPECT_EQ(kL1Size % 128U, 0U);
+    EXPECT_EQ(fusionAlign % 8U, 0U);
+    EXPECT_LE(static_cast<uint64_t>(kL1Size) * fusionAlign, 128U * 256U);
+    ASSERT_GT(stage2RowsPerCore, 0U);
+    EXPECT_EQ(stage2RowsPerCore % 8U, 0U);
+    EXPECT_EQ(stage2UsedAivNum, (totalLength + stage2RowsPerCore - 1U) / stage2RowsPerCore);
+}
+
+TEST_F(MhcPreTiling, Ut_Check_MK_Generalized_N4_SmallM)
+{
+    CheckMkGeneralizedTiling(64U, 4U, 2560U, 3);
+}
+
+TEST_F(MhcPreTiling, Ut_Check_MK_Generalized_N4_Boundary)
+{
+    CheckMkGeneralizedTiling(1536U, 4U, 6144U, 3);
+    CheckMkGeneralizedTiling(2048U, 4U, 5120U, 2);
+}
+
+TEST_F(MhcPreTiling, Ut_Check_MK_Generalized_N6_KTail)
+{
+    CheckMkGeneralizedTiling(1000U, 6U, 2576U, 3);
+}
+
+TEST_F(MhcPreTiling, Ut_Check_MK_Generalized_N8_WideFusion)
+{
+    CheckMkGeneralizedTiling(1024U, 8U, 6144U, 3);
+}
+
+TEST_F(MhcPreTiling, Ut_Check_MK_Generalized_NoResi)
+{
+    CheckMkGeneralizedTiling(129U, 6U, 2592U, 7, 0, false);
+    CheckMkGeneralizedTiling(96U, 8U, 2592U, 7, 0, false);
+}
+
+TEST_F(MhcPreTiling, Ut_Check_MK_Fallback_SmallK)
+{
+    CheckMkGeneralizedTiling(128U, 4U, 16U, 1);
+    CheckMkGeneralizedTiling(32U, 4U, 2560U, 1);
+}
+
+TEST_F(MhcPreTiling, Ut_Check_MK_Fallback_Deterministic)
+{
+    CheckMkGeneralizedTiling(1024U, 4U, 5120U, 2, 1);
 }
