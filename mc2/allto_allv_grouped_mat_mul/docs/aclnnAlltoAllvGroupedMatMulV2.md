@@ -549,7 +549,7 @@ aclnnStatus aclnnAlltoAllvGroupedMatMulV2(
 
         // 调用第一阶段接口
         ret = aclnnAlltoAllvGroupedMatMulV2GetWorkspaceSize(gmmX, gmmW, sendCountsTensor, recvCountsTensor, mmX, mmW,
-                                                            hcomName, "ccu", EP_WORLD_SIZE, sendCounts, recvCounts, false, false,
+                                                            hcomName, "ai_cpu", EP_WORLD_SIZE, sendCounts, recvCounts, false, false,
                                                             true, gmmY, mmY, permute, &workspaceSize, &executor);
         CHECK_RET(ret == ACL_SUCCESS,
                 LOG_PRINT("[ERROR] aclnnAlltoAllvGroupedMatMulV2GetWorkspaceSize failed. ret = %d \n", ret);
