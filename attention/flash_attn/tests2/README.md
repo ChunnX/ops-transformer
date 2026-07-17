@@ -27,8 +27,8 @@ python test.py --stages gen,cpu,npu,compare --case_set ci --log_level WARNING
 |------|------|---------|
 | 流程任意组合 | gen→cpu→npu→gpu→compare按固定顺序执行，`--stages`选子集 | `--stages gen,cpu,compare` |
 | 断点续跑 | 跳过的阶段自动从pt加载 | `--stages cpu,compare` |
-| 崩溃隔离 | npu_compute用ThreadPoolExecutor隔离，单case崩溃不中断批跑 | (自动) |
-| 精度失败分析 | 失败时输出点位详情+Max-RE+预览 | `--verbose_diff` |
+| 异常兜底 | run_case 捕获单 case 异常记为失败，不中断批跑 | (自动) |
+| 精度失败分析 | 失败时输出坐标化失败表+Max-RE+预览，三档详略 | `--verbose_diff [fold\|all]` |
 | 日志系统 | 每阶段进度+耗时+shape，可调级别 | `--log_level INFO` |
 | NPU执行模式 | eager直调(默认)/graph aclgraph图模式 | `--npu_mode graph` |
 | 用例集分层 | ci/debug/func_rdv等用例集 | `--case_set ci` |
@@ -38,12 +38,12 @@ python test.py --stages gen,cpu,npu,compare --case_set ci --log_level WARNING
 
 ```
 tests2/
-├── test.py                 # 统一入口（CLI main + test函数 + fixtures）
-├── conftest.py             # pytest hooks（addoption + generate_tests）
-├── orchestrator.py         # 编排引擎（run_case + Reporter + helpers）
-├── compare.py              # 精度判定（compare_outputs，纯函数）
-├── precision_analyze.py    # 失败诊断（analyze_failure）
-├── csv_parser.py           # CSV→paramset 转换工具
+├── test.py                 # 入口（CLI main + test_op + 共享函数）
+├── conftest.py             # pytest 装配（CLI 选项 + 参数化 + fixture）
+├── orchestrator.py         # 编排引擎（run_case 薄编排 + stage 函数 + Reporter）
+├── compare.py              # 精度判定（Comparator ABC + DefaultComparator）
+├── precision_analyze.py    # 失败诊断（analyze_failure + 三方接口）
+├── csv_parser.py           # CSV 读写（CSV_HEADERS 列契约 + parse_csv）
 ├── pytest.ini              # marker 静态注册 + 日志配置
 ├── core/
 │   ├── __init__.py         # ABC 基类（GenDataBase/CpuBase/NpuBase/GpuBase）
@@ -73,11 +73,11 @@ tests2/
 
 ## 设计思路
 
-**纯入口 + 引擎分离**：`test.py` 只做 CLI/pytest 委托，`orchestrator.py` 是可独立 UT 的引擎。入口不包含被测逻辑。
+**入口 + 引擎分离**：`test.py` 只承载 CLI/pytest 入口与共享函数（CLI 参数定义、用例收集），`orchestrator.py` 是可独立 UT 的编排引擎。入口不含被测逻辑。
 
-**固定顺序 + 子集选择**：阶段间有数据依赖（gen→cpu→npu→gpu→compare），用户通过 `--stages` 选子集，框架按固定顺序执行。跳过的阶段自动从 pt 加载。
+**固定顺序 + 子集选择**：阶段间有数据依赖（gen→cpu→npu→gpu→compare），用户通过 `--stages` 选子集，框架按固定顺序执行。跳过的阶段自动从 pt 加载；数据依赖不满足（缺上游输出且无 pt）则显式失败。
 
-**判定与诊断分离**：`compare.py` 只做精度判定（返回 dict，不打印），`precision_analyze.py` 只做失败诊断（打印）。变化频率不同，互不干扰。
+**判定与诊断分离**：`compare.py` 以 `Comparator` ABC + `DefaultComparator` 做精度判定（返回 dict，不打印，算子可继承 override 精度标准），`precision_analyze.py` 只做失败诊断（打印）。两者解耦，变化频率不同。
 
 **声明式用例管理**：`test_case/*.py` 声明参数值（PARAM_NAMES + DEFAULTS + CASE_SETS），`case_loader` 自动笛卡尔积展开。新增参数只需加到 DEFAULTS，所有用例自动继承。
 
