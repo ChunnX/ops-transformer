@@ -129,6 +129,8 @@ struct MxFeatureConstInfo {
     bool isSoftmaxLseEnable = false;
     bool isActualLenDimsNull = false;
     bool isActualLenDimsKVNull = false;
+    // mask 后整行无有效 key 时，V2 写回前将对应 attention output 清零。
+    bool isRowInvalidOpen = false;
 };
 
 struct MxConstInfo : MxBaseConstInfo,
