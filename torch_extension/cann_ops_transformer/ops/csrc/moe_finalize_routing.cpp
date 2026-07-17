@@ -1,0 +1,109 @@
+// -----------------------------------------------------------------------------------------------------------
+// Copyright (c) 2026 Huawei Technologies Co., Ltd.
+// This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+// CANN Open Software License Agreement Version 2.0 (the "License").
+// Please refer to the License for details. You may not use this file except in compliance with the License.
+// THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+// INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+// See LICENSE in the root of the software repository for the full text of the License.
+// -----------------------------------------------------------------------------------------------------------
+
+#include <torch/extension.h>
+#include "aclnn_common.h"
+
+namespace op_api {
+
+const size_t INDEX_ONE = 1;
+const size_t INDEX_TWO = 2;
+const size_t DIM_TREE = 3;
+
+at::Tensor MoeFinalizeRouting(
+    const at::Tensor &expandedPermutedRows,
+    const c10::optional<at::Tensor> &skip1,
+    const c10::optional<at::Tensor> &skip2,
+    const c10::optional<at::Tensor> &bias,
+    const c10::optional<at::Tensor> &scales,
+    const at::Tensor &expandedSrcToDstRow,
+    const c10::optional<at::Tensor> &expertForSourceRow,
+    const c10::optional<at::Tensor> &x,
+    const c10::optional<at::Tensor> &alpha1,
+    const c10::optional<at::Tensor> &alpha2,
+    const c10::optional<at::Tensor> &v,
+    c10::optional<int64_t> dropPadMode,
+    const c10::optional<std::vector<int64_t>> &zeroExpertRange,
+    const c10::optional<std::vector<int64_t>> &copyExpertRange,
+    const c10::optional<std::vector<int64_t>> &constantExpertRange,
+    c10::optional<int64_t> k)
+{
+    static const bool isV4Available =
+        GetOpApiFuncAddr("aclnnMoeFinalizeRoutingV4") != nullptr;
+    static const bool isV2Available =
+        GetOpApiFuncAddr("aclnnMoeFinalizeRoutingV2") != nullptr;
+
+    if (!isV4Available && !isV2Available) {
+        TORCH_CHECK(skip1.has_value(),
+                    "skip1 parameter must have value when aclnnMoeFinalizeRoutingV4 and "
+                    "aclnnMoeFinalizeRoutingV2 are both unavailable.");
+        at::Tensor result = at::empty_like(skip1.value());
+        ACLNN_CMD(aclnnMoeFinalizeRouting,
+                  expandedPermutedRows, skip1, skip2, bias, scales,
+                  expandedSrcToDstRow, expertForSourceRow,
+                  result);
+        return result;
+    }
+
+    int64_t kAttr = c10::value_or_else(k, [] { return 1; });
+    if (!isV4Available) {
+        TORCH_CHECK(!k.has_value() || k.value() == 1,
+                    "k parameter (non-default) is not supported by aclnnMoeFinalizeRoutingV2, "
+                    "please upgrade CANN to support aclnnMoeFinalizeRoutingV4.");
+    }
+
+    int64_t dim0 = expandedSrcToDstRow.size(0);
+    if (scales.has_value()) {
+        dim0 = scales.value().size(0);
+    } else if (kAttr > 0) {
+        dim0 = dim0 / kAttr;
+    }
+    size_t dim1Index = INDEX_ONE;
+    if (expandedPermutedRows.dim() == DIM_TREE) {
+        dim1Index = INDEX_TWO;
+    }
+    at::Tensor result = at::empty({dim0, expandedPermutedRows.size(dim1Index)},
+                                  expandedPermutedRows.options());
+    int64_t mode = c10::value_or_else(dropPadMode, [] { return 0; });
+
+    if (isV4Available) {
+        std::vector<int64_t> zeroVec = zeroExpertRange.value_or(std::vector<int64_t>{});
+        std::vector<int64_t> copyVec = copyExpertRange.value_or(std::vector<int64_t>{});
+        std::vector<int64_t> constVec = constantExpertRange.value_or(std::vector<int64_t>{});
+        at::IntArrayRef zeroRange(zeroVec);
+        at::IntArrayRef copyRange(copyVec);
+        at::IntArrayRef constRange(constVec);
+        ACLNN_CMD(aclnnMoeFinalizeRoutingV4,
+                  expandedPermutedRows, expandedSrcToDstRow,
+                  skip1, skip2, bias, scales, expertForSourceRow,
+                  x, alpha1, alpha2, v,
+                  mode,
+                  zeroRange,
+                  copyRange,
+                  constRange,
+                  kAttr,
+                  result);
+    } else {
+        ACLNN_CMD(aclnnMoeFinalizeRoutingV2,
+                  expandedPermutedRows, expandedSrcToDstRow,
+                  skip1, skip2, bias, scales, expertForSourceRow,
+                  mode,
+                  result);
+    }
+
+    return result;
+}
+
+PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
+{
+    m.def("moe_finalize_routing", &MoeFinalizeRouting, "moe_finalize_routing");
+}
+
+} // namespace op_api
