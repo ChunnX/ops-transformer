@@ -78,8 +78,8 @@ static void CreateEmptyTensor(aclDataType dataType, const aclTensorList *&ioList
     }
 }
 
-static void CreateEmptyTensor(aclDataType dataType, ge::Format format, const aclTensorList *&ioList,
-                              aclTensorList *&outList, aclOpExecutor *executor)
+static void CreateEmptyTensorWithFormat(aclDataType dataType, ge::Format format, const aclTensorList *&ioList,
+                                        aclTensorList *&outList, aclOpExecutor *executor)
 {
     if (ioList == nullptr) {
         std::vector<aclTensor *> emptyTensors;
@@ -160,7 +160,7 @@ aclnnStatus aclnnMegaMoeGetWorkspaceSize(
         }
     }
 
-    // 共享专家权重为空时，使用MoE权重的dtype和format作为默认值，确保通过OpDef支持列表校验
+    // 共享专家权重的dtype/format与MoE权重一致，为空时用MoE权重的dtype和format创建空tensor
     aclDataType moeWeight1Dtype = (weight1 != nullptr && weight1->Size() > 0)
         ? static_cast<aclDataType>((*weight1)[0]->GetDataType()) : ACL_FLOAT8_E4M3FN;
     aclDataType moeWeight2Dtype = (weight2 != nullptr && weight2->Size() > 0)
@@ -169,20 +169,8 @@ aclnnStatus aclnnMegaMoeGetWorkspaceSize(
         ? static_cast<ge::Format>((*weight1)[0]->GetViewFormat()) : ge::FORMAT_ND;
     ge::Format moeWeight2Format = (weight2 != nullptr && weight2->Size() > 0)
         ? static_cast<ge::Format>((*weight2)[0]->GetViewFormat()) : ge::FORMAT_ND;
-    if (sharedWeight1Optional != nullptr && sharedWeight1Optional->Size() > 0) {
-        CreateEmptyTensor(static_cast<aclDataType>((*sharedWeight1Optional)[0]->GetDataType()),
-                          static_cast<ge::Format>((*sharedWeight1Optional)[0]->GetViewFormat()),
-                          sharedWeight1Optional, tmpSharedWeightList, *executor);
-    } else {
-        CreateEmptyTensor(moeWeight1Dtype, moeWeight1Format, sharedWeight1Optional, tmpSharedWeightList, *executor);
-    }
-    if (sharedWeight2Optional != nullptr && sharedWeight2Optional->Size() > 0) {
-        CreateEmptyTensor(static_cast<aclDataType>((*sharedWeight2Optional)[0]->GetDataType()),
-                          static_cast<ge::Format>((*sharedWeight2Optional)[0]->GetViewFormat()),
-                          sharedWeight2Optional, tmpSharedWeightList, *executor);
-    } else {
-        CreateEmptyTensor(moeWeight2Dtype, moeWeight2Format, sharedWeight2Optional, tmpSharedWeightList, *executor);
-    }
+    CreateEmptyTensorWithFormat(moeWeight1Dtype, moeWeight1Format, sharedWeight1Optional, tmpSharedWeightList, *executor);
+    CreateEmptyTensorWithFormat(moeWeight2Dtype, moeWeight2Format, sharedWeight2Optional, tmpSharedWeightList, *executor);
 
     aclnnStatus getWorkspaceSizesRes = aclnnInnerMegaMoeGetWorkspaceSize(
         context, x, topkIds, topkWeights, weight1, weight2,
