@@ -250,14 +250,14 @@ def compare(*outputs, **kwargs):
         return {"pass": False, "precision": "invalid",
                 "error_info": "compare expects NPU outputs followed by golden outputs"}
 
-    half = len(outputs) // 2
-    npu_outputs = outputs[:half]
-    golden_outputs = outputs[half:]
+    GOLDEN_OUTPUT_COUNT = 2
+    golden_outputs = list(outputs[-GOLDEN_OUTPUT_COUNT:])
+    npu_outputs = list(outputs[:-GOLDEN_OUTPUT_COUNT])
 
     cmp_kv_mask = kwargs.get('cmp_kv_mask', None)
 
     # Fallback: single NPU output (cmp_kv only) — compare cmp_kv, skip state_cache
-    if half == 1:
+    if len(npu_outputs) == 1:
         results = [_tensor_compare(npu_outputs[0][cmp_kv_mask], golden_outputs[0][cmp_kv_mask], "cmp_kv")]
         for i in range(1, len(golden_outputs)):
             name = _OUTPUT_NAMES[i] if i < len(_OUTPUT_NAMES) else f"output_{i}"

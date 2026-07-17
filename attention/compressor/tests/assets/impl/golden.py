@@ -55,7 +55,8 @@ def load_pytest_golden_module():
         cann_stub.ops = ops_stub
         sys.modules["cann_ops_transformer"] = cann_stub
         sys.modules["cann_ops_transformer.ops"] = ops_stub
-
+    
+    _np_random_state = np.random.get_state()
     sys.path.insert(0, str(pytest_dir))
     try:
         spec = importlib.util.spec_from_file_location(
@@ -68,6 +69,7 @@ def load_pytest_golden_module():
             sys.path.remove(str(pytest_dir))
         except ValueError:
             pass
+        np.random.set_state(_np_random_state)
 
     PYTEST_GOLDEN_MODULE = module
     return PYTEST_GOLDEN_MODULE
