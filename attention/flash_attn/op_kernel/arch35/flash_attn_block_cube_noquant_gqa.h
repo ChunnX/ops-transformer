@@ -15,10 +15,8 @@
 #ifndef FLASH_ATTEN_BLOCK_CUBE_NOQUANT_GQA_H_
 #define FLASH_ATTEN_BLOCK_CUBE_NOQUANT_GQA_H_
 
-// 根因：同一份源文件在两种目录树下编译，common 相对深度不同，用 __has_include 编译期探测自适应：
-//   开发仓(attention/flash_attn/op_kernel/arch35/) → common 在 attention/common/op_kernel/，命中 #if，需 ../../../common/op_kernel/
-//   CANN部署仓(ascendc/flash_attn/arch35/)         → common 在 ascendc/common/，         命中 #else，需 ../../common/
-// 开发仓多嵌套 op_kernel/ 一层（kernel 与 common 均有），部署仓扁平化；探测哪条路径存在即用哪条，免维护两份源文件。
+// 同一源文件在两种目录树编译：开发仓 common 多嵌套一层 op_kernel/（需 ../../../common/op_kernel/），
+// CANN部署仓扁平化（需 ../../common/）；__has_include 编译期探测自适应，免维护两份源文件。
 #if __has_include("../../../common/op_kernel/offset_calculator.h")
 #include "../../../common/op_kernel/offset_calculator.h"
 #include "../../../common/op_kernel/matmul.h"
