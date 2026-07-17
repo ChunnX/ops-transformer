@@ -382,7 +382,7 @@ __aicore__ inline void LightningIndexerServiceVector<LIT>::ProcessVec(const LICo
             {
                 LocalTensor<bfloat16_t> scoreB16Ub = tmpUb_.template ReinterpretCast<bfloat16_t>();
                 Cast(scoreB16Ub, reduceOutInner, RoundMode::CAST_ROUND, s2BaseSize_);
-                PipeBarrier<PIPE_V>();
+                PipeBarrier<PIPE_ALL>();
                 uint64_t globalS1Idx = static_cast<uint64_t>(cuS1Idx);
                 uint64_t scoreOffset = globalS1Idx * constInfo_.radixSortLenAlign + cuBaseS2Idx;
                 AscendC::DataCopyParams dcParams;
@@ -390,14 +390,8 @@ __aicore__ inline void LightningIndexerServiceVector<LIT>::ProcessVec(const LICo
                 dcParams.blockLen = s2BaseSize_ * sizeof(bfloat16_t);
                 dcParams.srcStride = 0;
                 dcParams.dstStride = 0;
-                // V->MTE3 sync: Cast writes tmpUb_ (V), DataCopyPad reads tmpUb_ (MTE3)
-                SetFlag<HardEvent::V_MTE3>(EVENTID_V_TO_MTE2_TMPUB);
-                WaitFlag<HardEvent::V_MTE3>(EVENTID_V_TO_MTE2_TMPUB);
                 DataCopyPad(scoreB16Gm[scoreOffset], scoreB16Ub, dcParams);
-                // MTE3->MTE2 sync: DataCopyPad writes scoreB16Gm, next CopyIn writes tmpUb_
-                // Use event to prevent CopyIn from overwriting tmpUb_ before DataCopyPad finishes reading
-                SetFlag<HardEvent::MTE3_MTE2>(EVENTID_V_TO_MTE2_TMPUB);
-                WaitFlag<HardEvent::MTE3_MTE2>(EVENTID_V_TO_MTE2_TMPUB);
+                PipeBarrier<PIPE_ALL>();
             }
             } // end if radixCuS2Len > 0
             } else {
