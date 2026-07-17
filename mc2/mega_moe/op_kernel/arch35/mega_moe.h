@@ -28,7 +28,6 @@
 #include "mega_moe_workspace_info.h"
 #include "block_epilogue_swiglu_mx_quant.h"
 #include "mega_moe_impl.h"
-#include "aiv_compute/mega_moe_combine_reduce.h"
 #if __has_include("../../moe_distribute_dispatch_v2/quantize_functions.h")
 #include "../../moe_distribute_dispatch_v2/quantize_functions.h"
 #else
@@ -92,6 +91,12 @@ private:
     __aicore__ inline bool UpdateGroupParams(ExpertLoopState &state, uint32_t expertIdx, uint64_t sendCnt = 0);
     template <AddrUpdateMode Mode>
     __aicore__ inline void UpdateGlobalBuffer(GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &state);
+    __aicore__ inline void Unpermute();
+    __aicore__ inline int32_t UnpermuteBuffInit(int32_t coreLen);
+    __aicore__ inline void UnpermuteLoadWeights(int32_t coreOffset, int32_t batchTokenOffset, int32_t batchTokenCount,
+                                                LocalTensor<bfloat16_t> &tempLocal);
+    __aicore__ inline void UnpermuteProcessToken(int32_t tokenIdx, int32_t localIdx,
+                                                 const GlobalTensor<bfloat16_t> &expandedX);
     __aicore__ inline void InitCombineBuffers();
     __aicore__ inline void ProcessCombine(const GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &gmm2State,
                                           uint32_t expertIdx);
@@ -186,6 +191,13 @@ private:
     LocalTensor<int32_t> sendGatherOutTensor_;           // SendMaskCal GatherMask 计 count 的废弃输出 scratch
     LocalTensor<int32_t> sendCntAccTensor_;              // SendMaskCal per-expert 跨 batch count 累加器
     LocalTensor<int32_t> expertTokenNumsOutTensor_;
+    LocalTensor<bfloat16_t> dataResTensor_;
+    LocalTensor<float> dataResFp32Tensor_;
+    LocalTensor<float> topKWeightsTensor_;
+    LocalTensor<float> fp32ScaleTensor_;
+    LocalTensor<bfloat16_t> bf16ScaleTensor_;
+    LocalTensor<bfloat16_t> topKWeightsBf16Tensor_; // Unpermute bf16 weight 搬运中转
+
     // GMM2 走 A8W4 且 QuantMode 为 a4w4（E2M1）时，SwigluQuant 输出需提升为 fp8_e4m3fn_t。
     // 同时当 Weight2 非 fp4 但 QuantMode==E2M1 时（generic GMM2 路径），也需 promotion，
     // 否则会出现 A=QuantOutType(fp4) vs B=Weight1Type(fp8) 的类型不匹配。
@@ -198,6 +210,8 @@ private:
         BlockEpilogueSwigluMxQuant<SwigluQuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType, true>;
     BlockEpilogue epilogueOp_;
 };
+
+#include "aiv_compute/mega_moe_combine_reduce.h"
 
 // ========================
 // Init：初始化 & 偏移计算
@@ -1401,13 +1415,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
     // 4. 本卡数据Unpermute
     if constexpr (g_coreType == AIV) {
         CrossRankSyncInWorldSize(); // 全卡软同步，确认combine send完成
-        MegaMoeCombineReduceImpl::CombineReduceTileSchedule combineReduceTileSchedule{
-            aivCoreIdx_, blockAivNum_};
-        MegaMoeCombineReduceImpl::CombineReduceShapeContext combineReduceShapeContext{m_, k_, topK_};
-        MegaMoeCombineReduceImpl::CombineReduceBufferContext combineReduceBufferContext{
-            params_.peermemInfo.combineSendPtr, params_.probsGmAddr, params_.y2GmAddr};
-        MegaMoeCombineReduceImpl::ProcessCombineReduceSingleCore<CombineQuantMode, TopkWeightsType>(
-            combineReduceTileSchedule, combineReduceShapeContext, combineReduceBufferContext);
+        Unpermute();
     }
     SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);
 }
