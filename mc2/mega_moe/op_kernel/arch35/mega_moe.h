@@ -115,6 +115,10 @@ private:
     __gm__ Mc2MoeContext *mc2Context_{nullptr};
     Params params_{};
 
+    uint64_t timingBlockMmad_{0};
+    uint64_t timingSwigluQuant_{0};
+    GM_ADDR timingOutputAddr_{nullptr};
+
     GlobalTensor<int32_t> swigluToGmm2FlagGm_;
     GlobalTensor<int32_t> expertTokenNumsOut_;
     GlobalTensor<int32_t> expertRevNumsGlobalTensor_;
@@ -297,6 +301,7 @@ MegaMoe<TemplateMegaMoeTypeFunc>::Init(GM_ADDR context, GM_ADDR x, GM_ADDR topkI
                                                  static_cast<uint32_t>(ALIGN_32));
         mxQuantTokenScaleAlignBytes_ += weightAlignBytes_;
     }
+    timingOutputAddr_ = yOut;
 }
 
 // =================================================================================================
@@ -1576,6 +1581,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::GroupMatmulWithSwigluQu
             epilogueOp_, params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_,
             state.expertBeforeCnt);
     } else {
+        uint64_t tBlockMmad = 0;
+        uint64_t tSwiglu = 0;
         if (params_.tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ ||
             params_.tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4_NZ) {
             // NZ format (A8W8_NZ / A4W4_NZ): isWeightNZ=true, EpilogueElementA 由 SwigluQuantOutType 自动处理类型提升
@@ -1583,15 +1590,17 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::GroupMatmulWithSwigluQu
                                                 QuantScaleOutType, QuantScaleOutType, true, GMM1_TILE_M,
                                                 TopkWeightsPrefetch>(
                 epilogueOp_, params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_,
-                state.expertBeforeCnt);
+                state.expertBeforeCnt, tBlockMmad, tSwiglu);
         } else {
             // Generic: fp8/fp4 activation × fp8/fp4 weight in ND format (includes A4W4 ND)
             MegaMoeImpl::GroupMatmulSwigluQuant<QuantOutType, SwigluQuantOutType, QuantOutType, bfloat16_t,
                                                 QuantScaleOutType, QuantScaleOutType, false, GMM1_TILE_M,
                                                 TopkWeightsPrefetch>(
                 epilogueOp_, params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_,
-                state.expertBeforeCnt);
+                state.expertBeforeCnt, tBlockMmad, tSwiglu);
         }
+        timingBlockMmad_ += tBlockMmad;
+        timingSwigluQuant_ += tSwiglu;
     }
 }
 
@@ -1728,6 +1737,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
         Unpermute();
     }
     SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);
+    Mc2Kernel::WriteTimingToOutput(timingOutputAddr_, GetBlockIdx(), timingBlockMmad_, timingSwigluQuant_, true, aicNum_);
 }
 
 } // namespace MegaMoeImpl
