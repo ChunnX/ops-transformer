@@ -430,57 +430,32 @@ def _make_reference_block_table(batch, seq_lens, block_size, pattern, rng, physi
     max_block_num = max(block_nums) if block_nums else 0
     block_table = torch.full((batch, max_block_num), fill_value=-1, dtype=torch.int32)
 
-    if physical_block_num is not None:
-        physical_block_num = int(physical_block_num)
-        total_logical_blocks = sum(block_nums)
-        if physical_block_num <= 0 and total_logical_blocks > 0:
-            raise ValueError(f"block_num must be positive, got {physical_block_num}")
-        if total_logical_blocks == 0:
-            return block_table
-
-        physical_order = list(range(physical_block_num))
-        if pattern == "reverse":
-            physical_order.reverse()
-        elif pattern == "random":
-            rng.shuffle(physical_order)
-        elif pattern != "sequential":
-            raise ValueError(f"Unsupported block table pattern: {pattern}")
-
-        logical_to_physical = [physical_order[idx % physical_block_num] for idx in range(total_logical_blocks)]
-        if max(logical_to_physical) != physical_block_num - 1:
-            logical_to_physical[-1] = physical_block_num - 1
-
-        logical_offset = 0
-        for batch_idx, logical_block_num in enumerate(block_nums):
-            block_table[batch_idx, :logical_block_num] = torch.tensor(
-                logical_to_physical[logical_offset:logical_offset + logical_block_num], dtype=torch.int32)
-            logical_offset += logical_block_num
+    total_logical_blocks = sum(block_nums)
+    if total_logical_blocks == 0:
         return block_table
 
-    physical_block_offset = 0
-    for batch_idx, block_num in enumerate(block_nums):
-        physical_ids = _physical_ids(physical_block_offset, block_num, pattern, rng)
-        physical_block_offset += block_num
-        for block_idx, physical_block in enumerate(physical_ids):
-            block_table[batch_idx, block_idx] = int(physical_block)
+    requested_block_num = total_logical_blocks if physical_block_num is None else int(physical_block_num)
+    if requested_block_num <= 0:
+        raise ValueError(f"block_num must be positive, got {requested_block_num}")
+
+    # common MX 为每个逻辑 page 分配唯一物理 block，避免 PA preprocessing 相互覆盖。
+    actual_block_num = max(requested_block_num, total_logical_blocks)
+    if requested_block_num < total_logical_blocks:
+        logger.info(
+            "[INFO] block_num=%d is smaller than logical PA pages=%d; use %d unique physical blocks",
+            requested_block_num, total_logical_blocks, actual_block_num)
+
+    physical_ids = _physical_ids(0, actual_block_num, pattern, rng)[:total_logical_blocks]
+    # 大容量场景使用最后一个物理页，使 PA tensor 第 0 维保持 requested block_num。
+    if actual_block_num > total_logical_blocks and actual_block_num - 1 not in physical_ids:
+        physical_ids[-1] = actual_block_num - 1
+
+    logical_offset = 0
+    for batch_idx, logical_block_num in enumerate(block_nums):
+        block_table[batch_idx, :logical_block_num] = torch.tensor(
+            physical_ids[logical_offset:logical_offset + logical_block_num], dtype=torch.int32)
+        logical_offset += logical_block_num
     return block_table
-
-
-def _materialize_dense_from_pa_cache(pa_cache, seq_lens, block_size, block_table):
-    """按 block_table 将物理 PA block 展开成 CPU golden 使用的逻辑 BSND Tensor。"""
-    batch = len(seq_lens)
-    _, num_heads, _, head_dim = pa_cache.shape
-    max_seq_len = max(int(seq_len) for seq_len in seq_lens)
-    dense = torch.zeros((batch, max_seq_len, num_heads, head_dim), dtype=pa_cache.dtype)
-    for batch_idx, seq_len in enumerate(seq_lens):
-        logical_block_num = math.ceil(int(seq_len) / block_size)
-        for logical_block_idx in range(logical_block_num):
-            physical_block_idx = int(block_table[batch_idx, logical_block_idx])
-            logical_offset = logical_block_idx * block_size
-            valid_len = min(block_size, int(seq_len) - logical_offset)
-            dense[batch_idx, logical_offset:logical_offset + valid_len] = \
-                pa_cache[physical_block_idx, :, :valid_len].permute(1, 0, 2)
-    return dense
 
 
 def _allowed_blocks(mask_mode, qb_idx, sparse_q_block_size, sparse_kv_block_size, q_len, kv_len):
@@ -776,17 +751,16 @@ def _generate_reference_style_mxfp8_inputs():
         q_descale = get_mxfp8_per_token_group_quant_scale(
             query.unsqueeze(0), FP8_DTYPE, QUANT_GROUP_SIZE).squeeze(0)
 
-    block_table = _make_reference_block_table(
-        batch, kv_lengths, BLOCK_SIZE, case["block_table_pattern"], rng, case.get("block_num"))
-    physical_block_num = int(block_table.max().item()) + 1
-    physical_key = _rand_fp8((physical_block_num, n2, BLOCK_SIZE, head_dim), generator, DATA_RANGE_K)
-    physical_value = _rand_fp8((physical_block_num, n2, BLOCK_SIZE, head_dim), generator, DATA_RANGE_V)
-    dense_key = _materialize_dense_from_pa_cache(physical_key, kv_lengths, BLOCK_SIZE, block_table)
-    dense_value = _materialize_dense_from_pa_cache(physical_value, kv_lengths, BLOCK_SIZE, block_table)
+    # 与 common MX 一致：先生成连续逻辑 K/V 和 scale，再统一做 PA preprocessing。
+    max_kv_len = max(kv_lengths)
+    dense_key = _rand_fp8((batch, max_kv_len, n2, head_dim), generator, DATA_RANGE_K)
+    dense_value = _rand_fp8((batch, max_kv_len, n2, head_dim), generator, DATA_RANGE_V)
     dense_k_descale = get_mxfp8_per_token_group_quant_scale(
         dense_key, FP8_DTYPE, QUANT_GROUP_SIZE)
     dense_v_descale = get_mxfp8_per_channel_group_quant_scale(
         dense_value, FP8_DTYPE, QUANT_GROUP_SIZE)
+    block_table = _make_reference_block_table(
+        batch, kv_lengths, BLOCK_SIZE, case["block_table_pattern"], rng, case.get("block_num"))
 
     sparse_indices, sparse_seq_len = _make_reference_sparse_indices(case, q_lengths, kv_lengths, rng)
     p_scale = torch.tensor([float(case["p_scale_value"])], dtype=torch.float32)
@@ -830,7 +804,7 @@ def generate_data():
 # CPU Golden
 # 参考 quant_block_sparse_attn_golden.py 的 sparse block 计算流：
 #   - Q/QDescale 公共输入为 TND/NTD；K/V 与 K/V descale 使用内部 BNSD
-#   - 按 sparse_indices 中记录的 KV block 顺序收集 positions，并以两个 sparse block 为一组做 online 累加
+#   - 按 sparse_indices 中记录的 KV block 顺序收集 positions，并按 256-token C1 粒度做 online 累加
 #   - Q/K 使用 per-token D-group descale；V 使用 per-channel S-group descale
 #   - 输出 OUT 固定 TND，MXFP8 TND LSE 固定 TN
 # ==============================================================================
@@ -846,11 +820,16 @@ def _align_up_to_ln2(value):
 
 def _positions_from_sparse(sparse_indices, sparse_seq_len, batch_idx, head_idx, qb_idx, kv_len):
     block_count = int(sparse_seq_len[batch_idx, head_idx, qb_idx].item())
+    c1_s2_size = int(CASE["s2_base_size"]) // 2
+    if c1_s2_size % SPARSE_BLOCK_SIZE != 0:
+        raise ValueError(
+            f"C1 S2 size must be divisible by sparse block size, got {c1_s2_size} and {SPARSE_BLOCK_SIZE}")
+    blocks_per_c1 = c1_s2_size // SPARSE_BLOCK_SIZE
     chunk_positions = []
     cursor = 0
     while cursor < block_count:
-        pair_positions = []
-        for offset in range(2):
+        c1_positions = []
+        for offset in range(blocks_per_c1):
             if cursor + offset >= block_count:
                 continue
             block_idx = int(sparse_indices[batch_idx, head_idx, qb_idx, cursor + offset].item())
@@ -859,10 +838,10 @@ def _positions_from_sparse(sparse_indices, sparse_seq_len, batch_idx, head_idx, 
             start = block_idx * SPARSE_BLOCK_SIZE
             end = min(start + SPARSE_BLOCK_SIZE, kv_len)
             if start < kv_len:
-                pair_positions.extend(range(start, end))
-        if pair_positions:
-            chunk_positions.append(pair_positions)
-        cursor += 2
+                c1_positions.extend(range(start, end))
+        if c1_positions:
+            chunk_positions.append(c1_positions)
+        cursor += blocks_per_c1
     return chunk_positions
 
 
@@ -939,9 +918,11 @@ def cpu_mxfp8_golden(q_fp8, k_fp8, v_fp8,
 
                 # chunk_positions 对齐 kernel 侧一次 C1V1 的 K 读取粒度：
                 #   - sparse_indices 记录的是当前 QB 可访问的 KV basic block id。
-                #   - _positions_from_sparse 每次取 2 个 KV basic block，并展开成 token 级 KV index。
-                #   - 因此 chunk_positions[i] 对应一次 C1V1 中 K 的 token 范围，最多 2 * SPARSE_BLOCK_SIZE。
-                #   - 无效 block id(-1) 或超出 kv_len 的 block 会被跳过，所以 chunk 可能不足两个 basic block。
+                #   - _positions_from_sparse 按 256-token C1 粒度取 KV basic block，
+                #     并展开成 token 级 KV index。
+                #   - blockSize=128 时每个 C1 取 2 块，blockSize=64 时每个 C1 取 4 块。
+                #   - 无效 block id(-1) 或超出 kv_len 的 block 会被跳过，
+                #     所以尾 chunk 可能不足 256 token。
                 chunk_positions = _positions_from_sparse(
                     sparse_indices, sparse_seq_len, batch_idx, head_idx, qb_idx, kv_len)
                 if not chunk_positions:
@@ -979,14 +960,14 @@ def cpu_mxfp8_golden(q_fp8, k_fp8, v_fp8,
 
                 for round_idx in range(0, len(chunk_offsets), 2):
                     # 一轮 kernel 流水：
-                    #   C1V1-0: Q(最多 128) x K(最多 2 个 128-token basic block)
-                    #   C1V1-1: Q(最多 128) x K(最多 2 个 128-token basic block)
+                    #   C1V1-0: Q(最多 128) x K(最多 256 token)
+                    #   C1V1-1: Q(最多 128) x K(最多 256 token)
                     #   C2V2:   P(最多 128 x 512) x V(最多 512 x D)
                     # 如果最后一轮只剩一个 C1V1 chunk，round_end 只覆盖实际存在的 KV token。
                     round_start = chunk_offsets[round_idx][0]
                     round_end = chunk_offsets[min(round_idx + 1, len(chunk_offsets) - 1)][1]
 
-                    # s_round/vm_round 是本轮最多 4 个 KV basic block 对应的 score 和有效 mask。
+                    # s_round/vm_round 是本轮最多 512 个 KV token 对应的 score 和有效 mask。
                     # round_max 必须基于整轮两个 C1V1 的 score 共同计算，之后 C2V2 使用同一个 m_new。
                     s_round = scores[:, round_start:round_end]
                     vm_round = valid_mask[:, round_start:round_end]
@@ -1014,7 +995,7 @@ def cpu_mxfp8_golden(q_fp8, k_fp8, v_fp8,
                     p_quant = (p_round * p_scale_value).to(FP8_DTYPE).to(torch.float32)
 
                     # C2V2 阶段读取与本轮 K token 完全对应的 V token。
-                    # round_pos_tensor 覆盖最多 4 个 basic block；若 sparse/mask 导致不足 4 块，只处理实际 token。
+                    # round_pos_tensor 覆盖本轮最多 512 个 KV token；尾轮只处理实际 token。
                     round_pos_tensor = pos_tensor[round_start:round_end]
                     v_mat = v_tensor[batch_idx, n2_idx, round_pos_tensor, :]
                     v_group_idx = torch.div(round_pos_tensor, QUANT_GROUP_SIZE, rounding_mode="floor")
