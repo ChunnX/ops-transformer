@@ -32,7 +32,15 @@
 #include "mega_moe_impl_base.h"
 #include "mega_moe_combine_send.h"
 
+#if __has_include("../../common/mc2_kernel_timing.h")
+#include "../../common/mc2_kernel_timing.h"
+#elif __has_include("../../../common/op_kernel/mc2_kernel_timing.h")
+#include "../../../common/op_kernel/mc2_kernel_timing.h"
+#endif
+
 namespace MegaMoeImpl {
+
+inline Mc2Kernel::KernelTiming g_kernelTiming;
 using BlockScheduler = typename Blaze::Gemm::Block::BlockSchedulerSwizzle<3, 1>; // 3: SwizzleOffset
 // =================================================================================================
 // ComputeCoreGrouping：计算当前 core 所属的 group 及其在 group 内的位置
@@ -374,8 +382,10 @@ __aicore__ inline void AicComputeGeneric(BlockMmad &blockMmad, WorkSet &workSet,
                 auto gmBlockScaleB = workSet.gmScaleB.Slice(
                     Te::MakeCoord(kLoc / MXFP_SCALE_GROUP_NUM, nLoc + weightBlock * config.outputN),
                     Te::MakeShape(CeilDiv(Get<K_VALUE>(actualShape), MXFP_SCALE_GROUP_NUM), Get<N_VALUE>(actualShape)));
+                g_kernelTiming.StartTiming(0);
                 blockMmad(gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, workSet.gmBias,
                           weightBlock == 0 ? tensorBlockUbFirst : tensorBlockUbSecond, singleShape);
+                g_kernelTiming.StopTiming(0);
             }
             NotifyVector();
             args.vecSetSyncCom = 1;
@@ -429,7 +439,9 @@ __aicore__ inline void AivGmm1PostGeneric(WorkSet &workSet, ExtraArgs &args, uin
             0};
         WaitForCube();
         AscendC::SetCtrlSpr<60, 60>(0);
+        g_kernelTiming.StartTiming(1);
         args.swigluQuantOp(epilogueShape, epilogueOffset);
+        g_kernelTiming.StopTiming(1);
         NotifyCube();
     }
 }

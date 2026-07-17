@@ -297,6 +297,7 @@ MegaMoe<TemplateMegaMoeTypeFunc>::Init(GM_ADDR context, GM_ADDR x, GM_ADDR topkI
                                                  static_cast<uint32_t>(ALIGN_32));
         mxQuantTokenScaleAlignBytes_ += weightAlignBytes_;
     }
+    g_kernelTiming.Init(yOut, 2);
 }
 
 // =================================================================================================
@@ -1728,6 +1729,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
         Unpermute();
     }
     SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);
+    g_kernelTiming.WriteTimingToOutput(GetBlockIdx(), true, aicNum_);
 }
 
 } // namespace MegaMoeImpl

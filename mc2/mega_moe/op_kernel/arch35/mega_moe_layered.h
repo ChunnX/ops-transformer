@@ -351,7 +351,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::DispatchBuffInit
     // 分轮次参数计算：validTopkIndexTensor_ + topkIndexTensor_ + gatherMaskTensor_ 均为 round-sized
     // SendCntCal 改为直接从 GM 读 count，不再加载完整 mask slot 到 UB
     // round 张量: validTopkIndex(R*4) + topkIndex(R*4) + gatherMask(R/8) = 8R + R/8 = 65R/8
-    // 预留 metaInfoTensor_: DISPATCH_WAVE_TILE_M * ALIGN_32
+    // 预留 metaInfoTensor_: MegaMoeImpl::L1_TILE_M_256 * ALIGN_32
     uint32_t dispatchFixedCost = 0;
     {
         uint32_t tokenScaleSize = Ops::Base::CeilAlign(
@@ -363,7 +363,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::DispatchBuffInit
             + Ops::Base::CeilAlign(k_, static_cast<uint32_t>(ALIGN_128)) * sizeof(bfloat16_t)
             + Ops::Base::CeilAlign(static_cast<int64_t>(expertPerRank_ * sizeof(int32_t)),
             static_cast<int64_t>(ALIGN_32))
-            + static_cast<uint32_t>(DISPATCH_WAVE_TILE_M) * static_cast<uint32_t>(ALIGN_32);
+            + static_cast<uint32_t>(MegaMoeImpl::L1_TILE_M_256) * static_cast<uint32_t>(ALIGN_32);
     }
     uint32_t fixedBefore = cumsumInfoTensorAddr + cumsumInfoTensorSize;
     uint32_t dispatchAvailUb = 0;
@@ -1241,7 +1241,6 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::MetaInfoCalAndDi
                 int32_t roundCopyCnt = static_cast<int32_t>(roundTokenCnt);
                 if (rowStartIdxInDst + accumulatedRowSrcOffset + roundCopyCnt > maxOutputSize_) {
                     roundCopyCnt = maxOutputSize_ - rowStartIdxInDst - accumulatedRowSrcOffset;
-                }
                 }
                 if (roundCopyCnt <= 0) {
                     accumulatedRowSrcOffset += static_cast<int32_t>(roundTokenCnt);
