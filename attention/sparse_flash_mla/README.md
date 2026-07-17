@@ -73,70 +73,70 @@
     <tr>
       <td>ori_sparse_indices</td>
       <td>可选输入</td>
-      <td>表示从`ori_kv`中离散取数的索引。</td>
+      <td>表示从ori_kv中离散取数的索引。</td>
       <td>INT32</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>cmp_sparse_indices</td>
       <td>可选输入</td>
-      <td>表示从`cmp_kv`中离散取数的索引。</td>
+      <td>表示从cmp_kv中离散取数的索引。</td>
       <td>INT32</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>ori_block_table</td>
       <td>可选输入</td>
-      <td>表示PageAttention中`ori_kv`使用的block映射表。</td>
+      <td>表示PageAttention中ori_kv使用的block映射表。</td>
       <td>INT32</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>cmp_block_table</td>
       <td>可选输入</td>
-      <td>表示PageAttention中`cmp_kv`使用的block映射表。</td>
+      <td>表示PageAttention中cmp_kv使用的block映射表。</td>
       <td>INT32</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>cu_seqlens_q</td>
       <td>可选输入</td>
-      <td>表示TND布局下不同batch中`q`的累积序列长度。</td>
+      <td>表示TND布局下不同batch中q的累积序列长度。</td>
       <td>INT32</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>cu_seqlens_ori_kv</td>
       <td>可选输入</td>
-      <td>表示TND布局下不同batch中`ori_kv`的累积序列长度。</td>
+      <td>表示TND布局下不同batch中ori_kv的累积序列长度。</td>
       <td>INT32</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>cu_seqlens_cmp_kv</td>
       <td>可选输入</td>
-      <td>表示TND布局下不同batch中`cmp_kv`的累积序列长度。</td>
+      <td>表示TND布局下不同batch中cmp_kv的累积序列长度。</td>
       <td>INT32</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>seqused_q</td>
       <td>可选输入</td>
-      <td>表示不同batch中`q`实际参与计算的token数。</td>
+      <td>表示不同batch中q实际参与计算的token数。</td>
       <td>INT32</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>seqused_ori_kv</td>
       <td>可选输入</td>
-      <td>表示不同batch中`ori_kv`实际参与计算的token数。</td>
+      <td>表示不同batch中ori_kv实际参与计算的token数。</td>
       <td>INT32</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>seqused_cmp_kv</td>
       <td>可选输入</td>
-      <td>表示不同batch中`cmp_kv`实际参与计算的token数。</td>
+      <td>表示不同batch中cmp_kv实际参与计算的token数。</td>
       <td>INT32</td>
       <td>ND</td>
     </tr>
@@ -185,49 +185,49 @@
     <tr>
       <td>cmp_ratio</td>
       <td>可选属性</td>
-      <td>表示`cmp_kv`相对于压缩前KV长度的压缩倍率，用于恢复cmp侧mask使用的压缩前KV长度；仅传入`ori_kv`时不参与压缩KV计算。支持1到128。</td>
+      <td>表示cmp_kv相对于压缩前KV长度的压缩倍率，用于恢复cmp侧mask使用的压缩前KV长度；仅传入ori_kv时不参与压缩KV计算。支持1到128。</td>
       <td>INT</td>
       <td>-</td>
     </tr>
     <tr>
       <td>ori_mask_mode</td>
       <td>可选属性</td>
-      <td>表示`q`和`ori_kv`计算的mask模式。<br/>0: No Mask。<br/>3: RightDownCausal模式。<br/>4: Band模式。</td>
+      <td>表示q和ori_kv计算的mask模式。<br/>0: No Mask。<br/>3: RightDownCausal模式。<br/>4: Band模式。</td>
       <td>INT</td>
       <td>-</td>
     </tr>
     <tr>
       <td>cmp_mask_mode</td>
       <td>可选属性</td>
-      <td>表示`q`和`cmp_kv`计算的mask模式。<br/>0: No Mask。<br/>3: RightDownCausal模式。</td>
+      <td>表示q和cmp_kv计算的mask模式。<br/>0: No Mask。<br/>3: RightDownCausal模式。</td>
       <td>INT</td>
       <td>-</td>
     </tr>
     <tr>
       <td>ori_win_left</td>
       <td>可选属性</td>
-      <td>表示`q`和`ori_kv`计算中`q`对过去token计算的数量，支持-1或非负数，其中-1表示窗口不受限。</td>
+      <td>表示q和ori_kv计算中q对过去token计算的数量，支持-1或非负数，其中-1表示窗口不受限。</td>
       <td>INT</td>
       <td>-</td>
     </tr>
     <tr>
       <td>ori_win_right</td>
       <td>可选属性</td>
-      <td>表示`q`和`ori_kv`计算中`q`对未来token计算的数量，支持-1或非负数，其中-1表示窗口不受限。</td>
+      <td>表示q和ori_kv计算中q对未来token计算的数量，支持-1或非负数，其中-1表示窗口不受限。</td>
       <td>INT</td>
       <td>-</td>
     </tr>
     <tr>
       <td>layout_q</td>
       <td>可选属性</td>
-      <td>表示输入`q`的数据排布格式，支持"BSND"和"TND"。</td>
+      <td>表示输入q的数据排布格式，支持"BSND"和"TND"。</td>
       <td>STRING</td>
       <td>-</td>
     </tr>
     <tr>
       <td>layout_kv</td>
       <td>可选属性</td>
-      <td>表示输入`ori_kv`和`cmp_kv`的数据排布格式，支持"BSND"、"TND"和"PA_BBND"。</td>
+      <td>表示输入ori_kv和cmp_kv的数据排布格式，支持"BSND"、"TND"和"PA_BBND"。</td>
       <td>STRING</td>
       <td>-</td>
     </tr>
@@ -241,7 +241,7 @@
     <tr>
       <td>return_softmax_lse</td>
       <td>可选属性</td>
-      <td>表示是否返回`softmax_lse`。</td>
+      <td>表示是否返回softmax_lse。</td>
       <td>BOOL</td>
       <td>-</td>
     </tr>
@@ -274,17 +274,17 @@
   - `layout_q`和`layout_kv`组合仅支持"BSND"/"BSND"、"TND"/"TND"、"BSND"/"PA_BBND"、"TND"/"PA_BBND"；非PA_BBND场景下`layout_q`和`layout_kv`必须一致。
   - `ori_topk_length`和`cmp_topk_length`为预留输入，全平台均不支持传入非空Tensor。
 - 产品型号约束如下：
-  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：N1/N2支持1、2、4、8、16、32、64、128；cmp_ratio在SWA场景保持默认值1，CSA支持传入4，HCA支持传入128；block_size取值为16的倍数，最大支持1024；ori_sparse_indices当前暂不支持，cmp_sparse_indices的最后一维K2当前支持512或1024。
-  - <term>Ascend 950PR/Ascend 950DT</term>：N1/N2支持2、4、8、16、32、64、128，不支持1。
+  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：N1支持1、2、4、8、16、32、64、128，N2只支持1；cmp_ratio在SWA场景保持默认值1，CSA支持传入4，HCA支持传入128；block_size取值为16的倍数，最大支持1024；ori_sparse_indices当前暂不支持，cmp_sparse_indices的最后一维K2当前支持512或1024。
+  - <term>Ascend 950PR/Ascend 950DT</term>：N1支持2、4、8、16、32、64、128，不支持1，N2只支持1。
 
 - 当`layout_q`为TND时，功能使用限制如下：
-  - `q`的shape需要为[T1,N1,D]。
+  - `q`的shape需要为[Q\_T, Q\_N, D]。
   - `ori_sparse_indices`当前暂不支持。
   - `cmp_sparse_indices`的shape需要为[Q\_T, KV\_N, K2]，其中K2为对`cmp_kv`一次离散选取的token数。
-  - `cu_seqlens_q`必须传入，输入维度为B+1，大小为参数中每个元素的值表示当前batch与之前所有batch的token数总和，即前缀和，因此后一个元素的值必须>=前一个元素的值。
+  - `cu_seqlens_q`必须传入，shape为[B+1,]，第一个数固定为0，即前缀0。后面的每个元素表示当前batch与之前所有batch的token数总和，即前缀和，因此后一个元素的值必须大于等于前一个元素的值。
 
 - 当`layout_q`为BSND时，功能使用限制如下：
-  - `q`的shape需要为[B, Q\_S, N1, D]。
+  - `q`的shape需要为[B, Q\_S, Q\_N, D]。
   - `ori_sparse_indices`当前暂不支持。
   - `cmp_sparse_indices`的shape需要为[B, Q\_S, KV\_N, K2]，其中K2为对`cmp_kv`一次离散选取的token数。
 
@@ -293,11 +293,10 @@
   - `ori_block_table`和`cmp_block_table`的shape为2维，其中第一维长度为B，第二维长度不小于所有batch中最大的S2和S3对应的block数量，即S2\_max / block\_size和S3\_max / block\_size向上取整。
 - `metadata`为算子实际需要使用的分核结果，目前该参数必传，shape大小固定为[1024]。
 - `layout_kv`支持输入"BSND"、"TND"和"PA_BBND"，需满足上述`layout_q`和`layout_kv`组合约束。
-  - 当输入为PA_BBND时，`seqused_ori_kv`和`ori_block_table`必须传入；当输入为BSND时，`seqused_ori_kv`可用于表达每个batch的`ori_kv`有效长度；当输入为TND时，`ori_kv`有效长度由`cu_seqlens_ori_kv`表达。
-  - 当输入为BSND时，`ori_kv`和`cmp_kv`的layout都必须为BSND，ori_kv的shape为[B, S2, N2,D]，cmp_kv的shape为[B, S3, N2,D]。
+  - 当输入为PA_BBND时，`seqused_ori_kv`和`ori_block_table`必须传入；当输入为BSND时，`seqused_ori_kv`可用于表达每个batch的`ori_kv`有效长度，且有效长度不超过key/value中的KV_S的大小且不小于0；当输入为TND时，`ori_kv`总长度由`cu_seqlens_ori_kv`表达，若`seqused_ori_kv`被传入，则`ori_kv`的有效长度由`seqused_ori_kv`表达，否则有效长度与总长度相同。
+  - 当输入为BSND时，`ori_kv`和`cmp_kv`的layout都必须为BSND，ori_kv的shape为[B, S2, N2, D]，cmp_kv的shape为[B, S3, N2, D]。
   - 当输入为TND时，`cu_seqlens_ori_kv`必须传入；若存在`cmp_kv`，`cu_seqlens_cmp_kv`也必须传入。
 - `return_softmax_lse`为False时返回占位Tensor；为True时返回softmax的log-sum-exp结果。
-- 目前暂不支持指定`q`中参与运算的token数，因此设置`seqused_q`无效。
 - 目前暂不支持对`ori_kv`进行稀疏计算，因此设置`ori_sparse_indices`无效。
 - 除`ori_topk_length`和`cmp_topk_length`等预留输入可不传或传入空Tensor外，其余已传入Tensor不支持为空。
 - `seqused_cmp_kv`为所有`layout_kv`下的可选输入，显式传入时用于覆盖cmp侧逻辑有效长度；未传时由`cmp_kv` shape、`cu_seqlens_cmp_kv`或PA block table相关语义推导。
