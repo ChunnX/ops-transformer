@@ -112,7 +112,6 @@ ConstructMixedQuantSparseFlashMlaAttenOutTensor(const at::Tensor &q, const at::T
         attenOutSize = {q.size(DIM_0), q.size(DIM_1), q.size(DIM_2)};
     }
     at::Tensor attenOut = at::empty(attenOutSize, q.options().dtype(q.dtype()));
-    at::Tensor softmaxLse;
 
     if (!attenOut.defined()) {
         printf("[aclnnMixedQuantSparseFlashMla] atten_out 制作失败\n");
@@ -122,17 +121,29 @@ ConstructMixedQuantSparseFlashMlaAttenOutTensor(const at::Tensor &q, const at::T
 
     if (returnSoftmaxLse) {
         if (layoutQStr == "BSND") {
-            // 对齐 Python: [q.shape[0], ori_kv.shape[2], q.shape[1], q.shape[2] // ori_kv.shape[2]]
-            softmaxLseSize = {q.size(DIM_0), oriKv.size(DIM_2), q.size(DIM_1), q.size(DIM_2) / oriKv.size(DIM_2)};
+            int64_t dim0 = static_cast<int64_t>(q.size(DIM_0));
+            int64_t dim1 = static_cast<int64_t>(oriKv.size(DIM_2));
+            int64_t dim2 = static_cast<int64_t>(q.size(DIM_1));
+            int64_t dim3 = static_cast<int64_t>(q.size(DIM_2)) / static_cast<int64_t>(oriKv.size(DIM_2));
+            softmaxLseSize = {dim0, dim1, dim2, dim3};
         } else {
-            // 对齐 Python: [ori_kv.shape[1], q.shape[0], q.shape[2] // ori_kv.shape[2]]
-            softmaxLseSize = {oriKv.size(DIM_1), q.size(DIM_0), q.size(DIM_2) / oriKv.size(DIM_2)};
+            if (layoutKvStr == "PA_BBND") {
+                int64_t dim0 = static_cast<int64_t>(oriKv.size(DIM_2));
+                int64_t dim1 = static_cast<int64_t>(q.size(DIM_0));
+                int64_t dim2 = static_cast<int64_t>(q.size(DIM_1)) / static_cast<int64_t>(oriKv.size(DIM_2));
+                softmaxLseSize = {dim0, dim1, dim2};
+            } else {
+                int64_t dim0 = static_cast<int64_t>(oriKv.size(DIM_1));
+                int64_t dim1 = static_cast<int64_t>(q.size(DIM_0));
+                int64_t dim2 = static_cast<int64_t>(q.size(DIM_1)) / static_cast<int64_t>(oriKv.size(DIM_1));
+                softmaxLseSize = {dim0, dim1, dim2};
+            }
         }
     } else {
         // 不返回时tensor传空
         softmaxLseSize = {};
     }
-    softmaxLse = at::empty(softmaxLseSize, q.options().dtype(torch::kFloat32));
+    at::Tensor softmaxLse = at::empty(softmaxLseSize, q.options().dtype(torch::kFloat32));
     if (!softmaxLse.defined()) {
         printf("[aclnnMixedQuantSparseFlashMla] softmax_lse 制作失败\n");
     } else {
