@@ -2,8 +2,6 @@ import os
 
 import torch
 
-from compare import DEFAULT_TOLERANCE
-
 SEP = "━" * 80
 
 DEFAULT_SCATTER_LIMIT = 10
@@ -293,17 +291,22 @@ def analyze_failure(
             )
             continue
 
-        diff = torch.abs(cpu_t - npu_t)
+        # 复用 compare 已算好的 _diff/_fail_mask (避免重复 torch.abs + isclose)
         cpu_dtype = cpu_out[key].dtype
-        default_tol = DEFAULT_TOLERANCE.get(cpu_dtype, {"atol": 1e-3, "rtol": 1e-3})
-        rtol = result.get("rtol", default_tol["rtol"])
-        atol = result.get("atol", default_tol["atol"])
-        fail_mask = ~torch.isclose(cpu_t, npu_t, rtol=rtol, atol=atol)
+        diff = result.get("_diff")
+        fail_mask = result.get("_fail_mask")
+        if diff is None or fail_mask is None:
+            diff = torch.abs(cpu_t - npu_t)
+            rtol = result.get("rtol", 0.005)
+            atol = result.get("atol", 0.0001)
+            fail_mask = ~torch.isclose(cpu_t, npu_t, rtol=rtol, atol=atol)
 
-        fail_cnt = int(fail_mask.sum().item())
-        total = cpu_t.numel()
-        max_abs = diff.max().item()
-        mean_abs = diff.mean().item()
+        fail_cnt = result.get("fail_cnt", int(fail_mask.sum().item()))
+        total = result.get("total", cpu_t.numel())
+        max_abs = result.get("max_abs", diff.max().item())
+        mean_abs = result.get("mean_abs", diff.mean().item())
+        rtol = result.get("rtol", 0.005)
+        atol = result.get("atol", 0.0001)
 
         # ── 概要 ──
         lines += _summary(key, cpu_t.shape, cpu_dtype, fail_cnt, total,

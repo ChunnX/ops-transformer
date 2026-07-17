@@ -36,6 +36,8 @@ def _stats(ef, rf, atol, rtol):
         "fail_ratio": fail_cnt / total if total else 0.0,
         "atol": atol,
         "rtol": rtol,
+        "_diff": diff,
+        "_fail_mask": fail_mask,  # 供 precision_analyze 复用, 避免重复计算
     }
 
 
