@@ -18,6 +18,12 @@
 
 #include "kernel_operator.h"
 #include "kernel_tiling/kernel_tiling.h"
+
+#if __has_include("../../common/utils/mc2_kernel_timing.h")
+#include "../../common/utils/mc2_kernel_timing.h"
+#elif __has_include("../../../common/utils/mc2_kernel_timing.h")
+#include "../../../common/utils/mc2_kernel_timing.h"
+#endif
 #if __has_include("../../common/mc2_kernel_utils.h")
 #include "../../common/mc2_kernel_utils.h"
 #else
@@ -209,6 +215,8 @@ private:
     using BlockEpilogue =
         BlockEpilogueSwigluMxQuant<SwigluQuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType, true>;
     BlockEpilogue epilogueOp_;
+
+    Mc2Kernel::KernelTiming kernelTiming_;
 };
 
 // ========================
@@ -281,8 +289,10 @@ MegaMoe<TemplateMegaMoeTypeFunc>::Init(GM_ADDR context, GM_ADDR x, GM_ADDR topkI
         Ops::Base::CeilAlign(static_cast<uint32_t>(k_ / A_ELEMS_PER_BYTE), static_cast<uint32_t>(ALIGN_256)) *
         sizeof(ActivationType);
     mxQuantScaleAlignBytes_ = mxQuantScaleNumAlignPerToken_ * sizeof(uint8_t);
-    mxQuantTokenScaleAlignBytes_ =
+        mxQuantTokenScaleAlignBytes_ =
         Ops::Base::CeilAlign(mxQuantTokenAlignBytes_ + mxQuantScaleAlignBytes_, static_cast<uint32_t>(ALIGN_32));
+
+    kernelTiming_.Init(yOut);
 }
 
 // =================================================================================================
@@ -1395,9 +1405,13 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Unpermute()
     int32_t coreLen, coreOffset;
     TilingByCore(m_, coreLen, coreOffset, 1);
     if (coreLen == 0) {
+        kernelTiming_.WriteTimingToOutput(aivCoreIdx_);
         return;
     }
+
+    kernelTiming_.StartTiming(1);
     int32_t tokensPerBatch = UnpermuteBuffInit(coreLen);
+    kernelTiming_.StopTiming(1);
 
     GlobalTensor<bfloat16_t> expandedX;
     expandedX.SetGlobalBuffer((__gm__ bfloat16_t *)params_.peermemInfo.combineSendPtr);
@@ -1409,7 +1423,9 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Unpermute()
         int32_t batchTokenCount =
             (batchTokenOffset + tokensPerBatch > coreLen) ? (coreLen - batchTokenOffset) : tokensPerBatch;
 
+        kernelTiming_.StartTiming(2);
         UnpermuteLoadWeights(coreOffset, batchTokenOffset, batchTokenCount, topKWeightsBf16Tensor_);
+        kernelTiming_.StopTiming(2);
 
         // 内层：token 循环
         SetFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID0);
@@ -1417,7 +1433,11 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Unpermute()
         for (int32_t localIdx = 0; localIdx < batchTokenCount; localIdx++) {
             int32_t tokenIdx = coreOffset + batchTokenOffset + localIdx;
             SyncFuncStatic<AscendC::HardEvent::MTE3_MTE2, SYNC_EVENT_ID2>();
+
+            kernelTiming_.StartTiming(3);
             UnpermuteProcessToken(tokenIdx, localIdx, expandedX);
+            kernelTiming_.StopTiming(3);
+
             Cast(dataResTensor_, dataResFp32Tensor_, AscendC::RoundMode::CAST_RINT, k_);
             SyncFuncStatic<AscendC::HardEvent::V_MTE3, SYNC_EVENT_ID3>();
             DataCopy(output[static_cast<uint64_t>(tokenIdx) * k_], dataResTensor_, k_);
@@ -1425,6 +1445,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Unpermute()
         WaitFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID0);
         WaitFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID1);
     }
+
+    kernelTiming_.WriteTimingToOutput(aivCoreIdx_);
 }
 
 // ==============================================================================================
