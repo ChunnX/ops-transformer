@@ -202,8 +202,8 @@ static ge::graphStatus CheckInputTensorShape(gert::TilingContext *context, const
         OP_LOGE(nodeName, "x dim1 (data_size) is invalid, should be positive, but got %ld.", xDim1),
                 return ge::GRAPH_FAILED);
 
-    tilingData.max_bs = static_cast<int32_t>(xDim0);
-    tilingData.data_size = static_cast<int32_t>(xDim1);
+    tilingData.maxBs = static_cast<int32_t>(xDim0);
+    tilingData.dataSize = static_cast<int32_t>(xDim1);
 
     const gert::StorageShape *dstRankIdStorageShape = context->GetInputShape(INPUT_DST_RANK_ID_INDEX);
     OP_TILING_CHECK(dstRankIdStorageShape == nullptr,
@@ -226,7 +226,7 @@ static ge::graphStatus CheckOutputTensorShape(gert::TilingContext *context, cons
     BandwidthTestTilingData &tilingData)
 {
     int64_t worldSize = static_cast<int64_t>(tilingData.worldSize);
-    int64_t maxBs = static_cast<int64_t>(tilingData.max_bs);
+    int64_t maxBs = static_cast<int64_t>(tilingData.maxBs);
     int64_t dataSize = static_cast<int64_t>(tilingData.dataSize);
 
     const gert::StorageShape *yStorageShape = context->GetOutputShape(OUTPUT_Y_INDEX);
@@ -335,7 +335,7 @@ static ge::graphStatus CheckWinSize(const gert::TilingContext *context, Bandwidt
         return ge::GRAPH_FAILED;
     }
 
-    tilingData->total_win_size = maxWindowSize;
+    tilingData->totalWinSize = maxWindowSize;
     OP_LOGD(nodeName, "WindowSize = %lu", maxWindowSize);
 
     return ge::GRAPH_SUCCESS;
