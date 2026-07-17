@@ -278,7 +278,9 @@ void FiaInfoParser::GetKvIsContiguous()
                                        kStrideCache_[i], dim) != ge::GRAPH_SUCCESS) {
             keyNonContigDim_ = dim;
         }
-        dim = 0;
+    }
+    for (size_t i = 0; i < kStrideCache_.size(); ++i) {
+        int32_t dim = 0;
         if (CheckTensorContiguousLocal(vCache_[i]->GetStorageShape().GetDimNum(),
                                        vCache_[i]->GetStorageShape(),
                                        vStrideCache_[i], dim) != ge::GRAPH_SUCCESS) {
