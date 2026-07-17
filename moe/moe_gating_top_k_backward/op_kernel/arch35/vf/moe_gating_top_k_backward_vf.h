@@ -148,8 +148,7 @@ __simd_vf__ void CastGradYRowsVF(__ubuf__ T *srcAddr, __ubuf__ float *dstAddr, u
 //          D = eps + sum(w'); betaNum = sum(w' * gradYScaled);
 //          beta = betaNum / D; gradWPrime = (gradYScaled - beta) / D;
 //          scatter gradWPrime into gradNormX[expertIdx] (N-wide row, pre-zeroed
-//          by the caller), with duplicate-index resolution matching PyTorch's
-//          scatter_ (deterministic last-K-position-wins) -- see note below.
+//          by the caller).
 //
 // CHUNKING (K > VL_T support): a single RegTensor<int32_t>/<float> can only
 // hold VL_T = VECTOR_REG_WIDTH / sizeof(int32_t) = 64 lanes. For K > 64, the
@@ -166,31 +165,16 @@ __simd_vf__ void CastGradYRowsVF(__ubuf__ T *srcAddr, __ubuf__ float *dstAddr, u
 //
 //   Phase 2 (per chunk): recompute (or reuse) this chunk's w', broadcast the
 //   final global invD/beta to every lane of this chunk, compute gradWPrime,
-//   then detect and drop stale-duplicate lanes and Scatter.
+//   and Scatter.
 //
-// NOTE on duplicate expertIdx: a vectorized Scatter's write-conflict
-// resolution for duplicate indices within a row is hardware-unspecified (see
-// AscendC Scatter doc: "若有2个或以上index相同，具体哪个数据生效未知"),
-// which does not reproduce PyTorch's scatter_ semantics. A3's reference kernel
-// gets bit-exact match by doing the final N-wide write with a sequential
-// scalar GetValue/SetValue loop in increasing i order (later K position always
-// overwrites an earlier duplicate). Redoing that fully in scalar is correct
-// but slow (2*K scalar ops per row). Instead we vectorize the *duplicate
-// detection* itself and simply drop stale lanes from the Scatter's mask:
-//   For each pair (a, b) with a < b < k: if idx[a] == idx[b], lane a is a
-//   "stale duplicate" (some later lane b shares its GM slot and must win), so
-//   lane a must not be allowed to scatter-write at all.
-//   suppressMask accumulates, over b = 1..k-1, "does any earlier lane a < b
-//   share idx[a] == idx[b]" via a broadcast-of-lane-b + Compare<EQ> + a
-//   lane-position mask (CompareScalar<LT>(pos, b)), OR'd across all b.
-//   The final Scatter's mask is maskK with suppressMask's lanes cleared
-//   (MaskAnd(scatterMask, maskK, Not(suppressMask))) -- suppressed lanes
-//   simply don't participate in the write at all (no trash slot needed),
-//   and every surviving lane now has a value unique among this row's
-//   indices, so hardware write-conflict resolution never triggers for them.
-// This costs O(k) vector ops per chunk, i.e. O(k^2 / 64) per row overall --
-// the best complexity achievable while staying purely vectorized without
-// introducing a sort or hash structure.
+// NOTE on expertIdx uniqueness: expertIdx is guaranteed by the caller/product
+// contract to contain distinct values within each row (it originates from a
+// TopK selection upstream), so no duplicate-index resolution is performed
+// here. If this invariant is ever violated, the vectorized Scatter's
+// write-conflict resolution for duplicate indices within a row is
+// hardware-unspecified (see AscendC Scatter doc: "若有2个或以上index相同，
+// 具体哪个数据生效未知") and will not reproduce any particular deterministic
+// semantics.
 //
 // Reduce<SUM> lands the true horizontal sum at lane 0; it is broadcast back to
 // all K lanes purely in registers via Duplicate<HighLowPart::LOWEST> (no UB
@@ -252,13 +236,13 @@ __simd_vf__ void SigmoidRenormBackwardVF(__ubuf__ float *xNormBase, __ubuf__ int
         MicroAPI::Div(invDReg, invDReg, globalD, maskLane0);
         MicroAPI::Mul(betaReg, globalBetaNum, invDReg, maskLane0);
 
-        // ---- Phase 2: recompute gradWPrime per chunk, cross-chunk dedup, scatter. ----
+        // ---- Phase 2: recompute gradWPrime per chunk, scatter. ----
         uint32_t remainingK2 = k;
         for (uint16_t c = 0; c < repeatTimes; c++) {
             uint16_t chunkOffset = c * chunkSize;
             MicroAPI::MaskReg chunkMask = MicroAPI::UpdateMask<int32_t>(remainingK2);
 
-            MicroAPI::RegTensor<int32_t> idxReg, lanePos;
+            MicroAPI::RegTensor<int32_t> idxReg;
             MicroAPI::RegTensor<uint32_t> idxU32Reg;
             MicroAPI::RegTensor<float> wPrimeReg, gradYReg;
 
@@ -277,33 +261,7 @@ __simd_vf__ void SigmoidRenormBackwardVF(__ubuf__ float *xNormBase, __ubuf__ int
             MicroAPI::Sub(gradWPrimeReg, gradYReg, gradWPrimeReg, chunkMask);
             MicroAPI::Mul(gradWPrimeReg, gradWPrimeReg, bcastReg, chunkMask);
 
-            // Chunk-local lane position, offset to the row-global position.
-            MicroAPI::Arange(lanePos, 0);
-            MicroAPI::Adds(lanePos, lanePos, static_cast<int32_t>(chunkOffset), chunkMask);
-
-            // Cross-chunk stale-duplicate detection: b ranges over the FULL row.
-            // Loop starts at 0 (Hardware Loop requirement) and uses b = bi + 1
-            // internally to cover the original [1, k) range. Reuse a single
-            // workMask register across eq/pos/hit computation to keep MaskReg
-            // count within the 8-per-VF-function hardware limit.
-            MicroAPI::MaskReg suppressMask = MicroAPI::CreateMask<int32_t, MicroAPI::MaskPattern::ALLF>();
-            uint16_t kMinusOne = k - 1;
-            for (uint16_t bi = 0; bi < kMinusOne; bi++) {
-                uint16_t b = bi + 1;
-                MicroAPI::RegTensor<int32_t> idxBBroadcast;
-                MicroAPI::LoadAlign<int32_t, MicroAPI::LoadDist::DIST_BRC_B32>(idxBBroadcast, idxRow + b);
-                MicroAPI::MaskReg workMask;
-                MicroAPI::Compare<int32_t, CMPMODE::EQ>(workMask, idxReg, idxBBroadcast, chunkMask);
-                MicroAPI::MaskReg posMask;
-                MicroAPI::CompareScalar<int32_t, CMPMODE::LT>(posMask, lanePos, static_cast<int32_t>(b), chunkMask);
-                MicroAPI::MaskAnd(workMask, workMask, posMask, chunkMask);
-                MicroAPI::MaskOr(suppressMask, suppressMask, workMask, chunkMask);
-            }
-
-            MicroAPI::MaskNot(suppressMask, suppressMask, chunkMask);
-            MicroAPI::MaskAnd(suppressMask, chunkMask, suppressMask, chunkMask);
-
-            MicroAPI::Scatter(gradNormXRow, gradWPrimeReg, idxU32Reg, suppressMask);
+            MicroAPI::Scatter(gradNormXRow, gradWPrimeReg, idxU32Reg, chunkMask);
         }
     }
 }
@@ -361,10 +319,8 @@ __aicore__ inline void CallCastGradYRowsVF(LocalTensor<T> gradYSrc, LocalTensor<
 // CallSigmoidRenormBackwardVF: __aicore__ wrapper for SigmoidRenormBackwardVF.
 //   Takes LocalTensor + row geometry; computes GetPhyAddr() internally.
 //   Caller must pre-zero gradNormX before calling (VF only scatters K nonzero
-//   entries per row; the rest of each row is left untouched). Duplicate
-//   expertIdx values within a row are resolved by dropping stale lanes from
-//   the Scatter's mask (see SigmoidRenormBackwardVF comment) -- no trash
-//   buffer or extra row width is needed.
+//   entries per row; the rest of each row is left untouched). expertIdx is
+//   assumed unique within each row (see SigmoidRenormBackwardVF comment).
 // ============================================================================
 __aicore__ inline void CallSigmoidRenormBackwardVF(LocalTensor<float> xNorm, LocalTensor<int32_t> expertIdx,
                                                     LocalTensor<float> gradY, LocalTensor<float> gradNormX, float eps,
