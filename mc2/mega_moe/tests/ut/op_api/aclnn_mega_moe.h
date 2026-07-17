@@ -42,6 +42,12 @@ extern "C" {
  * @param [in] bias2Optional: 计算可选输入，TensorList，数据类型float32，数据格式支持ND。
  *                             GroupMatmul2的偏置参数。
  * @param [in] xActiveMaskOptional: 计算可选输入，Tensor，数据类型int8，数据格式支持ND。预留参数，暂不支持。
+ * @param [in] sharedWeight1Optional: 计算可选输入，TensorList，共享专家GroupMatmul1的右矩阵。
+ * @param [in] sharedWeight2Optional: 计算可选输入，TensorList，共享专家GroupMatmul2的右矩阵。
+ * @param [in] sharedWeightScales1Optional: 计算可选输入，TensorList，共享专家GroupMatmul1右矩阵反量化参数。
+ * @param [in] sharedWeightScales2Optional: 计算可选输入，TensorList，共享专家GroupMatmul2右矩阵反量化参数。
+ * @param [in] sharedBias1Optional: 计算可选输入，TensorList，共享专家GroupMatmul1的偏置参数。
+ * @param [in] sharedBias2Optional: 计算可选输入，TensorList，共享专家GroupMatmul2的偏置参数。
  * @param [in] moeExpertNum: 计算输入，int。MoE模型的总专家数量。
  * @param [in] epWorldSize: 计算输入，int。专家并行通信域大小。
  * @param [in] cclBufferSize: 计算输入，int。CCL通信缓冲区大小。
@@ -68,7 +74,10 @@ ACLNN_API aclnnStatus aclnnMegaMoeGetWorkspaceSize(
     const aclTensor *context, const aclTensor *x, const aclTensor *topkIds, const aclTensor *topkWeights,
     const aclTensorList *weight1, const aclTensorList *weight2, const aclTensorList *weightScales1Optional,
     const aclTensorList *weightScales2Optional, const aclTensorList *bias1Optional, const aclTensorList *bias2Optional,
-    const aclTensor *xActiveMaskOptional, int64_t moeExpertNum, int64_t epWorldSize, int64_t cclBufferSize,
+    const aclTensor *xActiveMaskOptional, const aclTensorList *sharedWeight1Optional,
+    const aclTensorList *sharedWeight2Optional, const aclTensorList *sharedWeightScales1Optional,
+    const aclTensorList *sharedWeightScales2Optional, const aclTensorList *sharedBias1Optional,
+    const aclTensorList *sharedBias2Optional, int64_t moeExpertNum, int64_t epWorldSize, int64_t cclBufferSize,
     int64_t maxRecvTokenNum, int64_t dispatchQuantMode, int64_t dispatchQuantOutDtype, int64_t combineQuantMode,
     const char *commAlg, int64_t numMaxTokensPerRank, const char *activation, float activationClamp, int64_t topoType,
     int64_t rankNumPerServer, aclTensor *yOut, aclTensor *expertTokenNumsOut, uint64_t *workspaceSize,

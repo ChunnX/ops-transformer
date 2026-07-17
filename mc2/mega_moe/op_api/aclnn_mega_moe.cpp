@@ -119,8 +119,6 @@ aclnnStatus aclnnMegaMoeGetWorkspaceSize(
     aclTensorList *tmpSharedBiasList = nullptr;
     aclTensorList *tmpSharedScaleList = nullptr;
     aclTensorList *tmpSharedWeightList = nullptr;
-    aclDataType sharedWeightDtype = (sharedWeight1Optional != nullptr && sharedWeight1Optional->Size() > 0)
-        ? static_cast<aclDataType>((*sharedWeight1Optional)[0]->GetDataType()) : ACL_FLOAT8_E4M3FN;
     CreateEmptyTensor(ACL_FLOAT, bias1Optional, tmpBiasList, *executor);
     CreateEmptyTensor(ACL_FLOAT, bias2Optional, tmpBiasList, *executor);
     CreateEmptyTensor(ACL_FLOAT8_E8M0, weightScales1Optional, tmpScaleList, *executor);
@@ -129,10 +127,8 @@ aclnnStatus aclnnMegaMoeGetWorkspaceSize(
     CreateEmptyTensor(ACL_FLOAT, sharedBias2Optional, tmpSharedBiasList, *executor);
     CreateEmptyTensor(ACL_FLOAT8_E8M0, sharedWeightScales1Optional, tmpSharedScaleList, *executor);
     CreateEmptyTensor(ACL_FLOAT8_E8M0, sharedWeightScales2Optional, tmpSharedScaleList, *executor);
-    CreateEmptyTensor(sharedWeightDtype, sharedWeight1Optional, tmpSharedWeightList, *executor);
-    CreateEmptyTensor(sharedWeightDtype, sharedWeight2Optional, tmpSharedWeightList, *executor);
 
-    // 只在DAV_2201架构上对x1和x2进行int32到int4的转换预处理
+    // 只在DAV_2201架构上对weight进行int32到int4的转换预处理
     if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2201) {
         if (weight1 != nullptr && weight1->Size() > 0 && (*weight1)[0]->GetDataType() == DataType::DT_INT32) {
             weight1 = ConvertTensorListToInt4(weight1, *executor);
@@ -140,7 +136,23 @@ aclnnStatus aclnnMegaMoeGetWorkspaceSize(
         if (weight2 != nullptr && weight2->Size() > 0 && (*weight2)[0]->GetDataType() == DataType::DT_INT32) {
             weight2 = ConvertTensorListToInt4(weight2, *executor);
         }
+        if (sharedWeight1Optional != nullptr && sharedWeight1Optional->Size() > 0 &&
+            (*sharedWeight1Optional)[0]->GetDataType() == DataType::DT_INT32) {
+            sharedWeight1Optional = ConvertTensorListToInt4(sharedWeight1Optional, *executor);
+        }
+        if (sharedWeight2Optional != nullptr && sharedWeight2Optional->Size() > 0 &&
+            (*sharedWeight2Optional)[0]->GetDataType() == DataType::DT_INT32) {
+            sharedWeight2Optional = ConvertTensorListToInt4(sharedWeight2Optional, *executor);
+        }
     }
+
+    // 共享专家权重为空时，使用MoE权重的dtype作为默认值，确保通过OpDef支持列表校验
+    aclDataType moeWeightDtype = (weight1 != nullptr && weight1->Size() > 0)
+        ? static_cast<aclDataType>((*weight1)[0]->GetDataType()) : ACL_FLOAT8_E4M3FN;
+    aclDataType sharedWeightDtype = (sharedWeight1Optional != nullptr && sharedWeight1Optional->Size() > 0)
+        ? static_cast<aclDataType>((*sharedWeight1Optional)[0]->GetDataType()) : moeWeightDtype;
+    CreateEmptyTensor(sharedWeightDtype, sharedWeight1Optional, tmpSharedWeightList, *executor);
+    CreateEmptyTensor(sharedWeightDtype, sharedWeight2Optional, tmpSharedWeightList, *executor);
 
     aclnnStatus getWorkspaceSizesRes = aclnnInnerMegaMoeGetWorkspaceSize(
         context, x, topkIds, topkWeights, weight1, weight2,
