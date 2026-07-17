@@ -31,6 +31,12 @@
 #include "blaze/epilogue/block/block_epilogue_swiglu_mx_quant_te.h"
 #include "../grouped_matmul_swiglu_quant_v2_utils.h"
 
+namespace {
+constexpr uint64_t MX_SCALE_FACTOR_BIT = 8UL;
+constexpr uint64_t MX_SCALE_FACTOR_MASK = 0xFFUL;
+constexpr uint64_t MX_SCALE_FACTOR_DEFAULT = 1UL;
+} // namespace
+
 template <typename layoutA, typename layoutB>
 __aicore__ inline void GmmSwigluAswtTensorApi(
     GM_ADDR x, GM_ADDR weight, GM_ADDR weightScale, GM_ADDR xScale,
@@ -99,20 +105,20 @@ __aicore__ inline void GmmSwigluAswtTensorApi(
                         singleW};
 
     GM_ADDR aDataAddr = reinterpret_cast<GM_ADDR>(
-        GROUPED_MATMUL_SWIGLU_QUANT::GetTensorAddr<AType>(0, x));
+        GroupedMatmulDequantSwigluQuant::GetTensorAddr<AType>(0, x));
     GM_ADDR scaleADataAddr = reinterpret_cast<GM_ADDR>(
-        GROUPED_MATMUL_SWIGLU_QUANT::GetTensorAddr<AscendC::fp8_e8m0_t>(0, xScale));
+        GroupedMatmulDequantSwigluQuant::GetTensorAddr<AscendC::fp8_e8m0_t>(0, xScale));
     GM_ADDR bDataAddr = singleW == 1 ?
-        reinterpret_cast<GM_ADDR>(GROUPED_MATMUL_SWIGLU_QUANT::GetTensorAddr<BType>(0, weight)) :
+        reinterpret_cast<GM_ADDR>(GroupedMatmulDequantSwigluQuant::GetTensorAddr<BType>(0, weight)) :
         weight;
     GM_ADDR scaleBDataAddr = singleW == 1 ?
         reinterpret_cast<GM_ADDR>(
-            GROUPED_MATMUL_SWIGLU_QUANT::GetTensorAddr<AscendC::fp8_e8m0_t>(0, weightScale)) :
+            GroupedMatmulDequantSwigluQuant::GetTensorAddr<AscendC::fp8_e8m0_t>(0, weightScale)) :
         weightScale;
     GM_ADDR yDataAddr = reinterpret_cast<GM_ADDR>(
-        GROUPED_MATMUL_SWIGLU_QUANT::GetTensorAddr<CType>(0, y));
+        GroupedMatmulDequantSwigluQuant::GetTensorAddr<CType>(0, y));
     GM_ADDR yScaleDataAddr = reinterpret_cast<GM_ADDR>(
-        GROUPED_MATMUL_SWIGLU_QUANT::GetTensorAddr<int8_t>(0, yScale));
+        GroupedMatmulDequantSwigluQuant::GetTensorAddr<int8_t>(0, yScale));
     GM_ADDR groupListDataAddr = groupList;
 
     Params params = {{gmmParams.m, gmmParams.n, gmmParams.k, static_cast<int64_t>(1)},
