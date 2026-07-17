@@ -1473,18 +1473,18 @@ def _log_final_summary(results):
 
     case_col_width = max((len(str(item["case"])) for item in results), default=0)
     case_col_width = max(case_col_width, len("Case"))
-    table_width = 104 + case_col_width
+    table_width = 92 + case_col_width
 
     logger.info("")
     logger.info("=" * table_width)
     logger.info("QBSA MXFP8 CASE SUMMARY")
     logger.info("=" * table_width)
-    logger.info("%-4s %-10s %-10s %-24s %-12s %-12s %-12s %-12s %-*s",
-                "No.", "Status", "Time(s)", "mfu_without_duration", "OutPct", "OutMaxErr", "LsePct", "LseMaxErr",
+    logger.info("%-4s %-10s %-10s %-12s %-12s %-12s %-12s %-12s %-*s",
+                "No.", "Status", "Time(s)", "mfu*time", "OutPct", "OutMaxErr", "LsePct", "LseMaxErr",
                 case_col_width, "Case")
     logger.info("-" * table_width)
     for idx, item in enumerate(results, 1):
-        logger.info("%-4d %-10s %-10.2f %-24s %-12s %-12s %-12s %-12s %-*s",
+        logger.info("%-4d %-10s %-10.2f %-12s %-12s %-12s %-12s %-12s %-*s",
                     idx, item["status"], item["elapsed"], _result_mfu_time(item),
                     _result_pct(item["out"]),
                     _result_max_error(item["out"]), _result_pct(item["lse"]),
@@ -1634,18 +1634,25 @@ if __name__ == '__main__':
     parser.add_argument("--cache-dir", default=None,
                         help="缓存目录路径（默认 golden_cache/）")
     parser.add_argument("--debug", action="store_true",
-                        help="单 case 调试模式；必须配合 --case_name，输出到 debug/<case_name>/")
+                        help="单 case 调试模式；必须配合 --case_name，输出到 debug/<case_name>/。"
+                             "含 gen 时数据写入 debug pt 目录；不含 gen 时从 golden_cache 加载(可用 --cache-dir 指定)")
     args = parser.parse_args()
+
+    raw_parts = {m.strip() for m in args.mode.split(",") if m.strip()}
+    invalid = raw_parts - _VALID_MODES
+    if invalid:
+        parser.error(f"Invalid mode: {invalid}. Valid: {_VALID_MODES}")
+    mode = {"gen", "cpu", "npu", "compare"} if "all" in raw_parts else raw_parts
 
     if args.debug:
         if args.case_name is None or args.case_id is not None:
             parser.error("--debug must be used with --case_name, and does not accept --case_id")
         if args.list_cases:
             parser.error("--debug executes one case and cannot be combined with --list_cases")
-        if args.mode != "all":
-            parser.error("--debug requires --mode all so that PT files and precision PNGs are complete")
-        if args.cache_dir is not None or args.cache_case_name is not None:
-            parser.error("--debug manages its own pt directory; do not use --cache-dir or --cache_case_name")
+        if args.cache_case_name is not None:
+            parser.error("--debug manages case naming internally; do not use --cache_case_name")
+        if "gen" in mode and args.cache_dir is not None:
+            parser.error("--debug with gen mode manages its own pt directory; do not use --cache-dir")
 
     case_files = args.case_files or (_DEFAULT_CASE_CSV if args.csv else _DEFAULT_CASE_FILE)
     all_cases = load_test_cases(case_files, use_csv=args.csv)
@@ -1654,12 +1661,6 @@ if __name__ == '__main__':
         for case_id in all_cases:
             print(f"{case_id} enable={all_cases[case_id].get('enable', True)}")
         sys.exit(0)
-
-    raw_parts = {m.strip() for m in args.mode.split(",") if m.strip()}
-    invalid = raw_parts - _VALID_MODES
-    if invalid:
-        parser.error(f"Invalid mode: {invalid}. Valid: {_VALID_MODES}")
-    mode = {"gen", "cpu", "npu", "compare"} if "all" in raw_parts else raw_parts
 
     if args.case_name and args.case_id:
         parser.error("--case_name and --case_id cannot be set at the same time")
@@ -1683,7 +1684,10 @@ if __name__ == '__main__':
     try:
         for case_idx, case_id in enumerate(run_case_ids, 1):
             case_name = _cache_case_name(case_id, args.cache_case_name, len(run_case_ids))
-            cache_dir = debug_artifacts["pt_dir"] if debug_artifacts else args.cache_dir
+            if debug_artifacts:
+                cache_dir = debug_artifacts["pt_dir"] if "gen" in mode else args.cache_dir
+            else:
+                cache_dir = args.cache_dir
             precision_dir = debug_artifacts["precision_dir"] if debug_artifacts else None
             case_start = time.time()
             try:
