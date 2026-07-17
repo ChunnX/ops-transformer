@@ -29,6 +29,12 @@ def _col_names(shape, layout):
 # 表格渲染
 # ═══════════════════════════════════════════════════════════════
 
+def _pad(s, width, right_align):
+    """CJK 感知的左/右填充。"""
+    pad = " " * max(0, width - _display_width(s))
+    return pad + s if right_align else s + pad
+
+
 def _render_table(col_names, col_types, rows):
     """先扫描算列宽(CJK感知), 统一 pad 输出。col_types: 'c'=坐标左对齐, 'n'=数字右对齐。"""
     widths = [_display_width(h) for h in col_names]
@@ -36,17 +42,14 @@ def _render_table(col_names, col_types, rows):
         for i, cell in enumerate(row):
             widths[i] = max(widths[i], _display_width(cell))
 
-    header = "    " + "  ".join(h.rjust(w) for h, w in zip(col_names, widths))
+    header = "    " + "  ".join(
+        _pad(h, w, col_types[i] == "n") for i, (h, w) in enumerate(zip(col_names, widths)))
     sep_line = "    " + "  ".join("─" * w for w in widths)
 
     lines = [header, sep_line]
     for row in rows:
-        cells = []
-        for i, (c, w) in enumerate(zip(row, widths)):
-            s = str(c)
-            dw = _display_width(s)
-            pad = " " * max(0, w - dw)
-            cells.append(pad + s if col_types[i] == "n" else s + pad)
+        cells = [_pad(str(c), w, col_types[i] == "n")
+                 for i, (c, w) in enumerate(zip(row, widths))]
         lines.append("    " + "  ".join(cells))
     return lines
 
