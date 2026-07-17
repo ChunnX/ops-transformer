@@ -730,7 +730,7 @@ __aicore__ inline void MixedQuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>:
     runInfo.isFirstBase = baseBlockIdInReduceBlock == 0;
     runInfo.isLastBase = ((runParam.baseBlockNumInTile - baseBlockIdInReduceBlock) == 1LL) ||
         (s2LoopCount == s2LoopLimit);  // todo: check
-    runInfo.needReduce = s2LoopCount / runParam.baseBlockNumInTile > 1;
+    runInfo.needReduce = runInfo.reduceBlockId > 0;
     this->ComputeBmm1Tail(runInfo, runParam);
     InitUniqueRunInfo(runParam, runInfo);
 }
