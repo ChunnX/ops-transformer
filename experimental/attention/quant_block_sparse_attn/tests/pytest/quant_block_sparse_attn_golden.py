@@ -385,7 +385,7 @@ def _log_cube_compute_amount(case_name, case, q_lengths, kv_lengths, sparse_indi
     mfu_time = compute_info["cube_compute_amount"] / capacity_info["cube_compute_capacity"]
     logger.info("case_name=%s", case_name)
     logger.info("FLOPS计算过程量:")
-    logger.info("一共计算了多少基本块: %d", compute_info["basic_block_count"])
+    logger.info("基本块数量: %d", compute_info["basic_block_count"])
     logger.info(
         "基本块的shape: q_block_size=%d, kv_block_size=%d, head_dim=%d",
         basic_block_shape[0], basic_block_shape[1], basic_block_shape[2])
@@ -412,7 +412,7 @@ def _log_cube_compute_amount(case_name, case, q_lengths, kv_lengths, sparse_indi
         capacity_info["multiply_add_compute"],
         capacity_info["cube_compute_capacity"])
     logger.info(
-        "MFU*时间计算公式: FLOPS(%d) / 算力(%.6f) = MFU * 时间 = %.6f",
+        "MFU*时间计算公式: FLOPS(%d) / 算力(%.6f) = MFU * 时间(us) = %.6f",
         compute_info["cube_compute_amount"], capacity_info["cube_compute_capacity"], mfu_time)
     return compute_info["cube_compute_amount"], mfu_time
 
