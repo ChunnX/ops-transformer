@@ -122,8 +122,8 @@ bash build.sh --pkg --soc=ascend950 --ops=mega_moe -j16 -O3
 主要编译开关：
 
 ```text
-MEGA_MOE_GMM2_READY_MODE=0       per-expert
-MEGA_MOE_GMM2_READY_MODE=1       per-batch（默认）
+MEGA_MOE_GMM2_READY_MODE=0       per-expert（当前 critical-path 诊断分支默认）
+MEGA_MOE_GMM2_READY_MODE=1       per-batch（本实验记录的原默认）
 MEGA_MOE_GMM2_GM_READY_SMOKE_TEST=1  最小 scalar GM 地址 smoke
 MEGA_MOE_GMM2_WAVE_TIMELINE_DIAG=1  默认关闭的内部时间戳
 MEGA_MOE_WEIGHT1_INTERLEAVED=1   GMM1/SwiGLU 双 UB slot interleave（默认）
