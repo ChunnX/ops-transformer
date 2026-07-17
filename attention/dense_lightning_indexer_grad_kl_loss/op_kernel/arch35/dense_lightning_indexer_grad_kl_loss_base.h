@@ -492,8 +492,13 @@ __aicore__ inline void DenseLightningIndexerGradKLLossBase<DLIT>::Init(
     dKeyIndexGm.SetGlobalBuffer((__gm__ OUT_T *)dKeyIndex);
     dWeightGm.SetGlobalBuffer((__gm__ W_T *)dWeight);
     lossGm.SetGlobalBuffer((__gm__ T *)loss);
-    lossGm.SetValue(0, 0.0F);
-    AscendC::DataCacheCleanAndInvalid<T, AscendC::CacheLine::SINGLE_CACHE_LINE, AscendC::DcciDst::CACHELINE_OUT>(lossGm);
+    if ASCEND_IS_AIV {
+        if (constInfo.aivIdx == 0) {
+            lossGm.SetValue(0, 0.0F);
+            AscendC::DataCacheCleanAndInvalid<T, AscendC::CacheLine::SINGLE_CACHE_LINE,
+                                              AscendC::DcciDst::CACHELINE_OUT>(lossGm);
+        }
+    }
     if (constInfo.dqPadSize > 0) {
         AscendC::InitOutput(dQueryIndexGm[constInfo.dqPadOffset], constInfo.dqPadSize, static_cast<OUT_T>(0));
     }
