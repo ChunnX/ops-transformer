@@ -31,7 +31,7 @@
 #include "tensor_api/tensor.h"
 #include "../../block/aiv_comm/collective_comm_api.h"
 #include "../../block/aiv_comm/collective_comm_context.h"
-#include "../../utils/comm_tiling_data.h"
+#include "../../tiling/comm_tiling_data.h"
 #include "../../block/aiv_comm/barrier/barrier_ubmem.h"
 
 namespace MatmulAllToAllMxImpl {
@@ -39,7 +39,6 @@ namespace MatmulAllToAllMxImpl {
 using namespace AscendC;
 using namespace Atcoss::AivComm;
 using namespace Blaze::Gemm;
-using Atcoss::Utils::CommTilingData;
 
 using LayoutA = AscendC::Te::NDExtLayoutPtn;
 using LayoutB = AscendC::Te::DNExtLayoutPtn;
@@ -198,8 +197,7 @@ private:
   bool isBias_{false};
   bool needUpdateTail_{false};
   bool disableCL2Cache_{false};
-  TBuf<TPosition::VECCALC> commBuf_;
-  TBuf<TPosition::VECCALC> barrierBuf_;
+  uint64_t ubOffset_{0};
   TeamBarrier teamBarrier_;
 
   const MatmulAllToAllTilingData *tilingData_{};
@@ -237,16 +235,13 @@ __aicore__ inline void MatmulAllToAllMxImpl<AType, BType, CType, LocalDelay>::In
   base_.selfWinAddr = reinterpret_cast<GM_ADDR>(udmaCtx_->commBufferAddrs[base_.rankId]);
   base_.winGm = base_.selfWinAddr;
 
-  pipe_->InitBuffer(commBuf_, COMM_MAX_RANK_NUM);
-  LocalTensor<uint8_t> commTensor = commBuf_.Get<uint8_t>();
-  __ubuf__ uint8_t* commUbBuf = (__ubuf__ uint8_t*)commTensor.GetPhyAddr();
+  auto commPtr = AscendC::Te::MakeMemPtr<AscendC::Te::Location::UB, uint8_t>(ubOffset_);
+  ubOffset_ += COMM_WORKSPACE_SIZE;
+  auto barrierPtr = AscendC::Te::MakeMemPtr<AscendC::Te::Location::UB, uint8_t>(ubOffset_);
+  teamBarrier_.Init(barrierPtr.Get(), barrierCtx_, udmaCtx_->rankSize, static_cast<uint32_t>(GetBlockIdx()));
+  ubOffset_ += UB_SIZE;
 
-  pipe_->InitBuffer(barrierBuf_, UB_SIZE);
-  LocalTensor<uint8_t> barrierTensor = barrierBuf_.Get<uint8_t>();
-  __ubuf__ uint8_t* barrierUbBuf = (__ubuf__ uint8_t*)barrierTensor.GetPhyAddr();
-  teamBarrier_.Init(barrierUbBuf, barrierCtx_, udmaCtx_->rankSize, static_cast<uint32_t>(GetBlockIdx()));
-
-  allToAll_.Init(udmaCtx_, teamBarrier_, commTilingData_, cGM, commUbBuf,
+  allToAll_.Init(udmaCtx_, teamBarrier_, commTilingData_, cGM, commPtr.Get(),
     static_cast<uint32_t>(udmaCtx_->rankSize), static_cast<uint32_t>(GetBlockIdx()));
 }
 

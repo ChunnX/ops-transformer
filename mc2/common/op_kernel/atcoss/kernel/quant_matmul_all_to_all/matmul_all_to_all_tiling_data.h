@@ -10,8 +10,9 @@
 #pragma once
 
 #include <cstdint>
-#include "tiling/quant_matmul_tiling_data.h"
-#include "tiling/comm_tiling_data.h"
+#include "../../tiling/quant_matmul_tiling_data.h"
+#include "../../tiling/comm_tiling_data.h"
+#include "../../block/aiv_comm/collective_comm_context.h"
 
 struct AllToAllCommTilingData {
     CommTilingData commTilingData;
@@ -23,4 +24,9 @@ struct MatmulAllToAllTilingData {
     QuantMatmulTilingData tileQbmmTilingData;
     QuantMatmulTilingData tailQbmmTilingData;
     QuantMatmulTilingData localQbmmTilingData;
+};
+
+struct CommContext {
+    Atcoss::AivComm::CommUdmaContext udmaCtx;
+    Atcoss::AivComm::CommUbmemContext ubmemCtx;
 };
