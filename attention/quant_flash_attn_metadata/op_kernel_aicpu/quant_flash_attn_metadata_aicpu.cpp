@@ -137,8 +137,8 @@ bool QuantFlashAttnMetadataCpuKernel::ParamsInit()
     deviceInfo.aivCoreMaxNum = aivCoreNum_;
     deviceInfo.aicCoreMinNum = aicCoreNum_;
     deviceInfo.aicCoreMinNum = 1;
-    baseInfo.querySeqSize = maxSeqlenQ_;
-    baseInfo.kvSeqSize = maxSeqlenKv_;
+    baseInfo.querySeqSize = (maxSeqlenQ_ > 0) ? maxSeqlenQ_ : 0;
+    baseInfo.kvSeqSize = (maxSeqlenKv_ > 0) ? maxSeqlenKv_ : 0;
     baseInfo.isCumulativeQuerySeq = layoutQ_ == "TND" || layoutQ_ == "NTD";
     baseInfo.isCumulativeKvSeq = layoutKv_ == "TND" || layoutKv_ == "NTD";
     if (batchSize_ > 0) {
@@ -220,8 +220,7 @@ bool QuantFlashAttnMetadataCpuKernel::ParamsInit()
         s2BaseSize_ = 512U;
     }
     if (quantMode_ == 1 || quantMode_ == 2) {
-        uint32_t gSize = (numHeadsKv_ > 0) ? (numHeadsQ_ / numHeadsKv_) : 1;
-        bool isDecode = (layoutQ_ == "N2TGD");
+        bool isDecode = (layoutQDescale_ == "N2TGD");
         if (!isDecode) {
             baseInfo.kvHeadNum = numHeadsQ_;
         }

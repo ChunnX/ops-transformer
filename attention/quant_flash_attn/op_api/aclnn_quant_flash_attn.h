@@ -60,7 +60,7 @@ extern "C" {
  * @param maxSeqlenQ          [IN]  ATTR. Max query sequence length. INT. -1 for auto.
  * @param maxSeqlenKV         [IN]  ATTR. Max KV sequence length. INT. -1 for auto.
  * @param layoutQ             [IN]  ATTR. Query layout: "BSND"/"BNSD"/"TND".
- * @param layoutQDescale      [IN]  ATTR. Query descale layout: "BSND"/"BNSD"/"TND".
+ * @param layoutQDescale      [IN]  ATTR. Query descale layout: "BSND"/"BNSD"/"TND"/"N2TGD".
  * @param layoutKv            [IN]  ATTR. KV layout: "BSND"/"TND"/"PA_ND"/"PA_NZ".
  * @param layoutOut           [IN]  ATTR. Output layout: "BSND"/"BNSD"/"TND".
  * @param returnSoftmaxLse    [IN]  ATTR. Whether to output softmax_lse. BOOL. True=output, False=no.

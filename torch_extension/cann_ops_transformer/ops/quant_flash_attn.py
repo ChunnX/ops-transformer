@@ -27,8 +27,17 @@ def _calculate_batch_size(batch_size, cu_seqlens_q, seqused_q):
     return 0
 
 
-def _calculate_metadata_size():
-    return 4096
+def _get_eff_nkv(num_heads_q, num_heads_kv, quant_mode, layout_q_descale="BSND"):
+    if quant_mode == 1:
+        if layout_q_descale == "N2TGD":
+            return num_heads_kv
+        return num_heads_q
+    return num_heads_kv
+
+
+def _calculate_metadata_size(batch_size, num_heads_kv):
+    metadata_size = ((36 + 72) * batch_size * num_heads_kv + 1) * 16
+    return ((metadata_size + 4095) // 4096) * 4096
 
 
 class QuantFlashAttnOpBuilder(OpBuilder):
@@ -75,7 +84,8 @@ class QuantFlashAttnOpBuilder(OpBuilder):
             mask_mode: Optional[int] = None, win_left: Optional[int] = None, win_right: Optional[int] = None,
             layout_q: Optional[str] = None, layout_q_descale: Optional[str] = None, layout_kv: Optional[str] = None, layout_out: Optional[str] = None
         ):
-            metadata_size = _calculate_metadata_size()
+            eff_nkv = _get_eff_nkv(num_heads_q, num_heads_kv, quant_mode, layout_q_descale if layout_q_descale else "BSND")
+            metadata_size = _calculate_metadata_size(batch_size, eff_nkv)
             return torch.empty((metadata_size,), dtype=torch.int32, device="npu")
 
         @impl(AS_LIBRARY, self.name, "Meta")
@@ -174,13 +184,14 @@ def quant_flash_attn_metadata(
     layout_kv = "BSND" if layout_kv is None else layout_kv
     layout_out = "BSND" if layout_out is None else layout_out
 
-    metadata_size = _calculate_metadata_size()
+    eff_nkv = _get_eff_nkv(num_heads_q, num_heads_kv, quant_mode, layout_q_descale)
+    metadata_size = _calculate_metadata_size(batch_size, eff_nkv)
     output = torch.empty((metadata_size,), dtype=torch.int32, device="npu")
  
     return op_module.quant_flash_attn_metadata(
         cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv,
         batch_size, max_seqlen_q, max_seqlen_kv,
-        num_heads_q, num_heads_kv, head_dim,
+        num_heads_q, eff_nkv, head_dim,
         quant_mode,
         mask_mode, win_left, win_right,
         layout_q, layout_q_descale, layout_kv, layout_out, output)

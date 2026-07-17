@@ -341,7 +341,12 @@ ge::graphStatus QfaInfoParser::GetQkHeadDim()
 ge::graphStatus QfaInfoParser::GetS1Size()
 {
     if (layoutQ_ == QfaLayout::TND) {
-        s1Size_ = (opParamInfo_.maxSeqlenQ == nullptr) ? -1 : *opParamInfo_.maxSeqlenQ;
+        int64_t rawS1 = (opParamInfo_.maxSeqlenQ == nullptr) ? -1 : *opParamInfo_.maxSeqlenQ;
+        if (rawS1 > 0) {
+            s1Size_ = static_cast<uint32_t>(rawS1);
+        } else {
+            s1Size_ = static_cast<uint32_t>(queryShape_->GetShapeT());
+        }
     } else {
         if (queryShape_->CheckHasShapeS(__func__) != ge::GRAPH_SUCCESS) {
             return ge::GRAPH_FAILED;
@@ -621,7 +626,7 @@ ge::graphStatus QfaInfoParser::ParseAxisInfo()
     }
 
     uint32_t qDescaleDimNum = opParamInfo_.qDescale.shape->GetStorageShape().GetDimNum();
-    bool isDecode = (s1Size_ * gSize_ <= 80);
+    bool isDecode = (layoutQDescale_ == QfaLayout::N2TGD);
     if (isDecode && qDescaleDimNum != 5) {
         OP_LOGE(opName_, "q_descale must be 5D in decode mode(s1Size=%lu, gSize=%lu), but got %uD.",
                 s1Size_, gSize_, qDescaleDimNum);
