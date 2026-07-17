@@ -683,11 +683,8 @@ ge::graphStatus GroupedMatmulSwigluQuantV2Tiling950::DoLibApiTiling()
     auto baseM_modified = std::min(basicTiling_.baseM, static_cast<uint64_t>(128));
     basicTiling_.baseM = GroupedMatmul::CeilAlign(baseM_modified, GmmConstant::CUBE_BLOCK);
 
-    if (IsMXFp8Input) {
-        ge::graphStatus l1TilingStatus = CalWeightNzL1Tiling();
-    } else {
-        ge::graphStatus l1TilingStatus = IsMxFp4WeightNz() ? CalWeightNzL1Tiling() : CalL1Tiling();
-    }
+    ge::graphStatus l1TilingStatus =
+        IsMXFp8Input() ? CalWeightNzL1Tiling() : (IsMxFp4WeightNz() ? CalWeightNzL1Tiling() : CalL1Tiling());
 
     OP_CHECK_IF(l1TilingStatus != ge::GRAPH_SUCCESS, OP_LOGE(context_->GetNodeName(), "CalL1Tiling failed"),
                 return ge::GRAPH_FAILED);

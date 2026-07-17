@@ -73,25 +73,26 @@ __aicore__ inline void GmmSwigluAswtTensorApi(
 
     const uint8_t singleW = (gmmSwigluQuantParams_.isMxWeightNzMultiTensor == 0) ? 1 : 0;
 
-    uint64_t scaleFactorA = matmulTiling->mxTypePara & MX_SCALE_FACTOR_MASK;
-    uint64_t scaleFactorB = (matmulTiling->mxTypePara >> MX_SCALE_FACTOR_BIT) & MX_SCALE_FACTOR_MASK;
+    uint64_t scaleFactorA = mmTilingData_.mxTypePara & MX_SCALE_FACTOR_MASK;
+    uint64_t scaleFactorB = (mmTilingData_.mxTypePara >> MX_SCALE_FACTOR_BIT) & MX_SCALE_FACTOR_MASK;
     scaleFactorA = scaleFactorA == 0 ? MX_SCALE_FACTOR_DEFAULT : scaleFactorA;
     scaleFactorB = scaleFactorB == 0 ? MX_SCALE_FACTOR_DEFAULT : scaleFactorB;
-    uint64_t kAL1 = static_cast<uint64_t>(matmulTiling->stepKa) * static_cast<uint64_t>(matmulTiling->baseK);
-    uint64_t kBL1 = static_cast<uint64_t>(matmulTiling->stepKb) * static_cast<uint64_t>(matmulTiling->baseK);
+    uint64_t kAL1 = static_cast<uint64_t>(mmTilingData_.stepKa) * static_cast<uint64_t>(mmTilingData_.baseK);
+    uint64_t kBL1 = static_cast<uint64_t>(mmTilingData_.stepKb) * static_cast<uint64_t>(mmTilingData_.baseK);
     uint64_t scaleKL1 = Cgmct::Gemm::Min(Cgmct::Gemm::Max(scaleFactorA * kAL1, scaleFactorB * kBL1),
-                                         static_cast<uint64_t>(matmulTiling->Ka));
+                                         static_cast<uint64_t>(mmTilingData_.Ka));
 
     GMMTiling gmmParams{static_cast<uint32_t>(gmmSwigluQuantParams_.groupNum),
-                        static_cast<int64_t>(mmTilingData_.M),                                    // m (per-group from groupList)
-                        static_cast<int64_t>(mmTilingData_.N),                      // n
-                        static_cast<int64_t>(mmTilingData_.Ka),                     // k
+                        static_cast<int64_t>(mmTilingData_.M),
+                        static_cast<int64_t>(mmTilingData_.N),
+                        static_cast<int64_t>(mmTilingData_.Ka),
                         static_cast<uint32_t>(mmTilingData_.baseM),
                         static_cast<uint32_t>(mmTilingData_.baseN),
                         static_cast<uint32_t>(mmTilingData_.baseK),
-                        static_cast<uint32_t>(mmTilingData_.kAL1),
-                        static_cast<uint32_t>(mmTilingData_.kBL1),
-                        static_cast<uint32_t>(mmTilingData_.scaleKL1),
+                        static_cast<uint32_t>(kAL1),
+                        static_cast<uint32_t>(kBL1),
+                        static_cast<uint32_t>(scaleKL1),
+                        static_cast<uint32_t>(scaleKL1),
                         static_cast<uint32_t>(mmTilingData_.scaleKL1),
                         static_cast<uint8_t>(mmTilingData_.dbL0C),
                         static_cast<int8_t>(0),                                     // groupType
