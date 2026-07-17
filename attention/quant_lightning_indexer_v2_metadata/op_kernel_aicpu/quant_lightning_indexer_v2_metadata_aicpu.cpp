@@ -273,16 +273,16 @@ void QuantLightningIndexerV2MetadataCpuKernel::CalcSplitInfo(SplitContext &split
             splitInfo.isKvSeqAllZero = false;
         }
     }
-    if (maxS2Size_ < sparseCount_) {
+    if (maxS2Size_ < topk_) {
         supportFd_ = false;
         return;
     }
-    validSocVersion_ = ProcessSocVersion();
-    if (validSocVersion_ == ValidSocVersion::ASCEND910B) {
+    ValidSocVersion validSocVersion = ProcessSocVersion();
+    if (validSocVersion == ValidSocVersion::ASCEND910B) {
         if (maxS2Size_ > 2 * s2BaseSize_) {
             supportFd_ = true;
         }
-    } else if (validSocVersion_ == ValidSocVersion::ASCEND950) {
+    } else if (validSocVersion == ValidSocVersion::ASCEND950) {
         if (maxS2Size_ > 5 * s2BaseSize_) {
             supportFd_ = true;
         }
