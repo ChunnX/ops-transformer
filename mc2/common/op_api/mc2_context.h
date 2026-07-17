@@ -38,7 +38,7 @@ namespace Mc2Aclnn {
 class Mc2Context {
 public:
     static aclnnStatus GetMc2ContextTensor(const char *groupEp, const char *opName, uint64_t &hcclBuffSize,
-                                           aclTensor *&mc2Context);
+                                           aclTensor *&mc2Context, CommProtocol protocol = CommProtocol::COMM_PROTOCOL_UB_MEM);
     static aclnnStatus GetMc2RankSize(const char *groupEp, uint32_t &rankSize);
 
 private:
