@@ -539,6 +539,12 @@ def sparse_flash_mla_softmax_l1_norm(
                 [tiling.k_length, tiling.k_length, 1],
                 dtype=pl.DT_INT32,
             )
+            tensor_topk_length = pl.make_tensor(
+                topk_length_optional,
+                [tiling.t1, 1],
+                [1, 1],
+                dtype=pl.DT_INT32,
+            )
         else:
             tensor_softmax_l1_norm = pl.make_tensor(
                 softmax_l1_norm,
@@ -590,6 +596,12 @@ def sparse_flash_mla_softmax_l1_norm(
                 [tiling.sq * tiling.k_length, tiling.k_length, tiling.k_length, 1],
                 dtype=pl.DT_INT32,
             )
+            tensor_topk_length = pl.make_tensor(
+                topk_length_optional,
+                [tiling.b, tiling.sq, 1],
+                [tiling.sq, 1, 1],
+                dtype=pl.DT_INT32,
+            )
         else:
             tensor_softmax_l1_norm = pl.make_tensor(
                 softmax_l1_norm,
@@ -612,12 +624,6 @@ def sparse_flash_mla_softmax_l1_norm(
     )
     tensor_cmp_residual_k = pl.make_tensor(
         cmp_residual_k_optional,
-        [tiling.b,],
-        [1,],
-        dtype=pl.DT_INT32,
-    )
-    tensor_topk_length = pl.make_tensor(
-        topk_length_optional,
         [tiling.b,],
         [1,],
         dtype=pl.DT_INT32,
@@ -736,15 +742,21 @@ def sparse_flash_mla_softmax_l1_norm(
                 s2_real_size = pl.max((ori_s2_size - current_s1_size + s1_idx + 1) // constInfo.cmp_ratio, 0)
                 # pl.printf("ori_s2_size: %d, current_s2_size: %d, constInfo.cmp_ratio: %d, s2_real_size: %d\n", ori_s2_size, current_s2_size, constInfo.cmp_ratio, s2_real_size)
         else:
+            cur_k_length = constInfo.k_length
+            if has_topk_length:
+                if IS_TND == 1:
+                    cur_k_length = min(cur_k_length, pl.getval(tensor_topk_length, runInfo.t1_offset + runInfo.s1_idx))
+                else:
+                    cur_k_length = min(cur_k_length, pl.getval(tensor_topk_length, runInfo.batch_id * constInfo.s1_size + runInfo.s1_idx))
             if SPARSE_MODE == 0:
-                s2_real_size = pl.min(constInfo.k_length, current_s2_size)
+                s2_real_size = pl.min(cur_k_length, current_s2_size)
             else:
                 if constInfo.cmp_ratio > 1:
                     ori_s2_size = current_s2_size * constInfo.cmp_ratio + pl.getval(tensor_cmp_residual_k, runInfo.batch_id)
                 else:
                     ori_s2_size = current_s2_size * constInfo.cmp_ratio
                 s2_valid_size = pl.max((ori_s2_size - current_s1_size + s1_idx + 1) // constInfo.cmp_ratio, 0)
-                s2_real_size = pl.min(constInfo.k_length, s2_valid_size)
+                s2_real_size = pl.min(cur_k_length, s2_valid_size)
 
         runInfo.s2_real_size = s2_real_size
         ###
