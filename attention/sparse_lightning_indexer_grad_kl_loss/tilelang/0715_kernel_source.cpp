@@ -82,8 +82,8 @@ extern "C" __global__ __aicore__ void main_kernel( GM_ADDR SparseIndices_handle,
   auto Q_L1_0 = ascend_l1.GetWithOffset<half>(16384, 0);
   auto GK_L1_0 = ascend_l1.GetWithOffset<half>(8192, 32768);
   auto C_L0C = ascend_l0c.GetWithOffset<float>(8192, 0);
-  auto Q_L1_1 = ascend_l1.GetWithOffset<half>(16384, 49152);
-  auto GK_L1_1 = ascend_l1.GetWithOffset<half>(8192, 81920);
+  auto Q_L1_1 = ascend_l1.GetWithOffset<half>(16384, 65536);
+  auto GK_L1_1 = ascend_l1.GetWithOffset<half>(8192, 49152);
   auto QI_L1 = ascend_l1.GetWithOffset<half>(8192, 98304);
   auto GKI_L1 = ascend_l1.GetWithOffset<half>(8192, 114688);
   auto C2_L0C = ascend_l0c.GetWithOffset<float>(4096, 32768);
@@ -348,6 +348,7 @@ extern "C" __global__ __aicore__ void main_kernel( GM_ADDR SparseIndices_handle,
     tl::ascend::Fill<float>(p_reduced_tmp_ub[0], 1.000000e+00f, 64);
     AscendC::PipeBarrier<PIPE_V>();
     tl::ascend::Broadcast<float, 2, 1, false>(rsy_bc_ub[0],rsy_max_ub[0],tmp_ub,(uint32_t[]){1, 64}, (uint32_t[]){1, 1});
+    AscendC::PipeBarrier<PIPE_V>();
     AscendC::Mul(softmax_i_chunk_ub[0], p_reduced_tmp_ub[0], rsy_bc_ub[0], 64);
     tl::ascend::Fill<float>(rsy_sum_ub[0], 0, 1);
     for (int32_t n_idx_iter = 0; n_idx_iter < 32; ++n_idx_iter) {
@@ -375,6 +376,7 @@ extern "C" __global__ __aicore__ void main_kernel( GM_ADDR SparseIndices_handle,
     AscendC::Exp(rsy_chunk_ub[0], rsy_chunk_ub[0], 64);
     AscendC::PipeBarrier<PIPE_V>();
     tl::ascend::Broadcast<float, 2, 1, false>(rsy_bc_ub[0],rsy_sum_ub[0],tmp_ub,(uint32_t[]){1, 64}, (uint32_t[]){1, 1});
+    AscendC::PipeBarrier<PIPE_V>();
     AscendC::Div(rsy_chunk_ub[0], rsy_chunk_ub[0], rsy_bc_ub[0], 64);
     AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(4);
     AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(4);
@@ -391,41 +393,43 @@ extern "C" __global__ __aicore__ void main_kernel( GM_ADDR SparseIndices_handle,
     tl::ascend::Broadcast<float, 2, 0, false>(diff_2d_ub[0],diff_ub[0],tmp_ub,(uint32_t[]){32, 64}, (uint32_t[]){1, 64});
     AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(4);
     for (int32_t g_id = 0; g_id < 2; ++g_id) {
-      tl::ascend::Fill<float>(weight_ub[0], 0, 32);
-      AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(4);
-      tl::ascend::copy_gm_to_ub<float, 64, 32>(dw_chunk_ub[0], bmm2Res[((g_id * 65536) + (cid * 64))], 2048, 32, 64, 0.000000e+00f);
-      AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(7);
-      AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(7);
-      {
-      AscendC::Muls(rsy_tmp_ub[0], dw_chunk_ub[0], -1.000000e+04f, 2048);
+      if (g_id == vid) {
+        tl::ascend::Fill<float>(weight_ub[0], 0, 32);
+        AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(4);
+        tl::ascend::copy_gm_to_ub<float, 64, 32>(dw_chunk_ub[0], bmm2Res[((g_id * 65536) + (cid * 64))], 2048, 32, 64, 0.000000e+00f);
+        AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(7);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(7);
+        {
+        AscendC::Muls(rsy_tmp_ub[0], dw_chunk_ub[0], -1.000000e+04f, 2048);
+        }
+        AscendC::PipeBarrier<PIPE_V>();
+        AscendC::Exp(rsy_tmp_ub[0], rsy_tmp_ub[0], 2048);
+        AscendC::PipeBarrier<PIPE_V>();
+        AscendC::Sub(rsy_tmp_ub[0], ones_2d_ub[0], rsy_tmp_ub[0], 2048);
+        for (int32_t i_2 = 0; i_2 < 32; ++i_2) {
+          tl::ascend::copy_ub_to_ub<float, float, 64>(rg_chunk_ub[(i_2 * 64)], weight_2d_ub[((g_id * 2048) + (i_2 * 64))], 1, 64, 64, 1, 64, 64);
+        }
+        AscendC::Mul(rg_chunk_ub[0], rg_chunk_ub[0], diff_2d_ub[0], 2048);
+        AscendC::PipeBarrier<PIPE_V>();
+        AscendC::Mul(rg_chunk_ub[0], rg_chunk_ub[0], rsy_tmp_ub[0], 2048);
+        AscendC::PipeBarrier<PIPE_V>();
+        AscendC::Mul(dw_chunk_ub[0], dw_chunk_ub[0], diff_2d_ub[0], 2048);
+        AscendC::PipeBarrier<PIPE_V>();
+        tl::ascend::reduce_sum<float,  32,  64,  -1>(dw_reduce_ub[0], dw_chunk_ub[0], tmp_ub[0], true);
+        AscendC::PipeBarrier<PIPE_V>();
+        AscendC::Add(weight_ub[0], weight_ub[0], dw_reduce_ub[0], 32);
+        AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(4);
+        AscendC::Cast(rg_half_ub[0], rg_chunk_ub[0], AscendC::RoundMode::CAST_ROUND, 2048);
+        AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(0);
+        AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(0);
+        AscendC::PipeBarrier<PIPE_MTE3>();
+        tl::ascend::copy_ub_to_gm<half, 64, 32>(reluGradRes[((g_id * 65536) + (cid * 64))], rg_half_ub[0], 2048, 32, 64);
+        AscendC::PipeBarrier<PIPE_V>();
+        AscendC::Cast(dw_half_ub[0], weight_ub[0], AscendC::RoundMode::CAST_ROUND, 32);
+        AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(1);
+        AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(1);
+        tl::ascend::copy_ub_to_gm<half, 32>(dWeight_partial[((cid * 64) + (g_id * 32))], dw_half_ub[0], 2048, 1, 32);
       }
-      AscendC::PipeBarrier<PIPE_V>();
-      AscendC::Exp(rsy_tmp_ub[0], rsy_tmp_ub[0], 2048);
-      AscendC::PipeBarrier<PIPE_V>();
-      AscendC::Sub(rsy_tmp_ub[0], ones_2d_ub[0], rsy_tmp_ub[0], 2048);
-      for (int32_t i_2 = 0; i_2 < 32; ++i_2) {
-        tl::ascend::copy_ub_to_ub<float, float, 64>(rg_chunk_ub[(i_2 * 64)], weight_2d_ub[((g_id * 2048) + (i_2 * 64))], 1, 64, 64, 1, 64, 64);
-      }
-      AscendC::Mul(rg_chunk_ub[0], rg_chunk_ub[0], diff_2d_ub[0], 2048);
-      AscendC::PipeBarrier<PIPE_V>();
-      AscendC::Mul(rg_chunk_ub[0], rg_chunk_ub[0], rsy_tmp_ub[0], 2048);
-      AscendC::PipeBarrier<PIPE_V>();
-      AscendC::Mul(dw_chunk_ub[0], dw_chunk_ub[0], diff_2d_ub[0], 2048);
-      AscendC::PipeBarrier<PIPE_V>();
-      tl::ascend::reduce_sum<float,  32,  64,  -1>(dw_reduce_ub[0], dw_chunk_ub[0], tmp_ub[0], true);
-      AscendC::PipeBarrier<PIPE_V>();
-      AscendC::Add(weight_ub[0], weight_ub[0], dw_reduce_ub[0], 32);
-      AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(4);
-      AscendC::Cast(rg_half_ub[0], rg_chunk_ub[0], AscendC::RoundMode::CAST_ROUND, 2048);
-      AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(0);
-      AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(0);
-      AscendC::PipeBarrier<PIPE_MTE3>();
-      tl::ascend::copy_ub_to_gm<half, 64, 32>(reluGradRes[((g_id * 65536) + (cid * 64))], rg_half_ub[0], 2048, 32, 64);
-      AscendC::PipeBarrier<PIPE_V>();
-      AscendC::Cast(dw_half_ub[0], weight_ub[0], AscendC::RoundMode::CAST_ROUND, 32);
-      AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(1);
-      AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(1);
-      tl::ascend::copy_ub_to_gm<half, 32>(dWeight_partial[((cid * 64) + (g_id * 32))], dw_half_ub[0], 2048, 1, 32);
     }
     AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(4);
     tl::ascend::copy_gm_to_ub<float, 64>(loss_chunk_ub[0], PReduced[(cid * 64)], 2048, 1, 64, 0.000000e+00f);
