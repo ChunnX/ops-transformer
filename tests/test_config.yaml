@@ -496,6 +496,22 @@ attention:
       examples: False
     options:
       - flash_attn
+
+  compressor:
+    module: True
+    src:
+      - attention/compressor
+    exclude:
+      - attention/compressor/docs
+      - attention/compressor/README.md
+    ut_cov_exclude:
+      - attention/compressor/tests
+    test:
+      ut: True
+      examples: False
+    options:
+      - compressor
+
 gmm:
   grouped_matmul:
     module: True
