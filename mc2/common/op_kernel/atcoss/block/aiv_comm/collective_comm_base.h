@@ -132,9 +132,9 @@ public:
         }
     }
 
-    __aicore__ inline uint64_t GetCommSize() const
+    __aicore__ inline uint64_t GetCommByteSize() const
     {
-        return chunkSize_ * udmaCtx_->rankSize;
+        return chunkBytes_ * udmaCtx_->rankSize;
     }
 
     __aicore__ inline void Finalize()
