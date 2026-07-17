@@ -356,6 +356,7 @@ __aicore__ inline void LightningIndexerServiceVector<LIT>::ProcessVec(const LICo
             bool isS2End = cuBaseS2Idx + s2BaseSize_ >= cuRealAcSeq;
             LIServiceVec::DoReduce(reduceCacheBuf[REDUCE_BANK_CONFLICT_NUM], reduceOutInner, gRedCnt, s2BaseSize_);
             outQueue_.FreeTensor(reduceCacheBuf);
+            PipeBarrier<PIPE_V>();
 
             if (constInfo_.radixTotalBatch > 0) {
             // RadixTopK path: write scoreB16Gm, skip Sort+MergeSort
@@ -389,7 +390,14 @@ __aicore__ inline void LightningIndexerServiceVector<LIT>::ProcessVec(const LICo
                 dcParams.blockLen = s2BaseSize_ * sizeof(bfloat16_t);
                 dcParams.srcStride = 0;
                 dcParams.dstStride = 0;
+                // V->MTE3 sync: Cast writes tmpUb_ (V), DataCopyPad reads tmpUb_ (MTE3)
+                SetFlag<HardEvent::V_MTE3>(EVENTID_V_TO_MTE2_TMPUB);
+                WaitFlag<HardEvent::V_MTE3>(EVENTID_V_TO_MTE2_TMPUB);
                 DataCopyPad(scoreB16Gm[scoreOffset], scoreB16Ub, dcParams);
+                // MTE3->MTE2 sync: DataCopyPad writes scoreB16Gm, next CopyIn writes tmpUb_
+                // Use event to prevent CopyIn from overwriting tmpUb_ before DataCopyPad finishes reading
+                SetFlag<HardEvent::MTE3_MTE2>(EVENTID_V_TO_MTE2_TMPUB);
+                WaitFlag<HardEvent::MTE3_MTE2>(EVENTID_V_TO_MTE2_TMPUB);
             }
             } // end if radixCuS2Len > 0
             } else {
