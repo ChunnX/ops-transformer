@@ -640,59 +640,57 @@ def tilelang_grad_kl_loss_single_kernel(
                     # WAR pre-fill: dw_chunk_ub 初始可安全写入（无前序 V 读者）
                     T.set_flag("v", "mte2", 4)
 
-                    # MIX_AIC_1_2 provides two AIVs for each cid.  Split the
-                    # independent Nidx1 halves so they write disjoint outputs.
-                    g_id_start = vid
-                    g_id_end = T.min(vid + 1, g_num)
-                    for g_id in T.serial(g_id_start, g_id_end):
+                    # Keep T.serial bounds static for TIR simplification, then
+                    # select the independent Nidx1 half owned by this AIV.
+                    for g_id in T.serial(g_num):
                         g_start = g_id * vector_baseg
+                        if g_id == vid:
+                            T.tile.fill(weight_ub, 0)
 
-                        T.tile.fill(weight_ub, 0)
+                            # WAR: 等 V 读完 dw_chunk_ub → MTE2 安全覆盖（替代 barrier_all 兜底）
+                            T.wait_flag("v", "mte2", 4)
+                            T.copy(bmm2Res[bz, s1_id, g_start:g_start + vector_baseg, n_idx_k * n_block:(n_idx_k + 1) * n_block], dw_chunk_ub)
 
-                        # WAR: 等 V 读完 dw_chunk_ub → MTE2 安全覆盖（替代 barrier_all 兜底）
-                        T.wait_flag("v", "mte2", 4)
-                        T.copy(bmm2Res[bz, s1_id, g_start:g_start + vector_baseg, n_idx_k * n_block:(n_idx_k + 1) * n_block], dw_chunk_ub)
+                            T.set_flag("mte2", "v", 7)
+                            T.wait_flag("mte2", "v", 7)
 
-                        T.set_flag("mte2", "v", 7)
-                        T.wait_flag("mte2", "v", 7)
+                            T.tile.mul(rsy_tmp_ub, dw_chunk_ub, -10000.0)
+                            T.pipe_barrier("v")
+                            T.tile.exp(rsy_tmp_ub, rsy_tmp_ub)
+                            T.pipe_barrier("v")
+                            T.tile.sub(rsy_tmp_ub, ones_2d_ub, rsy_tmp_ub)
 
-                        T.tile.mul(rsy_tmp_ub, dw_chunk_ub, -10000.0)
-                        T.pipe_barrier("v")
-                        T.tile.exp(rsy_tmp_ub, rsy_tmp_ub)
-                        T.pipe_barrier("v")
-                        T.tile.sub(rsy_tmp_ub, ones_2d_ub, rsy_tmp_ub)
+                            # Op1: rg = weight_slice * diff (2D)
+                            # weight切片逐行copy（整块copy参数在CANN 9.1下不正确）
+                            for i in T.serial(vector_baseg):
+                                T.copy(weight_2d_ub[g_start + i, :], rg_chunk_ub[i, :])
+                            T.tile.mul(rg_chunk_ub, rg_chunk_ub, diff_2d_ub)
+                            # Op2: rg *= rsy_tmp mask (2D, was per-row 1D mul)
+                            T.pipe_barrier("v")
+                            T.tile.mul(rg_chunk_ub, rg_chunk_ub, rsy_tmp_ub)
+                            # Op3: dw *= diff (2D, was per-row 1D mul)
+                            T.pipe_barrier("v")
+                            T.tile.mul(dw_chunk_ub, dw_chunk_ub, diff_2d_ub)
 
-                        # Op1: rg = weight_slice * diff (2D)
-                        # weight切片逐行copy（整块copy参数在CANN 9.1下不正确）
-                        for i in T.serial(vector_baseg):
-                            T.copy(weight_2d_ub[g_start + i, :], rg_chunk_ub[i, :])
-                        T.tile.mul(rg_chunk_ub, rg_chunk_ub, diff_2d_ub)
-                        # Op2: rg *= rsy_tmp mask (2D, was per-row 1D mul)
-                        T.pipe_barrier("v")
-                        T.tile.mul(rg_chunk_ub, rg_chunk_ub, rsy_tmp_ub)
-                        # Op3: dw *= diff (2D, was per-row 1D mul)
-                        T.pipe_barrier("v")
-                        T.tile.mul(dw_chunk_ub, dw_chunk_ub, diff_2d_ub)
+                            T.pipe_barrier("v")
+                            T.reduce_sum(dw_chunk_ub, dw_reduce_ub, 1)
+                            T.pipe_barrier("v")
+                            T.tile.add(weight_ub, weight_ub, dw_reduce_ub)
+                            # WAR: V 已读完 dw_chunk_ub → 通知 MTE2 下轮可覆盖
+                            T.set_flag("v", "mte2", 4)
 
-                        T.pipe_barrier("v")
-                        T.reduce_sum(dw_chunk_ub, dw_reduce_ub, 1)
-                        T.pipe_barrier("v")
-                        T.tile.add(weight_ub, weight_ub, dw_reduce_ub)
-                        # WAR: V 已读完 dw_chunk_ub → 通知 MTE2 下轮可覆盖
-                        T.set_flag("v", "mte2", 4)
+                            T.tile.cast(rg_half_ub, rg_chunk_ub, "CAST_ROUND", vector_baseg * n_block)
+                            # set_flag("v",...) 自带 V pipe barrier，无需 barrier_all
+                            T.set_flag("v", "mte3", 0)
+                            T.wait_flag("v", "mte3", 0)
+                            T.pipe_barrier("mte3")
+                            T.copy(rg_half_ub, reluGradRes[bz, s1_id, g_start:g_start + vector_baseg, n_idx_k * n_block:(n_idx_k + 1) * n_block])
 
-                        T.tile.cast(rg_half_ub, rg_chunk_ub, "CAST_ROUND", vector_baseg * n_block)
-                        # set_flag("v",...) 自带 V pipe barrier，无需 barrier_all
-                        T.set_flag("v", "mte3", 0)
-                        T.wait_flag("v", "mte3", 0)
-                        T.pipe_barrier("mte3")
-                        T.copy(rg_half_ub, reluGradRes[bz, s1_id, g_start:g_start + vector_baseg, n_idx_k * n_block:(n_idx_k + 1) * n_block])
-
-                        T.pipe_barrier("v")
-                        T.tile.cast(dw_half_ub, weight_ub, "CAST_ROUND", vector_baseg)
-                        T.set_flag("v", "mte3", 1)
-                        T.wait_flag("v", "mte3", 1)
-                        T.copy(dw_half_ub, dWeight_partial[bz, s1_id, n_idx_k, g_start:g_start + vector_baseg])
+                            T.pipe_barrier("v")
+                            T.tile.cast(dw_half_ub, weight_ub, "CAST_ROUND", vector_baseg)
+                            T.set_flag("v", "mte3", 1)
+                            T.wait_flag("v", "mte3", 1)
+                            T.copy(dw_half_ub, dWeight_partial[bz, s1_id, n_idx_k, g_start:g_start + vector_baseg])
 
                     # Clear: 排空 V_MTE2(4) WAR 事件（最后轮 g_id 的 set）
                     T.wait_flag("v", "mte2", 4)
