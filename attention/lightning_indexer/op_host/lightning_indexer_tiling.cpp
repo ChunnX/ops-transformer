@@ -970,7 +970,7 @@ static uint64_t LiCalcWorkspaceSize(const platform_ascendc::PlatformAscendC &liP
         actS1 = static_cast<uint32_t>(liS2Size);
     }
     uint32_t totalBatch = liBSize * actS1 * liN2Size;
-    liWorkspaceSize += static_cast<uint64_t>(totalBatch) * sortLenAlign * sizeof(uint16_t);
+    liWorkspaceSize += static_cast<uint64_t>(totalBatch) * sortLenAlign * sizeof(float);
     // RadixTopK workspace: [aivNum * 4] globalHist + [aivNum] coreTopK
     uint32_t aivNum = liBlockDim * 2;
     liWorkspaceSize += static_cast<uint64_t>(aivNum) * (RDX_BINS_COUNT + 1) * sizeof(int32_t);
@@ -1015,7 +1015,7 @@ ge::graphStatus LightningIndexerTiling::DoTiling(LITilingInfo *tilingInfo)
         actS1ForScore = static_cast<uint32_t>(tilingInfo->s2Size);
     }
     uint64_t scoreB16Size = static_cast<uint64_t>(tilingInfo->bSize * actS1ForScore * tilingInfo->n2Size) *
-                            sortLenAlign * sizeof(uint16_t);
+                            sortLenAlign * sizeof(float);
     uint64_t radixWsOffset = scoreB16GmOffset + scoreB16Size;
 
     // -------------set tilingdata-----------------

@@ -119,7 +119,7 @@ protected:
     GlobalTensor<MM1_OUT_T> mm1ResGm;  // 存放S
     GlobalTensor<float> vec1ResGm;     // 存放TopK计算中间结果
     GlobalTensor<int64_t> vec1ParamGm; // 存放LD参数信息
-    GlobalTensor<bfloat16_t> scoreB16Gm;
+    GlobalTensor<float> scoreB16Gm; // float score for RadixTopK
     __gm__ uint8_t *workspaceBase = nullptr;
     __gm__ uint8_t *sparseIndicesBase = nullptr;
 
@@ -453,7 +453,7 @@ __aicore__ inline void LightningIndexerKernel<LIT>::Init(__gm__ uint8_t *query,
         vectorService.InitParams(constInfo, tiling);
         workspaceBase = workspace;
         sparseIndicesBase = sparseIndices;
-        scoreB16Gm.SetGlobalBuffer((__gm__ bfloat16_t *)(workspace + constInfo.scoreB16GmOffset));
+        scoreB16Gm.SetGlobalBuffer((__gm__ float *)(workspace + constInfo.scoreB16GmOffset));
         indiceOutGm.SetGlobalBuffer((__gm__ int32_t *)sparseIndices);
         valueOutGm.SetGlobalBuffer((__gm__ K_T *)sparseValues);
         weightsGm.SetGlobalBuffer((__gm__ W_T *)weights);
@@ -729,7 +729,7 @@ __aicore__ inline void LightningIndexerKernel<LIT>::ProcessRadixTopK()
                 (static_cast<int32_t>(actS2) - (static_cast<int32_t>(actS1) - static_cast<int32_t>(s1Idx)) + 1) :
                 static_cast<int32_t>(actS2);
 
-            __gm__ uint8_t *scorePtr = scoreBase + batchId * sortLenAlign * sizeof(bfloat16_t);
+            __gm__ uint8_t *scorePtr = scoreBase + batchId * sortLenAlign * sizeof(float);
             __gm__ uint8_t *idxPtr = sparseIndicesBase + batchId * kValue * sizeof(int32_t);
 
             if (cuRealAcSeq <= 0) {

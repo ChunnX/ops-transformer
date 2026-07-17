@@ -69,7 +69,7 @@ public:
     __aicore__ inline void InitVec1GlobalTensor(GlobalTensor<MM1_OUT_T> mm1ResGm, GlobalTensor<float> vec1ResGm,
                                                  GlobalTensor<int64_t> vec1ParamGm, GlobalTensor<W_T> weightsGm,
                                                  GlobalTensor<int32_t> indiceOutGm, GlobalTensor<K_T> valueOutGm,
-                                                 GlobalTensor<bfloat16_t> scoreB16Gm);
+                                                 GlobalTensor<float> scoreB16Gm);
     __aicore__ inline void CleanInvalidOutput(int64_t invalidS1offset);
     __aicore__ inline void AllocEventID();
     __aicore__ inline void FreeEventID();
@@ -79,7 +79,7 @@ protected:
     GlobalTensor<MM1_OUT_T> mm1ResGm;
     GlobalTensor<float> vec1ResGm;
     GlobalTensor<int64_t> vec1ParamGm;
-    GlobalTensor<bfloat16_t> scoreB16Gm;
+    GlobalTensor<float> scoreB16Gm;  // float score for RadixTopK
     GlobalTensor<W_T> weightsGm;
     GlobalTensor<int32_t> indiceOutGm;
     GlobalTensor<K_T> valueOutGm;
@@ -208,7 +208,7 @@ LightningIndexerServiceVector<LIT>::InitVec1GlobalTensor(GlobalTensor<MM1_OUT_T>
                                     GlobalTensor<float> vec1ResGm,
                                     GlobalTensor<int64_t> vec1ParamGm, GlobalTensor<W_T> weightsGm,
                                     GlobalTensor<int32_t> indiceOutGm, GlobalTensor<K_T> valueOutGm,
-                                    GlobalTensor<bfloat16_t> scoreB16Gm)
+                                    GlobalTensor<float> scoreB16Gm)
 {
     this->mm1ResGm = mm1ResGm;
     this->vec1ResGm = vec1ResGm;
@@ -379,20 +379,16 @@ __aicore__ inline void LightningIndexerServiceVector<LIT>::ProcessVec(const LICo
                 PipeBarrier<PIPE_V>();
             }
             {
-                // Use reduceOutBuff[0] as Cast target (not tmpUb_, avoids V->MTE3 sync issue)
-                // reduceOutBuff layout: [0..s2BaseSize-1] = unused in RadixTopK path, [s2BaseSize..2*s2BaseSize-1] = reduceOutInner
-                LocalTensor<bfloat16_t> scoreB16Ub = reduceOutBuff.template ReinterpretCast<bfloat16_t>();
-                Cast(scoreB16Ub, reduceOutInner, RoundMode::CAST_ROUND, s2BaseSize_);
-                PipeBarrier<PIPE_ALL>();
+                // Directly DataCopyPad float reduceOutInner to scoreB16Gm (no Cast needed)
+                PipeBarrier<PIPE_V>();
                 uint64_t globalS1Idx = static_cast<uint64_t>(cuS1Idx);
                 uint64_t scoreOffset = globalS1Idx * constInfo_.radixSortLenAlign + cuBaseS2Idx;
                 AscendC::DataCopyParams dcParams;
                 dcParams.blockCount = 1;
-                dcParams.blockLen = s2BaseSize_ * sizeof(bfloat16_t);
+                dcParams.blockLen = s2BaseSize_ * sizeof(float);
                 dcParams.srcStride = 0;
                 dcParams.dstStride = 0;
-                DataCopyPad(scoreB16Gm[scoreOffset], scoreB16Ub, dcParams);
-                PipeBarrier<PIPE_ALL>();
+                DataCopyPad(scoreB16Gm[scoreOffset], reduceOutInner, dcParams);
             }
             } // end if radixCuS2Len > 0
             } else {
