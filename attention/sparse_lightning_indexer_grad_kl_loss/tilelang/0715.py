@@ -440,12 +440,12 @@ def tilelang_grad_kl_loss_single_kernel(
                 weight_all_half_ub = T.alloc_ub(Nidx1, input_dtype)
                 weight_2d_ub = T.alloc_ub((Nidx1, n_block), calc_dtype)
                 p_reduced_tmp_ub = T.alloc_ub(n_block, calc_dtype)
-                p_reduced_curr_ub = T.alloc_ub(n_block, calc_dtype)
                 rsy_tmp_ub = T.alloc_ub((vector_baseg, n_block), calc_dtype)
-                rsy_reduce_db = T.alloc_ub((2, n_block), calc_dtype)  # DB for MTE3 overlap
+                rsy_reduce_db = T.alloc_ub((2, n_block), calc_dtype)
                 sm_max_ub = T.alloc_ub(G, calc_dtype)
                 sm_sum_ub = T.alloc_ub(G, calc_dtype)
                 eps_sm_ub = T.alloc_ub(G, calc_dtype)
+                sm_2d_ub = T.alloc_ub((G, n_block), calc_dtype)
                 rsy_chunk_ub = T.alloc_ub(n_block, calc_dtype)
                 rsy_bc_ub = T.alloc_ub((1, n_block), calc_dtype)
                 rsy_max_ub = T.alloc_ub((1,), calc_dtype)
@@ -488,7 +488,6 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.reduce_sum(bmm1_ub, p_reduced_tmp_ub, 0)
                     T.pipe_barrier("v")
                     T.tile.mul(p_reduced_tmp_ub, p_reduced_tmp_ub, 1.0 / G)
-                    T.copy(p_reduced_tmp_ub, p_reduced_curr_ub)
                     T.set_flag("v", "mte3", 6)
                     T.wait_flag("v", "mte3", 6)
                     T.copy(p_reduced_tmp_ub, PReduced[bz, s1_id, n_idx_k * n_block:(n_idx_k + 1) * n_block])
@@ -508,11 +507,8 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.tile.fill(rsy_max_ub, -T.infinity(calc_dtype))
                     # Double-buffer ReduceSumY loop: overlap copy[n_rsy+1] ∥ compute[n_rsy]
                     # bmm2 DB: V_MTE2{0,1} (WAR) / MTE2_V{0,1} (RAW)
-                    # rsy_reduce DB: MTE3_V{9,10} (WAR: MTE3 done reading, V can overwrite)
                     T.set_flag("v", "mte2", 0)
                     T.set_flag("v", "mte2", 1)
-                    T.set_flag("mte3", "v", 9)
-                    T.set_flag("mte3", "v", 10)
 
                     # Prologue: load n_rsy=0 → slot 0
                     T.wait_flag("v", "mte2", 0)
@@ -535,14 +531,9 @@ def tilelang_grad_kl_loss_single_kernel(
                         if cur == 1:
                             T.reduce_sum(bmm2_1, rsy_reduce_db[cur, :], 0)
                         T.pipe_barrier("v")
-                        # Save to UB (for sum) + write to GM (for workspace)
+                        # Save to UB for global SoftmaxI; ReduceSumY workspace is unused downstream.
                         T.copy(rsy_reduce_db[cur, :], rsy_all_ub[n_rsy, :])
-                        # WAR: wait for MTE3 to finish reading rsy_reduce_db[cur, :] from 2 iters ago
-                        T.wait_flag("mte3", "v", cur + 9)
-                        # MTE3 copy: fire-and-forget, overlaps with V reduce_max below
-                        T.copy(rsy_reduce_db[cur, :], ReduceSumY[bz, s1_id, n_rsy * n_block:(n_rsy + 1) * n_block])
-                        T.set_flag("mte3", "v", cur + 9)
-                        # Fused: update global max from rsy_reduce_db[cur, :] (still in UB, ∥ MTE3 copy in flight)
+                        # Fused: update global max from rsy_reduce_db[cur, :]
                         T.tile.mul(rsy_bc_ub[0, :], rsy_reduce_db[cur, :], 1.0)
                         T.pipe_barrier("v")
                         T.reduce_max(rsy_bc_ub, rsy_chunk_max_ub, 1)
@@ -564,11 +555,9 @@ def tilelang_grad_kl_loss_single_kernel(
                     # Clear: drain remaining WAR events
                     T.wait_flag("v", "mte2", 0)
                     T.wait_flag("v", "mte2", 1)
-                    T.wait_flag("mte3", "v", 9)
-                    T.wait_flag("mte3", "v", 10)
 
                     # Broadcast rsy_max to vector via T.tile.broadcast (BRCB, PIPE_V, 0 PIPE_ALL)
-                    # WAR: p_reduced_tmp 前面被 reduce_sum 覆盖，refill 前等 mte3 drain 完成
+                    # Drain PReduced MTE3 write before refilling p_reduced_tmp_ub.
                     T.set_flag("mte3", "v", 0)
                     T.wait_flag("mte3", "v", 0)
                     T.tile.fill(p_reduced_tmp_ub, 1.0)
@@ -631,11 +620,15 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.tile.fill(ones_2d_ub, 1.0)
                     T.tile.fill(eps_ub, 1e-8)
 
-                    # dWeight, reluGrad for MY K block.
-                    # Use current-block UB values directly: rsy_chunk_ub holds SoftmaxI,
-                    # p_reduced_curr_ub holds PReduced. Avoid immediate GM readback.
-                    T.pipe_barrier("v")
-                    T.tile.sub(diff_ub, rsy_chunk_ub, p_reduced_curr_ub)
+                    # dWeight, reluGrad for MY K block
+                    # RAW: SoftmaxI 刚由 mte3 写，mte2 读回前等 mte3 完成
+                    T.set_flag("mte3", "mte2", 5)
+                    T.wait_flag("mte3", "mte2", 5)
+                    T.copy(SoftmaxI[bz, s1_id, n_idx_k * n_block:(n_idx_k + 1) * n_block], softmax_i_chunk_ub)
+                    T.copy(PReduced[bz, s1_id, n_idx_k * n_block:(n_idx_k + 1) * n_block], p_reduced_tmp_ub)
+                    T.set_flag("mte2", "v", 6)
+                    T.wait_flag("mte2", "v", 6)
+                    T.tile.sub(diff_ub, softmax_i_chunk_ub, p_reduced_tmp_ub)
 
                     # Broadcast diff_ub → diff_2d_ub via BRCB (1 instruction replaces 32 serial copies)
                     T.tile.broadcast(diff_2d_ub, diff_ub)
@@ -697,21 +690,31 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.wait_flag("v", "mte2", 4)
 
                     # Compute partial Loss for MY K block only (n_idx_k)
-                    T.copy(p_reduced_curr_ub, loss_chunk_ub)
+                    T.copy(PReduced[bz, s1_id, n_idx_k * n_block:(n_idx_k + 1) * n_block], loss_chunk_ub)
+                    T.set_flag("mte2", "v", 0)
+                    T.wait_flag("mte2", "v", 0)
                     T.tile.max(loss_chunk_ub, loss_chunk_ub, eps_ub)
                     T.pipe_barrier("v")
                     T.tile.ln(loss_log_p_ub, loss_chunk_ub)
+                    # WAR: loss_chunk 复用，下轮 mte2 覆盖前等本轮 ln 读完
+                    T.set_flag("v", "mte2", 1)
+                    T.wait_flag("v", "mte2", 1)
 
-                    T.pipe_barrier("v")
-                    T.copy(rsy_chunk_ub, loss_chunk_ub)
+                    T.copy(SoftmaxI[bz, s1_id, n_idx_k * n_block:(n_idx_k + 1) * n_block], loss_chunk_ub)
+                    T.set_flag("mte2", "v", 2)
+                    T.wait_flag("mte2", "v", 2)
                     T.tile.max(loss_chunk_ub, loss_chunk_ub, eps_ub)
                     T.pipe_barrier("v")
                     T.tile.ln(loss_log_si_ub, loss_chunk_ub)
+                    T.set_flag("v", "mte2", 3)
+                    T.wait_flag("v", "mte2", 3)
 
-                    T.pipe_barrier("v")
-                    T.copy(p_reduced_curr_ub, loss_chunk_ub)
+                    T.copy(PReduced[bz, s1_id, n_idx_k * n_block:(n_idx_k + 1) * n_block], loss_chunk_ub)
                     T.pipe_barrier("v")
                     T.tile.sub(loss_val_ub, loss_log_p_ub, loss_log_si_ub)
+                    # RAW: loss_chunk 刚 mte2 载入，mul 读前等
+                    T.set_flag("mte2", "v", 4)
+                    T.wait_flag("mte2", "v", 4)
                     T.pipe_barrier("v")
                     T.tile.mul(loss_val_ub, loss_chunk_ub, loss_val_ub)
 
