@@ -30,6 +30,7 @@ constexpr uint32_t BUFFER_SIZE_128K = 131072; // 131072表示128 * 1024
 
 constexpr uint32_t CV_RATIO = 2;
 constexpr uint64_t SYNC_MODE = 4;
+constexpr uint32_t BATCH_CONSISTENCY_MAX_REDUCE_BLOCK_NUM = 33U; // 同token最大规约块数
 
 namespace BaseApi {
 __aicore__ constexpr uint64_t Align2Func(uint64_t data)

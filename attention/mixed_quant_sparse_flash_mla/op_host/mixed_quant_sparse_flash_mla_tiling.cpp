@@ -16,6 +16,7 @@
 #include "mixed_quant_sparse_flash_mla_check.h"
 #include "../op_kernel/mixed_quant_sparse_flash_mla_template_tiling_key.h"
 #include "mixed_quant_sparse_flash_mla_tiling.h"
+#include "acl/acl_rt.h"
 
 using namespace ge;
 using namespace AscendC;
@@ -27,6 +28,24 @@ namespace optiling {
 struct QSMLACompileInfo {
     int64_t core_num;
 };
+
+static bool IsBatchConsistencyEnabled(gert::TilingContext *context, const char *opName)
+{
+    int32_t deterministicLevel = context->GetDeterministicLevel();
+    if (deterministicLevel == 3) {
+        OP_LOGD(opName, "Tiling context deterministic level is %d.", deterministicLevel);
+        return true;
+    }
+
+    int64_t deterministicValue = 0;
+    aclError aclRet = aclrtGetSysParamOpt(ACL_OPT_DETERMINISTIC, &deterministicValue);
+    if (aclRet != ACL_SUCCESS) {
+        OP_LOGW(opName, "Failed to get ACL_OPT_DETERMINISTIC, use non-deterministic path.");
+        return false;
+    }
+    OP_LOGD(opName, "ACL_OPT_DETERMINISTIC is %ld.", deterministicValue);
+    return deterministicValue == 3;
+}
 
 // --------------------------QSMLAInfoParser类成员函数定义-------------------------------------
 ge::graphStatus MQSMLAInfoParser::CheckRequiredInOutExistence() const
@@ -79,8 +98,7 @@ ge::graphStatus MQSMLAInfoParser::GetNpuInfo()
         OP_LOGE(opName_, "NpuArch[%d] is not support.", static_cast<int32_t>(npuArch_));
         return GRAPH_FAILED;
     }
-    int32_t deterministicLevel = context_->GetDeterministicLevel();
-    batchConsistency_ = (deterministicLevel == 3);
+    batchConsistency_ = IsBatchConsistencyEnabled(context_, opName_);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -623,10 +641,16 @@ ge::graphStatus MixedQuantSparseFlashMlaTiling::DoOpTiling(MQSMLATilingInfo *til
     }
     uint32_t fdStagingMSize = tilingInfo->gSize;
     uint32_t fdStagingSlotNum = isSplitG ? (aicNum >> 1) : aicNum;
-    // 末尾的2对应每个split分别暂存max和sum。
-    uint32_t s2SplitStagingPerSlot = fdStagingMSize * D_SIZE * FLOAT_ELEM_SIZE * MAX_S2_SPLIT_NUM +
-                                     fdStagingMSize * FD_BLOCK_ELEM * FLOAT_ELEM_SIZE * MAX_S2_SPLIT_NUM * 2;
-    workspaceSize += s2SplitStagingPerSlot * fdStagingSlotNum;
+    if (tilingInfo->batchConsistency) {
+        uint32_t combineElemSize = fdStagingMSize * D_SIZE + 2 * fdStagingMSize;
+        workspaceSize += 33 * combineElemSize * FLOAT_ELEM_SIZE; // 33: 同token最大规约块数
+        workspaceSize += 32 * 33 * combineElemSize * FLOAT_ELEM_SIZE; // 32: 跨核数, 33: 同token最大规约块数
+    } else {
+        // 末尾的2对应每个split分别暂存max和sum。
+        uint32_t s2SplitStagingPerSlot = fdStagingMSize * D_SIZE * FLOAT_ELEM_SIZE * MAX_S2_SPLIT_NUM +
+                                         fdStagingMSize * FD_BLOCK_ELEM * FLOAT_ELEM_SIZE * MAX_S2_SPLIT_NUM * 2;
+        workspaceSize += s2SplitStagingPerSlot * fdStagingSlotNum;
+    }
     size_t *workSpaces = context_->GetWorkspaceSizes(1);
     workSpaces[0] = workspaceSize;
 
