@@ -3,6 +3,8 @@
 
 #include "kernel_operator.h"
 
+using namespace AscendC;
+
 namespace Mc2Kernel {
 
 class KernelTiming {
