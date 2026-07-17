@@ -730,7 +730,7 @@ int LaunchOneThreadAlltoAllvQuantGroupedMatMul(Args &args)
         1, // mmXQuantMode
         1, // mmWeightQuantMode
         hcomName,
-        "ccu",
+        "ai_cpu",
         EP_WORLD_SIZE,
         sendCounts,
         recvCounts,
