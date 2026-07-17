@@ -206,8 +206,8 @@ def _compact_rows(fail_indices, shape, layout, verbose):
     for coord in scatter[:sct_limit]:
         rows.append(tuple(str(v) for v in coord) + ("1",))
 
-    # 截断提示
-    truncated = False
+    # 截断提示 (表外独立行, 不混入表格 rows)
+    trunc_hint = ""
     if verbose is None:
         hidden_s = len(scatter) - DEFAULT_SCATTER_LIMIT
         hidden_g = len(segments) - DEFAULT_SEGMENT_LIMIT
@@ -217,11 +217,9 @@ def _compact_rows(fail_indices, shape, layout, verbose):
                 parts.append(f"{hidden_s} 散点")
             if hidden_g > 0:
                 parts.append(f"{hidden_g} 片段")
-            rows.append(("... " + " + ".join(parts)
-                        + " (--verbose_diff 查看)",))
-            truncated = True
+            trunc_hint = "... " + " + ".join(parts) + " (--verbose_diff 查看)"
 
-    return rows, len(col_names), truncated
+    return rows, len(col_names), trunc_hint
 
 
 
@@ -320,19 +318,19 @@ def _render_failure_detail(fail_indices, cpu_t, npu_t, diff, shape, layout,
             col_types = ["n"] * (len(col_names) + 4)
             lines += _render_table(table_header, col_types, all_rows)
     else:
-        rows, axis_width, truncated = _compact_rows(
+        rows, axis_width, trunc_hint = _compact_rows(
             fail_indices, tuple(shape), layout or "", verbose)
         if rows:
             table_header = col_names + ["元素数"]
             col_types = (["n"] * (axis_width + 1))
             lines += _render_table(table_header, col_types, rows)
-        lines.append("")
-        if truncated:
+        if trunc_hint:
+            lines.append(f"    {trunc_hint}")
             lines.append(
                 "    (使用 --verbose_diff fold 查看全部, "
                 "--verbose_diff all 查看全部点位)"
             )
-            lines.append("")
+        lines.append("")
 
     # ── Max-RE 前3 ──
     rel = torch.abs(cpu_flat - npu_flat) / (torch.abs(cpu_flat) + 1e-6)
